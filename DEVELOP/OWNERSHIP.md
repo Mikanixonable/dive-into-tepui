@@ -66,7 +66,10 @@ main.ts
     │                                       construct する(PlanEditor が構築引数として参照を受け取るため)
     │   ├── AnchorZone × 2                 ... カメラ/並進ゾーン。ObjectPicker + SegmentedControl(いまいる系のクイックボタン)。ObjectPicker のポップアップは Hud.layers.popup 配下
     │   └── RotationZone × 2               ... カメラ回転/計画軌道回転ゾーン。SegmentedControl のみ
-    ├── MapPicker                      ... マップ被選択物の候補列・右クリック解決・種別別プロパティ/操作の配分・開いているプロパティウィンドウ集合
+    ├── MapPicker                      ... マップ被選択物の候補列・右クリック解決・種別別プロパティ/操作の配分・開いているプロパティウィンドウ集合。
+    │                                       Game への参照は持たず、操作の実行先(ActivePlayerController・FrameControls・
+    │                                       activeStage・CameraSystem)を個別に参照で持つ。activeStage が要るので
+    │                                       activeStage の直後に construct する(ViewManager・Docking はこれより後)
     │   ├── ContextMenu<MapPickable>       ... 空域右クリック('empty-space')専用メニュー。DOM は Hud.layers.popup 配下
     │   ├── windows: Map<string, WindowEntry>  ... {win: PropertyWindow<MenuAction>, target}。オブジェクト1つ(`${kind}:${id}`)につき高々1枚。呼び出しごとに new。PropertyWindow は Hud.layers.window 配下に append
     │   └── ObjectListPanel                ... DOM は Hud.layers.panel 配下。軌道オブジェクトウィンドウ(一覧 + クリックで選択状態 + ダブルクリックでフォーカス移動 + 右クリックでプロパティウィンドウ)。マップ視点である間は常設表示
@@ -98,7 +101,11 @@ main.ts
     │   ├── HudHoldButton ×6            ... Δv 6方向の長押しボタン(dvButtons)
     │   └── 計画パネル DOM
     ├── PlanGuide                       ... 直近ノードの接近/達成通知済みフラグ(ノード自体への参照)を持つ
-    ├── Docking                        ... 基地への収容・発進(EntityManager/CameraSystem/Game.player にまたがる横断)
+    ├── Docking                        ... 基地への収容・発進(EntityManager/CameraSystem/ActivePlayerController/
+    │                                       ViewManager にまたがる横断)。Game への参照は持たず、ポーズだけは
+    │                                       pauseGame/resumeGame の2クロージャで受け取る(「クロージャ注入を避け
+    │                                       参照を渡す」規則への暫定的な例外。理由は docking.ts のコンストラクタ
+    │                                       コメントと CLAUDE.md にある)
     │   └── DockView                       ... DOM は Hud.layers.view 配下。格納艦/部品/ショップタブのフルスクリーン UI
     ├── ViewManager                    ... 現在のビュー(combat/map/dock)の正本。遷移は setView() ひとつに集約。
     │                                       ActivePlayerController・TouchControls | null はいずれもコンストラクタ引数
@@ -291,7 +298,7 @@ main.ts
 | `PerfMeter` | main.ts | rAF ループ(`startAnimationLoop` が `snapshotControls.handleInput` の直後に `perf.handleInput(game.input)` を呼び、`[F3]` で `toggle()` する)・SettingsPanel(`onOpenPerfWindow` 経由で `open()`) |
 | `PropertyWindow`(負荷確認ウィンドウ) | PerfMeter(`open()` で new し `close()`/✕ で dispose する1枚) | PerfMeter 自身のみ。500ms ごとの flush で `syncRows` へ行一式を渡す |
 | `FocusMarkers.bodyPickables(t, visibilityPolicy)` の戻り値 | CameraSystem(→FocusMarkers、呼ぶたびに作り直す使い捨て配列) | `MapPicker.refresh()` が読んで生存中の自機・敵船・弾薬・基地・NavTarget のアイコン・`PlanDisplay.apsisMarkers` と合流させ、`MapPicker.handleRightClick`(`pickNearest`)/`OverviewCamera.update` の被選択物候補として渡し直す。引数の `MapVisibilityPolicy` が admits した天体+ラグランジュ点だけを返し、遮蔽・ラベル衝突でこのフレームに描かれなかった対象は `pickable: false` を伴って残す(表示設定で消えているわけではないので候補からは落とさない) |
-| `MapVisibilityPolicy`(1フレームの使い捨て) | `MapPicker`(`refresh` が `registry`/`bodyClassToggles`/`focusTargetId(...)`/`systemMembersAt(cameraPos, ...)` から毎フレーム1つ組み立て、`visibilityPolicy` getter で公開。`refresh` 前は null) | `FocusMarkers.update`(引数)/ `Game.sync` が `mapPicker.visibilityPolicy` を読んで `EnvironmentScene.sync`・参照線 / `Stage.sync`・`EntityManager.syncMarkers`・`Targeter.sync` へ配る。受け取り側は渡されなければ同じ4入力から自前で組む経路も残す(マップ経路の外からも呼べるようにするためで、マップ描画中は必ず共有インスタンス)。天体は `body(id)`、エンティティは `entity(kind, isActivePlayer)` で `{category, icon, label, orbit, pickable}` を返す判定関数であって状態を持たない(正本は `CameraSystem.bodyClassToggles` とフォーカス・カメラ位置) |
+| `MapVisibilityPolicy`(1フレームの使い捨て) | `MapPicker`(`refresh` が `registry`/`bodyClassToggles`/`focusTargetId(...)`/`systemMembersAt(cameraPos, ...)` から毎フレーム1つ組み立て、`visibilityPolicy` getter で公開。`refresh` 前と、マップ視点でないフレームは null — `refresh` は早期 return の前に null を代入するので、読む側はビューを見て潰す必要がない) | `FocusMarkers.update`(引数)/ `Game.sync` が `mapPicker.visibilityPolicy` を読んで `EnvironmentScene.sync`・参照線 / `Stage.sync`・`EntityManager.syncMarkers`・`Targeter.sync` へ配る。受け取り側は渡されなければ同じ4入力から自前で組む経路も残す(マップ経路の外からも呼べるようにするためで、マップ描画中は必ず共有インスタンス)。天体は `body(id)`、エンティティは `entity(kind, isActivePlayer)` で `{category, icon, label, orbit, pickable}` を返す判定関数であって状態を持たない(正本は `CameraSystem.bodyClassToggles` とフォーカス・カメラ位置) |
 | `FocusMarkers.allLabels` | CameraSystem(→FocusMarkers、構築時に1度だけ) | `MapPicker.sync()` が id/isLagrange から親子関係(parentOf)を組むのに読む |
 | `PlanDisplay.apsisMarkers` | PlanEditor(→PlanDisplay) | `MapPicker.refresh()` が他の候補と合流させ、`MapPicker.handleRightClick`/`OverviewCamera.update` へ1本の候補列として渡す |
 
