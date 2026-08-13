@@ -31,33 +31,7 @@
 
 ---
 
-## 是正案 I
-
-`/refactor-fixed` 5-4「小さな段階にわけ、各段階で問題が生じていないことの確認を取りながら進める」
-に従い、単独で確認できる粒度に割ってある(依存関係は末尾の「実施順と依存」)。
-
-### Step 5 — `ActivePlayerController` が初期の操作艦を自分で決める
-
-`initialPlayer` の読み手は `ActivePlayerController` のコンストラクタだけになっているので、
-最後の種付け経路を畳む。
-
-- `ActivePlayerController` のコンストラクタが `initialSave?.activePlayerId` を受け、
-  `entities.players` から自分で解決する(`find(id) ?? players[0] ?? null`)。
-- `EntityManager.initialActivePlayer` と、`restoreFromSave`/`spawnInitialPlayers` の
-  戻り値によるその設定を削除。
-- `Stage.begin()`(`stage.ts:170`)は `this._activePlayers.current` を読む
-  (`StageDeps` に `activePlayers` は既に入っており、`Stage` は `ActivePlayerController` より
-  後に構築される)。
-- `game.ts:127` の `const initialPlayer` が**読み手ゼロになるので削除。**
-
-### Step 6(任意・隣接)— `editor.onFocusNode` クロージャの解消
-
-`game.ts:155-158` は、40行後に構築される `this.frameControls` へ**クロージャ経由の前方参照**で
-届かせている。`/refactor-fixed` 7「渡すのはクロージャではなくオブジェクトの参照」の違反。
-`FrameControls` の依存(`hud.layers`/`ephemeris`/`cameraSystem.overviewCamera`/`displayWindowManager`)は
-`CameraSystem` の直後に全て揃っているので、**`FrameControls` を `PlanEditor` より前へ移し、
-`PlanEditor` が `frameControls` を引数で受けて自分で `setFocus` を呼べばよい。**
-自機・カメラの話ではないので別件にしてよいが、同じコンストラクタの同じ種類のぎこちなさ。
+## 是正案 I (Step1-6 すべて実施済み)
 
 ---
 
