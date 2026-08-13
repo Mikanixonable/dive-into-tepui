@@ -136,8 +136,9 @@ export class Targeter {
     this.targetSelectAt = now;
   }
 
-  // 戦闘ターゲットの赤道交点マーカーを求め直す。
-  updateEquatorNodes(displayWindow: DisplayWindow, ephemeris: Ephemeris): void {
+  // マップ表示中だけ、戦闘ターゲットの赤道交点マーカーを求め直す(戦闘ビューでは誰も読まない)。
+  updateEquatorNodes(overviewMode: boolean, displayWindow: DisplayWindow, ephemeris: Ephemeris): void {
+    if (!overviewMode) return;
     this.aliveTarget?.ensureEquatorNodes(this.markerManager)
       .update(displayWindow.frame, displayWindow.displayTime, ephemeris);
   }
