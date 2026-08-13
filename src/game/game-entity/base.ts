@@ -12,6 +12,7 @@ import type { Hud } from '../hud/hud';
 import type { Sfx } from '../../audio/sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
+import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';
 import type { BaseSaveData } from '../save-data';
 import { OrbitLine } from '../orbit-line';
 import * as C from '../const';
@@ -45,8 +46,6 @@ export class Base extends GameEntity {
   // 計画軌道の衝突判定でも基地の未来位置を使う。現在位置を凍結すると、長時間計画では
   // 実際に移動した基地と計画線の衝突判定が食い違うため、通常の entity 予測列へ乗せる。
   readonly predictsFuture = true;
-  // プロパティウィンドウから改名できる表示名。
-  name: string;
   declare readonly orbitLine: OrbitLine;
   public baseState: BaseState = {
     money: 100000,
@@ -78,6 +77,7 @@ export class Base extends GameEntity {
     this.collides = true;
     this.name = name;
     this.orbitLine = new OrbitLine(C.COLOR_BASE_ORBIT_LINE, 0.35, C.LINE_RENDER_ORDER.shipOrbit);
+    this.equatorNodes = new EquatorNodeMarkerPair(this, markerManager);
     scene.add(this.orbitLine.line);
 
     if ('saved' in init) {
@@ -89,7 +89,7 @@ export class Base extends GameEntity {
         player.obj.visible = false;
         return {
           id: player.id,
-          name: player.displayName,
+          name: player.name,
           hp: player.hp,
           maxHp: player.maxHp,
           parts: player.parts,

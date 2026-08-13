@@ -64,9 +64,6 @@ export type PlayerInit =
 // プレイヤー機: 移動(PlayerThrottle)と射撃(PlayerFire)を束ね、その両方を反映した
 // 見た目(モデル・エフェクトメッシュの管理と毎フレーム更新)を持つ。
 export class Player extends Ship {
-  // 表示名はユーザーが自由に重複させられ、プロパティウィンドウから改名もできる。
-  // 一方 id(基底 GameEntity 由来)はマップ選択・参照のための不変キー。
-  displayName: string;
   readonly throttle: PlayerThrottle;
   readonly fire: PlayerFire;
   readonly belt: Belt;
@@ -108,7 +105,6 @@ export class Player extends Ship {
       : Player.progradeAttitude(state);
 
     super(name, state, buildPlayerShip(), att, C.PLAYER_HULL_RADIUS, C.PLAYER_MAX_HP, _scene, id);
-    this.displayName = name;
     this._hud = _hud;
     this._sfx = _sfx;
     this._fx = _fx;
@@ -155,7 +151,7 @@ export class Player extends Ship {
           const idx = this.plan.addNode(kinematicState(n.t, v3(n.r.x, n.r.y, n.r.z), v3(n.v.x, n.v.y, n.v.z)));
           if (idx < 0) rejected++;
         }
-        if (rejected > 0) _hud.hint(`${this.displayName}: 起点より前のマニューバノード ${rejected} 件を復元できません`);
+        if (rejected > 0) _hud.hint(`${this.name}: 起点より前のマニューバノード ${rejected} 件を復元できません`);
       }
     }
   }
@@ -512,7 +508,7 @@ export class Player extends Ship {
     this.radiator.sync();
     this.power.sync();
     // マーカーと軌道線。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
-    this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, isActive, camera.activeCameraProjection, camera.activeCameraScale, this.displayName, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.overviewCamera.focus), ephemeris.registry, attractors, visibility);
+    this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, isActive, camera.activeCameraProjection, camera.activeCameraScale, this.name, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.overviewCamera.focus), ephemeris.registry, attractors, visibility);
 
     this.syncOrbitLine(this.alive, fo, camera.activeCamera, attractors, this.thrust !== null);
   }
@@ -535,7 +531,7 @@ export class Player extends Ship {
       pos,
       vel,
       priority,
-      name: this.displayName,
+      name: this.name,
       detail: '',
       bearingColor: C.COLOR_MARKER_ALLY,
       bearingSym: DIRECTION_GLYPH.allyBearing,
@@ -566,7 +562,7 @@ export class Player extends Ship {
   serialize(): PlayerSaveData {
     return {
       id: this.id,
-      name: this.displayName,
+      name: this.name,
       kind: 'player',
       r: { ...this.state.r },
       v: { ...this.state.v },
