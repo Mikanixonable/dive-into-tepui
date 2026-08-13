@@ -15,7 +15,7 @@ import { Bullet } from '../game-entity/bullet';
 import type { EntityManager } from '../simulation/entity-manager';
 import { MUZZLE_OFFSETS } from '../../render/ships';
 import { EffectsSystem } from '../vfx/effects-system';
-import { ScoreCounter } from '../stages/stage-utils/score-counter';
+import type { Stage } from '../stages/stage';
 import { SimSpeedManager } from '../sim-speed-manager';
 import { Player } from './player';
 import type { FireSaveData } from '../save-data';
@@ -108,7 +108,7 @@ export class PlayerFire {
   updateFireState(
     dt: number,
     input: Input,
-    scoreCounter: ScoreCounter,
+    activeStage: Stage,
     simSpeed: SimSpeedManager,
     zoomActive: boolean,
     entities: EntityManager,
@@ -148,7 +148,7 @@ export class PlayerFire {
       return;
     }
 
-    this.fireCycle(scoreCounter, zoomActive, entities, sunDir);
+    this.fireCycle(activeStage, zoomActive, entities, sunDir);
   }
 
   // マップモード中: リロードタイマーだけを進める。
@@ -166,7 +166,7 @@ export class PlayerFire {
 
   // クールダウン込みの発射サイクルを1回進める。スピンアップ中・クールダウン中は発射しない。
   private fireCycle(
-    scoreCounter: ScoreCounter,
+    activeStage: Stage,
     zoomActive: boolean,
     entities: EntityManager,
     sunDir: Vec3,
@@ -189,7 +189,7 @@ export class PlayerFire {
 
     const result = this.consume();
 
-    this.fireGun(scoreCounter, zoomActive, entities, sunDir);
+    this.fireGun(activeStage, zoomActive, entities, sunDir);
     switch (result) {
       case 'empty':
       case 'normal':
@@ -249,7 +249,7 @@ export class PlayerFire {
 
   // 1発発射する: 弾丸・薬莢・マズルフラッシュを生成し、発射数を記録する。
   private fireGun(
-    scoreCounter: ScoreCounter,
+    activeStage: Stage,
     zoomActive: boolean,
     entities: EntityManager,
     sunDir: Vec3,
@@ -271,7 +271,7 @@ export class PlayerFire {
     this.dropCasing(this.player, muzzle);
     this.spawnMuzzleFlash(this.player, muzzle, fwd, zoomActive);
 
-    scoreCounter.recordShot();
+    activeStage.scoreCounter.recordShot();
     this.player.thermal.addGunHeat(1);
     this._sfx.fire();
   }
