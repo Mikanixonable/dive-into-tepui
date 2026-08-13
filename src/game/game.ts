@@ -389,30 +389,19 @@ export class Game {
     this.entities.applyVisibility(
       visibilityPolicy, player, overviewMode, fo, this.cameraSystem.activeCamera, attractors,
     );
-    this.entities.syncMarkers(
-      project, this.cameraSystem.activeCameraScale, displayTime, overviewMode,
-      player?.state.r ?? null, visibilityPolicy,
-    );
+    this.entities.syncMarkers(this.cameraSystem, displayTime, player?.state.r ?? null, visibilityPolicy);
 
     this.entities.effects.sync(fo, this.cameraSystem.activeCamera);
 
-    this.targeter.sync(
-      fo, player, combatTargets, overviewMode, project, this.cameraSystem.activeCamera,
-      attractors, visibilityPolicy,
-    );
+    this.targeter.sync(fo, player, combatTargets, this.cameraSystem, attractors, visibilityPolicy);
     this.targeter.syncTargetMarkers(
-      player, combatTargets, displayTime, simTime, overviewMode, project,
-      this.cameraSystem.activeCameraScale, visibilityPolicy,
+      player, combatTargets, displayTime, simTime, this.cameraSystem, visibilityPolicy,
     );
-    this.navTarget.sync(project, overviewMode, this.cameraSystem.activeCameraPos);
-    this.entities.syncEquatorNodes(project, overviewMode, this.cameraSystem.activeCameraPos);
+    this.navTarget.sync(this.cameraSystem);
+    this.entities.syncEquatorNodes(this.cameraSystem);
 
     this.displayWindowManager.sync(player);
-    this.editor.sync(
-      this.cameraSystem.overviewCamera.dist, simTime, fo, project,
-      this.cameraSystem.activeCameraScale, overviewMode, this.cameraSystem.activeCameraPos,
-      this.cameraSystem.activeCamera,
-    );
+    this.editor.sync(this.cameraSystem, simTime, fo);
     this.mapPicker.sync(simTime, attractors, player);
     this.frameControls.sync(
       this.mapPicker.pickables, this.cameraSystem.activeCameraPos, attractors, simTime, overviewMode,
@@ -427,10 +416,7 @@ export class Game {
     if (player) {
       this.touchControls?.syncModeButtons(player.rcsDamp, player.fineAttitude, player.progradeHold);
     }
-    this.activeStage.sync(
-      player, fo, project, this.cameraSystem.activeCameraScale, displayTime, overviewMode,
-      visibilityPolicy, this.cameraSystem.activeCamera,
-    );
+    this.activeStage.sync(player, fo, this.cameraSystem, displayTime, visibilityPolicy);
 
     this._hud.panels.sync(this, attractors);
     this._hud.tick();
