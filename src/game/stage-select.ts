@@ -1,15 +1,16 @@
 // 起動時のステージ選択画面 GUI。
-import { STAGE_DEFINITIONS } from './stages/stage-dictionary';
+import { STAGE_CLASSES } from './stages/stage-dictionary';
 import { UnlockManager } from './unlock-manager';
-import type { StageId } from './stages/stage';
+import type { StageClass } from './stages/stage';
+import { StageDebug } from './stages/stage-debug';
 import {
   ACCENT, ACCENT_EDGE, ACCENT_FILL_WEAK, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM, FONT_FAMILY,
   FONT_S, FONT_M, FONT_L, FONT_2XL, RADIUS_M,
 } from './theme';
 import tepuiRmqrUrl from '../assets/tepui-rmqr.svg';
 
-// 起動選択画面(各ステージの selectGroup ごとのタブ)を表示し、選ばれた StageId で解決される Promise を返す。
-export function selectStage(unlockManager: UnlockManager): Promise<StageId> {
+// 起動選択画面(各ステージの selectGroup ごとのタブ)を表示し、選ばれたステージクラスで解決される Promise を返す。
+export function selectStage(unlockManager: UnlockManager): Promise<StageClass> {
   return new Promise((resolve) => {
     const SURFACE = SURFACE_OPAQUE;
     const div = document.createElement('div');
@@ -47,9 +48,9 @@ export function selectStage(unlockManager: UnlockManager): Promise<StageId> {
     };
     // タブは selectGroup の初出順に並べる。
     const groups: string[] = [];
-    for (const stage of STAGE_DEFINITIONS) {
-      if (stage.hiddenFromSelect || groups.includes(stage.selectGroup)) continue;
-      groups.push(stage.selectGroup);
+    for (const stageClass of STAGE_CLASSES) {
+      if (stageClass.hiddenFromSelect || groups.includes(stageClass.selectGroup)) continue;
+      groups.push(stageClass.selectGroup);
     }
     const tabs = groups.map((group) => ({ group, el: tab(group) }));
     tabRow.append(...tabs.map((t) => t.el));
@@ -67,20 +68,20 @@ export function selectStage(unlockManager: UnlockManager): Promise<StageId> {
         t.el.style.background = active ? ACCENT_FILL_WEAK : 'transparent';
       }
       listDiv.innerHTML = '';
-      for (const stage of STAGE_DEFINITIONS) {
-        if (stage.hiddenFromSelect || stage.selectGroup !== group) continue;
-        const enabled = enabledByStage.get(stage.id) ?? false;
-        const sub = enabled ? stage.selectSub : stage.selectLockedSub ?? stage.selectSub;
-        const keyStr = stage.selectKeys[0] ? ` [${stage.selectKeys[0].replace('Digit', '').replace('Key', '')}]` : '';
-        const button = btn(stage.selectLabel + keyStr, sub, enabled);
+      for (const stageClass of STAGE_CLASSES) {
+        if (stageClass.hiddenFromSelect || stageClass.selectGroup !== group) continue;
+        const enabled = enabledByStage.get(stageClass.id) ?? false;
+        const sub = enabled ? stageClass.selectSub : stageClass.selectLockedSub ?? stageClass.selectSub;
+        const keyStr = stageClass.selectKeys[0] ? ` [${stageClass.selectKeys[0].replace('Digit', '').replace('Key', '')}]` : '';
+        const button = btn(stageClass.selectLabel + keyStr, sub, enabled);
         listDiv.appendChild(button);
-        if (enabled) button.addEventListener('click', () => done(stage.id));
+        if (enabled) button.addEventListener('click', () => done(stageClass));
       }
     };
     for (const t of tabs) t.el.addEventListener('click', () => setActiveTab(t.group));
 
     // 解放状況ごとにボタンを並べる
-    const enabledByStage = new Map(STAGE_DEFINITIONS.map((stage) => [stage.id, unlockManager.isUnlocked(stage.id)]));
+    const enabledByStage = new Map(STAGE_CLASSES.map((stageClass) => [stageClass.id, unlockManager.isUnlocked(stageClass.id)]));
     if (tabs[0]) setActiveTab(tabs[0].group);
 
     document.body.appendChild(div);
@@ -90,22 +91,22 @@ export function selectStage(unlockManager: UnlockManager): Promise<StageId> {
     debugLink.textContent = 'debug stage [d]';
     debugLink.style.cssText =
       `position: fixed; bottom: 10px; left: 14px; font-size: ${FONT_S}; color: ${TEXT_DIM}; cursor: pointer; z-index: 200;`;
-    debugLink.addEventListener('click', () => done('debug'));
+    debugLink.addEventListener('click', () => done(StageDebug));
     document.body.appendChild(debugLink);
 
     // 選択確定: 画面を片付けて Promise を解決する
-    const done = (stageId: StageId) => {
+    const done = (stageClass: StageClass) => {
       window.removeEventListener('keydown', onKey);
       div.remove();
       debugLink.remove();
-      resolve(stageId);
+      resolve(stageClass);
     };
     // 解放済みステージのショートカットキーにマッチしたら選択確定する。タブに関係なく効く。
     const onKey = (e: KeyboardEvent) => {
-      for (const stage of STAGE_DEFINITIONS) {
-        if (!(enabledByStage.get(stage.id) ?? false)) continue;
-        if (!stage.selectKeys.includes(e.code)) continue;
-        done(stage.id);
+      for (const stageClass of STAGE_CLASSES) {
+        if (!(enabledByStage.get(stageClass.id) ?? false)) continue;
+        if (!stageClass.selectKeys.includes(e.code)) continue;
+        done(stageClass);
         return;
       }
     };
