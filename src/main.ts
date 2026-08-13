@@ -250,13 +250,16 @@ async function main() {
 
   const activeSlotId = slots.activeSlotId;
   // ページ再読込を挟んだスナップショットのロード要求を最優先で使う。無ければ、
-  // アクティブスロットの現在ステージにある最新スナップショットを起動時に復元する。
-  // 本体の欠損・バージョン不一致・ステージ不一致は SnapshotService.load() に判定させ、
-  // 復元できない場合は通常の新規起動状態をそのまま使う。
+  // 起動するステージがアクティブスロットの直前起動と同じ場合(=そのスロットで
+  // 進行中だった周回の再開)に限り、そのステージの最新スナップショットを自動で復元する。
+  // noteLaunch は Game 構築後に呼ばれるため、この時点の lastStageId は今回の起動より
+  // 前の値を指している。本体の欠損・バージョン不一致・ステージ不一致は
+  // SnapshotService.load() に判定させ、復元できない場合は通常の新規起動状態をそのまま使う。
   const pendingSnapshotId = sessionStorage.getItem(SNAPSHOT_PENDING_KEY);
   sessionStorage.removeItem(SNAPSHOT_PENDING_KEY);
+  const resumesLastLaunchedStage = activeSlotId !== null && slots.activeSlot()?.lastStageId === stageClass.id;
   const initialSnapshotId = pendingSnapshotId
-    ?? (activeSlotId !== null ? slots.latestSnapshot(activeSlotId, stageClass.id)?.id ?? null : null);
+    ?? (resumesLastLaunchedStage ? slots.latestSnapshot(activeSlotId, stageClass.id)?.id ?? null : null);
   const initialSave = initialSnapshotId !== null
     ? snapshotService.load(initialSnapshotId, stageClass.id) ?? undefined
     : undefined;
