@@ -109,7 +109,6 @@ export class PlayerFire {
     dt: number,
     input: Input,
     scoreCounter: ScoreCounter,
-    simTime: number,
     simSpeed: SimSpeedManager,
     zoomActive: boolean,
     entities: EntityManager,
@@ -149,7 +148,7 @@ export class PlayerFire {
       return;
     }
 
-    this.fireCycle(scoreCounter, simTime, zoomActive, entities, sunDir);
+    this.fireCycle(scoreCounter, zoomActive, entities, sunDir);
   }
 
   // マップモード中: リロードタイマーだけを進める。
@@ -168,7 +167,6 @@ export class PlayerFire {
   // クールダウン込みの発射サイクルを1回進める。スピンアップ中・クールダウン中は発射しない。
   private fireCycle(
     scoreCounter: ScoreCounter,
-    simTime: number,
     zoomActive: boolean,
     entities: EntityManager,
     sunDir: Vec3,
@@ -191,7 +189,7 @@ export class PlayerFire {
 
     const result = this.consume();
 
-    this.fireGun(scoreCounter, simTime, zoomActive, entities, sunDir);
+    this.fireGun(scoreCounter, zoomActive, entities, sunDir);
     switch (result) {
       case 'empty':
       case 'normal':
@@ -252,7 +250,6 @@ export class PlayerFire {
   // 1発発射する: 弾丸・薬莢・マズルフラッシュを生成し、発射数を記録する。
   private fireGun(
     scoreCounter: ScoreCounter,
-    simTime: number,
     zoomActive: boolean,
     entities: EntityManager,
     sunDir: Vec3,
@@ -264,14 +261,14 @@ export class PlayerFire {
     this.muzzleIdx = (this.muzzleIdx + 1) % MUZZLE_OFFSETS.length;
     const muzzle = add(this.player.state.r, qRotate(this.player.att.q, v3(mo.x, mo.y, mo.z)));
 
-    this.spawnBullet(this.player, muzzle, fwd, simTime, entities, sunDir);
+    this.spawnBullet(this.player, muzzle, fwd, entities, sunDir);
     // 反動(運動量保存の風味): 発射方向と逆に微小 Δv(瞬間的な速度変更なので時刻は据え置き)
     this.player.state = kinematicState(
       this.player.state.t,
       this.player.state.r,
       addScaled(this.player.state.v, fwd, -C.RECOIL_DV),
     );
-    this.dropCasing(this.player, muzzle, simTime);
+    this.dropCasing(this.player, muzzle);
     this.spawnMuzzleFlash(this.player, muzzle, fwd, zoomActive);
 
     scoreCounter.recordShot();
@@ -281,7 +278,7 @@ export class PlayerFire {
 
   // 弾丸: 機首方向 + 散布界
   private spawnBullet(
-    ship: Ship, muzzle: Vec3, fwd: Vec3, simTime: number, entities: EntityManager, sunDir: Vec3,
+    ship: Ship, muzzle: Vec3, fwd: Vec3, entities: EntityManager, sunDir: Vec3,
   ): void {
     const spreadScale = sunGlareSpreadScale(muzzle, fwd, sunDir);
     // 機首方向に散布角を加えた発射方向
@@ -289,7 +286,7 @@ export class PlayerFire {
     const dir = norm(addScaled(fwd, randPerp(fwd), spread));
     const bullet = new Bullet(
       kinematicState(
-        simTime,
+        ship.state.t,
         addScaled(muzzle, fwd, 1.5),
         addScaled(ship.state.v, dir, ship.averageMuzzleVelocity),
       ),
@@ -305,13 +302,13 @@ export class PlayerFire {
 
   // 薬莢: -X 側へ排出(+X 側はマガジンベルトの給弾があるため)。
   // 初速は抑えてゆっくり漂わせる一方、回転速度は個体ごとに大きくばらつかせる。
-  private dropCasing(ship: Ship, muzzle: Vec3, simTime: number): void {
+  private dropCasing(ship: Ship, muzzle: Vec3): void {
     // 機体姿勢基準の左右・上方向
     const right = qRotate(ship.att.q, v3(1, 0, 0));
     const up = qRotate(ship.att.q, v3(0, 1, 0));
     this._fx.spawnCasing(
       kinematicState(
-        simTime,
+        ship.state.t,
         add(muzzle, scale(right, -1.4)),
         add(
           ship.state.v,
@@ -323,7 +320,7 @@ export class PlayerFire {
         w: v3(randSym(6.0), randSym(6.0), randSym(6.0)),
         inertia: v3(0.85, 0.3, 1.15), // 円筒: 長軸(y)が最小。x/z も非対称にしジャニベコフ効果を起こす
       },
-      simTime,
+      ship.state.t,
     );
   }
 
