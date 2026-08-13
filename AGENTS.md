@@ -2,6 +2,9 @@
 
 This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
+Naming and TypeScript style are defined in `DEVELOP/CODING_STYLE.md`. Follow that document for new code and for
+the portion of existing code being changed; do not treat existing violations as precedent.
+
 ## Current state
 
 A playable LEO (low Earth orbit) shooting game: TypeScript + Webpack + npm, Three.js `WebGPURenderer` (via the `three/webgpu` entry point). Real-scale/real-time Earth orbit, KSP-style frame-based RCS translation (orbital / target reference frames), manual rotation with RCS damping, time warp, lead-marker gunnery, shell casings and destruction debris on accurate orbital physics, win on destroying all 5 enemies, lose on atmospheric reentry (drag decay → adiabatic-heating overheat or dynamic-pressure breakup). Also: Earth-shadow lighting, a KSP-style navball (canvas 2D, bottom center), target-board bullet-pass markers, an orbit-planning map mode ([M]: Earth-centered camera, click the player orbit to place a maneuver node, W/S/A/D/Q/E adjust Δv, [N] auto-warps to the node, BURN guide shows remaining Δv until the actual orbit matches the planned elements within tolerance), and two stages (stage 2 = Molniya-orbit enemies, unlocked via localStorage `tepui.stage1.cleared`; `?stage=1|2` URL param skips the select screen). The renderer draws `game.activeCamera` — combat chase cam (near 2 / far 6e7) or the map camera (near 1e4 / far 6e8); stars/sun/moon billboards follow the active camera position so the map zoom-out doesn't exit the star shell.

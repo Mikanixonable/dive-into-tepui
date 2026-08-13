@@ -4,6 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 作業のルール
 
+- **命名とTypeScriptの書き方は `DEVELOP/CODING_STYLE.md` が一次情報。** 新しいコードと変更範囲を
+  同文書へ揃える。既存コードに残る違反を踏襲しない。
 - **全体像はコードではなく文書から掴む。** 「どこで何が起きているか」「誰が状態を持つか」「いつ走るか」
   は `DEVELOP/OWNERSHIP.md` / `DEVELOP/CALLSTACK.md` / `DEVELOP/SPEC.md` / この CLAUDE.md が一次情報。
   当たりを付けてから必要なファイルだけを読む。手順は `.claude/skills/overview/SKILL.md`(`/overview`)。
@@ -66,6 +68,9 @@ A playable LEO (low Earth orbit) shooting game: TypeScript + Webpack + npm, Thre
 `memos/mikanixonable/dev.md` is explicitly marked as human-authored only ("この文書は人間のみが記入できる") — do not edit it. Read it for project context, but leave modifications to the user.
 
 ### Naming: render / update / build / sync (no `draw`)
+
+一般の命名とTypeScriptの書き方は `DEVELOP/CODING_STYLE.md` が正本。この節はフレーム処理の責務境界を
+解説する。
 
 Per-frame function names must reflect what they actually do, consistently across the codebase:
 
