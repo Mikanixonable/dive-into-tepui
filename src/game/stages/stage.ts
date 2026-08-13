@@ -167,7 +167,7 @@ export abstract class Stage {
   // 末尾で必ずこれを呼ぶ — 初期配置は具象側のフィールドが揃ってからでないと走らせられない。
   protected begin(): void {
     if (this.restored) return;
-    const player = this._entities.initialActivePlayer;
+    const player = this._activePlayers.current;
     const enemyCount = this.init(player, this._entities);
     player?.initAmmo(this.initialAmmo.mags, this.initialAmmo.rounds);
     this._hud.toast(this.briefingHtml(enemyCount), BRIEFING_TOAST_MS);
