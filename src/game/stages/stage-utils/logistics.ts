@@ -1,4 +1,4 @@
-// 補給(ammo)の投入・取り込み・デスポーンと、▣ AMMO マーカーの表示。
+// 補給(ammo)の投入・取り込み・デスポーン。
 import * as THREE from 'three/webgpu';
 import { randomQuat } from '../../../physics/attitude';
 import { randSym } from '../../../physics/random';
@@ -9,20 +9,15 @@ import { kinematicState, orbitAxes } from '../../../physics/kinematic-state';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../../audio/sfx';
 import { Player } from '../../player/player';
-import { ProjectFn, ScaleFn } from '../../camera/camera-system';
 import { MarkerManager } from '../../marker/marker-manager';
-import { ENTITY_GLYPH } from '../../marker/marker-glyphs';
-import { fmtMarkerDist } from '../../hud/utils';
 import type { EntityManager } from '../../simulation/entity-manager';
 import type { SimSpeedManager } from '../../sim-speed-manager';
 import type { LogisticsSaveData } from '../../save-data';
-import type { MapVisibilityPolicy } from '../../celestial/map-visibility';
 
 export class Logistics {
   private resupplyCheckAt: number;
-  private lastMarkerCount = 0;
 
-  // 補給の自動投入を行うかどうか。回収済みの補給や既存の ▣ マーカーには影響しない。
+  // 補給の自動投入を行うかどうか。既に軌道上にある補給の回収・デスポーンには影響しない。
   resupplyEnabled: boolean;
 
   // saved があればその状態(次回投入判定時刻・自動投入の有効/無効)から始める。
@@ -64,11 +59,12 @@ export class Logistics {
         },
       },
       this._scene,
+      this.markerManager,
     );
     // 投入して演出とヒントを出す
     this.entities.addAmmo(ammo);
     this._sfx.warp();
-    this._hud.hint('付近の軌道に補給が投入された — ▣ AMMO マーカーへ接近して回収', 5000);
+    this._hud.hint('付近の軌道に補給が投入された — ▣ 弾薬マーカーへ接近して回収', 5000);
   }
 
   // 近傍の補給を回収し、遠方のものをデスポーンし、残弾が少なければ定期的に新規投入する。
@@ -99,40 +95,6 @@ export class Logistics {
     let count = 0;
     for (const ammo of this.entities.ammos) if (ammo.alive) count++;
     return count;
-  }
-
-  // 生存中の補給へ ▣ マーカー(画面外なら小型三角形の方位マーカー)を同期する。ラベルの距離表示は
-  // 自機基準なので、艦が1隻も無い間はすべて隠す。overviewMode 中はマーカーを進行方向へ回す。
-  syncMarkers(player: Player | null, project: ProjectFn, scale: ScaleFn, displayTime: number, overviewMode: boolean, visibilityPolicy: MapVisibilityPolicy | null = null): void {
-    // 表示時刻における生存中ピックアップの位置・速度とラベル
-    const ammoVisibility = overviewMode ? visibilityPolicy?.entity('ammo') : null;
-    const hideMapAmmo = overviewMode && (ammoVisibility === null || ammoVisibility === undefined || !ammoVisibility.pickable);
-    const shown = !player || hideMapAmmo ? [] : this.entities.ammos.flatMap((ammo) => {
-      const ds = ammo.alive ? ammo.displayState(displayTime) : undefined;
-      return ds ? [{ pos: ds.r, vel: ds.v, label: `AMMO ${fmtMarkerDist(len(sub(ds.r, player.state.r)))}` }] : [];
-    });
-    // 描画と新しい上限の記憶
-    for (const [i, { pos, vel, label }] of shown.entries()) {
-      const key = `mg${i}`;
-      const bearing = `${key}-bearing`;
-      const p = project(pos);
-      if (overviewMode) {
-        const rotationDeg = this.markerManager.headingRotationDeg(pos, vel, project, scale);
-        this.markerManager.set(key, 'mk-ammo', ammoVisibility?.icon === false ? '' : ENTITY_GLYPH.ship, p.x, p.y, p.front, ammoVisibility?.label === false ? '' : label, 1, undefined, rotationDeg);
-        this.markerManager.hide(bearing);
-      } else {
-        this.markerManager.set(key, 'mk-ammo', ENTITY_GLYPH.ammo, p.x, p.y, p.front, label);
-        this.markerManager.setBearing(
-          bearing, 'mk-ammo mk-bearing-triangle', ENTITY_GLYPH.ship, p, label, 0.9,
-        );
-      }
-    }
-    // 前フレームより件数が減った分のマーカーを隠す
-    for (let i = shown.length; i < this.lastMarkerCount; i++) {
-      this.markerManager.hide(`mg${i}`);
-      this.markerManager.hide(`mg${i}-bearing`);
-    }
-    this.lastMarkerCount = shown.length;
   }
 
   // 回収半径内の生存中補給を吸収し、ベルトへ弾を追加する。

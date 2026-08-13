@@ -16,8 +16,8 @@ import { bulletBodyResources, bulletHaloResources, plasmaBodyResources, casingBo
 import { Player } from '../player/player';
 import type { Stage } from '../stages/stage';
 import type { CombatTarget } from '../targeter';
-import type { MapVisibilityPolicy } from '../celestial/map-visibility';
-import type { CameraSystem, ProjectFn } from '../camera/camera-system';
+import type { MapVisibility, MapVisibilityPolicy } from '../celestial/map-visibility';
+import type { CameraSystem, ProjectFn, ScaleFn } from '../camera/camera-system';
 import type { Ephemeris } from '../../physics/ephemeris';
 import type { DisplayWindow } from '../display-window-manager';
 import type { GameSaveData } from '../save-data';
@@ -112,7 +112,7 @@ export class EntityManager {
       this.addEnemy(new Enemy({ saved: data, simTime }, hud, sfx, this.effects, scene));
     }
     for (const data of save.ammos) {
-      this.addAmmo(new Ammo({ saved: data, simTime }, scene));
+      this.addAmmo(new Ammo({ saved: data, simTime }, scene, markerManager));
     }
     for (const data of save.bases) {
       this.addBase(new Base({ saved: data, simTime }, scene, hud, sfx, this.effects, markerManager));
@@ -391,6 +391,22 @@ export class EntityManager {
   // このフレームに求まった赤道交点マーカーを置く。求め直されなかったものは自動的に隠れる。
   syncEquatorNodes(project: ProjectFn, show: boolean, cameraPos: Vec3): void {
     for (const e of this.all()) e.equatorNodes?.sync(project, show, cameraPos);
+  }
+
+  // 弾薬・基地の位置マーカーを displayTime の位置へ置く。ラベルの距離は viewerPos 基準で、
+  // 艦が1隻も無い間は距離を添えない。
+  syncMarkers(
+    project: ProjectFn, scale: ScaleFn, displayTime: number, overviewMode: boolean,
+    viewerPos: Vec3 | null, visibilityPolicy: MapVisibilityPolicy | null,
+  ): void {
+    const visibilityOf = (kind: 'ammo' | 'base'): MapVisibility | null =>
+      (overviewMode ? visibilityPolicy?.entity(kind) ?? null : null);
+    for (const ammo of this.ammos) {
+      ammo.marker?.sync(project, scale, displayTime, overviewMode, viewerPos, visibilityOf('ammo'));
+    }
+    for (const base of this.bases) {
+      base.marker?.sync(project, scale, displayTime, overviewMode, viewerPos, visibilityOf('base'));
+    }
   }
 
   // 自機以外のメッシュを displayTime 時点の状態に同期する。自機はエフェクト・ベルト・
