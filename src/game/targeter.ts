@@ -18,6 +18,7 @@ import { MarkerManager } from './marker/marker-manager';
 import { DIRECTION_GLYPH } from './marker/marker-glyphs';
 import { FloatingOrigin } from './floating-origin';
 import { pickNearest } from './map-pick';
+import { pickRadiusSq } from './input/pointer-precision';
 import type { Ephemeris } from '../physics/ephemeris';
 import type { DisplayWindow } from './display-window-manager';
 import { KEY_MAPPING as K } from './input/key-mapping';
@@ -298,7 +299,7 @@ export class Targeter {
   // クリック位置の許容半径内で画面上最も近い生存ターゲットを返す。範囲外なら null。
   private pickTargetAt(click: PointerPoint, targets: CombatTarget[], project: ProjectFn): CombatTarget | null {
     const pickables = targets.filter((e) => e.alive).map((target) => ({ pos: target.state.r, target }));
-    const picked = pickNearest(pickables, click.x, click.y, project, C.TARGET_LOCK_PICK_PX_SQ);
+    const picked = pickNearest(pickables, click.x, click.y, project, pickRadiusSq(C.TARGET_LOCK_PICK_PX_SQ, C.TARGET_LOCK_PICK_PX_SQ_COARSE));
     return picked?.target ?? null;
   }
 

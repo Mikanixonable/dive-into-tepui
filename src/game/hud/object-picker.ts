@@ -11,7 +11,7 @@ const STYLE = `
   position: fixed; display: none; pointer-events: auto;
   background: var(--surface); border: 1px solid var(--edge); border-radius: var(--radius-m);
   font-family: var(--font-family); font-size: var(--font-m); color: var(--text);
-  width: 520px; max-height: 60vh; overflow-y: auto; user-select: none;
+  width: min(520px, calc(100vw - 24px)); max-height: 60vh; max-height: 60dvh; overflow-y: auto; user-select: none;
   -webkit-user-select: none;
 }
 #hud .object-picker-pop .op-filter {

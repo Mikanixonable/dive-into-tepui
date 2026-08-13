@@ -15,6 +15,7 @@ import { MapPickable, pickNearest } from './map-pick';
 import { focusTargetId } from './camera/focus-target';
 import { ObjectListPanel } from './object-list-panel';
 import type { Input } from './input/input';
+import { pickRadiusSq } from './input/pointer-precision';
 import { EntityManager } from './simulation/entity-manager';
 import { Ephemeris } from '../physics/ephemeris';
 import { NavTarget } from './nav-target';
@@ -255,7 +256,7 @@ export class MapPicker {
   handleRightClick(input: Input, simTime: number): void {
     input.takeRightClicks((p) => {
       const target = pickNearest(
-        this.items, p.x, p.y, this.cameraSystem.activeCameraProjection, C.MAP_PICK_PX_SQ,
+        this.items, p.x, p.y, this.cameraSystem.activeCameraProjection, pickRadiusSq(C.MAP_PICK_PX_SQ, C.MAP_PICK_PX_SQ_COARSE),
       );
       if (!target) return false;
       this.openPropertyWindow(p.x, p.y, target, simTime);
@@ -329,7 +330,7 @@ export class MapPicker {
   handleLeftClick(input: Input): void {
     input.takeClicks((p) => {
       const candidates = this.items.filter((i) => i.kind === 'player' || i.kind === 'base');
-      const target = pickNearest(candidates, p.x, p.y, this.cameraSystem.activeCameraProjection, C.MAP_PICK_PX_SQ);
+      const target = pickNearest(candidates, p.x, p.y, this.cameraSystem.activeCameraProjection, pickRadiusSq(C.MAP_PICK_PX_SQ, C.MAP_PICK_PX_SQ_COARSE));
       if (!target) return false;
       this.selectPickable(target, p.x, p.y);
       return true;
@@ -343,7 +344,7 @@ export class MapPicker {
     input.takeDoubleClicks((p) => {
       const target = pickNearest(
         this.items.filter((item) => item.pickable !== false),
-        p.x, p.y, this.cameraSystem.activeCameraProjection, C.MAP_PICK_PX_SQ,
+        p.x, p.y, this.cameraSystem.activeCameraProjection, pickRadiusSq(C.MAP_PICK_PX_SQ, C.MAP_PICK_PX_SQ_COARSE),
       );
       if (!target) return false;
       this.game.frameControls.setFocus({ kind: 'object', id: target.id });
