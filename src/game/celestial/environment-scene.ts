@@ -117,9 +117,14 @@ export class EnvironmentScene {
   }
 
   // 天体ビュー・星・照明・参照線・天球グリッドを、この1フレームの表示状態に同期する。
-  // playerPos は照明の日照率を引く基準位置。
+  // playerPos は照明の日照率を引く基準位置。艦がいなければ null(このフレームは減光しない)。
+  //
+  // TODO: アクティブ艦1点の日照率を平行光・環境光の全体へ流用しているのは、「全エンティティが
+  // その近くにいる」という成り立っていない前提に乗った近似。艦がいないフレームに、実在する他の
+  // エンティティを照らせなくなるのはその帰結にすぎない。null を減光なしで埋めるのは暫定処置で、
+  // 照度はエンティティごとに引くか、遮蔽そのものをシャドウマップへ置き換える。
   sync(
-    playerPos: Vec3,
+    playerPos: Vec3 | null,
     floatingOrigin: FloatingOrigin,
     displayTime: number,
     cameraSystem: CameraSystem,
@@ -128,7 +133,7 @@ export class EnvironmentScene {
   ): void {
     // lit は自機位置の日照率。主星が無いレジストリでは日照そのものが無意味なので計算を飛ばす。
     let lit = 1.0;
-    if (!cameraSystem.overviewMode && this.ephemeris.starId !== null) {
+    if (playerPos !== null && !cameraSystem.overviewMode && this.ephemeris.starId !== null) {
       const attractorsNow = this.ephemeris.attractorsAt(displayTime);
       const star = attractorsNow.find((a) => a.id === this.ephemeris.starId);
       if (star) lit = sunlitFactor(playerPos, star, attractorsNow);

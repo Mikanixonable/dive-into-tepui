@@ -124,6 +124,7 @@ export class MapPicker {
   // 非表示にした対象を選べない状態にする。物理積分の後に呼ぶ: 積分前に組むと、同フレームで
   // sync されるメッシュと座標が1ステップずれる。
   refresh(displayWindow: DisplayWindow): void {
+    if (!this.cameraSystem.overviewMode) return;
     const { simTime, displayTime } = displayWindow;
     this.lastSimTime = simTime;
     const focusId = focusTargetId(this.cameraSystem.overviewCamera.focus);
@@ -150,7 +151,7 @@ export class MapPicker {
       this.appendPickable(item);
     }
     for (const ship of this.entities.players) {
-      if (!ship.alive || (this.cameraSystem.overviewMode && !visibilityPolicy.entity('player', ship === this.game.player).pickable)) continue;
+      if (!ship.alive || !visibilityPolicy.entity('player', ship === this.game.player).pickable) continue;
       const pos = ship.displayState(displayTime)?.r;
       if (pos) {
         const center = strongestAttractor(ship.state.r, attractors);
@@ -164,17 +165,17 @@ export class MapPicker {
       }
     }
     for (const enemy of this.entities.enemies) {
-      if (!enemy.alive || (this.cameraSystem.overviewMode && !visibilityPolicy.entity('ship').pickable)) continue;
+      if (!enemy.alive || !visibilityPolicy.entity('ship').pickable) continue;
       const pos = enemy.displayState(displayTime)?.r;
       if (pos) this.addCandidate(enemy.id, enemy.name, pos, 'ship');
     }
     for (const ammo of this.entities.ammos) {
-      if (!ammo.alive || (this.cameraSystem.overviewMode && !visibilityPolicy.entity('ammo').pickable)) continue;
+      if (!ammo.alive || !visibilityPolicy.entity('ammo').pickable) continue;
       const pos = ammo.displayState(displayTime)?.r;
       if (pos) this.addCandidate(ammo.id, ammo.name, pos, 'ammo');
     }
     for (const base of this.entities.bases) {
-      if (!base.alive || (this.cameraSystem.overviewMode && !visibilityPolicy.entity('base').pickable)) continue;
+      if (!base.alive || !visibilityPolicy.entity('base').pickable) continue;
       const pos = base.displayState(displayTime)?.r;
       if (pos) this.addCandidate(
         base.id, base.name, pos, 'base', `格納 ${base.baseState.dockedShips.length} 隻`,
@@ -204,17 +205,13 @@ export class MapPicker {
     // マップビューでは player だけ、フォーカス天体の系に所属するかで候補を絞る。表示側と
     // 同じ判定なので、地球の裏側の player は表示・選択でき、土星系の player はどちらにも
     // 現れない。他の候補は従来どおり天体遮蔽でピック対象から除く。
-    if (this.cameraSystem.overviewMode) {
-      for (const item of this.candidateItems) {
-        const included = item.kind === 'player'
-          ? item.inFocusedSystem ?? isPositionInFocusedSystem(this.ephemeris.registry, focusId, item.pos, attractors)
-          : !isOccluded(this.cameraSystem.activeCameraPos, item.pos, attractors);
-        if (included) this.visibleItems.push(item);
-      }
-      this.items = this.visibleItems;
-    } else {
-      this.items = this.candidateItems;
+    for (const item of this.candidateItems) {
+      const included = item.kind === 'player'
+        ? item.inFocusedSystem ?? isPositionInFocusedSystem(this.ephemeris.registry, focusId, item.pos, attractors)
+        : !isOccluded(this.cameraSystem.activeCameraPos, item.pos, attractors);
+      if (included) this.visibleItems.push(item);
     }
+    this.items = this.visibleItems;
     for (const key of this.itemRecords.keys()) {
       if (!this.activeRecordKeys.has(key)) this.itemRecords.delete(key);
     }
@@ -390,7 +387,8 @@ export class MapPicker {
   // ウィンドウの値を最新化する。対象そのものが消滅していれば(撃破・回収・削除)閉じる —
   // 未来ゴースト時刻で位置が求まらないだけのフレーム(displayState が null)は候補列
   // (this.items)から外れるだけで消滅ではないので、生存判定は対象の alive で行う。
-  sync(overviewMode: boolean, simTime: number, attractors: readonly Attractor[], player: Player | null): void {
+  sync(simTime: number, attractors: readonly Attractor[], player: Player | null): void {
+    const overviewMode = this.cameraSystem.overviewMode;
     this.objectListPanel.setVisible(overviewMode);
     // マップを離れると ViewManager.closeMap() が開いているウィンドウを閉じる。
     // 戦闘中は候補列を更新せず、ウィンドウもないため、毎フレームの Map 生成と行導出を省く。

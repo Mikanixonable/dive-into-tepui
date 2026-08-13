@@ -94,7 +94,10 @@ main.ts
     ├── PlanGuide                       ... 直近ノードの接近/達成通知済みフラグ(ノード自体への参照)を持つ
     ├── Docking                        ... 基地への収容・発進(EntityManager/CameraSystem/Game.player にまたがる横断)
     │   └── DockView                       ... DOM は Hud.layers.view 配下。格納艦/部品/ショップタブのフルスクリーン UI
-    ├── ViewManager                    ... 現在のビュー(combat/map/dock)の正本。遷移は setView() ひとつに集約
+    ├── ViewManager                    ... 現在のビュー(combat/map/dock)の正本。遷移は setView() ひとつに集約。
+    │                                       docking/touchControls/stage への参照はいずれも ViewManager より後に
+    │                                       生成されるため、setDocking()/setTouchControls()/setStage() で構築後に
+    │                                       注入される(private フィールドとして保持)
     ├── ViewBadge                      ... DOM は Hud.layers.notify 配下。ViewManager を参照するだけで自身は状態を持たない
     │   └── ContextMenu<true, ViewId>  ... DOM は Hud.layers.popup 配下
     ├── Stage (activeStage)            ... game.ts が呼ぶ stage-dictionary.ts の buildStage() が生成する(launch.mode==='stage'

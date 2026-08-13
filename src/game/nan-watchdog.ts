@@ -42,9 +42,9 @@ export class NanWatchdog {
   get hasTripped(): boolean { return this.tripped; }
 
   // 自機と simTime だけを見る軽い検査。update の各フェーズ境界で呼ぶ。
-  // phase には「直前に何が走ったか」を渡す(そこが発生源だと分かる)。
-  checkPlayer(phase: string, player: Player, simTime: number, dt: number, simDt: number): void {
-    if (this.tripped) return;
+  // phase には「直前に何が走ったか」を渡す(そこが発生源だと分かる)。艦がいなければ何もしない。
+  checkPlayer(phase: string, player: Player | null, simTime: number, dt: number, simDt: number): void {
+    if (this.tripped || !player) return;
     const { q, w } = player.att;
     const ok = finiteVec(player.state.r) && finiteVec(player.state.v)
       && Number.isFinite(q.x) && Number.isFinite(q.y) && Number.isFinite(q.z) && Number.isFinite(q.w)
@@ -59,7 +59,7 @@ export class NanWatchdog {
   // フレームにつき一度だけ呼ぶこと。
   checkAll(phase: string, player: Player | null, entities: EntityManager, simTime: number, dt: number, simDt: number): void {
     if (this.tripped) return;
-    if (player) this.checkPlayer(phase, player, simTime, dt, simDt);
+    this.checkPlayer(phase, player, simTime, dt, simDt);
     if (this.tripped) return;
     for (const e of entities.all()) {
       if (finiteVec(e.state.r) && finiteVec(e.state.v)) continue;

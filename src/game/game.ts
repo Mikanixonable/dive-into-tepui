@@ -1,7 +1,6 @@
 // ゲーム全体のオーケストレーション: 各システムの生成・保持と、フレームごとの呼び出し順序の決定。
 import * as THREE from 'three/webgpu';
 import { FloatingOrigin } from './floating-origin';
-import * as C from './const';
 import { v3 } from '../physics/vec3';
 import type { PerfCounts, PerfMeter } from '../perf-meter';
 import { FrameSections, SECTION } from '../frame-sections';
@@ -190,6 +189,7 @@ export class Game {
       (ship) => { if (this.player === null) this.activePlayers.set(ship); },
       initialSave?.stage,
     );
+    this.viewManager.setStage(this.activeStage);
 
     this.nanWatchdog = new NanWatchdog(this._hud);
     this.docking = new Docking(
@@ -248,22 +248,20 @@ export class Game {
     this.sections.exit(SECTION.pointer);
   }
 
-  // 自機の行動 → ステージ → 積分 → 予測 → エフェクトの順に1フレーム進める。艦がいない・
-  // ステージが決着済みの場合は、その段だけを落として残りは進める(残骸・弾の epoch は
-  // どの状況でも進め続ける)。
+  // 自機の行動 → ステージ → 積分 → 予測 → エフェクトの順に1フレーム進める。艦がいない場合は
+  // その段だけを落として残りは進める(残骸・弾の epoch はどの状況でも進め続ける)。
   private advanceSimulation(dt: number): void {
     const player = this.player;
-    const playing = this.activeStage.isPlaying;
 
     this.sections.enter(SECTION.player);
-    if (player && playing) {
+    if (player && this.activeStage.isPlaying) {
       this.nanWatchdog.checkPlayer('frameStart', player, this.simulator.simTime, dt, this.simulator.lastSimDt);
       player.behave({
         dt,
         input: this.input,
         simSpeed: this.simSpeedManager,
         mapMode: this.editor.editMode,
-        dvEditActive: this.editor.editMode && this.editor.selectedNodeIdx !== null,
+        dvEditActive: this.editor.dvEditActive,
         scoreCounter: this.activeStage.scoreCounter,
         simTime: this.simulator.simTime,
         zoomActive: this.cameraSystem.zoomActive,
@@ -273,57 +271,39 @@ export class Game {
       this.entities.updatePassivePlayers(dt, player);
       this.nanWatchdog.checkPlayer('player.behave', player, this.simulator.simTime, dt, this.simulator.lastSimDt);
     } else if (player) {
-      // behave が呼ばれなくなるので、決着時点の thrust が凍結され続けないよう明示的に消す。
-      player.thrust = null;
-      player.torque = v3();
+      // behave が呼ばれなくなるので、次のフレームへ持ち越してはならない連続指令を畳む。
+      player.clearTransientCommands();
     }
     this.sections.exit(SECTION.player);
 
-    if (playing) {
-      this.sections.enter(SECTION.stage);
-      this.activeStage.update(dt, player, this.entities, this.simulator.simTime, this.simSpeedManager);
-      this.sections.exit(SECTION.stage);
-      if (player) {
-        this.nanWatchdog.checkPlayer('activeStage.update', player, this.simulator.simTime, dt, this.simulator.lastSimDt);
-      }
-      this.simSpeedManager.update(this.simulator.simTime);
-      // 並進・射撃・衝突と同じく、RCS command torque は物理相互作用域だけで有効。
-      if (this.simSpeedManager.simSpeed > C.MAX_PHYS_SIM_SPEED) {
-        this.entities.suppressAttitudeCommandForWarp();
-        this._sfx.setRcs(false);
-      }
-    }
+    this.sections.enter(SECTION.stage);
+    this.activeStage.update(dt, player, this.entities, this.simulator.simTime, this.simSpeedManager);
+    this.sections.exit(SECTION.stage);
+    this.nanWatchdog.checkPlayer('activeStage.update', player, this.simulator.simTime, dt, this.simulator.lastSimDt);
+    this.simSpeedManager.update(this.simulator.simTime);
+    // 並進・射撃・衝突と同じく、RCS command torque は物理相互作用域だけで有効。
+    if (!this.simSpeedManager.canApplyAttitudeCommand) this.entities.suppressAttitudeCommandForWarp();
 
-    // 決着後は時間加速を物理相互作用域に抑え、substep も接触解決も行わない。
-    const simDt = dt * (playing ? this.simSpeedManager.simSpeed
-      : Math.min(this.simSpeedManager.simSpeed, C.MAX_PHYS_SIM_SPEED));
+    const simDt = dt * this.simSpeedManager.simSpeed;
     this.sections.enter(SECTION.integrate);
-    this.simulator.advance(
-      dt, simDt, player, this.activeStage,
-      playing && this.simSpeedManager.canResolvePhysicalCollisions, playing, this.nanWatchdog,
-    );
+    this.simulator.advance(dt, simDt, player, this.activeStage, this.simSpeedManager, this.nanWatchdog);
     this.sections.exit(SECTION.integrate);
     // 積分後の状態でこのフレームの表示窓を確定させ、以降の消費者へ共有する。
     this.displayWindowManager.resolve(this.simulator.simTime, this.player);
     // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全エンティティを見る。
     this.nanWatchdog.checkAll('simulator.advance', player, this.entities, this.simulator.simTime, dt, simDt);
 
-    if (player && playing) {
-      this.targeter.updateBoardMarks(dt, player, this.entities);
-      if (this.activeStage.prunesDeadPlayers) this.activePlayers.reclaimDead();
-      // ドックビューが開いている間は収容判定を止める(発進直後の再収容ループを防ぐ)。
-      if (this.viewManager.current !== 'dock' && this.entities.bases.length > 0) this.docking.checkProximity();
-    }
+    this.targeter.updateBoardMarks(dt, player, this.entities);
+    if (this.activeStage.prunesDeadPlayers) this.activePlayers.reclaimDead();
+    this.docking.checkProximity();
 
-    if (playing) {
-      // Simulator 内の substep cleanup 後に呼ぶ: 死んだ個体を予測せず、積分後の実状態と突き合わせる。
-      this.sections.enter(SECTION.predict);
-      this.predictor.update(
-        this.simulator.simTime, this.player, this.displayWindowManager.current.duration,
-        this.cameraSystem.overviewMode ? 'map' : 'combat',
-      );
-      this.sections.exit(SECTION.predict);
-    }
+    // Simulator 内の substep cleanup 後に呼ぶ: 死んだ個体を予測せず、積分後の実状態と突き合わせる。
+    this.sections.enter(SECTION.predict);
+    this.predictor.update(
+      this.simulator.simTime, this.player, this.displayWindowManager.current.duration,
+      this.cameraSystem.overviewMode ? 'map' : 'combat',
+    );
+    this.sections.exit(SECTION.predict);
 
     this.sections.enter(SECTION.effects);
     this.entities.effects.update(dt, this.simulator.simTime);
@@ -331,16 +311,14 @@ export class Game {
 
     // reclaimDead が操作対象を差し替えている場合があるので、ここは読み直した艦を見る。
     const flown = this.player;
-    if (flown && playing) {
-      this.sections.enter(SECTION.plan);
-      // trackAnchor より前に置く: 最後のノードが落ちたフレームからアンカーを自機へ追従させる。
-      this.guide.update(
-        flown, this.simulator.simTime, this.editor.editMode,
-        this.ephemeris.attractorsAt(this.simulator.simTime),
-      );
-      flown.plan.trackAnchor(flown.state);
-      this.sections.exit(SECTION.plan);
-    }
+    this.sections.enter(SECTION.plan);
+    // trackAnchor より前に置く: 最後のノードが落ちたフレームからアンカーを自機へ追従させる。
+    this.guide.update(
+      flown, this.simulator.simTime, this.editor.editMode,
+      this.ephemeris.attractorsAt(this.simulator.simTime),
+    );
+    if (flown) flown.plan.trackAnchor(flown.state);
+    this.sections.exit(SECTION.plan);
   }
 
   // マップ/戦闘のポインタ操作を優先順位順(=呼ぶ順)に配る。決着後は配らず、ポーズ中は
@@ -384,13 +362,9 @@ export class Game {
     this.editor.update(displayWindow, planProvider);
     this.targeter.updateEquatorNodes(displayWindow, this.ephemeris);
     this.entities.updateBaseEquatorNodes(displayWindow, this.ephemeris);
-    // MapPicker/FocusMarkers は全天体・ラグランジュ点・全エンティティの候補を組む。
-    // 戦闘ビューではクリック対象を別経路で処理するため、マップを表示している時だけ更新する。
     this.sections.exit(SECTION.plan);
     this.sections.enter(SECTION.mapPick);
-    if (this.cameraSystem.overviewMode) {
-      this.mapPicker.refresh(displayWindow);
-    }
+    this.mapPicker.refresh(displayWindow);
     this.sections.exit(SECTION.mapPick);
     this.sections.enter(SECTION.camera);
     this.cameraSystem.update(
@@ -420,7 +394,7 @@ export class Game {
     );
     // 戦闘ビューはアクティブ艦を前提とする。艦がまだ配置されていない/破壊されている間は無効。
     const canToggleView = this.player?.alive ?? false;
-    this.viewManager.handleInput(this.input, this.activeStage.isPlaying, canToggleView);
+    this.viewManager.handleInput(this.input, canToggleView);
     this.editor.handleInput(this.input);
 
     if (this.input.takeKey(K.togglePerfWindow)) this.perfMeter?.toggle();
@@ -455,7 +429,7 @@ export class Game {
     const combatTargets = this.entities.getCombatTargets(player);
 
     this._environment.sync(
-      player?.state.r ?? v3(), this.floatingOrigin, displayTime,
+      player?.state.r ?? null, this.floatingOrigin, displayTime,
       this.cameraSystem, this.navball.gridVisibility, visibilityPolicy,
     );
 
@@ -491,7 +465,7 @@ export class Game {
       this.cameraSystem.activeCameraScale, overviewMode, this.cameraSystem.activeCameraPos,
       this.cameraSystem.activeCamera,
     );
-    this.mapPicker.sync(overviewMode, simTime, attractors, player);
+    this.mapPicker.sync(simTime, attractors, player);
     this.frameControls.sync(
       this.mapPicker.pickables, this.cameraSystem.activeCameraPos, attractors, simTime, overviewMode,
     );

@@ -94,8 +94,9 @@ export class Docking {
   }
 
   // 生存中の全艦について基地との距離・相対速度を調べ、収容条件を満たす艦を収容する。
-  // ドックビューが開いている間は呼ばない(呼び出し側の Game.update が保証する)。
+  // ドックビュー表示中は何もしない(発進直後の再収容ループを防ぐ)。
   checkProximity(): void {
+    if (this.viewManager.current === 'dock') return;
     for (const base of this.entities.bases) {
       if (!base.alive) continue;
       for (const ship of [...this.entities.players]) {

@@ -73,12 +73,19 @@ export class ActivePlayerController {
   // 喪失した自機を配列・操作対象から回収する。Stage.prunesDeadPlayers を立てたステージ
   // (艦の保持数に上限があり、埋まった枠を空ける必要があるもの)からだけ呼ぶ。
   reclaimDead(): void {
+    let lostActive = false;
     for (const lost of [...this.entities.players]) {
       if (lost.alive) continue;
-      if (this._current === lost) this._current = null;
+      // remove() 側の引き継ぎを抑え、掃引が終わってから一度だけ次の艦へ渡す。
+      if (this._current === lost) {
+        this._current = null;
+        lostActive = true;
+      }
       this.remove(lost);
     }
-    if (!this._current) this.reclaimAfterLoss();
+    // 操作対象を失ったときだけ引き継ぐ。もともと操作していない状態(手動解除・未配置)は
+    // プレイヤーの選択なので、勝手に艦を割り当てない。
+    if (lostActive) this.reclaimAfterLoss();
   }
 
   private reclaimAfterLoss(): void {

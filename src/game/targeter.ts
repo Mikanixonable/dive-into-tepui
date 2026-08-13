@@ -138,11 +138,11 @@ export class Targeter {
 
   // ターゲット位置に「自機の方を向いた的(標的面)」があると見なし、発射弾がその面を自機側から
   // 通過した点をターゲット相対で記録する。既存の記録は経過時間を進め、寿命切れを捨てる。
-  updateBoardMarks(dt: number, player: Player, entities: EntityManager): void {
+  updateBoardMarks(dt: number, player: Player | null, entities: EntityManager): void {
     const target = this.aliveTarget;
     // 記録側と描画側で同じ aliveTarget を見る: target のままだと撃破後も死亡個体の
     // 凍結位置を基準に ✦ を残し続けてしまう。
-    if (!target) {
+    if (!player || !target) {
       this.boardMarks.length = 0;
       return;
     }
