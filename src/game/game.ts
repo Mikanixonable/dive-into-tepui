@@ -141,10 +141,6 @@ export class Game {
       this.displayWindowManager,
       this.frameControls,
     );
-    this.mapPicker = new MapPicker(
-      this, this._hud, this.entities, this.ephemeris, this.navTarget,
-      this.cameraSystem, this.editor, this.simSpeedManager, this.settingsPanel,
-    );
     this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager);
 
     this.input = new Input(gs.renderer.domElement);
@@ -158,6 +154,11 @@ export class Game {
       initialSave?.stage, this._hud, this._sfx, this._scene, this.entities, this.unlockManager,
       this.entities.effects, this.markerManager, this.ephemeris, this.simulator, this.activePlayers,
     );
+    this.mapPicker = new MapPicker(
+      this._hud, this.entities, this.ephemeris, this.navTarget,
+      this.cameraSystem, this.editor, this.simSpeedManager, this.settingsPanel,
+      this.activePlayers, this.frameControls, this.activeStage,
+    );
 
     // 初期ビューは世界が組み上がった後にしか決まらない — 攻略ステージの自機は Stage の初期配置で
     // 置かれるので、戦闘ビューへ入れるかどうかはその後でなければ判定できない。
@@ -169,8 +170,10 @@ export class Game {
 
     this.nanWatchdog = new NanWatchdog(this._hud);
     this.docking = new Docking(
-      this, this._hud, this._sfx, this._scene, this.entities.effects, this.markerManager,
+      () => this.pause(), () => this.resume(),
+      this._hud, this._sfx, this._scene, this.entities.effects, this.markerManager,
       this.entities, this.mapPicker, this.cameraSystem, this.viewManager,
+      this.activePlayers, this.activeStage,
     );
     this.mapPicker.setDocking(this.docking);
     this.viewBadge = new ViewBadge(this._hud.layers.notify, this._hud.layers.popup, this.viewManager);

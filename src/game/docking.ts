@@ -1,7 +1,7 @@
 // 基地への収容・発進まわり一式。Player(艦の操作)・EntityManager(配置)・DockView(UI)・
-// Game(操作対象/カメラ/計画編集の付け替え)にまたがる横断的な関心事なので、Game に分岐と
-// 組み立てを残さずここへ切り出す(所有者が1つに定まらない GUI/挙動は横断そのものを
-// 責務とするモジュールを立てる — MapPicker/ViewManager と同じ形)。
+// ActivePlayerController(操作対象の付け替え)・CameraSystem/ViewManager(カメラ・ビューの遷移)
+// にまたがる横断的な関心事なので、それぞれに分岐と組み立てを残さずここへ切り出す(所有者が
+// 1つに定まらない GUI/挙動は横断そのものを責務とするモジュールを立てる — MapPicker と同じ形)。
 import * as THREE from 'three/webgpu';
 import * as C from './const';
 import { v3, len, sub } from '../physics/vec3';
@@ -13,13 +13,14 @@ import { Player } from './player/player';
 import type { EntityManager } from './simulation/entity-manager';
 import type { MapPicker } from './map-picker';
 import type { CameraSystem } from './camera/camera-system';
-import type { Game } from './game';
 import type { Input } from './input/input';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import type { ViewManager } from './view-manager';
 import type { Sfx } from '../audio/sfx';
 import type { EffectsSystem } from './vfx/effects-system';
 import type { MarkerManager } from './marker/marker-manager';
+import type { ActivePlayerController } from './active-player-controller';
+import type { Stage } from './stages/stage';
 
 export class Docking {
   readonly dockView: DockView;
@@ -31,7 +32,12 @@ export class Docking {
   get activeBase(): Base | null { return this._activeBase; }
 
   constructor(
-    private readonly game: Game,
+    // ポーズ操作だけはクロージャで受け取る。ポーズは Game 自身の状態なので、参照するなら
+    // Game を丸ごと持つしかない。必要なのはこの2つだけで、それに対して Game は大きすぎ、
+    // 発展途上のこのモジュールに何にでも手が届く経路を与えてしまう。「クロージャ注入は
+    // 原則行わず参照を渡す」という規則に対する、意図的かつ暫定的な例外。
+    private readonly pauseGame: () => void,
+    private readonly resumeGame: () => void,
     private readonly hud: Hud,
     private readonly sfx: Sfx,
     private readonly scene: THREE.Scene,
@@ -41,6 +47,8 @@ export class Docking {
     private readonly mapPicker: MapPicker,
     private readonly cameraSystem: CameraSystem,
     private readonly viewManager: ViewManager,
+    private readonly activePlayers: ActivePlayerController,
+    private readonly activeStage: Stage,
   ) {
     this.dockView = new DockView(this.hud.layers.view);
     this.dockView.onClose = () => this.viewManager.leaveDock();
@@ -83,14 +91,14 @@ export class Docking {
   // ドックビューの開閉は ViewManager が遷移の一部として呼ぶ。ドック中は時間を止める。
   enterDock(): void {
     if (!this._activeBase) return;
-    this.game.pause();
-    this.dockView.open(this._activeBase, this.game.player, this.game.activeStage.freeProcurement);
+    this.pauseGame();
+    this.dockView.open(this._activeBase, this.activePlayers.current, this.activeStage.freeProcurement);
   }
 
   // ViewManager がドックから出るときに呼ぶ。
   leaveDock(): void {
     this.dockView.close();
-    if (this.game.isPaused) this.game.resume();
+    this.resumeGame();
   }
 
   // 生存中の全艦について基地との距離・相対速度を調べ、収容条件を満たす艦を収容する。
@@ -119,7 +127,7 @@ export class Docking {
     });
     // parkPlayer した艦は以後 syncPlayer が呼ばれないので、可視状態を一度だけここで確定させる。
     ship.obj.visible = false;
-    const wasActive = this.game.player === ship;
+    const wasActive = this.activePlayers.current === ship;
     this.mapPicker.close();
     this.cameraSystem.overviewCamera.clearFocusIf(ship.id);
     // 収容される艦がまさに操作対象だった場合、噴射中の推力/RCS音は艦自身の毎フレーム
@@ -131,9 +139,9 @@ export class Docking {
     }
     this.entities.parkPlayer(ship);
     if (wasActive) {
-      this.game.activePlayers.setOrNull(this.entities.players.find((p) => p.alive) ?? null);
+      this.activePlayers.setOrNull(this.entities.players.find((p) => p.alive) ?? null);
       // 収容で操縦できる艦が無くなったら、戦闘ビューには映すものが無いのでマップへ移す。
-      if (this.game.player === null) this.viewManager.setView('map');
+      if (this.activePlayers.current === null) this.viewManager.setView('map');
     }
     this.hud.hint(`${ship.name} を基地に収容しました`);
   }
@@ -161,7 +169,7 @@ export class Docking {
     const br = base.state.r;
     ship.state = kinematicState(base.state.t, v3(br.x + 600, br.y, br.z), base.state.v);
     this.entities.addPlayer(ship);
-    this.game.activePlayers.set(ship);
+    this.activePlayers.set(ship);
     this.viewManager.leaveDock();
     this.hud.hint(`${ship.name} を発進しました`);
   }
