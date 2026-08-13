@@ -19,7 +19,8 @@ export interface FlashEffect {
   duration: number;
   size0: number;
   size1: number;
-  peakOpacity: number; // 発生直後の最大不透明度倍率(ズーム中のマズルフラッシュ減光などに使う)
+  peakOpacity: number; // 発生直後の最大不透明度倍率
+  dimsInGunsight: boolean; // ガンサイトズーム中に減光するか
 }
 
 export class FlashEffectManager {
@@ -49,13 +50,15 @@ export class FlashEffectManager {
   }
 
   // 生存中のフラッシュを現在の位置・寿命進捗・カメラ向きへ同期し、InstancedPool へ積む。
-  syncFlashEffects(fo: FloatingOrigin, activeCamera: THREE.PerspectiveCamera): void {
+  // zoomActive はガンサイトズーム中かどうか(dimsInGunsight なフラッシュだけ減光する)。
+  syncFlashEffects(fo: FloatingOrigin, activeCamera: THREE.PerspectiveCamera, zoomActive: boolean): void {
     this.pool.beginFrame();
     const camQuat = activeCamera.quaternion;
     for (const fx of this.effects) {
       const t = fx.age / fx.duration;
       const size = fx.size0 + (fx.size1 - fx.size0) * Math.sqrt(t);
-      const opacity = fx.peakOpacity * (1 - t);
+      const zoomScale = zoomActive && fx.dimsInGunsight ? C.ZOOM_MUZZLE_FLASH_SCALE : 1;
+      const opacity = fx.peakOpacity * (1 - t) * zoomScale;
       fx.transform.position.copy(fo.RtoThreeV3(fx.state.r));
       fx.transform.scale.setScalar(size);
       fx.transform.quaternion.copy(camQuat);

@@ -197,7 +197,7 @@ export class Game {
     this.input.update();
     const dt = Math.min(dtRaw, 0.1);
     // ポーズ中も Esc・ヘルプなどは効かせるので、入力配分はポーズ判定より前に置く。
-    this.handleInput();
+    this.handleInput(dt);
     this.sections.exit(SECTION.input);
 
     if (!this._isPaused) this.advanceSimulation(dt);
@@ -223,7 +223,7 @@ export class Game {
     );
     this.sections.exit(SECTION.camera);
     this.sections.enter(SECTION.pointer);
-    this.handlePointerInput(dt);
+    this.handlePointerInput();
     this.sections.exit(SECTION.pointer);
   }
 
@@ -232,17 +232,9 @@ export class Game {
   private advanceSimulation(dt: number): void {
     this.sections.enter(SECTION.player);
     this.nanWatchdog.checkPlayer('frameStart', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
-    this.entities.updatePlayers(this.player, {
-      dt,
-      input: this.input,
-      simSpeed: this.simSpeedManager,
-      mapMode: this.editor.editMode,
-      dvEditActive: this.editor.dvEditActive,
-      scoreCounter: this.activeStage.scoreCounter,
-      simTime: this.simulator.simTime,
-      zoomActive: this.cameraSystem.zoomActive,
-      ephemeris: this.ephemeris,
-    });
+    this.entities.updatePlayers(
+      this.player, this.input, this.simSpeedManager, dt, this.activeStage, this.ephemeris,
+    );
     this.nanWatchdog.checkPlayer('player.behave', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
     this.sections.exit(SECTION.player);
 
@@ -251,9 +243,6 @@ export class Game {
     this.sections.exit(SECTION.stage);
     this.nanWatchdog.checkPlayer('activeStage.update', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
     this.simSpeedManager.update(this.simulator.simTime);
-    // 操作不可のワープ倍率は、操作対象から外れた艦と同じ「操作できない」状態。連続指令を書いた
-    // 主体(behave / planExecutor)によらず、積分へ渡る前に全自機分を畳む。
-    if (!this.simSpeedManager.canOperatePlayer) this.entities.clearTransientCommands();
 
     const simDt = dt * this.simSpeedManager.simSpeed;
     this.sections.enter(SECTION.integrate);
@@ -293,7 +282,7 @@ export class Game {
   // ポインタ入力を優先順位順(=呼ぶ順)に配る。このフレームの cameraSystem.update が終わって
   // 初めて投影がこのフレームの値になるので、update の末尾に置く。ポーズ中は
   // ESC メニュー等が開いていないときだけ配る(背景の誤操作を防ぐ)。
-  private handlePointerInput(dt: number): void {
+  private handlePointerInput(): void {
     if (this._isPaused && this._hud.modalController.isOpen) return;
     if (this.editor.editMode) {
       this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
@@ -301,7 +290,6 @@ export class Game {
       this.mapPicker.handleDoubleClick(this.input);
       this.editor.handleMapPointer(this.input);
       this.mapPicker.handleEmptySpaceRightClick(this.input, this.simulator.simTime);
-      this.editor.updateEditing(dt, this.input);
     } else if (!this._isPaused && this.player) {
       this.navTarget.updateCombatBasePicking(this.entities, this.input, this.cameraSystem.activeCameraProjection);
       this.targeter.updateCombatTargeting(
@@ -315,8 +303,8 @@ export class Game {
 
   // 入力エッジを担当モジュールへ先着順で配る。決めるのは優先順位 = 呼ぶ順序だけで、
   // どのキー/クリックが何をするかは各モジュールが持つ。ここで配るのは、決着後・ポーズ中も
-  // 効くべき操作(設定・ヘルプ・再出撃・ワープ・マップ開閉・計画破棄)。
-  private handleInput(): void {
+  // 効くべき操作(設定・ヘルプ・再出撃・ワープ・マップ開閉・計画破棄・計画のΔv編集)。
+  private handleInput(dt: number): void {
     // 上から下へ優先順位順に呼ぶ。
     this.docking.handleInput(this.input);
     this.settingsPanel.handleInput(this.input);
@@ -329,7 +317,7 @@ export class Game {
       this.simulator.simTime,
     );
     this.viewManager.handleInput(this.input);
-    this.editor.handleInput(this.input);
+    this.editor.handleInput(this.input, dt);
   }
 
   // ------------------------------------------------------------------ sync
@@ -374,7 +362,7 @@ export class Game {
     );
     this.entities.syncMarkers(this.cameraSystem, displayTime, player?.state.r ?? null, visibilityPolicy);
 
-    this.entities.effects.sync(fo, this.cameraSystem.activeCamera);
+    this.entities.effects.sync(fo, this.cameraSystem.activeCamera, this.cameraSystem.zoomActive);
 
     this.targeter.sync(fo, player, combatTargets, this.cameraSystem, attractors, visibilityPolicy);
     this.targeter.syncTargetMarkers(

@@ -68,14 +68,16 @@ export class SimSpeedManager {
     return this.simSpeed < C.MAX_PHYS_SIM_SPEED;
   }
 
-  // ワープ段を step 分だけ変更する。上下限を超える変更は無視する。
+  // ワープ段を step 分だけ変更する。上下限を超える変更は無視する。操作できない倍率へ
+  // 上げたときは、自機の操作が効かなくなったことをヒントに併記する。
   shift(step: number): void {
     this.cancelAutoWarp();
     const next = this.levelIdx + step;
     if (next < 0 || next >= C.SIM_SPEED_LEVELS.length) return;
     this.levelIdx = next;
     this._sfx.warp();
-    this._hud.hint(`時間加速 ×${this.simSpeed}`);
+    const gated = this.canOperatePlayer ? '' : `(自機の操作はワープ ×${C.MAX_PHYS_SIM_SPEED} 以下でのみ可能)`;
+    this._hud.hint(`時間加速 ×${this.simSpeed}${gated}`);
   }
 
   // 未来の指定時刻まで自動ワープする。既に到達窓へ入った時刻は受け付けない。

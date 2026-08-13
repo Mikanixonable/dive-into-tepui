@@ -13,8 +13,10 @@ import { Bullet } from '../game-entity/bullet';
 import { Base } from '../game-entity/base';
 import { InstancedPool } from '../../render/instanced-pool';
 import { bulletBodyResources, bulletHaloResources, plasmaBodyResources, casingBodyResources, debrisFragmentResources } from '../../render/ships';
-import { Player, type PlayerBehaveParams } from '../player/player';
+import { Player } from '../player/player';
 import type { Stage } from '../stages/stage';
+import type { SimSpeedManager } from '../sim-speed-manager';
+import type { Input } from '../input/input';
 import type { CombatTarget } from '../targeter';
 import type { MapVisibility, MapVisibilityPolicy } from '../celestial/map-visibility';
 import type { CameraSystem } from '../camera/camera-system';
@@ -290,9 +292,17 @@ export class EntityManager {
   }
 
   // 毎フレーム、全ての自機へ behave を1度ずつ通す。操作できるのは操作対象艦だけで、
-  // それ以外を畳むところまで behave 自身が済ませる。
-  updatePlayers(activePlayer: Player | null, params: PlayerBehaveParams): void {
-    for (const ship of this.players) ship.behave(ship === activePlayer, this, params);
+  // 操作できないワープ倍率ではどの艦も操作できない — その2つは同じ「操作できない」状態なので、
+  // input を渡すかどうかの1つの判断にまとめる。
+  updatePlayers(
+    activePlayer: Player | null, input: Input, simSpeed: SimSpeedManager,
+    dt: number, activeStage: Stage, ephemeris: Ephemeris,
+  ): void {
+    const operable = simSpeed.canOperatePlayer;
+    const simDt = dt * simSpeed.simSpeed;
+    for (const ship of this.players) {
+      ship.behave(ship === activePlayer && operable ? input : null, dt, simDt, this, activeStage, ephemeris);
+    }
   }
 
   // 操作できない間、全自機の連続指令(推力・トルク・射撃・噴射ラッチ)を畳む。
