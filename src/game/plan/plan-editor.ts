@@ -9,7 +9,7 @@ import type { Ephemeris } from '../../physics/ephemeris';
 import * as C from '../const';
 import { ACCENT, TEXT, TEXT_DIM, FILL_2, AXIS_PROGRADE, AXIS_NORMAL, AXIS_RADIAL } from '../theme';
 import { Hud } from '../hud/hud';
-import { HudHoldButton } from '../hud/buttons';
+import { HoldButton, ValueInput } from '../hud/widgets';
 import { ContextMenu } from '../hud/context-menu';
 import { MenuAction, MenuCommon } from '../hud/menu-actions';
 import { fmtDist, fmtTime } from '../hud/utils';
@@ -34,19 +34,19 @@ import type { DisplayWindow } from '../display-window-manager';
 import type { PerfCounts } from '../../perf-meter';
 
 interface DvButtons {
-  readonly pro: HudHoldButton;
-  readonly ret: HudHoldButton;
-  readonly nrm: HudHoldButton;
-  readonly anm: HudHoldButton;
-  readonly out: HudHoldButton;
-  readonly in: HudHoldButton;
+  readonly pro: HoldButton;
+  readonly ret: HoldButton;
+  readonly nrm: HoldButton;
+  readonly anm: HoldButton;
+  readonly out: HoldButton;
+  readonly in: HoldButton;
 }
 
 // prograde/retrograde/normal/antinormal/radial out/in の長押しボタン6個を組み立てる。
 function buildDvButtons(): { row: HTMLElement; buttons: DvButtons; } {
   const row = document.createElement('div');
-  row.className = 'hud-seg';
-  const mk = (dir: string, key: string): HudHoldButton => new HudHoldButton(`${dir} [${key}]`);
+  row.className = 'w-group';
+  const mk = (dir: string, key: string): HoldButton => new HoldButton(`${dir} [${key}]`);
   const buttons: DvButtons = {
     pro: mk('PRO', K.dvPrograde.label),
     ret: mk('RET', K.dvRetrograde.label),
@@ -57,6 +57,28 @@ function buildDvButtons(): { row: HTMLElement; buttons: DvButtons; } {
   };
   for (const b of Object.values(buttons)) row.appendChild(b.element);
   return { row, buttons };
+}
+
+// マニューバ手動入力欄1行分(軸ラベル + 数値入力)を組み立てて row へ足す。
+function buildDvAxisInput(row: HTMLElement, label: string, color: string, onCommit: () => void): ValueInput {
+  const line = document.createElement('div');
+  line.className = 'row';
+  line.style.width = '100%';
+  line.style.gap = '4px';
+  line.style.alignItems = 'center';
+  const k = document.createElement('span');
+  k.className = 'k';
+  k.style.width = '28px';
+  k.style.color = color;
+  k.style.fontWeight = 'bold';
+  k.textContent = label;
+  line.appendChild(k);
+  const input = new ValueInput({ type: 'number', step: 0.1 }, onCommit);
+  input.element.style.flex = '1';
+  input.element.style.width = '0';
+  line.appendChild(input.element);
+  row.appendChild(line);
+  return input;
 }
 
 // ホールド継続時間 [s] から Δv 加算レートを指数的に求める。押し始めは細かく、長押しで粗くなる。
@@ -114,9 +136,9 @@ export class PlanEditor {
   private readonly planPanel: HTMLElement;
   private readonly planBody: HTMLElement;
   private readonly editForm: HTMLElement;
-  private readonly dvProInput: HTMLInputElement;
-  private readonly dvNrmInput: HTMLInputElement;
-  private readonly dvRadInput: HTMLInputElement;
+  private readonly dvProInput: ValueInput;
+  private readonly dvNrmInput: ValueInput;
+  private readonly dvRadInput: ValueInput;
   private simTime = 0;
 
   // 計画パネルの DOM を組み立て、ノードギズモのコールバックを配線する。
@@ -145,49 +167,25 @@ export class PlanEditor {
       <div data-id="planbody"></div>
       <div data-id="planedit" style="display:none; margin-top:8px; padding-top:8px; border-top:1px solid ${FILL_2}">
         <div style="font-size:10px; color:${TEXT_DIM}; margin-bottom:4px;">マニューバ手動入力 (m/s)</div>
-        <div class="hud-seg">
-          <div class="row" style="width:100%; gap:4px; align-items:center;">
-            <span class="k" style="width:28px; color:${AXIS_PROGRADE}; font-weight:bold;">PRO</span>
-            <input type="number" id="pe-dv-pro" step="0.1" style="flex:1; width:0;">
-          </div>
-          <div class="row" style="width:100%; gap:4px; align-items:center;">
-            <span class="k" style="width:28px; color:${AXIS_NORMAL}; font-weight:bold;">NRM</span>
-            <input type="number" id="pe-dv-nrm" step="0.1" style="flex:1; width:0;">
-          </div>
-          <div class="row" style="width:100%; gap:4px; align-items:center;">
-            <span class="k" style="width:28px; color:${AXIS_RADIAL}; font-weight:bold;">RAD</span>
-            <input type="number" id="pe-dv-rad" step="0.1" style="flex:1; width:0;">
-          </div>
-        </div>
       </div>
     `;
     this.planPanel.style.display = 'none';
     this.planBody = this.planPanel.querySelector<HTMLElement>('[data-id="planbody"]')!;
     this.editForm = this.planPanel.querySelector<HTMLElement>('[data-id="planedit"]')!;
-    this.dvProInput = this.planPanel.querySelector<HTMLInputElement>('#pe-dv-pro')!;
-    this.dvNrmInput = this.planPanel.querySelector<HTMLInputElement>('#pe-dv-nrm')!;
-    this.dvRadInput = this.planPanel.querySelector<HTMLInputElement>('#pe-dv-rad')!;
 
     const onInputChange = () => {
       this.setNodeDvLocal(
-        parseFloat(this.dvProInput.value) || 0,
-        parseFloat(this.dvNrmInput.value) || 0,
-        parseFloat(this.dvRadInput.value) || 0
+        parseFloat(this.dvProInput.element.value) || 0,
+        parseFloat(this.dvNrmInput.element.value) || 0,
+        parseFloat(this.dvRadInput.element.value) || 0
       );
     };
-    for (const input of [this.dvProInput, this.dvNrmInput, this.dvRadInput]) {
-      // Input は window で keydown を購読しているので、欄で押したキーを止めないと
-      // 同じキーがゲーム操作としても解釈される。
-      input.addEventListener('keydown', (e) => e.stopPropagation());
-      input.addEventListener('pointerdown', (e) => e.stopPropagation());
-    }
-    this.dvProInput.addEventListener('change', onInputChange);
-    this.dvNrmInput.addEventListener('change', onInputChange);
-    this.dvRadInput.addEventListener('change', onInputChange);
-    const stopProp = (e: Event) => e.stopPropagation();
-    this.dvProInput.addEventListener('keydown', stopProp);
-    this.dvNrmInput.addEventListener('keydown', stopProp);
-    this.dvRadInput.addEventListener('keydown', stopProp);
+    const dvRow = document.createElement('div');
+    dvRow.className = 'w-group';
+    this.dvProInput = buildDvAxisInput(dvRow, 'PRO', AXIS_PROGRADE, onInputChange);
+    this.dvNrmInput = buildDvAxisInput(dvRow, 'NRM', AXIS_NORMAL, onInputChange);
+    this.dvRadInput = buildDvAxisInput(dvRow, 'RAD', AXIS_RADIAL, onInputChange);
+    this.editForm.appendChild(dvRow);
 
     hudDock(this._hud.layers.panel, 'right').appendChild(this.planPanel);
     this.orbitMenu.onSelect = (act, state) => {
@@ -721,10 +719,10 @@ export class PlanEditor {
 
     if (this.selectedNodeIdx !== null && localDv) {
       this.editForm.style.display = 'block';
-      // 入力フォームにフォーカスがない時だけ値を同期（ドラッグ操作での変動を反映）
-      if (document.activeElement !== this.dvProInput) this.dvProInput.value = localDv.x.toFixed(1);
-      if (document.activeElement !== this.dvNrmInput) this.dvNrmInput.value = localDv.y.toFixed(1);
-      if (document.activeElement !== this.dvRadInput) this.dvRadInput.value = localDv.z.toFixed(1);
+      // 入力フォームにフォーカスがない時だけ値を同期(ドラッグ操作での変動を反映)
+      if (document.activeElement !== this.dvProInput.element) this.dvProInput.setValue(localDv.x.toFixed(1));
+      if (document.activeElement !== this.dvNrmInput.element) this.dvNrmInput.setValue(localDv.y.toFixed(1));
+      if (document.activeElement !== this.dvRadInput.element) this.dvRadInput.setValue(localDv.z.toFixed(1));
     } else {
       this.editForm.style.display = 'none';
     }

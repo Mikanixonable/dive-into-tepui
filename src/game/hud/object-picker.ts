@@ -3,7 +3,7 @@
 // 開き、上から「絞り込み入力」「グループ分けした全候補」の順に並ぶ。候補はグループごとに
 // 複数列のグリッドへ並べる(百件規模を縦一列に積むと画面高をはみ出すため)。
 import { clampOverlayPosition } from './layout';
-import { hudButton } from './buttons';
+import { Button } from './widgets';
 import { bringToFront } from './overlay-layer';
 
 const STYLE = `
@@ -64,7 +64,7 @@ function groupsEqual<T>(a: readonly ObjectPickerGroup<T>[], b: readonly ObjectPi
 
 export class ObjectPicker<T> {
   readonly element: HTMLElement;
-  private readonly trigger: HTMLElement;
+  private readonly trigger: Button;
   private readonly pop: HTMLElement;
   private readonly filter: HTMLInputElement;
   private readonly list: HTMLElement;
@@ -78,13 +78,13 @@ export class ObjectPicker<T> {
     this.onSelect = onSelect;
 
     this.element = document.createElement('div');
-    this.element.className = 'hud-seg';
+    this.element.className = 'w-group';
     const heading = document.createElement('span');
-    heading.className = 'seg-title';
+    heading.className = 'w-group-title';
     heading.textContent = title;
     this.element.appendChild(heading);
-    this.trigger = hudButton('—', () => this.toggle());
-    this.element.appendChild(this.trigger);
+    this.trigger = new Button('—', () => this.toggle());
+    this.element.appendChild(this.trigger.element);
 
     this.pop = document.createElement('div');
     this.pop.className = 'object-picker-pop';
@@ -132,7 +132,7 @@ export class ObjectPicker<T> {
     for (const g of this.groups) {
       for (const [v, l] of g.items) if (v === this.selected) label = l;
     }
-    this.trigger.textContent = `${label ?? String(this.selected ?? '—')} ▾`;
+    this.trigger.setLabel(`${label ?? String(this.selected ?? '—')} ▾`);
   }
 
   // ボタンを押すたびにポップアップの開閉を切り替える。
@@ -149,7 +149,7 @@ export class ObjectPicker<T> {
     this.pop.style.display = 'block';
     bringToFront(this.pop);
     // 画面端で開いてもはみ出さないよう、実寸を測ってから位置を決める。
-    const anchor = this.trigger.getBoundingClientRect();
+    const anchor = this.trigger.element.getBoundingClientRect();
     const rect = this.pop.getBoundingClientRect();
     const pos = clampOverlayPosition(
       { x: anchor.left, y: anchor.bottom + 2 }, rect,

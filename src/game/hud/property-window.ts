@@ -9,6 +9,7 @@ import { clampOverlayPosition, Point2 } from './layout';
 import { shortcutKeyLabel } from './shortcut-hint';
 import { bringToFront as bringOverlayToFront } from './overlay-layer';
 import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from './dom';
+import { Button, CloseButton, ValueInput } from './widgets';
 
 const STYLE = `
 #hud .prop-window {
@@ -61,10 +62,10 @@ const STYLE = `
 #hud .prop-window-item:hover, #hud .prop-window-item:active {
   background: var(--accent-fill); color: var(--accent-soft);
 }
-#hud .prop-window-item.selected {
+#hud .prop-window-item.on {
   color: var(--accent); background: var(--accent-fill-weak);
 }
-#hud .prop-window-item.selected::before { content: '▪ '; }
+#hud .prop-window-item.on::before { content: '▪ '; }
 `;
 
 let styleInjected = false;
@@ -118,7 +119,7 @@ export class PropertyWindow<A extends string = string> {
   private readonly el: HTMLDivElement;
   private readonly titleMainEl: HTMLDivElement;
   private readonly titleSubEl: HTMLDivElement;
-  private readonly clipBtnEl: HTMLButtonElement;
+  private readonly clipBtn: Button;
   private readonly rowsEl: HTMLDivElement;
   private readonly itemsEl: HTMLDivElement;
   // 前フレームに描画したタイトル・サブタイトル。同じ値なら DOM に触れない差分更新のための記録。
@@ -182,39 +183,29 @@ export class PropertyWindow<A extends string = string> {
     title.appendChild(this.titleSubEl);
 
     this.renameCallback = content.onRename ?? null;
-    const renameBtn = document.createElement('button');
+    let renameBtn: Button | null = null;
     if (this.renameCallback) {
-      renameBtn.className = 'prop-window-btn';
-      renameBtn.textContent = '✎';
-      renameBtn.title = '名前を変更';
-      renameBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.startRename();
-      });
+      renameBtn = new Button('✎', () => this.startRename());
+      renameBtn.element.classList.add('prop-window-btn');
+      renameBtn.element.title = '名前を変更';
+      renameBtn.element.setAttribute('aria-label', '名前を変更');
     }
 
-    this.clipBtnEl = document.createElement('button');
-    this.clipBtnEl.className = 'prop-window-btn';
-    this.clipBtnEl.textContent = '📌';
-    this.clipBtnEl.title = 'クリップ';
-    this.clipBtnEl.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.setClipped(!this._clipped);
-    });
+    this.clipBtn = new Button('📌', () => this.setClipped(!this._clipped));
+    this.clipBtn.element.classList.add('prop-window-btn');
+    this.clipBtn.element.title = 'クリップ';
+    this.clipBtn.element.setAttribute('aria-label', 'クリップ');
 
-    const closeBtn = document.createElement('button');
-    closeBtn.className = 'prop-window-btn';
-    closeBtn.textContent = '✕';
-    closeBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
+    // ✕ は他の3窓(格納庫/セーブブラウザ/設定)と同じ見た目に統一する。
+    const closeBtn = new CloseButton(() => {
       this.dispose();
       this.onClose?.();
     });
 
     header.appendChild(title);
-    if (this.renameCallback) header.appendChild(renameBtn);
-    header.appendChild(this.clipBtnEl);
-    header.appendChild(closeBtn);
+    if (renameBtn) header.appendChild(renameBtn.element);
+    header.appendChild(this.clipBtn.element);
+    header.appendChild(closeBtn.element);
     header.addEventListener('pointerdown', this.handleHeaderPointerDown);
     header.addEventListener('pointermove', this.handleHeaderPointerMove);
     header.addEventListener('pointerup', this.handleHeaderPointerUp);
@@ -264,39 +255,32 @@ export class PropertyWindow<A extends string = string> {
   }
 
   // タイトルを編集用の入力欄へ差し替え、確定(Enter/blur)で renameCallback へ通知して
-  // 表示へ戻す。入力欄自身の keydown は伝播させないので、window の全体ショートカット
+  // 表示へ戻す。ValueInput 自身が keydown を止めるので、window の全体ショートカット
   // (handleKeyDown 含む)には届かない。
   private startRename(): void {
     if (this.renaming || !this.renameCallback) return;
     this.renaming = true;
-    const input = document.createElement('input');
-    input.className = 'prop-window-title-input';
-    input.type = 'text';
-    input.maxLength = 40;
-    input.value = this.lastTitle;
-    this.titleMainEl.replaceWith(input);
-    input.addEventListener('pointerdown', (e) => e.stopPropagation());
-    input.addEventListener('keydown', (e) => {
-      e.stopPropagation();
-      if (e.key === 'Enter') { e.preventDefault(); commit(); }
-      else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
-    });
-    input.addEventListener('blur', () => commit());
-    input.focus();
-    input.select();
+    const input = new ValueInput(
+      { type: 'text' },
+      (text) => this.finishRename(input, text),
+      () => this.finishRename(input, null),
+    );
+    input.element.classList.add('prop-window-title-input');
+    input.element.maxLength = 40;
+    input.setValue(this.lastTitle);
+    this.titleMainEl.replaceWith(input.element);
+    input.element.focus();
+    input.element.select();
+  }
 
-    const commit = () => {
-      if (!this.renaming) return;
-      this.renaming = false;
-      input.replaceWith(this.titleMainEl);
-      const value = input.value.trim();
-      if (value && value !== this.lastTitle) this.renameCallback?.(value);
-    };
-    const cancel = () => {
-      if (!this.renaming) return;
-      this.renaming = false;
-      input.replaceWith(this.titleMainEl);
-    };
+  // リネーム入力欄を終える。value が確定文字列なら(かつ現在のタイトルと異なれば)
+  // renameCallback へ通知し、表示をタイトル要素へ戻す。破棄(Escape/無効値)は value が null。
+  private finishRename(input: ValueInput, value: string | null): void {
+    if (!this.renaming) return;
+    this.renaming = false;
+    input.element.replaceWith(this.titleMainEl);
+    const trimmed = value?.trim();
+    if (trimmed && trimmed !== this.lastTitle) this.renameCallback?.(trimmed);
   }
 
   // 操作項目の集合・ラベル・ショートカットが変わったときだけ DOM を組み直す。クリップ済み
@@ -309,7 +293,7 @@ export class PropertyWindow<A extends string = string> {
     for (const it of items) {
       const row = document.createElement('div');
       row.className = 'prop-window-item';
-      row.classList.toggle('selected', it.selected === true);
+      row.classList.toggle('on', it.selected === true);
       row.textContent = it.label + (it.shortcut ? ` [${shortcutKeyLabel(it.shortcut)}]` : '');
       row.dataset['act'] = it.act;
       row.dataset['shortcut'] = it.shortcut ?? '';
@@ -460,7 +444,7 @@ export class PropertyWindow<A extends string = string> {
   // — 自動クローズ対象・一時ウィンドウ台帳からの出し入れは呼び出し側の仕事。
   private setClipped(clipped: boolean): void {
     this._clipped = clipped;
-    this.clipBtnEl.classList.toggle('clipped', clipped);
+    this.clipBtn.element.classList.toggle('clipped', clipped);
     this.onClipChange?.(clipped);
   }
 

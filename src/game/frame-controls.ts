@@ -9,7 +9,7 @@ import { OverviewCamera } from './camera/overview-camera';
 import { focusPoint, focusTargetId, FocusTarget } from './camera/focus-target';
 import { AnchorZone } from './hud/anchor-zone';
 import { RotationZone } from './hud/rotation-zone';
-import { HudToggle } from './hud/buttons';
+import { ToggleSwitch } from './hud/widgets';
 import { celestialBodyName } from './hud/frame-labels';
 import { hudDock } from './hud/dom';
 import { TEXT_DIM } from './theme';
@@ -51,7 +51,7 @@ export class FrameControls {
   private readonly cameraRotationZone: RotationZone;
   private readonly planCenterZone: AnchorZone;
   private readonly planRotationZone: RotationZone;
-  private readonly followToggle: HudToggle;
+  private readonly followToggle: ToggleSwitch;
   private readonly summary: HTMLElement;
   // 計画折れ線の中心をカメラの注視対象へ追随させるか。表示を変えるだけの操作(フォーカス移動)が
   // 描画基準まで動かすと、線の形が変わった理由が操作から読めなくなるので、明示の選択にする。
@@ -105,7 +105,7 @@ export class FrameControls {
     };
     planSection.appendChild(this.planRotationZone.element);
 
-    this.followToggle = new HudToggle('カメラの基準に追随', (on: boolean) => { this.followCamera = on; });
+    this.followToggle = new ToggleSwitch('カメラの基準に追随', (on: boolean) => { this.followCamera = on; });
     this.followToggle.setOn(this.followCamera);
     planSection.appendChild(this.followToggle.element);
 
