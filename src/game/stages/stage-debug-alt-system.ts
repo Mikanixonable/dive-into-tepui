@@ -72,7 +72,7 @@ export class StageDebugAltSystem extends Stage {
   }
 
   // 自機を zephyrus の低軌道へ置く(このレジストリでは既定の地球 LEO に意味が無い)。
-  protected init(): number {
+  protected init(): void {
     const t = this._simulator.simTime;
     const primary = this._ephemeris.attractorsAt(t).find((a) => a.id === PRIMARY_ID)!;
     const rel = stateFromOrbitalElements(t, PRIMARY_RADIUS + 5e5, 0, 0, 0, 0, 0, primary.mu);
@@ -80,7 +80,6 @@ export class StageDebugAltSystem extends Stage {
       state: kinematicState(t, add(primary.state.r, rel.r), add(primary.state.v, rel.v)),
       ammo: { mags: 20, rounds: C.MAG_ROUNDS },
     });
-    return 0;
   }
 
   update(_dt: number, player: Player | null, _entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
