@@ -117,8 +117,6 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud.map-mode #hud-status { display: none; }
 #hud-orbit { bottom: 12px; left: 252px; width: 228px; box-sizing: border-box; font-size: var(--font-xs); }
 #hud-orbit h3 { font-size: var(--font-xxs); }
-#hud.map-mode #hud-orbit { font-size: inherit; }
-#hud.map-mode #hud-orbit h3 { font-size: var(--font-s); }
 #hud-status .v, #hud-orbit .v { min-width: 75px; }
 #hud .hud-dock-right > #hud-target { width: 100%; box-sizing: border-box; font-size: var(--font-xs); }
 #hud .hud-dock-right > #hud-target h3 { font-size: var(--font-xxs); }
@@ -452,7 +450,6 @@ body.hud-modal-open #touch-ui { display: none; }
   #hud { font-size: var(--font-s); }
   #hud .panel { padding: var(--space-3) var(--space-4); line-height: 1.4; }
   #hud .panel h3 { font-size: var(--font-xs); letter-spacing: 1.5px; margin-bottom: var(--space-2); }
-  #hud.map-mode #hud-orbit h3 { font-size: var(--font-xs); }
   #hud .row { gap: var(--space-4); }
   #hud .row .v { min-width: 64px; }
   #hud-combat-shelf {

@@ -577,7 +577,7 @@ CSS カスタムプロパティは DOM の外には意味を持たないため�
   - 実行時に問い合わせる能力 → `Stage` のインスタンスフィールド(`freeProcurement`、
     `executesPlans`)。既定値は基底クラスが持ち、制限/拡張するステージだけが上書きする。
   - `Stage` の生成より前に要る能力 → ステージクラスの static 宣言を `stageClass` から直接読む
-    (`ephemerisConfig` / `showsStatusInOverview`)。
+    (`ephemerisConfig`)。
 - **基底の既定実装は一般形の側に寄せる。** 制限の無いステージが「何もしない」で済むよう既定を置き、
   制限するステージが上書きする(`Stage.init` の既定は初期配置を何も置かない)。既定を攻略ステージ
   向けに置くと、制限の無いステージのほうが空の override を持つことになり、どちらが一般形か

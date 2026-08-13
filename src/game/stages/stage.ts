@@ -59,7 +59,6 @@ export type StageDeps = [
 export interface StageClass {
   readonly id: StageId;
   readonly ephemerisConfig: EphemerisConfig | undefined;
-  readonly showsStatusInOverview: boolean;
   // 選択画面が読む項目。
   readonly selectLabel: string;
   readonly selectSub: string;
@@ -83,8 +82,6 @@ export type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
 export abstract class Stage {
   // 固有の天体暦を使うステージだけが宣言する。既定のレジストリ・地球原点で構築される。
   static readonly ephemerisConfig: EphemerisConfig | undefined = undefined;
-  // マップ視点でも艦のステータスパネルを表示するか。
-  static readonly showsStatusInOverview: boolean = false;
   // 選択画面でロック中に出す説明。指定が無ければ selectSub をそのまま出す。
   static readonly selectLockedSub: string | undefined = undefined;
   // タイトルのステージ選択ボタン列に並べない。
