@@ -12,6 +12,102 @@ import type { OverlayHandle, OverlayManager } from './overlay-manager';
 import { findStageClass } from '../stages/stage-dictionary';
 import { Button, CloseButton, Meter, TabBar } from './widgets';
 
+const STYLE = `
+#save-browser {
+  position: fixed; inset: 0; display: none;
+  align-items: center; justify-content: center;
+  background: var(--scrim); backdrop-filter: blur(3px);
+  font-family: var(--font-family); pointer-events: auto;
+}
+#save-browser .sb-panel {
+  width: min(1100px, 94vw); height: min(760px, 88vh); height: min(760px, 88dvh);
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--bg); border: 1px solid var(--edge); border-radius: var(--radius-l);
+}
+#save-browser .sb-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--space-5) var(--space-6); border-bottom: 1px solid var(--edge); flex: 0 0 auto;
+}
+#save-browser .sb-title { font-size: var(--font-l); font-weight: 700; letter-spacing: 0.12em; color: var(--text); }
+#save-browser .sb-body { flex: 1 1 0; min-height: 0; display: flex; gap: 1px; background: var(--edge); }
+#save-browser .sb-pane {
+  flex: 1 1 0; min-width: 0; overflow-y: auto; padding: var(--space-5) var(--space-5);
+  display: flex; flex-direction: column; gap: var(--space-3); background: var(--bg);
+  scrollbar-width: thin;
+}
+#save-browser .sb-pane-slots { flex: 0 0 34%; }
+#save-browser .sb-pane-title { font-size: var(--font-xs); letter-spacing: 1.5px; color: var(--text-dim); }
+#save-browser .sb-empty { color: var(--text-dim); padding: var(--space-5); text-align: center; line-height: 1.7; font-size: var(--font-s); }
+#save-browser .sb-slot-list { display: flex; flex-direction: column; gap: var(--space-2); }
+/* アクティブ行の識別は色数を増やさず、左端 2px のオレンジ帯のみで示す。
+   「見ている」行は背景をわずかに明るくするだけで区別する。 */
+#save-browser .sb-slot-row {
+  display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-4) var(--space-3) var(--space-3);
+  border: 1px solid var(--edge); border-left: 2px solid transparent; border-radius: var(--radius-m); cursor: pointer;
+}
+#save-browser .sb-slot-row.viewed { background: var(--fill-1); }
+#save-browser .sb-slot-row.on { border-left-color: var(--accent); }
+#save-browser .sb-slot-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+#save-browser .sb-slot-name { font-size: var(--font-s); }
+#save-browser .sb-slot-meta { font-size: var(--font-xxs); color: var(--text-dim); }
+#save-browser .sb-slot-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; justify-content: flex-end; }
+/* 左ペインは幅が狭いので、フッターのボタンは横並びにせず縦積みにして折り返しを防ぐ。 */
+#save-browser .sb-slot-footer { display: flex; flex-direction: column; gap: var(--space-3); margin-top: auto; padding-top: var(--space-3); }
+/* span. まで指定して .w-btn 側の見た目より確実に勝たせる
+   (ID+クラスの詳細度は #hud .w-btn と同着のため、宣言順に頼らない)。 */
+#save-browser span.sb-btn {
+  padding: var(--space-2) var(--space-4); background: var(--fill-1); color: var(--text-dim); font-size: var(--font-xs);
+  white-space: nowrap;
+}
+#save-browser span.sb-btn:hover { background: var(--fill-2); color: var(--text); }
+#save-browser span.sb-btn.sb-btn-sm { padding: var(--space-2) var(--space-3); }
+#save-browser span.sb-btn.sb-btn-play { color: var(--text); border-color: var(--text-dim); }
+/* このパネルで唯一の「押すと今の状態が増える」操作 — 注目させるためオレンジを残す。 */
+#save-browser span#sb-capture-now {
+  background: var(--accent-fill-weak); color: var(--accent); border-color: var(--accent-edge);
+}
+#save-browser span#sb-capture-now:hover { background: var(--accent-fill); }
+#save-browser .sb-stage-tabs { display: flex; gap: var(--space-2); }
+#save-browser .sb-snapshot-groups { display: flex; flex-direction: column; gap: var(--space-2); }
+#save-browser .sb-snapshot-group-title { font-size: var(--font-xs); color: var(--text-dim); margin-top: var(--space-2); }
+#save-browser .sb-snapshot-list { display: flex; flex-direction: column; gap: var(--space-2); }
+#save-browser .sb-snap-card {
+  display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--edge); border-radius: var(--radius-m);
+}
+#save-browser .sb-snap-loadable { cursor: pointer; }
+#save-browser .sb-snap-loadable:hover { border-color: var(--text-dim); background: var(--fill-1); }
+#save-browser .sb-snap-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
+#save-browser .sb-snap-name { font-size: var(--font-s); }
+#save-browser .sb-snap-badge {
+  font-size: var(--font-xxs); letter-spacing: .5px; padding: 1px var(--space-3); border-radius: var(--radius-l);
+  border: 1px solid var(--edge); color: var(--text-dim);
+}
+#save-browser .sb-snap-badge-checkpoint { color: var(--text); border-color: var(--text-dim); }
+#save-browser .sb-snap-row { font-size: var(--font-xs); color: var(--text-dim); }
+/* HP バーは細く、満タンでもオレンジで塗らない — このパネルの主役はセーブ操作であって
+   HP 表示ではないため、他の注目要素と競合しないモノトーンに留める(danger 色も使わない)。 */
+#save-browser .sb-snap-hp-meter .w-meter-track { height: 3px; border-radius: var(--radius-s); }
+#save-browser .sb-snap-hp-meter .w-meter-fill { background: var(--text-dim); }
+#save-browser .sb-snap-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+/* クリップ済み(pin)状態だけは注目対象として残す — この行の意味は「消えずに残る」なので. */
+#save-browser span.sb-btn-pin.on {
+  background: var(--accent-fill-weak); color: var(--accent); border-color: var(--accent-edge);
+}
+#save-browser .sb-status { min-height: 20px; padding: var(--space-2) var(--space-5); font-size: var(--font-xs); color: var(--text-dim); border-top: 1px solid var(--edge); }
+#save-browser .sb-status.error { color: var(--danger); }
+`;
+
+let styleInjected = false;
+// セーブブラウザのスタイルシートを document.head へ一度だけ挿入する。
+function ensureStyle(): void {
+  if (styleInjected) return;
+  styleInjected = true;
+  const style = document.createElement('style');
+  style.textContent = STYLE;
+  document.head.appendChild(style);
+}
+
 // ステージ id を選択画面と同じ表示名にする。登録の無い id はそのまま出す。
 function stageLabel(stageId: string): string {
   return findStageClass(stageId)?.selectLabel ?? stageId;
@@ -50,6 +146,7 @@ export class SaveBrowser implements OverlayHandle {
     private readonly game: Game,
     private readonly overlayManager: OverlayManager,
   ) {
+    ensureStyle();
     this.el = document.createElement('div');
     this.el.id = 'save-browser';
     this.el.style.display = 'none';

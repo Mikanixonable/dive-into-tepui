@@ -9,6 +9,7 @@ import { clampOverlayPosition, Point2 } from './layout';
 import { shortcutKeyLabel } from './shortcut-hint';
 import { bringToFront as bringOverlayToFront } from './overlay-layer';
 import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from './dom';
+import { onViewportChange } from './viewport';
 import { Button, CloseButton, ValueInput } from './widgets';
 import type { OverlayHandle, OverlayManager, OverlaySpec } from './overlay-manager';
 
@@ -153,6 +154,7 @@ export class PropertyWindow<A extends string = string> implements OverlayHandle 
   private dragging = false;
 
   private readonly onResize: () => void;
+  private readonly unsubscribeViewport: () => void;
 
   // keepOpen はクリックした項目自身の PropertyWindowItem.keepOpen — 呼び出し側はこれを見て
   // 自動クローズを抑制するかを判断する(クリップ状態は別に呼び出し側が持つ)。
@@ -165,7 +167,7 @@ export class PropertyWindow<A extends string = string> implements OverlayHandle 
   onClipChange: ((clipped: boolean) => void) | null = null;
 
   // clientX/clientY を左上角として root の子として開き、content の内容で組み立てる。
-  // ヘッダ・行・操作項目の3段を構築してから DOM に追加し、resize のグローバルリスナを登録する。
+  // ヘッダ・行・操作項目の3段を構築してから DOM に追加し、viewport.ts のビューポート変化通知を購読する。
   // tempWindowGroup を渡すと、クリップされていない間だけ OverlayManager 上の排他グループに
   // 参加する一時ウィンドウになる(ESC・外側クリックで自動的に閉じ、同グループの他方も追い出す)。
   // 省略すると(例: 負荷確認ウィンドウ)ESC・外側クリックのどちらでも閉じない常設ウィンドウになる。
@@ -228,7 +230,7 @@ export class PropertyWindow<A extends string = string> implements OverlayHandle 
     root.appendChild(this.el);
 
     this.onResize = () => this.moveTo(this.el.offsetLeft, this.el.offsetTop);
-    window.addEventListener('resize', this.onResize);
+    this.unsubscribeViewport = onViewportChange(this.onResize);
 
     this.syncHeader(content.title, content.subtitle);
     this.syncRows(content.rows);
@@ -519,7 +521,7 @@ export class PropertyWindow<A extends string = string> implements OverlayHandle 
     if (this.disposed) return;
     this.disposed = true;
     this.overlayManager.close(this.overlayId);
-    window.removeEventListener('resize', this.onResize);
+    this.unsubscribeViewport();
     this.el.remove();
   }
 
