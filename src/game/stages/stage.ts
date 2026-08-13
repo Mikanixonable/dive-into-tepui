@@ -15,7 +15,7 @@ import type { EntityManager } from '../simulation/entity-manager';
 import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { SimSpeedManager } from '../sim-speed-manager';
-import type { ProjectFn, ScaleFn } from '../camera/camera-system';
+import type { CameraSystem } from '../camera/camera-system';
 import type { FloatingOrigin } from '../floating-origin';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -174,13 +174,13 @@ export abstract class Stage {
     location.replace(`${location.pathname}?stage=${this.id}`);
   }
 
-  // ステータスパネルを同期する。fo・project・scale・displayTime・camera は配置プレビューなど
+  // ステータスパネルを同期する。fo・displayTime・visibilityPolicy は配置プレビューなど
   // ステージ固有の描画物を持つサブクラスが使う。
   sync(
-    player: Player | null, _fo: FloatingOrigin, _project: ProjectFn, _scale: ScaleFn, _displayTime: number,
-    overviewMode: boolean, _visibilityPolicy: MapVisibilityPolicy | null, _camera: THREE.Camera,
+    player: Player | null, _fo: FloatingOrigin, cameraSystem: CameraSystem, _displayTime: number,
+    _visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
-    this.syncStatusPanel(player, overviewMode);
+    this.syncStatusPanel(player, cameraSystem.overviewMode);
   }
 
   // hudSubStatus() が null のとき、またはマップ視点のときはパネルを畳む。

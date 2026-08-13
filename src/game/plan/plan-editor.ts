@@ -16,7 +16,7 @@ import { fmtDist, fmtTime } from '../hud/utils';
 import { Sfx } from '../../audio/sfx';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { FloatingOrigin } from '../floating-origin';
-import type { ProjectFn, ScaleFn } from '../camera/camera-system';
+import type { CameraSystem } from '../camera/camera-system';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { AxisHandleSpec, NodeGizmo, NodeHandleSpec } from './node-gizmo';
@@ -768,13 +768,13 @@ export class PlanEditor {
   }
 
   // 計画折れ線を同期する。編集中はさらに操作 UI(TRAJECTORY パネル・ノードギズモ)も出す。
-  // camera は折れ線の解像度を決める画面上のサジッタを実距離へ換算するための描画カメラ。
-  sync(
-    mapDist: number, simTime: number, fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn,
-    overviewMode: boolean, cameraPos: Vec3, camera: THREE.Camera,
-  ): void {
+  sync(cameraSystem: CameraSystem, simTime: number, fo: FloatingOrigin): void {
+    const mapDist = cameraSystem.overviewCamera.dist;
     if (this.visiblePlan !== null) {
-      this.planDisplay.sync(fo, project, scale, overviewMode, cameraPos, camera);
+      this.planDisplay.sync(
+        fo, cameraSystem.activeCameraProjection, cameraSystem.activeCameraScale,
+        cameraSystem.overviewMode, cameraSystem.activeCameraPos, cameraSystem.activeCamera,
+      );
     }
     else {
       this.planDisplay.hide();

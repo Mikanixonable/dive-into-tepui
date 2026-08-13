@@ -14,7 +14,7 @@ import type { FloatingOrigin } from '../floating-origin';
 import { Vec3, add } from '../../physics/vec3';
 import { HudToggle } from '../hud/buttons';
 import { hudDock } from '../hud/dom';
-import type { ProjectFn, ScaleFn } from '../camera/camera-system';
+import type { CameraSystem, ProjectFn } from '../camera/camera-system';
 import { Ammo } from '../game-entity/ammo';
 import { Base } from '../game-entity/base';
 import { generateDriftingEnemy } from './spawner/enemy-generator';
@@ -94,13 +94,13 @@ export class CreativeStage extends Stage {
 
   // 共通のステータス表示に加えて、配置プレビューの軌道線とマーカーを同期する。
   sync(
-    player: Player | null, fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn, displayTime: number,
-    overviewMode: boolean, visibilityPolicy: MapVisibilityPolicy | null, camera: THREE.Camera,
+    player: Player | null, fo: FloatingOrigin, cameraSystem: CameraSystem, displayTime: number,
+    visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
-    super.sync(player, fo, project, scale, displayTime, overviewMode, visibilityPolicy, camera);
-    this.syncPreview(fo, project, camera);
+    super.sync(player, fo, cameraSystem, displayTime, visibilityPolicy);
+    this.syncPreview(fo, cameraSystem.activeCameraProjection, cameraSystem.activeCamera);
     this.placerPanel.setIssues(this.issues);
-    this.logisticsPanel.style.display = overviewMode ? 'block' : 'none';
+    this.logisticsPanel.style.display = cameraSystem.overviewMode ? 'block' : 'none';
   }
 
   // 艦艇配置モーダルを開く (MapPicker から呼ばれる)。focusId はマップの現在フォーカスで、
