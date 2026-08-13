@@ -48,7 +48,7 @@ export class Stage00 extends Stage {
 
   // 敵の行動・補給・波状攻撃の更新を行う。
   update(dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
-    if (!this.isPlaying || !player) return;
+    if (!player) return;
 
     this.behaveAllEnemies(dt, player, entities, simTime, simSpeed);
     this.logistics.updateLogistics(simTime, player, simSpeed, true);

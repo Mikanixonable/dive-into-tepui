@@ -48,8 +48,8 @@
 `update` は一本の線形フローで、艦の有無は経路の分岐ではなく `advanceSimulation`/`handlePointerInput`
 内部の条件付きブロックとして表現される(早期 return の重複はない)。ステージの決着状態
 (`activeStage.isPlaying`)はこの2関数のどちらの分岐にも現れない — 決着後も操作艦の `behave`・
-ポインタ入力は通常どおり届く。各具体ステージ自身の `update`(§ advanceSimulation 内)はその内部で
-`isPlaying` を見て自分で早期 return する。
+ポインタ入力・各具体ステージ自身の `update`(§ advanceSimulation 内)は通常どおり続く。各具体
+ステージの `update` は艦の有無だけを見て自分で早期 return する。
 
 - game.update(dtRaw)
   - sections.enter(SECTION.input)
@@ -183,7 +183,7 @@
   - nanWatchdog.checkPlayer('player.behave')
   - sections.exit(SECTION.player)
   - sections.enter(SECTION.stage)
-  - activeStage.update() // 具体ステージへディスパッチ。各具体ステージが isPlaying/艦の有無を自分で見て内部で即 return する
+  - activeStage.update() // 具体ステージへディスパッチ。各具体ステージが艦の有無を自分で見て内部で即 return する(決着後も進む)
     - behaveAllEnemies() // 敵を配置する具体ステージ(Stage0/00/1/2)が先頭で呼ぶ。CreativeStage は player があるときに限り、logistics.updateLogistics の直後で呼ぶ(既存敵の AI は waveAttackEnabled トグルの有無によらず常に進む)
       - enemy.behave() // 生存中の敵ごと(canShipAct・距離・バースト状態の判定は behave 内部)
         - firePlasma() → entities.addBullet()
