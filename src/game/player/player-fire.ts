@@ -22,6 +22,15 @@ import type { FireSaveData } from '../save-data';
 
 export type ConsumeResult = 'empty' | 'normal' | 'mag-reload' | 'barrel-reload';
 
+// 艦の初期積載(予備マガジン数・装填済み残弾数)。
+export type AmmoLoad = { readonly mags: number; readonly rounds: number };
+
+// スナップショットからの復元か、新規配置の初期積載か。どちらも省略すればフィールド初期化子の
+// 既定積載で始まる。
+export type FireInit =
+  | { readonly saved: FireSaveData }
+  | { readonly ammo?: AmmoLoad };
+
 // 太陽グレアによる散布界の倍率。逆光(照準方向に太陽がある)ほど狙いが甘くなり、
 // 順光では締まる。難易度調整のための経験則であって物理計算ではない。
 // pos が地球の影(簡易円柱モデル)に入っていれば太陽光が届かないので倍率は 1。
@@ -53,30 +62,23 @@ export class PlayerFire {
     private readonly _sfx: Sfx,
     private readonly _scene: THREE.Scene,
     private readonly _fx: EffectsSystem,
-    saved?: FireSaveData,
+    init: FireInit = {},
   ) {
-    if (saved) {
-      this.mags = saved.mags;
-      this.rounds = saved.rounds;
-      this.barrel = saved.barrel;
-      this.cooldown = saved.cooldown;
-      this.muzzleIdx = saved.muzzleIdx;
+    if ('saved' in init) {
+      this.mags = init.saved.mags;
+      this.rounds = init.saved.rounds;
+      this.barrel = init.saved.barrel;
+      this.cooldown = init.saved.cooldown;
+      this.muzzleIdx = init.saved.muzzleIdx;
+    } else if (init.ammo) {
+      this.mags = init.ammo.mags;
+      this.rounds = init.ammo.rounds;
     }
   }
 
   get isFiring(): boolean { return this.wasFiring; }
 
   get left(): boolean { return this.rounds > 0 || this.mags > 0; }
-
-  // 弾薬状態を指定のマガジン数・残弾数にリセットする。
-  initAmmo(mags: number, rounds: number): void {
-    this.mags = mags;
-    this.rounds = rounds;
-    this.barrel = C.MAGS_PER_BARREL;
-    this.cooldown = 0;
-    this.wasEmptyClick = false;
-    this.wasFiring = false;
-  }
 
   serialize(): FireSaveData {
     return {
