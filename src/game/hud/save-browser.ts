@@ -8,7 +8,7 @@ import { exportSlotToFile, pickAndImportSlot } from '../save/save-transfer';
 import type { SaveSlotMeta, SnapshotMeta } from '../save-data';
 import { fmtDist, fmtSpeed, fmtTime, fmtDateTime } from './utils';
 import { celestialBodyName } from './frame-labels';
-import type { ModalController } from './modal-controller';
+import type { OverlayHandle, OverlayManager } from './overlay-manager';
 import { findStageClass } from '../stages/stage-dictionary';
 import { Button, CloseButton, Meter, TabBar } from './widgets';
 
@@ -27,7 +27,7 @@ const SNAPSHOT_KIND_LABEL: Record<SnapshotMeta['kind'], string> = {
   auto: '自動', manual: '手動', checkpoint: '決着',
 };
 
-export class SaveBrowser {
+export class SaveBrowser implements OverlayHandle {
   private readonly el: HTMLElement;
   private _visible = false;
   // 一覧で選んで「見ている」スロット。アクティブスロット(実際に遊んでいるもの)とは独立。
@@ -48,7 +48,7 @@ export class SaveBrowser {
     private readonly slots: SaveSlots,
     private readonly service: SnapshotService,
     private readonly game: Game,
-    private readonly modalController: ModalController,
+    private readonly overlayManager: OverlayManager,
   ) {
     this.el = document.createElement('div');
     this.el.id = 'save-browser';
@@ -66,14 +66,20 @@ export class SaveBrowser {
     this.el.style.display = 'flex';
     this._visible = true;
     this.game.pause();
-    this.modalController.setOpen('save-browser', true);
+    this.overlayManager.open('save-browser', this, {
+      kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: true, exclusiveGroup: 'system-modal',
+    });
   }
 
   close(): void {
     this.el.style.display = 'none';
     this._visible = false;
     this.game.resume();
-    this.modalController.setOpen('save-browser', false);
+    this.overlayManager.close('save-browser');
+  }
+
+  contains(target: Node): boolean {
+    return this.el.contains(target);
   }
 
   private setStatus(text: string, isError: boolean): void {

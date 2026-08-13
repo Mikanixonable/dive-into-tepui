@@ -357,6 +357,30 @@ THREE 非依存かつ純粋であっても、次のものは `physics/` に置�
   ある**ので `Game` を丸ごと読んでよい。ただし**表示専用**であること(他モジュールの状態や
   DOM を書き換えないこと)は維持する。
 
+### ESC・項目ショートカット・外側クリック・入力ゲートの正本は `OverlayManager` 1箇所
+
+**個々のオーバーレイ(モーダル/ポップアップ/ウィンドウ)は自分で `window` の `keydown` も
+`document` の `pointerdown` も張ってはいけない。** `hud/overlay-manager.ts` の `OverlayManager`
+が唯一の台帳で、`kind`/`closeOnEscape`/`closeOnOutsideClick`/`gatesInput`/`exclusiveGroup` を
+登録時に宣言し、`open`/`close`/`reconfigure` を自分自身に対して呼ぶだけにする(`OverlayHandle`
+= `contains`/`close`、加えて項目ショートカットを持つオーバーレイだけが任意の `handleShortcut`
+を実装する)。ESC は `Game.handleInput` が `Input` のエッジキュー経由で取った1回だけを
+`OverlayManager.closeTopmostOnEscape()` へそのまま渡す — 個々のオーバーレイが `window` へ
+直付けした瞬間、`Input` の先着順消費と同じフレームで競合し、どちらが先に見えるかが生成順に
+依存してしまう。項目ショートカット(`[F]`等のヒントを出す項目)も同じ理由で、`Game.handleInput`
+が `Input.takeKeys` 経由で1フレーム分の未消費キーを `OverlayManager.dispatchShortcut(code)` へ
+そのまま渡す — `closeTopmostOnEscape` と同じ「最前面から順に、対応できるものが見つかるまで
+下へ通す」形で配送し、`handleShortcut` を実装しない/一致しないハンドルは透過して1つ下へ渡る
+(クリップ中の `PropertyWindow` は常に `false` を返すので、複数開いていても一時ウィンドウ1枚だけが
+実際に受け取る)。外側クリックも同じ理由で `OverlayManager` の1本のキャプチャリスナへ集約する。
+例外は**入力欄フォーカス中の element-level `keydown`** だけ(`widgets/value-input.ts` の
+`ValueInput` — Enter/Escape/blur。フォーカスがある要素の `keydown` は伝播を自分で止めるので
+`Input` のエッジキューには届かず、競合しない)— それでも `dispatchShortcut` 自身は
+`document.activeElement` を見て独立にテキスト入力中を弾く、後から入力欄以外の経路が増えても
+崩れない側の安全策として。「同じ対象への操作は常に同じ種類の UI で受ける」(例: 右クリックは
+ビューを問わず `PropertyWindow`)も、この一元化の一部として扱う — ビューごとに別のポップアップ
+実装を持たない。
+
 ### 入力欄は必ず `keydown` の伝播を止める
 
 `input/input.ts` の `Input` は `window` でキー入力を購読しているので、**HUD の入力欄で

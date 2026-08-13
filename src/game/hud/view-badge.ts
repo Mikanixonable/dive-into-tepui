@@ -1,5 +1,6 @@
 import type { ViewId, ViewManager } from '../view-manager';
 import { ContextMenu, MenuItem } from './context-menu';
+import type { OverlayManager } from './overlay-manager';
 import { Button } from './widgets';
 import packageJson from '../../../package.json';
 
@@ -23,8 +24,11 @@ export class ViewBadge {
   private readonly menu: ContextMenu<true, ViewId>;
 
   // バッジの DOM を root へ、遷移メニューを popupLayer へ組み立てて配線する。
-  constructor(root: HTMLElement, popupLayer: HTMLElement, private readonly viewManager: ViewManager) {
-    this.menu = new ContextMenu<true, ViewId>(popupLayer);
+  constructor(
+    root: HTMLElement, popupLayer: HTMLElement, private readonly viewManager: ViewManager,
+    overlayManager: OverlayManager,
+  ) {
+    this.menu = new ContextMenu<true, ViewId>(popupLayer, overlayManager);
     // タイトル・モード名・ビュー切替ボタンの3つを横に並べる。
     const badge = document.createElement('div');
     badge.id = 'hud-viewbadge';

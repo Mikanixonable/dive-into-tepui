@@ -12,8 +12,6 @@ import { Sfx } from '../audio/sfx';
 import { Input, PointerPoint } from './input/input';
 import { ProjectFn, ScaleFn } from './camera/camera-system';
 import type { GroupedMarkerItem } from './marker/grouped-markers';
-import { ContextMenu, MenuItem } from './hud/context-menu';
-import { MenuAction, MenuCommon } from './hud/menu-actions';
 import { MarkerManager } from './marker/marker-manager';
 import { DIRECTION_GLYPH } from './marker/marker-glyphs';
 import { FloatingOrigin } from './floating-origin';
@@ -22,7 +20,6 @@ import { pickRadiusSq } from './input/pointer-precision';
 import type { Ephemeris } from '../physics/ephemeris';
 import type { DisplayWindow } from './display-window-manager';
 import { KEY_MAPPING as K } from './input/key-mapping';
-import type { SettingsPanel } from './hud/settings-panel';
 import type { MapVisibilityPolicy } from './celestial/map-visibility';
 
 export type CombatTarget = Enemy | Player;
@@ -35,7 +32,7 @@ export class Targeter {
   private readonly aliveScratch: CombatTarget[] = [];
   private readonly markerItemScratch: GroupedMarkerItem[] = [];
 
-  // 唯一の真実。右クリックメニューでのみ変わり、自動選定・自動再選択は行わない。
+  // 唯一の真実。右クリックのプロパティウィンドウでのみ変わり、自動選定・自動再選択は行わない。
   target: CombatTarget | null = null;
   secondaryTarget: CombatTarget | null = null;
   private targetSelectAt = -Infinity;
@@ -52,27 +49,13 @@ export class Targeter {
   // 第二ターゲットのハイライト線(シアン)。第一より薄い renderOrder に置く。
   readonly secondaryOrbitLine = new OrbitLine(ACCENT_SECONDARY, 0.9, C.LINE_RENDER_ORDER.secondaryTarget);
 
-  private readonly contextMenu: ContextMenu<CombatTarget>;
-  // ターゲットに当たらなかった右クリック(何もない箇所)向けのメニュー。実体を持たない
-  // 対象なので ViewBadge と同じ形で true を的替わりに使う。
-  private readonly emptySpaceMenu: ContextMenu<true, MenuAction>;
-
   // sfx は現状未使用だが、hud/sfx は必ず対で注入する方針のため受け取る(フィールドとしては保持しない)。
   constructor(
     private readonly _hud: Hud, _sfx: Sfx, private readonly markerManager: MarkerManager,
-    scene: THREE.Scene, private readonly settingsPanel: SettingsPanel,
+    scene: THREE.Scene,
   ) {
-    this.contextMenu = new ContextMenu<CombatTarget>(_hud.layers.popup);
-    this.emptySpaceMenu = new ContextMenu<true, MenuAction>(_hud.layers.popup);
     scene.add(this.secondaryOrbitLine.line);
     scene.add(this.orbitLine.line);
-    this.contextMenu.onSelect = (act, picked) => {
-      if (act === 'primary') this.setTarget(this.target === picked ? null : picked);
-      else if (act === 'secondary') this.setSecondaryTarget(this.secondaryTarget === picked ? null : picked);
-    };
-    this.emptySpaceMenu.onSelect = (act) => {
-      if (act === 'openSettings') this.settingsPanel.toggle(true);
-    };
   }
 
   // 生存判定込みの現在の第一ターゲット。撃破後は target を保持したままにせず、ここで
@@ -100,14 +83,10 @@ export class Targeter {
     if (this.secondaryTarget === entity) this.secondaryTarget = null;
   }
 
-  // 右クリックによるターゲット選択メニューを扱う。オート選定は行わない。
-  updateCombatTargeting(targets: CombatTarget[], input: Input, project: ProjectFn): void {
-    this.handleTargetSelectKey(input, targets, project);
-    this.handleTargetContextMenu(input, targets, project);
-  }
-
   // Tキーで照準中心に近い敵を選ぶ。連打(2秒以内)では第二ターゲット候補を順送りする。
-  private handleTargetSelectKey(input: Input, targets: CombatTarget[], project: ProjectFn): void {
+  // オート選定は行わない — 右クリックでの設定/解除は MapPicker が開くプロパティウィンドウの
+  // 項目(targetPrimary/targetSecondary)から setPrimaryTarget/setSecondaryTarget を呼ぶ。
+  handleTargetSelectKey(input: Input, targets: CombatTarget[], project: ProjectFn): void {
     if (!input.takeKey(K.targetSelect)) return;
     const now = performance.now() / 1000;
     const candidates = targets
@@ -123,7 +102,7 @@ export class Targeter {
     const primary = this.aliveTarget;
     if (!primary) {
       const next = candidates[0]?.target ?? null;
-      this.setTarget(next);
+      this.setPrimaryTarget(next);
       this.targetSelectIndex = -1;
       this.targetSelectAt = now;
       return;
@@ -281,47 +260,23 @@ export class Targeter {
     this.markerManager.setDirection('atgdir', 'mk-tgtdir', DIRECTION_GLYPH.antiTarget, player.state.r, scale(tgtDir, -1), project);
   }
 
-  // 戦闘ビューの右クリックは射撃と兼用。移動量が閾値内(input.ts が判定済み)の
-  // 右クリックが敵に当たった場合だけ、その敵を対象にコンテキストメニューを開く。
-  // 外れたクリックは消費するだけで何もしない(自動選定・自動解除は行わない)。
-  private handleTargetContextMenu(input: Input, targets: CombatTarget[], project: ProjectFn): void {
-    input.takeRightClicks((click) => {
-      const picked = this.pickTargetAt(click, targets, project);
-      if (picked) this.openMenu(click, picked);
-      else this.emptySpaceMenu.open(click.x, click.y, true, [
-        { label: '設定メニューを開く', act: 'openSettings' },
-        MenuCommon.cancel(),
-      ]);
-      return true;
-    });
-  }
-
   // クリック位置の許容半径内で画面上最も近い生存ターゲットを返す。範囲外なら null。
-  private pickTargetAt(click: PointerPoint, targets: CombatTarget[], project: ProjectFn): CombatTarget | null {
+  // MapPicker の戦闘ビュー右クリック(プロパティウィンドウを開く対象探し)が読む。
+  pickTargetAt(click: PointerPoint, targets: readonly CombatTarget[], project: ProjectFn): CombatTarget | null {
     const pickables = targets.filter((e) => e.alive).map((target) => ({ pos: target.state.r, target }));
     const picked = pickNearest(pickables, click.x, click.y, project, pickRadiusSq(C.TARGET_LOCK_PICK_PX_SQ, C.TARGET_LOCK_PICK_PX_SQ_COARSE));
     return picked?.target ?? null;
   }
 
-  // picked を対象に、現在の第一/第二設定に応じたラベルでメニューを開く。
-  private openMenu(click: PointerPoint, picked: CombatTarget): void {
-    const items: MenuItem[] = [
-      { label: picked === this.target ? 'ターゲット解除' : 'ターゲットに設定', act: 'primary' },
-      { label: picked === this.secondaryTarget ? '第二ターゲット解除' : '第二ターゲットに設定', act: 'secondary' },
-      { label: 'キャンセル', act: 'cancel' },
-    ];
-    this.contextMenu.open(click.x, click.y, picked, items);
-  }
-
   // 第一ターゲットを設定する。同じ個体が第二ターゲットなら外す(両方兼務を禁止)。
-  private setTarget(t: CombatTarget | null): void {
+  setPrimaryTarget(t: CombatTarget | null): void {
     if (t && this.secondaryTarget === t) this.secondaryTarget = null;
     this.target = t;
     this._hud.hint(t ? `ターゲット固定: ${t.name}` : 'ターゲット固定解除');
   }
 
   // 第二ターゲットを設定する。同じ個体が第一ターゲットなら外す(両方兼務を禁止)。
-  private setSecondaryTarget(t: CombatTarget | null): void {
+  setSecondaryTarget(t: CombatTarget | null): void {
     if (t && this.target === t) this.target = null;
     this.secondaryTarget = t;
     this._hud.hint(t ? `第二ターゲット固定: ${t.name}` : '第二ターゲット固定解除');

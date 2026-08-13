@@ -197,7 +197,7 @@ function startAnimationLoop(
 function initHud(): { hud: Hud; sfx: Sfx; settingsPanel: SettingsPanel } {
   const hud = new Hud();
   const sfx = new Sfx();
-  const settingsPanel = new SettingsPanel(hud.layers.system, hud.modalController);
+  const settingsPanel = new SettingsPanel(hud.layers.system, hud.overlayManager);
   settingsPanel.setBgmVolume(sfx.getBgmVolume());
   settingsPanel.onBgmVolumeChange = (vol) => sfx.setBgmVolume(vol);
   // 「ゲームを中断してタイトル画面に戻る」— ?title=1 を付けて選択画面へ強制する
@@ -267,7 +267,7 @@ async function main() {
   );
   if (activeSlotId !== null) slots.noteLaunch(activeSlotId, game.activeStage.id);
 
-  const saveBrowser = new SaveBrowser(hud.layers.system, slots, snapshotService, game, hud.modalController);
+  const saveBrowser = new SaveBrowser(hud.layers.system, slots, snapshotService, game, hud.overlayManager);
   saveBrowser.onSlotSwitched = () => location.assign(location.pathname);
   // スナップショットのロードは別のゲームを始めることなので、ページごと作り直す。
   saveBrowser.onLoadSnapshot = (id) => {
@@ -284,7 +284,7 @@ async function main() {
     if (open) game.pause();
     else game.resume();
   };
-  const perf = new PerfMeter(game, hud.layers.window, gs.renderer, sections);
+  const perf = new PerfMeter(game, hud.layers.window, gs.renderer, sections, hud.overlayManager);
   game.setPerfMeter(perf);
   // 負荷確認ウィンドウは非モーダルなので、設定メニューを閉じてから前面へ出すだけ。
   settingsPanel.onOpenPerfWindow = () => {

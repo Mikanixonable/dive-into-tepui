@@ -138,7 +138,7 @@ export class Game {
     );
     this.simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
 
-    this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene, this.settingsPanel);
+    this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene);
     this.navTarget = new NavTarget(this._hud, this.markerManager);
     this.navball = new Navball(this._hud.layers.panel);
     this._environment = new EnvironmentScene(this._scene, this.ephemeris, initialSave?.earthSpinPhase0);
@@ -191,10 +191,10 @@ export class Game {
       this.entities, this.mapPicker, this.cameraSystem, this.viewManager,
     );
     this.mapPicker.setDocking(this.docking);
-    this.viewBadge = new ViewBadge(this._hud.layers.notify, this._hud.layers.popup, this.viewManager);
+    this.viewBadge = new ViewBadge(this._hud.layers.notify, this._hud.layers.popup, this.viewManager, this._hud.overlayManager);
     this.frameControls = new FrameControls(
       this._hud.layers.panel, this._hud.layers.popup, this.ephemeris, this.cameraSystem.overviewCamera,
-      this.displayWindowManager,
+      this.displayWindowManager, this._hud.overlayManager,
     );
 
     // 暫定値: cameraSystem はまだ update() を経ていないため activeCameraPos が定まらない。
@@ -317,7 +317,7 @@ export class Game {
   // ESC メニュー等が開いていないときだけ配る(背景の誤操作を防ぐ)。
   private handleMapPointerInput(dt: number): void {
     if (!this.activeStage.isPlaying) return;
-    if (this._isPaused && this._hud.modalController.isOpen) return;
+    if (this._isPaused && this._hud.overlayManager.isOverlayOpen('settings')) return;
     if (this.editor.editMode) {
       this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
       this.mapPicker.handleLeftClick(this.input);
@@ -326,10 +326,11 @@ export class Game {
       this.mapPicker.handleEmptySpaceRightClick(this.input, this.simulator.simTime);
       this.editor.updateEditing(dt, this.input);
     } else if (!this._isPaused && this.player) {
+      const combatTargets = this.entities.getCombatTargets(this.player);
+      this.targeter.handleTargetSelectKey(this.input, combatTargets, this.cameraSystem.activeCameraProjection);
       this.navTarget.updateCombatBasePicking(this.entities, this.input, this.cameraSystem.activeCameraProjection);
-      this.targeter.updateCombatTargeting(
-        this.entities.getCombatTargets(this.player), this.input,
-        this.cameraSystem.activeCameraProjection,
+      this.mapPicker.handleCombatRightClick(
+        this.input, combatTargets, this.cameraSystem.activeCameraProjection, this.simulator.simTime,
       );
     }
   }
@@ -372,9 +373,14 @@ export class Game {
   // どのキー/クリックが何をするかは各モジュールが持つ。ここで配るのは、決着後・ポーズ中も
   // 効くべき操作(設定・ヘルプ・再出撃・ワープ・マップ開閉・計画破棄)。
   private handleInput(): void {
+    // ESC の持ち主はここ一箇所だけ: 開いているオーバーレイがあれば最前面を閉じ、
+    // 何も無ければ一時停止メニューを開く。個々のオーバーレイの開閉判断は持たない。
+    if (this.input.takeKey(K.pauseMenu)) {
+      if (!this._hud.overlayManager.closeTopmostOnEscape()) this.settingsPanel.toggle(true);
+    }
+    // オーバーレイの項目ショートカット([F]等)も同じ優先度で最前面へ配送する。
+    this.input.takeKeys((code) => this._hud.overlayManager.dispatchShortcut(code));
     // 上から下へ優先順位順に呼ぶ。
-    this.docking.handleInput(this.input);
-    this.settingsPanel.handleInput(this.input);
     this._hud.handleInput(this.input);
     this.activeStage.handleInput(this.input);
     this.simSpeedManager.handleInput(

@@ -6,8 +6,9 @@ import { SettingsPanel } from './game/hud/settings-panel';
 import { SaveBrowser } from './game/hud/save-browser';
 import { SnapshotService } from './game/save/snapshot-service';
 
-// F5(クリップ)/F9(一覧開閉)/一覧表示中のEscの入力を担う。main.ts が rAF ループから
-// Game.update の後に呼ぶ — その回で Game 側が消費しなかった入力エッジだけが残っている。
+// F5(クリップ)/F9(一覧開閉)の入力を担う。一覧表示中の Esc は OverlayManager の登録経由で
+// 閉じるので、ここでは扱わない。main.ts が rAF ループから Game.update の後に呼ぶ —
+// その回で Game 側が消費しなかった入力エッジだけが残っている。
 export class SnapshotControls {
   constructor(
     private readonly hud: Hud,
@@ -17,13 +18,6 @@ export class SnapshotControls {
   ) {}
 
   handleInput(input: Input, game: Game): void {
-    // スナップショット一覧を開いている間は、その閉じるキーとして [Esc] を先に取る
-    // (設定メニューが上に重なるのを防ぐ)。
-    if (this.browser.visible && input.takeKey(K.pauseMenu)) {
-      this.browser.close();
-      return;
-    }
-
     if (input.takeKey(K.clipSnapshot)) {
       // 決着後の phase(won/lost/timeup)は復元する経路を持たない — 復元は phase を
       // そのまま代入するだけで結果画面を出し直さず、Game.update は isPlaying でない限り

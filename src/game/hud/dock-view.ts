@@ -93,6 +93,7 @@ export class DockView {
   onClose: (() => void) | null = null;
 
   get visible(): boolean { return this._visible; }
+  get element(): HTMLElement { return this.el; }
 
   constructor(root: HTMLElement) {
     this.el = document.createElement('div');

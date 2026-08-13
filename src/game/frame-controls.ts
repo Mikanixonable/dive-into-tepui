@@ -15,6 +15,7 @@ import { hudDock } from './hud/dom';
 import { TEXT_DIM } from './theme';
 import type { MapPickable } from './map-pick';
 import type { DisplayWindowManager } from './display-window-manager';
+import type { OverlayManager } from './hud/overlay-manager';
 
 const STYLE = `
 #hud .frame-section { margin-top: 8px; }
@@ -66,6 +67,7 @@ export class FrameControls {
     private readonly ephemeris: Ephemeris,
     private readonly overviewCamera: OverviewCamera,
     private readonly displayWindow: DisplayWindowManager,
+    overlayManager: OverlayManager,
   ) {
     ensureStyle();
     this.panel = document.createElement('div');
@@ -77,7 +79,7 @@ export class FrameControls {
     this.panel.appendChild(title);
 
     const cameraSection = buildSection(this.panel, 'カメラ(視点)');
-    this.cameraCenterZone = new AnchorZone(popupRoot, '基準にする天体', ephemeris, '固定を解除');
+    this.cameraCenterZone = new AnchorZone(popupRoot, '基準にする天体', ephemeris, '固定を解除', overlayManager);
     this.cameraCenterZone.element.classList.add('hud-frame-scroll-zone', 'hud-frame-origin-zone');
     this.cameraCenterZone.onSelect = (id) => this.selectCameraCenter(id);
     cameraSection.appendChild(this.cameraCenterZone.element);
@@ -90,7 +92,7 @@ export class FrameControls {
     const planSection = buildSection(this.panel, '軌道計画(描画基準)');
     // 描く線は必ずどこかの座標系に焼き込まれるので「どこにも固定しない」状態が無く、
     // 太陽系空間への固定はプルダウンの恒星そのものにあたる。
-    this.planCenterZone = new AnchorZone(popupRoot, '基準にする天体', ephemeris, null);
+    this.planCenterZone = new AnchorZone(popupRoot, '基準にする天体', ephemeris, null, overlayManager);
     this.planCenterZone.element.classList.add('hud-frame-scroll-zone', 'hud-frame-origin-zone');
     this.planCenterZone.onSelect = (id) => {
       if (id === null) return;

@@ -3,7 +3,8 @@ import * as C from '../const';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { injectThemeVariables } from '../theme';
 import { buildOverlayLayers, OVERLAY_LAYER_STYLE, type OverlayLayers } from './overlay-layer';
-import { ModalController } from './modal-controller';
+import { OverlayManager } from './overlay-manager';
+import { HelpPanel } from './help-panel';
 import { buildCollapseToggle, WIDGET_STYLE, type CollapseToggleLabels } from './widgets';
 export {
   buildCollapseToggle,
@@ -45,9 +46,9 @@ ${OVERLAY_LAYER_STYLE}
 #hud .mk-ammo { z-index: 2; }
 #hud .mk-enemy, #hud .mk-target, #hud .mk-secondary-target { z-index: 3; }
 #hud .mk-self { z-index: 4; }
-#hud-modal-shield { display: none; position: absolute; inset: 0; pointer-events: none; background: var(--shade-1); }
-body.hud-modal-open #hud-modal-shield { display: block; }
-body.hud-modal-open #touch-ui { display: none; }
+#hud-overlay-shield { display: none; position: absolute; inset: 0; pointer-events: none; background: var(--shade-1); }
+body.hud-overlay-modal-open #hud-overlay-shield { display: block; }
+body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud .panel {
   position: absolute; background: var(--surface);
   border: 1px solid var(--edge); border-radius: var(--radius-m);
@@ -723,7 +724,8 @@ export interface HudDomRefs {
   root: HTMLElement;
   layers: OverlayLayers;
   svgOverlay: SVGSVGElement;
-  modalController: ModalController;
+  overlayManager: OverlayManager;
+  helpPanel: HelpPanel;
   els: Map<string, HTMLElement>;
 }
 
@@ -846,8 +848,8 @@ function buildChaseReset(root: HTMLElement): void {
   chaseReset.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>`;
 }
 
-// 全操作の説明表([H]で開閉するヘルプパネル)を組む。
-function buildHelpPanel(root: HTMLElement): void {
+// 全操作の説明表([H]で開閉するヘルプパネル)の DOM を組む。開閉状態自体は HelpPanel が持つ。
+function buildHelpPanel(root: HTMLElement): HTMLElement {
   const help = el('div', 'hud-help', root, 'panel');
   // キーと説明を1行ずつ対応させた表。
   help.innerHTML = `
@@ -903,6 +905,7 @@ function buildHelpPanel(root: HTMLElement): void {
       <tr><td class="key">矢印キー (${K.cameraYawLeft.label}${K.cameraYawRight.label}${K.cameraPitchUp.label}${K.cameraPitchDown.label})</td><td>マウスの代わりにキーボードで視点回転</td></tr>
       <tr><td class="key">${K.pauseMenu.label}</td><td>一時停止メニュー (設定 / タイトルへ戻る)</td></tr>
     </table>`;
+  return help;
 }
 
 // data-id 属性を持つ要素を、その id をキーにした Map にまとめて返す。
@@ -931,16 +934,17 @@ export function buildHudDom(): HudDomRefs {
   buildInfoPanels(layers.panel, rightDock);
   buildGlobalStatus(layers.panel);
   buildChaseReset(layers.panel);
-  const modalShield = el('div', 'hud-modal-shield', layers.notify);
-  const modalController = new ModalController(modalShield, layers.notify);
+  const overlayShield = el('div', 'hud-overlay-shield', layers.notify);
+  const overlayManager = new OverlayManager(overlayShield, layers.notify);
 
   el('div', 'hud-hint', layers.notify);
   el('div', 'hud-toast', layers.notify);
 
-  buildHelpPanel(layers.system);
+  const helpEl = buildHelpPanel(layers.system);
+  const helpPanel = new HelpPanel(helpEl, overlayManager);
 
   el('div', 'hud-end', layers.system);
 
   const els = collectDataIdElements(root);
-  return { root, layers, svgOverlay, modalController, els };
+  return { root, layers, svgOverlay, overlayManager, helpPanel, els };
 }

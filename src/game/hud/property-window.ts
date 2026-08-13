@@ -10,6 +10,7 @@ import { shortcutKeyLabel } from './shortcut-hint';
 import { bringToFront as bringOverlayToFront } from './overlay-layer';
 import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from './dom';
 import { Button, CloseButton, ValueInput } from './widgets';
+import type { OverlayHandle, OverlayManager, OverlaySpec } from './overlay-manager';
 
 const STYLE = `
 #hud .prop-window {
@@ -114,8 +115,10 @@ export interface PropertyWindowContent<A extends string = string> {
   readonly onRename?: (name: string) => void;
 }
 
-export class PropertyWindow<A extends string = string> {
+export class PropertyWindow<A extends string = string> implements OverlayHandle {
   private static readonly UNSET = Symbol('unset');
+  private static nextId = 0;
+  private readonly overlayId: string;
   private readonly el: HTMLDivElement;
   private readonly titleMainEl: HTMLDivElement;
   private readonly titleSubEl: HTMLDivElement;
@@ -149,24 +152,28 @@ export class PropertyWindow<A extends string = string> {
   private dragStartWindowPos: Point2 = { x: 0, y: 0 };
   private dragging = false;
 
-  private readonly onOutsidePointerDown: (e: PointerEvent) => void;
   private readonly onResize: () => void;
 
   // keepOpen はクリックした項目自身の PropertyWindowItem.keepOpen — 呼び出し側はこれを見て
   // 自動クローズを抑制するかを判断する(クリップ状態は別に呼び出し側が持つ)。
   onSelect: ((act: A, keepOpen: boolean) => void) | null = null;
-  // ✕ ボタンで閉じられた(dispose 済み)ことを呼び出し側の管理台帳へ知らせる。
+  // 閉じられた(dispose 済み)ことを呼び出し側の管理台帳へ知らせる。ESC・外側クリック・
+  // ✕ ボタンのどの経路で閉じても等しく発火する。
   onClose: (() => void) | null = null;
-  // ウィンドウ外での pointerdown を通知するのみで、閉じる/閉じないの判断は呼び出し側が行う。
-  onOutsideClick: (() => void) | null = null;
-  // クリップボタンで状態が反転したことを通知する。一時ウィンドウの台帳(高々1枚)は
-  // 呼び出し側が持つので、その入れ替えは通知を受けて呼び出し側が行う。
+  // クリップボタンで状態が反転したことを通知する。呼び出し側が状態に応じた見た目の
+  // 追従(一覧の表示等)を行うためだけの通知で、排他は overlayManager 自身が持つ。
   onClipChange: ((clipped: boolean) => void) | null = null;
 
   // clientX/clientY を左上角として root の子として開き、content の内容で組み立てる。
-  // ヘッダ・行・操作項目の3段を構築してから DOM に追加し、外側クリック/resize の
-  // グローバルリスナを登録する。
-  constructor(root: HTMLElement, clientX: number, clientY: number, content: PropertyWindowContent<A>) {
+  // ヘッダ・行・操作項目の3段を構築してから DOM に追加し、resize のグローバルリスナを登録する。
+  // tempWindowGroup を渡すと、クリップされていない間だけ OverlayManager 上の排他グループに
+  // 参加する一時ウィンドウになる(ESC・外側クリックで自動的に閉じ、同グループの他方も追い出す)。
+  // 省略すると(例: 負荷確認ウィンドウ)ESC・外側クリックのどちらでも閉じない常設ウィンドウになる。
+  constructor(
+    root: HTMLElement, clientX: number, clientY: number, content: PropertyWindowContent<A>,
+    private readonly overlayManager: OverlayManager, private readonly tempWindowGroup?: string,
+  ) {
+    this.overlayId = `prop-window-${PropertyWindow.nextId++}`;
     ensureStyle();
     this.el = document.createElement('div');
     this.el.className = 'prop-window';
@@ -197,10 +204,7 @@ export class PropertyWindow<A extends string = string> {
     this.clipBtn.element.setAttribute('aria-label', 'クリップ');
 
     // ✕ は他の3窓(格納庫/セーブブラウザ/設定)と同じ見た目に統一する。
-    const closeBtn = new CloseButton(() => {
-      this.dispose();
-      this.onClose?.();
-    });
+    const closeBtn = new CloseButton(() => this.close());
 
     header.appendChild(title);
     if (renameBtn) header.appendChild(renameBtn.element);
@@ -223,21 +227,45 @@ export class PropertyWindow<A extends string = string> {
     this.el.addEventListener('contextmenu', (e) => e.preventDefault());
     root.appendChild(this.el);
 
-    this.onOutsidePointerDown = (e: PointerEvent) => {
-      if (e.target instanceof Node && this.el.contains(e.target)) return;
-      this.onOutsideClick?.();
-    };
-    // キャプチャ段階で拾うことで、途中の要素が stopPropagation していても届く。
-    document.addEventListener('pointerdown', this.onOutsidePointerDown, true);
     this.onResize = () => this.moveTo(this.el.offsetLeft, this.el.offsetTop);
     window.addEventListener('resize', this.onResize);
-    window.addEventListener('keydown', this.handleKeyDown);
 
     this.syncHeader(content.title, content.subtitle);
     this.syncRows(content.rows);
     this.syncItems(content.items);
     this.moveTo(clientX, clientY);
     this.bringToFront();
+    this.overlayManager.open(this.overlayId, this, this.currentSpec());
+  }
+
+  contains(target: Node): boolean {
+    return this.el.contains(target);
+  }
+
+  // OverlayManager からの項目ショートカット配送を受ける。クリップ中は受け付けない —
+  // 一時ウィンドウは高々1枚なので、クリップされていないウィンドウどうしがキーを取り合うことはない。
+  handleShortcut(code: string): boolean {
+    if (this._clipped) return false;
+    const items = this.itemsEl.querySelectorAll<HTMLElement>('.prop-window-item');
+    for (const item of Array.from(items)) {
+      if (item.dataset['shortcut'] !== code) continue;
+      this.onSelect?.(item.dataset['act'] as A, item.dataset['keepOpen'] === '1');
+      return true;
+    }
+    return false;
+  }
+
+  // 現在のクリップ状態から overlayManager へ渡す宣言を組む。tempWindowGroup が無ければ
+  // (負荷確認ウィンドウ等)常に ESC・外側クリックのどちらでも閉じない常設ウィンドウとして扱う。
+  private currentSpec(): OverlaySpec {
+    const isTemp = this.tempWindowGroup !== undefined && !this._clipped;
+    return {
+      kind: 'window',
+      closeOnEscape: isTemp,
+      closeOnOutsideClick: isTemp,
+      gatesInput: false,
+      exclusiveGroup: isTemp ? this.tempWindowGroup : undefined,
+    };
   }
 
   // タイトル・サブタイトルを変化があった要素だけ差分更新する。
@@ -254,9 +282,7 @@ export class PropertyWindow<A extends string = string> {
     }
   }
 
-  // タイトルを編集用の入力欄へ差し替え、確定(Enter/blur)で renameCallback へ通知して
-  // 表示へ戻す。ValueInput 自身が keydown を止めるので、window の全体ショートカット
-  // (handleKeyDown 含む)には届かない。
+  // タイトルを編集用の入力欄へ差し替え、確定(Enter/blur)で renameCallback へ通知して表示へ戻す。
   private startRename(): void {
     if (this.renaming || !this.renameCallback) return;
     this.renaming = true;
@@ -307,21 +333,6 @@ export class PropertyWindow<A extends string = string> {
     }
     this.reclamp();
   }
-
-  // ショートカットは一時ウィンドウ(非クリップ)でのみ効く。一時ウィンドウは高々1枚なので
-  // 複数ウィンドウが同じキーを取り合う曖昧さは生じない。
-  private readonly handleKeyDown = (e: KeyboardEvent): void => {
-    if (this._clipped) return;
-    const items = this.itemsEl.querySelectorAll<HTMLElement>('.prop-window-item');
-    for (const item of Array.from(items)) {
-      if (item.dataset['shortcut'] === e.key) {
-        e.stopImmediatePropagation();
-        e.preventDefault();
-        this.onSelect?.(item.dataset['act'] as A, item.dataset['keepOpen'] === '1');
-        return;
-      }
-    }
-  };
 
   // key/label/value の行 div を組み立てて container へ足し、値を lastRowValues へ記録する。
   private appendRowEl(container: HTMLElement, r: PropertyRow): void {
@@ -440,11 +451,12 @@ export class PropertyWindow<A extends string = string> {
     return this._clipped;
   }
 
-  // クリップボタンからのみ呼ばれる。ボタンの見た目を切り替えたうえで onClipChange を発火する
-  // — 自動クローズ対象・一時ウィンドウ台帳からの出し入れは呼び出し側の仕事。
+  // クリップボタンからのみ呼ばれる。ボタンの見た目を切り替え、overlayManager 上の宣言を
+  // 今のクリップ状態へ更新したうえで onClipChange を発火する。
   private setClipped(clipped: boolean): void {
     this._clipped = clipped;
     this.clipBtn.element.classList.toggle('clipped', clipped);
+    this.overlayManager.reconfigure(this.overlayId, this.currentSpec());
     this.onClipChange?.(clipped);
   }
 
@@ -501,13 +513,20 @@ export class PropertyWindow<A extends string = string> {
     this.dragging = false;
   };
 
-  // DOM ノードと登録したグローバルリスナを取り除く。以後このインスタンスは使えない。
+  // DOM ノードと登録したグローバルリスナを取り除き、overlayManager からも外す。
+  // 以後このインスタンスは使えない。
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    document.removeEventListener('pointerdown', this.onOutsidePointerDown, true);
+    this.overlayManager.close(this.overlayId);
     window.removeEventListener('resize', this.onResize);
-    window.removeEventListener('keydown', this.handleKeyDown);
     this.el.remove();
+  }
+
+  // OverlayHandle 実装: ✕ ボタンと同じ「破棄して呼び出し側へ通知する」経路。ESC・外側クリック
+  // どちらで閉じてもここを通るので、onClose の発火経路は一本化される。
+  close(): void {
+    this.dispose();
+    this.onClose?.();
   }
 }

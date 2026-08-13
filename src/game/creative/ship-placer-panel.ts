@@ -4,6 +4,7 @@
 // 仕事なので、ここでは行わない。
 import { Button, SegmentedControl, Slider, ValueInput } from '../hud/widgets';
 import { ObjectPicker, ObjectPickerGroup } from '../hud/object-picker';
+import type { OverlayHandle, OverlayManager } from '../hud/overlay-manager';
 import { BodyClass, bodyClassOf } from '../celestial/body-class';
 import { sameSystemIds } from '../celestial/body-visibility';
 import { celestialBodyName } from '../hud/frame-labels';
@@ -325,7 +326,7 @@ const ALTITUDE_REF_FLOOR_KM = 100;
 // 周期の基準値の下限(h): 高度と同じ床を使うと大きすぎて操作不能になるため、周期のオーダーに合わせる。
 const PERIOD_REF_FLOOR_HOURS = 0.1;
 
-export class ShipPlacerPanel {
+export class ShipPlacerPanel implements OverlayHandle {
   onConfirm: ((name: string, form: ShipPlacerForm) => void) | null = null;
   onClose: (() => void) | null = null;
 
@@ -380,7 +381,10 @@ export class ShipPlacerPanel {
   private readonly popupRoot: HTMLElement;
 
   // panelRoot はパネル自体の置き場所、popupRoot は ObjectPicker のポップアップの置き場所。
-  constructor(panelRoot: HTMLElement, popupRoot: HTMLElement, ephemeris: Ephemeris) {
+  constructor(
+    panelRoot: HTMLElement, popupRoot: HTMLElement, ephemeris: Ephemeris,
+    private readonly overlayManager: OverlayManager,
+  ) {
     this.registry = ephemeris.registry;
     this.popupRoot = popupRoot;
     const orbitingIds = orbitingIdsOf(ephemeris.registry);
@@ -476,7 +480,7 @@ export class ShipPlacerPanel {
       this.attractorValue = v;
       attractorControl.setSelected(v);
       this.refreshPresets();
-    });
+    }, this.overlayManager);
     attractorControl.setGroups(bodyGroupsOf(this.registry, this.attractorItems, this.attractorValue));
     attractorControl.setSelected(this.attractorValue);
     elementsGroup.appendChild(attractorControl.element);
@@ -559,7 +563,9 @@ export class ShipPlacerPanel {
     libAz: HTMLInputElement;
   } {
     const lagrangeGroup = document.createElement('div');
-    const lagrangeSecondary = new ObjectPicker<OrbitingId>(this.popupRoot, '系', (v) => this.selectLagrangeSecondary(v));
+    const lagrangeSecondary = new ObjectPicker<OrbitingId>(
+      this.popupRoot, '系', (v) => this.selectLagrangeSecondary(v), this.overlayManager,
+    );
     lagrangeSecondary.setGroups([{ label: '', items: this.lagrangeSystemItems }]);
     lagrangeSecondary.setSelected(this.lagrangeSecondaryValue);
     lagrangeGroup.appendChild(lagrangeSecondary.element);
@@ -600,31 +606,17 @@ export class ShipPlacerPanel {
     return { element: nameRow, nameInput: nameField.element };
   }
 
-  // 配置/キャンセルのボタン行を this.panel に追加し、Enter/ESC のキーバインドを登録する。
-  // キーバインドは window に貼るため、パネルを開いていない間は素通りさせる。
+  // 配置/キャンセルのボタン行を this.panel に追加する。Enter/ESC は OverlayManager 経由で
+  // confirm()/close() へ届く(登録済みの handleShortcut/closeOnEscape)ので、ラベルは実際の
+  // 挙動どおり [Enter]/[ESC] のまま出す。
   private buildButtonsAndKeybinds(): void {
     const btnRow = document.createElement('div');
     btnRow.style.display = 'flex';
     btnRow.style.gap = '10px';
     btnRow.style.marginTop = '12px';
     btnRow.appendChild(new Button('配置 [Enter]', () => this.confirm()).element);
-    btnRow.appendChild(new Button('キャンセル [ESC]', () => {
-      this.close();
-      this.onClose?.();
-    }).element);
+    btnRow.appendChild(new Button('キャンセル [ESC]', () => this.close()).element);
     this.panel.appendChild(btnRow);
-
-    window.addEventListener('keydown', (e) => {
-      if (!this._isOpen) return;
-      if (e.key === 'Escape') {
-        e.stopImmediatePropagation();
-        this.close();
-        this.onClose?.();
-      } else if (e.key === 'Enter') {
-        e.stopImmediatePropagation();
-        this.confirm();
-      }
-    });
   }
 
   // 種類を切り替える。基地は月基準の軌道要素かラグランジュ点指定でしか設置できない
@@ -685,7 +677,6 @@ export class ShipPlacerPanel {
     const form = this.getForm();
     this.onConfirm?.(name, form);
     this.close();
-    this.onClose?.();
   }
 
   // 現在のフォームの値を、選ばれた組・種別が使う値だけを読み取って ShipPlacerForm へ組む。
@@ -794,11 +785,30 @@ export class ShipPlacerPanel {
     }
     this._isOpen = true;
     this.panel.style.display = 'block';
+    this.overlayManager.open('ship-placer', this, {
+      kind: 'window', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: false,
+    });
   }
 
+  // OverlayHandle 実装も兼ねる。ESC・キャンセルボタン・配置確定のどの経路でもここを通り、
+  // onClose を発火して呼び出し側(CreativeStage)へ通知する。
   close(): void {
+    if (!this._isOpen) return;
     this._isOpen = false;
     this.panel.style.display = 'none';
+    this.overlayManager.close('ship-placer');
+    this.onClose?.();
+  }
+
+  contains(target: Node): boolean {
+    return this.panel.contains(target);
+  }
+
+  // OverlayManager からの項目ショートカット配送を受ける。Enter で確定する。
+  handleShortcut(code: string): boolean {
+    if (code !== 'Enter') return false;
+    this.confirm();
+    return true;
   }
 
   // SliderRow へ値を書き込み、対応する数値入力の input イベントを発火させたうえで

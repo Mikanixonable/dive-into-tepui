@@ -28,8 +28,7 @@
 
 - animate(now)
   - game.update(dt) // dt = 実経過秒。game 側で 0.1s に clamp される
-  - snapshotControls.handleInput(game.input, game) // このフレームで game.update が消費しなかった入力エッジだけを見る。[Esc](一覧表示中のみ)/K.clipSnapshot/K.openSnapshots
-    - [browser.visible] input.takeKey(K.pauseMenu) → browser.close() // 一覧の [Esc] を最優先で取る(close() 自身が game.resume() する)。以降は評価しない
+  - snapshotControls.handleInput(game.input, game) // このフレームで game.update が消費しなかった入力エッジだけを見る。K.clipSnapshot/K.openSnapshots(Esc は扱わない — 一覧を閉じる Esc は overlayManager 経由で game.handleInput 側が既に消費している)
     - [K.clipSnapshot] [!activeStage.isPlaying] hud.hint() // 決着後は拒否。それ以外は snapshotService.capture(game, 'manual', null, true) + hud.hint()
     - [K.openSnapshots] browser の open()/close() をトグル // open() 前に settingsPanel.toggle(false)。open() が game.pause()、close() が game.resume() を呼ぶ
   - autoSave.update(game) // 前回撮影から AUTOSAVE_INTERVAL_REAL_SEC(実時間60秒)経っていれば snapshotService.capture(game, 'auto', null, false) // game.isPaused または !activeStage.isPlaying なら何も撮らない
@@ -48,9 +47,9 @@
   - sections.enter(SECTION.input)
   - input.update() // pending キュー(キー/クリック/マウス)を今フレーム分に確定し、次フレーム用にクリア
   - handleInput() // 担当モジュールへ先着順に配る。処理した側が input からそのキーを消費する。ポーズ判定より前に置く(Esc・ヘルプ等はポーズ中・決着後も効かせる)
-    - docking.handleInput() // ドック表示中の [ESC] を先に消費する(設定画面と二重に効かせない)
-    - settingsPanel.handleInput() // [modalController.isModalOpen('save-browser')] なら [Esc] を一切見ずに return(一覧側の close() に譲る)。それ以外は K.pauseMenu → toggle() → onSettingsOpenChange → game.pause()/resume()
-    - hud.handleInput() // K.help → toggleHelp()
+    - [input.takeKey(K.pauseMenu)] hud.overlayManager.closeTopmostOnEscape() // 開いている登録済みオーバーレイ(ドック/一覧/ヘルプ/一時ウィンドウ/ポップアップ)のうち最前面かつ closeOnEscape なもの1枚を閉じる。閉じるものが無ければ settingsPanel.toggle(true)
+    - input.takeKeys(code => hud.overlayManager.dispatchShortcut(code)) // 今フレームの未消費キーを1つずつ試す。テキスト入力へフォーカス中なら即 false。最前面から順に handle.handleShortcut?.(code) を呼び、true を返した1枚で打ち切る(ContextMenu/PropertyWindow/ShipPlacerPanel のみ実装 — クリップ中の PropertyWindow は常に false を返して1つ下へ通す)
+    - hud.handleInput() // K.help → helpPanel.handleInput() → toggle()
     - activeStage.handleInput() // K.restart。isPlaying なら素通し(Player の装填へ回る)
       - restart() → location.replace(`?stage=<id>`) // 決着後のみ。同じステージで出撃し直す
     - simSpeedManager.handleInput()
@@ -70,6 +69,7 @@
           - mapPicker.close(): menu.close() / 開いている全プロパティウィンドウを closeWindow()(クリップ済みも含め全て)
         - [3D 側ビューが 他→map] editor.selectedNodeIdx = null
         - [入るビューが dock] docking.enterDock() → game.pause() + dockView.open(activeBase, game.player, activeStage.freeProcurement)
+        - syncDockOverlay(wasDockOpen) // isDockOpen が今回変化したフレームだけ hud.overlayManager.open('dock-view', ...)/.close('dock-view')
         - applyChrome() // map-mode/dock-mode クラス・navball 配置・touchControls・
                         // cameraSystem.overviewMode・editor.editMode・displayWindow.forceCurrent を一斉に揃える
         - hud.hint()
@@ -308,17 +308,17 @@
 
 - handleMapPointerInput(dt)
   - [!activeStage.isPlaying] 即 return
-  - [isPaused && hud.modalController.isOpen] 即 return
+  - [isPaused && hud.overlayManager.isOverlayOpen('settings')] 即 return
   - [editor.editMode] 計画編集モード。マーカー(handleRightClick/handleLeftClick/handleDoubleClick)→ ノード(editor.handleMapPointer)→ 空域(handleEmptySpaceRightClick)の優先順は呼び出し順そのもの — 上流が消費した右クリックは下流に届かない
     - mapPicker.handleRightClick(input, simTime) // マーカーへの右クリックだけを消費する。外れれば消費せず editor.handleMapPointer() のノード右クリックへ読み進む
       - pickNearest(mapPicker.pickables) // MAP_PICK_PX_SQ 以内の被選択物(天体/自機/敵船/nav-AN・DN/アプシス)を最寄りで拾う。候補列は mapPicker.refresh() が組んだ1本
-      - mapPicker.openPropertyWindow() // 拾えた場合のみ消費。既にその対象のウィンドウがあれば移動+最前面化のみ、なければ new PropertyWindow(root=hud.layers.window, buildContent()) // rows は空のまま開き、同フレーム後半の mapPicker.sync() が埋める(items は windowItems() 経由で開いた瞬間から埋まる)
-        - 新規かつ非クリップ → 直前の一時ウィンドウ(tempWindowKey)を closeWindow() してから差し替え
+      - mapPicker.openPropertyWindow() // 拾えた場合のみ消費。既にその対象のウィンドウがあれば移動+最前面化のみ、なければ new PropertyWindow(root=hud.layers.window, buildContent(), hud.overlayManager, PROPERTY_WINDOW_TEMP_GROUP) // rows は空のまま開き、同フレーム後半の mapPicker.sync() が埋める(items は windowItems() 経由で開いた瞬間から埋まる)。「一時ウィンドウは高々1枚」の排他自体は PropertyWindow 自身が hud.overlayManager.open()/reconfigure() 経由で宣言する(下記)
+        - PropertyWindow のコンストラクタ → overlayManager.open(overlayId, this, currentSpec()) // 非クリップなら exclusiveGroup=PROPERTY_WINDOW_TEMP_GROUP を宣言し、同グループの既存メンバー(直前の一時ウィンドウ)を overlayManager 自身が closeWindow() 相当で追い出す
         - w.onSelect(act) → handlers[target.kind].run(act, target) // 選択結果はこれまでと同じ経路
-          - act='delete' または !w.clipped → closeWindow() // 削除はクリップ有無によらず閉じる
-        - w.onClipChange(clipped) → clipped なら tempWindowKey をこのキーから外し、非clip化なら既存の tempWindowKey を closeWindow() してこのキーに差し替え
-        - w.onOutsideClick → !w.clipped のときだけ closeWindow()
-        - w.onClose(✕ボタン、widget 側で dispose 済み) → forgetWindow() // 台帳から外すだけ
+          - act='delete' または !w.clipped → closeWindow() → entry.win.close() → dispose() + onClose() // 削除はクリップ有無によらず閉じる
+        - clip ボタン押下 → setClipped() → overlayManager.reconfigure(overlayId, currentSpec()) // クリップ中は exclusiveGroup/closeOnEscape/closeOnOutsideClick を全て外す
+        - ESC・外側クリック → overlayManager.closeTopmostOnEscape() / 内蔵の1本の pointerdown リスナ → entry.win.close()(!clipped の場合のみ発火)
+        - w.onClose(✕ボタン、または close() 経由でのどの閉じ方でも同じく発火) → mapPicker.forgetWindow() // 台帳から外すだけ
       - 選択結果は MapPicker.run(act, target) へ
         - act='focus' → overviewCamera.focus 代入
         - act='navTarget' → navTarget.toggleTarget()
@@ -346,12 +346,16 @@
       - applyHeldDv() ×6方向 // WASDQE または dvButtons(長押しボタン)が held の間、ホールド秒数からランプするレートで dt 秒分を積分
       - applyDv() // nodeGizmo.latch がある間、ラッチ超過量に比例したレートで dt 秒分を積分(アームドラッグが DV_DRAG_LATCH_PX を超えて入る)
   - [!editor.editMode && !isPaused && player]
-    - navTarget.updateCombatBasePicking(entities, input, project) // targeter より先に呼ぶ。基地に当たった右クリックだけを消費し、外れは false を返して targeter へ回す
-      - pickNearest(entities.bases) → baseMenu.open() // 当たった場合のみ。航法ターゲット設定/解除メニュー
-    - targeter.updateCombatTargeting(entities.getCombatTargets(player), input, project) // 対象は敵 + 自機以外の生存中の全自機(EntityManager.getCombatTargets)。player 引数は無い(呼び出し元が既に生存艦の有無で分岐済み)
-      - handleTargetContextMenu() // 右クリックは当否に関わらず消費する
-        - pickTargetAt() → openMenu() // 右クリックが対象に当たった場合、第一/第二の設定・解除メニューを開く
-      // 自動選定・自動再選択はない。target/secondaryTarget はメニュー選択でのみ変わる
+    - combatTargets = entities.getCombatTargets(player) // 敵 + 自機以外の生存中の全自機
+    - targeter.handleTargetSelectKey(input, combatTargets, project) // [T] キー。右クリックとは無関係、独立の即時選定・順送り
+    - navTarget.updateCombatBasePicking(entities, input, project) // mapPicker より先に呼ぶ。基地に当たった右クリックだけを消費し、外れは false を返して mapPicker へ回す
+      - pickNearest(entities.bases) → baseMenu.open() // 当たった場合のみ。航法ターゲット設定/解除メニュー(ContextMenu のまま)
+    - mapPicker.handleCombatRightClick(input, combatTargets, project, simTime) // マップの handleRightClick の戦闘ビュー版(施策5 §7-2: 同じ対象は常に同じ窓)
+      - targeter.pickTargetAt(click, combatTargets, project) // TARGET_LOCK_PICK_PX_SQ 以内の画面最近傍
+        - [当たり] combatTargetPickable(target) → mapPicker.openPropertyWindow() // kind='player'/'ship' へ変換して同じプロパティウィンドウ経路。itemsFor に combatTargetLockItems(targetPrimary/targetSecondary、overviewMode では出さない)が乗る
+          - targetPrimary/targetSecondary 選択 → runTargetLock() → targeter.setPrimaryTarget()/setSecondaryTarget()
+        - [外れ] mapPicker.openEmptySpaceMenu() // マップの空域メニューと同じ実装(ContextMenu<MapPickable>)
+      // 自動選定・自動再選択はない。target/secondaryTarget はこのメニューか [T] キーでのみ変わる
 
 ---
 

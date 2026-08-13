@@ -14,8 +14,6 @@ import type { EntityManager } from './simulation/entity-manager';
 import type { MapPicker } from './map-picker';
 import type { CameraSystem } from './camera/camera-system';
 import type { Game } from './game';
-import type { Input } from './input/input';
-import { KEY_MAPPING as K } from './input/key-mapping';
 import type { ViewManager } from './view-manager';
 import type { Sfx } from '../audio/sfx';
 import type { EffectsSystem } from './vfx/effects-system';
@@ -47,13 +45,6 @@ export class Docking {
     this.dockView.onLaunchShip = (ship, base) => this.launch(ship, base);
     this.dockView.onBuildShip = (base) => this.buildShip(base);
     this.viewManager.setDocking(this);
-  }
-
-  // ドックビュー表示中の [ESC] を消費して閉じる。ポーズメニューより先に呼ぶ:
-  // 先に消費しないと、同じキーで設定画面も同時に開く。
-  handleInput(input: Input): void {
-    if (this.viewManager.current !== 'dock') return;
-    if (input.takeKey(K.pauseMenu)) this.viewManager.leaveDock();
   }
 
   // 基地を選択状態にする(遷移はしない) — マップの左クリック選択と、明示的にドックへ

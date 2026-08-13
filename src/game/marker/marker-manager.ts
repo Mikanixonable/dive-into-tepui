@@ -23,6 +23,7 @@ interface MarkerRecord {
   sym: HTMLElement;
   lbl: HTMLElement;
   fixedLabel: boolean;
+  hidden: boolean;
 }
 
 interface ActiveLabel {
@@ -97,10 +98,11 @@ export class MarkerManager {
       const root = el('div', `mk-${key}`, this.root, `mk ${cls}`);
       const symEl = el('span', `mk-${key}-s`, root, 'sym');
       const lblEl = el('span', `mk-${key}-l`, root, 'lbl');
-      m = { root, sym: symEl, lbl: lblEl, fixedLabel };
+      m = { root, sym: symEl, lbl: lblEl, fixedLabel, hidden: !visible };
       this.markerDictionary.set(key, m);
     }
     m.fixedLabel = fixedLabel;
+    m.hidden = !visible;
     m.root.style.display = visible ? 'block' : 'none';
     if (!visible) return;
     m.root.style.left = `${x.toFixed(1)}px`;
@@ -222,7 +224,9 @@ export class MarkerManager {
   //          要素ごと捨てないと DOM とラベル衝突判定の走査対象が単調増加する。
   hide(key: string): void {
     const m = this.markerDictionary.get(key);
-    if (m) m.root.style.display = 'none';
+    if (!m) return;
+    m.hidden = true;
+    m.root.style.display = 'none';
   }
 
   // マーカーを DOM ごと削除する。
@@ -240,7 +244,7 @@ export class MarkerManager {
 
     // 表示中のマーカーと、そのラベルの推定矩形を集める
     for (const m of this.markerDictionary.values()) {
-      if (m.root.style.display === 'none' || !m.lbl.textContent || m.fixedLabel) {
+      if (m.hidden || !m.lbl.textContent || m.fixedLabel) {
         m.lbl.style.transform = 'translateX(-50%)';
         continue;
       }

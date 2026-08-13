@@ -154,8 +154,8 @@ export class PlanEditor {
   ) {
     this.activePlayer = ship;
     this.planDisplay = new PlanDisplay(scene, markerManager, ephemeris, displayDuration);
-    this.nodeGizmo = new NodeGizmo(this._hud.layers.marker, this._hud.layers.popup);
-    this.orbitMenu = new ContextMenu<KinematicState, MenuAction>(this._hud.layers.popup);
+    this.nodeGizmo = new NodeGizmo(this._hud.layers.marker, this._hud.layers.popup, this._hud.overlayManager);
+    this.orbitMenu = new ContextMenu<KinematicState, MenuAction>(this._hud.layers.popup, this._hud.overlayManager);
     this.gizmo3d = new PlanGizmo3D();
     scene.add(this.gizmo3d.group);
 

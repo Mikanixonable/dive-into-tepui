@@ -3,26 +3,28 @@
 import { buildHudDom } from './dom';
 import { HudPanels } from './panel';
 import type { Input } from '../input/input';
-import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { OverlayLayers } from './overlay-layer';
-import type { ModalController } from './modal-controller';
+import type { OverlayManager } from './overlay-manager';
+import type { HelpPanel } from './help-panel';
 
 export class Hud {
   readonly root: HTMLElement;
   readonly layers: OverlayLayers;
   readonly svgOverlay: SVGSVGElement;
-  readonly modalController: ModalController;
+  readonly overlayManager: OverlayManager;
+  readonly helpPanel: HelpPanel;
   readonly panels: HudPanels;
   private hintUntil = 0;
   private toastUntil = 0;
 
   // HUD の DOM を構築する。
   constructor() {
-    const { root, layers, svgOverlay, modalController, els } = buildHudDom();
+    const { root, layers, svgOverlay, overlayManager, helpPanel, els } = buildHudDom();
     this.root = root;
     this.layers = layers;
     this.svgOverlay = svgOverlay;
-    this.modalController = modalController;
+    this.overlayManager = overlayManager;
+    this.helpPanel = helpPanel;
     this.panels = new HudPanels(els);
   }
 
@@ -46,16 +48,7 @@ export class Hud {
 
   // ヘルプ表示キーの押下エッジを受け取る。
   handleInput(input: Input): void {
-    if (input.takeKey(K.help)) this.toggleHelp();
-  }
-
-  // ヘルプパネルの表示/非表示を切り替える。
-  private toggleHelp(): void {
-    const e = document.getElementById('hud-help');
-    if (e) {
-      e.style.display = e.style.display === 'block' ? 'none' : 'block';
-      this.modalController.setOpen('help', e.style.display === 'block');
-    }
+    this.helpPanel.handleInput(input);
   }
 
   // 表示期限を過ぎたヒント・トーストをフェードアウトさせる。
