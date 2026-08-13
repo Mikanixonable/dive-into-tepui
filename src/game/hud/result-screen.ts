@@ -21,7 +21,7 @@ function showEnd(win: boolean, detailHtml: string, title?: string): void {
     window.dispatchEvent(new KeyboardEvent('keydown', { code: K.restart.code }));
   });
   e.querySelector('.title-return')!.addEventListener('click', () => {
-    location.href = location.pathname; // URLパラメータなしのパスへ遷移
+    location.href = `${location.pathname}?title=1`; // タイトル画面を強制する
   });
 }
 
