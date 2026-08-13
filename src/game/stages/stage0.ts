@@ -53,7 +53,7 @@ export class Stage0 extends Stage {
   }
   // 敵の行動・補給・制限時間を1フレーム分進める。
   update(dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
-    if (!this.isPlaying || !player) return;
+    if (!player) return;
 
     this.behaveAllEnemies(dt, player, entities, simTime, simSpeed);
 
