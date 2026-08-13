@@ -1,6 +1,6 @@
 // Stage 1: 第一ステージ(LEO 戦域)。
 import * as C from '../const';
-import { Stage } from './stage';
+import { Stage, type StageDeps } from './stage';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import {
   generateCoellipticEnemy,
@@ -11,13 +11,19 @@ import {
 import type { Player } from '../player/player';
 import type { EntityManager } from '../simulation/entity-manager';
 import { SimSpeedManager } from '../sim-speed-manager';
+import type { StageSaveData } from '../save-data';
 
 export class Stage1 extends Stage {
   static readonly id = '1' as const;
-  readonly selectLabel = 'stage 1';
-  readonly selectSub = '【第一ステージ: LEO戦域】 高度420kmの低軌道。敵5機はすべて近傍軌道に分布';
-  readonly selectKeys = ['Digit1', 'Enter'];
+  static readonly selectLabel = 'stage 1';
+  static readonly selectSub = '【第一ステージ: LEO戦域】 高度420kmの低軌道。敵5機はすべて近傍軌道に分布';
+  static readonly selectKeys = ['Digit1', 'Enter'];
   readonly initialAmmo = { mags: C.INITIAL_MAGS - 1, rounds: C.MAG_ROUNDS };
+
+  constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
+    super(saved, ...deps);
+    this.begin();
+  }
 
   // 開始ブリーフィングの HTML を組み立てる。
   briefingHtml(enemyCount: number): string {
@@ -29,7 +35,8 @@ export class Stage1 extends Stage {
   }
 
   // 5機の敵を初期配置し、敵数を返す。
-  init(player: Player, entities: EntityManager): number {
+  protected init(player: Player | null, entities: EntityManager): number {
+    if (!player) return 0;
     const base = player.state;
     const hud = this._hud;
     const sfx = this._sfx;

@@ -9,7 +9,7 @@ import { PlanEditor } from './plan/plan-editor';
 import { DisplayWindowManager } from './display-window-manager';
 import { MapPicker } from './map-picker';
 import type { Docking } from './docking';
-import type { Stage } from './stages/stage';
+import type { ActivePlayerController } from './active-player-controller';
 import { syncNavballPlacement } from './hud/dom';
 
 export type ViewId = 'combat' | 'map' | 'dock';
@@ -26,7 +26,6 @@ export class ViewManager {
   private isDockOpen = false;
   private touchControls: TouchControls | null = null;
   private docking: Docking | null = null;
-  private stage: Stage | null = null;
 
   get current(): ViewId { return this.isDockOpen ? 'dock' : this.worldView; }
 
@@ -36,6 +35,7 @@ export class ViewManager {
     private readonly cameraSystem: CameraSystem,
     private readonly displayWindow: DisplayWindowManager,
     private readonly mapPicker: MapPicker,
+    private readonly activePlayers: ActivePlayerController,
     initialView: WorldViewId = 'combat',
   ) {
     this.worldView = initialView;
@@ -51,11 +51,6 @@ export class ViewManager {
   // Docking は ViewManager より後に生成されるので、生成後に登録する。
   setDocking(docking: Docking): void {
     this.docking = docking;
-  }
-
-  // Stage は ViewManager より後に生成されるので、生成後に登録する。
-  setStage(stage: Stage): void {
-    this.stage = stage;
   }
 
   // ビュー遷移の唯一の入口。遷移できない場合は何もしない。既に next にいる場合でも
@@ -85,9 +80,12 @@ export class ViewManager {
     this.applyChrome();
   }
 
-  // ドックから、開く前のビューへ戻る。
+  // ドックを閉じ、その裏で保たれていた 3D 側のビューへ戻る。
   leaveDock(): void {
-    if (this.isDockOpen) this.setView(this.worldView);
+    if (!this.isDockOpen) return;
+    this.docking?.leaveDock();
+    this.isDockOpen = false;
+    this.applyChrome();
   }
 
   // 現在の3D側ビュー(ドック表示中はその背後のビュー)をセーブデータへ書き出す。
@@ -96,16 +94,15 @@ export class ViewManager {
   }
 
   // ビュー選択 UI に並べる遷移先。現在のビュー自身と、いま入れないビューは含まない。
-  // combatAvailable は操作対象の艦が生存しているか(戦闘ビューは自機を前提とする)。
-  selectableViews(combatAvailable: boolean): readonly ViewId[] {
+  selectableViews(): readonly ViewId[] {
     const all: readonly ViewId[] = ['combat', 'map', 'dock'];
-    return all.filter((v) => v !== this.current && this.canEnter(v, combatAvailable));
+    return all.filter((v) => v !== this.current && this.canEnter(v));
   }
 
-  // そのビューへいま入れるか。ドックは対象基地が要り、戦闘は操作できる艦が要る。
-  private canEnter(view: ViewId, combatAvailable = true): boolean {
+  // そのビューへいま入れるか。ドックは対象基地が要り、戦闘は操作対象の艦が要る。
+  private canEnter(view: ViewId): boolean {
     if (view === 'dock') return this.docking?.canEnterDock() ?? false;
-    if (view === 'combat') return combatAvailable;
+    if (view === 'combat') return this.activePlayers.current !== null;
     return true;
   }
 
@@ -136,17 +133,15 @@ export class ViewManager {
   }
 
   // [M] による戦闘⇔マップの切り替えを受ける。ドック表示中はキーを消費しない。
-  handleInput(input: Input, canToggleView: boolean): void {
-    // 決着後はどのビューに居ても戦闘ビューへ戻す(結果画面を隠さないため)。
-    if (this.stage !== null && !this.stage.isPlaying) {
-      if (this.isDockOpen) this.leaveDock();
-      if (this.current === 'map') this.setView('combat');
-      return;
-    }
+  handleInput(input: Input): void {
     if (this.isDockOpen) return;
-    if (!canToggleView || !input.takeKey(K.toggleMapMode)) return;
+    if (!input.takeKey(K.toggleMapMode)) return;
 
     if (this.current === 'map') {
+      if (!this.canEnter('combat')) {
+        this.hud.hint('操作できる艦がいません');
+        return;
+      }
       this.setView('combat');
       const nodeCount = this.editor.plan?.nodes.length ?? 0;
       if (nodeCount > 0) {

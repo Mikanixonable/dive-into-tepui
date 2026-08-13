@@ -100,7 +100,6 @@ export class Docking {
     for (const base of this.entities.bases) {
       if (!base.alive) continue;
       for (const ship of [...this.entities.players]) {
-        if (!ship.alive) continue;
         const dist = len(sub(ship.state.r, base.state.r));
         const relSpeed = len(sub(ship.state.v, base.state.v));
         if (dist < C.DOCK_CAPTURE_DIST && relSpeed < C.DOCK_CAPTURE_REL_V) this.dock(ship, base);
@@ -118,7 +117,6 @@ export class Docking {
       parts: ship.parts,
       player: ship,
     });
-    ship.alive = false;
     // parkPlayer した艦は以後 syncPlayer が呼ばれないので、可視状態を一度だけここで確定させる。
     ship.obj.visible = false;
     const wasActive = this.game.player === ship;
@@ -132,7 +130,11 @@ export class Docking {
       this.sfx.setRcs(false);
     }
     this.entities.parkPlayer(ship);
-    if (wasActive) this.game.activePlayers.setOrNull(this.entities.players.find((p) => p.alive) ?? null);
+    if (wasActive) {
+      this.game.activePlayers.setOrNull(this.entities.players.find((p) => p.alive) ?? null);
+      // 収容で操縦できる艦が無くなったら、戦闘ビューには映すものが無いのでマップへ移す。
+      if (this.game.player === null) this.viewManager.setView('map');
+    }
     this.hud.hint(`${ship.name} を基地に収容しました`);
   }
 
@@ -142,7 +144,6 @@ export class Docking {
     const no = ++this.nextBuiltShipNo;
     const id = `${base.id}-built-${no}`;
     const ship = new Player(this.hud, this.sfx, this.scene, this.effects, this.markerManager, { name: `新造艦-${no}`, state: base.state, id });
-    ship.alive = false;
     ship.obj.visible = false;
     base.baseState.dockedShips.push({
       id: ship.id,
@@ -159,7 +160,6 @@ export class Docking {
   private launch(ship: Player, base: Base): void {
     const br = base.state.r;
     ship.state = kinematicState(base.state.t, v3(br.x + 600, br.y, br.z), base.state.v);
-    ship.alive = true;
     this.entities.addPlayer(ship);
     this.game.activePlayers.set(ship);
     this.viewManager.leaveDock();

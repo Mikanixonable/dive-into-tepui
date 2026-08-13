@@ -346,8 +346,13 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-frame-controls .hud-frame-rotation-zone > .seg-title {
   flex: 0 0 100%; min-width: 0;
 }
+<<<<<<< HEAD
 #hud-creative-settings { display: none; width: 100%; pointer-events: auto; }
 /* 艦艇配置パネル(クリエイティブモード限定): MANEUVER PLAN の下、右上に縦積みする。 */
+=======
+#hud-logistics { display: none; width: 100%; pointer-events: auto; }
+/* 艦艇配置パネル: MANEUVER PLAN の下、右上に縦積みする。 */
+>>>>>>> origin/workspace4
 #hud-shipplacer { display: none; width: 100%; pointer-events: auto; max-height: 70vh; overflow-y: auto; }
 #hud-shipplacer .slider-field { margin-bottom: var(--space-4); }
 #hud-shipplacer .slider-field .hud-seg { flex-wrap: nowrap; margin-bottom: 0; }

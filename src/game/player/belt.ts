@@ -49,13 +49,13 @@ export class Belt {
   }
 
   // 物理演算で求めた各リンクの位置・向きをメッシュへ反映する。
-  sync(alive: boolean): void {
+  sync(): void {
     const { beltPos, beltTwist, anchor } = this.physics;
     let prevPoint = anchor;
     let prevQ: Quat = IDENTITY_Q;
     for (let i = 0; i < this.links.length; i++) {
       const link = this.links[i]!;
-      link.visible = alive && i < this.visibleCount;
+      link.visible = i < this.visibleCount;
 
       // 表示位置は前後端の中点
       const pos = beltPos[i]!;

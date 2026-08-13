@@ -108,7 +108,7 @@ export class CameraSystem {
   private readonly _elStatus: HTMLElement | null;
   private readonly _elStageStatus: HTMLElement | null;
   private readonly _elOrbit: HTMLElement | null;
-  // Creativeではマップ視点でも配置済み艦のステータスを表示する。
+  // マップ視点でも艦のステータスを表示するか(ステージが showsStatusInOverview で宣言する)。
   private readonly showStatusInOverview: boolean;
 
   // 両カメラとフォーカス候補ラベルを構築し、常用ショートリストパネルの選択操作を配線する。

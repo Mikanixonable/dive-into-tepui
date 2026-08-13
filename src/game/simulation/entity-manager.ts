@@ -287,8 +287,8 @@ export class EntityManager {
     return this.cachedAttractors;
   }
 
-  // 全エンティティの寿命判定を行い、死亡したものを破棄・除去する。喪失した自機は撃墜演出と
-  // 追従カメラの基準として残り続けるので、配列からは除かない。
+  // 全エンティティの寿命判定を行い、死亡したものを破棄・除去する。自機だけは各所の参照掃除と
+  // 次艦への引き継ぎが要るため、除去は ActivePlayerController.reclaimDead が担う。
   cleanup(dt: number, simTime: number, activeStage: Stage, playerPos: Vec3, attractors: readonly Attractor[]): void {
     for (const e of this.all()) e.checkLoss(dt, simTime, activeStage, playerPos, attractors);
     this.prune(this.enemies);
@@ -321,10 +321,9 @@ export class EntityManager {
     for (const ship of this.players) if (ship !== activePlayer) ship.updatePassive(dt);
   }
 
-  // 高warp中は全自機のRCS command torqueを明示的にゼロへ戻す(active切替やauto-warp開始前の
-  // stale指令を残さない)。
-  suppressAttitudeCommandForWarp(): void {
-    for (const ship of this.players) ship.suppressAttitudeCommandForWarp();
+  // 操作できない間、全自機の連続指令(推力・トルク・射撃・噴射ラッチ)を畳む。
+  clearTransientCommands(): void {
+    for (const ship of this.players) ship.clearTransientCommands();
   }
 
   // 全自機のメッシュ・エフェクト・マーカーを同期する。方向マーカーや照準ズームは操作艦だけの
@@ -351,7 +350,7 @@ export class EntityManager {
     const { frame, simTime, duration } = displayWindow;
     for (const ship of this.players) {
       ship.syncTrajectoryLine(
-        ship === activePlayer && ship.alive, frame, simTime, ephemeris, fo, camera, attractors);
+        ship === activePlayer, frame, simTime, ephemeris, fo, camera, attractors);
       ship.orbitLine.setSuppressed(ship.supersedesAnalyticEllipse(simTime, duration, overviewMode));
     }
   }

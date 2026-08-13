@@ -49,14 +49,13 @@ export class SaveSlots {
     this.persist();
   }
 
-  // 空のスロットを索引へ追加して返す。何のモードのどのステージを遊ぶかはまだ決まっていない
-  // ので、それらは実際に開始したときに noteLaunch が埋める。
+  // 空のスロットを索引へ追加して返す。どのステージを遊ぶかはまだ決まっていないので、
+  // それは実際に開始したときに noteLaunch が埋める。
   createSlot(name: string): SaveSlotMeta {
     const now = Date.now();
     const slot: SaveSlotMeta = {
       id: this.genId(),
       name,
-      mode: 'stage',
       createdAtReal: now,
       lastPlayedAtReal: now,
       lastStageId: '',
@@ -67,11 +66,10 @@ export class SaveSlots {
     return slot;
   }
 
-  // 実際に遊び始めたモードとステージをスロットへ記録する。ゲーム開始時に一度だけ呼ぶ。
-  noteLaunch(slotId: string, mode: 'stage' | 'creative', stageId: string): void {
+  // 実際に遊び始めたステージをスロットへ記録する。ゲーム開始時に一度だけ呼ぶ。
+  noteLaunch(slotId: string, stageId: string): void {
     const slot = this.index.slots.find((s) => s.id === slotId);
     if (!slot) return;
-    slot.mode = mode;
     slot.lastStageId = stageId;
     slot.lastPlayedAtReal = Date.now();
     this.persist();

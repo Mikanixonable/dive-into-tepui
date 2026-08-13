@@ -24,7 +24,7 @@ export class PlayerMarkers {
   // currentState: 現在の自機状態(方向マーカー・ボアサイト用)。
   // displayState: スライダー位置の状態(null なら予測期間超過)、▲ マーカー用。
   // 表示名は改名可能なので毎フレーム引数で受け取り、保持しない。
-  sync(currentState: KinematicState, displayState: KinematicState | null, att: Attitude, alive: boolean, overviewMode: boolean, isActive: boolean, project: ProjectFn, scaleFn: ScaleFn, name: string, rounds = 0, _reloadTimer = 0, beltLinks = 0, muzzleSpeed = 0, focusId?: string, registry?: CelestialRegistry, attractors: readonly Attractor[] = [], visibility: MapVisibility | null = null): void {
+  sync(currentState: KinematicState, displayState: KinematicState | null, att: Attitude, overviewMode: boolean, isActive: boolean, project: ProjectFn, scaleFn: ScaleFn, name: string, rounds = 0, _reloadTimer = 0, beltLinks = 0, muzzleSpeed = 0, focusId?: string, registry?: CelestialRegistry, attractors: readonly Attractor[] = [], visibility: MapVisibility | null = null): void {
     const selfKey = `self-${this.id}`;
 
     if (overviewMode) {
@@ -48,7 +48,7 @@ export class PlayerMarkers {
     
     if (isActive) {
       this.syncOrbitAxes(currentState, project);
-      this.syncBoresight(currentState, att, alive, project, rounds, beltLinks, muzzleSpeed);
+      this.syncBoresight(currentState, att, project, rounds, beltLinks, muzzleSpeed);
     }
   }
 
@@ -73,12 +73,8 @@ export class PlayerMarkers {
     this.markerManager.setDirection(`radin-${this.id}`, 'mk-rad', DIRECTION_GLYPH.radialIn, pr, scale(radDir, -1), project, 'RADIAL IN');
   }
 
-  // 機首方向にボアサイトマーカーを置く。機体が死亡していれば隠す。
-  private syncBoresight(state: KinematicState, att: Attitude, alive: boolean, project: ProjectFn, rounds: number, beltLinks: number, muzzleSpeed: number): void {
-    if (!alive) {
-      this.markerManager.hide(`bore-${this.id}`);
-      return;
-    }
+  // 機首方向にボアサイトマーカーを置く。
+  private syncBoresight(state: KinematicState, att: Attitude, project: ProjectFn, rounds: number, beltLinks: number, muzzleSpeed: number): void {
     const fwd = qRotate(att.q, v3(0, 0, 1));
     // 中央に切り欠きを残した、細い線だけの三尖星(120度間隔)。
     // 塗りつぶしや長方形の輪郭は使わず、各アームを独立した線分として描く。

@@ -179,7 +179,7 @@ export class Player extends Ship {
 
   // HP を HP_REGEN_RATE で maxHp まで自然回復させる。
   private hpRegen(dt: number): void {
-    if (!this.alive || this.hp <= 0 || this.hp >= this.maxHp) return;
+    if (this.hp <= 0 || this.hp >= this.maxHp) return;
     this.selfRepair(dt * C.HP_REGEN_RATE);
   }
 
@@ -223,13 +223,6 @@ export class Player extends Ship {
     this.handleEdgeInput(input);
     this.updateTorque(input, dt * simSpeed.simSpeed);
 
-    // 死亡済み: 射撃、移動、hp回復はできない。操作不能なので並進キーのエッジも消費しない。
-    if (!this.alive) {
-      this.thrust = null;
-      this.throttle.stopThrust();
-      return;
-    }
-
     if (mapMode) this.fire.tickMapMode(dt);
     else this.fire.updateFireState(dt, input, scoreCounter, simTime, simSpeed, zoomActive, entities, ephemeris.sunDirFrom(this.state.r, simTime));
 
@@ -241,8 +234,7 @@ export class Player extends Ship {
       return;
     }
 
-    // 噴射不可のワープ倍率ではラッチ判定自体を止める(連打がラッチとして積まれ、
-    // ワープを下げた瞬間に不意打ちで噴射が始まるのを防ぐ)。
+    // 噴射不可のワープ倍率では、押下エッジを消費してまでラッチ判定を進める意味がない。
     if (simSpeed.canPlayerThrust) this.throttle.updateThrustLatches(input);
     this.thrust = this.throttle.updateThrustState(input, simSpeed, this.att, dt, this);
     // 噴射中は毎フレーム破棄する — 次の Predictor がその時点の実状態を種に作り直す。
@@ -281,17 +273,13 @@ export class Player extends Ship {
     this.thermal.updateThermal(dt, this.state.r, this.state.v, this);
   }
 
-  // 操作対象から外す/削除する際、次のフレームへ持ち越してはならない連続指令を畳む。
+  // 操作できない間、次のフレームへ持ち越してはならない連続指令を畳む。
+  // 角速度によるcoast自体は継続する。
   clearTransientCommands(): void {
     this.thrust = null;
     this.torque = v3();
     this.throttle.clearTransientState();
     this.fire.stopFiring();
-  }
-
-  // 物理相互作用を止める高warpではRCS指令も残さない。角速度によるcoast自体は継続する。
-  suppressAttitudeCommandForWarp(): void {
-    this.torque = v3();
   }
 
   // 姿勢微調整モードの ON/OFF を切り替える。
@@ -410,7 +398,7 @@ export class Player extends Ship {
   // 熱防御の飽和・空力破壊・大気突入高度・天体の地表到達の判定(自然死)。
   checkLoss(dt: number, _simTime: number, activeStage: Stage, _playerPos: Vec3, attractors: readonly Attractor[]): void {
     if (!this.alive) return;
-    const limit = this.thermal.updateAltitudeAlarm(dt, this.alive, earthAltitudeOf(this.state.r));
+    const limit = this.thermal.updateAltitudeAlarm(dt, earthAltitudeOf(this.state.r));
 
     // 熱・動圧・大気突入・地表到達のいずれかを喪失理由として判定する
     let reason: string | null = null;
@@ -464,7 +452,6 @@ export class Player extends Ship {
       this.att,
       this.state.r,
       this.state.v,
-      this.alive,
       input,
       fine,
       attDt,
@@ -489,7 +476,7 @@ export class Player extends Ship {
     // メッシュ本体の位置・姿勢
     const displayState = this.displayState(displayTime);
     const mapEntityVisible = !camera.overviewMode || visibility === null || visibility.category;
-    this.obj.visible = displayState !== null && this.alive && mapEntityVisible && !(isActive && camera.zoomActive);
+    this.obj.visible = displayState !== null && mapEntityVisible && !(isActive && camera.zoomActive);
     if (displayState !== null) {
       this.obj.position.copy(fo.RtoThreeV3(displayState.r));
       this.obj.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
@@ -497,23 +484,23 @@ export class Player extends Ship {
 
     // 推力/RCS エフェクトとベルト。機体メッシュと同じ displayState に載せる —
     // 揃えないと「機体は未来位置、プルームは現在位置」に割れる。表示できる状態が無いときは
-    // 各エフェクトが自分で消えられるよう alive を倒して呼ぶ。
+    // 各エフェクトが自分で消えられるよう visible を倒して呼ぶ。
     const effectState = displayState ?? this.state;
-    const effectAlive = this.alive && displayState !== null && mapEntityVisible;
+    const effectVisible = displayState !== null && mapEntityVisible;
     const maxAccel = this.mass > 0 ? this.totalThrust / this.mass : 0;
-    this.thrustEffects.sync(fo, effectState.r, this.thrust, maxAccel, effectAlive, isActive, camera);
-    this.rcsEffects.sync(fo, effectState.r, this.torque, this.att, effectAlive, phasePlaying, paused, camera, isActive);
-    this.reentryEffects.sync(fo, effectState.r, effectState.v, this.thermal.qdyn, effectAlive, camera);
-    this.belt.sync(this.alive);
+    this.thrustEffects.sync(fo, effectState.r, this.thrust, maxAccel, effectVisible, isActive, camera);
+    this.rcsEffects.sync(fo, effectState.r, this.torque, this.att, effectVisible, phasePlaying, paused, camera, isActive);
+    this.reentryEffects.sync(fo, effectState.r, effectState.v, this.thermal.qdyn, effectVisible, camera);
+    this.belt.sync();
     this.radiator.sync();
     this.power.sync();
     // マーカーと軌道線。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
-    this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, isActive, camera.activeCameraProjection, camera.activeCameraScale, this.name, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.overviewCamera.focus), ephemeris.registry, attractors, visibility);
+    this.markers.sync(this.state, displayState, this.att, camera.overviewMode, isActive, camera.activeCameraProjection, camera.activeCameraScale, this.name, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.overviewCamera.focus), ephemeris.registry, attractors, visibility);
 
-    this.syncOrbitLine(this.alive, fo, camera.activeCamera, attractors, this.thrust !== null);
+    this.syncOrbitLine(true, fo, camera.activeCamera, attractors, this.thrust !== null);
   }
 
-  // Creative で任意削除されるため、Player が所有する線・ビルボード・HUD も一度だけ解放する。
+  // 艦は任意のタイミングで削除されうるので、Player が所有する線・ビルボード・HUD も一度だけ解放する。
   private disposed: boolean = false;
 
   // ターゲットとして指定された際などのマーカー。Enemy の markerItem と互換性を持たせる。

@@ -7,12 +7,8 @@ import { FrameSections, SECTION } from '../frame-sections';
 import { Player } from './player/player';
 import { CameraSystem } from './camera/camera-system';
 import { focusPoint } from './camera/focus-target';
-import { Stage } from './stages/stage';
-import { LaunchSelection } from './game-mode';
+import { Stage, StageClass } from './stages/stage';
 import { MarkerManager } from './marker/marker-manager';
-import {
-  buildStage, ephemerisConfigFor, initialPlayerCountFor, showsStatusInOverviewFor,
-} from './stages/stage-dictionary';
 import { ActivePlayerController } from './active-player-controller';
 import { UnlockManager } from './unlock-manager';
 import { Targeter } from './targeter';
@@ -97,7 +93,7 @@ export class Game {
   // 各サブシステムを、互いの依存関係が満たせる順に生成して配線する。
   constructor(
     gs: GameScene,
-    launch: LaunchSelection,
+    stageClass: StageClass,
     hud: Hud,
     sfx: Sfx,
     settingsPanel: SettingsPanel,
@@ -114,7 +110,7 @@ export class Game {
     this.settingsPanel = settingsPanel;
     this.unlockManager = unlockManager;
 
-    const ephemerisConfig = ephemerisConfigFor(launch);
+    const ephemerisConfig = stageClass.ephemerisConfig;
     const phaseOffsets = initialSave?.phaseOffsets ?? {};
     this._ephemeris = ephemerisConfig === undefined
       ? new Ephemeris(undefined, undefined, SIM_EPOCH_ET, phaseOffsets, absoluteEphemeris, SIM_EPOCH_JD_TDB)
@@ -125,7 +121,7 @@ export class Game {
 
     this.entities = new EntityManager(
       this._scene, this._hud, this._sfx, this.markerManager,
-      initialSave ? { saved: initialSave } : { playerCount: initialPlayerCountFor(launch) },
+      initialSave ? { saved: initialSave } : { playerCount: stageClass.initialPlayerCount },
     );
     this.displayWindowManager = new DisplayWindowManager(this._hud.layers.panel, this.ephemeris, this.entities);
     const initialPlayer = this.entities.initialActivePlayer;
@@ -137,7 +133,7 @@ export class Game {
       this.markerManager,
       this.ephemeris,
       initialPlayer,
-      showsStatusInOverviewFor(launch),
+      stageClass.showsStatusInOverview,
       initialSave?.camera,
     );
     this.simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
@@ -165,14 +161,15 @@ export class Game {
       this.cameraSystem, this.editor, this.simSpeedManager, this.settingsPanel,
     );
     this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager);
+    this.activePlayers = new ActivePlayerController(
+      initialPlayer, this.entities, this.cameraSystem, this.editor, this.targeter,
+      this.navTarget, this.mapPicker, this._sfx,
+    );
     // 戦闘ビューは操作対象艦を前提とするので、艦が1隻も無い起動はマップから始める。
     this.viewManager = new ViewManager(
       this._hud, this.editor, this.cameraSystem, this.displayWindowManager, this.mapPicker,
+      this.activePlayers,
       initialSave?.camera?.view ?? (initialPlayer ? 'combat' : 'map'),
-    );
-    this.activePlayers = new ActivePlayerController(
-      initialPlayer, this.entities, this.cameraSystem, this.editor, this.targeter,
-      this.navTarget, this.viewManager, this.mapPicker, this._sfx,
     );
 
     this.input = new Input(gs.renderer.domElement);
@@ -183,13 +180,10 @@ export class Game {
     this.simulator = new Simulator(this.entities, this.ephemeris, sections, initialSave?.simTime ?? 0);
     this.predictor = new Predictor(this.entities, this.ephemeris);
 
-    this.activeStage = buildStage(
-      launch, initialPlayer, this.entities, this._hud, this._sfx, this._scene,
-      this.unlockManager, this.entities.effects, this.markerManager, this.ephemeris, this.simulator,
-      (ship) => { if (this.player === null) this.activePlayers.set(ship); },
-      initialSave?.stage,
+    this.activeStage = new stageClass(
+      initialSave?.stage, this._hud, this._sfx, this._scene, this.entities, this.unlockManager,
+      this.entities.effects, this.markerManager, this.ephemeris, this.simulator, this.activePlayers,
     );
-    this.viewManager.setStage(this.activeStage);
 
     this.nanWatchdog = new NanWatchdog(this._hud);
     this.docking = new Docking(
@@ -240,8 +234,9 @@ export class Game {
 
     if (!this._isPaused) this.advanceSimulation(dt);
     this.displayWindowManager.resolve(this.simulator.simTime, this.player);
-    // ポーズ中・決着後もカメラ更新は飛ばせない: 飛ばすと視点だけが絶対 ECI に取り残され、
-    // 軌道速度で遠ざかる原点(自機)から残骸が即座にフレームアウトする。
+    // ポーズ中も決着後も飛ばせない。決着は積分を止めないので、飛ばすと描画原点になるカメラ位置
+    // だけが絶対 ECI に取り残され、追従対象もフォーカス天体も軌道速度で流れて即フレームアウトする。
+    // ポーズ中は積分が止まるが、カメラの旋回・ズーム・パンの入力をここで消化している。
     this.updateMapPresentation(dt);
     this.sections.enter(SECTION.pointer);
     this.handleMapPointerInput(dt);
@@ -251,12 +246,10 @@ export class Game {
   // 自機の行動 → ステージ → 積分 → 予測 → エフェクトの順に1フレーム進める。艦がいない場合は
   // その段だけを落として残りは進める(残骸・弾の epoch はどの状況でも進め続ける)。
   private advanceSimulation(dt: number): void {
-    const player = this.player;
-
     this.sections.enter(SECTION.player);
-    if (player && this.activeStage.isPlaying) {
-      this.nanWatchdog.checkPlayer('frameStart', player, this.simulator.simTime, dt, this.simulator.lastSimDt);
-      player.behave({
+    if (this.player && this.activeStage.isPlaying) {
+      this.nanWatchdog.checkPlayer('frameStart', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
+      this.player.behave({
         dt,
         input: this.input,
         simSpeed: this.simSpeedManager,
@@ -268,33 +261,34 @@ export class Game {
         entities: this.entities,
         ephemeris: this.ephemeris,
       });
-      this.entities.updatePassivePlayers(dt, player);
-      this.nanWatchdog.checkPlayer('player.behave', player, this.simulator.simTime, dt, this.simulator.lastSimDt);
-    } else if (player) {
+      this.entities.updatePassivePlayers(dt, this.player);
+      this.nanWatchdog.checkPlayer('player.behave', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
+    } else if (this.player) {
       // behave が呼ばれなくなるので、次のフレームへ持ち越してはならない連続指令を畳む。
-      player.clearTransientCommands();
+      this.player.clearTransientCommands();
     }
     this.sections.exit(SECTION.player);
 
     this.sections.enter(SECTION.stage);
-    this.activeStage.update(dt, player, this.entities, this.simulator.simTime, this.simSpeedManager);
+    this.activeStage.update(dt, this.player, this.entities, this.simulator.simTime, this.simSpeedManager);
     this.sections.exit(SECTION.stage);
-    this.nanWatchdog.checkPlayer('activeStage.update', player, this.simulator.simTime, dt, this.simulator.lastSimDt);
+    this.nanWatchdog.checkPlayer('activeStage.update', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
     this.simSpeedManager.update(this.simulator.simTime);
-    // 並進・射撃・衝突と同じく、RCS command torque は物理相互作用域だけで有効。
-    if (!this.simSpeedManager.canApplyAttitudeCommand) this.entities.suppressAttitudeCommandForWarp();
+    // 操作不可のワープ倍率は、操作対象から外れた艦と同じ「操作できない」状態。連続指令を書いた
+    // 主体(behave / planExecutor)によらず、積分へ渡る前に全自機分を畳む。
+    if (!this.simSpeedManager.canOperatePlayer) this.entities.clearTransientCommands();
 
     const simDt = dt * this.simSpeedManager.simSpeed;
     this.sections.enter(SECTION.integrate);
-    this.simulator.advance(dt, simDt, player, this.activeStage, this.simSpeedManager, this.nanWatchdog);
+    this.simulator.advance(dt, simDt, this.player, this.activeStage, this.simSpeedManager, this.nanWatchdog);
     this.sections.exit(SECTION.integrate);
     // 積分後の状態でこのフレームの表示窓を確定させ、以降の消費者へ共有する。
     this.displayWindowManager.resolve(this.simulator.simTime, this.player);
     // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全エンティティを見る。
-    this.nanWatchdog.checkAll('simulator.advance', player, this.entities, this.simulator.simTime, dt, simDt);
+    this.nanWatchdog.checkAll('simulator.advance', this.player, this.entities, this.simulator.simTime, dt, simDt);
 
-    this.targeter.updateBoardMarks(dt, player, this.entities);
-    if (this.activeStage.prunesDeadPlayers) this.activePlayers.reclaimDead();
+    this.targeter.updateBoardMarks(dt, this.player, this.entities);
+    this.activePlayers.reclaimDead();
     this.docking.checkProximity();
 
     // Simulator 内の substep cleanup 後に呼ぶ: 死んだ個体を予測せず、積分後の実状態と突き合わせる。
@@ -309,15 +303,13 @@ export class Game {
     this.entities.effects.update(dt, this.simulator.simTime);
     this.sections.exit(SECTION.effects);
 
-    // reclaimDead が操作対象を差し替えている場合があるので、ここは読み直した艦を見る。
-    const flown = this.player;
     this.sections.enter(SECTION.plan);
     // trackAnchor より前に置く: 最後のノードが落ちたフレームからアンカーを自機へ追従させる。
     this.guide.update(
-      flown, this.simulator.simTime, this.editor.editMode,
+      this.player, this.simulator.simTime, this.editor.editMode,
       this.ephemeris.attractorsAt(this.simulator.simTime),
     );
-    if (flown) flown.plan.trackAnchor(flown.state);
+    if (this.player) this.player.plan.trackAnchor(this.player.state);
     this.sections.exit(SECTION.plan);
   }
 
@@ -336,7 +328,7 @@ export class Game {
     } else if (!this._isPaused && this.player) {
       this.navTarget.updateCombatBasePicking(this.entities, this.input, this.cameraSystem.activeCameraProjection);
       this.targeter.updateCombatTargeting(
-        this.player, this.entities.getCombatTargets(this.player), this.input,
+        this.entities.getCombatTargets(this.player), this.input,
         this.cameraSystem.activeCameraProjection,
       );
     }
@@ -392,9 +384,7 @@ export class Game {
       this.editor.plan?.firstNode(),
       this.simulator.simTime,
     );
-    // 戦闘ビューはアクティブ艦を前提とする。艦がまだ配置されていない/破壊されている間は無効。
-    const canToggleView = this.player?.alive ?? false;
-    this.viewManager.handleInput(this.input, canToggleView);
+    this.viewManager.handleInput(this.input);
     this.editor.handleInput(this.input);
 
     if (this.input.takeKey(K.togglePerfWindow)) this.perfMeter?.toggle();
@@ -406,7 +396,7 @@ export class Game {
     const player = this.player;
     // 積分が終わった状態でこのフレームの表示窓を確定させ、sync 全体で共有する。
     const displayWindow = this.displayWindowManager.resolve(this.simulator.simTime, player);
-    this.viewBadge.sync(this.activeStage.selectLabel, this.activeStage.isPlaying && (player?.alive ?? false));
+    this.viewBadge.sync(this.activeStage.stageClass.selectLabel);
     // 原点(位置)はアクティブカメラの ECI 位置 — cameraSystem.update() は update フェーズの
     // 毎フレーム呼ばれるので、この sync の時点で activeCameraPos は確定済み。
     // 速度基準は自機のまま(弾の相対速度描画・再突入エフェクトが前提とする値で、原点とは別concern)。
