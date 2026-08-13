@@ -45,9 +45,8 @@ main.ts
     ├── TouchControls?       ... タッチデバイスのみ
     ├── MarkerManager        ... DOM の親は Hud.layers.marker / Hud.svgOverlay、所有は Game
     │   ├── GroupedMarkers (combatMarkers)  ... 画面上で近接する戦闘対象(敵+自機以外の生存中の全自機)マーカーのまとめ + 画面外方位マーカー。呼ぶのは Targeter.syncTargetMarkers
-    │   ├── LeadMarkers                     ... 戦闘対象ごとの LEAD マーカーと最終ロック時刻。呼ぶのは Targeter.syncTargetMarkers
-    │   └── EquatorNodeMarkers              ... 操作艦・navTarget・targeter の対象ごとの EqAN/EqDN。source 列(id で重複除去)は自分の private sourceScratch/collectSources() が毎フレーム組む(Game は組まない)
-    ├── Ephemeris            ... 状態を持たない純サンプラ。各所へ参照共有する単一インスタンス。MarkerManager のコンストラクタ引数として EquatorNodeMarkers へも渡る
+    │   └── LeadMarkers                     ... 戦闘対象ごとの LEAD マーカーと最終ロック時刻。呼ぶのは Targeter.syncTargetMarkers
+    ├── Ephemeris            ... 状態を持たない純サンプラ。各所へ参照共有する単一インスタンス
     ├── CameraSystem
     │   ├── CombatCameraSystem
     │   │   ├── ChaseCamera
@@ -234,8 +233,8 @@ main.ts
 | `THREE.Scene` / `WebGPURenderer` | `GameScene`(main.ts) | Game・各描画物を持つクラス |
 | `Hud` / `Sfx` | main.ts | Game(コンストラクタ引数で受け取り)経由でほぼ全サブシステム(hud/sfx は必ず対で注入する方針) |
 | `SettingsPanel` | main.ts | Game(`[Esc]` で `toggle()` を呼ぶだけ。開閉の一時停止反映は main.ts 側の配線)・MapPicker(空域右クリックの「設定メニューを開く」項目、`Targeter.emptySpaceMenu` と同じパターン) |
-| `MarkerManager` | Game | マーカーを出す全モジュール(PlayerMarkers・Targeter・NavTarget・Logistics・FocusMarkers・PlanGuide・PlanDisplay)・MapPicker(`markerManager.equatorNodeMarkers.mapPickables()`/`.sync()` を読む)。`combatMarkers`/`leadMarkers`/`equatorNodeMarkers` は参照共有ではなく MarkerManager 自身の子(§1 参照) |
-| `Ephemeris` | Game | EnvironmentScene・Simulator・OverviewCamera・FocusMarkers・NavTarget・PlanEditor(→PlanDisplay)・MarkerManager(→EquatorNodeMarkers、コンストラクタ引数)・DisplayWindowManager(コンストラクタ引数) |
+| `MarkerManager` | Game | マーカーを出す全モジュール(PlayerMarkers・Targeter・NavTarget・Logistics・FocusMarkers・PlanGuide・PlanDisplay)。`combatMarkers`/`leadMarkers` は参照共有ではなく MarkerManager 自身の子(§1 参照) |
+| `Ephemeris` | Game | EnvironmentScene・Simulator・OverviewCamera・FocusMarkers・NavTarget・PlanEditor(→PlanDisplay)・DisplayWindowManager(コンストラクタ引数) |
 | `CameraSystem.bodyClassToggles`(`BodyClassToggles`) | CameraSystem | MAP VIEW パネルが書き換え、読む側はすべて `MapVisibilityPolicy` を通す(`MapPicker.refresh`・`FocusMarkers.update`・`EnvironmentScene.sync`/参照線・`Game.sync` → Stage/Logistics/CreativeStage/Targeter)。マップの描画・ピック候補・軌道オブジェクト一覧・配置UIの基準天体が同じ1つの状態を共有するための唯一の持ち主。初期値は `localStorage`(`tepui.bodyClassToggles`)から読み込み(`camera-system.ts` の `loadBodyClassToggles`)、トグルのたびに `saveBodyClassToggles` で書き戻す(同上) || `EntityManager` | Game | Simulator(コンストラクタ引数、配列を直接持たず参照だけ回す)・ContactPhysics(`Simulator.advance` が呼び出しのたびに参照を渡すだけで保持しない)・Targeter・NavTarget・Enemy.behave・Stage/stages/・Logistics・EffectsSystem・NanWatchdog(いずれも読み取り + `addXxx`/`findPlayer`/`findEnemy` 経由の追加・参照のみ)・DisplayWindowManager(コンストラクタ引数、`attractorsAt` が `entities.attractors()` を読むだけ)。`attractors()` は毎回のフィルタ呼び出しで正本を持たない(§付録「正本でないもの」) |
 | `PlanPath` | PlanDisplay | PlanEditor(ノードの画面判定 `projectPoint` / `nearestSample` のみ、`planDisplay.path` 経由) |
 | `DisplayWindowManager`(`plan/plan.ts` の狭い `DisplayDurationSource`(`{durationSec(referencePeriod): number}`)としてのみ見える) | Game | PlanEditor(→PlanDisplay)(コンストラクタ引数で `PlanDisplay` → `PlanPath` へそのまま転送。末尾区間の長さ(`plan.ts` の `segmentDurationFrom`)と `Plan.nodeTimeRange` の上限が PREDICT パネルの選択に追従するための参照で、`PlanPath` はこれを保持するだけで書き換えない。`plan/` 配下は `durationSec` 以外の具象 `DisplayWindowManager` のフィールド・メソッドを一切読まない) |
@@ -321,11 +320,11 @@ main.ts
 | 入力スナップショット(押下キー・クリック・マウス移動量) | `Input` | フレーム確定は `update()` の1回だけ。エッジは `takeKey`/`takeKeys`/`takeClicks`/`takeRightClicks` で**先着順に消費**され、処理した側より後ろのモジュールには届かない |
 | 敵 AI の実行時状態(最終発砲時刻・バースト残数) | `Enemy` | |
 | LEAD マーカーの表示履歴(戦闘対象ごとの最終ロック時刻) | `MarkerManager.leadMarkers` | 表示専用の状態なので Enemy/Player には置かない。毎フレーム生存中の戦闘対象(敵 + 自機以外の生存中の全自機)ぶんだけ作り直す。呼ぶのは `Targeter.syncTargetMarkers` |
-| EqAN/EqDN アイコン(source ごとの位置・通過時刻) | `MarkerManager.equatorNodeMarkers`(`pairs`) | update が求め直す。source 列自体は private `sourceScratch`/`collectSources()` がこのクラス自身の内部で毎フレーム組む(呼び出し元の `Game`/`updateMapPresentation` は組まない) |
+| EqAN/EqDN アイコン(位置・通過時刻) | 各 `GameEntity.equatorNodes`(`EquatorNodeMarkerPair.icons`) | 出す対象を選ぶ側(`PlanEditor`/`Targeter`/`EntityManager.updateBaseEquatorNodes`/`NavTarget`)がそれぞれ `update` を呼んで求め直す。`sync` は置いたあとに捨てるので、そのフレームに update されなかったペアは自動的に隠れる |
 | 戦闘ターゲット用の生存対象・マーカー item のスクラッチ配列 | `Targeter`(`aliveScratch`/`markerItemScratch`) | `syncTargetMarkers` が毎フレーム組み直す作業用配列。正データではない |
 | update の区間別所要時間・区間外時間 | `FrameSections.elapsedMs` / `frameMs` | 1フレーム分だけの累計で、`beginFrame` が捨て `endFrame` が総和を確定する。境界を打つのは Game.update / Game.updateMapPresentation / Simulator.advance、読むのは PerfMeter.record だけ |
 | 計測の可否 | `FrameSections.enabled` | 書き手は `PerfMeter.open()`/`close()`(窓の開閉)のみ。偽の間は enter/exit が `performance.now()` を読まない |
-| マーカー DOM 要素のプール | `MarkerManager` | キーで索引。`combatMarkers`/`leadMarkers` は自分が前フレームに出したキーを覚えていて、集合から消えたものを hide する。`equatorNodeMarkers` は対象の増減でキー集合自体が変わるので remove する |
+| マーカー DOM 要素のプール | `MarkerManager` | キーで索引。`combatMarkers`/`leadMarkers` は自分が前フレームに出したキーを覚えていて、集合から消えたものを hide する。`EquatorNodeMarkerPair` は所有者の dispose でキーごと remove する |
 
 ### 正本が分かれていることに意味がある組み合わせ
 
@@ -380,10 +379,10 @@ main.ts
   戦闘ターゲット由来(方位・的通過マーク)は `Targeter`、航法ターゲット由来(相対 AN/DN)は
   `NavTarget`、近地点・遠地点は `PlanDisplay`、補給は `Logistics`、天体ラベルは `FocusMarkers`、
   ノード/BURN は `PlanGuide`、計画上の自機位置ゴーストは `PlanDisplay`。`MarkerManager` が own するのは
-  **1つの対象では決められない3つだけ** — `combatMarkers`(画面上のまとめ、`Targeter.syncTargetMarkers`
+  **1つの対象では決められない2つだけ** — `combatMarkers`(画面上のまとめ、`Targeter.syncTargetMarkers`
   が敵 + 自機以外の生存中の全自機を組んで呼ぶ)、`leadMarkers`(同じ対象集合に依存、同じく
-  `Targeter.syncTargetMarkers` が呼ぶ)、`equatorNodeMarkers`(操作艦・navTarget・targeter という複数の
-  役割にまたがる source 列に依存、こちらだけは `Game`(`update`/`sync`)が直接呼ぶ)。`Enemy`/`Player`
+  `Targeter.syncTargetMarkers` が呼ぶ)。赤道交点(EqAN/EqDN)は対象ごとに1つなので
+  各 `GameEntity.equatorNodes` が持つ。`Enemy`/`Player`
   は自分の見た目とラベルを `markerItem()` で渡すだけで、まとめの判断には関与しない。
 - **`EntityManager.players` は他の配列と対等に `all()` へ入る** — 操作対象かどうかは `Game.player` との
   参照同一性だけで決まる選択であり、`players` 配列自体はアクティブ/非アクティブを区別しない。
@@ -419,8 +418,8 @@ main.ts
 | `PlanArc.periapsisState` / `.apoapsisState` | 同じ積分ループの中で、`apsisCenter`(呼び出し側が渡す基準天体。末尾区間以外は null で検出自体を省く)に対して `physics/trajectory-features.ts` の `apsisCrossing` をステップ対ごとに掛けた結果、最初に見つかった近地点・遠地点(それぞれ独立)。折れ線サンプルではなく積分の生ステップ対から求めるので、衝突コースで動径速度が符号反転しない区間は近地点側が null のまま残る。読み出し用の `periapsisPoint()`/`apoapsisPoint()` は、その状態の時刻が `_end` を超えていれば(区間が縮んでその先で見つかったことになれば)null を返す | インスタンス生成時に null で初期化され、以後は見つかった時が最初の1回だけ確定 — `setEnd` → `integrateTo` の継ぎ足しで積分が続いても再リセットはされない(arc を丸ごと差し替えることだけが唯一のリセット契機) |
 | `PlanArc` の `integrateTo()` の据え置き対象(ローカル変数。時刻・`PlanAttractorSources`・衝突体の id 索引・`classifyAttractors` の結果を1つに束ねたもの) | `PlanAttractorProvider.at(t)` は毎回一意な時刻を要求されると暦のキャッシュに当たらないので、積分先端が `ATTRACTOR_REBUILD_SEC` 進むごとに1回だけ組み直し、その間の全ステップで使い回す(`Predictor.advanceBudget` と同じ定数・同じ判断)。据え置いた時間ぶんの天体位置のズレは、この区間の刻み幅そのものが持つ RK4 の誤差より小さい | `integrateTo()` の呼び出しごと(constructor からの初回、または `setEnd` からの継ぎ足し)に作り直し、積分先端が `ATTRACTOR_REBUILD_SEC` 進むたびに更新 |
 | `PlanPath.arcs` / `.lines` / `.activeCount` / `.nodeCount` / `.frame` / `.unbakeTime` / `.project` | 毎フレーム再構築される区間分割と表示文脈(画面判定もこれを使う)。`arcs` は区間の積分結果プールで、`update()` のたび `this.arcs.length = segments.length` へ切り詰められる(区間が減れば末尾を捨てる)。`lines` は折れ線の index ごとのプールで、`lineAt(i)` が遅延生成するだけで縮めない(区間数が減っても捨てず `sync()` が非表示にするだけ — 色が index で決まるため使い回す)。先頭 `activeCount` 本(`arcs`)がこのフレームの区間、先頭 `nodeCount` 本がノードで終わる区間 | `arcs`/`activeCount`/`nodeCount`/`frame`/`unbakeTime`/`project` は `update()` 毎。`lines` は必要な index が初めて登場したときだけ伸びる |
-| `PlanPath.finalSegment()`(private `final`) | 末尾区間(次のバーンが無い区間)の `state0` / `samples`(`PlanArc.samples` ゲッターの返り値をそのまま公開 — `_end` で切る必要が無ければ `trajectory.samplesOldestFirst()` と同じ配列参照を返し続けるので、積分が走らない限り `TrajectoryLine.syncGeometry` の参照同一性による再bake抑制が効く)/ 同じ末尾 arc の `periapsisPoint()`/`apoapsisPoint()`(`_end` を超えていれば null を返すアクセサ経由 — 生の `periapsisState`/`apoapsisState` ではない)をそのまま転送した `periapsis`/`apoapsis` / `apsisCenter`(`Segment` が持つ、その区間の起点自身の時刻で `strongestAttractor` が選んだ基準天体。区間長の算出と同じ天体窓から1回だけ選ぶ)。`PlanDisplay` の Pe/Ap アイコンはこの3つを直接読む。`samples` は `MarkerManager.equatorNodeMarkers` の `collectSources()` が渡す自艦の EqAN/EqDN 走査元 | `update()` 毎(`update()` を一度も通していなければ null) |
-| `PlanPath.cameraPos` / `NavTarget.attractors` / `EquatorNodeMarkers.attractors` / `PlanDisplay.attractors` | マップビューの遮蔽判定(`physics/occlusion.ts` の `isOccluded`)向けに、直近の `sync`/`update` が受け取ったカメラ位置・`Attractor[]` を引き継ぐだけのキャッシュ。`PlanPath.cameraPos` は `nearestSample` が DOM ポインタイベント起点でフレーム外から呼ばれるために要る | 次の `sync`/`update` で上書き |
+| `PlanPath.finalSegment()`(private `final`) | 末尾区間(次のバーンが無い区間)の `state0` / `samples`(`PlanArc.samples` ゲッターの返り値をそのまま公開 — `_end` で切る必要が無ければ `trajectory.samplesOldestFirst()` と同じ配列参照を返し続けるので、積分が走らない限り `TrajectoryLine.syncGeometry` の参照同一性による再bake抑制が効く)/ 同じ末尾 arc の `periapsisPoint()`/`apoapsisPoint()`(`_end` を超えていれば null を返すアクセサ経由 — 生の `periapsisState`/`apoapsisState` ではない)をそのまま転送した `periapsis`/`apoapsis` / `apsisCenter`(`Segment` が持つ、その区間の起点自身の時刻で `strongestAttractor` が選んだ基準天体。区間長の算出と同じ天体窓から1回だけ選ぶ)。`PlanDisplay` の Pe/Ap アイコンはこの3つを直接読む。`samples` は `PlanEditor.update` が操作艦の `equatorNodes` へ渡す EqAN/EqDN 走査元 | `update()` 毎(`update()` を一度も通していなければ null) |
+| `PlanPath.cameraPos` / `NavTarget.attractors` / `EquatorNodeMarkerPair.attractors` / `PlanDisplay.attractors` | マップビューの遮蔽判定(`physics/occlusion.ts` の `isOccluded`)向けに、直近の `sync`/`update` が受け取ったカメラ位置・`Attractor[]` を引き継ぐだけのキャッシュ。`PlanPath.cameraPos` は `nearestSample` が DOM ポインタイベント起点でフレーム外から呼ばれるために要る | 次の `sync`/`update` で上書き |
 | `simulation/attractors.ts` のモジュール内作業領域(`seenScratch` / `muScratch` / `griddedScratch`) | それぞれ `collectPlanCollision` の重複排除、`alwaysThresholdMu` の μ 整列、`classifyAttractors` の grid 投入待ち行列だけに使う器。いずれも使う関数の中で閉じ、返り値からは到達できない(`classifyAttractors` は `SpatialGrid` へ挿入し終えた時点で内容を捨てる) | 使うたび先頭で clear/`length = 0` |
 | `ObjectListPanel` の区画ごとの表示順(`Section.order`: `ids`/`rootIds`/`childIds`、いずれも id のみ)と前フレーム入力の記録(`prevIds`/`prevNames`/`prevKinds`/`prevParents`/`prevMatches`/`prevSort`/`prevFilter`) | 候補列・親子関係・絞り込み/並び順から導く表示順のキャッシュ。行の値(距離・詳細)と見出しの件数はここに入れず毎フレーム候補から引き直す | 入力(id 集合・表示名・種別・親・絞り込み通過可否・絞り込み/並び順の選択)が前フレームと変わったフレーム、または保持している順序が今フレームの値で整列条件を満たさなくなったフレーム(距離順では候補が変わらなくても正しい順序が動くため) |
 | `PlanPath.arrivalStates()` / `PlanEditor.nodeDv()` | 各区間の `PlanArc` 終端状態、およびそこから求めるノード Δv の導出値(表示専用) | 呼ぶたび再計算(`PlanArc` 側の積分結果をそのまま読むので、描画中の計画軌道と同じ結果になる) |
@@ -431,7 +430,7 @@ main.ts
 | `CreativeStage.preview`(軌道要素 + 位置) | 艦艇配置フォームの現在値からの導出値(正本はフォームの DOM) | `update()` 毎に再算出。パネルを閉じている間・値を解釈できないときは null |
 | `CreativeStage.issues`(`PlacementFieldIssue[]`) | 艦艇配置フォームの現在値からの導出値(正本はフォームの DOM。centerRadius/mu は `Ephemeris` から引く) | `update()` 毎に再算出、`sync()` で `ShipPlacerPanel.setIssues()` へ push。パネルを閉じている間は空配列 |
 | `PlanDisplay.apsisMarkers` / アイコン位置 | `path.finalSegment()` の `periapsis`/`apoapsis`(末尾 `PlanArc` が積分中に検出した値)を読み、検出時と同じ基準天体(`FinalSegment.apsisCenter`)に対して — その位置だけを極値の時刻で `ephemeris.positionOf` から引き直して — 距離・高度を出した導出値(軌道要素からの解析的な導出ではない — エポック依存の値だと Δv=0 のノード追加でも動いてしまうため) | `apsisIconsOf()` 毎(`update()` から呼ぶ) |
-| `EquatorNodeMarkers` の自艦ぶんの EqAN/EqDN 位置 | `EqNodeSource.samples`(`collectSources()` 自身が `Game.update` から渡された `PlanPath.finalSegment()` の `samples` を積む)を `findEquatorCrossings` で走査した導出値。それ以外の source(戦闘ターゲット・基地・航法ターゲット)は従来どおり軌道要素からの解析的な導出値 | `update()` 毎 || `MapPicker.pickables` | `FocusMarkers.bodyPickables(displayTime, visibility)`(そのフレームの `MapVisibilityPolicy` が admits した天体+ラグランジュ点) + 生存中の全 `entities.players`・敵船・弾薬・基地のうち `visibility.entity(kind, ...)` が admits したものの displayState + `NavTarget.mapPickables()` + `PlanDisplay.apsisMarkers` + `markerManager.equatorNodeMarkers.mapPickables()` の合成(保持しない使い捨て配列) | `mapPicker.refresh()`(`updateMapPresentation` 内、`cameraSystem.update()` 直前)毎に作り直す |
+| 操作艦の EqAN/EqDN 位置 | `PlanEditor.update` が渡す `PlanPath.finalSegment()` の `samples` を `findEquatorCrossings` で走査した導出値。それ以外の対象(戦闘ターゲット・基地・航法ターゲット)は軌道要素からの解析的な導出値 | `EquatorNodeMarkerPair.update()` 毎 || `MapPicker.pickables` | `FocusMarkers.bodyPickables(displayTime, visibility)`(そのフレームの `MapVisibilityPolicy` が admits した天体+ラグランジュ点) + 生存中の全 `entities.players`・敵船・弾薬・基地のうち `visibility.entity(kind, ...)` が admits したものの displayState + `NavTarget.mapPickables()` + `PlanDisplay.apsisMarkers` + `entities.all()` の各 `equatorNodes?.mapPickables()` の合成(保持しない使い捨て配列) | `mapPicker.refresh()`(`updateMapPresentation` 内、`cameraSystem.update()` 直前)毎に作り直す |
 
 ### 基礎データ型の不変性(整合性の前提)
 

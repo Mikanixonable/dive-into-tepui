@@ -123,7 +123,7 @@ export class PlanEditor {
     private readonly simSpeedManager: SimSpeedManager,
     private readonly ephemeris: Ephemeris,
     scene: THREE.Scene,
-    markerManager: MarkerManager,
+    private readonly markerManager: MarkerManager,
     ship: Player | null,
     private readonly displayDuration: DisplayDurationSource,
   ) {
@@ -727,6 +727,19 @@ export class PlanEditor {
   update(displayWindow: DisplayWindow, attractorProvider: PlanAttractorProvider): void {
     this.simTime = displayWindow.simTime;
     this.planDisplay.update(this.plan, displayWindow, this.planVisible, attractorProvider);
+    this.updateEquatorNodes(displayWindow);
+  }
+
+  // 操作艦の赤道交点マーカーを、計画の最終区間(=これから乗る軌道)を代表状態として求め直す。
+  // 区間の折れ線も渡すので、交点は解析楕円ではなく実際に描かれている積分線の上に載る。
+  private updateEquatorNodes(displayWindow: DisplayWindow): void {
+    const ship = this.ship;
+    if (!ship) return;
+    const segment = this.planDisplay.path.finalSegment();
+    ship.ensureEquatorNodes(this.markerManager).update(
+      displayWindow.frame, displayWindow.displayTime, this.ephemeris,
+      segment?.state0, segment?.samples,
+    );
   }
 
   // 計画折れ線を同期する。編集中はさらに操作 UI(TRAJECTORY パネル・ノードギズモ)も出す。

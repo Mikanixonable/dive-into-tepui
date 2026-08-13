@@ -111,7 +111,7 @@ export class Docking {
   private dock(ship: Player, base: Base): void {
     base.baseState.dockedShips.push({
       id: ship.id,
-      name: ship.displayName,
+      name: ship.name,
       hp: ship.hp,
       maxHp: ship.maxHp,
       parts: ship.parts,
@@ -132,7 +132,7 @@ export class Docking {
     }
     this.entities.parkPlayer(ship);
     if (wasActive) this.game.activePlayers.setOrNull(this.entities.players.find((p) => p.alive) ?? null);
-    this.hud.hint(`${ship.displayName} を基地に収容しました`);
+    this.hud.hint(`${ship.name} を基地に収容しました`);
   }
 
   // 既定パーツ一式の艦を1隻建造し、格納艦へ加える。費用の徴収は DockView 側で済んでいる。
@@ -145,13 +145,13 @@ export class Docking {
     ship.obj.visible = false;
     base.baseState.dockedShips.push({
       id: ship.id,
-      name: ship.displayName,
+      name: ship.name,
       hp: ship.hp,
       maxHp: ship.maxHp,
       parts: ship.parts,
       player: ship,
     });
-    this.hud.hint(`${ship.displayName} を建造しました`);
+    this.hud.hint(`${ship.name} を建造しました`);
   }
 
   // 格納艦を基地脇の軌道へ実体化し、操作対象に据える。
@@ -162,7 +162,7 @@ export class Docking {
     this.entities.addPlayer(ship);
     this.game.activePlayers.set(ship);
     this.viewManager.leaveDock();
-    this.hud.hint(`${ship.displayName} を発進しました`);
+    this.hud.hint(`${ship.name} を発進しました`);
   }
 
 }

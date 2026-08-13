@@ -20,7 +20,6 @@ export abstract class Ship extends GameEntity {
   protected readonly historyDuration = C.SHIP_HISTORY_DURATION;
   readonly predictsFuture = true;
 
-  name: string;
   hp: number;
   maxHp: number;
   parts: Part[] = [];
