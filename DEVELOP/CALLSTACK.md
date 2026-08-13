@@ -45,11 +45,12 @@
 
 ## game.update(dtRaw)
 
-`update` は一本の線形フローで、艦の有無は経路の分岐ではなく `advanceSimulation`/`handlePointerInput`
-内部の条件付きブロックとして表現される(早期 return の重複はない)。ステージの決着状態
-(`activeStage.isPlaying`)はこの2関数のどちらの分岐にも現れない — 決着後も操作艦の `behave`・
-ポインタ入力・各具体ステージ自身の `update`(§ advanceSimulation 内)は通常どおり続く。各具体
-ステージの `update` は艦の有無だけを見て自分で早期 return する。
+`update` は一本の線形フローで、艦の有無は経路の分岐ではなく `advanceSimulation` 内部の条件付き
+ブロックとして表現される(早期 return の重複はない)。`handlePointerInput` 自体には呼ぶ順序と
+ポーズ判定しかなく、ビュー(マップ視点/編集モード)や艦の有無の判定は各受け手が自分で行う(§
+handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`)はどちらの分岐にも現れない
+— 決着後も操作艦の `behave`・ポインタ入力・各具体ステージ自身の `update`(§ advanceSimulation 内)
+は通常どおり続く。各具体ステージの `update` は艦の有無だけを見て自分で早期 return する。
 
 - game.update(dtRaw)
   - sections.enter(SECTION.input)
@@ -298,12 +299,14 @@
 
 マップ/戦闘のポインタ操作を優先順位順(=呼ぶ順)に配る。`game.update` の末尾、`cameraSystem.update`
 の後に呼ぶ(このフレームのカメラ行列で投影してからでないと画面上の対象をピックできない)。
-決着状態は見ず、ポーズ中は ESC メニュー等が開いていないときだけ配る(背景の誤操作を防ぐ)。
+各受け手は自分の出番(マップ視点/編集モード/戦闘視点)かどうかを自分で見て自決するので、ここで
+決めるのは呼ぶ順序だけ。ポーズ中は ESC メニュー等が開いていないときだけマップ側を配り、戦闘側は
+ポーズ中は一切配らない(ドック表示中など背後の3D世界が見えないまま当たり判定だけが生きるのを防ぐ)。
 
 - handlePointerInput()
   - [isPaused && hud.modalController.isOpen] 即 return
-  - [editor.editMode] 計画編集モード。マーカー(handleRightClick/handleLeftClick/handleDoubleClick)→ ノード(editor.handleMapPointer)→ 空域(handleEmptySpaceRightClick)の優先順は呼び出し順そのもの — 上流が消費した右クリックは下流に届かない
-    - mapPicker.handleRightClick(input, simTime) // マーカーへの右クリックだけを消費する。外れれば消費せず editor.handleMapPointer() のノード右クリックへ読み進む
+  - マーカー(handleRightClick/handleLeftClick/handleDoubleClick)→ ノード(editor.handleMapPointer)→ 空域(handleEmptySpaceRightClick)の優先順は呼び出し順そのもの — 上流が消費した右クリックは下流に届かない
+    - mapPicker.handleRightClick(input, simTime) // [!cameraSystem.overviewMode] 即 return。マーカーへの右クリックだけを消費する。外れれば消費せず editor.handleMapPointer() のノード右クリックへ読み進む
       - pickNearest(mapPicker.pickables) // MAP_PICK_PX_SQ 以内の被選択物(天体/自機/敵船/nav-AN・DN/アプシス)を最寄りで拾う。候補列は mapPicker.refresh() が組んだ1本
       - mapPicker.openPropertyWindow() // 拾えた場合のみ消費。既にその対象のウィンドウがあれば移動+最前面化のみ、なければ new PropertyWindow(root=hud.layers.window, buildContent()) // rows は空のまま開き、同フレーム後半の mapPicker.sync() が埋める(items は windowItems() 経由で開いた瞬間から埋まる)
         - 新規かつ非クリップ → 直前の一時ウィンドウ(tempWindowKey)を closeWindow() してから差し替え
@@ -322,10 +325,10 @@
           - 以後 editor.plan は activePlayers.current.plan を返す(開いたままのノードメニューは次の editor.update() が畳む)
         - act='planExecCycle' → entities.findPlayer(target.id) → ship.planExecution = nextPlanExecution(ship.planExecution) // 'player' のみ。OFF→瞬間移動→自動操縦→OFF
         - act='delete' → entities.findPlayer(target.id) → entities.removePlayer(ship) → dispose() // 'player' のみ。操作対象の艦にはこの項目自体がメニューに出ない(MapPicker.itemsFor)
-    - mapPicker.handleLeftClick(input) // 自機/基地マーカーへの左クリックを選択として消費する。外れれば消費せず editor.handleMapPointer() のノード配置/選択解除に読み進む
+    - mapPicker.handleLeftClick(input) // [!cameraSystem.overviewMode] 即 return。自機/基地マーカーへの左クリックを選択として消費する。外れれば消費せず editor.handleMapPointer() のノード配置/選択解除に読み進む
       - selectPickable() // 'player' → activePlayers.set() / 'base' → docking.selectBase()(遷移はしない)
-    - mapPicker.handleDoubleClick(input) // pickables 全種別への最寄りダブルクリックで overviewCamera.setFocus()
-    - editor.handleMapPointer(input) // [艦なし] 即 return。右クリック → 左クリックの順に受ける
+    - mapPicker.handleDoubleClick(input) // [!cameraSystem.overviewMode] 即 return。pickables 全種別への最寄りダブルクリックで overviewCamera.setFocus()
+    - editor.handleMapPointer(input) // [!editMode || 艦なし] 即 return。右クリック → 左クリックの順に受ける
       - handleNodeRightClick() // 右クリックごと。ノードをヒットしたぶんだけ消費する
         - selectedNodeIdx = ヒットしたノードの idx + nodeGizmo.openMenu() // ヒット時。true を返して消費
       - handleMapClick() // 左クリックごと。常に消費する
@@ -333,14 +336,14 @@
         - planDisplay.path.nearestSample() // 直近の sync でキャッシュした cameraPos/attractors で isOccluded な点を候補から除外してから最寄りを探す → plan.addNode() + sfx.warp() // 計画軌道上をヒットした場合
         - selectedNodeIdx = null // どちらにも当たらなかった場合
       - dragNodeToNearestSample() // ノードを incoming arc の最寄り点へ移し、元のΔv成分を保ったまま新しいノード状態へ焼き直す
-    - mapPicker.handleEmptySpaceRightClick(input, simTime) // マーカーにもノードにも当たらなかった右クリックだけが届く。ContextMenu<MapPickable> で「オブジェクトリストウィンドウを表示」/(クリエイティブのみ)「オブジェクトを配置」/「設定メニューを開く」
-  - [!editor.editMode && !isPaused && player]
-    - navTarget.updateCombatBasePicking(entities, input, project) // targeter より先に呼ぶ。基地に当たった右クリックだけを消費し、外れは false を返して targeter へ回す
-      - pickNearest(entities.bases) → baseMenu.open() // 当たった場合のみ。航法ターゲット設定/解除メニュー
-    - targeter.updateCombatTargeting(entities.getCombatTargets(player), input, project) // 対象は敵 + 自機以外の生存中の全自機(EntityManager.getCombatTargets)。player 引数は無い(呼び出し元が既に生存艦の有無で分岐済み)
-      - handleTargetContextMenu() // 右クリックは当否に関わらず消費する
-        - pickTargetAt() → openMenu() // 右クリックが対象に当たった場合、第一/第二の設定・解除メニューを開く
-      // 自動選定・自動再選択はない。target/secondaryTarget はメニュー選択でのみ変わる
+    - mapPicker.handleEmptySpaceRightClick(input, simTime) // [!cameraSystem.overviewMode] 即 return。マーカーにもノードにも当たらなかった右クリックだけが届く。ContextMenu<MapPickable> で「オブジェクトリストウィンドウを表示」/(クリエイティブのみ)「オブジェクトを配置」/「設定メニューを開く」
+  - [isPaused] 即 return
+  - navTarget.updateCombatBasePicking(entities, input, project, overviewMode) // [overviewMode] 即 return。targeter より先に呼ぶ。基地に当たった右クリックだけを消費し、外れは false を返して targeter へ回す
+    - pickNearest(entities.bases) → baseMenu.open() // 当たった場合のみ。航法ターゲット設定/解除メニュー
+  - targeter.updateCombatTargeting(player, entities.getCombatTargets(player), input, project, overviewMode) // [overviewMode || !player] 即 return。対象は敵 + 自機以外の生存中の全自機(EntityManager.getCombatTargets)
+    - handleTargetContextMenu() // 右クリックは当否に関わらず消費する
+      - pickTargetAt() → openMenu() // 右クリックが対象に当たった場合、第一/第二の設定・解除メニューを開く
+    // 自動選定・自動再選択はない。target/secondaryTarget はメニュー選択でのみ変わる
 
 ---
 

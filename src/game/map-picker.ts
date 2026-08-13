@@ -259,7 +259,9 @@ export class MapPicker {
   }
 
   // 右クリック位置の最寄り候補を探し、当たればその種別に応じたプロパティウィンドウを開いて消費する。
+  // マップ視点でなければ候補列 (this.items) が更新されていないので何もしない。
   handleRightClick(input: Input, simTime: number): void {
+    if (!this.cameraSystem.overviewMode) return;
     input.takeRightClicks((p) => {
       const target = pickNearest(
         this.items, p.x, p.y, this.cameraSystem.activeCameraProjection, C.MAP_PICK_PX_SQ,
@@ -332,8 +334,9 @@ export class MapPicker {
 
   // 左クリック位置の最寄りの自艦・基地を選択する。当たらなければ消費せず、PlanEditor の
   // ノード配置/選択解除に読み進める(呼び出し側が editor.handleMapPointer より先に呼ぶことで、
-  // マーカーへの命中をノード配置より優先する)。
+  // マーカーへの命中をノード配置より優先する)。マップ視点でなければ何もしない。
   handleLeftClick(input: Input): void {
+    if (!this.cameraSystem.overviewMode) return;
     input.takeClicks((p) => {
       const candidates = this.items.filter((i) => i.kind === 'player' || i.kind === 'base');
       const target = pickNearest(candidates, p.x, p.y, this.cameraSystem.activeCameraProjection, C.MAP_PICK_PX_SQ);
@@ -345,8 +348,9 @@ export class MapPicker {
 
   // ダブルクリック位置の最寄りの被選択物へフォーカスを移し、自艦であれば操作対象にも切り替える。
   // 種別を問わず候補列全体から探す。ラベル衝突で非表示になった天体は、表示されている別のラベルの
-  // 背後から拾わない。
+  // 背後から拾わない。マップ視点でなければ何もしない。
   handleDoubleClick(input: Input): void {
+    if (!this.cameraSystem.overviewMode) return;
     input.takeDoubleClicks((p) => {
       const target = pickNearest(
         this.items.filter((item) => item.pickable !== false),
@@ -381,8 +385,9 @@ export class MapPicker {
     }
   }
 
-  // 何も当たらなかった場合、「空域」として扱う（他のハンドラの後に呼ぶ）。
+  // 何も当たらなかった場合、「空域」として扱う（他のハンドラの後に呼ぶ）。マップ視点でなければ何もしない。
   handleEmptySpaceRightClick(input: Input, simTime: number): void {
+    if (!this.cameraSystem.overviewMode) return;
     input.takeRightClicks((p) => {
       const target = { id: 'empty', name: '宇宙空間', pos: v3(0, 0, 0), kind: 'empty-space' as any };
       this.menu.open(p.x, p.y, target, this.itemsFor(target, simTime));
