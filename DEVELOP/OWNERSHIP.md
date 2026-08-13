@@ -114,9 +114,9 @@ main.ts
     │                                       super() の後に走るため)。自機を置くのは protected addPlayer(init?) で、
     │                                       new Player → entities.addPlayer → activePlayers.claimIfNone をこの1箇所に
     │                                       まとめる(初期弾薬は PlayerInit.ammo として艦の構築引数に載る)。
-    │                                       起動時の静的宣言(showsStatusInOverview・ephemerisConfig)は
-    │                                       Stage の静的既定値をクラスごとに override したもので、Game は stageClass
-    │                                       から直接読む。隻数の静的宣言は無い — 何隻をどこへ置くかは init の中身。
+    │                                       起動時の静的宣言(ephemerisConfig)は Stage の静的既定値を
+    │                                       クラスごとに override したもので、Game は stageClass から直接読む。
+    │                                       隻数の静的宣言は無い — 何隻をどこへ置くかは init の中身。
     │                                       freeProcurement/executesPlans は
     │                                       インスタンス側の既定 false なフラグ、authoring は既定 null の ObjectAuthoring
     │                                       (配置・複製の口)。CreativeStage だけが両方を有効にし、authoring は自身を返す。
@@ -127,7 +127,7 @@ main.ts
     │                                       行うので、ここに対応するフラグはない
     │   ├── ScoreCounter
     │   ├── Logistics                  ... 補給の投入判断
-    │   ├── StageStatusPanel           ... DOM は Hud.layers.panel 配下。HP/補助メッセージ/撃墜数
+    │   ├── StageStatusPanel           ... DOM は Hud.layers.panel 配下。HP/補助メッセージ/撃墜数。#hud-stagestatus の表示を書くのはこのクラスだけで、sync(player | null, …) の null が畳む指示(保持中の艦参照もそこで落とす)。戦闘ビュー専用 — マップビューでは同じ画面下端中央を PREDICT バーが占める
     │   ├── ScoreAttackTimer           ... Stage0 のみ(Stage00 の波状攻撃フェーズ・波数は Stage00 自身のフィールド)
     │   └── ShipPlacerPanel            ... CreativeStage のみ。パネル本体は Hud.layers.panel 配下、ObjectPicker のポップアップは Hud.layers.popup 配下(別々の引数で受け取る)。艦艇配置フォーム(開閉状態 isOpen も自身が持つ)
     ├── EnvironmentScene               ... game/celestial/ 配下(game/ への依存を持つため render/ から移動)
@@ -236,7 +236,7 @@ main.ts
   (`resolve(simTime, player)` が update フェーズ・sync フェーズそれぞれで確定させたもの)から渡す引数。
 - `STAGE_CLASSES`(stage-dictionary.ts のモジュールスコープ、`export const`)… クラス参照(`StageClass`)の
   並びだけを持つ配列で、`Stage` インスタンスは1つも作らない。選択画面のラベル・解放条件(`isUnlocked`)・
-  起動時設定(`ephemerisConfig`/`showsStatusInOverview`)はすべて各クラスの静的宣言
+  起動時設定(`ephemerisConfig`)はすべて各クラスの静的宣言
   から読む(`stage.ts` の `StageClass` インターフェース参照)。`CreativeStage` も `STAGE_CLASSES` 末尾の
   一員としてここに含まれ、選択画面のクリエイティブモードタブに CREATIVE として出る(タブは各ステージの
   静的 `selectGroup` の初出順に組まれる — `stage-select.ts` 参照)。ID からクラスを引くのは
@@ -405,6 +405,10 @@ main.ts
 - **`HudPanels` は表示専用**。Game を丸ごと読んで自分の4パネルへ書くだけで、他モジュールの状態や
   DOM は操作しない。ステージ固有の状況パネルは `Stage`(`StageStatusPanel`)、タッチUIのトグル点灯は
   `TouchControls.syncModeButtons()` が担当し、いずれも game.sync が自機/ステージの状態を渡す。
+- **HUD パネルの表示はその所有者だけが書く**。`#hud-status`/`#hud-orbit`/`#hud-enemies`/`#hud-target` は
+  `HudPanels`、`#hud-stagestatus` は `StageStatusPanel`、MAP VIEW パネルとフォーカスラベルは
+  `CameraSystem`、ビュー起因だけで決まるものは `#hud.map-mode` の CSS。**1つの要素を2箇所が書くと、
+  同じフレームの後に走ったほうが必ず勝つため、先に書いたほうの条件式が黙って死ぬ。**
 - **HUD マーカーは対象の持ち主が出す**。自機由来(方向/ボアサイト/マップ上の自機)は `PlayerMarkers`、
   戦闘ターゲット由来(方位・的通過マーク)は `Targeter`、航法ターゲット由来(相対 AN/DN)は
   `NavTarget`、近地点・遠地点は `PlanDisplay`、補給は `Logistics`、天体ラベルは `FocusMarkers`、
