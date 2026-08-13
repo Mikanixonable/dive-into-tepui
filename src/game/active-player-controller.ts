@@ -34,7 +34,6 @@ export class ActivePlayerController {
     if (this._current === ship) return;
     this._current?.clearTransientCommands();
     this._current = ship;
-    this.cameraSystem.setActivePlayer(ship);
     this.editor.setActivePlayer(ship);
     this.targeter.clearTargets();
   }
@@ -52,7 +51,6 @@ export class ActivePlayerController {
     }
     this._current?.clearTransientCommands();
     this._current = null;
-    this.cameraSystem.setActivePlayer(null);
     this.editor.setActivePlayer(null);
     this.sfx.setRcs(false);
   }

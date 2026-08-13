@@ -44,7 +44,6 @@ import { FrameControls } from './frame-controls';
 export class Game {
   private readonly _scene: THREE.Scene;
   private readonly renderer: GameScene['renderer'];
-  private floatingOrigin: FloatingOrigin;
   readonly input: Input;
   touchControls: TouchControls | null = null;
   private readonly _hud: Hud;
@@ -126,13 +125,10 @@ export class Game {
     this.displayWindowManager = new DisplayWindowManager(this._hud.layers.panel, this.ephemeris, this.entities);
     const initialPlayer = this.entities.initialActivePlayer;
 
-    // 自機より後に生成する: 追従カメラは操作対象艦を参照として直接持つ(遅延解決しない)。
     this.cameraSystem = new CameraSystem(
       this._hud,
-      this._sfx,
       this.markerManager,
       this.ephemeris,
-      initialPlayer,
       stageClass.showsStatusInOverview,
       initialSave?.camera,
     );
@@ -165,11 +161,10 @@ export class Game {
       initialPlayer, this.entities, this.cameraSystem, this.editor, this.targeter,
       this.navTarget, this.mapPicker, this._sfx,
     );
-    // 戦闘ビューは操作対象艦を前提とするので、艦が1隻も無い起動はマップから始める。
     this.viewManager = new ViewManager(
       this._hud, this.editor, this.cameraSystem, this.displayWindowManager, this.mapPicker,
       this.activePlayers,
-      initialSave?.camera?.view ?? (initialPlayer ? 'combat' : 'map'),
+      initialSave?.camera?.view,
     );
 
     this.input = new Input(gs.renderer.domElement);
@@ -196,12 +191,6 @@ export class Game {
       this._hud.layers.panel, this._hud.layers.popup, this.ephemeris, this.cameraSystem.overviewCamera,
       this.displayWindowManager,
     );
-
-    // 暫定値: cameraSystem はまだ update() を経ていないため activeCameraPos が定まらない。
-    // 最初の Game.sync() が render より前に必ず上書きするので、これは描画に使われない。
-    this.floatingOrigin = this.player
-      ? new FloatingOrigin(this.player.state.r, this.player.state.v)
-      : new FloatingOrigin(v3(), v3());
   }
 
   // ------------------------------------------------------------------ lifecycle
@@ -400,7 +389,7 @@ export class Game {
     // 原点(位置)はアクティブカメラの ECI 位置 — cameraSystem.update() は update フェーズの
     // 毎フレーム呼ばれるので、この sync の時点で activeCameraPos は確定済み。
     // 速度基準は自機のまま(弾の相対速度描画・再突入エフェクトが前提とする値で、原点とは別concern)。
-    this.floatingOrigin = new FloatingOrigin(this.cameraSystem.activeCameraPos, player?.state.v ?? v3());
+    const fo = new FloatingOrigin(this.cameraSystem.activeCameraPos, player?.state.v ?? v3());
 
     // 表示時刻 = 未来ゴーストのスライダーぶん先取りした simTime。
     const { displayTime, simTime } = displayWindow;
@@ -409,7 +398,7 @@ export class Game {
     const attractors = this.displayWindowManager.attractorsAt(simTime);
 
     // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列を読む。
-    this.cameraSystem.sync(this.floatingOrigin);
+    this.cameraSystem.sync(fo);
 
     const project = this.cameraSystem.activeCameraProjection;
     const overviewMode = this.cameraSystem.overviewMode;
@@ -419,27 +408,27 @@ export class Game {
     const combatTargets = this.entities.getCombatTargets(player);
 
     this._environment.sync(
-      player?.state.r ?? null, this.floatingOrigin, displayTime,
+      player?.state.r ?? null, fo, displayTime,
       this.cameraSystem, this.navball.gridVisibility, visibilityPolicy,
     );
 
     this.entities.syncPlayers(
-      player, this.floatingOrigin, this.cameraSystem, this.activeStage.isPlaying, this._isPaused,
+      player, fo, this.cameraSystem, this.activeStage.isPlaying, this._isPaused,
       displayTime, this.ephemeris, attractors, visibilityPolicy,
     );
-    this.entities.sync(this.floatingOrigin, displayTime);
+    this.entities.sync(fo, displayTime);
     this.entities.applyVisibility(
-      visibilityPolicy, player, overviewMode, this.floatingOrigin, this.cameraSystem.activeCamera, attractors,
+      visibilityPolicy, player, overviewMode, fo, this.cameraSystem.activeCamera, attractors,
     );
     this.entities.syncMarkers(
       project, this.cameraSystem.activeCameraScale, displayTime, overviewMode,
       player?.state.r ?? null, visibilityPolicy,
     );
 
-    this.entities.effects.sync(this.floatingOrigin, this.cameraSystem.activeCamera);
+    this.entities.effects.sync(fo, this.cameraSystem.activeCamera);
 
     this.targeter.sync(
-      this.floatingOrigin, player, combatTargets, overviewMode, project, this.cameraSystem.activeCamera,
+      fo, player, combatTargets, overviewMode, project, this.cameraSystem.activeCamera,
       attractors, visibilityPolicy,
     );
     this.targeter.syncTargetMarkers(
@@ -451,7 +440,7 @@ export class Game {
 
     this.displayWindowManager.sync(player);
     this.editor.sync(
-      this.cameraSystem.overviewCamera.dist, simTime, this.floatingOrigin, project,
+      this.cameraSystem.overviewCamera.dist, simTime, fo, project,
       this.cameraSystem.activeCameraScale, overviewMode, this.cameraSystem.activeCameraPos,
       this.cameraSystem.activeCamera,
     );
@@ -462,7 +451,7 @@ export class Game {
 
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
     this.entities.syncPlayerTrajectoryLines(
-      player, displayWindow, overviewMode, this.ephemeris, this.floatingOrigin,
+      player, displayWindow, overviewMode, this.ephemeris, fo,
       this.cameraSystem.activeCamera, attractors,
     );
 
@@ -470,7 +459,7 @@ export class Game {
       this.touchControls?.syncModeButtons(player.rcsDamp, player.fineAttitude, player.progradeHold);
     }
     this.activeStage.sync(
-      player, this.floatingOrigin, project, this.cameraSystem.activeCameraScale, displayTime, overviewMode,
+      player, fo, project, this.cameraSystem.activeCameraScale, displayTime, overviewMode,
       visibilityPolicy, this.cameraSystem.activeCamera,
     );
 
