@@ -96,7 +96,7 @@
 - advanceSimulation(dt)
   - 以下の player は毎回その場で読む game.player(= activePlayers.current)。[playing] は activeStage.isPlaying の略
   - sections.enter(SECTION.player)
-  - [player && playing] nanWatchdog.checkPlayer('frameStart')
+  - nanWatchdog.checkPlayer('frameStart')
   - [player && playing] player.behave()
     - belt.update()
       - physics.shiftBeltNodes() // リロードで給弾量が巻き戻ったフレームのみ
@@ -144,9 +144,9 @@
       - throttle.stopThrust() // 推力入力なし(物理押下・ラッチとも無し) or !canPlayerThrust。thrustAccelVec(ベルト物理向け)を戻すだけ
     - invalidatePrediction() // player.thrust !== null のときのみ(自機の噴射結果を即座に予測へ反映)
     - [planExecution==='powered'] thrust!==null または throttle.hasManualRotationInput() なら planExecution='off' // 操作対象艦の手動並進・手動回転で自動実行を中断(マップモードかどうかは問わない)
-  - [player && playing] entities.updatePassivePlayers(dt, player) // 操作対象以外の自機に、表示フレーム基準のベルト・HP回復だけを1回ずつ進める(熱・電力・ラジエータは Simulator が全艦を substep ごとに stepEnvironment する)
-  - [player && playing] nanWatchdog.checkPlayer('player.behave')
-  - [player && !playing] player.clearTransientCommands() // behave が呼ばれなくなるので、次のフレームへ持ち越してはならない連続指令を畳む
+  - [player && !playing] player.clearTransientCommands() // 決着後は操作を受け付けないので、次のフレームへ持ち越してはならない連続指令を畳む
+  - entities.updatePassivePlayers(dt, player) // 操作対象以外の自機に、表示フレーム基準のベルト・HP回復だけを1回ずつ進める(熱・電力・ラジエータは Simulator が全艦を substep ごとに stepEnvironment する)
+  - nanWatchdog.checkPlayer('player.behave')
   - sections.exit(SECTION.player)
   - sections.enter(SECTION.stage)
   - activeStage.update() // 具体ステージへディスパッチ。各具体ステージが isPlaying/艦の有無を自分で見て内部で即 return する
