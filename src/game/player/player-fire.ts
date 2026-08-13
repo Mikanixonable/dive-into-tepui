@@ -151,13 +151,6 @@ export class PlayerFire {
     this.fireCycle(activeStage, entities, ephemeris);
   }
 
-  // マップモード中: リロードタイマーだけを進める。
-  tickMapMode(dt: number): void {
-    this.tickReloadTimer(dt);
-    this.wasFiring = false;
-    this.wasEmptyClick = false;
-  }
-
   // クールダウンタイマーを dt だけ減らす。
   private tickReloadTimer(dt: number): void {
     if (0 < this.cooldown)

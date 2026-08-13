@@ -155,8 +155,7 @@
       - [controllable] throttle.updateTorque() → player.torque へ代入(マップビュー中も手動回転は常時有効)
         - onProgradeHoldReleased() → hud.hint() // ホールド中に手動回転入力があった場合のみ
         - autoAlignTorque() // ホールド中 かつ 手動回転入力なしの場合のみ
-      - [controllable, editor.editMode] fire.tickMapMode() → tickReloadTimer() // マップビュー中は発射不可(装填タイマーのみ進める)
-      - [controllable, !editor.editMode] fire.updateFireState()
+      - [controllable] fire.updateFireState()
         - tickReloadTimer()
         - hud.hint() // 発射キー押下中 かつ !simSpeed.canPlayerFire
         - sfx.emptyClick() + hud.hint() // 弾切れの初回フレームのみ
