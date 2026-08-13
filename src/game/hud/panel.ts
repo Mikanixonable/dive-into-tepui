@@ -89,7 +89,7 @@ export class HudPanels {
     }
     const player = game.player;
     if (!player) {
-      // Creative の未配置状態には操縦/戦闘 HUD の値が存在しない。
+      // 操作できる艦が1隻も無い間は、操縦/戦闘 HUD の値が存在しない。
       for (const id of ['hud-status', 'hud-orbit', 'hud-target', 'hud-enemies']) {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';

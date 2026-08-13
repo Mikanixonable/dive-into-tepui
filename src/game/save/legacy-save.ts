@@ -18,7 +18,7 @@ export function migrateLegacySave(slots: SaveSlots): SaveSlotMeta | null {
     slots.deleteSlot(slot.id);
     return null;
   }
-  slots.noteLaunch(slot.id, data.stageId === 'creative' ? 'creative' : 'stage', data.stageId);
+  slots.noteLaunch(slot.id, data.stageId);
   try {
     localStorage.removeItem(LEGACY_KEY);
   } catch {

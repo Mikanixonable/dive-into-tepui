@@ -61,10 +61,9 @@
         - hud.hint() // ノード無し or !isPlaying
         - cancelAutoWarp() + hud.hint() // 既に自動ワープ中
         - startAutoWarpTo() + hud.hint() // 未開始
-    - viewManager.handleInput(input, canToggleView) // ビュー遷移はすべて setView() を通る。canToggleView = player?.alive ?? false。isPlaying は引数ではなく setStage() で後から注入された Stage 参照(this.stage)を自分で読む
-      - [stage !== null && !stage.isPlaying] setView('combat') // 死亡/終了時にドック・マップを強制的に閉じてから return
-      - [current==='dock'] 何もせず return // [M] は消費もしない
-      - setView(current==='map' ? 'combat' : 'map') // [M]。canToggleView かつ K.toggleMapMode を取れた場合のみ
+    - viewManager.handleInput(input) // ビュー遷移はすべて setView() を通る。[isDockOpen] 何もせず return([M] も消費しない)。[!K.toggleMapMode を取れた] 何もしない
+      - [current==='map'] !canEnter('combat')(= activePlayers.current !== null が false)なら hud.hint('操作できる艦がいません') して return(この時点で [M] キー自体は既に消費済み)
+      - setView(current==='map' ? 'combat' : 'map')
         - [出るビューが dock] docking.leaveDock() → dockView.close() + game.resume()
         - [3D 側ビューが map→他] editor.onMapClosed() / editor.closeMenu() / mapPicker.close()
           - onMapClosed: hidePanel / hideGizmo / plan.removeNode(末尾の Δv 微小ノードを間引く) / selectedNodeIdx=null
@@ -95,7 +94,7 @@
 どの状況でも進め続ける)。`game.update` からは `!isPaused` のときだけ呼ばれる。
 
 - advanceSimulation(dt)
-  - player = game.player(= activePlayers.current) // 以下の [playing] は activeStage.isPlaying の略
+  - 以下の player は毎回その場で読む game.player(= activePlayers.current)。[playing] は activeStage.isPlaying の略
   - sections.enter(SECTION.player)
   - [player && playing] nanWatchdog.checkPlayer('frameStart')
   - [player && playing] player.behave()
@@ -113,7 +112,7 @@
       - throttle.setThrottlePreset(0|1|2) // K.throttleLow/Mid/High
       - fire.manualReload() // K.reload。成功時のみ true(= キー消費)
         - sfx.playReload() + dropBarrel() → fx.spawnBarrel()
-    - throttle.updateTorque() → player.torque へ代入。!alive なら即ゼロ(マップビュー中も手動回転は常時有効)
+    - throttle.updateTorque() → player.torque へ代入(マップビュー中も手動回転は常時有効)
       - onProgradeHoldReleased() → hud.hint() // ホールド中に手動回転入力があった場合のみ
       - autoAlignTorque() // ホールド中 かつ 手動回転入力なしの場合のみ
     - radiator.update() // 展開度のみ。THREE には触れない
@@ -121,7 +120,6 @@
     - thermal.setRadiatorLoad(radiator.radiatingArea(), radiator.solarLoad())
       // このフレームの全サブステップの updateThermal がこの値を使う
     - power.update() // sunlit/sunDir は radiator と共有。THREE には触れない
-    - [!player.alive] player.thrust = null、throttle.stopThrust() して return
     - hpRegen()
     - [editor.editMode] fire.tickMapMode() → tickReloadTimer() // マップビュー中は発射不可(装填タイマーのみ進める)
     - [!editor.editMode] fire.updateFireState()
@@ -159,7 +157,7 @@
     - [Stage0 訓練スコアアタック] timer.update()
       - setPhase('timeup') + showScoreAttackResultScreen() // 制限時間到達フレームのみ
     - [Stage00 無限サバイバル] logistics.updateLogistics(simSpeed, respawnOnDespawn=true)
-      - absorbNearbyAmmo() // player.alive のみ
+      - absorbNearbyAmmo()
         - player.onPickup() + sfx.pickup() + hud.hint() // 範囲内の補給ごと
       - despawnFarAmmo() // 消滅そのものは投入可否によらず常に走る
         - spawnForPlayer() // 遠方消滅した数だけ再投入。投入可(resupplyEnabled かつ canResupplyAmmo)のときだけ。生存数が MAX_AMMO に達したら打ち切る
@@ -178,7 +176,7 @@
   - sections.exit(SECTION.stage)
   - nanWatchdog.checkPlayer('activeStage.update')
   - simSpeedManager.update() // 自動ワープ中のみ実効。残り時間が C.NODE_APPROACH_LEAD 以下なら autoWarpUntil=null + levelIdx=0 で即 return
-  - [!simSpeedManager.canApplyAttitudeCommand] entities.suppressAttitudeCommandForWarp() // 全自機の RCS command torque を明示的にゼロへ戻す
+  - [!simSpeedManager.canOperatePlayer] entities.clearTransientCommands() // 操作できないワープ倍率の間、全自機の連続指令を畳む。ship ごとに thrust=null / torque=0 / throttle.clearTransientState()(噴射ラッチ・二度押し時刻)/ fire.stopFiring()。behave と planExecutor の両方より後、積分より前に置くので、どちらが書いた指令も積分へ渡らない
   - simDt = dt × simSpeedManager.simSpeed
   - sections.enter(SECTION.integrate)
   - simulator.advance(dt, simDt, player, activeStage, simSpeedManager, nanWatchdog)
@@ -235,10 +233,11 @@
   - nanWatchdog.checkAll('simulator.advance', player, entities, simTime, dt, simDt) // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全エンティティを見る
   - targeter.updateBoardMarks(dt, player, entities) // 既存マークの経過時間を進め、寿命切れを捨てる。自機もターゲットも居なければ全消し
     - boardMarks.push() // 通常弾が的の面を自機側から通過した場合のみ
-  - [activeStage.prunesDeadPlayers] activePlayers.reclaimDead() // 喪失艦を配列・操作対象から回収する。艦の保持数に上限があり埋まった枠を空ける必要があるステージ(CreativeStage)だけ true。既定では回収せず喪失艦は撃墜演出・追従カメラの基準として配列に残り続ける
-    - entities.players のうち !alive な艦ごと → activePlayers.remove(lost) → navTarget.clearIfTargeting() / mapPicker.close() / overviewCamera.clearFocusIf() / entities.removePlayer(lost)
-    - 掃引で操作対象そのものを失った場合だけ reclaimAfterLoss() → 生存艦が居れば activePlayers.set(次の艦)、居なければ setOrNull(null)(cameraSystem/editor の操作対象を null に + sfx.setRcs(false) + viewManager.setView('map'))。元から操作対象が居ない状態(手動解除・未配置)では何もしない
-  - docking.checkProximity() // 内部で viewManager.current==='dock' なら即 return。それ以外は全 base × 全生存艦を見て、距離・相対速度が閾値内の艦を収容(EntityManager.parkPlayer で破棄せず除去)
+  - activePlayers.reclaimDead() // 喪失艦を配列・操作対象から回収する。全ステージ共通で毎フレーム無条件に呼ぶ(喪失した自機も他のエンティティと同じく速やかに取り除く)
+    - entities.players のうち !alive な艦ごと → activePlayers.remove(lost) → navTarget.clearIfTargeting(lost.id) / targeter.clearIfTargeting(lost) / mapPicker.close() / overviewCamera.clearFocusIf(lost.id) / entities.removePlayer(lost)
+    - 掃引で操作対象そのものを失った場合だけ reclaimAfterLoss() → 生存艦が居れば activePlayers.set(次の艦)、居なければ setOrNull(null)(cameraSystem/editor の操作対象を null に + sfx.setRcs(false)。ビューはここでは切り替えない)。元から操作対象が居ない状態(手動解除・未配置)では何もしない
+  - docking.checkProximity() // 内部で viewManager.current==='dock' なら即 return。それ以外は全 base × 全生存艦を見て、距離・相対速度が閾値内の艦を収容(EntityManager.parkPlayer で破棄せず除去。alive には触れない)
+    - [収容した艦が操作対象だった] activePlayers.setOrNull(次の生存艦、居なければ null) → [game.player===null] viewManager.setView('map') // 操縦できる艦が無くなれば戦闘ビューに映すものが無いためマップへ
   - sections.enter(SECTION.predict)
   - predictor.update(simTime, player, displayWindowManager.current.duration, mode) // simulator.advance 内の substep cleanup 後に呼ぶ(死んだ個体を予測しない・積分後の実状態と突き合わせる)。horizon = displayWindowManager.current.duration(直前の displayWindowManager.resolve() が確定させた窓を読むだけ)。mode は 'map'(entities.all() 全対象・PREDICT_STEP_BUDGET)/'combat'(自機のみ・PREDICT_COMBAT_STEP_BUDGET)、cameraSystem.overviewMode で選ぶ
     - discardPredictionIfDiverged(simTime, attractors) // entities.all() のうち predictsFuture=true の対象のみ、毎フレーム無条件。attractors は simTime ぶんを1回だけ classifyAttractors し、対象ごとに attractorsNearInto でその位置の近傍へ絞ったもの(advanceBudget とは別のスクラッチ配列)
@@ -251,15 +250,14 @@
   - sections.enter(SECTION.effects)
   - effects.update(dt, simulator.simTime) → flashEffectManager.updateFlashEffects() // フラッシュの寿命と、各エフェクトの時刻から simTime までの移流。playing/player を問わず常に進める(決着直後の爆発を止めないため)
   - sections.exit(SECTION.effects)
-  - flown = player // trackAnchor より前に取り直す: 最後のノードが落ちたフレームからアンカーを自機へ追従させるため
   - sections.enter(SECTION.plan)
-  - guide.update(flown, simTime, editMode, ephemeris.attractorsAt(simTime)) // flown が null でも呼ぶ。内部の `editMode || !player?.alive` で、操作できない間(未配置・喪失・計画編集中)は何も消化せず通知もしない
-    - [flown?.alive かつ !editMode] flown.plan.consumeNodesUpTo(simTime - C.NODE_EXPIRE_GRACE, flown.state) // 期限切れノードをまとめて落とし、自機の実状態を新しいアンカーに据える
-    - [flown かつ直近ノードが実行の窓(node.t - C.NODE_APPROACH_LEAD)に入っている場合のみ]
+  - guide.update(player, simTime, editMode, ephemeris.attractorsAt(simTime)) // ここの player は reclaimDead / docking.checkProximity による引き継ぎ後の操作対象。null でも呼ぶ(内部の `editMode || !player` で、操作できない間(未配置・計画編集中)は何も消化せず通知もしない)
+    - player.plan.consumeNodesUpTo(simTime - C.NODE_EXPIRE_GRACE, player.state) // 期限切れノードをまとめて落とし、自機の実状態を新しいアンカーに据える
+    - [player かつ直近ノードが実行の窓(node.t - C.NODE_APPROACH_LEAD)に入っている場合のみ]
       - notifyApproach() → hud.hint() // ノードごとに最初の1回のみ(approachNotified との同一性比較)
-      - notifyAchieved() // orbitalElementsClose(自機軌道要素, 目標軌道要素) が真の場合のみ。flown.plan.consumeNodesUpTo(node.t, flown.state) で達成ノードを消化し、残り件数は消化後の実数を読む
+      - notifyAchieved() // orbitalElementsClose(自機軌道要素, 目標軌道要素) が真の場合のみ。player.plan.consumeNodesUpTo(node.t, player.state) で達成ノードを消化し、残り件数は消化後の実数を読む
         - hud.hint() + sfx.warp() // ノードごとに最初の1回のみ(achievedNotified との同一性比較)
-  - [flown] flown.plan.trackAnchor(flown.state) // ノードが0件のときだけ実効(1件目を置くとアンカーは凍結される)
+  - [player] player.plan.trackAnchor(player.state) // ノードが0件のときだけ実効(1件目を置くとアンカーは凍結される)
   - sections.exit(SECTION.plan)
 
 ### updateMapPresentation(dt)
@@ -297,8 +295,8 @@
     - overviewCamera.update(..., mapPicker.pickables, attractors) // cameraSystem.overviewMode のみ。focus を mapPickables から引き直し、結果を自身の view へ書く。attractors は frameTransformAt の回転解決(登録天体/生存中の重力天体の2経路)に渡す
     - combatCamera.update() // !overviewMode のみ
       - zoomActive = K.gunsightZoom 押下 // combatCamera 自身のフィールドへ書く(overviewMode 中はこの update 自体が呼ばれないため更新されない — CameraSystem.zoomActive の !overviewMode ガードが読み替えを担保する)
-      - gunsightCamera.update() // player.alive && zoomActive。結果を自身の view へ書く
-      - chaseCamera.update() // それ以外。camFollowAttitude && player.alive のときだけ player.att.q を rot に合成し、鍵/ドラッグ/ロール入力を回転として適用。結果を自身の view へ書く
+      - gunsightCamera.update() // player !== null && zoomActive。結果を自身の view へ書く
+      - chaseCamera.update() // それ以外。!target なら即 return。camFollowAttitude のときだけ target.att.q を rot に合成し、鍵/ドラッグ/ロール入力を回転として適用。結果を自身の view へ書く
       - 選ばれた view.fovDeg から combatCamera 自身の view.fovDeg を指数補間
   - sections.exit(SECTION.camera)
 
@@ -327,7 +325,7 @@
         - act='warp' → simSpeedManager.startAutoWarpTo(navTarget.passTimeOf(target.id))
         - act='addNode' → editor.addNodeAt(planDisplay.apsisTimeOf(target.id) または navTarget.passTimeOf(target.id))
         - act='activate' → entities.findPlayer(target.id) → activePlayers.set(ship) // 'player' のみ。id が現存する艦を指さなくなっていたら何もしない
-          - cameraSystem.setActivePlayer(ship) → combatCamera.setActivePlayer(ship) → chaseCamera.setPlayer(ship) // rot/dist は据え置き
+          - cameraSystem.setActivePlayer(ship) → combatCamera.setActivePlayer(ship) → chaseCamera.setTarget(ship) // rot/dist は据え置き
           - editor.setActivePlayer(ship) → ship 差し替え / selectedNodeIdx = null / closeMenu() // 以後 editor.plan は ship.plan を指す
           - targeter.clearTargets() // 切替前の艦が握っていたロックを持ち越さない
         - act='planExecCycle' → entities.findPlayer(target.id) → ship.planExecution = nextPlanExecution(ship.planExecution) // 'player' のみ。OFF→瞬間移動→自動操縦→OFF
@@ -350,8 +348,8 @@
   - [!editor.editMode && !isPaused && player]
     - navTarget.updateCombatBasePicking(entities, input, project) // targeter より先に呼ぶ。基地に当たった右クリックだけを消費し、外れは false を返して targeter へ回す
       - pickNearest(entities.bases) → baseMenu.open() // 当たった場合のみ。航法ターゲット設定/解除メニュー
-    - targeter.updateCombatTargeting(player, entities.getCombatTargets(player), input, project) // 対象は敵 + 自機以外の生存中の全自機(EntityManager.getCombatTargets)
-      - handleTargetContextMenu() // player.alive のみ。右クリックは当否に関わらず消費する
+    - targeter.updateCombatTargeting(entities.getCombatTargets(player), input, project) // 対象は敵 + 自機以外の生存中の全自機(EntityManager.getCombatTargets)。player 引数は無い(呼び出し元が既に生存艦の有無で分岐済み)
+      - handleTargetContextMenu() // 右クリックは当否に関わらず消費する
         - pickTargetAt() → openMenu() // 右クリックが対象に当たった場合、第一/第二の設定・解除メニューを開く
       // 自動選定・自動再選択はない。target/secondaryTarget はメニュー選択でのみ変わる
 
@@ -362,7 +360,7 @@
 - game.sync()
   - player = game.player(= activePlayers.current)
   - displayWindow = displayWindowManager.resolve(simulator.simTime, player) // sync フェーズの先頭で1回だけ。update フェーズ側で求めた値とは別に、sync フェーズ全体(displayTime を読む全消費者・displayWindowManager.sync 自身)がこの1回を共有する。内部はキャッシュ(simTime・revision・player・player.state のいずれも動いていなければ組み直さない)なので、update フェーズと合わせて実質的な組み直しは1フレームに数回のみ
-  - viewBadge.sync(activeStage.selectLabel, canToggleView) // タイトル・Mode・View ドロップダウンの表示反映
+  - viewBadge.sync(activeStage.selectLabel) // タイトル・Mode・View ドロップダウンの表示反映
   - floatingOrigin = new FloatingOrigin(cameraSystem.activeCameraPos, player?.state.v ?? v3()) // r=アクティブカメラのECI位置(update フェーズの cameraSystem.update() で確定済み)、v=自機速度(艦が無ければゼロ)。以降の sync 系はこの fo だけを参照する
   - { displayTime, simTime } = displayWindow // displayTime は未来ゴーストのスライダーが立っている間だけ先の時刻、simTime は積分後の simulator.simTime と一致する値
   - attractors = displayWindowManager.attractorsAt(simTime) // 解析天体 + 重力を持つ生存中の GameEntity(小惑星)の合流窓。EntityManager.cleanup へ渡す表面到達判定用の配列(解析天体のみ)とは別物
@@ -392,15 +390,15 @@
     - ship.syncPlayer(fo, cameraSystem, phasePlaying, paused, displayTime, isActive, ephemeris, attractors, visibilityPolicy?.entity('player', isActive))
       - displayState(displayTime) // current.at または predicted.at。null なら obj.visible=false のみで以下は現在状態のまま
       - obj の position / quaternion / visible // displayState 基準(未来ゴースト表示中は将来位置)。ガンサイトズームで隠れるのは isActive の艦だけ
-      - thrustEffects.sync(this.thrust, maxAccel, ...) → sfx.setThrust(firing)(isActive のみ) + core/outer の sync() or hide() // this.thrust は PlayerThrottle/PlanExecutor どちらが立てても同じ。displayState(displayTime) ?? this.state。displayState が null なら alive=false 扱いで呼び自分で隠れる
+      - thrustEffects.sync(this.thrust, maxAccel, ...) → sfx.setThrust(firing)(isActive のみ) + core/outer の sync() or hide() // this.thrust は PlayerThrottle/PlanExecutor どちらが立てても同じ。displayState(displayTime) ?? this.state。displayState が null なら visible=false 扱いで呼び自分で隠れる
       - rcsEffects.sync() → sfx.setRcs(rotating) + puff の sync() or hide() ×4 // 同上
-      - belt.sync() // 各リンクの position/quaternion を平行移動+ツイストから導出。同上
+      - belt.sync() // 引数なし。各リンクの position/quaternion を平行移動+ツイストから導出するだけで、表示可否は playerObj(obj.visible)の可視性に従う
       - radiator.sync() // ヒンジ Group の rotation.y へ展開角を書く
-      - reentryEffects.sync() // qdyn が REENTRY_GLOW_MIN_Q 未満、または !alive なら隠すだけ
+      - reentryEffects.sync() // qdyn が REENTRY_GLOW_MIN_Q 未満、または !visible なら隠すだけ
       - [isActive] markers.sync(currentState, displayState, ..., project, scale) // 自機由来の HUD マーカー(方位・ボアサイト・▲)。操作対象の艦だけが出す
         - [overviewMode] 戦闘用7キーを hide + displayState があれば headingDeg(displayState.r, displayState.v) → markerManager.setPosition('self', 'mk-self', '▲', rotationDeg) / 無ければ hide('self')
         - [!overviewMode] hide('self') + syncOrbitAxes(currentState) // pro/retro/nrm/anm/radout/radin。常に現在状態
-        - [!overviewMode] syncBoresight(currentState) → setDirection('bore') or hide('bore') // player.alive で分岐。常に現在状態
+        - [!overviewMode] syncBoresight(currentState) → setDirection('bore') // 常に現在状態、無条件に描画
       - orbitLine.sync() → regenerate() // 中心天体は毎フレーム strongestAttractor(state.r, ephemeris.attractorsAt(state.t)) で導出(地球固定ではない)。要素が閾値以上ドリフト or 推力中(force) or 初回のみ再生成。現在状態基準(要素は時刻に依らない)
   - entities.sync(fo, displayTime) → entity.sync(fo, displayTime) // 敵・弾・薬莢・デブリ・補給それぞれ(Bullet は速度方向を向く別実装)。自機(全隻)は含まない — 各艦は syncPlayers() が個別に同期済み。
     displayState が null(predictsFuture=false の種別が未来表示中、または予測ホライズン超過)なら visible=false
@@ -426,7 +424,7 @@
       - [overviewMode] headingDeg(item.pos, item.vel) → rotationDeg // 対象ごと。円軌道での進行方向を示す
       - markerManager.set() + markerManager.setBearing() // 対象ごと。overviewMode 以外で画面外なら画面端の方位マーカー▲へ
       - retire() // 前フレームに出したキーのうち集合から消えたものを remove(対象ごとに増えるキーなので DOM ごと捨てる)
-    - [player] markerManager.leadMarkers.sync(player, aliveScratch, aliveTarget, aliveSecondaryTarget, simTime, overviewMode, project) // 対象ごとの LEAD マーカー。overviewMode or !player なら全 remove して return
+    - [player] markerManager.leadMarkers.sync(player, aliveScratch, aliveTarget, aliveSecondaryTarget, simTime, overviewMode, project) // 対象ごとの LEAD マーカー。overviewMode なら全 remove して return
       - trackTargeted() // 最終ロック時刻を生存中の対象ぶんだけ作り直す
       - leadPoint() → markerManager.setPosition('lead-<name>') // LEAD_HOLD_SEC 以内 かつ 解がある対象ごと
   - navTarget.sync(project, overviewMode, cameraSystem.activeCameraPos) // ▲/▽ nav-an/nav-dn マーカー。navTarget.update() が求めた位置があれば表示、無ければ hide。[overviewMode かつ isOccluded] も hide
@@ -453,7 +451,7 @@
     - [plan !== null かつ editMode] syncPanel(plan, simTime) // 軌道計画パネルの HTML(ノード一覧・選択中ノードの Δv と噴射後要素)
   - mapPicker.sync(simTime, attractors, player) // 軌道オブジェクトウィンドウ。overviewMode は引数ではなく内部で cameraSystem.overviewMode を読む。overviewMode の間は常設表示で pickables を行として書き出す
     - objectListPanel.sync(pickables, focusId, parentOf) // 区画の選別・並べ替え・親子構造(Section.order)は、それを決める入力が変わったフレームか、保持している順序が今フレームの値で整列条件を満たさなくなったフレーム(距離順)にだけ組み直す。行の値(距離・詳細)と見出しの件数は毎フレーム書く
-    - 開いている各プロパティウィンドウ // isTargetGone(target) が真なら closeWindow()(player/ship/ammo/base は実体の alive を直接見る。displayState が null なだけの休止フレームでは alive のまま残るので閉じない。天体/アプシス/AN-DN は pickables に載っているかで判定) — 残れば target を pickables の最新値へ更新し、buildRows() → w.syncRows() / windowItems() → w.syncItems()
+    - 開いている各プロパティウィンドウ // isTargetGone(target) が真なら closeWindow()(player は findPlayer(id)===undefined、すなわち entities.players からの存在有無で見る。ship/ammo/base は実体の alive を直接見る。displayState が null なだけの休止フレームでは実体自体は残るので閉じない。天体/アプシス/AN-DN は pickables に載っているかで判定) — 残れば target を pickables の最新値へ更新し、buildRows() → w.syncRows() / windowItems() → w.syncItems()
   - frameControls.sync(mapPicker.pickables, cameraSystem.activeCameraPos, attractors, simTime, overviewMode) // 座標系パネル。!overviewMode なら非表示にして return
     - [overviewMode] members = systemMembersAt(ephemeris.registry, cameraPos, attractors) // 4ゾーン共通の「いまカメラがいる系の天体列」を1回だけ導出
     - [overviewMode] cameraZone.setItems(pickables) / setNearby(members, pickables) / setSelected(focusTargetId(overviewCamera.focus)) // カメラの固定先(全候補プルダウン + いまいる系のクイックボタン)
@@ -461,7 +459,7 @@
     - [overviewMode] translationZone.setItems(pickables) / setNearby(members, pickables) / setSelected(displayWindow.frame.center) // 未来表示(計画折れ線・予測軌道線・交点マーカー)の描画座標系の原点
     - [overviewMode] planRotationZone.setNearby(members) / setSelected(displayWindow.frame.rotatingWith)
   - entities.syncPlayerTrajectoryLines(player, displayWindow, overviewMode, ephemeris, fo, cameraSystem.activeCamera, attractors) // 計画折れ線と同じ座標系(displayWindow.frame)で bake する
-    - [entities.players ごと] ship.syncTrajectoryLine(ship === player && ship.alive, frame, simTime, ephemeris, fo, camera, attractors) // 操作対象の生存艦だけ show=true。それ以外は trajectory=null で畳む
+    - [entities.players ごと] ship.syncTrajectoryLine(ship === player, frame, simTime, ephemeris, fo, camera, attractors) // 操作対象艦だけ show=true。それ以外は trajectory=null で畳む
       - trajectoryLine.syncGeometry(show ? predictedTrajectory : null, simTime, null, frame, ...) // predictedTrajectory.samplesOldestFirst() を frame で bake(点列の参照が変わらない限り再bakeしない)。simTime は描画区間の下限で sampler の時刻写像だけを動かす — 線の先頭は predictedTrajectory を simTime で補間した点になる。上限は null(先端まで無制限)
       - trajectoryLine.syncTransform()
       - trajectoryLine.sync(camera) // 頂点2未満なら curve.clear()

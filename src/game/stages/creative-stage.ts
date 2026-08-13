@@ -1,27 +1,20 @@
 // クリエイティブモード: 勝敗判定を発生させず、艦艇配置と軌道計画を自由に試すためのステージ。
 import type * as THREE from 'three/webgpu';
-import { Stage, type ObjectAuthoring } from './stage';
+import { Stage, type ObjectAuthoring, type StageDeps } from './stage';
 import { Player } from '../player/player';
 import { EntityIdAllocator } from '../game-entity/entity-id';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { SimSpeedManager } from '../sim-speed-manager';
-import type { Hud } from '../hud/hud';
-import type { Sfx } from '../../audio/sfx';
-import type { EffectsSystem } from '../vfx/effects-system';
-import type { Simulator } from '../simulation/simulator';
-import type { MarkerManager } from '../marker/marker-manager';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { OrbitalElements, semiMajorFromPeriod, stateFromOrbitalElements } from '../../physics/elements';
 import { Attractor, orbitalElementsOf } from '../../physics/attractor';
-import { Ephemeris } from '../../physics/ephemeris';
 import { haloState, lissajousState } from '../../physics/halo';
 import type { FloatingOrigin } from '../floating-origin';
 import { Vec3, add } from '../../physics/vec3';
 import { HudToggle } from '../hud/buttons';
 import { hudDock } from '../hud/dom';
 import type { ProjectFn, ScaleFn } from '../camera/camera-system';
-import type { UnlockManager } from '../unlock-manager';
 import { Ammo } from '../game-entity/ammo';
 import { Base } from '../game-entity/base';
 import { generateDriftingEnemy } from './spawner/enemy-generator';
@@ -32,7 +25,11 @@ import { validateEllipticPlacementFields, validateBaseReferenceFields, validateL
 import { elementsFormFromState } from '../creative/duplicate-form';
 import { OrbitLine } from '../orbit-line';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
+<<<<<<< HEAD
 import type { CreativeStageSaveData, StageSaveData } from '../save-data';
+=======
+import type { StageSaveData } from '../save-data';
+>>>>>>> origin/workspace4
 
 const DEG = Math.PI / 180;
 
@@ -42,19 +39,16 @@ export class CreativeStage extends Stage {
   // 無い側の特殊化にすぎない)。
   static readonly initialPlayerCount = 0;
   static readonly showsStatusInOverview = true;
-  readonly stageId = 'creative' as const;
-  readonly selectLabel = 'CREATIVE';
-  readonly selectSub = '軌道上に艦艇を自由に配置して眺める';
-  readonly hiddenFromSelect = true;
-  readonly selectKeys: string[] = [];
+  static readonly selectLabel = 'CREATIVE';
+  static readonly selectSub = '軌道上に艦艇を自由に配置して眺める';
+  static readonly selectGroup = 'クリエイティブモード';
+  static readonly selectKeys: string[] = [];
   readonly initialAmmo = { mags: 0, rounds: 0 };
-  // CREATIVE_MAX_SHIPS の枠を空けるため、喪失艦は即座に回収する(他のステージは1隻固定なので
-  // 回収の必要が無く、既定の false のまま撃墜演出用に残る)。
-  readonly prunesDeadPlayers = true;
   readonly freeProcurement = true;
   readonly executesPlans = true;
   readonly authoring: ObjectAuthoring = this;
 
+<<<<<<< HEAD
   private placerPanel!: ShipPlacerPanel;
   // 補給の自動投入・敵の波状攻撃を切り替えるトグルを載せたパネル。マップ視点でだけ出す。
   private creativeSettingsPanel!: HTMLElement;
@@ -64,6 +58,12 @@ export class CreativeStage extends Stage {
   // WaveAttack は hud/scene 等が setup() まで揃わないため生成できない。setup() まで控えておく。
   private readonly savedCreative?: CreativeStageSaveData;
   private previewOrbitLine!: OrbitLine;
+=======
+  private readonly placerPanel: ShipPlacerPanel;
+  // 補給の自動投入を切り替えるトグルのパネル。マップ視点でだけ出す。
+  private readonly logisticsPanel: HTMLElement;
+  private readonly previewOrbitLine: OrbitLine;
+>>>>>>> origin/workspace4
   // 艦艇配置パネルのフォーム値から求めた配置プレビュー。出すものが無ければ null。
   private preview: { readonly elements: OrbitalElements; readonly pos: Vec3 } | null = null;
   // 現在のフォーム値に対するフィールド単位の検証結果。パネルが閉じている間は空。
@@ -88,31 +88,37 @@ export class CreativeStage extends Stage {
     return '<b>クリエイティブモード</b><br>マップから艦艇を配置して軌道を眺められる。';
   }
 
-  // 共通リソースの注入に加え、艦艇配置パネルを組み立てて確定の宛先を自身にする。
-  setup(
-    hud: Hud, sfx: Sfx, scene: THREE.Scene, entities: EntityManager, unlockManager: UnlockManager,
-    fx: EffectsSystem, markerManager: MarkerManager, ephemeris: Ephemeris, simulator: Simulator,
-  ): void {
-    super.setup(hud, sfx, scene, entities, unlockManager, fx, markerManager, ephemeris, simulator);
+  constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
+    super(saved, ...deps);
 
     // 以後の新規配置が既存 id と衝突しないよう、この時点で存在する艦・補給の id を予約する
     // (スナップショットからの再開では entities が復元済み — 新規開始では空なので何もしない)。
-    for (const p of entities.players) this.playerIdAllocator.next(p.id);
-    for (const a of entities.ammos) this.ammoIdAllocator.next(a.id);
+    for (const p of this._entities.players) this.playerIdAllocator.next(p.id);
+    for (const a of this._entities.ammos) this.ammoIdAllocator.next(a.id);
 
     this.previewOrbitLine = new OrbitLine(0xffffff, 0.6, C.LINE_RENDER_ORDER.plan);
-    scene.add(this.previewOrbitLine.line);
+    this._scene.add(this.previewOrbitLine.line);
 
-    this.placerPanel = new ShipPlacerPanel(hud.layers.panel, hud.layers.popup, ephemeris);
+    this.placerPanel = new ShipPlacerPanel(this._hud.layers.panel, this._hud.layers.popup, this._ephemeris);
     this.placerPanel.onConfirm = (name, form) => this.placeObject(name, form);
+<<<<<<< HEAD
     this.waveAttack = new WaveAttack(hud, sfx, fx, scene, ephemeris, this.savedCreative?.waveAttack);
     this.creativeSettingsPanel = this.buildCreativeSettingsPanel(hud.layers.panel);
+=======
+    this.logisticsPanel = this.buildLogisticsPanel(this._hud.layers.panel);
+
+    this.begin();
+>>>>>>> origin/workspace4
   }
 
   // 補給の自動投入・敵の波状攻撃のトグルを載せたパネルを組み立て、マップ右ドックへ追加して返す。
   private buildCreativeSettingsPanel(hudRoot: HTMLElement): HTMLElement {
     const panel = document.createElement('div');
+<<<<<<< HEAD
     panel.id = 'hud-creative-settings';
+=======
+    panel.id = 'hud-logistics';
+>>>>>>> origin/workspace4
     panel.className = 'panel';
     panel.addEventListener('pointerdown', (e) => e.stopPropagation());
     const title = document.createElement('h3');
@@ -126,10 +132,6 @@ export class CreativeStage extends Stage {
     panel.appendChild(waveAttackToggle.element);
     hudDock(hudRoot, 'right').appendChild(panel);
     return panel;
-  }
-
-  init(): number {
-    return 0;
   }
 
   // 共通のステータス表示に加えて、配置プレビューの軌道線とマーカーを同期する。
@@ -223,8 +225,8 @@ export class CreativeStage extends Stage {
 
   // フォーム値から KinematicState を組み立て、配置する。
   private placeObject(name: string, form: ShipPlacerForm): void {
-    if (form.objectType === 'player' && this._entities.players.length >= C.CREATIVE_MAX_SHIPS) {
-      this._hud.hint(`配置数が上限(${C.CREATIVE_MAX_SHIPS}隻)に達しています`);
+    if (form.objectType === 'player' && this._entities.players.length >= C.MAX_PLACED_SHIPS) {
+      this._hud.hint(`配置数が上限(${C.MAX_PLACED_SHIPS}隻)に達しています`);
       return;
     }
     try {
@@ -237,7 +239,7 @@ export class CreativeStage extends Stage {
         const finalName = name || `Player-${this.nextFallbackNameSeq++}`;
         const ship = new Player(this._hud, this._sfx, this._scene, this._fx, this._markerManager, { name: finalName, state, id });
         this._entities.addPlayer(ship);
-        this.onShipPlaced?.(ship);
+        this._activePlayers.claimIfNone(ship);
         this._hud.hint(`${ship.name} を配置`);
       } else if (form.objectType === 'enemy') {
         const finalName = name || `Enemy-${this.nextFallbackNameSeq++}`;
@@ -261,9 +263,6 @@ export class CreativeStage extends Stage {
       this._hud.hint(`配置できません: ${message}`, 5000);
     }
   }
-
-  // Game が Creative のみで接続する。Stage 基底を複数船の概念で汚さない。
-  onShipPlaced: ((ship: Player) => void) | null = null;
 
   // フォームの placementMode に応じて軌道要素指定(stateFromOrbitalElements)かラグランジュ点指定
   // (haloState/lissajousState)のどちらかで KinematicState を組み立てる。

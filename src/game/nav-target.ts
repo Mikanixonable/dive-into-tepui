@@ -161,7 +161,7 @@ export class NavTarget {
   private resolveEntity(id: string, entities: EntityManager): GameEntity | null {
     const enemy = entities.findEnemy(id);
     return (enemy?.alive ? enemy : null)
-      ?? entities.players.find((p) => p.id === id && p.alive)
+      ?? entities.players.find((p) => p.id === id)
       ?? entities.bases.find((b) => b.id === id && b.alive)
       ?? null;
   }
