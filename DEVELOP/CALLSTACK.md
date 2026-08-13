@@ -370,7 +370,7 @@
     - focusMarkers.syncLabels() → markerManager.setPosition() // ラベルごと。overviewMode のみ
     - focusMarkers.hideLabels() // !overviewMode のみ
   - project = cameraSystem.activeCameraProjection / overviewMode = cameraSystem.overviewMode // 以降の sync 系へ配る共通値
-  - visibilityPolicy = overviewMode ? mapPicker.visibilityPolicy : null // ここでは組まず、update フェーズの mapPicker.refresh() が確定させた同じ MapVisibilityPolicy を読む。environment.sync / entities.syncPlayers・applyVisibility / activeStage.sync(→ logistics.syncMarkers)/ targeter.sync・syncTargetMarkers がすべてこれを受け取る
+  - visibilityPolicy = overviewMode ? mapPicker.visibilityPolicy : null // ここでは組まず、update フェーズの mapPicker.refresh() が確定させた同じ MapVisibilityPolicy を読む。environment.sync / entities.syncPlayers・applyVisibility・syncMarkers / activeStage.sync / targeter.sync・syncTargetMarkers がすべてこれを受け取る
   - combatTargets = entities.getCombatTargets(player) // 敵 + 自機以外の生存中の全自機
   - environment.sync(player?.state.r ?? v3(), fo, displayTime, cameraSystem, navball.gridVisibility, visibilityPolicy)
     - lit = sunlitFactor(playerPos, ephemeris.sunDirFrom(playerPos, displayTime), …)。overviewMode では 1.0 固定
@@ -407,6 +407,7 @@
     - [visibilityPolicy] 自機・敵・弾薬・基地それぞれ、その種別の category が admit しなければ obj.visible=false
     - 自機・敵・基地それぞれ orbitLine.setDisplayEnabled(!overviewMode || visibilityPolicy が admit する orbit) // マップビューのみトグルの対象、戦闘ビューは常に表示
     - [entities.bases ごと] base.syncOrbitLine(overviewMode, fo, camera, attractors) // 中心天体は strongestAttractor(base.state.r, attractors)。マップビューのみ、それ以外は null を渡して線を消す
+  - entities.syncMarkers(project, scale, displayTime, overviewMode, player?.state.r ?? null, visibilityPolicy) // ammos/bases の各 marker?.sync。displayState(displayTime) → [overviewMode] headingDeg(ds.r, ds.v) → set('entity-<id>', 'mk-ammo'|'mk-base', '▲', rotationDeg) / [!overviewMode] set('entity-<id>', 種別ごとの字形) + setBearing('entity-<id>-bearing')。ラベルは name + viewerPos があれば距離
   - effects.sync(fo, camera) → flashEffectManager.syncFlashEffects()
     - pool.beginFrame() → (生存中のフラッシュごとに transform へ位置/スケール/カメラ正対回転を書き、color = baseColor×opacity で push) → pool.endFrame() // 寿命・移流は update フェーズで済んでいる
   - [player] targeter.sync(fo, player, combatTargets, overviewMode, project, camera, attractors, visibilityPolicy) // ターゲットに紐づく表示物をまとめて
@@ -468,14 +469,6 @@
     - syncStatusPanel(player, overviewMode) // hudSubStatus() が文字列を返すステージだけ表示。player が null または overviewMode(showsStatusInOverview を宣言していないステージ)なら隠す
     - [CreativeStage] syncPreview(fo, project) // update が求めた preview の軌道線 + ▷ PREVIEW マーカー。preview が null なら両方隠す
     - [CreativeStage] placerPanel.setIssues(issues) // update が求めた issues を渡すだけ。前回と同内容なら panel 側が DOM に触らず即 return
-    - logistics.syncMarkers(player, project, scale, displayTime, overviewMode, visibilityPolicy) → ammo.displayState(displayTime) → [overviewMode] headingDeg(ds.r, ds.v) → markerManager.set('mg<i>', 'mk-ammo', '▲', rotationDeg) / [!overviewMode] markerManager.set('mg<i>', 'mk-ammo', '▣') + setBearing('mg<i>-bearing')
-      // player が null の間はすべて隠す(ラベルの距離表示が自機基準のため)
-      // マーカーを出せる補給ごと(i = 生存かつ displayState が非 null な個体だけを詰めた配列の添字)
-      - hide() // 前フレームよりその数が減ったぶんの、余った添字だけ
-    - [CreativeStage] syncBaseMarkers(project, scale, displayTime, overviewMode) → base.displayState(displayTime) →
-      [overviewMode] headingDeg(ds.r, ds.v) → markerManager.set('base<i>', 'mk-base', '▲', rotationDeg) /
-      [!overviewMode] markerManager.set('base<i>', 'mk-poi', '●') + setBearing('base<i>-bearing', 'mk-poi', '●') // ラベルは player があれば距離付き
-      // entities.bases の添字ごと(logistics.syncMarkers と同じ、前フレームより減った添字だけ hide())
   - hud.panels.sync(game, attractors) // Game インスタンスを直接読む(narrow ctx を介さない唯一の消費者)
     - setText('met') + setGlobalStatus() // 自機不在でも常に実行。setGlobalStatus は約10Hz にスロットル
     - setStats() + setTarget() // 自機がいる間のみ、約10Hz にスロットル

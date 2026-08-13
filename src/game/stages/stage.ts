@@ -135,15 +135,13 @@ export abstract class Stage {
     location.replace(`${location.pathname}?stage=${this.id}`);
   }
 
-  // ステータスパネルとロジスティクスのマーカーを同期する。fo・camera は配置プレビューなど
-  // ステージ固有の描画物を持つサブクラスが使う。scale は overviewMode 中の ▣ AMMO マーカーの
-  // 進行方向表示に使う。
+  // ステータスパネルを同期する。fo・project・scale・displayTime・camera は配置プレビューなど
+  // ステージ固有の描画物を持つサブクラスが使う。
   sync(
-    player: Player | null, _fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn, displayTime: number,
-    overviewMode: boolean, visibilityPolicy: MapVisibilityPolicy | null, _camera: THREE.Camera,
+    player: Player | null, _fo: FloatingOrigin, _project: ProjectFn, _scale: ScaleFn, _displayTime: number,
+    overviewMode: boolean, _visibilityPolicy: MapVisibilityPolicy | null, _camera: THREE.Camera,
   ): void {
     this.syncStatusPanel(player, overviewMode);
-    this.logistics.syncMarkers(player, project, scale, displayTime, overviewMode, visibilityPolicy);
   }
 
   // hudSubStatus() が null ならパネルを隠し、文字列なら HP・スコアとともに表示する。
