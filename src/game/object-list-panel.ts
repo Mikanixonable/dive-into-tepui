@@ -3,6 +3,7 @@ import { BodyClass, bodyClassOf } from './celestial/body-class';
 import type { CelestialRegistry } from '../physics/solar-system';
 import { MapPickable, MapPickKind } from './map-pick';
 import { LAGRANGE_ID } from './hud/object-groups';
+import { SegmentedControl, ValueInput } from './hud/widgets';
 
 const SECTIONS: readonly { kind: MapPickKind; label: string }[] = [
   { kind: 'body', label: '天体' },
@@ -142,44 +143,33 @@ export class ObjectListPanel {
     head.appendChild(titleRow);
     const searchWrap = document.createElement('div');
     searchWrap.className = 'object-list-search';
-    const search = document.createElement('input');
-    search.type = 'search'; search.placeholder = '検索'; search.setAttribute('aria-label', '軌道オブジェクトを検索');
-    search.addEventListener('input', () => { this.query = search.value.trim().toLocaleLowerCase(); });
-    // Input は window で keydown を購読しているので、止めないと打った文字がそのまま
-    // ゲーム操作として解釈される。Escape は入力を捨てて欄から抜ける。
-    search.addEventListener('keydown', (e) => {
-      e.stopPropagation();
-      if (e.key === 'Escape') { search.value = ''; this.query = ''; search.blur(); }
-    });
-    searchWrap.appendChild(search);
+    // Escape は「破棄」ではなく「絞り込み解除」に読めるので、検索欄だけは 'clear' を渡す(§7-9)。
+    const updateQuery = (value: string) => { this.query = value.trim().toLocaleLowerCase(); };
+    const search = new ValueInput(
+      { type: 'search', placeholder: '検索', escapeBehavior: 'clear' },
+      updateQuery,
+      () => { this.query = ''; },
+    );
+    search.element.setAttribute('aria-label', '軌道オブジェクトを検索');
+    // 確定を待たず、打鍵のたびに絞り込みへ反映する。
+    search.element.addEventListener('input', () => updateQuery(search.element.value));
+    searchWrap.appendChild(search.element);
     head.appendChild(searchWrap);
 
-    const tools = document.createElement('div');
-    tools.className = 'object-list-tools';
-    const filterButtons: HTMLElement[] = [];
-    for (const [key, label] of FILTERS) {
-      const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.setAttribute('aria-pressed', key === this.filter ? 'true' : 'false');
-      b.addEventListener('click', () => {
-        this.filter = this.filter === key ? null : key;
-        for (const x of filterButtons) x.setAttribute('aria-pressed', String(x === b && this.filter === key));
-      });
-      filterButtons.push(b);
-      tools.appendChild(b);
-    }
-    head.appendChild(tools);
+    const filterControl = new SegmentedControl<ObjectListFilter | null>('', FILTERS, (key) => {
+      this.filter = this.filter === key ? null : key;
+      filterControl.setSelected(this.filter);
+    });
+    filterControl.setSelected(this.filter);
+    head.appendChild(filterControl.element);
 
     // 並び順はフィルタとは別行 — 絞り込みと並べ替えは独立な操作であることを見た目でも分ける。
-    const sorts = document.createElement('div');
-    sorts.className = 'object-list-tools';
-    for (const [key, label] of SORTS) {
-      const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.setAttribute('aria-pressed', String(key === this.sort));
-      b.addEventListener('click', () => {
-        this.sort = key;
-        for (const x of Array.from(sorts.querySelectorAll('button'))) x.setAttribute('aria-pressed', String(x === b));
-      });
-      sorts.appendChild(b);
-    }
-    head.appendChild(sorts);
+    const sortControl = new SegmentedControl<ObjectListSort>('', SORTS, (key) => {
+      this.sort = key;
+      sortControl.setSelected(key);
+    });
+    sortControl.setSelected(this.sort);
+    head.appendChild(sortControl.element);
     this.panel.appendChild(head);
     // 見出し以外をまとめて畳める区画にする — 一覧は常時表示で画面右を大きく占有するため。
     const body = document.createElement('div');
@@ -438,7 +428,7 @@ export class ObjectListPanel {
     if (node.detail.textContent !== detailText) node.detail.textContent = detailText;
     node.detail.style.display = item.kind === 'body' ? 'none' : '';
     node.row.classList.toggle('tgt', item.id === focusId);
-    node.row.classList.toggle('selected', item.id === this.selectedId);
+    node.row.classList.toggle('on', item.id === this.selectedId);
 
     const children = childrenOf.get(item.id) ?? EMPTY_IDS;
     if (focusAncestors.has(item.id)) node.expanded = true;

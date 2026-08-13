@@ -4,7 +4,7 @@
 import { AttractorId } from '../../physics/attractor';
 import { Ephemeris } from '../../physics/ephemeris';
 import type { MapPickable } from '../map-pick';
-import { SegmentedControl } from './buttons';
+import { SegmentedControl } from './widgets';
 import { groupPickables, LAGRANGE_ID, lagrangeParentId } from './object-groups';
 import { ObjectPicker, ObjectPickerGroup } from './object-picker';
 

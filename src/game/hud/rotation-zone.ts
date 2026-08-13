@@ -4,7 +4,7 @@
 import { AttractorId, OrbitingId } from '../../physics/attractor';
 import { Ephemeris } from '../../physics/ephemeris';
 import { primaryOf } from '../../physics/solar-system';
-import { SegmentedControl } from './buttons';
+import { SegmentedControl } from './widgets';
 import { celestialBodyName } from './frame-labels';
 
 export class RotationZone {
