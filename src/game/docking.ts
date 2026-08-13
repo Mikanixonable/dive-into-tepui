@@ -100,7 +100,6 @@ export class Docking {
     for (const base of this.entities.bases) {
       if (!base.alive) continue;
       for (const ship of [...this.entities.players]) {
-        if (!ship.alive) continue;
         const dist = len(sub(ship.state.r, base.state.r));
         const relSpeed = len(sub(ship.state.v, base.state.v));
         if (dist < C.DOCK_CAPTURE_DIST && relSpeed < C.DOCK_CAPTURE_REL_V) this.dock(ship, base);
