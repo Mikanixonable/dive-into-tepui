@@ -18,18 +18,14 @@
 `| null` 許容にしたことで、`Game` 側の判断ではなかったガードがすべて消えた。
 残るものと理由は 3節 A-4。判断そのものは `/refactor-fixed` 21bis へ昇格済み。
 
-### 軸B: `activeStage.isPlaying`(勝敗の決着) — 残り5箇所、うち4箇所は要判断
+### 軸B: `activeStage.isPlaying`(勝敗の決着) — 残り4箇所、うち3箇所は要判断
 
 | 箇所 | 分岐 | 状態 |
 |---|---|---|
 | `advanceSimulation` | `if (player && activeStage.isPlaying) player.behave(...)` | **B-α 要判断** |
 | `handleMapPointerInput` | `if (!activeStage.isPlaying) return` | **B-γ 要判断** |
 | `handleInput` | `simSpeedManager.handleInput(input, isPlaying, ...)` | 残す(`toggleAutoWarpToFirstNode` 内で自決済みの中継) |
-| `sync` | `viewBadge.sync(..., isPlaying && (player?.alive ?? false))` | **B-ε 要判断** |
 | `sync` | `entities.syncPlayers(..., isPlaying, ...)` | **B-δ 要判断** |
-
-`ViewManager` 側へ移した決着後分岐(「決着後はどのビューに居ても戦闘ビューへ戻す」)は
-**B-β** で存在意義そのものを問い直す。
 
 ### 軸C: `_isPaused`(ポーズ) — 5箇所、**全件 `Game` に残す**(3節 C)
 
@@ -109,14 +105,13 @@ creative モードの「複数艦を配置でき、艦が1隻も無くてもシ�
 | 箇所 | 理由 |
 |---|---|
 | `player.behave(...)` の呼び出し可否 | `Player` のメソッドなので非 null 必須 |
-| `flown.plan.trackAnchor(flown.state)` | `flown` が null だと**引数の式自体が組み立てられない**。防御的分岐ではなく構造的制約 |
+| `this.player.plan.trackAnchor(this.player.state)` | 自機が null だと**引数の式自体が組み立てられない**。防御的分岐ではなく構造的制約 |
 | `FloatingOrigin` 初期値 | `Game` 自身のフィールドの初期化。委譲先が無い |
 | `excludedIds` の配列組み立て | 単なる値変換。下位は `readonly string[]` を要求 |
-| `canToggleView` の bool 化 | オプショナルチェーン1行で既に十分 |
 | `player?.state.v ?? v3()` | `FloatingOrigin` の速度基準。ゼロが「基準なし」の単位元として意味を持つので既定値でよい(位置の `?? null` とは別) |
 | `?? null`(`syncMarkers` / `applyVisibility` の viewerPos) | **意味のある null**。`EntityMarker.sync` は `viewerPos` の有無でラベルを変えるので、これが正しい形 |
 | `touchControls?.syncModeButtons` | `TouchControls` は `Player` 型から疎結合に保たれている(プリミティブ3つを受ける)。この設計は妥当なので、null 分岐は呼び出し側に残る |
-| `targeter.updateCombatTargeting` | 非 null 必須(軸C/Dと併せて再検討) |
+| `handleMapPointerInput` の戦闘枝の `&& this.player` | 受け手(`navTarget.updateCombatBasePicking` / `targeter.updateCombatTargeting`)はどちらも自機を要求しなくなったので、いまは純粋な「操縦しているか」のゲート。外すと艦を失った後も右クリックメニューが開く — 軸C/Dと併せて再検討 |
 
 ### 軸B: `activeStage.isPlaying` — 残った分岐はすべて「決着で挙動/表示を変える」もの
 
@@ -124,17 +119,15 @@ creative モードの「複数艦を配置でき、艦が1隻も無くてもシ�
 **正本の所有は正しい。** 残っているのは「決着したら何を止めるか」という判断だけで、
 2節(c)の基準ではすべて存在意義を問う対象になる。次に判断すべきは以下の5件。
 
-#### B-α. `player.behave` の決着ゲート — **死亡後については既に `Player` が自決している**
+#### B-α. `player.behave` の決着ゲート — 効くのは「決着したが自機は生存」だけ
 
 `advanceSimulation` に残った唯一の `isPlaying` ゲート。
 
-- `Player.behave` は `PlayerThrottle.updateTorque` を呼び、そこは `if (!alive) return v3();`
-  (`player-throttle.ts:188`)。続けて `if (!this.alive) { this.thrust = null; this.throttle.stopThrust(); return; }`
-  (`player.ts:227-231`)。
-  → **死亡後に限れば、`behave` を呼ぶことと `else` 節の `clearTransientCommands()` はほぼ同値。**
-  「死亡後という特殊な場面のための分岐」は `Player` 内で既に自決済み。
+- 喪失した自機は同一フレーム末に `reclaimDead()` で取り除かれるので、次のフレームには
+  `player` が `null` になっている。**死亡を理由にこのゲートが効くことはない。**
 - したがってこのゲートが実際に効いている場面は **決着したが自機は生存している**とき、つまり
-  勝利後(stage1/2 の全滅)と stage0 の timeup だけ。
+  勝利後(stage1/2 の全滅)と stage0 の timeup だけ。`else if (player)` 節の
+  `clearTransientCommands()` も同じ場面でしか走らない。
 - **外した場合の見え方**: 結果画面(`#hud-end` は `hud.layers.system` の全画面オーバーレイ)が
   出たまま、自機を操縦・射撃できる。
 - **外した場合の非対称**: 各具象 `Stage.update` は自分で `if (!this.isPlaying || !player) return;` を
@@ -143,23 +136,6 @@ creative モードの「複数艦を配置でき、艦が1隻も無くてもシ�
 
 選択肢: (i) ゲートを外す(2節(c)どおり。非対称は許容する) /
 (ii) 残して理由をコメントに書く / (iii) 具象ステージ側の自決ガードも同時に見直して対称にする
-
-#### B-β. `ViewManager.handleInput` の決着後分岐 — **書かれている理由が事実として成り立たない**
-
-```ts
-// 決着後はどのビューに居ても戦闘ビューへ戻す(結果画面を隠さないため)。
-if (this.stage !== null && !this.stage.isPlaying) { ... }
-```
-
-- 結果画面 `#hud-end` は `hud.layers.system`(z-index 16)に置かれ、
-  `position:absolute; inset:0` + scrim + `pointer-events:auto`。
-  `panel`(11) / `window`(12) / `popup`(13) / `view`(14) / `notify`(15) の**全部の上に出る**。
-  マップのパネルが結果画面を隠すことはない。オーバーレイ層を分けた時点で理由は失効している。
-- ドック中は `enterDock()` が `game.pause()` するので `advanceSimulation` が走らず、
-  ドック表示中に決着すること自体が起きない → `leaveDock()` の枝は到達しない。
-
-→ **分岐ごと消せる見込みが高い。** 消せば `setStage()` と `stage` フィールドも同時に消え、
-`ViewManager` は `Stage` を知らないまま済む(後注入は、この判断が付くまでの経由地)。
 
 #### B-γ. `handleMapPointerInput` の `if (!isPlaying) return`
 
@@ -177,11 +153,6 @@ if (this.stage !== null && !this.stage.isPlaying) { ... }
 B-α のゲートを残す限り決着後の `torque` は畳まれているので `phasePlaying` は実質冗長。
 B-α を外すなら、これが唯一「決着後に RCS 噴射煙と RCS 音を止める」判断になる。
 2節(c)の基準では削除候補(`isPaused` の方は 3節 C のとおり残す理由がある)。
-
-#### B-ε. `viewBadge.sync(selectLabel, isPlaying && (player?.alive ?? false))`
-
-第2引数は `ViewManager.selectableViews(combatAvailable)` へ渡る `combatAvailable`。
-「決着後は戦闘ビューを選べない」という判断で、B-β と同根。B-β の結論に合わせる。
 
 ### 軸C: `_isPaused`(ポーズ)— **全件 `Game` に残す**
 
@@ -237,10 +208,9 @@ B-α を外すなら、これが唯一「決着後に RCS 噴射煙と RCS 音�
 
 ## 4. 次の作業
 
-### Step A(要判断) — 決着後分岐の残り5件
+### Step A(要判断) — 決着後分岐の残り3件
 
-B-α / B-β / B-γ / B-δ / B-ε。いずれも 2節(c)の基準に当たる。
-B-β と B-ε は同根なので一緒に、B-α と B-δ も連動するので一緒に判断する。
+B-α / B-γ / B-δ。いずれも 2節(c)の基準に当たる。B-α と B-δ は連動するので一緒に判断する。
 
 ### Step B — 各具象 `Stage.update` 冒頭の重複ガード
 
@@ -248,6 +218,7 @@ B-β と B-ε は同根なので一緒に、B-α と B-δ も連動するので�
 (`CreativeStage` だけ構造的に不要)。`Stage.update` を公開の入口として、具象は
 `protected updatePlaying(dt, player, ...)` を実装する形にすれば重複が消えるが、
 `CreativeStage` が例外になる。**B-α の判断が付いてから**着手する。
+なお `!player` の枝は、艦を喪失したステージでも通るようになった(喪失即除去のため)。
 
 ### Step C — D-5(`visibilityPolicy` の素通し化)
 
@@ -260,28 +231,12 @@ B-β と B-ε は同根なので一緒に、B-α と B-δ も連動するので�
 
 ---
 
-## 5. `/refactor-fixed` へ昇格させるもの
-
-- 2節(a)(b)の「判断の合成 / 単純な呼び出し可否」の分け方 → 1節へ。
-  **軸B/D/E が片付いたので条件は満たした。**
-- 2節(c)「決着(`isPlaying`)による分岐は、まず存在意義を疑う」 →
-  creative が普通で stage が逸脱、という前提とセットで明文化する。
-  **Step A の判断が付いてから**(判断の結論そのものが規則の本体になる)。
-- 今回確定した責務配置:
-  - **ワープゲート(`can*` 述語)は、それを使う側が自分で問う。** `Simulator` は
-    `SimSpeedManager` を毎フレーム引数で受け、`canResolvePhysicalCollisions` を自分で読む。
-    `Game` が AND を組んで boolean で渡さない。
-  - **受け手が判断材料への参照を既に持っているなら、呼び出し側でガードしない。**
-    `MapPicker`(`cameraSystem`)・`Docking`(`viewManager`)は自分の表示文脈を自決する。
-
----
-
-## 6. 見込み
+## 5. 見込み
 
 | 軸 | 当初 | 移した/消した | 残す |
 |---|---|---|---|
-| A `player \| null` | 13 | **完了** | 9(`behave` 呼出、`trackAnchor`、`FloatingOrigin` 初期値ほか) |
-| B `isPlaying` | 9 | **5** | 4(全件 Step A の判断待ち) |
+| A `player \| null` | 13 | **完了** | 8(`behave` 呼出、`trackAnchor`、`FloatingOrigin` 初期値ほか) |
+| B `isPlaying` | 9 | **6** | 3(全件 Step A の判断待ち) |
 | C `isPaused` | 5 | **0** | 5(ルールで明示的に許可された例外) |
 | D ビューモード | 8 | **3** | 5(層の逆転を避けるため) |
 | E ワープ閾値 | 3 | **3** | 0 |

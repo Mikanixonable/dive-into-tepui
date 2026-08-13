@@ -1,12 +1,12 @@
-// 自機を中心とした三人称軌道視点。姿勢は単位クオータニオン(rot)と距離(dist)だけで持つ。
-// rot の意味は camFollowAttitude で切り替わる: true なら機体姿勢に対する相対姿勢、false なら
-// ワールド(ECI)に対する絶対姿勢。切り替え時は player の姿勢クオータニオンを掛け/割って読み替える。
+// 追従対象を中心とした三人称軌道視点。姿勢は単位クオータニオン(rot)と距離(dist)だけで持つ。
+// rot の意味は camFollowAttitude で切り替わる: true なら対象の姿勢に対する相対姿勢、false なら
+// ワールド(ECI)に対する絶対姿勢。切り替え時は対象の姿勢クオータニオンを掛け/割って読み替える。
 import { add, addScaled, cross, len, norm, scale, v3, Vec3 } from '../../physics/vec3';
 import { MouseDelta } from '../input/input';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { Quat, qFromAxisAngle, qInvert, qMul, qNormalize, qRotate } from '../../physics/attitude';
-import { Player } from '../player/player';
+import { GameEntity } from '../game-entity/game-entity';
 import { metersPerPixelAtDepth, Viewpoint } from '../../physics/projection';
 import { ChaseCameraSaveData } from '../save-data';
 
@@ -18,8 +18,6 @@ export class ChaseCamera {
   private rot: Quat = DEFAULT_ROT;
   dist = DEFAULT_DIST;
   private _camFollowAttitude = true;
-  // 前フレームの player.alive。真偽が変わった瞬間だけ rot を読み替えるための検出用。
-  private _prevAlive = true;
   private panEci: Vec3 = v3(0, 0, 0);
 
   viewpoint: Viewpoint = {
@@ -35,7 +33,7 @@ export class ChaseCamera {
   // 経由すると意味が変わってしまう。
   constructor(
     private readonly _hud: Hud,
-    private player: Player | null,
+    private target: GameEntity | null,
     saved?: ChaseCameraSaveData,
   ) {
     if (saved) {
@@ -46,27 +44,25 @@ export class ChaseCamera {
     }
   }
 
-  // 追従先の艦を差し替える(アクティブ艦の切替)。姿勢基準の rot はそのまま新しい艦の姿勢に対する
-  // 相対値として使い回す。
-  setPlayer(player: Player | null): void {
-    this.player = player;
-    this._prevAlive = player?.alive ?? true;
+  // 追従先を差し替える。姿勢基準の rot はそのまま新しい対象の姿勢に対する相対値として使い回す。
+  setTarget(target: GameEntity | null): void {
+    this.target = target;
   }
 
-  // rot の相対/絶対の解釈を切り替える。toRelative が true なら「以後は機体姿勢に対する相対値」
+  // rot の相対/絶対の解釈を切り替える。toRelative が true なら「以後は対象の姿勢に対する相対値」
   // として、false なら「以後は現在の向きをそのまま絶対値」として扱えるよう rot 自体を変換する。
   private reinterpretRot(toRelative: boolean): Quat {
-    const playerQ = this.player!.att.q;
-    return qNormalize(toRelative ? qMul(qInvert(playerQ), this.rot) : qMul(playerQ, this.rot));
+    const targetQ = this.target!.att.q;
+    return qNormalize(toRelative ? qMul(qInvert(targetQ), this.rot) : qMul(targetQ, this.rot));
   }
 
-  // 視点の基準フレーム(機体姿勢基準 true ⇔ ワールド基準 false)。書き換え時に rot を読み替える。
+  // 視点の基準フレーム(対象の姿勢基準 true ⇔ ワールド基準 false)。書き換え時に rot を読み替える。
   get camFollowAttitude(): boolean {
     return this._camFollowAttitude;
   }
   set camFollowAttitude(v: boolean) {
     if (v === this._camFollowAttitude) return;
-    if (!this.player) return;
+    if (!this.target) return;
     this.rot = this.reinterpretRot(v);
     this._camFollowAttitude = v;
   }
@@ -88,18 +84,10 @@ export class ChaseCamera {
     );
   }
 
-  // キー/マウス入力から rot/dist を更新し、player の状態から視点を view へ書き戻す。
+  // キー/マウス入力から rot/dist を更新し、対象の状態から viewpoint を組み直す。
   update(mouse: MouseDelta, keyYaw: number, keyPitch: number, keyRoll: number, dt: number): void {
-    if (!this.player) return;
-    // 機体姿勢基準のまま撃破された/復活した瞬間は、その時点の折り込み済みの向きを
-    // 絶対値として固定する(逆方向も同様)。rot の意味そのものが変わるので読み替えが要る。
-    if (this._camFollowAttitude && this.player.alive !== this._prevAlive) {
-      this.rot = this.reinterpretRot(this.player.alive);
-    }
-    this._prevAlive = this.player.alive;
-
-    const followNow = this._camFollowAttitude && this.player.alive;
-    let q = followNow ? qMul(this.player.att.q, this.rot) : this.rot;
+    if (!this.target) return;
+    let q = this._camFollowAttitude ? qMul(this.target.att.q, this.rot) : this.rot;
 
     const right = qRotate(q, v3(1, 0, 0));
     const up = qRotate(q, v3(0, 1, 0));
@@ -129,9 +117,9 @@ export class ChaseCamera {
       this.panEci = addScaled(this.panEci, up, mouse.panDy * metersPerPixel);
     }
 
-    this.rot = followNow ? qNormalize(qMul(qInvert(this.player.att.q), q)) : q;
+    this.rot = this._camFollowAttitude ? qNormalize(qMul(qInvert(this.target.att.q), q)) : q;
 
-    const center = this.player.state.r;
+    const center = this.target.state.r;
     const lookTarget = add(center, this.panEci);
     this.viewpoint = {
       position: add(lookTarget, scale(qRotate(q, v3(0, 0, -1)), this.dist)),
