@@ -33,7 +33,6 @@ import { RcsEffects } from './rcs-effects';
 import { ReentryEffects } from './reentry-effects';
 import { PlayerMarkers } from './player-markers';
 import type { MarkerManager } from '../marker/marker-manager';
-import { SimSpeedManager } from '../sim-speed-manager';
 import { RadiatorSide, RadiatorSystem } from './radiator';
 import { PowerSystem } from './power';
 import { Ephemeris } from '../../physics/ephemeris';
@@ -59,15 +58,6 @@ export function planExecutionLabel(mode: PlanExecutionMode): string {
 export type PlayerInit =
   | { readonly name?: string; readonly state?: KinematicState; readonly id?: string; readonly ammo?: AmmoLoad }
   | { readonly saved: PlayerSaveData; readonly simTime: number };
-
-// behave 1回分の、そのフレームの入力と状況。
-export type PlayerBehaveParams = {
-  readonly dt: number;
-  readonly input: Input;
-  readonly simSpeed: SimSpeedManager;
-  readonly activeStage: Stage;
-  readonly ephemeris: Ephemeris;
-};
 
 // プレイヤー機: 移動(PlayerThrottle)と射撃(PlayerFire)を束ね、その両方を反映した
 // 見た目(モデル・エフェクトメッシュの管理と毎フレーム更新)を持つ。
@@ -207,23 +197,29 @@ export class Player extends Ship {
     this.fire.onPickup(mags);
   }
 
-  // 毎フレーム、全ての自機に対して1度だけ呼ぶ。controllable はこの艦を今フレーム操作できるか。
-  // 操作できない艦は、次フレームへ持ち越してはならない連続指令をここで畳む。
-  behave(controllable: boolean, entities: EntityManager, params: PlayerBehaveParams): void {
-    this.updatePassive(params.dt);
-    if (!controllable) {
+  // 毎フレーム、全ての自機に対して1度だけ呼ぶ。input が null の艦はこのフレーム操作されないので、
+  // 次フレームへ持ち越してはならない連続指令をここで畳む。受動状態(ベルト物理・HP自然回復)は
+  // 操作の可否によらず進める。
+  behave(
+    input: Input | null,
+    dt: number,
+    simDt: number,
+    entities: EntityManager,
+    activeStage: Stage,
+    ephemeris: Ephemeris,
+  ): void {
+    this.updatePassive(dt);
+    if (input === null) {
       this.clearTransientCommands();
       return;
     }
-    const { dt, input, simSpeed, activeStage, ephemeris } = params;
     this.handleEdgeInput(input);
-    this.updateTorque(input, dt * simSpeed.simSpeed);
+    this.updateTorque(input, simDt);
 
-    this.fire.updateFireState(dt, input, activeStage, simSpeed, entities, ephemeris);
+    this.fire.updateFireState(dt, input, activeStage, entities, ephemeris);
 
-    // 噴射不可のワープ倍率では、押下エッジを消費してまでラッチ判定を進める意味がない。
-    if (simSpeed.canPlayerThrust) this.throttle.updateThrustLatches(input);
-    this.thrust = this.throttle.updateThrustState(input, simSpeed, this.att, dt, this);
+    this.throttle.updateThrustLatches(input);
+    this.thrust = this.throttle.updateThrustState(input, this.att, dt, this);
     // 噴射中は毎フレーム破棄する — 次の Predictor がその時点の実状態を種に作り直す。
     if (this.thrust !== null) this.invalidatePrediction();
 
