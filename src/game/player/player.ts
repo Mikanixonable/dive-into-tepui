@@ -23,7 +23,6 @@ import type { CameraSystem } from '../camera/camera-system';
 import { focusTargetId } from '../camera/focus-target';
 import type { MapVisibility } from '../celestial/map-visibility';
 import type { Stage } from '../stages/stage';
-import { ScoreCounter } from '../stages/stage-utils/score-counter';
 import { PlayerThrottle } from './player-throttle';
 import { PlayerFire, type AmmoLoad } from './player-fire';
 import { Belt } from './belt';
@@ -68,7 +67,7 @@ export type PlayerBehaveParams = {
   readonly simSpeed: SimSpeedManager;
   readonly mapMode: boolean;
   readonly dvEditActive: boolean;
-  readonly scoreCounter: ScoreCounter;
+  readonly activeStage: Stage;
   readonly zoomActive: boolean;
   readonly ephemeris: Ephemeris;
 };
@@ -219,12 +218,12 @@ export class Player extends Ship {
       this.clearTransientCommands();
       return;
     }
-    const { dt, input, simSpeed, mapMode, dvEditActive, scoreCounter, zoomActive, ephemeris } = params;
+    const { dt, input, simSpeed, mapMode, dvEditActive, activeStage, zoomActive, ephemeris } = params;
     this.handleEdgeInput(input);
     this.updateTorque(input, dt * simSpeed.simSpeed);
 
     if (mapMode) this.fire.tickMapMode(dt);
-    else this.fire.updateFireState(dt, input, scoreCounter, simSpeed, zoomActive, entities, ephemeris.sunDirFrom(this.state.r, this.state.t));
+    else this.fire.updateFireState(dt, input, activeStage, simSpeed, zoomActive, entities, ephemeris.sunDirFrom(this.state.r, this.state.t));
 
     // ノードのΔv編集中はWASDQEをΔv編集キーとして譲り、実噴射・ラッチ判定は行わない
     // (噴射中に編集へ入った場合に備え、表示・SFXは throttle 側で明示的に止める)。
