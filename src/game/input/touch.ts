@@ -1,32 +1,39 @@
 // タッチデバイス用の仮想操作パッド。DOM ボタンを画面下部に重ね、
 // Input.setVirtualKey へ物理キーボードと同じキーコードを流し込む。
-// 押しっぱなし系(並進・回転・射撃・ズーム)とエッジトリガ系(トグル類)を
-// 同じ仕組みで扱える。マウス+キーボード環境では生成しない。
-import { Input } from '../input/input';
+// 押しっぱなし系(並進・回転・射撃・ズーム)とエッジトリガ系(トグル類)を同じ仕組みで扱える。
+// 常設で構築し、表示そのものは setPointerKind が渡す直近の入力種別に従う。
+import { Input, PointerKind } from '../input/input';
 import { KEY_MAPPING as K, KeyBinding } from '../input/key-mapping';
+import { MQ_COARSE, MQ_COMPACT, MQ_SHORT } from '../hud/breakpoints';
 import {
   ACCENT, ACCENT_FILL_STRONG, ACCENT_EDGE, TEXT_DIM, TEXT_MUTED, TEXT_STRONG,
-  SURFACE, EDGE, FONT_FAMILY, FONT_XXS, FONT_XL, RADIUS_L, SPACE_1,
+  SURFACE, EDGE, FONT_FAMILY, FONT_XXS, FONT_XL, RADIUS_L, SPACE_1, TRANSITION_SLOW,
 } from '../theme';
 
 const STYLE = `
-/* z-index 9: システムウィンドウ(ESC メニュー・終了画面・ヘルプ)より下に置く */
+/* z-index 9: システムウィンドウ(ESC メニュー・終了画面・ヘルプ)より下に置く。
+   初回タッチまでは不可視・無反応(.shown が無い間 opacity:0 かつボタンも無効)にし、
+   以後マウス操作を検出するたびに .faded で半透明化する(ハイブリッド端末での両立)。 */
 #touch-ui {
   position: fixed; inset: 0; pointer-events: none; z-index: 9;
   font-family: ${FONT_FAMILY}; user-select: none;
   -webkit-user-select: none;
+  opacity: 0; transition: opacity ${TRANSITION_SLOW};
 }
+#touch-ui.shown { opacity: 1; }
+#touch-ui.shown.faded { opacity: 0.35; }
 #touch-ui .tbtn {
-  pointer-events: auto; touch-action: none;
+  pointer-events: none; touch-action: none;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   background: ${SURFACE}; border: 1px solid ${EDGE}; border-radius: ${RADIUS_L};
   color: ${TEXT_MUTED}; line-height: 1.1;
 }
+#touch-ui.shown .tbtn { pointer-events: auto; }
 #touch-ui .tbtn .g { font-size: ${FONT_XL}; }
 #touch-ui .tbtn .l { font-size: ${FONT_XXS}; color: ${TEXT_DIM}; margin-top: ${SPACE_1}; }
-#touch-ui .tbtn.held { background: ${ACCENT_FILL_STRONG}; border-color: ${ACCENT}; color: ${TEXT_STRONG}; }
+#touch-ui .tbtn.pressed { background: ${ACCENT_FILL_STRONG}; border-color: ${ACCENT}; color: ${TEXT_STRONG}; }
 /* .on: 押下中かどうかに関わらず、モードが実際に ON の間ずっと点灯させる
-   (制動・微動・ホールドなどのトグル系ボタン向け。.held と見た目は同じでよい) */
+   (制動・微動・ホールド・推力ラッチなどの向け。.pressed と見た目は同じでよい) */
 #touch-ui .tbtn.on { background: ${ACCENT_FILL_STRONG}; border-color: ${ACCENT}; color: ${TEXT_STRONG}; }
 #touch-ui .mini-col {
   position: absolute; display: grid; gap: 6px; grid-template-rows: repeat(2, 52px);
@@ -59,7 +66,7 @@ const STYLE = `
 }
 #touch-ui.map-mode #touch-util .tbtn { flex: 0 1 46px; min-width: 34px; }
 
-@media (pointer: coarse) {
+@media ${MQ_COARSE} {
   #touch-pad-move, #touch-pad-rot {
     grid-template-columns: repeat(3, 36px) !important; grid-auto-rows: 36px !important; gap: 4px;
   }
@@ -77,7 +84,7 @@ const STYLE = `
 
 /* 横画面(高さが低い端末): navball を画面下部中央に収め、パッドを詰めて
    縦方向の衝突を避ける */
-@media (orientation: landscape) and (max-height: 500px) {
+@media ${MQ_SHORT} {
   #navball {
     top: auto !important; bottom: 44px !important; left: 50% !important;
     transform: translateX(-50%) !important; width: 72px !important; height: 72px !important;
@@ -95,7 +102,7 @@ const STYLE = `
   #touch-util .tbtn { width: 38px; height: 34px; }
   #touch-ui.map-mode #touch-util { bottom: 4px; max-width: calc(100vw - 12px); }
 }
-@media (max-width: 520px) {
+@media ${MQ_COMPACT} {
   #touch-pad-move, #touch-pad-rot {
     grid-template-columns: repeat(3, 36px) !important; grid-auto-rows: 36px !important; gap: 4px;
   }
@@ -118,20 +125,38 @@ interface Btn {
 }
 
 export class TouchControls {
-  // トグル系ボタン: タップの押下フィードバック(.held)とは独立に実際のモード状態で光らせる。
+  private readonly root: HTMLElement;
+  // トグル系ボタン: タップの押下フィードバック(.pressed)とは独立に実際のモード状態で光らせる。
   private readonly toggleButtons = new Map<KeyBinding, HTMLElement>();
+  // 並進6方向ボタン: ラッチ中かどうかを syncModeButtons が .on で反映する。
+  private readonly thrustButtons = new Map<KeyBinding, HTMLElement>();
   private readonly releaseCallbacks: (() => void)[] = [];
+  // 一度でも .shown になったら真のまま保つ — 以後のマウス操作は .faded で半透明化するだけで、
+  // 再び隠しはしない(触ったことがある端末である事実は変わらないため)。
+  private shown = false;
 
-  // 現在の端末がタッチ操作に対応しているかを返す。
-  static isTouchDevice(): boolean {
-    return navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
+  // 直近の入力種別に応じて表示を切り替える。タッチなら表示して起こし、マウス/キーボードなら
+  // (既に表示済みであれば)半透明化する。Input.onPointerKindChange から呼ばれる想定。
+  setPointerKind(kind: PointerKind): void {
+    if (kind === 'touch') {
+      this.shown = true;
+      this.root.classList.remove('faded');
+    } else if (this.shown) {
+      this.root.classList.add('faded');
+    }
+    this.root.classList.toggle('shown', this.shown);
+    document.body.classList.toggle('touch-ui-active', this.shown);
   }
 
-  // トグル系ボタンの点灯を実際のモード状態へ合わせる。毎フレーム呼ぶ。
-  syncModeButtons(rcsDamp: boolean, fineAttitude: boolean, progradeHold: boolean): void {
+  // トグル系ボタン・推力ラッチの点灯を実際の状態へ合わせる。毎フレーム呼ぶ。
+  syncModeButtons(
+    rcsDamp: boolean, fineAttitude: boolean, progradeHold: boolean,
+    isThrustLatched: (key: KeyBinding) => boolean,
+  ): void {
     this.setActive(K.rcsDampToggle, rcsDamp);
     this.setActive(K.fineAttitudeToggle, fineAttitude);
     this.setActive(K.progradeHoldToggle, progradeHold);
+    for (const [key, el] of this.thrustButtons) el.classList.toggle('on', isThrustLatched(key));
   }
 
   // key に対応するトグルボタンの点灯状態を on に合わせる。
@@ -141,7 +166,7 @@ export class TouchControls {
 
   // マップモード中は並進・回転・射撃・ズームのパッドを隠す。
   setMapMode(active: boolean): void {
-    document.getElementById('touch-ui')?.classList.toggle('map-mode', active);
+    this.root.classList.toggle('map-mode', active);
     for (const id of ['touch-pad-rot', 'touch-pad-move', 'touch-fire', 'touch-zoom']) {
       const e = document.getElementById(id);
       if (e) e.style.display = active ? 'none' : '';
@@ -150,14 +175,14 @@ export class TouchControls {
 
   // 仮想パッド一式の DOM を組み立てる。
   constructor(private readonly input: Input) {
-    const root = this.buildRoot();
+    this.root = this.buildRoot();
     window.addEventListener('tepui-release-touch-inputs', () => this.releaseAllInputs());
-    this.buildTranslationPad(root);
-    this.buildRotationPad(root);
-    this.buildModeColumn(root);
-    this.makeButton(root, { key: K.fire, glyph: 'FIRE', label: '' }, 'touch-fire');
-    this.buildZoomToggle(root);
-    this.buildUtilRow(root);
+    this.buildTranslationPad(this.root);
+    this.buildRotationPad(this.root);
+    this.buildModeColumn(this.root);
+    this.makeButton(this.root, { key: K.fire, glyph: 'FIRE', label: '' }, 'touch-fire');
+    this.buildZoomToggle(this.root);
+    this.buildUtilRow(this.root);
   }
 
   private releaseAllInputs(): void {
@@ -176,9 +201,9 @@ export class TouchControls {
     return root;
   }
 
-  // b.key を押しっぱなし操作するボタンを1つ組み立てて parent へ追加する。
-  // isToggle なら toggleButtons に登録し、syncModeButtons の点灯対象にする。
-  private makeButton(parent: HTMLElement, b: Btn, id = '', isToggle = false): HTMLElement {
+  // b.key を押しっぱなし操作するボタンを1つ組み立てて parent へ追加する。registry を渡すと
+  // そこへ b.key で登録し、syncModeButtons が点灯対象として読む(トグル・推力ラッチ共通)。
+  private makeButton(parent: HTMLElement, b: Btn, id = '', registry?: Map<KeyBinding, HTMLElement>): HTMLElement {
     const e = document.createElement('div');
     e.className = 'tbtn';
     if (id) e.id = id;
@@ -187,12 +212,12 @@ export class TouchControls {
     const down = (ev: PointerEvent) => {
       ev.preventDefault();
       e.setPointerCapture(ev.pointerId);
-      e.classList.add('held');
+      e.classList.add('pressed');
       this.input.setVirtualKey(b.key, true);
     };
     // 指を離したら仮想キーを OFF に戻す
     const up = () => {
-      e.classList.remove('held');
+      e.classList.remove('pressed');
       this.input.setVirtualKey(b.key, false);
     };
     e.addEventListener('pointerdown', down);
@@ -201,17 +226,17 @@ export class TouchControls {
     this.releaseCallbacks.push(up);
     e.addEventListener('contextmenu', (ev) => ev.preventDefault());
     parent.appendChild(e);
-    if (isToggle) this.toggleButtons.set(b.key, e);
+    if (registry) registry.set(b.key, e);
     return e;
   }
 
   // btns を並べた1つのパッドを id で root へ追加する。
-  private makePad(root: HTMLElement, id: string, btns: Btn[]): void {
+  private makePad(root: HTMLElement, id: string, btns: Btn[], registry?: Map<KeyBinding, HTMLElement>): void {
     const pad = document.createElement('div');
     pad.id = id;
     pad.className = 'pad';
     root.appendChild(pad);
-    for (const b of btns) this.makeButton(pad, b);
+    for (const b of btns) this.makeButton(pad, b, '', registry);
   }
 
   // 並進6方向のパッドを組み立てる。
@@ -223,7 +248,7 @@ export class TouchControls {
       { key: K.thrustLeft, glyph: '◀', label: '左' },
       { key: K.thrustBackward, glyph: '○', label: '後' },
       { key: K.thrustRight, glyph: '▶', label: '右' },
-    ]);
+    ], this.thrustButtons);
   }
 
   // 回転3軸のパッドを組み立てる。
@@ -244,8 +269,8 @@ export class TouchControls {
     modeCol.id = 'touch-mode-col';
     modeCol.className = 'mini-col';
     root.appendChild(modeCol);
-    this.makeButton(modeCol, { key: K.rcsDampToggle, glyph: K.rcsDampToggle.label, label: '制動' }, '', true);
-    this.makeButton(modeCol, { key: K.fineAttitudeToggle, glyph: K.fineAttitudeToggle.label, label: '微動' }, '', true);
+    this.makeButton(modeCol, { key: K.rcsDampToggle, glyph: K.rcsDampToggle.label, label: '制動' }, '', this.toggleButtons);
+    this.makeButton(modeCol, { key: K.fineAttitudeToggle, glyph: K.fineAttitudeToggle.label, label: '微動' }, '', this.toggleButtons);
   }
 
   // ズームは長押しでなく ON/OFF トグル(タップのたびに切り替え、指を離しても保持)
@@ -259,12 +284,12 @@ export class TouchControls {
     zoomBtn.addEventListener('pointerdown', (ev) => {
       ev.preventDefault();
       zoomOn = !zoomOn;
-      zoomBtn.classList.toggle('held', zoomOn);
+      zoomBtn.classList.toggle('pressed', zoomOn);
       this.input.setVirtualKey(K.gunsightZoom, zoomOn);
     });
     const releaseZoom = (): void => {
       zoomOn = false;
-      zoomBtn.classList.remove('held');
+      zoomBtn.classList.remove('pressed');
       this.input.setVirtualKey(K.gunsightZoom, false);
     };
     zoomBtn.addEventListener('pointercancel', releaseZoom);
@@ -273,7 +298,8 @@ export class TouchControls {
     root.appendChild(zoomBtn);
   }
 
-  // warp・マップ・ヘルプ等の雑多なボタンを1列に組み立てる。
+  // warp・マップ・ヘルプ・視点ロール等の雑多なボタンを1列に組み立てる。視点ロールはドラッグや
+  // ピンチに対応するジェスチャが無い(ひねり操作は合成していない)ため、ボタンでしか到達できない。
   private buildUtilRow(root: HTMLElement): void {
     const util = document.createElement('div');
     util.id = 'touch-util';
@@ -283,11 +309,13 @@ export class TouchControls {
       { key: K.warpFaster, glyph: '»', label: '時間加速' },
       { key: K.toggleMapMode, glyph: K.toggleMapMode.label, label: '計画' },
       { key: K.autoWarpToNode, glyph: K.autoWarpToNode.label, label: 'ノードへ' },
+      { key: K.cameraRollLeft, glyph: '↺', label: '視点回転' },
+      { key: K.cameraRollRight, glyph: '↻', label: '視点回転' },
       { key: K.help, glyph: K.help.label, label: 'ヘルプ' },
     ]) {
       this.makeButton(util, b);
     }
     // ホールドはトグルボタンとして登録する
-    this.makeButton(util, { key: K.progradeHoldToggle, glyph: K.progradeHoldToggle.label, label: 'ホールド' }, '', true);
+    this.makeButton(util, { key: K.progradeHoldToggle, glyph: K.progradeHoldToggle.label, label: 'ホールド' }, '', this.toggleButtons);
   }
 }

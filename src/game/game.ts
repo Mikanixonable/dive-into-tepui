@@ -178,8 +178,12 @@ export class Game {
     );
 
     this.input = new Input(gs.renderer.domElement);
-    this.input.onFirstGesture = () => this._sfx.unlock();
-    if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
+    this.touchControls = new TouchControls(this.input);
+    this.input.onPointerKindChange = (kind) => {
+      this._sfx.unlock();
+      this.touchControls?.setPointerKind(kind);
+    };
+    this._hud.statusPanel.setInput(this.input);
     this.viewManager.setTouchControls(this.touchControls);
 
     this.simulator = new Simulator(this.entities, this.ephemeris, sections, initialSave?.simTime ?? 0);
@@ -478,7 +482,10 @@ export class Game {
     );
 
     if (player) {
-      this.touchControls?.syncModeButtons(player.rcsDamp, player.fineAttitude, player.progradeHold);
+      this.touchControls?.syncModeButtons(
+        player.rcsDamp, player.fineAttitude, player.progradeHold,
+        (key) => player.throttle.isThrustLatched(key),
+      );
     }
     this.activeStage.sync(
       player, this.floatingOrigin, project, this.cameraSystem.activeCameraScale, displayTime, overviewMode,

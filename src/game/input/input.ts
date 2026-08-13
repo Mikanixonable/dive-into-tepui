@@ -12,6 +12,9 @@ import {
 } from '../const';
 import { KeyBinding, SCROLL_GUARD_KEYS } from './key-mapping';
 
+// 直近に検知した入力の種別。タッチパッドの表示可否(touch.ts)が読む。
+export type PointerKind = 'touch' | 'mouse';
+
 export interface MouseDelta {
   dx: number;
   dy: number;
@@ -70,8 +73,10 @@ export class Input {
   private pointers = new Map<number, { x: number; y: number }>();
   private pinchDist = 0;
   private pinchCentroid: PointerPoint | null = null;
-  onFirstGesture: (() => void) | null = null;
-  private gestureFired = false;
+  // 直近に検知した入力種別が変わるたびに通知する(タッチ⇄マウス/キーボードの切替を含む)。
+  // 初回はどんな入力でも変化とみなして1回発火するので、初回ユーザー操作の検知も兼ねる。
+  onPointerKindChange: ((kind: PointerKind) => void) | null = null;
+  private lastPointerKind: PointerKind | null = null;
   // タッチの長押し(右クリック合成)。1本指のジェスチャにしか存在しないので
   // pointers のような Map ではなく単一の状態で持つ。
   private longPressTimer: ReturnType<typeof setTimeout> | null = null;
@@ -102,7 +107,7 @@ export class Input {
       }
       if (!e.repeat) this.pendingPresses.push(e.code);
       this.keys.add(e.code);
-      this.fireGesture();
+      this.notePointerKind('mouse');
     });
     window.addEventListener('keyup', (e) => {
       if (META_CODES.includes(e.code)) this.releaseAll();
@@ -142,7 +147,7 @@ export class Input {
 
   // 左ボタン・右ボタンはともにドラッグ/ピンチ開始(右クリックは閾値未満ならコンテキストメニュー用のクリックとして扱う)、中ボタンはパン開始として扱う。
   private onPointerDown(target: HTMLElement, e: PointerEvent): void {
-    this.fireGesture();
+    this.notePointerKind(e.pointerType === 'touch' ? 'touch' : 'mouse');
     const isRight = e.button === 2 || (e.button === 0 && e.ctrlKey);
     const isLeft = e.button === 0 && !e.ctrlKey;
     if (isLeft) {
@@ -174,6 +179,7 @@ export class Input {
 
   // アクティブなジェスチャ(ピンチ/パン/ドラッグ)に応じて移動量を積算する。
   private onPointerMove = (e: PointerEvent): void => {
+    this.notePointerKind(e.pointerType === 'touch' ? 'touch' : 'mouse');
     const p = this.pointers.get(e.pointerId);
     if (p) {
       p.x = e.clientX;
@@ -342,10 +348,10 @@ export class Input {
     return Math.hypot(a.x - b.x, a.y - b.y);
   }
 
-  // タッチ UI などからの仮想キー入力。物理キーボードと同じ扱いで
-  // 押下中セットとエッジトリガキューへ反映する。
+  // タッチ UI や HUD の代替操作ボタンからの仮想キー入力。物理キーボードと同じ扱いで
+  // 押下中セットとエッジトリガキューへ反映する。ポインタ種別の通知はしない —
+  // 呼び出し元がタッチ由来とは限らない(HUD 上の代替ボタンはマウスでも押せる)ため。
   setVirtualKey(key: KeyBinding, down: boolean): void {
-    this.fireGesture();
     if (down) {
       if (!this.keys.has(key.code)) this.pendingPresses.push(key.code);
       this.keys.add(key.code);
@@ -354,12 +360,18 @@ export class Input {
     }
   }
 
-  // 初回のユーザー操作で一度だけ onFirstGesture を呼ぶ。
-  private fireGesture(): void {
-    if (!this.gestureFired && this.onFirstGesture) {
-      this.gestureFired = true;
-      this.onFirstGesture();
-    }
+  // key を1フレームぶんだけ押されたことにする。HUD 上の代替操作ボタンが物理キーと
+  // 同じ押下エッジを合成する唯一の経路。
+  tapKey(key: KeyBinding): void {
+    this.setVirtualKey(key, true);
+    this.setVirtualKey(key, false);
+  }
+
+  // kind が直前の値から変わっていれば記録して onPointerKindChange へ通知する。
+  private notePointerKind(kind: PointerKind): void {
+    if (this.lastPointerKind === kind) return;
+    this.lastPointerKind = kind;
+    this.onPointerKindChange?.(kind);
   }
 
   // key が現在押下中か返す。

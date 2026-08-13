@@ -140,6 +140,11 @@ export class PlayerThrottle {
     return input.down(key) || this.latchedThrustKeys.has(key.code);
   }
 
+  // key に対応する並進キーがラッチ中かどうかを返す(タッチパッドの点灯表示用)。
+  isThrustLatched(key: KeyBinding): boolean {
+    return this.latchedThrustKeys.has(key.code);
+  }
+
   // 6方向の並進入力から機体座標系の推力加速度ベクトルを求める。入力が無ければ null。
   private buildThrust(input: Input, q: Attitude['q'], ship: import('../game-entity/ship').Ship, dt: number): Vec3 | null {
     if (isThrustKillSwitchActive(input)) return null;

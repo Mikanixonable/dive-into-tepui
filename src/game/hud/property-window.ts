@@ -10,6 +10,7 @@ import { shortcutKeyLabel } from './shortcut-hint';
 import { bringToFront as bringOverlayToFront } from './overlay-layer';
 import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from './hud-root';
 import { onViewportChange } from './viewport';
+import { isCompactViewport, MQ_COMPACT } from './breakpoints';
 import { Button, CloseButton, ValueInput } from './widgets';
 import type { OverlayHandle, OverlayManager, OverlaySpec } from './overlay-manager';
 
@@ -21,12 +22,24 @@ const STYLE = `
   font-family: var(--font-family); user-select: none;
   -webkit-user-select: none;
 }
+/* compact: ドラッグで動かす小窓ではなく、画面下 40% のボトムシートとして開く
+   (クリップ概念は維持 — 📌 で複数枚並べられる点はそのまま)。 */
+@media ${MQ_COMPACT} {
+  #hud .prop-window {
+    right: 0; bottom: 0; width: 100%; min-width: 0; max-width: 100%;
+    max-height: 40vh; max-height: 40dvh; overflow-y: auto;
+    border-radius: var(--radius-l) var(--radius-l) 0 0;
+  }
+}
 #hud .prop-window-header {
   display: flex; align-items: flex-start; gap: var(--space-3);
   padding: var(--space-4) var(--space-4) var(--space-4) var(--space-5);
   border-bottom: 1px solid var(--edge);
   background: var(--shade-1);
   cursor: move;
+}
+@media ${MQ_COMPACT} {
+  #hud .prop-window-header { cursor: default; }
 }
 #hud .prop-window-title { flex: 1; min-width: 0; }
 #hud .prop-window-title-main { color: var(--text); font-weight: bold; overflow-wrap: break-word; }
@@ -474,8 +487,14 @@ export class PropertyWindow<A extends string = string> implements OverlayHandle 
   }
 
   // 要求座標をビューポート内へクランプして配置する。ドラッグ・resize 再クランプ・
-  // 既存ウィンドウを右クリック位置へ動かす呼び出し元の全てから呼ぶ。
+  // 既存ウィンドウを右クリック位置へ動かす呼び出し元の全てから呼ぶ。compact ではボトムシートの
+  // 位置を CSS が持つので何もしない(前回の非 compact 時の left/top が残っていれば消す)。
   moveTo(clientX: number, clientY: number): void {
+    if (isCompactViewport()) {
+      this.el.style.left = '';
+      this.el.style.top = '';
+      return;
+    }
     const rect = this.el.getBoundingClientRect();
     const pos = clampOverlayPosition(
       { x: clientX, y: clientY },
@@ -487,7 +506,9 @@ export class PropertyWindow<A extends string = string> implements OverlayHandle 
   }
 
   // ボタン上からは開始せず、ドラッグ開始点とポインタキャプチャだけ確保する。
+  // compact ではボトムシート化していてドラッグ不要なので、そもそも開始しない。
   private handleHeaderPointerDown = (e: PointerEvent): void => {
+    if (isCompactViewport()) return;
     if (e.target instanceof Element && e.target.closest('button')) return;
     this.dragPointerId = e.pointerId;
     this.dragStartClient = { x: e.clientX, y: e.clientY };

@@ -2,6 +2,7 @@
 // 軌道計画、表示設定、表示時刻、座標系、艦艇配置、ナビボール、ステージステータス、
 // 設定・ヘルプ・終了画面。骨格(層・レール・シェルフ・バッジ)は skeleton-style.ts が持つ。
 import * as C from '../const';
+import { MQ_COARSE, MQ_COARSE_SHORT, MQ_COMPACT, MQ_MEDIUM_DOWN, MQ_SHORT } from './breakpoints';
 
 export const PANEL_CONTENT_STYLE = `
 #hud-status h3 { font-size: var(--font-xxs); }
@@ -12,6 +13,14 @@ export const PANEL_CONTENT_STYLE = `
 #hud.map-mode #hud-orbit { font-size: inherit; }
 #hud.map-mode #hud-orbit h3 { font-size: var(--font-s); }
 #hud-status .v, #hud-orbit .v { min-width: 75px; }
+/* R/F/G/T の代替操作ボタン(タッチ・マウスどちらでも常設)。 */
+#hud-status .status-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
+#hud-status .status-actions .w-btn { font-size: var(--font-xxs); padding: var(--space-2) var(--space-3); }
+/* スロットル 1-4 の SegmentedControl。§7-1 の決定によりタッチ UI が出ている間だけ表示する —
+   表示条件はタッチパッドの出し入れ(touch.ts の setPointerKind が付ける body.touch-ui-active)と
+   同じものに載せ、ここで別の判定を作らない。 */
+#hud-status .status-throttle-touch { display: none; margin-top: var(--space-3); }
+body.touch-ui-active #hud-status .status-throttle-touch { display: flex; }
 #hud .hud-rail-right > #hud-target { width: 100%; box-sizing: border-box; font-size: var(--font-xs); }
 #hud .hud-rail-right > #hud-target h3 { font-size: var(--font-xxs); }
 #hud-enemies h3 { font-size: var(--font-xxs); }
@@ -67,7 +76,7 @@ export const PANEL_CONTENT_STYLE = `
 }
 #hud .body-class-row .body-class-btns { display: flex; gap: var(--space-2); }
 /* span. まで指定して .w-btn 側の padding/font-size より確実に勝たせる
-   (ID+クラスの詳細度は #hud .w-btn と同着のため、宣言順に頼らない)。 */
+   (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
 #hud span.body-class-icon-btn { min-width: 20px; padding: var(--space-2) var(--space-3); text-align: center; font-size: var(--font-m); }
 #hud .body-class-row.category-off .body-class-icon-btn.on { border-color: var(--edge); color: var(--text-dim); font-weight: 700; opacity: .65; }
 #hud .body-class-row.category-off .body-class-icon-btn.disabled { opacity: .35; }
@@ -102,7 +111,7 @@ export const PANEL_CONTENT_STYLE = `
 #hud-predict .predict-row1 { flex-wrap: wrap; margin-bottom: var(--space-2); }
 #hud-predict .predict-pills { display: inline-flex; gap: var(--space-3); flex-wrap: wrap; align-items: center; }
 /* span. まで指定して .w-btn 側の display/padding より確実に勝たせる
-   (ID+クラスの詳細度は #hud .w-btn と同着のため、宣言順に頼らない)。 */
+   (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
 #hud-predict span.predict-reset {
   flex: 0 0 auto; padding: 0;
   width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
@@ -208,7 +217,7 @@ export const PANEL_CONTENT_STYLE = `
 #hud-stagestatus .k-widgets:not(:empty) { margin-top: var(--space-3); }
 #hud-stagestatus .radiators { display: flex; flex-direction: column; gap: var(--space-3); }
 /* span. まで指定して .w-btn 側の padding より確実に勝たせる
-   (ID+クラスの詳細度は #hud .w-btn と同着のため、宣言順に頼らない)。 */
+   (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
 #hud-stagestatus span.radiator-btn {
   position: relative; overflow: hidden; width: 132px; padding: var(--space-2) var(--space-4); text-align: left;
 }
@@ -229,11 +238,11 @@ export const PANEL_CONTENT_STYLE = `
   display: flex; justify-content: space-between; align-items: center; gap: var(--space-6); padding: var(--space-3) 0;
 }
 /* span. まで指定して .w-btn 側の padding/font-size より確実に勝たせる
-   (ID+クラスの詳細度は #hud .w-btn と同着のため、宣言順に頼らない)。 */
+   (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
 #hud-pause-menu span.pm-quit { margin-top: var(--space-5); text-align: center; padding: var(--space-4) var(--space-5); font-size: var(--font-m); }
 #hud-pause-menu .pm-close-row { margin-top: var(--space-5); text-align: center; }
 
-@media (max-width: 900px), (pointer: coarse) {
+@media ${MQ_MEDIUM_DOWN} {
   #hud.map-mode #hud-orbit h3 { font-size: var(--font-xs); }
   #hud-plan { min-width: 0; max-width: none; }
   #hud-help { min-width: 0; width: 94vw; max-height: 78vh; max-height: 78dvh; }
@@ -250,7 +259,7 @@ export const PANEL_CONTENT_STYLE = `
   #hud-stagestatus .t { font-size: var(--font-s); }
   #hud-stagestatus .k { font-size: var(--font-xxs); line-height: 1.35; white-space: normal; }
 }
-@media (max-width: 520px) {
+@media ${MQ_COMPACT} {
   #hud .w-group { gap: var(--space-2); }
   #hud .w-btn { padding: var(--space-2) var(--space-3); font-size: var(--font-xxs); }
   #hud-predict .slider-ticks { display: none; }
@@ -259,15 +268,15 @@ export const PANEL_CONTENT_STYLE = `
   #hud-predict-wrap { left: 8px; right: 8px; bottom: 8px; }
   #hud-predict { max-height: 28vh; max-height: 28dvh; }
 }
-@media (pointer: coarse) {
+@media ${MQ_COARSE} {
   #hud-predict-wrap { bottom: 62px; }
 }
-@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
+@media ${MQ_COARSE_SHORT} {
   #hud-stagestatus { max-height: 46px; }
   #navball { top: 60px; width: 72px !important; }
   #hud-predict-wrap { bottom: 52px; }
 }
-@media (orientation: landscape) and (max-height: 500px) {
+@media ${MQ_SHORT} {
   #hud-stagestatus { max-height: 46px; }
 }
 `;

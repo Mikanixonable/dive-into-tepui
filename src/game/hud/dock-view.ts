@@ -6,6 +6,7 @@ import type { AnyPart, Part, PartType, RcsTankPart } from '../game-entity/parts'
 import { createPart } from '../game-entity/parts';
 import * as C from '../const';
 import { Button, CloseButton, Meter, TabBar } from './widgets';
+import { MQ_COMPACT } from './breakpoints';
 
 const STYLE = `
 /* 戦闘・マップと対等な全画面ビュー。背後の 3D は描画自体が止まるので、
@@ -66,7 +67,7 @@ const STYLE = `
 #dock-view .dock-ship-label { font-size: var(--font-m); color: var(--text-dim); flex: 1; }
 #dock-view .dock-part-list { display: flex; flex-direction: column; gap: var(--space-3); }
 #dock-view .dock-part-row {
-  display: grid; grid-template-columns: 1fr 120px 60px auto;
+  display: grid; grid-template-columns: 1fr minmax(80px, 120px) minmax(40px, 60px) auto;
   align-items: center; gap: var(--space-5); padding: var(--space-3) var(--space-5);
   border: 1px solid var(--edge); border-radius: var(--radius-m);
 }
@@ -78,10 +79,10 @@ const STYLE = `
 #dock-view .dock-part-hp-text { font-size: var(--font-s); color: var(--text-dim); text-align: right; }
 #dock-view .dock-part-row { display: flex; flex-direction: column; gap: var(--space-3); }
 #dock-view .dock-part-row-main {
-  display: grid; grid-template-columns: 1fr 120px 60px auto;
+  display: grid; grid-template-columns: 1fr minmax(80px, 120px) minmax(40px, 60px) auto;
   align-items: center; gap: var(--space-5);
 }
-#dock-view .dock-warehouse-row-main { grid-template-columns: 1fr 60px auto; }
+#dock-view .dock-warehouse-row-main { grid-template-columns: 1fr minmax(40px, 60px) auto; }
 #dock-view .dock-part-actions { display: flex; align-items: center; gap: var(--space-3); }
 #dock-view .dock-part-swap-row {
   display: flex; align-items: center; gap: var(--space-4);
@@ -110,9 +111,20 @@ const STYLE = `
 #dock-view .dock-shop-actions { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); }
 #dock-view .dock-shop-price { font-size: var(--font-m); color: var(--accent); }
 /* Common buttons: span. まで指定して .w-btn 側の背景色より確実に勝たせる
-   (ID+クラスの詳細度は #hud .w-btn と同着のため、宣言順に頼らない)。 */
+   (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
 #dock-view span.dock-btn { background: var(--accent-fill-weak); color: var(--accent); }
 #dock-view span.dock-btn:hover { background: var(--accent-fill); }
+
+@media ${MQ_COMPACT} {
+  /* ヘッダ: タイトル+閉じるを1行目、タブ列を折り返して2行目に積む。 */
+  #dock-view .dock-header { flex-wrap: wrap; padding: var(--space-4) var(--space-5); }
+  #dock-view .dock-tabs { flex: 1 1 100%; order: 3; }
+  #dock-view .dock-status-bar, #dock-view .dock-body { padding-left: var(--space-5); padding-right: var(--space-5); }
+  /* 部品グリッド: 搭載/倉庫を1列に積む。 */
+  #dock-view .dock-parts-columns { grid-template-columns: 1fr; gap: var(--space-5); }
+  #dock-view .dock-part-row-main { grid-template-columns: 1fr minmax(60px, 90px) auto; }
+  #dock-view .dock-warehouse-row-main { grid-template-columns: 1fr auto; }
+}
 `;
 
 let styleInjected = false;

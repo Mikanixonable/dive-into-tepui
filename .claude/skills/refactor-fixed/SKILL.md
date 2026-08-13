@@ -569,7 +569,7 @@ CSS カスタムプロパティは DOM の外には意味を持たないため�
 - **受け手が「無ければ何もしない」を自決できるなら、呼び出し側にガードを書かせない。**
   `if (x) receiver.f(x)` は、受け手の引数を `T | null` にして先頭で早期 return できるなら
   二重判定。受け手側へ倒して呼び出し側の `if` を消す。自決できないのは、受け手がその型を
-  そもそも知らない場合(`TouchControls` は `Player` ではなくプリミティブ3つを受ける)だけで、
+  そもそも知らない場合(`TouchControls` は `Player` ではなくプリミティブと述語関数を受ける)だけで、
   そのときだけ呼び出し側にガードが残る。
 - **「出すか」の真偽値引数は、値自身を `T | null` にできるなら潰す。**
   `update(plan: Plan | null)` は `null` が「出さない」を表すので `show` は要らない。
@@ -645,13 +645,32 @@ CSS カスタムプロパティは DOM の外には意味を持たないため�
   持ち、`:root` への再代入をブレークポイントの数だけ書く(値の一本化ではない)。** 参照側は
   `var(--rail-w-left)` のように読むだけにし、`min(300px, 30vw)` のような式そのものを
   複数箇所へ複製しない — 複製すると変更のたびに全箇所を手で揃えることになり、必ず漏れる。
+- **ブレークポイントの閾値・メディアクエリ文字列そのものは `hud/breakpoints.ts` の1箇所にだけ
+  置き、`@media (max-width: …px)` を他ファイルへ書き写さない。** 幅は `compact`(<700px)/
+  `medium`(700–1100px)/`wide`(>1100px)の3クラス、`coarse`(`pointer:coarse`)/`short`
+  (<500px 高)の2軸は直交として持つ — `MQ_MEDIUM_DOWN`/`MQ_COMPACT`/`MQ_COARSE`/`MQ_SHORT`/
+  `MQ_COARSE_SHORT` を各 CSS テンプレートリテラルへ埋め込む。JS 側で離散的に(構築・オープン
+  などの瞬間にだけ)幅クラスを読みたい呼び出しは `isCompactViewport()` を使う — `pointer-precision.ts`
+  の `isCoarsePointer()` と異なり起動時にキャッシュしない(ポインタの粗さと違い、画面幅は
+  回転・リサイズで頻繁に変わるため)。
 - **すべてのパネルは `hud/panel-shell.ts` の `PanelShell`(見出し+`CollapseToggle`+本文)に
   載せ、個別に折りたためる。** 折りたたみは `localStorage`(`tepui.panelCollapsed`)へパネル id
-  ごと永続する `.collapsed`(本文のみ隠す、利用者の選択)。**ゲーム状態由来の表示/非表示は
+  ごと永続する `.collapsed`(本文のみ隠す、利用者の選択)— 読み書きは export 済みの
+  `loadPanelCollapsed`/`savePanelCollapsed` を通す。**左右レール(`.hud-rail.collapsed`)のような
+  `PanelShell` を使わない折りたたみ可能な置き場も、この同じ2関数・同じストアを共有する** —
+  レール専用の第二の永続キーを作らない。初期値(まだ一度も操作されていない状態のデフォルト)は
+  `PanelShell` コンストラクタの末尾引数 `defaultCollapsed`(既定 `false`)で渡し、compact 幅での
+  既定収納(戦闘ビューの ORBIT/CONTACTS、マップの左右レール)は呼び出し側が `isCompactViewport()`
+  を1回評価して決める — `PanelShell` 自身は画面幅を知らない。**ゲーム状態由来の表示/非表示は
   別の軸 `.hidden`(パネル全体を隠す、`!important`)であり、この2つを混同しない** — `.hidden`
   は `style.display` を直接書き換えず、必ずクラスの付け外しで表す(哲学2「状態の持ち主は
   クラス」の DOM 側規約)。インライン `style*="..."` を CSS セレクタで拾う書き方(旧
   `[style*="display: none"]`)は禁止 — 壊れやすく、`.hidden` があれば不要。
+- **`hud/widgets/` のセレクタは `#hud` に閉じない。** ウィジェットは `#hud` の外(タイトル画面の
+  `stage-select.ts`、`#touch-ui`)でも組めなければならないため、`widget-style.ts` は `.w-btn` の
+  ように書き、`#hud .w-btn` としない。固定寸法と border/padding を両方持つ要素(`.w-close`/
+  `.w-toggle-track`)は `box-sizing: border-box` を自前で持ち、`#hud, #hud * { box-sizing: … }`
+  の一括リセットに依存しない。
 - **`visualViewport` の購読は `hud/viewport.ts` の1箇所に集約する。** 画面回転・アドレスバー
   伸縮・仮想キーボードでの再配置が要る側(`PropertyWindow`/`ContextMenu` の再クランプ等)は、
   自前で `window`/`visualViewport` の `resize` を張らず `onViewportChange` を購読する。

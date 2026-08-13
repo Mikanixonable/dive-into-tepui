@@ -4,10 +4,11 @@ import { injectThemeVariables } from '../theme';
 import { buildOverlayLayers, type OverlayLayers } from './overlay-layer';
 import { OverlayManager } from './overlay-manager';
 import { HelpPanel } from './help-panel';
-import { PanelShell } from './panel-shell';
+import { PanelShell, loadPanelCollapsed, savePanelCollapsed } from './panel-shell';
 import { LAYOUT_TOKENS_STYLE } from './layout-tokens';
 import { SKELETON_STYLE } from './skeleton-style';
 import { PANEL_CONTENT_STYLE } from './panel-content-style';
+import { isCompactViewport } from './breakpoints';
 import { startViewportTracking } from './viewport';
 import { buildCollapseToggle, WIDGET_STYLE, type CollapseToggleLabels } from './widgets';
 export {
@@ -64,8 +65,15 @@ export function syncNavballPlacement(root: HTMLElement, mapMode: boolean): void 
   if (navball && target && navball.parentElement !== target) target.appendChild(navball);
 }
 
+// レールの折りたたみ状態は PanelShell と同じ localStorage を共有する。一度も操作されて
+// いなければ、初回表示の既定として compact 幅でだけ畳んでおく(マップビュー = PREDICT バー +
+// 畳まれた左右レール)。
 function buildRailToggle(root: HTMLElement, rail: HTMLElement, side: 'left' | 'right'): void {
-  buildCollapseToggle(root, `hud-rail-toggle-${side}`, 'rail-toggle', rail, railToggleLabels(side));
+  const railId = `hud-rail-${side}`;
+  const collapsed = loadPanelCollapsed(railId) ?? isCompactViewport();
+  rail.classList.toggle('collapsed', collapsed);
+  const toggle = buildCollapseToggle(root, `hud-rail-toggle-${side}`, 'rail-toggle', rail, railToggleLabels(side));
+  toggle.addEventListener('click', () => savePanelCollapsed(railId, rail.classList.contains('collapsed')));
 }
 
 // STYLE の CSS を <head> に注入する。
@@ -98,12 +106,16 @@ function buildInfoPanels(root: HTMLElement, targetRail: HTMLElement): void {
   status.body.innerHTML = `
     <div class="row"><span class="k">RCS制動 [${K.rcsDampToggle.label}]</span><span class="v" data-id="rcs"></span></div>
     <div class="row"><span class="k">並進出力 [${K.throttleLow.label}-${K.throttleMax.label}]</span><span class="v" data-id="throttle"></span></div>
+    <div class="status-throttle-touch" data-id="status-throttle-touch"></div>
     <div class="row"><span class="k">微調整 [${K.fineAttitudeToggle.label}]</span><span class="v" data-id="fine"></span></div>
     <div class="row"><span class="k">進行方向ホールド [${K.progradeHoldToggle.label}]</span><span class="v" data-id="prohold"></span></div>
     <div class="row"><span class="k">視点のRCS追従 [${K.followAttitudeToggle.label}]</span><span class="v" data-id="camfollow"></span></div>
-    <div class="row"><span class="k">弾薬 AMMO</span><span class="v" data-id="ammo"></span></div>`;
+    <div class="row"><span class="k">弾薬 AMMO</span><span class="v" data-id="ammo"></span></div>
+    <div class="status-actions" data-id="status-actions"></div>`;
 
-  const orbit = new PanelShell(shelf, 'hud-orbit', 'ORBIT');
+  // compact 縦の既定表示: ORBIT/CONTACTS は収納状態で開始する(SHIP STATUS/ステージ状態
+  // パネルは常設のまま)。一度でも開閉を操作すれば、以後は PanelShell の永続に従う。
+  const orbit = new PanelShell(shelf, 'hud-orbit', 'ORBIT', isCompactViewport());
   orbit.body.innerHTML = `
     <div class="row"><span class="k">基準天体</span><span class="v" data-id="center"></span></div>
     <div class="row"><span class="k">高度 ALT</span><span class="v" data-id="alt"></span></div>
@@ -120,7 +132,7 @@ function buildInfoPanels(root: HTMLElement, targetRail: HTMLElement): void {
   target.setHidden(true);
   target.body.innerHTML = `<div data-id="tgtbody"></div>`;
 
-  const enemies = new PanelShell(shelf, 'hud-enemies', 'CONTACTS');
+  const enemies = new PanelShell(shelf, 'hud-enemies', 'CONTACTS', isCompactViewport());
   enemies.titleEl.innerHTML = 'CONTACTS <span data-id="count"></span>';
   enemies.body.innerHTML = `<div data-id="elist"></div>`;
 
