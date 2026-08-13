@@ -1,61 +1,48 @@
-// HUD パネル共通のボタン部品。値を排他選択する SegmentedControl と、単発実行の hudButton。
+// hud/widgets/ への薄い委譲層。呼び出し側は hud/widgets/ の各ウィジェットへ移行し、
+// このファイルは移行が済んだ呼び出し側から順に不要になる。dom.ts の既存 CSS(.seg-btn/
+// .hud-seg/.hold-btn/.icon-toggle-btn/.category-toggle-btn/.hud-toggle 以下)は他の
+// パネルからも直接参照されているため、委譲先ウィジェットが組んだ要素のクラス名を
+// 旧名へ差し替えて両立させる(w-* と旧名を両方持たせると、新旧2つのスタイル規則が
+// 同じプロパティを異なる値で競合させてしまう)。
+import { Button, HoldButton, SegmentedControl as WidgetSegmentedControl, ToggleSwitch } from './widgets';
 
 // 単発の実行ボタン。
 export function hudButton(label: string, onClick: () => void): HTMLElement {
-  const btn = document.createElement('span');
-  btn.className = 'seg-btn';
-  btn.textContent = label;
-  btn.addEventListener('pointerdown', (e) => e.stopPropagation());
-  btn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    onClick();
-  });
-  return btn;
+  const btn = new Button(label, onClick);
+  btn.element.className = 'seg-btn';
+  return btn.element;
 }
 
 // 見出し + 排他選択のボタン列。T は Map のキーとして参照同一性で引けるものであれば足りる
 // (文字列に限らない — 座標系の ReferenceFrame オブジェクトなど、正準インスタンスの集合から選ぶ値も扱う)。
 export class SegmentedControl<T> {
   readonly element: HTMLElement;
-  private readonly buttons = new Map<T, HTMLElement>();
-  private items: readonly (readonly [T, string])[] = [];
-  private readonly onSelect: (value: T) => void;
+  private readonly inner: WidgetSegmentedControl<T>;
 
   // items は [値, 表示ラベル] の並びで、その順にボタンを並べる。
   constructor(title: string, items: readonly (readonly [T, string])[], onSelect: (value: T) => void) {
-    this.onSelect = onSelect;
-    this.element = document.createElement('div');
+    this.inner = new WidgetSegmentedControl(title, items, onSelect);
+    this.element = this.inner.element;
     this.element.className = 'hud-seg';
-    // 見出し
-    const heading = document.createElement('span');
-    heading.className = 'seg-title';
-    heading.textContent = title;
-    this.element.appendChild(heading);
-    this.setItems(items);
+    this.patchLegacyClasses();
   }
 
-  // 選択中の値を点灯させる。候補外の値(ラベルメニューから選んだフォーカスなど)では全消灯になる。
+  // 選択中の値を点灯させる。
   setSelected(value: T): void {
-    for (const [v, btn] of this.buttons) btn.classList.toggle('on', v === value);
+    this.inner.setSelected(value);
   }
 
-  // ボタン列を items へ丸ごと差し替える(見出しはそのまま)。選べない選択肢を出してから
-  // 拒否するのではなく、状況によって選択肢自体を絞りたい呼び出し側のために用意する。
+  // ボタン列を items へ丸ごと差し替える。
   setItems(items: readonly (readonly [T, string])[]): void {
-    // 同じ内容なら作り直さない — 差し替えると押しかけのボタンが消えてクリックが届かなくなる。
-    const same = (pair: readonly [T, string], i: number): boolean => {
-      const cur = this.items[i];
-      return cur !== undefined && pair[0] === cur[0] && pair[1] === cur[1];
-    };
-    if (items.length === this.items.length && items.every(same)) return;
-    for (const btn of this.buttons.values()) btn.remove();
-    this.buttons.clear();
-    for (const [value, label] of items) {
-      const btn = hudButton(label, () => this.onSelect(value));
-      this.element.appendChild(btn);
-      this.buttons.set(value, btn);
-    }
-    this.items = items.map(([value, label]) => [value, label] as const);
+    this.inner.setItems(items);
+    this.patchLegacyClasses();
+  }
+
+  // 差し替え後に組み直された見出し・各ボタンへ旧クラス名を貼り直す。
+  private patchLegacyClasses(): void {
+    const title = this.element.querySelector<HTMLElement>('.w-group-title');
+    if (title) title.className = 'seg-title';
+    this.element.querySelectorAll<HTMLElement>('.w-btn').forEach((btn) => { btn.className = 'seg-btn'; });
   }
 }
 
@@ -63,33 +50,17 @@ export class SegmentedControl<T> {
 // 読み、押している間だけ処理を続ける形で使う。
 export class HudHoldButton {
   readonly element: HTMLElement;
-  private held = false;
+  private readonly inner: HoldButton;
 
   get isHeld(): boolean {
-    return this.held;
+    return this.inner.isHeld;
   }
 
   // label はボタンの表示文字列。
   constructor(label: string) {
-    this.element = document.createElement('span');
+    this.inner = new HoldButton(label);
+    this.element = this.inner.element;
     this.element.className = 'seg-btn hold-btn';
-    this.element.textContent = label;
-    this.element.addEventListener('pointerdown', (e) => {
-      e.stopPropagation();
-      this.held = true;
-      this.element.setPointerCapture(e.pointerId);
-    });
-    const release = (e: PointerEvent): void => {
-      this.held = false;
-      try {
-        this.element.releasePointerCapture(e.pointerId);
-      } catch {
-        /* すでに解放済みなら無視 */
-      }
-    };
-    this.element.addEventListener('pointerup', release);
-    this.element.addEventListener('pointercancel', release);
-    this.element.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 }
 
@@ -97,98 +68,81 @@ export class HudHoldButton {
 // 1行に並べて「アイコン/ラベル/軌道線」のような同種の切り替えをまとめて出す場面向け。
 export class IconToggleButton {
   readonly element: HTMLElement;
+  private readonly button: Button;
   private on = false;
-  private enabled = true;
 
   // glyph は表示するグリフ、title はホバー時に出る説明文。onChange は切り替わった後の値で呼ばれる。
   constructor(glyph: string, title: string, onChange: (on: boolean) => void) {
-    this.element = document.createElement('span');
-    this.element.className = 'seg-btn icon-toggle-btn';
-    this.element.textContent = glyph;
-    this.element.title = title;
-    this.element.addEventListener('pointerdown', (e) => e.stopPropagation());
-    this.element.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (!this.enabled) return;
+    this.button = new Button(glyph, () => {
       this.setOn(!this.on);
       onChange(this.on);
     });
+    this.element = this.button.element;
+    this.element.className = 'seg-btn icon-toggle-btn';
+    this.element.title = title;
   }
 
   // 表示状態を設定する(onChange は呼ばれない)。
   setOn(on: boolean): void {
     this.on = on;
-    this.element.classList.toggle('on', on);
+    this.button.setOn(on);
   }
 
-  // 親カテゴリーが OFF の間は個別設定を保持したまま操作だけ止める。
+  // 親カテゴリーが OFF の間は個別設定を保持したまま操作だけ止める(Button 自身が
+  // disabled 中のクリックを無視するので、ここでは委譲するだけでよい)。
   setEnabled(enabled: boolean): void {
-    this.enabled = enabled;
-    this.element.classList.toggle('disabled', !enabled);
-    this.element.setAttribute('aria-disabled', String(!enabled));
+    this.button.setEnabled(enabled);
   }
 }
 
 // カテゴリー名のように、文字列そのものを押して ON/OFF を切り替えるトグル。
 export class HudToggleButton {
   readonly element: HTMLElement;
+  private readonly button: Button;
   private on = true;
 
+  // label はボタンの表示文字列、title はホバー時に出る説明文。onChange は切り替わった後の値で呼ばれる。
   constructor(label: string, title: string, onChange: (on: boolean) => void) {
-    this.element = document.createElement('span');
-    this.element.className = 'seg-btn category-toggle-btn on';
-    this.element.textContent = label;
-    this.element.title = title;
-    this.element.setAttribute('role', 'button');
-    this.element.setAttribute('aria-pressed', 'true');
-    this.element.addEventListener('pointerdown', (e) => e.stopPropagation());
-    this.element.addEventListener('click', (e) => {
-      e.stopPropagation();
+    this.button = new Button(label, () => {
       this.setOn(!this.on);
       onChange(this.on);
     });
+    this.element = this.button.element;
+    this.element.className = 'seg-btn category-toggle-btn';
+    this.element.title = title;
+    this.setOn(true);
   }
 
+  // 表示状態を設定する(onChange は呼ばれない)。
   setOn(on: boolean): void {
     this.on = on;
-    this.element.classList.toggle('on', on);
-    this.element.setAttribute('aria-pressed', String(on));
+    this.button.setOn(on);
   }
 }
 
 // 見出し + ON/OFF を切り替えるトグルスイッチ。
 export class HudToggle {
   readonly element: HTMLElement;
-  private readonly track: HTMLElement;
-  private on = false;
+  private readonly inner: ToggleSwitch;
 
   // title は見出し。onChange は切り替わった後の値で呼ばれる。
   constructor(title: string, onChange: (on: boolean) => void) {
-    this.element = document.createElement('div');
+    this.inner = new ToggleSwitch(title, onChange);
+    this.element = this.inner.element;
     this.element.className = 'hud-toggle';
-    const heading = document.createElement('span');
-    heading.className = 'toggle-title';
-    heading.textContent = title;
-    this.element.appendChild(heading);
-
-    // クリックを受けるのはトラックで、つまみは表示だけを担う
-    this.track = document.createElement('span');
-    this.track.className = 'toggle-track';
-    const knob = document.createElement('span');
-    knob.className = 'toggle-knob';
-    this.track.appendChild(knob);
-    this.track.addEventListener('pointerdown', (e) => e.stopPropagation());
-    this.track.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.setOn(!this.on);
-      onChange(this.on);
-    });
-    this.element.appendChild(this.track);
+    // 見出し・トラック・つまみの3要素それぞれへ旧クラス名を貼り直す。
+    const heading = this.element.querySelector<HTMLElement>('.w-toggle-title');
+    if (heading) heading.className = 'toggle-title';
+    const track = this.element.querySelector<HTMLElement>('.w-toggle-track');
+    if (track) {
+      track.className = 'toggle-track';
+      const knob = track.querySelector<HTMLElement>('.w-toggle-knob');
+      if (knob) knob.className = 'toggle-knob';
+    }
   }
 
   // 表示状態を設定する(onChange は呼ばれない)。
   setOn(on: boolean): void {
-    this.on = on;
-    this.track.classList.toggle('on', on);
+    this.inner.setOn(on);
   }
 }
