@@ -335,10 +335,10 @@ export class Game {
       this.sections.enter(SECTION.plan);
       // trackAnchor より前に置く: 最後のノードが落ちたフレームからアンカーを自機へ追従させる。
       this.guide.update(
-        this.editor.plan, flown, this.simulator.simTime, this.editor.editMode,
+        flown, this.simulator.simTime, this.editor.editMode,
         this.ephemeris.attractorsAt(this.simulator.simTime),
       );
-      this.editor.plan.trackAnchor(flown.state);
+      flown.plan.trackAnchor(flown.state);
       this.sections.exit(SECTION.plan);
     }
   }
@@ -378,7 +378,7 @@ export class Game {
       excludedIds,
       planSourceRevision(
         this.entities, excludedIds,
-        this.editor.plan.revision, this.editor.lastPlanEnd, this.simulator.simTime,
+        this.editor.plan?.revision ?? 0, this.editor.lastPlanEnd, this.simulator.simTime,
       ),
     );
     this.editor.update(displayWindow, planProvider);
@@ -415,7 +415,7 @@ export class Game {
       this.input,
       this.activeStage.isPlaying,
       this.editor.editMode,
-      this.editor.plan.firstNode(),
+      this.editor.plan?.firstNode(),
       this.simulator.simTime,
     );
     // 戦闘ビューはアクティブ艦を前提とする。艦がまだ配置されていない/破壊されている間は無効。
@@ -513,7 +513,7 @@ export class Game {
     this._hud.panels.sync(this, attractors);
     this._hud.tick();
 
-    if (player) this.guide.sync(this.editor.plan, player, simTime, this.editor.editMode, project);
+    this.guide.sync(player, simTime, this.editor.editMode, project);
 
     // このフレームのマーカーが出揃った後でなければならないので最後に置く。
     this.markerManager.resolveCollisions();

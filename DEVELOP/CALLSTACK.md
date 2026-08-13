@@ -251,13 +251,13 @@
   - sections.exit(SECTION.effects)
   - active = player // trackAnchor より前に取り直す: 最後のノードが落ちたフレームからアンカーを自機へ追従させるため
   - [active && playing] sections.enter(SECTION.plan)
-  - [active && playing] guide.update(editor.plan, active, simTime, editMode, ephemeris.attractorsAt(simTime))
-    - plan.consumeNodesUpTo(simTime - C.NODE_EXPIRE_GRACE, active.state) // 期限切れノードをまとめて落とし、自機の実状態を新しいアンカーに据える
+  - [active && playing] guide.update(active, simTime, editMode, ephemeris.attractorsAt(simTime))
+    - active.plan.consumeNodesUpTo(simTime - C.NODE_EXPIRE_GRACE, active.state) // 期限切れノードをまとめて落とし、自機の実状態を新しいアンカーに据える
     - [直近ノードが実行の窓(node.t - C.NODE_APPROACH_LEAD)に入っている場合のみ]
       - notifyApproach() → hud.hint() // ノードごとに最初の1回のみ(approachNotified との同一性比較)
-      - notifyAchieved() // orbitalElementsClose(自機軌道要素, 目標軌道要素) が真の場合のみ。plan.consumeNodesUpTo(node.t, active.state) で達成ノードを消化し、残り件数は消化後の実数を読む
+      - notifyAchieved() // orbitalElementsClose(自機軌道要素, 目標軌道要素) が真の場合のみ。active.plan.consumeNodesUpTo(node.t, active.state) で達成ノードを消化し、残り件数は消化後の実数を読む
         - hud.hint() + sfx.warp() // ノードごとに最初の1回のみ(achievedNotified との同一性比較)
-  - [active && playing] editor.plan.trackAnchor(active.state) // ノードが0件のときだけ実効(1件目を置くとアンカーは凍結される)
+  - [active && playing] active.plan.trackAnchor(active.state) // ノードが0件のときだけ実効(1件目を置くとアンカーは凍結される)
   - [active && playing] sections.exit(SECTION.plan)
 
 ### updateMapPresentation(dt)
@@ -270,7 +270,7 @@
   - environment.update(displayWindow.displayTime, cameraSystem.overviewMode) // 小惑星帯・トロヤ群点群の位置再評価。editor.update より前
   - sections.enter(SECTION.plan)
   - excludedIds = player ? [player.id] : []
-  - planProvider = planAttractorProvider(ephemeris, entities, excludedIds, planSourceRevision(entities, excludedIds, editor.plan.revision, editor.lastPlanEnd, simulator.simTime)) // editor.update より前に組む。今フレームの計画終端は editor.update がこれから決めるので、revision の量子化は前フレームの終端(PlanPath.timeRange().max)を基準にする
+  - planProvider = planAttractorProvider(ephemeris, entities, excludedIds, planSourceRevision(entities, excludedIds, editor.plan?.revision ?? 0, editor.lastPlanEnd, simulator.simTime)) // editor.update より前に組む。今フレームの計画終端は editor.update がこれから決めるので、revision の量子化は前フレームの終端(PlanPath.timeRange().max)を基準にする
   - editor.update(displayWindow, planProvider) // 計画折れ線の再積分とアプシスアイコン(赤道交点の更新/mapPicker.refresh より前)。planProvider.revision が前回と同じで起点・終端・基準天体も動いていない区間は再積分せず前回の積分結果を使う
     - path.update() // plan の corners を区間へ分解。表示座標系と un-bake 時刻もここで確定。buildSegments は末尾区間の起点時刻の天体窓を1回だけ引き、区間長(segmentDurationFrom)と基準天体(strongestAttractor → Segment.apsisCenter)の両方をそこから決める
       - [区間ごと] arc.represents(state0, end, sourceRevision, apsisCenterId, tracksLiveAnchor) // 既存 arc が今フレームの区間をそのまま表せるか。sourceRevision/apsisCenterId の不一致・積分済みサンプル間隔の粗さのいずれかで false
@@ -333,7 +333,7 @@
     - mapPicker.handleLeftClick(input) // 自機/基地マーカーへの左クリックを選択として消費する。外れれば消費せず editor.handleMapPointer() のノード配置/選択解除に読み進む
       - selectPickable() // 'player' → activePlayers.set() / 'base' → docking.selectBase()(遷移はしない)
     - mapPicker.handleDoubleClick(input) // pickables 全種別への最寄りダブルクリックで overviewCamera.setFocus()
-    - editor.handleMapPointer(input) // [!hasPlan] 即 return。右クリック → 左クリックの順に受ける
+    - editor.handleMapPointer(input) // [艦なし] 即 return。右クリック → 左クリックの順に受ける
       - handleNodeRightClick() // 右クリックごと。ノードをヒットしたぶんだけ消費する
         - selectedNodeIdx = ヒットしたノードの idx + nodeGizmo.openMenu() // ヒット時。true を返して消費
       - handleMapClick() // 左クリックごと。常に消費する
@@ -432,7 +432,7 @@
   - displayWindowManager.sync(player) // PREDICT パネル(期間ピル/スクラバー/目盛り)の表示/内容を押し出す。自機の predictedTrajectory.state.t が current(simTime, duration)のどこまで届いているかの割合(0..1、自機/予測/表示期間のいずれかが無ければ 1)も内部で求めて渡す
     - panel.render(state) // visible(=!forceCurrent)・期間ピル・スクラバー(段階数/つまみ位置/未予測区間の減光)・絶対日時/T+ラベル・目盛りを1回でまとめて押し出す。編集中(任意期間フォーム・T+ジャンプフォームを開いている)行は再描画をスキップし、入力中の値を壊さない
   - editor.sync(cameraSystem.overviewCamera.dist, simTime, fo, project, cameraSystem.activeCameraScale, overviewMode, cameraSystem.activeCameraPos, cameraSystem.activeCamera)
-    - [hasPlan かつ(editMode または plan.nodes.length > 0)] planDisplay.sync(fo, project, scale, overviewMode, cameraPos)
+    - [visiblePlan !== null] planDisplay.sync(fo, project, scale, overviewMode, cameraPos)
       - path.setVisible(plan.nodes.length > 0) // ノードの無い計画は自機の現在軌道そのものを描くだけなので折れ線を隠す
       - path.sync(fo, project, scale, cameraPos) // ノードの有無に関わらず毎フレーム呼ぶ(画面判定に使う視点を更新するため)。区間の折れ線メッシュ。表示座標系と un-bake 時刻は update フェーズで確定済み。cameraPos は nearestSample(DOM ポインタイベント起点)向けにここでキャッシュするだけ
         // 区間の終端はノードの t。末尾区間だけは起点の解析軌道1周期ぶん(plan.ts の orbitPeriodOf)
@@ -445,10 +445,10 @@
         - lines[i].setVisible(false) // 区間数が減って余った線ごと(index は保持し続ける)
       - syncGhost() → markerManager.setPosition('plannedPlayer') or hide() // update が求めた ghost が null なら hide
       - syncApsisMarkers(project, overviewMode, cameraPos) → markerManager.setPosition('apsisPe'/'apsisAp') or hide() // update が求めたアイコンごと。[overviewMode かつ isOccluded] も hide
-    - [!hasPlan、または(!editMode かつ plan.nodes.length === 0)] planDisplay.hide()
-    - [hasPlan かつ editMode] syncGizmo() → nodeGizmo.sync() // ノードハンドル + 選択中ノードの Δv アーム6個
+    - [visiblePlan === null] planDisplay.hide()
+    - [plan !== null かつ editMode] syncGizmo(plan) → nodeGizmo.sync() // ノードハンドル + 選択中ノードの Δv アーム6個
       // ↑ planDisplay.sync の後で呼ぶ: ノードの画面座標は path の今フレームの表示文脈を通す
-    - [hasPlan かつ editMode] syncPanel(simTime) // 軌道計画パネルの HTML(ノード一覧・選択中ノードの Δv と噴射後要素)
+    - [plan !== null かつ editMode] syncPanel(plan, simTime) // 軌道計画パネルの HTML(ノード一覧・選択中ノードの Δv と噴射後要素)
   - mapPicker.sync(overviewMode, simTime, attractors, player) // 軌道オブジェクトウィンドウ。overviewMode の間は常設表示で pickables を行として書き出す
     - objectListPanel.sync(pickables, focusId, parentOf) // 区画の選別・並べ替え・親子構造(Section.order)は、それを決める入力が変わったフレームか、保持している順序が今フレームの値で整列条件を満たさなくなったフレーム(距離順)にだけ組み直す。行の値(距離・詳細)と見出しの件数は毎フレーム書く
     - 開いている各プロパティウィンドウ // isTargetGone(target) が真なら closeWindow()(player/ship/ammo/base は実体の alive を直接見る。displayState が null なだけの休止フレームでは alive のまま残るので閉じない。天体/アプシス/AN-DN は pickables に載っているかで判定) — 残れば target を pickables の最新値へ更新し、buildRows() → w.syncRows() / windowItems() → w.syncItems()
@@ -474,8 +474,8 @@
     - setStats() + setTarget() // 自機がいる間のみ、約10Hz にスロットル
     - setEnemyList() // 約4Hz にスロットル
   - hud.tick() // ヒント/トーストのフェードアウト
-  - [player] guide.sync(editor.plan, player, simTime, editMode, project)
-    - markerManager.hide('nd') + hide('burn') // editMode または直近ノードが無い場合
+  - guide.sync(player, simTime, editMode, project) // player の有無をここで問わず毎フレーム呼ぶ。内部で player.plan から引く
+    - markerManager.hide('nd') + hide('burn') // player 不在・editMode・または直近ノードが無い場合
     - markerManager.setPosition('nd') + setDirection('burn') // 直近ノードがある場合
   - markerManager.resolveCollisions() // ラベル衝突緩和 + SVG 引き出し線の再描画。全マーカーが出揃った後に一度だけ
 
