@@ -1,7 +1,7 @@
 // 操作対象艦(自機0..n隻のうちどれを操作するか)の切替・削除と、それに伴う各所有者への伝播
 // (カメラ・計画エディタ・ターゲッター・航法ターゲット・マップ選択・SFX)を1箇所へ集める。
-// 艦の隻数は0..n隻が一般形であり、「1隻・喪失即決着」はステージ側の特殊化(Stage.prunesDeadPlayers
-// 等)にすぎない — このクラス自身はステージの種類を一切知らない。
+// 艦の隻数は0..n隻が一般形であり、「1隻・喪失即決着」はステージ側の特殊化にすぎない —
+// このクラス自身はステージの種類を一切知らない。
 import type { Player } from './player/player';
 import type { EntityManager } from './simulation/entity-manager';
 import type { CameraSystem } from './camera/camera-system';
@@ -56,6 +56,7 @@ export class ActivePlayerController {
   remove(ship: Player): void {
     const wasActive = this._current === ship;
     this.navTarget.clearIfTargeting(ship.id);
+    this.targeter.clearIfTargeting(ship);
     this.mapPicker.close();
     this.cameraSystem.overviewCamera.clearFocusIf(ship.id);
     if (wasActive) {
@@ -67,8 +68,8 @@ export class ActivePlayerController {
     if (wasActive) this.reclaimAfterLoss();
   }
 
-  // 喪失した自機を配列・操作対象から回収する。Stage.prunesDeadPlayers を立てたステージ
-  // (艦の保持数に上限があり、埋まった枠を空ける必要があるもの)からだけ呼ぶ。
+  // 喪失した自機を配列・操作対象から回収する。艦も他のエンティティと同じく、alive を
+  // 失った時点で世界から取り除かれる。
   reclaimDead(): void {
     let lostActive = false;
     for (const lost of [...this.entities.players]) {

@@ -294,7 +294,7 @@ export class Game {
     this.nanWatchdog.checkAll('simulator.advance', player, this.entities, this.simulator.simTime, dt, simDt);
 
     this.targeter.updateBoardMarks(dt, player, this.entities);
-    if (this.activeStage.prunesDeadPlayers) this.activePlayers.reclaimDead();
+    this.activePlayers.reclaimDead();
     this.docking.checkProximity();
 
     // Simulator 内の substep cleanup 後に呼ぶ: 死んだ個体を予測せず、積分後の実状態と突き合わせる。
