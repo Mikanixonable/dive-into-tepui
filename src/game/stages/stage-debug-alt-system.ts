@@ -61,7 +61,6 @@ export class StageDebugAltSystem extends Stage {
   static readonly selectSub = '【デバッグ】恒星0個・架空天体2体のレジストリで起動する';
   static readonly hiddenFromSelect = true;
   static readonly selectKeys = ['KeyE'];
-  readonly initialAmmo = { mags: 20, rounds: C.MAG_ROUNDS };
 
   constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
@@ -72,13 +71,15 @@ export class StageDebugAltSystem extends Stage {
     return `<b>架空星系デバッグステージ</b><br>恒星0個・${PRIMARY_ID} 系で起動`;
   }
 
-  // 既定の地球 LEO 初期状態(このレジストリでは無意味)を、zephyrus を周回する低軌道で上書きする。
-  protected init(player: Player | null): number {
-    if (!player) return 0;
-    const t = player.state.t;
+  // 自機を zephyrus の低軌道へ置く(このレジストリでは既定の地球 LEO に意味が無い)。
+  protected init(): number {
+    const t = this._simulator.simTime;
     const primary = this._ephemeris.attractorsAt(t).find((a) => a.id === PRIMARY_ID)!;
     const rel = stateFromOrbitalElements(t, PRIMARY_RADIUS + 5e5, 0, 0, 0, 0, 0, primary.mu);
-    player.state = kinematicState(t, add(primary.state.r, rel.r), add(primary.state.v, rel.v));
+    this.addPlayer({
+      state: kinematicState(t, add(primary.state.r, rel.r), add(primary.state.v, rel.v)),
+      ammo: { mags: 20, rounds: C.MAG_ROUNDS },
+    });
     return 0;
   }
 

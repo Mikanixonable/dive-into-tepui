@@ -23,7 +23,6 @@ export class Stage00 extends Stage {
   static readonly selectLabel = 'stage 00';
   static readonly selectSub = '【無限耐久サバイバル】 常時選択可。弾薬を拾ってから始まる無限の波状攻撃。自機が破壊されるまで続く';
   static readonly selectKeys = ['Digit0'];
-  readonly initialAmmo = { mags: C.INITIAL_MAGS - 1, rounds: C.MAG_ROUNDS };
 
   private waveState: 'waiting_for_ammo' | 'spawning_enemies' | 'active_combat';
   private spawnTimer: number;
@@ -50,9 +49,9 @@ export class Stage00 extends Stage {
     );
   }
 
-  // 弾薬ピックアップと初期の敵ウェーブを配置する。
-  protected init(player: Player | null, entities: EntityManager): number {
-    if (!player) return 0;
+  // 自機・弾薬ピックアップ・初期の敵ウェーブを配置する。
+  protected init(entities: EntityManager): number {
+    const player = this.addPlayer();
     for (let i = 0; i < C.MAX_AMMO; i++) {
       this.logistics.spawnForPlayer(player, C.STAGE00_LOGISTICS_MIN_DIST, C.STAGE00_LOGISTICS_MAX_DIST);
     }
