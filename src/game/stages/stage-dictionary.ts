@@ -1,4 +1,4 @@
-// ステージ一覧の定義: コンストラクタ列挙・ID引き・initStage によるステージ初期化。
+// ステージ一覧の定義: コンストラクタ列挙・ID引き・buildStage によるステージ初期化。
 import * as THREE from 'three/webgpu';
 import { Stage, StageId } from './stage';
 import type { Player } from '../player/player';
@@ -12,7 +12,7 @@ import type { Ephemeris } from '../../physics/ephemeris';
 import type { Simulator } from '../simulation/simulator';
 import type { CelestialRegistry } from '../../physics/solar-system';
 import type { AttractorId } from '../../physics/attractor';
-import type { LaunchSelection } from '../game-mode';
+import type { ActivePlayerController } from '../active-player-controller';
 import type { StageSaveData } from '../save-data';
 import { Stage00 } from './stage00';
 import { Stage0 } from './stage0';
@@ -47,15 +47,15 @@ interface StageClass extends StageStatics {
   new (saved?: StageSaveData): Stage;
 }
 
-const STAGE_CLASSES: readonly StageClass[] = [Stage00, Stage0, Stage1, Stage2, StageDebug, StageDebugAltSystem, StageDebugLoad];
+const STAGE_CLASSES: readonly StageClass[] = [Stage00, Stage0, Stage1, Stage2, StageDebug, StageDebugAltSystem, StageDebugLoad, CreativeStage];
 
 // 選択画面のラベル・解放判定用の読み取り専用一覧。
 export const STAGE_DEFINITIONS: readonly Stage[] = STAGE_CLASSES.map((StageClass) => new StageClass());
 
 // id からステージを新規生成し、setup まで済ませて返す。saved 省略時のみ初期配置(init)を走らせる
-// — スナップショットからの再開では敵・補給・弾薬は復元済みで、player も未配置(創作モード)なら
-// null になりうる。
-export function initStage(
+// — スナップショットからの再開では敵・補給・弾薬は復元済み。艦が0隻のステージでは player が
+// null になり、init は既定どおり何も置かない。
+export function buildStage(
   stageId: StageId,
   player: Player | null,
   entities: EntityManager,
@@ -67,14 +67,15 @@ export function initStage(
   markerManager: MarkerManager,
   ephemeris: Ephemeris,
   simulator: Simulator,
+  activePlayers: ActivePlayerController,
   saved?: StageSaveData,
 ): Stage {
   const StageClass = STAGE_CLASSES.find((c) => c.id === stageId) ?? STAGE_CLASSES.find((c) => c.id === DEFAULT_STAGE_ID)!;
   const stage = new StageClass(saved);
-  stage.setup(hud, sfx, scene, entities, unlockManager, fx, markerManager, ephemeris, simulator);
-  if (saved === undefined && player !== null) {
+  stage.setup(hud, sfx, scene, entities, unlockManager, fx, markerManager, ephemeris, simulator, activePlayers);
+  if (saved === undefined) {
     const enemyCount = stage.init(player, entities);
-    player.initAmmo(stage.initialAmmo.mags, stage.initialAmmo.rounds);
+    player?.initAmmo(stage.initialAmmo.mags, stage.initialAmmo.rounds);
     hud.toast(stage.briefingHtml(enemyCount), 12000);
   }
   return stage;
@@ -85,50 +86,23 @@ export function isStageId(value: string | null): value is StageId {
   return STAGE_CLASSES.some((c) => c.id === value);
 }
 
-// launch が指すステージクラスの静的宣言を引く。
-function stageStaticsFor(launch: LaunchSelection): StageStatics | undefined {
-  return launch.mode === 'creative' ? CreativeStage : STAGE_CLASSES.find((c) => c.id === launch.stage);
+// stageId が指すステージクラスの静的宣言を引く。
+function stageStaticsFor(stageId: StageId): StageStatics | undefined {
+  return STAGE_CLASSES.find((c) => c.id === stageId);
 }
 
-// launch が指すステージクラスの静的 ephemerisConfig。宣言が無ければ undefined(Ephemeris の
+// stageId が指すステージクラスの静的 ephemerisConfig。宣言が無ければ undefined(Ephemeris の
 // コンストラクタ既定値どおり、既定レジストリ・地球原点で構築される)。
-export function ephemerisConfigFor(launch: LaunchSelection): EphemerisConfig | undefined {
-  return stageStaticsFor(launch)?.ephemerisConfig;
+export function ephemerisConfigFor(stageId: StageId): EphemerisConfig | undefined {
+  return stageStaticsFor(stageId)?.ephemerisConfig;
 }
 
-// launch が指すステージクラスの静的 initialPlayerCount(省略時1)。
-export function initialPlayerCountFor(launch: LaunchSelection): number {
-  return stageStaticsFor(launch)?.initialPlayerCount ?? 1;
+// stageId が指すステージクラスの静的 initialPlayerCount(省略時1)。
+export function initialPlayerCountFor(stageId: StageId): number {
+  return stageStaticsFor(stageId)?.initialPlayerCount ?? 1;
 }
 
-// launch が指すステージクラスの静的 showsStatusInOverview(省略時 false)。
-export function showsStatusInOverviewFor(launch: LaunchSelection): boolean {
-  return stageStaticsFor(launch)?.showsStatusInOverview ?? false;
-}
-
-// launch に応じたステージを生成し、setup・(スナップショット再開でなければ)初期配置まで済ませて
-// 返す。onShipPlaced は艦の任意隻数配置に対応するステージ(CreativeStage)だけが呼ぶコールバック。
-export function buildStage(
-  launch: LaunchSelection,
-  player: Player | null,
-  entities: EntityManager,
-  hud: Hud,
-  sfx: Sfx,
-  scene: THREE.Scene,
-  unlockManager: UnlockManager,
-  fx: EffectsSystem,
-  markerManager: MarkerManager,
-  ephemeris: Ephemeris,
-  simulator: Simulator,
-  onShipPlaced: (ship: Player) => void,
-  saved?: StageSaveData,
-): Stage {
-  if (launch.mode === 'stage') {
-    return initStage(launch.stage, player, entities, hud, sfx, scene, unlockManager, fx, markerManager, ephemeris, simulator, saved);
-  }
-  const creativeStage = new CreativeStage(saved);
-  creativeStage.setup(hud, sfx, scene, entities, unlockManager, fx, markerManager, ephemeris, simulator);
-  if (saved === undefined) creativeStage.init();
-  creativeStage.onShipPlaced = onShipPlaced;
-  return creativeStage;
+// stageId が指すステージクラスの静的 showsStatusInOverview(省略時 false)。
+export function showsStatusInOverviewFor(stageId: StageId): boolean {
+  return stageStaticsFor(stageId)?.showsStatusInOverview ?? false;
 }

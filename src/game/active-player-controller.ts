@@ -39,6 +39,11 @@ export class ActivePlayerController {
     this.targeter.clearTargets();
   }
 
+  // 操作対象が居ない間に増えた艦を、そのまま操作対象にする。既に操作中の艦があれば何もしない。
+  claimIfNone(ship: Player): void {
+    if (this._current === null) this.set(ship);
+  }
+
   // ship が null なら未配置状態(全滅・未収容、または操作対象の手動解除)へ戻す。
   setOrNull(ship: Player | null): void {
     if (ship) {
