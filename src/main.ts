@@ -162,6 +162,7 @@ function startAnimationLoop(
       sections.endFrame();
       // このフレームで Game が消費しなかった入力エッジだけが残っている。
       snapshotControls.handleInput(game.input, game);
+      perf.handleInput(game.input);
       autoSave.update(game);
       const t1 = perf.on ? performance.now() : 0;
       game.sync();
@@ -285,7 +286,6 @@ async function main() {
     else game.resume();
   };
   const perf = new PerfMeter(game, hud.layers.window, gs.renderer, sections);
-  game.setPerfMeter(perf);
   // 負荷確認ウィンドウは非モーダルなので、設定メニューを閉じてから前面へ出すだけ。
   settingsPanel.onOpenPerfWindow = () => {
     settingsPanel.toggle(false);

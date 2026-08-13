@@ -37,11 +37,11 @@ main.ts
 ├── SnapshotControls       ... Hud・SettingsPanel・SaveBrowser・SnapshotService を参照で持つ。`[F5]`/`[F9]`/一覧表示中の `[Esc]` を扱う。main.ts が SaveBrowser 構築後に new し、rAF ループが `game.update(dt)` の直後に `handleInput(game.input, game)` を呼ぶ(Game 側が消費しなかった入力エッジだけを見る)
 ├── AutoSave               ... SnapshotService を参照で持つ。startAnimationLoop() へその場で渡すだけで main() 側は変数に束縛しない
 ├── FrameSections        ... update の区間別所要時間の集計器(frame-sections.ts)。main.ts が new し、Game(コンストラクタ引数)・PerfMeter(コンストラクタ引数)へ参照で渡す。Game はさらに Simulator のコンストラクタ引数として同じ参照を渡す。rAF ループが game.update(dt) を beginFrame()/endFrame() で挟む。区間の境界(enter/exit)を打つのは Game.update / Game.updateMapPresentation / Simulator.advance だけで、累計を持つのはこのオブジェクト。enabled の書き手は PerfMeter.open()/close() のみ
-├── PerfMeter            ... 負荷確認ウィンドウ。Game を PerfCountSource として、GameScene.renderer(WebGPURenderer)を draw call/triangle 数の読み取り元として、いずれも構築時に参照で受け取る(renderer 参照の新設は main.ts 側の GameScene を経由し、Game には持たせない)。Game.setPerfMeter で遅延注入される(ViewManager.setDocking と同じ形)。FrameSections も構築時に参照で受け取り、update内訳の行を組む。表示する PropertyWindow を自分で new/dispose し、DOM は Hud.layers.window 配下。開いている間だけ on が真になり計測が走る(同時に FrameSections.enabled も真にする)。`Game.perfCounts()` は自分では数えず、EntityManager・Predictor・Simulator・PlanEditor・Ephemeris・MapPicker 各自の `perfCounts()` を1つにマージし、`displayDurationSec`(= DisplayWindowManager.current.duration)・`warp` を足すだけ
+├── PerfMeter            ... 負荷確認ウィンドウ。Game を PerfCountSource として、GameScene.renderer(WebGPURenderer)を draw call/triangle 数の読み取り元として、いずれも構築時に参照で受け取る(renderer 参照の新設は main.ts 側の GameScene を経由し、Game には持たせない)。rAF ループが `game.update(dt)` → `snapshotControls.handleInput(...)` の直後に `perf.handleInput(game.input)` を呼び、`[F3]` を消費する。FrameSections も構築時に参照で受け取り、update内訳の行を組む。表示する PropertyWindow を自分で new/dispose し、DOM は Hud.layers.window 配下。開いている間だけ on が真になり計測が走る(同時に FrameSections.enabled も真にする)。`Game.perfCounts()` は自分では数えず、EntityManager・Predictor・Simulator・PlanEditor・Ephemeris・MapPicker 各自の `perfCounts()` を1つにマージし、`displayDurationSec`(= DisplayWindowManager.current.duration)・`warp` を足すだけ
 ├── GameScene            (createGameScene: canvas / THREE.Scene / WebGPURenderer)
 └── Game
     ├── Input
-    ├── TouchControls?       ... タッチデバイスのみ
+    ├── TouchControls?       ... タッチデバイスのみ。ViewManager のコンストラクタ引数として参照で渡す
     ├── MarkerManager        ... DOM の親は Hud.layers.marker / Hud.svgOverlay、所有は Game
     │   ├── GroupedMarkers (combatMarkers)  ... 画面上で近接する戦闘対象(敵+自機以外の生存中の全自機)マーカーのまとめ + 画面外方位マーカー。呼ぶのは Targeter.syncTargetMarkers
     │   └── LeadMarkers                     ... 戦闘対象ごとの LEAD マーカーと最終ロック時刻。呼ぶのは Targeter.syncTargetMarkers
@@ -95,13 +95,12 @@ main.ts
     ├── Docking                        ... 基地への収容・発進(EntityManager/CameraSystem/Game.player にまたがる横断)
     │   └── DockView                       ... DOM は Hud.layers.view 配下。格納艦/部品/ショップタブのフルスクリーン UI
     ├── ViewManager                    ... 現在のビュー(combat/map/dock)の正本。遷移は setView() ひとつに集約。
-    │                                       ActivePlayerController はコンストラクタ引数(ViewManager より先に
-    │                                       生成される)。docking への参照は ViewManager より後に生成されるため
-    │                                       setDocking() で構築後に注入される(private フィールドとして保持)。
-    │                                       Stage への参照は持たないが、生成は activeStage より後 — 初期ビューを
+    │                                       ActivePlayerController・TouchControls | null はいずれもコンストラクタ引数
+    │                                       (ViewManager より先に生成される)。docking への参照は ViewManager より後に
+    │                                       生成されるため setDocking() で構築後に注入される(private フィールドとして
+    │                                       保持)。Stage への参照は持たないが、生成は activeStage より後 — 初期ビューを
     │                                       canEnter('combat') で解決するので、Stage の初期配置で自機が置かれた後
-    │                                       でなければ判定できない。touchControls は生成直後の
-    │                                       setTouchControls() で渡す
+    │                                       でなければ判定できない
     ├── ViewBadge                      ... DOM は Hud.layers.notify 配下。ViewManager を参照するだけで自身は状態を持たない
     │   └── ContextMenu<true, ViewId>  ... DOM は Hud.layers.popup 配下
     ├── Stage (activeStage)            ... Game のコンストラクタが受け取る解決済みの StageClass を直接 new し、
@@ -277,7 +276,7 @@ main.ts
 | `SaveBrowser` | main.ts | SnapshotControls(コンストラクタ引数、`[F9]` と一覧表示中の `[Esc]` で `open()`/`close()` を呼ぶ)。Game はこれへの参照を持たない |
 | `SnapshotControls` | main.ts | rAF ループ(`startAnimationLoop` が `game.update(dt)` の直後に `handleInput(game.input, game)` を呼ぶ) |
 | `FrameSections` | main.ts | Game(コンストラクタ引数。`update`/`updateMapPresentation` が区間境界へ `enter`/`exit` を打つだけ)・Simulator(Game 経由のコンストラクタ引数。軌道積分/接触/姿勢の3区間の境界を自分で打つ)・PerfMeter(コンストラクタ引数。`enabled` を開閉で書き、`record` で全区間 + `otherMs()` を採取する) |
-| `PerfMeter` | main.ts | Game(`setPerfMeter` で受け取った参照。`handleInput` が `[F3]` で `toggle()` を呼ぶだけ)・SettingsPanel(`onOpenPerfWindow` 経由で `open()`) |
+| `PerfMeter` | main.ts | rAF ループ(`startAnimationLoop` が `snapshotControls.handleInput` の直後に `perf.handleInput(game.input)` を呼び、`[F3]` で `toggle()` する)・SettingsPanel(`onOpenPerfWindow` 経由で `open()`) |
 | `PropertyWindow`(負荷確認ウィンドウ) | PerfMeter(`open()` で new し `close()`/✕ で dispose する1枚) | PerfMeter 自身のみ。500ms ごとの flush で `syncRows` へ行一式を渡す |
 | `FocusMarkers.bodyPickables(t, visibilityPolicy)` の戻り値 | CameraSystem(→FocusMarkers、呼ぶたびに作り直す使い捨て配列) | `MapPicker.refresh()` が読んで生存中の自機・敵船・弾薬・基地・NavTarget のアイコン・`PlanDisplay.apsisMarkers` と合流させ、`MapPicker.handleRightClick`(`pickNearest`)/`OverviewCamera.update` の被選択物候補として渡し直す。引数の `MapVisibilityPolicy` が admits した天体+ラグランジュ点だけを返し、遮蔽・ラベル衝突でこのフレームに描かれなかった対象は `pickable: false` を伴って残す(表示設定で消えているわけではないので候補からは落とさない) |
 | `MapVisibilityPolicy`(1フレームの使い捨て) | `MapPicker`(`refresh` が `registry`/`bodyClassToggles`/`focusTargetId(...)`/`systemMembersAt(cameraPos, ...)` から毎フレーム1つ組み立て、`visibilityPolicy` getter で公開。`refresh` 前は null) | `FocusMarkers.update`(引数)/ `Game.sync` が `mapPicker.visibilityPolicy` を読んで `EnvironmentScene.sync`・参照線 / `Stage.sync`・`EntityManager.syncMarkers`・`Targeter.sync` へ配る。受け取り側は渡されなければ同じ4入力から自前で組む経路も残す(マップ経路の外からも呼べるようにするためで、マップ描画中は必ず共有インスタンス)。天体は `body(id)`、エンティティは `entity(kind, isActivePlayer)` で `{category, icon, label, orbit, pickable}` を返す判定関数であって状態を持たない(正本は `CameraSystem.bodyClassToggles` とフォーカス・カメラ位置) |
