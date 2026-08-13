@@ -36,9 +36,11 @@ export class ViewManager {
     private readonly displayWindow: DisplayWindowManager,
     private readonly mapPicker: MapPicker,
     private readonly activePlayers: ActivePlayerController,
-    initialView: WorldViewId = 'combat',
+    requestedView?: WorldViewId,
   ) {
-    this.worldView = initialView;
+    // 戦闘ビューは操作対象艦を前提とするので、遷移と同じ規則で入れるビューへ落とす。
+    const requested = requestedView ?? 'combat';
+    this.worldView = this.canEnter(requested) ? requested : 'map';
     this.applyChrome();
   }
 
