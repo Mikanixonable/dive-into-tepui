@@ -63,10 +63,6 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
       - shift(-1|+1) // K.warpSlower / K.warpFaster。倍率をヒントで伝える。操作できない倍率へ上げたときはその旨も併記する
         - cancelAutoWarp() // 常に(手動シフトは自動ワープを解除する)
         - sfx.warp() + hud.hint() // 上限/下限を超えない場合のみ
-      - toggleAutoWarpToFirstNode() // K.autoWarpToNode。editor.editMode 中は受け取らない
-        - hud.hint() // ノード無し or !isPlaying
-        - cancelAutoWarp() + hud.hint() // 既に自動ワープ中
-        - startAutoWarpTo() + hud.hint() // 未開始
     - viewManager.handleInput(input) // ビュー遷移はすべて setView() を通る。[isDockOpen] 何もせず return([M] も消費しない)。[!K.toggleMapMode を取れた] 何もしない
       - [current==='map'] !canEnter('combat')(= activePlayers.current !== null が false)なら hud.hint('操作できる艦がいません') して return(この時点で [M] キー自体は既に消費済み)
       - setView(current==='map' ? 'combat' : 'map')
@@ -84,6 +80,10 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
         - [editMode] deleteSelected() → deleteNode()
           - plan.removeNode() / closeMenu() / simSpeedManager.cancelAutoWarp() / hud.hint() // 下流ノードも一緒に消える
         - [!editMode] plan.clear() + simSpeedManager.cancelAutoWarp() + hud.hint() // ノードがある場合のみ
+      - [!editMode] simSpeedManager.toggleAutoWarpToFirstNode(plan?.firstNode(), simTime) // K.autoWarpToNode。editMode 中は WASDQE と同じく Δv 編集側へ譲る
+        - hud.hint() // ノード無し
+        - cancelAutoWarp() + hud.hint() // 既に自動ワープ中
+        - startAutoWarpTo() + hud.hint() // 未開始
       - updateEditing(input, dt)
         - [!dvEditActive(= editMode かつ selectedNodeIdx !== null)] dvHoldTime を全方向 0 に戻して return
         - applyHeldDv() ×6方向 // input.takeHeld(K.dvXxx) で6キーを先着確保し(以降 player.behave からは押されていないように見える)、または dvButtons(長押しボタン)が held の間、ホールド秒数からランプするレートで dt 秒分を積分

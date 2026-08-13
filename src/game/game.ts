@@ -313,13 +313,7 @@ export class Game {
     this.docking.handleInput(this.input);
     this.settingsPanel.handleInput(this.input);
     this._hud.handleInput(this.input);
-    this.simSpeedManager.handleInput(
-      this.input,
-      this.activeStage.isPlaying,
-      this.editor.editMode,
-      this.editor.plan?.firstNode(),
-      this.simulator.simTime,
-    );
+    this.simSpeedManager.handleInput(this.input);
     this.viewManager.handleInput(this.input);
     this.editor.handleInput(this.input, dt);
   }
