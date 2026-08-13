@@ -18,6 +18,8 @@ import { MarkerManager } from './marker/marker-manager';
 import { DIRECTION_GLYPH } from './marker/marker-glyphs';
 import { FloatingOrigin } from './floating-origin';
 import { pickNearest } from './map-pick';
+import type { Ephemeris } from '../physics/ephemeris';
+import type { DisplayWindow } from './display-window-manager';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import type { SettingsPanel } from './hud/settings-panel';
 import type { MapVisibilityPolicy } from './celestial/map-visibility';
@@ -126,6 +128,12 @@ export class Targeter {
     const next = secondaryCandidates[this.targetSelectIndex]?.target ?? null;
     if (next) this.setSecondaryTarget(next);
     this.targetSelectAt = now;
+  }
+
+  // 戦闘ターゲットの赤道交点マーカーを求め直す。
+  updateEquatorNodes(displayWindow: DisplayWindow, ephemeris: Ephemeris): void {
+    this.aliveTarget?.ensureEquatorNodes(this.markerManager)
+      .update(displayWindow.frame, displayWindow.displayTime, ephemeris);
   }
 
   // ターゲット位置に「自機の方を向いた的(標的面)」があると見なし、発射弾がその面を自機側から

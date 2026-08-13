@@ -18,6 +18,8 @@ import * as C from '../const';
 import type { Stage } from '../stages/stage';
 import type { Contact } from '../simulation/contact';
 import { EntityIdAllocator } from './entity-id';
+import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';
+import type { MarkerManager } from '../marker/marker-manager';
 import { GRAVITATIONAL_CONSTANT } from '../../physics/solar-system';
 
 // 乖離許容量の上限。その場の局所軌道の長半径に対する割合 [無次元]。
@@ -48,8 +50,10 @@ export class GameEntity {
 
   private static readonly idAllocator = new EntityIdAllocator('entity-');
 
-  // 一意な識別子。表示名(Ship.name/Player.displayName)とは別の概念。
+  // 一意な識別子。表示名(name)とは別の概念。
   readonly id: string;
+  // マーカー・一覧・ウィンドウに出す表示名。既定は id で、名前を持つ種別がコンストラクタで上書きする。
+  name: string;
   att: Attitude;
   obj: THREE.Object3D;
   alive = true;
@@ -71,6 +75,8 @@ export class GameEntity {
   orbitLine: OrbitLine | null = null;
   // 自身の予測軌道を描く線。null = 持たない。
   trajectoryLine: TrajectoryLine | null = null;
+  // 自身の軌道と中心天体の赤道面との交点マーカー。null = まだ出す必要が生じていない。
+  equatorNodes: EquatorNodeMarkerPair | null = null;
   // 弾道係数の逆数 Cd·A/m(既定 0 = 抵抗なし)。
   protected readonly bcInv: number = 0;
   protected readonly srpCoeff: number = 0;
@@ -103,6 +109,7 @@ export class GameEntity {
   ) {
     this.actualTrajectory = new DynamicTrajectory(state);
     this.id = id ?? GameEntity.idAllocator.next();
+    this.name = this.id;
     this.att = att;
     this.obj = obj;
     this.scene = scene;
@@ -292,8 +299,14 @@ export class GameEntity {
   // collideWith が書く)。既定は何もしない。
   collideWith(_other: GameEntity | Attractor, _contact: Contact, _activeStage: Stage): void {}
 
-  // メッシュを scene から取り除く。
+  // 赤道交点マーカーを用意して返す。出す必要が生じた側が呼ぶ。
+  ensureEquatorNodes(markerManager: MarkerManager): EquatorNodeMarkerPair {
+    return this.equatorNodes ??= new EquatorNodeMarkerPair(this, markerManager);
+  }
+
+  // メッシュを scene から、マーカーを HUD から取り除く。
   dispose(): void {
     this.scene?.remove(this.obj);
+    this.equatorNodes?.dispose();
   }
 }

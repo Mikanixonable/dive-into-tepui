@@ -11,6 +11,7 @@ import type { Ephemeris } from '../physics/ephemeris';
 import { qRotate } from '../physics/attitude';
 import { Player } from './player/player';
 import type { GameEntity } from './game-entity/game-entity';
+import type { DisplayWindow } from './display-window-manager';
 import type { EntityManager } from './simulation/entity-manager';
 import { Hud } from './hud/hud';
 import { MarkerManager } from './marker/marker-manager';
@@ -80,10 +81,18 @@ export class NavTarget {
   // positionOnOrbit は中心天体基準の相対位置を返すので、frameOfAttractor + toInertialState で
   // 絶対 ECI 位置へ直す — 地球周回では中心が原点に一致するため偶然一致するが、月周回では
   // 直さないと月までの距離ぶんずれる。
-  update(player: Player | null, entities: EntityManager, ephemeris: Ephemeris, simTime: number): void {
+  update(
+    player: Player | null, entities: EntityManager, ephemeris: Ephemeris, displayWindow: DisplayWindow,
+  ): void {
+    const simTime = displayWindow.simTime;
     this.anPos = this.dnPos = this.anTime = this.dnTime = null;
     this.attractors = ephemeris.attractorsAt(simTime);
-    if (!player || !this.targetId) return;
+    if (!this.targetId) return;
+    // 航法ターゲット自身の赤道交点は、自機の軌道要素が求まるかどうかとは無関係に出す。
+    const target = this.resolveEntity(this.targetId, entities);
+    target?.ensureEquatorNodes(this.markerManager)
+      .update(displayWindow.frame, displayWindow.displayTime, ephemeris);
+    if (!player) return;
     const playerCenter = strongestAttractor(player.state.r, this.attractors);
     const playerEl = player.orbitalElementsAround(playerCenter);
     if (!playerEl) return;
@@ -142,14 +151,19 @@ export class NavTarget {
     if (secondary !== undefined && secondary in registry && bodyDef(registry, secondary).kind !== 'star') {
       return qRotate(ephemeris.orbitFrameRotationAt(secondary as OrbitingId, t).q, Z_HAT);
     }
-    const enemyMatch = entities.findEnemy(id);
-    const entity: GameEntity | undefined =
-      (enemyMatch?.alive ? enemyMatch : undefined) ??
-      entities.players.find((p) => p.id === id && p.alive) ??
-      entities.bases.find((b) => b.id === id && b.alive);
+    const entity = this.resolveEntity(id, entities);
     if (!entity) return null;
     const center = strongestAttractor(entity.state.r, ephemeris.attractorsAt(t));
     return entity.orbitalElementsAround(center)?.hHat ?? null;
+  }
+
+  // id を生存中の敵・自機・基地として引く。天体・ラグランジュ点は実体を持たないので null。
+  private resolveEntity(id: string, entities: EntityManager): GameEntity | null {
+    const enemy = entities.findEnemy(id);
+    return (enemy?.alive ? enemy : null)
+      ?? entities.players.find((p) => p.id === id && p.alive)
+      ?? entities.bases.find((b) => b.id === id && b.alive)
+      ?? null;
   }
 
   // 右クリック対象として公開する AN/DN アイコン。計算できているぶんだけ返す。

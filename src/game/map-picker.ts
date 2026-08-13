@@ -21,8 +21,8 @@ import { NavTarget } from './nav-target';
 import { CameraSystem } from './camera/camera-system';
 import { PlanEditor } from './plan/plan-editor';
 import { SimSpeedManager } from './sim-speed-manager';
-import type { MarkerManager } from './marker/marker-manager';
 import type { SettingsPanel } from './hud/settings-panel';
+import type { DisplayWindow } from './display-window-manager';
 import type { Docking } from './docking';
 import type { Game } from './game';
 import type { Player } from './player/player';
@@ -92,7 +92,6 @@ export class MapPicker {
     private readonly cameraSystem: CameraSystem,
     private readonly editor: PlanEditor,
     private readonly simSpeedManager: SimSpeedManager,
-    private readonly markerManager: MarkerManager,
     private readonly settingsPanel: SettingsPanel,
   ) {
     this.menu = new ContextMenu<MapPickable, MenuAction>(hud.layers.popup);
@@ -124,7 +123,8 @@ export class MapPicker {
   // アイコン + 近地点・遠地点アイコン)。天体側も表示と同じ MapVisibilityPolicy を通し、
   // 非表示にした対象を選べない状態にする。物理積分の後に呼ぶ: 積分前に組むと、同フレームで
   // sync されるメッシュと座標が1ステップずれる。
-  refresh(simTime: number, displayTime: number): void {
+  refresh(displayWindow: DisplayWindow): void {
+    const { simTime, displayTime } = displayWindow;
     this.lastSimTime = simTime;
     const focusId = focusTargetId(this.cameraSystem.overviewCamera.focus);
     const attractors = this.ephemeris.attractorsAt(simTime);
@@ -140,7 +140,7 @@ export class MapPicker {
       displayTime, focusId, this.cameraSystem.bodyClassToggles,
       this.cameraSystem.activeCameraPos, visibilityPolicy,
     );
-    this.navTarget.update(this.game.player, this.entities, this.ephemeris, simTime);
+    this.navTarget.update(this.game.player, this.entities, this.ephemeris, displayWindow);
 
     // 船の位置は表示時刻の displayState — 機体メッシュや敵マーカーと同じ未来ゴースト位置に揃える。
     this.candidateItems.length = 0;
@@ -157,7 +157,7 @@ export class MapPicker {
         const el = ship.orbitalElementsAround(center);
         const pe = el ? fmtDist(apsisAltitudes(el).pe) : '—';
         this.addCandidate(
-          ship.id, ship.displayName, pos, 'player',
+          ship.id, ship.name, pos, 'player',
           `HP ${Math.round(ship.hp)}/${Math.round(ship.maxHp)} · PE ${pe}`,
           ship === this.game.player ? -100 : 0,
         );
@@ -182,7 +182,9 @@ export class MapPicker {
     }
     for (const item of this.navTarget.mapPickables()) this.appendPickable(item);
     for (const item of this.editor.planDisplay.apsisMarkers) this.appendPickable(item);
-    for (const item of this.markerManager.equatorNodeMarkers.mapPickables()) this.appendPickable(item);
+    for (const e of this.entities.all()) {
+      if (e.equatorNodes) for (const item of e.equatorNodes.mapPickables()) this.appendPickable(item);
+    }
 
     // 自艦からの距離は一覧の実用順と補助情報にだけ使う。軌道予測はここで増やさない。
     const viewer = this.game.player?.state;
@@ -722,7 +724,7 @@ export class MapPicker {
   // 別の実体を指してしまう。
   private renameHandlerFor(target: MapPickable): ((name: string) => void) | undefined {
     if (target.kind === 'player') {
-      return (name) => { const ship = this.entities.findPlayer(target.id); if (ship) ship.displayName = name; };
+      return (name) => { const ship = this.entities.findPlayer(target.id); if (ship) ship.name = name; };
     }
     if (target.kind === 'base') {
       return (name) => { const base = this.entities.findBase(target.id); if (base) base.name = name; };

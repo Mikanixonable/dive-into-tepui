@@ -271,20 +271,22 @@
   - sections.enter(SECTION.plan)
   - excludedIds = player ? [player.id] : []
   - planProvider = planAttractorProvider(ephemeris, entities, excludedIds, planSourceRevision(entities, excludedIds, editor.plan.revision, editor.lastPlanEnd, simulator.simTime)) // editor.update より前に組む。今フレームの計画終端は editor.update がこれから決めるので、revision の量子化は前フレームの終端(PlanPath.timeRange().max)を基準にする
-  - editor.update(displayWindow, planProvider) // 計画折れ線の再積分とアプシスアイコン(markerManager.equatorNodeMarkers.update/mapPicker.refresh より前)。planProvider.revision が前回と同じで起点・終端・基準天体も動いていない区間は再積分せず前回の積分結果を使う
+  - editor.update(displayWindow, planProvider) // 計画折れ線の再積分とアプシスアイコン(赤道交点の更新/mapPicker.refresh より前)。planProvider.revision が前回と同じで起点・終端・基準天体も動いていない区間は再積分せず前回の積分結果を使う
     - path.update() // plan の corners を区間へ分解。表示座標系と un-bake 時刻もここで確定。buildSegments は末尾区間の起点時刻の天体窓を1回だけ引き、区間長(segmentDurationFrom)と基準天体(strongestAttractor → Segment.apsisCenter)の両方をそこから決める
       - [区間ごと] arc.represents(state0, end, sourceRevision, apsisCenterId, tracksLiveAnchor) // 既存 arc が今フレームの区間をそのまま表せるか。sourceRevision/apsisCenterId の不一致・積分済みサンプル間隔の粗さのいずれかで false
         - [false、または対応する arc がまだ無い] new PlanArc(state0, end, provider, apsisCenter) // constructor が end まで同期的に DynamicTrajectory で RK4 積分(重い)。刻み幅ごとの重力源は classifyAttractors(mergeAttractors(gravityBodiesAt(ephemeris, t), dynamicAttractors)) → attractorsNear — 実積分・予測と同じ組み立て。dynamicAttractors は provider が entities.attractors() を1回だけ求めて渡す(区間長は最大1年に及び、そのあいだの位置を EntityManager には問えないので現在の実状態で固定する)。末尾区間だけ apsisCenter(区間起点の重力源スナップショット)が渡り、積分の各ステップ対で apsisCrossing による近地点/遠地点検出が走る
         - [true] arc.setEnd(end) // 終端だけ動かす。積分先端が要求終端にサンプル間隔未満まで届いていなければ integrateTo() で先端から継ぎ足す(区間を作り直さない)。届いていれば何もしない
     - ghostAt(displayTime) // 折れ線が displayTime に届かなければ null
     - apsisIconsOf() // path.finalSegment() の periapsis/apoapsis(末尾 arc が積分中に見つけた値)と apsisCenter(検出時と同じ基準天体)を読み、その天体の位置だけを ephemeris.positionOf(center.id, 極値の時刻) で引き直して距離を出す。両方あるとき (遠地点距離-近地点距離)/(遠地点距離+近地点距離) < APSIS_MIN_ECC なら空、片方のみ(双曲線等)ならそのまま出す
-  - markerManager.equatorNodeMarkers.update(entities, player, editor.planDisplay.path.finalSegment(), navTarget.id, targeter.aliveTarget, displayWindow.frame, displayWindow.displayTime) // editor.update の後・mapPicker.refresh の前。内部の collectSources() が操作艦(計画があれば最終区間起点)・navTarget・targeter の第一ターゲット・生存中の全基地の対象を id で重複除去して source 列を組み、EqAN/EqDN を求め直す(source 列自体はこのクラスが保持し、Game は組まない)
+    - player.equatorNodes.update(displayWindow.frame, displayWindow.displayTime, ephemeris, finalSegment.state0, finalSegment.samples) // 操作艦の EqAN/EqDN。代表軌道は計画の最終区間なので、交点は解析楕円ではなく積分折れ線の上に載る
+  - targeter.updateEquatorNodes(displayWindow, ephemeris) // 戦闘ターゲット(aliveTarget)の EqAN/EqDN
+  - entities.updateBaseEquatorNodes(displayWindow, ephemeris) // 生存中の全基地の EqAN/EqDN(選択の有無によらず常に出す)
   - sections.exit(SECTION.plan)
   - sections.enter(SECTION.mapPick)
-  - [cameraSystem.overviewMode] mapPicker.refresh(simTime, displayWindow.displayTime) // 物理積分の後に組む — 積分前だと同フレームで sync されるメッシュと被選択物の座標が1ステップずれる。MapVisibilityPolicy もここで1つだけ組み、sync フェーズは mapPicker.visibilityPolicy を読むだけ。戦闘ビューではクリック対象を別経路で処理するため、マップを表示している時だけ更新する
+  - [cameraSystem.overviewMode] mapPicker.refresh(displayWindow) // 物理積分の後に組む — 積分前だと同フレームで sync されるメッシュと被選択物の座標が1ステップずれる。MapVisibilityPolicy もここで1つだけ組み、sync フェーズは mapPicker.visibilityPolicy を読むだけ。戦闘ビューではクリック対象を別経路で処理するため、マップを表示している時だけ更新する
     - focusMarkers.update(displayTime, overviewCamera.focus, cameraSystem.bodyClassToggles, activeCameraPos) // MapVisibilityPolicy が admits しない天体は座標計算ごと飛ばす
-    - navTarget.update() // 自機軌道要素 + navTarget.id から相対 AN/DN を求め直す。ポーズ・決着に関わらず毎フレーム
-    - mapPicker.pickables に反映 // 天体ラベル + 生存中の entities.players('player')・敵船('ship')(displayState 基準)+ navTarget.mapPickables() + planDisplay.apsisMarkers + markerManager.equatorNodeMarkers.mapPickables() を集約 → [overviewMode] isOccluded(cameraSystem.activeCameraPos, item.pos, ephemeris.attractorsAt(simTime)) で天体に遮蔽された候補を除外
+    - navTarget.update(player, entities, ephemeris, displayWindow) // 自機軌道要素 + navTarget.id から相対 AN/DN を求め直す。ポーズ・決着に関わらず毎フレーム。対象が実体(敵・自機・基地)なら、その equatorNodes.update も併せて呼ぶ
+    - mapPicker.pickables に反映 // 天体ラベル + 生存中の entities.players('player')・敵船('ship')(displayState 基準)+ navTarget.mapPickables() + planDisplay.apsisMarkers + entities.all() の各 equatorNodes?.mapPickables() を集約 → [overviewMode] isOccluded(cameraSystem.activeCameraPos, item.pos, ephemeris.attractorsAt(simTime)) で天体に遮蔽された候補を除外
   - sections.exit(SECTION.mapPick)
   - sections.enter(SECTION.camera)
   - cameraSystem.update(player, simTime, input, dt, mapPicker.pickables, displayWindowManager.attractorsAt(simTime)) // 追従カメラの基準を積分後の自機位置に合わせるため、物理積分の後に呼ぶ。ポーズ中・決着後も呼ぶ(飛ばすと視点が絶対 ECI に取り残される)
@@ -425,7 +427,7 @@
       - trackTargeted() // 最終ロック時刻を生存中の対象ぶんだけ作り直す
       - leadPoint() → markerManager.setPosition('lead-<name>') // LEAD_HOLD_SEC 以内 かつ 解がある対象ごと
   - navTarget.sync(project, overviewMode, cameraSystem.activeCameraPos) // ▲/▽ nav-an/nav-dn マーカー。navTarget.update() が求めた位置があれば表示、無ければ hide。[overviewMode かつ isOccluded] も hide
-  - markerManager.equatorNodeMarkers.sync(project, overviewMode, cameraSystem.activeCameraPos) // △/▽ eqan-*/eqdn-* マーカー。show=overviewMode。前フレームに出ていて今フレーム出さない source のキーは remove。[show かつ isOccluded] は hide
+  - entities.syncEquatorNodes(project, overviewMode, cameraSystem.activeCameraPos) // all() を回して各 equatorNodes?.sync。△/▽ eqan-*/eqdn-* マーカー。show=overviewMode。sync は置いた交点を捨てるので、このフレームに update されなかったペアは自動的に隠れる。[show かつ isOccluded] は hide
   - displayWindowManager.sync(player) // PREDICT パネル(期間ピル/スクラバー/目盛り)の表示/内容を押し出す。自機の predictedTrajectory.state.t が current(simTime, duration)のどこまで届いているかの割合(0..1、自機/予測/表示期間のいずれかが無ければ 1)も内部で求めて渡す
     - panel.render(state) // visible(=!forceCurrent)・期間ピル・スクラバー(段階数/つまみ位置/未予測区間の減光)・絶対日時/T+ラベル・目盛りを1回でまとめて押し出す。編集中(任意期間フォーム・T+ジャンプフォームを開いている)行は再描画をスキップし、入力中の値を壊さない
   - editor.sync(cameraSystem.overviewCamera.dist, simTime, fo, project, cameraSystem.activeCameraScale, overviewMode, cameraSystem.activeCameraPos, cameraSystem.activeCamera)
@@ -550,13 +552,12 @@
   `integrateTo` は constructor からの初回だけでなく `setEnd` からの継ぎ足しでも呼ばれうるが、その都度
   この固定値を読み直すだけで `dynamicAttractors` 自体を更新することはない。3経路とも `Ephemeris` の
   窓を直接書き換えず、常に新しい配列へ展開する。
-- **HUD マーカーは持ち主の `sync` が自分で出す**。`MarkerManager` は自分の意思では出さない3集合
-  (`combatMarkers` = 画面上のまとめ、`leadMarkers` = 自機と敵の両方に依存、`equatorNodeMarkers` =
-  操作艦・navTarget・targeter という複数の役割にまたがる source 列に依存)を own しているが、いずれも
-  `game.sync` から直接は呼ばれない — `combatMarkers`/`leadMarkers` は `targeter.syncTargetMarkers` が
-  自機・敵の対象集合(`entities.getCombatTargets`)を組んでから呼び、`equatorNodeMarkers` だけは
-  `game.sync` が直接 `sync` を呼ぶ(update フェーズの `updateMapPresentation` も同様に直接
-  `update` を呼ぶ)。残りのマーカーは `player.syncPlayer` / `targeter.sync` / `navTarget.sync` /
+- **HUD マーカーは持ち主の `sync` が自分で出す**。`MarkerManager` が own するのは、1つの対象では
+  決められない2集合(`combatMarkers` = 画面上のまとめ、`leadMarkers` = 自機と敵の両方に依存)だけで、
+  どちらも `game.sync` から直接は呼ばれない — `targeter.syncTargetMarkers` が自機・敵の対象集合
+  (`entities.getCombatTargets`)を組んでから呼ぶ。赤道交点(EqAN/EqDN)は対象ごとに1つなので
+  各 `GameEntity.equatorNodes` が持ち、`entities.syncEquatorNodes` が `all()` を回して出す。
+  残りのマーカーは `player.syncPlayer` / `targeter.sync` / `navTarget.sync` /
   `activeStage.sync` / `cameraSystem.sync` / `editor.sync`(→ `planDisplay`) / `guide.sync` の中にある。
   **`markerManager.resolveCollisions()` だけは全マーカーが出揃った後に一度だけ**呼ぶ必要があるため
   `game.sync` の末尾に置く。
@@ -565,9 +566,10 @@
   AN/DN の座標が、同じフレームで `sync` されるメッシュに対して1ステップぶん古くなる(ワープ倍率が
   高いほど無視できない)。フォーカス解決(`overviewCamera.update`)も右クリック判定
   (`mapPicker.handleRightClick`)もどちらも `update` フェーズの仕事なので、`sync` を待つ必要はない。
-  天体ラベル(`focusMarkers`)と AN/DN(`navTarget`)、EqAN/EqDN(`markerManager.equatorNodeMarkers`、
-  `editor.update` の直後・`mapPicker.refresh` の直前に呼ぶ — source 列自体は `EquatorNodeMarkers` が
-  内部の `collectSources()` で組む、`Game` 側で組むことはもう無い)の座標も候補列の一部なので、
+  天体ラベル(`focusMarkers`)と AN/DN(`navTarget`)、EqAN/EqDN(各エンティティの `equatorNodes` —
+  出す対象を選ぶ側がそれぞれ `update` を呼ぶ: 操作艦は `editor.update`、戦闘ターゲットは
+  `targeter.updateEquatorNodes`、基地は `entities.updateBaseEquatorNodes`、航法ターゲットは
+  `navTarget.update`)の座標も候補列の一部なので、
   `refresh()` の先頭で両方を求め直す。`sync` 側(`focusMarkers.syncLabels` / `navTarget.sync`)は
   その値をマーカーへ置くだけで、座標を求め直さない。
 - **`environment.update(displayTime, cameraSystem.overviewMode)` は `updateMapPresentation` の

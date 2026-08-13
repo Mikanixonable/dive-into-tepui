@@ -13,8 +13,7 @@ import * as C from '../const';
 import { FILL_4 } from '../theme';
 import { GroupedMarkers } from './grouped-markers';
 import { LeadMarkers } from './lead-markers';
-import { EquatorNodeMarkers } from './equator-node-markers';
-import type { Ephemeris } from '../../physics/ephemeris';
+
 
 type ProjectFn = (worldPos: Vec3) => Projected;
 type ScaleFn = (worldPos: Vec3) => number;
@@ -64,22 +63,18 @@ export class MarkerManager {
   private readonly svgLinePool: SVGLineElement[] = [];
 
   // 単独のオブジェクトでは決められないマーカー集合。敵マーカーは「画面上で近接するものを
-  // まとめる」ために集合全体を、LEAD マーカーは自機と敵の両方を、EqAN/EqDN は複数の役割に
-  // またがる source 列を必要とする。
-  // TODO: この3つは「表示機構」であるこのクラスとは別の分類にあたる。適切な所有者を決めて移す。
+  // まとめる」ために集合全体を、LEAD マーカーは自機と敵の両方を必要とする。
+  // TODO: この2つは「表示機構」であるこのクラスとは別の分類にあたる。適切な所有者を決めて移す。
   readonly combatMarkers: GroupedMarkers;
   readonly leadMarkers: LeadMarkers;
-  readonly equatorNodeMarkers: EquatorNodeMarkers;
 
   // root: マーカー要素を追加する親(#hud)。svgOverlay: ラベル引き出し線を描く SVG。
   constructor(
     private root: HTMLElement,
     private svgOverlay: SVGSVGElement,
-    ephemeris: Ephemeris,
   ) {
     this.combatMarkers = new GroupedMarkers(this, C.MARKER_CLUSTER_PX);
     this.leadMarkers = new LeadMarkers(this);
-    this.equatorNodeMarkers = new EquatorNodeMarkers(this, ephemeris);
   }
 
   // マーカー(スクリーン座標)。visible=false で非表示。
