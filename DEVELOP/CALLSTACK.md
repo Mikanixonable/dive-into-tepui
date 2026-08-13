@@ -94,7 +94,7 @@
 どの状況でも進め続ける)。`game.update` からは `!isPaused` のときだけ呼ばれる。
 
 - advanceSimulation(dt)
-  - player = game.player(= activePlayers.current) // 以下の [playing] は activeStage.isPlaying の略
+  - 以下の player は毎回その場で読む game.player(= activePlayers.current)。[playing] は activeStage.isPlaying の略
   - sections.enter(SECTION.player)
   - [player && playing] nanWatchdog.checkPlayer('frameStart')
   - [player && playing] player.behave()
@@ -175,7 +175,7 @@
   - sections.exit(SECTION.stage)
   - nanWatchdog.checkPlayer('activeStage.update')
   - simSpeedManager.update() // 自動ワープ中のみ実効。残り時間が C.NODE_APPROACH_LEAD 以下なら autoWarpUntil=null + levelIdx=0 で即 return
-  - [!simSpeedManager.canApplyAttitudeCommand] entities.suppressAttitudeCommandForWarp() // 全自機の RCS command torque を明示的にゼロへ戻す
+  - [!simSpeedManager.canOperatePlayer] entities.clearTransientCommands() // 操作できないワープ倍率の間、全自機の連続指令を畳む。ship ごとに thrust=null / torque=0 / throttle.clearTransientState()(噴射ラッチ・二度押し時刻)/ fire.stopFiring()。behave と planExecutor の両方より後、積分より前に置くので、どちらが書いた指令も積分へ渡らない
   - simDt = dt × simSpeedManager.simSpeed
   - sections.enter(SECTION.integrate)
   - simulator.advance(dt, simDt, player, activeStage, simSpeedManager, nanWatchdog)
@@ -249,15 +249,14 @@
   - sections.enter(SECTION.effects)
   - effects.update(dt, simulator.simTime) → flashEffectManager.updateFlashEffects() // フラッシュの寿命と、各エフェクトの時刻から simTime までの移流。playing/player を問わず常に進める(決着直後の爆発を止めないため)
   - sections.exit(SECTION.effects)
-  - flown = player // trackAnchor より前に取り直す: 最後のノードが落ちたフレームからアンカーを自機へ追従させるため
   - sections.enter(SECTION.plan)
-  - guide.update(flown, simTime, editMode, ephemeris.attractorsAt(simTime)) // flown が null でも呼ぶ。内部の `editMode || !player` で、操作できない間(未配置・計画編集中)は何も消化せず通知もしない
-    - flown.plan.consumeNodesUpTo(simTime - C.NODE_EXPIRE_GRACE, flown.state) // 期限切れノードをまとめて落とし、自機の実状態を新しいアンカーに据える
-    - [flown かつ直近ノードが実行の窓(node.t - C.NODE_APPROACH_LEAD)に入っている場合のみ]
+  - guide.update(player, simTime, editMode, ephemeris.attractorsAt(simTime)) // ここの player は reclaimDead / docking.checkProximity による引き継ぎ後の操作対象。null でも呼ぶ(内部の `editMode || !player` で、操作できない間(未配置・計画編集中)は何も消化せず通知もしない)
+    - player.plan.consumeNodesUpTo(simTime - C.NODE_EXPIRE_GRACE, player.state) // 期限切れノードをまとめて落とし、自機の実状態を新しいアンカーに据える
+    - [player かつ直近ノードが実行の窓(node.t - C.NODE_APPROACH_LEAD)に入っている場合のみ]
       - notifyApproach() → hud.hint() // ノードごとに最初の1回のみ(approachNotified との同一性比較)
-      - notifyAchieved() // orbitalElementsClose(自機軌道要素, 目標軌道要素) が真の場合のみ。flown.plan.consumeNodesUpTo(node.t, flown.state) で達成ノードを消化し、残り件数は消化後の実数を読む
+      - notifyAchieved() // orbitalElementsClose(自機軌道要素, 目標軌道要素) が真の場合のみ。player.plan.consumeNodesUpTo(node.t, player.state) で達成ノードを消化し、残り件数は消化後の実数を読む
         - hud.hint() + sfx.warp() // ノードごとに最初の1回のみ(achievedNotified との同一性比較)
-  - [flown] flown.plan.trackAnchor(flown.state) // ノードが0件のときだけ実効(1件目を置くとアンカーは凍結される)
+  - [player] player.plan.trackAnchor(player.state) // ノードが0件のときだけ実効(1件目を置くとアンカーは凍結される)
   - sections.exit(SECTION.plan)
 
 ### updateMapPresentation(dt)

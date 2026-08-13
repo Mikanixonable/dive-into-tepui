@@ -280,8 +280,9 @@ export class Game {
     this.sections.exit(SECTION.stage);
     this.nanWatchdog.checkPlayer('activeStage.update', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
     this.simSpeedManager.update(this.simulator.simTime);
-    // 並進・射撃・衝突と同じく、RCS command torque は物理相互作用域だけで有効。
-    if (!this.simSpeedManager.canApplyAttitudeCommand) this.entities.suppressAttitudeCommandForWarp();
+    // 操作不可のワープ倍率は、操作対象から外れた艦と同じ「操作できない」状態。連続指令を書いた
+    // 主体(behave / planExecutor)によらず、積分へ渡る前に全自機分を畳む。
+    if (!this.simSpeedManager.canOperatePlayer) this.entities.clearTransientCommands();
 
     const simDt = dt * this.simSpeedManager.simSpeed;
     this.sections.enter(SECTION.integrate);

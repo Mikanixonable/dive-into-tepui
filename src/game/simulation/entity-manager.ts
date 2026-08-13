@@ -321,10 +321,9 @@ export class EntityManager {
     for (const ship of this.players) if (ship !== activePlayer) ship.updatePassive(dt);
   }
 
-  // 高warp中は全自機のRCS command torqueを明示的にゼロへ戻す(active切替やauto-warp開始前の
-  // stale指令を残さない)。
-  suppressAttitudeCommandForWarp(): void {
-    for (const ship of this.players) ship.suppressAttitudeCommandForWarp();
+  // 操作できない間、全自機の連続指令(推力・トルク・射撃・噴射ラッチ)を畳む。
+  clearTransientCommands(): void {
+    for (const ship of this.players) ship.clearTransientCommands();
   }
 
   // 全自機のメッシュ・エフェクト・マーカーを同期する。方向マーカーや照準ズームは操作艦だけの

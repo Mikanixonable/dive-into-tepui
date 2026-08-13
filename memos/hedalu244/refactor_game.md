@@ -105,7 +105,7 @@ creative モードの「複数艦を配置でき、艦が1隻も無くてもシ�
 | 箇所 | 理由 |
 |---|---|
 | `player.behave(...)` の呼び出し可否 | `Player` のメソッドなので非 null 必須 |
-| `flown.plan.trackAnchor(flown.state)` | `flown` が null だと**引数の式自体が組み立てられない**。防御的分岐ではなく構造的制約 |
+| `this.player.plan.trackAnchor(this.player.state)` | 自機が null だと**引数の式自体が組み立てられない**。防御的分岐ではなく構造的制約 |
 | `FloatingOrigin` 初期値 | `Game` 自身のフィールドの初期化。委譲先が無い |
 | `excludedIds` の配列組み立て | 単なる値変換。下位は `readonly string[]` を要求 |
 | `player?.state.v ?? v3()` | `FloatingOrigin` の速度基準。ゼロが「基準なし」の単位元として意味を持つので既定値でよい(位置の `?? null` とは別) |
