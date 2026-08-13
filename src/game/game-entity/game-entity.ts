@@ -19,6 +19,7 @@ import type { Stage } from '../stages/stage';
 import type { Contact } from '../simulation/contact';
 import { EntityIdAllocator } from './entity-id';
 import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';
+import type { EntityMarker } from '../marker/entity-marker';
 import type { MarkerManager } from '../marker/marker-manager';
 import { GRAVITATIONAL_CONSTANT } from '../../physics/solar-system';
 
@@ -77,6 +78,8 @@ export class GameEntity {
   trajectoryLine: TrajectoryLine | null = null;
   // 自身の軌道と中心天体の赤道面との交点マーカー。null = まだ出す必要が生じていない。
   equatorNodes: EquatorNodeMarkerPair | null = null;
+  // 自身の位置を指すマーカー。null = 出さない。
+  marker: EntityMarker | null = null;
   // 弾道係数の逆数 Cd·A/m(既定 0 = 抵抗なし)。
   protected readonly bcInv: number = 0;
   protected readonly srpCoeff: number = 0;
@@ -308,5 +311,6 @@ export class GameEntity {
   dispose(): void {
     this.scene?.remove(this.obj);
     this.equatorNodes?.dispose();
+    this.marker?.dispose();
   }
 }

@@ -13,6 +13,8 @@ import type { Sfx } from '../../audio/sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';
+import { EntityMarker } from '../marker/entity-marker';
+import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 import type { BaseSaveData } from '../save-data';
 import { OrbitLine } from '../orbit-line';
 import * as C from '../const';
@@ -78,6 +80,7 @@ export class Base extends GameEntity {
     this.name = name;
     this.orbitLine = new OrbitLine(C.COLOR_BASE_ORBIT_LINE, 0.35, C.LINE_RENDER_ORDER.shipOrbit);
     this.equatorNodes = new EquatorNodeMarkerPair(this, markerManager);
+    this.marker = new EntityMarker(this, markerManager, 'mk-base', ENTITY_GLYPH.ship);
     scene.add(this.orbitLine.line);
 
     if ('saved' in init) {

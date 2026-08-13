@@ -10,7 +10,7 @@ import type { Sfx } from '../../audio/sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
 import type { Simulator } from '../simulation/simulator';
 import type { MarkerManager } from '../marker/marker-manager';
-import { DIRECTION_GLYPH, ENTITY_GLYPH } from '../marker/marker-glyphs';
+import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { OrbitalElements, semiMajorFromPeriod, stateFromOrbitalElements } from '../../physics/elements';
 import { Attractor, orbitalElementsOf } from '../../physics/attractor';
@@ -68,7 +68,6 @@ export class CreativeStage extends Stage {
   private readonly ammoIdAllocator = new EntityIdAllocator('creative-ammo-');
   // フォールバック名(Player-N 等)の連番。id とは独立(同名は許容する)。
   private nextFallbackNameSeq = 1;
-  private lastBaseMarkerCount = 0;
 
   briefingHtml(): string {
     return '<b>クリエイティブモード</b><br>マップから艦艇を配置して軌道を眺められる。';
@@ -114,55 +113,15 @@ export class CreativeStage extends Stage {
     return 0;
   }
 
-  // 共通のステータス表示に加えて、配置プレビューの軌道線とマーカー、基地マーカーを同期する。
+  // 共通のステータス表示に加えて、配置プレビューの軌道線とマーカーを同期する。
   sync(
     player: Player | null, fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn, displayTime: number,
     overviewMode: boolean, visibilityPolicy: MapVisibilityPolicy | null, camera: THREE.Camera,
   ): void {
     super.sync(player, fo, project, scale, displayTime, overviewMode, visibilityPolicy, camera);
     this.syncPreview(fo, project, camera);
-    this.syncBaseMarkers(project, scale, displayTime, overviewMode, visibilityPolicy);
     this.placerPanel.setIssues(this.issues);
     this.logisticsPanel.style.display = overviewMode ? 'block' : 'none';
-  }
-
-  // 基地は実寸(半径100m)のメッシュしか持たず、マップ視点では見えないほど小さいので、
-  // 実体の族の字形でポイントマーカーを立て、どのズームでも見つけられるようにする。戦闘ビューで
-  // 画面外なら方位矢印で補う。overviewMode 中は進行方向を向く
-  // 三角形に差し替える(mk-poi は FocusMarkers の天体ラベルと共用するため、専用の mk-base を使う)。
-  private syncBaseMarkers(project: ProjectFn, scale: ScaleFn, displayTime: number, overviewMode: boolean, visibilityPolicy: MapVisibilityPolicy | null): void {
-    const bases = this._entities.bases;
-    for (const [i, base] of bases.entries()) {
-      const key = `base${i}`;
-      const bearingKey = `${key}-bearing`;
-      const ds = base.alive ? base.displayState(displayTime) : undefined;
-      if (!ds) {
-        this._markerManager.hide(key);
-        this._markerManager.hide(bearingKey);
-        continue;
-      }
-      const visibility = overviewMode ? visibilityPolicy?.entity('base') : null;
-      if (visibility && !visibility.pickable) {
-        this._markerManager.hide(key);
-        this._markerManager.hide(bearingKey);
-        continue;
-      }
-      const label = '基地';
-      const p = project(ds.r);
-      if (overviewMode) {
-        const rotationDeg = this._markerManager.headingRotationDeg(ds.r, ds.v, project, scale);
-        this._markerManager.set(key, 'mk-base', visibility?.icon === false ? '' : ENTITY_GLYPH.ship, p.x, p.y, p.front, visibility?.label === false ? '' : label, 1, undefined, rotationDeg);
-        this._markerManager.hide(bearingKey);
-      } else {
-        this._markerManager.set(key, 'mk-poi', visibility?.icon === false ? '' : ENTITY_GLYPH.body, p.x, p.y, p.front, visibility?.label === false ? '' : label);
-        this._markerManager.setBearing(bearingKey, 'mk-poi', DIRECTION_GLYPH.bearing, p, visibility?.label === false ? '' : label, 0.9);
-      }
-    }
-    for (let i = bases.length; i < this.lastBaseMarkerCount; i++) {
-      this._markerManager.hide(`base${i}`);
-      this._markerManager.hide(`base${i}-bearing`);
-    }
-    this.lastBaseMarkerCount = bases.length;
   }
 
   // 艦艇配置モーダルを開く (MapPicker から呼ばれる)。focusId はマップの現在フォーカスで、
@@ -268,7 +227,7 @@ export class CreativeStage extends Stage {
         this._hud.hint(`${enemy.name} を配置`);
       } else if (form.objectType === 'ammo') {
         const id = this.ammoIdAllocator.next();
-        const ammo = new Ammo({ state, id }, this._scene);
+        const ammo = new Ammo({ state, id }, this._scene, this._markerManager);
         this._entities.addAmmo(ammo);
         const finalName = name || `Ammo-${this.nextFallbackNameSeq++}`;
         this._hud.hint(`${finalName} を配置`);
