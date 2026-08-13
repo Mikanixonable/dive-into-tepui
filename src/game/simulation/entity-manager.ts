@@ -17,7 +17,7 @@ import { Player } from '../player/player';
 import type { Stage } from '../stages/stage';
 import type { CombatTarget } from '../targeter';
 import type { MapVisibility, MapVisibilityPolicy } from '../celestial/map-visibility';
-import type { CameraSystem, ProjectFn, ScaleFn } from '../camera/camera-system';
+import type { CameraSystem } from '../camera/camera-system';
 import type { Ephemeris } from '../../physics/ephemeris';
 import type { DisplayWindow } from '../display-window-manager';
 import type { GameSaveData } from '../save-data';
@@ -363,16 +363,22 @@ export class EntityManager {
   }
 
   // このフレームに求まった赤道交点マーカーを置く。求め直されなかったものは自動的に隠れる。
-  syncEquatorNodes(project: ProjectFn, show: boolean, cameraPos: Vec3): void {
-    for (const e of this.all()) e.equatorNodes?.sync(project, show, cameraPos);
+  syncEquatorNodes(cameraSystem: CameraSystem): void {
+    const project = cameraSystem.activeCameraProjection;
+    const overviewMode = cameraSystem.overviewMode;
+    const cameraPos = cameraSystem.activeCameraPos;
+    for (const e of this.all()) e.equatorNodes?.sync(project, overviewMode, cameraPos);
   }
 
   // 弾薬・基地の位置マーカーを displayTime の位置へ置く。ラベルの距離は viewerPos 基準で、
   // 艦が1隻も無い間は距離を添えない。
   syncMarkers(
-    project: ProjectFn, scale: ScaleFn, displayTime: number, overviewMode: boolean,
-    viewerPos: Vec3 | null, visibilityPolicy: MapVisibilityPolicy | null,
+    cameraSystem: CameraSystem, displayTime: number, viewerPos: Vec3 | null,
+    visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
+    const project = cameraSystem.activeCameraProjection;
+    const scale = cameraSystem.activeCameraScale;
+    const overviewMode = cameraSystem.overviewMode;
     const visibilityOf = (kind: 'ammo' | 'base'): MapVisibility | null =>
       (overviewMode ? visibilityPolicy?.entity(kind) ?? null : null);
     for (const ammo of this.ammos) {
