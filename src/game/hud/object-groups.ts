@@ -2,7 +2,7 @@
 // マーカー(近地点/遠地点・相対AN/DN・赤道昇降交点・空クリック)はオブジェクトではないので出さない。
 import type { CelestialRegistry } from '../../physics/solar-system';
 import { bodyClassOf } from '../celestial/body-class';
-import type { MapPickable } from '../map-pick';
+import type { MapPickable } from '../map-pickable';
 import type { ObjectPickerGroup } from './object-picker';
 
 const GROUP_LABELS = ['恒星', '惑星', '準惑星', '衛星', '小天体', 'ラグランジュ点', '自艦', '敵', '基地', '弾薬'] as const;

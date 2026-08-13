@@ -29,7 +29,7 @@ description: このプロジェクトで確定済みの横断的な責務境界(
 またがるときの選択肢は2つだけ:
 
 1. どちらか一方の所有者へ寄せる。
-2. **その横断そのものを責務とするモジュールを1つ立てる**(`ViewManager` / `MapPicker` /
+2. **その横断そのものを責務とするモジュールを1つ立てる**(`ViewManager` / `MapContextActions` /
    `FrameControls` / `ActivePlayerController` / `DisplayWindowManager` がその形)。
 
 `Game` はそれを1行呼ぶだけになる。この判断に例外はない。
@@ -231,7 +231,7 @@ THREE 非依存かつ純粋であっても、次のものは `physics/` に置�
   `DisplayWindowManager.forceCurrent`(未来表示の可否) → 同時トグルは `ViewManager.applyChrome()` の責務。
 - `OverviewCamera.cameraFrame`(視点が固定される座標系)と `DisplayWindowManager.frame`
   (計画軌道・予測軌道線・交点マーカーなど未来表示を描く座標系) → プレイヤーが独立に選ぶ別々の値。
-  `ReferenceFrame` 自体が「原点 × 回転」の直積(`physics/frame.ts`)なので、UI(`frame-controls.ts`)
+  `ReferenceFrame` 自体が「原点 × 回転」の直積(`physics/frame.ts`)なので、UI(`hud/frame-controls.ts`)
   もその形に合わせて4ゾーン(カメラ/カメラ回転/並進/計画軌道回転)に分かれ、`FrameControls` は
   両方の状態へ書き込む横断モジュールではあっても、書き込み先の2つの正本(`OverviewCamera`・
   `DisplayWindowManager`)を1つに統合したり同時に切り替えたりはしない — カメラの原点・回転を
@@ -309,7 +309,7 @@ THREE 非依存かつ純粋であっても、次のものは `physics/` に置�
 「何を・どの記号で出すか」だけ。**記号そのものの語彙は `marker/marker-glyphs.ts` に3族
 (実体=塗り / 方向=矢 / 軌道上の点=中空)として置き、持ち主はそこから選ぶ** — 選ぶ判断は
 持ち主に残したまま、同じ意味の記号が別々の字形になるのを防ぐ。UI の縦方向の折りたたみ
-(`hud/dom.ts` の `▸`/`▾`)はこの3族の外に置き、字形を重ねない。
+(`hud/hud-root.ts` の `▸`/`▾`)はこの3族の外に置き、字形を重ねない。
 
 ### 物体に付随する表示物は、その物体自身がフィールドとして持つ
 
@@ -343,7 +343,7 @@ THREE 非依存かつ純粋であっても、次のものは `physics/` に置�
 
 例外として扱ってよいもの:
 
-- `SettingsPanel`(BGM・一時停止・タイトルへ戻る)… **複数モジュールにまたがることが本質**の
+- `PauseMenu`(BGM・一時停止・タイトルへ戻る)… **複数モジュールにまたがることが本質**の
   GUI なので、所有者を `main.ts` に置く。
 - `Hud.hint()` / `toast()` / `Sfx` … 共有サービス。所有者の議論の対象外。
 - `hud/context-menu.ts` / `hud/widgets/`(押せる/切り替えられる/入力できる DOM は
@@ -353,8 +353,10 @@ THREE 非依存かつ純粋であっても、次のものは `physics/` に置�
   **この形は積極的に増やしてよい。**押せる/切り替えられる/入力できる DOM を自作している呼び出し側を
   見つけたら `hud/widgets/` の対応するウィジェットへ置き換える(`hud/buttons.ts` は無い —
   10 種すべてが `hud/widgets/` 直下の1ウィジェット1ファイルで、旧名への互換委譲層は存在しない)。
-- `hud/panel.ts` の `HudPanels.sync(game, dt)` … **全情報を集約表示することそのものに価値が
-  ある**ので `Game` を丸ごと読んでよい。ただし**表示専用**であること(他モジュールの状態や
+- `hud/status-panel.ts`/`orbit-panel.ts`/`target-panel.ts`/`contacts-panel.ts`/`global-status-bar.ts`/
+  `map-scale-badge.ts` の6クラス(常設パネル、いずれも `sync(game, ...)`)… 1クラス1パネルへ分割済みでも、
+  各パネルが読む値の組み合わせはパネルごとに違うため、共通の狭い ctx を切り出す方が却ってルール6
+  (`ctx` 引数の禁止)に反する。`Game` を丸ごと読んでよいが、**表示専用**であること(他モジュールの状態や
   DOM を書き換えないこと)は維持する。
 
 ### ESC・項目ショートカット・外側クリック・入力ゲートの正本は `OverlayManager` 1箇所
@@ -630,7 +632,7 @@ CSS カスタムプロパティは DOM の外には意味を持たないため�
 
 ## 22. HUD の置き場は4種、パネルの絶対座標直書きは画面固定バッジだけ
 
-**画面上の全パネルは、①左右レール(`.hud-dock`)②戦闘シェルフ(`#hud-combat-shelf`)③中央
+**画面上の全パネルは、①左右レール(`.hud-rail`)②戦闘シェルフ(`#hud-combat-shelf`)③中央
 モーダル層(`OverlayManager` 台帳)④画面固定バッジ、のどれか1つに属する。** ①②はどちらも
 実体を持つ `display:flex` の箱で、中身は通常フローに積む/並べる — `display:contents` で中身だけ
 絶対座標に置く二重構造を作らない。パネル自身の CSS は `position:relative` のままにし、`top`/

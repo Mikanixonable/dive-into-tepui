@@ -32,15 +32,17 @@ main.ts
 │   │                       自分がどの層の子になるかを選ぶだけ。層内の前後は DOM 順、最前面化は bringToFront() のみ
 │   ├── OverlayManager   ... 全オーバーレイ(モーダル/ポップアップ/ウィンドウ)の論理的な重なり順・ESC 配送先・
 │   │                       外側クリック閉じ・入力ゲートの正本(§2「参照共有」の表も参照)
-│   ├── HelpPanel        ... `[H]` トグルの開閉状態の正本。本文 DOM は dom.ts の buildHelpPanel が組む
-│   └── HudPanels        (buildHudDom が作った要素索引を共有)
+│   ├── HelpPanel        ... `[H]` トグルの開閉状態の正本。本文 DOM(`#hud-help`)も自身のコンストラクタで組む
+│   └── StatusPanel / OrbitPanel / TargetPanel / ContactsPanel / GlobalStatusBar / MapScaleBadge
+│                           ... 常設パネル6枚、1パネル1クラス(buildHudDom が作った要素索引 `els: Map<string, HTMLElement>` を
+│                           共有で受け取るだけで DOM は持たない)。それぞれ自分のパネルへのみ書く
 ├── Sfx                  ... 同上
-├── SettingsPanel        ... 同上。DOM は Hud.layers.system 配下。onSettingsOpenChange を Game.pause()/resume() へ配線。onOpenSnapshots / onOpenPerfWindow は main.ts が settingsPanel.toggle(false) + saveBrowser.open() / perf.open() へ配線
+├── PauseMenu            ... 同上。DOM は Hud.layers.system 配下。onPauseMenuOpenChange を Game.pause()/resume() へ配線。onOpenSnapshots / onOpenPerfWindow は main.ts が pauseMenu.toggle(false) + saveBrowser.open() / perf.open() へ配線
 ├── SaveBrowser            ... Game 自身を構築引数に取るため Game より後に main.ts が new する。Game 側はこれへの参照を一切持たない(`open()`/`close()` が `game.pause()`/`resume()` を直接呼ぶだけ)。DOM は Hud.layers.system 配下。`onLoadSnapshot` コールバックを main.ts が配線し、スナップショットIDを sessionStorage(`tepui.pendingSnapshot`)へ書いてページを再読込する
-├── SnapshotControls       ... Hud・SettingsPanel・SaveBrowser・SnapshotService を参照で持つ。`[F5]`/`[F9]` を扱う(一覧表示中の `[Esc]` は扱わない — `SaveBrowser` が `hud.overlayManager` へ自ら登録し、`Game.handleInput` の `closeTopmostOnEscape()` が閉じる)。main.ts が SaveBrowser 構築後に new し、rAF ループが `game.update(dt)` の直後に `handleInput(game.input, game)` を呼ぶ(Game 側が消費しなかった入力エッジだけを見る)
+├── SnapshotControls       ... Hud・PauseMenu・SaveBrowser・SnapshotService を参照で持つ。`[F5]`/`[F9]` を扱う(一覧表示中の `[Esc]` は扱わない — `SaveBrowser` が `hud.overlayManager` へ自ら登録し、`Game.handleInput` の `closeTopmostOnEscape()` が閉じる)。main.ts が SaveBrowser 構築後に new し、rAF ループが `game.update(dt)` の直後に `handleInput(game.input, game)` を呼ぶ(Game 側が消費しなかった入力エッジだけを見る)
 ├── AutoSave               ... SnapshotService を参照で持つ。startAnimationLoop() へその場で渡すだけで main() 側は変数に束縛しない
 ├── FrameSections        ... update の区間別所要時間の集計器(frame-sections.ts)。main.ts が new し、Game(コンストラクタ引数)・PerfMeter(コンストラクタ引数)へ参照で渡す。Game はさらに Simulator のコンストラクタ引数として同じ参照を渡す。rAF ループが game.update(dt) を beginFrame()/endFrame() で挟む。区間の境界(enter/exit)を打つのは Game.update / Game.updateMapPresentation / Simulator.advance だけで、累計を持つのはこのオブジェクト。enabled の書き手は PerfMeter.open()/close() のみ
-├── PerfMeter            ... 負荷確認ウィンドウ。Game を PerfCountSource として、GameScene.renderer(WebGPURenderer)を draw call/triangle 数の読み取り元として、いずれも構築時に参照で受け取る(renderer 参照の新設は main.ts 側の GameScene を経由し、Game には持たせない)。Game.setPerfMeter で遅延注入される(ViewManager.setDocking と同じ形)。FrameSections も構築時に参照で受け取り、update内訳の行を組む。表示する PropertyWindow を自分で new/dispose し、DOM は Hud.layers.window 配下。開いている間だけ on が真になり計測が走る(同時に FrameSections.enabled も真にする)。`Game.perfCounts()` は自分では数えず、EntityManager・Predictor・Simulator・PlanEditor・Ephemeris・MapPicker 各自の `perfCounts()` を1つにマージし、`displayDurationSec`(= DisplayWindowManager.current.duration)・`warp` を足すだけ
+├── PerfMeter            ... 負荷確認ウィンドウ。Game を PerfCountSource として、GameScene.renderer(WebGPURenderer)を draw call/triangle 数の読み取り元として、いずれも構築時に参照で受け取る(renderer 参照の新設は main.ts 側の GameScene を経由し、Game には持たせない)。Game.setPerfMeter で遅延注入される(ViewManager.setDocking と同じ形)。FrameSections も構築時に参照で受け取り、update内訳の行を組む。表示する PropertyWindow を自分で new/dispose し、DOM は Hud.layers.window 配下。開いている間だけ on が真になり計測が走る(同時に FrameSections.enabled も真にする)。`Game.perfCounts()` は自分では数えず、EntityManager・Predictor・Simulator・PlanEditor・Ephemeris・MapPickables 各自の `perfCounts()` を1つにマージし、`displayDurationSec`(= DisplayWindowManager.current.duration)・`warp` を足すだけ
 ├── GameScene            (createGameScene: canvas / THREE.Scene / WebGPURenderer)
 └── Game
     ├── FloatingOrigin       ... sync ごとに作り直す使い捨て
@@ -56,24 +58,33 @@ main.ts
     │   │   └── GunsightCamera
     │   ├── OverviewCamera
     │   ├── FocusMarkers
-    │   └── OverviewCameraPanel        ... DOM は Hud.layers.panel 配下。天体クラス別トグル(軌道線/ラベル)+ 弾薬マーカートグルのみ。座標系の選択は持たない
+    │   └── ViewOptionsPanel(viewOptionsPanel) ... DOM は Hud.layers.panel 配下(表示パネル)。天体クラス別トグル(軌道線/ラベル)
+    │                                       + 天球グリッドトグルの2セクションを1枚に持つ(後者の状態は Navball が正本 — 下記参照)。
+    │                                       座標系の選択は持たない
     ├── FrameControls                  ... 座標系パネル。カメラ(視点)区画と軌道計画(描画基準)区画がそれぞれ
     │                                       中心・回転の2ゾーンを持ち、OverviewCamera・DisplayWindowManager.frame を書く。
     │                                       自分の状態は「カメラの基準に追随」トグル(followCamera)だけ。
     │                                       パネル DOM は Hud.layers.panel 配下
     │   ├── AnchorZone × 2                 ... カメラ/並進ゾーン。ObjectPicker + SegmentedControl(いまいる系のクイックボタン)。ObjectPicker のポップアップは Hud.layers.popup 配下
     │   └── RotationZone × 2               ... カメラ回転/計画軌道回転ゾーン。SegmentedControl のみ
-    ├── MapPicker                      ... マップ・戦闘ビュー双方の被選択物の候補列・右クリック解決(handleRightClick/
-    │   │                                   handleCombatRightClick)・種別別プロパティ/操作の配分・開いているプロパティ
-    │   │                                   ウィンドウ集合。「非クリップは高々1枚」の排他自体は Hud.overlayManager が
-    │   │                                   持つ(PROPERTY_WINDOW_TEMP_GROUP、下記参照共有の表)
+    ├── MapPickables                   ... マップ・戦闘ビュー双方の被選択物の候補列(`pickables`)と
+    │                                       `MapVisibilityPolicy`(`visibilityPolicy`)の正本。「何が選べるか」だけを
+    │                                       答える。Game/EntityManager/Ephemeris/NavTarget/CameraSystem/PlanEditor を
+    │                                       参照で持つ(所有しない)。PlanEditor の直後、MapContextActions より
+    │                                       先に construct する
+    ├── MapContextActions              ... 被選択物への右クリック解決(handleRightClick/handleCombatRightClick)・
+    │   │                                   種別別プロパティ/操作の配分・開いているプロパティウィンドウ集合。
+    │   │                                   候補列自体は持たず MapPickables を参照で持つ。「非クリップは高々1枚」の
+    │   │                                   排他自体は Hud.overlayManager が持つ(PROPERTY_WINDOW_TEMP_GROUP、
+    │   │                                   下記参照共有の表)
     │   ├── ContextMenu<MapPickable>       ... 空域右クリック('empty-space')専用メニュー。マップ・戦闘どちらの空振りもここへ落ちる(openEmptySpaceMenu で共有)。DOM は Hud.layers.popup 配下
     │   ├── windows: Map<string, WindowEntry>  ... {win: PropertyWindow<MenuAction>, target}。オブジェクト1つ(`${kind}:${id}`)につき高々1枚。呼び出しごとに new。PropertyWindow は Hud.layers.window 配下に append
-    │   └── ObjectListPanel                ... DOM は Hud.layers.panel 配下。軌道オブジェクトウィンドウ(一覧 + クリックで選択状態 + ダブルクリックでフォーカス移動 + 右クリックでプロパティウィンドウ)。マップ視点である間は常設表示
+    │   └── ObjectListPanel                ... DOM は Hud.layers.panel 配下(hud/object-list-panel.ts)。軌道オブジェクトウィンドウ(一覧 + クリックで選択状態 + ダブルクリックでフォーカス移動 + 右クリックでプロパティウィンドウ)。マップ視点である間は常設表示
     ├── NavTarget                      ... 航法ターゲット(id)と自機軌道との相対 AN/DN・▲/▽ マーカー
-    ├── Navball                        ... 天球グリッド6トグルの正本
-    │   └── NavballPanel                   ... DOM は Hud.layers.panel 配下。グリッドトグルのみ
-    ├── ActivePlayerController         ... 操作対象艦(0..n隻のうちどれを操作するか)の切替・削除と、それに伴う各所有者(CameraSystem・PlanEditor・Targeter・NavTarget・MapPicker・Sfx)への伝播を1箇所へ集める。ViewManager への参照は持たない。Game.player はこれへ転送する getter
+    ├── Navball                        ... 天球グリッド6トグルの正本。DOM は持たない —
+    │                                       CameraSystem.viewOptionsPanel(表示パネル)の天球グリッドセクションを
+    │                                       コンストラクタで配線するだけ(CameraSystem の構築後に construct する)
+    ├── ActivePlayerController         ... 操作対象艦(0..n隻のうちどれを操作するか)の切替・削除と、それに伴う各所有者(CameraSystem・PlanEditor・Targeter・NavTarget・MapContextActions・Sfx)への伝播を1箇所へ集める。ViewManager への参照は持たない。Game.player はこれへ転送する getter
     ├── SimSpeedManager
     ├── DisplayWindowManager           ... 「どの座標系で(frame)・いつを(displayTime)見るか」の正本(表示期間・
     │                                       未来ゴーストスライダー・frame)と、1フレーム分の DisplayWindow
@@ -83,8 +94,8 @@ main.ts
     │                                       Ephemeris・EntityManager を参照で持つ(所有しない)。entities の直後に
     │                                       construct する(entities 自身のコンストラクタが EffectsSystem の
     │                                       生成まで終えている)
-    │   └── DisplayTimePanel           ... DOM は Hud.layers.panel 配下。期間/未来位置スライダー。画面下端の帯として
-    │                                       #hud-displaytime-wrap に開閉トグル(hud/dom.ts の buildCollapseToggle)と
+    │   └── PredictPanel               ... DOM は Hud.layers.panel 配下(hud/predict-panel.ts)。期間/未来位置スライダー。画面下端の帯として
+    │                                       #hud-predict-wrap に開閉トグル(hud/hud-root.ts の buildCollapseToggle)と
     │                                       並べて包まれる。開閉状態はトグル対象要素の `.collapsed` クラスが正本(この
     │                                       クラス自身は持たない)で、ビューの往復では戻さない(折りたたみは
     │                                       ビューの性質ではなく操作者の選択)
@@ -95,8 +106,8 @@ main.ts
     │   │       └── TrajectoryLine[]   ... 区間 index ごとの折れ線プール。区間数が減っても捨てず隠すだけ(色は index で決まるため使い回す)
     │   ├── NodeGizmo                   ... ノードハンドル/Δv 矢の DOM は Hud.layers.marker 配下
     │   │   └── ContextMenu<number>     ... DOM は Hud.layers.popup 配下
-    │   ├── HoldButton ×6               ... Δv 6方向の長押しボタン(dvButtons)
-    │   └── 計画パネル DOM
+    │   └── PlanPanel(panel)            ... 計画パネル(hud/plan-panel.ts)の DOM 一式(ノード一覧・Δv 手入力フォーム)
+    │       └── HoldButton ×6               ... Δv 6方向の長押しボタン(dvButtons、PlanEditor.updateEditing がこれ経由で読む)
     ├── PlanGuide                       ... 直近ノードの接近/達成通知済みフラグ(ノード自体への参照)を持つ
     ├── Docking                        ... 基地への収容・発進(EntityManager/CameraSystem/Game.player にまたがる横断)
     │   └── DockView                       ... DOM は Hud.layers.view 配下。格納艦/部品/ショップタブのフルスクリーン UI
@@ -143,7 +154,7 @@ main.ts
     │   ├── referenceLines: ReadonlyMap<OrbitingId, OrbitLine> ... SOLAR_SYSTEM の公転天体ぶん自動生成(衛星=旧月線色、惑星=白)。天体の登録追加だけで線が増える
     │   └── CelestialGrid              ... 赤道面/黄道面それぞれの基準円・緯経線グリッド・両極マーカー
     ├── Targeter                       ... ContextMenu を持たない(施策5 §7-2)。第一/第二ターゲットの設定・解除は
-    │   │                                   MapPicker が開くプロパティウィンドウの targetPrimary/targetSecondary
+    │   │                                   MapContextActions が開くプロパティウィンドウの targetPrimary/targetSecondary
     │   │                                   項目から setPrimaryTarget()/setSecondaryTarget() を呼ぶ形に一本化
     │   ├── OrbitLine                  ... 第一ターゲット軌道線(オレンジ)
     │   └── OrbitLine (secondaryOrbitLine) ... 第二ターゲット軌道線(シアン)
@@ -260,11 +271,11 @@ main.ts
 | --- | --- | --- |
 | `THREE.Scene` / `WebGPURenderer` | `GameScene`(main.ts) | Game・各描画物を持つクラス |
 | `Hud` / `Sfx` | main.ts | Game(コンストラクタ引数で受け取り)経由でほぼ全サブシステム(hud/sfx は必ず対で注入する方針) |
-| `Hud.overlayManager`(`OverlayManager`) | `Hud`(`buildHudDom` が構築) | 全オーバーレイ所有クラス(`ContextMenu`/`ObjectPicker`/`PropertyWindow`/`SettingsPanel`/`SaveBrowser`/`ShipPlacerPanel`/`HelpPanel`、および `ResultScreen`・`ViewManager.dockOverlayHandle`)がコンストラクタ引数または `hud.overlayManager` 経由で受け取り、`open`/`close`/`reconfigure` を自分自身に対して呼ぶ。台帳(重なり順・排他グループ)の正本はこのクラスだけが持つ |
-| `SettingsPanel` | main.ts | Game(`Game.handleInput` が `hud.overlayManager.closeTopmostOnEscape()` で閉じ切れなかったときだけ `toggle(true)` を呼ぶ。開閉の一時停止反映は main.ts 側の配線)・MapPicker(空域右クリックの「設定メニューを開く」項目) |
+| `Hud.overlayManager`(`OverlayManager`) | `Hud`(`buildHudDom` が構築) | 全オーバーレイ所有クラス(`ContextMenu`/`ObjectPicker`/`PropertyWindow`/`PauseMenu`/`SaveBrowser`/`ShipPlacerPanel`/`HelpPanel`、および `ResultScreen`・`ViewManager.dockOverlayHandle`)がコンストラクタ引数または `hud.overlayManager` 経由で受け取り、`open`/`close`/`reconfigure` を自分自身に対して呼ぶ。台帳(重なり順・排他グループ)の正本はこのクラスだけが持つ |
+| `PauseMenu` | main.ts | Game(`Game.handleInput` が `hud.overlayManager.closeTopmostOnEscape()` で閉じ切れなかったときだけ `toggle(true)` を呼ぶ。開閉の一時停止反映は main.ts 側の配線)・MapContextActions(空域右クリックの「設定メニューを開く」項目) |
 | `MarkerManager` | Game | マーカーを出す全モジュール(PlayerMarkers・Targeter・NavTarget・Logistics・FocusMarkers・PlanGuide・PlanDisplay)。`combatMarkers`/`leadMarkers` は参照共有ではなく MarkerManager 自身の子(§1 参照) |
 | `Ephemeris` | Game | EnvironmentScene・Simulator・OverviewCamera・FocusMarkers・NavTarget・PlanEditor(→PlanDisplay)・DisplayWindowManager(コンストラクタ引数) |
-| `CameraSystem.bodyClassToggles`(`BodyClassToggles`) | CameraSystem | MAP VIEW パネルが書き換え、読む側はすべて `MapVisibilityPolicy` を通す(`MapPicker.refresh`・`FocusMarkers.update`・`EnvironmentScene.sync`/参照線・`Game.sync` → Stage/Logistics/CreativeStage/Targeter)。マップの描画・ピック候補・軌道オブジェクト一覧・配置UIの基準天体が同じ1つの状態を共有するための唯一の持ち主。初期値は `localStorage`(`tepui.bodyClassToggles`)から読み込み(`camera-system.ts` の `loadBodyClassToggles`)、トグルのたびに `saveBodyClassToggles` で書き戻す(同上) || `EntityManager` | Game | Simulator(コンストラクタ引数、配列を直接持たず参照だけ回す)・ContactPhysics(`Simulator.advance` が呼び出しのたびに参照を渡すだけで保持しない)・Targeter・NavTarget・Enemy.behave・Stage/stages/・Logistics・EffectsSystem・NanWatchdog(いずれも読み取り + `addXxx`/`findPlayer`/`findEnemy` 経由の追加・参照のみ)・DisplayWindowManager(コンストラクタ引数、`attractorsAt` が `entities.attractors()` を読むだけ)。`attractors()` は毎回のフィルタ呼び出しで正本を持たない(§付録「正本でないもの」) |
+| `CameraSystem.bodyClassToggles`(`BodyClassToggles`) | CameraSystem | 表示パネル(`ViewOptionsPanel` の天体クラス別セクション)が書き換え、読む側はすべて `MapVisibilityPolicy` を通す(`MapPickables.refresh`・`FocusMarkers.update`・`EnvironmentScene.sync`/参照線・`Game.sync` → Stage/Logistics/CreativeStage/Targeter)。マップの描画・ピック候補・軌道オブジェクト一覧・配置UIの基準天体が同じ1つの状態を共有するための唯一の持ち主。初期値は `localStorage`(`tepui.bodyClassToggles`)から読み込み(`camera-system.ts` の `loadBodyClassToggles`)、トグルのたびに `saveBodyClassToggles` で書き戻す(同上) || `EntityManager` | Game | Simulator(コンストラクタ引数、配列を直接持たず参照だけ回す)・ContactPhysics(`Simulator.advance` が呼び出しのたびに参照を渡すだけで保持しない)・Targeter・NavTarget・Enemy.behave・Stage/stages/・Logistics・EffectsSystem・NanWatchdog(いずれも読み取り + `addXxx`/`findPlayer`/`findEnemy` 経由の追加・参照のみ)・DisplayWindowManager(コンストラクタ引数、`attractorsAt` が `entities.attractors()` を読むだけ)。`attractors()` は毎回のフィルタ呼び出しで正本を持たない(§付録「正本でないもの」) |
 | `PlanPath` | PlanDisplay | PlanEditor(ノードの画面判定 `projectPoint` / `nearestSample` のみ、`planDisplay.path` 経由) |
 | `DisplayWindowManager`(`plan/plan.ts` の狭い `DisplayDurationSource`(`{durationSec(referencePeriod): number}`)としてのみ見える) | Game | PlanEditor(→PlanDisplay)(コンストラクタ引数で `PlanDisplay` → `PlanPath` へそのまま転送。末尾区間の長さ(`plan.ts` の `segmentDurationFrom`)と `Plan.nodeTimeRange` の上限が PREDICT パネルの選択に追従するための参照で、`PlanPath` はこれを保持するだけで書き換えない。`plan/` 配下は `durationSec` 以外の具象 `DisplayWindowManager` のフィールド・メソッドを一切読まない) |
 | `Plan`(活艦の) | `Player`(活艦自身、`PlanEditor` ではない) | PlanEditor(`plan` getter が活艦の `plan` を転送。艦がいなければ `null`)・PlanDisplay(`update` の引数で毎フレーム受ける。出さないフレームは `null`)・PlanGuide(引数では受けず、渡された `Player` の `plan` から自分で引く)・CreativeStage(`planExecution` 艦のノード消化) |
@@ -278,12 +289,12 @@ main.ts
 | `SaveBrowser` | main.ts | SnapshotControls(コンストラクタ引数、`[F9]` と一覧表示中の `[Esc]` で `open()`/`close()` を呼ぶ)。Game はこれへの参照を持たない |
 | `SnapshotControls` | main.ts | rAF ループ(`startAnimationLoop` が `game.update(dt)` の直後に `handleInput(game.input, game)` を呼ぶ) |
 | `FrameSections` | main.ts | Game(コンストラクタ引数。`update`/`updateMapPresentation` が区間境界へ `enter`/`exit` を打つだけ)・Simulator(Game 経由のコンストラクタ引数。軌道積分/接触/姿勢の3区間の境界を自分で打つ)・PerfMeter(コンストラクタ引数。`enabled` を開閉で書き、`record` で全区間 + `otherMs()` を採取する) |
-| `PerfMeter` | main.ts | Game(`setPerfMeter` で受け取った参照。`handleInput` が `[F3]` で `toggle()` を呼ぶだけ)・SettingsPanel(`onOpenPerfWindow` 経由で `open()`) |
+| `PerfMeter` | main.ts | Game(`setPerfMeter` で受け取った参照。`handleInput` が `[F3]` で `toggle()` を呼ぶだけ)・PauseMenu(`onOpenPerfWindow` 経由で `open()`) |
 | `PropertyWindow`(負荷確認ウィンドウ) | PerfMeter(`open()` で new し `close()`/✕ で dispose する1枚) | PerfMeter 自身のみ。500ms ごとの flush で `syncRows` へ行一式を渡す |
-| `FocusMarkers.bodyPickables(t, visibilityPolicy)` の戻り値 | CameraSystem(→FocusMarkers、呼ぶたびに作り直す使い捨て配列) | `MapPicker.refresh()` が読んで生存中の自機・敵船・弾薬・基地・NavTarget のアイコン・`PlanDisplay.apsisMarkers` と合流させ、`MapPicker.handleRightClick`(`pickNearest`)/`OverviewCamera.update` の被選択物候補として渡し直す。引数の `MapVisibilityPolicy` が admits した天体+ラグランジュ点だけを返し、遮蔽・ラベル衝突でこのフレームに描かれなかった対象は `pickable: false` を伴って残す(表示設定で消えているわけではないので候補からは落とさない) |
-| `MapVisibilityPolicy`(1フレームの使い捨て) | `MapPicker`(`refresh` が `registry`/`bodyClassToggles`/`focusTargetId(...)`/`systemMembersAt(cameraPos, ...)` から毎フレーム1つ組み立て、`visibilityPolicy` getter で公開。`refresh` 前は null) | `FocusMarkers.update`(引数)/ `Game.sync` が `mapPicker.visibilityPolicy` を読んで `EnvironmentScene.sync`・参照線 / `Stage.sync`・`EntityManager.syncMarkers`・`Targeter.sync` へ配る。受け取り側は渡されなければ同じ4入力から自前で組む経路も残す(マップ経路の外からも呼べるようにするためで、マップ描画中は必ず共有インスタンス)。天体は `body(id)`、エンティティは `entity(kind, isActivePlayer)` で `{category, icon, label, orbit, pickable}` を返す判定関数であって状態を持たない(正本は `CameraSystem.bodyClassToggles` とフォーカス・カメラ位置) |
-| `FocusMarkers.allLabels` | CameraSystem(→FocusMarkers、構築時に1度だけ) | `MapPicker.sync()` が id/isLagrange から親子関係(parentOf)を組むのに読む |
-| `PlanDisplay.apsisMarkers` | PlanEditor(→PlanDisplay) | `MapPicker.refresh()` が他の候補と合流させ、`MapPicker.handleRightClick`/`OverviewCamera.update` へ1本の候補列として渡す |
+| `FocusMarkers.bodyPickables(t, visibilityPolicy)` の戻り値 | CameraSystem(→FocusMarkers、呼ぶたびに作り直す使い捨て配列) | `MapPickables.refresh()` が読んで生存中の自機・敵船・弾薬・基地・NavTarget のアイコン・`PlanDisplay.apsisMarkers` と合流させ、`MapContextActions.handleRightClick`(`pickNearest`)/`OverviewCamera.update` の被選択物候補として渡し直す。引数の `MapVisibilityPolicy` が admits した天体+ラグランジュ点だけを返し、遮蔽・ラベル衝突でこのフレームに描かれなかった対象は `pickable: false` を伴って残す(表示設定で消えているわけではないので候補からは落とさない) |
+| `MapVisibilityPolicy`(1フレームの使い捨て) | `MapPickables`(`refresh` が `registry`/`bodyClassToggles`/`focusTargetId(...)`/`systemMembersAt(cameraPos, ...)` から毎フレーム1つ組み立て、`visibilityPolicy` getter で公開。`refresh` 前は null) | `FocusMarkers.update`(引数)/ `Game.sync` が `mapPickables.visibilityPolicy` を読んで `EnvironmentScene.sync`・参照線 / `Stage.sync`・`EntityManager.syncMarkers`・`Targeter.sync` へ配る。受け取り側は渡されなければ同じ4入力から自前で組む経路も残す(マップ経路の外からも呼べるようにするためで、マップ描画中は必ず共有インスタンス)。天体は `body(id)`、エンティティは `entity(kind, isActivePlayer)` で `{category, icon, label, orbit, pickable}` を返す判定関数であって状態を持たない(正本は `CameraSystem.bodyClassToggles` とフォーカス・カメラ位置) |
+| `FocusMarkers.allLabels` | CameraSystem(→FocusMarkers、構築時に1度だけ) | `MapContextActions.sync()` が id/isLagrange から親子関係(parentOf)を組むのに読む |
+| `PlanDisplay.apsisMarkers` | PlanEditor(→PlanDisplay) | `MapPickables.refresh()` が他の候補と合流させ、`MapContextActions.handleRightClick`/`OverviewCamera.update` へ1本の候補列として渡す |
 
 ---
 
@@ -324,13 +335,13 @@ main.ts
 | 予測表示期間の選択(`durationKey`)・任意期間の秒数(`customDurationSec`)・未来ゴーストスライダー(`sliderT`)・未来表示の禁止(`forceCurrent`) | `DisplayWindowManager` | いずれも private(`forceCurrent` のみ get/set アクセサで外部公開)。`forceCurrent` に true をセットすると `sliderT` も 0 へ戻す。期間の切替(`durationKey` 変更、または任意期間の確定)でも同様に `sliderT` を 0 へ戻す |
 | 未来表示(計画折れ線・予測軌道線・交点マーカー)を描く座標系(`frame`) | `DisplayWindowManager` | `OverviewCamera.cameraFrame`(視点固定座標系)とは別の正本。get/set アクセサ(`frame`)で公開。書き換えは `FrameControls` の「軌道計画(描画基準)」区画の中心/回転ゾーン(`planCenterZone`/`planRotationZone`)のみ、いずれも `Ephemeris.frameOf(center, rotatingWith)` 経由。同区画の「カメラの基準に追随」トグル(`followCamera`、既定 on)が on の間は `setFocus` によるカメラ側フォーカス移動もここへ連動する |
 | 予測到達割合(`predictionRatio`)・直近 `sync()` で受け取った表示期間(`lastDuration`) | `DisplayWindowManager` | いずれも private な導出値。`predictionRatio` は `sync(player)` が呼ばれるたび private `predictionCoverageRatio(player)` が自機の `predictedTrajectory.state.t` と `current`(simTime, duration)から自分で求め直す(外部からの書き込みはない)。`lastDuration` は直近の `resolve()` 呼び出しが確定させた表示期間を憶えておくだけの値で、ジャンプ入力(DOM イベント、フレーム外)が `sliderT` を逆算する際にだけ参照される |
-| マップ視点(注視点相対オフセット・パン・上方向)・座標系(cameraFrame)・フォーカス(FocusTarget)・Viewpoint | `OverviewCamera` | `viewpoint: Viewpoint` は `CombatCameraSystem` と同じ形。`CameraSystem` はこの `viewpoint` を読むだけで自分では持たない。フォーカスは `camera/focus-target.ts` の `FocusTarget`(`{kind:'object', id}` または `{kind:'point', frame, point}`)で、`{kind:'object'}` が指す実位置は `OverviewCamera` が持たず、`update` の引数(`MapPicker.refresh()`)から毎フレーム引き直す。書き換えは `setFocusTarget`/`setCameraRotation` のみ、いずれも `FrameControls` の「カメラ(視点)」区画の中心/回転ゾーン(`cameraCenterZone`/`cameraRotationZone`)から呼ばれる |
+| マップ視点(注視点相対オフセット・パン・上方向)・座標系(cameraFrame)・フォーカス(FocusTarget)・Viewpoint | `OverviewCamera` | `viewpoint: Viewpoint` は `CombatCameraSystem` と同じ形。`CameraSystem` はこの `viewpoint` を読むだけで自分では持たない。フォーカスは `camera/focus-target.ts` の `FocusTarget`(`{kind:'object', id}` または `{kind:'point', frame, point}`)で、`{kind:'object'}` が指す実位置は `OverviewCamera` が持たず、`update` の引数(`MapPickables.refresh()`)から毎フレーム引き直す。書き換えは `setFocusTarget`/`setCameraRotation` のみ、いずれも `FrameControls` の「カメラ(視点)」区画の中心/回転ゾーン(`cameraCenterZone`/`cameraRotationZone`)から呼ばれる |
 | 戦闘視点(Viewpoint: position/lookTarget/up/fovDeg/aspect)・照準ズーム中か(zoomActive) | `CombatCameraSystem` | rot(クオータニオン)/dist・姿勢追従フラグ(camFollowAttitude)は内部の `ChaseCamera` が持つ。zoomActive はこのクラス自身の `update` が `Input` から読んで保持する |
 | 現在のビュー(combat/map/dock) | `ViewManager`(private `worldView`/`isDockOpen`) | 遷移は基本的に `setView()` のみ(影響先 `CameraSystem.overviewMode` / `PlanEditor.editMode` / `DisplayWindowManager.forceCurrent` / タッチUI を一斉に切り替える)だが、`leaveDock()` だけは例外で、ドックを閉じて背後のビューへ戻るだけの操作を `setView()` を経由せず `isDockOpen` を直接倒して行う(`worldView` は動かさないので `canEnter` チェックも不要)。`worldView` が背後の 3D 側ビュー、`isDockOpen` がドックの開閉を持ち、`current` はこの2つから導出する。`isDockOpen` は `ViewManager` が正本のままで、`hud.overlayManager` へは `syncDockOverlay`(`setView`/`leaveDock` いずれからも呼ばれる)が開閉を通知するだけの一方向 — `OverlayManager.closeTopmostOnEscape()` が `'dock-view'` を閉じるときは `private dockOverlayHandle`(`close` が `this.leaveDock()` を呼ぶだけの adapter)を経由して戻ってくる |
 | ドックビューの対象基地 | `Docking`(private `_activeBase`) | 基地の右クリックメニューで設定。これが空でない間だけ `ViewManager.selectableViews()` に `'dock'` が並ぶ |
 | マップモード表示 | `CameraSystem.overviewMode` | 描画・視点側の分岐はこれを見る。`CameraSystem.zoomActive` は `!overviewMode && combatCamera.zoomActive` を返すだけの派生 getter(状態は持たない) |
-| 開いているプロパティウィンドウの集合・一時ウィンドウのキー | `MapPicker`(`windows`/`tempWindowKey`) | キーは `` `${kind}:${id}` ``。`openPropertyWindow` が新規/移動を判断し、`closeWindow`/`forgetWindow` が畳む。個々の `PropertyWindow` インスタンス自身はクリップ状態(`clipped`)とドラッグ位置だけを持ち、開閉のポリシー(いつ閉じるか)は持たない — クリップ状態が変わったこと自体は `onClipChange` で `MapPicker` に通知し、`tempWindowKey` の付け替えは通知を受けた `MapPicker` 側が行う |
-| 第一・第二ターゲット・的通過マーク | `Targeter`(`target`/`secondaryTarget`) | `Targeter.setPrimaryTarget`/`setSecondaryTarget`(`MapPicker`が開くプロパティウィンドウの`targetPrimary`/`targetSecondary`項目、または`[T]`キーの`handleTargetSelectKey`)でのみ変わる。自動選定・自動再選択はない |
+| 開いているプロパティウィンドウの集合 | `MapContextActions`(`windows: Map<string, WindowEntry>`) | キーは `` `${kind}:${id}` ``。`openPropertyWindow` が新規/移動を判断し、`closeWindow`/`forgetWindow` が畳む。個々の `PropertyWindow` インスタンス自身はクリップ状態(`clipped`)とドラッグ位置だけを持ち、開閉のポリシー(いつ閉じるか)は持たない。「非クリップは高々1枚」という排他自体はこのクラスの状態ではなく `Hud.overlayManager` が `PROPERTY_WINDOW_TEMP_GROUP`(`exclusiveGroup`)経由で持つ(上記参照共有の表) |
+| 第一・第二ターゲット・的通過マーク | `Targeter`(`target`/`secondaryTarget`) | `Targeter.setPrimaryTarget`/`setSecondaryTarget`(`MapContextActions`が開くプロパティウィンドウの`targetPrimary`/`targetSecondary`項目、または`[T]`キーの`handleTargetSelectKey`)でのみ変わる。自動選定・自動再選択はない |
 | 航法ターゲット(id)・相対 AN/DN | `NavTarget` | `update()` が自機軌道要素 + `Ephemeris` から毎フレーム再算出する導出値だが、対象の id 自体(`toggleTarget` で変わる)は正本 |
 | 勝敗フェーズ | `Stage`(private `_phase`) | 変更は Stage 自身のみ。外部は `phase`/`isPlaying` を読む |
 | 発射数・命中数・撃破数・出撃数 | `ScoreCounter` | 所有は Stage |
@@ -340,7 +351,7 @@ main.ts
 | ウェーブフェーズ・波数 | `WaveAttack`(Stage00・CreativeStage がそれぞれ1個 own) | |
 | 残り時間 | `ScoreAttackTimer`(Stage0) | |
 | ステージクリア回数 | **localStorage**(`tepui.clearCounts`) | UnlockManager はその読み書き窓口。インスタンスは正本ではない |
-| ポーズ | `Game.paused` | 駆動源は `SettingsPanel.onSettingsOpenChange` と `SaveBrowser.open()`/`close()` の2つ。どちらもシステム窓で、開いている間だけ止める |
+| ポーズ | `Game.paused` | 駆動源は `PauseMenu.onPauseMenuOpenChange` と `SaveBrowser.open()`/`close()` の2つ。どちらもシステム窓で、開いている間だけ止める |
 | スナップショット一覧の表示状態 | `SaveBrowser`(private `_visible`) | `open()`/`close()` のみが書き換える。毎フレーム sync は持たず、操作のたびに自分で DOM を作り直す一発モーダル |
 | 一時エフェクト(フラッシュ)の配列 | `FlashEffectManager.effects` | 各要素は位置を時刻つきの `KinematicState` で持ち、`updateFlashEffects` がその時刻から `simTime` まで移流させる |
 | 地球自転の初期位相 | `EarthBody.phase0` | `spinPhase0()`/`setSpinPhase0()` で読み書き可能。セーブは `EnvironmentScene.earthSpinPhase0()` 経由。ロードは `Game` のコンストラクタが `new EnvironmentScene(scene, ephemeris, initialSave?.earthSpinPhase0)` として構築時に一度だけ渡し、値がある場合だけ `EnvironmentScene` のコンストラクタが `setSpinPhase0` を呼ぶ(無ければそのセッションのランダム初期位相のまま) |
@@ -387,8 +398,10 @@ main.ts
 - **`Targeter.target`(戦闘ターゲット、`Enemy` のみ)と `NavTarget.id`(航法ターゲット、任意の `MapPickable`)**
   は別の正本。前者は射撃・LEAD・的通過マークの対象、後者はマップの相対 AN/DN・時間加速・ノード追加の
   対象で、対象の型も操作系(右クリック位置がヒットしたのが敵かそれ以外か)も異なるため一本化しない。
-- **マップモードの操作パネル**は状態の所有者ごとに分かれる。`OverviewCameraPanel`(天体クラス別トグル・
-  弾薬トグル)は CameraSystem が、`DisplayTimePanel`(期間・未来位置スライダー)は DisplayWindowManager が
+- **マップモードの操作パネル**は状態の所有者ごとに分かれる。`ViewOptionsPanel`(天体クラス別トグル)は
+  CameraSystem が、その天球グリッドセクションは `Navball` が(DOM 自体は同じ `ViewOptionsPanel` インスタンスに
+  同居する — 「マップに何を出すか」を1枚にまとめるための意図的な同居で、正本は分かれたまま)、
+  `PredictPanel`(期間・未来位置スライダー)は DisplayWindowManager が
   持ち、それぞれ自分の状態だけを映して自分の状態だけを受け取る。座標系パネル(FrameControls)だけは
   例外で、状態を持たず `OverviewCamera` と `DisplayWindowManager`(`frame`)という別々の所有者へ
   4ゾーンから書き込む横断モジュール(上記「同時に切り替わる」節参照)。表示・非表示も各所有者が毎フレームの
@@ -397,14 +410,16 @@ main.ts
   どのキーがどの操作かは KEY_MAPPING(コード + 表示名)だけが持ち、入力を読む側(`Input.down` /
   `Input.takeKey` は `KeyBinding` を受ける)と説明を出す側(ヘルプ表・操作バー・タッチパッド・
   ステージ briefing・結果画面)は両方ともそれを参照する。どの操作を誰が処理するかは各モジュールに
-  閉じたままで(`SettingsPanel`=pauseMenu / `Hud`=help / `Stage`=restart /
+  閉じたままで(`PauseMenu`=pauseMenu / `Hud`=help / `Stage`=restart /
   `SimSpeedManager`=warpSlower・warpFaster・autoWarpToNode / `ViewManager`=toggleMapMode /
   `PlanEditor`=deleteNode・dv* / `CameraSystem`=followAttitudeToggle・gunsightZoom・camera* /
   `Player`=rcsDampToggle・progradeReset・fineAttitudeToggle・progradeHoldToggle・throttle*・reload・thrust*・pitch/yaw/roll)、
   `game.ts` が持つのは「どのモジュールに先に配るか」という順序だけ。
   ステージ選択画面のキー(`Stage.selectKeys`)はステージ定義側のデータなので KEY_MAPPING には含めない。
-- **`HudPanels` は表示専用**。Game を丸ごと読んで自分の4パネルへ書くだけで、他モジュールの状態や
-  DOM は操作しない。ステージ固有の状況パネルは `Stage`(`StageStatusPanel`)、タッチUIのトグル点灯は
+- **常設パネル6枚(`StatusPanel`/`OrbitPanel`/`TargetPanel`/`ContactsPanel`/`GlobalStatusBar`/`MapScaleBadge`)は
+  いずれも表示専用**。Game を丸ごと読んで自分1枚だけへ書き、他モジュールの状態やDOMは操作しない —
+  1パネル1クラスなので、他クラスの状態や DOM に触れる理由自体が生じない。ステージ固有の状況パネルは
+  `Stage`(`StageStatusPanel`)、タッチUIのトグル点灯は
   `TouchControls.syncModeButtons()` が担当し、いずれも game.sync が自機/ステージの状態を渡す。
 - **HUD マーカーは対象の持ち主が出す**。自機由来(方向/ボアサイト/マップ上の自機)は `PlayerMarkers`、
   戦闘ターゲット由来(方位・的通過マーク)は `Targeter`、航法ターゲット由来(相対 AN/DN)は
@@ -461,7 +476,7 @@ main.ts
 | `CreativeStage.preview`(軌道要素 + 位置) | 艦艇配置フォームの現在値からの導出値(正本はフォームの DOM) | `update()` 毎に再算出。パネルを閉じている間・値を解釈できないときは null |
 | `CreativeStage.issues`(`PlacementFieldIssue[]`) | 艦艇配置フォームの現在値からの導出値(正本はフォームの DOM。centerRadius/mu は `Ephemeris` から引く) | `update()` 毎に再算出、`sync()` で `ShipPlacerPanel.setIssues()` へ push。パネルを閉じている間は空配列 |
 | `PlanDisplay.apsisMarkers` / アイコン位置 | `path.finalSegment()` の `periapsis`/`apoapsis`(末尾 `PlanArc` が積分中に検出した値)を読み、検出時と同じ基準天体(`FinalSegment.apsisCenter`)に対して — その位置だけを極値の時刻で `ephemeris.positionOf` から引き直して — 距離・高度を出した導出値(軌道要素からの解析的な導出ではない — エポック依存の値だと Δv=0 のノード追加でも動いてしまうため) | `apsisIconsOf()` 毎(`update()` から呼ぶ) |
-| 操作艦の EqAN/EqDN 位置 | `PlanEditor.update` が渡す `PlanPath.finalSegment()` の `samples` を `findEquatorCrossings` で走査した導出値。それ以外の対象(戦闘ターゲット・基地・航法ターゲット)は軌道要素からの解析的な導出値 | `EquatorNodeMarkerPair.update()` 毎 || `MapPicker.pickables` | `FocusMarkers.bodyPickables(displayTime, visibility)`(そのフレームの `MapVisibilityPolicy` が admits した天体+ラグランジュ点) + 生存中の全 `entities.players`・敵船・弾薬・基地のうち `visibility.entity(kind, ...)` が admits したものの displayState + `NavTarget.mapPickables()` + `PlanDisplay.apsisMarkers` + `entities.all()` の各 `equatorNodes?.mapPickables()` の合成(保持しない使い捨て配列) | `mapPicker.refresh()`(`updateMapPresentation` 内、`cameraSystem.update()` 直前)毎に作り直す |
+| 操作艦の EqAN/EqDN 位置 | `PlanEditor.update` が渡す `PlanPath.finalSegment()` の `samples` を `findEquatorCrossings` で走査した導出値。それ以外の対象(戦闘ターゲット・基地・航法ターゲット)は軌道要素からの解析的な導出値 | `EquatorNodeMarkerPair.update()` 毎 || `MapPickables.pickables` | `FocusMarkers.bodyPickables(displayTime, visibility)`(そのフレームの `MapVisibilityPolicy` が admits した天体+ラグランジュ点) + 生存中の全 `entities.players`・敵船・弾薬・基地のうち `visibility.entity(kind, ...)` が admits したものの displayState + `NavTarget.mapPickables()` + `PlanDisplay.apsisMarkers` + `entities.all()` の各 `equatorNodes?.mapPickables()` の合成(保持しない使い捨て配列) | `mapPickables.refresh()`(`updateMapPresentation` 内、`cameraSystem.update()` 直前)毎に作り直す |
 
 ### 基礎データ型の不変性(整合性の前提)
 

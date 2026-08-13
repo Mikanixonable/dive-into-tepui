@@ -1,5 +1,6 @@
 // 軌道計画の編集(ノードの配置・時刻移動・Δv 調整・選択・削除)と計画パネルへの反映。
-// 未来表示(計画折れ線・ゴースト)は PlanDisplay を所有・駆動することで行う。
+// 未来表示(計画折れ線・ゴースト)は PlanDisplay を所有・駆動することで行う。パネルの DOM
+// (ノード一覧・Δv 手動入力欄)は PlanPanel が持つ。
 import type * as THREE from 'three/webgpu';
 import { KinematicState, fromOrbitAxes, kinematicState, orbitAxes } from '../../physics/kinematic-state';
 import { OrbitalElements } from '../../physics/elements';
@@ -7,12 +8,9 @@ import { Projected } from '../../physics/projection';
 import { Vec3, add, dot, len, scale, sub, v3 } from '../../physics/vec3';
 import type { Ephemeris } from '../../physics/ephemeris';
 import * as C from '../const';
-import { ACCENT, TEXT, TEXT_DIM, FILL_2, AXIS_PROGRADE, AXIS_NORMAL, AXIS_RADIAL } from '../theme';
 import { Hud } from '../hud/hud';
-import { HoldButton, ValueInput } from '../hud/widgets';
 import { ContextMenu } from '../hud/context-menu';
 import { MenuAction, MenuCommon } from '../hud/menu-actions';
-import { fmtDist, fmtTime } from '../hud/utils';
 import { Sfx } from '../../audio/sfx';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { FloatingOrigin } from '../floating-origin';
@@ -21,10 +19,9 @@ import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { AxisHandleSpec, NodeGizmo, NodeHandleSpec } from './node-gizmo';
 import { PlanGizmo3D } from './plan-gizmo-3d';
+import { PlanPanel } from './plan-panel';
 import { DisplayDurationSource, Plan } from './plan';
-import { apsisAltitudes } from '../../physics/elements';
 import { PlanDisplay } from './plan-display';
-import { hudDock } from '../hud/dom';
 import { SimSpeedManager } from '../sim-speed-manager';
 import type { Player } from '../player/player';
 import { Attractor, orbitalElementsOf, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
@@ -32,54 +29,6 @@ import { toFrameState } from '../../physics/frame';
 import type { PlanAttractorProvider } from '../simulation/attractors';
 import type { DisplayWindow } from '../display-window-manager';
 import type { PerfCounts } from '../../perf-meter';
-
-interface DvButtons {
-  readonly pro: HoldButton;
-  readonly ret: HoldButton;
-  readonly nrm: HoldButton;
-  readonly anm: HoldButton;
-  readonly out: HoldButton;
-  readonly in: HoldButton;
-}
-
-// prograde/retrograde/normal/antinormal/radial out/in の長押しボタン6個を組み立てる。
-function buildDvButtons(): { row: HTMLElement; buttons: DvButtons; } {
-  const row = document.createElement('div');
-  row.className = 'w-group';
-  const mk = (dir: string, key: string): HoldButton => new HoldButton(`${dir} [${key}]`);
-  const buttons: DvButtons = {
-    pro: mk('PRO', K.dvPrograde.label),
-    ret: mk('RET', K.dvRetrograde.label),
-    nrm: mk('NRM', K.dvNormal.label),
-    anm: mk('ANM', K.dvAntinormal.label),
-    out: mk('OUT', K.dvRadialOut.label),
-    in: mk('IN', K.dvRadialIn.label),
-  };
-  for (const b of Object.values(buttons)) row.appendChild(b.element);
-  return { row, buttons };
-}
-
-// マニューバ手動入力欄1行分(軸ラベル + 数値入力)を組み立てて row へ足す。
-function buildDvAxisInput(row: HTMLElement, label: string, color: string, onCommit: () => void): ValueInput {
-  const line = document.createElement('div');
-  line.className = 'row';
-  line.style.width = '100%';
-  line.style.gap = '4px';
-  line.style.alignItems = 'center';
-  const k = document.createElement('span');
-  k.className = 'k';
-  k.style.width = '28px';
-  k.style.color = color;
-  k.style.fontWeight = 'bold';
-  k.textContent = label;
-  line.appendChild(k);
-  const input = new ValueInput({ type: 'number', step: 0.1 }, onCommit);
-  input.element.style.flex = '1';
-  input.element.style.width = '0';
-  line.appendChild(input.element);
-  row.appendChild(line);
-  return input;
-}
 
 // ホールド継続時間 [s] から Δv 加算レートを指数的に求める。押し始めは細かく、長押しで粗くなる。
 function rampedDvRate(heldSec: number): number {
@@ -129,19 +78,13 @@ export class PlanEditor {
   // ノード以外の計画軌道上を右クリックしたときのメニュー。
   private readonly orbitMenu: ContextMenu<KinematicState, MenuAction>;
 
-  private readonly dvButtons = buildDvButtons();
   // 6 方向それぞれのホールド継続時間 [s]。index は axis*2 + (sign<0 ? 1 : 0)。
   private readonly dvHoldTime: number[] = [0, 0, 0, 0, 0, 0];
 
-  private readonly planPanel: HTMLElement;
-  private readonly planBody: HTMLElement;
-  private readonly editForm: HTMLElement;
-  private readonly dvProInput: ValueInput;
-  private readonly dvNrmInput: ValueInput;
-  private readonly dvRadInput: ValueInput;
+  private readonly panel: PlanPanel;
   private simTime = 0;
 
-  // 計画パネルの DOM を組み立て、ノードギズモのコールバックを配線する。
+  // ノードギズモと計画パネルの DOM を組み立て、両者のコールバックを配線する。
   constructor(
     private readonly _hud: Hud,
     private readonly _sfx: Sfx,
@@ -159,35 +102,9 @@ export class PlanEditor {
     this.gizmo3d = new PlanGizmo3D();
     scene.add(this.gizmo3d.group);
 
-    this.planPanel = document.createElement('div');
-    this.planPanel.id = 'hud-plan';
-    this.planPanel.className = 'panel';
-    this.planPanel.innerHTML = `
-      <h3>軌道計画 [${K.toggleMapMode.label}]</h3>
-      <div data-id="planbody"></div>
-      <div data-id="planedit" style="display:none; margin-top:8px; padding-top:8px; border-top:1px solid ${FILL_2}">
-        <div style="font-size:10px; color:${TEXT_DIM}; margin-bottom:4px;">マニューバ手動入力 (m/s)</div>
-      </div>
-    `;
-    this.planPanel.style.display = 'none';
-    this.planBody = this.planPanel.querySelector<HTMLElement>('[data-id="planbody"]')!;
-    this.editForm = this.planPanel.querySelector<HTMLElement>('[data-id="planedit"]')!;
+    this.panel = new PlanPanel(this._hud.layers.panel);
+    this.panel.onDvInputChange = (pro, nrm, rad) => this.setNodeDvLocal(pro, nrm, rad);
 
-    const onInputChange = () => {
-      this.setNodeDvLocal(
-        parseFloat(this.dvProInput.element.value) || 0,
-        parseFloat(this.dvNrmInput.element.value) || 0,
-        parseFloat(this.dvRadInput.element.value) || 0
-      );
-    };
-    const dvRow = document.createElement('div');
-    dvRow.className = 'w-group';
-    this.dvProInput = buildDvAxisInput(dvRow, 'PRO', AXIS_PROGRADE, onInputChange);
-    this.dvNrmInput = buildDvAxisInput(dvRow, 'NRM', AXIS_NORMAL, onInputChange);
-    this.dvRadInput = buildDvAxisInput(dvRow, 'RAD', AXIS_RADIAL, onInputChange);
-    this.editForm.appendChild(dvRow);
-
-    hudDock(this._hud.layers.panel, 'right').appendChild(this.planPanel);
     this.orbitMenu.onSelect = (act, state) => {
       if (act !== 'warp') return;
       if (this.simSpeedManager.startAutoWarpTo(state.t, this.simTime)) this._hud.hint('指定位置まで自動ワープ開始');
@@ -658,7 +575,7 @@ export class PlanEditor {
   // WASDQE キー・長押しボタン・Δv アームのラッチドラッグから選択中ノードの Δv を加算する。
   updateEditing(dt: number, input: Input): void {
     const fine = this.activePlayer?.fineAttitude ?? false;
-    const b = this.dvButtons.buttons;
+    const b = this.panel.dvButtons;
     this.applyHeldDv(0, 1, input.down(K.dvPrograde) || b.pro.isHeld, dt, fine);
     this.applyHeldDv(0, -1, input.down(K.dvRetrograde) || b.ret.isHeld, dt, fine);
     this.applyHeldDv(1, 1, input.down(K.dvNormal) || b.nrm.isHeld, dt, fine);
@@ -678,7 +595,7 @@ export class PlanEditor {
     }
   }
 
-  // 計画パネルの HTML を、現在のノード列と選択中ノードから組み直す。
+  // 現在のノード列と選択中ノードから、計画パネルへ渡す表示値を組み立てて反映する。
   private syncPanel(plan: Plan, simTime: number): void {
     const arriving = this.planDisplay.path.arrivalStates();
     const nodes = plan.nodes.map((n, i) => ({
@@ -710,27 +627,12 @@ export class PlanEditor {
     // 簡略化に基づく(CLAUDE.md 既述)ので、ECI 原点(ephemeris.originId)ではなく
     // 地球という天体そのものへの一致で判定する — レジストリに地球が無ければ常に false になり、
     // クラッシュも誤警告もしない。
-    const html = planPanelHtml(nodes, selEl, center.id === 'earth');
-    
-    // ノードが選択されていない時はパネル全体を非表示にする
-    this.planPanel.style.display = this.selectedNodeIdx !== null ? 'block' : 'none';
-    
-    if (this.planBody.innerHTML !== html) this.planBody.innerHTML = html;
-
-    if (this.selectedNodeIdx !== null && localDv) {
-      this.editForm.style.display = 'block';
-      // 入力フォームにフォーカスがない時だけ値を同期(ドラッグ操作での変動を反映)
-      if (document.activeElement !== this.dvProInput.element) this.dvProInput.setValue(localDv.x.toFixed(1));
-      if (document.activeElement !== this.dvNrmInput.element) this.dvNrmInput.setValue(localDv.y.toFixed(1));
-      if (document.activeElement !== this.dvRadInput.element) this.dvRadInput.setValue(localDv.z.toFixed(1));
-    } else {
-      this.editForm.style.display = 'none';
-    }
+    this.panel.sync(nodes, selEl, localDv, center.id === 'earth', this.selectedNodeIdx !== null);
   }
 
   // 計画パネルを非表示にする。
   hidePanel(): void {
-    this.planPanel.style.display = 'none';
+    this.panel.hide();
   }
 
   // 計画折れ線を再積分し、ゴースト位置とアプシスアイコンを求め直す。折れ線は戦闘ビューでも
@@ -802,41 +704,4 @@ export class PlanEditor {
     }
     this.selectedNodeIdx = null;
   }
-}
-
-// 計画パネルの定型 HTML。近地点が大気圏内(<120km)なら警告を添える。
-function planPanelHtml(
-  nodes: { tRel: number; dvMag: number; selected: boolean; }[],
-  selEl: OrbitalElements | null,
-  warnAtmosphere: boolean,
-): string {
-  const row = (k: string, v: string) => `<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>`;
-  let s = '';
-  // ノード一覧
-  if (nodes.length > 0) {
-    s += nodes
-      .map((n, i) => {
-        const sign = n.tRel >= 0 ? 'T-' : 'T+';
-        return `<div class="row"><span class="k">${n.selected ? '▸ ' : ''}◈ NODE${i + 1} ${sign}${fmtTime(Math.abs(n.tRel))}</span><span class="v">${n.dvMag.toFixed(1)} m/s</span></div>`;
-      })
-      .join('');
-  }
-  // 噴射後の軌道要素、近地点が大気圏内なら警告
-  if (selEl) {
-    const apsis = apsisAltitudes(selEl);
-    s +=
-      `<div style="margin-top:4px;color:${TEXT};font-size:11px;letter-spacing:1px">噴射後の軌道</div>` +
-      row('遠地点 AP', fmtDist(apsis.ap)) +
-      row('近地点 PE', fmtDist(apsis.pe)) +
-      row('傾斜角 INC', isFinite(selEl.incDeg) ? `${selEl.incDeg.toFixed(2)}°` : '---') +
-      row('周期 PRD', fmtTime(selEl.period));
-    if (warnAtmosphere && isFinite(apsis.pe) && apsis.pe < 120e3) {
-      s += `<div style="color:${ACCENT};margin-top:2px">⚠ 近地点が大気圏内</div>`;
-    }
-  }
-  // 操作キーのヒント
-  const dvKeys =
-    `${K.dvPrograde.label}/${K.dvRetrograde.label}・${K.dvNormal.label}/${K.dvAntinormal.label}・${K.dvRadialOut.label}/${K.dvRadialIn.label}`;
-    s += `<div style="margin-top:6px;color:${TEXT_DIM};font-size:11px">[クリック] ノード配置/選択 [ノードをドラッグ] 時刻移動とマニューバ維持 [矢印ハンドル/${dvKeys}/パネルのボタン] 長押しでΔv調整、ハンドルは大きくドラッグし続けると加速 <br>[右クリック] メニュー(自動ワープ/削除) [${K.deleteNode.label}] 選択ノード削除 [${K.fineAttitudeToggle.label}] 微調整 [${K.toggleMapMode.label}] 確定して戻る(時間は進み続ける)</div>`;
-  return s;
 }

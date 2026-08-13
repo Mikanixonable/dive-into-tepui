@@ -1,6 +1,6 @@
 // ステージ固有の状況表示パネル(左部: ステージ補助メッセージ・撃墜数 / 中央部: 自機の装甲・エンジン出力・
 // 動圧・温度・電力 / 右部: ラジエーター左右の展開ボタン)。表示内容がステージごとに決まるので Stage が所有し、
-// hudSubStatus() を返すステージでだけ現れる。CSS(#hud-stagestatus)は hud/dom.ts の STYLE に一元管理されている。
+// hudSubStatus() を返すステージでだけ現れる。CSS(#hud-stagestatus)は hud/hud-root.ts の STYLE に一元管理されている。
 
 const LOW_HP_RATIO = 0.3;
 const RADIATOR_HIGH_WEAR = 0.5;
@@ -56,8 +56,7 @@ export class StageStatusPanel {
   constructor(root: HTMLElement) {
     this.panel = document.createElement('div');
     this.panel.id = 'hud-stagestatus';
-    this.panel.className = 'panel';
-    this.panel.style.display = 'none';
+    this.panel.className = 'panel hidden';
     this.panel.innerHTML =
       `<div class="k"><div class="k-text"></div><div class="k-widgets"></div></div>` +
       `<div class="t"></div><div class="radiators"></div>`;
@@ -197,11 +196,11 @@ export class StageStatusPanel {
       this.leftText.innerHTML = leftHtml;
       this.lastLeftHtml = leftHtml;
     }
-    this.panel.style.display = 'flex';
+    this.panel.classList.remove('hidden');
   }
 
   // パネル DOM を非表示にする
   hide(): void {
-    this.panel.style.display = 'none';
+    this.panel.classList.add('hidden');
   }
 }

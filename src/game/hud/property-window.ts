@@ -8,7 +8,7 @@ import { CLICK_MOVE_THRESHOLD } from '../const';
 import { clampOverlayPosition, Point2 } from './layout';
 import { shortcutKeyLabel } from './shortcut-hint';
 import { bringToFront as bringOverlayToFront } from './overlay-layer';
-import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from './dom';
+import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from './hud-root';
 import { onViewportChange } from './viewport';
 import { Button, CloseButton, ValueInput } from './widgets';
 import type { OverlayHandle, OverlayManager, OverlaySpec } from './overlay-manager';
