@@ -24,6 +24,19 @@ function saveCollapsedState(state: Record<string, boolean>): void {
   }
 }
 
+// id の保存済み折りたたみ状態を返す。一度も操作されていなければ undefined。
+// PanelShell 以外の折りたたみ可能な置き場(左右レール)も同じ永続を共有するために公開する。
+export function loadPanelCollapsed(id: string): boolean | undefined {
+  return loadCollapsedState()[id];
+}
+
+// id の折りたたみ状態を保存する。
+export function savePanelCollapsed(id: string, collapsed: boolean): void {
+  const state = loadCollapsedState();
+  state[id] = collapsed;
+  saveCollapsedState(state);
+}
+
 export class PanelShell {
   readonly el: HTMLElement;
   readonly titleEl: HTMLHeadingElement;
@@ -31,8 +44,8 @@ export class PanelShell {
 
   // parent の子として id のパネルを組む。title は見出しの初期テキスト — 呼び出し側は
   // titleEl を直接書き換えて埋め込み要素(件数バッジ等)を足してよい。折りたたみ状態は
-  // 直前にこの id で畳まれていれば引き継ぐ。
-  constructor(parent: HTMLElement, id: string, title: string) {
+  // 直前にこの id で畳まれていれば引き継ぎ、一度も操作されていなければ defaultCollapsed に従う。
+  constructor(parent: HTMLElement, id: string, title: string, defaultCollapsed = false) {
     this.el = document.createElement('div');
     this.el.id = id;
     this.el.className = 'panel panel-shell';
@@ -50,7 +63,7 @@ export class PanelShell {
 
     // 初期の折りたたみ状態を buildCollapseToggle へ渡す前に body 側へ反映しておく —
     // そうしないと最初の描画がボタンの初期グリフと食い違う。
-    const collapsed = loadCollapsedState()[id] === true;
+    const collapsed = loadPanelCollapsed(id) ?? defaultCollapsed;
     this.body.classList.toggle('collapsed', collapsed);
     const toggle = buildCollapseToggle(head, `${id}-collapse`, 'panel-shell-collapse', this.body, {
       expandedGlyph: COLLAPSE_EXPANDED_GLYPH,
@@ -59,9 +72,7 @@ export class PanelShell {
       collapsedTitle: `${title}を開く`,
     });
     toggle.addEventListener('click', () => {
-      const state = loadCollapsedState();
-      state[id] = this.body.classList.contains('collapsed');
-      saveCollapsedState(state);
+      savePanelCollapsed(id, this.body.classList.contains('collapsed'));
     });
 
     parent.appendChild(this.el);

@@ -11,6 +11,7 @@ import { celestialBodyName } from './frame-labels';
 import type { OverlayHandle, OverlayManager } from './overlay-manager';
 import { findStageClass } from '../stages/stage-dictionary';
 import { Button, CloseButton, Meter, TabBar } from './widgets';
+import { MQ_COMPACT } from './breakpoints';
 
 const STYLE = `
 #save-browser {
@@ -54,7 +55,7 @@ const STYLE = `
 /* 左ペインは幅が狭いので、フッターのボタンは横並びにせず縦積みにして折り返しを防ぐ。 */
 #save-browser .sb-slot-footer { display: flex; flex-direction: column; gap: var(--space-3); margin-top: auto; padding-top: var(--space-3); }
 /* span. まで指定して .w-btn 側の見た目より確実に勝たせる
-   (ID+クラスの詳細度は #hud .w-btn と同着のため、宣言順に頼らない)。 */
+   (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
 #save-browser span.sb-btn {
   padding: var(--space-2) var(--space-4); background: var(--fill-1); color: var(--text-dim); font-size: var(--font-xs);
   white-space: nowrap;
@@ -96,6 +97,15 @@ const STYLE = `
 }
 #save-browser .sb-status { min-height: 20px; padding: var(--space-2) var(--space-5); font-size: var(--font-xs); color: var(--text-dim); border-top: 1px solid var(--edge); }
 #save-browser .sb-status.error { color: var(--danger); }
+/* compact: 左右ペインを並べず、sb-mobile-tabs で切り替えた片方だけを表示する。 */
+#save-browser .sb-mobile-tabs { display: none; padding: var(--space-3) var(--space-5) 0; }
+@media ${MQ_COMPACT} {
+  #save-browser .sb-panel { width: 100vw; height: 100vh; height: 100dvh; border-radius: 0; }
+  #save-browser .sb-mobile-tabs { display: flex; }
+  #save-browser .sb-body { flex-direction: column; }
+  #save-browser .sb-pane-slots { flex: 1 1 0; }
+  #save-browser .sb-pane:not(.sb-pane-mobile-active) { display: none; }
+}
 `;
 
 let styleInjected = false;
@@ -131,6 +141,8 @@ export class SaveBrowser implements OverlayHandle {
   private viewedStageId: string | null = null;
   private statusLine = '';
   private statusIsError = false;
+  // compact 幅でだけ、左右ペインのどちらを表示するか(タブで切り替える)。
+  private mobilePane: 'slots' | 'snapshots' = 'slots';
 
   // ページ再読込などスロット切替の実処理は呼び出し側が行う。
   onSlotSwitched: (() => void) | null = null;
@@ -209,11 +221,24 @@ export class SaveBrowser implements OverlayHandle {
     header.appendChild(closeBtn.element);
     panel.appendChild(header);
 
+    // compact 幅だけで見えるペイン切替タブ。表示条件そのものは CSS(#save-browser .sb-mobile-tabs)
+    // が持ち、ここでは常に組んで選択状態だけ渡す。
+    const mobileTabs = new TabBar<'slots' | 'snapshots'>(
+      [['slots', 'セーブデータ'], ['snapshots', 'スナップショット']],
+      (pane) => { this.mobilePane = pane; this.rebuild(); },
+    );
+    mobileTabs.element.classList.add('sb-mobile-tabs');
+    mobileTabs.setSelected(this.mobilePane);
+    panel.appendChild(mobileTabs.element);
+
     const body = document.createElement('div');
     body.className = 'sb-body';
-    body.appendChild(this.buildSlotsPane());
+    const slotsPane = this.buildSlotsPane();
+    slotsPane.classList.toggle('sb-pane-mobile-active', this.mobilePane === 'slots');
+    body.appendChild(slotsPane);
     const snapPane = document.createElement('div');
     snapPane.className = 'sb-pane sb-pane-snapshots';
+    snapPane.classList.toggle('sb-pane-mobile-active', this.mobilePane === 'snapshots');
     snapPane.appendChild(this.buildSnapshotPane());
     body.appendChild(snapPane);
     panel.appendChild(body);
