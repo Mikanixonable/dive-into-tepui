@@ -28,7 +28,7 @@ const STYLE = `
 }
 /* 読み取りたい数値は選択できるようにするが、操作部品とマーカーは対象外にする —
    ボタンの連打やカメラドラッグのたびにラベルが選択されると操作の邪魔になる。 */
-#hud .seg-btn, #hud .hold-btn, #hud .hud-toggle, #hud .ctx-menu-item,
+#hud .ctx-menu-item,
 #hud .mk, #hud .dock-toggle, #hud-chase-reset, #hud-viewbadge .vb-view-btn { user-select: none; }
 ${OVERLAY_LAYER_STYLE}
 /* #hud 直下の兄弟同士の重なり順は overlay-layer.ts のレイヤが持つ。
@@ -98,12 +98,14 @@ body.hud-modal-open #touch-ui { display: none; }
 }
 #hud-viewbadge .vb-title { color: var(--accent); }
 #hud-viewbadge .vb-mode { color: var(--text-dim); }
-#hud-viewbadge .vb-view-btn {
-  pointer-events: auto; cursor: pointer; background: transparent;
-  border: 1px solid var(--edge); border-radius: var(--radius-m); padding: var(--space-1) var(--space-3);
+/* span. まで指定して .w-btn 側の font-size/padding/background より確実に勝たせる
+   (ID+クラスの詳細度は #hud .w-btn と同着のため、宣言順に頼らない)。 */
+#hud-viewbadge span.vb-view-btn {
+  background: transparent;
+  border-radius: var(--radius-m); padding: var(--space-1) var(--space-3);
   color: var(--text-dim); font: inherit; letter-spacing: inherit;
 }
-#hud-viewbadge .vb-view-btn:hover { color: var(--text); border-color: var(--accent-soft); }
+#hud-viewbadge span.vb-view-btn:hover { color: var(--text); border-color: var(--accent-soft); }
 #hud-globalstatus {
   position: absolute; top: 0; left: 50%; transform: translateX(-50%);
   pointer-events: auto;
@@ -157,13 +159,9 @@ body.hud-modal-open #touch-ui { display: none; }
 /* パネルの padding 分だけ食い込ませて幅いっぱいに広げ、スクロール中も先頭に張り付かせる */
 #hud-object-list .object-list-head { position: sticky; top: calc(var(--space-4) * -1); margin: calc(var(--space-4) * -1) calc(var(--space-5) * -1) 0; padding: var(--space-4) var(--space-5) 0; background: var(--surface-opaque); z-index: 1; }
 #hud-object-list .object-list-search { padding: var(--space-1) var(--space-2); }
-#hud-object-list .object-list-search input { width:100%; box-sizing:border-box; background:var(--surface); color:var(--text); border:1px solid var(--edge); font:inherit; }
-#hud-object-list .object-list-tools { display:flex; gap: var(--space-2); flex-wrap:wrap; padding: var(--space-1) var(--space-2); }
-#hud-object-list .object-list-tools button {
-  font-size: var(--font-xxs); padding: var(--space-1) var(--space-2); border:1px solid var(--edge); border-radius: var(--radius-m);
-  background:var(--surface); color:var(--text-dim);
-}
-#hud-object-list .object-list-tools button[aria-pressed="true"] { color:var(--accent); border-color:var(--accent); }
+#hud-object-list .object-list-search .w-input { width: 100%; }
+#hud-object-list .object-list-head .w-group { padding: var(--space-1) var(--space-2); }
+#hud-object-list .object-list-head .w-btn { font-size: var(--font-xxs); }
 #hud-object-list .object-list-collapse {
   margin-left: auto; background: none; border: none; color: var(--text-dim); font: inherit; cursor: pointer; pointer-events: auto;
 }
@@ -179,7 +177,7 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-object-list .object-list-detail { margin-left: auto; font-size: var(--font-xxs); color: var(--text-dim); white-space: nowrap; }
 #hud-object-list .erow:hover { color: var(--text); }
 #hud-object-list .erow.tgt { color: var(--accent); }
-#hud-object-list .erow.selected { outline: 1px solid var(--edge); color: var(--text); }
+#hud-object-list .erow.on { outline: 1px solid var(--edge); color: var(--text); }
 #hud-object-list .object-list-toggle { width: 10px; text-align: center; flex: none; }
 #hud-object-list .object-list-children { padding-left: var(--space-5); }
 #hud-combat-shelf { display: contents; }
@@ -242,36 +240,21 @@ body.hud-modal-open #touch-ui { display: none; }
 .mk-ammo { color: var(--accent-soft); text-shadow: 0 0 6px color-mix(in srgb, var(--accent-soft) var(--glow-strong), transparent), 0 0 3px var(--bg); }
 #hud .warn-hot { color: var(--danger); }
 #hud-plan { min-width: 0; width: 100%; max-width: 300px; overflow-wrap: anywhere; }
-#hud .hud-seg { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); flex-wrap: wrap; }
-#hud .hud-seg .seg-title { font-size: var(--font-xs); letter-spacing: 1px; color: var(--text-dim); min-width: 28px; }
-#hud .seg-btn {
-  pointer-events: auto; cursor: pointer; padding: var(--space-2) var(--space-5); font-size: var(--font-s);
-  border: 1px solid var(--edge); border-radius: var(--radius-m); background: var(--surface); color: var(--text-dim);
-  line-height: 1.2;
-}
-#hud .seg-btn.on { border-color: var(--accent); color: var(--accent); }
-#hud .seg-btn.disabled { opacity: 0.35; pointer-events: none; }
-#hud .seg-btn.hold-btn:active { border-color: var(--accent); color: var(--accent); background: var(--accent-fill); }
-#hud .icon-toggle-btn { min-width: 20px; padding: var(--space-2) var(--space-3); text-align: center; font-size: var(--font-m); }
+#hud .w-group { margin-bottom: var(--space-3); }
+#hud .w-toggle { margin-bottom: var(--space-3); }
+/* body-class-row: カテゴリー見出し + アイコン/ラベル/軌道線トグルの1行(MAP VIEW・表示パネル)。
+   見出しは幅を固定して縦に揃え、長い名前(ラグランジュ点など)は省略する。 */
 #hud .body-class-row { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); }
-#hud .body-class-row .body-class-title { width: 96px; min-width: 96px; text-align: left; font-size: var(--font-xs); letter-spacing: 1px; }
+#hud .body-class-row .body-class-title {
+  width: 96px; min-width: 96px; text-align: left; font-size: var(--font-xs); letter-spacing: 1px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 #hud .body-class-row .body-class-btns { display: flex; gap: var(--space-2); }
-#hud .body-class-row.category-off .icon-toggle-btn.on { border-color: var(--edge); color: var(--text-dim); font-weight: 700; opacity: .65; }
-#hud .body-class-row.category-off .icon-toggle-btn.disabled { opacity: .35; }
-#hud .category-toggle-btn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#hud .hud-toggle { display: flex; align-items: center; gap: var(--space-4); margin-bottom: var(--space-3); }
-#hud .hud-toggle .toggle-title { font-size: var(--font-xs); letter-spacing: 1px; color: var(--text-dim); }
-#hud .hud-toggle .toggle-track {
-  pointer-events: auto; cursor: pointer; position: relative; display: inline-block;
-  width: 34px; height: 18px; border-radius: var(--radius-l); border: 1px solid var(--edge);
-  background: var(--surface); transition: border-color var(--transition-fast), background var(--transition-fast);
-}
-#hud .hud-toggle .toggle-track.on { border-color: var(--accent); background: var(--accent-fill-strong); }
-#hud .hud-toggle .toggle-knob {
-  position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
-  background: var(--text-dim); transition: left var(--transition-fast), background var(--transition-fast);
-}
-#hud .hud-toggle .toggle-track.on .toggle-knob { left: 18px; background: var(--accent); }
+/* span. まで指定して .w-btn 側の padding/font-size より確実に勝たせる
+   (ID+クラスの詳細度は #hud .w-btn と同着のため、宣言順に頼らない)。 */
+#hud span.body-class-icon-btn { min-width: 20px; padding: var(--space-2) var(--space-3); text-align: center; font-size: var(--font-m); }
+#hud .body-class-row.category-off .body-class-icon-btn.on { border-color: var(--edge); color: var(--text-dim); font-weight: 700; opacity: .65; }
+#hud .body-class-row.category-off .body-class-icon-btn.disabled { opacity: .35; }
 /* MAP VIEW の左列は navball ウィンドウの右に置き、重なりを避ける。 */
 #hud-overview-camera { display: none; width: 100%; pointer-events: auto; }
 #hud-overview-camera .overview-camera-title { display: flex; align-items: center; gap: var(--space-2); }
@@ -302,12 +285,14 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-displaytime .dtp-row1, #hud-displaytime .dtp-row2 { display: flex; align-items: center; gap: var(--space-3); }
 #hud-displaytime .dtp-row1 { flex-wrap: wrap; margin-bottom: var(--space-2); }
 #hud-displaytime .dtp-pills { display: inline-flex; gap: var(--space-3); flex-wrap: wrap; align-items: center; }
-#hud-displaytime .dtp-reset {
-  pointer-events: auto; cursor: pointer; flex: 0 0 auto;
+/* span. まで指定して .w-btn 側の display/padding より確実に勝たせる
+   (ID+クラスの詳細度は #hud .w-btn と同着のため、宣言順に頼らない)。 */
+#hud-displaytime span.dtp-reset {
+  flex: 0 0 auto; padding: 0;
   width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
-  border: 1px solid var(--edge); border-radius: var(--radius-m); background: var(--surface); color: var(--text-dim); font-size: var(--font-m);
+  font-size: var(--font-m);
 }
-#hud-displaytime .dtp-reset:hover { border-color: var(--accent); color: var(--accent); }
+#hud-displaytime span.dtp-reset:hover { border-color: var(--accent); color: var(--accent); }
 #hud-displaytime .dtp-slider-wrap { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; height: 22px; }
 #hud-displaytime input[type="range"] { width: 100%; height: 22px; margin: 0; pointer-events: auto; accent-color: var(--accent); }
 #hud-displaytime .dtp-elapsed {
@@ -328,17 +313,8 @@ body.hud-modal-open #touch-ui { display: none; }
   border: 1px solid var(--edge); border-radius: var(--radius-m); background: var(--surface); color: var(--text-dim);
 }
 #hud-displaytime .dtp-edit-btn:hover { border-color: var(--accent); color: var(--accent); }
-/* パネル内の数値・テキスト入力欄の共通見た目(スライダーは上の range 規則が受け持つ)。 */
-#hud .panel input[type="number"], #hud .panel input[type="text"] {
-  pointer-events: auto; width: 64px; padding: var(--space-2) var(--space-3); font-size: var(--font-s);
-  border: 1px solid var(--edge); border-radius: var(--radius-m); background: var(--surface); color: var(--text);
-}
-#hud .settings-btn {
-  pointer-events: auto; cursor: pointer; padding: var(--space-2) var(--space-4); font-size: var(--font-s);
-  border: 1px solid var(--edge); border-radius: var(--radius-m); background: var(--surface); color: var(--text);
-}
-#hud .settings-btn:hover { background: var(--fill-1); }
-#hud .settings-btn:active { background: var(--fill-2); border-color: var(--accent-soft); }
+/* パネル内の数値・テキスト入力欄(ValueInput)の既定幅。見た目自体は widgets/ の .w-input が持つ。 */
+#hud .panel input[type="number"], #hud .panel input[type="text"] { width: 64px; }
 #hud-displaytime .slider-ticks { position: relative; height: 11px; margin-top: var(--space-1); }
 #hud-displaytime .slider-ticks span {
   position: absolute;
@@ -350,15 +326,15 @@ body.hud-modal-open #touch-ui { display: none; }
   scrollbar-width: thin;
 }
 /* 座標系の候補が増えても、見出しの右側へボタンを押し出さない。 */
-#hud-frame-controls .hud-frame-origin-zone > .hud-seg:first-child > .seg-title,
-#hud-frame-controls .hud-frame-rotation-zone > .seg-title {
+#hud-frame-controls .hud-frame-origin-zone > .w-group:first-child > .w-group-title,
+#hud-frame-controls .hud-frame-rotation-zone > .w-group-title {
   flex: 0 0 100%; min-width: 0;
 }
 #hud-creative-settings { display: none; width: 100%; pointer-events: auto; }
 /* 艦艇配置パネル(クリエイティブモード限定): MANEUVER PLAN の下、右上に縦積みする。 */
 #hud-shipplacer { display: none; width: 100%; pointer-events: auto; max-height: 70vh; max-height: 70dvh; overflow-y: auto; }
 #hud-shipplacer .slider-field { margin-bottom: var(--space-4); }
-#hud-shipplacer .slider-field .hud-seg { flex-wrap: nowrap; margin-bottom: 0; }
+#hud-shipplacer .slider-field .w-group { flex-wrap: nowrap; margin-bottom: 0; }
 #hud-shipplacer .slider-field .slider-col { flex: 1 1 60px; min-width: 60px; }
 #hud-shipplacer .slider-field input[type="range"] { width: 100%; pointer-events: auto; accent-color: var(--accent); }
 #hud-shipplacer .slider-field .slider-ticks { display: flex; justify-content: space-between; margin-top: var(--space-1); }
@@ -418,15 +394,19 @@ body.hud-modal-open #touch-ui { display: none; }
   display: flex; align-items: flex-start; gap: var(--space-6);
   text-align: left; min-width: 480px; padding: var(--space-4) var(--space-6);
 }
-#hud-stagestatus .t { font-size: var(--font-s); letter-spacing: 2px; color: var(--text); font-variant-numeric: tabular-nums; }
+#hud-stagestatus .t {
+  font-size: var(--font-s); letter-spacing: 2px; color: var(--text); font-variant-numeric: tabular-nums;
+  display: grid; grid-template-columns: auto 1fr; gap: var(--space-2) var(--space-4); align-items: center;
+}
 #hud-stagestatus .t.warn { color: var(--accent); }
+#hud-stagestatus .t .w-meter { width: 160px; }
 #hud-stagestatus .k { font-size: var(--font-s); color: var(--text-dim); line-height: 1.8; white-space: nowrap; }
 #hud-stagestatus .k-widgets:not(:empty) { margin-top: var(--space-3); }
 #hud-stagestatus .radiators { display: flex; flex-direction: column; gap: var(--space-3); }
-#hud-stagestatus .radiator-btn {
-  pointer-events: auto; cursor: pointer; position: relative; overflow: hidden;
-  width: 132px; padding: var(--space-2) var(--space-4); border: 1px solid var(--edge); border-radius: var(--radius-m);
-  background: var(--surface); text-align: left;
+/* span. まで指定して .w-btn 側の padding より確実に勝たせる
+   (ID+クラスの詳細度は #hud .w-btn と同着のため、宣言順に頼らない)。 */
+#hud-stagestatus span.radiator-btn {
+  position: relative; overflow: hidden; width: 132px; padding: var(--space-2) var(--space-4); text-align: left;
 }
 #hud-stagestatus .radiator-btn .fill {
   position: absolute; inset: 0; z-index: 0; transition: width var(--transition-fast), background var(--transition-fast);
@@ -444,19 +424,10 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-settings .srow {
   display: flex; justify-content: space-between; align-items: center; gap: var(--space-6); padding: var(--space-3) 0;
 }
-#hud-settings .stoggle {
-  pointer-events: auto; cursor: pointer; padding: var(--space-2) var(--space-6); min-width: 46px; text-align: center;
-  border: 1px solid var(--edge); border-radius: var(--radius-m); background: var(--surface); color: var(--text-dim);
-}
-#hud-settings .stoggle.on { border-color: var(--accent); color: var(--accent); }
-#hud-settings .squit {
-  margin-top: var(--space-5); text-align: center; padding: var(--space-4) var(--space-5); cursor: pointer;
-  border: 1px solid var(--edge); border-radius: var(--radius-m); background: var(--surface); color: var(--text-dim); font-size: var(--font-m);
-}
-#hud-settings .squit:hover { border-color: var(--accent); color: var(--accent); }
-#hud-settings .sclose {
-  margin-top: var(--space-5); text-align: center; color: var(--text-dim); font-size: var(--font-s); cursor: pointer;
-}
+/* span. まで指定して .w-btn 側の padding/font-size より確実に勝たせる
+   (ID+クラスの詳細度は #hud .w-btn と同着のため、宣言順に頼らない)。 */
+#hud-settings span.squit { margin-top: var(--space-5); text-align: center; padding: var(--space-4) var(--space-5); font-size: var(--font-m); }
+#hud-settings .sclose-row { margin-top: var(--space-5); text-align: center; }
 
 /* --- モバイル / 狭幅画面: パネルを縮小してタッチパッドと共存させる --- */
 @media (max-width: 900px), (pointer: coarse) {
@@ -488,7 +459,6 @@ body.hud-modal-open #touch-ui { display: none; }
   #hud-end h1 { font-size: var(--font-2xl); letter-spacing: 3px; }
   #hud-end .detail { font-size: var(--font-l); padding: var(--space-5) var(--space-6); max-width: 92vw; }
   #navball { top: 76px; width: 96px !important; height: auto !important; }
-  #navball .hud-seg, #navball .hud-toggle { display: none; }
   #hud-hint {
     top: calc(50% - 40px); transform: translateX(-50%); max-height: 72px;
     overflow-y: auto; padding: var(--space-3) var(--space-5); font-size: var(--font-s);
@@ -511,8 +481,8 @@ body.hud-modal-open #touch-ui { display: none; }
   #hud .hud-dock { font-size: var(--font-xxs); }
   #hud .hud-dock-left { width: calc(44vw - 8px); }
   #hud .hud-dock-right { width: calc(56vw - 8px); }
-  #hud .hud-seg { gap: var(--space-2); }
-  #hud .seg-btn { padding: var(--space-2) var(--space-3); font-size: var(--font-xxs); }
+  #hud .w-group { gap: var(--space-2); }
+  #hud .w-btn { padding: var(--space-2) var(--space-3); font-size: var(--font-xxs); }
   #hud-displaytime .slider-ticks { display: none; }
   /* 幅が足りないので、行2はスクラバーと T+ 読み値だけ残す。 */
   #hud-displaytime .dtp-absolute { display: none; }
@@ -573,19 +543,7 @@ body.hud-modal-open #touch-ui { display: none; }
   font-size: var(--font-xl); font-weight: 700; letter-spacing: 0.12em;
   color: var(--accent); flex: 0 0 auto;
 }
-#dock-view .dock-tabs { display: flex; gap: var(--space-2); flex: 1; }
-#dock-view .dock-tab-btn {
-  padding: var(--space-2) var(--space-5); border: 1px solid var(--edge); border-radius: var(--radius-m);
-  background: transparent; color: var(--text-dim); cursor: pointer;
-  font-size: var(--font-m); transition: color var(--transition-fast), border-color var(--transition-fast);
-}
-#dock-view .dock-tab-btn:hover { color: var(--text); border-color: var(--accent-soft); }
-#dock-view .dock-tab-btn.active { color: var(--accent); border-color: var(--accent); background: var(--accent-fill-weak); }
-#dock-view .dock-close-btn {
-  padding: var(--space-2) var(--space-5); border: 1px solid var(--edge); border-radius: var(--radius-m);
-  background: transparent; color: var(--text-dim); cursor: pointer; font-size: var(--font-xl);
-}
-#dock-view .dock-close-btn:hover { color: var(--text); }
+#dock-view .dock-tabs { flex: 1; }
 #dock-view .dock-status-bar {
   padding: var(--space-3) var(--space-6); border-bottom: 1px solid var(--edge);
   font-size: var(--font-m); color: var(--text-dim); flex: 0 0 auto;
@@ -605,7 +563,7 @@ body.hud-modal-open #touch-ui { display: none; }
   transition: border-color var(--transition-fast);
 }
 #dock-view .dock-ship-row:hover { border-color: var(--accent-soft); }
-#dock-view .dock-ship-row.selected { border-color: var(--accent); background: var(--accent-fill-weak); }
+#dock-view .dock-ship-row.on { border-color: var(--accent); background: var(--accent-fill-weak); }
 #dock-view .dock-ship-info { flex: 1; display: flex; flex-direction: column; gap: var(--space-1); }
 #dock-view .dock-ship-name { font-size: var(--font-l); }
 #dock-view .dock-ship-hp { font-size: var(--font-s); color: var(--text-dim); }
@@ -625,8 +583,8 @@ body.hud-modal-open #touch-ui { display: none; }
 #dock-view .dock-part-info { display: flex; flex-direction: column; gap: var(--space-1); }
 #dock-view .dock-part-name { font-size: var(--font-m); }
 #dock-view .dock-part-type { font-size: var(--font-xs); color: var(--text-dim); }
-#dock-view .dock-part-hp-bar { height: 6px; background: var(--fill-2); border-radius: var(--radius-s); overflow: hidden; }
-#dock-view .dock-part-hp-fill { height: 100%; border-radius: var(--radius-s); transition: width var(--transition-slow); }
+#dock-view .dock-part-hp-meter .w-meter-track { height: 6px; border-radius: var(--radius-s); }
+#dock-view .dock-part-hp-meter .w-meter-fill { border-radius: var(--radius-s); transition: width var(--transition-slow); }
 #dock-view .dock-part-hp-text { font-size: var(--font-s); color: var(--text-dim); text-align: right; }
 #dock-view .dock-part-row { display: flex; flex-direction: column; gap: var(--space-3); }
 #dock-view .dock-part-row-main {
@@ -661,17 +619,10 @@ body.hud-modal-open #touch-ui { display: none; }
 #dock-view .dock-shop-stats { font-size: var(--font-xs); color: var(--text-dim); }
 #dock-view .dock-shop-actions { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); }
 #dock-view .dock-shop-price { font-size: var(--font-m); color: var(--accent); }
-/* Common buttons */
-#dock-view .dock-btn {
-  padding: var(--space-2) var(--space-5); border: 1px solid var(--edge); border-radius: var(--radius-m);
-  background: var(--accent-fill-weak); color: var(--accent); cursor: pointer;
-  font-size: var(--font-s); transition: background var(--transition-fast);
-}
-#dock-view .dock-btn:hover:not(.disabled) { background: var(--accent-fill); }
-#dock-view .dock-btn.disabled, #dock-view .dock-btn:disabled { opacity: 0.38; cursor: not-allowed; }
-#dock-view .dock-btn-repair-all {
-  font-size: var(--font-s); padding: var(--space-2) var(--space-5);
-}
+/* Common buttons: span. まで指定して .w-btn 側の背景色より確実に勝たせる
+   (ID+クラスの詳細度は #hud .w-btn と同着のため、宣言順に頼らない)。 */
+#dock-view span.dock-btn { background: var(--accent-fill-weak); color: var(--accent); }
+#dock-view span.dock-btn:hover { background: var(--accent-fill); }
 /* ===== SaveBrowser ===== */
 #save-browser {
   position: fixed; inset: 0; display: none;
@@ -689,11 +640,6 @@ body.hud-modal-open #touch-ui { display: none; }
   padding: var(--space-5) var(--space-6); border-bottom: 1px solid var(--edge); flex: 0 0 auto;
 }
 #save-browser .sb-title { font-size: var(--font-l); font-weight: 700; letter-spacing: 0.12em; color: var(--text); }
-#save-browser .sb-close-btn {
-  padding: var(--space-2) var(--space-4); border: 1px solid var(--edge); border-radius: var(--radius-m);
-  background: transparent; color: var(--text-dim); cursor: pointer; font-size: var(--font-l);
-}
-#save-browser .sb-close-btn:hover { color: var(--text); border-color: var(--text-dim); }
 #save-browser .sb-body { flex: 1 1 0; min-height: 0; display: flex; gap: 1px; background: var(--edge); }
 #save-browser .sb-pane {
   flex: 1 1 0; min-width: 0; overflow-y: auto; padding: var(--space-5) var(--space-5);
@@ -711,33 +657,28 @@ body.hud-modal-open #touch-ui { display: none; }
   border: 1px solid var(--edge); border-left: 2px solid transparent; border-radius: var(--radius-m); cursor: pointer;
 }
 #save-browser .sb-slot-row.viewed { background: var(--fill-1); }
-#save-browser .sb-slot-row.active { border-left-color: var(--accent); }
+#save-browser .sb-slot-row.on { border-left-color: var(--accent); }
 #save-browser .sb-slot-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 #save-browser .sb-slot-name { font-size: var(--font-s); }
 #save-browser .sb-slot-meta { font-size: var(--font-xxs); color: var(--text-dim); }
 #save-browser .sb-slot-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; justify-content: flex-end; }
 /* 左ペインは幅が狭いので、フッターのボタンは横並びにせず縦積みにして折り返しを防ぐ。 */
 #save-browser .sb-slot-footer { display: flex; flex-direction: column; gap: var(--space-3); margin-top: auto; padding-top: var(--space-3); }
-#save-browser .sb-btn {
-  padding: var(--space-2) var(--space-4); border: 1px solid var(--edge); border-radius: var(--radius-m);
-  background: var(--fill-1); color: var(--text-dim); cursor: pointer; font-size: var(--font-xs);
+/* span. まで指定して .w-btn 側の見た目より確実に勝たせる
+   (ID+クラスの詳細度は #hud .w-btn と同着のため、宣言順に頼らない)。 */
+#save-browser span.sb-btn {
+  padding: var(--space-2) var(--space-4); background: var(--fill-1); color: var(--text-dim); font-size: var(--font-xs);
   white-space: nowrap;
 }
-#save-browser .sb-btn:hover:not(:disabled) { background: var(--fill-2); color: var(--text); }
-#save-browser .sb-btn:disabled { opacity: 0.38; cursor: not-allowed; }
-#save-browser .sb-btn-sm { padding: var(--space-2) var(--space-3); }
-#save-browser .sb-btn-play { color: var(--text); border-color: var(--text-dim); }
+#save-browser span.sb-btn:hover { background: var(--fill-2); color: var(--text); }
+#save-browser span.sb-btn.sb-btn-sm { padding: var(--space-2) var(--space-3); }
+#save-browser span.sb-btn.sb-btn-play { color: var(--text); border-color: var(--text-dim); }
 /* このパネルで唯一の「押すと今の状態が増える」操作 — 注目させるためオレンジを残す。 */
-#save-browser #sb-capture-now {
+#save-browser span#sb-capture-now {
   background: var(--accent-fill-weak); color: var(--accent); border-color: var(--accent-edge);
 }
-#save-browser #sb-capture-now:hover:not(:disabled) { background: var(--accent-fill); }
+#save-browser span#sb-capture-now:hover { background: var(--accent-fill); }
 #save-browser .sb-stage-tabs { display: flex; gap: var(--space-2); }
-#save-browser .sb-tab-btn {
-  padding: var(--space-2) var(--space-4); border: 1px solid var(--edge); border-radius: var(--radius-m);
-  background: transparent; color: var(--text-dim); cursor: pointer; font-size: var(--font-xs);
-}
-#save-browser .sb-tab-btn.active { color: var(--text); border-color: var(--text-dim); background: var(--fill-1); }
 #save-browser .sb-snapshot-groups { display: flex; flex-direction: column; gap: var(--space-2); }
 #save-browser .sb-snapshot-group-title { font-size: var(--font-xs); color: var(--text-dim); margin-top: var(--space-2); }
 #save-browser .sb-snapshot-list { display: flex; flex-direction: column; gap: var(--space-2); }
@@ -756,12 +697,12 @@ body.hud-modal-open #touch-ui { display: none; }
 #save-browser .sb-snap-badge-checkpoint { color: var(--text); border-color: var(--text-dim); }
 #save-browser .sb-snap-row { font-size: var(--font-xs); color: var(--text-dim); }
 /* HP バーは細く、満タンでもオレンジで塗らない — このパネルの主役はセーブ操作であって
-   HP 表示ではないため、他の注目要素と競合しないモノトーンに留める。 */
-#save-browser .sb-snap-hp-bar { height: 3px; background: var(--fill-2); border-radius: var(--radius-s); overflow: hidden; }
-#save-browser .sb-snap-hp-fill { height: 100%; background: var(--text-dim); }
+   HP 表示ではないため、他の注目要素と競合しないモノトーンに留める(danger 色も使わない)。 */
+#save-browser .sb-snap-hp-meter .w-meter-track { height: 3px; border-radius: var(--radius-s); }
+#save-browser .sb-snap-hp-meter .w-meter-fill { background: var(--text-dim); }
 #save-browser .sb-snap-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 /* クリップ済み(pin)状態だけは注目対象として残す — この行の意味は「消えずに残る」なので. */
-#save-browser .sb-btn-pin[data-pinned="true"] {
+#save-browser span.sb-btn-pin.on {
   background: var(--accent-fill-weak); color: var(--accent); border-color: var(--accent-edge);
 }
 #save-browser .sb-status { min-height: 20px; padding: var(--space-2) var(--space-5); font-size: var(--font-xs); color: var(--text-dim); border-top: 1px solid var(--edge); }

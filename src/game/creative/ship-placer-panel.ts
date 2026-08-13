@@ -2,7 +2,7 @@
 // 指定のどちらかを選び、フォームで値を指定して、確定で1隻分の ShipPlacerForm を通知する。
 // 値から KinematicState を組み立てるのは物理側(stateFromOrbitalElements/haloState/lissajousState)の
 // 仕事なので、ここでは行わない。
-import { SegmentedControl, hudButton } from '../hud/buttons';
+import { Button, SegmentedControl, Slider, ValueInput } from '../hud/widgets';
 import { ObjectPicker, ObjectPickerGroup } from '../hud/object-picker';
 import { BodyClass, bodyClassOf } from '../celestial/body-class';
 import { sameSystemIds } from '../celestial/body-visibility';
@@ -178,25 +178,20 @@ const PRESETS_BY_BODY: Partial<Record<ReferenceAttractor, readonly SizePreset[]>
   ],
 };
 
-// ラベル行(.hud-seg + .seg-title)と数値 input を組み立てて返す。root への追加は呼び出し側の仕事
+// ラベル行(.w-group + .w-group-title)と数値入力を組み立てて返す。root への追加は呼び出し側の仕事
 // (numberField はそのまま追加するだけだが、sliderField はスライダー列を同じ行に足してから追加する)。
+// 値は打鍵のたびに(sliderField が)直接読み書きするので、ValueInput の commit 通知自体は使わない。
 function buildNumberRow(label: string, defaultValue: number, step: number, min?: number, max?: number): { row: HTMLElement; input: HTMLInputElement } {
   const row = document.createElement('div');
-  row.className = 'hud-seg';
+  row.className = 'w-group';
   const heading = document.createElement('span');
-  heading.className = 'seg-title';
+  heading.className = 'w-group-title';
   heading.textContent = label;
   row.appendChild(heading);
-  const input = document.createElement('input');
-  input.type = 'number';
-  input.step = String(step);
-  input.value = String(defaultValue);
-  if (min !== undefined) input.min = String(min);
-  if (max !== undefined) input.max = String(max);
-  // #hud はマップドラッグを拾うため、この入力上のポインタ操作がカメラドラッグへ抜けないようにする。
-  input.addEventListener('pointerdown', (e) => e.stopPropagation());
-  row.appendChild(input);
-  return { row, input };
+  const valueInput = new ValueInput({ type: 'number', step, min, max }, () => {});
+  valueInput.setValue(String(defaultValue));
+  row.appendChild(valueInput.element);
+  return { row, input: valueInput.element };
 }
 
 // ラベル付き数値入力を1行分組み立てて root へ追加し、input 要素を返す。
@@ -235,12 +230,7 @@ function sliderField(root: HTMLElement, label: string, defaultValue: number, ste
   const sliderCol = document.createElement('div');
   sliderCol.className = 'slider-col';
 
-  const slider = document.createElement('input');
-  slider.type = 'range';
-  slider.min = '0';
-  slider.max = '1000';
-  slider.step = '1';
-  slider.addEventListener('pointerdown', (e) => e.stopPropagation());
+  const slider = new Slider({ min: 0, max: 1000, step: 1 }, () => {}).element;
   sliderCol.appendChild(slider);
 
   const ticksEl = document.createElement('div');
@@ -516,23 +506,24 @@ export class ShipPlacerPanel {
     // プリセット行: 基準天体が変わるたび refreshPresets で候補を差し替える(選ぶと近地点/遠地点
     // 高度・必要なら傾斜角を書き換え、サイズ/形を近地点+遠地点表示へ揃える)。
     const presetRow = document.createElement('div');
-    presetRow.className = 'hud-seg preset-row';
+    presetRow.className = 'w-group preset-row';
     const refreshPresets = (): void => {
       presetRow.innerHTML = '';
       const presets = PRESETS_BY_BODY[this.attractorValue] ?? [];
       presetRow.style.display = presets.length > 0 ? '' : 'none';
       if (presets.length === 0) return;
       const heading = document.createElement('span');
-      heading.className = 'seg-title';
+      heading.className = 'w-group-title';
       heading.textContent = 'プリセット';
       presetRow.appendChild(heading);
       for (const preset of presets) {
-        presetRow.appendChild(hudButton(preset.label, () => {
+        const btn = new Button(preset.label, () => {
           this.setSliderValue(peAlt, preset.peAltKm);
           this.setSliderValue(apAlt, preset.apAltKm);
           if (preset.incDeg !== undefined) this.setSliderValue(inc, preset.incDeg);
           this.selectSizeMode('apsides');
-        }));
+        });
+        presetRow.appendChild(btn.element);
       }
     };
 
@@ -599,17 +590,14 @@ export class ShipPlacerPanel {
   // 名称行(ラベル + テキスト入力)を組み立てて返す。
   private buildNameRow(): { element: HTMLElement; nameInput: HTMLInputElement } {
     const nameRow = document.createElement('div');
-    nameRow.className = 'hud-seg';
+    nameRow.className = 'w-group';
     const nameHeading = document.createElement('span');
-    nameHeading.className = 'seg-title';
+    nameHeading.className = 'w-group-title';
     nameHeading.textContent = '名称';
     nameRow.appendChild(nameHeading);
-    const nameInput = document.createElement('input');
-    nameInput.type = 'text';
-    nameInput.placeholder = '空欄で自動命名';
-    nameInput.addEventListener('pointerdown', (e) => e.stopPropagation());
-    nameRow.appendChild(nameInput);
-    return { element: nameRow, nameInput };
+    const nameField = new ValueInput({ type: 'text', placeholder: '空欄で自動命名' }, () => {});
+    nameRow.appendChild(nameField.element);
+    return { element: nameRow, nameInput: nameField.element };
   }
 
   // 配置/キャンセルのボタン行を this.panel に追加し、Enter/ESC のキーバインドを登録する。
@@ -619,11 +607,11 @@ export class ShipPlacerPanel {
     btnRow.style.display = 'flex';
     btnRow.style.gap = '10px';
     btnRow.style.marginTop = '12px';
-    btnRow.appendChild(hudButton('配置 [Enter]', () => this.confirm()));
-    btnRow.appendChild(hudButton('キャンセル [ESC]', () => {
+    btnRow.appendChild(new Button('配置 [Enter]', () => this.confirm()).element);
+    btnRow.appendChild(new Button('キャンセル [ESC]', () => {
       this.close();
       this.onClose?.();
-    }));
+    }).element);
     this.panel.appendChild(btnRow);
 
     window.addEventListener('keydown', (e) => {

@@ -89,7 +89,7 @@ main.ts
     │   │       └── TrajectoryLine[]   ... 区間 index ごとの折れ線プール。区間数が減っても捨てず隠すだけ(色は index で決まるため使い回す)
     │   ├── NodeGizmo                   ... ノードハンドル/Δv 矢の DOM は Hud.layers.marker 配下
     │   │   └── ContextMenu<number>     ... DOM は Hud.layers.popup 配下
-    │   ├── HudHoldButton ×6            ... Δv 6方向の長押しボタン(dvButtons)
+    │   ├── HoldButton ×6               ... Δv 6方向の長押しボタン(dvButtons)
     │   └── 計画パネル DOM
     ├── PlanGuide                       ... 直近ノードの接近/達成通知済みフラグ(ノード自体への参照)を持つ
     ├── Docking                        ... 基地への収容・発進(EntityManager/CameraSystem/Game.player にまたがる横断)
