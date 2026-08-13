@@ -65,6 +65,15 @@ export class PlanExecutor {
   // 点火・遮断の瞬間だけは applyIgnitionAndCutoff からも書く(simTime のイベント境界を跨いだ
   // 直後の残りサブステップにまで反映させるため)。
   update(ship: PlanExecutorShip, dt: number, simTime: number, simSpeed: PlanExecutorSimSpeed): void {
+    // 噴射できないワープ倍率では姿勢整列トルクも含めて一切の指令を出さない。燃焼中に
+    // ゲートが閉じた場合も保留ではなく中断する — 凍結した噴射方向は「点火から遮断までの
+    // 短時間なら慣性系で固定してよい」という近似であって、噴射しないまま時間加速で長く
+    // 進んだ先ではもう艦の位置も速度も別物になっている。
+    if (!simSpeed.canPlayerThrust) {
+      this.stopIfActive(ship);
+      return;
+    }
+
     const node = ship.plan.firstNode();
     if (ship.planExecution !== 'powered' || !ship.alive || !node) {
       this.stopIfActive(ship);
@@ -76,14 +85,8 @@ export class PlanExecutor {
     }
 
     // 燃焼中は姿勢を追随させず(点火時に確定した向きを保持するだけ)、出力段の見直しと
-    // 推力の書き直しだけを行う。ただし噴射できないゲート状態になったら燃焼ごと中断する —
-    // 凍結した噴射方向は「点火から遮断までの短時間なら慣性系で固定してよい」という近似で
-    // あって、噴射しないまま時間加速で長く進んだ先ではもう艦の位置も速度も別物になっている。
+    // 推力の書き直しだけを行う。
     if (this.phase === 'burn' || this.phase === 'trim') {
-      if (!simSpeed.canPlayerThrust) {
-        this.clearState(ship);
-        return;
-      }
       this.updateBurnOutput(ship, node, dt);
       return;
     }
