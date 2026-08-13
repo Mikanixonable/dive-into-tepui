@@ -1,5 +1,6 @@
 import type { ViewId, ViewManager } from '../view-manager';
 import { ContextMenu, MenuItem } from './context-menu';
+import { Button } from './widgets';
 import packageJson from '../../../package.json';
 
 const GAME_TITLE = 'Dive into Tepui';
@@ -16,7 +17,7 @@ function titleCase(s: string): string {
 // 画面右上のバッジ: ゲームタイトル・現在のモード・現在のビュー(クリックで遷移メニュー)。
 export class ViewBadge {
   private readonly modeEl: HTMLElement;
-  private readonly viewButton: HTMLButtonElement;
+  private readonly viewButton: Button;
   // ContextMenu は target !== null であることを onSelect 発火の条件にしているので、
   // 対象を持たないこのメニューでも null 以外のダミー値を渡す。
   private readonly menu: ContextMenu<true, ViewId>;
@@ -34,11 +35,10 @@ export class ViewBadge {
     title.textContent = `${GAME_TITLE} ${GAME_VERSION}`;
     this.modeEl = document.createElement('span');
     this.modeEl.className = 'vb-mode';
-    this.viewButton = document.createElement('button');
-    this.viewButton.className = 'vb-view-btn';
-    this.viewButton.addEventListener('click', () => this.openMenu());
+    this.viewButton = new Button('', () => this.openMenu());
+    this.viewButton.element.classList.add('vb-view-btn');
 
-    for (const el of [title, this.modeEl, this.viewButton]) badge.appendChild(el);
+    for (const el of [title, this.modeEl, this.viewButton.element]) badge.appendChild(el);
     root.appendChild(badge);
 
     this.menu.onSelect = (view) => this.viewManager.setView(view);
@@ -47,7 +47,7 @@ export class ViewBadge {
   // モード名とビューボタンの表示を反映する。
   sync(modeLabel: string): void {
     this.modeEl.textContent = `Mode: ${titleCase(modeLabel)}`;
-    this.viewButton.textContent = `View: ${VIEW_LABELS[this.viewManager.current]} ▾`;
+    this.viewButton.setLabel(`View: ${VIEW_LABELS[this.viewManager.current]} ▾`);
   }
 
   // 遷移できるビューが1つも無ければメニュー自体を開かない。
@@ -56,7 +56,7 @@ export class ViewBadge {
       .selectableViews()
       .map((v) => ({ label: VIEW_LABELS[v], act: v }));
     if (items.length === 0) return;
-    const rect = this.viewButton.getBoundingClientRect();
+    const rect = this.viewButton.element.getBoundingClientRect();
     this.menu.open(rect.right, rect.bottom, true, items);
   }
 }

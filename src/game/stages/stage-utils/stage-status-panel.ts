@@ -9,7 +9,8 @@ import type { Player } from '../../player/player';
 import type { RadiatorSide } from '../../player/radiator';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { fmtEnergy } from '../../hud/utils';
-import { ACCENT, BAR_BG, DANGER, FONT_XS, TEXT_STRONG, TRANSITION_FAST, BG, SPACE_2, SPACE_4 } from '../../theme';
+import { DANGER } from '../../theme';
+import { Button, Meter } from '../../hud/widgets';
 
 // side を「左(+X)/右(-X)」ラベルとショートカットキーへ対応させる。
 // (機体の+Zが前なので、後ろから見ると+Xは左になる)
@@ -25,7 +26,7 @@ const SOLAR_UI: Record<SolarSide, { label: string; key: string }> = {
 };
 
 interface RadiatorButtonDom {
-  readonly button: HTMLElement;
+  readonly button: Button;
   readonly fill: HTMLElement;
   readonly label: HTMLElement;
   lastText: string;
@@ -38,7 +39,6 @@ export class StageStatusPanel {
   private readonly leftText: HTMLElement;
   private readonly leftWidgets: HTMLElement;
   private readonly centerCol: HTMLElement;
-  private lastHpHtml = '';
   private lastLeftHtml = '';
   private player: Player | null = null;
 
@@ -46,6 +46,11 @@ export class StageStatusPanel {
   // 外した永続 DOM にしてある
   private readonly radiatorButtons: Record<RadiatorSide, RadiatorButtonDom>;
   private readonly solarButtons: Record<SolarSide, RadiatorButtonDom>;
+  private readonly hpMeter: Meter;
+  private readonly throttleMeter: Meter;
+  private readonly qdynMeter: Meter;
+  private readonly tempMeter: Meter;
+  private readonly powerMeter: Meter;
 
   // 非表示状態のパネル DOM を組み立てて root に追加する
   constructor(root: HTMLElement) {
@@ -60,6 +65,12 @@ export class StageStatusPanel {
     this.leftWidgets = this.panel.querySelector<HTMLElement>('.k-widgets')!;
     this.centerCol = this.panel.querySelector<HTMLElement>('.t')!;
     root.appendChild(this.panel);
+
+    this.hpMeter = this.buildMeterRow('装甲');
+    this.throttleMeter = this.buildMeterRow('出力');
+    this.qdynMeter = this.buildMeterRow('動圧');
+    this.tempMeter = this.buildMeterRow('温度');
+    this.powerMeter = this.buildMeterRow('電力');
 
     const radiatorsCol = this.panel.querySelector<HTMLElement>('.radiators')!;
     this.solarButtons = {
@@ -77,18 +88,27 @@ export class StageStatusPanel {
     this.leftWidgets.appendChild(el);
   }
 
+  // 見出し + Meter の1行を centerCol へ足す。
+  private buildMeterRow(label: string): Meter {
+    const heading = document.createElement('span');
+    heading.textContent = label;
+    this.centerCol.appendChild(heading);
+    const meter = new Meter();
+    this.centerCol.appendChild(meter.element);
+    return meter;
+  }
+
   // 1枚ぶんの展開/収納ボタンを組み立て、以後の更新に使う要素を返す。
   private buildButton(col: HTMLElement, onClick: () => void): RadiatorButtonDom {
-    const button = document.createElement('button');
-    button.className = 'radiator-btn';
-    button.innerHTML = `<div class="fill"></div><div class="label"></div>`;
-    button.addEventListener('click', onClick);
-    col.appendChild(button);
+    const button = new Button('', onClick);
+    button.element.classList.add('radiator-btn');
+    button.element.innerHTML = `<div class="fill"></div><div class="label"></div>`;
+    col.appendChild(button.element);
 
     return {
       button,
-      fill: button.querySelector<HTMLElement>('.fill')!,
-      label: button.querySelector<HTMLElement>('.label')!,
+      fill: button.element.querySelector<HTMLElement>('.fill')!,
+      label: button.element.querySelector<HTMLElement>('.label')!,
       lastText: '',
       lastFillWidth: '',
       lastFillColor: '',
@@ -108,11 +128,11 @@ export class StageStatusPanel {
     const deployed = deploy >= 0.5;
     const wearPct = Math.round(wear * 100);
     const highWear = wearPct > RADIATOR_HIGH_WEAR * 100;
-    
-    dom.button.classList.toggle('on', deployed);
+
+    dom.button.setOn(deployed);
 
     const fillWidth = `${100 - wearPct}%`;
-    const fillColor = highWear ? DANGER : deployed ? 'transparent' : 'transparent';
+    const fillColor = highWear ? DANGER : 'transparent';
     if (dom.lastFillWidth !== fillWidth) {
       dom.fill.style.width = fillWidth;
       dom.lastFillWidth = fillWidth;
@@ -135,47 +155,33 @@ export class StageStatusPanel {
     const { hp, maxHp } = player;
     const throttleIdx = player.throttleIdx;
     const low = hp <= maxHp * LOW_HP_RATIO;
-    const pct = Math.max(0, Math.min(100, (hp / maxHp) * 100));
     const throttleVal = C.THROTTLE_LEVELS[throttleIdx];
-    const throttlePct = ((throttleIdx + 1) / C.THROTTLE_LEVELS.length) * 100;
     const throttleText = `${C.THROTTLE_LABELS[throttleIdx]} (${throttleVal!.toFixed(1)} m/s²)`;
     const temp = Math.round(player.thermal.hullTemp);
     const tempHigh = temp > 0.7 * C.MAX_HULL_TEMP;
-    const tempPct = Math.max(0, Math.min(100, (temp / C.MAX_HULL_TEMP) * 100));
     const qdyn = player.thermal.qdyn;
     const qdynHigh = qdyn > 0.5 * C.MAX_DYN_PRESSURE;
-    const qdynPct = Math.max(0, Math.min(100, (qdyn / C.MAX_DYN_PRESSURE) * 100));
     const qdynText = qdyn >= 1000 ? `${(qdyn / 1000).toFixed(2)} kPa` : `${qdyn.toFixed(0)} Pa`;
     const chargeJ = player.power.chargeJ;
-    const chargePct = Math.max(0, Math.min(100, player.power.chargeRatio * 100));
 
-    const hpHtml =
-      `<div style="display:grid; grid-template-columns:auto 1fr; gap:${SPACE_2} ${SPACE_4}; align-items:center;">` +
-      `<span>装甲</span>` +
-      `<div style="position:relative; width:160px; height:12px; background:${BAR_BG};">` +
-      `<div style="width:${pct}%; height:100%; background:${low ? DANGER : ACCENT}; transition:width ${TRANSITION_FAST};"></div>` +
-      `<div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:${FONT_XS}; color:${TEXT_STRONG}; text-shadow:0 0 2px ${BG}, 0 0 2px ${BG};">${Math.floor(hp)} / ${maxHp}</div></div>` +
-      `<span>出力</span>` +
-      `<div style="position:relative; width:160px; height:12px; background:${BAR_BG};">` +
-      `<div style="width:${throttlePct}%; height:100%; background:${ACCENT}; transition:width ${TRANSITION_FAST};"></div>` +
-      `<div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:${FONT_XS}; color:${TEXT_STRONG}; text-shadow:0 0 2px ${BG}, 0 0 2px ${BG};">${throttleText}</div></div>` +
-      `<span>動圧</span>` +
-      `<div style="position:relative; width:160px; height:12px; background:${BAR_BG};">` +
-      `<div style="width:${qdynPct}%; height:100%; background:${qdynHigh ? DANGER : ACCENT}; transition:width ${TRANSITION_FAST};"></div>` +
-      `<div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:${FONT_XS}; color:${TEXT_STRONG}; text-shadow:0 0 2px ${BG}, 0 0 2px ${BG};">${qdynText}</div></div>` +
-      `<span>温度</span>` +
-      `<div style="position:relative; width:160px; height:12px; background:${BAR_BG};">` +
-      `<div style="width:${tempPct}%; height:100%; background:${tempHigh ? DANGER : ACCENT}; transition:width ${TRANSITION_FAST};"></div>` +
-      `<div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:${FONT_XS}; color:${TEXT_STRONG}; text-shadow:0 0 2px ${BG}, 0 0 2px ${BG};">${temp} / ${C.MAX_HULL_TEMP} K</div></div>` +
-      `<span>電力</span>` +
-      `<div style="position:relative; width:160px; height:12px; background:${BAR_BG};">` +
-      `<div style="width:${chargePct}%; height:100%; background:${ACCENT}; transition:width ${TRANSITION_FAST};"></div>` +
-      `<div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:${FONT_XS}; color:${TEXT_STRONG}; text-shadow:0 0 2px ${BG}, 0 0 2px ${BG};">${fmtEnergy(chargeJ)} / ${fmtEnergy(C.POWER_CAPACITY)}</div></div>` +
-      `</div>`;
-    if (this.lastHpHtml !== hpHtml) {
-      this.centerCol.innerHTML = hpHtml;
-      this.lastHpHtml = hpHtml;
-    }
+    this.hpMeter.setRatio(hp / maxHp);
+    this.hpMeter.setDanger(low);
+    this.hpMeter.setLabel(`${Math.floor(hp)} / ${maxHp}`);
+
+    this.throttleMeter.setRatio((throttleIdx + 1) / C.THROTTLE_LEVELS.length);
+    this.throttleMeter.setLabel(throttleText);
+
+    this.qdynMeter.setRatio(qdyn / C.MAX_DYN_PRESSURE);
+    this.qdynMeter.setDanger(qdynHigh);
+    this.qdynMeter.setLabel(qdynText);
+
+    this.tempMeter.setRatio(temp / C.MAX_HULL_TEMP);
+    this.tempMeter.setDanger(tempHigh);
+    this.tempMeter.setLabel(`${temp} / ${C.MAX_HULL_TEMP} K`);
+
+    this.powerMeter.setRatio(player.power.chargeRatio);
+    this.powerMeter.setLabel(`${fmtEnergy(chargeJ)} / ${fmtEnergy(C.POWER_CAPACITY)}`);
+
     this.centerCol.classList.toggle('warn', low);
 
     const power = player.power;

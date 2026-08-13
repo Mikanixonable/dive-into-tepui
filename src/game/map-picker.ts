@@ -788,7 +788,7 @@ export class MapPicker {
     if (!ship) return [];
     return [
       {
-        key: 'active', label: '操作対象か', value: ship === this.game.player ? 'はい' : 'いいえ', collapsible: true,
+        key: 'operated', label: '操作対象か', value: ship === this.game.player ? 'はい' : 'いいえ', collapsible: true,
       },
       { key: 'follow', label: '計画実行', value: planExecutionLabel(ship.planExecution), collapsible: true },
       { key: 'hp', label: '装甲', value: `${Math.floor(ship.hp)} / ${ship.maxHp}` },

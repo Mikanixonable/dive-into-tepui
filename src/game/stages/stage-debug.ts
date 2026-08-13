@@ -2,7 +2,7 @@
 // 敵の射撃 ON/OFF をパネルから切り替えられる。タイトルの通常ボタン列には出ない。
 import { Stage, type StageDeps } from './stage';
 import { generateWave } from './stage-utils/wave-attack';
-import { hudButton, HudToggle } from '../hud/buttons';
+import { Button, ToggleSwitch } from '../hud/widgets';
 import * as C from '../const';
 import type { Player } from '../player/player';
 import type { EntityManager } from '../simulation/entity-manager';
@@ -21,7 +21,7 @@ export class StageDebug extends Stage {
   readonly initialAmmo = { mags: 20, rounds: C.MAG_ROUNDS };
 
   private enemyFireEnabled = false;
-  private fireToggle!: HudToggle;
+  private fireToggle!: ToggleSwitch;
   private waveCount = 2; // ランダム方向からスポーンさせるため2から開始
 
   constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
@@ -41,22 +41,22 @@ export class StageDebug extends Stage {
     for (const enemy of enemies) this.addEnemy(enemy, entities);
 
     // 切替は enemyFireEnabled へ入るだけで、敵への反映は update が毎フレーム行う
-    this.fireToggle = new HudToggle('敵射撃', (on) => { this.enemyFireEnabled = on; });
+    this.fireToggle = new ToggleSwitch('敵射撃', (on) => { this.enemyFireEnabled = on; });
     this.fireToggle.setOn(false); // デフォルトでオフ
     this.addStatusPanelWidget(this.fireToggle.element);
 
     // 敵集団をスポーンするボタン
-    const spawnEnemyBtn = hudButton('敵集団をスポーン', () => {
+    const spawnEnemyBtn = new Button('敵集団をスポーン', () => {
       const newEnemies = generateWave(player.state, this.waveCount++, this._ephemeris, this._hud, this._sfx, this._fx, this._scene, 'random');
       for (const enemy of newEnemies) this.addEnemy(enemy, entities);
     });
-    this.addStatusPanelWidget(spawnEnemyBtn);
+    this.addStatusPanelWidget(spawnEnemyBtn.element);
 
     // 弾薬をスポーンするボタン
-    const spawnAmmoBtn = hudButton('弾薬をスポーン', () => {
+    const spawnAmmoBtn = new Button('弾薬をスポーン', () => {
       this.logistics.spawnForPlayer(player, C.STAGE00_LOGISTICS_MIN_DIST, C.STAGE00_LOGISTICS_MAX_DIST);
     });
-    this.addStatusPanelWidget(spawnAmmoBtn);
+    this.addStatusPanelWidget(spawnAmmoBtn.element);
 
     // 重力配線前の Asteroid の目視確認用: 自機付近に3体、離した位置へ配置する。
     const asteroidOffsets = [v3(2000, 0, 0), v3(0, 2000, 0), v3(0, 0, 2000)];

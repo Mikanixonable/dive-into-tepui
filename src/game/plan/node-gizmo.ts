@@ -17,7 +17,7 @@ const STYLE = `
   pointer-events: auto; cursor: grab;
   border: 2px solid ${ACCENT_SOFT}; background: ${ACCENT_FILL};
 }
-#node-gizmo .gz-node.sel { border-color: ${ACCENT}; background: ${ACCENT_FILL_STRONG}; }
+#node-gizmo .gz-node.on { border-color: ${ACCENT}; background: ${ACCENT_FILL_STRONG}; }
 #node-gizmo .gz-node .gz-lbl {
   position: absolute; top: 26px; left: 50%; transform: translateX(-50%);
   font-size: ${FONT_XS}; color: ${TEXT}; white-space: nowrap;
@@ -143,7 +143,7 @@ export class NodeGizmo {
       }
       entry.el.style.left = `${n.x}px`;
       entry.el.style.top = `${n.y}px`;
-      entry.el.classList.toggle('sel', n.selected);
+      entry.el.classList.toggle('on', n.selected);
       entry.lbl.textContent = `NODE${n.idx + 1} ${n.dvMag.toFixed(1)}m/s`;
     }
     for (const [idx, entry] of this.nodeEls) {

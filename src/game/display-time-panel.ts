@@ -1,11 +1,10 @@
 // 未来表示の操作パネル(期間ピル・スクラバー・目盛り)。3行構成: 期間選択 / スクラブバー+T+読み値 / 目盛り。
 import * as C from './const';
-import { hudButton, SegmentedControl } from './hud/buttons';
+import { Button, SegmentedControl, Slider, ValueInput } from './hud/widgets';
 import { buildCollapseToggle, PREDICT_TOGGLE_LABELS } from './hud/dom';
 import { SIM_EPOCH_SEC, fmtDateTime, fmtDuration } from './hud/utils';
 import type { DisplayDurationKey } from './display-window-manager';
 import type { DisplayTick } from './hud/tick-scale';
-import { FILL_2, FILL_4 } from './theme';
 
 type FixedDurationKey = 'orbit' | 'day' | 'week' | 'month';
 
@@ -27,45 +26,32 @@ const UNITS: readonly (readonly [DurationUnit, string])[] = [
   ['year', '年'],
 ];
 
-const TRACK_COLOR = FILL_4;
-const TRACK_DIM_COLOR = FILL_2;
-
 // 値(数値入力)+単位(SegmentedControl)の組。確定操作(Enter/blur/外部からの commit())でのみ
 // クランプ後の秒数を通知する — 打鍵ごとに書き戻すと入力途中の値が壊れて打ち直せなくなるため。
 // 空欄・非数値での確定、または Escape/cancel() は「変更なし」として現在の表示へ戻す。
 class DurationValueInput {
   readonly element: HTMLElement;
-  private readonly value: HTMLInputElement;
+  private readonly value: ValueInput;
   private readonly unit: SegmentedControl<DurationUnit>;
   private unitValue: DurationUnit;
   private minSec = 0;
   private maxSec = Infinity;
-  private suppressBlurCommit = false;
 
   // onCommit は Enter・blur・確定ボタンでのみ呼ばれる — 呼び出し側は打鍵ごとの値を追う必要がない。
   constructor(defaultUnit: DurationUnit, private readonly onCommit: (sec: number) => void, private readonly onCancel: () => void) {
     this.unitValue = defaultUnit;
     this.element = document.createElement('span');
-    this.element.className = 'hud-seg dtp-value-input';
+    this.element.className = 'w-group dtp-value-input';
     // 単位ボタンを押しても数値欄からフォーカスを移さない — 移すと blur が確定として走り、
     // 選び直した単位が反映される前に古い単位の値で閉じてしまう。フォーカス移動の既定動作を
     // 持つのは mousedown なので、それを捕捉段階で止める。
     this.element.addEventListener('mousedown', (e) => {
-      if (e.target !== this.value) e.preventDefault();
+      if (e.target !== this.value.element) e.preventDefault();
     }, true);
-    // 数値入力欄。Enter/Escape は自前でハンドリングし、それ以外のフォーカス喪失は commit 扱いにする。
-    this.value = document.createElement('input');
-    this.value.type = 'number';
-    this.value.addEventListener('pointerdown', (e) => e.stopPropagation());
-    this.value.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); this.commit(); }
-      else if (e.key === 'Escape') { e.preventDefault(); this.cancel(); }
-    });
-    this.value.addEventListener('blur', () => {
-      if (this.suppressBlurCommit) { this.suppressBlurCommit = false; return; }
-      this.commit();
-    });
-    this.element.appendChild(this.value);
+    // 数値入力欄そのものは ValueInput へ委譲する。レンジへのクランプは commitText で行う —
+    // ValueInput 自身は非有限値/空欄しか破棄しない。
+    this.value = new ValueInput({ type: 'number' }, (text) => this.commitText(text), () => this.onCancel());
+    this.element.appendChild(this.value.element);
     // 単位切り替え。単位が変わると min/max の表示値も単位に合わせて引き直す。
     this.unit = new SegmentedControl('', UNITS, (u) => {
       this.unitValue = u;
@@ -78,42 +64,38 @@ class DurationValueInput {
 
   // 秒数を今の単位での表示値に変換して入力欄へ反映し、フォーカスする。
   openWithSec(sec: number, minSec: number, maxSec: number): void {
-    this.suppressBlurCommit = false;
     this.minSec = minSec;
     this.maxSec = maxSec;
     this.syncMinMaxAttr();
-    this.value.value = String(sec / UNIT_SEC[this.unitValue]);
-    this.value.focus();
-    this.value.select();
+    this.value.setValue(String(sec / UNIT_SEC[this.unitValue]));
+    this.value.element.focus();
+    this.value.element.select();
   }
 
-  // 入力中の値をレンジへクランプして通知する。空欄・非数値なら変更なしとして cancel() する。
-  // onCommit が呼び出し元の要素を隠す(display:none)と暗黙の blur が同期的に起きるので、
-  // それが二重に commit() を呼ばないよう先に抑制フラグを立てる。
-  commit(): void {
-    const text = this.value.value.trim();
-    const raw = Number(text);
-    if (text === '' || !isFinite(raw)) { this.cancel(); return; }
+  // ValueInput が確定した生の文字列をレンジへクランプして通知する。
+  private commitText(text: string): void {
     const unitSec = UNIT_SEC[this.unitValue];
-    const sec = Math.max(this.minSec, Math.min(this.maxSec, raw * unitSec));
-    this.value.value = String(sec / unitSec);
-    this.suppressBlurCommit = true;
+    const sec = Math.max(this.minSec, Math.min(this.maxSec, Number(text) * unitSec));
+    this.value.setValue(String(sec / unitSec));
     this.onCommit(sec);
   }
 
-  // 編集を破棄する。blur によるフォーカス移動が重ねて commit() を呼ばないよう先に抑制する。
-  cancel(): void {
-    this.suppressBlurCommit = true;
-    this.value.blur();
-    this.onCancel();
+  commit(): void {
+    this.value.commit();
   }
 
-  // 入力欄の min/max 属性を現在の単位での表示値に換算して合わせる。
+  // 編集を破棄する。
+  cancel(): void {
+    this.value.cancel();
+  }
+
+  // 入力欄の min/max 属性を現在の単位での表示値に換算して合わせる(ブラウザのスピンボタン用の
+  // ヒントで、実際のクランプは commitText が担う)。
   private syncMinMaxAttr(): void {
     const unitSec = UNIT_SEC[this.unitValue];
-    this.value.min = String(this.minSec / unitSec);
-    if (isFinite(this.maxSec)) this.value.max = String(this.maxSec / unitSec);
-    else this.value.removeAttribute('max');
+    this.value.element.min = String(this.minSec / unitSec);
+    if (isFinite(this.maxSec)) this.value.element.max = String(this.maxSec / unitSec);
+    else this.value.element.removeAttribute('max');
   }
 }
 
@@ -161,11 +143,11 @@ export class DisplayTimePanel {
 
   private readonly panel: HTMLElement;
   private readonly durationPillsEl: HTMLElement;
-  private readonly durationButtons = new Map<FixedDurationKey, HTMLElement>();
-  private readonly customPillBtn: HTMLElement;
+  private readonly durationButtons = new Map<FixedDurationKey, Button>();
+  private readonly customPillBtn: Button;
   private readonly durationEditEl: HTMLElement;
   private readonly durationInput: DurationValueInput;
-  private readonly slider: HTMLInputElement;
+  private readonly slider: Slider;
   private readonly absoluteLabel: HTMLElement;
   private readonly elapsedLabel: HTMLElement;
   private readonly jumpEditEl: HTMLElement;
@@ -192,19 +174,19 @@ export class DisplayTimePanel {
     const row1 = document.createElement('div');
     row1.className = 'dtp-row1';
     const durationLabel = document.createElement('span');
-    durationLabel.className = 'seg-title';
+    durationLabel.className = 'w-group-title';
     durationLabel.textContent = '期間';
     row1.appendChild(durationLabel);
 
     this.durationPillsEl = document.createElement('span');
     this.durationPillsEl.className = 'dtp-pills';
     for (const [key, label] of FIXED_DURATIONS) {
-      const btn = hudButton(label, () => this.onDurationSelect?.(key));
-      this.durationPillsEl.appendChild(btn);
+      const btn = new Button(label, () => this.onDurationSelect?.(key));
+      this.durationPillsEl.appendChild(btn.element);
       this.durationButtons.set(key, btn);
     }
-    this.customPillBtn = hudButton('任意…', () => this.openDurationEdit());
-    this.durationPillsEl.appendChild(this.customPillBtn);
+    this.customPillBtn = new Button('任意…', () => this.openDurationEdit());
+    this.durationPillsEl.appendChild(this.customPillBtn.element);
     row1.appendChild(this.durationPillsEl);
 
     this.durationInput = new DurationValueInput(
@@ -224,24 +206,20 @@ export class DisplayTimePanel {
     // 行2: 現在に戻すボタン + スクラバー + T+読み値(クリックで直接ジャンプ入力に変わる)。
     const row2 = document.createElement('div');
     row2.className = 'dtp-row2';
-    const resetBtn = document.createElement('span');
-    resetBtn.className = 'dtp-reset';
-    resetBtn.textContent = '⏮';
-    resetBtn.title = '現在に戻す';
-    resetBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
-    resetBtn.addEventListener('click', () => this.onResetToNow?.());
-    row2.appendChild(resetBtn);
+    const resetBtn = new Button('⏮', () => this.onResetToNow?.());
+    resetBtn.element.classList.add('dtp-reset');
+    resetBtn.element.title = '現在に戻す';
+    resetBtn.element.setAttribute('aria-label', '現在に戻す');
+    row2.appendChild(resetBtn.element);
 
     const sliderWrap = document.createElement('div');
     sliderWrap.className = 'dtp-slider-wrap';
-    this.slider = document.createElement('input');
-    this.slider.type = 'range';
-    this.slider.min = '0';
-    this.slider.max = String(this.sliderSteps);
-    this.slider.value = '0';
-    this.slider.title = 'ドラッグ、またはトラックをクリックして未来位置を選ぶ';
-    this.slider.addEventListener('input', () => this.onSliderChange?.(Number(this.slider.value) / this.sliderSteps));
-    sliderWrap.appendChild(this.slider);
+    this.slider = new Slider(
+      { min: 0, max: this.sliderSteps },
+      (value) => this.onSliderChange?.(value / this.sliderSteps),
+    );
+    this.slider.element.title = 'ドラッグ、またはトラックをクリックして未来位置を選ぶ';
+    sliderWrap.appendChild(this.slider.element);
     row2.appendChild(sliderWrap);
 
     this.absoluteLabel = document.createElement('span');
@@ -298,10 +276,10 @@ export class DisplayTimePanel {
 
   // 選択中の期間キーに応じてピルの選択表示を更新する。'custom' のときは任意ピルへ現在値を出す。
   private renderDurationPills(key: DisplayDurationKey, customDurationSec: number): void {
-    for (const [k, btn] of this.durationButtons) btn.classList.toggle('on', k === key);
-    this.customPillBtn.classList.toggle('on', key === 'custom');
+    for (const [k, btn] of this.durationButtons) btn.setOn(k === key);
+    this.customPillBtn.setOn(key === 'custom');
     const customLabel = key === 'custom' ? `${customPillLabel(customDurationSec)} ✎` : '任意…';
-    if (this.customPillBtn.textContent !== customLabel) this.customPillBtn.textContent = customLabel;
+    if (this.customPillBtn.element.textContent !== customLabel) this.customPillBtn.setLabel(customLabel);
   }
 
   // 期間ピル列を数値入力フォームへ差し替える。
@@ -323,17 +301,15 @@ export class DisplayTimePanel {
   private renderSlider(steps: number, t: number, predictionRatio: number): void {
     if (steps !== this.sliderSteps) {
       this.sliderSteps = steps;
-      this.slider.max = String(steps);
+      this.slider.element.max = String(steps);
     }
-    const value = String(Math.round(t * this.sliderSteps));
-    if (this.slider.value !== value) this.slider.value = value;
+    const value = Math.round(t * this.sliderSteps);
+    if (this.slider.getValue() !== value) this.slider.setValue(value);
     if (predictionRatio !== this.lastTrackRatio) {
       this.lastTrackRatio = predictionRatio;
       // <input type=range> はトラック上の区間ごとに色を分けられないので、
       // 背景グラデーションで未予測区間の減光を表す。
-      this.slider.style.background = predictionRatio >= 1
-        ? ''
-        : `linear-gradient(to right, ${TRACK_COLOR} 0%, ${TRACK_COLOR} ${predictionRatio * 100}%, ${TRACK_DIM_COLOR} ${predictionRatio * 100}%, ${TRACK_DIM_COLOR} 100%)`;
+      this.slider.setGradient(predictionRatio);
     }
   }
 
@@ -355,7 +331,7 @@ export class DisplayTimePanel {
     this.editingJump = true;
     this.elapsedLabel.style.display = 'none';
     this.jumpEditEl.style.display = 'inline-flex';
-    this.jumpInput.openWithSec(this.currentDuration * (Number(this.slider.value) / this.sliderSteps), 0, this.currentDuration);
+    this.jumpInput.openWithSec(this.currentDuration * (this.slider.getValue() / this.sliderSteps), 0, this.currentDuration);
   }
 
   // 数値入力フォームを閉じ、T+ 読み値を出す。

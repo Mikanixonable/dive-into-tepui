@@ -348,10 +348,11 @@ THREE 非依存かつ純粋であっても、次のものは `physics/` に置�
 - `Hud.hint()` / `toast()` / `Sfx` … 共有サービス。所有者の議論の対象外。
 - `hud/context-menu.ts` / `hud/widgets/`(押せる/切り替えられる/入力できる DOM は
   `Button`/`ToggleSwitch`/`SegmentedControl`/`HoldButton`/`CloseButton`/`ValueInput`/`Meter`/
-  `TabBar`/`buildCollapseToggle` の10種に限り、これ以外を自作しない)/ `hud/frame-labels.ts` …
+  `TabBar`/`buildCollapseToggle`/`Slider` の10種に限り、これ以外を自作しない)/ `hud/frame-labels.ts` …
   DOM・イベント・表示文字列だけを担う共有部品。状態を持たないので「所有者」を問う必要がない。
-  **この形は積極的に増やしてよい。**`hud/buttons.ts` は `hud/widgets/` への互換委譲層で、
-  呼び出し側は新規に増やさず `hud/widgets/` を直接使う。
+  **この形は積極的に増やしてよい。**押せる/切り替えられる/入力できる DOM を自作している呼び出し側を
+  見つけたら `hud/widgets/` の対応するウィジェットへ置き換える(`hud/buttons.ts` は無い —
+  10 種すべてが `hud/widgets/` 直下の1ウィジェット1ファイルで、旧名への互換委譲層は存在しない)。
 - `hud/panel.ts` の `HudPanels.sync(game, dt)` … **全情報を集約表示することそのものに価値が
   ある**ので `Game` を丸ごと読んでよい。ただし**表示専用**であること(他モジュールの状態や
   DOM を書き換えないこと)は維持する。
