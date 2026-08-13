@@ -265,9 +265,9 @@ export class PlanEditor {
   }
 
   // マップ上のクリック・右クリックをノード選択/配置とコンテキストメニューへ振り分ける。
-  // 艦がいなければ計画そのものが無いので、クリックはここで捨てる。
+  // 編集モードでなければ、また艦がいなければ計画そのものが無いので、クリックはここで捨てる。
   handleMapPointer(input: Input): void {
-    if (this.activePlayers.current === null) return;
+    if (!this.editMode || this.activePlayers.current === null) return;
     input.takeRightClicks((p) => this.handleNodeRightClick(p.x, p.y));
     input.takeClicks((p) => {
       this.handleMapClick(p.x, p.y);

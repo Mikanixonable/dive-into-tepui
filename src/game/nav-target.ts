@@ -118,8 +118,10 @@ export class NavTarget {
   }
 
   // 戦闘ビューの右クリックで基地を航法ターゲットに設定/解除する。基地に当たらなければ
-  // クリックを消費せず、Targeter の敵ターゲット選択へフォールスルーさせる。
-  updateCombatBasePicking(entities: EntityManager, input: Input, project: ProjectFn): void {
+  // クリックを消費せず、Targeter の敵ターゲット選択へフォールスルーさせる。ビューはここでは
+  // 持たないので毎フレーム引数で受け取り、マップ視点では何もしない。
+  updateCombatBasePicking(entities: EntityManager, input: Input, project: ProjectFn, overviewMode: boolean): void {
+    if (overviewMode) return;
     input.takeRightClicks((click) => {
       const pickables = entities.bases.filter((b) => b.alive).map((base) => ({ pos: base.state.r, base }));
       const picked = pickNearest(pickables, click.x, click.y, project, C.TARGET_LOCK_PICK_PX_SQ);

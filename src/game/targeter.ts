@@ -99,8 +99,12 @@ export class Targeter {
     if (this.secondaryTarget === entity) this.secondaryTarget = null;
   }
 
-  // 右クリックによるターゲット選択メニューを扱う。オート選定は行わない。
-  updateCombatTargeting(targets: CombatTarget[], input: Input, project: ProjectFn): void {
+  // 右クリックによるターゲット選択メニューを扱う。オート選定は行わない。マップ視点、または
+  // 操作艦がいない間は何もしない。
+  updateCombatTargeting(
+    player: Player | null, targets: CombatTarget[], input: Input, project: ProjectFn, overviewMode: boolean,
+  ): void {
+    if (overviewMode || !player) return;
     this.handleTargetSelectKey(input, targets, project);
     this.handleTargetContextMenu(input, targets, project);
   }

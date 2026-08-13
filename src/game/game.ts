@@ -280,24 +280,27 @@ export class Game {
     this.sections.exit(SECTION.plan);
   }
 
-  // ポインタ入力を優先順位順(=呼ぶ順)に配る。このフレームの cameraSystem.update が終わって
+  // ポインタ入力を優先順位順(=呼ぶ順)に配る。各受け手はいまがマップ視点か・編集モードかを
+  // 自分で見るので、ここで決めるのは順序だけ。このフレームの cameraSystem.update が終わって
   // 初めて投影がこのフレームの値になるので、update の末尾に置く。ポーズ中は
   // ESC メニュー等が開いていないときだけ配る(背景の誤操作を防ぐ)。
   private handlePointerInput(): void {
     if (this._isPaused && this._hud.modalController.isOpen) return;
-    if (this.editor.editMode) {
-      this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
-      this.mapPicker.handleLeftClick(this.input);
-      this.mapPicker.handleDoubleClick(this.input);
-      this.editor.handleMapPointer(this.input);
-      this.mapPicker.handleEmptySpaceRightClick(this.input, this.simulator.simTime);
-    } else if (!this._isPaused && this.player) {
-      this.navTarget.updateCombatBasePicking(this.entities, this.input, this.cameraSystem.activeCameraProjection);
-      this.targeter.updateCombatTargeting(
-        this.entities.getCombatTargets(this.player), this.input,
-        this.cameraSystem.activeCameraProjection,
-      );
-    }
+    const simTime = this.simulator.simTime;
+    this.mapPicker.handleRightClick(this.input, simTime);
+    this.mapPicker.handleLeftClick(this.input);
+    this.mapPicker.handleDoubleClick(this.input);
+    this.editor.handleMapPointer(this.input);
+    this.mapPicker.handleEmptySpaceRightClick(this.input, simTime);
+    // ドック表示中など、ポーズ中は背後の 3D 世界が見えないまま当たり判定だけが生きてしまう
+    // ので、戦闘ビュー側はポーズ中には配らない。
+    if (this._isPaused) return;
+    const project = this.cameraSystem.activeCameraProjection;
+    const overviewMode = this.cameraSystem.overviewMode;
+    this.navTarget.updateCombatBasePicking(this.entities, this.input, project, overviewMode);
+    this.targeter.updateCombatTargeting(
+      this.player, this.entities.getCombatTargets(this.player), this.input, project, overviewMode,
+    );
   }
 
   // --------------------------------------------------------------- input
