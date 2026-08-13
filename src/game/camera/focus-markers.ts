@@ -11,7 +11,7 @@ import { BodyClassToggles, systemMembersAt } from '../celestial/body-visibility'
 import { bodyClassOf } from '../celestial/body-class';
 import { MapVisibilityPolicy } from '../celestial/map-visibility';
 import { FOCUS_LABEL_PRIORITY_PX, LAGRANGE_MIN_CLEARANCE_RATIO } from '../const';
-import type { MapPickable } from '../map-pick';
+import type { MapPickable } from '../map-pickable';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 
 type MutableMapPickable = { -readonly [K in keyof MapPickable]: MapPickable[K] };
@@ -147,7 +147,7 @@ export class FocusMarkers {
       return this.cachedBodyPickables;
     }
 
-    // update を通らずに直接呼ばれる場合も既存の時刻仕様を保つ。通常の MapPicker 経路は
+    // update を通らずに直接呼ばれる場合も既存の時刻仕様を保つ。通常の MapPickables 経路は
     // update が先に同じ policy で座標を作るため、下記の再計算分岐には入らない。
     const ephemeris = this.ephemeris;
     const posOf = new Map(ephemeris.attractorsAt(t).map((a) => [a.id, a.state.r]));

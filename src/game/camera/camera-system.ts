@@ -3,10 +3,10 @@ import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { CombatCameraSystem } from './combat-camera-system';
 import { OverviewCamera } from './overview-camera';
-import { OverviewCameraPanel } from './overview-camera-panel';
+import { ViewOptionsPanel } from '../hud/view-options-panel';
 import { FocusMarkers } from './focus-markers';
 import { BodyClassToggles, DEFAULT_BODY_CLASS_TOGGLES } from '../celestial/body-visibility';
-import { MapPickable } from '../map-pick';
+import { MapPickable } from '../map-pickable';
 import { MarkerManager } from '../marker/marker-manager';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
@@ -90,8 +90,8 @@ export class CameraSystem {
   readonly combatCamera: CombatCameraSystem;
   readonly overviewCamera: OverviewCamera;
   readonly focusMarkers: FocusMarkers;
-  // 広範囲視点の操作パネル(注視対象・視点の座標系・視点リセット)。
-  private readonly overviewCameraPanel: OverviewCameraPanel;
+  // 表示パネル(天体クラス表示トグル+天球グリッドトグル)。天球グリッド側の配線は Navball が行う。
+  readonly viewOptionsPanel: ViewOptionsPanel;
   // 広範囲視点に切り替わっているか(視点・描画側の判定に使う)。
   private _overviewMode = false;
   get overviewMode(): boolean { return this._overviewMode; }
@@ -126,9 +126,9 @@ export class CameraSystem {
     this.focusMarkers = new FocusMarkers(markerManager, ephemeris);
     this.combatCamera = new CombatCameraSystem(_hud, sfx, player, saved?.chase);
     this.overviewCamera = new OverviewCamera(_hud, sfx, ephemeris, saved?.overview);
-    // 広範囲視点の操作パネルと各操作のコールバック
-    this.overviewCameraPanel = new OverviewCameraPanel(_hud.layers.panel);
-    this.overviewCameraPanel.onBodyClassToggle = (key, on) => {
+    // 表示パネルと天体クラス側操作のコールバック
+    this.viewOptionsPanel = new ViewOptionsPanel(_hud.layers.panel);
+    this.viewOptionsPanel.onBodyClassToggle = (key, on) => {
       this._bodyClassToggles = { ...this._bodyClassToggles, [key]: on };
       saveBodyClassToggles(this._bodyClassToggles);
     };
@@ -220,8 +220,8 @@ export class CameraSystem {
     const active = this.overviewMode ? this.overviewCamera : this.combatCamera;
     syncCameraToViewpoint(active.camera, active.viewpoint, active.near, active.far, fo);
     // 広範囲視点のときだけ操作パネルとフォーカスラベルを表示する
-    this.overviewCameraPanel.setVisible(this.overviewMode);
-    this.overviewCameraPanel.setBodyClassToggles(this._bodyClassToggles);
+    this.viewOptionsPanel.setVisible(this.overviewMode);
+    this.viewOptionsPanel.setBodyClassToggles(this._bodyClassToggles);
 
     // 戦闘ビュー固有パネルを広範囲視点では非表示にする
     const hidden = this.overviewMode && !this.showStatusInOverview ? 'none' : '';

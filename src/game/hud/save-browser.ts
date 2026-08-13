@@ -409,7 +409,7 @@ export class SaveBrowser implements OverlayHandle {
     card.appendChild(row2);
 
     // このパネルの主役はセーブ操作であって HP 表示ではないため、常にモノトーンで塗る
-    // (danger 色は使わない — dom.ts の .sb-snap-hp-meter が塗り色を上書きする)。
+    // (danger 色は使わない — hud-root.ts の .sb-snap-hp-meter が塗り色を上書きする)。
     const hpMeter = new Meter();
     hpMeter.element.classList.add('sb-snap-hp-meter');
     hpMeter.setRatio(hpPct / 100);

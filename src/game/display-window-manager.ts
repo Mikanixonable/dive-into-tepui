@@ -6,7 +6,7 @@
 // メッシュとマーカーが別の瞬間を指す。表示側が使う重力源一覧(解析天体に重力を持つ
 // エンティティを合流させたもの)も、同じ理由で1フレームに1つへ確定させる。
 import * as C from './const';
-import { DisplayTimePanel } from './display-time-panel';
+import { PredictPanel } from './hud/predict-panel';
 import { buildTicks } from './hud/tick-scale';
 import { Attractor, strongestAttractor } from '../physics/attractor';
 import { ReferenceFrame } from '../physics/frame';
@@ -50,7 +50,7 @@ export class DisplayWindowManager {
   private customDurationSec = C.DISPLAY_DUR_DAY;
   private _frame: ReferenceFrame;
 
-  private readonly panel: DisplayTimePanel;
+  private readonly panel: PredictPanel;
 
   // update と sync の間に DOM イベントで設定が変わったかを検出する世代。
   private revision = 0;
@@ -76,7 +76,7 @@ export class DisplayWindowManager {
       frame: this._frame, simTime: 0, referencePeriod: NaN,
       duration: C.APERIODIC_ARC_DURATION, displayTime: 0,
     };
-    this.panel = new DisplayTimePanel(hudRoot);
+    this.panel = new PredictPanel(hudRoot);
     // 期間はスライダーの尺度そのものなので、尺度を変えたら位置も原点へ戻す。
     this.panel.onDurationSelect = (key) => {
       this.durationKey = key;
