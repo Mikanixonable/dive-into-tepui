@@ -107,7 +107,6 @@ export class CameraSystem {
   // sync() で毎フレーム参照する DOM 要素をコンストラクタ時にキャッシュする。
   private readonly _elStatus: HTMLElement | null;
   private readonly _elStageStatus: HTMLElement | null;
-  private readonly _elOrbit: HTMLElement | null;
   // マップ視点でも艦のステータスを表示するか(ステージが showsStatusInOverview で宣言する)。
   private readonly showStatusInOverview: boolean;
 
@@ -149,7 +148,6 @@ export class CameraSystem {
     // sync() 用の DOM 要素を事前にキャッシュ
     this._elStatus = document.getElementById('hud-status');
     this._elStageStatus = document.getElementById('hud-stagestatus');
-    this._elOrbit = document.getElementById('hud-orbit');
   }
 
   // アクティブ艦の切替を戦闘ビューの追従カメラへ伝える。
@@ -229,7 +227,6 @@ export class CameraSystem {
     const hidden = this.overviewMode && !this.showStatusInOverview ? 'none' : '';
     if (this._elStatus) this._elStatus.style.display = hidden;
     if (this._elStageStatus) this._elStageStatus.style.display = hidden;
-    if (this._elOrbit) this._elOrbit.style.left = this.overviewMode ? '12px' : '';
     if (this.overviewMode) {
       this.focusMarkers.syncLabels(this.activeCameraProjection, this.activeCameraPos);
     } else {

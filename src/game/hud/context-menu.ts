@@ -7,6 +7,7 @@
 import { clampOverlayPosition } from './layout';
 import { shortcutKeyLabel } from './shortcut-hint';
 import { bringToFront } from './overlay-layer';
+import { onViewportChange } from './viewport';
 import type { OverlayHandle, OverlayManager } from './overlay-manager';
 
 const STYLE = `
@@ -83,7 +84,7 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
     popupLayer.appendChild(this.el);
     this.el.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.el.addEventListener('contextmenu', (e) => e.preventDefault());
-    window.addEventListener('resize', () => {
+    onViewportChange(() => {
       if (this.target !== null) this.positionWithinViewport();
     });
   }
