@@ -5,6 +5,7 @@
 import { clampOverlayPosition } from './layout';
 import { Button } from './widgets';
 import { bringToFront } from './overlay-layer';
+import type { OverlayHandle, OverlayManager } from './overlay-manager';
 
 const STYLE = `
 #hud .object-picker-pop {
@@ -62,7 +63,9 @@ function groupsEqual<T>(a: readonly ObjectPickerGroup<T>[], b: readonly ObjectPi
   });
 }
 
-export class ObjectPicker<T> {
+export class ObjectPicker<T> implements OverlayHandle {
+  private static nextId = 0;
+  private readonly overlayId: string;
   readonly element: HTMLElement;
   private readonly trigger: Button;
   private readonly pop: HTMLElement;
@@ -70,10 +73,15 @@ export class ObjectPicker<T> {
   private readonly list: HTMLElement;
   private groups: readonly ObjectPickerGroup<T>[] = [];
   private selected: T | null = null;
+  private isOpen = false;
   private readonly onSelect: (value: T) => void;
 
   // title は見出し、root はポップアップを popup レイヤへ追加する親。
-  constructor(root: HTMLElement, title: string, onSelect: (value: T) => void) {
+  constructor(
+    root: HTMLElement, title: string, onSelect: (value: T) => void,
+    private readonly overlayManager: OverlayManager,
+  ) {
+    this.overlayId = `object-picker-${ObjectPicker.nextId++}`;
     ensureStyle();
     this.onSelect = onSelect;
 
@@ -102,12 +110,10 @@ export class ObjectPicker<T> {
     this.list.className = 'op-grid';
     this.pop.appendChild(this.list);
     root.appendChild(this.pop);
+  }
 
-    // 途中の要素が stopPropagation していても届くよう、キャプチャ段階で外側クリックを拾う。
-    document.addEventListener('pointerdown', (e) => {
-      if (e.target instanceof Node && (this.pop.contains(e.target) || this.element.contains(e.target))) return;
-      this.close();
-    }, true);
+  contains(target: Node): boolean {
+    return this.pop.contains(target) || this.element.contains(target);
   }
 
   // 候補を差し替える。前回と同じ内容(ラベルと項目の並びが一致)なら何もしない —
@@ -116,7 +122,7 @@ export class ObjectPicker<T> {
   setGroups(groups: readonly ObjectPickerGroup<T>[]): void {
     if (groupsEqual(this.groups, groups)) return;
     this.groups = groups;
-    if (this.pop.style.display === 'block') this.renderList();
+    if (this.isOpen) this.renderList();
     this.syncTriggerLabel();
   }
 
@@ -137,7 +143,7 @@ export class ObjectPicker<T> {
 
   // ボタンを押すたびにポップアップの開閉を切り替える。
   private toggle(): void {
-    if (this.pop.style.display === 'block') this.close();
+    if (this.isOpen) this.close();
     else this.open();
   }
 
@@ -146,6 +152,7 @@ export class ObjectPicker<T> {
   private open(): void {
     this.filter.value = '';
     this.renderList();
+    this.isOpen = true;
     this.pop.style.display = 'block';
     bringToFront(this.pop);
     // 画面端で開いてもはみ出さないよう、実寸を測ってから位置を決める。
@@ -158,11 +165,16 @@ export class ObjectPicker<T> {
     this.pop.style.left = `${pos.x}px`;
     this.pop.style.top = `${pos.y}px`;
     this.filter.focus();
+    this.overlayManager.open(this.overlayId, this, {
+      kind: 'popup', closeOnEscape: true, closeOnOutsideClick: true, gatesInput: false,
+    });
   }
 
   // ポップアップを閉じる。
   close(): void {
+    this.isOpen = false;
     this.pop.style.display = 'none';
+    this.overlayManager.close(this.overlayId);
   }
 
   // 絞り込み文字列に一致する候補だけを、グループ見出しつきで並べ直す。候補が1件も無い

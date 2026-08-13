@@ -8,7 +8,7 @@ const LAYER_ORDER: readonly OverlayLayerName[] = ['marker', 'panel', 'window', '
 
 export const OVERLAY_LAYER_STYLE = LAYER_ORDER
   .map((name, i) => `#hud-layer-${name} { position: absolute; inset: 0; pointer-events: none; z-index: ${10 + i}; }`
-    + `#hud-layer-${name}.modal-input-gate { pointer-events: auto; }`)
+    + `#hud-layer-${name}.hud-overlay-gate { pointer-events: auto; }`)
   .join('\n');
 
 // root の直下にレイヤ div を奥から手前の順に生成し、名前で引けるレイヤ集合を返す。
