@@ -2,7 +2,7 @@ import { Game } from './game/game';
 import type { Input } from './game/input/input';
 import { KEY_MAPPING as K } from './game/input/key-mapping';
 import { Hud } from './game/hud/hud';
-import { SettingsPanel } from './game/hud/settings-panel';
+import { PauseMenu } from './game/hud/pause-menu';
 import { SaveBrowser } from './game/hud/save-browser';
 import { SnapshotService } from './game/save/snapshot-service';
 
@@ -12,7 +12,7 @@ import { SnapshotService } from './game/save/snapshot-service';
 export class SnapshotControls {
   constructor(
     private readonly hud: Hud,
-    private readonly settingsPanel: SettingsPanel,
+    private readonly pauseMenu: PauseMenu,
     private readonly browser: SaveBrowser,
     private readonly service: SnapshotService,
   ) {}
@@ -35,7 +35,7 @@ export class SnapshotControls {
         this.browser.close();
       } else {
         // ポーズは入れ子にならない真偽値なので、同じ帯のシステム窓を重ねない。
-        this.settingsPanel.toggle(false);
+        this.pauseMenu.toggle(false);
         this.browser.open();
       }
     }

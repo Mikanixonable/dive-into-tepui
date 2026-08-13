@@ -8,7 +8,7 @@ import type { CameraSystem } from './camera/camera-system';
 import type { PlanEditor } from './plan/plan-editor';
 import type { Targeter } from './targeter';
 import type { NavTarget } from './nav-target';
-import type { MapPicker } from './map-picker';
+import type { MapContextActions } from './map-context-actions';
 import type { Sfx } from '../audio/sfx';
 
 export class ActivePlayerController {
@@ -21,7 +21,7 @@ export class ActivePlayerController {
     private readonly editor: PlanEditor,
     private readonly targeter: Targeter,
     private readonly navTarget: NavTarget,
-    private readonly mapPicker: MapPicker,
+    private readonly mapActions: MapContextActions,
     private readonly sfx: Sfx,
   ) {
     this._current = initial;
@@ -62,7 +62,7 @@ export class ActivePlayerController {
     const wasActive = this._current === ship;
     this.navTarget.clearIfTargeting(ship.id);
     this.targeter.clearIfTargeting(ship);
-    this.mapPicker.close();
+    this.mapActions.close();
     this.cameraSystem.overviewCamera.clearFocusIf(ship.id);
     if (wasActive) {
       ship.clearTransientCommands();

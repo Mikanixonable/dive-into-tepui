@@ -13,7 +13,7 @@ import { haloState, lissajousState } from '../../physics/halo';
 import type { FloatingOrigin } from '../floating-origin';
 import { Vec3, add } from '../../physics/vec3';
 import { ToggleSwitch } from '../hud/widgets';
-import { hudDock } from '../hud/dom';
+import { hudRail } from '../hud/hud-root';
 import type { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { Ammo } from '../game-entity/ammo';
 import { Base } from '../game-entity/base';
@@ -46,7 +46,7 @@ export class CreativeStage extends Stage {
 
   private readonly placerPanel: ShipPlacerPanel;
   // 補給の自動投入・敵の波状攻撃を切り替えるトグルを載せたパネル。マップ視点でだけ出す。
-  private readonly creativeSettingsPanel: HTMLElement;
+  private readonly creativeOptionsPanel: HTMLElement;
   private readonly waveAttack: WaveAttack;
   // 敵の波状攻撃を発生させるかどうか。既定 OFF — ON の間だけ update が WaveAttack を進める。
   private waveAttackEnabled: boolean;
@@ -85,16 +85,16 @@ export class CreativeStage extends Stage {
     this.placerPanel.onConfirm = (name, form) => this.placeObject(name, form);
     this.waveAttack = new WaveAttack(this._hud, this._sfx, this._fx, this._scene, this._ephemeris, savedCreative?.waveAttack);
     this.waveAttackEnabled = savedCreative?.waveAttackEnabled ?? false;
-    this.creativeSettingsPanel = this.buildCreativeSettingsPanel(this._hud.layers.panel);
+    this.creativeOptionsPanel = this.buildCreativeOptionsPanel(this._hud.layers.panel);
 
     this.begin();
   }
 
   // 補給の自動投入・敵の波状攻撃のトグルを載せたパネルを組み立て、マップ右ドックへ追加して返す。
-  private buildCreativeSettingsPanel(hudRoot: HTMLElement): HTMLElement {
+  private buildCreativeOptionsPanel(hudRoot: HTMLElement): HTMLElement {
     const panel = document.createElement('div');
-    panel.id = 'hud-creative-settings';
-    panel.className = 'panel';
+    panel.id = 'hud-creative-options';
+    panel.className = 'panel hidden';
     panel.addEventListener('pointerdown', (e) => e.stopPropagation());
     const title = document.createElement('h3');
     title.textContent = '設定';
@@ -105,7 +105,7 @@ export class CreativeStage extends Stage {
     const waveAttackToggle = new ToggleSwitch('敵の波状攻撃', (on) => { this.waveAttackEnabled = on; });
     waveAttackToggle.setOn(this.waveAttackEnabled);
     panel.appendChild(waveAttackToggle.element);
-    hudDock(hudRoot, 'right').appendChild(panel);
+    hudRail(hudRoot, 'right').appendChild(panel);
     return panel;
   }
 
@@ -117,16 +117,16 @@ export class CreativeStage extends Stage {
     super.sync(player, fo, project, scale, displayTime, overviewMode, visibilityPolicy, camera);
     this.syncPreview(fo, project, camera);
     this.placerPanel.setIssues(this.issues);
-    this.creativeSettingsPanel.style.display = overviewMode ? 'block' : 'none';
+    this.creativeOptionsPanel.classList.toggle('hidden', !overviewMode);
   }
 
-  // 艦艇配置モーダルを開く (MapPicker から呼ばれる)。focusId はマップの現在フォーカスで、
+  // 艦艇配置モーダルを開く (MapContextActions から呼ばれる)。focusId はマップの現在フォーカスで、
   // 基準天体になれる ID なら基準天体の初期選択に使う。
   openShipPlacer(focusId?: string): void {
     this.placerPanel.open(focusId !== undefined ? { kind: 'body', attractor: focusId as ReferenceAttractor } : undefined);
   }
 
-  // 右クリックメニューの「複製」(MapPicker から呼ばれる)。state を軌道要素へ逆算でき、
+  // 右クリックメニューの「複製」(MapContextActions から呼ばれる)。state を軌道要素へ逆算でき、
   // かつ基地の基準天体制約(validateBaseReferenceFields — 月基準かラグランジュ点のみ)を
   // 満たす値が求まったときだけ、その値をプリセットして開く。逆算できない状態(双曲線軌道など)や、
   // 基地なのに基準天体が月でない(地球が支配的な複製元など)ときは、値だけを引き継ぐと

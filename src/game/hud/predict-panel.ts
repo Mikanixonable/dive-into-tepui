@@ -1,10 +1,10 @@
 // 未来表示の操作パネル(期間ピル・スクラバー・目盛り)。3行構成: 期間選択 / スクラブバー+T+読み値 / 目盛り。
-import * as C from './const';
-import { Button, SegmentedControl, Slider, ValueInput } from './hud/widgets';
-import { buildCollapseToggle, PREDICT_TOGGLE_LABELS } from './hud/dom';
-import { SIM_EPOCH_SEC, fmtDateTime, fmtDuration } from './hud/utils';
-import type { DisplayDurationKey } from './display-window-manager';
-import type { DisplayTick } from './hud/tick-scale';
+import * as C from '../const';
+import { Button, SegmentedControl, Slider, ValueInput } from './widgets';
+import { buildCollapseToggle, PREDICT_TOGGLE_LABELS } from './hud-root';
+import { SIM_EPOCH_SEC, fmtDateTime, fmtDuration } from './utils';
+import type { DisplayDurationKey } from '../display-window-manager';
+import type { DisplayTick } from './tick-scale';
 
 type FixedDurationKey = 'orbit' | 'day' | 'week' | 'month';
 
@@ -41,7 +41,7 @@ class DurationValueInput {
   constructor(defaultUnit: DurationUnit, private readonly onCommit: (sec: number) => void, private readonly onCancel: () => void) {
     this.unitValue = defaultUnit;
     this.element = document.createElement('span');
-    this.element.className = 'w-group dtp-value-input';
+    this.element.className = 'w-group predict-value-input';
     // 単位ボタンを押しても数値欄からフォーカスを移さない — 移すと blur が確定として走り、
     // 選び直した単位が反映される前に古い単位の値で閉じてしまう。フォーカス移動の既定動作を
     // 持つのは mousedown なので、それを捕捉段階で止める。
@@ -114,7 +114,7 @@ function customPillLabel(sec: number): string {
 // フォーカス移動による commit() の割り込みを避けつつ押せる小ボタン(✓/✕ など)。
 function inlineIconButton(label: string, title: string, onClick: () => void): HTMLElement {
   const btn = document.createElement('span');
-  btn.className = 'dtp-edit-btn';
+  btn.className = 'predict-edit-btn';
   btn.textContent = label;
   btn.title = title;
   btn.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); });
@@ -122,7 +122,7 @@ function inlineIconButton(label: string, title: string, onClick: () => void): HT
   return btn;
 }
 
-export interface DisplayTimePanelState {
+export interface PredictPanelState {
   readonly visible: boolean;
   readonly durationKey: DisplayDurationKey;
   readonly customDurationSec: number;
@@ -134,7 +134,7 @@ export interface DisplayTimePanelState {
   readonly ticks: readonly DisplayTick[];
 }
 
-export class DisplayTimePanel {
+export class PredictPanel {
   onDurationSelect: ((key: FixedDurationKey) => void) | null = null;
   onCustomDurationConfirm: ((sec: number) => void) | null = null;
   onSliderChange: ((t: number) => void) | null = null;
@@ -163,7 +163,7 @@ export class DisplayTimePanel {
   // PREDICT パネルの DOM を組み立て、root へ追加する。
   constructor(root: HTMLElement) {
     this.panel = document.createElement('div');
-    this.panel.id = 'hud-displaytime';
+    this.panel.id = 'hud-predict';
     this.panel.className = 'panel';
     this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
     const title = document.createElement('h3');
@@ -172,14 +172,14 @@ export class DisplayTimePanel {
 
     // 行1: 期間ピル(1周/1日/7日/28日/任意…)。任意…は自身をインライン編集フォームへ差し替える。
     const row1 = document.createElement('div');
-    row1.className = 'dtp-row1';
+    row1.className = 'predict-row1';
     const durationLabel = document.createElement('span');
     durationLabel.className = 'w-group-title';
     durationLabel.textContent = '期間';
     row1.appendChild(durationLabel);
 
     this.durationPillsEl = document.createElement('span');
-    this.durationPillsEl.className = 'dtp-pills';
+    this.durationPillsEl.className = 'predict-pills';
     for (const [key, label] of FIXED_DURATIONS) {
       const btn = new Button(label, () => this.onDurationSelect?.(key));
       this.durationPillsEl.appendChild(btn.element);
@@ -195,8 +195,7 @@ export class DisplayTimePanel {
       () => this.closeDurationEdit(),
     );
     this.durationEditEl = document.createElement('span');
-    this.durationEditEl.className = 'dtp-pills';
-    this.durationEditEl.style.display = 'none';
+    this.durationEditEl.className = 'predict-pills hidden';
     this.durationEditEl.appendChild(this.durationInput.element);
     this.durationEditEl.appendChild(inlineIconButton('✓', '確定', () => this.durationInput.commit()));
     this.durationEditEl.appendChild(inlineIconButton('✕', 'キャンセル', () => this.durationInput.cancel()));
@@ -205,15 +204,15 @@ export class DisplayTimePanel {
 
     // 行2: 現在に戻すボタン + スクラバー + T+読み値(クリックで直接ジャンプ入力に変わる)。
     const row2 = document.createElement('div');
-    row2.className = 'dtp-row2';
+    row2.className = 'predict-row2';
     const resetBtn = new Button('⏮', () => this.onResetToNow?.());
-    resetBtn.element.classList.add('dtp-reset');
+    resetBtn.element.classList.add('predict-reset');
     resetBtn.element.title = '現在に戻す';
     resetBtn.element.setAttribute('aria-label', '現在に戻す');
     row2.appendChild(resetBtn.element);
 
     const sliderWrap = document.createElement('div');
-    sliderWrap.className = 'dtp-slider-wrap';
+    sliderWrap.className = 'predict-slider-wrap';
     this.slider = new Slider(
       { min: 0, max: this.sliderSteps },
       (value) => this.onSliderChange?.(value / this.sliderSteps),
@@ -223,11 +222,11 @@ export class DisplayTimePanel {
     row2.appendChild(sliderWrap);
 
     this.absoluteLabel = document.createElement('span');
-    this.absoluteLabel.className = 'dtp-absolute';
+    this.absoluteLabel.className = 'predict-absolute';
     row2.appendChild(this.absoluteLabel);
 
     this.elapsedLabel = document.createElement('span');
-    this.elapsedLabel.className = 'dtp-elapsed';
+    this.elapsedLabel.className = 'predict-elapsed';
     this.elapsedLabel.title = 'クリックして時刻へジャンプ';
     this.elapsedLabel.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.elapsedLabel.addEventListener('click', () => this.openJumpEdit());
@@ -239,8 +238,7 @@ export class DisplayTimePanel {
       () => this.closeJumpEdit(),
     );
     this.jumpEditEl = document.createElement('span');
-    this.jumpEditEl.className = 'dtp-value-input';
-    this.jumpEditEl.style.display = 'none';
+    this.jumpEditEl.className = 'predict-value-input hidden';
     this.jumpEditEl.appendChild(this.jumpInput.element);
     row2.appendChild(this.jumpEditEl);
     this.panel.appendChild(row2);
@@ -252,14 +250,14 @@ export class DisplayTimePanel {
 
     // トグルとバー本体を1つの縦積み flex にまとめ、バーを畳んでもトグルだけがその場に残るようにする。
     const wrap = document.createElement('div');
-    wrap.id = 'hud-displaytime-wrap';
+    wrap.id = 'hud-predict-wrap';
     wrap.appendChild(this.panel);
-    buildCollapseToggle(wrap, 'hud-displaytime-toggle', '', this.panel, PREDICT_TOGGLE_LABELS);
+    buildCollapseToggle(wrap, 'hud-predict-toggle', '', this.panel, PREDICT_TOGGLE_LABELS);
     root.appendChild(wrap);
   }
 
   // state をパネルへ反映する。編集中の行はユーザー入力を壊さないよう再描画しない。
-  render(state: DisplayTimePanelState): void {
+  render(state: PredictPanelState): void {
     this.setVisible(state.visible);
     if (!state.visible) return;
     this.currentDuration = state.duration;
@@ -271,7 +269,7 @@ export class DisplayTimePanel {
   }
 
   private setVisible(visible: boolean): void {
-    this.panel.style.display = visible ? 'block' : 'none';
+    this.panel.classList.toggle('hidden', !visible);
   }
 
   // 選択中の期間キーに応じてピルの選択表示を更新する。'custom' のときは任意ピルへ現在値を出す。
@@ -285,16 +283,16 @@ export class DisplayTimePanel {
   // 期間ピル列を数値入力フォームへ差し替える。
   private openDurationEdit(): void {
     this.editingDuration = true;
-    this.durationPillsEl.style.display = 'none';
-    this.durationEditEl.style.display = 'inline-flex';
+    this.durationPillsEl.classList.add('hidden');
+    this.durationEditEl.classList.remove('hidden');
     this.durationInput.openWithSec(this.currentDuration, C.DISPLAY_DURATION_MIN, C.DISPLAY_DURATION_MAX);
   }
 
   // 数値入力フォームを閉じ、期間ピル列を出す。
   private closeDurationEdit(): void {
     this.editingDuration = false;
-    this.durationEditEl.style.display = 'none';
-    this.durationPillsEl.style.display = '';
+    this.durationEditEl.classList.add('hidden');
+    this.durationPillsEl.classList.remove('hidden');
   }
 
   // スライダーの段階数・つまみ位置・未予測区間の表示を反映する。
@@ -329,16 +327,16 @@ export class DisplayTimePanel {
   // T+ 読み値を数値入力フォームへ差し替える。
   private openJumpEdit(): void {
     this.editingJump = true;
-    this.elapsedLabel.style.display = 'none';
-    this.jumpEditEl.style.display = 'inline-flex';
+    this.elapsedLabel.classList.add('hidden');
+    this.jumpEditEl.classList.remove('hidden');
     this.jumpInput.openWithSec(this.currentDuration * (this.slider.getValue() / this.sliderSteps), 0, this.currentDuration);
   }
 
   // 数値入力フォームを閉じ、T+ 読み値を出す。
   private closeJumpEdit(): void {
     this.editingJump = false;
-    this.jumpEditEl.style.display = 'none';
-    this.elapsedLabel.style.display = '';
+    this.jumpEditEl.classList.add('hidden');
+    this.elapsedLabel.classList.remove('hidden');
   }
 
   // 各目盛りをスライダー全域上の位置 t(0..1)に配置する。端に近い目盛りは画面外へはみ出さないよう
