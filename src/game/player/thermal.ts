@@ -108,8 +108,7 @@ export class ThermalSystem {
 
   // 高度低下(降下)の検知と警告。離心率による短周期の高度振動で誤反応しないよう
   // 高度・変化率とも指数移動平均で平滑化する(時定数 約3秒)。
-  updateAltitudeAlarm(dt: number, playerAlive: boolean, alt: number): ThermalLimit {
-    if (!playerAlive) return null;
+  updateAltitudeAlarm(dt: number, alt: number): ThermalLimit {
     if (!isFinite(this.altEma)) this.altEma = alt;
     const prevEma = this.altEma;
     const k = Math.min(1, dt / C.ALT_EMA_TIME_CONST);
