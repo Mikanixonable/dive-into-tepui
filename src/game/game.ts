@@ -236,7 +236,6 @@ export class Game {
       dt,
       input: this.input,
       simSpeed: this.simSpeedManager,
-      mapMode: this.editor.editMode,
       dvEditActive: this.editor.dvEditActive,
       activeStage: this.activeStage,
       ephemeris: this.ephemeris,
