@@ -57,6 +57,9 @@ export const WIDGET_STYLE = `
 #hud .w-input:hover { border-color: var(--accent-soft); }
 #hud .w-input:focus { outline: none; border-color: var(--accent); }
 
+/* w-slider: つまみ型の連続値スライダー。トラックの寸法はパネル側の CSS が決める。 */
+#hud .w-slider { pointer-events: auto; accent-color: var(--accent); }
+
 /* w-meter: HP/温度/電力バー。常に左から右へ満ちる。 */
 #hud .w-meter { display: flex; align-items: center; }
 #hud .w-meter-track { position: relative; flex: 1 1 auto; height: 12px; background: var(--bar-bg); }

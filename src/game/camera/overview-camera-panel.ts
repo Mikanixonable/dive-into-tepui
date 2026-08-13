@@ -1,4 +1,4 @@
-import { HudToggleButton, IconToggleButton } from '../hud/buttons';
+import { Button } from '../hud/widgets';
 import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, buildCollapseToggle, hudDock, type CollapseToggleLabels } from '../hud/dom';
 import { BodyClassToggles } from '../celestial/body-visibility';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
@@ -37,8 +37,11 @@ const ENTITY_ROWS: readonly BodyClassRow[] = [
 
 export class OverviewCameraPanel {
   onBodyClassToggle: ((key: keyof BodyClassToggles, on: boolean) => void) | null = null;
-  private readonly bodyClassButtons: readonly (readonly [keyof BodyClassToggles, IconToggleButton])[];
-  private readonly categoryButtons: readonly (readonly [keyof BodyClassToggles, HudToggleButton, HTMLElement, readonly IconToggleButton[]])[];
+  private readonly bodyClassButtons: readonly (readonly [keyof BodyClassToggles, Button])[];
+  private readonly categoryButtons: readonly (readonly [keyof BodyClassToggles, Button, HTMLElement, readonly Button[]])[];
+  // 各トグルの現在値の鏡映し。正本は setBodyClassToggles が毎フレーム受け取る BodyClassToggles
+  // 側にあり、ここはクリック時に反転元として読むためだけに保つ。
+  private readonly current = new Map<keyof BodyClassToggles, boolean>();
 
   private readonly panel: HTMLElement;
 
@@ -63,36 +66,36 @@ export class OverviewCameraPanel {
     // マップに出す天体のクラスごとに、アイコン(点)・ラベル(名前)・軌道線を個別に切り替える。
     // 恒星・惑星と、フォーカス中の系の親子は常に出るので、ここで足すのは「その外まで見たい」
     // という明示の意思表示にあたる。
-    const buttons: (readonly [keyof BodyClassToggles, IconToggleButton])[] = [];
-    const categories: (readonly [keyof BodyClassToggles, HudToggleButton, HTMLElement, readonly IconToggleButton[]])[] = [];
+    const buttons: (readonly [keyof BodyClassToggles, Button])[] = [];
+    const categories: (readonly [keyof BodyClassToggles, Button, HTMLElement, readonly Button[]])[] = [];
     for (const row of [...BODY_CLASS_ROWS, ...ENTITY_ROWS]) {
       const rowEl = document.createElement('div');
       rowEl.className = 'body-class-row';
-      const category = new HudToggleButton(row.label, `${row.label}を表示`, (on) => this.onBodyClassToggle?.(row.categoryKey, on));
+      const category = this.toggleButton(row.label, `${row.label}を表示`, row.categoryKey);
       category.element.classList.add('body-class-title');
       rowEl.appendChild(category.element);
 
       const btnsEl = document.createElement('div');
       btnsEl.className = 'body-class-btns';
       rowEl.appendChild(btnsEl);
-      const individualButtons: IconToggleButton[] = [];
+      const individualButtons: Button[] = [];
 
-      const icon = new IconToggleButton(ENTITY_GLYPH.body, 'アイコン', (on) => this.onBodyClassToggle?.(row.iconKey, on));
-      icon.setOn(false);
+      const icon = this.toggleButton(ENTITY_GLYPH.body, 'アイコン', row.iconKey);
+      icon.element.classList.add('body-class-icon-btn');
       individualButtons.push(icon);
       btnsEl.appendChild(icon.element);
       buttons.push([row.iconKey, icon]);
 
-      const label = new IconToggleButton('Aa', 'ラベル', (on) => this.onBodyClassToggle?.(row.labelKey, on));
-      label.setOn(false);
+      const label = this.toggleButton('Aa', 'ラベル', row.labelKey);
+      label.element.classList.add('body-class-icon-btn');
       individualButtons.push(label);
       btnsEl.appendChild(label.element);
       buttons.push([row.labelKey, label]);
 
       if (row.orbitKey !== null) {
         const orbitKey = row.orbitKey;
-        const orbit = new IconToggleButton('⌒', '軌道線', (on) => this.onBodyClassToggle?.(orbitKey, on));
-        orbit.setOn(false);
+        const orbit = this.toggleButton('⌒', '軌道線', orbitKey);
+        orbit.element.classList.add('body-class-icon-btn');
         individualButtons.push(orbit);
         btnsEl.appendChild(orbit.element);
         buttons.push([orbitKey, orbit]);
@@ -107,6 +110,20 @@ export class OverviewCameraPanel {
     hudDock(root, 'left').appendChild(this.panel);
   }
 
+  // クリックのたびに点灯を反転する小型トグルボタンを組む。description はホバー説明とタッチ向け
+  // aria-label の両方に使う。
+  private toggleButton(glyph: string, description: string, key: keyof BodyClassToggles): Button {
+    const btn = new Button(glyph, () => {
+      const next = !(this.current.get(key) ?? false);
+      this.current.set(key, next);
+      btn.setOn(next);
+      this.onBodyClassToggle?.(key, next);
+    });
+    btn.element.title = description;
+    btn.element.setAttribute('aria-label', description);
+    return btn;
+  }
+
   // パネルの表示/非表示を切り替える。
   setVisible(visible: boolean): void {
     this.panel.style.display = visible ? 'block' : 'none';
@@ -114,9 +131,14 @@ export class OverviewCameraPanel {
 
   // クラス別トグルの表示状態を現在値へ合わせる。
   setBodyClassToggles(toggles: BodyClassToggles): void {
-    for (const [key, btn] of this.bodyClassButtons) btn.setOn(toggles[key]);
+    for (const [key, btn] of this.bodyClassButtons) {
+      const on = toggles[key];
+      this.current.set(key, on);
+      btn.setOn(on);
+    }
     for (const [key, category, row, buttons] of this.categoryButtons) {
       const enabled = Boolean(toggles[key]);
+      this.current.set(key, enabled);
       category.setOn(enabled);
       row.classList.toggle('category-off', !enabled);
       for (const btn of buttons) btn.setEnabled(enabled);

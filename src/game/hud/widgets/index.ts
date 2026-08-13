@@ -7,6 +7,7 @@ export { CloseButton } from './close-button';
 export { ValueInput, type ValueInputOptions, type ValueInputType, type EscapeBehavior } from './value-input';
 export { Meter } from './meter';
 export { TabBar } from './tab-bar';
+export { Slider, type SliderOptions } from './slider';
 export {
   buildCollapseToggle,
   type CollapseToggleLabels,

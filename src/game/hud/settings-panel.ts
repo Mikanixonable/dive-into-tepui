@@ -1,11 +1,11 @@
 import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import { ACCENT, SPACE_4, SPACE_6 } from '../theme';
+import { SPACE_4, SPACE_6 } from '../theme';
 import type { ModalController } from './modal-controller';
+import { Button, CloseButton, Slider } from './widgets';
 
 export class SettingsPanel {
   private readonly panel: HTMLElement;
-
 
   onSettingsOpenChange: ((open: boolean) => void) | null = null;
   onQuitToTitle: (() => void) | null = null;
@@ -13,81 +13,84 @@ export class SettingsPanel {
   onOpenSnapshots: (() => void) | null = null;
   onOpenPerfWindow: (() => void) | null = null;
 
+  private readonly bgmSlider: Slider;
+  private readonly bgmMute: Button;
+  // ミュート/復帰を切り替えるための直前の音量。ミュート状態そのものは bgmSlider の値
+  // (0 かどうか)から読めるので別に持たない。
+  private lastVol = 1;
+
   // ⚙ ボタンとパネル DOM を組み立て、開閉・BGM トグル・タイトルへ戻るのイベントを配線する。
   constructor(root: HTMLElement, private readonly modalController: ModalController) {
-
-    // パネル本体
     this.panel = document.createElement('div');
     this.panel.id = 'hud-settings';
     this.panel.className = 'panel';
-    this.panel.innerHTML = `
-      <h3>一時停止 / 設定</h3>
-      <div class="srow">
-        <span class="k">BGM Vol</span>
-        <input type="range" data-id="bgmslider" min="0" max="1" step="0.05" value="1" style="flex:1; margin-left: ${SPACE_4}; cursor: pointer; accent-color: ${ACCENT};">
-        <div class="stoggle" data-id="bgmmute" style="margin-left: ${SPACE_4};">消音</div>
-      </div>
-      <div class="srow" style="margin-top: ${SPACE_6};">
-        <button data-id="snapshotbtn" class="settings-btn" style="flex:1;">スナップショット</button>
-      </div>
-      <div class="srow" style="margin-top: ${SPACE_4};">
-        <button data-id="perfbtn" class="settings-btn" style="flex:1;">負荷を表示 [${K.togglePerfWindow.label}]</button>
-      </div>
-      <div class="squit" data-id="settingsquit">ゲームを中断してタイトル画面に戻る</div>
-      <div class="sclose" data-id="settingsclose">[閉じる]</div>`;
-    root.appendChild(this.panel);
+    const heading = document.createElement('h3');
+    heading.textContent = '一時停止 / 設定';
+    this.panel.appendChild(heading);
 
-    // BGM スライダーと消音トグル
-    const bgmSlider = this.panel.querySelector<HTMLInputElement>('[data-id="bgmslider"]')!;
-    const bgmMute = this.panel.querySelector<HTMLElement>('[data-id="bgmmute"]')!;
-    let lastVol = 1;
-    let isMuted = false;
-
-    const updateMuteState = (vol: number) => {
-      if (vol > 0) {
-        isMuted = false;
-        bgmMute.classList.remove('on');
-      } else {
-        isMuted = true;
-        bgmMute.classList.add('on');
-      }
-    };
-
-    bgmSlider.addEventListener('input', () => {
-      const vol = parseFloat(bgmSlider.value);
-      updateMuteState(vol);
+    const bgmRow = document.createElement('div');
+    bgmRow.className = 'srow';
+    const bgmLabel = document.createElement('span');
+    bgmLabel.className = 'k';
+    bgmLabel.textContent = 'BGM Vol';
+    bgmRow.appendChild(bgmLabel);
+    this.bgmSlider = new Slider({ min: 0, max: 1, step: 0.05 }, (vol) => {
+      this.updateMuteState(vol);
       this.onBgmVolumeChange?.(vol);
     });
+    this.bgmSlider.setValue(1);
+    this.bgmSlider.element.style.flex = '1';
+    this.bgmSlider.element.style.marginLeft = SPACE_4;
+    bgmRow.appendChild(this.bgmSlider.element);
+    this.bgmMute = new Button('消音', () => this.toggleMute());
+    this.bgmMute.element.style.marginLeft = SPACE_4;
+    bgmRow.appendChild(this.bgmMute.element);
+    this.panel.appendChild(bgmRow);
 
-    bgmMute.addEventListener('click', () => {
-      if (isMuted) {
-        bgmSlider.value = lastVol.toString();
-        isMuted = false;
-        bgmMute.classList.remove('on');
-      } else {
-        lastVol = parseFloat(bgmSlider.value) || 1;
-        bgmSlider.value = '0';
-        isMuted = true;
-        bgmMute.classList.add('on');
-      }
-      this.onBgmVolumeChange?.(parseFloat(bgmSlider.value));
-    });
-    // タイトルへ戻る
-    this.panel.querySelector<HTMLElement>('[data-id="settingsquit"]')!.addEventListener('click', () => {
-      this.onQuitToTitle?.();
-    });
-    // スナップショット一覧
-    this.panel.querySelector<HTMLElement>('[data-id="snapshotbtn"]')!.addEventListener('click', () => {
-      this.onOpenSnapshots?.();
-    });
-    // 負荷確認ウィンドウ
-    this.panel.querySelector<HTMLElement>('[data-id="perfbtn"]')!.addEventListener('click', () => {
-      this.onOpenPerfWindow?.();
-    });
-    // 閉じる
-    this.panel.querySelector<HTMLElement>('[data-id="settingsclose"]')!.addEventListener('click', () =>
-      this.toggle(false),
-    );
+    const snapshotRow = document.createElement('div');
+    snapshotRow.className = 'srow';
+    snapshotRow.style.marginTop = SPACE_6;
+    const snapshotBtn = new Button('スナップショット', () => this.onOpenSnapshots?.());
+    snapshotBtn.element.style.flex = '1';
+    snapshotRow.appendChild(snapshotBtn.element);
+    this.panel.appendChild(snapshotRow);
+
+    const perfRow = document.createElement('div');
+    perfRow.className = 'srow';
+    perfRow.style.marginTop = SPACE_4;
+    const perfBtn = new Button(`負荷を表示 [${K.togglePerfWindow.label}]`, () => this.onOpenPerfWindow?.());
+    perfBtn.element.style.flex = '1';
+    perfRow.appendChild(perfBtn.element);
+    this.panel.appendChild(perfRow);
+
+    const quitBtn = new Button('ゲームを中断してタイトル画面に戻る', () => this.onQuitToTitle?.());
+    quitBtn.element.classList.add('squit');
+    this.panel.appendChild(quitBtn.element);
+
+    const closeRow = document.createElement('div');
+    closeRow.className = 'sclose-row';
+    const closeBtn = new CloseButton(() => this.toggle(false));
+    closeRow.appendChild(closeBtn.element);
+    this.panel.appendChild(closeRow);
+
+    root.appendChild(this.panel);
+  }
+
+  // ミュート/復帰を切り替える。復帰は直前の音量へ戻す。
+  private toggleMute(): void {
+    if (this.bgmSlider.getValue() > 0) {
+      this.lastVol = this.bgmSlider.getValue();
+      this.bgmSlider.setValue(0);
+    } else {
+      this.bgmSlider.setValue(this.lastVol || 1);
+    }
+    this.updateMuteState(this.bgmSlider.getValue());
+    this.onBgmVolumeChange?.(this.bgmSlider.getValue());
+  }
+
+  // 消音ボタンの点灯を音量から合わせる。
+  private updateMuteState(vol: number): void {
+    this.bgmMute.setOn(vol <= 0);
   }
 
   // 一時停止メニューを開くキー入力を処理する。スナップショット一覧が開いている間は
@@ -110,9 +113,7 @@ export class SettingsPanel {
 
   // BGM スライダーの表示を更新する。
   setBgmVolume(vol: number): void {
-    const bgmSlider = this.panel.querySelector<HTMLInputElement>('[data-id="bgmslider"]')!;
-    if (bgmSlider) {
-      bgmSlider.value = vol.toString();
-    }
+    this.bgmSlider.setValue(vol);
+    this.updateMuteState(vol);
   }
 }

@@ -1,15 +1,11 @@
-﻿// ドックビュー: 基地に接岸した際に開くフルスクリーンUI。
+// ドックビュー: 基地に接岸した際に開くフルスクリーンUI。
 // 格納されている船の一覧、部品の確認・修理・換装、ショップを提供する。
 import type { Base, DockedShipEntry } from '../game-entity/base';
 import type { Player } from '../player/player';
 import type { AnyPart, Part, PartType, RcsTankPart } from '../game-entity/parts';
 import { createPart } from '../game-entity/parts';
-import { ACCENT, DANGER, TEXT_MUTED } from '../theme';
 import * as C from '../const';
-
-function esc(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
+import { Button, CloseButton, Meter, TabBar } from './widgets';
 
 // ショップで購入可能な部品カタログ
 export interface PartCatalogEntry {
@@ -73,8 +69,17 @@ function refuelCost(tank: RcsTankPart): number {
 
 export type DockTab = 'ships' | 'parts' | 'shop';
 
+const TAB_ITEMS: readonly (readonly [DockTab, string])[] = [
+  ['ships', '格納艦'],
+  ['parts', '部品'],
+  ['shop', 'ショップ'],
+];
+
 export class DockView {
   private readonly el: HTMLElement;
+  private readonly tabBar: TabBar<DockTab>;
+  private readonly moneyLabel: HTMLElement;
+  private readonly bodyEl: HTMLElement;
   private _visible = false;
   private currentBase: Base | null = null;
   private currentShip: Player | null = null;
@@ -94,9 +99,42 @@ export class DockView {
     this.el.id = 'dock-view';
     this.el.className = 'dock-view-overlay';
     this.el.style.display = 'none';
-    this.el.innerHTML = this.buildHtml();
+
+    const panel = document.createElement('div');
+    panel.className = 'dock-panel';
+
+    const header = document.createElement('div');
+    header.className = 'dock-header';
+    const title = document.createElement('span');
+    title.className = 'dock-title';
+    title.textContent = 'DOCK';
+    header.appendChild(title);
+
+    this.tabBar = new TabBar<DockTab>(TAB_ITEMS, (tab) => {
+      this.currentTab = tab;
+      this.refresh();
+    });
+    this.tabBar.element.classList.add('dock-tabs');
+    header.appendChild(this.tabBar.element);
+
+    // 閉じる操作は要求を伝えるだけで、実際に閉じてポーズを解くのは onClose の受け手が行う。
+    const closeBtn = new CloseButton(() => this.onClose?.());
+    header.appendChild(closeBtn.element);
+    panel.appendChild(header);
+
+    const statusBar = document.createElement('div');
+    statusBar.className = 'dock-status-bar';
+    this.moneyLabel = document.createElement('span');
+    this.moneyLabel.textContent = '所持金: ---';
+    statusBar.appendChild(this.moneyLabel);
+    panel.appendChild(statusBar);
+
+    this.bodyEl = document.createElement('div');
+    this.bodyEl.className = 'dock-body';
+    panel.appendChild(this.bodyEl);
+
+    this.el.appendChild(panel);
     root.appendChild(this.el);
-    this.attachEvents();
   }
 
   // ドックビューを開く
@@ -122,112 +160,96 @@ export class DockView {
     this.currentShip = null;
   }
 
-  private buildHtml(): string {
-    return `
-      <div class="dock-panel">
-        <div class="dock-header">
-          <span class="dock-title">DOCK</span>
-          <div class="dock-tabs">
-            <button class="dock-tab-btn" data-tab="ships">格納艦</button>
-            <button class="dock-tab-btn" data-tab="parts">部品</button>
-            <button class="dock-tab-btn" data-tab="shop">ショップ</button>
-          </div>
-          <button class="dock-close-btn" id="dock-close">✕</button>
-        </div>
-        <div class="dock-status-bar">
-          <span id="dock-base-money">所持金: ---</span>
-        </div>
-        <div class="dock-body" id="dock-body">
-        </div>
-      </div>
-    `;
-  }
-
-  private attachEvents(): void {
-    // 閉じる操作は要求を伝えるだけで、実際に閉じてポーズを解くのは onClose の受け手が行う。
-    this.el.querySelector('#dock-close')?.addEventListener('click', () => this.onClose?.());
-
-    this.el.querySelectorAll('.dock-tab-btn').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        const tab = (e.target as HTMLElement).dataset['tab'] as DockTab;
-        if (tab) {
-          this.currentTab = tab;
-          this.refresh();
-        }
-      });
-    });
-  }
-
   private refresh(): void {
     if (!this.currentBase) return;
 
-    const moneyEl = this.el.querySelector('#dock-base-money');
-    if (moneyEl) {
-      const moneyText = this.freeProcurement
-        ? '所持金: ∞ (調達は無償)'
-        : `所持金: ${this.currentBase.baseState.money.toLocaleString()} Cr`;
-      moneyEl.textContent = moneyText;
-    }
+    this.moneyLabel.textContent = this.freeProcurement
+      ? '所持金: ∞ (調達は無償)'
+      : `所持金: ${this.currentBase.baseState.money.toLocaleString()} Cr`;
+    this.tabBar.setSelected(this.currentTab);
 
-    // タブアクティブ状態更新
-    this.el.querySelectorAll('.dock-tab-btn').forEach((btn) => {
-      const tab = (btn as HTMLElement).dataset['tab'];
-      btn.classList.toggle('active', tab === this.currentTab);
-    });
-
-    const body = this.el.querySelector('#dock-body');
-    if (!body) return;
-
+    this.bodyEl.innerHTML = '';
     switch (this.currentTab) {
-      case 'ships': body.innerHTML = this.buildShipsTab(); break;
-      case 'parts': body.innerHTML = this.buildPartsTab(); break;
-      case 'shop': body.innerHTML = this.buildShopTab(); break;
+      case 'ships': this.bodyEl.appendChild(this.buildShipsTab()); break;
+      case 'parts': this.bodyEl.appendChild(this.buildPartsTab()); break;
+      case 'shop': this.bodyEl.appendChild(this.buildShopTab()); break;
     }
-
-    this.attachTabEvents();
   }
 
   // ─── 格納艦タブ ───────────────────────────────────────────
-  private buildShipsTab(): string {
+  private buildShipsTab(): HTMLElement {
     const base = this.currentBase!;
+    const frag = document.createElement('div');
     const ships = base.baseState.dockedShips;
-    const list = ships.length === 0
-      ? `<div class="dock-empty">格納されている艦はありません。<br>ランデブー後に収容するか、新造してください。</div>`
-      : `<div class="dock-ship-list">${ships.map((s, i) => this.buildShipRow(s, i)).join('')}</div>`;
-    return list + this.buildNewShipHeader(base);
+    if (ships.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'dock-empty';
+      empty.innerHTML = '格納されている艦はありません。<br>ランデブー後に収容するか、新造してください。';
+      frag.appendChild(empty);
+    } else {
+      const list = document.createElement('div');
+      list.className = 'dock-ship-list';
+      ships.forEach((s, i) => list.appendChild(this.buildShipRow(s, i)));
+      frag.appendChild(list);
+    }
+    frag.appendChild(this.buildNewShipHeader(base));
+    return frag;
   }
 
-  private buildShipRow(s: DockedShipEntry, i: number): string {
-    return `
-      <div class="dock-ship-row ${this.currentShip?.id === s.id ? 'selected' : ''}" data-ship-idx="${i}">
-        <div class="dock-ship-info">
-          <span class="dock-ship-name">${s.name ? esc(s.name) : `艦 #${i + 1}`}</span>
-          <span class="dock-ship-hp">HP: ${Math.round(s.hp ?? 0)} / ${Math.round(s.maxHp ?? 0)}</span>
-        </div>
-        <div class="dock-ship-actions">
-          <button class="dock-btn dock-btn-launch" data-ship-idx="${i}">発進</button>
-          <button class="dock-btn dock-btn-inspect" data-ship-idx="${i}">詳細</button>
-        </div>
-      </div>
-    `;
+  private buildShipRow(s: DockedShipEntry, i: number): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'dock-ship-row';
+    row.classList.toggle('on', this.currentShip?.id === s.id);
+    row.addEventListener('click', () => {
+      this.currentShip = s.player;
+      this.refresh();
+    });
+
+    const info = document.createElement('div');
+    info.className = 'dock-ship-info';
+    const name = document.createElement('span');
+    name.className = 'dock-ship-name';
+    name.textContent = s.name || `艦 #${i + 1}`;
+    const hp = document.createElement('span');
+    hp.className = 'dock-ship-hp';
+    hp.textContent = `HP: ${Math.round(s.hp ?? 0)} / ${Math.round(s.maxHp ?? 0)}`;
+    info.append(name, hp);
+    row.appendChild(info);
+
+    const actions = document.createElement('div');
+    actions.className = 'dock-ship-actions';
+    const launchBtn = new Button('発進', () => this.handleLaunch(i));
+    launchBtn.element.classList.add('dock-btn');
+    const inspectBtn = new Button('詳細', () => this.handleInspect(i));
+    inspectBtn.element.classList.add('dock-btn');
+    actions.append(launchBtn.element, inspectBtn.element);
+    row.appendChild(actions);
+    return row;
   }
 
-  // 新造(既定パーツ一式の艦を1隻、格納艦へ加える)ボタン。
-  private buildNewShipHeader(base: Base): string {
+  // 新造(既定パーツ一式の艦を1隻、格納艦へ加える)行。
+  private buildNewShipHeader(base: Base): HTMLElement {
     const canAfford = this.freeProcurement || base.baseState.money >= NEW_SHIP_COST;
-    return `
-      <div class="dock-parts-header">
-        <span class="dock-ship-label">既定パーツ一式の艦を1隻建造します</span>
-        <button class="dock-btn dock-btn-build-ship ${canAfford ? '' : 'disabled'}" ${canAfford ? '' : 'disabled'}
-        >新造 ${this.freeProcurement ? '(無料)' : `${NEW_SHIP_COST.toLocaleString()} Cr`}</button>
-      </div>
-    `;
+    const row = document.createElement('div');
+    row.className = 'dock-parts-header';
+    const label = document.createElement('span');
+    label.className = 'dock-ship-label';
+    label.textContent = '既定パーツ一式の艦を1隻建造します';
+    row.appendChild(label);
+    const btn = new Button(
+      `新造 ${this.freeProcurement ? '(無料)' : `${NEW_SHIP_COST.toLocaleString()} Cr`}`,
+      () => this.handleBuildShip(),
+    );
+    btn.element.classList.add('dock-btn');
+    btn.setEnabled(canAfford);
+    row.appendChild(btn.element);
+    return row;
   }
 
   // ─── 部品タブ ───────────────────────────────────────────
   // 搭載部品(修理・換装・補給)と倉庫(在庫確認・売却・補給)を左右に並べ、
   // 同じ種類の部品を見比べながら換装先を選べるようにする。
-  private buildPartsTab(): string {
+  private buildPartsTab(): HTMLElement {
     const base = this.currentBase!;
     // 選択艦がなければ最初の艦を表示。倉庫は基地の持ち物なので、格納艦が居なくても出す。
     const ship = this.currentShip ?? null;
@@ -235,215 +257,252 @@ export class DockView {
       ?? base.baseState.dockedShips[0]
       ?? null;
 
-    return `
-      ${shipData ? this.buildRepairAllHeader(base, shipData) : ''}
-      <div class="dock-parts-columns">
-        <div class="dock-parts-col">
-          <div class="dock-col-title">搭載部品</div>
-          ${shipData
-            ? `<div class="dock-part-list">${shipData.parts.map((p, i) => this.buildInstalledPartRow(base, shipData, p, i)).join('')}</div>`
-            : `<div class="dock-empty">格納艦がありません。<br>ランデブー後に収容すると、ここで整備できます。</div>`}
-        </div>
-        <div class="dock-parts-col">
-          <div class="dock-col-title">倉庫</div>
-          ${this.buildWarehouseList(base)}
-        </div>
-      </div>
-    `;
+    const frag = document.createElement('div');
+    if (shipData) frag.appendChild(this.buildRepairAllHeader(base, shipData));
+
+    const columns = document.createElement('div');
+    columns.className = 'dock-parts-columns';
+
+    const installedCol = document.createElement('div');
+    installedCol.className = 'dock-parts-col';
+    const installedTitle = document.createElement('div');
+    installedTitle.className = 'dock-col-title';
+    installedTitle.textContent = '搭載部品';
+    installedCol.appendChild(installedTitle);
+    if (shipData) {
+      const list = document.createElement('div');
+      list.className = 'dock-part-list';
+      shipData.parts.forEach((p, i) => list.appendChild(this.buildInstalledPartRow(base, shipData, p, i)));
+      installedCol.appendChild(list);
+    } else {
+      const empty = document.createElement('div');
+      empty.className = 'dock-empty';
+      empty.innerHTML = '格納艦がありません。<br>ランデブー後に収容すると、ここで整備できます。';
+      installedCol.appendChild(empty);
+    }
+    columns.appendChild(installedCol);
+
+    const warehouseCol = document.createElement('div');
+    warehouseCol.className = 'dock-parts-col';
+    const warehouseTitle = document.createElement('div');
+    warehouseTitle.className = 'dock-col-title';
+    warehouseTitle.textContent = '倉庫';
+    warehouseCol.appendChild(warehouseTitle);
+    warehouseCol.appendChild(this.buildWarehouseList(base));
+    columns.appendChild(warehouseCol);
+
+    frag.appendChild(columns);
+    return frag;
   }
 
   // 艦の全部品をまとめて修理するボタンの行。
-  private buildRepairAllHeader(base: Base, shipData: DockedShipEntry): string {
+  private buildRepairAllHeader(base: Base, shipData: DockedShipEntry): HTMLElement {
     const totalRepairCost = shipData.parts.reduce((sum, p) => sum + (p.maxHp - p.hp) * REPAIR_COST_PER_HP, 0);
     const enabled = totalRepairCost > 0 && (this.freeProcurement || base.baseState.money >= totalRepairCost);
-    return `
-      <div class="dock-parts-header">
-        <span class="dock-ship-label">艦: ${shipData.name ? esc(shipData.name) : '---'}</span>
-        <button class="dock-btn dock-btn-repair-all ${enabled ? '' : 'disabled'}"
-          data-ship-id="${shipData.id}"
-          ${enabled ? '' : 'disabled'}
-        >全修理 ${this.freeProcurement ? '(無料)' : `${totalRepairCost.toLocaleString()} Cr`}</button>
-      </div>
-    `;
+    const row = document.createElement('div');
+    row.className = 'dock-parts-header';
+    const label = document.createElement('span');
+    label.className = 'dock-ship-label';
+    label.textContent = `艦: ${shipData.name || '---'}`;
+    row.appendChild(label);
+    const btn = new Button(
+      `全修理 ${this.freeProcurement ? '(無料)' : `${totalRepairCost.toLocaleString()} Cr`}`,
+      () => this.handleRepairAll(shipData.id),
+    );
+    btn.element.classList.add('dock-btn');
+    btn.setEnabled(enabled);
+    row.appendChild(btn.element);
+    return row;
   }
 
   // 搭載部品1件の行を作る。同じ type の在庫があれば換装欄を、rcs_tank なら補給ボタンを添える。
-  private buildInstalledPartRow(base: Base, shipData: DockedShipEntry, p: Part, i: number): string {
+  private buildInstalledPartRow(base: Base, shipData: DockedShipEntry, p: Part, i: number): HTMLElement {
     const hpPct = Math.max(0, Math.min(100, (p.hp / p.maxHp) * 100));
-    const hpColor = hpPct > 60 ? TEXT_MUTED : hpPct > 30 ? ACCENT : DANGER;
     const repairCost = (p.maxHp - p.hp) * REPAIR_COST_PER_HP;
     const canRepair = repairCost > 0 && (this.freeProcurement || base.baseState.money >= repairCost);
 
-    const refuelHtml = p.type === 'rcs_tank' ? this.buildRefuelButton(base, p as RcsTankPart, {
-      'data-ship-id': shipData.id, 'data-part-idx': String(i),
-    }, 'dock-btn-refuel-installed') : '';
+    const row = document.createElement('div');
+    row.className = 'dock-part-row';
+    const main = document.createElement('div');
+    main.className = 'dock-part-row-main';
+
+    const info = document.createElement('div');
+    info.className = 'dock-part-info';
+    const name = document.createElement('span');
+    name.className = 'dock-part-name';
+    name.textContent = p.name;
+    const type = document.createElement('span');
+    type.className = 'dock-part-type';
+    type.textContent = `[${p.type}]`;
+    info.append(name, type);
+    main.appendChild(info);
+
+    const meter = new Meter();
+    meter.element.classList.add('dock-part-hp-meter');
+    meter.setRatio(hpPct / 100);
+    // 3段階だった健全時/中間の色分けは Meter の「危険=DANGER」1本の規約へ統一する。
+    meter.setDanger(hpPct <= 30);
+    meter.setLabel(`${Math.round(p.hp)}/${p.maxHp}`);
+    main.appendChild(meter.element);
+
+    const actions = document.createElement('div');
+    actions.className = 'dock-part-actions';
+    const repairBtn = new Button(
+      repairCost > 0 ? `修理 ${this.freeProcurement ? '無料' : repairCost + ' Cr'}` : '正常',
+      () => this.handleRepairPart(shipData.id, i),
+    );
+    repairBtn.element.classList.add('dock-btn');
+    repairBtn.setEnabled(canRepair);
+    actions.appendChild(repairBtn.element);
+    if (p.type === 'rcs_tank') {
+      actions.appendChild(this.buildRefuelButton(base, p as RcsTankPart, () => this.handleRefuelInstalled(shipData.id, i)));
+    }
+    main.appendChild(actions);
+    row.appendChild(main);
 
     const candidates = base.baseState.inventory.filter((inv) => inv.type === p.type);
-    const swapHtml = candidates.length === 0 ? '' : `
-      <div class="dock-part-swap-row">
-        <span>換装候補:</span>
-        <select class="dock-part-swap-select" data-part-idx="${i}">
-          ${candidates.map((c) => `<option value="${c.id}">${c.name} (${Math.round(c.hp)}/${c.maxHp})</option>`).join('')}
-        </select>
-        <button class="dock-btn dock-btn-swap" data-ship-id="${shipData.id}" data-part-idx="${i}">換装</button>
-      </div>
-    `;
+    if (candidates.length > 0) row.appendChild(this.buildSwapRow(shipData.id, i, candidates));
+    return row;
+  }
 
-    return `
-      <div class="dock-part-row">
-        <div class="dock-part-row-main">
-          <div class="dock-part-info">
-            <span class="dock-part-name">${p.name}</span>
-            <span class="dock-part-type">[${p.type}]</span>
-          </div>
-          <div class="dock-part-hp-bar">
-            <div class="dock-part-hp-fill" style="width:${hpPct}%;background:${hpColor}"></div>
-          </div>
-          <span class="dock-part-hp-text">${Math.round(p.hp)}/${p.maxHp}</span>
-          <div class="dock-part-actions">
-            <button class="dock-btn dock-btn-repair ${canRepair ? '' : 'disabled'}"
-              data-part-idx="${i}"
-              data-ship-id="${shipData.id}"
-              ${canRepair ? '' : 'disabled'}
-            >${repairCost > 0 ? `修理 ${this.freeProcurement ? '無料' : repairCost + ' Cr'}` : '正常'}</button>
-            ${refuelHtml}
-          </div>
-        </div>
-        ${swapHtml}
-      </div>
-    `;
+  // 換装候補の選択欄(<select>)と換装ボタンの行。
+  private buildSwapRow(shipId: string, partIdx: number, candidates: readonly AnyPart[]): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'dock-part-swap-row';
+    const label = document.createElement('span');
+    label.textContent = '換装候補:';
+    row.appendChild(label);
+    const select = document.createElement('select');
+    select.className = 'dock-part-swap-select';
+    for (const c of candidates) {
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = `${c.name} (${Math.round(c.hp)}/${c.maxHp})`;
+      select.appendChild(opt);
+    }
+    row.appendChild(select);
+    const swapBtn = new Button('換装', () => this.handleSwapPart(shipId, partIdx, select.value));
+    swapBtn.element.classList.add('dock-btn');
+    row.appendChild(swapBtn.element);
+    return row;
   }
 
   // 倉庫にある在庫部品の一覧。売却と、rcs_tank ならその場での補給を提供する。
-  private buildWarehouseList(base: Base): string {
+  private buildWarehouseList(base: Base): HTMLElement {
     const inventory = base.baseState.inventory;
     if (inventory.length === 0) {
-      return `<div class="dock-empty">倉庫は空です。ショップで購入するか、艦から部品を外すと入ります。</div>`;
+      const empty = document.createElement('div');
+      empty.className = 'dock-empty';
+      empty.textContent = '倉庫は空です。ショップで購入するか、艦から部品を外すと入ります。';
+      return empty;
     }
-    const rows = inventory.map((p) => {
-      const refuelHtml = p.type === 'rcs_tank'
-        ? this.buildRefuelButton(base, p as RcsTankPart, { 'data-inv-id': p.id }, 'dock-btn-refuel-inventory')
-        : '';
+    const list = document.createElement('div');
+    list.className = 'dock-part-list';
+    for (const p of inventory) {
+      const row = document.createElement('div');
+      row.className = 'dock-part-row';
+      const main = document.createElement('div');
+      main.className = 'dock-part-row-main dock-warehouse-row-main';
+
+      const info = document.createElement('div');
+      info.className = 'dock-part-info';
+      const name = document.createElement('span');
+      name.className = 'dock-part-name';
+      name.textContent = p.name;
+      const type = document.createElement('span');
+      type.className = 'dock-part-type';
+      type.textContent = `[${p.type}]`;
+      info.append(name, type);
+      main.appendChild(info);
+
+      const hpText = document.createElement('span');
+      hpText.className = 'dock-part-hp-text';
+      hpText.textContent = `${Math.round(p.hp)}/${p.maxHp}`;
+      main.appendChild(hpText);
+
+      const actions = document.createElement('div');
+      actions.className = 'dock-part-actions';
+      if (p.type === 'rcs_tank') {
+        actions.appendChild(this.buildRefuelButton(base, p as RcsTankPart, () => this.handleRefuelInventory(p.id)));
+      }
       const price = sellPrice(p);
-      return `
-        <div class="dock-part-row">
-          <div class="dock-part-row-main dock-warehouse-row-main">
-            <div class="dock-part-info">
-              <span class="dock-part-name">${p.name}</span>
-              <span class="dock-part-type">[${p.type}]</span>
-            </div>
-            <span class="dock-part-hp-text">${Math.round(p.hp)}/${p.maxHp}</span>
-            <div class="dock-part-actions">
-              ${refuelHtml}
-              <button class="dock-btn dock-btn-sell" data-inv-id="${p.id}">売却 ${price.toLocaleString()} Cr</button>
-            </div>
-          </div>
-        </div>
-      `;
-    }).join('');
-    return `<div class="dock-part-list">${rows}</div>`;
+      const sellBtn = new Button(`売却 ${price.toLocaleString()} Cr`, () => this.handleSellPart(p.id));
+      sellBtn.element.classList.add('dock-btn');
+      actions.appendChild(sellBtn.element);
+      main.appendChild(actions);
+      row.appendChild(main);
+      list.appendChild(row);
+    }
+    return list;
   }
 
-  // rcs_tank 用の補給ボタンを作る。data 属性は呼び出し側(搭載/倉庫)ごとに異なる識別子を渡す。
-  private buildRefuelButton(base: Base, tank: RcsTankPart, dataAttrs: Record<string, string>, btnClass: string): string {
+  // rcs_tank 用の補給ボタンを作る。
+  private buildRefuelButton(base: Base, tank: RcsTankPart, onClick: () => void): HTMLElement {
     const cost = refuelCost(tank);
     const canRefuel = cost > 0 && (this.freeProcurement || base.baseState.money >= cost);
-    const attrs = Object.entries(dataAttrs).map(([k, v]) => `${k}="${v}"`).join(' ');
-    return `
-      <button class="dock-btn ${btnClass} ${canRefuel ? '' : 'disabled'}" ${attrs} ${canRefuel ? '' : 'disabled'}
-      >${cost > 0 ? `燃料補給 ${this.freeProcurement ? '無料' : cost + ' Cr'}` : '満タン'}</button>
-    `;
+    const btn = new Button(cost > 0 ? `燃料補給 ${this.freeProcurement ? '無料' : cost + ' Cr'}` : '満タン', onClick);
+    btn.element.classList.add('dock-btn');
+    btn.setEnabled(canRefuel);
+    return btn.element;
   }
 
   // ─── ショップタブ ───────────────────────────────────────
-  private buildShopTab(): string {
+  private buildShopTab(): HTMLElement {
     const base = this.currentBase!;
     const money = base.baseState.money;
 
-    const items = SHOP_CATALOG.map((entry, i) => {
+    const frag = document.createElement('div');
+    const header = document.createElement('div');
+    header.className = 'dock-shop-header';
+    header.textContent = '部品ショップ — 購入した部品は基地の倉庫に追加されます';
+    frag.appendChild(header);
+
+    const list = document.createElement('div');
+    list.className = 'dock-shop-list';
+    SHOP_CATALOG.forEach((entry, i) => {
       const canBuy = this.freeProcurement || money >= entry.price;
-      const props = Object.entries(entry.props)
-        .map(([k, v]) => `${k}: ${v}`)
-        .join(' / ');
-      return `
-        <div class="dock-shop-item">
-          <div class="dock-shop-info">
-            <span class="dock-shop-name">${entry.name}</span>
-            <span class="dock-shop-type">[${entry.type}]</span>
-            <span class="dock-shop-props">${props}</span>
-            <span class="dock-shop-stats">重量: ${entry.weight}kg | HP: ${entry.maxHp}</span>
-          </div>
-          <div class="dock-shop-actions">
-            <span class="dock-shop-price">${this.freeProcurement ? '無料' : entry.price.toLocaleString() + ' Cr'}</span>
-            <button class="dock-btn dock-btn-buy ${canBuy ? '' : 'disabled'}"
-              data-catalog-idx="${i}"
-              ${canBuy ? '' : 'disabled'}
-            >購入 → 倉庫</button>
-          </div>
-        </div>
-      `;
-    }).join('');
+      const props = Object.entries(entry.props).map(([k, v]) => `${k}: ${v}`).join(' / ');
 
-    return `
-      <div class="dock-shop-header">
-        <span>部品ショップ — 購入した部品は基地の倉庫に追加されます</span>
-      </div>
-      <div class="dock-shop-list">${items}</div>
-    `;
+      const item = document.createElement('div');
+      item.className = 'dock-shop-item';
+      const info = document.createElement('div');
+      info.className = 'dock-shop-info';
+      const name = document.createElement('span');
+      name.className = 'dock-shop-name';
+      name.textContent = entry.name;
+      const type = document.createElement('span');
+      type.className = 'dock-shop-type';
+      type.textContent = `[${entry.type}]`;
+      const propsEl = document.createElement('span');
+      propsEl.className = 'dock-shop-props';
+      propsEl.textContent = props;
+      const stats = document.createElement('span');
+      stats.className = 'dock-shop-stats';
+      stats.textContent = `重量: ${entry.weight}kg | HP: ${entry.maxHp}`;
+      info.append(name, type, propsEl, stats);
+      item.appendChild(info);
+
+      const actions = document.createElement('div');
+      actions.className = 'dock-shop-actions';
+      const price = document.createElement('span');
+      price.className = 'dock-shop-price';
+      price.textContent = this.freeProcurement ? '無料' : `${entry.price.toLocaleString()} Cr`;
+      actions.appendChild(price);
+      const buyBtn = new Button('購入 → 倉庫', () => this.handleBuy(i));
+      buyBtn.element.classList.add('dock-btn');
+      buyBtn.setEnabled(canBuy);
+      actions.appendChild(buyBtn.element);
+      item.appendChild(actions);
+      list.appendChild(item);
+    });
+    frag.appendChild(list);
+    return frag;
   }
 
-  // ─── タブ内イベント ──────────────────────────────────────
-  private attachTabEvents(): void {
-    // 格納艦タブ: 発進・詳細
-    this.el.querySelectorAll('.dock-btn-launch').forEach((btn) => {
-      btn.addEventListener('click', (e) => this.handleLaunch(e));
-    });
-    this.el.querySelectorAll('.dock-btn-inspect').forEach((btn) => {
-      btn.addEventListener('click', (e) => this.handleInspect(e));
-    });
-    this.el.querySelectorAll('.dock-btn-build-ship').forEach((btn) => {
-      btn.addEventListener('click', () => this.handleBuildShip());
-    });
-    // 部品タブ: 修理・全修理
-    this.el.querySelectorAll('.dock-btn-repair').forEach((btn) => {
-      btn.addEventListener('click', (e) => this.handleRepairPart(e));
-    });
-    this.el.querySelectorAll('.dock-btn-repair-all').forEach((btn) => {
-      btn.addEventListener('click', (e) => this.handleRepairAll(e));
-    });
-    // 部品タブ: 換装・補給・売却
-    this.el.querySelectorAll('.dock-btn-swap').forEach((btn) => {
-      btn.addEventListener('click', (e) => this.handleSwapPart(e));
-    });
-    this.el.querySelectorAll('.dock-btn-refuel-installed').forEach((btn) => {
-      btn.addEventListener('click', (e) => this.handleRefuelInstalled(e));
-    });
-    this.el.querySelectorAll('.dock-btn-refuel-inventory').forEach((btn) => {
-      btn.addEventListener('click', (e) => this.handleRefuelInventory(e));
-    });
-    this.el.querySelectorAll('.dock-btn-sell').forEach((btn) => {
-      btn.addEventListener('click', (e) => this.handleSellPart(e));
-    });
-    // ショップタブ: 購入
-    this.el.querySelectorAll('.dock-btn-buy').forEach((btn) => {
-      btn.addEventListener('click', (e) => this.handleBuy(e));
-    });
-    // 艦行クリックで選択
-    this.el.querySelectorAll('.dock-ship-row').forEach((row) => {
-      row.addEventListener('click', () => {
-        const idx = parseInt((row as HTMLElement).dataset['shipIdx'] ?? '-1', 10);
-        const shipData = this.currentBase?.baseState.dockedShips[idx];
-        if (!shipData) return;
-        this.currentShip = shipData.player;
-        this.refresh();
-      });
-    });
-  }
-
-  private handleLaunch(e: Event): void {
+  // ─── ハンドラ ────────────────────────────────────────────
+  private handleLaunch(idx: number): void {
     const base = this.currentBase;
     if (!base) return;
-    const idx = parseInt((e.target as HTMLElement).dataset['shipIdx'] ?? '-1', 10);
     const shipData = base.baseState.dockedShips[idx];
     if (!shipData) return;
     this.onLaunchShip?.(shipData.player, base);
@@ -462,8 +521,7 @@ export class DockView {
     this.refresh();
   }
 
-  private handleInspect(e: Event): void {
-    const idx = parseInt((e.target as HTMLElement).dataset['shipIdx'] ?? '-1', 10);
+  private handleInspect(idx: number): void {
     const shipData = this.currentBase?.baseState.dockedShips[idx];
     if (!shipData) return;
     this.currentShip = shipData.player;
@@ -471,14 +529,11 @@ export class DockView {
     this.refresh();
   }
 
-  private handleRepairPart(e: Event): void {
+  private handleRepairPart(shipId: string, partIdx: number): void {
     const base = this.currentBase;
     if (!base) return;
-    const btn = e.target as HTMLElement;
-    const partIdx = parseInt(btn.dataset['partIdx'] ?? '-1', 10);
-    const shipId = btn.dataset['shipId'];
     const shipData = base.baseState.dockedShips.find((s) => s.id === shipId);
-    if (!shipData || partIdx < 0) return;
+    if (!shipData) return;
 
     const part: Part | undefined = shipData.parts[partIdx];
     if (!part) return;
@@ -491,11 +546,9 @@ export class DockView {
     this.refresh();
   }
 
-  private handleRepairAll(e: Event): void {
+  private handleRepairAll(shipId: string): void {
     const base = this.currentBase;
     if (!base) return;
-    const btn = e.target as HTMLElement;
-    const shipId = btn.dataset['shipId'];
     const shipData = base.baseState.dockedShips.find((s) => s.id === shipId);
     if (!shipData) return;
 
@@ -519,18 +572,13 @@ export class DockView {
 
   // 搭載部品を、選択中の倉庫在庫(同じ type)と入れ替える。外した部品は倉庫へ戻す。
   // shipData.parts は player.parts と同一参照なので、splice による差し替えは艦の性能集計へ即反映される。
-  private handleSwapPart(e: Event): void {
+  private handleSwapPart(shipId: string, partIdx: number, invId: string): void {
     const base = this.currentBase;
     if (!base) return;
-    const btn = e.target as HTMLElement;
-    const shipId = btn.dataset['shipId'];
-    const partIdx = parseInt(btn.dataset['partIdx'] ?? '-1', 10);
     const shipData = base.baseState.dockedShips.find((s) => s.id === shipId);
     const installed = shipData?.parts[partIdx];
     if (!shipData || !installed) return;
 
-    const select = btn.parentElement?.querySelector('select') as HTMLSelectElement | null;
-    const invId = select?.value;
     const invIdx = base.baseState.inventory.findIndex((p) => p.id === invId);
     const incoming = base.baseState.inventory[invIdx];
     if (!incoming || incoming.type !== installed.type) return;
@@ -542,12 +590,9 @@ export class DockView {
     this.refresh();
   }
 
-  private handleRefuelInstalled(e: Event): void {
+  private handleRefuelInstalled(shipId: string, partIdx: number): void {
     const base = this.currentBase;
     if (!base) return;
-    const btn = e.target as HTMLElement;
-    const shipId = btn.dataset['shipId'];
-    const partIdx = parseInt(btn.dataset['partIdx'] ?? '-1', 10);
     const shipData = base.baseState.dockedShips.find((s) => s.id === shipId);
     const part = shipData?.parts[partIdx];
     if (!part || part.type !== 'rcs_tank') return;
@@ -555,11 +600,9 @@ export class DockView {
     this.refresh();
   }
 
-  private handleRefuelInventory(e: Event): void {
+  private handleRefuelInventory(invId: string): void {
     const base = this.currentBase;
     if (!base) return;
-    const btn = e.target as HTMLElement;
-    const invId = btn.dataset['invId'];
     const part = base.baseState.inventory.find((p) => p.id === invId);
     if (!part || part.type !== 'rcs_tank') return;
     this.refuelTank(base, part);
@@ -574,11 +617,9 @@ export class DockView {
     tank.fuel = tank.maxFuel;
   }
 
-  private handleSellPart(e: Event): void {
+  private handleSellPart(invId: string): void {
     const base = this.currentBase;
     if (!base) return;
-    const btn = e.target as HTMLElement;
-    const invId = btn.dataset['invId'];
     const idx = base.baseState.inventory.findIndex((p) => p.id === invId);
     const part = base.baseState.inventory[idx];
     if (idx < 0 || !part) return;
@@ -588,11 +629,10 @@ export class DockView {
     this.refresh();
   }
 
-  private handleBuy(e: Event): void {
+  private handleBuy(catalogIdx: number): void {
     const base = this.currentBase;
     if (!base) return;
-    const idx = parseInt((e.target as HTMLElement).dataset['catalogIdx'] ?? '-1', 10);
-    const entry = SHOP_CATALOG[idx];
+    const entry = SHOP_CATALOG[catalogIdx];
     if (!entry) return;
     if (!this.freeProcurement && base.baseState.money < entry.price) return;
 

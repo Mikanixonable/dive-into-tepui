@@ -2,7 +2,7 @@
 // 打鍵ごとの clamp や通知は行わない(編集途中の値を黙って書き換えないため)。
 import { expandHitTarget, stopDragPropagation } from './widget-base';
 
-export type ValueInputType = 'text' | 'number';
+export type ValueInputType = 'text' | 'number' | 'search';
 
 // Escape で編集をどう破棄するか。既定は 'revert'(確定済みの値へ戻す)。'clear'(空にする)を
 // 渡してよいのは検索フィールドに限る — 「なんとなく Escape でクリア」が他所へ広がらないよう、
@@ -22,13 +22,17 @@ export class ValueInput {
   readonly element: HTMLInputElement;
   private readonly escapeBehavior: EscapeBehavior;
   private readonly onCommit: (value: string) => void;
+  private readonly onCancel: (() => void) | undefined;
   private committedValue = '';
   private suppressBlurCommit = false;
 
   // onCommit は Enter・blur・commit() 呼び出しでのみ呼ばれる — 呼び出し側は打鍵ごとの値を追う必要がない。
-  constructor(options: ValueInputOptions, onCommit: (value: string) => void) {
+  // onCancel は破棄(Escape・無効値での確定)でのみ呼ばれる — 確定と破棄で別の後処理をしたい
+  // 呼び出し側(インライン編集欄を開いたままにするか閉じるか、など)のための任意コールバック。
+  constructor(options: ValueInputOptions, onCommit: (value: string) => void, onCancel?: () => void) {
     this.escapeBehavior = options.escapeBehavior ?? 'revert';
     this.onCommit = onCommit;
+    this.onCancel = onCancel;
     this.element = document.createElement('input');
     this.element.type = options.type;
     this.element.className = 'w-input';
@@ -39,6 +43,8 @@ export class ValueInput {
     stopDragPropagation(this.element);
     expandHitTarget(this.element);
     this.element.addEventListener('keydown', (e) => {
+      // Input の window keydown 購読へ打鍵が漏れてゲーム操作と誤認されないよう止める。
+      e.stopPropagation();
       if (e.key === 'Enter') {
         e.preventDefault();
         this.commit();
@@ -86,5 +92,6 @@ export class ValueInput {
       this.element.value = this.committedValue;
     }
     this.element.blur();
+    this.onCancel?.();
   }
 }
