@@ -206,13 +206,29 @@ export class Game {
     this.sections.exit(SECTION.input);
 
     if (!this._isPaused) this.advanceSimulation(dt);
-    this.displayWindowManager.resolve(this.simulator.simTime, this.player);
     // ポーズ中も決着後も飛ばせない。決着は積分を止めないので、飛ばすと描画原点になるカメラ位置
     // だけが絶対 ECI に取り残され、追従対象もフォーカス天体も軌道速度で流れて即フレームアウトする。
     // ポーズ中は積分が止まるが、カメラの旋回・ズーム・パンの入力をここで消化している。
-    this.updateMapPresentation(dt);
+    const displayWindow = this.displayWindowManager.resolve(this.simulator.simTime, this.player);
+    const overviewMode = this.cameraSystem.overviewMode;
+    // 計画表示、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
+    this._environment.update(displayWindow.displayTime, overviewMode);
+    this.sections.enter(SECTION.plan);
+    this.editor.update(displayWindow);
+    this.targeter.updateEquatorNodes(overviewMode, displayWindow, this.ephemeris);
+    this.entities.updateBaseEquatorNodes(overviewMode, displayWindow, this.ephemeris);
+    this.sections.exit(SECTION.plan);
+    this.sections.enter(SECTION.mapPick);
+    this.mapPicker.refresh(displayWindow);
+    this.sections.exit(SECTION.mapPick);
+    this.sections.enter(SECTION.camera);
+    this.cameraSystem.update(
+      this.player, this.simulator.simTime, this.input, dt, this.mapPicker.pickables,
+      this.displayWindowManager.attractorsAt(this.simulator.simTime),
+    );
+    this.sections.exit(SECTION.camera);
     this.sections.enter(SECTION.pointer);
-    this.handleMapPointerInput(dt);
+    this.handlePointerInput(dt);
     this.sections.exit(SECTION.pointer);
   }
 
@@ -288,9 +304,10 @@ export class Game {
     this.sections.exit(SECTION.plan);
   }
 
-  // マップ/戦闘のポインタ操作を優先順位順(=呼ぶ順)に配る。決着後は配らず、ポーズ中は
+  // ポインタ入力を優先順位順(=呼ぶ順)に配る。このフレームの cameraSystem.update が終わって
+  // 初めて投影がこのフレームの値になるので、update の末尾に置く。決着後は配らず、ポーズ中は
   // ESC メニュー等が開いていないときだけ配る(背景の誤操作を防ぐ)。
-  private handleMapPointerInput(dt: number): void {
+  private handlePointerInput(dt: number): void {
     if (!this.activeStage.isPlaying) return;
     if (this._isPaused && this._hud.modalController.isOpen) return;
     if (this.editor.editMode) {
@@ -307,26 +324,6 @@ export class Game {
         this.cameraSystem.activeCameraProjection,
       );
     }
-  }
-
-  // 計画表示、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
-  private updateMapPresentation(dt: number): void {
-    const displayWindow = this.displayWindowManager.current;
-    this._environment.update(displayWindow.displayTime, this.cameraSystem.overviewMode);
-    this.sections.enter(SECTION.plan);
-    this.editor.update(displayWindow);
-    this.targeter.updateEquatorNodes(displayWindow, this.ephemeris);
-    this.entities.updateBaseEquatorNodes(displayWindow, this.ephemeris);
-    this.sections.exit(SECTION.plan);
-    this.sections.enter(SECTION.mapPick);
-    this.mapPicker.refresh(displayWindow);
-    this.sections.exit(SECTION.mapPick);
-    this.sections.enter(SECTION.camera);
-    this.cameraSystem.update(
-      this.player, this.simulator.simTime, this.input, dt, this.mapPicker.pickables,
-      this.displayWindowManager.attractorsAt(this.simulator.simTime),
-    );
-    this.sections.exit(SECTION.camera);
   }
 
   // --------------------------------------------------------------- input

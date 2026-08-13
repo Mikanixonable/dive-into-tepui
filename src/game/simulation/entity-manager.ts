@@ -353,9 +353,10 @@ export class EntityManager {
     }
   }
 
-  // 全基地の赤道交点マーカーを求め直す。基地は常設の軌道構造物で、接近・ドッキングは
-  // 軌道面合わせそのものなので、選択の有無に関わらず常に出す。
-  updateBaseEquatorNodes(displayWindow: DisplayWindow, ephemeris: Ephemeris): void {
+  // マップ表示中だけ、全基地の赤道交点マーカーを求め直す(戦闘ビューでは誰も読まない)。基地は
+  // 常設の軌道構造物で、接近・ドッキングは軌道面合わせそのものなので、選択の有無に関わらず出す。
+  updateBaseEquatorNodes(overviewMode: boolean, displayWindow: DisplayWindow, ephemeris: Ephemeris): void {
+    if (!overviewMode) return;
     for (const base of this.bases) {
       if (base.alive) base.equatorNodes?.update(displayWindow.frame, displayWindow.displayTime, ephemeris);
     }
