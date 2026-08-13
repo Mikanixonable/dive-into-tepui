@@ -7,6 +7,7 @@ import type { MapPickable } from '../map-pick';
 import { SegmentedControl } from './widgets';
 import { groupPickables, LAGRANGE_ID, lagrangeParentId } from './object-groups';
 import { ObjectPicker, ObjectPickerGroup } from './object-picker';
+import type { OverlayManager } from './overlay-manager';
 
 const STYLE = `
 #hud .hud-anchor-zone { display: flex; flex-direction: column; gap: var(--space-2); }
@@ -33,14 +34,17 @@ export class AnchorZone {
 
   // popupRoot は ObjectPicker のポップアップの親、title はプルダウンの見出し。releaseLabel が
   // null なら「解除」の選択肢そのものを出さない(プルダウン先頭・クイックボタン先頭の両方)。
-  constructor(popupRoot: HTMLElement, title: string, ephemeris: Ephemeris, private readonly releaseLabel: string | null) {
+  constructor(
+    popupRoot: HTMLElement, title: string, ephemeris: Ephemeris, private readonly releaseLabel: string | null,
+    overlayManager: OverlayManager,
+  ) {
     ensureStyle();
     this.ephemeris = ephemeris;
 
     this.element = document.createElement('div');
     this.element.className = 'hud-anchor-zone';
 
-    this.picker = new ObjectPicker<string | null>(popupRoot, title, (id) => this.onSelect?.(id));
+    this.picker = new ObjectPicker<string | null>(popupRoot, title, (id) => this.onSelect?.(id), overlayManager);
     this.element.appendChild(this.picker.element);
 
     this.quick = new SegmentedControl<string | null>('', [], (id) => this.onSelect?.(id));

@@ -19,15 +19,15 @@ import { pickRadiusSq } from './input/pointer-precision';
 import { EntityManager } from './simulation/entity-manager';
 import { Ephemeris } from '../physics/ephemeris';
 import { NavTarget } from './nav-target';
-import { CameraSystem } from './camera/camera-system';
+import { CameraSystem, ProjectFn } from './camera/camera-system';
 import { PlanEditor } from './plan/plan-editor';
 import { SimSpeedManager } from './sim-speed-manager';
 import type { SettingsPanel } from './hud/settings-panel';
+import type { CombatTarget } from './targeter';
 import type { DisplayWindow } from './display-window-manager';
 import type { Docking } from './docking';
 import type { Game } from './game';
-import type { Player } from './player/player';
-import { planExecutionLabel, type PlanExecutionMode } from './player/player';
+import { Player, planExecutionLabel, type PlanExecutionMode } from './player/player';
 import type { GameEntity } from './game-entity/game-entity';
 import { len, sub, v3 } from '../physics/vec3';
 import type { ObjectType } from './creative/ship-placer-panel';
@@ -50,6 +50,10 @@ type MutableMapPickable = { -readonly [K in keyof MapPickable]: MapPickable[K] }
 // 軌道計画の実行モードの巡回順。ボタン1つで次のモードへ進める。
 const PLAN_EXECUTION_MODES: readonly PlanExecutionMode[] = ['off', 'instant', 'powered'];
 
+// クリップされていないプロパティウィンドウが同時に高々1枚しか開かないための排他グループ名。
+// クリップ状態の遷移ごとの出し入れは PropertyWindow 自身が OverlayManager へ宣言する。
+const PROPERTY_WINDOW_TEMP_GROUP = 'property-window-temp';
+
 // 開いているプロパティウィンドウ本体と、開いた時点の対象。rows/items の再導出はこの target
 // (毎フレーム候補列から更新されうる)を経由するので、対象が消滅したかどうかの判定にも使える。
 interface WindowEntry {
@@ -60,10 +64,9 @@ interface WindowEntry {
 export class MapPicker {
   // 'empty-space' は宇宙空間そのものでプロパティを持たないので、従来どおり ContextMenu を使う。
   private readonly menu: ContextMenu<MapPickable, MenuAction>;
-  // 開いているプロパティウィンドウ。`${kind}:${id}` でオブジェクト1つにつき高々1枚に保つ。
+  // 開いているプロパティウィンドウ。`${kind}:${id}` でオブジェクト1つにつき高々1枚に保つ
+  // (一時ウィンドウの排他自体は OverlayManager が持つ — ここは対象との対応づけのみ)。
   private readonly windows = new Map<string, WindowEntry>();
-  // クリップされていない一時ウィンドウのキー。存在は高々1枚。
-  private tempWindowKey: string | null = null;
   private readonly objectListPanel: ObjectListPanel;
   private readonly candidateItems: MutableMapPickable[] = [];
   private readonly visibleItems: MutableMapPickable[] = [];
@@ -95,7 +98,7 @@ export class MapPicker {
     private readonly simSpeedManager: SimSpeedManager,
     private readonly settingsPanel: SettingsPanel,
   ) {
-    this.menu = new ContextMenu<MapPickable, MenuAction>(hud.layers.popup);
+    this.menu = new ContextMenu<MapPickable, MenuAction>(hud.layers.popup, hud.overlayManager);
     this.menu.onSelect = (act, target) => {
       const handler = this.handlers[target.kind];
       if (handler) handler.run(act, target);
@@ -265,8 +268,8 @@ export class MapPicker {
   }
 
   // 対象1つにつきウィンドウは高々1枚: 既存があればクリック位置へ動かして最前面に出すだけで
-  // 新規には開かない。新規に開いたウィンドウは既定でクリップされておらず一時ウィンドウとなるので、
-  // 既存の一時ウィンドウがあれば入れ替わりに閉じる。
+  // 新規には開かない。一時ウィンドウ(非クリップ)どうしの排他は PropertyWindow 自身が
+  // OverlayManager の PROPERTY_WINDOW_TEMP_GROUP を通じて保つ。
   private openPropertyWindow(clientX: number, clientY: number, target: MapPickable, simTime: number): void {
     const key = this.windowKey(target);
     const existing = this.windows.get(key);
@@ -275,13 +278,12 @@ export class MapPicker {
       existing.win.bringToFront();
       return;
     }
-    const w = new PropertyWindow<MenuAction>(this.hud.layers.window, clientX, clientY, this.buildContent(target, simTime));
+    const w = new PropertyWindow<MenuAction>(
+      this.hud.layers.window, clientX, clientY, this.buildContent(target, simTime),
+      this.hud.overlayManager, PROPERTY_WINDOW_TEMP_GROUP,
+    );
     const entry: WindowEntry = { win: w, target };
     this.windows.set(key, entry);
-    if (!w.clipped) {
-      if (this.tempWindowKey !== null) this.closeWindow(this.tempWindowKey);
-      this.tempWindowKey = key;
-    }
     // 実行時は entry.target(sync のたびに最新化される)を読む — 開いた瞬間の対象を
     // 捕まえたままだと、時刻に依存する操作(ワープ・ノード追加)が古い時刻へ向けて走ってしまう。
     // 操作項目のクリックは、クリップ済みか keepOpen(排他選択肢の切り替え)なら開いたままにする。
@@ -292,20 +294,9 @@ export class MapPicker {
       if (act === 'delete' || (!w.clipped && !keepOpen)) this.closeWindow(key);
     };
     w.onClose = () => this.forgetWindow(key);
-    w.onOutsideClick = () => { if (!w.clipped) this.closeWindow(key); };
-    // クリップした瞬間に一時ウィンドウの座を明け渡し、逆にクリップを外した瞬間は既存の
-    // 一時ウィンドウ(あれば)を閉じてその座に就く — 「一時ウィンドウは高々1枚」を両方向で保つ。
-    w.onClipChange = (clipped) => {
-      if (clipped) {
-        if (this.tempWindowKey === key) this.tempWindowKey = null;
-      } else {
-        if (this.tempWindowKey !== null && this.tempWindowKey !== key) this.closeWindow(this.tempWindowKey);
-        this.tempWindowKey = key;
-      }
-    };
   }
 
-  // windows/tempWindowKey のキー。kind をまたいで id が衝突しないよう種別込みにする。
+  // windows のキー。kind をまたいで id が衝突しないよう種別込みにする。
   private windowKey(target: MapPickable): string {
     return `${target.kind}:${target.id}`;
   }
@@ -313,15 +304,14 @@ export class MapPicker {
   // 台帳から外すだけで DOM 破棄はしない — ✕ ボタン自身が dispose 済みのときに呼ぶ経路。
   private forgetWindow(key: string): void {
     this.windows.delete(key);
-    if (this.tempWindowKey === key) this.tempWindowKey = null;
   }
 
-  // ✕ ボタン以外の経路(対象消滅・ビュー離脱・一時ウィンドウの入れ替わり)で閉じる。
+  // ✕ ボタン以外の経路(対象消滅・ビュー離脱)で閉じる。close() 自体が onClose を発火するので、
+  // forgetWindow はそちらから呼ばれる。
   private closeWindow(key: string): void {
     const entry = this.windows.get(key);
     if (!entry) return;
-    entry.win.dispose();
-    this.forgetWindow(key);
+    entry.win.close();
   }
 
   // 左クリック位置の最寄りの自艦・基地を選択する。当たらなければ消費せず、PlanEditor の
@@ -375,13 +365,37 @@ export class MapPicker {
     }
   }
 
-  // 何も当たらなかった場合、「空域」として扱う（他のハンドラの後に呼ぶ）。
+  // 何も当たらなかった場合、「空域」として扱う（他のハンドラの後に呼ぶ）。マップ・戦闘の
+  // どちらの右クリックも空振りしたら最終的にここへ落ちる — 実装は1つだけ持つ(openEmptySpaceMenu)。
   handleEmptySpaceRightClick(input: Input, simTime: number): void {
     input.takeRightClicks((p) => {
-      const target = { id: 'empty', name: '宇宙空間', pos: v3(0, 0, 0), kind: 'empty-space' as any };
-      this.menu.open(p.x, p.y, target, this.itemsFor(target, simTime));
+      this.openEmptySpaceMenu(p.x, p.y, simTime);
       return true;
     });
+  }
+
+  private openEmptySpaceMenu(clientX: number, clientY: number, simTime: number): void {
+    const target: MapPickable = { id: 'empty', name: '宇宙空間', pos: v3(0, 0, 0), kind: 'empty-space' };
+    this.menu.open(clientX, clientY, target, this.itemsFor(target, simTime));
+  }
+
+  // 戦闘ビューの右クリック。マップと同じ被選択物の仕組みで敵・自艦を拾い、当たれば同じ
+  // プロパティウィンドウを開く(同じ対象は常に同じ窓 — §7-2)。外れれば空域メニューへ落ちる。
+  handleCombatRightClick(
+    input: Input, targets: readonly CombatTarget[], project: ProjectFn, simTime: number,
+  ): void {
+    input.takeRightClicks((p) => {
+      const picked = this.game.targeter.pickTargetAt(p, targets, project);
+      if (picked) this.openPropertyWindow(p.x, p.y, this.combatTargetPickable(picked), simTime);
+      else this.openEmptySpaceMenu(p.x, p.y, simTime);
+      return true;
+    });
+  }
+
+  // CombatTarget(Enemy | Player)を、対応する MapPickable の kind へ変換する。
+  private combatTargetPickable(target: CombatTarget): MapPickable {
+    const kind = target instanceof Player ? 'player' : 'ship';
+    return { id: target.id, name: target.name, pos: target.state.r, kind };
   }
 
   // 軌道オブジェクトウィンドウをマップ視点である間は常設で表示し、開いている全プロパティ
@@ -474,6 +488,7 @@ export class MapPicker {
     },
     'ship': {
       itemsFor: (target, simTime) => [
+        ...this.combatTargetLockItems(this.entities.findEnemy(target.id)),
         MenuCommon.focus(),
         ...this.navTargetItems(target, simTime),
         ...this.duplicateItems(),
@@ -486,6 +501,8 @@ export class MapPicker {
           if (enemy) enemy.alive = false;
         } else if (act === 'duplicate') {
           this.runDuplicate(target);
+        } else if (act === 'targetPrimary' || act === 'targetSecondary') {
+          this.runTargetLock(act, this.entities.findEnemy(target.id));
         } else {
           this.runBodyShip(act, target);
         }
@@ -572,6 +589,7 @@ export class MapPicker {
           ? [{ label: `軌道計画の実行: ${planExecutionLabel(mode)}`, act: 'planExecCycle', keepOpen: true }]
           : [];
         return [
+          ...this.combatTargetLockItems(ship),
           ...planExec,
           ...activate,
           MenuCommon.focus(),
@@ -598,6 +616,8 @@ export class MapPicker {
         } else if (act === 'delete') {
           const ship = this.entities.findPlayer(target.id);
           if (ship) this.game.activePlayers.remove(ship);
+        } else if (act === 'targetPrimary' || act === 'targetSecondary') {
+          this.runTargetLock(act, this.entities.findPlayer(target.id));
         } else {
           this.runBodyShip(act, target);
         }
@@ -675,6 +695,25 @@ export class MapPicker {
   // 「複製」項目。複製先が艦艇配置パネルなので、それを持つステージだけに出す。
   private duplicateItems(): readonly MenuItem<MenuAction>[] {
     return this.game.activeStage.authoring ? [MenuCommon.duplicate()] : [];
+  }
+
+  // ターゲット固定/第二ターゲット固定の項目。戦闘ターゲットとして戦える対象(生存中の
+  // 敵・自艦)にだけ出し、マップビューでは出さない(視界占有を抑える — §7-2)。
+  private combatTargetLockItems(entity: CombatTarget | null | undefined): readonly MenuItem<MenuAction>[] {
+    if (this.cameraSystem.overviewMode || !entity || !entity.alive) return [];
+    const targeter = this.game.targeter;
+    return [
+      MenuCommon.targetPrimary(targeter.target === entity),
+      MenuCommon.targetSecondary(targeter.secondaryTarget === entity),
+    ];
+  }
+
+  // ターゲット固定/第二ターゲット固定を、押した時点の設定と比べてトグルする。
+  private runTargetLock(act: 'targetPrimary' | 'targetSecondary', entity: CombatTarget | null | undefined): void {
+    if (!entity) return;
+    const targeter = this.game.targeter;
+    if (act === 'targetPrimary') targeter.setPrimaryTarget(targeter.target === entity ? null : entity);
+    else targeter.setSecondaryTarget(targeter.secondaryTarget === entity ? null : entity);
   }
 
   // 対象の現在状態を軌道要素へ逆算し、その値をプリセットして艦艇配置パネルを開く。

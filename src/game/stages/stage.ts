@@ -239,7 +239,7 @@ export abstract class Stage {
   }
   // 勝利画面を表示する。
   onWin(simTime: number): void {
-    showWinScreen(this._sfx, this.scoreCounter, this.scoreCounter.totalEnemiesSpawned, simTime);
+    showWinScreen(this._hud, this._sfx, this.scoreCounter, this.scoreCounter.totalEnemiesSpawned, simTime);
   }
 
   // ステータスパネルに表示する補助メッセージ。既定では非表示(null)。
@@ -270,7 +270,7 @@ export abstract class Stage {
     // isPlaying ガード: 勝利後に自機が再突入しても敗北で上書きしないよう。
     if (!this.isPlaying) return;
     this.setPhase('lost');
-    showResultScreen(this._sfx, false, `${reason}<br>撃破 ${this.scoreCounter.kills}/${this.scoreCounter.totalEnemiesSpawned} 機`);
+    showResultScreen(this._hud, this._sfx, false, `${reason}<br>撃破 ${this.scoreCounter.kills}/${this.scoreCounter.totalEnemiesSpawned} 機`);
   }
 
   // スコア・決着状態・補給タイマーをセーブデータへ変換する。固有の内訳を持つ具象ステージは

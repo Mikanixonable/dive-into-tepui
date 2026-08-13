@@ -79,7 +79,9 @@ export class CreativeStage extends Stage {
     this.previewOrbitLine = new OrbitLine(0xffffff, 0.6, C.LINE_RENDER_ORDER.plan);
     this._scene.add(this.previewOrbitLine.line);
 
-    this.placerPanel = new ShipPlacerPanel(this._hud.layers.panel, this._hud.layers.popup, this._ephemeris);
+    this.placerPanel = new ShipPlacerPanel(
+      this._hud.layers.panel, this._hud.layers.popup, this._ephemeris, this._hud.overlayManager,
+    );
     this.placerPanel.onConfirm = (name, form) => this.placeObject(name, form);
     this.waveAttack = new WaveAttack(this._hud, this._sfx, this._fx, this._scene, this._ephemeris, savedCreative?.waveAttack);
     this.waveAttackEnabled = savedCreative?.waveAttackEnabled ?? false;
