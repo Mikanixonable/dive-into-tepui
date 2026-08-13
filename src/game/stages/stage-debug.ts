@@ -1,12 +1,7 @@
 // デバッグ用ステージ: 敵集団1つのみを配置し、勝敗を発生させずに検証を続けられる。
 // 敵の射撃 ON/OFF をパネルから切り替えられる。タイトルの通常ボタン列には出ない。
-<<<<<<< HEAD
-import { Stage } from './stage';
-import { generateWave } from './stage-utils/wave-attack';
-=======
 import { Stage, type StageDeps } from './stage';
-import { generateWave } from './stage00';
->>>>>>> origin/workspace4
+import { generateWave } from './stage-utils/wave-attack';
 import { hudButton, HudToggle } from '../hud/buttons';
 import * as C from '../const';
 import type { Player } from '../player/player';
