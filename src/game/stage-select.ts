@@ -4,9 +4,10 @@ import { UnlockManager } from './unlock-manager';
 import type { StageClass } from './stages/stage';
 import { StageDebug } from './stages/stage-debug';
 import {
-  ACCENT, ACCENT_EDGE, ACCENT_FILL_WEAK, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM, FONT_FAMILY,
-  FONT_S, FONT_M, FONT_L, FONT_2XL, RADIUS_M,
+  ACCENT, ACCENT_EDGE, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM, FONT_FAMILY,
+  FONT_S, FONT_M, FONT_2XL, RADIUS_M,
 } from './theme';
+import { TabBar } from './hud/widgets';
 import tepuiRmqrUrl from '../assets/tepui-rmqr.svg';
 
 // 起動選択画面(各ステージの selectGroup ごとのタブ)を表示し、選ばれたステージクラスで解決される Promise を返す。
@@ -36,37 +37,24 @@ export function selectStage(unlockManager: UnlockManager): Promise<StageClass> {
       `<div style="width:100%;box-sizing:border-box;padding-top:10px;color:${ACCENT};font-size:clamp(16px,3.8vw,22px);line-height:1.2;letter-spacing:clamp(3px,0.9vw,6px);text-align:center;white-space:nowrap">Dive into Tepui</div>` +
       `</div>`;
 
-    // タブ切替: 選んだタブに応じて下のリスト表示を入れ替える。
-    const tabRow = document.createElement('div');
-    tabRow.style.cssText = 'display:flex;gap:0;width:min(78vw,430px);height:38px;flex:0 0 38px;margin-bottom:2px;border-bottom:1px solid ' + EDGE + ';';
-    const tab = (label: string) => {
-      const t = document.createElement('button');
-      t.textContent = label;
-      t.style.cssText =
-        `flex:1;height:38px;padding:6px 12px;font:inherit;font-size:${FONT_L};letter-spacing:2px;cursor:pointer;color:${TEXT_DIM};background:transparent;border:0;border-bottom:2px solid transparent;`;
-      return t;
-    };
     // タブは selectGroup の初出順に並べる。
     const groups: string[] = [];
     for (const stageClass of STAGE_CLASSES) {
       if (stageClass.hiddenFromSelect || groups.includes(stageClass.selectGroup)) continue;
       groups.push(stageClass.selectGroup);
     }
-    const tabs = groups.map((group) => ({ group, el: tab(group) }));
-    tabRow.append(...tabs.map((t) => t.el));
-    div.appendChild(tabRow);
 
     const listDiv = document.createElement('div');
     listDiv.style.cssText = 'width:min(78vw,430px);display:flex;flex-direction:column;gap:18px;align-items:center;overflow:auto;min-height:0;padding:2px 0 8px;';
+
+    // タブ切替: 選んだタブに応じて下のリスト表示を入れ替える。
+    const tabBar = new TabBar<string>(groups.map((g) => [g, g] as const), (group) => setActiveTab(group));
+    tabBar.element.style.cssText = 'width:min(78vw,430px);margin-bottom:2px;';
+    div.appendChild(tabBar.element);
     div.appendChild(listDiv);
 
     const setActiveTab = (group: string) => {
-      for (const t of tabs) {
-        const active = t.group === group;
-        t.el.style.color = active ? ACCENT : TEXT_DIM;
-        t.el.style.borderBottomColor = active ? ACCENT : 'transparent';
-        t.el.style.background = active ? ACCENT_FILL_WEAK : 'transparent';
-      }
+      tabBar.setSelected(group);
       listDiv.innerHTML = '';
       for (const stageClass of STAGE_CLASSES) {
         if (stageClass.hiddenFromSelect || stageClass.selectGroup !== group) continue;
@@ -78,11 +66,10 @@ export function selectStage(unlockManager: UnlockManager): Promise<StageClass> {
         if (enabled) button.addEventListener('click', () => done(stageClass));
       }
     };
-    for (const t of tabs) t.el.addEventListener('click', () => setActiveTab(t.group));
 
     // 解放状況ごとにボタンを並べる
     const enabledByStage = new Map(STAGE_CLASSES.map((stageClass) => [stageClass.id, unlockManager.isUnlocked(stageClass.id)]));
-    if (tabs[0]) setActiveTab(tabs[0].group);
+    if (groups[0]) setActiveTab(groups[0]);
 
     document.body.appendChild(div);
 

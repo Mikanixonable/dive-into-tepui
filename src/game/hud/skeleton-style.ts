@@ -3,6 +3,7 @@
 // panel-content-style.ts が持つ。
 import * as C from '../const';
 import { OVERLAY_LAYER_STYLE } from './overlay-layer';
+import { MQ_COARSE, MQ_COARSE_SHORT, MQ_COMPACT, MQ_MEDIUM_DOWN, MQ_SHORT } from './breakpoints';
 
 export const SKELETON_STYLE = `
 #hud, #hud * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -117,7 +118,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud-viewbadge .vb-title { color: var(--accent); }
 #hud-viewbadge .vb-mode { color: var(--text-dim); }
 /* span. まで指定して .w-btn 側の font-size/padding/background より確実に勝たせる
-   (ID+クラスの詳細度は #hud .w-btn と同着のため、宣言順に頼らない)。 */
+   (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
 #hud-viewbadge span.vb-view-btn {
   background: transparent;
   border-radius: var(--radius-m); padding: var(--space-1) var(--space-3);
@@ -227,7 +228,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud .mk-poi .lbl, #hud .mk-base .lbl { margin-top: var(--space-2); padding: var(--space-1) var(--space-2); }
 
 /* --- モバイル / 狭幅画面: パネルを縮小してタッチパッドと共存させる --- */
-@media (max-width: 900px), (pointer: coarse) {
+@media ${MQ_MEDIUM_DOWN} {
   #hud { font-size: var(--font-s); }
   #hud .panel { padding: var(--space-3) var(--space-4); line-height: 1.4; }
   #hud .panel h3 { font-size: var(--font-xs); letter-spacing: 1.5px; margin-bottom: var(--space-2); }
@@ -258,22 +259,22 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
   #hud-map-scale { right: 8px; bottom: 8px; font-size: var(--font-xxs); }
   #hud .hud-rail { top: 40px; }
 }
-@media (max-width: 520px) {
+@media ${MQ_COMPACT} {
   #hud .hud-rail { font-size: var(--font-xxs); }
   #hud.map-mode .hud-rail { bottom: calc(28vh + 16px); bottom: calc(28dvh + 16px); }
   #hud-combat-shelf { top: 72px; }
   #hud-combat-shelf > .panel { flex-basis: min(168px, calc(100vw - 16px)); width: min(168px, calc(100vw - 16px)); }
 }
-@media (pointer: coarse) {
+@media ${MQ_COARSE} {
   #hud .hud-rail { bottom: 62px; }
   #hud-map-scale { bottom: 62px; }
 }
-@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
+@media ${MQ_COARSE_SHORT} {
   #hud .hud-rail { bottom: 52px; }
   #hud-combat-shelf { top: 60px; }
   #hud-chase-reset { top: 34px; }
 }
-@media (orientation: landscape) and (max-height: 500px) {
+@media ${MQ_SHORT} {
   #hud-combat-shelf { top: 60px; }
   #hud-map-scale { bottom: 52px; }
 }
