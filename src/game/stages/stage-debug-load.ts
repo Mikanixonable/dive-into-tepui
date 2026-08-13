@@ -1,6 +1,6 @@
 // デバッグ用ステージ: 重力を及ぼす小惑星と受ける破片の双方を多数配置し、万有引力計算の
 // 高負荷を常時再現する。タイトルの通常ボタン列には出ない。
-import { Stage } from './stage';
+import { Stage, type StageDeps } from './stage';
 import type { Player } from '../player/player';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { SimSpeedManager } from '../sim-speed-manager';
@@ -11,21 +11,28 @@ import { randomQuat } from '../../physics/attitude';
 import { kinematicState } from '../../physics/kinematic-state';
 import { mulberry32 } from '../../physics/random';
 import { add, v3, Vec3 } from '../../physics/vec3';
+import type { StageSaveData } from '../save-data';
 
 export class StageDebugLoad extends Stage {
   static readonly id = 'debug-load' as const;
-  readonly selectLabel = 'DEBUG(高負荷)';
-  readonly selectSub = '【デバッグ】小惑星・破片を多数配置し万有引力計算を高負荷にする・撃破しても終了しない';
-  readonly hiddenFromSelect = true;
-  readonly selectKeys = ['KeyL'];
+  static readonly selectLabel = 'DEBUG(高負荷)';
+  static readonly selectSub = '【デバッグ】小惑星・破片を多数配置し万有引力計算を高負荷にする・撃破しても終了しない';
+  static readonly hiddenFromSelect = true;
+  static readonly selectKeys = ['KeyL'];
   readonly initialAmmo = { mags: 20, rounds: C.MAG_ROUNDS };
+
+  constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
+    super(saved, ...deps);
+    this.begin();
+  }
 
   briefingHtml(): string {
     return `<b>高負荷デバッグステージ</b><br>小惑星 ${C.DEBUG_LOAD_ASTEROID_COUNT} 体・破片 ${C.DEBUG_LOAD_DEBRIS_COUNT} 個を配置`;
   }
 
   // 引力を及ぼす小惑星(重力源)と、受けるだけの破片の双方を自機周囲へ散らす。
-  init(player: Player, entities: EntityManager): number {
+  protected init(player: Player | null, entities: EntityManager): number {
+    if (!player) return 0;
     const rand = mulberry32(C.DEBUG_LOAD_RNG_SEED);
     for (let i = 0; i < C.DEBUG_LOAD_ASTEROID_COUNT; i++) {
       const offset = randomOffset(rand, C.DEBUG_LOAD_ASTEROID_MAX_DIST);

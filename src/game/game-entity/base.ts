@@ -55,8 +55,8 @@ export class Base extends GameEntity {
     dockedShips: []
   };
 
-  // hud/sfx/fx/markerManager は格納艦(Player)の組み立てに要る。格納艦は非アクティブ状態
-  // (alive=false・非表示)で作られ、entities.players へは入らない — それが「格納中」の定義。
+  // hud/sfx/fx/markerManager は格納艦(Player)の組み立てに要る。格納艦は entities.players へ
+  // 入らない — それが「格納中」の定義であり、艦自身の状態としては何も倒さない。
   constructor(
     init: BaseInit,
     scene: THREE.Scene,
@@ -88,7 +88,6 @@ export class Base extends GameEntity {
       this.baseState.inventory = init.saved.inventory.map(partFromSaveData);
       this.baseState.dockedShips = init.saved.dockedShips.map((shipData) => {
         const player = new Player(hud, sfx, scene, fx, markerManager, { saved: shipData, simTime: init.simTime });
-        player.alive = false;
         player.obj.visible = false;
         return {
           id: player.id,

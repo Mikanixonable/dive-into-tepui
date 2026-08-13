@@ -29,9 +29,9 @@ export class ThrustEffects {
   // (RcsEffects.sync と同じ役割 — 全艦のプルームは描画するが、音は操作対象だけ)。
   sync(
     fo: FloatingOrigin, playerPos: Vec3, thrust: Vec3 | null, maxAccel: number,
-    alive: boolean, audible: boolean, camera: CameraSystem,
+    visible: boolean, audible: boolean, camera: CameraSystem,
   ): void {
-    const firing = thrust !== null && alive;
+    const firing = thrust !== null && visible;
     if (audible) this._sfx.setThrust(firing);
 
     if (!firing || camera.zoomActive) {

@@ -17,10 +17,9 @@ import { Hud } from './game/hud/hud';
 import { SettingsPanel } from './game/hud/settings-panel';
 import { Sfx } from './audio/sfx';
 import { UnlockManager } from './game/unlock-manager';
-import { ephemerisConfigFor, isStageId, STAGE_DEFINITIONS } from './game/stages/stage-dictionary';
-import type { StageId } from './game/stages/stage';
-import { selectLaunch } from './game/launch-select';
-import { LaunchSelection } from './game/game-mode';
+import { findStageClass } from './game/stages/stage-dictionary';
+import type { StageClass } from './game/stages/stage';
+import { selectStage } from './game/stage-select';
 import { LocalStorageSaveStore } from './game/save/save-store';
 import { SaveSlots } from './game/save/save-slots';
 import { SnapshotService } from './game/save/snapshot-service';
@@ -37,35 +36,29 @@ import { profileAt } from './physics/ephemeris-profile';
 const SNAPSHOT_PENDING_KEY = 'tepui.pendingSnapshot';
 
 
-// アクティブスロットの直近起動が今も選択可能(ロック解除済み・選択画面から隠されていない)か判定する
-function isResumableStage(unlockManager: UnlockManager, stageId: string): boolean {
-  if (!isStageId(stageId)) return false;
-  const stage = STAGE_DEFINITIONS.find((s) => s.id === stageId);
-  return stage !== undefined && !stage.hiddenFromSelect && unlockManager.isUnlocked(stageId);
-}
-
-// アクティブスロットの直近起動を再開する選択を返す。再開できる情報が無ければ null。
-function resumeFromActiveSlot(unlockManager: UnlockManager, slots: SaveSlots): LaunchSelection | null {
+// アクティブスロットの直近起動が今も選択可能(ロック解除済み・選択画面から隠されていない)なら、
+// そのステージクラスを返す。再開できる情報が無ければ null。
+function resumableStageClass(unlockManager: UnlockManager, slots: SaveSlots): StageClass | null {
   const slot = slots.activeSlot();
   if (slot === null) return null;
-  if (slot.mode === 'creative') return { mode: 'creative' };
-  return isResumableStage(unlockManager, slot.lastStageId)
-    ? { mode: 'stage', stage: slot.lastStageId as StageId }
-    : null;
+  const stageClass = findStageClass(slot.lastStageId);
+  if (stageClass === null || stageClass.hiddenFromSelect || !unlockManager.isUnlocked(stageClass.id)) return null;
+  return stageClass;
 }
 
-// ?title=1 は選択画面へ強制する。?mode=creative/?stage= は共有リンク・デバッグ用の
-// 明示指定として最優先。どちらも無ければアクティブスロットの直近起動を再開し、
-// それも無ければ選択画面を出す。
-export async function resolveLaunchSelection(
+// ?title=1 は選択画面へ強制する。?stage= は共有リンク・デバッグ用の明示指定として最優先。
+// どちらも無ければアクティブスロットの直近起動を再開し、それも無ければ選択画面を出す。
+export async function resolveLaunchStage(
   unlockManager: UnlockManager, slots: SaveSlots,
-): Promise<LaunchSelection> {
+): Promise<StageClass> {
   const params = new URLSearchParams(location.search);
-  if (params.get('title') === '1') return selectLaunch(unlockManager);
-  if (params.get('mode') === 'creative') return { mode: 'creative' };
-  const stageParam = params.get('stage');
-  if (isStageId(stageParam)) return { mode: 'stage', stage: stageParam };
-  return resumeFromActiveSlot(unlockManager, slots) ?? selectLaunch(unlockManager);
+  if (params.get('title') !== '1') {
+    const fromParam = findStageClass(params.get('stage'));
+    if (fromParam !== null) return fromParam;
+    const resumed = resumableStageClass(unlockManager, slots);
+    if (resumed !== null) return resumed;
+  }
+  return selectStage(unlockManager);
 }
 
 // WebGPU 初期化(シェーダーコンパイル等でしばらく無反応になり得る)の間に表示する
@@ -233,12 +226,12 @@ async function main() {
   const snapshotService = new SnapshotService(saveStore, slots);
   const gs = await initScene();
   const { hud, sfx, settingsPanel } = initHud();
-  const launch = await resolveLaunchSelection(unlockmanager, slots);
+  const stageClass = await resolveLaunchStage(unlockmanager, slots);
   let absoluteEphemeris;
   // 固有の簡易天体暦を指定するデバッグステージには外部 pack を読み込まない。
   // 通常起動では開始時刻からプロファイルを決定するため、開始時刻を変更しても
   // プロファイル ID を別途ハードコードし直す必要がない。
-  if (ephemerisConfigFor(launch) === undefined) {
+  if (stageClass.ephemerisConfig === undefined) {
     hideLoading = showLoading();
     try {
       const profile = profileAt(SIM_EPOCH_JD_TDB);
@@ -254,7 +247,6 @@ async function main() {
   }
   const sections = new FrameSections();
 
-  const stageId = launch.mode === 'creative' ? 'creative' : launch.stage;
   const activeSlotId = slots.activeSlotId;
   // ページ再読込を挟んだスナップショットのロード要求を最優先で使う。無ければ、
   // アクティブスロットの現在ステージにある最新スナップショットを起動時に復元する。
@@ -263,17 +255,17 @@ async function main() {
   const pendingSnapshotId = sessionStorage.getItem(SNAPSHOT_PENDING_KEY);
   sessionStorage.removeItem(SNAPSHOT_PENDING_KEY);
   const initialSnapshotId = pendingSnapshotId
-    ?? (activeSlotId !== null ? slots.latestSnapshot(activeSlotId, stageId)?.id ?? null : null);
+    ?? (activeSlotId !== null ? slots.latestSnapshot(activeSlotId, stageClass.id)?.id ?? null : null);
   const initialSave = initialSnapshotId !== null
-    ? snapshotService.load(initialSnapshotId, stageId) ?? undefined
+    ? snapshotService.load(initialSnapshotId, stageClass.id) ?? undefined
     : undefined;
   // ロードした時点より後の自動スナップショットは、もう起きなかった未来なので破棄する。
   if (initialSave && initialSnapshotId !== null) slots.discardAfter(initialSnapshotId);
 
   const game = new Game(
-    gs, launch, hud, sfx, settingsPanel, unlockmanager, sections, absoluteEphemeris, initialSave,
+    gs, stageClass, hud, sfx, settingsPanel, unlockmanager, sections, absoluteEphemeris, initialSave,
   );
-  if (activeSlotId !== null) slots.noteLaunch(activeSlotId, launch.mode, game.activeStage.id);
+  if (activeSlotId !== null) slots.noteLaunch(activeSlotId, game.activeStage.id);
 
   const saveBrowser = new SaveBrowser(hud.layers.system, slots, snapshotService, game, hud.modalController);
   saveBrowser.onSlotSwitched = () => location.assign(location.pathname);

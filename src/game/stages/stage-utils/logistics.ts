@@ -72,7 +72,7 @@ export class Logistics {
   updateLogistics(
     simTime: number, player: Player, simSpeed: SimSpeedManager, respawnOnDespawn = false,
   ): void {
-    if (player.alive) this.absorbNearbyAmmo(player);
+    this.absorbNearbyAmmo(player);
     const canResupply = this.resupplyEnabled && simSpeed.canResupplyAmmo;
     this.despawnFarAmmo(player, respawnOnDespawn && canResupply);
 
