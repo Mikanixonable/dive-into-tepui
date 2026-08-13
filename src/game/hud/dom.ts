@@ -4,6 +4,14 @@ import { KEY_MAPPING as K } from '../input/key-mapping';
 import { injectThemeVariables } from '../theme';
 import { buildOverlayLayers, OVERLAY_LAYER_STYLE, type OverlayLayers } from './overlay-layer';
 import { ModalController } from './modal-controller';
+import { buildCollapseToggle, WIDGET_STYLE, type CollapseToggleLabels } from './widgets';
+export {
+  buildCollapseToggle,
+  type CollapseToggleLabels,
+  COLLAPSE_EXPANDED_GLYPH,
+  COLLAPSE_COLLAPSED_GLYPH,
+  PREDICT_TOGGLE_LABELS,
+} from './widgets';
 
 
 const throttleKeyLabels = [K.throttleLow, K.throttleMid, K.throttleHigh, K.throttleMax].map((k) => k.label).join(' / ');
@@ -784,26 +792,6 @@ export function hudDock(root: HTMLElement, side: 'left' | 'right'): HTMLElement 
   return root.querySelector<HTMLElement>(`#${id}`) ?? root;
 }
 
-// 縦方向の開閉トグルの字形。マップのマーカーとは字形の族を分け、開いている状態と
-// 閉じている状態でどちらを向くかを画面内で一貫させる。
-export const COLLAPSE_EXPANDED_GLYPH = '▾';
-export const COLLAPSE_COLLAPSED_GLYPH = '▸';
-
-export interface CollapseToggleLabels {
-  readonly expandedGlyph: string;
-  readonly collapsedGlyph: string;
-  readonly expandedTitle: string;
-  readonly collapsedTitle: string;
-}
-
-// マップビュー下部の PREDICT バー用トグルの見た目。
-export const PREDICT_TOGGLE_LABELS: CollapseToggleLabels = {
-  expandedGlyph: COLLAPSE_EXPANDED_GLYPH,
-  collapsedGlyph: COLLAPSE_COLLAPSED_GLYPH,
-  expandedTitle: '下部パネルを閉じる',
-  collapsedTitle: '下部パネルを開く',
-};
-
 function dockToggleLabels(side: 'left' | 'right'): CollapseToggleLabels {
   const label = side === 'left' ? '左' : '右';
   return {
@@ -812,28 +800,6 @@ function dockToggleLabels(side: 'left' | 'right'): CollapseToggleLabels {
     expandedTitle: `${label}マップパネルを閉じる`,
     collapsedTitle: `${label}マップパネルを開く`,
   };
-}
-
-// button の見た目(グリフ・aria-expanded・title)を target の collapsed クラスに合わせる。
-function syncCollapseToggle(button: HTMLElement, target: HTMLElement, labels: CollapseToggleLabels): void {
-  const collapsed = target.classList.contains('collapsed');
-  button.textContent = collapsed ? labels.collapsedGlyph : labels.expandedGlyph;
-  button.setAttribute('aria-expanded', String(!collapsed));
-  button.title = collapsed ? labels.collapsedTitle : labels.expandedTitle;
-}
-
-// target の表示/非表示を collapsed クラスで切り替えるボタンを1つ組み、root へ追加して返す。
-export function buildCollapseToggle(
-  root: HTMLElement, id: string, className: string, target: HTMLElement, labels: CollapseToggleLabels,
-): HTMLElement {
-  const button = el('button', id, root, className);
-  button.addEventListener('pointerdown', (event) => event.stopPropagation());
-  button.addEventListener('click', () => {
-    target.classList.toggle('collapsed');
-    syncCollapseToggle(button, target, labels);
-  });
-  syncCollapseToggle(button, target, labels);
-  return button;
 }
 
 export function syncNavballPlacement(root: HTMLElement, mapMode: boolean): void {
@@ -849,7 +815,7 @@ function buildDockToggle(root: HTMLElement, dock: HTMLElement, side: 'left' | 'r
 // STYLE の CSS を <head> に注入する。
 function injectStyle(): void {
   const style = document.createElement('style');
-  style.textContent = STYLE;
+  style.textContent = STYLE + WIDGET_STYLE;
   document.head.appendChild(style);
 }
 

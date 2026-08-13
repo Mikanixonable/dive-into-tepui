@@ -346,8 +346,12 @@ THREE 非依存かつ純粋であっても、次のものは `physics/` に置�
 - `SettingsPanel`(BGM・一時停止・タイトルへ戻る)… **複数モジュールにまたがることが本質**の
   GUI なので、所有者を `main.ts` に置く。
 - `Hud.hint()` / `toast()` / `Sfx` … 共有サービス。所有者の議論の対象外。
-- `hud/context-menu.ts` / `hud/buttons.ts` / `hud/frame-labels.ts` … DOM・イベント・表示文字列
-  だけを担う共有部品。状態を持たないので「所有者」を問う必要がない。**この形は積極的に増やしてよい。**
+- `hud/context-menu.ts` / `hud/widgets/`(押せる/切り替えられる/入力できる DOM は
+  `Button`/`ToggleSwitch`/`SegmentedControl`/`HoldButton`/`CloseButton`/`ValueInput`/`Meter`/
+  `TabBar`/`buildCollapseToggle` の10種に限り、これ以外を自作しない)/ `hud/frame-labels.ts` …
+  DOM・イベント・表示文字列だけを担う共有部品。状態を持たないので「所有者」を問う必要がない。
+  **この形は積極的に増やしてよい。**`hud/buttons.ts` は `hud/widgets/` への互換委譲層で、
+  呼び出し側は新規に増やさず `hud/widgets/` を直接使う。
 - `hud/panel.ts` の `HudPanels.sync(game, dt)` … **全情報を集約表示することそのものに価値が
   ある**ので `Game` を丸ごと読んでよい。ただし**表示専用**であること(他モジュールの状態や
   DOM を書き換えないこと)は維持する。
@@ -356,9 +360,10 @@ THREE 非依存かつ純粋であっても、次のものは `physics/` に置�
 
 `input/input.ts` の `Input` は `window` でキー入力を購読しているので、**HUD の入力欄で
 止めなかった打鍵はそのままゲーム操作になる**(検索欄に "w" と打つと機体が噴射する)。
-テキスト・数値入力を作ったら、その場で `keydown` の `stopPropagation()` を書く。
-確定は `change` / Enter で行い、打鍵ごとに値を適用しない — 打ちかけの数値が一瞬でも
-設定値として使われないようにするため。
+`hud/widgets/value-input.ts` の `ValueInput` がテキスト・数値・検索入力の唯一の実装 —
+新しい入力欄はこれを使い、自作しない。`keydown` の伝播抑止・Enter/blur=確定・Escape=破棄
+(既定 `'revert'`、検索欄限定で `'clear'`)を内包しており、打鍵ごとに値を適用しない
+(打ちかけの数値が一瞬でも設定値として使われないようにするため)。
 
 ### 排他選択の走査範囲に DOM の親子関係を流用しない
 
