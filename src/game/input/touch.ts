@@ -36,20 +36,20 @@ const STYLE = `
   position: absolute; display: grid; gap: 6px;
   grid-template-columns: repeat(3, 52px); grid-auto-rows: 52px;
 }
-#touch-pad-move { left: 10px; bottom: 12px; }
-#touch-pad-rot { right: 10px; bottom: 12px; }
-#touch-mode-col { right: 186px; bottom: 12px; }
+#touch-pad-move { left: calc(10px + var(--safe-l)); bottom: calc(12px + var(--safe-b)); }
+#touch-pad-rot { right: calc(10px + var(--safe-r)); bottom: calc(12px + var(--safe-b)); }
+#touch-mode-col { right: calc(186px + var(--safe-r)); bottom: calc(12px + var(--safe-b)); }
 #touch-fire {
-  position: absolute; right: 22px; bottom: 138px;
+  position: absolute; right: calc(22px + var(--safe-r)); bottom: calc(138px + var(--safe-b));
   width: 74px; height: 74px; border-radius: 50% !important;
   border-color: ${ACCENT_EDGE} !important; color: ${ACCENT} !important;
 }
 #touch-zoom {
-  position: absolute; right: 112px; bottom: 148px;
+  position: absolute; right: calc(112px + var(--safe-r)); bottom: calc(148px + var(--safe-b));
   width: 54px; height: 54px; border-radius: 50% !important;
 }
 #touch-util {
-  position: absolute; left: 10px; bottom: 138px;
+  position: absolute; left: calc(10px + var(--safe-l)); bottom: calc(138px + var(--safe-b));
   display: flex; gap: 6px; flex-wrap: wrap; max-width: 46vw;
 }
 #touch-util .tbtn { width: 46px; height: 42px; }

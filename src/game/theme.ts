@@ -86,8 +86,15 @@ export const TRANSITION_SLOW = '0.4s';
 
 export const HIT_TARGET_MIN = '44px'; // タップ最小寸法
 
+// ノッチ・ホームインジケータ等が占める領域の幅。env() は CSS 側でしか評価できないため、
+// 計算済みの値ではなく env() 呼び出し自体を注入する。
+export const SAFE_AREA_TOP = 'env(safe-area-inset-top, 0px)';
+export const SAFE_AREA_RIGHT = 'env(safe-area-inset-right, 0px)';
+export const SAFE_AREA_BOTTOM = 'env(safe-area-inset-bottom, 0px)';
+export const SAFE_AREA_LEFT = 'env(safe-area-inset-left, 0px)';
+
 export const FONT_FAMILY =
-  "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Noto Sans Mono CJK JP', monospace";
+  "'Share Tech Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Noto Sans Mono CJK JP', monospace";
 
 // --token-name のケバブケースで :root にカスタムプロパティとして注入するトークンの一覧。
 // calc() を要するトークンは、計算済みの値ではなく派生関係そのものを注入する。
@@ -149,6 +156,10 @@ const CSS_VARIABLES: Readonly<Record<string, string>> = {
   '--transition-fast': TRANSITION_FAST,
   '--transition-slow': TRANSITION_SLOW,
   '--hit-target-min': HIT_TARGET_MIN,
+  '--safe-t': SAFE_AREA_TOP,
+  '--safe-r': SAFE_AREA_RIGHT,
+  '--safe-b': SAFE_AREA_BOTTOM,
+  '--safe-l': SAFE_AREA_LEFT,
   '--font-family': FONT_FAMILY,
 };
 
