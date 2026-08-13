@@ -17,7 +17,6 @@ import type { EntityManager } from '../simulation/entity-manager';
 import { MUZZLE_OFFSETS } from '../../render/ships';
 import { EffectsSystem } from '../vfx/effects-system';
 import type { Stage } from '../stages/stage';
-import { SimSpeedManager } from '../sim-speed-manager';
 import { Player } from './player';
 import type { FireSaveData } from '../save-data';
 
@@ -110,7 +109,6 @@ export class PlayerFire {
     dt: number,
     input: Input,
     activeStage: Stage,
-    simSpeed: SimSpeedManager,
     entities: EntityManager,
     ephemeris: Ephemeris,
   ): void {
@@ -122,11 +120,6 @@ export class PlayerFire {
       // fineAttitude(微調整出力)が恒久的に有効なままになり、次にトリガーを
       // 引いたときもスピンアップ演出(justStartedFiring)が起きなくなる。
       this.wasFiring = false;
-      return;
-    }
-
-    if (!simSpeed.canPlayerFire) {
-      this._hud.hint(`射撃・推進はワープ ×${C.MAX_PHYS_SIM_SPEED} 以下でのみ可能`);
       return;
     }
 
