@@ -50,14 +50,13 @@ export class Stage00 extends Stage {
   }
 
   // 自機・弾薬ピックアップ・初期の敵ウェーブを配置する。
-  protected init(entities: EntityManager): number {
+  protected init(entities: EntityManager): void {
     const player = this.addPlayer();
     for (let i = 0; i < C.MAX_AMMO; i++) {
       this.logistics.spawnForPlayer(player, C.STAGE00_LOGISTICS_MIN_DIST, C.STAGE00_LOGISTICS_MAX_DIST);
     }
     // 初期状態でもランダムに敵を配置する
     this.spawnWave(player, (enemy) => this.addEnemy(enemy, entities), 'random');
-    return 0;
   }
 
   // 敵の行動・補給の更新を行い、現在の waveState に応じたフェーズ処理へ分岐する。

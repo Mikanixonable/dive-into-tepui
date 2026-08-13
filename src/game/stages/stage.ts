@@ -80,12 +80,6 @@ export interface ObjectAuthoring {
 
 export type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
 
-export interface StageInitData {
-  mags: number;
-  rounds: number;
-  briefingHtml: string;
-}
-
 export abstract class Stage {
   // 固有の天体暦を使うステージだけが宣言する。既定のレジストリ・地球原点で構築される。
   static readonly ephemerisConfig: EphemerisConfig | undefined = undefined;
@@ -163,8 +157,8 @@ export abstract class Stage {
   // 末尾で必ずこれを呼ぶ — 初期配置は具象側のフィールドが揃ってからでないと走らせられない。
   protected begin(): void {
     if (this.restored) return;
-    const enemyCount = this.init(this._entities);
-    this._hud.toast(this.briefingHtml(enemyCount), BRIEFING_TOAST_MS);
+    this.init(this._entities);
+    this._hud.toast(this.briefingHtml(), BRIEFING_TOAST_MS);
   }
 
   // ステージ固有の UI(トグル等)をステータスウィンドウ左部へ追加する。
@@ -224,11 +218,9 @@ export abstract class Stage {
     }
   }
 
-  abstract briefingHtml(enemyCount: number): string;
-  // 初期配置。戻り値は初期敵数(ブリーフィング表示用)。既定では何も置かない。
-  protected init(_entities: EntityManager): number {
-    return 0;
-  }
+  abstract briefingHtml(): string;
+  // 初期配置。既定では何も置かない。
+  protected init(_entities: EntityManager): void { }
   // 毎フレーム呼ぶ。艦が1隻も無い間は player が null になる。
   abstract update(dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void;
 
