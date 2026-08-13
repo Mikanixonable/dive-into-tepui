@@ -68,7 +68,6 @@ export type PlayerBehaveParams = {
   readonly mapMode: boolean;
   readonly dvEditActive: boolean;
   readonly activeStage: Stage;
-  readonly zoomActive: boolean;
   readonly ephemeris: Ephemeris;
 };
 
@@ -218,12 +217,12 @@ export class Player extends Ship {
       this.clearTransientCommands();
       return;
     }
-    const { dt, input, simSpeed, mapMode, dvEditActive, activeStage, zoomActive, ephemeris } = params;
+    const { dt, input, simSpeed, mapMode, dvEditActive, activeStage, ephemeris } = params;
     this.handleEdgeInput(input);
     this.updateTorque(input, dt * simSpeed.simSpeed);
 
     if (mapMode) this.fire.tickMapMode(dt);
-    else this.fire.updateFireState(dt, input, activeStage, simSpeed, zoomActive, entities, ephemeris.sunDirFrom(this.state.r, this.state.t));
+    else this.fire.updateFireState(dt, input, activeStage, simSpeed, entities, ephemeris.sunDirFrom(this.state.r, this.state.t));
 
     // ノードのΔv編集中はWASDQEをΔv編集キーとして譲り、実噴射・ラッチ判定は行わない
     // (噴射中に編集へ入った場合に備え、表示・SFXは throttle 側で明示的に止める)。

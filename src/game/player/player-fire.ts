@@ -110,7 +110,6 @@ export class PlayerFire {
     input: Input,
     activeStage: Stage,
     simSpeed: SimSpeedManager,
-    zoomActive: boolean,
     entities: EntityManager,
     sunDir: Vec3,
   ): void {
@@ -148,7 +147,7 @@ export class PlayerFire {
       return;
     }
 
-    this.fireCycle(activeStage, zoomActive, entities, sunDir);
+    this.fireCycle(activeStage, entities, sunDir);
   }
 
   // マップモード中: リロードタイマーだけを進める。
@@ -167,7 +166,6 @@ export class PlayerFire {
   // クールダウン込みの発射サイクルを1回進める。スピンアップ中・クールダウン中は発射しない。
   private fireCycle(
     activeStage: Stage,
-    zoomActive: boolean,
     entities: EntityManager,
     sunDir: Vec3,
   ): void {
@@ -189,7 +187,7 @@ export class PlayerFire {
 
     const result = this.consume();
 
-    this.fireGun(activeStage, zoomActive, entities, sunDir);
+    this.fireGun(activeStage, entities, sunDir);
     switch (result) {
       case 'empty':
       case 'normal':
@@ -250,7 +248,6 @@ export class PlayerFire {
   // 1発発射する: 弾丸・薬莢・マズルフラッシュを生成し、発射数を記録する。
   private fireGun(
     activeStage: Stage,
-    zoomActive: boolean,
     entities: EntityManager,
     sunDir: Vec3,
   ): void {
@@ -269,7 +266,7 @@ export class PlayerFire {
       addScaled(this.player.state.v, fwd, -C.RECOIL_DV),
     );
     this.dropCasing(this.player, muzzle);
-    this.spawnMuzzleFlash(this.player, muzzle, fwd, zoomActive);
+    this.spawnMuzzleFlash(this.player, muzzle, fwd);
 
     activeStage.scoreCounter.recordShot();
     this.player.thermal.addGunHeat(1);
@@ -324,17 +321,9 @@ export class PlayerFire {
     );
   }
 
-  // マズルフラッシュ: 発射した側の砲口に出す
-  // (ズーム中は画面のちらつきを抑えるため大幅減光、完全には消さない)
-  private spawnMuzzleFlash(ship: Ship, muzzle: Vec3, fwd: Vec3, zoomActive: boolean): void {
-    this._fx.spawnFlash(
-      kinematicState(ship.state.t, addScaled(muzzle, fwd, 1.2), ship.state.v),
-      2.2,
-      6,
-      0.07,
-      0xfff0b8,
-      zoomActive ? C.ZOOM_MUZZLE_FLASH_SCALE : 1,
-    );
+  // マズルフラッシュ: 発射した側の砲口の少し先に出す。
+  private spawnMuzzleFlash(ship: Ship, muzzle: Vec3, fwd: Vec3): void {
+    this._fx.spawnMuzzleFlash(kinematicState(ship.state.t, addScaled(muzzle, fwd, 1.2), ship.state.v));
   }
 
   // バレル交換時に円柱アイテムをデブリとして放出する。

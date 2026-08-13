@@ -31,8 +31,8 @@ export class EffectsSystem {
   }
 
   // フラッシュ群のビルボードを現在の状態へ同期する。
-  sync(fo: FloatingOrigin, activeCamera: THREE.PerspectiveCamera): void {
-    this._flashEffects.syncFlashEffects(fo, activeCamera);
+  sync(fo: FloatingOrigin, activeCamera: THREE.PerspectiveCamera, zoomActive: boolean): void {
+    this._flashEffects.syncFlashEffects(fo, activeCamera, zoomActive);
   }
 
   // プラズマ弾命中フラッシュを生成する。
@@ -60,6 +60,19 @@ export class EffectsSystem {
     this.spawnFlash(state, 0.5, 6.0, 0.35, C.COLOR_GAS_PUFF_2, 0.4);
   }
 
+  // マズルフラッシュを生成する。ガンサイトズーム中は sync 側で減光される。
+  spawnMuzzleFlash(state: KinematicState): void {
+    this.spawnFlash(
+      state,
+      C.MUZZLE_FLASH_SIZE0,
+      C.MUZZLE_FLASH_SIZE1,
+      C.MUZZLE_FLASH_DURATION,
+      C.COLOR_MUZZLE_FLASH,
+      1,
+      true,
+    );
+  }
+
   // state は発生位置・発生源速度と、その位置が表す時刻(エポック)。積分前の座標から
   // 生成する場合も、その座標の時刻をそのまま渡せば取り残されない。
   spawnFlash(
@@ -69,12 +82,13 @@ export class EffectsSystem {
     duration: number,
     color: string | number,
     peakOpacity = 1,
+    dimsInGunsight = false,
   ): void {
     const fx: FlashEffect = {
       transform: new THREE.Object3D(),
       baseColor: new THREE.Color(color),
       color: new THREE.Color(),
-      state, age: 0, duration, size0, size1, peakOpacity,
+      state, age: 0, duration, size0, size1, peakOpacity, dimsInGunsight,
     };
     this._flashEffects.addFlash(fx);
   }
