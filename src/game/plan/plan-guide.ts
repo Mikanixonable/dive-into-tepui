@@ -10,7 +10,6 @@ import { Sfx } from '../../audio/sfx';
 import { ProjectFn } from '../camera/camera-system';
 import { MarkerManager } from '../marker/marker-manager';
 import { DIRECTION_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-glyphs';
-import { Plan } from './plan';
 import type { Player } from '../player/player';
 
 export class PlanGuide {
@@ -27,9 +26,10 @@ export class PlanGuide {
   }
 
   // 実行時刻を過ぎたノードを計画から落とし、直近ノードへの接近と計画軌道の達成を
-  // ノードごとに一度だけ通知する。
-  update(plan: Plan, player: Player, simTime: number, editMode: boolean, attractors: readonly Attractor[]): void {
-    if (editMode || !player.alive) return;
+  // ノードごとに一度だけ通知する。player がいなければ通知するものが無い。
+  update(player: Player | null, simTime: number, editMode: boolean, attractors: readonly Attractor[]): void {
+    if (editMode || !player?.alive) return;
+    const plan = player.plan;
     plan.consumeNodesUpTo(simTime - C.NODE_EXPIRE_GRACE, player.state);
 
     const node = plan.firstNode();
@@ -37,13 +37,13 @@ export class PlanGuide {
     // 目標軌道との近さを見ても達成の判定にならない。
     if (!node || simTime < node.t - C.NODE_APPROACH_LEAD) return;
     this.notifyApproach(node);
-    this.notifyAchieved(plan, node, player, attractors);
+    this.notifyAchieved(node, player, attractors);
   }
 
   // 直近ノードの NODE・BURN マーカーを同期する。
-  sync(plan: Plan, player: Player, simTime: number, editMode: boolean, project: ProjectFn): void {
-    const node = editMode || !player.alive ? undefined : plan.firstNode();
-    if (!node) {
+  sync(player: Player | null, simTime: number, editMode: boolean, project: ProjectFn): void {
+    const node = editMode || !player?.alive ? undefined : player.plan.firstNode();
+    if (!player || !node) {
       this.markerManager.hide('nd');
       this.markerManager.hide('burn');
       this.markerManager.hide('burn-bearing');
@@ -53,7 +53,8 @@ export class PlanGuide {
     // NODE マーカー: ノードまでの残り時間を表示する。
     const tRem = node.t - simTime;
     const tLabel = tRem >= 0 ? `T-${fmtTime(tRem)}` : `T+${fmtTime(-tRem)}`;
-    const more = plan.nodes.length > 1 ? ` (+${plan.nodes.length - 1})` : '';
+    const queued = player.plan.nodes.length;
+    const more = queued > 1 ? ` (+${queued - 1})` : '';
 
     // BURN マーカー: 目標速度との差分ベクトルを噴射方向として表示する。
     const dvRem = sub(node.v, player.state.v);
@@ -88,8 +89,9 @@ export class PlanGuide {
 
   // 自機の軌道が目標軌道に十分近づいていれば達成を通知する。ノードと自機で最も強く引く
   // 天体が違えば、要素同士の比較自体が意味を持たないので判定しない。
-  private notifyAchieved(plan: Plan, node: KinematicState, player: Player, attractors: readonly Attractor[]): void {
+  private notifyAchieved(node: KinematicState, player: Player, attractors: readonly Attractor[]): void {
     if (this.achievedNotified === node) return;
+    const plan = player.plan;
     const playerCenter = strongestAttractor(player.state.r, attractors);
     const nodeCenter = strongestAttractor(node.r, attractors);
     if (playerCenter.id !== nodeCenter.id) return;

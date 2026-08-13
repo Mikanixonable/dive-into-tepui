@@ -141,8 +141,9 @@ export class ViewManager {
 
     if (this.current === 'map') {
       this.setView('combat');
-      if (this.editor.plan.nodes.length > 0) {
-        this.hud.hint(`マニューバ計画 ${this.editor.plan.nodes.length} 件確定 — [${K.autoWarpToNode.label}] で直近ノードへ自動ワープ`, 4500);
+      const nodeCount = this.editor.plan?.nodes.length ?? 0;
+      if (nodeCount > 0) {
+        this.hud.hint(`マニューバ計画 ${nodeCount} 件確定 — [${K.autoWarpToNode.label}] で直近ノードへ自動ワープ`, 4500);
       }
       return;
     }
