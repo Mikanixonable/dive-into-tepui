@@ -6,7 +6,6 @@ import type { PerfCounts, PerfMeter } from '../perf-meter';
 import { FrameSections, SECTION } from '../frame-sections';
 import { Player } from './player/player';
 import { CameraSystem } from './camera/camera-system';
-import { focusPoint } from './camera/focus-target';
 import { Stage, StageClass } from './stages/stage';
 import { MarkerManager } from './marker/marker-manager';
 import { ActivePlayerController } from './active-player-controller';
@@ -132,6 +131,10 @@ export class Game {
       initialSave?.camera,
     );
     this.simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
+    this.frameControls = new FrameControls(
+      this._hud.layers.panel, this._hud.layers.popup, this.ephemeris, this.cameraSystem.overviewCamera,
+      this.displayWindowManager,
+    );
 
     this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene, this.settingsPanel);
     this.navTarget = new NavTarget(this._hud, this.markerManager);
@@ -149,11 +152,8 @@ export class Game {
       this.markerManager,
       this.activePlayers,
       this.displayWindowManager,
+      this.frameControls,
     );
-    this.editor.onFocusNode = (state) => {
-      this.frameControls.setFocus(
-        focusPoint(this.ephemeris, this.ephemeris.inertialFrame, state.r, state.t));
-    };
     this.mapPicker = new MapPicker(
       this, this._hud, this.entities, this.ephemeris, this.navTarget,
       this.cameraSystem, this.editor, this.simSpeedManager, this.settingsPanel,
@@ -185,10 +185,6 @@ export class Game {
     );
     this.mapPicker.setDocking(this.docking);
     this.viewBadge = new ViewBadge(this._hud.layers.notify, this._hud.layers.popup, this.viewManager);
-    this.frameControls = new FrameControls(
-      this._hud.layers.panel, this._hud.layers.popup, this.ephemeris, this.cameraSystem.overviewCamera,
-      this.displayWindowManager,
-    );
   }
 
   // ------------------------------------------------------------------ lifecycle
