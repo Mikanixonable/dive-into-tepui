@@ -465,7 +465,7 @@
     - [entities.players ごと] ship.orbitLine.setSuppressed(ship.supersedesAnalyticEllipse(simTime, duration, overviewMode)) // overviewMode: 予測が表示ホライズンを覆いきったときだけ解析楕円を抑制。!overviewMode: 予測線が描かれてさえいれば抑制
   - [player] touchControls?.syncModeButtons(rcsDamp, fineAttitude, progradeHold) // タッチデバイスのみ。制動/微動/ホールドの点灯
   - activeStage.sync(player, fo, project, scale, displayTime, overviewMode, visibilityPolicy, camera) // player は Creative の未配置状態で null
-    - syncStatusPanel(player, overviewMode) // hudSubStatus() が文字列を返すステージだけ表示。player が null または overviewMode(showsStatusInOverview を宣言していないステージ)なら隠す
+    - syncStatusPanel(player, overviewMode) → statusPanel.sync(player | null, message, kills) // hudSubStatus() が null か overviewMode なら null を渡し、パネル側が畳んで保持中の艦参照も落とす
     - [CreativeStage] syncPreview(fo, project) // update が求めた preview の軌道線 + ▷ PREVIEW マーカー。preview が null なら両方隠す
     - [CreativeStage] placerPanel.setIssues(issues) // update が求めた issues を渡すだけ。前回と同内容なら panel 側が DOM に触らず即 return
   - hud.panels.sync(game, attractors) // Game インスタンスを直接読む(narrow ctx を介さない唯一の消費者)
