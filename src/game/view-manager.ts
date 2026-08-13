@@ -11,6 +11,7 @@ import { MapPicker } from './map-picker';
 import type { Docking } from './docking';
 import type { ActivePlayerController } from './active-player-controller';
 import { syncNavballPlacement } from './hud/dom';
+import type { OverlayHandle } from './hud/overlay-manager';
 
 export type ViewId = 'combat' | 'map' | 'dock';
 
@@ -26,6 +27,13 @@ export class ViewManager {
   private isDockOpen = false;
   private touchControls: TouchControls | null = null;
   private docking: Docking | null = null;
+
+  // ドックの開閉の正本はこのクラス(isDockOpen)自身であり続ける — OverlayManager へは
+  // 「開いた/閉じた」を通知するだけの一方向で、この adapter は leaveDock() を呼び戻すのみ。
+  private readonly dockOverlayHandle: OverlayHandle = {
+    contains: (target) => this.docking?.dockView.element.contains(target) ?? false,
+    close: () => this.leaveDock(),
+  };
 
   get current(): ViewId { return this.isDockOpen ? 'dock' : this.worldView; }
 
@@ -61,6 +69,7 @@ export class ViewManager {
     if (!this.canEnter(next)) return;
 
     const prevWorld = this.worldView;
+    const wasDockOpen = this.isDockOpen;
     if (this.isDockOpen) this.docking?.leaveDock();
     if (next === 'dock') {
       this.isDockOpen = true;
@@ -77,6 +86,7 @@ export class ViewManager {
       if (nextWorld === 'map') this.openMap();
     }
     if (next === 'dock') this.docking?.enterDock();
+    this.syncDockOverlay(wasDockOpen);
     this.applyChrome();
   }
 
@@ -85,7 +95,20 @@ export class ViewManager {
     if (!this.isDockOpen) return;
     this.docking?.leaveDock();
     this.isDockOpen = false;
+    this.hud.overlayManager.close('dock-view');
     this.applyChrome();
+  }
+
+  // isDockOpen が変化したフレームだけ OverlayManager 側の登録を追従させる。
+  private syncDockOverlay(wasDockOpen: boolean): void {
+    if (this.isDockOpen === wasDockOpen) return;
+    if (this.isDockOpen) {
+      this.hud.overlayManager.open('dock-view', this.dockOverlayHandle, {
+        kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: true,
+      });
+    } else {
+      this.hud.overlayManager.close('dock-view');
+    }
   }
 
   // 現在の3D側ビュー(ドック表示中はその背後のビュー)をセーブデータへ書き出す。

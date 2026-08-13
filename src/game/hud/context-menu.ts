@@ -1,10 +1,13 @@
-// 画面座標に絶対配置する汎用コンテキストメニュー。開いた対象 T を保持し、項目クリックで
-// onSelect(act, target) を発火して自動で閉じる。
+// 画面座標に絶対配置する汎用コンテキストメニュー。開いた対象 T を保持し、項目クリック/
+// 項目ショートカットで onSelect(act, target) を発火して自動で閉じる。ESC・項目ショートカット・
+// 外側クリックでの close は OverlayManager への登録を通じて配送される — 自分で
+// window/document へリスナは張らない。
 // #hud の子として popup レイヤへ置くため、`#hud, #hud *` の margin/padding リセットに
 // 勝てるよう全セレクタを `#hud` で始める。
 import { clampOverlayPosition } from './layout';
 import { shortcutKeyLabel } from './shortcut-hint';
 import { bringToFront } from './overlay-layer';
+import type { OverlayHandle, OverlayManager } from './overlay-manager';
 
 const STYLE = `
 #hud .ctx-menu {
@@ -60,7 +63,9 @@ export interface MenuItem<A extends string = string> {
   readonly keepOpen?: boolean;
 }
 
-export class ContextMenu<T, A extends string = string> {
+export class ContextMenu<T, A extends string = string> implements OverlayHandle {
+  private static nextId = 0;
+  private readonly overlayId: string;
   private readonly el: HTMLDivElement;
   // 開いているメニューの対象。閉じると破棄されるので、選択結果は必ず開いた対象へ届く。
   private target: T | null = null;
@@ -68,8 +73,10 @@ export class ContextMenu<T, A extends string = string> {
   private requestedY = 0;
   onSelect: ((act: A, target: T) => void) | null = null;
 
-  // メニュー要素を popupLayer(#hud の popup レイヤ)へ追加する。要素外へのポインタ操作で自動的に閉じる。
-  constructor(popupLayer: HTMLElement) {
+  // メニュー要素を popupLayer(#hud の popup レイヤ)へ追加する。ESC・項目ショートカット・
+  // 要素外へのポインタ操作での自動クローズは overlayManager への登録を通じて配送される。
+  constructor(popupLayer: HTMLElement, private readonly overlayManager: OverlayManager) {
+    this.overlayId = `ctx-menu-${ContextMenu.nextId++}`;
     ensureStyle();
     this.el = document.createElement('div');
     this.el.className = 'ctx-menu';
@@ -79,36 +86,29 @@ export class ContextMenu<T, A extends string = string> {
     window.addEventListener('resize', () => {
       if (this.target !== null) this.positionWithinViewport();
     });
-    // キャプチャ段階で拾うことで、途中の要素が stopPropagation していても届く。
-    document.addEventListener(
-      'pointerdown',
-      (e) => {
-        if (e.target instanceof Node && this.el.contains(e.target)) return;
-        this.close();
-      },
-      true,
-    );
-    window.addEventListener('keydown', this.handleKeyDown);
   }
 
-  // 開いている項目の shortcut に一致するキー入力を選択として扱う。
-  private handleKeyDown = (e: KeyboardEvent) => {
-    if (this.target === null || this.el.style.display === 'none') return;
+  contains(target: Node): boolean {
+    return this.el.contains(target);
+  }
+
+  // OverlayManager からの項目ショートカット配送を受ける。一致する項目があれば
+  // クリックと同じ経路(close→onSelect)で選択したことにする。
+  handleShortcut(code: string): boolean {
+    if (this.target === null) return false;
+    // 各項目のクリックリスナは自分自身を閉包で持つが、ここはコード文字列しか受け取らない
+    // ので、開いた項目の DOM を dataset 経由で引き直す。
     const items = this.el.querySelectorAll<HTMLElement>('.ctx-menu-item');
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      if (!item) continue;
-      if (item.dataset['shortcut'] === e.key) {
-        e.stopImmediatePropagation();
-        e.preventDefault();
-        const act = item.dataset['act'] as A;
-        const t = this.target;
-        this.close();
-        if (t !== null) this.onSelect?.(act, t);
-        return;
-      }
+    for (const item of Array.from(items)) {
+      if (item.dataset['shortcut'] !== code) continue;
+      const act = item.dataset['act'] as A;
+      const t = this.target;
+      this.close();
+      if (t !== null) this.onSelect?.(act, t);
+      return true;
     }
-  };
+    return false;
+  }
 
   // target を対象として items を描画し、指定した画面座標に開く。項目クリックで
   // onSelect(act, target) を発火して閉じる。
@@ -152,6 +152,9 @@ export class ContextMenu<T, A extends string = string> {
     this.el.style.display = 'block';
     bringToFront(this.el);
     this.positionWithinViewport();
+    this.overlayManager.open(this.overlayId, this, {
+      kind: 'popup', closeOnEscape: true, closeOnOutsideClick: true, gatesInput: false,
+    });
   }
 
   private positionWithinViewport(): void {
@@ -171,5 +174,6 @@ export class ContextMenu<T, A extends string = string> {
   close(): void {
     this.el.style.display = 'none';
     this.target = null;
+    this.overlayManager.close(this.overlayId);
   }
 }

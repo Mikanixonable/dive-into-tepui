@@ -62,7 +62,7 @@ export class Stage0 extends Stage {
     this.logistics.updateLogistics(simTime, player, simSpeed);
 
     if (this.timer.update(dt, (phase) => this.setPhase(phase))) {
-      showScoreAttackResultScreen(this._sfx, this.scoreCounter, 'TIME UP');
+      showScoreAttackResultScreen(this._hud, this._sfx, this.scoreCounter, 'TIME UP');
     }
   }
 

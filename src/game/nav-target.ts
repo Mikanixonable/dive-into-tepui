@@ -43,7 +43,7 @@ export class NavTarget {
   private readonly pickableCache: MapPickable[] = [];
 
   constructor(private readonly _hud: Hud, private readonly markerManager: MarkerManager) {
-    this.baseMenu = new ContextMenu<Base, MenuAction>(_hud.layers.popup);
+    this.baseMenu = new ContextMenu<Base, MenuAction>(_hud.layers.popup, _hud.overlayManager);
     this.baseMenu.onSelect = (act, base) => {
       if (act === 'navTarget') this.toggleTarget(base.id, '基地');
     };
