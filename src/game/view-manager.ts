@@ -7,10 +7,10 @@ import type { Input } from './input/input';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import { PlanEditor } from './plan/plan-editor';
 import { DisplayWindowManager } from './display-window-manager';
-import { MapPicker } from './map-picker';
+import { MapContextActions } from './map-context-actions';
 import type { Docking } from './docking';
 import type { ActivePlayerController } from './active-player-controller';
-import { syncNavballPlacement } from './hud/dom';
+import { syncNavballPlacement } from './hud/hud-root';
 import type { OverlayHandle } from './hud/overlay-manager';
 
 export type ViewId = 'combat' | 'map' | 'dock';
@@ -42,7 +42,7 @@ export class ViewManager {
     private readonly editor: PlanEditor,
     private readonly cameraSystem: CameraSystem,
     private readonly displayWindow: DisplayWindowManager,
-    private readonly mapPicker: MapPicker,
+    private readonly mapActions: MapContextActions,
     private readonly activePlayers: ActivePlayerController,
     initialView: WorldViewId = 'combat',
   ) {
@@ -152,7 +152,7 @@ export class ViewManager {
   private closeMap(): void {
     this.editor.onMapClosed();
     this.editor.closeMenu();
-    this.mapPicker.close();
+    this.mapActions.close();
   }
 
   // [M] による戦闘⇔マップの切り替えを受ける。ドック表示中はキーを消費しない。

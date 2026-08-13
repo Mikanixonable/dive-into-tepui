@@ -1,0 +1,33 @@
+// マップ視点の縮尺バー(#hud-map-scale)の同期。数値計算そのものは DOM 非依存の map-scale.ts
+// に置き、ここは要素への書き込みだけを行う。
+import { formatMapScaleDistance, mapScaleFor } from './map-scale';
+import type { Game } from '../game';
+
+export class MapScaleBadge {
+  constructor(private readonly els: Map<string, HTMLElement>) {}
+
+  // マップ視点の縮尺は、カメラから画面中心までではなく、現在フォーカスしている対象の
+  // 深度における meters-per-pixel から求める。パンしてもフォーカス対象を基準にするため、
+  // 同じ天体を見続ける限り、表示値はスクロールズームだけに対応して変化する。
+  sync(game: Game): void {
+    const panel = this.els.get('map-scale');
+    if (!panel) return;
+    const overview = game.cameraSystem.overviewMode;
+    panel.style.display = overview ? '' : 'none';
+    if (!overview) return;
+
+    const focus = game.cameraSystem.overviewCamera.resolvedFocus;
+    const metersPerPixel = game.cameraSystem.activeCameraScale(focus);
+    const scale = mapScaleFor(metersPerPixel);
+    const ruler = this.els.get('map-scale-ruler');
+    if (!scale || !ruler) {
+      panel.style.display = 'none';
+      return;
+    }
+    const valueEl = this.els.get('map-scale-value');
+    const text = formatMapScaleDistance(scale.distanceM);
+    if (valueEl && valueEl.textContent !== text) valueEl.textContent = text;
+    ruler.style.width = `${scale.widthPx.toFixed(2)}px`;
+    ruler.setAttribute('aria-label', `${text} の縮尺`);
+  }
+}

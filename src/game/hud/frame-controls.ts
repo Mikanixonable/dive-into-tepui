@@ -1,21 +1,21 @@
 // マップモードの「座標系」パネル。マップカメラの視点と未来表示(計画折れ線・予測軌道線・
 // 交点マーカー)の描画基準という、別々の持ち主にある2つの座標系を1つのパネルから書き換える
 // 横断。状態そのものは両クラスに置いたままにし、ここは参照を受け取って書くだけに留める。
-import { Attractor } from '../physics/attractor';
-import type { Ephemeris } from '../physics/ephemeris';
-import { Vec3 } from '../physics/vec3';
-import { systemMembersAt } from './celestial/body-visibility';
-import { OverviewCamera } from './camera/overview-camera';
-import { focusPoint, focusTargetId, FocusTarget } from './camera/focus-target';
-import { AnchorZone } from './hud/anchor-zone';
-import { RotationZone } from './hud/rotation-zone';
-import { ToggleSwitch } from './hud/widgets';
-import { celestialBodyName } from './hud/frame-labels';
-import { hudDock } from './hud/dom';
-import { TEXT_DIM } from './theme';
-import type { MapPickable } from './map-pick';
-import type { DisplayWindowManager } from './display-window-manager';
-import type { OverlayManager } from './hud/overlay-manager';
+import { Attractor } from '../../physics/attractor';
+import type { Ephemeris } from '../../physics/ephemeris';
+import { Vec3 } from '../../physics/vec3';
+import { systemMembersAt } from '../celestial/body-visibility';
+import { OverviewCamera } from '../camera/overview-camera';
+import { focusPoint, focusTargetId, FocusTarget } from '../camera/focus-target';
+import { AnchorZone } from './anchor-zone';
+import { RotationZone } from './rotation-zone';
+import { ToggleSwitch } from './widgets';
+import { celestialBodyName } from './frame-labels';
+import { hudRail } from './hud-root';
+import { TEXT_DIM } from '../theme';
+import type { MapPickable } from '../map-pickable';
+import type { DisplayWindowManager } from '../display-window-manager';
+import type { OverlayManager } from './overlay-manager';
 
 const STYLE = `
 #hud .frame-section { margin-top: 8px; }
@@ -72,7 +72,7 @@ export class FrameControls {
     ensureStyle();
     this.panel = document.createElement('div');
     this.panel.id = 'hud-frame-controls';
-    this.panel.className = 'panel';
+    this.panel.className = 'panel hidden';
     this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
     const title = document.createElement('h3');
     title.textContent = '座標系';
@@ -115,7 +115,7 @@ export class FrameControls {
     this.summary.className = 'frame-summary';
     this.panel.appendChild(this.summary);
 
-    hudDock(panelRoot, 'left').appendChild(this.panel);
+    hudRail(panelRoot, 'left').appendChild(this.panel);
   }
 
   // カメラの基準天体を選び直す。解除は、いま見ている位置を恒星中心の慣性系へ焼き込んだ
@@ -158,7 +158,7 @@ export class FrameControls {
     simTime: number, visible: boolean,
   ): void {
     this.lastTime = simTime;
-    this.panel.style.display = visible ? 'block' : 'none';
+    this.panel.classList.toggle('hidden', !visible);
     if (!visible) return;
 
     const members = systemMembersAt(this.ephemeris.registry, cameraPos, attractors);

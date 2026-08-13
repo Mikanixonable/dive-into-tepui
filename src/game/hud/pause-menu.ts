@@ -3,11 +3,11 @@ import { SPACE_4, SPACE_6 } from '../theme';
 import type { OverlayHandle, OverlayManager } from './overlay-manager';
 import { Button, CloseButton, Slider } from './widgets';
 
-export class SettingsPanel implements OverlayHandle {
+export class PauseMenu implements OverlayHandle {
   private readonly panel: HTMLElement;
   private _isOpen = false;
 
-  onSettingsOpenChange: ((open: boolean) => void) | null = null;
+  onPauseMenuOpenChange: ((open: boolean) => void) | null = null;
   onQuitToTitle: (() => void) | null = null;
   onBgmVolumeChange: ((vol: number) => void) | null = null;
   onOpenSnapshots: (() => void) | null = null;
@@ -22,14 +22,14 @@ export class SettingsPanel implements OverlayHandle {
   // ⚙ ボタンとパネル DOM を組み立て、開閉・BGM トグル・タイトルへ戻るのイベントを配線する。
   constructor(root: HTMLElement, private readonly overlayManager: OverlayManager) {
     this.panel = document.createElement('div');
-    this.panel.id = 'hud-settings';
+    this.panel.id = 'hud-pause-menu';
     this.panel.className = 'panel';
     const heading = document.createElement('h3');
     heading.textContent = '一時停止 / 設定';
     this.panel.appendChild(heading);
 
     const bgmRow = document.createElement('div');
-    bgmRow.className = 'srow';
+    bgmRow.className = 'pm-row';
     const bgmLabel = document.createElement('span');
     bgmLabel.className = 'k';
     bgmLabel.textContent = 'BGM Vol';
@@ -48,7 +48,7 @@ export class SettingsPanel implements OverlayHandle {
     this.panel.appendChild(bgmRow);
 
     const snapshotRow = document.createElement('div');
-    snapshotRow.className = 'srow';
+    snapshotRow.className = 'pm-row';
     snapshotRow.style.marginTop = SPACE_6;
     const snapshotBtn = new Button('スナップショット', () => this.onOpenSnapshots?.());
     snapshotBtn.element.style.flex = '1';
@@ -56,7 +56,7 @@ export class SettingsPanel implements OverlayHandle {
     this.panel.appendChild(snapshotRow);
 
     const perfRow = document.createElement('div');
-    perfRow.className = 'srow';
+    perfRow.className = 'pm-row';
     perfRow.style.marginTop = SPACE_4;
     const perfBtn = new Button(`負荷を表示 [${K.togglePerfWindow.label}]`, () => this.onOpenPerfWindow?.());
     perfBtn.element.style.flex = '1';
@@ -64,11 +64,11 @@ export class SettingsPanel implements OverlayHandle {
     this.panel.appendChild(perfRow);
 
     const quitBtn = new Button('ゲームを中断してタイトル画面に戻る', () => this.onQuitToTitle?.());
-    quitBtn.element.classList.add('squit');
+    quitBtn.element.classList.add('pm-quit');
     this.panel.appendChild(quitBtn.element);
 
     const closeRow = document.createElement('div');
-    closeRow.className = 'sclose-row';
+    closeRow.className = 'pm-close-row';
     const closeBtn = new CloseButton(() => this.toggle(false));
     closeRow.appendChild(closeBtn.element);
     this.panel.appendChild(closeRow);
@@ -110,14 +110,14 @@ export class SettingsPanel implements OverlayHandle {
     this.panel.style.display = show ? 'block' : 'none';
     if (show) {
       // ESCメニュー表示中も、背景のマップ切替とカメラ操作は受け付ける(gatesInput: false)。
-      this.overlayManager.open('settings', this, {
+      this.overlayManager.open('pause-menu', this, {
         kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: false,
         exclusiveGroup: 'system-modal',
       });
     } else {
-      this.overlayManager.close('settings');
+      this.overlayManager.close('pause-menu');
     }
-    this.onSettingsOpenChange?.(show);
+    this.onPauseMenuOpenChange?.(show);
   }
 
   // BGM スライダーの表示を更新する。

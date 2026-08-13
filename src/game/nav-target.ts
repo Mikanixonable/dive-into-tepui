@@ -17,7 +17,7 @@ import { Hud } from './hud/hud';
 import { MarkerManager } from './marker/marker-manager';
 import { ORBIT_POINT_GLYPH } from './marker/marker-glyphs';
 import { ProjectFn } from './camera/camera-system';
-import { MapPickable, pickNearest } from './map-pick';
+import { MapPickable, pickNearest } from './map-pickable';
 import type { Base } from './game-entity/base';
 import type { Input } from './input/input';
 import { pickRadiusSq } from './input/pointer-precision';

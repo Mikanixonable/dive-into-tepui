@@ -1,6 +1,6 @@
 // 見出し(h3)+折りたたみトグル+本文の共通パネル外枠。折りたたみ状態は localStorage
 // (tepui.panelCollapsed)へパネル id ごとに永続する — 左右レールごと畳む現行の
-// 2段目の収納(.hud-dock.collapsed)とは独立な、パネル単体の収納。
+// 2段目の収納(.hud-rail.collapsed)とは独立な、パネル単体の収納。
 import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, buildCollapseToggle } from './widgets';
 
 const STORAGE_KEY = 'tepui.panelCollapsed';

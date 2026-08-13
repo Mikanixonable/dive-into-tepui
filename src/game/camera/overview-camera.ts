@@ -10,7 +10,7 @@ import { ReferenceFrame, FrameDir, frameDir, framePoint, toFrameDir, toInertialD
 import { OrbitingId } from '../../physics/attractor';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { qFromAxisAngle, qRotate } from '../../physics/attitude';
-import { MapPickable } from '../map-pick';
+import { MapPickable } from '../map-pickable';
 import { Attractor } from '../../physics/attractor';
 import { bodyDef } from '../../physics/solar-system';
 import { FocusTarget } from './focus-target';

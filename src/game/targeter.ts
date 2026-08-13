@@ -15,7 +15,7 @@ import type { GroupedMarkerItem } from './marker/grouped-markers';
 import { MarkerManager } from './marker/marker-manager';
 import { DIRECTION_GLYPH } from './marker/marker-glyphs';
 import { FloatingOrigin } from './floating-origin';
-import { pickNearest } from './map-pick';
+import { pickNearest } from './map-pickable';
 import { pickRadiusSq } from './input/pointer-precision';
 import type { Ephemeris } from '../physics/ephemeris';
 import type { DisplayWindow } from './display-window-manager';
@@ -84,7 +84,7 @@ export class Targeter {
   }
 
   // Tキーで照準中心に近い敵を選ぶ。連打(2秒以内)では第二ターゲット候補を順送りする。
-  // オート選定は行わない — 右クリックでの設定/解除は MapPicker が開くプロパティウィンドウの
+  // オート選定は行わない — 右クリックでの設定/解除は MapContextActions が開くプロパティウィンドウの
   // 項目(targetPrimary/targetSecondary)から setPrimaryTarget/setSecondaryTarget を呼ぶ。
   handleTargetSelectKey(input: Input, targets: CombatTarget[], project: ProjectFn): void {
     if (!input.takeKey(K.targetSelect)) return;
@@ -261,7 +261,7 @@ export class Targeter {
   }
 
   // クリック位置の許容半径内で画面上最も近い生存ターゲットを返す。範囲外なら null。
-  // MapPicker の戦闘ビュー右クリック(プロパティウィンドウを開く対象探し)が読む。
+  // MapContextActions の戦闘ビュー右クリック(プロパティウィンドウを開く対象探し)が読む。
   pickTargetAt(click: PointerPoint, targets: readonly CombatTarget[], project: ProjectFn): CombatTarget | null {
     const pickables = targets.filter((e) => e.alive).map((target) => ({ pos: target.state.r, target }));
     const picked = pickNearest(pickables, click.x, click.y, project, pickRadiusSq(C.TARGET_LOCK_PICK_PX_SQ, C.TARGET_LOCK_PICK_PX_SQ_COARSE));

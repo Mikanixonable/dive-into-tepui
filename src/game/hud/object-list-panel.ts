@@ -1,9 +1,9 @@
-import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, buildCollapseToggle, hudDock, type CollapseToggleLabels } from './hud/dom';
-import { BodyClass, bodyClassOf } from './celestial/body-class';
-import type { CelestialRegistry } from '../physics/solar-system';
-import { MapPickable, MapPickKind } from './map-pick';
-import { LAGRANGE_ID } from './hud/object-groups';
-import { SegmentedControl, ValueInput } from './hud/widgets';
+import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, buildCollapseToggle, hudRail, type CollapseToggleLabels } from './hud-root';
+import { BodyClass, bodyClassOf } from '../celestial/body-class';
+import type { CelestialRegistry } from '../../physics/solar-system';
+import { MapPickable, MapPickKind } from '../map-pickable';
+import { LAGRANGE_ID } from './object-groups';
+import { SegmentedControl, ValueInput } from './widgets';
 
 const SECTIONS: readonly { kind: MapPickKind; label: string }[] = [
   { kind: 'body', label: '天体' },
@@ -197,12 +197,12 @@ export class ObjectListPanel {
       this.applyExpanded(section);
     }
 
-    hudDock(root, 'right').appendChild(this.panel);
+    hudRail(root, 'right').appendChild(this.panel);
     this.setVisible(false);
   }
 
   setVisible(visible: boolean): void {
-    this.panel.style.display = visible ? 'block' : 'none';
+    this.panel.classList.toggle('hidden', !visible);
   }
 
   select(id: string | null): void { this.selectedId = id; }
@@ -294,7 +294,7 @@ export class ObjectListPanel {
   // 区画見出しへ件数と状況の内訳を書き出す。表示行が無い区画は見出しごと隠す。
   private syncHeader(section: Section, kind: MapPickKind, label: string): void {
     const ids = section.order.ids;
-    section.header.style.display = ids.length === 0 ? 'none' : '';
+    section.header.classList.toggle('hidden', ids.length === 0);
     const summary = HEADER_SUMMARY[kind];
     let state = '';
     if (summary) {
@@ -426,7 +426,7 @@ export class ObjectListPanel {
     if (node.label.textContent !== item.name) node.label.textContent = item.name;
     const detailText = item.kind === 'body' ? '' : (item.detail ?? '');
     if (node.detail.textContent !== detailText) node.detail.textContent = detailText;
-    node.detail.style.display = item.kind === 'body' ? 'none' : '';
+    node.detail.classList.toggle('hidden', item.kind === 'body');
     node.row.classList.toggle('tgt', item.id === focusId);
     node.row.classList.toggle('on', item.id === this.selectedId);
 
@@ -498,10 +498,10 @@ export class ObjectListPanel {
 
   private applyRowExpanded(node: RowNode): void {
     node.toggle.textContent = node.expanded ? COLLAPSE_EXPANDED_GLYPH : COLLAPSE_COLLAPSED_GLYPH;
-    node.childrenContainer.style.display = node.expanded ? '' : 'none';
+    node.childrenContainer.classList.toggle('collapsed', !node.expanded);
   }
 
   private applyExpanded(section: Section): void {
-    section.body.style.display = section.expanded ? '' : 'none';
+    section.body.classList.toggle('collapsed', !section.expanded);
   }
 }

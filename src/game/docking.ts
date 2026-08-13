@@ -1,7 +1,7 @@
 // 基地への収容・発進まわり一式。Player(艦の操作)・EntityManager(配置)・DockView(UI)・
 // Game(操作対象/カメラ/計画編集の付け替え)にまたがる横断的な関心事なので、Game に分岐と
 // 組み立てを残さずここへ切り出す(所有者が1つに定まらない GUI/挙動は横断そのものを
-// 責務とするモジュールを立てる — MapPicker/ViewManager と同じ形)。
+// 責務とするモジュールを立てる — MapContextActions/ViewManager と同じ形)。
 import * as THREE from 'three/webgpu';
 import * as C from './const';
 import { v3, len, sub } from '../physics/vec3';
@@ -11,7 +11,7 @@ import { DockView } from './hud/dock-view';
 import { Base } from './game-entity/base';
 import { Player } from './player/player';
 import type { EntityManager } from './simulation/entity-manager';
-import type { MapPicker } from './map-picker';
+import type { MapContextActions } from './map-context-actions';
 import type { CameraSystem } from './camera/camera-system';
 import type { Game } from './game';
 import type { ViewManager } from './view-manager';
@@ -36,7 +36,7 @@ export class Docking {
     private readonly effects: EffectsSystem,
     private readonly markerManager: MarkerManager,
     private readonly entities: EntityManager,
-    private readonly mapPicker: MapPicker,
+    private readonly mapActions: MapContextActions,
     private readonly cameraSystem: CameraSystem,
     private readonly viewManager: ViewManager,
   ) {
@@ -111,7 +111,7 @@ export class Docking {
     // parkPlayer した艦は以後 syncPlayer が呼ばれないので、可視状態を一度だけここで確定させる。
     ship.obj.visible = false;
     const wasActive = this.game.player === ship;
-    this.mapPicker.close();
+    this.mapActions.close();
     this.cameraSystem.overviewCamera.clearFocusIf(ship.id);
     // 収容される艦がまさに操作対象だった場合、噴射中の推力/RCS音は艦自身の毎フレーム
     // 更新(player.behave)が以後走らなくなることで止まらなくなる — 明示的に止める。

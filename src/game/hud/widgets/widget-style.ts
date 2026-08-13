@@ -1,7 +1,7 @@
 // hud/widgets/ の共通スタイル。状態遷移の視覚規約(hover=文字/縁がアクセント化・
 // pressed=背景 --fill-3・on=背景アクセント薄膜+縁アクセント・disabled=単一 opacity+
 // cursor:not-allowed)をここ1箇所で定義する — 個別ウィジェットや呼び出し側での上書きを禁止する。
-// dom.ts の STYLE へ連結して注入する。
+// hud-root.ts の STYLE へ連結して注入する。
 export const WIDGET_STYLE = `
 /* #hud 自体が pointer-events:none のため、対話要素はここで明示的に有効化する。 */
 #hud .w-btn, #hud .w-toggle-track, #hud .w-close, #hud .w-input { pointer-events: auto; cursor: pointer; }

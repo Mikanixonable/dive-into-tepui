@@ -1,7 +1,12 @@
 // DOM オーバーレイの HUD のシェル。トースト・ヒント・ヘルプの表示と、
-// root/svgOverlay の公開・ステータスパネル同期(panels)を担う。
-import { buildHudDom } from './dom';
-import { HudPanels } from './panel';
+// root/svgOverlay の公開・常設パネル群の所有を担う。
+import { buildHudDom } from './hud-root';
+import { StatusPanel } from './status-panel';
+import { OrbitPanel } from './orbit-panel';
+import { TargetPanel } from './target-panel';
+import { ContactsPanel } from './contacts-panel';
+import { GlobalStatusBar } from './global-status-bar';
+import { MapScaleBadge } from './map-scale-badge';
 import type { Input } from '../input/input';
 import type { OverlayLayers } from './overlay-layer';
 import type { OverlayManager } from './overlay-manager';
@@ -13,7 +18,12 @@ export class Hud {
   readonly svgOverlay: SVGSVGElement;
   readonly overlayManager: OverlayManager;
   readonly helpPanel: HelpPanel;
-  readonly panels: HudPanels;
+  readonly globalStatusBar: GlobalStatusBar;
+  readonly mapScaleBadge: MapScaleBadge;
+  readonly statusPanel: StatusPanel;
+  readonly orbitPanel: OrbitPanel;
+  readonly targetPanel: TargetPanel;
+  readonly contactsPanel: ContactsPanel;
   private hintUntil = 0;
   private toastUntil = 0;
 
@@ -25,7 +35,12 @@ export class Hud {
     this.svgOverlay = svgOverlay;
     this.overlayManager = overlayManager;
     this.helpPanel = helpPanel;
-    this.panels = new HudPanels(els);
+    this.globalStatusBar = new GlobalStatusBar(els);
+    this.mapScaleBadge = new MapScaleBadge(els);
+    this.statusPanel = new StatusPanel(els);
+    this.orbitPanel = new OrbitPanel(els);
+    this.targetPanel = new TargetPanel(els);
+    this.contactsPanel = new ContactsPanel(els);
   }
 
   // ヒントテキストを durationMs だけ表示する。

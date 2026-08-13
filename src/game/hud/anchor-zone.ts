@@ -3,7 +3,7 @@
 // 系の天体だけに絞ったクイックボタン(SegmentedControl)。
 import { AttractorId } from '../../physics/attractor';
 import { Ephemeris } from '../../physics/ephemeris';
-import type { MapPickable } from '../map-pick';
+import type { MapPickable } from '../map-pickable';
 import { SegmentedControl } from './widgets';
 import { groupPickables, LAGRANGE_ID, lagrangeParentId } from './object-groups';
 import { ObjectPicker, ObjectPickerGroup } from './object-picker';

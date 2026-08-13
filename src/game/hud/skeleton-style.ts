@@ -17,7 +17,7 @@ export const SKELETON_STYLE = `
 /* 読み取りたい数値は選択できるようにするが、操作部品とマーカーは対象外にする —
    ボタンの連打やカメラドラッグのたびにラベルが選択されると操作の邪魔になる。 */
 #hud .ctx-menu-item,
-#hud .mk, #hud .dock-toggle, #hud-chase-reset, #hud-viewbadge .vb-view-btn { user-select: none; }
+#hud .mk, #hud .rail-toggle, #hud-chase-reset, #hud-viewbadge .vb-view-btn { user-select: none; }
 ${OVERLAY_LAYER_STYLE}
 /* #hud 直下の兄弟同士の重なり順は overlay-layer.ts のレイヤが持つ。
    マーカー内優先度: 宇宙船(4) > 敵(3) > 弾薬(2) > 軌道要素・その他(1) > デフォルト(0) */
@@ -64,31 +64,31 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 
 /* マップ系パネルは左右のレール内で通常フローに積む。内容が増えても他の
    パネルを押し退けるだけで、固定座標による重なりを起こさない。 */
-#hud .hud-dock {
+#hud .hud-rail {
   position: absolute; top: 40px; bottom: 12px;
   display: flex; flex-direction: column; align-items: stretch; gap: var(--space-4);
   pointer-events: none; min-height: 0; overflow-x: hidden; overflow-y: auto;
   scrollbar-width: thin; overscroll-behavior: contain;
 }
-#hud .hud-dock > .panel { position: relative; inset: auto; transform: none; pointer-events: auto; flex: 0 0 auto; }
-#hud .hud-dock-left { left: 12px; width: var(--rail-w-left); }
-#hud .hud-dock-right { right: 12px; width: var(--rail-w-right); }
+#hud .hud-rail > .panel { position: relative; inset: auto; transform: none; pointer-events: auto; flex: 0 0 auto; }
+#hud .hud-rail-left { left: 12px; width: var(--rail-w-left); }
+#hud .hud-rail-right { right: 12px; width: var(--rail-w-right); }
 /* マップモード中はレールの空き領域を掴んでもタッチスクロールできる —
    カメラドラッグとの競合はレールが奪ってよい(レールは置き場であって 3D 操作面ではない)。
    常時 auto にすると、マップ以外でパネルが1枚も無い空のレールが背後のカメラ操作を阻害する。 */
-#hud.map-mode .hud-dock { pointer-events: auto; touch-action: pan-y; }
-#hud .dock-toggle {
+#hud.map-mode .hud-rail { pointer-events: auto; touch-action: pan-y; }
+#hud .rail-toggle {
   display: none; position: absolute; top: 8px; z-index: 20; pointer-events: auto;
   width: 26px; height: 26px; border: 1px solid var(--edge); border-radius: var(--radius-m);
   background: var(--surface); color: var(--accent); cursor: pointer;
 }
-#hud.map-mode .dock-toggle { display: block; }
-#hud #hud-dock-toggle-left { left: 8px; }
-#hud #hud-dock-toggle-right { right: 8px; }
-#hud .hud-dock.collapsed { width: 0; }
-#hud .hud-dock.collapsed > .panel { display: none !important; }
+#hud.map-mode .rail-toggle { display: block; }
+#hud #hud-rail-toggle-left { left: 8px; }
+#hud #hud-rail-toggle-right { right: 8px; }
+#hud .hud-rail.collapsed { width: 0; }
+#hud .hud-rail.collapsed > .panel { display: none !important; }
 /* ドックビュー(造船ドック)が背後のマップごとレールを覆うので、開閉トグルは出さない。 */
-#hud.dock-mode .dock-toggle { display: none; }
+#hud.dock-mode .rail-toggle { display: none; }
 
 /* 戦闘シェルフ: 常設ステータス計器の並び。広幅(pointer:fine)は下端、coarse/狭幅は上端に
    置く — 下端は #hud-stagestatus・タッチパッド・PREDICT バーが既に取り合っているため。 */
@@ -106,7 +106,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud-combat-shelf > #hud-enemies { margin-left: auto; }
 
 /* 画面固定バッジ(④): マップの縮尺・視点リセット・グローバルステータス・トースト等。 */
-/* マップモードでは #hud-dock-toggle-right(right:8px, 26px 角)がこの位置に重なるので、
+/* マップモードでは #hud-rail-toggle-right(right:8px, 26px 角)がこの位置に重なるので、
    その右端(8+26=34px)より確実に外側へ避けておく。 */
 #hud-viewbadge {
   position: absolute; top: 8px; right: 44px;
@@ -246,9 +246,9 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
   #hud:not(.map-mode) #hud-viewbadge { display: none; }
   #hud-hint { bottom: auto; top: 26%; max-width: 92vw; white-space: normal; }
   #hud-toast { max-width: 92vw; padding: var(--space-5) var(--space-5); font-size: var(--font-l); }
-  #hud .hud-dock { top: 8px; bottom: 8px; gap: var(--space-3); }
-  #hud .hud-dock-left { left: 8px; }
-  #hud .hud-dock-right { right: 8px; }
+  #hud .hud-rail { top: 8px; bottom: 8px; gap: var(--space-3); }
+  #hud .hud-rail-left { left: 8px; }
+  #hud .hud-rail-right { right: 8px; }
   #hud-hint {
     top: calc(50% - 40px); transform: translateX(-50%); max-height: 72px;
     overflow-y: auto; padding: var(--space-3) var(--space-5); font-size: var(--font-s);
@@ -256,20 +256,20 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
   #hud-chase-reset { top: 40px; width: 28px; height: 28px; }
   #hud-chase-reset svg { width: 14px; height: 14px; }
   #hud-map-scale { right: 8px; bottom: 8px; font-size: var(--font-xxs); }
-  #hud .hud-dock { top: 40px; }
+  #hud .hud-rail { top: 40px; }
 }
 @media (max-width: 520px) {
-  #hud .hud-dock { font-size: var(--font-xxs); }
-  #hud.map-mode .hud-dock { bottom: calc(28vh + 16px); bottom: calc(28dvh + 16px); }
+  #hud .hud-rail { font-size: var(--font-xxs); }
+  #hud.map-mode .hud-rail { bottom: calc(28vh + 16px); bottom: calc(28dvh + 16px); }
   #hud-combat-shelf { top: 72px; }
   #hud-combat-shelf > .panel { flex-basis: min(168px, calc(100vw - 16px)); width: min(168px, calc(100vw - 16px)); }
 }
 @media (pointer: coarse) {
-  #hud .hud-dock { bottom: 62px; }
+  #hud .hud-rail { bottom: 62px; }
   #hud-map-scale { bottom: 62px; }
 }
 @media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
-  #hud .hud-dock { bottom: 52px; }
+  #hud .hud-rail { bottom: 52px; }
   #hud-combat-shelf { top: 60px; }
   #hud-chase-reset { top: 34px; }
 }
