@@ -35,7 +35,7 @@
   - `dom.ts:610,622` の `grid-template-columns: 1fr 120px 60px auto` は iPad 縦 768px 以下で潰れる。
   - `dom.ts:399` の `min-width: 480px` も 375px 端末では横あふれ。
 - `#hud-object-list { max-height: 544px }`(`dom.ts:148`)はどのメディアクエリでも上書きされず、横向き端末(高さ 375〜500px)で画面高を超える。
-- **`dvh` 使用 0 件**。`vh` のみ 11 箇所(`dom.ts` 9 / `object-picker.ts:14` / `launch-select.ts:19`)。iOS Safari のアドレスバー伸縮でずれる。
+- **`dvh` 使用 0 件**。`vh` のみ 11 箇所(`dom.ts` 9 / `object-picker.ts:14` / `stage-select.ts:19`)。iOS Safari のアドレスバー伸縮でずれる。
 - **`orientationchange` / `visualViewport` / `matchMedia` の購読が src 全体で 0 件。**回転時に JS 側で再レイアウトする仕組みが存在しない。
 - `#hud-combat-shelf` は `display: contents`(`dom.ts:177`)で、広幅では子(`#hud-status`/`#hud-orbit`/`#hud-enemies`)が絶対座標で並び、狭幅時のみ flex の棚になる二重構造。`pointer:fine` かつ幅 901〜1100px では 228px×3 パネルが素のまま重なる。
 - 収納できるのは左右ドック・PREDICT バー・オブジェクト一覧 body の 3 系統のみ。`#hud-status`/`#hud-orbit`/`#hud-enemies`/`#hud-target`/`#hud-stagestatus`/表示設定/座標系ほかは個別収納不可。
@@ -47,11 +47,11 @@
 トークンは統一されたが、**ウィジェットの実装数は第一版時点より増えている**。
 
 - `hud/buttons.ts` の公開物は 6 種(`hudButton` / `SegmentedControl` / `HudHoldButton` / `IconToggleButton` / `HudToggleButton` / `HudToggle`)。このうち **ON/OFF を表すものが 3 種**(`HudToggle` のトラック+ノブ型、`HudToggleButton`・`IconToggleButton` の点灯型)。
-- `buttons.ts` を通さない生 `<button>` が 9 ファイル・39 箇所(`dock-view.ts` / `save-browser.ts` / `settings-panel.ts` / `property-window.ts` / `view-badge.ts` / `object-list-panel.ts` / `stage-utils/stage-status-panel.ts` / `launch-select.ts` / `main.ts`)。
+- `buttons.ts` を通さない生 `<button>` が 9 ファイル・39 箇所(`dock-view.ts` / `save-browser.ts` / `settings-panel.ts` / `property-window.ts` / `view-badge.ts` / `object-list-panel.ts` / `stage-utils/stage-status-panel.ts` / `stage-select.ts` / `main.ts`)。
 - **閉じるボタン 4 実装**: `.dock-close-btn`(`dock-view.ts:135`)、`.sb-close-btn`(`save-browser.ts:98`)、`.sclose`(`settings-panel.ts:37`、しかも `[閉じる]` というテキスト)、`property-window.ts:207` の ✕。
 - **数値/文字入力 5 系統**(第一版時点は 4): `display-time-panel.ts:58` の `DurationValueInput`、**`plan-editor.ts:151-159` の Δv 数値入力 3 本(新規追加分)**、`ship-placer-panel.ts:191,608`、`property-window.ts:274` の rename、`object-list-panel.ts:142` の検索入力(新規追加分)。Enter/Escape/blur の規約に従うのは `display-time-panel.ts:60-67` と `property-window.ts:282-285` の 2 箇所のみ。
 - **スライダー 3 実装**: `display-time-panel.ts:238`(予測到達率グラデ付き)、`ship-placer-panel.ts:239`、`settings-panel.ts:27`(BGM、`innerHTML` 手書き)。
-- **HP/メーター 4 実装**、**タブ 3 実装**(dock-view / save-browser / launch-select)。
+- **HP/メーター 4 実装**、**タブ 3 実装**(dock-view / save-browser / stage-select)。
 - **状態クラス語彙が 6 種のまま**(内訳は第一版から変わった): `.on`(9箇所)/`.held`(3)/`.selected`(2)/`.sel`/`.active`/`.clipped`、加えて `aria-pressed` 属性駆動の CSS(`object-list-panel.ts:153-180` と `dom.ts:158` — **新規追加分**)。第一版が挙げた `data-pinned` は既に存在しない。
 - `:active` を持つのは 2 箇所のみ、disabled の表現も不揃い。主力ボタンクラス `seg-btn` に hover 定義がない。
 - CSS クラス `seg-btn` は segmented control 専用の名でありながら全ボタンに付く汎用クラス(`buttons.ts:6,75,106,139`)。`hud-seg` も流用され打ち消し例外を生んでいる。
@@ -181,20 +181,24 @@
 
 ---
 
-### 施策 3: 現に壊れている非レスポンシブ箇所の即時修復 [S]
+### 施策 3: 破損の即時修復と、トークン層で完結する決定事項の適用 [S]
 
-**第一版の施策3から切り出した先行分。**骨格には触らず、画面外へ出ている/画面高を超えている箇所だけを止める。
+**第一版の施策3から切り出した先行分**に、§7 で決まったトークン層の変更(質問5・6)を合流させた。骨格には触らず、`theme.ts` と数行の CSS で閉じる範囲だけを扱う。
 
-**対象**: `src/game/hud/object-picker.ts:14`、`src/game/hud/dom.ts:148,399`、`src/game/theme.ts`(safe-area 変数の追加)、`src/game/input/touch.ts:38-58`、`public/index.html`。
+**対象**: `src/game/hud/object-picker.ts:14`、`src/game/hud/dom.ts:148,399`、`src/game/theme.ts`、`src/game/const.ts`(`COLOR_MARKER_PROGRADE/NORMAL/RADIAL` の廃止)、`src/game/input/touch.ts:38-58`、`public/index.html`。
 
-**変更方針**:
+**変更方針(破損の修復)**:
 - `ObjectPicker` の `width: 520px` → `width: min(520px, calc(100vw - 24px))`。`max-height: 60vh` → `min(60dvh, 60vh)` 系。
 - `#hud-object-list { max-height: 544px }` → `max-height: min(544px, 60dvh)`。
 - `dom.ts:399` の `min-width: 480px` を `min(480px, calc(100vw - 24px))` へ。
 - **`--safe-t`/`--safe-r`/`--safe-b`/`--safe-l` を `theme.ts` の注入対象に加える**(`env(safe-area-inset-*, 0px)` を合成)。この施策では**タッチ UI の下端群(`touch.ts` の `bottom:12px` 系)と `#hud-status`/`#hud-stagestatus` の下端だけ**を変数参照に置き換える。全要素への適用は施策6。
 - `vh` を `dvh`(フォールバック併記)へ機械置換。
 
-**完了判定**: 375×667 / 667×375 のスクリーンショットで、ObjectPicker・オブジェクト一覧・ヘルプが画面内に収まり、タッチパッドがホームバー領域を避けている。
+**変更方針(決定事項の適用)**:
+- **軌道3軸の色を Δv 軸の青/緑/赤へ統一する**(§7-5)。`const.ts` の `COLOR_MARKER_PROGRADE`/`COLOR_MARKER_NORMAL`/`COLOR_MARKER_RADIAL`(灰/紫/シアン)を廃止し、参照側は `theme.ts` の `AXIS_PROGRADE`/`AXIS_NORMAL`/`AXIS_RADIAL` を読む。**これは `theme.ts` から `const.ts` へ依存が向く例外ではない** — 施策1で確立した「DOM と 3D の両方で使う色だけ theme に置く」の対象がひとつ増えるだけで、依存方向は据え置き(マーカー側が theme を読む)。retrograde/antinormal/radial-in は対応する軸色を共有し、明暗で向きを区別する。
+- **HUD に webfont を導入する**(§7-6)。`index.html` で表示書体を読み込み(`display=swap`)、`theme.ts` の `FONT_FAMILY` の先頭に置く。日本語グリフを持たない書体なので、後続にシステム等幅スタックを残して日本語はそちらへ落ちる。**`FONT_FAMILY` と `index.html` の読み込みが一致していることがこの項目の完了条件**(施策1の直前に、参照されない書体を読み込んでいた不整合が実在した)。
+
+**完了判定**: 375×667 / 667×375 のスクリーンショットで、ObjectPicker・オブジェクト一覧・ヘルプが画面内に収まり、タッチパッドがホームバー領域を避けている。`COLOR_MARKER_PROGRADE`/`NORMAL`/`RADIAL` の grep が 0 件。読み込んだ書体名が `FONT_FAMILY` にも現れる。
 
 **なぜ骨格改修と分けるか**: 骨格改修(施策6)はウィジェット統一(施策4)の後が安い一方、これらは「今すぐ直せて今すぐ効く」ため待たせる理由がない。施策6で書き直される CSS もあるが、置換対象はいずれも1行であり手戻りは無視できる。
 
@@ -202,17 +206,17 @@
 
 ### 施策 4: ウィジェット基盤の統一 [L]
 
-**対象**: `src/game/hud/buttons.ts`(改組)、新設 `src/game/hud/widgets/`(1 ウィジェット 1 ファイル)、既存の手書きウィジェット全箇所(`settings-panel.ts:27-37` の `.stoggle`/BGM スライダー/`.sclose`、`touch.ts` の `.tbtn`、`dock-view.ts`/`save-browser.ts`/`view-badge.ts`/`launch-select.ts`/`main.ts` の生 `<button>`、`object-list-panel.ts:142-180` の検索入力+ツールボタン群、`plan-editor.ts:151-159` の Δv 数値入力、`ship-placer-panel.ts` の数値/文字入力とスライダー、`property-window.ts` の rename 入力と各種ボタン、`stage-status-panel.ts:82` の `.radiator-btn`)。
+**対象**: `src/game/hud/buttons.ts`(改組)、新設 `src/game/hud/widgets/`(1 ウィジェット 1 ファイル)、既存の手書きウィジェット全箇所(`settings-panel.ts:27-37` の `.stoggle`/BGM スライダー/`.sclose`、`touch.ts` の `.tbtn`、`dock-view.ts`/`save-browser.ts`/`view-badge.ts`/`stage-select.ts`/`main.ts` の生 `<button>`、`object-list-panel.ts:142-180` の検索入力+ツールボタン群、`plan-editor.ts:151-159` の Δv 数値入力、`ship-placer-panel.ts` の数値/文字入力とスライダー、`property-window.ts` の rename 入力と各種ボタン、`stage-status-panel.ts:82` の `.radiator-btn`)。
 
 **変更方針**:
 - ウィジェットを次の 10 種に確定し、それ以外の「押せる/切り替えられる/入力できる DOM」の自作を禁止する:
   1. `Button`(単発。現 `hudButton`)
   2. `ToggleSwitch`(ON/OFF。現 `HudToggle` のトラック+ノブ型に一本化。`HudToggleButton`・`IconToggleButton`・`.stoggle`・`.tbtn` の点灯型は「状態を持つボタン」= `Button` の `on` 状態表示へ統合)
   3. `SegmentedControl`(3 択以上の排他。2 択の ON/OFF に使うことを禁止 → ToggleSwitch へ)
-  4. `TabBar`(dock-view / save-browser / launch-select の 3 実装を統合)
+  4. `TabBar`(dock-view / save-browser / stage-select の 3 実装を統合)
   5. `CloseButton`(✕。**4 実装統合**、44px タップ領域。`settings-panel` の `[閉じる]` テキストもこれに置換)
   6. `Slider`(display-time-panel の到達率グラデ機能を持つ 1 実装に統合。settings-panel/ship-placer は同実装のオプション)
-  7. `ValueInput`(数値/文字/検索入力。`DurationValueInput` を汎用化し **5 実装を統合**。**Enter=確定、Escape=破棄、blur=確定** を唯一の規約とする。`plan-editor` の `stopPropagation` 3 連呼びと `object-list-panel` の検索入力もこれに載せる)
+  7. `ValueInput`(数値/文字/検索入力。`DurationValueInput` を汎用化し **5 実装を統合**。**Enter=確定、Escape=破棄、blur=確定** を唯一の規約とする。`plan-editor` の `stopPropagation` 3 連呼びと `object-list-panel` の検索入力もこれに載せる。**Escape の例外は `escapeBehavior: 'revert' | 'clear'` として型に出す**(既定 `'revert'`、`'clear'` を渡してよいのは検索フィールドのみ — §7-9))
   8. `HoldButton`(現 `HudHoldButton`)
   9. `CollapseToggle`(現 `buildCollapseToggle` を維持。property-window/object-list の独自折りたたみもこれへ)
   10. `Meter`(HP/温度/電力バー。4 実装統合。「バーは常に左から右へ満ちる・危険は `DANGER` 色」の規約)
@@ -233,16 +237,16 @@
 
 **変更方針**:
 - `OverlayManager`(現 `ModalController` の後継)に全オーバーレイを登録制にする: モーダル(help/pause/save-browser/result/dock-view)、ポップアップ(ContextMenu/ObjectPicker)、ウィンドウ(PropertyWindow — PerfMeter 含む)。登録時に「ESC で閉じるか」「外側クリックで閉じるか」「入力ゲートするか」「排他グループ」を宣言する。
-- **ESC は既存の入力経路に載せたまま持ち主を一人にする**: OverlayManager は自前の window keydown を張らない(施策自身が禁じる直付けになるうえ、`Input` のエッジキューと同フレームで競合する)。`Game.handleInput` が `input.takeKey(K.pauseMenu)` で取った ESC を OverlayManager にそのまま渡し、OverlayManager がスタック最上位へ配送する — 順序ハードコードは「開いているものがあれば最上位を閉じる → 何も無ければ pauseMenu を開く」の 1 規則に還元される。例外は入力欄フォーカス中の element-level keydown(`ValueInput` の Enter/Escape — 施策4の規約)のみ。`window` 直付け keydown 3 箇所は全廃(`launch-select.ts` はタイトル画面でオーバーレイ制度の外、`input.ts` は入力層本体なので対象外)。外側クリックの capture pointerdown 3 箇所は OverlayManager の 1 組に集約。
+- **ESC は既存の入力経路に載せたまま持ち主を一人にする**: OverlayManager は自前の window keydown を張らない(施策自身が禁じる直付けになるうえ、`Input` のエッジキューと同フレームで競合する)。`Game.handleInput` が `input.takeKey(K.pauseMenu)` で取った ESC を OverlayManager にそのまま渡し、OverlayManager がスタック最上位へ配送する — 順序ハードコードは「開いているものがあれば最上位を閉じる → 何も無ければ pauseMenu を開く」の 1 規則に還元される。例外は入力欄フォーカス中の element-level keydown(`ValueInput` の Enter/Escape — 施策4の規約)のみ。`window` 直付け keydown 3 箇所は全廃(`stage-select.ts` はタイトル画面でオーバーレイ制度の外、`input.ts` は入力層本体なので対象外)。外側クリックの capture pointerdown 3 箇所は OverlayManager の 1 組に集約。
 - **`tepui-release-touch-inputs` の発火条件を直す**: 現状は「開いている間 `sync` するたび」に発火し、2枚から1枚閉じただけでも仮想キーが全解放される。「入力ゲートが false→true に変わった瞬間だけ」に条件を絞り、台帳に加わる ResultScreen / DockView でも発火するようにする。
 - **Escape の意味を 2 つに確定**: 入力欄フォーカス中=編集破棄、それ以外=最前面のオーバーレイを閉じる(何も無ければ一時停止メニューを開く)。**`object-list-panel` の「検索クリア」は廃止**し、クリアは `ValueInput` の ✕ ボタンで行う。
 - ResultScreen を台帳に載せる(**閉じる手段は既にある** — 再出撃/タイトルへのボタン。追加すべきは台帳登録と入力ゲートのみ)。ヘルプは `HelpPanel` クラス化し `Hud.toggleHelp` の DOM 読みトグルを廃止。SettingsPanel/ObjectPicker/ContextMenu も状態フィールドを持たせ `style.display` 読みを廃止。
 - **DockView を台帳に載せる際、`ViewManager` との二重管理にしないこと。**`ViewManager` は `isDockOpen` を持ち `current` をそこから導出する設計になっている(`view-manager.ts`)。ドックの開閉の**正本は `ViewManager`** とし、OverlayManager へは「開いた/閉じた」を通知するだけにする。逆向き(OverlayManager が閉じて `ViewManager` が知らない)を作らない。
-- ContextMenu と PropertyWindow の役割を確定: **ContextMenu=「その場で 1 アクションを選ぶ使い捨て」(選択後必ず消える・状態を映さない)、PropertyWindow=「対象の継続観察と操作」(live 更新・クリップ可)**。同じ対象への右クリックはビューを問わず同じ種類の UI を開く(→ §7 質問2で戦闘ビューの扱いを確認)。空白右クリックのメニュー 2 実装(`Targeter.emptySpaceMenu` / `MapPicker.handleEmptySpaceRightClick`)を 1 実装へ。
+- ContextMenu と PropertyWindow の役割を確定: **ContextMenu=「その場で 1 アクションを選ぶ使い捨て」(選択後必ず消える・状態を映さない)、PropertyWindow=「対象の継続観察と操作」(live 更新・クリップ可)**。**同じ対象への右クリックはビューを問わず PropertyWindow を開く**(§7-2 の決定)。戦闘ビューでは行と項目を絞って視界占有を抑えるが、それは `itemsFor`/`syncRows` の出し分けであってウィンドウの種類を変える理由にはしない。空白右クリックのメニュー 2 実装(`Targeter.emptySpaceMenu` / `MapPicker.handleEmptySpaceRightClick`)を 1 実装へ。
 - PropertyWindow の一時ウィンドウ排他台帳を `MapPicker` から OverlayManager へ移し、`perf-meter.ts` も同じ規則下に置く。
 - **既存の共有物を作り直さないこと**: `hud/layout.ts` の `clampOverlayPosition`、`hud/shortcut-hint.ts` の `shortcutKeyLabel`、`hud/menu-actions.ts` の `MenuAction`+`MenuCommon`。いずれも既に単一実装で、OverlayManager はこれらを使う側になる。
 
-**完了判定**: `window.addEventListener('keydown'` が `input.ts` と `launch-select.ts` 以外で 0 件。`document.addEventListener('pointerdown'` が `overlay-manager.ts` 以外で 0 件。`style.display ===` による状態判定が 0 件。
+**完了判定**: `window.addEventListener('keydown'` が `input.ts` と `stage-select.ts` 以外で 0 件。`document.addEventListener('pointerdown'` が `overlay-manager.ts` 以外で 0 件。`style.display ===` による状態判定が 0 件。`Targeter` が `ContextMenu` を持たない(敵も空域も PropertyWindow / 共通の空域メニューへ寄る)。
 
 **効果**: 「ESC を押せば必ず一番手前が閉じる」「外を触れば一時的なものは消える」「モーダルの後ろは触れない」という予測可能性が全 UI で成立。
 
@@ -291,16 +295,16 @@
 
 **旧施策7に、旧施策5の後半(UI 側のタッチ到達性)を合流させた。**
 
-**対象**: 施策6で分割した CSS、`dock-view.ts`、`save-browser.ts`、`object-picker.ts`、`property-window.ts`、`context-menu.ts`、`launch-select.ts`、`input/touch.ts`、`stage-utils/stage-status-panel.ts`。
+**対象**: 施策6で分割した CSS、`dock-view.ts`、`save-browser.ts`、`object-picker.ts`、`property-window.ts`、`context-menu.ts`、`stage-select.ts`、`input/touch.ts`、`stage-utils/stage-status-panel.ts`。
 
 **変更方針**:
 - ブレークポイントを 3 クラスに確定し、名前を付けて全 CSS で共通使用: `compact`(幅 < 700px — スマホ縦)、`medium`(700〜1100px — スマホ横/iPad 縦)、`wide`(> 1100px)。加えて `coarse`(pointer:coarse)と `short`(高さ < 500px)を直交軸として併用。現行の 900/520px 混在を置換。
 - 非レスポンシブ UI の本対応(施策3の応急処置を骨格に載せ替える): **DockView** = compact でヘッダ縦積み+部品グリッド 1 列+固定 120px/60px を `minmax` 化。**SaveBrowser** = compact で左右ペインをタブ切替に。**ObjectPicker** = compact ではトリガー直下でなく下端シート化。**PropertyWindow** = compact では画面下 40% のボトムシート(ドラッグ不要・クリップ概念は維持)。
 - **compact 縦の既定表示**: 戦闘ビュー=グローバルステータス、ステージ状態パネル(HP/温度/電力)、タッチパッド、マーカー類のみ。ORBIT/CONTACTS は収納状態で開始。マップビュー=PREDICT バー+畳まれた左右レール。施策6の折りたたみ永続の初期値として実装する(ユーザーが開けば以後は開いたまま)。
-- **タッチ到達性を 0 件にする**(施策2で残った分): スロットル段 1-4 = 戦闘シェルフに `SegmentedControl` として常設(→ §7 質問1)。放熱板/太陽電池 = `stage-status-panel` の既存 `.radiator-btn` を 44px 化して充てる(既にある)。リロード R / progradeReset F / followAttitude G / targetSelect T / ノード削除 X = 該当パネル・ウィンドウ内のボタンとして追加(ノード削除は軌道計画パネルと NodeGizmo メニューに既存 — 仮想キー不要)。ESC = 全モーダルに `CloseButton` があれば不要(施策5で保証)。F3/F5/F9 = 一時停止メニュー内の項目で代替済み。
+- **タッチ到達性を 0 件にする**(施策2で残った分): スロットル段 1-4 = 戦闘シェルフに `SegmentedControl` を置くが、**タッチ時のみ表示する**(§7-1)。表示条件はタッチ UI の出し入れと同じものに載せ、独自判定を増やさない。放熱板/太陽電池 = `stage-status-panel` の既存 `.radiator-btn` を 44px 化して充てる(既にある)。リロード R / progradeReset F / followAttitude G / targetSelect T / ノード削除 X = 該当パネル・ウィンドウ内のボタンとして追加(ノード削除は軌道計画パネルと NodeGizmo メニューに既存 — 仮想キー不要)。ESC = 全モーダルに `CloseButton` があれば不要(施策5で保証)。F3/F5/F9 = 一時停止メニュー内の項目で代替済み。
 - タッチ UI の出し入れ: `isTouchDevice` 常時表示をやめ、初回タッチ入力の検出で表示・マウス移動の検出で半透明化する(ハイブリッド端末での両立)。
 - 仮想パッドの推力ラッチ表示: `.tbtn.on` の点灯と `syncModeButtons` の同期機構は既にあるので、**推力 6 ボタンへの配線だけを追加**する(`PlayerThrottle.latchedThrustKeys` を毎フレーム反映)。新機構は作らない。
-- `launch-select.ts` の cssText 手書きレスポンシブをトークン+共通ブレークポイントに載せ替え。
+- `stage-select.ts` の cssText 手書きレスポンシブをトークン+共通ブレークポイントに載せ替え。
 - 検証マトリクス(§5)を全て通す。
 
 **効果**: 目標 (a) の完成。3 クラス×2 軸の命名により、以後「どの画面で確認すべきか」が文書化される。
@@ -314,7 +318,7 @@
   - 維持義務(全施策): 色リテラルが `theme.ts`/`const.ts` の色定義節と §4 施策1に記した 2 件の意図的例外以外で 0 件(`#rrggbb`・`rgba()`・`0x` 形式)。
   - 施策2: coarse 用ピック定数が `const.ts` にあり、`matchMedia` の呼び出しが起動時 1 箇所。
   - 施策4: `.selected`/`.sel`/`.active`/`.held` が 0 件。`createElement('button')` と `type = 'range'/'number'/'text'` が `hud/widgets/` 以外で 0 件。
-  - 施策5: `window.addEventListener('keydown'` が `input.ts`/`launch-select.ts` 以外で 0 件。`document.addEventListener('pointerdown'` が `overlay-manager.ts` 以外で 0 件。`style.display ===` による状態判定が 0 件。
+  - 施策5: `window.addEventListener('keydown'` が `input.ts`/`stage-select.ts` 以外で 0 件。`document.addEventListener('pointerdown'` が `overlay-manager.ts` 以外で 0 件。`style.display ===` による状態判定が 0 件。
   - 施策6: `vh` 単位の裸使用が 0 件(`dvh` フォールバック併記を除く)。`style*=` セレクタが 0 件。
   - 施策7: 旧名が 0 件。
 - **回帰の観測点**: 「新しいパネルを足したら実装が分裂した」が第一版→第二版で実際に起きた(数値入力 4→5、状態語彙に `aria-pressed` 追加)。施策4以降は、**UI を追加する変更セットごとに施策4/5の grep を再実行する**ことを運用ルールとする。
@@ -329,16 +333,16 @@
 - **再出撃サイクルのページ内完結**(`refactoring_todo.md`「再出撃サイクルの是正」)— ResultScreen が台帳に載る(施策5)のとリロード廃止は別問題。`Game` 再生成の設計判断を含むので UI 計画では扱わない。
 - **`Navball.gridVisibility` の状態所有の是非** — 施策7で `ViewOptionsPanel` に統合する際、トグルの置き場は決まるが「グリッド可視状態を誰が持つか」は `refactoring_todo.md` 項目9 の論点。UI 側からは統合後の所有者候補を提示するに留める。
 
-## 7. 確認したいこと(人間への質問)
+## 7. 決定事項(回答済み)
 
-第一版から未回答の 7 問はそのまま残っている(1〜7)。第二版で 2 問(8〜9)追加した。
+第一版・第二版で挙げた 9 問はすべて回答を得た。以下は決定であり、実装はこれに従う。再検討したくなったら、この節を書き換えたうえで該当施策の記述も同じ変更セットで直すこと。
 
-1. 施策8の「スロットル段 SegmentedControl を戦闘シェルフに常設」はデスクトップでも表示される UI 追加になる。キーボード派には冗長かもしれない — 常設でよいか、タッチ時のみか。
-2. 施策5で戦闘ビューの敵右クリックを ContextMenu から PropertyWindow に統一する提案は、戦闘中の視界占有が増える。戦闘中は従来どおり軽いメニューのままにする選択もある — どちらを取るか。
-3. compact(スマホ縦)での既定「ORBIT/CONTACTS は収納で開始」(施策8)の閾値・初期選定に異論はないか。
-4. `hud-dock-*` → `hud-rail-*` の改名(施策7)は localStorage キーや保存データには影響しないが、既存の目視デバッグ習慣(DevTools での id 検索)には影響する。改名の粒度はこれでよいか。
-5. Δv 編集軸の色(パネル/3D ギズモの青/緑/赤)と戦闘ビューの軌道方向マーカー色(`COLOR_MARKER_PROGRADE/NORMAL/RADIAL` の灰/紫/シアン)は、同じ軸概念に二系統の色が併存している。将来どちらかに寄せて統一すべきか(寄せるなら、モノトーン基調のマーカー規約と衝突しない形をどう取るか)。
-6. HUD に webfont を導入するか。施策1では Share Tech Mono を読み込みごと削除しシステム等幅スタックに統一した。ラテン文字だけでも専用書体を当てて世界観を強めたいなら、日本語部分との字面の差をどう扱うかを含めて別途決める必要がある。
-7. 施策1で造船ドックの部品 HP 表示を「良 = モノトーン、注意 = 橙、危険 = 赤」に変えた(緑/橙/赤の信号機配色を廃止)。健全な部品が一目で「緑=OK」と読めなくなるが、この方針でよいか。
-8. **施策の順序を第一版の一直線から組み替え、タッチのジェスチャ合成(旧施策5前半)を施策2へ前倒しした。**根拠は「機能の到達不能はスタイルの不統一より重い」「入力層の合成は他のどの施策にも依存しない」「タッチ実機で以後の UI を検証できるようになる」。見た目の一貫性を先に片付けたいという意図が別にあるなら、順序を戻す判断もありうる。どちらを取るか。
-9. **`ValueInput` の Escape の扱い。**施策5で「Escape の意味は入力欄フォーカス中=編集破棄、それ以外=最前面を閉じる」の 2 つに確定し、`object-list-panel` の「Escape=検索クリア」を廃止する方針にした。ただし検索入力にフォーカスがある状態で Escape を押したとき、「入力の破棄(=検索前の文字列に戻る)」と「ウィンドウを閉じる」のどちらが自然かは検索欄では割れる(多くのアプリは前者、ただし検索欄では実質クリアと同義)。**検索用途の `ValueInput` だけ「Escape=空にする」を許す例外を認めるか、規約を厳守して ✕ ボタンに寄せるか。**
+1. **スロットル段 SegmentedControl は「タッチ時のみ」表示する。**常設ではない。→ 施策8。タッチ UI の出し入れと同じ条件に載せ、独自の判定を増やさない。
+2. **右クリックは常に PropertyWindow に統一する。**戦闘ビューの敵右クリックも ContextMenu をやめ PropertyWindow を開く。→ 施策5。戦闘中の視界占有は、行数をビューに応じて絞る(`itemsFor`/`syncRows` の出し分け)ことで抑える。
+3. **compact 縦の既定(ORBIT/CONTACTS は収納で開始)はこのまま。**→ 施策8。
+4. **`hud-dock-*` → `hud-rail-*` の改名はこの粒度で行う。**→ 施策7。
+5. **Δv 軸の色に統一する(3D ギズモ側の青/緑/赤を正とする)。**戦闘ビューの軌道方向マーカー色 `COLOR_MARKER_PROGRADE`/`NORMAL`/`RADIAL`(灰/紫/シアン)を廃止し、`theme.ts` の `AXIS_PROGRADE`/`AXIS_NORMAL`/`AXIS_RADIAL` を参照させる。同じ軸概念に二系統の色を持たない。→ 施策3。マーカーのモノトーン基調規約に対する**明示された例外**であり、「軌道3軸は3色、それ以外のマーカーはモノトーン+注意色」と規約側を書き換える(design-rules 文書に記載)。
+6. **HUD に webfont を導入する。**→ 施策3。ラテン文字に表示書体を当て、日本語はシステム等幅へフォールバックさせる。字面差は許容する(HUD の日本語はラベル、数値・識別子はラテン文字なので、書体の差は役割の差と一致する)。`FONT_FAMILY` トークンと `index.html` の読み込みを一致させ、`display=swap` で未ロード時も等幅で崩れないようにする。
+7. **部品 HP 表示のモノトーン基調はこのまま。**(良=モノトーン、注意=橙、危険=赤)
+8. **施策の順序は第二版のまま。**タッチのジェスチャ合成を施策2へ前倒しした構成で進める。
+9. **検索用途の `ValueInput` には「Escape=空にする」の例外を認める。**ただし例外は検索用途に限ることを型で表明する(`escapeBehavior: 'revert' | 'clear'` を明示的に受け取り、既定は `'revert'`)。「なんとなく Escape でクリア」が他所へ広がらないようにするのが、例外を型に出す理由。
