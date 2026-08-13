@@ -397,17 +397,17 @@
     - [visibilityPolicy] 自機・敵・弾薬・基地それぞれ、その種別の category が admit しなければ obj.visible=false
     - 自機・敵・基地それぞれ orbitLine.setDisplayEnabled(!overviewMode || visibilityPolicy が admit する orbit) // マップビューのみトグルの対象、戦闘ビューは常に表示
     - [entities.bases ごと] base.syncOrbitLine(overviewMode, fo, camera, attractors) // 中心天体は strongestAttractor(base.state.r, attractors)。マップビューのみ、それ以外は null を渡して線を消す
-  - entities.syncMarkers(project, scale, displayTime, overviewMode, player?.state.r ?? null, visibilityPolicy) // ammos/bases の各 marker?.sync。displayState(displayTime) → [overviewMode] headingDeg(ds.r, ds.v) → set('entity-<id>', 'mk-ammo'|'mk-base', '▲', rotationDeg) / [!overviewMode] set('entity-<id>', 種別ごとの字形) + setBearing('entity-<id>-bearing')。ラベルは name + viewerPos があれば距離
+  - entities.syncMarkers(cameraSystem, displayTime, player?.state.r ?? null, visibilityPolicy) // ammos/bases の各 marker?.sync。displayState(displayTime) → [overviewMode] headingDeg(ds.r, ds.v) → set('entity-<id>', 'mk-ammo'|'mk-base', '▲', rotationDeg) / [!overviewMode] set('entity-<id>', 種別ごとの字形) + setBearing('entity-<id>-bearing')。ラベルは name + viewerPos があれば距離
   - effects.sync(fo, camera) → flashEffectManager.syncFlashEffects()
     - pool.beginFrame() → (生存中のフラッシュごとに transform へ位置/スケール/カメラ正対回転を書き、color = baseColor×opacity で push) → pool.endFrame() // 寿命・移流は update フェーズで済んでいる
-  - [player] targeter.sync(fo, player, combatTargets, overviewMode, project, camera, attractors, visibilityPolicy) // ターゲットに紐づく表示物をまとめて
+  - [player] targeter.sync(fo, player, combatTargets, cameraSystem, attractors, visibilityPolicy) // ターゲットに紐づく表示物をまとめて
     - syncOrbitLine(fo, player, combatTargets, overviewMode, camera, attractors, visibilityPolicy) // 各線の中心天体は対象ごとに strongestAttractor(target.state.r, attractors) で導出
       - [combatTargets ごと] t.syncOrbitLine(showGray, fo, camera, attractors) // showGray = overviewMode かつ生存かつ第一・第二どちらでもない かつ visibilityPolicy が admit する orbit
       - orbitLine.sync() // 第一ターゲット軌道線(オレンジ)。visibilityPolicy が admit しなければ null を渡して消す
       - secondaryOrbitLine.sync() // 第二ターゲット軌道線(シアン)。同上
     - syncBoardMarkers(project) // 的通過マークの表示(スロットごと)。第一ターゲットのみ
     - syncTargetDirMarkers(player, overviewMode, project) // ◇/◆ tgtdir/atgdir。overviewMode or 第一ターゲット無しなら hide。第一ターゲットのみ
-  - targeter.syncTargetMarkers(player, combatTargets, displayTime, simTime, overviewMode, project, cameraSystem.activeCameraScale, visibilityPolicy) // 位置は機体メッシュと同じ displayState 基準
+  - targeter.syncTargetMarkers(player, combatTargets, displayTime, simTime, cameraSystem, visibilityPolicy) // 位置は機体メッシュと同じ displayState 基準
     - [combatTargets ごと] displayState(displayTime) → visibilityPolicy が admit する pickable のみ → markerItem(role, viewerPos, pos, vel, overviewMode) // role は第一/第二/なし。overviewMode で hpMarkerSvg()/headingHpMarkerSvg() を切り替え。displayState が null な対象はここで除外(マーカーごと落とす)。visibilityPolicy が icon/label を落としていれば sym/name/detail を空にする
     - markerManager.combatMarkers.sync(items, project, overviewMode, scale) // 生存かつ displayState を持つ対象の markerItem() 集合を受ける(まとめは1体では決まらない)
       - groupNearby() // 画面上で近接するものをクラスタ化し、代表以外のラベルを落とす
@@ -417,11 +417,11 @@
     - [player] markerManager.leadMarkers.sync(player, aliveScratch, aliveTarget, aliveSecondaryTarget, simTime, overviewMode, project) // 対象ごとの LEAD マーカー。overviewMode なら全 remove して return
       - trackTargeted() // 最終ロック時刻を生存中の対象ぶんだけ作り直す
       - leadPoint() → markerManager.setPosition('lead-<name>') // LEAD_HOLD_SEC 以内 かつ 解がある対象ごと
-  - navTarget.sync(project, overviewMode, cameraSystem.activeCameraPos) // ▲/▽ nav-an/nav-dn マーカー。navTarget.update() が求めた位置があれば表示、無ければ hide。[overviewMode かつ isOccluded] も hide
-  - entities.syncEquatorNodes(project, overviewMode, cameraSystem.activeCameraPos) // all() を回して各 equatorNodes?.sync。△/▽ eqan-*/eqdn-* マーカー。show=overviewMode。sync は置いた交点を捨てるので、このフレームに update されなかったペアは自動的に隠れる。[show かつ isOccluded] は hide
+  - navTarget.sync(cameraSystem) // ▲/▽ nav-an/nav-dn マーカー。navTarget.update() が求めた位置があれば表示、無ければ hide。[overviewMode かつ isOccluded] も hide
+  - entities.syncEquatorNodes(cameraSystem) // all() を回して各 equatorNodes?.sync。△/▽ eqan-*/eqdn-* マーカー。show=overviewMode。sync は置いた交点を捨てるので、このフレームに update されなかったペアは自動的に隠れる。[show かつ isOccluded] は hide
   - displayWindowManager.sync(player) // PREDICT パネル(期間ピル/スクラバー/目盛り)の表示/内容を押し出す。自機の predictedTrajectory.state.t が current(simTime, duration)のどこまで届いているかの割合(0..1、自機/予測/表示期間のいずれかが無ければ 1)も内部で求めて渡す
     - panel.render(state) // visible(=!forceCurrent)・期間ピル・スクラバー(段階数/つまみ位置/未予測区間の減光)・絶対日時/T+ラベル・目盛りを1回でまとめて押し出す。編集中(任意期間フォーム・T+ジャンプフォームを開いている)行は再描画をスキップし、入力中の値を壊さない
-  - editor.sync(cameraSystem.overviewCamera.dist, simTime, fo, project, cameraSystem.activeCameraScale, overviewMode, cameraSystem.activeCameraPos, cameraSystem.activeCamera)
+  - editor.sync(cameraSystem, simTime, fo) // mapDist は内部で cameraSystem.overviewCamera.dist を読む
     - [visiblePlan !== null] planDisplay.sync(fo, project, scale, overviewMode, cameraPos)
       - path.setVisible(plan.nodes.length > 0) // ノードの無い計画は自機の現在軌道そのものを描くだけなので折れ線を隠す
       - path.sync(fo, project, scale, cameraPos) // ノードの有無に関わらず毎フレーム呼ぶ(画面判定に使う視点を更新するため)。区間の折れ線メッシュ。表示座標系と un-bake 時刻は update フェーズで確定済み。cameraPos は nearestSample(DOM ポインタイベント起点)向けにここでキャッシュするだけ
@@ -455,8 +455,8 @@
       - trajectoryLine.sync(camera) // 頂点2未満なら curve.clear()
     - [entities.players ごと] ship.orbitLine.setSuppressed(ship.supersedesAnalyticEllipse(simTime, duration, overviewMode)) // overviewMode: 予測が表示ホライズンを覆いきったときだけ解析楕円を抑制。!overviewMode: 予測線が描かれてさえいれば抑制
   - [player] touchControls?.syncModeButtons(rcsDamp, fineAttitude, progradeHold) // タッチデバイスのみ。制動/微動/ホールドの点灯
-  - activeStage.sync(player, fo, project, scale, displayTime, overviewMode, visibilityPolicy, camera) // player は Creative の未配置状態で null
-    - syncStatusPanel(player, overviewMode) → statusPanel.sync(player | null, message, kills) // hudSubStatus() が null か overviewMode なら null を渡し、パネル側が畳んで保持中の艦参照も落とす
+  - activeStage.sync(player, fo, cameraSystem, displayTime, visibilityPolicy) // player は Creative の未配置状態で null
+    - syncStatusPanel(player, cameraSystem.overviewMode) → statusPanel.sync(player | null, message, kills) // hudSubStatus() が null か overviewMode なら null を渡し、パネル側が畳んで保持中の艦参照も落とす
     - [CreativeStage] syncPreview(fo, project) // update が求めた preview の軌道線 + ▷ PREVIEW マーカー。preview が null なら両方隠す
     - [CreativeStage] placerPanel.setIssues(issues) // update が求めた issues を渡すだけ。前回と同内容なら panel 側が DOM に触らず即 return
   - hud.panels.sync(game, attractors) // Game インスタンスを直接読む(narrow ctx を介さない唯一の消費者)
