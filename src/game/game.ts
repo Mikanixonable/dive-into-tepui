@@ -270,12 +270,10 @@ export class Game {
     this.sections.exit(SECTION.effects);
 
     this.sections.enter(SECTION.plan);
-    // trackAnchor より前に置く: 最後のノードが落ちたフレームからアンカーを自機へ追従させる。
     this.guide.update(
       this.player, this.simulator.simTime, this.editor.editMode,
       this.ephemeris.attractorsAt(this.simulator.simTime),
     );
-    if (this.player) this.player.plan.trackAnchor(this.player.state);
     this.sections.exit(SECTION.plan);
   }
 
