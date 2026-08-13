@@ -36,7 +36,6 @@ import { Navball } from './navball/navball';
 import { GameSaveData } from './save-data';
 import { Docking } from './docking';
 import { ViewBadge } from './hud/view-badge';
-import { planAttractorProvider, planSourceRevision } from './simulation/attractors';
 import { FrameControls } from './frame-controls';
 
 export class Game {
@@ -141,6 +140,7 @@ export class Game {
       this._sfx,
       this.simSpeedManager,
       this.ephemeris,
+      this.entities,
       this._scene,
       this.markerManager,
       this.activePlayers,
@@ -314,19 +314,7 @@ export class Game {
     const displayWindow = this.displayWindowManager.current;
     this._environment.update(displayWindow.displayTime, this.cameraSystem.overviewMode);
     this.sections.enter(SECTION.plan);
-    // revision は前フレームの計画終端を基準に畳み込む — 今フレームの終端は editor.update が
-    // これから決めるので、provider を組む時点ではまだ確定していない。
-    const excludedIds = this.player ? [this.player.id] : [];
-    const planProvider = planAttractorProvider(
-      this.ephemeris,
-      this.entities,
-      excludedIds,
-      planSourceRevision(
-        this.entities, excludedIds,
-        this.editor.plan?.revision ?? 0, this.editor.lastPlanEnd, this.simulator.simTime,
-      ),
-    );
-    this.editor.update(displayWindow, planProvider);
+    this.editor.update(displayWindow);
     this.targeter.updateEquatorNodes(displayWindow, this.ephemeris);
     this.entities.updateBaseEquatorNodes(displayWindow, this.ephemeris);
     this.sections.exit(SECTION.plan);

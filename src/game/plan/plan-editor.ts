@@ -32,7 +32,8 @@ import type { FrameControls } from '../frame-controls';
 import { focusPoint } from '../camera/focus-target';
 import { Attractor, orbitalElementsOf, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
 import { toFrameState } from '../../physics/frame';
-import type { PlanAttractorProvider } from '../simulation/attractors';
+import { planAttractorProvider, planSourceRevision } from '../simulation/attractors';
+import type { EntityManager } from '../simulation/entity-manager';
 import type { DisplayWindow } from '../display-window-manager';
 import type { PerfCounts } from '../../perf-meter';
 
@@ -97,7 +98,7 @@ export class PlanEditor {
   private readonly gizmo3d: PlanGizmo3D;
 
   // 直近の update() が描いた折れ線が届いている終端時刻。一度も描いていなければ NaN。
-  get lastPlanEnd(): number { return this.planDisplay.path.timeRange()?.max ?? NaN; }
+  private get lastPlanEnd(): number { return this.planDisplay.path.timeRange()?.max ?? NaN; }
 
   private _editMode = false;
   get editMode(): boolean { return this._editMode; }
@@ -128,6 +129,7 @@ export class PlanEditor {
     private readonly _sfx: Sfx,
     private readonly simSpeedManager: SimSpeedManager,
     private readonly ephemeris: Ephemeris,
+    private readonly entities: EntityManager,
     scene: THREE.Scene,
     private readonly markerManager: MarkerManager,
     private readonly activePlayers: ActivePlayerController,
@@ -733,7 +735,7 @@ export class PlanEditor {
 
   // 計画折れ線を再積分し、ゴースト位置とアプシスアイコンを求め直す。折れ線は戦闘ビューでも
   // 描く — 計画どおりに機体を動かすのは戦闘ビューだから。
-  update(displayWindow: DisplayWindow, attractorProvider: PlanAttractorProvider): void {
+  update(displayWindow: DisplayWindow): void {
     // 艦が替わったフレームで、前の艦のノードに対して開いたままのメニューを畳む(選択中ノードは
     // 参照で解決するので、計画が替われば同一性が外れて自然に選択なしになる)。
     const ship = this.activePlayers.current;
@@ -742,6 +744,13 @@ export class PlanEditor {
       this.closeMenu();
     }
     this.simTime = displayWindow.simTime;
+    const excludedIds = ship === null ? [] : [ship.id];
+    // revision は前フレームの終端(lastPlanEnd)を基準に畳み込む — 今フレームの終端は
+    // このあとの planDisplay.update が決めるので、組む時点ではまだ確定していない。
+    const attractorProvider = planAttractorProvider(
+      this.ephemeris, this.entities, excludedIds,
+      planSourceRevision(this.entities, excludedIds, this.plan?.revision ?? 0, this.lastPlanEnd, displayWindow.simTime),
+    );
     this.planDisplay.update(this.visiblePlan, displayWindow, attractorProvider);
     this.updateEquatorNodes(displayWindow);
   }
