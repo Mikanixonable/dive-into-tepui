@@ -25,16 +25,16 @@ export class Stage1 extends Stage {
   }
 
   // 開始ブリーフィングの HTML を組み立てる。
-  briefingHtml(enemyCount: number): string {
+  briefingHtml(): string {
     return (
-      `<b>作戦目標: 敵機 ${enemyCount} 機を全機撃破せよ</b><br>` +
+      `<b>作戦目標: 敵機 ${this.scoreCounter.totalEnemiesSpawned} 機を全機撃破せよ</b><br>` +
       `敵を右クリックでターゲット固定 → 機首を向けて並進で接近 → [${K.warpSlower.label}]/[${K.warpFaster.label}] 時間加速で会合を短縮<br>` +
       `[${K.help.label}] キーで操作方法を表示`
     );
   }
 
-  // 自機と5機の敵を初期配置し、敵数を返す。
-  protected init(entities: EntityManager): number {
+  // 自機と5機の敵を初期配置する。
+  protected init(entities: EntityManager): void {
     const player = this.addPlayer();
     const base = player.state;
     const hud = this._hud;
@@ -47,7 +47,6 @@ export class Stage1 extends Stage {
     this.addEnemy(generateCrossingEnemy('HOSTILE-γ', base, 2200, 2, 0xe0409f, C.COLOR_ENEMY_ORBIT_LINE, hud, sfx, fx, scene), entities);
     this.addEnemy(generateEllipticEnemy('HOSTILE-δ', base, 5000, 3, 0xbf3dff, C.COLOR_ENEMY_ORBIT_LINE, hud, sfx, fx, scene), entities);
     this.addEnemy(generatePhasedEnemy('HOSTILE-ε', base, 60000, 3, 0xff2d6b, C.COLOR_ENEMY_ORBIT_LINE, hud, sfx, fx, scene), entities);
-    return 5;
   }
   // 1フレーム分、敵の行動と補給ロジスティクスを進める。
   update(dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {

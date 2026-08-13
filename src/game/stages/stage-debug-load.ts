@@ -30,7 +30,7 @@ export class StageDebugLoad extends Stage {
   }
 
   // 自機を置き、引力を及ぼす小惑星(重力源)と、受けるだけの破片の双方を自機周囲へ散らす。
-  protected init(entities: EntityManager): number {
+  protected init(entities: EntityManager): void {
     const player = this.addPlayer({ ammo: { mags: 20, rounds: C.MAG_ROUNDS } });
     const rand = mulberry32(C.DEBUG_LOAD_RNG_SEED);
     for (let i = 0; i < C.DEBUG_LOAD_ASTEROID_COUNT; i++) {
@@ -45,7 +45,6 @@ export class StageDebugLoad extends Stage {
       const att = { q: randomQuat(rand), w: v3(0, 0, 0), inertia: v3(1, 1, 1) };
       entities.addDebris(new DebrisPiece(state, { kind: 'fragment', accent: 0x888888, size }, att, this._sfx, this._fx, undefined, this._scene));
     }
-    return 0;
   }
 
   update(_dt: number, player: Player | null, _entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {

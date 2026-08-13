@@ -31,16 +31,16 @@ export class Stage2 extends Stage {
   }
 
   // 作戦目標と操作方法を示すブリーフィング文面を組む。
-  briefingHtml(enemyCount: number): string {
+  briefingHtml(): string {
     return (
-      `<b>作戦目標: 敵機 ${enemyCount} 機を全機撃破せよ</b><br>` +
+      `<b>作戦目標: 敵機 ${this.scoreCounter.totalEnemiesSpawned} 機を全機撃破せよ</b><br>` +
       `敵の一部はモルニヤ級の高楕円軌道上にいる — [${K.toggleMapMode.label}] 軌道計画モードで遷移を計画せよ<br>` +
       `[${K.help.label}] キーで操作方法を表示`
     );
   }
 
   // 自機を置き、通常軌道の敵とモルニヤ級軌道の敵を混成配置する。
-  protected init(entities: EntityManager): number {
+  protected init(entities: EntityManager): void {
     const player = this.addPlayer();
     const base = player.state;
     const hud = this._hud;
@@ -54,7 +54,6 @@ export class Stage2 extends Stage {
     this.addEnemy(generateMolniyaEnemy('MOLNIYA-γ', base.t, 0.4, 2.6, 3, 0xe0409f, C.COLOR_ENEMY_ORBIT_LINE, hud, sfx, fx, scene), entities);
     this.addEnemy(generateMolniyaEnemy('MOLNIYA-δ', base.t, 2.5, 0.9, 3, 0xbf3dff, C.COLOR_ENEMY_ORBIT_LINE, hud, sfx, fx, scene), entities);
     this.addEnemy(generateMolniyaEnemy('MOLNIYA-ε', base.t, 4.6, 3.8, 3, 0xff2d6b, C.COLOR_ENEMY_ORBIT_LINE, hud, sfx, fx, scene), entities);
-    return 5;
   }
   // 敵の行動と補給品の湧きを進める。
   update(dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {

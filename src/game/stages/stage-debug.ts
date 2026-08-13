@@ -29,12 +29,12 @@ export class StageDebug extends Stage {
   }
 
   // デバッグステージのブリーフィング文言を返す。
-  briefingHtml(enemyCount: number): string {
-    return `<b>デバッグステージ</b><br>敵集団 ${enemyCount} 機。撃破しても終了しない。ステータスウィンドウ左部から敵の射撃を切替可能`;
+  briefingHtml(): string {
+    return `<b>デバッグステージ</b><br>敵集団 ${this.scoreCounter.totalEnemiesSpawned} 機。撃破しても終了しない。ステータスウィンドウ左部から敵の射撃を切替可能`;
   }
 
   // 自機を置き、敵集団を1つだけ生成し、射撃切替トグルをステータスウィンドウ左部へ追加する。
-  protected init(entities: EntityManager): number {
+  protected init(entities: EntityManager): void {
     const player = this.addPlayer({ ammo: { mags: 20, rounds: C.MAG_ROUNDS } });
     const enemies = generateWave(player.state, this.waveCount++, this._ephemeris, this._hud, this._sfx, this._fx, this._scene, 'random');
     for (const enemy of enemies) this.addEnemy(enemy, entities);
@@ -63,8 +63,6 @@ export class StageDebug extends Stage {
       const state = kinematicState(player.state.t, add(player.state.r, offset), player.state.v);
       entities.addAsteroid(new Asteroid(state, C.ASTEROID_TEST_MASS, C.ASTEROID_TEST_RADIUS, this._scene));
     }
-
-    return enemies.length;
   }
 
   // 敵の行動を進め、射撃許可を毎フレーム自ステージの敵全体へ反映する。
