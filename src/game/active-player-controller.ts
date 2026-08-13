@@ -1,14 +1,12 @@
 // 操作対象艦(自機0..n隻のうちどれを操作するか)の切替・削除と、それに伴う各所有者への伝播
-// (カメラ・計画エディタ・ターゲッター・航法ターゲット・マップ選択・SFX)を1箇所へ集める。
+// (ターゲッター・航法ターゲット・SFX、および remove() でのカメラのフォーカス解除)を1箇所へ集める。
 // 艦の隻数は0..n隻が一般形であり、「1隻・喪失即決着」はステージ側の特殊化にすぎない —
 // このクラス自身はステージの種類を一切知らない。
 import type { Player } from './player/player';
 import type { EntityManager } from './simulation/entity-manager';
 import type { CameraSystem } from './camera/camera-system';
-import type { PlanEditor } from './plan/plan-editor';
 import type { Targeter } from './targeter';
 import type { NavTarget } from './nav-target';
-import type { MapPicker } from './map-picker';
 import type { Sfx } from '../audio/sfx';
 
 export class ActivePlayerController {
@@ -18,10 +16,8 @@ export class ActivePlayerController {
     initial: Player | null,
     private readonly entities: EntityManager,
     private readonly cameraSystem: CameraSystem,
-    private readonly editor: PlanEditor,
     private readonly targeter: Targeter,
     private readonly navTarget: NavTarget,
-    private readonly mapPicker: MapPicker,
     private readonly sfx: Sfx,
   ) {
     this._current = initial;
@@ -34,7 +30,6 @@ export class ActivePlayerController {
     if (this._current === ship) return;
     this._current?.clearTransientCommands();
     this._current = ship;
-    this.editor.setActivePlayer(ship);
     this.targeter.clearTargets();
   }
 
@@ -51,7 +46,6 @@ export class ActivePlayerController {
     }
     this._current?.clearTransientCommands();
     this._current = null;
-    this.editor.setActivePlayer(null);
     this.sfx.setRcs(false);
   }
 
@@ -60,12 +54,10 @@ export class ActivePlayerController {
     const wasActive = this._current === ship;
     this.navTarget.clearIfTargeting(ship.id);
     this.targeter.clearIfTargeting(ship);
-    this.mapPicker.close();
     this.cameraSystem.overviewCamera.clearFocusIf(ship.id);
     if (wasActive) {
       ship.clearTransientCommands();
       this._current = null;
-      this.editor.setActivePlayer(null);
     }
     this.entities.removePlayer(ship);
     if (wasActive) this.reclaimAfterLoss();
