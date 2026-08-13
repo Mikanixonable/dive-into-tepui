@@ -234,8 +234,7 @@ export class Player extends Ship {
       return;
     }
 
-    // 噴射不可のワープ倍率ではラッチ判定自体を止める(連打がラッチとして積まれ、
-    // ワープを下げた瞬間に不意打ちで噴射が始まるのを防ぐ)。
+    // 噴射不可のワープ倍率では、押下エッジを消費してまでラッチ判定を進める意味がない。
     if (simSpeed.canPlayerThrust) this.throttle.updateThrustLatches(input);
     this.thrust = this.throttle.updateThrustState(input, simSpeed, this.att, dt, this);
     // 噴射中は毎フレーム破棄する — 次の Predictor がその時点の実状態を種に作り直す。
@@ -274,17 +273,13 @@ export class Player extends Ship {
     this.thermal.updateThermal(dt, this.state.r, this.state.v, this);
   }
 
-  // 操作対象から外す/削除する際、次のフレームへ持ち越してはならない連続指令を畳む。
+  // 操作できない間、次のフレームへ持ち越してはならない連続指令を畳む。
+  // 角速度によるcoast自体は継続する。
   clearTransientCommands(): void {
     this.thrust = null;
     this.torque = v3();
     this.throttle.clearTransientState();
     this.fire.stopFiring();
-  }
-
-  // 物理相互作用を止める高warpではRCS指令も残さない。角速度によるcoast自体は継続する。
-  suppressAttitudeCommandForWarp(): void {
-    this.torque = v3();
   }
 
   // 姿勢微調整モードの ON/OFF を切り替える。
