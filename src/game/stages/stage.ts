@@ -9,11 +9,8 @@ import { StageStatusPanel } from './stage-utils/stage-status-panel';
 import { EffectsSystem } from '../vfx/effects-system';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
-import { showResultScreen, showWinScreen } from '../hud/result-screen';
 import type { ClearCounts, UnlockManager } from '../unlock-manager';
 import type { EntityManager } from '../simulation/entity-manager';
-import type { Input } from '../input/input';
-import { KEY_MAPPING as K } from '../input/key-mapping';
 import { SimSpeedManager } from '../sim-speed-manager';
 import type { CameraSystem } from '../camera/camera-system';
 import type { FloatingOrigin } from '../floating-origin';
@@ -73,6 +70,14 @@ export interface ObjectAuthoring {
 
 export type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
 
+// 決着した周回の結果画面に出す内容。
+export type StageResult = {
+  readonly win: boolean;
+  // 勝敗から決まる既定の見出しに収まらないときだけ差し替える。
+  readonly title: string | null;
+  readonly detailHtml: string;
+};
+
 export abstract class Stage {
   // 起動時に1度だけ組む天体暦。既定は現実の太陽系で、精密暦パックを読み込む。
   static async createEphemeris(phaseOffsets: Partial<Record<AttractorId, number>>): Promise<Ephemeris> {
@@ -123,7 +128,13 @@ export abstract class Stage {
   private _phase: GamePhase;
   get phase(): GamePhase { return this._phase; }
   get isPlaying(): boolean { return this._phase === 'playing'; }
-  protected setPhase(phase: GamePhase): void { this._phase = phase; }
+  private _result: StageResult | null = null;
+  get result(): StageResult | null { return this._result; }
+  // 勝敗と結果画面の内容を同時に確定させる。表示は呼び出し側(Launcher)の役目。
+  protected decide(phase: Exclude<GamePhase, 'playing'>, result: StageResult): void {
+    this._phase = phase;
+    this._result = result;
+  }
   private readonly restored: boolean;
 
   // saved が undefined ならスナップショットからの再開ではない新規開始で、スコア0・進行中・
@@ -159,17 +170,6 @@ export abstract class Stage {
   // ステージ固有の UI(トグル等)をステータスウィンドウ左部へ追加する。
   protected addStatusPanelWidget(el: HTMLElement): void {
     this.statusPanel.appendLeftWidget(el);
-  }
-
-  // 決着後の [R] で再出撃。プレイ中は素通しする。
-  handleInput(input: Input): void {
-    if (this.isPlaying) return;
-    if (input.takeKey(K.restart)) this.restart();
-  }
-
-  // ?stage= を明示して replace する: 素のリロードでは選択画面へ戻るため。
-  private restart(): void {
-    location.replace(`${location.pathname}?stage=${this.id}`);
   }
 
   // ステータスパネルを同期する。fo・displayTime・visibilityPolicy は配置プレビューなど
@@ -224,9 +224,13 @@ export abstract class Stage {
   checkWin(): boolean {
     return this.scoreCounter.totalEnemiesSpawned - this.scoreCounter.kills - this.scoreCounter.losses <= 0;
   }
-  // 勝利画面を表示する。
+  // 決着を「勝利」で確定させる。
   onWin(simTime: number): void {
-    showWinScreen(this._sfx, this.scoreCounter, this.scoreCounter.totalEnemiesSpawned, simTime);
+    this.decide('won', {
+      win: true,
+      title: null,
+      detailHtml: winDetailHtml(this.scoreCounter, this.scoreCounter.totalEnemiesSpawned, simTime),
+    });
   }
 
   // ステータスパネルに表示する補助メッセージ。既定では非表示(null)。
@@ -246,18 +250,20 @@ export abstract class Stage {
 
     // isPlaying ガード: 敗北後に残存敵が再突入で消えても勝利判定が上書きしないよう。
     if (this.isPlaying && this.checkWin()) {
-      this.setPhase('won');
       this._unlockManager.reportClear(this.id, this._hud);
       this.onWin(simTime);
     }
   }
 
-  // 敗北を記録し、reason を添えて敗北画面を表示する。
+  // 敗北を記録し、reason を添えて決着を「敗北」で確定させる。
   recordPlayerLost(reason: string): void {
     // isPlaying ガード: 勝利後に自機が再突入しても敗北で上書きしないよう。
     if (!this.isPlaying) return;
-    this.setPhase('lost');
-    showResultScreen(this._sfx, false, `${reason}<br>撃破 ${this.scoreCounter.kills}/${this.scoreCounter.totalEnemiesSpawned} 機`);
+    this.decide('lost', {
+      win: false,
+      title: null,
+      detailHtml: `${reason}<br>撃破 ${this.scoreCounter.kills}/${this.scoreCounter.totalEnemiesSpawned} 機`,
+    });
   }
 
   // スコア・決着状態・補給タイマーをセーブデータへ変換する。固有の内訳を持つ具象ステージは
@@ -269,4 +275,15 @@ export abstract class Stage {
       logistics: this.logistics.serialize(),
     };
   }
+}
+
+// 全機撃破・ミッション時間・命中率をまとめた勝利画面の本文。
+function winDetailHtml(scoreCounter: ScoreCounter, totalEnemies: number, simTime: number): string {
+  const { shots, hits } = scoreCounter;
+  const acc = shots > 0 ? ((hits / shots) * 100).toFixed(1) : '0.0';
+  return (
+    `全 ${totalEnemies} 機撃破<br>` +
+    `ミッション時間 T+ ${Math.floor(simTime / 3600)}h ${Math.floor((simTime % 3600) / 60)}m ${Math.floor(simTime % 60)}s<br>` +
+    `発射 ${shots} 発 / 命中 ${hits} 発 (命中率 ${acc}%)`
+  );
 }
