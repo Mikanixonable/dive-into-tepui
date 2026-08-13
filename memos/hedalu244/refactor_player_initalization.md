@@ -2,7 +2,7 @@
 
 **病巣は2つある。**
 
-- **病巣 I — 操作対象艦のミラーと、その種付け**(症状 D / Step 4-6)。
+- **病巣 I — 操作対象艦の種付け**(症状 D / Step 5-6)。
 - **病巣 II — 初期世界の作者が `Game` と `Stage` に割れている**(症状 F-L / Step 7-10)。
 
 2つは `EntityManager.initialActivePlayer` で繋がっている。病巣 I の Step 5 と
@@ -10,18 +10,12 @@
 
 ---
 
-## 診断 I — 「操作対象艦のミラーと、その種付け」
+## 診断 I — 「操作対象艦の種付け」
 
-病巣: **`ActivePlayerController.current`(操作対象艦の正本)のコピーを、`PlanEditor` が
-フィールドとして持っている。** コピーである以上、
-
-1. 切替のたびにコピーへ伝播させる配線が要り(`ActivePlayerController.set` →
-   `PlanEditor.setActivePlayer`)、
-2. 構築時に初期値を**種付け**する必要があるので `PlanEditor` は自機より後に生成せざるを得ず、
-3. 種を配るための一方通行の口(`EntityManager.initialActivePlayer`)が `EntityManager` に生える。
-
-これは `/refactor` の「悪いデータ構造: 正データが複数箇所に分散、重複しているデータ /
-複数箇所が一定の整合性を保つことが要求されるデータ」そのもの。
+病巣: **操作対象艦の正本(`ActivePlayerController.current`)の初期値を、`EntityManager` が
+決めて一方通行の口(`initialActivePlayer`)で配っている。** 「どの艦を操作するか」は
+`EntityManager`(どのエンティティが存在するか)ではなく `ActivePlayerController` の責務であり、
+正本を持つ側が自分で解決すればこの口ごと要らなくなる。
 
 ---
 
@@ -42,32 +36,10 @@
 `/refactor-fixed` 5-4「小さな段階にわけ、各段階で問題が生じていないことの確認を取りながら進める」
 に従い、単独で確認できる粒度に割ってある(依存関係は末尾の「実施順と依存」)。
 
-### Step 4 — `PlanEditor` にコピーを持たせない
-
-`PlanEditor.activePlayer`(`plan-editor.ts:88`)は正本のミラー。ただし
-DOM の pointer イベント(フレームの流れの外)から `plan` を読むので、`/refactor-fixed` 7 により
-**参照を保持すること自体は正当** — 保持すべきなのが `Player` ではなく `ActivePlayerController`
-だという話。
-
-- `PlanEditor` が `ActivePlayerController` を保持し、`get plan()` は
-  `activePlayers.current?.plan ?? null` にする。コンストラクタの `ship` 引数を削除。
-- `ActivePlayerController` から `editor` 依存を**削除**する(`set`/`setOrNull`/`remove` の
-  `editor.setActivePlayer(...)` 呼び出しごと)。これで
-  `PlanEditor → ActivePlayerController` の一方向だけになり、相互参照は生じない。
-- `setActivePlayer` が担っていた後始末のうち、**選択中ノードは自己修復する** —
-  `selectedNodeIdx` は選択ノードを参照で持ち、毎回 `plan.nodes` へ同一性で解決し直すので、
-  艦が替われば「選択は消えた」と読める。残るのは**開いたままのメニュー**だけなので、
-  `PlanEditor.update` が「前フレームと `activePlayers.current` が違ったら `closeMenu()`」と
-  自分で変化検出する(`Curve.lastFrame` / `PlanGuide.approachNotified` と同型の、
-  正本ではない変化検出であり CLAUDE.md が既に採っている形)。
-
-**Step 4 は判断の余地が大きい。** 変化検出用の `lastSeen` を持つのは
-ミラーの完全な消滅ではない。それでも、外部が同期させ忘れると壊れる形から
-「壊れようがないが1フレーム遅れて気付く」形へは確実に良くなる。**単独の変更セットにするのが安全。**
-
 ### Step 5 — `ActivePlayerController` が初期の操作艦を自分で決める
 
-Step 4 で `initialPlayer` の読み手が消えた後、最後の種付け経路を畳む。
+`initialPlayer` の読み手は `ActivePlayerController` のコンストラクタだけになっているので、
+最後の種付け経路を畳む。
 
 - `ActivePlayerController` のコンストラクタが `initialSave?.activePlayerId` を受け、
   `entities.players` から自分で解決する(`find(id) ?? players[0] ?? null`)。
@@ -173,8 +145,7 @@ barrel = C.MAGS_PER_BARREL;
 
 `Stage` 本体・`Logistics`・`ScoreCounter`・`spawner/` は `Player` をフィールドで**一切持たない** ──
 `init` / `update` / `sync` / `behaveAllEnemies` / `spawnForPlayer` / `updateLogistics` すべて
-**引数**で受けている。病巣 I の `PlanEditor` とは対照的に、ここは最初から
-正しい形になっている。`stage00.ts:286` の `generateWave` に至っては `Player` ですらなく
+**引数**で受けている。`stage00.ts:286` の `generateWave` に至っては `Player` ですらなく
 `KinematicState` だけを受け取る。
 
 唯一の例外が **`StageStatusPanel.player`**(`stage-utils/stage-status-panel.ts:43`、
@@ -302,8 +273,7 @@ Step 8 なら「弾薬はステージが置く艦の積載であって、外か�
 ## 実施順と依存
 
 ```
-Step 4  PlanEditor が ActivePlayerController を持つ  → Step 5
-Step 5  ActivePlayerController が初期艦を解決   ← Step 4
+Step 5  ActivePlayerController が初期艦を解決   独立
 Step 6  FrameControls を前倒し(任意)       独立
 Step 7  初期弾薬を Player の構築引数へ       → Step 8
 Step 8  初期世界の作者を Stage へ一本化      ← Step 5,7 / ViewManager の位置も動かす
@@ -316,25 +286,22 @@ Step 10 StageStatusPanel の艦参照           独立
 
 ## 効果(残りのステップ完了時)
 
-- 消えるメソッド: `PlanEditor.setActivePlayer` / `Player.initAmmo` / `PlayerFire.initAmmo`。
-- 消えるフィールド: `PlanEditor.activePlayer` / `EntityManager.initialActivePlayer` /
-  `Game` の `initialPlayer` ローカル。
+- 消えるメソッド: `Player.initAmmo` / `PlayerFire.initAmmo`。
+- 消えるフィールド: `EntityManager.initialActivePlayer` / `Game` の `initialPlayer` ローカル。
 - 消える静的/抽象メンバー: `Stage.initialPlayerCount` / `Stage.initialAmmo`。
 - 消える型: `StageInitData`。
-- 消える引数: `PlanEditor` の `ship`、`Stage.init` の `player`、`briefingHtml` の `enemyCount`。
+- 消える引数: `Stage.init` の `player`、`briefingHtml` の `enemyCount`。
 - 消える判断: `EntityManager` の「どの艦を操作するか」。
 - 消える二段初期化: 艦の弾薬(既定 → 上書き)、`StageDebugAltSystem` の `player.state` 上書き。
 - 消えるマジックリテラル: `stage1.ts:51` / `stage2.ts:58` の `return 5`。
 - 直る潜在バグ: `StageStatusPanel` が喪失した艦を掴み続ける(症状 L)。
   `initialPlayerCount > 1` で id が衝突する(症状 H — 宣言ごと消える)。
-- `OWNERSHIP.md` の「艦を切り替えるたびに揃える必要がある3箇所」は
-  `ActivePlayerController.current` と `Targeter` のロックの**2箇所**になる。
 - 責務の言い切りが変わる: **`Game` は世界の初期状態を組まない。組むのは `Stage`、
   復元するのは `EntityManager`。**
 
 ## 同じ変更セットで直す文書
 
-`CLAUDE.md`(`plan-editor.ts` / `entity-manager.ts` / `stages/` / `stage-dictionary.ts` の各節。
+`CLAUDE.md`(`entity-manager.ts` / `stages/` / `stage-dictionary.ts` の各節。
 特に `initialPlayerCount` を静的宣言として説明している箇所)、
 `DEVELOP/OWNERSHIP.md`(正本一覧)、`DEVELOP/CALLSTACK.md`、
 `DEVELOP/SPEC.md`(初期配置・初期弾薬の記述)。

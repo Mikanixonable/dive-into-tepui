@@ -138,6 +138,9 @@ export class Game {
     this.navTarget = new NavTarget(this._hud, this.markerManager);
     this.navball = new Navball(this._hud.layers.panel);
     this._environment = new EnvironmentScene(this._scene, this.ephemeris, initialSave?.earthSpinPhase0);
+    this.activePlayers = new ActivePlayerController(
+      initialPlayer, this.entities, this.cameraSystem, this.targeter, this.navTarget, this._sfx,
+    );
     this.editor = new PlanEditor(
       this._hud,
       this._sfx,
@@ -145,7 +148,7 @@ export class Game {
       this.ephemeris,
       this._scene,
       this.markerManager,
-      initialPlayer,
+      this.activePlayers,
       this.displayWindowManager,
     );
     this.editor.onFocusNode = (state) => {
@@ -157,10 +160,6 @@ export class Game {
       this.cameraSystem, this.editor, this.simSpeedManager, this.settingsPanel,
     );
     this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager);
-    this.activePlayers = new ActivePlayerController(
-      initialPlayer, this.entities, this.cameraSystem, this.editor, this.targeter,
-      this.navTarget, this.mapPicker, this._sfx,
-    );
     this.viewManager = new ViewManager(
       this._hud, this.editor, this.cameraSystem, this.displayWindowManager, this.mapPicker,
       this.activePlayers,
