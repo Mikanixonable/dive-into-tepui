@@ -35,8 +35,9 @@ process.stdin.on('end', () => {
     '- プレイヤーから見える挙動・数値が変わったか → DEVELOP/SPEC.md\n' +
     '手順は .claude/skills/develop-docs/SKILL.md(/develop-docs)。更新は同じ変更セットに含める。' +
     '不要と判断した場合はその理由を述べること。\n' +
-    '責務配置の判断を新たに下した/変えたなら .claude/skills/refactor-fixed/SKILL.md も書き換える' +
-    '(追記でなく全体を整合させる)。';
+    'プロジェクト全体・数十ファイルに及ぶ横断的な規則そのものが変わったときだけ ' +
+    '.claude/skills/refactor-fixed/SKILL.md も書き換える(追記でなく全体を整合させる)。' +
+    '2〜3モジュール間の責務調整は上の設計文書だけで足りる。';
 
   process.stdout.write(
     JSON.stringify({
