@@ -240,8 +240,9 @@ export class Game {
 
     if (!this._isPaused) this.advanceSimulation(dt);
     this.displayWindowManager.resolve(this.simulator.simTime, this.player);
-    // ポーズ中・決着後もカメラ更新は飛ばせない: 飛ばすと視点だけが絶対 ECI に取り残され、
-    // 軌道速度で遠ざかる原点(自機)から残骸が即座にフレームアウトする。
+    // ポーズ中も決着後も飛ばせない。決着後は積分が止まらないので、飛ばすと描画原点になる
+    // カメラ位置だけが絶対 ECI に取り残され、シーン全体が軌道速度で流れて即フレームアウトする。
+    // ポーズ中は積分が止まるが、カメラの旋回・ズーム・パンの入力をここで消化している。
     this.updateMapPresentation(dt);
     this.sections.enter(SECTION.pointer);
     this.handleMapPointerInput(dt);
@@ -251,12 +252,10 @@ export class Game {
   // 自機の行動 → ステージ → 積分 → 予測 → エフェクトの順に1フレーム進める。艦がいない場合は
   // その段だけを落として残りは進める(残骸・弾の epoch はどの状況でも進め続ける)。
   private advanceSimulation(dt: number): void {
-    const player = this.player;
-
     this.sections.enter(SECTION.player);
-    if (player && this.activeStage.isPlaying) {
-      this.nanWatchdog.checkPlayer('frameStart', player, this.simulator.simTime, dt, this.simulator.lastSimDt);
-      player.behave({
+    if (this.player && this.activeStage.isPlaying) {
+      this.nanWatchdog.checkPlayer('frameStart', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
+      this.player.behave({
         dt,
         input: this.input,
         simSpeed: this.simSpeedManager,
@@ -268,32 +267,32 @@ export class Game {
         entities: this.entities,
         ephemeris: this.ephemeris,
       });
-      this.entities.updatePassivePlayers(dt, player);
-      this.nanWatchdog.checkPlayer('player.behave', player, this.simulator.simTime, dt, this.simulator.lastSimDt);
-    } else if (player) {
+      this.entities.updatePassivePlayers(dt, this.player);
+      this.nanWatchdog.checkPlayer('player.behave', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
+    } else if (this.player) {
       // behave が呼ばれなくなるので、次のフレームへ持ち越してはならない連続指令を畳む。
-      player.clearTransientCommands();
+      this.player.clearTransientCommands();
     }
     this.sections.exit(SECTION.player);
 
     this.sections.enter(SECTION.stage);
-    this.activeStage.update(dt, player, this.entities, this.simulator.simTime, this.simSpeedManager);
+    this.activeStage.update(dt, this.player, this.entities, this.simulator.simTime, this.simSpeedManager);
     this.sections.exit(SECTION.stage);
-    this.nanWatchdog.checkPlayer('activeStage.update', player, this.simulator.simTime, dt, this.simulator.lastSimDt);
+    this.nanWatchdog.checkPlayer('activeStage.update', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
     this.simSpeedManager.update(this.simulator.simTime);
     // 並進・射撃・衝突と同じく、RCS command torque は物理相互作用域だけで有効。
     if (!this.simSpeedManager.canApplyAttitudeCommand) this.entities.suppressAttitudeCommandForWarp();
 
     const simDt = dt * this.simSpeedManager.simSpeed;
     this.sections.enter(SECTION.integrate);
-    this.simulator.advance(dt, simDt, player, this.activeStage, this.simSpeedManager, this.nanWatchdog);
+    this.simulator.advance(dt, simDt, this.player, this.activeStage, this.simSpeedManager, this.nanWatchdog);
     this.sections.exit(SECTION.integrate);
     // 積分後の状態でこのフレームの表示窓を確定させ、以降の消費者へ共有する。
     this.displayWindowManager.resolve(this.simulator.simTime, this.player);
     // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全エンティティを見る。
-    this.nanWatchdog.checkAll('simulator.advance', player, this.entities, this.simulator.simTime, dt, simDt);
+    this.nanWatchdog.checkAll('simulator.advance', this.player, this.entities, this.simulator.simTime, dt, simDt);
 
-    this.targeter.updateBoardMarks(dt, player, this.entities);
+    this.targeter.updateBoardMarks(dt, this.player, this.entities);
     this.activePlayers.reclaimDead();
     this.docking.checkProximity();
 
@@ -309,15 +308,13 @@ export class Game {
     this.entities.effects.update(dt, this.simulator.simTime);
     this.sections.exit(SECTION.effects);
 
-    // reclaimDead が操作対象を差し替えている場合があるので、ここは読み直した艦を見る。
-    const flown = this.player;
     this.sections.enter(SECTION.plan);
     // trackAnchor より前に置く: 最後のノードが落ちたフレームからアンカーを自機へ追従させる。
     this.guide.update(
-      flown, this.simulator.simTime, this.editor.editMode,
+      this.player, this.simulator.simTime, this.editor.editMode,
       this.ephemeris.attractorsAt(this.simulator.simTime),
     );
-    if (flown) flown.plan.trackAnchor(flown.state);
+    if (this.player) this.player.plan.trackAnchor(this.player.state);
     this.sections.exit(SECTION.plan);
   }
 
