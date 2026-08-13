@@ -65,7 +65,6 @@ export type PlayerBehaveParams = {
   readonly dt: number;
   readonly input: Input;
   readonly simSpeed: SimSpeedManager;
-  readonly dvEditActive: boolean;
   readonly activeStage: Stage;
   readonly ephemeris: Ephemeris;
 };
@@ -216,19 +215,11 @@ export class Player extends Ship {
       this.clearTransientCommands();
       return;
     }
-    const { dt, input, simSpeed, dvEditActive, activeStage, ephemeris } = params;
+    const { dt, input, simSpeed, activeStage, ephemeris } = params;
     this.handleEdgeInput(input);
     this.updateTorque(input, dt * simSpeed.simSpeed);
 
     this.fire.updateFireState(dt, input, activeStage, simSpeed, entities, ephemeris);
-
-    // ノードのΔv編集中はWASDQEをΔv編集キーとして譲り、実噴射・ラッチ判定は行わない
-    // (噴射中に編集へ入った場合に備え、表示・SFXは throttle 側で明示的に止める)。
-    if (dvEditActive) {
-      this.thrust = null;
-      this.throttle.stopThrust();
-      return;
-    }
 
     // 噴射不可のワープ倍率では、押下エッジを消費してまでラッチ判定を進める意味がない。
     if (simSpeed.canPlayerThrust) this.throttle.updateThrustLatches(input);
@@ -237,7 +228,7 @@ export class Player extends Ship {
     if (this.thrust !== null) this.invalidatePrediction();
 
     // 操作対象艦での手動並進・手動回転は 'powered' 自動実行を中断する(進行方向ホールドが
-    // 手動回転で解除されるのと同じ作法)。dvEditActive の間は上の早期 return で既に抜けている。
+    // 手動回転で解除されるのと同じ作法)。
     if (this.planExecution === 'powered'
       && (this.thrust !== null || this.throttle.hasManualRotationInput(input))) {
       this.planExecution = 'off';
