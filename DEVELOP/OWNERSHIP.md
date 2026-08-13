@@ -62,8 +62,8 @@ main.ts
     ├── FrameControls                  ... 座標系パネル。カメラ(視点)区画と軌道計画(描画基準)区画がそれぞれ
     │                                       中心・回転の2ゾーンを持ち、OverviewCamera・DisplayWindowManager.frame を書く。
     │                                       自分の状態は「カメラの基準に追随」トグル(followCamera)だけ。
-    │                                       パネル DOM は Hud.layers.panel 配下。CameraSystem・DisplayWindowManager の後、
-    │                                       PlanEditor より前に construct する(いずれも構築引数として参照を受け取るため)
+    │                                       パネル DOM は Hud.layers.panel 配下。CameraSystem の直後、PlanEditor より前に
+    │                                       construct する(PlanEditor が構築引数として参照を受け取るため)
     │   ├── AnchorZone × 2                 ... カメラ/並進ゾーン。ObjectPicker + SegmentedControl(いまいる系のクイックボタン)。ObjectPicker のポップアップは Hud.layers.popup 配下
     │   └── RotationZone × 2               ... カメラ回転/計画軌道回転ゾーン。SegmentedControl のみ
     ├── MapPicker                      ... マップ被選択物の候補列・右クリック解決・種別別プロパティ/操作の配分・開いているプロパティウィンドウ集合。
@@ -81,12 +81,11 @@ main.ts
     ├── DisplayWindowManager           ... 「どの座標系で(frame)・いつを(displayTime)見るか」の正本(表示期間・
     │                                       未来ゴーストスライダー・frame)と、1フレーム分の DisplayWindow
     │                                       ({frame, simTime, referencePeriod, duration, displayTime})・
-    │                                       重力源窓(解析天体+重力を持つ生存中の GameEntity の合流)を、current
-    │                                       ゲッターが読まれるたび遅延解決してキャッシュし、update・sync 両フェーズの
-    │                                       全消費者へ共有する。Ephemeris・EntityManager・Simulator・
-    │                                       ActivePlayerController を参照で持つ(所有しない)。Simulator・
-    │                                       ActivePlayerController の後、SimSpeedManager より前に construct する
-    │                                       (current が両者の現在値を自分で読むため)
+    │                                       重力源窓(解析天体+重力を持つ生存中の GameEntity の合流)を resolve() で
+    │                                       1回だけ確定させ、update・sync 両フェーズの全消費者へ共有する。
+    │                                       Ephemeris・EntityManager を参照で持つ(所有しない)。entities の直後に
+    │                                       construct する(entities 自身のコンストラクタが EffectsSystem の
+    │                                       生成まで終えている)
     │   └── DisplayTimePanel           ... DOM は Hud.layers.panel 配下。期間/未来位置スライダー。画面下端の帯として
     │                                       #hud-displaytime-wrap に開閉トグル(hud/dom.ts の buildCollapseToggle)と
     │                                       並べて包まれる。開閉状態はトグル対象要素の `.collapsed` クラスが正本(この
@@ -251,7 +250,7 @@ main.ts
   `stepPredicted` を呼んだ時点で2本目の `DynamicTrajectory` を `predictedTrajectory` として追加で持つ
   (§付録「正本でないもの」参照 — 未来位置のキャッシュであり、正データではない)。予測する長さ
   (horizon)は種別ごとの定数ではなく、`Predictor.update` が毎フレーム `DisplayWindowManager.current.duration`
-  (`current` ゲッターが読まれるたび遅延解決してキャッシュしたもの)から渡す引数。
+  (`resolve(simTime, player)` が update フェーズ・sync フェーズそれぞれで確定させたもの)から渡す引数。
 - `STAGE_CLASSES`(stage-dictionary.ts のモジュールスコープ、`export const`)… クラス参照(`StageClass`)の
   並びだけを持つ配列で、`Stage` インスタンスは1つも作らない。選択画面のラベル・解放条件(`isUnlocked`)・
   起動時の天体暦(静的 async `createEphemeris`)はすべて各クラスの静的宣言
@@ -326,7 +325,7 @@ main.ts
 | 保持配列の顔ぶれの世代 | `EntityManager.collectionRevision`(private `_collectionRevision` + public getter) | `addXxx`/除去のたびに増える。`all()`/`attractors()` の結合キャッシュの再構築判定に使う。`alive` が false になっただけでは増えない(除去は非自機が `cleanup` → `prune`、自機が `ActivePlayerController.reclaimDead()` で、それぞれ毎フレーム行う)。public getter は、結合配列そのものは参照が変わらないため、外から顔ぶれの変化を知る唯一の手段になる |
 | シミュレーション時刻 / 前フレームの simDt | `Simulator.simTime` / `.lastSimDt` | |
 | エンティティ側の最小イベント時刻の控え | `Simulator.cachedEventTime`(private。有効性 `cachedEventValid`、算出時の LOD `cachedEventLod`、算出時の顔ぶれの世代 `cachedEventRevision` を併せ持つ) | エンティティの締切は固定の絶対時刻なので substep ごとに引き直さず、simTime がこの時刻へ到達したとき・`EntityManager.collectionRevision` が変わったとき・`passiveWarpLod` が切り替わったときだけ全生存エンティティを走査して求め直す。ステージ側のイベント時刻は艦の現在の Δv と加速度から毎回決まるため、ここには含めず毎 substep 引く |
-| このフレームの表示窓(`DisplayWindow` = `{frame, simTime, referencePeriod, duration, displayTime}`) | `DisplayWindowManager.current`(get アクセサ、private `cached` を書く) | 読まれるたびキャッシュキー(`simulator.simTime`・`activePlayers.current`・その `state`、および `frame`/`forceCurrent`/`durationKey`/`sliderT` などの setter が増やす private `revision`)を照合し、いずれも動いていなければ前回の `cached` をそのまま返す — 動いていれば `currentOrbitPeriod()`(登録天体全体を組んで `strongestAttractor` を回す重い計算)まで走らせて組み直す。1フレームのうち最初に読むのは(ポーズ中でなければ)`advanceSimulation` 内の `Predictor.update` の引数、それ以降の `game.update`/`game.sync` の読み出しはいずれもこの1回のキャッシュを再利用するだけ |
+| このフレームの表示窓(`DisplayWindow` = `{frame, simTime, referencePeriod, duration, displayTime}`) | `DisplayWindowManager.current`(private `_current`) | `resolve(simTime, player)` で組み直す唯一の書き込み経路。内部でキャッシュキー(引数の simTime・player・player の `state`、および `frame`/`forceCurrent`/`durationKey`/`sliderT` などの setter が増やす private `revision`)を持ち、いずれも動いていなければ組み直さない — `game.update` から2回(`advanceSimulation` を飛ばした/実行した直後)、`game.sync` の先頭で1回呼ぶが、実際に `currentOrbitPeriod()`(登録天体全体を組んで `strongestAttractor` を回す重い計算)まで走るのはキャッシュキーが動いたときだけ。`Predictor.update` の horizon・`game.update` 内の各値・`sync(player)` のパネル反映はいずれもこの1個を読むだけで、それぞれが `currentOrbitPeriod()` を呼び直すことはない |
 | このフレームの重力源窓(解析天体 + 重力を持つ生存中の GameEntity の合流) | `DisplayWindowManager.attractorsAt(simTime)`(private キャッシュ、`attractorsBodies`/`attractorsDynamic`/`attractorsCache`) | `ephemeris.attractorsAt(simTime)` と `entities.attractors()` の両方の戻り値(参照)が前回と同じ simTime で一致していれば組み直さず前回の合流配列を返す。`game.update` 内の `cameraSystem.update` と `game.sync` が読む |
 | 予測ラウンドロビンのカーソル | `Predictor.cursor` | `EntityManager.all()` のインデックスとして毎フレーム進む。`tracked`/`complete`/`discarded` の3カウンタも同じインスタンスが持つが、`?perf=1` 表示専用の集計値で次フレームの挙動には影響しない |
 | ワープ段・自動ワープ目標時刻 | `SimSpeedManager` | 閾値判定(canShipAct 等)もここの getter が唯一 |
@@ -341,8 +340,7 @@ main.ts
 | 直近ノードの接近/達成通知済み | `PlanGuide`(`approachNotified` / `achievedNotified`) | 通知済みのノードそのものへの参照。編集のたびノードは別インスタンスへ置き換わるので、同一性比較がそのまま「同じノードについて通知済みか」の判定になる |
 | 予測表示期間の選択(`durationKey`)・任意期間の秒数(`customDurationSec`)・未来ゴーストスライダー(`sliderT`)・未来表示の禁止(`forceCurrent`) | `DisplayWindowManager` | いずれも private(`forceCurrent` のみ get/set アクセサで外部公開)。`forceCurrent` に true をセットすると `sliderT` も 0 へ戻す。期間の切替(`durationKey` 変更、または任意期間の確定)でも同様に `sliderT` を 0 へ戻す |
 | 未来表示(計画折れ線・予測軌道線・交点マーカー)を描く座標系(`frame`) | `DisplayWindowManager` | `OverviewCamera.cameraFrame`(視点固定座標系)とは別の正本。get/set アクセサ(`frame`)で公開。書き換えは `FrameControls` の「軌道計画(描画基準)」区画の中心/回転ゾーン(`planCenterZone`/`planRotationZone`)のみ、いずれも `Ephemeris.frameOf(center, rotatingWith)` 経由。同区画の「カメラの基準に追随」トグル(`followCamera`、既定 on)が on の間は `setFocus` によるカメラ側フォーカス移動もここへ連動する |
-| 予測到達割合(`predictionRatio`) | `DisplayWindowManager` | private な導出値で、外部からの書き込みはない。`sync()` が呼ばれるたび private `predictionCoverageRatio(w)` が `activePlayers.current` の `predictedTrajectory.state.t` と、その回に読んだ `current`(simTime, duration)から自分で求め直す。ジャンプ入力(DOM イベント、フレーム外)が `sliderT` を逆算する際の表示期間も、控えを持たず `current.duration` をその場で読む |
-| 直近 `render()` で受け取った表示期間(`currentDuration`) | `DisplayTimePanel` | 任意期間フォームと T+ ジャンプフォームを開くとき(いずれも DOM イベント、フレーム外)に初期値・クランプ範囲として読む値。パネル自身の表示状態であって表示窓の正本ではない |
+| 予測到達割合(`predictionRatio`)・直近 `sync()` で受け取った表示期間(`lastDuration`) | `DisplayWindowManager` | いずれも private な導出値。`predictionRatio` は `sync(player)` が呼ばれるたび private `predictionCoverageRatio(player)` が自機の `predictedTrajectory.state.t` と `current`(simTime, duration)から自分で求め直す(外部からの書き込みはない)。`lastDuration` は直近の `resolve()` 呼び出しが確定させた表示期間を憶えておくだけの値で、ジャンプ入力(DOM イベント、フレーム外)が `sliderT` を逆算する際にだけ参照される |
 | マップ視点(注視点相対オフセット・パン・上方向)・座標系(cameraFrame)・フォーカス(FocusTarget)・Viewpoint | `OverviewCamera` | `viewpoint: Viewpoint` は `CombatCameraSystem` と同じ形。`CameraSystem` はこの `viewpoint` を読むだけで自分では持たない。フォーカスは `camera/focus-target.ts` の `FocusTarget`(`{kind:'object', id}` または `{kind:'point', frame, point}`)で、`{kind:'object'}` が指す実位置は `OverviewCamera` が持たず、`update` の引数(`MapPicker.refresh()`)から毎フレーム引き直す。書き換えは `setFocusTarget`/`setCameraRotation` のみ、いずれも `FrameControls` の「カメラ(視点)」区画の中心/回転ゾーン(`cameraCenterZone`/`cameraRotationZone`)から呼ばれる |
 | 戦闘視点(Viewpoint: position/lookTarget/up/fovDeg/aspect)・照準ズーム中か(zoomActive) | `CombatCameraSystem` | rot(クオータニオン)/dist・姿勢追従フラグ(camFollowAttitude)は内部の `ChaseCamera` が持つが、追従対象そのものは保持せず、`CameraSystem.update` から渡る `player` を毎フレーム `chaseCamera.update`/`toggleFollowAttitude` の引数として転送するだけ。`[G]`(`K.followAttitudeToggle`)を読んで `chaseCamera.toggleFollowAttitude(player)` を呼ぶのもこのクラス自身の `update`(`CameraSystem` は読まない)。zoomActive はこのクラス自身の `update` が `Input` から読んで保持する |
 | 現在のビュー(combat/map/dock) | `ViewManager`(private `worldView`/`isDockOpen`) | 遷移は基本的に `setView()` のみ(影響先 `CameraSystem.overviewMode` / `PlanEditor.editMode` / `DisplayWindowManager.forceCurrent` / タッチUI を一斉に切り替える)だが、`leaveDock()` だけは例外で、ドックを閉じて背後のビューへ戻るだけの操作を `setView()` を経由せず `isDockOpen` を直接倒して行う(`worldView` は動かさないので `canEnter` チェックも不要)。`worldView` が背後の 3D 側ビュー、`isDockOpen` がドックの開閉を持ち、`current` はこの2つから導出する |
