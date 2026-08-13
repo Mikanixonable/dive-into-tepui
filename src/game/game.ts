@@ -345,7 +345,7 @@ export class Game {
     const overviewMode = this.cameraSystem.overviewMode;
     // 表示・選択可否はこのフレームの update フェーズで MapPicker が確定させたものを読む
     // (選べる対象と描かれる対象が同じ判定から出るようにする)。
-    const visibilityPolicy = overviewMode ? this.mapPicker.visibilityPolicy : null;
+    const visibilityPolicy = this.mapPicker.visibilityPolicy;
     const combatTargets = this.entities.getCombatTargets(player);
 
     this._environment.sync(

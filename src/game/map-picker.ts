@@ -75,7 +75,7 @@ export class MapPicker {
   // このフレームの被選択物候補。refresh の後に読む。
   get pickables(): readonly MapPickable[] { return this.items; }
 
-  // このフレームの表示・選択可否。refresh の後に読む(refresh 前は null)。
+  // このフレームの表示・選択可否。マップビュー以外では null。
   get visibilityPolicy(): MapVisibilityPolicy | null { return this._visibilityPolicy; }
 
   // Docking は MapPicker より後に生成されるので、生成後に登録する。
@@ -124,7 +124,10 @@ export class MapPicker {
   // 非表示にした対象を選べない状態にする。物理積分の後に呼ぶ: 積分前に組むと、同フレームで
   // sync されるメッシュと座標が1ステップずれる。
   refresh(displayWindow: DisplayWindow): void {
-    if (!this.cameraSystem.overviewMode) return;
+    if (!this.cameraSystem.overviewMode) {
+      this._visibilityPolicy = null;
+      return;
+    }
     const { simTime, displayTime } = displayWindow;
     this.lastSimTime = simTime;
     const focusId = focusTargetId(this.cameraSystem.overviewCamera.focus);
