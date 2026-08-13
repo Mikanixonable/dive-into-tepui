@@ -123,7 +123,6 @@ export class Game {
       initialSave ? { saved: initialSave } : { playerCount: stageClass.initialPlayerCount },
     );
     this.displayWindowManager = new DisplayWindowManager(this._hud.layers.panel, this.ephemeris, this.entities);
-    const initialPlayer = this.entities.initialActivePlayer;
 
     this.cameraSystem = new CameraSystem(
       this._hud,
@@ -139,7 +138,7 @@ export class Game {
     this.navball = new Navball(this._hud.layers.panel);
     this._environment = new EnvironmentScene(this._scene, this.ephemeris, initialSave?.earthSpinPhase0);
     this.activePlayers = new ActivePlayerController(
-      initialPlayer, this.entities, this.cameraSystem, this.targeter, this.navTarget, this._sfx,
+      initialSave?.activePlayerId, this.entities, this.cameraSystem, this.targeter, this.navTarget, this._sfx,
     );
     this.editor = new PlanEditor(
       this._hud,
