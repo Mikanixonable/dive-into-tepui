@@ -85,10 +85,10 @@ export class PlanEditor {
 
   onFocusNode: ((state: KinematicState) => void) | null = null;
 
-  private ship: Player | null;
+  private activePlayer: Player | null;
   // アクティブ艦自身の計画を編集する。艦は自分の計画を所有し続けるので、艦を切り替えると
   // 編集対象もその艦の計画へ切り替わる。艦がいなければ編集する計画も無い。
-  get plan(): Plan | null { return this.ship?.plan ?? null; }
+  get plan(): Plan | null { return this.activePlayer?.plan ?? null; }
 
   readonly planDisplay: PlanDisplay;
   private readonly gizmo3d: PlanGizmo3D;
@@ -99,6 +99,9 @@ export class PlanEditor {
   private _editMode = false;
   get editMode(): boolean { return this._editMode; }
   setMapMode(open: boolean): void { this._editMode = open; }
+
+  // Δv 編集中かどうか。編集モードで、かつノードを1つ選択している間だけ真。
+  get dvEditActive(): boolean { return this.editMode && this.selectedNodeIdx !== null; }
 
   readonly nodeGizmo: NodeGizmo;
   // ノード以外の計画軌道上を右クリックしたときのメニュー。
@@ -127,7 +130,7 @@ export class PlanEditor {
     ship: Player | null,
     private readonly displayDuration: DisplayDurationSource,
   ) {
-    this.ship = ship;
+    this.activePlayer = ship;
     this.planDisplay = new PlanDisplay(scene, markerManager, ephemeris, displayDuration);
     this.nodeGizmo = new NodeGizmo(this._hud.layers.marker, this._hud.layers.popup);
     this.orbitMenu = new ContextMenu<KinematicState, MenuAction>(this._hud.layers.popup);
@@ -209,7 +212,7 @@ export class PlanEditor {
     };
     g.onNodeContextMenu = (clientX, clientY) => { this.handleNodeRightClick(clientX, clientY); };
     g.onAxisDrag = (axis, sign, deltaPx) => {
-      this.applyAxisDrag(axis, sign, deltaPx, this.ship?.fineAttitude ?? false);
+      this.applyAxisDrag(axis, sign, deltaPx, this.activePlayer?.fineAttitude ?? false);
     };
     // 指定ノードの時刻まで自動ワープを開始する
     g.onMenuWarpTo = (idx) => {
@@ -230,7 +233,7 @@ export class PlanEditor {
   // 編集対象をアクティブ艦の切替に合わせて差し替える。選択中ノード・開いたメニューは
   // 前の艦の計画を指しているので破棄する。
   setActivePlayer(ship: Player | null): void {
-    this.ship = ship;
+    this.activePlayer = ship;
     this.selectedNodeIdx = null;
     this.closeMenu();
   }
@@ -265,7 +268,7 @@ export class PlanEditor {
   // マップ上のクリック・右クリックをノード選択/配置とコンテキストメニューへ振り分ける。
   // 艦がいなければ計画そのものが無いので、クリックはここで捨てる。
   handleMapPointer(input: Input): void {
-    if (this.ship === null) return;
+    if (this.activePlayer === null) return;
     input.takeRightClicks((p) => this.handleNodeRightClick(p.x, p.y));
     input.takeClicks((p) => {
       this.handleMapClick(p.x, p.y);
@@ -656,7 +659,7 @@ export class PlanEditor {
 
   // WASDQE キー・長押しボタン・Δv アームのラッチドラッグから選択中ノードの Δv を加算する。
   updateEditing(dt: number, input: Input): void {
-    const fine = this.ship?.fineAttitude ?? false;
+    const fine = this.activePlayer?.fineAttitude ?? false;
     const b = this.dvButtons.buttons;
     this.applyHeldDv(0, 1, input.down(K.dvPrograde) || b.pro.isHeld, dt, fine);
     this.applyHeldDv(0, -1, input.down(K.dvRetrograde) || b.ret.isHeld, dt, fine);
@@ -743,7 +746,7 @@ export class PlanEditor {
   // 操作艦の赤道交点マーカーを、計画の最終区間(=これから乗る軌道)を代表状態として求め直す。
   // 区間の折れ線も渡すので、交点は解析楕円ではなく実際に描かれている積分線の上に載る。
   private updateEquatorNodes(displayWindow: DisplayWindow): void {
-    const ship = this.ship;
+    const ship = this.activePlayer;
     if (!ship) return;
     const segment = this.planDisplay.path.finalSegment();
     ship.ensureEquatorNodes(this.markerManager).update(
