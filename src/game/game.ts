@@ -467,6 +467,10 @@ export class Game {
     this.entities.applyVisibility(
       visibilityPolicy, player, overviewMode, this.floatingOrigin, this.cameraSystem.activeCamera, attractors,
     );
+    this.entities.syncMarkers(
+      project, this.cameraSystem.activeCameraScale, displayTime, overviewMode,
+      player?.state.r ?? null, visibilityPolicy,
+    );
 
     this.entities.effects.sync(this.floatingOrigin, this.cameraSystem.activeCamera);
 

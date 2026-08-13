@@ -5,6 +5,9 @@ import * as C from '../const';
 import { buildAmmo } from '../../render/ships';
 import { GameEntity } from './game-entity';
 import { EntityIdAllocator } from './entity-id';
+import { EntityMarker } from '../marker/entity-marker';
+import { ENTITY_GLYPH } from '../marker/marker-glyphs';
+import type { MarkerManager } from '../marker/marker-manager';
 import { AmmoSaveData } from '../save-data';
 import { v3 } from '../../physics/vec3';
 import { kinematicState } from '../../physics/kinematic-state';
@@ -24,7 +27,7 @@ export class Ammo extends GameEntity {
   readonly predictsFuture = true;
 
   // 補給メッシュを組み立て、質量と衝突半径を設定する。id 省略時はここで一意に発番する。
-  constructor(init: AmmoInit, scene?: THREE.Scene) {
+  constructor(init: AmmoInit, scene: THREE.Scene, markerManager: MarkerManager) {
     const { state, att, id } = 'saved' in init
       ? {
         state: kinematicState(init.simTime, v3(init.saved.r.x, init.saved.r.y, init.saved.r.z), v3(init.saved.v.x, init.saved.v.y, init.saved.v.z)),
@@ -33,9 +36,11 @@ export class Ammo extends GameEntity {
       }
       : { state: init.state, att: init.att, id: init.id };
     super(state, buildAmmo(), scene, att, idAllocator.next(id));
+    this.name = '弾薬';
     this.mass = 50;
     this.radius = C.AMMO_PHYS_RADIUS;
     this.collides = true;
+    this.marker = new EntityMarker(this, markerManager, 'mk-ammo', ENTITY_GLYPH.ammo);
   }
 
   // メッシュのマテリアルも解放する。

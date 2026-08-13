@@ -171,7 +171,7 @@ export class MapPicker {
     for (const ammo of this.entities.ammos) {
       if (!ammo.alive || (this.cameraSystem.overviewMode && !visibilityPolicy.entity('ammo').pickable)) continue;
       const pos = ammo.displayState(displayTime)?.r;
-      if (pos) this.addCandidate(ammo.id, '弾薬', pos, 'ammo');
+      if (pos) this.addCandidate(ammo.id, ammo.name, pos, 'ammo');
     }
     for (const base of this.entities.bases) {
       if (!base.alive || (this.cameraSystem.overviewMode && !visibilityPolicy.entity('base').pickable)) continue;
