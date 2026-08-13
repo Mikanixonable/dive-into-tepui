@@ -173,7 +173,16 @@ export const LOGISTICS_MAX_DIST = 1250; // 同上限 [m]
 export const LOGISTICS_DESPAWN_DIST = 50000; // これ以上自機から離れた補給マガジンをデスポーンさせる距離 [m]
 export const TARGET_LOCK_PICK_PX_SQ = 600; // 右クリックによるターゲット固定のヒット判定半径の2乗 [px^2](~24px半径)
 export const MAP_PICK_PX_SQ = 600; // マップ上の被選択物(MapPickable)の右クリック判定半径の2乗 [px^2]
+// pointer:coarse(タッチ等)向けの上記2定数の緩和版。~44px半径。
+export const TARGET_LOCK_PICK_PX_SQ_COARSE = 1936;
+export const MAP_PICK_PX_SQ_COARSE = 1936;
 export const CLICK_MOVE_THRESHOLD = 6; // これ未満の累積移動量ならドラッグではなくクリック扱い [px]
+// 右ドラッグ後でもクリック扱いを許す、意図的に CLICK_MOVE_THRESHOLD より緩い閾値。
+export const RIGHT_CLICK_MOVE_THRESHOLD = 50; // [px]
+export const TOUCH_LONG_PRESS_MS = 500; // タッチの長押しを右クリックとみなすまでの静止時間 [ms]
+export const TOUCH_LONG_PRESS_FEEDBACK_MS = 300; // 長押し成立前に視覚フィードバックを出すまでの時間 [ms]
+export const TOUCH_DOUBLE_TAP_MS = 400; // タッチの連続タップをダブルタップとみなす時間差の上限 [ms]
+export const TOUCH_DOUBLE_TAP_PX = 24; // 同上、タップ間の許容移動距離 [px]
 export const RELOAD_TIME = 1.0; // 手動/自動リロード(バレル交換)のクールダウン [s]
 export const MAGS_PER_BARREL = 3; // バレル交換までに消費できるマガジン数
 export const BELT_MAX_VISIBLE = 18; // ベルト描画の最大リンク数
@@ -515,10 +524,9 @@ export const PLASMA_SPREAD_DEG = 0.05; // プラズマ弾の散布角 [deg]
 
 // 色管理 (Colors)
 // ゲーム世界(方位マーカー・演出・軌道線・船体)の色のみ。UI の色は theme.ts が持つ。
+// 軌道3軸(prograde/normal/radial)だけは theme.ts の AXIS_* を使う。Δv 編集の 3D ギズモと
+// 方位マーカーは同じ軸を指すので、同じ軸に二系統の色を持たせない。
 export const COLOR_MARKER_BORESIGHT = '#dfe3e8';
-export const COLOR_MARKER_PROGRADE = '#cfd6dd';
-export const COLOR_MARKER_NORMAL = '#d08cff';
-export const COLOR_MARKER_RADIAL = '#7de8ff';
 export const COLOR_MARKER_TGTDIR = '#ff7ab0';
 export const COLOR_MARKER_NODE = '#8b93a0';
 export const COLOR_MARKER_BOARDPASS = '#ffffff';
