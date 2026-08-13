@@ -9,11 +9,17 @@ import type { SaveSlotMeta, SnapshotMeta } from '../save-data';
 import { fmtDist, fmtSpeed, fmtTime, fmtDateTime } from './utils';
 import { celestialBodyName } from './frame-labels';
 import type { ModalController } from './modal-controller';
+import { STAGE_DEFINITIONS } from '../stages/stage-dictionary';
 
 // スロット名・スナップショット名はプレイヤーの入力と取り込んだファイル由来なので、
 // innerHTML へ差し込む前に必ずこれを通す。
 function esc(text: string): string {
   return text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
+}
+
+// ステージ id を選択画面と同じ表示名にする。登録の無い id はそのまま出す。
+function stageLabel(stageId: string): string {
+  return STAGE_DEFINITIONS.find((s) => s.id === stageId)?.selectLabel ?? stageId;
 }
 
 // 数値であるはずのメタ項目。取り込んだファイルでは欠けていることがあり、そのまま
@@ -124,7 +130,7 @@ export class SaveBrowser {
       <div class="sb-slot-row ${viewed ? 'viewed' : ''} ${active ? 'active' : ''}" data-slot-id="${s.id}">
         <div class="sb-slot-info">
           <span class="sb-slot-name">${esc(s.name)}${active ? ' ▶' : ''}</span>
-          <span class="sb-slot-meta">${s.lastStageId === '' ? '未プレイ' : s.mode === 'stage' ? 'ステージ' : 'クリエイティブ'} / ${fmtDateTime(s.lastPlayedAtReal / 1000)} / ${totalSnapshots}件</span>
+          <span class="sb-slot-meta">${s.lastStageId === '' ? '未プレイ' : esc(stageLabel(s.lastStageId))} / ${fmtDateTime(s.lastPlayedAtReal / 1000)} / ${totalSnapshots}件</span>
         </div>
         <div class="sb-slot-actions">
           <button class="sb-btn sb-btn-sm" data-act="rename" data-slot-id="${s.id}" title="名前変更">✎</button>
@@ -146,7 +152,7 @@ export class SaveBrowser {
 
     const tabs = slot.stages.length <= 1 ? '' : `
       <div class="sb-stage-tabs">
-        ${slot.stages.map((h) => `<button class="sb-tab-btn ${h.stageId === stageId ? 'active' : ''}" data-stage-id="${esc(h.stageId)}">${esc(h.stageId)}</button>`).join('')}
+        ${slot.stages.map((h) => `<button class="sb-tab-btn ${h.stageId === stageId ? 'active' : ''}" data-stage-id="${esc(h.stageId)}">${esc(stageLabel(h.stageId))}</button>`).join('')}
       </div>
     `;
 

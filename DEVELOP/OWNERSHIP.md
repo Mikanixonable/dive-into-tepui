@@ -101,15 +101,19 @@ main.ts
     │                                       注入される(private フィールドとして保持)。Stage への参照は持たない
     ├── ViewBadge                      ... DOM は Hud.layers.notify 配下。ViewManager を参照するだけで自身は状態を持たない
     │   └── ContextMenu<true, ViewId>  ... DOM は Hud.layers.popup 配下
-    ├── Stage (activeStage)            ... game.ts が呼ぶ stage-dictionary.ts の buildStage() が生成する(launch.mode==='stage'
-    │                                       なら内部で initStage() を、'creative' なら CreativeStage を直接 new する分岐は
-    │                                       buildStage() 自身が持つ — §1 末尾の補足参照)。Stage クラス自身が持つ静的宣言
-    │                                       (initialPlayerCount・showsStatusInOverview・ephemerisConfig)は buildStage() 経由で
-    │                                       Game の構築に反映される。freeProcurement/executesPlans は
+    ├── Stage (activeStage)            ... game.ts が呼ぶ stage-dictionary.ts の buildStage(stageId, player, entities,
+    │                                       ..., activePlayers, saved?) が生成する — 分岐のない1本の関数(StageId から
+    │                                       STAGE_CLASSES を引いて new し、setup()/init() を同じ手順で走らせるだけ。
+    │                                       CREATIVE も他の StageId とまったく同じ経路を通る)。Stage クラス自身が持つ
+    │                                       静的宣言(initialPlayerCount・showsStatusInOverview・ephemerisConfig)は
+    │                                       buildStage() 経由で Game の構築に反映される。freeProcurement/executesPlans は
     │                                       インスタンス側の既定 false なフラグ、authoring は既定 null の ObjectAuthoring
     │                                       (配置・複製の口)。CreativeStage だけが両方を有効にし、authoring は自身を返す。
-    │                                       喪失した自機の回収は ActivePlayerController.reclaimDead() が全ステージ共通で
-    │                                       毎フレーム無条件に行うので、ここに対応するフラグはない
+    │                                       setup() は ActivePlayerController も受け取り(protected _activePlayers)、
+    │                                       CreativeStage.placeObject は艦の配置後にこれへ claimIfNone(ship) を呼び、
+    │                                       操作対象が居なければ配置した艦を操作対象にする。喪失した自機の回収は
+    │                                       ActivePlayerController.reclaimDead() が全ステージ共通で毎フレーム無条件に
+    │                                       行うので、ここに対応するフラグはない
     │   ├── ScoreCounter
     │   ├── Logistics                  ... 補給の投入判断
     │   ├── StageStatusPanel           ... DOM は Hud.layers.panel 配下。HP/補助メッセージ/撃墜数
@@ -221,11 +225,12 @@ main.ts
   (`resolve(simTime, player)` が update フェーズ・sync フェーズそれぞれで確定させたもの)から渡す引数。
 - `STAGE_DEFINITIONS`(stage-dictionary.ts のモジュールスコープ)… 選択画面のラベル・解放条件を読む
   ためだけの `Stage` インスタンス列。`setup()`/`init()` は呼ばれず、プレイに使う `activeStage` とは別物。
-  `CreativeStage` はここに含まれない(選択画面のタブには出ない)。`game.ts` は `stage-dictionary.ts` の
-  `buildStage()` を呼ぶだけで、`launch.mode === 'creative'` のとき `initStage()` を経由せず
-  `CreativeStage` を直接 `new` し `setup()`/`init()` を自分で順に呼ぶ分岐は `buildStage()` 自身が持つ
-  (`setup()` は `CreativeStage` 自身が override して `ShipPlacerPanel` の組み立てまで行う)。
-- `launch-select.ts` の `UnlockManager` … 選択画面用に別途 `new` される。正本は localStorage なので
+  `CreativeStage` も `STAGE_CLASSES` 末尾の一員としてここに含まれ、選択画面のクリエイティブモード
+  タブに CREATIVE として出る(タブは各ステージの `selectGroup` の初出順に組まれる — `stage-select.ts`
+  参照)。`game.ts` は `stage-dictionary.ts` の `buildStage(stageId, ...)` を呼ぶだけで、CREATIVE を含め
+  どの `StageId` でも分岐は無い(`setup()` は `CreativeStage` 自身が override して `ShipPlacerPanel` の
+  組み立てまで行う)。
+- `stage-select.ts` の `UnlockManager` … 選択画面用に別途 `new` される。正本は localStorage なので
   Game 側のインスタンスと状態を共有する必要がない。
 
 ---
