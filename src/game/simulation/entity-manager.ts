@@ -17,7 +17,7 @@ import { Player } from '../player/player';
 import type { Stage } from '../stages/stage';
 import type { CombatTarget } from '../targeter';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
-import type { CameraSystem } from '../camera/camera-system';
+import type { CameraSystem, ProjectFn } from '../camera/camera-system';
 import type { Ephemeris } from '../../physics/ephemeris';
 import type { DisplayWindow } from '../display-window-manager';
 import type { GameSaveData } from '../save-data';
@@ -161,10 +161,13 @@ export class EntityManager {
   }
 
   // 自機を取り除くが破棄はしない(基地への収容など、後で addPlayer で復帰させる場合)。
+  // 配列から外れると毎フレームの同期が届かなくなるので、マーカーはここで畳む。
   parkPlayer(player: Player): void {
     const i = this.players.indexOf(player);
     if (i < 0) return;
     this.players.splice(i, 1);
+    player.equatorNodes?.dispose();
+    player.equatorNodes = null;
     this.invalidateCaches();
   }
 
@@ -375,6 +378,19 @@ export class EntityManager {
       base.syncOrbitLine(overviewMode, fo, camera, attractors);
       base.orbitLine.setDisplayEnabled(!overviewMode || (visibilityPolicy?.entity('base').orbit ?? false));
     }
+  }
+
+  // 全基地の赤道交点マーカーを求め直す。基地は常設の軌道構造物で、接近・ドッキングは
+  // 軌道面合わせそのものなので、選択の有無に関わらず常に出す。
+  updateBaseEquatorNodes(displayWindow: DisplayWindow, ephemeris: Ephemeris): void {
+    for (const base of this.bases) {
+      if (base.alive) base.equatorNodes?.update(displayWindow.frame, displayWindow.displayTime, ephemeris);
+    }
+  }
+
+  // このフレームに求まった赤道交点マーカーを置く。求め直されなかったものは自動的に隠れる。
+  syncEquatorNodes(project: ProjectFn, show: boolean, cameraPos: Vec3): void {
+    for (const e of this.all()) e.equatorNodes?.sync(project, show, cameraPos);
   }
 
   // 自機以外のメッシュを displayTime 時点の状態に同期する。自機はエフェクト・ベルト・
