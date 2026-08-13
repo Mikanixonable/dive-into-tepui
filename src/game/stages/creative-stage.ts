@@ -46,9 +46,6 @@ export class CreativeStage extends Stage {
   readonly hiddenFromSelect = true;
   readonly selectKeys: string[] = [];
   readonly initialAmmo = { mags: 0, rounds: 0 };
-  // CREATIVE_MAX_SHIPS の枠を空けるため、喪失艦は即座に回収する(他のステージは1隻固定なので
-  // 回収の必要が無く、既定の false のまま撃墜演出用に残る)。
-  readonly prunesDeadPlayers = true;
   readonly freeProcurement = true;
   readonly executesPlans = true;
   readonly authoring: ObjectAuthoring = this;

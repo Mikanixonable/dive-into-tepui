@@ -93,6 +93,12 @@ export class Targeter {
     this.targetSelectIndex = -1;
   }
 
+  // 取り除かれた対象への参照を落とす。選定していなければ何もしない。
+  clearIfTargeting(entity: CombatTarget): void {
+    if (this.target === entity) this.target = null;
+    if (this.secondaryTarget === entity) this.secondaryTarget = null;
+  }
+
   // 右クリックによるターゲット選択メニューを扱う。オート選定は行わない。
   updateCombatTargeting(player: Player, targets: CombatTarget[], input: Input, project: ProjectFn): void {
     this.handleTargetSelectKey(input, targets, project);

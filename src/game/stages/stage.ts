@@ -52,10 +52,6 @@ export abstract class Stage {
   readonly selectLockedSub?: string;
   // タイトルのステージ選択ボタン列に並べない。
   readonly hiddenFromSelect: boolean = false;
-  // 喪失した自機を即座に配列・操作対象から回収するか。既定では回収しない(喪失艦は撃墜演出・
-  // 追従カメラの基準として残る)。艦の保持数に上限があり埋まった枠を空ける必要があるステージ
-  // (CreativeStage)だけ true で上書きする。
-  readonly prunesDeadPlayers: boolean = false;
   // ドックでの購入・修理・燃料補給を無償にするか。既定では通貨を消費する。
   readonly freeProcurement: boolean = false;
   // 艦の軌道計画を PlanExecutor / 瞬間移動で実行させるか。既定では実行しない。
