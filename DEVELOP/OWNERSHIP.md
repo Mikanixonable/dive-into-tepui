@@ -32,8 +32,10 @@ main.ts
 │   │                       自分がどの層の子になるかを選ぶだけ。層内の前後は DOM 順、最前面化は bringToFront() のみ
 │   └── HudPanels        (buildHudDom が作った要素索引を共有)
 ├── Sfx                  ... 同上
-├── SettingsPanel        ... 同上。DOM は Hud.layers.system 配下。onSettingsOpenChange を Game.pause()/resume() へ配線。onOpenSnapshots / onOpenPerfWindow は main.ts が settingsPanel.toggle(false) + saveBrowser.open() / perf.open() へ配線
-├── SaveBrowser            ... Game 自身を構築引数に取るため Game より後に main.ts が new する。Game 側はこれへの参照を一切持たない(`open()`/`close()` が `game.pause()`/`resume()` を直接呼ぶだけ)。DOM は Hud.layers.system 配下。`onLoadSnapshot` コールバックを main.ts が配線し、スナップショットIDを sessionStorage(`tepui.pendingSnapshot`)へ書いてページを再読込する
+├── SettingsPanel        ... 同上。DOM は Hud.layers.system 配下。onSettingsOpenChange を Game.pause()/resume() へ配線。onOpenSnapshots / onOpenPerfWindow は main.ts が settingsPanel.toggle(false) + saveBrowser.open() / perf.open() へ配線。onQuitToTitle は launcher.returnToTitle() への一行委譲
+├── Launcher               ... 「Game インスタンスを捨てて次の周回へ移る」判断(再出撃・タイトル復帰・スナップショットのロード・スロット切替)の唯一の持ち主。`location.*` を呼ぶのはこのクラスだけで、game/ 配下は一切呼ばない。initHud() の直後・ステージ解決の前に main.ts が new する(UnlockManager・SaveSlots・SnapshotService・Sfx を参照で持つ)。`resolveStage()` が起動する StageClass を、`initialSaveFor(stageClass)` が initialSave を、`noteLaunched(stageClass)`(Game 構築後に呼ぶ)がスロットへの起動記録と restart() 用のステージ記憶を担う。rAF ループが `snapshotControls.handleInput` の直後に `handleInput(game.input, game)` を、`autoSave.update` の直後に `update(game)` を呼ぶ
+│   └── ResultScreen        ... `#hud-end`(hud/dom.ts が Hud.layers.system 配下へ静的に構築)の表示のみを担う。Launcher が自身(`this`、RunTransitions)を渡してコンストラクタで new する — 「再出撃」「タイトル画面に戻る」の2ボタンはそのまま launcher.restart()/returnToTitle() を呼ぶ
+├── SaveBrowser            ... Game 自身を構築引数に取るため Game より後に main.ts が new する。Game 側はこれへの参照を一切持たない(`open()`/`close()` が `game.pause()`/`resume()` を直接呼ぶだけ)。DOM は Hud.layers.system 配下。`onLoadSnapshot`/`onSlotSwitched` コールバックを main.ts が launcher.loadSnapshot(id)/launcher.switchSlot() へ配線する
 ├── SnapshotControls       ... Hud・SettingsPanel・SaveBrowser・SnapshotService を参照で持つ。`[F5]`/`[F9]`/一覧表示中の `[Esc]` を扱う。main.ts が SaveBrowser 構築後に new し、rAF ループが `game.update(dt)` の直後に `handleInput(game.input, game)` を呼ぶ(Game 側が消費しなかった入力エッジだけを見る)
 ├── AutoSave               ... SnapshotService を参照で持つ。startAnimationLoop() へその場で渡すだけで main() 側は変数に束縛しない
 ├── FrameSections        ... update の区間別所要時間の集計器(frame-sections.ts)。main.ts が new し、Game(コンストラクタ引数)・PerfMeter(コンストラクタ引数)へ参照で渡す。Game はさらに Simulator のコンストラクタ引数として同じ参照を渡す。rAF ループが game.update(dt) を beginFrame()/endFrame() で挟む。区間の境界(enter/exit)を打つのは Game.update / Simulator.advance だけで、累計を持つのはこのオブジェクト。enabled の書き手は PerfMeter.open()/close() のみ
@@ -239,8 +241,8 @@ main.ts
   から読む(`stage.ts` の `StageClass` インターフェース参照)。`CreativeStage` も `STAGE_CLASSES` 末尾の
   一員としてここに含まれ、選択画面のクリエイティブモードタブに CREATIVE として出る(タブは各ステージの
   静的 `selectGroup` の初出順に組まれる — `stage-select.ts` 参照)。ID からクラスを引くのは
-  `findStageClass`(同モジュール)の責務で、`main.ts`(`resolveLaunchStage`/`resumableStageClass`)・
-  `unlock-manager.ts`・`hud/save-browser.ts` がこれを使う。`game.ts`(`Game` のコンストラクタ)は解決済みの
+  `findStageClass`(同モジュール)の責務で、`launcher.ts`(`Launcher.resolveStage`/モジュール private な
+  `resumableStageClass`)・`unlock-manager.ts`・`hud/save-browser.ts` がこれを使う。`game.ts`(`Game` のコンストラクタ)は解決済みの
   `StageClass` を `new stageClass(saved, ...deps)` するだけで、CREATIVE を含め分岐は無い。実行中の
   `activeStage`(インスタンス)自身は `Stage.stageClass` ゲッター(`this.constructor` を返す)で自身の
   クラスへ戻れ、`Stage.id`(=`stageClass.id`)や `ViewBadge` が表示するラベル
@@ -257,7 +259,7 @@ main.ts
 | 対象 | 所有者 | 参照する側 |
 | --- | --- | --- |
 | `THREE.Scene` / `WebGPURenderer` | `GameScene`(main.ts) | Game・各描画物を持つクラス |
-| `Hud` / `Sfx` | main.ts | Game(コンストラクタ引数で受け取り)経由でほぼ全サブシステム(hud/sfx は必ず対で注入する方針) |
+| `Hud` / `Sfx` | main.ts | Game(コンストラクタ引数で受け取り)経由でほぼ全サブシステム(hud/sfx は必ず対で注入する方針)。`Sfx` は `Launcher`(コンストラクタ引数、`update` が決着の瞬間に `setThrust(false)`/`stopBgm()` を呼ぶ)へも直接渡る |
 | `SettingsPanel` | main.ts | Game(`[Esc]` で `toggle()` を呼ぶだけ。開閉の一時停止反映は main.ts 側の配線)・MapPicker(空域右クリックの「設定メニューを開く」項目、`Targeter.emptySpaceMenu` と同じパターン) |
 | `MarkerManager` | Game | マーカーを出す全モジュール(PlayerMarkers・Targeter・NavTarget・Logistics・FocusMarkers・PlanGuide・PlanDisplay)。`combatMarkers`/`leadMarkers` は参照共有ではなく MarkerManager 自身の子(§1 参照) |
 | `Ephemeris` | Game | EnvironmentScene・Simulator・OverviewCamera・FocusMarkers・NavTarget・PlanEditor(→PlanDisplay)・DisplayWindowManager(コンストラクタ引数) |
@@ -271,9 +273,9 @@ main.ts
 | `FrameControls` | Game | PlanEditor(構築引数。ノードメニューの「フォーカス」項目で `frameControls.setFocus(...)` を直接呼ぶ) |
 | `EffectsSystem`(`EntityManager.effects`) | EntityManager | Player・PlayerFire・Enemy・Stage(`Game` は `entities.effects` 経由でのみ触れる。所有権は持たない) |
 | `Player` / `Simulator` / `EntityManager` / `Stage` | Game | 毎フレームの引数として相互に渡される |
-| `UnlockManager` | main.ts | ステージセレクト画面と、各Stage（クリア後画面判定のため） |
-| `SnapshotService` | main.ts | main.ts 自身(起動時に `load()` して `initialSave` を組む)・AutoSave(コンストラクタ引数)・SaveBrowser(コンストラクタ引数)・SnapshotControls(コンストラクタ引数、`[F5]` から `capture` を呼ぶ)。Game はこれへの参照を持たない |
-| `SaveSlots` | main.ts | SnapshotService(コンストラクタ引数)・SaveBrowser(コンストラクタ引数) |
+| `UnlockManager` | main.ts | Launcher(コンストラクタ引数、`resolveStage` の `resumableStageClass` が `isUnlocked` を読み、選択画面が必要なときは引数として `selectStage` へ渡す)・各Stage（クリア後画面判定のため） |
+| `SnapshotService` | main.ts | Launcher(コンストラクタ引数、`initialSaveFor` から `load()` を呼んで `initialSave` を組む)・AutoSave(コンストラクタ引数)・SaveBrowser(コンストラクタ引数)・SnapshotControls(コンストラクタ引数、`[F5]` から `capture` を呼ぶ)。Game はこれへの参照を持たない |
+| `SaveSlots` | main.ts | Launcher(コンストラクタ引数、`resolveStage`/`initialSaveFor`/`noteLaunched`/`update` の `noteRunEnded` から読み書きする)・SnapshotService(コンストラクタ引数)・SaveBrowser(コンストラクタ引数) |
 | `SaveBrowser` | main.ts | SnapshotControls(コンストラクタ引数、`[F9]` と一覧表示中の `[Esc]` で `open()`/`close()` を呼ぶ)。Game はこれへの参照を持たない |
 | `SnapshotControls` | main.ts | rAF ループ(`startAnimationLoop` が `game.update(dt)` の直後に `handleInput(game.input, game)` を呼ぶ) |
 | `FrameSections` | main.ts | Game(コンストラクタ引数。`update` が区間境界へ `enter`/`exit` を打つだけ)・Simulator(Game 経由のコンストラクタ引数。軌道積分/接触/姿勢の3区間の境界を自分で打つ)・PerfMeter(コンストラクタ引数。`enabled` を開閉で書き、`record` で全区間 + `otherMs()` を採取する) |
@@ -332,6 +334,9 @@ main.ts
 | 第一・第二ターゲット・的通過マーク | `Targeter`(`target`/`secondaryTarget`) | 右クリックメニュー(`applyMenuAct`)でのみ変わる。自動選定・自動再選択はない |
 | 航法ターゲット(id)・相対 AN/DN | `NavTarget` | `update()` が自機軌道要素 + `Ephemeris` から毎フレーム再算出する導出値だが、対象の id 自体(`toggleTarget` で変わる)は正本 |
 | 勝敗フェーズ | `Stage`(private `_phase`) | 変更は Stage 自身のみ。外部は `phase`/`isPlaying` を読む |
+| 決着した周回の結果画面の内容(`StageResult` = `{win, title, detailHtml}`) | `Stage`(private `_result`) | `protected decide(phase, result)` が `_phase` と同時に書き込む唯一の入口(`onWin`/`recordPlayerLost`/各ステージの独自の決着経路が呼ぶ)。外部は `result` getter で読む。表示するのは `Launcher.update` — `Stage` 自身は結果画面を出さない。`StageResult` はセーブに含まれない(`serialize()` が保存するのは `phase` のみ)ので、決着済み `phase` を持つ復元セーブでは `Launcher` 側の `fallbackResult(phase)` が見出しだけの内容へ差し替える |
+| 今回起動した StageClass | `Launcher`(private `launchedStage`) | `noteLaunched(stageClass)`(main.ts が `new Game(...)` の直後に呼ぶ)が書く唯一の入口。`restart()` がこれを読んで `?stage=<launchedStage.id>` を組む(未設定なら何もしない) |
+| 結果画面を出したか | `Launcher`(private `resultShown`) | `update(game)` が決着した最初のフレームで true にする。以後の `update` 呼び出しはこのフラグだけを見て即 return するので、結果画面は決着につき一度しか出さない |
 | 発射数・命中数・撃破数・出撃数 | `ScoreCounter` | 所有は Stage |
 | 補給の投入間隔タイマー | `Logistics` | 投入できない間は進めない(再開直後のフレームで判定させるため) |
 | 補給の自動投入の可否 | `Logistics.resupplyEnabled` | 書き換えは CreativeStage の LOGISTICS パネルのトグルのみ。ワープ倍率による停止は `SimSpeedManager.canResupplyAmmo` が別途担い、両者の積で投入可否が決まる |
@@ -396,7 +401,7 @@ main.ts
   どのキーがどの操作かは KEY_MAPPING(コード + 表示名)だけが持ち、入力を読む側(`Input.down` /
   `Input.takeKey` は `KeyBinding` を受ける)と説明を出す側(ヘルプ表・操作バー・タッチパッド・
   ステージ briefing・結果画面)は両方ともそれを参照する。どの操作を誰が処理するかは各モジュールに
-  閉じたままで(`SettingsPanel`=pauseMenu / `Hud`=help / `Stage`=restart /
+  閉じたままで(`SettingsPanel`=pauseMenu / `Hud`=help / `Launcher`=restart /
   `SimSpeedManager`=warpSlower・warpFaster・autoWarpToNode / `ViewManager`=toggleMapMode /
   `PlanEditor`=deleteNode・dv* / `CameraSystem`=camera*(旋回・ズーム・パン) / `CombatCameraSystem`=followAttitudeToggle・gunsightZoom /
   `Player`=rcsDampToggle・progradeReset・fineAttitudeToggle・progradeHoldToggle・throttle*・reload・thrust*・pitch/yaw/roll)、

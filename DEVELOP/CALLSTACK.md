@@ -32,8 +32,11 @@
     - [browser.visible] input.takeKey(K.pauseMenu) → browser.close() // 一覧の [Esc] を最優先で取る(close() 自身が game.resume() する)。以降は評価しない
     - [K.clipSnapshot] [!activeStage.isPlaying] hud.hint() // 決着後は拒否。それ以外は snapshotService.capture(game, 'manual', null, true) + hud.hint()
     - [K.openSnapshots] browser の open()/close() をトグル // open() 前に settingsPanel.toggle(false)。open() が game.pause()、close() が game.resume() を呼ぶ
+  - launcher.handleInput(game.input, game) // snapshotControls の後、このフレームでまだ消費されていない入力エッジだけを見る。[!activeStage.isPlaying] のときだけ K.restart を取る
+    - restart() → location.replace(`?stage=<launchedStage.id>`) // 同じステージを新規に開始し直す(決着直前の自動スナップショットへは戻らない)
   - perf.handleInput(game.input) // [K.togglePerfWindow] toggle()
   - autoSave.update(game) // 前回撮影から AUTOSAVE_INTERVAL_REAL_SEC(実時間60秒)経っていれば snapshotService.capture(game, 'auto', null, false) // game.isPaused または !activeStage.isPlaying なら何も撮らない
+  - launcher.update(game) // 決着した最初のフレームだけ動く(resultShown フラグで以降は即 return): sfx.setThrust(false) + sfx.stopBgm() → slots.noteRunEnded(activeSlotId) → resultScreen.show(activeStage.result ?? phase からのフォールバック)
   - game.sync()
   - game.render()
   - perf.record() // 負荷確認ウィンドウが開いている間(perf.on)だけ。500ms ごとに Game.perfCounts() を読んで PropertyWindow の行へ流す
@@ -52,8 +55,6 @@
     - docking.handleInput() // ドック表示中の [ESC] を先に消費する(設定画面と二重に効かせない)
     - settingsPanel.handleInput() // [modalController.isModalOpen('save-browser')] なら [Esc] を一切見ずに return(一覧側の close() に譲る)。それ以外は K.pauseMenu → toggle() → onSettingsOpenChange → game.pause()/resume()
     - hud.handleInput() // K.help → toggleHelp()
-    - activeStage.handleInput() // K.restart。isPlaying なら素通し(Player の装填へ回る)
-      - restart() → location.replace(`?stage=<id>`) // 決着後のみ。同じステージで出撃し直す
     - simSpeedManager.handleInput()
       - shift(-1|+1) // K.warpSlower / K.warpFaster
         - cancelAutoWarp() // 常に(手動シフトは自動ワープを解除する)
@@ -186,8 +187,8 @@
       - enemy.behave() // 生存中の敵ごと(canEnemyFire・距離・バースト状態の判定は behave 内部)
         - firePlasma() → entities.addBullet()
     - [Stage0 訓練スコアアタック] logistics.updateLogistics(simSpeed, respawnOnDespawn=false)
-    - [Stage0 訓練スコアアタック] timer.update()
-      - setPhase('timeup') + showScoreAttackResultScreen() // 制限時間到達フレームのみ
+    - [Stage0 訓練スコアアタック] timer.update() // 残り時間が尽きたフレームでのみ true を返す
+      - [true のとき] decide('timeup', {win:true, title:'TIME UP', detailHtml}) // 結果画面の内容を確定させるだけ。表示は launcher.update が担う
     - [Stage00 無限サバイバル] logistics.updateLogistics(simSpeed, respawnOnDespawn=true)
       - absorbNearbyAmmo()
         - player.onPickup() + sfx.pickup() + hud.hint() // 範囲内の補給ごと
