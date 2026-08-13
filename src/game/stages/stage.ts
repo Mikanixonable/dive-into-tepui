@@ -163,13 +163,12 @@ export abstract class Stage {
     this.statusPanel = new StageStatusPanel(hud.layers.panel);
   }
 
-  // 新規開始なら初期配置・初期弾薬・ブリーフィングを行う。具象ステージは自分のコンストラクタの
+  // 新規開始なら初期配置・ブリーフィングを行う。具象ステージは自分のコンストラクタの
   // 末尾で必ずこれを呼ぶ — 初期配置は具象側のフィールドが揃ってからでないと走らせられない。
   protected begin(): void {
     if (this.restored) return;
     const player = this._activePlayers.current;
     const enemyCount = this.init(player, this._entities);
-    player?.initAmmo(this.initialAmmo.mags, this.initialAmmo.rounds);
     this._hud.toast(this.briefingHtml(enemyCount), BRIEFING_TOAST_MS);
   }
 

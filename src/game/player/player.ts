@@ -25,7 +25,7 @@ import type { MapVisibility } from '../celestial/map-visibility';
 import type { Stage } from '../stages/stage';
 import { ScoreCounter } from '../stages/stage-utils/score-counter';
 import { PlayerThrottle } from './player-throttle';
-import { PlayerFire } from './player-fire';
+import { PlayerFire, type AmmoLoad } from './player-fire';
 import { Belt } from './belt';
 import { ThermalSystem } from './thermal';
 import { EffectsSystem } from '../vfx/effects-system';
@@ -54,11 +54,11 @@ export function planExecutionLabel(mode: PlanExecutionMode): string {
   return PLAN_EXECUTION_LABELS[mode];
 }
 
-// 新規配置は name/state/id を任意指定し、省略時は高度 INITIAL_ALT・傾斜 INITIAL_INC_DEG の
+// 新規配置は name/state/id/ammo を任意指定し、省略時は高度 INITIAL_ALT・傾斜 INITIAL_INC_DEG の
 // 円軌道に機首プログレードで初期配置する。スナップショットからの再開は saved を simTime の
 // epoch で展開する。
 export type PlayerInit =
-  | { readonly name?: string; readonly state?: KinematicState; readonly id?: string }
+  | { readonly name?: string; readonly state?: KinematicState; readonly id?: string; readonly ammo?: AmmoLoad }
   | { readonly saved: PlayerSaveData; readonly simTime: number };
 
 // プレイヤー機: 移動(PlayerThrottle)と射撃(PlayerFire)を束ね、その両方を反映した
@@ -114,7 +114,7 @@ export class Player extends Ship {
 
     const saved = 'saved' in init ? init.saved : undefined;
     this.throttle = new PlayerThrottle(_hud, saved?.throttle);
-    this.fire = new PlayerFire(this, _hud, _sfx, _scene, _fx, saved?.fire);
+    this.fire = new PlayerFire(this, _hud, _sfx, _scene, _fx, 'saved' in init ? { saved: init.saved.fire } : { ammo: init.ammo });
     this.belt = new Belt(this.obj, this);
     this.thermal = new ThermalSystem(_hud, _sfx, saved?.thermal);
     this.radiator = new RadiatorSystem(this.obj, this, saved?.radiator);
@@ -193,11 +193,6 @@ export class Player extends Ship {
   get magsLeftInBarrel(): number { return this.fire.barrel; }
   get reloadTimer(): number { return this.fire.cooldown; }
   get isFiring(): boolean { return this.fire.isFiring; }
-
-  // 初期弾数(マグ数・装填ラウンド数)を設定する。
-  initAmmo(mags: number, rounds: number): void {
-    this.fire.initAmmo(mags, rounds);
-  }
 
   // 弾薬ピックアップで得たマグ数を加算する。
   onPickup(mags: number): void {
