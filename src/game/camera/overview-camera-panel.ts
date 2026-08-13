@@ -1,5 +1,5 @@
 import { HudToggleButton, IconToggleButton } from '../hud/buttons';
-import { hudDock } from '../hud/dom';
+import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, buildCollapseToggle, hudDock, type CollapseToggleLabels } from '../hud/dom';
 import { BodyClassToggles } from '../celestial/body-visibility';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 
@@ -20,6 +20,14 @@ const BODY_CLASS_ROWS: readonly BodyClassRow[] = [
   { label: '小天体', categoryKey: 'smallBodyVisible', iconKey: 'smallBodyIcon', labelKey: 'smallBodyLabel', orbitKey: 'smallBodyOrbit' },
   { label: 'ラグランジュ点', categoryKey: 'lagrangeVisible', iconKey: 'lagrangeIcon', labelKey: 'lagrangeLabel', orbitKey: null },
 ];
+// このパネル自身の折りたたみトグルの見た目。
+const OVERVIEW_CAMERA_COLLAPSE_LABELS: CollapseToggleLabels = {
+  expandedGlyph: COLLAPSE_EXPANDED_GLYPH,
+  collapsedGlyph: COLLAPSE_COLLAPSED_GLYPH,
+  expandedTitle: 'MAP VIEW を閉じる',
+  collapsedTitle: 'MAP VIEW を開く',
+};
+
 const ENTITY_ROWS: readonly BodyClassRow[] = [
   { label: '自艦', categoryKey: 'playerVisible', iconKey: 'playerIcon', labelKey: 'playerLabel', orbitKey: 'playerOrbit' },
   { label: '敵', categoryKey: 'shipVisible', iconKey: 'shipIcon', labelKey: 'shipLabel', orbitKey: 'shipOrbit' },
@@ -40,9 +48,17 @@ export class OverviewCameraPanel {
     this.panel.id = 'hud-overview-camera';
     this.panel.className = 'panel';
     this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
+    const titleRow = document.createElement('div');
+    titleRow.className = 'overview-camera-title';
     const title = document.createElement('h3');
     title.textContent = '表示';
-    this.panel.appendChild(title);
+    titleRow.appendChild(title);
+    this.panel.appendChild(titleRow);
+
+    const body = document.createElement('div');
+    body.className = 'overview-camera-body';
+    this.panel.appendChild(body);
+    buildCollapseToggle(titleRow, 'hud-overview-camera-toggle', 'overview-camera-collapse', body, OVERVIEW_CAMERA_COLLAPSE_LABELS);
 
     // マップに出す天体のクラスごとに、アイコン(点)・ラベル(名前)・軌道線を個別に切り替える。
     // 恒星・惑星と、フォーカス中の系の親子は常に出るので、ここで足すのは「その外まで見たい」
@@ -82,7 +98,7 @@ export class OverviewCameraPanel {
         buttons.push([orbitKey, orbit]);
       }
 
-      this.panel.appendChild(rowEl);
+      body.appendChild(rowEl);
       categories.push([row.categoryKey, category, rowEl, individualButtons]);
     }
     this.bodyClassButtons = buttons;
