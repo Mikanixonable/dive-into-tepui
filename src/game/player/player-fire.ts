@@ -5,6 +5,7 @@ import { kinematicState } from '../../physics/kinematic-state';
 import { R_EARTH_EQ } from '../../physics/solar-system';
 import { randSym } from '../../physics/random';
 import { add, addScaled, dot, lenSq, norm, randPerp, randVec, scale, v3, Vec3 } from '../../physics/vec3';
+import type { Ephemeris } from '../../physics/ephemeris';
 import * as C from '../const';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
@@ -111,7 +112,7 @@ export class PlayerFire {
     activeStage: Stage,
     simSpeed: SimSpeedManager,
     entities: EntityManager,
-    sunDir: Vec3,
+    ephemeris: Ephemeris,
   ): void {
     this.tickReloadTimer(dt);
 
@@ -147,7 +148,7 @@ export class PlayerFire {
       return;
     }
 
-    this.fireCycle(activeStage, entities, sunDir);
+    this.fireCycle(activeStage, entities, ephemeris);
   }
 
   // マップモード中: リロードタイマーだけを進める。
@@ -167,7 +168,7 @@ export class PlayerFire {
   private fireCycle(
     activeStage: Stage,
     entities: EntityManager,
-    sunDir: Vec3,
+    ephemeris: Ephemeris,
   ): void {
     const justStartedFiring = !this.wasFiring;
     this.wasFiring = true;
@@ -187,7 +188,7 @@ export class PlayerFire {
 
     const result = this.consume();
 
-    this.fireGun(activeStage, entities, sunDir);
+    this.fireGun(activeStage, entities, ephemeris);
     switch (result) {
       case 'empty':
       case 'normal':
@@ -249,7 +250,7 @@ export class PlayerFire {
   private fireGun(
     activeStage: Stage,
     entities: EntityManager,
-    sunDir: Vec3,
+    ephemeris: Ephemeris,
   ): void {
     const fwd = qRotate(this.player.att.q, v3(0, 0, 1));
 
@@ -258,7 +259,7 @@ export class PlayerFire {
     this.muzzleIdx = (this.muzzleIdx + 1) % MUZZLE_OFFSETS.length;
     const muzzle = add(this.player.state.r, qRotate(this.player.att.q, v3(mo.x, mo.y, mo.z)));
 
-    this.spawnBullet(this.player, muzzle, fwd, entities, sunDir);
+    this.spawnBullet(this.player, muzzle, fwd, entities, ephemeris);
     // 反動(運動量保存の風味): 発射方向と逆に微小 Δv(瞬間的な速度変更なので時刻は据え置き)
     this.player.state = kinematicState(
       this.player.state.t,
@@ -275,8 +276,9 @@ export class PlayerFire {
 
   // 弾丸: 機首方向 + 散布界
   private spawnBullet(
-    ship: Ship, muzzle: Vec3, fwd: Vec3, entities: EntityManager, sunDir: Vec3,
+    ship: Ship, muzzle: Vec3, fwd: Vec3, entities: EntityManager, ephemeris: Ephemeris,
   ): void {
+    const sunDir = ephemeris.sunDirFrom(ship.state.r, ship.state.t);
     const spreadScale = sunGlareSpreadScale(muzzle, fwd, sunDir);
     // 機首方向に散布角を加えた発射方向
     const spread = Math.abs(randSym(C.BULLET_SPREAD)) * spreadScale;
