@@ -59,7 +59,7 @@
     - settingsPanel.handleInput() // [modalController.isModalOpen('save-browser')] なら [Esc] を一切見ずに return(一覧側の close() に譲る)。それ以外は K.pauseMenu → toggle() → onSettingsOpenChange → game.pause()/resume()
     - hud.handleInput() // K.help → toggleHelp()
     - simSpeedManager.handleInput()
-      - shift(-1|+1) // K.warpSlower / K.warpFaster
+      - shift(-1|+1) // K.warpSlower / K.warpFaster。倍率をヒントで伝える。操作できない倍率へ上げたときはその旨も併記する
         - cancelAutoWarp() // 常に(手動シフトは自動ワープを解除する)
         - sfx.warp() + hud.hint() // 上限/下限を超えない場合のみ
       - toggleAutoWarpToFirstNode() // K.autoWarpToNode。editor.editMode 中は受け取らない
@@ -130,25 +130,26 @@
 ### advanceSimulation(dt)
 
 自機の行動 → ステージ → 積分 → 予測 → エフェクトの順に1フレーム進める。艦の行動(`entities.updatePlayers`)
-はステージの決着状態を問わず常に全自機ぶん呼ばれる — 操作対象でない艦(操作艦が無い場合は全艦)は
-その内部で連続指令を畳むだけになる(残骸・弾の epoch を含め、どの状況でも他の段は進め続ける)。
+はステージの決着状態を問わず常に全自機ぶん呼ばれる — `input` が届かない艦(操作対象でない艦、
+および操作できないワープ倍率では全艦)はその内部で連続指令を畳むだけになる(残骸・弾の epoch を
+含め、どの状況でも他の段は進め続ける)。
 `game.update` からは `!isPaused` のときだけ呼ばれる。
 
 - advanceSimulation(dt)
   - 以下の player は毎回その場で読む game.player(= activePlayers.current)
   - sections.enter(SECTION.player)
   - nanWatchdog.checkPlayer('frameStart')
-  - entities.updatePlayers(player, params) // entities.players 全隻ぶん、1隻ずつ ship.behave(ship===player, entities, params) を呼ぶ。ステージの決着状態は分岐条件に無い(決着後も操作艦は動く)
-    - [ship ごと] ship.behave(controllable, entities, params)
-      - updatePassive(dt) // belt.update() + hpRegen()。controllable に関わらず必ず先頭で実行
+  - entities.updatePlayers(player, input, simSpeed, dt, activeStage, ephemeris) // entities.players 全隻ぶん、1隻ずつ ship.behave(…) を呼ぶ。input が届くのは ship===player かつ simSpeed.canOperatePlayer の艦だけで、それ以外へは null を渡す(操作対象から外れた艦と操作できないワープ倍率は同じ状態なので、判断はここ1箇所)。simDt = dt × simSpeed.simSpeed もここで組む。ステージの決着状態は分岐条件に無い(決着後も操作艦は動く)
+    - [ship ごと] ship.behave(input, dt, simDt, entities, activeStage, ephemeris)
+      - updatePassive(dt) // belt.update() + hpRegen()。input の有無に関わらず必ず先頭で実行
         - belt.update()
           - physics.shiftBeltNodes() // リロードで給弾量が巻き戻ったフレームのみ
           - physics.update()
             - initNodesOnce() // 初回のみ
             - estimateAngularAccel() / integrateVerlet() / pinRootToAnchor() / relaxDistanceConstraints()
             - advanceOrientationConstraints() // リンクごとに角度クランプ・ツイスト更新
-      - [!controllable] clearTransientCommands() して return // 操作対象でない艦(操作艦が無ければ全艦)は、次のフレームへ持ち越してはならない連続指令をここで畳む
-      - [controllable] handleEdgeInput() → handleEdgePress() // 処理したキーは input.consumeKey() で消費する
+      - [input===null] clearTransientCommands() して return // このフレーム操作されない艦は、次のフレームへ持ち越してはならない連続指令をここで畳む
+      - handleEdgeInput() → handleEdgePress() // 処理したキーは input.consumeKey() で消費する
         - throttle.toggleRcsDamp() // K.rcsDampToggle
         - throttle.enableProgradeReset() // K.progradeReset
         - toggleFineAttitude() // K.fineAttitudeToggle
@@ -156,14 +157,13 @@
         - throttle.setThrottlePreset(0|1|2) // K.throttleLow/Mid/High
         - fire.manualReload() // K.reload。成功時のみ true(= キー消費)
           - sfx.playReload() + dropBarrel() → fx.spawnBarrel()
-      - [controllable] throttle.updateTorque() → player.torque へ代入(マップビュー中も手動回転は常時有効)
+      - throttle.updateTorque() → player.torque へ代入(マップビュー中も手動回転は常時有効)
         - onProgradeHoldReleased() → hud.hint() // ホールド中に手動回転入力があった場合のみ
         - autoAlignTorque() // ホールド中 かつ 手動回転入力なしの場合のみ
-      - [controllable] fire.updateFireState()
+      - fire.updateFireState()
         - tickReloadTimer()
-        - hud.hint() // 発射キー押下中 かつ !simSpeed.canPlayerFire
         - sfx.emptyClick() + hud.hint() // 弾切れの初回フレームのみ
-        - fireCycle() // 発射キー押下 かつ canPlayerFire かつ残弾ありの場合のみ
+        - fireCycle() // 発射キー押下 かつ残弾ありの場合のみ
           - sfx.spinUp() // 発射開始フレームのみ(このフレームは fireGun まで進まない)
           - consume() // 弾薬状態の更新。戻り値で以下の分岐が決まる
           - fireGun() // クールダウン明けのみ
@@ -175,11 +175,11 @@
             - sfx.fire()
           - spawnEjectedMagazineFrame() + sfx.magFeed() // 'mag-reload'
           - spawnEjectedMagazineFrame() + dropBarrel() + sfx.playReload() // 'barrel-reload'
-      - [controllable, simSpeed.canPlayerThrust] throttle.updateThrustLatches() // WASDQE各キーの連打をエッジ検出しラッチ集合を更新。反対方向キーを押している間は相手側のラッチも解除し続ける。canPlayerThrust が false の間は呼ばれず、押下エッジも消費されない。Δv編集中の6キーは editor.updateEditing が既に確保済みなので、ここでは押されていないように見える
-      - [controllable] throttle.updateThrustState() → player.thrust へ代入(手動入力が無ければ null。'powered' 中の艦がここで null になっても、後段の activeStage.update → planExecutor.update が Simulator.advance より前に正しい値へ上書きするので積分には影響しない)
-        - throttle.stopThrust() // 推力入力なし(物理押下・ラッチとも無し) or !canPlayerThrust。thrustAccelVec(ベルト物理向け)を戻すだけ
-      - [controllable] invalidatePrediction() // player.thrust !== null のときのみ(自機の噴射結果を即座に予測へ反映)
-      - [controllable, planExecution==='powered'] thrust!==null または throttle.hasManualRotationInput() なら planExecution='off' // 操作対象艦の手動並進・手動回転で自動実行を中断(マップモードかどうかは問わない)
+      - throttle.updateThrustLatches() // WASDQE各キーの連打をエッジ検出しラッチ集合を更新。反対方向キーを押している間は相手側のラッチも解除し続ける。Δv編集中の6キーは editor.updateEditing が既に確保済みなので、ここでは押されていないように見える
+      - throttle.updateThrustState() → player.thrust へ代入(手動入力が無ければ null。'powered' 中の艦がここで null になっても、後段の activeStage.update → planExecutor.update が Simulator.advance より前に正しい値へ上書きするので積分には影響しない)
+        - throttle.stopThrust() // 推力入力なし(物理押下・ラッチとも無し)。thrustAccelVec(ベルト物理向け)を戻すだけ
+      - invalidatePrediction() // player.thrust !== null のときのみ(自機の噴射結果を即座に予測へ反映)
+      - [planExecution==='powered'] thrust!==null または throttle.hasManualRotationInput() なら planExecution='off' // 操作対象艦の手動並進・手動回転で自動実行を中断(マップモードかどうかは問わない)
   - nanWatchdog.checkPlayer('player.behave')
   - sections.exit(SECTION.player)
   - sections.enter(SECTION.stage)
@@ -205,12 +205,11 @@
         - generateWave: pickWaveCenter() → makeFlybyVelocity() → limitFlybyDv() → waveShipPosition() ×機数
     - [Stage1 / Stage2 キャンペーン] logistics.updateLogistics(simSpeed, respawnOnDespawn=false)
     - [CreativeStage] placerPanel.isOpen なら getForm() を1回だけ呼び、computePreview(form)/computeFieldIssues(form) へ共有する
-    - [CreativeStage] entities.players ごとに ship.planExecutor.update(ship, dt, simTime, simSpeed) // planExecution!=='powered' なら idle へ戻すだけ。'powered' なら姿勢整列(idle/slew/armed)、または燃焼中(burn/trim)の出力段選択・燃料消費・ship.thrust の書き直しを進める。ノード時刻に対する猶予窓(NODE_APPROACH_LEAD+見積り燃焼時間+見積り姿勢転回時間)を外れている間は何もしない。死亡していれば停止。点火・遮断そのものはここでは行わない。Simulator.advance より前に呼ばれるので、操作艦で player.behave がこのフレーム player.thrust を null にしていても、積分に渡る前にここで確実に上書きされる
+    - [CreativeStage] entities.players ごとに ship.planExecutor.update(ship, dt, simTime, simSpeed) // !simSpeed.canPlayerThrust なら先頭で idle へ戻して return(連続指令を書く主体は自分でゲートする — 姿勢整列トルクも含めて何も書かない)。planExecution!=='powered' なら idle へ戻すだけ。'powered' なら姿勢整列(idle/slew/armed)、または燃焼中(burn/trim)の出力段選択・燃料消費・ship.thrust の書き直しを進める。ノード時刻に対する猶予窓(NODE_APPROACH_LEAD+見積り燃焼時間+見積り姿勢転回時間)を外れている間は何もしない。死亡していれば停止。点火・遮断そのものはここでは行わない。Simulator.advance より前に呼ばれるので、操作艦で player.behave がこのフレーム player.thrust を null にしていても、積分に渡る前にここで確実に上書きされる
   - sections.exit(SECTION.stage)
   - nanWatchdog.checkPlayer('activeStage.update')
   - simSpeedManager.update() // 自動ワープ中のみ実効。残り時間が C.NODE_APPROACH_LEAD 以下なら autoWarpUntil=null + levelIdx=0 で即 return
-  - [!simSpeedManager.canOperatePlayer] entities.clearTransientCommands() // 操作できないワープ倍率の間、全自機の連続指令を畳む。ship ごとに thrust=null / torque=0 / throttle.clearTransientState()(噴射ラッチ・二度押し時刻)/ fire.stopFiring()。behave と planExecutor の両方より後、積分より前に置くので、どちらが書いた指令も積分へ渡らない
-  - simDt = dt × simSpeedManager.simSpeed
+  - simDt = dt × simSpeedManager.simSpeed // simSpeedManager.update() の後に組む(自動ワープが段を下げたフレームでは、その下げた後の倍率で積分する)
   - sections.enter(SECTION.integrate)
   - simulator.advance(dt, simDt, player, activeStage, simSpeedManager, nanWatchdog)
     // 弾命中を含む剛体接触・姿勢積分はいずれもこの中。simulator が contactPhysics(ContactPhysics)を所有する。

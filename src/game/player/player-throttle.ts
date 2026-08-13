@@ -5,7 +5,6 @@ import * as C from '../const';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K, KeyBinding } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
-import { SimSpeedManager } from '../sim-speed-manager';
 import type { ThrottleSaveData } from '../save-data';
 
 // 並進6方向の連打ラッチ判定対象キー一覧。
@@ -94,11 +93,11 @@ export class PlayerThrottle {
     return { throttleIdx: this.throttleIdx, rcsDamp: this.rcsDamp, progradeHold: this.progradeHold };
   }
 
-  // 入力から機体座標系の推力加速度を組み立てて返す。warp 中などで噴射不可なら null。
+  // 入力から機体座標系の推力加速度を組み立てて返す。入力が無ければ null。
   // ベルト物理が使う推力加速度の表示用状態も併せて更新する。
-  updateThrustState(input: Input, simSpeed: SimSpeedManager, att: Attitude, dt: number, ship: import('../game-entity/ship').Ship): Vec3 | null {
+  updateThrustState(input: Input, att: Attitude, dt: number, ship: import('../game-entity/ship').Ship): Vec3 | null {
     const thrust = this.buildThrust(input, att.q, ship, dt);
-    if (!simSpeed.canPlayerThrust || !thrust) {
+    if (!thrust) {
       this.stopThrust();
       return null;
     }
@@ -110,9 +109,8 @@ export class PlayerThrottle {
   // 反対方向キーを物理的に押している間は、そのラッチを外し続ける(片方をラッチしたまま
   // 逆方向を押しっぱなしにしても axX/Y/Z の相殺で終わらせず、逆方向を離した瞬間に
   // ラッチが復活するのを防ぐ)。連打の間隔は実時間で測るので、呼ばれないフレームを
-  // 挟んでも判定が狂わない。simSpeed.canPlayerThrust が false の間は呼び出し側が
-  // このメソッド自体を呼ばない(押下エッジを消費させないため)。緊急停止(3軸いずれかの
-  // 対キー同時押し)中は全ラッチを外し、連打判定そのものを行わない。
+  // 挟んでも判定が狂わない。緊急停止(3軸いずれかの対キー同時押し)中は全ラッチを外し、
+  // 連打判定そのものを行わない。
   updateThrustLatches(input: Input): void {
     if (isThrustKillSwitchActive(input)) {
       this.latchedThrustKeys.clear();
