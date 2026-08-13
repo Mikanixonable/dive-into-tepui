@@ -101,15 +101,19 @@ main.ts
     │                                       注入される(private フィールドとして保持)。Stage への参照は持たない
     ├── ViewBadge                      ... DOM は Hud.layers.notify 配下。ViewManager を参照するだけで自身は状態を持たない
     │   └── ContextMenu<true, ViewId>  ... DOM は Hud.layers.popup 配下
-    ├── Stage (activeStage)            ... game.ts が呼ぶ stage-dictionary.ts の buildStage(stageId, player, entities,
-    │                                       ..., activePlayers, saved?) が生成する — 分岐のない1本の関数(StageId から
-    │                                       STAGE_CLASSES を引いて new し、setup()/init() を同じ手順で走らせるだけ。
-    │                                       CREATIVE も他の StageId とまったく同じ経路を通る)。Stage クラス自身が持つ
-    │                                       静的宣言(initialPlayerCount・showsStatusInOverview・ephemerisConfig)は
-    │                                       buildStage() 経由で Game の構築に反映される。freeProcurement/executesPlans は
+    ├── Stage (activeStage)            ... Game のコンストラクタが受け取る解決済みの StageClass を直接 new し、
+    │                                       saved(StageSaveData | undefined)と StageDeps 一式(hud/sfx/scene/entities/
+    │                                       unlockManager/fx/markerManager/ephemeris/simulator/activePlayers、
+    │                                       stage.ts 参照)を渡す(分岐は無く、CREATIVE も同じ経路)。
+    │                                       コンストラクタ一段で初期化が完結し、初期配置・初期弾薬・ブリーフィングは
+    │                                       各具象ステージのコンストラクタ末尾の begin() が行う(基底のコンストラクタ
+    │                                       からは呼べない — 具象側のフィールド初期化が super() の後に走るため)。
+    │                                       起動時の静的宣言(initialPlayerCount・showsStatusInOverview・ephemerisConfig)は
+    │                                       Stage の静的既定値をクラスごとに override したもので、Game は stageClass
+    │                                       から直接読む。freeProcurement/executesPlans は
     │                                       インスタンス側の既定 false なフラグ、authoring は既定 null の ObjectAuthoring
     │                                       (配置・複製の口)。CreativeStage だけが両方を有効にし、authoring は自身を返す。
-    │                                       setup() は ActivePlayerController も受け取り(protected _activePlayers)、
+    │                                       _activePlayers は StageDeps の一つとして引数で受け取り(protected _activePlayers)、
     │                                       CreativeStage.placeObject は艦の配置後にこれへ claimIfNone(ship) を呼び、
     │                                       操作対象が居なければ配置した艦を操作対象にする。喪失した自機の回収は
     │                                       ActivePlayerController.reclaimDead() が全ステージ共通で毎フレーム無条件に
@@ -223,13 +227,18 @@ main.ts
   (§付録「正本でないもの」参照 — 未来位置のキャッシュであり、正データではない)。予測する長さ
   (horizon)は種別ごとの定数ではなく、`Predictor.update` が毎フレーム `DisplayWindowManager.current.duration`
   (`resolve(simTime, player)` が update フェーズ・sync フェーズそれぞれで確定させたもの)から渡す引数。
-- `STAGE_DEFINITIONS`(stage-dictionary.ts のモジュールスコープ)… 選択画面のラベル・解放条件を読む
-  ためだけの `Stage` インスタンス列。`setup()`/`init()` は呼ばれず、プレイに使う `activeStage` とは別物。
-  `CreativeStage` も `STAGE_CLASSES` 末尾の一員としてここに含まれ、選択画面のクリエイティブモード
-  タブに CREATIVE として出る(タブは各ステージの `selectGroup` の初出順に組まれる — `stage-select.ts`
-  参照)。`game.ts` は `stage-dictionary.ts` の `buildStage(stageId, ...)` を呼ぶだけで、CREATIVE を含め
-  どの `StageId` でも分岐は無い(`setup()` は `CreativeStage` 自身が override して `ShipPlacerPanel` の
-  組み立てまで行う)。
+- `STAGE_CLASSES`(stage-dictionary.ts のモジュールスコープ、`export const`)… クラス参照(`StageClass`)の
+  並びだけを持つ配列で、`Stage` インスタンスは1つも作らない。選択画面のラベル・解放条件(`isUnlocked`)・
+  起動時設定(`ephemerisConfig`/`initialPlayerCount`/`showsStatusInOverview`)はすべて各クラスの静的宣言
+  から読む(`stage.ts` の `StageClass` インターフェース参照)。`CreativeStage` も `STAGE_CLASSES` 末尾の
+  一員としてここに含まれ、選択画面のクリエイティブモードタブに CREATIVE として出る(タブは各ステージの
+  静的 `selectGroup` の初出順に組まれる — `stage-select.ts` 参照)。ID からクラスを引くのは
+  `findStageClass`(同モジュール)の責務で、`main.ts`(`resolveLaunchStage`/`resumableStageClass`)・
+  `unlock-manager.ts`・`hud/save-browser.ts` がこれを使う。`game.ts`(`Game` のコンストラクタ)は解決済みの
+  `StageClass` を `new stageClass(saved, ...deps)` するだけで、CREATIVE を含め分岐は無い。実行中の
+  `activeStage`(インスタンス)自身は `Stage.stageClass` ゲッター(`this.constructor` を返す)で自身の
+  クラスへ戻れ、`Stage.id`(=`stageClass.id`)や `ViewBadge` が表示するラベル
+  (`activeStage.stageClass.selectLabel`)はここ経由で読む。
 - `stage-select.ts` の `UnlockManager` … 選択画面用に別途 `new` される。正本は localStorage なので
   Game 側のインスタンスと状態を共有する必要がない。
 
