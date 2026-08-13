@@ -51,6 +51,11 @@ export class SimSpeedManager {
     return this.simSpeed <= C.MAX_PHYS_SIM_SPEED;
   }
 
+  // 現在のワープ倍率で姿勢制御指令(RCS command torque)を有効にしてよいかどうか。
+  get canApplyAttitudeCommand(): boolean {
+    return this.simSpeed <= C.MAX_PHYS_SIM_SPEED;
+  }
+
   // 現在のワープ倍率で剛体衝突を解決してよいかどうか。
   get canResolvePhysicalCollisions(): boolean {
     return this.simSpeed <= C.MAX_PHYS_SIM_SPEED;

@@ -16,6 +16,7 @@ import { R_EARTH } from '../../physics/solar-system';
 import { v3 } from '../../physics/vec3';
 import { adaptiveSimulationMaxStep, simulationStepDuration } from './time-step';
 import type { NanWatchdog } from '../nan-watchdog';
+import type { SimSpeedManager } from '../sim-speed-manager';
 import { FrameSections, SECTION } from '../../frame-sections';
 import type { PerfCounts } from '../../perf-meter';
 
@@ -50,6 +51,7 @@ export class Simulator {
   private readonly nearbyAttractorsScratch: Parameters<typeof attractorsNearInto>[2] = [];
 
   // dt 分のシミュレーションを進める。simDt をサブステップに分割して積分し、剛体接触(弾命中含む)・姿勢積分を行う。
+  // 剛体接触を解決してよいワープ倍率かどうかは、渡された simSpeed にここで問う。
   // nanWatchdog は軌道積分・姿勢積分・剛体接触・ベルトの各境界ごとに自機を検査する
   // (checkPlayer は軽量なので substep ごとに呼んでよい)。
   advance(
@@ -57,20 +59,19 @@ export class Simulator {
     simDt: number,
     player: Player | null,
     activeStage: Stage,
-    resolveCollision: boolean,
-    doSubstep: boolean,
+    simSpeed: SimSpeedManager,
     nanWatchdog: NanWatchdog,
   ): void {
+    const resolveCollision = simSpeed.canResolvePhysicalCollisions;
     this.lastSubsteps = 0;
     this.lastGravitySourceCount = 0;
     this.lastOrbitSteps = 0;
     const targetTime = this.simTime + simDt;
     // ×4を超えるワープでは射撃・剛体衝突が無効なので、弾と薬莢/破片は途中のsubstepで
     // 相互作用を起こさない。これらだけを最後に一度まとめて積分し、高warpのS倍走査を避ける。
-    const passiveWarpLod = !resolveCollision && doSubstep && simDt > C.SUBSTEP_MAX_DT;
+    const passiveWarpLod = !resolveCollision && simDt > C.SUBSTEP_MAX_DT;
     while (this.simTime < targetTime - 1e-9) {
-      const remaining = targetTime - this.simTime;
-      const maxStep = doSubstep ? this.adaptiveMaxStep() : remaining;
+      const maxStep = this.adaptiveMaxStep();
       const eventTime = this.nextEventTime(activeStage, passiveWarpLod);
       const subDt = simulationStepDuration(this.simTime, targetTime, maxStep, eventTime);
       // 浮動小数点の丸めでゼロ刻みになったイベントは現在時刻で消費して前進を保証する。
@@ -84,11 +85,11 @@ export class Simulator {
       this.simTime = this.substep(this.simTime, subDt, passiveWarpLod);
       this.sections.exit(SECTION.orbit);
       this.lastSubsteps++;
-      if (player) nanWatchdog.checkPlayer('simulator.advance(軌道積分)', player, this.simTime, dt, subDt);
+      nanWatchdog.checkPlayer('simulator.advance(軌道積分)', player, this.simTime, dt, subDt);
       this.sections.enter(SECTION.attitude);
       this.stepAttitudes(subDt, passiveWarpLod);
       this.sections.exit(SECTION.attitude);
-      if (player) nanWatchdog.checkPlayer('simulator.advance(姿勢積分)', player, this.simTime, dt, subDt);
+      nanWatchdog.checkPlayer('simulator.advance(姿勢積分)', player, this.simTime, dt, subDt);
       for (const p of this.entities.players) p.stepEnvironment(subDt, this.ephemeris, this.simTime);
       const attractorsNow = this.ephemeris.attractorsAt(this.simTime);
       if (resolveCollision) {
@@ -104,7 +105,7 @@ export class Simulator {
         this.contactPhysics.resolveSubstep(
           this.simTime, this.contactEntitiesScratch, attractorsNow, activeStage);
         this.sections.exit(SECTION.contact);
-        if (player) nanWatchdog.checkPlayer('simulator.advance(接触)', player, this.simTime, dt, subDt);
+        nanWatchdog.checkPlayer('simulator.advance(接触)', player, this.simTime, dt, subDt);
       }
       activeStage.applySimulationEvents(this.simTime);
       // 期限切れ弾が同じsubstepの接触解決へ進まないよう、既知境界の直後に回収する。

@@ -9,6 +9,7 @@ import { PlanEditor } from './plan/plan-editor';
 import { DisplayWindowManager } from './display-window-manager';
 import { MapPicker } from './map-picker';
 import type { Docking } from './docking';
+import type { Stage } from './stages/stage';
 import { syncNavballPlacement } from './hud/dom';
 
 export type ViewId = 'combat' | 'map' | 'dock';
@@ -25,6 +26,7 @@ export class ViewManager {
   private isDockOpen = false;
   private touchControls: TouchControls | null = null;
   private docking: Docking | null = null;
+  private stage: Stage | null = null;
 
   get current(): ViewId { return this.isDockOpen ? 'dock' : this.worldView; }
 
@@ -49,6 +51,11 @@ export class ViewManager {
   // Docking は ViewManager より後に生成されるので、生成後に登録する。
   setDocking(docking: Docking): void {
     this.docking = docking;
+  }
+
+  // Stage は ViewManager より後に生成されるので、生成後に登録する。
+  setStage(stage: Stage): void {
+    this.stage = stage;
   }
 
   // ビュー遷移の唯一の入口。遷移できない場合は何もしない。既に next にいる場合でも
@@ -129,9 +136,9 @@ export class ViewManager {
   }
 
   // [M] による戦闘⇔マップの切り替えを受ける。ドック表示中はキーを消費しない。
-  handleInput(input: Input, isPlaying: boolean, canToggleView: boolean): void {
+  handleInput(input: Input, canToggleView: boolean): void {
     // 決着後はどのビューに居ても戦闘ビューへ戻す(結果画面を隠さないため)。
-    if (!isPlaying) {
+    if (this.stage !== null && !this.stage.isPlaying) {
       if (this.isDockOpen) this.leaveDock();
       if (this.current === 'map') this.setView('combat');
       return;
