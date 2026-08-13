@@ -24,8 +24,9 @@ import type { LogisticsSaveData, StageSaveData } from '../save-data';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
 import type { ObjectType } from '../creative/ship-placer-panel';
 import type { KinematicState } from '../../physics/kinematic-state';
+import type { ActivePlayerController } from '../active-player-controller';
 
-export type StageId = '00' | '0' | '1' | '2' | 'debug' | 'debug-alt-system' | 'debug-load';
+export type StageId = '00' | '0' | '1' | '2' | 'creative' | 'debug' | 'debug-alt-system' | 'debug-load';
 
 // 軌道上へオブジェクトを配置・複製する編集機能。これを持つステージだけがマップの
 // 「配置」「複製」項目を出す。focusId はマップの現在フォーカスで、基準天体の初期選択に使う。
@@ -52,6 +53,8 @@ export abstract class Stage {
   readonly selectLockedSub?: string;
   // タイトルのステージ選択ボタン列に並べない。
   readonly hiddenFromSelect: boolean = false;
+  // 選択画面でこのステージを並べるタブの名前。表示のまとまりだけを決め、挙動には影響しない。
+  readonly selectGroup: string = 'ステージモード';
   // ドックでの購入・修理・燃料補給を無償にするか。既定では通貨を消費する。
   readonly freeProcurement: boolean = false;
   // 艦の軌道計画を PlanExecutor / 瞬間移動で実行させるか。既定では実行しない。
@@ -76,6 +79,7 @@ export abstract class Stage {
   protected _markerManager!: MarkerManager;
   protected _ephemeris!: Ephemeris;
   protected _simulator!: Simulator;
+  protected _activePlayers!: ActivePlayerController;
 
   private _phase: GamePhase;
   get phase(): GamePhase { return this._phase; }
@@ -101,6 +105,7 @@ export abstract class Stage {
     markerManager: MarkerManager,
     ephemeris: Ephemeris,
     simulator: Simulator,
+    activePlayers: ActivePlayerController,
   ): void {
     this._hud = hud;
     this._sfx = sfx;
@@ -111,6 +116,7 @@ export abstract class Stage {
     this._markerManager = markerManager;
     this._ephemeris = ephemeris;
     this._simulator = simulator;
+    this._activePlayers = activePlayers;
     this.logistics = new Logistics(hud, sfx, scene, entities, markerManager, this.savedLogistics);
     this.statusPanel = new StageStatusPanel(hud.layers.panel);
   }
@@ -169,9 +175,11 @@ export abstract class Stage {
   }
 
   abstract briefingHtml(enemyCount: number): string;
-  // 戻り値は初期敵数(ブリーフィング表示用)。
-  abstract init(player: Player, entities: EntityManager): number;
-  // 毎フレーム呼ぶ。艦が1隻も無い間(Creative の未配置状態)は player が null になる。
+  // 初期配置。戻り値は初期敵数(ブリーフィング表示用)。既定では何も置かない。
+  init(_player: Player | null, _entities: EntityManager): number {
+    return 0;
+  }
+  // 毎フレーム呼ぶ。艦が1隻も無い間は player が null になる。
   abstract update(dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void;
 
   // Simulator がsubstepをイベント直前で切るためのhook。通常ステージには時刻固定イベントがない。
