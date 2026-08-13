@@ -105,7 +105,7 @@ export class PlanEditor {
   setMapMode(open: boolean): void { this._editMode = open; }
 
   // Δv 編集中かどうか。編集モードで、かつノードを1つ選択している間だけ真。
-  get dvEditActive(): boolean { return this.editMode && this.selectedNodeIdx !== null; }
+  private get dvEditActive(): boolean { return this.editMode && this.selectedNodeIdx !== null; }
 
   readonly nodeGizmo: NodeGizmo;
   // ノード以外の計画軌道上を右クリックしたときのメニュー。
@@ -258,9 +258,10 @@ export class PlanEditor {
     this.deleteNode(this.selectedNodeIdx);
   }
 
-  // 選択ノード削除キーの入力を処理する。
-  handleInput(input: Input): void {
+  // 選択ノード削除キーの入力を処理し、続けてΔv編集を進める。
+  handleInput(input: Input, dt: number): void {
     if (input.takeKey(K.deleteNode)) this.clearPlanByKey();
+    this.updateEditing(input, dt);
   }
 
   // マップ上のクリック・右クリックをノード選択/配置とコンテキストメニューへ振り分ける。
@@ -656,15 +657,19 @@ export class PlanEditor {
   }
 
   // WASDQE キー・長押しボタン・Δv アームのラッチドラッグから選択中ノードの Δv を加算する。
-  updateEditing(dt: number, input: Input): void {
+  private updateEditing(input: Input, dt: number): void {
+    if (!this.dvEditActive) {
+      this.dvHoldTime.fill(0);
+      return;
+    }
     const fine = this.activePlayers.current?.fineAttitude ?? false;
     const b = this.dvButtons.buttons;
-    this.applyHeldDv(0, 1, input.down(K.dvPrograde) || b.pro.isHeld, dt, fine);
-    this.applyHeldDv(0, -1, input.down(K.dvRetrograde) || b.ret.isHeld, dt, fine);
-    this.applyHeldDv(1, 1, input.down(K.dvNormal) || b.nrm.isHeld, dt, fine);
-    this.applyHeldDv(1, -1, input.down(K.dvAntinormal) || b.anm.isHeld, dt, fine);
-    this.applyHeldDv(2, 1, input.down(K.dvRadialOut) || b.out.isHeld, dt, fine);
-    this.applyHeldDv(2, -1, input.down(K.dvRadialIn) || b.in.isHeld, dt, fine);
+    this.applyHeldDv(0, 1, input.takeHeld(K.dvPrograde) || b.pro.isHeld, dt, fine);
+    this.applyHeldDv(0, -1, input.takeHeld(K.dvRetrograde) || b.ret.isHeld, dt, fine);
+    this.applyHeldDv(1, 1, input.takeHeld(K.dvNormal) || b.nrm.isHeld, dt, fine);
+    this.applyHeldDv(1, -1, input.takeHeld(K.dvAntinormal) || b.anm.isHeld, dt, fine);
+    this.applyHeldDv(2, 1, input.takeHeld(K.dvRadialOut) || b.out.isHeld, dt, fine);
+    this.applyHeldDv(2, -1, input.takeHeld(K.dvRadialIn) || b.in.isHeld, dt, fine);
 
     // ラッチ中の Δv アームは、閾値超過量に比例したレートで dt 秒分を加算し続ける。
     const latch = this.nodeGizmo.latch;
