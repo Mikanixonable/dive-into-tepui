@@ -61,6 +61,9 @@ export class Game {
   private readonly mapPicker: MapPicker;
 
   readonly activeStage: Stage;
+  // ポーズは Game 自身の状態として持つ。SIM_SPEED_LEVELS は離散段で 0 を表現できないうえ、
+  // 「時間を止めるか」と「どの倍率まで相互作用を成立させるか」は別の関心事なので、
+  // SimSpeedManager へは寄せない。
   private _isPaused = false;
   get isPaused(): boolean { return this._isPaused; }
 
@@ -146,6 +149,8 @@ export class Game {
 
     this.input = new Input(gs.renderer.domElement);
     this.input.onFirstGesture = () => this._sfx.unlock();
+    // 空実装で置き換えないのは、TouchControls のコンストラクタが仮想パッドを document.body へ
+    // 足す副作用を持ち、無害な空実装がインターフェースの新設なしには作れないため。
     this.touchControls = TouchControls.isTouchDevice() ? new TouchControls(this.input) : null;
 
     this.predictor = new Predictor(this.entities, this.ephemeris);
