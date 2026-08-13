@@ -2,7 +2,14 @@
 // 1フレームぶんのエッジトリガ(押した瞬間のキー/クリック/右クリック/マウス移動量)を
 // update() で確定させる。エッジトリガは先着順の消費モデルで、
 // take* の handler が true を返したイベントはキューから取り除かれる。
-import { CLICK_MOVE_THRESHOLD } from '../const';
+import {
+  CLICK_MOVE_THRESHOLD,
+  RIGHT_CLICK_MOVE_THRESHOLD,
+  TOUCH_DOUBLE_TAP_MS,
+  TOUCH_DOUBLE_TAP_PX,
+  TOUCH_LONG_PRESS_FEEDBACK_MS,
+  TOUCH_LONG_PRESS_MS,
+} from '../const';
 import { KeyBinding, SCROLL_GUARD_KEYS } from './key-mapping';
 
 export interface MouseDelta {
@@ -59,11 +66,24 @@ export class Input {
   private panDragMoved = 0;
   private dragMoved = 0;
   private rightDragMoved = 0;
-  // タッチ用: アクティブポインタの座標(ピンチズーム判定に使う)
+  // タッチ用: アクティブポインタの座標(ピンチズーム・二本指パン判定に使う)
   private pointers = new Map<number, { x: number; y: number }>();
   private pinchDist = 0;
+  private pinchCentroid: PointerPoint | null = null;
   onFirstGesture: (() => void) | null = null;
   private gestureFired = false;
+  // タッチの長押し(右クリック合成)。1本指のジェスチャにしか存在しないので
+  // pointers のような Map ではなく単一の状態で持つ。
+  private longPressTimer: ReturnType<typeof setTimeout> | null = null;
+  private longPressFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
+  private longPressPointerId: number | null = null;
+  private longPressFired = false;
+  onLongPressFeedback: ((point: PointerPoint) => void) | null = null;
+  // 直近に成立したタップ(ダブルタップ合成用)。タッチ由来でなければ null のまま。
+  private lastTap: { x: number; y: number; time: number } | null = null;
+  // 直近に成立したクリックがタッチ由来だったか。真なら、二重計上を避けるため
+  // ブラウザ標準の dblclick イベントによる合成をこちらで抑止する。
+  private lastPointerUpWasTouch = false;
 
   // キーボード・ポインタ・ホイールのイベントリスナーを登録する。
   constructor(target: HTMLElement) {
@@ -111,9 +131,12 @@ export class Input {
     target.addEventListener('pointermove', (e) => this.onPointerMove(e));
     target.addEventListener('pointerup', (e) => this.onPointerUp(e));
     target.addEventListener('pointercancel', (e) => this.onPointerCancel(e));
-    // ダブルクリックの連打判定(タイミング・移動量とも)はブラウザの標準実装に委ねる。
+    // マウスのダブルクリック連打判定(タイミング・移動量とも)はブラウザの標準実装に委ねる。
+    // タッチ由来のクリックは自前で合成する(registerTap)ため、二重に積まないよう除外する。
     target.addEventListener('dblclick', (e) => {
-      if (e.button === 0) this.pendingDoubleClicks.push({ x: e.clientX, y: e.clientY });
+      if (e.button === 0 && !this.lastPointerUpWasTouch) {
+        this.pendingDoubleClicks.push({ x: e.clientX, y: e.clientY });
+      }
     });
   }
 
@@ -125,13 +148,16 @@ export class Input {
     if (isLeft) {
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (this.pointers.size === 2) {
-        // 2本指になったらドラッグをやめてピンチズームに移行
+        // 2本指になったらドラッグをやめてピンチズーム+パンに移行
         this.dragging = false;
         this.pinchDist = this.currentPinchDist();
+        this.pinchCentroid = this.currentCentroid();
+        this.cancelLongPress();
       } else if (this.pointers.size === 1) {
         this.dragging = true;
         this.dragMoved = 0;
         target.setPointerCapture(e.pointerId);
+        if (e.pointerType === 'touch') this.startLongPress(e.pointerId, { x: e.clientX, y: e.clientY });
       }
     } else if (isRight) {
       this.rightActive = true;
@@ -154,10 +180,17 @@ export class Input {
       p.y = e.clientY;
     }
     if (this.pointers.size >= 2) {
-      // ピンチ: 指の間隔の変化をホイール量へ変換(開く = ズームイン)
+      // 二本指ジェスチャ: 指の間隔の変化をホイール量へ(開く = ズームイン)、
+      // 重心の移動をパン量へ、同時に折り込む(実指は回しながら開くため排他にしない)。
       const d = this.currentPinchDist();
       this.wheel += (this.pinchDist - d) * 3;
       this.pinchDist = d;
+      const centroid = this.currentCentroid();
+      if (this.pinchCentroid) {
+        this.panDx += centroid.x - this.pinchCentroid.x;
+        this.panDy += centroid.y - this.pinchCentroid.y;
+      }
+      this.pinchCentroid = centroid;
       return;
     }
     if (this.panDragging) {
@@ -174,26 +207,38 @@ export class Input {
       this.dx += e.movementX;
       this.dy += e.movementY;
       this.dragMoved += Math.abs(e.movementX) + Math.abs(e.movementY);
+      // 静止条件が崩れたら長押しは成立させない。
+      if (this.longPressPointerId === e.pointerId && this.dragMoved >= CLICK_MOVE_THRESHOLD) {
+        this.cancelLongPress();
+      }
     }
   }
 
   // ドラッグ量が閾値未満ならクリックとして記録し、各ジェスチャを終了する。
+  // 長押しが成立済みのポインタは、離した瞬間に左クリックまで合成しないよう除外する。
   private onPointerUp = (e: PointerEvent): void => {
     const isRight = e.button === 2 || (e.button === 0 && e.ctrlKey);
     const isLeft = e.button === 0 && !e.ctrlKey;
     if (isLeft || e.pointerType === 'touch') {
       this.pointers.delete(e.pointerId);
-      if (this.dragging) this.pushIfClick(this.pendingClicks, this.dragMoved, e);
+      // 長押しがすでに右クリックへ結実したポインタは、離した指を左クリックへも
+      // 二重に変換しない。
+      const longPressConsumed = this.longPressPointerId === e.pointerId && this.longPressFired;
+      if (this.dragging && !longPressConsumed) {
+        if (this.pushIfClick(this.pendingClicks, this.dragMoved, e)) this.registerTap(e);
+      }
       this.dragging = false;
       this.pinchDist = 0;
+      this.pinchCentroid = null;
     }
+    if (this.longPressPointerId === e.pointerId) this.cancelLongPress();
     if (e.button === 1) {
       if (this.panDragging) this.pushIfClick(this.pendingMiddleClicks, this.panDragMoved, e);
       this.panDragging = false;
     }
     if (isRight) {
       if (this.rightActive) {
-        if (this.rightDragMoved < 50) {
+        if (this.rightDragMoved < RIGHT_CLICK_MOVE_THRESHOLD) {
           this.pendingRightClicks.push({ x: e.clientX, y: e.clientY });
         }
       }
@@ -208,12 +253,74 @@ export class Input {
     this.panDragging = false;
     this.rightActive = false;
     this.pinchDist = 0;
+    this.pinchCentroid = null;
+    if (this.longPressPointerId === e.pointerId) this.cancelLongPress();
   }
 
-  // moved が閾値未満(ドラッグでなくクリック)なら e の座標を queue に積む。
+  // moved が閾値未満(ドラッグでなくクリック)なら e の座標を queue に積み、積んだかを返す。
   // 左・中・右ボタン共通のクリック判定はここに一本化する。
-  private pushIfClick(queue: PointerPoint[], moved: number, e: PointerEvent): void {
-    if (moved < CLICK_MOVE_THRESHOLD) queue.push({ x: e.clientX, y: e.clientY });
+  private pushIfClick(queue: PointerPoint[], moved: number, e: PointerEvent): boolean {
+    if (moved >= CLICK_MOVE_THRESHOLD) return false;
+    queue.push({ x: e.clientX, y: e.clientY });
+    return true;
+  }
+
+  // pointerId の長押しタイマーを開始する。TOUCH_LONG_PRESS_FEEDBACK_MS 後に
+  // onLongPressFeedback を、TOUCH_LONG_PRESS_MS 後に右クリックを合成する。
+  private startLongPress(pointerId: number, point: PointerPoint): void {
+    this.cancelLongPress();
+    this.longPressPointerId = pointerId;
+    this.longPressFired = false;
+    this.longPressFeedbackTimer = setTimeout(() => this.onLongPressFeedback?.(point), TOUCH_LONG_PRESS_FEEDBACK_MS);
+    this.longPressTimer = setTimeout(() => {
+      this.longPressFired = true;
+      this.pendingRightClicks.push(point);
+    }, TOUCH_LONG_PRESS_MS);
+  }
+
+  // 進行中の長押し判定を打ち切る。
+  private cancelLongPress(): void {
+    if (this.longPressTimer !== null) clearTimeout(this.longPressTimer);
+    if (this.longPressFeedbackTimer !== null) clearTimeout(this.longPressFeedbackTimer);
+    this.longPressTimer = null;
+    this.longPressFeedbackTimer = null;
+    this.longPressPointerId = null;
+  }
+
+  // 成立したクリックがタッチ由来なら、直近のタップとの時間差・距離を見てダブルタップを
+  // pendingDoubleClicks へ合成する。マウス由来は dblclick イベントに任せるため何もしない。
+  private registerTap(e: PointerEvent): void {
+    this.lastPointerUpWasTouch = e.pointerType === 'touch';
+    if (!this.lastPointerUpWasTouch) {
+      this.lastTap = null;
+      return;
+    }
+    const x = e.clientX;
+    const y = e.clientY;
+    const now = performance.now();
+    // 2連続で成立すればダブルタップとして消費し、3連続目が単独の新しいタップ列の
+    // 起点にならないよう lastTap を毎回リセットする。
+    if (
+      this.lastTap &&
+      now - this.lastTap.time <= TOUCH_DOUBLE_TAP_MS &&
+      Math.hypot(x - this.lastTap.x, y - this.lastTap.y) <= TOUCH_DOUBLE_TAP_PX
+    ) {
+      this.pendingDoubleClicks.push({ x, y });
+      this.lastTap = null;
+    } else {
+      this.lastTap = { x, y, time: now };
+    }
+  }
+
+  // アクティブなポインタの重心を返す(呼び出し側で size >= 2 を確認していること)。
+  private currentCentroid(): PointerPoint {
+    let x = 0;
+    let y = 0;
+    for (const p of this.pointers.values()) {
+      x += p.x;
+      y += p.y;
+    }
+    return { x: x / this.pointers.size, y: y / this.pointers.size };
   }
 
   // ホイール操作を wheel 量として積算する。

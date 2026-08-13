@@ -16,7 +16,7 @@ export function selectStage(unlockManager: UnlockManager): Promise<StageClass> {
     const div = document.createElement('div');
     div.style.cssText =
       'position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;' +
-      'box-sizing:border-box;padding:clamp(28px,8vh,72px) 16px 24px;overflow:hidden;' +
+      'box-sizing:border-box;padding:clamp(28px,8vh,72px) 16px 24px;padding:clamp(28px,8dvh,72px) 16px 24px;overflow:hidden;' +
       `gap:14px;color:${TEXT};background:${BG};font-family:${FONT_FAMILY};z-index:100;text-align:center`;
     // 1項目分のボタン要素を組み立てる。ロック中は薄く表示しクリック不可にする。
     const btn = (label: string, sub: string, enabled: boolean) => {

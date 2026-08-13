@@ -20,6 +20,7 @@ import { ProjectFn } from './camera/camera-system';
 import { MapPickable, pickNearest } from './map-pick';
 import type { Base } from './game-entity/base';
 import type { Input } from './input/input';
+import { pickRadiusSq } from './input/pointer-precision';
 import * as C from './const';
 import { ContextMenu } from './hud/context-menu';
 import { MenuAction, MenuCommon } from './hud/menu-actions';
@@ -122,7 +123,10 @@ export class NavTarget {
   updateCombatBasePicking(entities: EntityManager, input: Input, project: ProjectFn): void {
     input.takeRightClicks((click) => {
       const pickables = entities.bases.filter((b) => b.alive).map((base) => ({ pos: base.state.r, base }));
-      const picked = pickNearest(pickables, click.x, click.y, project, C.TARGET_LOCK_PICK_PX_SQ);
+      // pointer:coarse では許容半径を広げる。
+      const picked = pickNearest(
+        pickables, click.x, click.y, project, pickRadiusSq(C.TARGET_LOCK_PICK_PX_SQ, C.TARGET_LOCK_PICK_PX_SQ_COARSE),
+      );
       if (!picked) return false;
       this.baseMenu.open(click.x, click.y, picked.base, [
         MenuCommon.navTarget(this.targetId === picked.base.id),

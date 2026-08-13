@@ -110,7 +110,7 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud .row { display: flex; justify-content: space-between; gap: var(--space-5); }
 #hud .row .k { color: var(--text-dim); }
 #hud .row .v { color: var(--text); min-width: 90px; text-align: right; }
-#hud-status { bottom: 12px; left: 12px; width: 228px; box-sizing: border-box; font-size: var(--font-xs); }
+#hud-status { bottom: calc(12px + var(--safe-b)); left: 12px; width: 228px; box-sizing: border-box; font-size: var(--font-xs); }
 #hud-status h3 { font-size: var(--font-xxs); }
 /* マップビューでは艦固有の情報を右クリックのプロパティウィンドウで参照するので、常設の
    SHIP STATUS は畳んでパネル占有面積を減らす。戦闘ビューでは従来どおり常設のまま。 */
@@ -145,7 +145,7 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-map-scale .map-scale-tick.mid { left: 50%; }
 #hud-map-scale .map-scale-tick.q3 { left: 75%; }
 #hud-map-scale .map-scale-tick.end { right: 0; }
-#hud-object-list { max-height: 544px; overflow-y: auto; }
+#hud-object-list { max-height: 544px; max-height: min(544px, 60dvh); overflow-y: auto; }
 /* パネルの padding 分だけ食い込ませて幅いっぱいに広げ、スクロール中も先頭に張り付かせる */
 #hud-object-list .object-list-head { position: sticky; top: calc(var(--space-4) * -1); margin: calc(var(--space-4) * -1) calc(var(--space-5) * -1) 0; padding: var(--space-4) var(--space-5) 0; background: var(--surface-opaque); z-index: 1; }
 #hud-object-list .object-list-search { padding: var(--space-1) var(--space-2); }
@@ -219,10 +219,10 @@ body.hud-modal-open #touch-ui { display: none; }
 .mk-secondary-target { color: var(--accent-secondary); }
 .mk-enemy { color: var(--text-strong); }
 .mk-lead { color: var(--danger); }
-.mk-pro { color: ${C.COLOR_MARKER_PROGRADE}; }
-.mk-retro { color: ${C.COLOR_MARKER_PROGRADE}; }
-.mk-nrm { color: ${C.COLOR_MARKER_NORMAL}; }
-.mk-rad { color: ${C.COLOR_MARKER_RADIAL}; }
+.mk-pro { color: var(--axis-prograde); }
+.mk-retro { color: var(--axis-prograde); }
+.mk-nrm { color: var(--axis-normal); }
+.mk-rad { color: var(--axis-radial); }
 .mk-tgtdir { color: ${C.COLOR_MARKER_TGTDIR}; }
 .mk-node { color: ${C.COLOR_MARKER_NODE}; }
 .mk-boardpass { color: ${C.COLOR_MARKER_BOARDPASS}; text-shadow: 0 0 5px color-mix(in srgb, ${C.COLOR_MARKER_BOARDPASS} var(--glow-strong), transparent), 0 0 10px color-mix(in srgb, ${C.COLOR_MARKER_BOARDPASS} var(--glow-weak), transparent); }
@@ -281,7 +281,7 @@ body.hud-modal-open #touch-ui { display: none; }
 /* #hud を重ねた ID セレクタで、.panel 共通規則(position:absolute)より詳細度を上げて打ち消す。 */
 #hud #hud-displaytime {
   display: none; position: relative; inset: auto; order: 2; box-sizing: border-box;
-  max-height: 40vh; overflow-y: auto; pointer-events: auto;
+  max-height: 40vh; max-height: 40dvh; overflow-y: auto; pointer-events: auto;
 }
 #hud-displaytime.collapsed { display: none !important; }
 #hud-displaytime-toggle {
@@ -338,7 +338,7 @@ body.hud-modal-open #touch-ui { display: none; }
 }
 #hud-frame-controls { display: none; width: 100%; pointer-events: auto; }
 #hud-frame-controls .hud-frame-scroll-zone {
-  max-height: min(240px, 30vh); overflow-y: auto;
+  max-height: min(240px, 30vh); max-height: min(240px, 30dvh); overflow-y: auto;
   scrollbar-width: thin;
 }
 /* 座標系の候補が増えても、見出しの右側へボタンを押し出さない。 */
@@ -346,14 +346,9 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-frame-controls .hud-frame-rotation-zone > .seg-title {
   flex: 0 0 100%; min-width: 0;
 }
-<<<<<<< HEAD
 #hud-creative-settings { display: none; width: 100%; pointer-events: auto; }
 /* 艦艇配置パネル(クリエイティブモード限定): MANEUVER PLAN の下、右上に縦積みする。 */
-=======
-#hud-logistics { display: none; width: 100%; pointer-events: auto; }
-/* 艦艇配置パネル: MANEUVER PLAN の下、右上に縦積みする。 */
->>>>>>> origin/workspace4
-#hud-shipplacer { display: none; width: 100%; pointer-events: auto; max-height: 70vh; overflow-y: auto; }
+#hud-shipplacer { display: none; width: 100%; pointer-events: auto; max-height: 70vh; max-height: 70dvh; overflow-y: auto; }
 #hud-shipplacer .slider-field { margin-bottom: var(--space-4); }
 #hud-shipplacer .slider-field .hud-seg { flex-wrap: nowrap; margin-bottom: 0; }
 #hud-shipplacer .slider-field .slider-col { flex: 1 1 60px; min-width: 60px; }
@@ -374,9 +369,9 @@ body.hud-modal-open #touch-ui { display: none; }
 #navball .nb-equator { fill: none; stroke: var(--text-dim); stroke-width: 0.9; opacity: 0.55; }
 #navball .nb-bore line { stroke: ${C.COLOR_MARKER_BORESIGHT}; stroke-width: 1; opacity: 0.8; }
 #navball text { font-size: var(--font-xxs); text-anchor: middle; dominant-baseline: middle; }
-#navball .nb-pro { fill: ${C.COLOR_MARKER_PROGRADE}; }
-#navball .nb-nrm { fill: ${C.COLOR_MARKER_NORMAL}; }
-#navball .nb-rad { fill: ${C.COLOR_MARKER_RADIAL}; }
+#navball .nb-pro { fill: var(--axis-prograde); }
+#navball .nb-nrm { fill: var(--axis-normal); }
+#navball .nb-rad { fill: var(--axis-radial); }
 #mk-bore .lbl { top: auto; left: 100%; bottom: 100%; margin: 0 0 var(--space-1) var(--space-3); white-space: pre; text-align: left; font-size: var(--font-xxs); line-height: 1.2; }
 .mk-planned { color: ${C.COLOR_MARKER_PLANNED}; text-shadow: 0 0 6px color-mix(in srgb, ${C.COLOR_MARKER_PLANNED} var(--glow-strong), transparent), 0 0 3px var(--bg); }
 .mk-apsis { color: ${C.COLOR_MARKER_PLANNED}; text-shadow: 0 0 6px color-mix(in srgb, ${C.COLOR_MARKER_PLANNED} var(--glow-strong), transparent), 0 0 3px var(--bg); }
@@ -404,14 +399,14 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-end .restart { margin-top: var(--space-6); color: var(--accent-soft); font-size: var(--font-l); }
 #hud-help {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-  display: none; min-width: 480px; max-height: 86vh; overflow-y: auto; pointer-events: auto;
+  display: none; min-width: min(480px, calc(100vw - 24px)); max-height: 86vh; max-height: 86dvh; overflow-y: auto; pointer-events: auto;
 }
 #hud-help table { border-collapse: collapse; width: 100%; }
 #hud-help td { padding: var(--space-2) var(--space-5); color: var(--text); }
 #hud-help td.key { color: var(--accent-soft); text-align: right; white-space: nowrap; }
 
 #hud-stagestatus {
-  bottom: 12px; left: 50%; transform: translateX(-50%);
+  bottom: calc(12px + var(--safe-b)); left: 50%; transform: translateX(-50%);
   display: flex; align-items: flex-start; gap: var(--space-6);
   text-align: left; min-width: 480px; padding: var(--space-4) var(--space-6);
 }
@@ -481,7 +476,7 @@ body.hud-modal-open #touch-ui { display: none; }
   #hud .hud-dock-left { left: 8px; width: min(220px, calc(46vw - 8px)); }
   #hud .hud-dock-right { right: 8px; width: min(260px, calc(54vw - 8px)); }
   #hud-plan { min-width: 0; max-width: none; }
-  #hud-help { min-width: 0; width: 94vw; max-height: 78vh; }
+  #hud-help { min-width: 0; width: 94vw; max-height: 78vh; max-height: 78dvh; }
   #hud-end h1 { font-size: var(--font-2xl); letter-spacing: 3px; }
   #hud-end .detail { font-size: var(--font-l); padding: var(--space-5) var(--space-6); max-width: 92vw; }
   #navball { top: 76px; width: 96px !important; height: auto !important; }
@@ -514,10 +509,10 @@ body.hud-modal-open #touch-ui { display: none; }
   /* 幅が足りないので、行2はスクラバーと T+ 読み値だけ残す。 */
   #hud-displaytime .dtp-absolute { display: none; }
   /* 左右ドックが幅を使い切り隙間が残らないため、ドックの下端を上げて帯の分を空け、バーは全幅に戻す。
-     bottom はここで確保した帯の高さ(28vh)に収まる値まで詰め直す。 */
-  #hud.map-mode .hud-dock { bottom: calc(28vh + 16px); }
+     bottom はここで確保した帯の高さ(28vh/28dvh)に収まる値まで詰め直す。 */
+  #hud.map-mode .hud-dock { bottom: calc(28vh + 16px); bottom: calc(28dvh + 16px); }
   #hud-displaytime-wrap { left: 8px; right: 8px; bottom: 8px; }
-  #hud-displaytime { max-height: 28vh; }
+  #hud-displaytime { max-height: 28vh; max-height: 28dvh; }
   #hud-combat-shelf { top: 72px; }
   #hud-combat-shelf > .panel { flex-basis: min(168px, calc(100vw - 16px)); width: min(168px, calc(100vw - 16px)); }
 }
@@ -677,7 +672,7 @@ body.hud-modal-open #touch-ui { display: none; }
   font-family: var(--font-family); pointer-events: auto;
 }
 #save-browser .sb-panel {
-  width: min(1100px, 94vw); height: min(760px, 88vh);
+  width: min(1100px, 94vw); height: min(760px, 88vh); height: min(760px, 88dvh);
   display: flex; flex-direction: column; overflow: hidden;
   background: var(--bg); border: 1px solid var(--edge); border-radius: var(--radius-l);
 }
