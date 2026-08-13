@@ -30,7 +30,6 @@ const DEG = Math.PI / 180;
 
 export class CreativeStage extends Stage {
   static readonly id = 'creative' as const;
-  static readonly showsStatusInOverview = true;
   static readonly selectLabel = 'CREATIVE';
   static readonly selectSub = '軌道上に艦艇を自由に配置して眺める';
   static readonly selectGroup = 'クリエイティブモード';
