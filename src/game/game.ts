@@ -232,13 +232,9 @@ export class Game {
   private advanceSimulation(dt: number): void {
     this.sections.enter(SECTION.player);
     this.nanWatchdog.checkPlayer('frameStart', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
-    this.entities.updatePlayers(this.player, {
-      dt,
-      input: this.input,
-      simSpeed: this.simSpeedManager,
-      activeStage: this.activeStage,
-      ephemeris: this.ephemeris,
-    });
+    this.entities.updatePlayers(
+      this.player, this.input, this.simSpeedManager, dt, this.activeStage, this.ephemeris,
+    );
     this.nanWatchdog.checkPlayer('player.behave', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
     this.sections.exit(SECTION.player);
 
@@ -247,9 +243,6 @@ export class Game {
     this.sections.exit(SECTION.stage);
     this.nanWatchdog.checkPlayer('activeStage.update', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
     this.simSpeedManager.update(this.simulator.simTime);
-    // 操作不可のワープ倍率は、操作対象から外れた艦と同じ「操作できない」状態。連続指令を書いた
-    // 主体(behave / planExecutor)によらず、積分へ渡る前に全自機分を畳む。
-    if (!this.simSpeedManager.canOperatePlayer) this.entities.clearTransientCommands();
 
     const simDt = dt * this.simSpeedManager.simSpeed;
     this.sections.enter(SECTION.integrate);
