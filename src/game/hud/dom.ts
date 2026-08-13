@@ -266,6 +266,9 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud .hud-toggle .toggle-track.on .toggle-knob { left: 18px; background: var(--accent); }
 /* MAP VIEW の左列は navball ウィンドウの右に置き、重なりを避ける。 */
 #hud-overview-camera { display: none; width: 100%; pointer-events: auto; }
+#hud-overview-camera .overview-camera-title { display: flex; align-items: center; gap: var(--space-2); }
+#hud-overview-camera .overview-camera-collapse { margin-left: auto; background: none; border: none; color: var(--text-dim); font: inherit; cursor: pointer; pointer-events: auto; }
+#hud-overview-camera .overview-camera-body.collapsed { display: none !important; }
 /* 下部の固定バーとその開閉トグル。両者を縦積みの flex にして画面下端に揃え、パネルを畳んでも
    トグルだけがその場(バーがあった位置の上端)に残るようにする。マップビューでは
    #hud-stagestatus は常に非表示なので、他の下端揃えパネル(.hud-dock 等)と同じ bottom まで詰める。
@@ -336,14 +339,14 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-frame-controls { display: none; width: 100%; pointer-events: auto; }
 #hud-frame-controls .hud-frame-scroll-zone {
   max-height: min(240px, 30vh); overflow-y: auto;
-  scrollbar-width: thin; overscroll-behavior-y: contain;
+  scrollbar-width: thin;
 }
 /* 座標系の候補が増えても、見出しの右側へボタンを押し出さない。 */
 #hud-frame-controls .hud-frame-origin-zone > .hud-seg:first-child > .seg-title,
 #hud-frame-controls .hud-frame-rotation-zone > .seg-title {
   flex: 0 0 100%; min-width: 0;
 }
-#hud-creative-logistics { display: none; width: 100%; pointer-events: auto; }
+#hud-creative-settings { display: none; width: 100%; pointer-events: auto; }
 /* 艦艇配置パネル(クリエイティブモード限定): MANEUVER PLAN の下、右上に縦積みする。 */
 #hud-shipplacer { display: none; width: 100%; pointer-events: auto; max-height: 70vh; overflow-y: auto; }
 #hud-shipplacer .slider-field { margin-bottom: var(--space-4); }
