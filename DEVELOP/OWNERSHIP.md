@@ -56,7 +56,8 @@ main.ts
     ├── FrameControls                  ... 座標系パネル。カメラ(視点)区画と軌道計画(描画基準)区画がそれぞれ
     │                                       中心・回転の2ゾーンを持ち、OverviewCamera・DisplayWindowManager.frame を書く。
     │                                       自分の状態は「カメラの基準に追随」トグル(followCamera)だけ。
-    │                                       パネル DOM は Hud.layers.panel 配下
+    │                                       パネル DOM は Hud.layers.panel 配下。CameraSystem の直後、PlanEditor より前に
+    │                                       construct する(PlanEditor が構築引数として参照を受け取るため)
     │   ├── AnchorZone × 2                 ... カメラ/並進ゾーン。ObjectPicker + SegmentedControl(いまいる系のクイックボタン)。ObjectPicker のポップアップは Hud.layers.popup 配下
     │   └── RotationZone × 2               ... カメラ回転/計画軌道回転ゾーン。SegmentedControl のみ
     ├── MapPicker                      ... マップ被選択物の候補列・右クリック解決・種別別プロパティ/操作の配分・開いているプロパティウィンドウ集合
@@ -260,6 +261,7 @@ main.ts
 | `Plan`(活艦の) | `Player`(活艦自身、`PlanEditor` ではない) | PlanEditor(`plan` getter が活艦の `plan` を転送。艦がいなければ `null`)・PlanDisplay(`update` の引数で毎フレーム受ける。出さないフレームは `null`)・PlanGuide(引数では受けず、渡された `Player` の `plan` から自分で引く)・CreativeStage(`planExecution` 艦のノード消化) |
 | `PlanExecutor`(艦ごとの) | `Player`(艦自身) | CreativeStage(`update`/`nextSimulationEventTime`/`applySimulationEvents` から呼ぶだけで保持しない) |
 | `SimSpeedManager` | Game | PlanEditor(ノードメニューからの自動ワープ) |
+| `FrameControls` | Game | PlanEditor(構築引数。ノードメニューの「フォーカス」項目で `frameControls.setFocus(...)` を直接呼ぶ) |
 | `EffectsSystem`(`EntityManager.effects`) | EntityManager | Player・PlayerFire・Enemy・Stage(`Game` は `entities.effects` 経由でのみ触れる。所有権は持たない) |
 | `Player` / `Simulator` / `EntityManager` / `Stage` | Game | 毎フレームの引数として相互に渡される |
 | `UnlockManager` | main.ts | ステージセレクト画面と、各Stage（クリア後画面判定のため） |

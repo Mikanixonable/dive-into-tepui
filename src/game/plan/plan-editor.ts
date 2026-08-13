@@ -28,6 +28,8 @@ import { hudDock } from '../hud/dom';
 import { SimSpeedManager } from '../sim-speed-manager';
 import type { Player } from '../player/player';
 import type { ActivePlayerController } from '../active-player-controller';
+import type { FrameControls } from '../frame-controls';
+import { focusPoint } from '../camera/focus-target';
 import { Attractor, orbitalElementsOf, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
 import { toFrameState } from '../../physics/frame';
 import type { PlanAttractorProvider } from '../simulation/attractors';
@@ -87,8 +89,6 @@ export class PlanEditor {
     this.selectedNode = idx === null ? null : this.plan?.nodes[idx] ?? null;
   }
 
-  onFocusNode: ((state: KinematicState) => void) | null = null;
-
   // アクティブ艦自身の計画を編集する。艦は自分の計画を所有し続けるので、艦を切り替えると
   // 編集対象もその艦の計画へ切り替わる。艦がいなければ編集する計画も無い。
   get plan(): Plan | null { return this.activePlayers.current?.plan ?? null; }
@@ -132,6 +132,7 @@ export class PlanEditor {
     private readonly markerManager: MarkerManager,
     private readonly activePlayers: ActivePlayerController,
     private readonly displayDuration: DisplayDurationSource,
+    private readonly frameControls: FrameControls,
   ) {
     this.planDisplay = new PlanDisplay(scene, markerManager, ephemeris, displayDuration);
     this.nodeGizmo = new NodeGizmo(this._hud.layers.marker, this._hud.layers.popup);
@@ -228,7 +229,8 @@ export class PlanEditor {
     };
     g.onMenuFocus = (idx) => {
       const n = this.plan?.nodes[idx];
-      if (n) this.onFocusNode?.(n);
+      if (n) this.frameControls.setFocus(
+        focusPoint(this.ephemeris, this.ephemeris.inertialFrame, n.r, n.t));
     };
   }
 
