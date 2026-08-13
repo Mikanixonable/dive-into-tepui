@@ -229,26 +229,28 @@ export class Game {
   // その段だけを落として残りは進める(残骸・弾の epoch はどの状況でも進め続ける)。
   private advanceSimulation(dt: number): void {
     this.sections.enter(SECTION.player);
-    if (this.player && this.activeStage.isPlaying) {
-      this.nanWatchdog.checkPlayer('frameStart', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
-      this.player.behave({
-        dt,
-        input: this.input,
-        simSpeed: this.simSpeedManager,
-        mapMode: this.editor.editMode,
-        dvEditActive: this.editor.dvEditActive,
-        scoreCounter: this.activeStage.scoreCounter,
-        simTime: this.simulator.simTime,
-        zoomActive: this.cameraSystem.zoomActive,
-        entities: this.entities,
-        ephemeris: this.ephemeris,
-      });
-      this.entities.updatePassivePlayers(dt, this.player);
-      this.nanWatchdog.checkPlayer('player.behave', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
-    } else if (this.player) {
-      // behave が呼ばれなくなるので、次のフレームへ持ち越してはならない連続指令を畳む。
-      this.player.clearTransientCommands();
+    this.nanWatchdog.checkPlayer('frameStart', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
+    if (this.player) {
+      if (this.activeStage.isPlaying) {
+        this.player.behave({
+          dt,
+          input: this.input,
+          simSpeed: this.simSpeedManager,
+          mapMode: this.editor.editMode,
+          dvEditActive: this.editor.dvEditActive,
+          scoreCounter: this.activeStage.scoreCounter,
+          simTime: this.simulator.simTime,
+          zoomActive: this.cameraSystem.zoomActive,
+          entities: this.entities,
+          ephemeris: this.ephemeris,
+        });
+      } else {
+        // 決着後は操作を受け付けないので、次のフレームへ持ち越してはならない連続指令を畳む。
+        this.player.clearTransientCommands();
+      }
     }
+    this.entities.updatePassivePlayers(dt, this.player);
+    this.nanWatchdog.checkPlayer('player.behave', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
     this.sections.exit(SECTION.player);
 
     this.sections.enter(SECTION.stage);
