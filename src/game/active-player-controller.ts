@@ -8,7 +8,6 @@ import type { CameraSystem } from './camera/camera-system';
 import type { PlanEditor } from './plan/plan-editor';
 import type { Targeter } from './targeter';
 import type { NavTarget } from './nav-target';
-import type { ViewManager } from './view-manager';
 import type { MapPicker } from './map-picker';
 import type { Sfx } from '../audio/sfx';
 
@@ -22,7 +21,6 @@ export class ActivePlayerController {
     private readonly editor: PlanEditor,
     private readonly targeter: Targeter,
     private readonly navTarget: NavTarget,
-    private readonly viewManager: ViewManager,
     private readonly mapPicker: MapPicker,
     private readonly sfx: Sfx,
   ) {
@@ -52,7 +50,6 @@ export class ActivePlayerController {
     this.cameraSystem.setActivePlayer(null);
     this.editor.setActivePlayer(null);
     this.sfx.setRcs(false);
-    this.viewManager.setView('map');
   }
 
   // 艦を削除する。操作対象だった場合は他の生存艦へ引き継ぐか、無ければ未配置状態へ戻す。
