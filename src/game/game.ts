@@ -7,8 +7,7 @@ import { FrameSections, SECTION } from '../frame-sections';
 import { Player } from './player/player';
 import { CameraSystem } from './camera/camera-system';
 import { focusPoint } from './camera/focus-target';
-import { Stage } from './stages/stage';
-import { LaunchSelection } from './game-mode';
+import { Stage, StageId } from './stages/stage';
 import { MarkerManager } from './marker/marker-manager';
 import {
   buildStage, ephemerisConfigFor, initialPlayerCountFor, showsStatusInOverviewFor,
@@ -97,7 +96,7 @@ export class Game {
   // 各サブシステムを、互いの依存関係が満たせる順に生成して配線する。
   constructor(
     gs: GameScene,
-    launch: LaunchSelection,
+    stageId: StageId,
     hud: Hud,
     sfx: Sfx,
     settingsPanel: SettingsPanel,
@@ -114,7 +113,7 @@ export class Game {
     this.settingsPanel = settingsPanel;
     this.unlockManager = unlockManager;
 
-    const ephemerisConfig = ephemerisConfigFor(launch);
+    const ephemerisConfig = ephemerisConfigFor(stageId);
     const phaseOffsets = initialSave?.phaseOffsets ?? {};
     this._ephemeris = ephemerisConfig === undefined
       ? new Ephemeris(undefined, undefined, SIM_EPOCH_ET, phaseOffsets, absoluteEphemeris, SIM_EPOCH_JD_TDB)
@@ -125,7 +124,7 @@ export class Game {
 
     this.entities = new EntityManager(
       this._scene, this._hud, this._sfx, this.markerManager,
-      initialSave ? { saved: initialSave } : { playerCount: initialPlayerCountFor(launch) },
+      initialSave ? { saved: initialSave } : { playerCount: initialPlayerCountFor(stageId) },
     );
     this.displayWindowManager = new DisplayWindowManager(this._hud.layers.panel, this.ephemeris, this.entities);
     const initialPlayer = this.entities.initialActivePlayer;
@@ -137,7 +136,7 @@ export class Game {
       this.markerManager,
       this.ephemeris,
       initialPlayer,
-      showsStatusInOverviewFor(launch),
+      showsStatusInOverviewFor(stageId),
       initialSave?.camera,
     );
     this.simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
@@ -185,10 +184,9 @@ export class Game {
     this.predictor = new Predictor(this.entities, this.ephemeris);
 
     this.activeStage = buildStage(
-      launch, initialPlayer, this.entities, this._hud, this._sfx, this._scene,
+      stageId, initialPlayer, this.entities, this._hud, this._sfx, this._scene,
       this.unlockManager, this.entities.effects, this.markerManager, this.ephemeris, this.simulator,
-      (ship) => { if (this.player === null) this.activePlayers.set(ship); },
-      initialSave?.stage,
+      this.activePlayers, initialSave?.stage,
     );
 
     this.nanWatchdog = new NanWatchdog(this._hud);

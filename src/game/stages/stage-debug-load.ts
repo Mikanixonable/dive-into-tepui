@@ -25,7 +25,8 @@ export class StageDebugLoad extends Stage {
   }
 
   // 引力を及ぼす小惑星(重力源)と、受けるだけの破片の双方を自機周囲へ散らす。
-  init(player: Player, entities: EntityManager): number {
+  init(player: Player | null, entities: EntityManager): number {
+    if (!player) return 0;
     const rand = mulberry32(C.DEBUG_LOAD_RNG_SEED);
     for (let i = 0; i < C.DEBUG_LOAD_ASTEROID_COUNT; i++) {
       const offset = randomOffset(rand, C.DEBUG_LOAD_ASTEROID_MAX_DIST);

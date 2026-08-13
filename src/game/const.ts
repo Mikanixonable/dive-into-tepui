@@ -1,8 +1,8 @@
 // ゲームバランス・チューニング定数
 export { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../physics/solar-system';
 
-// クリエイティブモードで配置できる艦の上限隻数。
-export const CREATIVE_MAX_SHIPS = 50;
+// 軌道上へ配置できる自機の上限隻数。
+export const MAX_PLACED_SHIPS = 50;
 
 // --- 基地ドッキング ---
 // 収容判定: 基地との距離(m)と相対速度(m/s)がこれ以内なら収容可能とみなす。
@@ -10,14 +10,14 @@ export const DOCK_CAPTURE_DIST = 500;    // [m]
 export const DOCK_CAPTURE_REL_V = 20;   // [m/s]
 
 
-// クリエイティブモードのラグランジュ点配置(ハロー/リサジュー)の既定振幅 [km]。
+// ラグランジュ点配置(ハロー/リサジュー)の既定振幅 [km]。
 // 副天体ごとに主天体との距離が3桁近く違うため、妥当なオーダーを副天体ごとに別々に持つ。
-export const CREATIVE_HALO_AX_MOON_KM = 8000;
-export const CREATIVE_HALO_AZ_MOON_KM = 5000;
-export const CREATIVE_HALO_AX_EARTH_KM = 200000;
-export const CREATIVE_HALO_AZ_EARTH_KM = 120000;
-export const CREATIVE_HALO_AX_JUPITER_KM = 7000000;
-export const CREATIVE_HALO_AZ_JUPITER_KM = 4000000;
+export const HALO_AX_MOON_KM = 8000;
+export const HALO_AZ_MOON_KM = 5000;
+export const HALO_AX_EARTH_KM = 200000;
+export const HALO_AZ_EARTH_KM = 120000;
+export const HALO_AX_JUPITER_KM = 7000000;
+export const HALO_AZ_JUPITER_KM = 4000000;
 
 export const REENTRY_ALT = 80e3; // 敵機はこれ以下で大気圏突入・焼失 [m](熱モデルなしの簡易処理)
 export const PLAYER_MIN_ALT = 45e3; // 自機の構造限界高度 [m](通常は加熱・動圧で先に喪失する)

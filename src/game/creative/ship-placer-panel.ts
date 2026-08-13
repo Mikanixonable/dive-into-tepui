@@ -128,9 +128,9 @@ const LAGRANGE_ORBIT_KIND_ITEMS: readonly (readonly [LagrangeOrbitKind, string])
 // 副天体ごとに妥当なオーダーへ面内/面外振幅の既定値を切り替える(系ごとに主天体間距離が
 // 桁違いなため)。
 const LAGRANGE_DEFAULT_AMPLITUDE_KM: Partial<Record<OrbitingId, { ax: number; az: number }>> = {
-  moon: { ax: C.CREATIVE_HALO_AX_MOON_KM, az: C.CREATIVE_HALO_AZ_MOON_KM },
-  earth: { ax: C.CREATIVE_HALO_AX_EARTH_KM, az: C.CREATIVE_HALO_AZ_EARTH_KM },
-  jupiter: { ax: C.CREATIVE_HALO_AX_JUPITER_KM, az: C.CREATIVE_HALO_AZ_JUPITER_KM },
+  moon: { ax: C.HALO_AX_MOON_KM, az: C.HALO_AZ_MOON_KM },
+  earth: { ax: C.HALO_AX_EARTH_KM, az: C.HALO_AZ_EARTH_KM },
+  jupiter: { ax: C.HALO_AX_JUPITER_KM, az: C.HALO_AZ_JUPITER_KM },
 };
 
 // 副天体とその主天体の距離 [km](= 副天体の軌道長半径)。
@@ -142,8 +142,8 @@ function primaryDistanceKm(secondary: OrbitingId): number {
 
 // 表に無い天体の既定振幅を主天体間距離から導くときの比。月の既定値と月の軌道長半径の比を
 // そのまま使うので、表に載っている天体と桁感が揃う。
-const AMPLITUDE_AX_RATIO = C.CREATIVE_HALO_AX_MOON_KM / primaryDistanceKm('moon');
-const AMPLITUDE_AZ_RATIO = C.CREATIVE_HALO_AZ_MOON_KM / primaryDistanceKm('moon');
+const AMPLITUDE_AX_RATIO = C.HALO_AX_MOON_KM / primaryDistanceKm('moon');
+const AMPLITUDE_AZ_RATIO = C.HALO_AZ_MOON_KM / primaryDistanceKm('moon');
 
 const DEG = Math.PI / 180;
 
