@@ -186,14 +186,11 @@ export abstract class Stage {
     this.syncStatusPanel(player, overviewMode);
   }
 
-  // hudSubStatus() が null ならパネルを隠し、文字列なら HP・スコアとともに表示する。
+  // hudSubStatus() が null のとき、またはマップ視点のときはパネルを畳む。
   private syncStatusPanel(player: Player | null, overviewMode: boolean): void {
     const message = this.hudSubStatus();
-    if (!player || message === null || overviewMode) {
-      this.statusPanel.hide();
-      return;
-    }
-    this.statusPanel.sync(player, message, this.scoreCounter.kills);
+    const show = message !== null && !overviewMode;
+    this.statusPanel.sync(show ? player : null, message ?? '', this.scoreCounter.kills);
   }
 
   // 自機を1隻置き、操作対象が居なければそれを操作対象にする。艦の隻数は0..n隻が一般形で、
