@@ -214,12 +214,12 @@ export class Player extends Ship {
       return;
     }
     this.handleEdgeInput(input);
-    this.updateTorque(input, simDt);
+    this.updateTorque(input, dt, simDt);
 
     this.fire.updateFireState(dt, input, activeStage, entities, ephemeris);
 
     this.throttle.updateThrustLatches(input);
-    this.thrust = this.throttle.updateThrustState(input, this.att, dt, this);
+    this.thrust = this.throttle.updateThrustState(input, this.att, simDt, this);
     // 噴射中は毎フレーム破棄する — 次の Predictor がその時点の実状態を種に作り直す。
     if (this.thrust !== null) this.invalidatePrediction();
 
@@ -422,7 +422,7 @@ export class Player extends Ship {
   }
 
   // 入力から機体座標系トルクを求めて this.torque へ反映し、角速度をクランプする。
-  private updateTorque(input: Input, attDt: number): void {
+  private updateTorque(input: Input, dt: number, simDt: number): void {
     // 発砲中は姿勢微調整と同じ操作精度になる
     const fine = this.fineAttitude || this.fire.isFiring;
     this.torque = this.throttle.updateTorque(
@@ -431,7 +431,8 @@ export class Player extends Ship {
       this.state.v,
       input,
       fine,
-      attDt,
+      dt,
+      simDt,
       this,
       () => this._hud.hint('進行方向ホールド解除(手動操作)'),
     );

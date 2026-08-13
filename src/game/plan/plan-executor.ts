@@ -59,12 +59,13 @@ export class PlanExecutor {
   constructor(private readonly hud: PlanExecutorHud) {}
 
   // 実フレームごとに姿勢整列・出力段選択・燃料消費込みの推力量を求め、ship.torque/ship.thrust へ
-  // 書く。'powered' でない、ノードが無い、死亡していれば待機へ戻す。
+  // 書く。'powered' でない、ノードが無い、死亡していれば待機へ戻す。燃料は推力が積分される
+  // ぶんに比例する物理量なので、刻み幅はシミュレーション時間 simDt で受け取る。
   // ship.thrust はここでも書く(Player.behave より後に走るのはここだけなので、操作対象艦でも
   // behave の無条件 null 代入に上書きされたまま積分へ渡ってしまわないようにする)のに加え、
   // 点火・遮断の瞬間だけは applyIgnitionAndCutoff からも書く(simTime のイベント境界を跨いだ
   // 直後の残りサブステップにまで反映させるため)。
-  update(ship: PlanExecutorShip, dt: number, simTime: number, simSpeed: PlanExecutorSimSpeed): void {
+  update(ship: PlanExecutorShip, simDt: number, simTime: number, simSpeed: PlanExecutorSimSpeed): void {
     // 噴射できないワープ倍率では姿勢整列トルクも含めて一切の指令を出さない。燃焼中に
     // ゲートが閉じた場合も保留ではなく中断する — 凍結した噴射方向は「点火から遮断までの
     // 短時間なら慣性系で固定してよい」という近似であって、噴射しないまま時間加速で長く
@@ -87,7 +88,7 @@ export class PlanExecutor {
     // 燃焼中は姿勢を追随させず(点火時に確定した向きを保持するだけ)、出力段の見直しと
     // 推力の書き直しだけを行う。
     if (this.phase === 'burn' || this.phase === 'trim') {
-      this.updateBurnOutput(ship, node, dt);
+      this.updateBurnOutput(ship, node, simDt);
       return;
     }
 
@@ -132,7 +133,7 @@ export class PlanExecutor {
 
   // 燃焼中(burn/trim)の姿勢保持トルク・出力段・推力を求め直す。姿勢は点火時に確定した
   // burnDirWorld/burnUpWorld を保持し続けるだけで、目標そのものは動かさない。
-  private updateBurnOutput(ship: PlanExecutorShip, node: KinematicState, dt: number): void {
+  private updateBurnOutput(ship: PlanExecutorShip, node: KinematicState, simDt: number): void {
     const dir = this.burnDirWorld!;
     ship.torque = attitudeAlignTorque(dir, this.burnUpWorld!, ship.att, C.PROGRADE_HOLD_KP, C.PROGRADE_HOLD_KD);
 
@@ -143,7 +144,7 @@ export class PlanExecutor {
     const level = this.phase === 'trim' ? C.THROTTLE_LEVELS[0]! : maxLevel;
     const presetScale = level / maxLevel;
     const maxAccel = maxAccelOf(ship.totalThrust, ship.mass);
-    const ratio = ship.consumeFuel(ship.totalFuelConsumptionRate * presetScale * dt);
+    const ratio = ship.consumeFuel(ship.totalFuelConsumptionRate * presetScale * simDt);
     this.pendingAccel = maxAccel * presetScale * ratio;
     if (this.pendingAccel <= 0) {
       ship.planExecution = 'off';

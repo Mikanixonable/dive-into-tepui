@@ -95,8 +95,8 @@ export class PlayerThrottle {
 
   // 入力から機体座標系の推力加速度を組み立てて返す。入力が無ければ null。
   // ベルト物理が使う推力加速度の表示用状態も併せて更新する。
-  updateThrustState(input: Input, att: Attitude, dt: number, ship: import('../game-entity/ship').Ship): Vec3 | null {
-    const thrust = this.buildThrust(input, att.q, ship, dt);
+  updateThrustState(input: Input, att: Attitude, simDt: number, ship: import('../game-entity/ship').Ship): Vec3 | null {
+    const thrust = this.buildThrust(input, att.q, ship, simDt);
     if (!thrust) {
       this.stopThrust();
       return null;
@@ -139,7 +139,7 @@ export class PlayerThrottle {
   }
 
   // 6方向の並進入力から機体座標系の推力加速度ベクトルを求める。入力が無ければ null。
-  private buildThrust(input: Input, q: Attitude['q'], ship: import('../game-entity/ship').Ship, dt: number): Vec3 | null {
+  private buildThrust(input: Input, q: Attitude['q'], ship: import('../game-entity/ship').Ship, simDt: number): Vec3 | null {
     if (isThrustKillSwitchActive(input)) return null;
     const axX = (this.isThrustHeld(input, K.thrustLeft) ? 1 : 0) + (this.isThrustHeld(input, K.thrustRight) ? -1 : 0);
     const axY = (this.isThrustHeld(input, K.thrustUp) ? 1 : 0) + (this.isThrustHeld(input, K.thrustDown) ? -1 : 0);
@@ -153,7 +153,7 @@ export class PlayerThrottle {
     let thrustAccel = maxAccel * presetScale;
 
     // 燃料残量に応じて実際の加速度を絞る
-    const consumption = ship.totalFuelConsumptionRate * presetScale * dt;
+    const consumption = ship.totalFuelConsumptionRate * presetScale * simDt;
     const actualRatio = ship.consumeFuel(consumption);
     thrustAccel *= actualRatio;
     
@@ -172,13 +172,16 @@ export class PlayerThrottle {
 
   // 手動回転・RCS制動・プログレードホールドを合成したボディフレームトルクを返す。
   // r/v は軌道の位置・速度で、プログレードホールドの目標姿勢(進行方向)を組むのに使う。
+  // 時計を2つ取る: 出力ランプは「キーを何秒握ったか」という操作感の量なので実時間 dt、
+  // 燃料消費はトルクが積分されるぶんに比例する物理量なのでシミュレーション時間 simDt。
   updateTorque(
     att: Attitude,
     r: Vec3,
     v: Vec3,
     input: Input,
     fineAttitude: boolean,
-    attDt: number,
+    dt: number,
+    simDt: number,
     ship: import('../game-entity/ship').Ship,
     onProgradeHoldReleased: () => void,
   ): Vec3 {
@@ -189,7 +192,7 @@ export class PlayerThrottle {
 
     // 回転指令があればプログレードホールドを解除する
     const isRotating = inX !== 0 || inY !== 0 || inZ !== 0;
-    this.rotationHoldTime = isRotating ? this.rotationHoldTime + attDt : 0;
+    this.rotationHoldTime = isRotating ? this.rotationHoldTime + dt : 0;
     if (this.progradeHold && isRotating) {
       this.progradeHold = false;
       onProgradeHoldReleased();
@@ -211,7 +214,7 @@ export class PlayerThrottle {
     // 燃料残量に応じて実際の角加速度を絞る
     const rotateIntensity = Math.max(Math.abs(inX), Math.abs(inY), Math.abs(inZ));
     if (rotateIntensity > 0) {
-      const consumption = ship.totalFuelConsumptionRate * rotateIntensity * rcsOutputFactor * angScale * attDt;
+      const consumption = ship.totalFuelConsumptionRate * rotateIntensity * rcsOutputFactor * angScale * simDt;
       const actualRatio = ship.consumeFuel(consumption);
       maxAngAccel *= actualRatio;
     }
