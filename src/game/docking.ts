@@ -131,7 +131,11 @@ export class Docking {
       this.sfx.setRcs(false);
     }
     this.entities.parkPlayer(ship);
-    if (wasActive) this.game.activePlayers.setOrNull(this.entities.players.find((p) => p.alive) ?? null);
+    if (wasActive) {
+      this.game.activePlayers.setOrNull(this.entities.players.find((p) => p.alive) ?? null);
+      // 収容で操縦できる艦が無くなったら、戦闘ビューには映すものが無いのでマップへ移す。
+      if (this.game.player === null) this.viewManager.setView('map');
+    }
     this.hud.hint(`${ship.name} を基地に収容しました`);
   }
 

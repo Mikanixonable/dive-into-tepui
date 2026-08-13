@@ -20,7 +20,6 @@ export class ViewBadge {
   // ContextMenu は target !== null であることを onSelect 発火の条件にしているので、
   // 対象を持たないこのメニューでも null 以外のダミー値を渡す。
   private readonly menu: ContextMenu<true, ViewId>;
-  private combatAvailable = false;
 
   // バッジの DOM を root へ、遷移メニューを popupLayer へ組み立てて配線する。
   constructor(root: HTMLElement, popupLayer: HTMLElement, private readonly viewManager: ViewManager) {
@@ -45,18 +44,16 @@ export class ViewBadge {
     this.menu.onSelect = (view) => this.viewManager.setView(view);
   }
 
-  // モード名とビューボタンの表示を反映する。combatAvailable は戦闘ビューへ入れるか
-  // ([M] と同じ判定 — activeStage.isPlaying && 操作艦が生存)。
-  sync(modeLabel: string, combatAvailable: boolean): void {
+  // モード名とビューボタンの表示を反映する。
+  sync(modeLabel: string): void {
     this.modeEl.textContent = `Mode: ${titleCase(modeLabel)}`;
     this.viewButton.textContent = `View: ${VIEW_LABELS[this.viewManager.current]} ▾`;
-    this.combatAvailable = combatAvailable;
   }
 
   // 遷移できるビューが1つも無ければメニュー自体を開かない。
   private openMenu(): void {
     const items: MenuItem<ViewId>[] = this.viewManager
-      .selectableViews(this.combatAvailable)
+      .selectableViews()
       .map((v) => ({ label: VIEW_LABELS[v], act: v }));
     if (items.length === 0) return;
     const rect = this.viewButton.getBoundingClientRect();
