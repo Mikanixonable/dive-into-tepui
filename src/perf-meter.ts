@@ -4,6 +4,8 @@ import type { WebGPURenderer } from 'three/webgpu';
 import { PropertyRow, PropertyWindow } from './game/hud/property-window';
 import { fmtDuration } from './game/hud/utils';
 import { FrameSections, SECTION_COUNT, SECTION_LABELS, type SectionId } from './frame-sections';
+import type { Input } from './game/input/input';
+import { KEY_MAPPING as K } from './game/input/key-mapping';
 
 // 計測表示に載せるエンティティ数・シミュレーション規模の一式。
 export type PerfCounts = {
@@ -122,6 +124,11 @@ export class PerfMeter {
   toggle(): void {
     if (this.win) this.close();
     else this.open();
+  }
+
+  // [F3] を消費して開閉を反転する。
+  handleInput(input: Input): void {
+    if (input.takeKey(K.togglePerfWindow)) this.toggle();
   }
 
   // このフレームの update/sync/render 所要時間を積算し、表示更新のタイミングなら flush する。
