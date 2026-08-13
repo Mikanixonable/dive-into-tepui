@@ -239,7 +239,6 @@ export class Game {
       mapMode: this.editor.editMode,
       dvEditActive: this.editor.dvEditActive,
       scoreCounter: this.activeStage.scoreCounter,
-      simTime: this.simulator.simTime,
       zoomActive: this.cameraSystem.zoomActive,
       ephemeris: this.ephemeris,
     });
