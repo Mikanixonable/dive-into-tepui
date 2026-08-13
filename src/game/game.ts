@@ -336,7 +336,6 @@ export class Game {
     this.docking.handleInput(this.input);
     this.settingsPanel.handleInput(this.input);
     this._hud.handleInput(this.input);
-    this.activeStage.handleInput(this.input);
     this.simSpeedManager.handleInput(
       this.input,
       this.activeStage.isPlaying,

@@ -6,13 +6,12 @@ export class ScoreAttackTimer {
     this.timeLeft = initialTime;
   }
 
-  // 残り時間を減算し、尽きたフレームでちょうど一度だけ onTimeUp を呼ぶ。戻り値は時間切れかどうか。
-  update(dt: number, onTimeUp: (phase: 'timeup') => void): boolean {
+  // 残り時間を減算し、尽きたフレームでちょうど一度だけ true を返す。
+  update(dt: number): boolean {
     if (this.timeLeft <= 0) return false;
     this.timeLeft -= dt;
     if (this.timeLeft > 0) return false;
     this.timeLeft = 0;
-    onTimeUp('timeup');
     return true;
   }
 
