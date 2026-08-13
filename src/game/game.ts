@@ -401,8 +401,7 @@ export class Game {
   // ------------------------------------------------------------------ render
 
   render(): void {
-    // ドックビューは 3D 世界を持たず画面全体を不透明に覆うので、描画自体を止める。
-    if (this.viewManager.current === 'dock') return;
+    if (!this.viewManager.rendersWorld) return;
     this.renderer.render(this._scene, this.cameraSystem.activeCamera);
   }
 
