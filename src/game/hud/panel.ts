@@ -91,20 +91,17 @@ export class HudPanels {
     if (!player) {
       // 操作できる艦が1隻も無い間は、操縦/戦闘 HUD の値が存在しない。
       for (const id of ['hud-status', 'hud-orbit', 'hud-target', 'hud-enemies']) {
-        const el = document.getElementById(id);
-        if (el) el.style.display = 'none';
+        document.getElementById(id)?.classList.add('hidden');
       }
       return;
     }
     // 未配置状態から最初の艦を置いたとき、操縦HUDを再び通常の同期へ戻す。
     if (!game.cameraSystem.overviewMode) {
-      const el = document.getElementById('hud-status');
-      if (el) el.style.display = '';
+      document.getElementById('hud-status')?.classList.remove('hidden');
     }
     // CONTACTS・ORBIT は戦闘ビュー専用。マップビューではプロパティウィンドウの「軌道」グループが代わる。
     for (const id of ['hud-orbit', 'hud-enemies']) {
-      const el = document.getElementById(id);
-      if (el) el.style.display = game.cameraSystem.overviewMode ? 'none' : '';
+      document.getElementById(id)?.classList.toggle('hidden', game.cameraSystem.overviewMode);
     }
     const tgt = game.targeter.aliveTarget;
     const secTgt = game.targeter.aliveSecondaryTarget;
@@ -282,8 +279,7 @@ export class HudPanels {
 
   // ターゲットが無いときはパネル自体を隠し、空のTARGETウィンドウを残さない。
   private setTargetVisibility(visible: boolean): void {
-    const panel = this.els.get('tgtbody')?.closest<HTMLElement>('#hud-target');
-    if (panel) panel.style.display = visible ? '' : 'none';
+    this.els.get('tgtbody')?.closest<HTMLElement>('#hud-target')?.classList.toggle('hidden', !visible);
   }
 
   // 敵一覧パネルの行データを、waveId を持つ敵ごとに「第N波」1行へ集約して組み立てる。
