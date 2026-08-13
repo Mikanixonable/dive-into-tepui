@@ -1,28 +1,20 @@
 // クリエイティブモード: 勝敗判定を発生させず、艦艇配置と軌道計画を自由に試すためのステージ。
 import type * as THREE from 'three/webgpu';
-import { Stage, type ObjectAuthoring } from './stage';
+import { Stage, type ObjectAuthoring, type StageDeps } from './stage';
 import { Player } from '../player/player';
 import { EntityIdAllocator } from '../game-entity/entity-id';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { SimSpeedManager } from '../sim-speed-manager';
-import type { Hud } from '../hud/hud';
-import type { Sfx } from '../../audio/sfx';
-import type { EffectsSystem } from '../vfx/effects-system';
-import type { Simulator } from '../simulation/simulator';
-import type { MarkerManager } from '../marker/marker-manager';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { OrbitalElements, semiMajorFromPeriod, stateFromOrbitalElements } from '../../physics/elements';
 import { Attractor, orbitalElementsOf } from '../../physics/attractor';
-import { Ephemeris } from '../../physics/ephemeris';
 import { haloState, lissajousState } from '../../physics/halo';
 import type { FloatingOrigin } from '../floating-origin';
 import { Vec3, add } from '../../physics/vec3';
 import { HudToggle } from '../hud/buttons';
 import { hudDock } from '../hud/dom';
 import type { ProjectFn, ScaleFn } from '../camera/camera-system';
-import type { UnlockManager } from '../unlock-manager';
-import type { ActivePlayerController } from '../active-player-controller';
 import { Ammo } from '../game-entity/ammo';
 import { Base } from '../game-entity/base';
 import { generateDriftingEnemy } from './spawner/enemy-generator';
@@ -32,6 +24,7 @@ import { validateEllipticPlacementFields, validateBaseReferenceFields, validateL
 import { elementsFormFromState } from '../creative/duplicate-form';
 import { OrbitLine } from '../orbit-line';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
+import type { StageSaveData } from '../save-data';
 
 const DEG = Math.PI / 180;
 
@@ -41,19 +34,19 @@ export class CreativeStage extends Stage {
   // 無い側の特殊化にすぎない)。
   static readonly initialPlayerCount = 0;
   static readonly showsStatusInOverview = true;
-  readonly selectLabel = 'CREATIVE';
-  readonly selectSub = '軌道上に艦艇を自由に配置して眺める';
-  readonly selectGroup = 'クリエイティブモード';
-  readonly selectKeys: string[] = [];
+  static readonly selectLabel = 'CREATIVE';
+  static readonly selectSub = '軌道上に艦艇を自由に配置して眺める';
+  static readonly selectGroup = 'クリエイティブモード';
+  static readonly selectKeys: string[] = [];
   readonly initialAmmo = { mags: 0, rounds: 0 };
   readonly freeProcurement = true;
   readonly executesPlans = true;
   readonly authoring: ObjectAuthoring = this;
 
-  private placerPanel!: ShipPlacerPanel;
+  private readonly placerPanel: ShipPlacerPanel;
   // 補給の自動投入を切り替えるトグルのパネル。マップ視点でだけ出す。
-  private logisticsPanel!: HTMLElement;
-  private previewOrbitLine!: OrbitLine;
+  private readonly logisticsPanel: HTMLElement;
+  private readonly previewOrbitLine: OrbitLine;
   // 艦艇配置パネルのフォーム値から求めた配置プレビュー。出すものが無ければ null。
   private preview: { readonly elements: OrbitalElements; readonly pos: Vec3 } | null = null;
   // 現在のフォーム値に対するフィールド単位の検証結果。パネルが閉じている間は空。
@@ -70,25 +63,22 @@ export class CreativeStage extends Stage {
     return '<b>クリエイティブモード</b><br>マップから艦艇を配置して軌道を眺められる。';
   }
 
-  // 共通リソースの注入に加え、艦艇配置パネルを組み立てて確定の宛先を自身にする。
-  setup(
-    hud: Hud, sfx: Sfx, scene: THREE.Scene, entities: EntityManager, unlockManager: UnlockManager,
-    fx: EffectsSystem, markerManager: MarkerManager, ephemeris: Ephemeris, simulator: Simulator,
-    activePlayers: ActivePlayerController,
-  ): void {
-    super.setup(hud, sfx, scene, entities, unlockManager, fx, markerManager, ephemeris, simulator, activePlayers);
+  constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
+    super(saved, ...deps);
 
     // 以後の新規配置が既存 id と衝突しないよう、この時点で存在する艦・補給の id を予約する
     // (スナップショットからの再開では entities が復元済み — 新規開始では空なので何もしない)。
-    for (const p of entities.players) this.playerIdAllocator.next(p.id);
-    for (const a of entities.ammos) this.ammoIdAllocator.next(a.id);
+    for (const p of this._entities.players) this.playerIdAllocator.next(p.id);
+    for (const a of this._entities.ammos) this.ammoIdAllocator.next(a.id);
 
     this.previewOrbitLine = new OrbitLine(0xffffff, 0.6, C.LINE_RENDER_ORDER.plan);
-    scene.add(this.previewOrbitLine.line);
+    this._scene.add(this.previewOrbitLine.line);
 
-    this.placerPanel = new ShipPlacerPanel(hud.layers.panel, hud.layers.popup, ephemeris);
+    this.placerPanel = new ShipPlacerPanel(this._hud.layers.panel, this._hud.layers.popup, this._ephemeris);
     this.placerPanel.onConfirm = (name, form) => this.placeObject(name, form);
-    this.logisticsPanel = this.buildLogisticsPanel(hud.layers.panel);
+    this.logisticsPanel = this.buildLogisticsPanel(this._hud.layers.panel);
+
+    this.begin();
   }
 
   // 補給の自動投入トグルを1つ載せたパネルを組み立て、マップ左ドックへ追加して返す。
