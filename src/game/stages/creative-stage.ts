@@ -260,7 +260,7 @@ export class CreativeStage extends Stage {
         const ship = new Player(this._hud, this._sfx, this._scene, this._fx, this._markerManager, { name: finalName, state, id });
         this._entities.addPlayer(ship);
         this.onShipPlaced?.(ship);
-        this._hud.hint(`${ship.displayName} を配置`);
+        this._hud.hint(`${ship.name} を配置`);
       } else if (form.objectType === 'enemy') {
         const finalName = name || `Enemy-${this.nextFallbackNameSeq++}`;
         const enemy = generateDriftingEnemy(finalName, state, C.ENEMY_MAX_HP, '#ff6a00', '#ff6a00', this._hud, this._sfx, this._fx, this._scene);

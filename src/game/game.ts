@@ -122,7 +122,7 @@ export class Game {
       : new Ephemeris(
         ephemerisConfig.registry, ephemerisConfig.originId, ephemerisConfig.epochOffsetSec, phaseOffsets);
 
-    this.markerManager = new MarkerManager(this._hud.layers.marker, this._hud.svgOverlay, this.ephemeris);
+    this.markerManager = new MarkerManager(this._hud.layers.marker, this._hud.svgOverlay);
 
     this.entities = new EntityManager(
       this._scene, this._hud, this._sfx, this.markerManager,
@@ -163,7 +163,7 @@ export class Game {
     };
     this.mapPicker = new MapPicker(
       this, this._hud, this.entities, this.ephemeris, this.navTarget,
-      this.cameraSystem, this.editor, this.simSpeedManager, this.markerManager, this.settingsPanel,
+      this.cameraSystem, this.editor, this.simSpeedManager, this.settingsPanel,
     );
     this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager);
     // 戦闘ビューは操作対象艦を前提とするので、艦が1隻も無い起動はマップから始める。
@@ -382,16 +382,14 @@ export class Game {
       ),
     );
     this.editor.update(displayWindow, planProvider);
-    this.markerManager.equatorNodeMarkers.update(
-      this.entities, this.player, this.editor.planDisplay.path.finalSegment(),
-      this.navTarget.id, this.targeter.aliveTarget, displayWindow.frame, displayWindow.displayTime,
-    );
+    this.targeter.updateEquatorNodes(displayWindow, this.ephemeris);
+    this.entities.updateBaseEquatorNodes(displayWindow, this.ephemeris);
     // MapPicker/FocusMarkers は全天体・ラグランジュ点・全エンティティの候補を組む。
     // 戦闘ビューではクリック対象を別経路で処理するため、マップを表示している時だけ更新する。
     this.sections.exit(SECTION.plan);
     this.sections.enter(SECTION.mapPick);
     if (this.cameraSystem.overviewMode) {
-      this.mapPicker.refresh(this.simulator.simTime, displayWindow.displayTime);
+      this.mapPicker.refresh(displayWindow);
     }
     this.sections.exit(SECTION.mapPick);
     this.sections.enter(SECTION.camera);
@@ -481,7 +479,7 @@ export class Game {
       this.cameraSystem.activeCameraScale, visibilityPolicy,
     );
     this.navTarget.sync(project, overviewMode, this.cameraSystem.activeCameraPos);
-    this.markerManager.equatorNodeMarkers.sync(project, overviewMode, this.cameraSystem.activeCameraPos);
+    this.entities.syncEquatorNodes(project, overviewMode, this.cameraSystem.activeCameraPos);
 
     this.displayWindowManager.sync(player);
     this.editor.sync(
