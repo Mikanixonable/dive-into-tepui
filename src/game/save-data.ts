@@ -2,6 +2,7 @@ import { AnyPart } from './game-entity/parts';
 import { EnemyKind } from './game-entity/enemy';
 import { AttractorId } from '../physics/attractor';
 import type { GamePhase } from './stages/stage';
+import type { WaveAttackSaveData } from './stages/stage-utils/wave-attack';
 
 export interface Vec3SaveData {
   x: number;
@@ -142,10 +143,15 @@ export interface Stage0SaveData extends StageSaveData {
   timeLeft: number;
 }
 
-export interface Stage00SaveData extends StageSaveData {
-  waveState: 'waiting_for_ammo' | 'spawning_enemies' | 'active_combat';
-  spawnTimer: number;
-  waveCount: number;
+export interface Stage00SaveData extends StageSaveData, WaveAttackSaveData {
+}
+
+// クリエイティブモードの内訳。艦0..n隻を自由に配置するモード自身の状態(トグル)に加えて、
+// 任意で動かす WaveAttack の進行状態を持つ — waveAttack は waveAttackEnabled が false の
+// 間も直前の状態を保つ(OFF→ON で再開したとき波数が0に戻らないように)。
+export interface CreativeStageSaveData extends StageSaveData {
+  waveAttackEnabled: boolean;
+  waveAttack: WaveAttackSaveData;
 }
 
 // スナップショットの由来。撮られ方であって、保持されるかどうか(SnapshotMeta.pinned)とは

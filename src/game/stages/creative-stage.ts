@@ -18,13 +18,14 @@ import type { CameraSystem, ProjectFn } from '../camera/camera-system';
 import { Ammo } from '../game-entity/ammo';
 import { Base } from '../game-entity/base';
 import { generateDriftingEnemy } from './spawner/enemy-generator';
+import { WaveAttack } from './stage-utils/wave-attack';
 import * as C from '../const';
 import { ElementsForm, LagrangeForm, ObjectType, ReferenceAttractor, ShipPlacerForm, ShipPlacerPanel } from '../creative/ship-placer-panel';
 import { validateEllipticPlacementFields, validateBaseReferenceFields, validateLagrangePlacementFields, PlacementFieldIssue } from '../creative/placement-validation';
 import { elementsFormFromState } from '../creative/duplicate-form';
 import { OrbitLine } from '../orbit-line';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
-import type { StageSaveData } from '../save-data';
+import type { CreativeStageSaveData, StageSaveData } from '../save-data';
 
 const DEG = Math.PI / 180;
 
@@ -39,9 +40,12 @@ export class CreativeStage extends Stage {
   readonly authoring: ObjectAuthoring = this;
 
   private readonly placerPanel: ShipPlacerPanel;
-  // 補給の自動投入を切り替えるトグルのパネル。マップ視点でだけ出す。
-  private readonly logisticsPanel: HTMLElement;
+  // 補給の自動投入・敵の波状攻撃を切り替えるトグルのパネル。マップ視点でだけ出す。
+  private readonly settingsPanel: HTMLElement;
   private readonly previewOrbitLine: OrbitLine;
+  private readonly waveAttack: WaveAttack;
+  // 敵の波状攻撃を発生させるかどうか。ON の間だけ update が WaveAttack を進める。
+  private waveAttackEnabled: boolean;
   // 艦艇配置パネルのフォーム値から求めた配置プレビュー。出すものが無ければ null。
   private preview: { readonly elements: OrbitalElements; readonly pos: Vec3 } | null = null;
   // 現在のフォーム値に対するフィールド単位の検証結果。パネルが閉じている間は空。
@@ -58,8 +62,11 @@ export class CreativeStage extends Stage {
     return '<b>クリエイティブモード</b><br>マップから艦艇を配置して軌道を眺められる。';
   }
 
+  // saved の型を StageSaveData に留めるのは stage.ts の StageClass 一覧に
+  // 収める都合(具象ごとの拡張型では構築シグネチャが揃わない)。
   constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
+    const s = saved as CreativeStageSaveData | undefined;
 
     // 以後の新規配置が既存 id と衝突しないよう、この時点で存在する艦・補給の id を予約する
     // (スナップショットからの再開では entities が復元済み — 新規開始では空なので何もしない)。
@@ -71,23 +78,28 @@ export class CreativeStage extends Stage {
 
     this.placerPanel = new ShipPlacerPanel(this._hud.layers.panel, this._hud.layers.popup, this._ephemeris);
     this.placerPanel.onConfirm = (name, form) => this.placeObject(name, form);
-    this.logisticsPanel = this.buildLogisticsPanel(this._hud.layers.panel);
+    this.waveAttack = new WaveAttack(this._hud, this._sfx, this._fx, this._scene, this._ephemeris, s?.waveAttack);
+    this.waveAttackEnabled = s?.waveAttackEnabled ?? false;
+    this.settingsPanel = this.buildSettingsPanel(this._hud.layers.panel);
 
     this.begin();
   }
 
-  // 補給の自動投入トグルを1つ載せたパネルを組み立て、マップ左ドックへ追加して返す。
-  private buildLogisticsPanel(hudRoot: HTMLElement): HTMLElement {
+  // 補給の自動投入・敵の波状攻撃のトグルを載せたパネルを組み立て、マップ右ドックへ追加して返す。
+  private buildSettingsPanel(hudRoot: HTMLElement): HTMLElement {
     const panel = document.createElement('div');
-    panel.id = 'hud-logistics';
+    panel.id = 'hud-stage-settings';
     panel.className = 'panel';
     panel.addEventListener('pointerdown', (e) => e.stopPropagation());
     const title = document.createElement('h3');
-    title.textContent = 'LOGISTICS';
+    title.textContent = '設定';
     panel.appendChild(title);
-    const toggle = new HudToggle('補給の自動投入', (on) => { this.logistics.resupplyEnabled = on; });
-    toggle.setOn(this.logistics.resupplyEnabled);
-    panel.appendChild(toggle.element);
+    const resupplyToggle = new HudToggle('補給の自動投入', (on) => { this.logistics.resupplyEnabled = on; });
+    resupplyToggle.setOn(this.logistics.resupplyEnabled);
+    panel.appendChild(resupplyToggle.element);
+    const waveAttackToggle = new HudToggle('敵の波状攻撃', (on) => { this.waveAttackEnabled = on; });
+    waveAttackToggle.setOn(this.waveAttackEnabled);
+    panel.appendChild(waveAttackToggle.element);
     hudDock(hudRoot, 'right').appendChild(panel);
     return panel;
   }
@@ -100,7 +112,7 @@ export class CreativeStage extends Stage {
     super.sync(player, fo, cameraSystem, displayTime, visibilityPolicy);
     this.syncPreview(fo, cameraSystem.activeCameraProjection, cameraSystem.activeCamera);
     this.placerPanel.setIssues(this.issues);
-    this.logisticsPanel.style.display = cameraSystem.overviewMode ? 'block' : 'none';
+    this.settingsPanel.style.display = cameraSystem.overviewMode ? 'block' : 'none';
   }
 
   // 艦艇配置モーダルを開く (MapPicker から呼ばれる)。focusId はマップの現在フォーカスで、
@@ -286,9 +298,17 @@ export class CreativeStage extends Stage {
   // 通常ステージと同じ残弾監視・回収・遠方補給の再投入を行い、配置プレビューとフォームの
   // フィールド単位の検証結果を求め直す。'powered' な艦の姿勢整列・出力段選択も全艦ぶん進める
   // (操作対象艦に限らない — Player.behave は操作対象艦でしか走らないため)。
+  // 既存敵の AI 行動は常に進める。トグルが制御するのは新規ウェーブの発生のみ
+  // (OFF の間は waveAttack.update を止め、既に出ている敵はそのまま残る)。
   // ノードの消化・点火・遮断は Simulator のイベント境界(applySimulationEvents)で行う。
   update(dt: number, player: Player | null, _entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
-    if (player) this.logistics.updateLogistics(simTime, player, simSpeed, true);
+    if (player) {
+      this.logistics.updateLogistics(simTime, player, simSpeed, true);
+      this.behaveAllEnemies(dt, player, this._entities, simTime, simSpeed);
+      if (this.waveAttackEnabled) {
+        this.waveAttack.update(dt, player, this._entities.enemies, simTime, this, (enemy) => this.addEnemy(enemy, this._entities));
+      }
+    }
     const form = this.placerPanel.isOpen ? this.placerPanel.getForm() : null;
     this.preview = form ? this.computePreview(form) : null;
     this.issues = form ? this.computeFieldIssues(form) : [];
@@ -346,5 +366,13 @@ export class CreativeStage extends Stage {
   // 装甲・エンジン出力・温度・電力の表示のためだけに空文字を返す。
   hudSubStatus(): string {
     return '';
+  }
+
+  serialize(): CreativeStageSaveData {
+    return {
+      ...super.serialize(),
+      waveAttackEnabled: this.waveAttackEnabled,
+      waveAttack: this.waveAttack.serialize(),
+    };
   }
 }

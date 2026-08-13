@@ -26,6 +26,9 @@ interface Section {
   readonly rows: Map<string, RowNode>;
   readonly order: SectionOrder;
   expanded: boolean;
+  // 絞り込みが一致行を見せるために強制的に開いた場合の、直前のプレイヤー操作による
+  // 畳み状態。null は「絞り込みによる強制展開はしていない」。絞り込み解除時にここへ戻す。
+  savedExpanded: boolean | null;
 }
 
 // 区画見出しに添える内訳 — detail に needle を含む行を数え、label 付きで示す。
@@ -46,9 +49,6 @@ const FILTERS: readonly (readonly [ObjectListFilter, string])[] = [
   ['smallBody', '小天体'],
   ['system', '天体以外'],
 ];
-
-// 自艦からこの距離 [m] 以内の対象だけを残す「近傍」フィルタのしきい値(3000万km)。
-const NEARBY_THRESHOLD_M = 3e10;
 
 // このパネル自身の折りたたみトグルの見た目。
 const COLLAPSE_LABELS: CollapseToggleLabels = {
@@ -76,6 +76,9 @@ interface RowNode {
   readonly childrenContainer: HTMLElement;
   readonly children: Map<string, RowNode>;
   expanded: boolean;
+  // Section.savedExpanded と同じ役割 — この行の子リストを絞り込みが強制的に開いた際の
+  // 直前の畳み状態。
+  savedExpanded: boolean | null;
 }
 
 // マップビュー右部に常設の軌道オブジェクト一覧ウィンドウ。種別ごとの区画にタブ見出しで
@@ -93,7 +96,6 @@ export class ObjectListPanel {
   private selectedId: string | null = null;
   private query = '';
   private filter: ObjectListFilter | null = null;
-  private nearOnly = true;
   private sort: ObjectListSort = 'distance';
   private lastFocusId: string | undefined = undefined;
   // sync() は毎フレーム呼ばれるが、これらは同期中だけ使う scratch であり、呼び出し元へ
@@ -105,7 +107,13 @@ export class ObjectListPanel {
   private readonly displayIdsScratch: string[] = [];
   private readonly idsInSectionScratch = new Set<string>();
   private readonly focusAncestorsScratch = new Set<string>();
+  private readonly matchAncestorsScratch = new Set<string>();
   private readonly seenScratch = new Set<string>();
+  // 絞り込み条件(検索語・クラスフィルタ)の直前フレーム値。変化を検知した回だけ
+  // 一致行の祖先を強制的に開く — 毎フレーム開き直すとプレイヤーの手動での畳み操作と競合する。
+  private prevAutoExpandQuery = '';
+  private prevAutoExpandFilter: ObjectListFilter | null = null;
+  private wasFilteringActive = false;
   // 並べ替え・親子構造の入力を前フレームぶん保持し、変化した時だけ組み直す。
   private readonly prevIds: string[] = [];
   private readonly prevNames: string[] = [];
@@ -148,16 +156,6 @@ export class ObjectListPanel {
 
     const tools = document.createElement('div');
     tools.className = 'object-list-tools';
-    // 近傍は他のフィルタと独立な単独トグル(既定 ON) — クラスフィルタと重ねて絞れる。
-    const nearButton = document.createElement('button');
-    nearButton.type = 'button'; nearButton.textContent = '近傍'; nearButton.setAttribute('aria-pressed', String(this.nearOnly));
-    nearButton.addEventListener('click', () => {
-      this.nearOnly = !this.nearOnly;
-      nearButton.setAttribute('aria-pressed', String(this.nearOnly));
-    });
-    tools.appendChild(nearButton);
-    // 排他選択の対象はクラスフィルタのボタンだけ — 同居する近傍トグルは独立した状態なので、
-    // DOM の親子関係ではなくこの配列で範囲を決める。
     const filterButtons: HTMLElement[] = [];
     for (const [key, label] of FILTERS) {
       const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.setAttribute('aria-pressed', key === this.filter ? 'true' : 'false');
@@ -198,7 +196,7 @@ export class ObjectListPanel {
       const sectionBody = document.createElement('div');
       sectionBody.className = 'object-list-section-body';
       const order: SectionOrder = { ids: [], rootIds: [], childIds: new Map() };
-      const section: Section = { header, body: sectionBody, rows: new Map(), order, expanded: true };
+      const section: Section = { header, body: sectionBody, rows: new Map(), order, expanded: true, savedExpanded: null };
       header.addEventListener('click', () => {
         section.expanded = !section.expanded;
         this.applyExpanded(section);
@@ -246,22 +244,61 @@ export class ObjectListPanel {
     focusAncestors.clear();
     if (focusChanged) for (let cur = focusId; cur !== undefined; cur = parentOf.get(cur)) focusAncestors.add(cur);
 
+    // 検索語・クラスフィルタが変わった瞬間だけ、その回に一致した行の祖先を自動展開する
+    // 対象として渡す(focusAncestors と同じ「変化した回だけ」の考え方)。絞り込みが解除された
+    // 瞬間は逆に、その自動展開で開いた分だけをプレイヤーの元の畳み状態へ戻す。
+    const filteringActive = this.query !== '' || this.filter !== null;
+    const filterChanged = this.query !== this.prevAutoExpandQuery || this.filter !== this.prevAutoExpandFilter;
+    this.prevAutoExpandQuery = this.query;
+    this.prevAutoExpandFilter = this.filter;
+    const filteringJustDeactivated = !filteringActive && this.wasFilteringActive;
+    this.wasFilteringActive = filteringActive;
+
+    const matchAncestors = this.matchAncestorsScratch;
+    matchAncestors.clear();
+    if (filteringActive && filterChanged) {
+      for (const item of items) {
+        if (!this.matches(item)) continue;
+        for (let cur: string | undefined = item.id; cur !== undefined; cur = parentOf.get(cur)) matchAncestors.add(cur);
+      }
+    }
+    if (filteringJustDeactivated) {
+      for (const section of this.sections.values()) {
+        if (section.savedExpanded !== null) { section.expanded = section.savedExpanded; section.savedExpanded = null; this.applyExpanded(section); }
+        this.restoreSavedExpanded(section.rows);
+      }
+    }
+
     for (const { kind, label } of SECTIONS) {
       const section = this.sections.get(kind)!;
       // 距離順では距離が動くだけで正しい並びが変わりうるので、保持している順序が
       // 今フレームの値でも整列条件を満たすかを確かめ、崩れた時だけ組み直す。
       if (inputsChanged || !this.orderStillSorted(section.order.ids)) this.rebuildOrder(kind, section.order, items, parentOf);
+      // 一致行を持つ区画自体が畳まれていれば、絞り込みの変化に合わせて開く。
+      if (filteringActive && filterChanged && section.order.ids.length > 0 && !section.expanded) {
+        if (section.savedExpanded === null) section.savedExpanded = section.expanded;
+        section.expanded = true;
+        this.applyExpanded(section);
+      }
       this.syncHeader(section, kind, label);
 
       const seen = this.seenScratch;
       seen.clear();
       for (const id of section.order.rootIds) {
         seen.add(id);
-        this.syncRow(section.rows, id, section.order.childIds, focusId, section.body, focusAncestors);
+        this.syncRow(section.rows, id, section.order.childIds, focusId, section.body, focusAncestors, matchAncestors);
       }
       this.pruneRows(section.rows, seen);
     }
     if (this.selectedId !== null && !items.some((i) => i.id === this.selectedId && this.matches(i))) this.selectedId = null;
+  }
+
+  // 絞り込みが強制的に開いた分の畳み状態を、記録してあるプレイヤーの元の値へ戻す。
+  private restoreSavedExpanded(rows: ReadonlyMap<string, RowNode>): void {
+    for (const node of rows.values()) {
+      if (node.savedExpanded !== null) { node.expanded = node.savedExpanded; node.savedExpanded = null; }
+      this.restoreSavedExpanded(node.children);
+    }
   }
 
   // 区画見出しへ件数と状況の内訳を書き出す。表示行が無い区画は見出しごと隠す。
@@ -375,7 +412,6 @@ export class ObjectListPanel {
 
   private matches(item: MapPickable): boolean {
     if (this.query && !`${item.name} ${item.detail ?? ''}`.toLocaleLowerCase().includes(this.query)) return false;
-    if (this.nearOnly && item.distance !== undefined && item.distance >= NEARBY_THRESHOLD_M) return false;
     if (this.filter === null) return true;
     if (this.filter === 'system') return item.kind !== 'body' && item.inFocusedSystem !== false;
     return item.kind === 'body' && !LAGRANGE_ID.test(item.id) && bodyClassOf(this.registry, item.id) === this.filter;
@@ -385,7 +421,8 @@ export class ObjectListPanel {
   // id が今フレームの候補に無ければ何もしない。
   private syncRow(
     rows: Map<string, RowNode>, id: string,
-    childrenOf: ReadonlyMap<string, string[]>, focusId: string | undefined, container: HTMLElement, focusAncestors: ReadonlySet<string>,
+    childrenOf: ReadonlyMap<string, string[]>, focusId: string | undefined, container: HTMLElement,
+    focusAncestors: ReadonlySet<string>, matchAncestors: ReadonlySet<string>,
   ): void {
     const item = this.itemsByIdScratch.get(id);
     if (!item) return;
@@ -405,13 +442,17 @@ export class ObjectListPanel {
 
     const children = childrenOf.get(item.id) ?? EMPTY_IDS;
     if (focusAncestors.has(item.id)) node.expanded = true;
+    if (matchAncestors.has(item.id)) {
+      if (node.savedExpanded === null) node.savedExpanded = node.expanded;
+      node.expanded = true;
+    }
     node.toggle.style.visibility = children.length > 0 ? 'visible' : 'hidden';
     this.applyRowExpanded(node);
 
     const seen = new Set<string>();
     for (const childId of children) {
       seen.add(childId);
-      this.syncRow(node.children, childId, childrenOf, focusId, node.childrenContainer, focusAncestors);
+      this.syncRow(node.children, childId, childrenOf, focusId, node.childrenContainer, focusAncestors, matchAncestors);
     }
     this.pruneRows(node.children, seen);
   }
@@ -456,7 +497,7 @@ export class ObjectListPanel {
       this.onSelectRight?.(id, e.clientX, e.clientY);
     });
 
-    const node: RowNode = { row, toggle, label, detail, childrenContainer, children: new Map(), expanded: false };
+    const node: RowNode = { row, toggle, label, detail, childrenContainer, children: new Map(), expanded: false, savedExpanded: null };
     toggle.addEventListener('click', (e) => {
       e.stopPropagation();
       node.expanded = !node.expanded;
