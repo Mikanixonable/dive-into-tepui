@@ -24,7 +24,9 @@ import { SimSpeedManager } from './sim-speed-manager';
 import type { SettingsPanel } from './hud/settings-panel';
 import type { DisplayWindow } from './display-window-manager';
 import type { Docking } from './docking';
-import type { Game } from './game';
+import type { ActivePlayerController } from './active-player-controller';
+import type { FrameControls } from './frame-controls';
+import type { Stage } from './stages/stage';
 import type { Player } from './player/player';
 import { planExecutionLabel, type PlanExecutionMode } from './player/player';
 import type { GameEntity } from './game-entity/game-entity';
@@ -84,7 +86,6 @@ export class MapPicker {
 
   // 候補の供給元と、メニュー項目の実行先を参照として受け取る。
   constructor(
-    private readonly game: Game,
     private readonly hud: Hud,
     private readonly entities: EntityManager,
     private readonly ephemeris: Ephemeris,
@@ -93,6 +94,9 @@ export class MapPicker {
     private readonly editor: PlanEditor,
     private readonly simSpeedManager: SimSpeedManager,
     private readonly settingsPanel: SettingsPanel,
+    private readonly activePlayers: ActivePlayerController,
+    private readonly frameControls: FrameControls,
+    private readonly activeStage: Stage,
   ) {
     this.menu = new ContextMenu<MapPickable, MenuAction>(hud.layers.popup);
     this.menu.onSelect = (act, target) => {
@@ -105,7 +109,7 @@ export class MapPicker {
       if (target) this.objectListPanel.select(id);
     };
     this.objectListPanel.onFocus = (id) => {
-      this.game.frameControls.setFocus({ kind: 'object', id });
+      this.frameControls.setFocus({ kind: 'object', id });
       this.hud.hint(`${this.items.find((i) => i.id === id)?.name ?? id} にフォーカス`);
     };
     this.objectListPanel.onNavTarget = (id) => {
@@ -144,7 +148,7 @@ export class MapPicker {
       displayTime, focusId, this.cameraSystem.bodyClassToggles,
       this.cameraSystem.activeCameraPos, visibilityPolicy,
     );
-    this.navTarget.update(this.game.player, this.entities, this.ephemeris, displayWindow);
+    this.navTarget.update(this.activePlayers.current, this.entities, this.ephemeris, displayWindow);
 
     // 船の位置は表示時刻の displayState — 機体メッシュや敵マーカーと同じ未来ゴースト位置に揃える。
     this.candidateItems.length = 0;
@@ -154,7 +158,7 @@ export class MapPicker {
       this.appendPickable(item);
     }
     for (const ship of this.entities.players) {
-      if (!visibilityPolicy.entity('player', ship === this.game.player).pickable) continue;
+      if (!visibilityPolicy.entity('player', ship === this.activePlayers.current).pickable) continue;
       const pos = ship.displayState(displayTime)?.r;
       if (pos) {
         const center = strongestAttractor(ship.state.r, attractors);
@@ -163,7 +167,7 @@ export class MapPicker {
         this.addCandidate(
           ship.id, ship.name, pos, 'player',
           `HP ${Math.round(ship.hp)}/${Math.round(ship.maxHp)} · PE ${pe}`,
-          ship === this.game.player ? -100 : 0,
+          ship === this.activePlayers.current ? -100 : 0,
         );
       }
     }
@@ -191,7 +195,7 @@ export class MapPicker {
     }
 
     // 自艦からの距離は一覧の実用順と補助情報にだけ使う。軌道予測はここで増やさない。
-    const viewer = this.game.player?.state;
+    const viewer = this.activePlayers.current?.state;
     if (viewer) for (const item of this.candidateItems) {
       const d = len(sub(item.pos, viewer.r));
       // 相対速度は対の速度を持つ敵艦にだけ意味がある。
@@ -349,12 +353,12 @@ export class MapPicker {
         p.x, p.y, this.cameraSystem.activeCameraProjection, C.MAP_PICK_PX_SQ,
       );
       if (!target) return false;
-      this.game.frameControls.setFocus({ kind: 'object', id: target.id });
+      this.frameControls.setFocus({ kind: 'object', id: target.id });
       this.hud.hint(`${target.name} にフォーカス`);
       if (target.kind === 'player') {
         const ship = this.entities.findPlayer(target.id);
         if (ship) {
-          this.game.activePlayers.set(ship);
+          this.activePlayers.set(ship);
           this.hud.hint(`${target.name} を操作対象に設定`);
         }
       }
@@ -563,14 +567,14 @@ export class MapPicker {
     'player': {
       itemsFor: (target, simTime) => {
         const ship = this.entities.findPlayer(target.id);
-        const isActive = ship === this.game.player;
+        const isActive = ship === this.activePlayers.current;
         const activate: readonly MenuItem<MenuAction>[] = [
           isActive ? { label: '操作対象を解除', act: 'deactivate' } : { label: '操作対象にする', act: 'activate' },
         ];
         const remove: readonly MenuItem<MenuAction>[] = isActive ? [] : [{ label: '削除', act: 'delete' }];
         // 計画を実行するステージだけに出す。駆動源が無いところで選ばせても何も起きない。
         const mode = ship?.planExecution ?? 'off';
-        const planExec: readonly MenuItem<MenuAction>[] = this.game.activeStage.executesPlans
+        const planExec: readonly MenuItem<MenuAction>[] = this.activeStage.executesPlans
           ? [{ label: `軌道計画の実行: ${planExecutionLabel(mode)}`, act: 'planExecCycle', keepOpen: true }]
           : [];
         return [
@@ -586,9 +590,9 @@ export class MapPicker {
       run: (act, target) => {
         if (act === 'activate') {
           const ship = this.entities.findPlayer(target.id);
-          if (ship) this.game.activePlayers.set(ship);
+          if (ship) this.activePlayers.set(ship);
         } else if (act === 'deactivate') {
-          if (this.entities.findPlayer(target.id) === this.game.player) this.game.activePlayers.setOrNull(null);
+          if (this.entities.findPlayer(target.id) === this.activePlayers.current) this.activePlayers.setOrNull(null);
         } else if (act === 'planExecCycle') {
           const ship = this.entities.findPlayer(target.id);
           if (ship) {
@@ -599,7 +603,7 @@ export class MapPicker {
           this.runDuplicate(target);
         } else if (act === 'delete') {
           const ship = this.entities.findPlayer(target.id);
-          if (ship) this.game.activePlayers.remove(ship);
+          if (ship) this.activePlayers.remove(ship);
         } else {
           this.runBodyShip(act, target);
         }
@@ -607,7 +611,7 @@ export class MapPicker {
     },
     'empty-space': {
       itemsFor: () => {
-        const placeItem: readonly MenuItem<MenuAction>[] = this.game.activeStage.authoring
+        const placeItem: readonly MenuItem<MenuAction>[] = this.activeStage.authoring
           ? [{ label: 'オブジェクトを配置する', act: 'openShipPlacer', shortcut: 'Enter' }]
           : [];
         return [
@@ -618,8 +622,8 @@ export class MapPicker {
       },
       run: (act) => {
         if (act === 'openShipPlacer') {
-          this.game.activeStage.authoring?.openShipPlacer(
-            focusTargetId(this.game.cameraSystem.overviewCamera.focus));
+          this.activeStage.authoring?.openShipPlacer(
+            focusTargetId(this.cameraSystem.overviewCamera.focus));
         } else if (act === 'openSettings') {
           this.settingsPanel.toggle(true);
         }
@@ -676,12 +680,12 @@ export class MapPicker {
 
   // 「複製」項目。複製先が艦艇配置パネルなので、それを持つステージだけに出す。
   private duplicateItems(): readonly MenuItem<MenuAction>[] {
-    return this.game.activeStage.authoring ? [MenuCommon.duplicate()] : [];
+    return this.activeStage.authoring ? [MenuCommon.duplicate()] : [];
   }
 
   // 対象の現在状態を軌道要素へ逆算し、その値をプリセットして艦艇配置パネルを開く。
   private runDuplicate(target: MapPickable): void {
-    const authoring = this.game.activeStage.authoring;
+    const authoring = this.activeStage.authoring;
     if (!authoring) return;
     const source = this.duplicateSourceFor(target);
     if (!source) return;
@@ -790,7 +794,7 @@ export class MapPicker {
     if (!ship) return [];
     return [
       {
-        key: 'active', label: '操作対象か', value: ship === this.game.player ? 'はい' : 'いいえ', collapsible: true,
+        key: 'active', label: '操作対象か', value: ship === this.activePlayers.current ? 'はい' : 'いいえ', collapsible: true,
       },
       { key: 'follow', label: '計画実行', value: planExecutionLabel(ship.planExecution), collapsible: true },
       { key: 'hp', label: '装甲', value: `${Math.floor(ship.hp)} / ${ship.maxHp}` },
@@ -901,7 +905,7 @@ export class MapPicker {
 
   private runBodyShip(act: MenuAction, target: MapPickable): void {
     if (act === 'focus') {
-      this.game.frameControls.setFocus({ kind: 'object', id: target.id });
+      this.frameControls.setFocus({ kind: 'object', id: target.id });
       this.hud.hint(`${target.name} にフォーカス`);
     } else if (act === 'navTarget') {
       this.navTarget.toggleTarget(target.id, target.name);
@@ -913,7 +917,7 @@ export class MapPicker {
       const t = target.time ?? (target.kind === 'apsis'
         ? this.editor.planDisplay.apsisTimeOf(target.id)
         : this.navTarget.passTimeOf(target.id));
-      if (t !== null && !this.simSpeedManager.startAutoWarpTo(t, this.game.simTime)) {
+      if (t !== null && !this.simSpeedManager.startAutoWarpTo(t, this.lastSimTime)) {
         this.hud.hint('この時刻は既に通過しています');
       }
     } else if (act === 'addNode') {
