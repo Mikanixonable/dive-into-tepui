@@ -5,6 +5,7 @@
 import { clampOverlayPosition } from './layout';
 import { Button } from './widgets';
 import { bringToFront } from './overlay-layer';
+import { isCompactViewport, MQ_COMPACT } from './breakpoints';
 import type { OverlayHandle, OverlayManager } from './overlay-manager';
 
 const STYLE = `
@@ -14,6 +15,14 @@ const STYLE = `
   font-family: var(--font-family); font-size: var(--font-m); color: var(--text);
   width: min(520px, calc(100vw - 24px)); max-height: 60vh; max-height: 60dvh; overflow-y: auto; user-select: none;
   -webkit-user-select: none;
+}
+/* compact: トリガー直下ではなく画面下端のシートとして開く(left/top は付けない —
+   その位置決めは open() が isCompactViewport() の間スキップする)。 */
+@media ${MQ_COMPACT} {
+  #hud .object-picker-pop {
+    right: 0; bottom: 0; width: 100%;
+    max-height: 70vh; max-height: 70dvh; border-radius: var(--radius-l) var(--radius-l) 0 0;
+  }
 }
 #hud .object-picker-pop .op-filter {
   width: 100%; box-sizing: border-box; padding: var(--space-3) var(--space-5); margin: 0;
@@ -155,15 +164,22 @@ export class ObjectPicker<T> implements OverlayHandle {
     this.isOpen = true;
     this.pop.style.display = 'block';
     bringToFront(this.pop);
-    // 画面端で開いてもはみ出さないよう、実寸を測ってから位置を決める。
-    const anchor = this.trigger.element.getBoundingClientRect();
-    const rect = this.pop.getBoundingClientRect();
-    const pos = clampOverlayPosition(
-      { x: anchor.left, y: anchor.bottom + 2 }, rect,
-      { width: window.innerWidth, height: window.innerHeight }, 6,
-    );
-    this.pop.style.left = `${pos.x}px`;
-    this.pop.style.top = `${pos.y}px`;
+    // compact では下端シートとして CSS が位置を決めるので、トリガー直下への配置は行わない
+    // (前回の非 compact 時に付いた left/top が残っていると right/bottom を上書きしてしまうため消す)。
+    if (isCompactViewport()) {
+      this.pop.style.left = '';
+      this.pop.style.top = '';
+    } else {
+      // 画面端で開いてもはみ出さないよう、実寸を測ってから位置を決める。
+      const anchor = this.trigger.element.getBoundingClientRect();
+      const rect = this.pop.getBoundingClientRect();
+      const pos = clampOverlayPosition(
+        { x: anchor.left, y: anchor.bottom + 2 }, rect,
+        { width: window.innerWidth, height: window.innerHeight }, 6,
+      );
+      this.pop.style.left = `${pos.x}px`;
+      this.pop.style.top = `${pos.y}px`;
+    }
     this.filter.focus();
     this.overlayManager.open(this.overlayId, this, {
       kind: 'popup', closeOnEscape: true, closeOnOutsideClick: true, gatesInput: false,
