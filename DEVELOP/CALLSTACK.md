@@ -42,8 +42,11 @@
 
 ## game.update(dtRaw)
 
-`update` は一本の線形フローで、艦の有無やステージの決着状態は経路の分岐ではなく `advanceSimulation`/
-`handlePointerInput` 内部の条件付きブロックとして表現される(4経路の重複はない)。
+`update` は一本の線形フローで、艦の有無は経路の分岐ではなく `advanceSimulation`/`handlePointerInput`
+内部の条件付きブロックとして表現される(早期 return の重複はない)。ステージの決着状態
+(`activeStage.isPlaying`)はこの2関数のどちらの分岐にも現れない — 決着後も操作艦の `behave`・
+ポインタ入力は通常どおり届く。各具体ステージ自身の `update`(§ advanceSimulation 内)はその内部で
+`isPlaying` を見て自分で早期 return する。
 
 - game.update(dtRaw)
   - sections.enter(SECTION.input)
@@ -121,63 +124,59 @@
 
 ### advanceSimulation(dt)
 
-自機の行動 → ステージ → 積分 → 予測 → エフェクトの順に1フレーム進める。艦がいない場合、または艦は
-いてもステージが決着済みの場合は player.behave の段だけを落として残りは進める(残骸・弾の epoch は
-どの状況でも進め続ける)。`game.update` からは `!isPaused` のときだけ呼ばれる。
+自機の行動 → ステージ → 積分 → 予測 → エフェクトの順に1フレーム進める。艦の行動(`entities.updatePlayers`)
+はステージの決着状態を問わず常に全自機ぶん呼ばれる — 操作対象でない艦(操作艦が無い場合は全艦)は
+その内部で連続指令を畳むだけになる(残骸・弾の epoch を含め、どの状況でも他の段は進め続ける)。
+`game.update` からは `!isPaused` のときだけ呼ばれる。
 
 - advanceSimulation(dt)
-  - 以下の player は毎回その場で読む game.player(= activePlayers.current)。[playing] は activeStage.isPlaying の略
+  - 以下の player は毎回その場で読む game.player(= activePlayers.current)
   - sections.enter(SECTION.player)
   - nanWatchdog.checkPlayer('frameStart')
-  - [player && playing] player.behave()
-    - belt.update()
-      - physics.shiftBeltNodes() // リロードで給弾量が巻き戻ったフレームのみ
-      - physics.update()
-        - initNodesOnce() // 初回のみ
-        - estimateAngularAccel() / integrateVerlet() / pinRootToAnchor() / relaxDistanceConstraints()
-        - advanceOrientationConstraints() // リンクごとに角度クランプ・ツイスト更新
-    - handleEdgeInput() → handleEdgePress() // 処理したキーは input.consumeKey() で消費する
-      - throttle.toggleRcsDamp() // K.rcsDampToggle
-      - throttle.enableProgradeReset() // K.progradeReset
-      - toggleFineAttitude() // K.fineAttitudeToggle
-      - throttle.toggleProgradeHold() // K.progradeHoldToggle
-      - throttle.setThrottlePreset(0|1|2) // K.throttleLow/Mid/High
-      - fire.manualReload() // K.reload。成功時のみ true(= キー消費)
-        - sfx.playReload() + dropBarrel() → fx.spawnBarrel()
-    - throttle.updateTorque() → player.torque へ代入(マップビュー中も手動回転は常時有効)
-      - onProgradeHoldReleased() → hud.hint() // ホールド中に手動回転入力があった場合のみ
-      - autoAlignTorque() // ホールド中 かつ 手動回転入力なしの場合のみ
-    - radiator.update() // 展開度のみ。THREE には触れない
-    - sunlitFactor() // 地球影による日照率
-    - thermal.setRadiatorLoad(radiator.radiatingArea(), radiator.solarLoad())
-      // このフレームの全サブステップの updateThermal がこの値を使う
-    - power.update() // sunlit/sunDir は radiator と共有。THREE には触れない
-    - hpRegen()
-    - [editor.editMode] fire.tickMapMode() → tickReloadTimer() // マップビュー中は発射不可(装填タイマーのみ進める)
-    - [!editor.editMode] fire.updateFireState()
-      - tickReloadTimer()
-      - hud.hint() // 発射キー押下中 かつ !simSpeed.canPlayerFire
-      - sfx.emptyClick() + hud.hint() // 弾切れの初回フレームのみ
-      - fireCycle() // 発射キー押下 かつ canPlayerFire かつ残弾ありの場合のみ
-        - sfx.spinUp() // 発射開始フレームのみ(このフレームは fireGun まで進まない)
-        - consume() // 弾薬状態の更新。戻り値で以下の分岐が決まる
-        - fireGun() // クールダウン明けのみ
-          - spawnBullet() → entities.addBullet()
-          - player.state.v に反動 Δv
-          - dropCasing() → fx.spawnCasing()
-          - spawnMuzzleFlash() → fx.spawnFlash()
-          - scoreCounter.recordShot()
-          - sfx.fire()
-        - spawnEjectedMagazineFrame() + sfx.magFeed() // 'mag-reload'
-        - spawnEjectedMagazineFrame() + dropBarrel() + sfx.playReload() // 'barrel-reload'
-    - [dvEditActive(= editor.editMode かつ editor.selectedNodeIdx !== null)] player.thrust = null、throttle.stopThrust() して return // ノードのΔv編集中はWASDQEをそちらへ譲る。噴射音・プルームは syncPlayer 側の thrustEffects.sync が player.thrust=null を見て自分で止める
-    - [simSpeed.canPlayerThrust] throttle.updateThrustLatches() // WASDQE各キーの連打をエッジ検出しラッチ集合を更新。反対方向キーを押している間は相手側のラッチも解除し続ける。canPlayerThrust が false の間は呼ばれず、押下エッジも消費されない
-    - throttle.updateThrustState() → player.thrust へ代入(手動入力が無ければ null。'powered' 中の艦がここで null になっても、後段の activeStage.update → planExecutor.update が Simulator.advance より前に正しい値へ上書きするので積分には影響しない)
-      - throttle.stopThrust() // 推力入力なし(物理押下・ラッチとも無し) or !canPlayerThrust。thrustAccelVec(ベルト物理向け)を戻すだけ
-    - invalidatePrediction() // player.thrust !== null のときのみ(自機の噴射結果を即座に予測へ反映)
-    - [planExecution==='powered'] thrust!==null または throttle.hasManualRotationInput() なら planExecution='off' // 操作対象艦の手動並進・手動回転で自動実行を中断(マップモードかどうかは問わない)
-  - [player && !playing] player.clearTransientCommands() // 決着後は操作を受け付けないので、次のフレームへ持ち越してはならない連続指令を畳む
-  - entities.updatePassivePlayers(dt, player) // 操作対象以外の自機に、表示フレーム基準のベルト・HP回復だけを1回ずつ進める(熱・電力・ラジエータは Simulator が全艦を substep ごとに stepEnvironment する)
+  - entities.updatePlayers(player, params) // entities.players 全隻ぶん、1隻ずつ ship.behave(ship===player, entities, params) を呼ぶ。ステージの決着状態は分岐条件に無い(決着後も操作艦は動く)
+    - [ship ごと] ship.behave(controllable, entities, params)
+      - updatePassive(dt) // belt.update() + hpRegen()。controllable に関わらず必ず先頭で実行
+        - belt.update()
+          - physics.shiftBeltNodes() // リロードで給弾量が巻き戻ったフレームのみ
+          - physics.update()
+            - initNodesOnce() // 初回のみ
+            - estimateAngularAccel() / integrateVerlet() / pinRootToAnchor() / relaxDistanceConstraints()
+            - advanceOrientationConstraints() // リンクごとに角度クランプ・ツイスト更新
+      - [!controllable] clearTransientCommands() して return // 操作対象でない艦(操作艦が無ければ全艦)は、次のフレームへ持ち越してはならない連続指令をここで畳む
+      - [controllable] handleEdgeInput() → handleEdgePress() // 処理したキーは input.consumeKey() で消費する
+        - throttle.toggleRcsDamp() // K.rcsDampToggle
+        - throttle.enableProgradeReset() // K.progradeReset
+        - toggleFineAttitude() // K.fineAttitudeToggle
+        - throttle.toggleProgradeHold() // K.progradeHoldToggle
+        - throttle.setThrottlePreset(0|1|2) // K.throttleLow/Mid/High
+        - fire.manualReload() // K.reload。成功時のみ true(= キー消費)
+          - sfx.playReload() + dropBarrel() → fx.spawnBarrel()
+      - [controllable] throttle.updateTorque() → player.torque へ代入(マップビュー中も手動回転は常時有効)
+        - onProgradeHoldReleased() → hud.hint() // ホールド中に手動回転入力があった場合のみ
+        - autoAlignTorque() // ホールド中 かつ 手動回転入力なしの場合のみ
+      - [controllable, editor.editMode] fire.tickMapMode() → tickReloadTimer() // マップビュー中は発射不可(装填タイマーのみ進める)
+      - [controllable, !editor.editMode] fire.updateFireState()
+        - tickReloadTimer()
+        - hud.hint() // 発射キー押下中 かつ !simSpeed.canPlayerFire
+        - sfx.emptyClick() + hud.hint() // 弾切れの初回フレームのみ
+        - fireCycle() // 発射キー押下 かつ canPlayerFire かつ残弾ありの場合のみ
+          - sfx.spinUp() // 発射開始フレームのみ(このフレームは fireGun まで進まない)
+          - consume() // 弾薬状態の更新。戻り値で以下の分岐が決まる
+          - fireGun() // クールダウン明けのみ
+            - spawnBullet() → entities.addBullet()
+            - player.state.v に反動 Δv
+            - dropCasing() → fx.spawnCasing()
+            - spawnMuzzleFlash() → fx.spawnFlash()
+            - scoreCounter.recordShot()
+            - sfx.fire()
+          - spawnEjectedMagazineFrame() + sfx.magFeed() // 'mag-reload'
+          - spawnEjectedMagazineFrame() + dropBarrel() + sfx.playReload() // 'barrel-reload'
+      - [controllable, dvEditActive(= editor.editMode かつ editor.selectedNodeIdx !== null)] player.thrust = null、throttle.stopThrust() して return // ノードのΔv編集中はWASDQEをそちらへ譲る。噴射音・プルームは syncPlayer 側の thrustEffects.sync が player.thrust=null を見て自分で止める
+      - [controllable, simSpeed.canPlayerThrust] throttle.updateThrustLatches() // WASDQE各キーの連打をエッジ検出しラッチ集合を更新。反対方向キーを押している間は相手側のラッチも解除し続ける。canPlayerThrust が false の間は呼ばれず、押下エッジも消費されない
+      - [controllable] throttle.updateThrustState() → player.thrust へ代入(手動入力が無ければ null。'powered' 中の艦がここで null になっても、後段の activeStage.update → planExecutor.update が Simulator.advance より前に正しい値へ上書きするので積分には影響しない)
+        - throttle.stopThrust() // 推力入力なし(物理押下・ラッチとも無し) or !canPlayerThrust。thrustAccelVec(ベルト物理向け)を戻すだけ
+      - [controllable] invalidatePrediction() // player.thrust !== null のときのみ(自機の噴射結果を即座に予測へ反映)
+      - [controllable, planExecution==='powered'] thrust!==null または throttle.hasManualRotationInput() なら planExecution='off' // 操作対象艦の手動並進・手動回転で自動実行を中断(マップモードかどうかは問わない)
   - nanWatchdog.checkPlayer('player.behave')
   - sections.exit(SECTION.player)
   - sections.enter(SECTION.stage)
@@ -295,10 +294,9 @@
 
 マップ/戦闘のポインタ操作を優先順位順(=呼ぶ順)に配る。`game.update` の末尾、`cameraSystem.update`
 の後に呼ぶ(このフレームのカメラ行列で投影してからでないと画面上の対象をピックできない)。
-決着後は配らず、ポーズ中は ESC メニュー等が開いていないときだけ配る(背景の誤操作を防ぐ)。
+決着状態は見ず、ポーズ中は ESC メニュー等が開いていないときだけ配る(背景の誤操作を防ぐ)。
 
 - handlePointerInput(dt)
-  - [!activeStage.isPlaying] 即 return
   - [isPaused && hud.modalController.isOpen] 即 return
   - [editor.editMode] 計画編集モード。マーカー(handleRightClick/handleLeftClick/handleDoubleClick)→ ノード(editor.handleMapPointer)→ 空域(handleEmptySpaceRightClick)の優先順は呼び出し順そのもの — 上流が消費した右クリックは下流に届かない
     - mapPicker.handleRightClick(input, simTime) // マーカーへの右クリックだけを消費する。外れれば消費せず editor.handleMapPointer() のノード右クリックへ読み進む
@@ -376,8 +374,8 @@
     - syncStars() // starsMesh をカメラへ追従、overviewMode でさらに拡大
     - syncReferenceLines(simTime, fo, overviewMode, focus, toggles) → geoLine.sync() + [referenceLines の各 OrbitLine ごと] showsReferenceLine(id, focus, toggles) が true のときだけ line.sync(orbitElementsFor(id, simTime), …)、false なら null 渡しで非表示 // !overviewMode では全線 null。惑星線は常時、衛星線は focus がその衛星系(地球系除く)を指すときだけ show
     - celestialGrid.sync() // navball.gridVisibility の6トグルと overviewMode に応じたスケールを反映
-  - entities.syncPlayers(player, fo, cameraSystem, activeStage.isPlaying, isPaused, displayTime, ephemeris, attractors, visibilityPolicy) // 全自機ごとに ship.syncPlayer(...) を呼ぶ。方向マーカー・ボアサイト・ガンサイトズームの隠れは isActive(=ship===player)の艦だけ
-    - ship.syncPlayer(fo, cameraSystem, phasePlaying, paused, displayTime, isActive, ephemeris, attractors, visibilityPolicy?.entity('player', isActive))
+  - entities.syncPlayers(player, fo, cameraSystem, displayTime, ephemeris, attractors, visibilityPolicy) // 全自機ごとに ship.syncPlayer(...) を呼ぶ。方向マーカー・ボアサイト・ガンサイトズームの隠れは isActive(=ship===player)の艦だけ
+    - ship.syncPlayer(fo, cameraSystem, displayTime, isActive, ephemeris, attractors, visibilityPolicy?.entity('player', isActive))
       - displayState(displayTime) // current.at または predicted.at。null なら obj.visible=false のみで以下は現在状態のまま
       - obj の position / quaternion / visible // displayState 基準(未来ゴースト表示中は将来位置)。ガンサイトズームで隠れるのは isActive の艦だけ
       - thrustEffects.sync(this.thrust, maxAccel, ...) → sfx.setThrust(firing)(isActive のみ) + core/outer の sync() or hide() // this.thrust は PlayerThrottle/PlanExecutor どちらが立てても同じ。displayState(displayTime) ?? this.state。displayState が null なら visible=false 扱いで呼び自分で隠れる

@@ -25,9 +25,7 @@ import { SettingsPanel } from './hud/settings-panel';
 import { Sfx } from '../audio/sfx';
 import { GameScene } from '../render/scene';
 import { EnvironmentScene } from './celestial/environment-scene';
-import { Ephemeris } from '../physics/ephemeris';
-import type { AbsoluteEphemeris } from '../physics/absolute-ephemeris';
-import { SIM_EPOCH_ET, SIM_EPOCH_JD_TDB } from './sim-epoch';
+import type { Ephemeris } from '../physics/ephemeris';
 import { ViewManager } from './view-manager';
 import { NanWatchdog } from './nan-watchdog';
 import { NavTarget } from './nav-target';
@@ -93,7 +91,8 @@ export class Game {
     settingsPanel: SettingsPanel,
     unlockManager: UnlockManager,
     sections: FrameSections,
-    absoluteEphemeris?: AbsoluteEphemeris,
+    ephemeris: Ephemeris,
+    earthSpinPhase0: number,
     initialSave?: GameSaveData,
   ) {
     this.sections = sections;
@@ -104,12 +103,7 @@ export class Game {
     this.settingsPanel = settingsPanel;
     this.unlockManager = unlockManager;
 
-    const ephemerisConfig = stageClass.ephemerisConfig;
-    const phaseOffsets = initialSave?.phaseOffsets ?? {};
-    this._ephemeris = ephemerisConfig === undefined
-      ? new Ephemeris(undefined, undefined, SIM_EPOCH_ET, phaseOffsets, absoluteEphemeris, SIM_EPOCH_JD_TDB)
-      : new Ephemeris(
-        ephemerisConfig.registry, ephemerisConfig.originId, ephemerisConfig.epochOffsetSec, phaseOffsets);
+    this._ephemeris = ephemeris;
 
     this.markerManager = new MarkerManager(this._hud.layers.marker, this._hud.svgOverlay);
 
@@ -131,7 +125,7 @@ export class Game {
     this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene, this.settingsPanel);
     this.navTarget = new NavTarget(this._hud, this.markerManager);
     this.navball = new Navball(this._hud.layers.panel);
-    this._environment = new EnvironmentScene(this._scene, this.ephemeris, initialSave?.earthSpinPhase0);
+    this._environment = new EnvironmentScene(this._scene, this.ephemeris, earthSpinPhase0);
     this.activePlayers = new ActivePlayerController(
       initialSave?.activePlayerId, this.entities, this.cameraSystem, this.targeter, this.navTarget, this._sfx,
     );
@@ -187,7 +181,8 @@ export class Game {
   pause(): void {
     this.simulator.lastSimDt = 0;
     this._sfx.setThrust(false);
-    this.player?.pause();
+    // ポーズ中は behave が走らないので、全自機の連続指令はここで畳む。
+    this.entities.clearTransientCommands();
     this._isPaused = true;
   }
 
@@ -232,31 +227,22 @@ export class Game {
     this.sections.exit(SECTION.pointer);
   }
 
-  // 自機の行動 → ステージ → 積分 → 予測 → エフェクトの順に1フレーム進める。艦がいない場合は
-  // その段だけを落として残りは進める(残骸・弾の epoch はどの状況でも進め続ける)。
+  // 自機の行動 → ステージ → 積分 → 予測 → エフェクトの順に1フレーム進める
+  // (残骸・弾の epoch はどの状況でも進め続ける)。
   private advanceSimulation(dt: number): void {
     this.sections.enter(SECTION.player);
     this.nanWatchdog.checkPlayer('frameStart', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
-    if (this.player) {
-      if (this.activeStage.isPlaying) {
-        this.player.behave({
-          dt,
-          input: this.input,
-          simSpeed: this.simSpeedManager,
-          mapMode: this.editor.editMode,
-          dvEditActive: this.editor.dvEditActive,
-          scoreCounter: this.activeStage.scoreCounter,
-          simTime: this.simulator.simTime,
-          zoomActive: this.cameraSystem.zoomActive,
-          entities: this.entities,
-          ephemeris: this.ephemeris,
-        });
-      } else {
-        // 決着後は操作を受け付けないので、次のフレームへ持ち越してはならない連続指令を畳む。
-        this.player.clearTransientCommands();
-      }
-    }
-    this.entities.updatePassivePlayers(dt, this.player);
+    this.entities.updatePlayers(this.player, {
+      dt,
+      input: this.input,
+      simSpeed: this.simSpeedManager,
+      mapMode: this.editor.editMode,
+      dvEditActive: this.editor.dvEditActive,
+      scoreCounter: this.activeStage.scoreCounter,
+      simTime: this.simulator.simTime,
+      zoomActive: this.cameraSystem.zoomActive,
+      ephemeris: this.ephemeris,
+    });
     this.nanWatchdog.checkPlayer('player.behave', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
     this.sections.exit(SECTION.player);
 
@@ -305,10 +291,9 @@ export class Game {
   }
 
   // ポインタ入力を優先順位順(=呼ぶ順)に配る。このフレームの cameraSystem.update が終わって
-  // 初めて投影がこのフレームの値になるので、update の末尾に置く。決着後は配らず、ポーズ中は
+  // 初めて投影がこのフレームの値になるので、update の末尾に置く。ポーズ中は
   // ESC メニュー等が開いていないときだけ配る(背景の誤操作を防ぐ)。
   private handlePointerInput(dt: number): void {
-    if (!this.activeStage.isPlaying) return;
     if (this._isPaused && this._hud.modalController.isOpen) return;
     if (this.editor.editMode) {
       this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
@@ -382,8 +367,7 @@ export class Game {
     );
 
     this.entities.syncPlayers(
-      player, fo, this.cameraSystem, this.activeStage.isPlaying, this._isPaused,
-      displayTime, this.ephemeris, attractors, visibilityPolicy,
+      player, fo, this.cameraSystem, displayTime, this.ephemeris, attractors, visibilityPolicy,
     );
     this.entities.sync(fo, displayTime);
     this.entities.applyVisibility(
