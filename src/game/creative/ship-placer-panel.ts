@@ -204,7 +204,7 @@ function numberField(root: HTMLElement, label: string, defaultValue: number, ste
 
 // numberField が組んだ入力の行(ラベルごと)を出し入れする。
 function setFieldVisible(input: HTMLInputElement, visible: boolean): void {
-  (input.parentElement as HTMLElement).style.display = visible ? '' : 'none';
+  (input.parentElement as HTMLElement).classList.toggle('hidden', !visible);
 }
 
 // numberField にスライダー+目盛りを添えた行。数値入力とスライダーは双方向に同期する。
@@ -394,7 +394,7 @@ export class ShipPlacerPanel implements OverlayHandle {
 
     this.panel = document.createElement('div');
     this.panel.id = 'hud-shipplacer';
-    this.panel.className = 'panel';
+    this.panel.className = 'panel hidden';
     // モーダルとして画面右上に配置
     this.panel.style.position = 'fixed';
     this.panel.style.top = '20px';
@@ -446,8 +446,7 @@ export class ShipPlacerPanel implements OverlayHandle {
     this.panel.appendChild(nameRow.element);
 
     this.issueList = document.createElement('div');
-    this.issueList.className = 'issue-list';
-    this.issueList.style.display = 'none';
+    this.issueList.className = 'issue-list hidden';
     this.panel.appendChild(this.issueList);
 
     this.buildButtonsAndKeybinds();
@@ -514,7 +513,7 @@ export class ShipPlacerPanel implements OverlayHandle {
     const refreshPresets = (): void => {
       presetRow.innerHTML = '';
       const presets = PRESETS_BY_BODY[this.attractorValue] ?? [];
-      presetRow.style.display = presets.length > 0 ? '' : 'none';
+      presetRow.classList.toggle('hidden', presets.length === 0);
       if (presets.length === 0) return;
       const heading = document.createElement('span');
       heading.className = 'w-group-title';
@@ -611,9 +610,7 @@ export class ShipPlacerPanel implements OverlayHandle {
   // 挙動どおり [Enter]/[ESC] のまま出す。
   private buildButtonsAndKeybinds(): void {
     const btnRow = document.createElement('div');
-    btnRow.style.display = 'flex';
-    btnRow.style.gap = '10px';
-    btnRow.style.marginTop = '12px';
+    btnRow.className = 'shipplacer-btn-row';
     btnRow.appendChild(new Button('配置 [Enter]', () => this.confirm()).element);
     btnRow.appendChild(new Button('キャンセル [ESC]', () => this.close()).element);
     this.panel.appendChild(btnRow);
@@ -640,7 +637,7 @@ export class ShipPlacerPanel implements OverlayHandle {
     this.sizeModeValue = mode;
     this.sizeMode.setSelected(mode);
     for (const [key, group] of Object.entries(this.sizeGroups) as [SizeShapeMode, HTMLElement][]) {
-      group.style.display = key === mode ? 'block' : 'none';
+      group.classList.toggle('hidden', key !== mode);
     }
   }
 
@@ -649,7 +646,7 @@ export class ShipPlacerPanel implements OverlayHandle {
     this.placementModeValue = mode;
     this.placementMode.setSelected(mode);
     for (const [key, group] of Object.entries(this.placementGroups) as [PlacementMode, HTMLElement][]) {
-      group.style.display = key === mode ? 'block' : 'none';
+      group.classList.toggle('hidden', key !== mode);
     }
   }
 
@@ -764,7 +761,7 @@ export class ShipPlacerPanel implements OverlayHandle {
       line.textContent = issue.message;
       this.issueList.appendChild(line);
     }
-    this.issueList.style.display = issues.length > 0 ? '' : 'none';
+    this.issueList.classList.toggle('hidden', issues.length === 0);
   }
 
   // パネルを開く。preset の種別で事前入力の範囲が変わる(ShipPlacerPreset 参照)。
@@ -784,7 +781,7 @@ export class ShipPlacerPanel implements OverlayHandle {
       }
     }
     this._isOpen = true;
-    this.panel.style.display = 'block';
+    this.panel.classList.remove('hidden');
     this.overlayManager.open('ship-placer', this, {
       kind: 'window', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: false,
     });
@@ -795,7 +792,7 @@ export class ShipPlacerPanel implements OverlayHandle {
   close(): void {
     if (!this._isOpen) return;
     this._isOpen = false;
-    this.panel.style.display = 'none';
+    this.panel.classList.add('hidden');
     this.overlayManager.close('ship-placer');
     this.onClose?.();
   }

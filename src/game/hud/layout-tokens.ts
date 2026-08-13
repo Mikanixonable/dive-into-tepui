@@ -1,5 +1,5 @@
 // レール幅・戦闘シェルフ高の CSS 変数。値はブレークポイントごとにここで再代入し、
-// 参照側(hud-dock/PREDICT バー/戦闘シェルフ)は var() 越しに読むだけにする —
+// 参照側(hud-rail/PREDICT バー/戦闘シェルフ)は var() 越しに読むだけにする —
 // 同じ長さをブレークポイントの数だけ複数箇所へ書き写さない。
 export const LAYOUT_TOKENS_STYLE = `
 :root {

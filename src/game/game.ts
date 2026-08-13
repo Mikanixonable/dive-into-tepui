@@ -22,7 +22,7 @@ import { Predictor } from './simulation/predictor';
 import { Input } from './input/input';
 import { TouchControls } from './input/touch';
 import { Hud } from './hud/hud';
-import { SettingsPanel } from './hud/settings-panel';
+import { PauseMenu } from './hud/pause-menu';
 import { Sfx } from '../audio/sfx';
 import { GameScene } from '../render/scene';
 import { EnvironmentScene } from './celestial/environment-scene';
@@ -32,14 +32,15 @@ import { SIM_EPOCH_ET, SIM_EPOCH_JD_TDB } from './sim-epoch';
 import { ViewManager } from './view-manager';
 import { NanWatchdog } from './nan-watchdog';
 import { NavTarget } from './nav-target';
-import { MapPicker } from './map-picker';
+import { MapPickables } from './map-pickables';
+import { MapContextActions } from './map-context-actions';
 import { Navball } from './navball/navball';
 import { GameSaveData } from './save-data';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import { Docking } from './docking';
 import { ViewBadge } from './hud/view-badge';
 import { planAttractorProvider, planSourceRevision } from './simulation/attractors';
-import { FrameControls } from './frame-controls';
+import { FrameControls } from './hud/frame-controls';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -49,7 +50,7 @@ export class Game {
   touchControls: TouchControls | null = null;
   private readonly _hud: Hud;
   private readonly _sfx: Sfx;
-  private readonly settingsPanel: SettingsPanel;
+  private readonly pauseMenu: PauseMenu;
   private readonly markerManager: MarkerManager;
   private readonly _ephemeris: Ephemeris;
   get ephemeris(): Ephemeris { return this._ephemeris; }
@@ -64,7 +65,8 @@ export class Game {
   private readonly displayWindowManager: DisplayWindowManager;
   private readonly guide: PlanGuide;
   readonly viewManager: ViewManager;
-  private readonly mapPicker: MapPicker;
+  private readonly mapPickables: MapPickables;
+  private readonly mapActions: MapContextActions;
 
   readonly activeStage: Stage;
   private _isPaused = false;
@@ -96,7 +98,7 @@ export class Game {
     stageClass: StageClass,
     hud: Hud,
     sfx: Sfx,
-    settingsPanel: SettingsPanel,
+    pauseMenu: PauseMenu,
     unlockManager: UnlockManager,
     sections: FrameSections,
     absoluteEphemeris?: AbsoluteEphemeris,
@@ -107,7 +109,7 @@ export class Game {
     this.renderer = gs.renderer;
     this._hud = hud;
     this._sfx = sfx;
-    this.settingsPanel = settingsPanel;
+    this.pauseMenu = pauseMenu;
     this.unlockManager = unlockManager;
 
     const ephemerisConfig = stageClass.ephemerisConfig;
@@ -140,7 +142,7 @@ export class Game {
 
     this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene);
     this.navTarget = new NavTarget(this._hud, this.markerManager);
-    this.navball = new Navball(this._hud.layers.panel);
+    this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
     this._environment = new EnvironmentScene(this._scene, this.ephemeris, initialSave?.earthSpinPhase0);
     this.editor = new PlanEditor(
       this._hud,
@@ -156,18 +158,21 @@ export class Game {
       this.frameControls.setFocus(
         focusPoint(this.ephemeris, this.ephemeris.inertialFrame, state.r, state.t));
     };
-    this.mapPicker = new MapPicker(
+    this.mapPickables = new MapPickables(
+      this, this.entities, this.ephemeris, this.navTarget, this.cameraSystem, this.editor,
+    );
+    this.mapActions = new MapContextActions(
       this, this._hud, this.entities, this.ephemeris, this.navTarget,
-      this.cameraSystem, this.editor, this.simSpeedManager, this.settingsPanel,
+      this.cameraSystem, this.editor, this.simSpeedManager, this.pauseMenu, this.mapPickables,
     );
     this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager);
     this.activePlayers = new ActivePlayerController(
       initialPlayer, this.entities, this.cameraSystem, this.editor, this.targeter,
-      this.navTarget, this.mapPicker, this._sfx,
+      this.navTarget, this.mapActions, this._sfx,
     );
     // 戦闘ビューは操作対象艦を前提とするので、艦が1隻も無い起動はマップから始める。
     this.viewManager = new ViewManager(
-      this._hud, this.editor, this.cameraSystem, this.displayWindowManager, this.mapPicker,
+      this._hud, this.editor, this.cameraSystem, this.displayWindowManager, this.mapActions,
       this.activePlayers,
       initialSave?.camera?.view ?? (initialPlayer ? 'combat' : 'map'),
     );
@@ -188,9 +193,9 @@ export class Game {
     this.nanWatchdog = new NanWatchdog(this._hud);
     this.docking = new Docking(
       this, this._hud, this._sfx, this._scene, this.entities.effects, this.markerManager,
-      this.entities, this.mapPicker, this.cameraSystem, this.viewManager,
+      this.entities, this.mapActions, this.cameraSystem, this.viewManager,
     );
-    this.mapPicker.setDocking(this.docking);
+    this.mapActions.setDocking(this.docking);
     this.viewBadge = new ViewBadge(this._hud.layers.notify, this._hud.layers.popup, this.viewManager, this._hud.overlayManager);
     this.frameControls = new FrameControls(
       this._hud.layers.panel, this._hud.layers.popup, this.ephemeris, this.cameraSystem.overviewCamera,
@@ -317,19 +322,19 @@ export class Game {
   // ESC メニュー等が開いていないときだけ配る(背景の誤操作を防ぐ)。
   private handleMapPointerInput(dt: number): void {
     if (!this.activeStage.isPlaying) return;
-    if (this._isPaused && this._hud.overlayManager.isOverlayOpen('settings')) return;
+    if (this._isPaused && this._hud.overlayManager.isOverlayOpen('pause-menu')) return;
     if (this.editor.editMode) {
-      this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
-      this.mapPicker.handleLeftClick(this.input);
-      this.mapPicker.handleDoubleClick(this.input);
+      this.mapActions.handleRightClick(this.input, this.simulator.simTime);
+      this.mapActions.handleLeftClick(this.input);
+      this.mapActions.handleDoubleClick(this.input);
       this.editor.handleMapPointer(this.input);
-      this.mapPicker.handleEmptySpaceRightClick(this.input, this.simulator.simTime);
+      this.mapActions.handleEmptySpaceRightClick(this.input, this.simulator.simTime);
       this.editor.updateEditing(dt, this.input);
     } else if (!this._isPaused && this.player) {
       const combatTargets = this.entities.getCombatTargets(this.player);
       this.targeter.handleTargetSelectKey(this.input, combatTargets, this.cameraSystem.activeCameraProjection);
       this.navTarget.updateCombatBasePicking(this.entities, this.input, this.cameraSystem.activeCameraProjection);
-      this.mapPicker.handleCombatRightClick(
+      this.mapActions.handleCombatRightClick(
         this.input, combatTargets, this.cameraSystem.activeCameraProjection, this.simulator.simTime,
       );
     }
@@ -357,11 +362,11 @@ export class Game {
     this.entities.updateBaseEquatorNodes(displayWindow, this.ephemeris);
     this.sections.exit(SECTION.plan);
     this.sections.enter(SECTION.mapPick);
-    this.mapPicker.refresh(displayWindow);
+    this.mapPickables.refresh(displayWindow);
     this.sections.exit(SECTION.mapPick);
     this.sections.enter(SECTION.camera);
     this.cameraSystem.update(
-      this.player, this.simulator.simTime, this.input, dt, this.mapPicker.pickables,
+      this.player, this.simulator.simTime, this.input, dt, this.mapPickables.pickables,
       this.displayWindowManager.attractorsAt(this.simulator.simTime),
     );
     this.sections.exit(SECTION.camera);
@@ -376,7 +381,7 @@ export class Game {
     // ESC の持ち主はここ一箇所だけ: 開いているオーバーレイがあれば最前面を閉じ、
     // 何も無ければ一時停止メニューを開く。個々のオーバーレイの開閉判断は持たない。
     if (this.input.takeKey(K.pauseMenu)) {
-      if (!this._hud.overlayManager.closeTopmostOnEscape()) this.settingsPanel.toggle(true);
+      if (!this._hud.overlayManager.closeTopmostOnEscape()) this.pauseMenu.toggle(true);
     }
     // オーバーレイの項目ショートカット([F]等)も同じ優先度で最前面へ配送する。
     this.input.takeKeys((code) => this._hud.overlayManager.dispatchShortcut(code));
@@ -419,9 +424,9 @@ export class Game {
 
     const project = this.cameraSystem.activeCameraProjection;
     const overviewMode = this.cameraSystem.overviewMode;
-    // 表示・選択可否はこのフレームの update フェーズで MapPicker が確定させたものを読む
+    // 表示・選択可否はこのフレームの update フェーズで MapPickables が確定させたものを読む
     // (選べる対象と描かれる対象が同じ判定から出るようにする)。
-    const visibilityPolicy = overviewMode ? this.mapPicker.visibilityPolicy : null;
+    const visibilityPolicy = overviewMode ? this.mapPickables.visibilityPolicy : null;
     const combatTargets = this.entities.getCombatTargets(player);
 
     this._environment.sync(
@@ -461,9 +466,9 @@ export class Game {
       this.cameraSystem.activeCameraScale, overviewMode, this.cameraSystem.activeCameraPos,
       this.cameraSystem.activeCamera,
     );
-    this.mapPicker.sync(simTime, attractors, player);
+    this.mapActions.sync(simTime, attractors, player);
     this.frameControls.sync(
-      this.mapPicker.pickables, this.cameraSystem.activeCameraPos, attractors, simTime, overviewMode,
+      this.mapPickables.pickables, this.cameraSystem.activeCameraPos, attractors, simTime, overviewMode,
     );
 
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
@@ -480,7 +485,12 @@ export class Game {
       visibilityPolicy, this.cameraSystem.activeCamera,
     );
 
-    this._hud.panels.sync(this, attractors);
+    this._hud.globalStatusBar.sync(this);
+    this._hud.mapScaleBadge.sync(this);
+    this._hud.statusPanel.sync(this);
+    this._hud.orbitPanel.sync(this, attractors);
+    this._hud.targetPanel.sync(this, attractors);
+    this._hud.contactsPanel.sync(this);
     this._hud.tick();
 
     this.guide.sync(player, simTime, this.editor.editMode, project);
@@ -507,7 +517,7 @@ export class Game {
       ...this.simulator.perfCounts(),
       ...this.editor.perfCounts(),
       ...this._ephemeris.perfCounts(),
-      ...this.mapPicker.perfCounts(),
+      ...this.mapPickables.perfCounts(),
       displayDurationSec: this.displayWindowManager.current.duration,
       warp: this.simSpeedManager.simSpeed,
     };

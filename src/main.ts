@@ -14,7 +14,7 @@ import {
   FONT_2XL, FONT_M, FONT_XL, RADIUS_S, RADIUS_M,
 } from './game/theme';
 import { Hud } from './game/hud/hud';
-import { SettingsPanel } from './game/hud/settings-panel';
+import { PauseMenu } from './game/hud/pause-menu';
 import { Sfx } from './audio/sfx';
 import { UnlockManager } from './game/unlock-manager';
 import { findStageClass } from './game/stages/stage-dictionary';
@@ -192,19 +192,19 @@ function startAnimationLoop(
 }
 
 // hud/sfx はタイトル(ステージ選択)画面の時点から使えるべきなので、Game より先に main.ts が
-// 生成して所有し、Game には参照として渡す。settingsPanel も同様に main.ts が所有し、開閉に
+// 生成して所有し、Game には参照として渡す。pauseMenu も同様に main.ts が所有し、開閉に
 // 応じた一時停止の反映(game.pause()/game.resume())も持ち主である main.ts がここで配線する。
-function initHud(): { hud: Hud; sfx: Sfx; settingsPanel: SettingsPanel } {
+function initHud(): { hud: Hud; sfx: Sfx; pauseMenu: PauseMenu } {
   const hud = new Hud();
   const sfx = new Sfx();
-  const settingsPanel = new SettingsPanel(hud.layers.system, hud.overlayManager);
-  settingsPanel.setBgmVolume(sfx.getBgmVolume());
-  settingsPanel.onBgmVolumeChange = (vol) => sfx.setBgmVolume(vol);
+  const pauseMenu = new PauseMenu(hud.layers.system, hud.overlayManager);
+  pauseMenu.setBgmVolume(sfx.getBgmVolume());
+  pauseMenu.onBgmVolumeChange = (vol) => sfx.setBgmVolume(vol);
   // 「ゲームを中断してタイトル画面に戻る」— ?title=1 を付けて選択画面へ強制する
-  settingsPanel.onQuitToTitle = () => {
+  pauseMenu.onQuitToTitle = () => {
     location.assign(`${location.pathname}?title=1`);
   };
-  return { hud, sfx, settingsPanel };
+  return { hud, sfx, pauseMenu };
 }
 
 // シーン初期化からステージ選択、Game 構築、rAF ループ開始までを順に行う。
@@ -225,7 +225,7 @@ async function main() {
   const slots = initSaveSlots(saveStore);
   const snapshotService = new SnapshotService(saveStore, slots);
   const gs = await initScene();
-  const { hud, sfx, settingsPanel } = initHud();
+  const { hud, sfx, pauseMenu } = initHud();
   const stageClass = await resolveLaunchStage(unlockmanager, slots);
   let absoluteEphemeris;
   // 固有の簡易天体暦を指定するデバッグステージには外部 pack を読み込まない。
@@ -263,7 +263,7 @@ async function main() {
   if (initialSave && initialSnapshotId !== null) slots.discardAfter(initialSnapshotId);
 
   const game = new Game(
-    gs, stageClass, hud, sfx, settingsPanel, unlockmanager, sections, absoluteEphemeris, initialSave,
+    gs, stageClass, hud, sfx, pauseMenu, unlockmanager, sections, absoluteEphemeris, initialSave,
   );
   if (activeSlotId !== null) slots.noteLaunch(activeSlotId, game.activeStage.id);
 
@@ -275,23 +275,23 @@ async function main() {
     location.assign(location.pathname);
   };
   // 設定メニューと一覧は同じシステム窓の帯にいるので、片方を開くときもう片方は閉じる。
-  settingsPanel.onOpenSnapshots = () => {
-    settingsPanel.toggle(false);
+  pauseMenu.onOpenSnapshots = () => {
+    pauseMenu.toggle(false);
     saveBrowser.open();
   };
   // ⚙ギアクリック・[閉じる]・[Esc] いずれの経路で開閉しても一時停止フラグを同期する
-  settingsPanel.onSettingsOpenChange = (open) => {
+  pauseMenu.onPauseMenuOpenChange = (open) => {
     if (open) game.pause();
     else game.resume();
   };
   const perf = new PerfMeter(game, hud.layers.window, gs.renderer, sections, hud.overlayManager);
   game.setPerfMeter(perf);
   // 負荷確認ウィンドウは非モーダルなので、設定メニューを閉じてから前面へ出すだけ。
-  settingsPanel.onOpenPerfWindow = () => {
-    settingsPanel.toggle(false);
+  pauseMenu.onOpenPerfWindow = () => {
+    pauseMenu.toggle(false);
     perf.open();
   };
-  const snapshotControls = new SnapshotControls(hud, settingsPanel, saveBrowser, snapshotService);
+  const snapshotControls = new SnapshotControls(hud, pauseMenu, saveBrowser, snapshotService);
   startAnimationLoop(game, perf, sections, new AutoSave(snapshotService), snapshotControls);
 }
 
