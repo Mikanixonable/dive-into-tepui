@@ -165,14 +165,15 @@ export class Game {
       this.cameraSystem, this.editor, this.simSpeedManager, this.settingsPanel,
     );
     this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager);
+    this.activePlayers = new ActivePlayerController(
+      initialPlayer, this.entities, this.cameraSystem, this.editor, this.targeter,
+      this.navTarget, this.mapPicker, this._sfx,
+    );
     // 戦闘ビューは操作対象艦を前提とするので、艦が1隻も無い起動はマップから始める。
     this.viewManager = new ViewManager(
       this._hud, this.editor, this.cameraSystem, this.displayWindowManager, this.mapPicker,
+      this.activePlayers,
       initialSave?.camera?.view ?? (initialPlayer ? 'combat' : 'map'),
-    );
-    this.activePlayers = new ActivePlayerController(
-      initialPlayer, this.entities, this.cameraSystem, this.editor, this.targeter,
-      this.navTarget, this.viewManager, this.mapPicker, this._sfx,
     );
 
     this.input = new Input(gs.renderer.domElement);
@@ -189,7 +190,6 @@ export class Game {
       (ship) => { if (this.player === null) this.activePlayers.set(ship); },
       initialSave?.stage,
     );
-    this.viewManager.setStage(this.activeStage);
 
     this.nanWatchdog = new NanWatchdog(this._hud);
     this.docking = new Docking(
@@ -392,9 +392,7 @@ export class Game {
       this.editor.plan?.firstNode(),
       this.simulator.simTime,
     );
-    // 戦闘ビューはアクティブ艦を前提とする。艦がまだ配置されていない/破壊されている間は無効。
-    const canToggleView = this.player?.alive ?? false;
-    this.viewManager.handleInput(this.input, canToggleView);
+    this.viewManager.handleInput(this.input);
     this.editor.handleInput(this.input);
 
     if (this.input.takeKey(K.togglePerfWindow)) this.perfMeter?.toggle();
@@ -406,7 +404,7 @@ export class Game {
     const player = this.player;
     // 積分が終わった状態でこのフレームの表示窓を確定させ、sync 全体で共有する。
     const displayWindow = this.displayWindowManager.resolve(this.simulator.simTime, player);
-    this.viewBadge.sync(this.activeStage.selectLabel, this.activeStage.isPlaying && (player?.alive ?? false));
+    this.viewBadge.sync(this.activeStage.selectLabel);
     // 原点(位置)はアクティブカメラの ECI 位置 — cameraSystem.update() は update フェーズの
     // 毎フレーム呼ばれるので、この sync の時点で activeCameraPos は確定済み。
     // 速度基準は自機のまま(弾の相対速度描画・再突入エフェクトが前提とする値で、原点とは別concern)。
