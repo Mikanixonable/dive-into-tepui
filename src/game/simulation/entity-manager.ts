@@ -56,9 +56,6 @@ export class EntityManager {
 
   // フラッシュ・破片の生成窓口。破片は entity なので、その配列を持つこちらが所有する。
   readonly effects: EffectsSystem;
-  // 起動時に操作対象とする艦。スナップショットからの再開では save.activePlayerId に一致する
-  // 艦(見つからなければ復元順の先頭)、新規開始では最初に配置した1隻。艦が0隻なら null。
-  readonly initialActivePlayer: Player | null;
 
   // 描画資源のプールを組み、演出窓口を作ってから、init の指すとおりに起動時の顔ぶれを配置する。
   constructor(
@@ -80,30 +77,23 @@ export class EntityManager {
     this.debrisFragmentPools = debrisFragment.geometries.map(
       (geo) => new InstancedPool(scene, geo, debrisFragment.material, C.MAX_DEBRIS, true));
     this.effects = new EffectsSystem(scene, this, sfx);
-    this.initialActivePlayer = 'saved' in init
-      ? this.restoreFromSave(init.saved, hud, sfx, scene, markerManager)
-      : this.spawnInitialPlayers(init.playerCount, hud, sfx, scene, markerManager);
+    if ('saved' in init) this.restoreFromSave(init.saved, hud, sfx, scene, markerManager);
+    else this.spawnInitialPlayers(init.playerCount, hud, sfx, scene, markerManager);
   }
 
-  // 新規開始時の初期配置。艦の隻数は 0..n が一般形で、1隻に固定するかどうかはステージ側の
-  // 判断。返すのは操作対象にする最初の1隻。
+  // 新規開始時の初期配置。艦の隻数は 0..n が一般形で、1隻に固定するかどうかはステージ側の判断。
   private spawnInitialPlayers(
     count: number, hud: Hud, sfx: Sfx, scene: THREE.Scene, markerManager: MarkerManager,
-  ): Player | null {
-    let first: Player | null = null;
+  ): void {
     for (let i = 0; i < count; i++) {
-      const ship = new Player(hud, sfx, scene, this.effects, markerManager);
-      this.addPlayer(ship);
-      if (!first) first = ship;
+      this.addPlayer(new Player(hud, sfx, scene, this.effects, markerManager));
     }
-    return first;
   }
 
-  // スナップショットから自機・敵・弾薬・基地を復元する。返すのは save.activePlayerId に
-  // 一致する自機(無ければ復元順の先頭、それも無ければ null)。
+  // スナップショットから自機・敵・弾薬・基地を復元する。
   private restoreFromSave(
     save: GameSaveData, hud: Hud, sfx: Sfx, scene: THREE.Scene, markerManager: MarkerManager,
-  ): Player | null {
+  ): void {
     const simTime = save.simTime;
     for (const data of save.players) {
       this.addPlayer(new Player(hud, sfx, scene, this.effects, markerManager, { saved: data, simTime }));
@@ -117,7 +107,6 @@ export class EntityManager {
     for (const data of save.bases) {
       this.addBase(new Base({ saved: data, simTime }, scene, hud, sfx, this.effects, markerManager));
     }
-    return this.players.find((p) => p.id === save.activePlayerId) ?? this.players[0] ?? null;
   }
 
   // all()/otherEntities() はSimulatorの各substepから何度も呼ばれる。配列の内容が変わった
