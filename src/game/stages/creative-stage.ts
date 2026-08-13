@@ -25,11 +25,7 @@ import { validateEllipticPlacementFields, validateBaseReferenceFields, validateL
 import { elementsFormFromState } from '../creative/duplicate-form';
 import { OrbitLine } from '../orbit-line';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
-<<<<<<< HEAD
 import type { CreativeStageSaveData, StageSaveData } from '../save-data';
-=======
-import type { StageSaveData } from '../save-data';
->>>>>>> origin/workspace4
 
 const DEG = Math.PI / 180;
 
@@ -48,22 +44,13 @@ export class CreativeStage extends Stage {
   readonly executesPlans = true;
   readonly authoring: ObjectAuthoring = this;
 
-<<<<<<< HEAD
-  private placerPanel!: ShipPlacerPanel;
-  // 補給の自動投入・敵の波状攻撃を切り替えるトグルを載せたパネル。マップ視点でだけ出す。
-  private creativeSettingsPanel!: HTMLElement;
-  private waveAttack!: WaveAttack;
-  // 敵の波状攻撃を発生させるかどうか。既定 OFF — ON の間だけ update が WaveAttack を進める。
-  private waveAttackEnabled = false;
-  // WaveAttack は hud/scene 等が setup() まで揃わないため生成できない。setup() まで控えておく。
-  private readonly savedCreative?: CreativeStageSaveData;
-  private previewOrbitLine!: OrbitLine;
-=======
   private readonly placerPanel: ShipPlacerPanel;
-  // 補給の自動投入を切り替えるトグルのパネル。マップ視点でだけ出す。
-  private readonly logisticsPanel: HTMLElement;
+  // 補給の自動投入・敵の波状攻撃を切り替えるトグルを載せたパネル。マップ視点でだけ出す。
+  private readonly creativeSettingsPanel: HTMLElement;
+  private readonly waveAttack: WaveAttack;
+  // 敵の波状攻撃を発生させるかどうか。既定 OFF — ON の間だけ update が WaveAttack を進める。
+  private waveAttackEnabled: boolean;
   private readonly previewOrbitLine: OrbitLine;
->>>>>>> origin/workspace4
   // 艦艇配置パネルのフォーム値から求めた配置プレビュー。出すものが無ければ null。
   private preview: { readonly elements: OrbitalElements; readonly pos: Vec3 } | null = null;
   // 現在のフォーム値に対するフィールド単位の検証結果。パネルが閉じている間は空。
@@ -76,20 +63,13 @@ export class CreativeStage extends Stage {
   // フォールバック名(Player-N 等)の連番。id とは独立(同名は許容する)。
   private nextFallbackNameSeq = 1;
 
-  // saved の型を StageSaveData に留めるのは stage-dictionary.ts の StageClass 一覧に
-  // 収める都合(具象ごとの拡張型では構築シグネチャが揃わない)。
-  constructor(saved?: StageSaveData) {
-    super(saved);
-    this.savedCreative = saved as CreativeStageSaveData | undefined;
-    this.waveAttackEnabled = this.savedCreative?.waveAttackEnabled ?? false;
-  }
-
   briefingHtml(): string {
     return '<b>クリエイティブモード</b><br>マップから艦艇を配置して軌道を眺められる。';
   }
 
   constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
+    const savedCreative = saved as CreativeStageSaveData | undefined;
 
     // 以後の新規配置が既存 id と衝突しないよう、この時点で存在する艦・補給の id を予約する
     // (スナップショットからの再開では entities が復元済み — 新規開始では空なので何もしない)。
@@ -101,24 +81,17 @@ export class CreativeStage extends Stage {
 
     this.placerPanel = new ShipPlacerPanel(this._hud.layers.panel, this._hud.layers.popup, this._ephemeris);
     this.placerPanel.onConfirm = (name, form) => this.placeObject(name, form);
-<<<<<<< HEAD
-    this.waveAttack = new WaveAttack(hud, sfx, fx, scene, ephemeris, this.savedCreative?.waveAttack);
-    this.creativeSettingsPanel = this.buildCreativeSettingsPanel(hud.layers.panel);
-=======
-    this.logisticsPanel = this.buildLogisticsPanel(this._hud.layers.panel);
+    this.waveAttack = new WaveAttack(this._hud, this._sfx, this._fx, this._scene, this._ephemeris, savedCreative?.waveAttack);
+    this.waveAttackEnabled = savedCreative?.waveAttackEnabled ?? false;
+    this.creativeSettingsPanel = this.buildCreativeSettingsPanel(this._hud.layers.panel);
 
     this.begin();
->>>>>>> origin/workspace4
   }
 
   // 補給の自動投入・敵の波状攻撃のトグルを載せたパネルを組み立て、マップ右ドックへ追加して返す。
   private buildCreativeSettingsPanel(hudRoot: HTMLElement): HTMLElement {
     const panel = document.createElement('div');
-<<<<<<< HEAD
     panel.id = 'hud-creative-settings';
-=======
-    panel.id = 'hud-logistics';
->>>>>>> origin/workspace4
     panel.className = 'panel';
     panel.addEventListener('pointerdown', (e) => e.stopPropagation());
     const title = document.createElement('h3');
