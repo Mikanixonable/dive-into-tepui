@@ -1,8 +1,8 @@
-# 自機・カメラ・描画原点・ステージの初期化順序の是正(未着手)
+# 自機・カメラ・ステージの初期化順序の是正
 
 **病巣は2つある。**
 
-- **病巣 I — 操作対象艦のミラーと、その種付け**(症状 A-E / Step 0-6)。
+- **病巣 I — 操作対象艦のミラーと、その種付け**(症状 D / Step 4-6)。
 - **病巣 II — 初期世界の作者が `Game` と `Stage` に割れている**(症状 F-L / Step 7-10)。
 
 2つは `EntityManager.initialActivePlayer` で繋がっている。病巣 I の Step 5 と
@@ -12,84 +12,20 @@
 
 ## 診断 I — 「操作対象艦のミラーと、その種付け」
 
-`game.ts` の構築順のぎこちなさは、単独の書き癖ではなく**1つの病巣から派生した3つの症状**である。
+病巣: **`ActivePlayerController.current`(操作対象艦の正本)のコピーを、`PlanEditor` が
+フィールドとして持っている。** コピーである以上、
 
-病巣: **`ActivePlayerController.current`(操作対象艦の正本)のコピーを、`ChaseCamera` と
-`PlanEditor` がそれぞれフィールドとして持っている。** コピーである以上、
-
-1. 切替のたびに全コピーへ伝播させる配線が要る
-   (`ActivePlayerController.set` → `CameraSystem.setActivePlayer` → `CombatCameraSystem.setActivePlayer`
-   → `ChaseCamera.setTarget` の**3段のたらい回し**。中2段は転送しかしない)、
-2. 構築時に初期値を**種付け**する必要があるので、両者は自機より後に生成せざるを得ず
-   (`game.ts:129` の「自機より後に生成する」コメントがその制約の告白)、
+1. 切替のたびにコピーへ伝播させる配線が要り(`ActivePlayerController.set` →
+   `PlanEditor.setActivePlayer`)、
+2. 構築時に初期値を**種付け**する必要があるので `PlanEditor` は自機より後に生成せざるを得ず、
 3. 種を配るための一方通行の口(`EntityManager.initialActivePlayer`)が `EntityManager` に生える。
 
 これは `/refactor` の「悪いデータ構造: 正データが複数箇所に分散、重複しているデータ /
-複数箇所が一定の整合性を保つことが要求されるデータ」そのもので、`OWNERSHIP.md:363-369` が
-「艦を切り替えるたびに揃える必要がある4箇所」と**明文で認めている整合性保持責務の漏洩**である。
-
-`floatingOrigin` の三項演算子(`game.ts:200-204`)はこの病巣とは独立した別の症状 —
-**per-frame のローカル値をフィールドとして持ってしまった**だけ。こちらが一番小さく、一番先に直せる。
+複数箇所が一定の整合性を保つことが要求されるデータ」そのもの。
 
 ---
 
 ## 症状の確認(調査済みの事実)
-
-### A. `floatingOrigin` はそもそも状態ではない
-
-- `private floatingOrigin`(`game.ts:47`)への**読み出しは全て `sync()` の中**、しかも
-  `sync()` 冒頭の再代入(`game.ts:403`)より後(`412/422/427/430/432/439/442/454/465/473`)。
-- `update()` と `render()` に参照は1つも無い。private なので `game.ts` 外の読み手も存在しない。
-- rAF ループは `update` → `sync` → `render` の順なので、`sync` が読む時点で
-  `cameraSystem.update()` は必ず同フレーム内で走り終えている。
-- **`OWNERSHIP.md:43` は既に「sync ごとに作り直す使い捨て」と書いている。** 文書の主張と
-  「`Game` のフィールドとして初期値を持つ」実装が食い違っている。
-
-→ ユーザーの見立てどおり、この初期値は読まれない。そして**フォールバックが必要な初期化順の問題ではなく、
-フィールドである必要が無い**。`sync()` のローカル `const` にすれば、三項演算子も
-プレースホルダも「読まれないことを説明するコメント」も丸ごと消える。
-
-なお `/refactor-fixed` 21bis は名指しでこれを禁じている —
-「既定値で埋めてよいのは、そのゼロ値が単位元として意味を持つときだけ。速度差の基準
-(`FloatingOrigin` の `v`)のゼロは『基準なし』として意味を持つが、**位置のゼロは『原点にいる』
-という別の意味になる**」。`new FloatingOrigin(v3(), v3())` の `r` は地球中心を指す嘘の値。
-
-### B. `ChaseCamera.target` は正本のコピー
-
-- `ChaseCamera.setTarget`(`chase-camera.ts:48`)の呼び出し元は
-  `CombatCameraSystem.setActivePlayer`(`combat-camera-system.ts:54`)ただ1つ。
-  そのさらに呼び出し元は `CameraSystem.setActivePlayer`(`camera-system.ts:157`)ただ1つ。
-  そのさらに呼び出し元は `ActivePlayerController.set`/`setOrNull`(`active-player-controller.ts:37,55`)だけ。
-- 一方 `CameraSystem.update`(`camera-system.ts:176`)は**毎フレーム `player: Player | null` を
-  引数で受け取っており**、`CombatCameraSystem.update`(`combat-camera-system.ts:83`)へそのまま渡し、
-  `GunsightCamera.update(player)` には渡している。**`ChaseCamera` にだけ渡していない** —
-  自分でコピーを持っているから。
-- `rot`/`dist`/`panEci`/`camFollowAttitude` は `chase-camera.ts` の外から一切書かれない
-  (外部の読みは `HudPanels` の `camFollowAttitude` 表示と `serialize()` のみ)。
-  つまり **`target` だけが外部と同期を要求する唯一のフィールド**。
-
-### C. `ViewManager` の初期ビューが `canEnter` を通っていない ← **潜在バグ**
-
-`ViewManager` のコンストラクタ(`view-manager.ts:40-43`)は
-`this.worldView = initialView; this.applyChrome();` だけで、**`canEnter` を確認していない。**
-遷移(`setView`)と `[M]`(`handleInput`)は確認しているのに、初期値だけ素通りする。
-
-`Game` 側はそれを `initialSave?.camera?.view ?? (initialPlayer ? 'combat' : 'map')`
-(`game.ts:172`)という**判断式**で補っている。これは `/refactor-fixed` 1 の
-「`Game` に条件分岐を伴う判断を置かない」違反であると同時に、`?? ` の左側が生きたときに
-判断が丸ごと飛ぶので**穴になっている**:
-
-> CREATIVE で戦闘ビューのまま最後の1隻を失う → `recordPlayerLost` は hint を出すだけで
-> `isPlaying` は真のまま → オートセーブが `camera.view: 'combat'` / 艦0隻で書かれる →
-> 再読込すると `initialSave.camera.view === 'combat'` が採用され、`initialPlayer` が
-> `null` でも戦闘ビューで起動する。
-
-このとき `ChaseCamera.update` は `!this.target` で即 return(`chase-camera.ts:89`)し、
-`viewpoint.position` は構築時の `v3()` のまま。`CombatCameraSystem.update` は
-`lerpViewpointFov` で `position` をそのままコピーする(`combat-camera-system.ts:90`)ので、
-**`activeCameraPos` = 地球中心**、すなわち描画原点が地球の中心に置かれる。
-
-症状 A の三項演算子を消すだけではこの穴は塞がらない。**Step 3 が本命の修正。**
 
 ### D. 種を配るためだけの口
 
@@ -99,14 +35,6 @@
 **「どの艦を操作するか」の判断**をしている — これは `EntityManager`(どのエンティティが存在するか)
 ではなく `ActivePlayerController`(どれを操作するか)の責務。
 
-### E. 死んだ引数
-
-`CombatCameraSystem` の `_sfx`(`combat-camera-system.ts:48`)と
-`OverviewCamera` の `_sfx`(`overview-camera.ts:84`)は**どちらも一度も参照されない**。
-`CameraSystem` の `sfx`(`camera-system.ts:117`)はこの2つへ転送するだけなので、
-併せて `Game` → `CameraSystem` → 両カメラの `sfx` 依存辺が丸ごと消える。
-(`_hud` は3クラスとも `hint()` で実際に使っている。アンダースコアの有無は当てにならない。)
-
 ---
 
 ## 是正案 I
@@ -114,71 +42,9 @@
 `/refactor-fixed` 5-4「小さな段階にわけ、各段階で問題が生じていないことの確認を取りながら進める」
 に従い、単独で確認できる粒度に割ってある(依存関係は末尾の「実施順と依存」)。
 
-### Step 0 — `floatingOrigin` を `sync()` のローカルにする(独立・最小)
-
-- `game.ts:47` のフィールド宣言と `game.ts:200-204` の三項演算子+コメントを削除。
-- `game.ts:403` を `const fo = new FloatingOrigin(...)` にし、`sync()` 内の全参照を `fo` へ。
-- `OWNERSHIP.md:43` の `Game` 保持木から `FloatingOrigin` の行を外す(使い捨てローカルなので
-  保持木に載る対象ではない)。`CALLSTACK.md:363` は記述の実体が変わらないので語だけ合わせる。
-
-**これだけで三項演算子のフォールバックは消える。** 以降が病巣の本体。
-
-### Step 1 — 死んだ `sfx` を落とす(独立・最小)
-
-`CombatCameraSystem` / `OverviewCamera` の `_sfx` 引数を削除し、`CameraSystem` の `sfx` 引数と
-`game.ts:132` の実引数も削除。
-
-### Step 2 — `ChaseCamera` の追従対象を毎フレームの引数にする(本丸)
-
-`GunsightCamera` が既にそうであるように、**追従対象は状態ではなく毎フレーム渡される引数**にする。
-
-- `ChaseCamera`: `private target` フィールドと `setTarget()` を削除。
-  `update(mouse, keyYaw, keyPitch, keyRoll, dt, target: GameEntity | null)` にし、
-  冒頭の `if (!this.target) return;` は `if (!target) return;`(**凍結挙動はそのまま維持**)。
-  コンストラクタ引数から `target` を落とす。
-- `camFollowAttitude` の**セッターを廃止**し(セッターは追加引数を取れない)、
-  `toggleFollowAttitude(target: GameEntity | null)` メソッドに読み替え処理を畳む。
-  getter は `HudPanels` が読むので残す。`reinterpretRot` の `this.target!`
-  (`chase-camera.ts:55` の非 null 断言)が消える。
-- `CombatCameraSystem`: `setActivePlayer()` を削除。`update` から
-  `this.chaseCamera.update(..., player)` と渡す。**`[G]` のキー読みを `CameraSystem.update`
-  (`camera-system.ts:185`)から `CombatCameraSystem.update` へ移す** — そこには既に `input` と
-  `player` の両方があり、`K.gunsightZoom` を読んでいるのと同じ形になる。
-- `CameraSystem`: `setActivePlayer()` とコンストラクタの `player` 引数を削除。
-  `game.ts:129` の「自機より後に生成する」コメントごと制約が消える。
-- `ActivePlayerController`: `set`/`setOrNull` から `cameraSystem.setActivePlayer(...)` の行を削除。
-  `cameraSystem` 参照自体は `remove()` の `overviewCamera.clearFocusIf` で使うので残す。
-
-**挙動の変更が1点だけある: `[G]` がマップビューで効かなくなる(キーも消費されなくなる)。**
-現在はマップビュー中でも押せて、見えない追従カメラの基準フレームが裏で切り替わる。
-`[G]` は CLAUDE.md の Controls でも戦闘カメラの操作として説明されており、
-戦闘ビュー専用にするのが筋だと考えるが、**これは挙動変更なので採否を確認したい。**
-残したい場合の代案: キー読みは `CameraSystem.update` に残し、
-`this.combatCamera.toggleFollowAttitude(player)` と `player` を渡す(引数が2回渡る分やや冗長)。
-
-### Step 3 — 初期ビューを `ViewManager` 自身に `canEnter` で解決させる(潜在バグ修正)
-
-- `ViewManager` のコンストラクタ引数を「要求」に変える:
-
-```ts
-// 戦闘ビューは操作対象艦を前提とするので、遷移と同じ規則で入れるビューへ落とす。
-constructor(..., requestedView?: WorldViewId) {
-  const requested = requestedView ?? 'combat';
-  this.worldView = this.canEnter(requested) ? requested : 'map';
-  this.applyChrome();
-}
-```
-
-  (`canEnter('map')` は常に真なのでフォールバックは必ず止まる。`activePlayers` は
-  パラメータプロパティなので本体より先に代入済み。)
-- `game.ts:172` の `initialSave?.camera?.view ?? (initialPlayer ? 'combat' : 'map')` を
-  `initialSave?.camera?.view` だけにする。**`Game` から判断式が1つ消える。**
-- 既存の全ケースで結果は同じ。変わるのは C で挙げた「セーブは戦闘・艦0隻」の1ケースだけで、
-  地球中心視点ではなくマップで起動するようになる。
-
 ### Step 4 — `PlanEditor` にコピーを持たせない
 
-`PlanEditor.activePlayer`(`plan-editor.ts:88`)は B と同型のミラー。ただし
+`PlanEditor.activePlayer`(`plan-editor.ts:88`)は正本のミラー。ただし
 DOM の pointer イベント(フレームの流れの外)から `plan` を読むので、`/refactor-fixed` 7 により
 **参照を保持すること自体は正当** — 保持すべきなのが `Player` ではなく `ActivePlayerController`
 だという話。
@@ -195,13 +61,13 @@ DOM の pointer イベント(フレームの流れの外)から `plan` を読む
   自分で変化検出する(`Curve.lastFrame` / `PlanGuide.approachNotified` と同型の、
   正本ではない変化検出であり CLAUDE.md が既に採っている形)。
 
-**Step 4 は Step 0-3 より判断の余地が大きい。** 変化検出用の `lastSeen` を持つのは
+**Step 4 は判断の余地が大きい。** 変化検出用の `lastSeen` を持つのは
 ミラーの完全な消滅ではない。それでも、外部が同期させ忘れると壊れる形から
 「壊れようがないが1フレーム遅れて気付く」形へは確実に良くなる。**単独の変更セットにするのが安全。**
 
 ### Step 5 — `ActivePlayerController` が初期の操作艦を自分で決める
 
-Step 2・4 で `initialPlayer` の読み手が消えた後、最後の種付け経路を畳む。
+Step 4 で `initialPlayer` の読み手が消えた後、最後の種付け経路を畳む。
 
 - `ActivePlayerController` のコンストラクタが `initialSave?.activePlayerId` を受け、
   `entities.players` から自分で解決する(`find(id) ?? players[0] ?? null`)。
@@ -220,59 +86,6 @@ Step 2・4 で `initialPlayer` の読み手が消えた後、最後の種付け�
 `CameraSystem` の直後に全て揃っているので、**`FrameControls` を `PlanEditor` より前へ移し、
 `PlanEditor` が `frameControls` を引数で受けて自分で `setFocus` を呼べばよい。**
 自機・カメラの話ではないので別件にしてよいが、同じコンストラクタの同じ種類のぎこちなさ。
-
----
-
-## 採らない案 I(ヒントに対する回答)
-
-### ✗ `ChaseCamera` を `Player` に持たせる(`activePlayer.chaseCamera`)
-
-`ChaseCamera` が持つ `rot`/`dist`/`panEci`/`camFollowAttitude` は**操作者の視点の好みであって、
-艦の属性ではない。** 操作者は常に1人なので、艦が何隻いてもカメラは1つでよい。
-艦ごとに持たせると、(1) 艦を切り替えるたびにカメラの画角が勝手に変わる(現在は意図的に
-維持している)、(2) `CameraSaveData.chase` が艦ごとになりスキーマが膨らむ、(3) `Player` が
-視点の概念を知ることになる、という3つの劣化が同時に起きる。
-
-`/refactor-fixed` 12「物体に付随する表示物は、その物体自身がフィールドとして持つ」は
-**物体1つにつき1つ付く表示物**(軌道線・マーカー)の規則であり、追従カメラは物体ごとに
-存在するものではないので該当しない。
-
-### ✗ `player` が `null` の間は `chaseCamera` も `null` にする
-
-Step 2 で `target` が引数になると、**そもそも保持している古い参照が存在しなくなる**ので、
-この問いは消える。`rot`/`dist` は艦の有無に関わらず意味を持つ値なので、艦がいない間だけ
-カメラのインスタンスを消すと、艦を得た瞬間に画角が既定へ吹き飛ぶ(現在の意図的な維持と逆)。
-
-### ✗ 追従対象を差し替えるたびに `ChaseCamera` を作り直す
-
-`/refactor` の「オブジェクトの流用の禁止」が禁じているのは
-**「同一の参照の中身を丸ごと書き換えて別用途に転用する」**こと。`setTarget` は
-`rot`/`dist`/`panEci` を保ったまま追従先だけを差し替えるので、オブジェクトの意味は
-「操作者の三人称視点」のまま変わらない。Step 2 は差し替えという操作自体を消すので、
-そもそも流用が起きない形になる。
-
-### △ カメラの `viewpoint` 初期値(`position: v3()` = 地球中心)は残す
-
-`CombatCameraSystem`(`combat-camera-system.ts:40-46`)・`OverviewCamera`
-(`overview-camera.ts:71-77`)ともに、**構築時には `viewpoint` を計算せず**、
-最初の `update()` で初めて実値になる。厳密には 21bis の「位置のゼロは嘘」に当たる残り物。
-
-**Step 3 の後、これが読まれる状態は構造的に到達不能になる**(戦闘ビュー ⇒ 艦が存在する、が
-構築時も遷移時も `canEnter` で保証される。艦を途中で失った場合の凍結値は、実在した艦から
-計算された正当な値)。`Viewpoint | null` にする案は検討したが、`activeCamera` /
-`activeCameraPos` / `activeCameraProjection` / `activeCameraScale` の**10箇所以上の
-表示側読み口に `null` を伝染させる**割に、守るべき状態が到達不能なので採らない。
-
-代わりに **`CameraSystem` に「アクティブカメラの `viewpoint` が有効であることは
-`ViewManager` が `canEnter` で保証する」という不変条件をコメントで明記する**
-(`/refactor-fixed` 1 の「横断そのものを責務とするモジュール」に保証を寄せる形)。
-`OverviewCamera` 側だけ構築時に実値を組む案も検討したが、`'point'` フォーカスの解決に
-その時刻の `attractors` と `simTime` が要り(セーブからの再開では 0 ではない)、
-1フレーム後に上書きされる値のために結合を増やすことになるので採らない。
-
-**ここは判断の分かれ目なので、`Viewpoint | null` まで踏み込みたければ指示がほしい。**
-
----
 
 ---
 
@@ -360,7 +173,7 @@ barrel = C.MAGS_PER_BARREL;
 
 `Stage` 本体・`Logistics`・`ScoreCounter`・`spawner/` は `Player` をフィールドで**一切持たない** ──
 `init` / `update` / `sync` / `behaveAllEnemies` / `spawnForPlayer` / `updateLogistics` すべて
-**引数**で受けている。病巣 I の `ChaseCamera` / `PlanEditor` とは対照的に、ここは最初から
+**引数**で受けている。病巣 I の `PlanEditor` とは対照的に、ここは最初から
 正しい形になっている。`stage00.ts:286` の `generateWave` に至っては `Player` ですらなく
 `KinematicState` だけを受け取る。
 
@@ -421,11 +234,11 @@ DOM の可視性に守られているだけの状態依存であり、`/refactor
 
 **⚠ 構築順の帰結: `ViewManager` を `new stageClass(...)` より後ろへ移す必要がある。**
 Step 8 の後、新規開始時は `ActivePlayerController` 構築時点で艦が0隻なので、
-Step 3 の `canEnter('combat')` がそのままでは常に false になり、攻略ステージまでマップで
-始まってしまう。`ViewManager` の依存(hud / editor / cameraSystem / displayWindow / mapPicker /
-activePlayers)に `Stage` は含まれないので、`game.ts:169-173` の構築を `game.ts:186` の直後へ
+`ViewManager` が初期ビューを解決する `canEnter('combat')` が常に false になり、攻略ステージまで
+マップで始まってしまう。`ViewManager` の依存(hud / editor / cameraSystem / displayWindow /
+mapPicker / activePlayers)に `Stage` は含まれないので、その構築を `new stageClass(...)` の直後へ
 移すだけでよい(`viewManager.setTouchControls` の行も一緒に移す)。
-**Step 3 と Step 8 は必ずこの順で、かつ Step 8 で `ViewManager` の位置を直すこと。**
+**Step 8 では `ViewManager` の位置を必ず直すこと。**
 これは偶然の依存ではなく、「どのビューで始めるかは世界が組み上がった後にしか決まらない」
 という意味づけが構築順に現れた形。
 
@@ -489,61 +302,47 @@ Step 8 なら「弾薬はステージが置く艦の積載であって、外か�
 ## 実施順と依存
 
 ```
-Step 0  floatingOrigin をローカルへ        独立・最小
-Step 1  死んだ sfx 引数を落とす            独立・最小
-Step 2  ChaseCamera の追従対象を引数へ      → Step 5
-Step 3  ViewManager が canEnter で初期ビュー解決  → Step 8 で位置も直す
 Step 4  PlanEditor が ActivePlayerController を持つ  → Step 5
-Step 5  ActivePlayerController が初期艦を解決   ← Step 2,4
+Step 5  ActivePlayerController が初期艦を解決   ← Step 4
 Step 6  FrameControls を前倒し(任意)       独立
 Step 7  初期弾薬を Player の構築引数へ       → Step 8
-Step 8  初期世界の作者を Stage へ一本化      ← Step 3,5,7 / ViewManager の位置も動かす
+Step 8  初期世界の作者を Stage へ一本化      ← Step 5,7 / ViewManager の位置も動かす
 Step 9  init の戻り値と briefingHtml を畳む   ← Step 8
 Step 10 StageStatusPanel の艦参照           独立
 ```
 
 各ステップ単独で `npm run typecheck` が通る。`src/physics/` は触らないので `test:physics` は不要。
-実行時確認が要るのは Step 3(初期ビュー)・Step 8(初期配置)・Step 10(ステータスパネル)。
+実行時確認が要るのは Step 8(初期配置)・Step 10(ステータスパネル)。
 
-## 効果(全ステップ完了時)
+## 効果(残りのステップ完了時)
 
-- 消えるメソッド: `CameraSystem.setActivePlayer` / `CombatCameraSystem.setActivePlayer` /
-  `ChaseCamera.setTarget` / `PlanEditor.setActivePlayer` / `camFollowAttitude` セッター /
-  `Player.initAmmo` / `PlayerFire.initAmmo`。
-- 消えるフィールド: `Game.floatingOrigin` / `ChaseCamera.target` / `PlanEditor.activePlayer` /
-  `EntityManager.initialActivePlayer` / `Game` の `initialPlayer` ローカル。
+- 消えるメソッド: `PlanEditor.setActivePlayer` / `Player.initAmmo` / `PlayerFire.initAmmo`。
+- 消えるフィールド: `PlanEditor.activePlayer` / `EntityManager.initialActivePlayer` /
+  `Game` の `initialPlayer` ローカル。
 - 消える静的/抽象メンバー: `Stage.initialPlayerCount` / `Stage.initialAmmo`。
 - 消える型: `StageInitData`。
-- 消える引数: `CameraSystem` の `player`/`sfx`、`CombatCameraSystem` の `player`/`_sfx`、
-  `ChaseCamera` の `target`、`OverviewCamera` の `_sfx`、`PlanEditor` の `ship`、
-  `Stage.init` の `player`、`briefingHtml` の `enemyCount`。
-- 消える判断: `Game` の初期ビュー三項演算子、`floatingOrigin` の三項演算子、
-  `EntityManager` の「どの艦を操作するか」。
+- 消える引数: `PlanEditor` の `ship`、`Stage.init` の `player`、`briefingHtml` の `enemyCount`。
+- 消える判断: `EntityManager` の「どの艦を操作するか」。
 - 消える二段初期化: 艦の弾薬(既定 → 上書き)、`StageDebugAltSystem` の `player.state` 上書き。
 - 消えるマジックリテラル: `stage1.ts:51` / `stage2.ts:58` の `return 5`。
-- 消える非 null 断言: `ChaseCamera.reinterpretRot` の `this.target!`。
-- 直る潜在バグ: 艦0隻で戦闘ビューを復元したときに描画原点が地球中心へ落ちる(症状 C)。
-  `StageStatusPanel` が喪失した艦を掴み続ける(症状 L)。
+- 直る潜在バグ: `StageStatusPanel` が喪失した艦を掴み続ける(症状 L)。
   `initialPlayerCount > 1` で id が衝突する(症状 H — 宣言ごと消える)。
-- `OWNERSHIP.md:363-369` の「揃える必要がある4箇所」は
+- `OWNERSHIP.md` の「艦を切り替えるたびに揃える必要がある3箇所」は
   `ActivePlayerController.current` と `Targeter` のロックの**2箇所**になる。
 - 責務の言い切りが変わる: **`Game` は世界の初期状態を組まない。組むのは `Stage`、
   復元するのは `EntityManager`。**
 
 ## 同じ変更セットで直す文書
 
-`CLAUDE.md`(`game.ts` / `camera/` / `active-player-controller.ts` / `plan-editor.ts` /
-`entity-manager.ts` / `view-manager.ts` / `stages/` / `stage-dictionary.ts` の各節。
+`CLAUDE.md`(`plan-editor.ts` / `entity-manager.ts` / `stages/` / `stage-dictionary.ts` の各節。
 特に `initialPlayerCount` を静的宣言として説明している箇所)、
-`DEVELOP/OWNERSHIP.md`(43行目の保持木、360-369行の正本一覧)、
-`DEVELOP/CALLSTACK.md`(363行目)、`DEVELOP/SPEC.md`(初期配置・初期弾薬の記述)。
+`DEVELOP/OWNERSHIP.md`(正本一覧)、`DEVELOP/CALLSTACK.md`、
+`DEVELOP/SPEC.md`(初期配置・初期弾薬の記述)。
 
-`/refactor-fixed` にも書く(**新しい責務配置の判断**なので):
-
-- Step 4 の変化検出と、「アクティブカメラの viewpoint が有効であることは `ViewManager` が保証する」不変条件。
-- Step 8 の「初期世界を組むのは `Stage`、復元するのは `EntityManager`、`Game` はどちらもしない」。
-- 13節が例に挙げている **`Stage.setup` は実在しない**(現在は `begin()`、Step 8 後は
-  `init()` が自分で置く形)ので、記述を実態へ直す。
+`/refactor-fixed` は書き換えない。ここで扱うのは2〜3モジュール間の責務の調整であって、
+プロジェクト全体に及ぶ横断的な規則ではないので、記録先は上の設計文書で足りる。
+ただし13節が例に挙げている **`Stage.setup` は実在しない**(現在は `begin()`、Step 8 後は
+`init()` が自分で置く形)ので、その記述だけは実態へ直す。
 
 ## 範囲外(気付いたが今回は触らない)
 

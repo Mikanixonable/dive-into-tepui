@@ -40,7 +40,6 @@ main.ts
 ├── PerfMeter            ... 負荷確認ウィンドウ。Game を PerfCountSource として、GameScene.renderer(WebGPURenderer)を draw call/triangle 数の読み取り元として、いずれも構築時に参照で受け取る(renderer 参照の新設は main.ts 側の GameScene を経由し、Game には持たせない)。Game.setPerfMeter で遅延注入される(ViewManager.setDocking と同じ形)。FrameSections も構築時に参照で受け取り、update内訳の行を組む。表示する PropertyWindow を自分で new/dispose し、DOM は Hud.layers.window 配下。開いている間だけ on が真になり計測が走る(同時に FrameSections.enabled も真にする)。`Game.perfCounts()` は自分では数えず、EntityManager・Predictor・Simulator・PlanEditor・Ephemeris・MapPicker 各自の `perfCounts()` を1つにマージし、`displayDurationSec`(= DisplayWindowManager.current.duration)・`warp` を足すだけ
 ├── GameScene            (createGameScene: canvas / THREE.Scene / WebGPURenderer)
 └── Game
-    ├── FloatingOrigin       ... sync ごとに作り直す使い捨て
     ├── Input
     ├── TouchControls?       ... タッチデバイスのみ
     ├── MarkerManager        ... DOM の親は Hud.layers.marker / Hud.svgOverlay、所有は Game
@@ -316,7 +315,7 @@ main.ts
 | 未来表示(計画折れ線・予測軌道線・交点マーカー)を描く座標系(`frame`) | `DisplayWindowManager` | `OverviewCamera.cameraFrame`(視点固定座標系)とは別の正本。get/set アクセサ(`frame`)で公開。書き換えは `FrameControls` の「軌道計画(描画基準)」区画の中心/回転ゾーン(`planCenterZone`/`planRotationZone`)のみ、いずれも `Ephemeris.frameOf(center, rotatingWith)` 経由。同区画の「カメラの基準に追随」トグル(`followCamera`、既定 on)が on の間は `setFocus` によるカメラ側フォーカス移動もここへ連動する |
 | 予測到達割合(`predictionRatio`)・直近 `sync()` で受け取った表示期間(`lastDuration`) | `DisplayWindowManager` | いずれも private な導出値。`predictionRatio` は `sync(player)` が呼ばれるたび private `predictionCoverageRatio(player)` が自機の `predictedTrajectory.state.t` と `current`(simTime, duration)から自分で求め直す(外部からの書き込みはない)。`lastDuration` は直近の `resolve()` 呼び出しが確定させた表示期間を憶えておくだけの値で、ジャンプ入力(DOM イベント、フレーム外)が `sliderT` を逆算する際にだけ参照される |
 | マップ視点(注視点相対オフセット・パン・上方向)・座標系(cameraFrame)・フォーカス(FocusTarget)・Viewpoint | `OverviewCamera` | `viewpoint: Viewpoint` は `CombatCameraSystem` と同じ形。`CameraSystem` はこの `viewpoint` を読むだけで自分では持たない。フォーカスは `camera/focus-target.ts` の `FocusTarget`(`{kind:'object', id}` または `{kind:'point', frame, point}`)で、`{kind:'object'}` が指す実位置は `OverviewCamera` が持たず、`update` の引数(`MapPicker.refresh()`)から毎フレーム引き直す。書き換えは `setFocusTarget`/`setCameraRotation` のみ、いずれも `FrameControls` の「カメラ(視点)」区画の中心/回転ゾーン(`cameraCenterZone`/`cameraRotationZone`)から呼ばれる |
-| 戦闘視点(Viewpoint: position/lookTarget/up/fovDeg/aspect)・照準ズーム中か(zoomActive) | `CombatCameraSystem` | rot(クオータニオン)/dist・姿勢追従フラグ(camFollowAttitude)は内部の `ChaseCamera` が持つ。zoomActive はこのクラス自身の `update` が `Input` から読んで保持する |
+| 戦闘視点(Viewpoint: position/lookTarget/up/fovDeg/aspect)・照準ズーム中か(zoomActive) | `CombatCameraSystem` | rot(クオータニオン)/dist・姿勢追従フラグ(camFollowAttitude)は内部の `ChaseCamera` が持つが、追従対象そのものは保持せず、`CameraSystem.update` から渡る `player` を毎フレーム `chaseCamera.update`/`toggleFollowAttitude` の引数として転送するだけ。`[G]`(`K.followAttitudeToggle`)を読んで `chaseCamera.toggleFollowAttitude(player)` を呼ぶのもこのクラス自身の `update`(`CameraSystem` は読まない)。zoomActive はこのクラス自身の `update` が `Input` から読んで保持する |
 | 現在のビュー(combat/map/dock) | `ViewManager`(private `worldView`/`isDockOpen`) | 遷移は基本的に `setView()` のみ(影響先 `CameraSystem.overviewMode` / `PlanEditor.editMode` / `DisplayWindowManager.forceCurrent` / タッチUI を一斉に切り替える)だが、`leaveDock()` だけは例外で、ドックを閉じて背後のビューへ戻るだけの操作を `setView()` を経由せず `isDockOpen` を直接倒して行う(`worldView` は動かさないので `canEnter` チェックも不要)。`worldView` が背後の 3D 側ビュー、`isDockOpen` がドックの開閉を持ち、`current` はこの2つから導出する |
 | ドックビューの対象基地 | `Docking`(private `_activeBase`) | 基地の右クリックメニューで設定。これが空でない間だけ `ViewManager.selectableViews()` に `'dock'` が並ぶ |
 | マップモード表示 | `CameraSystem.overviewMode` | 描画・視点側の分岐はこれを見る。`CameraSystem.zoomActive` は `!overviewMode && combatCamera.zoomActive` を返すだけの派生 getter(状態は持たない) |
@@ -361,12 +360,12 @@ main.ts
   `Player.state.r` とは別物 — 戦闘ビューではチェイスカメラが自機から数十mしか離れないため近い値に
   なるだけ。sync 系は必ず fo を参照し、`player.state.r`/カメラ位置を描画原点として直接使わない。
 - **`ActivePlayerController.current`(操作対象艦、`Game.player` はここへ転送する getter)・
-  `ChaseCamera.target`(追従カメラの基準。型は `GameEntity | null` — `alive` は読まない)・
   `PlanEditor.activePlayer`(計画編集の対象)・
-  `Targeter` のロック** は艦を切り替えるたびに揃える必要がある4箇所。同時に切り替えるのは
-  `ActivePlayerController.set()`/`setOrNull()`/`remove()` だけで、他はそれぞれ自分の持ち分(視点/編集
+  `Targeter` のロック** は艦を切り替えるたびに揃える必要がある3箇所。同時に切り替えるのは
+  `ActivePlayerController.set()`/`setOrNull()`/`remove()` だけで、他はそれぞれ自分の持ち分(編集
   対象/ロック解除)だけを更新する — `ViewManager` が3つのフラグを一斉に切り替えるのと同じ形の
-  トグラー集約。
+  トグラー集約。追従カメラ(`ChaseCamera`)は基準となる艦を保持せず、`update`/`toggleFollowAttitude`
+  の引数として `CombatCameraSystem.update` から毎フレーム受け取るので、この揃える対象には含まれない。
 - **`OverviewCamera.cameraFrame`(視点を固定する座標系)と `DisplayWindowManager.frame`(未来表示を
   描く座標系)** は別の正本で、ユーザーが `FrameControls` の2区画×(中心・回転)の
   4ゾーンからそれぞれ独立に選ぶ — 4ゾーンとも状態は書き込み先の2クラス(`OverviewCamera`・
@@ -389,7 +388,7 @@ main.ts
   ステージ briefing・結果画面)は両方ともそれを参照する。どの操作を誰が処理するかは各モジュールに
   閉じたままで(`SettingsPanel`=pauseMenu / `Hud`=help / `Stage`=restart /
   `SimSpeedManager`=warpSlower・warpFaster・autoWarpToNode / `ViewManager`=toggleMapMode /
-  `PlanEditor`=deleteNode・dv* / `CameraSystem`=followAttitudeToggle・gunsightZoom・camera* /
+  `PlanEditor`=deleteNode・dv* / `CameraSystem`=camera*(旋回・ズーム・パン) / `CombatCameraSystem`=followAttitudeToggle・gunsightZoom /
   `Player`=rcsDampToggle・progradeReset・fineAttitudeToggle・progradeHoldToggle・throttle*・reload・thrust*・pitch/yaw/roll)、
   `game.ts` が持つのは「どのモジュールに先に配るか」という順序だけ。
   ステージ選択画面のキー(`Stage.selectKeys`)はステージ定義側のデータなので KEY_MAPPING には含めない。
