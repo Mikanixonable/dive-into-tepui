@@ -24,7 +24,7 @@ export class LeadMarkers {
     overviewMode: boolean,
     project: ProjectFn,
   ): void {
-    if (overviewMode || !player.alive) {
+    if (overviewMode) {
       this.retire([]);
       return;
     }

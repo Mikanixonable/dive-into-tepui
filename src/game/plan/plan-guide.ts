@@ -28,7 +28,7 @@ export class PlanGuide {
   // 実行時刻を過ぎたノードを計画から落とし、直近ノードへの接近と計画軌道の達成を
   // ノードごとに一度だけ通知する。player がいなければ通知するものが無い。
   update(player: Player | null, simTime: number, editMode: boolean, attractors: readonly Attractor[]): void {
-    if (editMode || !player?.alive) return;
+    if (editMode || !player) return;
     const plan = player.plan;
     plan.consumeNodesUpTo(simTime - C.NODE_EXPIRE_GRACE, player.state);
 
@@ -42,7 +42,7 @@ export class PlanGuide {
 
   // 直近ノードの NODE・BURN マーカーを同期する。
   sync(player: Player | null, simTime: number, editMode: boolean, project: ProjectFn): void {
-    const node = editMode || !player?.alive ? undefined : player.plan.firstNode();
+    const node = editMode || !player ? undefined : player.plan.firstNode();
     if (!player || !node) {
       this.markerManager.hide('nd');
       this.markerManager.hide('burn');

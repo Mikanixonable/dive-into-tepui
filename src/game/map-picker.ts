@@ -151,7 +151,7 @@ export class MapPicker {
       this.appendPickable(item);
     }
     for (const ship of this.entities.players) {
-      if (!ship.alive || !visibilityPolicy.entity('player', ship === this.game.player).pickable) continue;
+      if (!visibilityPolicy.entity('player', ship === this.game.player).pickable) continue;
       const pos = ship.displayState(displayTime)?.r;
       if (pos) {
         const center = strongestAttractor(ship.state.r, attractors);
@@ -433,7 +433,7 @@ export class MapPicker {
   // 種別(天体・アプシス・AN/DN)は実体を持たないので、候補列に載っているかで判定する。
   private isTargetGone(target: MapPickable): boolean {
     switch (target.kind) {
-      case 'player': return !(this.entities.findPlayer(target.id)?.alive ?? false);
+      case 'player': return this.entities.findPlayer(target.id) === undefined;
       case 'ship': return !(this.entities.findEnemy(target.id)?.alive ?? false);
       case 'ammo': return !(this.entities.ammos.find((a) => a.id === target.id)?.alive ?? false);
       case 'base': return !(this.entities.findBase(target.id)?.alive ?? false);

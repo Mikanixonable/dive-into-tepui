@@ -351,7 +351,7 @@ export class EntityManager {
     const { frame, simTime, duration } = displayWindow;
     for (const ship of this.players) {
       ship.syncTrajectoryLine(
-        ship === activePlayer && ship.alive, frame, simTime, ephemeris, fo, camera, attractors);
+        ship === activePlayer, frame, simTime, ephemeris, fo, camera, attractors);
       ship.orbitLine.setSuppressed(ship.supersedesAnalyticEllipse(simTime, duration, overviewMode));
     }
   }
