@@ -100,9 +100,9 @@ export class Targeter {
   }
 
   // 右クリックによるターゲット選択メニューを扱う。オート選定は行わない。
-  updateCombatTargeting(player: Player, targets: CombatTarget[], input: Input, project: ProjectFn): void {
+  updateCombatTargeting(targets: CombatTarget[], input: Input, project: ProjectFn): void {
     this.handleTargetSelectKey(input, targets, project);
-    this.handleTargetContextMenu(input, targets, player, project);
+    this.handleTargetContextMenu(input, targets, project);
   }
 
   // Tキーで照準中心に近い敵を選ぶ。連打(2秒以内)では第二ターゲット候補を順送りする。
@@ -283,8 +283,7 @@ export class Targeter {
   // 戦闘ビューの右クリックは射撃と兼用。移動量が閾値内(input.ts が判定済み)の
   // 右クリックが敵に当たった場合だけ、その敵を対象にコンテキストメニューを開く。
   // 外れたクリックは消費するだけで何もしない(自動選定・自動解除は行わない)。
-  private handleTargetContextMenu(input: Input, targets: CombatTarget[], player: Player, project: ProjectFn): void {
-    if (!player.alive) return;
+  private handleTargetContextMenu(input: Input, targets: CombatTarget[], project: ProjectFn): void {
     input.takeRightClicks((click) => {
       const picked = this.pickTargetAt(click, targets, project);
       if (picked) this.openMenu(click, picked);
