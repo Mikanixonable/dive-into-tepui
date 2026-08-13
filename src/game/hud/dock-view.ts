@@ -7,6 +7,124 @@ import { createPart } from '../game-entity/parts';
 import * as C from '../const';
 import { Button, CloseButton, Meter, TabBar } from './widgets';
 
+const STYLE = `
+/* 戦闘・マップと対等な全画面ビュー。背後の 3D は描画自体が止まるので、
+   透過させず不透明な地の色で塗り切る。 */
+#dock-view.dock-view-overlay {
+  position: fixed; inset: 0;
+  display: flex;
+  background: var(--bg);
+  font-family: var(--font-family);
+  pointer-events: auto;
+  /* 右上のビューバッジは全ビュー共通の枠なのでドック中も残る。その帯を避けて中身を始める。 */
+  padding-top: var(--space-6);
+}
+#dock-view .dock-panel {
+  flex: 1 1 auto; min-width: 0;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+#dock-view .dock-header {
+  display: flex; align-items: center; gap: var(--space-5);
+  padding: var(--space-5) var(--space-6); border-bottom: 1px solid var(--edge);
+  flex: 0 0 auto;
+  width: min(1100px, 100%); margin: 0 auto;
+}
+#dock-view .dock-title {
+  font-size: var(--font-xl); font-weight: 700; letter-spacing: 0.12em;
+  color: var(--accent); flex: 0 0 auto;
+}
+#dock-view .dock-tabs { flex: 1; }
+#dock-view .dock-status-bar {
+  padding: var(--space-3) var(--space-6); border-bottom: 1px solid var(--edge);
+  font-size: var(--font-m); color: var(--text-dim); flex: 0 0 auto;
+  width: min(1100px, 100%); margin: 0 auto;
+}
+#dock-view .dock-body {
+  flex: 1 1 0; overflow-y: auto; padding: var(--space-5) var(--space-6);
+  scrollbar-width: thin;
+  width: min(1100px, 100%); margin: 0 auto;
+}
+#dock-view .dock-empty { color: var(--text-dim); padding: var(--space-6); text-align: center; line-height: 1.8; }
+/* Ships tab */
+#dock-view .dock-ship-list { display: flex; flex-direction: column; gap: var(--space-4); }
+#dock-view .dock-ship-row {
+  display: flex; align-items: center; gap: var(--space-5); padding: var(--space-5) var(--space-5);
+  border: 1px solid var(--edge); border-radius: var(--radius-m); cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+#dock-view .dock-ship-row:hover { border-color: var(--accent-soft); }
+#dock-view .dock-ship-row.on { border-color: var(--accent); background: var(--accent-fill-weak); }
+#dock-view .dock-ship-info { flex: 1; display: flex; flex-direction: column; gap: var(--space-1); }
+#dock-view .dock-ship-name { font-size: var(--font-l); }
+#dock-view .dock-ship-hp { font-size: var(--font-s); color: var(--text-dim); }
+#dock-view .dock-ship-actions { display: flex; gap: var(--space-3); }
+/* Parts tab */
+#dock-view .dock-parts-header {
+  display: flex; align-items: center; gap: var(--space-5); margin-bottom: var(--space-5);
+  padding-bottom: var(--space-4); border-bottom: 1px solid var(--edge);
+}
+#dock-view .dock-ship-label { font-size: var(--font-m); color: var(--text-dim); flex: 1; }
+#dock-view .dock-part-list { display: flex; flex-direction: column; gap: var(--space-3); }
+#dock-view .dock-part-row {
+  display: grid; grid-template-columns: 1fr 120px 60px auto;
+  align-items: center; gap: var(--space-5); padding: var(--space-3) var(--space-5);
+  border: 1px solid var(--edge); border-radius: var(--radius-m);
+}
+#dock-view .dock-part-info { display: flex; flex-direction: column; gap: var(--space-1); }
+#dock-view .dock-part-name { font-size: var(--font-m); }
+#dock-view .dock-part-type { font-size: var(--font-xs); color: var(--text-dim); }
+#dock-view .dock-part-hp-meter .w-meter-track { height: 6px; border-radius: var(--radius-s); }
+#dock-view .dock-part-hp-meter .w-meter-fill { border-radius: var(--radius-s); transition: width var(--transition-slow); }
+#dock-view .dock-part-hp-text { font-size: var(--font-s); color: var(--text-dim); text-align: right; }
+#dock-view .dock-part-row { display: flex; flex-direction: column; gap: var(--space-3); }
+#dock-view .dock-part-row-main {
+  display: grid; grid-template-columns: 1fr 120px 60px auto;
+  align-items: center; gap: var(--space-5);
+}
+#dock-view .dock-warehouse-row-main { grid-template-columns: 1fr 60px auto; }
+#dock-view .dock-part-actions { display: flex; align-items: center; gap: var(--space-3); }
+#dock-view .dock-part-swap-row {
+  display: flex; align-items: center; gap: var(--space-4);
+  padding-top: var(--space-3); border-top: 1px solid var(--edge);
+  font-size: var(--font-s); color: var(--text-dim);
+}
+#dock-view .dock-part-swap-select {
+  flex: 1; background: var(--fill-1); color: var(--text);
+  border: 1px solid var(--edge); border-radius: var(--radius-m); padding: var(--space-2) var(--space-3); font-size: var(--font-s);
+}
+#dock-view .dock-parts-columns { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-6); }
+#dock-view .dock-parts-col { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+#dock-view .dock-col-title { font-size: var(--font-m); color: var(--text-dim); border-bottom: 1px solid var(--edge); padding-bottom: var(--space-2); }
+/* Shop tab */
+#dock-view .dock-shop-header { margin-bottom: var(--space-5); font-size: var(--font-s); color: var(--text-dim); }
+#dock-view .dock-shop-list { display: flex; flex-direction: column; gap: var(--space-3); }
+#dock-view .dock-shop-item {
+  display: flex; align-items: center; gap: var(--space-5); padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--edge); border-radius: var(--radius-m);
+}
+#dock-view .dock-shop-info { flex: 1; display: flex; flex-direction: column; gap: var(--space-1); }
+#dock-view .dock-shop-name { font-size: var(--font-l); }
+#dock-view .dock-shop-type { font-size: var(--font-xs); color: var(--text-dim); }
+#dock-view .dock-shop-props { font-size: var(--font-s); color: var(--text-dim); }
+#dock-view .dock-shop-stats { font-size: var(--font-xs); color: var(--text-dim); }
+#dock-view .dock-shop-actions { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); }
+#dock-view .dock-shop-price { font-size: var(--font-m); color: var(--accent); }
+/* Common buttons: span. まで指定して .w-btn 側の背景色より確実に勝たせる
+   (ID+クラスの詳細度は #hud .w-btn と同着のため、宣言順に頼らない)。 */
+#dock-view span.dock-btn { background: var(--accent-fill-weak); color: var(--accent); }
+#dock-view span.dock-btn:hover { background: var(--accent-fill); }
+`;
+
+let styleInjected = false;
+// ドックビューのスタイルシートを document.head へ一度だけ挿入する。
+function ensureStyle(): void {
+  if (styleInjected) return;
+  styleInjected = true;
+  const style = document.createElement('style');
+  style.textContent = STYLE;
+  document.head.appendChild(style);
+}
+
 // ショップで購入可能な部品カタログ
 export interface PartCatalogEntry {
   readonly type: PartType;
@@ -96,6 +214,7 @@ export class DockView {
   get element(): HTMLElement { return this.el; }
 
   constructor(root: HTMLElement) {
+    ensureStyle();
     this.el = document.createElement('div');
     this.el.id = 'dock-view';
     this.el.className = 'dock-view-overlay';
