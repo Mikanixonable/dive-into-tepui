@@ -1,11 +1,11 @@
-import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { SPACE_4, SPACE_6 } from '../theme';
-import type { ModalController } from './modal-controller';
+import type { OverlayHandle, OverlayManager } from './overlay-manager';
 import { Button, CloseButton, Slider } from './widgets';
 
-export class SettingsPanel {
+export class SettingsPanel implements OverlayHandle {
   private readonly panel: HTMLElement;
+  private _isOpen = false;
 
   onSettingsOpenChange: ((open: boolean) => void) | null = null;
   onQuitToTitle: (() => void) | null = null;
@@ -20,7 +20,7 @@ export class SettingsPanel {
   private lastVol = 1;
 
   // ⚙ ボタンとパネル DOM を組み立て、開閉・BGM トグル・タイトルへ戻るのイベントを配線する。
-  constructor(root: HTMLElement, private readonly modalController: ModalController) {
+  constructor(root: HTMLElement, private readonly overlayManager: OverlayManager) {
     this.panel = document.createElement('div');
     this.panel.id = 'hud-settings';
     this.panel.className = 'panel';
@@ -93,21 +93,30 @@ export class SettingsPanel {
     this.bgmMute.setOn(vol <= 0);
   }
 
-  // 一時停止メニューを開くキー入力を処理する。スナップショット一覧が開いている間は
-  // [Esc] をそちらの「閉じる」操作に譲る。
-  handleInput(input: Input): void {
-    if (this.modalController.isModalOpen('save-browser')) return;
-    if (input.takeKey(K.pauseMenu)) this.toggle();
+  contains(target: Node): boolean {
+    return this.panel.contains(target);
+  }
+
+  // OverlayHandle 実装。ESC で閉じる際も toggle(false) と等価に扱う。
+  close(): void {
+    this.toggle(false);
   }
 
   // パネルの開閉を切り替える。force を渡すと開閉状態を明示的に指定する。
   toggle(force?: boolean): void {
-    const wasOpen = this.panel.style.display === 'block';
-    const show = force !== undefined ? force : !wasOpen;
-    if (show === wasOpen) return;
+    const show = force !== undefined ? force : !this._isOpen;
+    if (show === this._isOpen) return;
+    this._isOpen = show;
     this.panel.style.display = show ? 'block' : 'none';
-    // ESCメニュー表示中も、背景のマップ切替とカメラ操作は受け付ける。
-    this.modalController.setOpen('settings', show, true);
+    if (show) {
+      // ESCメニュー表示中も、背景のマップ切替とカメラ操作は受け付ける(gatesInput: false)。
+      this.overlayManager.open('settings', this, {
+        kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: false,
+        exclusiveGroup: 'system-modal',
+      });
+    } else {
+      this.overlayManager.close('settings');
+    }
     this.onSettingsOpenChange?.(show);
   }
 

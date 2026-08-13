@@ -4,6 +4,7 @@ import type { WebGPURenderer } from 'three/webgpu';
 import { PropertyRow, PropertyWindow } from './game/hud/property-window';
 import { fmtDuration } from './game/hud/utils';
 import { FrameSections, SECTION_COUNT, SECTION_LABELS, type SectionId } from './frame-sections';
+import type { OverlayManager } from './game/hud/overlay-manager';
 
 // 計測表示に載せるエンティティ数・シミュレーション規模の一式。
 export type PerfCounts = {
@@ -80,6 +81,7 @@ export class PerfMeter {
     private readonly root: HTMLElement,
     private readonly renderer: WebGPURenderer,
     private readonly sections: FrameSections,
+    private readonly overlayManager: OverlayManager,
   ) {
     if (new URLSearchParams(location.search).get('perf') === '1') this.open();
   }
@@ -104,7 +106,7 @@ export class PerfMeter {
       title: '負荷',
       rows: this.rows,
       items: [],
-    });
+    }, this.overlayManager);
     this.win.onClose = () => {
       this.win = null;
       this.sections.enabled = false;

@@ -4,6 +4,7 @@ import * as C from '../const';
 import { ACCENT, ACCENT_SOFT, ACCENT_FILL, ACCENT_FILL_STRONG, TEXT, BG, FONT_FAMILY, FONT_XS } from '../theme';
 import { ContextMenu } from '../hud/context-menu';
 import { MenuAction, MenuCommon } from '../hud/menu-actions';
+import type { OverlayManager } from '../hud/overlay-manager';
 
 const STYLE = `
 #hud #node-gizmo {
@@ -89,7 +90,7 @@ export class NodeGizmo {
 
   // DOM レイヤとコンテキストメニューを構築する。root はハンドル/アーム自体を置くレイヤ、
   // popupLayer はノードのコンテキストメニューを置くレイヤ(overlay-layer.ts のレイヤ構造に従う)。
-  constructor(root: HTMLElement, popupLayer: HTMLElement) {
+  constructor(root: HTMLElement, popupLayer: HTMLElement, overlayManager: OverlayManager) {
     if (!styleInjected) {
       styleInjected = true;
       const style = document.createElement('style');
@@ -106,7 +107,7 @@ export class NodeGizmo {
     this.axisLayer = document.createElement('div');
     this.root.appendChild(this.axisLayer);
 
-    this.menu = new ContextMenu<number, MenuAction>(popupLayer);
+    this.menu = new ContextMenu<number, MenuAction>(popupLayer, overlayManager);
     // メニュー選択を対応するノード操作コールバックへ橋渡しする。
     this.menu.onSelect = (act, idx) => {
       if (act === 'warp') this.onMenuWarpTo?.(idx);
