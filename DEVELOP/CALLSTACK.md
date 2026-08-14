@@ -48,7 +48,7 @@
 ブロックとして表現される(早期 return の重複はない)。`handlePointerInput` 自体には呼ぶ順序と
 ポーズ判定しかなく、ビュー(マップ視点/編集モード)や艦の有無の判定は各受け手が自分で行う(§
 handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`)はどちらの分岐にも現れない
-— 決着後も操作艦の `behave`・ポインタ入力・各具体ステージ自身の `update`(§ advanceSimulation 内)
+— 決着後も操作艦の `updatePlayerControls`・ポインタ入力・各具体ステージ自身の `update`(§ advanceSimulation 内)
 は通常どおり続く。各具体ステージの `update` は艦の有無だけを見て自分で早期 return する。
 
 - game.update(dtRaw)
@@ -86,7 +86,7 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
         - startAutoWarpTo() + hud.hint() // 未開始
       - updateEditing(input, dt)
         - [!dvEditActive(= editMode かつ selectedNodeIdx !== null)] dvHoldTime を全方向 0 に戻して return
-        - applyHeldDv() ×6方向 // input.takeHeld(K.dvXxx) で6キーを先着確保し(以降 player.behave からは押されていないように見える)、または dvButtons(長押しボタン)が held の間、ホールド秒数からランプするレートで dt 秒分を積分
+        - applyHeldDv() ×6方向 // input.takeHeld(K.dvXxx) で6キーを先着確保し(以降 player.updatePlayerControls からは押されていないように見える)、または dvButtons(長押しボタン)が held の間、ホールド秒数からランプするレートで dt 秒分を積分
         - applyDv() // nodeGizmo.latch がある間、ラッチ超過量に比例したレートで dt 秒分を積分(アームドラッグが DV_DRAG_LATCH_PX を超えて入る)
   - sections.exit(SECTION.input)
   - [!game.isPaused] advanceSimulation(dt) // ポーズ中は丸ごと飛ばす(HP自動回復などをポーズ中に汲み出せないようにする)
@@ -140,8 +140,8 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
   - 以下の player は毎回その場で読む game.player(= activePlayers.current)
   - sections.enter(SECTION.player)
   - nanWatchdog.checkPlayer('frameStart')
-  - entities.updatePlayers(player, input, simSpeed, dt, activeStage, ephemeris) // entities.players 全隻ぶん、1隻ずつ ship.behave(…) を呼ぶ。input が届くのは ship===player かつ simSpeed.canShipAct の艦だけで、それ以外へは null を渡す(操作対象から外れた艦と操作できないワープ倍率は同じ状態なので、判断はここ1箇所)。simDt = dt × simSpeed.simSpeed もここで組む。ステージの決着状態は分岐条件に無い(決着後も操作艦は動く)
-    - [ship ごと] ship.behave(input, dt, simDt, entities, activeStage, ephemeris)
+  - entities.updatePlayers(player, input, simSpeed, dt, activeStage, ephemeris) // entities.players 全隻ぶん、1隻ずつ ship.updatePlayerControls(…) を呼ぶ。input が届くのは ship===player かつ simSpeed.canShipAct の艦だけで、それ以外へは null を渡す(操作対象から外れた艦と操作できないワープ倍率は同じ状態なので、判断はここ1箇所)。simDt = dt × simSpeed.simSpeed もここで組む。ステージの決着状態は分岐条件に無い(決着後も操作艦は動く)
+    - [ship ごと] ship.updatePlayerControls(input, dt, simDt, entities, activeStage, ephemeris)
       - updatePassive(dt) // belt.update() + hpRegen()。input の有無に関わらず必ず先頭で実行
         - belt.update()
           - physics.shiftBeltNodes() // リロードで給弾量が巻き戻ったフレームのみ
@@ -181,7 +181,7 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
         - throttle.stopThrust() // 推力入力なし(物理押下・ラッチとも無し)。thrustAccelVec(ベルト物理向け)を戻すだけ
       - invalidatePrediction() // player.thrust !== null のときのみ(自機の噴射結果を即座に予測へ反映)
       - [planExecution==='powered'] thrust!==null または throttle.hasManualRotationInput() なら planExecution='off' // 操作対象艦の手動並進・手動回転で自動実行を中断(マップモードかどうかは問わない)
-  - nanWatchdog.checkPlayer('player.behave')
+  - nanWatchdog.checkPlayer('player.updatePlayerControls')
   - sections.exit(SECTION.player)
   - sections.enter(SECTION.stage)
   - activeStage.update() // 具体ステージへディスパッチ。各具体ステージが艦の有無を自分で見て内部で即 return する(決着後も進む)
@@ -195,7 +195,7 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
       - absorbNearbyAmmo()
         - player.onPickup() + sfx.pickup() + hud.hint() // 範囲内の補給ごと
       - despawnFarAmmo() // 消滅そのものは投入可否によらず常に走る
-        - spawnForPlayer() // 遠方消滅した数だけ再投入。投入可(resupplyEnabled かつ canResupplyAmmo)のときだけ。生存数が MAX_AMMO に達したら打ち切る
+        - spawnForPlayer() // 遠方消滅した数だけ再投入。投入可(resupplyEnabled かつ canResupplyAmmo)のときだけ。生存数が MAX_ACTIVE_AMMO_PICKUPS に達したら打ち切る
       - spawnForPlayer() // 投入可のとき、LOGISTICS_CHECK_INTERVAL ごと、かつ低弾薬・上限未満のみ。投入不可の間は次回判定時刻を進めない
     - [Stage00 無限サバイバル] waveAttack.update(dt, player, entities.enemies, simTime, this, addEnemy) // stage-utils/wave-attack.ts の WaveAttack(Stage00/CreativeStage 共用)。waiting_for_ammo→spawning_enemies→active_combat のフェーズ機械
       - [waiting_for_ammo] 弾薬確保でフェーズ遷移 → hud.toast()
@@ -207,7 +207,7 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
     - [Stage1 / Stage2 キャンペーン] logistics.updateLogistics(simSpeed, respawnOnDespawn=false)
     - [CreativeStage] player があれば: logistics.updateLogistics(simTime, player, simSpeed, respawnOnDespawn=true) → behaveAllEnemies()(上記) → [waveAttackEnabled] waveAttack.update(...)(Stage00 と同じ WaveAttack。トグルが制御するのは新規ウェーブの発生のみで、OFF の間も既存敵はそのまま残り AI は進む)
     - [CreativeStage] placerPanel.isOpen なら getForm() を1回だけ呼び、computePreview(form)/computeFieldIssues(form) へ共有する
-    - [CreativeStage] entities.players ごとに ship.planExecutor.update(ship, simDt, simTime, simSpeed) // 刻み幅は simDt = dt × simSpeed.simSpeed(燃料消費を推力の積分ぶんに比例させる)。 !simSpeed.canShipAct なら先頭で idle へ戻して return(連続指令を書く主体は自分でゲートする — 姿勢整列トルクも含めて何も書かない)。planExecution!=='powered' なら idle へ戻すだけ。'powered' なら姿勢整列(idle/slew/armed)、または燃焼中(burn/trim)の出力段選択・燃料消費・ship.thrust の書き直しを進める。ノード時刻に対する猶予窓(NODE_APPROACH_LEAD+見積り燃焼時間+見積り姿勢転回時間)を外れている間は何もしない。死亡していれば停止。点火・遮断そのものはここでは行わない。Simulator.advance より前に呼ばれるので、操作艦で player.behave がこのフレーム player.thrust を null にしていても、積分に渡る前にここで確実に上書きされる
+    - [CreativeStage] entities.players ごとに ship.planExecutor.update(ship, simDt, simTime, simSpeed) // 刻み幅は simDt = dt × simSpeed.simSpeed(燃料消費を推力の積分ぶんに比例させる)。 !simSpeed.canShipAct なら先頭で idle へ戻して return(連続指令を書く主体は自分でゲートする — 姿勢整列トルクも含めて何も書かない)。planExecution!=='powered' なら idle へ戻すだけ。'powered' なら姿勢整列(idle/slew/armed)、または燃焼中(burn/trim)の出力段選択・燃料消費・ship.thrust の書き直しを進める。ノード時刻に対する猶予窓(NODE_APPROACH_LEAD+見積り燃焼時間+見積り姿勢転回時間)を外れている間は何もしない。死亡していれば停止。点火・遮断そのものはここでは行わない。Simulator.advance より前に呼ばれるので、操作艦で player.updatePlayerControls がこのフレーム player.thrust を null にしていても、積分に渡る前にここで確実に上書きされる
   - sections.exit(SECTION.stage)
   - nanWatchdog.checkPlayer('activeStage.update')
   - simSpeedManager.update() // 自動ワープ中のみ実効。残り時間が C.NODE_APPROACH_LEAD 以下なら autoWarpUntil=null + levelIdx=0 で即 return
@@ -421,11 +421,11 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
     - celestialGrid.sync() // navball.gridVisibility の6トグルと overviewMode に応じたスケールを反映
   - entities.syncPlayers(player, fo, cameraSystem, displayTime, ephemeris, displayAttractors, visibilityPolicy) // 全自機ごとに ship.syncPlayer(...) を呼ぶ。方向マーカー・ボアサイト・ガンサイトズームの隠れは isActive(=ship===player)の艦だけ
     - ship.syncPlayer(fo, cameraSystem, displayTime, isActive, ephemeris, attractors, visibilityPolicy?.entity('player', isActive))
-      - displayState(displayTime) // current.at または predicted.at。null なら obj.visible=false のみで以下は現在状態のまま
-      - obj の position / quaternion / visible // displayState 基準(未来ゴースト表示中は将来位置)。ガンサイトズームで隠れるのは isActive の艦だけ
+      - displayState(displayTime) // current.at または predicted.at。null なら renderObject.visible=false のみで以下は現在状態のまま
+      - renderObject の position / quaternion / visible // displayState 基準(未来ゴースト表示中は将来位置)。ガンサイトズームで隠れるのは isActive の艦だけ
       - thrustEffects.sync(this.thrust, maxAccel, ...) → sfx.setThrust(firing)(isActive のみ) + core/outer の sync() or hide() // this.thrust は PlayerThrottle/PlanExecutor どちらが立てても同じ。displayState(displayTime) ?? this.state。displayState が null なら visible=false 扱いで呼び自分で隠れる
       - rcsEffects.sync() → sfx.setRcs(rotating) + puff の sync() or hide() ×4 // 同上
-      - belt.sync() // 引数なし。各リンクの position/quaternion を平行移動+ツイストから導出するだけで、表示可否は playerObj(obj.visible)の可視性に従う
+      - belt.sync() // 引数なし。各リンクの position/quaternion を平行移動+ツイストから導出するだけで、表示可否は renderObject.visible に従う
       - radiator.sync() // ヒンジ Group の rotation.y へ展開角を書く
       - reentryEffects.sync() // qdyn が REENTRY_GLOW_MIN_Q 未満、または !visible なら隠すだけ
       - [isActive] markers.sync(currentState, displayState, ..., project, scale) // 自機由来の HUD マーカー(方位・ボアサイト・▲)。操作対象の艦だけが出す
@@ -435,12 +435,12 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
       - orbitLine.sync() → regenerate() // 中心天体は毎フレーム strongestAttractor(state.r, displayAttractors) で導出(地球固定ではない)。楕円の平行移動に使う中心天体位置も表示時刻のもの。要素が閾値以上ドリフト or 推力中(force) or 初回のみ再生成。現在状態基準(要素は時刻に依らない)
   - entities.sync(fo, displayTime) → entity.sync(fo, displayTime) // 敵・弾・薬莢・デブリ・補給それぞれ(Bullet は速度方向を向く別実装)。自機(全隻)は含まない — 各艦は syncPlayers() が個別に同期済み。
     displayState が null(predictsFuture=false の種別が未来表示中、または予測ホライズン超過)なら visible=false
-    - 続けて弾本体/弾ハロー/プラズマ弾/薬莢/破片(fragment、バリアントごとに1本)の各 InstancedPool を beginFrame → (bullets/casings/debris ごとに obj.visible を見て push) → endFrame。Group(本体+ハロー)を持つ通常弾は obj.updateMatrixWorld() で子まで連鎖更新してから両プールへ push。fragment は debrisFragmentPools[fragmentVariant] へ fragmentColor(per-instance color)付きで push
+    - 続けて弾本体/弾ハロー/プラズマ弾/薬莢/破片(fragment、バリアントごとに1本)の各 InstancedPool を beginFrame → (bullets/casings/debris ごとに renderObject.visible を見て push) → endFrame。Group(本体+ハロー)を持つ通常弾は renderObject.updateMatrixWorld() で子まで連鎖更新してから両プールへ push。fragment は debrisFragmentPools[fragmentVariant] へ fragmentColor(per-instance color)付きで push
   - entities.applyVisibility(visibilityPolicy, player, overviewMode, fo, camera, displayAttractors) // 天体クラス別トグルに応じた自機・敵・弾薬・基地のメッシュ表示/軌道線表示。visibilityPolicy が null(戦闘ビュー)のときは非表示扱いを一切かけない
-    - [visibilityPolicy] 自機・敵・弾薬・基地それぞれ、その種別の category が admit しなければ obj.visible=false
+    - [visibilityPolicy] 自機・敵・弾薬・基地それぞれ、その種別の category が admit しなければ renderObject.visible=false
     - 自機・敵・基地それぞれ orbitLine.setDisplayEnabled(!overviewMode || visibilityPolicy が admit する orbit) // マップビューのみトグルの対象、戦闘ビューは常に表示
     - [entities.bases ごと] base.syncOrbitLine(overviewMode, fo, camera, attractors) // 中心天体は strongestAttractor(base.state.r, attractors)。マップビューのみ、それ以外は null を渡して線を消す
-  - entities.syncMarkers(cameraSystem, displayTime, player?.state.r ?? null, visibilityPolicy) // ammos/bases の各 marker?.sync。displayState(displayTime) → [overviewMode] headingDeg(ds.r, ds.v) → set('entity-<id>', 'mk-ammo'|'mk-base', '▲', rotationDeg) / [!overviewMode] set('entity-<id>', 種別ごとの字形) + setBearing('entity-<id>-bearing')。ラベルは name + viewerPos があれば距離
+  - entities.syncMarkers(cameraSystem, displayTime, player?.state.r ?? null, visibilityPolicy) // ammoPickups/bases の各 marker?.sync。displayState(displayTime) → [overviewMode] headingDeg(ds.r, ds.v) → set('entity-<id>', 'mk-ammo'|'mk-base', '▲', rotationDeg) / [!overviewMode] set('entity-<id>', 種別ごとの字形) + setBearing('entity-<id>-bearing')。ラベルは name + viewerPos があれば距離
   - effects.sync(fo, camera, cameraSystem.zoomActive) → flashEffectManager.syncFlashEffects()
     - pool.beginFrame() → (生存中のフラッシュごとに transform へ位置/スケール/カメラ正対回転を書き、color = baseColor×opacity で push) → pool.endFrame() // 寿命・移流は update フェーズで済んでいる。opacity には zoomActive かつ dimsInGunsight のフラッシュだけ ZOOM_MUZZLE_FLASH_SCALE が掛かる
   - [player] targeter.sync(fo, player, combatTargets, cameraSystem, displayAttractors, visibilityPolicy) // ターゲットに紐づく表示物をまとめて
