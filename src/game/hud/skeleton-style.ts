@@ -215,6 +215,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 .mk-boardpass .sym { font-size: var(--font-xxs); }
 .mk-mnode { color: var(--accent-soft); }
 .mk-mnode .lbl { white-space: pre; line-height: 1.25; }
+#hud .mk-mnode .lbl, #hud .mk-burn .lbl { margin-top: var(--space-2); }
 .mk-burn { color: var(--accent); text-shadow: 0 0 8px color-mix(in srgb, var(--accent) var(--glow-strong), transparent); }
 .mk-self { color: ${C.COLOR_MARKER_SELF}; }
 .mk-ammo { color: var(--accent-soft); text-shadow: 0 0 6px color-mix(in srgb, var(--accent-soft) var(--glow-strong), transparent), 0 0 3px var(--bg); }
