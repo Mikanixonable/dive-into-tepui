@@ -148,9 +148,14 @@ export class StageStatusPanel {
     }
   }
 
-  // 毎フレーム(sync 時)呼ぶ。DOM の書き換えは内容が変わったフレームだけに絞る。
-  sync(player: Player, message: string, kills: number): void {
+  // 毎フレーム(sync 時)呼ぶ。player が null ならパネルを畳む。DOM の書き換えは
+  // 内容が変わったフレームだけに絞る。
+  sync(player: Player | null, message: string, kills: number): void {
     this.player = player;
+    if (!player) {
+      this.panel.style.display = 'none';
+      return;
+    }
     const { hp, maxHp } = player;
     const throttleIdx = player.throttleIdx;
     const low = hp <= maxHp * LOW_HP_RATIO;
@@ -197,10 +202,5 @@ export class StageStatusPanel {
       this.lastLeftHtml = leftHtml;
     }
     this.panel.classList.remove('hidden');
-  }
-
-  // パネル DOM を非表示にする
-  hide(): void {
-    this.panel.classList.add('hidden');
   }
 }

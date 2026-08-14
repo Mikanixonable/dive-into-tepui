@@ -27,8 +27,8 @@ function makeShip(): PlanExecutorShip {
   };
 }
 
-const openGate: PlanExecutorSimSpeed = { canPlayerThrust: true };
-const closedGate: PlanExecutorSimSpeed = { canPlayerThrust: false };
+const openGate: PlanExecutorSimSpeed = { canShipAct: true };
+const closedGate: PlanExecutorSimSpeed = { canShipAct: false };
 const hud: PlanExecutorHud = { hint: () => {} };
 
 // armed へ確実に入れるため、目標 fwd/up からその場で厳密解を作って att.q に据える

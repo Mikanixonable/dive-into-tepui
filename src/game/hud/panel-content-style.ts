@@ -10,8 +10,6 @@ export const PANEL_CONTENT_STYLE = `
    SHIP STATUS は畳んでパネル占有面積を減らす。戦闘ビューでは従来どおり常設のまま。 */
 #hud.map-mode #hud-status { display: none; }
 #hud-orbit h3 { font-size: var(--font-xxs); }
-#hud.map-mode #hud-orbit { font-size: inherit; }
-#hud.map-mode #hud-orbit h3 { font-size: var(--font-s); }
 #hud-status .v, #hud-orbit .v { min-width: 75px; }
 /* R/F/G/T の代替操作ボタン(タッチ・マウスどちらでも常設)。 */
 #hud-status .status-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
@@ -245,7 +243,6 @@ body.touch-ui-active #hud-status .status-throttle-touch { display: flex; }
 #hud-pause-menu .pm-close-row { margin-top: var(--space-5); text-align: center; }
 
 @media ${MQ_MEDIUM_DOWN} {
-  #hud.map-mode #hud-orbit h3 { font-size: var(--font-xs); }
   #hud-plan { min-width: 0; max-width: none; }
   #hud-help { min-width: 0; width: 94vw; max-height: 78vh; max-height: 78dvh; }
   #hud-result h1 { font-size: var(--font-2xl); letter-spacing: 3px; }

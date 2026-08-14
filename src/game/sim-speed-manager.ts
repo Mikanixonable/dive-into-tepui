@@ -35,24 +35,10 @@ export class SimSpeedManager {
     return Math.max(0, this.autoWarpUntil - simTime);
   }
 
-  // 現在のワープ倍率で物理的な相互作用(推進・射撃・衝突・敵AI)が有効かどうか。
-  // 呼び出し側は simSpeed そのものを受け取って閾値判定するのではなく、ここを見る。
-  get canPlayerThrust(): boolean {
-    return this.simSpeed <= C.MAX_PHYS_SIM_SPEED;
-  }
-
-  // 現在のワープ倍率で自機の射撃が有効かどうか。
-  get canPlayerFire(): boolean {
-    return this.simSpeed <= C.MAX_PHYS_SIM_SPEED;
-  }
-
-  // 現在のワープ倍率で敵の射撃が有効かどうか。
-  get canEnemyFire(): boolean {
-    return this.simSpeed <= C.MAX_PHYS_SIM_SPEED;
-  }
-
-  // 現在のワープ倍率で自機を操作できるかどうか(噴射・射撃・姿勢制御指令が通る倍率かどうか)。
-  get canOperatePlayer(): boolean {
+  // 現在のワープ倍率で自機の行動(推進・射撃・姿勢制御指令・自動操縦バーン)と
+  // 敵の射撃が成立するかどうか。呼び出し側は simSpeed そのものを受け取って
+  // 閾値判定するのではなく、ここを見る。
+  get canShipAct(): boolean {
     return this.simSpeed <= C.MAX_PHYS_SIM_SPEED;
   }
 
@@ -61,21 +47,23 @@ export class SimSpeedManager {
     return this.simSpeed <= C.MAX_PHYS_SIM_SPEED;
   }
 
-  // 現在のワープ倍率で補給を投入してよいかどうか。他の can* より1段厳しく等倍限定なのは、
-  // 補給が「接近して回収する」操作を前提にしており、回収そのものが成立しない倍率で
-  // 投入だけが進むと、回収されない補給が軌道上に溜まり続けるため。
+  // 現在のワープ倍率で補給を投入してよいかどうか。等倍(実時間)のときだけ投入するのは、
+  // 補給が「接近して回収する」操作を前提にした投入であり、時間を進めている間も投入だけが
+  // 続くと、回収されないまま軌道上に溜まり続けるため。
   get canResupplyAmmo(): boolean {
-    return this.simSpeed < C.MAX_PHYS_SIM_SPEED;
+    return this.simSpeed === 1;
   }
 
-  // ワープ段を step 分だけ変更する。上下限を超える変更は無視する。
+  // ワープ段を step 分だけ変更する。上下限を超える変更は無視する。操作できない倍率へ
+  // 上げたときは、自機の操作が効かなくなったことをヒントに併記する。
   shift(step: number): void {
     this.cancelAutoWarp();
     const next = this.levelIdx + step;
     if (next < 0 || next >= C.SIM_SPEED_LEVELS.length) return;
     this.levelIdx = next;
     this._sfx.warp();
-    this._hud.hint(`時間加速 ×${this.simSpeed}`);
+    const gated = this.canShipAct ? '' : `(自機の操作はワープ ×${C.MAX_PHYS_SIM_SPEED} 以下でのみ可能)`;
+    this._hud.hint(`時間加速 ×${this.simSpeed}${gated}`);
   }
 
   // 未来の指定時刻まで自動ワープする。既に到達窓へ入った時刻は受け付けない。
