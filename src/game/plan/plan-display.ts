@@ -15,7 +15,7 @@ import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { MapPickable } from '../map-pickable';
 import * as C from '../const';
-import { DisplayDurationSource, Plan } from './plan';
+import { DisplayDurationSource, PlanData } from './plan';
 import { PlanPath } from './plan-path';
 import type { DisplayWindow } from '../display-window-manager';
 import type { PlanAttractorProvider } from '../simulation/attractors';
@@ -66,7 +66,6 @@ export class PlanDisplay {
   private tickIcons: readonly PlanTickIcon[] = [];
   private lastTickKeys: readonly string[] = [];
   private ghost: { readonly pos: Vec3; readonly label: string } | null = null;
-  private plan: Plan | null = null;
   // update が求めた時点の Attractor[]。sync でのマップビュー遮蔽判定に使う。
   private attractors: readonly Attractor[] = [];
 
@@ -81,13 +80,11 @@ export class PlanDisplay {
   }
 
   // 計画折れ線を再積分し、表示時刻のゴースト位置と近地点・遠地点アイコンを求め直す。
-  // plan が null のときは何も求めない — 出さない計画の位置は持たない。
+  // 起点が null のときは何も求めない — 出さない計画の位置は持たない。
   update(
-    plan: Plan | null, displayWindow: DisplayWindow,
-    attractorProvider: PlanAttractorProvider,
+    planData: PlanData | null, displayWindow: DisplayWindow, attractorProvider: PlanAttractorProvider,
   ): void {
-    this.plan = plan;
-    if (!plan) {
+    if (planData === null) {
       this.ghost = null;
       this.apsisIcons = [];
       this.impactIcons = [];
@@ -96,8 +93,8 @@ export class PlanDisplay {
     }
     const { simTime, displayTime } = displayWindow;
     this.attractors = this.ephemeris.attractorsAt(displayTime);
-    this.path.update(plan, this.ephemeris, displayWindow.frame, simTime, this.attractors, attractorProvider);
-    this.ghost = this.ghostAt(plan, displayTime, simTime);
+    this.path.update(planData, this.ephemeris, displayWindow.frame, simTime, this.attractors, attractorProvider);
+    this.ghost = this.ghostAt(displayTime, simTime);
     this.apsisIcons = this.apsisIconsOf();
     this.impactIcons = this.impactIconsOf();
     this.tickIcons = this.tickIconsOf(displayWindow.tickLabelMode, simTime);
@@ -112,7 +109,7 @@ export class PlanDisplay {
     // ノードの無い計画は自機の現在軌道そのものを描くだけで情報を持たないので、折れ線は隠す。
     // path.sync 自体はノードの有無に関わらず毎フレーム呼ぶ — 画面判定に使う project を
     // 毎フレーム更新しておかないと、クリック当たり判定が古い視点のまま行われてしまう。
-    this.path.setVisible((this.plan?.nodes.length ?? 0) > 0);
+    this.path.setVisible(this.path.nodeCount > 0);
     this.path.sync(fo, project, scale, cameraPos, camera);
     this.syncGhost(project);
     this.syncApsisMarkers(project, overviewMode, cameraPos);
@@ -145,8 +142,8 @@ export class PlanDisplay {
   // displayTime における計画上の自機位置とそのラベル。折れ線の届く範囲外、または
   // ノードが1つも無ければ null — ノード無しの計画は実軌道の追従コピーでしかなく、
   // 実軌道とのズレを示すゴーストとしては意味を持たない。
-  private ghostAt(plan: Plan, displayTime: number, simTime: number): { pos: Vec3; label: string } | null {
-    if (plan.nodes.length === 0) return null;
+  private ghostAt(displayTime: number, simTime: number): { pos: Vec3; label: string } | null {
+    if (this.path.nodeCount === 0) return null;
     const sample = this.path.sampleAt(displayTime);
     if (!sample) return null;
     return {
@@ -187,7 +184,7 @@ export class PlanDisplay {
   // この判定自体を行わず、そのまま出す。
   private apsisIconsOf(): readonly ApsisIcon[] {
     const final = this.path.finalSegment();
-    if (!this.plan || !final) return [];
+    if (!final) return [];
     const pe = final.periapsis;
     const ap = final.apoapsis;
 
