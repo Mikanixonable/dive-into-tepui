@@ -19,6 +19,7 @@ import {
   vec3,
 } from 'three/tsl';
 import { RingArcDef, RingOpticsDef } from '../physics/solar-system';
+import type { FloatNode, Vec3Node } from './tsl-types';
 
 const RING_TILT = -Math.PI / 2;
 const D2R = Math.PI / 180;
@@ -40,15 +41,15 @@ export type RingVisual = {
   readonly sync: (state: RingVisualState) => void;
 };
 
-function colorNode(color: readonly [number, number, number]): ReturnType<typeof vec3> {
+function colorNode(color: readonly [number, number, number]): Vec3Node {
   return vec3(color[0], color[1], color[2]);
 }
 
 // annulus/line 共通の光学TSLグラフ。coverage は帯の画面上被覆率(1px未満の細帯を
 // 減光するための係数)で、面・線どちらのジオメトリへ載せても解釈は同じ。
-function ringOpticsNodes(baseColor: any, optics: RingOpticsDef): {
-  colorNode: any;
-  opacityNode: any;
+function ringOpticsNodes(baseColor: Vec3Node, optics: RingOpticsDef): {
+  colorNode: Vec3Node;
+  opacityNode: FloatNode;
   sync: (state: RingVisualState) => void;
 } {
   const bodyCenter = uniform(new THREE.Vector3());
@@ -108,7 +109,7 @@ function ringOpticsNodes(baseColor: any, optics: RingOpticsDef): {
   };
 }
 
-function physicalMaterial(baseColor: any, optics: RingOpticsDef): { material: any; sync: (state: RingVisualState) => void } {
+function physicalMaterial(baseColor: Vec3Node, optics: RingOpticsDef): { material: THREE.MeshBasicNodeMaterial; sync: (state: RingVisualState) => void } {
   const { colorNode: color, opacityNode, sync } = ringOpticsNodes(baseColor, optics);
   const mat = new THREE.MeshBasicNodeMaterial({
     transparent: true,
@@ -123,7 +124,7 @@ function physicalMaterial(baseColor: any, optics: RingOpticsDef): { material: an
 // 面(annulus)と同じ光学TSLグラフを THREE.Line 用マテリアルへ載せる。1px未満に痩せる
 // 細帯はラスタライズで面のまま描くと消えうるので、常にこの線1本で表す(coverage が
 // 被覆率ぶん減光するので、遠方ほど濃くなることはない)。
-function lineOpticsMaterial(baseColor: any, optics: RingOpticsDef): { material: any; sync: (state: RingVisualState) => void } {
+function lineOpticsMaterial(baseColor: Vec3Node, optics: RingOpticsDef): { material: THREE.LineBasicNodeMaterial; sync: (state: RingVisualState) => void } {
   const { colorNode: color, opacityNode, sync } = ringOpticsNodes(baseColor, optics);
   const mat = new THREE.LineBasicNodeMaterial({
     transparent: true,
@@ -172,7 +173,7 @@ function buildAnnulusMesh(
 ): RingVisual {
   const geo = new THREE.RingGeometry(innerRadius, outerRadius, 128, 1, thetaStart, thetaLength);
   const { material, sync } = physicalMaterial(colorNode(optics.color), optics);
-  const mesh = new THREE.Mesh(geo, material as THREE.Material);
+  const mesh = new THREE.Mesh(geo, material);
   mesh.rotation.x = RING_TILT;
   return { object: mesh, sync };
 }
@@ -207,7 +208,7 @@ function buildLineRingSegment(
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   const { material, sync } = lineOpticsMaterial(colorNode(optics.color), optics);
-  const line = new THREE.Line(geo, material as THREE.Material);
+  const line = new THREE.Line(geo, material);
   line.rotation.x = RING_TILT;
   return { object: line, sync };
 }
@@ -261,7 +262,7 @@ export function createTorusRing(
 ): RingVisual {
   const geo = annularPrism(innerRadius, outerRadius, thickness);
   const { material, sync } = physicalMaterial(colorNode(optics.color), optics);
-  const mesh = new THREE.Mesh(geo, material as THREE.Material);
+  const mesh = new THREE.Mesh(geo, material);
   mesh.rotation.x = RING_TILT;
   return { object: mesh, sync };
 }
