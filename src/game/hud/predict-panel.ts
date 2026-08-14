@@ -1,9 +1,10 @@
 // 未来表示の操作パネル(期間ピル・スクラバー・目盛り)。3行構成: 期間選択 / スクラブバー+T+読み値 / 目盛り。
 import * as C from '../const';
-import { Button, SegmentedControl, Slider, ValueInput } from './widgets';
+import { Button, SegmentedControl, Slider, ToggleSwitch, ValueInput } from './widgets';
 import { buildCollapseToggle, PREDICT_TOGGLE_LABELS } from './hud-root';
 import { SIM_EPOCH_SEC, fmtDateTime, fmtDuration } from './utils';
-import type { DisplayDurationKey } from '../display-window-manager';
+import type { DisplayDurationKey, DisplayPastDurationKey } from '../display-window-manager';
+import type { TickLabelMode } from './calendar-ticks';
 import type { DisplayTick } from './tick-scale';
 
 type FixedDurationKey = 'orbit' | 'day' | 'week' | 'month';
@@ -13,6 +14,13 @@ const FIXED_DURATIONS: readonly (readonly [FixedDurationKey, string])[] = [
   ['day', '1日'],
   ['week', '7日'],
   ['month', '28日'],
+];
+
+type FixedPastDurationKey = 'none' | FixedDurationKey;
+
+const FIXED_PAST_DURATIONS: readonly (readonly [FixedPastDurationKey, string])[] = [
+  ['none', 'なし'],
+  ...FIXED_DURATIONS,
 ];
 
 type DurationUnit = 'hour' | 'day' | 'month' | 'year';
@@ -122,10 +130,91 @@ function inlineIconButton(label: string, title: string, onClick: () => void): HT
   return btn;
 }
 
+// 「見出し + 固定期間ピル列 + 任意…ピル」の1行。任意…を押すとピル列を数値入力フォームへ
+// 差し替え、確定・取り消しでピル列へ戻る。K は固定ピルのキー、Kd は選択状態として受け取る
+// キー(固定ピルに加えて 'custom' を含む)。
+class DurationPillRow<K extends string, Kd extends string> {
+  readonly element: HTMLElement;
+  private readonly buttons = new Map<K, Button>();
+  private readonly pillsEl: HTMLElement;
+  private readonly customPillBtn: Button;
+  private readonly editEl: HTMLElement;
+  private readonly input: DurationValueInput;
+  private editing = false;
+  private currentSec = C.DISPLAY_DUR_DAY;
+
+  constructor(
+    title: string,
+    entries: readonly (readonly [K, string])[],
+    private readonly onSelect: (key: K) => void,
+    private readonly onCustomConfirm: (sec: number) => void,
+  ) {
+    this.element = document.createElement('div');
+    this.element.className = 'predict-row1';
+    const label = document.createElement('span');
+    label.className = 'w-group-title';
+    label.textContent = title;
+    this.element.appendChild(label);
+
+    this.pillsEl = document.createElement('span');
+    this.pillsEl.className = 'predict-pills';
+    for (const [key, text] of entries) {
+      const btn = new Button(text, () => this.onSelect(key));
+      this.pillsEl.appendChild(btn.element);
+      this.buttons.set(key, btn);
+    }
+    this.customPillBtn = new Button('任意…', () => this.openEdit());
+    this.pillsEl.appendChild(this.customPillBtn.element);
+    this.element.appendChild(this.pillsEl);
+
+    this.input = new DurationValueInput(
+      'day',
+      (sec) => { this.onCustomConfirm(sec); this.closeEdit(); },
+      () => this.closeEdit(),
+    );
+    this.editEl = document.createElement('span');
+    this.editEl.className = 'predict-pills hidden';
+    this.editEl.appendChild(this.input.element);
+    this.editEl.appendChild(inlineIconButton('✓', '確定', () => this.input.commit()));
+    this.editEl.appendChild(inlineIconButton('✕', 'キャンセル', () => this.input.cancel()));
+    this.element.appendChild(this.editEl);
+  }
+
+  // 選択中のキーと、任意…ピルに出す秒数を反映する。currentSec は任意…を開いたときの初期値。
+  // 編集中の行はユーザー入力を壊さないよう書き換えない。
+  render(key: Kd, customDurationSec: number, currentSec: number): void {
+    this.currentSec = currentSec;
+    if (this.editing) return;
+    for (const [k, btn] of this.buttons) btn.setOn(k === (key as string));
+    this.customPillBtn.setOn(key === 'custom');
+    const label = key === 'custom' ? `${customPillLabel(customDurationSec)} ✎` : '任意…';
+    if (this.customPillBtn.element.textContent !== label) this.customPillBtn.setLabel(label);
+  }
+
+  // ピル列を数値入力フォームへ差し替え、直近に受け取った秒数を初期値として入れる。
+  private openEdit(): void {
+    this.editing = true;
+    this.pillsEl.classList.add('hidden');
+    this.editEl.classList.remove('hidden');
+    this.input.openWithSec(Math.max(C.DISPLAY_DURATION_MIN, this.currentSec), C.DISPLAY_DURATION_MIN, C.DISPLAY_DURATION_MAX);
+  }
+
+  // 数値入力フォームを閉じ、ピル列へ戻す。
+  private closeEdit(): void {
+    this.editing = false;
+    this.editEl.classList.add('hidden');
+    this.pillsEl.classList.remove('hidden');
+  }
+}
+
 export interface PredictPanelState {
   readonly visible: boolean;
   readonly durationKey: DisplayDurationKey;
   readonly customDurationSec: number;
+  readonly pastDurationKey: DisplayPastDurationKey;
+  readonly customPastDurationSec: number;
+  readonly pastDuration: number;
+  readonly tickLabelMode: TickLabelMode;
   readonly duration: number;
   readonly displayTime: number;
   readonly sliderSteps: number;
@@ -137,16 +226,17 @@ export interface PredictPanelState {
 export class PredictPanel {
   onDurationSelect: ((key: FixedDurationKey) => void) | null = null;
   onCustomDurationConfirm: ((sec: number) => void) | null = null;
+  onPastDurationSelect: ((key: FixedPastDurationKey) => void) | null = null;
+  onPastCustomDurationConfirm: ((sec: number) => void) | null = null;
+  onTickLabelModeChange: ((mode: TickLabelMode) => void) | null = null;
   onSliderChange: ((t: number) => void) | null = null;
   onResetToNow: (() => void) | null = null;
   onJumpToTime: ((sec: number) => void) | null = null;
 
   private readonly panel: HTMLElement;
-  private readonly durationPillsEl: HTMLElement;
-  private readonly durationButtons = new Map<FixedDurationKey, Button>();
-  private readonly customPillBtn: Button;
-  private readonly durationEditEl: HTMLElement;
-  private readonly durationInput: DurationValueInput;
+  private readonly durationRow: DurationPillRow<FixedDurationKey, DisplayDurationKey>;
+  private readonly pastDurationRow: DurationPillRow<FixedPastDurationKey, DisplayPastDurationKey>;
+  private readonly tickLabelModeSwitch: ToggleSwitch;
   private readonly slider: Slider;
   private readonly absoluteLabel: HTMLElement;
   private readonly elapsedLabel: HTMLElement;
@@ -154,7 +244,6 @@ export class PredictPanel {
   private readonly jumpInput: DurationValueInput;
   private readonly ticks: HTMLElement;
 
-  private editingDuration = false;
   private editingJump = false;
   private sliderSteps = 1000;
   private currentDuration = C.APERIODIC_ARC_DURATION;
@@ -170,37 +259,29 @@ export class PredictPanel {
     title.textContent = 'PREDICT';
     this.panel.appendChild(title);
 
-    // 行1: 期間ピル(1周/1日/7日/28日/任意…)。任意…は自身をインライン編集フォームへ差し替える。
-    const row1 = document.createElement('div');
-    row1.className = 'predict-row1';
-    const durationLabel = document.createElement('span');
-    durationLabel.className = 'w-group-title';
-    durationLabel.textContent = '期間';
-    row1.appendChild(durationLabel);
-
-    this.durationPillsEl = document.createElement('span');
-    this.durationPillsEl.className = 'predict-pills';
-    for (const [key, label] of FIXED_DURATIONS) {
-      const btn = new Button(label, () => this.onDurationSelect?.(key));
-      this.durationPillsEl.appendChild(btn.element);
-      this.durationButtons.set(key, btn);
-    }
-    this.customPillBtn = new Button('任意…', () => this.openDurationEdit());
-    this.durationPillsEl.appendChild(this.customPillBtn.element);
-    row1.appendChild(this.durationPillsEl);
-
-    this.durationInput = new DurationValueInput(
-      'day',
-      (sec) => { this.onCustomDurationConfirm?.(sec); this.closeDurationEdit(); },
-      () => this.closeDurationEdit(),
+    // 行1: 未来/過去それぞれの期間ピル(1周/1日/7日/28日/任意…、過去はさらに なし)。
+    this.durationRow = new DurationPillRow<FixedDurationKey, DisplayDurationKey>(
+      '未来', FIXED_DURATIONS,
+      (key) => this.onDurationSelect?.(key),
+      (sec) => this.onCustomDurationConfirm?.(sec),
     );
-    this.durationEditEl = document.createElement('span');
-    this.durationEditEl.className = 'predict-pills hidden';
-    this.durationEditEl.appendChild(this.durationInput.element);
-    this.durationEditEl.appendChild(inlineIconButton('✓', '確定', () => this.durationInput.commit()));
-    this.durationEditEl.appendChild(inlineIconButton('✕', 'キャンセル', () => this.durationInput.cancel()));
-    row1.appendChild(this.durationEditEl);
-    this.panel.appendChild(row1);
+    this.panel.appendChild(this.durationRow.element);
+    this.pastDurationRow = new DurationPillRow<FixedPastDurationKey, DisplayPastDurationKey>(
+      '過去', FIXED_PAST_DURATIONS,
+      (key) => this.onPastDurationSelect?.(key),
+      (sec) => this.onPastCustomDurationConfirm?.(sec),
+    );
+    this.panel.appendChild(this.pastDurationRow.element);
+
+    // 期間の2行に続けて、目盛りラベルの表記(UTC カレンダー / 現在からの経過時間)を選ぶ。
+    const modeRow = document.createElement('div');
+    modeRow.className = 'predict-row1';
+    this.tickLabelModeSwitch = new ToggleSwitch(
+      '目盛りを相対表記',
+      (on) => this.onTickLabelModeChange?.(on ? 'relative' : 'absolute'),
+    );
+    modeRow.appendChild(this.tickLabelModeSwitch.element);
+    this.panel.appendChild(modeRow);
 
     // 行2: 現在に戻すボタン + スクラバー + T+読み値(クリックで直接ジャンプ入力に変わる)。
     const row2 = document.createElement('div');
@@ -261,7 +342,9 @@ export class PredictPanel {
     this.setVisible(state.visible);
     if (!state.visible) return;
     this.currentDuration = state.duration;
-    if (!this.editingDuration) this.renderDurationPills(state.durationKey, state.customDurationSec);
+    this.durationRow.render(state.durationKey, state.customDurationSec, state.duration);
+    this.pastDurationRow.render(state.pastDurationKey, state.customPastDurationSec, state.pastDuration);
+    this.tickLabelModeSwitch.setOn(state.tickLabelMode === 'relative');
     this.renderSlider(state.sliderSteps, state.sliderT, state.predictionRatio);
     this.renderAbsoluteLabel(state.displayTime);
     if (!this.editingJump) this.renderElapsedLabel(state.sliderT * state.duration);
@@ -270,29 +353,6 @@ export class PredictPanel {
 
   private setVisible(visible: boolean): void {
     this.panel.classList.toggle('hidden', !visible);
-  }
-
-  // 選択中の期間キーに応じてピルの選択表示を更新する。'custom' のときは任意ピルへ現在値を出す。
-  private renderDurationPills(key: DisplayDurationKey, customDurationSec: number): void {
-    for (const [k, btn] of this.durationButtons) btn.setOn(k === key);
-    this.customPillBtn.setOn(key === 'custom');
-    const customLabel = key === 'custom' ? `${customPillLabel(customDurationSec)} ✎` : '任意…';
-    if (this.customPillBtn.element.textContent !== customLabel) this.customPillBtn.setLabel(customLabel);
-  }
-
-  // 期間ピル列を数値入力フォームへ差し替える。
-  private openDurationEdit(): void {
-    this.editingDuration = true;
-    this.durationPillsEl.classList.add('hidden');
-    this.durationEditEl.classList.remove('hidden');
-    this.durationInput.openWithSec(this.currentDuration, C.DISPLAY_DURATION_MIN, C.DISPLAY_DURATION_MAX);
-  }
-
-  // 数値入力フォームを閉じ、期間ピル列を出す。
-  private closeDurationEdit(): void {
-    this.editingDuration = false;
-    this.durationEditEl.classList.add('hidden');
-    this.durationPillsEl.classList.remove('hidden');
   }
 
   // スライダーの段階数・つまみ位置・未予測区間の表示を反映する。

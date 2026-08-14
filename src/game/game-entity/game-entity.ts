@@ -76,6 +76,8 @@ export class GameEntity {
   orbitLine: OrbitLine | null = null;
   // 自身の予測軌道を描く線。null = 持たない。
   trajectoryLine: TrajectoryLine | null = null;
+  // 過去に通ってきた軌跡の線。持たせるかは種別の判断。
+  pastTrajectoryLine: TrajectoryLine | null = null;
   // 自身の軌道と中心天体の赤道面との交点マーカー。null = まだ出す必要が生じていない。
   equatorNodes: EquatorNodeMarkerPair | null = null;
   // 自身の位置を指すマーカー。null = 出さない。
@@ -84,7 +86,16 @@ export class GameEntity {
   protected readonly bcInv: number = 0;
   protected readonly srpCoeff: number = 0;
   // 過去列の保持時間 [s]。既定 0 = 記録しない。
-  protected readonly historyDuration: number = 0;
+  // 種別ごとの過去列の保持時間 [s]。0 は履歴を持たない。
+  protected readonly baseHistoryDuration: number = 0;
+  private requestedHistoryDuration = 0;
+
+  // 実際に保持する過去列の長さ [s]。過去表示の要求(requestHistoryDuration)が種別の既定値より
+  // 長ければそちらに従う。保持サンプル数は sampleInterval の間引きにより
+  // PREDICT_MAX_SAMPLES で頭打ちなので、長くしてもメモリは有界。
+  protected get historyDuration(): number {
+    return Math.max(this.baseHistoryDuration, this.requestedHistoryDuration);
+  }
   // 未来を予測する種別か。既定 false。予測する長さは表示期間に追従するので、
   // 種別ごとに決まるのは可否だけ。
   readonly predictsFuture: boolean = false;
@@ -146,18 +157,36 @@ export class GameEntity {
     this.orbitLine.sync(show ? this.orbitalElementsAround(center) : null, fo, camera, force);
   }
 
-  // trajectoryLine を、現在時刻以降の predictedTrajectory に合わせる(線の先頭が常に現在位置に
-  // 一致するようにする)。show が false のときは非表示にする。
+  // trajectoryLine を現在時刻以降の predictedTrajectory に、pastTrajectoryLine を
+  // [simTime - pastDuration, simTime] の actualTrajectory に合わせる(未来線の先頭と過去線の
+  // 末尾が常に現在位置で接するようにする)。pastDuration が保持窓を超える分は
+  // TrajectoryLine 側が保持区間の先頭へクランプする。show が false のときは両方を非表示にする。
   syncTrajectoryLine(
-    show: boolean, frame: ReferenceFrame, simTime: number, ephemeris: Ephemeris, fo: FloatingOrigin,
-    camera: THREE.Camera, attractors: readonly Attractor[],
+    show: boolean, frame: ReferenceFrame, simTime: number, pastDuration: number, ephemeris: Ephemeris,
+    fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
   ): void {
-    if (this.trajectoryLine === null) return;
-    this.trajectoryLine.syncGeometry(
-      show ? this.predictedTrajectory : null, simTime, null, frame, ephemeris, attractors,
-    );
-    this.trajectoryLine.syncTransform(frame, simTime, ephemeris, fo, attractors);
-    this.trajectoryLine.sync(camera);
+    if (this.trajectoryLine !== null) {
+      this.trajectoryLine.syncGeometry(
+        show ? this.predictedTrajectory : null, simTime, null, frame, ephemeris, attractors,
+      );
+      this.trajectoryLine.syncTransform(frame, simTime, ephemeris, fo, attractors);
+      this.trajectoryLine.sync(camera);
+    }
+    if (this.pastTrajectoryLine !== null) {
+      const drawPast = show && pastDuration > 0;
+      this.pastTrajectoryLine.syncGeometry(
+        drawPast ? this.actualTrajectory : null, simTime - pastDuration, simTime, frame, ephemeris, attractors,
+      );
+      this.pastTrajectoryLine.syncTransform(frame, simTime, ephemeris, fo, attractors);
+      this.pastTrajectoryLine.sync(camera);
+    }
+  }
+
+  // 過去表示に必要な履歴の保持時間 [s] を要求する。履歴を持たない種別(弾・薬莢・破片)は
+  // 無視する。実際の保持時間は種別ごとの既定値との大きい方。
+  requestHistoryDuration(sec: number): void {
+    if (this.baseHistoryDuration <= 0) return;
+    this.requestedHistoryDuration = Math.max(0, Math.min(C.HISTORY_DURATION_MAX, sec));
   }
 
   // 自分の解析楕円(orbitLine)をこの予測軌道線で隠してよいかを返す。マップビューでは楕円が
