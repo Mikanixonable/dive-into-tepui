@@ -108,7 +108,7 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
   - entities.updateBaseEquatorNodes(cameraSystem.overviewMode, displayWindow, ephemeris) // 内部で !overviewMode なら即 return。マップ表示中だけ生存中の全基地の EqAN/EqDN を求め直す(選択の有無によらず常に出す)
   - sections.exit(SECTION.plan)
   - sections.enter(SECTION.camera)
-  - cameraSystem.update(player, simTime, input, dt, mapPicker.pickables, displayWindowManager.attractorsAt(simTime)) // 追従カメラの基準を積分後の自機位置に合わせるため、物理積分の後に呼ぶ。ポーズ中・決着後も呼ぶ(飛ばすと視点が絶対 ECI に取り残される)
+  - cameraSystem.update(player, displayWindow.displayTime, input, dt, mapPicker.pickables, displayWindowManager.attractorsAt(displayWindow.displayTime)) // 追従カメラの基準を積分後の自機位置に合わせるため、物理積分の後に呼ぶ。ポーズ中・決着後も呼ぶ(飛ばすと視点が絶対 ECI に取り残される)。overviewCamera の座標系変換は displayTime 基準 — simTime のままだと回転系選択時に線・メッシュだけ displayTime へ動きカメラが取り残される
     - keyYaw/keyPitch をキー入力からまとめる。keyRoll は mouse.roll += keyRoll * CAM_KEY_ROLL_RATE * dt で mouse.roll へ合成する(cameraRollLeft/Right は Numpad0/Numpad1。mouse.roll には二本指ひねりの角度も直接積算済み)
     - overviewCamera.update(mouse, keyYaw, keyPitch, dt, ..., mapPicker.pickables, attractors) // cameraSystem.overviewMode のみ。focus を mapPickables から引き直し、結果を自身の view へ書く。attractors は frameTransformAt の回転解決(登録天体/生存中の重力天体の2経路)に渡す
     - combatCamera.update() // !overviewMode のみ
@@ -316,7 +316,7 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
 - entities.updateBaseEquatorNodes(displayWindow, ephemeris) // 生存中の全基地の EqAN/EqDN(選択の有無によらず常に出す)
 - sections.exit(SECTION.plan)
 - sections.enter(SECTION.camera)
-- cameraSystem.update(player, simTime, input, dt, mapPickables.pickables, displayWindowManager.attractorsAt(simTime)) // 追従カメラの基準を積分後の自機位置に合わせるため、物理積分の後に呼ぶ。ポーズ中・決着後も呼ぶ(飛ばすと視点が絶対 ECI に取り残される)。focus の解決に使う候補列は前フレームの refresh が組んだもの
+- cameraSystem.update(player, displayWindow.displayTime, input, dt, mapPickables.pickables, displayWindowManager.attractorsAt(displayWindow.displayTime)) // 追従カメラの基準を積分後の自機位置に合わせるため、物理積分の後に呼ぶ。ポーズ中・決着後も呼ぶ(飛ばすと視点が絶対 ECI に取り残される)。overviewCamera の座標系変換は displayTime 基準 — simTime のままだと回転系選択時に線・メッシュだけ displayTime へ動きカメラが取り残される。focus の解決に使う候補列は前フレームの refresh が組んだもの
   - combatCamera.toggleFollowAttitude() // K.followAttitudeToggle。カメラ自身の状態なのでここで消費する
   - keyYaw/keyPitch をキー入力からまとめる。keyRoll は mouse.roll += keyRoll * CAM_KEY_ROLL_RATE * dt で mouse.roll へ合成する(cameraRollLeft/Right は Numpad0/Numpad1。mouse.roll には二本指ひねりの角度も直接積算済み)
   - overviewCamera.update(mouse, keyYaw, keyPitch, dt, ..., mapPickables.pickables, attractors) // cameraSystem.overviewMode のみ。focus を mapPickables から引き直し、結果を自身の view へ書く。attractors は frameTransformAt の回転解決(登録天体/生存中の重力天体の2経路)に渡す

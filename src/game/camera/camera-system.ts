@@ -152,9 +152,11 @@ export class CameraSystem {
   }
 
   // 入力からカメラの向き・ズームを更新する。overviewMode に応じてどちらか一方のカメラだけを駆動する。
+  // displayTime/attractors は広範囲視点の座標系変換にのみ使う — 線・メッシュと同じ表示時刻でないと
+  // 回転系選択時にカメラだけが現在時刻に取り残される。
   update(
     player: Player | null,
-    simTime: number,
+    displayTime: number,
     input: Input,
     dt: number,
     mapPickables: readonly MapPickable[],
@@ -187,7 +189,7 @@ export class CameraSystem {
     mouse.roll += keyRoll * C.CAM_KEY_ROLL_RATE * dt;
 
     if (this.overviewMode) {
-      this.overviewCamera.update(mouse, keyYaw, keyPitch, dt, simTime, mapPickables, attractors);
+      this.overviewCamera.update(mouse, keyYaw, keyPitch, dt, displayTime, mapPickables, attractors);
     }
     else {
       this.combatCamera.update(mouse, keyYaw, keyPitch, dt, player, input);
