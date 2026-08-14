@@ -195,12 +195,12 @@ export class CreativeStage extends Stage {
   ): void {
     if (!this.preview) {
       this.previewOrbitLine.sync(null, fo, camera);
-      this._markerManager.hide('creative-preview');
+      this._markerManager.fadeOut('creative-preview');
       return;
     }
     this.previewOrbitLine.sync(this.preview.elements, fo, camera, true);
     if (overviewMode && isOccluded(cameraPos, this.preview.pos, attractors)) {
-      this._markerManager.fadeOut('creative-preview');
+      this._markerManager.hide('creative-preview');
       return;
     }
     this._markerManager.setPosition(
