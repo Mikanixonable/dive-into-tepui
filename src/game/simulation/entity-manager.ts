@@ -335,11 +335,13 @@ export class EntityManager {
   syncPlayerTrajectoryLines(
     activePlayer: Player | null, displayWindow: DisplayWindow, overviewMode: boolean, ephemeris: Ephemeris,
     fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
+    visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     const { frame, simTime, duration, pastDuration } = displayWindow;
     for (const ship of this.players) {
-      ship.syncTrajectoryLine(
-        ship === activePlayer, frame, simTime, pastDuration, ephemeris, fo, camera, attractors);
+      const isActive = ship === activePlayer;
+      const show = isActive && (visibilityPolicy?.entity('player', isActive).orbit ?? true);
+      ship.syncTrajectoryLine(show, frame, simTime, pastDuration, ephemeris, fo, camera, attractors);
       ship.orbitLine.setSuppressed(ship.supersedesAnalyticEllipse(simTime, duration, overviewMode));
     }
   }

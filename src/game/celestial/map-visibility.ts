@@ -113,7 +113,7 @@ export class MapVisibilityPolicy {
     if (!category) return noVisibility();
     const icon = kind === 'player' && isActivePlayer ? true : Boolean(this.toggles[keys.icon]);
     const label = Boolean(this.toggles[keys.label]);
-    const orbit = Boolean(this.toggles[keys.orbit]) && categoryToggle;
+    const orbit = Boolean(this.toggles[keys.orbit]) && category;
     return { category, icon, label, orbit, pickable: icon || label };
   }
 
