@@ -1,10 +1,10 @@
-// 補給(ammo)の投入・取り込み・デスポーン。
+// 軌道上の弾薬補給ピックアップの投入・回収・デスポーンを担う。
 import * as THREE from 'three/webgpu';
 import { randomQuat } from '../../../physics/attitude';
 import { randSym } from '../../../physics/random';
 import { add, len, lenSq, randVec, rotateAxis, sub, v3 } from '../../../physics/vec3';
 import * as C from '../../const';
-import { Ammo } from '../../game-entity/ammo';
+import { AmmoPickup } from '../../game-entity/ammo-pickup';
 import { kinematicState, orbitAxes } from '../../../physics/kinematic-state';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../../audio/sfx';
@@ -45,7 +45,7 @@ export class Logistics {
     const hHat = orbitAxes(player.state).nrm;
     const ang = (minDist + Math.random() * (maxDist - minDist)) / len(r);
     // ずらした位置・速度と、ランダムな姿勢で補給エンティティを作る
-    const ammo = new Ammo(
+    const ammoPickup = new AmmoPickup(
       {
         state: kinematicState(
           player.state.t,
@@ -62,7 +62,7 @@ export class Logistics {
       this.markerManager,
     );
     // 投入して演出とヒントを出す
-    this.entities.addAmmo(ammo);
+    this.entities.addAmmoPickup(ammoPickup);
     this._sfx.warp();
     this._hud.hint('付近の軌道に補給が投入された — ▣ 弾薬マーカーへ接近して回収', 5000);
   }
@@ -72,16 +72,16 @@ export class Logistics {
   updateLogistics(
     simTime: number, player: Player, simSpeed: SimSpeedManager, respawnOnDespawn = false,
   ): void {
-    this.absorbNearbyAmmo(player);
+    this.absorbNearbyAmmoPickups(player);
     const canResupply = this.resupplyEnabled && simSpeed.canResupplyAmmo;
-    this.despawnFarAmmo(player, respawnOnDespawn && canResupply);
+    this.despawnFarAmmoPickups(player, respawnOnDespawn && canResupply);
 
     // 投入できない間は次回判定時刻を進めない — 再開した直後の1フレームで判定させ、
     // 停止していた長さぶんの空白を再開後に持ち越さないため。
     if (!canResupply) return;
     if (simTime < this.resupplyCheckAt) return;
     this.resupplyCheckAt = simTime + C.LOGISTICS_CHECK_INTERVAL;
-    if (player.magsLeft < C.LOGISTICS_LOW_MAGS && this.liveAmmoCount() < C.MAX_AMMO) {
+    if (player.magsLeft < C.LOGISTICS_LOW_MAGS && this.liveAmmoPickupCount() < C.MAX_ACTIVE_AMMO_PICKUPS) {
       this.spawnForPlayer(player);
     }
   }
@@ -91,18 +91,21 @@ export class Logistics {
   }
 
   // 生存中の補給の数を返す。
-  private liveAmmoCount(): number {
+  private liveAmmoPickupCount(): number {
     let count = 0;
-    for (const ammo of this.entities.ammos) if (ammo.alive) count++;
+    for (const ammoPickup of this.entities.ammoPickups) if (ammoPickup.alive) count++;
     return count;
   }
 
   // 回収半径内の生存中補給を吸収し、ベルトへ弾を追加する。
-  private absorbNearbyAmmo(player: Player): void {
-    for (const ammo of this.entities.ammos) {
-      if (!ammo.alive) continue;
-      if (lenSq(sub(ammo.state.r, player.state.r)) >= C.AMMO_PICKUP_RADIUS * C.AMMO_PICKUP_RADIUS) continue;
-      ammo.alive = false;
+  private absorbNearbyAmmoPickups(player: Player): void {
+    for (const ammoPickup of this.entities.ammoPickups) {
+      if (!ammoPickup.alive) continue;
+      if (
+        lenSq(sub(ammoPickup.state.r, player.state.r))
+        >= C.AMMO_PICKUP_RADIUS * C.AMMO_PICKUP_RADIUS
+      ) continue;
+      ammoPickup.alive = false;
       player.onPickup(C.AMMO_PICKUP_MAGS);
       this._sfx.pickup();
       this._hud.hint(`補給取り込み — ベルト +${C.AMMO_PICKUP_MAGS} 連`, 3000);
@@ -110,19 +113,19 @@ export class Logistics {
   }
 
   // デスポーン距離を超えた生存中補給を消し、respawnOnDespawn が真なら同数を再投入する。
-  private despawnFarAmmo(player: Player, respawnOnDespawn: boolean): void {
+  private despawnFarAmmoPickups(player: Player, respawnOnDespawn: boolean): void {
     let respawn = 0;
     // デスポーン距離を超えた分を消し、再投入すべき数を数える
-    for (const ammo of this.entities.ammos) {
-      if (!ammo.alive) continue;
-      if (len(sub(ammo.state.r, player.state.r)) <= C.LOGISTICS_DESPAWN_DIST) continue;
-      ammo.alive = false;
+    for (const ammoPickup of this.entities.ammoPickups) {
+      if (!ammoPickup.alive) continue;
+      if (len(sub(ammoPickup.state.r, player.state.r)) <= C.LOGISTICS_DESPAWN_DIST) continue;
+      ammoPickup.alive = false;
       if (respawnOnDespawn) respawn++;
     }
     if (!respawnOnDespawn) return;
     // 消えた分だけ新たに投入する
-    let count = this.liveAmmoCount();
-    for (let i = 0; i < respawn && count < C.MAX_AMMO; i++) {
+    let count = this.liveAmmoPickupCount();
+    for (let i = 0; i < respawn && count < C.MAX_ACTIVE_AMMO_PICKUPS; i++) {
       this.spawnForPlayer(player, C.STAGE00_LOGISTICS_MIN_DIST, C.STAGE00_LOGISTICS_MAX_DIST);
       count++;
     }

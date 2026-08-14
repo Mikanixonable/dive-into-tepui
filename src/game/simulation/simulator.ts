@@ -213,7 +213,11 @@ export class Simulator {
       for (const cs of this.entities.casings) cs.att = stepAttitude(cs.att, cs.torque, simDt);
       for (const d of this.entities.debris) d.att = stepAttitude(d.att, d.torque, simDt);
     }
-    for (const ammo of this.entities.ammos) if (ammo.alive) ammo.att = stepAttitude(ammo.att, ammo.torque, simDt);
+    for (const ammoPickup of this.entities.ammoPickups) {
+      if (ammoPickup.alive) {
+        ammoPickup.att = stepAttitude(ammoPickup.att, ammoPickup.torque, simDt);
+      }
+    }
   }
 
   private isPassiveWarpEntity(e: GameEntity): boolean {
