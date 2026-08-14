@@ -124,9 +124,9 @@ function buildSvgOverlay(root: HTMLElement): SVGSVGElement {
 }
 
 // 常設の情報パネル(VESSEL/ORBIT/TARGET/CONTACTS)を左右のドックへ組む。左右レールの
-// 収納トグルと各 PanelShell の折りたたみを、マップビューと同じ永続状態で利用する。
+// 収納トグルと各 PanelShell の折りたたみは、現在ビューの永続状態を利用する。
 function buildInfoPanels(root: HTMLElement, leftRail: HTMLElement, rightRail: HTMLElement): void {
-  const status = new PanelShell(leftRail, 'hud-status', 'Vessel');
+  const status = new PanelShell(rightRail, 'hud-status', 'Vessel');
   configureCombatPanel(status);
   status.body.innerHTML = `
     <dl class="metric-list">
@@ -155,7 +155,7 @@ function buildInfoPanels(root: HTMLElement, leftRail: HTMLElement, rightRail: HT
     <div class="status-throttle-touch" data-id="status-throttle-touch"></div>
     <div class="status-actions" data-id="status-actions" role="group" aria-label="機体の主要操作"></div>`;
 
-  const orbit = new PanelShell(rightRail, 'hud-orbit', 'Orbit', isCompactViewport());
+  const orbit = new PanelShell(leftRail, 'hud-orbit', 'Orbit', isCompactViewport());
   configureCombatPanel(orbit);
   orbit.body.innerHTML = `
     <dl class="metric-list">
