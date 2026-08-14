@@ -1,16 +1,16 @@
 # ノードの無い計画の起点をどこから出すか(残件)
 
-`Plan` の内部は `{ anchor, nodes } | null` になり、`null` ⟺ ノード0件を `Plan` 自身が保つ。
-`trackAnchor` と「凍結されていない anchor」は無くなった。ノードが1件も無いあいだの起点は
-`PlanEditor.visibleStart` が `plan.anchor ?? ship.state` として毎フレーム解決する。
+`Plan` の内部は `{ anchor, nodes } | null` で、`null` ⟺ ノード0件を `Plan` 自身が保つ。
+ノードが1件も無いあいだの起点は `Plan.anchorOr(fallback)` が借り先を受け取って解決し、
+`PlanEditor.displayedPlan` が `plan.displayData(ship.state)` として毎フレーム渡す。
 
-残っているのは、**その1行が指す先を自機の予測軌道へ差し替えるか**という判断。
+残っているのは、**その借りた起点から積分する1区間を自機の予測軌道へ差し替えるか**という判断。
 
 ---
 
 ## 1. いま「ノードの無い計画」が何をしているか
 
-`PlanEditor.visibleStart` が自機の現在状態を返し、`PlanPath` がそこから1区間だけ積分する。
+`PlanEditor.displayedPlan` が起点として自機の現在状態を渡し、`PlanPath` がそこから1区間だけ積分する。
 その区間は**描かれない**(`PlanDisplay.sync` が `path.setVisible(nodeCount > 0)`)。
 用途は3つだけ:
 
