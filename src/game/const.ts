@@ -319,7 +319,7 @@ export const OVERVIEW_CAMERA_NEAR_RATIO = 1000;
 // 天球グリッド(CELESTIAL_SHELL_RADIUS)より大きくなる(dist=1e14 で near=1e11)。
 // near クリップは光軸からの角度 θ に対して球殻上の点を R·cosθ まで切り詰めるので、
 // R そのものでなく画面対角の半視野角 θ_diag での R·cosθ_diag を上限に取らないと、
-// 画面中心だけ残して周辺・四隅の星が消える(OverviewCamera.near 参照)。
+// 画面中心だけ残して周辺・四隅の星が消える(MapCamera.near 参照)。
 // 1 未満のこの係数はその余弦にさらに掛ける安全マージン。
 export const OVERVIEW_CAMERA_NEAR_SHELL_MARGIN = 0.9;
 // 広範囲視点の far も near と同様に固定値ではなく dist に連動させる
