@@ -24,7 +24,7 @@ export class ViewBadge {
   private readonly menu: ContextMenu<true, ViewId>;
 
   // バッジの DOM を root へ、遷移メニューを popupLayer へ組み立てて配線する。
-  constructor(
+  public constructor(
     root: HTMLElement, popupLayer: HTMLElement, private readonly viewManager: ViewManager,
     overlayManager: OverlayManager,
   ) {
@@ -32,6 +32,8 @@ export class ViewBadge {
     // タイトル・モード名・ビュー切替ボタンの3つを横に並べる。
     const badge = document.createElement('div');
     badge.id = 'hud-viewbadge';
+    badge.setAttribute('role', 'navigation');
+    badge.setAttribute('aria-label', 'ビュー切り替え');
     badge.addEventListener('pointerdown', (e) => e.stopPropagation());
 
     const title = document.createElement('span');
@@ -41,15 +43,19 @@ export class ViewBadge {
     this.modeEl.className = 'vb-mode';
     this.viewButton = new Button('', () => this.openMenu());
     this.viewButton.element.classList.add('vb-view-btn');
+    this.viewButton.element.setAttribute('aria-haspopup', 'menu');
+    this.viewButton.element.setAttribute('aria-label', '表示するビューを選ぶ');
+    this.viewButton.element.setAttribute('aria-expanded', 'false');
 
     for (const el of [title, this.modeEl, this.viewButton.element]) badge.appendChild(el);
     root.appendChild(badge);
 
     this.menu.onSelect = (view) => this.viewManager.setView(view);
+    this.menu.onClose = () => this.viewButton.element.setAttribute('aria-expanded', 'false');
   }
 
   // モード名とビューボタンの表示を反映する。
-  sync(modeLabel: string): void {
+  public sync(modeLabel: string): void {
     this.modeEl.textContent = `Mode: ${titleCase(modeLabel)}`;
     this.viewButton.setLabel(`View: ${VIEW_LABELS[this.viewManager.current]} ▾`);
   }
@@ -61,6 +67,7 @@ export class ViewBadge {
       .map((v) => ({ label: VIEW_LABELS[v], act: v }));
     if (items.length === 0) return;
     const rect = this.viewButton.element.getBoundingClientRect();
+    this.viewButton.element.setAttribute('aria-expanded', 'true');
     this.menu.open(rect.right, rect.bottom, true, items);
   }
 }
