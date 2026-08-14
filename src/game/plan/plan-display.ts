@@ -93,7 +93,10 @@ export class PlanDisplay {
     }
     const { simTime, displayTime } = displayWindow;
     this.attractors = this.ephemeris.attractorsAt(displayTime);
-    this.path.update(planData, this.ephemeris, displayWindow.frame, simTime, this.attractors, attractorProvider);
+    this.path.update(
+      planData, this.ephemeris, displayWindow.frame, simTime, this.attractors, attractorProvider,
+      displayWindow.duration,
+    );
     this.ghost = this.ghostAt(displayTime, simTime);
     this.apsisIcons = this.apsisIconsOf();
     this.impactIcons = this.impactIconsOf();
