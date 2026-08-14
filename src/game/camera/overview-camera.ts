@@ -442,40 +442,40 @@ export class OverviewCamera {
         Math.min(C.OVERVIEW_CAMERA_MAX_DIST, this.orthographicHalfHeight * zoomFactor));
     }
     upEci = norm(addScaled(upEci, offEci, -dot(upEci, offEci) / dot(offEci, offEci)));
-    // Euler モードでも、ドラッグは yaw/pitch の数値加算ではなく画面基底で回す。
-    // yaw/pitch の球面座標を直接変更すると、画面の右/上軸と一致するのはロール0付近の
-    // 特殊な場合だけで、ドラッグ方向がカメラの回転方向からずれる。rotationQ を共通の
-    // 作業値にしてから Euler 値へ戻すことで、表示上の操作軸と内部表現を分離する。
-    if (this.rotationMode === 'euler') this.rotationQ = this.rotationFromEuler(this.euler);
+    const yaw = mouse.dx * 0.005 - keyYaw * C.CAM_KEY_YAW_RATE * dt;
+    const pitch = mouse.dy * 0.005 + keyPitch * C.CAM_KEY_PITCH_RATE * dt;
+    if (this.rotationMode === 'quaternion') {
+      // rotationQ の +Z は注視点からカメラへ向く軸。ドラッグの回転軸は、戦闘ビューと
+      // 同じくドラッグ方向とこの視線軸の外積にする。cameraForward(-offFrame)を使うと
+      // 左右ドラッグの回転符号が反転する。
+      const keyYawAngle = -keyYaw * C.CAM_KEY_YAW_RATE * dt;
+      const keyPitchAngle = keyPitch * C.CAM_KEY_PITCH_RATE * dt;
+      if (keyYawAngle !== 0) {
+        this.rotationQ = qNormalize(qMul(qFromAxisAngle(upFrame, keyYawAngle), this.rotationQ));
+      }
+      offFrame = qRotate(this.rotationQ, FRAME_FORWARD);
+      upFrame = qRotate(this.rotationQ, FRAME_UP);
+      if (keyPitchAngle !== 0) {
+        const right = norm(cross(norm(offFrame), upFrame));
+        this.rotationQ = qNormalize(qMul(qFromAxisAngle(right, keyPitchAngle), this.rotationQ));
+      }
 
-    const keyYawAngle = -keyYaw * C.CAM_KEY_YAW_RATE * dt;
-    const keyPitchAngle = keyPitch * C.CAM_KEY_PITCH_RATE * dt;
-    if (keyYawAngle !== 0) {
-      this.rotationQ = qNormalize(qMul(qFromAxisAngle(upFrame, keyYawAngle), this.rotationQ));
-    }
-    offFrame = qRotate(this.rotationQ, FRAME_FORWARD);
-    upFrame = qRotate(this.rotationQ, FRAME_UP);
-    if (keyPitchAngle !== 0) {
-      const right = norm(cross(norm(offFrame), upFrame));
-      this.rotationQ = qNormalize(qMul(qFromAxisAngle(right, keyPitchAngle), this.rotationQ));
-    }
+      offFrame = qRotate(this.rotationQ, FRAME_FORWARD);
+      upFrame = qRotate(this.rotationQ, FRAME_UP);
+      const screenRight = norm(cross(scale(offFrame, -1), upFrame));
+      const dragVec = addScaled(scale(screenRight, mouse.dx), upFrame, mouse.dy);
+      const dragLen = Math.hypot(dragVec.x, dragVec.y, dragVec.z);
+      if (dragLen > 1e-9) {
+        const axis = norm(cross(dragVec, offFrame));
+        this.rotationQ = qNormalize(qMul(qFromAxisAngle(axis, dragLen * 0.005), this.rotationQ));
+      }
 
-    offFrame = qRotate(this.rotationQ, FRAME_FORWARD);
-    upFrame = qRotate(this.rotationQ, FRAME_UP);
-    const cameraForward = scale(offFrame, -1);
-    const screenRight = norm(cross(cameraForward, upFrame));
-    const dragVec = addScaled(scale(screenRight, mouse.dx), upFrame, mouse.dy);
-    const dragLen = Math.hypot(dragVec.x, dragVec.y, dragVec.z);
-    if (dragLen > 1e-9) {
-      const axis = norm(cross(dragVec, cameraForward));
-      this.rotationQ = qNormalize(qMul(qFromAxisAngle(axis, dragLen * 0.005), this.rotationQ));
-    }
-
-    offFrame = qRotate(this.rotationQ, FRAME_FORWARD);
-    if (mouse.roll !== 0) this.rotationQ = qNormalize(qMul(qFromAxisAngle(offFrame, mouse.roll), this.rotationQ));
-
-    if (this.rotationMode === 'euler') {
-      this.euler = this.eulerFromRotation(this.rotationQ);
+      offFrame = qRotate(this.rotationQ, FRAME_FORWARD);
+      if (mouse.roll !== 0) this.rotationQ = qNormalize(qMul(qFromAxisAngle(offFrame, mouse.roll), this.rotationQ));
+    } else {
+      this.euler.yaw += yaw;
+      this.euler.pitch = Math.max(-EULER_PITCH_LIMIT, Math.min(EULER_PITCH_LIMIT, this.euler.pitch + pitch));
+      this.euler.roll += mouse.roll;
       this.rotationQ = this.rotationFromEuler(this.euler);
     }
     offFrame = qRotate(this.rotationQ, FRAME_FORWARD);
