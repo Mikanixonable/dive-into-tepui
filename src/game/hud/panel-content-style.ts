@@ -1,5 +1,5 @@
 // 個々のパネルの中身の CSS: SHIP STATUS/ORBIT/TARGET/CONTACTS の行、軌道オブジェクト一覧、
-// 軌道計画、表示設定、表示時刻、座標系、艦艇配置、ナビボール、ステージステータス、
+// 軌道計画、表示設定、表示時刻、カメラ・軌道、艦艇配置、ナビボール、ステージステータス、
 // 設定・ヘルプ・終了画面。骨格(層・レール・シェルフ・バッジ)は skeleton-style.ts が持つ。
 import * as C from '../const';
 import { MQ_COARSE, MQ_COARSE_SHORT, MQ_COMPACT, MQ_MEDIUM_DOWN, MQ_SHORT } from './breakpoints';
@@ -65,7 +65,7 @@ body.touch-ui-active #hud-status .status-throttle-touch { display: flex; }
 #hud-plan { min-width: 0; width: 100%; max-width: 300px; overflow-wrap: anywhere; }
 #hud .w-group { margin-bottom: var(--space-3); }
 #hud .w-toggle { margin-bottom: var(--space-3); }
-/* body-class-row: カテゴリー見出し + アイコン/ラベル/軌道線トグルの1行(MAP VIEW・表示パネル)。
+/* body-class-row: カテゴリー見出し + アイコン/ラベル/軌道線トグルの1行(太陽系・表示パネル)。
    見出しは幅を固定して縦に揃え、長い名前(ラグランジュ点など)は省略する。 */
 #hud .body-class-row { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); }
 #hud .body-class-row .body-class-title {
@@ -78,7 +78,7 @@ body.touch-ui-active #hud-status .status-throttle-touch { display: flex; }
 #hud span.body-class-icon-btn { min-width: 20px; padding: var(--space-2) var(--space-3); text-align: center; font-size: var(--font-m); }
 #hud .body-class-row.category-off .body-class-icon-btn.on { border-color: var(--edge); color: var(--text-dim); font-weight: 700; opacity: .65; }
 #hud .body-class-row.category-off .body-class-icon-btn.disabled { opacity: .35; }
-/* MAP VIEW の左列は navball ウィンドウの右に置き、重なりを避ける。 */
+/* 太陽系パネルの左列は navball ウィンドウの右に置き、重なりを避ける。 */
 #hud-view-options { width: 100%; pointer-events: auto; }
 #hud-view-options .view-options-title { display: flex; align-items: center; gap: var(--space-2); }
 #hud-view-options .view-options-collapse { margin-left: auto; background: none; border: none; color: var(--text-dim); font: inherit; cursor: pointer; pointer-events: auto; }
@@ -143,14 +143,14 @@ body.touch-ui-active #hud-status .status-throttle-touch { display: flex; }
   position: absolute;
   font-size: var(--font-xxs); color: var(--text-dim); white-space: nowrap;
 }
-#hud-frame-controls { width: 100%; pointer-events: auto; }
-#hud-frame-controls .hud-frame-scroll-zone {
+#hud .hud-frame-controls { width: 100%; pointer-events: auto; }
+#hud .hud-frame-controls .hud-frame-scroll-zone {
   max-height: min(240px, 30vh); max-height: min(240px, 30dvh); overflow-y: auto;
   scrollbar-width: thin;
 }
 /* 座標系の候補が増えても、見出しの右側へボタンを押し出さない。 */
-#hud-frame-controls .hud-frame-origin-zone > .w-group:first-child > .w-group-title,
-#hud-frame-controls .hud-frame-rotation-zone > .w-group-title {
+#hud .hud-frame-controls .hud-frame-origin-zone > .w-group:first-child > .w-group-title,
+#hud .hud-frame-controls .hud-frame-rotation-zone > .w-group-title {
   flex: 0 0 100%; min-width: 0;
 }
 #hud-creative-options { width: 100%; pointer-events: auto; }
