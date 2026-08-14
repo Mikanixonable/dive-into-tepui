@@ -112,6 +112,7 @@ export class PlanEditor {
 
     this.panel = new PlanPanel(this._hud.layers.panel);
     this.panel.onDvInputChange = (pro, nrm, rad) => this.setNodeDvLocal(pro, nrm, rad);
+    this.panel.onPositionInputChange = (secondsFromNow) => this.setSelectedNodeTime(secondsFromNow);
 
     this.orbitMenu.onSelect = (act, state) => {
       if (act !== 'warp') return;
@@ -343,6 +344,42 @@ export class PlanEditor {
         idx, this.rebuildDraggedNode(picked.state, picked.arcIdx, idx, arriving) ?? picked.state,
       );
     }
+  }
+
+  // 選択中ノードを、現在時刻から指定した秒数後の計画軌道サンプルへ移動する。位置を
+  // 時刻として指定することで、J2・大気抵抗・第三天体摂動を含む数値積分結果とノードの
+  // 位置を一致させる。Δv はドラッグ移動と同じく到着軌道のローカル成分を維持する。
+  private setSelectedNodeTime(secondsFromNow: number): void {
+    const ship = this.ship;
+    const plan = this.plan;
+    const idx = this.selectedNodeIdx;
+    if (!ship || !plan || idx === null || !isFinite(secondsFromNow)) return;
+
+    const node = plan.nodes[idx];
+    if (!node) return;
+    const hasDownstreamNodes = idx < plan.nodes.length - 1;
+    const targetT = this.simTime + secondsFromNow;
+    const range = plan.nodeTimeRange(idx, ship.state, this.ephemeris, this.displayDuration);
+    const epsilon = 1e-6;
+    if (targetT < range.min - epsilon || targetT > range.max + epsilon) {
+      this._hud.hint('ノード位置は許可された軌道区間内で指定してください');
+      return;
+    }
+    if (Math.abs(targetT - node.t) <= epsilon) return;
+
+    const picked = this.planDisplay.path.sampleAtWithArc(targetT);
+    if (!picked) {
+      this._hud.hint('この時刻の計画軌道が求まりません');
+      return;
+    }
+
+    const arriving = this.planDisplay.path.arrivalStates();
+    const rebuilt = this.rebuildDraggedNode(picked.state, picked.arcIdx, idx, arriving);
+    const replacement = plan.replaceNode(idx, rebuilt ?? picked.state);
+    if (!replacement) return;
+    this.selectedNode = replacement;
+    this._sfx.warp();
+    if (hasDownstreamNodes) this._hud.hint('ノード位置を変更しました。後続ノードを再設定してください');
   }
 
   // ドラッグで時刻を動かしても、ノードのΔv(機体座標系の加減速)は維持する。
@@ -620,6 +657,7 @@ export class PlanEditor {
     // 選択中ノードの Δv と噴射後軌道要素を求める
     let selEl: OrbitalElements | null = null;
     let localDv: Vec3 | null = null;
+    let nodeSecondsFromNow: number | null = null;
     // 高度・大気圏警告の基準は、選択中ノード(無ければ計画の起点)で最も強く引く天体。
     const centerState = (this.selectedNodeIdx !== null ? plan.nodes[this.selectedNodeIdx] : null) ?? plan.anchorOr(ship.state);
     const center = strongestAttractor(centerState.r, this.ephemeris.attractorsAt(centerState.t));
@@ -627,6 +665,7 @@ export class PlanEditor {
       const node = plan.nodes[this.selectedNodeIdx];
       const arr = arriving[this.selectedNodeIdx];
       if (node && arr) {
+        nodeSecondsFromNow = node.t - simTime;
         const bodyNode = this.relativeToBody(node, center);
         const bodyArr = this.relativeToBody(arr, center);
         selEl = orbitalElementsOf(node, center);
@@ -641,7 +680,9 @@ export class PlanEditor {
     // 簡略化に基づく(CLAUDE.md 既述)ので、ECI 原点(ephemeris.originId)ではなく
     // 地球という天体そのものへの一致で判定する — レジストリに地球が無ければ常に false になり、
     // クラッシュも誤警告もしない。
-    this.panel.sync(nodes, selEl, localDv, center.id === 'earth', this.selectedNodeIdx !== null);
+    this.panel.sync(
+      nodes, selEl, localDv, nodeSecondsFromNow, center.id === 'earth', this.selectedNodeIdx !== null,
+    );
   }
 
   // 計画パネルを非表示にする。
