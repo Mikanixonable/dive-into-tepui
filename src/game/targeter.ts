@@ -21,6 +21,7 @@ import type { Ephemeris } from '../physics/ephemeris';
 import type { DisplayWindow } from './display-window-manager';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import type { MapVisibilityPolicy } from './celestial/map-visibility';
+import { mapPlanetFadeOpacity, nearestPlanetDistance } from './celestial/planet-distance';
 
 export type CombatTarget = Enemy | Player;
 
@@ -178,6 +179,7 @@ export class Targeter {
   syncTargetMarkers(
     player: Player | null, targets: readonly CombatTarget[], displayTime: number, simTime: number,
     cameraSystem: CameraSystem, visibilityPolicy: MapVisibilityPolicy | null,
+    registry: Ephemeris['registry'], attractors: readonly Attractor[],
   ): void {
     const overviewMode = cameraSystem.overviewMode;
     const project = cameraSystem.activeCameraProjection;
@@ -200,7 +202,15 @@ export class Targeter {
         sym: visibility.icon ? item.sym : '',
         name: visibility.label ? item.name : '',
         detail: visibility.label ? item.detail : '',
-      } : item);
+        opacity: tgt instanceof Enemy && overviewMode
+          ? mapPlanetFadeOpacity(nearestPlanetDistance(ds.r, registry, attractors))
+          : 1,
+      } : {
+        ...item,
+        opacity: tgt instanceof Enemy && overviewMode
+          ? mapPlanetFadeOpacity(nearestPlanetDistance(ds.r, registry, attractors))
+          : 1,
+      });
     }
     this.markerManager.combatMarkers.sync(this.markerItemScratch, project, overviewMode, screenScale);
     if (player) {

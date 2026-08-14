@@ -1,0 +1,2495 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Dive into Tepui UI design system, typography, logotype, surfaces, and symbols — version 3">
+  <title>Dive into Tepui — UI Design System Reference V3</title>
+  <!--
+    Review-only font loading. All selected families use SIL OFL 1.1.
+    Production must self-host WOFF2 files and include each OFL text.
+  -->
+  <style>
+    @import url("https://fonts.googleapis.com/css2?family=Arimo:ital,wght@0,400;0,600;0,700;1,400&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=Zen+Kaku+Gothic+Antique:wght@400;500;700&family=Zen+Old+Mincho:wght@400;500;600&display=swap");
+
+    :root {
+      color-scheme: dark;
+
+      --font-ui: "Arimo", "Zen Kaku Gothic Antique", sans-serif;
+      --font-editorial: "Cormorant Garamond", "Zen Old Mincho", serif;
+      --font-console: "IBM Plex Mono", "Zen Kaku Gothic Antique", monospace;
+
+      --bg: #08090c;
+      --bg-deep: #030407;
+      --surface-solid: rgba(13, 15, 18, 0.94);
+      --surface-glass: rgba(13, 15, 18, 0.56);
+      --surface-frost: rgba(24, 25, 29, 0.74);
+      --surface-soft: rgba(238, 235, 248, 0.055);
+      --surface-raised: rgba(238, 235, 248, 0.09);
+      --edge: rgba(238, 235, 248, 0.22);
+      --edge-soft: rgba(238, 235, 248, 0.11);
+      --edge-glass: rgba(255, 255, 255, 0.28);
+
+      --title: #eeeaf5;
+      --body: #c3bec9;
+      --aux: #918b97;
+      --faint: #625d68;
+      --strong: #ffffff;
+      --accent: #ff6a00;
+      --accent-soft: #ff9a5b;
+      --accent-fill: rgba(255, 106, 0, 0.14);
+      --danger: #ff4f5e;
+      --axis-prograde: #3b82f6;
+      --axis-normal: #10b981;
+      --axis-radial: #ef4444;
+
+      --radius-xs: 4px;
+      --radius-s: 8px;
+      --radius-m: 12px;
+      --radius-l: 18px;
+      --radius-xl: 28px;
+      --radius-pill: 999px;
+
+      --blur-s: 12px;
+      --blur-m: 18px;
+      --blur-l: 28px;
+
+      --space-1: 0.25rem;
+      --space-2: 0.5rem;
+      --space-3: 0.75rem;
+      --space-4: 1rem;
+      --space-5: 1.5rem;
+      --space-6: 2rem;
+      --space-7: 3rem;
+      --space-8: 5rem;
+      --space-9: 8rem;
+
+      --type-display-xl: clamp(3.2rem, 9vw, 8.5rem);
+      --type-display-l: clamp(2.2rem, 5vw, 5rem);
+      --type-subtitle: clamp(1.35rem, 2.6vw, 2.4rem);
+      --type-window: 0.9375rem;
+      --type-body: 1rem;
+      --type-hud: 0.875rem;
+      --type-aux: 0.8125rem;
+      --type-label: 0.75rem;
+      --type-micro: 0.6875rem;
+      --type-console: 0.8125rem;
+
+      --motion-control: 150ms;
+      --motion-overlay: 280ms;
+      --motion-layout: 420ms;
+
+      --page-width: 92rem;
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      background: var(--bg-deep);
+    }
+
+    body {
+      min-width: 20rem;
+      margin: 0;
+      background:
+        radial-gradient(circle at 12% 8%, rgba(62, 69, 93, 0.18), transparent 30rem),
+        linear-gradient(180deg, var(--bg-deep), var(--bg) 38rem);
+      color: var(--body);
+      font-family: var(--font-ui);
+      font-size: var(--type-body);
+      font-synthesis: none;
+      line-height: 1.55;
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    button,
+    a {
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    a {
+      color: inherit;
+    }
+
+    button:focus-visible,
+    input:focus-visible,
+    a:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    code,
+    pre {
+      font-family: var(--font-console);
+    }
+
+    .svg-defs {
+      position: absolute;
+      width: 0;
+      height: 0;
+      overflow: hidden;
+    }
+
+    .page-shell {
+      width: min(100%, var(--page-width));
+      margin-inline: auto;
+      padding-inline: clamp(1rem, 3vw, 3rem);
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      border-bottom: 1px solid var(--edge-soft);
+      background: rgba(5, 6, 9, 0.62);
+      backdrop-filter: blur(var(--blur-m));
+    }
+
+    .topbar-inner {
+      min-height: 3.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-5);
+    }
+
+    .brand-mini {
+      color: var(--title);
+      font-size: var(--type-label);
+      font-weight: 700;
+      letter-spacing: 0.13em;
+      text-decoration: none;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .brand-mini span {
+      color: var(--accent);
+    }
+
+    .topnav {
+      display: flex;
+      gap: clamp(0.75rem, 2vw, 1.5rem);
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .topnav::-webkit-scrollbar {
+      display: none;
+    }
+
+    .topnav a {
+      color: var(--aux);
+      font-size: var(--type-micro);
+      font-weight: 600;
+      letter-spacing: 0.09em;
+      text-decoration: none;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .topnav a:hover {
+      color: var(--title);
+    }
+
+    .hero {
+      padding-block: clamp(2rem, 5vw, 5rem) clamp(5rem, 10vw, 10rem);
+    }
+
+    .hero-stage {
+      position: relative;
+      min-height: min(49rem, calc(100vh - 7rem));
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(19rem, 0.6fr);
+      align-items: end;
+      gap: clamp(2rem, 5vw, 6rem);
+      isolation: isolate;
+      overflow: hidden;
+      border: 1px solid var(--edge-soft);
+      border-radius: var(--radius-xl);
+      background:
+        radial-gradient(circle at 22% 32%, rgba(255, 255, 255, 0.95) 0 7%, transparent 7.3%),
+        radial-gradient(circle at 26% 35%, rgba(176, 181, 201, 0.44) 0 18%, transparent 30%),
+        radial-gradient(circle at 75% 32%, rgba(255, 106, 0, 0.28), transparent 22%),
+        linear-gradient(118deg, #e5e3e8 0 38%, #535865 38% 56%, #08090d 56% 100%);
+      padding: clamp(1.5rem, 4vw, 4rem);
+    }
+
+    .hero-stage::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      opacity: 0.4;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.13) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.13) 1px, transparent 1px);
+      background-size: 4rem 4rem;
+      mask-image: linear-gradient(to bottom, transparent, #000 28%, #000);
+    }
+
+    .hero-stage::after {
+      content: "";
+      position: absolute;
+      width: 42rem;
+      height: 42rem;
+      right: -18rem;
+      top: -20rem;
+      z-index: -1;
+      border: 1px solid rgba(255, 255, 255, 0.28);
+      border-radius: 50%;
+      box-shadow:
+        0 0 0 5rem rgba(255, 255, 255, 0.025),
+        0 0 0 11rem rgba(255, 255, 255, 0.018);
+    }
+
+    .adaptive-lockup {
+      color: #fff;
+      mix-blend-mode: difference;
+    }
+
+    .hero-kicker {
+      margin: 0 0 0.15em 0.08em;
+      font-size: clamp(0.76rem, 1.2vw, 0.95rem);
+      font-weight: 600;
+      letter-spacing: 0.17em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    .hero-title {
+      margin: 0;
+      font-size: var(--type-display-xl);
+      font-weight: 400;
+      letter-spacing: -0.055em;
+      line-height: 0.8;
+      text-transform: uppercase;
+    }
+
+    .hero-subtitle {
+      margin: var(--space-5) 0 0;
+      font-family: var(--font-editorial);
+      font-size: var(--type-subtitle);
+      font-style: italic;
+      font-weight: 300;
+      line-height: 1;
+    }
+
+    .hero-note {
+      max-width: 43rem;
+      margin: var(--space-6) 0 0;
+      font-size: var(--type-aux);
+      line-height: 1.7;
+    }
+
+    .glass-card {
+      border: 1px solid var(--edge-glass);
+      border-radius: var(--radius-l);
+      background: var(--surface-glass);
+      box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.2);
+      backdrop-filter: blur(var(--blur-m)) saturate(110%);
+    }
+
+    .hero-manifest {
+      color: var(--body);
+      padding: var(--space-5);
+    }
+
+    .manifest-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-4);
+      padding-bottom: var(--space-4);
+      border-bottom: 1px solid var(--edge-soft);
+    }
+
+    .eyebrow,
+    .section-index,
+    .spec-label {
+      margin: 0;
+      color: var(--aux);
+      font-family: var(--font-console);
+      font-size: var(--type-micro);
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .status-chip {
+      border: 1px solid var(--accent);
+      border-radius: var(--radius-pill);
+      color: var(--accent);
+      font-family: var(--font-console);
+      font-size: var(--type-micro);
+      padding: 0.3rem 0.55rem;
+      text-transform: uppercase;
+    }
+
+    .manifest-list {
+      display: grid;
+      gap: var(--space-3);
+      margin: var(--space-4) 0 0;
+    }
+
+    .manifest-row {
+      display: grid;
+      grid-template-columns: 5.5rem minmax(0, 1fr);
+      gap: var(--space-3);
+      align-items: baseline;
+    }
+
+    .manifest-row dt {
+      color: var(--aux);
+      font-family: var(--font-console);
+      font-size: var(--type-micro);
+      text-transform: uppercase;
+    }
+
+    .manifest-row dd {
+      margin: 0;
+      color: var(--title);
+      font-size: var(--type-aux);
+    }
+
+    .section {
+      padding-block: clamp(5rem, 9vw, 9rem);
+      border-top: 1px solid var(--edge-soft);
+    }
+
+    .section-heading {
+      display: grid;
+      grid-template-columns: minmax(14rem, 0.46fr) minmax(0, 1fr);
+      gap: clamp(2rem, 6vw, 7rem);
+      align-items: end;
+      margin-bottom: clamp(2.5rem, 5vw, 5rem);
+    }
+
+    .section-index {
+      margin-bottom: var(--space-2);
+      color: var(--accent);
+    }
+
+    .section-title {
+      margin: 0;
+      color: var(--title);
+      font-size: var(--type-display-l);
+      font-weight: 400;
+      letter-spacing: -0.045em;
+      line-height: 0.95;
+    }
+
+    .section-summary {
+      max-width: 53rem;
+      margin: 0;
+      color: var(--aux);
+      font-size: 0.95rem;
+      line-height: 1.85;
+    }
+
+    .grid-2,
+    .grid-3,
+    .grid-4,
+    .grid-6 {
+      display: grid;
+      gap: var(--space-4);
+    }
+
+    .grid-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .grid-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .grid-4 {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .grid-6 {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    .study-card,
+    .type-card,
+    .pattern-card,
+    .state-card {
+      border: 1px solid var(--edge-soft);
+      border-radius: var(--radius-l);
+      background: var(--surface-soft);
+      overflow: hidden;
+    }
+
+    .study-visual {
+      position: relative;
+      min-height: 15rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      border-bottom: 1px solid var(--edge-soft);
+      color: #fff;
+    }
+
+    .study-visual::before,
+    .study-visual::after {
+      content: "";
+      position: absolute;
+      border-radius: 50%;
+    }
+
+    .study-lusion {
+      background:
+        radial-gradient(circle at 25% 70%, #162cff 0 12%, transparent 13%),
+        radial-gradient(circle at 70% 25%, #f4f4f6 0 14%, transparent 15%),
+        linear-gradient(135deg, #11131a, #2c303b);
+    }
+
+    .study-lusion::before {
+      width: 13rem;
+      height: 4rem;
+      left: -2rem;
+      top: 2rem;
+      border-radius: var(--radius-pill);
+      background: #142cff;
+      transform: rotate(18deg);
+    }
+
+    .study-lusion::after {
+      width: 10rem;
+      height: 10rem;
+      right: -3rem;
+      bottom: -3rem;
+      background: #111;
+      box-shadow: inset 1rem 1rem 2rem rgba(255, 255, 255, 0.14);
+    }
+
+    .study-nk {
+      background:
+        radial-gradient(ellipse at 50% 100%, rgba(0, 255, 194, 0.26), transparent 58%),
+        linear-gradient(155deg, #041819, #070b0a 62%);
+    }
+
+    .study-nk::before {
+      width: 1.2rem;
+      height: 11rem;
+      background: #00ffc2;
+      border-radius: 0.2rem;
+      box-shadow: 0 0 3rem rgba(0, 255, 194, 0.62);
+      transform: rotate(17deg);
+    }
+
+    .study-nk::after {
+      width: 18rem;
+      height: 5rem;
+      bottom: -3rem;
+      border: 1px solid rgba(0, 255, 194, 0.35);
+      filter: blur(3px);
+      transform: perspective(12rem) rotateX(65deg);
+    }
+
+    .study-locomotive {
+      background: linear-gradient(125deg, #f2f2f2 0 36%, #777 36% 68%, #141414 68%);
+    }
+
+    .study-locomotive::before {
+      width: 12rem;
+      height: 4.2rem;
+      background: #da382e;
+      border-radius: var(--radius-pill);
+      box-shadow: 4.5rem 2.2rem 0 #da382e, -4rem 3.8rem 0 #da382e;
+      transform: rotate(-12deg);
+    }
+
+    .study-locomotive::after {
+      inset: 0;
+      border-radius: 0;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.12) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.12) 1px, transparent 1px);
+      background-size: 3.5rem 3.5rem;
+    }
+
+    .study-wordmark {
+      position: relative;
+      z-index: 2;
+      font-size: clamp(2rem, 4vw, 4rem);
+      font-weight: 400;
+      letter-spacing: -0.045em;
+      mix-blend-mode: difference;
+    }
+
+    .study-copy {
+      padding: var(--space-5);
+    }
+
+    .study-name {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: var(--space-3);
+      margin: 0 0 var(--space-4);
+      color: var(--title);
+      font-size: 1.3rem;
+      font-weight: 600;
+    }
+
+    .study-name a {
+      color: var(--aux);
+      font-family: var(--font-console);
+      font-size: var(--type-micro);
+      font-weight: 400;
+    }
+
+    .study-list {
+      margin: 0;
+      padding-left: 1.2rem;
+      color: var(--aux);
+      font-size: var(--type-aux);
+      line-height: 1.75;
+    }
+
+    .translation-strip {
+      margin-top: var(--space-5);
+      border: 1px solid var(--edge);
+      border-radius: var(--radius-l);
+      background: var(--surface-solid);
+      padding: var(--space-5);
+    }
+
+    .translation-flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: var(--space-3);
+      margin-top: var(--space-4);
+    }
+
+    .translation-step {
+      min-height: 7.5rem;
+      border-left: 2px solid var(--edge);
+      padding: var(--space-3) var(--space-4);
+    }
+
+    .translation-step.is-accent {
+      border-left-color: var(--accent);
+    }
+
+    .translation-title {
+      color: var(--title);
+      font-size: var(--type-hud);
+      font-weight: 600;
+    }
+
+    .translation-copy {
+      margin: var(--space-2) 0 0;
+      color: var(--aux);
+      font-size: var(--type-aux);
+    }
+
+    .type-card {
+      padding: var(--space-5);
+    }
+
+    .type-card .spec-label {
+      margin-bottom: var(--space-5);
+    }
+
+    .type-body {
+      color: var(--body);
+      font-size: var(--type-body);
+      line-height: 1.7;
+    }
+
+    .type-auxiliary {
+      color: var(--aux);
+      font-size: var(--type-aux);
+      line-height: 1.55;
+    }
+
+    .type-strong {
+      color: var(--title);
+      font-size: 1.2rem;
+      font-weight: 600;
+      line-height: 1.45;
+    }
+
+    .type-editorial {
+      color: var(--body);
+      font-family: var(--font-editorial);
+      font-size: 1.8rem;
+      font-style: italic;
+      font-weight: 300;
+      line-height: 1.1;
+    }
+
+    .type-editorial-ja {
+      color: var(--body);
+      font-family: var(--font-editorial);
+      font-size: 1.15rem;
+      font-style: normal;
+      font-weight: 400;
+      line-height: 1.7;
+    }
+
+    .type-provisional {
+      color: var(--aux);
+      font-style: italic;
+    }
+
+    .type-console {
+      color: var(--body);
+      font-family: var(--font-console);
+      font-size: var(--type-console);
+      line-height: 1.7;
+    }
+
+    .type-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: var(--space-3);
+      margin-top: var(--space-5);
+      padding-top: var(--space-3);
+      border-top: 1px solid var(--edge-soft);
+      color: var(--faint);
+      font-family: var(--font-console);
+      font-size: var(--type-micro);
+    }
+
+    .contrast-stage {
+      position: relative;
+      min-height: 36rem;
+      display: grid;
+      align-items: center;
+      isolation: isolate;
+      overflow: hidden;
+      border: 1px solid var(--edge-soft);
+      border-radius: var(--radius-xl);
+      background:
+        radial-gradient(circle at 73% 34%, rgba(255, 106, 0, 0.68), transparent 11rem),
+        linear-gradient(90deg, #f4f1ed 0 34%, #77737b 34% 57%, #07080b 57% 100%);
+    }
+
+    .contrast-stage::before {
+      content: "";
+      position: absolute;
+      width: 28rem;
+      height: 28rem;
+      left: 20%;
+      border: 1px solid rgba(255, 255, 255, 0.44);
+      border-radius: 50%;
+      box-shadow: 0 0 0 6rem rgba(0, 0, 0, 0.04);
+    }
+
+    .contrast-lockup {
+      position: relative;
+      z-index: 1;
+      padding: clamp(1.5rem, 5vw, 5rem);
+      color: #fff;
+      mix-blend-mode: difference;
+    }
+
+    .contrast-title {
+      margin: 0;
+      font-size: clamp(3.4rem, 10vw, 9rem);
+      font-weight: 400;
+      letter-spacing: -0.06em;
+      line-height: 0.8;
+    }
+
+    .contrast-subtitle {
+      margin: var(--space-5) 0 0;
+      font-family: var(--font-editorial);
+      font-size: var(--type-subtitle);
+      font-style: italic;
+      font-weight: 300;
+    }
+
+    .contrast-notes {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--space-3);
+      margin-top: var(--space-4);
+    }
+
+    .contrast-note {
+      border-top: 1px solid var(--edge);
+      padding-top: var(--space-3);
+      color: var(--aux);
+      font-size: var(--type-aux);
+    }
+
+    .fixed-lockups {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--space-4);
+      margin-top: var(--space-4);
+    }
+
+    .fixed-lockup {
+      min-height: 18rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      border: 1px solid var(--edge);
+      border-radius: var(--radius-l);
+      background: var(--bg);
+      padding: clamp(1.5rem, 4vw, 3rem);
+    }
+
+    .fixed-lockup.light {
+      border-color: rgba(23, 20, 27, 0.2);
+      background: #f3f0ed;
+    }
+
+    .fixed-title {
+      margin: 0;
+      color: var(--title);
+      font-size: clamp(3rem, 7vw, 6rem);
+      font-weight: 400;
+      letter-spacing: -0.05em;
+      line-height: 0.85;
+    }
+
+    .fixed-lockup.light .fixed-title {
+      color: #17141b;
+    }
+
+    .fixed-subtitle {
+      margin: var(--space-4) 0 0;
+      color: var(--body);
+      font-family: var(--font-editorial);
+      font-size: var(--type-subtitle);
+      font-style: italic;
+      font-weight: 300;
+      line-height: 1.05;
+    }
+
+    .fixed-lockup.light .fixed-subtitle {
+      color: #514c56;
+    }
+
+    .fixed-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: var(--space-3);
+      border-top: 1px solid var(--edge-soft);
+      padding-top: var(--space-3);
+      color: var(--aux);
+      font-family: var(--font-console);
+      font-size: var(--type-micro);
+      text-transform: uppercase;
+    }
+
+    .fixed-lockup.light .fixed-meta {
+      border-top-color: rgba(23, 20, 27, 0.14);
+      color: #6f6873;
+    }
+
+    .fixed-lockup.light .spec-label {
+      color: #6f6873;
+    }
+
+    .surface-scene {
+      position: relative;
+      min-height: 48rem;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      align-items: center;
+      gap: var(--space-4);
+      overflow: hidden;
+      border: 1px solid var(--edge-soft);
+      border-radius: var(--radius-xl);
+      background:
+        radial-gradient(circle at 16% 30%, rgba(72, 92, 157, 0.55), transparent 13rem),
+        radial-gradient(circle at 75% 68%, rgba(255, 106, 0, 0.25), transparent 16rem),
+        linear-gradient(145deg, #151927, #06070a 66%);
+      padding: clamp(1rem, 3vw, 3rem);
+    }
+
+    .surface-scene::before {
+      content: "";
+      position: absolute;
+      width: 46rem;
+      height: 46rem;
+      left: 50%;
+      top: 50%;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 50%;
+      box-shadow:
+        0 0 0 6rem rgba(255, 255, 255, 0.02),
+        0 0 0 13rem rgba(255, 255, 255, 0.015);
+      transform: translate(-50%, -50%) rotateX(68deg);
+    }
+
+    .surface-window {
+      position: relative;
+      z-index: 2;
+      min-height: 26rem;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid var(--edge);
+      border-radius: var(--radius-l);
+    }
+
+    .surface-window.solid {
+      background: var(--surface-solid);
+    }
+
+    .surface-window.glass {
+      border-color: var(--edge-glass);
+      background: var(--surface-glass);
+      box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.22);
+      backdrop-filter: blur(var(--blur-m)) saturate(110%);
+    }
+
+    .surface-window.frosted {
+      border-color: var(--edge-glass);
+      background: var(--surface-frost);
+      box-shadow: 0 2rem 5rem rgba(0, 0, 0, 0.28);
+      backdrop-filter: blur(var(--blur-l)) saturate(108%);
+    }
+
+    .window-header {
+      min-height: 3.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-4);
+      border-bottom: 1px solid var(--edge-soft);
+      padding: var(--space-3) var(--space-4);
+    }
+
+    .window-heading {
+      min-width: 0;
+    }
+
+    .window-title {
+      color: var(--title);
+      font-size: var(--type-window);
+      font-weight: 600;
+      line-height: 1.2;
+    }
+
+    .window-subtitle {
+      margin-top: 0.15rem;
+      color: var(--aux);
+      font-size: var(--type-micro);
+      line-height: 1.25;
+    }
+
+    .window-actions {
+      display: flex;
+      gap: var(--space-1);
+    }
+
+    .icon-button {
+      width: 2.75rem;
+      height: 2.75rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: none;
+      border: 1px solid transparent;
+      border-radius: var(--radius-s);
+      background: transparent;
+      color: var(--aux);
+    }
+
+    .icon-button:hover {
+      border-color: var(--edge);
+      color: var(--title);
+    }
+
+    .icon {
+      width: 1.25rem;
+      height: 1.25rem;
+      color: currentColor;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.5;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+      vector-effect: non-scaling-stroke;
+    }
+
+    .window-body {
+      flex: 1;
+      padding: var(--space-4);
+    }
+
+    .data-list {
+      display: grid;
+      gap: var(--space-1);
+    }
+
+    .data-row {
+      min-height: 2.45rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-4);
+      border-bottom: 1px solid var(--edge-soft);
+    }
+
+    .data-key {
+      color: var(--aux);
+      font-size: var(--type-label);
+      font-weight: 600;
+    }
+
+    .data-value {
+      color: var(--strong);
+      font-size: var(--type-hud);
+      font-variant-numeric: tabular-nums lining-nums;
+      text-align: right;
+    }
+
+    .data-unit {
+      margin-left: 0.3em;
+      color: var(--aux);
+      font-size: var(--type-micro);
+    }
+
+    .window-note {
+      margin: var(--space-4) 0 0;
+      color: var(--aux);
+      font-size: var(--type-aux);
+      line-height: 1.55;
+    }
+
+    .window-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: var(--space-2);
+      border-top: 1px solid var(--edge-soft);
+      padding: var(--space-3) var(--space-4);
+    }
+
+    .pattern-stage {
+      overflow: hidden;
+      border: 1px solid var(--edge-soft);
+      border-radius: var(--radius-xl);
+      background: var(--surface-soft);
+    }
+
+    .rail {
+      min-height: 3.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-4);
+      border-bottom: 1px solid var(--edge);
+      background: rgba(13, 15, 18, 0.78);
+      padding: var(--space-2) var(--space-4);
+      backdrop-filter: blur(var(--blur-s));
+    }
+
+    .rail-brand {
+      color: var(--title);
+      font-size: var(--type-hud);
+      font-weight: 700;
+      letter-spacing: 0.08em;
+    }
+
+    .rail-center,
+    .rail-actions,
+    .button-row,
+    .chip-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+    }
+
+    .rail-status {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      color: var(--aux);
+      font-family: var(--font-console);
+      font-size: var(--type-micro);
+    }
+
+    .rail-status::before {
+      content: "";
+      width: 0.45rem;
+      height: 0.45rem;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .pattern-body {
+      padding: var(--space-5);
+    }
+
+    .pattern-card {
+      padding: var(--space-5);
+    }
+
+    .pattern-card .spec-label,
+    .state-card .spec-label {
+      margin-bottom: var(--space-4);
+    }
+
+    .button {
+      min-height: 2.75rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-2);
+      border: 1px solid var(--edge);
+      border-radius: var(--radius-s);
+      background: var(--surface-soft);
+      color: var(--body);
+      font-size: var(--type-label);
+      font-weight: 600;
+      letter-spacing: 0.045em;
+      padding: 0.65rem 0.9rem;
+      text-transform: uppercase;
+    }
+
+    .button:hover {
+      border-color: var(--title);
+      color: var(--title);
+    }
+
+    .button.outline-accent {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .button.solid {
+      border-color: var(--title);
+      background: var(--title);
+      color: var(--bg);
+    }
+
+    .button.primary {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #130800;
+    }
+
+    .button.danger {
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+
+    .button.pill {
+      border-radius: var(--radius-pill);
+      padding-inline: 1.2rem;
+    }
+
+    .button:disabled {
+      border-color: var(--edge-soft);
+      color: var(--faint);
+      cursor: not-allowed;
+    }
+
+    .tabs {
+      display: flex;
+      gap: var(--space-1);
+      border-bottom: 1px solid var(--edge);
+    }
+
+    .tab {
+      min-height: 2.75rem;
+      border: 0;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      color: var(--aux);
+      font-size: var(--type-label);
+      font-weight: 600;
+      padding: 0.7rem 0.8rem;
+      text-transform: uppercase;
+    }
+
+    .tab.is-current {
+      border-bottom-color: var(--accent);
+      color: var(--title);
+    }
+
+    .field {
+      display: grid;
+      gap: var(--space-2);
+    }
+
+    .field-label {
+      color: var(--aux);
+      font-size: var(--type-label);
+      font-weight: 600;
+    }
+
+    .field-input {
+      width: 100%;
+      min-height: 2.75rem;
+      border: 1px solid var(--edge);
+      border-radius: var(--radius-s);
+      background: rgba(5, 6, 8, 0.72);
+      color: var(--strong);
+      padding: 0.7rem 0.8rem;
+    }
+
+    .field-help {
+      margin: 0;
+      color: var(--aux);
+      font-size: var(--type-aux);
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-4);
+      margin-top: var(--space-4);
+    }
+
+    .toggle {
+      position: relative;
+      width: 3rem;
+      height: 1.7rem;
+      flex: none;
+      border: 1px solid var(--accent);
+      border-radius: var(--radius-pill);
+      background: var(--accent-fill);
+    }
+
+    .toggle::after {
+      content: "";
+      position: absolute;
+      width: 1.15rem;
+      height: 1.15rem;
+      right: 0.2rem;
+      top: 50%;
+      border-radius: 50%;
+      background: var(--accent);
+      transform: translateY(-50%);
+    }
+
+    .meter-block {
+      display: grid;
+      gap: var(--space-2);
+      margin-top: var(--space-4);
+    }
+
+    .meter-label {
+      display: flex;
+      justify-content: space-between;
+      color: var(--aux);
+      font-size: var(--type-label);
+    }
+
+    .meter {
+      height: 0.45rem;
+      overflow: hidden;
+      border-radius: var(--radius-xs);
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .meter span {
+      display: block;
+      height: 100%;
+      background: var(--accent);
+    }
+
+    .meter.value-72 span {
+      width: 72%;
+    }
+
+    .meter.value-38 span {
+      width: 38%;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      border: 1px solid var(--edge);
+      border-radius: var(--radius-pill);
+      color: var(--aux);
+      font-size: var(--type-micro);
+      padding: 0.35rem 0.65rem;
+    }
+
+    .chip.is-current {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .data-table,
+    .token-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--type-aux);
+    }
+
+    .data-table caption,
+    .token-table caption {
+      margin-bottom: var(--space-3);
+      color: var(--aux);
+      font-family: var(--font-console);
+      font-size: var(--type-micro);
+      letter-spacing: 0.08em;
+      text-align: left;
+      text-transform: uppercase;
+    }
+
+    .data-table th,
+    .data-table td,
+    .token-table th,
+    .token-table td {
+      border-bottom: 1px solid var(--edge-soft);
+      padding: 0.75rem 0.8rem;
+      text-align: left;
+    }
+
+    .data-table th,
+    .token-table th {
+      color: var(--aux);
+      font-size: var(--type-label);
+      font-weight: 600;
+    }
+
+    .data-table td:nth-child(n + 2) {
+      color: var(--strong);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .data-table tr.is-current {
+      background: var(--accent-fill);
+      box-shadow: inset 2px 0 var(--accent);
+    }
+
+    .overlay-stage {
+      position: relative;
+      min-height: 37rem;
+      overflow: hidden;
+      border: 1px solid var(--edge-soft);
+      border-radius: var(--radius-xl);
+      background:
+        radial-gradient(circle at 80% 20%, rgba(66, 71, 91, 0.34), transparent 14rem),
+        linear-gradient(150deg, #11141c, #07080b);
+    }
+
+    .context-menu,
+    .toast,
+    .tooltip,
+    .dialog,
+    .command-palette {
+      position: absolute;
+      z-index: 2;
+      border: 1px solid var(--edge-glass);
+      background: var(--surface-glass);
+      backdrop-filter: blur(var(--blur-m));
+    }
+
+    .context-menu {
+      width: min(15rem, calc(100% - 2rem));
+      left: 4%;
+      top: 8%;
+      overflow: hidden;
+      border-radius: var(--radius-m);
+    }
+
+    .context-head,
+    .context-item {
+      padding: 0.75rem 0.9rem;
+      border-bottom: 1px solid var(--edge-soft);
+    }
+
+    .context-head {
+      color: var(--title);
+      font-weight: 600;
+    }
+
+    .context-head span {
+      display: block;
+      margin-top: 0.2rem;
+      color: var(--aux);
+      font-size: var(--type-micro);
+      font-weight: 400;
+    }
+
+    .context-item {
+      display: flex;
+      justify-content: space-between;
+      color: var(--body);
+      font-size: var(--type-aux);
+    }
+
+    .context-item.is-current {
+      color: var(--accent);
+      background: var(--accent-fill);
+    }
+
+    .tooltip {
+      left: 8%;
+      bottom: 12%;
+      border-radius: var(--radius-s);
+      color: var(--body);
+      font-size: var(--type-aux);
+      padding: 0.55rem 0.7rem;
+    }
+
+    .toast {
+      width: min(23rem, calc(100% - 2rem));
+      right: 3%;
+      top: 8%;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: var(--space-3);
+      border-radius: var(--radius-m);
+      padding: var(--space-4);
+    }
+
+    .toast .icon {
+      color: var(--accent);
+    }
+
+    .toast-title {
+      margin: 0;
+      color: var(--title);
+      font-size: var(--type-hud);
+      font-weight: 600;
+    }
+
+    .toast-copy {
+      margin: var(--space-1) 0 0;
+      color: var(--aux);
+      font-size: var(--type-aux);
+    }
+
+    .dialog {
+      width: min(31rem, calc(100% - 2rem));
+      left: 50%;
+      top: 54%;
+      border-radius: var(--radius-l);
+      background: var(--surface-frost);
+      box-shadow: 0 2rem 6rem rgba(0, 0, 0, 0.34);
+      backdrop-filter: blur(var(--blur-l));
+      transform: translate(-50%, -50%);
+    }
+
+    .dialog-body {
+      padding: var(--space-5);
+    }
+
+    .dialog-title {
+      margin: 0;
+      color: var(--title);
+      font-size: 1.35rem;
+      font-weight: 600;
+    }
+
+    .dialog-copy {
+      margin: var(--space-3) 0 0;
+      color: var(--aux);
+      font-size: var(--type-aux);
+    }
+
+    .dialog-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: var(--space-2);
+      border-top: 1px solid var(--edge-soft);
+      padding: var(--space-3) var(--space-5);
+    }
+
+    .command-palette {
+      width: min(36rem, calc(100% - 2rem));
+      left: 50%;
+      bottom: 4%;
+      overflow: hidden;
+      border-radius: var(--radius-l);
+      transform: translateX(-50%);
+    }
+
+    .command-input {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      border-bottom: 1px solid var(--edge-soft);
+      padding: var(--space-3) var(--space-4);
+    }
+
+    .command-input span {
+      color: var(--accent);
+      font-family: var(--font-console);
+    }
+
+    .command-input input {
+      width: 100%;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--strong);
+    }
+
+    .command-result {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.75rem var(--space-4);
+      color: var(--body);
+      font-size: var(--type-aux);
+    }
+
+    .command-result.is-current {
+      color: var(--accent);
+      background: var(--accent-fill);
+    }
+
+    .state-card {
+      min-height: 13rem;
+      padding: var(--space-5);
+    }
+
+    .state-title {
+      margin: 0;
+      color: var(--title);
+      font-size: 1.05rem;
+      font-weight: 600;
+    }
+
+    .state-copy {
+      margin: var(--space-3) 0 0;
+      color: var(--aux);
+      font-size: var(--type-aux);
+    }
+
+    .state-card.error {
+      border-color: rgba(255, 79, 94, 0.42);
+    }
+
+    .state-card.error .state-title {
+      color: var(--danger);
+    }
+
+    .state-card.disabled {
+      color: var(--faint);
+    }
+
+    .state-card.disabled .state-title,
+    .state-card.disabled .state-copy {
+      color: var(--faint);
+    }
+
+    .state-progress {
+      width: 100%;
+      height: 0.45rem;
+      margin-top: var(--space-5);
+      overflow: hidden;
+      border: 0;
+      border-radius: var(--radius-xs);
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .state-progress::-webkit-progress-bar {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .state-progress::-webkit-progress-value {
+      background: var(--accent);
+    }
+
+    .state-progress::-moz-progress-bar {
+      background: var(--accent);
+    }
+
+    .symbol-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2) var(--space-5);
+      margin-bottom: var(--space-5);
+      color: var(--aux);
+      font-size: var(--type-label);
+    }
+
+    .symbol-legend span::before {
+      content: "";
+      display: inline-block;
+      width: 0.55rem;
+      height: 0.55rem;
+      margin-right: 0.4rem;
+      border: 1px solid currentColor;
+      vertical-align: 0.02em;
+    }
+
+    .symbol-legend .entity-key {
+      color: var(--title);
+    }
+
+    .symbol-legend .direction-key {
+      color: var(--body);
+    }
+
+    .symbol-legend .orbit-key {
+      color: var(--accent);
+    }
+
+    .symbol-legend .hazard-key {
+      color: var(--danger);
+    }
+
+    .symbol-cell {
+      min-height: 8rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-3);
+      border: 1px solid var(--edge-soft);
+      border-radius: var(--radius-m);
+      background: var(--surface-soft);
+      color: var(--body);
+      text-align: center;
+    }
+
+    .symbol-cell .icon {
+      width: 2.2rem;
+      height: 2.2rem;
+    }
+
+    .symbol-cell.entity {
+      color: var(--title);
+    }
+
+    .symbol-cell.orbit {
+      color: var(--accent);
+    }
+
+    .symbol-cell.hazard {
+      color: var(--danger);
+    }
+
+    .symbol-cell.prograde {
+      color: var(--axis-prograde);
+    }
+
+    .symbol-cell.normal {
+      color: var(--axis-normal);
+    }
+
+    .symbol-cell.radial {
+      color: var(--axis-radial);
+    }
+
+    .symbol-name {
+      color: var(--aux);
+      font-family: var(--font-console);
+      font-size: var(--type-micro);
+      text-transform: uppercase;
+    }
+
+    .subsection-title {
+      margin: var(--space-7) 0 var(--space-4);
+      color: var(--title);
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .token-table {
+      border: 1px solid var(--edge-soft);
+      background: var(--surface-soft);
+    }
+
+    .token-table td:first-child,
+    .token-table td:nth-child(3) {
+      font-family: var(--font-console);
+      font-size: var(--type-micro);
+    }
+
+    .code-region {
+      min-width: 0;
+      height: 100%;
+    }
+
+    .code-block {
+      height: 100%;
+      margin: 0;
+      overflow: auto;
+      border: 1px solid var(--edge-soft);
+      border-radius: var(--radius-l);
+      background: #050609;
+      color: var(--body);
+      font-size: var(--type-console);
+      line-height: 1.75;
+      padding: var(--space-5);
+      white-space: pre-wrap;
+    }
+
+    .license-note {
+      margin-top: var(--space-5);
+      border-left: 2px solid var(--accent);
+      color: var(--aux);
+      font-size: var(--type-aux);
+      padding: var(--space-3) var(--space-4);
+    }
+
+    .footer {
+      border-top: 1px solid var(--edge-soft);
+      background: var(--bg-deep);
+    }
+
+    .footer-inner {
+      min-height: 7rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-5);
+      color: var(--faint);
+      font-family: var(--font-console);
+      font-size: var(--type-micro);
+    }
+
+    @supports not (backdrop-filter: blur(1px)) {
+      .glass-card,
+      .surface-window.glass,
+      .surface-window.frosted,
+      .context-menu,
+      .toast,
+      .tooltip,
+      .dialog,
+      .command-palette,
+      .rail,
+      .topbar {
+        background: var(--surface-solid);
+      }
+    }
+
+    @supports not (mix-blend-mode: difference) {
+      .adaptive-lockup,
+      .contrast-lockup,
+      .study-wordmark {
+        color: var(--strong);
+        mix-blend-mode: normal;
+        text-shadow: 0 1px 1.25rem rgba(0, 0, 0, 0.72);
+      }
+    }
+
+    @media (max-width: 74rem) {
+      .surface-scene {
+        grid-template-columns: 1fr;
+      }
+
+      .surface-window {
+        min-height: 0;
+      }
+
+      .grid-6 {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .translation-flow {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 56rem) {
+      .hero-stage,
+      .section-heading,
+      .grid-3,
+      .grid-4 {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-stage {
+        min-height: 44rem;
+      }
+
+      .grid-2 {
+        grid-template-columns: 1fr;
+      }
+
+      .fixed-lockups {
+        grid-template-columns: 1fr;
+      }
+
+      .grid-6 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .translation-flow,
+      .contrast-notes {
+        grid-template-columns: 1fr;
+      }
+
+      .rail-center {
+        display: none;
+      }
+    }
+
+    @media (max-width: 40rem) {
+      .topbar-inner {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: var(--space-1);
+        padding-block: 0.7rem;
+      }
+
+      .topnav {
+        width: 100%;
+      }
+
+      .hero-stage {
+        min-height: 40rem;
+        border-radius: var(--radius-l);
+      }
+
+      .hero-title {
+        font-size: 4.2rem;
+      }
+
+      .grid-6 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .context-menu {
+        left: 1rem;
+      }
+
+      .toast {
+        right: 1rem;
+      }
+
+      .dialog {
+        top: 56%;
+      }
+
+      .command-palette {
+        display: none;
+      }
+
+      .footer-inner {
+        align-items: flex-start;
+        flex-direction: column;
+        justify-content: center;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html {
+        scroll-behavior: auto;
+      }
+
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+      }
+    }
+
+    @media (forced-colors: active) {
+      .adaptive-lockup,
+      .contrast-lockup,
+      .study-wordmark {
+        color: CanvasText;
+        mix-blend-mode: normal;
+      }
+
+      .glass-card,
+      .surface-window,
+      .context-menu,
+      .toast,
+      .tooltip,
+      .dialog,
+      .command-palette,
+      .rail,
+      .topbar {
+        background: Canvas;
+        backdrop-filter: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <svg class="svg-defs" aria-hidden="true">
+    <defs>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6 18 18M18 6 6 18"></path></symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"></path></symbol>
+      <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m7 9 5 5 5-5"></path></symbol>
+      <symbol id="i-save" viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5zM8 4v6h8V4M8 20v-6h8v6"></path></symbol>
+      <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="1.5"></circle><path d="M12 2v4M12 18v4M2 12h4M18 12h4"></path></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7z"></path></symbol>
+      <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"></path></symbol>
+      <symbol id="i-expand" viewBox="0 0 24 24"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"></path></symbol>
+      <symbol id="i-filter" viewBox="0 0 24 24"><path d="M4 5h16l-6 7v6l-4 2v-8z"></path></symbol>
+      <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"></circle><path d="M12 10v7M12 7v1"></path></symbol>
+      <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 7H4v-5M4 7c2-3 5-4 8-4 5 0 9 4 9 9s-4 9-9 9c-4 0-7-2-8-5"></path></symbol>
+      <symbol id="i-dock" viewBox="0 0 24 24"><path d="M4 5h16v14H4zM9 5v14M9 11h11"></path></symbol>
+
+      <symbol id="m-ship" viewBox="0 0 24 24"><path d="m12 3 7 17-7-4-7 4z" fill="currentColor" stroke="none"></path></symbol>
+      <symbol id="m-body" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="currentColor" stroke="none"></circle></symbol>
+      <symbol id="m-ghost" viewBox="0 0 24 24"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z" stroke-dasharray="2 2"></path></symbol>
+      <symbol id="m-ammo" viewBox="0 0 24 24"><path d="M5 5h14v14H5zM9 5v4h6V5M9 19v-4h6v4"></path></symbol>
+      <symbol id="m-prograde" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"></circle><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"></circle></symbol>
+      <symbol id="m-retrograde" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"></circle><path d="m9 9 6 6M15 9l-6 6"></path></symbol>
+      <symbol id="m-radial" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2.5"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path></symbol>
+      <symbol id="m-target" viewBox="0 0 24 24"><path d="M3 12h14M13 8l4 4-4 4M19 5v14"></path></symbol>
+      <symbol id="m-ascending" viewBox="0 0 24 24"><path d="m12 4 8 15H4zM8 19h8"></path></symbol>
+      <symbol id="m-descending" viewBox="0 0 24 24"><path d="m12 20 8-15H4zM8 5h8"></path></symbol>
+      <symbol id="m-apsis" viewBox="0 0 24 24"><path d="m12 4 8 8-8 8-8-8z"></path></symbol>
+      <symbol id="m-maneuver" viewBox="0 0 24 24"><path d="m12 3 9 9-9 9-9-9z"></path><circle cx="12" cy="12" r="2"></circle></symbol>
+      <symbol id="m-burn" viewBox="0 0 24 24"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9zM7 12h9M13 9l3 3-3 3"></path></symbol>
+      <symbol id="m-impact" viewBox="0 0 24 24"><path d="m8 8 8 8M16 8l-8 8M5 6a10 10 0 0 1 14 0M5 18a10 10 0 0 0 14 0"></path></symbol>
+      <symbol id="m-preview" viewBox="0 0 24 24"><path d="m6 4 13 8-13 8z" stroke-dasharray="3 2"></path></symbol>
+    </defs>
+  </svg>
+
+  <header class="topbar">
+    <div class="page-shell topbar-inner">
+      <a class="brand-mini" href="#top">Dive into <span>Tepui</span> / UI reference v3</a>
+      <nav class="topnav" aria-label="ページ内目次">
+        <a href="#research">Research</a>
+        <a href="#type">Type</a>
+        <a href="#contrast">Contrast</a>
+        <a href="#surfaces">Windows</a>
+        <a href="#patterns">Patterns</a>
+        <a href="#symbols">Symbols</a>
+        <a href="#tokens">Tokens</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <div class="page-shell hero">
+      <section class="hero-stage" aria-labelledby="hero-title">
+        <div class="adaptive-lockup">
+          <p class="hero-kicker">Dive into</p>
+          <h1 class="hero-title" id="hero-title">Tepui</h1>
+          <p class="hero-subtitle">Interface as a quiet instrument.</p>
+          <p class="hero-note">第三版はタイポグラフィ、ロゴタイプ、記号を、角丸ウィンドウ、Glass、状態、入力、オーバーレイ、Adaptive Contrastまで含むUIデザインシステムへ拡張する。</p>
+        </div>
+
+        <aside class="glass-card hero-manifest" aria-label="第三版の要約">
+          <div class="manifest-head">
+            <span class="eyebrow">System manifest</span>
+            <span class="status-chip">Proposal 03</span>
+          </div>
+          <dl class="manifest-list">
+            <div class="manifest-row"><dt>Palette</dt><dd>Monochrome + Orange</dd></div>
+            <div class="manifest-row"><dt>Surface</dt><dd>Solid / Glass / Frosted</dd></div>
+            <div class="manifest-row"><dt>Display</dt><dd>Background-adaptive difference</dd></div>
+            <div class="manifest-row"><dt>UI</dt><dd>Arimo + Zen Kaku Gothic Antique</dd></div>
+            <div class="manifest-row"><dt>Console</dt><dd>IBM Plex Mono</dd></div>
+            <div class="manifest-row"><dt>Source</dt><dd>Lusion / nk.studio / Locomotive</dd></div>
+          </dl>
+        </aside>
+      </section>
+    </div>
+
+    <section class="section" id="research" aria-labelledby="research-title">
+      <div class="page-shell">
+        <div class="section-heading">
+          <div>
+            <p class="section-index">01 / Reference study</p>
+            <h2 class="section-title" id="research-title">Extract principles.<br>Keep identity.</h2>
+          </div>
+          <p class="section-summary">参照3サイトの固有資産を模写せず、配色の抑制、巨大なSans、背景追従文字、丸い操作部品、透明面の使い分けを構成原理として抽出した。各観察は2026-08-14時点の公式ページと公開CSSに基づく。</p>
+        </div>
+
+        <div class="grid-3">
+          <article class="study-card">
+            <div class="study-visual study-lusion"><span class="study-wordmark">LUSION</span></div>
+            <div class="study-copy">
+              <h3 class="study-name">Immersive restraint <a href="https://lusion.co/">Official ↗</a></h3>
+              <ul class="study-list">
+                <li>3Dは多色、恒常UIは白黒と細線。</li>
+                <li>大きなGrotesk + 小さなIBM Plex Mono。</li>
+                <li>ピルCTA、点、矢印、十字の補助記号。</li>
+                <li>採用: シーン色とUI色を分離する。</li>
+              </ul>
+            </div>
+          </article>
+
+          <article class="study-card">
+            <div class="study-visual study-nk"><span class="study-wordmark">/nk.studio</span></div>
+            <div class="study-copy">
+              <h3 class="study-name">One luminous accent <a href="https://www.nk.studio/">Official ↗</a></h3>
+              <ul class="study-list">
+                <li>近黒、オフ白、一色のミント。</li>
+                <li>DM Sansと短い大見出し。</li>
+                <li>10〜24px角丸、段階的なbackdrop blur。</li>
+                <li>採用: 一色をFocusとCurrentへ再利用する。</li>
+              </ul>
+            </div>
+          </article>
+
+          <article class="study-card">
+            <div class="study-visual study-locomotive"><span class="study-wordmark">Locomotive®</span></div>
+            <div class="study-copy">
+              <h3 class="study-name">Adaptive display <a href="https://locomotive.ca/en">Official ↗</a></h3>
+              <ul class="study-list">
+                <li>巨大なDisplay、短い本文、明確なグリッド。</li>
+                <li>背景単位の明暗・赤・青の切替。</li>
+                <li>HeroとHeaderのdifference合成。</li>
+                <li>採用: Displayだけを背景反転させる。</li>
+              </ul>
+            </div>
+          </article>
+        </div>
+
+        <div class="translation-strip">
+          <p class="spec-label">Translation / reference → Tepui</p>
+          <div class="translation-flow">
+            <div class="translation-step"><div class="translation-title">Commercial Grotesk</div><p class="translation-copy">Arimo + Zen Kakuへ置換</p></div>
+            <div class="translation-step"><div class="translation-title">Neon mint / blue</div><p class="translation-copy">Orange一色へ縮約</p></div>
+            <div class="translation-step is-accent"><div class="translation-title">Difference title</div><p class="translation-copy">Display限定で採用</p></div>
+            <div class="translation-step"><div class="translation-title">Blurred cards</div><p class="translation-copy">Glass用途を限定</p></div>
+            <div class="translation-step"><div class="translation-title">Scroll choreography</div><p class="translation-copy">ゲーム操作には持ち込まない</p></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="type" aria-labelledby="type-title">
+      <div class="page-shell">
+        <div class="section-heading">
+          <div>
+            <p class="section-index">02 / Text language</p>
+            <h2 class="section-title" id="type-title">Weight and posture<br>carry meaning.</h2>
+          </div>
+          <p class="section-summary">通常文、補助説明、太字、斜体、機械出力を別の声として定義する。小さく灰色だから重要でない、太いから警告、斜体だから未来的、という曖昧な装飾運用を避ける。</p>
+        </div>
+
+        <div class="grid-3">
+          <article class="type-card">
+            <p class="spec-label">Body / UI 16 · 400</p>
+            <p class="type-body">現在の軌道と目標軌道の交点を確認し、昇交点で法線方向へ噴射します。通常説明は最も静かで読みやすいNeutral Sansを使います。</p>
+            <div class="type-meta"><span>Arimo / Zen Kaku</span><span>Body</span></div>
+          </article>
+
+          <article class="type-card">
+            <p class="spec-label">Auxiliary / 12–13 · 400</p>
+            <p class="type-auxiliary">補助説明は本文より少し小さく灰色へ寄せる。操作の唯一の条件、危険、結果はこのロールだけに書かない。</p>
+            <div class="type-meta"><span>TEXT_AUX</span><span>Secondary</span></div>
+          </article>
+
+          <article class="type-card">
+            <p class="spec-label">Strong / 15–20 · 600</p>
+            <p class="type-strong">Maneuver solution valid<br>計画軌道との誤差 0.18%</p>
+            <div class="type-meta"><span>600 default</span><span>Current / key value</span></div>
+          </article>
+
+          <article class="type-card">
+            <p class="spec-label">Editorial italic / Latin</p>
+            <p class="type-editorial">The orbit is the battlefield.</p>
+            <div class="type-meta"><span>Cormorant Italic 300</span><span>Subtitle / quotation</span></div>
+          </article>
+
+          <article class="type-card">
+            <p class="spec-label">Editorial / Japanese</p>
+            <p class="type-editorial-ja">地球の影へ入り、青い大気の縁だけが静かに残った。</p>
+            <p class="type-auxiliary">日本語は機械的に傾けず、Zen Old Minchoへ切り替える。</p>
+            <div class="type-meta"><span>Zen Old Mincho 400</span><span>No synthetic italic</span></div>
+          </article>
+
+          <article class="type-card">
+            <p class="spec-label">Console / provisional</p>
+            <p class="type-console">T+00:19:42.618<br>FRAME=ECI&nbsp;&nbsp;WARP=×4<br><span class="type-provisional">// predicted intercept ±0.8 s</span></p>
+            <div class="type-meta"><span>IBM Plex Mono</span><span>Machine voice</span></div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="contrast" aria-labelledby="contrast-section-title">
+      <div class="page-shell">
+        <div class="section-heading">
+          <div>
+            <p class="section-index">03 / Adaptive contrast</p>
+            <h2 class="section-title" id="contrast-section-title">Oppose the field.<br>Do not add color.</h2>
+          </div>
+          <p class="section-summary">背景が白、灰、黒、色付きへ連続的に変わるとき、Display級のタイトルと副題だけをdifference合成する。これは装飾色ではなく、背景へ対向するモノトーンの可読性機構である。</p>
+        </div>
+
+        <div class="contrast-stage" role="group" aria-label="背景反転タイトルの見本">
+          <div class="contrast-lockup">
+            <p class="hero-kicker">Dive into</p>
+            <p class="contrast-title">TEPUI</p>
+            <p class="contrast-subtitle">The horizon changes. The title remains.</p>
+          </div>
+        </div>
+
+        <div class="contrast-notes">
+          <p class="contrast-note"><strong>Use:</strong> 起動画面、章題、結果画面、大きなロゴ。</p>
+          <p class="contrast-note"><strong>Avoid:</strong> 本文、補助説明、照準、危険表示、入力値。</p>
+          <p class="contrast-note"><strong>Fallback:</strong> Solid scrim +通常Title色。forced-colorsではblendを解除。</p>
+        </div>
+
+        <div class="fixed-lockups">
+          <article class="fixed-lockup">
+            <div><p class="spec-label">Fixed contrast / dark</p><h3 class="fixed-title">TEPUI</h3><p class="fixed-subtitle">The orbit is the battlefield.</p></div>
+            <div class="fixed-meta"><span>Title #eeeaf5</span><span>Subtitle #c3bec9</span></div>
+          </article>
+          <article class="fixed-lockup light">
+            <div><p class="spec-label">Fixed contrast / light</p><h3 class="fixed-title">TEPUI</h3><p class="fixed-subtitle">The orbit is the battlefield.</p></div>
+            <div class="fixed-meta"><span>Title #17141b</span><span>Subtitle #514c56</span></div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="surfaces" aria-labelledby="surfaces-title">
+      <div class="page-shell">
+        <div class="section-heading">
+          <div>
+            <p class="section-index">04 / Rounded windows</p>
+            <h2 class="section-title" id="surfaces-title">Three surfaces.<br>One anatomy.</h2>
+          </div>
+          <p class="section-summary">すべてのウィンドウは共通のHeader / Body / Footer構造と角丸スケールを使う。表面は読む時間と背景との関係によってSolid、Glass、Frostedから選ぶ。</p>
+        </div>
+
+        <div class="surface-scene">
+          <article class="surface-window solid">
+            <header class="window-header">
+              <div class="window-heading"><div class="window-title">Solid / Orbital elements</div><div class="window-subtitle">Long reading · precise values</div></div>
+              <div class="window-actions"><button class="icon-button" type="button" aria-label="閉じる"><svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg></button></div>
+            </header>
+            <div class="window-body">
+              <div class="data-list">
+                <div class="data-row"><span class="data-key">Apoapsis</span><span class="data-value">428.42<span class="data-unit">km</span></span></div>
+                <div class="data-row"><span class="data-key">Periapsis</span><span class="data-value">417.09<span class="data-unit">km</span></span></div>
+                <div class="data-row"><span class="data-key">Inclination</span><span class="data-value">51.640<span class="data-unit">°</span></span></div>
+                <div class="data-row"><span class="data-key">Eccentricity</span><span class="data-value">0.00084</span></div>
+              </div>
+              <p class="window-note">表、長文、連続入力は背景を強く遮るSolidへ置く。</p>
+            </div>
+          </article>
+
+          <article class="surface-window glass">
+            <header class="window-header">
+              <div class="window-heading"><div class="window-title">Glass / Target palette</div><div class="window-subtitle">Scene relationship remains visible</div></div>
+              <div class="window-actions"><button class="icon-button" type="button" aria-label="固定する"><svg class="icon" aria-hidden="true"><use href="#i-dock"></use></svg></button><button class="icon-button" type="button" aria-label="閉じる"><svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg></button></div>
+            </header>
+            <div class="window-body">
+              <div class="data-list">
+                <div class="data-row"><span class="data-key">Range</span><span class="data-value">3.28<span class="data-unit">km</span></span></div>
+                <div class="data-row"><span class="data-key">Closure</span><span class="data-value">−12.4<span class="data-unit">m/s</span></span></div>
+                <div class="data-row"><span class="data-key">Bearing</span><span class="data-value">+03.8<span class="data-unit">°</span></span></div>
+              </div>
+              <p class="window-note">短い追従情報だけ。Glassの中へGlassを重ねない。</p>
+            </div>
+            <footer class="window-footer"><button class="button outline-accent" type="button">Set target</button></footer>
+          </article>
+
+          <article class="surface-window frosted">
+            <header class="window-header">
+              <div class="window-heading"><div class="window-title">Frosted / Pause</div><div class="window-subtitle">Temporary focused interaction</div></div>
+            </header>
+            <div class="window-body">
+              <p class="type-strong">Simulation paused</p>
+              <p class="window-note">背景との連続性を残しながら、操作対象を一つへ限定する。恒常HUDには使わない。</p>
+              <div class="chip-row"><span class="chip is-current">Current</span><span class="chip">Focus layer</span></div>
+            </div>
+            <footer class="window-footer"><button class="button" type="button">Settings</button><button class="button primary" type="button">Resume</button></footer>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="patterns" aria-labelledby="patterns-title">
+      <div class="page-shell">
+        <div class="section-heading">
+          <div>
+            <p class="section-index">05 / UI patterns</p>
+            <h2 class="section-title" id="patterns-title">Neutral by default.<br>Orange when current.</h2>
+          </div>
+          <p class="section-summary">Accentを増やさず、明度、線、太さ、面、記号で状態を分ける。Orangeは選択、フォーカス、進行だけに現れ、Dangerと物理軸色は別のDomain vocabularyとして扱う。</p>
+        </div>
+
+        <div class="pattern-stage">
+          <div class="rail">
+            <div class="rail-brand">TEPUI / FLIGHT</div>
+            <div class="rail-center"><span class="rail-status">SIMULATION LIVE</span><span class="chip">ECI</span><span class="chip is-current">WARP ×4</span></div>
+            <div class="rail-actions"><button class="icon-button" type="button" aria-label="対象を選ぶ"><svg class="icon" aria-hidden="true"><use href="#i-target"></use></svg></button><button class="icon-button" type="button" aria-label="メニュー"><svg class="icon" aria-hidden="true"><use href="#i-menu"></use></svg></button></div>
+          </div>
+
+          <div class="pattern-body">
+            <div class="grid-3">
+              <section class="pattern-card" aria-labelledby="button-pattern-title">
+                <h3 class="spec-label" id="button-pattern-title">Buttons / restrained variants</h3>
+                <div class="button-row">
+                  <button class="button" type="button">Secondary</button>
+                  <button class="button outline-accent" type="button">Current</button>
+                  <button class="button solid" type="button">Confirm</button>
+                  <button class="button primary pill" type="button">Execute →</button>
+                  <button class="button" type="button" disabled>Unavailable</button>
+                </div>
+              </section>
+
+              <section class="pattern-card" aria-labelledby="tabs-pattern-title">
+                <h3 class="spec-label" id="tabs-pattern-title">Tabs / one orange line</h3>
+                <div class="tabs" role="group" aria-label="表示区分">
+                  <button class="tab is-current" type="button" aria-pressed="true">Orbit</button>
+                  <button class="tab" type="button" aria-pressed="false">Target</button>
+                  <button class="tab" type="button" aria-pressed="false">Systems</button>
+                </div>
+                <div class="chip-row"><span class="chip is-current">Selected</span><span class="chip">Filter</span><span class="chip">Status</span></div>
+              </section>
+
+              <section class="pattern-card" aria-labelledby="input-pattern-title">
+                <h3 class="spec-label" id="input-pattern-title">Input / toggle / meter</h3>
+                <div class="field">
+                  <label class="field-label" for="node-time">Node time / ノード時刻</label>
+                  <input class="field-input" id="node-time" type="text" value="T−00:04:18.622" readonly aria-describedby="node-time-help">
+                  <p class="field-help" id="node-time-help">通常入力はNeutral UI。ログではないためMonoにしない。</p>
+                </div>
+                <div class="toggle-row"><span class="field-label">Prograde hold</span><button class="toggle" type="button" aria-label="Prograde hold" aria-pressed="true"></button></div>
+                <div class="meter-block"><div class="meter-label"><span>Fuel</span><span>72%</span></div><div class="meter value-72"><span></span></div></div>
+              </section>
+            </div>
+
+            <div class="grid-2">
+              <section class="pattern-card" aria-labelledby="table-pattern-title">
+                <h3 class="spec-label" id="table-pattern-title">Dense data / one surface, not many cards</h3>
+                <table class="data-table">
+                  <caption>Nearby orbital objects</caption>
+                  <thead><tr><th>Object</th><th>Range</th><th>Closure</th><th>Status</th></tr></thead>
+                  <tbody>
+                    <tr class="is-current"><td>Target 01</td><td>3.28 km</td><td>−12.4 m/s</td><td>Current</td></tr>
+                    <tr><td>Debris 14</td><td>8.91 km</td><td>+3.1 m/s</td><td>Passing</td></tr>
+                    <tr><td>Ammo 03</td><td>4.72 km</td><td>−0.8 m/s</td><td>Available</td></tr>
+                    <tr><td>Node 02</td><td>12:43</td><td>+12.4 m/s</td><td>Planned</td></tr>
+                  </tbody>
+                </table>
+              </section>
+
+              <section class="pattern-card" aria-labelledby="type-hierarchy-title">
+                <h3 class="spec-label" id="type-hierarchy-title">Information hierarchy</h3>
+                <p class="type-strong">Target intercept solution</p>
+                <p class="type-body">昇交点まで4分18秒。計画速度差は12.4 m/sです。</p>
+                <p class="type-auxiliary">推定値はJ2と月・太陽摂動を含む現在の軌道要素から算出。時間warp中は毎秒更新します。</p>
+                <p class="type-console">NODE.02 / SOLUTION=VALID / ERR=0.18%</p>
+              </section>
+            </div>
+          </div>
+        </div>
+
+        <h3 class="subsection-title">Overlay family</h3>
+        <div class="overlay-stage" role="group" aria-label="オーバーレイ部品の見本">
+          <div class="context-menu">
+            <div class="context-head">Target 01<span>Context menu / Glass</span></div>
+            <div class="context-item is-current"><span>Track target</span><span>T</span></div>
+            <div class="context-item"><span>Open properties</span><span>↵</span></div>
+            <div class="context-item"><span>Place node</span><span>N</span></div>
+          </div>
+
+          <div class="tooltip" role="note">Drag to reposition · Double click to center</div>
+
+          <div class="toast">
+            <svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg>
+            <div><p class="toast-title">Maneuver node ready</p><p class="toast-copy">計画軌道との誤差は許容範囲内です。</p></div>
+          </div>
+
+          <article class="dialog">
+            <div class="dialog-body"><h3 class="dialog-title">Discard maneuver plan?</h3><p class="dialog-copy">未実行のΔv 12.4 m/sとノード時刻を破棄します。この操作は取り消せません。</p></div>
+            <footer class="dialog-footer"><button class="button" type="button">Cancel</button><button class="button danger" type="button">Discard</button></footer>
+          </article>
+
+          <div class="command-palette">
+            <div class="command-input"><span>&gt;</span><input type="text" value="target" readonly aria-label="コマンド検索"></div>
+            <div class="command-result is-current"><span>Cycle target</span><span>Tab</span></div>
+            <div class="command-result"><span>Open target properties</span><span>↵</span></div>
+          </div>
+        </div>
+
+        <h3 class="subsection-title">Empty / loading / unavailable / error</h3>
+        <div class="grid-4">
+          <article class="state-card"><p class="spec-label">Empty</p><h3 class="state-title">No target selected</h3><p class="state-copy">Tabで対象を選択するか、マップ上の船を選択してください。</p></article>
+          <article class="state-card"><p class="spec-label">Loading</p><h3 class="state-title">Propagating orbit</h3><p class="state-copy">20秒先まで摂動込みの軌道を計算しています。</p><progress class="state-progress" value="62" max="100">62%</progress></article>
+          <article class="state-card disabled"><p class="spec-label">Unavailable</p><h3 class="state-title">Weapons locked</h3><p class="state-copy">Time warp ×8では射撃できません。×4以下へ戻してください。</p></article>
+          <article class="state-card error"><p class="spec-label">Error</p><h3 class="state-title">Orbit solution failed</h3><p class="state-copy">入力値を確認し、ノードを現在時刻より後へ移動してください。</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="symbols" aria-labelledby="symbols-title">
+      <div class="page-shell">
+        <div class="section-heading">
+          <div>
+            <p class="section-index">06 / Symbols</p>
+            <h2 class="section-title" id="symbols-title">Geometry remains<br>the stable layer.</h2>
+          </div>
+          <p class="section-summary">第二版の24px SVG体系を維持する。GlassやAdaptive Contrastは記号そのものではなく、所属するボタンまたはマーカーコンテナの責務とする。</p>
+        </div>
+
+        <h3 class="subsection-title">Interface icons / 24 grid / 1.5 stroke</h3>
+        <div class="grid-6" role="group" aria-label="UIアイコン一覧">
+          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg><span class="symbol-name">Close</span></div>
+          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#i-menu"></use></svg><span class="symbol-name">Menu</span></div>
+          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#i-chevron"></use></svg><span class="symbol-name">Collapse</span></div>
+          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#i-save"></use></svg><span class="symbol-name">Save</span></div>
+          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#i-target"></use></svg><span class="symbol-name">Target</span></div>
+          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#i-play"></use></svg><span class="symbol-name">Execute</span></div>
+          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#i-pause"></use></svg><span class="symbol-name">Pause</span></div>
+          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#i-expand"></use></svg><span class="symbol-name">Expand</span></div>
+          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#i-filter"></use></svg><span class="symbol-name">Filter</span></div>
+          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg><span class="symbol-name">Info</span></div>
+          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#i-undo"></use></svg><span class="symbol-name">Undo</span></div>
+          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#i-dock"></use></svg><span class="symbol-name">Dock</span></div>
+        </div>
+
+        <h3 class="subsection-title">World markers / semantic families</h3>
+        <div class="symbol-legend" role="group" aria-label="マーカー族の凡例"><span class="entity-key">Entity</span><span class="direction-key">Direction</span><span class="orbit-key">Orbit point</span><span class="hazard-key">Hazard</span></div>
+        <div class="grid-6" role="group" aria-label="ゲーム世界マーカー一覧">
+          <div class="symbol-cell entity"><svg class="icon" aria-hidden="true"><use href="#m-ship"></use></svg><span class="symbol-name">Ship</span></div>
+          <div class="symbol-cell entity"><svg class="icon" aria-hidden="true"><use href="#m-body"></use></svg><span class="symbol-name">Body</span></div>
+          <div class="symbol-cell entity"><svg class="icon" aria-hidden="true"><use href="#m-ammo"></use></svg><span class="symbol-name">Ammo</span></div>
+          <div class="symbol-cell prograde"><svg class="icon" aria-hidden="true"><use href="#m-prograde"></use></svg><span class="symbol-name">Prograde</span></div>
+          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#m-retrograde"></use></svg><span class="symbol-name">Retrograde</span></div>
+          <div class="symbol-cell radial"><svg class="icon" aria-hidden="true"><use href="#m-radial"></use></svg><span class="symbol-name">Radial</span></div>
+          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#m-target"></use></svg><span class="symbol-name">Target</span></div>
+          <div class="symbol-cell orbit normal"><svg class="icon" aria-hidden="true"><use href="#m-ascending"></use></svg><span class="symbol-name">Ascending</span></div>
+          <div class="symbol-cell orbit normal"><svg class="icon" aria-hidden="true"><use href="#m-descending"></use></svg><span class="symbol-name">Descending</span></div>
+          <div class="symbol-cell orbit"><svg class="icon" aria-hidden="true"><use href="#m-apsis"></use></svg><span class="symbol-name">Apsis</span></div>
+          <div class="symbol-cell orbit"><svg class="icon" aria-hidden="true"><use href="#m-maneuver"></use></svg><span class="symbol-name">Maneuver</span></div>
+          <div class="symbol-cell orbit"><svg class="icon" aria-hidden="true"><use href="#m-burn"></use></svg><span class="symbol-name">Burn</span></div>
+          <div class="symbol-cell hazard"><svg class="icon" aria-hidden="true"><use href="#m-impact"></use></svg><span class="symbol-name">Impact</span></div>
+          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#m-ghost"></use></svg><span class="symbol-name">Ghost</span></div>
+          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#m-preview"></use></svg><span class="symbol-name">Preview</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="tokens" aria-labelledby="tokens-title">
+      <div class="page-shell">
+        <div class="section-heading">
+          <div>
+            <p class="section-index">07 / Tokens &amp; AI contract</p>
+            <h2 class="section-title" id="tokens-title">Visible system.<br>Parseable decisions.</h2>
+          </div>
+          <p class="section-summary">人間向け標本と同じページに、調査元、採用判断、文字ロール、表面、角丸、blur、状態、記号、禁止事項をJSONで埋め込む。他のAIは見た目を推測せずmanifestを正規要約として使える。</p>
+        </div>
+
+        <div class="grid-2">
+          <div>
+            <table class="token-table">
+              <caption>Core design tokens</caption>
+              <thead><tr><th>Family</th><th>Values</th><th>Rule</th></tr></thead>
+              <tbody>
+                <tr><td>radius</td><td>4 / 8 / 12 / 18 / 28 / pill</td><td>Windowは18px</td></tr>
+                <tr><td>blur</td><td>12 / 18 / 28px</td><td>任意値を増やさない</td></tr>
+                <tr><td>surface</td><td>Solid / Glass / Frosted</td><td>読む時間で選ぶ</td></tr>
+                <tr><td>accent</td><td>#ff6a00</td><td>Current / Focus / Progress</td></tr>
+                <tr><td>display</td><td>difference / fallback solid</td><td>大見出しだけ</td></tr>
+                <tr><td>motion</td><td>150 / 280 / 420ms</td><td>Control / Overlay / Layout</td></tr>
+                <tr><td>auxiliary</td><td>12–13px / TEXT_AUX</td><td>補足だけ</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <section class="code-region" aria-label="CSSトークン抜粋">
+            <pre class="code-block">:root {
+  --surface-solid: rgba(13, 15, 18, .94);
+  --surface-glass: rgba(13, 15, 18, .56);
+  --surface-frost: rgba(24, 25, 29, .74);
+
+  --radius-s: 8px;
+  --radius-m: 12px;
+  --radius-l: 18px;
+  --radius-xl: 28px;
+
+  --blur-s: 12px;
+  --blur-m: 18px;
+  --blur-l: 28px;
+
+  --accent: #ff6a00;
+}
+
+.display-adaptive {
+  color: #fff;
+  mix-blend-mode: difference;
+}
+
+.window-glass {
+  background: var(--surface-glass);
+  border-radius: var(--radius-l);
+  backdrop-filter: blur(var(--blur-m));
+}</pre>
+          </section>
+        </div>
+
+        <h3 class="subsection-title">Embedded font license registry</h3>
+        <table class="token-table">
+          <caption>Review fonts — production must self-host WOFF2 and license text</caption>
+          <thead><tr><th>Family</th><th>Role</th><th>License</th><th>Upstream</th></tr></thead>
+          <tbody>
+            <tr><td>Arimo</td><td>Neutral Sans / Latin</td><td>OFL-1.1</td><td><a href="https://github.com/googlefonts/Arimo">googlefonts/Arimo</a></td></tr>
+            <tr><td>Zen Kaku Gothic Antique</td><td>Neutral Sans / Japanese</td><td>OFL-1.1</td><td><a href="https://fonts.google.com/specimen/Zen+Kaku+Gothic+Antique">Google Fonts</a></td></tr>
+            <tr><td>Cormorant Garamond</td><td>Editorial Serif / Latin</td><td>OFL-1.1</td><td><a href="https://github.com/CatharsisFonts/Cormorant">CatharsisFonts/Cormorant</a></td></tr>
+            <tr><td>Zen Old Mincho</td><td>Editorial Serif / Japanese</td><td>OFL-1.1</td><td><a href="https://fonts.google.com/specimen/Zen+Old+Mincho">Google Fonts</a></td></tr>
+            <tr><td>IBM Plex Mono</td><td>Console Mono</td><td>OFL-1.1</td><td><a href="https://github.com/IBM/plex">IBM/plex</a></td></tr>
+          </tbody>
+        </table>
+
+        <p class="license-note">参照サイトの商用・独自書体、ロゴ、画像、3D資産は採用しない。Lusion、/nk.studio、Locomotiveは構成原理の研究元であり、第三版の配布資産ではない。</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="page-shell footer-inner"><span>Dive into Tepui / UI Design System Reference / Version 3</span><span>Machine-readable source: <code>#design-system-manifest</code></span></div>
+  </footer>
+
+  <script type="application/json" id="design-system-manifest">
+  {
+    "id": "tepui.ui-design-system",
+    "version": 3,
+    "status": "proposal",
+    "supersedes": "tepui.typography-logotype-symbols@2",
+    "research": {
+      "observedAt": "2026-08-14",
+      "method": ["official live pages", "public CSS", "official social preview", "industry showcase"],
+      "sources": {
+        "lusion": {
+          "url": "https://lusion.co/",
+          "observed": ["large neutral grotesk", "IBM Plex Mono metadata", "black-white persistent UI", "pill CTA", "immersive 3D behind simple interface"],
+          "translatedAs": ["Arimo display", "IBM Plex Mono machine voice", "scene colors separated from UI colors"]
+        },
+        "nkStudio": {
+          "url": "https://www.nk.studio/",
+          "observed": ["near-black and off-white", "one mint accent", "DM Sans", "rounded blurred cards", "difference and overlay compositing"],
+          "translatedAs": ["one orange accent", "Glass surface", "rounded window scale"]
+        },
+        "locomotive": {
+          "url": "https://locomotive.ca/en",
+          "observed": ["oversized display type", "section-level color change", "difference blended hero and header", "grid-led composition"],
+          "translatedAs": ["Adaptive Contrast Display", "monochrome section themes", "large typography with restrained chrome"]
+        }
+      },
+      "doNotCopy": ["logos", "images", "3D assets", "proprietary fonts", "signature animations"]
+    },
+    "fontLicensePolicy": "SIL-OFL-1.1-only",
+    "fontLoading": {
+      "mockup": "Google Fonts for review only",
+      "production": "self-hosted WOFF2 with license texts"
+    },
+    "fonts": {
+      "ui": {
+        "latin": { "family": "Arimo", "weights": [400, 600, 700], "styles": ["normal", "italic"], "license": "OFL-1.1", "upstream": "https://github.com/googlefonts/Arimo" },
+        "japanese": { "family": "Zen Kaku Gothic Antique", "weights": [400, 500, 700], "styles": ["normal"], "license": "OFL-1.1", "upstream": "https://fonts.google.com/specimen/Zen+Kaku+Gothic+Antique" }
+      },
+      "editorial": {
+        "latin": { "family": "Cormorant Garamond", "weights": [300, 400, 500], "styles": ["normal", "italic"], "license": "OFL-1.1", "upstream": "https://github.com/CatharsisFonts/Cormorant" },
+        "japanese": { "family": "Zen Old Mincho", "weights": [400, 500, 600], "styles": ["normal"], "license": "OFL-1.1", "upstream": "https://fonts.google.com/specimen/Zen+Old+Mincho" }
+      },
+      "console": {
+        "latin": { "family": "IBM Plex Mono", "weights": [400, 500, 600], "styles": ["normal", "italic"], "license": "OFL-1.1", "upstream": "https://github.com/IBM/plex" },
+        "japaneseFallback": "Zen Kaku Gothic Antique",
+        "strictHalfwidthFullwidthGrid": false
+      },
+      "fontSynthesis": "none"
+    },
+    "typography": {
+      "displayXL": { "size": "44-136px", "weight": 400, "family": "ui", "allowedColors": ["title", "adaptive"] },
+      "displaySubtitle": { "size": "18-38px", "weight": "300-400", "family": "editorial", "allowedColors": ["body", "adaptive", "accent-limited"] },
+      "windowTitle": { "size": "15px", "weight": 600, "family": "ui", "color": "title" },
+      "body": { "size": "16px", "weight": 400, "family": "ui", "color": "body" },
+      "hud": { "size": "14px", "weight": 400, "family": "ui", "color": "body-or-strong" },
+      "auxiliary": { "size": "12-13px", "weight": 400, "family": "ui", "color": "aux", "mayCarryCriticalInformationAlone": false },
+      "label": { "size": "12px", "weight": 600, "family": "ui", "color": "aux" },
+      "micro": { "size": "11px", "weight": 600, "family": "ui", "color": "aux-or-faint", "nonInteractiveOnly": true },
+      "console": { "size": "13px", "weight": "400-500", "family": "console", "color": "body-or-strong" },
+      "strong": { "defaultWeight": 600, "maximumRoutineWeight": 700, "wholeParagraphs": false },
+      "italic": {
+        "latinUses": ["subtitle", "quotation", "assumption", "provisional output"],
+        "japaneseSyntheticItalic": false,
+        "japaneseAlternative": "editorial family in normal style",
+        "forbiddenUses": ["warning", "button", "long body", "numeric column", "control label"]
+      }
+    },
+    "palette": {
+      "mode": "monochrome-with-single-brand-accent",
+      "dark": {
+        "background": "#08090c",
+        "title": "#eeeaf5",
+        "body": "#c3bec9",
+        "auxiliary": "#918b97",
+        "faint": "#625d68",
+        "strong": "#ffffff",
+        "accent": "#ff6a00"
+      },
+      "light": {
+        "background": "#f3f0ed",
+        "title": "#17141b",
+        "body": "#514c56",
+        "auxiliary": "#6f6873",
+        "faint": "#aaa2ad",
+        "strong": "#08070a",
+        "accent": "#bd4200"
+      },
+      "accentBudget": { "screenAreaMaximum": "3%", "textAreaMaximum": "8%" },
+      "accentMeanings": ["current", "selected", "focus", "progress"],
+      "domainColorExceptions": ["danger", "prograde", "normal", "radial", "simultaneous target identity"]
+    },
+    "adaptiveContrast": {
+      "css": { "color": "#fff", "mixBlendMode": "difference" },
+      "allowedRoles": ["displayXL", "displaySubtitle", "largeLogotype"],
+      "forbiddenRoles": ["body", "auxiliary", "label", "input", "marker", "danger"],
+      "fallback": "solid scrim plus fixed title color",
+      "forcedColors": "disable blend and use CanvasText"
+    },
+    "surfaces": {
+      "solid": { "background": "rgba(13,15,18,.94)", "blur": "none", "radius": "18px", "uses": ["long reading", "tables", "settings", "precise input"] },
+      "glass": { "background": "rgba(13,15,18,.56)", "blur": "18px", "radius": "18px", "uses": ["scene-relative information", "tool palette", "context UI"], "nesting": false },
+      "frosted": { "background": "rgba(24,25,29,.74)", "blur": "28px", "radius": "18px", "uses": ["pause", "dialog", "save", "command palette"] }
+    },
+    "radii": { "xs": "4px", "s": "8px", "m": "12px", "l": "18px", "xl": "28px", "pill": "999px" },
+    "blur": { "s": "12px", "m": "18px", "l": "28px", "animateValues": false },
+    "motion": { "control": "150ms", "overlay": "280ms", "layout": "420ms", "ambientMinimum": "8s", "reducedMotion": "opacity-only" },
+    "patterns": {
+      "navigation": ["top rail", "side rail", "tabs"],
+      "controls": ["text button", "outline button", "solid button", "primary pill CTA", "input", "toggle", "meter", "chip"],
+      "data": ["list", "table", "independent card"],
+      "overlays": ["context menu", "tooltip", "toast", "dialog", "command palette"],
+      "systemStates": ["empty", "loading", "unavailable", "error"]
+    },
+    "windowAnatomy": ["header", "optional tabs", "body", "auxiliary explanation", "optional footer"],
+    "symbols": {
+      "format": "SVG",
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.5,
+      "interfaceIds": ["i-close", "i-menu", "i-chevron", "i-save", "i-target", "i-play", "i-pause", "i-expand", "i-filter", "i-info", "i-undo", "i-dock"],
+      "worldMarkerIds": ["m-ship", "m-body", "m-ammo", "m-prograde", "m-retrograde", "m-radial", "m-target", "m-ascending", "m-descending", "m-apsis", "m-maneuver", "m-burn", "m-impact", "m-ghost", "m-preview"]
+    },
+    "accessibility": {
+      "minimumTouchTarget": "44px",
+      "focusIndicator": "2px orange with 2px offset",
+      "colorOnlyMeaning": false,
+      "glassFallback": "solid surface",
+      "blendFallback": "fixed high-contrast text on scrim",
+      "forcedColorsSupport": true,
+      "reducedMotionSupport": true
+    },
+    "rules": [
+      "Keep persistent UI monochrome",
+      "Use orange only for current, selected, focus, and progress",
+      "Choose Solid, Glass, or Frosted from reading duration and scene relationship",
+      "Use Adaptive Contrast only for display typography",
+      "Do not synthesize Japanese italic or unavailable font weights",
+      "Do not nest Glass surfaces",
+      "Do not turn every list row into a card",
+      "Do not copy reference-site proprietary assets"
+    ]
+  }
+  </script>
+</body>
+</html>

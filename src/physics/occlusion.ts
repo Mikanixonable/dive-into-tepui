@@ -12,10 +12,11 @@ const OCCLUSION_MARGIN = 1;
 const OCCLUSION_FADE_START = 2;
 const OCCLUSION_FADE_END = 1.5;
 
-// 遮蔽中の天体マーカーを、手前の天体の近傍だけ段階的に減衰させる係数を返す。
-// 手前の天体から対象点までの距離をその天体の半径で正規化し、1.5R をセーフゾーンの
-// 内側(完全非表示)、2R をフェード開始点(完全表示)とする。複数の天体が遮る場合は
-// 最も強く減衰する天体を採用する。
+// 天体マーカーの遮蔽・近接フェード係数を返す。
+// ここでいう R は実距離ではなく、カメラから見た手前の天体の見かけの角半径。マップ
+// ビューはカメラ距離が大きく変わるため、天体から対象までの ECI 距離を使うと画面上の
+// 惑星の大きさと閾値が一致しない。見かけの中心間角距離が 1.5R 以下をセーフゾーン
+// (完全非表示)、1.5R〜2R をフェード、2R 以上を完全表示とする。
 export function occlusionOpacity<T extends { readonly radius: number; readonly state: KinematicState }>(
   cameraPos: Vec3,
   point: Vec3,
@@ -29,20 +30,23 @@ export function occlusionOpacity<T extends { readonly radius: number; readonly s
 
   for (const attractor of attractors) {
     const fromAttractorToPoint = sub(point, attractor.state.r);
-    const targetDistance = len(fromAttractorToPoint);
-    if (targetDistance <= attractor.radius) continue;
+    if (lenSq(fromAttractorToPoint) <= attractor.radius * attractor.radius) continue;
     const oc = sub(attractor.state.r, cameraPos);
+    const centerDistance = len(oc);
+    if (centerDistance < 1e-6) continue;
     const tca = dot(oc, dir);
     if (tca <= 0) continue;
-    const perp = addScaled(oc, dir, -tca);
-    const radiusSq = attractor.radius * attractor.radius;
-    if (lenSq(perp) >= radiusSq) continue;
-    const t0 = tca - Math.sqrt(radiusSq - lenSq(perp));
-    if (t0 <= 0 || t0 >= dist - OCCLUSION_MARGIN) continue;
+    // 手前の天体だけが背後の対象を隠す。tca は中心の視線方向距離なので、画面中心から
+    // 外れた天体でも「対象より手前」にあるかを正しく判定できる。
+    if (tca >= dist - OCCLUSION_MARGIN) continue;
 
-    const normalizedDistance = targetDistance / attractor.radius;
+    const centerDir = { x: oc.x / centerDistance, y: oc.y / centerDistance, z: oc.z / centerDistance } as Vec3;
+    const separationCos = Math.max(-1, Math.min(1, dot(dir, centerDir)));
+    const separation = Math.acos(separationCos);
+    const apparentRadius = Math.asin(Math.min(1, attractor.radius / centerDistance));
+    const normalizedSeparation = separation / Math.max(apparentRadius, 1e-12);
     const fade = Math.max(0, Math.min(1,
-      (normalizedDistance - OCCLUSION_FADE_END) / (OCCLUSION_FADE_START - OCCLUSION_FADE_END)));
+      (normalizedSeparation - OCCLUSION_FADE_END) / (OCCLUSION_FADE_START - OCCLUSION_FADE_END)));
     opacity = Math.min(opacity, fade);
   }
   return opacity;

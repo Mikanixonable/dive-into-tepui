@@ -259,8 +259,8 @@ main.ts
   どのノードも例外なく)は `physics/dynamic-trajectory.ts` の `DynamicTrajectory` を1本、フィールド名
   `actualTrajectory` で保持する(state/history/prevState の正本)。GameEntity ごとに繰り返さず
   ここに一括で記す。`DynamicTrajectory` 自身は軌道要素を持たない — `GameEntity.orbitalElementsAround(center)` が
-  `state` の参照同一性 + `center.id` でメモ化する(§付録「正本でないもの」参照。中心天体 `center` は
-  呼び出し側が都度選ぶので `DynamicTrajectory`/`GameEntity` の状態ではない)。`predictsFuture = true` の
+  呼び出しごとに現在の `state` と `center` から導出する(中心天体 `center` は呼び出し側が都度選ぶので
+  `DynamicTrajectory`/`GameEntity` の状態ではない)。`predictsFuture = true` の
   GameEntity(Ship・Ammo のみ)は、`Predictor` が
   `stepPredicted` を呼んだ時点で2本目の `DynamicTrajectory` を `predictedTrajectory` として追加で持つ
   (§付録「正本でないもの」参照 — 未来位置のキャッシュであり、正データではない)。予測する長さ
@@ -341,8 +341,8 @@ main.ts
 | 保持配列の顔ぶれの世代 | `EntityManager.collectionRevision`(private `_collectionRevision` + public getter) | `addXxx`/除去のたびに増える。`all()`/`attractors()` の結合キャッシュの再構築判定に使う。`alive` が false になっただけでは増えない(除去は非自機が `cleanup` → `prune`、自機が `ActivePlayerController.reclaimDead()` で、それぞれ毎フレーム行う)。public getter は、結合配列そのものは参照が変わらないため、外から顔ぶれの変化を知る唯一の手段になる |
 | シミュレーション時刻 / 前フレームの simDt | `Simulator.simTime` / `.lastSimDt` | |
 | エンティティ側の最小イベント時刻の控え | `Simulator.cachedEventTime`(private。有効性 `cachedEventValid`、算出時の LOD `cachedEventLod`、算出時の顔ぶれの世代 `cachedEventRevision` を併せ持つ) | エンティティの締切は固定の絶対時刻なので substep ごとに引き直さず、simTime がこの時刻へ到達したとき・`EntityManager.collectionRevision` が変わったとき・`passiveWarpLod` が切り替わったときだけ全生存エンティティを走査して求め直す。ステージ側のイベント時刻は艦の現在の Δv と加速度から毎回決まるため、ここには含めず毎 substep 引く |
-| このフレームの表示窓(`DisplayWindow` = `{frame, simTime, referencePeriod, duration, pastDuration, displayTime, tickLabelMode}`) | `DisplayWindowManager.current`(private `_current`) | `resolve(simTime, player)` で組み直す唯一の書き込み経路。内部でキャッシュキー(引数の simTime・player・player の `state`、および `frame`/`forceCurrent`/`tickLabelMode`/`durationKey`/`pastDurationKey`/`sliderT` などの setter が増やす private `revision`)を持ち、いずれも動いていなければ組み直さない — `game.update` から2回(`advanceSimulation` を飛ばした/実行した直後)、`game.sync` の先頭で1回呼ぶが、実際に `currentOrbitPeriod()`(登録天体全体を組んで `strongestAttractor` を回す重い計算)まで走るのはキャッシュキーが動いたときだけ。`Predictor.update` の horizon・`game.update` 内の各値・`sync(player)` のパネル反映はいずれもこの1個を読むだけで、それぞれが `currentOrbitPeriod()` を呼び直すことはない |
-| このフレームの重力源窓(解析天体 + 重力を持つ生存中の GameEntity の合流) | `DisplayWindowManager.attractorsAt(simTime)`(private キャッシュ、`attractorsBodies`/`attractorsDynamic`/`attractorsCache`) | `ephemeris.attractorsAt(simTime)` と `entities.attractors()` の両方の戻り値(参照)が前回と同じ simTime で一致していれば組み直さず前回の合流配列を返す。`game.update` 内の `cameraSystem.update` と `game.sync` が読む |
+| このフレームの表示窓(`DisplayWindow` = `{frame, simTime, referencePeriod, duration, pastDuration, displayTime, tickLabelMode}`) | `DisplayWindowManager.current`(private `_current`) | `resolve(simTime, player)` で毎回組み直すフレームスナップショット。`currentOrbitPeriod()` と duration/displayTime の計算は軽い導出値として条件付き再利用をしない。`game.update` 内の update 系と `game.sync` がそれぞれ同じ表示境界を受け取るために `current` を読む |
+| このフレームの重力源窓(解析天体 + 重力を持つ生存中の GameEntity の合流) | `DisplayWindowManager.attractorsAt(simTime)` | `ephemeris.attractorsAt(simTime)` と `entities.attractors()` を呼び出し時点で浅く結合する。表示窓管理側では配列を保持しない。天体暦・エンティティ集合そのもののキャッシュは各所有者に残る |
 | 予測ラウンドロビンのカーソル | `Predictor.cursor` | `EntityManager.all()` のインデックスとして毎フレーム進む。`tracked`/`complete`/`discarded` の3カウンタも同じインスタンスが持つが、`?perf=1` 表示専用の集計値で次フレームの挙動には影響しない |
 | ワープ段・自動ワープ目標時刻 | `SimSpeedManager` | 閾値判定(canShipAct 等)もここの getter が唯一 |
 | 天球グリッド6トグルの可視状態 | `Navball` | `gridVisibility`。`Game.sync` が `navball.gridVisibility` を読んで `EnvironmentScene.sync` の引数(`gridVisibility`)経由で `CelestialGrid.sync` へ渡すだけで、`CelestialGrid` 自身は状態を持たない。初期値は `localStorage`(`tepui.gridVisibility`)から読み込み(`navball.ts` の `loadGridVisibility`)、トグルのたびに `saveGridVisibility` で書き戻す——`UnlockManager`/`tepui.clearCounts` と同じ形だが、正本はこのフィールド自身のまま |
@@ -477,9 +477,9 @@ main.ts
 | 対象 | 正体 | 無効化の契機 |
 | --- | --- | --- |
 | `Ephemeris.attractorsAt(t)` の戻り値(`Attractor[]`) | 天体暦(`SOLAR_SYSTEM` 登録順 — 地球・月・水星・金星・火星・フォボス・ダイモス・木星・メティス・アドラステア・アマルテア・テーベ・イオ・エウロパ・ガニメデ・カリスト・ヒマリア・エララ・アナンケ・カルメ・パシファエ・シノーペ・土星・パン・ダフニス・プロメテウス・パンドラ・エピメテウス・ヤヌス・ミマス・エンケラドゥス・テティス・ディオネ・レア・タイタン・ヒペリオン・イアペトゥス・フェーベ・天王星・海王星・トリトン・ネレイド・ケレス・ベスタ・パラス・冥王星・ハウメア・マケマケ・エリス・ハレー彗星・エンケ彗星・太陽周回小天体32体・天王星系6衛星・冥王星系5衛星・準惑星/小惑星の衛星6体・太陽の101体)から組み立てる重力源スナップショット。各要素は位置・速度に加えて、その時刻に解決した2次重力場(`degree2`: J2・基準半径・自転軸・長軸。持たない天体は `null`)も抱える。全天体を含む唯一の窓で、重力積分の3箇所(`GameEntity.stepActual`・`Predictor.advanceBudget`・`PlanArc` の積分刻み)も遮蔽判定・表面到達判定・中心天体解決・サンプリング間隔導出・HUD/マーカー等も同じこの窓を使う(`mu = 0` の天体は寄与がゼロなので積分側で除外する必要が無い)。どのクラスもこれを状態として保持しない — 呼んだその場で使い切るか、次のステップ/フレームでまた引き直す。`Ephemeris` は時刻 `t` 完全一致キーのリングキャッシュを持ち、同一 `t` への呼び出しは同一の配列参照を返す(呼び出し側は書き換え禁止) | 呼び出しごとに新しい `t` を渡せば作り直される(リングキャッシュがヒットしない場合のみ再計算)。位相オフセット自体はコンストラクタで確定し以後変わらないため、これ以外にキャッシュを無効化する経路はない |
-| `OrbitalElements.center`(`Attractor`) | その軌道要素をどの天体まわりで取ったか。要素と同じ寿命でその天体の `t` 時点スナップショットを抱えるので、要素そのものより長く持ち回してはならない(`OrbitLine` は楕円の平行移動先をここから引く) | 要素を作り直すたび。`GameEntity.orbitalElementsAround` のメモ経由なら `state` 差し替えのたび |
+| `OrbitalElements.center`(`Attractor`) | その軌道要素をどの天体まわりで取ったか。要素と同じ寿命でその天体の `t` 時点スナップショットを抱えるので、要素そのものより長く持ち回してはならない(`OrbitLine` は楕円の平行移動先をここから引く) | 要素を作り直すたび |
 | 解析楕円の中心天体(`strongestAttractor(state.r, attractors)` の結果) | `state`(と `attractors`)から都度導く選択であり、`GameEntity`/`Plan`/`PlanDisplay`/`OrbitLine` のどれもこれを状態として保持しない — 選ぶ GUI もない | 呼ぶたび再計算 |
-| `GameEntity.orbitalElementsAround(center)` の内部メモ | `state` の参照同一性 + `center.id` をキーにした軌道要素のメモ化(中心天体 `center` は呼び出し側が選ぶ) | `state` が差し替わるたび(`current.step`/`.reset`)、または `center.id` が変わるたび自動的に不一致になる |
+| `GameEntity.orbitalElementsAround(center)` | `state` と呼び出し側の `center` から毎回求める軽量な導出値。保持しないことで、表示側が無効化条件を持ち忘れても古い軌道要素を再利用しない | 呼び出しのたび |
 | `GameEntity.prevState`(→ `current.prevState`) | 直前の `step`/`reset` 時点の state を持つ専用フィールド(`history` とは別) | `step`/`reset` のたび更新 |
 | `GameEntity.predictedTrajectory` | `actualTrajectory.state` + ephemeris から `Predictor` が漸進的に構築する未来軌道のキャッシュ(`predictsFuture = false` のクラスでは常に null)。伸ばす長さ(horizon)は `DisplayWindowManager.durationSec(referencePeriod)` の毎フレーム値で、`GameEntity`/`Predictor` のどちらにも独立した状態としては残らない | `discardPredictionIfDiverged` の距離判定(§3-4 (a))、または `Player.behave` の推力確定直後(§3-4 (b))。無効化は破棄のみで即再構築はしない — 次フレーム以降の通常の予算配分で伸び直す |
 | `SimSpeedManager.canResupplyAmmo` | `simSpeed === 1` の派生 getter(等倍限定) | 呼ぶたび再計算 |
@@ -512,7 +512,7 @@ main.ts
 `Vec3` / `KinematicState` / `Quat` / `Attitude` は **不変**。値を進めるときは中身を書き換えず、
 新しいオブジェクトを作って差し替える(`stepRK4` は新しい `KinematicState` を、`stepAttitude` は
 新しい `Attitude` を返す)。これは最適化ではなく整合性の前提で、`physics/dynamic-trajectory.ts` の
-`DynamicTrajectory`(`GameEntity.actualTrajectory`)が `step`/`reset` のたび軌道要素メモを破棄し、差し替え前の
+`DynamicTrajectory`(`GameEntity.actualTrajectory`)が `step`/`reset` のたび state を差し替え、差し替え前の
 state を条件付きで `history` へ送れるのは「state が差し替え以外では変化しない」からである。
 参照を共有したまま中身を書き換えると保持側が変化を検知できず、メモが黙って腐り、履歴も取り落とす。
 
