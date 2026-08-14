@@ -14,7 +14,7 @@ import { isOccluded } from '../../physics/occlusion';
 import { FloatingOrigin } from '../floating-origin';
 import { TrajectoryLine } from '../trajectory-line';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
-import { DisplayDurationSource, Plan, TimeRange, segmentDurationFrom } from './plan';
+import { DisplayDurationSource, TimeRange, segmentDurationFrom } from './plan';
 import { PlanArc } from './plan-arc';
 import type { PlanAttractorProvider } from '../simulation/attractors';
 import * as C from '../const';
@@ -78,11 +78,12 @@ export class PlanPath {
     scene.add(this.group);
   }
 
-  // plan から区間列を組み直す。起点・重力源・apsisCenter が既存の arc と一致する区間は
+  // 起点とノード列から区間列を組み直す。起点・重力源・apsisCenter が既存の arc と一致する区間は
   // setEnd で終端だけ動かし、一致しない区間は arc を作り直す。表示変換の文脈(座標系・
   // un-bake 時刻)もこのフレームのものに更新する。
   update(
-    plan: Plan, ephemeris: Ephemeris, frame: ReferenceFrame, currentTime: number,
+    start: KinematicState, nodes: readonly KinematicState[],
+    ephemeris: Ephemeris, frame: ReferenceFrame, currentTime: number,
     attractors: readonly Attractor[], attractorProvider: PlanAttractorProvider,
   ): void {
     this.frame = frame;
@@ -92,12 +93,12 @@ export class PlanPath {
     this.unbakeTransform = ephemeris.frameTransformAt(frame, currentTime, attractors);
     this.lastRebuiltArcs = 0;
     this.lastSteps = 0;
-    // anchor→node…→末尾区間に分解する
-    const segments = buildSegments(plan, ephemeris, this.displayDuration);
+    // 起点→node…→末尾区間に分解する
+    const segments = buildSegments(start, nodes, ephemeris, this.displayDuration);
     // ノードが1つも無い間はその唯一の区間(末尾区間)の起点が毎フレーム自機を追従する。
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i]!;
-      const tracksLiveAnchor = plan.nodes.length === 0 && i === segments.length - 1;
+      const tracksLiveAnchor = nodes.length === 0 && i === segments.length - 1;
       const apsisCenterId = seg.apsisCenter?.id ?? null;
       let arc = this.arcs[i];
       if (!arc || !arc.represents(seg.state0, seg.end, attractorProvider.revision, apsisCenterId, tracksLiveAnchor)) {
@@ -111,7 +112,7 @@ export class PlanPath {
     }
     this.arcs.length = segments.length;
     this.activeCount = segments.length;
-    this.nodeCount = plan.nodes.length;
+    this.nodeCount = nodes.length;
     const finalArc = this.arcs[segments.length - 1]!;
     const finalSeg = segments[segments.length - 1]!;
     this.final = {
@@ -317,14 +318,17 @@ export class PlanPath {
   }
 }
 
-// anchor を起点に nodes を順にたどって区間列を返す。先頭 nodes.length 本は次のノードで終わり、
+// 起点から nodes を順にたどって区間列を返す。先頭 nodes.length 本は次のノードで終わり、
 // 末尾の1本は segmentDurationFrom ぶん伸び、その起点自身の時刻で選んだ中心天体を持つ
 // (表示時刻の重力源では表示時刻に応じて中心天体が変わり、区間の物理そのものと食い違う)。
-function buildSegments(plan: Plan, ephemeris: Ephemeris, displayDuration: DisplayDurationSource): Segment[] {
+function buildSegments(
+  start: KinematicState, nodes: readonly KinematicState[],
+  ephemeris: Ephemeris, displayDuration: DisplayDurationSource,
+): Segment[] {
   const segments: Segment[] = [];
-  let state0 = plan.anchor;
+  let state0 = start;
   // ノードを1つずつ経由点として区間を切り出す
-  for (const node of plan.nodes) {
+  for (const node of nodes) {
     segments.push({ state0, end: node.t, apsisCenter: null });
     state0 = node;
   }
