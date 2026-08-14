@@ -120,7 +120,7 @@ function buildInfoPanels(root: HTMLElement, targetRail: HTMLElement): void {
   shelfToggle.addEventListener(
     'click', () => savePanelCollapsed('hud-combat-shelf', shelf.classList.contains('collapsed')));
 
-  const status = new PanelShell(shelf, 'hud-status', 'SHIP STATUS');
+  const status = new PanelShell(shelf, 'hud-status', 'vessel status');
   status.body.innerHTML = `
     <div class="row"><span class="k">RCS制動 [${K.rcsDampToggle.label}]</span><span class="v" data-id="rcs"></span></div>
     <div class="row"><span class="k">並進出力 [${K.throttleLow.label}-${K.throttleMax.label}]</span><span class="v" data-id="throttle"></span></div>
@@ -133,7 +133,7 @@ function buildInfoPanels(root: HTMLElement, targetRail: HTMLElement): void {
 
   // compact 縦の既定表示: ORBIT/CONTACTS は収納状態で開始する(SHIP STATUS/ステージ状態
   // パネルは常設のまま)。一度でも開閉を操作すれば、以後は PanelShell の永続に従う。
-  const orbit = new PanelShell(shelf, 'hud-orbit', 'ORBIT', isCompactViewport());
+  const orbit = new PanelShell(shelf, 'hud-orbit', 'orbit', isCompactViewport());
   orbit.body.innerHTML = `
     <div class="row"><span class="k">基準天体</span><span class="v" data-id="center"></span></div>
     <div class="row"><span class="k">高度 ALT</span><span class="v" data-id="alt"></span></div>
@@ -145,13 +145,13 @@ function buildInfoPanels(root: HTMLElement, targetRail: HTMLElement): void {
     <div class="row"><span class="k">動圧 Q</span><span class="v" data-id="qdyn"></span></div>
     <div class="row"><span class="k">機体温度</span><span class="v" data-id="temp"></span></div>`;
 
-  const target = new PanelShell(targetRail, 'hud-target', 'TARGET');
+  const target = new PanelShell(targetRail, 'hud-target', 'target');
   target.titleEl.dataset['id'] = 'tgtname';
   target.setHidden(true);
   target.body.innerHTML = `<div data-id="tgtbody"></div>`;
 
-  const enemies = new PanelShell(shelf, 'hud-enemies', 'CONTACTS', isCompactViewport());
-  enemies.titleEl.innerHTML = 'CONTACTS <span data-id="count"></span>';
+  const enemies = new PanelShell(shelf, 'hud-enemies', 'contacts', isCompactViewport());
+  enemies.titleEl.innerHTML = 'contacts <span data-id="count"></span>';
   enemies.body.innerHTML = `<div data-id="elist"></div>`;
 
   // マップ視点の縮尺バー。描画自体は MapScaleBadge.sync がカメラの注視点基準で更新する。
