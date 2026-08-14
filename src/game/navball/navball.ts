@@ -4,10 +4,13 @@ import { CelestialGridVisibility } from '../../render/celestial-grid';
 import type { ViewOptionsPanel } from '../hud/view-options-panel';
 
 const DEFAULT_GRID_VISIBILITY: CelestialGridVisibility = {
+  stars: true,
   ecliptic: true,
   eclipticPlane: false, eclipticPole: false, eclipticGrid: false,
   equator: true,
   equatorPlane: false, equatorPole: false, equatorGrid: false,
+  moonOrbit: true,
+  moonOrbitPlane: false, moonOrbitPole: false, moonOrbitGrid: false,
 };
 
 const STORAGE_KEY = 'tepui.gridVisibility';
