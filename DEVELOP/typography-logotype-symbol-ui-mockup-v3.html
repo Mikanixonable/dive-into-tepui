@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Dive into Tepui UI design system, typography, logotype, surfaces, and symbols — version 3">
+  <meta name="description" content="Dive into Tepui UI design system reference — rebuilt version 3">
   <title>Dive into Tepui — UI Design System Reference V3</title>
   <!--
     Review-only font loading. All selected families use SIL OFL 1.1.
@@ -15,97 +15,88 @@
     :root {
       color-scheme: dark;
 
-      --font-ui: "Arimo", "Zen Kaku Gothic Antique", sans-serif;
-      --font-editorial: "Cormorant Garamond", "Zen Old Mincho", serif;
-      --font-console: "IBM Plex Mono", "Zen Kaku Gothic Antique", monospace;
+      --font-ui: "Arimo", "Zen Kaku Gothic Antique", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+      --font-editorial: "Cormorant Garamond", "Zen Old Mincho", "Hiragino Mincho ProN", "Yu Mincho", serif;
+      --font-console: "IBM Plex Mono", "Zen Kaku Gothic Antique", "Hiragino Kaku Gothic ProN", "Yu Gothic", monospace;
 
-      --bg: #08090c;
-      --bg-deep: #030407;
-      --surface-solid: rgba(13, 15, 18, 0.94);
-      --surface-glass: rgba(13, 15, 18, 0.56);
-      --surface-frost: rgba(24, 25, 29, 0.74);
-      --surface-soft: rgba(238, 235, 248, 0.055);
-      --surface-raised: rgba(238, 235, 248, 0.09);
-      --edge: rgba(238, 235, 248, 0.22);
-      --edge-soft: rgba(238, 235, 248, 0.11);
-      --edge-glass: rgba(255, 255, 255, 0.28);
+      --page: #07080a;
+      --surface-0: #0b0d11;
+      --surface-1: #101217;
+      --surface-2: #181b21;
+      --surface-3: #20242b;
+      --glass: rgb(13 15 19 / 0.58);
+      --glass-heavy: rgb(9 11 14 / 0.76);
+      --ink-title: #eeeaf5;
+      --ink-body: #c3bec9;
+      --ink-muted: #89838f;
+      --ink-faint: #5f5a65;
+      --ink-bright: #ffffff;
+      --page-light: #f0eee9;
+      --surface-light-1: #e6e2dc;
+      --surface-light-2: #d9d4cd;
+      --ink-title-light: #17141b;
+      --ink-body-light: #514c56;
+      --ink-muted-light: #746e78;
 
-      --title: #eeeaf5;
-      --body: #c3bec9;
-      --aux: #918b97;
-      --faint: #625d68;
-      --strong: #ffffff;
-      --accent: #ff6a00;
-      --accent-soft: #ff9a5b;
-      --accent-fill: rgba(255, 106, 0, 0.14);
-      --danger: #ff4f5e;
+      --accent-h: 12;
+      --accent-s: 100%;
+      --accent-l: 56%;
+      --accent-light-l: 40%;
+      --accent: hsl(var(--accent-h) var(--accent-s) var(--accent-l));
+      --accent-on-light: hsl(var(--accent-h) var(--accent-s) var(--accent-light-l));
+      --accent-soft: hsl(var(--accent-h) 80% 66%);
+      --danger: #ff4058;
       --axis-prograde: #3b82f6;
       --axis-normal: #10b981;
       --axis-radial: #ef4444;
 
-      --radius-xs: 4px;
-      --radius-s: 8px;
-      --radius-m: 12px;
-      --radius-l: 18px;
-      --radius-xl: 28px;
-      --radius-pill: 999px;
-
-      --blur-s: 12px;
-      --blur-m: 18px;
-      --blur-l: 28px;
-
-      --space-1: 0.25rem;
-      --space-2: 0.5rem;
-      --space-3: 0.75rem;
-      --space-4: 1rem;
-      --space-5: 1.5rem;
-      --space-6: 2rem;
-      --space-7: 3rem;
-      --space-8: 5rem;
-      --space-9: 8rem;
-
-      --type-display-xl: clamp(3.2rem, 9vw, 8.5rem);
-      --type-display-l: clamp(2.2rem, 5vw, 5rem);
-      --type-subtitle: clamp(1.35rem, 2.6vw, 2.4rem);
+      --type-brand: clamp(3.5rem, 11vw, 9.75rem);
+      --type-subtitle: clamp(1.45rem, 3vw, 2.625rem);
+      --type-display: clamp(2.15rem, 5vw, 4.5rem);
       --type-window: 0.9375rem;
-      --type-body: 1rem;
-      --type-hud: 0.875rem;
-      --type-aux: 0.8125rem;
-      --type-label: 0.75rem;
-      --type-micro: 0.6875rem;
+      --type-body: 0.9375rem;
+      --type-aux: 0.75rem;
+      --type-label: 0.6875rem;
       --type-console: 0.8125rem;
 
-      --motion-control: 150ms;
-      --motion-overlay: 280ms;
-      --motion-layout: 420ms;
+      --space-1: 0.25rem;
+      --space-2: 0.375rem;
+      --space-3: 0.625rem;
+      --space-4: 0.875rem;
+      --space-5: 1.25rem;
+      --space-6: 1.75rem;
+      --space-7: 2.625rem;
 
-      --page-width: 92rem;
+      --radius-control: 0.875rem;
+      --radius-card: 1.375rem;
+      --radius-window: 2.125rem;
+      --radius-feature: 3rem;
+      --radius-pill: 999px;
+      --max-width: 92rem;
+      --shadow-window: 0 24px 80px rgb(0 0 0 / 0.3);
+      --shadow-solid: 0 18px 60px rgb(0 0 0 / 0.24);
     }
 
-    *,
-    *::before,
-    *::after {
+    * {
       box-sizing: border-box;
     }
 
     html {
       scroll-behavior: smooth;
-      background: var(--bg-deep);
     }
 
     body {
-      min-width: 20rem;
       margin: 0;
+      overflow-x: hidden;
       background:
-        radial-gradient(circle at 12% 8%, rgba(62, 69, 93, 0.18), transparent 30rem),
-        linear-gradient(180deg, var(--bg-deep), var(--bg) 38rem);
-      color: var(--body);
+        radial-gradient(circle at 76% 7%, hsl(var(--accent-h) 72% 42% / 0.08), transparent 30rem),
+        var(--page);
+      color: var(--ink-body);
       font-family: var(--font-ui);
       font-size: var(--type-body);
-      font-synthesis: none;
       line-height: 1.55;
       text-rendering: optimizeLegibility;
-      -webkit-font-smoothing: antialiased;
+      font-synthesis: none;
     }
 
     button,
@@ -122,16 +113,28 @@
       color: inherit;
     }
 
-    button:focus-visible,
-    input:focus-visible,
-    a:focus-visible {
-      outline: 2px solid var(--accent);
-      outline-offset: 2px;
+    button {
+      border: 0;
     }
 
-    code,
-    pre {
-      font-family: var(--font-console);
+    svg {
+      display: block;
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 3px;
+    }
+
+    ::selection {
+      background: var(--accent);
+      color: #08090c;
+    }
+
+    .page-shell {
+      width: min(100%, var(--max-width));
+      margin-inline: auto;
+      padding-inline: clamp(0.875rem, 2.4vw, 2.25rem);
     }
 
     .svg-defs {
@@ -141,46 +144,46 @@
       overflow: hidden;
     }
 
-    .page-shell {
-      width: min(100%, var(--page-width));
-      margin-inline: auto;
-      padding-inline: clamp(1rem, 3vw, 3rem);
-    }
-
     .topbar {
       position: sticky;
       top: 0;
       z-index: 50;
-      border-bottom: 1px solid var(--edge-soft);
-      background: rgba(5, 6, 9, 0.62);
-      backdrop-filter: blur(var(--blur-m));
+      background: rgb(7 8 10 / 0.64);
+      box-shadow: 0 10px 34px rgb(0 0 0 / 0.16);
+      backdrop-filter: blur(22px) saturate(115%);
     }
 
     .topbar-inner {
-      min-height: 3.5rem;
+      min-height: 3.125rem;
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: var(--space-5);
     }
 
-    .brand-mini {
-      color: var(--title);
+    .mini-brand {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      color: var(--ink-title);
       font-size: var(--type-label);
       font-weight: 700;
-      letter-spacing: 0.13em;
+      letter-spacing: 0.14em;
       text-decoration: none;
       text-transform: uppercase;
       white-space: nowrap;
     }
 
-    .brand-mini span {
+    .mini-mark {
+      width: 1.625rem;
+      height: 1.625rem;
       color: var(--accent);
     }
 
     .topnav {
       display: flex;
-      gap: clamp(0.75rem, 2vw, 1.5rem);
+      gap: var(--space-2);
+      padding-block: var(--space-2);
       overflow-x: auto;
       scrollbar-width: none;
     }
@@ -190,1555 +193,1258 @@
     }
 
     .topnav a {
-      color: var(--aux);
-      font-size: var(--type-micro);
+      min-height: 2.25rem;
+      display: inline-flex;
+      align-items: center;
+      padding-inline: var(--space-4);
+      border-radius: var(--radius-pill);
+      color: var(--ink-muted);
+      font-size: var(--type-label);
       font-weight: 600;
-      letter-spacing: 0.09em;
+      letter-spacing: 0.08em;
       text-decoration: none;
       text-transform: uppercase;
       white-space: nowrap;
     }
 
     .topnav a:hover {
-      color: var(--title);
-    }
-
-    .hero {
-      padding-block: clamp(2rem, 5vw, 5rem) clamp(5rem, 10vw, 10rem);
+      background: var(--surface-2);
+      color: var(--ink-title);
     }
 
     .hero-stage {
       position: relative;
-      min-height: min(49rem, calc(100vh - 7rem));
-      display: grid;
-      grid-template-columns: minmax(0, 1.4fr) minmax(19rem, 0.6fr);
-      align-items: end;
-      gap: clamp(2rem, 5vw, 6rem);
-      isolation: isolate;
+      min-height: min(54rem, calc(100vh - 3.125rem));
       overflow: hidden;
-      border: 1px solid var(--edge-soft);
-      border-radius: var(--radius-xl);
-      background:
-        radial-gradient(circle at 22% 32%, rgba(255, 255, 255, 0.95) 0 7%, transparent 7.3%),
-        radial-gradient(circle at 26% 35%, rgba(176, 181, 201, 0.44) 0 18%, transparent 30%),
-        radial-gradient(circle at 75% 32%, rgba(255, 106, 0, 0.28), transparent 22%),
-        linear-gradient(118deg, #e5e3e8 0 38%, #535865 38% 56%, #08090d 56% 100%);
-      padding: clamp(1.5rem, 4vw, 4rem);
+      isolation: isolate;
+      background: #090a0d;
     }
 
-    .hero-stage::before {
-      content: "";
+    .generative-canvas {
+      position: absolute;
+      inset: -0.75rem;
+      z-index: -3;
+      width: calc(100% + 1.5rem);
+      height: calc(100% + 1.5rem);
+      filter: blur(4px) contrast(1.08) saturate(0.9);
+      image-rendering: pixelated;
+      transform: scale(1.02);
+    }
+
+    .pixel-wash {
+      position: absolute;
+      inset: 0;
+      z-index: -2;
+      pointer-events: none;
+      background:
+        repeating-linear-gradient(90deg, rgb(255 255 255 / 0.025) 0 1px, transparent 1px 7px),
+        repeating-linear-gradient(0deg, rgb(0 0 0 / 0.07) 0 2px, transparent 2px 8px);
+      mix-blend-mode: soft-light;
+    }
+
+    .hero-vignette {
       position: absolute;
       inset: 0;
       z-index: -1;
-      opacity: 0.4;
-      background-image:
-        linear-gradient(rgba(255, 255, 255, 0.13) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255, 255, 255, 0.13) 1px, transparent 1px);
-      background-size: 4rem 4rem;
-      mask-image: linear-gradient(to bottom, transparent, #000 28%, #000);
+      pointer-events: none;
+      background:
+        linear-gradient(90deg, rgb(7 8 10 / 0.28), transparent 60%),
+        linear-gradient(0deg, rgb(7 8 10 / 0.92), transparent 34%),
+        radial-gradient(circle at 50% 45%, transparent 32%, rgb(7 8 10 / 0.38) 100%);
     }
 
-    .hero-stage::after {
+    .hero-grid {
+      min-height: inherit;
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(18rem, 0.65fr);
+      gap: clamp(1.25rem, 4vw, 4rem);
+      align-items: end;
+      padding-block: clamp(2.5rem, 7vw, 5.5rem) clamp(2rem, 4.5vw, 3.75rem);
+    }
+
+    .hero-copy {
+      min-width: 0;
+      align-self: center;
+    }
+
+    .eyebrow {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      margin: 0 0 var(--space-3);
+      color: var(--ink-muted);
+      font-family: var(--font-console);
+      font-size: var(--type-label);
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow::before {
+      width: 1.75rem;
+      height: 0.1875rem;
+      border-radius: var(--radius-pill);
+      background: var(--accent);
       content: "";
-      position: absolute;
-      width: 42rem;
-      height: 42rem;
-      right: -18rem;
-      top: -20rem;
-      z-index: -1;
-      border: 1px solid rgba(255, 255, 255, 0.28);
-      border-radius: 50%;
-      box-shadow:
-        0 0 0 5rem rgba(255, 255, 255, 0.025),
-        0 0 0 11rem rgba(255, 255, 255, 0.018);
     }
 
-    .adaptive-lockup {
+    .logotype {
+      width: min(100%, 61rem);
+      margin: 0;
       color: #fff;
+      font-size: var(--type-brand);
+      font-weight: 400;
+      letter-spacing: -0.065em;
+      line-height: 0.72;
+      text-transform: uppercase;
       mix-blend-mode: difference;
     }
 
-    .hero-kicker {
-      margin: 0 0 0.15em 0.08em;
-      font-size: clamp(0.76rem, 1.2vw, 0.95rem);
-      font-weight: 600;
-      letter-spacing: 0.17em;
-      line-height: 1;
-      text-transform: uppercase;
+    .logo-line {
+      position: relative;
+      width: fit-content;
+      display: block;
+      white-space: nowrap;
     }
 
-    .hero-title {
-      margin: 0;
-      font-size: var(--type-display-xl);
-      font-weight: 400;
-      letter-spacing: -0.055em;
-      line-height: 0.8;
-      text-transform: uppercase;
+    .logo-line:nth-child(2) {
+      margin-left: 0.42em;
+    }
+
+    .logo-line:nth-child(3) {
+      margin-left: 0.84em;
+    }
+
+    .logo-ornament {
+      position: absolute;
+      left: calc(100% + 0.75rem);
+      color: #fff;
+      font-family: var(--font-console);
+      font-size: clamp(0.65rem, 1.3vw, 1.05rem);
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      line-height: 1;
+    }
+
+    .logo-line:nth-child(1) .logo-ornament {
+      top: 0.02em;
+    }
+
+    .logo-line:nth-child(2) .logo-ornament {
+      bottom: 0.04em;
+    }
+
+    .logo-line:nth-child(3) .logo-ornament {
+      top: 0.02em;
     }
 
     .hero-subtitle {
-      margin: var(--space-5) 0 0;
+      width: fit-content;
+      margin: clamp(1.15rem, 2.8vw, 2rem) 0 0 0.12em;
+      color: var(--accent);
       font-family: var(--font-editorial);
       font-size: var(--type-subtitle);
-      font-style: italic;
       font-weight: 300;
+      letter-spacing: 0.012em;
       line-height: 1;
+      mix-blend-mode: difference;
     }
 
-    .hero-note {
-      max-width: 43rem;
-      margin: var(--space-6) 0 0;
-      font-size: var(--type-aux);
-      line-height: 1.7;
+    .hero-subtitle-ja {
+      width: fit-content;
+      margin: var(--space-2) 0 0 0.22em;
+      color: var(--accent);
+      font-family: var(--font-editorial);
+      font-size: clamp(0.95rem, 1.55vw, 1.25rem);
+      font-weight: 400;
+      line-height: 1.3;
+      mix-blend-mode: difference;
     }
 
-    .glass-card {
-      border: 1px solid var(--edge-glass);
-      border-radius: var(--radius-l);
-      background: var(--surface-glass);
-      box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.2);
-      backdrop-filter: blur(var(--blur-m)) saturate(110%);
+    .hero-meta {
+      max-width: 42rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+      margin-top: var(--space-5);
     }
 
-    .hero-manifest {
-      color: var(--body);
+    .meta-pill {
+      min-height: 1.875rem;
+      display: inline-flex;
+      align-items: center;
+      padding-inline: var(--space-3);
+      border-radius: var(--radius-pill);
+      background: rgb(9 11 14 / 0.58);
+      box-shadow: 0 8px 26px rgb(0 0 0 / 0.14);
+      color: var(--ink-body);
+      font-family: var(--font-console);
+      font-size: 0.625rem;
+      letter-spacing: 0.06em;
+      backdrop-filter: blur(16px);
+    }
+
+    .surface-glass,
+    .surface-frost,
+    .surface-solid {
+      overflow: hidden;
+    }
+
+    .surface-glass {
+      border-radius: var(--radius-window);
+      background: var(--glass);
+      box-shadow: var(--shadow-window);
+      backdrop-filter: blur(24px) saturate(115%);
+    }
+
+    .surface-frost {
+      border-radius: var(--radius-feature);
+      background:
+        linear-gradient(135deg, rgb(255 255 255 / 0.13), rgb(255 255 255 / 0.035)),
+        rgb(13 15 19 / 0.47);
+      box-shadow: 0 30px 100px rgb(0 0 0 / 0.34);
+      backdrop-filter: blur(30px) saturate(120%);
+    }
+
+    .surface-solid {
+      border-radius: var(--radius-window);
+      background: var(--surface-1);
+      box-shadow: var(--shadow-solid);
+    }
+
+    .theme-console {
+      align-self: end;
       padding: var(--space-5);
     }
 
-    .manifest-head {
+    .window-heading {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: space-between;
       gap: var(--space-4);
-      padding-bottom: var(--space-4);
-      border-bottom: 1px solid var(--edge-soft);
+      margin-bottom: var(--space-4);
     }
 
-    .eyebrow,
-    .section-index,
-    .spec-label {
+    .window-heading h2,
+    .window-heading h3 {
       margin: 0;
-      color: var(--aux);
+      color: var(--ink-title);
+      font-size: var(--type-window);
+      font-weight: 600;
+      line-height: 1.25;
+    }
+
+    .window-heading p {
+      margin: var(--space-1) 0 0;
+      color: var(--ink-muted);
+      font-size: var(--type-aux);
+      line-height: 1.45;
+    }
+
+    .status-dot {
+      width: 0.625rem;
+      height: 0.625rem;
+      flex: 0 0 auto;
+      margin-top: 0.2rem;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 18px hsl(var(--accent-h) var(--accent-s) var(--accent-l) / 0.56);
+    }
+
+    .slider-stack {
+      display: grid;
+      gap: var(--space-3);
+    }
+
+    .slider-row {
+      display: grid;
+      grid-template-columns: 5.8rem minmax(0, 1fr) 3.5rem;
+      gap: var(--space-3);
+      align-items: center;
+      min-height: 2.375rem;
+      padding: var(--space-2) var(--space-3);
+      border-radius: var(--radius-control);
+      background: rgb(255 255 255 / 0.055);
+    }
+
+    .slider-label {
+      color: var(--ink-body);
+      font-size: var(--type-aux);
+    }
+
+    .slider-value {
+      color: var(--ink-title);
       font-family: var(--font-console);
-      font-size: var(--type-micro);
-      font-weight: 500;
+      font-size: var(--type-label);
+      text-align: right;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      height: 0.3rem;
+      margin: 0;
+      appearance: none;
+      border-radius: var(--radius-pill);
+      background: linear-gradient(90deg, #ff213f, #ff7b00);
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      width: 1rem;
+      height: 1rem;
+      appearance: none;
+      border-radius: 50%;
+      background: var(--ink-bright);
+      box-shadow: 0 3px 12px rgb(0 0 0 / 0.3);
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 1rem;
+      height: 1rem;
+      border: 0;
+      border-radius: 50%;
+      background: var(--ink-bright);
+      box-shadow: 0 3px 12px rgb(0 0 0 / 0.3);
+    }
+
+    .theme-readout {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--space-2);
+      margin-top: var(--space-3);
+    }
+
+    .color-readout {
+      min-width: 0;
+      padding: var(--space-3);
+      border-radius: var(--radius-card);
+      background: rgb(255 255 255 / 0.065);
+    }
+
+    .color-readout.light {
+      background: rgb(240 238 233 / 0.92);
+      color: var(--ink-title-light);
+    }
+
+    .color-chip {
+      width: 100%;
+      height: 2rem;
+      margin-bottom: var(--space-2);
+      border-radius: var(--radius-control);
+      background: var(--accent);
+    }
+
+    .color-readout.light .color-chip {
+      background: var(--accent-on-light);
+    }
+
+    .readout-label {
+      display: block;
+      color: var(--ink-muted);
+      font-size: 0.625rem;
+      font-weight: 600;
       letter-spacing: 0.08em;
       text-transform: uppercase;
     }
 
-    .status-chip {
-      border: 1px solid var(--accent);
+    .color-readout.light .readout-label {
+      color: var(--ink-muted-light);
+    }
+
+    .readout-code {
+      display: block;
+      margin-top: 0.125rem;
+      color: var(--ink-title);
+      font-family: var(--font-console);
+      font-size: 0.75rem;
+      white-space: nowrap;
+    }
+
+    .color-readout.light .readout-code {
+      color: var(--ink-title-light);
+    }
+
+    .contrast-note {
+      display: block;
+      margin-top: 0.1rem;
+      color: var(--ink-muted);
+      font-size: 0.625rem;
+    }
+
+    .color-readout.light .contrast-note {
+      color: var(--ink-muted-light);
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+      margin-top: var(--space-3);
+    }
+
+    .button {
+      min-height: 2.5rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-2);
+      padding-inline: var(--space-4);
       border-radius: var(--radius-pill);
-      color: var(--accent);
-      font-family: var(--font-console);
-      font-size: var(--type-micro);
-      padding: 0.3rem 0.55rem;
-      text-transform: uppercase;
-    }
-
-    .manifest-list {
-      display: grid;
-      gap: var(--space-3);
-      margin: var(--space-4) 0 0;
-    }
-
-    .manifest-row {
-      display: grid;
-      grid-template-columns: 5.5rem minmax(0, 1fr);
-      gap: var(--space-3);
-      align-items: baseline;
-    }
-
-    .manifest-row dt {
-      color: var(--aux);
-      font-family: var(--font-console);
-      font-size: var(--type-micro);
-      text-transform: uppercase;
-    }
-
-    .manifest-row dd {
-      margin: 0;
-      color: var(--title);
+      background: var(--surface-3);
+      color: var(--ink-title);
+      cursor: pointer;
       font-size: var(--type-aux);
+      font-weight: 600;
+    }
+
+    .button:hover {
+      background: #2b3039;
+    }
+
+    .button.primary {
+      background: var(--ink-title);
+      color: var(--page);
+    }
+
+    .button.accent {
+      background: var(--accent);
+      color: #09090a;
+    }
+
+    .button.quiet {
+      background: rgb(255 255 255 / 0.06);
+      color: var(--ink-body);
+    }
+
+    .copy-status {
+      min-height: 1rem;
+      margin: var(--space-2) 0 0;
+      color: var(--ink-muted);
+      font-size: 0.625rem;
     }
 
     .section {
-      padding-block: clamp(5rem, 9vw, 9rem);
-      border-top: 1px solid var(--edge-soft);
+      position: relative;
+      padding-block: clamp(2.75rem, 6vw, 5.5rem);
     }
 
-    .section-heading {
+    .section + .section {
+      padding-top: clamp(2rem, 4vw, 3.75rem);
+    }
+
+    .section-head {
       display: grid;
-      grid-template-columns: minmax(14rem, 0.46fr) minmax(0, 1fr);
-      gap: clamp(2rem, 6vw, 7rem);
+      grid-template-columns: minmax(0, 0.82fr) minmax(18rem, 1.18fr);
+      gap: clamp(1rem, 4vw, 4rem);
       align-items: end;
-      margin-bottom: clamp(2.5rem, 5vw, 5rem);
+      margin-bottom: var(--space-6);
     }
 
     .section-index {
-      margin-bottom: var(--space-2);
+      margin: 0 0 var(--space-2);
       color: var(--accent);
+      font-family: var(--font-console);
+      font-size: var(--type-label);
+      font-weight: 500;
+      letter-spacing: 0.1em;
     }
 
     .section-title {
       margin: 0;
-      color: var(--title);
-      font-size: var(--type-display-l);
+      color: var(--ink-title);
+      font-size: var(--type-display);
       font-weight: 400;
       letter-spacing: -0.045em;
-      line-height: 0.95;
+      line-height: 0.94;
     }
 
-    .section-summary {
-      max-width: 53rem;
+    .section-title .ornament {
+      display: inline-block;
+      margin-left: 0.25em;
+      color: var(--accent);
+      font-family: var(--font-console);
+      font-size: 0.22em;
+      letter-spacing: 0.08em;
+      vertical-align: super;
+    }
+
+    .section-lead {
+      max-width: 46rem;
       margin: 0;
-      color: var(--aux);
-      font-size: 0.95rem;
-      line-height: 1.85;
-    }
-
-    .grid-2,
-    .grid-3,
-    .grid-4,
-    .grid-6 {
-      display: grid;
-      gap: var(--space-4);
-    }
-
-    .grid-2 {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      color: var(--ink-muted);
+      font-size: clamp(0.82rem, 1.2vw, 0.95rem);
+      line-height: 1.7;
     }
 
     .grid-3 {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
-    .grid-4 {
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-    }
-
-    .grid-6 {
-      grid-template-columns: repeat(6, minmax(0, 1fr));
-    }
-
-    .study-card,
-    .type-card,
-    .pattern-card,
-    .state-card {
-      border: 1px solid var(--edge-soft);
-      border-radius: var(--radius-l);
-      background: var(--surface-soft);
-      overflow: hidden;
-    }
-
-    .study-visual {
-      position: relative;
-      min-height: 15rem;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      overflow: hidden;
-      border-bottom: 1px solid var(--edge-soft);
-      color: #fff;
-    }
-
-    .study-visual::before,
-    .study-visual::after {
-      content: "";
-      position: absolute;
-      border-radius: 50%;
-    }
-
-    .study-lusion {
-      background:
-        radial-gradient(circle at 25% 70%, #162cff 0 12%, transparent 13%),
-        radial-gradient(circle at 70% 25%, #f4f4f6 0 14%, transparent 15%),
-        linear-gradient(135deg, #11131a, #2c303b);
-    }
-
-    .study-lusion::before {
-      width: 13rem;
-      height: 4rem;
-      left: -2rem;
-      top: 2rem;
-      border-radius: var(--radius-pill);
-      background: #142cff;
-      transform: rotate(18deg);
-    }
-
-    .study-lusion::after {
-      width: 10rem;
-      height: 10rem;
-      right: -3rem;
-      bottom: -3rem;
-      background: #111;
-      box-shadow: inset 1rem 1rem 2rem rgba(255, 255, 255, 0.14);
-    }
-
-    .study-nk {
-      background:
-        radial-gradient(ellipse at 50% 100%, rgba(0, 255, 194, 0.26), transparent 58%),
-        linear-gradient(155deg, #041819, #070b0a 62%);
-    }
-
-    .study-nk::before {
-      width: 1.2rem;
-      height: 11rem;
-      background: #00ffc2;
-      border-radius: 0.2rem;
-      box-shadow: 0 0 3rem rgba(0, 255, 194, 0.62);
-      transform: rotate(17deg);
-    }
-
-    .study-nk::after {
-      width: 18rem;
-      height: 5rem;
-      bottom: -3rem;
-      border: 1px solid rgba(0, 255, 194, 0.35);
-      filter: blur(3px);
-      transform: perspective(12rem) rotateX(65deg);
-    }
-
-    .study-locomotive {
-      background: linear-gradient(125deg, #f2f2f2 0 36%, #777 36% 68%, #141414 68%);
-    }
-
-    .study-locomotive::before {
-      width: 12rem;
-      height: 4.2rem;
-      background: #da382e;
-      border-radius: var(--radius-pill);
-      box-shadow: 4.5rem 2.2rem 0 #da382e, -4rem 3.8rem 0 #da382e;
-      transform: rotate(-12deg);
-    }
-
-    .study-locomotive::after {
-      inset: 0;
-      border-radius: 0;
-      background-image:
-        linear-gradient(rgba(255, 255, 255, 0.12) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255, 255, 255, 0.12) 1px, transparent 1px);
-      background-size: 3.5rem 3.5rem;
-    }
-
-    .study-wordmark {
-      position: relative;
-      z-index: 2;
-      font-size: clamp(2rem, 4vw, 4rem);
-      font-weight: 400;
-      letter-spacing: -0.045em;
-      mix-blend-mode: difference;
-    }
-
-    .study-copy {
-      padding: var(--space-5);
-    }
-
-    .study-name {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: var(--space-3);
-      margin: 0 0 var(--space-4);
-      color: var(--title);
-      font-size: 1.3rem;
-      font-weight: 600;
-    }
-
-    .study-name a {
-      color: var(--aux);
-      font-family: var(--font-console);
-      font-size: var(--type-micro);
-      font-weight: 400;
-    }
-
-    .study-list {
-      margin: 0;
-      padding-left: 1.2rem;
-      color: var(--aux);
-      font-size: var(--type-aux);
-      line-height: 1.75;
-    }
-
-    .translation-strip {
-      margin-top: var(--space-5);
-      border: 1px solid var(--edge);
-      border-radius: var(--radius-l);
-      background: var(--surface-solid);
-      padding: var(--space-5);
-    }
-
-    .translation-flow {
       display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: var(--space-3);
-      margin-top: var(--space-4);
     }
 
-    .translation-step {
-      min-height: 7.5rem;
-      border-left: 2px solid var(--edge);
-      padding: var(--space-3) var(--space-4);
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--space-3);
     }
 
-    .translation-step.is-accent {
-      border-left-color: var(--accent);
-    }
-
-    .translation-title {
-      color: var(--title);
-      font-size: var(--type-hud);
-      font-weight: 600;
-    }
-
-    .translation-copy {
-      margin: var(--space-2) 0 0;
-      color: var(--aux);
-      font-size: var(--type-aux);
-    }
-
-    .type-card {
+    .compact-card {
+      min-width: 0;
       padding: var(--space-5);
+      border-radius: var(--radius-card);
+      background: var(--surface-1);
+      box-shadow: 0 16px 48px rgb(0 0 0 / 0.14);
     }
 
-    .type-card .spec-label {
-      margin-bottom: var(--space-5);
-    }
-
-    .type-body {
-      color: var(--body);
-      font-size: var(--type-body);
-      line-height: 1.7;
-    }
-
-    .type-auxiliary {
-      color: var(--aux);
-      font-size: var(--type-aux);
-      line-height: 1.55;
-    }
-
-    .type-strong {
-      color: var(--title);
-      font-size: 1.2rem;
+    .compact-card h3 {
+      margin: 0;
+      color: var(--ink-title);
+      font-size: var(--type-window);
       font-weight: 600;
-      line-height: 1.45;
     }
 
-    .type-editorial {
-      color: var(--body);
-      font-family: var(--font-editorial);
-      font-size: 1.8rem;
-      font-style: italic;
-      font-weight: 300;
-      line-height: 1.1;
+    .compact-card p {
+      margin: var(--space-2) 0 0;
+      color: var(--ink-muted);
+      font-size: var(--type-aux);
+      line-height: 1.62;
     }
 
-    .type-editorial-ja {
-      color: var(--body);
-      font-family: var(--font-editorial);
-      font-size: 1.15rem;
-      font-style: normal;
-      font-weight: 400;
-      line-height: 1.7;
-    }
-
-    .type-provisional {
-      color: var(--aux);
-      font-style: italic;
-    }
-
-    .type-console {
-      color: var(--body);
+    .compact-card a {
+      display: inline-flex;
+      margin-top: var(--space-3);
+      color: var(--accent);
       font-family: var(--font-console);
-      font-size: var(--type-console);
-      line-height: 1.7;
+      font-size: var(--type-label);
+      text-decoration: none;
+    }
+
+    .research-sign {
+      width: 2.5rem;
+      height: 2.5rem;
+      display: grid;
+      place-items: center;
+      margin-bottom: var(--space-4);
+      border-radius: 0.75rem;
+      background: var(--surface-2);
+      color: var(--accent);
+      font-family: var(--font-console);
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .type-showcase {
+      display: grid;
+      gap: var(--space-3);
+    }
+
+    .type-row {
+      display: grid;
+      grid-template-columns: minmax(8.5rem, 0.28fr) minmax(0, 0.72fr);
+      gap: var(--space-5);
+      align-items: baseline;
+      padding: var(--space-5);
+      border-radius: var(--radius-card);
+      background: var(--surface-1);
     }
 
     .type-meta {
-      display: flex;
-      justify-content: space-between;
-      gap: var(--space-3);
-      margin-top: var(--space-5);
-      padding-top: var(--space-3);
-      border-top: 1px solid var(--edge-soft);
-      color: var(--faint);
+      color: var(--ink-muted);
       font-family: var(--font-console);
-      font-size: var(--type-micro);
+      font-size: var(--type-label);
+      line-height: 1.55;
     }
 
-    .contrast-stage {
-      position: relative;
-      min-height: 36rem;
-      display: grid;
-      align-items: center;
-      isolation: isolate;
-      overflow: hidden;
-      border: 1px solid var(--edge-soft);
-      border-radius: var(--radius-xl);
-      background:
-        radial-gradient(circle at 73% 34%, rgba(255, 106, 0, 0.68), transparent 11rem),
-        linear-gradient(90deg, #f4f1ed 0 34%, #77737b 34% 57%, #07080b 57% 100%);
-    }
-
-    .contrast-stage::before {
-      content: "";
-      position: absolute;
-      width: 28rem;
-      height: 28rem;
-      left: 20%;
-      border: 1px solid rgba(255, 255, 255, 0.44);
-      border-radius: 50%;
-      box-shadow: 0 0 0 6rem rgba(0, 0, 0, 0.04);
-    }
-
-    .contrast-lockup {
-      position: relative;
-      z-index: 1;
-      padding: clamp(1.5rem, 5vw, 5rem);
-      color: #fff;
-      mix-blend-mode: difference;
-    }
-
-    .contrast-title {
+    .type-sample {
+      min-width: 0;
       margin: 0;
-      font-size: clamp(3.4rem, 10vw, 9rem);
+      color: var(--ink-title);
+      overflow-wrap: anywhere;
+    }
+
+    .type-sample.neutral {
+      font-size: clamp(1.75rem, 4vw, 3.7rem);
       font-weight: 400;
-      letter-spacing: -0.06em;
-      line-height: 0.8;
+      letter-spacing: -0.035em;
+      line-height: 0.95;
     }
 
-    .contrast-subtitle {
-      margin: var(--space-5) 0 0;
+    .type-sample.editorial {
+      color: var(--accent);
       font-family: var(--font-editorial);
-      font-size: var(--type-subtitle);
-      font-style: italic;
+      font-size: clamp(1.8rem, 4vw, 3.4rem);
       font-weight: 300;
+      line-height: 1;
     }
 
-    .contrast-notes {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: var(--space-3);
-      margin-top: var(--space-4);
-    }
-
-    .contrast-note {
-      border-top: 1px solid var(--edge);
-      padding-top: var(--space-3);
-      color: var(--aux);
-      font-size: var(--type-aux);
-    }
-
-    .fixed-lockups {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: var(--space-4);
-      margin-top: var(--space-4);
-    }
-
-    .fixed-lockup {
-      min-height: 18rem;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      border: 1px solid var(--edge);
-      border-radius: var(--radius-l);
-      background: var(--bg);
-      padding: clamp(1.5rem, 4vw, 3rem);
-    }
-
-    .fixed-lockup.light {
-      border-color: rgba(23, 20, 27, 0.2);
-      background: #f3f0ed;
-    }
-
-    .fixed-title {
-      margin: 0;
-      color: var(--title);
-      font-size: clamp(3rem, 7vw, 6rem);
+    .type-sample.editorial-ja {
+      font-family: var(--font-editorial);
+      font-size: clamp(1.35rem, 3vw, 2.4rem);
       font-weight: 400;
-      letter-spacing: -0.05em;
-      line-height: 0.85;
+      line-height: 1.3;
     }
 
-    .fixed-lockup.light .fixed-title {
-      color: #17141b;
-    }
-
-    .fixed-subtitle {
-      margin: var(--space-4) 0 0;
-      color: var(--body);
-      font-family: var(--font-editorial);
-      font-size: var(--type-subtitle);
-      font-style: italic;
-      font-weight: 300;
-      line-height: 1.05;
-    }
-
-    .fixed-lockup.light .fixed-subtitle {
-      color: #514c56;
-    }
-
-    .fixed-meta {
-      display: flex;
-      justify-content: space-between;
-      gap: var(--space-3);
-      border-top: 1px solid var(--edge-soft);
-      padding-top: var(--space-3);
-      color: var(--aux);
+    .type-sample.console {
       font-family: var(--font-console);
-      font-size: var(--type-micro);
+      font-size: clamp(0.85rem, 1.8vw, 1.1rem);
+      font-weight: 400;
+      line-height: 1.65;
+    }
+
+    .role-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: var(--space-2);
+      margin-top: var(--space-3);
+    }
+
+    .role-card {
+      min-height: 8.5rem;
+      padding: var(--space-4);
+      border-radius: var(--radius-card);
+      background: var(--surface-1);
+    }
+
+    .role-name {
+      display: block;
+      color: var(--ink-muted);
+      font-family: var(--font-console);
+      font-size: 0.625rem;
+      letter-spacing: 0.06em;
       text-transform: uppercase;
     }
 
-    .fixed-lockup.light .fixed-meta {
-      border-top-color: rgba(23, 20, 27, 0.14);
-      color: #6f6873;
+    .role-sample {
+      display: block;
+      margin-top: var(--space-3);
+      color: var(--ink-title);
     }
 
-    .fixed-lockup.light .spec-label {
-      color: #6f6873;
+    .role-card.aux .role-sample {
+      color: var(--ink-muted);
+      font-size: var(--type-aux);
     }
 
-    .surface-scene {
+    .role-card.strong .role-sample {
+      font-weight: 600;
+    }
+
+    .role-card.italic .role-sample {
+      font-family: var(--font-editorial);
+      font-size: 1.25rem;
+      font-style: italic;
+    }
+
+    .role-card.mono .role-sample {
+      font-family: var(--font-console);
+      font-size: var(--type-console);
+    }
+
+    .adaptive-demo {
+      min-height: 24rem;
       position: relative;
-      min-height: 48rem;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      overflow: hidden;
+      border-radius: var(--radius-feature);
+      background:
+        radial-gradient(circle at 24% 38%, var(--accent) 0 4%, transparent 5%),
+        radial-gradient(circle at 72% 35%, #f4f1eb 0 20%, transparent 21%),
+        linear-gradient(118deg, #06070a 0 42%, #dedbd4 42% 67%, #14161a 67%);
+      box-shadow: var(--shadow-window);
+    }
+
+    .adaptive-demo::before {
+      position: absolute;
+      inset: 0;
+      background:
+        repeating-linear-gradient(90deg, transparent 0 11px, rgb(255 255 255 / 0.04) 11px 12px),
+        radial-gradient(ellipse at center, transparent 20%, rgb(0 0 0 / 0.35));
+      content: "";
+      mix-blend-mode: overlay;
+    }
+
+    .adaptive-copy {
+      position: relative;
+      z-index: 1;
+      align-self: end;
+      grid-column: 1 / -1;
+      padding: clamp(1.25rem, 4vw, 3rem);
+    }
+
+    .adaptive-copy h3 {
+      margin: 0;
+      color: #fff;
+      font-size: clamp(2.8rem, 8vw, 7rem);
+      font-weight: 400;
+      letter-spacing: -0.06em;
+      line-height: 0.78;
+      text-transform: uppercase;
+      mix-blend-mode: difference;
+    }
+
+    .adaptive-copy p {
+      width: fit-content;
+      margin: var(--space-4) 0 0;
+      color: var(--accent);
+      font-family: var(--font-editorial);
+      font-size: var(--type-subtitle);
+      font-weight: 300;
+      line-height: 1;
+      mix-blend-mode: difference;
+    }
+
+    .surface-stage {
+      position: relative;
+      min-height: 38rem;
+      overflow: hidden;
+      border-radius: var(--radius-feature);
+      background:
+        radial-gradient(circle at 22% 18%, hsl(var(--accent-h) 90% 50% / 0.6), transparent 20%),
+        radial-gradient(circle at 82% 74%, #e7e5df 0 6%, transparent 22%),
+        linear-gradient(135deg, #15171c, #08090c 58%, #272b32);
+      box-shadow: var(--shadow-window);
+    }
+
+    .surface-stage::before {
+      position: absolute;
+      inset: 0;
+      background:
+        repeating-linear-gradient(90deg, rgb(255 255 255 / 0.025) 0 1px, transparent 1px 9px),
+        repeating-linear-gradient(0deg, rgb(0 0 0 / 0.06) 0 3px, transparent 3px 10px);
+      content: "";
+      mix-blend-mode: soft-light;
+    }
+
+    .surface-window-grid {
+      position: relative;
+      z-index: 1;
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      align-items: center;
-      gap: var(--space-4);
-      overflow: hidden;
-      border: 1px solid var(--edge-soft);
-      border-radius: var(--radius-xl);
-      background:
-        radial-gradient(circle at 16% 30%, rgba(72, 92, 157, 0.55), transparent 13rem),
-        radial-gradient(circle at 75% 68%, rgba(255, 106, 0, 0.25), transparent 16rem),
-        linear-gradient(145deg, #151927, #06070a 66%);
-      padding: clamp(1rem, 3vw, 3rem);
+      gap: var(--space-3);
+      align-items: end;
+      min-height: inherit;
+      padding: clamp(1rem, 3vw, 2.25rem);
     }
 
-    .surface-scene::before {
-      content: "";
-      position: absolute;
-      width: 46rem;
-      height: 46rem;
-      left: 50%;
-      top: 50%;
-      border: 1px solid rgba(255, 255, 255, 0.16);
-      border-radius: 50%;
-      box-shadow:
-        0 0 0 6rem rgba(255, 255, 255, 0.02),
-        0 0 0 13rem rgba(255, 255, 255, 0.015);
-      transform: translate(-50%, -50%) rotateX(68deg);
+    .window-sample {
+      min-height: 18rem;
+      padding: var(--space-5);
     }
 
-    .surface-window {
-      position: relative;
-      z-index: 2;
-      min-height: 26rem;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      border: 1px solid var(--edge);
-      border-radius: var(--radius-l);
+    .window-sample .sample-tag {
+      color: var(--accent);
+      font-family: var(--font-console);
+      font-size: var(--type-label);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
     }
 
-    .surface-window.solid {
-      background: var(--surface-solid);
+    .window-sample h3 {
+      margin: var(--space-3) 0 0;
+      color: var(--ink-title);
+      font-size: 1.35rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
     }
 
-    .surface-window.glass {
-      border-color: var(--edge-glass);
-      background: var(--surface-glass);
-      box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.22);
-      backdrop-filter: blur(var(--blur-m)) saturate(110%);
+    .window-sample p {
+      margin: var(--space-2) 0 0;
+      color: var(--ink-muted);
+      font-size: var(--type-aux);
+      line-height: 1.6;
     }
 
-    .surface-window.frosted {
-      border-color: var(--edge-glass);
-      background: var(--surface-frost);
-      box-shadow: 0 2rem 5rem rgba(0, 0, 0, 0.28);
-      backdrop-filter: blur(var(--blur-l)) saturate(108%);
+    .sample-rows {
+      display: grid;
+      gap: var(--space-2);
+      margin-top: var(--space-5);
     }
 
-    .window-header {
-      min-height: 3.25rem;
+    .sample-row {
+      min-height: 2.75rem;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: var(--space-4);
-      border-bottom: 1px solid var(--edge-soft);
-      padding: var(--space-3) var(--space-4);
+      gap: var(--space-3);
+      padding-inline: var(--space-3);
+      border-radius: var(--radius-control);
+      background: rgb(255 255 255 / 0.06);
+      color: var(--ink-body);
+      font-size: var(--type-aux);
     }
 
-    .window-heading {
-      min-width: 0;
+    .surface-solid .sample-row {
+      background: var(--surface-2);
     }
 
-    .window-title {
-      color: var(--title);
+    .sample-row code {
+      color: var(--ink-title);
+      font-family: var(--font-console);
+      font-size: var(--type-label);
+    }
+
+    .pattern-board {
+      display: grid;
+      grid-template-columns: minmax(18rem, 0.72fr) minmax(0, 1.28fr);
+      gap: var(--space-3);
+      align-items: start;
+    }
+
+    .pattern-stack {
+      display: grid;
+      gap: var(--space-3);
+    }
+
+    .pattern-card {
+      padding: var(--space-5);
+      border-radius: var(--radius-card);
+      background: var(--surface-1);
+      box-shadow: 0 16px 48px rgb(0 0 0 / 0.12);
+    }
+
+    .pattern-card h3 {
+      margin: 0;
+      color: var(--ink-title);
       font-size: var(--type-window);
       font-weight: 600;
-      line-height: 1.2;
     }
 
-    .window-subtitle {
-      margin-top: 0.15rem;
-      color: var(--aux);
-      font-size: var(--type-micro);
-      line-height: 1.25;
+    .pattern-card > p {
+      margin: var(--space-1) 0 var(--space-4);
+      color: var(--ink-muted);
+      font-size: var(--type-aux);
     }
 
-    .window-actions {
+    .tab-list {
       display: flex;
       gap: var(--space-1);
+      padding: var(--space-1);
+      border-radius: var(--radius-pill);
+      background: var(--surface-2);
     }
 
-    .icon-button {
-      width: 2.75rem;
-      height: 2.75rem;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      flex: none;
-      border: 1px solid transparent;
-      border-radius: var(--radius-s);
-      background: transparent;
-      color: var(--aux);
-    }
-
-    .icon-button:hover {
-      border-color: var(--edge);
-      color: var(--title);
-    }
-
-    .icon {
-      width: 1.25rem;
-      height: 1.25rem;
-      color: currentColor;
-      fill: none;
-      stroke: currentColor;
-      stroke-width: 1.5;
-      stroke-linecap: square;
-      stroke-linejoin: miter;
-      vector-effect: non-scaling-stroke;
-    }
-
-    .window-body {
+    .tab {
+      min-height: 2.25rem;
       flex: 1;
-      padding: var(--space-4);
+      border-radius: var(--radius-pill);
+      background: transparent;
+      color: var(--ink-muted);
+      cursor: pointer;
+      font-size: var(--type-label);
+      font-weight: 600;
     }
 
-    .data-list {
+    .tab.active {
+      background: var(--ink-title);
+      color: var(--page);
+    }
+
+    .input-shell {
+      min-height: 2.75rem;
+      display: grid;
+      grid-template-columns: 5.5rem 1fr auto;
+      gap: var(--space-3);
+      align-items: center;
+      padding-inline: var(--space-3);
+      border-radius: var(--radius-control);
+      background: var(--surface-2);
+    }
+
+    .input-shell label {
+      color: var(--ink-muted);
+      font-size: var(--type-label);
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .input-shell input {
+      min-width: 0;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--ink-title);
+      font-family: var(--font-console);
+      font-size: var(--type-console);
+    }
+
+    .input-unit {
+      color: var(--ink-muted);
+      font-family: var(--font-console);
+      font-size: var(--type-label);
+    }
+
+    .data-table {
       display: grid;
       gap: var(--space-1);
     }
 
     .data-row {
-      min-height: 2.45rem;
-      display: flex;
+      min-height: 2.5rem;
+      display: grid;
+      grid-template-columns: minmax(7rem, 1fr) 6rem 4rem;
+      gap: var(--space-3);
       align-items: center;
-      justify-content: space-between;
-      gap: var(--space-4);
-      border-bottom: 1px solid var(--edge-soft);
-    }
-
-    .data-key {
-      color: var(--aux);
-      font-size: var(--type-label);
-      font-weight: 600;
-    }
-
-    .data-value {
-      color: var(--strong);
-      font-size: var(--type-hud);
-      font-variant-numeric: tabular-nums lining-nums;
-      text-align: right;
-    }
-
-    .data-unit {
-      margin-left: 0.3em;
-      color: var(--aux);
-      font-size: var(--type-micro);
-    }
-
-    .window-note {
-      margin: var(--space-4) 0 0;
-      color: var(--aux);
+      padding-inline: var(--space-3);
+      border-radius: var(--radius-control);
+      background: var(--surface-2);
+      color: var(--ink-body);
       font-size: var(--type-aux);
-      line-height: 1.55;
     }
 
-    .window-footer {
-      display: flex;
-      justify-content: flex-end;
-      gap: var(--space-2);
-      border-top: 1px solid var(--edge-soft);
-      padding: var(--space-3) var(--space-4);
-    }
-
-    .pattern-stage {
-      overflow: hidden;
-      border: 1px solid var(--edge-soft);
-      border-radius: var(--radius-xl);
-      background: var(--surface-soft);
-    }
-
-    .rail {
-      min-height: 3.5rem;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: var(--space-4);
-      border-bottom: 1px solid var(--edge);
-      background: rgba(13, 15, 18, 0.78);
-      padding: var(--space-2) var(--space-4);
-      backdrop-filter: blur(var(--blur-s));
-    }
-
-    .rail-brand {
-      color: var(--title);
-      font-size: var(--type-hud);
-      font-weight: 700;
-      letter-spacing: 0.08em;
-    }
-
-    .rail-center,
-    .rail-actions,
-    .button-row,
-    .chip-row {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: var(--space-2);
-    }
-
-    .rail-status {
-      display: inline-flex;
-      align-items: center;
-      gap: var(--space-2);
-      color: var(--aux);
-      font-family: var(--font-console);
-      font-size: var(--type-micro);
-    }
-
-    .rail-status::before {
-      content: "";
-      width: 0.45rem;
-      height: 0.45rem;
-      border-radius: 50%;
-      background: var(--accent);
-    }
-
-    .pattern-body {
-      padding: var(--space-5);
-    }
-
-    .pattern-card {
-      padding: var(--space-5);
-    }
-
-    .pattern-card .spec-label,
-    .state-card .spec-label {
-      margin-bottom: var(--space-4);
-    }
-
-    .button {
-      min-height: 2.75rem;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: var(--space-2);
-      border: 1px solid var(--edge);
-      border-radius: var(--radius-s);
-      background: var(--surface-soft);
-      color: var(--body);
-      font-size: var(--type-label);
-      font-weight: 600;
-      letter-spacing: 0.045em;
-      padding: 0.65rem 0.9rem;
-      text-transform: uppercase;
-    }
-
-    .button:hover {
-      border-color: var(--title);
-      color: var(--title);
-    }
-
-    .button.outline-accent {
-      border-color: var(--accent);
-      color: var(--accent);
-    }
-
-    .button.solid {
-      border-color: var(--title);
-      background: var(--title);
-      color: var(--bg);
-    }
-
-    .button.primary {
-      border-color: var(--accent);
-      background: var(--accent);
-      color: #130800;
-    }
-
-    .button.danger {
-      border-color: var(--danger);
-      color: var(--danger);
-    }
-
-    .button.pill {
-      border-radius: var(--radius-pill);
-      padding-inline: 1.2rem;
-    }
-
-    .button:disabled {
-      border-color: var(--edge-soft);
-      color: var(--faint);
-      cursor: not-allowed;
-    }
-
-    .tabs {
-      display: flex;
-      gap: var(--space-1);
-      border-bottom: 1px solid var(--edge);
-    }
-
-    .tab {
-      min-height: 2.75rem;
-      border: 0;
-      border-bottom: 2px solid transparent;
+    .data-row.head {
+      min-height: 1.75rem;
       background: transparent;
-      color: var(--aux);
-      font-size: var(--type-label);
-      font-weight: 600;
-      padding: 0.7rem 0.8rem;
-      text-transform: uppercase;
-    }
-
-    .tab.is-current {
-      border-bottom-color: var(--accent);
-      color: var(--title);
-    }
-
-    .field {
-      display: grid;
-      gap: var(--space-2);
-    }
-
-    .field-label {
-      color: var(--aux);
-      font-size: var(--type-label);
-      font-weight: 600;
-    }
-
-    .field-input {
-      width: 100%;
-      min-height: 2.75rem;
-      border: 1px solid var(--edge);
-      border-radius: var(--radius-s);
-      background: rgba(5, 6, 8, 0.72);
-      color: var(--strong);
-      padding: 0.7rem 0.8rem;
-    }
-
-    .field-help {
-      margin: 0;
-      color: var(--aux);
-      font-size: var(--type-aux);
-    }
-
-    .toggle-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: var(--space-4);
-      margin-top: var(--space-4);
-    }
-
-    .toggle {
-      position: relative;
-      width: 3rem;
-      height: 1.7rem;
-      flex: none;
-      border: 1px solid var(--accent);
-      border-radius: var(--radius-pill);
-      background: var(--accent-fill);
-    }
-
-    .toggle::after {
-      content: "";
-      position: absolute;
-      width: 1.15rem;
-      height: 1.15rem;
-      right: 0.2rem;
-      top: 50%;
-      border-radius: 50%;
-      background: var(--accent);
-      transform: translateY(-50%);
-    }
-
-    .meter-block {
-      display: grid;
-      gap: var(--space-2);
-      margin-top: var(--space-4);
-    }
-
-    .meter-label {
-      display: flex;
-      justify-content: space-between;
-      color: var(--aux);
-      font-size: var(--type-label);
-    }
-
-    .meter {
-      height: 0.45rem;
-      overflow: hidden;
-      border-radius: var(--radius-xs);
-      background: rgba(255, 255, 255, 0.1);
-    }
-
-    .meter span {
-      display: block;
-      height: 100%;
-      background: var(--accent);
-    }
-
-    .meter.value-72 span {
-      width: 72%;
-    }
-
-    .meter.value-38 span {
-      width: 38%;
-    }
-
-    .chip {
-      display: inline-flex;
-      align-items: center;
-      gap: var(--space-2);
-      border: 1px solid var(--edge);
-      border-radius: var(--radius-pill);
-      color: var(--aux);
-      font-size: var(--type-micro);
-      padding: 0.35rem 0.65rem;
-    }
-
-    .chip.is-current {
-      border-color: var(--accent);
-      color: var(--accent);
-    }
-
-    .data-table,
-    .token-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: var(--type-aux);
-    }
-
-    .data-table caption,
-    .token-table caption {
-      margin-bottom: var(--space-3);
-      color: var(--aux);
-      font-family: var(--font-console);
-      font-size: var(--type-micro);
-      letter-spacing: 0.08em;
-      text-align: left;
-      text-transform: uppercase;
-    }
-
-    .data-table th,
-    .data-table td,
-    .token-table th,
-    .token-table td {
-      border-bottom: 1px solid var(--edge-soft);
-      padding: 0.75rem 0.8rem;
-      text-align: left;
-    }
-
-    .data-table th,
-    .token-table th {
-      color: var(--aux);
-      font-size: var(--type-label);
-      font-weight: 600;
-    }
-
-    .data-table td:nth-child(n + 2) {
-      color: var(--strong);
-      font-variant-numeric: tabular-nums;
-    }
-
-    .data-table tr.is-current {
-      background: var(--accent-fill);
-      box-shadow: inset 2px 0 var(--accent);
-    }
-
-    .overlay-stage {
-      position: relative;
-      min-height: 37rem;
-      overflow: hidden;
-      border: 1px solid var(--edge-soft);
-      border-radius: var(--radius-xl);
-      background:
-        radial-gradient(circle at 80% 20%, rgba(66, 71, 91, 0.34), transparent 14rem),
-        linear-gradient(150deg, #11141c, #07080b);
-    }
-
-    .context-menu,
-    .toast,
-    .tooltip,
-    .dialog,
-    .command-palette {
-      position: absolute;
-      z-index: 2;
-      border: 1px solid var(--edge-glass);
-      background: var(--surface-glass);
-      backdrop-filter: blur(var(--blur-m));
-    }
-
-    .context-menu {
-      width: min(15rem, calc(100% - 2rem));
-      left: 4%;
-      top: 8%;
-      overflow: hidden;
-      border-radius: var(--radius-m);
-    }
-
-    .context-head,
-    .context-item {
-      padding: 0.75rem 0.9rem;
-      border-bottom: 1px solid var(--edge-soft);
-    }
-
-    .context-head {
-      color: var(--title);
-      font-weight: 600;
-    }
-
-    .context-head span {
-      display: block;
-      margin-top: 0.2rem;
-      color: var(--aux);
-      font-size: var(--type-micro);
-      font-weight: 400;
-    }
-
-    .context-item {
-      display: flex;
-      justify-content: space-between;
-      color: var(--body);
-      font-size: var(--type-aux);
-    }
-
-    .context-item.is-current {
-      color: var(--accent);
-      background: var(--accent-fill);
-    }
-
-    .tooltip {
-      left: 8%;
-      bottom: 12%;
-      border-radius: var(--radius-s);
-      color: var(--body);
-      font-size: var(--type-aux);
-      padding: 0.55rem 0.7rem;
-    }
-
-    .toast {
-      width: min(23rem, calc(100% - 2rem));
-      right: 3%;
-      top: 8%;
-      display: grid;
-      grid-template-columns: auto minmax(0, 1fr);
-      gap: var(--space-3);
-      border-radius: var(--radius-m);
-      padding: var(--space-4);
-    }
-
-    .toast .icon {
-      color: var(--accent);
-    }
-
-    .toast-title {
-      margin: 0;
-      color: var(--title);
-      font-size: var(--type-hud);
-      font-weight: 600;
-    }
-
-    .toast-copy {
-      margin: var(--space-1) 0 0;
-      color: var(--aux);
-      font-size: var(--type-aux);
-    }
-
-    .dialog {
-      width: min(31rem, calc(100% - 2rem));
-      left: 50%;
-      top: 54%;
-      border-radius: var(--radius-l);
-      background: var(--surface-frost);
-      box-shadow: 0 2rem 6rem rgba(0, 0, 0, 0.34);
-      backdrop-filter: blur(var(--blur-l));
-      transform: translate(-50%, -50%);
-    }
-
-    .dialog-body {
-      padding: var(--space-5);
-    }
-
-    .dialog-title {
-      margin: 0;
-      color: var(--title);
-      font-size: 1.35rem;
-      font-weight: 600;
-    }
-
-    .dialog-copy {
-      margin: var(--space-3) 0 0;
-      color: var(--aux);
-      font-size: var(--type-aux);
-    }
-
-    .dialog-footer {
-      display: flex;
-      justify-content: flex-end;
-      gap: var(--space-2);
-      border-top: 1px solid var(--edge-soft);
-      padding: var(--space-3) var(--space-5);
-    }
-
-    .command-palette {
-      width: min(36rem, calc(100% - 2rem));
-      left: 50%;
-      bottom: 4%;
-      overflow: hidden;
-      border-radius: var(--radius-l);
-      transform: translateX(-50%);
-    }
-
-    .command-input {
-      display: flex;
-      align-items: center;
-      gap: var(--space-3);
-      border-bottom: 1px solid var(--edge-soft);
-      padding: var(--space-3) var(--space-4);
-    }
-
-    .command-input span {
-      color: var(--accent);
-      font-family: var(--font-console);
-    }
-
-    .command-input input {
-      width: 100%;
-      border: 0;
-      outline: 0;
-      background: transparent;
-      color: var(--strong);
-    }
-
-    .command-result {
-      display: flex;
-      justify-content: space-between;
-      padding: 0.75rem var(--space-4);
-      color: var(--body);
-      font-size: var(--type-aux);
-    }
-
-    .command-result.is-current {
-      color: var(--accent);
-      background: var(--accent-fill);
-    }
-
-    .state-card {
-      min-height: 13rem;
-      padding: var(--space-5);
-    }
-
-    .state-title {
-      margin: 0;
-      color: var(--title);
-      font-size: 1.05rem;
-      font-weight: 600;
-    }
-
-    .state-copy {
-      margin: var(--space-3) 0 0;
-      color: var(--aux);
-      font-size: var(--type-aux);
-    }
-
-    .state-card.error {
-      border-color: rgba(255, 79, 94, 0.42);
-    }
-
-    .state-card.error .state-title {
-      color: var(--danger);
-    }
-
-    .state-card.disabled {
-      color: var(--faint);
-    }
-
-    .state-card.disabled .state-title,
-    .state-card.disabled .state-copy {
-      color: var(--faint);
-    }
-
-    .state-progress {
-      width: 100%;
-      height: 0.45rem;
-      margin-top: var(--space-5);
-      overflow: hidden;
-      border: 0;
-      border-radius: var(--radius-xs);
-      background: rgba(255, 255, 255, 0.1);
-    }
-
-    .state-progress::-webkit-progress-bar {
-      background: rgba(255, 255, 255, 0.1);
-    }
-
-    .state-progress::-webkit-progress-value {
-      background: var(--accent);
-    }
-
-    .state-progress::-moz-progress-bar {
-      background: var(--accent);
-    }
-
-    .symbol-legend {
-      display: flex;
-      flex-wrap: wrap;
-      gap: var(--space-2) var(--space-5);
-      margin-bottom: var(--space-5);
-      color: var(--aux);
-      font-size: var(--type-label);
-    }
-
-    .symbol-legend span::before {
-      content: "";
-      display: inline-block;
-      width: 0.55rem;
-      height: 0.55rem;
-      margin-right: 0.4rem;
-      border: 1px solid currentColor;
-      vertical-align: 0.02em;
-    }
-
-    .symbol-legend .entity-key {
-      color: var(--title);
-    }
-
-    .symbol-legend .direction-key {
-      color: var(--body);
-    }
-
-    .symbol-legend .orbit-key {
-      color: var(--accent);
-    }
-
-    .symbol-legend .hazard-key {
-      color: var(--danger);
-    }
-
-    .symbol-cell {
-      min-height: 8rem;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: var(--space-3);
-      border: 1px solid var(--edge-soft);
-      border-radius: var(--radius-m);
-      background: var(--surface-soft);
-      color: var(--body);
-      text-align: center;
-    }
-
-    .symbol-cell .icon {
-      width: 2.2rem;
-      height: 2.2rem;
-    }
-
-    .symbol-cell.entity {
-      color: var(--title);
-    }
-
-    .symbol-cell.orbit {
-      color: var(--accent);
-    }
-
-    .symbol-cell.hazard {
-      color: var(--danger);
-    }
-
-    .symbol-cell.prograde {
-      color: var(--axis-prograde);
-    }
-
-    .symbol-cell.normal {
-      color: var(--axis-normal);
-    }
-
-    .symbol-cell.radial {
-      color: var(--axis-radial);
-    }
-
-    .symbol-name {
-      color: var(--aux);
-      font-family: var(--font-console);
-      font-size: var(--type-micro);
-      text-transform: uppercase;
-    }
-
-    .subsection-title {
-      margin: var(--space-7) 0 var(--space-4);
-      color: var(--title);
-      font-size: 1rem;
+      color: var(--ink-muted);
+      font-size: 0.625rem;
       font-weight: 600;
       letter-spacing: 0.06em;
       text-transform: uppercase;
     }
 
-    .token-table {
-      border: 1px solid var(--edge-soft);
-      background: var(--surface-soft);
+    .data-row code {
+      color: var(--ink-title);
+      font-family: var(--font-console);
+      font-size: var(--type-label);
+      text-align: right;
     }
 
-    .token-table td:first-child,
-    .token-table td:nth-child(3) {
+    .data-state {
+      justify-self: end;
+      padding: 0.2rem 0.5rem;
+      border-radius: var(--radius-pill);
+      background: hsl(var(--accent-h) var(--accent-s) var(--accent-l) / 0.12);
+      color: var(--accent);
+      font-size: 0.625rem;
+      font-weight: 600;
+    }
+
+    .hud-console {
+      min-height: 27rem;
+      position: relative;
+      overflow: hidden;
+      border-radius: var(--radius-window);
+      background:
+        radial-gradient(circle at 68% 34%, hsl(var(--accent-h) 80% 50% / 0.15), transparent 20%),
+        #06070a;
+      box-shadow: var(--shadow-solid);
+    }
+
+    .hud-console::before {
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(90deg, transparent 49.8%, rgb(255 255 255 / 0.05) 50%, transparent 50.2%),
+        linear-gradient(0deg, transparent 49.8%, rgb(255 255 255 / 0.05) 50%, transparent 50.2%);
+      background-size: 4rem 4rem;
+      content: "";
+    }
+
+    .hud-target {
+      position: absolute;
+      top: 40%;
+      left: 58%;
+      width: 4.5rem;
+      height: 4.5rem;
+      color: var(--accent);
+      transform: translate(-50%, -50%);
+    }
+
+    .hud-value {
+      position: absolute;
+      padding: var(--space-3);
+      border-radius: var(--radius-control);
+      background: rgb(8 9 12 / 0.7);
+      box-shadow: 0 12px 38px rgb(0 0 0 / 0.22);
       font-family: var(--font-console);
-      font-size: var(--type-micro);
+      backdrop-filter: blur(14px);
+    }
+
+    .hud-value.top-left {
+      top: var(--space-4);
+      left: var(--space-4);
+    }
+
+    .hud-value.bottom-right {
+      right: var(--space-4);
+      bottom: var(--space-4);
+      text-align: right;
+    }
+
+    .hud-value span {
+      display: block;
+      color: var(--ink-muted);
+      font-size: 0.625rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .hud-value strong {
+      display: block;
+      margin-top: 0.15rem;
+      color: var(--ink-title);
+      font-size: 1rem;
+      font-weight: 500;
+    }
+
+    .console-lines {
+      position: relative;
+      min-height: 8.5rem;
+      max-width: none;
+      padding: var(--space-4);
+      border-radius: var(--radius-card);
+      background: rgb(7 8 10 / 0.78);
+      box-shadow: 0 16px 52px rgb(0 0 0 / 0.25);
+      color: var(--ink-body);
+      font-family: var(--font-console);
+      font-size: var(--type-console);
+      line-height: 1.62;
+      backdrop-filter: blur(18px);
+    }
+
+    .console-lines .prompt {
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    .console-lines .comment {
+      color: var(--ink-muted);
+      font-style: italic;
+    }
+
+    .symbol-groups {
+      display: grid;
+      gap: var(--space-3);
+    }
+
+    .symbol-group {
+      padding: var(--space-5);
+      border-radius: var(--radius-window);
+      background: var(--surface-1);
+      box-shadow: 0 18px 56px rgb(0 0 0 / 0.14);
+    }
+
+    .symbol-group-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: var(--space-4);
+      margin-bottom: var(--space-4);
+    }
+
+    .symbol-group h3 {
+      margin: 0;
+      color: var(--ink-title);
+      font-size: var(--type-window);
+    }
+
+    .symbol-count {
+      color: var(--ink-muted);
+      font-family: var(--font-console);
+      font-size: var(--type-label);
+    }
+
+    .symbol-grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: var(--space-2);
+    }
+
+    .symbol-item {
+      min-height: 7.25rem;
+      display: grid;
+      place-items: center;
+      align-content: center;
+      gap: var(--space-3);
+      padding: var(--space-3);
+      border-radius: var(--radius-card);
+      background: var(--surface-2);
+      color: var(--ink-title);
+    }
+
+    .symbol-item.accent {
+      color: var(--accent);
+    }
+
+    .symbol-item svg {
+      width: 2rem;
+      height: 2rem;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.5;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+    }
+
+    .symbol-item span {
+      color: var(--ink-muted);
+      font-family: var(--font-console);
+      font-size: 0.625rem;
+      text-align: center;
+    }
+
+    .token-layout {
+      display: grid;
+      grid-template-columns: minmax(18rem, 0.72fr) minmax(0, 1.28fr);
+      gap: var(--space-3);
+      align-items: start;
+    }
+
+    .token-panel {
+      padding: var(--space-5);
+    }
+
+    .swatch-stack {
+      display: grid;
+      gap: var(--space-2);
+    }
+
+    .swatch {
+      min-height: 3.25rem;
+      display: grid;
+      grid-template-columns: 2.75rem 1fr auto;
+      gap: var(--space-3);
+      align-items: center;
+      padding-inline: var(--space-3);
+      border-radius: var(--radius-control);
+      background: var(--surface-2);
+    }
+
+    .swatch-color {
+      width: 2rem;
+      height: 2rem;
+      border-radius: 0.625rem;
+      background: var(--swatch-color);
+    }
+
+    .swatch strong {
+      color: var(--ink-title);
+      font-size: var(--type-aux);
+    }
+
+    .swatch code {
+      color: var(--ink-muted);
+      font-family: var(--font-console);
+      font-size: var(--type-label);
     }
 
     .code-region {
-      min-width: 0;
-      height: 100%;
-    }
-
-    .code-block {
-      height: 100%;
-      margin: 0;
-      overflow: auto;
-      border: 1px solid var(--edge-soft);
-      border-radius: var(--radius-l);
+      overflow: hidden;
+      border-radius: var(--radius-window);
       background: #050609;
-      color: var(--body);
-      font-size: var(--type-console);
-      line-height: 1.75;
-      padding: var(--space-5);
-      white-space: pre-wrap;
+      box-shadow: var(--shadow-solid);
     }
 
-    .license-note {
-      margin-top: var(--space-5);
-      border-left: 2px solid var(--accent);
-      color: var(--aux);
-      font-size: var(--type-aux);
-      padding: var(--space-3) var(--space-4);
-    }
-
-    .footer {
-      border-top: 1px solid var(--edge-soft);
-      background: var(--bg-deep);
-    }
-
-    .footer-inner {
-      min-height: 7rem;
+    .code-heading {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: var(--space-5);
-      color: var(--faint);
+      gap: var(--space-4);
+      padding: var(--space-4) var(--space-5);
+      background: var(--surface-1);
+      color: var(--ink-title);
+      font-size: var(--type-aux);
+      font-weight: 600;
+    }
+
+    .code-heading span:last-child {
+      color: var(--ink-muted);
       font-family: var(--font-console);
-      font-size: var(--type-micro);
+      font-size: 0.625rem;
+      font-weight: 400;
     }
 
-    @supports not (backdrop-filter: blur(1px)) {
-      .glass-card,
-      .surface-window.glass,
-      .surface-window.frosted,
-      .context-menu,
-      .toast,
-      .tooltip,
-      .dialog,
-      .command-palette,
-      .rail,
-      .topbar {
-        background: var(--surface-solid);
-      }
+    pre {
+      max-height: 34rem;
+      margin: 0;
+      padding: var(--space-5);
+      overflow: auto;
+      color: var(--ink-body);
+      font-family: var(--font-console);
+      font-size: 0.75rem;
+      line-height: 1.6;
+      tab-size: 2;
     }
 
-    @supports not (mix-blend-mode: difference) {
-      .adaptive-lockup,
-      .contrast-lockup,
-      .study-wordmark {
-        color: var(--strong);
-        mix-blend-mode: normal;
-        text-shadow: 0 1px 1.25rem rgba(0, 0, 0, 0.72);
-      }
+    .license-list {
+      display: grid;
+      gap: var(--space-2);
+      margin-top: var(--space-3);
     }
 
-    @media (max-width: 74rem) {
-      .surface-scene {
+    .license-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: var(--space-3);
+      align-items: center;
+      min-height: 2.75rem;
+      padding-inline: var(--space-3);
+      border-radius: var(--radius-control);
+      background: var(--surface-2);
+      font-size: var(--type-aux);
+    }
+
+    .license-row code {
+      color: var(--accent);
+      font-family: var(--font-console);
+      font-size: var(--type-label);
+    }
+
+    footer {
+      padding-block: var(--space-6);
+      background: #050609;
+    }
+
+    .footer-inner {
+      display: flex;
+      justify-content: space-between;
+      gap: var(--space-4);
+      color: var(--ink-muted);
+      font-family: var(--font-console);
+      font-size: 0.625rem;
+    }
+
+    @media (max-width: 68rem) {
+      .hero-grid,
+      .section-head,
+      .pattern-board,
+      .token-layout {
         grid-template-columns: 1fr;
       }
 
-      .surface-window {
-        min-height: 0;
+      .hero-grid {
+        align-items: center;
       }
 
-      .grid-6 {
+      .theme-console {
+        width: min(100%, 34rem);
+      }
+
+      .grid-3,
+      .surface-window-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .surface-window-grid .window-sample:last-child {
+        grid-column: 1 / -1;
+      }
+
+      .role-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .symbol-grid {
         grid-template-columns: repeat(4, minmax(0, 1fr));
       }
-
-      .translation-flow {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-      }
     }
 
-    @media (max-width: 56rem) {
-      .hero-stage,
-      .section-heading,
-      .grid-3,
-      .grid-4 {
-        grid-template-columns: 1fr;
-      }
-
-      .hero-stage {
-        min-height: 44rem;
-      }
-
-      .grid-2 {
-        grid-template-columns: 1fr;
-      }
-
-      .fixed-lockups {
-        grid-template-columns: 1fr;
-      }
-
-      .grid-6 {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-      }
-
-      .translation-flow,
-      .contrast-notes {
-        grid-template-columns: 1fr;
-      }
-
-      .rail-center {
-        display: none;
-      }
-    }
-
-    @media (max-width: 40rem) {
+    @media (max-width: 44rem) {
       .topbar-inner {
         align-items: flex-start;
         flex-direction: column;
-        gap: var(--space-1);
-        padding-block: 0.7rem;
+        gap: 0;
+        padding-top: var(--space-2);
       }
 
       .topnav {
@@ -1746,38 +1452,62 @@
       }
 
       .hero-stage {
-        min-height: 40rem;
-        border-radius: var(--radius-l);
+        min-height: auto;
       }
 
-      .hero-title {
-        font-size: 4.2rem;
+      .hero-grid {
+        min-height: 48rem;
+        padding-top: 3rem;
       }
 
-      .grid-6 {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+      .logo-ornament {
+        left: calc(100% + 0.35rem);
       }
 
-      .context-menu {
-        left: 1rem;
+      .grid-3,
+      .grid-2,
+      .surface-window-grid,
+      .theme-readout {
+        grid-template-columns: 1fr;
       }
 
-      .toast {
-        right: 1rem;
+      .surface-window-grid .window-sample:last-child {
+        grid-column: auto;
       }
 
-      .dialog {
-        top: 56%;
+      .type-row {
+        grid-template-columns: 1fr;
+        gap: var(--space-3);
       }
 
-      .command-palette {
-        display: none;
+      .symbol-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .slider-row {
+        grid-template-columns: 4.4rem minmax(0, 1fr) 3rem;
       }
 
       .footer-inner {
-        align-items: flex-start;
         flex-direction: column;
-        justify-content: center;
+      }
+    }
+
+    @media (max-width: 28rem) {
+      .role-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .symbol-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .data-row {
+        grid-template-columns: 1fr auto;
+      }
+
+      .data-row > :last-child {
+        display: none;
       }
     }
 
@@ -1789,32 +1519,19 @@
       *,
       *::before,
       *::after {
-        scroll-behavior: auto !important;
-        transition-duration: 0.01ms !important;
         animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
       }
     }
 
-    @media (forced-colors: active) {
-      .adaptive-lockup,
-      .contrast-lockup,
-      .study-wordmark {
-        color: CanvasText;
-        mix-blend-mode: normal;
-      }
-
-      .glass-card,
-      .surface-window,
-      .context-menu,
-      .toast,
-      .tooltip,
-      .dialog,
-      .command-palette,
-      .rail,
-      .topbar {
-        background: Canvas;
-        backdrop-filter: none;
+    @supports not (backdrop-filter: blur(1px)) {
+      .surface-glass,
+      .surface-frost,
+      .topbar,
+      .hud-value,
+      .console-lines {
+        background: rgb(10 12 16 / 0.94);
       }
     }
   </style>
@@ -1822,6 +1539,11 @@
 <body>
   <svg class="svg-defs" aria-hidden="true">
     <defs>
+      <symbol id="brand-mark" viewBox="0 0 48 48">
+        <path d="M8 11h25M20 11v27M11 34 38 8M28 31a8 8 0 1 0 0-16"></path>
+        <circle cx="28" cy="23" r="2" fill="currentColor" stroke="none"></circle>
+      </symbol>
+
       <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6 18 18M18 6 6 18"></path></symbol>
       <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"></path></symbol>
       <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m7 9 5 5 5-5"></path></symbol>
@@ -1855,12 +1577,15 @@
 
   <header class="topbar">
     <div class="page-shell topbar-inner">
-      <a class="brand-mini" href="#top">Dive into <span>Tepui</span> / UI reference v3</a>
-      <nav class="topnav" aria-label="ページ内目次">
+      <a class="mini-brand" href="#top">
+        <svg class="mini-mark" aria-hidden="true"><use href="#brand-mark"></use></svg>
+        <span>Dive into Tepui / V3</span>
+      </a>
+      <nav class="topnav" aria-label="標本内ナビゲーション">
         <a href="#research">Research</a>
         <a href="#type">Type</a>
         <a href="#contrast">Contrast</a>
-        <a href="#surfaces">Windows</a>
+        <a href="#surfaces">Surfaces</a>
         <a href="#patterns">Patterns</a>
         <a href="#symbols">Symbols</a>
         <a href="#tokens">Tokens</a>
@@ -1869,627 +1594,922 @@
   </header>
 
   <main id="top">
-    <div class="page-shell hero">
-      <section class="hero-stage" aria-labelledby="hero-title">
-        <div class="adaptive-lockup">
-          <p class="hero-kicker">Dive into</p>
-          <h1 class="hero-title" id="hero-title">Tepui</h1>
-          <p class="hero-subtitle">Interface as a quiet instrument.</p>
-          <p class="hero-note">第三版はタイポグラフィ、ロゴタイプ、記号を、角丸ウィンドウ、Glass、状態、入力、オーバーレイ、Adaptive Contrastまで含むUIデザインシステムへ拡張する。</p>
+    <section class="hero-stage" aria-labelledby="hero-title">
+      <canvas class="generative-canvas" id="generative-canvas" aria-hidden="true"></canvas>
+      <div class="pixel-wash" aria-hidden="true"></div>
+      <div class="hero-vignette" aria-hidden="true"></div>
+      <div class="page-shell hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow">UI Design System / Rebuilt Third Edition</p>
+          <h1 class="logotype" id="hero-title">
+            <span class="logo-line">DIVE<sup class="logo-ornament">∴03</sup></span>
+            <span class="logo-line">INTO<sub class="logo-ornament">ECI₀</sub></span>
+            <span class="logo-line">TEPUI<sup class="logo-ornament">Ω⁺</sup></span>
+          </h1>
+          <p class="hero-subtitle">The Orbit Is the Battlefield</p>
+          <p class="hero-subtitle-ja">軌道が戦場になる</p>
+          <div class="hero-meta" aria-label="第三版の主要要素">
+            <span class="meta-pill">NO WINDOW OUTLINE</span>
+            <span class="meta-pill">GENERATIVE MOSAIC</span>
+            <span class="meta-pill">OFL TYPE ONLY</span>
+            <span class="meta-pill">Δvₙ / μ⊕ / ECI₀</span>
+          </div>
         </div>
 
-        <aside class="glass-card hero-manifest" aria-label="第三版の要約">
-          <div class="manifest-head">
-            <span class="eyebrow">System manifest</span>
-            <span class="status-chip">Proposal 03</span>
+        <aside class="surface-frost theme-console" aria-labelledby="theme-console-title">
+          <div class="window-heading">
+            <div>
+              <h2 id="theme-console-title">Accent calibrator</h2>
+              <p>赤寄りオレンジを調整し、後で固定するHEXを取得する。</p>
+            </div>
+            <span class="status-dot" aria-hidden="true"></span>
           </div>
-          <dl class="manifest-list">
-            <div class="manifest-row"><dt>Palette</dt><dd>Monochrome + Orange</dd></div>
-            <div class="manifest-row"><dt>Surface</dt><dd>Solid / Glass / Frosted</dd></div>
-            <div class="manifest-row"><dt>Display</dt><dd>Background-adaptive difference</dd></div>
-            <div class="manifest-row"><dt>UI</dt><dd>Arimo + Zen Kaku Gothic Antique</dd></div>
-            <div class="manifest-row"><dt>Console</dt><dd>IBM Plex Mono</dd></div>
-            <div class="manifest-row"><dt>Source</dt><dd>Lusion / nk.studio / Locomotive</dd></div>
-          </dl>
+
+          <div class="slider-stack">
+            <label class="slider-row">
+              <span class="slider-label">Hue</span>
+              <input id="accent-hue" type="range" min="0" max="35" value="12">
+              <output class="slider-value" id="accent-hue-output" for="accent-hue">12°</output>
+            </label>
+            <label class="slider-row">
+              <span class="slider-label">Saturation</span>
+              <input id="accent-saturation" type="range" min="60" max="100" value="100">
+              <output class="slider-value" id="accent-saturation-output" for="accent-saturation">100%</output>
+            </label>
+            <label class="slider-row">
+              <span class="slider-label">Dark L</span>
+              <input id="accent-dark-lightness" type="range" min="40" max="70" value="56">
+              <output class="slider-value" id="accent-dark-lightness-output" for="accent-dark-lightness">56%</output>
+            </label>
+            <label class="slider-row">
+              <span class="slider-label">Light L</span>
+              <input id="accent-light-lightness" type="range" min="24" max="50" value="40">
+              <output class="slider-value" id="accent-light-lightness-output" for="accent-light-lightness">40%</output>
+            </label>
+          </div>
+
+          <div class="theme-readout">
+            <div class="color-readout">
+              <div class="color-chip" aria-hidden="true"></div>
+              <span class="readout-label">On dark</span>
+              <strong class="readout-code" id="accent-dark-hex">#FF4B1F</strong>
+              <span class="contrast-note" id="accent-dark-contrast">Contrast 5.99:1 / AA</span>
+            </div>
+            <div class="color-readout light">
+              <div class="color-chip" aria-hidden="true"></div>
+              <span class="readout-label">On light</span>
+              <strong class="readout-code" id="accent-light-hex">#CC2900</strong>
+              <span class="contrast-note" id="accent-light-contrast">Contrast 4.66:1 / AA</span>
+            </div>
+          </div>
+
+          <div class="button-row">
+            <button class="button primary" id="copy-theme" type="button">Copy CSS</button>
+            <button class="button quiet" id="reset-theme" type="button">Reset</button>
+          </div>
+          <p class="copy-status" id="copy-status" role="status" aria-live="polite">Initial: H 12° / S 100% / Dark 56% / Light 40%</p>
         </aside>
-      </section>
-    </div>
+      </div>
+    </section>
 
-    <section class="section" id="research" aria-labelledby="research-title">
-      <div class="page-shell">
-        <div class="section-heading">
+    <section class="section page-shell" id="research" aria-labelledby="research-title">
+      <div class="section-head">
+        <div>
+          <p class="section-index">01 / SOURCE EXTRACTION</p>
+          <h2 class="section-title" id="research-title">Borrow principles,<br>not surfaces<span class="ornament">⌁R</span></h2>
+        </div>
+        <p class="section-lead">参照3サイトから、3D/WebGLを空間として使うこと、文字と映像を競合させないこと、色数を抑えること、ロゴの形を反復することを抽出した。直接確認できない表現は、依頼者が読み取った特徴を要件の正本としている。</p>
+      </div>
+
+      <div class="grid-3">
+        <article class="compact-card">
+          <div class="research-sign">L / 3D</div>
+          <h3>Lusion — procedural scene</h3>
+          <p>抽象形状、微視的なノイズ、3D空間内の文字。背景は強く、UIの書体と色は少なく保つ。</p>
+          <a href="https://lusion.co/">Official site ↗</a>
+        </article>
+        <article class="compact-card">
+          <div class="research-sign">/NK</div>
+          <h3>nk.studio — slash &amp; particles</h3>
+          <p>ネオンの斜線と粒子を一貫した視覚語彙にし、WebGL背景はコンテンツを邪魔しない速度と密度にする。</p>
+          <a href="https://www.nk.studio/">Official site ↗</a>
+        </article>
+        <article class="compact-card">
+          <div class="research-sign">LCO</div>
+          <h3>Locomotive — type as a scene</h3>
+          <p>巨大な文字、古典的なセリフ、抽象形状、変則配置を一つのリズムとして扱う。</p>
+          <a href="https://locomotive.ca/">Official site ↗</a>
+        </article>
+      </div>
+    </section>
+
+    <section class="section page-shell" id="type" aria-labelledby="type-title">
+      <div class="section-head">
+        <div>
+          <p class="section-index">02 / TYPOGRAPHY</p>
+          <h2 class="section-title" id="type-title">Classic voice,<br>machine measure<span class="ornament">ΣTYPE</span></h2>
+        </div>
+        <p class="section-lead">第二版の書体構成へ戻す。Helvetica的なニュートラルさはArimo、古典的な副題はCormorant Garamond / Zen Old Mincho、CUIと物理量はIBM Plex Monoが担当する。全書体はSIL OFL 1.1で組み込み可能。</p>
+      </div>
+
+      <div class="type-showcase">
+        <article class="type-row">
+          <div class="type-meta">NEUTRAL SANS<br>Arimo 400<br>Zen Kaku Gothic Antique 400</div>
+          <p class="type-sample neutral">DIVE INTO TEPUI<br>軌道力学と静かな機械</p>
+        </article>
+        <article class="type-row">
+          <div class="type-meta">EDITORIAL SERIF<br>Cormorant Garamond 300<br>Zen Old Mincho 400</div>
           <div>
-            <p class="section-index">01 / Reference study</p>
-            <h2 class="section-title" id="research-title">Extract principles.<br>Keep identity.</h2>
+            <p class="type-sample editorial">The Orbit Is the Battlefield</p>
+            <p class="type-sample editorial-ja">軌道が戦場になる</p>
           </div>
-          <p class="section-summary">参照3サイトの固有資産を模写せず、配色の抑制、巨大なSans、背景追従文字、丸い操作部品、透明面の使い分けを構成原理として抽出した。各観察は2026-08-14時点の公式ページと公開CSSに基づく。</p>
+        </article>
+        <article class="type-row">
+          <div class="type-meta">CONSOLE MONO<br>IBM Plex Mono 400 / 600<br>Tabular figures</div>
+          <p class="type-sample console">ECI₀  r = 6,791,000 m<br>Δvₙ = +12.48 m/s  Ω = 214.76°<br><em>// estimate: T−00:42.8</em></p>
+        </article>
+        <article class="type-row">
+          <div class="type-meta">DISPLAY ORNAMENT<br>Unicode + SVG<br>Meaning stays separate</div>
+          <p class="type-sample neutral">∴ ⟡ ⌁ Ω⁺ Δvₙ μ⊕ CO₂ Fe³⁺</p>
+        </article>
+      </div>
+
+      <div class="role-grid" aria-label="文字ロールの見本">
+        <article class="role-card aux">
+          <span class="role-name">Auxiliary / 12px</span>
+          <span class="role-sample">補助説明は少し小さく、灰色へ寄せる。不可欠な情報だけには使わない。</span>
+        </article>
+        <article class="role-card strong">
+          <span class="role-name">Strong / 600</span>
+          <span class="role-sample">燃焼残量 12.48 m/s。重要語だけを一段階太くする。</span>
+        </article>
+        <article class="role-card italic">
+          <span class="role-name">Editorial italic</span>
+          <span class="role-sample">A quiet passage through shadow.</span>
+        </article>
+        <article class="role-card mono">
+          <span class="role-name">Mono italic / estimate</span>
+          <span class="role-sample"><em>predicted Ω +0.002°</em><br>actual Ω +0.001°</span>
+        </article>
+      </div>
+    </section>
+
+    <section class="section page-shell" id="contrast" aria-labelledby="contrast-title">
+      <div class="section-head">
+        <div>
+          <p class="section-index">03 / ADAPTIVE CONTRAST</p>
+          <h2 class="section-title" id="contrast-title">Type crosses<br>the image<span class="ornament">±INK</span></h2>
         </div>
+        <p class="section-lead">映像へ重なるタイトルだけは白のdifference、副題は第二版の赤橙セリフをdifference合成する。通常UIには使わず、背景輝度を判定する実装または固定Scrimへ縮退する。</p>
+      </div>
 
-        <div class="grid-3">
-          <article class="study-card">
-            <div class="study-visual study-lusion"><span class="study-wordmark">LUSION</span></div>
-            <div class="study-copy">
-              <h3 class="study-name">Immersive restraint <a href="https://lusion.co/">Official ↗</a></h3>
-              <ul class="study-list">
-                <li>3Dは多色、恒常UIは白黒と細線。</li>
-                <li>大きなGrotesk + 小さなIBM Plex Mono。</li>
-                <li>ピルCTA、点、矢印、十字の補助記号。</li>
-                <li>採用: シーン色とUI色を分離する。</li>
-              </ul>
-            </div>
-          </article>
-
-          <article class="study-card">
-            <div class="study-visual study-nk"><span class="study-wordmark">/nk.studio</span></div>
-            <div class="study-copy">
-              <h3 class="study-name">One luminous accent <a href="https://www.nk.studio/">Official ↗</a></h3>
-              <ul class="study-list">
-                <li>近黒、オフ白、一色のミント。</li>
-                <li>DM Sansと短い大見出し。</li>
-                <li>10〜24px角丸、段階的なbackdrop blur。</li>
-                <li>採用: 一色をFocusとCurrentへ再利用する。</li>
-              </ul>
-            </div>
-          </article>
-
-          <article class="study-card">
-            <div class="study-visual study-locomotive"><span class="study-wordmark">Locomotive®</span></div>
-            <div class="study-copy">
-              <h3 class="study-name">Adaptive display <a href="https://locomotive.ca/en">Official ↗</a></h3>
-              <ul class="study-list">
-                <li>巨大なDisplay、短い本文、明確なグリッド。</li>
-                <li>背景単位の明暗・赤・青の切替。</li>
-                <li>HeroとHeaderのdifference合成。</li>
-                <li>採用: Displayだけを背景反転させる。</li>
-              </ul>
-            </div>
-          </article>
-        </div>
-
-        <div class="translation-strip">
-          <p class="spec-label">Translation / reference → Tepui</p>
-          <div class="translation-flow">
-            <div class="translation-step"><div class="translation-title">Commercial Grotesk</div><p class="translation-copy">Arimo + Zen Kakuへ置換</p></div>
-            <div class="translation-step"><div class="translation-title">Neon mint / blue</div><p class="translation-copy">Orange一色へ縮約</p></div>
-            <div class="translation-step is-accent"><div class="translation-title">Difference title</div><p class="translation-copy">Display限定で採用</p></div>
-            <div class="translation-step"><div class="translation-title">Blurred cards</div><p class="translation-copy">Glass用途を限定</p></div>
-            <div class="translation-step"><div class="translation-title">Scroll choreography</div><p class="translation-copy">ゲーム操作には持ち込まない</p></div>
-          </div>
+      <div class="adaptive-demo" aria-label="明暗が混在する背景上での反転文字見本">
+        <div class="adaptive-copy">
+          <h3>Beyond<br>the limb<sup>⁺</sup></h3>
+          <p>Light becomes structure</p>
         </div>
       </div>
     </section>
 
-    <section class="section" id="type" aria-labelledby="type-title">
-      <div class="page-shell">
-        <div class="section-heading">
-          <div>
-            <p class="section-index">02 / Text language</p>
-            <h2 class="section-title" id="type-title">Weight and posture<br>carry meaning.</h2>
-          </div>
-          <p class="section-summary">通常文、補助説明、太字、斜体、機械出力を別の声として定義する。小さく灰色だから重要でない、太いから警告、斜体だから未来的、という曖昧な装飾運用を避ける。</p>
+    <section class="section page-shell" id="surfaces" aria-labelledby="surfaces-title">
+      <div class="section-head">
+        <div>
+          <p class="section-index">04 / BORDERLESS SURFACES</p>
+          <h2 class="section-title" id="surfaces-title">Boundary by blur<br>and tone<span class="ornament">34R</span></h2>
         </div>
-
-        <div class="grid-3">
-          <article class="type-card">
-            <p class="spec-label">Body / UI 16 · 400</p>
-            <p class="type-body">現在の軌道と目標軌道の交点を確認し、昇交点で法線方向へ噴射します。通常説明は最も静かで読みやすいNeutral Sansを使います。</p>
-            <div class="type-meta"><span>Arimo / Zen Kaku</span><span>Body</span></div>
-          </article>
-
-          <article class="type-card">
-            <p class="spec-label">Auxiliary / 12–13 · 400</p>
-            <p class="type-auxiliary">補助説明は本文より少し小さく灰色へ寄せる。操作の唯一の条件、危険、結果はこのロールだけに書かない。</p>
-            <div class="type-meta"><span>TEXT_AUX</span><span>Secondary</span></div>
-          </article>
-
-          <article class="type-card">
-            <p class="spec-label">Strong / 15–20 · 600</p>
-            <p class="type-strong">Maneuver solution valid<br>計画軌道との誤差 0.18%</p>
-            <div class="type-meta"><span>600 default</span><span>Current / key value</span></div>
-          </article>
-
-          <article class="type-card">
-            <p class="spec-label">Editorial italic / Latin</p>
-            <p class="type-editorial">The orbit is the battlefield.</p>
-            <div class="type-meta"><span>Cormorant Italic 300</span><span>Subtitle / quotation</span></div>
-          </article>
-
-          <article class="type-card">
-            <p class="spec-label">Editorial / Japanese</p>
-            <p class="type-editorial-ja">地球の影へ入り、青い大気の縁だけが静かに残った。</p>
-            <p class="type-auxiliary">日本語は機械的に傾けず、Zen Old Minchoへ切り替える。</p>
-            <div class="type-meta"><span>Zen Old Mincho 400</span><span>No synthetic italic</span></div>
-          </article>
-
-          <article class="type-card">
-            <p class="spec-label">Console / provisional</p>
-            <p class="type-console">T+00:19:42.618<br>FRAME=ECI&nbsp;&nbsp;WARP=×4<br><span class="type-provisional">// predicted intercept ±0.8 s</span></p>
-            <div class="type-meta"><span>IBM Plex Mono</span><span>Machine voice</span></div>
-          </article>
-        </div>
+        <p class="section-lead">ウィンドウの外周線は使わない。Solidは背景との面色差、GlassとFrostedは背景ぼけと柔らかな面の影で境界を作る。標準半径34px、Feature半径48px。内側余白は14〜20pxへ詰める。</p>
       </div>
-    </section>
 
-    <section class="section" id="contrast" aria-labelledby="contrast-section-title">
-      <div class="page-shell">
-        <div class="section-heading">
-          <div>
-            <p class="section-index">03 / Adaptive contrast</p>
-            <h2 class="section-title" id="contrast-section-title">Oppose the field.<br>Do not add color.</h2>
-          </div>
-          <p class="section-summary">背景が白、灰、黒、色付きへ連続的に変わるとき、Display級のタイトルと副題だけをdifference合成する。これは装飾色ではなく、背景へ対向するモノトーンの可読性機構である。</p>
-        </div>
-
-        <div class="contrast-stage" role="group" aria-label="背景反転タイトルの見本">
-          <div class="contrast-lockup">
-            <p class="hero-kicker">Dive into</p>
-            <p class="contrast-title">TEPUI</p>
-            <p class="contrast-subtitle">The horizon changes. The title remains.</p>
-          </div>
-        </div>
-
-        <div class="contrast-notes">
-          <p class="contrast-note"><strong>Use:</strong> 起動画面、章題、結果画面、大きなロゴ。</p>
-          <p class="contrast-note"><strong>Avoid:</strong> 本文、補助説明、照準、危険表示、入力値。</p>
-          <p class="contrast-note"><strong>Fallback:</strong> Solid scrim +通常Title色。forced-colorsではblendを解除。</p>
-        </div>
-
-        <div class="fixed-lockups">
-          <article class="fixed-lockup">
-            <div><p class="spec-label">Fixed contrast / dark</p><h3 class="fixed-title">TEPUI</h3><p class="fixed-subtitle">The orbit is the battlefield.</p></div>
-            <div class="fixed-meta"><span>Title #eeeaf5</span><span>Subtitle #c3bec9</span></div>
+      <div class="surface-stage">
+        <div class="surface-window-grid">
+          <article class="surface-solid window-sample">
+            <span class="sample-tag">Solid / opaque</span>
+            <h3>Orbit elements</h3>
+            <p>情報密度が高い画面。背景との差だけで輪郭を作る。</p>
+            <div class="sample-rows">
+              <div class="sample-row"><span>Inclination</span><code>51.640°</code></div>
+              <div class="sample-row"><span>Periapsis</span><code>408.2 km</code></div>
+              <div class="sample-row"><span>Apoapsis</span><code>421.7 km</code></div>
+            </div>
           </article>
-          <article class="fixed-lockup light">
-            <div><p class="spec-label">Fixed contrast / light</p><h3 class="fixed-title">TEPUI</h3><p class="fixed-subtitle">The orbit is the battlefield.</p></div>
-            <div class="fixed-meta"><span>Title #17141b</span><span>Subtitle #514c56</span></div>
+
+          <article class="surface-glass window-sample">
+            <span class="sample-tag">Glass / 24px blur</span>
+            <h3>Target solution</h3>
+            <p>動く背景の存在を残しながら、値の直下は弱い面で安定させる。</p>
+            <div class="sample-rows">
+              <div class="sample-row"><span>Range</span><code>2.48 km</code></div>
+              <div class="sample-row"><span>Closure</span><code>−4.2 m/s</code></div>
+              <div class="sample-row"><span>Lead</span><code>0.87°</code></div>
+            </div>
+          </article>
+
+          <article class="surface-frost window-sample">
+            <span class="sample-tag">Frosted / 30px blur</span>
+            <h3>Stage unlocked</h3>
+            <p>章扉や一時的なFeature面。広い丸みと光の面差を使う。</p>
+            <div class="sample-rows">
+              <div class="sample-row"><span>Molniya field</span><code>STAGE 02</code></div>
+              <div class="sample-row"><span>Apogee</span><code>39,700 km</code></div>
+              <div class="sample-row"><span>Status</span><code>READY</code></div>
+            </div>
           </article>
         </div>
       </div>
     </section>
 
-    <section class="section" id="surfaces" aria-labelledby="surfaces-title">
-      <div class="page-shell">
-        <div class="section-heading">
-          <div>
-            <p class="section-index">04 / Rounded windows</p>
-            <h2 class="section-title" id="surfaces-title">Three surfaces.<br>One anatomy.</h2>
-          </div>
-          <p class="section-summary">すべてのウィンドウは共通のHeader / Body / Footer構造と角丸スケールを使う。表面は読む時間と背景との関係によってSolid、Glass、Frostedから選ぶ。</p>
+    <section class="section page-shell" id="patterns" aria-labelledby="patterns-title">
+      <div class="section-head">
+        <div>
+          <p class="section-index">05 / UI PATTERNS</p>
+          <h2 class="section-title" id="patterns-title">Dense, quiet,<br>operable<span class="ornament">UI₀</span></h2>
         </div>
-
-        <div class="surface-scene">
-          <article class="surface-window solid">
-            <header class="window-header">
-              <div class="window-heading"><div class="window-title">Solid / Orbital elements</div><div class="window-subtitle">Long reading · precise values</div></div>
-              <div class="window-actions"><button class="icon-button" type="button" aria-label="閉じる"><svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg></button></div>
-            </header>
-            <div class="window-body">
-              <div class="data-list">
-                <div class="data-row"><span class="data-key">Apoapsis</span><span class="data-value">428.42<span class="data-unit">km</span></span></div>
-                <div class="data-row"><span class="data-key">Periapsis</span><span class="data-value">417.09<span class="data-unit">km</span></span></div>
-                <div class="data-row"><span class="data-key">Inclination</span><span class="data-value">51.640<span class="data-unit">°</span></span></div>
-                <div class="data-row"><span class="data-key">Eccentricity</span><span class="data-value">0.00084</span></div>
-              </div>
-              <p class="window-note">表、長文、連続入力は背景を強く遮るSolidへ置く。</p>
-            </div>
-          </article>
-
-          <article class="surface-window glass">
-            <header class="window-header">
-              <div class="window-heading"><div class="window-title">Glass / Target palette</div><div class="window-subtitle">Scene relationship remains visible</div></div>
-              <div class="window-actions"><button class="icon-button" type="button" aria-label="固定する"><svg class="icon" aria-hidden="true"><use href="#i-dock"></use></svg></button><button class="icon-button" type="button" aria-label="閉じる"><svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg></button></div>
-            </header>
-            <div class="window-body">
-              <div class="data-list">
-                <div class="data-row"><span class="data-key">Range</span><span class="data-value">3.28<span class="data-unit">km</span></span></div>
-                <div class="data-row"><span class="data-key">Closure</span><span class="data-value">−12.4<span class="data-unit">m/s</span></span></div>
-                <div class="data-row"><span class="data-key">Bearing</span><span class="data-value">+03.8<span class="data-unit">°</span></span></div>
-              </div>
-              <p class="window-note">短い追従情報だけ。Glassの中へGlassを重ねない。</p>
-            </div>
-            <footer class="window-footer"><button class="button outline-accent" type="button">Set target</button></footer>
-          </article>
-
-          <article class="surface-window frosted">
-            <header class="window-header">
-              <div class="window-heading"><div class="window-title">Frosted / Pause</div><div class="window-subtitle">Temporary focused interaction</div></div>
-            </header>
-            <div class="window-body">
-              <p class="type-strong">Simulation paused</p>
-              <p class="window-note">背景との連続性を残しながら、操作対象を一つへ限定する。恒常HUDには使わない。</p>
-              <div class="chip-row"><span class="chip is-current">Current</span><span class="chip">Focus layer</span></div>
-            </div>
-            <footer class="window-footer"><button class="button" type="button">Settings</button><button class="button primary" type="button">Resume</button></footer>
-          </article>
-        </div>
+        <p class="section-lead">余白を狭めても操作領域は44pxを保つ。部品の境界も面色で示し、Accentは現在位置と確定操作へ限定する。数値はIBM Plex Mono、説明はNeutral Sansへ分担する。</p>
       </div>
-    </section>
 
-    <section class="section" id="patterns" aria-labelledby="patterns-title">
-      <div class="page-shell">
-        <div class="section-heading">
-          <div>
-            <p class="section-index">05 / UI patterns</p>
-            <h2 class="section-title" id="patterns-title">Neutral by default.<br>Orange when current.</h2>
-          </div>
-          <p class="section-summary">Accentを増やさず、明度、線、太さ、面、記号で状態を分ける。Orangeは選択、フォーカス、進行だけに現れ、Dangerと物理軸色は別のDomain vocabularyとして扱う。</p>
-        </div>
-
-        <div class="pattern-stage">
-          <div class="rail">
-            <div class="rail-brand">TEPUI / FLIGHT</div>
-            <div class="rail-center"><span class="rail-status">SIMULATION LIVE</span><span class="chip">ECI</span><span class="chip is-current">WARP ×4</span></div>
-            <div class="rail-actions"><button class="icon-button" type="button" aria-label="対象を選ぶ"><svg class="icon" aria-hidden="true"><use href="#i-target"></use></svg></button><button class="icon-button" type="button" aria-label="メニュー"><svg class="icon" aria-hidden="true"><use href="#i-menu"></use></svg></button></div>
-          </div>
-
-          <div class="pattern-body">
-            <div class="grid-3">
-              <section class="pattern-card" aria-labelledby="button-pattern-title">
-                <h3 class="spec-label" id="button-pattern-title">Buttons / restrained variants</h3>
-                <div class="button-row">
-                  <button class="button" type="button">Secondary</button>
-                  <button class="button outline-accent" type="button">Current</button>
-                  <button class="button solid" type="button">Confirm</button>
-                  <button class="button primary pill" type="button">Execute →</button>
-                  <button class="button" type="button" disabled>Unavailable</button>
-                </div>
-              </section>
-
-              <section class="pattern-card" aria-labelledby="tabs-pattern-title">
-                <h3 class="spec-label" id="tabs-pattern-title">Tabs / one orange line</h3>
-                <div class="tabs" role="group" aria-label="表示区分">
-                  <button class="tab is-current" type="button" aria-pressed="true">Orbit</button>
-                  <button class="tab" type="button" aria-pressed="false">Target</button>
-                  <button class="tab" type="button" aria-pressed="false">Systems</button>
-                </div>
-                <div class="chip-row"><span class="chip is-current">Selected</span><span class="chip">Filter</span><span class="chip">Status</span></div>
-              </section>
-
-              <section class="pattern-card" aria-labelledby="input-pattern-title">
-                <h3 class="spec-label" id="input-pattern-title">Input / toggle / meter</h3>
-                <div class="field">
-                  <label class="field-label" for="node-time">Node time / ノード時刻</label>
-                  <input class="field-input" id="node-time" type="text" value="T−00:04:18.622" readonly aria-describedby="node-time-help">
-                  <p class="field-help" id="node-time-help">通常入力はNeutral UI。ログではないためMonoにしない。</p>
-                </div>
-                <div class="toggle-row"><span class="field-label">Prograde hold</span><button class="toggle" type="button" aria-label="Prograde hold" aria-pressed="true"></button></div>
-                <div class="meter-block"><div class="meter-label"><span>Fuel</span><span>72%</span></div><div class="meter value-72"><span></span></div></div>
-              </section>
+      <div class="pattern-board">
+        <div class="pattern-stack">
+          <section class="pattern-card" aria-labelledby="buttons-title">
+            <h3 id="buttons-title">Buttons</h3>
+            <p>白いPrimary、単一のAccent、面色のSecondary。</p>
+            <div class="button-row">
+              <button class="button primary" type="button">Commit burn</button>
+              <button class="button accent" type="button">Current</button>
+              <button class="button" type="button">Preview</button>
+              <button class="button quiet" type="button">Cancel</button>
             </div>
+          </section>
 
-            <div class="grid-2">
-              <section class="pattern-card" aria-labelledby="table-pattern-title">
-                <h3 class="spec-label" id="table-pattern-title">Dense data / one surface, not many cards</h3>
-                <table class="data-table">
-                  <caption>Nearby orbital objects</caption>
-                  <thead><tr><th>Object</th><th>Range</th><th>Closure</th><th>Status</th></tr></thead>
-                  <tbody>
-                    <tr class="is-current"><td>Target 01</td><td>3.28 km</td><td>−12.4 m/s</td><td>Current</td></tr>
-                    <tr><td>Debris 14</td><td>8.91 km</td><td>+3.1 m/s</td><td>Passing</td></tr>
-                    <tr><td>Ammo 03</td><td>4.72 km</td><td>−0.8 m/s</td><td>Available</td></tr>
-                    <tr><td>Node 02</td><td>12:43</td><td>+12.4 m/s</td><td>Planned</td></tr>
-                  </tbody>
-                </table>
-              </section>
-
-              <section class="pattern-card" aria-labelledby="type-hierarchy-title">
-                <h3 class="spec-label" id="type-hierarchy-title">Information hierarchy</h3>
-                <p class="type-strong">Target intercept solution</p>
-                <p class="type-body">昇交点まで4分18秒。計画速度差は12.4 m/sです。</p>
-                <p class="type-auxiliary">推定値はJ2と月・太陽摂動を含む現在の軌道要素から算出。時間warp中は毎秒更新します。</p>
-                <p class="type-console">NODE.02 / SOLUTION=VALID / ERR=0.18%</p>
-              </section>
+          <section class="pattern-card" aria-labelledby="tabs-title">
+            <h3 id="tabs-title">Segmented tabs</h3>
+            <p>外枠を使わず、一つの面の中で選択を反転する。</p>
+            <div class="tab-list" role="tablist" aria-label="表示モード">
+              <button class="tab active" role="tab" aria-selected="true" type="button">Orbit</button>
+              <button class="tab" role="tab" aria-selected="false" type="button">Target</button>
+              <button class="tab" role="tab" aria-selected="false" type="button">System</button>
             </div>
-          </div>
-        </div>
+          </section>
 
-        <h3 class="subsection-title">Overlay family</h3>
-        <div class="overlay-stage" role="group" aria-label="オーバーレイ部品の見本">
-          <div class="context-menu">
-            <div class="context-head">Target 01<span>Context menu / Glass</span></div>
-            <div class="context-item is-current"><span>Track target</span><span>T</span></div>
-            <div class="context-item"><span>Open properties</span><span>↵</span></div>
-            <div class="context-item"><span>Place node</span><span>N</span></div>
-          </div>
+          <section class="pattern-card" aria-labelledby="input-title">
+            <h3 id="input-title">Input</h3>
+            <p>入力面を沈め、単位を固定する。</p>
+            <div class="input-shell">
+              <label for="delta-v-input">Δv normal</label>
+              <input id="delta-v-input" type="text" value="+12.480" inputmode="decimal">
+              <span class="input-unit">m/s</span>
+            </div>
+          </section>
 
-          <div class="tooltip" role="note">Drag to reposition · Double click to center</div>
-
-          <div class="toast">
-            <svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg>
-            <div><p class="toast-title">Maneuver node ready</p><p class="toast-copy">計画軌道との誤差は許容範囲内です。</p></div>
-          </div>
-
-          <article class="dialog">
-            <div class="dialog-body"><h3 class="dialog-title">Discard maneuver plan?</h3><p class="dialog-copy">未実行のΔv 12.4 m/sとノード時刻を破棄します。この操作は取り消せません。</p></div>
-            <footer class="dialog-footer"><button class="button" type="button">Cancel</button><button class="button danger" type="button">Discard</button></footer>
-          </article>
-
-          <div class="command-palette">
-            <div class="command-input"><span>&gt;</span><input type="text" value="target" readonly aria-label="コマンド検索"></div>
-            <div class="command-result is-current"><span>Cycle target</span><span>Tab</span></div>
-            <div class="command-result"><span>Open target properties</span><span>↵</span></div>
-          </div>
-        </div>
-
-        <h3 class="subsection-title">Empty / loading / unavailable / error</h3>
-        <div class="grid-4">
-          <article class="state-card"><p class="spec-label">Empty</p><h3 class="state-title">No target selected</h3><p class="state-copy">Tabで対象を選択するか、マップ上の船を選択してください。</p></article>
-          <article class="state-card"><p class="spec-label">Loading</p><h3 class="state-title">Propagating orbit</h3><p class="state-copy">20秒先まで摂動込みの軌道を計算しています。</p><progress class="state-progress" value="62" max="100">62%</progress></article>
-          <article class="state-card disabled"><p class="spec-label">Unavailable</p><h3 class="state-title">Weapons locked</h3><p class="state-copy">Time warp ×8では射撃できません。×4以下へ戻してください。</p></article>
-          <article class="state-card error"><p class="spec-label">Error</p><h3 class="state-title">Orbit solution failed</h3><p class="state-copy">入力値を確認し、ノードを現在時刻より後へ移動してください。</p></article>
-        </div>
-      </div>
-    </section>
-
-    <section class="section" id="symbols" aria-labelledby="symbols-title">
-      <div class="page-shell">
-        <div class="section-heading">
-          <div>
-            <p class="section-index">06 / Symbols</p>
-            <h2 class="section-title" id="symbols-title">Geometry remains<br>the stable layer.</h2>
-          </div>
-          <p class="section-summary">第二版の24px SVG体系を維持する。GlassやAdaptive Contrastは記号そのものではなく、所属するボタンまたはマーカーコンテナの責務とする。</p>
-        </div>
-
-        <h3 class="subsection-title">Interface icons / 24 grid / 1.5 stroke</h3>
-        <div class="grid-6" role="group" aria-label="UIアイコン一覧">
-          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg><span class="symbol-name">Close</span></div>
-          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#i-menu"></use></svg><span class="symbol-name">Menu</span></div>
-          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#i-chevron"></use></svg><span class="symbol-name">Collapse</span></div>
-          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#i-save"></use></svg><span class="symbol-name">Save</span></div>
-          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#i-target"></use></svg><span class="symbol-name">Target</span></div>
-          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#i-play"></use></svg><span class="symbol-name">Execute</span></div>
-          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#i-pause"></use></svg><span class="symbol-name">Pause</span></div>
-          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#i-expand"></use></svg><span class="symbol-name">Expand</span></div>
-          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#i-filter"></use></svg><span class="symbol-name">Filter</span></div>
-          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg><span class="symbol-name">Info</span></div>
-          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#i-undo"></use></svg><span class="symbol-name">Undo</span></div>
-          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#i-dock"></use></svg><span class="symbol-name">Dock</span></div>
-        </div>
-
-        <h3 class="subsection-title">World markers / semantic families</h3>
-        <div class="symbol-legend" role="group" aria-label="マーカー族の凡例"><span class="entity-key">Entity</span><span class="direction-key">Direction</span><span class="orbit-key">Orbit point</span><span class="hazard-key">Hazard</span></div>
-        <div class="grid-6" role="group" aria-label="ゲーム世界マーカー一覧">
-          <div class="symbol-cell entity"><svg class="icon" aria-hidden="true"><use href="#m-ship"></use></svg><span class="symbol-name">Ship</span></div>
-          <div class="symbol-cell entity"><svg class="icon" aria-hidden="true"><use href="#m-body"></use></svg><span class="symbol-name">Body</span></div>
-          <div class="symbol-cell entity"><svg class="icon" aria-hidden="true"><use href="#m-ammo"></use></svg><span class="symbol-name">Ammo</span></div>
-          <div class="symbol-cell prograde"><svg class="icon" aria-hidden="true"><use href="#m-prograde"></use></svg><span class="symbol-name">Prograde</span></div>
-          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#m-retrograde"></use></svg><span class="symbol-name">Retrograde</span></div>
-          <div class="symbol-cell radial"><svg class="icon" aria-hidden="true"><use href="#m-radial"></use></svg><span class="symbol-name">Radial</span></div>
-          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#m-target"></use></svg><span class="symbol-name">Target</span></div>
-          <div class="symbol-cell orbit normal"><svg class="icon" aria-hidden="true"><use href="#m-ascending"></use></svg><span class="symbol-name">Ascending</span></div>
-          <div class="symbol-cell orbit normal"><svg class="icon" aria-hidden="true"><use href="#m-descending"></use></svg><span class="symbol-name">Descending</span></div>
-          <div class="symbol-cell orbit"><svg class="icon" aria-hidden="true"><use href="#m-apsis"></use></svg><span class="symbol-name">Apsis</span></div>
-          <div class="symbol-cell orbit"><svg class="icon" aria-hidden="true"><use href="#m-maneuver"></use></svg><span class="symbol-name">Maneuver</span></div>
-          <div class="symbol-cell orbit"><svg class="icon" aria-hidden="true"><use href="#m-burn"></use></svg><span class="symbol-name">Burn</span></div>
-          <div class="symbol-cell hazard"><svg class="icon" aria-hidden="true"><use href="#m-impact"></use></svg><span class="symbol-name">Impact</span></div>
-          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#m-ghost"></use></svg><span class="symbol-name">Ghost</span></div>
-          <div class="symbol-cell"><svg class="icon" aria-hidden="true"><use href="#m-preview"></use></svg><span class="symbol-name">Preview</span></div>
-        </div>
-      </div>
-    </section>
-
-    <section class="section" id="tokens" aria-labelledby="tokens-title">
-      <div class="page-shell">
-        <div class="section-heading">
-          <div>
-            <p class="section-index">07 / Tokens &amp; AI contract</p>
-            <h2 class="section-title" id="tokens-title">Visible system.<br>Parseable decisions.</h2>
-          </div>
-          <p class="section-summary">人間向け標本と同じページに、調査元、採用判断、文字ロール、表面、角丸、blur、状態、記号、禁止事項をJSONで埋め込む。他のAIは見た目を推測せずmanifestを正規要約として使える。</p>
-        </div>
-
-        <div class="grid-2">
-          <div>
-            <table class="token-table">
-              <caption>Core design tokens</caption>
-              <thead><tr><th>Family</th><th>Values</th><th>Rule</th></tr></thead>
-              <tbody>
-                <tr><td>radius</td><td>4 / 8 / 12 / 18 / 28 / pill</td><td>Windowは18px</td></tr>
-                <tr><td>blur</td><td>12 / 18 / 28px</td><td>任意値を増やさない</td></tr>
-                <tr><td>surface</td><td>Solid / Glass / Frosted</td><td>読む時間で選ぶ</td></tr>
-                <tr><td>accent</td><td>#ff6a00</td><td>Current / Focus / Progress</td></tr>
-                <tr><td>display</td><td>difference / fallback solid</td><td>大見出しだけ</td></tr>
-                <tr><td>motion</td><td>150 / 280 / 420ms</td><td>Control / Overlay / Layout</td></tr>
-                <tr><td>auxiliary</td><td>12–13px / TEXT_AUX</td><td>補足だけ</td></tr>
-              </tbody>
-            </table>
-          </div>
-
-          <section class="code-region" aria-label="CSSトークン抜粋">
-            <pre class="code-block">:root {
-  --surface-solid: rgba(13, 15, 18, .94);
-  --surface-glass: rgba(13, 15, 18, .56);
-  --surface-frost: rgba(24, 25, 29, .74);
-
-  --radius-s: 8px;
-  --radius-m: 12px;
-  --radius-l: 18px;
-  --radius-xl: 28px;
-
-  --blur-s: 12px;
-  --blur-m: 18px;
-  --blur-l: 28px;
-
-  --accent: #ff6a00;
-}
-
-.display-adaptive {
-  color: #fff;
-  mix-blend-mode: difference;
-}
-
-.window-glass {
-  background: var(--surface-glass);
-  border-radius: var(--radius-l);
-  backdrop-filter: blur(var(--blur-m));
-}</pre>
+          <section class="pattern-card" aria-labelledby="table-title">
+            <h3 id="table-title">Dense rows</h3>
+            <p>罫線の代わりに丸いrowと間隔で列を保つ。</p>
+            <div class="data-table" role="table" aria-label="軌道要素">
+              <div class="data-row head" role="row"><span role="columnheader">Element</span><span role="columnheader">Value</span><span role="columnheader">State</span></div>
+              <div class="data-row" role="row"><span role="cell">Inclination</span><code role="cell">51.640°</code><span class="data-state" role="cell">LOCK</span></div>
+              <div class="data-row" role="row"><span role="cell">Eccentricity</span><code role="cell">0.00104</code><span class="data-state" role="cell">NOM</span></div>
+              <div class="data-row" role="row"><span role="cell">RAAN Ω</span><code role="cell">214.760°</code><span class="data-state" role="cell">DRIFT</span></div>
+            </div>
           </section>
         </div>
 
-        <h3 class="subsection-title">Embedded font license registry</h3>
-        <table class="token-table">
-          <caption>Review fonts — production must self-host WOFF2 and license text</caption>
-          <thead><tr><th>Family</th><th>Role</th><th>License</th><th>Upstream</th></tr></thead>
-          <tbody>
-            <tr><td>Arimo</td><td>Neutral Sans / Latin</td><td>OFL-1.1</td><td><a href="https://github.com/googlefonts/Arimo">googlefonts/Arimo</a></td></tr>
-            <tr><td>Zen Kaku Gothic Antique</td><td>Neutral Sans / Japanese</td><td>OFL-1.1</td><td><a href="https://fonts.google.com/specimen/Zen+Kaku+Gothic+Antique">Google Fonts</a></td></tr>
-            <tr><td>Cormorant Garamond</td><td>Editorial Serif / Latin</td><td>OFL-1.1</td><td><a href="https://github.com/CatharsisFonts/Cormorant">CatharsisFonts/Cormorant</a></td></tr>
-            <tr><td>Zen Old Mincho</td><td>Editorial Serif / Japanese</td><td>OFL-1.1</td><td><a href="https://fonts.google.com/specimen/Zen+Old+Mincho">Google Fonts</a></td></tr>
-            <tr><td>IBM Plex Mono</td><td>Console Mono</td><td>OFL-1.1</td><td><a href="https://github.com/IBM/plex">IBM/plex</a></td></tr>
-          </tbody>
-        </table>
+        <div class="pattern-stack">
+          <section class="hud-console" aria-label="HUDと局所Glassの見本">
+            <svg class="hud-target" aria-label="Target marker"><use href="#i-target"></use></svg>
+            <div class="hud-value top-left">
+              <span>Target / E-03</span>
+              <strong>2.48 km</strong>
+            </div>
+            <div class="hud-value bottom-right">
+              <span>Closure</span>
+              <strong>−4.2 m/s</strong>
+            </div>
+          </section>
 
-        <p class="license-note">参照サイトの商用・独自書体、ロゴ、画像、3D資産は採用しない。Lusion、/nk.studio、Locomotiveは構成原理の研究元であり、第三版の配布資産ではない。</p>
+          <section class="console-lines" aria-label="IBM Plex Mono Console見本">
+            <div><span class="prompt">tepui@eci:~$</span> plan --node N-04</div>
+            <div>Δv = [+0.00, +12.48, −0.84] m/s</div>
+            <div>TOF = 00:06:42.8 / Ω = 214.760°</div>
+            <div class="comment">// estimate converges within 0.02 m/s</div>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <section class="section page-shell" id="symbols" aria-labelledby="symbols-title">
+      <div class="section-head">
+        <div>
+          <p class="section-index">06 / SYMBOL SYSTEM</p>
+          <h2 class="section-title" id="symbols-title">Twenty-seven<br>quiet signs<span class="ornament">24×24</span></h2>
+        </div>
+        <p class="section-lead">操作12種、世界マーカー15種。実体は塗り、方向は中心または矢、軌道点は中空、予測は破線、危険は交差で表す。Unicode装飾とは分離し、操作の正本はSVGにする。</p>
+      </div>
+
+      <div class="symbol-groups">
+        <section class="symbol-group" aria-labelledby="ui-symbols-title">
+          <div class="symbol-group-head">
+            <h3 id="ui-symbols-title">UI actions</h3>
+            <span class="symbol-count">12 / stroke 1.5</span>
+          </div>
+          <div class="symbol-grid">
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#i-close"></use></svg><span>close</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#i-menu"></use></svg><span>menu</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#i-chevron"></use></svg><span>chevron</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#i-save"></use></svg><span>save</span></div>
+            <div class="symbol-item accent"><svg aria-hidden="true"><use href="#i-target"></use></svg><span>target</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#i-play"></use></svg><span>play</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#i-pause"></use></svg><span>pause</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#i-expand"></use></svg><span>expand</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#i-filter"></use></svg><span>filter</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#i-info"></use></svg><span>info</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#i-undo"></use></svg><span>undo</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#i-dock"></use></svg><span>dock</span></div>
+          </div>
+        </section>
+
+        <section class="symbol-group" aria-labelledby="world-symbols-title">
+          <div class="symbol-group-head">
+            <h3 id="world-symbols-title">World markers</h3>
+            <span class="symbol-count">15 / entity · direction · orbit · prediction · hazard</span>
+          </div>
+          <div class="symbol-grid">
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#m-ship"></use></svg><span>ship</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#m-body"></use></svg><span>body</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#m-ghost"></use></svg><span>ghost</span></div>
+            <div class="symbol-item accent"><svg aria-hidden="true"><use href="#m-ammo"></use></svg><span>ammo</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#m-prograde"></use></svg><span>prograde</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#m-retrograde"></use></svg><span>retrograde</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#m-radial"></use></svg><span>radial</span></div>
+            <div class="symbol-item accent"><svg aria-hidden="true"><use href="#m-target"></use></svg><span>target</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#m-ascending"></use></svg><span>ascending</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#m-descending"></use></svg><span>descending</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#m-apsis"></use></svg><span>apsis</span></div>
+            <div class="symbol-item accent"><svg aria-hidden="true"><use href="#m-maneuver"></use></svg><span>maneuver</span></div>
+            <div class="symbol-item accent"><svg aria-hidden="true"><use href="#m-burn"></use></svg><span>burn</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#m-impact"></use></svg><span>impact</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#m-preview"></use></svg><span>preview</span></div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="section page-shell" id="tokens" aria-labelledby="tokens-title">
+      <div class="section-head">
+        <div>
+          <p class="section-index">07 / TOKENS &amp; HANDOFF</p>
+          <h2 class="section-title" id="tokens-title">One page,<br>one source<span class="ornament">JSON</span></h2>
+        </div>
+        <p class="section-lead">画面と機械可読manifestを同じHTMLへ置く。色調整後はCopy CSSの出力を正本へ固定し、Google Fontsを自己配信WOFF2へ置換する。</p>
+      </div>
+
+      <div class="token-layout">
+        <div class="pattern-stack">
+          <section class="surface-solid token-panel" aria-labelledby="palette-title">
+            <div class="window-heading">
+              <div>
+                <h3 id="palette-title">Core palette</h3>
+                <p>Accent以外はニュートラル系列で固定。</p>
+              </div>
+            </div>
+            <div class="swatch-stack">
+              <div class="swatch"><span class="swatch-color" style="--swatch-color: var(--page)"></span><strong>Page</strong><code>#07080A</code></div>
+              <div class="swatch"><span class="swatch-color" style="--swatch-color: var(--surface-1)"></span><strong>Surface 1</strong><code>#101217</code></div>
+              <div class="swatch"><span class="swatch-color" style="--swatch-color: var(--ink-title)"></span><strong>Title</strong><code>#EEEAF5</code></div>
+              <div class="swatch"><span class="swatch-color" style="--swatch-color: var(--ink-body)"></span><strong>Body</strong><code>#C3BEC9</code></div>
+              <div class="swatch"><span class="swatch-color" style="--swatch-color: var(--ink-muted)"></span><strong>Muted</strong><code>#89838F</code></div>
+              <div class="swatch"><span class="swatch-color" style="--swatch-color: var(--accent)"></span><strong>Accent / live</strong><code id="palette-accent-hex">#FF4B1F</code></div>
+            </div>
+          </section>
+
+          <section class="surface-solid token-panel" aria-labelledby="license-title">
+            <div class="window-heading">
+              <div>
+                <h3 id="license-title">Embeddable font set</h3>
+                <p>本番はWOFF2とOFL本文を自己配信する。</p>
+              </div>
+            </div>
+            <div class="license-list">
+              <div class="license-row"><span>Arimo Variable</span><code>OFL-1.1</code></div>
+              <div class="license-row"><span>Zen Kaku Gothic Antique</span><code>OFL-1.1</code></div>
+              <div class="license-row"><span>Cormorant Garamond</span><code>OFL-1.1</code></div>
+              <div class="license-row"><span>Zen Old Mincho</span><code>OFL-1.1</code></div>
+              <div class="license-row"><span>IBM Plex Mono</span><code>OFL-1.1</code></div>
+            </div>
+          </section>
+        </div>
+
+        <section class="code-region" aria-labelledby="css-token-title">
+          <div class="code-heading">
+            <span id="css-token-title">CSS token excerpt</span>
+            <span>live initial values</span>
+          </div>
+          <pre>:root {
+  --font-ui:
+    "Arimo", "Zen Kaku Gothic Antique", sans-serif;
+  --font-editorial:
+    "Cormorant Garamond", "Zen Old Mincho", serif;
+  --font-console:
+    "IBM Plex Mono", "Zen Kaku Gothic Antique", monospace;
+
+  --page: #07080a;
+  --surface-1: #101217;
+  --surface-2: #181b21;
+  --ink-title: #eeeaf5;
+  --ink-body: #c3bec9;
+  --ink-muted: #89838f;
+
+  --accent-h: 12;
+  --accent-s: 100%;
+  --accent-l: 56%;
+  --accent-light-l: 40%;
+  --accent: hsl(12 100% 56%);           /* #FF4B1F */
+  --accent-on-light: hsl(12 100% 40%);  /* #CC2900 */
+
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 10px;
+  --space-4: 14px;
+  --space-5: 20px;
+  --space-6: 28px;
+  --space-7: 42px;
+
+  --radius-control: 14px;
+  --radius-card: 22px;
+  --radius-window: 34px;
+  --radius-feature: 48px;
+}
+
+.window-glass {
+  background: rgb(13 15 19 / 0.58);
+  border-radius: var(--radius-window);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 0.3);
+  backdrop-filter: blur(24px) saturate(115%);
+}
+
+.adaptive-title {
+  color: #fff;
+  mix-blend-mode: difference;
+}</pre>
+        </section>
       </div>
     </section>
   </main>
 
-  <footer class="footer">
-    <div class="page-shell footer-inner"><span>Dive into Tepui / UI Design System Reference / Version 3</span><span>Machine-readable source: <code>#design-system-manifest</code></span></div>
+  <footer>
+    <div class="page-shell footer-inner">
+      <span>Dive into Tepui / UI Design System Reference / Rebuilt V3</span>
+      <span>Machine-readable source: #design-system-manifest</span>
+    </div>
   </footer>
 
   <script type="application/json" id="design-system-manifest">
   {
-    "id": "tepui.ui-design-system",
-    "version": 3,
+    "name": "Dive into Tepui UI Design System",
+    "version": "3.0.0-rebuilt",
     "status": "proposal",
-    "supersedes": "tepui.typography-logotype-symbols@2",
-    "research": {
-      "observedAt": "2026-08-14",
-      "method": ["official live pages", "public CSS", "official social preview", "industry showcase"],
-      "sources": {
-        "lusion": {
-          "url": "https://lusion.co/",
-          "observed": ["large neutral grotesk", "IBM Plex Mono metadata", "black-white persistent UI", "pill CTA", "immersive 3D behind simple interface"],
-          "translatedAs": ["Arimo display", "IBM Plex Mono machine voice", "scene colors separated from UI colors"]
-        },
-        "nkStudio": {
-          "url": "https://www.nk.studio/",
-          "observed": ["near-black and off-white", "one mint accent", "DM Sans", "rounded blurred cards", "difference and overlay compositing"],
-          "translatedAs": ["one orange accent", "Glass surface", "rounded window scale"]
-        },
-        "locomotive": {
-          "url": "https://locomotive.ca/en",
-          "observed": ["oversized display type", "section-level color change", "difference blended hero and header", "grid-led composition"],
-          "translatedAs": ["Adaptive Contrast Display", "monochrome section themes", "large typography with restrained chrome"]
-        }
-      },
-      "doNotCopy": ["logos", "images", "3D assets", "proprietary fonts", "signature animations"]
-    },
-    "fontLicensePolicy": "SIL-OFL-1.1-only",
-    "fontLoading": {
-      "mockup": "Google Fonts for review only",
-      "production": "self-hosted WOFF2 with license texts"
-    },
+    "foundation": "TYPOGRAPHY_LOGOTYPE_SYMBOL_PROPOSAL_V2.md",
+    "principles": [
+      "scene-first-interface-quiet",
+      "one-accent-many-neutrals",
+      "shape-by-type-not-boxes",
+      "boundary-without-outline"
+    ],
     "fonts": {
-      "ui": {
-        "latin": { "family": "Arimo", "weights": [400, 600, 700], "styles": ["normal", "italic"], "license": "OFL-1.1", "upstream": "https://github.com/googlefonts/Arimo" },
-        "japanese": { "family": "Zen Kaku Gothic Antique", "weights": [400, 500, 700], "styles": ["normal"], "license": "OFL-1.1", "upstream": "https://fonts.google.com/specimen/Zen+Kaku+Gothic+Antique" }
+      "neutral": {
+        "latin": "Arimo",
+        "japanese": "Zen Kaku Gothic Antique",
+        "license": "SIL OFL 1.1"
       },
       "editorial": {
-        "latin": { "family": "Cormorant Garamond", "weights": [300, 400, 500], "styles": ["normal", "italic"], "license": "OFL-1.1", "upstream": "https://github.com/CatharsisFonts/Cormorant" },
-        "japanese": { "family": "Zen Old Mincho", "weights": [400, 500, 600], "styles": ["normal"], "license": "OFL-1.1", "upstream": "https://fonts.google.com/specimen/Zen+Old+Mincho" }
+        "latin": "Cormorant Garamond",
+        "japanese": "Zen Old Mincho",
+        "license": "SIL OFL 1.1"
       },
       "console": {
-        "latin": { "family": "IBM Plex Mono", "weights": [400, 500, 600], "styles": ["normal", "italic"], "license": "OFL-1.1", "upstream": "https://github.com/IBM/plex" },
+        "latin": "IBM Plex Mono",
         "japaneseFallback": "Zen Kaku Gothic Antique",
-        "strictHalfwidthFullwidthGrid": false
-      },
-      "fontSynthesis": "none"
-    },
-    "typography": {
-      "displayXL": { "size": "44-136px", "weight": 400, "family": "ui", "allowedColors": ["title", "adaptive"] },
-      "displaySubtitle": { "size": "18-38px", "weight": "300-400", "family": "editorial", "allowedColors": ["body", "adaptive", "accent-limited"] },
-      "windowTitle": { "size": "15px", "weight": 600, "family": "ui", "color": "title" },
-      "body": { "size": "16px", "weight": 400, "family": "ui", "color": "body" },
-      "hud": { "size": "14px", "weight": 400, "family": "ui", "color": "body-or-strong" },
-      "auxiliary": { "size": "12-13px", "weight": 400, "family": "ui", "color": "aux", "mayCarryCriticalInformationAlone": false },
-      "label": { "size": "12px", "weight": 600, "family": "ui", "color": "aux" },
-      "micro": { "size": "11px", "weight": 600, "family": "ui", "color": "aux-or-faint", "nonInteractiveOnly": true },
-      "console": { "size": "13px", "weight": "400-500", "family": "console", "color": "body-or-strong" },
-      "strong": { "defaultWeight": 600, "maximumRoutineWeight": 700, "wholeParagraphs": false },
-      "italic": {
-        "latinUses": ["subtitle", "quotation", "assumption", "provisional output"],
-        "japaneseSyntheticItalic": false,
-        "japaneseAlternative": "editorial family in normal style",
-        "forbiddenUses": ["warning", "button", "long body", "numeric column", "control label"]
+        "license": "SIL OFL 1.1"
       }
     },
-    "palette": {
-      "mode": "monochrome-with-single-brand-accent",
-      "dark": {
-        "background": "#08090c",
-        "title": "#eeeaf5",
-        "body": "#c3bec9",
-        "auxiliary": "#918b97",
-        "faint": "#625d68",
-        "strong": "#ffffff",
-        "accent": "#ff6a00"
-      },
-      "light": {
-        "background": "#f3f0ed",
-        "title": "#17141b",
-        "body": "#514c56",
-        "auxiliary": "#6f6873",
-        "faint": "#aaa2ad",
-        "strong": "#08070a",
-        "accent": "#bd4200"
-      },
-      "accentBudget": { "screenAreaMaximum": "3%", "textAreaMaximum": "8%" },
-      "accentMeanings": ["current", "selected", "focus", "progress"],
-      "domainColorExceptions": ["danger", "prograde", "normal", "radial", "simultaneous target identity"]
+    "accentTuner": {
+      "hue": {"min": 0, "max": 35, "default": 12},
+      "saturation": {"min": 60, "max": 100, "default": 100},
+      "darkLightness": {"min": 40, "max": 70, "default": 56},
+      "lightLightness": {"min": 24, "max": 50, "default": 40},
+      "defaultDarkHex": "#FF4B1F",
+      "defaultLightHex": "#CC2900"
     },
-    "adaptiveContrast": {
-      "css": { "color": "#fff", "mixBlendMode": "difference" },
-      "allowedRoles": ["displayXL", "displaySubtitle", "largeLogotype"],
-      "forbiddenRoles": ["body", "auxiliary", "label", "input", "marker", "danger"],
-      "fallback": "solid scrim plus fixed title color",
-      "forcedColors": "disable blend and use CanvasText"
+    "spacingPx": [4, 6, 10, 14, 20, 28, 42],
+    "radiusPx": {
+      "control": 14,
+      "card": 22,
+      "window": 34,
+      "feature": 48,
+      "pill": 999
     },
     "surfaces": {
-      "solid": { "background": "rgba(13,15,18,.94)", "blur": "none", "radius": "18px", "uses": ["long reading", "tables", "settings", "precise input"] },
-      "glass": { "background": "rgba(13,15,18,.56)", "blur": "18px", "radius": "18px", "uses": ["scene-relative information", "tool palette", "context UI"], "nesting": false },
-      "frosted": { "background": "rgba(24,25,29,.74)", "blur": "28px", "radius": "18px", "uses": ["pause", "dialog", "save", "command palette"] }
+      "windowOutline": "none",
+      "solidBoundary": "tone-difference",
+      "glassBoundary": "backdrop-blur-plus-soft-shadow",
+      "glassBlurPx": 24,
+      "frostBlurPx": 30
     },
-    "radii": { "xs": "4px", "s": "8px", "m": "12px", "l": "18px", "xl": "28px", "pill": "999px" },
-    "blur": { "s": "12px", "m": "18px", "l": "28px", "animateValues": false },
-    "motion": { "control": "150ms", "overlay": "280ms", "layout": "420ms", "ambientMinimum": "8s", "reducedMotion": "opacity-only" },
-    "patterns": {
-      "navigation": ["top rail", "side rail", "tabs"],
-      "controls": ["text button", "outline button", "solid button", "primary pill CTA", "input", "toggle", "meter", "chip"],
-      "data": ["list", "table", "independent card"],
-      "overlays": ["context menu", "tooltip", "toast", "dialog", "command palette"],
-      "systemStates": ["empty", "loading", "unavailable", "error"]
+    "display": {
+      "titleBlend": "difference-white",
+      "subtitleBlend": "difference-accent",
+      "subtitleStyle": "version-2-editorial-serif",
+      "ornaments": ["∴", "⟡", "⌁", "Ω", "Δ", "μ", "Σ", "⁺", "⁻", "₀", "₁", "₂", "₃"]
     },
-    "windowAnatomy": ["header", "optional tabs", "body", "auxiliary explanation", "optional footer"],
+    "generativeBackground": {
+      "renderer": "low-resolution-canvas-2d",
+      "layers": ["gradient-bodies", "capsules", "orbits", "particles", "pixel-noise", "blur"],
+      "reducedMotion": "single-static-frame",
+      "hiddenPage": "pause-animation"
+    },
     "symbols": {
-      "format": "SVG",
-      "viewBox": "0 0 24 24",
-      "strokeWidth": 1.5,
-      "interfaceIds": ["i-close", "i-menu", "i-chevron", "i-save", "i-target", "i-play", "i-pause", "i-expand", "i-filter", "i-info", "i-undo", "i-dock"],
-      "worldMarkerIds": ["m-ship", "m-body", "m-ammo", "m-prograde", "m-retrograde", "m-radial", "m-target", "m-ascending", "m-descending", "m-apsis", "m-maneuver", "m-burn", "m-impact", "m-ghost", "m-preview"]
-    },
-    "accessibility": {
-      "minimumTouchTarget": "44px",
-      "focusIndicator": "2px orange with 2px offset",
-      "colorOnlyMeaning": false,
-      "glassFallback": "solid surface",
-      "blendFallback": "fixed high-contrast text on scrim",
-      "forcedColorsSupport": true,
-      "reducedMotionSupport": true
-    },
-    "rules": [
-      "Keep persistent UI monochrome",
-      "Use orange only for current, selected, focus, and progress",
-      "Choose Solid, Glass, or Frosted from reading duration and scene relationship",
-      "Use Adaptive Contrast only for display typography",
-      "Do not synthesize Japanese italic or unavailable font weights",
-      "Do not nest Glass surfaces",
-      "Do not turn every list row into a card",
-      "Do not copy reference-site proprietary assets"
-    ]
+      "grid": "24x24",
+      "stroke": 1.5,
+      "uiCount": 12,
+      "worldCount": 15,
+      "total": 27
+    }
   }
+  </script>
+
+  <script>
+    (function () {
+      "use strict";
+
+      const DEFAULT_THEME = {
+        hue: 12,
+        saturation: 100,
+        darkLightness: 56,
+        lightLightness: 40
+      };
+
+      const themeState = {...DEFAULT_THEME};
+      const root = document.documentElement;
+      const hueInput = document.getElementById("accent-hue");
+      const saturationInput = document.getElementById("accent-saturation");
+      const darkLightnessInput = document.getElementById("accent-dark-lightness");
+      const lightLightnessInput = document.getElementById("accent-light-lightness");
+      const hueOutput = document.getElementById("accent-hue-output");
+      const saturationOutput = document.getElementById("accent-saturation-output");
+      const darkLightnessOutput = document.getElementById("accent-dark-lightness-output");
+      const lightLightnessOutput = document.getElementById("accent-light-lightness-output");
+      const darkHexOutput = document.getElementById("accent-dark-hex");
+      const lightHexOutput = document.getElementById("accent-light-hex");
+      const darkContrastOutput = document.getElementById("accent-dark-contrast");
+      const lightContrastOutput = document.getElementById("accent-light-contrast");
+      const paletteAccentOutput = document.getElementById("palette-accent-hex");
+      const copyStatus = document.getElementById("copy-status");
+      const copyButton = document.getElementById("copy-theme");
+      const resetButton = document.getElementById("reset-theme");
+
+      function hslToRgb(hue, saturation, lightness) {
+        const normalizedSaturation = saturation / 100;
+        const normalizedLightness = lightness / 100;
+        const chroma = (1 - Math.abs(2 * normalizedLightness - 1)) * normalizedSaturation;
+        const sector = ((hue % 360) + 360) % 360 / 60;
+        const secondComponent = chroma * (1 - Math.abs(sector % 2 - 1));
+        let redPrime = 0;
+        let greenPrime = 0;
+        let bluePrime = 0;
+
+        if (sector < 1) {
+          redPrime = chroma;
+          greenPrime = secondComponent;
+        } else if (sector < 2) {
+          redPrime = secondComponent;
+          greenPrime = chroma;
+        } else if (sector < 3) {
+          greenPrime = chroma;
+          bluePrime = secondComponent;
+        } else if (sector < 4) {
+          greenPrime = secondComponent;
+          bluePrime = chroma;
+        } else if (sector < 5) {
+          redPrime = secondComponent;
+          bluePrime = chroma;
+        } else {
+          redPrime = chroma;
+          bluePrime = secondComponent;
+        }
+
+        const match = normalizedLightness - chroma / 2;
+        return [
+          Math.round((redPrime + match) * 255),
+          Math.round((greenPrime + match) * 255),
+          Math.round((bluePrime + match) * 255)
+        ];
+      }
+
+      function componentToHex(component) {
+        return component.toString(16).padStart(2, "0").toUpperCase();
+      }
+
+      function hslToHex(hue, saturation, lightness) {
+        const [red, green, blue] = hslToRgb(hue, saturation, lightness);
+        return "#" + componentToHex(red) + componentToHex(green) + componentToHex(blue);
+      }
+
+      function channelLuminance(channel) {
+        const normalizedChannel = channel / 255;
+        if (normalizedChannel <= 0.04045) {
+          return normalizedChannel / 12.92;
+        }
+        return Math.pow((normalizedChannel + 0.055) / 1.055, 2.4);
+      }
+
+      function relativeLuminance(red, green, blue) {
+        return 0.2126 * channelLuminance(red)
+          + 0.7152 * channelLuminance(green)
+          + 0.0722 * channelLuminance(blue);
+      }
+
+      function computeContrast(foregroundRgb, backgroundRgb) {
+        const foregroundLuminance = relativeLuminance(...foregroundRgb);
+        const backgroundLuminance = relativeLuminance(...backgroundRgb);
+        const lighter = Math.max(foregroundLuminance, backgroundLuminance);
+        const darker = Math.min(foregroundLuminance, backgroundLuminance);
+        return (lighter + 0.05) / (darker + 0.05);
+      }
+
+      function setRangeGradient(input, percentage, startColor, endColor) {
+        input.style.background = "linear-gradient(90deg, "
+          + startColor + " 0%, " + endColor + " " + percentage
+          + "%, rgb(255 255 255 / 0.16) " + percentage + "%)";
+      }
+
+      function syncThemeControls() {
+        hueInput.value = String(themeState.hue);
+        saturationInput.value = String(themeState.saturation);
+        darkLightnessInput.value = String(themeState.darkLightness);
+        lightLightnessInput.value = String(themeState.lightLightness);
+
+        hueOutput.value = themeState.hue + "°";
+        saturationOutput.value = themeState.saturation + "%";
+        darkLightnessOutput.value = themeState.darkLightness + "%";
+        lightLightnessOutput.value = themeState.lightLightness + "%";
+
+        const darkRgb = hslToRgb(themeState.hue, themeState.saturation, themeState.darkLightness);
+        const lightRgb = hslToRgb(themeState.hue, themeState.saturation, themeState.lightLightness);
+        const darkHex = hslToHex(themeState.hue, themeState.saturation, themeState.darkLightness);
+        const lightHex = hslToHex(themeState.hue, themeState.saturation, themeState.lightLightness);
+        const darkContrast = computeContrast(darkRgb, [7, 8, 10]);
+        const lightContrast = computeContrast(lightRgb, [240, 238, 233]);
+
+        root.style.setProperty("--accent-h", String(themeState.hue));
+        root.style.setProperty("--accent-s", themeState.saturation + "%");
+        root.style.setProperty("--accent-l", themeState.darkLightness + "%");
+        root.style.setProperty("--accent-light-l", themeState.lightLightness + "%");
+
+        darkHexOutput.textContent = darkHex;
+        lightHexOutput.textContent = lightHex;
+        paletteAccentOutput.textContent = darkHex;
+        darkContrastOutput.textContent = "Contrast " + darkContrast.toFixed(2) + ":1"
+          + (darkContrast >= 4.5 ? " / AA" : " / large type");
+        lightContrastOutput.textContent = "Contrast " + lightContrast.toFixed(2) + ":1"
+          + (lightContrast >= 4.5 ? " / AA" : " / large type");
+
+        setRangeGradient(hueInput, (themeState.hue / 35) * 100, "#ff213f", "#ff7b00");
+        setRangeGradient(saturationInput, ((themeState.saturation - 60) / 40) * 100, "#9a6257", darkHex);
+        setRangeGradient(darkLightnessInput, ((themeState.darkLightness - 40) / 30) * 100, "#5b1605", darkHex);
+        setRangeGradient(lightLightnessInput, ((themeState.lightLightness - 24) / 26) * 100, "#551400", lightHex);
+      }
+
+      function readThemeControls() {
+        themeState.hue = Number(hueInput.value);
+        themeState.saturation = Number(saturationInput.value);
+        themeState.darkLightness = Number(darkLightnessInput.value);
+        themeState.lightLightness = Number(lightLightnessInput.value);
+        syncThemeControls();
+        copyStatus.textContent = "Live preview updated. Copy CSS when the color is final.";
+      }
+
+      async function copyThemeCss() {
+        const darkHex = hslToHex(themeState.hue, themeState.saturation, themeState.darkLightness);
+        const lightHex = hslToHex(themeState.hue, themeState.saturation, themeState.lightLightness);
+        const cssText = "--accent: " + darkHex + ";\n--accent-on-light: " + lightHex + ";\n"
+          + "--accent-h: " + themeState.hue + ";\n"
+          + "--accent-s: " + themeState.saturation + "%;\n"
+          + "--accent-l: " + themeState.darkLightness + "%;\n"
+          + "--accent-light-l: " + themeState.lightLightness + "%;";
+
+        try {
+          await navigator.clipboard.writeText(cssText);
+          copyStatus.textContent = "Copied: " + darkHex + " / " + lightHex;
+        } catch (_error) {
+          const fallbackInput = document.createElement("textarea");
+          fallbackInput.value = cssText;
+          fallbackInput.setAttribute("readonly", "");
+          fallbackInput.style.position = "fixed";
+          fallbackInput.style.opacity = "0";
+          document.body.appendChild(fallbackInput);
+          fallbackInput.select();
+          document.execCommand("copy");
+          fallbackInput.remove();
+          copyStatus.textContent = "Copied: " + darkHex + " / " + lightHex;
+        }
+      }
+
+      function resetTheme() {
+        Object.assign(themeState, DEFAULT_THEME);
+        syncThemeControls();
+        copyStatus.textContent = "Reset: #FF4B1F / #CC2900";
+      }
+
+      [hueInput, saturationInput, darkLightnessInput, lightLightnessInput].forEach(function (input) {
+        input.addEventListener("input", readThemeControls);
+      });
+      copyButton.addEventListener("click", copyThemeCss);
+      resetButton.addEventListener("click", resetTheme);
+      syncThemeControls();
+
+      const canvas = document.getElementById("generative-canvas");
+      const context = canvas.getContext("2d");
+      const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+      const particles = [];
+      let animationFrameId = 0;
+      let sceneWidth = 0;
+      let sceneHeight = 0;
+      let seed = 17431;
+
+      function random() {
+        seed = seed * 1664525 + 1013904223 >>> 0;
+        return seed / 4294967296;
+      }
+
+      for (let i = 0; i < 54; i += 1) {
+        particles.push({
+          x: random(),
+          y: random(),
+          radius: 0.6 + random() * 2.2,
+          phase: random() * Math.PI * 2,
+          speed: 0.08 + random() * 0.2,
+          depth: 0.25 + random() * 0.75
+        });
+      }
+
+      function resizeGenerativeCanvas() {
+        const bounds = canvas.getBoundingClientRect();
+        const pixelScale = 0.22;
+        sceneWidth = Math.max(120, Math.ceil(bounds.width * pixelScale));
+        sceneHeight = Math.max(100, Math.ceil(bounds.height * pixelScale));
+        canvas.width = sceneWidth;
+        canvas.height = sceneHeight;
+        renderGenerativeScene(0);
+      }
+
+      function drawBlob(x, y, radius, hueOffset, alpha) {
+        const gradient = context.createRadialGradient(
+          x - radius * 0.28,
+          y - radius * 0.32,
+          radius * 0.05,
+          x,
+          y,
+          radius
+        );
+        gradient.addColorStop(
+          0,
+          "hsla(" + (themeState.hue + hueOffset) + ", "
+            + Math.max(45, themeState.saturation - 8) + "%, 70%, " + alpha + ")"
+        );
+        gradient.addColorStop(
+          0.34,
+          "hsla(" + themeState.hue + ", "
+            + Math.max(50, themeState.saturation - 18) + "%, 42%, " + alpha * 0.72 + ")"
+        );
+        gradient.addColorStop(1, "rgba(4, 5, 8, 0)");
+        context.fillStyle = gradient;
+        context.beginPath();
+        context.arc(x, y, radius, 0, Math.PI * 2);
+        context.fill();
+      }
+
+      function drawCapsule(x, y, length, width, angle, alpha) {
+        context.save();
+        context.translate(x, y);
+        context.rotate(angle);
+        const gradient = context.createLinearGradient(-length / 2, 0, length / 2, 0);
+        gradient.addColorStop(0, "rgba(238, 234, 245, 0)");
+        gradient.addColorStop(0.4, "rgba(238, 234, 245, " + alpha + ")");
+        gradient.addColorStop(0.62, "hsla(" + themeState.hue + ", "
+          + themeState.saturation + "%, " + themeState.darkLightness + "%, " + alpha * 0.82 + ")");
+        gradient.addColorStop(1, "rgba(238, 234, 245, 0)");
+        context.fillStyle = gradient;
+        context.beginPath();
+        context.roundRect(-length / 2, -width / 2, length, width, width / 2);
+        context.fill();
+        context.restore();
+      }
+
+      function renderGenerativeScene(timestamp) {
+        if (!context) {
+          return;
+        }
+
+        const time = reducedMotionQuery.matches ? 0 : timestamp / 1000;
+        const background = context.createLinearGradient(0, 0, sceneWidth, sceneHeight);
+        background.addColorStop(0, "#050609");
+        background.addColorStop(0.54, "#11141a");
+        background.addColorStop(1, "#06070a");
+        context.fillStyle = background;
+        context.fillRect(0, 0, sceneWidth, sceneHeight);
+
+        drawBlob(
+          sceneWidth * (0.74 + Math.sin(time * 0.13) * 0.05),
+          sceneHeight * (0.3 + Math.cos(time * 0.11) * 0.05),
+          Math.min(sceneWidth, sceneHeight) * 0.42,
+          -4,
+          0.88
+        );
+        drawBlob(
+          sceneWidth * (0.42 + Math.cos(time * 0.09) * 0.06),
+          sceneHeight * (0.75 + Math.sin(time * 0.12) * 0.04),
+          Math.min(sceneWidth, sceneHeight) * 0.26,
+          12,
+          0.46
+        );
+
+        drawCapsule(
+          sceneWidth * 0.7,
+          sceneHeight * 0.57,
+          sceneWidth * 0.42,
+          Math.max(8, sceneHeight * 0.08),
+          -0.36 + Math.sin(time * 0.15) * 0.08,
+          0.48
+        );
+        drawCapsule(
+          sceneWidth * 0.34,
+          sceneHeight * 0.3,
+          sceneWidth * 0.28,
+          Math.max(6, sceneHeight * 0.045),
+          0.58 + Math.cos(time * 0.12) * 0.06,
+          0.26
+        );
+
+        context.save();
+        context.translate(sceneWidth * 0.67, sceneHeight * 0.48);
+        context.rotate(-0.28 + time * 0.012);
+        context.strokeStyle = "hsla(" + themeState.hue + ", "
+          + themeState.saturation + "%, " + themeState.darkLightness + "%, 0.46)";
+        context.lineWidth = Math.max(0.7, sceneWidth / 700);
+        context.beginPath();
+        context.ellipse(0, 0, sceneWidth * 0.3, sceneHeight * 0.18, 0, 0, Math.PI * 2);
+        context.stroke();
+        context.restore();
+
+        particles.forEach(function (particle) {
+          const drift = time * particle.speed;
+          const x = (particle.x * sceneWidth + drift * sceneWidth * 0.035 * particle.depth) % sceneWidth;
+          const y = particle.y * sceneHeight + Math.sin(drift + particle.phase) * sceneHeight * 0.035;
+          const alpha = 0.12 + particle.depth * 0.42;
+          context.fillStyle = particle.depth > 0.68
+            ? "hsla(" + themeState.hue + ", " + themeState.saturation + "%, "
+              + themeState.darkLightness + "%, " + alpha + ")"
+            : "rgba(238, 234, 245, " + alpha + ")";
+          context.fillRect(x, y, particle.radius, particle.radius);
+        });
+
+        for (let i = 0; i < 90; i += 1) {
+          const x = (i * 97 + Math.floor(time * 3) * 31) % sceneWidth;
+          const y = (i * 53 + Math.floor(time * 2) * 17) % sceneHeight;
+          const noiseAlpha = 0.018 + (i % 5) * 0.008;
+          context.fillStyle = "rgba(255, 255, 255, " + noiseAlpha + ")";
+          context.fillRect(x, y, 1 + i % 3, 1 + (i * 2) % 3);
+        }
+      }
+
+      function animateGenerativeScene(timestamp) {
+        renderGenerativeScene(timestamp);
+        if (!reducedMotionQuery.matches && !document.hidden) {
+          animationFrameId = window.requestAnimationFrame(animateGenerativeScene);
+        }
+      }
+
+      function startGenerativeScene() {
+        window.cancelAnimationFrame(animationFrameId);
+        if (reducedMotionQuery.matches) {
+          renderGenerativeScene(0);
+          return;
+        }
+        animationFrameId = window.requestAnimationFrame(animateGenerativeScene);
+      }
+
+      document.addEventListener("visibilitychange", function () {
+        if (document.hidden) {
+          window.cancelAnimationFrame(animationFrameId);
+        } else {
+          startGenerativeScene();
+        }
+      });
+
+      reducedMotionQuery.addEventListener("change", startGenerativeScene);
+      const canvasResizeObserver = new ResizeObserver(resizeGenerativeCanvas);
+      canvasResizeObserver.observe(canvas);
+      resizeGenerativeCanvas();
+      startGenerativeScene();
+    }());
   </script>
 </body>
 </html>
