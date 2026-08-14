@@ -28,6 +28,7 @@ const ATMO_HAZE_TAU0 = 0.34; // 大気のもやの濃さ(視線が真上から�
 const ATMO_RIM_MAX_H = 340e3;
 const ATMO_RIM_MIN_H = 20e3;
 const ATMO_RIM_SCALE_H = 90e3;
+const ATMO_RIM_EDGE_SOFTEN = 25e3; // 地球本体による遮蔽境界をぼかす幅(視線の最接近高度)
 
 type SunDirUniform = ReturnType<typeof uniform>;
 type EarthCenterUniform = ReturnType<typeof uniform>;
@@ -57,8 +58,9 @@ function buildSurfaceMaterial(sunDir: SunDirUniform): THREE.MeshBasicNodeMateria
   const sunDot = dot(normalWorld, sunDir);
   const sunFactor = clamp(sunDot, 0, 1);
   
-  // 雲の色 (夕方になると夕焼け色に)
-  const cloudColor = mix(sunsetColor, vec3(1, 1, 1), smoothstep(-0.1, 0.2, sunDot));
+  // 雲の色 (夕方になると夕焼け色に、夜側では地表と同じ暗さまで落とす)
+  const cloudColorLit = mix(sunsetColor, vec3(1, 1, 1), smoothstep(-0.1, 0.2, sunDot));
+  const cloudColor = mix(shadowColor, cloudColorLit, sunFactor);
   const baseColor = mix(shadowColor, cloudColor, cloudAlpha);
 
   // 大気のもや(aerial perspective): 視線が地平線に近いほど大気中の光路長が
@@ -110,10 +112,12 @@ function buildAtmoRim(sunDir: SunDirUniform, earthCenter: EarthCenterUniform): T
   const disc = sub(b.mul(b), cTerm);
   const tNear = sub(b.negate(), sqrt(max(disc, 0)));
   const distToFrag = length(sub(positionWorld, cameraPosition));
-  // 1km のマージンを持たせ、交点がフラグメントよりわずかに手前でも解析的に
-  // 「遮蔽なし」寄りに倒す(浮動小数点誤差でリムの縁が欠けるのを防ぐ)。
-  const occluded = and(greaterThan(disc, 0), and(greaterThan(tNear, 0), lessThan(tNear, sub(distToFrag, 1e3))));
-  const visible = select(occluded, float(0), float(1));
+  // 遮蔽境界は視線の最接近高度で測って ATMO_RIM_EDGE_SOFTEN の幅を持たせる — 地表すれすれの
+  // 視線では奥行きが高度に対して急峻に変化するため、奥行きで測るとぼかし幅が画素未満に潰れる。
+  const rayMinDist = sqrt(max(sub(dot(oc, oc), b.mul(b)), 0));
+  const edgeVisible = smoothstep(rEarth, rEarth.add(ATMO_RIM_EDGE_SOFTEN), rayMinDist);
+  const occluded = and(greaterThan(disc, 0), and(greaterThan(tNear, 0), lessThan(tNear, distToFrag)));
+  const visible = select(occluded, edgeVisible, float(1));
 
   const rFrag = length(sub(positionWorld, earthCenter));
   const excess = max(sub(rFrag, rEarth.add(ATMO_RIM_MIN_H)), 0);
