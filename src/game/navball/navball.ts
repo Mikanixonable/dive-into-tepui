@@ -9,8 +9,9 @@ const DEFAULT_GRID_VISIBILITY: CelestialGridVisibility = {
   eclipticPlane: false, eclipticPole: false, eclipticGrid: false,
   equator: true,
   equatorPlane: false, equatorPole: false, equatorGrid: false,
-  moonOrbit: true,
-  moonOrbitPlane: false, moonOrbitPole: false, moonOrbitGrid: false,
+  eclipticScaleGrid: false,
+  equatorScaleGrid: false,
+  moonOrbitScaleGrid: false,
 };
 
 const STORAGE_KEY = 'tepui.gridVisibility';
