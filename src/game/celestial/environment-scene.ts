@@ -16,6 +16,8 @@ import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { PointFieldView } from './point-field-view';
 import type { GraphicsSettings } from '../../render/graphics-settings';
+import { SunLight } from '../../render/pipeline/sun-light';
+import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
 import { CelestialBody } from './celestial-body';
 import { CELESTIAL_BODIES, fallbackCelestialView } from './celestial-registry';
 import { EarthBody } from './earth-body';
@@ -42,6 +44,10 @@ function buildGeoElements(registry: CelestialRegistry): OrbitalElements | null {
 const SATELLITE_REFERENCE_LINE_COLOR = 0xaab3c0;
 const PLANET_REFERENCE_LINE_COLOR = 0xffffff;
 
+// 恒星光の色。THREE.DirectionalLight と render/pipeline/sun-light.ts の SunLight の両方が
+// この同じ値を受け取る — 世界パスとライティングパスで別々の色にならないようにするため。
+const SUN_COLOR = new THREE.Color(0xfff4e0);
+
 // 恒星以外の全公転天体の id(registry の宣言順)。天体が増えれば参照線もここから自動で増える。
 function referenceLineIds(registry: CelestialRegistry): readonly OrbitingId[] {
   return Object.keys(registry).filter((id) => bodyDef(registry, id).kind !== 'star');
@@ -50,9 +56,12 @@ function referenceLineIds(registry: CelestialRegistry): readonly OrbitingId[] {
 export class EnvironmentScene {
   private readonly scene: THREE.Scene;
   readonly ambient: THREE.AmbientLight;
-  // 描画原点の近傍にある実スケールの物体(自機・デブリ・薬莢)を照らす平行光。天体は
-  // 描画位置が真の位置と一致しないためこの光を受けず、自分で陰影を計算する。
-  private readonly sunLight: THREE.DirectionalLight;
+  // 自機・デブリ・薬莢を直接照らすことはない(それらは LIT_OPAQUE_LAYER 単独に立ち、
+  // 既定チャンネルの world パスには描かれない) — マテリアルパスが読む SunLight への
+  // 生値の供給元と、LIT_OPAQUE_LAYER を絞ったカメラでも光源としてカメラに拾われ続ける
+  // ための存在。天体は各自の CelestialSurface が sunDirection uniform を持って
+  // 自分で陰影を計算するので、いずれにせよこの光を受けない。
+  private readonly directionalLight: THREE.DirectionalLight;
   readonly starsMesh: THREE.Mesh;
   readonly celestialGrid: CelestialGrid;
   private readonly bodies: readonly CelestialBody[];
@@ -70,12 +79,14 @@ export class EnvironmentScene {
   private readonly referenceLines: Map<OrbitingId, OrbitLine>;
 
   // 天体ビューの配列がすべて ephemeris から引く。天体暦はゲーム側が所有する単一インスタンスを
-  // 共有参照する(状態を持たない純サンプラ)。earthSpinPhase0 は地球の自転初期位相
-  // (地球が現在のレジストリに無ければ何もしない)。
+  // 共有参照する(状態を持たない純サンプラ)。sunLight はライティングパス(render/pipeline/)が
+  // 読む恒星光の値オブジェクトで、RenderPipeline が所有するインスタンスをここへ書き込む。
+  // earthSpinPhase0 は地球の自転初期位相(地球が現在のレジストリに無ければ何もしない)。
   constructor(
     scene: THREE.Scene,
     private readonly ephemeris: Ephemeris,
     private readonly graphics: GraphicsSettings,
+    private readonly sunLight: SunLight,
     earthSpinPhase0: number,
   ) {
     this.scene = scene;
@@ -87,10 +98,16 @@ export class EnvironmentScene {
     // 参照線はマップで表示される天体だけが必要とする。全カタログぶんを起動時に
     // GPUへ確保すると、非表示設定でも頂点バッファとオブジェクトが残り続ける。
     this.referenceLines = new Map();
-    this.ambient = new THREE.AmbientLight(0x8899bb, 0.25);
+    this.ambient = new THREE.AmbientLight(0x8899bb, C.AMBIENT_INTENSITY);
     scene.add(this.ambient);
-    this.sunLight = new THREE.DirectionalLight(0xfff4e0, C.SUN_INTENSITY);
-    scene.add(this.sunLight);
+    this.directionalLight = new THREE.DirectionalLight(SUN_COLOR.getHex(), C.SUN_INTENSITY);
+    scene.add(this.directionalLight);
+    // レンダラーは光源自身の layers とカメラの layers が重ならないと光源をそのカメラの描画対象
+    // から除外する(direct()/indirect() どちらかの呼び出し自体が起きなくなる)。マテリアルパスは
+    // 自身の render() の間だけカメラを LIT_OPAQUE_LAYER 単独へ絞るため、この光源も同チャンネルへ
+    // 加えておかないと、間接光評価そのものがスキップされてしまう。
+    this.ambient.layers.enable(LIT_OPAQUE_LAYER);
+    this.directionalLight.layers.enable(LIT_OPAQUE_LAYER);
     this.starsMesh = createStars();
     scene.add(this.starsMesh);
     this.celestialGrid = new CelestialGrid(scene);
@@ -157,9 +174,13 @@ export class EnvironmentScene {
     // 平行光の向きは描画原点から見た恒星方向 — 照らす相手がその近傍にいる物体だけなので、
     // 全員が同じ向きでよい。
     const sd = this.ephemeris.sunDirFrom(floatingOrigin.r, displayTime);
-    this.sunLight.position.set(sd.x * 1e5, sd.y * 1e5, sd.z * 1e5);
-    this.sunLight.intensity = C.SUN_INTENSITY * (C.SHADOW_MIN_SUN + (1 - C.SHADOW_MIN_SUN) * lit);
+    const sunDirWorld = new THREE.Vector3(sd.x, sd.y, sd.z);
+    this.directionalLight.position.copy(sunDirWorld).multiplyScalar(1e5);
+    this.directionalLight.intensity = C.SUN_INTENSITY * (C.SHADOW_MIN_SUN + (1 - C.SHADOW_MIN_SUN) * lit);
     this.ambient.intensity = C.AMBIENT_INTENSITY * (C.SHADOW_MIN_AMBIENT + (1 - C.SHADOW_MIN_AMBIENT) * lit);
+    // ライティングパス向けの値。遮蔽の下限式は SunLight 自身が sunlitFactor から掛けるので、
+    // ここで渡すのは掛ける前の生値。
+    this.sunLight.set(sunDirWorld, SUN_COLOR, C.SUN_INTENSITY, C.AMBIENT_INTENSITY, lit);
 
     if (cameraSystem.overviewMode && this.ephemeris.starId !== null && this.graphics.current.pointField) {
       this.ensurePointField().sync(
