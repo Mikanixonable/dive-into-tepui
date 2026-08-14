@@ -8,17 +8,19 @@ import { TabBar } from './hud/widgets';
 import { MQ_COMPACT, MQ_SHORT } from './hud/breakpoints';
 import { createTitleScene, type TitleScene } from '../render/title-scene';
 import tepuiRmqrUrl from '../assets/tepui-rmqr.svg';
+import {
+  ACCENT, ACCENT_SECONDARY, ACCENT_SOFT, ACTIVE_THEME, BG, SURFACE_0 as THEME_SURFACE_0,
+  SURFACE_1, SURFACE_2, SURFACE_3, TEXT, TEXT_DIM, TEXT_MUTED, TEXT_FAINT,
+} from './theme';
 
-const PAGE = '#08090d';
-const SURFACE_0 = '#08090c';
-const TITLE_INK = '#eeeaf5';
-const BODY_INK = '#c3bec9';
-const MUTED_INK = '#89838f';
-const FAINT_INK = '#5f5a65';
-// V6 preset: Fluorescent red / blue。
-const ACCENT = '#ff3155';
-const NEAR_ACCENT = '#ff6b82';
-const SECONDARY_ACCENT = '#3478ff';
+const PAGE = BG;
+const SURFACE_0 = THEME_SURFACE_0;
+const TITLE_INK = TEXT;
+const BODY_INK = TEXT_MUTED;
+const MUTED_INK = TEXT_DIM;
+const FAINT_INK = TEXT_FAINT;
+const NEAR_ACCENT = ACCENT_SOFT;
+const SECONDARY_ACCENT = ACCENT_SECONDARY;
 
 // V6 §3 の voice 別書体。Web font が使えない環境でも role ごとのフォールバックを保つ。
 const FONT_SANS = '"Arimo","Zen Kaku Gothic Antique","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif';
@@ -34,9 +36,10 @@ const STYLE = `
 #stage-select {
   position: fixed; inset: 0; z-index: 100; height: 100dvh; overflow: hidden;
   background:
-    radial-gradient(circle at 10% 16%, rgb(255 49 85 / 6%), transparent 28rem),
-    radial-gradient(circle at 88% 58%, rgb(52 120 255 / 5%), transparent 32rem), ${PAGE};
+    radial-gradient(circle at 10% 16%, color-mix(in srgb, ${ACCENT} 6%, transparent), transparent 28rem),
+    radial-gradient(circle at 88% 58%, color-mix(in srgb, ${SECONDARY_ACCENT} 5%, transparent), transparent 32rem), ${PAGE};
   color: ${BODY_INK}; font-family: ${FONT_SANS}; -webkit-font-smoothing: antialiased;
+  color-scheme: ${ACTIVE_THEME.tone};
 }
 #stage-select .ss-shell {
   width: min(calc(100% - 24px), 1160px); height: 100%; min-height: 0; box-sizing: border-box;
@@ -114,7 +117,7 @@ const STYLE = `
 #stage-select .ss-status {
   min-width: 190px; padding: 11px 13px; border-radius: ${RADIUS_PANEL};
   color: ${BODY_INK};
-  background: linear-gradient(135deg, rgb(52 120 255 / 13%), rgb(255 49 85 / 6%)), rgb(8 9 13 / 28%);
+  background: linear-gradient(135deg, color-mix(in srgb, ${SECONDARY_ACCENT} 13%, transparent), color-mix(in srgb, ${ACCENT} 6%, transparent)), color-mix(in srgb, ${PAGE} 28%, transparent);
   box-shadow: 0 14px 34px rgb(0 0 0 / 24%), inset 0 1px 0 rgb(255 255 255 / 14%);
   backdrop-filter: blur(28px) saturate(165%); -webkit-backdrop-filter: blur(28px) saturate(165%);
   font: 10px/1.55 ${FONT_MONO};
@@ -125,7 +128,7 @@ const STYLE = `
   min-height: 0; height: 100%; box-sizing: border-box;
   display: flex; flex-direction: column; gap: 14px;
   padding: 18px;
-  background: rgb(19 21 26 / 68%); border-radius: ${RADIUS_WINDOW};
+  background: color-mix(in srgb, ${SURFACE_1} 68%, transparent); border-radius: ${RADIUS_WINDOW};
   box-shadow: 0 18px 48px rgb(0 0 0 / 0.28);
   backdrop-filter: blur(26px) saturate(120%);
   -webkit-backdrop-filter: blur(26px) saturate(120%);
@@ -151,13 +154,13 @@ const STYLE = `
   background: transparent; color: ${MUTED_INK};
   font-family: ${FONT_SANS}; font-size: 13px; font-weight: 600; letter-spacing: 0.04em;
 }
-#stage-select .w-tabs { border-bottom: 1px solid rgb(238 234 245 / 12%); }
+#stage-select .w-tabs { border-bottom: 1px solid color-mix(in srgb, ${TITLE_INK} 12%, transparent); }
 #stage-select .w-tabs .w-btn::after {
   content: ""; position: absolute; left: 14px; right: 14px; bottom: -1px; height: 2px;
   background: ${ACCENT}; opacity: 0; transition: opacity 0.15s ease;
 }
 #stage-select .w-tabs .w-btn:hover { background: rgb(255 255 255 / 6%); color: ${TITLE_INK}; }
-#stage-select .w-tabs .w-btn.on { background: rgb(255 49 85 / 10%); color: ${ACCENT}; }
+#stage-select .w-tabs .w-btn.on { background: color-mix(in srgb, ${ACCENT} 10%, transparent); color: ${ACCENT}; }
 #stage-select .w-tabs .w-btn.on::after { opacity: 1; }
 #stage-select .ss-list {
   min-height: 0; flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 10px;
@@ -166,12 +169,12 @@ const STYLE = `
 #stage-select .ss-stage {
   box-sizing: border-box; min-height: 44px; padding: 14px 20px;
   border-radius: ${RADIUS_CONTROL};
-  background: rgb(21 23 28 / 0.82); cursor: pointer; text-align: left;
+  background: color-mix(in srgb, ${SURFACE_2} 82%, transparent); cursor: pointer; text-align: left;
   transition: background 0.15s ease;
 }
-#stage-select .ss-stage:hover { background: rgb(36 40 48 / 0.78); }
+#stage-select .ss-stage:hover { background: color-mix(in srgb, ${SURFACE_3} 78%, transparent); }
 #stage-select .ss-stage.locked { opacity: 0.45; cursor: default; }
-#stage-select .ss-stage.locked:hover { background: rgb(24 27 33 / 0.62); }
+#stage-select .ss-stage.locked:hover { background: color-mix(in srgb, ${SURFACE_2} 62%, transparent); }
 #stage-select .ss-stage-label {
   display: flex; align-items: baseline; gap: 10px;
   color: ${TITLE_INK}; font-size: 19px; letter-spacing: 0.04em; line-height: 1.4;

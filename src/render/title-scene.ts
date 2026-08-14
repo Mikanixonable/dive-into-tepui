@@ -3,12 +3,14 @@
 // 抽象化して多数配置する。ゲーム世界とは無関係な表示専用の場面なので physics/ も参照しない。
 // ゲーム世界とは無関係な表示専用の場面なので、physics/ も game/ も参照しない。
 import * as THREE from 'three/webgpu';
+import { ACCENT, ACCENT_SECONDARY, ACCENT_SOFT, BG } from '../game/theme';
 
 // 材質。roughness 0.16–0.28 / metalness 0–0.06 / clearcoat 0.7–1.0 の光沢プラスチック帯。
 const BODY_COLORS = [0xf1edf0, 0xa8aec0, 0x48506a, 0xd6d6d0] as const;
-const ACCENT_COLOR = 0xff3155;
-const NEAR_ACCENT_COLOR = 0xff6b82;
-const SECONDARY_ACCENT_COLOR = 0x3478ff;
+const ACCENT_COLOR = ACCENT;
+const NEAR_ACCENT_COLOR = ACCENT_SOFT;
+const SECONDARY_ACCENT_COLOR = ACCENT_SECONDARY;
+const BG_COLOR = Number.parseInt(BG.slice(1), 16);
 const BODY_COUNT = 26;
 // V6 §5.2 に従い、有彩色の図案は少数へ絞り、残りを乳白・煙色・黒・暖灰色で構成する。
 const ACCENT_INDICES = new Set([6, 18]);
@@ -29,10 +31,10 @@ export async function createTitleScene(
   const renderer = new THREE.WebGPURenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
   await renderer.init();
-  renderer.setClearColor(0x08090d, 1);
+  renderer.setClearColor(BG_COLOR, 1);
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(0x08090d, 0.038);
+  scene.fog = new THREE.FogExp2(BG_COLOR, 0.038);
   const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
   camera.position.set(0, 0, 17);
 

@@ -12,7 +12,7 @@ export const SKELETON_STYLE = `
   font-family: var(--font-family);
   /* body 直下の他要素(タッチ操作パッド・天球グリッドのラベル層)との前後関係を決める。
      #hud の内側の重なり順は overlay-layer.ts のレイヤが持つ。 */
-  color: var(--text); color-scheme: dark; user-select: text; z-index: 10;
+  color: var(--text); color-scheme: var(--theme-tone); user-select: text; z-index: 10;
   font-size: var(--font-l);
 }
 /* 読み取りたい数値は選択できるようにするが、操作部品とマーカーは対象外にする —
