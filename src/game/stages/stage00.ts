@@ -39,7 +39,7 @@ export class Stage00 extends Stage {
   // 自機・弾薬ピックアップ・初期の敵ウェーブを配置する。
   protected init(entities: EntityManager): void {
     const player = this.addPlayer();
-    for (let i = 0; i < C.MAX_AMMO; i++) {
+    for (let i = 0; i < C.MAX_ACTIVE_AMMO_PICKUPS; i++) {
       this.logistics.spawnForPlayer(player, C.STAGE00_LOGISTICS_MIN_DIST, C.STAGE00_LOGISTICS_MAX_DIST);
     }
     // 初期状態でもランダムに敵を配置する
