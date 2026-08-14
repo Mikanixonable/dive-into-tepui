@@ -5,17 +5,36 @@
 import * as THREE from 'three/webgpu';
 import { ACCENT, ACCENT_SECONDARY, ACCENT_SOFT, BG } from '../game/theme';
 
+export const TITLE_SCENE_PATTERNS = ['mosaic', 'helix', 'orbital', 'lattice'] as const;
+export type TitleScenePattern = typeof TITLE_SCENE_PATTERNS[number];
+
+export interface TitleSceneOptions {
+  readonly pattern?: TitleScenePattern;
+  readonly seed?: number;
+}
+
 // 材質。roughness 0.16–0.28 / metalness 0–0.06 / clearcoat 0.7–1.0 の光沢プラスチック帯。
 const BODY_COLORS = [0xf1edf0, 0xa8aec0, 0x48506a, 0xd6d6d0] as const;
 const ACCENT_COLOR = ACCENT;
 const NEAR_ACCENT_COLOR = ACCENT_SOFT;
 const SECONDARY_ACCENT_COLOR = ACCENT_SECONDARY;
 const BG_COLOR = Number.parseInt(BG.slice(1), 16);
-const BODY_COUNT = 26;
 // V6 §5.2 に従い、有彩色の図案は少数へ絞り、残りを乳白・煙色・黒・暖灰色で構成する。
 const ACCENT_INDICES = new Set([6, 18]);
 const NEAR_ACCENT_INDICES = new Set([11, 22]);
 const SECONDARY_ACCENT_INDEX = 15;
+
+interface PatternConfig {
+  readonly count: number;
+  readonly layout: 'scatter' | 'helix' | 'orbital' | 'lattice';
+}
+
+const PATTERN_CONFIGS: Readonly<Record<TitleScenePattern, PatternConfig>> = {
+  mosaic: { count: 26, layout: 'scatter' },
+  helix: { count: 26, layout: 'helix' },
+  orbital: { count: 26, layout: 'orbital' },
+  lattice: { count: 25, layout: 'lattice' },
+};
 
 export interface TitleScene {
   // 破棄。アニメーションループとリスナーを止め、GPU 資源を解放する。
@@ -27,7 +46,10 @@ export interface TitleScene {
 export async function createTitleScene(
   canvas: HTMLCanvasElement,
   pointerTarget: HTMLElement,
+  options: TitleSceneOptions = {},
 ): Promise<TitleScene> {
+  const pattern = options.pattern ?? 'mosaic';
+  const patternConfig = PATTERN_CONFIGS[pattern];
   const renderer = new THREE.WebGPURenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
   await renderer.init();
@@ -76,7 +98,7 @@ export async function createTitleScene(
   scene.add(rootGroup);
 
   // 決定的な乱数。起動のたびに同じ配置から漂流を始める。
-  let seed = 0x20115;
+  let seed = options.seed ?? 0x20115;
   // 決定的な [0,1) 乱数。
   const random = () => {
     seed = (seed * 1664525 + 1013904223) >>> 0;
@@ -133,6 +155,27 @@ export async function createTitleScene(
     return group;
   };
 
+  const createHelix = (material: THREE.MeshPhysicalMaterial, variant: number): THREE.Group => {
+    const group = new THREE.Group();
+    const points: THREE.Vector3[] = [];
+    for (let i = 0; i < 9; i += 1) {
+      const phase = (i / 8) * Math.PI * 2.3 + variant * 0.4;
+      points.push(new THREE.Vector3(
+        Math.cos(phase) * (0.48 + i * 0.03),
+        -0.95 + i * 0.24,
+        Math.sin(phase) * (0.48 + i * 0.03),
+      ));
+    }
+    const curve = new THREE.CatmullRomCurve3(points);
+    group.add(new THREE.Mesh(registerGeometry(new THREE.TubeGeometry(curve, 36, 0.12, 12, false)), material));
+    if (variant % 2 === 0) {
+      const node = new THREE.Mesh(registerGeometry(new THREE.SphereGeometry(0.2, 18, 12)), material);
+      node.position.copy(points[4]!);
+      group.add(node);
+    }
+    return group;
+  };
+
   const materialForIndex = (index: number): THREE.MeshPhysicalMaterial => {
     if (ACCENT_INDICES.has(index)) return accentMaterial;
     if (NEAR_ACCENT_INDICES.has(index)) return nearAccentMaterial;
@@ -140,18 +183,72 @@ export async function createTitleScene(
     return materials[index % materials.length]!;
   };
 
-  const bodies: Drift[] = [];
-  for (let i = 0; i < BODY_COUNT; i += 1) {
-    const material = materialForIndex(i);
-    let object: THREE.Object3D;
-    if (i % 5 === 0) object = createBranch(material, i % 4);
-    else if (i % 5 === 1) object = createGlyph(material, i);
-    else if (i % 5 === 2) object = new THREE.Mesh(registerGeometry(new THREE.TorusGeometry(0.72, 0.16, 16, 44, Math.PI * 1.62)), material);
-    else if (i % 5 === 3) object = new THREE.Mesh(registerGeometry(new THREE.TorusKnotGeometry(0.52, 0.13, 72, 12, 2, 3)), material);
-    else object = new THREE.Mesh(registerGeometry(new THREE.CapsuleGeometry(0.24, 1.45, 8, 18)), material);
+  const baseForIndex = (index: number): THREE.Vector3 => {
+    const progress = index / Math.max(1, patternConfig.count - 1);
+    if (patternConfig.layout === 'helix') {
+      const phase = progress * Math.PI * 6.2;
+      const radius = 2.2 + progress * 4.8;
+      return new THREE.Vector3(
+        Math.cos(phase) * radius * 1.05,
+        Math.sin(phase) * radius * 0.48,
+        -4.8 + progress * 9.6,
+      );
+    }
+    if (patternConfig.layout === 'orbital') {
+      const phase = progress * Math.PI * 2;
+      const radius = 3 + (index % 4) * 1.25;
+      return new THREE.Vector3(
+        Math.cos(phase + (index % 2) * 0.18) * radius * 1.35,
+        Math.sin(phase + (index % 2) * 0.18) * radius * 0.5,
+        -3.8 + Math.sin(phase * 2) * 3.5,
+      );
+    }
+    if (patternConfig.layout === 'lattice') {
+      const columns = 5;
+      const column = index % columns;
+      const row = Math.floor(index / columns);
+      return new THREE.Vector3(
+        (column - 2) * 2.3 + (random() - 0.5) * 0.38,
+        (row - 2) * 1.9 + (random() - 0.5) * 0.34,
+        -1.8 + (random() - 0.5) * 6.5,
+      );
+    }
     const angle = random() * Math.PI * 2;
     const radius = 2.5 + random() * 7;
-    const base = new THREE.Vector3(Math.cos(angle) * radius * 1.28, Math.sin(angle) * radius * 0.7, -4 + random() * 9);
+    return new THREE.Vector3(Math.cos(angle) * radius * 1.28, Math.sin(angle) * radius * 0.7, -4 + random() * 9);
+  };
+
+  const objectForIndex = (index: number, material: THREE.MeshPhysicalMaterial): THREE.Object3D => {
+    if (pattern === 'helix') {
+      if (index % 4 === 0) return createHelix(material, index % 4);
+      if (index % 4 === 1) return createBranch(material, index % 4);
+      if (index % 4 === 2) return new THREE.Mesh(registerGeometry(new THREE.TorusKnotGeometry(0.52, 0.13, 72, 12, 2, 3)), material);
+      return new THREE.Mesh(registerGeometry(new THREE.CapsuleGeometry(0.24, 1.45, 8, 18)), material);
+    }
+    if (pattern === 'orbital') {
+      if (index % 4 === 0) return new THREE.Mesh(registerGeometry(new THREE.TorusGeometry(0.72, 0.16, 16, 44, Math.PI * 1.62)), material);
+      if (index % 4 === 1) return createGlyph(material, index);
+      if (index % 4 === 2) return createBranch(material, index % 4);
+      return new THREE.Mesh(registerGeometry(new THREE.CapsuleGeometry(0.24, 1.45, 8, 18)), material);
+    }
+    if (pattern === 'lattice') {
+      if (index % 4 === 0) return createBranch(material, index % 4);
+      if (index % 4 === 1) return createGlyph(material, index);
+      if (index % 4 === 2) return new THREE.Mesh(registerGeometry(new THREE.TorusGeometry(0.72, 0.16, 16, 44, Math.PI * 1.62)), material);
+      return createHelix(material, index % 4);
+    }
+    if (index % 5 === 0) return createBranch(material, index % 4);
+    if (index % 5 === 1) return createGlyph(material, index);
+    if (index % 5 === 2) return new THREE.Mesh(registerGeometry(new THREE.TorusGeometry(0.72, 0.16, 16, 44, Math.PI * 1.62)), material);
+    if (index % 5 === 3) return new THREE.Mesh(registerGeometry(new THREE.TorusKnotGeometry(0.52, 0.13, 72, 12, 2, 3)), material);
+    return new THREE.Mesh(registerGeometry(new THREE.CapsuleGeometry(0.24, 1.45, 8, 18)), material);
+  };
+
+  const bodies: Drift[] = [];
+  for (let i = 0; i < patternConfig.count; i += 1) {
+    const material = materialForIndex(i);
+    const object = objectForIndex(i, material);
+    const base = baseForIndex(i);
     object.position.copy(base);
     object.rotation.set(random() * Math.PI, random() * Math.PI, random() * Math.PI);
     object.scale.setScalar(0.52 + random() * 1.15);
