@@ -28,8 +28,8 @@ const BODY_CLASS_ROWS: readonly BodyClassRow[] = [
 const VIEW_OPTIONS_COLLAPSE_LABELS: CollapseToggleLabels = {
   expandedGlyph: COLLAPSE_EXPANDED_GLYPH,
   collapsedGlyph: COLLAPSE_COLLAPSED_GLYPH,
-  expandedTitle: 'MAP VIEW を閉じる',
-  collapsedTitle: 'MAP VIEW を開く',
+  expandedTitle: 'map view を閉じる',
+  collapsedTitle: 'map view を開く',
 };
 
 const ENTITY_ROWS: readonly BodyClassRow[] = [

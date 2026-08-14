@@ -215,7 +215,7 @@ export class SaveBrowser implements OverlayHandle {
     header.className = 'sb-header';
     const title = document.createElement('span');
     title.className = 'sb-title';
-    title.textContent = 'SAVE BROWSER';
+    title.textContent = 'save browser';
     header.appendChild(title);
     const closeBtn = new CloseButton(() => this.close());
     header.appendChild(closeBtn.element);

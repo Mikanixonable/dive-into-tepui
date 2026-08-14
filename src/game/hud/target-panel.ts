@@ -48,7 +48,7 @@ export class TargetPanel {
     if (!body) return;
     const title = this.els.get('tgtname');
     if (!t) {
-      if (title) title.textContent = 'TARGET';
+      if (title) title.textContent = 'target';
       body.innerHTML = `<div style="color:${TEXT_DIM}">ターゲットなし</div>`;
       return;
     }

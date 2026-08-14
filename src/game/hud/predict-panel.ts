@@ -256,7 +256,7 @@ export class PredictPanel {
     this.panel.className = 'panel';
     this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
     const title = document.createElement('h3');
-    title.textContent = 'PREDICT';
+    title.textContent = 'predict';
     this.panel.appendChild(title);
 
     // 行1: 未来/過去それぞれの期間ピル(1周/1日/7日/28日/任意…、過去はさらに なし)。
