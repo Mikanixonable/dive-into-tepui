@@ -18,6 +18,7 @@ import { R_EARTH } from '../physics/solar-system';
 import { NIGHT_AMBIENT } from './celestial-surface';
 import { Aurora } from './aurora';
 import { SPHERE_LOD_LADDER, sphereLodLevel, SphereLodLevel } from './screen-lod';
+import type { Vec3Uniform } from './tsl-types';
 import earthTextureUrl from '../assets/earth.jpg';
 import cloudsTextureUrl from '../assets/8k_clouds.jpg';
 
@@ -29,11 +30,8 @@ const ATMO_RIM_MAX_H = 340e3;
 const ATMO_RIM_MIN_H = 20e3;
 const ATMO_RIM_SCALE_H = 90e3;
 
-type SunDirUniform = ReturnType<typeof uniform>;
-type EarthCenterUniform = ReturnType<typeof uniform>;
-
 // 雲・夕焼け・大気のもやを合成した地表マテリアルを組む(全LOD段で共有)。
-function buildSurfaceMaterial(sunDir: SunDirUniform): THREE.MeshBasicNodeMaterial {
+function buildSurfaceMaterial(sunDir: Vec3Uniform): THREE.MeshBasicNodeMaterial {
   const earthMap = new THREE.TextureLoader().load(earthTextureUrl);
   earthMap.colorSpace = THREE.SRGBColorSpace;
   earthMap.anisotropy = 16;
@@ -81,7 +79,7 @@ function buildSurfaceMeshes(mat: THREE.MeshBasicNodeMaterial): ReadonlyMap<Spher
   const meshes = new Map<SphereLodLevel, THREE.Mesh>();
   for (const level of SPHERE_LOD_LADDER) {
     const geo = new THREE.SphereGeometry(R_EARTH, level.widthSegments, level.heightSegments);
-    const mesh = new THREE.Mesh(geo, mat as unknown as THREE.Material);
+    const mesh = new THREE.Mesh(geo, mat);
     mesh.visible = false;
     meshes.set(level, mesh);
   }
@@ -92,7 +90,7 @@ function buildSurfaceMeshes(mat: THREE.MeshBasicNodeMaterial): ReadonlyMap<Spher
 // 地球本体による遮蔽はハードウェア深度テストに頼らず、レイ・スフィア交差で
 // 解析的に判定する(fp32 の相対誤差は地球規模のスケールでも数m程度に収まり、
 // 24bit 深度バッファのような距離依存の量子化崩れが原理的に起こらない)。
-function buildAtmoRim(sunDir: SunDirUniform, earthCenter: EarthCenterUniform): THREE.Mesh {
+function buildAtmoRim(sunDir: Vec3Uniform, earthCenter: Vec3Uniform): THREE.Mesh {
   const geo = new THREE.SphereGeometry(R_EARTH + ATMO_RIM_MAX_H, 96, 64);
   const mat = new THREE.MeshBasicNodeMaterial({
     transparent: true,
@@ -127,7 +125,7 @@ function buildAtmoRim(sunDir: SunDirUniform, earthCenter: EarthCenterUniform): T
   mat.colorNode = dynamicAtmoColor;
   mat.opacityNode = falloff.mul(sunFactor).mul(visible).mul(0.6);
 
-  const mesh = new THREE.Mesh(geo, mat as unknown as THREE.Material);
+  const mesh = new THREE.Mesh(geo, mat);
   mesh.renderOrder = 2;
   return mesh;
 }
@@ -175,7 +173,7 @@ export function createEarth(): Earth {
     },
     // 太陽方向ベクトルを設定する。
     setSunDir(x: number, y: number, z: number) {
-      (sunDir.value as THREE.Vector3).set(x, y, z);
+      sunDir.value.set(x, y, z);
     },
     // 見かけ直径[px]から地表LOD段を選び、その段のメッシュだけを visible にする。
     syncSurfaceLod(apparentDiameterPx: number) {
@@ -186,7 +184,7 @@ export function createEarth(): Earth {
     },
     // 地球中心位置と、オーロラの明滅・波打ちを simTime に応じて進める。
     tick(simTime: number) {
-      (earthCenter.value as THREE.Vector3).copy(group.position);
+      earthCenter.value.copy(group.position);
 
       // シミュレーション時間に連動した位相。
       const phase = simTime * 0.02;

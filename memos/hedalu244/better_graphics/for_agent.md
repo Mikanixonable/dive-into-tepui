@@ -3,6 +3,9 @@
 個々の見た目の仕様は `DEVELOP/EARTH_MOON_GRAPHICS_PROPOSAL.md` /
 `DEVELOP/PHYSICAL_RING_RENDERING_PROPOSAL.md` が持つ。この文書はその下に敷く土台だけを扱う。
 
+完了したタスクは文書から削除し、残りのToDoと、後件の判断のために必要な情報だけのこす。
+コードの状況についても計画開始時点の歴史的経緯を残さず、常に最新にする。
+
 **適用範囲の前提**: LEO で優れた性能が出ることは最低要件だが、**太陽系全域で破綻しないこと**が
 同時に要件である。「LEO でしか使わないから」を実装する/しないの根拠にしてはならない。
 カメラは既に太陽系全体を見渡せる(`OverviewCamera`)ので、そこで破綻する設計は採れない。
@@ -108,7 +111,7 @@ f32 量子化は起きない。
 (c) `depthTest: false` の 3 箇所(`stars.ts:28` / `earth.ts:101` / `plan-gizmo-3d.ts:33`)が
 深度クリアと衝突しないか、(d) `frustumCulled = false` の箇所が多いので `camera.layers` 振り分けが効くか。
 
-**先行して必要な小作業**: `types/three-shims.d.ts` に `clearDepth()` が無い(`:6-20`)。
+`Renderer.clearDepth()` は `@types/three` が型を持つので、カスケードの深度クリアは自前宣言なしで書ける。
 
 ### 1-4. ライトプリパス(3 パス構成)
 
@@ -433,7 +436,7 @@ CPU 側の点近似を艦の視覚的な照度へ流用する道が残る。**�
 
 ### 2-3. 色空間とテクスチャ(点検済み)
 
-three r0.169 の出力色空間の既定は `SRGBColorSpace` なので、**欠けているのは HDR
+three の出力色空間の既定は `SRGBColorSpace` なので、**欠けているのは HDR
 レンダーターゲットとトーンマッピングだけ**(Phase 3)。テクスチャ側の `colorSpace` は
 点検済みで問題なし — 明示的に `SRGBColorSpace` を設定しているのは
 `celestial-surface.ts:126` / `earth.ts:38` / `stars.ts:19` の 3 箇所で、
@@ -527,22 +530,8 @@ update / sync / render を挟んで `perf.record(...)`(`:157`)へ渡し、**sync
 CPU 側の `render` 区間の壁時計時間は、コマンドを積む時間であって GPU が走る時間ではないため、
 パスを増やしたときにどれが効いたのかを答えられない。
 
-**前提作業: three.js の更新。**
-
-- WebGPU のタイムスタンプクエリは `trackTimestamp: true`(レンダラ生成時オプション)+
-  `resolveTimestampsAsync()` で取る。
-- **複数パスに対応した解決は r173 の `TimestampQueryPool` で入った。**
-  それ以前はクエリが溜まって上限に当たり、複数レンダーパスで壊れる。
-- **本作は `three@^0.169.0` に固定**(`package.json`)。**必要なのはまさに複数パスの計測**なので、
-  r0.169 のままでは目的を満たせない。**更新は Phase 2 の中の独立した項目として、他より先に片付ける。**
-- 更新自体が TSL の破壊的変更を伴う(`modInt` の削除、`directionToFaceDirection` →
-  `negateOnBackSide` の改名、premultiplied alpha の扱いの変更など)。
-  `src/types/three-shims.d.ts` は TSL 関数群を自前で宣言している(`:40-67`)ので、ここも作り直す。
-  `WebGPURenderer` の型も `info` が `{ render: { drawCalls, triangles } }` しか無い(`:19`)ので、
-  タイムスタンプ関連を足す。`clearDepth()` も無いので、Phase 6 のために併せて足す。
-- **`node_modules` が無い状態では API を確かめられない。** 着手前に `npm install` して
-  `node_modules/three/src/renderers/` を読み、`resolveTimestampsAsync` の実際のシグネチャと
-  有効化方法を確認すること。
+**計測 API**: WebGPU のタイムスタンプクエリは `trackTimestamp: true`(レンダラ生成時オプション)+
+`resolveTimestampsAsync(type)` で取る。`type` は `'render'` / `'compute'` の別で、パスの別ではない。
 
 **器は `FrameSections` に相乗りさせない。**
 
