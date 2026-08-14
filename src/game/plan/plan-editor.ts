@@ -726,7 +726,7 @@ export class PlanEditor {
 
   // 計画折れ線を同期する。編集中はさらに操作 UI(TRAJECTORY パネル・ノードギズモ)も出す。
   sync(cameraSystem: CameraSystem, simTime: number, fo: FloatingOrigin): void {
-    const mapDist = cameraSystem.overviewCamera.dist;
+    const mapDist = cameraSystem.mapCamera.dist;
     if (this.displayedPlan !== null) {
       this.planDisplay.sync(
         fo, cameraSystem.activeCameraProjection, cameraSystem.activeCameraScale,

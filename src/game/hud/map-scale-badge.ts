@@ -25,7 +25,7 @@ export class MapScaleBadge {
     panel.style.display = overview ? 'block' : 'none';
     if (!overview) return;
 
-    const focus = game.cameraSystem.overviewCamera.resolvedFocus;
+    const focus = game.cameraSystem.mapCamera.resolvedFocus;
     const metersPerPixel = game.cameraSystem.activeCameraScale(focus);
     const scale = mapScaleFor(metersPerPixel);
     const ruler = this.els.get('map-scale-ruler');

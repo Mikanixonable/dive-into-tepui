@@ -56,7 +56,7 @@ export class ActivePlayerController {
     const wasActive = this._current === ship;
     this.navTarget.clearIfTargeting(ship.id);
     this.targeter.clearIfTargeting(ship);
-    this.cameraSystem.overviewCamera.clearFocusIf(ship.id);
+    this.cameraSystem.mapCamera.clearFocusIf(ship.id);
     if (wasActive) {
       ship.clearTransientCommands();
       this._current = null;

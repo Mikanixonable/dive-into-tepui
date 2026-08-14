@@ -6,7 +6,7 @@ import type { Ephemeris } from '../../physics/ephemeris';
 import * as C from '../const';
 import { Vec3 } from '../../physics/vec3';
 import { systemMembersAt } from '../celestial/body-visibility';
-import { CameraReferencePlane, OverviewCamera } from '../camera/overview-camera';
+import { CameraReferencePlane, MapCamera } from '../camera/map-camera';
 import { focusPoint, focusTargetId, FocusTarget } from '../camera/focus-target';
 import { AnchorZone } from './anchor-zone';
 import { RotationZone } from './rotation-zone';
@@ -59,7 +59,7 @@ export class FrameControls {
     panelRoot: HTMLElement,
     popupRoot: HTMLElement,
     private readonly ephemeris: Ephemeris,
-    private readonly overviewCamera: OverviewCamera,
+    private readonly mapCamera: MapCamera,
     private readonly displayWindow: DisplayWindowManager,
     overlayManager: OverlayManager,
   ) {
@@ -71,16 +71,16 @@ export class FrameControls {
 
     this.cameraRotationZone = new RotationZone('視点を一緒に回す', ephemeris);
     this.cameraRotationZone.element.classList.add('hud-frame-scroll-zone', 'hud-frame-rotation-zone');
-    this.cameraRotationZone.onSelect = (rotatingWith) => overviewCamera.setCameraRotation(rotatingWith);
+    this.cameraRotationZone.onSelect = (rotatingWith) => mapCamera.setCameraRotation(rotatingWith);
     this.cameraPanel.appendChild(this.cameraRotationZone.element);
 
     this.cameraRotationModeToggle = new ToggleSwitch('クオータニオン操作', (on) => {
-      overviewCamera.setCameraRotationMode(on ? 'quaternion' : 'euler');
+      mapCamera.setCameraRotationMode(on ? 'quaternion' : 'euler');
     });
     this.cameraPanel.appendChild(this.cameraRotationModeToggle.element);
 
     this.projectionToggle = new ToggleSwitch('平行投影', (on) => {
-      overviewCamera.setProjectionMode(on ? 'orthographic' : 'perspective');
+      mapCamera.setProjectionMode(on ? 'orthographic' : 'perspective');
     });
     this.cameraPanel.appendChild(this.projectionToggle.element);
 
@@ -94,21 +94,21 @@ export class FrameControls {
       min: C.OVERVIEW_CAMERA_FOV_MIN,
       max: C.OVERVIEW_CAMERA_FOV_MAX,
       step: C.OVERVIEW_CAMERA_FOV_STEP,
-    }, (value) => overviewCamera.setFovDeg(value));
+    }, (value) => mapCamera.setFovDeg(value));
     fovGroup.appendChild(this.fovSlider.element);
     this.fovInput = new ValueInput({
       type: 'number',
       min: C.OVERVIEW_CAMERA_FOV_MIN,
       max: C.OVERVIEW_CAMERA_FOV_MAX,
       step: C.OVERVIEW_CAMERA_FOV_STEP,
-    }, (text) => overviewCamera.setFovDeg(Number(text)));
+    }, (text) => mapCamera.setFovDeg(Number(text)));
     fovGroup.appendChild(this.fovInput.element);
     const fovUnit = document.createElement('span');
     fovUnit.className = 'camera-control-unit';
     fovUnit.textContent = '°';
     fovGroup.appendChild(fovUnit);
     this.cameraPanel.appendChild(fovGroup);
-    this.fovResetButton = new Button('画角リセット', () => overviewCamera.resetFov());
+    this.fovResetButton = new Button('画角リセット', () => mapCamera.resetFov());
     this.fovResetButton.element.classList.add('camera-fov-reset');
     this.fovResetButton.element.title = '画角をデフォルトに戻す';
     this.cameraPanel.appendChild(this.fovResetButton.element);
@@ -117,13 +117,13 @@ export class FrameControls {
       ['ecliptic', '黄道面'],
       ['equator', '赤道面'],
       ['moonOrbit', '月軌道面'],
-    ], (plane) => overviewCamera.setReferencePlane(plane));
+    ], (plane) => mapCamera.setReferencePlane(plane));
     this.cameraPanel.appendChild(this.referencePlaneControl.element);
 
     const referenceViewGroup = document.createElement('div');
     referenceViewGroup.className = 'camera-reference-view-buttons';
-    this.aboveButton = new Button('真上', () => overviewCamera.setReferenceView('above'));
-    this.sideButton = new Button('真横', () => overviewCamera.setReferenceView('side'));
+    this.aboveButton = new Button('真上', () => mapCamera.setReferenceView('above'));
+    this.sideButton = new Button('真横', () => mapCamera.setReferenceView('side'));
     referenceViewGroup.append(this.aboveButton.element, this.sideButton.element);
     this.cameraPanel.appendChild(referenceViewGroup);
 
@@ -167,13 +167,13 @@ export class FrameControls {
     }
     const starId = this.ephemeris.starId;
     const frame = starId !== null ? this.ephemeris.frameOf(starId, null) : this.ephemeris.inertialFrame;
-    this.setFocus(focusPoint(this.ephemeris, frame, this.overviewCamera.resolvedFocus, this.lastTime));
+    this.setFocus(focusPoint(this.ephemeris, frame, this.mapCamera.resolvedFocus, this.lastTime));
   }
 
   // マップカメラのフォーカスを target へ移す。追随が有効で target が登録天体を指しているときは
   // 計画折れ線の中心も同じ天体へ合わせる(回転側は現状を保つ)。
   public setFocus(target: FocusTarget): void {
-    this.overviewCamera.setFocusTarget(target);
+    this.mapCamera.setFocusTarget(target);
     if (!this.followCamera) return;
     const id = focusTargetId(target);
     if (id !== undefined && id in this.ephemeris.registry) {
@@ -183,13 +183,13 @@ export class FrameControls {
 
   // いま選ばれているカメラ側の座標系を1行で述べる。
   private cameraSummaryText(): string {
-    const camId = focusTargetId(this.overviewCamera.focus);
+    const camId = focusTargetId(this.mapCamera.focus);
     const camCenter = camId === undefined ? '固定なし' : celestialBodyName(camId);
-    const camRot = this.overviewCamera.cameraFrame.rotatingWith;
+    const camRot = this.mapCamera.cameraFrame.rotatingWith;
     const rotText = (id: string | null): string => (id === null ? '慣性系' : `${celestialBodyName(id)}回転系`);
-    const modeText = this.overviewCamera.cameraRotationMode === 'euler' ? 'オイラー' : 'クォータニオン';
-    const projectionText = this.overviewCamera.projection === 'orthographic' ? '平行' : '透視';
-    return `基準: ${camCenter}・${rotText(camRot)} / ${modeText}・${projectionText}・画角 ${this.overviewCamera.fov.toFixed(0)}°`;
+    const modeText = this.mapCamera.cameraRotationMode === 'euler' ? 'オイラー' : 'クォータニオン';
+    const projectionText = this.mapCamera.projection === 'orthographic' ? '平行' : '透視';
+    return `基準: ${camCenter}・${rotText(camRot)} / ${modeText}・${projectionText}・画角 ${this.mapCamera.fov.toFixed(0)}°`;
   }
 
   // いま選ばれている軌道側の座標系を1行で述べる。
@@ -214,22 +214,22 @@ export class FrameControls {
 
     this.cameraCenterZone.setItems(pickables);
     this.cameraCenterZone.setNearby(members, pickables);
-    this.cameraCenterZone.setSelected(focusTargetId(this.overviewCamera.focus) ?? null);
+    this.cameraCenterZone.setSelected(focusTargetId(this.mapCamera.focus) ?? null);
     this.cameraRotationZone.setNearby(members);
-    this.cameraRotationZone.setSelected(this.overviewCamera.cameraFrame.rotatingWith);
-    this.cameraRotationModeToggle.setOn(this.overviewCamera.cameraRotationMode === 'quaternion');
-    const isOrthographic = this.overviewCamera.projection === 'orthographic';
+    this.cameraRotationZone.setSelected(this.mapCamera.cameraFrame.rotatingWith);
+    this.cameraRotationModeToggle.setOn(this.mapCamera.cameraRotationMode === 'quaternion');
+    const isOrthographic = this.mapCamera.projection === 'orthographic';
     this.projectionToggle.setOn(isOrthographic);
     this.fovSlider.element.disabled = isOrthographic;
     this.fovInput.element.disabled = isOrthographic;
     this.fovResetButton.setEnabled(!isOrthographic);
     this.fovSlider.element.title = isOrthographic ? '平行投影では画角は使用しません' : '画角';
     this.fovInput.element.title = isOrthographic ? '平行投影では画角は使用しません' : '画角';
-    this.fovSlider.setValue(this.overviewCamera.fov);
+    this.fovSlider.setValue(this.mapCamera.fov);
     if (document.activeElement !== this.fovInput.element) {
-      this.fovInput.setValue(this.overviewCamera.fov.toFixed(0));
+      this.fovInput.setValue(this.mapCamera.fov.toFixed(0));
     }
-    this.referencePlaneControl.setSelected(this.overviewCamera.referencePlane);
+    this.referencePlaneControl.setSelected(this.mapCamera.referencePlane);
 
     this.planCenterZone.setItems(pickables);
     this.planCenterZone.setNearby(members, pickables);
