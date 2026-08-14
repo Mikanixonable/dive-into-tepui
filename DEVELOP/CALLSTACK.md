@@ -44,11 +44,12 @@
 
 ## game.update(dtRaw)
 
-`update` は一本の線形フローで、艦の有無は経路の分岐ではなく `advanceSimulation`/`handlePointerInput`
-内部の条件付きブロックとして表現される(早期 return の重複はない)。ステージの決着状態
-(`activeStage.isPlaying`)はこの2関数のどちらの分岐にも現れない — 決着後も操作艦の `behave`・
-ポインタ入力は通常どおり届く。各具体ステージ自身の `update`(§ advanceSimulation 内)はその内部で
-`isPlaying` を見て自分で早期 return する。
+`update` は一本の線形フローで、艦の有無は経路の分岐ではなく `advanceSimulation` 内部の条件付き
+ブロックとして表現される(早期 return の重複はない)。`handlePointerInput` 自体には呼ぶ順序と
+ポーズ判定しかなく、ビュー(マップ視点/編集モード)や艦の有無の判定は各受け手が自分で行う(§
+handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`)はどちらの分岐にも現れない
+— 決着後も操作艦の `behave`・ポインタ入力・各具体ステージ自身の `update`(§ advanceSimulation 内)
+は通常どおり続く。各具体ステージの `update` は艦の有無だけを見て自分で早期 return する。
 
 - game.update(dtRaw)
   - sections.enter(SECTION.input)
@@ -61,10 +62,6 @@
       - shift(-1|+1) // K.warpSlower / K.warpFaster。倍率をヒントで伝える。操作できない倍率へ上げたときはその旨も併記する
         - cancelAutoWarp() // 常に(手動シフトは自動ワープを解除する)
         - sfx.warp() + hud.hint() // 上限/下限を超えない場合のみ
-      - toggleAutoWarpToFirstNode() // K.autoWarpToNode。editor.editMode 中は受け取らない
-        - hud.hint() // ノード無し or !isPlaying
-        - cancelAutoWarp() + hud.hint() // 既に自動ワープ中
-        - startAutoWarpTo() + hud.hint() // 未開始
     - viewManager.handleInput(input) // ビュー遷移はすべて setView() を通る。[isDockOpen] 何もせず return([M] も消費しない)。[!K.toggleMapMode を取れた] 何もしない
       - [current==='map'] !canEnter('combat')(= activePlayers.current !== null が false)なら hud.hint('操作できる艦がいません') して return(この時点で [M] キー自体は既に消費済み)
       - setView(current==='map' ? 'combat' : 'map')
@@ -83,6 +80,10 @@
         - [editMode] deleteSelected() → deleteNode()
           - plan.removeNode() / closeMenu() / simSpeedManager.cancelAutoWarp() / hud.hint() // 下流ノードも一緒に消える
         - [!editMode] plan.clear() + simSpeedManager.cancelAutoWarp() + hud.hint() // ノードがある場合のみ
+      - [!editMode] simSpeedManager.toggleAutoWarpToFirstNode(plan?.firstNode(), simTime) // K.autoWarpToNode。editMode 中は WASDQE と同じく Δv 編集側へ譲る
+        - hud.hint() // ノード無し
+        - cancelAutoWarp() + hud.hint() // 既に自動ワープ中
+        - startAutoWarpTo() + hud.hint() // 未開始
       - updateEditing(input, dt)
         - [!dvEditActive(= editMode かつ selectedNodeIdx !== null)] dvHoldTime を全方向 0 に戻して return
         - applyHeldDv() ×6方向 // input.takeHeld(K.dvXxx) で6キーを先着確保し(以降 player.behave からは押されていないように見える)、または dvButtons(長押しボタン)が held の間、ホールド秒数からランプするレートで dt 秒分を積分
@@ -183,7 +184,7 @@
   - nanWatchdog.checkPlayer('player.behave')
   - sections.exit(SECTION.player)
   - sections.enter(SECTION.stage)
-  - activeStage.update() // 具体ステージへディスパッチ。各具体ステージが isPlaying/艦の有無を自分で見て内部で即 return する
+  - activeStage.update() // 具体ステージへディスパッチ。各具体ステージが艦の有無を自分で見て内部で即 return する(決着後も進む)
     - behaveAllEnemies() // 敵を配置する具体ステージ(Stage0/00/1/2)が先頭で呼ぶ。CreativeStage は player があるときに限り、logistics.updateLogistics の直後で呼ぶ(既存敵の AI は waveAttackEnabled トグルの有無によらず常に進む)
       - enemy.behave() // 生存中の敵ごと(canShipAct・距離・バースト状態の判定は behave 内部)
         - firePlasma() → entities.addBullet()
@@ -284,13 +285,14 @@
   - effects.update(dt, simulator.simTime) → flashEffectManager.updateFlashEffects() // フラッシュの寿命と、各エフェクトの時刻から simTime までの移流。playing/player を問わず常に進める(決着直後の爆発を止めないため)
   - sections.exit(SECTION.effects)
   - sections.enter(SECTION.plan)
-  - guide.update(player, simTime, editMode, ephemeris.attractorsAt(simTime)) // ここの player は reclaimDead / docking.checkProximity による引き継ぎ後の操作対象。null でも呼ぶ(内部の `editMode || !player` で、操作できない間(未配置・計画編集中)は何も消化せず通知もしない)
-    - player.plan.consumeNodesUpTo(simTime - C.NODE_EXPIRE_GRACE, player.state) // 期限切れノードをまとめて落とし、自機の実状態を新しいアンカーに据える
-    - [player かつ直近ノードが実行の窓(node.t - C.NODE_APPROACH_LEAD)に入っている場合のみ]
-      - notifyApproach() → hud.hint() // ノードごとに最初の1回のみ(approachNotified との同一性比較)
-      - notifyAchieved() // orbitalElementsClose(自機軌道要素, 目標軌道要素) が真の場合のみ。player.plan.consumeNodesUpTo(node.t, player.state) で達成ノードを消化し、残り件数は消化後の実数を読む
-        - hud.hint() + sfx.warp() // ノードごとに最初の1回のみ(achievedNotified との同一性比較)
-  - [player] player.plan.trackAnchor(player.state) // ノードが0件のときだけ実効(1件目を置くとアンカーは凍結される)
+  - guide.update(player, simTime, editMode, ephemeris.attractorsAt(simTime)) // ここの player は reclaimDead / docking.checkProximity による引き継ぎ後の操作対象。null なら何もしない
+    - [!editMode の場合のみ]
+      - player.plan.consumeNodesUpTo(simTime - C.NODE_EXPIRE_GRACE, player.state) // 期限切れノードをまとめて落とし、自機の実状態を新しいアンカーに据える
+      - [直近ノードが実行の窓(node.t - C.NODE_APPROACH_LEAD)に入っている場合のみ]
+        - notifyApproach() → hud.hint() // ノードごとに最初の1回のみ(approachNotified との同一性比較)
+        - notifyAchieved() // orbitalElementsClose(自機軌道要素, 目標軌道要素) が真の場合のみ。player.plan.consumeNodesUpTo(node.t, player.state) で達成ノードを消化し、残り件数は消化後の実数を読む
+          - hud.hint() + sfx.warp() // ノードごとに最初の1回のみ(achievedNotified との同一性比較)
+    - player.plan.trackAnchor(player.state) // ノード消化の後に置く。ノードが0件のときだけ実効(1件目を置くとアンカーは凍結される)
   - sections.exit(SECTION.plan)
 
 ### update(dtRaw) の続き(マップ表示・カメラの再同期)
@@ -335,13 +337,14 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
 
 マップ/戦闘のポインタ操作を優先順位順(=呼ぶ順)に配る。`update` の末尾、`cameraSystem.update`
 の後に呼ぶ(このフレームのカメラ行列で投影してからでないと画面上の対象をピックできない)。
-決着状態は見ず、ポーズ中、または入力をゲートするオーバーレイ(セーブブラウザ・ドック等)が
-開いている間は配らない(背景の誤操作を防ぐ)。
+各受け手は自分の出番(マップ視点/編集モード/操作艦の有無)かどうかを自分で見て自決するので、ここで
+決めるのは呼ぶ順序だけ。決着状態は見ず、ポーズ中、または入力をゲートするオーバーレイ(セーブ
+ブラウザ・ドック等)が開いている間は配らない(背景の誤操作を防ぐ)。
 
 - handlePointerInput()
   - [isPaused || hud.overlayManager.isInputGated()] 即 return
-  - [editor.editMode] 計画編集モード。マーカー(handleRightClick/handleLeftClick/handleDoubleClick)→ ノード(editor.handleMapPointer)→ 空域(handleEmptySpaceRightClick)の優先順は呼び出し順そのもの — 上流が消費した右クリックは下流に届かない
-    - mapActions.handleRightClick(input, simTime) // マーカーへの右クリックだけを消費する。外れれば消費せず editor.handleMapPointer() のノード右クリックへ読み進む
+  - マーカー(handleRightClick/handleLeftClick/handleDoubleClick)→ ノード(editor.handleMapPointer)→ 空域(handleEmptySpaceRightClick)の優先順は呼び出し順そのもの — 上流が消費した右クリックは下流に届かない
+    - mapActions.handleRightClick(input, simTime) // [!cameraSystem.overviewMode] 即 return。マーカーへの右クリックだけを消費する。外れれば消費せず editor.handleMapPointer() のノード右クリックへ読み進む
       - pickNearest(mapPickables.pickables) // MAP_PICK_PX_SQ 以内の被選択物(天体/自機/敵船/nav-AN・DN/アプシス)を最寄りで拾う。候補列は mapPickables.refresh() が組んだ1本
       - mapActions.openPropertyWindow() // 拾えた場合のみ消費。既にその対象のウィンドウがあれば移動+最前面化のみ、なければ new PropertyWindow(root=hud.layers.window, buildContent(), hud.overlayManager, PROPERTY_WINDOW_TEMP_GROUP) // rows は空のまま開き、同フレーム後半の mapActions.sync() が埋める(items は windowItems() 経由で開いた瞬間から埋まる)。「一時ウィンドウは高々1枚」の排他自体は PropertyWindow 自身が hud.overlayManager.open()/reconfigure() 経由で宣言する(下記)
         - PropertyWindow のコンストラクタ → overlayManager.open(overlayId, this, currentSpec()) // 非クリップなら exclusiveGroup=PROPERTY_WINDOW_TEMP_GROUP を宣言し、同グループの既存メンバー(直前の一時ウィンドウ)を overlayManager 自身が closeWindow() 相当で追い出す
@@ -360,10 +363,10 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
           - 以後 editor.plan は activePlayers.current.plan を返す(開いたままのノードメニューは次の editor.update() が畳む)
         - act='planExecCycle' → entities.findPlayer(target.id) → ship.planExecution = nextPlanExecution(ship.planExecution) // 'player' のみ。OFF→瞬間移動→自動操縦→OFF
         - act='delete' → entities.findPlayer(target.id) → entities.removePlayer(ship) → dispose() // 'player' のみ。操作対象の艦にはこの項目自体がメニューに出ない(MapContextActions.itemsFor)
-    - mapActions.handleLeftClick(input) // 自機/基地マーカーへの左クリックを選択として消費する。外れれば消費せず editor.handleMapPointer() のノード配置/選択解除に読み進む
+    - mapActions.handleLeftClick(input) // [!cameraSystem.overviewMode] 即 return。自機/基地マーカーへの左クリックを選択として消費する。外れれば消費せず editor.handleMapPointer() のノード配置/選択解除に読み進む
       - selectPickable() // 'player' → activePlayers.set() / 'base' → docking.selectBase()(遷移はしない)
-    - mapActions.handleDoubleClick(input) // pickables 全種別への最寄りダブルクリックで overviewCamera.setFocus()
-    - editor.handleMapPointer(input) // [艦なし] 即 return。右クリック → 左クリックの順に受ける
+    - mapActions.handleDoubleClick(input) // [!cameraSystem.overviewMode] 即 return。pickables 全種別への最寄りダブルクリックで overviewCamera.setFocus()
+    - editor.handleMapPointer(input) // [!editMode || 艦なし] 即 return。右クリック → 左クリックの順に受ける
       - handleNodeRightClick() // 右クリックごと。ノードをヒットしたぶんだけ消費する
         - selectedNodeIdx = ヒットしたノードの idx + nodeGizmo.openMenu() // ヒット時。true を返して消費
       - handleMapClick() // 左クリックごと。常に消費する
@@ -371,13 +374,13 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
         - planDisplay.path.nearestSample() // 直近の sync でキャッシュした cameraPos/attractors で isOccluded な点を候補から除外してから最寄りを探す → plan.addNode() + sfx.warp() // 計画軌道上をヒットした場合
         - selectedNodeIdx = null // どちらにも当たらなかった場合
       - dragNodeToNearestSample() // ノードを incoming arc の最寄り点へ移し、元のΔv成分を保ったまま新しいノード状態へ焼き直す
-    - mapActions.handleEmptySpaceRightClick(input, simTime) // マーカーにもノードにも当たらなかった右クリックだけが届く。ContextMenu<MapPickable> で「オブジェクトリストウィンドウを表示」/(クリエイティブのみ)「オブジェクトを配置」/「設定メニューを開く」
-  - [!editor.editMode && !isPaused && player]
+    - mapActions.handleEmptySpaceRightClick(input, simTime) // [!cameraSystem.overviewMode] 即 return。マーカーにもノードにも当たらなかった右クリックだけが届く。ContextMenu<MapPickable> で「オブジェクトリストウィンドウを表示」/(クリエイティブのみ)「オブジェクトを配置」/「設定メニューを開く」
+  - [!player] 即 return
     - combatTargets = entities.getCombatTargets(player) // 敵 + 自機以外の生存中の全自機
-    - targeter.handleTargetSelectKey(input, combatTargets, project) // [T] キー。右クリックとは無関係、独立の即時選定・順送り
-    - navTarget.updateCombatBasePicking(entities, input, project) // mapActions より先に呼ぶ。基地に当たった右クリックだけを消費し、外れは false を返して mapActions へ回す
+    - targeter.handleTargetSelectKey(input, combatTargets, project, overviewMode) // [overviewMode] 即 return。[T] キー。右クリックとは無関係、独立の即時選定・順送り
+    - navTarget.updateCombatBasePicking(entities, input, project, overviewMode) // [overviewMode] 即 return。mapActions より先に呼ぶ。基地に当たった右クリックだけを消費し、外れは false を返して mapActions へ回す
       - pickNearest(entities.bases) → baseMenu.open() // 当たった場合のみ。航法ターゲット設定/解除メニュー(ContextMenu のまま)
-    - mapActions.handleCombatRightClick(input, combatTargets, project, simTime) // マップの handleRightClick の戦闘ビュー版(同じ対象は常に同じ窓)
+    - mapActions.handleCombatRightClick(input, combatTargets, project, simTime, overviewMode) // [overviewMode] 即 return。マップの handleRightClick の戦闘ビュー版(同じ対象は常に同じ窓)
       - targeter.pickTargetAt(click, combatTargets, project) // TARGET_LOCK_PICK_PX_SQ 以内の画面最近傍
         - [当たり] combatTargetPickable(target) → mapActions.openPropertyWindow() // kind='player'/'ship' へ変換して同じプロパティウィンドウ経路。itemsFor に combatTargetLockItems(targetPrimary/targetSecondary、overviewMode では出さない)が乗る
           - targetPrimary/targetSecondary 選択 → runTargetLock() → targeter.setPrimaryTarget()/setSecondaryTarget()
@@ -401,7 +404,7 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
     - focusMarkers.syncLabels() → markerManager.setPosition() // ラベルごと。overviewMode のみ
     - focusMarkers.hideLabels() // !overviewMode のみ
   - project = cameraSystem.activeCameraProjection / overviewMode = cameraSystem.overviewMode // 以降の sync 系へ配る共通値
-  - visibilityPolicy = overviewMode ? mapPickables.visibilityPolicy : null // ここでは組まず、update フェーズの mapPickables.refresh() が確定させた同じ MapVisibilityPolicy を読む。environment.sync / entities.syncPlayers・applyVisibility・syncMarkers / activeStage.sync / targeter.sync・syncTargetMarkers がすべてこれを受け取る
+  - visibilityPolicy = mapPickables.visibilityPolicy // ここでは組まず、update フェーズの mapPickables.refresh() が確定させた同じ MapVisibilityPolicy を読む(マップビュー以外では refresh 自身が null に落とす)。environment.sync / entities.syncPlayers・applyVisibility・syncMarkers / activeStage.sync / targeter.sync・syncTargetMarkers がすべてこれを受け取る
   - combatTargets = entities.getCombatTargets(player) // 敵 + 自機以外の生存中の全自機
   - environment.sync(player?.state.r ?? null, fo, displayTime, cameraSystem, navball.gridVisibility, visibilityPolicy)
     - lit = sunlitFactor(playerPos, ephemeris.sunDirFrom(playerPos, displayTime), …)。playerPos が null(艦がいない)のときと overviewMode では 1.0 固定

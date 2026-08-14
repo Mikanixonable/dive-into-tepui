@@ -67,7 +67,7 @@ export class StageDebug extends Stage {
 
   // 敵の行動を進め、射撃許可を毎フレーム自ステージの敵全体へ反映する。
   update(dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
-    if (!this.isPlaying || !player) return;
+    if (!player) return;
     for (const e of entities.enemies) e.fireEnabled = this.enemyFireEnabled;
     this.behaveAllEnemies(dt, player, entities, simTime, simSpeed);
     this.logistics.updateLogistics(simTime, player, simSpeed);

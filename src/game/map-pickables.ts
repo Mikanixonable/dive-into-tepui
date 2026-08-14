@@ -11,7 +11,7 @@ import { Ephemeris } from '../physics/ephemeris';
 import { NavTarget } from './nav-target';
 import { CameraSystem } from './camera/camera-system';
 import { PlanEditor } from './plan/plan-editor';
-import type { Game } from './game';
+import type { ActivePlayerController } from './active-player-controller';
 import { len, sub } from '../physics/vec3';
 import { strongestAttractor } from '../physics/attractor';
 import { isOccluded } from '../physics/occlusion';
@@ -35,7 +35,7 @@ export class MapPickables {
   // このフレームの被選択物候補。refresh の後に読む。
   get pickables(): readonly MapPickable[] { return this.items; }
 
-  // このフレームの表示・選択可否。refresh の後に読む(refresh 前は null)。
+  // このフレームの表示・選択可否。マップビュー以外では null。
   get visibilityPolicy(): MapVisibilityPolicy | null { return this._visibilityPolicy; }
 
   // 直近の refresh が受け取った simTime。ヒットテスト側が時刻依存の項目(通過時刻等)を
@@ -44,7 +44,7 @@ export class MapPickables {
 
   // 候補の供給元を参照として受け取る。
   constructor(
-    private readonly game: Game,
+    private readonly activePlayers: ActivePlayerController,
     private readonly entities: EntityManager,
     private readonly ephemeris: Ephemeris,
     private readonly navTarget: NavTarget,
@@ -58,7 +58,10 @@ export class MapPickables {
   // 非表示にした対象を選べない状態にする。物理積分の後に呼ぶ: 積分前に組むと、同フレームで
   // sync されるメッシュと座標が1ステップずれる。
   refresh(displayWindow: DisplayWindow): void {
-    if (!this.cameraSystem.overviewMode) return;
+    if (!this.cameraSystem.overviewMode) {
+      this._visibilityPolicy = null;
+      return;
+    }
     const { simTime, displayTime } = displayWindow;
     this._lastSimTime = simTime;
     const focusId = focusTargetId(this.cameraSystem.overviewCamera.focus);
@@ -75,7 +78,7 @@ export class MapPickables {
       displayTime, focusId, this.cameraSystem.bodyClassToggles,
       this.cameraSystem.activeCameraPos, visibilityPolicy,
     );
-    this.navTarget.update(this.game.player, this.entities, this.ephemeris, displayWindow);
+    this.navTarget.update(this.activePlayers.current, this.entities, this.ephemeris, displayWindow);
 
     // 船の位置は表示時刻の displayState — 機体メッシュや敵マーカーと同じ未来ゴースト位置に揃える。
     this.candidateItems.length = 0;
@@ -85,7 +88,7 @@ export class MapPickables {
       this.appendPickable(item);
     }
     for (const ship of this.entities.players) {
-      if (!visibilityPolicy.entity('player', ship === this.game.player).pickable) continue;
+      if (!visibilityPolicy.entity('player', ship === this.activePlayers.current).pickable) continue;
       const pos = ship.displayState(displayTime)?.r;
       if (pos) {
         const center = strongestAttractor(ship.state.r, attractors);
@@ -94,7 +97,7 @@ export class MapPickables {
         this.addCandidate(
           ship.id, ship.name, pos, 'player',
           `HP ${Math.round(ship.hp)}/${Math.round(ship.maxHp)} · PE ${pe}`,
-          ship === this.game.player ? -100 : 0,
+          ship === this.activePlayers.current ? -100 : 0,
         );
       }
     }
@@ -122,7 +125,7 @@ export class MapPickables {
     }
 
     // 自艦からの距離は一覧の実用順と補助情報にだけ使う。軌道予測はここで増やさない。
-    const viewer = this.game.player?.state;
+    const viewer = this.activePlayers.current?.state;
     if (viewer) for (const item of this.candidateItems) {
       const d = len(sub(item.pos, viewer.r));
       // 相対速度は対の速度を持つ敵艦にだけ意味がある。

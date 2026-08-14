@@ -1,7 +1,7 @@
 // シミュレーション速度(HUD ヒント・SFX 上は「ワープ」と呼ぶ)の段階管理と、
-// [N] キーによる「マニューバノードの実行時刻まで自動的に加速する」機能を担う。
-// マップモードの計画データそのものには依存しない — どのノード時刻へ
-// 自動ワープするかは呼び出し側(game.ts / PlanEditor)が決めて渡す。
+// 「マニューバノードの実行時刻まで自動的に加速する」機能を担う。
+// マップモードの計画データそのものには依存しない — [N] キーの受け口と
+// どのノード時刻へ自動ワープするかは呼び出し側(PlanEditor)が決めて渡す。
 import * as C from './const';
 import { Hud } from './hud/hud';
 import { Sfx } from '../audio/sfx';
@@ -78,20 +78,17 @@ export class SimSpeedManager {
     this.autoWarpUntil = null;
   }
 
-  // 担当キーの受け口: [,]/[.] でワープ段を上下、[N] で直近ノードへの自動ワープをトグルする。
-  // 計画編集中は WASDQE などと同じく [N] を計画側へ譲るため editMode 中は受け取らない。
-  // ワープ操作は決着後・ポーズ中も効くべきなので、game はこれをそれらの early return より
-  // 前に呼ぶ(自動ワープの段階調整そのものは update() が行う)。
-  handleInput(input: Input, isPlaying: boolean, editMode: boolean, firstNode: KinematicState | undefined, simTime: number): void {
+  // 担当キーの受け口: [,]/[.] でワープ段を上下する。ワープ操作は決着後・ポーズ中も効くべきなので、
+  // game はこれをそれらの early return より前に呼ぶ(自動ワープの段階調整そのものは update() が行う)。
+  handleInput(input: Input): void {
     if (input.takeKey(K.warpSlower)) this.shift(-1);
     if (input.takeKey(K.warpFaster)) this.shift(1);
-    if (!editMode && input.takeKey(K.autoWarpToNode)) this.toggleAutoWarpToFirstNode(isPlaying, firstNode, simTime);
   }
 
   // 直近ノードの実行時刻までの自動ワープをトグルする。
-  toggleAutoWarpToFirstNode(isPlaying: boolean, firstNode: KinematicState | undefined, simTime: number): void {
+  toggleAutoWarpToFirstNode(firstNode: KinematicState | undefined, simTime: number): void {
     // ノードがなければ計画を促す通知だけ出す
-    if (!firstNode || !isPlaying) {
+    if (!firstNode) {
       this._hud.hint(`マニューバノードがありません ([${K.toggleMapMode.label}] で計画)`);
       return;
     }

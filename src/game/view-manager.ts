@@ -36,6 +36,9 @@ export class ViewManager {
 
   get current(): ViewId { return this.isDockOpen ? 'dock' : this.worldView; }
 
+  // このビューが 3D 世界を描くか。ドックは画面全体を不透明に覆い 3D 世界を持たない。
+  get rendersWorld(): boolean { return !this.isDockOpen; }
+
   constructor(
     private readonly hud: Hud,
     private readonly editor: PlanEditor,

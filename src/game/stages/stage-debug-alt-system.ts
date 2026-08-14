@@ -85,7 +85,7 @@ export class StageDebugAltSystem extends Stage {
   }
 
   update(_dt: number, player: Player | null, _entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
-    if (!this.isPlaying || !player) return;
+    if (!player) return;
     this.logistics.updateLogistics(simTime, player, simSpeed);
   }
 
