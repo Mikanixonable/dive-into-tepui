@@ -52,7 +52,7 @@ function sunGlareSpreadScale(pos: Vec3, aimDir: Vec3, sunDir: Vec3): number {
 }
 
 // enemyKind の種別に応じたメッシュを組む。
-function buildEnemyObj(enemyKind: EnemyKind, accent: string | number): THREE.Object3D {
+function buildEnemyRenderObject(enemyKind: EnemyKind, accent: string | number): THREE.Object3D {
   return enemyKind.kind === 'stage0' ? buildStage0EnemyShip(accent, enemyKind.typeIndex) : buildEnemyShip(accent);
 }
 
@@ -108,8 +108,8 @@ export class Enemy extends Ship {
         id: init.saved.id || undefined,
       }
       : init;
-    const enemyObj = buildEnemyObj(enemyKind, accent);
-    super(name, state, enemyObj, att, C.ENEMY_RADIUS, C.ENEMY_MAX_HP, scene, id);
+    const renderObject = buildEnemyRenderObject(enemyKind, accent);
+    super(name, state, renderObject, att, C.ENEMY_RADIUS, C.ENEMY_MAX_HP, scene, id);
     this._sfx = sfx;
     this._fx = fx;
     this.enemyKind = enemyKind;
@@ -117,9 +117,9 @@ export class Enemy extends Ship {
     this.waveId = waveId;
     this.mass = 10000;
     this.collides = true;
-    this.obj.scale.setScalar(C.ENEMY_SCALE);
+    this.renderObject.scale.setScalar(C.ENEMY_SCALE);
     // 描画メッシュの実スケール後バウンディング球を、弾丸・物理接触の両判定に共有する。
-    const visualBounds = new THREE.Box3().setFromObject(this.obj);
+    const visualBounds = new THREE.Box3().setFromObject(this.renderObject);
     const visualSphere = visualBounds.getBoundingSphere(new THREE.Sphere());
     this.radius = visualSphere.radius;
     // 自身の軌道線を作ってシーンへ登録する
@@ -132,7 +132,7 @@ export class Enemy extends Ship {
       this.burstDelay = init.saved.burstDelay;
       this.alive = init.saved.alive;
       if (!this.alive) {
-        this.obj.visible = false;
+        this.renderObject.visible = false;
         this.orbitLine.line.visible = false;
       }
     }
@@ -324,14 +324,14 @@ export class Enemy extends Ship {
     const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
 
     const pb = new Bullet(kinematicState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', C.PLAYER_BULLET_DAMAGE, this._sfx, this.scene);
-    pb.obj.position.set(r.x, r.y, r.z);
+    pb.renderObject.position.set(r.x, r.y, r.z);
     // 進行方向に向ける
     const mz = new THREE.Matrix4().lookAt(
       new THREE.Vector3(),
       new THREE.Vector3(actualAim.x, actualAim.y, actualAim.z),
       new THREE.Vector3(0, 1, 0),
     );
-    pb.obj.quaternion.setFromRotationMatrix(mz);
+    pb.renderObject.quaternion.setFromRotationMatrix(mz);
 
     entities.addBullet(pb);
   }

@@ -153,7 +153,7 @@ export function register(): void {
     executor.applyIgnitionAndCutoff(ship, 49, openGate);
     assert.ok(ship.thrust !== null, 'test setup: 点火できていること');
 
-    // Player.behave が操作艦の thrust をフレーム冒頭で null に戻すのと同じ状況を模す。
+    // 操作更新で thrust がリセットされた状態を模す。
     ship.thrust = null;
     executor.update(ship, 0.1, 49, openGate);
     assert.ok(ship.thrust !== null, 'update() が燃焼中の thrust を書き直していること');

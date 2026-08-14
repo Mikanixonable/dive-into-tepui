@@ -1,10 +1,12 @@
 import { Game } from '../game';
-import { GameSaveData, SnapshotKind, SnapshotMeta, SAVE_VERSION } from '../save-data';
-import { OrbitInfo, orbitInfo } from '../hud/orbit-info';
+import { SAVE_VERSION } from '../save-data';
+import { orbitInfo } from '../hud/orbit-info';
 import { fmtDist, fmtTime } from '../hud/utils';
 import { SaveStore } from './save-store';
 import { SaveSlots } from './save-slots';
 import { CURRENT_EPHEMERIS_CONTEXT, isEphemerisContextCompatible } from './ephemeris-context';
+import type { AmmoPickupSaveData, GameSaveData, SnapshotKind, SnapshotMeta } from '../save-data';
+import type { OrbitInfo } from '../hud/orbit-info';
 
 // Game の実行状態と GameSaveData の相互変換、およびストア/スロットへの出し入れを担う。
 export class SnapshotService {
@@ -46,17 +48,31 @@ export class SnapshotService {
     const data = this.store.readSnapshot(snapshotId);
     if (data === null) return null;
     if (data.version !== SAVE_VERSION) return null;
-    if (expectedStageId !== data.stageId) return null;
-    // Old snapshots have no context and intentionally retain the existing
-    // migration behavior. Once a snapshot explicitly records its ephemeris,
-    // loading it under a different epoch/profile/pack would make its absolute
-    // celestial state ambiguous, so decline it.
+    const normalizedData = normalizeAmmoPickupKey(data);
+    if (normalizedData === null) return null;
+    if (expectedStageId !== normalizedData.stageId) return null;
+    // 暦情報が無いスナップショットは互換復元で読む。暦情報がある場合は、
+    // 異なる epoch/profile/pack で絶対天体状態が曖昧になるデータを拒否する。
     if (!isEphemerisContextCompatible(
-      (data as { ephemerisContext?: unknown }).ephemerisContext,
+      (normalizedData as { ephemerisContext?: unknown }).ephemerisContext,
       CURRENT_EPHEMERIS_CONTEXT,
     )) return null;
-    return data;
+    return normalizedData;
   }
+}
+
+// version 2 の ammos と現行 ammoPickups を読み込み境界で受け、現行キーへ正規化する。
+function normalizeAmmoPickupKey(data: GameSaveData): GameSaveData | null {
+  const storedData = data as Omit<GameSaveData, 'ammoPickups'> & {
+    ammoPickups?: AmmoPickupSaveData[];
+    ammos?: AmmoPickupSaveData[];
+  };
+  const ammoPickups = storedData.ammoPickups ?? storedData.ammos;
+  if (!Array.isArray(ammoPickups)) return null;
+
+  const normalizedData = { ...storedData, ammoPickups };
+  delete normalizedData.ammos;
+  return normalizedData;
 }
 
 // 各エンティティ・ステージ自身の serialize を集めて1件ぶんのセーブ本体にする。
@@ -71,7 +87,7 @@ function buildSaveData(game: Game): GameSaveData {
     players: game.entities.players.map(p => p.serialize()),
     activePlayerId: game.player ? game.player.id : null,
     enemies: game.entities.enemies.map(e => e.serialize()),
-    ammos: game.entities.ammos.map(a => a.serialize()),
+    ammoPickups: game.entities.ammoPickups.map((ammoPickup) => ammoPickup.serialize()),
     bases: game.entities.bases.map(b => b.serialize()),
     stage: game.activeStage.serialize(),
     camera: { view: game.viewManager.serializeView(), ...game.cameraSystem.serialize() },

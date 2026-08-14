@@ -305,7 +305,9 @@ export class MapContextActions {
     switch (target.kind) {
       case 'player': return this.entities.findPlayer(target.id) === undefined;
       case 'ship': return !(this.entities.findEnemy(target.id)?.alive ?? false);
-      case 'ammo': return !(this.entities.ammos.find((a) => a.id === target.id)?.alive ?? false);
+      case 'ammo': return !(
+        this.entities.ammoPickups.find((ammoPickup) => ammoPickup.id === target.id)?.alive ?? false
+      );
       case 'base': return !(this.entities.findBase(target.id)?.alive ?? false);
       default: return !this.pickables.pickables.some((i) => this.windowKey(i) === this.windowKey(target));
     }
@@ -373,8 +375,8 @@ export class MapContextActions {
       ],
       run: (act, target) => {
         if (act === 'delete') {
-          const ammo = this.entities.ammos.find(a => a.id === target.id);
-          if (ammo) ammo.alive = false;
+          const ammoPickup = this.entities.ammoPickups.find((candidate) => candidate.id === target.id);
+          if (ammoPickup) ammoPickup.alive = false;
         } else if (act === 'duplicate') {
           this.runDuplicate(target);
         } else {
@@ -593,8 +595,8 @@ export class MapContextActions {
         return enemy ? { objectType: 'enemy', state: enemy.state } : null;
       }
       case 'ammo': {
-        const ammo = this.entities.ammos.find((a) => a.id === target.id);
-        return ammo ? { objectType: 'ammo', state: ammo.state } : null;
+        const ammoPickup = this.entities.ammoPickups.find((candidate) => candidate.id === target.id);
+        return ammoPickup ? { objectType: 'ammo', state: ammoPickup.state } : null;
       }
       case 'base': {
         const base = this.entities.findBase(target.id);
@@ -655,7 +657,7 @@ export class MapContextActions {
       case 'player': return this.playerRows(target, attractors);
       case 'ship': return this.shipRows(target, attractors, player);
       case 'base': return this.baseRows(target, attractors, player);
-      case 'ammo': return this.ammoRows(target, attractors, player);
+      case 'ammo': return this.ammoPickupRows(target, attractors, player);
       case 'body': return this.bodyRows(target, attractors, player);
       case 'apsis': return this.apsisRows(target, attractors, simTime);
       case 'relnode': case 'eqnode': return this.nodeRows(target, attractors, simTime);
@@ -663,7 +665,7 @@ export class MapContextActions {
     }
   }
 
-  // 基準天体・高度・速度・AP/PE/INC/PRD の軌道要素一式。ship/base/ammo/player 共通で使う。
+  // 基準天体・高度・速度・AP/PE/INC/PRD の軌道要素一式。軌道上の実体種別間で共通化する。
   // 「軌道」グループにまとめ、ウィンドウ先頭の折り畳みセクションへ描かれる。
   private orbitRows(entity: GameEntity, attractors: readonly Attractor[]): PropertyRow[] {
     const oi = orbitInfo(entity, attractors);
@@ -738,12 +740,22 @@ export class MapContextActions {
   }
 
   // 自艦がいなければ距離の行は出さない。軌道要素は「軌道」グループの下に畳む。
-  private ammoRows(target: MapPickable, attractors: readonly Attractor[], player: Player | null): PropertyRow[] {
-    const ammo = this.entities.ammos.find((a) => a.id === target.id);
-    if (!ammo) return [];
+  private ammoPickupRows(
+    target: MapPickable,
+    attractors: readonly Attractor[],
+    player: Player | null,
+  ): PropertyRow[] {
+    const ammoPickup = this.entities.ammoPickups.find((candidate) => candidate.id === target.id);
+    if (!ammoPickup) return [];
     const rows: PropertyRow[] = [];
-    if (player) rows.push({ key: 'dist', label: '距離', value: fmtDist(len(sub(ammo.state.r, player.state.r))) });
-    rows.push(...this.orbitRows(ammo, attractors));
+    if (player) {
+      rows.push({
+        key: 'dist',
+        label: '距離',
+        value: fmtDist(len(sub(ammoPickup.state.r, player.state.r))),
+      });
+    }
+    rows.push(...this.orbitRows(ammoPickup, attractors));
     return rows;
   }
 

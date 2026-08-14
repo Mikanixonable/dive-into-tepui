@@ -521,8 +521,8 @@ function buildMagazineMesh() {
   return g;
 }
 
-// 軌道上に投入される補給(ammo): マガジン数個(既定 4)を束ねてビーコンを付けた漂流物。
-function buildAmmo(count = 4) {
+// 軌道上の弾薬補給ピックアップ。マガジン数個(既定 4)とビーコンを束ねる。
+function buildAmmoPickup(count = 4) {
   const g = new THREE.Group();
   for (let i = 0; i < count; i++) {
     const mag = buildMagazineMesh();
@@ -798,7 +798,7 @@ const models = {
   stage0EnemyB: buildStage0EnemyB(),
   stage0EnemyC: buildStage0EnemyC(),
   magazine:     buildMagazineMesh(),
-  ammo:         buildAmmo(),
+  ammo:         buildAmmoPickup(),
   bullet:       buildBulletMesh(),
   plasma:       buildPlasmaBullet(),
   casing:       buildCasingMesh(),

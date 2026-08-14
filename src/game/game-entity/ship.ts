@@ -36,17 +36,17 @@ export abstract class Ship extends GameEntity {
   private cockpitPart: CockpitPart | undefined;
 
   // 名前・剛体接触半径・HP を初期化し、基底の状態/メッシュ/姿勢を構築する。
-  constructor(
+  public constructor(
     name: string,
     state: KinematicState,
-    obj: THREE.Object3D,
+    renderObject: THREE.Object3D,
     att: Attitude,
     radius: number,
     hp: number,
     scene?: THREE.Scene,
     id?: string,
   ) {
-    super(state, obj, scene, att, id);
+    super(state, renderObject, scene, att, id);
     this.name = name;
     this.radius = radius;
     this.hp = hp;
@@ -384,7 +384,7 @@ export abstract class Ship extends GameEntity {
   // メッシュ配下のマテリアルを含めて破棄する。
   dispose(): void {
     super.dispose();
-    this.obj.traverse((child) => {
+    this.renderObject.traverse((child) => {
       const mesh = child as THREE.Mesh;
       if (!mesh.isMesh) return;
       if (Array.isArray(mesh.material)) mesh.material.forEach((m) => m.dispose());
