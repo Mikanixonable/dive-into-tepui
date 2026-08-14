@@ -1,5 +1,6 @@
-// タイトル画面の背景となる 3D 場面。対称性の高い幾何立体(正多面体・トーラス・立方体)を
-// 光沢プラスチックの材質で奥行き方向へ散らし、極小速度で漂わせる。
+// タイトル画面の背景となる3D場面。モックアップのタンパク質図案を参照し、
+// 捻れたチューブ、枝分かれするロッド、結節、リング、カプセルを光沢プラスチックで
+// 抽象化して多数配置する。ゲーム世界とは無関係な表示専用の場面なので physics/ も参照しない。
 // ゲーム世界とは無関係な表示専用の場面なので、physics/ も game/ も参照しない。
 import * as THREE from 'three/webgpu';
 
@@ -8,11 +9,11 @@ const BODY_COLORS = [0xf1edf0, 0xa8aec0, 0x48506a, 0xd6d6d0] as const;
 const ACCENT_COLOR = 0xff3155;
 const NEAR_ACCENT_COLOR = 0xff6b82;
 const SECONDARY_ACCENT_COLOR = 0x3478ff;
-const BODY_COUNT = 24;
-// V6 §5.2 に従い、Accent / Near accent は各1体、Secondaryは1体だけに絞る。
-const ACCENT_INDEX = 7;
-const NEAR_ACCENT_INDEX = 15;
-const SECONDARY_ACCENT_INDEX = 21;
+const BODY_COUNT = 26;
+// V6 §5.2 に従い、有彩色の図案は少数へ絞り、残りを乳白・煙色・黒・暖灰色で構成する。
+const ACCENT_INDICES = new Set([6, 18]);
+const NEAR_ACCENT_INDICES = new Set([11, 22]);
+const SECONDARY_ACCENT_INDEX = 15;
 
 export interface TitleScene {
   // 破棄。アニメーションループとリスナーを止め、GPU 資源を解放する。
@@ -28,33 +29,29 @@ export async function createTitleScene(
   const renderer = new THREE.WebGPURenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
   await renderer.init();
-  renderer.setClearColor(0x10131f, 1);
+  renderer.setClearColor(0x08090d, 1);
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(0x10131f, 0.032);
-  const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 80);
-  camera.position.set(0, 0, 14);
+  scene.fog = new THREE.FogExp2(0x08090d, 0.038);
+  const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
+  camera.position.set(0, 0, 17);
 
-  scene.add(new THREE.AmbientLight(0xc7d2ef, 2.35));
-  const key = new THREE.DirectionalLight(0xfff3f5, 5.2);
-  key.position.set(-5, 7, 10);
+  scene.add(new THREE.HemisphereLight(0xe8e4f0, 0x121418, 2.2));
+  const key = new THREE.PointLight(0xffffff, 100, 40, 1.4);
+  key.position.set(-5, 7, 9);
   scene.add(key);
-  const rim = new THREE.PointLight(0x6e9cff, 72, 32, 2);
-  rim.position.set(7, -4, 4);
-  scene.add(rim);
-  const warm = new THREE.PointLight(ACCENT_COLOR, 26, 24, 2);
-  warm.position.set(-7, -3, 2);
-  scene.add(warm);
+  const accentLight = new THREE.PointLight(ACCENT_COLOR, 70, 28, 1.6);
+  accentLight.position.set(7, -2, 6);
+  scene.add(accentLight);
+  const signalLight = new THREE.PointLight(SECONDARY_ACCENT_COLOR, 28, 24, 1.7);
+  signalLight.position.set(-7, -5, 2);
+  scene.add(signalLight);
 
-  // 対称性の高い立体だけを語彙とする。個体はここから選ぶだけで、形は生成しない。
-  const geometries = [
-    new THREE.TetrahedronGeometry(1),
-    new THREE.OctahedronGeometry(1),
-    new THREE.IcosahedronGeometry(1),
-    new THREE.DodecahedronGeometry(1),
-    new THREE.BoxGeometry(1.3, 1.3, 1.3),
-    new THREE.TorusGeometry(1, 0.3, 16, 40),
-  ];
+  const geometries: THREE.BufferGeometry[] = [];
+  const registerGeometry = <T extends THREE.BufferGeometry>(geometry: T): T => {
+    geometries.push(geometry);
+    return geometry;
+  };
   const materials = BODY_COLORS.map((color, index) => new THREE.MeshPhysicalMaterial({
     color,
     roughness: 0.18 + index * 0.03,
@@ -69,8 +66,12 @@ export async function createTitleScene(
     color: NEAR_ACCENT_COLOR, roughness: 0.22, metalness: 0.02, clearcoat: 0.9, clearcoatRoughness: 0.2,
   });
   const secondaryAccentMaterial = new THREE.MeshPhysicalMaterial({
-    color: SECONDARY_ACCENT_COLOR, roughness: 0.24, metalness: 0.02, clearcoat: 0.86, clearcoatRoughness: 0.22,
+    color: SECONDARY_ACCENT_COLOR, roughness: 0.19, metalness: 0.02, clearcoat: 1, clearcoatRoughness: 0.12,
   });
+
+  const rootGroup = new THREE.Group();
+  rootGroup.rotation.z = -0.08;
+  scene.add(rootGroup);
 
   // 決定的な乱数。起動のたびに同じ配置から漂流を始める。
   let seed = 0x20115;
@@ -81,32 +82,85 @@ export async function createTitleScene(
   };
 
   interface Drift {
-    readonly mesh: THREE.Mesh;
+    readonly object: THREE.Object3D;
     readonly base: THREE.Vector3;
     readonly baseRotation: THREE.Euler;
     readonly phase: number;
     readonly speed: number;
     readonly amplitude: number;
   }
+  const addRod = (
+    group: THREE.Group,
+    from: THREE.Vector3,
+    to: THREE.Vector3,
+    radius: number,
+    material: THREE.MeshPhysicalMaterial,
+  ): void => {
+    const delta = new THREE.Vector3().subVectors(to, from);
+    const rod = new THREE.Mesh(registerGeometry(new THREE.CylinderGeometry(radius, radius, delta.length(), 18, 1)), material);
+    rod.position.copy(from).add(to).multiplyScalar(0.5);
+    rod.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), delta.normalize());
+    group.add(rod);
+  };
+
+  const createGlyph = (material: THREE.MeshPhysicalMaterial, variant: number): THREE.Group => {
+    const group = new THREE.Group();
+    const radius = 0.13 + (variant % 2) * 0.04;
+    addRod(group, new THREE.Vector3(-0.8, -0.9, 0), new THREE.Vector3(-0.15, 0.95, 0.1), radius, material);
+    addRod(group, new THREE.Vector3(-0.15, 0.95, 0.1), new THREE.Vector3(0.72, 0.35, -0.05), radius, material);
+    if (variant % 3 !== 0) addRod(group, new THREE.Vector3(-0.46, 0.05, 0.04), new THREE.Vector3(0.48, -0.42, 0), radius, material);
+    if (variant % 2 === 0) {
+      const bead = new THREE.Mesh(registerGeometry(new THREE.SphereGeometry(0.24, 20, 14)), material);
+      bead.position.set(0.72, 0.35, -0.05);
+      group.add(bead);
+    }
+    return group;
+  };
+
+  const createBranch = (material: THREE.MeshPhysicalMaterial, variant: number): THREE.Group => {
+    const group = new THREE.Group();
+    const curve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-0.8, -0.9, 0),
+      new THREE.Vector3(-0.35, -0.18, 0.25),
+      new THREE.Vector3(0.1, 0.26, -0.18),
+      new THREE.Vector3(0.65, 0.96, 0.05),
+    ]);
+    group.add(new THREE.Mesh(registerGeometry(new THREE.TubeGeometry(curve, 32, 0.13, 12, false)), material));
+    addRod(group, new THREE.Vector3(-0.12, 0.1, 0), new THREE.Vector3(0.78, 0.36 + variant * 0.03, 0.22), 0.1, material);
+    if (variant % 2 === 0) addRod(group, new THREE.Vector3(0.14, 0.3, 0), new THREE.Vector3(-0.62, 0.68, -0.24), 0.09, material);
+    return group;
+  };
+
+  const materialForIndex = (index: number): THREE.MeshPhysicalMaterial => {
+    if (ACCENT_INDICES.has(index)) return accentMaterial;
+    if (NEAR_ACCENT_INDICES.has(index)) return nearAccentMaterial;
+    if (index === SECONDARY_ACCENT_INDEX) return secondaryAccentMaterial;
+    return materials[index % materials.length]!;
+  };
+
   const bodies: Drift[] = [];
   for (let i = 0; i < BODY_COUNT; i += 1) {
-    const geometry = geometries[i % geometries.length]!;
-    const material = i === ACCENT_INDEX ? accentMaterial
-      : i === NEAR_ACCENT_INDEX ? nearAccentMaterial
-        : i === SECONDARY_ACCENT_INDEX ? secondaryAccentMaterial
-          : materials[Math.floor(random() * materials.length)]!;
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.scale.setScalar(0.42 + random() * 0.78);
-    mesh.position.set((random() - 0.5) * 15.5, (random() - 0.5) * 9.3, -5.5 + random() * 7.2);
-    mesh.rotation.set(random() * Math.PI, random() * Math.PI, random() * Math.PI);
-    scene.add(mesh);
+    const material = materialForIndex(i);
+    let object: THREE.Object3D;
+    if (i % 5 === 0) object = createBranch(material, i % 4);
+    else if (i % 5 === 1) object = createGlyph(material, i);
+    else if (i % 5 === 2) object = new THREE.Mesh(registerGeometry(new THREE.TorusGeometry(0.72, 0.16, 16, 44, Math.PI * 1.62)), material);
+    else if (i % 5 === 3) object = new THREE.Mesh(registerGeometry(new THREE.TorusKnotGeometry(0.52, 0.13, 72, 12, 2, 3)), material);
+    else object = new THREE.Mesh(registerGeometry(new THREE.CapsuleGeometry(0.24, 1.45, 8, 18)), material);
+    const angle = random() * Math.PI * 2;
+    const radius = 2.5 + random() * 7;
+    const base = new THREE.Vector3(Math.cos(angle) * radius * 1.28, Math.sin(angle) * radius * 0.7, -4 + random() * 9);
+    object.position.copy(base);
+    object.rotation.set(random() * Math.PI, random() * Math.PI, random() * Math.PI);
+    object.scale.setScalar(0.52 + random() * 1.15);
+    rootGroup.add(object);
     bodies.push({
-      mesh,
-      base: mesh.position.clone(),
-      baseRotation: mesh.rotation.clone(),
+      object,
+      base,
+      baseRotation: object.rotation.clone(),
       phase: random() * Math.PI * 2,
-      speed: 0.035 + random() * 0.075,
-      amplitude: 0.08 + random() * 0.26,
+      speed: 0.08 + random() * 0.1,
+      amplitude: 0.34,
     });
   }
 
@@ -141,13 +195,14 @@ export async function createTitleScene(
     const t = reduced.matches ? 0 : clock.getElapsedTime();
     for (let i = 0; i < bodies.length; i += 1) {
       const b = bodies[i]!;
-      b.mesh.position.set(
+      b.object.position.set(
         b.base.x + Math.sin(t * b.speed + b.phase) * b.amplitude,
-        b.base.y + Math.cos(t * b.speed * 0.73 + b.phase) * b.amplitude * 0.72,
-        b.base.z + Math.sin(t * b.speed * 0.42 + b.phase) * b.amplitude * 0.45,
+        b.base.y + Math.cos(t * b.speed * 0.82 + b.phase) * 0.26,
+        b.base.z + Math.sin(t * b.speed * 0.57 + b.phase) * 0.22,
       );
-      b.mesh.rotation.x = b.baseRotation.x + t * b.speed * (i % 2 ? 0.34 : -0.28);
-      b.mesh.rotation.y = b.baseRotation.y + t * b.speed * (i % 3 ? -0.25 : 0.38);
+      b.object.rotation.x = b.baseRotation.x + t * b.speed * (i % 2 ? 0.34 : -0.28);
+      b.object.rotation.y = b.baseRotation.y + t * b.speed * (i % 3 ? -0.25 : 0.38);
+      b.object.rotation.z = b.baseRotation.z + t * b.speed * (i % 4 ? 0.14 : -0.18);
     }
     const targetX = reduced.matches ? 0 : pointerX * 0.55;
     const targetY = reduced.matches ? 0 : -pointerY * 0.36;
