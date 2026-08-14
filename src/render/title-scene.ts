@@ -5,10 +5,14 @@ import * as THREE from 'three/webgpu';
 
 // 材質。roughness 0.16–0.28 / metalness 0–0.06 / clearcoat 0.7–1.0 の光沢プラスチック帯。
 const BODY_COLORS = [0xdedbd2, 0x696c72, 0x25282e, 0xa7a7a2] as const;
-const ACCENT_COLOR = 0xff4b1f;
-const BODY_COUNT = 34;
-// 群れ全体のうちアクセント色を持つ個体の割合を 5% 以下に保つ添字。
-const ACCENT_INDICES = new Set([7, 23]);
+const ACCENT_COLOR = 0xff5a00;
+const NEAR_ACCENT_COLOR = 0xff8b52;
+const SECONDARY_ACCENT_COLOR = 0x19f5c2;
+const BODY_COUNT = 24;
+// V6 §5.2 に従い、Accent / Near accent は各1体、Secondaryは1体だけに絞る。
+const ACCENT_INDEX = 7;
+const NEAR_ACCENT_INDEX = 15;
+const SECONDARY_ACCENT_INDEX = 21;
 
 export interface TitleScene {
   // 破棄。アニメーションループとリスナーを止め、GPU 資源を解放する。
@@ -61,6 +65,12 @@ export async function createTitleScene(
   const accentMaterial = new THREE.MeshPhysicalMaterial({
     color: ACCENT_COLOR, roughness: 0.2, metalness: 0.03, clearcoat: 0.94, clearcoatRoughness: 0.18,
   });
+  const nearAccentMaterial = new THREE.MeshPhysicalMaterial({
+    color: NEAR_ACCENT_COLOR, roughness: 0.22, metalness: 0.02, clearcoat: 0.9, clearcoatRoughness: 0.2,
+  });
+  const secondaryAccentMaterial = new THREE.MeshPhysicalMaterial({
+    color: SECONDARY_ACCENT_COLOR, roughness: 0.24, metalness: 0.02, clearcoat: 0.86, clearcoatRoughness: 0.22,
+  });
 
   // 決定的な乱数。起動のたびに同じ配置から漂流を始める。
   let seed = 0x20115;
@@ -81,7 +91,10 @@ export async function createTitleScene(
   const bodies: Drift[] = [];
   for (let i = 0; i < BODY_COUNT; i += 1) {
     const geometry = geometries[i % geometries.length]!;
-    const material = ACCENT_INDICES.has(i) ? accentMaterial : materials[Math.floor(random() * materials.length)]!;
+    const material = i === ACCENT_INDEX ? accentMaterial
+      : i === NEAR_ACCENT_INDEX ? nearAccentMaterial
+        : i === SECONDARY_ACCENT_INDEX ? secondaryAccentMaterial
+          : materials[Math.floor(random() * materials.length)]!;
     const mesh = new THREE.Mesh(geometry, material);
     mesh.scale.setScalar(0.42 + random() * 0.78);
     mesh.position.set((random() - 0.5) * 15.5, (random() - 0.5) * 9.3, -5.5 + random() * 7.2);
@@ -154,6 +167,8 @@ export async function createTitleScene(
       for (const g of geometries) g.dispose();
       for (const m of materials) m.dispose();
       accentMaterial.dispose();
+      nearAccentMaterial.dispose();
+      secondaryAccentMaterial.dispose();
       renderer.dispose();
     },
   };

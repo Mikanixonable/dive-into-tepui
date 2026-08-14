@@ -1,8 +1,5 @@
 // 起動時のステージ選択画面 GUI。
-// デザインは DEVELOP/TYPOGRAPHY_LOGOTYPE_SYMBOL_PROPOSAL_V3.md(第三版)の表示場面規則
-// (Scene first / 単一アクセント / 変則改行ロゴタイプ / 外周線なしの境界 / 角丸とピル)に従い、
-// 背景の 3D 場面は第五版(DEVELOP/UI_DESIGN_REFERENCE_V5.md §7)の光沢プラスチック造形を使う。
-// 配色・書体は第三版標本自身の値であり、theme.ts への統合は移行計画 Phase 1 の仕事。
+// DEVELOP/UI_DESIGN_REFERENCE_V6.md の Rich title window を起動導線へ適用する。
 import { STAGE_CLASSES } from './stages/stage-dictionary';
 import { UnlockManager } from './unlock-manager';
 import type { StageClass } from './stages/stage';
@@ -12,69 +9,80 @@ import { MQ_COMPACT } from './hud/breakpoints';
 import { createTitleScene, type TitleScene } from '../render/title-scene';
 import tepuiRmqrUrl from '../assets/tepui-rmqr.svg';
 
-// 第三版標本のダーク面パレット(§7.1)とアクセント hsl(12 100% 56%) = #FF4B1F。
 const PAGE = '#07080a';
+const SURFACE_0 = '#08090c';
+const SURFACE_2 = '#15171c';
 const TITLE_INK = '#eeeaf5';
+const BODY_INK = '#c3bec9';
 const MUTED_INK = '#89838f';
 const FAINT_INK = '#5f5a65';
-const ACCENT_V3 = '#ff4b1f';
+const ACCENT = '#ff5a00';
+const NEAR_ACCENT = '#ff8b52';
+const SECONDARY_ACCENT = '#19f5c2';
 
-// 第三版の書体スタック(§3)。WOFF2 自己配信前はローカルフォールバックで成立させる。
+// V6 §3 の voice 別書体。Web font が使えない環境でも role ごとのフォールバックを保つ。
 const FONT_SANS = '"Arimo","Zen Kaku Gothic Antique","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif';
 const FONT_SERIF = '"Cormorant Garamond","Zen Old Mincho","Hiragino Mincho ProN","Yu Mincho",serif';
 const FONT_MONO = '"IBM Plex Mono","Zen Kaku Gothic Antique","Hiragino Kaku Gothic ProN","Yu Gothic",monospace';
+const FONT_CANTONESE = '"Noto Serif HK","Source Han Serif HC","Songti TC",serif';
 
-// 第三版 §9.1 の角丸段。Feature=48 が 3D 表示部、Window=34 がグラス面、Card=22 が行、Pill がタブ。
-const RADIUS_FEATURE = '48px';
-const RADIUS_WINDOW = '34px';
-const RADIUS_CARD = '22px';
-const RADIUS_PILL = '999px';
+const RADIUS_WINDOW = '30px';
+const RADIUS_PANEL = '16px';
+const RADIUS_CONTROL = '11px';
 
 const STYLE = `
 #stage-select {
-  position: fixed; inset: 0; z-index: 100; overflow: hidden; isolation: isolate;
-  background: ${PAGE}; color: ${TITLE_INK}; font-family: ${FONT_SANS};
+  position: fixed; inset: 0; z-index: 100; overflow: auto;
+  background:
+    radial-gradient(circle at 10% 16%, rgb(255 90 0 / 4%), transparent 28rem),
+    radial-gradient(circle at 88% 58%, rgb(25 245 194 / 3%), transparent 32rem), ${PAGE};
+  color: ${BODY_INK}; font-family: ${FONT_SANS}; -webkit-font-smoothing: antialiased;
+}
+#stage-select .ss-shell {
+  width: min(calc(100% - 24px), 1160px); min-height: 100%; margin-inline: auto;
+  display: grid; place-items: center; padding-block: 18px;
+}
+#stage-select .ss-rich-window {
+  position: relative; width: 100%; height: min(720px, calc(100dvh - 36px)); min-height: 560px;
+  overflow: hidden; isolation: isolate; border-radius: ${RADIUS_WINDOW}; background: ${SURFACE_0};
+  box-shadow: 0 24px 70px rgb(0 0 0 / 34%);
 }
 #stage-select .ss-scene {
-  position: absolute; inset: clamp(14px, 2.2vw, 32px); z-index: -2;
-  border-radius: ${RADIUS_FEATURE}; overflow: hidden; background: #08090b;
-  box-shadow: 0 24px 80px rgb(0 0 0 / 0.55);
+  position: absolute; inset: 0; z-index: -2; background: ${SURFACE_0};
 }
 #stage-select .ss-canvas { display: block; width: 100%; height: 100%; }
 #stage-select .ss-vignette {
   position: absolute; inset: 0; pointer-events: none;
   background:
-    linear-gradient(90deg, rgb(7 8 10 / 0.42), transparent 62%),
-    linear-gradient(0deg, rgb(7 8 10 / 0.72), transparent 40%),
-    radial-gradient(circle at 42% 44%, transparent 34%, rgb(7 8 10 / 0.4) 100%);
+    linear-gradient(90deg, rgb(4 5 7 / 0.78), transparent 62%),
+    linear-gradient(0deg, rgb(4 5 7 / 0.7), transparent 48%),
+    radial-gradient(circle at 64% 42%, transparent 0 20%, rgb(4 5 7 / 0.58) 78%);
 }
 #stage-select .ss-grid {
   position: relative; height: 100%; box-sizing: border-box;
   display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(300px, 430px);
   gap: clamp(20px, 4vw, 64px); align-items: center;
-  padding: clamp(28px, 6vh, 68px) clamp(30px, 5vw, 76px);
-  padding: clamp(28px, 6dvh, 68px) clamp(30px, 5vw, 76px);
+  padding: clamp(24px, 5vh, 56px) clamp(24px, 4vw, 48px);
+  padding: clamp(24px, 5dvh, 56px) clamp(24px, 4vw, 48px);
 }
 #stage-select .ss-hero { min-width: 0; }
 #stage-select .ss-eyebrow {
   display: flex; align-items: center; gap: 10px; margin: 0 0 14px;
-  color: ${MUTED_INK}; font-family: ${FONT_MONO};
-  font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase;
+  color: ${ACCENT}; font-family: ${FONT_MONO};
+  font-size: 10px; font-weight: 500; letter-spacing: 0.08em;
 }
 #stage-select .ss-eyebrow::before {
-  content: ""; width: 28px; height: 3px; border-radius: ${RADIUS_PILL}; background: ${ACCENT_V3};
+  content: ""; width: 28px; height: 2px; border-radius: 99px; background: ${ACCENT};
 }
 #stage-select .ss-logotype {
-  margin: 0; color: #fff; font-weight: 400;
-  font-size: clamp(34px, 6.3vw, 90px);
-  letter-spacing: -0.065em; line-height: 0.92; text-transform: uppercase;
-  mix-blend-mode: difference;
+  margin: 0; max-width: 720px; color: ${TITLE_INK}; font-weight: 400;
+  font-size: clamp(48px, 8vw, 104px); letter-spacing: -0.07em; line-height: 0.82;
 }
 #stage-select .ss-line { position: relative; display: block; width: fit-content; white-space: nowrap; }
-#stage-select .ss-line:nth-child(2) { margin-left: 0.42em; }
-#stage-select .ss-line:nth-child(3) { margin-left: 0.84em; }
+#stage-select .ss-line:nth-child(2) { margin-left: 0.38em; color: ${NEAR_ACCENT}; }
+#stage-select .ss-line:nth-child(3) { margin-left: 0.76em; }
 #stage-select .ss-orn {
-  position: absolute; left: calc(100% + 10px); color: #fff;
+  position: absolute; left: calc(100% + 10px); color: ${SECONDARY_ACCENT};
   font-family: ${FONT_MONO}; font-size: clamp(9px, 0.95vw, 12px);
   font-weight: 500; letter-spacing: 0.08em; line-height: 1;
 }
@@ -83,22 +91,24 @@ const STYLE = `
 #stage-select .ss-line:nth-child(3) .ss-orn { top: 0.02em; }
 #stage-select .ss-sub {
   width: fit-content; margin: clamp(16px, 2.4vw, 26px) 0 0 0.12em;
-  color: ${ACCENT_V3}; font-family: ${FONT_SERIF};
+  color: ${ACCENT}; font-family: ${FONT_SERIF};
   font-size: clamp(20px, 2.4vw, 32px); font-weight: 300; line-height: 1;
-  mix-blend-mode: difference;
 }
-#stage-select .ss-sub-ja {
-  width: fit-content; margin: 6px 0 0 0.22em;
-  color: ${ACCENT_V3}; font-family: ${FONT_SERIF};
-  font-size: clamp(14px, 1.3vw, 18px); font-weight: 400; line-height: 1.3;
-  mix-blend-mode: difference;
+#stage-select .ss-languages { display: flex; align-items: baseline; gap: 16px; margin: 12px 0 0 0.2em; }
+#stage-select .ss-cantonese {
+  margin: 0; color: ${NEAR_ACCENT}; font-family: ${FONT_CANTONESE};
+  font-size: clamp(32px, 4.2vw, 56px); font-weight: 700; line-height: 1; letter-spacing: 0.04em;
+}
+#stage-select .ss-french {
+  margin: 0; color: ${BODY_INK}; font-family: ${FONT_SANS};
+  font-size: clamp(13px, 1.4vw, 17px); font-weight: 500; line-height: 1.3;
 }
 #stage-select .ss-window {
   min-height: 0; max-height: 100%; box-sizing: border-box;
   display: flex; flex-direction: column; gap: 14px;
-  padding: 20px;
-  background: rgb(13 15 19 / 0.58); border-radius: ${RADIUS_WINDOW};
-  box-shadow: 0 24px 80px rgb(0 0 0 / 0.3);
+  padding: 17px;
+  background: rgb(13 15 19 / 0.68); border-radius: ${RADIUS_PANEL};
+  box-shadow: 0 18px 48px rgb(0 0 0 / 0.28);
   backdrop-filter: blur(24px) saturate(115%);
   -webkit-backdrop-filter: blur(24px) saturate(115%);
 }
@@ -106,24 +116,23 @@ const STYLE = `
   margin: 0 0 2px 8px; color: ${MUTED_INK};
   font-size: 15px; font-weight: 600; letter-spacing: 0.04em;
 }
-/* モード選択タブ: 第三版 §9.1 の Pill と §10.2 の「外周線なし・面色差」に合わせる。 */
 #stage-select .w-tabs { gap: 6px; }
 #stage-select .w-tabs .w-btn {
   flex: 1; min-height: 40px; padding: 8px 16px;
-  border: 0; border-radius: ${RADIUS_PILL};
-  background: rgb(24 27 33 / 0.72); color: ${MUTED_INK};
+  border: 0; border-radius: ${RADIUS_CONTROL};
+  background: ${SURFACE_2}; color: ${MUTED_INK};
   font-family: ${FONT_SANS}; font-size: 13px; font-weight: 600; letter-spacing: 0.04em;
 }
 #stage-select .w-tabs .w-btn:hover { background: rgb(36 40 48 / 0.8); color: ${TITLE_INK}; }
-#stage-select .w-tabs .w-btn.on { background: ${ACCENT_V3}; color: ${PAGE}; }
+#stage-select .w-tabs .w-btn.on { background: ${ACCENT}; color: ${PAGE}; }
 #stage-select .ss-list {
   min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 10px;
   padding: 2px 0;
 }
 #stage-select .ss-stage {
   box-sizing: border-box; min-height: 44px; padding: 14px 20px;
-  border-radius: ${RADIUS_CARD};
-  background: rgb(24 27 33 / 0.62); cursor: pointer; text-align: left;
+  border-radius: ${RADIUS_CONTROL};
+  background: rgb(21 23 28 / 0.82); cursor: pointer; text-align: left;
   transition: background 0.15s ease;
 }
 #stage-select .ss-stage:hover { background: rgb(36 40 48 / 0.78); }
@@ -133,7 +142,7 @@ const STYLE = `
   display: flex; align-items: baseline; gap: 10px;
   color: ${TITLE_INK}; font-size: 19px; letter-spacing: 0.04em; line-height: 1.4;
 }
-#stage-select .ss-stage:not(.locked):hover .ss-stage-label { color: ${ACCENT_V3}; }
+#stage-select .ss-stage:not(.locked):hover .ss-stage-label { color: ${NEAR_ACCENT}; }
 #stage-select .ss-stage.locked .ss-stage-label { color: ${FAINT_INK}; }
 #stage-select .ss-stage-key { font-family: ${FONT_MONO}; font-size: 11px; font-weight: 500; color: ${MUTED_INK}; }
 #stage-select .ss-stage-sub { margin-top: 3px; color: ${MUTED_INK}; font-size: 12px; line-height: 1.55; }
@@ -146,13 +155,14 @@ const STYLE = `
   color: ${FAINT_INK}; font-family: ${FONT_MONO}; font-size: 11px; cursor: pointer;
 }
 @media ${MQ_COMPACT} {
-  #stage-select { overflow-y: auto; }
-  #stage-select .ss-scene { position: fixed; border-radius: ${RADIUS_WINDOW}; }
+  #stage-select .ss-shell { place-items: start center; padding-block: 12px; }
+  #stage-select .ss-rich-window { height: auto; min-height: calc(100dvh - 24px); border-radius: 24px; }
   #stage-select .ss-grid {
     grid-template-columns: minmax(0, 1fr); align-items: start; height: auto; min-height: 100%;
     gap: 24px; padding: 32px 24px 72px;
   }
-  #stage-select .ss-window { max-height: none; border-radius: ${RADIUS_CARD}; padding: 16px; }
+  #stage-select .ss-window { max-height: none; padding: 16px; }
+  #stage-select .ss-languages { flex-direction: column; gap: 7px; }
   #stage-select .ss-corner { display: none; }
 }
 `;
@@ -166,13 +176,25 @@ function ensureStyle(): void {
   document.head.appendChild(style);
 }
 
+// V6 のタイトル専用書体を読み込む。失敗時も各 role の OS fallback でレイアウトを保つ。
+function ensureTitleFonts(): void {
+  if (document.getElementById('stage-select-fonts')) return;
+  const link = document.createElement('link');
+  link.id = 'stage-select-fonts';
+  link.rel = 'stylesheet';
+  link.href = 'https://fonts.googleapis.com/css2?family=Arimo:wght@400;500;600&family=Cormorant+Garamond:wght@300;400&family=IBM+Plex+Mono:wght@500&family=Noto+Serif+HK:wght@700&family=Zen+Kaku+Gothic+Antique:wght@400;500;600&family=Zen+Old+Mincho:wght@400&display=swap';
+  document.head.appendChild(link);
+}
+
 // 起動選択画面(各ステージの selectGroup ごとのタブ)を表示し、選ばれたステージクラスで解決される Promise を返す。
 export function selectStage(unlockManager: UnlockManager): Promise<StageClass> {
   return new Promise((resolve) => {
     ensureStyle();
+    ensureTitleFonts();
     const root = document.createElement('div');
     root.id = 'stage-select';
     root.innerHTML =
+      '<div class="ss-shell"><div class="ss-rich-window">' +
       '<div class="ss-scene" aria-hidden="true">' +
       '<canvas class="ss-canvas"></canvas>' +
       '<div class="ss-vignette"></div>' +
@@ -186,10 +208,14 @@ export function selectStage(unlockManager: UnlockManager): Promise<StageClass> {
       '<span class="ss-line">TEPUI<sup class="ss-orn">Ω⁺</sup></span>' +
       '</h1>' +
       '<p class="ss-sub">The Orbit Is the Battlefield</p>' +
-      '<p class="ss-sub-ja">軌道が戦場になる</p>' +
+      '<div class="ss-languages">' +
+      '<p class="ss-cantonese" lang="zh-HK">軌道之外</p>' +
+      '<p class="ss-french" lang="fr">Séquence orbitale · trajectoire prévue</p>' +
       '</div>' +
       '</div>' +
-      `<img class="ss-corner" src="${tepuiRmqrUrl}" alt="dive into tepui">`;
+      '</div>' +
+      `<img class="ss-corner" src="${tepuiRmqrUrl}" alt="Dive into Tepui">` +
+      '</div></div>';
 
     // グラスウィンドウ: タブとステージ一覧を 3D 場面の上に浮かべる(外周線なし)。
     const windowDiv = document.createElement('div');
@@ -241,7 +267,7 @@ export function selectStage(unlockManager: UnlockManager): Promise<StageClass> {
     debugLink.className = 'ss-debug';
     debugLink.textContent = 'debug stage [d]';
     debugLink.addEventListener('click', () => done(StageDebug));
-    root.appendChild(debugLink);
+    (root.querySelector('.ss-rich-window') as HTMLElement).appendChild(debugLink);
 
     document.body.appendChild(root);
 
