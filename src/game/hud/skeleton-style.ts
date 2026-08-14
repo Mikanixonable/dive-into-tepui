@@ -12,7 +12,7 @@ export const SKELETON_STYLE = `
   font-family: var(--font-family);
   /* body 直下の他要素(タッチ操作パッド・天球グリッドのラベル層)との前後関係を決める。
      #hud の内側の重なり順は overlay-layer.ts のレイヤが持つ。 */
-  color: var(--text); user-select: text; z-index: 10;
+  color: var(--text); color-scheme: dark; user-select: text; z-index: 10;
   font-size: var(--font-l);
 }
 /* 読み取りたい数値は選択できるようにするが、操作部品とマーカーは対象外にする —
@@ -43,33 +43,40 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 /* ゲーム状態由来の表示/非表示。パネルの折りたたみ(利用者の好み)とは別軸。 */
 #hud .hidden { display: none !important; }
 #hud .panel {
-  position: absolute; background: var(--surface);
-  border: 1px solid var(--edge); border-radius: var(--radius-m);
-  padding: var(--space-4) var(--space-5); line-height: 1.5; backdrop-filter: blur(4px);
+  position: absolute; background: var(--glass-quiet);
+  border: 0; border-radius: var(--radius-panel);
+  padding: var(--space-5); line-height: 1.5;
+  box-shadow: 0 12px 32px var(--shade-1);
+  backdrop-filter: blur(14px) saturate(82%);
 }
 #hud .panel h3 {
-  font-size: var(--font-s); letter-spacing: 2.5px; color: var(--accent);
-  border-bottom: 1px solid var(--accent-edge-soft); margin-bottom: var(--space-3); padding-bottom: var(--space-2);
-  font-weight: 600;
+  font-size: var(--font-s); letter-spacing: 0.06em; color: var(--title);
+  border: 0; margin-bottom: var(--space-4); padding: 0;
+  font-weight: 600; text-transform: none;
 }
 /* PanelShell: 見出し行に折りたたみトグルを添える共通外枠。 */
 #hud .panel-shell-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
 #hud .panel-shell-head h3 { flex: 1 1 auto; min-width: 0; }
 #hud .panel-shell-collapse {
-  flex: 0 0 auto; background: none; border: none; color: var(--text-dim); font: inherit; cursor: pointer; pointer-events: auto;
+  flex: 0 0 auto; width: 24px; height: 24px; background: transparent; border: 0;
+  border-radius: var(--radius-micro); color: var(--muted); font: inherit; cursor: pointer; pointer-events: auto;
 }
+#hud .panel-shell-collapse:hover { color: var(--accent-near); background: var(--surface-2); }
+#hud .panel-shell-collapse:focus-visible { outline: 2px solid var(--accent-near); outline-offset: 2px; }
 #hud .panel-shell-body.collapsed { display: none !important; }
 #hud .row { display: flex; justify-content: space-between; gap: var(--space-5); }
 #hud .row .k { color: var(--text-dim); }
-#hud .row .v { color: var(--text); min-width: 90px; text-align: right; }
+#hud .row .v {
+  color: var(--text); min-width: 90px; text-align: right; font-variant-numeric: tabular-nums;
+}
 /* パネル内の数値・テキスト入力欄(ValueInput)の既定幅。見た目自体は widgets/ の .w-input が持つ。 */
 #hud .panel input[type="number"], #hud .panel input[type="text"] { width: 64px; }
 
 /* マップ系パネルは左右のレール内で通常フローに積む。内容が増えても他の
    パネルを押し退けるだけで、固定座標による重なりを起こさない。 */
 #hud .hud-rail {
-  position: absolute; top: 40px; bottom: 12px;
-  display: flex; flex-direction: column; align-items: stretch; gap: var(--space-4);
+  position: absolute; top: 48px; bottom: 12px;
+  display: flex; flex-direction: column; align-items: stretch; gap: 7px;
   pointer-events: none; min-height: 0; overflow-x: hidden; overflow-y: auto;
   scrollbar-width: thin; overscroll-behavior: contain;
 }
@@ -81,8 +88,13 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
    常時 auto にすると、マップ以外でパネルが1枚も無い空のレールが背後のカメラ操作を阻害する。 */
 #hud.map-mode .hud-rail { pointer-events: auto; touch-action: pan-y; }
 #hud .rail-toggle, #hud-combat-shelf-toggle {
-  width: 26px; height: 26px; border: 1px solid var(--edge); border-radius: var(--radius-m);
-  background: var(--surface); color: var(--accent); cursor: pointer; pointer-events: auto;
+  width: 30px; height: 30px; border: 0; border-radius: var(--radius-control);
+  background: var(--surface-2); color: var(--accent); cursor: pointer; pointer-events: auto;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+#hud .rail-toggle:hover, #hud-combat-shelf-toggle:hover { color: var(--accent-near); background: var(--surface-3); }
+#hud .rail-toggle:focus-visible, #hud-combat-shelf-toggle:focus-visible {
+  outline: 2px solid var(--accent-near); outline-offset: 2px;
 }
 #hud .rail-toggle { display: none; position: absolute; top: 8px; z-index: 20; }
 #hud.map-mode .rail-toggle { display: block; }
@@ -105,7 +117,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
   pointer-events: none; z-index: 1;
 }
 #hud-combat-shelf {
-  display: flex; align-items: flex-end; gap: var(--space-5);
+  display: flex; align-items: flex-end; gap: 7px;
   pointer-events: none; min-width: 0; flex: 1 1 auto;
 }
 #hud-combat-shelf.collapsed { display: none; }
@@ -122,8 +134,10 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 /* マップモードでは #hud-rail-toggle-right(right:8px, 26px 角)がこの位置に重なるので、
    その右端(8+26=34px)より確実に外側へ避けておく。 */
 #hud-viewbadge {
-  position: absolute; top: 8px; right: 44px;
+  position: absolute; top: 8px; right: 48px;
   display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-2) var(--space-4); border-radius: var(--radius-control);
+  background: var(--glass-quiet); backdrop-filter: blur(14px) saturate(82%);
   color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: 1.2px;
   white-space: nowrap; opacity: 0.9;
 }
@@ -132,16 +146,16 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 /* span. まで指定して .w-btn 側の font-size/padding/background より確実に勝たせる
    (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
 #hud-viewbadge span.vb-view-btn {
-  background: transparent;
-  border-radius: var(--radius-m); padding: var(--space-1) var(--space-3);
+  background: var(--surface-2);
+  border-radius: var(--radius-micro); padding: var(--space-1) var(--space-3);
   color: var(--text-dim); font: inherit; letter-spacing: inherit;
 }
 #hud-viewbadge span.vb-view-btn:hover { color: var(--text); border-color: var(--accent-soft); }
 #hud-globalstatus {
   position: absolute; top: 0; left: 50%; transform: translateX(-50%);
   pointer-events: auto;
-  padding: var(--space-2) var(--space-5); border-radius: 0 0 var(--radius-m) var(--radius-m);
-  background: var(--surface); border: 1px solid var(--edge); border-top: none; backdrop-filter: blur(4px);
+  padding: var(--space-3) var(--space-5); border-radius: 0 0 var(--radius-panel) var(--radius-panel);
+  background: var(--glass-quiet); border: 0; backdrop-filter: blur(14px) saturate(82%);
   font-size: var(--font-s); letter-spacing: 1px; font-variant-numeric: tabular-nums;
   color: var(--text-dim);
   display: flex; align-items: center; gap: var(--space-4); white-space: nowrap;
@@ -151,8 +165,9 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud-globalstatus .gs-sep { color: var(--edge); }
 #hud-map-scale {
   position: absolute; right: 12px; bottom: 12px; display: none; pointer-events: none;
-  padding: var(--space-2) var(--space-4) var(--space-3); border: 1px solid var(--edge); border-radius: var(--radius-m);
-  background: var(--surface); color: var(--text-dim); font-size: var(--font-xxs); line-height: 1.1;
+  padding: var(--space-2) var(--space-4) var(--space-3); border: 0; border-radius: var(--radius-control);
+  background: var(--glass-quiet); backdrop-filter: blur(14px) saturate(82%);
+  color: var(--text-dim); font-size: var(--font-xxs); line-height: 1.1;
   font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap;
 }
 #hud-map-scale .map-scale-value { color: var(--text); }
@@ -170,9 +185,10 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud-map-scale .map-scale-tick.end { right: 0; }
 #hud-hint {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-  background: var(--surface); border: 1px solid var(--accent-edge); border-radius: var(--radius-m);
+  background: var(--glass-focus); border: 0; border-radius: var(--radius-panel);
   padding: var(--space-4) var(--space-6);
   color: var(--accent-soft); font-size: var(--font-xl);
+  box-shadow: 0 16px 48px var(--shade-1); backdrop-filter: blur(20px) saturate(82%);
   transition: opacity var(--transition-slow); opacity: 0; text-align: center;
 }
 #hud-chase-reset {
@@ -181,17 +197,20 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
   width: 32px; height: 32px; border-radius: 50%;
   display: flex; justify-content: center; align-items: center;
   padding: 0;
-  border: 1px solid var(--edge); background: var(--surface); color: var(--text-dim);
+  border: 0; background: var(--glass-quiet); color: var(--text-dim);
+  backdrop-filter: blur(14px) saturate(82%);
 }
-#hud-chase-reset:hover { border-color: var(--accent); color: var(--accent); }
+#hud-chase-reset:hover { background: var(--surface-2); color: var(--accent-near); }
+#hud-chase-reset:focus-visible { outline: 2px solid var(--accent-near); outline-offset: 2px; }
 #hud-toast {
   position: absolute; top: 18%; left: 50%; transform: translateX(-50%);
-  background: var(--surface); border: 1px solid var(--edge); border-radius: var(--radius-m); padding: var(--space-5) var(--space-6);
+  background: var(--glass-focus); border: 0; border-radius: var(--radius-panel); padding: var(--space-5) var(--space-6);
   color: var(--text); font-size: var(--font-xl); text-align: center;
+  box-shadow: 0 16px 48px var(--shade-1); backdrop-filter: blur(20px) saturate(82%);
   transition: opacity var(--transition-slow); opacity: 0; line-height: 1.8;
 }
 #hud .sim-speed-hot { color: var(--accent); }
-#hud .mode-tgt { color: var(--danger); }
+#hud .mode-tgt { color: var(--accent); }
 #hud .warn-hot { color: var(--danger); }
 
 /* マーカー面(層)の意匠。位置固定バッジ・マップパネルとは異なる世界座標投影の側。 */
@@ -210,10 +229,10 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 .mk-boresight { color: var(--text-strong); font-size: var(--glyph-boresight); }
 #mk-bore .sym { width: 48px; height: 48px; }
 #mk-bore .lbl { top: -14px; left: 19px; transform: none; font-size: var(--font-xxs); letter-spacing: .4px; color: var(--text-dim); text-shadow: 0 0 3px var(--bg); }
-.mk-target { color: var(--text-strong); }
+.mk-target { color: var(--accent); }
 .mk-secondary-target { color: var(--accent-secondary); }
 .mk-enemy { color: var(--text-strong); }
-.mk-lead { color: var(--danger); }
+.mk-lead { color: var(--accent); }
 .mk-pro { color: var(--axis-prograde); }
 .mk-retro { color: var(--axis-prograde); }
 .mk-nrm { color: var(--axis-normal); }
@@ -296,5 +315,11 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 @media ${MQ_SHORT} {
   #hud-combat-shelf-wrap { top: 60px; }
   #hud-map-scale { bottom: 52px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #hud *, #hud *::before, #hud *::after {
+    animation-duration: 0.001ms !important; animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important; scroll-behavior: auto !important;
+  }
 }
 `;
