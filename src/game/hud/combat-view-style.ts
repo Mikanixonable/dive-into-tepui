@@ -15,8 +15,8 @@ export const COMBAT_VIEW_STYLE = `
   -webkit-backdrop-filter: blur(14px) saturate(82%);
   box-shadow: 0 12px 30px var(--shade-1);
 }
-#hud:not(.map-mode):not(.dock-mode) .hud-rail-left > #hud-status,
-#hud:not(.map-mode):not(.dock-mode) .hud-rail-right > #hud-orbit,
+#hud:not(.map-mode):not(.dock-mode) .hud-rail-right > #hud-status,
+#hud:not(.map-mode):not(.dock-mode) .hud-rail-left > #hud-orbit,
 #hud:not(.map-mode):not(.dock-mode) .hud-rail-right > #hud-enemies {
   width: 100%;
 }
