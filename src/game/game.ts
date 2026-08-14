@@ -402,7 +402,7 @@ export class Game {
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
     this.entities.syncPlayerTrajectoryLines(
       player, displayWindow, overviewMode, this.ephemeris, fo,
-      this.cameraSystem.activeCamera, attractors,
+      this.cameraSystem.activeCamera, attractors, visibilityPolicy,
     );
 
     if (player) {
