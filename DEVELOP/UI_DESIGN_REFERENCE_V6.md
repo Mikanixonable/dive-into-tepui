@@ -164,6 +164,24 @@ Mémoire cristalline
 Trajectoire prévue
 ```
 
+### 3.5 Runtime font bridge
+
+ゲーム本体のHUDは`src/main.ts`でJetBrains Mono Latin 400とHackGenを読み込み、`src/game/theme.ts`の
+`FONT_FAMILY`をUI全域へ適用する。これは戦闘、座標、時刻、診断を扱うMachine measureとして維持する。
+
+起動時のタイトルとステージ選択はNeutral、Classic、Machineの三声を使用する。本番配信では次の書体を
+WOFF2として自己配信し、OSフォールバックだけに依存しない。
+
+| Runtime context | Primary | Japanese | Design role |
+| --- | --- | --- | --- |
+| Combat HUD / map / console | JetBrains Mono | HackGen | 既存のMachine measure |
+| Title / stage / general UI | Arimo | Zen Kaku Gothic Antique | Neutral voice |
+| Subtitle / story / quotation | Cormorant Garamond | Zen Old Mincho | Classic voice |
+| Diagnostic console | IBM Plex Mono | Zen Kaku Gothic Antique | 正式なCUI voice |
+
+JetBrains MonoとHackGenは既存HUDの互換性を保つ。新しい一般UIをすべて等幅へ寄せず、Machineとして意味の
+ある表示に限定する。
+
 ---
 
 ## 4. 三色カラーシステム
@@ -229,6 +247,24 @@ Light modeは暖かい灰白を背景にし、Accentの明度をDarkより下げ
 - Alpha `rgb(14 16 20 / 72%)`: Glass面の透明度。
 - Semantic token: `--accent-near`のように値でなく役割で命名する。
 
+### 4.6 Runtime semantic exceptions
+
+ゲーム世界の物理軸、危険、予測、識別は三色へ統合しない。これらは意味が現れる瞬間だけ使用し、通常のUI面、
+タイトル、副題へ流用しない。静的標本では各Source HEXをHSL編集器で個別に選択し、テーマ上の見え方を確認する。
+
+| Runtime token | Source HEX | 意味 |
+| --- | --- | --- |
+| Danger | `#FF4F5E` | 危険、低装甲、警報 |
+| Axis prograde | `#3B82F6` | Δvの進行・逆行軸 |
+| Axis normal | `#10B981` | Δvの法線・反法線軸 |
+| Axis radial | `#EF4444` | Δvの動径内外軸 |
+| Planned marker | `#8FD0FF` | 計画位置、予測軌道 |
+| Target direction | `#FF7AB0` | ターゲット方向 |
+
+現行UIトークン`#FF6A00`、`#FF9040`、`#00C8FF`は、それぞれAccent、Near accent、Secondaryへ
+意味を保ったまま対応する。ゲーム世界の弾光、推進炎、天体表面、敵個体色はMaterial colorであり、UIの
+主要三色とは分離する。
+
 ---
 
 ## 5. Rich title window
@@ -285,7 +321,7 @@ Page background
 数式を本文へ貼らない。ソースは`data-tex`または構造化データとして保持する。
 
 ```html
-<div class="math" data-tex="\\Delta v_p = +12.48\\,\\mathrm{m\\,s^{-1}}"></div>
+<div class="math" data-tex="\Delta v_p = +12.48\,\mathrm{m\,s^{-1}}"></div>
 ```
 
 数式は装飾であってもTeX文法として成立させる。実測値と装飾式は`measurement`、`motif`、`chapter`などの
@@ -631,4 +667,3 @@ Tepui 12 · Palace remnant
 - [Noto Cuneiform](https://github.com/notofonts/cuneiform)
 - [Noto Symbols](https://github.com/notofonts/symbols)
 - [KaTeX](https://github.com/KaTeX/KaTeX)
-
