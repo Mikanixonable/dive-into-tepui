@@ -10,7 +10,7 @@ import { containingBody } from '../../physics/sphere-contact';
 import { isBurnedUp } from '../../physics/atmosphere';
 import { Vec3, len, sub, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
-import { OrbitLine, OrbitLineExcludeNearBody } from '../orbit-line';
+import { OrbitLine } from '../orbit-line';
 import { TrajectoryLine } from '../trajectory-line';
 import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -137,14 +137,13 @@ export class GameEntity {
   }
 
   // orbitLine を、現在位置で最も強く引く天体を中心とする軌道楕円に合わせる。
-  // show が false のときは非表示にする。force/excludeNearBody は OrbitLine.sync へそのまま渡す。
+  // show が false のときは非表示にする。force は OrbitLine.sync へそのまま渡す。
   syncOrbitLine(
-    show: boolean, fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
-    force = false, excludeNearBody?: OrbitLineExcludeNearBody,
+    show: boolean, fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[], force = false,
   ): void {
     if (this.orbitLine === null) return;
     const center = strongestAttractor(this.state.r, attractors);
-    this.orbitLine.sync(show ? this.orbitalElementsAround(center) : null, fo, camera, force, excludeNearBody);
+    this.orbitLine.sync(show ? this.orbitalElementsAround(center) : null, fo, camera, force);
   }
 
   // trajectoryLine を、現在時刻以降の predictedTrajectory に合わせる(線の先頭が常に現在位置に

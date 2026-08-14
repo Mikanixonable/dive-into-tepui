@@ -406,9 +406,9 @@ export const APSIS_MIN_ECC = 0.01;
 export const PLAN_TICK_MIN_PX = 40; // 目盛同士の最小画面間隔 [px]
 export const PLAN_TICK_LABEL_MIN_PX = 90; // ラベルを付ける最小画面間隔 [px]
 export const PLAN_TICK_MAX_COUNT = 400; // 生成する目盛候補の上限本数
-// 目盛の長さ [px]。単位切替後も平均的な目盛の長さが変わらないよう、絶対の階層ではなく
-// 現在表示中の最細目盛からの相対階層(0/1/2以上)で長さを引く。
-export const PLAN_TICK_LENGTH_PX = [7, 12, 18] as const;
+// 目盛点の半径 [px]。単位切替後も平均的な目盛の大きさが変わらないよう、絶対の階層ではなく
+// 現在表示中の最細目盛からの相対階層(0/1/2以上)で半径を引く。
+export const PLAN_TICK_RADIUS_PX = [1.5, 2.5, 3.5] as const;
 
 // --- エンティティの過去・未来状態列(physics/dynamic-trajectory.ts の DynamicTrajectory.history/Predictor) ---
 export const TRAJECTORY_SAMPLES_PER_REV = 32; // 1周回あたりの保持サンプル数(補間誤差 30m 程度に収まる実測値)
@@ -564,3 +564,12 @@ export const LINE_RENDER_ORDER = {
   plan: 4,             // 計画軌道(破線)
   predicted: 5,        // 積分予測線。解析楕円の代替なので、両方出る境界フレームでは必ずこちらを手前に置く
 } as const;
+
+// 惑星・衛星の参照軌道線のフェード距離 [m]。カメラから天体までの距離がこれ未満なら非表示、
+// FAR 以上なら完全表示、その間は距離に応じて線形にフェードインする。
+export const PLANET_ORBIT_LINE_FADE_NEAR_DIST = 1e9; // 100万km
+export const PLANET_ORBIT_LINE_FADE_FAR_DIST = 1e10; // 1000万km
+export const SATELLITE_ORBIT_LINE_FADE_NEAR_DIST = 5e8; // 50万km
+export const SATELLITE_ORBIT_LINE_FADE_FAR_DIST = 1e9; // 100万km
+// 参照軌道線が完全表示のときの不透明度。
+export const REFERENCE_LINE_OPACITY = 0.1;

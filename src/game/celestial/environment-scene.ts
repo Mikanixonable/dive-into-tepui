@@ -6,7 +6,7 @@ import { kinematicState } from '../../physics/kinematic-state';
 import { CelestialRegistry, SolarSystemId, bodyDef, primaryOf } from '../../physics/solar-system';
 import { OrbitalElements } from '../../physics/elements';
 import { Attractor, AttractorId, OrbitingId, orbitalElementsOf } from '../../physics/attractor';
-import { Vec3, v3, sub } from '../../physics/vec3';
+import { Vec3, v3, sub, len } from '../../physics/vec3';
 import { OrbitLine } from '../orbit-line';
 import { createStars, STAR_SHELL_RADIUS } from '../../render/stars';
 import { CelestialGrid, CelestialGridVisibility } from '../../render/celestial-grid';
@@ -170,7 +170,7 @@ export class EnvironmentScene {
     this.syncReferenceLines(
       displayTime, floatingOrigin, cameraSystem.overviewMode,
       focusTargetId(cameraSystem.overviewCamera.focus), cameraSystem.bodyClassToggles,
-      visibilityPolicy, nearbyIds, cameraSystem.activeCamera);
+      visibilityPolicy, nearbyIds, cameraSystem.activeCamera, cameraSystem.activeCameraPos);
     this.celestialGrid.sync(
       gridVisibility, cameraSystem.activeCamera,
       cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
@@ -183,11 +183,12 @@ export class EnvironmentScene {
     this.starsMesh.scale.setScalar(cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
   }
 
-  // 広範囲視点のときだけ参照軌道線を表示する(戦闘ビューでは非表示)。
+  // 広範囲視点のときだけ参照軌道線を表示する(戦闘ビューでは非表示)。cameraPos はフェード
+  // 距離を測る基準(カメラの真の ECI 位置)。
   private syncReferenceLines(
     simTime: number, fo: FloatingOrigin, overviewMode: boolean, focusId: AttractorId | undefined,
     toggles: BodyClassToggles, sharedVisibilityPolicy: MapVisibilityPolicy | null,
-    nearbyIds: readonly AttractorId[], camera: THREE.Camera,
+    nearbyIds: readonly AttractorId[], camera: THREE.Camera, cameraPos: Vec3,
   ): void {
     if (!overviewMode) {
       this.geoLine.sync(null, fo, camera);
@@ -208,10 +209,20 @@ export class EnvironmentScene {
       }
       const line = this.ensureReferenceLine(id);
       const el = this.orbitElementsFor(id, simTime);
-      const rel = el ? sub(this.ephemeris.stateOf(id, simTime).r, el.center.state.r) : null;
-      const excludeNearBody = el && rel ? this.excludeNearBodyFor(id, rel) : undefined;
-      line.sync(el, fo, camera, false, excludeNearBody);
+      line.sync(el, fo, camera, false);
+      const dist = len(sub(this.ephemeris.stateOf(id, simTime).r, cameraPos));
+      line.setOpacity(this.referenceLineOpacityAt(id, dist));
     }
+  }
+
+  // カメラから天体までの距離 dist に応じた参照軌道線の不透明度。惑星と衛星でフェード距離が
+  // 異なる。
+  private referenceLineOpacityAt(id: OrbitingId, dist: number): number {
+    const isSatellite = bodyDef(this.ephemeris.registry, id).kind === 'satellite';
+    const nearDist = isSatellite ? C.SATELLITE_ORBIT_LINE_FADE_NEAR_DIST : C.PLANET_ORBIT_LINE_FADE_NEAR_DIST;
+    const farDist = isSatellite ? C.SATELLITE_ORBIT_LINE_FADE_FAR_DIST : C.PLANET_ORBIT_LINE_FADE_FAR_DIST;
+    const t = Math.min(1, Math.max(0, (dist - nearDist) / (farDist - nearDist)));
+    return t * C.REFERENCE_LINE_OPACITY;
   }
 
   // 点群はマップを一度も開かないプレイでは不要。最初のマップ更新時にだけ生成・登録する。
@@ -228,8 +239,7 @@ export class EnvironmentScene {
     if (existing) return existing;
     const color = bodyDef(this.ephemeris.registry, id).kind === 'satellite'
       ? SATELLITE_REFERENCE_LINE_COLOR : PLANET_REFERENCE_LINE_COLOR;
-    const line = new OrbitLine(color, 0.2, C.LINE_RENDER_ORDER.reference);
-    line.line.renderOrder = 0;
+    const line = new OrbitLine(color, C.REFERENCE_LINE_OPACITY, C.LINE_RENDER_ORDER.reference);
     this.scene.add(line.line);
     this.referenceLines.set(id, line);
     return line;
@@ -241,13 +251,6 @@ export class EnvironmentScene {
     line.line.parent?.remove(line.line);
     line.dispose();
     this.referenceLines.delete(id);
-  }
-
-  // 天体は自らの軌道楕円上に乗っているため、その楕円をそのまま描くと天体メッシュと
-  // depth が競合してチラつく(z-fighting)。天体の現在の離心近点角と半径を返し、
-  // OrbitLine 側でその周辺のセグメントを間引かせる。rel は中心天体相対の現在位置。
-  private excludeNearBodyFor(id: OrbitingId, rel: Vec3): { position: Vec3; radius: number } {
-    return { position: rel, radius: bodyDef(this.ephemeris.registry, id).radius };
   }
 
   // 公転天体の接触軌道要素(表示専用)。衛星は親惑星中心、惑星は主星中心 — 中心天体自身も
