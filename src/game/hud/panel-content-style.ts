@@ -261,6 +261,43 @@ body.touch-ui-active #hud-status .status-throttle-touch { display: flex; }
 #hud-pause-menu .pm-close-row { margin-top: var(--space-5); text-align: center; }
 #hud-pause-menu .w-tabs { margin-bottom: var(--space-4); }
 #hud-pause-menu .gp-body { display: flex; flex-direction: column; gap: var(--space-4); }
+#hud-settings-view {
+  inset: 0; display: none; overflow-y: auto; pointer-events: auto;
+  padding: clamp(24px, 7vh, 72px) max(var(--space-6), 6vw);
+  border-radius: 0; background: var(--shade-2); box-shadow: none;
+}
+#hud-settings-view .sv-header,
+#hud-settings-view .sv-description,
+#hud-settings-view .sv-section,
+#hud-settings-view .sv-footer { width: min(100%, 720px); margin-inline: auto; }
+#hud-settings-view .sv-header {
+  display: flex; align-items: baseline; gap: var(--space-4);
+  border-bottom: 1px solid var(--edge); padding-bottom: var(--space-4);
+}
+#hud-settings-view .sv-header h2 { color: var(--title); font-size: var(--font-2xl); letter-spacing: 0.08em; }
+#hud-settings-view .sv-eyebrow { color: var(--accent); font-size: var(--font-xxs); letter-spacing: 0.12em; }
+#hud-settings-view .sv-description { margin-top: var(--space-5); color: var(--text-dim); font-size: var(--font-s); }
+#hud-settings-view .sv-section { margin-top: var(--space-7); }
+#hud-settings-view .sv-section h3 { color: var(--accent); font-size: var(--font-m); letter-spacing: 0.08em; }
+#hud-settings-view .sv-volume-row {
+  display: flex; align-items: center; gap: var(--space-4); margin-top: var(--space-4);
+  padding: var(--space-4); background: var(--surface-1); border: 1px solid var(--edge);
+}
+#hud-settings-view .sv-label { width: 4em; color: var(--text-dim); }
+#hud-settings-view .sv-volume-row .w-slider { flex: 1; }
+#hud-settings-view .sv-volume-value { width: 4em; color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
+#hud-settings-view .sv-track-list { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-4); }
+#hud-settings-view .sv-track-row {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-4);
+  min-height: 44px; padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
+  background: var(--surface-1); border: 1px solid transparent;
+}
+#hud-settings-view .sv-track-row:has(.w-btn.on) { border-color: var(--accent); background: var(--surface-2); }
+#hud-settings-view .sv-track-label { display: flex; align-items: baseline; gap: var(--space-4); color: var(--text); }
+#hud-settings-view .sv-track-number { color: var(--text-dim); font-size: var(--font-xxs); font-variant-numeric: tabular-nums; }
+#hud-settings-view .sv-preview-button { min-width: 76px; text-align: center; }
+#hud-settings-view .sv-track-actions { margin-top: var(--space-4); text-align: right; }
+#hud-settings-view .sv-footer { margin-top: var(--space-8); text-align: center; }
 
 @media ${MQ_MEDIUM_DOWN} {
   #hud-plan { min-width: 0; max-width: none; }
@@ -269,6 +306,7 @@ body.touch-ui-active #hud-status .status-throttle-touch { display: flex; }
   #hud-result .detail { font-size: var(--font-l); padding: var(--space-5) var(--space-6); max-width: 92vw; }
   #navball { top: 76px; width: 96px !important; height: auto !important; }
   #hud-pause-menu { min-width: 0; width: 78vw; }
+  #hud-settings-view { padding-inline: var(--space-5); }
   #hud-stagestatus { bottom: 8px; width: min(62vw, 440px); min-width: 0; max-height: 62px; overflow-y: auto; padding: var(--space-3) var(--space-5); gap: var(--space-4); }
   /* このブレークポイントのレール幅に合わせて左右の隙間を再計算する。 */
   #hud-predict-wrap {

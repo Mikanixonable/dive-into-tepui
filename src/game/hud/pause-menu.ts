@@ -23,6 +23,7 @@ export class PauseMenu implements OverlayHandle {
   onBgmVolumeChange: ((vol: number) => void) | null = null;
   onOpenSnapshots: (() => void) | null = null;
   onOpenPerfWindow: (() => void) | null = null;
+  onOpenSettings: (() => void) | null = null;
 
   private readonly overlayManager: OverlayManager;
   private readonly bgmSlider: Slider;
@@ -128,6 +129,14 @@ export class PauseMenu implements OverlayHandle {
     perfBtn.element.style.flex = '1';
     perfRow.appendChild(perfBtn.element);
     general.appendChild(perfRow);
+
+    const settingsRow = document.createElement('div');
+    settingsRow.className = 'pm-row';
+    settingsRow.style.marginTop = SPACE_4;
+    const settingsBtn = new Button('設定ビューを開く', () => this.onOpenSettings?.());
+    settingsBtn.element.style.flex = '1';
+    settingsRow.appendChild(settingsBtn.element);
+    general.appendChild(settingsRow);
 
     const quitBtn = new Button('ゲームを中断してタイトル画面に戻る', () => this.onQuitToTitle?.());
     quitBtn.element.classList.add('pm-quit');
