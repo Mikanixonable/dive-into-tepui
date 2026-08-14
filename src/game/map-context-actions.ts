@@ -622,9 +622,16 @@ export class MapContextActions {
   ): { title: string; subtitle?: string; items: PropertyWindowItem<MenuAction>[] } {
     const all = this.itemsFor(target, simTime);
     const header = all.find((it) => it.type === 'header');
+    // 戦闘ビューで開いたウィンドウは項目ショートカットを持たせない — [F]/[T] は自機の
+    // 進行方向リセット/ターゲット選択が既に使っており、同じキーを両方へは配れない。
+    const showShortcuts = this.cameraSystem.overviewMode;
     const items = all
       .filter((it) => it.type !== 'header' && it.act !== undefined)
-      .map((it) => ({ label: it.label, act: it.act as MenuAction, shortcut: it.shortcut, selected: it.selected, keepOpen: it.keepOpen }));
+      .map((it) => ({
+        label: it.label, act: it.act as MenuAction,
+        shortcut: showShortcuts ? it.shortcut : undefined,
+        selected: it.selected, keepOpen: it.keepOpen,
+      }));
     return { title: header?.label ?? target.name, subtitle: header?.subLabel, items };
   }
 

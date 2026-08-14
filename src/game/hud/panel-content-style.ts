@@ -94,9 +94,11 @@ body.touch-ui-active #hud-status .status-throttle-touch { display: flex; }
   left: calc(12px + var(--rail-w-left) + 8px); right: calc(12px + var(--rail-w-right) + 8px);
   display: flex; flex-direction: column; gap: var(--space-2); pointer-events: none;
 }
-/* #hud を重ねた ID セレクタで、.panel 共通規則(position:absolute)より詳細度を上げて打ち消す。 */
+/* #hud を重ねた ID セレクタで、.panel 共通規則(position:absolute)より詳細度を上げて打ち消す。
+   表示/非表示は .hidden(ゲーム状態)/.collapsed(利用者の折りたたみ)の2軸だけに委ねる —
+   ここで display を確定させると、どちらの軸がクラスを外しても表示に戻れなくなる。 */
 #hud #hud-predict {
-  display: none; position: relative; inset: auto; order: 2; box-sizing: border-box;
+  position: relative; inset: auto; order: 2; box-sizing: border-box;
   max-height: 40vh; max-height: 40dvh; overflow-y: auto; pointer-events: auto;
 }
 #hud-predict.collapsed { display: none !important; }

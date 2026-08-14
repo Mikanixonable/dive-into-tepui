@@ -135,9 +135,12 @@ HUD の見た目・配置・操作(色/寸法トークン、ウィジェット�
 | `Slider` | `<input type="range">` の唯一の実装。動くたびに `onInput` が呼ばれる即時通知(`ValueInput` の確定契約とは別物)。 |
 | `buildCollapseToggle` | 縦方向の開閉トグル。target の表示/非表示を `.collapsed` クラスで切り替えるボタンを組む。`COLLAPSE_EXPANDED_GLYPH`(▾)/`COLLAPSE_COLLAPSED_GLYPH`(▸)がグリフの唯一の定義。 |
 
-土台は `hud/widgets/widget-base.ts` の2関数——`stopDragPropagation`(カメラドラッグへのクリック
-伝播を止める)と `expandHitTarget`(視覚サイズは変えず疑似要素で `--hit-target-min` までヒット
-領域を広げる、`.w-hit` クラス)——で、対話要素を持つウィジェットはこれを自前で書かず経由する。
+土台は `hud/widgets/widget-base.ts` の3関数——`stopDragPropagation`(カメラドラッグへのクリック
+伝播を止める)、`expandHitTarget`(`pointer:coarse` のときだけ要素自身の寸法(`min-width`/
+`min-height`)を `--hit-target-min` まで広げる、`.w-hit` クラス)、`bindActivation`(`click`/Enter・Space の `keydown` を一箇所へ
+まとめる——ポインタでのクリック後はフォーカスを外し、キーボード操作は残す。`Input` の
+`window` keydown 購読へ同じキーが二重に伝わらないよう伝播も止める)——で、対話要素を持つ
+ウィジェットはこれを自前で書かず経由する。
 共通スタイルは `hud/widgets/widget-style.ts`(`WIDGET_STYLE`)の1箇所——`#hud` に閉じないセレクタ
 (タイトル画面 `stage-select.ts`・`#touch-ui` でも組めるように)。
 
@@ -155,7 +158,9 @@ this 概念を広げない——ピン留めが要る対象は `PropertyWindow` 
 ### 確定/破棄の規約
 
 **`ValueInput` は Enter=確定・Escape=破棄・blur=確定が唯一の規約。** 打鍵ごとの clamp や通知は
-行わない(編集途中の値を黙って書き換えないため)。`escapeBehavior: 'revert' | 'clear'` の既定は
+行わない(編集途中の値を黙って書き換えないため)。**確定は前回確定した値から変わっているときだけ
+`onCommit` を呼ぶ** — フォーカスして何も打たずに blur するだけの操作が、呼び出し側の状態
+(計画ノードなど)を編集扱いで壊さないようにする。`escapeBehavior: 'revert' | 'clear'` の既定は
 `'revert'`(確定済みの値へ戻す)。**`'clear'`(空にする)を渡してよいのは検索フィールドに限る** —
 「なんとなく Escape でクリア」が他所へ広がらないよう、例外は呼び出し側にこの型で明示させる。
 数値欄で非数値・空欄の確定は破棄(`cancel()`)として扱う。
@@ -231,7 +236,10 @@ ESC の持ち主は `Game.handleInput`(`game.ts`)の1箇所だけ——`input.ta
 
 1. **レール(`.hud-rail`、`hud-root.ts` の `hudRail(root, 'left'|'right')`)** — マップ系パネルの
    縦積み。中身は通常の flex フロー(`.hud-rail > .panel { position: relative; inset: auto; }`)に
-   積み、絶対座標を持たない。畳める(`.hud-rail.collapsed`)。
+   積み、絶対座標を持たない。畳める(`.hud-rail.collapsed`)——ただし折りたたみの効果自体は
+   マップビュー限定(`#hud.map-mode .hud-rail.collapsed`)。右レールは TARGET のような戦闘
+   ビューでも常設のパネルを載せるので、レールの折りたたみ(マップの収納機構)が戦闘ビューの
+   パネルを巻き込んで消してはならない。
 2. **戦闘シェルフ(`#hud-combat-shelf`)** — SHIP STATUS/ORBIT/CONTACTS の常設計器の横並び。
    これも flex フローで、個々のパネルは `position: relative`。
 3. **中央モーダル(`OverlayManager` の `kind: 'modal'`)** — 画面全体を覆う/画面中央に寄せる
@@ -305,10 +313,16 @@ ORBIT/TARGET/CONTACTS の行、軌道オブジェクト一覧、軌道計画、�
 ダブルタップ(またはブラウザ標準 `dblclick`)=ダブルクリック合成。それぞれ対応する定数
 (`TOUCH_LONG_PRESS_MS`/`TOUCH_LONG_PRESS_FEEDBACK_MS`/`TOUCH_DOUBLE_TAP_MS`/
 `TOUCH_DOUBLE_TAP_PX`)は `const.ts` にある。マウス由来のクリックとタッチ由来の合成クリックは
-`Input` の同じキューを共有し、呼び出し側はどちらが発生源かを気にしない。
+`Input` の同じキューを共有し、呼び出し側はどちらが発生源かを気にしない。長押しの視覚フィードバック
+(`Input.onLongPressFeedback`)は `Input` 自身がマーカー層を知らずに済むよう、`Game` が
+`MarkerManager.set`/`.hide` へ配線する——新しいジェスチャの視覚フィードバックを足すときも
+この分離(ジェスチャの合成は `Input`、その見た目は配線先)を踏襲する。
 
-タップターゲットは最小 `--hit-target-min`(44px)。視覚サイズを変えずにヒット領域だけ広げるのは
-`widget-base.ts` の `expandHitTarget`(`.w-hit` の疑似要素)。**この原則は DOM ボタンだけでなく
+タップターゲットは最小 `--hit-target-min`(44px)。`pointer:coarse` のときだけ、要素自身の寸法
+(`min-width`/`min-height`)でこの最小寸法を確保するのが `widget-base.ts` の `expandHitTarget`
+(`.w-hit`)——マウス操作では間隔を保つため fine ポインタでは効かせず、重ね合わせの疑似要素でも
+広げない(隣接要素のヒット領域を侵すため)。coarse で行・列が伸びるのは正しい挙動として許容する。
+**この原則は DOM ボタンだけでなく
 画面投影されたピック判定にも適用する** — `input/pointer-precision.ts` の `pickRadiusSq(fine, coarse)`
 が、主たるポインタが `pointer:coarse`(`isCoarsePointer()`、起動時に一度だけ評価)かどうかで
 ピック半径を切り替える。マップ上のオブジェクト・ノード・AN/DN アイコンなど、画面へ投影してから

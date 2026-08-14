@@ -50,7 +50,7 @@ export class OverlayManager {
   private wasModalOpen = false;
 
   // shield は入力ゲート中に背景の 3D 入力を遮る全画面要素、gateLayer はその親レイヤ
-  // (#hud-layer-notify)。いずれも buildHudDom が構築して渡す。
+  // (#hud-layer-gate)。いずれも buildHudDom が構築して渡す。
   constructor(private readonly shield: HTMLElement, private readonly gateLayer: HTMLElement) {
     shield.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); });
     shield.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
@@ -62,6 +62,12 @@ export class OverlayManager {
 
   isOverlayOpen(id: string): boolean {
     return this.stack.some((e) => e.id === id);
+  }
+
+  // 入力をゲートしているオーバーレイ(kind:'modal' かつ gatesInput:true)が1つでも開いているか。
+  // 個々のオーバーレイの id を名指しせずに「背景入力を遮るべきか」を答える。
+  isInputGated(): boolean {
+    return this.stack.some((e) => e.spec.kind === 'modal' && e.spec.gatesInput);
   }
 
   // handle を id で開く/最前面へ動かす。既に同じ id があれば一旦外してから積み直す。
@@ -139,7 +145,7 @@ export class OverlayManager {
   // 台帳の内容から入力ゲート・タッチ解放イベントの発火可否を導出し、DOM へ反映する。
   private sync(): void {
     const modalOpen = this.stack.some((e) => e.spec.kind === 'modal');
-    const gateInput = this.stack.some((e) => e.spec.kind === 'modal' && e.spec.gatesInput);
+    const gateInput = this.isInputGated();
     this.shield.style.pointerEvents = gateInput ? 'auto' : 'none';
     this.gateLayer.classList.toggle('hud-overlay-gate', gateInput);
     document.body.classList.toggle('hud-overlay-modal-open', modalOpen);

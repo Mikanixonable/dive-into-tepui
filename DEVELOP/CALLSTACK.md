@@ -303,12 +303,12 @@
 ### handleMapPointerInput(dt)
 
 マップ/戦闘のポインタ操作を優先順位順(=呼ぶ順)に配る。`updateMapPresentation` の後(=
-`cameraSystem.update` の後)に呼ぶ。決着後は配らず、ポーズ中は ESC メニュー等が開いていないときだけ
-配る(背景の誤操作を防ぐ)。
+`cameraSystem.update` の後)に呼ぶ。決着後は配らず、ポーズ中、または入力をゲートするオーバーレイ
+(セーブブラウザ・ドック等)が開いている間は配らない(背景の誤操作を防ぐ)。
 
 - handleMapPointerInput(dt)
   - [!activeStage.isPlaying] 即 return
-  - [isPaused && hud.overlayManager.isOverlayOpen('pause-menu')] 即 return
+  - [isPaused || hud.overlayManager.isInputGated()] 即 return
   - [editor.editMode] 計画編集モード。マーカー(handleRightClick/handleLeftClick/handleDoubleClick)→ ノード(editor.handleMapPointer)→ 空域(handleEmptySpaceRightClick)の優先順は呼び出し順そのもの — 上流が消費した右クリックは下流に届かない
     - mapActions.handleRightClick(input, simTime) // マーカーへの右クリックだけを消費する。外れれば消費せず editor.handleMapPointer() のノード右クリックへ読み進む
       - pickNearest(mapPickables.pickables) // MAP_PICK_PX_SQ 以内の被選択物(天体/自機/敵船/nav-AN・DN/アプシス)を最寄りで拾う。候補列は mapPickables.refresh() が組んだ1本

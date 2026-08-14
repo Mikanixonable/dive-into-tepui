@@ -1,7 +1,7 @@
 // 単発クリックのボタン。押すと onClick が呼ばれるだけで、on(点灯)/disabled の表示は
 // 呼び出し側が setOn/setEnabled で与える — 自分では状態を反転しない。点灯型トグルは
 // これに setOn を外から呼ぶ形で表現し、別ウィジェットを持たない。
-import { expandHitTarget, stopDragPropagation } from './widget-base';
+import { bindActivation, expandHitTarget, stopDragPropagation } from './widget-base';
 
 export class Button {
   readonly element: HTMLElement;
@@ -24,17 +24,7 @@ export class Button {
     this.element.addEventListener('pointerup', release);
     this.element.addEventListener('pointerleave', release);
     this.element.addEventListener('pointercancel', release);
-    this.element.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (this.enabled) onClick();
-    });
-    // role="button" だけでは Enter/Space が click を発火しないため、明示的に発火させる。
-    this.element.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        this.element.click();
-      }
-    });
+    bindActivation(this.element, () => { if (this.enabled) onClick(); });
   }
 
   setLabel(label: string): void {

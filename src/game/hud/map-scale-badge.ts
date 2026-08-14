@@ -13,7 +13,9 @@ export class MapScaleBadge {
     const panel = this.els.get('map-scale');
     if (!panel) return;
     const overview = game.cameraSystem.overviewMode;
-    panel.style.display = overview ? '' : 'none';
+    // 基底の CSS 規則(#hud-map-scale)は display:none で固定されているため、'' へ戻すだけでは
+    // 表示に復帰しない。表示側は常に明示の display 値を書く。
+    panel.style.display = overview ? 'block' : 'none';
     if (!overview) return;
 
     const focus = game.cameraSystem.overviewCamera.resolvedFocus;

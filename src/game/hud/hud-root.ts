@@ -194,8 +194,8 @@ export function buildHudDom(): HudDomRefs {
   buildInfoPanels(layers.panel, rightRail);
   buildGlobalStatus(layers.panel);
   buildChaseReset(layers.panel);
-  const overlayShield = el('div', 'hud-overlay-shield', layers.notify);
-  const overlayManager = new OverlayManager(overlayShield, layers.notify);
+  const overlayShield = el('div', 'hud-overlay-shield', layers.gate);
+  const overlayManager = new OverlayManager(overlayShield, layers.gate);
 
   el('div', 'hud-hint', layers.notify);
   el('div', 'hud-toast', layers.notify);
