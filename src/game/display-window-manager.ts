@@ -64,18 +64,7 @@ export class DisplayWindowManager {
 
   private readonly panel: PredictPanel;
 
-  // update と sync の間に DOM イベントで設定が変わったかを検出する世代。
-  private revision = 0;
   private _current: DisplayWindow;
-  private lastSimTime = NaN;
-  private lastRevision = -1;
-  private lastPlayer: Player | null = null;
-  private lastPlayerState: Player['state'] | null = null;
-
-  private attractorsSimTime = NaN;
-  private attractorsBodies: readonly Attractor[] | null = null;
-  private attractorsDynamic: readonly Attractor[] | null = null;
-  private attractorsCache: readonly Attractor[] = [];
 
   // 操作パネルを構築し、期間選択・スライダー・任意期間入力・T+ジャンプ入力の反映先を自身にする。
   constructor(
@@ -94,38 +83,31 @@ export class DisplayWindowManager {
     this.panel.onDurationSelect = (key) => {
       this.durationKey = key;
       this.sliderT = 0;
-      this.revision++;
     };
     this.panel.onCustomDurationConfirm = (sec) => {
       this.customDurationSec = sec;
       this.durationKey = 'custom';
       this.sliderT = 0;
-      this.revision++;
     };
     // 過去期間はスライダーの尺度ではないので、切り替えてもつまみ位置は動かさない。
     this.panel.onPastDurationSelect = (key) => {
       this.pastDurationKey = key;
-      this.revision++;
     };
     this.panel.onPastCustomDurationConfirm = (sec) => {
       this.customPastDurationSec = sec;
       this.pastDurationKey = 'custom';
-      this.revision++;
     };
     this.panel.onTickLabelModeChange = (mode) => {
       this.tickLabelMode = mode;
     };
     this.panel.onSliderChange = (t) => {
       this.sliderT = t;
-      this.revision++;
     };
     this.panel.onResetToNow = () => {
       this.sliderT = 0;
-      this.revision++;
     };
     this.panel.onJumpToTime = (sec) => {
       this.sliderT = Math.max(0, Math.min(1, sec / this._current.duration));
-      this.revision++;
     };
   }
 
@@ -138,7 +120,6 @@ export class DisplayWindowManager {
   set frame(value: ReferenceFrame) {
     if (this._frame === value) return;
     this._frame = value;
-    this.revision++;
   }
 
   // 時刻ラベルを UTC カレンダーで書くか(既定)、simTime からの経過時間で書くか。
@@ -149,7 +130,6 @@ export class DisplayWindowManager {
   set tickLabelMode(value: TickLabelMode) {
     if (this._tickLabelMode === value) return;
     this._tickLabelMode = value;
-    this.revision++;
   }
 
   // 未来表示を禁止するフラグ。true にすると未来ゴーストスライダーの位置も原点へ戻す。
@@ -161,7 +141,6 @@ export class DisplayWindowManager {
     if (this._forceCurrent === value) return;
     this._forceCurrent = value;
     if (value) this.sliderT = 0;
-    this.revision++;
   }
 
   // 直近の resolve() が確定させた表示窓。
@@ -191,16 +170,12 @@ export class DisplayWindowManager {
     return FIXED_DURATION_SEC[this.pastDurationKey];
   }
 
-  // このフレームの表示窓を確定させて返す。currentOrbitPeriod() は登録天体全体を組んで
-  // strongestAttractor を回す重い計算なので、simTime・表示設定・操作艦の状態のいずれも
-  // 動いていなければ組み直さない。表示時刻はスライダーが立っている間だけ未来を指し、
+  // このフレームの表示窓を確定させて返す。表示窓の各値は現在の時刻・操作艦・設定から
+  // 軽量に導けるため、直前の結果を条件付きで再利用せず、呼ぶたびに組み直す。_current は
+  // update と sync の間、および DOM イベントから直近の窓を読むためのフレームスナップショット
+  // であり、導出値のキャッシュではない。表示時刻はスライダーが立っている間だけ未来を指し、
   // forceCurrent または原点では simTime そのもの。
   resolve(simTime: number, player: Player | null): DisplayWindow {
-    const playerState = player?.state ?? null;
-    if (this.lastSimTime === simTime && this.lastRevision === this.revision
-      && this.lastPlayer === player && this.lastPlayerState === playerState) {
-      return this._current;
-    }
     const referencePeriod = this.currentOrbitPeriod(player, simTime);
     const duration = this.durationSec(referencePeriod);
     this._current = {
@@ -212,28 +187,17 @@ export class DisplayWindowManager {
       displayTime: this._forceCurrent || this.sliderT <= 0 ? simTime : simTime + this.sliderT * duration,
       tickLabelMode: this._tickLabelMode,
     };
-    this.lastSimTime = simTime;
-    this.lastRevision = this.revision;
-    this.lastPlayer = player;
-    this.lastPlayerState = playerState;
     return this._current;
   }
 
   // 表示側の重力源窓: 解析天体に、重力を持つ生存中の GameEntity(小惑星)を合流させたもの。
-  // 返す配列は読み取り専用として扱う。
+  // 返す配列は読み取り専用として扱う。結合は浅い配列の生成だけなので、前回の配列を
+  // 保持せず、呼び出し時点の重力源の顔ぶれを毎回返す。各 GameEntity の state は getter
+  // 経由で現在値を読むため、古い配列を再利用して表示時点を取り違える余地を作らない。
   attractorsAt(simTime: number): readonly Attractor[] {
     const bodies = this.ephemeris.attractorsAt(simTime);
     const dynamic = this.entities.attractors();
-    if (this.attractorsSimTime === simTime
-      && this.attractorsBodies === bodies
-      && this.attractorsDynamic === dynamic) {
-      return this.attractorsCache;
-    }
-    this.attractorsSimTime = simTime;
-    this.attractorsBodies = bodies;
-    this.attractorsDynamic = dynamic;
-    this.attractorsCache = mergeAttractors(bodies, dynamic);
-    return this.attractorsCache;
+    return mergeAttractors(bodies, dynamic);
   }
 
   // 毎フレーム呼ぶ。操作パネル(期間・スクラバー・目盛り)の表示/非表示と内容を押し出す。
