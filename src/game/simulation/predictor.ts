@@ -7,12 +7,13 @@ import { Player } from '../player/player';
 import { Ephemeris } from '../../physics/ephemeris';
 import type { Attractor } from '../../physics/attractor';
 import { localOrbitPeriod } from '../../physics/attractor';
-import { ClassifiedAttractors, attractorsNearInto, classifyAttractors, predictedAttractorsAt } from './attractors';
+import { attractorsNearInto, classifyAttractors, predictedAttractorsAt } from './attractors';
 import type { PerfCounts } from '../../perf-meter';
 
 export class Predictor {
   private cursor = 0;
-  private readonly nearbyAttractorsScratch: Attractor[] = [];
+  private readonly currentAttractorsScratch: Attractor[] = [];
+  private readonly stepAttractorsScratch: Attractor[] = [];
   private readonly divergenceAttractorsScratch: Attractor[] = [];
 
   tracked = 0; // 予測対象の個体数
@@ -69,31 +70,38 @@ export class Predictor {
   }
 
   // budgetSteps を上限に予測列を1ステップずつ伸ばし、消費したステップ数を返す。
-  // 重力源の空間分類は先端が ATTRACTOR_REBUILD_SEC 進むごとに組み直す
-  // (それ以外は使い回す — その間の重力源位置のずれは刻み幅自体の RK4 誤差より小さい)。
   private advanceBudget(e: GameEntity, budgetSteps: number, simTime: number, horizon: number): number {
     if (!e.predictsFuture) return 0;
     let consumed = 0;
-    let classified: ClassifiedAttractors | null = null;
-    let classifiedAt = 0;
     while (consumed < budgetSteps) {
       const tipState = e.predictedTrajectory?.state ?? e.state;
-      if (classified === null || tipState.t - classifiedAt >= C.ATTRACTOR_REBUILD_SEC) {
-        classified = classifyAttractors(predictedAttractorsAt(this.ephemeris, this.entities, tipState.t));
-        classifiedAt = tipState.t;
-      }
-      const attractors = attractorsNearInto(tipState.r, classified, this.nearbyAttractorsScratch);
-      // 1ステップを horizon 以下に抑える。上限が無いと局所周期の跳ね上がりで先端が
-      // 一気に暦の有効域外まで進み、次の呼び出しで attractorsAt がその時刻を引けなくなる。
+      // 刻み幅を決める重力源はステップ開始時刻で評価する。予測の重力源を長時間保持すると、
+      // 月のように速く動く天体の位置が固定され、近傍周回の予測が実軌道から離れてしまう。
+      const currentClassified = classifyAttractors(
+        predictedAttractorsAt(this.ephemeris, this.entities, tipState.t),
+      );
+      const currentAttractors = attractorsNearInto(
+        tipState.r, currentClassified, this.currentAttractorsScratch,
+      );
+      // RK4 の各ステップには、その中点時刻の重力源を渡す。実シミュレーションも各サブステップ
+      // の中点で attractorsAt を解決しており、予測だけ過去の天体位置を保持しないようにする。
+      const remaining = simTime + horizon - tipState.t;
+      if (!(remaining > 1e-9)) break;
       const dt = Math.min(
-        horizon,
+        remaining,
         Math.max(
           C.PREDICT_MIN_STEP_DT,
-          localOrbitPeriod(tipState.r, attractors) / C.PREDICT_STEPS_PER_REV,
+          localOrbitPeriod(tipState.r, currentAttractors) / C.PREDICT_STEPS_PER_REV,
           horizon / C.PREDICT_MAX_STEPS,
         ),
       );
-      if (!e.stepPredicted(attractors, simTime, dt, horizon)) break;
+      const stepClassified = classifyAttractors(
+        predictedAttractorsAt(this.ephemeris, this.entities, tipState.t + dt / 2),
+      );
+      const stepAttractors = attractorsNearInto(
+        tipState.r, stepClassified, this.stepAttractorsScratch,
+      );
+      if (!e.stepPredicted(stepAttractors, simTime, dt, horizon)) break;
       consumed++;
       this.lastSteps++;
     }
