@@ -13,7 +13,7 @@ import { EntityIdAllocator } from './entity-id';
 const idAllocator = new EntityIdAllocator('asteroid-');
 
 export class Asteroid extends GameEntity {
-  protected readonly historyDuration = C.SHIP_HISTORY_DURATION;
+  protected readonly baseHistoryDuration = C.SHIP_HISTORY_DURATION;
   readonly predictsFuture = true;
 
   // mass [kg] は剛体接触の換算質量と重力定数 mu を兼ねる。radius は物理半径 [m]。

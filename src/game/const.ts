@@ -405,7 +405,14 @@ export const APSIS_MIN_ECC = 0.01;
 // 単位で刻むかは画面上の間隔で選ぶため、固定した時間間隔ではなく画面距離基準で間引く。
 export const PLAN_TICK_MIN_PX = 40; // 目盛同士の最小画面間隔 [px]
 export const PLAN_TICK_LABEL_MIN_PX = 90; // ラベルを付ける最小画面間隔 [px]
-export const PLAN_TICK_MAX_COUNT = 400; // 生成する目盛候補の上限本数
+export const PLAN_TICK_MAX_COUNT = 400; // 日・月・年階級の目盛候補の上限本数
+// 時階級(1/3/6/12時間ごと)の目盛候補の上限本数。時階級の各刻みは互いに包含関係にある
+// (1時間ごとの列挙は3/6/12時間ごとの境界をすべて含む)ため、この上限に収まる限り常に
+// 最も細かい1時間ごとで列挙し、実際に画面へ出す粒度は sync 側の画面距離判定(間引き)に
+// 委ねる — そうしないと区間の長さだけで階級が丸ごと切り替わり、ズームに対して連続に
+// 見えなくなる。PLAN_TICK_MAX_COUNT より大きく取り、既定の最長表示区間(28日)でも
+// 1時間ごとの候補が丸ごと落ちないようにする。
+export const PLAN_TICK_HOUR_FAMILY_MAX_COUNT = 1200;
 // 目盛点の半径 [px]。単位切替後も平均的な目盛の大きさが変わらないよう、絶対の階層ではなく
 // 現在表示中の最細目盛からの相対階層(0/1/2以上)で半径を引く。
 export const PLAN_TICK_RADIUS_PX = [1.5, 2.5, 3.5] as const;
@@ -413,6 +420,9 @@ export const PLAN_TICK_RADIUS_PX = [1.5, 2.5, 3.5] as const;
 // --- エンティティの過去・未来状態列(physics/dynamic-trajectory.ts の DynamicTrajectory.history/Predictor) ---
 export const TRAJECTORY_SAMPLES_PER_REV = 32; // 1周回あたりの保持サンプル数(補間誤差 30m 程度に収まる実測値)
 export const SHIP_HISTORY_DURATION = 5580; // Ship の過去列の保持時間 [s]。LEO(420km)の公転周期に近似
+// 過去表示の要求で伸ばせる保持時間の上限 [s]。保持サンプル数は間引きにより
+// PREDICT_MAX_SAMPLES で頭打ちなので、この値が決めるのは間引きの粗さ(補間精度)の下限。
+export const HISTORY_DURATION_MAX = DISPLAY_DURATION_MAX;
 // 1周回あたりの予測の積分ステップ数。刻み幅をその場の周期に比例させることで、低軌道でも
 // 遠方の長周期軌道でも精度が一定になる。
 export const PREDICT_STEPS_PER_REV = 600;

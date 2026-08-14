@@ -493,10 +493,13 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
     - [overviewMode] translationZone.setItems(pickables) / setNearby(members, pickables) / setSelected(displayWindow.frame.center) // 未来表示(計画折れ線・予測軌道線・交点マーカー)の描画座標系の原点
     - [overviewMode] planRotationZone.setNearby(members) / setSelected(displayWindow.frame.rotatingWith)
   - entities.syncPlayerTrajectoryLines(player, displayWindow, overviewMode, ephemeris, fo, cameraSystem.activeCamera, attractors) // 計画折れ線と同じ座標系(displayWindow.frame)で bake する
-    - [entities.players ごと] ship.syncTrajectoryLine(ship === player, frame, simTime, ephemeris, fo, camera, attractors) // 操作対象艦だけ show=true。それ以外は trajectory=null で畳む
+    - [entities.players ごと] ship.syncTrajectoryLine(ship === player, frame, simTime, pastDuration, ephemeris, fo, camera, attractors) // 操作対象艦だけ show=true。それ以外は trajectory=null で畳む
       - trajectoryLine.syncGeometry(show ? predictedTrajectory : null, simTime, null, frame, ...) // predictedTrajectory.samplesOldestFirst() を frame で bake(点列の参照が変わらない限り再bakeしない)。simTime は描画区間の下限で sampler の時刻写像だけを動かす — 線の先頭は predictedTrajectory を simTime で補間した点になる。上限は null(先端まで無制限)
       - trajectoryLine.syncTransform()
       - trajectoryLine.sync(camera) // 頂点2未満なら curve.clear()
+      - pastTrajectoryLine.syncGeometry(show && pastDuration > 0 ? actualTrajectory : null, simTime - pastDuration, simTime, frame, ...) // 過去線は actualTrajectory の保持列。下限が保持窓より古ければ TrajectoryLine 側が保持区間の先頭へクランプする
+      - pastTrajectoryLine.syncTransform()
+      - pastTrajectoryLine.sync(camera)
     - [entities.players ごと] ship.orbitLine.setSuppressed(ship.supersedesAnalyticEllipse(simTime, duration, overviewMode)) // overviewMode: 予測が表示ホライズンを覆いきったときだけ解析楕円を抑制。!overviewMode: 予測線が描かれてさえいれば抑制
   - [player] touchControls?.syncModeButtons(rcsDamp, fineAttitude, progradeHold) // タッチデバイスのみ。制動/微動/ホールドの点灯
   - activeStage.sync(player, fo, cameraSystem, displayTime, visibilityPolicy) // player は Creative の未配置状態で null
