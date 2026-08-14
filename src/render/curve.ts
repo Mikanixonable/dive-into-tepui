@@ -53,6 +53,12 @@ const MAX_SUBDIVIDE_DEPTH = 24;
 // 焼き直さないための遊び。
 const SCALE_REBAKE_RATIO = 1.2;
 
+// カメラ視線方向の変化に対する焼き直し閾値(なす角の余弦)。適応分割は焼いた瞬間の視線方向を
+// 基準に「手前だけ細かく、奥は MAX_EDGE_TURN 相当に粗く」焼くため、距離が変わらず向きだけ
+// 変わる周回でも粗い区間が手前に回り込み得る。その回り込みが目立たない角度に MAX_EDGE_TURN と
+// 同程度の値を採る。
+const CAM_DIR_REBAKE_COS = Math.cos((5 * Math.PI) / 180);
+
 // f32 の相対量子化幅(仮数23bit)。sample の座標系は LEO スケールの絶対座標を含みうるため、
 // これをそのまま頂点バッファ(f32)へ書くと、その大きさに応じた量子化ノイズが生じ、近距離の
 // カメラからは画面上のピクセル単位のずれとして見えてしまう。頂点バッファへは常にカメラ近傍の
@@ -100,6 +106,7 @@ export class Curve {
   private hasBaked = false;
   private lastRevision: unknown = undefined;
   private bakedScale: number | null = null;
+  private readonly bakedCamFwd = new THREE.Vector3();
 
   // 頂点バッファ(f32)へ書く直前に bakedLocal の全頂点から差し引く基準点。sample が返す
   // 座標系のまま、カメラの現在位置に追従させる。
@@ -297,22 +304,24 @@ export class Curve {
     }
   }
 
-  // 曲線を(必要なら)焼き直し、GPU バッファへ反映する。revision・画面スケールのどちらも
-  // 前回と実質同じであれば焼き直しも GPU への再アップロードも省く。
+  // 曲線を(必要なら)焼き直し、GPU バッファへ反映する。revision・画面スケール・カメラ視線
+  // 方向のいずれも前回と実質同じであれば焼き直しも GPU への再アップロードも省く。
   setCurve(sample: CurveSampler, opts: SetCurveOptions): void {
     const { revision, camera } = opts;
     this.cacheCameraFrame(camera);
     const scaleNow = this.representativeScale(sample);
     const scaleChanged = this.bakedScale === null
       || scaleNow / this.bakedScale > SCALE_REBAKE_RATIO || this.bakedScale / scaleNow > SCALE_REBAKE_RATIO;
+    const camDirChanged = this.camFwd.dot(this.bakedCamFwd) < CAM_DIR_REBAKE_COS;
     const revisionChanged = !this.hasBaked || revision !== this.lastRevision;
-    const rebaked = revisionChanged || scaleChanged;
+    const rebaked = revisionChanged || scaleChanged || camDirChanged;
 
     if (rebaked) {
       this.rebake(sample);
       this.hasBaked = true;
       this.lastRevision = revision;
       this.bakedScale = scaleNow;
+      this.bakedCamFwd.copy(this.camFwd);
     }
 
     // pivot はカメラ近傍に据え続ける基準点。焼き直した頂点はまだ pivot 差し引き後の
