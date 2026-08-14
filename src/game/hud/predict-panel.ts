@@ -38,7 +38,7 @@ const UNITS: readonly (readonly [DurationUnit, string])[] = [
 // クランプ後の秒数を通知する — 打鍵ごとに書き戻すと入力途中の値が壊れて打ち直せなくなるため。
 // 空欄・非数値での確定、または Escape/cancel() は「変更なし」として現在の表示へ戻す。
 class DurationValueInput {
-  readonly element: HTMLElement;
+  public readonly element: HTMLElement;
   private readonly value: ValueInput;
   private readonly unit: SegmentedControl<DurationUnit>;
   private unitValue: DurationUnit;
@@ -46,7 +46,11 @@ class DurationValueInput {
   private maxSec = Infinity;
 
   // onCommit は Enter・blur・確定ボタンでのみ呼ばれる — 呼び出し側は打鍵ごとの値を追う必要がない。
-  constructor(defaultUnit: DurationUnit, private readonly onCommit: (sec: number) => void, private readonly onCancel: () => void) {
+  public constructor(
+    defaultUnit: DurationUnit,
+    private readonly onCommit: (sec: number) => void,
+    private readonly onCancel: () => void,
+  ) {
     this.unitValue = defaultUnit;
     this.element = document.createElement('span');
     this.element.className = 'w-group predict-value-input';
@@ -71,7 +75,7 @@ class DurationValueInput {
   }
 
   // 秒数を今の単位での表示値に変換して入力欄へ反映し、フォーカスする。
-  openWithSec(sec: number, minSec: number, maxSec: number): void {
+  public openWithSec(sec: number, minSec: number, maxSec: number): void {
     this.minSec = minSec;
     this.maxSec = maxSec;
     this.syncMinMaxAttr();
@@ -88,12 +92,12 @@ class DurationValueInput {
     this.onCommit(sec);
   }
 
-  commit(): void {
+  public commit(): void {
     this.value.commit();
   }
 
   // 編集を破棄する。
-  cancel(): void {
+  public cancel(): void {
     this.value.cancel();
   }
 
@@ -134,7 +138,7 @@ function inlineIconButton(label: string, title: string, onClick: () => void): HT
 // 差し替え、確定・取り消しでピル列へ戻る。K は固定ピルのキー、Kd は選択状態として受け取る
 // キー(固定ピルに加えて 'custom' を含む)。
 class DurationPillRow<K extends string, Kd extends string> {
-  readonly element: HTMLElement;
+  public readonly element: HTMLElement;
   private readonly buttons = new Map<K, Button>();
   private readonly pillsEl: HTMLElement;
   private readonly customPillBtn: Button;
@@ -143,7 +147,7 @@ class DurationPillRow<K extends string, Kd extends string> {
   private editing = false;
   private currentSec = C.DISPLAY_DUR_DAY;
 
-  constructor(
+  public constructor(
     title: string,
     entries: readonly (readonly [K, string])[],
     private readonly onSelect: (key: K) => void,
@@ -182,7 +186,7 @@ class DurationPillRow<K extends string, Kd extends string> {
 
   // 選択中のキーと、任意…ピルに出す秒数を反映する。currentSec は任意…を開いたときの初期値。
   // 編集中の行はユーザー入力を壊さないよう書き換えない。
-  render(key: Kd, customDurationSec: number, currentSec: number): void {
+  public render(key: Kd, customDurationSec: number, currentSec: number): void {
     this.currentSec = currentSec;
     if (this.editing) return;
     for (const [k, btn] of this.buttons) btn.setOn(k === (key as string));
@@ -224,14 +228,14 @@ export interface PredictPanelState {
 }
 
 export class PredictPanel {
-  onDurationSelect: ((key: FixedDurationKey) => void) | null = null;
-  onCustomDurationConfirm: ((sec: number) => void) | null = null;
-  onPastDurationSelect: ((key: FixedPastDurationKey) => void) | null = null;
-  onPastCustomDurationConfirm: ((sec: number) => void) | null = null;
-  onTickLabelModeChange: ((mode: TickLabelMode) => void) | null = null;
-  onSliderChange: ((t: number) => void) | null = null;
-  onResetToNow: (() => void) | null = null;
-  onJumpToTime: ((sec: number) => void) | null = null;
+  public onDurationSelect: ((key: FixedDurationKey) => void) | null = null;
+  public onCustomDurationConfirm: ((sec: number) => void) | null = null;
+  public onPastDurationSelect: ((key: FixedPastDurationKey) => void) | null = null;
+  public onPastCustomDurationConfirm: ((sec: number) => void) | null = null;
+  public onTickLabelModeChange: ((mode: TickLabelMode) => void) | null = null;
+  public onSliderChange: ((t: number) => void) | null = null;
+  public onResetToNow: (() => void) | null = null;
+  public onJumpToTime: ((sec: number) => void) | null = null;
 
   private readonly panel: HTMLElement;
   private readonly durationRow: DurationPillRow<FixedDurationKey, DisplayDurationKey>;
@@ -250,13 +254,13 @@ export class PredictPanel {
   private lastTrackRatio = 1;
 
   // PREDICT パネルの DOM を組み立て、root へ追加する。
-  constructor(root: HTMLElement) {
+  public constructor(root: HTMLElement) {
     this.panel = document.createElement('div');
     this.panel.id = 'hud-predict';
     this.panel.className = 'panel';
     this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
     const title = document.createElement('h3');
-    title.textContent = 'predict';
+    title.textContent = '軌道予測';
     this.panel.appendChild(title);
 
     // 行1: 未来/過去それぞれの期間ピル(1周/1日/7日/28日/任意…、過去はさらに なし)。
@@ -271,6 +275,7 @@ export class PredictPanel {
       (key) => this.onPastDurationSelect?.(key),
       (sec) => this.onPastCustomDurationConfirm?.(sec),
     );
+    this.pastDurationRow.element.classList.add('predict-past');
     this.panel.appendChild(this.pastDurationRow.element);
 
     // 期間の2行に続けて、目盛りラベルの表記(UTC カレンダー / 現在からの経過時間)を選ぶ。
@@ -338,7 +343,7 @@ export class PredictPanel {
   }
 
   // state をパネルへ反映する。編集中の行はユーザー入力を壊さないよう再描画しない。
-  render(state: PredictPanelState): void {
+  public render(state: PredictPanelState): void {
     this.setVisible(state.visible);
     if (!state.visible) return;
     this.currentDuration = state.duration;

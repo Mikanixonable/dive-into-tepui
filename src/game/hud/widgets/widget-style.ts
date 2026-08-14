@@ -1,6 +1,6 @@
-// hud/widgets/ の共通スタイル。状態遷移の視覚規約(hover=文字/縁がアクセント化・
-// pressed=背景 --fill-3・on=背景アクセント薄膜+縁アクセント・disabled=単一 opacity+
-// cursor:not-allowed)をここ1箇所で定義する — 個別ウィジェットや呼び出し側での上書きを禁止する。
+// hud/widgets/ の共通スタイル。状態遷移の基準(hover=Near、pressed=中立面、on=Accent、
+// disabled=単一 opacity+cursor:not-allowed)をここ1箇所で定義する。ビュー固有スタイルは、
+// 同期や完了など別の意味ロールがある場合だけ Secondary 等へ上書きする。
 // #hud の外(タイトル画面・起動時のオーバーレイ)でもウィジェットを組めるよう、
 // セレクタは #hud に閉じない(hud-root.ts の STYLE へ連結して注入する)。
 import { MQ_COARSE } from '../breakpoints';
@@ -17,15 +17,18 @@ export const WIDGET_STYLE = `
 .w-close, .w-toggle-track { box-sizing: border-box; }
 
 .w-btn, .w-close {
-  display: inline-block; padding: var(--space-2) var(--space-5); font: inherit; font-size: var(--font-s);
-  line-height: 1.2; border: 1px solid var(--edge); border-radius: var(--radius-m);
-  background: var(--surface); color: var(--text-dim);
-  transition: border-color var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
+  display: inline-block; padding: 7px var(--space-5); font: inherit; font-size: var(--font-s);
+  line-height: 1.2; border: 1px solid transparent; border-radius: var(--radius-control);
+  background: var(--surface-2); color: var(--body);
+  transition: border-color var(--transition-fast), color var(--transition-fast), background var(--transition-fast), transform var(--transition-fast);
 }
-.w-btn:hover, .w-close:hover { border-color: var(--accent-soft); color: var(--accent-soft); }
-.w-btn.pressed, .w-close.pressed { background: var(--fill-3); }
-.w-btn.on { background: var(--accent-fill-weak); border-color: var(--accent); color: var(--accent); }
+.w-btn:hover, .w-close:hover { color: var(--accent-near); background: var(--surface-3); }
+.w-btn.pressed, .w-close.pressed { background: var(--fill-3); transform: translateY(1px); }
+.w-btn.on { background: var(--accent-fill); border-color: transparent; color: var(--accent); }
 .w-btn.disabled, .w-close.disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
+.w-btn:focus-visible, .w-close:focus-visible, .w-toggle-track:focus-visible, .w-input:focus-visible {
+  outline: 2px solid var(--accent-near); outline-offset: 2px;
+}
 
 /* w-group: 見出し + 排他選択ボタン列(3択以上専用)。 */
 .w-group { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
@@ -39,18 +42,18 @@ export const WIDGET_STYLE = `
 .w-toggle-title { font-size: var(--font-xs); letter-spacing: 1px; color: var(--text-dim); }
 .w-toggle-track {
   position: relative; display: inline-block; width: 34px; height: 18px;
-  border-radius: var(--radius-l); border: 1px solid var(--edge); background: var(--surface);
+  border-radius: var(--radius-pill); border: 1px solid transparent; background: var(--surface-3);
   transition: border-color var(--transition-fast), background var(--transition-fast);
 }
-.w-toggle-track:hover { border-color: var(--accent-soft); }
-.w-toggle-track.on { border-color: var(--accent); background: var(--accent-fill-strong); }
+.w-toggle-track:hover { background: color-mix(in srgb, var(--accent-near) 18%, var(--surface-3)); }
+.w-toggle-track.on { border-color: transparent; background: var(--accent); }
 .w-toggle-knob {
   position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
   background: var(--text-dim); transition: left var(--transition-fast), background var(--transition-fast);
 }
 /* トラック幅に対する相対位置(右端から 2px 余白+ノブ幅ぶんを引く、左詰めの 2px と対称)。
    固定 px でなく % 基準にすることで、coarse で幅が広がっても右端に張り付いたままになる。 */
-.w-toggle-track.on .w-toggle-knob { left: calc(100% - 14px); background: var(--accent); }
+.w-toggle-track.on .w-toggle-knob { left: calc(100% - 14px); background: var(--title); }
 
 /* w-close: ✕ の閉じるボタン。 */
 .w-close {
@@ -61,18 +64,18 @@ export const WIDGET_STYLE = `
 /* w-input: 数値/文字/検索入力。 */
 .w-input {
   box-sizing: border-box; padding: var(--space-2) var(--space-3); font: inherit; font-size: var(--font-s);
-  color: var(--text); background: var(--surface); border: 1px solid var(--edge); border-radius: var(--radius-m);
-  transition: border-color var(--transition-fast);
+  color: var(--text); background: var(--surface-2); border: 1px solid transparent; border-radius: var(--radius-control);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
 }
-.w-input:hover { border-color: var(--accent-soft); }
-.w-input:focus { outline: none; border-color: var(--accent); }
+.w-input:hover { background: var(--surface-3); }
+.w-input:focus { background: var(--surface-3); border-color: var(--accent); }
 
 /* w-slider: つまみ型の連続値スライダー。トラックの寸法はパネル側の CSS が決める。 */
 .w-slider { pointer-events: auto; accent-color: var(--accent); }
 
 /* w-meter: HP/温度/電力バー。常に左から右へ満ちる。 */
 .w-meter { display: flex; align-items: center; }
-.w-meter-track { position: relative; flex: 1 1 auto; height: 12px; background: var(--bar-bg); }
+.w-meter-track { position: relative; flex: 1 1 auto; height: 12px; overflow: hidden; border-radius: var(--radius-micro); background: var(--bar-bg); }
 .w-meter-fill { width: 0; height: 100%; background: var(--accent); transition: width var(--transition-fast); }
 .w-meter-fill.danger { background: var(--danger); }
 .w-meter-value {

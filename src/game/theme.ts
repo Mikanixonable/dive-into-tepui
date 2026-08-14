@@ -1,33 +1,37 @@
-// UI トークンの唯一の定義元。フラットダークテーマ: ほぼ黒の面に単色グレー、
-// アクセントは基本オレンジ 1 色。第二ターゲットの識別だけはオレンジと混同できない
-// シアンを別アクセントとして使う。ゲーム世界(マーカー・演出・船体など)の色は
-// const.ts の「色管理 (Colors)」節が持ち、ここには含まない。
+// Runtime UI の意味トークン。値と役割は UI_DESIGN_REFERENCE_V6 を正本とする。
+// ゲーム世界(マーカー・演出・船体など)の Material 色は const.ts が持ち、ここには含まない。
 
-export const ACCENT = '#ff6a00';
-export const ACCENT_SOFT = '#ff9040';
-export const ACCENT_SECONDARY = '#00c8ff';
-// 危険・警告、および第一ターゲットの識別色。
+export const ACCENT = '#ff5a00';
+export const ACCENT_SOFT = '#ff8b52';
+export const ACCENT_SECONDARY = '#19f5c2';
+// 危険・警告だけに使う意味色。第一ターゲットは ACCENT を使う。
 export const DANGER = '#ff4f5e';
 export const DANGER_FILL = 'rgba(255, 79, 94, 0.08)'; // 危険を示す領域の地色
 
-export const BG = '#08090c';
-export const SURFACE_WEAK = 'rgba(13, 15, 18, 0.6)'; // 背後を強く透かすラベル地
-export const SURFACE = 'rgba(13, 15, 18, 0.82)';
-export const SURFACE_OPAQUE = 'rgba(13, 15, 18, 0.92)'; // 背後を透過させたくない全画面表示用
-export const EDGE = 'rgba(238, 235, 248, 0.22)'; // FILL_3 と FILL_4 の間に位置する、縁として名指しされた1段
+export const BG = '#07080a';
+export const SURFACE_0 = '#08090c';
+export const SURFACE_1 = '#0e1014';
+export const SURFACE_2 = '#15171c';
+export const SURFACE_3 = '#1d2026';
+export const SURFACE_WEAK = 'rgba(8, 9, 12, 0.52)'; // 背後を強く透かすラベル地
+export const SURFACE = 'rgba(14, 16, 20, 0.64)'; // Quiet Glass
+export const SURFACE_OPAQUE = 'rgba(14, 16, 20, 0.96)'; // Solid に近い全画面表示用
+export const GLASS_QUIET = 'rgba(14, 16, 20, 0.64)';
+export const GLASS_FOCUS = 'rgba(14, 16, 20, 0.76)';
+export const EDGE = 'rgba(238, 234, 245, 0.16)';
 
 export const TEXT_STRONG = '#ffffff';
 // UI用のわずかに紫がかった白。ゲーム世界のマーカー色とは独立したHUD基準色。
 export const TEXT = '#eeeaf5';
-export const TEXT_MUTED = '#dfe3e8';
-export const TEXT_DIM = '#aaa5b5';
+export const TEXT_MUTED = '#c3bec9';
+export const TEXT_DIM = '#89838f';
 
 // アクセントの薄膜。値が大きいほど強く主張する。
-export const ACCENT_FILL_WEAK = 'rgba(255, 106, 0, 0.08)'; // 選択されていない行の背景など、ごく控えめな地色
-export const ACCENT_FILL = 'rgba(255, 106, 0, 0.18)'; // 選択中・ホバー中の地色
-export const ACCENT_FILL_STRONG = 'rgba(255, 106, 0, 0.28)'; // 押下中・強調表示の地色
-export const ACCENT_EDGE_SOFT = 'rgba(255, 106, 0, 0.25)'; // 見出し下線などの控えめな縁
-export const ACCENT_EDGE = 'rgba(255, 106, 0, 0.45)'; // ボタン・パネルの通常の縁
+export const ACCENT_FILL_WEAK = 'rgba(255, 90, 0, 0.08)'; // 選択されていない行の背景など、ごく控えめな地色
+export const ACCENT_FILL = 'rgba(255, 90, 0, 0.16)'; // 選択中・ホバー中の地色
+export const ACCENT_FILL_STRONG = 'rgba(255, 90, 0, 0.24)'; // 押下中・強調表示の地色
+export const ACCENT_EDGE_SOFT = 'rgba(255, 90, 0, 0.22)'; // 見出し下線などの控えめな縁
+export const ACCENT_EDGE = 'rgba(255, 90, 0, 0.4)'; // ボタン・パネルの通常の縁
 
 // 中立の薄膜。値が大きいほど強く主張する。EDGE と同じオフホワイトを基調とする。
 export const FILL_1 = 'rgba(238, 235, 248, 0.04)';
@@ -35,7 +39,7 @@ export const FILL_2 = 'rgba(238, 235, 248, 0.09)';
 export const FILL_3 = 'rgba(238, 235, 248, 0.16)';
 export const FILL_4 = 'rgba(238, 235, 248, 0.32)';
 
-export const SHADE_1 = 'rgba(0, 0, 0, 0.25)'; // 弱い落とし影
+export const SHADE_1 = 'rgba(0, 0, 0, 0.18)'; // 弱い落とし影
 export const SCRIM = 'rgba(6, 7, 9, 0.82)'; // 全画面表示の背後を覆う膜
 export const BAR_BG = '#222222'; // ゲージ類の不透明な地(背後を透かさない)
 
@@ -66,10 +70,14 @@ export const GLYPH_1_3 = `calc(${GLYPH_BASE} / 3)`; // .mk-ally-dir
 export const GLYPH_POI = '5px'; // 天体ラベルの点(.mk-poi)
 export const GLYPH_BORESIGHT = '36px'; // .mk-boresight
 
-// 角丸。3段+ピル形。
-export const RADIUS_S = '3px'; // 小さなバッジ・ノブ・バー
-export const RADIUS_M = '4px'; // ボタン・入力欄・パネル・ウィンドウ(既定)
-export const RADIUS_L = '8px'; // 大きな面・ピル形
+// 角丸。役割名を正本とし、旧3段名は既存UIとの互換用に対応させる。
+export const RADIUS_MICRO = '8px';
+export const RADIUS_CONTROL = '11px';
+export const RADIUS_PANEL = '16px';
+export const RADIUS_WINDOW = '22px';
+export const RADIUS_S = RADIUS_MICRO;
+export const RADIUS_M = RADIUS_CONTROL;
+export const RADIUS_L = RADIUS_PANEL;
 export const RADIUS_PILL = '999px'; // トラックなど、完全な角丸ピル
 
 // 余白。6段。
@@ -82,7 +90,7 @@ export const SPACE_6 = '18px';
 
 // トランジション。操作への即応(FAST)と、フェード・バーの伸縮など見せる変化(SLOW)の2段。
 export const TRANSITION_FAST = '0.15s';
-export const TRANSITION_SLOW = '0.4s';
+export const TRANSITION_SLOW = '0.24s';
 
 export const HIT_TARGET_MIN = '44px'; // タップ最小寸法
 
@@ -103,18 +111,29 @@ export const FONT_FAMILY =
 const CSS_VARIABLES: Readonly<Record<string, string>> = {
   '--accent': ACCENT,
   '--accent-soft': ACCENT_SOFT,
+  '--accent-near': ACCENT_SOFT,
   '--accent-secondary': ACCENT_SECONDARY,
   '--danger': DANGER,
   '--danger-fill': DANGER_FILL,
   '--bg': BG,
+  '--page': BG,
+  '--surface-0': SURFACE_0,
+  '--surface-1': SURFACE_1,
+  '--surface-2': SURFACE_2,
+  '--surface-3': SURFACE_3,
   '--surface-weak': SURFACE_WEAK,
   '--surface': SURFACE,
   '--surface-opaque': SURFACE_OPAQUE,
+  '--glass-quiet': GLASS_QUIET,
+  '--glass-focus': GLASS_FOCUS,
   '--edge': EDGE,
   '--text-strong': TEXT_STRONG,
   '--text': TEXT,
   '--text-muted': TEXT_MUTED,
   '--text-dim': TEXT_DIM,
+  '--title': TEXT,
+  '--body': TEXT_MUTED,
+  '--muted': TEXT_DIM,
   '--accent-fill-weak': ACCENT_FILL_WEAK,
   '--accent-fill': ACCENT_FILL,
   '--accent-fill-strong': ACCENT_FILL_STRONG,
@@ -148,6 +167,10 @@ const CSS_VARIABLES: Readonly<Record<string, string>> = {
   '--radius-s': RADIUS_S,
   '--radius-m': RADIUS_M,
   '--radius-l': RADIUS_L,
+  '--radius-micro': RADIUS_MICRO,
+  '--radius-control': RADIUS_CONTROL,
+  '--radius-panel': RADIUS_PANEL,
+  '--radius-window': RADIUS_WINDOW,
   '--radius-pill': RADIUS_PILL,
   '--space-1': SPACE_1,
   '--space-2': SPACE_2,

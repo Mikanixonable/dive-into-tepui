@@ -16,23 +16,6 @@ import type { MapPickable } from '../map-pickable';
 import type { DisplayWindowManager } from '../display-window-manager';
 import type { OverlayManager } from './overlay-manager';
 
-const STYLE = `
-#hud .frame-section { margin-top: var(--space-4); }
-#hud .frame-section:first-of-type { margin-top: 0; }
-#hud .frame-section-title { font-size: var(--font-xxs); color: var(--text-dim); letter-spacing: 0.08em; margin-bottom: var(--space-2); }
-#hud .frame-summary { font-size: var(--font-xxs); color: var(--text-dim); margin-top: var(--space-3); }
-`;
-
-let styleInjected = false;
-// パネルのスタイルシートを document.head へ一度だけ挿入する。
-function ensureStyle(): void {
-  if (styleInjected) return;
-  styleInjected = true;
-  const style = document.createElement('style');
-  style.textContent = STYLE;
-  document.head.appendChild(style);
-}
-
 // 見出し付きの区画を組み、中身を入れる箱を返す。
 function buildSection(parent: HTMLElement, title: string): HTMLElement {
   const section = document.createElement('div');
@@ -60,7 +43,7 @@ export class FrameControls {
   private lastTime = 0;
 
   // panelRoot はパネル自体(左ドック)の置き場所、popupRoot は ObjectPicker のポップアップの置き場所。
-  constructor(
+  public constructor(
     panelRoot: HTMLElement,
     popupRoot: HTMLElement,
     private readonly ephemeris: Ephemeris,
@@ -68,7 +51,6 @@ export class FrameControls {
     private readonly displayWindow: DisplayWindowManager,
     overlayManager: OverlayManager,
   ) {
-    ensureStyle();
     this.panel = document.createElement('div');
     this.panel.id = 'hud-frame-controls';
     this.panel.className = 'panel hidden';
@@ -77,7 +59,7 @@ export class FrameControls {
     title.textContent = '座標系';
     this.panel.appendChild(title);
 
-    const cameraSection = buildSection(this.panel, 'カメラ(視点)');
+    const cameraSection = buildSection(this.panel, 'カメラ視点');
     this.cameraCenterZone = new AnchorZone(popupRoot, '基準にする天体', ephemeris, '固定を解除', overlayManager);
     this.cameraCenterZone.element.classList.add('hud-frame-scroll-zone', 'hud-frame-origin-zone');
     this.cameraCenterZone.onSelect = (id) => this.selectCameraCenter(id);
@@ -88,7 +70,7 @@ export class FrameControls {
     this.cameraRotationZone.onSelect = (rotatingWith) => overviewCamera.setCameraRotation(rotatingWith);
     cameraSection.appendChild(this.cameraRotationZone.element);
 
-    const planSection = buildSection(this.panel, '軌道計画(描画基準)');
+    const planSection = buildSection(this.panel, '軌道予測の描画基準');
     // 描く線は必ずどこかの座標系に焼き込まれるので「どこにも固定しない」状態が無く、
     // 太陽系空間への固定はプルダウンの恒星そのものにあたる。
     this.planCenterZone = new AnchorZone(popupRoot, '基準にする天体', ephemeris, null, overlayManager);
@@ -131,7 +113,7 @@ export class FrameControls {
 
   // マップカメラのフォーカスを target へ移す。追随が有効で target が登録天体を指しているときは
   // 計画折れ線の中心も同じ天体へ合わせる(回転側は現状を保つ)。
-  setFocus(target: FocusTarget): void {
+  public setFocus(target: FocusTarget): void {
     this.overviewCamera.setFocusTarget(target);
     if (!this.followCamera) return;
     const id = focusTargetId(target);
@@ -152,7 +134,7 @@ export class FrameControls {
   }
 
   // パネルの表示と4ゾーンの選択肢・選択表示を、他モジュールの状態へ合わせる。
-  sync(
+  public sync(
     pickables: readonly MapPickable[], cameraPos: Vec3, attractors: readonly Attractor[],
     simTime: number, visible: boolean,
   ): void {

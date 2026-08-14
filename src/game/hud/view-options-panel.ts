@@ -1,21 +1,26 @@
 // 表示パネル(マップモード左レール): 「マップに何を出すか」という1つの問いに答える —
 // 天体クラス別のアイコン/ラベル/軌道線トグルと、天球グリッド(赤道・黄道)のトグルをまとめて持つ。
+import { DIRECTION_GLYPH, ENTITY_GLYPH } from '../marker/marker-glyphs';
+import {
+  COLLAPSE_COLLAPSED_GLYPH,
+  COLLAPSE_EXPANDED_GLYPH,
+  buildCollapseToggle,
+  hudRail,
+  type CollapseToggleLabels,
+} from './hud-root';
 import { Button } from './widgets';
-import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, buildCollapseToggle, hudRail, type CollapseToggleLabels } from './hud-root';
-import { BodyClassToggles } from '../celestial/body-visibility';
-import { ENTITY_GLYPH } from '../marker/marker-glyphs';
-import { CelestialGridVisibility } from '../../render/celestial-grid';
-import { DIRECTION_GLYPH } from '../marker/marker-glyphs';
+import type { BodyClassToggles } from '../celestial/body-visibility';
+import type { CelestialGridVisibility } from '../../render/celestial-grid';
 
 // クラス別トグルの1行分。orbitKey が null のクラス(衛星・ラグランジュ点)は軌道線ボタンを持たない
 // ——衛星の参照軌道線はフォーカス中の系かどうかで別途決まり、ラグランジュ点はそもそも軌道を持たない。
-type BodyClassRow = {
+interface BodyClassRow {
   readonly label: string;
   readonly categoryKey: keyof BodyClassToggles;
   readonly iconKey: keyof BodyClassToggles;
   readonly labelKey: keyof BodyClassToggles;
   readonly orbitKey: keyof BodyClassToggles | null;
-};
+}
 
 const BODY_CLASS_ROWS: readonly BodyClassRow[] = [
   { label: '惑星', categoryKey: 'planetVisible', iconKey: 'planetIcon', labelKey: 'planetLabel', orbitKey: 'planetOrbit' },
@@ -28,8 +33,8 @@ const BODY_CLASS_ROWS: readonly BodyClassRow[] = [
 const VIEW_OPTIONS_COLLAPSE_LABELS: CollapseToggleLabels = {
   expandedGlyph: COLLAPSE_EXPANDED_GLYPH,
   collapsedGlyph: COLLAPSE_COLLAPSED_GLYPH,
-  expandedTitle: 'map view を閉じる',
-  collapsedTitle: 'map view を開く',
+  expandedTitle: 'マップ表示を閉じる',
+  collapsedTitle: 'マップ表示を開く',
 };
 
 const ENTITY_ROWS: readonly BodyClassRow[] = [
@@ -40,11 +45,11 @@ const ENTITY_ROWS: readonly BodyClassRow[] = [
 ];
 
 // 天球グリッドのカテゴリー(黄道・赤道)1行分。各カテゴリーは面・極・グリッドの3トグルを持つ。
-type GridToggleGroup = {
+interface GridToggleGroup {
   readonly categoryKey: keyof CelestialGridVisibility;
   readonly label: string;
   readonly items: readonly (readonly [keyof CelestialGridVisibility, string, string])[];
-};
+}
 
 const GRID_TOGGLE_GROUPS: readonly GridToggleGroup[] = [
   {
@@ -57,9 +62,52 @@ const GRID_TOGGLE_GROUPS: readonly GridToggleGroup[] = [
   },
 ];
 
+interface ViewOptionColumn {
+  readonly glyph: string;
+  readonly label: string;
+}
+
+const OBJECT_COLUMNS: readonly ViewOptionColumn[] = [
+  { glyph: ENTITY_GLYPH.body, label: '記号' },
+  { glyph: 'Aa', label: '名前' },
+  { glyph: '⌒', label: '軌道' },
+];
+
+const GRID_COLUMNS: readonly ViewOptionColumn[] = [
+  { glyph: '⌒', label: '面' },
+  { glyph: DIRECTION_GLYPH.axis, label: '極' },
+  { glyph: '⊞', label: '網' },
+];
+
+// トグルのグリフと意味をカラム見出しで常に並記し、色だけに識別を委ねない。
+function appendSectionHeading(
+  parent: HTMLElement,
+  title: string,
+  columns: readonly ViewOptionColumn[],
+): void {
+  const heading = document.createElement('div');
+  heading.className = 'view-options-section-heading';
+
+  const label = document.createElement('span');
+  label.className = 'view-options-section-title';
+  label.textContent = title;
+  heading.appendChild(label);
+
+  const legend = document.createElement('span');
+  legend.className = 'view-options-column-legend';
+  for (const column of columns) {
+    const item = document.createElement('span');
+    item.className = 'view-options-column';
+    item.textContent = `${column.glyph} ${column.label}`;
+    legend.appendChild(item);
+  }
+  heading.appendChild(legend);
+  parent.appendChild(heading);
+}
+
 export class ViewOptionsPanel {
-  onBodyClassToggle: ((key: keyof BodyClassToggles, on: boolean) => void) | null = null;
-  onGridToggle: ((key: keyof CelestialGridVisibility, on: boolean) => void) | null = null;
+  public onBodyClassToggle: ((key: keyof BodyClassToggles, on: boolean) => void) | null = null;
+  public onGridToggle: ((key: keyof CelestialGridVisibility, on: boolean) => void) | null = null;
 
   private readonly bodyClassButtons: readonly (readonly [keyof BodyClassToggles, Button])[];
   private readonly bodyClassCategoryButtons: readonly (readonly [keyof BodyClassToggles, Button, HTMLElement, readonly Button[]])[];
@@ -73,7 +121,7 @@ export class ViewOptionsPanel {
 
   private readonly panel: HTMLElement;
 
-  constructor(root: HTMLElement) {
+  public constructor(root: HTMLElement) {
     // パネル本体とタイトル
     this.panel = document.createElement('div');
     this.panel.id = 'hud-view-options';
@@ -82,7 +130,7 @@ export class ViewOptionsPanel {
     const titleRow = document.createElement('div');
     titleRow.className = 'view-options-title';
     const title = document.createElement('h3');
-    title.textContent = '表示';
+    title.textContent = 'マップ表示';
     titleRow.appendChild(title);
     this.panel.appendChild(titleRow);
 
@@ -96,41 +144,72 @@ export class ViewOptionsPanel {
     // という明示の意思表示にあたる。
     const bodyClassButtons: (readonly [keyof BodyClassToggles, Button])[] = [];
     const bodyClassCategories: (readonly [keyof BodyClassToggles, Button, HTMLElement, readonly Button[]])[] = [];
-    for (const row of [...BODY_CLASS_ROWS, ...ENTITY_ROWS]) {
-      const rowEl = document.createElement('div');
-      rowEl.className = 'body-class-row';
-      const category = this.toggleButton(row.label, `${row.label}を表示`, row.categoryKey, this.bodyClassCurrent, (key, on) => this.onBodyClassToggle?.(key, on));
-      category.element.classList.add('body-class-title');
-      rowEl.appendChild(category.element);
+    const rowGroups: readonly { readonly title: string; readonly rows: readonly BodyClassRow[] }[] = [
+      { title: '天体', rows: BODY_CLASS_ROWS },
+      { title: '機体と設備', rows: ENTITY_ROWS },
+    ];
+    for (const group of rowGroups) {
+      appendSectionHeading(body, group.title, OBJECT_COLUMNS);
+      for (const row of group.rows) {
+        const rowEl = document.createElement('div');
+        rowEl.className = 'body-class-row';
+        const category = this.toggleButton(
+          row.label,
+          `${row.label}を表示`,
+          row.categoryKey,
+          this.bodyClassCurrent,
+          (key, on) => this.onBodyClassToggle?.(key, on),
+        );
+        category.element.classList.add('body-class-title');
+        rowEl.appendChild(category.element);
 
-      const btnsEl = document.createElement('div');
-      btnsEl.className = 'body-class-btns';
-      rowEl.appendChild(btnsEl);
-      const individualButtons: Button[] = [];
+        const btnsEl = document.createElement('div');
+        btnsEl.className = 'body-class-btns';
+        rowEl.appendChild(btnsEl);
+        const individualButtons: Button[] = [];
 
-      const icon = this.toggleButton(ENTITY_GLYPH.body, 'アイコン', row.iconKey, this.bodyClassCurrent, (key, on) => this.onBodyClassToggle?.(key, on));
-      icon.element.classList.add('body-class-icon-btn');
-      individualButtons.push(icon);
-      btnsEl.appendChild(icon.element);
-      bodyClassButtons.push([row.iconKey, icon]);
+        const icon = this.toggleButton(
+          ENTITY_GLYPH.body,
+          'アイコン',
+          row.iconKey,
+          this.bodyClassCurrent,
+          (key, on) => this.onBodyClassToggle?.(key, on),
+        );
+        icon.element.classList.add('body-class-icon-btn');
+        individualButtons.push(icon);
+        btnsEl.appendChild(icon.element);
+        bodyClassButtons.push([row.iconKey, icon]);
 
-      const label = this.toggleButton('Aa', 'ラベル', row.labelKey, this.bodyClassCurrent, (key, on) => this.onBodyClassToggle?.(key, on));
-      label.element.classList.add('body-class-icon-btn');
-      individualButtons.push(label);
-      btnsEl.appendChild(label.element);
-      bodyClassButtons.push([row.labelKey, label]);
+        const label = this.toggleButton(
+          'Aa',
+          'ラベル',
+          row.labelKey,
+          this.bodyClassCurrent,
+          (key, on) => this.onBodyClassToggle?.(key, on),
+        );
+        label.element.classList.add('body-class-icon-btn');
+        individualButtons.push(label);
+        btnsEl.appendChild(label.element);
+        bodyClassButtons.push([row.labelKey, label]);
 
-      if (row.orbitKey !== null) {
-        const orbitKey = row.orbitKey;
-        const orbit = this.toggleButton('⌒', '軌道線', orbitKey, this.bodyClassCurrent, (key, on) => this.onBodyClassToggle?.(key, on));
-        orbit.element.classList.add('body-class-icon-btn');
-        individualButtons.push(orbit);
-        btnsEl.appendChild(orbit.element);
-        bodyClassButtons.push([orbitKey, orbit]);
+        if (row.orbitKey !== null) {
+          const orbitKey = row.orbitKey;
+          const orbit = this.toggleButton(
+            '⌒',
+            '軌道線',
+            orbitKey,
+            this.bodyClassCurrent,
+            (key, on) => this.onBodyClassToggle?.(key, on),
+          );
+          orbit.element.classList.add('body-class-icon-btn');
+          individualButtons.push(orbit);
+          btnsEl.appendChild(orbit.element);
+          bodyClassButtons.push([orbitKey, orbit]);
+        }
+
+        body.appendChild(rowEl);
+        bodyClassCategories.push([row.categoryKey, category, rowEl, individualButtons]);
       }
-
-      body.appendChild(rowEl);
-      bodyClassCategories.push([row.categoryKey, category, rowEl, individualButtons]);
     }
     this.bodyClassButtons = bodyClassButtons;
     this.bodyClassCategoryButtons = bodyClassCategories;
@@ -138,6 +217,7 @@ export class ViewOptionsPanel {
     // 天球グリッド(黄道・赤道)。天体クラスと同じ行の形(見出し+アイコン列)を流用する。
     const gridButtons: (readonly [keyof CelestialGridVisibility, Button])[] = [];
     const gridCategories: (readonly [keyof CelestialGridVisibility, Button, HTMLElement, readonly Button[]])[] = [];
+    appendSectionHeading(body, '参照面', GRID_COLUMNS);
     for (const group of GRID_TOGGLE_GROUPS) {
       const rowEl = document.createElement('div');
       rowEl.className = 'body-class-row grid-class-row';
@@ -182,12 +262,12 @@ export class ViewOptionsPanel {
   }
 
   // パネルの表示/非表示を切り替える。
-  setVisible(visible: boolean): void {
+  public setVisible(visible: boolean): void {
     this.panel.classList.toggle('hidden', !visible);
   }
 
   // クラス別トグルの表示状態を現在値へ合わせる。
-  setBodyClassToggles(toggles: BodyClassToggles): void {
+  public setBodyClassToggles(toggles: BodyClassToggles): void {
     for (const [key, btn] of this.bodyClassButtons) {
       const on = toggles[key];
       this.bodyClassCurrent.set(key, on);
@@ -203,7 +283,7 @@ export class ViewOptionsPanel {
   }
 
   // 天球グリッドのトグル表示状態を現在値へ合わせる。
-  setGridVisibility(visibility: CelestialGridVisibility): void {
+  public setGridVisibility(visibility: CelestialGridVisibility): void {
     for (const [key, btn] of this.gridButtons) {
       const on = visibility[key];
       this.gridCurrent.set(key, on);

@@ -23,7 +23,7 @@ body.touch-ui-active #hud-status .status-throttle-touch { display: flex; }
 #hud .hud-rail-right > #hud-target h3 { font-size: var(--font-xxs); }
 #hud-enemies h3 { font-size: var(--font-xxs); }
 #hud-enemies .erow { display: flex; justify-content: space-between; gap: var(--space-4); color: var(--text-dim); }
-#hud-enemies .erow.tgt { color: var(--danger); }
+#hud-enemies .erow.tgt { color: var(--accent); }
 
 #hud .hud-rail > #hud-shipplacer { max-height: none; overflow: visible; }
 #hud .hud-rail > #hud-plan { width: 100%; min-width: 0; max-width: none; max-height: none; overflow: visible; }
