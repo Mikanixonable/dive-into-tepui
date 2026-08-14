@@ -17,9 +17,6 @@ import { Hud } from './game/hud/hud';
 import { SettingsPanel } from './game/hud/settings-panel';
 import { Sfx } from './audio/sfx';
 import { UnlockManager } from './game/unlock-manager';
-import { findStageClass } from './game/stages/stage-dictionary';
-import type { StageClass } from './game/stages/stage';
-import { selectStage } from './game/stage-select';
 import { LocalStorageSaveStore } from './game/save/save-store';
 import { SaveSlots } from './game/save/save-slots';
 import { SnapshotService } from './game/save/snapshot-service';
@@ -27,39 +24,10 @@ import { AutoSave } from './game/save/autosave';
 import { migrateLegacySave } from './game/save/legacy-save';
 import { SaveBrowser } from './game/hud/save-browser';
 import { SnapshotControls } from './snapshot-controls';
-import { SIM_EPOCH_JD_TDB } from './game/sim-epoch';
-import { loadAbsoluteEphemeris } from './physics/ephemeris-catalog';
-import { profileAt } from './physics/ephemeris-profile';
-
-// スナップショットのロードを跨いで次のページ読込へ渡す先。ロードは Game を作り直す
-// (=ページ再読込)ことで表現するため、どれを復元するかは sessionStorage 経由で伝える。
-const SNAPSHOT_PENDING_KEY = 'tepui.pendingSnapshot';
-
-
-// アクティブスロットの直近起動が今も選択可能(ロック解除済み・選択画面から隠されていない)なら、
-// そのステージクラスを返す。再開できる情報が無ければ null。
-function resumableStageClass(unlockManager: UnlockManager, slots: SaveSlots): StageClass | null {
-  const slot = slots.activeSlot();
-  if (slot === null) return null;
-  const stageClass = findStageClass(slot.lastStageId);
-  if (stageClass === null || stageClass.hiddenFromSelect || !unlockManager.isUnlocked(stageClass.id)) return null;
-  return stageClass;
-}
-
-// ?title=1 は選択画面へ強制する。?stage= は共有リンク・デバッグ用の明示指定として最優先。
-// どちらも無ければアクティブスロットの直近起動を再開し、それも無ければ選択画面を出す。
-export async function resolveLaunchStage(
-  unlockManager: UnlockManager, slots: SaveSlots,
-): Promise<StageClass> {
-  const params = new URLSearchParams(location.search);
-  if (params.get('title') !== '1') {
-    const fromParam = findStageClass(params.get('stage'));
-    if (fromParam !== null) return fromParam;
-    const resumed = resumableStageClass(unlockManager, slots);
-    if (resumed !== null) return resumed;
-  }
-  return selectStage(unlockManager);
-}
+import { Launcher } from './launcher';
+import type { StageClass } from './game/stages/stage';
+import type { Ephemeris } from './physics/ephemeris';
+import type { AttractorId } from './physics/attractor';
 
 // WebGPU 初期化(シェーダーコンパイル等でしばらく無反応になり得る)の間に表示する
 // ローディング画面。createGameScene() の await が解決するまでは canvas が
@@ -145,9 +113,23 @@ async function initScene(): Promise<GameScene> {
   return gs;
 }
 
+// ローディング表示の下で、このステージの天体暦を組む。
+async function initEphemeris(
+  stageClass: StageClass, phaseOffsets: Partial<Record<AttractorId, number>>,
+): Promise<Ephemeris> {
+  hideLoading = showLoading();
+  try {
+    return await stageClass.createEphemeris(phaseOffsets);
+  } finally {
+    hideLoading?.();
+    hideLoading = null;
+  }
+}
+
 // rAF ループを起動する。フレームで例外が起きたらループを止める。
 function startAnimationLoop(
   game: Game, perf: PerfMeter, sections: FrameSections, autoSave: AutoSave, snapshotControls: SnapshotControls,
+  launcher: Launcher,
 ): void {
   let lastTime = performance.now();
   let completedFrames = 0;
@@ -162,7 +144,10 @@ function startAnimationLoop(
       sections.endFrame();
       // このフレームで Game が消費しなかった入力エッジだけが残っている。
       snapshotControls.handleInput(game.input, game);
+      launcher.handleInput(game.input, game);
+      perf.handleInput(game.input);
       autoSave.update(game);
+      launcher.update(game);
       const t1 = perf.on ? performance.now() : 0;
       game.sync();
       const t2 = perf.on ? performance.now() : 0;
@@ -200,10 +185,6 @@ function initHud(): { hud: Hud; sfx: Sfx; settingsPanel: SettingsPanel } {
   const settingsPanel = new SettingsPanel(hud.layers.system, hud.modalController);
   settingsPanel.setBgmVolume(sfx.getBgmVolume());
   settingsPanel.onBgmVolumeChange = (vol) => sfx.setBgmVolume(vol);
-  // 「ゲームを中断してタイトル画面に戻る」— ?title=1 を付けて選択画面へ強制する
-  settingsPanel.onQuitToTitle = () => {
-    location.assign(`${location.pathname}?title=1`);
-  };
   return { hud, sfx, settingsPanel };
 }
 
@@ -226,54 +207,25 @@ async function main() {
   const snapshotService = new SnapshotService(saveStore, slots);
   const gs = await initScene();
   const { hud, sfx, settingsPanel } = initHud();
-  const stageClass = await resolveLaunchStage(unlockmanager, slots);
-  let absoluteEphemeris;
-  // 固有の簡易天体暦を指定するデバッグステージには外部 pack を読み込まない。
-  // 通常起動では開始時刻からプロファイルを決定するため、開始時刻を変更しても
-  // プロファイル ID を別途ハードコードし直す必要がない。
-  if (stageClass.ephemerisConfig === undefined) {
-    hideLoading = showLoading();
-    try {
-      const profile = profileAt(SIM_EPOCH_JD_TDB);
-      absoluteEphemeris = await loadAbsoluteEphemeris(
-        profile.id,
-        SIM_EPOCH_JD_TDB,
-        SIM_EPOCH_JD_TDB + 10 * 365.25,
-      );
-    } finally {
-      hideLoading?.();
-      hideLoading = null;
-    }
-  }
+  const launcher = new Launcher(unlockmanager, slots, snapshotService, sfx);
+  // 「ゲームを中断してタイトル画面に戻る」
+  settingsPanel.onQuitToTitle = () => launcher.returnToTitle();
+  const stageClass = await launcher.resolveStage();
   const sections = new FrameSections();
 
-  const activeSlotId = slots.activeSlotId;
-  // ページ再読込を挟んだスナップショットのロード要求を最優先で使う。無ければ、
-  // アクティブスロットの現在ステージにある最新スナップショットを起動時に復元する。
-  // 本体の欠損・バージョン不一致・ステージ不一致は SnapshotService.load() に判定させ、
-  // 復元できない場合は通常の新規起動状態をそのまま使う。
-  const pendingSnapshotId = sessionStorage.getItem(SNAPSHOT_PENDING_KEY);
-  sessionStorage.removeItem(SNAPSHOT_PENDING_KEY);
-  const initialSnapshotId = pendingSnapshotId
-    ?? (activeSlotId !== null ? slots.latestSnapshot(activeSlotId, stageClass.id)?.id ?? null : null);
-  const initialSave = initialSnapshotId !== null
-    ? snapshotService.load(initialSnapshotId, stageClass.id) ?? undefined
-    : undefined;
-  // ロードした時点より後の自動スナップショットは、もう起きなかった未来なので破棄する。
-  if (initialSave && initialSnapshotId !== null) slots.discardAfter(initialSnapshotId);
+  const initialSave = launcher.initialSaveFor(stageClass);
+  const ephemeris = await initEphemeris(stageClass, initialSave?.phaseOffsets ?? {});
+  // 地球の自転初期位相。起動ごとに無作為だが、下位を決定的に保つため乱数はここでだけ引く。
+  const earthSpinPhase0 = initialSave?.earthSpinPhase0 ?? Math.random() * 2 * Math.PI;
 
   const game = new Game(
-    gs, stageClass, hud, sfx, settingsPanel, unlockmanager, sections, absoluteEphemeris, initialSave,
+    gs, stageClass, hud, sfx, settingsPanel, unlockmanager, sections, ephemeris, earthSpinPhase0, initialSave,
   );
-  if (activeSlotId !== null) slots.noteLaunch(activeSlotId, game.activeStage.id);
+  launcher.noteLaunched(stageClass);
 
   const saveBrowser = new SaveBrowser(hud.layers.system, slots, snapshotService, game, hud.modalController);
-  saveBrowser.onSlotSwitched = () => location.assign(location.pathname);
-  // スナップショットのロードは別のゲームを始めることなので、ページごと作り直す。
-  saveBrowser.onLoadSnapshot = (id) => {
-    sessionStorage.setItem(SNAPSHOT_PENDING_KEY, id);
-    location.assign(location.pathname);
-  };
+  saveBrowser.onSlotSwitched = () => launcher.switchSlot();
+  saveBrowser.onLoadSnapshot = (id) => launcher.loadSnapshot(id);
   // 設定メニューと一覧は同じシステム窓の帯にいるので、片方を開くときもう片方は閉じる。
   settingsPanel.onOpenSnapshots = () => {
     settingsPanel.toggle(false);
@@ -285,14 +237,13 @@ async function main() {
     else game.resume();
   };
   const perf = new PerfMeter(game, hud.layers.window, gs.renderer, sections);
-  game.setPerfMeter(perf);
   // 負荷確認ウィンドウは非モーダルなので、設定メニューを閉じてから前面へ出すだけ。
   settingsPanel.onOpenPerfWindow = () => {
     settingsPanel.toggle(false);
     perf.open();
   };
   const snapshotControls = new SnapshotControls(hud, settingsPanel, saveBrowser, snapshotService);
-  startAnimationLoop(game, perf, sections, new AutoSave(snapshotService), snapshotControls);
+  startAnimationLoop(game, perf, sections, new AutoSave(snapshotService), snapshotControls, launcher);
 }
 
 main().catch((err) => {

@@ -10,7 +10,7 @@ import { Player } from './player/player';
 import { Hud } from './hud/hud';
 import { Sfx } from '../audio/sfx';
 import { Input, PointerPoint } from './input/input';
-import { ProjectFn, ScaleFn } from './camera/camera-system';
+import { CameraSystem, ProjectFn } from './camera/camera-system';
 import type { GroupedMarkerItem } from './marker/grouped-markers';
 import { ContextMenu, MenuItem } from './hud/context-menu';
 import { MenuAction, MenuCommon } from './hud/menu-actions';
@@ -136,8 +136,9 @@ export class Targeter {
     this.targetSelectAt = now;
   }
 
-  // 戦闘ターゲットの赤道交点マーカーを求め直す。
-  updateEquatorNodes(displayWindow: DisplayWindow, ephemeris: Ephemeris): void {
+  // マップ表示中だけ、戦闘ターゲットの赤道交点マーカーを求め直す(戦闘ビューでは誰も読まない)。
+  updateEquatorNodes(overviewMode: boolean, displayWindow: DisplayWindow, ephemeris: Ephemeris): void {
+    if (!overviewMode) return;
     this.aliveTarget?.ensureEquatorNodes(this.markerManager)
       .update(displayWindow.frame, displayWindow.displayTime, ephemeris);
   }
@@ -178,10 +179,12 @@ export class Targeter {
   // ターゲットに紐づく表示物(軌道線・的通過マーク・方位マーカー)をまとめて更新する。
   // ターゲットの選定を持つのがここなので、その表示もここに閉じる。
   sync(
-    fo: FloatingOrigin, player: Player | null, targets: readonly CombatTarget[], overviewMode: boolean,
-    project: ProjectFn, camera: THREE.Camera, attractors: readonly Attractor[],
-    visibilityPolicy: MapVisibilityPolicy | null = null,
+    fo: FloatingOrigin, player: Player | null, targets: readonly CombatTarget[], cameraSystem: CameraSystem,
+    attractors: readonly Attractor[], visibilityPolicy: MapVisibilityPolicy | null = null,
   ): void {
+    const overviewMode = cameraSystem.overviewMode;
+    const project = cameraSystem.activeCameraProjection;
+    const camera = cameraSystem.activeCamera;
     this.syncOrbitLine(fo, player, targets, overviewMode, camera, attractors, visibilityPolicy);
     this.syncBoardMarkers(project);
     this.syncTargetDirMarkers(player, overviewMode, project);
@@ -192,8 +195,11 @@ export class Targeter {
   // 予測地平の先を指していて displayState を返せない対象と、可視性判定で選択不可の対象は出さない。
   syncTargetMarkers(
     player: Player | null, targets: readonly CombatTarget[], displayTime: number, simTime: number,
-    overviewMode: boolean, project: ProjectFn, screenScale: ScaleFn, visibilityPolicy: MapVisibilityPolicy | null,
+    cameraSystem: CameraSystem, visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
+    const overviewMode = cameraSystem.overviewMode;
+    const project = cameraSystem.activeCameraProjection;
+    const screenScale = cameraSystem.activeCameraScale;
     const viewerPos = player?.state.r ?? v3();
     this.aliveScratch.length = 0;
     this.markerItemScratch.length = 0;
