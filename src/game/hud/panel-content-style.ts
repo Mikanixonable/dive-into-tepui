@@ -8,7 +8,7 @@ export const PANEL_CONTENT_STYLE = `
 #hud-status h3 { font-size: var(--font-xxs); }
 /* 通常のマップビューでは艦固有の情報を右クリックのプロパティウィンドウで参照するので、常設の
    SHIP STATUS は畳んでパネル占有面積を減らす。クリエイティブでは配置後の操作用に表示する。 */
-#hud.map-mode:not(.creative-mode) #hud-status { display: none; }
+#hud:not(.creative-mode) .hud-map-root.active #hud-status { display: none; }
 #hud-orbit h3 { font-size: var(--font-xxs); }
 #hud-status .v, #hud-orbit .v { min-width: 75px; }
 /* R/F/G/T の代替操作ボタン(タッチ・マウスどちらでも常設)。 */
@@ -105,7 +105,7 @@ body.touch-ui-active #hud-status .status-throttle-touch { display: flex; }
   width: 26px; height: 26px; border: 1px solid var(--edge); border-radius: var(--radius-m);
   background: var(--surface); color: var(--accent);
 }
-#hud.map-mode #hud-predict-toggle { display: block; }
+#hud .hud-map-root.active #hud-predict-toggle { display: block; }
 #hud.dock-mode #hud-predict-toggle { display: none; }
 #hud-predict .predict-row1, #hud-predict .predict-row2 { display: flex; align-items: center; gap: var(--space-3); }
 #hud-predict .predict-row1 { flex-wrap: wrap; margin-bottom: var(--space-2); }

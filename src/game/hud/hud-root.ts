@@ -6,6 +6,7 @@ import { OverlayManager } from './overlay-manager';
 import { HelpPanel } from './help-panel';
 import {
   PanelShell,
+  type HudWorldView,
   loadPanelCollapsed,
   onPanelCollapsedViewChange,
   savePanelCollapsed,
@@ -49,16 +50,24 @@ function createHudElement(tag: string, id: string, parent: HTMLElement, classNam
 export interface HudDomRefs {
   readonly root: HTMLElement;
   readonly layers: OverlayLayers;
+  readonly combatRoot: HudWorldRoot;
+  readonly mapRoot: HudWorldRoot;
   readonly svgOverlay: SVGSVGElement;
   readonly overlayManager: OverlayManager;
   readonly helpPanel: HelpPanel;
   readonly els: Map<string, HTMLElement>;
 }
 
+/** 戦闘/マップそれぞれが所有する HUD の DOM ルート。 */
+export interface HudWorldRoot {
+  readonly element: HTMLElement;
+  readonly leftRail: HTMLElement;
+  readonly rightRail: HTMLElement;
+}
+
 /** 動的に生成されるマップ系パネルの配置先を返す。 */
 export function hudRail(root: HTMLElement, side: 'left' | 'right'): HTMLElement {
-  const id = `hud-rail-${side}`;
-  return root.querySelector<HTMLElement>(`#${id}`) ?? root;
+  return root.querySelector<HTMLElement>(`.hud-rail-${side}`) ?? root;
 }
 
 function railToggleLabels(side: 'left' | 'right'): CollapseToggleLabels {
@@ -71,17 +80,15 @@ function railToggleLabels(side: 'left' | 'right'): CollapseToggleLabels {
   };
 }
 
-export function syncNavballPlacement(root: HTMLElement, mapMode: boolean): void {
-  const navball = root.querySelector<HTMLElement>('#navball');
-  const target = mapMode ? root.querySelector<HTMLElement>('#hud-rail-left') : root;
-  if (navball && target && navball.parentElement !== target) target.appendChild(navball);
-}
-
 // レールの折りたたみ状態は PanelShell と同じビュー別 localStorage を共有する。一度も操作
 // されていなければ、初回表示の既定として compact 幅でだけ畳んでおく。
-function buildRailToggle(root: HTMLElement, rail: HTMLElement, side: 'left' | 'right'): void {
+function buildRailToggle(
+  root: HTMLElement, rail: HTMLElement, side: 'left' | 'right', view: HudWorldView,
+): void {
   const railId = `hud-rail-${side}`;
-  const toggle = buildCollapseToggle(root, `hud-rail-toggle-${side}`, 'rail-toggle', rail, railToggleLabels(side));
+  const toggle = buildCollapseToggle(
+    root, `hud-${view}-rail-toggle-${side}`, `rail-toggle rail-toggle-${side}`, rail, railToggleLabels(side),
+  );
   const applyCollapsedState = (): void => {
     const collapsed = loadPanelCollapsed(railId) ?? isCompactViewport();
     rail.classList.toggle('collapsed', collapsed);
@@ -90,6 +97,19 @@ function buildRailToggle(root: HTMLElement, rail: HTMLElement, side: 'left' | 'r
   applyCollapsedState();
   onPanelCollapsedViewChange(applyCollapsedState);
   toggle.addEventListener('click', () => savePanelCollapsed(railId, rail.classList.contains('collapsed')));
+}
+
+function buildWorldRoot(parent: HTMLElement, id: string, view: HudWorldView): HudWorldRoot {
+  const element = createHudElement('div', id, parent, `hud-world-root hud-${view}-root`);
+  const leftRail = createHudElement(
+    'div', `${id}-rail-left`, element, 'hud-rail hud-rail-left',
+  );
+  const rightRail = createHudElement(
+    'div', `${id}-rail-right`, element, 'hud-rail hud-rail-right',
+  );
+  buildRailToggle(element, leftRail, 'left', view);
+  buildRailToggle(element, rightRail, 'right', view);
+  return { element, leftRail, rightRail };
 }
 
 // PanelShell が組んだ見出し・本文・開閉ボタンを、アクセシブルな一領域として関連付ける。
@@ -134,7 +154,7 @@ function buildSvgOverlay(root: HTMLElement): SVGSVGElement {
 
 // 常設の情報パネル(VESSEL/ORBIT/TARGET/CONTACTS)を左右のドックへ組む。左右レールの
 // 収納トグルと各 PanelShell の折りたたみは、現在ビューの永続状態を利用する。
-function buildInfoPanels(root: HTMLElement, leftRail: HTMLElement, rightRail: HTMLElement): void {
+function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
   const status = new PanelShell(rightRail, 'hud-status', 'Vessel');
   configureCombatPanel(status);
   status.body.innerHTML = `
@@ -224,7 +244,10 @@ function buildInfoPanels(root: HTMLElement, leftRail: HTMLElement, rightRail: HT
   enemies.titleEl.append(' ', count);
   enemies.body.innerHTML = `<ol class="contact-list" data-id="elist" aria-label="距離順の戦闘対象"></ol>`;
 
-  // マップ視点の縮尺バー。MapScaleBadge.sync がカメラの注視点基準で更新する。
+}
+
+// マップ視点の縮尺バー。MapScaleBadge.sync がカメラの注視点基準で更新する。
+function buildMapScale(root: HTMLElement): void {
   const mapScale = createHudElement('div', 'hud-map-scale', root);
   mapScale.dataset.id = 'map-scale';
   mapScale.setAttribute('aria-label', 'マップ縮尺');
@@ -286,16 +309,14 @@ export function buildHudDom(): HudDomRefs {
   const root = createHudElement('div', 'hud', document.body);
   const layers = buildOverlayLayers(root);
   const svgOverlay = buildSvgOverlay(layers.marker);
-  createHudElement('div', 'hud-rail-left', layers.panel, 'hud-rail hud-rail-left');
-  const rightRail = createHudElement('div', 'hud-rail-right', layers.panel, 'hud-rail hud-rail-right');
-  const leftRail = layers.panel.querySelector<HTMLElement>('#hud-rail-left')!;
-  buildRailToggle(layers.panel, leftRail, 'left');
-  buildRailToggle(layers.panel, rightRail, 'right');
+  const combatRoot = buildWorldRoot(layers.panel, 'hud-combat-root', 'combat');
+  const mapRoot = buildWorldRoot(layers.panel, 'hud-map-root', 'map');
 
   // 常設パネル群を組む。
-  buildInfoPanels(layers.panel, leftRail, rightRail);
-  buildGlobalStatus(layers.panel);
-  buildChaseReset(layers.panel);
+  buildInfoPanels(combatRoot.leftRail, combatRoot.rightRail);
+  buildGlobalStatus(combatRoot.element);
+  buildChaseReset(combatRoot.element);
+  buildMapScale(mapRoot.element);
   const overlayShield = createHudElement('div', 'hud-overlay-shield', layers.gate);
   const overlayManager = new OverlayManager(overlayShield, layers.gate);
 
@@ -307,5 +328,5 @@ export function buildHudDom(): HudDomRefs {
   createHudElement('div', 'hud-result', layers.system);
 
   const els = collectDataIdElements(root);
-  return { root, layers, svgOverlay, overlayManager, helpPanel, els };
+  return { root, layers, combatRoot, mapRoot, svgOverlay, overlayManager, helpPanel, els };
 }

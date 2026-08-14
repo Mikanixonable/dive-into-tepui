@@ -193,9 +193,11 @@ export class NavTarget {
     const overviewMode = cameraSystem.overviewMode;
     const cameraPos = cameraSystem.activeCameraPos;
     const hidden = (pos: Vec3): boolean => overviewMode && isOccluded(cameraPos, pos, this.attractors);
-    if (this.anPos && !hidden(this.anPos)) this.markerManager.setPosition('nav-an', 'mk-node', ORBIT_POINT_GLYPH.ascendingNode, this.anPos, project, 'AN');
-    else this.markerManager.hide('nav-an');
-    if (this.dnPos && !hidden(this.dnPos)) this.markerManager.setPosition('nav-dn', 'mk-node', ORBIT_POINT_GLYPH.descendingNode, this.dnPos, project, 'DN');
-    else this.markerManager.hide('nav-dn');
+    if (!this.anPos) this.markerManager.hide('nav-an');
+    else if (hidden(this.anPos)) this.markerManager.fadeOut('nav-an');
+    else this.markerManager.setPosition('nav-an', 'mk-node', ORBIT_POINT_GLYPH.ascendingNode, this.anPos, project, 'AN');
+    if (!this.dnPos) this.markerManager.hide('nav-dn');
+    else if (hidden(this.dnPos)) this.markerManager.fadeOut('nav-dn');
+    else this.markerManager.setPosition('nav-dn', 'mk-node', ORBIT_POINT_GLYPH.descendingNode, this.dnPos, project, 'DN');
   }
 }

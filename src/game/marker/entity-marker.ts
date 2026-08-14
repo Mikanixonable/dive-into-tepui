@@ -52,10 +52,7 @@ export class EntityMarker {
     const shownLabel = visibility?.label === false ? '' : label;
     const p = project(state.r);
     if (overviewMode) {
-      if (isOccluded(cameraPos, state.r, attractors)) {
-        this.hide();
-        return;
-      }
+      const occluded = isOccluded(cameraPos, state.r, attractors);
       const distance = viewerPos === null ? Infinity : len(sub(state.r, viewerPos));
       const mapOpacity = this.className === 'mk-ammo'
         ? Math.max(0, Math.min(1, (C.MAP_AMMO_FADE_END - distance)
@@ -70,6 +67,7 @@ export class EntityMarker {
         p.x, p.y, p.front, shownLabel, mapOpacity, undefined,
         this.markerManager.headingRotationDeg(state.r, state.v, project, scale),
       );
+      if (occluded) this.markerManager.fadeOut(this.key);
       this.markerManager.hide(this.bearingKey);
       return;
     }
