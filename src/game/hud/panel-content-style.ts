@@ -238,6 +238,8 @@ body.touch-ui-active #hud-status .status-throttle-touch { display: flex; }
   display: flex; justify-content: space-between; align-items: center; gap: var(--space-6); padding: var(--space-3) 0;
 }
 #hud-pause-menu .pm-theme-row { align-items: center; }
+#hud-pause-menu .pm-theme-preview { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 3px; }
+#hud-pause-menu .pm-theme-swatch { width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 0 1px color-mix(in srgb, var(--title) 24%, transparent); }
 #hud-pause-menu .pm-theme-select { flex: 1 1 180px; min-width: 0; color-scheme: var(--theme-tone); }
 /* span. まで指定して .w-btn 側の padding/font-size より確実に勝たせる
    (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
