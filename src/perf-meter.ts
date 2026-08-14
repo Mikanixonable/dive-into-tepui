@@ -4,6 +4,7 @@ import type { WebGPURenderer } from 'three/webgpu';
 import { PropertyRow, PropertyWindow } from './game/hud/property-window';
 import { fmtDuration } from './game/hud/utils';
 import { FrameSections, SECTION_COUNT, SECTION_LABELS, type SectionId } from './frame-sections';
+import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings, type GpuPassId } from './gpu-timings';
 import type { OverlayManager } from './game/hud/overlay-manager';
 import type { Input } from './game/input/input';
 import { KEY_MAPPING as K } from './game/input/key-mapping';
@@ -64,6 +65,8 @@ export class PerfMeter {
   private readonly triangleStats = newPhaseStats();
   // update の区間ごとの統計。末尾は区間外へ落ちた時間(その他)。
   private readonly sectionStats = Array.from({ length: SECTION_COUNT + 1 }, newPhaseStats);
+  // 描画パスごとの GPU 時間の統計。
+  private readonly gpuStats = Array.from({ length: GPU_PASS_COUNT }, newPhaseStats);
   private frames = 0;
   private lastFlush = performance.now();
   // 前回フラッシュ時点の暦キャッシュ累計。表示する集計期間分の差分を取るために持つ。
@@ -83,6 +86,7 @@ export class PerfMeter {
     private readonly root: HTMLElement,
     private readonly renderer: WebGPURenderer,
     private readonly sections: FrameSections,
+    private readonly gpu: GpuTimings,
     private readonly overlayManager: OverlayManager,
   ) {
     if (new URLSearchParams(location.search).get('perf') === '1') this.open();
@@ -101,7 +105,9 @@ export class PerfMeter {
     this.resetStats(this.drawCallStats);
     this.resetStats(this.triangleStats);
     for (const s of this.sectionStats) this.resetStats(s);
+    for (const s of this.gpuStats) this.resetStats(s);
     this.sections.enabled = true;
+    this.gpu.enabled = true;
     this.frames = 0;
     this.lastFlush = performance.now();
     this.win = new PropertyWindow(this.root, DEFAULT_X, DEFAULT_Y, {
@@ -112,6 +118,7 @@ export class PerfMeter {
     this.win.onClose = () => {
       this.win = null;
       this.sections.enabled = false;
+      this.gpu.enabled = false;
     };
   }
 
@@ -120,6 +127,7 @@ export class PerfMeter {
     this.win?.dispose();
     this.win = null;
     this.sections.enabled = false;
+    this.gpu.enabled = false;
   }
 
   // 開閉を反転する。
@@ -145,6 +153,7 @@ export class PerfMeter {
     for (const [i, stats] of this.sectionStats.entries()) {
       this.addSample(stats, i < SECTION_COUNT ? this.sections.msOf(i as SectionId) : this.sections.otherMs());
     }
+    for (const [i, stats] of this.gpuStats.entries()) this.addSample(stats, this.gpu.msOf(i as GpuPassId));
     this.frames++;
     this.flush(now);
   }
@@ -190,6 +199,7 @@ export class PerfMeter {
     this.resetStats(this.drawCallStats);
     this.resetStats(this.triangleStats);
     for (const s of this.sectionStats) this.resetStats(s);
+    for (const s of this.gpuStats) this.resetStats(s);
     this.frames = 0;
     this.lastFlush = now;
   }
@@ -199,6 +209,16 @@ export class PerfMeter {
     const label = SECTION_LABELS[index] ?? 'その他';
     return {
       key: `usec-${index}`, label, group: 'update内訳',
+      value: `${barText(stats.sum / frames)} max ${stats.max.toFixed(1)}`,
+    };
+  }
+
+  // 描画パス1つ分の GPU 時間の行。時刻印がまだ届いていない間は取得中と出す。
+  private gpuPassRow(index: number, stats: PhaseStats, frames: number): PropertyRow {
+    const label = `GPU ${GPU_PASS_LABELS[index] ?? index}`;
+    if (!this.gpu.supported) return { key: `gpu-${index}`, label, group: '描画', value: '未対応' };
+    return {
+      key: `gpu-${index}`, label, group: '描画',
       value: `${barText(stats.sum / frames)} max ${stats.max.toFixed(1)}`,
     };
   }
@@ -235,6 +255,7 @@ export class PerfMeter {
 
       ...this.sectionStats.map((s, i) => this.sectionRow(i, s, frames)),
 
+      ...this.gpuStats.map((s, i) => this.gpuPassRow(i, s, frames)),
       this.countRow('draw-calls', 'draw calls', '描画', this.drawCallStats, frames),
       this.countRow('draw-tris', 'triangles', '描画', this.triangleStats, frames),
 
