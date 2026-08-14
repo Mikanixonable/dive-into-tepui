@@ -1,14 +1,14 @@
 // Runtime UI の意味トークン。値と役割は UI_DESIGN_REFERENCE_V6 を正本とする。
 // ゲーム世界(マーカー・演出・船体など)の Material 色は const.ts が持ち、ここには含まない。
 
-export const ACCENT = '#ff5a00';
-export const ACCENT_SOFT = '#ff8b52';
-export const ACCENT_SECONDARY = '#19f5c2';
+export const ACCENT = '#ff3155';
+export const ACCENT_SOFT = '#ff6b82';
+export const ACCENT_SECONDARY = '#3478ff';
 // 危険・警告だけに使う意味色。第一ターゲットは ACCENT を使う。
 export const DANGER = '#ff4f5e';
 export const DANGER_FILL = 'rgba(255, 79, 94, 0.08)'; // 危険を示す領域の地色
 
-export const BG = '#07080a';
+export const BG = '#08090d';
 export const SURFACE_0 = '#08090c';
 export const SURFACE_1 = '#0e1014';
 export const SURFACE_2 = '#15171c';
@@ -27,11 +27,11 @@ export const TEXT_MUTED = '#c3bec9';
 export const TEXT_DIM = '#89838f';
 
 // アクセントの薄膜。値が大きいほど強く主張する。
-export const ACCENT_FILL_WEAK = 'rgba(255, 90, 0, 0.08)'; // 選択されていない行の背景など、ごく控えめな地色
-export const ACCENT_FILL = 'rgba(255, 90, 0, 0.16)'; // 選択中・ホバー中の地色
-export const ACCENT_FILL_STRONG = 'rgba(255, 90, 0, 0.24)'; // 押下中・強調表示の地色
-export const ACCENT_EDGE_SOFT = 'rgba(255, 90, 0, 0.22)'; // 見出し下線などの控えめな縁
-export const ACCENT_EDGE = 'rgba(255, 90, 0, 0.4)'; // ボタン・パネルの通常の縁
+export const ACCENT_FILL_WEAK = 'rgba(255, 49, 85, 0.08)'; // 選択されていない行の背景など、ごく控えめな地色
+export const ACCENT_FILL = 'rgba(255, 49, 85, 0.16)'; // 選択中・ホバー中の地色
+export const ACCENT_FILL_STRONG = 'rgba(255, 49, 85, 0.24)'; // 押下中・強調表示の地色
+export const ACCENT_EDGE_SOFT = 'rgba(255, 49, 85, 0.22)'; // 見出し下線などの控えめな縁
+export const ACCENT_EDGE = 'rgba(255, 49, 85, 0.4)'; // ボタン・パネルの通常の縁
 
 // 中立の薄膜。値が大きいほど強く主張する。EDGE と同じオフホワイトを基調とする。
 export const FILL_1 = 'rgba(238, 235, 248, 0.04)';
