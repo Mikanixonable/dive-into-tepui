@@ -97,7 +97,7 @@ export class CameraSystem {
 
   // クラスごとの天体表示トグル。マップのラベル・軌道オブジェクト一覧・配置UIの基準天体が
   // この1つの状態を共有する(body-visibility.ts の visibleBodyIds に渡す)。フォーカスと
-  // MAP VIEW パネルを既に所有しているこのクラスが、同じ場所で持つ。
+  // 太陽系パネルを既に所有しているこのクラスが、同じ場所で持つ。
   private _bodyClassToggles: BodyClassToggles = loadBodyClassToggles();
   get bodyClassToggles(): BodyClassToggles { return this._bodyClassToggles; }
 

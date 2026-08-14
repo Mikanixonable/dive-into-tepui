@@ -20,7 +20,7 @@ export const MAP_VIEW_STYLE = `
 
 /* Focus Glass: 時間スクラブと座標系編集は、意思決定中だけ一段密度を上げる。 */
 #hud.map-mode #hud-predict,
-#hud.map-mode #hud-frame-controls,
+#hud.map-mode .hud-frame-controls,
 #hud.map-mode #hud-plan {
   border: 0;
   border-radius: var(--radius-panel);
@@ -33,7 +33,7 @@ export const MAP_VIEW_STYLE = `
 #hud.map-mode #hud-object-list h3,
 #hud.map-mode #hud-view-options h3,
 #hud.map-mode #hud-predict h3,
-#hud.map-mode #hud-frame-controls h3,
+#hud.map-mode .hud-frame-controls h3,
 #hud.map-mode #hud-plan h3 {
   color: var(--title);
   border: 0;
@@ -244,32 +244,23 @@ export const MAP_VIEW_STYLE = `
 #hud.map-mode #hud-predict .predict-elapsed { color: var(--title); }
 #hud.map-mode #hud-predict .predict-elapsed:hover { color: var(--accent-near); }
 
-/* Frame controls: セクション名 > 操作 > 読み取り専用サマリーの順に弱くする。 */
-#hud.map-mode #hud-frame-controls .frame-section { margin-top: var(--space-5); }
-#hud.map-mode #hud-frame-controls .frame-section:first-of-type { margin-top: 0; }
-#hud.map-mode #hud-frame-controls .frame-section-title {
-  margin-bottom: var(--space-3);
-  color: var(--body);
-  font-size: var(--font-xs);
-  font-weight: 600;
-  letter-spacing: 0;
-}
-#hud.map-mode #hud-frame-controls .frame-summary {
+/* Frame controls: ウィンドウ見出し > 操作 > 読み取り専用サマリーの順に弱くする。 */
+#hud.map-mode .hud-frame-controls .frame-summary {
   margin-top: var(--space-4);
   padding-top: var(--space-3);
   color: var(--muted);
   font-size: var(--font-xxs);
   line-height: 1.55;
 }
-#hud.map-mode #hud-frame-controls .w-btn,
-#hud.map-mode #hud-frame-controls .w-toggle-track {
+#hud.map-mode .hud-frame-controls .w-btn,
+#hud.map-mode .hud-frame-controls .w-toggle-track {
   border: 0;
   border-radius: var(--radius-control);
   background: var(--surface-2);
 }
-#hud.map-mode #hud-frame-controls .w-btn:hover { color: var(--accent-near); background: var(--surface-3); }
-#hud.map-mode #hud-frame-controls .w-btn.on { color: var(--accent); }
-#hud.map-mode #hud-frame-controls .w-toggle-track.on { background: var(--accent-secondary); }
+#hud.map-mode .hud-frame-controls .w-btn:hover { color: var(--accent-near); background: var(--surface-3); }
+#hud.map-mode .hud-frame-controls .w-btn.on { color: var(--accent); }
+#hud.map-mode .hud-frame-controls .w-toggle-track.on { background: var(--accent-secondary); }
 
 /* Map scale は視野端の小さな Quiet Glass に留める。 */
 #hud-map-scale {
@@ -294,7 +285,7 @@ export const MAP_VIEW_STYLE = `
 @media ${MQ_MEDIUM_DOWN} {
   #hud.map-mode #hud-object-list,
   #hud.map-mode #hud-view-options,
-  #hud.map-mode #hud-frame-controls { border-radius: var(--radius-panel); }
+  #hud.map-mode .hud-frame-controls { border-radius: var(--radius-panel); }
   #hud.map-mode #hud-view-options .view-options-section-heading,
   #hud.map-mode #hud-view-options .body-class-row { grid-template-columns: 82px minmax(0, 1fr); }
   #hud.map-mode #hud-view-options .view-options-column { font-size: 8px; }
