@@ -39,6 +39,7 @@ export class FrameControls {
   private readonly projectionToggle: ToggleSwitch;
   private readonly fovSlider: Slider;
   private readonly fovInput: ValueInput;
+  private readonly fovResetButton: Button;
   private readonly referencePlaneControl: SegmentedControl<CameraReferencePlane>;
   private readonly aboveButton: Button;
   private readonly sideButton: Button;
@@ -107,6 +108,10 @@ export class FrameControls {
     fovUnit.textContent = '°';
     fovGroup.appendChild(fovUnit);
     this.cameraPanel.appendChild(fovGroup);
+    this.fovResetButton = new Button('画角リセット', () => overviewCamera.resetFov());
+    this.fovResetButton.element.classList.add('camera-fov-reset');
+    this.fovResetButton.element.title = '画角をデフォルトに戻す';
+    this.cameraPanel.appendChild(this.fovResetButton.element);
 
     this.referencePlaneControl = new SegmentedControl<CameraReferencePlane>('視点の基準面', [
       ['ecliptic', '黄道面'],
@@ -217,6 +222,7 @@ export class FrameControls {
     this.projectionToggle.setOn(isOrthographic);
     this.fovSlider.element.disabled = isOrthographic;
     this.fovInput.element.disabled = isOrthographic;
+    this.fovResetButton.setEnabled(!isOrthographic);
     this.fovSlider.element.title = isOrthographic ? '平行投影では画角は使用しません' : '画角';
     this.fovInput.element.title = isOrthographic ? '平行投影では画角は使用しません' : '画角';
     this.fovSlider.setValue(this.overviewCamera.fov);

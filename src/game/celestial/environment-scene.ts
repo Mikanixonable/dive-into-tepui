@@ -10,6 +10,7 @@ import { Vec3, v3, sub, len } from '../../physics/vec3';
 import { OrbitLine } from '../orbit-line';
 import { createStars, STAR_SHELL_RADIUS } from '../../render/stars';
 import { CelestialGrid, CelestialGridVisibility } from '../../render/celestial-grid';
+import { SpatialGrid } from '../../render/spatial-grid';
 import { CameraSystem } from '../camera/camera-system';
 import { focusTargetId } from '../camera/focus-target';
 import { FloatingOrigin } from '../floating-origin';
@@ -55,6 +56,7 @@ export class EnvironmentScene {
   private readonly sunLight: THREE.DirectionalLight;
   readonly starsMesh: THREE.Mesh;
   readonly celestialGrid: CelestialGrid;
+  readonly spatialGrid: SpatialGrid;
   private readonly bodies: readonly CelestialBody[];
   // 小惑星帯・トロヤ群の点群。天体暦から作られるマップ専用の表示なので、マップへ入るまで
   // 生成しない。11,200点の軌道要素・mesh・instance bufferをロード時に確保しないため。
@@ -94,6 +96,7 @@ export class EnvironmentScene {
     this.starsMesh = createStars();
     scene.add(this.starsMesh);
     this.celestialGrid = new CelestialGrid(scene);
+    this.spatialGrid = new SpatialGrid(scene);
 
     this.bodies = Object.keys(registry).map((id) =>
       id in CELESTIAL_BODIES ? CELESTIAL_BODIES[id as SolarSystemId].create() : fallbackCelestialView(registry, id));
@@ -175,8 +178,17 @@ export class EnvironmentScene {
       visibilityPolicy, nearbyIds, cameraSystem.activeCamera, cameraSystem.activeCameraPos);
     this.celestialGrid.sync(
       gridVisibility, cameraSystem.activeCamera,
-      cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0,
-      'moon' in this.ephemeris.registry ? this.toThreeNormal(this.ephemeris.orbitNormalAt('moon', displayTime)) : undefined);
+      cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
+    this.spatialGrid.sync(
+      cameraSystem.overviewMode,
+      gridVisibility.eclipticScaleGrid,
+      gridVisibility.equatorScaleGrid,
+      gridVisibility.moonOrbitScaleGrid,
+      'moon' in this.ephemeris.registry ? this.toThreeNormal(this.ephemeris.orbitNormalAt('moon', displayTime)) : undefined,
+      cameraSystem.overviewCamera.resolvedFocus,
+      floatingOrigin,
+      cameraSystem.overviewCamera.dist,
+    );
   }
 
   // 星球はカメラに追従する固定半径の殻。広範囲視点では CELESTIAL_SHELL_RADIUS まで拡大する
