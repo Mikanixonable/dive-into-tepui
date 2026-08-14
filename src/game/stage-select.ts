@@ -11,7 +11,6 @@ import tepuiRmqrUrl from '../assets/tepui-rmqr.svg';
 
 const PAGE = '#08090d';
 const SURFACE_0 = '#08090c';
-const SURFACE_1 = '#0e1014';
 const SURFACE_2 = '#15171c';
 const TITLE_INK = '#eeeaf5';
 const BODY_INK = '#c3bec9';
@@ -29,6 +28,7 @@ const FONT_MONO = '"IBM Plex Mono","Zen Kaku Gothic Antique","Hiragino Kaku Goth
 const FONT_CANTONESE = '"Noto Serif HK","Source Han Serif HC","Songti TC",serif';
 
 const RADIUS_WINDOW = '30px';
+const RADIUS_PANEL = '16px';
 const RADIUS_CONTROL = '11px';
 
 const STYLE = `
@@ -75,24 +75,31 @@ const STYLE = `
   content: ""; width: 28px; height: 2px; border-radius: 99px; background: ${ACCENT};
 }
 #stage-select .ss-logotype {
-  margin: 0; max-width: 720px; color: ${TITLE_INK}; font-weight: 400;
+  margin: 0; max-width: 720px; color: ${TITLE_INK}; font-weight: 500;
   font-size: clamp(48px, 8vw, 104px); letter-spacing: -0.07em; line-height: 0.82;
+  text-wrap: balance;
 }
-#stage-select .ss-line { position: relative; display: block; width: fit-content; white-space: nowrap; }
-#stage-select .ss-line:nth-child(2) { margin-left: 0.38em; color: ${NEAR_ACCENT}; }
-#stage-select .ss-line:nth-child(3) { margin-left: 0.76em; }
-#stage-select .ss-orn {
-  position: absolute; left: calc(100% + 10px); color: ${SECONDARY_ACCENT};
-  font-family: ${FONT_MONO}; font-size: clamp(9px, 0.95vw, 12px);
-  font-weight: 500; letter-spacing: 0.08em; line-height: 1;
+#stage-select .ss-title-main { display: block; white-space: nowrap; }
+#stage-select .ss-title-near { color: ${NEAR_ACCENT}; }
+#stage-select .ss-title-formula {
+  display: inline-block; margin-left: 0.16em; color: ${SECONDARY_ACCENT};
+  font-family: ${FONT_SERIF}; font-size: 0.35em; font-weight: 400;
+  vertical-align: 0.62em; letter-spacing: 0;
 }
-#stage-select .ss-line:nth-child(1) .ss-orn { top: 0.02em; }
-#stage-select .ss-line:nth-child(2) .ss-orn { bottom: 0.04em; }
-#stage-select .ss-line:nth-child(3) .ss-orn { top: 0.02em; }
+#stage-select .ss-ornament-row {
+  display: flex; align-items: center; gap: 14px; margin: 13px 0 0 0.2em;
+  color: ${SECONDARY_ACCENT}; font-family: ${FONT_MONO}; font-size: 10px;
+  font-weight: 500; letter-spacing: 0.12em; line-height: 1;
+}
+#stage-select .ss-ornament-row span:nth-child(2n) { color: ${NEAR_ACCENT}; }
+#stage-select .ss-ornament-row span:nth-child(3n) { color: ${ACCENT}; }
 #stage-select .ss-sub {
-  width: fit-content; margin: clamp(16px, 2.4vw, 26px) 0 0 0.12em;
+  width: fit-content; margin: 0 0 0 0.12em;
   color: ${ACCENT}; font-family: ${FONT_SERIF};
   font-size: clamp(20px, 2.4vw, 32px); font-weight: 300; line-height: 1;
+}
+#stage-select .ss-subrow {
+  display: flex; align-items: end; justify-content: space-between; gap: 18px; margin-top: 20px;
 }
 #stage-select .ss-languages { display: flex; align-items: baseline; gap: 16px; margin: 12px 0 0 0.2em; }
 #stage-select .ss-cantonese {
@@ -103,12 +110,21 @@ const STYLE = `
   margin: 0; color: ${BODY_INK}; font-family: ${FONT_SANS};
   font-size: clamp(13px, 1.4vw, 17px); font-weight: 500; line-height: 1.3;
 }
+#stage-select .ss-status {
+  min-width: 190px; padding: 11px 13px; border-radius: ${RADIUS_PANEL};
+  color: ${BODY_INK}; background: rgb(8 9 13 / 58%);
+  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  font: 10px/1.55 ${FONT_MONO};
+}
+#stage-select .ss-status b { color: ${SECONDARY_ACCENT}; font-weight: 500; }
 #stage-select .ss-window {
   min-height: 0; height: min(680px, calc(100dvh - 36px)); box-sizing: border-box;
   display: flex; flex-direction: column; gap: 14px;
   padding: 18px;
-  background: ${SURFACE_1}; border-radius: ${RADIUS_WINDOW};
+  background: rgb(19 21 26 / 68%); border-radius: ${RADIUS_WINDOW};
   box-shadow: 0 18px 48px rgb(0 0 0 / 0.28);
+  backdrop-filter: blur(26px) saturate(120%);
+  -webkit-backdrop-filter: blur(26px) saturate(120%);
   overflow: hidden;
 }
 #stage-select .ss-window-title {
@@ -159,6 +175,9 @@ const STYLE = `
   #stage-select .ss-3d-window,
   #stage-select .ss-window { height: auto; min-height: 460px; border-radius: 24px; }
   #stage-select .ss-hero { inset: auto 20px 22px; }
+  #stage-select .ss-title-main { white-space: normal; }
+  #stage-select .ss-subrow { display: block; }
+  #stage-select .ss-status { min-width: 0; margin-top: 14px; }
   #stage-select .ss-window {
     min-height: 0; max-height: none; padding: 16px;
   }
@@ -203,15 +222,16 @@ export function selectStage(unlockManager: UnlockManager): Promise<StageClass> {
       '<div class="ss-hero">' +
       '<p class="ss-eyebrow">Sortie select · 公暦20115年</p>' +
       '<h1 id="ss-title" class="ss-logotype">' +
-      '<span class="ss-line">DIVE<sup class="ss-orn">∴03</sup></span>' +
-      '<span class="ss-line">INTO<sub class="ss-orn">ECI₀</sub></span>' +
-      '<span class="ss-line">TEPUI<sup class="ss-orn">Ω⁺</sup></span>' +
+      '<span class="ss-title-main">Dive into <span class="ss-title-near">Tepui</span><sup class="ss-title-formula">ℋ₀₁</sup></span>' +
+      '<span class="ss-ornament-row" aria-hidden="true"><span>∴03</span><span>ECI₀</span><span>Ω⁺</span><span>⌁</span><span>⟐</span><span>⊹</span></span>' +
       '</h1>' +
+      '<div class="ss-subrow"><div>' +
       '<p class="ss-sub">The Orbit Is the Battlefield</p>' +
       '<div class="ss-languages">' +
       '<p class="ss-cantonese" lang="zh-HK">前往高空堡壘的作戰</p>' +
       '<p class="ss-french" lang="fr">Opération vers la forteresse de haute altitude</p>' +
       '</div>' +
+      '</div><div class="ss-status"><b>∗ Link stable</b><br>h = 420.2 km · i = 51.6°<br>Epoch 06:14:28.03</div></div>' +
       '</div>' +
       `<img class="ss-corner" src="${tepuiRmqrUrl}" alt="Dive into Tepui">` +
       '</section>' +
