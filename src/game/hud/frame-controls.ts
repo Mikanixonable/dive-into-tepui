@@ -36,6 +36,7 @@ export class FrameControls {
   private readonly cameraCenterZone: AnchorZone;
   private readonly cameraRotationZone: RotationZone;
   private readonly cameraRotationModeToggle: ToggleSwitch;
+  private readonly projectionToggle: ToggleSwitch;
   private readonly fovSlider: Slider;
   private readonly fovInput: ValueInput;
   private readonly referencePlaneControl: SegmentedControl<CameraReferencePlane>;
@@ -76,6 +77,11 @@ export class FrameControls {
       overviewCamera.setCameraRotationMode(on ? 'euler' : 'quaternion');
     });
     this.cameraPanel.appendChild(this.cameraRotationModeToggle.element);
+
+    this.projectionToggle = new ToggleSwitch('平行投影', (on) => {
+      overviewCamera.setProjectionMode(on ? 'orthographic' : 'perspective');
+    });
+    this.cameraPanel.appendChild(this.projectionToggle.element);
 
     const fovGroup = document.createElement('div');
     fovGroup.className = 'camera-fov-control';
@@ -177,7 +183,8 @@ export class FrameControls {
     const camRot = this.overviewCamera.cameraFrame.rotatingWith;
     const rotText = (id: string | null): string => (id === null ? '慣性系' : `${celestialBodyName(id)}回転系`);
     const modeText = this.overviewCamera.cameraRotationMode === 'euler' ? 'オイラー' : 'クォータニオン';
-    return `基準: ${camCenter}・${rotText(camRot)} / ${modeText}・画角 ${this.overviewCamera.fov.toFixed(0)}°`;
+    const projectionText = this.overviewCamera.projection === 'orthographic' ? '平行' : '透視';
+    return `基準: ${camCenter}・${rotText(camRot)} / ${modeText}・${projectionText}・画角 ${this.overviewCamera.fov.toFixed(0)}°`;
   }
 
   // いま選ばれている軌道側の座標系を1行で述べる。
@@ -206,6 +213,12 @@ export class FrameControls {
     this.cameraRotationZone.setNearby(members);
     this.cameraRotationZone.setSelected(this.overviewCamera.cameraFrame.rotatingWith);
     this.cameraRotationModeToggle.setOn(this.overviewCamera.cameraRotationMode === 'euler');
+    const isOrthographic = this.overviewCamera.projection === 'orthographic';
+    this.projectionToggle.setOn(isOrthographic);
+    this.fovSlider.element.disabled = isOrthographic;
+    this.fovInput.element.disabled = isOrthographic;
+    this.fovSlider.element.title = isOrthographic ? '平行投影では画角は使用しません' : '画角';
+    this.fovInput.element.title = isOrthographic ? '平行投影では画角は使用しません' : '画角';
     this.fovSlider.setValue(this.overviewCamera.fov);
     if (document.activeElement !== this.fovInput.element) {
       this.fovInput.setValue(this.overviewCamera.fov.toFixed(0));

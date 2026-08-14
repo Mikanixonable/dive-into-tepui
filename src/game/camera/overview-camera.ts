@@ -4,7 +4,7 @@ import { Vec3, add, addScaled, cross, dot, lenSq, norm, scale, sub, v3 } from '.
 import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { MouseDelta } from '../input/input';
-import { metersPerPixelAtDepth, Viewpoint } from '../../physics/projection';
+import { metersPerPixelAtDepth, ProjectionMode, Viewpoint } from '../../physics/projection';
 import { ReferenceFrame, FrameDir, frameDir, framePoint, toFrameDir, toInertialDir, toInertialPoint } from '../../physics/frame';
 import { OrbitingId } from '../../physics/attractor';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -51,9 +51,12 @@ function frameDirVector(value: FrameDir): Vec3 {
 
 export class OverviewCamera {
   // 軌道計画モード用の地球中心カメラ(モルニヤ級軌道全体が収まる遠方まで)
-  readonly camera: THREE.PerspectiveCamera;
+  private readonly perspectiveCamera: THREE.PerspectiveCamera;
+  private readonly orthographicCamera: THREE.OrthographicCamera;
   private fovDeg = OVERVIEW_CAMERA_FOV;
   private rotationMode: CameraRotationMode;
+  private projectionMode: ProjectionMode;
+  private orthographicHalfHeight = 1;
   // rotationQ はカメラのローカル(+Z=注視点からカメラ、+Y=画面上)を cameraFrame へ
   // 写すクォータニオン。オイラー操作も最終的には必ずこの値へ変換して描画する。
   private rotationQ: Quat;
@@ -97,6 +100,7 @@ export class OverviewCamera {
     up: WORLD_UP,
     fovDeg: OVERVIEW_CAMERA_FOV,
     aspect: window.innerWidth / window.innerHeight,
+    projection: 'perspective',
   };
 
   // THREE.PerspectiveCamera と初期視点(offset_r/pan_r/up_r/座標系/フォーカス)を組む。saved が
@@ -108,6 +112,7 @@ export class OverviewCamera {
     saved?: OverviewCameraSaveData,
   ) {
     this.rotationMode = saved?.rotationMode === 'euler' ? 'euler' : 'quaternion';
+    this.projectionMode = saved?.projectionMode === 'orthographic' ? 'orthographic' : 'perspective';
     this._referencePlane = saved?.referencePlane === 'ecliptic' || saved?.referencePlane === 'moonOrbit'
       ? saved.referencePlane : 'equator';
     this.fovDeg = this.clampFov(saved?.fovDeg ?? OVERVIEW_CAMERA_FOV);
@@ -133,12 +138,22 @@ export class OverviewCamera {
     }
     this.rotationQ = this.rotationFromBasis(frameDirVector(this.offset_r), frameDirVector(this.up_r));
     this.euler = this.eulerFromRotation(this.rotationQ);
-    this.camera = new THREE.PerspectiveCamera(
+    const defaultHalfHeight = this.dist * Math.tan(THREE.MathUtils.degToRad(this.fovDeg * 0.5));
+    const savedHalfHeight = saved?.orthographicHalfHeight;
+    const halfHeight = savedHalfHeight !== undefined && Number.isFinite(savedHalfHeight) ? savedHalfHeight : defaultHalfHeight;
+    this.orthographicHalfHeight = Math.max(C.OVERVIEW_CAMERA_MIN_DIST * 1e-6,
+      Math.min(C.OVERVIEW_CAMERA_MAX_DIST, halfHeight));
+    this.perspectiveCamera = new THREE.PerspectiveCamera(
       this.fovDeg,
       window.innerWidth / window.innerHeight,
       this.near,
       this.far,
     );
+    this.orthographicCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, this.near, this.far);
+  }
+
+  public get camera(): THREE.Camera {
+    return this.projectionMode === 'orthographic' ? this.orthographicCamera : this.perspectiveCamera;
   }
 
   private clampFov(fovDeg: number): number {
@@ -207,12 +222,44 @@ export class OverviewCamera {
     return this.rotationMode;
   }
 
+  public get projection(): ProjectionMode {
+    return this.projectionMode;
+  }
+
   public get referencePlane(): CameraReferencePlane {
     return this._referencePlane;
   }
 
   public setFovDeg(fovDeg: number): void {
-    this.fovDeg = this.clampFov(fovDeg);
+    const nextFov = this.clampFov(fovDeg);
+    if (nextFov === this.fovDeg) return;
+    if (this.projectionMode === 'perspective') {
+      const oldScale = Math.tan(THREE.MathUtils.degToRad(this.fovDeg * 0.5));
+      const newScale = Math.tan(THREE.MathUtils.degToRad(nextFov * 0.5));
+      this.setDistance(this.dist * newScale / oldScale);
+    }
+    this.fovDeg = nextFov;
+  }
+
+  public setProjectionMode(mode: ProjectionMode): void {
+    if (mode === this.projectionMode) return;
+    if (mode === 'orthographic') {
+      this.orthographicHalfHeight = this.dist * Math.tan(THREE.MathUtils.degToRad(this.fovDeg * 0.5));
+    } else {
+      this.setDistance(this.orthographicHalfHeight / Math.tan(THREE.MathUtils.degToRad(this.fovDeg * 0.5)));
+    }
+    this.projectionMode = mode;
+  }
+
+  private setDistance(distance: number): void {
+    const current = this.dist;
+    const next = Math.max(this.minDist, Math.min(C.OVERVIEW_CAMERA_MAX_DIST, distance));
+    if (!(current > 0) || next === current) return;
+    this.offset_r = frameDir(
+      this.offset_r.x * next / current,
+      this.offset_r.y * next / current,
+      this.offset_r.z * next / current,
+    );
   }
 
   public setCameraRotationMode(mode: CameraRotationMode): void {
@@ -382,8 +429,14 @@ export class OverviewCamera {
     // 現在の上/右軸まわりに回す — ロールで上方向が傾いても、画面上の動きと入力方向が一致する。
     // マップビューはトラックパッドの細かいスクロールでも操作しやすいよう、
     // スクロールによるズーム感度を combat の基準値から 1.5 倍にする。
-    const dist = Math.max(this.minDist,
-      Math.min(C.OVERVIEW_CAMERA_MAX_DIST, this.dist * Math.exp(mouse.wheel * 0.0018)));
+    const zoomFactor = Math.exp(mouse.wheel * 0.0018);
+    const dist = this.projectionMode === 'orthographic'
+      ? this.dist
+      : Math.max(this.minDist, Math.min(C.OVERVIEW_CAMERA_MAX_DIST, this.dist * zoomFactor));
+    if (this.projectionMode === 'orthographic' && mouse.wheel !== 0) {
+      this.orthographicHalfHeight = Math.max(C.OVERVIEW_CAMERA_MIN_DIST * 1e-6,
+        Math.min(C.OVERVIEW_CAMERA_MAX_DIST, this.orthographicHalfHeight * zoomFactor));
+    }
     upEci = norm(addScaled(upEci, offEci, -dot(upEci, offEci) / dot(offEci, offEci)));
     const yaw = mouse.dx * 0.005 - keyYaw * C.CAM_KEY_YAW_RATE * dt;
     const pitch = mouse.dy * 0.005 + keyPitch * C.CAM_KEY_PITCH_RATE * dt;
@@ -414,7 +467,9 @@ export class OverviewCamera {
       const viewDir = scale(newDir, -1);
       const right = norm(cross(viewDir, upEci));
       const camUp = norm(cross(right, viewDir));
-      const metersPerPixel = metersPerPixelAtDepth(this.fovDeg, dist, Math.max(1, window.innerHeight));
+      const metersPerPixel = this.projectionMode === 'orthographic'
+        ? (2 * this.orthographicHalfHeight) / Math.max(1, window.innerHeight)
+        : metersPerPixelAtDepth(this.fovDeg, dist, Math.max(1, window.innerHeight));
       panEci = addScaled(panEci, right, -mouse.panDx * metersPerPixel);
       panEci = addScaled(panEci, camUp, mouse.panDy * metersPerPixel);
     }
@@ -427,6 +482,8 @@ export class OverviewCamera {
       up: upEci,
       fovDeg: this.fovDeg,
       aspect: window.innerWidth / window.innerHeight,
+      projection: this.projectionMode,
+      orthographicHalfHeight: this.orthographicHalfHeight,
     };
     this.up_r = toFrameDir(tf, upEci);
     this.offset_r = toFrameDir(tf, offEci);
@@ -452,6 +509,8 @@ export class OverviewCamera {
       focus,
       rotationMode: this.rotationMode,
       fovDeg: this.fovDeg,
+      projectionMode: this.projectionMode,
+      orthographicHalfHeight: this.orthographicHalfHeight,
       referencePlane: this._referencePlane,
     };
   }
