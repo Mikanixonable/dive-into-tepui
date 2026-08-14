@@ -18,11 +18,14 @@ export class EntityMarker {
   private readonly bearingKey: string;
 
   // className はマーカーの DOM クラス、combatGlyph は戦闘ビューで出す字形。
+  // showMapDistance はマップビューのラベルに自機からの距離を添えるかどうか
+  // (戦闘ビューは常に添える)。
   constructor(
     private readonly owner: GameEntity,
     private readonly markerManager: MarkerManager,
     private readonly className: string,
     private readonly combatGlyph: string,
+    private readonly showMapDistance = true,
   ) {
     this.key = `entity-${owner.id}`;
     this.bearingKey = `entity-${owner.id}-bearing`;
@@ -39,8 +42,9 @@ export class EntityMarker {
       this.hide();
       return;
     }
-    const label = viewerPos
-      ? `${this.owner.name} ${fmtMarkerDist(len(sub(state.r, viewerPos)))}`
+    const showDistance = viewerPos !== null && (!overviewMode || this.showMapDistance);
+    const label = showDistance
+      ? `${this.owner.name} ${fmtMarkerDist(len(sub(state.r, viewerPos as Vec3)))}`
       : this.owner.name;
     const shownLabel = visibility?.label === false ? '' : label;
     const p = project(state.r);
