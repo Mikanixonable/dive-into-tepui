@@ -45,7 +45,7 @@ const ENTITY_ROWS: readonly BodyClassRow[] = [
   { label: '基地', categoryKey: 'baseVisible', iconKey: 'baseIcon', labelKey: 'baseLabel', orbitKey: 'baseOrbit' },
 ];
 
-// 天球グリッドのカテゴリー(黄道・赤道・月軌道)1行分。各カテゴリーは面・極・グリッドの3トグルを持つ。
+// 天球グリッドのカテゴリー(黄道・赤道)1行分。各カテゴリーは面・極・グリッドの3トグルを持つ。
 interface GridToggleGroup {
   readonly categoryKey: keyof CelestialGridVisibility;
   readonly label: string;
@@ -61,10 +61,12 @@ const GRID_TOGGLE_GROUPS: readonly GridToggleGroup[] = [
     categoryKey: 'equator', label: '赤道',
     items: [['equatorPlane', '⌒', '赤道面'], ['equatorPole', DIRECTION_GLYPH.axis, '赤道極'], ['equatorGrid', '⊞', '赤道グリッド']],
   },
-  {
-    categoryKey: 'moonOrbit', label: '月軌道',
-    items: [['moonOrbitPlane', '⌒', '月軌道面'], ['moonOrbitPole', DIRECTION_GLYPH.axis, '月軌道極'], ['moonOrbitGrid', '⊞', '月軌道グリッド']],
-  },
+];
+
+const SPATIAL_GRID_ROWS: readonly (readonly [keyof CelestialGridVisibility, string, string])[] = [
+  ['eclipticScaleGrid', '黄道面', '黄道面の10万kmグリッド'],
+  ['equatorScaleGrid', '赤道面', '赤道面の10万kmグリッド'],
+  ['moonOrbitScaleGrid', '月軌道面', '月軌道面の10万kmグリッド'],
 ];
 
 interface ViewOptionColumn {
@@ -222,7 +224,7 @@ export class ViewOptionsPanel {
     this.bodyClassButtons = bodyClassButtons;
     this.bodyClassCategoryButtons = bodyClassCategories;
 
-    // 天球グリッド(黄道・赤道・月軌道)。天体クラスと同じ行の形(見出し+アイコン列)を流用する。
+    // 天球グリッド(黄道・赤道)。天体クラスと同じ行の形(見出し+アイコン列)を流用する。
     const gridButtons: (readonly [keyof CelestialGridVisibility, Button])[] = [];
     const gridCategories: (readonly [keyof CelestialGridVisibility, Button, HTMLElement, readonly Button[]])[] = [];
     appendSectionHeading(body, '参照面', GRID_COLUMNS);
@@ -249,6 +251,23 @@ export class ViewOptionsPanel {
     }
     this.gridButtons = gridButtons;
     this.gridCategoryButtons = gridCategories;
+
+    appendSectionHeading(body, '空間グリッド', [{ glyph: '⊞', label: '10万km' }]);
+    for (const [key, label, description] of SPATIAL_GRID_ROWS) {
+      const row = document.createElement('div');
+      row.className = 'body-class-row grid-class-row';
+      const titleButton = this.toggleButton(label, description, key, this.gridCurrent, (k, on) => this.onGridToggle?.(k, on));
+      titleButton.element.classList.add('body-class-title');
+      row.appendChild(titleButton.element);
+      const buttons = document.createElement('div');
+      buttons.className = 'body-class-btns';
+      const gridButton = this.toggleButton('⊞', description, key, this.gridCurrent, (k, on) => this.onGridToggle?.(k, on));
+      gridButton.element.classList.add('body-class-icon-btn');
+      buttons.appendChild(gridButton.element);
+      row.appendChild(buttons);
+      body.appendChild(row);
+      gridButtons.push([key, titleButton], [key, gridButton]);
+    }
 
     const environmentHeading = document.createElement('div');
     environmentHeading.className = 'view-options-section-heading';

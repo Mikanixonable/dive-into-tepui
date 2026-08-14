@@ -241,6 +241,10 @@ export class OverviewCamera {
     this.fovDeg = nextFov;
   }
 
+  public resetFov(): void {
+    this.setFovDeg(OVERVIEW_CAMERA_FOV);
+  }
+
   public setProjectionMode(mode: ProjectionMode): void {
     if (mode === this.projectionMode) return;
     if (mode === 'orthographic') {
