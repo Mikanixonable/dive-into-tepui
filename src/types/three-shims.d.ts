@@ -10,6 +10,9 @@ declare module 'three/webgpu' {
     setPixelRatio(ratio: number): void;
     setSize(width: number, height: number, updateStyle?: boolean): void;
     render(scene: import('three').Scene, camera: import('three').Camera): void;
+    setAnimationLoop(callback: (() => void) | null): void;
+    setClearColor(color: number, alpha?: number): void;
+    dispose(): void;
     autoClear: boolean;
     autoClearColor: boolean;
     clear(): void;
