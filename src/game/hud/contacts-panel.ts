@@ -27,6 +27,7 @@ type EnemyRow =
 
 export class ContactsPanel {
   private nextSyncAt = 0;
+  private hasContacts = false;
 
   public constructor(private readonly els: ReadonlyMap<string, HTMLElement>) {}
 
@@ -34,32 +35,37 @@ export class ContactsPanel {
     const player = game.player;
     const panel = document.getElementById('hud-enemies');
     if (!player) {
+      this.hasContacts = false;
       panel?.classList.add('hidden');
       return;
     }
-    panel?.classList.toggle('hidden', game.cameraSystem.overviewMode);
 
     const now = performance.now();
-    if (now < this.nextSyncAt) return;
-    this.nextSyncAt = now + SYNC_INTERVAL_MS;
+    if (now >= this.nextSyncAt) {
+      this.nextSyncAt = now + SYNC_INTERVAL_MS;
 
-    const { kills, totalEnemiesSpawned } = game.activeStage.scoreCounter;
-    const remainingCount = totalEnemiesSpawned - kills;
-    const count = this.els.get('count');
-    if (count) {
-      count.textContent = `${remainingCount} / ${totalEnemiesSpawned}`;
-      count.setAttribute('aria-label', `残存 ${remainingCount}、合計 ${totalEnemiesSpawned}`);
+      const { kills, totalEnemiesSpawned } = game.activeStage.scoreCounter;
+      const remainingCount = totalEnemiesSpawned - kills;
+      const count = this.els.get('count');
+      if (count) {
+        count.textContent = `${remainingCount} / ${totalEnemiesSpawned}`;
+        count.setAttribute('aria-label', `残存 ${remainingCount}、合計 ${totalEnemiesSpawned}`);
+      }
+      const primaryTarget = game.targeter.aliveTarget;
+      const secondaryTarget = game.targeter.aliveSecondaryTarget;
+      const rows = this.buildEnemyRows(
+        game.entities.enemies.filter((enemy) => enemy.alive),
+        player.state.r,
+        primaryTarget,
+        secondaryTarget,
+      );
+      this.hasContacts = rows.length > 0;
+      this.syncEnemyList(rows);
     }
-    const primaryTarget = game.targeter.aliveTarget;
-    const secondaryTarget = game.targeter.aliveSecondaryTarget;
-    const rows = this.buildEnemyRows(
-      game.entities.enemies.filter((enemy) => enemy.alive),
-      player.state.r,
-      primaryTarget,
-      secondaryTarget,
-    );
-    panel?.classList.toggle('hidden', game.cameraSystem.overviewMode || rows.length === 0);
-    this.syncEnemyList(rows);
+
+    // 更新間隔中も直前の敵有無を維持する。ここで戦闘ビュー判定だけを行うと、
+    // 敵0件で隠したパネルを次のフレームに再表示してしまう。
+    panel?.classList.toggle('hidden', game.cameraSystem.overviewMode || !this.hasContacts);
   }
 
   // waveId を持つ敵ごとに「第N波」1行へ集約して組み立てる。
