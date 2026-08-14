@@ -15,6 +15,7 @@ import { spinOrientation } from '../../physics/body-orientation';
 import { apparentSizePx, showsPhysicalSphere, sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from '../../render/screen-lod';
 import { CelestialSurface } from '../../render/celestial-surface';
 import { CelestialBody } from './celestial-body';
+import type { GraphicsSettings } from '../../render/graphics-settings';
 import { RingView } from './ring-view';
 
 export class SphereBody extends CelestialBody {
@@ -74,10 +75,14 @@ export class SphereBody extends CelestialBody {
 
   // displayTime 時点の位置へ、視点モードに応じた実スケール/圧縮距離のどちらかで同期する。
   // 見かけ直径は圧縮前の真の位置から求め、閾値未満なら球自体(と環)を描かない。
-  sync(fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris): void {
+  sync(
+    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris,
+    graphics: GraphicsSettings,
+  ): void {
     if (!this.group.visible) return;
     const pos = ephemeris.positionOf(this.id, displayTime);
-    const apparentDiameterPx = apparentSizePx(2 * this.outerRadius, cameraSystem.activeCameraScale(pos));
+    const apparentDiameterPx = graphics.scaleApparentSize(
+      apparentSizePx(2 * this.outerRadius, cameraSystem.activeCameraScale(pos)));
     if (!showsPhysicalSphere(apparentDiameterPx)) {
       this.hidePhysical();
       return;
@@ -113,14 +118,16 @@ export class SphereBody extends CelestialBody {
     const orientation = ephemeris.poleAt(this.id, displayTime);
     const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
     if (q !== null) this.group.quaternion.set(q.x, q.y, q.z, q.w);
+    // 環を切ったときは、帯そのものだけでなく本体表面へ落ちる環の影も消す。
+    const rings = graphics.current.rings ? this.rings : undefined;
     activeSurface.setRingShadowSystem(
-      this.rings,
+      rings,
       this.group.position,
       this.radius,
       scaleFactor,
       orientation === null ? null : new THREE.Vector3(orientation.axis.x, orientation.axis.y, orientation.axis.z),
     );
-    if (this.ring !== undefined) {
+    if (this.ring !== undefined && rings !== undefined) {
       this.ring.group.visible = true;
       this.ring.sync(
         this.group.position,
@@ -131,6 +138,8 @@ export class SphereBody extends CelestialBody {
         sunDirection,
         cameraSystem.activeCamera.position,
       );
+    } else if (this.ring !== undefined) {
+      this.ring.group.visible = false;
     }
   }
 

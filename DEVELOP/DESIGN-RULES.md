@@ -126,7 +126,7 @@ HUD の見た目・配置・操作(色/寸法トークン、ウィジェット�
 | --- | --- |
 | `Button` | 単発クリック。`on`(点灯)/`disabled` の表示は呼び出し側が `setOn`/`setEnabled` で与える — 自分では反転しない。点灯型トグルはこれに `setOn` を外から呼ぶ形で表現し、別ウィジェットを持たない。 |
 | `ToggleSwitch` | 見出し + ON/OFF のトラック+ノブ型スイッチ。2値専用。 |
-| `SegmentedControl<T>` | 見出し + 排他選択ボタン列。**3択以上専用** — 2値の ON/OFF に使わない(`ToggleSwitch` を使う)。`setItems` は同内容なら作り直さない(押しかけのボタンを消さないため)。 |
+| `SegmentedControl<T>` | 見出し + 排他選択ボタン列。**3択以上専用** — 2値の ON/OFF に使わない(`ToggleSwitch` を使う)。`setItems` は同内容なら作り直さない(押しかけのボタンを消さないため)。`setSelected(null)` は全消灯 — 「今どれでもない」を表せる。 |
 | `HoldButton` | 押している間 `isHeld` が真になる。呼び出し側がゲームループから毎フレーム読む(`setInterval` を使わない、per-frame poll に揃える)。 |
 | `CloseButton` | ✕ の閉じるボタン。native `<button>` を1箇所だけで組む。 |
 | `ValueInput` | 数値/文字/検索入力の唯一の実装。下記の確定/破棄規約を持つ。 |

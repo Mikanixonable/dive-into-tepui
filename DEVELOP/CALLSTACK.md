@@ -38,6 +38,7 @@
   - launcher.update(game) // 決着した最初のフレームだけ動く(resultShown フラグで以降は即 return): sfx.setThrust(false) + sfx.stopBgm() → slots.noteRunEnded(activeSlotId) → resultScreen.show(activeStage.result ?? phase からのフォールバック)
   - game.sync()
   - game.render()
+  - gpu.resolve() // 窓の開閉によらず毎フレーム。renderer.resolveTimestampsAsync('render') を投げ、前フレームの GPU 時間が非同期で届く。呼ばないと時刻印クエリが溜まって上限に当たるので条件を付けない。render 区間の計測(t3)の後に置き、計測自身の費用を render へ混ぜない
   - perf.record() // 負荷確認ウィンドウが開いている間(perf.on)だけ。500ms ごとに Game.perfCounts() を読んで PropertyWindow の行へ流す
 
 ---

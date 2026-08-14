@@ -15,6 +15,7 @@ import { focusTargetId } from '../camera/focus-target';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { PointFieldView } from './point-field-view';
+import type { GraphicsSettings } from '../../render/graphics-settings';
 import { CelestialBody } from './celestial-body';
 import { CELESTIAL_BODIES, fallbackCelestialView } from './celestial-registry';
 import { EarthBody } from './earth-body';
@@ -74,6 +75,7 @@ export class EnvironmentScene {
   constructor(
     scene: THREE.Scene,
     private readonly ephemeris: Ephemeris,
+    private readonly graphics: GraphicsSettings,
     earthSpinPhase0: number,
   ) {
     this.scene = scene;
@@ -102,7 +104,7 @@ export class EnvironmentScene {
 
   // 表示時刻 t の点群の位置を更新する。
   update(t: number, overviewMode: boolean): void {
-    if (!overviewMode || this.ephemeris.starId === null) return;
+    if (!overviewMode || this.ephemeris.starId === null || !this.graphics.current.pointField) return;
     const pointField = this.ensurePointField();
     pointField.update(t, true, this.ephemeris);
   }
@@ -150,7 +152,7 @@ export class EnvironmentScene {
       : null;
     for (const body of this.bodies) {
       body.setVisible(!cameraSystem.overviewMode || visibilityPolicy!.body(body.id).category);
-      body.sync(floatingOrigin, displayTime, cameraSystem, this.ephemeris);
+      body.sync(floatingOrigin, displayTime, cameraSystem, this.ephemeris, this.graphics);
     }
     // 平行光の向きは描画原点から見た恒星方向 — 照らす相手がその近傍にいる物体だけなので、
     // 全員が同じ向きでよい。
@@ -159,7 +161,7 @@ export class EnvironmentScene {
     this.sunLight.intensity = C.SUN_INTENSITY * (C.SHADOW_MIN_SUN + (1 - C.SHADOW_MIN_SUN) * lit);
     this.ambient.intensity = C.AMBIENT_INTENSITY * (C.SHADOW_MIN_AMBIENT + (1 - C.SHADOW_MIN_AMBIENT) * lit);
 
-    if (cameraSystem.overviewMode && this.ephemeris.starId !== null) {
+    if (cameraSystem.overviewMode && this.ephemeris.starId !== null && this.graphics.current.pointField) {
       this.ensurePointField().sync(
         floatingOrigin, true, cameraSystem.bodyClassToggles.smallBodyVisible,
       );

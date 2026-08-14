@@ -9,6 +9,8 @@ import { createGameScene, GameScene } from './render/scene';
 import { Game } from './game/game';
 import { PerfMeter } from './perf-meter';
 import { FrameSections } from './frame-sections';
+import { GpuTimings } from './gpu-timings';
+import { GraphicsSettings } from './render/graphics-settings';
 import {
   ACCENT, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM, FONT_FAMILY,
   FONT_2XL, FONT_M, FONT_XL, RADIUS_S, RADIUS_M,
@@ -102,12 +104,12 @@ function showFatalError(title: string, message: string, error: unknown): void {
 }
 
 // ローディング表示下で canvas を作り WebGPU シーンを初期化する
-async function initScene(): Promise<GameScene> {
+async function initScene(graphics: GraphicsSettings): Promise<GameScene> {
   hideLoading = showLoading();
   const canvas = document.createElement('canvas');
   document.body.appendChild(canvas);
 
-  const gs = await createGameScene(canvas);
+  const gs = await createGameScene(canvas, graphics);
   hideLoading();
   hideLoading = null;
   return gs;
@@ -128,8 +130,8 @@ async function initEphemeris(
 
 // rAF ループを起動する。フレームで例外が起きたらループを止める。
 function startAnimationLoop(
-  game: Game, perf: PerfMeter, sections: FrameSections, autoSave: AutoSave, snapshotControls: SnapshotControls,
-  launcher: Launcher,
+  game: Game, perf: PerfMeter, sections: FrameSections, gpu: GpuTimings, autoSave: AutoSave,
+  snapshotControls: SnapshotControls, launcher: Launcher,
 ): void {
   let lastTime = performance.now();
   let completedFrames = 0;
@@ -153,6 +155,9 @@ function startAnimationLoop(
       const t2 = perf.on ? performance.now() : 0;
       game.render();
       const t3 = perf.on ? performance.now() : 0;
+      // 時刻印クエリを溜めないため、窓の開閉によらず毎フレーム解決させる。計測自身の費用が
+      // render 区間へ混ざらないよう、区間の外で呼ぶ。
+      gpu.resolve();
       if (perf.on) {
         perf.record(t1 - t0, t2 - t1, t3 - t2, t3);
       }
@@ -179,10 +184,10 @@ function startAnimationLoop(
 // hud/sfx はタイトル(ステージ選択)画面の時点から使えるべきなので、Game より先に main.ts が
 // 生成して所有し、Game には参照として渡す。pauseMenu も同様に main.ts が所有し、開閉に
 // 応じた一時停止の反映(game.pause()/game.resume())も持ち主である main.ts がここで配線する。
-function initHud(): { hud: Hud; sfx: Sfx; pauseMenu: PauseMenu } {
+function initHud(graphics: GraphicsSettings): { hud: Hud; sfx: Sfx; pauseMenu: PauseMenu } {
   const hud = new Hud();
   const sfx = new Sfx();
-  const pauseMenu = new PauseMenu(hud.layers.system, hud.overlayManager);
+  const pauseMenu = new PauseMenu(hud.layers.system, hud.overlayManager, graphics);
   pauseMenu.setBgmVolume(sfx.getBgmVolume());
   pauseMenu.onBgmVolumeChange = (vol) => sfx.setBgmVolume(vol);
   return { hud, sfx, pauseMenu };
@@ -205,13 +210,15 @@ async function main() {
   const saveStore = new LocalStorageSaveStore();
   const slots = initSaveSlots(saveStore);
   const snapshotService = new SnapshotService(saveStore, slots);
-  const gs = await initScene();
-  const { hud, sfx, pauseMenu } = initHud();
+  const graphics = new GraphicsSettings();
+  const gs = await initScene(graphics);
+  const { hud, sfx, pauseMenu } = initHud(graphics);
   const launcher = new Launcher(hud, unlockmanager, slots, snapshotService, sfx);
   // 「ゲームを中断してタイトル画面に戻る」
   pauseMenu.onQuitToTitle = () => launcher.returnToTitle();
   const stageClass = await launcher.resolveStage();
   const sections = new FrameSections();
+  const gpu = new GpuTimings(gs.renderer);
 
   const initialSave = launcher.initialSaveFor(stageClass);
   const ephemeris = await initEphemeris(stageClass, initialSave?.phaseOffsets ?? {});
@@ -219,7 +226,8 @@ async function main() {
   const earthSpinPhase0 = initialSave?.earthSpinPhase0 ?? Math.random() * 2 * Math.PI;
 
   const game = new Game(
-    gs, stageClass, hud, sfx, pauseMenu, unlockmanager, sections, ephemeris, earthSpinPhase0, initialSave,
+    gs, stageClass, hud, sfx, pauseMenu, unlockmanager, sections, ephemeris, graphics, earthSpinPhase0,
+    initialSave,
   );
   launcher.noteLaunched(stageClass);
 
@@ -236,14 +244,14 @@ async function main() {
     if (open) game.pause();
     else game.resume();
   };
-  const perf = new PerfMeter(game, hud.layers.window, gs.renderer, sections, hud.overlayManager);
+  const perf = new PerfMeter(game, hud.layers.window, gs.renderer, sections, gpu, hud.overlayManager);
   // 負荷確認ウィンドウは非モーダルなので、設定メニューを閉じてから前面へ出すだけ。
   pauseMenu.onOpenPerfWindow = () => {
     pauseMenu.toggle(false);
     perf.open();
   };
   const snapshotControls = new SnapshotControls(hud, pauseMenu, saveBrowser, snapshotService);
-  startAnimationLoop(game, perf, sections, new AutoSave(snapshotService), snapshotControls, launcher);
+  startAnimationLoop(game, perf, sections, gpu, new AutoSave(snapshotService), snapshotControls, launcher);
 }
 
 main().catch((err) => {
