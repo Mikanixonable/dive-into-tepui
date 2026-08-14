@@ -10,7 +10,6 @@ import { DisplayWindowManager } from './display-window-manager';
 import { MapContextActions } from './map-context-actions';
 import type { Docking } from './docking';
 import type { ActivePlayerController } from './active-player-controller';
-import { syncNavballPlacement } from './hud/hud-root';
 import { setPanelCollapsedView } from './hud/panel-shell';
 import type { OverlayHandle } from './hud/overlay-manager';
 
@@ -133,9 +132,8 @@ export class ViewManager {
   private applyChrome(): void {
     const map = this.worldView === 'map';
     setPanelCollapsedView(map ? 'map' : 'combat');
-    this.hud.root.classList.toggle('map-mode', map);
+    this.hud.setWorldView(map ? 'map' : 'combat');
     this.hud.root.classList.toggle('dock-mode', this.isDockOpen);
-    syncNavballPlacement(this.hud.root, map);
     this.touchControls?.setMapMode(map);
     this.cameraSystem.setMapMode(map);
     this.editor.setMapMode(map);
