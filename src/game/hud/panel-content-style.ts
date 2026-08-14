@@ -245,6 +245,8 @@ body.touch-ui-active #hud-status .status-throttle-touch { display: flex; }
    (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
 #hud-pause-menu span.pm-quit { margin-top: var(--space-5); text-align: center; padding: var(--space-4) var(--space-5); font-size: var(--font-m); }
 #hud-pause-menu .pm-close-row { margin-top: var(--space-5); text-align: center; }
+#hud-pause-menu .w-tabs { margin-bottom: var(--space-4); }
+#hud-pause-menu .gp-body { display: flex; flex-direction: column; gap: var(--space-4); }
 
 @media ${MQ_MEDIUM_DOWN} {
   #hud-plan { min-width: 0; max-width: none; }
