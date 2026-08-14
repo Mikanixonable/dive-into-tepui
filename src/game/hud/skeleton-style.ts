@@ -21,7 +21,7 @@ export const SKELETON_STYLE = `
 #hud .mk, #hud .rail-toggle, #hud-chase-reset, #hud-viewbadge .vb-view-btn { user-select: none; }
 ${OVERLAY_LAYER_STYLE}
 /* #hud 直下の兄弟同士の重なり順は overlay-layer.ts のレイヤが持つ。
-   マーカー内優先度: 宇宙船(4) > 敵(3) > 弾薬(2) > 軌道要素・その他(1) > デフォルト(0) */
+   マーカー内優先度: タッチ長押し(5) > 宇宙船(4) > 敵(3) > 弾薬(2) > 軌道要素・その他(1) > デフォルト(0) */
 /* スクロール可能な領域は既定のブラウザ配色ではダークテーマと調和しないため、
    パネルの縁色・アクセント色に揃える。 */
 #hud, #hud * { scrollbar-color: var(--edge) transparent; }
@@ -34,6 +34,7 @@ ${OVERLAY_LAYER_STYLE}
 #hud .mk-ammo { z-index: 2; }
 #hud .mk-enemy, #hud .mk-target, #hud .mk-secondary-target { z-index: 3; }
 #hud .mk-self { z-index: 4; }
+#hud .mk-longpress { z-index: 5; }
 #hud-overlay-shield { display: none; position: absolute; inset: 0; pointer-events: none; background: var(--shade-1); }
 body.hud-overlay-modal-open #hud-overlay-shield { display: block; }
 body.hud-overlay-modal-open #touch-ui { display: none; }
@@ -86,8 +87,10 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud.map-mode .rail-toggle { display: block; }
 #hud #hud-rail-toggle-left { left: 8px; }
 #hud #hud-rail-toggle-right { right: 8px; }
-#hud .hud-rail.collapsed { width: 0; }
-#hud .hud-rail.collapsed > .panel { display: none !important; }
+/* レールの折りたたみはマップビューの収納機構 — 右レールは戦闘ビューでも TARGET を常設で
+   載せているので、畳んだ効果自体をマップビューに限る(トグル自体も map-mode でしか出ない)。 */
+#hud.map-mode .hud-rail.collapsed { width: 0; }
+#hud.map-mode .hud-rail.collapsed > .panel { display: none !important; }
 /* ドックビュー(造船ドック)が背後のマップごとレールを覆うので、開閉トグルは出さない。 */
 #hud.dock-mode .rail-toggle { display: none; }
 
@@ -226,6 +229,8 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 .mk-base { color: ${C.COLOR_BASE_ORBIT_LINE}; text-shadow: 0 0 4px var(--bg); }
 .mk-base .lbl { font-size: var(--font-s); border-radius: var(--radius-s); background: var(--surface-weak); border: 1px solid var(--fill-3); }
 #hud .mk-poi .lbl, #hud .mk-base .lbl { margin-top: var(--space-2); padding: var(--space-1) var(--space-2); }
+.mk-longpress { width: 40px; height: 40px; }
+.mk-longpress .sym { border: 2px solid var(--accent); border-radius: 50%; box-sizing: border-box; }
 
 /* --- モバイル / 狭幅画面: パネルを縮小してタッチパッドと共存させる --- */
 @media ${MQ_MEDIUM_DOWN} {

@@ -1,5 +1,5 @@
 // 見出し + ON/OFF を切り替えるトラック+ノブ型のスイッチ。
-import { expandHitTarget, stopDragPropagation } from './widget-base';
+import { bindActivation, expandHitTarget, stopDragPropagation } from './widget-base';
 
 export class ToggleSwitch {
   readonly element: HTMLElement;
@@ -26,16 +26,9 @@ export class ToggleSwitch {
     this.track.appendChild(knob);
     stopDragPropagation(this.track);
     expandHitTarget(this.track);
-    this.track.addEventListener('click', (e) => {
-      e.stopPropagation();
+    bindActivation(this.track, () => {
       this.setOn(!this.on);
       onChange(this.on);
-    });
-    this.track.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        this.track.click();
-      }
     });
     this.element.appendChild(this.track);
   }
