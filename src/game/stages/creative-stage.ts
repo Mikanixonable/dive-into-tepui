@@ -55,8 +55,11 @@ export class CreativeStage extends Stage {
   private simSpeed: SimSpeedManager | null = null;
   private readonly playerIdAllocator = new EntityIdAllocator('creative-player-');
   private readonly ammoIdAllocator = new EntityIdAllocator('creative-ammo-');
-  // フォールバック名(Player-N 等)の連番。id とは独立(同名は許容する)。
-  private nextFallbackNameSeq = 1;
+  // フォールバック名(vessel-N/Enemy-N/Ammo-N/Base-N)の種類別連番。id とは独立(同名は許容する)。
+  private nextVesselNameSeq = 1;
+  private nextEnemyNameSeq = 1;
+  private nextAmmoNameSeq = 1;
+  private nextBaseNameSeq = 1;
 
   briefingHtml(): string {
     return '<b>クリエイティブモード</b><br>マップから艦艇を配置して軌道を眺められる。';
@@ -208,11 +211,11 @@ export class CreativeStage extends Stage {
       
       if (form.objectType === 'player') {
         const id = this.playerIdAllocator.next();
-        const finalName = name || `Player-${this.nextFallbackNameSeq++}`;
+        const finalName = name || `vessel-${this.nextVesselNameSeq++}`;
         const ship = this.addPlayer({ name: finalName, state, id });
         this._hud.hint(`${ship.name} を配置`);
       } else if (form.objectType === 'enemy') {
-        const finalName = name || `Enemy-${this.nextFallbackNameSeq++}`;
+        const finalName = name || `Enemy-${this.nextEnemyNameSeq++}`;
         const enemy = generateDriftingEnemy(finalName, state, C.ENEMY_MAX_HP, '#ff6a00', '#ff6a00', this._hud, this._sfx, this._fx, this._scene);
         this._entities.addEnemy(enemy);
         this._hud.hint(`${enemy.name} を配置`);
@@ -220,10 +223,10 @@ export class CreativeStage extends Stage {
         const id = this.ammoIdAllocator.next();
         const ammo = new Ammo({ state, id }, this._scene, this._markerManager);
         this._entities.addAmmo(ammo);
-        const finalName = name || `Ammo-${this.nextFallbackNameSeq++}`;
+        const finalName = name || `Ammo-${this.nextAmmoNameSeq++}`;
         this._hud.hint(`${finalName} を配置`);
       } else if (form.objectType === 'base') {
-        const finalName = name || `Base-${this.nextFallbackNameSeq++}`;
+        const finalName = name || `Base-${this.nextBaseNameSeq++}`;
         const base = new Base({ state, name: finalName }, this._scene, this._hud, this._sfx, this._fx, this._markerManager);
         this._entities.addBase(base);
         this._hud.hint(`${base.name} を配置`);
