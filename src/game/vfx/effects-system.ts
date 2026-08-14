@@ -31,7 +31,7 @@ export class EffectsSystem {
   }
 
   // フラッシュ群のビルボードを現在の状態へ同期する。
-  sync(fo: FloatingOrigin, activeCamera: THREE.PerspectiveCamera, zoomActive: boolean): void {
+  sync(fo: FloatingOrigin, activeCamera: THREE.Camera, zoomActive: boolean): void {
     this._flashEffects.syncFlashEffects(fo, activeCamera, zoomActive);
   }
 
