@@ -111,10 +111,10 @@ export class PlanDisplay {
     // 毎フレーム更新しておかないと、クリック当たり判定が古い視点のまま行われてしまう。
     this.path.setVisible(this.path.nodeCount > 0);
     this.path.sync(fo, project, scale, cameraPos, camera);
-    this.syncGhost(project);
+    this.syncGhost(project, overviewMode, cameraPos);
     this.syncApsisMarkers(project, overviewMode, cameraPos);
     this.syncImpactMarkers(project);
-    this.syncTickMarkers(project);
+    this.syncTickMarkers(project, overviewMode, cameraPos);
   }
 
   // 計画折れ線・ゴーストマーカー・アプシスアイコンを非表示にする。
@@ -153,8 +153,8 @@ export class PlanDisplay {
   }
 
   // ⬢ ゴーストマーカーを計画位置に置く。計画がそこまで届いていなければ隠す。
-  private syncGhost(project: ProjectFn): void {
-    if (!this.ghost) {
+  private syncGhost(project: ProjectFn, overviewMode: boolean, cameraPos: Vec3): void {
+    if (!this.ghost || (overviewMode && isOccluded(cameraPos, this.ghost.pos, this.attractors))) {
       this.markerManager.hide('plannedPlayer');
       return;
     }
@@ -287,7 +287,7 @@ export class PlanDisplay {
   // 採否を決め、既に採用済みの目盛から PLAN_TICK_MIN_PX 未満しか離れない候補は捨てる —
   // 離心軌道では近地点付近と遠地点付近で候補の画面間隔が桁違いになるため、区間全体で
   // 一つの単位に揃えず、この局所判定に任せることで区間ごとに異なる単位が選ばれてよい。
-  private syncTickMarkers(project: ProjectFn): void {
+  private syncTickMarkers(project: ProjectFn, overviewMode: boolean, cameraPos: Vec3): void {
     const icons = this.tickIcons;
     const n = icons.length;
     const projected = icons.map((icon) => project(icon.pos));
@@ -297,7 +297,8 @@ export class PlanDisplay {
     const minPxSq = C.PLAN_TICK_MIN_PX ** 2;
     for (const rank of ranksDesc) {
       for (let i = 0; i < n; i++) {
-        if (icons[i]!.rank !== rank || !projected[i]!.front) continue;
+        if (icons[i]!.rank !== rank || !projected[i]!.front
+          || (overviewMode && isOccluded(cameraPos, icons[i]!.pos, this.attractors))) continue;
         if (this.isFarFromShown(projected, shown, i, minPxSq)) shown[i] = true;
       }
     }
@@ -314,7 +315,10 @@ export class PlanDisplay {
 
     for (let i = 0; i < n; i++) {
       const icon = icons[i]!;
-      if (!shown[i]) { this.markerManager.hide(icon.key); continue; }
+      if (!shown[i] || (overviewMode && isOccluded(cameraPos, icon.pos, this.attractors))) {
+        this.markerManager.hide(icon.key);
+        continue;
+      }
       const p = projected[i]!;
       const depth = finestShown === null ? 0 : Math.min(Math.max(icon.rank - finestShown, 0), maxDepth);
       const label = this.isFarFromShown(projected, shown, i, labelMinPxSq) ? icon.label : '';
