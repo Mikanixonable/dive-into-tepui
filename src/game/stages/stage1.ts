@@ -50,7 +50,7 @@ export class Stage1 extends Stage {
   }
   // 1フレーム分、敵の行動と補給ロジスティクスを進める。
   update(dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
-    if (!this.isPlaying || !player) return;
+    if (!player) return;
 
     this.behaveAllEnemies(dt, player, entities, simTime, simSpeed);
 

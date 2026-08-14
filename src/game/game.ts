@@ -64,6 +64,9 @@ export class Game {
   private readonly mapActions: MapContextActions;
 
   readonly activeStage: Stage;
+  // ポーズは Game 自身の状態として持つ。SIM_SPEED_LEVELS は離散段で 0 を表現できないうえ、
+  // 「時間を止めるか」と「どの倍率まで相互作用を成立させるか」は別の関心事なので、
+  // SimSpeedManager へは寄せない。
   private _isPaused = false;
   get isPaused(): boolean { return this._isPaused; }
 
@@ -144,13 +147,6 @@ export class Game {
       this.displayWindowManager,
       this.frameControls,
     );
-    this.mapPickables = new MapPickables(
-      this, this.entities, this.ephemeris, this.navTarget, this.cameraSystem, this.editor,
-    );
-    this.mapActions = new MapContextActions(
-      this, this._hud, this.entities, this.ephemeris, this.navTarget,
-      this.cameraSystem, this.editor, this.simSpeedManager, this.pauseMenu, this.mapPickables,
-    );
     this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager);
 
     this.input = new Input(gs.renderer.domElement);
@@ -170,6 +166,15 @@ export class Game {
       initialSave?.stage, this._hud, this._sfx, this._scene, this.entities, this.unlockManager,
       this.entities.effects, this.markerManager, this.ephemeris, this.simulator, this.activePlayers,
     );
+    // activeStage(authoring/executesPlans を読む)を要るので、その直後に生成する。
+    this.mapPickables = new MapPickables(
+      this.activePlayers, this.entities, this.ephemeris, this.navTarget, this.cameraSystem, this.editor,
+    );
+    this.mapActions = new MapContextActions(
+      this._hud, this.entities, this.ephemeris, this.navTarget,
+      this.cameraSystem, this.editor, this.simSpeedManager, this.pauseMenu, this.mapPickables,
+      this.activePlayers, this.frameControls, this.activeStage, this.targeter,
+    );
 
     // 初期ビューは世界が組み上がった後にしか決まらない — 攻略ステージの自機は Stage の初期配置で
     // 置かれるので、戦闘ビューへ入れるかどうかはその後でなければ判定できない。
@@ -181,8 +186,10 @@ export class Game {
 
     this.nanWatchdog = new NanWatchdog(this._hud);
     this.docking = new Docking(
-      this, this._hud, this._sfx, this._scene, this.entities.effects, this.markerManager,
+      () => this.pause(), () => this.resume(),
+      this._hud, this._sfx, this._scene, this.entities.effects, this.markerManager,
       this.entities, this.mapActions, this.cameraSystem, this.viewManager,
+      this.activePlayers, this.activeStage,
     );
     this.mapActions.setDocking(this.docking);
     this.viewBadge = new ViewBadge(this._hud.layers.notify, this._hud.layers.popup, this.viewManager, this._hud.overlayManager);
@@ -282,35 +289,33 @@ export class Game {
     this.sections.exit(SECTION.effects);
 
     this.sections.enter(SECTION.plan);
-    // trackAnchor より前に置く: 最後のノードが落ちたフレームからアンカーを自機へ追従させる。
     this.guide.update(
       this.player, this.simulator.simTime, this.editor.editMode,
       this.ephemeris.attractorsAt(this.simulator.simTime),
     );
-    if (this.player) this.player.plan.trackAnchor(this.player.state);
     this.sections.exit(SECTION.plan);
   }
 
-  // ポインタ入力を優先順位順(=呼ぶ順)に配る。このフレームの cameraSystem.update が終わって
+  // ポインタ入力を優先順位順(=呼ぶ順)に配る。各受け手はいまがマップ視点か・操作艦の有無かを
+  // 自分で見るので、ここで決めるのは順序だけ。このフレームの cameraSystem.update が終わって
   // 初めて投影がこのフレームの値になるので、update の末尾に置く。ポーズ中、または入力を
   // ゲートするオーバーレイ(セーブブラウザ・ドック等)が開いている間は配らない(背景の誤操作を防ぐ)。
   private handlePointerInput(): void {
     if (this._isPaused || this._hud.overlayManager.isInputGated()) return;
-    if (this.editor.editMode) {
-      // マーカー(右クリック/左クリック/ダブルクリック)→ ノード → 空域の優先順は呼ぶ順そのもの。
-      this.mapActions.handleRightClick(this.input, this.simulator.simTime);
-      this.mapActions.handleLeftClick(this.input);
-      this.mapActions.handleDoubleClick(this.input);
-      this.editor.handleMapPointer(this.input);
-      this.mapActions.handleEmptySpaceRightClick(this.input, this.simulator.simTime);
-    } else if (!this._isPaused && this.player) {
-      const combatTargets = this.entities.getCombatTargets(this.player);
-      this.targeter.handleTargetSelectKey(this.input, combatTargets, this.cameraSystem.activeCameraProjection);
-      this.navTarget.updateCombatBasePicking(this.entities, this.input, this.cameraSystem.activeCameraProjection);
-      this.mapActions.handleCombatRightClick(
-        this.input, combatTargets, this.cameraSystem.activeCameraProjection, this.simulator.simTime,
-      );
-    }
+    const simTime = this.simulator.simTime;
+    const project = this.cameraSystem.activeCameraProjection;
+    const overviewMode = this.cameraSystem.overviewMode;
+    // マーカー(右クリック/左クリック/ダブルクリック)→ ノード → 空域の優先順は呼ぶ順そのもの。
+    this.mapActions.handleRightClick(this.input, simTime);
+    this.mapActions.handleLeftClick(this.input);
+    this.mapActions.handleDoubleClick(this.input);
+    this.editor.handleMapPointer(this.input);
+    this.mapActions.handleEmptySpaceRightClick(this.input, simTime);
+    if (!this.player) return;
+    const combatTargets = this.entities.getCombatTargets(this.player);
+    this.targeter.handleTargetSelectKey(this.input, combatTargets, project, overviewMode);
+    this.navTarget.updateCombatBasePicking(this.entities, this.input, project, overviewMode);
+    this.mapActions.handleCombatRightClick(this.input, combatTargets, project, simTime, overviewMode);
   }
 
   // --------------------------------------------------------------- input
@@ -328,13 +333,7 @@ export class Game {
     this.input.takeKeys((code) => this._hud.overlayManager.dispatchShortcut(code));
     // 上から下へ優先順位順に呼ぶ。
     this._hud.handleInput(this.input);
-    this.simSpeedManager.handleInput(
-      this.input,
-      this.activeStage.isPlaying,
-      this.editor.editMode,
-      this.editor.plan?.firstNode(),
-      this.simulator.simTime,
-    );
+    this.simSpeedManager.handleInput(this.input);
     this.viewManager.handleInput(this.input);
     this.editor.handleInput(this.input, dt);
   }
@@ -364,7 +363,7 @@ export class Game {
     const overviewMode = this.cameraSystem.overviewMode;
     // 表示・選択可否はこのフレームの update フェーズで MapPickables が確定させたものを読む
     // (選べる対象と描かれる対象が同じ判定から出るようにする)。
-    const visibilityPolicy = overviewMode ? this.mapPickables.visibilityPolicy : null;
+    const visibilityPolicy = this.mapPickables.visibilityPolicy;
     const combatTargets = this.entities.getCombatTargets(player);
 
     this._environment.sync(
@@ -428,8 +427,7 @@ export class Game {
   // ------------------------------------------------------------------ render
 
   render(): void {
-    // ドックビューは 3D 世界を持たず画面全体を不透明に覆うので、描画自体を止める。
-    if (this.viewManager.current === 'dock') return;
+    if (!this.viewManager.rendersWorld) return;
     this.renderer.render(this._scene, this.cameraSystem.activeCamera);
   }
 

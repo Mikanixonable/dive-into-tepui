@@ -57,7 +57,7 @@ export class Stage2 extends Stage {
   }
   // 敵の行動と補給品の湧きを進める。
   update(dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
-    if (!this.isPlaying || !player) return;
+    if (!player) return;
 
     this.behaveAllEnemies(dt, player, entities, simTime, simSpeed);
 
