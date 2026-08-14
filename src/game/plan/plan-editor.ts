@@ -752,6 +752,8 @@ export class PlanEditor {
       this.lastSeenShip = ship;
       this.closeMenu();
     }
+    // 計画が空の間だけアンカーを自機へ追従させる。この後の planDisplay.update が起点として読む。
+    ship?.plan.trackAnchor(ship.state);
     this.simTime = displayWindow.simTime;
     const excludedIds = ship === null ? [] : [ship.id];
     // revision は前フレームの終端(lastPlanEnd)を基準に畳み込む — 今フレームの終端は
