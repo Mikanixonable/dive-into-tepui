@@ -70,15 +70,17 @@ export class ValueInput {
     this.element.value = value;
   }
 
-  // 入力中の値を確定として通知する。数値欄で非数値・空欄なら破棄扱いにする。
+  // 入力中の値を確定として通知する。前回確定した値と変わっていなければ何もしない —
+  // 何も編集せずフォーカスを外しただけで呼び出し側の状態(後続ノードなど)が壊れないようにする。
+  // 数値欄で非数値・空欄なら破棄扱いにする。
   commit(): void {
     const text = this.element.value;
     if (this.element.type === 'number' && (text.trim() === '' || !isFinite(Number(text)))) {
       this.cancel();
       return;
     }
+    if (text === this.committedValue) return;
     this.committedValue = text;
-    this.suppressBlurCommit = true;
     this.onCommit(text);
   }
 

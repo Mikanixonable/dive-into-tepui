@@ -179,9 +179,11 @@ export class Game {
 
     this.input = new Input(gs.renderer.domElement);
     this.touchControls = new TouchControls(this.input);
-    this.input.onPointerKindChange = (kind) => {
-      this._sfx.unlock();
-      this.touchControls?.setPointerKind(kind);
+    this.input.onPointerKindChange = (kind) => this.touchControls?.setPointerKind(kind);
+    this.input.onUserGesture = () => this._sfx.unlock();
+    this.input.onLongPressFeedback = (point) => {
+      if (point) this.markerManager.set('longpress', 'mk-longpress', '', point.x, point.y, true);
+      else this.markerManager.hide('longpress');
     };
     this._hud.statusPanel.setInput(this.input);
     this.viewManager.setTouchControls(this.touchControls);
@@ -322,12 +324,14 @@ export class Game {
     this.sections.exit(SECTION.plan);
   }
 
-  // マップ/戦闘のポインタ操作を優先順位順(=呼ぶ順)に配る。決着後は配らず、ポーズ中は
-  // ESC メニュー等が開いていないときだけ配る(背景の誤操作を防ぐ)。
+  // マップ/戦闘のポインタ操作を優先順位順(=呼ぶ順)に配る。決着後は配らず、ポーズ中、または
+  // 入力をゲートするオーバーレイ(セーブブラウザ・ドック等)が開いている間は配らない
+  // (背景の誤操作を防ぐ)。
   private handleMapPointerInput(dt: number): void {
     if (!this.activeStage.isPlaying) return;
-    if (this._isPaused && this._hud.overlayManager.isOverlayOpen('pause-menu')) return;
+    if (this._isPaused || this._hud.overlayManager.isInputGated()) return;
     if (this.editor.editMode) {
+      // マーカー(右クリック/左クリック/ダブルクリック)→ ノード → 空域の優先順は呼ぶ順そのもの。
       this.mapActions.handleRightClick(this.input, this.simulator.simTime);
       this.mapActions.handleLeftClick(this.input);
       this.mapActions.handleDoubleClick(this.input);
