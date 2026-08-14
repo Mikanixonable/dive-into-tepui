@@ -69,13 +69,13 @@ export class CombatCameraSystem {
 
   // ズーム状態を入力から求め、現在のモード(通常/ズーム)に応じて ChaseCamera/GunsightCamera の
   // どちらかを駆動して目標 Viewpoint を求め、fovDeg だけをそこへ指数的に近づけて viewpoint とする。
-  update(mouse: MouseDelta, keyYaw: number, keyPitch: number, keyRoll: number, dt: number, player: Player | null, input: Input): void {
+  update(mouse: MouseDelta, keyYaw: number, keyPitch: number, dt: number, player: Player | null, input: Input): void {
     if (input.takeKey(K.followAttitudeToggle)) this.chaseCamera.toggleFollowAttitude(player);
     this.zoomActive = input.down(K.gunsightZoom);
     // 操作対象艦がいなければ照準先が無いので、ズーム要求は無視して追跡視点のままにする。
     const useGunsight = player !== null && this.zoomActive;
     if (useGunsight) this.gunsightCamera.update(player);
-    else this.chaseCamera.update(mouse, keyYaw, keyPitch, keyRoll, dt, player);
+    else this.chaseCamera.update(mouse, keyYaw, keyPitch, dt, player);
     const target = useGunsight ? this.gunsightCamera.viewpoint : this.chaseCamera.viewpoint;
     this.viewpoint = lerpViewpointFov(this.viewpoint, target, dt);
   }

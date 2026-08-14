@@ -10,7 +10,10 @@ import { SKELETON_STYLE } from './skeleton-style';
 import { PANEL_CONTENT_STYLE } from './panel-content-style';
 import { isCompactViewport } from './breakpoints';
 import { startViewportTracking } from './viewport';
-import { buildCollapseToggle, WIDGET_STYLE, type CollapseToggleLabels } from './widgets';
+import {
+  buildCollapseToggle, WIDGET_STYLE, type CollapseToggleLabels,
+  COLLAPSE_EXPANDED_GLYPH, COLLAPSE_COLLAPSED_GLYPH,
+} from './widgets';
 export {
   buildCollapseToggle,
   type CollapseToggleLabels,
@@ -96,11 +99,26 @@ function buildSvgOverlay(root: HTMLElement): SVGSVGElement {
   return svgOverlay;
 }
 
+// 戦闘シェルフ全体の折りたたみトグルの見た目。
+const COMBAT_SHELF_TOGGLE_LABELS: CollapseToggleLabels = {
+  expandedGlyph: COLLAPSE_EXPANDED_GLYPH,
+  collapsedGlyph: COLLAPSE_COLLAPSED_GLYPH,
+  expandedTitle: 'ステータスパネルをまとめて閉じる',
+  collapsedTitle: 'ステータスパネルをまとめて開く',
+};
+
 // 常設の情報パネル(SHIP STATUS/ORBIT/TARGET/CONTACTS)を組む。戦闘シェルフの並びに
 // 乗る3枚(STATUS/ORBIT/CONTACTS)と、右レールに乗る1枚(TARGET)。いずれも PanelShell
-// に載せ、個別に折りたためるようにする。
+// に載せ、個別に折りたためるようにする。シェルフ自体もトグルでまとめて畳める。
 function buildInfoPanels(root: HTMLElement, targetRail: HTMLElement): void {
-  const shelf = el('div', 'hud-combat-shelf', root);
+  const shelfWrap = el('div', 'hud-combat-shelf-wrap', root);
+  const shelf = el('div', 'hud-combat-shelf', shelfWrap);
+  const shelfCollapsed = loadPanelCollapsed('hud-combat-shelf') ?? isCompactViewport();
+  shelf.classList.toggle('collapsed', shelfCollapsed);
+  const shelfToggle = buildCollapseToggle(
+    shelfWrap, 'hud-combat-shelf-toggle', '', shelf, COMBAT_SHELF_TOGGLE_LABELS);
+  shelfToggle.addEventListener(
+    'click', () => savePanelCollapsed('hud-combat-shelf', shelf.classList.contains('collapsed')));
 
   const status = new PanelShell(shelf, 'hud-status', 'SHIP STATUS');
   status.body.innerHTML = `

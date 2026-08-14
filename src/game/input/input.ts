@@ -21,6 +21,7 @@ export interface MouseDelta {
   panDx: number;
   panDy: number;
   wheel: number;
+  roll: number;
 }
 
 // 画面座標のポインタイベント1件(クリック・右クリック)。
@@ -38,7 +39,7 @@ function matchesCode(key: KeyBinding, code: string): boolean {
   return key.code === code || (key.altCodes?.includes(code) ?? false);
 }
 
-const ZERO_MOUSE_DELTA: MouseDelta = { dx: 0, dy: 0, panDx: 0, panDy: 0, wheel: 0 };
+const ZERO_MOUSE_DELTA: MouseDelta = { dx: 0, dy: 0, panDx: 0, panDy: 0, wheel: 0, roll: 0 };
 
 // macOS では Command キーを押している間、他のキーの keyup がページに配送されない。
 // その間に離されたキーは押しっぱなしとして残り続けるため、Command が離された時点で
@@ -59,6 +60,7 @@ export class Input {
   private panDx = 0;
   private panDy = 0;
   private wheel = 0;
+  private roll = 0;
   private framePresses: string[] = [];
   private frameClicks: PointerPoint[] = [];
   private frameDoubleClicks: PointerPoint[] = [];
@@ -75,6 +77,7 @@ export class Input {
   private pointers = new Map<number, { x: number; y: number }>();
   private pinchDist = 0;
   private pinchCentroid: PointerPoint | null = null;
+  private pinchAngle = 0;
   // 直近に検知した入力種別が変わるたびに通知する(タッチ⇄マウス/キーボードの切替を含む)。
   onPointerKindChange: ((kind: PointerKind) => void) | null = null;
   private lastPointerKind: PointerKind | null = null;
@@ -169,6 +172,7 @@ export class Input {
         this.dragging = false;
         this.pinchDist = this.currentPinchDist();
         this.pinchCentroid = this.currentCentroid();
+        this.pinchAngle = this.currentPinchAngle();
         this.cancelLongPress();
       } else if (this.pointers.size === 1) {
         this.dragging = true;
@@ -199,7 +203,8 @@ export class Input {
     }
     if (this.pointers.size >= 2) {
       // 二本指ジェスチャ: 指の間隔の変化をホイール量へ(開く = ズームイン)、
-      // 重心の移動をパン量へ、同時に折り込む(実指は回しながら開くため排他にしない)。
+      // 重心の移動をパン量へ、2点を結ぶ角度の変化をロール量へ、同時に折り込む
+      // (実指は回しながら開くため排他にしない)。
       const d = this.currentPinchDist();
       this.wheel += (this.pinchDist - d) * 3;
       this.pinchDist = d;
@@ -209,6 +214,13 @@ export class Input {
         this.panDy += centroid.y - this.pinchCentroid.y;
       }
       this.pinchCentroid = centroid;
+      const angle = this.currentPinchAngle();
+      // -π..π の範囲でしか値を持たない角度どうしの差分は、跨いだぶんを ±2π で
+      // 正規化しないと回転方向が反転してしまう。
+      let dAngle = angle - this.pinchAngle;
+      dAngle = ((dAngle + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+      this.roll += dAngle;
+      this.pinchAngle = angle;
       return;
     }
     if (this.panDragging) {
@@ -251,9 +263,11 @@ export class Input {
         // (onPointerDown が指を増やすたびに行うのと同じ理由)。
         this.pinchDist = this.currentPinchDist();
         this.pinchCentroid = this.currentCentroid();
+        this.pinchAngle = this.currentPinchAngle();
       } else {
         this.pinchDist = 0;
         this.pinchCentroid = null;
+        this.pinchAngle = 0;
       }
     }
     if (this.longPressPointerId === e.pointerId) this.cancelLongPress();
@@ -279,6 +293,7 @@ export class Input {
     this.rightActive = false;
     this.pinchDist = 0;
     this.pinchCentroid = null;
+    this.pinchAngle = 0;
     if (this.longPressPointerId === e.pointerId) this.cancelLongPress();
   }
 
@@ -369,6 +384,13 @@ export class Input {
     return Math.hypot(a.x - b.x, a.y - b.y);
   }
 
+  // アクティブな2点を結ぶ線分の画面上の角度 [rad] を返す。
+  private currentPinchAngle(): number {
+    const [a, b] = [...this.pointers.values()];
+    if (!a || !b) return 0;
+    return Math.atan2(b.y - a.y, b.x - a.x);
+  }
+
   // タッチ UI や HUD の代替操作ボタンからの仮想キー入力。物理キーボードと同じ扱いで
   // 押下中セットとエッジトリガキューへ反映する。ポインタ種別の通知はしない —
   // 呼び出し元がタッチ由来とは限らない(HUD 上の代替ボタンはマウスでも押せる)ため。
@@ -425,7 +447,9 @@ export class Input {
     this.frameDoubleClicks = this.pendingDoubleClicks;
     this.frameMiddleClicks = this.pendingMiddleClicks;
     this.frameRightClicks = this.pendingRightClicks;
-    this.frameMouse = { dx: this.dx, dy: this.dy, panDx: this.panDx, panDy: this.panDy, wheel: this.wheel };
+    this.frameMouse = {
+      dx: this.dx, dy: this.dy, panDx: this.panDx, panDy: this.panDy, wheel: this.wheel, roll: this.roll,
+    };
     // 次フレーム分の蓄積をリセット
     this.pendingPresses = [];
     this.pendingClicks = [];
@@ -437,6 +461,7 @@ export class Input {
     this.panDx = 0;
     this.panDy = 0;
     this.wheel = 0;
+    this.roll = 0;
   }
 
   // 今フレームの押下エッジに key があれば消費して true を返す。takeHeld で確保済みの
