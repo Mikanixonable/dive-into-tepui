@@ -47,6 +47,8 @@ const META_CODES = ['MetaLeft', 'MetaRight'];
 
 export class Input {
   private keys = new Set<string>();
+  // takeHeld で確保済みの code。down()/takeKey()/takeKeys() からは見えなくなる。
+  private claimedCodes = new Set<string>();
   private pendingPresses: string[] = [];
   private pendingClicks: PointerPoint[] = [];
   private pendingDoubleClicks: PointerPoint[] = [];
@@ -130,6 +132,7 @@ export class Input {
   // 操作が中断された場合の復帰点。
   private releaseAll(): void {
     this.keys.clear();
+    this.claimedCodes.clear();
     this.dragging = false;
     this.panDragging = false;
     this.cancelLongPress();
@@ -393,14 +396,29 @@ export class Input {
     this.onPointerKindChange?.(kind);
   }
 
-  // key が現在押下中か返す。
+  // code が押下中かつ未確保か返す。
+  private isDown(code: string): boolean {
+    return this.keys.has(code) && !this.claimedCodes.has(code);
+  }
+
+  // key が現在押下中か返す。takeHeld で確保済みの code は押下と見なさない。
   down(key: KeyBinding): boolean {
-    return this.keys.has(key.code) || (key.altCodes?.some((c) => this.keys.has(c)) ?? false);
+    return this.isDown(key.code) || (key.altCodes?.some((c) => this.isDown(c)) ?? false);
+  }
+
+  // 今フレーム key がホールドされていれば、その code (と altCodes) を先着で確保して true を返す。
+  // 確保した code は以後 down() / takeKey() / takeKeys() から見えなくなる。
+  takeHeld(key: KeyBinding): boolean {
+    if (!this.down(key)) return false;
+    this.claimedCodes.add(key.code);
+    for (const c of key.altCodes ?? []) this.claimedCodes.add(c);
+    return true;
   }
 
   // フレームの先頭で1度だけ呼ぶ。イベントハンドラが溜めた未確定分を今フレームの
   // スナップショットとして確定し、次フレーム分の蓄積をリセットする。
   update(): void {
+    this.claimedCodes.clear();
     // 蓄積分を今フレームのスナップショットとして確定
     this.framePresses = this.pendingPresses;
     this.frameClicks = this.pendingClicks;
@@ -421,17 +439,20 @@ export class Input {
     this.wheel = 0;
   }
 
-  // 今フレームの押下エッジに key があれば消費して true を返す。
+  // 今フレームの押下エッジに key があれば消費して true を返す。takeHeld で確保済みの
+  // code は渡さない。
   takeKey(key: KeyBinding): boolean {
-    const i = this.framePresses.findIndex((code) => matchesCode(key, code));
+    const i = this.framePresses.findIndex((code) => matchesCode(key, code) && !this.claimedCodes.has(code));
     if (i === -1) return false;
     this.framePresses.splice(i, 1);
     return true;
   }
 
   // 今フレームの未消費の押下エッジを順に渡し、handler が true を返したものを消費する。
+  // takeHeld で確保済みの code は渡さない。
   takeKeys(handler: (code: string) => boolean): void {
     for (const code of [...this.framePresses]) {
+      if (this.claimedCodes.has(code)) continue;
       if (!handler(code)) continue;
       const i = this.framePresses.indexOf(code);
       if (i !== -1) this.framePresses.splice(i, 1);

@@ -1,6 +1,5 @@
 import * as THREE from 'three/webgpu';
 import { Hud } from '../hud/hud';
-import { Sfx } from '../../audio/sfx';
 import { CombatCameraSystem } from './combat-camera-system';
 import { OverviewCamera } from './overview-camera';
 import { ViewOptionsPanel } from '../hud/view-options-panel';
@@ -104,28 +103,18 @@ export class CameraSystem {
 
   setMapMode(open: boolean): void { this._overviewMode = open; }
 
-  // sync() で毎フレーム参照する DOM 要素をコンストラクタ時にキャッシュする。
-  private readonly _elStatus: HTMLElement | null;
-  private readonly _elStageStatus: HTMLElement | null;
-  // マップ視点でも艦のステータスを表示するか(ステージが showsStatusInOverview で宣言する)。
-  private readonly showStatusInOverview: boolean;
-
   // 両カメラとフォーカス候補ラベルを構築し、常用ショートリストパネルの選択操作を配線する。
   // saved があれば両カメラをその視点から組む。
   constructor(
     _hud: Hud,
-    sfx: Sfx,
     markerManager: MarkerManager,
     ephemeris: Ephemeris,
-    player: Player | null,
-    showStatusInOverview = false,
     saved?: Pick<CameraSaveData, 'chase' | 'overview'>,
   ) {
-    this.showStatusInOverview = showStatusInOverview;
     // 両カメラとフォーカス候補ラベル
     this.focusMarkers = new FocusMarkers(markerManager, ephemeris);
-    this.combatCamera = new CombatCameraSystem(_hud, sfx, player, saved?.chase);
-    this.overviewCamera = new OverviewCamera(_hud, sfx, ephemeris, saved?.overview);
+    this.combatCamera = new CombatCameraSystem(_hud, saved?.chase);
+    this.overviewCamera = new OverviewCamera(_hud, ephemeris, saved?.overview);
     // 表示パネルと天体クラス側操作のコールバック
     this.viewOptionsPanel = new ViewOptionsPanel(_hud.layers.panel);
     this.viewOptionsPanel.onBodyClassToggle = (key, on) => {
@@ -144,15 +133,6 @@ export class CameraSystem {
         }
       });
     }
-
-    // sync() 用の DOM 要素を事前にキャッシュ
-    this._elStatus = document.getElementById('hud-status');
-    this._elStageStatus = document.getElementById('hud-stagestatus');
-  }
-
-  // アクティブ艦の切替を戦闘ビューの追従カメラへ伝える。
-  setActivePlayer(player: Player | null): void {
-    this.combatCamera.setActivePlayer(player);
   }
 
   // 現在アクティブなカメラ(広範囲視点/戦闘追従視点)を返す。
@@ -160,7 +140,8 @@ export class CameraSystem {
     return this.overviewMode ? this.overviewCamera.camera : this.combatCamera.camera;
   }
 
-  // アクティブカメラの位置を返す。
+  // アクティブカメラの位置(描画原点になる値)を返す。戦闘ビューにいることは操作対象艦がいることを
+  // 意味する(ViewManager が canEnter で保証する)ので、この値は実在した艦から計算されたものになる。
   get activeCameraPos(): Vec3 {
     return this.overviewMode ? this.overviewCamera.viewpoint.position : this.combatCamera.viewpoint.position;
   }
@@ -179,9 +160,6 @@ export class CameraSystem {
     mapPickables: readonly MapPickable[],
     attractors: readonly Attractor[],
   ): void {
-    // 追従視点トグル
-    if (input.takeKey(K.followAttitudeToggle)) this.combatCamera.toggleFollowAttitude();
-
     // 中クリックで視点リセット
     input.takeMiddleClicks(() => {
       if (this.overviewMode) this.overviewCamera.reset();
@@ -223,10 +201,6 @@ export class CameraSystem {
     this.viewOptionsPanel.setVisible(this.overviewMode);
     this.viewOptionsPanel.setBodyClassToggles(this._bodyClassToggles);
 
-    // 戦闘ビュー固有パネルを広範囲視点では非表示にする
-    const hidden = this.overviewMode && !this.showStatusInOverview ? 'none' : '';
-    if (this._elStatus) this._elStatus.style.display = hidden;
-    if (this._elStageStatus) this._elStageStatus.style.display = hidden;
     if (this.overviewMode) {
       this.focusMarkers.syncLabels(this.activeCameraProjection, this.activeCameraPos);
     } else {

@@ -2,11 +2,10 @@
 import * as THREE from 'three/webgpu';
 import { FloatingOrigin } from './floating-origin';
 import { v3 } from '../physics/vec3';
-import type { PerfCounts, PerfMeter } from '../perf-meter';
+import type { PerfCounts } from '../perf-meter';
 import { FrameSections, SECTION } from '../frame-sections';
 import { Player } from './player/player';
 import { CameraSystem } from './camera/camera-system';
-import { focusPoint } from './camera/focus-target';
 import { Stage, StageClass } from './stages/stage';
 import { MarkerManager } from './marker/marker-manager';
 import { ActivePlayerController } from './active-player-controller';
@@ -26,9 +25,7 @@ import { PauseMenu } from './hud/pause-menu';
 import { Sfx } from '../audio/sfx';
 import { GameScene } from '../render/scene';
 import { EnvironmentScene } from './celestial/environment-scene';
-import { Ephemeris } from '../physics/ephemeris';
-import type { AbsoluteEphemeris } from '../physics/absolute-ephemeris';
-import { SIM_EPOCH_ET, SIM_EPOCH_JD_TDB } from './sim-epoch';
+import type { Ephemeris } from '../physics/ephemeris';
 import { ViewManager } from './view-manager';
 import { NanWatchdog } from './nan-watchdog';
 import { NavTarget } from './nav-target';
@@ -39,15 +36,13 @@ import { GameSaveData } from './save-data';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import { Docking } from './docking';
 import { ViewBadge } from './hud/view-badge';
-import { planAttractorProvider, planSourceRevision } from './simulation/attractors';
 import { FrameControls } from './hud/frame-controls';
 
 export class Game {
   private readonly _scene: THREE.Scene;
   private readonly renderer: GameScene['renderer'];
-  private floatingOrigin: FloatingOrigin;
   readonly input: Input;
-  touchControls: TouchControls | null = null;
+  private readonly touchControls: TouchControls | null;
   private readonly _hud: Hud;
   private readonly _sfx: Sfx;
   private readonly pauseMenu: PauseMenu;
@@ -77,8 +72,6 @@ export class Game {
   private readonly navball: Navball;
 
   private readonly unlockManager: UnlockManager;
-  // PerfMeter は計測点である rAF ループ側の持ち物なので、後から受け取る。
-  private perfMeter: PerfMeter | null = null;
 
   readonly targeter: Targeter;
   readonly navTarget: NavTarget;
@@ -101,7 +94,8 @@ export class Game {
     pauseMenu: PauseMenu,
     unlockManager: UnlockManager,
     sections: FrameSections,
-    absoluteEphemeris?: AbsoluteEphemeris,
+    ephemeris: Ephemeris,
+    earthSpinPhase0: number,
     initialSave?: GameSaveData,
   ) {
     this.sections = sections;
@@ -112,52 +106,44 @@ export class Game {
     this.pauseMenu = pauseMenu;
     this.unlockManager = unlockManager;
 
-    const ephemerisConfig = stageClass.ephemerisConfig;
-    const phaseOffsets = initialSave?.phaseOffsets ?? {};
-    this._ephemeris = ephemerisConfig === undefined
-      ? new Ephemeris(undefined, undefined, SIM_EPOCH_ET, phaseOffsets, absoluteEphemeris, SIM_EPOCH_JD_TDB)
-      : new Ephemeris(
-        ephemerisConfig.registry, ephemerisConfig.originId, ephemerisConfig.epochOffsetSec, phaseOffsets);
+    this._ephemeris = ephemeris;
 
     this.markerManager = new MarkerManager(this._hud.layers.marker, this._hud.svgOverlay);
 
-    this.entities = new EntityManager(
-      this._scene, this._hud, this._sfx, this.markerManager,
-      initialSave ? { saved: initialSave } : { playerCount: stageClass.initialPlayerCount },
-    );
+    this.entities = new EntityManager(this._scene, this._hud, this._sfx, this.markerManager, initialSave);
     this.displayWindowManager = new DisplayWindowManager(this._hud.layers.panel, this.ephemeris, this.entities);
-    const initialPlayer = this.entities.initialActivePlayer;
 
-    // 自機より後に生成する: 追従カメラは操作対象艦を参照として直接持つ(遅延解決しない)。
     this.cameraSystem = new CameraSystem(
       this._hud,
-      this._sfx,
       this.markerManager,
       this.ephemeris,
-      initialPlayer,
-      stageClass.showsStatusInOverview,
       initialSave?.camera,
     );
     this.simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
+    this.frameControls = new FrameControls(
+      this._hud.layers.panel, this._hud.layers.popup, this.ephemeris, this.cameraSystem.overviewCamera,
+      this.displayWindowManager, this._hud.overlayManager,
+    );
 
     this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene);
     this.navTarget = new NavTarget(this._hud, this.markerManager);
     this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
-    this._environment = new EnvironmentScene(this._scene, this.ephemeris, initialSave?.earthSpinPhase0);
+    this._environment = new EnvironmentScene(this._scene, this.ephemeris, earthSpinPhase0);
+    this.activePlayers = new ActivePlayerController(
+      initialSave?.activePlayerId, this.entities, this.cameraSystem, this.targeter, this.navTarget, this._sfx,
+    );
     this.editor = new PlanEditor(
       this._hud,
       this._sfx,
       this.simSpeedManager,
       this.ephemeris,
+      this.entities,
       this._scene,
       this.markerManager,
-      initialPlayer,
+      this.activePlayers,
       this.displayWindowManager,
+      this.frameControls,
     );
-    this.editor.onFocusNode = (state) => {
-      this.frameControls.setFocus(
-        focusPoint(this.ephemeris, this.ephemeris.inertialFrame, state.r, state.t));
-    };
     this.mapPickables = new MapPickables(
       this, this.entities, this.ephemeris, this.navTarget, this.cameraSystem, this.editor,
     );
@@ -166,16 +152,6 @@ export class Game {
       this.cameraSystem, this.editor, this.simSpeedManager, this.pauseMenu, this.mapPickables,
     );
     this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager);
-    this.activePlayers = new ActivePlayerController(
-      initialPlayer, this.entities, this.cameraSystem, this.editor, this.targeter,
-      this.navTarget, this.mapActions, this._sfx,
-    );
-    // 戦闘ビューは操作対象艦を前提とするので、艦が1隻も無い起動はマップから始める。
-    this.viewManager = new ViewManager(
-      this._hud, this.editor, this.cameraSystem, this.displayWindowManager, this.mapActions,
-      this.activePlayers,
-      initialSave?.camera?.view ?? (initialPlayer ? 'combat' : 'map'),
-    );
 
     this.input = new Input(gs.renderer.domElement);
     this.touchControls = new TouchControls(this.input);
@@ -186,7 +162,6 @@ export class Game {
       else this.markerManager.hide('longpress');
     };
     this._hud.statusPanel.setInput(this.input);
-    this.viewManager.setTouchControls(this.touchControls);
 
     this.simulator = new Simulator(this.entities, this.ephemeris, sections, initialSave?.simTime ?? 0);
     this.predictor = new Predictor(this.entities, this.ephemeris);
@@ -196,6 +171,14 @@ export class Game {
       this.entities.effects, this.markerManager, this.ephemeris, this.simulator, this.activePlayers,
     );
 
+    // 初期ビューは世界が組み上がった後にしか決まらない — 攻略ステージの自機は Stage の初期配置で
+    // 置かれるので、戦闘ビューへ入れるかどうかはその後でなければ判定できない。
+    this.viewManager = new ViewManager(
+      this._hud, this.editor, this.cameraSystem, this.displayWindowManager, this.mapActions,
+      this.activePlayers, this.touchControls,
+      initialSave?.camera?.view,
+    );
+
     this.nanWatchdog = new NanWatchdog(this._hud);
     this.docking = new Docking(
       this, this._hud, this._sfx, this._scene, this.entities.effects, this.markerManager,
@@ -203,16 +186,6 @@ export class Game {
     );
     this.mapActions.setDocking(this.docking);
     this.viewBadge = new ViewBadge(this._hud.layers.notify, this._hud.layers.popup, this.viewManager, this._hud.overlayManager);
-    this.frameControls = new FrameControls(
-      this._hud.layers.panel, this._hud.layers.popup, this.ephemeris, this.cameraSystem.overviewCamera,
-      this.displayWindowManager, this._hud.overlayManager,
-    );
-
-    // 暫定値: cameraSystem はまだ update() を経ていないため activeCameraPos が定まらない。
-    // 最初の Game.sync() が render より前に必ず上書きするので、これは描画に使われない。
-    this.floatingOrigin = this.player
-      ? new FloatingOrigin(this.player.state.r, this.player.state.v)
-      : new FloatingOrigin(v3(), v3());
   }
 
   // ------------------------------------------------------------------ lifecycle
@@ -220,18 +193,14 @@ export class Game {
   pause(): void {
     this.simulator.lastSimDt = 0;
     this._sfx.setThrust(false);
-    this.player?.pause();
+    // ポーズ中は behave が走らないので、全自機の連続指令はここで畳む。
+    this.entities.clearTransientCommands();
     this._isPaused = true;
   }
 
   resume(): void { this._isPaused = false; }
 
   get simTime(): number { return this.simulator.simTime; }
-
-  // 負荷確認ウィンドウを登録する。構築直後に一度だけ呼ぶ。
-  setPerfMeter(meter: PerfMeter): void {
-    this.perfMeter = meter;
-  }
 
   // ------------------------------------------------------------ update
 
@@ -240,44 +209,45 @@ export class Game {
     this.input.update();
     const dt = Math.min(dtRaw, 0.1);
     // ポーズ中も Esc・ヘルプなどは効かせるので、入力配分はポーズ判定より前に置く。
-    this.handleInput();
+    this.handleInput(dt);
     this.sections.exit(SECTION.input);
 
     if (!this._isPaused) this.advanceSimulation(dt);
-    this.displayWindowManager.resolve(this.simulator.simTime, this.player);
     // ポーズ中も決着後も飛ばせない。決着は積分を止めないので、飛ばすと描画原点になるカメラ位置
     // だけが絶対 ECI に取り残され、追従対象もフォーカス天体も軌道速度で流れて即フレームアウトする。
     // ポーズ中は積分が止まるが、カメラの旋回・ズーム・パンの入力をここで消化している。
-    this.updateMapPresentation(dt);
+    const displayWindow = this.displayWindowManager.resolve(this.simulator.simTime, this.player);
+    const overviewMode = this.cameraSystem.overviewMode;
+    // 計画表示、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
+    this._environment.update(displayWindow.displayTime, overviewMode);
+    this.sections.enter(SECTION.plan);
+    this.editor.update(displayWindow);
+    this.targeter.updateEquatorNodes(overviewMode, displayWindow, this.ephemeris);
+    this.entities.updateBaseEquatorNodes(overviewMode, displayWindow, this.ephemeris);
+    this.sections.exit(SECTION.plan);
+    this.sections.enter(SECTION.mapPick);
+    this.mapPickables.refresh(displayWindow);
+    this.sections.exit(SECTION.mapPick);
+    this.sections.enter(SECTION.camera);
+    this.cameraSystem.update(
+      this.player, this.simulator.simTime, this.input, dt, this.mapPickables.pickables,
+      this.displayWindowManager.attractorsAt(this.simulator.simTime),
+    );
+    this.sections.exit(SECTION.camera);
     this.sections.enter(SECTION.pointer);
-    this.handleMapPointerInput(dt);
+    this.handlePointerInput();
     this.sections.exit(SECTION.pointer);
   }
 
-  // 自機の行動 → ステージ → 積分 → 予測 → エフェクトの順に1フレーム進める。艦がいない場合は
-  // その段だけを落として残りは進める(残骸・弾の epoch はどの状況でも進め続ける)。
+  // 自機の行動 → ステージ → 積分 → 予測 → エフェクトの順に1フレーム進める
+  // (残骸・弾の epoch はどの状況でも進め続ける)。
   private advanceSimulation(dt: number): void {
     this.sections.enter(SECTION.player);
-    if (this.player && this.activeStage.isPlaying) {
-      this.nanWatchdog.checkPlayer('frameStart', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
-      this.player.behave({
-        dt,
-        input: this.input,
-        simSpeed: this.simSpeedManager,
-        mapMode: this.editor.editMode,
-        dvEditActive: this.editor.dvEditActive,
-        scoreCounter: this.activeStage.scoreCounter,
-        simTime: this.simulator.simTime,
-        zoomActive: this.cameraSystem.zoomActive,
-        entities: this.entities,
-        ephemeris: this.ephemeris,
-      });
-      this.entities.updatePassivePlayers(dt, this.player);
-      this.nanWatchdog.checkPlayer('player.behave', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
-    } else if (this.player) {
-      // behave が呼ばれなくなるので、次のフレームへ持ち越してはならない連続指令を畳む。
-      this.player.clearTransientCommands();
-    }
+    this.nanWatchdog.checkPlayer('frameStart', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
+    this.entities.updatePlayers(
+      this.player, this.input, this.simSpeedManager, dt, this.activeStage, this.ephemeris,
+    );
+    this.nanWatchdog.checkPlayer('player.behave', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
     this.sections.exit(SECTION.player);
 
     this.sections.enter(SECTION.stage);
@@ -285,9 +255,6 @@ export class Game {
     this.sections.exit(SECTION.stage);
     this.nanWatchdog.checkPlayer('activeStage.update', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
     this.simSpeedManager.update(this.simulator.simTime);
-    // 操作不可のワープ倍率は、操作対象から外れた艦と同じ「操作できない」状態。連続指令を書いた
-    // 主体(behave / planExecutor)によらず、積分へ渡る前に全自機分を畳む。
-    if (!this.simSpeedManager.canOperatePlayer) this.entities.clearTransientCommands();
 
     const simDt = dt * this.simSpeedManager.simSpeed;
     this.sections.enter(SECTION.integrate);
@@ -324,11 +291,10 @@ export class Game {
     this.sections.exit(SECTION.plan);
   }
 
-  // マップ/戦闘のポインタ操作を優先順位順(=呼ぶ順)に配る。決着後は配らず、ポーズ中、または
-  // 入力をゲートするオーバーレイ(セーブブラウザ・ドック等)が開いている間は配らない
-  // (背景の誤操作を防ぐ)。
-  private handleMapPointerInput(dt: number): void {
-    if (!this.activeStage.isPlaying) return;
+  // ポインタ入力を優先順位順(=呼ぶ順)に配る。このフレームの cameraSystem.update が終わって
+  // 初めて投影がこのフレームの値になるので、update の末尾に置く。ポーズ中、または入力を
+  // ゲートするオーバーレイ(セーブブラウザ・ドック等)が開いている間は配らない(背景の誤操作を防ぐ)。
+  private handlePointerInput(): void {
     if (this._isPaused || this._hud.overlayManager.isInputGated()) return;
     if (this.editor.editMode) {
       // マーカー(右クリック/左クリック/ダブルクリック)→ ノード → 空域の優先順は呼ぶ順そのもの。
@@ -337,7 +303,6 @@ export class Game {
       this.mapActions.handleDoubleClick(this.input);
       this.editor.handleMapPointer(this.input);
       this.mapActions.handleEmptySpaceRightClick(this.input, this.simulator.simTime);
-      this.editor.updateEditing(dt, this.input);
     } else if (!this._isPaused && this.player) {
       const combatTargets = this.entities.getCombatTargets(this.player);
       this.targeter.handleTargetSelectKey(this.input, combatTargets, this.cameraSystem.activeCameraProjection);
@@ -348,44 +313,12 @@ export class Game {
     }
   }
 
-  // 計画表示、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
-  private updateMapPresentation(dt: number): void {
-    const displayWindow = this.displayWindowManager.current;
-    this._environment.update(displayWindow.displayTime, this.cameraSystem.overviewMode);
-    this.sections.enter(SECTION.plan);
-    // revision は前フレームの計画終端を基準に畳み込む — 今フレームの終端は editor.update が
-    // これから決めるので、provider を組む時点ではまだ確定していない。
-    const excludedIds = this.player ? [this.player.id] : [];
-    const planProvider = planAttractorProvider(
-      this.ephemeris,
-      this.entities,
-      excludedIds,
-      planSourceRevision(
-        this.entities, excludedIds,
-        this.editor.plan?.revision ?? 0, this.editor.lastPlanEnd, this.simulator.simTime,
-      ),
-    );
-    this.editor.update(displayWindow, planProvider);
-    this.targeter.updateEquatorNodes(displayWindow, this.ephemeris);
-    this.entities.updateBaseEquatorNodes(displayWindow, this.ephemeris);
-    this.sections.exit(SECTION.plan);
-    this.sections.enter(SECTION.mapPick);
-    this.mapPickables.refresh(displayWindow);
-    this.sections.exit(SECTION.mapPick);
-    this.sections.enter(SECTION.camera);
-    this.cameraSystem.update(
-      this.player, this.simulator.simTime, this.input, dt, this.mapPickables.pickables,
-      this.displayWindowManager.attractorsAt(this.simulator.simTime),
-    );
-    this.sections.exit(SECTION.camera);
-  }
-
   // --------------------------------------------------------------- input
 
   // 入力エッジを担当モジュールへ先着順で配る。決めるのは優先順位 = 呼ぶ順序だけで、
   // どのキー/クリックが何をするかは各モジュールが持つ。ここで配るのは、決着後・ポーズ中も
-  // 効くべき操作(設定・ヘルプ・再出撃・ワープ・マップ開閉・計画破棄)。
-  private handleInput(): void {
+  // 効くべき操作(設定・ヘルプ・再出撃・ワープ・マップ開閉・計画破棄・計画のΔv編集)。
+  private handleInput(dt: number): void {
     // ESC の持ち主はここ一箇所だけ: 開いているオーバーレイがあれば最前面を閉じ、
     // 何も無ければ一時停止メニューを開く。個々のオーバーレイの開閉判断は持たない。
     if (this.input.takeKey(K.pauseMenu)) {
@@ -395,7 +328,6 @@ export class Game {
     this.input.takeKeys((code) => this._hud.overlayManager.dispatchShortcut(code));
     // 上から下へ優先順位順に呼ぶ。
     this._hud.handleInput(this.input);
-    this.activeStage.handleInput(this.input);
     this.simSpeedManager.handleInput(
       this.input,
       this.activeStage.isPlaying,
@@ -404,9 +336,7 @@ export class Game {
       this.simulator.simTime,
     );
     this.viewManager.handleInput(this.input);
-    this.editor.handleInput(this.input);
-
-    if (this.input.takeKey(K.togglePerfWindow)) this.perfMeter?.toggle();
+    this.editor.handleInput(this.input, dt);
   }
 
   // ------------------------------------------------------------------ sync
@@ -419,7 +349,7 @@ export class Game {
     // 原点(位置)はアクティブカメラの ECI 位置 — cameraSystem.update() は update フェーズの
     // 毎フレーム呼ばれるので、この sync の時点で activeCameraPos は確定済み。
     // 速度基準は自機のまま(弾の相対速度描画・再突入エフェクトが前提とする値で、原点とは別concern)。
-    this.floatingOrigin = new FloatingOrigin(this.cameraSystem.activeCameraPos, player?.state.v ?? v3());
+    const fo = new FloatingOrigin(this.cameraSystem.activeCameraPos, player?.state.v ?? v3());
 
     // 表示時刻 = 未来ゴーストのスライダーぶん先取りした simTime。
     const { displayTime, simTime } = displayWindow;
@@ -428,7 +358,7 @@ export class Game {
     const attractors = this.displayWindowManager.attractorsAt(simTime);
 
     // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列を読む。
-    this.cameraSystem.sync(this.floatingOrigin);
+    this.cameraSystem.sync(fo);
 
     const project = this.cameraSystem.activeCameraProjection;
     const overviewMode = this.cameraSystem.overviewMode;
@@ -438,42 +368,30 @@ export class Game {
     const combatTargets = this.entities.getCombatTargets(player);
 
     this._environment.sync(
-      player?.state.r ?? null, this.floatingOrigin, displayTime,
+      player?.state.r ?? null, fo, displayTime,
       this.cameraSystem, this.navball.gridVisibility, visibilityPolicy,
     );
 
     this.entities.syncPlayers(
-      player, this.floatingOrigin, this.cameraSystem, this.activeStage.isPlaying, this._isPaused,
-      displayTime, this.ephemeris, attractors, visibilityPolicy,
+      player, fo, this.cameraSystem, displayTime, this.ephemeris, attractors, visibilityPolicy,
     );
-    this.entities.sync(this.floatingOrigin, displayTime);
+    this.entities.sync(fo, displayTime);
     this.entities.applyVisibility(
-      visibilityPolicy, player, overviewMode, this.floatingOrigin, this.cameraSystem.activeCamera, attractors,
+      visibilityPolicy, player, overviewMode, fo, this.cameraSystem.activeCamera, attractors,
     );
-    this.entities.syncMarkers(
-      project, this.cameraSystem.activeCameraScale, displayTime, overviewMode,
-      player?.state.r ?? null, visibilityPolicy,
-    );
+    this.entities.syncMarkers(this.cameraSystem, displayTime, player?.state.r ?? null, visibilityPolicy);
 
-    this.entities.effects.sync(this.floatingOrigin, this.cameraSystem.activeCamera);
+    this.entities.effects.sync(fo, this.cameraSystem.activeCamera, this.cameraSystem.zoomActive);
 
-    this.targeter.sync(
-      this.floatingOrigin, player, combatTargets, overviewMode, project, this.cameraSystem.activeCamera,
-      attractors, visibilityPolicy,
-    );
+    this.targeter.sync(fo, player, combatTargets, this.cameraSystem, attractors, visibilityPolicy);
     this.targeter.syncTargetMarkers(
-      player, combatTargets, displayTime, simTime, overviewMode, project,
-      this.cameraSystem.activeCameraScale, visibilityPolicy,
+      player, combatTargets, displayTime, simTime, this.cameraSystem, visibilityPolicy,
     );
-    this.navTarget.sync(project, overviewMode, this.cameraSystem.activeCameraPos);
-    this.entities.syncEquatorNodes(project, overviewMode, this.cameraSystem.activeCameraPos);
+    this.navTarget.sync(this.cameraSystem);
+    this.entities.syncEquatorNodes(this.cameraSystem);
 
     this.displayWindowManager.sync(player);
-    this.editor.sync(
-      this.cameraSystem.overviewCamera.dist, simTime, this.floatingOrigin, project,
-      this.cameraSystem.activeCameraScale, overviewMode, this.cameraSystem.activeCameraPos,
-      this.cameraSystem.activeCamera,
-    );
+    this.editor.sync(this.cameraSystem, simTime, fo);
     this.mapActions.sync(simTime, attractors, player);
     this.frameControls.sync(
       this.mapPickables.pickables, this.cameraSystem.activeCameraPos, attractors, simTime, overviewMode,
@@ -481,7 +399,7 @@ export class Game {
 
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
     this.entities.syncPlayerTrajectoryLines(
-      player, displayWindow, overviewMode, this.ephemeris, this.floatingOrigin,
+      player, displayWindow, overviewMode, this.ephemeris, fo,
       this.cameraSystem.activeCamera, attractors,
     );
 
@@ -491,10 +409,7 @@ export class Game {
         (key) => player.throttle.isThrustLatched(key),
       );
     }
-    this.activeStage.sync(
-      player, this.floatingOrigin, project, this.cameraSystem.activeCameraScale, displayTime, overviewMode,
-      visibilityPolicy, this.cameraSystem.activeCamera,
-    );
+    this.activeStage.sync(player, fo, this.cameraSystem, displayTime, visibilityPolicy);
 
     this._hud.globalStatusBar.sync(this);
     this._hud.mapScaleBadge.sync(this);

@@ -14,7 +14,7 @@ import { MenuAction, MenuCommon } from '../hud/menu-actions';
 import { Sfx } from '../../audio/sfx';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { FloatingOrigin } from '../floating-origin';
-import type { ProjectFn, ScaleFn } from '../camera/camera-system';
+import type { CameraSystem } from '../camera/camera-system';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { AxisHandleSpec, NodeGizmo, NodeHandleSpec } from './node-gizmo';
@@ -24,9 +24,13 @@ import { DisplayDurationSource, Plan } from './plan';
 import { PlanDisplay } from './plan-display';
 import { SimSpeedManager } from '../sim-speed-manager';
 import type { Player } from '../player/player';
+import type { ActivePlayerController } from '../active-player-controller';
+import type { FrameControls } from '../hud/frame-controls';
+import { focusPoint } from '../camera/focus-target';
 import { Attractor, orbitalElementsOf, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
 import { toFrameState } from '../../physics/frame';
-import type { PlanAttractorProvider } from '../simulation/attractors';
+import { planAttractorProvider, planSourceRevision } from '../simulation/attractors';
+import type { EntityManager } from '../simulation/entity-manager';
 import type { DisplayWindow } from '../display-window-manager';
 import type { PerfCounts } from '../../perf-meter';
 
@@ -42,6 +46,9 @@ export class PlanEditor {
   // 実行済みとして列の前方から取り除かれた場合も、同じ同一性判定で追随できる。
   private selectedNode: KinematicState | null = null;
 
+  // 直前の update() で操作対象だった艦。切替の検出だけに使う(正本は ActivePlayerController)。
+  private lastSeenShip: Player | null = null;
+
   // 選択中ノードの現在の index。列に無ければ null。
   get selectedNodeIdx(): number | null {
     const plan = this.plan;
@@ -54,25 +61,22 @@ export class PlanEditor {
     this.selectedNode = idx === null ? null : this.plan?.nodes[idx] ?? null;
   }
 
-  onFocusNode: ((state: KinematicState) => void) | null = null;
-
-  private activePlayer: Player | null;
   // アクティブ艦自身の計画を編集する。艦は自分の計画を所有し続けるので、艦を切り替えると
   // 編集対象もその艦の計画へ切り替わる。艦がいなければ編集する計画も無い。
-  get plan(): Plan | null { return this.activePlayer?.plan ?? null; }
+  get plan(): Plan | null { return this.activePlayers.current?.plan ?? null; }
 
   readonly planDisplay: PlanDisplay;
   private readonly gizmo3d: PlanGizmo3D;
 
   // 直近の update() が描いた折れ線が届いている終端時刻。一度も描いていなければ NaN。
-  get lastPlanEnd(): number { return this.planDisplay.path.timeRange()?.max ?? NaN; }
+  private get lastPlanEnd(): number { return this.planDisplay.path.timeRange()?.max ?? NaN; }
 
   private _editMode = false;
   get editMode(): boolean { return this._editMode; }
   setMapMode(open: boolean): void { this._editMode = open; }
 
   // Δv 編集中かどうか。編集モードで、かつノードを1つ選択している間だけ真。
-  get dvEditActive(): boolean { return this.editMode && this.selectedNodeIdx !== null; }
+  private get dvEditActive(): boolean { return this.editMode && this.selectedNodeIdx !== null; }
 
   readonly nodeGizmo: NodeGizmo;
   // ノード以外の計画軌道上を右クリックしたときのメニュー。
@@ -90,12 +94,13 @@ export class PlanEditor {
     private readonly _sfx: Sfx,
     private readonly simSpeedManager: SimSpeedManager,
     private readonly ephemeris: Ephemeris,
+    private readonly entities: EntityManager,
     scene: THREE.Scene,
     private readonly markerManager: MarkerManager,
-    ship: Player | null,
+    private readonly activePlayers: ActivePlayerController,
     private readonly displayDuration: DisplayDurationSource,
+    private readonly frameControls: FrameControls,
   ) {
-    this.activePlayer = ship;
     this.planDisplay = new PlanDisplay(scene, markerManager, ephemeris, displayDuration);
     this.nodeGizmo = new NodeGizmo(this._hud.layers.marker, this._hud.layers.popup, this._hud.overlayManager);
     this.orbitMenu = new ContextMenu<KinematicState, MenuAction>(this._hud.layers.popup, this._hud.overlayManager);
@@ -127,7 +132,7 @@ export class PlanEditor {
     };
     g.onNodeContextMenu = (clientX, clientY) => { this.handleNodeRightClick(clientX, clientY); };
     g.onAxisDrag = (axis, sign, deltaPx) => {
-      this.applyAxisDrag(axis, sign, deltaPx, this.activePlayer?.fineAttitude ?? false);
+      this.applyAxisDrag(axis, sign, deltaPx, this.activePlayers.current?.fineAttitude ?? false);
     };
     // 指定ノードの時刻まで自動ワープを開始する
     g.onMenuWarpTo = (idx) => {
@@ -141,16 +146,9 @@ export class PlanEditor {
     };
     g.onMenuFocus = (idx) => {
       const n = this.plan?.nodes[idx];
-      if (n) this.onFocusNode?.(n);
+      if (n) this.frameControls.setFocus(
+        focusPoint(this.ephemeris, this.ephemeris.inertialFrame, n.r, n.t));
     };
-  }
-
-  // 編集対象をアクティブ艦の切替に合わせて差し替える。選択中ノード・開いたメニューは
-  // 前の艦の計画を指しているので破棄する。
-  setActivePlayer(ship: Player | null): void {
-    this.activePlayer = ship;
-    this.selectedNodeIdx = null;
-    this.closeMenu();
   }
 
   // ノードのコンテキストメニューを閉じる。
@@ -175,15 +173,16 @@ export class PlanEditor {
     this.deleteNode(this.selectedNodeIdx);
   }
 
-  // 選択ノード削除キーの入力を処理する。
-  handleInput(input: Input): void {
+  // 選択ノード削除キーの入力を処理し、続けてΔv編集を進める。
+  handleInput(input: Input, dt: number): void {
     if (input.takeKey(K.deleteNode)) this.clearPlanByKey();
+    this.updateEditing(input, dt);
   }
 
   // マップ上のクリック・右クリックをノード選択/配置とコンテキストメニューへ振り分ける。
   // 艦がいなければ計画そのものが無いので、クリックはここで捨てる。
   handleMapPointer(input: Input): void {
-    if (this.activePlayer === null) return;
+    if (this.activePlayers.current === null) return;
     input.takeRightClicks((p) => this.handleNodeRightClick(p.x, p.y));
     input.takeClicks((p) => {
       this.handleMapClick(p.x, p.y);
@@ -573,15 +572,19 @@ export class PlanEditor {
   }
 
   // WASDQE キー・長押しボタン・Δv アームのラッチドラッグから選択中ノードの Δv を加算する。
-  updateEditing(dt: number, input: Input): void {
-    const fine = this.activePlayer?.fineAttitude ?? false;
+  private updateEditing(input: Input, dt: number): void {
+    if (!this.dvEditActive) {
+      this.dvHoldTime.fill(0);
+      return;
+    }
+    const fine = this.activePlayers.current?.fineAttitude ?? false;
     const b = this.panel.dvButtons;
-    this.applyHeldDv(0, 1, input.down(K.dvPrograde) || b.pro.isHeld, dt, fine);
-    this.applyHeldDv(0, -1, input.down(K.dvRetrograde) || b.ret.isHeld, dt, fine);
-    this.applyHeldDv(1, 1, input.down(K.dvNormal) || b.nrm.isHeld, dt, fine);
-    this.applyHeldDv(1, -1, input.down(K.dvAntinormal) || b.anm.isHeld, dt, fine);
-    this.applyHeldDv(2, 1, input.down(K.dvRadialOut) || b.out.isHeld, dt, fine);
-    this.applyHeldDv(2, -1, input.down(K.dvRadialIn) || b.in.isHeld, dt, fine);
+    this.applyHeldDv(0, 1, input.takeHeld(K.dvPrograde) || b.pro.isHeld, dt, fine);
+    this.applyHeldDv(0, -1, input.takeHeld(K.dvRetrograde) || b.ret.isHeld, dt, fine);
+    this.applyHeldDv(1, 1, input.takeHeld(K.dvNormal) || b.nrm.isHeld, dt, fine);
+    this.applyHeldDv(1, -1, input.takeHeld(K.dvAntinormal) || b.anm.isHeld, dt, fine);
+    this.applyHeldDv(2, 1, input.takeHeld(K.dvRadialOut) || b.out.isHeld, dt, fine);
+    this.applyHeldDv(2, -1, input.takeHeld(K.dvRadialIn) || b.in.isHeld, dt, fine);
 
     // ラッチ中の Δv アームは、閾値超過量に比例したレートで dt 秒分を加算し続ける。
     const latch = this.nodeGizmo.latch;
@@ -637,8 +640,22 @@ export class PlanEditor {
 
   // 計画折れ線を再積分し、ゴースト位置とアプシスアイコンを求め直す。折れ線は戦闘ビューでも
   // 描く — 計画どおりに機体を動かすのは戦闘ビューだから。
-  update(displayWindow: DisplayWindow, attractorProvider: PlanAttractorProvider): void {
+  update(displayWindow: DisplayWindow): void {
+    // 艦が替わったフレームで、前の艦のノードに対して開いたままのメニューを畳む(選択中ノードは
+    // 参照で解決するので、計画が替われば同一性が外れて自然に選択なしになる)。
+    const ship = this.activePlayers.current;
+    if (ship !== this.lastSeenShip) {
+      this.lastSeenShip = ship;
+      this.closeMenu();
+    }
     this.simTime = displayWindow.simTime;
+    const excludedIds = ship === null ? [] : [ship.id];
+    // revision は前フレームの終端(lastPlanEnd)を基準に畳み込む — 今フレームの終端は
+    // このあとの planDisplay.update が決めるので、組む時点ではまだ確定していない。
+    const attractorProvider = planAttractorProvider(
+      this.ephemeris, this.entities, excludedIds,
+      planSourceRevision(this.entities, excludedIds, this.plan?.revision ?? 0, this.lastPlanEnd, displayWindow.simTime),
+    );
     this.planDisplay.update(this.visiblePlan, displayWindow, attractorProvider);
     this.updateEquatorNodes(displayWindow);
   }
@@ -646,7 +663,7 @@ export class PlanEditor {
   // 操作艦の赤道交点マーカーを、計画の最終区間(=これから乗る軌道)を代表状態として求め直す。
   // 区間の折れ線も渡すので、交点は解析楕円ではなく実際に描かれている積分線の上に載る。
   private updateEquatorNodes(displayWindow: DisplayWindow): void {
-    const ship = this.activePlayer;
+    const ship = this.activePlayers.current;
     if (!ship) return;
     const segment = this.planDisplay.path.finalSegment();
     ship.ensureEquatorNodes(this.markerManager).update(
@@ -656,13 +673,13 @@ export class PlanEditor {
   }
 
   // 計画折れ線を同期する。編集中はさらに操作 UI(TRAJECTORY パネル・ノードギズモ)も出す。
-  // camera は折れ線の解像度を決める画面上のサジッタを実距離へ換算するための描画カメラ。
-  sync(
-    mapDist: number, simTime: number, fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn,
-    overviewMode: boolean, cameraPos: Vec3, camera: THREE.Camera,
-  ): void {
+  sync(cameraSystem: CameraSystem, simTime: number, fo: FloatingOrigin): void {
+    const mapDist = cameraSystem.overviewCamera.dist;
     if (this.visiblePlan !== null) {
-      this.planDisplay.sync(fo, project, scale, overviewMode, cameraPos, camera);
+      this.planDisplay.sync(
+        fo, cameraSystem.activeCameraProjection, cameraSystem.activeCameraScale,
+        cameraSystem.overviewMode, cameraSystem.activeCameraPos, cameraSystem.activeCamera,
+      );
     }
     else {
       this.planDisplay.hide();

@@ -3,7 +3,6 @@ import * as THREE from 'three/webgpu';
 import { Vec3, add, addScaled, cross, dot, norm, scale, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
-import { Sfx } from '../../audio/sfx';
 import { MouseDelta } from '../input/input';
 import { metersPerPixelAtDepth, Viewpoint } from '../../physics/projection';
 import { ReferenceFrame, FrameDir, frameDir, framePoint, toFrameDir, toInertialDir, toInertialPoint } from '../../physics/frame';
@@ -81,7 +80,6 @@ export class OverviewCamera {
   // 解決する — ReferenceFrame をリテラルで組むと参照同一性が崩れる(frame.ts 参照)。
   constructor(
     private readonly _hud: Hud,
-    _sfx: Sfx,
     private readonly ephemeris: Ephemeris,
     saved?: OverviewCameraSaveData,
   ) {

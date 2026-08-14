@@ -7,12 +7,14 @@
 | [CALLSTACK.md](CALLSTACK.md) | per-frame 呼び出し依存木(update / sync / render) | 「いつ・どの順で・どんな条件で走るのか」 |
 | [OWNERSHIP.md](OWNERSHIP.md) | インスタンス保持木と状態の正本 | 「誰がそれを持っていて、誰が書き換えるのか」 |
 | [SPEC.md](SPEC.md) | ゲームの仕様(どう振舞うべきか) | 「本来どうあるべきなのか」 |
+| [CODING_STYLE.md](CODING_STYLE.md) | 命名とTypeScriptの書き方 | 「何と名付け、どう宣言するのか」 |
 | [../CLAUDE.md](../CLAUDE.md) | モジュールの責務と設計判断の理由(散文) | 「なぜこうなっているのか」 |
 
 - CALLSTACK / OWNERSHIP は **機械的な事実**(順序と所有)、CLAUDE.md は **散文の解説**(責務と理由)。
   食い違ったら DEVELOP/ を正として CLAUDE.md を直す。
 - SPEC は **意図**(どう振舞うべきか)で、他の3つは **現況**(どう振舞うか)。両者はいずれ一致すべき
   ものだが、開発途中では一致していなくてよい。
+- 命名、アクセス修飾子、公開依存、型の選択など、コードの表記に関する判断は CODING_STYLE を正とする。
 - リファクタリングのやることリストは `../memos/hedalu244/refactoring_todo.md`(完了項目は消す)、
   論点ごとの todo は同フォルダの各 `*_todo.md`。判断基準は `/refactor`(一般方針)と
   `/refactor-fixed`(このプロジェクトで確定した責務境界)。

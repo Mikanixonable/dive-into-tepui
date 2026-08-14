@@ -15,9 +15,11 @@ import { InstancedPool } from '../../render/instanced-pool';
 import { bulletBodyResources, bulletHaloResources, plasmaBodyResources, casingBodyResources, debrisFragmentResources } from '../../render/ships';
 import { Player } from '../player/player';
 import type { Stage } from '../stages/stage';
+import type { SimSpeedManager } from '../sim-speed-manager';
+import type { Input } from '../input/input';
 import type { CombatTarget } from '../targeter';
 import type { MapVisibility, MapVisibilityPolicy } from '../celestial/map-visibility';
-import type { CameraSystem, ProjectFn, ScaleFn } from '../camera/camera-system';
+import type { CameraSystem } from '../camera/camera-system';
 import type { Ephemeris } from '../../physics/ephemeris';
 import type { DisplayWindow } from '../display-window-manager';
 import type { GameSaveData } from '../save-data';
@@ -26,11 +28,6 @@ import type { Sfx } from '../../audio/sfx';
 import { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { PerfCounts } from '../../perf-meter';
-
-// 起動時の顔ぶれ。新規開始は自機の隻数だけを、スナップショットからの再開は保存内容を渡す。
-export type EntityManagerInit =
-  | { readonly playerCount: number }
-  | { readonly saved: GameSaveData };
 
 export class EntityManager {
   readonly enemies: Enemy[] = [];
@@ -56,17 +53,14 @@ export class EntityManager {
 
   // フラッシュ・破片の生成窓口。破片は entity なので、その配列を持つこちらが所有する。
   readonly effects: EffectsSystem;
-  // 起動時に操作対象とする艦。スナップショットからの再開では save.activePlayerId に一致する
-  // 艦(見つからなければ復元順の先頭)、新規開始では最初に配置した1隻。艦が0隻なら null。
-  readonly initialActivePlayer: Player | null;
 
-  // 描画資源のプールを組み、演出窓口を作ってから、init の指すとおりに起動時の顔ぶれを配置する。
+  // 描画資源のプールを組み、演出窓口を作ってから、saved があればその顔ぶれを復元する。
   constructor(
     scene: THREE.Scene,
     hud: Hud,
     sfx: Sfx,
     markerManager: MarkerManager,
-    init: EntityManagerInit,
+    saved?: GameSaveData,
   ) {
     const bulletBody = bulletBodyResources();
     const bulletHalo = bulletHaloResources();
@@ -80,30 +74,13 @@ export class EntityManager {
     this.debrisFragmentPools = debrisFragment.geometries.map(
       (geo) => new InstancedPool(scene, geo, debrisFragment.material, C.MAX_DEBRIS, true));
     this.effects = new EffectsSystem(scene, this, sfx);
-    this.initialActivePlayer = 'saved' in init
-      ? this.restoreFromSave(init.saved, hud, sfx, scene, markerManager)
-      : this.spawnInitialPlayers(init.playerCount, hud, sfx, scene, markerManager);
+    if (saved) this.restoreFromSave(saved, hud, sfx, scene, markerManager);
   }
 
-  // 新規開始時の初期配置。艦の隻数は 0..n が一般形で、1隻に固定するかどうかはステージ側の
-  // 判断。返すのは操作対象にする最初の1隻。
-  private spawnInitialPlayers(
-    count: number, hud: Hud, sfx: Sfx, scene: THREE.Scene, markerManager: MarkerManager,
-  ): Player | null {
-    let first: Player | null = null;
-    for (let i = 0; i < count; i++) {
-      const ship = new Player(hud, sfx, scene, this.effects, markerManager);
-      this.addPlayer(ship);
-      if (!first) first = ship;
-    }
-    return first;
-  }
-
-  // スナップショットから自機・敵・弾薬・基地を復元する。返すのは save.activePlayerId に
-  // 一致する自機(無ければ復元順の先頭、それも無ければ null)。
+  // スナップショットから自機・敵・弾薬・基地を復元する。
   private restoreFromSave(
     save: GameSaveData, hud: Hud, sfx: Sfx, scene: THREE.Scene, markerManager: MarkerManager,
-  ): Player | null {
+  ): void {
     const simTime = save.simTime;
     for (const data of save.players) {
       this.addPlayer(new Player(hud, sfx, scene, this.effects, markerManager, { saved: data, simTime }));
@@ -117,7 +94,6 @@ export class EntityManager {
     for (const data of save.bases) {
       this.addBase(new Base({ saved: data, simTime }, scene, hud, sfx, this.effects, markerManager));
     }
-    return this.players.find((p) => p.id === save.activePlayerId) ?? this.players[0] ?? null;
   }
 
   // all()/otherEntities() はSimulatorの各substepから何度も呼ばれる。配列の内容が変わった
@@ -315,10 +291,18 @@ export class EntityManager {
     if (changed) this.invalidateCaches();
   }
 
-  // 操作対象以外の自機に、表示フレーム基準のベルト・HP回復だけを1回ずつ進める。熱・電力・
-  // ラジエータは Simulator が全艦を substep ごとに stepEnvironment する。
-  updatePassivePlayers(dt: number, activePlayer: Player | null): void {
-    for (const ship of this.players) if (ship !== activePlayer) ship.updatePassive(dt);
+  // 毎フレーム、全ての自機へ behave を1度ずつ通す。操作できるのは操作対象艦だけで、
+  // 操作できないワープ倍率ではどの艦も操作できない — その2つは同じ「操作できない」状態なので、
+  // input を渡すかどうかの1つの判断にまとめる。
+  updatePlayers(
+    activePlayer: Player | null, input: Input, simSpeed: SimSpeedManager,
+    dt: number, activeStage: Stage, ephemeris: Ephemeris,
+  ): void {
+    const operable = simSpeed.canShipAct;
+    const simDt = dt * simSpeed.simSpeed;
+    for (const ship of this.players) {
+      ship.behave(ship === activePlayer && operable ? input : null, dt, simDt, this, activeStage, ephemeris);
+    }
   }
 
   // 操作できない間、全自機の連続指令(推力・トルク・射撃・噴射ラッチ)を畳む。
@@ -329,13 +313,13 @@ export class EntityManager {
   // 全自機のメッシュ・エフェクト・マーカーを同期する。方向マーカーや照準ズームは操作艦だけの
   // ものなので、どれが操作対象かを各艦へ渡す。
   syncPlayers(
-    activePlayer: Player | null, fo: FloatingOrigin, cameraSystem: CameraSystem, phasePlaying: boolean,
-    paused: boolean, displayTime: number, ephemeris: Ephemeris, attractors: readonly Attractor[],
+    activePlayer: Player | null, fo: FloatingOrigin, cameraSystem: CameraSystem,
+    displayTime: number, ephemeris: Ephemeris, attractors: readonly Attractor[],
     visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     for (const ship of this.players) {
       ship.syncPlayer(
-        fo, cameraSystem, phasePlaying, paused, displayTime, ship === activePlayer, ephemeris, attractors,
+        fo, cameraSystem, displayTime, ship === activePlayer, ephemeris, attractors,
         visibilityPolicy?.entity('player', ship === activePlayer) ?? null,
       );
     }
@@ -379,25 +363,32 @@ export class EntityManager {
     }
   }
 
-  // 全基地の赤道交点マーカーを求め直す。基地は常設の軌道構造物で、接近・ドッキングは
-  // 軌道面合わせそのものなので、選択の有無に関わらず常に出す。
-  updateBaseEquatorNodes(displayWindow: DisplayWindow, ephemeris: Ephemeris): void {
+  // マップ表示中だけ、全基地の赤道交点マーカーを求め直す(戦闘ビューでは誰も読まない)。基地は
+  // 常設の軌道構造物で、接近・ドッキングは軌道面合わせそのものなので、選択の有無に関わらず出す。
+  updateBaseEquatorNodes(overviewMode: boolean, displayWindow: DisplayWindow, ephemeris: Ephemeris): void {
+    if (!overviewMode) return;
     for (const base of this.bases) {
       if (base.alive) base.equatorNodes?.update(displayWindow.frame, displayWindow.displayTime, ephemeris);
     }
   }
 
   // このフレームに求まった赤道交点マーカーを置く。求め直されなかったものは自動的に隠れる。
-  syncEquatorNodes(project: ProjectFn, show: boolean, cameraPos: Vec3): void {
-    for (const e of this.all()) e.equatorNodes?.sync(project, show, cameraPos);
+  syncEquatorNodes(cameraSystem: CameraSystem): void {
+    const project = cameraSystem.activeCameraProjection;
+    const overviewMode = cameraSystem.overviewMode;
+    const cameraPos = cameraSystem.activeCameraPos;
+    for (const e of this.all()) e.equatorNodes?.sync(project, overviewMode, cameraPos);
   }
 
   // 弾薬・基地の位置マーカーを displayTime の位置へ置く。ラベルの距離は viewerPos 基準で、
   // 艦が1隻も無い間は距離を添えない。
   syncMarkers(
-    project: ProjectFn, scale: ScaleFn, displayTime: number, overviewMode: boolean,
-    viewerPos: Vec3 | null, visibilityPolicy: MapVisibilityPolicy | null,
+    cameraSystem: CameraSystem, displayTime: number, viewerPos: Vec3 | null,
+    visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
+    const project = cameraSystem.activeCameraProjection;
+    const scale = cameraSystem.activeCameraScale;
+    const overviewMode = cameraSystem.overviewMode;
     const visibilityOf = (kind: 'ammo' | 'base'): MapVisibility | null =>
       (overviewMode ? visibilityPolicy?.entity(kind) ?? null : null);
     for (const ammo of this.ammos) {

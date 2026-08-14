@@ -1,7 +1,7 @@
 // デバッグ用ステージ: 現実の太陽系とは無関係な架空のレジストリ・原点で進行する。恒星を
 // 1体も持たないため、輻射源・日照率・点群などの太陽系依存の経路が恒星0個でも安全に振る舞う
 // ことを実演する。タイトルの通常ボタン列には出ない。
-import { Stage, type EphemerisConfig, type StageDeps } from './stage';
+import { Stage, type StageDeps } from './stage';
 import type { Player } from '../player/player';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { SimSpeedManager } from '../sim-speed-manager';
@@ -13,6 +13,8 @@ import { keplerPeriod, stateFromOrbitalElements } from '../../physics/elements';
 import { kinematicState } from '../../physics/kinematic-state';
 import { add } from '../../physics/vec3';
 import type { StageSaveData } from '../save-data';
+import { Ephemeris } from '../../physics/ephemeris';
+import type { AttractorId } from '../../physics/attractor';
 
 const PRIMARY_ID = 'zephyrus';
 const MOON_ID = 'zephyrus-i';
@@ -54,14 +56,13 @@ const ALT_REGISTRY: CelestialRegistry = {
 
 export class StageDebugAltSystem extends Stage {
   static readonly id = 'debug-alt-system' as const;
-  static readonly ephemerisConfig: EphemerisConfig = {
-    registry: ALT_REGISTRY, originId: PRIMARY_ID, epochOffsetSec: 0,
-  };
+  static async createEphemeris(phaseOffsets: Partial<Record<AttractorId, number>>): Promise<Ephemeris> {
+    return new Ephemeris(ALT_REGISTRY, PRIMARY_ID, 0, phaseOffsets);
+  }
   static readonly selectLabel = 'DEBUG(架空星系)';
   static readonly selectSub = '【デバッグ】恒星0個・架空天体2体のレジストリで起動する';
   static readonly hiddenFromSelect = true;
   static readonly selectKeys = ['KeyE'];
-  readonly initialAmmo = { mags: 20, rounds: C.MAG_ROUNDS };
 
   constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
@@ -72,14 +73,15 @@ export class StageDebugAltSystem extends Stage {
     return `<b>架空星系デバッグステージ</b><br>恒星0個・${PRIMARY_ID} 系で起動`;
   }
 
-  // 既定の地球 LEO 初期状態(このレジストリでは無意味)を、zephyrus を周回する低軌道で上書きする。
-  protected init(player: Player | null): number {
-    if (!player) return 0;
-    const t = player.state.t;
+  // 自機を zephyrus の低軌道へ置く(このレジストリでは既定の地球 LEO に意味が無い)。
+  protected init(): void {
+    const t = this._simulator.simTime;
     const primary = this._ephemeris.attractorsAt(t).find((a) => a.id === PRIMARY_ID)!;
     const rel = stateFromOrbitalElements(t, PRIMARY_RADIUS + 5e5, 0, 0, 0, 0, 0, primary.mu);
-    player.state = kinematicState(t, add(primary.state.r, rel.r), add(primary.state.v, rel.v));
-    return 0;
+    this.addPlayer({
+      state: kinematicState(t, add(primary.state.r, rel.r), add(primary.state.v, rel.v)),
+      ammo: { mags: 20, rounds: C.MAG_ROUNDS },
+    });
   }
 
   update(_dt: number, player: Player | null, _entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
