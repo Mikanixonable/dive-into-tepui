@@ -93,8 +93,10 @@ export const SAFE_AREA_RIGHT = 'env(safe-area-inset-right, 0px)';
 export const SAFE_AREA_BOTTOM = 'env(safe-area-inset-bottom, 0px)';
 export const SAFE_AREA_LEFT = 'env(safe-area-inset-left, 0px)';
 
+// ラテン字形は JetBrains Mono、日本語を含む残りは HackGen が担う。どちらも main.ts が
+// バンドルから読み込むので、外部への追加リクエストは発生しない。
 export const FONT_FAMILY =
-  "'Share Tech Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Noto Sans Mono CJK JP', monospace";
+  "'JetBrains Mono', 'HackGen', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace";
 
 // --token-name のケバブケースで :root にカスタムプロパティとして注入するトークンの一覧。
 // calc() を要するトークンは、計算済みの値ではなく派生関係そのものを注入する。
