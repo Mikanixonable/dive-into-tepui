@@ -60,6 +60,10 @@ export class OrbitLine {
     this.curve.setOpacity(opacity);
   }
 
+  setColor(color: string | number): void {
+    this.curve.setColor(color);
+  }
+
   // 離心近点角 E=t·2π を軌道要素で位置へ写す、閉曲線サンプラ。読むのは snap で、
   // revision が指す形状と焼かれる形状が常に一致する。
   private readonly sampler: CurveSampler = (t, out) => {

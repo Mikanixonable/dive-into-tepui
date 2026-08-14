@@ -64,6 +64,7 @@ export const THEME_PRESETS: readonly ThemePalette[] = [
 
 const THEME_STORAGE_KEY = 'tepui.theme-palette';
 const DEFAULT_THEME_ID = 'fluorescent-red-blue';
+export const THEME_CHANGE_EVENT = 'tepui-theme-change';
 
 function findThemePalette(id: string | null): ThemePalette {
   return THEME_PRESETS.find((palette) => palette.id === id) ?? THEME_PRESETS.find((palette) => palette.id === DEFAULT_THEME_ID)!;
@@ -85,7 +86,7 @@ export function getThemePalette(id: string): ThemePalette | undefined {
   return THEME_PRESETS.find((palette) => palette.id === id);
 }
 
-// 設定は再読込後に全画面(タイトルの3D場面を含む)へ適用する。現在のURL・セーブ状態は保つ。
+// 互換用の保存 API。現在の画面へ即時反映する場合は applyThemePalette を使う。
 export function persistThemePalette(id: string): boolean {
   if (!getThemePalette(id)) return false;
   if (typeof window === 'undefined') return false;
@@ -103,6 +104,45 @@ function rgba(hex: string, alpha: number): string {
   const green = (value >> 8) & 0xff;
   const blue = value & 0xff;
   return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
+function themeCssVariables(palette: ThemePalette): Readonly<Record<string, string>> {
+  return {
+    '--accent': palette.accent,
+    '--accent-soft': palette.accentNear,
+    '--accent-near': palette.accentNear,
+    '--accent-secondary': palette.secondary,
+    '--bg': palette.page,
+    '--page': palette.page,
+    '--theme-tone': palette.tone,
+    '--surface-0': palette.surface0,
+    '--surface-1': palette.surface1,
+    '--surface-2': palette.surface2,
+    '--surface-3': palette.surface3,
+    '--surface-weak': rgba(palette.surface0, 0.52),
+    '--surface': rgba(palette.surface1, 0.64),
+    '--surface-opaque': rgba(palette.surface1, 0.96),
+    '--glass-quiet': rgba(palette.surface1, 0.64),
+    '--glass-focus': rgba(palette.surface1, 0.76),
+    '--edge': rgba(palette.title, 0.16),
+    '--text-strong': palette.bright,
+    '--text': palette.title,
+    '--text-muted': palette.body,
+    '--text-dim': palette.muted,
+    '--text-faint': palette.faint,
+    '--title': palette.title,
+    '--body': palette.body,
+    '--muted': palette.muted,
+    '--accent-fill-weak': rgba(palette.accent, 0.08),
+    '--accent-fill': rgba(palette.accent, 0.16),
+    '--accent-fill-strong': rgba(palette.accent, 0.24),
+    '--accent-edge-soft': rgba(palette.accent, 0.22),
+    '--accent-edge': rgba(palette.accent, 0.4),
+    '--fill-1': rgba(palette.title, 0.04),
+    '--fill-2': rgba(palette.title, 0.09),
+    '--fill-3': rgba(palette.title, 0.16),
+    '--fill-4': rgba(palette.title, 0.32),
+  };
 }
 
 export const ACCENT = ACTIVE_THEME.accent;
@@ -306,4 +346,30 @@ export function injectThemeVariables(): void {
   for (const [name, value] of Object.entries(CSS_VARIABLES)) {
     root.style.setProperty(name, value);
   }
+}
+
+// ESCメニューからの変更を、再起動せずに現在のDOMへ反映する。静的な色を持つ3D線などは
+// THEME_CHANGE_EVENT を購読して個別に更新し、DOM/CSSはここで一括してカスタムプロパティを差し替える。
+export function applyThemePalette(id: string): boolean {
+  const palette = getThemePalette(id);
+  if (!palette) return false;
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, id);
+    } catch {
+      // private browsing等で保存できなくても、現在の画面への適用は続ける。
+    }
+  }
+  if (typeof document !== 'undefined') {
+    const root = document.documentElement;
+    for (const [name, value] of Object.entries(themeCssVariables(palette))) {
+      root.style.setProperty(name, value);
+    }
+    root.style.colorScheme = palette.tone;
+    root.dataset['theme'] = palette.id;
+  }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent<ThemePalette>(THEME_CHANGE_EVENT, { detail: palette }));
+  }
+  return true;
 }

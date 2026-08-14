@@ -3,7 +3,7 @@ import { add, addScaled, dot, lenSq, norm, scale, sub, v3, Vec3 } from '../physi
 import { Attractor, strongestAttractor } from '../physics/attractor';
 import { OrbitLine } from './orbit-line';
 import * as C from './const';
-import { ACCENT, ACCENT_SECONDARY } from './theme';
+import { ACCENT, ACCENT_SECONDARY, THEME_CHANGE_EVENT, type ThemePalette } from './theme';
 import { Enemy } from './game-entity/enemy';
 import type { EntityManager } from './simulation/entity-manager';
 import { Player } from './player/player';
@@ -57,6 +57,13 @@ export class Targeter {
   ) {
     scene.add(this.secondaryOrbitLine.line);
     scene.add(this.orbitLine.line);
+
+    window.addEventListener(THEME_CHANGE_EVENT, (event: Event) => {
+      const palette = (event as CustomEvent<ThemePalette>).detail;
+      if (!palette) return;
+      this.orbitLine.setColor(palette.accent);
+      this.secondaryOrbitLine.setColor(palette.secondary);
+    });
   }
 
   // 生存判定込みの現在の第一ターゲット。撃破後は target を保持したままにせず、ここで

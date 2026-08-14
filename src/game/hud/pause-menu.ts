@@ -1,6 +1,6 @@
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import {
-  ACTIVE_THEME_ID, persistThemePalette, SPACE_4, SPACE_6, THEME_PRESETS,
+  ACTIVE_THEME_ID, applyThemePalette, getThemePalette, SPACE_4, SPACE_6, THEME_PRESETS,
 } from '../theme';
 import type { OverlayHandle, OverlayManager } from './overlay-manager';
 import { Button, CloseButton, Slider } from './widgets';
@@ -55,25 +55,41 @@ export class PauseMenu implements OverlayHandle {
     themeLabel.className = 'k';
     themeLabel.textContent = '配色';
     themeRow.appendChild(themeLabel);
+    const themePreview = document.createElement('span');
+    themePreview.className = 'pm-theme-preview';
+    themePreview.setAttribute('aria-hidden', 'true');
+    const updateThemePreview = (id: string): void => {
+      const palette = getThemePalette(id);
+      if (!palette) return;
+      themePreview.replaceChildren();
+      for (const color of [palette.accent, palette.accentNear, palette.secondary]) {
+        const swatch = document.createElement('span');
+        swatch.className = 'pm-theme-swatch';
+        swatch.style.backgroundColor = color;
+        themePreview.appendChild(swatch);
+      }
+    };
     const themeSelect = document.createElement('select');
     themeSelect.className = 'w-input pm-theme-select';
     themeSelect.setAttribute('aria-label', '配色プリセット');
     for (const palette of THEME_PRESETS) {
       const option = document.createElement('option');
       option.value = palette.id;
-      option.textContent = palette.name;
+      option.textContent = `● ${palette.name}`;
+      option.style.color = palette.accent;
       option.title = palette.description;
       themeSelect.appendChild(option);
     }
     themeSelect.value = ACTIVE_THEME_ID;
+    updateThemePreview(themeSelect.value);
     themeSelect.addEventListener('change', () => {
-      if (!persistThemePalette(themeSelect.value)) {
+      if (!applyThemePalette(themeSelect.value)) {
         themeSelect.value = ACTIVE_THEME_ID;
         return;
       }
-      // CSS/タイトル3Dマテリアルは起動時にテーマ値を取り込むため、再読込で全画面へ反映する。
-      location.reload();
+      updateThemePreview(themeSelect.value);
     });
+    themeRow.appendChild(themePreview);
     themeRow.appendChild(themeSelect);
     this.panel.appendChild(themeRow);
 
