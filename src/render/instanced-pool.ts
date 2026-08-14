@@ -1,5 +1,6 @@
 // 同一ジオメトリ/マテリアルを共有する大量の個体を、1本の InstancedMesh でまとめて描画するプール。
 import * as THREE from 'three/webgpu';
+import { markLitOpaque } from './pipeline/lit-layer';
 
 // three の InstanceNode は instanceMatrix の受け渡し方を InstancedMesh.count から決め、
 // その判断とバッファ長を最初の描画時に一度だけ確定する。よって count は容量に固定した
@@ -26,6 +27,7 @@ export class InstancedPool {
     }
     // 個体が広い空間へ散らばるため、原点周りの外接球によるフラスタムカリングは意味を持たない。
     this.mesh.frustumCulled = false;
+    markLitOpaque(this.mesh);
     for (let i = 0; i < this.capacity; i++) this.mesh.setMatrixAt(i, PARKED);
     scene.add(this.mesh);
   }

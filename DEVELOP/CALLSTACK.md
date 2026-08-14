@@ -524,7 +524,28 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
 
 - game.render()
   - [viewManager.current === 'dock'] 何も描かずに return // ドックは 3D を持たない全画面ビュー
-  - renderer.render(scene, cameraSystem.activeCamera) // 通常の全画面描画
+  - pipeline.render(scene, cameraSystem.activeCamera)
+    - gbuffer.render(scene, camera, width, height) // Gバッファパス。camera.layers を一時的に LIT_OPAQUE_LAYER だけへ絞り、呼び出し後に元のマスクへ戻す
+      - gpu.beginPass(GPU_PASS.gbuffer)
+      - renderer.render(scene, camera) // 深度・法線(oct encode)・ラフネスを2枚の MRT ターゲットへ描く。debugTarget が 'off' 以外なら composite パスがこれを読む
+    - lightPrepass.render(camera, width, height) // ライティングパス。G バッファと SunLight だけを読み、拡散/鏡面の照度を2枚の MRT へ描く(シーンは描かない)
+      - projMatrixInverse.value = camera.projectionMatrixInverse
+      - sunDirectionView.value = SunLight.direction を camera.matrixWorldInverse で view 空間へ回転した値
+      - gpu.beginPass(GPU_PASS.lighting)
+      - quad.render(renderer) // 内部で renderer.render() を呼ぶ
+    - materialPass.render(scene, camera, target, width, height, debugTarget === 'material') // マテリアルパス。camera.layers を LIT_OPAQUE_LAYER だけへ絞り、ライティングパスの2枚の照度バッファを読んで lit-opaque メッシュを描く
+      - scene.traverse(...) // 未変換の MeshStandardMaterial を MeshStandardNodeMaterial + MaterialPassLightingModel へその場で置き換える(WeakSet で二重変換を防ぐ)
+      - [showDebugTarget] gpu.beginPass(GPU_PASS.material); renderer.render(scene, camera) // 自前のデバッグ表示用ターゲットへ描く。「マテリアル」表示を選んでいるときだけ払うコスト
+      - gpu.beginPass(GPU_PASS.material)
+      - renderer.render(scene, camera) // world パスと共有する HDR ターゲットへ描く。このパスがそこへの最初の書き込みなので autoClear で色・深度をクリアする
+    - gpu.beginPass(GPU_PASS.world) // 次の renderer.render() 呼び出しが world パスの GPU 計測に属すると申告する
+    - renderer.autoClear = false // マテリアルパスが書いた色・深度を残したまま重ね描きする(既定のカメラマスクなので lit-opaque 層とは自動的に重複しない)
+    - renderer.render(scene, camera) // world パス。同じ HDR レンダーターゲットへ描く
+    - renderer.autoClear = true // 以降の描画呼び出しへこの変更を持ち越さない
+    - depthDebugNear.value = camera.near, depthDebugFar.value = camera.far // QuadMesh 自身の固定直交カメラでは TSL の cameraNear/cameraFar が実カメラの値を返さないため、深度デバッグ表示用に毎フレーム書く
+    - quad.material = compositeMaterials[debugTarget] // 通常表示は HDR world 色 × 露出、それ以外は G バッファ/照度バッファ/マテリアルパス単体の中身をそのまま画面いっぱいに映すマテリアルへ差し替える
+    - gpu.beginPass(GPU_PASS.composite)
+    - quad.render(renderer) // composite パス。内部で renderer.render() を呼ぶ
 
 ---
 
@@ -532,7 +553,8 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
 
 - **`update` / `sync` / `render` の三分割は main.ts のループが決めている。** `Game.update` は論理状態のみ
   (THREE.js オブジェクトに触らない)、`Game.sync` は fo を作って既存メッシュ・DOM へ反映するだけ、
-  `Game.render` は renderer.render を呼ぶだけ、という切り分けになっている。
+  `Game.render` は `pipeline.render` を呼ぶだけ(パス構成そのものは `RenderPipeline` が持つ)、という
+  切り分けになっている。
 - **カメラ更新は `Game.update` の末尾**(物理積分の後)にある。`sync` で作るフローティングオリジンは
   積分後の自機位置なので、追従カメラの基準もそこに合わせる必要がある。
 - **高ワープ時**(`simSpeed > MAX_PHYS_SIM_SPEED`)は `substep()` が1フレームに最大64回走るが、

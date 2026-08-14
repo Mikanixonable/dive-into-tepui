@@ -25,6 +25,7 @@ import { PauseMenu } from './hud/pause-menu';
 import { Sfx } from '../audio/sfx';
 import { GameScene } from '../render/scene';
 import type { GraphicsSettings } from '../render/graphics-settings';
+import type { RenderPipeline } from '../render/pipeline/render-pipeline';
 import { EnvironmentScene } from './celestial/environment-scene';
 import type { Ephemeris } from '../physics/ephemeris';
 import { ViewManager } from './view-manager';
@@ -41,7 +42,7 @@ import { FrameControls } from './hud/frame-controls';
 
 export class Game {
   private readonly _scene: THREE.Scene;
-  private readonly renderer: GameScene['renderer'];
+  private readonly pipeline: RenderPipeline;
   readonly input: Input;
   private readonly touchControls: TouchControls | null;
   private readonly _hud: Hud;
@@ -100,12 +101,13 @@ export class Game {
     sections: FrameSections,
     ephemeris: Ephemeris,
     graphics: GraphicsSettings,
+    pipeline: RenderPipeline,
     earthSpinPhase0: number,
     initialSave?: GameSaveData,
   ) {
     this.sections = sections;
     this._scene = gs.scene;
-    this.renderer = gs.renderer;
+    this.pipeline = pipeline;
     this._hud = hud;
     this._sfx = sfx;
     this.pauseMenu = pauseMenu;
@@ -133,7 +135,7 @@ export class Game {
     this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene);
     this.navTarget = new NavTarget(this._hud, this.markerManager);
     this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
-    this._environment = new EnvironmentScene(this._scene, this.ephemeris, graphics, earthSpinPhase0);
+    this._environment = new EnvironmentScene(this._scene, this.ephemeris, graphics, pipeline.sunLight, earthSpinPhase0);
     this.activePlayers = new ActivePlayerController(
       initialSave?.activePlayerId, this.entities, this.cameraSystem, this.targeter, this.navTarget, this._sfx,
     );
@@ -433,7 +435,7 @@ export class Game {
 
   render(): void {
     if (!this.viewManager.rendersWorld) return;
-    this.renderer.render(this._scene, this.cameraSystem.activeCamera);
+    this.pipeline.render(this._scene, this.cameraSystem.activeCamera);
   }
 
   // ------------------------------------------------------------------ debug

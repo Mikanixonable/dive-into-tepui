@@ -4,8 +4,12 @@ import * as THREE from 'three/webgpu';
 
 // シェーダグラフの中間値。
 export type FloatNode = THREE.Node<'float'>;
+export type Vec2Node = THREE.Node<'vec2'>;
 export type Vec3Node = THREE.Node<'vec3'>;
+export type Vec4Node = THREE.Node<'vec4'>;
 
 // CPU 側から毎フレーム値を書き込めるノード。`value` への代入がそのまま uniform 更新になる。
 export type FloatUniform = THREE.UniformNode<'float', number>;
 export type Vec3Uniform = THREE.UniformNode<'vec3', THREE.Vector3>;
+export type ColorUniform = THREE.UniformNode<'color', THREE.Color>;
+export type Mat4Uniform = THREE.UniformNode<'mat4', THREE.Matrix4>;

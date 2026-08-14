@@ -39,15 +39,85 @@ main.ts
 │                           ... 常設パネル6枚、1パネル1クラス(buildHudDom が作った要素索引 `els: Map<string, HTMLElement>` を
 │                           共有で受け取るだけで DOM は持たない)。それぞれ自分のパネルへのみ書く
 ├── Sfx                  ... 同上
-├── PauseMenu            ... 同上。DOM は Hud.layers.system 配下。onPauseMenuOpenChange を Game.pause()/resume() へ配線。onOpenSnapshots / onOpenPerfWindow は main.ts が pauseMenu.toggle(false) + saveBrowser.open() / perf.open() へ配線。onQuitToTitle は launcher.returnToTitle() への一行委譲
+├── PauseMenu            ... 同上。DOM は Hud.layers.system 配下。onPauseMenuOpenChange を Game.pause()/resume() へ配線。onOpenSnapshots / onOpenPerfWindow は main.ts が pauseMenu.toggle(false) + saveBrowser.open() / perf.open() へ配線。onQuitToTitle は launcher.returnToTitle() への一行委譲。コンストラクタは GraphicsSettings に加え DebugTargetHost(狭い構造的インターフェース、debug-target.ts)も取り、描画タブの GraphicsPanel へそのまま渡す — main.ts は initScene 直後に組んだ RenderPipeline を渡す(RenderPipeline がこの型を実装する)
 ├── Launcher               ... 「Game インスタンスを捨てて次の周回へ移る」判断(再出撃・タイトル復帰・スナップショットのロード・スロット切替)の唯一の持ち主。`location.*` を呼ぶのはこのクラスだけで、game/ 配下は一切呼ばない。initHud() の直後・ステージ解決の前に main.ts が new する(Hud・UnlockManager・SaveSlots・SnapshotService・Sfx を参照で持つ)。`resolveStage()` が起動する StageClass を、`initialSaveFor(stageClass)` が initialSave を、`noteLaunched(stageClass)`(Game 構築後に呼ぶ)がスロットへの起動記録と restart() 用のステージ記憶を担う。rAF ループが `snapshotControls.handleInput` の直後に `handleInput(game.input, game)` を、`autoSave.update` の直後に `update(game)` を呼ぶ
 │   └── ResultScreen        ... `#hud-result`(hud/hud-root.ts が Hud.layers.system 配下へ静的に構築)の表示のみを担う。Launcher が自身(hud, `this` = RunTransitions)を渡してコンストラクタで new する。`show(result)` が hud.overlayManager へ 'result' として登録する(closeOnEscape/closeOnOutsideClick とも false、gatesInput のみ true)。「再出撃」「タイトル画面に戻る」の2ボタンはそのまま launcher.restart()/returnToTitle() を呼ぶ
 ├── SaveBrowser            ... Game 自身を構築引数に取るため Game より後に main.ts が new する。Game 側はこれへの参照を一切持たない(`open()`/`close()` が `game.pause()`/`resume()` を直接呼ぶだけ)。DOM は Hud.layers.system 配下。`onLoadSnapshot`/`onSlotSwitched` コールバックを main.ts が launcher.loadSnapshot(id)/launcher.switchSlot() へ配線する
 ├── SnapshotControls       ... Hud・PauseMenu・SaveBrowser・SnapshotService を参照で持つ。`[F5]`/`[F9]` を扱う(一覧表示中の `[Esc]` は扱わない — `SaveBrowser` が `hud.overlayManager` へ自ら登録し、`Game.handleInput` の `closeTopmostOnEscape()` が閉じる)。main.ts が SaveBrowser 構築後に new し、rAF ループが `game.update(dt)` の直後に `handleInput(game.input, game)` を呼ぶ(Game 側が消費しなかった入力エッジだけを見る)
 ├── AutoSave               ... SnapshotService を参照で持つ。startAnimationLoop() へその場で渡すだけで main() 側は変数に束縛しない
 ├── FrameSections        ... update の区間別所要時間の集計器(frame-sections.ts)。main.ts が new し、Game(コンストラクタ引数)・PerfMeter(コンストラクタ引数)へ参照で渡す。Game はさらに Simulator のコンストラクタ引数として同じ参照を渡す。rAF ループが game.update(dt) を beginFrame()/endFrame() で挟む。区間の境界(enter/exit)を打つのは Game.update / Simulator.advance だけで、累計を持つのはこのオブジェクト。enabled の書き手は PerfMeter.open()/close() のみ
-├── GpuTimings           ... 描画パス別の GPU 実行時間の集計器(gpu-timings.ts)。main.ts が GameScene.renderer を渡して new し、PerfMeter へ参照で渡す。rAF ループが game.render() の直後に resolve() を毎フレーム呼ぶ(窓の開閉に依らない — 時刻印クエリを溜めないため)。値は非同期に届く。enabled の書き手は PerfMeter.open()/close() のみ
-├── GraphicsSettings     ... 描画品質設定の正本(render/graphics-settings.ts、localStorage `tepui.settings.graphics`)。main.ts が initScene より先に new し、createGameScene(antialias と解像度倍率の反映先登録)・PauseMenu→GraphicsPanel(書き手)・Game→EnvironmentScene→各 CelestialBody.sync(読み手)へ参照で渡す
+├── GpuTimings           ... 描画パス別の GPU 実行時間の集計器(gpu-timings.ts)。パスは GPU_PASS(gbuffer/
+│                           lighting/material/world/composite)。main.ts が GameScene.renderer を渡して new し、
+│                           PerfMeter と RenderPipeline(いずれも構築引数)へ参照で渡す。RenderPipeline は
+│                           さらに同じ参照を自身が構築する GBufferPass・LightPrepass・MaterialPass へ渡す。
+│                           RenderPipeline / GBufferPass / LightPrepass / MaterialPass が各パスの
+│                           renderer.render() 呼び出し直前に beginPass(id) を呼んで次の呼び出しが属するパスを申告し、自身を
+│                           レンダラーの inspector に据えた PassInspector 経由でその呼び出しの uid と
+│                           結び付ける。rAF ループが game.render() の直後に resolve() を毎フレーム呼ぶ
+│                           (窓の開閉に依らない — 時刻印クエリを溜めないため)。値は非同期に届く。enabled の
+│                           書き手は PerfMeter.open()/close() のみ
+├── GraphicsSettings     ... 描画品質設定の正本(render/graphics-settings.ts、localStorage `tepui.settings.graphics`)。main.ts が initScene より先に new し、createGameScene(antialias と解像度倍率の反映先登録)・PauseMenu→GraphicsPanel(書き手)・RenderPipeline(構築時に antialias を読むだけ)・Game→EnvironmentScene→各 CelestialBody.sync(読み手)へ参照で渡す
+├── RenderPipeline       ... フレームの描画パス構成の正本(render/pipeline/render-pipeline.ts)、かつ
+│                           DebugTargetHost(debug-target.ts)の実装先として `debugTarget: DebugTargetId`
+│                           (既定 'off')の正本でもある — ページ再読み込みでは永続化せず必ず 'off' に戻る
+│                           セッション限定の状態。現在は Gバッファパス(GBufferPass、下記)→ ライティング
+│                           パス(LightPrepass、下記)→ マテリアルパス(MaterialPass、下記。LIT_OPAQUE_LAYER
+│                           のメッシュを、world パスと共有する HDR ターゲットの最初の書き込みとして描く)→
+│                           world パス(同じ HDR RenderTarget へ autoClear=false でシーンを重ね描きし、
+│                           直後に autoClear を true へ戻す — マテリアルパスが書いた色・深度を残したまま
+│                           重ね描きするのが目的で、world パスは透明物を自身のソート順の最後に描くため、
+│                           不透明な自艦の深度がその前に書き込まれていないと透明物に上書きされてしまう)→
+│                           composite パスの5段、それぞれの直前に
+│                           gpu.beginPass(GPU_PASS.gbuffer/lighting/material/world/composite) を呼ぶ
+│                           (Gバッファ・ライティング・マテリアルの3パス分はそれぞれ GBufferPass・
+│                           LightPrepass・MaterialPass 自身が呼ぶ)。
+│                           composite パスは `DebugTargetId` ごとに1枚ずつ、コンストラクタで一度だけ構築
+│                           した `MeshBasicNodeMaterial` を持ち(off=HDR world 色×露出、
+│                           normal/roughness/depth は GBufferPass の3テクスチャを、diffuse/specular は
+│                           LightPrepass の2テクスチャを、material は MaterialPass 自身のデバッグ用
+│                           ターゲットをそれぞれ読む)、render() が毎フレーム
+│                           `quad.material` を `debugTarget` の指す1枚へ差し替える — 1枚のマテリアルを
+│                           ユニフォーム分岐させると通常プレイの毎フレームで G バッファ・照度バッファの
+│                           全テクスチャを bind/sample することになるため。depth 用の近接/遠方平面
+│                           (depthDebugNear/depthDebugFar、いずれも FloatUniform)はこのクラス自身が持ち、
+│                           render() が毎フレーム実カメラの near/far を書き込む(QuadMesh 自身の固定直交
+│                           カメラでは TSL の cameraNear/cameraFar が実カメラの値を返さないため)。
+│                           EXPOSURE(=0.72、composite パスが HDR 値全体へ一律に掛ける露出係数)もこの
+│                           クラスの定数。SunLight(下記)もこのクラスが構築・所有し、EnvironmentScene が
+│                           唯一の書き手として毎フレーム値を渡す(公開 getter `sunLight` 経由)。main.ts が
+│                           initScene の直後(Hud より前)に GameScene.renderer と GraphicsSettings・
+│                           GpuTimings を渡して new し、initHud() を経由して PauseMenu(→GraphicsPanel、
+│                           DebugTargetHost として)と、Game(コンストラクタ引数)の両方へ参照で渡す。
+│                           Game.render() は pipeline.render(scene, camera) を呼ぶだけで、描画ターゲットや
+│                           パス構成の状態は一切持たない
+│   ├── GBufferPass      ... Gバッファ(深度・法線・ラフネスの2枚 MRT + DepthTexture)の正本(render/pipeline/gbuffer.ts)。
+│                           RenderPipeline がコンストラクタで GameScene.renderer と同じ GpuTimings を渡して new する。
+│                           render(scene, camera, width, height) の間だけ camera.layers を LIT_OPAQUE_LAYER
+│                           (lit-layer.ts)へ絞り、呼び出し前の layers.mask を戻して抜ける。3テクスチャは
+│                           RenderPipeline 自身が構築するデバッグ表示用 composite マテリアルと、
+│                           LightPrepass(下記)が読む
+│   ├── LightPrepass     ... 拡散/鏡面の照度(2枚 MRT、いずれも RGBAFormat/HalfFloatType)の正本
+│                           (render/pipeline/light-prepass.ts)。RenderPipeline がコンストラクタで
+│                           GBufferPass・SunLight(いずれも参照)・GpuTimings を渡して new する。
+│                           projMatrixInverse/sunDirectionView(いずれも Uniform 系)はこのクラス自身が
+│                           持ち、render(camera, width, height) が毎フレーム実カメラの逆射影行列と、
+│                           SunLight.direction を実カメラの view 空間へ回転した値を書き込む。2テクスチャは
+│                           RenderPipeline 自身が構築するデバッグ表示用 composite マテリアルと、
+│                           MaterialPass(下記)が読む
+│   ├── MaterialPass     ... lit-opaque メッシュの MeshStandardMaterial → MeshStandardNodeMaterial への
+│                           置き換え(WeakSet で既変換分を記憶)と、自前のデバッグ表示用 HDR ターゲット
+│                           (`material` テクスチャ)の正本(render/pipeline/material-pass.ts)。
+│                           RenderPipeline がコンストラクタで LightPrepass(参照)・GpuTimings を渡して
+│                           new する。MaterialPassLightingModel(モジュール内クラス、PhysicalLightingModel
+│                           の direct() を no-op に、indirect() を LightPrepass の2テクスチャ読み出しへ
+│                           差し替えたもの)のインスタンスは upgrade() が置き換えるたびに新しく作り、
+│                           置き換え後のマテリアルの setupLightingModel に閉じ込める。render() が
+│                           showDebugTarget(= debugTarget==='material')のときだけ自前ターゲットへも描く
+│   └── SunLight         ... 恒星光の値(方向・色・照度・環境光強度・日照率、いずれも Uniform 系)の正本
+│                           (render/pipeline/sun-light.ts)。RenderPipeline がコンストラクタで new し、
+│                           EnvironmentScene(game/celestial/environment-scene.ts)へ構築引数として参照で
+│                           渡す(Game のコンストラクタが `pipeline.sunLight` を渡す)。EnvironmentScene.sync
+│                           が毎フレーム set() で書く唯一の書き手で、LightPrepass が読む唯一の読み手
 ├── PerfMeter            ... 負荷確認ウィンドウ。Game を PerfCountSource として、GameScene.renderer(WebGPURenderer)を draw call/triangle 数の読み取り元として、いずれも構築時に参照で受け取る(renderer 参照の新設は main.ts 側の GameScene を経由し、Game には持たせない)。rAF ループが `game.update(dt)` → `snapshotControls.handleInput(...)` の直後に `perf.handleInput(game.input)` を呼び、`[F3]` を消費する(Game は PerfMeter への参照を一切持たない)。FrameSections と GpuTimings も構築時に参照で受け取り、update内訳と描画の GPU 行を組む(開閉で両方の enabled を書く)。表示する PropertyWindow を自分で new/dispose し、DOM は Hud.layers.window 配下。開いている間だけ on が真になり計測が走る(同時に FrameSections.enabled も真にする)。`Game.perfCounts()` は自分では数えず、EntityManager・Predictor・Simulator・PlanEditor・Ephemeris・MapPickables 各自の `perfCounts()` を1つにマージし、`displayDurationSec`(= DisplayWindowManager.current.duration)・`warp` を足すだけ
 ├── GameScene            (createGameScene: canvas / THREE.Scene / WebGPURenderer)
 └── Game
@@ -170,7 +240,7 @@ main.ts
     │   │       ├── positions: Vec3[]    ... 各点の太陽中心位置。update がラウンドロビン(1/8点/フレーム)で書き換える唯一の書き手
     │   │       ├── sunPos: Vec3         ... 直近 update 時点の太陽 ECI 位置。sync の ECI 化(太陽中心→ECI)がここを読む
     │   │       └── cursor: number       ... ラウンドロビンの次回開始添字
-    │   ├── AmbientLight / DirectionalLight / stars メッシュ ... 平行光は描画原点近傍の実スケール物体(自機・デブリ・薬莢)専用。天体は各自の CelestialSurface が sunDirection uniform を持って自分で陰影を計算するのでこの光を受けない
+    │   ├── AmbientLight / DirectionalLight / stars メッシュ ... 平行光/環境光はどの lit-opaque メッシュも直接照らさない(自機・デブリ・薬莢は render/pipeline/lit-layer.ts の LIT_OPAQUE_LAYER に立ち、既定チャンネルの world パスには描かれないため)。両ライトの役目は、EnvironmentScene.sync が毎フレーム書く強度/位置を SunLight(RenderPipeline 所有)へ生値として渡す入力であることと、LIT_OPAQUE_LAYER も enable しておくことでマテリアルパス/G バッファパスがそのチャンネルだけへ絞ったカメラでも light.layers.test(camera.layers) を通過し続けること(通過しないと NodeMaterial がそのメッシュの setupLightingModel を一切呼ばず、G バッファ/照度バッファの中身に関わらず真っ黒になる)。天体は各自の CelestialSurface が sunDirection uniform を持って自分で陰影を計算するのでこの光を受けない
     │   ├── OrbitLine (geoLine)         ... 静止軌道の参照線(天体ではない特例、個別フィールドのまま)
     │   ├── referenceLines: ReadonlyMap<OrbitingId, OrbitLine> ... SOLAR_SYSTEM の公転天体ぶん自動生成(衛星=旧月線色、惑星=白)。天体の登録追加だけで線が増える
     │   └── CelestialGrid              ... 赤道面/黄道面それぞれの基準円・緯経線グリッド・両極マーカー
@@ -291,10 +361,11 @@ main.ts
 
 | 対象 | 所有者 | 参照する側 |
 | --- | --- | --- |
-| `THREE.Scene` / `WebGPURenderer` | `GameScene`(main.ts) | Game・各描画物を持つクラス |
+| `THREE.Scene` | `GameScene`(main.ts) | Game(`_scene` として保持)・各描画物を持つクラス |
+| `WebGPURenderer` | `GameScene`(main.ts) | RenderPipeline とその内部の GBufferPass・LightPrepass(いずれも構築引数。実際に `render`/`setRenderTarget`/`setMRT`/`getDrawingBufferSize` を呼ぶのはこの3クラスだけ)・GpuTimings・PerfMeter(いずれも構築引数)・Input(`domElement` のみをコンストラクタで一度読む)。Game はこれへの参照を持たない(`render()` は `pipeline.render(scene, camera)` を呼ぶだけ) |
 | `Hud` / `Sfx` | main.ts | Game(コンストラクタ引数で受け取り)経由でほぼ全サブシステム(hud/sfx は必ず対で注入する方針)。`Sfx` は `Launcher`(コンストラクタ引数、`update` が決着の瞬間に `setThrust(false)`/`stopBgm()` を呼ぶ)へも直接渡る |
 | `Hud.overlayManager`(`OverlayManager`) | `Hud`(`buildHudDom` が構築) | 全オーバーレイ所有クラス(`ContextMenu`/`ObjectPicker`/`PropertyWindow`/`PauseMenu`/`SaveBrowser`/`ShipPlacerPanel`/`HelpPanel`、および `ResultScreen`・`ViewManager.dockOverlayHandle`)がコンストラクタ引数または `hud.overlayManager` 経由で受け取り、`open`/`close`/`reconfigure` を自分自身に対して呼ぶ。台帳(重なり順・排他グループ)の正本はこのクラスだけが持つ |
-| `PauseMenu` | main.ts | Game(`Game.handleInput` が `hud.overlayManager.closeTopmostOnEscape()` で閉じ切れなかったときだけ `toggle(true)` を呼ぶ。開閉の一時停止反映は main.ts 側の配線)・MapContextActions(空域右クリックの「設定メニューを開く」項目) |
+| `PauseMenu` | main.ts | Game(`Game.handleInput` が `hud.overlayManager.closeTopmostOnEscape()` で閉じ切れなかったときだけ `toggle(true)` を呼ぶ。開閉の一時停止反映は main.ts 側の配線)・MapContextActions(空域右クリックの「設定メニューを開く」項目)。コンストラクタは `RenderPipeline` を `DebugTargetHost` として受け取り、そのまま `GraphicsPanel` へ転送するだけで自身は保持しない |
 | `MarkerManager` | Game | マーカーを出す全モジュール(PlayerMarkers・Targeter・NavTarget・Logistics・FocusMarkers・PlanGuide・PlanDisplay)。`combatMarkers`/`leadMarkers` は参照共有ではなく MarkerManager 自身の子(§1 参照) |
 | `Ephemeris` | main.ts(`Stage.createEphemeris` 経由で `Game` の構築より前に完成させる) | Game(コンストラクタ引数)経由で EnvironmentScene・Simulator・OverviewCamera・FocusMarkers・NavTarget・PlanEditor(→PlanDisplay)・DisplayWindowManager(コンストラクタ引数) |
 | `CameraSystem.bodyClassToggles`(`BodyClassToggles`) | CameraSystem | 表示パネル(`ViewOptionsPanel` の天体クラス別セクション)が書き換え、読む側はすべて `MapVisibilityPolicy` を通す(`MapPickables.refresh`・`FocusMarkers.update`・`EnvironmentScene.sync`/参照線・`Game.sync` → Stage/Logistics/CreativeStage/Targeter)。マップの描画・ピック候補・軌道オブジェクト一覧・配置UIの基準天体が同じ1つの状態を共有するための唯一の持ち主。初期値は `localStorage`(`tepui.bodyClassToggles`)から読み込み(`camera-system.ts` の `loadBodyClassToggles`)、トグルのたびに `saveBodyClassToggles` で書き戻す(同上) |
@@ -312,8 +383,9 @@ main.ts
 | `SaveSlots` | main.ts | Launcher(コンストラクタ引数、`resolveStage`/`initialSaveFor`/`noteLaunched`/`update` の `noteRunEnded` から読み書きする)・SnapshotService(コンストラクタ引数)・SaveBrowser(コンストラクタ引数) |
 | `SaveBrowser` | main.ts | SnapshotControls(コンストラクタ引数、`[F9]` と一覧表示中の `[Esc]` で `open()`/`close()` を呼ぶ)。Game はこれへの参照を持たない |
 | `SnapshotControls` | main.ts | rAF ループ(`startAnimationLoop` が `game.update(dt)` の直後に `handleInput(game.input, game)` を呼ぶ) |
-| `GpuTimings` | main.ts | rAF ループ(`game.render()` の直後に `resolve()`)・PerfMeter(コンストラクタ引数。`enabled` を開閉で書き、`record` で全パスを採取する) |
-| `GraphicsSettings` | main.ts | `createGameScene`(`antialias` を読み、`bindResolutionTarget` で `GameScene` を反映先に登録)・`GraphicsPanel`(唯一の書き手)・`EnvironmentScene` と各 `CelestialBody.sync`(読み手) |
+| `GpuTimings` | main.ts | rAF ループ(`game.render()` の直後に `resolve()`)・PerfMeter(コンストラクタ引数。`enabled` を開閉で書き、`record` で全パスを採取する)・RenderPipeline(コンストラクタ引数、GBufferPass・LightPrepass へさらに転送。3クラスとも各パスの `renderer.render()` 呼び出し直前に `beginPass(id)` を呼ぶだけで、集計そのものは持たない) |
+| `RenderPipeline` | main.ts | Game(コンストラクタ引数。`render()` が `pipeline.render(scene, camera)` を呼ぶだけ)・PauseMenu(`initHud` を経由するコンストラクタ引数、`DebugTargetHost` としてのみ見える。`debugTarget` フィールドの唯一の書き手は `GraphicsPanel`)。自身が構築・所有する `SunLight` は `EnvironmentScene` へ構築引数として参照で渡す(公開 getter `sunLight` 経由、Game のコンストラクタが仲介する) |
+| `GraphicsSettings` | main.ts | `createGameScene`(`antialias` を読み、`bindResolutionTarget` で `GameScene` を反映先に登録)・`RenderPipeline`(構築時に `antialias` を読むだけ)・`GraphicsPanel`(品質プリセット/解像度/詳細度/各トグルの唯一の書き手 — `debugTarget` はこれとは別に `RenderPipeline` 自身が持つ)・`EnvironmentScene` と各 `CelestialBody.sync`(読み手) |
 | `FrameSections` | main.ts | Game(コンストラクタ引数。`update` が区間境界へ `enter`/`exit` を打つだけ)・Simulator(Game 経由のコンストラクタ引数。軌道積分/接触/姿勢の3区間の境界を自分で打つ)・PerfMeter(コンストラクタ引数。`enabled` を開閉で書き、`record` で全区間 + `otherMs()` を採取する) |
 | `PerfMeter` | main.ts | rAF ループ(`startAnimationLoop` が `snapshotControls.handleInput` の直後に `perf.handleInput(game.input)` を呼び、`[F3]` で `toggle()` する)・PauseMenu(`onOpenPerfWindow` 経由で `open()`) |
 | `PropertyWindow`(負荷確認ウィンドウ) | PerfMeter(`open()` で new し `close()`/✕ で dispose する1枚) | PerfMeter 自身のみ。500ms ごとの flush で `syncRows` へ行一式を渡す |
@@ -350,6 +422,8 @@ main.ts
 | 予測ラウンドロビンのカーソル | `Predictor.cursor` | `EntityManager.all()` のインデックスとして毎フレーム進む。`tracked`/`complete`/`discarded` の3カウンタも同じインスタンスが持つが、`?perf=1` 表示専用の集計値で次フレームの挙動には影響しない |
 | ワープ段・自動ワープ目標時刻 | `SimSpeedManager` | 閾値判定(canShipAct 等)もここの getter が唯一 |
 | 天球グリッド6トグルの可視状態 | `Navball` | `gridVisibility`。`Game.sync` が `navball.gridVisibility` を読んで `EnvironmentScene.sync` の引数(`gridVisibility`)経由で `CelestialGrid.sync` へ渡すだけで、`CelestialGrid` 自身は状態を持たない。初期値は `localStorage`(`tepui.gridVisibility`)から読み込み(`navball.ts` の `loadGridVisibility`)、トグルのたびに `saveGridVisibility` で書き戻す——`UnlockManager`/`tepui.clearCounts` と同じ形だが、正本はこのフィールド自身のまま |
+| デバッグ表示の選択(`DebugTargetId` = `'off' \| 'normal' \| 'roughness' \| 'depth' \| 'diffuse' \| 'specular'`) | `RenderPipeline.debugTarget`(`DebugTargetHost` を実装、public フィールド) | 書き手は `PauseMenu`(→描画タブの `GraphicsPanel`、`SegmentedControl<DebugTargetId>`)のみ。天球グリッドの行(`Navball.gridVisibility`)や `GraphicsSettings` 自身とは異なり localStorage へ永続化しない — ページ再読み込みでは必ず `'off'` に戻るセッション限定の状態 |
+| 恒星光(方向・色・照度・環境光強度・恒星の日照率) | `SunLight` | 書き手は `EnvironmentScene.sync` のみ(`set()` で5値まとめて書く)。読み手は `LightPrepass` のシェーディンググラフ(構築時に一度だけ束ねた TSL ノード経由)と、`RenderPipeline` の `diffuse`/`specular` デバッグ表示(`LightPrepass` の出力テクスチャ越しの間接読み)。`sunVisibility()`/`ambientIntensity` はそれぞれ `SHADOW_MIN_SUN`/`SHADOW_MIN_AMBIENT`(`game/const.ts`)の下限式を内部で掛けた導出ノードを返すだけで、掛ける前の日照率そのものは外へ公開しない |
 | Δv アーム/ボタンのホールド継続時間・ラッチ状態 | `PlanEditor.dvHoldTime` / `NodeGizmo.latch` | 6方向ぶんの経過秒数(ホールドレートのランプに使う)と、ドラッグがラッチへ入った軸/超過量。加算そのものは `PlanEditor.applyDv` に一本化 |
 | NaN 検出済みフラグ | `NanWatchdog`(Game 所有) | 一度検出したら以後の検査を止める |
 | マニューバ計画(ノード列・アンカー) | `Plan` | 所有は各 `Player`(艦ごとに1個。`PlanEditor.plan` は活艦のものを転送する getter)。起点とノード列は **`{ anchor, nodes } \| null` という1つの値**で持ち、`null` ⟺ ノードが1件も無い — 片方だけを更新できる形にしていない。ノードが1件も無い計画の起点は自機の現在状態そのものなので `Plan` 自身は持たず、借りる先を渡す `anchorOr(fallback)` が起点を読む唯一の口(`displayData(shipState)`/`addNode`/`nodeTimeRange` はいずれもこれを通る)。呼び出し側に `?? ship.state` を書かせないため、起点は `KinematicState | null` として外へ出さない — `PlanEditor.displayedPlan` は `plan.displayData(ship.state)` を毎フレーム解決し(`PlanData.anchor` は常に非 null)、`nodeTimeRange(idx, from, …)` も常に範囲を返す。凍結の有無そのものを答えるのは保存経路の `frozenData(): PlanData | null` だけで、その `null` は「保存すべき計画が無い」を意味する。ノード・起点とも 1 個の `KinematicState`(実行時刻 = `t`、Δv は導出値)。ノード列は `addNode` が挿入位置より後ろを破棄してから push するため常に実行時刻順。`addNode(postState, from)` はノードがまだ1件も無いときだけ `from` を起点として凍結し(既に凍結済みなら使わない)、`(凍結済みの起点 ?? from).t` 以前の状態は受け付けず `-1` を返す。`consumeNodesUpTo(t, actualState)` は実行時刻が `t` 以前のノードをまとめて取り除き、取り除いた件数を返すとともに、**残るノードがあるときだけ** `anchor` を `actualState`(実際に到達した状態)へ差し替える — 1件も残らなければ起点ごと捨てる。呼ぶのは `PlanGuide.update`・`PlanExecutor.finish`・`CreativeStage.applySimulationEvents` の3か所だけで、動力飛行の残差を消さずに以降の計画へ残すのが `actualState` を使う目的。編集世代 `revision`(private `_revision` + public getter)を増やすのは実際に変えた呼び出しだけ(`addNode`/`removeNode`/`replaceNode`/`consumeNodesUpTo`/`clear`。`applyNodeDv` は委譲先の `replaceNode` でのみ)。`_revision` は `{anchor, nodes}` の外に持ち、空↔非空をまたいでも単調増加する(キャッシュ鍵として衝突させないため)。ノードが1件も無いあいだ起点が自機を追うことは編集ではないので増やさず、その判定は `PlanArc.represents` の `tracksLiveAnchor` 経路(積分済みサンプル間隔との比較・`anchorJumped`)が持つ |

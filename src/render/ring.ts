@@ -25,7 +25,6 @@ const RING_TILT = -Math.PI / 2;
 const D2R = Math.PI / 180;
 const FOUR_PI = 4 * Math.PI;
 const MU_MIN = 0.015;
-const RADIANCE_SCALE = 0.72;
 
 export type RingVisualState = {
   readonly bodyCenter: THREE.Vector3;
@@ -90,8 +89,7 @@ function ringOpticsNodes(baseColor: Vec3Node, optics: RingOpticsDef): {
     .mul(float(1).sub(exp(tauSun.negate())))
     .mul(exp(tauView.mul(-0.5)))
     .mul(phase.mul(FOUR_PI))
-    .mul(directLight)
-    .mul(RADIANCE_SCALE);
+    .mul(directLight);
   // 通常alpha合成では color * alpha が画面へ寄与する。coverage を含まない
   // baseExtinction で割ることで、散乱輝度にもcoverageが一度だけ掛かる。
   const safeBaseExtinction = max(baseExtinction, 0.001);
