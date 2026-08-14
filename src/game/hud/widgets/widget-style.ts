@@ -3,6 +3,8 @@
 // cursor:not-allowed)をここ1箇所で定義する — 個別ウィジェットや呼び出し側での上書きを禁止する。
 // #hud の外(タイトル画面・起動時のオーバーレイ)でもウィジェットを組めるよう、
 // セレクタは #hud に閉じない(hud-root.ts の STYLE へ連結して注入する)。
+import { MQ_COARSE } from '../breakpoints';
+
 export const WIDGET_STYLE = `
 /* #hud 自体が pointer-events:none のため、対話要素はここで明示的に有効化する
    (#hud の外では既定で auto だが、明示しても害はない)。 */
@@ -46,7 +48,9 @@ export const WIDGET_STYLE = `
   position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
   background: var(--text-dim); transition: left var(--transition-fast), background var(--transition-fast);
 }
-.w-toggle-track.on .w-toggle-knob { left: 18px; background: var(--accent); }
+/* トラック幅に対する相対位置(右端から 2px 余白+ノブ幅ぶんを引く、左詰めの 2px と対称)。
+   固定 px でなく % 基準にすることで、coarse で幅が広がっても右端に張り付いたままになる。 */
+.w-toggle-track.on .w-toggle-knob { left: calc(100% - 14px); background: var(--accent); }
 
 /* w-close: ✕ の閉じるボタン。 */
 .w-close {
@@ -76,10 +80,13 @@ export const WIDGET_STYLE = `
   font-size: var(--font-xs); color: var(--text-strong); text-shadow: 0 0 2px var(--bg), 0 0 2px var(--bg);
 }
 
-/* 視覚サイズは変えず、疑似要素で --hit-target-min までヒット領域だけ広げる。 */
-.w-hit { position: relative; }
-.w-hit::before {
-  content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-  width: max(100%, var(--hit-target-min)); height: max(100%, var(--hit-target-min));
+/* タップ最小寸法は pointer:coarse でだけ効かせる — マウス操作では詰めて並べたウィジェットの
+   間隔を保つ。要素自身の寸法(min-width/min-height)で確保する: 重ね合わせの疑似要素で広げると、
+   視覚サイズを変えないぶん間隔の詰まった隣接要素のヒット領域まで侵してしまうため。 */
+@media ${MQ_COARSE} {
+  .w-hit {
+    box-sizing: border-box; min-width: var(--hit-target-min); min-height: var(--hit-target-min);
+    display: inline-flex; align-items: center; justify-content: center;
+  }
 }
 `;

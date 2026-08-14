@@ -27,8 +27,10 @@ main.ts
 ├── SaveSlots              ... LocalStorageSaveStore を参照で持つ。SaveIndex(スロット/ステージ履歴/スナップショットメタ)の正本。initSaveSlots() が pruneOrphans() → migrateLegacySave() → アクティブスロット確定までを起動時に一度だけ行う
 ├── SnapshotService        ... LocalStorageSaveStore・SaveSlots を参照で持つ。Game ↔ GameSaveData の片方向変換(capture: Game → GameSaveData / load: スナップショットID → GameSaveData | null、いずれも Game 自体は受け取らない)。main.ts が起動時に load() の結果を Game のコンストラクタ引数 initialSave として渡す
 ├── Hud                  ... initHud() でタイトル(ステージ選択)画面より前に生成、Game へ参照を渡す。
-│   │                       root 直下の重なり順は layers: OverlayLayers(overlay-layer.ts、marker/panel/window/popup/view/notify/system の
-│   │                       7層、この順に z-index 10〜16)が正本 — z-index を持つのは overlay-layer.ts だけで、他の全 DOM 所有者は
+│   │                       root 直下の重なり順は layers: OverlayLayers(overlay-layer.ts、marker/panel/window/popup/gate/view/notify/system の
+│   │                       8層、この順に z-index 10〜17。gate は入力ゲートの遮蔽幕(#hud-overlay-shield)専用で、
+│   │                       ゲート対象(marker/panel/window/popup)より上・ゲートを開き得るモーダル(view の DockView、
+│   │                       system のヘルプ・一時停止・セーブブラウザ)より下に置く)が正本 — z-index を持つのは overlay-layer.ts だけで、他の全 DOM 所有者は
 │   │                       自分がどの層の子になるかを選ぶだけ。層内の前後は DOM 順、最前面化は bringToFront() のみ
 │   ├── OverlayManager   ... 全オーバーレイ(モーダル/ポップアップ/ウィンドウ)の論理的な重なり順・ESC 配送先・
 │   │                       外側クリック閉じ・入力ゲートの正本(§2「参照共有」の表も参照)

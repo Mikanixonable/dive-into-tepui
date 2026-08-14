@@ -74,16 +74,19 @@ export class Input {
   private pinchDist = 0;
   private pinchCentroid: PointerPoint | null = null;
   // 直近に検知した入力種別が変わるたびに通知する(タッチ⇄マウス/キーボードの切替を含む)。
-  // 初回はどんな入力でも変化とみなして1回発火するので、初回ユーザー操作の検知も兼ねる。
   onPointerKindChange: ((kind: PointerKind) => void) | null = null;
   private lastPointerKind: PointerKind | null = null;
+  // keydown・pointerdown・仮想キー押下(setVirtualKey の down=true)でのみ発火する
+  // (pointermove では発火しない)。
+  onUserGesture: (() => void) | null = null;
   // タッチの長押し(右クリック合成)。1本指のジェスチャにしか存在しないので
   // pointers のような Map ではなく単一の状態で持つ。
   private longPressTimer: ReturnType<typeof setTimeout> | null = null;
   private longPressFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
   private longPressPointerId: number | null = null;
   private longPressFired = false;
-  onLongPressFeedback: ((point: PointerPoint) => void) | null = null;
+  // タッチの長押しに対する視覚フィードバック。point で表示位置を渡し、null で非表示にする。
+  onLongPressFeedback: ((point: PointerPoint | null) => void) | null = null;
   // 直近に成立したタップ(ダブルタップ合成用)。タッチ由来でなければ null のまま。
   private lastTap: { x: number; y: number; time: number } | null = null;
   // 直近に成立したクリックがタッチ由来だったか。真なら、二重計上を避けるため
@@ -105,7 +108,10 @@ export class Input {
       if (e.code === FOCUS_GUARD_CODE || SCROLL_GUARD_KEYS.some((k) => matchesCode(k, e.code))) {
         e.preventDefault();
       }
-      if (!e.repeat) this.pendingPresses.push(e.code);
+      if (!e.repeat) {
+        this.pendingPresses.push(e.code);
+        this.onUserGesture?.();
+      }
       this.keys.add(e.code);
       this.notePointerKind('mouse');
     });
@@ -126,6 +132,7 @@ export class Input {
     this.keys.clear();
     this.dragging = false;
     this.panDragging = false;
+    this.cancelLongPress();
   }
 
   // target のポインタイベントを購読する。
@@ -148,12 +155,14 @@ export class Input {
   // 左ボタン・右ボタンはともにドラッグ/ピンチ開始(右クリックは閾値未満ならコンテキストメニュー用のクリックとして扱う)、中ボタンはパン開始として扱う。
   private onPointerDown(target: HTMLElement, e: PointerEvent): void {
     this.notePointerKind(e.pointerType === 'touch' ? 'touch' : 'mouse');
+    this.onUserGesture?.();
     const isRight = e.button === 2 || (e.button === 0 && e.ctrlKey);
     const isLeft = e.button === 0 && !e.ctrlKey;
     if (isLeft) {
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (this.pointers.size === 2) {
-        // 2本指になったらドラッグをやめてピンチズーム+パンに移行
+      if (this.pointers.size >= 2) {
+        // 2本目以降の指が増えるたびピンチ基準(距離・重心)を今の配置で取り直す —
+        // 3本目以降を古い基準のまま扱うと、置いた瞬間に重心が跳んでパンが暴れる。
         this.dragging = false;
         this.pinchDist = this.currentPinchDist();
         this.pinchCentroid = this.currentCentroid();
@@ -234,8 +243,15 @@ export class Input {
         if (this.pushIfClick(this.pendingClicks, this.dragMoved, e)) this.registerTap(e);
       }
       this.dragging = false;
-      this.pinchDist = 0;
-      this.pinchCentroid = null;
+      if (this.pointers.size >= 2) {
+        // 3本以上の一部だけが離れてもピンチが続くなら、基準を今の配置で取り直す
+        // (onPointerDown が指を増やすたびに行うのと同じ理由)。
+        this.pinchDist = this.currentPinchDist();
+        this.pinchCentroid = this.currentCentroid();
+      } else {
+        this.pinchDist = 0;
+        this.pinchCentroid = null;
+      }
     }
     if (this.longPressPointerId === e.pointerId) this.cancelLongPress();
     if (e.button === 1) {
@@ -280,16 +296,18 @@ export class Input {
     this.longPressFeedbackTimer = setTimeout(() => this.onLongPressFeedback?.(point), TOUCH_LONG_PRESS_FEEDBACK_MS);
     this.longPressTimer = setTimeout(() => {
       this.longPressFired = true;
+      this.onLongPressFeedback?.(null);
       this.pendingRightClicks.push(point);
     }, TOUCH_LONG_PRESS_MS);
   }
 
-  // 進行中の長押し判定を打ち切る。
+  // 進行中の長押し判定を打ち切り、表示中の視覚フィードバックがあれば消す。
   private cancelLongPress(): void {
     if (this.longPressTimer !== null) clearTimeout(this.longPressTimer);
     if (this.longPressFeedbackTimer !== null) clearTimeout(this.longPressFeedbackTimer);
     this.longPressTimer = null;
     this.longPressFeedbackTimer = null;
+    if (this.longPressPointerId !== null) this.onLongPressFeedback?.(null);
     this.longPressPointerId = null;
   }
 
@@ -355,6 +373,7 @@ export class Input {
     if (down) {
       if (!this.keys.has(key.code)) this.pendingPresses.push(key.code);
       this.keys.add(key.code);
+      this.onUserGesture?.();
     } else {
       this.keys.delete(key.code);
     }
