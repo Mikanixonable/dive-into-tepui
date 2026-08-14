@@ -43,7 +43,7 @@ export class OverviewCamera {
   private up_r: FrameDir;
   // カメラ視点を固定する座標系。
   private _cameraFrame: ReferenceFrame;
-  private simTime = 0; // set cameraFrame の座標変換に使う
+  private displayTime = 0; // set cameraFrame の座標変換に使う。線・メッシュと同じ表示時刻に揃える。
   // 最新の update 呼び出しが受け取った重力源一覧。reset/resetPan/cameraFrame setter は
   // フレームの外(入力ハンドラ)から呼ばれるため、update と同じ値をここから読む。
   private attractors: readonly Attractor[] = [];
@@ -144,21 +144,21 @@ export class OverviewCamera {
 
   // カメラのロールのみを初期状態(ワールド上方)に戻す。
   reset(): void {
-    this.up_r = toFrameDir(this.ephemeris.frameTransformAt(this._cameraFrame, this.simTime, this.attractors), WORLD_UP);
+    this.up_r = toFrameDir(this.ephemeris.frameTransformAt(this._cameraFrame, this.displayTime, this.attractors), WORLD_UP);
     this._hud.hint('マップ視点のロールをリセット');
   }
 
   // パン変位をゼロに戻す。
   resetPan(): void {
-    this.pan_r = toFrameDir(this.ephemeris.frameTransformAt(this._cameraFrame, this.simTime, this.attractors), v3());
+    this.pan_r = toFrameDir(this.ephemeris.frameTransformAt(this._cameraFrame, this.displayTime, this.attractors), v3());
   }
 
   // 候補が一時的に欠けたフレームでは直前の注視点を保ち、連続して消えた対象は ECI 原点へ戻す。
   // point は座標系が回っていれば ECI 座標が動くため、毎フレーム焼き直す。
-  private resolveFocus(candidates: readonly MapPickable[], simTime: number, attractors: readonly Attractor[]): Vec3 {
+  private resolveFocus(candidates: readonly MapPickable[], displayTime: number, attractors: readonly Attractor[]): Vec3 {
     const focus = this._focus;
     if (focus.kind === 'point') {
-      const tf = this.ephemeris.frameTransformAt(focus.frame, simTime, attractors);
+      const tf = this.ephemeris.frameTransformAt(focus.frame, displayTime, attractors);
       this.lastResolvedFocus = toInertialPoint(tf, focus.point);
       return this.lastResolvedFocus;
     }
@@ -198,31 +198,33 @@ export class OverviewCamera {
     const frame = this.ephemeris.frameOf(this.ephemeris.originId, rotatingWith);
     const from = this._cameraFrame;
     if (frame === from) return;
-    const tfFrom = this.ephemeris.frameTransformAt(from, this.simTime, this.attractors);
+    const tfFrom = this.ephemeris.frameTransformAt(from, this.displayTime, this.attractors);
     const offEci = toInertialDir(tfFrom, this.offset_r);
     const panEci = toInertialDir(tfFrom, this.pan_r);
     const upEci = toInertialDir(tfFrom, this.up_r);
-    const tfTo = this.ephemeris.frameTransformAt(frame, this.simTime, this.attractors);
+    const tfTo = this.ephemeris.frameTransformAt(frame, this.displayTime, this.attractors);
     this.offset_r = toFrameDir(tfTo, offEci);
     this.pan_r = toFrameDir(tfTo, panEci);
     this.up_r = toFrameDir(tfTo, upEci);
     this._cameraFrame = frame;
   }
 
-  // マウス/キー入力から viewpoint を1フレーム分更新する。
+  // マウス/キー入力から viewpoint を1フレーム分更新する。displayTime は線・メッシュが描かれる
+  // のと同じ表示時刻 — 座標系変換をそこに揃えないと、回転系選択時に線・メッシュだけが
+  // displayTime へ動いてカメラだけ現在時刻に取り残される。
   update(
     mouse: MouseDelta,
     keyYaw: number,
     keyPitch: number,
     dt: number,
-    simTime: number,
+    displayTime: number,
     candidates: readonly MapPickable[],
     attractors: readonly Attractor[],
   ): void {
-    this.simTime = simTime;
+    this.displayTime = displayTime;
     this.attractors = attractors;
-    const focus = this.resolveFocus(candidates, simTime, attractors);
-    const tf = this.ephemeris.frameTransformAt(this._cameraFrame, simTime, attractors);
+    const focus = this.resolveFocus(candidates, displayTime, attractors);
+    const tf = this.ephemeris.frameTransformAt(this._cameraFrame, displayTime, attractors);
     let offEci = toInertialDir(tf, this.offset_r);
     let panEci = toInertialDir(tf, this.pan_r);
     let upEci = toInertialDir(tf, this.up_r);
