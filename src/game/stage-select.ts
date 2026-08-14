@@ -5,13 +5,12 @@ import { UnlockManager } from './unlock-manager';
 import type { StageClass } from './stages/stage';
 import { StageDebug } from './stages/stage-debug';
 import { TabBar } from './hud/widgets';
-import { MQ_COMPACT } from './hud/breakpoints';
+import { MQ_COMPACT, MQ_SHORT } from './hud/breakpoints';
 import { createTitleScene, type TitleScene } from '../render/title-scene';
 import tepuiRmqrUrl from '../assets/tepui-rmqr.svg';
 
 const PAGE = '#08090d';
 const SURFACE_0 = '#08090c';
-const SURFACE_2 = '#15171c';
 const TITLE_INK = '#eeeaf5';
 const BODY_INK = '#c3bec9';
 const MUTED_INK = '#89838f';
@@ -33,22 +32,23 @@ const RADIUS_CONTROL = '11px';
 
 const STYLE = `
 #stage-select {
-  position: fixed; inset: 0; z-index: 100; overflow: auto;
+  position: fixed; inset: 0; z-index: 100; height: 100dvh; overflow: hidden;
   background:
     radial-gradient(circle at 10% 16%, rgb(255 49 85 / 6%), transparent 28rem),
     radial-gradient(circle at 88% 58%, rgb(52 120 255 / 5%), transparent 32rem), ${PAGE};
   color: ${BODY_INK}; font-family: ${FONT_SANS}; -webkit-font-smoothing: antialiased;
 }
 #stage-select .ss-shell {
-  width: min(calc(100% - 24px), 1160px); min-height: 100%; margin-inline: auto;
-  display: grid; place-items: center; padding-block: 18px;
+  width: min(calc(100% - 24px), 1160px); height: 100%; min-height: 0; box-sizing: border-box;
+  margin-inline: auto; display: grid; place-items: center; padding-block: 18px;
 }
 #stage-select .ss-layout {
-  width: 100%; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+  width: 100%; height: min(680px, calc(100dvh - 36px)); min-height: 0;
+  display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
   gap: 12px; align-items: stretch;
 }
 #stage-select .ss-3d-window {
-  position: relative; width: 100%; height: min(680px, calc(100dvh - 36px)); min-height: 560px;
+  position: relative; width: 100%; height: 100%; min-height: 0;
   overflow: hidden; isolation: isolate; border-radius: ${RADIUS_WINDOW}; background: ${SURFACE_0};
   box-shadow: 0 24px 70px rgb(0 0 0 / 38%);
 }
@@ -96,7 +96,7 @@ const STYLE = `
 #stage-select .ss-sub {
   width: fit-content; margin: 0 0 0 0.12em;
   color: ${ACCENT}; font-family: ${FONT_SERIF};
-  font-size: clamp(20px, 2.4vw, 32px); font-weight: 300; line-height: 1;
+  font-size: clamp(14px, 1.68vw, 22px); font-weight: 300; line-height: 1.12;
 }
 #stage-select .ss-subrow {
   display: flex; align-items: end; justify-content: space-between; gap: 18px; margin-top: 20px;
@@ -104,7 +104,8 @@ const STYLE = `
 #stage-select .ss-languages { display: flex; align-items: baseline; gap: 16px; margin: 12px 0 0 0.2em; }
 #stage-select .ss-cantonese {
   margin: 0; color: ${NEAR_ACCENT}; font-family: ${FONT_CANTONESE};
-  font-size: clamp(32px, 4.2vw, 56px); font-weight: 700; line-height: 1; letter-spacing: 0.04em;
+  flex: 0 0 7em; width: 7em; font-size: clamp(29px, 3.78vw, 51px);
+  font-weight: 700; line-height: 1; letter-spacing: 0.04em;
 }
 #stage-select .ss-french {
   margin: 0; color: ${BODY_INK}; font-family: ${FONT_SANS};
@@ -112,13 +113,16 @@ const STYLE = `
 }
 #stage-select .ss-status {
   min-width: 190px; padding: 11px 13px; border-radius: ${RADIUS_PANEL};
-  color: ${BODY_INK}; background: rgb(8 9 13 / 58%);
-  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  color: ${BODY_INK};
+  background: linear-gradient(135deg, rgb(52 120 255 / 13%), rgb(255 49 85 / 6%)), rgb(8 9 13 / 28%);
+  box-shadow: 0 14px 34px rgb(0 0 0 / 24%), inset 0 1px 0 rgb(255 255 255 / 14%);
+  backdrop-filter: blur(28px) saturate(165%); -webkit-backdrop-filter: blur(28px) saturate(165%);
   font: 10px/1.55 ${FONT_MONO};
 }
 #stage-select .ss-status b { color: ${SECONDARY_ACCENT}; font-weight: 500; }
 #stage-select .ss-window {
-  min-height: 0; height: min(680px, calc(100dvh - 36px)); box-sizing: border-box;
+  position: relative;
+  min-height: 0; height: 100%; box-sizing: border-box;
   display: flex; flex-direction: column; gap: 14px;
   padding: 18px;
   background: rgb(19 21 26 / 68%); border-radius: ${RADIUS_WINDOW};
@@ -127,19 +131,34 @@ const STYLE = `
   -webkit-backdrop-filter: blur(26px) saturate(120%);
   overflow: hidden;
 }
+#stage-select .ss-stage-qr {
+  position: absolute; z-index: 0; left: 18px; right: 18px; bottom: 20px; width: calc(100% - 36px);
+  height: auto; opacity: 0.13; pointer-events: none; image-rendering: pixelated;
+  filter: grayscale(1) contrast(1.1) brightness(1.6); mix-blend-mode: screen;
+}
+#stage-select .ss-window > .w-tabs,
+#stage-select .ss-window > .ss-list,
+#stage-select .ss-window > .ss-debug { position: relative; z-index: 1; }
 #stage-select .ss-window-title {
   margin: 0 0 2px 8px; color: ${MUTED_INK};
   font-size: 15px; font-weight: 600; letter-spacing: 0.04em;
 }
 #stage-select .w-tabs { gap: 6px; }
 #stage-select .w-tabs .w-btn {
-  flex: 1; min-height: 40px; padding: 8px 16px;
-  border: 0; border-radius: ${RADIUS_CONTROL};
-  background: ${SURFACE_2}; color: ${MUTED_INK};
+  position: relative; flex: 1; min-height: 44px; padding: 8px 12px;
+  display: inline-flex; align-items: center; justify-content: center; text-align: center;
+  border: 0; border-radius: ${RADIUS_CONTROL} ${RADIUS_CONTROL} 0 0;
+  background: transparent; color: ${MUTED_INK};
   font-family: ${FONT_SANS}; font-size: 13px; font-weight: 600; letter-spacing: 0.04em;
 }
-#stage-select .w-tabs .w-btn:hover { background: rgb(36 40 48 / 0.8); color: ${TITLE_INK}; }
-#stage-select .w-tabs .w-btn.on { background: ${ACCENT}; color: ${PAGE}; }
+#stage-select .w-tabs { border-bottom: 1px solid rgb(238 234 245 / 12%); }
+#stage-select .w-tabs .w-btn::after {
+  content: ""; position: absolute; left: 14px; right: 14px; bottom: -1px; height: 2px;
+  background: ${ACCENT}; opacity: 0; transition: opacity 0.15s ease;
+}
+#stage-select .w-tabs .w-btn:hover { background: rgb(255 255 255 / 6%); color: ${TITLE_INK}; }
+#stage-select .w-tabs .w-btn.on { background: rgb(255 49 85 / 10%); color: ${ACCENT}; }
+#stage-select .w-tabs .w-btn.on::after { opacity: 1; }
 #stage-select .ss-list {
   min-height: 0; flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 10px;
   padding: 2px 0;
@@ -161,19 +180,15 @@ const STYLE = `
 #stage-select .ss-stage.locked .ss-stage-label { color: ${FAINT_INK}; }
 #stage-select .ss-stage-key { font-family: ${FONT_MONO}; font-size: 11px; font-weight: 500; color: ${MUTED_INK}; }
 #stage-select .ss-stage-sub { margin-top: 3px; color: ${MUTED_INK}; font-size: 12px; line-height: 1.55; }
-#stage-select .ss-corner {
-  position: absolute; right: clamp(26px, 3.4vw, 48px); bottom: clamp(24px, 3vh, 42px);
-  width: clamp(120px, 13vw, 180px); opacity: 0.72; image-rendering: pixelated;
-}
 #stage-select .ss-debug {
   flex: 0 0 auto; padding-top: 12px; color: ${FAINT_INK};
   font-family: ${FONT_MONO}; font-size: 11px; cursor: pointer;
 }
 @media ${MQ_COMPACT} {
-  #stage-select .ss-shell { place-items: start center; padding-block: 12px; }
-  #stage-select .ss-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  #stage-select .ss-shell { place-items: center; padding-block: 12px; }
+  #stage-select .ss-layout { height: 100%; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
   #stage-select .ss-3d-window,
-  #stage-select .ss-window { height: auto; min-height: 460px; border-radius: 24px; }
+  #stage-select .ss-window { height: auto; min-height: 0; border-radius: 24px; }
   #stage-select .ss-hero { inset: auto 20px 22px; }
   #stage-select .ss-title-main { white-space: normal; }
   #stage-select .ss-subrow { display: block; }
@@ -182,7 +197,11 @@ const STYLE = `
     min-height: 0; max-height: none; padding: 16px;
   }
   #stage-select .ss-languages { flex-direction: column; gap: 7px; }
-  #stage-select .ss-corner { display: none; }
+}
+@media ${MQ_SHORT} {
+  #stage-select .ss-shell { padding-block: 8px; }
+  #stage-select .ss-layout { gap: 8px; }
+  #stage-select .ss-hero { inset: auto 16px 16px; transform: scale(0.78); transform-origin: bottom left; width: 128%; }
 }
 `;
 
@@ -226,21 +245,26 @@ export function selectStage(unlockManager: UnlockManager): Promise<StageClass> {
       '<span class="ss-ornament-row" aria-hidden="true"><span>∴03</span><span>ECI₀</span><span>Ω⁺</span><span>⌁</span><span>⟐</span><span>⊹</span></span>' +
       '</h1>' +
       '<div class="ss-subrow"><div>' +
-      '<p class="ss-sub">The Orbit Is the Battlefield</p>' +
+      '<p class="ss-sub">O high air—iron citadels wheel beneath the cold equations of orbit.</p>' +
       '<div class="ss-languages">' +
-      '<p class="ss-cantonese" lang="zh-HK">前往高空堡壘的作戰</p>' +
+      '<p class="ss-cantonese" lang="zh-HK">前往高空<br>堡壘的作戰</p>' +
       '<p class="ss-french" lang="fr">Opération vers la forteresse de haute altitude</p>' +
       '</div>' +
       '</div><div class="ss-status"><b>∗ Link stable</b><br>h = 420.2 km · i = 51.6°<br>Epoch 06:14:28.03</div></div>' +
       '</div>' +
-      `<img class="ss-corner" src="${tepuiRmqrUrl}" alt="Dive into Tepui">` +
       '</section>' +
-      '<section class="ss-window" aria-labelledby="ss-stage-heading"></section>' +
+      '<section class="ss-window" aria-label="Stage and creative modes"></section>' +
       '</div></div>';
 
     // 3D角丸ウィンドウと並列する、独立したステージ選択ウィンドウ。
     const windowDiv = root.querySelector('.ss-window') as HTMLElement;
-    windowDiv.innerHTML = '<h2 id="ss-stage-heading" class="ss-window-title">ステージ選択</h2>';
+    windowDiv.innerHTML = '';
+    const stageQr = document.createElement('img');
+    stageQr.className = 'ss-stage-qr';
+    stageQr.src = tepuiRmqrUrl;
+    stageQr.alt = '';
+    stageQr.setAttribute('aria-hidden', 'true');
+    windowDiv.appendChild(stageQr);
 
     // タブは selectGroup の初出順に並べる。
     const groups: string[] = [];
