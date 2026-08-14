@@ -33,9 +33,10 @@ export function register(): void {
     assert.ok(Math.abs(orbitPeriodOf(state, attractors) - expected) / expected < 1e-10);
 
     const plan = new Plan();
-    plan.trackAnchor(state);
+    // nodeTimeRange(0) は起点を読む。起点を凍結させるためだけにノードを1件置く。
+    plan.addNode(kinematicState(t + 1, state.r, state.v), state);
     const orbitDisplayDuration = { durationSec: (referencePeriod: number) => referencePeriod };
-    assert.ok(Math.abs(plan.nodeTimeRange(0, ephemeris, orbitDisplayDuration).max - (t + expected)) < 1e-6);
+    assert.ok(Math.abs(plan.nodeTimeRange(0, ephemeris, orbitDisplayDuration)!.max - (t + expected)) < 1e-6);
 
     const el = orbitalElementsOf(state, center)!;
     assert.equal(el.center.mu, MU_MOON);
@@ -71,14 +72,15 @@ export function register(): void {
     const period = orbitPeriodOf(state, attractors);
 
     const plan = new Plan();
-    plan.trackAnchor(state);
+    // nodeTimeRange(0) は起点を読む。起点を凍結させるためだけにノードを1件置く。
+    plan.addNode(kinematicState(t + 1, state.r, state.v), state);
 
     // 'orbit' 相当のスタブ: 参照期間(起点の軌道周期)をそのまま返す
     const orbitDuration = { durationSec: (referencePeriod: number) => referencePeriod };
-    assert.ok(Math.abs(plan.nodeTimeRange(0, ephemeris, orbitDuration).max - (t + period)) < 1e-6);
+    assert.ok(Math.abs(plan.nodeTimeRange(0, ephemeris, orbitDuration)!.max - (t + period)) < 1e-6);
 
     // 固定プリセット相当のスタブ: 参照期間によらず一定値を返す
     const fixedDuration = { durationSec: () => 86400 };
-    assert.equal(plan.nodeTimeRange(0, ephemeris, fixedDuration).max, t + 86400);
+    assert.equal(plan.nodeTimeRange(0, ephemeris, fixedDuration)!.max, t + 86400);
   });
 }
