@@ -65,6 +65,8 @@ export class MapPickables {
     const { simTime, displayTime } = displayWindow;
     this._lastSimTime = simTime;
     const focusId = focusTargetId(this.cameraSystem.overviewCamera.focus);
+    // 候補の位置は表示時刻のものなので、遮蔽・系の判定もその時刻の天体位置で行う。
+    // 現在時刻の配列は「いまの自艦の軌道」を読む項目だけが使う。
     const attractors = this.ephemeris.attractorsAt(simTime);
     const displayAttractors = this.ephemeris.attractorsAt(displayTime);
     const visibilityPolicy = new MapVisibilityPolicy(
@@ -129,14 +131,14 @@ export class MapPickables {
     if (viewer) for (const item of this.candidateItems) {
       const d = len(sub(item.pos, viewer.r));
       // 相対速度は対の速度を持つ敵艦にだけ意味がある。
-      const status = item.kind === 'ship' ? `${d < 2e5 ? '接近' : '距離'} ${fmtDist(d)} · ${fmtSpeed(len(sub(this.entities.findEnemy(item.id)?.state.v ?? viewer.v, viewer.v)))}` : item.kind === 'ammo' ? `${fmtDist(d)}${d <= C.AMMO_PICKUP_RADIUS ? ' · 回収可能' : ''}` : item.kind === 'base' ? `${fmtDist(d)} · ドック候補` : item.kind === 'body' ? `${fmtDist(d)} · ${celestialBodyName(strongestAttractor(item.pos, attractors).id)}` : item.detail;
+      const status = item.kind === 'ship' ? `${d < 2e5 ? '接近' : '距離'} ${fmtDist(d)} · ${fmtSpeed(len(sub(this.entities.findEnemy(item.id)?.state.v ?? viewer.v, viewer.v)))}` : item.kind === 'ammo' ? `${fmtDist(d)}${d <= C.AMMO_PICKUP_RADIUS ? ' · 回収可能' : ''}` : item.kind === 'base' ? `${fmtDist(d)} · ドック候補` : item.kind === 'body' ? `${fmtDist(d)} · ${celestialBodyName(strongestAttractor(item.pos, displayAttractors).id)}` : item.detail;
       item.detail = status;
       item.distance = d;
       // 所属系は天体以外にしか意味を持たない(天体は系そのものを表す行として常に一覧へ出す)。
       // 判定は最強天体から親を辿るぶん高価なので、読まれない天体候補では省く。
       item.inFocusedSystem = item.kind === 'body'
         ? undefined
-        : isPositionInFocusedSystem(this.ephemeris.registry, focusId, item.pos, attractors);
+        : isPositionInFocusedSystem(this.ephemeris.registry, focusId, item.pos, displayAttractors);
     }
 
     // マップビューでは player だけ、フォーカス天体の系に所属するかで候補を絞る。表示側と
@@ -144,8 +146,8 @@ export class MapPickables {
     // 現れない。他の候補は従来どおり天体遮蔽でピック対象から除く。
     for (const item of this.candidateItems) {
       const included = item.kind === 'player'
-        ? item.inFocusedSystem ?? isPositionInFocusedSystem(this.ephemeris.registry, focusId, item.pos, attractors)
-        : !isOccluded(this.cameraSystem.activeCameraPos, item.pos, attractors);
+        ? item.inFocusedSystem ?? isPositionInFocusedSystem(this.ephemeris.registry, focusId, item.pos, displayAttractors)
+        : !isOccluded(this.cameraSystem.activeCameraPos, item.pos, displayAttractors);
       if (included) this.visibleItems.push(item);
     }
     this.items = this.visibleItems;

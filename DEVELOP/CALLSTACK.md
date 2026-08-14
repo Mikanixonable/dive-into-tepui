@@ -107,12 +107,6 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
   - targeter.updateEquatorNodes(cameraSystem.overviewMode, displayWindow, ephemeris) // 内部で !overviewMode なら即 return(戦闘ビューでは誰も読まないため)。マップ表示中だけ戦闘ターゲット(aliveTarget)の EqAN/EqDN を求め直す
   - entities.updateBaseEquatorNodes(cameraSystem.overviewMode, displayWindow, ephemeris) // 内部で !overviewMode なら即 return。マップ表示中だけ生存中の全基地の EqAN/EqDN を求め直す(選択の有無によらず常に出す)
   - sections.exit(SECTION.plan)
-  - sections.enter(SECTION.mapPick)
-  - mapPicker.refresh(displayWindow) // 内部で !cameraSystem.overviewMode なら即 return(戦闘ビューではクリック対象を別経路で処理するため、マップを表示している時だけ更新する)。物理積分の後に組む — 積分前だと同フレームで sync されるメッシュと被選択物の座標が1ステップずれる。MapVisibilityPolicy もここで1つだけ組み、sync フェーズは mapPicker.visibilityPolicy を読むだけ
-    - focusMarkers.update(displayTime, overviewCamera.focus, cameraSystem.bodyClassToggles, activeCameraPos) // MapVisibilityPolicy が admits しない天体は座標計算ごと飛ばす
-    - navTarget.update(player, entities, ephemeris, displayWindow) // 自機軌道要素 + navTarget.id から相対 AN/DN を求め直す。ポーズ・決着に関わらず毎フレーム。対象が実体(敵・自機・基地)なら、その equatorNodes.update も併せて呼ぶ
-    - mapPicker.pickables に反映 // 天体ラベル + 生存中の entities.players('player')・敵船('ship')(displayState 基準)+ navTarget.mapPickables() + planDisplay.apsisMarkers + entities.all() の各 equatorNodes?.mapPickables() を集約 → [overviewMode] isOccluded(cameraSystem.activeCameraPos, item.pos, ephemeris.attractorsAt(simTime)) で天体に遮蔽された候補を除外
-  - sections.exit(SECTION.mapPick)
   - sections.enter(SECTION.camera)
   - cameraSystem.update(player, simTime, input, dt, mapPicker.pickables, displayWindowManager.attractorsAt(simTime)) // 追従カメラの基準を積分後の自機位置に合わせるため、物理積分の後に呼ぶ。ポーズ中・決着後も呼ぶ(飛ばすと視点が絶対 ECI に取り残される)
     - keyYaw/keyPitch/keyRoll をキー入力からまとめる // cameraRollLeft/Right は Numpad0/Numpad1
@@ -124,6 +118,12 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
       - chaseCamera.update(..., player) // それ以外。!player なら即 return し viewpoint は直前の値のまま凍結。camFollowAttitude のときだけ player.att.q を rot に合成し、鍵/ドラッグ/ロール入力を回転として適用。結果を自身の view へ書く
       - 選ばれた view.fovDeg から combatCamera 自身の view.fovDeg を指数補間
   - sections.exit(SECTION.camera)
+  - sections.enter(SECTION.mapPick)
+  - mapPicker.refresh(displayWindow) // 内部で !cameraSystem.overviewMode なら即 return(戦闘ビューではクリック対象を別経路で処理するため、マップを表示している時だけ更新する)。物理積分と cameraSystem.update の後に組む — 積分前だと同フレームで sync されるメッシュと被選択物の座標が1ステップずれ、カメラ更新前だと表示可否と遮蔽が1フレーム古いカメラ位置基準になる。MapVisibilityPolicy もここで1つだけ組み、sync フェーズは mapPicker.visibilityPolicy を読むだけ
+    - focusMarkers.update(displayTime, overviewCamera.focus, cameraSystem.bodyClassToggles, activeCameraPos) // MapVisibilityPolicy が admits しない天体は座標計算ごと飛ばす
+    - navTarget.update(player, entities, ephemeris, displayWindow) // 自機軌道要素 + navTarget.id から相対 AN/DN を求め直す。位置は通過時刻で bake し displayWindow.displayTime で un-bake して displayWindow.frame へ移す。ポーズ・決着に関わらず毎フレーム。対象が実体(敵・自機・基地)なら、その equatorNodes.update も併せて呼ぶ
+    - mapPicker.pickables に反映 // 天体ラベル + 生存中の entities.players('player')・敵船('ship')(displayState 基準)+ navTarget.mapPickables() + planDisplay.apsisMarkers + entities.all() の各 equatorNodes?.mapPickables() を集約 → [overviewMode] isOccluded(cameraSystem.activeCameraPos, item.pos, ephemeris.attractorsAt(displayTime)) で天体に遮蔽された候補を除外
+  - sections.exit(SECTION.mapPick)
   - sections.enter(SECTION.pointer)
   - handlePointerInput()
   - sections.exit(SECTION.pointer)
@@ -315,14 +315,8 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
 - targeter.updateEquatorNodes(displayWindow, ephemeris) // 戦闘ターゲット(aliveTarget)の EqAN/EqDN
 - entities.updateBaseEquatorNodes(displayWindow, ephemeris) // 生存中の全基地の EqAN/EqDN(選択の有無によらず常に出す)
 - sections.exit(SECTION.plan)
-- sections.enter(SECTION.mapPick)
-- mapPickables.refresh(displayWindow) // 内部で !cameraSystem.overviewMode なら即 return(戦闘ビューではクリック対象を別経路で処理するため、マップを表示している時だけ更新する)。物理積分の後に組む — 積分前だと同フレームで sync されるメッシュと被選択物の座標が1ステップずれる。MapVisibilityPolicy もここで1つだけ組み、sync フェーズは mapPickables.visibilityPolicy を読むだけ
-  - focusMarkers.update(displayTime, overviewCamera.focus, cameraSystem.bodyClassToggles, activeCameraPos) // MapVisibilityPolicy が admits しない天体は座標計算ごと飛ばす
-  - navTarget.update(player, entities, ephemeris, displayWindow) // 自機軌道要素 + navTarget.id から相対 AN/DN を求め直す。ポーズ・決着に関わらず毎フレーム。対象が実体(敵・自機・基地)なら、その equatorNodes.update も併せて呼ぶ
-  - mapPickables.pickables に反映 // 天体ラベル + 生存中の entities.players('player')・敵船('ship')(displayState 基準)+ navTarget.mapPickables() + planDisplay.apsisMarkers + entities.all() の各 equatorNodes?.mapPickables() を集約 → [overviewMode] isOccluded(cameraSystem.activeCameraPos, item.pos, ephemeris.attractorsAt(simTime)) で天体に遮蔽された候補を除外
-- sections.exit(SECTION.mapPick)
 - sections.enter(SECTION.camera)
-- cameraSystem.update(player, simTime, input, dt, mapPickables.pickables, displayWindowManager.attractorsAt(simTime)) // 追従カメラの基準を積分後の自機位置に合わせるため、物理積分の後に呼ぶ。ポーズ中・決着後も呼ぶ(飛ばすと視点が絶対 ECI に取り残される)
+- cameraSystem.update(player, simTime, input, dt, mapPickables.pickables, displayWindowManager.attractorsAt(simTime)) // 追従カメラの基準を積分後の自機位置に合わせるため、物理積分の後に呼ぶ。ポーズ中・決着後も呼ぶ(飛ばすと視点が絶対 ECI に取り残される)。focus の解決に使う候補列は前フレームの refresh が組んだもの
   - combatCamera.toggleFollowAttitude() // K.followAttitudeToggle。カメラ自身の状態なのでここで消費する
   - keyYaw/keyPitch/keyRoll をキー入力からまとめる // cameraRollLeft/Right は Numpad0/Numpad1
   - overviewCamera.update(..., mapPickables.pickables, attractors) // cameraSystem.overviewMode のみ。focus を mapPickables から引き直し、結果を自身の view へ書く。attractors は frameTransformAt の回転解決(登録天体/生存中の重力天体の2経路)に渡す
@@ -332,6 +326,12 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
     - chaseCamera.update() // それ以外。!target なら即 return。camFollowAttitude のときだけ target.att.q を rot に合成し、鍵/ドラッグ/ロール入力を回転として適用。結果を自身の view へ書く
     - 選ばれた view.fovDeg から combatCamera 自身の view.fovDeg を指数補間
 - sections.exit(SECTION.camera)
+- sections.enter(SECTION.mapPick)
+- mapPickables.refresh(displayWindow) // 内部で !cameraSystem.overviewMode なら即 return(戦闘ビューではクリック対象を別経路で処理するため、マップを表示している時だけ更新する)。物理積分と cameraSystem.update の後に組む — 積分前だと同フレームで sync されるメッシュと被選択物の座標が1ステップずれ、カメラ更新前だと表示可否と遮蔽が1フレーム古いカメラ位置基準になる。MapVisibilityPolicy もここで1つだけ組み、sync フェーズは mapPickables.visibilityPolicy を読むだけ
+  - focusMarkers.update(displayTime, overviewCamera.focus, cameraSystem.bodyClassToggles, activeCameraPos) // MapVisibilityPolicy が admits しない天体は座標計算ごと飛ばす
+  - navTarget.update(player, entities, ephemeris, displayWindow) // 自機軌道要素 + navTarget.id から相対 AN/DN を求め直す。位置は通過時刻で bake し displayWindow.displayTime で un-bake して displayWindow.frame へ移す。ポーズ・決着に関わらず毎フレーム。対象が実体(敵・自機・基地)なら、その equatorNodes.update も併せて呼ぶ
+  - mapPickables.pickables に反映 // 天体ラベル + 生存中の entities.players('player')・敵船('ship')(displayState 基準)+ navTarget.mapPickables() + planDisplay.apsisMarkers + entities.all() の各 equatorNodes?.mapPickables() を集約 → [overviewMode] isOccluded(cameraSystem.activeCameraPos, item.pos, ephemeris.attractorsAt(displayTime)) で天体に遮蔽された候補を除外
+- sections.exit(SECTION.mapPick)
 
 ### handlePointerInput()
 
@@ -397,7 +397,8 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
   - viewBadge.sync(activeStage.selectLabel) // タイトル・Mode・View ドロップダウンの表示反映
   - fo = new FloatingOrigin(cameraSystem.activeCameraPos, player?.state.v ?? v3()) // sync() 冒頭のローカル変数(Game はフィールドとして持たない)。r=アクティブカメラのECI位置(update フェーズの cameraSystem.update() で確定済み)、v=自機速度(艦が無ければゼロ)。以降の sync 系はこの fo だけを参照する
   - { displayTime, simTime } = displayWindow // displayTime は未来ゴーストのスライダーが立っている間だけ先の時刻、simTime は積分後の simulator.simTime と一致する値
-  - attractors = displayWindowManager.attractorsAt(simTime) // 解析天体 + 重力を持つ生存中の GameEntity(小惑星)の合流窓。EntityManager.cleanup へ渡す表面到達判定用の配列(解析天体のみ)とは別物
+  - attractors = displayWindowManager.attractorsAt(simTime) // 解析天体 + 重力を持つ生存中の GameEntity(小惑星)の合流窓。EntityManager.cleanup へ渡す表面到達判定用の配列(解析天体のみ)とは別物。現在状態を数値で読ませる HUD パネル・プロパティ行・frameControls がこちらを取る
+  - displayAttractors = displayWindowManager.attractorsAt(displayTime) // 同じ合流窓を表示時刻で引いたもの。画面に描く幾何(entities.syncPlayers・applyVisibility の軌道線、targeter.sync のハイライト線、syncPlayerTrajectoryLines の折れ線)がこちらを取る — 天体メッシュは displayTime に置かれるので、楕円の中心天体位置や un-bake を simTime で取ると同一画面上でずれる
   - cameraSystem.sync(fo) // 最初に呼ぶ: 後続の sync とマーカー投影が今フレームのカメラ行列を読む
     - syncCameraToViewpoint(active.camera, active.viewpoint, fo) // active = overviewMode ? overviewCamera : combatCamera。両カメラの viewpoint→THREE.PerspectiveCamera 反映はここ一箇所
     - viewOptionsPanel.setVisible(overviewMode) + setBodyClassToggles(bodyClassToggles) // 表示パネル。点灯反映は overviewMode のみ(天球グリッドセクションはボタン自身が押されるたび自分の on を反転するので、per frame の押し出しは無い — Navball.setGridVisibility() は construct 時に1回だけ)
@@ -420,7 +421,7 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
     - syncStars() // starsMesh をカメラへ追従、overviewMode でさらに拡大
     - syncReferenceLines(simTime, fo, overviewMode, focus, toggles) → geoLine.sync() + [referenceLines の各 OrbitLine ごと] showsReferenceLine(id, focus, toggles) が true のときだけ line.sync(orbitElementsFor(id, simTime), …)、false なら null 渡しで非表示 // !overviewMode では全線 null。惑星線は常時、衛星線は focus がその衛星系(地球系除く)を指すときだけ show
     - celestialGrid.sync() // navball.gridVisibility の6トグルと overviewMode に応じたスケールを反映
-  - entities.syncPlayers(player, fo, cameraSystem, displayTime, ephemeris, attractors, visibilityPolicy) // 全自機ごとに ship.syncPlayer(...) を呼ぶ。方向マーカー・ボアサイト・ガンサイトズームの隠れは isActive(=ship===player)の艦だけ
+  - entities.syncPlayers(player, fo, cameraSystem, displayTime, ephemeris, displayAttractors, visibilityPolicy) // 全自機ごとに ship.syncPlayer(...) を呼ぶ。方向マーカー・ボアサイト・ガンサイトズームの隠れは isActive(=ship===player)の艦だけ
     - ship.syncPlayer(fo, cameraSystem, displayTime, isActive, ephemeris, attractors, visibilityPolicy?.entity('player', isActive))
       - displayState(displayTime) // current.at または predicted.at。null なら obj.visible=false のみで以下は現在状態のまま
       - obj の position / quaternion / visible // displayState 基準(未来ゴースト表示中は将来位置)。ガンサイトズームで隠れるのは isActive の艦だけ
@@ -433,18 +434,18 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
         - [overviewMode] 戦闘用7キーを hide + displayState があれば headingDeg(displayState.r, displayState.v) → markerManager.setPosition('self', 'mk-self', '▲', rotationDeg) / 無ければ hide('self')
         - [!overviewMode] hide('self') + syncOrbitAxes(currentState) // pro/retro/nrm/anm/radout/radin。常に現在状態
         - [!overviewMode] syncBoresight(currentState) → setDirection('bore') // 常に現在状態、無条件に描画
-      - orbitLine.sync() → regenerate() // 中心天体は毎フレーム strongestAttractor(state.r, ephemeris.attractorsAt(state.t)) で導出(地球固定ではない)。要素が閾値以上ドリフト or 推力中(force) or 初回のみ再生成。現在状態基準(要素は時刻に依らない)
+      - orbitLine.sync() → regenerate() // 中心天体は毎フレーム strongestAttractor(state.r, displayAttractors) で導出(地球固定ではない)。楕円の平行移動に使う中心天体位置も表示時刻のもの。要素が閾値以上ドリフト or 推力中(force) or 初回のみ再生成。現在状態基準(要素は時刻に依らない)
   - entities.sync(fo, displayTime) → entity.sync(fo, displayTime) // 敵・弾・薬莢・デブリ・補給それぞれ(Bullet は速度方向を向く別実装)。自機(全隻)は含まない — 各艦は syncPlayers() が個別に同期済み。
     displayState が null(predictsFuture=false の種別が未来表示中、または予測ホライズン超過)なら visible=false
     - 続けて弾本体/弾ハロー/プラズマ弾/薬莢/破片(fragment、バリアントごとに1本)の各 InstancedPool を beginFrame → (bullets/casings/debris ごとに obj.visible を見て push) → endFrame。Group(本体+ハロー)を持つ通常弾は obj.updateMatrixWorld() で子まで連鎖更新してから両プールへ push。fragment は debrisFragmentPools[fragmentVariant] へ fragmentColor(per-instance color)付きで push
-  - entities.applyVisibility(visibilityPolicy, player, overviewMode, fo, camera, attractors) // 天体クラス別トグルに応じた自機・敵・弾薬・基地のメッシュ表示/軌道線表示。visibilityPolicy が null(戦闘ビュー)のときは非表示扱いを一切かけない
+  - entities.applyVisibility(visibilityPolicy, player, overviewMode, fo, camera, displayAttractors) // 天体クラス別トグルに応じた自機・敵・弾薬・基地のメッシュ表示/軌道線表示。visibilityPolicy が null(戦闘ビュー)のときは非表示扱いを一切かけない
     - [visibilityPolicy] 自機・敵・弾薬・基地それぞれ、その種別の category が admit しなければ obj.visible=false
     - 自機・敵・基地それぞれ orbitLine.setDisplayEnabled(!overviewMode || visibilityPolicy が admit する orbit) // マップビューのみトグルの対象、戦闘ビューは常に表示
     - [entities.bases ごと] base.syncOrbitLine(overviewMode, fo, camera, attractors) // 中心天体は strongestAttractor(base.state.r, attractors)。マップビューのみ、それ以外は null を渡して線を消す
   - entities.syncMarkers(cameraSystem, displayTime, player?.state.r ?? null, visibilityPolicy) // ammos/bases の各 marker?.sync。displayState(displayTime) → [overviewMode] headingDeg(ds.r, ds.v) → set('entity-<id>', 'mk-ammo'|'mk-base', '▲', rotationDeg) / [!overviewMode] set('entity-<id>', 種別ごとの字形) + setBearing('entity-<id>-bearing')。ラベルは name + viewerPos があれば距離
   - effects.sync(fo, camera, cameraSystem.zoomActive) → flashEffectManager.syncFlashEffects()
     - pool.beginFrame() → (生存中のフラッシュごとに transform へ位置/スケール/カメラ正対回転を書き、color = baseColor×opacity で push) → pool.endFrame() // 寿命・移流は update フェーズで済んでいる。opacity には zoomActive かつ dimsInGunsight のフラッシュだけ ZOOM_MUZZLE_FLASH_SCALE が掛かる
-  - [player] targeter.sync(fo, player, combatTargets, cameraSystem, attractors, visibilityPolicy) // ターゲットに紐づく表示物をまとめて
+  - [player] targeter.sync(fo, player, combatTargets, cameraSystem, displayAttractors, visibilityPolicy) // ターゲットに紐づく表示物をまとめて
     - syncOrbitLine(fo, player, combatTargets, overviewMode, camera, attractors, visibilityPolicy) // 各線の中心天体は対象ごとに strongestAttractor(target.state.r, attractors) で導出
       - [combatTargets ごと] t.syncOrbitLine(showGray, fo, camera, attractors) // showGray = overviewMode かつ生存かつ第一・第二どちらでもない かつ visibilityPolicy が admit する orbit
       - orbitLine.sync() // 第一ターゲット軌道線(オレンジ)。visibilityPolicy が admit しなければ null を渡して消す
@@ -492,8 +493,8 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
     - [overviewMode] cameraRotationZone.setNearby(members) / setSelected(overviewCamera.cameraFrame.rotatingWith)
     - [overviewMode] translationZone.setItems(pickables) / setNearby(members, pickables) / setSelected(displayWindow.frame.center) // 未来表示(計画折れ線・予測軌道線・交点マーカー)の描画座標系の原点
     - [overviewMode] planRotationZone.setNearby(members) / setSelected(displayWindow.frame.rotatingWith)
-  - entities.syncPlayerTrajectoryLines(player, displayWindow, overviewMode, ephemeris, fo, cameraSystem.activeCamera, attractors, visibilityPolicy) // 計画折れ線と同じ座標系(displayWindow.frame)で bake する
-    - [entities.players ごと] ship.syncTrajectoryLine(ship === player, frame, simTime, pastDuration, ephemeris, fo, camera, attractors) // 操作対象艦だけ show=true。それ以外は trajectory=null で畳む
+  - entities.syncPlayerTrajectoryLines(player, displayWindow, overviewMode, ephemeris, fo, cameraSystem.activeCamera, displayAttractors, visibilityPolicy) // 計画折れ線と同じ座標系(displayWindow.frame)で bake する
+    - [entities.players ごと] ship.syncTrajectoryLine(show, frame, simTime, displayTime, pastDuration, ephemeris, fo, camera, displayAttractors) // show は「操作対象艦であり、かつ軌道線トグルが立っている」。それ以外は trajectory=null で畳む
       - trajectoryLine.syncGeometry(show ? predictedTrajectory : null, simTime, null, frame, ...) // predictedTrajectory.samplesOldestFirst() を frame で bake(点列の参照が変わらない限り再bakeしない)。simTime は描画区間の下限で sampler の時刻写像だけを動かす — 線の先頭は predictedTrajectory を simTime で補間した点になる。上限は null(先端まで無制限)
       - trajectoryLine.syncTransform()
       - trajectoryLine.sync(camera) // 頂点2未満なら curve.clear()
@@ -514,7 +515,7 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
   - hud.targetPanel.sync(game, attractors) // #hud-target。ロック中ターゲットの有無による表示切替は毎フレーム。relativeInfo 由来の行(名前/装甲/距離/接近速度/相対速度)は約10Hzにスロットル。軌道要素・相対傾斜角はここには無く、右クリックのプロパティウィンドウが持つ
   - hud.contactsPanel.sync(game) // #hud-enemies。自機不在なら隠す、overviewMode でも畳む(切替は毎フレーム)。撃墜数バッジ・waveId 集約済みの敵一覧は約4Hz(250ms)にスロットル
   - hud.tick() // ヒント/トーストのフェードアウト
-  - guide.sync(player, simTime, editMode, project) // player の有無をここで問わず毎フレーム呼ぶ。内部で player.plan から引く
+  - guide.sync(player, simTime, editMode, project, editor.planDisplay.path) // NODE/BURN の位置と方向は path.toDisplay/toDisplayDir を通し、計画折れ線と同じ座標系へ載せる。 player の有無をここで問わず毎フレーム呼ぶ。内部で player.plan から引く
     - markerManager.hide('nd') + hide('burn') // player 不在・editMode・または直近ノードが無い場合
     - markerManager.setPosition('nd') + setDirection('burn') // 直近ノードがある場合
   - markerManager.resolveCollisions() // ラベル衝突緩和 + SVG 引き出し線の再描画。全マーカーが出揃った後に一度だけ
@@ -595,9 +596,11 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
   **`markerManager.resolveCollisions()` だけは全マーカーが出揃った後に一度だけ**呼ぶ必要があるため
   `game.sync` の末尾に置く。
 - **`mapPickables.refresh()` は `game.sync` ではなく `game.update` の中、
-  `cameraSystem.update` を呼ぶ直前(物理積分の後)に呼ぶ**。積分前に組むと、被選択物や navTarget の
+  `cameraSystem.update` の直後(物理積分の後)に呼ぶ**。積分前に組むと、被選択物や navTarget の
   AN/DN の座標が、同じフレームで `sync` されるメッシュに対して1ステップぶん古くなる(ワープ倍率が
-  高いほど無視できない)。フォーカス解決(`overviewCamera.update`)も右クリック判定
+  高いほど無視できない)。カメラ更新の前に組むと、候補集合と一緒に確定する `MapVisibilityPolicy`
+  (表示天体の集合と遮蔽)が1フレーム古いカメラ位置基準になり、フォーカスを移した直後の1フレームで
+  描かれる対象と選べる対象がずれる。フォーカス解決(`overviewCamera.update`)も右クリック判定
   (`mapActions.handleRightClick`)もどちらも `update` フェーズの仕事なので、`sync` を待つ必要はない。
   天体ラベル(`focusMarkers`)と AN/DN(`navTarget`)、EqAN/EqDN(各エンティティの `equatorNodes` —
   出す対象を選ぶ側がそれぞれ `update` を呼ぶ: 操作艦は `editor.update`、戦闘ターゲットは
