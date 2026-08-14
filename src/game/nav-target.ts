@@ -5,7 +5,7 @@ import { Vec3, v3 } from '../physics/vec3';
 import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from '../physics/elements';
 import { Attractor, OrbitingId, frameOfAttractor, strongestAttractor } from '../physics/attractor';
 import { isOccluded } from '../physics/occlusion';
-import { frameKinematicState, toFrameState, toInertialState } from '../physics/frame';
+import { frameKinematicState, toFramePoint, toFrameState, toInertialPoint, toInertialState } from '../physics/frame';
 import { bodyDef } from '../physics/solar-system';
 import type { Ephemeris } from '../physics/ephemeris';
 import { qRotate } from '../physics/attitude';
@@ -81,20 +81,21 @@ export class NavTarget {
   // 対象の軌道面が定まらない(地球・太陽自身など)場合や自機軌道要素が無い場合は両方 null にする。
   // positionOnOrbit は中心天体基準の相対位置を返すので、frameOfAttractor + toInertialState で
   // 絶対 ECI 位置へ直す — 地球周回では中心が原点に一致するため偶然一致するが、月周回では
-  // 直さないと月までの距離ぶんずれる。
+  // 直さないと月までの距離ぶんずれる。位置は通過時刻で bake し、displayWindow の表示時刻で
+  // un-bake して描画座標系へ移す。
   update(
     player: Player | null, entities: EntityManager, ephemeris: Ephemeris, displayWindow: DisplayWindow,
   ): void {
-    const simTime = displayWindow.simTime;
+    const { simTime, displayTime, frame } = displayWindow;
     this.anPos = this.dnPos = this.anTime = this.dnTime = null;
-    this.attractors = ephemeris.attractorsAt(simTime);
+    this.attractors = ephemeris.attractorsAt(displayTime);
     if (!this.targetId) return;
     // 航法ターゲット自身の赤道交点は、自機の軌道要素が求まるかどうかとは無関係に出す。
     const target = this.resolveEntity(this.targetId, entities);
-    target?.ensureEquatorNodes(this.markerManager)
-      .update(displayWindow.frame, displayWindow.displayTime, ephemeris);
+    target?.ensureEquatorNodes(this.markerManager).update(frame, displayTime, ephemeris);
     if (!player) return;
-    const playerCenter = strongestAttractor(player.state.r, this.attractors);
+    const stateAttractors = ephemeris.attractorsAt(simTime);
+    const playerCenter = strongestAttractor(player.state.r, stateAttractors);
     const playerEl = player.orbitalElementsAround(playerCenter);
     if (!playerEl) return;
 
@@ -108,8 +109,14 @@ export class NavTarget {
     const nu0 = trueAnomalyAt(playerEl, toFrameState(tf, player.state).r);
     const anT = simTime + tofBetween(playerEl, nu0, nodes.asc);
     const dnT = simTime + tofBetween(playerEl, nu0, nodes.desc);
-    this.anPos = toInertialState(tf, anT, frameKinematicState(positionOnOrbit(playerEl, nodes.asc), v3(0, 0, 0))).r;
-    this.dnPos = toInertialState(tf, dnT, frameKinematicState(positionOnOrbit(playerEl, nodes.desc), v3(0, 0, 0))).r;
+    const anEci = toInertialState(tf, anT, frameKinematicState(positionOnOrbit(playerEl, nodes.asc), v3(0, 0, 0))).r;
+    const dnEci = toInertialState(tf, dnT, frameKinematicState(positionOnOrbit(playerEl, nodes.desc), v3(0, 0, 0))).r;
+    // un-bake は表示時刻に固定なので、両交点で同じ変換を使い回す。
+    const unbakeTf = ephemeris.frameTransformAt(frame, displayTime, this.attractors);
+    const toDisplay = (r: Vec3, t: number): Vec3 =>
+      toInertialPoint(unbakeTf, toFramePoint(ephemeris.frameTransformAt(frame, t, this.attractors), r));
+    this.anPos = toDisplay(anEci, anT);
+    this.dnPos = toDisplay(dnEci, dnT);
     this.anTime = anT;
     this.dnTime = dnT;
   }
