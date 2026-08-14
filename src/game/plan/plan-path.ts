@@ -41,6 +41,11 @@ export interface FinalSegment {
   readonly apsisCenter: Attractor | null;
 }
 
+export interface PlanPathSample {
+  readonly state: KinematicState;
+  readonly arcIdx: number;
+}
+
 export class PlanPath {
   readonly group = new THREE.Group();
   // 先頭 activeCount 本がこのフレームの区間の積分結果に対応する(区間が減れば末尾を捨てる)。
@@ -201,9 +206,16 @@ export class PlanPath {
 
   // 時刻 t を保持区間に含む最初の arc から補間した状態を返す。どの arc の外でも null。
   sampleAt(t: number): KinematicState | null {
+    return this.sampleAtWithArc(t)?.state ?? null;
+  }
+
+  // 時刻 t の補間状態と、それが属する区間の index を返す。ノードを別区間へ移すときは、
+  // その区間までに適用済みの Δv を差し引いてから新しい到着状態を組み立てる必要があるため、
+  // PlanEditor は sampleAt() ではなくこちらを使う。
+  sampleAtWithArc(t: number): PlanPathSample | null {
     for (let i = 0; i < this.activeCount; i++) {
       const s = this.arcs[i]!.at(t);
-      if (s) return s;
+      if (s) return { state: s, arcIdx: i };
     }
     return null;
   }
