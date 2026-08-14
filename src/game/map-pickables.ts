@@ -14,7 +14,7 @@ import { PlanEditor } from './plan/plan-editor';
 import type { ActivePlayerController } from './active-player-controller';
 import { len, sub } from '../physics/vec3';
 import { strongestAttractor } from '../physics/attractor';
-import { isOccluded } from '../physics/occlusion';
+import { isOccluded, occlusionOpacity } from '../physics/occlusion';
 import { apsisAltitudes } from '../physics/elements';
 import { isPositionInFocusedSystem, systemMembersAt } from './celestial/body-visibility';
 import { MapVisibilityPolicy } from './celestial/map-visibility';
@@ -147,7 +147,9 @@ export class MapPickables {
     for (const item of this.candidateItems) {
       const included = item.kind === 'player'
         ? item.inFocusedSystem ?? isPositionInFocusedSystem(this.ephemeris.registry, focusId, item.pos, displayAttractors)
-        : !isOccluded(this.cameraSystem.activeCameraPos, item.pos, displayAttractors);
+        : item.kind === 'body'
+          ? occlusionOpacity(this.cameraSystem.activeCameraPos, item.pos, displayAttractors) > 0
+          : !isOccluded(this.cameraSystem.activeCameraPos, item.pos, displayAttractors);
       if (included) this.visibleItems.push(item);
     }
     this.items = this.visibleItems;
