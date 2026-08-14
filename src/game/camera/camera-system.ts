@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { Hud } from '../hud/hud';
 import { CombatCameraSystem } from './combat-camera-system';
-import { OverviewCamera } from './overview-camera';
+import { MapCamera } from './map-camera';
 import { ViewOptionsPanel } from '../hud/view-options-panel';
 import { FocusMarkers } from './focus-markers';
 import { BodyClassToggles, DEFAULT_BODY_CLASS_TOGGLES } from '../celestial/body-visibility';
@@ -46,7 +46,7 @@ export type ProjectFn = (worldPos: Vec3) => Projected;
 export type ScaleFn = (worldPos: Vec3) => number;
 
 // 論理カメラの状態(Viewpoint)を THREE カメラへ反映する。near/far はサブカメラ自身の
-// near/far getter(固定値、または OverviewCamera のように dist に比例する値)から毎フレーム渡される。
+// near/far getter(固定値、または MapCamera のように dist に比例する値)から毎フレーム渡される。
 function syncCameraToViewpoint(camera: THREE.Camera, view: Viewpoint, near: number, far: number, fo: FloatingOrigin): void {
   camera.position.copy(fo.RtoThreeV3(view.position));
   camera.up.set(view.up.x, view.up.y, view.up.z);
@@ -108,11 +108,11 @@ function scaleFromViewpoint(view: Viewpoint): ScaleFn {
   return (worldPos) => metersPerPixel(view, worldPos, window.innerHeight);
 }
 
-// 戦闘ビュー(CombatCameraSystem)と広範囲視点(OverviewCamera)を切り替えて駆動する。
+// 戦闘ビュー(CombatCameraSystem)と広範囲視点(MapCamera)を切り替えて駆動する。
 // フォーカス候補ラベル(focusMarkers)も所有する。
 export class CameraSystem {
   readonly combatCamera: CombatCameraSystem;
-  readonly overviewCamera: OverviewCamera;
+  readonly mapCamera: MapCamera;
   readonly focusMarkers: FocusMarkers;
   // 表示パネル(天体クラス表示トグル+天球グリッドトグル)。天球グリッド側の配線は Navball が行う。
   readonly viewOptionsPanel: ViewOptionsPanel;
@@ -139,7 +139,7 @@ export class CameraSystem {
     // 両カメラとフォーカス候補ラベル
     this.focusMarkers = new FocusMarkers(markerManager, ephemeris);
     this.combatCamera = new CombatCameraSystem(_hud, saved?.chase);
-    this.overviewCamera = new OverviewCamera(_hud, ephemeris, saved?.overview);
+    this.mapCamera = new MapCamera(_hud, ephemeris, saved?.overview);
     // 表示パネルと天体クラス側操作のコールバック
     this.viewOptionsPanel = new ViewOptionsPanel(_hud.mapRoot);
     this.viewOptionsPanel.onBodyClassToggle = (key, on) => {
@@ -152,7 +152,7 @@ export class CameraSystem {
       chaseResetBtn.addEventListener('pointerdown', (e) => {
         e.stopPropagation();
         if (this.overviewMode) {
-          this.overviewCamera.reset();
+          this.mapCamera.reset();
         } else {
           this.combatCamera.reset();
         }
@@ -162,13 +162,13 @@ export class CameraSystem {
 
   // 現在アクティブなカメラ(広範囲視点/戦闘追従視点)を返す。
   get activeCamera(): THREE.Camera {
-    return this.overviewMode ? this.overviewCamera.camera : this.combatCamera.camera;
+    return this.overviewMode ? this.mapCamera.camera : this.combatCamera.camera;
   }
 
   // アクティブカメラの位置(描画原点になる値)を返す。戦闘ビューにいることは操作対象艦がいることを
   // 意味する(ViewManager が canEnter で保証する)ので、この値は実在した艦から計算されたものになる。
   get activeCameraPos(): Vec3 {
-    return this.overviewMode ? this.overviewCamera.viewpoint.position : this.combatCamera.viewpoint.position;
+    return this.overviewMode ? this.mapCamera.viewpoint.position : this.combatCamera.viewpoint.position;
   }
 
   // 戦闘ビューでズーム視点(照準ズーム)が有効かどうか。広範囲視点では常に false。
@@ -189,7 +189,7 @@ export class CameraSystem {
   ): void {
     // 中クリックで視点リセット
     input.takeMiddleClicks(() => {
-      if (this.overviewMode) this.overviewCamera.reset();
+      if (this.overviewMode) this.mapCamera.reset();
       else this.combatCamera.reset();
       return true;
     });
@@ -203,7 +203,7 @@ export class CameraSystem {
     
     // /_ の同時押し（ロール左右の同時入力）でマップカメラのロールをリセット
     if (keyRollLeft && keyRollRight) {
-      if (this.overviewMode) this.overviewCamera.reset();
+      if (this.overviewMode) this.mapCamera.reset();
     }
     const keyRoll = (keyRollLeft ? 1 : 0) + (keyRollRight ? -1 : 0);
     const keyPanX = (input.down(K.cameraPanLeft) ? 1 : 0) + (input.down(K.cameraPanRight) ? -1 : 0);
@@ -214,7 +214,7 @@ export class CameraSystem {
     mouse.roll += keyRoll * C.CAM_KEY_ROLL_RATE * dt;
 
     if (this.overviewMode) {
-      this.overviewCamera.update(mouse, keyYaw, keyPitch, dt, displayTime, mapPickables, attractors);
+      this.mapCamera.update(mouse, keyYaw, keyPitch, dt, displayTime, mapPickables, attractors);
     }
     else {
       this.combatCamera.update(mouse, keyYaw, keyPitch, dt, player, input);
@@ -223,7 +223,7 @@ export class CameraSystem {
 
   // 視点状態をフローティングオリジン(fo)で補正してアクティブカメラへ反映する。
   sync(fo: FloatingOrigin): void {
-    const active = this.overviewMode ? this.overviewCamera : this.combatCamera;
+    const active = this.overviewMode ? this.mapCamera : this.combatCamera;
     syncCameraToViewpoint(active.camera, active.viewpoint, active.near, active.far, fo);
     // 広範囲視点のときだけ操作パネルとフォーカスラベルを表示する
     this.viewOptionsPanel.setVisible(this.overviewMode);
@@ -238,16 +238,16 @@ export class CameraSystem {
 
   // アクティブカメラの画面投影関数を返す。
   get activeCameraProjection(): ProjectFn {
-    return projectionFromViewpoint(this.overviewMode ? this.overviewCamera.viewpoint : this.combatCamera.viewpoint);
+    return projectionFromViewpoint(this.overviewMode ? this.mapCamera.viewpoint : this.combatCamera.viewpoint);
   }
 
   // アクティブカメラの画面尺度関数を返す。
   get activeCameraScale(): ScaleFn {
-    return scaleFromViewpoint(this.overviewMode ? this.overviewCamera.viewpoint : this.combatCamera.viewpoint);
+    return scaleFromViewpoint(this.overviewMode ? this.mapCamera.viewpoint : this.combatCamera.viewpoint);
   }
 
   // 両サブカメラの視点状態をセーブデータへ書き出す。どちらが表示中かは ViewManager の責務。
   serialize(): Pick<CameraSaveData, 'chase' | 'overview'> {
-    return { chase: this.combatCamera.serialize(), overview: this.overviewCamera.serialize() };
+    return { chase: this.combatCamera.serialize(), overview: this.mapCamera.serialize() };
   }
 }

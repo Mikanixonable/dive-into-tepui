@@ -14,7 +14,7 @@ import { MapPickable } from '../map-pickable';
 import { Attractor } from '../../physics/attractor';
 import { bodyDef } from '../../physics/solar-system';
 import { FocusTarget } from './focus-target';
-import { OverviewCameraSaveData } from '../save-data';
+import { MapCameraSaveData } from '../save-data';
 
 const WORLD_UP = v3(0, 1, 0);
 const OVERVIEW_CAMERA_FOV = 50;
@@ -49,7 +49,7 @@ function frameDirVector(value: FrameDir): Vec3 {
   return v3(value.x, value.y, value.z);
 }
 
-export class OverviewCamera {
+export class MapCamera {
   // 軌道計画モード用の地球中心カメラ(モルニヤ級軌道全体が収まる遠方まで)
   private readonly perspectiveCamera: THREE.PerspectiveCamera;
   private readonly orthographicCamera: THREE.OrthographicCamera;
@@ -109,7 +109,7 @@ export class OverviewCamera {
   constructor(
     private readonly _hud: Hud,
     private readonly ephemeris: Ephemeris,
-    saved?: OverviewCameraSaveData,
+    saved?: MapCameraSaveData,
   ) {
     this.rotationMode = saved?.rotationMode ?? 'euler';
     this.projectionMode = saved?.projectionMode === 'orthographic' ? 'orthographic' : 'perspective';
@@ -537,8 +537,8 @@ export class OverviewCamera {
   }
 
   // offset_r/pan_r/up_r・視点の座標系・フォーカス対象をセーブデータへ書き出す。
-  serialize(): OverviewCameraSaveData {
-    const focus: OverviewCameraSaveData['focus'] = this._focus.kind === 'object'
+  serialize(): MapCameraSaveData {
+    const focus: MapCameraSaveData['focus'] = this._focus.kind === 'object'
       ? { kind: 'object', id: this._focus.id }
       : {
         kind: 'point',

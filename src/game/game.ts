@@ -126,7 +126,7 @@ export class Game {
     );
     this.simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
     this.frameControls = new FrameControls(
-      this._hud.mapRoot, this._hud.layers.popup, this.ephemeris, this.cameraSystem.overviewCamera,
+      this._hud.mapRoot, this._hud.layers.popup, this.ephemeris, this.cameraSystem.mapCamera,
       this.displayWindowManager, this._hud.overlayManager,
     );
 
