@@ -1,5 +1,4 @@
-// 直近ノードの実行ガイド: 実行時刻を過ぎたノードの消化、接近・達成の通知、計画が空の間の
-// アンカー追従、NODE/BURN マーカー。
+// 直近ノードの実行ガイド: 実行時刻を過ぎたノードの消化、接近・達成の通知、NODE/BURN マーカー。
 import { KinematicState } from '../../physics/kinematic-state';
 import { OrbitalElements } from '../../physics/elements';
 import { Attractor, orbitalElementsOf, strongestAttractor } from '../../physics/attractor';
@@ -27,24 +26,19 @@ export class PlanGuide {
   }
 
   // 実行時刻を過ぎたノードを計画から落とし、直近ノードへの接近と計画軌道の達成を
-  // ノードごとに一度だけ通知する。最後にノードを消化した後は plan.trackAnchor で
-  // アンカーを自機へ追従させる。player がいなければ何もしない。
+  // ノードごとに一度だけ通知する。player がいなければ何もしない。
   update(player: Player | null, simTime: number, editMode: boolean, attractors: readonly Attractor[]): void {
-    if (!player) return;
+    if (!player || editMode) return;
     const plan = player.plan;
-    if (!editMode) {
-      plan.consumeNodesUpTo(simTime - C.NODE_EXPIRE_GRACE, player.state);
+    plan.consumeNodesUpTo(simTime - C.NODE_EXPIRE_GRACE, player.state);
 
-      const node = plan.firstNode();
-      // 実行の窓に入るまでは通知しない。窓の手前では自機はまだ噴射前の軌道にいるので、
-      // 目標軌道との近さを見ても達成の判定にならない。
-      if (node && simTime >= node.t - C.NODE_APPROACH_LEAD) {
-        this.notifyApproach(node);
-        this.notifyAchieved(node, player, attractors);
-      }
+    const node = plan.firstNode();
+    // 実行の窓に入るまでは通知しない。窓の手前では自機はまだ噴射前の軌道にいるので、
+    // 目標軌道との近さを見ても達成の判定にならない。
+    if (node && simTime >= node.t - C.NODE_APPROACH_LEAD) {
+      this.notifyApproach(node);
+      this.notifyAchieved(node, player, attractors);
     }
-    // ノードの消化より後に置く: 最後のノードが落ちたフレームからアンカーが自機へ追従する。
-    plan.trackAnchor(player.state);
   }
 
   // 直近ノードの NODE・BURN マーカーを同期する。
