@@ -15,18 +15,10 @@ export const COMBAT_VIEW_STYLE = `
   -webkit-backdrop-filter: blur(14px) saturate(82%);
   box-shadow: 0 12px 30px var(--shade-1);
 }
-#hud:not(.map-mode):not(.dock-mode) #hud-combat-shelf { gap: 7px; }
-#hud:not(.map-mode):not(.dock-mode) #hud-combat-shelf > #hud-status {
-  flex-basis: 252px;
-  width: 252px;
-}
-#hud:not(.map-mode):not(.dock-mode) #hud-combat-shelf > #hud-orbit {
-  flex-basis: 228px;
-  width: 228px;
-}
-#hud:not(.map-mode):not(.dock-mode) #hud-combat-shelf > #hud-enemies {
-  flex-basis: 252px;
-  width: 252px;
+#hud:not(.map-mode):not(.dock-mode) .hud-rail-left > #hud-status,
+#hud:not(.map-mode):not(.dock-mode) .hud-rail-right > #hud-orbit,
+#hud:not(.map-mode):not(.dock-mode) .hud-rail-right > #hud-enemies {
+  width: 100%;
 }
 #hud:not(.map-mode):not(.dock-mode) .combat-panel .panel-shell-head {
   align-items: center;
@@ -103,6 +95,10 @@ export const COMBAT_VIEW_STYLE = `
   background: var(--fill-1);
   color: var(--text-dim);
   font-size: var(--font-xxs);
+}
+#hud:not(.map-mode):not(.dock-mode) #hud-status .status-actions .w-btn.on {
+  background: var(--accent-fill);
+  color: var(--accent);
 }
 #hud:not(.map-mode):not(.dock-mode) #hud-status .status-actions .w-btn:hover {
   background: var(--fill-2);
@@ -262,7 +258,6 @@ export const COMBAT_VIEW_STYLE = `
 }
 #hud:not(.map-mode):not(.dock-mode) #hud-globalstatus .k { color: var(--text-dim); }
 #hud:not(.map-mode):not(.dock-mode) #hud-globalstatus .gs-sep { color: var(--fill-4); }
-#hud:not(.map-mode):not(.dock-mode) #hud-combat-shelf-toggle,
 #hud:not(.map-mode):not(.dock-mode) #hud-chase-reset {
   border: 0;
   border-radius: var(--radius-control, 11px);
@@ -274,13 +269,11 @@ export const COMBAT_VIEW_STYLE = `
   transition: color 140ms, background 140ms;
 }
 #hud:not(.map-mode):not(.dock-mode) #hud-chase-reset { border-radius: 50%; }
-#hud:not(.map-mode):not(.dock-mode) #hud-combat-shelf-toggle:hover,
 #hud:not(.map-mode):not(.dock-mode) #hud-chase-reset:hover {
   background: var(--fill-2);
   color: var(--accent-near, var(--accent-soft));
 }
 #hud:not(.map-mode):not(.dock-mode) .combat-panel .panel-shell-collapse:focus-visible,
-#hud:not(.map-mode):not(.dock-mode) #hud-combat-shelf-toggle:focus-visible,
 #hud:not(.map-mode):not(.dock-mode) #hud-chase-reset:focus-visible,
 #hud:not(.map-mode):not(.dock-mode) #hud-status .w-btn:focus-visible {
   outline: 2px solid var(--accent);
@@ -293,18 +286,11 @@ export const COMBAT_VIEW_STYLE = `
   #hud:not(.map-mode):not(.dock-mode) #hud-enemies,
   #hud:not(.map-mode):not(.dock-mode) #hud-target,
   #hud:not(.map-mode):not(.dock-mode) #hud-globalstatus,
-  #hud:not(.map-mode):not(.dock-mode) #hud-combat-shelf-toggle,
   #hud:not(.map-mode):not(.dock-mode) #hud-chase-reset {
     background: var(--surface);
   }
 }
 @media ${MQ_MEDIUM_DOWN} {
-  #hud:not(.map-mode):not(.dock-mode) #hud-combat-shelf > #hud-status,
-  #hud:not(.map-mode):not(.dock-mode) #hud-combat-shelf > #hud-orbit,
-  #hud:not(.map-mode):not(.dock-mode) #hud-combat-shelf > #hud-enemies {
-    flex-basis: 178px;
-    width: 178px;
-  }
   #hud:not(.map-mode):not(.dock-mode) #hud-status,
   #hud:not(.map-mode):not(.dock-mode) #hud-orbit,
   #hud:not(.map-mode):not(.dock-mode) #hud-enemies,
@@ -313,19 +299,12 @@ export const COMBAT_VIEW_STYLE = `
   }
 }
 @media ${MQ_COMPACT} {
-  #hud:not(.map-mode):not(.dock-mode) #hud-combat-shelf > #hud-status,
-  #hud:not(.map-mode):not(.dock-mode) #hud-combat-shelf > #hud-orbit,
-  #hud:not(.map-mode):not(.dock-mode) #hud-combat-shelf > #hud-enemies {
-    flex-basis: min(168px, calc(100vw - 16px));
-    width: min(168px, calc(100vw - 16px));
-  }
   #hud:not(.map-mode):not(.dock-mode) .hud-rail-right > #hud-target {
     width: var(--rail-w-right);
   }
 }
 @media ${MQ_COARSE} {
   #hud:not(.map-mode):not(.dock-mode) .combat-panel .panel-shell-collapse,
-  #hud:not(.map-mode):not(.dock-mode) #hud-combat-shelf-toggle,
   #hud:not(.map-mode):not(.dock-mode) #hud-chase-reset {
     min-width: var(--hit-target-min);
     min-height: var(--hit-target-min);
@@ -334,7 +313,6 @@ export const COMBAT_VIEW_STYLE = `
 @media (prefers-reduced-motion: reduce) {
   #hud:not(.map-mode):not(.dock-mode) .combat-panel *,
   #hud:not(.map-mode):not(.dock-mode) #hud-globalstatus,
-  #hud:not(.map-mode):not(.dock-mode) #hud-combat-shelf-toggle,
   #hud:not(.map-mode):not(.dock-mode) #hud-chase-reset {
     transition-duration: 0.001ms !important;
   }

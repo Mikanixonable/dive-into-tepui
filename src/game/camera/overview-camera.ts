@@ -111,7 +111,7 @@ export class OverviewCamera {
     private readonly ephemeris: Ephemeris,
     saved?: OverviewCameraSaveData,
   ) {
-    this.rotationMode = saved?.rotationMode === 'euler' ? 'euler' : 'quaternion';
+    this.rotationMode = saved?.rotationMode ?? 'euler';
     this.projectionMode = saved?.projectionMode === 'orthographic' ? 'orthographic' : 'perspective';
     this._referencePlane = saved?.referencePlane === 'ecliptic' || saved?.referencePlane === 'moonOrbit'
       ? saved.referencePlane : 'equator';
@@ -165,23 +165,45 @@ export class OverviewCamera {
     return qFromForwardUp(norm(offset), norm(up)) ?? { x: 0, y: 0, z: 0, w: 1 };
   }
 
-  private eulerFromRotation(rotation: Quat): CameraEuler {
+  // Euler 操作の極はカメラ座標系の +Y ではなく、表示時刻の地球自転軸にする。
+  // 座標系が慣性系以外でも、地球の自転軸を同じ座標系へ変換してから使う。
+  private eulerPolarAxis(): Vec3 {
+    const tf = this.ephemeris.frameTransformAt(this._cameraFrame, this.displayTime, this.attractors);
+    return norm(frameDirVector(toFrameDir(tf, this.framePlaneNormal('equator'))));
+  }
+
+  private eulerBasis(polar: Vec3): { reference: Vec3; east: Vec3 } {
+    let reference = sub(FRAME_RIGHT, scale(polar, dot(FRAME_RIGHT, polar)));
+    if (lenSq(reference) < 1e-8) reference = sub(FRAME_FORWARD, scale(polar, dot(FRAME_FORWARD, polar)));
+    reference = norm(reference);
+    return { reference, east: norm(cross(reference, polar)) };
+  }
+
+  private eulerFromRotation(rotation: Quat, polar = this.eulerPolarAxis()): CameraEuler {
     const offset = qRotate(rotation, FRAME_FORWARD);
-    const pitch = Math.asin(Math.max(-1, Math.min(1, offset.y)));
-    const yaw = Math.atan2(offset.z, offset.x);
+    const basis = this.eulerBasis(polar);
+    const pitch = Math.asin(Math.max(-1, Math.min(1, dot(offset, polar))));
+    const horizontal = sub(offset, scale(polar, dot(offset, polar)));
+    const yaw = Math.atan2(dot(horizontal, basis.east), dot(horizontal, basis.reference));
     const up = qRotate(rotation, FRAME_UP);
-    let referenceUp = sub(FRAME_UP, scale(offset, dot(FRAME_UP, offset)));
-    if (lenSq(referenceUp) < 1e-8) referenceUp = sub(FRAME_RIGHT, scale(offset, dot(FRAME_RIGHT, offset)));
+    let referenceUp = sub(polar, scale(offset, dot(polar, offset)));
+    if (lenSq(referenceUp) < 1e-8) referenceUp = sub(basis.reference, scale(offset, dot(basis.reference, offset)));
     referenceUp = norm(referenceUp);
     const roll = Math.atan2(dot(offset, cross(referenceUp, up)), dot(referenceUp, up));
     return { yaw, pitch: Math.max(-EULER_PITCH_LIMIT, Math.min(EULER_PITCH_LIMIT, pitch)), roll };
   }
 
-  private rotationFromEuler(euler: CameraEuler): Quat {
+  private rotationFromEuler(euler: CameraEuler, polar = this.eulerPolarAxis()): Quat {
     const pitch = Math.max(-EULER_PITCH_LIMIT, Math.min(EULER_PITCH_LIMIT, euler.pitch));
-    const offset = sphericalOffset(euler.yaw, pitch, 1);
-    let referenceUp = sub(FRAME_UP, scale(offset, dot(FRAME_UP, offset)));
-    if (lenSq(referenceUp) < 1e-8) referenceUp = sub(FRAME_RIGHT, scale(offset, dot(FRAME_RIGHT, offset)));
+    const basis = this.eulerBasis(polar);
+    const cp = Math.cos(pitch);
+    const offset = addScaled(
+      addScaled(scale(basis.reference, cp * Math.cos(euler.yaw)), basis.east, cp * Math.sin(euler.yaw)),
+      polar,
+      Math.sin(pitch),
+    );
+    let referenceUp = sub(polar, scale(offset, dot(polar, offset)));
+    if (lenSq(referenceUp) < 1e-8) referenceUp = sub(basis.reference, scale(offset, dot(basis.reference, offset)));
     const base = this.rotationFromBasis(offset, norm(referenceUp));
     return qNormalize(qMul(qFromAxisAngle(offset, euler.roll), base));
   }
@@ -463,7 +485,7 @@ export class OverviewCamera {
       offFrame = qRotate(this.rotationQ, FRAME_FORWARD);
       upFrame = qRotate(this.rotationQ, FRAME_UP);
       const screenRight = norm(cross(scale(offFrame, -1), upFrame));
-      const dragVec = addScaled(scale(screenRight, mouse.dx), upFrame, mouse.dy);
+      const dragVec = addScaled(scale(screenRight, mouse.dx), upFrame, -mouse.dy);
       const dragLen = Math.hypot(dragVec.x, dragVec.y, dragVec.z);
       if (dragLen > 1e-9) {
         const axis = norm(cross(dragVec, offFrame));
