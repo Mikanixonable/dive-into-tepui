@@ -6,7 +6,7 @@ import { ProjectFn } from './camera-system';
 import { MarkerManager } from '../marker/marker-manager';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { celestialBodyName } from '../hud/frame-labels';
-import { isOccluded } from '../../physics/occlusion';
+import { occlusionOpacity } from '../../physics/occlusion';
 import { BodyClassToggles, systemMembersAt } from '../celestial/body-visibility';
 import { bodyClassOf } from '../celestial/body-class';
 import { MapVisibilityPolicy } from '../celestial/map-visibility';
@@ -16,7 +16,7 @@ import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 
 type MutableMapPickable = { -readonly [K in keyof MapPickable]: MapPickable[K] };
 type ProjectedFocusLabel = { label: FocusLabel; x: number; y: number };
-type FocusProjection = { occluded: boolean; x: number; y: number; front: boolean };
+type FocusProjection = { occluded: boolean; opacity: number; x: number; y: number; front: boolean };
 
 export interface FocusLabel {
   id: string;
@@ -277,9 +277,10 @@ export class FocusMarkers {
     const projected = this.projectedScratch;
     projected.length = 0;
     for (const lbl of this.shownLabels) {
-      const occluded = isOccluded(cameraPos, lbl.pos, this.attractors);
+      const opacity = occlusionOpacity(cameraPos, lbl.pos, this.attractors);
+      const occluded = opacity <= 0;
       const p = project(lbl.pos);
-      frame.set(lbl.id, { occluded, x: p.x, y: p.y, front: p.front });
+      frame.set(lbl.id, { occluded, opacity, x: p.x, y: p.y, front: p.front });
       if (!occluded && p.front && lbl.showLabel) projected.push({ label: lbl, x: p.x, y: p.y });
     }
 
@@ -332,17 +333,19 @@ export class FocusMarkers {
     for (const lbl of this.shownLabels) {
       shownIds.push(lbl.id);
       const projectedState = frame.get(lbl.id);
-      if (projectedState?.occluded ?? true) {
+      if (projectedState === undefined || projectedState.occluded) {
         lbl.pickable = false;
         this.markerManager.hide(lbl.id);
         continue;
       }
+      const markerOpacity = projectedState.opacity;
       // 優先度で隠すのはラベルだけ。アイコンまで消すと、表示設定の icon/label 分離と
       // フォーカス対象の存在表示が崩れる。
       lbl.pickable = lbl.showIcon || !hiddenByPriority.has(lbl.id);
       this.markerManager.setPosition(
         lbl.id, lbl.isLagrange ? 'mk-poi mk-lagrange' : 'mk-poi', lbl.showIcon ? ENTITY_GLYPH.body : '', lbl.pos, project,
         lbl.showLabel && !hiddenByPriority.has(lbl.id) ? lbl.markerLabel : '',
+        markerOpacity,
       );
     }
     const nowShown = this.nowShownScratch;

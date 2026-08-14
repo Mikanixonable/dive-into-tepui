@@ -3,12 +3,50 @@
 // 選出可否は、この1関数を両方が呼ぶことで揃える — 見えているのに押せない/見えないのに
 // 押せる、という食い違いを防ぐ。
 import { KinematicState } from './kinematic-state';
-import { addScaled, dot, lenSq, sub, Vec3 } from './vec3';
+import { addScaled, dot, len, lenSq, sub, Vec3 } from './vec3';
 
 // 手前側交点が対象点よりこの距離以上カメラ寄りのときだけ遮蔽と判定する余裕。対象点自身が
 // その天体の表面上・近傍にある(その天体を回っている物体など)場合に、丸め誤差で
 // 自己遮蔽と誤判定しないためのマージン。
 const OCCLUSION_MARGIN = 1;
+const OCCLUSION_FADE_START = 2;
+const OCCLUSION_FADE_END = 1.5;
+
+// 遮蔽中の天体マーカーを、手前の天体の近傍だけ段階的に減衰させる係数を返す。
+// 手前の天体から対象点までの距離をその天体の半径で正規化し、1.5R をセーフゾーンの
+// 内側(完全非表示)、2R をフェード開始点(完全表示)とする。複数の天体が遮る場合は
+// 最も強く減衰する天体を採用する。
+export function occlusionOpacity<T extends { readonly radius: number; readonly state: KinematicState }>(
+  cameraPos: Vec3,
+  point: Vec3,
+  attractors: readonly T[],
+): number {
+  const toPoint = sub(point, cameraPos);
+  const dist = len(toPoint);
+  if (dist < 1e-6) return 1;
+  const dir = { x: toPoint.x / dist, y: toPoint.y / dist, z: toPoint.z / dist } as Vec3;
+  let opacity = 1;
+
+  for (const attractor of attractors) {
+    const fromAttractorToPoint = sub(point, attractor.state.r);
+    const targetDistance = len(fromAttractorToPoint);
+    if (targetDistance <= attractor.radius) continue;
+    const oc = sub(attractor.state.r, cameraPos);
+    const tca = dot(oc, dir);
+    if (tca <= 0) continue;
+    const perp = addScaled(oc, dir, -tca);
+    const radiusSq = attractor.radius * attractor.radius;
+    if (lenSq(perp) >= radiusSq) continue;
+    const t0 = tca - Math.sqrt(radiusSq - lenSq(perp));
+    if (t0 <= 0 || t0 >= dist - OCCLUSION_MARGIN) continue;
+
+    const normalizedDistance = targetDistance / attractor.radius;
+    const fade = Math.max(0, Math.min(1,
+      (normalizedDistance - OCCLUSION_FADE_END) / (OCCLUSION_FADE_START - OCCLUSION_FADE_END)));
+    opacity = Math.min(opacity, fade);
+  }
+  return opacity;
+}
 
 // cameraPos から point への視線が attractors のいずれかの球体に遮られていれば true。
 export function isOccluded<T extends { readonly radius: number; readonly state: KinematicState }>(
