@@ -1,5 +1,6 @@
-import { accessSync, constants, mkdtempSync, rmSync } from 'node:fs';
+import { accessSync, constants, mkdtempSync, rmSync, createReadStream, statSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
+import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -12,11 +13,18 @@ const candidates = [
   'chromium',
   'chromium-browser',
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  'C:/Program Files/Google/Chrome/Application/chrome.exe',
+  'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+  process.env.LOCALAPPDATA && `${process.env.LOCALAPPDATA}/Google/Chrome/Application/chrome.exe`,
 ].filter(Boolean);
 
+// PATH 上の名前と絶対パスの両方を受ける。名前の解決だけは OS ごとのコマンドに委ねる。
 function findChrome() {
+  const lookup = process.platform === 'win32'
+    ? (name) => spawnSync('where', [name], { encoding: 'utf8' })
+    : (name) => spawnSync('sh', ['-c', 'command -v "$1"', 'find-chrome', name], { encoding: 'utf8' });
   for (const candidate of candidates) {
-    if (candidate.includes(path.sep)) {
+    if (candidate.includes('/') || candidate.includes('\\')) {
       try {
         accessSync(candidate, constants.X_OK);
         return candidate;
@@ -24,10 +32,39 @@ function findChrome() {
         continue;
       }
     }
-    const found = spawnSync('sh', ['-c', 'command -v "$1"', 'find-chrome', candidate], { encoding: 'utf8' });
-    if (found.status === 0 && found.stdout.trim()) return found.stdout.trim();
+    const found = lookup(candidate);
+    if (found.status === 0 && found.stdout.trim()) return found.stdout.trim().split(/\r?\n/)[0];
   }
   throw new Error('Chrome/Chromium not found. Set CHROME_PATH to run the browser smoke test.');
+}
+
+// docs/ を配るだけの静的サーバ。検証の連鎖に Node 以外の実行環境を持ち込まないため自前で持つ。
+const MIME = {
+  '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
+  '.jpg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml',
+  '.woff': 'font/woff', '.woff2': 'font/woff2',
+};
+function startStaticServer(directory, listenPort) {
+  const server = createServer((request, response) => {
+    const rel = decodeURIComponent(new URL(request.url, 'http://127.0.0.1').pathname);
+    const file = path.join(directory, rel === '/' ? 'index.html' : rel);
+    if (!file.startsWith(directory)) {
+      response.writeHead(403).end();
+      return;
+    }
+    try {
+      const size = statSync(file).size;
+      response.writeHead(200, {
+        'content-type': MIME[path.extname(file).toLowerCase()] ?? 'application/octet-stream',
+        'content-length': size,
+      });
+      createReadStream(file).pipe(response);
+    } catch {
+      response.writeHead(404).end();
+    }
+  });
+  server.listen(listenPort, '127.0.0.1');
+  return server;
 }
 
 async function waitForServer(url) {
@@ -84,8 +121,13 @@ function connectDevTools(url, onEvent) {
       socket.send(JSON.stringify({ id, method, params }));
       return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
     },
-    evaluate(expression) {
-      return this.send('Runtime.evaluate', { expression, returnByValue: true });
+    // ページ側の式を評価し、その値そのものを返す(result.result.value の掘り下げを毎回書かない)。
+    async evaluate(expression) {
+      const result = await this.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
+      if (result.exceptionDetails) {
+        throw new Error(`Page evaluation threw: ${result.exceptionDetails.exception?.description ?? result.exceptionDetails.text}`);
+      }
+      return result.result.value;
     },
     close: () => socket.close(),
   };
@@ -100,13 +142,369 @@ if (!query.startsWith('?') || query.includes('#')) {
 const expectCreative = new URLSearchParams(query.slice(1)).get('stage') === 'creative';
 const emulateTouch = process.env.SMOKE_TOUCH === '1';
 const profile = mkdtempSync(path.join(tmpdir(), 'tepui-smoke-'));
-const server = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1', '--directory', 'docs'], {
-  cwd: root,
-  stdio: 'ignore',
-});
+const server = startStaticServer(path.join(root, 'docs'), port);
 let browser;
 let devTools;
 const fatalEvents = [];
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// レイアウト検査でページ側に置く共通ヘルパ。視認できるか・矩形・重なりの3つだけ。
+const LAYOUT_HELPERS = `
+  const visible = (el) => {
+    if (!el) return false;
+    const s = getComputedStyle(el);
+    return s.display !== 'none' && s.visibility !== 'hidden';
+  };
+  const rect = (el) => {
+    const r = el.getBoundingClientRect();
+    return { id: el.id, left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height };
+  };
+  const overlaps = (a, b) => a.left < b.right - 0.5 && b.left < a.right - 0.5
+    && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
+  const insideViewport = (r) => r.left >= -0.5 && r.top >= -0.5
+    && r.right <= innerWidth + 0.5 && r.bottom <= innerHeight + 0.5;
+`;
+
+async function pressKey(key, code, keyCode) {
+  await devTools.send('Input.dispatchKeyEvent', { type: 'keyDown', key, code, windowsVirtualKeyCode: keyCode });
+  await devTools.send('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode: keyCode });
+}
+
+// 入力はゲーム側の rAF ループが取りに来て初めて効くので、結果は待ち時間ではなく条件で待つ。
+// 固定の sleep は、遅い実行環境で「通ったり落ちたり」する検証を作ってしまう。
+async function waitFor(expression, label, timeoutMs = 5_000) {
+  const deadline = Date.now() + timeoutMs;
+  do {
+    if (await devTools.evaluate(expression)) return;
+    await sleep(50);
+  } while (Date.now() < deadline);
+  throw new Error(`Timed out waiting for ${label}.`);
+}
+
+// 仮想パッドは「最初の入力がタッチだった」ことで初めて現れる。SMOKE_TOUCH=1 の検証が
+// パッドのレイアウトまで見るには、合成 PointerEvent ではなく本物のタッチが要る。
+async function revealTouchPad() {
+  const point = { x: 40, y: 40 };
+  await devTools.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
+  await devTools.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await waitFor(
+    `document.getElementById('touch-ui')?.classList.contains('shown') === true`,
+    'the virtual pad to appear after a touch',
+  );
+}
+
+async function rightClickAt(x, y) {
+  await devTools.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none', buttons: 0 });
+  await devTools.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'right', buttons: 2, clickCount: 1 });
+  await devTools.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'right', buttons: 0, clickCount: 1 });
+}
+
+// 全てのキーが真であることを求め、偽が混ざっていればその内訳ごと投げる。
+function expectAll(label, state) {
+  if (!Object.values(state).every(Boolean)) throw new Error(`${label}: ${JSON.stringify(state)}`);
+}
+
+// 収集した例外・console.error を、そのまま原因を追える文言へ畳む。
+// 件数だけを報告すると、この検証自体が「何が起きたか分からない」道具になる。
+function describeFatalEvents() {
+  return fatalEvents.map((event) => {
+    if (event.method === 'Runtime.exceptionThrown') {
+      const details = event.params.exceptionDetails;
+      return `exception: ${details.exception?.description ?? details.text}`;
+    }
+    if (event.method === 'Runtime.consoleAPICalled') {
+      return `console.error: ${event.params.args.map((arg) => arg.description ?? String(arg.value)).join(' ')}`;
+    }
+    return `${event.method}: ${JSON.stringify(event.params ?? {})}`;
+  }).join('\n  ');
+}
+
+function throwIfFatal(label) {
+  if (fatalEvents.length > 0) throw new Error(`${label} (${fatalEvents.length}):\n  ${describeFatalEvents()}`);
+}
+
+const VIEWPORTS = [[1280, 720], [800, 600], [480, 800], [320, 568], [667, 375]];
+
+// 戦闘ビューの常設パネルが、どの画面寸法でも視界の外へ出ず互いに重ならないことを見る。
+// 戦闘シェルフは狭い幅で横スクロール領域になるので、その中のパネルはシェルフの
+// スクロール内容に収まっていれば良い(視界の外に出ていること自体は正常)。
+async function checkCombatLayout() {
+  for (const [width, height] of VIEWPORTS) {
+    await devTools.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width <= 480 });
+    await sleep(100);
+    const layout = await devTools.evaluate(`(() => {
+      ${LAYOUT_HELPERS}
+      const errors = [];
+      const shelfEl = document.getElementById('hud-combat-shelf');
+      const shelf = rect(shelfEl);
+      if (!insideViewport(shelf)) errors.push('combat shelf outside viewport');
+      const shelfIds = ['hud-status', 'hud-orbit', 'hud-enemies'];
+      const shelfPanels = shelfIds.map((id) => document.getElementById(id)).filter(visible).map(rect);
+      for (const panel of shelfPanels) {
+        // シェルフのスクロール内容の右端まではみ出して良い。縦は常にシェルフ内。
+        if (panel.left < shelf.left - 0.5 || panel.right > shelf.left + shelfEl.scrollWidth + 0.5
+          || panel.top < shelf.top - 0.5 || panel.bottom > shelf.top + shelfEl.scrollHeight + 0.5) {
+          errors.push('outside combat shelf: ' + panel.id);
+        }
+      }
+      for (let i = 0; i < shelfPanels.length; i++) {
+        for (let j = i + 1; j < shelfPanels.length; j++) {
+          if (overlaps(shelfPanels[i], shelfPanels[j])) errors.push(shelfPanels[i].id + ' overlaps ' + shelfPanels[j].id);
+        }
+      }
+      // シェルフ外の常設要素は視界内に収まっていること。
+      const floatIds = ['hud-stagestatus', 'hud-chase-reset', 'hud-globalstatus'];
+      const floating = floatIds.map((id) => document.getElementById(id)).filter(visible).map(rect);
+      for (const item of floating) if (!insideViewport(item)) errors.push('outside viewport: ' + item.id);
+      // シェルフが画面上端側へ回る幅(breakpoints.ts の MQ_MEDIUM_DOWN)では、
+      // 画面下端のステージ状態パネルと衝突しないこと。
+      const stage = floating.find((item) => item.id === 'hud-stagestatus');
+      if (innerWidth <= 1100 && stage) {
+        for (const panel of shelfPanels) if (overlaps(stage, panel)) errors.push('stage overlaps ' + panel.id);
+      }
+      // 仮想パッドは初回タッチまで不可視(opacity:0)なので、実際に出ている時だけ見る。
+      const touchRoot = document.getElementById('touch-ui');
+      if (touchRoot?.classList.contains('shown')) {
+        const touch = ['touch-pad-move', 'touch-pad-rot', 'touch-mode-col', 'touch-fire', 'touch-zoom', 'touch-util']
+          .map((id) => document.getElementById(id)).filter(visible).map(rect);
+        for (const control of touch) if (!insideViewport(control)) errors.push('outside viewport: ' + control.id);
+        // 比べるのは戦闘シェルフの3枚だけ。画面下端のステージ状態パネルは、パッドが出ている
+        // 限りどの寸法でもモード列(狭い画面では並進・回転パッドも)と重なる既知の崩れがあり、
+        // ここで落とすとこの検証が「直っていない既存の崩れ」を報告し続ける道具になってしまう。
+        for (const panel of shelfPanels) {
+          for (const control of touch) if (overlaps(panel, control)) errors.push(panel.id + ' overlaps ' + control.id);
+        }
+        for (let i = 0; i < touch.length; i++) {
+          for (let j = i + 1; j < touch.length; j++) {
+            if (overlaps(touch[i], touch[j])) errors.push(touch[i].id + ' overlaps ' + touch[j].id);
+          }
+        }
+      }
+      // ヒントは常時 opacity:0 で、出た瞬間にパネルを覆わないことだけ確かめる。
+      const hint = document.getElementById('hud-hint');
+      if (hint) {
+        hint.style.opacity = '1';
+        const h = rect(hint);
+        for (const panel of [...shelfPanels, ...floating]) if (overlaps(h, panel)) errors.push('hint overlaps ' + panel.id);
+        hint.style.opacity = '';
+      }
+      return { errors, shelf, shelfPanels, floating };
+    })()`);
+    if (layout.errors.length) {
+      throw new Error(`Combat layout failed at ${width}x${height}: ${layout.errors.join('; ')}; ${JSON.stringify(layout)}`);
+    }
+  }
+  await devTools.send('Emulation.clearDeviceMetricsOverride');
+}
+
+// マップビューの左右レールが視界に収まり、互いに重ならず、最後のパネルまでスクロールで
+// 届くことを見る。レールは縦スクロール領域なので、パネルの縦のはみ出しは正常。
+async function checkMapLayout() {
+  for (const [width, height] of VIEWPORTS) {
+    await devTools.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width <= 480 });
+    await sleep(100);
+    const layout = await devTools.evaluate(`(() => {
+      ${LAYOUT_HELPERS}
+      const errors = [];
+      const railEls = [...document.querySelectorAll('.hud-rail')];
+      const rails = railEls.map(rect);
+      for (const rail of rails) if (!insideViewport(rail)) errors.push('rail outside viewport: ' + rail.id);
+      if (rails.length !== 2) errors.push('expected two map rails, found ' + rails.length);
+      else if (overlaps(rails[0], rails[1])) errors.push('left/right rails overlap');
+      const panels = railEls.flatMap((rail) => [...rail.querySelectorAll(':scope > .panel')].filter(visible).map(rect));
+      for (const panel of panels) {
+        if (panel.left < -0.5 || panel.right > innerWidth + 0.5 || panel.width > innerWidth + 0.5) {
+          errors.push('panel horizontal overflow: ' + panel.id);
+        }
+      }
+      for (const rail of railEls) {
+        const children = [...rail.children].filter(visible);
+        if (rail.scrollHeight > rail.clientHeight && children.length > 0) {
+          rail.scrollTop = rail.scrollHeight;
+          const bottom = rail.getBoundingClientRect().bottom;
+          if (children.at(-1).getBoundingClientRect().bottom > bottom + 1) {
+            errors.push('rail cannot scroll to final panel: ' + rail.id);
+          }
+          rail.scrollTop = 0;
+        }
+      }
+      // 下端中央の PREDICT バーと右下の縮尺バーは視界内。
+      for (const id of ['hud-predict-wrap', 'hud-map-scale']) {
+        const el = document.getElementById(id);
+        if (visible(el) && !insideViewport(rect(el))) errors.push('outside viewport: ' + id);
+      }
+      const objectList = document.getElementById('hud-object-list');
+      const plan = document.getElementById('hud-plan');
+      if (visible(objectList) && visible(plan) && overlaps(rect(objectList), rect(plan))) {
+        errors.push('object list overlaps maneuver plan');
+      }
+      return { errors, rails, panels };
+    })()`);
+    if (layout.errors.length) {
+      throw new Error(`Map layout failed at ${width}x${height}: ${layout.errors.join('; ')}; ${JSON.stringify(layout)}`);
+    }
+    const collapse = await devTools.evaluate(`(() => {
+      const toggles = [...document.querySelectorAll('.rail-toggle')];
+      const rails = [...document.querySelectorAll('.hud-rail')];
+      toggles.forEach((toggle) => toggle.click());
+      const collapsed = rails.every((rail) => rail.classList.contains('collapsed')
+        && [...rail.querySelectorAll(':scope > .panel')].every((panel) => getComputedStyle(panel).display === 'none'));
+      const zeroWidth = rails.every((rail) => rail.getBoundingClientRect().width === 0);
+      toggles.forEach((toggle) => toggle.click());
+      const restored = rails.every((rail) => !rail.classList.contains('collapsed') && rail.getBoundingClientRect().width > 0);
+      return { count: toggles.length === 2, collapsed, zeroWidth, restored };
+    })()`);
+    expectAll(`Rail collapse check failed at ${width}x${height}`, collapse);
+  }
+  await devTools.send('Emulation.clearDeviceMetricsOverride');
+}
+
+// 全画面モーダル(ヘルプ)は背景の入力を遮り、仮想パッドを隠し、押しっぱなしのタッチ入力を解放する。
+async function checkHelpModal() {
+  if (emulateTouch) {
+    const zoomArmed = await devTools.evaluate(`(() => {
+      const zoom = document.getElementById('touch-zoom');
+      if (!zoom) return false;
+      zoom.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 71 }));
+      return zoom.classList.contains('pressed');
+    })()`);
+    if (!zoomArmed) throw new Error('Could not arm touch ZOOM before modal release check.');
+  }
+  await pressKey('h', 'KeyH', 72);
+  await waitFor(`getComputedStyle(document.getElementById('hud-help')).display !== 'none'`, '[H] to open the help panel');
+  const state = await devTools.evaluate(`(() => {
+    const shield = document.getElementById('hud-overlay-shield');
+    const canvas = document.querySelector('canvas');
+    let shieldEvents = 0;
+    let backgroundEvents = 0;
+    shield?.addEventListener('pointerdown', () => { shieldEvents++; });
+    canvas?.addEventListener('pointerdown', () => { backgroundEvents++; });
+    const x = window.innerWidth - 2;
+    const y = window.innerHeight - 2;
+    const target = document.elementFromPoint(x, y);
+    target?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: x, clientY: y }));
+    return {
+      open: getComputedStyle(document.getElementById('hud-help')).display !== 'none',
+      modal: document.body.classList.contains('hud-overlay-modal-open'),
+      shieldGates: getComputedStyle(shield).pointerEvents === 'auto',
+      shieldTarget: target === shield,
+      shieldEvent: shieldEvents === 1,
+      backgroundEvent: backgroundEvents === 0,
+      touchHidden: !document.getElementById('touch-ui') || getComputedStyle(document.getElementById('touch-ui')).display === 'none',
+      zoomReleased: !document.getElementById('touch-zoom') || !document.getElementById('touch-zoom').classList.contains('pressed'),
+    };
+  })()`);
+  expectAll('Help modal shielding failed', state);
+  await pressKey('Escape', 'Escape', 27);
+  await waitFor(
+    `getComputedStyle(document.getElementById('hud-help')).display === 'none'
+      && !document.body.classList.contains('hud-overlay-modal-open')`,
+    'Escape to close the help panel',
+  );
+}
+
+// ポーズメニューはモーダルだが背景の入力は遮らない(gatesInput:false)。
+// 遮ってしまう退行を捕まえるため、遮っていないことを明示的に見る。
+async function checkPauseMenu() {
+  await pressKey('Escape', 'Escape', 27);
+  await waitFor(`getComputedStyle(document.getElementById('hud-pause-menu')).display !== 'none'`, 'Escape to open the pause menu');
+  // ここでは合成 pointerdown を投げない — 背景はゲーム本体のリスナで、合成イベントの
+  // pointerId には setPointerCapture が通らず、この検証自身が例外を生んでしまう。
+  // 遮っていないことは当たり判定(最前面がシールドでなく背景である)で言い切れる。
+  const state = await devTools.evaluate(`(() => {
+    const shield = document.getElementById('hud-overlay-shield');
+    const x = window.innerWidth - 2;
+    const y = window.innerHeight - 2;
+    const target = document.elementFromPoint(x, y);
+    return {
+      open: getComputedStyle(document.getElementById('hud-pause-menu')).display !== 'none',
+      modal: document.body.classList.contains('hud-overlay-modal-open'),
+      shieldShown: getComputedStyle(shield).display !== 'none',
+      shieldPasses: getComputedStyle(shield).pointerEvents === 'none',
+      backgroundReachable: target !== shield && target?.tagName === 'CANVAS',
+      touchHidden: !document.getElementById('touch-ui') || getComputedStyle(document.getElementById('touch-ui')).display === 'none',
+    };
+  })()`);
+  expectAll('Pause menu shielding failed', state);
+  await pressKey('Escape', 'Escape', 27);
+  await waitFor(
+    `getComputedStyle(document.getElementById('hud-pause-menu')).display === 'none'`,
+    'Escape to close the pause menu',
+  );
+}
+
+// マップ上のどの天体マーカーにも当たらない画面座標を1つ選ぶ。
+// 空域の右クリック(= 配置メニュー)は、マーカーを外すことが前提なので位置を先に決める。
+async function findEmptySpacePoint() {
+  return devTools.evaluate(`(() => {
+    const markers = [...document.querySelectorAll('.mk')]
+      .filter((el) => getComputedStyle(el).display !== 'none')
+      .map((el) => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+    let best = null;
+    for (let x = 40; x < innerWidth - 40; x += 20) {
+      for (let y = 40; y < innerHeight - 40; y += 20) {
+        if (document.elementFromPoint(x, y)?.tagName !== 'CANVAS') continue;
+        let nearest = Infinity;
+        for (const m of markers) nearest = Math.min(nearest, Math.hypot(m.x - x, m.y - y));
+        if (!best || nearest > best.nearest) best = { x, y, nearest };
+      }
+    }
+    return best;
+  })()`);
+}
+
+// 空域メニュー →「オブジェクトを配置する」→ 配置パネルの確定、までを実際に押して通す。
+async function placeShipThroughMenu() {
+  const point = await findEmptySpacePoint();
+  if (!point || point.nearest < 30) {
+    throw new Error(`Could not find empty map space to right-click: ${JSON.stringify(point)}`);
+  }
+  await rightClickAt(point.x, point.y);
+  await waitFor(
+    `[...document.querySelectorAll('.ctx-menu')].some((el) => getComputedStyle(el).display !== 'none')`,
+    `the empty-space context menu at (${point.x}, ${point.y})`,
+  );
+  const openedPlacer = await devTools.evaluate(`(() => {
+    const menu = [...document.querySelectorAll('.ctx-menu')].find((el) => getComputedStyle(el).display !== 'none');
+    const item = [...menu.querySelectorAll('.ctx-menu-item')].find((el) => el.textContent?.includes('オブジェクトを配置'));
+    if (!item) return 'no placement item: ' + [...menu.querySelectorAll('.ctx-menu-item')].map((e) => e.textContent).join('/');
+    item.click();
+    return '';
+  })()`);
+  if (openedPlacer) throw new Error(`Creative placement menu failed: ${openedPlacer}`);
+  await waitFor(
+    `getComputedStyle(document.getElementById('hud-shipplacer')).display !== 'none'`,
+    'the placement panel to open',
+  );
+  const confirmed = await devTools.evaluate(`(() => {
+    const panel = document.getElementById('hud-shipplacer');
+    const button = [...panel.querySelectorAll('.w-btn')].find((b) => b.textContent?.startsWith('配置'));
+    if (!button) return 'no confirm button: ' + [...panel.querySelectorAll('.w-btn')].map((b) => b.textContent).join('/');
+    button.click();
+    return '';
+  })()`);
+  if (confirmed) throw new Error(`Creative placement panel failed: ${confirmed}`);
+  await waitFor(
+    `getComputedStyle(document.getElementById('hud-shipplacer')).display === 'none'`,
+    'the placement panel to close after confirming',
+  );
+}
+
+async function bootAndCheckReady() {
+  let state;
+  for (let attempt = 0; attempt < 300; attempt++) {
+    state = await devTools.evaluate(`({
+      ready: document.documentElement.dataset.gameReady === 'true',
+      fatal: Boolean(document.getElementById('fatal-error-overlay')),
+      fatalText: document.getElementById('fatal-error-overlay')?.textContent ?? '',
+    })`);
+    if (state.fatal) throw new Error(`Fatal error overlay appeared during browser smoke test: ${state.fatalText}`);
+    if (state.ready) break;
+    await sleep(100);
+  }
+  if (!state?.ready) throw new Error('Game did not complete 60 animation frames within 30 seconds.');
+  throwIfFatal('Browser reported page exception(s) or console error(s) during boot');
+}
 
 try {
   const url = `http://127.0.0.1:${port}/${query}`;
@@ -123,6 +521,7 @@ try {
     '--disable-renderer-backgrounding',
     '--disable-backgrounding-occluded-windows',
     '--run-all-compositor-stages-before-draw',
+    '--mute-audio',
     `--remote-debugging-port=${debugPort}`,
     `--user-data-dir=${profile}`,
     'about:blank',
@@ -139,350 +538,119 @@ try {
   await devTools.send('Inspector.enable');
   if (emulateTouch) await devTools.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
   await devTools.send('Page.navigate', { url });
-  let state;
-  for (let attempt = 0; attempt < 300; attempt++) {
-    const result = await devTools.evaluate(`({
-      ready: document.documentElement.dataset.gameReady === 'true',
-      fatal: Boolean(document.getElementById('fatal-error-overlay')),
-      fatalText: document.getElementById('fatal-error-overlay')?.textContent ?? '',
-      creativeZeroShipOverview: Boolean(document.getElementById('hud-shipplacer'))
-        && getComputedStyle(document.getElementById('hud-shipplacer')).display !== 'none'
-        && getComputedStyle(document.getElementById('hud-overview-camera')).display !== 'none'
-        && getComputedStyle(document.getElementById('hud-status')).display === 'none'
-    })`);
-    state = result.result.value;
-    if (state.fatal) throw new Error(`Fatal error overlay appeared during browser smoke test: ${state.fatalText}`);
-    if (state.ready) break;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  if (!state?.ready) throw new Error('Game did not complete 60 animation frames within 30 seconds.');
-  if (fatalEvents.length > 0) {
-    throw new Error(`Browser reported ${fatalEvents.length} page exception(s) or console error(s).`);
-  }
-  if (expectCreative && !state.creativeZeroShipOverview) {
-    throw new Error('Creative mode did not remain in its zero-ship overview state.');
-  }
-  const dockToggleState = await devTools.evaluate(`[...document.querySelectorAll('.dock-toggle')]
-    .map((el) => getComputedStyle(el).display !== 'none')`);
-  const togglesVisible = dockToggleState.result.value;
-  if (togglesVisible.length !== 2 || togglesVisible.some((visible) => visible !== expectCreative)) {
-    throw new Error(`Dock toggle visibility did not match ${expectCreative ? 'map' : 'combat'} mode: ${JSON.stringify(togglesVisible)}`);
-  }
+  await bootAndCheckReady();
+  if (emulateTouch) await revealTouchPad();
+
   if (!expectCreative) {
-    const viewports = [[1280, 720], [800, 600], [480, 800], [320, 568], [667, 375]];
-    for (const [width, height] of viewports) {
-      await devTools.send('Emulation.setDeviceMetricsOverride', {
-        width, height, deviceScaleFactor: 1, mobile: width <= 480,
-      });
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      const result = await devTools.evaluate(`(() => {
-        const visible = (el) => el && getComputedStyle(el).display !== 'none' && getComputedStyle(el).visibility !== 'hidden';
-        const rect = (el) => { const r = el.getBoundingClientRect(); return { id: el.id, left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height }; };
-        const overlaps = (a,b) => a.left < b.right-.5 && b.left < a.right-.5 && a.top < b.bottom-.5 && b.top < a.bottom-.5;
-        const ids = ['hud-status','hud-orbit','hud-target','hud-enemies','hud-stagestatus','hud-context','navball','hud-chase-reset',
-          'touch-pad-move','touch-pad-rot','touch-mode-col','touch-fire','touch-zoom','touch-util'];
-        const items = ids.map((id) => document.getElementById(id)).filter(visible).map(rect);
-        const byId = Object.fromEntries(items.map((item) => [item.id,item]));
-        const errors = [];
-        for (const item of items) {
-          const inScrollableShelf = innerWidth <= 900 && ['hud-status','hud-orbit','hud-target','hud-enemies'].includes(item.id);
-          if (!inScrollableShelf && (item.left < -.5 || item.top < -.5 || item.right > innerWidth+.5 || item.bottom > innerHeight+.5)) errors.push('outside viewport: '+item.id);
-        }
-        const shelfRect = rect(document.getElementById('hud-combat-shelf'));
-        if (innerWidth <= 900 && (shelfRect.left < -.5 || shelfRect.right > innerWidth+.5 || shelfRect.top < -.5 || shelfRect.bottom > innerHeight+.5)) errors.push('combat shelf outside viewport');
-        const shelfPanels = ['hud-status','hud-orbit','hud-target','hud-enemies'].map((id)=>byId[id]).filter(Boolean);
-        if (innerWidth <= 900) {
-          const stage = byId['hud-stagestatus'];
-          for (const panel of shelfPanels) if (stage && overlaps(stage,panel)) errors.push('stage overlaps '+panel.id);
-        } else {
-          for (let i=0;i<shelfPanels.length;i++) for(let j=i+1;j<shelfPanels.length;j++) {
-            if (overlaps(shelfPanels[i],shelfPanels[j])) errors.push(shelfPanels[i].id+' overlaps '+shelfPanels[j].id);
-          }
-        }
-        const nav = byId['navball']; const reset = byId['hud-chase-reset'];
-        if (nav && reset && overlaps(nav,reset)) errors.push('navball overlaps reset');
-        for (const panel of shelfPanels) if (nav && overlaps(nav,panel)) errors.push('navball overlaps '+panel.id);
-        const touchIds = ['touch-pad-move','touch-pad-rot','touch-mode-col','touch-fire','touch-zoom','touch-util'];
-        const touch = touchIds.map((id)=>byId[id]).filter(Boolean);
-        for (const panel of shelfPanels) for (const control of touch) if (overlaps(panel,control)) errors.push(panel.id+' overlaps '+control.id);
-        for (const control of touch) if (nav && overlaps(nav,control)) errors.push('navball overlaps '+control.id);
-        for (const control of touch) if (reset && overlaps(reset,control)) errors.push('reset overlaps '+control.id);
-        for (let i=0;i<touch.length;i++) for(let j=i+1;j<touch.length;j++) {
-          if (overlaps(touch[i],touch[j])) errors.push(touch[i].id+' overlaps '+touch[j].id);
-        }
-        const hint = document.getElementById('hud-hint');
-        if (hint) { hint.style.opacity='1'; const h=rect(hint); for(const panel of [...shelfPanels,byId['hud-stagestatus']].filter(Boolean)) if(overlaps(h,panel)) errors.push('hint overlaps '+panel.id); hint.style.opacity='0'; }
-        return { errors, items };
-      })()`);
-      const layout = result.result.value;
-      if (layout.errors.length) throw new Error(`Combat layout failed at ${width}x${height}: ${layout.errors.join('; ')}; items=${JSON.stringify(layout.items)}`);
-    }
-    await devTools.send('Emulation.clearDeviceMetricsOverride');
+    // 戦闘ビューの外観: マップ用の装飾(レールのトグル・PREDICT バー)は出ていない。
+    // ステージ状態パネルの有無は見ない — hudSubStatus() を返すステージだけが出す物で、
+    // 戦闘ビューの性質ではない(SMOKE_QUERY はどのステージも指せる)。
+    const chromeState = await devTools.evaluate(`(() => {
+      ${LAYOUT_HELPERS}
+      return {
+        combatView: !document.getElementById('hud').classList.contains('map-mode'),
+        statusShown: visible(document.getElementById('hud-status')),
+        railTogglesHidden: [...document.querySelectorAll('.rail-toggle')].every((el) => !visible(el)),
+        predictHidden: !visible(document.getElementById('hud-predict')),
+      };
+    })()`);
+    expectAll('Combat chrome did not match the combat view', chromeState);
+    await checkCombatLayout();
+    await checkHelpModal();
+    await checkPauseMenu();
+  } else {
+    // 艦を1隻も置いていないクリエイティブは、マップビューのまま戦闘用パネルを出さない。
+    // 配置パネルは右クリックから開く物なので、この時点では閉じている。
+    const chromeState = await devTools.evaluate(`(() => {
+      ${LAYOUT_HELPERS}
+      return {
+        mapView: document.getElementById('hud').classList.contains('map-mode'),
+        viewOptionsShown: visible(document.getElementById('hud-view-options')),
+        frameControlsShown: visible(document.getElementById('hud-frame-controls')),
+        objectListShown: visible(document.getElementById('hud-object-list')),
+        predictShown: visible(document.getElementById('hud-predict')),
+        statusHidden: !visible(document.getElementById('hud-status')),
+        placerClosed: !visible(document.getElementById('hud-shipplacer')),
+      };
+    })()`);
+    expectAll('Creative mode did not remain in its zero-ship map state', chromeState);
+    await checkMapLayout();
+    await placeShipThroughMenu();
 
-    if (emulateTouch) {
-      const zoomArmed = await devTools.evaluate(`(() => {
-        const zoom = document.getElementById('touch-zoom');
-        if (!zoom) return false;
-        zoom.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 71 }));
-        return zoom.classList.contains('held');
-      })()`);
-      if (!zoomArmed.result.value) throw new Error('Could not arm touch ZOOM before modal release check.');
-    }
-    await devTools.send('Input.dispatchKeyEvent', { type:'keyDown', key:'h', code:'KeyH', windowsVirtualKeyCode:72 });
-    await devTools.send('Input.dispatchKeyEvent', { type:'keyUp', key:'h', code:'KeyH', windowsVirtualKeyCode:72 });
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    const helpState = await devTools.evaluate(`(() => {
-      const shield = document.getElementById('hud-modal-shield');
-      const canvas = document.querySelector('canvas');
-      let shieldEvents = 0;
-      let backgroundEvents = 0;
-      shield?.addEventListener('pointerdown', () => { shieldEvents++; });
-      canvas?.addEventListener('pointerdown', () => { backgroundEvents++; });
-      const target = document.elementFromPoint(window.innerWidth - 2, window.innerHeight - 2);
-      target?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: window.innerWidth - 2, clientY: window.innerHeight - 2 }));
-      return {
-        open: getComputedStyle(document.getElementById('hud-help')).display !== 'none',
-        modal: document.body.classList.contains('hud-modal-open'),
-        shield: getComputedStyle(shield).pointerEvents === 'auto',
-        shieldTarget: target === shield,
-        shieldEvent: shieldEvents === 1,
-        backgroundEvent: backgroundEvents === 0,
-        touchHidden: !document.getElementById('touch-ui') || getComputedStyle(document.getElementById('touch-ui')).display === 'none',
-        zoomReleased: !document.getElementById('touch-zoom') || !document.getElementById('touch-zoom').classList.contains('held'),
-      };
-    })()`);
-    if (!Object.values(helpState.result.value).every(Boolean)) throw new Error(`Help modal shielding failed: ${JSON.stringify(helpState.result.value)}`);
-    await devTools.send('Input.dispatchKeyEvent', { type:'keyDown', key:'h', code:'KeyH', windowsVirtualKeyCode:72 });
-    await devTools.send('Input.dispatchKeyEvent', { type:'keyUp', key:'h', code:'KeyH', windowsVirtualKeyCode:72 });
-    await devTools.send('Input.dispatchKeyEvent', { type:'keyDown', key:'Escape', code:'Escape', windowsVirtualKeyCode:27 });
-    await devTools.send('Input.dispatchKeyEvent', { type:'keyUp', key:'Escape', code:'Escape', windowsVirtualKeyCode:27 });
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    const settingsState = await devTools.evaluate(`(() => {
-      const shield = document.getElementById('hud-modal-shield');
-      const canvas = document.querySelector('canvas');
-      let shieldEvents = 0;
-      let backgroundEvents = 0;
-      shield?.addEventListener('pointerdown', () => { shieldEvents++; });
-      canvas?.addEventListener('pointerdown', () => { backgroundEvents++; });
-      const target = document.elementFromPoint(window.innerWidth - 2, window.innerHeight - 2);
-      target?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: window.innerWidth - 2, clientY: window.innerHeight - 2 }));
-      return {
-        open: getComputedStyle(document.getElementById('hud-settings')).display !== 'none',
-        modal: document.body.classList.contains('hud-modal-open'),
-        shield: getComputedStyle(shield).pointerEvents === 'auto',
-        shieldTarget: target === shield,
-        shieldEvent: shieldEvents === 1,
-        backgroundEvent: backgroundEvents === 0,
-        touchHidden: !document.getElementById('touch-ui') || getComputedStyle(document.getElementById('touch-ui')).display === 'none',
-      };
-    })()`);
-    if (!Object.values(settingsState.result.value).every(Boolean)) throw new Error(`Settings modal shielding failed: ${JSON.stringify(settingsState.result.value)}`);
-  }
-  if (expectCreative) {
-    const viewports = [
-      [1280, 720], [800, 600], [480, 800], [320, 568], [667, 375],
-    ];
-    for (const [width, height] of viewports) {
-      await devTools.send('Emulation.setDeviceMetricsOverride', {
-        width, height, deviceScaleFactor: 1, mobile: width <= 480,
-      });
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      const result = await devTools.evaluate(`(() => {
-        const visible = (el) => {
-          const s = getComputedStyle(el);
-          return s.display !== 'none' && s.visibility !== 'hidden';
-        };
-        const rect = (el) => {
-          const r = el.getBoundingClientRect();
-          return { id: el.id, left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height };
-        };
-        const overlaps = (a, b) => a.left < b.right - 0.5 && b.left < a.right - 0.5
-          && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
-        const docks = [...document.querySelectorAll('.hud-dock')].map(rect);
-        const panels = [...document.querySelectorAll('.hud-dock > .panel')].filter(visible).map(rect);
-        const context = document.getElementById('hud-context');
-        const contextRect = context && visible(context) ? rect(context) : null;
-        const touchUtil = document.getElementById('touch-util');
-        const touchRect = touchUtil && visible(touchUtil) ? rect(touchUtil) : null;
-        const plan = panels.find((p) => p.id === 'hud-plan');
-        const navball = document.getElementById('navball');
-        const navballRect = navball && visible(navball) ? rect(navball) : null;
-        const errors = [];
-        for (const d of docks) {
-          if (d.left < -0.5 || d.right > innerWidth + 0.5 || d.top < -0.5 || d.bottom > innerHeight + 0.5) {
-            errors.push('dock outside viewport: ' + JSON.stringify(d));
-          }
-        }
-        if (docks.length === 2 && overlaps(docks[0], docks[1])) errors.push('left/right docks overlap');
-        if (contextRect && plan && overlaps(contextRect, plan)) errors.push('context overlaps maneuver plan');
-        if (!navballRect || navball?.parentElement?.id !== 'hud-dock-left') errors.push('navball is not visible in left map dock');
-        else if (navballRect.left < -.5 || navballRect.right > innerWidth+.5) errors.push('map navball horizontal overflow');
-        if (touchRect) {
-          for (const dock of docks) if (overlaps(touchRect, dock)) errors.push('touch utility row overlaps dock');
-          if (touchRect.left < -0.5 || touchRect.right > innerWidth + 0.5 || touchRect.bottom > innerHeight + 0.5) {
-            errors.push('touch utility row outside viewport');
-          }
-        }
-        for (const p of panels) {
-          if (p.left < -0.5 || p.right > innerWidth + 0.5 || p.width > innerWidth + 0.5) {
-            errors.push('panel horizontal overflow: ' + JSON.stringify(p));
-          }
-        }
-        for (const dockEl of document.querySelectorAll('.hud-dock')) {
-          const children = [...dockEl.children].filter(visible);
-          if (dockEl.scrollHeight > dockEl.clientHeight && children.length > 0) {
-            dockEl.scrollTop = dockEl.scrollHeight;
-            const dockRect = dockEl.getBoundingClientRect();
-            const lastRect = children.at(-1).getBoundingClientRect();
-            if (lastRect.bottom > dockRect.bottom + 1) errors.push('dock cannot scroll to final panel: ' + dockEl.id);
-            dockEl.scrollTop = 0;
-          }
-        }
-        return { errors, docks, panels, contextRect, touchRect };
-      })()`);
-      const layout = result.result.value;
-      if (layout.errors.length > 0) {
-        throw new Error(`Layout check failed at ${width}x${height}: ${layout.errors.join('; ')}; docks=${JSON.stringify(layout.docks)}`);
+    // 戦闘ビューへ入れるのは操作できる艦がある時だけなので、[M] が通ること自体が配置の成立を示す。
+    // レールの折りたたみはビューの持ち物ではないため、往復しても保たれる。
+    await devTools.evaluate(`document.querySelector('.rail-toggle').click()`);
+    const collapsedLeft = await devTools.evaluate(`document.getElementById('hud-rail-left').classList.contains('collapsed')`);
+    if (!collapsedLeft) throw new Error('Could not collapse the left rail before the map round trip.');
+    await pressKey('m', 'KeyM', 77);
+    await waitFor(
+      `!document.getElementById('hud').classList.contains('map-mode')`,
+      '[M] to leave the map (a placed ship must be operable for combat view to be enterable)',
+    );
+    const combat = await devTools.evaluate(`({
+      railTogglesHidden: [...document.querySelectorAll('.rail-toggle')].every((el) => getComputedStyle(el).display === 'none'),
+    })`);
+    expectAll('Combat view still shows the map rail toggles', combat);
+    await pressKey('m', 'KeyM', 77);
+    await waitFor(`document.getElementById('hud').classList.contains('map-mode')`, '[M] to return to the map');
+    const backToMap = await devTools.evaluate(`({
+      mapView: document.getElementById('hud').classList.contains('map-mode'),
+      collapseKept: document.getElementById('hud-rail-left').classList.contains('collapsed'),
+      toggleGlyphs: JSON.stringify([...document.querySelectorAll('.rail-toggle')].map((el) => el.textContent)) === '["▶","▶"]',
+    })`);
+    expectAll('Rail collapse state did not survive the map round trip', backToMap);
+    await devTools.evaluate(`document.querySelector('.rail-toggle').click()`);
+
+    // 天体マーカーの右クリックはプロパティウィンドウを開き、画面を狭めても視界内に留まる。
+    // マーカー自身は pointer-events:none で、当たり判定はキャンバス上の座標で解かれる。
+    // だから狙える印は「視界内にあり、その一点で最前面がキャンバスである」もの。
+    const marker = await devTools.evaluate(`(() => {
+      for (const el of document.querySelectorAll('.mk-poi')) {
+        if (getComputedStyle(el).display === 'none') continue;
+        const r = el.getBoundingClientRect();
+        const x = r.left + r.width / 2;
+        const y = r.top + r.height / 2;
+        if (x < 0 || x > innerWidth || y < 0 || y > innerHeight) continue;
+        if (document.elementFromPoint(x, y)?.tagName !== 'CANVAS') continue;
+        return { id: el.id, x, y };
       }
-      {
-        const collapsed = await devTools.evaluate(`(() => {
-          const buttons = [...document.querySelectorAll('.dock-toggle')];
-          buttons.forEach((button) => button.click());
-          const docks = [...document.querySelectorAll('.hud-dock')];
-          const hidden = docks.every((dock) => dock.classList.contains('collapsed')
-            && [...dock.querySelectorAll(':scope > .panel')].every((panel) => getComputedStyle(panel).display === 'none'));
-          const zeroWidth = docks.every((dock) => dock.getBoundingClientRect().width === 0);
-          buttons.forEach((button) => button.click());
-          const restored = docks.every((dock) => !dock.classList.contains('collapsed') && dock.getBoundingClientRect().width > 0);
-          return { count: buttons.length, hidden, zeroWidth, restored };
-        })()`);
-        const value = collapsed.result.value;
-        if (value.count !== 2 || !value.hidden || !value.zeroWidth || !value.restored) {
-          throw new Error(`Dock collapse check failed at ${width}x${height}: ${JSON.stringify(value)}`);
-        }
-      }
-    }
-    await devTools.send('Emulation.clearDeviceMetricsOverride');
-
-    const placedForMenu = await devTools.evaluate(`(() => {
-      const panel = document.getElementById('hud-shipplacer');
-      const button = [...(panel?.querySelectorAll('.seg-btn') ?? [])].find((b) => b.textContent?.trim() === '配置');
-      if (!button) return false;
-      button.click();
-      return true;
+      return null;
     })()`);
-    if (!placedForMenu.result.value) throw new Error('Could not place a ship for map interaction checks.');
-    await new Promise((resolve) => setTimeout(resolve, 200));
-
-    await devTools.evaluate(`[...document.querySelectorAll('.dock-toggle')].forEach((button) => button.click())`);
-    await devTools.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'm', code: 'KeyM', windowsVirtualKeyCode: 77 });
-    await devTools.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'm', code: 'KeyM', windowsVirtualKeyCode: 77 });
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    const closedDockState = await devTools.evaluate(`(() => {
-      const docks = [...document.querySelectorAll('.hud-dock')];
-      const buttons = [...document.querySelectorAll('.dock-toggle')];
-      return {
-        mapMode: document.getElementById('hud').classList.contains('map-mode'),
-        collapsed: docks.some((dock) => dock.classList.contains('collapsed')),
-        expanded: buttons.every((button) => button.getAttribute('aria-expanded') === 'true'),
-        glyphs: buttons.map((button) => button.textContent),
-        visible: buttons.some((button) => getComputedStyle(button).display !== 'none'),
-      };
+    if (!marker) throw new Error('No pickable celestial marker was on screen for the property window check.');
+    await rightClickAt(marker.x, marker.y);
+    await waitFor(
+      `[...document.querySelectorAll('.prop-window')].some((el) => getComputedStyle(el).display !== 'none')`,
+      `right-clicking marker ${marker.id} to open a property window`,
+    );
+    await devTools.send('Emulation.setDeviceMetricsOverride', { width: 320, height: 568, deviceScaleFactor: 1, mobile: true });
+    await sleep(150);
+    const clamped = await devTools.evaluate(`(() => {
+      ${LAYOUT_HELPERS}
+      const win = [...document.querySelectorAll('.prop-window')].find(visible);
+      if (!win) return { open: false };
+      return { open: true, inside: insideViewport(rect(win)) };
     })()`);
-    const closed = closedDockState.result.value;
-    if (closed.mapMode || closed.collapsed || !closed.expanded || closed.visible
-      || JSON.stringify(closed.glyphs) !== JSON.stringify(['◀', '▶'])) {
-      throw new Error(`Dock state did not reset on map close: ${JSON.stringify(closed)}`);
-    }
-    await devTools.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'm', code: 'KeyM', windowsVirtualKeyCode: 77 });
-    await devTools.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'm', code: 'KeyM', windowsVirtualKeyCode: 77 });
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    const reopenedDockState = await devTools.evaluate(`(() => {
-      const buttons = [...document.querySelectorAll('.dock-toggle')];
-      return {
-        mapMode: document.getElementById('hud').classList.contains('map-mode'),
-        collapsed: [...document.querySelectorAll('.hud-dock')].some((dock) => dock.classList.contains('collapsed')),
-        expanded: buttons.every((button) => button.getAttribute('aria-expanded') === 'true'),
-        glyphs: buttons.map((button) => button.textContent),
-        visible: buttons.every((button) => getComputedStyle(button).display !== 'none'),
-      };
-    })()`);
-    const reopened = reopenedDockState.result.value;
-    if (!reopened.mapMode || reopened.collapsed || !reopened.expanded || !reopened.visible
-      || JSON.stringify(reopened.glyphs) !== JSON.stringify(['◀', '▶'])) {
-      throw new Error(`Dock state did not remain synchronized after reopening map: ${JSON.stringify(reopened)}`);
-    }
-
-    let menuOpened = false;
-    await devTools.evaluate(`(() => {
-      const moon = [...document.querySelectorAll('#hud-overview-camera .seg-btn')]
-        .find((button) => button.textContent?.includes('月'));
-      moon?.click();
-    })()`);
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    for (let attempt = 0; attempt < 20 && !menuOpened; attempt++) {
-      const candidates = await devTools.evaluate(`[...document.querySelectorAll('.mk-poi')]
-        .filter((el) => getComputedStyle(el).display !== 'none')
-        .map((el) => { const r = el.getBoundingClientRect(); return { id: el.id, x: r.left + r.width / 2, y: r.top + r.height / 2 }; })
-        .filter((p) => p.x >= 0 && p.x <= innerWidth && p.y >= 0 && p.y <= innerHeight)`);
-      for (const point of candidates.result.value) {
-        await devTools.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: point.x, y: point.y, button: 'none', buttons: 0 });
-        await devTools.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: point.x, y: point.y, button: 'right', buttons: 2, clickCount: 1 });
-        await devTools.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: point.x, y: point.y, button: 'right', buttons: 0, clickCount: 1 });
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        const opened = await devTools.evaluate(`[...document.querySelectorAll('.ctx-menu')]
-          .some((el) => getComputedStyle(el).display !== 'none')`);
-        if (opened.result.value) { menuOpened = true; break; }
-      }
-      if (!menuOpened) await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-    if (!menuOpened) {
-      const diagnostics = await devTools.evaluate(`({
-        markers: [...document.querySelectorAll('.mk-poi')].filter((el) => getComputedStyle(el).display !== 'none').map((el) => {
-          const r = el.getBoundingClientRect(); const x = r.left + r.width / 2; const y = r.top + r.height / 2;
-          const hit = document.elementFromPoint(x, y); return { id: el.id, x, y, hit: hit?.tagName + '#' + hit?.id };
-        }),
-        canvases: [...document.querySelectorAll('canvas')].map((el) => { const r = el.getBoundingClientRect(); return { id: el.id, x: r.x, y: r.y, w: r.width, h: r.height }; })
-      })`);
-      throw new Error(`Context menu did not open from any visible map marker: ${JSON.stringify(diagnostics.result.value)}`);
-    }
-    await devTools.send('Emulation.setDeviceMetricsOverride', {
-      width: 320, height: 568, deviceScaleFactor: 1, mobile: true,
-    });
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    const menuLayout = await devTools.evaluate(`(() => {
-      const menu = [...document.querySelectorAll('.ctx-menu')].find((el) => getComputedStyle(el).display !== 'none');
-      if (!menu) return { open: false };
-      const r = menu.getBoundingClientRect();
-      return { open: true, inside: r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight };
-    })()`);
-    if (!menuLayout.result.value.open || !menuLayout.result.value.inside) {
-      throw new Error(`Context menu did not remain clamped after resize: ${JSON.stringify(menuLayout.result.value)}`);
-    }
+    expectAll('Property window did not remain clamped after resize', clamped);
     await devTools.send('Emulation.clearDeviceMetricsOverride');
   }
+
   if (expectCreative && process.env.SMOKE_CREATIVE_PLACE === '2') {
-    await devTools.evaluate(`(() => {
-      const panel = document.getElementById('hud-shipplacer');
-      const button = [...(panel?.querySelectorAll('.seg-btn') ?? [])].find((b) => b.textContent?.trim() === '配置');
-      if (!button) throw new Error('Creative placement button not found.');
-      button.click();
-      button.click();
-      return true;
-    })()`);
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    const after = await devTools.evaluate(`({ fatal: Boolean(document.getElementById('fatal-error-overlay')), text: document.getElementById('fatal-error-overlay')?.textContent ?? '' })`);
-    if (after.result.value.fatal) throw new Error(`Creative second placement failed: ${after.result.value.text}`);
-    if (fatalEvents.length > 0) throw new Error(`Creative second placement reported ${fatalEvents.length} page exception(s).`);
+    await placeShipThroughMenu();
+    const after = await devTools.evaluate(
+      `({ fatal: Boolean(document.getElementById('fatal-error-overlay')), text: document.getElementById('fatal-error-overlay')?.textContent ?? '' })`,
+    );
+    if (after.fatal) throw new Error(`Creative second placement failed: ${after.text}`);
+    throwIfFatal('Creative second placement reported page exception(s)');
   }
-  const mode = expectCreative ? 'creative zero-ship overview' : query;
-  console.log(`Browser smoke passed (${mode}): production build completed 60 frames without page/console fatal errors.`);
+  throwIfFatal('Browser reported page exception(s) or console error(s) during interaction');
+  const mode = expectCreative ? 'creative zero-ship map view' : query;
+  console.log(`Browser smoke passed (${mode}): production build ran and its HUD held together without page/console fatal errors.`);
 } finally {
   devTools?.close();
   if (browser) {
     browser.kill('SIGTERM');
     await Promise.race([once(browser, 'exit'), new Promise((resolve) => setTimeout(resolve, 2_000))]);
   }
-  server.kill('SIGTERM');
+  server.close();
   rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
