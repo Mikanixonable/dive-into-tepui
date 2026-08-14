@@ -12,6 +12,7 @@ import { Attractor, orbitalElementsOf } from '../../physics/attractor';
 import { haloState, lissajousState } from '../../physics/halo';
 import type { FloatingOrigin } from '../floating-origin';
 import { Vec3, add } from '../../physics/vec3';
+import { isOccluded } from '../../physics/occlusion';
 import { ToggleSwitch } from '../hud/widgets';
 import { hudRail } from '../hud/hud-root';
 import type { CameraSystem, ProjectFn } from '../camera/camera-system';
@@ -115,7 +116,10 @@ export class CreativeStage extends Stage {
     visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     super.sync(player, fo, cameraSystem, displayTime, visibilityPolicy);
-    this.syncPreview(fo, cameraSystem.activeCameraProjection, cameraSystem.activeCamera);
+    this.syncPreview(
+      fo, cameraSystem.activeCameraProjection, cameraSystem.activeCamera,
+      cameraSystem.overviewMode, cameraSystem.activeCameraPos, this._ephemeris.attractorsAt(displayTime),
+    );
     this.placerPanel.setIssues(this.issues);
     this.creativeOptionsPanel.classList.toggle('hidden', !cameraSystem.overviewMode);
   }
@@ -185,13 +189,20 @@ export class CreativeStage extends Stage {
   }
 
   // 配置プレビューの軌道線と ▷ マーカーを update が求めた値へ同期する。
-  private syncPreview(fo: FloatingOrigin, project: ProjectFn, camera: THREE.Camera): void {
+  private syncPreview(
+    fo: FloatingOrigin, project: ProjectFn, camera: THREE.Camera,
+    overviewMode: boolean, cameraPos: Vec3, attractors: readonly Attractor[],
+  ): void {
     if (!this.preview) {
       this.previewOrbitLine.sync(null, fo, camera);
       this._markerManager.hide('creative-preview');
       return;
     }
     this.previewOrbitLine.sync(this.preview.elements, fo, camera, true);
+    if (overviewMode && isOccluded(cameraPos, this.preview.pos, attractors)) {
+      this._markerManager.hide('creative-preview');
+      return;
+    }
     this._markerManager.setPosition(
       'creative-preview', 'mk-self', ENTITY_GLYPH.preview, this.preview.pos, project,
       'PREVIEW', 1, C.COLOR_MARKER_ALLY, 0, false, false,

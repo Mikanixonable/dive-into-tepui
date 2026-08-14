@@ -22,6 +22,7 @@ import type { DisplayWindow } from './display-window-manager';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import type { MapVisibilityPolicy } from './celestial/map-visibility';
 import { mapPlanetFadeOpacity, nearestPlanetDistance } from './celestial/planet-distance';
+import { isOccluded } from '../physics/occlusion';
 
 export type CombatTarget = Enemy | Player;
 
@@ -204,19 +205,21 @@ export class Targeter {
       const role: MarkerRole =
         tgt === this.aliveTarget ? 'primary' : tgt === this.aliveSecondaryTarget ? 'secondary' : 'none';
       const item = tgt.markerItem(role, viewerPos, ds.r, ds.v, overviewMode);
+      const mapOccluded = overviewMode && isOccluded(cameraSystem.activeCameraPos, ds.r, attractors);
+      const mapOpacity = mapOccluded
+        ? 0
+        : tgt instanceof Enemy && overviewMode
+          ? mapPlanetFadeOpacity(nearestPlanetDistance(ds.r, registry, attractors))
+          : 1;
       this.markerItemScratch.push(visibility ? {
         ...item,
         sym: visibility.icon ? item.sym : '',
         name: visibility.label ? item.name : '',
         detail: visibility.label ? item.detail : '',
-        opacity: tgt instanceof Enemy && overviewMode
-          ? mapPlanetFadeOpacity(nearestPlanetDistance(ds.r, registry, attractors))
-          : 1,
+        opacity: mapOpacity,
       } : {
         ...item,
-        opacity: tgt instanceof Enemy && overviewMode
-          ? mapPlanetFadeOpacity(nearestPlanetDistance(ds.r, registry, attractors))
-          : 1,
+        opacity: mapOpacity,
       });
     }
     this.markerManager.combatMarkers.sync(this.markerItemScratch, project, overviewMode, screenScale);
