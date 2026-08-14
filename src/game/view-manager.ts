@@ -16,7 +16,7 @@ import type { OverlayHandle } from './hud/overlay-manager';
 export type ViewId = 'combat' | 'map' | 'dock';
 
 // 3D 世界を描くビュー。ドックはこのどちらかに重なる形で開き、閉じると元へ戻る。
-type WorldViewId = 'combat' | 'map';
+export type WorldViewId = 'combat' | 'map';
 
 // TODO: 戦闘⇔マップの切り替えと、ドックの開閉という2つの責務が同居している。分けるには
 // 3つのビューを1つの排他選択として外へ見せている口(current / setView / selectableViews)を
@@ -35,6 +35,9 @@ export class ViewManager {
   };
 
   get current(): ViewId { return this.isDockOpen ? 'dock' : this.worldView; }
+
+  get isMapView(): boolean { return this.worldView === 'map'; }
+  get isCombatView(): boolean { return this.worldView === 'combat'; }
 
   // このビューが 3D 世界を描くか。ドックは画面全体を不透明に覆い 3D 世界を持たない。
   get rendersWorld(): boolean { return !this.isDockOpen; }
