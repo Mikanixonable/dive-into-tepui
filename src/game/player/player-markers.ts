@@ -28,6 +28,7 @@ export class PlayerMarkers {
   // 表示名は改名可能なので毎フレーム引数で受け取り、保持しない。
   sync(currentState: KinematicState, displayState: KinematicState | null, att: Attitude, overviewMode: boolean, isActive: boolean, project: ProjectFn, scaleFn: ScaleFn, name: string, rounds = 0, _reloadTimer = 0, beltLinks = 0, muzzleSpeed = 0, focusId?: string, registry?: CelestialRegistry, attractors: readonly Attractor[] = [], visibility: MapVisibility | null = null): void {
     const selfKey = `self-${this.id}`;
+    const nearbyLabelKey = `${selfKey}-planet-label`;
 
     if (overviewMode) {
       if (isActive) {
@@ -42,22 +43,31 @@ export class PlayerMarkers {
           .sort((a, b) => a.distance - b.distance)[0];
         const nearPlanet = nearestPlanet !== undefined
           && nearestPlanet.distance <= C.MAP_PLANET_SHIP_LABEL_END;
-        const markerPos = nearPlanet ? nearestPlanet.a.state.r : displayState.r;
-        const opacity = nearPlanet
+        const fadedOpacity = nearPlanet
           ? Math.max(0, Math.min(1, (C.MAP_PLANET_SHIP_LABEL_END - nearestPlanet.distance)
             / (C.MAP_PLANET_SHIP_LABEL_END - C.MAP_PLANET_SHIP_LABEL_START)))
           : 1;
-        if (opacity <= 0) {
+        this.markerManager.hide(nearbyLabelKey);
+        if (nearestPlanet !== undefined && nearestPlanet.distance > C.MAP_PLANET_SHIP_LABEL_END) {
           this.markerManager.hide(selfKey);
-          return;
+          if (visibility?.label !== false) {
+            this.markerManager.setPosition(
+              nearbyLabelKey, 'mk-planet-nearby-label', '', nearestPlanet.a.state.r, project,
+              `${ENTITY_GLYPH.ship}${name}`, 1, color,
+            );
+          }
+        } else if (fadedOpacity > 0) {
+          const rotationDeg = this.markerManager.headingRotationDeg(displayState.r, displayState.v, project, scaleFn);
+          this.markerManager.setPosition(
+            selfKey, 'mk-self', visibility?.icon === false ? '' : ENTITY_GLYPH.ship, displayState.r, project,
+            isActive && visibility?.label !== false ? name : '', fadedOpacity, color, rotationDeg,
+          );
+        } else {
+          this.markerManager.hide(selfKey);
         }
-        const rotationDeg = this.markerManager.headingRotationDeg(displayState.r, displayState.v, project, scaleFn);
-        this.markerManager.setPosition(
-          selfKey, nearPlanet ? 'mk-self mk-planet-nearby' : 'mk-self', visibility?.icon === false ? '' : ENTITY_GLYPH.ship, markerPos, project,
-          isActive && visibility?.label !== false ? name : '', opacity, color, rotationDeg,
-        );
       } else {
         this.markerManager.hide(selfKey);
+        this.markerManager.hide(nearbyLabelKey);
       }
       return;
     }
@@ -73,6 +83,7 @@ export class PlayerMarkers {
   dispose(): void {
     for (const key of COMBAT_KEYS) this.markerManager.remove(`${key}-${this.id}`);
     this.markerManager.remove(`self-${this.id}`);
+    this.markerManager.remove(`self-${this.id}-planet-label`);
   }
 
   // prograde/retrograde/normal/antinormal/radial in-out の6方向マーカーを配置する。
