@@ -5,6 +5,7 @@ import { UnlockManager } from './unlock-manager';
 import type { StageClass } from './stages/stage';
 import { StageDebug } from './stages/stage-debug';
 import { TabBar } from './hud/widgets';
+import { KEY_MAPPING as K } from './input/key-mapping';
 import { MQ_COMPACT, MQ_SHORT } from './hud/breakpoints';
 import tepuiRmqrUrl from '../assets/tepui-rmqr.svg';
 import {
@@ -276,7 +277,11 @@ function ensureTitleFonts(): void {
 }
 
 // 起動選択画面(各ステージの selectGroup ごとのタブ)を表示し、選ばれたステージクラスで解決される Promise を返す。
-export function selectStage(unlockManager: UnlockManager): Promise<StageClass> {
+export function selectStage(
+  unlockManager: UnlockManager,
+  onEscape?: () => void,
+  onClose?: () => void,
+): Promise<StageClass> {
   return new Promise((resolve) => {
     ensureStyle();
     ensureTitleFonts();
@@ -391,6 +396,7 @@ export function selectStage(unlockManager: UnlockManager): Promise<StageClass> {
     // 選択確定: 3D 場面と画面を片付けて Promise を解決する
     const done = (stageClass: StageClass) => {
       window.removeEventListener('keydown', onKey);
+      onClose?.();
       selected = true;
       scene?.dispose();
       root.remove();
@@ -398,6 +404,11 @@ export function selectStage(unlockManager: UnlockManager): Promise<StageClass> {
     };
     // 解放済みステージのショートカットキーにマッチしたら選択確定する。タブに関係なく効く。
     const onKey = (e: KeyboardEvent) => {
+      if (e.code === K.pauseMenu.code) {
+        e.preventDefault();
+        onEscape?.();
+        return;
+      }
       for (const stageClass of STAGE_CLASSES) {
         if (!(enabledByStage.get(stageClass.id) ?? false)) continue;
         if (!stageClass.selectKeys.includes(e.code)) continue;

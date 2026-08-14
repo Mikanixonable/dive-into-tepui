@@ -82,9 +82,12 @@ export class StatusPanel {
       document.getElementById('hud-status')?.classList.add('hidden');
       return;
     }
-    // マップビューでは艦固有の情報をプロパティウィンドウで参照するので畳む。
-    // CSS 側でも #hud.map-mode #hud-status を隠すが、未配置状態からの復帰時は JS で明示的に戻す。
-    if (!game.cameraSystem.overviewMode) document.getElementById('hud-status')?.classList.remove('hidden');
+    // 通常のマップビューでは艦固有の情報をプロパティウィンドウで参照するので畳む。
+    // クリエイティブでは配置後の艦を常に操作できるため、マップビューでも VESSEL を表示する。
+    // CSS 側でも同じ条件を持つが、未配置状態からの復帰時は JS で明示的に戻す。
+    if (!game.cameraSystem.overviewMode || game.activeStage.id === 'creative') {
+      document.getElementById('hud-status')?.classList.remove('hidden');
+    }
 
     const now = performance.now();
     if (now < this.nextSyncAt) return;
