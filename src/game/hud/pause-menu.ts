@@ -1,5 +1,7 @@
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import { SPACE_4, SPACE_6 } from '../theme';
+import {
+  ACTIVE_THEME_ID, persistThemePalette, SPACE_4, SPACE_6, THEME_PRESETS,
+} from '../theme';
 import type { OverlayHandle, OverlayManager } from './overlay-manager';
 import { Button, CloseButton, Slider } from './widgets';
 
@@ -46,6 +48,34 @@ export class PauseMenu implements OverlayHandle {
     this.bgmMute.element.style.marginLeft = SPACE_4;
     bgmRow.appendChild(this.bgmMute.element);
     this.panel.appendChild(bgmRow);
+
+    const themeRow = document.createElement('div');
+    themeRow.className = 'pm-row pm-theme-row';
+    const themeLabel = document.createElement('span');
+    themeLabel.className = 'k';
+    themeLabel.textContent = '配色';
+    themeRow.appendChild(themeLabel);
+    const themeSelect = document.createElement('select');
+    themeSelect.className = 'w-input pm-theme-select';
+    themeSelect.setAttribute('aria-label', '配色プリセット');
+    for (const palette of THEME_PRESETS) {
+      const option = document.createElement('option');
+      option.value = palette.id;
+      option.textContent = palette.name;
+      option.title = palette.description;
+      themeSelect.appendChild(option);
+    }
+    themeSelect.value = ACTIVE_THEME_ID;
+    themeSelect.addEventListener('change', () => {
+      if (!persistThemePalette(themeSelect.value)) {
+        themeSelect.value = ACTIVE_THEME_ID;
+        return;
+      }
+      // CSS/タイトル3Dマテリアルは起動時にテーマ値を取り込むため、再読込で全画面へ反映する。
+      location.reload();
+    });
+    themeRow.appendChild(themeSelect);
+    this.panel.appendChild(themeRow);
 
     const snapshotRow = document.createElement('div');
     snapshotRow.className = 'pm-row';
