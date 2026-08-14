@@ -6,8 +6,7 @@ import { Input, PointerKind } from '../input/input';
 import { KEY_MAPPING as K, KeyBinding } from '../input/key-mapping';
 import { MQ_COARSE, MQ_COMPACT, MQ_SHORT } from '../hud/breakpoints';
 import {
-  ACCENT, ACCENT_FILL_STRONG, ACCENT_EDGE, TEXT_DIM, TEXT_MUTED, TEXT_STRONG,
-  SURFACE, EDGE, FONT_FAMILY, FONT_XXS, FONT_XL, RADIUS_L, SPACE_1, TRANSITION_SLOW,
+  FONT_FAMILY, FONT_XXS, FONT_XL, RADIUS_L, SPACE_1, TRANSITION_SLOW,
 } from '../theme';
 
 const STYLE = `
@@ -25,16 +24,16 @@ const STYLE = `
 #touch-ui .tbtn {
   pointer-events: none; touch-action: none;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  background: ${SURFACE}; border: 1px solid ${EDGE}; border-radius: ${RADIUS_L};
-  color: ${TEXT_MUTED}; line-height: 1.1;
+  background: var(--surface); border: 1px solid var(--edge); border-radius: ${RADIUS_L};
+  color: var(--text-muted); line-height: 1.1;
 }
 #touch-ui.shown .tbtn { pointer-events: auto; }
 #touch-ui .tbtn .g { font-size: ${FONT_XL}; }
-#touch-ui .tbtn .l { font-size: ${FONT_XXS}; color: ${TEXT_DIM}; margin-top: ${SPACE_1}; }
-#touch-ui .tbtn.pressed { background: ${ACCENT_FILL_STRONG}; border-color: ${ACCENT}; color: ${TEXT_STRONG}; }
+#touch-ui .tbtn .l { font-size: ${FONT_XXS}; color: var(--text-dim); margin-top: ${SPACE_1}; }
+#touch-ui .tbtn.pressed { background: var(--accent-fill-strong); border-color: var(--accent); color: var(--text-strong); }
 /* .on: 押下中かどうかに関わらず、モードが実際に ON の間ずっと点灯させる
    (制動・微動・ホールド・推力ラッチなどの向け。.pressed と見た目は同じでよい) */
-#touch-ui .tbtn.on { background: ${ACCENT_FILL_STRONG}; border-color: ${ACCENT}; color: ${TEXT_STRONG}; }
+#touch-ui .tbtn.on { background: var(--accent-fill-strong); border-color: var(--accent); color: var(--text-strong); }
 #touch-ui .mini-col {
   position: absolute; display: grid; gap: 6px; grid-template-rows: repeat(2, 52px);
 }
@@ -49,7 +48,7 @@ const STYLE = `
 #touch-fire {
   position: absolute; right: calc(22px + var(--safe-r)); bottom: calc(138px + var(--safe-b));
   width: 74px; height: 74px; border-radius: 50% !important;
-  border-color: ${ACCENT_EDGE} !important; color: ${ACCENT} !important;
+  border-color: var(--accent-edge) !important; color: var(--accent) !important;
 }
 #touch-zoom {
   position: absolute; right: calc(112px + var(--safe-r)); bottom: calc(148px + var(--safe-b));
