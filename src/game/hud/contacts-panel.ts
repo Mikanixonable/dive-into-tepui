@@ -1,4 +1,4 @@
-// 常設 CONTACTS パネル(#hud-enemies)の同期: 生存中の敵を距離順で示す。戦闘ビュー専用。
+// 常設 CONTACTS パネル(#hud-enemies)の同期: コンタクト中の敵を距離順で示す。戦闘ビュー専用。
 import { len, sub } from '../../physics/vec3';
 import { fmtDist } from './utils';
 import type { Vec3 } from '../../physics/vec3';
@@ -52,12 +52,14 @@ export class ContactsPanel {
     }
     const primaryTarget = game.targeter.aliveTarget;
     const secondaryTarget = game.targeter.aliveSecondaryTarget;
-    this.syncEnemyList(this.buildEnemyRows(
+    const rows = this.buildEnemyRows(
       game.entities.enemies.filter((enemy) => enemy.alive),
       player.state.r,
       primaryTarget,
       secondaryTarget,
-    ));
+    );
+    panel?.classList.toggle('hidden', game.cameraSystem.overviewMode || rows.length === 0);
+    this.syncEnemyList(rows);
   }
 
   // waveId を持つ敵ごとに「第N波」1行へ集約して組み立てる。

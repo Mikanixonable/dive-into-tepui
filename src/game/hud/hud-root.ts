@@ -14,7 +14,6 @@ import { isCompactViewport } from './breakpoints';
 import { startViewportTracking } from './viewport';
 import {
   buildCollapseToggle, WIDGET_STYLE,
-  COLLAPSE_EXPANDED_GLYPH, COLLAPSE_COLLAPSED_GLYPH,
 } from './widgets';
 import type { OverlayLayers } from './overlay-layer';
 import type { CollapseToggleLabels } from './widgets';
@@ -62,8 +61,8 @@ function railToggleLabels(side: 'left' | 'right'): CollapseToggleLabels {
   return {
     expandedGlyph: side === 'left' ? '◀' : '▶',
     collapsedGlyph: side === 'left' ? '▶' : '◀',
-    expandedTitle: `${label}マップパネルを閉じる`,
-    collapsedTitle: `${label}マップパネルを開く`,
+    expandedTitle: `${label}パネルを閉じる`,
+    collapsedTitle: `${label}パネルを開く`,
   };
 }
 
@@ -124,36 +123,10 @@ function buildSvgOverlay(root: HTMLElement): SVGSVGElement {
   return svgOverlay;
 }
 
-// 戦闘シェルフ全体の折りたたみトグルの見た目。
-const COMBAT_SHELF_TOGGLE_LABELS: CollapseToggleLabels = {
-  expandedGlyph: COLLAPSE_EXPANDED_GLYPH,
-  collapsedGlyph: COLLAPSE_COLLAPSED_GLYPH,
-  expandedTitle: 'ステータスパネルをまとめて閉じる',
-  collapsedTitle: 'ステータスパネルをまとめて開く',
-};
-
-// 常設の情報パネル(SHIP STATUS/ORBIT/TARGET/CONTACTS)を組む。戦闘シェルフの並びに
-// 乗る3枚(STATUS/ORBIT/CONTACTS)と、右レールに乗る1枚(TARGET)。いずれも PanelShell
-// に載せ、個別に折りたためるようにする。シェルフ自体もトグルでまとめて畳める。
-function buildInfoPanels(root: HTMLElement, targetRail: HTMLElement): void {
-  const shelfWrap = createHudElement('aside', 'hud-combat-shelf-wrap', root);
-  shelfWrap.setAttribute('aria-label', 'Combat telemetry');
-  const shelf = createHudElement('div', 'hud-combat-shelf', shelfWrap);
-  const shelfCollapsed = loadPanelCollapsed('hud-combat-shelf') ?? isCompactViewport();
-  shelf.classList.toggle('collapsed', shelfCollapsed);
-  const shelfToggle = buildCollapseToggle(
-    shelfWrap, 'hud-combat-shelf-toggle', '', shelf, COMBAT_SHELF_TOGGLE_LABELS);
-  shelfToggle.setAttribute('type', 'button');
-  shelfToggle.setAttribute('aria-controls', shelf.id);
-  const syncShelfToggleName = (): void => shelfToggle.setAttribute('aria-label', shelfToggle.title);
-  syncShelfToggleName();
-  shelfToggle.addEventListener(
-    'click', () => {
-      savePanelCollapsed('hud-combat-shelf', shelf.classList.contains('collapsed'));
-      syncShelfToggleName();
-    });
-
-  const status = new PanelShell(shelf, 'hud-status', 'Vessel status');
+// 常設の情報パネル(VESSEL/ORBIT/TARGET/CONTACTS)を左右のドックへ組む。左右レールの
+// 収納トグルと各 PanelShell の折りたたみを、マップビューと同じ永続状態で利用する。
+function buildInfoPanels(root: HTMLElement, leftRail: HTMLElement, rightRail: HTMLElement): void {
+  const status = new PanelShell(leftRail, 'hud-status', 'Vessel');
   configureCombatPanel(status);
   status.body.innerHTML = `
     <dl class="metric-list">
@@ -182,9 +155,7 @@ function buildInfoPanels(root: HTMLElement, targetRail: HTMLElement): void {
     <div class="status-throttle-touch" data-id="status-throttle-touch"></div>
     <div class="status-actions" data-id="status-actions" role="group" aria-label="機体の主要操作"></div>`;
 
-  // compact 縦の既定表示: ORBIT/CONTACTS は収納状態で開始する(SHIP STATUS/ステージ状態
-  // パネルは常設のまま)。一度でも開閉を操作すれば、以後は PanelShell の永続に従う。
-  const orbit = new PanelShell(shelf, 'hud-orbit', 'Orbit', isCompactViewport());
+  const orbit = new PanelShell(rightRail, 'hud-orbit', 'Orbit', isCompactViewport());
   configureCombatPanel(orbit);
   orbit.body.innerHTML = `
     <dl class="metric-list">
@@ -203,7 +174,7 @@ function buildInfoPanels(root: HTMLElement, targetRail: HTMLElement): void {
       </div>
     </dl>`;
 
-  const target = new PanelShell(targetRail, 'hud-target', 'Target');
+  const target = new PanelShell(rightRail, 'hud-target', 'Target');
   configureCombatPanel(target);
   target.setHidden(true);
   target.body.innerHTML = `
@@ -235,7 +206,7 @@ function buildInfoPanels(root: HTMLElement, targetRail: HTMLElement): void {
       <p class="target-help">軌道要素は右クリックで表示</p>
     </div>`;
 
-  const enemies = new PanelShell(shelf, 'hud-enemies', 'Contacts', isCompactViewport());
+  const enemies = new PanelShell(rightRail, 'hud-enemies', 'Contacts', isCompactViewport());
   configureCombatPanel(enemies);
   const count = document.createElement('span');
   count.className = 'panel-count';
@@ -313,7 +284,7 @@ export function buildHudDom(): HudDomRefs {
   buildRailToggle(layers.panel, rightRail, 'right');
 
   // 常設パネル群を組む。
-  buildInfoPanels(layers.panel, rightRail);
+  buildInfoPanels(layers.panel, leftRail, rightRail);
   buildGlobalStatus(layers.panel);
   buildChaseReset(layers.panel);
   const overlayShield = createHudElement('div', 'hud-overlay-shield', layers.gate);
