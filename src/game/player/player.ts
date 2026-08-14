@@ -543,13 +543,14 @@ export class Player extends Ship {
     };
   }
 
-  // 計画の保存形。ノードが1件も無い計画は起点も持たないので null を返す。
+  // 計画の保存形。凍結された計画が無ければ null。
   private serializePlan(): PlanSaveData | null {
-    const anchor = this.plan.anchor;
-    if (!anchor) return null;
+    const frozen = this.plan.frozenData();
+    if (!frozen) return null;
+    const { anchor, nodes } = frozen;
     return {
       anchor: { t: anchor.t, r: { ...anchor.r }, v: { ...anchor.v } },
-      nodes: this.plan.nodes.map((n) => ({ t: n.t, r: { ...n.r }, v: { ...n.v } })),
+      nodes: nodes.map((n) => ({ t: n.t, r: { ...n.r }, v: { ...n.v } })),
     };
   }
 }
