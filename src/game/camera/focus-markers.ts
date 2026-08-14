@@ -335,7 +335,8 @@ export class FocusMarkers {
       const projectedState = frame.get(lbl.id);
       if (projectedState === undefined || projectedState.occluded) {
         lbl.pickable = false;
-        this.markerManager.hide(lbl.id);
+        if (projectedState?.occluded) this.markerManager.fadeOut(lbl.id);
+        else this.markerManager.hide(lbl.id);
         continue;
       }
       const markerOpacity = projectedState.opacity;

@@ -44,23 +44,33 @@ export class PlayerMarkers {
           ? Math.max(0, Math.min(1, (C.MAP_PLANET_SHIP_LABEL_END - nearestPlanet.distance)
             / (C.MAP_PLANET_SHIP_LABEL_END - C.MAP_PLANET_SHIP_LABEL_START)))
           : 1;
-        this.markerManager.hide(nearbyLabelKey);
         if (nearestPlanet !== undefined && nearestPlanet !== null && nearestPlanet.distance > C.MAP_PLANET_SHIP_LABEL_END) {
           this.markerManager.hide(selfKey);
-          if (visibility?.label !== false && !isOccluded(cameraPos, nearestPlanet.attractor.state.r, attractors)) {
+          const planetOccluded = isOccluded(cameraPos, nearestPlanet.attractor.state.r, attractors);
+          if (visibility?.label !== false && !planetOccluded) {
             this.markerManager.setPosition(
               nearbyLabelKey, 'mk-planet-nearby-label', '', nearestPlanet.attractor.state.r, project,
               `${ENTITY_GLYPH.ship}${name}`, 1, color,
             );
+          } else if (visibility?.label !== false) {
+            this.markerManager.fadeOut(nearbyLabelKey);
+          } else {
+            this.markerManager.hide(nearbyLabelKey);
           }
-        } else if (fadedOpacity > 0 && !isOccluded(cameraPos, displayState.r, attractors)) {
-          const rotationDeg = this.markerManager.headingRotationDeg(displayState.r, displayState.v, project, scaleFn);
-          this.markerManager.setPosition(
-            selfKey, 'mk-self', visibility?.icon === false ? '' : ENTITY_GLYPH.ship, displayState.r, project,
-            isActive && visibility?.label !== false ? name : '', fadedOpacity, color, rotationDeg,
-          );
         } else {
-          this.markerManager.hide(selfKey);
+          this.markerManager.hide(nearbyLabelKey);
+          const shipOccluded = isOccluded(cameraPos, displayState.r, attractors);
+          if (fadedOpacity > 0 && !shipOccluded) {
+            const rotationDeg = this.markerManager.headingRotationDeg(displayState.r, displayState.v, project, scaleFn);
+            this.markerManager.setPosition(
+              selfKey, 'mk-self', visibility?.icon === false ? '' : ENTITY_GLYPH.ship, displayState.r, project,
+              isActive && visibility?.label !== false ? name : '', fadedOpacity, color, rotationDeg,
+            );
+          } else if (fadedOpacity > 0 && shipOccluded) {
+            this.markerManager.fadeOut(selfKey);
+          } else {
+            this.markerManager.hide(selfKey);
+          }
         }
       } else {
         this.markerManager.hide(selfKey);
