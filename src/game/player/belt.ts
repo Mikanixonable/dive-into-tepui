@@ -15,9 +15,9 @@ export class Belt {
   private feed = 0;
   private visibleCount = 0;
 
-  // リンクメッシュを playerObj の子として並べ、たわみ物理を初期化する。owner は接触判定で
+  // リンクメッシュを renderObject の子として並べ、たわみ物理を初期化する。owner は接触判定で
   // 自身の節点との接触を除外するために使う吊り元の艦。
-  constructor(playerObj: THREE.Object3D, owner: GameEntity) {
+  public constructor(renderObject: THREE.Object3D, owner: GameEntity) {
     const group = new THREE.Group();
     for (let i = 0; i < C.BELT_MAX_VISIBLE; i++) {
       const link = buildMagazineMesh();
@@ -25,7 +25,7 @@ export class Belt {
       group.add(link);
       this.links.push(link);
     }
-    playerObj.add(group);
+    renderObject.add(group);
     this.physics = new BeltPhysics(this.links.length, owner);
   }
 

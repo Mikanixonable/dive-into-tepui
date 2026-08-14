@@ -88,7 +88,7 @@ export class Base extends GameEntity {
       this.baseState.inventory = init.saved.inventory.map(partFromSaveData);
       this.baseState.dockedShips = init.saved.dockedShips.map((shipData) => {
         const player = new Player(hud, sfx, scene, fx, markerManager, { saved: shipData, simTime: init.simTime });
-        player.obj.visible = false;
+        player.renderObject.visible = false;
         return {
           id: player.id,
           name: player.name,
