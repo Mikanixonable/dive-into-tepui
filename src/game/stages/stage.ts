@@ -2,43 +2,34 @@
 // 必要なステージだけ override する。
 import * as THREE from 'three/webgpu';
 import { Enemy } from '../game-entity/enemy';
-import { Player } from '../player/player';
+import { Player, type PlayerInit } from '../player/player';
 import { Logistics } from './stage-utils/logistics';
 import { ScoreCounter } from './stage-utils/score-counter';
 import { StageStatusPanel } from './stage-utils/stage-status-panel';
 import { EffectsSystem } from '../vfx/effects-system';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
-import { showResultScreen, showWinScreen } from '../hud/result-screen';
 import type { ClearCounts, UnlockManager } from '../unlock-manager';
 import type { EntityManager } from '../simulation/entity-manager';
-import type { Input } from '../input/input';
-import { KEY_MAPPING as K } from '../input/key-mapping';
 import { SimSpeedManager } from '../sim-speed-manager';
-import type { ProjectFn, ScaleFn } from '../camera/camera-system';
+import type { CameraSystem } from '../camera/camera-system';
 import type { FloatingOrigin } from '../floating-origin';
 import type { MarkerManager } from '../marker/marker-manager';
-import type { Ephemeris } from '../../physics/ephemeris';
+import { Ephemeris } from '../../physics/ephemeris';
 import type { Simulator } from '../simulation/simulator';
 import type { StageSaveData } from '../save-data';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
 import type { ObjectType } from '../creative/ship-placer-panel';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { ActivePlayerController } from '../active-player-controller';
-import type { CelestialRegistry } from '../../physics/solar-system';
 import type { AttractorId } from '../../physics/attractor';
+import { loadAbsoluteEphemeris } from '../../physics/ephemeris-catalog';
+import { profileAt } from '../../physics/ephemeris-profile';
+import { SIM_EPOCH_ET, SIM_EPOCH_JD_TDB } from '../sim-epoch';
 
 export type StageId = '00' | '0' | '1' | '2' | 'creative' | 'debug' | 'debug-alt-system' | 'debug-load';
 
 const BRIEFING_TOAST_MS = 12000;
-
-// Ephemeris のコンストラクタ3引数をそのまま束ねた静的宣言。省略したステージは既定の
-// レジストリ・地球原点のまま動く。
-export type EphemerisConfig = {
-  readonly registry: CelestialRegistry;
-  readonly originId: AttractorId;
-  readonly epochOffsetSec: number;
-};
 
 // 全ステージ共通の生成引数(セーブデータを除く)。具象ステージは自分のコンストラクタで
 // これをそのまま基底へ渡す。
@@ -58,9 +49,7 @@ export type StageDeps = [
 // ステージクラスの静的側。起動時の設定はここから読む。
 export interface StageClass {
   readonly id: StageId;
-  readonly ephemerisConfig: EphemerisConfig | undefined;
-  readonly initialPlayerCount: number;
-  readonly showsStatusInOverview: boolean;
+  createEphemeris(phaseOffsets: Partial<Record<AttractorId, number>>): Promise<Ephemeris>;
   // 選択画面が読む項目。
   readonly selectLabel: string;
   readonly selectSub: string;
@@ -81,19 +70,21 @@ export interface ObjectAuthoring {
 
 export type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
 
-export interface StageInitData {
-  mags: number;
-  rounds: number;
-  briefingHtml: string;
-}
+// 決着した周回の結果画面に出す内容。
+export type StageResult = {
+  readonly win: boolean;
+  // 勝敗から決まる既定の見出しに収まらないときだけ差し替える。
+  readonly title: string | null;
+  readonly detailHtml: string;
+};
 
 export abstract class Stage {
-  // 固有の天体暦を使うステージだけが宣言する。既定のレジストリ・地球原点で構築される。
-  static readonly ephemerisConfig: EphemerisConfig | undefined = undefined;
-  // 新規開始時に組む自機の隻数。
-  static readonly initialPlayerCount: number = 1;
-  // マップ視点でも艦のステータスパネルを表示するか。
-  static readonly showsStatusInOverview: boolean = false;
+  // 起動時に1度だけ組む天体暦。既定は現実の太陽系で、精密暦パックを読み込む。
+  static async createEphemeris(phaseOffsets: Partial<Record<AttractorId, number>>): Promise<Ephemeris> {
+    const profile = profileAt(SIM_EPOCH_JD_TDB);
+    const pack = await loadAbsoluteEphemeris(profile.id, SIM_EPOCH_JD_TDB, SIM_EPOCH_JD_TDB + 10 * 365.25);
+    return new Ephemeris(undefined, undefined, SIM_EPOCH_ET, phaseOffsets, pack, SIM_EPOCH_JD_TDB);
+  }
   // 選択画面でロック中に出す説明。指定が無ければ selectSub をそのまま出す。
   static readonly selectLockedSub: string | undefined = undefined;
   // タイトルのステージ選択ボタン列に並べない。
@@ -118,7 +109,6 @@ export abstract class Stage {
   readonly executesPlans: boolean = false;
   // オブジェクトの配置・複製に対応するステージは自身の編集口を返す。既定では非対応。
   readonly authoring: ObjectAuthoring | null = null;
-  abstract readonly initialAmmo: Pick<StageInitData, 'mags' | 'rounds'>;
 
   readonly scoreCounter: ScoreCounter;
   protected readonly logistics: Logistics;
@@ -138,7 +128,13 @@ export abstract class Stage {
   private _phase: GamePhase;
   get phase(): GamePhase { return this._phase; }
   get isPlaying(): boolean { return this._phase === 'playing'; }
-  protected setPhase(phase: GamePhase): void { this._phase = phase; }
+  private _result: StageResult | null = null;
+  get result(): StageResult | null { return this._result; }
+  // 勝敗と結果画面の内容を同時に確定させる。表示は呼び出し側(Launcher)の役目。
+  protected decide(phase: Exclude<GamePhase, 'playing'>, result: StageResult): void {
+    this._phase = phase;
+    this._result = result;
+  }
   private readonly restored: boolean;
 
   // saved が undefined ならスナップショットからの再開ではない新規開始で、スコア0・進行中・
@@ -163,14 +159,12 @@ export abstract class Stage {
     this.statusPanel = new StageStatusPanel(hud.layers.panel);
   }
 
-  // 新規開始なら初期配置・初期弾薬・ブリーフィングを行う。具象ステージは自分のコンストラクタの
+  // 新規開始なら初期配置・ブリーフィングを行う。具象ステージは自分のコンストラクタの
   // 末尾で必ずこれを呼ぶ — 初期配置は具象側のフィールドが揃ってからでないと走らせられない。
   protected begin(): void {
     if (this.restored) return;
-    const player = this._entities.initialActivePlayer;
-    const enemyCount = this.init(player, this._entities);
-    player?.initAmmo(this.initialAmmo.mags, this.initialAmmo.rounds);
-    this._hud.toast(this.briefingHtml(enemyCount), BRIEFING_TOAST_MS);
+    this.init(this._entities);
+    this._hud.toast(this.briefingHtml(), BRIEFING_TOAST_MS);
   }
 
   // ステージ固有の UI(トグル等)をステータスウィンドウ左部へ追加する。
@@ -178,34 +172,29 @@ export abstract class Stage {
     this.statusPanel.appendLeftWidget(el);
   }
 
-  // 決着後の [R] で再出撃。プレイ中は素通しする。
-  handleInput(input: Input): void {
-    if (this.isPlaying) return;
-    if (input.takeKey(K.restart)) this.restart();
-  }
-
-  // ?stage= を明示して replace する: 素のリロードでは選択画面へ戻るため。
-  private restart(): void {
-    location.replace(`${location.pathname}?stage=${this.id}`);
-  }
-
-  // ステータスパネルを同期する。fo・project・scale・displayTime・camera は配置プレビューなど
+  // ステータスパネルを同期する。fo・displayTime・visibilityPolicy は配置プレビューなど
   // ステージ固有の描画物を持つサブクラスが使う。
   sync(
-    player: Player | null, _fo: FloatingOrigin, _project: ProjectFn, _scale: ScaleFn, _displayTime: number,
-    overviewMode: boolean, _visibilityPolicy: MapVisibilityPolicy | null, _camera: THREE.Camera,
+    player: Player | null, _fo: FloatingOrigin, cameraSystem: CameraSystem, _displayTime: number,
+    _visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
-    this.syncStatusPanel(player, overviewMode);
+    this.syncStatusPanel(player, cameraSystem.overviewMode);
   }
 
-  // hudSubStatus() が null ならパネルを隠し、文字列なら HP・スコアとともに表示する。
+  // hudSubStatus() が null のとき、またはマップ視点のときはパネルを畳む。
   private syncStatusPanel(player: Player | null, overviewMode: boolean): void {
     const message = this.hudSubStatus();
-    if (!player || message === null || overviewMode) {
-      this.statusPanel.hide();
-      return;
-    }
-    this.statusPanel.sync(player, message, this.scoreCounter.kills);
+    const show = message !== null && !overviewMode;
+    this.statusPanel.sync(show ? player : null, message ?? '', this.scoreCounter.kills);
+  }
+
+  // 自機を1隻置き、操作対象が居なければそれを操作対象にする。艦の隻数は0..n隻が一般形で、
+  // 何隻をどこへ置くかはステージ自身の宣言。
+  protected addPlayer(init?: PlayerInit): Player {
+    const ship = new Player(this._hud, this._sfx, this._scene, this._fx, this._markerManager, init);
+    this._entities.addPlayer(ship);
+    this._activePlayers.claimIfNone(ship);
+    return ship;
   }
 
   // 敵を entities へ登録し、出撃数をスコアへ記録する。
@@ -221,11 +210,9 @@ export abstract class Stage {
     }
   }
 
-  abstract briefingHtml(enemyCount: number): string;
-  // 初期配置。戻り値は初期敵数(ブリーフィング表示用)。既定では何も置かない。
-  protected init(_player: Player | null, _entities: EntityManager): number {
-    return 0;
-  }
+  abstract briefingHtml(): string;
+  // 初期配置。既定では何も置かない。
+  protected init(_entities: EntityManager): void { }
   // 毎フレーム呼ぶ。艦が1隻も無い間は player が null になる。
   abstract update(dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void;
 
@@ -237,9 +224,13 @@ export abstract class Stage {
   checkWin(): boolean {
     return this.scoreCounter.totalEnemiesSpawned - this.scoreCounter.kills - this.scoreCounter.losses <= 0;
   }
-  // 勝利画面を表示する。
+  // 決着を「勝利」で確定させる。
   onWin(simTime: number): void {
-    showWinScreen(this._sfx, this.scoreCounter, this.scoreCounter.totalEnemiesSpawned, simTime);
+    this.decide('won', {
+      win: true,
+      title: null,
+      detailHtml: winDetailHtml(this.scoreCounter, this.scoreCounter.totalEnemiesSpawned, simTime),
+    });
   }
 
   // ステータスパネルに表示する補助メッセージ。既定では非表示(null)。
@@ -259,18 +250,20 @@ export abstract class Stage {
 
     // isPlaying ガード: 敗北後に残存敵が再突入で消えても勝利判定が上書きしないよう。
     if (this.isPlaying && this.checkWin()) {
-      this.setPhase('won');
       this._unlockManager.reportClear(this.id, this._hud);
       this.onWin(simTime);
     }
   }
 
-  // 敗北を記録し、reason を添えて敗北画面を表示する。
+  // 敗北を記録し、reason を添えて決着を「敗北」で確定させる。
   recordPlayerLost(reason: string): void {
     // isPlaying ガード: 勝利後に自機が再突入しても敗北で上書きしないよう。
     if (!this.isPlaying) return;
-    this.setPhase('lost');
-    showResultScreen(this._sfx, false, `${reason}<br>撃破 ${this.scoreCounter.kills}/${this.scoreCounter.totalEnemiesSpawned} 機`);
+    this.decide('lost', {
+      win: false,
+      title: null,
+      detailHtml: `${reason}<br>撃破 ${this.scoreCounter.kills}/${this.scoreCounter.totalEnemiesSpawned} 機`,
+    });
   }
 
   // スコア・決着状態・補給タイマーをセーブデータへ変換する。固有の内訳を持つ具象ステージは
@@ -282,4 +275,15 @@ export abstract class Stage {
       logistics: this.logistics.serialize(),
     };
   }
+}
+
+// 全機撃破・ミッション時間・命中率をまとめた勝利画面の本文。
+function winDetailHtml(scoreCounter: ScoreCounter, totalEnemies: number, simTime: number): string {
+  const { shots, hits } = scoreCounter;
+  const acc = shots > 0 ? ((hits / shots) * 100).toFixed(1) : '0.0';
+  return (
+    `全 ${totalEnemies} 機撃破<br>` +
+    `ミッション時間 T+ ${Math.floor(simTime / 3600)}h ${Math.floor((simTime % 3600) / 60)}m ${Math.floor(simTime % 60)}s<br>` +
+    `発射 ${shots} 発 / 命中 ${hits} 発 (命中率 ${acc}%)`
+  );
 }
