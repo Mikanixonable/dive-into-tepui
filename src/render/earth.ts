@@ -134,6 +134,10 @@ export interface Earth {
   group: THREE.Group;
   setRotation(angleRad: number): void;
   setSunDir(x: number, y: number, z: number): void;
+  // オーロラのカーテンを出すかどうか。
+  setAuroraVisible(visible: boolean): void;
+  // 大気リム光を出すかどうか。地表マテリアルへ焼き込まれたもや・夕焼けは残る。
+  setAtmosphereVisible(visible: boolean): void;
   // 見かけ直径[px]から地表メッシュのLOD段を選び、その段だけを visible にする。
   syncSurfaceLod(apparentDiameterPx: number): void;
   tick(simTime: number): void; // オーロラの明滅アニメーション、大気シェーダの地球中心uniform更新
@@ -163,7 +167,8 @@ export function createEarth(): Earth {
 
   // 大気リム光(地球中心を基準にした解析シェーディングなので自転させる必要はなく、
   // spin ではなく group 直下に置く)。
-  group.add(buildAtmoRim(sunDir, earthCenter));
+  const atmoRim = buildAtmoRim(sunDir, earthCenter);
+  group.add(atmoRim);
 
   return {
     group,
@@ -174,6 +179,12 @@ export function createEarth(): Earth {
     // 太陽方向ベクトルを設定する。
     setSunDir(x: number, y: number, z: number) {
       sunDir.value.set(x, y, z);
+    },
+    setAuroraVisible(visible: boolean) {
+      for (const a of auroras) a.mesh.visible = visible;
+    },
+    setAtmosphereVisible(visible: boolean) {
+      atmoRim.visible = visible;
     },
     // 見かけ直径[px]から地表LOD段を選び、その段のメッシュだけを visible にする。
     syncSurfaceLod(apparentDiameterPx: number) {
