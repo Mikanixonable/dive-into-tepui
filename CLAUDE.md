@@ -13,6 +13,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **リファクタリングの判断基準は `/refactor`(一般方針)と `/refactor-fixed`(このプロジェクトで確定済みの
   責務境界)。** 責務配置の判断を新たに下した/変えたら、`.claude/skills/refactor-fixed/SKILL.md` を
   同じ変更セットで書き換える(追記ではなく、全体が整合するように書き直す。古い判断は残さない)。
+- **HUD/UI/DOM/CSS(パネル・ウィンドウ・ボタン・入力欄・タッチ操作)に触れる変更は、書き始める前に
+  必ず `/ui-design` の手順を通す。** トークン・ウィジェット・オーバーレイの開閉規則・置き場4種・
+  タッチ対応の規約は `DEVELOP/DESIGN-RULES.md` が正本。
 - **改名は痕跡を残さない。** コードにも文書にも歴史的経緯を書かない。「旧」「former」「previously」
   「〜だった」の類は禁止。互換用の旧名エイリアスも残さず、旧名は全文検索して 0 件にする。
 - **コメントは `/comment` の方針に従う。あらゆる変更で、書く前と書き換えた後に必ず見直す。**
@@ -53,8 +56,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `DEVELOP/OWNERSHIP.md` — インスタンス保持木と状態の正本(source of truth)。クラスの new 位置・
   フィールドの所有・参照共有・キャッシュが動いたら更新する。
 - `DEVELOP/SPEC.md` — 「どう振舞うべきか」の仕様。プレイヤーから見える挙動・数値が変わったら更新する。
+- `DEVELOP/DESIGN-RULES.md` — UI/デザインの規約(トークン・ウィジェット・オーバーレイの開閉規則・
+  置き場4種・タッチ対応)。`theme.ts`/`hud/widgets/`/`hud/overlay-manager.ts` を含む HUD 側の
+  構成が変わったら更新する。
 
-役割の切り分け: この CLAUDE.md は**散文の解説**(責務と理由)、DEVELOP/ の2文書は**機械的な事実**
+役割の切り分け: この CLAUDE.md は**散文の解説**(責務と理由)、DEVELOP/ の各文書は**機械的な事実**
 (順序と所有)。両者が食い違ったら **DEVELOP/ を正とし、CLAUDE.md を直す。**
 リファクタリングのやることリストは `memos/hedalu244/refactoring_todo.md`、論点ごとの todo は
 同フォルダの各 `*_todo.md` を参照する(こちらも CLAUDE.md より新しい)。
