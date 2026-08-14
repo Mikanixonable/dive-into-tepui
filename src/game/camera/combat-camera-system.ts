@@ -57,12 +57,12 @@ export class CombatCameraSystem {
     return this.chaseCamera.camFollowAttitude;
   }
 
-  // CameraSystem.sync が読む近クリップ距離。OverviewCamera の同名 getter と読み口を揃える。
+  // CameraSystem.sync が読む近クリップ距離。MapCamera の同名 getter と読み口を揃える。
   get near(): number {
     return C.COMBAT_CAMERA_NEAR;
   }
 
-  // CameraSystem.sync が読む遠クリップ距離。OverviewCamera の同名 getter と読み口を揃える。
+  // CameraSystem.sync が読む遠クリップ距離。MapCamera の同名 getter と読み口を揃える。
   get far(): number {
     return C.COMBAT_CAMERA_FAR;
   }

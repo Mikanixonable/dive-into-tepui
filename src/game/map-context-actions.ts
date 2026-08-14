@@ -282,7 +282,7 @@ export class MapContextActions {
         const parent = l.isLagrange ? lagrangeParentId(l.id) : primaryOf(registry, l.id);
         if (parent !== null) parentOf.set(l.id, parent);
       }
-      this.objectListPanel.sync(items, focusTargetId(this.cameraSystem.overviewCamera.focus), parentOf);
+      this.objectListPanel.sync(items, focusTargetId(this.cameraSystem.mapCamera.focus), parentOf);
     }
 
     const byKey = new Map(items.map((i) => [this.windowKey(i), i]));
@@ -494,7 +494,7 @@ export class MapContextActions {
       run: (act) => {
         if (act === 'openShipPlacer') {
           this.activeStage.authoring?.openShipPlacer(
-            focusTargetId(this.cameraSystem.overviewCamera.focus));
+            focusTargetId(this.cameraSystem.mapCamera.focus));
         } else if (act === 'openSettings') {
           this.pauseMenu.toggle(true);
         }

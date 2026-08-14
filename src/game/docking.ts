@@ -120,7 +120,7 @@ export class Docking {
     ship.renderObject.visible = false;
     const wasActive = this.activePlayers.current === ship;
     this.mapActions.close();
-    this.cameraSystem.overviewCamera.clearFocusIf(ship.id);
+    this.cameraSystem.mapCamera.clearFocusIf(ship.id);
     // 操作中の艦を収容する際は、連続指令と噴射音を同時に畳む。
     if (wasActive) {
       ship.clearTransientCommands();

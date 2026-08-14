@@ -244,13 +244,13 @@ export interface ChaseCameraSaveData {
   followAttitude: boolean;
 }
 
-// OverviewCamera のフォーカス対象(FocusTarget の保存形)。'point' は焼き込み先の座標系
+// MapCamera のフォーカス対象(FocusTarget の保存形)。'point' は焼き込み先の座標系
 // (center/rotatingWith)と、その座標系相対の点をそのまま持つ。
 export type FocusTargetSaveData =
   | { kind: 'object'; id: string }
   | { kind: 'point'; center: string; rotatingWith: string | null; point: Vec3SaveData };
 
-export interface OverviewCameraSaveData {
+export interface MapCameraSaveData {
   offset: Vec3SaveData;
   pan: Vec3SaveData;
   up: Vec3SaveData;
@@ -269,7 +269,7 @@ export interface OverviewCameraSaveData {
 export interface CameraSaveData {
   view: 'combat' | 'map';
   chase: ChaseCameraSaveData;
-  overview: OverviewCameraSaveData;
+  overview: MapCameraSaveData;
 }
 
 export interface GameSaveData {

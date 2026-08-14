@@ -149,7 +149,7 @@ export class EnvironmentScene {
       ? sharedVisibilityPolicy ?? new MapVisibilityPolicy(
         this.ephemeris.registry,
         cameraSystem.bodyClassToggles,
-        focusTargetId(cameraSystem.overviewCamera.focus),
+        focusTargetId(cameraSystem.mapCamera.focus),
         nearbyIds,
       )
       : null;
@@ -174,7 +174,7 @@ export class EnvironmentScene {
     this.syncStars(cameraSystem, gridVisibility.stars);
     this.syncReferenceLines(
       displayTime, floatingOrigin, cameraSystem.overviewMode,
-      focusTargetId(cameraSystem.overviewCamera.focus), cameraSystem.bodyClassToggles,
+      focusTargetId(cameraSystem.mapCamera.focus), cameraSystem.bodyClassToggles,
       visibilityPolicy, nearbyIds, cameraSystem.activeCamera, cameraSystem.activeCameraPos);
     this.celestialGrid.sync(
       gridVisibility, cameraSystem.activeCamera,
@@ -185,10 +185,10 @@ export class EnvironmentScene {
       gridVisibility.equatorScaleGrid,
       gridVisibility.moonOrbitScaleGrid,
       'moon' in this.ephemeris.registry ? this.toThreeNormal(this.ephemeris.orbitNormalAt('moon', displayTime)) : undefined,
-      cameraSystem.overviewCamera.resolvedFocus,
+      cameraSystem.mapCamera.resolvedFocus,
       floatingOrigin,
       cameraSystem.activeCamera,
-      cameraSystem.overviewCamera.dist,
+      cameraSystem.mapCamera.dist,
     );
   }
 
