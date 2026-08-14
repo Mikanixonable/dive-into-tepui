@@ -42,8 +42,7 @@ function alignExactly(ship: PlanExecutorShip, fwd: Vec3, up: Vec3): void {
 export function register(): void {
   test('PlanExecutor: 目標Δvがほぼ0でノード時刻が目前ならその場で完了しthrustはnull', () => {
     const ship = makeShip();
-    ship.plan.trackAnchor(ship.state);
-    ship.plan.addNode(kinematicState(0.02, ship.state.r, ship.state.v));
+    ship.plan.addNode(kinematicState(0.02, ship.state.r, ship.state.v), ship.state);
     const executor = new PlanExecutor(hud);
 
     executor.update(ship, 0.1, 0, openGate);
@@ -54,10 +53,9 @@ export function register(): void {
 
   test('PlanExecutor: バーン中にノード(Δv編集)が差し替わるとthrustが残らない(regression C)', () => {
     const ship = makeShip();
-    ship.plan.trackAnchor(ship.state);
     const dv = v3(0, 0, 200); // r=(1e7,0,0) と平行にならない向き(法線方向)
     const node = kinematicState(50, ship.state.r, add(ship.state.v, dv));
-    ship.plan.addNode(node);
+    ship.plan.addNode(node, ship.state);
     const executor = new PlanExecutor(hud);
 
     const fwd = v3(0, 0, 1); // norm(dv)
@@ -80,9 +78,8 @@ export function register(): void {
 
   test('PlanExecutor: 純ラジアル方向のΔvでもslewを抜けてarmedへ進む(regression D)', () => {
     const ship = makeShip();
-    ship.plan.trackAnchor(ship.state);
     const dv = v3(50, 0, 0); // state.r と平行 = 純ラジアル方向
-    ship.plan.addNode(kinematicState(1, ship.state.r, add(ship.state.v, dv)));
+    ship.plan.addNode(kinematicState(1, ship.state.r, add(ship.state.v, dv)), ship.state);
     const executor = new PlanExecutor(hud);
 
     // 動径方向を up にすると特異点になるので、軌道面法線へフォールバックした先で厳密に合わせる。
@@ -96,11 +93,10 @@ export function register(): void {
 
   test('PlanExecutor: ノード時刻がはるか先なら現在のΔvが小さくても点火・完了しない(regression F)', () => {
     const ship = makeShip();
-    ship.plan.trackAnchor(ship.state);
     // 現在の速度とノードの目標速度がほぼ一致(=前回の周回のたまたまの再現)だが、
     // ノード自体の実行時刻は遥か未来。
     const node = kinematicState(10_000, ship.state.r, ship.state.v);
-    ship.plan.addNode(node);
+    ship.plan.addNode(node, ship.state);
     const executor = new PlanExecutor(hud);
 
     executor.update(ship, 0.1, 0, openGate);
@@ -112,9 +108,8 @@ export function register(): void {
 
   test('PlanExecutor: 高warpでゲートが閉じている間はnextEventTimeがnull(regression H)', () => {
     const ship = makeShip();
-    ship.plan.trackAnchor(ship.state);
     const dv = v3(0, 0, 200); // r=(1e7,0,0) と平行にならない向き(法線方向)
-    ship.plan.addNode(kinematicState(50, ship.state.r, add(ship.state.v, dv)));
+    ship.plan.addNode(kinematicState(50, ship.state.r, add(ship.state.v, dv)), ship.state);
     const executor = new PlanExecutor(hud);
 
     alignExactly(ship, v3(0, 0, 1), ship.state.r);
@@ -127,10 +122,9 @@ export function register(): void {
 
   test('PlanExecutor: ゲートが閉じている間はapplyIgnitionAndCutoffの遮断判定も走らない(regression I)', () => {
     const ship = makeShip();
-    ship.plan.trackAnchor(ship.state);
     const dv = v3(0, 0, 200); // r=(1e7,0,0) と平行にならない向き(法線方向)
     const node = kinematicState(50, ship.state.r, add(ship.state.v, dv));
-    ship.plan.addNode(node);
+    ship.plan.addNode(node, ship.state);
     const executor = new PlanExecutor(hud);
 
     alignExactly(ship, v3(0, 0, 1), ship.state.r);
@@ -150,9 +144,8 @@ export function register(): void {
 
   test('PlanExecutor: 点火後、update() を挟んでもthrustが非nullのまま維持される(regression A)', () => {
     const ship = makeShip();
-    ship.plan.trackAnchor(ship.state);
     const dv = v3(0, 0, 200); // r=(1e7,0,0) と平行にならない向き(法線方向)
-    ship.plan.addNode(kinematicState(50, ship.state.r, add(ship.state.v, dv)));
+    ship.plan.addNode(kinematicState(50, ship.state.r, add(ship.state.v, dv)), ship.state);
     const executor = new PlanExecutor(hud);
 
     alignExactly(ship, v3(0, 0, 1), ship.state.r);
@@ -168,9 +161,8 @@ export function register(): void {
 
   test('PlanExecutor: 燃焼中に艦が破壊されるとapplyIgnitionAndCutoffがthrustを戻す(regression K)', () => {
     const ship = makeShip();
-    ship.plan.trackAnchor(ship.state);
     const dv = v3(0, 0, 200); // r=(1e7,0,0) と平行にならない向き(法線方向)
-    ship.plan.addNode(kinematicState(50, ship.state.r, add(ship.state.v, dv)));
+    ship.plan.addNode(kinematicState(50, ship.state.r, add(ship.state.v, dv)), ship.state);
     const executor = new PlanExecutor(hud);
 
     alignExactly(ship, v3(0, 0, 1), ship.state.r);
@@ -189,10 +181,9 @@ export function register(): void {
 
   test('PlanExecutor: 大きな姿勢転回が要るときは接近ウィンドウが転回時間ぶん広がる(regression L)', () => {
     const ship = makeShip();
-    ship.plan.trackAnchor(ship.state);
     // 小さいΔvだが、初期姿勢(単位クォータニオン=+Z向き)からほぼ180°の反転が要る向き。
     const dv = v3(0, 0, -1);
-    ship.plan.addNode(kinematicState(12, ship.state.r, add(ship.state.v, dv)));
+    ship.plan.addNode(kinematicState(12, ship.state.r, add(ship.state.v, dv)), ship.state);
     const executor = new PlanExecutor(hud);
 
     // 燃焼時間見積りだけの猶予窓(NODE_APPROACH_LEAD=10s + burnDuration≈0.01s)では
