@@ -4,7 +4,6 @@
 // 知らない。座標変換前の値も座標型(Vec3/KinematicState/…)も知らず、受け取るのは
 // THREE.Vector3/THREE.Camera と数値だけ。
 import * as THREE from 'three/webgpu';
-import { attribute, float } from 'three/tsl';
 import { metersPerPixelFromTanHalfFov, MIN_DEPTH } from '../physics/projection';
 
 export type CurveDash = { readonly dashSize: number; readonly gapSize: number };
@@ -18,17 +17,11 @@ export type CurveOptions = {
   // 属性ごと差し替えても新しい頂点は反映されない)。
   readonly maxVertices: number;
   readonly dash?: CurveDash;
-  readonly perVertexFade?: boolean;
 };
 
 // t∈[0,1] の位置における曲線上の点を out へ書く。sample(0) と sample(1) が一致する(周期的
 // である)なら、その曲線は自然に閉じた輪として描かれる。
 export type CurveSampler = (t: number, out: THREE.Vector3) => void;
-
-// この球に近い頂点ほど透明にし、球を貫くセグメントは描画自体から外す。center は sample が
-// 返す点と同じ座標系。天体の自転や公転で球が動く場合、呼び出し側は毎フレーム新しい値を渡してよい
-// (曲線自体の再サンプリングとは独立に、動いた分だけフェードを引き直す)。
-export type CurveExcludeSphere = { readonly center: THREE.Vector3; readonly radius: number };
 
 export type SetCurveOptions = {
   // 再サンプリングの要否を決める不透明な値。前回と === で異なるときだけ焼き直す — sample の
@@ -37,7 +30,6 @@ export type SetCurveOptions = {
   readonly revision: unknown;
   // 画面上のサジッタ目標を実距離に換算するための、現在の描画カメラ。
   readonly camera: THREE.Camera;
-  readonly excludeSphere?: CurveExcludeSphere;
 };
 
 // 弦に対する曲線の膨らみ(サジッタ)の目標値 [px]。画面上のサジッタをこの値以下に抑える
@@ -71,15 +63,6 @@ const F32_RELATIVE_EPS = 2 ** -24;
 // 十分小さい値にして、量子化誤差が分割の粗さに埋もれて見えなくなるようにする。
 const PIVOT_MAX_ERROR_PX = 0.1;
 
-// フェードの再計算を省く excludeSphere の移動量。球の半径に対するこの割合より小さく
-// 動いただけなら、フェード帯の中の各頂点の不透明度は視認できるほど変わらない。
-const EXCLUDE_SKIP_SHIFT_RATIO = 1 / 16;
-
-function smoothstep(edge0: number, edge1: number, value: number): number {
-  const t = Math.min(1, Math.max(0, (value - edge0) / (edge1 - edge0)));
-  return t * t * (3 - 2 * t);
-}
-
 // 点 p から線分 ab への最短距離の2乗。
 function distanceSqPointToSegment(
   px: number, py: number, pz: number, ax: number, ay: number, az: number, bx: number, by: number, bz: number,
@@ -105,24 +88,18 @@ export class Curve {
   private readonly indices: Uint32Array;
   private readonly maxVertices: number;
   private readonly maxSegments: number;
-  private readonly fade: Float32Array | null;
   private readonly lineDistances: Float32Array | null;
   private vertexCount = 0;
   private wantVisible = true;
 
-  // 直近に適応分割で焼いた頂点(sample が返した座標系のまま、変換前)。excludeSphere だけが
-  // 変わったフレームで曲線を再サンプリングせずにフェードだけ引き直せるよう保持する。倍精度で
-  // 持つ理由は pivot 自体の精度を落とさないため — GPU へ渡す positions(f32)は常にこの配列
-  // から pivot を差し引いた差分として書く。
+  // 直近に適応分割で焼いた頂点(sample が返した座標系のまま、変換前)。倍精度で持つ理由は
+  // pivot 自体の精度を落とさないため — GPU へ渡す positions(f32)は常にこの配列から pivot
+  // を差し引いた差分として書く。
   private readonly bakedLocal: Float64Array;
   private bakedCount = 0;
   private hasBaked = false;
   private lastRevision: unknown = undefined;
   private bakedScale: number | null = null;
-  private readonly lastExcludeCenter = new THREE.Vector3();
-  private hasExcludeCenter = false;
-  private lastExcludeRadius = 0;
-  private fadeNeutral = true;
 
   // 頂点バッファ(f32)へ書く直前に bakedLocal の全頂点から差し引く基準点。sample が返す
   // 座標系のまま、カメラの現在位置に追従させる。
@@ -154,11 +131,9 @@ export class Curve {
   private segmentBakedLimit = 0;
 
   // color/opacity/renderOrder はマテリアルと描画順、maxVertices は確保する頂点バッファの
-  // 上限。dash を渡すと破線(LineDashedMaterial、頂点ごとの累積距離を焼く)。perVertexFade
-  // を渡すと頂点ごとの不透明度を持てる(excludeSphere の指定に使う、TSL の opacityNode で
-  // 乗算する)。両者は排他。
+  // 上限。dash を渡すと破線(LineDashedMaterial、頂点ごとの累積距離を焼く)。
   constructor(opts: CurveOptions) {
-    const { color, opacity = 1, renderOrder = 0, maxVertices, dash, perVertexFade } = opts;
+    const { color, opacity = 1, renderOrder = 0, maxVertices, dash } = opts;
     this.maxVertices = maxVertices;
     this.maxSegments = Math.max(0, maxVertices - 1);
     this.positions = new Float32Array(maxVertices * 3);
@@ -170,13 +145,6 @@ export class Curve {
     this.resetIndicesToStrip();
     this.geom.setDrawRange(0, 0);
 
-    if (perVertexFade) {
-      this.fade = new Float32Array(maxVertices).fill(1);
-      this.geom.setAttribute('fade', new THREE.BufferAttribute(this.fade, 1));
-    } else {
-      this.fade = null;
-    }
-
     if (dash) {
       this.lineDistances = new Float32Array(maxVertices);
       this.geom.setAttribute('lineDistance', new THREE.BufferAttribute(this.lineDistances, 1));
@@ -184,22 +152,12 @@ export class Curve {
       this.lineDistances = null;
     }
 
-    if (dash) {
-      this.mat = new THREE.LineDashedMaterial({
+    this.mat = dash
+      ? new THREE.LineDashedMaterial({
         color, transparent: true, opacity, depthWrite: false,
         dashSize: dash.dashSize, gapSize: dash.gapSize,
-      });
-    } else if (perVertexFade) {
-      // 一様な material.opacity では頂点ごとに値を変えられないため、TSL で頂点属性 fade を
-      // 読むノードマテリアルを使う。three/webgpu の公開型は LineBasicNodeMaterial を含まず
-      // 暫定シムで補っているため、シム側の基底クラスが LineSegments の要求する Material と
-      // 型の上では一致しない。
-      const nodeMat = new THREE.LineBasicNodeMaterial({ color, transparent: true, depthWrite: false });
-      nodeMat.opacityNode = attribute('fade', 'float').mul(float(opacity));
-      this.mat = nodeMat as unknown as THREE.Material;
-    } else {
-      this.mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
-    }
+      })
+      : new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
 
     this.line = new THREE.LineSegments(this.geom, this.mat);
     this.line.renderOrder = renderOrder;
@@ -340,10 +298,9 @@ export class Curve {
   }
 
   // 曲線を(必要なら)焼き直し、GPU バッファへ反映する。revision・画面スケールのどちらも
-  // 前回と実質同じであれば焼き直しを省く。excludeSphere だけが変化した場合は曲線の形状は
-  // 変えず、頂点ごとの不透明度と描くセグメントの選択だけを引き直す。
+  // 前回と実質同じであれば焼き直しも GPU への再アップロードも省く。
   setCurve(sample: CurveSampler, opts: SetCurveOptions): void {
-    const { revision, camera, excludeSphere } = opts;
+    const { revision, camera } = opts;
     this.cacheCameraFrame(camera);
     const scaleNow = this.representativeScale(sample);
     const scaleChanged = this.bakedScale === null
@@ -356,7 +313,6 @@ export class Curve {
       this.hasBaked = true;
       this.lastRevision = revision;
       this.bakedScale = scaleNow;
-      this.hasExcludeCenter = false; // 頂点が入れ替わったので直前のフェードは対応先を失っている
     }
 
     // pivot はカメラ近傍に据え続ける基準点。焼き直した頂点はまだ pivot 差し引き後の
@@ -374,26 +330,12 @@ export class Curve {
       this.applyTransform();
     }
 
-    if (!excludeSphere) {
-      if (!pivotChanged && !this.hasExcludeCenter && this.fadeNeutral) return;
-      this.hasExcludeCenter = false;
-      this.writeNeutral();
-      return;
-    }
-
-    if (!pivotChanged && this.hasExcludeCenter) {
-      const shift = this.lastExcludeCenter.distanceTo(excludeSphere.center)
-        + Math.abs(excludeSphere.radius - this.lastExcludeRadius);
-      if (shift < excludeSphere.radius * EXCLUDE_SKIP_SHIFT_RATIO) return;
-    }
-    this.writeExcluded(excludeSphere);
-    this.lastExcludeCenter.copy(excludeSphere.center);
-    this.hasExcludeCenter = true;
-    this.lastExcludeRadius = excludeSphere.radius;
+    if (!rebaked && !pivotChanged) return;
+    this.writePositions();
   }
 
-  // フェード無し・全セグメントの状態を GPU へ反映する。
-  private writeNeutral(): void {
+  // 焼いた頂点(pivot 差し引き後)と全セグメントの描画範囲を GPU へ反映する。
+  private writePositions(): void {
     const n = this.bakedCount;
     const { x: px, y: py, z: pz } = this.pivot;
     for (let i = 0; i < n; i++) {
@@ -403,60 +345,11 @@ export class Curve {
     }
     this.vertexCount = n;
     (this.geom.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
-    if (this.fade) {
-      this.fade.fill(1);
-      (this.geom.getAttribute('fade') as THREE.BufferAttribute).needsUpdate = true;
-    }
     this.writeLineDistances(n);
     this.resetIndicesToStrip();
     const segmentIndexCount = Math.max(0, n - 1) * 2;
     (this.geom.getIndex() as THREE.BufferAttribute).needsUpdate = true;
     this.geom.setDrawRange(0, segmentIndexCount);
-    this.fadeNeutral = true;
-    this.applyVisible();
-  }
-
-  // 頂点ごとの不透明度と、球を貫くセグメントの除外を求め直して GPU へ反映する。端点だけを
-  // 見ると、天体の角半径が頂点間隔よりずっと小さい場合に天体の真上を通る1本を取りこぼす
-  // ため、線分と球の最近接距離で判定する。
-  private writeExcluded(exclude: CurveExcludeSphere): void {
-    const n = this.bakedCount;
-    const { x: px, y: py, z: pz } = this.pivot;
-    for (let i = 0; i < n; i++) {
-      this.positions[i * 3] = this.bakedLocal[i * 3]! - px;
-      this.positions[i * 3 + 1] = this.bakedLocal[i * 3 + 1]! - py;
-      this.positions[i * 3 + 2] = this.bakedLocal[i * 3 + 2]! - pz;
-    }
-    this.vertexCount = n;
-    (this.geom.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
-
-    const { center, radius } = exclude;
-    let allOpaque = true;
-    if (this.fade) {
-      for (let i = 0; i < n; i++) {
-        const dx = this.bakedLocal[i * 3]! - center.x;
-        const dy = this.bakedLocal[i * 3 + 1]! - center.y;
-        const dz = this.bakedLocal[i * 3 + 2]! - center.z;
-        const v = radius > 0 ? smoothstep(radius, radius * 2, Math.hypot(dx, dy, dz)) : 1;
-        this.fade[i] = v;
-        if (v !== 1) allOpaque = false;
-      }
-      (this.geom.getAttribute('fade') as THREE.BufferAttribute).needsUpdate = true;
-    }
-
-    let count = 0;
-    const radiusSq = radius * radius;
-    for (let i = 0; i < n - 1; i++) {
-      const ax = this.bakedLocal[i * 3]!, ay = this.bakedLocal[i * 3 + 1]!, az = this.bakedLocal[i * 3 + 2]!;
-      const bx = this.bakedLocal[(i + 1) * 3]!, by = this.bakedLocal[(i + 1) * 3 + 1]!, bz = this.bakedLocal[(i + 1) * 3 + 2]!;
-      if (radius > 0 && distanceSqPointToSegment(center.x, center.y, center.z, ax, ay, az, bx, by, bz) <= radiusSq) continue;
-      this.indices[count++] = i;
-      this.indices[count++] = i + 1;
-    }
-    this.writeLineDistances(n);
-    (this.geom.getIndex() as THREE.BufferAttribute).needsUpdate = true;
-    this.geom.setDrawRange(0, count);
-    this.fadeNeutral = allOpaque && count === Math.max(0, n - 1) * 2;
     this.applyVisible();
   }
 
@@ -482,8 +375,6 @@ export class Curve {
     this.hasBaked = false;
     this.bakedScale = null;
     this.lastRevision = undefined;
-    this.hasExcludeCenter = false;
-    this.fadeNeutral = true;
     this.geom.setDrawRange(0, 0);
     this.applyVisible();
   }
@@ -494,6 +385,11 @@ export class Curve {
       this.mat.dashSize = dashSize;
       this.mat.gapSize = gapSize;
     }
+  }
+
+  // マテリアルの不透明度を書き換える。
+  setOpacity(opacity: number): void {
+    this.mat.opacity = opacity;
   }
 
   // sample の座標系をワールドへ写す変換を渡す。実際に line へ書く position/quaternion は

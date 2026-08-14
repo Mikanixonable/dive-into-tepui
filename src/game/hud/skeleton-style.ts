@@ -227,6 +227,8 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 .mk-poi { color: var(--text-strong); text-shadow: 0 0 4px var(--bg); }
 .mk-poi .sym { font-size: var(--glyph-poi); }
 .mk-poi .lbl { font-size: var(--font-s); border-radius: var(--radius-s); background: var(--surface-weak); }
+.mk-poi.mk-lagrange .lbl { font-size: var(--font-xxs); white-space: pre; line-height: 1.25; text-align: center; }
+.mk-poi.mk-lagrange .lbl::first-line { font-size: var(--font-s); }
 .mk-base { color: ${C.COLOR_BASE_ORBIT_LINE}; text-shadow: 0 0 4px var(--bg); }
 .mk-base .lbl { font-size: var(--font-s); border-radius: var(--radius-s); background: var(--surface-weak); border: 1px solid var(--fill-3); }
 #hud .mk-poi .lbl, #hud .mk-base .lbl { margin-top: var(--space-2); padding: var(--space-1) var(--space-2); }
