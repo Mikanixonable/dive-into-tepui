@@ -2,15 +2,14 @@
 // zoomActive で切り替えて駆動し、両者が viewpoint に持つ定常 FOV へ自身の viewpoint.fovDeg を
 // 指数関数的に近づけるアニメーションを担う(FOV アニメーション自体は両カメラの責務にしない —
 // 今後増える視点種別も viewpoint.fovDeg を持つだけで済むようにするため)。camFollowAttitude
-// (視点の基準フレーム切り替え)とその判断は ChaseCamera が持つ — CombatCameraSystem は [G]キーの
-// 受け口として toggleFollowAttitude() を転送するだけ。
+// (視点の基準フレーム切り替え)の状態と読み替え処理は ChaseCamera が持つが、[G]キーの受け口は
+// このクラスの update() が持つ — 追従対象は毎フレームの引数でしか渡らないため。
 import * as THREE from 'three/webgpu';
 import { v3 } from '../../physics/vec3';
 import { Input, MouseDelta } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
-import { Sfx } from '../../audio/sfx';
 import { Player } from '../player/player';
 import { Viewpoint } from '../../physics/projection';
 import { ChaseCamera } from './chase-camera';
@@ -45,23 +44,13 @@ export class CombatCameraSystem {
     aspect: window.innerWidth / window.innerHeight,
   };
 
-  constructor(_hud: Hud, _sfx: Sfx, player: Player | null, saved?: ChaseCameraSaveData) {
-    this.chaseCamera = new ChaseCamera(_hud, player, saved);
-  }
-
-  // アクティブ艦の切替を追従カメラへ伝える。
-  setActivePlayer(player: Player | null): void {
-    this.chaseCamera.setTarget(player);
+  constructor(_hud: Hud, saved?: ChaseCameraSaveData) {
+    this.chaseCamera = new ChaseCamera(_hud, saved);
   }
 
   // 視点を初期状態にリセットする。
   reset(): void {
     this.chaseCamera.reset();
-  }
-
-  // 視点の基準フレーム(機体姿勢基準 ⇔ ワールド基準)を切り替える。
-  toggleFollowAttitude(): void {
-    this.chaseCamera.toggleFollowAttitude();
   }
 
   get camFollowAttitude(): boolean {
@@ -81,11 +70,12 @@ export class CombatCameraSystem {
   // ズーム状態を入力から求め、現在のモード(通常/ズーム)に応じて ChaseCamera/GunsightCamera の
   // どちらかを駆動して目標 Viewpoint を求め、fovDeg だけをそこへ指数的に近づけて viewpoint とする。
   update(mouse: MouseDelta, keyYaw: number, keyPitch: number, keyRoll: number, dt: number, player: Player | null, input: Input): void {
+    if (input.takeKey(K.followAttitudeToggle)) this.chaseCamera.toggleFollowAttitude(player);
     this.zoomActive = input.down(K.gunsightZoom);
     // 操作対象艦がいなければ照準先が無いので、ズーム要求は無視して追跡視点のままにする。
     const useGunsight = player !== null && this.zoomActive;
     if (useGunsight) this.gunsightCamera.update(player);
-    else this.chaseCamera.update(mouse, keyYaw, keyPitch, keyRoll, dt);
+    else this.chaseCamera.update(mouse, keyYaw, keyPitch, keyRoll, dt, player);
     const target = useGunsight ? this.gunsightCamera.viewpoint : this.chaseCamera.viewpoint;
     this.viewpoint = lerpViewpointFov(this.viewpoint, target, dt);
   }

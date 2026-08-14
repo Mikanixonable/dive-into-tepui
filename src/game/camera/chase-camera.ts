@@ -1,6 +1,7 @@
 // 追従対象を中心とした三人称軌道視点。姿勢は単位クオータニオン(rot)と距離(dist)だけで持つ。
 // rot の意味は camFollowAttitude で切り替わる: true なら対象の姿勢に対する相対姿勢、false なら
-// ワールド(ECI)に対する絶対姿勢。切り替え時は対象の姿勢クオータニオンを掛け/割って読み替える。
+// ワールド(ECI)に対する絶対姿勢。切り替えは toggleFollowAttitude が対象の姿勢クオータニオンを
+// 掛け/割って読み替える。
 import { add, addScaled, cross, len, norm, scale, v3, Vec3 } from '../../physics/vec3';
 import { MouseDelta } from '../input/input';
 import * as C from '../const';
@@ -29,11 +30,10 @@ export class ChaseCamera {
   };
 
   // saved があればその状態から組む。rot はセーブ時点の基準フレーム(機体姿勢基準/ワールド基準)
-  // での値のまま代入する — camFollowAttitude セッターは基準の切替時に rot を読み替えるため、
+  // での値のまま代入する — toggleFollowAttitude は基準の切替時に rot を読み替えるため、
   // 経由すると意味が変わってしまう。
   constructor(
     private readonly _hud: Hud,
-    private target: GameEntity | null,
     saved?: ChaseCameraSaveData,
   ) {
     if (saved) {
@@ -44,27 +44,19 @@ export class ChaseCamera {
     }
   }
 
-  // 追従先を差し替える。姿勢基準の rot はそのまま新しい対象の姿勢に対する相対値として使い回す。
-  setTarget(target: GameEntity | null): void {
-    this.target = target;
+  // ワールド基準として持っている rot を、同じ向きを指す対象の姿勢基準の値へ読み替える。
+  private rotInTargetFrame(target: GameEntity): Quat {
+    return qNormalize(qMul(qInvert(target.att.q), this.rot));
   }
 
-  // rot の相対/絶対の解釈を切り替える。toRelative が true なら「以後は対象の姿勢に対する相対値」
-  // として、false なら「以後は現在の向きをそのまま絶対値」として扱えるよう rot 自体を変換する。
-  private reinterpretRot(toRelative: boolean): Quat {
-    const targetQ = this.target!.att.q;
-    return qNormalize(toRelative ? qMul(qInvert(targetQ), this.rot) : qMul(targetQ, this.rot));
+  // 対象の姿勢基準として持っている rot を、同じ向きを指すワールド基準の値へ読み替える。
+  private rotInWorldFrame(target: GameEntity): Quat {
+    return qNormalize(qMul(target.att.q, this.rot));
   }
 
-  // 視点の基準フレーム(対象の姿勢基準 true ⇔ ワールド基準 false)。書き換え時に rot を読み替える。
+  // 視点の基準フレーム(対象の姿勢基準 true ⇔ ワールド基準 false)。
   get camFollowAttitude(): boolean {
     return this._camFollowAttitude;
-  }
-  set camFollowAttitude(v: boolean) {
-    if (v === this._camFollowAttitude) return;
-    if (!this.target) return;
-    this.rot = this.reinterpretRot(v);
-    this._camFollowAttitude = v;
   }
 
   // 視点を初期状態にリセットする
@@ -74,20 +66,27 @@ export class ChaseCamera {
     this.panEci = v3(0, 0, 0);
   }
 
-  // 視点の基準フレームを切り替える。
-  toggleFollowAttitude(): void {
-    this.camFollowAttitude = !this.camFollowAttitude;
+  // 視点の基準フレーム(機体姿勢基準 ⇔ ワールド基準)を切り替える。切替の瞬間に見えている向きが
+  // 変わらないよう rot を新しい基準での値へ読み替えるので、読み替えの基準となる対象が要る。
+  toggleFollowAttitude(target: GameEntity | null): void {
+    if (!target) return;
+    const next = !this._camFollowAttitude;
+    this.rot = next ? this.rotInTargetFrame(target) : this.rotInWorldFrame(target);
+    this._camFollowAttitude = next;
     this.panEci = v3(0, 0, 0); // フレーム切替時に座標系不辺によるパンジャンプを防ぐ
     this._hud.hint(
-      `視点のRCS追従: ${this.camFollowAttitude ? 'ON (視点が機体姿勢に追従)' : 'OFF (ワールド基準の独立視点)'
-      }`,
+      `視点のRCS追従: ${next ? 'ON (視点が機体姿勢に追従)' : 'OFF (ワールド基準の独立視点)'}`,
     );
   }
 
-  // キー/マウス入力から rot/dist を更新し、対象の状態から viewpoint を組み直す。
-  update(mouse: MouseDelta, keyYaw: number, keyPitch: number, keyRoll: number, dt: number): void {
-    if (!this.target) return;
-    let q = this._camFollowAttitude ? qMul(this.target.att.q, this.rot) : this.rot;
+  // キー/マウス入力から rot/dist を更新し、対象の状態から viewpoint を組み直す。target が
+  // null なら(操作対象艦が居ない)何もせず、viewpoint は直前の値のまま凍結する。
+  update(
+    mouse: MouseDelta, keyYaw: number, keyPitch: number, keyRoll: number, dt: number,
+    target: GameEntity | null,
+  ): void {
+    if (!target) return;
+    let q = this._camFollowAttitude ? qMul(target.att.q, this.rot) : this.rot;
 
     const right = qRotate(q, v3(1, 0, 0));
     const up = qRotate(q, v3(0, 1, 0));
@@ -117,9 +116,9 @@ export class ChaseCamera {
       this.panEci = addScaled(this.panEci, up, mouse.panDy * metersPerPixel);
     }
 
-    this.rot = this._camFollowAttitude ? qNormalize(qMul(qInvert(this.target.att.q), q)) : q;
+    this.rot = this._camFollowAttitude ? qNormalize(qMul(qInvert(target.att.q), q)) : q;
 
-    const center = this.target.state.r;
+    const center = target.state.r;
     const lookTarget = add(center, this.panEci);
     this.viewpoint = {
       position: add(lookTarget, scale(qRotate(q, v3(0, 0, -1)), this.dist)),

@@ -11,7 +11,8 @@ import { CelestialBody } from './celestial-body';
 export class EarthBody extends CelestialBody {
   readonly id = 'earth' as const;
   private readonly earth: Earth = createEarth();
-  private phase0 = Math.random() * Math.PI * 2;
+  // 自転初期位相 [rad]。値は外から与えられる。
+  private phase0 = 0;
 
   // 地球メッシュをシーンへ一度だけ登録する。
   build(scene: THREE.Scene): void {
