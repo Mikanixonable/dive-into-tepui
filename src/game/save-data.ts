@@ -256,6 +256,12 @@ export interface OverviewCameraSaveData {
   up: Vec3SaveData;
   rotatingWith: string | null;
   focus: FocusTargetSaveData;
+  // 旧セーブデータには無い。無ければ現在互換のクォータニオン操作。
+  rotationMode?: 'quaternion' | 'euler';
+  // 旧セーブデータには無い。無ければ既定の広範囲視点 FOV。
+  fovDeg?: number;
+  // 旧セーブデータには無い。無ければ赤道面。
+  referencePlane?: 'ecliptic' | 'equator' | 'moonOrbit';
 }
 
 export interface CameraSaveData {

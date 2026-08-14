@@ -305,6 +305,9 @@ export const LEAD_MAX_TIME = 25; // これより先にしか当たらない見�
 
 // --- 軌道計画モード([M]) ---
 export const OVERVIEW_CAMERA_MIN_DIST = 1e5; // 広範囲視点カメラの注視点までの距離 [m]
+export const OVERVIEW_CAMERA_FOV_MIN = 15; // 広範囲視点の最小垂直画角 [deg]
+export const OVERVIEW_CAMERA_FOV_MAX = 120; // 広範囲視点の最大垂直画角 [deg]
+export const OVERVIEW_CAMERA_FOV_STEP = 1; // HUD から入力する画角の刻み [deg]
 // 冥王星(遠日点約70AU)やエリス(遠日点約97AU)、散乱円盤の遠日点(数百AU)まで
 // 視界に収められる引きの上限。
 export const OVERVIEW_CAMERA_MAX_DIST = 1e14;
