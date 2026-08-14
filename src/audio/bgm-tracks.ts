@@ -1,4 +1,5 @@
 export interface BgmTrack {
+  name: string;
   stepDur: number;
   scale: number[];
   patA: number[];
@@ -14,6 +15,7 @@ export interface BgmTrack {
 export const BGM_TRACKS: BgmTrack[] = [
   {
     // Track 0: The Original (D-centered, 16 vs 12, slow)
+    name: 'The Original',
     stepDur: 0.42,
     scale: [146.83, 164.81, 196.0, 220.0, 261.63, 293.66, 329.63, 392.0], // D3, E3, G3, A3, C4, D4, E4, G4
     patA: [0, 4, 2, 5, 3, 7, 2, 6, 0, 5, 3, 6, 2, 7, 4, 6], // 16 beats
@@ -31,6 +33,7 @@ export const BGM_TRACKS: BgmTrack[] = [
   },
   {
     // Track 1: Ethereal (F Lydian-ish, 15 vs 11, slightly slower, very airy)
+    name: 'Ethereal',
     stepDur: 0.5,
     scale: [174.61, 196.0, 220.0, 246.94, 261.63, 329.63, 349.23, 392.0], // F3, G3, A3, B3, C4, E4, F4, G4
     patA: [0, 2, 4, 5, 7, 4, 2, 3, 1, 0, 3, 6, 5, 2, 1], // 15 beats
@@ -48,6 +51,7 @@ export const BGM_TRACKS: BgmTrack[] = [
   },
   {
     // Track 2: Deep Space / Dark (C Minor Pentatonic, 14 vs 9, faster step, darker tone)
+    name: 'Deep Space / Dark',
     stepDur: 0.35,
     scale: [130.81, 155.56, 174.61, 196.0, 233.08, 261.63, 311.13, 349.23], // C3, Eb3, F3, G3, Bb3, C4, Eb4, F4
     patA: [0, 3, 2, 1, 4, 7, 6, 5, 3, 2, 0, 1, 4, 6], // 14 beats
@@ -65,6 +69,7 @@ export const BGM_TRACKS: BgmTrack[] = [
   },
   {
     // Track 3: Sparkling Crystal (E Major Pentatonic, 7 vs 5, fast step, bright)
+    name: 'Sparkling Crystal',
     stepDur: 0.28,
     scale: [164.81, 185.0, 207.65, 246.94, 277.18, 329.63, 369.99, 415.3], // E3, F#3, G#3, B3, C#4, E4, F#4, G#4
     patA: [0, 2, 4, 3, 6, 5, 7], // 7 beats
@@ -82,6 +87,7 @@ export const BGM_TRACKS: BgmTrack[] = [
   },
   {
     // Track 4: Suspended (A Dorian, 13 vs 8, very slow step, mysterious)
+    name: 'Suspended',
     stepDur: 0.6,
     scale: [110.0, 123.47, 130.81, 146.83, 164.81, 185.0, 196.0, 220.0], // A2, B2, C3, D3, E3, F#3, G3, A3
     patA: [0, 4, 2, 7, 5, 3, 6, 1, 0, 3, 5, 2, 4], // 13 beats
