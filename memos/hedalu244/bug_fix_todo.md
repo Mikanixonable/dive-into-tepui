@@ -39,6 +39,27 @@
 | カメラロールをテンキー0/1 | `key-mapping.ts`(`cameraRollLeft/Right`), `chase-camera.ts`(`keyRoll`), `overview-camera.ts`(`up_r` を新設) | ⚠️(→ 4-4) |
 
 
+## CONTACTS が伸びると戦闘シェルフが画面上端を突き抜ける(広い幅のみ)
+
+`--shelf-h` は `layout-tokens.ts` の各ブレークポイントで 82〜140px に絞られるが、
+**1100px 超の既定値だけ `none`** で、`skeleton-style.ts` の
+`#hud-combat-shelf > .panel { max-height: var(--shelf-h) }` が効かない。
+シェルフは広い幅では画面下端に固定されるので、CONTACTS が伸びた分だけ上へ育って画面外へ出る。
+
+再現: `SMOKE_QUERY="?stage=0" npm run smoke:browser`(訓練クラスタで敵が多い)。
+1280x720 で `#hud-enemies` が高さ 795px になり、シェルフの top が **-87.5px**。
+狭い幅では `--shelf-h` が効いてパネル側がスクロールするので出ない。
+
+## ステージ状態パネルと仮想パッドが画面下端を奪い合う
+
+どちらも画面下端中央に置かれ、パッドが出ている(`#touch-ui.shown`)間はどの画面寸法でも重なる。
+`SMOKE_TOUCH=1` の検証で、この一件だけ比較対象から外してある
+(`tools/browser-smoke.mjs` の該当コメント)。直したら、その除外も一緒に外す。
+
+実測(`?stage=00`、パッド表示中):
+- 1280x720 / 800x600 / 667x375: `#hud-stagestatus` × `#touch-mode-col`
+- 480x800 / 320x568: 上に加えて `#touch-pad-move` `#touch-pad-rot` とも重なる
+
 ## LEAD表示の不具合　そもそも見えてないかも。
 LEADマーカーは「その方向に撃ったら対応する敵に当たるはず」を表す方向マーカーらしいが、現在は位置マーカー（markerManager.setPosition）として実装されていておかしい。これはリファクタリングによるエンバグの可能性が高い。本来の挙動の確認が必要。
 （見越し点の算出は `physics/intercept.ts` の `leadPoint`、表示は `marker/lead-markers.ts` に集約済み。
