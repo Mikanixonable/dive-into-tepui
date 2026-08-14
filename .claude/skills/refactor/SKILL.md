@@ -177,8 +177,10 @@ per-frame 関数の `render` / `update` / `build` / `sync` の使い分けは CL
 ## 仕上げ
 
 - `npm run typecheck` を通す。`src/physics/` を触ったときだけ `npm run test:physics` も走らせる。
-- 責務配置の判断を新たに下した/変えたなら、`.claude/skills/refactor-fixed/SKILL.md` を
-  **同じ変更セットで書き換える**(追記ではなく、全体が整合するように書き直す)。
+- **プロジェクト全体・数十ファイルに及ぶ横断的な規則そのものが変わったときだけ**、
+  `.claude/skills/refactor-fixed/SKILL.md` を**同じ変更セットで書き換える**(追記ではなく、全体が
+  整合するように書き直す)。2〜3モジュール間の責務の調整は、`/refactor` の原則から外れない限り
+  そこには書かない — CLAUDE.md と `DEVELOP/OWNERSHIP.md` が担う。
 - ユーザーが将来の実装可能性に言及したなら、`DEVELOP/SPEC.md` の「実装される可能性のある機能」節へ
   記録する。
 - 完了した `refactoring_todo.md` の項目を消す。

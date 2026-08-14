@@ -1,7 +1,7 @@
 // クリエイティブモード: 勝敗判定を発生させず、艦艇配置と軌道計画を自由に試すためのステージ。
 import type * as THREE from 'three/webgpu';
 import { Stage, type ObjectAuthoring, type StageDeps } from './stage';
-import { Player } from '../player/player';
+import type { Player } from '../player/player';
 import { EntityIdAllocator } from '../game-entity/entity-id';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { SimSpeedManager } from '../sim-speed-manager';
@@ -14,7 +14,7 @@ import type { FloatingOrigin } from '../floating-origin';
 import { Vec3, add } from '../../physics/vec3';
 import { ToggleSwitch } from '../hud/widgets';
 import { hudRail } from '../hud/hud-root';
-import type { ProjectFn, ScaleFn } from '../camera/camera-system';
+import type { CameraSystem, ProjectFn } from '../camera/camera-system';
 import { Ammo } from '../game-entity/ammo';
 import { Base } from '../game-entity/base';
 import { generateDriftingEnemy } from './spawner/enemy-generator';
@@ -31,15 +31,10 @@ const DEG = Math.PI / 180;
 
 export class CreativeStage extends Stage {
   static readonly id = 'creative' as const;
-  // 艦は0隻から始まり、配置パネルで随時追加する(艦0..n隻が一般形で、これはその上限が
-  // 無い側の特殊化にすぎない)。
-  static readonly initialPlayerCount = 0;
-  static readonly showsStatusInOverview = true;
   static readonly selectLabel = 'CREATIVE';
   static readonly selectSub = '軌道上に艦艇を自由に配置して眺める';
   static readonly selectGroup = 'クリエイティブモード';
   static readonly selectKeys: string[] = [];
-  readonly initialAmmo = { mags: 0, rounds: 0 };
   readonly freeProcurement = true;
   readonly executesPlans = true;
   readonly authoring: ObjectAuthoring = this;
@@ -67,6 +62,8 @@ export class CreativeStage extends Stage {
     return '<b>クリエイティブモード</b><br>マップから艦艇を配置して軌道を眺められる。';
   }
 
+  // saved の型を StageSaveData に留めるのは stage.ts の StageClass 一覧に
+  // 収める都合(具象ごとの拡張型では構築シグネチャが揃わない)。
   constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
     const savedCreative = saved as CreativeStageSaveData | undefined;
@@ -111,13 +108,13 @@ export class CreativeStage extends Stage {
 
   // 共通のステータス表示に加えて、配置プレビューの軌道線とマーカーを同期する。
   sync(
-    player: Player | null, fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn, displayTime: number,
-    overviewMode: boolean, visibilityPolicy: MapVisibilityPolicy | null, camera: THREE.Camera,
+    player: Player | null, fo: FloatingOrigin, cameraSystem: CameraSystem, displayTime: number,
+    visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
-    super.sync(player, fo, project, scale, displayTime, overviewMode, visibilityPolicy, camera);
-    this.syncPreview(fo, project, camera);
+    super.sync(player, fo, cameraSystem, displayTime, visibilityPolicy);
+    this.syncPreview(fo, cameraSystem.activeCameraProjection, cameraSystem.activeCamera);
     this.placerPanel.setIssues(this.issues);
-    this.creativeOptionsPanel.classList.toggle('hidden', !overviewMode);
+    this.creativeOptionsPanel.classList.toggle('hidden', !cameraSystem.overviewMode);
   }
 
   // 艦艇配置モーダルを開く (MapContextActions から呼ばれる)。focusId はマップの現在フォーカスで、
@@ -212,9 +209,7 @@ export class CreativeStage extends Stage {
       if (form.objectType === 'player') {
         const id = this.playerIdAllocator.next();
         const finalName = name || `Player-${this.nextFallbackNameSeq++}`;
-        const ship = new Player(this._hud, this._sfx, this._scene, this._fx, this._markerManager, { name: finalName, state, id });
-        this._entities.addPlayer(ship);
-        this._activePlayers.claimIfNone(ship);
+        const ship = this.addPlayer({ name: finalName, state, id });
         this._hud.hint(`${ship.name} を配置`);
       } else if (form.objectType === 'enemy') {
         const finalName = name || `Enemy-${this.nextFallbackNameSeq++}`;
@@ -320,7 +315,8 @@ export class CreativeStage extends Stage {
     this.preview = form ? this.computePreview(form) : null;
     this.issues = form ? this.computeFieldIssues(form) : [];
     this.simSpeed = simSpeed;
-    for (const ship of this._entities.players) ship.planExecutor.update(ship, dt, simTime, simSpeed);
+    const simDt = dt * simSpeed.simSpeed;
+    for (const ship of this._entities.players) ship.planExecutor.update(ship, simDt, simTime, simSpeed);
   }
 
   // 'instant' の艦はノード時刻ちょうど、'powered' の艦は点火予定時刻を Simulator の既知

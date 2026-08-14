@@ -5,6 +5,7 @@ import { kinematicState } from '../../physics/kinematic-state';
 import { R_EARTH_EQ } from '../../physics/solar-system';
 import { randSym } from '../../physics/random';
 import { add, addScaled, dot, lenSq, norm, randPerp, randVec, scale, v3, Vec3 } from '../../physics/vec3';
+import type { Ephemeris } from '../../physics/ephemeris';
 import * as C from '../const';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
@@ -15,12 +16,20 @@ import { Bullet } from '../game-entity/bullet';
 import type { EntityManager } from '../simulation/entity-manager';
 import { MUZZLE_OFFSETS } from '../../render/ships';
 import { EffectsSystem } from '../vfx/effects-system';
-import { ScoreCounter } from '../stages/stage-utils/score-counter';
-import { SimSpeedManager } from '../sim-speed-manager';
+import type { Stage } from '../stages/stage';
 import { Player } from './player';
 import type { FireSaveData } from '../save-data';
 
 export type ConsumeResult = 'empty' | 'normal' | 'mag-reload' | 'barrel-reload';
+
+// 艦の初期積載(予備マガジン数・装填済み残弾数)。
+export type AmmoLoad = { readonly mags: number; readonly rounds: number };
+
+// スナップショットからの復元か、新規配置の初期積載か。どちらも省略すればフィールド初期化子の
+// 既定積載で始まる。
+export type FireInit =
+  | { readonly saved: FireSaveData }
+  | { readonly ammo?: AmmoLoad };
 
 // 太陽グレアによる散布界の倍率。逆光(照準方向に太陽がある)ほど狙いが甘くなり、
 // 順光では締まる。難易度調整のための経験則であって物理計算ではない。
@@ -53,30 +62,23 @@ export class PlayerFire {
     private readonly _sfx: Sfx,
     private readonly _scene: THREE.Scene,
     private readonly _fx: EffectsSystem,
-    saved?: FireSaveData,
+    init: FireInit = {},
   ) {
-    if (saved) {
-      this.mags = saved.mags;
-      this.rounds = saved.rounds;
-      this.barrel = saved.barrel;
-      this.cooldown = saved.cooldown;
-      this.muzzleIdx = saved.muzzleIdx;
+    if ('saved' in init) {
+      this.mags = init.saved.mags;
+      this.rounds = init.saved.rounds;
+      this.barrel = init.saved.barrel;
+      this.cooldown = init.saved.cooldown;
+      this.muzzleIdx = init.saved.muzzleIdx;
+    } else if (init.ammo) {
+      this.mags = init.ammo.mags;
+      this.rounds = init.ammo.rounds;
     }
   }
 
   get isFiring(): boolean { return this.wasFiring; }
 
   get left(): boolean { return this.rounds > 0 || this.mags > 0; }
-
-  // 弾薬状態を指定のマガジン数・残弾数にリセットする。
-  initAmmo(mags: number, rounds: number): void {
-    this.mags = mags;
-    this.rounds = rounds;
-    this.barrel = C.MAGS_PER_BARREL;
-    this.cooldown = 0;
-    this.wasEmptyClick = false;
-    this.wasFiring = false;
-  }
 
   serialize(): FireSaveData {
     return {
@@ -106,12 +108,9 @@ export class PlayerFire {
   updateFireState(
     dt: number,
     input: Input,
-    scoreCounter: ScoreCounter,
-    simTime: number,
-    simSpeed: SimSpeedManager,
-    zoomActive: boolean,
+    activeStage: Stage,
     entities: EntityManager,
-    sunDir: Vec3,
+    ephemeris: Ephemeris,
   ): void {
     this.tickReloadTimer(dt);
 
@@ -121,11 +120,6 @@ export class PlayerFire {
       // fineAttitude(微調整出力)が恒久的に有効なままになり、次にトリガーを
       // 引いたときもスピンアップ演出(justStartedFiring)が起きなくなる。
       this.wasFiring = false;
-      return;
-    }
-
-    if (!simSpeed.canPlayerFire) {
-      this._hud.hint(`射撃・推進はワープ ×${C.MAX_PHYS_SIM_SPEED} 以下でのみ可能`);
       return;
     }
 
@@ -147,14 +141,7 @@ export class PlayerFire {
       return;
     }
 
-    this.fireCycle(scoreCounter, simTime, zoomActive, entities, sunDir);
-  }
-
-  // マップモード中: リロードタイマーだけを進める。
-  tickMapMode(dt: number): void {
-    this.tickReloadTimer(dt);
-    this.wasFiring = false;
-    this.wasEmptyClick = false;
+    this.fireCycle(activeStage, entities, ephemeris);
   }
 
   // クールダウンタイマーを dt だけ減らす。
@@ -165,11 +152,9 @@ export class PlayerFire {
 
   // クールダウン込みの発射サイクルを1回進める。スピンアップ中・クールダウン中は発射しない。
   private fireCycle(
-    scoreCounter: ScoreCounter,
-    simTime: number,
-    zoomActive: boolean,
+    activeStage: Stage,
     entities: EntityManager,
-    sunDir: Vec3,
+    ephemeris: Ephemeris,
   ): void {
     const justStartedFiring = !this.wasFiring;
     this.wasFiring = true;
@@ -189,7 +174,7 @@ export class PlayerFire {
 
     const result = this.consume();
 
-    this.fireGun(scoreCounter, simTime, zoomActive, entities, sunDir);
+    this.fireGun(activeStage, entities, ephemeris);
     switch (result) {
       case 'empty':
       case 'normal':
@@ -249,11 +234,9 @@ export class PlayerFire {
 
   // 1発発射する: 弾丸・薬莢・マズルフラッシュを生成し、発射数を記録する。
   private fireGun(
-    scoreCounter: ScoreCounter,
-    simTime: number,
-    zoomActive: boolean,
+    activeStage: Stage,
     entities: EntityManager,
-    sunDir: Vec3,
+    ephemeris: Ephemeris,
   ): void {
     const fwd = qRotate(this.player.att.q, v3(0, 0, 1));
 
@@ -262,32 +245,33 @@ export class PlayerFire {
     this.muzzleIdx = (this.muzzleIdx + 1) % MUZZLE_OFFSETS.length;
     const muzzle = add(this.player.state.r, qRotate(this.player.att.q, v3(mo.x, mo.y, mo.z)));
 
-    this.spawnBullet(this.player, muzzle, fwd, simTime, entities, sunDir);
+    this.spawnBullet(this.player, muzzle, fwd, entities, ephemeris);
     // 反動(運動量保存の風味): 発射方向と逆に微小 Δv(瞬間的な速度変更なので時刻は据え置き)
     this.player.state = kinematicState(
       this.player.state.t,
       this.player.state.r,
       addScaled(this.player.state.v, fwd, -C.RECOIL_DV),
     );
-    this.dropCasing(this.player, muzzle, simTime);
-    this.spawnMuzzleFlash(this.player, muzzle, fwd, zoomActive);
+    this.dropCasing(this.player, muzzle);
+    this.spawnMuzzleFlash(this.player, muzzle, fwd);
 
-    scoreCounter.recordShot();
+    activeStage.scoreCounter.recordShot();
     this.player.thermal.addGunHeat(1);
     this._sfx.fire();
   }
 
   // 弾丸: 機首方向 + 散布界
   private spawnBullet(
-    ship: Ship, muzzle: Vec3, fwd: Vec3, simTime: number, entities: EntityManager, sunDir: Vec3,
+    ship: Ship, muzzle: Vec3, fwd: Vec3, entities: EntityManager, ephemeris: Ephemeris,
   ): void {
+    const sunDir = ephemeris.sunDirFrom(ship.state.r, ship.state.t);
     const spreadScale = sunGlareSpreadScale(muzzle, fwd, sunDir);
     // 機首方向に散布角を加えた発射方向
     const spread = Math.abs(randSym(C.BULLET_SPREAD)) * spreadScale;
     const dir = norm(addScaled(fwd, randPerp(fwd), spread));
     const bullet = new Bullet(
       kinematicState(
-        simTime,
+        ship.state.t,
         addScaled(muzzle, fwd, 1.5),
         addScaled(ship.state.v, dir, ship.averageMuzzleVelocity),
       ),
@@ -303,13 +287,13 @@ export class PlayerFire {
 
   // 薬莢: -X 側へ排出(+X 側はマガジンベルトの給弾があるため)。
   // 初速は抑えてゆっくり漂わせる一方、回転速度は個体ごとに大きくばらつかせる。
-  private dropCasing(ship: Ship, muzzle: Vec3, simTime: number): void {
+  private dropCasing(ship: Ship, muzzle: Vec3): void {
     // 機体姿勢基準の左右・上方向
     const right = qRotate(ship.att.q, v3(1, 0, 0));
     const up = qRotate(ship.att.q, v3(0, 1, 0));
     this._fx.spawnCasing(
       kinematicState(
-        simTime,
+        ship.state.t,
         add(muzzle, scale(right, -1.4)),
         add(
           ship.state.v,
@@ -321,21 +305,13 @@ export class PlayerFire {
         w: v3(randSym(6.0), randSym(6.0), randSym(6.0)),
         inertia: v3(0.85, 0.3, 1.15), // 円筒: 長軸(y)が最小。x/z も非対称にしジャニベコフ効果を起こす
       },
-      simTime,
+      ship.state.t,
     );
   }
 
-  // マズルフラッシュ: 発射した側の砲口に出す
-  // (ズーム中は画面のちらつきを抑えるため大幅減光、完全には消さない)
-  private spawnMuzzleFlash(ship: Ship, muzzle: Vec3, fwd: Vec3, zoomActive: boolean): void {
-    this._fx.spawnFlash(
-      kinematicState(ship.state.t, addScaled(muzzle, fwd, 1.2), ship.state.v),
-      2.2,
-      6,
-      0.07,
-      0xfff0b8,
-      zoomActive ? C.ZOOM_MUZZLE_FLASH_SCALE : 1,
-    );
+  // マズルフラッシュ: 発射した側の砲口の少し先に出す。
+  private spawnMuzzleFlash(ship: Ship, muzzle: Vec3, fwd: Vec3): void {
+    this._fx.spawnMuzzleFlash(kinematicState(ship.state.t, addScaled(muzzle, fwd, 1.2), ship.state.v));
   }
 
   // バレル交換時に円柱アイテムをデブリとして放出する。
