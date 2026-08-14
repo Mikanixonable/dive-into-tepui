@@ -108,10 +108,10 @@ export class MapPickables {
       const pos = enemy.displayState(displayTime)?.r;
       if (pos) this.addCandidate(enemy.id, enemy.name, pos, 'ship');
     }
-    for (const ammo of this.entities.ammos) {
-      if (!ammo.alive || !visibilityPolicy.entity('ammo').pickable) continue;
-      const pos = ammo.displayState(displayTime)?.r;
-      if (pos) this.addCandidate(ammo.id, ammo.name, pos, 'ammo');
+    for (const ammoPickup of this.entities.ammoPickups) {
+      if (!ammoPickup.alive || !visibilityPolicy.entity('ammo').pickable) continue;
+      const pos = ammoPickup.displayState(displayTime)?.r;
+      if (pos) this.addCandidate(ammoPickup.id, ammoPickup.name, pos, 'ammo');
     }
     for (const base of this.entities.bases) {
       if (!base.alive || !visibilityPolicy.entity('base').pickable) continue;
