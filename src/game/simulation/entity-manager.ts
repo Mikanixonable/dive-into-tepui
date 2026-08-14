@@ -291,6 +291,11 @@ export class EntityManager {
     if (changed) this.invalidateCaches();
   }
 
+  // 過去表示に要る履歴の保持時間 [s] を全エンティティへ要求する。履歴を持たない種別は無視する。
+  requestHistoryDuration(sec: number): void {
+    for (const e of this.all()) e.requestHistoryDuration(sec);
+  }
+
   // 毎フレーム、全ての自機へ behave を1度ずつ通す。操作できるのは操作対象艦だけで、
   // 操作できないワープ倍率ではどの艦も操作できない — その2つは同じ「操作できない」状態なので、
   // input を渡すかどうかの1つの判断にまとめる。
@@ -331,10 +336,10 @@ export class EntityManager {
     activePlayer: Player | null, displayWindow: DisplayWindow, overviewMode: boolean, ephemeris: Ephemeris,
     fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
   ): void {
-    const { frame, simTime, duration } = displayWindow;
+    const { frame, simTime, duration, pastDuration } = displayWindow;
     for (const ship of this.players) {
       ship.syncTrajectoryLine(
-        ship === activePlayer, frame, simTime, ephemeris, fo, camera, attractors);
+        ship === activePlayer, frame, simTime, pastDuration, ephemeris, fo, camera, attractors);
       ship.orbitLine.setSuppressed(ship.supersedesAnalyticEllipse(simTime, duration, overviewMode));
     }
   }

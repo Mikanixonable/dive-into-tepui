@@ -1,4 +1,5 @@
 // 計画軌道のルーラー目盛りを、暦(時・日・月・年)の区切りに合わせて生成する。
+import { fmtDuration } from './utils';
 
 // 目盛階数。数が大きいほど粗い単位 — 0:1時間 1:3時間 2:6時間 3:12時間 4:1日 5:1月 6:1年。
 export type TickRank = 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -44,13 +45,18 @@ function highestRank(unix: number): TickRank {
   return 0;
 }
 
-// [fromUnix, toUnix] 内の境界本数が maxCount 以下になる最も細かい階数を選ぶ。
+// [fromUnix, toUnix] 内の境界本数が上限以下になる最も細かい階数を選ぶ。時階級(0〜3)は
+// hourFamilyMaxCount、日・月・年階級(4〜6)は maxCount で判定する — 時階級の各刻みは
+// 互いに包含関係にある(1時間ごとの列挙は3/6/12時間ごとの境界を全て含む)ため、この
+// 階級だけ緩い上限を別に持たせることで、区間が長くても1時間ごとまで候補に残しやすくする
+// (実際に画面へ出すかどうかは sync 側の間引きが決める)。
 // どの階数でも超えるなら最も粗い階数(年)を返す。
-function chooseRank(spanSec: number, maxCount: number): TickRank {
+function chooseRank(spanSec: number, maxCount: number, hourFamilyMaxCount: number): TickRank {
   for (let r = 0; r <= 6; r++) {
     const rank = r as TickRank;
+    const budget = rank <= 3 ? hourFamilyMaxCount : maxCount;
     const estCount = spanSec / NOMINAL_SEC[rank] + 1;
-    if (estCount <= maxCount) return rank;
+    if (estCount <= budget) return rank;
   }
   return 6;
 }
@@ -120,15 +126,16 @@ function yearBoundaries(fromUnix: number, toUnix: number): number[] {
   return result;
 }
 
-// [fromUnix, toUnix] を、本数が maxCount を超えない最も細かい暦階数の境界で刻んだ目盛り列を返す。
+// [fromUnix, toUnix] を、本数が上限を超えない最も細かい暦階数の境界で刻んだ目盛り列を返す。
 // 各目盛りの rank はその瞬間が実際に満たす最も粗い階数(例: 月初 0時は5、それ以外の0時は4)。
 export function calendarBoundaries(
   fromUnix: number,
   toUnix: number,
   maxCount: number,
+  hourFamilyMaxCount: number,
 ): readonly CalendarTick[] {
   if (!isFinite(fromUnix) || !isFinite(toUnix) || toUnix < fromUnix) return [];
-  const rank = chooseRank(toUnix - fromUnix, maxCount);
+  const rank = chooseRank(toUnix - fromUnix, maxCount, hourFamilyMaxCount);
   // 選ばれた階数に応じた列挙関数へ振り分ける。
   let unixList: number[];
   switch (rank) {
@@ -151,8 +158,20 @@ export function calendarBoundaries(
   return unixList.map((unix) => ({ unix, rank: highestRank(unix) }));
 }
 
-// 目盛りの表示ラベルを rank に応じた書式で返す(時間系は HH:00、日は M/D、月は M月、年は年)。
-export function tickLabel(unix: number, rank: TickRank): string {
+// 目盛りラベルの表記。'absolute' は UTC カレンダー、'relative' は基準時刻からの経過時間。
+export type TickLabelMode = 'absolute' | 'relative';
+
+// 目盛りの表示ラベルを返す。'absolute' は rank に応じた暦の書式(時間系は HH:00、日は M/D、
+// 月は M月、年は年)、'relative' は referenceUnix からの経過時間を符号付きで返す
+// (referenceUnix は 'absolute' では読まない)。
+export function tickLabel(
+  unix: number, rank: TickRank, mode: TickLabelMode, referenceUnix: number,
+): string {
+  if (mode === 'relative') {
+    const delta = unix - referenceUnix;
+    const mag = Math.abs(delta);
+    return `T${delta < 0 ? '-' : '+'}${fmtDuration(mag, mag)}`;
+  }
   const d = new Date(unix * 1000);
   if (rank <= 3) return `${String(d.getUTCHours()).padStart(2, '0')}:00`;
   if (rank === 4) return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
