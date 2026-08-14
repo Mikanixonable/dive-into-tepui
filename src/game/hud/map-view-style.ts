@@ -4,7 +4,6 @@ import { MQ_COMPACT, MQ_MEDIUM_DOWN } from './breakpoints';
 
 export const MAP_VIEW_STYLE = `
 /* マップでは戦闘固有の棚とターゲット計器を外し、計画用のレールへ視線を集中させる。 */
-#hud.map-mode #hud-combat-shelf-wrap,
 #hud.map-mode #hud-target { display: none; }
 
 /* Quiet Glass: 視野を隠さない常設情報。 */
