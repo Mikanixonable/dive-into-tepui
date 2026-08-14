@@ -157,8 +157,12 @@ export class PlanDisplay {
 
   // ⬢ ゴーストマーカーを計画位置に置く。計画がそこまで届いていなければ隠す。
   private syncGhost(project: ProjectFn, overviewMode: boolean, cameraPos: Vec3): void {
-    if (!this.ghost || (overviewMode && isOccluded(cameraPos, this.ghost.pos, this.attractors))) {
+    if (!this.ghost) {
       this.markerManager.hide('plannedPlayer');
+      return;
+    }
+    if (overviewMode && isOccluded(cameraPos, this.ghost.pos, this.attractors)) {
+      this.markerManager.fadeOut('plannedPlayer');
       return;
     }
     this.markerManager.setPosition(
@@ -269,10 +273,12 @@ export class PlanDisplay {
   private syncApsisMarkers(project: ProjectFn, overviewMode: boolean, cameraPos: Vec3): void {
     for (const key of ['apsisPe', 'apsisAp'] as const) {
       const icon = this.apsisIcons.find((m) => m.id === key);
-      if (icon && !(overviewMode && isOccluded(cameraPos, icon.pos, this.attractors))) {
-        this.markerManager.setPosition(key, 'mk-apsis', ORBIT_POINT_GLYPH.apsis, icon.pos, project, icon.label);
-      } else {
+      if (!icon) {
         this.markerManager.hide(key);
+      } else if (overviewMode && isOccluded(cameraPos, icon.pos, this.attractors)) {
+        this.markerManager.fadeOut(key);
+      } else {
+        this.markerManager.setPosition(key, 'mk-apsis', ORBIT_POINT_GLYPH.apsis, icon.pos, project, icon.label);
       }
     }
   }
@@ -281,10 +287,13 @@ export class PlanDisplay {
   private syncImpactMarkers(project: ProjectFn, overviewMode: boolean, cameraPos: Vec3): void {
     for (const key of IMPACT_MARKER_KEYS) {
       const icon = this.impactIcons.find((m) => m.key === key);
-      if (icon && !(overviewMode && isOccluded(cameraPos, icon.pos, this.attractors))) {
+      if (!icon) {
+        this.markerManager.hide(key);
+      } else if (overviewMode && isOccluded(cameraPos, icon.pos, this.attractors)) {
+        this.markerManager.fadeOut(key);
+      } else {
         this.markerManager.setPosition(key, 'mk-impact', ORBIT_POINT_GLYPH.impact, icon.pos, project, icon.label);
       }
-      else this.markerManager.hide(key);
     }
   }
 
@@ -320,8 +329,10 @@ export class PlanDisplay {
 
     for (let i = 0; i < n; i++) {
       const icon = icons[i]!;
-      if (!shown[i] || (overviewMode && isOccluded(cameraPos, icon.pos, this.attractors))) {
-        this.markerManager.hide(icon.key);
+      const occluded = overviewMode && isOccluded(cameraPos, icon.pos, this.attractors);
+      if (!shown[i] || occluded) {
+        if (occluded) this.markerManager.fadeOut(icon.key);
+        else this.markerManager.hide(icon.key);
         continue;
       }
       const p = projected[i]!;

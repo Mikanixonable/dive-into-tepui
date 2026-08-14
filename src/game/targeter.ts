@@ -217,9 +217,11 @@ export class Targeter {
         name: visibility.label ? item.name : '',
         detail: visibility.label ? item.detail : '',
         opacity: mapOpacity,
+        occluded: mapOccluded,
       } : {
         ...item,
         opacity: mapOpacity,
+        occluded: mapOccluded,
       });
     }
     this.markerManager.combatMarkers.sync(this.markerItemScratch, project, overviewMode, screenScale);

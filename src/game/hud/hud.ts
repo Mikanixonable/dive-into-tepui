@@ -1,6 +1,7 @@
 // DOM オーバーレイの HUD のシェル。トースト・ヒント・ヘルプの表示と、
 // root/svgOverlay の公開・常設パネル群の所有を担う。
 import { buildHudDom } from './hud-root';
+import type { HudWorldView } from './panel-shell';
 import { StatusPanel } from './status-panel';
 import { OrbitPanel } from './orbit-panel';
 import { TargetPanel } from './target-panel';
@@ -15,6 +16,8 @@ import type { HelpPanel } from './help-panel';
 export class Hud {
   readonly root: HTMLElement;
   readonly layers: OverlayLayers;
+  readonly combatRoot: HTMLElement;
+  readonly mapRoot: HTMLElement;
   readonly svgOverlay: SVGSVGElement;
   readonly overlayManager: OverlayManager;
   readonly helpPanel: HelpPanel;
@@ -29,9 +32,13 @@ export class Hud {
 
   // HUD の DOM を構築する。
   constructor() {
-    const { root, layers, svgOverlay, overlayManager, helpPanel, els } = buildHudDom();
+    const {
+      root, layers, combatRoot, mapRoot, svgOverlay, overlayManager, helpPanel, els,
+    } = buildHudDom();
     this.root = root;
     this.layers = layers;
+    this.combatRoot = combatRoot.element;
+    this.mapRoot = mapRoot.element;
     this.svgOverlay = svgOverlay;
     this.overlayManager = overlayManager;
     this.helpPanel = helpPanel;
@@ -41,6 +48,17 @@ export class Hud {
     this.orbitPanel = new OrbitPanel(els);
     this.targetPanel = new TargetPanel(els);
     this.contactsPanel = new ContactsPanel(els);
+    this.setWorldView('combat');
+  }
+
+  // 戦闘/マップ固有の HUD ルートを切り替える。表示状態は ViewManager が正本として通知する。
+  setWorldView(view: HudWorldView): void {
+    const map = view === 'map';
+    this.combatRoot.classList.toggle('active', !map);
+    this.mapRoot.classList.toggle('active', map);
+    // 既存のビュー別スタイルが残る間も、共有 HUD の状態を同期しておく。
+    this.root.classList.toggle('map-mode', map);
+    this.root.classList.toggle('map-ui-active', map);
   }
 
   // ヒントテキストを durationMs だけ表示する。
