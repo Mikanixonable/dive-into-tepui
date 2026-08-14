@@ -43,8 +43,8 @@ exposure  = 1 / L_ref                              — L_ref を中間グレー�
 `ASTRONOMICAL_UNIT`(`physics/srp.ts:9`)、逆二乗則(`physics/srp.ts:24`)、
 `STEFAN_BOLTZMANN` / `HULL_EMISS`(`game/const.ts:44-45`)、機体温度(`game/const.ts:47-51`)。
 
-**唯一の欠落はアルベドである。** 天体表面は 101 天体ぶんの 16 進直書き色(85 リテラル、ユニーク 63 種、
-`celestial-registry.ts:88-195`)しか持たず、アルベド値は 1 つも無い。根拠コメントも無い。
+**唯一の欠落はアルベドである。** 天体表面は 101 天体ぶんの 16 進直書き色(86 リテラル、ユニーク 63 種、
+`celestial-registry.ts:103-196`)しか持たず、アルベド値は 1 つも無い。根拠コメントも無い。
 **これが露出フェーズの最大の実作業になる。**
 さらに §1-5 により、**アルベドは「表面の見え方」ではなく「他の物体を照らす光源の強さ」を兼ねる。**
 
@@ -52,7 +52,7 @@ exposure  = 1 / L_ref                              — L_ref を中間グレー�
 片方をもう片方から導出する形へ統一すること。
 
 **既にこの基準で書かれている部分がある。** リングだけが完全な放射伝達モデルになっている —
-`RingOpticsDef` の単一散乱アルベド・法線光学的厚さ・HG 非対称因子が全 35 帯に出典コメント付きで入り、
+`RingOpticsDef` の単一散乱アルベド・法線光学的厚さ・HG 非対称因子が全 36 帯に出典コメント付きで入り、
 その単一散乱の式(`render/ring.ts` の `physicalMaterial` が組む TSL グラフ)は明示された単位を持つ。
 現状はこれを `RADIANCE_SCALE = 0.72`(`render/ring.ts:27`)という**手調整係数 1 個**で LDR へ押し込んでいる。
 
@@ -88,27 +88,27 @@ f32 量子化は起きない。
 
 判断を楽にする事実:
 
-- **`physics/projection.ts` は near/far に一切依存しない**(`:10-16, 19-37, 53-57`)。
+- **`physics/projection.ts` は near/far に一切依存しない**(`:10-16, 19-37, 40-46`)。
   → **fov/aspect を共有する限り `ProjectFn` / `ScaleFn` の全消費者(マーカー約10系統、picking 5系統、
-  plan 系、`sampled-line` の頂点密度、`ring-view` の LOD、`point-body` の 2px 判定)は無変更で通る。**
-- **投影行列を書く箇所は `camera/camera-system.ts:73` の 1 箇所だけ。**
+  plan 系、`TrajectoryLine` の頂点密度、`ring-view` の LOD、`point-body` の 2px 判定)は無変更で通る。**
+- **投影行列を書く箇所は `camera/camera-system.ts:72` の 1 箇所だけ。**
 - **`COMBAT_CAMERA_FAR = 6e7` は `MOON_VIS_DIST = 4.5e7` から逆算された値**(`const.ts:120-123`)。
-- **地球だけは既に真位置・実半径**(`earth-body.ts:34`)。真スケール描画の前例が既にある。
+- **地球だけは既に真位置・実半径**(`earth-body.ts:35`)。真スケール描画の前例が既にある。
 
 **カスケードと浮動原点**: 浮動原点は 1 つのまま、カスケードは near/far だけを持つ。
 遠方カスケードでは要求される絶対精度も緩いので釣り合う。**仮説であり測定対象そのもの。**
 
 **変換の切り出し(要件)**: ECI → 描画位置の順変換は **5 種類に分散**し、逆変換は **1 つも無い**。
-`FloatingOrigin.RtoThreeV3` / `sphere-body.ts:76-81` / `point-body.ts:141-147` /
-`sun-body.ts:54-62` / `point-body.ts:177-181` / `environment-scene.ts:170-171`。
+`FloatingOrigin.RtoThreeV3` / `sphere-body.ts:101-106` / `point-body.ts:159-164` /
+`sun-body.ts:54-62` / `point-body.ts:212-216` / `environment-scene.ts:157-158`。
 1 モジュール(`render/view-space.ts`)へ集約し `toRender` / `toEci` / `cascadeOf` / `cascadeNearFar` を公開する。
 **圧縮を採るにせよ撤去するにせよ、この集約は先にやる。**
 
 **測定項目**: (a) 分割数 2/3/4 での z-fighting、(b) パス増加によるフレーム時間、
-(c) `depthTest: false` の 3 箇所(`stars.ts:28` / `earth.ts:92` / `plan-gizmo-3d.ts:32`)が
+(c) `depthTest: false` の 3 箇所(`stars.ts:28` / `earth.ts:101` / `plan-gizmo-3d.ts:33`)が
 深度クリアと衝突しないか、(d) `frustumCulled = false` の箇所が多いので `camera.layers` 振り分けが効くか。
 
-**先行して必要な小作業**: `types/three-shims.d.ts` に `clearDepth()` が無い(`:6-19`)。
+**先行して必要な小作業**: `types/three-shims.d.ts` に `clearDepth()` が無い(`:6-20`)。
 
 ### 1-4. ライトプリパス(3 パス構成)
 
@@ -200,7 +200,7 @@ Phase D  半透明 + ポストプロセス
 
 #### 1-5-4. 現状との差
 
-今は `AmbientLight(0x8899bb, 0.25)`(`environment-scene.ts:87`)という
+今は `AmbientLight(0x8899bb, 0.25)`(`environment-scene.ts:88`)という
 **方向も距離も位相も持たない定数**が、地球照・星明かり・多重散乱の全部を兼ねている。
 軸 1 の完成はこの定数を消す作業でもある。
 
@@ -344,9 +344,9 @@ Beer–Lambert の透過率を表せない。**
 #### 1-6-8. 距離圧縮への依存
 
 **リング影シェーダは現状「真の方向 × 偽の位置」を混ぜている。**
-`sunDirNode` は天体の**真の ECI 位置**から引いた方向(`sphere-body.ts:64-65`)なのに、
+`sunDirNode` は天体の**真の ECI 位置**から引いた方向(`sphere-body.ts:89-90`)なのに、
 `positionWorld` と 32 バンドの `center` / `inner` / `outer` は**圧縮された描画位置・描画長**
-(`celestial-surface.ts:128-150`)。`ring.ts` の `bodyRadius` にも描画スケールが入る。
+(`celestial-surface.ts:142-164`)。`ring.ts` の `bodyRadius` にも描画スケールが入る。
 
 **距離圧縮を撤去しない限り、遮蔽を物理的に正しく統一することはできない。**
 これが §1-3 のカスケード判断と軸 2 を結びつける決定的な依存関係である。
@@ -355,8 +355,9 @@ Beer–Lambert の透過率を表せない。**
 
 軸 2 の完成に伴い、以下は GPU から消える:
 
-- `render/celestial-surface.ts:63-91` の**固定長 32 バンド uniform 配列**によるリング影。
-- `render/ring.ts:71-77` の解析的 `inBodyShadow`(二値)。
+- `render/celestial-surface.ts:109-116` の**固定長 32 バンド uniform 配列**と、
+  それを読む TSL グラフ（`:77-105`）によるリング影。
+- `render/ring.ts:74-80` の解析的 `inBodyShadow`(二値)。
 
 **解析的な球影は CPU 側(軸 4)にのみ残る。** 描画は全面的にシャドウマップへ移る。
 
@@ -558,14 +559,14 @@ CPU 側の `render` 区間の壁時計時間は、コマンドを積む時間で
 
 #### Phase 2-b. 描画設定GUI
 
-3. `render/graphics-settings.ts` を新設(現在は無い)。品質プリセット(低/中/高)+ 個別トグル。
+1. `render/graphics-settings.ts` を新設(現在は無い)。品質プリセット(低/中/高)+ 個別トグル。
    保存キーの命名の前例は `tepui.settings.bgm_vol`(`audio/sfx.ts:12`)。
-4. `hud/pause-menu.ts` へ「描画」タブ。**受け皿は揃っている** — `hud/widgets/` に
+2. `hud/pause-menu.ts` へ「描画」タブ。**受け皿は揃っている** — `hud/widgets/` に
    `Slider` / `ToggleSwitch` / `SegmentedControl` / `TabBar` がある。ただし `pause-menu.ts` は
    現状タブ機構を持たないフラットな 1 パネルなので、`TabBar` の導入が要る
    (前例: `dock-view.ts:245` / `save-browser.ts:226,353` / `stage-select.ts:51`)。
    ローカル保存し `main.ts` 起動時に適用。
-5. 画像回帰シーンを撮る。**役割は「一致判定」ではなく「変化の可読化」**(§1-1)。
+3. 画像回帰シーンを撮る。**役割は「一致判定」ではなく「変化の可読化」**(§1-1)。
 
 **配線できる項目は限られる。ここが本フェーズの肝。**
 現状は描画要素が疎結合化されていない(パイプラインがまだ無い)ので、
@@ -604,7 +605,7 @@ localStorage 付きでトグルを持っており(`tepui.gridVisibility`)、表�
    **本フェーズ最大の実作業。** 出典をコメントに残す(`RingOpticsDef` の帯コメントが手本)。
    **§1-5 により、この値は Phase 9 で「他の物体を照らす光源の強さ」としてそのまま使われる。**
 4. `Billboard` をノードマテリアル化。太陽・惑星輝点は等級 → 放射照度へ。
-5. `RADIANCE_SCALE = 0.72`(`ring.ts:30`)を 1.0 にする。
+5. `RADIANCE_SCALE = 0.72`(`ring.ts:27`)を 1.0 にする。
 6. 砲身赤熱を機体温度 + `STEFAN_BOLTZMANN` + `HULL_EMISS` の黒体放射へ。
 7. 手調整値(`NIGHT_AMBIENT`、`SUN_INTENSITY`、各 opacity、`ZOOM_MUZZLE_FLASH_SCALE`)は**捨てる。**
 
@@ -627,11 +628,11 @@ Phase C  render/material-pass.ts  ジオメトリ再描画。照度を読み、�
 3. 艦船の `MeshStandardMaterial` と天体の自前 Lambert が **Phase C で 1 つの BRDF に統合される。**
    `NIGHT_AMBIENT = 0.04` の天体別複製が消える。
 4. 遮蔽の問い合わせ口 `sunVisibility(worldPos, normal)`(§1-6-5)を Phase B に置く。
-   **中身は当面 `environment-scene.ts:147-148` の現行スカラ変調を移設しただけでよい。**
+   **中身は当面 `environment-scene.ts:159-160` の現行スカラ変調を移設しただけでよい。**
    Phase 5 / Phase 8 でこの関数の中身だけが差し替わる。
 5. **光源インターフェースを「球光源」の形で定義しておく。** 実装は点光源(角半径 0)でよいが、
    **型として角半径と位相を持たせておく**ことで、Phase 9 の差し替えが Phase B 内に閉じる。
-6. `earth.ts` の地表シェーダを分解: BRDF 部分は Phase A/C へ、もや(`:67-71`)・夕焼け(`:59-64`)は
+6. `earth.ts` の地表シェーダを分解: BRDF 部分は Phase A/C へ、もや(`:67-71`)・夕焼け(`:55-58`)は
    Phase 11 の大気パスへ移すため**一旦そのまま残す**。
 7. **鏡面の近似の限界を実測する**(§1-4)。破綻するなら艦船だけ前方描画へ逃がす経路を用意する。
 
@@ -677,11 +678,11 @@ Phase C  render/material-pass.ts  ジオメトリ再描画。照度を読み、�
 
 ### Phase 7 — 距離圧縮の撤去(Phase 6 の判断が可の場合のみ)
 
-1. 天体を真位置・真半径で配置。`sphere-body.ts:76-81` / `point-body.ts:141-147` のスケール計算を削除。
+1. 天体を真位置・真半径で配置。`sphere-body.ts:101-106` / `point-body.ts:159-164` のスケール計算を削除。
 2. `MOON_VIS_DIST` / `PLANET_VIS_DIST` / `POINT_BODY_VIS_DIST` / `SUN_DISTANCE` / `SUN_VISUAL_SIZE` を削除。
    `STAR_SHELL_RADIUS` / `CELESTIAL_SHELL_RADIUS` を「無限遠背景カスケード」へ一本化。
 3. `COMBAT_CAMERA_FAR` の根拠が消えるので、カスケード境界から引き直す。
-4. `sun-body.ts:39-64` / `point-body.ts:96-186` の overview/combat 分岐を削除。§2-2 の不統一も解消。
+4. `sun-body.ts:39-64` / `point-body.ts:127-187` の overview/combat 分岐を削除。§2-2 の不統一も解消。
 5. シーンライトを真の太陽方向へ統一。天体ごとの `sunDirection` uniform の役目が終わる。
 
 **完了条件**: 圧縮定数がゼロ件。ズームを通して天体の見かけサイズが連続。
@@ -694,9 +695,10 @@ Phase C  render/material-pass.ts  ジオメトリ再描画。照度を読み、�
    これで「地球の影に出入りする艦」「月食の境界」が同じ基盤に乗る。
 2. **リング帯を半透明遮蔽器として登録**(§1-6-7)。深度ではなく累積光学的厚さを書く。
    Beer–Lambert の τ は `RingOpticsDef` に既にある。
-3. **`render/celestial-surface.ts:63-91` の固定長 32 バンド uniform 配列を廃止。**
+3. **`render/celestial-surface.ts:109-116` の固定長 32 バンド uniform 配列と、
+   それを読む TSL グラフ（`:77-105`）を廃止。**
    バンド数の上限がシェーダから消える。
-4. **`render/ring.ts:71-77` の解析的 `inBodyShadow`(二値)を廃止。** 半影を持つシャドウマップに置き換わる。
+4. **`render/ring.ts:74-80` の解析的 `inBodyShadow`(二値)を廃止。** 半影を持つシャドウマップに置き換わる。
 5. Z 精度のカスケード(§1-6-3)を実測する。**失敗した場合の退路は §1-8 の CPU 側計算の流用だが、
    アドホックなので可能な限り避ける。** 退路を採るなら、その旨をコードのコメントに明記すること。
 
@@ -728,7 +730,7 @@ Phase C  render/material-pass.ts  ジオメトリ再描画。照度を読み、�
 1. `render/transparent-pass.ts`: 不透明カスケード解決後に描画。`viewportDepthTexture` / `linearDepth`。
 2. 「視線に沿って不透明面までメディアを積分する」共通ヘルパ。**大気・オーロラ・プルーム・リングが共有する。**
    **Phase 8 の半透明シャドウマップと同じ光学モデル(Beer–Lambert)を共有できるか検討する。**
-3. `earth.ts:86-124` の大気リム球を廃止 — `depthTest:false` + 自前球交差の回避策が不要になる。
+3. `earth.ts:91-133` の大気リム球を廃止 — `depthTest:false` + 自前球交差の回避策が不要になる。
 4. `aurora.ts` の CPU 頂点更新(`:66-107`)を GPU へ。
 5. `depthTest: false` の 3 箇所を規約内へ回収する。
 6. **`LINE_RENDER_ORDER` を `render/` へ移し、線以外の半透明物を同じ表へ統合する。**
@@ -740,9 +742,9 @@ Phase C  render/material-pass.ts  ジオメトリ再描画。照度を読み、�
 1. 透過・単散乱・多重散乱近似を LUT 化(オフライン生成も可)。カメラが大気圏内外どちらでも同じモデル。
 2. Phase 10 のレイ積分枠組みへ載せ、エアリアルパースペクティブを不透明深度に対して積分。
    `earth.ts:67-71` のもや(`ATMO_HAZE_TAU0 = 0.34`)を置換。
-3. 夕焼けを光路長から導出し、`vec3(1,0.4,0.1)` の固定補間(`:59-64`)を削除。
+3. 夕焼けを光路長から導出し、`vec3(1,0.4,0.1)` の固定補間(`:55-58`)を削除。
 4. 雲は当面 Phase 4 の Phase C 内 2 層サンプリング。**雲を半透明遮蔽器として Phase 8 の基盤へ載せれば、
-   `earth.ts:55-56` の UV ずらしによる雲影が半影付きの本物に置き換わる。**
+   `earth.ts:51-53` の UV ずらしによる雲影が半影付きの本物に置き換わる。**
 
 ### Phase 12 — ポストエフェクト
 
@@ -797,7 +799,7 @@ Phase 10 のレイ積分枠組みが前提。プルーム・RCS・再突入・�
   **ただし描画はこれを読まない**(§1-8)。同じ物理現象について CPU と GPU に別実装があることになるが、
   **問いが違う**(点の日照率 vs 画素ごとの遮蔽度)ので二重実装ではない。
 - `render/ships.ts:6` の `game/const` 参照 — 読み取り専用の例外。Phase 3 以降は寸法のみ。
-- `GameEntity.obj: THREE.Object3D` — 不透明ハンドルとして当面許容(`game/` の 49 ファイルが
+- `GameEntity.obj: THREE.Object3D` — 不透明ハンドルとして当面許容(`game/` の 47 ファイルが
   `three/webgpu` を import している)。ただし
   **`game/` 側で material / renderOrder / LOD / 色 / `castShadow` を決めるのは禁止**とする。
 
@@ -873,8 +875,8 @@ three の `InstanceNode` は instanceMatrix の受け渡し経路(uniform buffer
 そのため `InstancedPool.count` は容量に固定し、未使用の枠をゼロ行列で潰す方式にしている。
 **シャドウマップへ同じジオメトリをインスタンシングで描く Phase 5 でも同じ制約が効く。**
 
-### 次に触るときに確認すること
+### 未確認のまま残っている見た目
 
-`Curve` 導入時にヘッドレスでのカメラ操作が安定せず、**参照軌道線(惑星)の遠距離での見た目、
-天体近傍フェードの見た目、デバッグ線の色分け**が未確認のまま残っている。
+**参照軌道線(惑星)の遠距離での見た目、天体近傍フェードの見た目、デバッグ線の色分け。**
+いずれもヘッドレスでのカメラ操作が安定せず到達できていない。
 Phase 2 で描画設定GUI を触るときに合わせて確認する。
