@@ -9,16 +9,18 @@ import { MQ_COMPACT } from './hud/breakpoints';
 import { createTitleScene, type TitleScene } from '../render/title-scene';
 import tepuiRmqrUrl from '../assets/tepui-rmqr.svg';
 
-const PAGE = '#07080a';
+const PAGE = '#08090d';
 const SURFACE_0 = '#08090c';
+const SURFACE_1 = '#0e1014';
 const SURFACE_2 = '#15171c';
 const TITLE_INK = '#eeeaf5';
 const BODY_INK = '#c3bec9';
 const MUTED_INK = '#89838f';
 const FAINT_INK = '#5f5a65';
-const ACCENT = '#ff5a00';
-const NEAR_ACCENT = '#ff8b52';
-const SECONDARY_ACCENT = '#19f5c2';
+// V6 preset: Fluorescent red / blue。
+const ACCENT = '#ff3155';
+const NEAR_ACCENT = '#ff6b82';
+const SECONDARY_ACCENT = '#3478ff';
 
 // V6 §3 の voice 別書体。Web font が使えない環境でも role ごとのフォールバックを保つ。
 const FONT_SANS = '"Arimo","Zen Kaku Gothic Antique","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif';
@@ -27,45 +29,43 @@ const FONT_MONO = '"IBM Plex Mono","Zen Kaku Gothic Antique","Hiragino Kaku Goth
 const FONT_CANTONESE = '"Noto Serif HK","Source Han Serif HC","Songti TC",serif';
 
 const RADIUS_WINDOW = '30px';
-const RADIUS_PANEL = '16px';
 const RADIUS_CONTROL = '11px';
 
 const STYLE = `
 #stage-select {
   position: fixed; inset: 0; z-index: 100; overflow: auto;
   background:
-    radial-gradient(circle at 10% 16%, rgb(255 90 0 / 4%), transparent 28rem),
-    radial-gradient(circle at 88% 58%, rgb(25 245 194 / 3%), transparent 32rem), ${PAGE};
+    radial-gradient(circle at 10% 16%, rgb(255 49 85 / 6%), transparent 28rem),
+    radial-gradient(circle at 88% 58%, rgb(52 120 255 / 5%), transparent 32rem), ${PAGE};
   color: ${BODY_INK}; font-family: ${FONT_SANS}; -webkit-font-smoothing: antialiased;
 }
 #stage-select .ss-shell {
   width: min(calc(100% - 24px), 1160px); min-height: 100%; margin-inline: auto;
   display: grid; place-items: center; padding-block: 18px;
 }
-#stage-select .ss-rich-window {
-  position: relative; width: 100%; height: min(720px, calc(100dvh - 36px)); min-height: 560px;
+#stage-select .ss-layout {
+  width: 100%; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+  gap: 12px; align-items: stretch;
+}
+#stage-select .ss-3d-window {
+  position: relative; width: 100%; height: min(680px, calc(100dvh - 36px)); min-height: 560px;
   overflow: hidden; isolation: isolate; border-radius: ${RADIUS_WINDOW}; background: ${SURFACE_0};
-  box-shadow: 0 24px 70px rgb(0 0 0 / 34%);
+  box-shadow: 0 24px 70px rgb(0 0 0 / 38%);
 }
 #stage-select .ss-scene {
-  position: absolute; inset: 0; z-index: -2; background: ${SURFACE_0};
+  position: absolute; inset: 0; z-index: 0; background: ${SURFACE_0};
 }
 #stage-select .ss-canvas { display: block; width: 100%; height: 100%; }
 #stage-select .ss-vignette {
   position: absolute; inset: 0; pointer-events: none;
   background:
-    linear-gradient(90deg, rgb(4 5 7 / 0.78), transparent 62%),
-    linear-gradient(0deg, rgb(4 5 7 / 0.7), transparent 48%),
-    radial-gradient(circle at 64% 42%, transparent 0 20%, rgb(4 5 7 / 0.58) 78%);
+    linear-gradient(90deg, rgb(4 5 7 / 0.28), transparent 72%),
+    linear-gradient(0deg, rgb(4 5 7 / 0.36), transparent 54%),
+    radial-gradient(circle at 64% 42%, transparent 0 32%, rgb(4 5 7 / 0.24) 100%);
 }
-#stage-select .ss-grid {
-  position: relative; height: 100%; box-sizing: border-box;
-  display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(300px, 430px);
-  gap: clamp(20px, 4vw, 64px); align-items: center;
-  padding: clamp(24px, 5vh, 56px) clamp(24px, 4vw, 48px);
-  padding: clamp(24px, 5dvh, 56px) clamp(24px, 4vw, 48px);
+#stage-select .ss-hero {
+  position: absolute; z-index: 2; inset: auto 28px 28px; max-width: 720px; min-width: 0;
 }
-#stage-select .ss-hero { min-width: 0; }
 #stage-select .ss-eyebrow {
   display: flex; align-items: center; gap: 10px; margin: 0 0 14px;
   color: ${ACCENT}; font-family: ${FONT_MONO};
@@ -104,13 +104,12 @@ const STYLE = `
   font-size: clamp(13px, 1.4vw, 17px); font-weight: 500; line-height: 1.3;
 }
 #stage-select .ss-window {
-  min-height: 0; max-height: 100%; box-sizing: border-box;
+  min-height: 0; height: min(680px, calc(100dvh - 36px)); box-sizing: border-box;
   display: flex; flex-direction: column; gap: 14px;
-  padding: 17px;
-  background: rgb(13 15 19 / 0.68); border-radius: ${RADIUS_PANEL};
+  padding: 18px;
+  background: ${SURFACE_1}; border-radius: ${RADIUS_WINDOW};
   box-shadow: 0 18px 48px rgb(0 0 0 / 0.28);
-  backdrop-filter: blur(24px) saturate(115%);
-  -webkit-backdrop-filter: blur(24px) saturate(115%);
+  overflow: hidden;
 }
 #stage-select .ss-window-title {
   margin: 0 0 2px 8px; color: ${MUTED_INK};
@@ -126,7 +125,7 @@ const STYLE = `
 #stage-select .w-tabs .w-btn:hover { background: rgb(36 40 48 / 0.8); color: ${TITLE_INK}; }
 #stage-select .w-tabs .w-btn.on { background: ${ACCENT}; color: ${PAGE}; }
 #stage-select .ss-list {
-  min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 10px;
+  min-height: 0; flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 10px;
   padding: 2px 0;
 }
 #stage-select .ss-stage {
@@ -151,17 +150,18 @@ const STYLE = `
   width: clamp(120px, 13vw, 180px); opacity: 0.72; image-rendering: pixelated;
 }
 #stage-select .ss-debug {
-  position: absolute; bottom: clamp(24px, 3vh, 42px); left: clamp(30px, 5vw, 76px);
-  color: ${FAINT_INK}; font-family: ${FONT_MONO}; font-size: 11px; cursor: pointer;
+  flex: 0 0 auto; padding-top: 12px; color: ${FAINT_INK};
+  font-family: ${FONT_MONO}; font-size: 11px; cursor: pointer;
 }
 @media ${MQ_COMPACT} {
   #stage-select .ss-shell { place-items: start center; padding-block: 12px; }
-  #stage-select .ss-rich-window { height: auto; min-height: calc(100dvh - 24px); border-radius: 24px; }
-  #stage-select .ss-grid {
-    grid-template-columns: minmax(0, 1fr); align-items: start; height: auto; min-height: 100%;
-    gap: 24px; padding: 32px 24px 72px;
+  #stage-select .ss-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  #stage-select .ss-3d-window,
+  #stage-select .ss-window { height: auto; min-height: 460px; border-radius: 24px; }
+  #stage-select .ss-hero { inset: auto 20px 22px; }
+  #stage-select .ss-window {
+    min-height: 0; max-height: none; padding: 16px;
   }
-  #stage-select .ss-window { max-height: none; padding: 16px; }
   #stage-select .ss-languages { flex-direction: column; gap: 7px; }
   #stage-select .ss-corner { display: none; }
 }
@@ -194,34 +194,33 @@ export function selectStage(unlockManager: UnlockManager): Promise<StageClass> {
     const root = document.createElement('div');
     root.id = 'stage-select';
     root.innerHTML =
-      '<div class="ss-shell"><div class="ss-rich-window">' +
+      '<div class="ss-shell"><div class="ss-layout">' +
+      '<section class="ss-3d-window" aria-labelledby="ss-title">' +
       '<div class="ss-scene" aria-hidden="true">' +
       '<canvas class="ss-canvas"></canvas>' +
       '<div class="ss-vignette"></div>' +
       '</div>' +
-      '<div class="ss-grid">' +
       '<div class="ss-hero">' +
       '<p class="ss-eyebrow">Sortie select · 公暦20115年</p>' +
-      '<h1 class="ss-logotype">' +
+      '<h1 id="ss-title" class="ss-logotype">' +
       '<span class="ss-line">DIVE<sup class="ss-orn">∴03</sup></span>' +
       '<span class="ss-line">INTO<sub class="ss-orn">ECI₀</sub></span>' +
       '<span class="ss-line">TEPUI<sup class="ss-orn">Ω⁺</sup></span>' +
       '</h1>' +
       '<p class="ss-sub">The Orbit Is the Battlefield</p>' +
       '<div class="ss-languages">' +
-      '<p class="ss-cantonese" lang="zh-HK">軌道之外</p>' +
-      '<p class="ss-french" lang="fr">Séquence orbitale · trajectoire prévue</p>' +
-      '</div>' +
+      '<p class="ss-cantonese" lang="zh-HK">前往高空堡壘的作戰</p>' +
+      '<p class="ss-french" lang="fr">Opération vers la forteresse de haute altitude</p>' +
       '</div>' +
       '</div>' +
       `<img class="ss-corner" src="${tepuiRmqrUrl}" alt="Dive into Tepui">` +
+      '</section>' +
+      '<section class="ss-window" aria-labelledby="ss-stage-heading"></section>' +
       '</div></div>';
 
-    // グラスウィンドウ: タブとステージ一覧を 3D 場面の上に浮かべる(外周線なし)。
-    const windowDiv = document.createElement('div');
-    windowDiv.className = 'ss-window';
-    windowDiv.innerHTML = '<h2 class="ss-window-title">ステージ選択</h2>';
-    (root.querySelector('.ss-grid') as HTMLElement).appendChild(windowDiv);
+    // 3D角丸ウィンドウと並列する、独立したステージ選択ウィンドウ。
+    const windowDiv = root.querySelector('.ss-window') as HTMLElement;
+    windowDiv.innerHTML = '<h2 id="ss-stage-heading" class="ss-window-title">ステージ選択</h2>';
 
     // タブは selectGroup の初出順に並べる。
     const groups: string[] = [];
@@ -267,14 +266,17 @@ export function selectStage(unlockManager: UnlockManager): Promise<StageClass> {
     debugLink.className = 'ss-debug';
     debugLink.textContent = 'debug stage [d]';
     debugLink.addEventListener('click', () => done(StageDebug));
-    (root.querySelector('.ss-rich-window') as HTMLElement).appendChild(debugLink);
+    windowDiv.appendChild(debugLink);
 
     document.body.appendChild(root);
 
     // 3D 場面は非同期に立ち上がる。選択が先に済んだ場合はでき次第そのまま破棄する。
     let scene: TitleScene | null = null;
     let selected = false;
-    createTitleScene(root.querySelector('.ss-canvas') as HTMLCanvasElement, root)
+    createTitleScene(
+      root.querySelector('.ss-canvas') as HTMLCanvasElement,
+      root.querySelector('.ss-3d-window') as HTMLElement,
+    )
       .then((s) => { scene = s; if (selected) s.dispose(); })
       .catch(() => {});
 

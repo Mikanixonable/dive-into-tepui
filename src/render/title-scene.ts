@@ -4,10 +4,10 @@
 import * as THREE from 'three/webgpu';
 
 // 材質。roughness 0.16–0.28 / metalness 0–0.06 / clearcoat 0.7–1.0 の光沢プラスチック帯。
-const BODY_COLORS = [0xdedbd2, 0x696c72, 0x25282e, 0xa7a7a2] as const;
-const ACCENT_COLOR = 0xff5a00;
-const NEAR_ACCENT_COLOR = 0xff8b52;
-const SECONDARY_ACCENT_COLOR = 0x19f5c2;
+const BODY_COLORS = [0xf1edf0, 0xa8aec0, 0x48506a, 0xd6d6d0] as const;
+const ACCENT_COLOR = 0xff3155;
+const NEAR_ACCENT_COLOR = 0xff6b82;
+const SECONDARY_ACCENT_COLOR = 0x3478ff;
 const BODY_COUNT = 24;
 // V6 §5.2 に従い、Accent / Near accent は各1体、Secondaryは1体だけに絞る。
 const ACCENT_INDEX = 7;
@@ -28,21 +28,21 @@ export async function createTitleScene(
   const renderer = new THREE.WebGPURenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
   await renderer.init();
-  renderer.setClearColor(0x08090b, 1);
+  renderer.setClearColor(0x10131f, 1);
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(0x08090b, 0.055);
+  scene.fog = new THREE.FogExp2(0x10131f, 0.032);
   const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 80);
   camera.position.set(0, 0, 14);
 
-  scene.add(new THREE.AmbientLight(0x90949d, 1.45));
-  const key = new THREE.DirectionalLight(0xfff3df, 3.4);
+  scene.add(new THREE.AmbientLight(0xc7d2ef, 2.35));
+  const key = new THREE.DirectionalLight(0xfff3f5, 5.2);
   key.position.set(-5, 7, 10);
   scene.add(key);
-  const rim = new THREE.PointLight(0x72859a, 38, 28, 2);
+  const rim = new THREE.PointLight(0x6e9cff, 72, 32, 2);
   rim.position.set(7, -4, 4);
   scene.add(rim);
-  const warm = new THREE.PointLight(ACCENT_COLOR, 16, 20, 2);
+  const warm = new THREE.PointLight(ACCENT_COLOR, 26, 24, 2);
   warm.position.set(-7, -3, 2);
   scene.add(warm);
 
