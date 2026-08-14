@@ -401,7 +401,7 @@ export class EntityManager {
   // 艦が1隻も無い間は距離を添えない。
   syncMarkers(
     cameraSystem: CameraSystem, displayTime: number, viewerPos: Vec3 | null,
-    visibilityPolicy: MapVisibilityPolicy | null,
+    attractors: readonly Attractor[], visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     const project = cameraSystem.activeCameraProjection;
     const scale = cameraSystem.activeCameraScale;
@@ -409,10 +409,10 @@ export class EntityManager {
     const visibilityOf = (kind: 'ammo' | 'base'): MapVisibility | null =>
       (overviewMode ? visibilityPolicy?.entity(kind) ?? null : null);
     for (const ammoPickup of this.ammoPickups) {
-      ammoPickup.marker?.sync(project, scale, displayTime, overviewMode, viewerPos, visibilityOf('ammo'));
+      ammoPickup.marker?.sync(project, scale, displayTime, overviewMode, cameraSystem.activeCameraPos, viewerPos, attractors, visibilityOf('ammo'));
     }
     for (const base of this.bases) {
-      base.marker?.sync(project, scale, displayTime, overviewMode, viewerPos, visibilityOf('base'));
+      base.marker?.sync(project, scale, displayTime, overviewMode, cameraSystem.activeCameraPos, viewerPos, attractors, visibilityOf('base'));
     }
   }
 

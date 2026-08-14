@@ -116,7 +116,7 @@ export class PlanDisplay {
     this.path.sync(fo, project, scale, cameraPos, camera);
     this.syncGhost(project, overviewMode, cameraPos);
     this.syncApsisMarkers(project, overviewMode, cameraPos);
-    this.syncImpactMarkers(project);
+    this.syncImpactMarkers(project, overviewMode, cameraPos);
     this.syncTickMarkers(project, overviewMode, cameraPos);
   }
 
@@ -278,10 +278,12 @@ export class PlanDisplay {
   }
 
   // ✕ 衝突マーカーを update が求めた位置に置き、出ていないものを隠す。
-  private syncImpactMarkers(project: ProjectFn): void {
+  private syncImpactMarkers(project: ProjectFn, overviewMode: boolean, cameraPos: Vec3): void {
     for (const key of IMPACT_MARKER_KEYS) {
       const icon = this.impactIcons.find((m) => m.key === key);
-      if (icon) this.markerManager.setPosition(key, 'mk-impact', ORBIT_POINT_GLYPH.impact, icon.pos, project, icon.label);
+      if (icon && !(overviewMode && isOccluded(cameraPos, icon.pos, this.attractors))) {
+        this.markerManager.setPosition(key, 'mk-impact', ORBIT_POINT_GLYPH.impact, icon.pos, project, icon.label);
+      }
       else this.markerManager.hide(key);
     }
   }
