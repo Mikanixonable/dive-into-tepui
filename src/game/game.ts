@@ -234,8 +234,8 @@ export class Game {
     this.sections.exit(SECTION.plan);
     this.sections.enter(SECTION.camera);
     this.cameraSystem.update(
-      this.player, this.simulator.simTime, this.input, dt, this.mapPickables.pickables,
-      this.displayWindowManager.attractorsAt(this.simulator.simTime),
+      this.player, displayWindow.displayTime, this.input, dt, this.mapPickables.pickables,
+      this.displayWindowManager.attractorsAt(displayWindow.displayTime),
     );
     this.sections.exit(SECTION.camera);
     // カメラ更新の後に置く: 候補集合と表示可否はカメラ位置から出るので、先に組むと
