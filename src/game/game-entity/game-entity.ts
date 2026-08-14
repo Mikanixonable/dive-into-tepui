@@ -161,15 +161,16 @@ export class GameEntity {
   // [simTime - pastDuration, simTime] の actualTrajectory に合わせる(未来線の先頭と過去線の
   // 末尾が常に現在位置で接するようにする)。pastDuration が保持窓を超える分は
   // TrajectoryLine 側が保持区間の先頭へクランプする。show が false のときは両方を非表示にする。
+  // simTime は描く区間の境目、displayTime は座標系から慣性系へ戻す時刻。
   syncTrajectoryLine(
-    show: boolean, frame: ReferenceFrame, simTime: number, pastDuration: number, ephemeris: Ephemeris,
-    fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
+    show: boolean, frame: ReferenceFrame, simTime: number, displayTime: number, pastDuration: number,
+    ephemeris: Ephemeris, fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
   ): void {
     if (this.trajectoryLine !== null) {
       this.trajectoryLine.syncGeometry(
         show ? this.predictedTrajectory : null, simTime, null, frame, ephemeris, attractors,
       );
-      this.trajectoryLine.syncTransform(frame, simTime, ephemeris, fo, attractors);
+      this.trajectoryLine.syncTransform(frame, displayTime, ephemeris, fo, attractors);
       this.trajectoryLine.sync(camera);
     }
     if (this.pastTrajectoryLine !== null) {
@@ -177,7 +178,7 @@ export class GameEntity {
       this.pastTrajectoryLine.syncGeometry(
         drawPast ? this.actualTrajectory : null, simTime - pastDuration, simTime, frame, ephemeris, attractors,
       );
-      this.pastTrajectoryLine.syncTransform(frame, simTime, ephemeris, fo, attractors);
+      this.pastTrajectoryLine.syncTransform(frame, displayTime, ephemeris, fo, attractors);
       this.pastTrajectoryLine.sync(camera);
     }
   }
