@@ -4,7 +4,12 @@ import { injectThemeVariables } from '../theme';
 import { buildOverlayLayers } from './overlay-layer';
 import { OverlayManager } from './overlay-manager';
 import { HelpPanel } from './help-panel';
-import { PanelShell, loadPanelCollapsed, savePanelCollapsed } from './panel-shell';
+import {
+  PanelShell,
+  loadPanelCollapsed,
+  onPanelCollapsedViewChange,
+  savePanelCollapsed,
+} from './panel-shell';
 import { LAYOUT_TOKENS_STYLE } from './layout-tokens';
 import { SKELETON_STYLE } from './skeleton-style';
 import { PANEL_CONTENT_STYLE } from './panel-content-style';
@@ -13,7 +18,7 @@ import { MAP_VIEW_STYLE } from './map-view-style';
 import { isCompactViewport } from './breakpoints';
 import { startViewportTracking } from './viewport';
 import {
-  buildCollapseToggle, WIDGET_STYLE,
+  buildCollapseToggle, syncCollapseToggle, WIDGET_STYLE,
 } from './widgets';
 import type { OverlayLayers } from './overlay-layer';
 import type { CollapseToggleLabels } from './widgets';
@@ -72,14 +77,18 @@ export function syncNavballPlacement(root: HTMLElement, mapMode: boolean): void 
   if (navball && target && navball.parentElement !== target) target.appendChild(navball);
 }
 
-// レールの折りたたみ状態は PanelShell と同じ localStorage を共有する。一度も操作されて
-// いなければ、初回表示の既定として compact 幅でだけ畳んでおく（マップビュー = PREDICT バー +
-// 畳まれた左右レール)。
+// レールの折りたたみ状態は PanelShell と同じビュー別 localStorage を共有する。一度も操作
+// されていなければ、初回表示の既定として compact 幅でだけ畳んでおく。
 function buildRailToggle(root: HTMLElement, rail: HTMLElement, side: 'left' | 'right'): void {
   const railId = `hud-rail-${side}`;
-  const collapsed = loadPanelCollapsed(railId) ?? isCompactViewport();
-  rail.classList.toggle('collapsed', collapsed);
   const toggle = buildCollapseToggle(root, `hud-rail-toggle-${side}`, 'rail-toggle', rail, railToggleLabels(side));
+  const applyCollapsedState = (): void => {
+    const collapsed = loadPanelCollapsed(railId) ?? isCompactViewport();
+    rail.classList.toggle('collapsed', collapsed);
+    syncCollapseToggle(toggle, rail, railToggleLabels(side));
+  };
+  applyCollapsedState();
+  onPanelCollapsedViewChange(applyCollapsedState);
   toggle.addEventListener('click', () => savePanelCollapsed(railId, rail.classList.contains('collapsed')));
 }
 
