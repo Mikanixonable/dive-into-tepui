@@ -8,6 +8,8 @@ import type { MarkerManager } from '../marker/marker-manager';
 import { DIRECTION_GLYPH, ENTITY_GLYPH } from '../marker/marker-glyphs';
 import type { Attractor } from '../../physics/attractor';
 import type { CelestialRegistry } from '../../physics/solar-system';
+import { bodyDef } from '../../physics/solar-system';
+import * as C from '../const';
 import { isPositionInFocusedSystem } from '../celestial/body-visibility';
 import { ACCENT } from '../theme';
 import type { MapVisibility } from '../celestial/map-visibility';
@@ -34,10 +36,25 @@ export class PlayerMarkers {
       if (displayState && (!registry || isPositionInFocusedSystem(registry, focusId, displayState.r, attractors))
         && (!visibility || visibility.pickable)) {
         const color = isActive ? ACCENT : undefined;
+        const nearestPlanet = registry === undefined ? undefined : attractors
+          .filter((a) => registry[a.id] !== undefined && bodyDef(registry, a.id).kind === 'planet')
+          .map((a) => ({ a, distance: Math.sqrt((displayState.r.x - a.state.r.x) ** 2 + (displayState.r.y - a.state.r.y) ** 2 + (displayState.r.z - a.state.r.z) ** 2) }))
+          .sort((a, b) => a.distance - b.distance)[0];
+        const nearPlanet = nearestPlanet !== undefined
+          && nearestPlanet.distance <= C.MAP_PLANET_SHIP_LABEL_END;
+        const markerPos = nearPlanet ? nearestPlanet.a.state.r : displayState.r;
+        const opacity = nearPlanet
+          ? Math.max(0, Math.min(1, (C.MAP_PLANET_SHIP_LABEL_END - nearestPlanet.distance)
+            / (C.MAP_PLANET_SHIP_LABEL_END - C.MAP_PLANET_SHIP_LABEL_START)))
+          : 1;
+        if (opacity <= 0) {
+          this.markerManager.hide(selfKey);
+          return;
+        }
         const rotationDeg = this.markerManager.headingRotationDeg(displayState.r, displayState.v, project, scaleFn);
         this.markerManager.setPosition(
-          selfKey, 'mk-self', visibility?.icon === false ? '' : ENTITY_GLYPH.ship, displayState.r, project,
-          isActive && visibility?.label !== false ? name : '', 1, color, rotationDeg,
+          selfKey, nearPlanet ? 'mk-self mk-planet-nearby' : 'mk-self', visibility?.icon === false ? '' : ENTITY_GLYPH.ship, markerPos, project,
+          isActive && visibility?.label !== false ? name : '', opacity, color, rotationDeg,
         );
       } else {
         this.markerManager.hide(selfKey);
