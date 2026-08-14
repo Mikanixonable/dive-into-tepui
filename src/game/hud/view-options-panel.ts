@@ -64,9 +64,9 @@ const GRID_TOGGLE_GROUPS: readonly GridToggleGroup[] = [
 ];
 
 const SPATIAL_GRID_ROWS: readonly (readonly [keyof CelestialGridVisibility, string, string])[] = [
-  ['eclipticScaleGrid', '黄道面', '黄道面の10万kmグリッド'],
-  ['equatorScaleGrid', '赤道面', '赤道面の10万kmグリッド'],
-  ['moonOrbitScaleGrid', '月軌道面', '月軌道面の10万kmグリッド'],
+  ['eclipticScaleGrid', '黄道面', '黄道面の縮尺グリッド'],
+  ['equatorScaleGrid', '赤道面', '赤道面の縮尺グリッド'],
+  ['moonOrbitScaleGrid', '月軌道面', '月軌道面の縮尺グリッド'],
 ];
 
 interface ViewOptionColumn {
@@ -84,6 +84,10 @@ const GRID_COLUMNS: readonly ViewOptionColumn[] = [
   { glyph: '⌒', label: '面' },
   { glyph: DIRECTION_GLYPH.axis, label: '極' },
   { glyph: '⊞', label: '網' },
+];
+
+const SPATIAL_GRID_COLUMNS: readonly ViewOptionColumn[] = [
+  { glyph: '十', label: '縮尺' },
 ];
 
 // トグルのグリフと意味をカラム見出しで常に並記し、色だけに識別を委ねない。
@@ -252,7 +256,7 @@ export class ViewOptionsPanel {
     this.gridButtons = gridButtons;
     this.gridCategoryButtons = gridCategories;
 
-    appendSectionHeading(body, '空間グリッド', [{ glyph: '⊞', label: '10万km' }]);
+    appendSectionHeading(body, '空間グリッド', SPATIAL_GRID_COLUMNS);
     for (const [key, label, description] of SPATIAL_GRID_ROWS) {
       const row = document.createElement('div');
       row.className = 'body-class-row grid-class-row';
