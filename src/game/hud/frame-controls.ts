@@ -12,16 +12,15 @@ import { RotationZone } from './rotation-zone';
 import { ToggleSwitch } from './widgets';
 import { celestialBodyName } from './frame-labels';
 import { hudRail } from './hud-root';
-import { TEXT_DIM } from '../theme';
 import type { MapPickable } from '../map-pickable';
 import type { DisplayWindowManager } from '../display-window-manager';
 import type { OverlayManager } from './overlay-manager';
 
 const STYLE = `
-#hud .frame-section { margin-top: 8px; }
+#hud .frame-section { margin-top: var(--space-4); }
 #hud .frame-section:first-of-type { margin-top: 0; }
-#hud .frame-section-title { font-size: 10px; color: ${TEXT_DIM}; letter-spacing: 0.08em; margin-bottom: 3px; }
-#hud .frame-summary { font-size: 10px; color: ${TEXT_DIM}; margin-top: 6px; }
+#hud .frame-section-title { font-size: var(--font-xxs); color: var(--text-dim); letter-spacing: 0.08em; margin-bottom: var(--space-2); }
+#hud .frame-summary { font-size: var(--font-xxs); color: var(--text-dim); margin-top: var(--space-3); }
 `;
 
 let styleInjected = false;
