@@ -11,6 +11,7 @@ import { PerfMeter } from './perf-meter';
 import { FrameSections } from './frame-sections';
 import { GpuTimings } from './gpu-timings';
 import { GraphicsSettings } from './render/graphics-settings';
+import { RenderPipeline } from './render/pipeline/render-pipeline';
 import {
   ACCENT, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM, FONT_FAMILY,
   FONT_2XL, FONT_M, FONT_XL, RADIUS_S, RADIUS_M,
@@ -184,10 +185,11 @@ function startAnimationLoop(
 // hud/sfx はタイトル(ステージ選択)画面の時点から使えるべきなので、Game より先に main.ts が
 // 生成して所有し、Game には参照として渡す。pauseMenu も同様に main.ts が所有し、開閉に
 // 応じた一時停止の反映(game.pause()/game.resume())も持ち主である main.ts がここで配線する。
-function initHud(graphics: GraphicsSettings): { hud: Hud; sfx: Sfx; pauseMenu: PauseMenu } {
+// pipeline はここで組む PauseMenu の描画タブ(GraphicsPanel)がデバッグ表示の選択を書き込む先。
+function initHud(graphics: GraphicsSettings, pipeline: RenderPipeline): { hud: Hud; sfx: Sfx; pauseMenu: PauseMenu } {
   const hud = new Hud();
   const sfx = new Sfx();
-  const pauseMenu = new PauseMenu(hud.layers.system, hud.overlayManager, graphics);
+  const pauseMenu = new PauseMenu(hud.layers.system, hud.overlayManager, graphics, pipeline);
   pauseMenu.setBgmVolume(sfx.getBgmVolume());
   pauseMenu.onBgmVolumeChange = (vol) => sfx.setBgmVolume(vol);
   return { hud, sfx, pauseMenu };
@@ -212,13 +214,14 @@ async function main() {
   const snapshotService = new SnapshotService(saveStore, slots);
   const graphics = new GraphicsSettings();
   const gs = await initScene(graphics);
-  const { hud, sfx, pauseMenu } = initHud(graphics);
+  const gpu = new GpuTimings(gs.renderer);
+  const pipeline = new RenderPipeline(gs.renderer, graphics, gpu);
+  const { hud, sfx, pauseMenu } = initHud(graphics, pipeline);
   const launcher = new Launcher(hud, unlockmanager, slots, snapshotService, sfx);
   // 「ゲームを中断してタイトル画面に戻る」
   pauseMenu.onQuitToTitle = () => launcher.returnToTitle();
   const stageClass = await launcher.resolveStage();
   const sections = new FrameSections();
-  const gpu = new GpuTimings(gs.renderer);
 
   const initialSave = launcher.initialSaveFor(stageClass);
   const ephemeris = await initEphemeris(stageClass, initialSave?.phaseOffsets ?? {});
@@ -226,7 +229,7 @@ async function main() {
   const earthSpinPhase0 = initialSave?.earthSpinPhase0 ?? Math.random() * 2 * Math.PI;
 
   const game = new Game(
-    gs, stageClass, hud, sfx, pauseMenu, unlockmanager, sections, ephemeris, graphics, earthSpinPhase0,
+    gs, stageClass, hud, sfx, pauseMenu, unlockmanager, sections, ephemeris, graphics, pipeline, earthSpinPhase0,
     initialSave,
   );
   launcher.noteLaunched(stageClass);

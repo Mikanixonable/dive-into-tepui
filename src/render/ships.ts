@@ -5,6 +5,7 @@
 import * as THREE from 'three/webgpu';
 import * as C from '../game/const';
 import { mulberry32 } from '../physics/random';
+import { markLitOpaque } from './pipeline/lit-layer';
 
 // BufferGeometry を属性・index ごと複製する(clone() だけでは頂点属性配列を共有したままになる)。
 function deepCloneGeometry(geo: THREE.BufferGeometry): THREE.BufferGeometry {
@@ -90,6 +91,7 @@ export function cloneIndependent<T extends THREE.Object3D>(template: T): T {
       mesh.userData.ownsMaterial = true;
     }
   });
+  markLitOpaque(clone);
   return clone;
 }
 
@@ -433,7 +435,10 @@ export function buildAsteroidMesh(radius: number): THREE.Mesh {
     z * (0.7 + Math.random() * 0.6),
   ]);
   const mat = new THREE.MeshStandardMaterial({ color: 0x8a8378, flatShading: true, roughness: 0.9, metalness: 0.05 });
-  return withDispose(new THREE.Mesh(geo, mat));
+  const mesh = withDispose(new THREE.Mesh(geo, mat));
+  // このメッシュは cloneIndependent を経由しないので、自分で G バッファ対象へ加える。
+  markLitOpaque(mesh);
+  return mesh;
 }
 
 
@@ -523,6 +528,9 @@ export function buildBarrelMesh(): THREE.Group {
     mesh.userData.ownsGeometry = false;
     mesh.userData.ownsMaterial = false;
   });
+  // layers.mask は Object3D.clone(true) が子孫までコピーするため、テンプレートへ一度だけ
+  // 設定すれば以降の複製全てへ引き継がれる。
+  markLitOpaque(g);
   return g;
 }
 
@@ -566,5 +574,7 @@ export function buildBaseModel(): THREE.Group {
   beacon.position.set(0, 30, 0);
   g.add(beacon);
 
+  // このメッシュは cloneIndependent を経由しないので、自分で G バッファ対象へ加える。
+  markLitOpaque(g);
   return g;
 }

@@ -1,6 +1,7 @@
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { SPACE_4, SPACE_6 } from '../theme';
 import type { GraphicsSettings } from '../../render/graphics-settings';
+import type { DebugTargetHost } from '../../render/pipeline/debug-target';
 import { GraphicsPanel } from './graphics-panel';
 import type { OverlayHandle, OverlayManager } from './overlay-manager';
 import { Button, CloseButton, Slider, TabBar } from './widgets';
@@ -30,8 +31,11 @@ export class PauseMenu implements OverlayHandle {
   private lastVol = 1;
 
   // 一般・描画の2面をタブで束ねたパネル DOM を組み立て、BGM・スナップショット・負荷表示・
-  // タイトルへ戻るのイベントを配線する。
-  constructor(root: HTMLElement, overlayManager: OverlayManager, graphics: GraphicsSettings) {
+  // タイトルへ戻るのイベントを配線する。debugTargetHost は描画面の GraphicsPanel が
+  // デバッグ表示の選択を書き込む先(RenderPipeline)。
+  constructor(
+    root: HTMLElement, overlayManager: OverlayManager, graphics: GraphicsSettings, debugTargetHost: DebugTargetHost,
+  ) {
     this.overlayManager = overlayManager;
     this.panel = document.createElement('div');
     this.panel.id = 'hud-pause-menu';
@@ -44,7 +48,7 @@ export class PauseMenu implements OverlayHandle {
     this.panel.appendChild(this.tabs.element);
 
     const general = document.createElement('div');
-    const graphicsPanel = new GraphicsPanel(graphics);
+    const graphicsPanel = new GraphicsPanel(graphics, debugTargetHost);
     this.faces = new Map([['general', general], ['graphics', graphicsPanel.element]]);
     for (const face of this.faces.values()) this.panel.appendChild(face);
 
