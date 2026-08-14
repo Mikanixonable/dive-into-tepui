@@ -86,7 +86,9 @@ export class Targeter {
   // Tキーで照準中心に近い敵を選ぶ。連打(2秒以内)では第二ターゲット候補を順送りする。
   // オート選定は行わない — 右クリックでの設定/解除は MapContextActions が開くプロパティウィンドウの
   // 項目(targetPrimary/targetSecondary)から setPrimaryTarget/setSecondaryTarget を呼ぶ。
-  handleTargetSelectKey(input: Input, targets: CombatTarget[], project: ProjectFn): void {
+  // ビューはここでは持たないので毎フレーム引数で受け取り、マップ視点では何もしない。
+  handleTargetSelectKey(input: Input, targets: CombatTarget[], project: ProjectFn, overviewMode: boolean): void {
+    if (overviewMode) return;
     if (!input.takeKey(K.targetSelect)) return;
     const now = performance.now() / 1000;
     const candidates = targets

@@ -22,9 +22,11 @@ import { CameraSystem, ProjectFn } from './camera/camera-system';
 import { PlanEditor } from './plan/plan-editor';
 import { SimSpeedManager } from './sim-speed-manager';
 import type { PauseMenu } from './hud/pause-menu';
-import type { CombatTarget } from './targeter';
+import { Targeter, type CombatTarget } from './targeter';
 import type { Docking } from './docking';
-import type { Game } from './game';
+import type { ActivePlayerController } from './active-player-controller';
+import type { FrameControls } from './hud/frame-controls';
+import type { Stage } from './stages/stage';
 import { Player, planExecutionLabel, type PlanExecutionMode } from './player/player';
 import type { GameEntity } from './game-entity/game-entity';
 import { len, sub, v3 } from '../physics/vec3';
@@ -69,7 +71,6 @@ export class MapContextActions {
 
   // 候補集合(pickables)と、メニュー項目の実行先を参照として受け取る。
   constructor(
-    private readonly game: Game,
     private readonly hud: Hud,
     private readonly entities: EntityManager,
     private readonly ephemeris: Ephemeris,
@@ -79,6 +80,10 @@ export class MapContextActions {
     private readonly simSpeedManager: SimSpeedManager,
     private readonly pauseMenu: PauseMenu,
     private readonly pickables: MapPickables,
+    private readonly activePlayers: ActivePlayerController,
+    private readonly frameControls: FrameControls,
+    private readonly activeStage: Stage,
+    private readonly targeter: Targeter,
   ) {
     this.menu = new ContextMenu<MapPickable, MenuAction>(hud.layers.popup, hud.overlayManager);
     this.menu.onSelect = (act, target) => {
@@ -91,7 +96,7 @@ export class MapContextActions {
       if (target) this.objectListPanel.select(id);
     };
     this.objectListPanel.onFocus = (id) => {
-      this.game.frameControls.setFocus({ kind: 'object', id });
+      this.frameControls.setFocus({ kind: 'object', id });
       this.hud.hint(`${this.pickables.pickables.find((i) => i.id === id)?.name ?? id} にフォーカス`);
     };
     this.objectListPanel.onNavTarget = (id) => {
@@ -107,7 +112,9 @@ export class MapContextActions {
   }
 
   // 右クリック位置の最寄り候補を探し、当たればその種別に応じたプロパティウィンドウを開いて消費する。
+  // マップ視点でなければ候補列(pickables.pickables)が更新されていないので何もしない。
   handleRightClick(input: Input, simTime: number): void {
+    if (!this.cameraSystem.overviewMode) return;
     input.takeRightClicks((p) => {
       const target = pickNearest(
         this.pickables.pickables, p.x, p.y, this.cameraSystem.activeCameraProjection,
@@ -168,8 +175,9 @@ export class MapContextActions {
 
   // 左クリック位置の最寄りの自艦・基地を選択する。当たらなければ消費せず、PlanEditor の
   // ノード配置/選択解除に読み進める(呼び出し側が editor.handleMapPointer より先に呼ぶことで、
-  // マーカーへの命中をノード配置より優先する)。
+  // マーカーへの命中をノード配置より優先する)。マップ視点でなければ何もしない。
   handleLeftClick(input: Input): void {
+    if (!this.cameraSystem.overviewMode) return;
     input.takeClicks((p) => {
       const candidates = this.pickables.pickables.filter((i) => i.kind === 'player' || i.kind === 'base');
       const target = pickNearest(candidates, p.x, p.y, this.cameraSystem.activeCameraProjection, pickRadiusSq(C.MAP_PICK_PX_SQ, C.MAP_PICK_PX_SQ_COARSE));
@@ -181,20 +189,21 @@ export class MapContextActions {
 
   // ダブルクリック位置の最寄りの被選択物へフォーカスを移し、自艦であれば操作対象にも切り替える。
   // 種別を問わず候補列全体から探す。ラベル衝突で非表示になった天体は、表示されている別のラベルの
-  // 背後から拾わない。
+  // 背後から拾わない。マップ視点でなければ何もしない。
   handleDoubleClick(input: Input): void {
+    if (!this.cameraSystem.overviewMode) return;
     input.takeDoubleClicks((p) => {
       const target = pickNearest(
         this.pickables.pickables.filter((item) => item.pickable !== false),
         p.x, p.y, this.cameraSystem.activeCameraProjection, pickRadiusSq(C.MAP_PICK_PX_SQ, C.MAP_PICK_PX_SQ_COARSE),
       );
       if (!target) return false;
-      this.game.frameControls.setFocus({ kind: 'object', id: target.id });
+      this.frameControls.setFocus({ kind: 'object', id: target.id });
       this.hud.hint(`${target.name} にフォーカス`);
       if (target.kind === 'player') {
         const ship = this.entities.findPlayer(target.id);
         if (ship) {
-          this.game.activePlayers.set(ship);
+          this.activePlayers.set(ship);
           this.hud.hint(`${target.name} を操作対象に設定`);
         }
       }
@@ -220,6 +229,7 @@ export class MapContextActions {
   // 何も当たらなかった場合、「空域」として扱う(他のハンドラの後に呼ぶ)。マップ・戦闘の
   // どちらの右クリックも空振りしたら最終的にここへ落ちる — 実装は1つだけ持つ(openEmptySpaceMenu)。
   handleEmptySpaceRightClick(input: Input, simTime: number): void {
+    if (!this.cameraSystem.overviewMode) return;
     input.takeRightClicks((p) => {
       this.openEmptySpaceMenu(p.x, p.y, simTime);
       return true;
@@ -233,11 +243,13 @@ export class MapContextActions {
 
   // 戦闘ビューの右クリック。マップと同じ被選択物の仕組みで敵・自艦を拾い、当たれば同じ
   // プロパティウィンドウを開く(同じ対象は常に同じ窓 — §7-2)。外れれば空域メニューへ落ちる。
+  // マップ視点では何もしない。
   handleCombatRightClick(
-    input: Input, targets: readonly CombatTarget[], project: ProjectFn, simTime: number,
+    input: Input, targets: readonly CombatTarget[], project: ProjectFn, simTime: number, overviewMode: boolean,
   ): void {
+    if (overviewMode) return;
     input.takeRightClicks((p) => {
-      const picked = this.game.targeter.pickTargetAt(p, targets, project);
+      const picked = this.targeter.pickTargetAt(p, targets, project);
       if (picked) this.openPropertyWindow(p.x, p.y, this.combatTargetPickable(picked), simTime);
       else this.openEmptySpaceMenu(p.x, p.y, simTime);
       return true;
@@ -421,14 +433,14 @@ export class MapContextActions {
     'player': {
       itemsFor: (target, simTime) => {
         const ship = this.entities.findPlayer(target.id);
-        const isActive = ship === this.game.player;
+        const isActive = ship === this.activePlayers.current;
         const activate: readonly MenuItem<MenuAction>[] = [
           isActive ? { label: '操作対象を解除', act: 'deactivate' } : { label: '操作対象にする', act: 'activate' },
         ];
         const remove: readonly MenuItem<MenuAction>[] = isActive ? [] : [{ label: '削除', act: 'delete' }];
         // 計画を実行するステージだけに出す。駆動源が無いところで選ばせても何も起きない。
         const mode = ship?.planExecution ?? 'off';
-        const planExec: readonly MenuItem<MenuAction>[] = this.game.activeStage.executesPlans
+        const planExec: readonly MenuItem<MenuAction>[] = this.activeStage.executesPlans
           ? [{ label: `軌道計画の実行: ${planExecutionLabel(mode)}`, act: 'planExecCycle', keepOpen: true }]
           : [];
         return [
@@ -445,9 +457,9 @@ export class MapContextActions {
       run: (act, target) => {
         if (act === 'activate') {
           const ship = this.entities.findPlayer(target.id);
-          if (ship) this.game.activePlayers.set(ship);
+          if (ship) this.activePlayers.set(ship);
         } else if (act === 'deactivate') {
-          if (this.entities.findPlayer(target.id) === this.game.player) this.game.activePlayers.setOrNull(null);
+          if (this.entities.findPlayer(target.id) === this.activePlayers.current) this.activePlayers.setOrNull(null);
         } else if (act === 'planExecCycle') {
           const ship = this.entities.findPlayer(target.id);
           if (ship) {
@@ -458,7 +470,7 @@ export class MapContextActions {
           this.runDuplicate(target);
         } else if (act === 'delete') {
           const ship = this.entities.findPlayer(target.id);
-          if (ship) this.game.activePlayers.remove(ship);
+          if (ship) this.activePlayers.remove(ship);
         } else if (act === 'targetPrimary' || act === 'targetSecondary') {
           this.runTargetLock(act, this.entities.findPlayer(target.id));
         } else {
@@ -468,7 +480,7 @@ export class MapContextActions {
     },
     'empty-space': {
       itemsFor: () => {
-        const placeItem: readonly MenuItem<MenuAction>[] = this.game.activeStage.authoring
+        const placeItem: readonly MenuItem<MenuAction>[] = this.activeStage.authoring
           ? [{ label: 'オブジェクトを配置する', act: 'openShipPlacer', shortcut: 'Enter' }]
           : [];
         return [
@@ -479,8 +491,8 @@ export class MapContextActions {
       },
       run: (act) => {
         if (act === 'openShipPlacer') {
-          this.game.activeStage.authoring?.openShipPlacer(
-            focusTargetId(this.game.cameraSystem.overviewCamera.focus));
+          this.activeStage.authoring?.openShipPlacer(
+            focusTargetId(this.cameraSystem.overviewCamera.focus));
         } else if (act === 'openSettings') {
           this.pauseMenu.toggle(true);
         }
@@ -537,14 +549,14 @@ export class MapContextActions {
 
   // 「複製」項目。複製先が艦艇配置パネルなので、それを持つステージだけに出す。
   private duplicateItems(): readonly MenuItem<MenuAction>[] {
-    return this.game.activeStage.authoring ? [MenuCommon.duplicate()] : [];
+    return this.activeStage.authoring ? [MenuCommon.duplicate()] : [];
   }
 
   // ターゲット固定/第二ターゲット固定の項目。戦闘ターゲットとして戦える対象(生存中の
   // 敵・自艦)にだけ出し、マップビューでは出さない(視界占有を抑える — §7-2)。
   private combatTargetLockItems(entity: CombatTarget | null | undefined): readonly MenuItem<MenuAction>[] {
     if (this.cameraSystem.overviewMode || !entity || !entity.alive) return [];
-    const targeter = this.game.targeter;
+    const targeter = this.targeter;
     return [
       MenuCommon.targetPrimary(targeter.target === entity),
       MenuCommon.targetSecondary(targeter.secondaryTarget === entity),
@@ -554,14 +566,14 @@ export class MapContextActions {
   // ターゲット固定/第二ターゲット固定を、押した時点の設定と比べてトグルする。
   private runTargetLock(act: 'targetPrimary' | 'targetSecondary', entity: CombatTarget | null | undefined): void {
     if (!entity) return;
-    const targeter = this.game.targeter;
+    const targeter = this.targeter;
     if (act === 'targetPrimary') targeter.setPrimaryTarget(targeter.target === entity ? null : entity);
     else targeter.setSecondaryTarget(targeter.secondaryTarget === entity ? null : entity);
   }
 
   // 対象の現在状態を軌道要素へ逆算し、その値をプリセットして艦艇配置パネルを開く。
   private runDuplicate(target: MapPickable): void {
-    const authoring = this.game.activeStage.authoring;
+    const authoring = this.activeStage.authoring;
     if (!authoring) return;
     const source = this.duplicateSourceFor(target);
     if (!source) return;
@@ -677,7 +689,7 @@ export class MapContextActions {
     if (!ship) return [];
     return [
       {
-        key: 'operated', label: '操作対象か', value: ship === this.game.player ? 'はい' : 'いいえ', collapsible: true,
+        key: 'operated', label: '操作対象か', value: ship === this.activePlayers.current ? 'はい' : 'いいえ', collapsible: true,
       },
       { key: 'follow', label: '計画実行', value: planExecutionLabel(ship.planExecution), collapsible: true },
       { key: 'hp', label: '装甲', value: `${Math.floor(ship.hp)} / ${ship.maxHp}` },
@@ -788,7 +800,7 @@ export class MapContextActions {
 
   private runBodyShip(act: MenuAction, target: MapPickable): void {
     if (act === 'focus') {
-      this.game.frameControls.setFocus({ kind: 'object', id: target.id });
+      this.frameControls.setFocus({ kind: 'object', id: target.id });
       this.hud.hint(`${target.name} にフォーカス`);
     } else if (act === 'navTarget') {
       this.navTarget.toggleTarget(target.id, target.name);
@@ -800,7 +812,7 @@ export class MapContextActions {
       const t = target.time ?? (target.kind === 'apsis'
         ? this.editor.planDisplay.apsisTimeOf(target.id)
         : this.navTarget.passTimeOf(target.id));
-      if (t !== null && !this.simSpeedManager.startAutoWarpTo(t, this.game.simTime)) {
+      if (t !== null && !this.simSpeedManager.startAutoWarpTo(t, this.pickables.lastSimTime)) {
         this.hud.hint('この時刻は既に通過しています');
       }
     } else if (act === 'addNode') {
