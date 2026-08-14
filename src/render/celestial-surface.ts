@@ -25,6 +25,7 @@ import {
 } from 'three/tsl';
 import { RingSystemDef } from '../physics/solar-system';
 import { SPHERE_LOD_LADDER, SphereLodLevel } from './screen-lod';
+import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from './tsl-types';
 
 // 夜側の明るさ(0 で真っ暗)。惑星光・星明かりを表す最低限の底上げ。
 export const NIGHT_AMBIENT = 0.04;
@@ -45,12 +46,12 @@ function unitSphereGeometry(widthSegments: number, heightSegments: number): THRE
 }
 
 type RingShadowBand = {
-  readonly axis: ReturnType<typeof uniform>;
-  readonly center: ReturnType<typeof uniform>;
-  readonly inner: ReturnType<typeof uniform>;
-  readonly outer: ReturnType<typeof uniform>;
-  readonly tau: ReturnType<typeof uniform>;
-  readonly active: ReturnType<typeof uniform>;
+  readonly axis: Vec3Uniform;
+  readonly center: Vec3Uniform;
+  readonly inner: FloatUniform;
+  readonly outer: FloatUniform;
+  readonly tau: FloatUniform;
+  readonly active: FloatUniform;
 };
 
 export class CelestialSurface {
@@ -63,21 +64,21 @@ export class CelestialSurface {
 
   // mesh は半径 1 の球で、表示側が位置・スケール・自転姿勢を毎フレーム与える。
   readonly mesh: THREE.Mesh;
-  private readonly albedoNode: ReturnType<typeof vec3>;
+  private readonly albedoNode: Vec3Node;
 
   // albedo は面の色を返すノード。これに昼夜の陰影を掛けたものが最終色になる。
-  private constructor(geometry: THREE.BufferGeometry, albedo: ReturnType<typeof vec3>) {
+  private constructor(geometry: THREE.BufferGeometry, albedo: Vec3Node) {
     this.albedoNode = albedo;
     this.material = this.buildMaterial(this.albedoNode, false);
-    this.mesh = new THREE.Mesh(geometry, this.material as unknown as THREE.Material);
+    this.mesh = new THREE.Mesh(geometry, this.material);
   }
 
   private material: THREE.MeshBasicNodeMaterial;
 
-  private buildMaterial(albedo: ReturnType<typeof vec3>, withRingShadows: boolean): THREE.MeshBasicNodeMaterial {
+  private buildMaterial(albedo: Vec3Node, withRingShadows: boolean): THREE.MeshBasicNodeMaterial {
     const mat = new THREE.MeshBasicNodeMaterial();
     const lambert = clamp(dot(normalWorld, this.sunDirNode), 0, 1);
-    let ringTransmission = float(1);
+    let ringTransmission: FloatNode = float(1);
     if (withRingShadows) {
       // withRingShadows は enableRingShadows() で bands を先に作ってから呼ぶ。
       const bands = this.ringShadowBands;
@@ -114,9 +115,9 @@ export class CelestialSurface {
       tau: uniform(0),
       active: uniform(0),
     }));
-    const previousMaterial = this.material as unknown as THREE.Material;
+    const previousMaterial = this.material;
     this.material = this.buildMaterial(this.albedoNode, true);
-    this.mesh.material = this.material as unknown as THREE.Material;
+    this.mesh.material = this.material;
     previousMaterial.dispose();
   }
 
@@ -124,7 +125,7 @@ export class CelestialSurface {
   static textured(textureUrl: string, widthSegments: number, heightSegments: number): CelestialSurface {
     const map = new THREE.TextureLoader().load(textureUrl);
     map.colorSpace = THREE.SRGBColorSpace;
-    return new CelestialSurface(unitSphereGeometry(widthSegments, heightSegments), textureNode(map, uv()));
+    return new CelestialSurface(unitSphereGeometry(widthSegments, heightSegments), textureNode(map, uv()).rgb);
   }
 
   // テクスチャを持たない天体の単色球面。
