@@ -23,7 +23,7 @@ export const LAYOUT_TOKENS_STYLE = `
   }
 }
 @media ${MQ_COARSE} {
-  :root { --shelf-h: 104px; }
+  :root { --shelf-h: min(140px, 22dvh); }
 }
 @media ${MQ_COARSE_SHORT} {
   :root { --shelf-h: 82px; }

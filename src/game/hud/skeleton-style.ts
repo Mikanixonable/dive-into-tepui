@@ -104,7 +104,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud-combat-shelf > .panel {
   position: relative; inset: auto; transform: none; pointer-events: auto;
   flex: 0 0 228px; width: 228px; box-sizing: border-box; font-size: var(--font-xs);
-  max-height: var(--shelf-h);
+  max-height: var(--shelf-h); overflow-y: auto;
 }
 /* STATUS+ORBIT は左詰めのまま、CONTACTS だけ右端へ押し出す。 */
 #hud-combat-shelf > #hud-enemies { margin-left: auto; }
@@ -136,6 +136,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
   font-size: var(--font-s); letter-spacing: 1px; font-variant-numeric: tabular-nums;
   color: var(--text-dim);
   display: flex; align-items: center; gap: var(--space-4); white-space: nowrap;
+  max-width: calc(100vw - var(--space-6) * 2); overflow-x: auto; scrollbar-width: none;
 }
 #hud-globalstatus .v { color: var(--text); }
 #hud-globalstatus .gs-sep { color: var(--edge); }
