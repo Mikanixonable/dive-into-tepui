@@ -8,7 +8,7 @@ import { Projected } from '../../physics/projection';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { SIM_EPOCH_SEC, fmtMarkerDist, fmtDist } from '../hud/utils';
 import { celestialBodyName } from '../hud/frame-labels';
-import { TickRank, calendarBoundaries, tickLabel } from '../hud/calendar-ticks';
+import { TickLabelMode, TickRank, calendarBoundaries, tickLabel } from '../hud/calendar-ticks';
 import { MarkerManager } from '../marker/marker-manager';
 import { ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-glyphs';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
@@ -100,7 +100,7 @@ export class PlanDisplay {
     this.ghost = this.ghostAt(plan, displayTime, simTime);
     this.apsisIcons = this.apsisIconsOf();
     this.impactIcons = this.impactIconsOf();
-    this.tickIcons = this.tickIconsOf();
+    this.tickIcons = this.tickIconsOf(displayWindow.tickLabelMode, simTime);
   }
 
   // 計画折れ線・ゴーストマーカー・アプシスアイコンを update が求めた値へ同期する。camera は
@@ -240,12 +240,14 @@ export class PlanDisplay {
   }
 
   // 表示中の折れ線が暦の区切り(時・日・月・年)を跨ぐ地点の目盛候補。実際に出すかどうかの
-  // 間引きは画面判定が要るので sync 側(syncTickMarkers)の仕事。
-  private tickIconsOf(): readonly PlanTickIcon[] {
+  // 間引きは画面判定が要るので sync 側(syncTickMarkers)の仕事。ラベルは mode に応じて
+  // UTC カレンダーか simTime からの経過時間で書く — 目盛りを置く位置は暦の区切りのまま。
+  private tickIconsOf(mode: TickLabelMode, simTime: number): readonly PlanTickIcon[] {
     const range = this.path.timeRange();
     if (!range) return [];
     const boundaries = calendarBoundaries(
-      SIM_EPOCH_SEC + range.min, SIM_EPOCH_SEC + range.max, C.PLAN_TICK_MAX_COUNT,
+      SIM_EPOCH_SEC + range.min, SIM_EPOCH_SEC + range.max,
+      C.PLAN_TICK_MAX_COUNT, C.PLAN_TICK_HOUR_FAMILY_MAX_COUNT,
     );
     const icons: PlanTickIcon[] = [];
     for (const b of boundaries) {
@@ -256,7 +258,7 @@ export class PlanDisplay {
         key: `planTick:${b.unix}`,
         pos: this.path.toDisplay(state.r, t),
         rank: b.rank,
-        label: tickLabel(b.unix, b.rank),
+        label: tickLabel(b.unix, b.rank, mode, SIM_EPOCH_SEC + simTime),
       });
     }
     return icons;

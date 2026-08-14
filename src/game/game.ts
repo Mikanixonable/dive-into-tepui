@@ -249,6 +249,9 @@ export class Game {
   // 自機の行動 → ステージ → 積分 → 予測 → エフェクトの順に1フレーム進める
   // (残骸・弾の epoch はどの状況でも進め続ける)。
   private advanceSimulation(dt: number): void {
+    // 過去表示に要る履歴の長さを、積分がサンプルを積む前に要求しておく。表示窓は前フレームの
+    // 確定値でよい — 保持窓が1フレーム遅れても描ける区間は変わらない。
+    this.entities.requestHistoryDuration(this.displayWindowManager.current.pastDuration);
     this.sections.enter(SECTION.player);
     this.nanWatchdog.checkPlayer('frameStart', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
     this.entities.updatePlayers(

@@ -75,6 +75,7 @@ export class Player extends Ship {
   private readonly markers: PlayerMarkers;
   declare readonly orbitLine: OrbitLine;
   declare readonly trajectoryLine: TrajectoryLine;
+  declare readonly pastTrajectoryLine: TrajectoryLine;
   // この艦自身のマニューバ計画。PlanEditor はアクティブ艦のこれを編集する。
   readonly plan = new Plan();
   readonly planExecutor: PlanExecutor;
@@ -128,6 +129,9 @@ export class Player extends Ship {
     _scene.add(this.orbitLine.line);
     this.trajectoryLine = new TrajectoryLine(0xbfc9d4, 0.55, C.LINE_RENDER_ORDER.predicted);
     _scene.add(this.trajectoryLine.line);
+    // 過去の軌跡は未来線と同色にし、既に通り過ぎた区間だと読めるよう不透明度だけ落とす。
+    this.pastTrajectoryLine = new TrajectoryLine(0xbfc9d4, 0.3, C.LINE_RENDER_ORDER.predicted);
+    _scene.add(this.pastTrajectoryLine.line);
 
     if (saved) {
       // 旧セーブは followPlan: boolean だった(true→'instant' / false→'off')。
@@ -515,6 +519,8 @@ export class Player extends Ship {
     this.orbitLine.dispose();
     this.playerScene.remove(this.trajectoryLine.line);
     this.trajectoryLine.dispose();
+    this.playerScene.remove(this.pastTrajectoryLine.line);
+    this.pastTrajectoryLine.dispose();
     this.thrustEffects.dispose(this.playerScene);
     this.rcsEffects.dispose(this.playerScene);
     this.reentryEffects.dispose(this.playerScene);
