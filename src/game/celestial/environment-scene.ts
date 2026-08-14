@@ -187,6 +187,7 @@ export class EnvironmentScene {
       'moon' in this.ephemeris.registry ? this.toThreeNormal(this.ephemeris.orbitNormalAt('moon', displayTime)) : undefined,
       cameraSystem.overviewCamera.resolvedFocus,
       floatingOrigin,
+      cameraSystem.activeCamera,
       cameraSystem.overviewCamera.dist,
     );
   }
