@@ -20,7 +20,11 @@ type FocusProjection = { occluded: boolean; x: number; y: number; front: boolean
 
 export interface FocusLabel {
   id: string;
+  // 一覧・プロパティウィンドウが読む名前。
   name: string;
+  // マップのマーカーへ描く表記。ラグランジュ点だけが name と異なり、
+  // 地点名と天体名を別行に置く二行表記になる。
+  markerLabel: string;
   pos: Vec3;
   kind: 'body';
   isLagrange: boolean;
@@ -33,6 +37,16 @@ export interface FocusLabel {
   showLabel: boolean;
   // 遮蔽された対象や、アイコンもラベルも無い対象はフォーカス候補にしない。
   pickable: boolean;
+}
+
+// ラグランジュ点の名前。所属天体を前に置き、一覧では親の直下に並ぶ。
+function lagrangeName(id: OrbitingId, n: 1 | 2 | 3 | 4 | 5): string {
+  return `${celestialBodyName(id)}-L${n}`;
+}
+
+// ラグランジュ点のマーカー表記。地点名を上、所属天体を下の行に置く。
+function lagrangeMarkerLabel(id: OrbitingId, n: 1 | 2 | 3 | 4 | 5): string {
+  return `L${n}\n${celestialBodyName(id)}`;
 }
 
 // 惑星 > 準惑星 > 衛星・小惑星・彗星 > ラグランジュ点。
@@ -107,13 +121,14 @@ export class FocusMarkers {
       if (added.has(id)) return;
       added.add(id);
       labels.push({
-        id, name: celestialBodyName(id), pos: v3(0, 0, 0), kind: 'body', isLagrange: false,
+        id, name: celestialBodyName(id), markerLabel: celestialBodyName(id),
+        pos: v3(0, 0, 0), kind: 'body', isLagrange: false,
         labelPriority: LABEL_PRIORITY[bodyClassOf(registry, id)], depth,
         showIcon: false, showLabel: false, pickable: true,
       });
       for (const n of pointsOf.get(id) ?? []) {
         labels.push({
-          id: `${id}-l${n}`, name: `L${n}\n${id}`, pos: v3(0, 0, 0),
+          id: `${id}-l${n}`, name: lagrangeName(id, n), markerLabel: lagrangeMarkerLabel(id, n), pos: v3(0, 0, 0),
           kind: 'body', isLagrange: true, labelPriority: LABEL_PRIORITY.lagrange, depth: depth + 1,
           showIcon: false, showLabel: false, pickable: true,
         });
@@ -165,7 +180,7 @@ export class FocusMarkers {
         const lagrangeId = `${id}-l${n}`;
         if (visibilityPolicy.body(lagrangeId).pickable) {
           this.cacheBodyPickable(
-            lagrangeId, `L${n}\n${id}`, l[`L${n}`], drawn.get(lagrangeId) ?? true,
+            lagrangeId, lagrangeName(id, n), l[`L${n}`], drawn.get(lagrangeId) ?? true,
           );
         }
       }
@@ -223,8 +238,6 @@ export class FocusMarkers {
       for (const { id, points } of this.lagrangeSources) {
         if (!visibilityPolicy.body(id).category) continue;
         const l = ephemeris.lagrangeAt(id, t);
-        const primary = primaryOf(ephemeris.registry, id);
-        const prefix = `${primary === null ? celestialBodyName(id) : celestialBodyName(primary)}-${celestialBodyName(id)}`;
         for (const n of points) {
           const lagrangeId = `${id}-l${n}`;
           const visibility = visibilityPolicy.body(lagrangeId);
@@ -232,7 +245,7 @@ export class FocusMarkers {
           const pos = l[`L${n}`];
           positions[lagrangeId] = pos;
           displayMap[lagrangeId] = { icon: visibility.icon, label: visibility.label };
-          this.cacheBodyPickable(lagrangeId, `${prefix} L${n}`, pos, true);
+          this.cacheBodyPickable(lagrangeId, lagrangeName(id, n), pos, true);
         }
       }
     }
@@ -329,7 +342,7 @@ export class FocusMarkers {
       lbl.pickable = lbl.showIcon || !hiddenByPriority.has(lbl.id);
       this.markerManager.setPosition(
         lbl.id, lbl.isLagrange ? 'mk-poi mk-lagrange' : 'mk-poi', lbl.showIcon ? ENTITY_GLYPH.body : '', lbl.pos, project,
-        lbl.showLabel && !hiddenByPriority.has(lbl.id) ? lbl.name : '',
+        lbl.showLabel && !hiddenByPriority.has(lbl.id) ? lbl.markerLabel : '',
       );
     }
     const nowShown = this.nowShownScratch;
