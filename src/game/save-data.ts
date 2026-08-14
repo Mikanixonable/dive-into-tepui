@@ -262,6 +262,8 @@ export interface OverviewCameraSaveData {
   fovDeg?: number;
   // 旧セーブデータには無い。無ければ赤道面。
   referencePlane?: 'ecliptic' | 'equator' | 'moonOrbit';
+  projectionMode?: 'perspective' | 'orthographic';
+  orthographicHalfHeight?: number;
 }
 
 export interface CameraSaveData {

@@ -45,31 +45,56 @@ function saveBodyClassToggles(v: BodyClassToggles): void {
 export type ProjectFn = (worldPos: Vec3) => Projected;
 export type ScaleFn = (worldPos: Vec3) => number;
 
-// 論理カメラの状態(Viewpoint)を THREE.PerspectiveCamera へ反映する。near/far はサブカメラ自身の
+// 論理カメラの状態(Viewpoint)を THREE カメラへ反映する。near/far はサブカメラ自身の
 // near/far getter(固定値、または OverviewCamera のように dist に比例する値)から毎フレーム渡される。
-function syncCameraToViewpoint(camera: THREE.PerspectiveCamera, view: Viewpoint, near: number, far: number, fo: FloatingOrigin): void {
+function syncCameraToViewpoint(camera: THREE.Camera, view: Viewpoint, near: number, far: number, fo: FloatingOrigin): void {
   camera.position.copy(fo.RtoThreeV3(view.position));
   camera.up.set(view.up.x, view.up.y, view.up.z);
   camera.lookAt(fo.RtoThreeV3(view.lookTarget));
   // アスペクト比・FOV・near・far が変わったときだけ投影行列を再計算する
   let projectionDirty = false;
-  if (Math.abs(camera.aspect - view.aspect) > 1e-6) {
-    camera.aspect = view.aspect;
-    projectionDirty = true;
+  if (camera instanceof THREE.PerspectiveCamera) {
+    if (Math.abs(camera.aspect - view.aspect) > 1e-6) {
+      camera.aspect = view.aspect;
+      projectionDirty = true;
+    }
+    if (Math.abs(camera.fov - view.fovDeg) > 1e-3) {
+      camera.fov = view.fovDeg;
+      projectionDirty = true;
+    }
+    if (Math.abs(camera.near - near) > near * 1e-6) {
+      camera.near = near;
+      projectionDirty = true;
+    }
+    if (Math.abs(camera.far - far) > far * 1e-6) {
+      camera.far = far;
+      projectionDirty = true;
+    }
+  } else if (camera instanceof THREE.OrthographicCamera) {
+    const halfHeight = Math.max(C.OVERVIEW_CAMERA_MIN_DIST * 1e-6, view.orthographicHalfHeight ?? 1);
+    const halfWidth = halfHeight * view.aspect;
+    if (Math.abs(camera.left + halfWidth) > halfWidth * 1e-6
+      || Math.abs(camera.right - halfWidth) > halfWidth * 1e-6
+      || Math.abs(camera.top - halfHeight) > halfHeight * 1e-6
+      || Math.abs(camera.bottom + halfHeight) > halfHeight * 1e-6) {
+      camera.left = -halfWidth;
+      camera.right = halfWidth;
+      camera.top = halfHeight;
+      camera.bottom = -halfHeight;
+      projectionDirty = true;
+    }
+    if (Math.abs(camera.near - near) > near * 1e-6) {
+      camera.near = near;
+      projectionDirty = true;
+    }
+    if (Math.abs(camera.far - far) > far * 1e-6) {
+      camera.far = far;
+      projectionDirty = true;
+    }
   }
-  if (Math.abs(camera.fov - view.fovDeg) > 1e-3) {
-    camera.fov = view.fovDeg;
-    projectionDirty = true;
+  if (projectionDirty && (camera instanceof THREE.PerspectiveCamera || camera instanceof THREE.OrthographicCamera)) {
+    camera.updateProjectionMatrix();
   }
-  if (Math.abs(camera.near - near) > near * 1e-6) {
-    camera.near = near;
-    projectionDirty = true;
-  }
-  if (Math.abs(camera.far - far) > far * 1e-6) {
-    camera.far = far;
-    projectionDirty = true;
-  }
-  if (projectionDirty) camera.updateProjectionMatrix();
   camera.updateMatrixWorld();
 }
 
@@ -136,7 +161,7 @@ export class CameraSystem {
   }
 
   // 現在アクティブなカメラ(広範囲視点/戦闘追従視点)を返す。
-  get activeCamera(): THREE.PerspectiveCamera {
+  get activeCamera(): THREE.Camera {
     return this.overviewMode ? this.overviewCamera.camera : this.combatCamera.camera;
   }
 

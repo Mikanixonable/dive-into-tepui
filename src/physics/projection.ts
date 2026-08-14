@@ -6,6 +6,7 @@
 import { Vec3, cross, dot, norm, sub } from './vec3';
 
 export type Projected = { x: number; y: number; front: boolean };
+export type ProjectionMode = 'perspective' | 'orthographic';
 
 export interface Viewpoint {
   position: Vec3; // 視点の絶対 ECI 位置
@@ -13,6 +14,9 @@ export interface Viewpoint {
   up: Vec3; // 上方向のヒント(forward と直交している必要はない — lookAt と同様に再直交化する)
   fovDeg: number; // 垂直画角
   aspect: number; // width / height
+  projection?: ProjectionMode;
+  // 直交投影時の画面中央から上下端までの実距離 [m]。
+  orthographicHalfHeight?: number;
 }
 
 // worldPos を NDC([-1,1] 、+Y が上)へ投影する。front = カメラの前方(near/far 非依存)。
@@ -30,6 +34,14 @@ export function projectToNdc(view: Viewpoint, worldPos: Vec3): Projected {
   const front = viewZ < 0;
 
   // 透視除算で NDC へ
+  if (view.projection === 'orthographic' && view.orthographicHalfHeight !== undefined) {
+    const halfHeight = Math.max(MIN_DEPTH, view.orthographicHalfHeight);
+    return {
+      x: viewX / (view.aspect * halfHeight),
+      y: viewY / halfHeight,
+      front,
+    };
+  }
   const tanHalfFov = Math.tan((view.fovDeg * Math.PI) / 360);
   const ndcX = viewX / (view.aspect * tanHalfFov * -viewZ);
   const ndcY = viewY / (tanHalfFov * -viewZ);
@@ -66,5 +78,8 @@ export function metersPerPixelAtDepth(fovDeg: number, depth: number, viewportHei
 export function metersPerPixel(view: Viewpoint, worldPos: Vec3, viewportHeight: number): number {
   const forward = norm(sub(view.lookTarget, view.position));
   const depth = dot(sub(worldPos, view.position), forward);
+  if (view.projection === 'orthographic' && view.orthographicHalfHeight !== undefined) {
+    return (2 * Math.max(MIN_DEPTH, view.orthographicHalfHeight)) / viewportHeight;
+  }
   return metersPerPixelAtDepth(view.fovDeg, depth, viewportHeight);
 }

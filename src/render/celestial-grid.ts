@@ -5,6 +5,7 @@ import { Q_ECL_TO_ECI } from '../physics/ecliptic';
 import { STAR_SHELL_RADIUS } from './stars';
 
 export interface CelestialGridVisibility {
+  readonly stars: boolean;
   readonly ecliptic: boolean;
   readonly eclipticPlane: boolean;
   readonly eclipticPole: boolean;
@@ -13,6 +14,10 @@ export interface CelestialGridVisibility {
   readonly equatorPlane: boolean;
   readonly equatorPole: boolean;
   readonly equatorGrid: boolean;
+  readonly moonOrbit: boolean;
+  readonly moonOrbitPlane: boolean;
+  readonly moonOrbitPole: boolean;
+  readonly moonOrbitGrid: boolean;
 }
 
 // 面を張る直交基底。e1/e2 が面内、pole が法線(北極方向)。
@@ -20,6 +25,16 @@ interface PlaneBasis {
   readonly e1: THREE.Vector3;
   readonly e2: THREE.Vector3;
   readonly pole: THREE.Vector3;
+}
+
+function planeBasisFromPole(poleInput: THREE.Vector3): PlaneBasis {
+  const pole = poleInput.clone().normalize();
+  const reference = new THREE.Vector3(1, 0, 0);
+  const e1 = reference.sub(pole.clone().multiplyScalar(reference.dot(pole)));
+  if (e1.lengthSq() < 1e-8) e1.set(0, 0, 1).sub(pole.clone().multiplyScalar(pole.z));
+  e1.normalize();
+  const e2 = e1.clone().cross(pole).normalize();
+  return { e1, e2, pole };
 }
 
 const eclToEciQuat = new THREE.Quaternion(Q_ECL_TO_ECI.x, Q_ECL_TO_ECI.y, Q_ECL_TO_ECI.z, Q_ECL_TO_ECI.w);
@@ -131,10 +146,13 @@ class GridPlane {
   private readonly labelLayer: HTMLDivElement;
   private readonly labels: HTMLDivElement[] = [];
   private readonly gridLabels: { el: HTMLDivElement; lat: number; lon: number }[] = [];
-  private readonly basis: PlaneBasis;
+  private basis: PlaneBasis;
+  private readonly initialBasis: PlaneBasis;
+  private readonly basisRotation = new THREE.Quaternion();
 
   constructor(scene: THREE.Scene, basis: PlaneBasis, color: number, name: string) {
     this.basis = basis;
+    this.initialBasis = basis;
     this.labelLayer = document.createElement('div');
     this.labelLayer.className = 'celestial-grid-labels';
     Object.assign(this.labelLayer.style, { position: 'fixed', inset: '0', pointerEvents: 'none', zIndex: '8' });
@@ -192,6 +210,20 @@ class GridPlane {
     }
   }
 
+  setBasis(basis: PlaneBasis): void {
+    const poleDot = this.basis.pole.dot(basis.pole);
+    if (poleDot > 1 - 1e-10 && this.basis.e1.dot(basis.e1) > 1 - 1e-10) return;
+    this.basis = basis;
+    const initialRotation = new THREE.Matrix4().makeBasis(
+      this.initialBasis.e1, this.initialBasis.e2, this.initialBasis.pole,
+    );
+    const targetRotation = new THREE.Matrix4().makeBasis(basis.e1, basis.e2, basis.pole);
+    const initialQ = new THREE.Quaternion().setFromRotationMatrix(initialRotation);
+    const targetQ = new THREE.Quaternion().setFromRotationMatrix(targetRotation);
+    this.basisRotation.copy(targetQ).multiply(initialQ.invert());
+    for (const obj of [this.planeLine, this.gridLine, this.poleLine]) obj.quaternion.copy(this.basisRotation);
+  }
+
   sync(planeVisible: boolean, poleVisible: boolean, gridVisible: boolean, origin: THREE.Vector3, scale: number, camera: THREE.Camera): void {
     this.planeLine.visible = planeVisible;
     this.gridLine.visible = gridVisible;
@@ -199,6 +231,7 @@ class GridPlane {
     for (const obj of [this.planeLine, this.gridLine, this.poleLine]) {
       obj.position.copy(origin);
       obj.scale.setScalar(scale);
+      obj.quaternion.copy(this.basisRotation);
     }
     this.labels.forEach((el) => { el.style.display = 'none'; });
     const show = (el: HTMLDivElement, p: THREE.Vector3, below = false) => {
@@ -258,17 +291,21 @@ class GridPlane {
 export class CelestialGrid {
   private readonly equator: GridPlane;
   private readonly ecliptic: GridPlane;
+  private readonly moonOrbit: GridPlane;
 
   constructor(scene: THREE.Scene) {
     this.equator = new GridPlane(scene, EQUATOR_BASIS, 0x8b93a0, 'EQUATOR');
     this.ecliptic = new GridPlane(scene, ECLIPTIC_BASIS, 0xc0a878, 'ECLIPTIC');
+    this.moonOrbit = new GridPlane(scene, ECLIPTIC_BASIS, 0x9b86b8, 'MOON ORBIT');
   }
 
-  // 星殻と同じくカメラ追従の固定半径殻として、6 トグルぶんの可視状態を反映する。
+  // 星殻と同じくカメラ追従の固定半径殻として、3 面ぶんの可視状態を反映する。
   // scale は星殻半径 STAR_SHELL_RADIUS に対する拡大率(広範囲視点では呼び出し側が
   // CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS を渡す)。
-  sync(visibility: CelestialGridVisibility, cam: THREE.Camera, scale: number): void {
+  sync(visibility: CelestialGridVisibility, cam: THREE.Camera, scale: number, moonOrbitNormal?: THREE.Vector3): void {
+    if (moonOrbitNormal !== undefined) this.moonOrbit.setBasis(planeBasisFromPole(moonOrbitNormal));
     this.equator.sync(visibility.equator && visibility.equatorPlane, visibility.equator && visibility.equatorPole, visibility.equator && visibility.equatorGrid, cam.position, scale, cam);
     this.ecliptic.sync(visibility.ecliptic && visibility.eclipticPlane, visibility.ecliptic && visibility.eclipticPole, visibility.ecliptic && visibility.eclipticGrid, cam.position, scale, cam);
+    this.moonOrbit.sync(visibility.moonOrbit && visibility.moonOrbitPlane, visibility.moonOrbit && visibility.moonOrbitPole, visibility.moonOrbit && visibility.moonOrbitGrid, cam.position, scale, cam);
   }
 }
