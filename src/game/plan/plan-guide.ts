@@ -12,6 +12,7 @@ import { ProjectFn } from '../camera/camera-system';
 import { MarkerManager } from '../marker/marker-manager';
 import { DIRECTION_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-glyphs';
 import type { Player } from '../player/player';
+import type { PlanPath } from './plan-path';
 
 export class PlanGuide {
   // 通知済みのノード。ノードは編集のたびに別インスタンスへ置き換わるので、同一性の比較が
@@ -47,8 +48,11 @@ export class PlanGuide {
     plan.trackAnchor(player.state);
   }
 
-  // 直近ノードの NODE・BURN マーカーを同期する。
-  sync(player: Player | null, simTime: number, editMode: boolean, project: ProjectFn): void {
+  // 直近ノードの NODE・BURN マーカーを同期する。位置と方向は path の表示変換を通す —
+  // 同じ計画を描いた折れ線とマーカーが同じ座標系に載っていなければ、線の上に立たない。
+  sync(
+    player: Player | null, simTime: number, editMode: boolean, project: ProjectFn, path: PlanPath,
+  ): void {
     const node = editMode || !player ? undefined : player.plan.firstNode();
     if (!player || !node) {
       this.markerManager.hide('nd');
@@ -69,21 +73,23 @@ export class PlanGuide {
     const nodeDist = len(sub(node.r, player.state.r));
     const maxAccel = C.THROTTLE_LEVELS[C.THROTTLE_LEVELS.length - 1] ?? 1;
     const burnTime = maxAccel > 0 ? mag / maxAccel : 0;
+    const shipPos = path.toDisplay(player.state.r, simTime);
+    const burnDir = path.toDisplayDir(dvRem, simTime);
     this.markerManager.setPosition(
-      'nd', 'mk-mnode', ORBIT_POINT_GLYPH.maneuverNode, node.r, project,
+      'nd', 'mk-mnode', ORBIT_POINT_GLYPH.maneuverNode, path.toDisplay(node.r, node.t), project,
       `NODE${more}\nBURN ${fmtTime(burnTime)}\nDIST ${fmtDist(nodeDist)}\nTIME ${tLabel}`,
     );
     this.markerManager.setDirection(
       'burn',
       'mk-burn',
       ORBIT_POINT_GLYPH.burnPoint,
-      player.state.r,
-      dvRem,
+      shipPos,
+      burnDir,
       project,
       `BURN ${mag.toFixed(1)} m/s → ${fmtSpeed(len(node.v))}`,
     );
     // 噴射方向が視界外(背面を含む)なら、敵・弾薬と同じ画面端の方位ガイドを出す。
-    const burnPoint = project(addScaled(player.state.r, norm(dvRem), C.MARKER_DIR_DIST));
+    const burnPoint = project(addScaled(shipPos, norm(burnDir), C.MARKER_DIR_DIST));
     this.markerManager.setBearing('burn-bearing', 'mk-dir', DIRECTION_GLYPH.bearing, burnPoint, '', 0.7, C.COLOR_MARKER_NODE);
   }
 

@@ -337,11 +337,12 @@ export class EntityManager {
     fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
     visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
-    const { frame, simTime, duration, pastDuration } = displayWindow;
+    const { frame, simTime, displayTime, duration, pastDuration } = displayWindow;
     for (const ship of this.players) {
       const isActive = ship === activePlayer;
       const show = isActive && (visibilityPolicy?.entity('player', isActive).orbit ?? true);
-      ship.syncTrajectoryLine(show, frame, simTime, pastDuration, ephemeris, fo, camera, attractors);
+      ship.syncTrajectoryLine(
+        show, frame, simTime, displayTime, pastDuration, ephemeris, fo, camera, attractors);
       ship.orbitLine.setSuppressed(ship.supersedesAnalyticEllipse(simTime, duration, overviewMode));
     }
   }

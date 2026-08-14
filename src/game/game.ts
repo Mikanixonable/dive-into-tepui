@@ -232,15 +232,17 @@ export class Game {
     this.targeter.updateEquatorNodes(overviewMode, displayWindow, this.ephemeris);
     this.entities.updateBaseEquatorNodes(overviewMode, displayWindow, this.ephemeris);
     this.sections.exit(SECTION.plan);
-    this.sections.enter(SECTION.mapPick);
-    this.mapPickables.refresh(displayWindow);
-    this.sections.exit(SECTION.mapPick);
     this.sections.enter(SECTION.camera);
     this.cameraSystem.update(
       this.player, this.simulator.simTime, this.input, dt, this.mapPickables.pickables,
       this.displayWindowManager.attractorsAt(this.simulator.simTime),
     );
     this.sections.exit(SECTION.camera);
+    // カメラ更新の後に置く: 候補集合と表示可否はカメラ位置から出るので、先に組むと
+    // このフレームの sync が1フレーム古いカメラ位置基準の判定を読むことになる。
+    this.sections.enter(SECTION.mapPick);
+    this.mapPickables.refresh(displayWindow);
+    this.sections.exit(SECTION.mapPick);
     this.sections.enter(SECTION.pointer);
     this.handlePointerInput();
     this.sections.exit(SECTION.pointer);
@@ -357,7 +359,11 @@ export class Game {
     const { displayTime, simTime } = displayWindow;
     // 表示側は重力を持つ生存中の GameEntity(小惑星)も中心天体解決・遮蔽判定へ合流させる —
     // EntityManager.cleanup へ渡す表面到達判定用の配列(解析天体のみ)とは別物。
+    // 現在時刻の配列は「いまの状態」を数値で読ませる HUD・プロパティ行が使い、表示時刻の配列は
+    // 画面に描く幾何(軌道線・折れ線・天体位置)が使う — 天体メッシュは displayTime に置かれるので、
+    // 楕円の中心天体位置や折れ線の un-bake を simTime で取ると同一画面上でずれる。
     const attractors = this.displayWindowManager.attractorsAt(simTime);
+    const displayAttractors = this.displayWindowManager.attractorsAt(displayTime);
 
     // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列を読む。
     this.cameraSystem.sync(fo);
@@ -375,17 +381,17 @@ export class Game {
     );
 
     this.entities.syncPlayers(
-      player, fo, this.cameraSystem, displayTime, this.ephemeris, attractors, visibilityPolicy,
+      player, fo, this.cameraSystem, displayTime, this.ephemeris, displayAttractors, visibilityPolicy,
     );
     this.entities.sync(fo, displayTime);
     this.entities.applyVisibility(
-      visibilityPolicy, player, overviewMode, fo, this.cameraSystem.activeCamera, attractors,
+      visibilityPolicy, player, overviewMode, fo, this.cameraSystem.activeCamera, displayAttractors,
     );
     this.entities.syncMarkers(this.cameraSystem, displayTime, player?.state.r ?? null, visibilityPolicy);
 
     this.entities.effects.sync(fo, this.cameraSystem.activeCamera, this.cameraSystem.zoomActive);
 
-    this.targeter.sync(fo, player, combatTargets, this.cameraSystem, attractors, visibilityPolicy);
+    this.targeter.sync(fo, player, combatTargets, this.cameraSystem, displayAttractors, visibilityPolicy);
     this.targeter.syncTargetMarkers(
       player, combatTargets, displayTime, simTime, this.cameraSystem, visibilityPolicy,
     );
@@ -402,7 +408,7 @@ export class Game {
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
     this.entities.syncPlayerTrajectoryLines(
       player, displayWindow, overviewMode, this.ephemeris, fo,
-      this.cameraSystem.activeCamera, attractors, visibilityPolicy,
+      this.cameraSystem.activeCamera, displayAttractors, visibilityPolicy,
     );
 
     if (player) {
@@ -421,7 +427,7 @@ export class Game {
     this._hud.contactsPanel.sync(this);
     this._hud.tick();
 
-    this.guide.sync(player, simTime, this.editor.editMode, project);
+    this.guide.sync(player, simTime, this.editor.editMode, project, this.editor.planDisplay.path);
 
     // このフレームのマーカーが出揃った後でなければならないので最後に置く。
     this.markerManager.resolveCollisions();

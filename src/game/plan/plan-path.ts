@@ -82,14 +82,14 @@ export class PlanPath {
   // setEnd で終端だけ動かし、一致しない区間は arc を作り直す。表示変換の文脈(座標系・
   // un-bake 時刻)もこのフレームのものに更新する。
   update(
-    plan: Plan, ephemeris: Ephemeris, frame: ReferenceFrame, currentTime: number,
+    plan: Plan, ephemeris: Ephemeris, frame: ReferenceFrame, displayTime: number,
     attractors: readonly Attractor[], attractorProvider: PlanAttractorProvider,
   ): void {
     this.frame = frame;
     this.ephemeris = ephemeris;
-    this.unbakeTime = currentTime;
+    this.unbakeTime = displayTime;
     this.attractors = attractors;
-    this.unbakeTransform = ephemeris.frameTransformAt(frame, currentTime, attractors);
+    this.unbakeTransform = ephemeris.frameTransformAt(frame, displayTime, attractors);
     this.lastRebuiltArcs = 0;
     this.lastSteps = 0;
     // anchor→node…→末尾区間に分解する
