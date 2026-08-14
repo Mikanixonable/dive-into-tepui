@@ -39,7 +39,7 @@ import { Ephemeris } from '../../physics/ephemeris';
 import { sunlitFactor } from '../../physics/shadow';
 import { Plan } from '../plan/plan';
 import { PlanExecutor, type PlanExecutionMode } from '../plan/plan-executor';
-import type { PlayerSaveData } from '../save-data';
+import type { PlayerSaveData, PlanSaveData } from '../save-data';
 import { partFromSaveData, type AnyPart } from '../game-entity/parts';
 import { DIRECTION_GLYPH } from '../marker/marker-glyphs';
 
@@ -137,16 +137,16 @@ export class Player extends Ship {
       this.refreshFromParts();
 
       if (saved.plan) {
-        this.plan.clear();
-        // trackAnchor はノードが空の間しか効かないため、ノード復元より先に呼ぶ必要がある
-        this.plan.trackAnchor(kinematicState(
+        // 保存された起点を addNode の from として与える。最初の1件が通った時点でその起点が
+        // 凍結され、2件目以降は凍結済みの起点に対して判定される。
+        const anchor = kinematicState(
           saved.plan.anchor.t,
           v3(saved.plan.anchor.r.x, saved.plan.anchor.r.y, saved.plan.anchor.r.z),
           v3(saved.plan.anchor.v.x, saved.plan.anchor.v.y, saved.plan.anchor.v.z),
-        ));
+        );
         let rejected = 0;
         for (const n of saved.plan.nodes) {
-          const idx = this.plan.addNode(kinematicState(n.t, v3(n.r.x, n.r.y, n.r.z), v3(n.v.x, n.v.y, n.v.z)));
+          const idx = this.plan.addNode(kinematicState(n.t, v3(n.r.x, n.r.y, n.r.z), v3(n.v.x, n.v.y, n.v.z)), anchor);
           if (idx < 0) rejected++;
         }
         if (rejected > 0) _hud.hint(`${this.name}: 起点より前のマニューバノード ${rejected} 件を復元できません`);
@@ -539,18 +539,17 @@ export class Player extends Ship {
       parts: this.parts.map(p => ({ ...p })) as AnyPart[],
       planExecution: this.planExecution,
       fineAttitude: this.fineAttitude,
-      plan: {
-        anchor: {
-          t: this.plan.anchor.t,
-          r: { ...this.plan.anchor.r },
-          v: { ...this.plan.anchor.v },
-        },
-        nodes: this.plan.nodes.map(n => ({
-          t: n.t,
-          r: { ...n.r },
-          v: { ...n.v },
-        })),
-      },
+      plan: this.serializePlan(),
+    };
+  }
+
+  // 計画の保存形。ノードが1件も無い計画は起点も持たないので null を返す。
+  private serializePlan(): PlanSaveData | null {
+    const anchor = this.plan.anchor;
+    if (!anchor) return null;
+    return {
+      anchor: { t: anchor.t, r: { ...anchor.r }, v: { ...anchor.v } },
+      nodes: this.plan.nodes.map((n) => ({ t: n.t, r: { ...n.r }, v: { ...n.v } })),
     };
   }
 }
