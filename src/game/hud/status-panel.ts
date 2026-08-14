@@ -1,4 +1,4 @@
-// 常設 SHIP STATUS パネル(#hud-status)の同期: RCS制動・並進出力・微調整・
+// 常設 VESSEL パネル(#hud-status)の同期: RCS制動・並進出力・微調整・
 // 進行方向ホールド・視点のRCS追従・弾薬。自機が無ければ隠す。
 // 装填/姿勢リセット/視点追従切替/ターゲット選択の4操作と、タッチ時のみのスロットル段は、
 // キー押下と同じ経路(Input.tapKey)で発火するボタンとして
@@ -18,6 +18,7 @@ const THROTTLE_KEYS: readonly KeyBinding[] = [K.throttleLow, K.throttleMid, K.th
 export class StatusPanel {
   private nextSyncAt = 0;
   private input: Input | null = null;
+  private followButton: Button | null = null;
   private readonly throttleControl: SegmentedControl<number> | null;
 
   public constructor(private readonly els: ReadonlyMap<string, HTMLElement>) {
@@ -34,20 +35,21 @@ export class StatusPanel {
   private buildActionButtons(): void {
     const container = this.els.get('status-actions');
     if (!container) return;
-    const addAction = (label: string, title: string, key: KeyBinding, isPrimary = false): void => {
+    const addAction = (label: string, title: string, key: KeyBinding, isPrimary = false): Button => {
       const button = new Button(label, () => this.input?.tapKey(key));
       button.element.title = title;
       button.element.setAttribute('aria-label', `${label}、キー ${key.label}`);
       button.element.setAttribute('aria-keyshortcuts', key.label);
       button.element.classList.toggle('status-action-primary', isPrimary);
       container.appendChild(button.element);
+      return button;
     };
     addAction(
       `進行方向 [${K.progradeReset.label}]`,
       'プログレード姿勢リセット（機首を進行方向へ即座に向ける）',
       K.progradeReset,
     );
-    addAction(
+    this.followButton = addAction(
       `視点追従 [${K.followAttitudeToggle.label}]`,
       '視点のRCS追従を切り替える',
       K.followAttitudeToggle,
@@ -97,6 +99,7 @@ export class StatusPanel {
     this.syncState('fine', player.fineAttitude, 'near');
     const cameraFollowsAttitude = game.cameraSystem.combatCamera.camFollowAttitude;
     this.syncState('camfollow', cameraFollowsAttitude, 'signal');
+    this.followButton?.setOn(cameraFollowsAttitude);
     this.syncState('prohold', player.progradeHold, 'near');
     const ammo = this.els.get('ammo');
     if (ammo) {

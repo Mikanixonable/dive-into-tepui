@@ -74,8 +74,8 @@ export class FrameControls {
     this.cameraRotationZone.onSelect = (rotatingWith) => overviewCamera.setCameraRotation(rotatingWith);
     this.cameraPanel.appendChild(this.cameraRotationZone.element);
 
-    this.cameraRotationModeToggle = new ToggleSwitch('オイラー操作', (on) => {
-      overviewCamera.setCameraRotationMode(on ? 'euler' : 'quaternion');
+    this.cameraRotationModeToggle = new ToggleSwitch('クオータニオン操作', (on) => {
+      overviewCamera.setCameraRotationMode(on ? 'quaternion' : 'euler');
     });
     this.cameraPanel.appendChild(this.cameraRotationModeToggle.element);
 
@@ -217,7 +217,7 @@ export class FrameControls {
     this.cameraCenterZone.setSelected(focusTargetId(this.overviewCamera.focus) ?? null);
     this.cameraRotationZone.setNearby(members);
     this.cameraRotationZone.setSelected(this.overviewCamera.cameraFrame.rotatingWith);
-    this.cameraRotationModeToggle.setOn(this.overviewCamera.cameraRotationMode === 'euler');
+    this.cameraRotationModeToggle.setOn(this.overviewCamera.cameraRotationMode === 'quaternion');
     const isOrthographic = this.overviewCamera.projection === 'orthographic';
     this.projectionToggle.setOn(isOrthographic);
     this.fovSlider.element.disabled = isOrthographic;
