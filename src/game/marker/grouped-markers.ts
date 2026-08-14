@@ -27,6 +27,7 @@ export interface GroupedMarkerItem {
   color?: string; // 画面内マーカー自体の色。省略時は cls の CSS 色に従う
   symMarkup?: boolean;
   opacity?: number; // 画面内マーカーの不透明度。0 以下なら非表示
+  occluded?: boolean; // 惑星遮蔽中は表示位置を維持したままフェードアウトする
 }
 
 const bearingKey = (key: string): string => `${key}-bearing`;
@@ -59,6 +60,11 @@ export class GroupedMarkers {
 
     for (const m of placed) {
       const opacity = m.item.opacity ?? 1;
+      if (m.item.occluded) {
+        this.markerManager.fadeOut(m.item.key);
+        this.markerManager.hide(bearingKey(m.item.key));
+        continue;
+      }
       if (opacity <= 0) {
         this.markerManager.hide(m.item.key);
         this.markerManager.hide(bearingKey(m.item.key));

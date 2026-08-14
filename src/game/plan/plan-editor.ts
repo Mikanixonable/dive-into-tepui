@@ -110,7 +110,7 @@ export class PlanEditor {
     this.gizmo3d = new PlanGizmo3D();
     scene.add(this.gizmo3d.group);
 
-    this.panel = new PlanPanel(this._hud.layers.panel);
+    this.panel = new PlanPanel(this._hud.mapRoot);
     this.panel.onDvInputChange = (pro, nrm, rad) => this.setNodeDvLocal(pro, nrm, rad);
     this.panel.onPositionInputChange = (secondsFromNow) => this.setSelectedNodeTime(secondsFromNow);
 

@@ -141,7 +141,7 @@ export class CameraSystem {
     this.combatCamera = new CombatCameraSystem(_hud, saved?.chase);
     this.overviewCamera = new OverviewCamera(_hud, ephemeris, saved?.overview);
     // 表示パネルと天体クラス側操作のコールバック
-    this.viewOptionsPanel = new ViewOptionsPanel(_hud.layers.panel);
+    this.viewOptionsPanel = new ViewOptionsPanel(_hud.mapRoot);
     this.viewOptionsPanel.onBodyClassToggle = (key, on) => {
       this._bodyClassToggles = { ...this._bodyClassToggles, [key]: on };
       saveBodyClassToggles(this._bodyClassToggles);

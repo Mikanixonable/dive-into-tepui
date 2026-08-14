@@ -116,7 +116,7 @@ export class Game {
     this.markerManager = new MarkerManager(this._hud.layers.marker, this._hud.svgOverlay);
 
     this.entities = new EntityManager(this._scene, this._hud, this._sfx, this.markerManager, initialSave);
-    this.displayWindowManager = new DisplayWindowManager(this._hud.layers.panel, this.ephemeris, this.entities);
+    this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, this.ephemeris, this.entities);
 
     this.cameraSystem = new CameraSystem(
       this._hud,
@@ -126,7 +126,7 @@ export class Game {
     );
     this.simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
     this.frameControls = new FrameControls(
-      this._hud.layers.panel, this._hud.layers.popup, this.ephemeris, this.cameraSystem.overviewCamera,
+      this._hud.mapRoot, this._hud.layers.popup, this.ephemeris, this.cameraSystem.overviewCamera,
       this.displayWindowManager, this._hud.overlayManager,
     );
 

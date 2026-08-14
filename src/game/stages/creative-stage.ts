@@ -81,12 +81,12 @@ export class CreativeStage extends Stage {
     this._scene.add(this.previewOrbitLine.line);
 
     this.placerPanel = new ShipPlacerPanel(
-      this._hud.layers.panel, this._hud.layers.popup, this._ephemeris, this._hud.overlayManager,
+      this._hud.mapRoot, this._hud.layers.popup, this._ephemeris, this._hud.overlayManager,
     );
     this.placerPanel.onConfirm = (name, form) => this.placeObject(name, form);
     this.waveAttack = new WaveAttack(this._hud, this._sfx, this._fx, this._scene, this._ephemeris, savedCreative?.waveAttack);
     this.waveAttackEnabled = savedCreative?.waveAttackEnabled ?? false;
-    this.creativeOptionsPanel = this.buildCreativeOptionsPanel(this._hud.layers.panel);
+    this.creativeOptionsPanel = this.buildCreativeOptionsPanel(this._hud.mapRoot);
 
     this.begin();
   }
@@ -200,7 +200,7 @@ export class CreativeStage extends Stage {
     }
     this.previewOrbitLine.sync(this.preview.elements, fo, camera, true);
     if (overviewMode && isOccluded(cameraPos, this.preview.pos, attractors)) {
-      this._markerManager.hide('creative-preview');
+      this._markerManager.fadeOut('creative-preview');
       return;
     }
     this._markerManager.setPosition(

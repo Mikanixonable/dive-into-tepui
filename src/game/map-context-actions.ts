@@ -90,7 +90,7 @@ export class MapContextActions {
       const handler = this.handlers[target.kind];
       if (handler) handler.run(act, target);
     };
-    this.objectListPanel = new ObjectListPanel(hud.layers.panel, ephemeris.registry);
+    this.objectListPanel = new ObjectListPanel(hud.mapRoot, ephemeris.registry);
     this.objectListPanel.onSelect = (id) => {
       const target = this.pickables.pickables.find((i) => i.id === id);
       if (target) this.objectListPanel.select(id);
