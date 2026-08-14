@@ -75,6 +75,16 @@ export class SaveSlots {
     this.persist();
   }
 
+  // 決着した周回を締める。lastStageId を空にし、同じステージの次回起動が
+  // このスロットの最新スナップショットを進行中の周回と誤認して自動復元しないようにする。
+  noteRunEnded(slotId: string): void {
+    const slot = this.index.slots.find((s) => s.id === slotId);
+    if (!slot) return;
+    slot.lastStageId = '';
+    slot.lastPlayedAtReal = Date.now();
+    this.persist();
+  }
+
   // id のスロットが存在する前提で呼ぶ。
   renameSlot(id: string, name: string): void {
     const slot = this.index.slots.find((s) => s.id === id);

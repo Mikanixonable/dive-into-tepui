@@ -25,7 +25,6 @@ export class ViewManager {
   // ドック表示中も保持される 3D 側のビュー。カメラ・軌道計画の状態はこちらに従う。
   private worldView: WorldViewId;
   private isDockOpen = false;
-  private touchControls: TouchControls | null = null;
   private docking: Docking | null = null;
 
   // ドックの開閉の正本はこのクラス(isDockOpen)自身であり続ける — OverlayManager へは
@@ -44,16 +43,13 @@ export class ViewManager {
     private readonly displayWindow: DisplayWindowManager,
     private readonly mapActions: MapContextActions,
     private readonly activePlayers: ActivePlayerController,
-    initialView: WorldViewId = 'combat',
+    private readonly touchControls: TouchControls | null,
+    requestedView?: WorldViewId,
   ) {
-    this.worldView = initialView;
+    // 戦闘ビューは操作対象艦を前提とするので、遷移と同じ規則で入れるビューへ落とす。
+    const requested = requestedView ?? 'combat';
+    this.worldView = this.canEnter(requested) ? requested : 'map';
     this.applyChrome();
-  }
-
-  // タッチ UI は Input より後に生成されるので、生成後に登録する。
-  setTouchControls(controls: TouchControls | null): void {
-    this.touchControls = controls;
-    controls?.setMapMode(this.worldView === 'map');
   }
 
   // Docking は ViewManager より後に生成されるので、生成後に登録する。

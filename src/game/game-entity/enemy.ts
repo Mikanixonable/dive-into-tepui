@@ -259,7 +259,7 @@ export class Enemy extends Ship {
     // 4倍に引き伸ばされ、同じゲーム内時間でもwarp段によって弾数が変わっていた。
     const behaviorDt = this.lastBehaviorSim === undefined ? 0 : Math.max(0, simTime - this.lastBehaviorSim);
     this.lastBehaviorSim = simTime;
-    if (!simSpeed.canEnemyFire) return;
+    if (!simSpeed.canShipAct) return;
     if (!this.fireEnabled) return;
     const dist = len(sub(player.state.r, this.state.r));
     if (!(dist < C.STAGE00_MAX_RANGE && dist > C.ENEMY_AI_MIN_RANGE)) return;

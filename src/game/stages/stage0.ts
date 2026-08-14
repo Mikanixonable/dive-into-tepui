@@ -2,9 +2,9 @@
 import * as C from '../const';
 import { Stage, type StageDeps } from './stage';
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import { showScoreAttackResultScreen } from '../hud/result-screen';
 import { generateCluster } from './spawner/enemy-spawner';
 import { ScoreAttackTimer } from './stage-utils/score-attack-timer';
+import type { ScoreCounter } from './stage-utils/score-counter';
 import type { Player } from '../player/player';
 import type { EntityManager } from '../simulation/entity-manager';
 import { SimSpeedManager } from '../sim-speed-manager';
@@ -21,7 +21,6 @@ export class Stage0 extends Stage {
     `約${C.STAGE0_PER_GROUP * C.COLOR_STAGE0_GROUP_ACCENTS.length}機、` +
     `制限時間${stage0TimeLimitMinutes()}分の撃墜数スコアアタック`;
   static readonly selectKeys = ['KeyT'];
-  readonly initialAmmo = { mags: 0, rounds: 0 };
 
   private readonly timer: ScoreAttackTimer;
 
@@ -43,15 +42,14 @@ export class Stage0 extends Stage {
     );
   }
 
-  // 初期補給と敵クラスタを配置し、生成した敵数を返す。
-  protected init(player: Player | null, entities: EntityManager): number {
-    if (!player) return 0;
+  // 弾薬ゼロの自機を置き、初期補給と敵クラスタを配置する。
+  protected init(entities: EntityManager): void {
+    const player = this.addPlayer({ ammo: { mags: 0, rounds: 0 } });
     for (let i = 0; i < C.STAGE0_LOGISTICS_INITIAL_AMMO; i++) {
       this.logistics.spawnForPlayer(player, C.STAGE0_LOGISTICS_MIN_DIST, C.STAGE0_LOGISTICS_MAX_DIST);
     }
     const enemies = generateCluster(player.state, this._hud, this._sfx, this._fx, this._scene);
     for (const enemy of enemies) this.addEnemy(enemy, entities);
-    return enemies.length;
   }
   // 敵の行動・補給・制限時間を1フレーム分進める。
   update(dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
@@ -61,8 +59,8 @@ export class Stage0 extends Stage {
 
     this.logistics.updateLogistics(simTime, player, simSpeed);
 
-    if (this.timer.update(dt, (phase) => this.setPhase(phase))) {
-      showScoreAttackResultScreen(this._hud, this._sfx, this.scoreCounter, 'TIME UP');
+    if (this.timer.update(dt)) {
+      this.decide('timeup', { win: true, title: 'TIME UP', detailHtml: scoreAttackDetailHtml(this.scoreCounter) });
     }
   }
 
@@ -77,4 +75,11 @@ export class Stage0 extends Stage {
   serialize(): Stage0SaveData {
     return { ...super.serialize(), timeLeft: this.timer.serialize() };
   }
+}
+
+// 撃墜数・命中率をまとめたタイムアップ画面の本文。
+function scoreAttackDetailHtml(scoreCounter: ScoreCounter): string {
+  const { shots, hits, kills } = scoreCounter;
+  const acc = shots > 0 ? ((hits / shots) * 100).toFixed(1) : '0.0';
+  return `撃墜数 ${kills} 機<br>発射 ${shots} 発 / 命中 ${hits} 発 (命中率 ${acc}%)`;
 }

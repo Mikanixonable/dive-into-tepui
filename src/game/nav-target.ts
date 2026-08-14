@@ -16,7 +16,7 @@ import type { EntityManager } from './simulation/entity-manager';
 import { Hud } from './hud/hud';
 import { MarkerManager } from './marker/marker-manager';
 import { ORBIT_POINT_GLYPH } from './marker/marker-glyphs';
-import { ProjectFn } from './camera/camera-system';
+import { CameraSystem, ProjectFn } from './camera/camera-system';
 import { MapPickable, pickNearest } from './map-pickable';
 import type { Base } from './game-entity/base';
 import type { Input } from './input/input';
@@ -179,7 +179,10 @@ export class NavTarget {
   }
 
   // マップビューでは、天体に遮蔽されて画面上見えていない AN/DN を隠す(戦闘ビューでは効かせない)。
-  sync(project: ProjectFn, overviewMode: boolean, cameraPos: Vec3): void {
+  sync(cameraSystem: CameraSystem): void {
+    const project = cameraSystem.activeCameraProjection;
+    const overviewMode = cameraSystem.overviewMode;
+    const cameraPos = cameraSystem.activeCameraPos;
     const hidden = (pos: Vec3): boolean => overviewMode && isOccluded(cameraPos, pos, this.attractors);
     if (this.anPos && !hidden(this.anPos)) this.markerManager.setPosition('nav-an', 'mk-node', ORBIT_POINT_GLYPH.ascendingNode, this.anPos, project, 'AN');
     else this.markerManager.hide('nav-an');
