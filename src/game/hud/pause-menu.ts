@@ -181,6 +181,11 @@ export class PauseMenu implements OverlayHandle {
     if (show === this._isOpen) return;
     this._isOpen = show;
     this.panel.style.display = show ? 'block' : 'none';
+    // タイトル選択画面(#stage-select)は HUD より前面にあるため、タイトル中に
+    // メニューを開いたときだけ HUD をその上へ出す。通常のゲーム中は影響しない。
+    this.panel.closest<HTMLElement>('#hud')?.classList.toggle(
+      'title-menu-open', show && document.getElementById('stage-select') !== null,
+    );
     if (show) {
       // ESCメニュー表示中も、背景のマップ切替とカメラ操作は受け付ける(gatesInput: false)。
       this.overlayManager.open('pause-menu', this, {

@@ -6,9 +6,9 @@ import { MQ_COARSE, MQ_COARSE_SHORT, MQ_COMPACT, MQ_MEDIUM_DOWN, MQ_SHORT } from
 
 export const PANEL_CONTENT_STYLE = `
 #hud-status h3 { font-size: var(--font-xxs); }
-/* マップビューでは艦固有の情報を右クリックのプロパティウィンドウで参照するので、常設の
-   SHIP STATUS は畳んでパネル占有面積を減らす。戦闘ビューでは従来どおり常設のまま。 */
-#hud.map-mode #hud-status { display: none; }
+/* 通常のマップビューでは艦固有の情報を右クリックのプロパティウィンドウで参照するので、常設の
+   SHIP STATUS は畳んでパネル占有面積を減らす。クリエイティブでは配置後の操作用に表示する。 */
+#hud.map-mode:not(.creative-mode) #hud-status { display: none; }
 #hud-orbit h3 { font-size: var(--font-xxs); }
 #hud-status .v, #hud-orbit .v { min-width: 75px; }
 /* R/F/G/T の代替操作ボタン(タッチ・マウスどちらでも常設)。 */

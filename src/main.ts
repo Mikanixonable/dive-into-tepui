@@ -216,7 +216,18 @@ async function main() {
   const launcher = new Launcher(hud, unlockmanager, slots, snapshotService, sfx);
   // 「ゲームを中断してタイトル画面に戻る」
   pauseMenu.onQuitToTitle = () => launcher.returnToTitle();
-  const stageClass = await launcher.resolveStage();
+  // タイトル画面にはまだ Game が無いが、ESC メニュー自体はゲームと同じものを使える。
+  // Game 生成後も同じコールバックを使うため、ここでは nullable な参照を閉じ込める。
+  let game: Game | null = null;
+  pauseMenu.onPauseMenuOpenChange = (open) => {
+    if (!game) return;
+    if (open) game.pause();
+    else game.resume();
+  };
+  const stageClass = await launcher.resolveStage(
+    () => pauseMenu.toggle(),
+    () => pauseMenu.toggle(false),
+  );
   const sections = new FrameSections();
   const gpu = new GpuTimings(gs.renderer);
 
@@ -225,7 +236,7 @@ async function main() {
   // 地球の自転初期位相。起動ごとに無作為だが、下位を決定的に保つため乱数はここでだけ引く。
   const earthSpinPhase0 = initialSave?.earthSpinPhase0 ?? Math.random() * 2 * Math.PI;
 
-  const game = new Game(
+  game = new Game(
     gs, stageClass, hud, sfx, pauseMenu, unlockmanager, sections, ephemeris, graphics, earthSpinPhase0,
     initialSave,
   );
@@ -240,10 +251,6 @@ async function main() {
     saveBrowser.open();
   };
   // ⚙ギアクリック・[閉じる]・[Esc] いずれの経路で開閉しても一時停止フラグを同期する
-  pauseMenu.onPauseMenuOpenChange = (open) => {
-    if (open) game.pause();
-    else game.resume();
-  };
   const perf = new PerfMeter(game, hud.layers.window, gs.renderer, sections, gpu, hud.overlayManager);
   // 負荷確認ウィンドウは非モーダルなので、設定メニューを閉じてから前面へ出すだけ。
   pauseMenu.onOpenPerfWindow = () => {

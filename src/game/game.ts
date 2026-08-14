@@ -168,6 +168,7 @@ export class Game {
       initialSave?.stage, this._hud, this._sfx, this._scene, this.entities, this.unlockManager,
       this.entities.effects, this.markerManager, this.ephemeris, this.simulator, this.activePlayers,
     );
+    this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
     // activeStage(authoring/executesPlans を読む)を要るので、その直後に生成する。
     this.mapPickables = new MapPickables(
       this.activePlayers, this.entities, this.ephemeris, this.navTarget, this.cameraSystem, this.editor,

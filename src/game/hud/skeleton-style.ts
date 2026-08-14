@@ -15,6 +15,8 @@ export const SKELETON_STYLE = `
   color: var(--text); color-scheme: var(--theme-tone); user-select: text; z-index: 10;
   font-size: var(--font-l);
 }
+/* ステージ選択画面より前面に出す既存の一時停止メニュー。タイトル中だけ付く。 */
+#hud.title-menu-open { z-index: 110; }
 /* 読み取りたい数値は選択できるようにするが、操作部品とマーカーは対象外にする —
    ボタンの連打やカメラドラッグのたびにラベルが選択されると操作の邪魔になる。 */
 #hud .ctx-menu-item,
