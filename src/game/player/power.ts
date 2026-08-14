@@ -17,12 +17,12 @@ export class PowerSystem {
   private readonly panels: Record<SolarSide, Panel> = { up: new Panel(), down: new Panel() };
   private readonly solarFolds: Record<SolarSide, THREE.Object3D[]>;
 
-  // shipObj から左右の太陽電池パネルの蛇腹メッシュを名前で探す。見つからなければ例外を投げる。
-  constructor(shipObj: THREE.Object3D, saved?: PowerSaveData) {
+  // renderObject から左右の太陽電池パネルの蛇腹メッシュを名前で探す。見つからなければ例外を投げる。
+  public constructor(renderObject: THREE.Object3D, saved?: PowerSaveData) {
     const collect = (side: SolarSide): THREE.Object3D[] => {
       const namePrefix = 'solar' + (side === 'up' ? 'Up' : 'Down');
       const found = Array.from({ length: 6 }, (_, i) =>
-        shipObj.getObjectByName(`${namePrefix}Fold${i}`));
+        renderObject.getObjectByName(`${namePrefix}Fold${i}`));
       if (found.some((f) => !f)) throw new Error(`solar fold objects not found in ship model`);
       return found as THREE.Object3D[];
     };

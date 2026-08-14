@@ -40,7 +40,7 @@ export class Bullet extends GameEntity {
     // accent: plasma 弾のみ使う発光色(未指定なら buildPlasmaMesh の既定色)。normal 弾では無視する。
     // damage は着弾時に与える HP。撃った側の武装で決まるので、弾自身が持ち歩く。
     constructor(state: KinematicState, lifetime: number, shooter: Shooter, type: BulletType, damage: number, sfx: Sfx, scene?: THREE.Scene) {
-        // InstancedPool 経由で描画するため、obj はシーンへ足さない。
+        // renderObject は InstancedPool へ渡す変換を保持する。
         super(state, type === 'plasma' ? buildPlasmaMesh() : buildBulletMesh(), scene, undefined, undefined, false);
         this.bornSim = state.t;
         this.lifetime = lifetime;
@@ -99,15 +99,15 @@ export class Bullet extends GameEntity {
         // 表示できる時刻の範囲外なら非表示にする
         const s = this.displayState(displayTime);
         if (s === null) {
-            this.obj.visible = false;
+            this.renderObject.visible = false;
             return;
         }
-        this.obj.visible = true;
-        this.obj.position.copy(fo.RtoThreeV3(s.r));
+        this.renderObject.visible = true;
+        this.renderObject.position.copy(fo.RtoThreeV3(s.r));
         // 相対速度方向へ機体を向ける
         const relVel = fo.VtoThreeV3(s.v);
         if (relVel.lengthSq() <= 1e-6) return;
         tmpQuat.setFromUnitVectors(zAxis, relVel.normalize());
-        this.obj.quaternion.copy(tmpQuat);
+        this.renderObject.quaternion.copy(tmpQuat);
     }
 }
