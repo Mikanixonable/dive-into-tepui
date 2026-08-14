@@ -6,12 +6,12 @@ import type { StageClass } from './stages/stage';
 import { StageDebug } from './stages/stage-debug';
 import { TabBar } from './hud/widgets';
 import { MQ_COMPACT, MQ_SHORT } from './hud/breakpoints';
-import { createTitleScene, type TitleScene } from '../render/title-scene';
 import tepuiRmqrUrl from '../assets/tepui-rmqr.svg';
 import {
   ACCENT, ACCENT_SECONDARY, ACCENT_SOFT, ACTIVE_THEME, BG, SURFACE_0 as THEME_SURFACE_0,
   SURFACE_1, SURFACE_2, SURFACE_3, TEXT, TEXT_DIM, TEXT_MUTED, TEXT_FAINT,
 } from './theme';
+import { TITLE_SCENE_PATTERNS, createTitleScene, type TitleScene } from '../render/title-scene';
 
 const PAGE = BG;
 const SURFACE_0 = THEME_SURFACE_0;
@@ -26,11 +26,60 @@ const SECONDARY_ACCENT = ACCENT_SECONDARY;
 const FONT_SANS = '"Arimo","Zen Kaku Gothic Antique","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif';
 const FONT_SERIF = '"Cormorant Garamond","Zen Old Mincho","Hiragino Mincho ProN","Yu Mincho",serif';
 const FONT_MONO = '"IBM Plex Mono","Zen Kaku Gothic Antique","Hiragino Kaku Gothic ProN","Yu Gothic",monospace';
-const FONT_CANTONESE = '"Noto Serif HK","Source Han Serif HC","Songti TC",serif';
+const FONT_SCRIPT = '"Noto Serif HK","Noto Sans Cuneiform","Source Han Serif HC","Songti TC","Segoe UI Historic",serif';
 
 const RADIUS_WINDOW = '30px';
 const RADIUS_PANEL = '16px';
 const RADIUS_CONTROL = '11px';
+
+interface TitleFlavor {
+  readonly primary: string;
+  readonly script: string;
+  readonly lang: string;
+  readonly scriptKind: 'cantonese' | 'cuneiform' | 'polynesian';
+  readonly note: string;
+}
+
+// 起動ごとに1組を選ぶ。3つの文字文化を同じ情報密度で扱い、タイトルの印象だけを変える。
+const TITLE_FLAVORS: readonly TitleFlavor[] = [
+  {
+    primary: 'The Orbit Is the Battlefield.', script: '前往高空堡壘的作戰', lang: 'zh-HK', scriptKind: 'cantonese',
+    note: 'Classic voice, machine measure. 古典的な声と、軌道を測る静かなUI。',
+  },
+  {
+    primary: 'A cold path through the upper dark.', script: '𒀭𒂗𒆠 𒀀𒈾 𒀭𒊹', lang: 'sux', scriptKind: 'cuneiform',
+    note: 'The old signs keep their orbit; the instruments keep time.',
+  },
+  {
+    primary: 'Te ara o ngā whetū.', script: 'Te ara ki te rangi', lang: 'mi', scriptKind: 'polynesian',
+    note: 'A path among stars, measured in quiet burns.',
+  },
+  {
+    primary: 'Iron citadels turn beneath the equations.', script: '軌道之上，烽火未眠', lang: 'zh-HK', scriptKind: 'cantonese',
+    note: 'A Cantonese signal for the watch at high altitude.',
+  },
+  {
+    primary: 'The sky remembers every departure.', script: '𒀭𒂗𒆠 𒄑𒀀𒁲', lang: 'sux', scriptKind: 'cuneiform',
+    note: 'A cuneiform fragment for a machine that never forgets.',
+  },
+  {
+    primary: 'He moku i te rangi, he ara ki te whetū.', script: 'He ara ki te whetū', lang: 'mi', scriptKind: 'polynesian',
+    note: 'Polynesian wayfinding, translated into orbital motion.',
+  },
+];
+
+function randomUint32(): number {
+  if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.getRandomValues === 'function') {
+    const bytes = new Uint32Array(1);
+    globalThis.crypto.getRandomValues(bytes);
+    return bytes[0] ?? 0;
+  }
+  return Math.floor(Math.random() * 0x100000000) >>> 0;
+}
+
+function pickRandom<T>(items: readonly T[]): T {
+  return items[randomUint32() % items.length]!;
+}
 
 const STYLE = `
 #stage-select {
@@ -78,48 +127,47 @@ const STYLE = `
   content: ""; width: 28px; height: 2px; border-radius: 99px; background: ${ACCENT};
 }
 #stage-select .ss-logotype {
-  margin: 0; max-width: 720px; color: ${TITLE_INK}; font-weight: 500;
+  width: min(100%, 900px); margin: 0; color: ${TITLE_INK}; font-weight: 500;
   font-size: clamp(48px, 8vw, 104px); letter-spacing: -0.07em; line-height: 0.82;
-  text-wrap: balance;
+  text-transform: none;
 }
-#stage-select .ss-title-main { display: block; white-space: nowrap; }
-#stage-select .ss-title-near { color: ${NEAR_ACCENT}; }
-#stage-select .ss-title-formula {
-  display: inline-block; margin-left: 0.16em; color: ${SECONDARY_ACCENT};
-  font-family: ${FONT_SERIF}; font-size: 0.35em; font-weight: 400;
-  vertical-align: 0.62em; letter-spacing: 0;
+#stage-select .ss-logo-line {
+  position: relative; display: block; width: fit-content; white-space: nowrap;
 }
-#stage-select .ss-ornament-row {
-  display: flex; align-items: center; gap: 14px; margin: 13px 0 0 0.2em;
-  color: ${SECONDARY_ACCENT}; font-family: ${FONT_MONO}; font-size: 10px;
-  font-weight: 500; letter-spacing: 0.12em; line-height: 1;
+#stage-select .ss-logo-line:nth-child(2) { margin-left: 0.42em; }
+#stage-select .ss-logo-line:nth-child(3) { margin-left: 0.84em; color: ${NEAR_ACCENT}; }
+#stage-select .ss-logo-ornament {
+  position: absolute; left: calc(100% + 0.75rem); color: ${SECONDARY_ACCENT};
+  font-family: ${FONT_MONO}; font-size: clamp(0.65rem, 1.3vw, 1.05rem);
+  font-weight: 500; letter-spacing: 0.08em; line-height: 1;
 }
-#stage-select .ss-ornament-row span:nth-child(2n) { color: ${NEAR_ACCENT}; }
-#stage-select .ss-ornament-row span:nth-child(3n) { color: ${ACCENT}; }
+#stage-select .ss-logo-line:nth-child(1) .ss-logo-ornament { top: 0.02em; }
+#stage-select .ss-logo-line:nth-child(2) .ss-logo-ornament { bottom: 0.04em; }
+#stage-select .ss-logo-line:nth-child(3) .ss-logo-ornament { top: 0.02em; }
 #stage-select .ss-sub {
   width: fit-content; margin: 0 0 0 0.12em;
   color: ${ACCENT}; font-family: ${FONT_SERIF};
-  font-size: clamp(14px, 1.68vw, 22px); font-weight: 300; line-height: 1.12;
+  font-size: clamp(21px, 3vw, 36px); font-weight: 300; line-height: 0.92;
 }
 #stage-select .ss-subrow {
   display: flex; align-items: end; justify-content: space-between; gap: 18px; margin-top: 20px;
 }
 #stage-select .ss-languages { display: flex; align-items: baseline; gap: 16px; margin: 12px 0 0 0.2em; }
-#stage-select .ss-cantonese {
-  margin: 0; color: ${NEAR_ACCENT}; font-family: ${FONT_CANTONESE};
-  flex: 0 0 7em; width: 7em; font-size: clamp(29px, 3.78vw, 51px);
-  font-weight: 700; line-height: 1; letter-spacing: 0.04em;
+#stage-select .ss-script {
+  margin: 0; color: ${NEAR_ACCENT}; font-family: ${FONT_SCRIPT};
+  max-width: 19em; font-size: clamp(21px, 2.8vw, 38px);
+  font-weight: 700; line-height: 1.05; letter-spacing: 0.04em;
 }
-#stage-select .ss-french {
+#stage-select .ss-script-cuneiform { font-family: "Noto Sans Cuneiform", "Segoe UI Historic", serif; font-size: clamp(19px, 2.4vw, 32px); letter-spacing: 0.12em; }
+#stage-select .ss-script-polynesian { font-family: ${FONT_SERIF}; font-weight: 400; letter-spacing: 0.02em; }
+#stage-select .ss-flavor-note {
   margin: 0; color: ${BODY_INK}; font-family: ${FONT_SANS};
-  font-size: clamp(13px, 1.4vw, 17px); font-weight: 500; line-height: 1.3;
+  max-width: 28em; font-size: clamp(13px, 1.4vw, 17px); font-weight: 500; line-height: 1.3;
 }
 #stage-select .ss-status {
   min-width: 190px; padding: 11px 13px; border-radius: ${RADIUS_PANEL};
-  color: ${BODY_INK};
-  background: linear-gradient(135deg, color-mix(in srgb, ${SECONDARY_ACCENT} 13%, transparent), color-mix(in srgb, ${ACCENT} 6%, transparent)), color-mix(in srgb, ${PAGE} 28%, transparent);
-  box-shadow: 0 14px 34px rgb(0 0 0 / 24%), inset 0 1px 0 rgb(255 255 255 / 14%);
-  backdrop-filter: blur(28px) saturate(165%); -webkit-backdrop-filter: blur(28px) saturate(165%);
+  color: ${BODY_INK}; background: color-mix(in srgb, ${PAGE} 58%, transparent);
+  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
   font: 10px/1.55 ${FONT_MONO};
 }
 #stage-select .ss-status b { color: ${SECONDARY_ACCENT}; font-weight: 500; }
@@ -156,7 +204,7 @@ const STYLE = `
 }
 #stage-select .w-tabs { border-bottom: 1px solid color-mix(in srgb, ${TITLE_INK} 12%, transparent); }
 #stage-select .w-tabs .w-btn::after {
-  content: ""; position: absolute; left: 14px; right: 14px; bottom: -1px; height: 2px;
+  content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px;
   background: ${ACCENT}; opacity: 0; transition: opacity 0.15s ease;
 }
 #stage-select .w-tabs .w-btn:hover { background: rgb(255 255 255 / 6%); color: ${TITLE_INK}; }
@@ -193,13 +241,13 @@ const STYLE = `
   #stage-select .ss-3d-window,
   #stage-select .ss-window { height: auto; min-height: 0; border-radius: 24px; }
   #stage-select .ss-hero { inset: auto 20px 22px; }
-  #stage-select .ss-title-main { white-space: normal; }
   #stage-select .ss-subrow { display: block; }
   #stage-select .ss-status { min-width: 0; margin-top: 14px; }
   #stage-select .ss-window {
     min-height: 0; max-height: none; padding: 16px;
   }
   #stage-select .ss-languages { flex-direction: column; gap: 7px; }
+  #stage-select .ss-script { max-width: 100%; }
 }
 @media ${MQ_SHORT} {
   #stage-select .ss-shell { padding-block: 8px; }
@@ -223,7 +271,7 @@ function ensureTitleFonts(): void {
   const link = document.createElement('link');
   link.id = 'stage-select-fonts';
   link.rel = 'stylesheet';
-  link.href = 'https://fonts.googleapis.com/css2?family=Arimo:wght@400;500;600&family=Cormorant+Garamond:wght@300;400&family=IBM+Plex+Mono:wght@500&family=Noto+Serif+HK:wght@700&family=Zen+Kaku+Gothic+Antique:wght@400;500;600&family=Zen+Old+Mincho:wght@400&display=swap';
+  link.href = 'https://fonts.googleapis.com/css2?family=Arimo:wght@400;500;600&family=Cormorant+Garamond:wght@300;400&family=IBM+Plex+Mono:wght@500&family=Noto+Sans+Cuneiform&family=Noto+Serif+HK:wght@700&family=Zen+Kaku+Gothic+Antique:wght@400;500;600&family=Zen+Old+Mincho:wght@400&display=swap';
   document.head.appendChild(link);
 }
 
@@ -243,21 +291,32 @@ export function selectStage(unlockManager: UnlockManager): Promise<StageClass> {
       '</div>' +
       '<div class="ss-hero">' +
       '<p class="ss-eyebrow">Sortie select · 公暦20115年</p>' +
-      '<h1 id="ss-title" class="ss-logotype">' +
-      '<span class="ss-title-main">Dive into <span class="ss-title-near">Tepui</span><sup class="ss-title-formula">ℋ₀₁</sup></span>' +
-      '<span class="ss-ornament-row" aria-hidden="true"><span>∴03</span><span>ECI₀</span><span>Ω⁺</span><span>⌁</span><span>⟐</span><span>⊹</span></span>' +
+      '<h1 id="ss-title" class="ss-logotype" aria-label="Dive into Tepui">' +
+      '<span class="ss-logo-line">Dive<sup class="ss-logo-ornament">∴03</sup></span>' +
+      '<span class="ss-logo-line">into<sub class="ss-logo-ornament">ECI₀</sub></span>' +
+      '<span class="ss-logo-line">Tepui<sup class="ss-logo-ornament">Ω⁺</sup></span>' +
       '</h1>' +
       '<div class="ss-subrow"><div>' +
-      '<p class="ss-sub">O high air—iron citadels wheel beneath the cold equations of orbit.</p>' +
+      '<p class="ss-sub" data-flavor-primary></p>' +
       '<div class="ss-languages">' +
-      '<p class="ss-cantonese" lang="zh-HK">前往高空<br>堡壘的作戰</p>' +
-      '<p class="ss-french" lang="fr">Opération vers la forteresse de haute altitude</p>' +
+      '<p class="ss-script" data-flavor-script></p>' +
+      '<p class="ss-flavor-note" data-flavor-note></p>' +
       '</div>' +
       '</div><div class="ss-status"><b>∗ Link stable</b><br>h = 420.2 km · i = 51.6°<br>Epoch 06:14:28.03</div></div>' +
       '</div>' +
       '</section>' +
       '<section class="ss-window" aria-label="Stage and creative modes"></section>' +
       '</div></div>';
+
+    const flavor = pickRandom(TITLE_FLAVORS);
+    const flavorPrimary = root.querySelector<HTMLElement>('[data-flavor-primary]')!;
+    const flavorScript = root.querySelector<HTMLElement>('[data-flavor-script]')!;
+    const flavorNote = root.querySelector<HTMLElement>('[data-flavor-note]')!;
+    flavorPrimary.textContent = flavor.primary;
+    flavorScript.textContent = flavor.script;
+    flavorScript.lang = flavor.lang;
+    flavorScript.classList.add(`ss-script-${flavor.scriptKind}`);
+    flavorNote.textContent = flavor.note;
 
     // 3D角丸ウィンドウと並列する、独立したステージ選択ウィンドウ。
     const windowDiv = root.querySelector('.ss-window') as HTMLElement;
@@ -320,9 +379,11 @@ export function selectStage(unlockManager: UnlockManager): Promise<StageClass> {
     // 3D 場面は非同期に立ち上がる。選択が先に済んだ場合はでき次第そのまま破棄する。
     let scene: TitleScene | null = null;
     let selected = false;
+    const titlePattern = pickRandom(TITLE_SCENE_PATTERNS);
     createTitleScene(
       root.querySelector('.ss-canvas') as HTMLCanvasElement,
       root.querySelector('.ss-3d-window') as HTMLElement,
+      { pattern: titlePattern, seed: randomUint32() },
     )
       .then((s) => { scene = s; if (selected) s.dispose(); })
       .catch(() => {});
