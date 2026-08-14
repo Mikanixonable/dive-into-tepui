@@ -61,10 +61,8 @@ export class PlanExecutor {
   // 実フレームごとに姿勢整列・出力段選択・燃料消費込みの推力量を求め、ship.torque/ship.thrust へ
   // 書く。'powered' でない、ノードが無い、死亡していれば待機へ戻す。燃料は推力が積分される
   // ぶんに比例する物理量なので、刻み幅はシミュレーション時間 simDt で受け取る。
-  // ship.thrust はここでも書く(Player.behave より後に走るのはここだけなので、操作対象艦でも
-  // behave の無条件 null 代入に上書きされたまま積分へ渡ってしまわないようにする)のに加え、
-  // 点火・遮断の瞬間だけは applyIgnitionAndCutoff からも書く(simTime のイベント境界を跨いだ
-  // 直後の残りサブステップにまで反映させるため)。
+  // 燃焼中の ship.thrust は毎フレーム書き直す。点火・遮断の瞬間はイベント境界後の
+  // 残りサブステップへ反映するため、applyIgnitionAndCutoff からも書き込む。
   update(ship: PlanExecutorShip, simDt: number, simTime: number, simSpeed: PlanExecutorSimSpeed): void {
     // 噴射できないワープ倍率では姿勢整列トルクも含めて一切の指令を出さない。燃焼中に
     // ゲートが閉じた場合も保留ではなく中断する — 凍結した噴射方向は「点火から遮断までの

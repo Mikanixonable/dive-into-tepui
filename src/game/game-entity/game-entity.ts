@@ -32,7 +32,7 @@ const identityAttitude = (): Attitude => ({
   inertia: v3(1, 1, 1),
 });
 
-// 軌道上を運動するゲーム内エンティティの基底。mesh・HP・生死・姿勢・AI といったゲーム側の
+// 軌道上を運動するゲーム内エンティティの基底。表示ルート・HP・生死・姿勢・AI といったゲーム側の
 // 付帯情報と、種別ごとの積分パラメータ(bcInv・historyDuration)を持つ。
 export class GameEntity {
   readonly actualTrajectory: DynamicTrajectory;
@@ -50,7 +50,7 @@ export class GameEntity {
   // マーカー・一覧・ウィンドウに出す表示名。既定は id で、名前を持つ種別がコンストラクタで上書きする。
   name: string;
   att: Attitude;
-  obj: THREE.Object3D;
+  public readonly renderObject: THREE.Object3D;
   alive = true;
   mass = 1; // 剛体接触の換算質量
   radius = 0; // 物理的な半径 [m]。0 = 点。Attractor.radius と同じ量
@@ -103,13 +103,12 @@ export class GameEntity {
   private truncated = false;
   get predictionTruncated(): boolean { return this.truncated; }
 
-  // 初期状態と姿勢からエンティティを構築する。scene を渡すと obj を即座にシーンへ追加する。
-  // id 省略時はこの基底が自動採番する(復元 id を渡すクラスはそれをそのまま通す)。addToScene
-  // を false にすると obj をシーンへ足さない — InstancedPool 経由で描画する種別(弾・薬莢)が
-  // 使う。obj 自体は sync が書き込む変換の置き場所として残る。
-  constructor(
+  // 初期状態と姿勢からエンティティを構築する。addToScene は renderObject を scene へ
+  // 直接登録する種別に指定し、インスタンス描画種別では同期用の変換として保持する。
+  // id 省略時はこの基底が自動採番する。
+  public constructor(
     state: KinematicState,
-    obj: THREE.Object3D,
+    renderObject: THREE.Object3D,
     scene?: THREE.Scene,
     att: Attitude = identityAttitude(),
     id?: string,
@@ -119,9 +118,9 @@ export class GameEntity {
     this.id = id ?? GameEntity.idAllocator.next();
     this.name = this.id;
     this.att = att;
-    this.obj = obj;
+    this.renderObject = renderObject;
     this.scene = scene;
-    if (addToScene) this.scene?.add(this.obj);
+    if (addToScene) this.scene?.add(this.renderObject);
   }
 
   // 質量から剛体接触の換算質量と重力定数 μ を同時に定める。別々に書くと引力の強さと
@@ -295,12 +294,12 @@ export class GameEntity {
   sync(fo: FloatingOrigin, displayTime: number): void {
     const s = this.displayState(displayTime);
     if (s === null) {
-      this.obj.visible = false;
+      this.renderObject.visible = false;
       return;
     }
-    this.obj.visible = true;
-    this.obj.position.copy(fo.RtoThreeV3(s.r));
-    this.obj.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
+    this.renderObject.visible = true;
+    this.renderObject.position.copy(fo.RtoThreeV3(s.r));
+    this.renderObject.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
   }
 
   // playerPos は「自機からの距離」で消える種別(弾)のために一律で渡す。attractors はその
@@ -327,7 +326,7 @@ export class GameEntity {
 
   // メッシュを scene から、マーカーを HUD から取り除く。
   dispose(): void {
-    this.scene?.remove(this.obj);
+    this.scene?.remove(this.renderObject);
     this.equatorNodes?.dispose();
     this.marker?.dispose();
   }

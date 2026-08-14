@@ -200,7 +200,7 @@ export class Game {
   pause(): void {
     this.simulator.lastSimDt = 0;
     this._sfx.setThrust(false);
-    // ポーズ中は behave が走らないので、全自機の連続指令はここで畳む。
+    // 一時停止へ入る際に、全自機の連続指令を畳む。
     this.entities.clearTransientCommands();
     this._isPaused = true;
   }
@@ -259,7 +259,13 @@ export class Game {
     this.entities.updatePlayers(
       this.player, this.input, this.simSpeedManager, dt, this.activeStage, this.ephemeris,
     );
-    this.nanWatchdog.checkPlayer('player.behave', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
+    this.nanWatchdog.checkPlayer(
+      'player.updatePlayerControls',
+      this.player,
+      this.simulator.simTime,
+      dt,
+      this.simulator.lastSimDt,
+    );
     this.sections.exit(SECTION.player);
 
     this.sections.enter(SECTION.stage);

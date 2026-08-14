@@ -114,7 +114,7 @@ export interface EnemySaveData extends EntitySaveData {
   burstDelay?: number;
 }
 
-export interface AmmoSaveData extends EntitySaveData {
+export interface AmmoPickupSaveData extends EntitySaveData {
 }
 
 export interface ScoreCounterSaveData {
@@ -276,7 +276,7 @@ export interface GameSaveData {
   players: PlayerSaveData[];
   activePlayerId: string | null;
   enemies: EnemySaveData[];
-  ammos: AmmoSaveData[];
+  ammoPickups: AmmoPickupSaveData[];
   bases: BaseSaveData[];
   stage: StageSaveData;
   // 旧セーブデータには無いフィールドなので任意。無ければ視点は既定のまま始まる。
