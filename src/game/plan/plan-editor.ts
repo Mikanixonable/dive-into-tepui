@@ -765,7 +765,7 @@ export class PlanEditor {
       this.ephemeris, this.entities, excludedIds,
       planSourceRevision(this.entities, excludedIds, ship?.plan.revision ?? 0, this.lastPlanEnd, displayWindow.simTime),
     );
-    this.planDisplay.update(this.visiblePlan, displayWindow, attractorProvider);
+    this.planDisplay.update(this.visibleStart, this.ship?.plan.nodes ?? [], displayWindow, attractorProvider);
     this.updateEquatorNodes(displayWindow);
   }
 
@@ -784,7 +784,7 @@ export class PlanEditor {
   // 計画折れ線を同期する。編集中はさらに操作 UI(TRAJECTORY パネル・ノードギズモ)も出す。
   sync(cameraSystem: CameraSystem, simTime: number, fo: FloatingOrigin): void {
     const mapDist = cameraSystem.overviewCamera.dist;
-    if (this.visiblePlan !== null) {
+    if (this.visibleStart !== null) {
       this.planDisplay.sync(
         fo, cameraSystem.activeCameraProjection, cameraSystem.activeCameraScale,
         cameraSystem.overviewMode, cameraSystem.activeCameraPos, cameraSystem.activeCamera,
@@ -808,12 +808,12 @@ export class PlanEditor {
     };
   }
 
-  // 折れ線として出す計画。ノードの無い計画は自機の現在軌道そのものなので、ノードを置ける
-  // 編集中だけ出す。
-  private get visiblePlan(): Plan | null {
+  // 折れ線の起点。ノードの無い計画は自機の現在軌道そのものなので、ノードを置ける編集中だけ出す
+  // — 出さないときは null。
+  private get visibleStart(): KinematicState | null {
     const ship = this.ship;
     if (ship === null) return null;
-    return this.editMode || ship.plan.nodes.length > 0 ? ship.plan : null;
+    return this.editMode || ship.plan.nodes.length > 0 ? ship.plan.anchor : null;
   }
 
   // パネルとギズモを隠し、実質 Δv がゼロの末尾ノードを間引いて計画を整理する。
