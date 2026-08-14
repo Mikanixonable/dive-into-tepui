@@ -14,7 +14,7 @@ import { isOccluded } from '../../physics/occlusion';
 import { FloatingOrigin } from '../floating-origin';
 import { TrajectoryLine } from '../trajectory-line';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
-import { DisplayDurationSource, Plan, TimeRange, segmentDurationFrom } from './plan';
+import { DisplayDurationSource, PlanData, TimeRange, segmentDurationFrom } from './plan';
 import { PlanArc } from './plan-arc';
 import type { PlanAttractorProvider } from '../simulation/attractors';
 import * as C from '../const';
@@ -49,8 +49,8 @@ export class PlanPath {
   // 使い回す)。
   private lines: TrajectoryLine[] = [];
   private activeCount = 0;
-  // 先頭 nodeCount 本がノードで終わる区間(= 各ノードの到達状態を持つ)。
-  private nodeCount = 0;
+  // 先頭 _nodeCount 本がノードで終わる区間(= 各ノードの到達状態を持つ)。
+  private _nodeCount = 0;
   // update() で実際のレジストリの慣性系に置き換わるまでの暫定値。
   private frame: ReferenceFrame = { center: 'earth', rotatingWith: null };
   private ephemeris: Ephemeris | null = null;
@@ -78,26 +78,27 @@ export class PlanPath {
     scene.add(this.group);
   }
 
-  // plan から区間列を組み直す。起点・重力源・apsisCenter が既存の arc と一致する区間は
+  // 起点とノード列から区間列を組み直す。起点・重力源・apsisCenter が既存の arc と一致する区間は
   // setEnd で終端だけ動かし、一致しない区間は arc を作り直す。表示変換の文脈(座標系・
   // un-bake 時刻)もこのフレームのものに更新する。
   update(
-    plan: Plan, ephemeris: Ephemeris, frame: ReferenceFrame, displayTime: number,
+    planData: PlanData,
+    ephemeris: Ephemeris, frame: ReferenceFrame, currentTime: number,
     attractors: readonly Attractor[], attractorProvider: PlanAttractorProvider,
   ): void {
     this.frame = frame;
     this.ephemeris = ephemeris;
-    this.unbakeTime = displayTime;
+    this.unbakeTime = currentTime;
     this.attractors = attractors;
-    this.unbakeTransform = ephemeris.frameTransformAt(frame, displayTime, attractors);
+    this.unbakeTransform = ephemeris.frameTransformAt(frame, currentTime, attractors);
     this.lastRebuiltArcs = 0;
     this.lastSteps = 0;
-    // anchor→node…→末尾区間に分解する
-    const segments = buildSegments(plan, ephemeris, this.displayDuration);
+    // 起点→node…→末尾区間に分解する
+    const segments = buildSegments(planData, ephemeris, this.displayDuration);
     // ノードが1つも無い間はその唯一の区間(末尾区間)の起点が毎フレーム自機を追従する。
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i]!;
-      const tracksLiveAnchor = plan.nodes.length === 0 && i === segments.length - 1;
+      const tracksLiveAnchor = planData.nodes.length === 0 && i === segments.length - 1;
       const apsisCenterId = seg.apsisCenter?.id ?? null;
       let arc = this.arcs[i];
       if (!arc || !arc.represents(seg.state0, seg.end, attractorProvider.revision, apsisCenterId, tracksLiveAnchor)) {
@@ -111,7 +112,7 @@ export class PlanPath {
     }
     this.arcs.length = segments.length;
     this.activeCount = segments.length;
-    this.nodeCount = plan.nodes.length;
+    this._nodeCount = planData.nodes.length;
     const finalArc = this.arcs[segments.length - 1]!;
     const finalSeg = segments[segments.length - 1]!;
     this.final = {
@@ -186,10 +187,15 @@ export class PlanPath {
     return { min: minT, max: maxT };
   }
 
+  // この折れ線が経由するノードの数。
+  get nodeCount(): number {
+    return this._nodeCount;
+  }
+
   // 各ノードの到達時点(噴射直前)の状態。到達前に打ち切られた区間は null。
   arrivalStates(): (KinematicState | null)[] {
     const out: (KinematicState | null)[] = [];
-    for (let i = 0; i < this.nodeCount; i++) out.push(this.arcs[i]?.endState() ?? null);
+    for (let i = 0; i < this._nodeCount; i++) out.push(this.arcs[i]?.endState() ?? null);
     return out;
   }
 
@@ -306,14 +312,17 @@ export class PlanPath {
   }
 }
 
-// anchor を起点に nodes を順にたどって区間列を返す。先頭 nodes.length 本は次のノードで終わり、
+// 起点から nodes を順にたどって区間列を返す。先頭 nodes.length 本は次のノードで終わり、
 // 末尾の1本は segmentDurationFrom ぶん伸び、その起点自身の時刻で選んだ中心天体を持つ
 // (表示時刻の重力源では表示時刻に応じて中心天体が変わり、区間の物理そのものと食い違う)。
-function buildSegments(plan: Plan, ephemeris: Ephemeris, displayDuration: DisplayDurationSource): Segment[] {
+function buildSegments(
+  planData: PlanData,
+  ephemeris: Ephemeris, displayDuration: DisplayDurationSource,
+): Segment[] {
   const segments: Segment[] = [];
-  let state0 = plan.anchor;
+  let state0 = planData.anchor;
   // ノードを1つずつ経由点として区間を切り出す
-  for (const node of plan.nodes) {
+  for (const node of planData.nodes) {
     segments.push({ state0, end: node.t, apsisCenter: null });
     state0 = node;
   }
