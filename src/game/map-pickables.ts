@@ -64,7 +64,7 @@ export class MapPickables {
     }
     const { simTime, displayTime } = displayWindow;
     this._lastSimTime = simTime;
-    const focusId = focusTargetId(this.cameraSystem.overviewCamera.focus);
+    const focusId = focusTargetId(this.cameraSystem.mapCamera.focus);
     // 候補の位置は表示時刻のものなので、遮蔽・系の判定もその時刻の天体位置で行う。
     // 現在時刻の配列は「いまの自艦の軌道」を読む項目だけが使う。
     const attractors = this.ephemeris.attractorsAt(simTime);
