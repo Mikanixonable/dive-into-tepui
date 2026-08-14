@@ -6,7 +6,7 @@ import { R_EARTH } from '../physics/solar-system';
 
 const SEG = 160;
 const V_SEG = 3; // 鉛直方向4頂点: 0=下端フェード, 1=核(緑), 2=中間(赤), 3=上端フェード
-const INTENSITY_SCALE = 0.7; // 発光全体の強さ倍率
+const INTENSITY_SCALE = 0.15; // 発光全体の強さ倍率
 
 export class Aurora {
   readonly mesh: THREE.Mesh;
