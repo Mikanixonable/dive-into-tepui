@@ -239,7 +239,7 @@ export class DockView {
     header.className = 'dock-header';
     const title = document.createElement('span');
     title.className = 'dock-title';
-    title.textContent = 'DOCK';
+    title.textContent = 'dock';
     header.appendChild(title);
 
     this.tabBar = new TabBar<DockTab>(TAB_ITEMS, (tab) => {
