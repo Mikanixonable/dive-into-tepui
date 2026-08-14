@@ -43,12 +43,6 @@ export class GameEntity {
   get prevState(): KinematicState { return this.actualTrajectory.prevState; }
   get history(): StateQueue { return this.actualTrajectory.history; }
 
-  // orbitalElementsAround(center) のメモ。state の参照同一性(KinematicState は不変で step ごとに
-  // 新しい参照へ差し替わる)と center.id で無効化する。
-  private _memoState: KinematicState | null = null;
-  private _memoCenterId: string | null = null;
-  private _memoElements: OrbitalElements | null = null;
-
   private static readonly idAllocator = new EntityIdAllocator('entity-');
 
   // 一意な識別子。表示名(name)とは別の概念。
@@ -139,12 +133,7 @@ export class GameEntity {
 
   // center を中心とする接触軌道要素。中心は呼び出し側が選ぶ(例: strongestAttractor)。
   orbitalElementsAround(center: Attractor): OrbitalElements | null {
-    if (this._memoState !== this.state || this._memoCenterId !== center.id) {
-      this._memoState = this.state;
-      this._memoCenterId = center.id;
-      this._memoElements = orbitalElementsOf(this.state, center);
-    }
-    return this._memoElements;
+    return orbitalElementsOf(this.state, center);
   }
 
   // orbitLine を、現在位置で最も強く引く天体を中心とする軌道楕円に合わせる。

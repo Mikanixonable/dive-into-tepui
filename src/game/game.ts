@@ -394,6 +394,7 @@ export class Game {
     this.targeter.sync(fo, player, combatTargets, this.cameraSystem, displayAttractors, visibilityPolicy);
     this.targeter.syncTargetMarkers(
       player, combatTargets, displayTime, simTime, this.cameraSystem, visibilityPolicy,
+      this.ephemeris.registry, displayAttractors,
     );
     this.navTarget.sync(this.cameraSystem);
     this.entities.syncEquatorNodes(this.cameraSystem);

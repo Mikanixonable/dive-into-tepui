@@ -8,9 +8,9 @@ import type { MarkerManager } from '../marker/marker-manager';
 import { DIRECTION_GLYPH, ENTITY_GLYPH } from '../marker/marker-glyphs';
 import type { Attractor } from '../../physics/attractor';
 import type { CelestialRegistry } from '../../physics/solar-system';
-import { bodyDef } from '../../physics/solar-system';
 import * as C from '../const';
 import { isPositionInFocusedSystem } from '../celestial/body-visibility';
+import { findNearestPlanet } from '../celestial/planet-distance';
 import { ACCENT } from '../theme';
 import type { MapVisibility } from '../celestial/map-visibility';
 
@@ -37,22 +37,19 @@ export class PlayerMarkers {
       if (displayState && (!registry || isPositionInFocusedSystem(registry, focusId, displayState.r, attractors))
         && (!visibility || visibility.pickable)) {
         const color = isActive ? ACCENT : undefined;
-        const nearestPlanet = registry === undefined ? undefined : attractors
-          .filter((a) => registry[a.id] !== undefined && bodyDef(registry, a.id).kind === 'planet')
-          .map((a) => ({ a, distance: Math.sqrt((displayState.r.x - a.state.r.x) ** 2 + (displayState.r.y - a.state.r.y) ** 2 + (displayState.r.z - a.state.r.z) ** 2) }))
-          .sort((a, b) => a.distance - b.distance)[0];
+        const nearestPlanet = registry === undefined ? undefined : findNearestPlanet(displayState.r, registry, attractors);
         const nearPlanet = nearestPlanet !== undefined
-          && nearestPlanet.distance <= C.MAP_PLANET_SHIP_LABEL_END;
+          && nearestPlanet !== null && nearestPlanet.distance <= C.MAP_PLANET_SHIP_LABEL_END;
         const fadedOpacity = nearPlanet
           ? Math.max(0, Math.min(1, (C.MAP_PLANET_SHIP_LABEL_END - nearestPlanet.distance)
             / (C.MAP_PLANET_SHIP_LABEL_END - C.MAP_PLANET_SHIP_LABEL_START)))
           : 1;
         this.markerManager.hide(nearbyLabelKey);
-        if (nearestPlanet !== undefined && nearestPlanet.distance > C.MAP_PLANET_SHIP_LABEL_END) {
+        if (nearestPlanet !== undefined && nearestPlanet !== null && nearestPlanet.distance > C.MAP_PLANET_SHIP_LABEL_END) {
           this.markerManager.hide(selfKey);
           if (visibility?.label !== false) {
             this.markerManager.setPosition(
-              nearbyLabelKey, 'mk-planet-nearby-label', '', nearestPlanet.a.state.r, project,
+              nearbyLabelKey, 'mk-planet-nearby-label', '', nearestPlanet.attractor.state.r, project,
               `${ENTITY_GLYPH.ship}${name}`, 1, color,
             );
           }
