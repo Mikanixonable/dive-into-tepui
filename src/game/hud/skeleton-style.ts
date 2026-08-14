@@ -109,10 +109,10 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud.dock-mode .rail-toggle { display: none; }
 
 /* 画面固定バッジ(④): マップの縮尺・視点リセット・グローバルステータス・トースト等。 */
-/* マップモードでは #hud-rail-toggle-right(right:8px, 26px 角)がこの位置に重なるので、
+/* マップモードでは #hud-rail-toggle-left(left:8px, 26px 角)がこの位置に重なるので、
    その右端(8+26=34px)より確実に外側へ避けておく。 */
 #hud-viewbadge {
-  position: absolute; top: 8px; right: 48px;
+  position: absolute; top: 8px; left: 48px;
   display: flex; align-items: center; gap: var(--space-3);
   padding: var(--space-2) var(--space-4); border-radius: var(--radius-control);
   background: var(--glass-quiet); backdrop-filter: blur(14px) saturate(82%);
