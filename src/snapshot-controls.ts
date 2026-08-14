@@ -26,8 +26,8 @@ export class SnapshotControls {
 
     if (input.takeKey(K.clipSnapshot)) {
       // 決着後の phase(won/lost/timeup)は復元する経路を持たない — 復元は phase を
-      // そのまま代入するだけで結果画面を出し直さず、Game.update は isPlaying でない限り
-      // 早期returnし続けるため、決着後のスナップショットをロードすると操作不能になる。
+      // そのまま代入するだけで結果画面を出し直さないので、ロードすると結果画面の無いまま
+      // 決着済みのステージが続くことになる。
       if (!game.activeStage.isPlaying) {
         this.hud.hint('決着後はスナップショットを残せません');
       } else {
