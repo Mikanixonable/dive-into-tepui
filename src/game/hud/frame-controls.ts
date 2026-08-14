@@ -3,13 +3,14 @@
 // 状態そのものは両クラスに置いたままにし、ここは参照を受け取って書くだけに留める。
 import { Attractor } from '../../physics/attractor';
 import type { Ephemeris } from '../../physics/ephemeris';
+import * as C from '../const';
 import { Vec3 } from '../../physics/vec3';
 import { systemMembersAt } from '../celestial/body-visibility';
-import { OverviewCamera } from '../camera/overview-camera';
+import { CameraReferencePlane, OverviewCamera } from '../camera/overview-camera';
 import { focusPoint, focusTargetId, FocusTarget } from '../camera/focus-target';
 import { AnchorZone } from './anchor-zone';
 import { RotationZone } from './rotation-zone';
-import { ToggleSwitch } from './widgets';
+import { Button, SegmentedControl, Slider, ToggleSwitch, ValueInput } from './widgets';
 import { celestialBodyName } from './frame-labels';
 import { hudRail } from './hud-root';
 import type { MapPickable } from '../map-pickable';
@@ -34,6 +35,12 @@ export class FrameControls {
   private readonly orbitPanel: HTMLElement;
   private readonly cameraCenterZone: AnchorZone;
   private readonly cameraRotationZone: RotationZone;
+  private readonly cameraRotationModeToggle: ToggleSwitch;
+  private readonly fovSlider: Slider;
+  private readonly fovInput: ValueInput;
+  private readonly referencePlaneControl: SegmentedControl<CameraReferencePlane>;
+  private readonly aboveButton: Button;
+  private readonly sideButton: Button;
   private readonly planCenterZone: AnchorZone;
   private readonly planRotationZone: RotationZone;
   private readonly followToggle: ToggleSwitch;
@@ -64,6 +71,50 @@ export class FrameControls {
     this.cameraRotationZone.element.classList.add('hud-frame-scroll-zone', 'hud-frame-rotation-zone');
     this.cameraRotationZone.onSelect = (rotatingWith) => overviewCamera.setCameraRotation(rotatingWith);
     this.cameraPanel.appendChild(this.cameraRotationZone.element);
+
+    this.cameraRotationModeToggle = new ToggleSwitch('オイラー操作', (on) => {
+      overviewCamera.setCameraRotationMode(on ? 'euler' : 'quaternion');
+    });
+    this.cameraPanel.appendChild(this.cameraRotationModeToggle.element);
+
+    const fovGroup = document.createElement('div');
+    fovGroup.className = 'camera-fov-control';
+    const fovLabel = document.createElement('span');
+    fovLabel.className = 'camera-control-label';
+    fovLabel.textContent = '画角';
+    fovGroup.appendChild(fovLabel);
+    this.fovSlider = new Slider({
+      min: C.OVERVIEW_CAMERA_FOV_MIN,
+      max: C.OVERVIEW_CAMERA_FOV_MAX,
+      step: C.OVERVIEW_CAMERA_FOV_STEP,
+    }, (value) => overviewCamera.setFovDeg(value));
+    fovGroup.appendChild(this.fovSlider.element);
+    this.fovInput = new ValueInput({
+      type: 'number',
+      min: C.OVERVIEW_CAMERA_FOV_MIN,
+      max: C.OVERVIEW_CAMERA_FOV_MAX,
+      step: C.OVERVIEW_CAMERA_FOV_STEP,
+    }, (text) => overviewCamera.setFovDeg(Number(text)));
+    fovGroup.appendChild(this.fovInput.element);
+    const fovUnit = document.createElement('span');
+    fovUnit.className = 'camera-control-unit';
+    fovUnit.textContent = '°';
+    fovGroup.appendChild(fovUnit);
+    this.cameraPanel.appendChild(fovGroup);
+
+    this.referencePlaneControl = new SegmentedControl<CameraReferencePlane>('視点の基準面', [
+      ['ecliptic', '黄道面'],
+      ['equator', '赤道面'],
+      ['moonOrbit', '月軌道面'],
+    ], (plane) => overviewCamera.setReferencePlane(plane));
+    this.cameraPanel.appendChild(this.referencePlaneControl.element);
+
+    const referenceViewGroup = document.createElement('div');
+    referenceViewGroup.className = 'camera-reference-view-buttons';
+    this.aboveButton = new Button('真上', () => overviewCamera.setReferenceView('above'));
+    this.sideButton = new Button('真横', () => overviewCamera.setReferenceView('side'));
+    referenceViewGroup.append(this.aboveButton.element, this.sideButton.element);
+    this.cameraPanel.appendChild(referenceViewGroup);
 
     this.cameraSummary = document.createElement('div');
     this.cameraSummary.className = 'frame-summary';
@@ -125,7 +176,8 @@ export class FrameControls {
     const camCenter = camId === undefined ? '固定なし' : celestialBodyName(camId);
     const camRot = this.overviewCamera.cameraFrame.rotatingWith;
     const rotText = (id: string | null): string => (id === null ? '慣性系' : `${celestialBodyName(id)}回転系`);
-    return `基準: ${camCenter}・${rotText(camRot)}`;
+    const modeText = this.overviewCamera.cameraRotationMode === 'euler' ? 'オイラー' : 'クォータニオン';
+    return `基準: ${camCenter}・${rotText(camRot)} / ${modeText}・画角 ${this.overviewCamera.fov.toFixed(0)}°`;
   }
 
   // いま選ばれている軌道側の座標系を1行で述べる。
@@ -153,6 +205,12 @@ export class FrameControls {
     this.cameraCenterZone.setSelected(focusTargetId(this.overviewCamera.focus) ?? null);
     this.cameraRotationZone.setNearby(members);
     this.cameraRotationZone.setSelected(this.overviewCamera.cameraFrame.rotatingWith);
+    this.cameraRotationModeToggle.setOn(this.overviewCamera.cameraRotationMode === 'euler');
+    this.fovSlider.setValue(this.overviewCamera.fov);
+    if (document.activeElement !== this.fovInput.element) {
+      this.fovInput.setValue(this.overviewCamera.fov.toFixed(0));
+    }
+    this.referencePlaneControl.setSelected(this.overviewCamera.referencePlane);
 
     this.planCenterZone.setItems(pickables);
     this.planCenterZone.setNearby(members, pickables);
