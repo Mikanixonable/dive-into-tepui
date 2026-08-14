@@ -11,6 +11,7 @@ import { MapContextActions } from './map-context-actions';
 import type { Docking } from './docking';
 import type { ActivePlayerController } from './active-player-controller';
 import { syncNavballPlacement } from './hud/hud-root';
+import { setPanelCollapsedView } from './hud/panel-shell';
 import type { OverlayHandle } from './hud/overlay-manager';
 
 export type ViewId = 'combat' | 'map' | 'dock';
@@ -128,11 +129,10 @@ export class ViewManager {
     return true;
   }
 
-  // 現在のビューに合わせて HUD の見た目と、カメラ・計画編集・未来表示の各フラグを揃える。
-  // ここが決めるのはビュー起因の表示/非表示だけで、パネルの折りたたみはユーザーが
-  // マップビューの中で選んだ独立した状態なので、ビューの往復では触らない。
+  // 現在のビューに合わせて HUD の見た目と、カメラ・計画編集・未来表示・収納状態の各フラグを揃える。
   private applyChrome(): void {
     const map = this.worldView === 'map';
+    setPanelCollapsedView(map ? 'map' : 'combat');
     this.hud.root.classList.toggle('map-mode', map);
     this.hud.root.classList.toggle('dock-mode', this.isDockOpen);
     syncNavballPlacement(this.hud.root, map);
