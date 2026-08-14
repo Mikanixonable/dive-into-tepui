@@ -6,7 +6,6 @@
 // 天体メッシュは不透明・深度書き込み有りで先に描かれるため、深度テストだけで天体が手前に残る。
 import * as THREE from 'three/webgpu';
 import { OrbitalElements } from '../physics/elements';
-import { Vec3 } from '../physics/vec3';
 import { FloatingOrigin } from './floating-origin';
 import { Curve, CurveSampler } from '../render/curve';
 
@@ -14,7 +13,6 @@ import { Curve, CurveSampler } from '../render/curve';
 const MAX_VERTICES = 4096;
 
 // 再生成の閾値: これを超えて要素が動いたときだけ楕円を作り直す
-const REGEN_MIN_INTERVAL_MS = 120; // 最短再生成間隔
 const TOL_SMA = 3e-4; // 長半径の相対変化
 const TOL_ECC = 3e-4; // 離心率の変化
 const TOL_PLANE = Math.cos((0.12 * Math.PI) / 180); // 軌道面法線の角変化
@@ -23,13 +21,13 @@ const TOL_APSE = Math.cos((0.3 * Math.PI) / 180); // 近点方向の角変化(e 
 export class OrbitLine {
   private readonly curve: Curve;
   readonly line: THREE.Object3D;
-  private snap: { a: number; e: number; hHat: Vec3; pHat: Vec3 } | null = null;
+  // 直近に描いた軌道要素のスナップショット。sampler はこれを読む — 閾値を超えるまでは
+  // 一切書き換えないことで、osculating 要素の微小なゆらぎによる楕円の振動を防ぐ。
+  private snap: OrbitalElements | null = null;
   // Curve へ渡す revision。楕円を作り直すたびに新しいオブジェクトへ差し替える。
   private revision: object = {};
-  private lastRegen = 0;
   private suppressed = false;
   private displayEnabled = true;
-  private el: OrbitalElements | null = null;
 
   // 表示の有効/無効を切り替える。
   setDisplayEnabled(value: boolean): void {
@@ -62,9 +60,10 @@ export class OrbitLine {
     this.curve.setOpacity(opacity);
   }
 
-  // 離心近点角 E=t·2π を軌道要素で位置へ写す、閉曲線サンプラ。
+  // 離心近点角 E=t·2π を軌道要素で位置へ写す、閉曲線サンプラ。読むのは snap で、
+  // revision が指す形状と焼かれる形状が常に一致する。
   private readonly sampler: CurveSampler = (t, out) => {
-    const el = this.el;
+    const el = this.snap;
     if (!el) return;
     const b = el.a * Math.sqrt(1 - el.e * el.e);
     const E = t * Math.PI * 2;
@@ -89,12 +88,10 @@ export class OrbitLine {
     // 頂点を自機相対座標で毎フレーム書き直すと、osculating 要素の微小なゆらぎで楕円が
     // 振動して見える。頂点は中心天体相対座標のまま固定し、平行移動だけで動かす。
     this.curve.setTransform(fo.RtoThreeV3(el.center.state.r));
-    this.el = el;
 
     if (this.needsRegen(el, force)) {
       this.revision = {};
-      this.snap = { a: el.a, e: el.e, hHat: { ...el.hHat }, pHat: { ...el.pHat } };
-      this.lastRegen = performance.now();
+      this.snap = el;
     }
 
     this.curve.setCurve(this.sampler, { revision: this.revision, camera });
@@ -102,14 +99,13 @@ export class OrbitLine {
   }
 
   // 現在の要素が直近のスナップショットから許容誤差を超えて変化していれば true(要再生成)。
-  // force は要素が能動的に変化している間なので、最短再生成間隔のスロットルより先に無条件で
-  // 通す — 間隔待ちのぶん追随が刻んで見えることを避ける。
   private needsRegen(el: OrbitalElements, force: boolean): boolean {
     if (!this.snap) return true;
     if (force) return true;
-    const now = performance.now();
-    if (now - this.lastRegen < REGEN_MIN_INTERVAL_MS) return false;
     const s = this.snap;
+    // 頂点は中心天体相対、平行移動は毎フレームの中心天体位置。中心が入れ替われば、
+    // 別の天体を基準に焼いた形状をそのまま新しい中心へ動かすことになる。
+    if (el.center.id !== s.center.id) return true;
     if (Math.abs(el.a - s.a) / s.a > TOL_SMA) return true;
     if (Math.abs(el.e - s.e) > TOL_ECC) return true;
     if (el.hHat.x * s.hHat.x + el.hHat.y * s.hHat.y + el.hHat.z * s.hHat.z < TOL_PLANE) return true;
