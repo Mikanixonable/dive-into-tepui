@@ -17,6 +17,7 @@ import {
 } from './game/theme';
 import { Hud } from './game/hud/hud';
 import { PauseMenu } from './game/hud/pause-menu';
+import { SettingsView } from './game/hud/settings-view';
 import { Sfx } from './audio/sfx';
 import { UnlockManager } from './game/unlock-manager';
 import { LocalStorageSaveStore } from './game/save/save-store';
@@ -184,13 +185,16 @@ function startAnimationLoop(
 // hud/sfx はタイトル(ステージ選択)画面の時点から使えるべきなので、Game より先に main.ts が
 // 生成して所有し、Game には参照として渡す。pauseMenu も同様に main.ts が所有し、開閉に
 // 応じた一時停止の反映(game.pause()/game.resume())も持ち主である main.ts がここで配線する。
-function initHud(graphics: GraphicsSettings): { hud: Hud; sfx: Sfx; pauseMenu: PauseMenu } {
+function initHud(graphics: GraphicsSettings): {
+  hud: Hud; sfx: Sfx; pauseMenu: PauseMenu; settingsView: SettingsView;
+} {
   const hud = new Hud();
   const sfx = new Sfx();
   const pauseMenu = new PauseMenu(hud.layers.system, hud.overlayManager, graphics);
+  const settingsView = new SettingsView(hud.layers.system, hud.overlayManager, sfx);
   pauseMenu.setBgmVolume(sfx.getBgmVolume());
   pauseMenu.onBgmVolumeChange = (vol) => sfx.setBgmVolume(vol);
-  return { hud, sfx, pauseMenu };
+  return { hud, sfx, pauseMenu, settingsView };
 }
 
 // シーン初期化からステージ選択、Game 構築、rAF ループ開始までを順に行う。
@@ -212,10 +216,14 @@ async function main() {
   const snapshotService = new SnapshotService(saveStore, slots);
   const graphics = new GraphicsSettings();
   const gs = await initScene(graphics);
-  const { hud, sfx, pauseMenu } = initHud(graphics);
+  const { hud, sfx, pauseMenu, settingsView } = initHud(graphics);
   const launcher = new Launcher(hud, unlockmanager, slots, snapshotService, sfx);
   // 「ゲームを中断してタイトル画面に戻る」
   pauseMenu.onQuitToTitle = () => launcher.returnToTitle();
+  pauseMenu.onOpenSettings = () => {
+    pauseMenu.toggle(false);
+    settingsView.toggle(true);
+  };
   // タイトル画面にはまだ Game が無いが、ESC メニュー自体はゲームと同じものを使える。
   // Game 生成後も同じコールバックを使うため、ここでは nullable な参照を閉じ込める。
   let game: Game | null = null;
@@ -224,9 +232,17 @@ async function main() {
     if (open) game.pause();
     else game.resume();
   };
+  settingsView.onOpenChange = (open) => {
+    if (!game) return;
+    if (open) game.pause();
+    else game.resume();
+  };
   const stageClass = await launcher.resolveStage(
-    () => pauseMenu.toggle(),
+    () => {
+      if (!hud.overlayManager.closeTopmostOnEscape()) pauseMenu.toggle();
+    },
     () => pauseMenu.toggle(false),
+    () => settingsView.toggle(true),
   );
   const sections = new FrameSections();
   const gpu = new GpuTimings(gs.renderer);

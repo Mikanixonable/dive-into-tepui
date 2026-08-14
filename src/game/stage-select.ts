@@ -190,7 +190,8 @@ const STYLE = `
 }
 #stage-select .ss-window > .w-tabs,
 #stage-select .ss-window > .ss-list,
-#stage-select .ss-window > .ss-debug { position: relative; z-index: 1; }
+#stage-select .ss-window > .ss-debug,
+#stage-select .ss-window > .ss-settings { position: relative; z-index: 1; }
 #stage-select .ss-window-title {
   margin: 0 0 2px 8px; color: ${MUTED_INK};
   font-size: 15px; font-weight: 600; letter-spacing: 0.04em;
@@ -236,6 +237,13 @@ const STYLE = `
   flex: 0 0 auto; padding-top: 12px; color: ${FAINT_INK};
   font-family: ${FONT_MONO}; font-size: 11px; cursor: pointer;
 }
+#stage-select .ss-settings {
+  align-self: flex-end; flex: 0 0 auto; margin-top: 2px;
+  padding: 8px 12px; border: 1px solid color-mix(in srgb, ${TITLE_INK} 18%, transparent);
+  border-radius: ${RADIUS_CONTROL}; color: ${MUTED_INK}; background: transparent;
+  font: 12px ${FONT_SANS}; cursor: pointer;
+}
+#stage-select .ss-settings:hover { color: ${TITLE_INK}; border-color: ${ACCENT}; background: color-mix(in srgb, ${ACCENT} 8%, transparent); }
 @media ${MQ_COMPACT} {
   #stage-select .ss-shell { place-items: center; padding-block: 12px; }
   #stage-select .ss-layout { height: 100%; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
@@ -281,6 +289,7 @@ export function selectStage(
   unlockManager: UnlockManager,
   onEscape?: () => void,
   onClose?: () => void,
+  onSettings?: () => void,
 ): Promise<StageClass> {
   return new Promise((resolve) => {
     ensureStyle();
@@ -379,6 +388,13 @@ export function selectStage(
     debugLink.addEventListener('click', () => done(StageDebug));
     windowDiv.appendChild(debugLink);
 
+    const settingsButton = document.createElement('button');
+    settingsButton.type = 'button';
+    settingsButton.className = 'ss-settings';
+    settingsButton.textContent = '⚙ 設定';
+    settingsButton.addEventListener('click', () => onSettings?.());
+    windowDiv.appendChild(settingsButton);
+
     document.body.appendChild(root);
 
     // 3D 場面は非同期に立ち上がる。選択が先に済んだ場合はでき次第そのまま破棄する。
@@ -409,6 +425,9 @@ export function selectStage(
         onEscape?.();
         return;
       }
+      // 設定/一時停止などのシステム窓が開いている間は、背後のステージ選択ショートカットを
+      // 起動しない。ESC だけは上の分岐で現在の最前面窓へ配送する。
+      if (document.body.classList.contains('hud-overlay-modal-open')) return;
       for (const stageClass of STAGE_CLASSES) {
         if (!(enabledByStage.get(stageClass.id) ?? false)) continue;
         if (!stageClass.selectKeys.includes(e.code)) continue;

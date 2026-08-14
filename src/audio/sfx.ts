@@ -54,6 +54,26 @@ export class Sfx {
     }
   }
 
+  // 設定画面の試聴欄へ渡す曲名。作曲データと表示名を同じ定義で管理する。
+  getBgmTracks(): readonly BgmTrack[] {
+    return BGM_TRACKS;
+  }
+
+  // 指定した曲を先頭から試聴する。AudioContext の unlock も最初のクリックで行う。
+  playBgmTrack(index: number): void {
+    this.unlock();
+    if (!this.ctx || BGM_TRACKS.length === 0) return;
+    const safeIndex = Math.max(0, Math.min(BGM_TRACKS.length - 1, Math.floor(index)));
+    this.stopBgm(0.05);
+    this.startBgm(safeIndex);
+  }
+
+  // 試聴停止後や、ゲーム中の BGM を再開する。
+  resumeBgm(): void {
+    if (this.bgmVolume <= 0 || !this.ctx || this.bgmTimer) return;
+    this.startBgm(this.currentTrackIdx);
+  }
+
   // 実際のユーザー操作のたびに呼ぶ。AudioContext が無ければ生成してスラスタ/RCS のループ音源を
   // 用意し BGM を開始する。既にあり suspended なら resume する(ブラウザがタブの非アクティブ化
   // 等で後から自動停止することがあるため)。
@@ -109,7 +129,7 @@ export class Sfx {
   // ------------------------------------------------------------------ BGM
   // WebAudio 合成のループ BGM(アセット不要)。ベース + パッド + アルペジオ +
   // ノイズハットを先読みスケジューラで刻む。
-  private startBgm(): void {
+  private startBgm(trackIdx?: number): void {
     if (!this.ctx || this.bgmTimer) return;
     const ctx = this.ctx;
     // マスターゲインをフェードインさせながら生成する
@@ -121,7 +141,9 @@ export class Sfx {
     this.bgmNextTime = ctx.currentTime + 0.15;
     // 曲をランダムに選び、スケジューラを起動する
     this.bgmTrackStartTime = ctx.currentTime;
-    this.currentTrackIdx = Math.floor(Math.random() * BGM_TRACKS.length);
+    this.currentTrackIdx = trackIdx === undefined
+      ? Math.floor(Math.random() * BGM_TRACKS.length)
+      : Math.max(0, Math.min(BGM_TRACKS.length - 1, trackIdx));
     this.bgmStep = 0;
     this.bgmTimer = setInterval(() => this.pumpBgm(), 120);
   }
