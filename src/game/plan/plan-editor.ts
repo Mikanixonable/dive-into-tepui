@@ -20,7 +20,7 @@ import { KEY_MAPPING as K } from '../input/key-mapping';
 import { AxisHandleSpec, NodeGizmo, NodeHandleSpec } from './node-gizmo';
 import { PlanGizmo3D } from './plan-gizmo-3d';
 import { PlanPanel } from './plan-panel';
-import { DisplayDurationSource, Plan } from './plan';
+import { DisplayDurationSource, Plan, PlanData } from './plan';
 import { PlanDisplay } from './plan-display';
 import { SimSpeedManager } from '../sim-speed-manager';
 import type { Player } from '../player/player';
@@ -61,8 +61,11 @@ export class PlanEditor {
     this.selectedNode = idx === null ? null : this.plan?.nodes[idx] ?? null;
   }
 
-  // アクティブ艦自身の計画を編集する。艦は自分の計画を所有し続けるので、艦を切り替えると
-  // 編集対象もその艦の計画へ切り替わる。艦がいなければ編集する計画も無い。
+  // 操作対象の艦。ノードの起点として自機状態が要るときだけ引く。
+  private get ship(): Player | null { return this.activePlayers.current; }
+
+  // 操作艦自身の計画。艦は自分の計画を所有し続けるので、艦を切り替えると編集対象も
+  // その艦の計画へ切り替わる。艦がいなければ編集する計画も無い。
   get plan(): Plan | null { return this.activePlayers.current?.plan ?? null; }
 
   readonly planDisplay: PlanDisplay;
@@ -132,7 +135,7 @@ export class PlanEditor {
     };
     g.onNodeContextMenu = (clientX, clientY) => { this.handleNodeRightClick(clientX, clientY); };
     g.onAxisDrag = (axis, sign, deltaPx) => {
-      this.applyAxisDrag(axis, sign, deltaPx, this.activePlayers.current?.fineAttitude ?? false);
+      this.applyAxisDrag(axis, sign, deltaPx, this.ship?.fineAttitude ?? false);
     };
     // 指定ノードの時刻まで自動ワープを開始する
     g.onMenuWarpTo = (idx) => {
@@ -186,7 +189,7 @@ export class PlanEditor {
   // マップ上のクリック・右クリックをノード選択/配置とコンテキストメニューへ振り分ける。
   // 編集モードでなければ、また艦がいなければ計画そのものが無いので、クリックはここで捨てる。
   handleMapPointer(input: Input): void {
-    if (!this.editMode || this.activePlayers.current === null) return;
+    if (!this.editMode || this.plan === null) return;
     input.takeRightClicks((p) => this.handleNodeRightClick(p.x, p.y));
     input.takeClicks((p) => {
       this.handleMapClick(p.x, p.y);
@@ -231,8 +234,8 @@ export class PlanEditor {
   // クリック位置に最も近い既存ノードを選択する。ヒットしなければ計画軌道上の最寄り点へ
   // 新規ノードを配置し、それも外れていれば選択を解除する。
   private handleMapClick(mx: number, my: number): void {
-    const plan = this.plan;
-    if (!plan) return;
+    const ship = this.ship;
+    if (!ship) return;
     const bestNodeIdx = this.pickNodeAt(mx, my);
     // ノードを置いた直後に同じノードをクリックした場合は編集を続ける。
     // 別の場所をクリックして選択対象が外れた場合だけ、Δv を一度も加えていない
@@ -251,7 +254,7 @@ export class PlanEditor {
     // その位置に最初に到達する時刻(= referenceT を -Infinity にして最早時刻)を選ぶ。
     const picked = this.planDisplay.path.nearestSample(mx, my, C.NODE_PICK_PX, -Infinity);
     if (picked) {
-      this.selectNewNode(plan.addNode(picked.state));
+      this.selectNewNode(ship.plan.addNode(picked.state, ship.state));
       return;
     }
 
@@ -280,14 +283,14 @@ export class PlanEditor {
   // 時刻 t の計画軌道上の状態にノードを追加し、選択する。その時刻の計画軌道が
   // 求まらなければ(折れ線の届く範囲外など)ヒントを出すだけで何もしない。
   addNodeAt(t: number): void {
-    const plan = this.plan;
-    if (!plan) return;
+    const ship = this.ship;
+    if (!ship) return;
     const sample = this.planDisplay.path.sampleAt(t);
     if (!sample) {
       this._hud.hint('この時刻の計画軌道が求まりません');
       return;
     }
-    this.selectNewNode(plan.addNode(sample));
+    this.selectNewNode(ship.plan.addNode(sample, ship.state));
   }
 
   // addNode の結果を選択する。計画の起点より前は置けないので、その場合は理由を伝える。
@@ -326,14 +329,17 @@ export class PlanEditor {
   // 自分自身に重なる区間では、そのノードの現在時刻に最も近い候補を選ぶ(= 遠い周回のノードを
   // 掴んでも周回0へ飛ばない)。
   private dragNodeToNearestSample(idx: number, clientX: number, clientY: number): void {
-    const plan = this.plan;
-    if (!plan) return;
-    const node = plan.nodes[idx];
+    const ship = this.ship;
+    if (!ship) return;
+    const node = ship.plan.nodes[idx];
     if (!node) return;
     const arriving = this.planDisplay.path.arrivalStates();
-    const picked = this.planDisplay.path.nearestSample(clientX, clientY, Infinity, node.t, plan.nodeTimeRange(idx, this.ephemeris, this.displayDuration));
+    const picked = this.planDisplay.path.nearestSample(
+      clientX, clientY, Infinity, node.t,
+      ship.plan.nodeTimeRange(idx, ship.state, this.ephemeris, this.displayDuration),
+    );
     if (picked) {
-      this.selectedNode = plan.replaceNode(
+      this.selectedNode = ship.plan.replaceNode(
         idx, this.rebuildDraggedNode(picked.state, picked.arcIdx, idx, arriving) ?? picked.state,
       );
     }
@@ -581,7 +587,7 @@ export class PlanEditor {
       this.dvHoldTime.fill(0);
       return;
     }
-    const fine = this.activePlayers.current?.fineAttitude ?? false;
+    const fine = this.ship?.fineAttitude ?? false;
     const b = this.panel.dvButtons;
     this.applyHeldDv(0, 1, input.takeHeld(K.dvPrograde) || b.pro.isHeld, dt, fine);
     this.applyHeldDv(0, -1, input.takeHeld(K.dvRetrograde) || b.ret.isHeld, dt, fine);
@@ -603,7 +609,8 @@ export class PlanEditor {
   }
 
   // 現在のノード列と選択中ノードから、計画パネルへ渡す表示値を組み立てて反映する。
-  private syncPanel(plan: Plan, simTime: number): void {
+  private syncPanel(ship: Player, simTime: number): void {
+    const plan = ship.plan;
     const arriving = this.planDisplay.path.arrivalStates();
     const nodes = plan.nodes.map((n, i) => ({
       tRel: n.t - simTime,
@@ -614,7 +621,7 @@ export class PlanEditor {
     let selEl: OrbitalElements | null = null;
     let localDv: Vec3 | null = null;
     // 高度・大気圏警告の基準は、選択中ノード(無ければ計画の起点)で最も強く引く天体。
-    const centerState = (this.selectedNodeIdx !== null ? plan.nodes[this.selectedNodeIdx] : null) ?? plan.anchor;
+    const centerState = (this.selectedNodeIdx !== null ? plan.nodes[this.selectedNodeIdx] : null) ?? plan.anchorOr(ship.state);
     const center = strongestAttractor(centerState.r, this.ephemeris.attractorsAt(centerState.t));
     if (this.selectedNodeIdx !== null) {
       const node = plan.nodes[this.selectedNodeIdx];
@@ -647,7 +654,7 @@ export class PlanEditor {
   update(displayWindow: DisplayWindow): void {
     // 艦が替わったフレームで、前の艦のノードに対して開いたままのメニューを畳む(選択中ノードは
     // 参照で解決するので、計画が替われば同一性が外れて自然に選択なしになる)。
-    const ship = this.activePlayers.current;
+    const ship = this.ship;
     if (ship !== this.lastSeenShip) {
       this.lastSeenShip = ship;
       this.closeMenu();
@@ -660,14 +667,14 @@ export class PlanEditor {
       this.ephemeris, this.entities, excludedIds,
       planSourceRevision(this.entities, excludedIds, this.plan?.revision ?? 0, this.lastPlanEnd, displayWindow.simTime),
     );
-    this.planDisplay.update(this.visiblePlan, displayWindow, attractorProvider);
+    this.planDisplay.update(this.displayedPlan, displayWindow, attractorProvider);
     this.updateEquatorNodes(displayWindow);
   }
 
   // 操作艦の赤道交点マーカーを、計画の最終区間(=これから乗る軌道)を代表状態として求め直す。
   // 区間の折れ線も渡すので、交点は解析楕円ではなく実際に描かれている積分線の上に載る。
   private updateEquatorNodes(displayWindow: DisplayWindow): void {
-    const ship = this.activePlayers.current;
+    const ship = this.ship;
     if (!ship) return;
     const segment = this.planDisplay.path.finalSegment();
     ship.ensureEquatorNodes(this.markerManager).update(
@@ -679,7 +686,7 @@ export class PlanEditor {
   // 計画折れ線を同期する。編集中はさらに操作 UI(TRAJECTORY パネル・ノードギズモ)も出す。
   sync(cameraSystem: CameraSystem, simTime: number, fo: FloatingOrigin): void {
     const mapDist = cameraSystem.overviewCamera.dist;
-    if (this.visiblePlan !== null) {
+    if (this.displayedPlan !== null) {
       this.planDisplay.sync(
         fo, cameraSystem.activeCameraProjection, cameraSystem.activeCameraScale,
         cameraSystem.overviewMode, cameraSystem.activeCameraPos, cameraSystem.activeCamera,
@@ -688,10 +695,10 @@ export class PlanEditor {
     else {
       this.planDisplay.hide();
     }
-    const plan = this.plan;
-    if (plan !== null && this.editMode) {
-      this.syncGizmo(plan, mapDist, fo);
-      this.syncPanel(plan, simTime);
+    const ship = this.ship;
+    if (ship !== null && this.editMode) {
+      this.syncGizmo(ship.plan, mapDist, fo);
+      this.syncPanel(ship, simTime);
     }
   }
 
@@ -703,11 +710,13 @@ export class PlanEditor {
     };
   }
 
-  // 折れ線として出す計画。ノードの無い計画は自機の現在軌道そのものなので、ノードを置ける
-  // 編集中だけ出す。
-  private get visiblePlan(): Plan | null {
-    const plan = this.plan;
-    return plan !== null && (this.editMode || plan.nodes.length > 0) ? plan : null;
+  // このフレームに出す折れ線の材料。出す価値のある折れ線が無ければ null — ノードの無い計画は
+  // 自機の現在軌道そのものなので、ノードを置ける編集中だけ出す。
+  private get displayedPlan(): PlanData | null {
+    const ship = this.ship;
+    if (ship === null) return null;
+    if (!this.editMode && ship.plan.nodes.length === 0) return null;
+    return ship.plan.displayData(ship.state);
   }
 
   // パネルとギズモを隠し、実質 Δv がゼロの末尾ノードを間引いて計画を整理する。
