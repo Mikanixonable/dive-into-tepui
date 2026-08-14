@@ -1,6 +1,5 @@
 // ステージ解放の判定・記録を一元管理する。ステージクラスの静的 isUnlocked(clearCounts) は
 // 条件式を持つだけで、localStorage には触れない。
-import { ACCENT } from './theme';
 import { Hud } from './hud/hud';
 import { StageId } from './stages/stage';
 import { findStageClass, STAGE_CLASSES } from './stages/stage-dictionary';
@@ -53,7 +52,7 @@ export class UnlockManager {
 
     for (const s of newlyUnlocked) {
       if (isStageUnlocked(s.id, this.clearCounts)) {
-        hud.toast(`<span style="color:${ACCENT}">${s.selectLabel} が解放された</span>`);
+        hud.toast(`<span style="color:var(--accent)">${s.selectLabel} が解放された</span>`);
       }
     }
   }

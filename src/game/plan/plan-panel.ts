@@ -3,7 +3,7 @@
 // 入力値をノードへ反映する)は PlanEditor が持ち、このクラスは表示専用。
 import { OrbitalElements, apsisAltitudes } from '../../physics/elements';
 import { Vec3 } from '../../physics/vec3';
-import { ACCENT, AXIS_NORMAL, AXIS_PROGRADE, AXIS_RADIAL, FILL_2, TEXT, TEXT_DIM } from '../theme';
+import { AXIS_NORMAL, AXIS_PROGRADE, AXIS_RADIAL } from '../theme';
 import { HoldButton, ValueInput } from '../hud/widgets';
 import { fmtDist, fmtTime } from '../hud/utils';
 import { hudRail } from '../hud/hud-root';
@@ -84,19 +84,19 @@ function planPanelHtml(
   if (selEl) {
     const apsis = apsisAltitudes(selEl);
     s +=
-      `<div style="margin-top:4px;color:${TEXT};font-size:11px;letter-spacing:1px">噴射後の軌道</div>` +
+      '<div style="margin-top:4px;color:var(--text);font-size:11px;letter-spacing:1px">噴射後の軌道</div>' +
       row('遠地点 AP', fmtDist(apsis.ap)) +
       row('近地点 PE', fmtDist(apsis.pe)) +
       row('傾斜角 INC', isFinite(selEl.incDeg) ? `${selEl.incDeg.toFixed(2)}°` : '---') +
       row('周期 PRD', fmtTime(selEl.period));
     if (warnAtmosphere && isFinite(apsis.pe) && apsis.pe < 120e3) {
-      s += `<div style="color:${ACCENT};margin-top:2px">⚠ 近地点が大気圏内</div>`;
+      s += '<div style="color:var(--accent);margin-top:2px">⚠ 近地点が大気圏内</div>';
     }
   }
   // 操作キーのヒント
   const dvKeys =
     `${K.dvPrograde.label}/${K.dvRetrograde.label}・${K.dvNormal.label}/${K.dvAntinormal.label}・${K.dvRadialOut.label}/${K.dvRadialIn.label}`;
-  s += `<div style="margin-top:6px;color:${TEXT_DIM};font-size:11px">[クリック] ノード配置/選択 [ノードをドラッグ] 時刻移動とマニューバ維持 [矢印ハンドル/${dvKeys}/パネルのボタン] 長押しでΔv調整、ハンドルは大きくドラッグし続けると加速 <br>[右クリック] メニュー(自動ワープ/削除) [${K.deleteNode.label}] 選択ノード削除 [${K.fineAttitudeToggle.label}] 微調整 [${K.toggleMapMode.label}] 確定して戻る(時間は進み続ける)</div>`;
+  s += `<div style="margin-top:6px;color:var(--text-dim);font-size:11px">[クリック] ノード配置/選択 [ノードをドラッグ] 時刻移動とマニューバ維持 [矢印ハンドル/${dvKeys}/パネルのボタン] 長押しでΔv調整、ハンドルは大きくドラッグし続けると加速 <br>[右クリック] メニュー(自動ワープ/削除) [${K.deleteNode.label}] 選択ノード削除 [${K.fineAttitudeToggle.label}] 微調整 [${K.toggleMapMode.label}] 確定して戻る(時間は進み続ける)</div>`;
   return s;
 }
 
@@ -119,8 +119,8 @@ export class PlanPanel {
     this.panel.innerHTML = `
       <h3>軌道計画 [${K.toggleMapMode.label}]</h3>
       <div data-id="planbody"></div>
-      <div data-id="planedit" class="hidden" style="margin-top:8px; padding-top:8px; border-top:1px solid ${FILL_2}">
-        <div style="font-size:10px; color:${TEXT_DIM}; margin-bottom:4px;">マニューバ手動入力 (m/s)</div>
+      <div data-id="planedit" class="hidden" style="margin-top:8px; padding-top:8px; border-top:1px solid var(--fill-2)">
+        <div style="font-size:10px; color:var(--text-dim); margin-bottom:4px;">マニューバ手動入力 (m/s)</div>
       </div>
     `;
     this.body = this.panel.querySelector<HTMLElement>('[data-id="planbody"]')!;
