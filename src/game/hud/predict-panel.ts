@@ -1,7 +1,8 @@
 // 未来表示の操作パネル(期間ピル・スクラバー・目盛り)。3行構成: 期間選択 / スクラブバー+T+読み値 / 目盛り。
 import * as C from '../const';
-import { Button, SegmentedControl, Slider, ToggleSwitch, ValueInput } from './widgets';
+import { Button, SegmentedControl, Slider, ToggleSwitch, ValueInput, syncCollapseToggle } from './widgets';
 import { buildCollapseToggle, PREDICT_TOGGLE_LABELS } from './hud-root';
+import { loadPanelCollapsed, onPanelCollapsedViewChange, savePanelCollapsed } from './panel-shell';
 import { SIM_EPOCH_SEC, fmtDateTime, fmtDuration } from './utils';
 import type { DisplayDurationKey, DisplayPastDurationKey } from '../display-window-manager';
 import type { TickLabelMode } from './calendar-ticks';
@@ -338,7 +339,15 @@ export class PredictPanel {
     const wrap = document.createElement('div');
     wrap.id = 'hud-predict-wrap';
     wrap.appendChild(this.panel);
-    buildCollapseToggle(wrap, 'hud-predict-toggle', '', this.panel, PREDICT_TOGGLE_LABELS);
+    const collapseToggle = buildCollapseToggle(wrap, 'hud-predict-toggle', '', this.panel, PREDICT_TOGGLE_LABELS);
+    const applyCollapsedState = (): void => {
+      const collapsed = loadPanelCollapsed('hud-predict') ?? false;
+      this.panel.classList.toggle('collapsed', collapsed);
+      syncCollapseToggle(collapseToggle, this.panel, PREDICT_TOGGLE_LABELS);
+    };
+    applyCollapsedState();
+    onPanelCollapsedViewChange(applyCollapsedState);
+    collapseToggle.addEventListener('click', () => savePanelCollapsed('hud-predict', this.panel.classList.contains('collapsed')));
     root.appendChild(wrap);
   }
 

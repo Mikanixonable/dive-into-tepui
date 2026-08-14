@@ -8,10 +8,10 @@ import {
   hudRail,
   type CollapseToggleLabels,
 } from './hud-root';
-import { Button } from './widgets';
+import { Button, syncCollapseToggle } from './widgets';
 import type { BodyClassToggles } from '../celestial/body-visibility';
 import type { CelestialGridVisibility } from '../../render/celestial-grid';
-import { loadPanelCollapsed, savePanelCollapsed } from './panel-shell';
+import { loadPanelCollapsed, onPanelCollapsedViewChange, savePanelCollapsed } from './panel-shell';
 
 // クラス別トグルの1行分。orbitKey が null のクラス(衛星・ラグランジュ点)は軌道線ボタンを持たない
 // ——衛星の参照軌道線はフォーカス中の系かどうかで別途決まり、ラグランジュ点はそもそも軌道を持たない。
@@ -149,8 +149,14 @@ export class ViewOptionsPanel {
     const body = document.createElement('div');
     body.className = 'view-options-body';
     this.panel.appendChild(body);
-    body.classList.toggle('collapsed', loadPanelCollapsed('hud-view-options') ?? true);
     const collapseToggle = buildCollapseToggle(titleRow, 'hud-view-options-toggle', 'view-options-collapse', body, VIEW_OPTIONS_COLLAPSE_LABELS);
+    const applyCollapsedState = (): void => {
+      const collapsed = loadPanelCollapsed('hud-view-options') ?? true;
+      body.classList.toggle('collapsed', collapsed);
+      syncCollapseToggle(collapseToggle, body, VIEW_OPTIONS_COLLAPSE_LABELS);
+    };
+    applyCollapsedState();
+    onPanelCollapsedViewChange(applyCollapsedState);
     collapseToggle.addEventListener('click', () => savePanelCollapsed('hud-view-options', body.classList.contains('collapsed')));
 
     // マップに出す天体のクラスごとに、アイコン(点)・ラベル(名前)・軌道線を個別に切り替える。

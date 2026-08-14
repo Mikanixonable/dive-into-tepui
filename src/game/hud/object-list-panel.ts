@@ -8,7 +8,8 @@ import {
   type CollapseToggleLabels,
 } from './hud-root';
 import { LAGRANGE_ID } from './object-groups';
-import { SegmentedControl, ValueInput } from './widgets';
+import { SegmentedControl, ValueInput, syncCollapseToggle } from './widgets';
+import { loadPanelCollapsed, onPanelCollapsedViewChange, savePanelCollapsed } from './panel-shell';
 import type { CelestialRegistry } from '../../physics/solar-system';
 import type { BodyClass } from '../celestial/body-class';
 import type { MapPickable, MapPickKind } from '../map-pickable';
@@ -197,7 +198,15 @@ export class ObjectListPanel {
     const body = document.createElement('div');
     body.className = 'object-list-body';
     this.panel.appendChild(body);
-    buildCollapseToggle(titleRow, 'hud-object-list-toggle', 'object-list-collapse', body, COLLAPSE_LABELS);
+    const collapseToggle = buildCollapseToggle(titleRow, 'hud-object-list-toggle', 'object-list-collapse', body, COLLAPSE_LABELS);
+    const applyCollapsedState = (): void => {
+      const collapsed = loadPanelCollapsed('hud-object-list') ?? false;
+      body.classList.toggle('collapsed', collapsed);
+      syncCollapseToggle(collapseToggle, body, COLLAPSE_LABELS);
+    };
+    applyCollapsedState();
+    onPanelCollapsedViewChange(applyCollapsedState);
+    collapseToggle.addEventListener('click', () => savePanelCollapsed('hud-object-list', body.classList.contains('collapsed')));
     this.breadcrumb = document.createElement('div');
     this.breadcrumb.className = 'object-list-breadcrumb';
     body.appendChild(this.breadcrumb);
