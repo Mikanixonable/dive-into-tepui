@@ -302,13 +302,12 @@ export class PlanArc {
     const sampleInterval = duration / C.PLAN_ARC_MAX_SAMPLES;
 
     let steps = 0;
-    // 重力源と衝突体は、積分先端が ATTRACTOR_REBUILD_SEC 進むごとに1回だけ組み直し、その間は
-    // 据え置く — 据え置いた時間ぶんの天体位置のズレは、この区間の刻み幅そのものが持つ RK4 の
-    // 誤差より小さい。provider は毎回一意な時刻を要求されると暦のキャッシュに当たらないので、
-    // 1ステップごとに引くと区間全体の費用がこの1点で決まってしまう。
-    let held = holdSources(this.provider, trajectory.state.t);
+    // 重力源は各ステップの開始・中点・終了時刻で解決する。月のように速く動く天体を長時間
+    // 据え置くと、月周回の予測が固定された月の重力場を積分してしまうため、天体暦の時刻依存性
+    // を積分へ反映する。
     while (trajectory.state.t < end - EPOCH_EPS) {
-      const startSources = held.sources;
+      const startHeld = holdSources(this.provider, trajectory.state.t);
+      const startSources = startHeld.sources;
       // sweptHermiteSphereToi は開始時点で既に overlap している場合は null を返し、離散判定へ
       // 委譲する契約なので、衝突体全体に対してここでその離散判定を満たす。
       const containing = containingBody(trajectory.state.r, startSources.collision, 0);
@@ -334,8 +333,9 @@ export class PlanArc {
         this.truncated = true;
         break;
       }
+      const midHeld = holdSources(this.provider, trajectory.state.t + dt / 2);
       const stepAttractors = attractorsNearInto(
-        trajectory.state.r, held.classified, this.stepAttractorsScratch,
+        trajectory.state.r, midHeld.classified, this.stepAttractorsScratch,
       );
       const prev = trajectory.state;
       trajectory.step(dt, stepAttractors, C.SHIP_BCINV, C.SHIP_SRP_COEFF, null, sampleInterval, duration);
@@ -352,31 +352,24 @@ export class PlanArc {
         if (crossing?.kind === 'periapsis' && this.periapsisState === null) this.periapsisState = crossing.state;
         if (crossing?.kind === 'apoapsis' && this.apoapsisState === null) this.apoapsisState = crossing.state;
       }
-      // 据え置き期間を跨いだステップだけ、対象を組み直して始終点の顔ぶれが変わる。
-      const startHeld = held;
-      if (trajectory.state.t - held.t >= C.ATTRACTOR_REBUILD_SEC) {
-        held = holdSources(this.provider, trajectory.state.t);
-      }
+      const endHeld = holdSources(this.provider, trajectory.state.t);
       // 区間を跨いだ表面接触は、開始/終了時刻の全 collision body を候補にして掃引判定する。
-      let candidates: readonly Attractor[] = held.sources.collision;
-      if (held !== startHeld) {
-        this.collisionCandidatesById.clear();
-        this.collisionCandidates.length = 0;
-        for (const body of startHeld.sources.collision) {
-          if (this.collisionCandidatesById.has(body.id)) continue;
-          this.collisionCandidatesById.set(body.id, body);
-          this.collisionCandidates.push(body);
-        }
-        for (const body of held.sources.collision) {
-          if (this.collisionCandidatesById.has(body.id)) continue;
-          this.collisionCandidatesById.set(body.id, body);
-          this.collisionCandidates.push(body);
-        }
-        candidates = this.collisionCandidates;
+      this.collisionCandidatesById.clear();
+      this.collisionCandidates.length = 0;
+      for (const body of startHeld.sources.collision) {
+        if (this.collisionCandidatesById.has(body.id)) continue;
+        this.collisionCandidatesById.set(body.id, body);
+        this.collisionCandidates.push(body);
       }
+      for (const body of endHeld.sources.collision) {
+        if (this.collisionCandidatesById.has(body.id)) continue;
+        this.collisionCandidatesById.set(body.id, body);
+        this.collisionCandidates.push(body);
+      }
+      const candidates: readonly Attractor[] = this.collisionCandidates;
       const impact = findImpact(
         prev, trajectory.state, candidates,
-        startHeld.collisionById, held.collisionById, this.impactCandidates,
+        startHeld.collisionById, endHeld.collisionById, this.impactCandidates,
       );
       if (impact) {
         this.impact = impact;
@@ -384,7 +377,7 @@ export class PlanArc {
         break;
       }
       if (isBurnedUp(r, stepAttractors, C.REENTRY_ALT)) {
-        const earth = stepAttractors.find((a) => a.id === 'earth');
+        const earth = endHeld.sources.collision.find((a) => a.id === 'earth');
         if (earth) this.impact = { state: trajectory.state, body: earth };
         this.truncated = true;
         break;
