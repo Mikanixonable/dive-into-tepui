@@ -22,8 +22,8 @@ export class SegmentedControl<T> {
     this.setItems(items);
   }
 
-  // 選択中の値を点灯させる。候補外の値(ラベルメニューから選んだフォーカスなど)では全消灯になる。
-  setSelected(value: T): void {
+  // 選択中の値を点灯させる。候補外の値(ラベルメニューから選んだフォーカスなど)と null では全消灯になる。
+  setSelected(value: T | null): void {
     for (const [v, btn] of this.buttons) btn.setOn(v === value);
   }
 

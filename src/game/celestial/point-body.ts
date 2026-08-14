@@ -18,6 +18,7 @@ import { Billboard } from '../../render/billboard';
 import { CelestialSurface } from '../../render/celestial-surface';
 import { apparentSizePx, showsPhysicalSphere, sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from '../../render/screen-lod';
 import { CelestialBody } from './celestial-body';
+import type { GraphicsSettings } from '../../render/graphics-settings';
 import { RingView } from './ring-view';
 
 // 見かけの明るさ3段階。金星(-4等)・木星(-2等)が bright、水星・火星・土星(0〜+1等台)が
@@ -104,10 +105,14 @@ export class PointBody extends CelestialBody {
   // displayTime 時点の位置へ、視点モードに応じて広範囲視点の実体メッシュか戦闘視点の
   // 輝点ビルボードのどちらかを同期する(常に片方は隠す)。見かけ直径は圧縮前の真の位置から
   // 求め、閾値未満では実体を隠す(戦闘視点は輝点へ切り替え、広範囲視点は輝点も出さない)。
-  sync(fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris): void {
+  sync(
+    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris,
+    graphics: GraphicsSettings,
+  ): void {
     if (!this.group.visible && !this.billboard.mesh.visible) return;
     const pos = ephemeris.positionOf(this.id, displayTime);
-    const apparentDiameterPx = apparentSizePx(2 * this.outerRadius, cameraSystem.activeCameraScale(pos));
+    const apparentDiameterPx = graphics.scaleApparentSize(
+      apparentSizePx(2 * this.outerRadius, cameraSystem.activeCameraScale(pos)));
     if (!showsPhysicalSphere(apparentDiameterPx)) {
       this.hidePhysical();
       if (cameraSystem.overviewMode) {
@@ -124,6 +129,9 @@ export class PointBody extends CelestialBody {
     const orientation = ephemeris.poleAt(this.id, displayTime);
     const axis = orientation === null ? null : new THREE.Vector3(orientation.axis.x, orientation.axis.y, orientation.axis.z);
     const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
+    // 環を切ったときは、帯そのものだけでなく本体表面へ落ちる環の影も消す。
+    const rings = graphics.current.rings ? this.rings : undefined;
+    if (this.ring !== undefined) this.ring.group.visible = rings !== undefined;
     if (cameraSystem.overviewMode) {
       // 広範囲視点は SphereBody と同じ実スケール。
       this.group.position.copy(fo.RtoThreeV3(pos));
@@ -131,14 +139,13 @@ export class PointBody extends CelestialBody {
       this.billboard.hide();
       if (q !== null) this.group.quaternion.set(q.x, q.y, q.z, q.w);
       activeSurface.setRingShadowSystem(
-        this.rings,
+        rings,
         this.group.position,
         this.radius,
         this.radius,
         axis,
       );
-      if (this.ring !== undefined) {
-        this.ring.group.visible = true;
+      if (this.ring !== undefined && rings !== undefined) {
         this.ring.sync(
           this.group.position,
           this.radius,
@@ -166,15 +173,14 @@ export class PointBody extends CelestialBody {
     this.group.scale.set(this.axes.x * k, this.axes.y * k, this.axes.z * k);
     if (q !== null) this.group.quaternion.set(q.x, q.y, q.z, q.w);
     activeSurface.setRingShadowSystem(
-      this.rings,
+      rings,
       this.group.position,
       this.radius,
       scaleFactor,
       axis,
     );
     this.billboard.hide();
-    if (this.ring !== undefined) {
-      this.ring.group.visible = true;
+    if (this.ring !== undefined && rings !== undefined) {
       this.ring.sync(
         this.group.position,
         scaleFactor,

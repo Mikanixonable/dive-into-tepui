@@ -7,6 +7,7 @@ import { R_EARTH, SIDEREAL_DAY } from '../../physics/solar-system';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { CelestialBody } from './celestial-body';
+import type { GraphicsSettings } from '../../render/graphics-settings';
 
 export class EarthBody extends CelestialBody {
   readonly id = 'earth' as const;
@@ -30,7 +31,10 @@ export class EarthBody extends CelestialBody {
   setSpinPhase0(phase0: number): void { this.phase0 = phase0; }
 
   // displayTime 時点の位置・自転角・太陽方向・表面アニメーション・地表LODへ同期する。
-  sync(fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris): void {
+  sync(
+    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris,
+    graphics: GraphicsSettings,
+  ): void {
     if (!this.earth.group.visible) return;
     const pos = ephemeris.positionOf('earth', displayTime);
     this.earth.group.position.copy(fo.RtoThreeV3(pos));
@@ -38,7 +42,9 @@ export class EarthBody extends CelestialBody {
     const sd = ephemeris.sunDirFrom(pos, displayTime);
     this.earth.setSunDir(sd.x, sd.y, sd.z);
     const metersPerPixel = cameraSystem.activeCameraScale(pos);
-    this.earth.syncSurfaceLod(apparentSizePx(2 * R_EARTH, metersPerPixel));
+    this.earth.setAuroraVisible(graphics.current.aurora);
+    this.earth.setAtmosphereVisible(graphics.current.atmosphere);
+    this.earth.syncSurfaceLod(graphics.scaleApparentSize(apparentSizePx(2 * R_EARTH, metersPerPixel)));
     this.earth.tick(displayTime);
   }
 }

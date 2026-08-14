@@ -24,6 +24,7 @@ import { Hud } from './hud/hud';
 import { PauseMenu } from './hud/pause-menu';
 import { Sfx } from '../audio/sfx';
 import { GameScene } from '../render/scene';
+import type { GraphicsSettings } from '../render/graphics-settings';
 import { EnvironmentScene } from './celestial/environment-scene';
 import type { Ephemeris } from '../physics/ephemeris';
 import { ViewManager } from './view-manager';
@@ -98,6 +99,7 @@ export class Game {
     unlockManager: UnlockManager,
     sections: FrameSections,
     ephemeris: Ephemeris,
+    graphics: GraphicsSettings,
     earthSpinPhase0: number,
     initialSave?: GameSaveData,
   ) {
@@ -131,7 +133,7 @@ export class Game {
     this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene);
     this.navTarget = new NavTarget(this._hud, this.markerManager);
     this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
-    this._environment = new EnvironmentScene(this._scene, this.ephemeris, earthSpinPhase0);
+    this._environment = new EnvironmentScene(this._scene, this.ephemeris, graphics, earthSpinPhase0);
     this.activePlayers = new ActivePlayerController(
       initialSave?.activePlayerId, this.entities, this.cameraSystem, this.targeter, this.navTarget, this._sfx,
     );
