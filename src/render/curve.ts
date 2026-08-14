@@ -132,6 +132,7 @@ export class Curve {
   private readonly camFwd = new THREE.Vector3();
   private readonly camPos = new THREE.Vector3();
   private camTanHalfFov = 0;
+  private camOrthoHalfHeight = 0;
   private camNear = 0;
 
   // 現在の初期区間に割り当てられた頂点予算(rebake がこの値までしか subdivide に積ませない)。
@@ -188,9 +189,19 @@ export class Curve {
   private cacheCameraFrame(camera: THREE.Camera): void {
     camera.getWorldDirection(this.camFwd);
     this.camPos.setFromMatrixPosition(camera.matrixWorld);
-    const fovDeg = camera instanceof THREE.PerspectiveCamera ? camera.fov : 50;
-    this.camTanHalfFov = Math.tan((fovDeg * Math.PI) / 360);
-    this.camNear = camera instanceof THREE.PerspectiveCamera ? camera.near : MIN_DEPTH;
+    if (camera instanceof THREE.PerspectiveCamera) {
+      this.camTanHalfFov = Math.tan((camera.fov * Math.PI) / 360);
+      this.camOrthoHalfHeight = 0;
+      this.camNear = camera.near;
+    } else if (camera instanceof THREE.OrthographicCamera) {
+      this.camTanHalfFov = 0;
+      this.camOrthoHalfHeight = (camera.top - camera.bottom) * 0.5;
+      this.camNear = camera.near;
+    } else {
+      this.camTanHalfFov = Math.tan((50 * Math.PI) / 360);
+      this.camOrthoHalfHeight = 0;
+      this.camNear = MIN_DEPTH;
+    }
   }
 
   // local 座標(sample が返す座標系、pivot 差し引き前)の点における m/px を返す。
@@ -209,6 +220,7 @@ export class Curve {
     const effective = depth >= this.camNear
       ? depth
       : Math.max(this.camNear, Math.sqrt(dx * dx + dy * dy + dz * dz));
+    if (this.camOrthoHalfHeight > 0) return (2 * this.camOrthoHalfHeight) / window.innerHeight;
     return metersPerPixelFromTanHalfFov(this.camTanHalfFov, effective, window.innerHeight);
   }
 

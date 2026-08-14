@@ -11,6 +11,7 @@ import {
 import { Button } from './widgets';
 import type { BodyClassToggles } from '../celestial/body-visibility';
 import type { CelestialGridVisibility } from '../../render/celestial-grid';
+import { loadPanelCollapsed, savePanelCollapsed } from './panel-shell';
 
 // クラス別トグルの1行分。orbitKey が null のクラス(衛星・ラグランジュ点)は軌道線ボタンを持たない
 // ——衛星の参照軌道線はフォーカス中の系かどうかで別途決まり、ラグランジュ点はそもそも軌道を持たない。
@@ -44,7 +45,7 @@ const ENTITY_ROWS: readonly BodyClassRow[] = [
   { label: '基地', categoryKey: 'baseVisible', iconKey: 'baseIcon', labelKey: 'baseLabel', orbitKey: 'baseOrbit' },
 ];
 
-// 天球グリッドのカテゴリー(黄道・赤道)1行分。各カテゴリーは面・極・グリッドの3トグルを持つ。
+// 天球グリッドのカテゴリー(黄道・赤道・月軌道)1行分。各カテゴリーは面・極・グリッドの3トグルを持つ。
 interface GridToggleGroup {
   readonly categoryKey: keyof CelestialGridVisibility;
   readonly label: string;
@@ -59,6 +60,10 @@ const GRID_TOGGLE_GROUPS: readonly GridToggleGroup[] = [
   {
     categoryKey: 'equator', label: '赤道',
     items: [['equatorPlane', '⌒', '赤道面'], ['equatorPole', DIRECTION_GLYPH.axis, '赤道極'], ['equatorGrid', '⊞', '赤道グリッド']],
+  },
+  {
+    categoryKey: 'moonOrbit', label: '月軌道',
+    items: [['moonOrbitPlane', '⌒', '月軌道面'], ['moonOrbitPole', DIRECTION_GLYPH.axis, '月軌道極'], ['moonOrbitGrid', '⊞', '月軌道グリッド']],
   },
 ];
 
@@ -117,6 +122,7 @@ export class ViewOptionsPanel {
 
   private readonly gridButtons: readonly (readonly [keyof CelestialGridVisibility, Button])[];
   private readonly gridCategoryButtons: readonly (readonly [keyof CelestialGridVisibility, Button, HTMLElement, readonly Button[]])[];
+  private readonly starsButton: Button;
   private readonly gridCurrent = new Map<keyof CelestialGridVisibility, boolean>();
 
   private readonly panel: HTMLElement;
@@ -137,7 +143,9 @@ export class ViewOptionsPanel {
     const body = document.createElement('div');
     body.className = 'view-options-body';
     this.panel.appendChild(body);
-    buildCollapseToggle(titleRow, 'hud-view-options-toggle', 'view-options-collapse', body, VIEW_OPTIONS_COLLAPSE_LABELS);
+    body.classList.toggle('collapsed', loadPanelCollapsed('hud-view-options') ?? true);
+    const collapseToggle = buildCollapseToggle(titleRow, 'hud-view-options-toggle', 'view-options-collapse', body, VIEW_OPTIONS_COLLAPSE_LABELS);
+    collapseToggle.addEventListener('click', () => savePanelCollapsed('hud-view-options', body.classList.contains('collapsed')));
 
     // マップに出す天体のクラスごとに、アイコン(点)・ラベル(名前)・軌道線を個別に切り替える。
     // 恒星・惑星と、フォーカス中の系の親子は常に出るので、ここで足すのは「その外まで見たい」
@@ -214,7 +222,7 @@ export class ViewOptionsPanel {
     this.bodyClassButtons = bodyClassButtons;
     this.bodyClassCategoryButtons = bodyClassCategories;
 
-    // 天球グリッド(黄道・赤道)。天体クラスと同じ行の形(見出し+アイコン列)を流用する。
+    // 天球グリッド(黄道・赤道・月軌道)。天体クラスと同じ行の形(見出し+アイコン列)を流用する。
     const gridButtons: (readonly [keyof CelestialGridVisibility, Button])[] = [];
     const gridCategories: (readonly [keyof CelestialGridVisibility, Button, HTMLElement, readonly Button[]])[] = [];
     appendSectionHeading(body, '参照面', GRID_COLUMNS);
@@ -241,6 +249,20 @@ export class ViewOptionsPanel {
     }
     this.gridButtons = gridButtons;
     this.gridCategoryButtons = gridCategories;
+
+    const environmentHeading = document.createElement('div');
+    environmentHeading.className = 'view-options-section-heading';
+    const environmentTitle = document.createElement('span');
+    environmentTitle.className = 'view-options-section-title';
+    environmentTitle.textContent = '環境';
+    environmentHeading.appendChild(environmentTitle);
+    body.appendChild(environmentHeading);
+    const starsRow = document.createElement('div');
+    starsRow.className = 'body-class-row grid-class-row';
+    this.starsButton = this.toggleButton('星空', '星空を表示', 'stars', this.gridCurrent, (key, on) => this.onGridToggle?.(key, on));
+    this.starsButton.element.classList.add('body-class-title');
+    starsRow.appendChild(this.starsButton.element);
+    body.appendChild(starsRow);
 
     hudRail(root, 'left').appendChild(this.panel);
   }
@@ -284,6 +306,8 @@ export class ViewOptionsPanel {
 
   // 天球グリッドのトグル表示状態を現在値へ合わせる。
   public setGridVisibility(visibility: CelestialGridVisibility): void {
+    this.gridCurrent.set('stars', visibility.stars);
+    this.starsButton.setOn(visibility.stars);
     for (const [key, btn] of this.gridButtons) {
       const on = visibility[key];
       this.gridCurrent.set(key, on);

@@ -160,6 +160,8 @@ body.touch-ui-active #hud-status .status-throttle-touch { display: flex; }
   flex: 0 0 42px; color: var(--text-dim); font-size: var(--font-xs); letter-spacing: 1px;
 }
 #hud .hud-frame-controls .camera-fov-control .w-slider { flex: 1 1 auto; min-width: 60px; }
+#hud .hud-frame-controls .camera-fov-control .w-slider:disabled,
+#hud .hud-frame-controls .camera-fov-control .w-input:disabled { opacity: .4; cursor: not-allowed; }
 #hud .hud-frame-controls .camera-fov-control .w-input { width: 54px; }
 #hud .hud-frame-controls .camera-control-unit { color: var(--text-dim); font-size: var(--font-xs); }
 #hud .hud-frame-controls .camera-reference-view-buttons { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); }

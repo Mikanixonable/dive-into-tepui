@@ -51,7 +51,7 @@ export class FlashEffectManager {
 
   // 生存中のフラッシュを現在の位置・寿命進捗・カメラ向きへ同期し、InstancedPool へ積む。
   // zoomActive はガンサイトズーム中かどうか(dimsInGunsight なフラッシュだけ減光する)。
-  syncFlashEffects(fo: FloatingOrigin, activeCamera: THREE.PerspectiveCamera, zoomActive: boolean): void {
+  syncFlashEffects(fo: FloatingOrigin, activeCamera: THREE.Camera, zoomActive: boolean): void {
     this.pool.beginFrame();
     const camQuat = activeCamera.quaternion;
     for (const fx of this.effects) {

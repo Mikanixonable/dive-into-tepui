@@ -168,21 +168,27 @@ export class EnvironmentScene {
     } else {
       this.pointFieldView?.sync(floatingOrigin, false, true);
     }
-    this.syncStars(cameraSystem);
+    this.syncStars(cameraSystem, gridVisibility.stars);
     this.syncReferenceLines(
       displayTime, floatingOrigin, cameraSystem.overviewMode,
       focusTargetId(cameraSystem.overviewCamera.focus), cameraSystem.bodyClassToggles,
       visibilityPolicy, nearbyIds, cameraSystem.activeCamera, cameraSystem.activeCameraPos);
     this.celestialGrid.sync(
       gridVisibility, cameraSystem.activeCamera,
-      cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
+      cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0,
+      'moon' in this.ephemeris.registry ? this.toThreeNormal(this.ephemeris.orbitNormalAt('moon', displayTime)) : undefined);
   }
 
   // 星球はカメラに追従する固定半径の殻。広範囲視点では CELESTIAL_SHELL_RADIUS まで拡大する
   // (far は dist に連動して毎フレーム変わるため、殻の拡大率はそこから独立させる)。
-  private syncStars(cameraSystem: CameraSystem): void {
+  private syncStars(cameraSystem: CameraSystem, visible = true): void {
     this.starsMesh.position.copy(cameraSystem.activeCamera.position);
     this.starsMesh.scale.setScalar(cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
+    this.starsMesh.visible = visible;
+  }
+
+  private toThreeNormal(normal: Vec3): THREE.Vector3 {
+    return new THREE.Vector3(normal.x, normal.y, normal.z).normalize();
   }
 
   // 広範囲視点のときだけ参照軌道線を表示する(戦闘ビューでは非表示)。cameraPos はフェード
