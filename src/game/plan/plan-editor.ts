@@ -339,7 +339,7 @@ export class PlanEditor {
     // その位置に最初に到達する時刻(= referenceT を -Infinity にして最早時刻)を選ぶ。
     const picked = this.planDisplay.path.nearestSample(mx, my, C.NODE_PICK_PX, -Infinity);
     if (picked) {
-      this.selectNewNode(ship.plan.addNode(picked.state));
+      this.selectNewNode(ship.plan.addNode(picked.state, ship.state));
       return;
     }
 
@@ -375,7 +375,7 @@ export class PlanEditor {
       this._hud.hint('この時刻の計画軌道が求まりません');
       return;
     }
-    this.selectNewNode(ship.plan.addNode(sample));
+    this.selectNewNode(ship.plan.addNode(sample, ship.state));
   }
 
   // addNode の結果を選択する。計画の起点より前は置けないので、その場合は理由を伝える。
@@ -419,7 +419,10 @@ export class PlanEditor {
     const node = ship.plan.nodes[idx];
     if (!node) return;
     const arriving = this.planDisplay.path.arrivalStates();
-    const picked = this.planDisplay.path.nearestSample(clientX, clientY, Infinity, node.t, ship.plan.nodeTimeRange(idx, this.ephemeris, this.displayDuration));
+    const picked = this.planDisplay.path.nearestSample(
+      clientX, clientY, Infinity, node.t,
+      ship.plan.nodeTimeRange(idx, this.ephemeris, this.displayDuration) ?? undefined,
+    );
     if (picked) {
       this.selectedNode = ship.plan.replaceNode(
         idx, this.rebuildDraggedNode(picked.state, picked.arcIdx, idx, arriving) ?? picked.state,
@@ -691,7 +694,8 @@ export class PlanEditor {
   }
 
   // 計画パネルの HTML を、現在のノード列と選択中ノードから組み直す。
-  private syncPanel(plan: Plan, simTime: number): void {
+  private syncPanel(ship: Player, simTime: number): void {
+    const plan = ship.plan;
     const arriving = this.planDisplay.path.arrivalStates();
     const nodes = plan.nodes.map((n, i) => ({
       tRel: n.t - simTime,
@@ -702,7 +706,7 @@ export class PlanEditor {
     let selEl: OrbitalElements | null = null;
     let localDv: Vec3 | null = null;
     // 高度・大気圏警告の基準は、選択中ノード(無ければ計画の起点)で最も強く引く天体。
-    const centerState = (this.selectedNodeIdx !== null ? plan.nodes[this.selectedNodeIdx] : null) ?? plan.anchor;
+    const centerState = (this.selectedNodeIdx !== null ? plan.nodes[this.selectedNodeIdx] : null) ?? plan.anchor ?? ship.state;
     const center = strongestAttractor(centerState.r, this.ephemeris.attractorsAt(centerState.t));
     if (this.selectedNodeIdx !== null) {
       const node = plan.nodes[this.selectedNodeIdx];
@@ -755,8 +759,6 @@ export class PlanEditor {
       this.lastSeenShip = ship;
       this.closeMenu();
     }
-    // 計画が空の間だけアンカーを自機へ追従させる。この後の planDisplay.update が起点として読む。
-    ship?.plan.trackAnchor(ship.state);
     this.simTime = displayWindow.simTime;
     const excludedIds = ship === null ? [] : [ship.id];
     // revision は前フレームの終端(lastPlanEnd)を基準に畳み込む — 今フレームの終端は
@@ -796,7 +798,7 @@ export class PlanEditor {
     const ship = this.ship;
     if (ship !== null && this.editMode) {
       this.syncGizmo(ship.plan, mapDist, fo);
-      this.syncPanel(ship.plan, simTime);
+      this.syncPanel(ship, simTime);
     }
   }
 
@@ -813,7 +815,7 @@ export class PlanEditor {
   private get visibleStart(): KinematicState | null {
     const ship = this.ship;
     if (ship === null) return null;
-    return this.editMode || ship.plan.nodes.length > 0 ? ship.plan.anchor : null;
+    return this.editMode || ship.plan.nodes.length > 0 ? (ship.plan.anchor ?? ship.state) : null;
   }
 
   // パネルとギズモを隠し、実質 Δv がゼロの末尾ノードを間引いて計画を整理する。

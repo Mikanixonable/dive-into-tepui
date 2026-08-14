@@ -95,10 +95,9 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
   - sections.enter(SECTION.plan)
   - editor.update(displayWindow) // 計画折れ線の再積分とアプシスアイコン(赤道交点の更新/mapPicker.refresh より前)
     - [activePlayers.current が前フレームと違う] closeMenu() // 前の艦のノードに対して開いたままのメニューを畳む。選択中ノードは参照解決なので自然に外れる
-    - [activePlayers.current あり] plan.trackAnchor(活性艦.state) // ノードが0件のときだけ実効(1件目を置くとアンカーは凍結される)。この後の path.update が起点として読む
     - excludedIds = activePlayers.current ? [活性艦.id] : []
     - planProvider = planAttractorProvider(ephemeris, entities, excludedIds, planSourceRevision(entities, excludedIds, plan?.revision ?? 0, lastPlanEnd, displayWindow.simTime)) // 続く path.update より前に組む。今フレームの計画終端は path.update がこれから決めるので、revision の量子化は前フレームの終端(PlanPath.timeRange().max = lastPlanEnd)を基準にする。revision が前回と同じで起点・終端・基準天体も動いていない区間は再積分せず前回の積分結果を使う
-    - path.update() // 起点とノード列を区間へ分解。表示座標系と un-bake 時刻もここで確定。buildSegments は末尾区間の起点時刻の天体窓を1回だけ引き、区間長(segmentDurationFrom)と基準天体(strongestAttractor → Segment.apsisCenter)の両方をそこから決める
+    - path.update() // 起点(計画が凍結していれば plan.anchor、していなければ自機の現在状態)とノード列を区間へ分解。表示座標系と un-bake 時刻もここで確定。buildSegments は末尾区間の起点時刻の天体窓を1回だけ引き、区間長(segmentDurationFrom)と基準天体(strongestAttractor → Segment.apsisCenter)の両方をそこから決める
       - [区間ごと] arc.represents(state0, end, sourceRevision, apsisCenterId, tracksLiveAnchor) // 既存 arc が今フレームの区間をそのまま表せるか。sourceRevision/apsisCenterId の不一致・積分済みサンプル間隔の粗さのいずれかで false
         - [false、または対応する arc がまだ無い] new PlanArc(state0, end, provider, apsisCenter) // constructor が end まで同期的に DynamicTrajectory で RK4 積分(重い)。刻み幅ごとの重力源は classifyAttractors(mergeAttractors(gravityBodiesAt(ephemeris, t), dynamicAttractors)) → attractorsNear — 実積分・予測と同じ組み立て。dynamicAttractors は provider が entities.attractors() を1回だけ求めて渡す(区間長は最大1年に及び、そのあいだの位置を EntityManager には問えないので現在の実状態で固定する)。末尾区間だけ apsisCenter(区間起点の重力源スナップショット)が渡り、積分の各ステップ対で apsisCrossing による近地点/遠地点検出が走る
         - [true] arc.setEnd(end) // 終端だけ動かす。積分先端が要求終端にサンプル間隔未満まで届いていなければ integrateTo() で先端から継ぎ足す(区間を作り直さない)。届いていれば何もしない
