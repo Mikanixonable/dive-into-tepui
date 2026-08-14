@@ -214,7 +214,6 @@ export class OverviewCamera {
     mouse: MouseDelta,
     keyYaw: number,
     keyPitch: number,
-    keyRoll: number,
     dt: number,
     simTime: number,
     candidates: readonly MapPickable[],
@@ -249,7 +248,7 @@ export class OverviewCamera {
     // 視点方向が変わったぶん上方向を再直交化してから、視線軸まわりにロールを加える。
     const newDir = norm(offEci);
     upEci = norm(addScaled(upEci, newDir, -dot(upEci, newDir)));
-    if (keyRoll !== 0) upEci = qRotate(qFromAxisAngle(newDir, keyRoll * C.CAM_KEY_ROLL_RATE * dt), upEci);
+    if (mouse.roll !== 0) upEci = qRotate(qFromAxisAngle(newDir, mouse.roll), upEci);
 
     // 中ボタンドラッグ/2本指ドラッグでパン変位を更新する
     if (mouse.panDx !== 0 || mouse.panDy !== 0) {
