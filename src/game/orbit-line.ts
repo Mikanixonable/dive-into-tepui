@@ -2,7 +2,8 @@
 // フローティングオリジンによる Object3D 平行移動でその天体の ECI 位置へ置く。どの天体を
 // 中心に描くかは OrbitalElements 自身が持つため、呼び出し側が外側で選び直すことはできない。
 // 頂点の再サンプリングは軌道要素が閾値を超えて変化したときだけ行う。解像度そのものの決定
-// (画面上のサジッタに応じた適応分割)は Curve に委ねる。
+// (画面上のサジッタに応じた適応分割)は Curve に委ねる。楕円は天体自身の現在位置を貫くが、
+// 天体メッシュは不透明・深度書き込み有りで先に描かれるため、深度テストだけで天体が手前に残る。
 import * as THREE from 'three/webgpu';
 import { OrbitalElements } from '../physics/elements';
 import { Vec3 } from '../physics/vec3';
@@ -18,13 +19,6 @@ const TOL_SMA = 3e-4; // 長半径の相対変化
 const TOL_ECC = 3e-4; // 離心率の変化
 const TOL_PLANE = Math.cos((0.12 * Math.PI) / 180); // 軌道面法線の角変化
 const TOL_APSE = Math.cos((0.3 * Math.PI) / 180); // 近点方向の角変化(e が大きいときのみ)
-
-// この楕円上に乗っている天体(参照軌道線が表す天体そのもの)。position は軌道線と同じ
-// 中心天体相対座標、radius は物理半径 [m]。角度近似ではなく実際の線分と球の距離で除外する。
-export interface OrbitLineExcludeNearBody {
-  readonly position: Vec3;
-  readonly radius: number;
-}
 
 export class OrbitLine {
   private readonly curve: Curve;
@@ -59,10 +53,13 @@ export class OrbitLine {
   // renderOrder は、この線が他の線と重なったときにどちらを手前へ描くかを決める —
   // 透明描画どうしの前後は描画順でしか決まらない。
   constructor(color: string | number, opacity = 0.5, renderOrder = 0) {
-    this.curve = new Curve({
-      color, opacity, renderOrder, maxVertices: MAX_VERTICES, perVertexFade: true,
-    });
+    this.curve = new Curve({ color, opacity, renderOrder, maxVertices: MAX_VERTICES });
     this.line = this.curve.object;
+  }
+
+  // 不透明度を書き換える。天体からの距離に応じて描画側がフェードさせる。
+  setOpacity(opacity: number): void {
+    this.curve.setOpacity(opacity);
   }
 
   // 離心近点角 E=t·2π を軌道要素で位置へ写す、閉曲線サンプラ。
@@ -82,13 +79,8 @@ export class OrbitLine {
 
   // 毎フレーム呼ぶ。fo = 描画のフローティングオリジン、camera = 画面上のサジッタを実距離へ
   // 換算するための描画カメラ。force = 要素が能動的に変化している間(推力中・ノード編集中)は
-  // true。excludeNearBody は、この楕円上に乗っている天体自身の位置と半径 — その天体のメッシュ
-  // と深度が競合してチラつくのを避けるため、天体に近づくほど線を薄くし、完全に透明になる
-  // 内側は描画自体から外す。
-  sync(
-    el: OrbitalElements | null, fo: FloatingOrigin, camera: THREE.Camera, force = false,
-    excludeNearBody?: OrbitLineExcludeNearBody,
-  ): void {
+  // true。
+  sync(el: OrbitalElements | null, fo: FloatingOrigin, camera: THREE.Camera, force = false): void {
     if (!el || el.e >= 0.98 || !isFinite(el.a) || el.a <= 0) {
       this.snap = null;
       this.applyVisible();
@@ -105,13 +97,7 @@ export class OrbitLine {
       this.lastRegen = performance.now();
     }
 
-    this.curve.setCurve(this.sampler, {
-      revision: this.revision,
-      camera,
-      excludeSphere: excludeNearBody
-        ? { center: new THREE.Vector3(excludeNearBody.position.x, excludeNearBody.position.y, excludeNearBody.position.z), radius: excludeNearBody.radius }
-        : undefined,
-    });
+    this.curve.setCurve(this.sampler, { revision: this.revision, camera });
     this.applyVisible();
   }
 

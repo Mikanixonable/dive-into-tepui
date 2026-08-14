@@ -32,12 +32,10 @@ interface ImpactIcon {
   readonly label: string;
 }
 
-// ルーラー目盛マーカー。rank/tangent は sync 側の間引き・向き決めに使う。tangent は
-// pos と同じ表示座標系での折れ線の接線方向(PlanPath.toDisplayTangent)。
+// ルーラー目盛マーカー。rank は sync 側の間引き・大きさ決めに使う。
 interface PlanTickIcon {
   readonly key: string;
   readonly pos: Vec3;
-  readonly tangent: Vec3;
   readonly rank: TickRank;
   readonly label: string;
 }
@@ -46,10 +44,11 @@ interface PlanTickIcon {
 // 上限で足りる。
 const IMPACT_MARKER_KEYS = ['planImpact0', 'planImpact1', 'planImpact2'] as const;
 
-// 長さ length[px] の縦線目盛の SVG。投影点を中心に置く前提(CSS 側の .mk 枠中央揃えに乗せる)。
-function tickSvg(length: number): string {
-  return `<svg width="2" height="${length}" viewBox="0 0 2 ${length}">`
-    + `<line x1="1" y1="0" x2="1" y2="${length}" stroke="currentColor" stroke-width="1.5"/></svg>`;
+// 半径 radius[px] の点目盛の SVG。投影点を中心に置く前提(CSS 側の .mk 枠中央揃えに乗せる)。
+function tickSvg(radius: number): string {
+  const size = radius * 2;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">`
+    + `<circle cx="${radius}" cy="${radius}" r="${radius}" fill="currentColor"/></svg>`;
 }
 
 // 2点間のスクリーン距離の2乗。
@@ -118,7 +117,7 @@ export class PlanDisplay {
     this.syncGhost(project);
     this.syncApsisMarkers(project, overviewMode, cameraPos);
     this.syncImpactMarkers(project);
-    this.syncTickMarkers(project, scale);
+    this.syncTickMarkers(project);
   }
 
   // 計画折れ線・ゴーストマーカー・アプシスアイコンを非表示にする。
@@ -241,7 +240,7 @@ export class PlanDisplay {
   }
 
   // 表示中の折れ線が暦の区切り(時・日・月・年)を跨ぐ地点の目盛候補。実際に出すかどうかの
-  // 間引き・向き決めは画面判定が要るので sync 側(syncTickMarkers)の仕事。
+  // 間引きは画面判定が要るので sync 側(syncTickMarkers)の仕事。
   private tickIconsOf(): readonly PlanTickIcon[] {
     const range = this.path.timeRange();
     if (!range) return [];
@@ -256,7 +255,6 @@ export class PlanDisplay {
       icons.push({
         key: `planTick:${b.unix}`,
         pos: this.path.toDisplay(state.r, t),
-        tangent: this.path.toDisplayTangent(state, t),
         rank: b.rank,
         label: tickLabel(b.unix, b.rank),
       });
@@ -290,7 +288,7 @@ export class PlanDisplay {
   // 採否を決め、既に採用済みの目盛から PLAN_TICK_MIN_PX 未満しか離れない候補は捨てる —
   // 離心軌道では近地点付近と遠地点付近で候補の画面間隔が桁違いになるため、区間全体で
   // 一つの単位に揃えず、この局所判定に任せることで区間ごとに異なる単位が選ばれてよい。
-  private syncTickMarkers(project: ProjectFn, scale: ScaleFn): void {
+  private syncTickMarkers(project: ProjectFn): void {
     const icons = this.tickIcons;
     const n = icons.length;
     const projected = icons.map((icon) => project(icon.pos));
@@ -305,15 +303,15 @@ export class PlanDisplay {
       }
     }
 
-    // 実際に採用された目盛のうち最も細かい階数を基準に、相対的な深さで長さを決める
-    // — 基準を相対にすることで、単位が切り替わっても目盛の平均的な長さは変わらず、
-    // 切り替わり地点そのものだけが長さの違いとして目に付く。
+    // 実際に採用された目盛のうち最も細かい階数を基準に、相対的な深さで大きさを決める
+    // — 基準を相対にすることで、単位が切り替わっても目盛の平均的な大きさは変わらず、
+    // 切り替わり地点そのものだけが大きさの違いとして目に付く。
     let finestShown: TickRank | null = null;
     for (let i = 0; i < n; i++) {
       if (shown[i] && (finestShown === null || icons[i]!.rank < finestShown)) finestShown = icons[i]!.rank;
     }
     const labelMinPxSq = C.PLAN_TICK_LABEL_MIN_PX ** 2;
-    const maxDepth = C.PLAN_TICK_LENGTH_PX.length - 1;
+    const maxDepth = C.PLAN_TICK_RADIUS_PX.length - 1;
 
     for (let i = 0; i < n; i++) {
       const icon = icons[i]!;
@@ -321,11 +319,9 @@ export class PlanDisplay {
       const p = projected[i]!;
       const depth = finestShown === null ? 0 : Math.min(Math.max(icon.rank - finestShown, 0), maxDepth);
       const label = this.isFarFromShown(projected, shown, i, labelMinPxSq) ? icon.label : '';
-      const along = this.markerManager.headingRotationDeg(icon.pos, icon.tangent, project, scale);
-      const rotationDeg = along === undefined ? undefined : along + 90;
       this.markerManager.set(
-        icon.key, 'mk-plantick', tickSvg(C.PLAN_TICK_LENGTH_PX[depth]!), p.x, p.y, true,
-        label, 1, undefined, rotationDeg, true,
+        icon.key, 'mk-plantick', tickSvg(C.PLAN_TICK_RADIUS_PX[depth]!), p.x, p.y, true,
+        label, 1, undefined, undefined, true,
       );
     }
     // 候補の暦区切り自体が前フレームと入れ替わった分は hide でなく remove で消す

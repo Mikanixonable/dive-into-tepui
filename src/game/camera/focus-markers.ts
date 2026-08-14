@@ -111,11 +111,9 @@ export class FocusMarkers {
         labelPriority: LABEL_PRIORITY[bodyClassOf(registry, id)], depth,
         showIcon: false, showLabel: false, pickable: true,
       });
-      const primary = primaryOf(registry, id);
-      const prefix = `${primary === null ? celestialBodyName(id) : celestialBodyName(primary)}-${celestialBodyName(id)}`;
       for (const n of pointsOf.get(id) ?? []) {
         labels.push({
-          id: `${id}-l${n}`, name: `${prefix} L${n}`, pos: v3(0, 0, 0),
+          id: `${id}-l${n}`, name: `L${n}\n${id}`, pos: v3(0, 0, 0),
           kind: 'body', isLagrange: true, labelPriority: LABEL_PRIORITY.lagrange, depth: depth + 1,
           showIcon: false, showLabel: false, pickable: true,
         });
@@ -163,13 +161,11 @@ export class FocusMarkers {
     for (const { id, points } of this.lagrangeSources) {
       if (!visibilityPolicy.body(id).category) continue;
       const l = ephemeris.lagrangeAt(id, t);
-      const primary = primaryOf(ephemeris.registry, id);
-      const prefix = `${primary === null ? celestialBodyName(id) : celestialBodyName(primary)}-${celestialBodyName(id)}`;
       for (const n of points) {
         const lagrangeId = `${id}-l${n}`;
         if (visibilityPolicy.body(lagrangeId).pickable) {
           this.cacheBodyPickable(
-            lagrangeId, `${prefix} L${n}`, l[`L${n}`], drawn.get(lagrangeId) ?? true,
+            lagrangeId, `L${n}\n${id}`, l[`L${n}`], drawn.get(lagrangeId) ?? true,
           );
         }
       }
@@ -332,7 +328,7 @@ export class FocusMarkers {
       // フォーカス対象の存在表示が崩れる。
       lbl.pickable = lbl.showIcon || !hiddenByPriority.has(lbl.id);
       this.markerManager.setPosition(
-        lbl.id, 'mk-poi', lbl.showIcon ? ENTITY_GLYPH.body : '', lbl.pos, project,
+        lbl.id, lbl.isLagrange ? 'mk-poi mk-lagrange' : 'mk-poi', lbl.showIcon ? ENTITY_GLYPH.body : '', lbl.pos, project,
         lbl.showLabel && !hiddenByPriority.has(lbl.id) ? lbl.name : '',
       );
     }
