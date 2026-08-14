@@ -82,7 +82,7 @@ export class ChaseCamera {
   // キー/マウス入力から rot/dist を更新し、対象の状態から viewpoint を組み直す。target が
   // null なら(操作対象艦が居ない)何もせず、viewpoint は直前の値のまま凍結する。
   update(
-    mouse: MouseDelta, keyYaw: number, keyPitch: number, keyRoll: number, dt: number,
+    mouse: MouseDelta, keyYaw: number, keyPitch: number, dt: number,
     target: GameEntity | null,
   ): void {
     if (!target) return;
@@ -94,7 +94,7 @@ export class ChaseCamera {
 
     if (keyYaw !== 0) q = qMul(qFromAxisAngle(up, -keyYaw * C.CAM_KEY_YAW_RATE * dt), q);
     if (keyPitch !== 0) q = qMul(qFromAxisAngle(right, keyPitch * C.CAM_KEY_PITCH_RATE * dt), q);
-    if (keyRoll !== 0) q = qMul(qFromAxisAngle(view, keyRoll * C.CAM_KEY_ROLL_RATE * dt), q);
+    if (mouse.roll !== 0) q = qMul(qFromAxisAngle(view, mouse.roll), q);
 
     // ドラッグベクトルと視線ベクトルの外積を回転軸とする: 軸は視線と直交するので視線まわりの
     // ロールが生じず、「カメラから見て」ドラッグ方向とカメラの回転方向が一致する。

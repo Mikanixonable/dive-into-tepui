@@ -184,12 +184,13 @@ export class CameraSystem {
     const mouse = { ...input.mouse() };
     mouse.panDx += keyPanX * C.CAM_KEY_PAN_RATE * dt;
     mouse.panDy += keyPanY * C.CAM_KEY_PAN_RATE * dt;
+    mouse.roll += keyRoll * C.CAM_KEY_ROLL_RATE * dt;
 
     if (this.overviewMode) {
-      this.overviewCamera.update(mouse, keyYaw, keyPitch, keyRoll, dt, simTime, mapPickables, attractors);
+      this.overviewCamera.update(mouse, keyYaw, keyPitch, dt, simTime, mapPickables, attractors);
     }
     else {
-      this.combatCamera.update(mouse, keyYaw, keyPitch, keyRoll, dt, player, input);
+      this.combatCamera.update(mouse, keyYaw, keyPitch, dt, player, input);
     }
   }
 

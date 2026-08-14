@@ -241,7 +241,11 @@ ESC の持ち主は `Game.handleInput`(`game.ts`)の1箇所だけ——`input.ta
    ビューでも常設のパネルを載せるので、レールの折りたたみ(マップの収納機構)が戦闘ビューの
    パネルを巻き込んで消してはならない。
 2. **戦闘シェルフ(`#hud-combat-shelf`)** — SHIP STATUS/ORBIT/CONTACTS の常設計器の横並び。
-   これも flex フローで、個々のパネルは `position: relative`。
+   これも flex フローで、個々のパネルは `position: relative`。絶対座標は `#hud-combat-shelf` 自身
+   ではなく、その親 `#hud-combat-shelf-wrap`(`hud-root.ts` の `buildInfoPanels` が組む)が持つ——
+   シェルフ全体を1つの `buildCollapseToggle`(`#hud-combat-shelf-toggle`)でまとめて畳めるように、
+   トグルをシェルフの外側(wrap の直接の子)に置くための分割で、シェルフを畳んでもトグル自身は
+   隠れない。個々のパネルの折りたたみ(`PanelShell`)とは独立な、もう一段上の折りたたみ。
 3. **中央モーダル(`OverlayManager` の `kind: 'modal'`)** — 画面全体を覆う/画面中央に寄せる
    全画面 UI。`DockView`(`position: fixed; inset: 0`)・`SaveBrowser`(`inset:0` の scrim +
    中央寄せパネル)・`ResultScreen`・`HelpPanel`・`PauseMenu`(いずれも `top/left:50%` +
@@ -252,7 +256,7 @@ ESC の持ち主は `Game.handleInput`(`game.ts`)の1箇所だけ——`input.ta
 **リテラルな `top`/`left`/`right`/`bottom` の絶対座標直書きが許されるのは、置き場に参加しない
 ④画面固定バッジと、③中央モーダルの中央寄せそのもの(`top/left:50%+transform` または `inset:0`の
 どちらかの定型)だけ**——①②に乗るパネル自身は `position: relative` のままで、置き場のコンテナ
-(`.hud-rail`/`#hud-combat-shelf`)が絶対座標を持つ。ある要素をどの種に属させるか迷ったら、
+(`.hud-rail`/`#hud-combat-shelf-wrap`)が絶対座標を持つ。ある要素をどの種に属させるか迷ったら、
 「動かせる/畳める/レイアウトに参加すべきか」で判断する——参加すべきなら①か②、一点固定でよいものだけ
 ④。
 

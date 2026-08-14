@@ -18,7 +18,8 @@ export const SKELETON_STYLE = `
 /* 読み取りたい数値は選択できるようにするが、操作部品とマーカーは対象外にする —
    ボタンの連打やカメラドラッグのたびにラベルが選択されると操作の邪魔になる。 */
 #hud .ctx-menu-item,
-#hud .mk, #hud .rail-toggle, #hud-chase-reset, #hud-viewbadge .vb-view-btn { user-select: none; }
+#hud .mk, #hud .rail-toggle, #hud-combat-shelf-toggle, #hud-chase-reset,
+#hud-viewbadge .vb-view-btn { user-select: none; }
 ${OVERLAY_LAYER_STYLE}
 /* #hud 直下の兄弟同士の重なり順は overlay-layer.ts のレイヤが持つ。
    マーカー内優先度: タッチ長押し(5) > 宇宙船(4) > 敵(3) > 弾薬(2) > 軌道要素・その他(1) > デフォルト(0) */
@@ -79,11 +80,11 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
    カメラドラッグとの競合はレールが奪ってよい(レールは置き場であって 3D 操作面ではない)。
    常時 auto にすると、マップ以外でパネルが1枚も無い空のレールが背後のカメラ操作を阻害する。 */
 #hud.map-mode .hud-rail { pointer-events: auto; touch-action: pan-y; }
-#hud .rail-toggle {
-  display: none; position: absolute; top: 8px; z-index: 20; pointer-events: auto;
+#hud .rail-toggle, #hud-combat-shelf-toggle {
   width: 26px; height: 26px; border: 1px solid var(--edge); border-radius: var(--radius-m);
-  background: var(--surface); color: var(--accent); cursor: pointer;
+  background: var(--surface); color: var(--accent); cursor: pointer; pointer-events: auto;
 }
+#hud .rail-toggle { display: none; position: absolute; top: 8px; z-index: 20; }
 #hud.map-mode .rail-toggle { display: block; }
 #hud #hud-rail-toggle-left { left: 8px; }
 #hud #hud-rail-toggle-right { right: 8px; }
@@ -95,12 +96,19 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud.dock-mode .rail-toggle { display: none; }
 
 /* 戦闘シェルフ: 常設ステータス計器の並び。広幅(pointer:fine)は下端、coarse/狭幅は上端に
-   置く — 下端は #hud-stagestatus・タッチパッド・PREDICT バーが既に取り合っているため。 */
-#hud-combat-shelf {
+   置く — 下端は #hud-stagestatus・タッチパッド・PREDICT バーが既に取り合っているため。
+   折りたたみトグルはシェルフの外側(wrap の直接の子)に置き、シェルフ自体の .collapsed に
+   関わらず常に残る。 */
+#hud-combat-shelf-wrap {
   position: absolute; left: 12px; right: 12px; bottom: calc(12px + var(--safe-b));
-  display: flex; align-items: flex-end; gap: var(--space-5);
+  display: flex; align-items: flex-end; gap: var(--space-3);
   pointer-events: none; z-index: 1;
 }
+#hud-combat-shelf {
+  display: flex; align-items: flex-end; gap: var(--space-5);
+  pointer-events: none; min-width: 0; flex: 1 1 auto;
+}
+#hud-combat-shelf.collapsed { display: none; }
 #hud-combat-shelf > .panel {
   position: relative; inset: auto; transform: none; pointer-events: auto;
   flex: 0 0 228px; width: 228px; box-sizing: border-box; font-size: var(--font-xs);
@@ -108,6 +116,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 }
 /* STATUS+ORBIT は左詰めのまま、CONTACTS だけ右端へ押し出す。 */
 #hud-combat-shelf > #hud-enemies { margin-left: auto; }
+#hud-combat-shelf-toggle { flex: 0 0 auto; }
 
 /* 画面固定バッジ(④): マップの縮尺・視点リセット・グローバルステータス・トースト等。 */
 /* マップモードでは #hud-rail-toggle-right(right:8px, 26px 角)がこの位置に重なるので、
@@ -243,10 +252,10 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
   #hud .panel h3 { font-size: var(--font-xs); letter-spacing: 1.5px; margin-bottom: var(--space-2); }
   #hud .row { gap: var(--space-4); }
   #hud .row .v { min-width: 64px; }
+  #hud-combat-shelf-wrap { left: 8px; right: 8px; top: 76px; bottom: auto; }
   #hud-combat-shelf {
-    position: absolute; display: flex; left: 8px; right: 8px; top: 76px; bottom: auto;
     align-items: stretch; gap: var(--space-3); overflow-x: auto; overflow-y: hidden; pointer-events: auto;
-    scrollbar-width: thin; overscroll-behavior-x: contain; z-index: 1;
+    scrollbar-width: thin; overscroll-behavior-x: contain;
   }
   #hud-combat-shelf > .panel {
     position: relative; inset: auto; transform: none; flex: 0 0 178px;
@@ -271,7 +280,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 @media ${MQ_COMPACT} {
   #hud .hud-rail { font-size: var(--font-xxs); }
   #hud.map-mode .hud-rail { bottom: calc(28vh + 16px); bottom: calc(28dvh + 16px); }
-  #hud-combat-shelf { top: 72px; }
+  #hud-combat-shelf-wrap { top: 72px; }
   #hud-combat-shelf > .panel { flex-basis: min(168px, calc(100vw - 16px)); width: min(168px, calc(100vw - 16px)); }
 }
 @media ${MQ_COARSE} {
@@ -280,11 +289,11 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 }
 @media ${MQ_COARSE_SHORT} {
   #hud .hud-rail { bottom: 52px; }
-  #hud-combat-shelf { top: 60px; }
+  #hud-combat-shelf-wrap { top: 60px; }
   #hud-chase-reset { top: 34px; }
 }
 @media ${MQ_SHORT} {
-  #hud-combat-shelf { top: 60px; }
+  #hud-combat-shelf-wrap { top: 60px; }
   #hud-map-scale { bottom: 52px; }
 }
 `;

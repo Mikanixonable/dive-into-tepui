@@ -164,10 +164,10 @@ export class TouchControls {
     this.toggleButtons.get(key)?.classList.toggle('on', on);
   }
 
-  // マップモード中は並進・回転・射撃・ズームのパッドを隠す。
+  // マップモード中は並進・回転・射撃・ズーム・制動/微動のパッドを隠す。
   setMapMode(active: boolean): void {
     this.root.classList.toggle('map-mode', active);
-    for (const id of ['touch-pad-rot', 'touch-pad-move', 'touch-fire', 'touch-zoom']) {
+    for (const id of ['touch-pad-rot', 'touch-pad-move', 'touch-fire', 'touch-zoom', 'touch-mode-col']) {
       const e = document.getElementById(id);
       if (e) e.style.display = active ? 'none' : '';
     }
@@ -298,19 +298,16 @@ export class TouchControls {
     root.appendChild(zoomBtn);
   }
 
-  // warp・マップ・ヘルプ・視点ロール等の雑多なボタンを1列に組み立てる。視点ロールはドラッグや
-  // ピンチに対応するジェスチャが無い(ひねり操作は合成していない)ため、ボタンでしか到達できない。
+  // warp・マップ・ノード送り・ヘルプの雑多なボタンを1列に組み立てる。
   private buildUtilRow(root: HTMLElement): void {
     const util = document.createElement('div');
     util.id = 'touch-util';
     root.appendChild(util);
     for (const b of [
-      { key: K.warpSlower, glyph: '«', label: '時間減速' },
-      { key: K.warpFaster, glyph: '»', label: '時間加速' },
+      { key: K.warpSlower, glyph: '«', label: '減速' },
+      { key: K.warpFaster, glyph: '»', label: '加速' },
       { key: K.toggleMapMode, glyph: K.toggleMapMode.label, label: '計画' },
       { key: K.autoWarpToNode, glyph: K.autoWarpToNode.label, label: 'ノードへ' },
-      { key: K.cameraRollLeft, glyph: '↺', label: '視点回転' },
-      { key: K.cameraRollRight, glyph: '↻', label: '視点回転' },
       { key: K.help, glyph: K.help.label, label: 'ヘルプ' },
     ]) {
       this.makeButton(util, b);

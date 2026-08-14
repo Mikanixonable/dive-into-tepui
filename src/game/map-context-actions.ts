@@ -480,7 +480,7 @@ export class MapContextActions {
     },
     'empty-space': {
       itemsFor: () => {
-        const placeItem: readonly MenuItem<MenuAction>[] = this.activeStage.authoring
+        const placeItem: readonly MenuItem<MenuAction>[] = this.activeStage.authoring && this.cameraSystem.overviewMode
           ? [{ label: 'オブジェクトを配置する', act: 'openShipPlacer', shortcut: 'Enter' }]
           : [];
         return [
