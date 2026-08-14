@@ -54,9 +54,14 @@ export class Sfx {
     }
   }
 
-  // 初回ユーザー操作で呼ぶ。AudioContext を生成し、スラスタ/RCS のループ音源を用意して BGM を開始する。
+  // 実際のユーザー操作のたびに呼ぶ。AudioContext が無ければ生成してスラスタ/RCS のループ音源を
+  // 用意し BGM を開始する。既にあり suspended なら resume する(ブラウザがタブの非アクティブ化
+  // 等で後から自動停止することがあるため)。
   unlock(): void {
-    if (this.ctx) return;
+    if (this.ctx) {
+      if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+      return;
+    }
     try {
       this.ctx = new AudioContext();
     } catch {
