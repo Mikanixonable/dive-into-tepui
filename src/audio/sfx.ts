@@ -1,335 +1,53 @@
-// WebAudio による合成効果音(アセット不要)。
-// ブラウザの自動再生制限のため、最初のユーザー操作で unlock() を呼ぶこと。
-// --- BGM: スティーブ・ライヒ風のアンビエント・ミニマル ---
-// 長調でも短調でもない旋法的な音集合(D を中心にした四度堆積/サス系)を、
-// 長さの異なる 2 つのパルス・パターン(16 拍と 12 拍)でゆっくり反復する。
-// 周期が互いに素なので 2 声のフェイズが少しずつずれていき(ライヒのフェイジング)、
-// その上に四度堆積のパッドと低いドローンが漂う。レトロシンセ的な柔らかい
-// 波形(sine / triangle)のみで、打楽器は使わない。
-// 作曲データ(音階/パターン/パッド/拍長)は複数曲用意し、5分ごとに切り替える
-import { BGM_TRACKS, BgmTrack } from './bgm-tracks';
-
-const BGM_VOL_KEY = 'tepui.settings.bgm_vol'; // localStorage キー
+// WebAudio による合成効果音(アセット不要)。AudioEngine が共有する素材(ノイズバッファ・
+// 基本ボイス)と、ここで組む専用のオシレータ/フィルタで、単発音とループ音を鳴らす。
+// AudioContext が unlock されるまでは、どのメソッドも無音のまま何もしない。
+import { AudioEngine } from './audio-engine';
 
 export class Sfx {
-  private ctx: AudioContext | null = null;
-  private noiseBuf: AudioBuffer | null = null;
   private thrustGain: GainNode | null = null;
   private rcsGain: GainNode | null = null;
-  private bgmGain: GainNode | null = null;
-  private bgmTimer: ReturnType<typeof setInterval> | null = null;
-  private bgmNextTime = 0;
-  private bgmStep = 0;
-  private bgmVolume = 1;
-  private currentTrackIdx = 0;
-  private bgmTrackStartTime = 0;
 
-  // 保存済みの BGM ON/OFF 設定を読み込む。
-  constructor() {
-    try {
-      const saved = localStorage.getItem(BGM_VOL_KEY);
-      if (saved !== null) this.bgmVolume = parseFloat(saved);
-    } catch {
-      /* localStorage 不可の環境では既定値(ON)のまま */
-    }
-  }
+  constructor(private readonly engine: AudioEngine) {}
 
-  // BGM 音量を取得する。
-  getBgmVolume(): number {
-    return this.bgmVolume;
-  }
-
-  // 設定画面からの BGM 音量変更。
-  setBgmVolume(vol: number): void {
-    this.bgmVolume = vol;
-    try {
-      localStorage.setItem(BGM_VOL_KEY, vol.toString());
-    } catch {
-      /* 保存できなくても再生自体は反映する */
-    }
-    if (this.ctx && this.bgmGain && this.bgmTimer) {
-      this.bgmGain.gain.setTargetAtTime(Math.max(0.0001, vol), this.ctx.currentTime, 0.1);
-    } else if (vol > 0 && !this.bgmTimer) {
-      this.startBgm();
-    }
-  }
-
-  // 設定画面の試聴欄へ渡す曲名。作曲データと表示名を同じ定義で管理する。
-  getBgmTracks(): readonly BgmTrack[] {
-    return BGM_TRACKS;
-  }
-
-  // 指定した曲を先頭から試聴する。AudioContext の unlock も最初のクリックで行う。
-  playBgmTrack(index: number): void {
-    this.unlock();
-    if (!this.ctx || BGM_TRACKS.length === 0) return;
-    const safeIndex = Math.max(0, Math.min(BGM_TRACKS.length - 1, Math.floor(index)));
-    this.stopBgm(0.05);
-    this.startBgm(safeIndex);
-  }
-
-  // 試聴停止後や、ゲーム中の BGM を再開する。
-  resumeBgm(): void {
-    if (this.bgmVolume <= 0 || !this.ctx || this.bgmTimer) return;
-    this.startBgm(this.currentTrackIdx);
-  }
-
-  // 実際のユーザー操作のたびに呼ぶ。AudioContext が無ければ生成してスラスタ/RCS のループ音源を
-  // 用意し BGM を開始する。既にあり suspended なら resume する(ブラウザがタブの非アクティブ化
-  // 等で後から自動停止することがあるため)。
-  unlock(): void {
-    if (this.ctx) {
-      if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
-      return;
-    }
-    try {
-      this.ctx = new AudioContext();
-    } catch {
-      return;
-    }
-    const ctx = this.ctx;
-
-    // 共有ホワイトノイズバッファ
-    const buf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
-    this.noiseBuf = buf;
-
-    // スラスタ噴射のループ音(通常は無音)
+  // 常時再生のループ音チャンネル(通常は無音)を組む。ctx が未生成のうちは null を返し、
+  // 呼び出し側は次の機会にまた組み直しを試みる。
+  private loopChannel(freq: number, q: number): GainNode | null {
+    const ctx = this.engine.ctx;
+    const noise = this.engine.noiseBuf;
+    if (!ctx || !noise) return null;
     const src = ctx.createBufferSource();
-    src.buffer = buf;
+    src.buffer = noise;
     src.loop = true;
     const filter = ctx.createBiquadFilter();
     filter.type = 'bandpass';
-    filter.frequency.value = 320;
-    filter.Q.value = 0.8;
+    filter.frequency.value = freq;
+    filter.Q.value = q;
     const gain = ctx.createGain();
     gain.gain.value = 0;
     src.connect(filter).connect(gain).connect(ctx.destination);
     src.start();
-    this.thrustGain = gain;
-
-    // RCS 姿勢制御スラスタの噴射音(メインエンジンより高く軽いシュー音、通常は無音)
-    const rcsSrc = ctx.createBufferSource();
-    rcsSrc.buffer = buf;
-    rcsSrc.loop = true;
-    const rcsFilter = ctx.createBiquadFilter();
-    rcsFilter.type = 'bandpass';
-    rcsFilter.frequency.value = 1600;
-    rcsFilter.Q.value = 1.1;
-    const rcsG = ctx.createGain();
-    rcsG.gain.value = 0;
-    rcsSrc.connect(rcsFilter).connect(rcsG).connect(ctx.destination);
-    rcsSrc.start();
-    this.rcsGain = rcsG;
-
-    if (this.bgmVolume > 0) this.startBgm();
-  }
-
-  // ------------------------------------------------------------------ BGM
-  // WebAudio 合成のループ BGM(アセット不要)。ベース + パッド + アルペジオ +
-  // ノイズハットを先読みスケジューラで刻む。
-  private startBgm(trackIdx?: number): void {
-    if (!this.ctx || this.bgmTimer) return;
-    const ctx = this.ctx;
-    // マスターゲインをフェードインさせながら生成する
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(Math.max(0.0001, this.bgmVolume), ctx.currentTime + 4); // フェードイン
-    g.connect(ctx.destination);
-    this.bgmGain = g;
-    this.bgmNextTime = ctx.currentTime + 0.15;
-    // 曲をランダムに選び、スケジューラを起動する
-    this.bgmTrackStartTime = ctx.currentTime;
-    this.currentTrackIdx = trackIdx === undefined
-      ? Math.floor(Math.random() * BGM_TRACKS.length)
-      : Math.max(0, Math.min(BGM_TRACKS.length - 1, trackIdx));
-    this.bgmStep = 0;
-    this.bgmTimer = setInterval(() => this.pumpBgm(), 120);
-  }
-
-  // BGM を fadeSec 秒かけてフェードアウトし、停止する。
-  stopBgm(fadeSec = 2.5): void {
-    if (this.bgmTimer) {
-      clearInterval(this.bgmTimer);
-      this.bgmTimer = null;
-    }
-    if (this.ctx && this.bgmGain) {
-      this.bgmGain.gain.setTargetAtTime(0.0001, this.ctx.currentTime, fadeSec / 3);
-    }
-  }
-
-  // 先読み時間の範囲までステップを刻み進める。一定時間おきに曲を切り替える。
-  private pumpBgm(): void {
-    if (!this.ctx || !this.bgmGain) return;
-
-    // 約5分(300秒)経過したら次の曲へクロスフェードなしでパターンを切り替える
-    // (ミニマルミュージックなので、パターンのデータが切り替わるだけでも
-    // フェーズの変化として違和感なくアンビエントに馴染む)
-    if (this.ctx.currentTime - this.bgmTrackStartTime > 300) {
-      // 次の曲をランダムに選ぶ（同じ曲が連続しないようにする）
-      let nextIdx = Math.floor(Math.random() * (BGM_TRACKS.length - 1));
-      if (nextIdx >= this.currentTrackIdx) nextIdx++;
-      this.currentTrackIdx = nextIdx;
-      this.bgmTrackStartTime = this.ctx.currentTime;
-      this.bgmStep = 0;
-    }
-
-    const track = BGM_TRACKS[this.currentTrackIdx]!;
-
-    // 0.6s ぶん先読みしてスケジュール(タイマー精度に依存しない)
-    while (this.bgmNextTime < this.ctx.currentTime + 0.6) {
-      this.scheduleBgmStep(this.bgmStep, this.bgmNextTime, track);
-      this.bgmStep++;
-      this.bgmNextTime += track.stepDur;
-    }
-  }
-
-  // ステップ番号 step に対応する声部A/B・パッド・ドローン・煌めきの音を時刻 t にスケジュールする。
-  private scheduleBgmStep(step: number, t: number, track: BgmTrack): void {
-    const g = this.bgmGain!;
-
-    // --- 3階層の入れ子構造による長周期化 (元の周期192ステップの8倍 = 1536ステップで1巡) ---
-    // 第1階層(Micro): patA(16) と patB(12) のポリリズム (48ステップ周期)
-    // 第2階層(Macro): 192ステップごとにスケールを移調する (4フェーズ)
-    const macroCycle = Math.floor(step / 192);
-    const macroPhase = macroCycle % 4;
-    const transpose = [0, 2, 3, 1][macroPhase]!; // 0, +2, +3, +1 スケールステップ
-
-    // 第3階層(Global): 768ステップ(192*4)ごとに全体の音域(オクターブ)を変化させる (2フェーズ)
-    const globalCycle = Math.floor(step / 768);
-    const globalPhase = globalCycle % 2;
-    const octaveShift = globalPhase === 1 ? 1 : 0; // 後半は1オクターブ上がる
-
-    // 指定した音階インデックスから、移調とオクターブシフトを適用した周波数を計算
-    const getFreq = (idx: number, trans: number, oct: number) => {
-      let absoluteIdx = idx + trans;
-      let octShift = oct;
-      // 音階の上端を超えたらオクターブを上げて折り返す
-      while (absoluteIdx >= track.scale.length) {
-        absoluteIdx -= track.scale.length;
-        octShift++;
-      }
-      // 下端を下回ったらオクターブを下げて折り返す
-      while (absoluteIdx < 0) {
-        absoluteIdx += track.scale.length;
-        octShift--;
-      }
-      return track.scale[absoluteIdx]! * Math.pow(2, octShift);
-    };
-
-    // 移調幅のおおよその周波数比 (パッドやドローンの絶対周波数シフト用)
-    // 1スケールステップ = 約2半音(長2度)として近似
-    const freqRatio = Math.pow(2, (transpose * 2) / 12) * Math.pow(2, octaveShift);
-
-    // 声部 A: 16 拍パターンの柔らかいパルス
-    const fa = getFreq(track.patA[step % track.patA.length]!, transpose, octaveShift);
-    this.toneAt(fa, t, track.stepDur * 1.3, 0.03, track.toneA1, g, 0.015);
-    this.toneAt(fa * 2.003, t, track.stepDur * 0.7, 0.009, track.toneA2, g, 0.015); // わずかにデチューンした倍音
-
-    // 声部 B: 12 拍パターンを半拍ずらして重ねる
-    const fb = getFreq(track.patB[step % track.patB.length]!, transpose, octaveShift);
-    this.toneAt(fb, t + track.stepDur / 2, track.stepDur * 1.1, 0.022, track.toneB, g, 0.02);
-
-    // パッド: 四度堆積の和音が約 13 秒ごとにゆっくり移ろう
-    if (step % 32 === 0) {
-      for (const f of track.pads[((step / 32) | 0) % track.pads.length]!) {
-        this.toneAt(f * freqRatio, t, track.stepDur * 34, 0.013, 'triangle', g, 4.5);
-      }
-    }
-
-    // ドローン: 深い D のうなり
-    if (step % 64 === 0) {
-      this.toneAt(track.drone[0]! * freqRatio, t, track.stepDur * 66, 0.02, 'sine', g, 6);
-      this.toneAt(track.drone[1]! * freqRatio, t, track.stepDur * 66, 0.012, 'sine', g, 6);
-    }
-
-    // ときおり高音の煌めき + 減衰エコー
-    if (step % 8 === 5) {
-      const fs = getFreq((step * 5) % track.scale.length, transpose, octaveShift + 2); // 基本より2オクターブ上
-      this.toneAt(fs, t, 0.5, 0.011, 'sine', g, 0.01);
-      this.toneAt(fs, t + 0.63, 0.5, 0.005, 'sine', g, 0.01);
-      this.toneAt(fs, t + 1.26, 0.5, 0.0025, 'sine', g, 0.01);
-    }
-  }
-
-  // 指定時刻に鳴らすトーン(BGM 用。attack を付けてクリックノイズを避ける)
-  private toneAt(
-    freq: number,
-    t: number,
-    duration: number,
-    volume: number,
-    type: OscillatorType,
-    dest: AudioNode,
-    attack = 0.02,
-  ): void {
-    if (!this.ctx) return;
-    const osc = this.ctx.createOscillator();
-    osc.type = type;
-    osc.frequency.value = freq;
-    // 立ち上がり~減衰のゲイン包絡を組む
-    const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.linearRampToValueAtTime(volume, t + attack);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
-    osc.connect(gain).connect(dest);
-    osc.start(t);
-    osc.stop(t + duration + 0.05);
-  }
-
-
-  // 共有ノイズバッファをフィルタ・減衰させ、短いバースト音として鳴らす。
-  private noiseBurst(duration: number, filterType: BiquadFilterType, freq: number, volume: number): void {
-    if (!this.ctx || !this.noiseBuf) return;
-    const ctx = this.ctx;
-    const src = ctx.createBufferSource();
-    src.buffer = this.noiseBuf;
-    src.playbackRate.value = 0.8 + Math.random() * 0.4;
-    const filter = ctx.createBiquadFilter();
-    filter.type = filterType;
-    filter.frequency.value = freq;
-    const gain = ctx.createGain();
-    const t = ctx.currentTime;
-    gain.gain.setValueAtTime(volume, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
-    src.connect(filter).connect(gain).connect(ctx.destination);
-    src.start(t, Math.random() * 0.5, duration + 0.05);
-  }
-
-  // 指定音高のトーンを、即時発音・指数減衰で単発鳴らす。
-  private tone(freq: number, duration: number, volume: number, type: OscillatorType = 'sine'): void {
-    if (!this.ctx) return;
-    const ctx = this.ctx;
-    const osc = ctx.createOscillator();
-    osc.type = type;
-    osc.frequency.value = freq;
-    const gain = ctx.createGain();
-    const t = ctx.currentTime;
-    gain.gain.setValueAtTime(volume, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
-    osc.connect(gain).connect(ctx.destination);
-    osc.start(t);
-    osc.stop(t + duration);
+    return gain;
   }
 
   // 艦砲 CIWS 風の砲声: 低く重い胴鳴り + 鋭いクラック。
   // 実物のように連続音にはせず、1 発ずつ聞こえる離散的な発砲音のまま。
   fire(): void {
-    this.noiseBurst(0.11, 'lowpass', 480, 0.4);
-    this.noiseBurst(0.025, 'highpass', 2600, 0.09);
-    this.tone(48, 0.1, 0.2, 'square');
-    this.tone(96, 0.05, 0.07, 'sawtooth');
+    this.engine.noiseBurst(0.11, 'lowpass', 480, 0.4);
+    this.engine.noiseBurst(0.025, 'highpass', 2600, 0.09);
+    this.engine.tone(48, 0.1, 0.2, 'square');
+    this.engine.tone(96, 0.05, 0.07, 'sawtooth');
   }
 
   // リロード音: 金属質のノイズと金属音を組み合わせて「ガチャッ、シャコォォン」という音を作る
   playReload(): void {
-    if (!this.ctx || !this.noiseBuf) return;
-    const ctx = this.ctx;
+    const ctx = this.engine.ctx;
+    const noise = this.engine.noiseBuf;
+    if (!ctx || !noise) return;
     const t = ctx.currentTime;
 
     // スライドする金属的なノイズ
     const src = ctx.createBufferSource();
-    src.buffer = this.noiseBuf;
+    src.buffer = noise;
     const filter = ctx.createBiquadFilter();
     filter.type = 'bandpass';
     filter.frequency.setValueAtTime(1500, t);
@@ -341,16 +59,16 @@ export class Sfx {
     src.start(t, 0, 1.2);
 
     // バレル排出・交換時の甲高い金属音
-    this.tone(1200, 0.1, 0.05, 'square');
-    this.tone(800, 0.15, 0.05, 'sawtooth');
-
+    this.engine.tone(1200, 0.1, 0.05, 'square');
+    this.engine.tone(800, 0.15, 0.05, 'sawtooth');
   }
 
   // 連射開始前の起動音: 艦砲 CIWS のモーターが立ち上がる唸りに似せる。
   // 低い三角波の唸りが滑り上がり、機械的なこすれノイズが重なる。
   spinUp(): void {
-    if (!this.ctx || !this.noiseBuf) return;
-    const ctx = this.ctx;
+    const ctx = this.engine.ctx;
+    const noise = this.engine.noiseBuf;
+    if (!ctx || !noise) return;
     const t = ctx.currentTime;
 
     // モーターの唸り(基音 + 3 倍音、周波数が立ち上がる)
@@ -381,7 +99,7 @@ export class Sfx {
 
     // 機械のこすれ(バンドパスノイズ、周波数が滑り上がる)
     const src = ctx.createBufferSource();
-    src.buffer = this.noiseBuf;
+    src.buffer = noise;
     const bp = ctx.createBiquadFilter();
     bp.type = 'bandpass';
     bp.Q.value = 2.2;
@@ -397,38 +115,36 @@ export class Sfx {
 
   // 薬莢が機体に当たったときの、からんとした金属音(かすかに)
   clank(): void {
-    if (!this.ctx) return;
-    
     const f0 = 1800 + Math.random() * 1600;
-    this.tone(f0, 0.05, 0.035, 'triangle');
-    this.tone(f0 * 1.53, 0.04, 0.02, 'triangle'); // 非整数倍音で金属感
-    this.noiseBurst(0.03, 'highpass', 5000, 0.02);
+    this.engine.tone(f0, 0.05, 0.035, 'triangle');
+    this.engine.tone(f0 * 1.53, 0.04, 0.02, 'triangle'); // 非整数倍音で金属感
+    this.engine.noiseBurst(0.03, 'highpass', 5000, 0.02);
   }
 
   // マガジン給弾(次のマガジンが取り込まれるガチャッという機械音)
   magFeed(): void {
-    this.noiseBurst(0.1, 'lowpass', 500, 0.14);
-    this.tone(140, 0.07, 0.08, 'square');
-    this.noiseBurst(0.05, 'highpass', 3000, 0.04);
+    this.engine.noiseBurst(0.1, 'lowpass', 500, 0.14);
+    this.engine.tone(140, 0.07, 0.08, 'square');
+    this.engine.noiseBurst(0.05, 'highpass', 3000, 0.04);
   }
 
   // 補給マガジンの取り込み(肯定的なブリップ)
   pickup(): void {
-    this.tone(660, 0.09, 0.09, 'sine');
-    this.tone(990, 0.12, 0.07, 'sine');
-    this.noiseBurst(0.08, 'lowpass', 600, 0.06);
+    this.engine.tone(660, 0.09, 0.09, 'sine');
+    this.engine.tone(990, 0.12, 0.07, 'sine');
+    this.engine.noiseBurst(0.08, 'lowpass', 600, 0.06);
   }
 
   // 弾切れの空撃ちクリック
   emptyClick(): void {
-    this.tone(1400, 0.03, 0.05, 'square');
-    this.noiseBurst(0.02, 'highpass', 4000, 0.03);
+    this.engine.tone(1400, 0.03, 0.05, 'square');
+    this.engine.noiseBurst(0.02, 'highpass', 4000, 0.03);
   }
 
   // 弾が至近を通過したときの「ヴン」という磁気干渉音
   magneticInterference(): void {
-    if (!this.ctx || !this.noiseBuf) return;
-    const ctx = this.ctx;
+    const ctx = this.engine.ctx;
+    if (!ctx) return;
     const t = ctx.currentTime;
 
     const osc = ctx.createOscillator();
@@ -453,8 +169,8 @@ export class Sfx {
 
   // 自機被弾音。敵弾通過音と同じノコギリ波ローパスで、さらに低い音域。
   hit(): void {
-    if (!this.ctx) return;
-    const ctx = this.ctx;
+    const ctx = this.engine.ctx;
+    if (!ctx) return;
     const t = ctx.currentTime;
     const osc = ctx.createOscillator();
     osc.type = 'sawtooth';
@@ -474,8 +190,8 @@ export class Sfx {
 
   // 敵機被弾時のノコギリ波ローパス和音
   enemyHit(): void {
-    if (!this.ctx) return;
-    const ctx = this.ctx;
+    const ctx = this.engine.ctx;
+    if (!ctx) return;
     const t = ctx.currentTime;
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
@@ -499,48 +215,52 @@ export class Sfx {
 
   // 撃破爆発音
   explosion(): void {
-    if (!this.ctx) return;
-    const t = this.ctx.currentTime;
+    const ctx = this.engine.ctx;
+    if (!ctx) return;
+    const t = ctx.currentTime;
     // 鈍い破裂音
-    this.noiseBurst(0.2, 'lowpass', 150, 0.8);
-    this.noiseBurst(0.1, 'lowpass', 400, 0.5);
-    
+    this.engine.noiseBurst(0.2, 'lowpass', 150, 0.8);
+    this.engine.noiseBurst(0.1, 'lowpass', 400, 0.5);
+
     // 短い低音のキックのような成分
-    const osc = this.ctx.createOscillator();
+    const osc = ctx.createOscillator();
     osc.type = 'sine';
     osc.frequency.setValueAtTime(120, t);
     osc.frequency.exponentialRampToValueAtTime(30, t + 0.15);
-    
-    const gain = this.ctx.createGain();
+
+    const gain = ctx.createGain();
     gain.gain.setValueAtTime(0.8, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
-    
-    osc.connect(gain).connect(this.ctx.destination);
+
+    osc.connect(gain).connect(ctx.destination);
     osc.start(t);
     osc.stop(t + 0.2);
   }
 
   // 時間warp切替音。
   warp(): void {
-    this.tone(660, 0.06, 0.08, 'sine');
+    this.engine.tone(660, 0.06, 0.08, 'sine');
   }
 
   // 高度低下警報: 短い二音の警告音(熱防御警報よりは緊急度の低いトーン)
   altAlarm(): void {
-    this.tone(392, 0.16, 0.09, 'square');
-    this.tone(415.3, 0.16, 0.07, 'square'); // わずかに不協和にして警報らしいうなりを出す
+    this.engine.tone(392, 0.16, 0.09, 'square');
+    this.engine.tone(415.3, 0.16, 0.07, 'square'); // わずかに不協和にして警報らしいうなりを出す
   }
 
   // メインエンジンのループ音量をなめらかに on/off する。
   setThrust(on: boolean): void {
-    if (!this.ctx || !this.thrustGain) return;
-    const target = on ? 0.1 : 0;
-    this.thrustGain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.04);
+    this.thrustGain ??= this.loopChannel(320, 0.8);
+    const ctx = this.engine.ctx;
+    if (!ctx || !this.thrustGain) return;
+    this.thrustGain.gain.setTargetAtTime(on ? 0.1 : 0, ctx.currentTime, 0.04);
   }
 
-  // RCS スラスタのループ音量をなめらかに on/off する。
+  // RCS スラスタのループ音量をなめらかに on/off する(メインエンジンより高く軽いシュー音)。
   setRcs(on: boolean): void {
-    if (!this.ctx || !this.rcsGain) return;
-    this.rcsGain.gain.setTargetAtTime(on ? 0.015 : 0, this.ctx.currentTime, 0.03);
+    this.rcsGain ??= this.loopChannel(1600, 1.1);
+    const ctx = this.engine.ctx;
+    if (!ctx || !this.rcsGain) return;
+    this.rcsGain.gain.setTargetAtTime(on ? 0.015 : 0, ctx.currentTime, 0.03);
   }
 }

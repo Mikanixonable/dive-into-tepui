@@ -159,7 +159,6 @@ export class Game {
     this.input = new Input(gs.renderer.domElement);
     this.touchControls = new TouchControls(this.input);
     this.input.onPointerKindChange = (kind) => this.touchControls?.setPointerKind(kind);
-    this.input.onUserGesture = () => this._sfx.unlock();
     this.input.onLongPressFeedback = (point) => {
       if (point) this.markerManager.set('longpress', 'mk-longpress', '', point.x, point.y, true);
       else this.markerManager.hide('longpress');
