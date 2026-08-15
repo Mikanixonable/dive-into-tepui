@@ -203,4 +203,10 @@ export class StageStatusPanel {
     }
     this.panel.classList.remove('hidden');
   }
+
+  // root へ追加したパネル DOM を取り除く。左部ウィジェット枠に他クラスが差し込んだ要素も
+  // その配下なので一緒に消える。
+  dispose(): void {
+    this.panel.remove();
+  }
 }
