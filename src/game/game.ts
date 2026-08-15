@@ -335,7 +335,6 @@ export class Game {
     if (!this.player) return;
     const combatTargets = this.entities.getCombatTargets(this.player);
     this.targeter.handleTargetSelectKey(this.input, combatTargets, project, overviewMode);
-    this.navTarget.updateCombatBasePicking(this.entities, this.input, project, overviewMode);
     this.mapActions.handleCombatRightClick(this.input, combatTargets, project, simTime, overviewMode);
   }
 
