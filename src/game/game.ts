@@ -335,7 +335,7 @@ export class Game {
     if (!this.player) return;
     const combatTargets = this.entities.getCombatTargets(this.player);
     this.targeter.handleTargetSelectKey(this.input, combatTargets, project, overviewMode);
-    this.mapActions.handleCombatRightClick(this.input, project, simTime, overviewMode);
+    this.mapActions.handleCombatRightClick(this.input, simTime, overviewMode);
   }
 
   private handleMapPointerInput(simTime: number): void {
