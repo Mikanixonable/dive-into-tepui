@@ -1,7 +1,7 @@
 // occlusion.ts の回帰テスト。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import { isOccluded } from '../../src/physics/occlusion';
+import { isOccluded, occlusionOpacity } from '../../src/physics/occlusion';
 import { Attractor } from '../../src/physics/attractor';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { v3 } from '../../src/physics/vec3';
@@ -12,6 +12,22 @@ const EARTH: Attractor = {
 };
 
 export function register(): void {
+  test('occlusion: マップ上の見かけ半径を基準に2Rから1.5Rでフェードする', () => {
+    const cameraPos = v3(-2e7, 0, 0);
+    const centerDistance = 2e7;
+    const apparentRadius = Math.asin(EARTH.radius / centerDistance);
+    const pointAt = (multiple: number): ReturnType<typeof v3> => {
+      const angle = apparentRadius * multiple;
+      const dir = v3(Math.cos(angle), Math.sin(angle), 0);
+      return v3(cameraPos.x + dir.x * 6e7, dir.y * 6e7, 0);
+    };
+
+    assert.equal(occlusionOpacity(cameraPos, pointAt(2), [EARTH]), 1);
+    assert.ok(Math.abs(occlusionOpacity(cameraPos, pointAt(1.75), [EARTH]) - 0.5) < 1e-12);
+    assert.equal(occlusionOpacity(cameraPos, pointAt(1.5), [EARTH]), 0);
+    assert.equal(occlusionOpacity(cameraPos, pointAt(1), [EARTH]), 0);
+  });
+
   test('occlusion: 天体の裏側の点は遮蔽される', () => {
     const cameraPos = v3(-2e7, 0, 0);
     const farSide = v3(EARTH.radius + 1e5, 0, 0); // カメラから見て地球の向こう側

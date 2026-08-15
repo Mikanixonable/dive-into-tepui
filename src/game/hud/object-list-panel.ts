@@ -1,9 +1,18 @@
-import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, buildCollapseToggle, hudRail, type CollapseToggleLabels } from './hud-root';
-import { BodyClass, bodyClassOf } from '../celestial/body-class';
-import type { CelestialRegistry } from '../../physics/solar-system';
-import { MapPickable, MapPickKind } from '../map-pickable';
+import { bodyClassOf } from '../celestial/body-class';
+import { ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-glyphs';
+import {
+  COLLAPSE_COLLAPSED_GLYPH,
+  COLLAPSE_EXPANDED_GLYPH,
+  buildCollapseToggle,
+  hudRail,
+  type CollapseToggleLabels,
+} from './hud-root';
 import { LAGRANGE_ID } from './object-groups';
-import { SegmentedControl, ValueInput } from './widgets';
+import { SegmentedControl, ValueInput, syncCollapseToggle } from './widgets';
+import { loadPanelCollapsed, onPanelCollapsedViewChange, savePanelCollapsed } from './panel-shell';
+import type { CelestialRegistry } from '../../physics/solar-system';
+import type { BodyClass } from '../celestial/body-class';
+import type { MapPickable, MapPickKind } from '../map-pickable';
 
 const SECTIONS: readonly { kind: MapPickKind; label: string }[] = [
   { kind: 'body', label: '天体' },
@@ -66,12 +75,26 @@ const SORTS: readonly (readonly [ObjectListSort, string])[] = [
   ['name', '名前'],
 ];
 
+// 色が消えても種別を判別できる、マップ用の小さな形態記号。名称と常に並べて表示する。
+const OBJECT_GLYPHS: Readonly<Record<MapPickKind, string>> = {
+  body: ENTITY_GLYPH.body,
+  player: ENTITY_GLYPH.ship,
+  ship: '△',
+  ammo: ENTITY_GLYPH.ammo,
+  base: '⬡',
+  apsis: ORBIT_POINT_GLYPH.apsis,
+  relnode: ORBIT_POINT_GLYPH.ascendingNode,
+  eqnode: ORBIT_POINT_GLYPH.descendingNode,
+  'empty-space': '·',
+};
+
 // 1件ぶんの行 + その子を畳めるトグル区画。子を持たない行(自艦/敵/弾薬/基地、および
 // 子のない天体)でも toggle/childrenContainer 自体は生成しておき、可視性だけ切り替える
 // (子の有無はフレームごとに変わりうるため、生成を後から差し込むより組み替えが少ない)。
 interface RowNode {
   readonly row: HTMLElement;
   readonly toggle: HTMLElement;
+  readonly glyph: HTMLElement;
   readonly label: HTMLElement;
   readonly detail: HTMLElement;
   readonly childrenContainer: HTMLElement;
@@ -86,10 +109,10 @@ interface RowNode {
 // 開閉し、行クリックで onSelect に id を渡す。天体区画は衛星・ラグランジュ点を親の下の
 // トグル子メニューへ格納する(衛星自身のラグランジュ点はさらにその衛星の子メニューへ)。
 export class ObjectListPanel {
-  onSelect: ((id: string) => void) | null = null;
-  onFocus: ((id: string) => void) | null = null;
-  onNavTarget: ((id: string) => void) | null = null;
-  onSelectRight: ((id: string, clientX: number, clientY: number) => void) | null = null;
+  public onSelect: ((id: string) => void) | null = null;
+  public onFocus: ((id: string) => void) | null = null;
+  public onNavTarget: ((id: string) => void) | null = null;
+  public onSelectRight: ((id: string, clientX: number, clientY: number) => void) | null = null;
 
   private readonly panel: HTMLElement;
   private readonly sections = new Map<MapPickKind, Section>();
@@ -125,7 +148,7 @@ export class ObjectListPanel {
   private prevFilter: ObjectListFilter | null | undefined = undefined;
   private readonly breadcrumb: HTMLElement;
 
-  constructor(root: HTMLElement, registry: CelestialRegistry) {
+  public constructor(root: HTMLElement, registry: CelestialRegistry) {
     this.registry = registry;
     this.panel = document.createElement('div');
     this.panel.id = 'hud-object-list';
@@ -138,7 +161,7 @@ export class ObjectListPanel {
     const titleRow = document.createElement('div');
     titleRow.className = 'object-list-title';
     const title = document.createElement('h3');
-    title.textContent = '軌道オブジェクト';
+    title.textContent = 'オブジェクト';
     titleRow.appendChild(title);
     head.appendChild(titleRow);
     const searchWrap = document.createElement('div');
@@ -156,7 +179,7 @@ export class ObjectListPanel {
     searchWrap.appendChild(search.element);
     head.appendChild(searchWrap);
 
-    const filterControl = new SegmentedControl<ObjectListFilter | null>('', FILTERS, (key) => {
+    const filterControl = new SegmentedControl<ObjectListFilter | null>('分類', FILTERS, (key) => {
       this.filter = this.filter === key ? null : key;
       filterControl.setSelected(this.filter);
     });
@@ -164,7 +187,7 @@ export class ObjectListPanel {
     head.appendChild(filterControl.element);
 
     // 並び順はフィルタとは別行 — 絞り込みと並べ替えは独立な操作であることを見た目でも分ける。
-    const sortControl = new SegmentedControl<ObjectListSort>('', SORTS, (key) => {
+    const sortControl = new SegmentedControl<ObjectListSort>('並び順', SORTS, (key) => {
       this.sort = key;
       sortControl.setSelected(key);
     });
@@ -175,7 +198,15 @@ export class ObjectListPanel {
     const body = document.createElement('div');
     body.className = 'object-list-body';
     this.panel.appendChild(body);
-    buildCollapseToggle(titleRow, 'hud-object-list-toggle', 'object-list-collapse', body, COLLAPSE_LABELS);
+    const collapseToggle = buildCollapseToggle(titleRow, 'hud-object-list-toggle', 'object-list-collapse', body, COLLAPSE_LABELS);
+    const applyCollapsedState = (): void => {
+      const collapsed = loadPanelCollapsed('hud-object-list') ?? false;
+      body.classList.toggle('collapsed', collapsed);
+      syncCollapseToggle(collapseToggle, body, COLLAPSE_LABELS);
+    };
+    applyCollapsedState();
+    onPanelCollapsedViewChange(applyCollapsedState);
+    collapseToggle.addEventListener('click', () => savePanelCollapsed('hud-object-list', body.classList.contains('collapsed')));
     this.breadcrumb = document.createElement('div');
     this.breadcrumb.className = 'object-list-breadcrumb';
     body.appendChild(this.breadcrumb);
@@ -183,11 +214,19 @@ export class ObjectListPanel {
     for (const { kind } of SECTIONS) {
       const header = document.createElement('div');
       header.className = 'object-list-section-header';
+      header.tabIndex = 0;
+      header.setAttribute('role', 'button');
       const sectionBody = document.createElement('div');
       sectionBody.className = 'object-list-section-body';
       const order: SectionOrder = { ids: [], rootIds: [], childIds: new Map() };
       const section: Section = { header, body: sectionBody, rows: new Map(), order, expanded: true, savedExpanded: null };
       header.addEventListener('click', () => {
+        section.expanded = !section.expanded;
+        this.applyExpanded(section);
+      });
+      header.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
         section.expanded = !section.expanded;
         this.applyExpanded(section);
       });
@@ -201,18 +240,22 @@ export class ObjectListPanel {
     this.setVisible(false);
   }
 
-  setVisible(visible: boolean): void {
+  public setVisible(visible: boolean): void {
     this.panel.classList.toggle('hidden', !visible);
   }
 
-  select(id: string | null): void { this.selectedId = id; }
+  public select(id: string | null): void { this.selectedId = id; }
 
   // 種別ごとの区画へ、既存行は使い回しつつ id 差分だけ足し引きする。行のクリックリスナーは
   // 生成時の1回だけ張るので、ここで毎フレーム innerHTML を書き換えてはいけない
   // (張り直しになり、クリック中に要素が消えてイベントが発火しなくなる)。
   // parentOf は id → 親 id(天体の親子関係のみ、他種別は載らない)。focusId が undefined
   // (フォーカス中の天体が無い)なら、どの行も強調しない。
-  sync(items: readonly MapPickable[], focusId: string | undefined, parentOf: ReadonlyMap<string, string>): void {
+  public sync(
+    items: readonly MapPickable[],
+    focusId: string | undefined,
+    parentOf: ReadonlyMap<string, string>,
+  ): void {
     this.namesScratch.clear();
     this.itemsByIdScratch.clear();
     for (const item of items) {
@@ -423,12 +466,17 @@ export class ObjectListPanel {
       container.appendChild(node.row);
       container.appendChild(node.childrenContainer);
     }
+    const glyph = OBJECT_GLYPHS[item.kind];
+    if (node.glyph.textContent !== glyph) node.glyph.textContent = glyph;
     if (node.label.textContent !== item.name) node.label.textContent = item.name;
     const detailText = item.kind === 'body' ? '' : (item.detail ?? '');
     if (node.detail.textContent !== detailText) node.detail.textContent = detailText;
     node.detail.classList.toggle('hidden', item.kind === 'body');
     node.row.classList.toggle('tgt', item.id === focusId);
+    node.row.classList.toggle('related-orbit', item.id === focusId);
     node.row.classList.toggle('on', item.id === this.selectedId);
+    node.row.setAttribute('aria-pressed', String(item.id === this.selectedId));
+    node.row.setAttribute('aria-label', [item.name, detailText].filter(Boolean).join('、'));
 
     const children = childrenOf.get(item.id) ?? EMPTY_IDS;
     if (focusAncestors.has(item.id)) node.expanded = true;
@@ -464,11 +512,15 @@ export class ObjectListPanel {
     row.className = 'erow';
     const toggle = document.createElement('span');
     toggle.className = 'object-list-toggle';
+    const glyph = document.createElement('span');
+    glyph.className = 'object-list-glyph';
+    glyph.setAttribute('aria-hidden', 'true');
     const label = document.createElement('span');
     label.className = 'object-list-name';
     const detail = document.createElement('small');
     detail.className = 'object-list-detail';
     row.appendChild(toggle);
+    row.appendChild(glyph);
     row.appendChild(label);
     row.appendChild(detail);
     const childrenContainer = document.createElement('div');
@@ -476,10 +528,13 @@ export class ObjectListPanel {
 
     row.tabIndex = 0;
     row.setAttribute('role', 'button');
+    row.setAttribute('aria-keyshortcuts', 'Enter Space F T');
+    row.title = 'Enter / Space: 選択 · F: フォーカス · T: ナビ対象';
     row.addEventListener('click', () => this.onSelect?.(id));
     row.addEventListener('dblclick', () => this.onFocus?.(id));
     row.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); this.onFocus?.(id); }
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.onSelect?.(id); }
+      if (e.key.toLowerCase() === 'f') { e.preventDefault(); this.onFocus?.(id); }
       if (e.key.toLowerCase() === 't') { e.preventDefault(); this.onNavTarget?.(id); }
     });
     row.addEventListener('contextmenu', (e) => {
@@ -487,7 +542,17 @@ export class ObjectListPanel {
       this.onSelectRight?.(id, e.clientX, e.clientY);
     });
 
-    const node: RowNode = { row, toggle, label, detail, childrenContainer, children: new Map(), expanded: false, savedExpanded: null };
+    const node: RowNode = {
+      row,
+      toggle,
+      glyph,
+      label,
+      detail,
+      childrenContainer,
+      children: new Map(),
+      expanded: false,
+      savedExpanded: null,
+    };
     toggle.addEventListener('click', (e) => {
       e.stopPropagation();
       node.expanded = !node.expanded;
@@ -503,5 +568,6 @@ export class ObjectListPanel {
 
   private applyExpanded(section: Section): void {
     section.body.classList.toggle('collapsed', !section.expanded);
+    section.header.setAttribute('aria-expanded', String(section.expanded));
   }
 }

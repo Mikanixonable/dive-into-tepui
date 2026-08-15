@@ -94,7 +94,7 @@ export class LightPrepass {
 
   // G バッファを読んで拡散/鏡面の照度バッファへ書く。camera は逆射影行列と恒星方向の view 空間
   // 変換を毎フレーム引き直すためだけに使い、シーン自体は描かない(フルスクリーン1枚のみ)。
-  render(camera: THREE.PerspectiveCamera, width: number, height: number): void {
+  render(camera: THREE.Camera, width: number, height: number): void {
     if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
 
     this.projMatrixInverse.value.copy(camera.projectionMatrixInverse);

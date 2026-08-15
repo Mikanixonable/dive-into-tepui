@@ -11,9 +11,10 @@ import type { OverlayHandle, OverlayManager } from './overlay-manager';
 const STYLE = `
 #hud .object-picker-pop {
   position: fixed; display: none; pointer-events: auto;
-  background: var(--surface); border: 1px solid var(--edge); border-radius: var(--radius-m);
+  background: var(--glass-focus); border: 0; border-radius: var(--radius-window);
   font-family: var(--font-family); font-size: var(--font-m); color: var(--text);
   width: min(520px, calc(100vw - 24px)); max-height: 60vh; max-height: 60dvh; overflow-y: auto; user-select: none;
+  box-shadow: 0 16px 48px var(--shade-1); backdrop-filter: blur(20px) saturate(82%);
   -webkit-user-select: none;
 }
 /* compact: トリガー直下ではなく画面下端のシートとして開く(left/top は付けない —
@@ -21,12 +22,12 @@ const STYLE = `
 @media ${MQ_COMPACT} {
   #hud .object-picker-pop {
     right: 0; bottom: 0; width: 100%;
-    max-height: 70vh; max-height: 70dvh; border-radius: var(--radius-l) var(--radius-l) 0 0;
+    max-height: 70vh; max-height: 70dvh; border-radius: var(--radius-window) var(--radius-window) 0 0;
   }
 }
 #hud .object-picker-pop .op-filter {
   width: 100%; box-sizing: border-box; padding: var(--space-3) var(--space-5); margin: 0;
-  background: var(--shade-1); border: none; border-bottom: 1px solid var(--edge);
+  background: var(--surface-2); border: none;
   color: var(--text); font-family: var(--font-family); font-size: var(--font-m); outline: none;
 }
 #hud .object-picker-pop .op-grid {
@@ -36,10 +37,12 @@ const STYLE = `
   grid-column: 1 / -1; padding: var(--space-3) var(--space-5) var(--space-2); font-size: var(--font-xs); letter-spacing: 1px; opacity: 0.55;
 }
 #hud .object-picker-pop .op-row {
-  padding: var(--space-3) var(--space-5) var(--space-3) 18px; cursor: pointer; border-left: 1px solid var(--edge);
+  margin: var(--space-1); padding: var(--space-3) var(--space-5); cursor: pointer;
+  border: 0; border-radius: var(--radius-micro);
 }
-#hud .object-picker-pop .op-row:hover { background: var(--accent-fill); color: var(--accent-soft); }
-#hud .object-picker-pop .op-row.on { color: var(--accent); }
+#hud .object-picker-pop .op-row:hover { background: var(--surface-2); color: var(--accent-near); }
+#hud .object-picker-pop .op-row.on { color: var(--accent); background: var(--accent-fill); }
+#hud .object-picker-pop .op-row:focus-visible { outline: 2px solid var(--accent-near); outline-offset: -2px; }
 #hud .object-picker-pop .op-empty { grid-column: 1 / -1; padding: var(--space-4) var(--space-5); opacity: 0.5; }
 `;
 
@@ -75,7 +78,7 @@ function groupsEqual<T>(a: readonly ObjectPickerGroup<T>[], b: readonly ObjectPi
 export class ObjectPicker<T> implements OverlayHandle {
   private static nextId = 0;
   private readonly overlayId: string;
-  readonly element: HTMLElement;
+  public readonly element: HTMLElement;
   private readonly trigger: Button;
   private readonly pop: HTMLElement;
   private readonly filter: HTMLInputElement;
@@ -84,9 +87,10 @@ export class ObjectPicker<T> implements OverlayHandle {
   private selected: T | null = null;
   private isOpen = false;
   private readonly onSelect: (value: T) => void;
+  private previouslyFocused: HTMLElement | null = null;
 
   // title は見出し、root はポップアップを popup レイヤへ追加する親。
-  constructor(
+  public constructor(
     root: HTMLElement, title: string, onSelect: (value: T) => void,
     private readonly overlayManager: OverlayManager,
   ) {
@@ -101,34 +105,49 @@ export class ObjectPicker<T> implements OverlayHandle {
     heading.textContent = title;
     this.element.appendChild(heading);
     this.trigger = new Button('—', () => this.toggle());
+    this.trigger.element.setAttribute('aria-haspopup', 'dialog');
+    this.trigger.element.setAttribute('aria-expanded', 'false');
     this.element.appendChild(this.trigger.element);
 
     this.pop = document.createElement('div');
     this.pop.className = 'object-picker-pop';
+    this.pop.setAttribute('role', 'dialog');
+    this.pop.setAttribute('aria-label', title);
     this.pop.addEventListener('pointerdown', (e) => e.stopPropagation());
+    this.pop.addEventListener('keydown', (event) => {
+      if (event.key === 'Tab') this.close();
+    });
     this.filter = document.createElement('input');
     this.filter.className = 'op-filter';
     this.filter.placeholder = '絞り込み';
+    this.filter.setAttribute('aria-label', `${title}を絞り込む`);
     this.filter.addEventListener('input', () => this.renderList());
     this.filter.addEventListener('keydown', (e) => {
       e.stopPropagation();
       if (e.key === 'Escape') this.close();
+      if (e.key === 'Tab' && (e.shiftKey || this.list.querySelector('[role="option"]') === null)) this.close();
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        this.focusOption(0);
+      }
     });
     this.pop.appendChild(this.filter);
     this.list = document.createElement('div');
     this.list.className = 'op-grid';
+    this.list.setAttribute('role', 'listbox');
+    this.list.setAttribute('aria-label', `${title}の候補`);
     this.pop.appendChild(this.list);
     root.appendChild(this.pop);
   }
 
-  contains(target: Node): boolean {
+  public contains(target: Node): boolean {
     return this.pop.contains(target) || this.element.contains(target);
   }
 
   // 候補を差し替える。前回と同じ内容(ラベルと項目の並びが一致)なら何もしない —
   // 呼び出し側が毎フレーム同じ内容を渡してくることがあり、無条件に再構築するとポップアップを
   // 開いたままの絞り込み入力・ホバーと競合する。
-  setGroups(groups: readonly ObjectPickerGroup<T>[]): void {
+  public setGroups(groups: readonly ObjectPickerGroup<T>[]): void {
     if (groupsEqual(this.groups, groups)) return;
     this.groups = groups;
     if (this.isOpen) this.renderList();
@@ -136,7 +155,7 @@ export class ObjectPicker<T> implements OverlayHandle {
   }
 
   // 選択中の値を反映する(候補に無い値ならボタンには id をそのまま出す)。
-  setSelected(value: T): void {
+  public setSelected(value: T): void {
     this.selected = value;
     this.syncTriggerLabel();
   }
@@ -159,9 +178,11 @@ export class ObjectPicker<T> implements OverlayHandle {
   // ポップアップをボタンの直下に開く。絞り込み入力は毎回空に戻す(前回の絞り込みが残っていると
   // 候補が欠けて見える)。開いた直後に入力へフォーカスするので、そのまま名前を打てる。
   private open(): void {
+    this.previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     this.filter.value = '';
     this.renderList();
     this.isOpen = true;
+    this.trigger.element.setAttribute('aria-expanded', 'true');
     this.pop.style.display = 'block';
     bringToFront(this.pop);
     // compact では下端シートとして CSS が位置を決めるので、トリガー直下への配置は行わない
@@ -187,15 +208,54 @@ export class ObjectPicker<T> implements OverlayHandle {
   }
 
   // ポップアップを閉じる。
-  close(): void {
+  public close(): void {
+    if (!this.isOpen) return;
     this.isOpen = false;
+    this.trigger.element.setAttribute('aria-expanded', 'false');
     this.pop.style.display = 'none';
     this.overlayManager.close(this.overlayId);
+    const focusTarget = this.previouslyFocused;
+    this.previouslyFocused = null;
+    (focusTarget?.isConnected ? focusTarget : this.trigger.element).focus({ preventScroll: true });
+  }
+
+  private focusOption(index: number): void {
+    const options = Array.from(this.list.querySelectorAll<HTMLElement>('[role="option"]'));
+    if (options.length === 0) return;
+    const wrappedIndex = (index + options.length) % options.length;
+    const option = options[wrappedIndex]!;
+    this.setRovingOption(option);
+    option.focus({ preventScroll: true });
+  }
+
+  private handleOptionKeydown(event: KeyboardEvent, option: HTMLElement): void {
+    const options = Array.from(this.list.querySelectorAll<HTMLElement>('[role="option"]'));
+    const index = options.indexOf(option);
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      this.focusOption(index + 1);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      this.focusOption(index - 1);
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      this.focusOption(0);
+    } else if (event.key === 'End') {
+      event.preventDefault();
+      this.focusOption(options.length - 1);
+    }
+  }
+
+  private setRovingOption(activeOption: HTMLElement): void {
+    for (const option of Array.from(this.list.querySelectorAll<HTMLElement>('[role="option"]'))) {
+      option.tabIndex = option === activeOption ? 0 : -1;
+    }
   }
 
   // 絞り込み文字列に一致する候補だけを、グループ見出しつきで並べ直す。候補が1件も無い
   // グループは見出しごと出さない。
   private renderList(): void {
+    const restoreOptionFocus = this.isOpen && this.list.contains(document.activeElement);
     const needle = this.filter.value.trim().toLowerCase();
     this.list.innerHTML = '';
     // 1件も残らなかったら「該当なし」を出す — 空のポップアップは壊れて見える。
@@ -214,6 +274,9 @@ export class ObjectPicker<T> implements OverlayHandle {
       for (const [value, label] of items) {
         const row = document.createElement('div');
         row.className = 'op-row';
+        row.setAttribute('role', 'option');
+        row.setAttribute('aria-selected', String(value === this.selected));
+        row.tabIndex = -1;
         row.textContent = label;
         row.classList.toggle('on', value === this.selected);
         row.addEventListener('click', (e) => {
@@ -221,6 +284,15 @@ export class ObjectPicker<T> implements OverlayHandle {
           this.close();
           this.onSelect(value);
         });
+        row.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            row.click();
+            return;
+          }
+          this.handleOptionKeydown(e, row);
+        });
+        row.addEventListener('focus', () => this.setRovingOption(row));
         this.list.appendChild(row);
         shown++;
       }
@@ -230,6 +302,12 @@ export class ObjectPicker<T> implements OverlayHandle {
       empty.className = 'op-empty';
       empty.textContent = '該当なし';
       this.list.appendChild(empty);
+    } else {
+      const options = Array.from(this.list.querySelectorAll<HTMLElement>('[role="option"]'));
+      const selectedOption = options.find((option) => option.getAttribute('aria-selected') === 'true');
+      const activeOption = selectedOption ?? options[0]!;
+      this.setRovingOption(activeOption);
+      if (restoreOptionFocus) activeOption.focus({ preventScroll: true });
     }
   }
 }

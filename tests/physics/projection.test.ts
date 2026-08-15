@@ -76,4 +76,29 @@ export function register(): void {
     const far = metersPerPixel(view, v3(0, 0, 20), height);
     assert.ok(Math.abs(far - near * 2) < 1e-12, `near: ${near}, far: ${far}`);
   });
+
+  test('orthographic projection: depth does not change screen position', () => {
+    const orthographic: Viewpoint = {
+      ...view,
+      projection: 'orthographic',
+      orthographicHalfHeight: 10,
+      aspect: 2,
+    };
+    const near = projectToNdc(orthographic, v3(10, 5, 10));
+    const far = projectToNdc(orthographic, v3(10, 5, 100));
+    assert.deepEqual({ x: near.x, y: near.y }, { x: -0.5, y: 0.5 });
+    assert.deepEqual({ x: far.x, y: far.y }, { x: -0.5, y: 0.5 });
+  });
+
+  test('orthographic metersPerPixel: scale is constant at every depth', () => {
+    const orthographic: Viewpoint = {
+      ...view,
+      projection: 'orthographic',
+      orthographicHalfHeight: 30,
+    };
+    const near = metersPerPixel(orthographic, v3(0, 0, 10), 600);
+    const far = metersPerPixel(orthographic, v3(0, 0, 20), 600);
+    assert.equal(near, 0.1);
+    assert.equal(far, near);
+  });
 }

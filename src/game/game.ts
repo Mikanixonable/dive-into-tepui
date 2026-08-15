@@ -39,6 +39,7 @@ import { KEY_MAPPING as K } from './input/key-mapping';
 import { Docking } from './docking';
 import { ViewBadge } from './hud/view-badge';
 import { FrameControls } from './hud/frame-controls';
+import { CombatHudController, MapHudController } from './hud/view-hud-controller';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -87,6 +88,8 @@ export class Game {
   private readonly docking: Docking;
   private readonly viewBadge: ViewBadge;
   readonly frameControls: FrameControls;
+  private readonly combatHud: CombatHudController;
+  private readonly mapHud: MapHudController;
   // 計測区間の境界を打つ先。集計と保持はこのオブジェクトが持つ。
   private readonly sections: FrameSections;
 
@@ -118,7 +121,7 @@ export class Game {
     this.markerManager = new MarkerManager(this._hud.layers.marker, this._hud.svgOverlay);
 
     this.entities = new EntityManager(this._scene, this._hud, this._sfx, this.markerManager, initialSave);
-    this.displayWindowManager = new DisplayWindowManager(this._hud.layers.panel, this.ephemeris, this.entities);
+    this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, this.ephemeris, this.entities);
 
     this.cameraSystem = new CameraSystem(
       this._hud,
@@ -128,7 +131,7 @@ export class Game {
     );
     this.simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
     this.frameControls = new FrameControls(
-      this._hud.layers.panel, this._hud.layers.popup, this.ephemeris, this.cameraSystem.overviewCamera,
+      this._hud.mapRoot, this._hud.layers.popup, this.ephemeris, this.cameraSystem.mapCamera,
       this.displayWindowManager, this._hud.overlayManager,
     );
 
@@ -162,6 +165,8 @@ export class Game {
       else this.markerManager.hide('longpress');
     };
     this._hud.statusPanel.setInput(this.input);
+    this.combatHud = new CombatHudController(this._hud);
+    this.mapHud = new MapHudController(this._hud);
 
     this.simulator = new Simulator(this.entities, this.ephemeris, sections, initialSave?.simTime ?? 0);
     this.predictor = new Predictor(this.entities, this.ephemeris);
@@ -170,6 +175,7 @@ export class Game {
       initialSave?.stage, this._hud, this._sfx, this._scene, this.entities, this.unlockManager,
       this.entities.effects, this.markerManager, this.ephemeris, this.simulator, this.activePlayers,
     );
+    this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
     // activeStage(authoring/executesPlans を読む)を要るので、その直後に生成する。
     this.mapPickables = new MapPickables(
       this.activePlayers, this.entities, this.ephemeris, this.navTarget, this.cameraSystem, this.editor,
@@ -204,7 +210,7 @@ export class Game {
   pause(): void {
     this.simulator.lastSimDt = 0;
     this._sfx.setThrust(false);
-    // ポーズ中は behave が走らないので、全自機の連続指令はここで畳む。
+    // 一時停止へ入る際に、全自機の連続指令を畳む。
     this.entities.clearTransientCommands();
     this._isPaused = true;
   }
@@ -236,15 +242,17 @@ export class Game {
     this.targeter.updateEquatorNodes(overviewMode, displayWindow, this.ephemeris);
     this.entities.updateBaseEquatorNodes(overviewMode, displayWindow, this.ephemeris);
     this.sections.exit(SECTION.plan);
+    this.sections.enter(SECTION.camera);
+    this.cameraSystem.update(
+      this.player, displayWindow.displayTime, this.input, dt, this.mapPickables.pickables,
+      this.displayWindowManager.attractorsAt(displayWindow.displayTime),
+    );
+    this.sections.exit(SECTION.camera);
+    // カメラ更新の後に置く: 候補集合と表示可否はカメラ位置から出るので、先に組むと
+    // このフレームの sync が1フレーム古いカメラ位置基準の判定を読むことになる。
     this.sections.enter(SECTION.mapPick);
     this.mapPickables.refresh(displayWindow);
     this.sections.exit(SECTION.mapPick);
-    this.sections.enter(SECTION.camera);
-    this.cameraSystem.update(
-      this.player, this.simulator.simTime, this.input, dt, this.mapPickables.pickables,
-      this.displayWindowManager.attractorsAt(this.simulator.simTime),
-    );
-    this.sections.exit(SECTION.camera);
     this.sections.enter(SECTION.pointer);
     this.handlePointerInput();
     this.sections.exit(SECTION.pointer);
@@ -261,7 +269,13 @@ export class Game {
     this.entities.updatePlayers(
       this.player, this.input, this.simSpeedManager, dt, this.activeStage, this.ephemeris,
     );
-    this.nanWatchdog.checkPlayer('player.behave', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
+    this.nanWatchdog.checkPlayer(
+      'player.updatePlayerControls',
+      this.player,
+      this.simulator.simTime,
+      dt,
+      this.simulator.lastSimDt,
+    );
     this.sections.exit(SECTION.player);
 
     this.sections.enter(SECTION.stage);
@@ -313,16 +327,23 @@ export class Game {
     const project = this.cameraSystem.activeCameraProjection;
     const overviewMode = this.cameraSystem.overviewMode;
     // マーカー(右クリック/左クリック/ダブルクリック)→ ノード → 空域の優先順は呼ぶ順そのもの。
-    this.mapActions.handleRightClick(this.input, simTime);
-    this.mapActions.handleLeftClick(this.input);
-    this.mapActions.handleDoubleClick(this.input);
-    this.editor.handleMapPointer(this.input);
-    this.mapActions.handleEmptySpaceRightClick(this.input, simTime);
+    if (this.viewManager.isMapView) {
+      this.handleMapPointerInput(simTime);
+      return;
+    }
     if (!this.player) return;
     const combatTargets = this.entities.getCombatTargets(this.player);
     this.targeter.handleTargetSelectKey(this.input, combatTargets, project, overviewMode);
     this.navTarget.updateCombatBasePicking(this.entities, this.input, project, overviewMode);
     this.mapActions.handleCombatRightClick(this.input, combatTargets, project, simTime, overviewMode);
+  }
+
+  private handleMapPointerInput(simTime: number): void {
+    this.mapActions.handleRightClick(this.input, simTime);
+    this.mapActions.handleLeftClick(this.input);
+    this.mapActions.handleDoubleClick(this.input);
+    this.editor.handleMapPointer(this.input);
+    this.mapActions.handleEmptySpaceRightClick(this.input, simTime);
   }
 
   // --------------------------------------------------------------- input
@@ -342,7 +363,7 @@ export class Game {
     this._hud.handleInput(this.input);
     this.simSpeedManager.handleInput(this.input);
     this.viewManager.handleInput(this.input);
-    this.editor.handleInput(this.input, dt);
+    if (this.viewManager.isMapView) this.editor.handleInput(this.input, dt);
   }
 
   // ------------------------------------------------------------------ sync
@@ -361,7 +382,11 @@ export class Game {
     const { displayTime, simTime } = displayWindow;
     // 表示側は重力を持つ生存中の GameEntity(小惑星)も中心天体解決・遮蔽判定へ合流させる —
     // EntityManager.cleanup へ渡す表面到達判定用の配列(解析天体のみ)とは別物。
+    // 現在時刻の配列は「いまの状態」を数値で読ませる HUD・プロパティ行が使い、表示時刻の配列は
+    // 画面に描く幾何(軌道線・折れ線・天体位置)が使う — 天体メッシュは displayTime に置かれるので、
+    // 楕円の中心天体位置や折れ線の un-bake を simTime で取ると同一画面上でずれる。
     const attractors = this.displayWindowManager.attractorsAt(simTime);
+    const displayAttractors = this.displayWindowManager.attractorsAt(displayTime);
 
     // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列を読む。
     this.cameraSystem.sync(fo);
@@ -379,34 +404,39 @@ export class Game {
     );
 
     this.entities.syncPlayers(
-      player, fo, this.cameraSystem, displayTime, this.ephemeris, attractors, visibilityPolicy,
+      player, fo, this.cameraSystem, displayTime, this.ephemeris, displayAttractors, visibilityPolicy,
     );
     this.entities.sync(fo, displayTime);
     this.entities.applyVisibility(
-      visibilityPolicy, player, overviewMode, fo, this.cameraSystem.activeCamera, attractors,
+      visibilityPolicy, player, overviewMode, fo, this.cameraSystem.activeCamera, displayAttractors,
     );
-    this.entities.syncMarkers(this.cameraSystem, displayTime, player?.state.r ?? null, visibilityPolicy);
+    this.entities.syncMarkers(this.cameraSystem, displayTime, player?.state.r ?? null, displayAttractors, visibilityPolicy);
 
     this.entities.effects.sync(fo, this.cameraSystem.activeCamera, this.cameraSystem.zoomActive);
 
-    this.targeter.sync(fo, player, combatTargets, this.cameraSystem, attractors, visibilityPolicy);
+    this.targeter.sync(fo, player, combatTargets, this.cameraSystem, displayAttractors, visibilityPolicy);
     this.targeter.syncTargetMarkers(
       player, combatTargets, displayTime, simTime, this.cameraSystem, visibilityPolicy,
+      this.ephemeris.registry, displayAttractors,
     );
     this.navTarget.sync(this.cameraSystem);
     this.entities.syncEquatorNodes(this.cameraSystem);
 
-    this.displayWindowManager.sync(player);
-    this.editor.sync(this.cameraSystem, simTime, fo);
+    if (this.viewManager.isMapView) {
+      this.displayWindowManager.sync(player);
+      this.frameControls.sync(
+        this.mapPickables.pickables, this.cameraSystem.activeCameraPos, attractors, simTime, overviewMode,
+      );
+    }
+    // マップの常設一覧はマップ時だけ更新するが、戦闘中に開いたプロパティウィンドウは
+    // 最新値を表示し続ける必要がある。MapContextActions 側で窓が無ければ即時 return する。
     this.mapActions.sync(simTime, attractors, player);
-    this.frameControls.sync(
-      this.mapPickables.pickables, this.cameraSystem.activeCameraPos, attractors, simTime, overviewMode,
-    );
+    this.editor.sync(this.cameraSystem, simTime, fo);
 
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
     this.entities.syncPlayerTrajectoryLines(
       player, displayWindow, overviewMode, this.ephemeris, fo,
-      this.cameraSystem.activeCamera, attractors,
+      this.cameraSystem.activeCamera, displayAttractors, visibilityPolicy,
     );
 
     if (player) {
@@ -417,15 +447,11 @@ export class Game {
     }
     this.activeStage.sync(player, fo, this.cameraSystem, displayTime, visibilityPolicy);
 
-    this._hud.globalStatusBar.sync(this);
-    this._hud.mapScaleBadge.sync(this);
-    this._hud.statusPanel.sync(this);
-    this._hud.orbitPanel.sync(this, attractors);
-    this._hud.targetPanel.sync(this, attractors);
-    this._hud.contactsPanel.sync(this);
+    if (this.viewManager.isMapView) this.mapHud.sync(this);
+    else this.combatHud.sync(this, attractors);
     this._hud.tick();
 
-    this.guide.sync(player, simTime, this.editor.editMode, project);
+    this.guide.sync(player, simTime, this.editor.editMode, project, this.editor.planDisplay.path);
 
     // このフレームのマーカーが出揃った後でなければならないので最後に置く。
     this.markerManager.resolveCollisions();
