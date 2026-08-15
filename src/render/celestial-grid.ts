@@ -199,6 +199,16 @@ class GridPlane {
     }
   }
 
+  // 3本の線を親から外して解放し、ラベル層(配下のラベルごと)を document.body から外す。
+  dispose(): void {
+    for (const line of [this.planeLine, this.gridLine, this.poleLine]) {
+      line.removeFromParent();
+      line.geometry.dispose();
+      (line.material as THREE.Material).dispose();
+    }
+    this.labelLayer.remove();
+  }
+
   setBasis(basis: PlaneBasis): void {
     const poleDot = this.basis.pole.dot(basis.pole);
     if (poleDot > 1 - 1e-10 && this.basis.e1.dot(basis.e1) > 1 - 1e-10) return;
@@ -292,5 +302,11 @@ export class CelestialGrid {
   sync(visibility: CelestialGridVisibility, cam: THREE.Camera, scale: number): void {
     this.equator.sync(visibility.equator && visibility.equatorPlane, visibility.equator && visibility.equatorPole, visibility.equator && visibility.equatorGrid, cam.position, scale, cam);
     this.ecliptic.sync(visibility.ecliptic && visibility.eclipticPlane, visibility.ecliptic && visibility.eclipticPole, visibility.ecliptic && visibility.eclipticGrid, cam.position, scale, cam);
+  }
+
+  // 2面ぶんの GridPlane を解放する。
+  dispose(): void {
+    this.equator.dispose();
+    this.ecliptic.dispose();
   }
 }

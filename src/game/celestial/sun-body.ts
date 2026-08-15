@@ -67,4 +67,11 @@ export class SunBody extends CelestialBody {
       this.sun.mesh.visible = false;
     }
   }
+
+  // ビルボードと実球体メッシュを親から外し、解放する。
+  dispose(): void {
+    this.sun.billboard.mesh.removeFromParent();
+    this.sun.mesh.removeFromParent();
+    this.sun.dispose();
+  }
 }
