@@ -229,7 +229,7 @@ export class DisplayWindowManager {
 
   // 操作対象の予測軌道が表示期間のどこまで届いているかの割合(0..1)。
   private predictionCoverageRatio(player: GameEntity | null): number {
-    const end = player?.predictedTrajectory?.state.t;
+    const end = player?.predicted?.state.t;
     if (end === undefined || this._current.duration <= 0) return 1;
     return Math.max(0, Math.min(1, (end - this._current.simTime) / this._current.duration));
   }
