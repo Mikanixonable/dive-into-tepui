@@ -256,7 +256,7 @@
 
 ## 8. 戦闘 BGM
 
-- WebAudio 合成によるループ BGM(`src/audio/sfx.ts`・`src/audio/bgm-tracks.ts`、アセット不要)。
+- WebAudio 合成によるループ BGM(`src/audio/bgm.ts`・`src/audio/bgm-tracks.ts`、アセット不要)。
 - A マイナー調・8 小節ループ(約 111 BPM)。トライアングルベース + 2 小節ごとのパッドコード(Am–F–G–Am)+ ペンタトニックアルペジオ + ノイズハットを先読みスケジューラで刻む。
 - 初回ユーザー操作(オーディオ unlock)で 4 秒フェードイン、勝敗確定でフェードアウト。効果音を邪魔しない音量に設定。
 

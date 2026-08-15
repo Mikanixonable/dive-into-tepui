@@ -11,6 +11,7 @@ import type { SaveSlots } from './game/save/save-slots';
 import type { SnapshotService } from './game/save/snapshot-service';
 import type { GameSaveData } from './game/save-data';
 import type { Sfx } from './audio/sfx';
+import type { Bgm } from './audio/bgm';
 
 // スナップショットのロードを跨いで次のページ読込へ渡す先。ロードは Game を作り直す
 // (=ページ再読込)ことで表現するため、どれを復元するかは sessionStorage 経由で伝える。
@@ -45,6 +46,7 @@ export class Launcher implements RunTransitions {
     private readonly slots: SaveSlots,
     private readonly snapshotService: SnapshotService,
     private readonly sfx: Sfx,
+    private readonly bgm: Bgm,
   ) {
     this.resultScreen = new ResultScreen(hud, this);
   }
@@ -97,7 +99,7 @@ export class Launcher implements RunTransitions {
     if (this.resultShown || game.activeStage.isPlaying) return;
     this.resultShown = true;
     this.sfx.setThrust(false);
-    this.sfx.stopBgm();
+    this.bgm.stop();
     const activeSlotId = this.slots.activeSlotId;
     if (activeSlotId !== null) this.slots.noteRunEnded(activeSlotId);
     this.resultScreen.show(game.activeStage.result ?? fallbackResult(game.activeStage.phase));

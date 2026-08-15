@@ -1,4 +1,5 @@
-import type { Sfx } from '../../audio/sfx';
+import type { Bgm } from '../../audio/bgm';
+import { BGM_TRACKS } from '../../audio/bgm-tracks';
 import type { OverlayHandle, OverlayManager } from './overlay-manager';
 import { Button, CloseButton, Slider } from './widgets';
 
@@ -7,7 +8,7 @@ import { Button, CloseButton, Slider } from './widgets';
 export class SettingsView implements OverlayHandle {
   private readonly panel: HTMLElement;
   private readonly overlayManager: OverlayManager;
-  private readonly sfx: Sfx;
+  private readonly bgm: Bgm;
   private _isOpen = false;
   private activeTrack: number | null = null;
   private readonly stopButton: Button;
@@ -15,9 +16,9 @@ export class SettingsView implements OverlayHandle {
 
   onOpenChange: ((open: boolean) => void) | null = null;
 
-  constructor(root: HTMLElement, overlayManager: OverlayManager, sfx: Sfx) {
+  constructor(root: HTMLElement, overlayManager: OverlayManager, bgm: Bgm) {
     this.overlayManager = overlayManager;
-    this.sfx = sfx;
+    this.bgm = bgm;
 
     this.panel = document.createElement('section');
     this.panel.id = 'hud-settings-view';
@@ -62,9 +63,9 @@ export class SettingsView implements OverlayHandle {
     };
     const volumeSlider = new Slider({ min: 0, max: 1, step: 0.05 }, (value) => {
       updateVolumeValue(value);
-      this.sfx.setBgmVolume(value);
+      this.bgm.setVolume(value);
     });
-    volumeSlider.setValue(this.sfx.getBgmVolume());
+    volumeSlider.setValue(this.bgm.getVolume());
     updateVolumeValue(volumeSlider.getValue());
     volumeRow.appendChild(volumeSlider.element);
     volumeRow.appendChild(volumeValue);
@@ -72,7 +73,7 @@ export class SettingsView implements OverlayHandle {
 
     const trackList = document.createElement('div');
     trackList.className = 'sv-track-list';
-    for (const [index, track] of this.sfx.getBgmTracks().entries()) {
+    for (const [index, track] of BGM_TRACKS.entries()) {
       const row = document.createElement('div');
       row.className = 'sv-track-row';
       const trackLabel = document.createElement('div');
@@ -96,7 +97,7 @@ export class SettingsView implements OverlayHandle {
     const trackActions = document.createElement('div');
     trackActions.className = 'sv-track-actions';
     this.stopButton = new Button('試聴を停止', () => {
-      this.sfx.stopBgm(0.15);
+      this.bgm.stop(0.15);
       this.activeTrack = null;
       this.updateTrackButtons();
     });
@@ -142,7 +143,7 @@ export class SettingsView implements OverlayHandle {
   }
 
   private previewTrack(index: number): void {
-    this.sfx.playBgmTrack(index);
+    this.bgm.playTrack(index);
     this.activeTrack = index;
     this.updateTrackButtons();
   }

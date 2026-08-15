@@ -19,6 +19,8 @@ import {
 import { Hud } from './game/hud/hud';
 import { PauseMenu } from './game/hud/pause-menu';
 import { SettingsView } from './game/hud/settings-view';
+import { AudioEngine } from './audio/audio-engine';
+import { Bgm } from './audio/bgm';
 import { Sfx } from './audio/sfx';
 import { UnlockManager } from './game/unlock-manager';
 import { LocalStorageSaveStore } from './game/save/save-store';
@@ -183,20 +185,23 @@ function startAnimationLoop(
   });
 }
 
-// hud/sfx はタイトル(ステージ選択)画面の時点から使えるべきなので、Game より先に main.ts が
-// 生成して所有し、Game には参照として渡す。pauseMenu も同様に main.ts が所有し、開閉に
-// 応じた一時停止の反映(game.pause()/game.resume())も持ち主である main.ts がここで配線する。
+// hud と音声一式(AudioEngine/Bgm/Sfx)はタイトル(ステージ選択)画面の時点から使えるべき
+// なので、Game より先に main.ts が生成して所有し、Game には参照として渡す。pauseMenu も同様に
+// main.ts が所有し、開閉に応じた一時停止の反映(game.pause()/game.resume())も持ち主である
+// main.ts がここで配線する。
 // pipeline はここで組む PauseMenu の描画タブ(GraphicsPanel)がデバッグ表示の選択を書き込む先。
 function initHud(graphics: GraphicsSettings, pipeline: RenderPipeline): {
-  hud: Hud; sfx: Sfx; pauseMenu: PauseMenu; settingsView: SettingsView;
+  hud: Hud; audioEngine: AudioEngine; bgm: Bgm; sfx: Sfx; pauseMenu: PauseMenu; settingsView: SettingsView;
 } {
   const hud = new Hud();
-  const sfx = new Sfx();
+  const audioEngine = new AudioEngine();
+  const bgm = new Bgm(audioEngine);
+  const sfx = new Sfx(audioEngine);
   const pauseMenu = new PauseMenu(hud.layers.system, hud.overlayManager, graphics, pipeline);
-  const settingsView = new SettingsView(hud.layers.system, hud.overlayManager, sfx);
-  pauseMenu.setBgmVolume(sfx.getBgmVolume());
-  pauseMenu.onBgmVolumeChange = (vol) => sfx.setBgmVolume(vol);
-  return { hud, sfx, pauseMenu, settingsView };
+  const settingsView = new SettingsView(hud.layers.system, hud.overlayManager, bgm);
+  pauseMenu.setBgmVolume(bgm.getVolume());
+  pauseMenu.onBgmVolumeChange = (vol) => bgm.setVolume(vol);
+  return { hud, audioEngine, bgm, sfx, pauseMenu, settingsView };
 }
 
 // シーン初期化からステージ選択、Game 構築、rAF ループ開始までを順に行う。
@@ -220,8 +225,8 @@ async function main() {
   const gs = await initScene(graphics);
   const gpu = new GpuTimings(gs.renderer);
   const pipeline = new RenderPipeline(gs.renderer, graphics, gpu);
-  const { hud, sfx, pauseMenu, settingsView } = initHud(graphics, pipeline);
-  const launcher = new Launcher(hud, unlockmanager, slots, snapshotService, sfx);
+  const { hud, audioEngine, bgm, sfx, pauseMenu, settingsView } = initHud(graphics, pipeline);
+  const launcher = new Launcher(hud, unlockmanager, slots, snapshotService, sfx, bgm);
   // 「ゲームを中断してタイトル画面に戻る」
   pauseMenu.onQuitToTitle = () => launcher.returnToTitle();
   pauseMenu.onOpenSettings = () => {
@@ -260,6 +265,13 @@ async function main() {
     initialSave,
   );
   launcher.noteLaunched(stageClass);
+
+  // AudioContext は実際のユーザー操作でしか作れないため、unlock は入力エッジの発火点へ配線する。
+  // BGM は unlock 後最初の操作で一度だけ自動開始する。
+  game.input.onUserGesture = () => {
+    audioEngine.unlock();
+    bgm.autoStart();
+  };
 
   const saveBrowser = new SaveBrowser(hud.layers.system, slots, snapshotService, game, hud.overlayManager);
   saveBrowser.onSlotSwitched = () => launcher.switchSlot();
