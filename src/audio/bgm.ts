@@ -34,6 +34,10 @@ export class Bgm {
     return this.volume;
   }
 
+  get isPlaying(): boolean {
+    return this.timer !== null;
+  }
+
   // 設定画面からの音量変更。再生中なら即反映し、停止中に正の音量へ上げたら再生を始める。
   setVolume(vol: number): void {
     this.volume = vol;
