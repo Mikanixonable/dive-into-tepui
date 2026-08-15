@@ -90,9 +90,24 @@ export class GameEntity {
   protected get historyDuration(): number {
     return Math.max(this.baseHistoryDuration, this.requestedHistoryDuration);
   }
-  // 未来を予測する種別か。既定 false。予測する長さは表示期間に追従するので、
-  // 種別ごとに決まるのは可否だけ。
-  readonly predictsFuture: boolean = false;
+  // 未来の状態を引かれる理由。読み手も成り立つ条件も理由ごとに違うので、1つの真偽値へ
+  // 畳まずに別々に持つ。予測する長さは表示期間に追従するため、ここで決まるのは可否だけ。
+
+  // 未来位置を重力源として引かれるか。引力を持つなら、予測と計画の積分が未来時刻の
+  // この個体を必要とする。
+  get predictedAsGravitySource(): boolean {
+    return this.mu !== 0;
+  }
+  // 未来位置を計画軌道の衝突体として引かれるか。剛体接触への参加(collides)とは別の判断
+  // で、こちらは「数分から数日先まで伸びる線が相手にするだけの寿命を持つか」を言う。
+  protected readonly predictedAsPlanCollider: boolean = false;
+  // 表示時刻(未来ゴースト)の位置でメッシュ・マーカーを描く種別か。
+  protected readonly predictedForDisplay: boolean = false;
+
+  // 予測列を伸ばす種別か。上の理由のどれか1つでも立てば伸ばす。
+  get predictsFuture(): boolean {
+    return this.predictedAsGravitySource || this.predictedAsPlanCollider || this.predictedForDisplay;
+  }
   protected readonly scene?: THREE.Scene;
 
   // 未来の予測列。

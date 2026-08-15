@@ -335,8 +335,8 @@ main.ts
   `actualTrajectory` で保持する(state/history/prevState の正本)。GameEntity ごとに繰り返さず
   ここに一括で記す。`DynamicTrajectory` 自身は軌道要素を持たない — `GameEntity.orbitalElementsAround(center)` が
   呼び出しごとに現在の `state` と `center` から導出する(中心天体 `center` は呼び出し側が都度選ぶので
-  `DynamicTrajectory`/`GameEntity` の状態ではない)。`predictsFuture = true` の
-  GameEntity(Ship・AmmoPickup のみ)は、`Predictor` が
+  `DynamicTrajectory`/`GameEntity` の状態ではない)。`predictsFuture` が真の
+  GameEntity(Ship・Base・AmmoPickup・Asteroid)は、`Predictor` が
   `stepPredicted` を呼んだ時点で2本目の `DynamicTrajectory` を `predictedTrajectory` として追加で持つ
   (§付録「正本でないもの」参照 — 未来位置のキャッシュであり、正データではない)。予測する長さ
   (horizon)は種別ごとの定数ではなく、`Predictor.update` が毎フレーム `DisplayWindowManager.current.duration`

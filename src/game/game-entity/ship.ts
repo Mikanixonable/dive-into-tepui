@@ -18,7 +18,7 @@ export abstract class Ship extends GameEntity {
   protected readonly bcInv = C.SHIP_BCINV;
   protected readonly srpCoeff = C.SHIP_SRP_COEFF;
   protected readonly baseHistoryDuration = C.SHIP_HISTORY_DURATION;
-  readonly predictsFuture = true;
+  protected readonly predictedForDisplay = true;
 
   hp: number;
   maxHp: number;
