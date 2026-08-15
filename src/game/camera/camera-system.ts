@@ -165,6 +165,10 @@ export class CameraSystem {
     return this.overviewMode ? this.mapCamera.camera : this.combatCamera.camera;
   }
 
+  get activeViewpoint(): Viewpoint {
+    return this.overviewMode ? this.mapCamera.viewpoint : this.combatCamera.viewpoint;
+  }
+
   // アクティブカメラの位置(描画原点になる値)を返す。戦闘ビューにいることは操作対象艦がいることを
   // 意味する(ViewManager が canEnter で保証する)ので、この値は実在した艦から計算されたものになる。
   get activeCameraPos(): Vec3 {
