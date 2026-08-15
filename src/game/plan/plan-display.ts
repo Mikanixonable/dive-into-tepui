@@ -18,7 +18,7 @@ import * as C from '../const';
 import { DisplayDurationSource, PlanData } from './plan';
 import { PlanPath } from './plan-path';
 import type { DisplayWindow } from '../display-window-manager';
-import type { PlanAttractorProvider } from '../simulation/attractors';
+import type { PlanAttractorProvider } from './plan-attractors';
 
 // 近地点・遠地点アイコン。右クリックの被選択物であると同時に、表示するラベルを持つ。
 interface ApsisIcon extends MapPickable {
@@ -118,6 +118,11 @@ export class PlanDisplay {
     this.syncApsisMarkers(project, overviewMode, cameraPos);
     this.syncImpactMarkers(project, overviewMode, cameraPos);
     this.syncTickMarkers(project, overviewMode, cameraPos);
+  }
+
+  // 計画折れ線を片付ける。
+  dispose(): void {
+    this.path.dispose();
   }
 
   // 計画折れ線・ゴーストマーカー・アプシスアイコンを非表示にする。

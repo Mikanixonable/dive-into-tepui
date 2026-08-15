@@ -56,6 +56,16 @@ export class PlanGizmo3D {
     this.group.visible = visible;
   }
 
+  // group をシーンから外し、6本の矢印のジオメトリ・マテリアルを解放する。
+  public dispose(): void {
+    this.group.removeFromParent();
+    for (const part of this.parts) {
+      part.stem.geometry.dispose();
+      part.head.geometry.dispose();
+      (part.stem.material as THREE.Material).dispose();
+    }
+  }
+
   // ギズモをノード位置へ置き、ローカル軸(X=RAD, Y=PRO, Z=NRM)を軌道基準系 pro/nrm/rad に揃える。
   // scale は画面上で一定の見かけサイズになるよう呼び出し側がカメラ距離から求める。
   public setPositionAndRotation(pos: THREE.Vector3, pro: Vec3, nrm: Vec3, rad: Vec3, scale: number): void {

@@ -133,6 +133,11 @@ const SNAPSHOT_KIND_LABEL: Record<SnapshotMeta['kind'], string> = {
   auto: '自動', manual: '手動', checkpoint: '決着',
 };
 
+// 今どの周回の Game が動いているか。Game より長生きする側(Launcher)が満たす。
+export interface CurrentGameSource {
+  readonly current: Game | null;
+}
+
 export class SaveBrowser implements OverlayHandle {
   private readonly el: HTMLElement;
   private _visible = false;
@@ -144,7 +149,7 @@ export class SaveBrowser implements OverlayHandle {
   // compact 幅でだけ、左右ペインのどちらを表示するか(タブで切り替える)。
   private mobilePane: 'slots' | 'snapshots' = 'slots';
 
-  // ページ再読込などスロット切替の実処理は呼び出し側が行う。
+  // スロット切替の実処理は呼び出し側が行う。
   onSlotSwitched: (() => void) | null = null;
   // スナップショットのロードは Game を作り直すことで表現するため、実処理は呼び出し側が行う。
   onLoadSnapshot: ((snapshotId: string) => void) | null = null;
@@ -155,7 +160,7 @@ export class SaveBrowser implements OverlayHandle {
     root: HTMLElement,
     private readonly slots: SaveSlots,
     private readonly service: SnapshotService,
-    private readonly game: Game,
+    private readonly gameSource: CurrentGameSource,
     private readonly overlayManager: OverlayManager,
   ) {
     ensureStyle();
@@ -174,7 +179,7 @@ export class SaveBrowser implements OverlayHandle {
     this.rebuild();
     this.el.style.display = 'flex';
     this._visible = true;
-    this.game.pause();
+    this.gameSource.current?.pause();
     this.overlayManager.open('save-browser', this, {
       kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: true, exclusiveGroup: 'system-modal',
     });
@@ -183,7 +188,7 @@ export class SaveBrowser implements OverlayHandle {
   close(): void {
     this.el.style.display = 'none';
     this._visible = false;
-    this.game.resume();
+    this.gameSource.current?.resume();
     this.overlayManager.close('save-browser');
   }
 
@@ -197,8 +202,10 @@ export class SaveBrowser implements OverlayHandle {
   }
 
   // 決着後(won/lost/timeup)の状態は復元しても操作不能なので撮らせない([F5] と同条件)。
+  // 動いている Game が無い(周回の切り替え中)ときも撮れない。
   private canCaptureNow(): boolean {
-    return this.viewedSlotId === this.slots.activeSlotId && this.game.activeStage.isPlaying;
+    const game = this.gameSource.current;
+    return game !== null && this.viewedSlotId === this.slots.activeSlotId && game.activeStage.isPlaying;
   }
 
   private viewedSlot(): SaveSlotMeta | null {
@@ -362,7 +369,8 @@ export class SaveBrowser implements OverlayHandle {
     const pinned = history ? history.snapshots.filter((s) => s.pinned) : [];
     const auto = history ? history.snapshots.filter((s) => !s.pinned) : [];
     // 復元できるのは、いま遊んでいるスロットの、いま遊んでいるステージのものだけ。
-    const loadable = slot.id === this.slots.activeSlotId && stageId === this.game.activeStage.id;
+    const game = this.gameSource.current;
+    const loadable = game !== null && slot.id === this.slots.activeSlotId && stageId === game.activeStage.id;
 
     const groups = document.createElement('div');
     groups.className = 'sb-snapshot-groups';
@@ -508,8 +516,10 @@ export class SaveBrowser implements OverlayHandle {
     this.rebuild();
   }
 
+  // 遷移を要求する前に自分を閉じる — 開いたままだと次の周回でも入力を遮断し続ける。
   private handlePlaySlot(id: string): void {
     this.slots.setActiveSlot(id);
+    this.close();
     this.onSlotSwitched?.();
   }
 
@@ -520,6 +530,7 @@ export class SaveBrowser implements OverlayHandle {
     if (!name) return;
     const slot = this.slots.createSlot(name);
     this.slots.setActiveSlot(slot.id);
+    this.close();
     this.onSlotSwitched?.();
   }
 
@@ -535,19 +546,23 @@ export class SaveBrowser implements OverlayHandle {
   }
 
   private handleCaptureNow(): void {
-    if (!this.canCaptureNow()) return;
+    const game = this.gameSource.current;
+    if (game === null || !this.canCaptureNow()) return;
     const name = prompt('スナップショットの名前', '');
-    const snap = this.service.capture(this.game, 'manual', name || null, true);
+    const snap = this.service.capture(game, 'manual', name || null, true);
     this.setStatus(snap ? 'クリップしました。' : 'クリップに失敗しました。', !snap);
     this.rebuild();
   }
 
+  // loadable でなければ理由をヒントに出すだけ。loadable なら、遷移を要求する前に自分を
+  // 閉じてから onLoadSnapshot を呼ぶ — 開いたままだと次の周回でも入力を遮断し続ける。
   private handleLoadSnapshot(snapId: string, loadable: boolean): void {
     if (!loadable) {
       this.setStatus('いま遊んでいるセーブデータ・ステージのスナップショットだけを復元できます。', true);
       this.rebuild();
       return;
     }
+    this.close();
     this.onLoadSnapshot?.(snapId);
   }
 

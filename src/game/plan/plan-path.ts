@@ -16,7 +16,7 @@ import { TrajectoryLine } from '../trajectory-line';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { DisplayDurationSource, PlanData, TimeRange, segmentDurationFrom } from './plan';
 import { PlanArc } from './plan-arc';
-import type { PlanAttractorProvider } from '../simulation/attractors';
+import type { PlanAttractorProvider } from './plan-attractors';
 import * as C from '../const';
 
 const SEGMENT_COLORS = [0xffb36b, 0xff8a26, 0xff6a00];
@@ -323,6 +323,12 @@ export class PlanPath {
   // group 全体の表示/非表示を切り替える。
   setVisible(v: boolean): void {
     this.group.visible = v;
+  }
+
+  // group をシーンから外し、プールした折れ線を解放する。
+  dispose(): void {
+    this.group.removeFromParent();
+    for (const line of this.lines) line.dispose();
   }
 
   // i 番目の折れ線を返す(なければ生成して group へ追加する)。区間の色は index で決まる。

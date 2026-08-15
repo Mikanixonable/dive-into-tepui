@@ -34,15 +34,15 @@ export const NIGHT_AMBIENT = 0.04;
 // ジオメトリを全呼び出し元(=全天体)で共有する。一致しない組(既存のジオメトリを
 // 個別に書き換える呼び出しなど)は共有すると他の利用元を壊すため、専用に1つ作る。
 const sharedLodGeometries = new Map<SphereLodLevel, THREE.BufferGeometry>();
-function unitSphereGeometry(widthSegments: number, heightSegments: number): THREE.BufferGeometry {
+function unitSphereGeometry(widthSegments: number, heightSegments: number): { geometry: THREE.BufferGeometry; shared: boolean } {
   const level = SPHERE_LOD_LADDER.find((l) => l.widthSegments === widthSegments && l.heightSegments === heightSegments);
-  if (level === undefined) return new THREE.SphereGeometry(1, widthSegments, heightSegments);
+  if (level === undefined) return { geometry: new THREE.SphereGeometry(1, widthSegments, heightSegments), shared: false };
   let geo = sharedLodGeometries.get(level);
   if (geo === undefined) {
     geo = new THREE.SphereGeometry(1, widthSegments, heightSegments);
     sharedLodGeometries.set(level, geo);
   }
-  return geo;
+  return { geometry: geo, shared: true };
 }
 
 type RingShadowBand = {
@@ -65,9 +65,14 @@ export class CelestialSurface {
   // mesh は半径 1 の球で、表示側が位置・スケール・自転姿勢を毎フレーム与える。
   readonly mesh: THREE.Mesh;
   private readonly albedoNode: Vec3Node;
+  // false なら mesh.geometry は SPHERE_LOD_LADDER 段の共有ジオメトリで、dispose では触らない。
+  private readonly ownsGeometry: boolean;
+  private readonly texture: THREE.Texture | null;
 
   // albedo は面の色を返すノード。これに昼夜の陰影を掛けたものが最終色になる。
-  private constructor(geometry: THREE.BufferGeometry, albedo: Vec3Node) {
+  private constructor(geometry: THREE.BufferGeometry, ownsGeometry: boolean, albedo: Vec3Node, texture: THREE.Texture | null) {
+    this.ownsGeometry = ownsGeometry;
+    this.texture = texture;
     this.albedoNode = albedo;
     this.material = this.buildMaterial(this.albedoNode, false);
     this.mesh = new THREE.Mesh(geometry, this.material);
@@ -125,13 +130,15 @@ export class CelestialSurface {
   static textured(textureUrl: string, widthSegments: number, heightSegments: number): CelestialSurface {
     const map = new THREE.TextureLoader().load(textureUrl);
     map.colorSpace = THREE.SRGBColorSpace;
-    return new CelestialSurface(unitSphereGeometry(widthSegments, heightSegments), textureNode(map, uv()).rgb);
+    const { geometry, shared } = unitSphereGeometry(widthSegments, heightSegments);
+    return new CelestialSurface(geometry, !shared, textureNode(map, uv()).rgb, map);
   }
 
   // テクスチャを持たない天体の単色球面。
   static solid(color: number, widthSegments: number, heightSegments: number): CelestialSurface {
     const c = new THREE.Color(color);
-    return new CelestialSurface(unitSphereGeometry(widthSegments, heightSegments), vec3(c.r, c.g, c.b));
+    const { geometry, shared } = unitSphereGeometry(widthSegments, heightSegments);
+    return new CelestialSurface(geometry, !shared, vec3(c.r, c.g, c.b), null);
   }
 
   // この天体の真の ECI 位置から見た恒星方向(単位ベクトル)を与える。
@@ -162,5 +169,15 @@ export class CelestialSurface {
       node.tau.value = band.optics.normalOpticalDepth;
       node.active.value = 1;
     }
+  }
+
+  // mesh を親から外し、現行マテリアルとテクスチャを解放する。テクスチャは
+  // material.dispose() から連鎖解放されない(TSL のノードグラフに埋め込まれているだけ)ため、
+  // ここで個別に dispose する。
+  dispose(): void {
+    this.mesh.removeFromParent();
+    this.material.dispose();
+    if (this.ownsGeometry) this.mesh.geometry.dispose();
+    this.texture?.dispose();
   }
 }
