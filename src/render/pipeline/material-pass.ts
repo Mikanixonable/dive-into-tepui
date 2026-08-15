@@ -1,5 +1,6 @@
-// LIT_OPAQUE_LAYER のオブジェクトだけを対象に、ライトプリパスが書いた拡散/鏡面照度バッファを
-// screenUV で読み、素材(アルベド・金属度・F0)を掛けて描く。
+// LIT_OPAQUE_LAYER のオブジェクトと背景専用レイヤーを対象に、ライトプリパスが書いた拡散/鏡面
+// 照度バッファを screenUV で読み、素材(アルベド・金属度・F0)を掛けて描く。背景専用レイヤーは
+// renderOrder により不透明物より先に描かれ、world パスの既定レイヤーには現れない。
 //
 // PhysicalLightingModel の direct() を no-op にしてシーンの実光源(DirectionalLight/AmbientLight)
 // の寄与を切り、indirect() だけをライトプリパス読み出しへ差し替える — BRDF・マップ・粗さ/金属度の
@@ -18,7 +19,7 @@ import * as THREE from 'three/webgpu';
 import { WebGPURenderer, PhysicalLightingModel } from 'three/webgpu';
 import { diffuseColor, metalness, mix, screenUV, texture, vec3 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
-import { LIT_OPAQUE_LAYER } from './lit-layer';
+import { LIT_OPAQUE_LAYER, setOpaquePassLayers } from './lit-layer';
 import type { LightPrepass } from './light-prepass';
 import type { Vec3Node } from '../tsl-types';
 
@@ -113,8 +114,8 @@ export class MaterialPass {
     src.dispose();
   }
 
-  // LIT_OPAQUE_LAYER のオブジェクトを、world パスと共有する HDR ターゲットへ描く(このパスが
-  // そこへの最初の書き込みなのでクリアする)。showDebugTarget が立っているときだけ、同じ
+  // LIT_OPAQUE_LAYER のオブジェクトと背景専用レイヤーを、world パスと共有する HDR ターゲットへ
+  // 描く(このパスがそこへの最初の書き込みなのでクリアする)。showDebugTarget が立っているときだけ、同じ
   // ジオメトリをこのパス専用のターゲットへもう一度描く — 「マテリアル」デバッグ表示を選んで
   // いるかどうかの判断は RenderPipeline のもので、ここでは結果だけを受け取る。
   render(
@@ -131,7 +132,7 @@ export class MaterialPass {
     });
 
     const savedMask = camera.layers.mask;
-    camera.layers.set(LIT_OPAQUE_LAYER);
+    setOpaquePassLayers(camera);
 
     if (showDebugTarget) {
       if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
