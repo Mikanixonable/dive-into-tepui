@@ -8,6 +8,8 @@ read this file first, then whichever of the linked files the task needs.
   that block some of it.
 - [conventions.md](conventions.md) — the project rules and audio-specific invariants that a
   change here must not break. Read before writing code.
+- [disposal.md](disposal.md) — what `dispose()` means in this repo, how much of it applies to
+  audio (less than it looks), and the one leak the audit found in `Bgm`.
 - [human.md](human.md) — arx-ein's own notes. **Read only. Never write to it.**
 
 ## Where the work sits
