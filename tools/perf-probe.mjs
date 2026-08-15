@@ -1,0 +1,664 @@
+// パフォーマンス再現計測プローブ。tools/browser-smoke.mjs の Chrome 起動/静的配信/CDP 接続を
+// 流用し、負荷確認ウィンドウ(PerfMeter, `.prop-window` タイトル「負荷」)の全行をワープ段数・
+// ビュー・計画ノード有無ごとに読み取って JSON で出す。ゲーム本体(src/)は一切変更しない。
+//
+// 使い方:
+//   node tools/perf-probe.mjs                       # 条件マトリクス一式(既定)
+//   PERF_MODE=timeseries node tools/perf-probe.mjs  # 予測破棄イベントの時系列サンプリング
+//   PERF_ONLY=map node tools/perf-probe.mjs         # label にこの文字列を含む条件だけ実行(数字境界で区切って一致判定)
+//   PERF_OUT=out.json node tools/perf-probe.mjs     # 結果をファイルにも書く(常に stdout にも出す)
+//
+// 環境変数:
+//   共通:        CHROME_PATH
+//   matrix モード: PERF_SAMPLES(既定10) PERF_INTERVAL_MS(既定500) PERF_SETTLE_MS(既定3000) PERF_ONLY
+//   timeseries モード: PERF_TS_STAGE(既定'1') PERF_TS_WARPS(既定'1,64,1024')
+//                      PERF_TS_INTERVAL_MS(既定300) PERF_TS_DURATIONS(既定 warp=1のみ60・他30秒)
+//
+// 既知の限界: PerfMeter の predictDiscarded 等のカウンタ系の値は 500ms flush 時点の
+// 「その1フレームだけ」のスナップショットで、flush 期間の合計ではない(perf-meter.ts の
+// buildRows は counts.perfCounts() を1回しか呼ばない)。本プローブがそれより速く読んでも
+// 同じ値を読み直すだけになりうるので、時系列サンプリングは全イベントを保証する計測では
+// なく、500ms 周期のストロボ的な観測になる。
+import { accessSync, constants, mkdtempSync, rmSync, createReadStream, statSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { createServer } from 'node:http';
+import { once } from 'node:events';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
+const root = path.resolve(import.meta.dirname, '..');
+const staticPort = 8766;
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// ---- src/game/const.ts SIM_SPEED_LEVELS / src/game/input/key-mapping.ts の写し -----------------
+// (import はできない — ビルド済み docs/ を外側から駆動するだけなので、値をここに複製する。
+//  ズレが心配なら `grep SIM_SPEED_LEVELS src/game/const.ts` で照合すること。)
+const SIM_SPEED_LEVELS = [1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 131072];
+const KEY_WARP_FASTER = { key: '.', code: 'Period', keyCode: 190 };
+const KEY_MAP_MODE = { key: 'm', code: 'KeyM', keyCode: 77 };
+
+// ---- Chrome 探索 (tools/browser-smoke.mjs から) --------------------------------------------------
+const candidates = [
+  process.env.CHROME_PATH,
+  'google-chrome',
+  'chromium',
+  'chromium-browser',
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  'C:/Program Files/Google/Chrome/Application/chrome.exe',
+  'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+  process.env.LOCALAPPDATA && `${process.env.LOCALAPPDATA}/Google/Chrome/Application/chrome.exe`,
+].filter(Boolean);
+
+function findChrome() {
+  const lookup = process.platform === 'win32'
+    ? (name) => spawnSync('where', [name], { encoding: 'utf8' })
+    : (name) => spawnSync('sh', ['-c', 'command -v "$1"', 'find-chrome', name], { encoding: 'utf8' });
+  for (const candidate of candidates) {
+    if (candidate.includes('/') || candidate.includes('\\')) {
+      try {
+        accessSync(candidate, constants.X_OK);
+        return candidate;
+      } catch {
+        continue;
+      }
+    }
+    const found = lookup(candidate);
+    if (found.status === 0 && found.stdout.trim()) return found.stdout.trim().split(/\r?\n/)[0];
+  }
+  throw new Error('Chrome/Chromium not found. Set CHROME_PATH.');
+}
+
+// ---- docs/ 静的配信 (tools/browser-smoke.mjs から) ------------------------------------------------
+const MIME = {
+  '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
+  '.jpg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml',
+  '.woff': 'font/woff', '.woff2': 'font/woff2', '.epk': 'application/octet-stream',
+};
+function startStaticServer(directory, listenPort) {
+  const server = createServer((request, response) => {
+    const rel = decodeURIComponent(new URL(request.url, 'http://127.0.0.1').pathname);
+    const file = path.join(directory, rel === '/' ? 'index.html' : rel);
+    if (!file.startsWith(directory)) {
+      response.writeHead(403).end();
+      return;
+    }
+    try {
+      const size = statSync(file).size;
+      response.writeHead(200, {
+        'content-type': MIME[path.extname(file).toLowerCase()] ?? 'application/octet-stream',
+        'content-length': size,
+      });
+      createReadStream(file).pipe(response);
+    } catch {
+      response.writeHead(404).end();
+    }
+  });
+  server.listen(listenPort, '127.0.0.1');
+  return server;
+}
+
+async function waitForServer(url) {
+  for (let attempt = 0; attempt < 50; attempt++) {
+    try {
+      const response = await fetch(url);
+      if (response.ok) return;
+    } catch {
+      // Server startup race; retry briefly.
+    }
+    await sleep(100);
+  }
+  throw new Error(`Static server did not become ready: ${url}`);
+}
+
+async function waitForDebugPage(port) {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    try {
+      const pages = await fetch(`http://127.0.0.1:${port}/json/list`).then((response) => response.json());
+      const page = pages.find((target) => target.type === 'page');
+      if (page?.webSocketDebuggerUrl) return page.webSocketDebuggerUrl;
+    } catch {
+      // Chrome startup race; retry briefly.
+    }
+    await sleep(100);
+  }
+  throw new Error('Chrome DevTools endpoint did not become ready.');
+}
+
+function connectDevTools(url, onEvent) {
+  const socket = new WebSocket(url);
+  let nextId = 1;
+  const pending = new Map();
+  socket.addEventListener('message', (event) => {
+    const response = JSON.parse(event.data);
+    if (!response.id) {
+      onEvent(response);
+      return;
+    }
+    if (!pending.has(response.id)) return;
+    const { resolve, reject } = pending.get(response.id);
+    pending.delete(response.id);
+    if (response.error) reject(new Error(response.error.message));
+    else resolve(response.result);
+  });
+  const opened = new Promise((resolve, reject) => {
+    socket.addEventListener('open', resolve, { once: true });
+    socket.addEventListener('error', () => reject(new Error('Chrome DevTools WebSocket failed.')), { once: true });
+  });
+  return {
+    opened,
+    send(method, params = {}) {
+      const id = nextId++;
+      socket.send(JSON.stringify({ id, method, params }));
+      return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+    },
+    async evaluate(expression) {
+      const result = await this.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
+      if (result.exceptionDetails) {
+        throw new Error(`Page evaluation threw: ${result.exceptionDetails.exception?.description ?? result.exceptionDetails.text}`);
+      }
+      return result.result.value;
+    },
+    close: () => socket.close(),
+  };
+}
+
+// ---- ページ操作ヘルパ ------------------------------------------------------------------------
+async function pressKey(devTools, binding) {
+  await devTools.send('Input.dispatchKeyEvent', {
+    type: 'keyDown', key: binding.key, code: binding.code, windowsVirtualKeyCode: binding.keyCode,
+  });
+  await devTools.send('Input.dispatchKeyEvent', {
+    type: 'keyUp', key: binding.key, code: binding.code, windowsVirtualKeyCode: binding.keyCode,
+  });
+}
+
+async function leftClickAt(devTools, x, y) {
+  await devTools.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none', buttons: 0 });
+  await devTools.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 });
+  await devTools.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1 });
+}
+
+async function wheelAt(devTools, x, y, deltaY) {
+  await devTools.send('Input.dispatchMouseEvent', {
+    type: 'mouseWheel', x, y, deltaX: 0, deltaY, pointerType: 'mouse',
+  });
+}
+
+// 条件式が真になるまでポーリングする。固定 sleep ではなく条件で待つ(rAF ループの都合)。
+async function waitForCondition(fn, label, timeoutMs = 8000, intervalMs = 50) {
+  const deadline = Date.now() + timeoutMs;
+  do {
+    if (await fn()) return;
+    await sleep(intervalMs);
+  } while (Date.now() < deadline);
+  throw new Error(`Timed out waiting for ${label}.`);
+}
+
+async function bootAndWaitReady(devTools, timeoutMs = 30000) {
+  let state;
+  const deadline = Date.now() + timeoutMs;
+  do {
+    state = await devTools.evaluate(`({
+      ready: document.documentElement.dataset.gameReady === 'true',
+      fatal: Boolean(document.getElementById('fatal-error-overlay')),
+      fatalText: document.getElementById('fatal-error-overlay')?.textContent ?? '',
+    })`);
+    if (state.fatal) throw new Error(`Fatal error overlay during boot: ${state.fatalText}`);
+    if (state.ready) return;
+    await sleep(100);
+  } while (Date.now() < deadline);
+  throw new Error('Game did not report gameReady within timeout.');
+}
+
+// 負荷確認ウィンドウ(タイトル「負荷」)の全行を {key,label,value} で読む。無ければ null。
+async function readPerfRows(devTools) {
+  return devTools.evaluate(`(() => {
+    const wins = [...document.querySelectorAll('.prop-window')];
+    const win = wins.find((w) => w.querySelector('.prop-window-title-main')?.textContent === '負荷');
+    if (!win) return null;
+    return [...win.querySelectorAll('.prop-window-row')].map((r) => ({
+      key: r.dataset.key ?? '',
+      label: r.querySelector('.prop-window-row-label')?.textContent ?? '',
+      value: r.querySelector('.prop-window-row-value')?.textContent ?? '',
+    }));
+  })()`);
+}
+
+async function currentView(devTools) {
+  return devTools.evaluate(`(() => {
+    if (document.querySelector('.hud-combat-root.active')) return 'combat';
+    if (document.querySelector('.hud-map-root.active')) return 'map';
+    return 'unknown';
+  })()`);
+}
+
+async function ensureView(devTools, target) {
+  const view = await currentView(devTools);
+  if (view === target) return view;
+  await pressKey(devTools, KEY_MAP_MODE);
+  await waitForCondition(
+    async () => (await currentView(devTools)) === target,
+    `view to become ${target} (was ${view})`,
+    5000,
+  );
+  return target;
+}
+
+async function currentWarp(devTools) {
+  const rows = await readPerfRows(devTools);
+  const row = rows?.find((r) => r.key === 'warp');
+  const m = row?.value.match(/×(\d+)/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+// 新規ロード直後(ワープ×1)を前提に、Period キーを目標段数まで連打してポーリングで確認する。
+async function raiseWarpTo(devTools, target) {
+  if (target === 1) return;
+  const idx = SIM_SPEED_LEVELS.indexOf(target);
+  if (idx < 0) throw new Error(`${target} is not a SIM_SPEED_LEVELS entry: ${SIM_SPEED_LEVELS.join(',')}`);
+  for (let i = 0; i < idx; i++) {
+    await pressKey(devTools, KEY_WARP_FASTER);
+    await sleep(25);
+  }
+  await waitForCondition(async () => (await currentWarp(devTools)) === target, `warp to reach ×${target}`, 10000);
+}
+
+// 「オブジェクト一覧」の自艦行(.erow, 見出し「自艦」区画の唯一の行)をダブルクリックし、
+// カメラ焦点を自艦へ移す。object-list-panel.ts の row は dblclick で onFocus(id) を呼ぶ実装
+// なので、CDP のクリック座標合わせなしに DOM 直操作で済む。
+async function focusCameraOnShip(devTools) {
+  return devTools.evaluate(`(() => {
+    const headers = [...document.querySelectorAll('.object-list-section-header')];
+    const header = headers.find((h) => h.textContent.trim().startsWith('自艦'));
+    const body = header?.nextElementSibling;
+    const row = body?.querySelector('.erow');
+    if (!row) return false;
+    row.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    return true;
+  })()`);
+}
+
+// 自艦マーカー(.mk-self, ▲)の画面座標。無ければ null。
+async function shipMarkerScreenPos(devTools) {
+  return devTools.evaluate(`(() => {
+    const el = document.querySelector('.mk-self');
+    if (!el || getComputedStyle(el).display === 'none') return null;
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  })()`);
+}
+
+// マップ・編集モードで計画軌道折れ線をクリックしてノードを1個置く。
+// 計画にノードが0個の間、末尾区間(唯一の区間)は自機の「現在状態」からそのまま伸びる
+// (plan-path.ts の tracksLiveAnchor)ので、その最初のサンプルは自機マーカーの位置と
+// ほぼ一致する — 折れ線を画素から目視で探さなくても、マーカー位置そのものと
+// その近傍を試打鍵すれば当たる。実際に画面キャプチャで検証済み(色走査では計画の
+// オレンジ色は自機軌道の白線とほぼ重なって見分けが付かなかったが、マーカー近傍への
+// クリックは NODE_PICK_PX=30px の許容内に収まり、確実にノードが置けた)。
+// 成否は .gz-node(node-gizmo.ts の各ノードハンドル)の増加で確認する。
+async function attemptPlaceNode(devTools) {
+  const focused = await focusCameraOnShip(devTools);
+  await sleep(700);
+
+  const offsets = [
+    [0, 0], [10, 0], [-10, 0], [0, 10], [0, -10],
+    [20, 15], [-20, 15], [20, -15], [-20, -15],
+    [35, 0], [-35, 0], [0, 35], [0, -35],
+    [50, 25], [-50, 25], [50, -25], [-50, -25],
+  ];
+  const attempts = [];
+  for (const zoomTicks of [4, 0, 8, 12]) {
+    if (zoomTicks > 0) {
+      const pos = (await shipMarkerScreenPos(devTools)) ?? { x: await devTools.evaluate('innerWidth/2'), y: await devTools.evaluate('innerHeight/2') };
+      for (let i = 0; i < zoomTicks; i++) {
+        await wheelAt(devTools, pos.x, pos.y, -160);
+        await sleep(15);
+      }
+      await sleep(400);
+    }
+    const pos = await shipMarkerScreenPos(devTools);
+    if (!pos) {
+      attempts.push({ zoomTicks, ok: false, reason: 'no .mk-self marker on screen' });
+      continue;
+    }
+    for (const [dx, dy] of offsets) {
+      const x = pos.x + dx;
+      const y = pos.y + dy;
+      const before = await devTools.evaluate(`document.querySelectorAll('.gz-node').length`);
+      await leftClickAt(devTools, x, y);
+      await sleep(250);
+      const after = await devTools.evaluate(`document.querySelectorAll('.gz-node').length`);
+      if (after > before) {
+        return { placed: true, x, y, zoomTicks, focused, attempts };
+      }
+    }
+    attempts.push({ zoomTicks, ok: true, markerPos: pos, offsetsTried: offsets.length });
+  }
+  return { placed: false, focused, attempts };
+}
+
+// ---- 行の値文字列 → 数値の抽出 -----------------------------------------------------------------
+// perf-meter.ts の書式(barText / countRow / warp / hit-miss / 素の数値)を素直にパースする。
+function parseRowValue(raw) {
+  const bar = raw.match(/(-?\d+\.?\d*)ms(?:\s+p95\s+(-?\d+\.?\d*))?(?:\s+max\s+(-?\d+\.?\d*))?/);
+  if (bar) {
+    return {
+      kind: 'ms', avg: parseFloat(bar[1]),
+      p95: bar[2] !== undefined ? parseFloat(bar[2]) : null,
+      max: bar[3] !== undefined ? parseFloat(bar[3]) : null,
+    };
+  }
+  const avgMax = raw.match(/^avg\s+(-?\d+\.?\d*)\s+max\s+(-?\d+\.?\d*)$/);
+  if (avgMax) return { kind: 'avgmax', avg: parseFloat(avgMax[1]), max: parseFloat(avgMax[2]) };
+  const warp = raw.match(/^×(\d+)$/);
+  if (warp) return { kind: 'warp', avg: parseInt(warp[1], 10) };
+  const hitMiss = raw.match(/^hit\s+(-?\d+)\s*\/\s*miss\s+(-?\d+)$/);
+  if (hitMiss) return { kind: 'hitmiss', hit: parseInt(hitMiss[1], 10), miss: parseInt(hitMiss[2], 10) };
+  if (/^-?\d+\.?\d*$/.test(raw)) return { kind: 'number', avg: parseFloat(raw) };
+  return { kind: 'raw' };
+}
+
+function median(nums) {
+  const xs = nums.filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
+  if (xs.length === 0) return null;
+  const mid = Math.floor(xs.length / 2);
+  return xs.length % 2 ? xs[mid] : (xs[mid - 1] + xs[mid]) / 2;
+}
+
+// ============================================================================================
+// 条件マトリクスモード: 起動 → ワープ/ビュー/ノードを整えて設定(settle)→ N サンプル取得 → 中央値化。
+// ============================================================================================
+async function runCondition(devTools, baseUrl, cond, fatalEvents) {
+  const {
+    label, stage, warp = 1, view = 'combat', placeNode = false,
+    samples = 10, intervalMs = 500, settleMs = 3000,
+  } = cond;
+  fatalEvents.length = 0;
+  const url = `${baseUrl}/?stage=${encodeURIComponent(stage)}&perf=1`;
+  let lastErr = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await devTools.send('Page.navigate', { url });
+      await bootAndWaitReady(devTools);
+      // ビュー切替・ノード配置は等速(×1)の落ち着いた軌道のうちに行う — マップビュー中は
+      // editMode=true で PlanGuide.update が早期 return するため consumeNodesUpTo は走らず
+      // (plan-guide.ts)、置いたノードはワープを上げても消費されない。それでも「操作」自体は
+      // 軌道が暴れていない自然な状態でやるほうが確実なので、ワープ増速は最後に回す。
+      const actualView = await ensureView(devTools, view);
+      let nodeResult = null;
+      if (view === 'map' && placeNode) {
+        nodeResult = await attemptPlaceNode(devTools);
+      }
+      await raiseWarpTo(devTools, warp);
+      await sleep(settleMs);
+
+      const sampleRows = [];
+      for (let i = 0; i < samples; i++) {
+        const rows = await readPerfRows(devTools);
+        sampleRows.push(rows ?? []);
+        if (i < samples - 1) await sleep(intervalMs);
+      }
+
+      // key ごとに中央値化。
+      const byKey = new Map();
+      for (const rows of sampleRows) {
+        for (const r of rows) {
+          if (!byKey.has(r.key)) byKey.set(r.key, { label: r.label, raws: [], parsed: [] });
+          const entry = byKey.get(r.key);
+          entry.raws.push(r.value);
+          entry.parsed.push(parseRowValue(r.value));
+        }
+      }
+      const summary = {};
+      for (const [key, entry] of byKey) {
+        const avgs = entry.parsed.map((p) => p.avg).filter((v) => v !== undefined);
+        const p95s = entry.parsed.map((p) => p.p95).filter((v) => v !== null && v !== undefined);
+        const maxs = entry.parsed.map((p) => p.max).filter((v) => v !== null && v !== undefined);
+        summary[key] = {
+          label: entry.label,
+          medianAvg: avgs.length ? median(avgs) : null,
+          medianP95: p95s.length ? median(p95s) : null,
+          medianMax: maxs.length ? median(maxs) : null,
+          lastRaw: entry.raws.at(-1),
+          samples: entry.raws,
+        };
+      }
+
+      return {
+        label, stage, requestedWarp: warp, requestedView: view, actualView,
+        placeNode, nodeResult,
+        actualWarpAtSampleStart: parseRowValue(sampleRows[0]?.find((r) => r.key === 'warp')?.value ?? '').avg ?? null,
+        samples, intervalMs, settleMs,
+        rows: summary,
+        fatalEvents: [...fatalEvents],
+        attempt,
+      };
+    } catch (e) {
+      lastErr = e;
+      console.error(`[perf-probe] condition "${label}" attempt ${attempt + 1} failed: ${e.message}`);
+      await sleep(500);
+    }
+  }
+  return { label, stage, requestedWarp: warp, requestedView: view, error: String(lastErr), fatalEvents: [...fatalEvents] };
+}
+
+function defaultMatrix() {
+  const common = {
+    samples: parseInt(process.env.PERF_SAMPLES ?? '10', 10),
+    intervalMs: parseInt(process.env.PERF_INTERVAL_MS ?? '500', 10),
+    settleMs: parseInt(process.env.PERF_SETTLE_MS ?? '3000', 10),
+  };
+  return [
+    // (a) ワープ倍率を変えたときの推移。stage 1、戦闘ビュー。
+    { label: 'stage1-combat-warp1', stage: '1', warp: 1, view: 'combat', ...common },
+    { label: 'stage1-combat-warp64', stage: '1', warp: 64, view: 'combat', ...common },
+    { label: 'stage1-combat-warp1024', stage: '1', warp: 1024, view: 'combat', ...common },
+    { label: 'stage1-combat-warp16384', stage: '1', warp: 16384, view: 'combat', ...common },
+    { label: 'stage1-combat-warp65536', stage: '1', warp: 65536, view: 'combat', ...common },
+
+    // (b) ビューの違い。最高ワープで戦闘 vs マップ(ノード0個)。
+    { label: 'stage1-map-warp65536-node0', stage: '1', warp: 65536, view: 'map', placeNode: false, ...common },
+
+    // (c) 「計画」の条件依存: ノード1個 / ノード0個 は上と対で、×1 でも対照を取る。
+    { label: 'stage1-map-warp1-node0', stage: '1', warp: 1, view: 'map', placeNode: false, ...common },
+    { label: 'stage1-map-warp65536-node1', stage: '1', warp: 65536, view: 'map', placeNode: true, ...common },
+    { label: 'stage1-map-warp1-node1', stage: '1', warp: 1, view: 'map', placeNode: true, ...common },
+
+    // 操作対象艦がいない状態(CREATIVE, 艦0隻)。
+    { label: 'creative-map-warp65536-noship', stage: 'creative', warp: 65536, view: 'map', placeNode: false, ...common },
+    { label: 'creative-map-warp1-noship', stage: 'creative', warp: 1, view: 'map', placeNode: false, ...common },
+
+    // (d) エンティティ数の多いステージ(debug-load: 小惑星+破片を多数配置)。
+    { label: 'debug-load-combat-warp65536', stage: 'debug-load', warp: 65536, view: 'combat', ...common },
+    { label: 'debug-load-combat-warp1', stage: 'debug-load', warp: 1, view: 'combat', ...common },
+  ];
+}
+
+// PERF_ONLY はカンマ区切りのトークン列。各トークンは label 中に「数字境界で区切られた形」で
+// 現れる場合だけ一致とみなす(例: "warp1" は "…warp1-node0" には一致するが "…warp1024" には
+// 一致しない — 末尾が数字で続いてしまう場合を弾く)。
+function matchesOnly(label, only) {
+  if (!only) return true;
+  return only.split(',').some((rawTok) => {
+    const tok = rawTok.trim();
+    if (!tok) return false;
+    const i = label.indexOf(tok);
+    if (i < 0) return false;
+    const after = label[i + tok.length];
+    return after === undefined || !/[0-9]/.test(after);
+  });
+}
+
+async function runMatrix(devTools, baseUrl) {
+  const only = process.env.PERF_ONLY;
+  const all = defaultMatrix().filter((c) => matchesOnly(c.label, only));
+  const fatalEvents = [];
+  const results = [];
+  for (const cond of all) {
+    console.error(`[perf-probe] running condition: ${cond.label}`);
+    const result = await runCondition(devTools, baseUrl, cond, fatalEvents);
+    results.push(result);
+  }
+  return { mode: 'matrix', generatedAt: new Date().toISOString(), results };
+}
+
+// ============================================================================================
+// 時系列モード: 予測破棄(predictDiscarded)の sawtooth 再現確認。
+// PerfMeter の集計値は 500ms ごとの flush 時点の「その1フレームだけ」のスナップショットで
+// (Predictor.tracked/discarded/finished/lastSteps は毎フレーム 0 に戻り、その回の値がそのまま
+// perfCounts() として使われる — フラッシュ期間の合計ではない)、DOM もその瞬間の値を次の
+// flush まで保持するだけなので、それより速く読んでも「同じ値をもう一度読むだけ」になりうる。
+// したがって本プローブの時系列も「破棄が起きた真の全イベント」を保証できるものではなく、
+// 500ms 周期のストロボ的な観測になる。この限界は正直に報告する。
+// ============================================================================================
+// 1回の evaluate で4行分まとめて読む(往復を4回に増やさない)。
+async function sampleTimeseriesRows(devTools) {
+  const rows = await readPerfRows(devTools);
+  const get = (key) => {
+    const row = rows?.find((r) => r.key === key);
+    return row ? (parseRowValue(row.value).avg ?? null) : null;
+  };
+  return {
+    discarded: get('pred-discard'), steps: get('pred-steps'),
+    complete: get('pred-complete'), tracked: get('pred-tracked'),
+  };
+}
+
+async function runTimeseriesForWarp(devTools, baseUrl, { stage, warp, durationSec, intervalMs }, fatalEvents) {
+  fatalEvents.length = 0;
+  const url = `${baseUrl}/?stage=${encodeURIComponent(stage)}&perf=1`;
+  await devTools.send('Page.navigate', { url });
+  await bootAndWaitReady(devTools);
+  await raiseWarpTo(devTools, warp);
+  await ensureView(devTools, 'combat');
+  await sleep(1000); // 安定するまでの猶予
+
+  const series = [];
+  const start = Date.now();
+  while (Date.now() - start < durationSec * 1000) {
+    const t = (Date.now() - start) / 1000;
+    const { discarded, steps, complete, tracked } = await sampleTimeseriesRows(devTools);
+    series.push({ t: Number(t.toFixed(2)), discarded, steps, complete, tracked });
+    await sleep(intervalMs);
+  }
+
+  // 破棄イベント数: discarded>0 の連続した読み取りを1イベントとして畳む(500ms flush の
+  // スナップショットをポーリング間隔 < flush 間隔で複数回読んでしまう分の重複を避けるため)。
+  let events = 0;
+  let inRun = false;
+  for (const s of series) {
+    if ((s.discarded ?? 0) > 0) {
+      if (!inRun) { events++; inRun = true; }
+    } else {
+      inRun = false;
+    }
+  }
+  const avgIntervalSec = events > 0 ? durationSec / events : null;
+
+  return {
+    stage, warp, durationSec, intervalMs,
+    events, avgIntervalSec,
+    series,
+    fatalEvents: [...fatalEvents],
+  };
+}
+
+async function runTimeseries(devTools, baseUrl) {
+  const stage = process.env.PERF_TS_STAGE ?? '1';
+  const warps = (process.env.PERF_TS_WARPS ?? '1,64,1024').split(',').map((s) => parseInt(s.trim(), 10));
+  const intervalMs = parseInt(process.env.PERF_TS_INTERVAL_MS ?? '300', 10);
+  const durationsEnv = process.env.PERF_TS_DURATIONS;
+  const durations = durationsEnv
+    ? durationsEnv.split(',').map((s) => parseInt(s.trim(), 10))
+    : warps.map((w) => (w === 1 ? 60 : 30));
+  const fatalEvents = [];
+  const results = [];
+  for (let i = 0; i < warps.length; i++) {
+    const warp = warps[i];
+    const durationSec = durations[i] ?? 30;
+    console.error(`[perf-probe] timeseries: stage=${stage} warp=${warp} duration=${durationSec}s interval=${intervalMs}ms`);
+    const result = await runTimeseriesForWarp(devTools, baseUrl, { stage, warp, durationSec, intervalMs }, fatalEvents);
+    results.push(result);
+  }
+  return { mode: 'timeseries', generatedAt: new Date().toISOString(), results };
+}
+
+// ============================================================================================
+// main
+// ============================================================================================
+async function main() {
+  const chrome = findChrome();
+  const debugPort = 9333;
+  const profile = mkdtempSync(path.join(tmpdir(), 'tepui-perf-'));
+  const server = startStaticServer(path.join(root, 'docs'), staticPort);
+  const fatalEvents = [];
+  let browser;
+  let devTools;
+  try {
+    const baseUrl = `http://127.0.0.1:${staticPort}`;
+    await waitForServer(`${baseUrl}/`);
+    browser = spawn(chrome, [
+      '--headless=new',
+      '--no-proxy-server',
+      '--enable-gpu',
+      '--enable-unsafe-webgpu',
+      '--disable-gpu-sandbox',
+      '--no-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-background-timer-throttling',
+      '--disable-renderer-backgrounding',
+      '--disable-backgrounding-occluded-windows',
+      '--run-all-compositor-stages-before-draw',
+      '--mute-audio',
+      '--window-size=1280,800',
+      '--force-device-scale-factor=1',
+      `--remote-debugging-port=${debugPort}`,
+      `--user-data-dir=${profile}`,
+      'about:blank',
+    ], { stdio: 'ignore' });
+
+    devTools = connectDevTools(await waitForDebugPage(debugPort), (event) => {
+      if (event.method === 'Runtime.exceptionThrown') fatalEvents.push(event);
+      if (event.method === 'Runtime.consoleAPICalled' && event.params?.type === 'error') fatalEvents.push(event);
+      if (event.method === 'Inspector.targetCrashed') fatalEvents.push(event);
+    });
+    await devTools.opened;
+    await devTools.send('Runtime.enable');
+    await devTools.send('Page.enable');
+    await devTools.send('Inspector.enable');
+    await devTools.send('Emulation.setDeviceMetricsOverride', {
+      width: 1280, height: 800, deviceScaleFactor: 1, mobile: false,
+    });
+
+    const mode = process.env.PERF_MODE ?? 'matrix';
+    const output = mode === 'timeseries'
+      ? await runTimeseries(devTools, baseUrl)
+      : await runMatrix(devTools, baseUrl);
+    output.chromeExceptionsDuringEntireRun = fatalEvents.map((event) => {
+      if (event.method === 'Runtime.exceptionThrown') {
+        return `exception: ${event.params.exceptionDetails.exception?.description ?? event.params.exceptionDetails.text}`;
+      }
+      if (event.method === 'Runtime.consoleAPICalled') {
+        return `console.error: ${event.params.args.map((arg) => arg.description ?? String(arg.value)).join(' ')}`;
+      }
+      return `${event.method}: ${JSON.stringify(event.params ?? {})}`;
+    });
+
+    const json = JSON.stringify(output, null, 2);
+    console.log(json);
+    if (process.env.PERF_OUT) writeFileSync(process.env.PERF_OUT, json);
+  } finally {
+    devTools?.close();
+    if (browser) {
+      browser.kill('SIGTERM');
+      await Promise.race([once(browser, 'exit'), new Promise((resolve) => setTimeout(resolve, 2_000))]);
+    }
+    server.close();
+    rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+}
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
