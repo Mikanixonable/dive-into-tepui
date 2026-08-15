@@ -556,7 +556,6 @@ export function buildBaseModel(): THREE.Group {
   const panelGrooveMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, flatShading: true, roughness: 0.7, metalness: 0.3 });
   const navRedMat = new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xf87171, emissiveIntensity: 1.2 });
   const navGreenMat = new THREE.MeshStandardMaterial({ color: 0x10b981, emissive: 0x34d399, emissiveIntensity: 1.2 });
-  const sarGridMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, emissive: 0x0369a1, emissiveIntensity: 0.4, roughness: 0.25, metalness: 0.8 });
 
   // コンテナ・タンク群用カラーパレット (統一感のあるホワイト・シルバー・プラチナ基調)
   const containerMats = [
@@ -811,17 +810,7 @@ export function buildBaseModel(): THREE.Group {
   obsCore.rotation.x = Math.PI / 2;
   g.add(obsCore);
 
-  // 【センサー・アンテナ・レーダー群 (SAR / 磁気センサー / パラボラ)】
-  // 1) 合成開口レーダー (SAR - Phased Array Radar Panel)
-  const sarPanel = new THREE.Mesh(new THREE.BoxGeometry(32, 12, 0.8), sarGridMat);
-  sarPanel.position.set(0, 14, mainCenterZ - 10);
-  sarPanel.rotation.x = -0.3; // アレイ角度
-  g.add(sarPanel);
-
-  // SAR関節アーム
-  const sarArm = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 6, 8), conduitMat);
-  sarArm.position.set(0, 11, mainCenterZ - 10);
-  g.add(sarArm);
+  // 【センサー・アンテナ群 (磁気センサーブーム)】
 
   // 2) 磁気センサー (Magnetometer Boom - 長尺ブーム先端の3軸センサー)
   const magBoom = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.15, 45, 6), redTrussMat);
