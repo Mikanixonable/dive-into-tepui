@@ -217,6 +217,35 @@ export class Game {
 
   resume(): void { this._isPaused = false; }
 
+  // このゲームが scene・Hud・window/document/canvas へ足したものを残らず取り除く。呼んだ後の
+  // このインスタンスは使えない。構築の逆順で辿るのは、後から組んだものほど先に組んだものを
+  // 参照しているため。マーカープールを最後に空にするのは、各エンティティ・各表示物が自分の
+  // dispose の中で自分のキーを外していくのを先に済ませるため。
+  dispose(): void {
+    this.viewBadge.dispose();
+    this.docking.dispose();
+    this.viewManager.dispose();
+    this.mapActions.dispose();
+    this.activeStage.dispose();
+    // Hud・Sfx はこのゲームより長生きするので、書き換えたクラス・差し込んだ参照・鳴らしている
+    // 継続音を元へ戻す。BGM は周回の外側が決めるものなので触らない。
+    this._hud.root.classList.remove('creative-mode');
+    this._hud.statusPanel.setInput(null);
+    this._sfx.setThrust(false);
+    this._sfx.setRcs(false);
+    this.touchControls?.dispose();
+    this.input.dispose();
+    this.editor.dispose();
+    this._environment.dispose();
+    this.navTarget.dispose();
+    this.targeter.dispose();
+    this.frameControls.dispose();
+    this.cameraSystem.dispose();
+    this.displayWindowManager.dispose();
+    this.entities.dispose();
+    this.markerManager.dispose();
+  }
+
   get simTime(): number { return this.simulator.simTime; }
 
   // ------------------------------------------------------------ update

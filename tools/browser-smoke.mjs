@@ -558,9 +558,16 @@ try {
   } else {
     // 艦を1隻も置いていないクリエイティブは、マップビューのまま戦闘用パネルを出さない。
     // 配置パネルは右クリックから開く物なので、この時点では閉じている。
+    // レールの初期折りたたみは compact 幅かどうかで決まり、ここではまだ表示領域を
+    // 明示していないので、畳まれている場合だけ開いてから判定する(無条件にクリックすると
+    // 逆に畳んでしまい、開いている前提の判定を壊す)。
     await devTools.evaluate(`(() => {
-      document.querySelectorAll('.hud-map-root.active .rail-toggle')
-        .forEach((toggle) => toggle.click());
+      for (const side of ['left', 'right']) {
+        const rail = document.querySelector('.hud-map-root.active .hud-rail-' + side);
+        if (rail?.classList.contains('collapsed')) {
+          document.querySelector('.hud-map-root.active .rail-toggle-' + side)?.click();
+        }
+      }
     })()`);
     const chromeState = await devTools.evaluate(`(() => {
       ${LAYOUT_HELPERS}

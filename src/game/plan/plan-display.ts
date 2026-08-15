@@ -120,6 +120,11 @@ export class PlanDisplay {
     this.syncTickMarkers(project, overviewMode, cameraPos);
   }
 
+  // 計画折れ線を片付ける。
+  dispose(): void {
+    this.path.dispose();
+  }
+
   // 計画折れ線・ゴーストマーカー・アプシスアイコンを非表示にする。
   hide(): void {
     this.path.setVisible(false);
