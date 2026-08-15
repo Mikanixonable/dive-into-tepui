@@ -3,7 +3,7 @@
 // どんな音を作るかは Composer の責務で、このクラスは中身を知らない。
 import { BGM_TRACKS } from './bgm-tracks';
 import { Composer, ComposerNote } from './composer';
-import { PhasingComposer } from './phasing-composer';
+import { createComposer } from './create-composer';
 import { AudioEngine } from '../audio-engine';
 
 const BGM_VOL_KEY = 'tepui.settings.bgm_vol'; // localStorage キー
@@ -118,7 +118,7 @@ export class Bgm {
   // 指定した曲の Composer を組み、ステップを先頭へ戻す。
   private selectTrack(index: number, ctx: AudioContext): void {
     this.trackIdx = index;
-    this.composer = new PhasingComposer(BGM_TRACKS[index]!);
+    this.composer = createComposer(BGM_TRACKS[index]!);
     this.trackStartTime = ctx.currentTime;
     this.step = 0;
   }
