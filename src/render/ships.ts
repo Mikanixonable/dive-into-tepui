@@ -711,18 +711,73 @@ export function buildBaseModel(): THREE.Group {
     sIdx++;
   }
 
-  // 4) 主要部 (居住区 + 研究所観測ドーム + 白基調外骨格 $22 \times 22 \times 52$m, Z = +50m 〜 +100m)
+  // 4) 主要部 (居住区 + クライレスラービル風アールデコ装飾 + 研究所観測ドーム $22 \times 22 \times 52$m, Z = +50m 〜 +100m)
   const mainCenterZ = 75;
-  // 外骨格フレーム
+  // 白基調外骨格フレーム
   const exoskeleton = new THREE.Mesh(new THREE.BoxGeometry(22, 22, 52), grayFrameMat);
   exoskeleton.position.set(0, 0, mainCenterZ);
   g.add(exoskeleton);
 
-  // 【ディテール: 外骨格のSFチックなパネル溝 (Grooves & Armor seam lines)】
-  for (let zG = mainCenterZ - 20; zG <= mainCenterZ + 20; zG += 10) {
-    const seamRing = new THREE.Mesh(new THREE.BoxGeometry(22.4, 22.4, 0.4), panelGrooveMat);
-    seamRing.position.set(0, 0, zG);
+  // 【クライスラービル風アールデコ・ディテール】
+  // 1) 垂直ピアーモールディング (Vertical Piers & Recessed Seams)
+  for (const px of [-11.1, -5.5, 0, 5.5, 11.1]) {
+    for (const py of [-11.1, 11.1]) {
+      const vPier = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 50), conduitMat);
+      vPier.position.set(px, py, mainCenterZ);
+      g.add(vPier);
+
+      const vPierY = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.5, 50), conduitMat);
+      vPierY.position.set(py, px, mainCenterZ);
+      g.add(vPierY);
+    }
+  }
+
+  // 2) 段層セットバックモールディング (Terraced Step-back Moldings)
+  for (let zStep = mainCenterZ - 20; zStep <= mainCenterZ + 20; zStep += 10) {
+    const stepMolding = new THREE.Mesh(new THREE.BoxGeometry(22.8, 22.8, 0.8), grayFrameMat);
+    stepMolding.position.set(0, 0, zStep);
+    g.add(stepMolding);
+
+    const seamRing = new THREE.Mesh(new THREE.BoxGeometry(23.2, 23.2, 0.25), panelGrooveMat);
+    seamRing.position.set(0, 0, zStep);
     g.add(seamRing);
+
+    // ホイールキャップ型メダリオンレリーフ (Wheel-cap Medallions)
+    for (const mx of [-11.5, 11.5]) {
+      const medallion = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 0.3, 12), conduitJointMat);
+      medallion.position.set(mx, 0, zStep);
+      medallion.rotation.z = Math.PI / 2;
+      g.add(medallion);
+
+      const medallionY = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 0.3, 12), conduitJointMat);
+      medallionY.position.set(0, mx, zStep);
+      medallionY.rotation.x = Math.PI / 2;
+      g.add(medallionY);
+    }
+  }
+
+  // 3) ガーゴイル風・翼状コーナーアビオニクススパイア (Eagle-head Gargoyle Corner Spires)
+  for (const gx of [-11.8, 11.8]) {
+    for (const gy of [-11.8, 11.8]) {
+      const gargoyleSpire = new THREE.Mesh(new THREE.ConeGeometry(1.8, 7.0, 4), radiatorMat);
+      gargoyleSpire.position.set(gx * 1.08, gy * 1.08, mainCenterZ + 18);
+      gargoyleSpire.rotation.x = Math.PI / 2 + 0.3;
+      gargoyleSpire.rotation.z = Math.atan2(gy, gx);
+      g.add(gargoyleSpire);
+    }
+  }
+
+  // 4) サンバースト冠状アールデコアーチ (Sunburst Crown Radiac Arch Ribs)
+  for (let aIdx = 0; aIdx < 4; aIdx++) {
+    const archRadius = 11 - aIdx * 1.8;
+    const archZ = mainCenterZ + 20 + aIdx * 1.5;
+    const crownArch = new THREE.Mesh(new THREE.CylinderGeometry(archRadius, archRadius + 0.6, 0.8, 16), grayFrameMat);
+    crownArch.position.set(0, 0, archZ);
+    g.add(crownArch);
+
+    const archGroove = new THREE.Mesh(new THREE.CylinderGeometry(archRadius + 0.7, archRadius + 0.7, 0.2, 16), panelGrooveMat);
+    archGroove.position.set(0, 0, archZ);
+    g.add(archGroove);
   }
 
   // 【ディテール: 計測機器ポッド (Sensor / Avionics pods) 4箇所】
@@ -784,15 +839,15 @@ export function buildBaseModel(): THREE.Group {
     }
   }
 
-  // 研究所・天体観測ドーム (緑の領域を削除し、純粋な強化ガラス観測デッキへ変更)
+  // 研究所・天体観測ドーム (純粋な強化ガラス観測デッキ)
   const obsDome = new THREE.Mesh(new THREE.SphereGeometry(8, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2), glassMat);
-  obsDome.position.set(0, 0, mainCenterZ + 22);
+  obsDome.position.set(0, 0, mainCenterZ + 25);
   obsDome.rotation.x = -Math.PI / 2;
   g.add(obsDome);
 
   // 観測ドーム内部の研究コンソール
   const obsCore = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 3.5, 6, 10), sensorPodMat);
-  obsCore.position.set(0, 0, mainCenterZ + 20);
+  obsCore.position.set(0, 0, mainCenterZ + 23);
   obsCore.rotation.x = Math.PI / 2;
   g.add(obsCore);
 
@@ -957,29 +1012,83 @@ export function buildBaseModel(): THREE.Group {
     return container;
   };
 
-  // 【20倍の大規模規格化宇宙貨物コンテナマトリックス (400個の整列スタック)】
-  const containerDims = [
-    { w: 4.5, h: 4.5, d: 9 },
-    { w: 4.0, h: 4.0, d: 8 },
-    { w: 4.5, h: 4.0, d: 10 },
-  ];
+  // 【多彩な貨物ビルダー: 5種類の貨物モジュール】
+  // 1) Dry ISO Box 2) Reefer (冷凍) 3) ISO Tanktainer (タンク) 4) Flat-Rack Heavy 5) Gas Bottle Pack
+  const buildAdvancedCargoGroup = (typeIdx: number, mat: THREE.Material, tagMat?: THREE.Material): THREE.Group => {
+    const cargo = new THREE.Group();
+    const kind = typeIdx % 5;
 
+    if (kind === 0) {
+      cargo.add(buildContainer(4.5, 4.5, 9.0, mat, tagMat));
+    } else if (kind === 1) {
+      const reeferMat = containerMats[0]!;
+      const c = buildContainer(4.5, 4.8, 9.0, reeferMat, tagMat);
+      const cooler = new THREE.Mesh(new THREE.BoxGeometry(4.0, 4.0, 0.4), sensorPodMat);
+      cooler.position.set(0, 0, -4.5);
+      c.add(cooler);
+      const coolerLed = new THREE.Mesh(new THREE.SphereGeometry(0.3, 6, 6), neonAccentMat);
+      coolerLed.position.set(1.5, 1.5, -4.7);
+      c.add(coolerLed);
+      cargo.add(c);
+    } else if (kind === 2) {
+      const w = 4.5, h = 4.5, d = 9.0;
+      const frameMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, flatShading: true, roughness: 0.3, metalness: 0.8 });
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), frameMat);
+      const tank = new THREE.Mesh(new THREE.CylinderGeometry(2.0, 2.0, 8.4, 12), mat);
+      tank.rotation.x = Math.PI / 2;
+      cargo.add(tank);
+      for (const sz of [-4.2, 4.2]) {
+        const cap = new THREE.Mesh(new THREE.SphereGeometry(2.0, 12, 8), mat);
+        cap.position.set(0, 0, sz);
+        cargo.add(cap);
+      }
+      cargo.add(frame);
+    } else if (kind === 3) {
+      const w = 4.5, h = 1.0, d = 9.0;
+      const bed = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), containerMats[1]!);
+      cargo.add(bed);
+      const machine = new THREE.Mesh(new THREE.BoxGeometry(3.6, 3.2, 7.0), sensorPodMat);
+      machine.position.set(0, 2.1, 0);
+      cargo.add(machine);
+      for (const zS of [-2.5, 0, 2.5]) {
+        const strap = new THREE.Mesh(new THREE.BoxGeometry(3.8, 3.4, 0.3), hazardOrangeMat);
+        strap.position.set(0, 2.0, zS);
+        cargo.add(strap);
+      }
+    } else {
+      const w = 4.5, h = 4.5, d = 9.0;
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), containerMats[5]!);
+      cargo.add(frame);
+      for (const bx of [-1.2, 1.2]) {
+        for (const by of [-1.2, 1.2]) {
+          const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 8.0, 10), tankMats[1]!);
+          bottle.position.set(bx, by, 0);
+          bottle.rotation.x = Math.PI / 2;
+          cargo.add(bottle);
+        }
+      }
+    }
+    return cargo;
+  };
+
+  // 【コンテナ船風の超高密度セルガイド配置 (スタック高さの自然な高低差・微小シフト付き)】
   let cIdx = 0;
-  // 10層のZスライス x 4象限 x 10個の重層グリッドラック = 400個
-  for (let zS = cwCenterZ - 30; zS <= cwCenterZ + 30; zS += 6.5) {
+  for (let zS = cwCenterZ - 32; zS <= cwCenterZ + 32; zS += 6.5) {
     for (const quadX of [-1, 1]) {
       for (const quadY of [-1, 1]) {
-        for (let layer = 0; layer < 5; layer++) {
-          const posX = quadX * (10 + layer * 4.8);
-          const posY = quadY * (10 + layer * 4.8);
-          const dim = containerDims[cIdx % containerDims.length]!;
-          const mat = containerMats[cIdx % containerMats.length]!;
-          const tagMat = cIdx % 4 === 0 ? (cIdx % 8 === 0 ? neonAccentMat : hazardOrangeMat) : undefined;
+        // スタック高さの自然なバリエーション (コンテナ船のホールド高低差)
+        const stackLimit = 3 + ((cIdx * 7 + Math.abs(zS)) % 4);
+        for (let layer = 0; layer < stackLimit; layer++) {
+          const posX = quadX * (9.5 + layer * 4.6) + ((cIdx % 3) * 0.05 - 0.05);
+          const posY = quadY * (9.5 + layer * 4.6) + ((cIdx % 4) * 0.05 - 0.05);
 
-          const container = buildContainer(dim.w, dim.h, dim.d, mat, tagMat);
-          container.position.set(posX, posY, zS);
-          container.rotation.set(0, 0, 0);
-          g.add(container);
+          const mat = containerMats[cIdx % containerMats.length]!;
+          const tagMat = cIdx % 3 === 0 ? (cIdx % 6 === 0 ? neonAccentMat : hazardOrangeMat) : undefined;
+
+          const cargoObj = buildAdvancedCargoGroup(cIdx, mat, tagMat);
+          cargoObj.position.set(posX, posY, zS);
+          cargoObj.rotation.set(0, 0, 0);
+          g.add(cargoObj);
 
           cIdx++;
           if (cIdx >= 400) break;
