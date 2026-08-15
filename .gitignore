@@ -1,6 +1,7 @@
 node_modules
 *.log
 tests/dist/
+tests/perf/dist/
 docs/
 .DS_Store
 .claude/
