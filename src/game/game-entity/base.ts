@@ -19,6 +19,7 @@ import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 import type { BaseSaveData } from '../save-data';
 import { OrbitLine } from '../orbit-line';
 import * as C from '../const';
+import { BaseCollisionGeometry, RayHit, SphereHit } from '../../physics/base-collision';
 
 // 基地のドッキングハッチのローカル位置および外向き法線ベクトル (中腹ドッキングパレット上部)
 export const BASE_HATCH_LOCAL_POS: Vec3 = v3(0, 8.5, 0);
@@ -64,8 +65,7 @@ export type BaseInit =
   | { readonly saved: BaseSaveData; readonly simTime: number };
 
 export class Base extends GameEntity {
-  // 計画軌道の衝突判定でも基地の未来位置を使う。現在位置を凍結すると、長時間計画では
-  // 実際に移動した基地と計画線の衝突判定が食い違うため、通常の entity 予測列へ乗せる。
+  readonly collisionGeom = new BaseCollisionGeometry();
   readonly predictsFuture = true;
   declare readonly orbitLine: OrbitLine;
   public baseState: BaseState = {
@@ -73,6 +73,14 @@ export class Base extends GameEntity {
     inventory: [],
     dockedShips: []
   };
+
+  raycast(rayOrigin: Vec3, rayDir: Vec3, maxDist: number, warpLevel = 1): RayHit | null {
+    return this.collisionGeom.raycast(rayOrigin, rayDir, maxDist, this.state.r, this.att.q, warpLevel);
+  }
+
+  testSphereCollision(sphereCenter: Vec3, sphereRadius: number, warpLevel = 1): SphereHit | null {
+    return this.collisionGeom.testSphereCollision(sphereCenter, sphereRadius, this.state.r, this.att.q, warpLevel);
+  }
 
   // hud/sfx/fx/markerManager は格納艦(Player)の組み立てに要る。格納艦は entities.players へ
   // 入らない — それが「格納中」の定義であり、艦自身の状態としては何も倒さない。

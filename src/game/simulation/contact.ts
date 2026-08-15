@@ -3,9 +3,10 @@
 // (それぞれの GameEntity 自身の責務)。1 substep 内の接触は TOI(接触時刻)昇順で解決する。
 import * as C from '../const';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
-import { Vec3, add, scale } from '../../physics/vec3';
+import { Vec3, add, sub, scale, dot, len } from '../../physics/vec3';
 import { SpatialGrid } from '../../physics/spatial-grid';
 import { GameEntity } from '../game-entity/game-entity';
+import { Base } from '../game-entity/base';
 import type { Player } from '../player/player';
 import { CollisionResponse, resolveSphereCollision } from '../../physics/collision-response';
 import type { Attractor } from '../../physics/attractor';
@@ -61,8 +62,49 @@ function contactTime(a: GameEntity, toi: number): number {
 
 // working 上の現在位置どうしの剛体接触を解決する。
 function computeEntityResponse(
-  a: GameEntity, b: GameEntity, working: ReadonlyMap<GameEntity, KinematicState>,
+  a: GameEntity, b: GameEntity, working: ReadonlyMap<GameEntity, KinematicState>, warpLevel = 1,
 ): CollisionResponse | null {
+  const base = a instanceof Base ? a : (b instanceof Base ? b : null);
+  if (base) {
+    const other = a === base ? b : a;
+    const isA = a === base;
+    const baseWork = working.get(base)!;
+    const otherWork = working.get(other)!;
+
+    const dist = len(sub(otherWork.r, baseWork.r));
+    if (dist > base.radius + other.radius) return null;
+
+    const hit = base.testSphereCollision(otherWork.r, other.radius, warpLevel);
+    if (!hit) return null;
+
+    const normal = isA ? hit.normal : scale(hit.normal, -1);
+    const relV = sub(otherWork.v, baseWork.v);
+    const vn = dot(relV, hit.normal);
+
+    const invM = 1 / other.mass;
+    let impulse = 0;
+    let newOtherV = otherWork.v;
+
+    if (vn < 0) {
+      impulse = -(1 + RESTITUTION) * vn / invM;
+      const impulseVec = scale(hit.normal, impulse);
+      newOtherV = add(otherWork.v, scale(impulseVec, invM));
+    }
+
+    const pushOut = scale(hit.normal, hit.depth);
+    const newOtherR = add(otherWork.r, pushOut);
+
+    return {
+      rA: isA ? baseWork.r : newOtherR,
+      rB: isA ? newOtherR : baseWork.r,
+      vA: isA ? baseWork.v : newOtherV,
+      vB: isA ? newOtherV : baseWork.v,
+      normal,
+      impulse,
+      toi: 1,
+    };
+  }
+
   const aWork = working.get(a)!, bWork = working.get(b)!;
   // 両者の prevState→state が同じ区間(時刻がほぼ一致)を成すときだけ掃引TOIを試す —
   // ずれていれば異なる瞬間の直前位置を結ぶ線分になり、掃引の意味を失う。
