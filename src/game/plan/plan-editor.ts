@@ -690,6 +690,15 @@ export class PlanEditor {
     this.panel.hide();
   }
 
+  // 計画表示・ノードギズモ・軌道右クリックメニュー・パネル・3D ギズモを片付ける。
+  dispose(): void {
+    this.planDisplay.dispose();
+    this.nodeGizmo.dispose();
+    this.orbitMenu.dispose();
+    this.panel.dispose();
+    this.gizmo3d.dispose();
+  }
+
   // 計画折れ線を再積分し、ゴースト位置とアプシスアイコンを求め直す。折れ線は戦闘ビューでも
   // 描く — 計画どおりに機体を動かすのは戦闘ビューだから。
   update(displayWindow: DisplayWindow): void {

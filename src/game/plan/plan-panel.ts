@@ -190,4 +190,9 @@ export class PlanPanel {
   hide(): void {
     this.panel.classList.add('hidden');
   }
+
+  // パネルの DOM を取り除く。
+  dispose(): void {
+    this.panel.remove();
+  }
 }
