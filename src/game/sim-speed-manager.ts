@@ -4,7 +4,7 @@
 // どのノード時刻へ自動ワープするかは呼び出し側(PlanEditor)が決めて渡す。
 import * as C from './const';
 import { Hud } from './hud/hud';
-import { Sfx } from '../audio/sfx';
+import { UiSfx } from '../audio/ui-sfx';
 import { KinematicState } from '../physics/kinematic-state';
 import type { Input } from './input/input';
 import { KEY_MAPPING as K } from './input/key-mapping';
@@ -15,7 +15,7 @@ export class SimSpeedManager {
 
   constructor(
     private readonly _hud: Hud,
-    private readonly _sfx: Sfx,
+    private readonly _uiSfx: UiSfx,
   ) { }
 
   // 現在のワープ倍率。
@@ -61,7 +61,7 @@ export class SimSpeedManager {
     const next = this.levelIdx + step;
     if (next < 0 || next >= C.SIM_SPEED_LEVELS.length) return;
     this.levelIdx = next;
-    this._sfx.warp();
+    this._uiSfx.warp();
     const gated = this.canShipAct ? '' : `(自機の操作はワープ ×${C.MAX_PHYS_SIM_SPEED} 以下でのみ可能)`;
     this._hud.hint(`時間加速 ×${this.simSpeed}${gated}`);
   }
