@@ -847,12 +847,7 @@ export function buildBaseModel(): THREE.Group {
     boom.rotation.z = Math.PI / 2;
     paddleGroup.add(boom);
 
-    // 太陽電池パドル主構造フレーム
-    const paddleFrame = new THREE.Mesh(new THREE.BoxGeometry(14.0, 0.4, 10.0), grayFrameMat);
-    paddleFrame.position.set(sideX * 13.5, 0, 0);
-    paddleGroup.add(paddleFrame);
-
-    // ハニカム構造セル集積体 (Hexagonal Honeycomb Cell Cluster - 19個の六角セル集積)
+    // ハニカム構造セル集積体 (Hexagonal Honeycomb Cell Cluster - 19個の六角セル集積, 白いバックフレーム板削除)
     const hexCellGeo = new THREE.CylinderGeometry(1.1, 1.1, 0.45, 6);
     const hexBezelGeo = new THREE.CylinderGeometry(1.2, 1.2, 0.4, 6);
 
@@ -1322,33 +1317,48 @@ export function buildBaseModel(): THREE.Group {
     return x - Math.floor(x);
   };
 
-  // 【貨物区(136m倍長)用メイン貨物配置 (100個) & 角度揃え(0,0,0)】
+  // 【貨物区(136m長)表面全周へばりつき不均等配置 (100個) & 角度揃え(0,0,0)】
   let cIdx = 0;
-  for (let zStep = 0; zStep < 40; zStep++) {
-    const zBase = cwCenterZ - 62 + zStep * 3.2;
-    for (const quadX of [-1, 1]) {
-      for (const quadY of [-1, 1]) {
-        const randSeed = zStep * 100 + (quadX > 0 ? 10 : 0) + (quadY > 0 ? 1 : 0);
-        if (pseudoHash(randSeed) < 0.52) continue; // 52%の確率で空きスロット
+  for (let zStep = 0; zStep < 42; zStep++) {
+    const zBase = cwCenterZ - 62 + zStep * 3.0;
 
-        const stackLimit = 1 + Math.floor(pseudoHash(randSeed * 1.5) * 3.8);
+    // 貨物区4つの壁面 (+X, -X, +Y, -Y) の全周へばりつきスロット
+    for (let face = 0; face < 4; face++) {
+      const randSeed = zStep * 100 + face * 13;
+      if (pseudoHash(randSeed) < 0.48) continue; // 不均等な空き・虫食いスロット
 
-        for (let layer = 0; layer < stackLimit; layer++) {
-          const zOffset = (pseudoHash(randSeed + layer * 7) - 0.5) * 2.6;
-          const posX = quadX * (9.5 + layer * 4.6);
-          const posY = quadY * (9.5 + layer * 4.6);
+      const stackLimit = 1 + Math.floor(pseudoHash(randSeed * 1.7) * 2.8); // 1〜3段積み
 
-          const mat = containerMats[cIdx % containerMats.length]!;
-          const tagMat = cIdx % 4 === 0 ? (cIdx % 8 === 0 ? neonAccentMat : hazardOrangeMat) : undefined;
+      for (let layer = 0; layer < stackLimit; layer++) {
+        const zOffset = (pseudoHash(randSeed + layer * 7) - 0.5) * 2.4;
+        const latOffset = (pseudoHash(randSeed * 2.3 + layer) - 0.5) * 5.2; // 壁面に沿う不均等な横シフト
+        const surfDist = 9.25 + layer * 4.4; // 貨物部壁面(R=7.0m)にぴったりへばりつく距離
 
-          const cargoObj = buildAdvancedCargoGroup(cIdx, mat, tagMat);
-          cargoObj.position.set(posX, posY, zBase + zOffset);
-          cargoObj.rotation.set(0, 0, 0); // 角度は完全に統一
-          g.add(cargoObj);
-
-          cIdx++;
-          if (cIdx >= 100) break;
+        let posX = 0;
+        let posY = 0;
+        if (face === 0) { // +X 面
+          posX = surfDist;
+          posY = latOffset;
+        } else if (face === 1) { // -X 面
+          posX = -surfDist;
+          posY = latOffset;
+        } else if (face === 2) { // +Y 面
+          posX = latOffset;
+          posY = surfDist;
+        } else { // -Y 面
+          posX = latOffset;
+          posY = -surfDist;
         }
+
+        const mat = containerMats[cIdx % containerMats.length]!;
+        const tagMat = cIdx % 4 === 0 ? (cIdx % 8 === 0 ? neonAccentMat : hazardOrangeMat) : undefined;
+
+        const cargoObj = buildAdvancedCargoGroup(cIdx, mat, tagMat);
+        cargoObj.position.set(posX, posY, zBase + zOffset);
+        cargoObj.rotation.set(0, 0, 0); // 角度は揃える
+        g.add(cargoObj);
+
+        cIdx++;
         if (cIdx >= 100) break;
       }
       if (cIdx >= 100) break;
