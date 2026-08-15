@@ -11,7 +11,7 @@ import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { ContextMenu } from '../hud/context-menu';
 import { MenuAction, MenuCommon } from '../hud/menu-actions';
-import { Sfx } from '../../audio/sfx';
+import { UiSfx } from '../../audio/sfx/ui-sfx';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { FloatingOrigin } from '../floating-origin';
 import type { CameraSystem } from '../camera/camera-system';
@@ -29,7 +29,7 @@ import type { FrameControls } from '../hud/frame-controls';
 import { focusPoint } from '../camera/focus-target';
 import { Attractor, orbitalElementsOf, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
 import { toFrameState } from '../../physics/frame';
-import { planAttractorProvider, planSourceRevision } from '../simulation/attractors';
+import { PlanAttractors } from './plan-attractors';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { DisplayWindow } from '../display-window-manager';
 import type { PerfCounts } from '../../perf-meter';
@@ -70,6 +70,9 @@ export class PlanEditor {
 
   readonly planDisplay: PlanDisplay;
   private readonly gizmo3d: PlanGizmo3D;
+  // 計画の積分が時刻ごとに引く重力源・衝突体。世代値が動いたときだけ保持を捨てるので、
+  // フレームを跨いで持ち続ける。
+  private readonly attractors: PlanAttractors;
 
   // 直近の update() が描いた折れ線が届いている終端時刻。一度も描いていなければ NaN。
   private get lastPlanEnd(): number { return this.planDisplay.path.timeRange()?.max ?? NaN; }
@@ -94,10 +97,10 @@ export class PlanEditor {
   // ノードギズモと計画パネルの DOM を組み立て、両者のコールバックを配線する。
   constructor(
     private readonly _hud: Hud,
-    private readonly _sfx: Sfx,
+    private readonly _uiSfx: UiSfx,
     private readonly simSpeedManager: SimSpeedManager,
     private readonly ephemeris: Ephemeris,
-    private readonly entities: EntityManager,
+    entities: EntityManager,
     scene: THREE.Scene,
     private readonly markerManager: MarkerManager,
     private readonly activePlayers: ActivePlayerController,
@@ -105,6 +108,7 @@ export class PlanEditor {
     private readonly frameControls: FrameControls,
   ) {
     this.planDisplay = new PlanDisplay(scene, markerManager, ephemeris, displayDuration);
+    this.attractors = new PlanAttractors(ephemeris, entities);
     this.nodeGizmo = new NodeGizmo(this._hud.layers.marker, this._hud.layers.popup, this._hud.overlayManager);
     this.orbitMenu = new ContextMenu<KinematicState, MenuAction>(this._hud.layers.popup, this._hud.overlayManager);
     this.gizmo3d = new PlanGizmo3D();
@@ -128,7 +132,7 @@ export class PlanEditor {
     g.onNodeSelect = (idx) => {
       this.selectedNodeIdx = idx;
       this.closeMenu();
-      this._sfx.warp();
+      this._uiSfx.warp();
     };
     g.onNodeDragMove = (idx, clientX, clientY) => {
       this.closeMenu();
@@ -247,7 +251,7 @@ export class PlanEditor {
     }
     if (bestNodeIdx !== null) {
       this.selectedNodeIdx = bestNodeIdx;
-      this._sfx.warp();
+      this._uiSfx.warp();
       return;
     }
 
@@ -301,7 +305,7 @@ export class PlanEditor {
       return;
     }
     this.selectedNodeIdx = idx;
-    this._sfx.warp();
+    this._uiSfx.warp();
   }
 
   // 既存ノード近傍ならそれを選択してコンテキストメニューを開き true を返す。外れは false。
@@ -378,7 +382,7 @@ export class PlanEditor {
     const replacement = plan.replaceNode(idx, rebuilt ?? picked.state);
     if (!replacement) return;
     this.selectedNode = replacement;
-    this._sfx.warp();
+    this._uiSfx.warp();
     if (hasDownstreamNodes) this._hud.hint('ノード位置を変更しました。後続ノードを再設定してください');
   }
 
@@ -458,7 +462,7 @@ export class PlanEditor {
     const bodyArr = this.bodyState(arr);
     const dvWorld = fromOrbitAxes(bodyArr, v3(pro, nrm, rad));
     this.selectedNode = plan.replaceNode(this.selectedNodeIdx, kinematicState(node.t, node.r, add(arr.v, dvWorld)));
-    this._sfx.warp();
+    this._uiSfx.warp();
   }
 
   // Δv アームのラッチ前ドラッグ量を選択中ノードの Δv へ加算する。
@@ -712,12 +716,11 @@ export class PlanEditor {
     this.simTime = displayWindow.simTime;
     const excludedIds = ship === null ? [] : [ship.id];
     // revision は前フレームの終端(lastPlanEnd)を基準に畳み込む — 今フレームの終端は
-    // このあとの planDisplay.update が決めるので、組む時点ではまだ確定していない。
-    const attractorProvider = planAttractorProvider(
-      this.ephemeris, this.entities, excludedIds,
-      planSourceRevision(this.entities, excludedIds, this.plan?.revision ?? 0, this.lastPlanEnd, displayWindow.simTime),
+    // このあとの planDisplay.update が決めるので、渡す時点ではまだ確定していない。
+    this.attractors.resolve(
+      excludedIds, this.plan?.revision ?? 0, this.lastPlanEnd, displayWindow.simTime,
     );
-    this.planDisplay.update(this.displayedPlan, displayWindow, attractorProvider);
+    this.planDisplay.update(this.displayedPlan, displayWindow, this.attractors);
     this.updateEquatorNodes(displayWindow);
   }
 

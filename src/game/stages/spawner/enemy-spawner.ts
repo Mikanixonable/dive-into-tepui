@@ -6,7 +6,7 @@ import { randSym } from '../../../physics/random';
 import { add, len, norm, scale } from '../../../physics/vec3';
 import * as C from '../../const';
 import { Hud } from '../../hud/hud';
-import { Sfx } from '../../../audio/sfx';
+import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../../vfx/effects-system';
 import { Enemy } from '../../game-entity/enemy';
 import { generateDriftingEnemy } from './enemy-generator';
@@ -16,7 +16,7 @@ import { generateDriftingEnemy } from './enemy-generator';
 export function generateCluster(
   base: KinematicState,
   hud: Hud,
-  sfx: Sfx,
+  worldSfx: WorldSfx,
   fx: EffectsSystem,
   scene: THREE.Scene,
   groupCount: number = C.COLOR_STAGE0_GROUP_ACCENTS.length,
@@ -49,7 +49,7 @@ export function generateCluster(
       if (offLen > safeRange) off = scale(off, safeRange / offLen);
 
       const state: KinematicState = kinematicState(base.t, add(base.r, off), base.v);
-      enemies.push(generateDriftingEnemy(`${label}-${i + 1}`, state, C.STAGE0_ENEMY_HP, accent, C.COLOR_ENEMY_ORBIT_LINE, hud, sfx, fx, scene));
+      enemies.push(generateDriftingEnemy(`${label}-${i + 1}`, state, C.STAGE0_ENEMY_HP, accent, C.COLOR_ENEMY_ORBIT_LINE, hud, worldSfx, fx, scene));
     }
   }
   return enemies;
