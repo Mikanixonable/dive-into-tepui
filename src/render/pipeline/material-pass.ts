@@ -119,7 +119,7 @@ export class MaterialPass {
   // いるかどうかの判断は RenderPipeline のもので、ここでは結果だけを受け取る。
   render(
     scene: THREE.Scene,
-    camera: THREE.PerspectiveCamera,
+    camera: THREE.Camera,
     sharedTarget: THREE.RenderTarget,
     width: number,
     height: number,

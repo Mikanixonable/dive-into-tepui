@@ -6,8 +6,7 @@ import { Input, PointerKind } from '../input/input';
 import { KEY_MAPPING as K, KeyBinding } from '../input/key-mapping';
 import { MQ_COARSE, MQ_COMPACT, MQ_SHORT } from '../hud/breakpoints';
 import {
-  ACCENT, ACCENT_FILL_STRONG, ACCENT_EDGE, TEXT_DIM, TEXT_MUTED, TEXT_STRONG,
-  SURFACE, EDGE, FONT_FAMILY, FONT_XXS, FONT_XL, RADIUS_L, SPACE_1, TRANSITION_SLOW,
+  FONT_FAMILY, FONT_XXS, FONT_XL, RADIUS_L, SPACE_1, TRANSITION_SLOW,
 } from '../theme';
 
 const STYLE = `
@@ -25,16 +24,16 @@ const STYLE = `
 #touch-ui .tbtn {
   pointer-events: none; touch-action: none;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  background: ${SURFACE}; border: 1px solid ${EDGE}; border-radius: ${RADIUS_L};
-  color: ${TEXT_MUTED}; line-height: 1.1;
+  background: var(--surface); border: 1px solid var(--edge); border-radius: ${RADIUS_L};
+  color: var(--text-muted); line-height: 1.1;
 }
 #touch-ui.shown .tbtn { pointer-events: auto; }
 #touch-ui .tbtn .g { font-size: ${FONT_XL}; }
-#touch-ui .tbtn .l { font-size: ${FONT_XXS}; color: ${TEXT_DIM}; margin-top: ${SPACE_1}; }
-#touch-ui .tbtn.pressed { background: ${ACCENT_FILL_STRONG}; border-color: ${ACCENT}; color: ${TEXT_STRONG}; }
+#touch-ui .tbtn .l { font-size: ${FONT_XXS}; color: var(--text-dim); margin-top: ${SPACE_1}; }
+#touch-ui .tbtn.pressed { background: var(--accent-fill-strong); border-color: var(--accent); color: var(--text-strong); }
 /* .on: 押下中かどうかに関わらず、モードが実際に ON の間ずっと点灯させる
    (制動・微動・ホールド・推力ラッチなどの向け。.pressed と見た目は同じでよい) */
-#touch-ui .tbtn.on { background: ${ACCENT_FILL_STRONG}; border-color: ${ACCENT}; color: ${TEXT_STRONG}; }
+#touch-ui .tbtn.on { background: var(--accent-fill-strong); border-color: var(--accent); color: var(--text-strong); }
 #touch-ui .mini-col {
   position: absolute; display: grid; gap: 6px; grid-template-rows: repeat(2, 52px);
 }
@@ -49,7 +48,7 @@ const STYLE = `
 #touch-fire {
   position: absolute; right: calc(22px + var(--safe-r)); bottom: calc(138px + var(--safe-b));
   width: 74px; height: 74px; border-radius: 50% !important;
-  border-color: ${ACCENT_EDGE} !important; color: ${ACCENT} !important;
+  border-color: var(--accent-edge) !important; color: var(--accent) !important;
 }
 #touch-zoom {
   position: absolute; right: calc(112px + var(--safe-r)); bottom: calc(148px + var(--safe-b));
@@ -164,10 +163,10 @@ export class TouchControls {
     this.toggleButtons.get(key)?.classList.toggle('on', on);
   }
 
-  // マップモード中は並進・回転・射撃・ズームのパッドを隠す。
+  // マップモード中は並進・回転・射撃・ズーム・制動/微動のパッドを隠す。
   setMapMode(active: boolean): void {
     this.root.classList.toggle('map-mode', active);
-    for (const id of ['touch-pad-rot', 'touch-pad-move', 'touch-fire', 'touch-zoom']) {
+    for (const id of ['touch-pad-rot', 'touch-pad-move', 'touch-fire', 'touch-zoom', 'touch-mode-col']) {
       const e = document.getElementById(id);
       if (e) e.style.display = active ? 'none' : '';
     }
@@ -298,19 +297,16 @@ export class TouchControls {
     root.appendChild(zoomBtn);
   }
 
-  // warp・マップ・ヘルプ・視点ロール等の雑多なボタンを1列に組み立てる。視点ロールはドラッグや
-  // ピンチに対応するジェスチャが無い(ひねり操作は合成していない)ため、ボタンでしか到達できない。
+  // warp・マップ・ノード送り・ヘルプの雑多なボタンを1列に組み立てる。
   private buildUtilRow(root: HTMLElement): void {
     const util = document.createElement('div');
     util.id = 'touch-util';
     root.appendChild(util);
     for (const b of [
-      { key: K.warpSlower, glyph: '«', label: '時間減速' },
-      { key: K.warpFaster, glyph: '»', label: '時間加速' },
+      { key: K.warpSlower, glyph: '«', label: '減速' },
+      { key: K.warpFaster, glyph: '»', label: '加速' },
       { key: K.toggleMapMode, glyph: K.toggleMapMode.label, label: '計画' },
       { key: K.autoWarpToNode, glyph: K.autoWarpToNode.label, label: 'ノードへ' },
-      { key: K.cameraRollLeft, glyph: '↺', label: '視点回転' },
-      { key: K.cameraRollRight, glyph: '↻', label: '視点回転' },
       { key: K.help, glyph: K.help.label, label: 'ヘルプ' },
     ]) {
       this.makeButton(util, b);

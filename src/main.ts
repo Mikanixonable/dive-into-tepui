@@ -18,6 +18,7 @@ import {
 } from './game/theme';
 import { Hud } from './game/hud/hud';
 import { PauseMenu } from './game/hud/pause-menu';
+import { SettingsView } from './game/hud/settings-view';
 import { Sfx } from './audio/sfx';
 import { UnlockManager } from './game/unlock-manager';
 import { LocalStorageSaveStore } from './game/save/save-store';
@@ -186,13 +187,16 @@ function startAnimationLoop(
 // 生成して所有し、Game には参照として渡す。pauseMenu も同様に main.ts が所有し、開閉に
 // 応じた一時停止の反映(game.pause()/game.resume())も持ち主である main.ts がここで配線する。
 // pipeline はここで組む PauseMenu の描画タブ(GraphicsPanel)がデバッグ表示の選択を書き込む先。
-function initHud(graphics: GraphicsSettings, pipeline: RenderPipeline): { hud: Hud; sfx: Sfx; pauseMenu: PauseMenu } {
+function initHud(graphics: GraphicsSettings, pipeline: RenderPipeline): {
+  hud: Hud; sfx: Sfx; pauseMenu: PauseMenu; settingsView: SettingsView;
+} {
   const hud = new Hud();
   const sfx = new Sfx();
   const pauseMenu = new PauseMenu(hud.layers.system, hud.overlayManager, graphics, pipeline);
+  const settingsView = new SettingsView(hud.layers.system, hud.overlayManager, sfx);
   pauseMenu.setBgmVolume(sfx.getBgmVolume());
   pauseMenu.onBgmVolumeChange = (vol) => sfx.setBgmVolume(vol);
-  return { hud, sfx, pauseMenu };
+  return { hud, sfx, pauseMenu, settingsView };
 }
 
 // シーン初期化からステージ選択、Game 構築、rAF ループ開始までを順に行う。
@@ -216,11 +220,34 @@ async function main() {
   const gs = await initScene(graphics);
   const gpu = new GpuTimings(gs.renderer);
   const pipeline = new RenderPipeline(gs.renderer, graphics, gpu);
-  const { hud, sfx, pauseMenu } = initHud(graphics, pipeline);
+  const { hud, sfx, pauseMenu, settingsView } = initHud(graphics, pipeline);
   const launcher = new Launcher(hud, unlockmanager, slots, snapshotService, sfx);
   // 「ゲームを中断してタイトル画面に戻る」
   pauseMenu.onQuitToTitle = () => launcher.returnToTitle();
-  const stageClass = await launcher.resolveStage();
+  pauseMenu.onOpenSettings = () => {
+    pauseMenu.toggle(false);
+    settingsView.toggle(true);
+  };
+  // タイトル画面にはまだ Game が無いが、ESC メニュー自体はゲームと同じものを使える。
+  // Game 生成後も同じコールバックを使うため、ここでは nullable な参照を閉じ込める。
+  let game: Game | null = null;
+  pauseMenu.onPauseMenuOpenChange = (open) => {
+    if (!game) return;
+    if (open) game.pause();
+    else game.resume();
+  };
+  settingsView.onOpenChange = (open) => {
+    if (!game) return;
+    if (open) game.pause();
+    else game.resume();
+  };
+  const stageClass = await launcher.resolveStage(
+    () => {
+      if (!hud.overlayManager.closeTopmostOnEscape()) pauseMenu.toggle();
+    },
+    () => pauseMenu.toggle(false),
+    () => settingsView.toggle(true),
+  );
   const sections = new FrameSections();
 
   const initialSave = launcher.initialSaveFor(stageClass);
@@ -228,7 +255,7 @@ async function main() {
   // 地球の自転初期位相。起動ごとに無作為だが、下位を決定的に保つため乱数はここでだけ引く。
   const earthSpinPhase0 = initialSave?.earthSpinPhase0 ?? Math.random() * 2 * Math.PI;
 
-  const game = new Game(
+  game = new Game(
     gs, stageClass, hud, sfx, pauseMenu, unlockmanager, sections, ephemeris, graphics, pipeline, earthSpinPhase0,
     initialSave,
   );
@@ -243,10 +270,6 @@ async function main() {
     saveBrowser.open();
   };
   // ⚙ギアクリック・[閉じる]・[Esc] いずれの経路で開閉しても一時停止フラグを同期する
-  pauseMenu.onPauseMenuOpenChange = (open) => {
-    if (open) game.pause();
-    else game.resume();
-  };
   const perf = new PerfMeter(game, hud.layers.window, gs.renderer, sections, gpu, hud.overlayManager);
   // 負荷確認ウィンドウは非モーダルなので、設定メニューを閉じてから前面へ出すだけ。
   pauseMenu.onOpenPerfWindow = () => {

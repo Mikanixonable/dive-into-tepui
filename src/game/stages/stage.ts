@@ -156,7 +156,7 @@ export abstract class Stage {
     this._phase = saved?.phase ?? 'playing';
     this.restored = saved !== undefined;
     this.logistics = new Logistics(hud, sfx, scene, entities, markerManager, saved?.logistics);
-    this.statusPanel = new StageStatusPanel(hud.layers.panel);
+    this.statusPanel = new StageStatusPanel(hud.combatRoot);
   }
 
   // 新規開始なら初期配置・ブリーフィングを行う。具象ステージは自分のコンストラクタの

@@ -24,6 +24,7 @@ interface MarkerRecord {
   lbl: HTMLElement;
   fixedLabel: boolean;
   hidden: boolean;
+  occlusionHidden: boolean;
 }
 
 interface ActiveLabel {
@@ -52,6 +53,7 @@ function el(tag: string, id: string, parent: HTMLElement, className = ''): HTMLE
 
 export class MarkerManager {
   private markerDictionary = new Map<string, MarkerRecord>();
+  private readonly occlusionFadeTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly activeScratch: ActiveLabel[] = [];
   private activeCount = 0;
   private candidateStamp = new Int32Array(0);
@@ -98,9 +100,11 @@ export class MarkerManager {
       const root = el('div', `mk-${key}`, this.root, `mk ${cls}`);
       const symEl = el('span', `mk-${key}-s`, root, 'sym');
       const lblEl = el('span', `mk-${key}-l`, root, 'lbl');
-      m = { root, sym: symEl, lbl: lblEl, fixedLabel, hidden: !visible };
+      m = { root, sym: symEl, lbl: lblEl, fixedLabel, hidden: !visible, occlusionHidden: false };
       this.markerDictionary.set(key, m);
     }
+    this.cancelOcclusionFade(key);
+    m.occlusionHidden = false;
     m.fixedLabel = fixedLabel;
     m.hidden = !visible;
     m.root.style.display = visible ? 'block' : 'none';
@@ -225,16 +229,45 @@ export class MarkerManager {
   hide(key: string): void {
     const m = this.markerDictionary.get(key);
     if (!m) return;
+    this.cancelOcclusionFade(key);
+    m.occlusionHidden = false;
     m.hidden = true;
     m.root.style.display = 'none';
+  }
+
+  // 天体遮蔽で見えなくなるマーカーを、いきなり消さずに約300msで透明化する。
+  // フェード完了後は通常の hide と同じく衝突判定の対象から外す。
+  fadeOut(key: string): void {
+    const m = this.markerDictionary.get(key);
+    if (!m || m.occlusionHidden || m.hidden || this.occlusionFadeTimers.has(key)) return;
+    m.root.style.display = 'block';
+    m.hidden = false;
+    m.root.style.opacity = '0';
+    const timer = setTimeout(() => {
+      this.occlusionFadeTimers.delete(key);
+      const current = this.markerDictionary.get(key);
+      if (current !== m || current.root.style.opacity !== '0') return;
+      current.occlusionHidden = true;
+      current.hidden = true;
+      current.root.style.display = 'none';
+    }, 300);
+    this.occlusionFadeTimers.set(key, timer);
   }
 
   // マーカーを DOM ごと削除する。
   remove(key: string): void {
     const m = this.markerDictionary.get(key);
     if (!m) return;
+    this.cancelOcclusionFade(key);
     m.root.remove();
     this.markerDictionary.delete(key);
+  }
+
+  private cancelOcclusionFade(key: string): void {
+    const timer = this.occlusionFadeTimers.get(key);
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    this.occlusionFadeTimers.delete(key);
   }
 
   // 全マーカーのラベルどうしの重なりを緩和し、ずらした分だけ引き出し線を描く。

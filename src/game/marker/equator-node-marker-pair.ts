@@ -85,7 +85,8 @@ export class EquatorNodeMarkerPair {
   sync(project: ProjectFn, show: boolean, cameraPos: Vec3): void {
     for (const icon of this.icons) {
       const glyph = icon.id === this.anKey ? ORBIT_POINT_GLYPH.ascendingNode : ORBIT_POINT_GLYPH.descendingNode;
-      if (!show || isOccluded(cameraPos, icon.pos, this.attractors)) this.markerManager.hide(icon.id);
+      if (!show) this.markerManager.hide(icon.id);
+      else if (isOccluded(cameraPos, icon.pos, this.attractors)) this.markerManager.fadeOut(icon.id);
       else this.markerManager.setPosition(icon.id, 'mk-node', glyph, icon.pos, project, icon.label);
     }
     if (this.icons.length === 0) {

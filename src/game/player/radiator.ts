@@ -82,13 +82,13 @@ export class RadiatorSystem {
   // side ごとの接触代理。折り数まで遅延生成し、以後は使い回す。
   private readonly foldProxies: Record<RadiatorSide, RadiatorFold[]> = { up: [], down: [] };
 
-  // shipObj は自機メッシュ。上下それぞれ、ヒンジ Group の子孫から折り目 Group を
+  // renderObject の上下それぞれのヒンジ Group から、折り目 Group を
   // RADIATOR_FOLD_COUNT 個解決して保持する。owner は接触代理が帰結を委ねる先の艦。
-  constructor(shipObj: THREE.Object3D, private readonly owner: Player, saved?: RadiatorSaveData) {
+  public constructor(renderObject: THREE.Object3D, private readonly owner: Player, saved?: RadiatorSaveData) {
     const collect = (side: RadiatorSide, baseName: string): THREE.Object3D[] => {
       const namePrefix = baseName + (side === 'up' ? 'Up' : 'Down');
       const found = Array.from({ length: C.RADIATOR_FOLD_COUNT }, (_, i) =>
-        shipObj.getObjectByName(`${namePrefix}Fold${i}`));
+        renderObject.getObjectByName(`${namePrefix}Fold${i}`));
       if (found.some((f) => !f)) throw new Error(`${baseName} fold objects not found in ship model`);
       return found as THREE.Object3D[];
     };
