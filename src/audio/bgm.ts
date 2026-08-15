@@ -5,10 +5,37 @@
 // その上に四度堆積のパッドと低いドローンが漂う。レトロシンセ的な柔らかい
 // 波形(sine / triangle)のみで、打楽器は使わない。
 // 作曲データ(音階/パターン/パッド/拍長)は複数曲用意し、5分ごとに切り替える。
-import { BGM_TRACKS, BgmTrack } from './bgm-tracks';
+import { BGM_TRACKS, BgmTrack, PhaseCycle, PulseVoice } from './bgm-tracks';
 import { AudioEngine } from './audio-engine';
 
 const BGM_VOL_KEY = 'tepui.settings.bgm_vol'; // localStorage キー
+
+// 1スケールステップあたりの半音数の近似(長2度)。音階を引く声部は移調をインデックスの
+// 足し引きで表せるが、Hz で直接与えるパッドとドローンは周波数比が要るのでこれで換算する。
+const SEMITONES_PER_SCALE_STEP = 2;
+
+// 一定ステップごとに切り替わる循環から、このステップの値を取り出す。
+function phaseValue(cycle: PhaseCycle, step: number): number {
+  return cycle.values[Math.floor(step / cycle.everySteps) % cycle.values.length]!;
+}
+
+// 音階インデックスへ移調とオクターブシフトを適用し、周波数へ解決する。
+// 音階の端を越えたぶんはオクターブへ繰り上げ・繰り下げて折り返す。
+function scaleFreq(scale: number[], index: number, transpose: number, octave: number): number {
+  let absoluteIdx = index + transpose;
+  let octShift = octave;
+  // 音階の上端を超えたらオクターブを上げて折り返す
+  while (absoluteIdx >= scale.length) {
+    absoluteIdx -= scale.length;
+    octShift++;
+  }
+  // 下端を下回ったらオクターブを下げて折り返す
+  while (absoluteIdx < 0) {
+    absoluteIdx += scale.length;
+    octShift--;
+  }
+  return scale[absoluteIdx]! * Math.pow(2, octShift);
+}
 
 export class Bgm {
   private gain: GainNode | null = null;
@@ -138,70 +165,61 @@ export class Bgm {
   }
 
   // ステップ番号 step に対応する声部A/B・パッド・ドローン・煌めきの音を時刻 t にスケジュールする。
+  // 長さの互いに素なパルス2声のポリリズムの上に、移調とオクターブ移動という周期の異なる
+  // 2つの循環を重ねるので、曲全体が一巡するまでの長さは各周期の最小公倍数まで伸びる。
   private scheduleStep(step: number, t: number, track: BgmTrack): void {
     const g = this.gain!;
+    const transpose = phaseValue(track.transpose, step);
+    const octave = phaseValue(track.octave, step);
+    // Hz で直接与えるパッドとドローンは、音階を介さないぶんここで周波数比へ換算する。
+    const freqRatio = Math.pow(2, (transpose * SEMITONES_PER_SCALE_STEP) / 12) * Math.pow(2, octave);
 
-    // --- 3階層の入れ子構造による長周期化 (元の周期192ステップの8倍 = 1536ステップで1巡) ---
-    // 第1階層(Micro): patA(16) と patB(12) のポリリズム (48ステップ周期)
-    // 第2階層(Macro): 192ステップごとにスケールを移調する (4フェーズ)
-    const macroCycle = Math.floor(step / 192);
-    const macroPhase = macroCycle % 4;
-    const transpose = [0, 2, 3, 1][macroPhase]!; // 0, +2, +3, +1 スケールステップ
+    this.scheduleVoice(track, track.voiceA, step, t, transpose, octave, g);
+    this.scheduleVoice(track, track.voiceB, step, t, transpose, octave, g);
 
-    // 第3階層(Global): 768ステップ(192*4)ごとに全体の音域(オクターブ)を変化させる (2フェーズ)
-    const globalCycle = Math.floor(step / 768);
-    const globalPhase = globalCycle % 2;
-    const octaveShift = globalPhase === 1 ? 1 : 0; // 後半は1オクターブ上がる
-
-    // 指定した音階インデックスから、移調とオクターブシフトを適用した周波数を計算
-    const getFreq = (idx: number, trans: number, oct: number) => {
-      let absoluteIdx = idx + trans;
-      let octShift = oct;
-      // 音階の上端を超えたらオクターブを上げて折り返す
-      while (absoluteIdx >= track.scale.length) {
-        absoluteIdx -= track.scale.length;
-        octShift++;
-      }
-      // 下端を下回ったらオクターブを下げて折り返す
-      while (absoluteIdx < 0) {
-        absoluteIdx += track.scale.length;
-        octShift--;
-      }
-      return track.scale[absoluteIdx]! * Math.pow(2, octShift);
-    };
-
-    // 移調幅のおおよその周波数比 (パッドやドローンの絶対周波数シフト用)
-    // 1スケールステップ = 約2半音(長2度)として近似
-    const freqRatio = Math.pow(2, (transpose * 2) / 12) * Math.pow(2, octaveShift);
-
-    // 声部 A: 16 拍パターンの柔らかいパルス
-    const fa = getFreq(track.patA[step % track.patA.length]!, transpose, octaveShift);
-    this.toneAt(fa, t, track.stepDur * 1.3, 0.03, track.toneA1, g, 0.015);
-    this.toneAt(fa * 2.003, t, track.stepDur * 0.7, 0.009, track.toneA2, g, 0.015); // わずかにデチューンした倍音
-
-    // 声部 B: 12 拍パターンを半拍ずらして重ねる
-    const fb = getFreq(track.patB[step % track.patB.length]!, transpose, octaveShift);
-    this.toneAt(fb, t + track.stepDur / 2, track.stepDur * 1.1, 0.022, track.toneB, g, 0.02);
-
-    // パッド: 四度堆積の和音が約 13 秒ごとにゆっくり移ろう
-    if (step % 32 === 0) {
-      for (const f of track.pads[((step / 32) | 0) % track.pads.length]!) {
-        this.toneAt(f * freqRatio, t, track.stepDur * 34, 0.013, 'triangle', g, 4.5);
+    const pads = track.pads;
+    if (step % pads.everySteps === 0) {
+      const chord = pads.chords[Math.floor(step / pads.everySteps) % pads.chords.length]!;
+      for (const pitch of chord) {
+        this.toneAt(pitch * freqRatio, t, track.stepDur * pads.lengthRatio, pads.level, pads.wave, g, pads.attack);
       }
     }
 
-    // ドローン: 深い D のうなり
-    if (step % 64 === 0) {
-      this.toneAt(track.drone[0]! * freqRatio, t, track.stepDur * 66, 0.02, 'sine', g, 6);
-      this.toneAt(track.drone[1]! * freqRatio, t, track.stepDur * 66, 0.012, 'sine', g, 6);
+    const drone = track.drone;
+    if (step % drone.everySteps === 0) {
+      for (const voice of drone.voices) {
+        this.toneAt(
+          voice.pitch * freqRatio, t, track.stepDur * drone.lengthRatio, voice.level, drone.wave, g, drone.attack,
+        );
+      }
     }
 
-    // ときおり高音の煌めき + 減衰エコー
-    if (step % 8 === 5) {
-      const fs = getFreq((step * 5) % track.scale.length, transpose, octaveShift + 2); // 基本より2オクターブ上
-      this.toneAt(fs, t, 0.5, 0.011, 'sine', g, 0.01);
-      this.toneAt(fs, t + 0.63, 0.5, 0.005, 'sine', g, 0.01);
-      this.toneAt(fs, t + 1.26, 0.5, 0.0025, 'sine', g, 0.01);
+    const sparkle = track.sparkle;
+    if (sparkle !== null && step % sparkle.everySteps === sparkle.atStep) {
+      const index = (step * sparkle.indexStride) % track.scale.length;
+      const freq = scaleFreq(track.scale, index, transpose, octave + sparkle.octaveOffset);
+      this.toneAt(freq, t, sparkle.durationSec, sparkle.level, sparkle.wave, g, sparkle.attack);
+      for (const echo of sparkle.echoes) {
+        this.toneAt(freq, t + echo.delaySec, sparkle.durationSec, echo.level, sparkle.wave, g, sparkle.attack);
+      }
+    }
+  }
+
+  // パルス声部1つぶんを、倍音を持つならそれも重ねて時刻 t にスケジュールする。
+  private scheduleVoice(
+    track: BgmTrack, voice: PulseVoice, step: number, t: number, transpose: number, octave: number, dest: AudioNode,
+  ): void {
+    // パターンは声部ごとに長さが違うので、各々自分の長さで剰余を取って現在の音を選ぶ。
+    const index = voice.pattern[step % voice.pattern.length]!;
+    const freq = scaleFreq(track.scale, index, transpose, octave);
+    const at = t + track.stepDur * voice.stepOffset;
+    this.toneAt(freq, at, track.stepDur * voice.lengthRatio, voice.level, voice.wave, dest, voice.attack);
+    const harmonic = voice.harmonic;
+    if (harmonic !== null) {
+      this.toneAt(
+        freq * harmonic.ratio, at, track.stepDur * harmonic.lengthRatio, harmonic.level, harmonic.wave, dest,
+        voice.attack,
+      );
     }
   }
 
