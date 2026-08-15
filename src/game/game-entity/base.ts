@@ -169,12 +169,16 @@ export class Base extends GameEntity {
     }
   }
 
-  // 発行時、格納艦の 3D メッシュを基地ドックスロットから分離する
+  // 発進時、格納艦の 3D メッシュを基地ドックスロットから分離し、ワールド Scene へ復帰させる
   detachDockedShipMesh(ship: Player): void {
     const shipObj = ship.renderObject;
     if (shipObj.parent === this.renderObject) {
       this.renderObject.remove(shipObj);
     }
+    if (this.scene && shipObj.parent !== this.scene) {
+      this.scene.add(shipObj);
+    }
+    shipObj.visible = true;
   }
 
   dispose(): void {
