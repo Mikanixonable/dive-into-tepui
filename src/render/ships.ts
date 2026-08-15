@@ -824,26 +824,55 @@ export function buildBaseModel(): THREE.Group {
     }
   }
 
-  // 【幾何学的配管ネットワーク (合流・分岐する樹状管構造)】
-  // 主幹パイプライン (幹)
-  for (const pipeX of [-4.8, 4.8]) {
-    const mainPipe = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 46, 8), conduitMat);
-    mainPipe.position.set(pipeX, 4.8, mainCenterZ);
-    mainPipe.rotation.x = Math.PI / 2;
-    g.add(mainPipe);
+  // 【居住区下部: ハニカム構造集積体ソーラーパドル一対 (±X側面 Z = 54m)】
+  const solarCellMat = new THREE.MeshStandardMaterial({
+    color: 0x0284c7,
+    emissive: 0x0369a1,
+    emissiveIntensity: 0.3,
+    roughness: 0.1,
+    metalness: 0.85,
+  });
 
-    // 45度分岐マニホールド Joint
-    for (let zJ = mainCenterZ - 15; zJ <= mainCenterZ + 15; zJ += 15) {
-      const jointHub = new THREE.Mesh(new THREE.SphereGeometry(0.6, 8, 8), conduitJointMat);
-      jointHub.position.set(pipeX, 4.8, zJ);
-      g.add(jointHub);
+  for (const sideX of [-1, 1]) {
+    const paddleGroup = new THREE.Group();
+    paddleGroup.position.set(sideX * 7.8, 0, 54);
 
-      // 分岐枝パイプ (モジュール外周をまわるループ)
-      const branchPipe = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 10, 6), conduitMat);
-      branchPipe.position.set(pipeX / 2, 4.8, zJ);
-      branchPipe.rotation.z = Math.PI / 2;
-      g.add(branchPipe);
+    // 主関節ジンバル & 伸縮可動ブーム
+    const gimbal = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 2.5, 10), sensorPodMat);
+    gimbal.rotation.z = Math.PI / 2;
+    g.add(gimbal);
+
+    const boom = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 9.0, 8), conduitMat);
+    boom.position.set(sideX * 4.5, 0, 0);
+    boom.rotation.z = Math.PI / 2;
+    paddleGroup.add(boom);
+
+    // 太陽電池パドル主構造フレーム
+    const paddleFrame = new THREE.Mesh(new THREE.BoxGeometry(14.0, 0.4, 10.0), grayFrameMat);
+    paddleFrame.position.set(sideX * 13.5, 0, 0);
+    paddleGroup.add(paddleFrame);
+
+    // ハニカム構造セル集積体 (Hexagonal Honeycomb Cell Cluster - 19個の六角セル集積)
+    const hexCellGeo = new THREE.CylinderGeometry(1.1, 1.1, 0.45, 6);
+    const hexBezelGeo = new THREE.CylinderGeometry(1.2, 1.2, 0.4, 6);
+
+    for (let ix = -3; ix <= 3; ix++) {
+      const posX = sideX * 13.5 + ix * 2.1;
+      for (let iz = -2; iz <= 2; iz++) {
+        const posZ = iz * 2.0 + (Math.abs(ix) % 2 === 1 ? 1.0 : 0);
+        if (Math.abs(posZ) <= 4.2) {
+          const bezel = new THREE.Mesh(hexBezelGeo, conduitJointMat);
+          bezel.position.set(posX, 0, posZ);
+          paddleGroup.add(bezel);
+
+          const cell = new THREE.Mesh(hexCellGeo, solarCellMat);
+          cell.position.set(posX, 0, posZ);
+          paddleGroup.add(cell);
+        }
+      }
     }
+
+    g.add(paddleGroup);
   }
 
   // 【先端レドーム: 反五角台形双角塔 (Gyroelongated Pentagonal Birotunda Radome, 直径 10.2m = 居住区の2/3)】
@@ -947,7 +976,55 @@ export function buildBaseModel(): THREE.Group {
     habJunctionGroup.add(mountStrut);
   }
 
-  g.add(habJunctionGroup);
+  // 【貨物部上部: 4枚の細長い蛇腹状放熱板 & 逆位相暗色骨格 (45°, 135°, 225°, 315° R=7m〜24m, Z=-132m)】
+  const radiatorPanelMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, flatShading: true, roughness: 0.15, metalness: 0.8 });
+  const darkSkeletonMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, flatShading: true, roughness: 0.4, metalness: 0.6 });
+
+  for (let radIdx = 0; radIdx < 4; radIdx++) {
+    const angle = (radIdx * Math.PI) / 2 + Math.PI / 4;
+    const radGroup = new THREE.Group();
+    radGroup.position.set(0, 0, -132);
+    radGroup.rotation.z = angle;
+
+    const segCount = 6;
+    const segLen = 2.8;
+    let currR = 7.2;
+
+    for (let k = 0; k < segCount; k++) {
+      const phaseSign = k % 2 === 0 ? 1 : -1;
+      const foldZOffset = phaseSign * 0.9;
+      const inverseZOffset = -phaseSign * 0.9;
+
+      const rMid = currR + segLen / 2;
+
+      // 1) 蛇腹折れ薄型放熱板パネル (White Radiator Leaf)
+      const leafPanel = new THREE.Mesh(new THREE.BoxGeometry(segLen, 0.15, 14.0), radiatorPanelMat);
+      leafPanel.position.set(rMid, foldZOffset, 0);
+      leafPanel.rotation.z = phaseSign * 0.18;
+      radGroup.add(leafPanel);
+
+      // 2) 折れの位相と逆位相の暗色骨格トラス (Inverse-Phase Dark Skeleton)
+      const darkTruss = new THREE.Mesh(new THREE.BoxGeometry(segLen, 0.4, 0.4), darkSkeletonMat);
+      darkTruss.position.set(rMid, inverseZOffset, 0);
+      darkTruss.rotation.z = -phaseSign * 0.18;
+      radGroup.add(darkTruss);
+
+      // 3) 放熱板と逆位相骨格を結ぶクロスリンクドローバー
+      const linkBar = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 1.8, 6), darkSkeletonMat);
+      linkBar.position.set(rMid, 0, 0);
+      radGroup.add(linkBar);
+
+      // 蛇腹ピボットヒンジジョイント
+      const hinge = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 14.4, 8), conduitJointMat);
+      hinge.position.set(currR, 0, 0);
+      hinge.rotation.x = Math.PI / 2;
+      radGroup.add(hinge);
+
+      currR += segLen;
+    }
+
+    g.add(radGroup);
+  }
 
   // 【貨物区本体の表面凹凸ディテール (配線・計測デバイス箱・パネル溝)】
   // 1) 4隅の長尺配線・流体パイプライン
