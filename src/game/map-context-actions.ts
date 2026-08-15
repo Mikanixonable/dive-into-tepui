@@ -260,7 +260,7 @@ export class MapContextActions {
     });
   }
 
-  // 画面上の右クリック座標(clientX, clientY)から 3D 空間へレイキャストし、最初にヒットした 3D メッシュの GameEntity を返す
+  // 画面上の右クリック座標(clientX, clientY)から 3D 空間へレイキャストし、ヒットした 3D メッシュまたはバウンディングボックスの GameEntity を返す
   private raycastCombatEntity(clientX: number, clientY: number): GameEntity | null {
     const camera = this.cameraSystem.activeCamera;
     if (!camera) return null;
@@ -275,57 +275,94 @@ export class MapContextActions {
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(mouse, camera);
 
-    const entityMap = new Map<THREE.Object3D, GameEntity>();
+    const candidates: GameEntity[] = [
+      ...this.entities.players.filter((p) => p.alive),
+      ...this.entities.enemies.filter((e) => e.alive),
+      ...this.entities.bases.filter((b) => b.alive),
+    ];
+
+    if (candidates.length === 0) return null;
+
     const renderObjects: THREE.Object3D[] = [];
+    const entityMap = new Map<THREE.Object3D, GameEntity>();
 
-    for (const ship of this.entities.players) {
-      if (ship.alive && ship.renderObject.visible) {
-        ship.renderObject.updateMatrixWorld(true);
-        renderObjects.push(ship.renderObject);
-        entityMap.set(ship.renderObject, ship);
-      }
-    }
-    for (const enemy of this.entities.enemies) {
-      if (enemy.alive && enemy.renderObject.visible) {
-        enemy.renderObject.updateMatrixWorld(true);
-        renderObjects.push(enemy.renderObject);
-        entityMap.set(enemy.renderObject, enemy);
-      }
-    }
-    for (const base of this.entities.bases) {
-      if (base.alive && base.renderObject.visible) {
-        base.renderObject.updateMatrixWorld(true);
-        renderObjects.push(base.renderObject);
-        entityMap.set(base.renderObject, base);
+    for (const entity of candidates) {
+      if (entity.renderObject.visible) {
+        entity.renderObject.updateMatrixWorld(true);
+        renderObjects.push(entity.renderObject);
+        entityMap.set(entity.renderObject, entity);
       }
     }
 
-    if (renderObjects.length === 0) return null;
-
-    const intersects = raycaster.intersectObjects(renderObjects, true);
-    if (intersects.length === 0) return null;
-
-    for (const hit of intersects) {
-      let curr: THREE.Object3D | null = hit.object;
-      while (curr) {
-        const entity = entityMap.get(curr);
-        if (entity) return entity;
-        curr = curr.parent;
+    // 1. まず 3D メッシュ表面への三角形交差判定を試みる
+    if (renderObjects.length > 0) {
+      const intersects = raycaster.intersectObjects(renderObjects, true);
+      if (intersects.length > 0) {
+        for (const hit of intersects) {
+          let curr: THREE.Object3D | null = hit.object;
+          while (curr) {
+            const entity = entityMap.get(curr);
+            if (entity) return entity;
+            curr = curr.parent;
+          }
+        }
       }
     }
 
-    return null;
+    // 2. メッシュ表面直撃が無い場合(トラスアームの間隙・太陽電池パネル外縁・低ポリモデル端部)、3Dバウンディングボックスで判定
+    let closestEntity: GameEntity | null = null;
+    let minDistance = Infinity;
+
+    const hitPoint = new THREE.Vector3();
+    const box = new THREE.Box3();
+
+    for (const entity of candidates) {
+      if (!entity.renderObject.visible) continue;
+
+      box.setFromObject(entity.renderObject);
+      const margin = Math.max(5, entity.radius * 0.2);
+      box.expandByScalar(margin);
+
+      const intersection = raycaster.ray.intersectBox(box, hitPoint);
+      if (intersection) {
+        const dist = hitPoint.distanceTo(raycaster.ray.origin);
+        if (dist < minDistance) {
+          minDistance = dist;
+          closestEntity = entity;
+        }
+      }
+    }
+
+    return closestEntity;
   }
 
   private pickNearestCombatEntity(clientX: number, clientY: number): GameEntity | null {
     const project = this.cameraSystem.activeCameraProjection;
-    const candidates: (MapPickable & { entity: GameEntity })[] = [
-      ...this.entities.players.filter((p) => p.alive).map((p) => ({ id: p.id, name: p.name, pos: p.state.r, kind: 'player' as const, entity: p })),
-      ...this.entities.enemies.filter((e) => e.alive).map((e) => ({ id: e.id, name: e.name, pos: e.state.r, kind: 'ship' as const, entity: e })),
-      ...this.entities.bases.filter((b) => b.alive).map((b) => ({ id: b.id, name: b.name, pos: b.state.r, kind: 'base' as const, entity: b })),
+    const candidates = [
+      ...this.entities.players.filter((p) => p.alive).map((p) => ({ pos: p.state.r, kind: 'player' as const, entity: p })),
+      ...this.entities.enemies.filter((e) => e.alive).map((e) => ({ pos: e.state.r, kind: 'ship' as const, entity: e })),
+      ...this.entities.bases.filter((b) => b.alive).map((b) => ({ pos: b.state.r, kind: 'base' as const, entity: b })),
     ];
-    const picked = pickNearest(candidates, clientX, clientY, project, pickRadiusSq(C.TARGET_LOCK_PICK_PX_SQ, C.TARGET_LOCK_PICK_PX_SQ_COARSE));
-    return picked?.entity ?? null;
+
+    let bestEntity: GameEntity | null = null;
+    let minDistSq = Infinity;
+
+    for (const item of candidates) {
+      const proj = project(item.pos);
+      if (!proj.front) continue;
+      const dx = clientX - proj.x;
+      const dy = clientY - proj.y;
+      const distSq = dx * dx + dy * dy;
+
+      // 画面上での許容半径: 基地(150px) / 敵艦(100px) / 自艦(60px)
+      const allowedPxSq = item.kind === 'base' ? 22500 : (item.kind === 'ship' ? 10000 : 3600);
+      if (distSq <= allowedPxSq && distSq < minDistSq) {
+        minDistSq = distSq;
+        bestEntity = item.entity;
+      }
+    }
+
+    return bestEntity;
   }
 
   private entityToPickable(entity: GameEntity): MapPickable {
