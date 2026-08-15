@@ -35,13 +35,13 @@ const identityAttitude = (): Attitude => ({
 // 軌道上を運動するゲーム内エンティティの基底。表示ルート・HP・生死・姿勢・AI といったゲーム側の
 // 付帯情報と、種別ごとの積分パラメータ(bcInv・historyDuration)を持つ。
 export class GameEntity {
-  readonly actualTrajectory: DynamicTrajectory;
+  readonly actual: DynamicTrajectory;
 
-  get state(): KinematicState { return this.actualTrajectory.state; }
+  get state(): KinematicState { return this.actual.state; }
   // 不連続な差し替え専用の口(剛体接触・反動など)。
-  set state(s: KinematicState) { this.actualTrajectory.reset(s); }
-  get prevState(): KinematicState { return this.actualTrajectory.prevState; }
-  get history(): StateQueue { return this.actualTrajectory.history; }
+  set state(s: KinematicState) { this.actual.reset(s); }
+  get prevState(): KinematicState { return this.actual.prevState; }
+  get history(): StateQueue { return this.actual.history; }
 
   private static readonly idAllocator = new EntityIdAllocator('entity-');
 
@@ -69,9 +69,9 @@ export class GameEntity {
   // 自身の軌道楕円を描く線。null = 持たない。
   orbitLine: OrbitLine | null = null;
   // 自身の予測軌道を描く線。null = 持たない。
-  trajectoryLine: TrajectoryLine | null = null;
+  predictedLine: TrajectoryLine | null = null;
   // 過去に通ってきた軌跡の線。持たせるかは種別の判断。
-  pastTrajectoryLine: TrajectoryLine | null = null;
+  actualLine: TrajectoryLine | null = null;
   // 自身の軌道と中心天体の赤道面との交点マーカー。null = まだ出す必要が生じていない。
   equatorNodes: EquatorNodeMarkerPair | null = null;
   // 自身の位置を指すマーカー。null = 出さない。
@@ -111,8 +111,8 @@ export class GameEntity {
   protected readonly scene?: THREE.Scene;
 
   // 未来の予測列。
-  private _predictedTrajectory: DynamicTrajectory | null = null;
-  get predictedTrajectory(): DynamicTrajectory | null { return this._predictedTrajectory; }
+  private _predicted: DynamicTrajectory | null = null;
+  get predicted(): DynamicTrajectory | null { return this._predicted; }
   // 積分中に再突入高度を割った/非有限値が出て打ち切られたか。打ち切られた列はそれ以上
   // 伸びない(新しい列を作るまで恒久的)。
   private truncated = false;
@@ -129,7 +129,7 @@ export class GameEntity {
     id?: string,
     addToScene = true,
   ) {
-    this.actualTrajectory = new DynamicTrajectory(state);
+    this.actual = new DynamicTrajectory(state);
     this.id = id ?? GameEntity.idAllocator.next();
     this.name = this.id;
     this.att = att;
@@ -160,29 +160,29 @@ export class GameEntity {
     this.orbitLine.sync(show ? this.orbitalElementsAround(center) : null, fo, camera, force);
   }
 
-  // trajectoryLine を現在時刻以降の predictedTrajectory に、pastTrajectoryLine を
-  // [simTime - pastDuration, simTime] の actualTrajectory に合わせる(未来線の先頭と過去線の
+  // predictedLine を現在時刻以降の predicted に、actualLine を
+  // [simTime - pastDuration, simTime] の actual に合わせる(未来線の先頭と過去線の
   // 末尾が常に現在位置で接するようにする)。pastDuration が保持窓を超える分は
   // TrajectoryLine 側が保持区間の先頭へクランプする。show が false のときは両方を非表示にする。
   // simTime は描く区間の境目、displayTime は座標系から慣性系へ戻す時刻。
-  syncTrajectoryLine(
+  syncTrajectoryLines(
     show: boolean, frame: ReferenceFrame, simTime: number, displayTime: number, pastDuration: number,
     ephemeris: Ephemeris, fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
   ): void {
-    if (this.trajectoryLine !== null) {
-      this.trajectoryLine.syncGeometry(
-        show ? this.predictedTrajectory : null, simTime, null, frame, ephemeris, attractors,
+    if (this.predictedLine !== null) {
+      this.predictedLine.syncGeometry(
+        show ? this.predicted : null, simTime, null, frame, ephemeris, attractors,
       );
-      this.trajectoryLine.syncTransform(frame, displayTime, ephemeris, fo, attractors);
-      this.trajectoryLine.sync(camera);
+      this.predictedLine.syncTransform(frame, displayTime, ephemeris, fo, attractors);
+      this.predictedLine.sync(camera);
     }
-    if (this.pastTrajectoryLine !== null) {
+    if (this.actualLine !== null) {
       const drawPast = show && pastDuration > 0;
-      this.pastTrajectoryLine.syncGeometry(
-        drawPast ? this.actualTrajectory : null, simTime - pastDuration, simTime, frame, ephemeris, attractors,
+      this.actualLine.syncGeometry(
+        drawPast ? this.actual : null, simTime - pastDuration, simTime, frame, ephemeris, attractors,
       );
-      this.pastTrajectoryLine.syncTransform(frame, displayTime, ephemeris, fo, attractors);
-      this.pastTrajectoryLine.sync(camera);
+      this.actualLine.syncTransform(frame, displayTime, ephemeris, fo, attractors);
+      this.actualLine.sync(camera);
     }
   }
 
@@ -199,11 +199,11 @@ export class GameEntity {
   // 見せるという用途がなく、予測線が描かれてさえいれば解析楕円と並んで見える方が誤読を招くので、
   // 覆っているかを問わず隠す。
   supersedesAnalyticEllipse(simTime: number, horizon: number, overviewMode: boolean): boolean {
-    const line = this.trajectoryLine;
+    const line = this.predictedLine;
     if (!line || !line.visible) return false;
     if (!overviewMode) return true;
     if (this.predictionTruncated) return true;
-    const tip = this.predictedTrajectory?.state.t;
+    const tip = this.predicted?.state.t;
     return tip !== undefined && tip >= simTime + horizon;
   }
 
@@ -224,7 +224,7 @@ export class GameEntity {
     const interval = this.historyDuration > 0
       ? this.sampleInterval(attractors, this.state, this.historyDuration)
       : 0;
-    this.actualTrajectory.step(dt, attractors, this.bcInv, this.srpCoeff, this.thrust, interval, this.historyDuration);
+    this.actual.step(dt, attractors, this.bcInv, this.srpCoeff, this.thrust, interval, this.historyDuration);
   }
 
   // シミュレーションを正確に区切る必要がある次の絶対時刻。寿命など、既知の時刻で
@@ -235,14 +235,14 @@ export class GameEntity {
 
   // 予測列を破棄する。
   invalidatePrediction(): void {
-    this._predictedTrajectory = null;
+    this._predicted = null;
   }
 
   // 実状態との位置ずれが許容量を超えていたら予測列を破棄する。破棄したら true。
   // attractors は simTime の重力源一覧。
   discardPredictionIfDiverged(simTime: number, attractors: readonly Attractor[]): boolean {
-    if (this._predictedTrajectory === null) return false;
-    const predictedState = this._predictedTrajectory.at(simTime);
+    if (this._predicted === null) return false;
+    const predictedState = this._predicted.at(simTime);
     if (predictedState !== null
       && len(sub(predictedState.r, this.state.r)) <= this.divergenceTolerance(attractors)) {
       return false;
@@ -264,7 +264,7 @@ export class GameEntity {
     const center = strongestAttractor(this.state.r, attractors);
     const period = keplerPeriod(len(sub(this.state.r, center.state.r)), center.mu);
     const span = isFinite(period) && period > 0 ? period : C.SHIP_HISTORY_DURATION;
-    const interval = this._predictedTrajectory?.sampleInterval ?? 0;
+    const interval = this._predicted?.sampleInterval ?? 0;
     const coarsening = Math.max(1, interval / (span / C.TRAJECTORY_SAMPLES_PER_REV));
     const raw = C.PREDICT_SAMPLE_ERROR * coarsening ** 4;
     // 局所軌道周期に対応する長半径(ケプラー第三法則)。中心天体の μ が取れなければ
@@ -279,12 +279,12 @@ export class GameEntity {
   // horizon は simTime から先に予測する長さ [s]。伸ばせなかったら false。
   stepPredicted(attractors: readonly Attractor[], simTime: number, dt: number, horizon: number): boolean {
     if (!this.predictsFuture) return false;
-    if (this._predictedTrajectory === null) {
-      this._predictedTrajectory = new DynamicTrajectory(this.actualTrajectory.state);
+    if (this._predicted === null) {
+      this._predicted = new DynamicTrajectory(this.actual.state);
       this.truncated = false;
     }
     if (this.truncated) return false;
-    const p = this._predictedTrajectory;
+    const p = this._predicted;
 
     // 先端が既にホライズンへ達していたら、それ以上は伸ばさない。
     if (p.state.t >= simTime + horizon) return false;
@@ -302,7 +302,7 @@ export class GameEntity {
 
   // 表示時刻 t の状態。予測を持たない/予測期間を超えた時刻は null。
   displayState(t: number): KinematicState | null {
-    return t <= this.actualTrajectory.state.t ? this.actualTrajectory.at(t) : (this._predictedTrajectory?.at(t) ?? null);
+    return t <= this.actual.state.t ? this.actual.at(t) : (this._predicted?.at(t) ?? null);
   }
 
   // displayTime の描画位置・姿勢を fo 経由でメッシュへ同期する。
@@ -321,7 +321,7 @@ export class GameEntity {
   // 時刻の重力源一覧(表面到達判定に使う)。
   checkLoss(_dt: number, _simTime: number, _activeStage: Stage, _playerPos: Vec3, attractors: readonly Attractor[]): void {
     if (!this.alive) return;
-    if (reachedBody(this.actualTrajectory.prevState, this.state, attractors, 0) !== null
+    if (reachedBody(this.actual.prevState, this.state, attractors, 0) !== null
       || isBurnedUp(this.state.r, attractors, C.DEBRIS_REENTRY_ALT)) this.alive = false;
   }
 

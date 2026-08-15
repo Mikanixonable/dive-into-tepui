@@ -1,4 +1,4 @@
-// GameEntity.predictedTrajectory をフレーム予算内でラウンドロビンに伸ばす。
+// GameEntity.predicted をフレーム予算内でラウンドロビンに伸ばす。
 // mode='map' で全エンティティ、'combat' で自機のみを対象にする。
 import * as C from '../const';
 import { EntityManager } from './entity-manager';
@@ -41,7 +41,7 @@ export class Predictor {
       const attractors = attractorsNearInto(e.state.r, classified, this.divergenceAttractorsScratch);
       if (e.discardPredictionIfDiverged(simTime, attractors)) this.discarded++;
       this.tracked++;
-      const reachedHorizon = e.predictedTrajectory !== null && e.predictedTrajectory.state.t >= simTime + horizon;
+      const reachedHorizon = e.predicted !== null && e.predicted.state.t >= simTime + horizon;
       if (reachedHorizon || e.predictionTruncated) this.finished++;
     }
 
@@ -74,7 +74,7 @@ export class Predictor {
     if (!e.predictsFuture) return 0;
     let consumed = 0;
     while (consumed < budgetSteps) {
-      const tipState = e.predictedTrajectory?.state ?? e.state;
+      const tipState = e.predicted?.state ?? e.state;
       // 刻み幅を決める重力源はステップ開始時刻で評価する。予測の重力源を長時間保持すると、
       // 月のように速く動く天体の位置が固定され、近傍周回の予測が実軌道から離れてしまう。
       const currentClassified = classifyAttractors(
