@@ -47,4 +47,9 @@ export class EarthBody extends CelestialBody {
     this.earth.syncSurfaceLod(graphics.scaleApparentSize(apparentSizePx(2 * R_EARTH, metersPerPixel)));
     this.earth.tick(displayTime);
   }
+
+  // 地球メッシュ一式を解放する。
+  dispose(): void {
+    this.earth.dispose();
+  }
 }

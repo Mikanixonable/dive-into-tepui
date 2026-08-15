@@ -98,4 +98,10 @@ export class RingView {
       band.visual.sync({ ...state, coverage: ringPixelCoverage(band.widthMeters, mpp) });
     }
   }
+
+  // 全帯の RingVisual を解放し、group を親から外す。
+  dispose(): void {
+    this.group.removeFromParent();
+    for (const visual of this.visuals) visual.dispose();
+  }
 }

@@ -185,6 +185,9 @@ export class Base extends GameEntity {
     super.dispose();
     this.scene?.remove(this.orbitLine.line);
     this.orbitLine.dispose();
+    // 格納艦は entities.players から外れているため、ここでしか回収できない。
+    for (const entry of this.baseState.dockedShips) entry.player.dispose();
+    this.baseState.dockedShips = [];
   }
 
   // セーブデータへ変換する。格納艦は player.serialize() に委ねる。

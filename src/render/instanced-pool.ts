@@ -52,4 +52,11 @@ export class InstancedPool {
     this.mesh.instanceMatrix.needsUpdate = true;
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
   }
+
+  // InstancedMesh をシーンから外し、そのインスタンスバッファを解放する。geometry/material は
+  // 呼び出し側から渡された共有資源なので、その所有者だけが破棄できる。
+  dispose(): void {
+    this.mesh.removeFromParent();
+    this.mesh.dispose();
+  }
 }

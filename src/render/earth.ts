@@ -31,8 +31,14 @@ const ATMO_RIM_MIN_H = 20e3;
 const ATMO_RIM_SCALE_H = 90e3;
 const ATMO_RIM_EDGE_SOFTEN = 25e3; // 地球本体による遮蔽境界をぼかす幅(視線の最接近高度)
 
+interface SurfaceMaterial {
+  readonly material: THREE.MeshBasicNodeMaterial;
+  readonly earthMap: THREE.Texture;
+  readonly cloudsMap: THREE.Texture;
+}
+
 // 雲・夕焼け・大気のもやを合成した地表マテリアルを組む(全LOD段で共有)。
-function buildSurfaceMaterial(sunDir: Vec3Uniform): THREE.MeshBasicNodeMaterial {
+function buildSurfaceMaterial(sunDir: Vec3Uniform): SurfaceMaterial {
   const earthMap = new THREE.TextureLoader().load(earthTextureUrl);
   earthMap.colorSpace = THREE.SRGBColorSpace;
   earthMap.anisotropy = 16;
@@ -73,7 +79,7 @@ function buildSurfaceMaterial(sunDir: Vec3Uniform): THREE.MeshBasicNodeMaterial 
   const litColor = mix(baseColor, dynamicAtmoColor, haze.mul(sunFactor));
   mat.colorNode = litColor.mul(float(NIGHT_AMBIENT).add(sunFactor.mul(1 - NIGHT_AMBIENT)));
 
-  return mat;
+  return { material: mat, earthMap, cloudsMap };
 }
 
 // LOD段ごとの地表メッシュを、共有マテリアルで一括生成する。
@@ -145,6 +151,7 @@ export interface Earth {
   // 見かけ直径[px]から地表メッシュのLOD段を選び、その段だけを visible にする。
   syncSurfaceLod(apparentDiameterPx: number): void;
   tick(simTime: number): void; // オーロラの明滅アニメーション、大気シェーダの地球中心uniform更新
+  dispose(): void; // group が保持する全 GPU 資源を解放する。
 }
 
 // 地表・オーロラ・大気リム光をまとめた Earth を組み立てる。
@@ -155,7 +162,8 @@ export function createEarth(): Earth {
   const sunDir = uniform(new THREE.Vector3(1, 0, 0));
   const earthCenter = uniform(new THREE.Vector3(0, 0, 0));
 
-  const surfaceMeshes = buildSurfaceMeshes(buildSurfaceMaterial(sunDir));
+  const { material: surfaceMaterial, earthMap, cloudsMap } = buildSurfaceMaterial(sunDir);
+  const surfaceMeshes = buildSurfaceMeshes(surfaceMaterial);
   let activeSurfaceLevel: SphereLodLevel | null = null;
   for (const mesh of surfaceMeshes.values()) spin.add(mesh);
 
@@ -204,6 +212,17 @@ export function createEarth(): Earth {
       // シミュレーション時間に連動した位相。
       const phase = simTime * 0.02;
       for (const a of auroras) a.sync(phase);
+    },
+    // 地表LOD各段・地表マテリアルとその2枚のテクスチャ・大気リム光・オーロラ4層を解放する。
+    dispose() {
+      group.removeFromParent();
+      for (const mesh of surfaceMeshes.values()) mesh.geometry.dispose();
+      surfaceMaterial.dispose();
+      earthMap.dispose();
+      cloudsMap.dispose();
+      atmoRim.geometry.dispose();
+      (atmoRim.material as THREE.Material).dispose();
+      for (const a of auroras) a.dispose();
     },
   };
 }

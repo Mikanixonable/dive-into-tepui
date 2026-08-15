@@ -29,7 +29,7 @@ import type { FrameControls } from '../hud/frame-controls';
 import { focusPoint } from '../camera/focus-target';
 import { Attractor, orbitalElementsOf, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
 import { toFrameState } from '../../physics/frame';
-import { planAttractorProvider, planSourceRevision } from '../simulation/attractors';
+import { PlanAttractors } from './plan-attractors';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { DisplayWindow } from '../display-window-manager';
 import type { PerfCounts } from '../../perf-meter';
@@ -70,6 +70,9 @@ export class PlanEditor {
 
   readonly planDisplay: PlanDisplay;
   private readonly gizmo3d: PlanGizmo3D;
+  // 計画の積分が時刻ごとに引く重力源・衝突体。世代値が動いたときだけ保持を捨てるので、
+  // フレームを跨いで持ち続ける。
+  private readonly attractors: PlanAttractors;
 
   // 直近の update() が描いた折れ線が届いている終端時刻。一度も描いていなければ NaN。
   private get lastPlanEnd(): number { return this.planDisplay.path.timeRange()?.max ?? NaN; }
@@ -97,7 +100,7 @@ export class PlanEditor {
     private readonly _sfx: Sfx,
     private readonly simSpeedManager: SimSpeedManager,
     private readonly ephemeris: Ephemeris,
-    private readonly entities: EntityManager,
+    entities: EntityManager,
     scene: THREE.Scene,
     private readonly markerManager: MarkerManager,
     private readonly activePlayers: ActivePlayerController,
@@ -105,6 +108,7 @@ export class PlanEditor {
     private readonly frameControls: FrameControls,
   ) {
     this.planDisplay = new PlanDisplay(scene, markerManager, ephemeris, displayDuration);
+    this.attractors = new PlanAttractors(ephemeris, entities);
     this.nodeGizmo = new NodeGizmo(this._hud.layers.marker, this._hud.layers.popup, this._hud.overlayManager);
     this.orbitMenu = new ContextMenu<KinematicState, MenuAction>(this._hud.layers.popup, this._hud.overlayManager);
     this.gizmo3d = new PlanGizmo3D();
@@ -690,6 +694,15 @@ export class PlanEditor {
     this.panel.hide();
   }
 
+  // 計画表示・ノードギズモ・軌道右クリックメニュー・パネル・3D ギズモを片付ける。
+  dispose(): void {
+    this.planDisplay.dispose();
+    this.nodeGizmo.dispose();
+    this.orbitMenu.dispose();
+    this.panel.dispose();
+    this.gizmo3d.dispose();
+  }
+
   // 計画折れ線を再積分し、ゴースト位置とアプシスアイコンを求め直す。折れ線は戦闘ビューでも
   // 描く — 計画どおりに機体を動かすのは戦闘ビューだから。
   update(displayWindow: DisplayWindow): void {
@@ -703,12 +716,11 @@ export class PlanEditor {
     this.simTime = displayWindow.simTime;
     const excludedIds = ship === null ? [] : [ship.id];
     // revision は前フレームの終端(lastPlanEnd)を基準に畳み込む — 今フレームの終端は
-    // このあとの planDisplay.update が決めるので、組む時点ではまだ確定していない。
-    const attractorProvider = planAttractorProvider(
-      this.ephemeris, this.entities, excludedIds,
-      planSourceRevision(this.entities, excludedIds, this.plan?.revision ?? 0, this.lastPlanEnd, displayWindow.simTime),
+    // このあとの planDisplay.update が決めるので、渡す時点ではまだ確定していない。
+    this.attractors.resolve(
+      excludedIds, this.plan?.revision ?? 0, this.lastPlanEnd, displayWindow.simTime,
     );
-    this.planDisplay.update(this.displayedPlan, displayWindow, attractorProvider);
+    this.planDisplay.update(this.displayedPlan, displayWindow, this.attractors);
     this.updateEquatorNodes(displayWindow);
   }
 

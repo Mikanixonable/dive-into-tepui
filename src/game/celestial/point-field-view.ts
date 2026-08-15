@@ -101,6 +101,14 @@ class PointFieldGroupView {
       this.dirtyIndices.length = 0;
     }
   }
+
+  // メッシュを親から外し、インスタンスバッファと自前の geometry/material を解放する。
+  dispose(): void {
+    this.mesh.removeFromParent();
+    this.mesh.dispose();
+    this.mesh.geometry.dispose();
+    (this.mesh.material as THREE.Material).dispose();
+  }
 }
 
 export class PointFieldView {
@@ -139,5 +147,10 @@ export class PointFieldView {
   sync(fo: FloatingOrigin, overviewMode: boolean, smallBodyVisible = true): void {
     const visible = overviewMode && this.hasStar && smallBodyVisible;
     for (const group of this.groups) group.sync(fo, visible);
+  }
+
+  // 全群の InstancedMesh を解放する。
+  dispose(): void {
+    for (const group of this.groups) group.dispose();
   }
 }

@@ -380,16 +380,4 @@ export abstract class Ship extends GameEntity {
     }
     return count === 0 ? 0 : total / count;
   }
-
-  // メッシュ配下のマテリアルを含めて破棄する。
-  dispose(): void {
-    super.dispose();
-    this.renderObject.traverse((child) => {
-      const mesh = child as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      if (Array.isArray(mesh.material)) mesh.material.forEach((m) => m.dispose());
-      else mesh.material.dispose();
-    });
-  }
-
 }

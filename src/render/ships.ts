@@ -207,7 +207,7 @@ export function buildAmmoPickup(count = 4): THREE.Group {
   }
 
   // 先端にビーコンを追加する
-  const beacon = new THREE.Mesh(ammoPickupBeaconGeometry, ammoPickupBeaconMaterial.clone());
+  const beacon = withDispose(new THREE.Mesh(ammoPickupBeaconGeometry, ammoPickupBeaconMaterial.clone()), false, true);
   beacon.position.y = (count / 2) * (MAG_THICKNESS + 0.12) + 0.4;
   g.add(beacon);
   return g;

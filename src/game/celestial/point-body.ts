@@ -225,4 +225,13 @@ export class PointBody extends CelestialBody {
       cam.quaternion,
     );
   }
+
+  // 全分割段の表面・環・輝点ビルボードを解放する。
+  dispose(): void {
+    this.group.removeFromParent();
+    for (const surface of this.surfaces.values()) surface.dispose();
+    this.ring?.dispose();
+    this.billboard.mesh.removeFromParent();
+    this.billboard.dispose();
+  }
 }
