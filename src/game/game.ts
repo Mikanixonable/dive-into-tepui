@@ -202,7 +202,7 @@ export class Game {
       this.activePlayers, this.activeStage,
     );
     this.mapActions.setDocking(this.docking);
-    this.viewBadge = new ViewBadge(this._hud.layers.notify, this._hud.layers.popup, this.viewManager, this._hud.overlayManager);
+    this.viewBadge = new ViewBadge(this._hud.layers.notify, this._hud.layers.notify, this.viewManager, this._hud.overlayManager);
   }
 
   // ------------------------------------------------------------------ lifecycle

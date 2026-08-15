@@ -21,14 +21,14 @@ export class ViewBadge {
   private readonly viewButton: Button;
   // ContextMenu は target !== null であることを onSelect 発火の条件にしているので、
   // 対象を持たないこのメニューでも null 以外のダミー値を渡す。
-  private readonly menu: ContextMenu<true, ViewId>;
+  private readonly menu: ContextMenu<true, string>;
 
   // バッジの DOM を root へ、遷移メニューを popupLayer へ組み立てて配線する。
   public constructor(
     root: HTMLElement, popupLayer: HTMLElement, private readonly viewManager: ViewManager,
     overlayManager: OverlayManager,
   ) {
-    this.menu = new ContextMenu<true, ViewId>(popupLayer, overlayManager);
+    this.menu = new ContextMenu<true, string>(popupLayer, overlayManager);
     // タイトル・モード名・ビュー切替ボタンの3つを横に並べる。
     const badge = document.createElement('div');
     badge.id = 'hud-viewbadge';
@@ -50,7 +50,10 @@ export class ViewBadge {
     for (const el of [title, this.modeEl, this.viewButton.element]) badge.appendChild(el);
     root.appendChild(badge);
 
-    this.menu.onSelect = (view) => this.viewManager.setView(view);
+    this.menu.onSelect = (act) => {
+      const item = this.viewManager.getSelectableMenuItems().find((m) => m.id === act);
+      if (item) this.viewManager.selectMenuItem(item);
+    };
     this.menu.onClose = () => this.viewButton.element.setAttribute('aria-expanded', 'false');
   }
 
@@ -62,9 +65,8 @@ export class ViewBadge {
 
   // 遷移できるビューが1つも無ければメニュー自体を開かない。
   private openMenu(): void {
-    const items: MenuItem<ViewId>[] = this.viewManager
-      .selectableViews()
-      .map((v) => ({ label: VIEW_LABELS[v], act: v }));
+    const selectable = this.viewManager.getSelectableMenuItems();
+    const items: MenuItem<string>[] = selectable.map((item) => ({ label: item.label, act: item.id }));
     if (items.length === 0) return;
     const rect = this.viewButton.element.getBoundingClientRect();
     this.viewButton.element.setAttribute('aria-expanded', 'true');
