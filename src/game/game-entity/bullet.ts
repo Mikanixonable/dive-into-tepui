@@ -12,7 +12,7 @@ import * as C from '../const';
 import { buildBulletMesh, buildPlasmaMesh } from '../../render/ships';
 import { Enemy } from './enemy';
 import { Player } from '../player/player';
-import type { WorldSfx } from '../../audio/world-sfx';
+import type { WorldSfx } from '../../audio/sfx/world-sfx';
 
 
 const tmpQuat = new THREE.Quaternion();

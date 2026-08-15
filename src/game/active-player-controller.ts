@@ -7,7 +7,7 @@ import type { EntityManager } from './simulation/entity-manager';
 import type { CameraSystem } from './camera/camera-system';
 import type { Targeter } from './targeter';
 import type { NavTarget } from './nav-target';
-import type { WorldSfx } from '../audio/world-sfx';
+import type { WorldSfx } from '../audio/sfx/world-sfx';
 
 export class ActivePlayerController {
   private _current: Player | null;

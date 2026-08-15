@@ -5,7 +5,7 @@ import { Vec3, len } from '../../physics/vec3';
 import { atmosphericDensity } from '../../physics/atmosphere';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
-import { WorldSfx } from '../../audio/world-sfx';
+import { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { ThermalSaveData } from '../save-data';
 
 // checkThermalLimits の戻り値: 限界超過の種別。null なら超過なし。

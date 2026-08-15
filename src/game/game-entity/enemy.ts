@@ -22,7 +22,7 @@ import { Player } from '../player/player';
 import { Bullet } from './bullet';
 import type { Stage } from '../stages/stage';
 import { Hud } from '../hud/hud';
-import { WorldSfx } from '../../audio/world-sfx';
+import { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { SimSpeedManager } from '../sim-speed-manager';
 import type { EnemySaveData } from '../save-data';

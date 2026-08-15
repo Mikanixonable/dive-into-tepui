@@ -9,7 +9,7 @@ import { partFromSaveData } from './parts';
 import { Player } from '../player/player';
 import { buildBaseModel } from '../../render/ships';
 import type { Hud } from '../hud/hud';
-import type { WorldSfx } from '../../audio/world-sfx';
+import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';

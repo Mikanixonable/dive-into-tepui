@@ -3,7 +3,7 @@
 // 流すことは持たない。WebAudio に依存しないので、生成される音列だけを取り出して検証できる。
 
 // 1音ぶんの指示。発音位置だけがステップ開始からの相対時刻で、残りは秒とレベルの絶対値。
-export interface CompositorNote {
+export interface ComposerNote {
   freq: number;
   offsetSec: number; // ステップ開始からの相対時刻
   durationSec: number;
@@ -12,9 +12,9 @@ export interface CompositorNote {
   attackSec: number;
 }
 
-export interface Compositor {
+export interface Composer {
   // 1ステップの秒数。再生側はこの間隔でステップを進める。
   readonly stepDurSec: number;
   // step 番目のステップで鳴らす音を返す。同じ step には常に同じ音列を返す。
-  notesAt(step: number): readonly CompositorNote[];
+  notesAt(step: number): readonly ComposerNote[];
 }

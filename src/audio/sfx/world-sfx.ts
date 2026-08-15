@@ -2,7 +2,7 @@
 // (アセット不要)。AudioEngine が共有する素材(ノイズバッファ・基本ボイス)と、ここで組む
 // 専用のオシレータ/フィルタで、単発音とループ音を鳴らす。
 // AudioContext が unlock されるまでは、どのメソッドも無音のまま何もしない。
-import { AudioEngine } from './audio-engine';
+import { AudioEngine } from '../audio-engine';
 
 export class WorldSfx {
   private thrustGain: GainNode | null = null;

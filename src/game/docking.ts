@@ -14,7 +14,7 @@ import type { EntityManager } from './simulation/entity-manager';
 import type { MapContextActions } from './map-context-actions';
 import type { CameraSystem } from './camera/camera-system';
 import type { ViewManager } from './view-manager';
-import type { WorldSfx } from '../audio/world-sfx';
+import type { WorldSfx } from '../audio/sfx/world-sfx';
 import type { EffectsSystem } from './vfx/effects-system';
 import type { MarkerManager } from './marker/marker-manager';
 import type { ActivePlayerController } from './active-player-controller';

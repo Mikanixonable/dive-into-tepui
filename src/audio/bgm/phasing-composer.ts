@@ -1,11 +1,11 @@
-// スティーブ・ライヒ風のアンビエント・ミニマルを生成する Compositor。
+// スティーブ・ライヒ風のアンビエント・ミニマルを生成する Composer。
 // 長調でも短調でもない旋法的な音集合を、長さの互いに素な 2 つのパルス・パターンで反復する。
 // 周期が互いに素なので 2 声のフェイズが少しずつずれていき(ライヒのフェイジング)、その上に
 // 四度堆積のパッドと低いドローン、ときおりの高音の煌めきが重なる。打楽器は使わない。
 // 移調とオクターブ移動という周期の異なる 2 つの循環をさらに重ねるので、全体が一巡するまでの
 // 長さは各周期の最小公倍数まで伸びる。音階・パターン・各レイヤーの値は BgmTrack が持つ。
 import { BgmTrack, PhaseCycle, PulseVoice } from './bgm-tracks';
-import { Compositor, CompositorNote } from './compositor';
+import { Composer, ComposerNote } from './composer';
 
 // 1スケールステップあたりの半音数の近似(長2度)。音階を引く声部は移調をインデックスの
 // 足し引きで表せるが、Hz で直接与えるパッドとドローンは周波数比が要るのでこれで換算する。
@@ -34,7 +34,7 @@ function scaleFreq(scale: number[], index: number, transpose: number, octave: nu
   return scale[absoluteIdx]! * Math.pow(2, octShift);
 }
 
-export class PhasingCompositor implements Compositor {
+export class PhasingComposer implements Composer {
   constructor(private readonly track: BgmTrack) {}
 
   get stepDurSec(): number {
@@ -42,14 +42,14 @@ export class PhasingCompositor implements Compositor {
   }
 
   // このステップで鳴る声部A/B・パッド・ドローン・煌めきを、その順に並べて返す。
-  notesAt(step: number): CompositorNote[] {
+  notesAt(step: number): ComposerNote[] {
     const track = this.track;
     const transpose = phaseValue(track.transpose, step);
     const octave = phaseValue(track.octave, step);
     // Hz で直接与えるパッドとドローンは、音階を介さないぶんここで周波数比へ換算する。
     const freqRatio = Math.pow(2, (transpose * SEMITONES_PER_SCALE_STEP) / 12) * Math.pow(2, octave);
 
-    const notes: CompositorNote[] = [];
+    const notes: ComposerNote[] = [];
     notes.push(...this.voiceNotes(track.voiceA, step, transpose, octave));
     notes.push(...this.voiceNotes(track.voiceB, step, transpose, octave));
 
@@ -102,13 +102,13 @@ export class PhasingCompositor implements Compositor {
   }
 
   // パルス声部1つぶんの音を、倍音を持つならそれも重ねて返す。
-  private voiceNotes(voice: PulseVoice, step: number, transpose: number, octave: number): CompositorNote[] {
+  private voiceNotes(voice: PulseVoice, step: number, transpose: number, octave: number): ComposerNote[] {
     const track = this.track;
     // パターンは声部ごとに長さが違うので、各々自分の長さで剰余を取って現在の音を選ぶ。
     const index = voice.pattern[step % voice.pattern.length]!;
     const freq = scaleFreq(track.scale, index, transpose, octave);
     const offsetSec = track.stepDur * voice.stepOffset;
-    const notes: CompositorNote[] = [{
+    const notes: ComposerNote[] = [{
       freq,
       offsetSec,
       durationSec: track.stepDur * voice.lengthRatio,

@@ -11,7 +11,7 @@ import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { ContextMenu } from '../hud/context-menu';
 import { MenuAction, MenuCommon } from '../hud/menu-actions';
-import { UiSfx } from '../../audio/ui-sfx';
+import { UiSfx } from '../../audio/sfx/ui-sfx';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { FloatingOrigin } from '../floating-origin';
 import type { CameraSystem } from '../camera/camera-system';

@@ -8,7 +8,7 @@ import { Vec3, addScaled, len, scale } from '../../physics/vec3';
 import { Billboard } from '../../render/billboard';
 import type { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
-import { WorldSfx } from '../../audio/world-sfx';
+import { WorldSfx } from '../../audio/sfx/world-sfx';
 
 export class ThrustEffects {
   private readonly core = new Billboard(0xaee6ff);

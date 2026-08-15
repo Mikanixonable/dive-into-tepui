@@ -8,7 +8,7 @@ import * as C from '../const';
 import { DebrisKind, DebrisPiece } from '../game-entity/debris-piece';
 import { FlashEffect, FlashEffectManager } from './flash-effect-manager';
 import type { EntityManager } from '../simulation/entity-manager';
-import type { WorldSfx } from '../../audio/world-sfx';
+import type { WorldSfx } from '../../audio/sfx/world-sfx';
 
 // フラッシュ・破片エフェクトの生成窓口。scene への注入をここに一元化し、破片は
 // entities へ追加する。フラッシュの毎フレーム更新・寿命管理は FlashEffectManager が持つ。

@@ -10,7 +10,7 @@ import { stateFromOrbitalElements } from '../../../physics/elements';
 import { randSym } from '../../../physics/random';
 import { len, norm, rotateAxis, scale, v3 } from '../../../physics/vec3';
 import { Hud } from '../../hud/hud';
-import { WorldSfx } from '../../../audio/world-sfx';
+import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../../vfx/effects-system';
 import { Enemy, inertiaForEnemyKind } from '../../game-entity/enemy';
 

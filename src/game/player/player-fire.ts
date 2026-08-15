@@ -10,7 +10,7 @@ import * as C from '../const';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
-import { WorldSfx } from '../../audio/world-sfx';
+import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { Ship } from '../game-entity/ship';
 import { Bullet } from '../game-entity/bullet';
 import type { EntityManager } from '../simulation/entity-manager';

@@ -1,10 +1,10 @@
 // BGM の再生制御。音量とその保存、フェードイン/アウト、曲の切替と試聴、先読みスケジューラの
-// 駆動、そして Compositor が作った音を WebAudio へ流すところまでを持つ。
-// どんな音を作るかは Compositor の責務で、このクラスは中身を知らない。
+// 駆動、そして Composer が作った音を WebAudio へ流すところまでを持つ。
+// どんな音を作るかは Composer の責務で、このクラスは中身を知らない。
 import { BGM_TRACKS } from './bgm-tracks';
-import { Compositor, CompositorNote } from './compositor';
-import { PhasingCompositor } from './phasing-compositor';
-import { AudioEngine } from './audio-engine';
+import { Composer, ComposerNote } from './composer';
+import { PhasingComposer } from './phasing-composer';
+import { AudioEngine } from '../audio-engine';
 
 const BGM_VOL_KEY = 'tepui.settings.bgm_vol'; // localStorage キー
 const PUMP_INTERVAL_MS = 120; // スケジューラを回す間隔
@@ -16,7 +16,7 @@ const TRACK_ROTATION_SEC = 300; // 1曲を流し続ける長さ
 export class Bgm {
   private gain: GainNode | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
-  private compositor: Compositor | null = null;
+  private composer: Composer | null = null;
   private nextTime = 0;
   private step = 0;
   private volume = 1;
@@ -115,10 +115,10 @@ export class Bgm {
     this.timer = setInterval(() => this.pump(), PUMP_INTERVAL_MS);
   }
 
-  // 指定した曲の Compositor を組み、ステップを先頭へ戻す。
+  // 指定した曲の Composer を組み、ステップを先頭へ戻す。
   private selectTrack(index: number, ctx: AudioContext): void {
     this.trackIdx = index;
-    this.compositor = new PhasingCompositor(BGM_TRACKS[index]!);
+    this.composer = new PhasingComposer(BGM_TRACKS[index]!);
     this.trackStartTime = ctx.currentTime;
     this.step = 0;
   }
@@ -142,17 +142,17 @@ export class Bgm {
       this.selectTrack(this.nextTrackIndex(), ctx);
     }
 
-    const compositor = this.compositor;
-    if (!compositor) return;
+    const composer = this.composer;
+    if (!composer) return;
     while (this.nextTime < ctx.currentTime + LOOKAHEAD_SEC) {
-      for (const note of compositor.notesAt(this.step)) this.playNote(note, this.nextTime);
+      for (const note of composer.notesAt(this.step)) this.playNote(note, this.nextTime);
       this.step++;
-      this.nextTime += compositor.stepDurSec;
+      this.nextTime += composer.stepDurSec;
     }
   }
 
   // 1音を、ステップ開始時刻 stepTime を基準にスケジュールする。
-  private playNote(note: CompositorNote, stepTime: number): void {
+  private playNote(note: ComposerNote, stepTime: number): void {
     const ctx = this.engine.ctx;
     const dest = this.gain;
     if (!ctx || !dest) return;
