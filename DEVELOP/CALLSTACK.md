@@ -35,7 +35,7 @@
     - restart() → location.replace(`?stage=<launchedStage.id>`) // 同じステージを新規に開始し直す(決着直前の自動スナップショットへは戻らない)
   - perf.handleInput(game.input) // [K.togglePerfWindow] toggle()
   - autoSave.update(game) // 前回撮影から AUTOSAVE_INTERVAL_REAL_SEC(実時間60秒)経っていれば snapshotService.capture(game, 'auto', null, false) // game.isPaused または !activeStage.isPlaying なら何も撮らない
-  - launcher.update(game) // 決着した最初のフレームだけ動く(resultShown フラグで以降は即 return): sfx.setThrust(false) + bgm.stop() → slots.noteRunEnded(activeSlotId) → resultScreen.show(activeStage.result ?? phase からのフォールバック)
+  - launcher.update(game) // 決着した最初のフレームだけ動く(resultShown フラグで以降は即 return): worldSfx.setThrust(false) + bgm.stop() → slots.noteRunEnded(activeSlotId) → resultScreen.show(activeStage.result ?? phase からのフォールバック)
   - game.sync()
   - game.render()
   - gpu.resolve() // 窓の開閉によらず毎フレーム。renderer.resolveTimestampsAsync('render') を投げ、前フレームの GPU 時間が非同期で届く。呼ばないと時刻印クエリが溜まって上限に当たるので条件を付けない。render 区間の計測(t3)の後に置き、計測自身の費用を render へ混ぜない
@@ -62,7 +62,7 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
     - simSpeedManager.handleInput()
       - shift(-1|+1) // K.warpSlower / K.warpFaster。倍率をヒントで伝える。操作できない倍率へ上げたときはその旨も併記する
         - cancelAutoWarp() // 常に(手動シフトは自動ワープを解除する)
-        - sfx.warp() + hud.hint() // 上限/下限を超えない場合のみ
+        - uiSfx.warp() + hud.hint() // 上限/下限を超えない場合のみ
     - viewManager.handleInput(input) // ビュー遷移はすべて setView() を通る。[isDockOpen] 何もせず return([M] も消費しない)。[!K.toggleMapMode を取れた] 何もしない
       - [current==='map'] !canEnter('combat')(= activePlayers.current !== null が false)なら hud.hint('操作できる艦がいません') して return(この時点で [M] キー自体は既に消費済み)
       - setView(current==='map' ? 'combat' : 'map')
@@ -158,15 +158,15 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
         - throttle.toggleProgradeHold() // K.progradeHoldToggle
         - throttle.setThrottlePreset(0|1|2) // K.throttleLow/Mid/High
         - fire.manualReload() // K.reload。成功時のみ true(= キー消費)
-          - sfx.playReload() + dropBarrel() → fx.spawnBarrel()
+          - worldSfx.playReload() + dropBarrel() → fx.spawnBarrel()
       - throttle.updateTorque(…, dt, simDt, …) → player.torque へ代入(マップビュー中も手動回転は常時有効)。出力ランプの保持時間は実時間 dt、RCS の燃料消費はシミュレーション時間 simDt で進める
         - onProgradeHoldReleased() → hud.hint() // ホールド中に手動回転入力があった場合のみ
         - autoAlignTorque() // ホールド中 かつ 手動回転入力なしの場合のみ
       - fire.updateFireState()
         - tickReloadTimer()
-        - sfx.emptyClick() + hud.hint() // 弾切れの初回フレームのみ
+        - worldSfx.emptyClick() + hud.hint() // 弾切れの初回フレームのみ
         - fireCycle() // 発射キー押下 かつ残弾ありの場合のみ
-          - sfx.spinUp() // 発射開始フレームのみ(このフレームは fireGun まで進まない)
+          - worldSfx.spinUp() // 発射開始フレームのみ(このフレームは fireGun まで進まない)
           - consume() // 弾薬状態の更新。戻り値で以下の分岐が決まる
           - fireGun() // クールダウン明けのみ
             - spawnBullet() → entities.addBullet()
@@ -174,9 +174,9 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
             - dropCasing() → fx.spawnCasing()
             - spawnMuzzleFlash() → fx.spawnMuzzleFlash() → spawnFlash(dimsInGunsight=true)
             - activeStage.scoreCounter.recordShot()
-            - sfx.fire()
-          - spawnEjectedMagazineFrame() + sfx.magFeed() // 'mag-reload'
-          - spawnEjectedMagazineFrame() + dropBarrel() + sfx.playReload() // 'barrel-reload'
+            - worldSfx.fire()
+          - spawnEjectedMagazineFrame() + worldSfx.magFeed() // 'mag-reload'
+          - spawnEjectedMagazineFrame() + dropBarrel() + worldSfx.playReload() // 'barrel-reload'
       - throttle.updateThrustLatches() // WASDQE各キーの連打をエッジ検出しラッチ集合を更新。反対方向キーを押している間は相手側のラッチも解除し続ける。Δv編集中の6キーは editor.updateEditing が既に確保済みなので、ここでは押されていないように見える
       - throttle.updateThrustState(input, att, simDt, ship) → player.thrust へ代入(手動入力が無ければ null。燃料は推力が積分される simDt ぶん消費する。'powered' 中の艦がここで null になっても、後段の activeStage.update → planExecutor.update が Simulator.advance より前に正しい値へ上書きするので積分には影響しない)
         - throttle.stopThrust() // 推力入力なし(物理押下・ラッチとも無し)。thrustAccelVec(ベルト物理向け)を戻すだけ
@@ -194,7 +194,7 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
       - [true のとき] decide('timeup', {win:true, title:'TIME UP', detailHtml}) // 結果画面の内容を確定させるだけ。表示は launcher.update が担う
     - [Stage00 無限サバイバル] logistics.updateLogistics(simSpeed, respawnOnDespawn=true)
       - absorbNearbyAmmo()
-        - player.onPickup() + sfx.pickup() + hud.hint() // 範囲内の補給ごと
+        - player.onPickup() + worldSfx.pickup() + hud.hint() // 範囲内の補給ごと
       - despawnFarAmmo() // 消滅そのものは投入可否によらず常に走る
         - spawnForPlayer() // 遠方消滅した数だけ再投入。投入可(resupplyEnabled かつ canResupplyAmmo)のときだけ。生存数が MAX_ACTIVE_AMMO_PICKUPS に達したら打ち切る
       - spawnForPlayer() // 投入可のとき、LOGISTICS_CHECK_INTERVAL ごと、かつ低弾薬・上限未満のみ。投入不可の間は次回判定時刻を進めない
@@ -245,12 +245,12 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
             - [impulse > 0 のときだけ] a.collideWith(b, contact, activeStage) と b.collideWith(a, contact, activeStage) を順不同で呼ぶ // Contact は解決前の状態を保持するので呼び出し順に依らない
               - [Bullet.collideWith] alive = false // 相手への作用は相手側の collideWith が書く
               - [Ship(Player/Enemy).collideWith] other instanceof Bullet なら attackedByBullet()、それ以外なら applyCollisionDamage(contact.impulse / mass)
-                - attackedByBullet(): applyDamageToParts(bullet.damage) → hp>0 なら impactEffect()(sfx.hit + fx.spawnPlasmaFlash/spawnBulletFlash + spawnGasPuff)、hp<=0 なら destroyEffect() + activeStage.recordEnemyDeath(cause='killed')/recordPlayerLost()
+                - attackedByBullet(): applyDamageToParts(bullet.damage) → hp>0 なら impactEffect()(worldSfx.hit + fx.spawnPlasmaFlash/spawnBulletFlash + spawnGasPuff)、hp<=0 なら destroyEffect() + activeStage.recordEnemyDeath(cause='killed')/recordPlayerLost()
                   - [Enemy] destroyEffect() 前に scoreCounter.recordHit()(被弾のたび)
                   - [Player] thermal.addImpactHeat() は被弾のたび常に。radiator パーツへのダメージ時は radiatorBreakEffect()(全損した瞬間のみ)
-                - applyCollisionDamage(): Δv=impulse/mass を COLLISION_DAMAGE_MIN_DV〜FULL_DV で maxHp へ線形マップし applyDamageToParts → hp>0 なら sfx.clank()+fx.spawnGasPuff()、hp<=0 なら destroyEffect() + recordEnemyDeath/recordPlayerLost()
+                - applyCollisionDamage(): Δv=impulse/mass を COLLISION_DAMAGE_MIN_DV〜FULL_DV で maxHp へ線形マップし applyDamageToParts → hp>0 なら worldSfx.clank()+fx.spawnGasPuff()、hp<=0 なら destroyEffect() + recordEnemyDeath/recordPlayerLost()
               - [RadiatorFold.collideWith] owner.collideAtRadiator(side, other, contact, activeStage) へ委譲(パーツの割り振り先が side に固定される点だけが Ship.collideWith との違い)
-              - [DebrisPiece.collideWith] other instanceof Bullet なら fx.spawnGasPuff()(弾自身の消滅は Bullet.collideWith)。kind==='casing' かつ相手が Player なら sfx.clank()
+              - [DebrisPiece.collideWith] other instanceof Bullet なら fx.spawnGasPuff()(弾自身の消滅は Bullet.collideWith)。kind==='casing' かつ相手が Player なら worldSfx.clank()
         - nanWatchdog.checkPlayer('simulator.advance(接触)')
       - activeStage.applySimulationEvents(simTime) // simTime がイベント境界ちょうどに到達した substep の直後、接触解決の後
         - [CreativeStage] ship.planExecution==='instant' なら node.t 到達で、simTime 以前の最後のノードを ship.state に据え、plan.consumeNodesUpTo(simTime, そのノード) で消化する(複数ノードを跨いだフレームも一括消費)
@@ -270,7 +270,7 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
     - boardMarks.push() // 通常弾が的の面を自機側から通過した場合のみ
   - activePlayers.reclaimDead() // 喪失艦を配列・操作対象から回収する。全ステージ共通で毎フレーム無条件に呼ぶ(喪失した自機も他のエンティティと同じく速やかに取り除く)
     - entities.players のうち !alive な艦ごと → activePlayers.remove(lost) → navTarget.clearIfTargeting(lost.id) / targeter.clearIfTargeting(lost) / overviewCamera.clearFocusIf(lost.id) / entities.removePlayer(lost)
-    - 掃引で操作対象そのものを失った場合だけ reclaimAfterLoss() → 生存艦が居れば activePlayers.set(次の艦)、居なければ setOrNull(null)(sfx.setRcs(false)。カメラの追従対象は毎フレーム引数で渡り直すだけなのでここでは何もしない。ビューはここでは切り替えない)。元から操作対象が居ない状態(手動解除・未配置)では何もしない
+    - 掃引で操作対象そのものを失った場合だけ reclaimAfterLoss() → 生存艦が居れば activePlayers.set(次の艦)、居なければ setOrNull(null)(worldSfx.setRcs(false)。カメラの追従対象は毎フレーム引数で渡り直すだけなのでここでは何もしない。ビューはここでは切り替えない)。元から操作対象が居ない状態(手動解除・未配置)では何もしない
   - docking.checkProximity() // 内部で viewManager.current==='dock' なら即 return。それ以外は全 base × 全生存艦を見て、距離・相対速度が閾値内の艦を収容(EntityManager.parkPlayer で破棄せず除去。alive には触れない)
     - [収容した艦が操作対象だった] activePlayers.setOrNull(次の生存艦、居なければ null) → [game.player===null] viewManager.setView('map') // 操縦できる艦が無くなれば戦闘ビューに映すものが無いためマップへ
   - sections.enter(SECTION.predict)
@@ -291,7 +291,7 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
     - [直近ノードが実行の窓(node.t - C.NODE_APPROACH_LEAD)に入っている場合のみ]
       - notifyApproach() → hud.hint() // ノードごとに最初の1回のみ(approachNotified との同一性比較)
       - notifyAchieved() // orbitalElementsClose(自機軌道要素, 目標軌道要素) が真の場合のみ。player.plan.consumeNodesUpTo(node.t, player.state) で達成ノードを消化し、残り件数は消化後の実数を読む
-        - hud.hint() + sfx.warp() // ノードごとに最初の1回のみ(achievedNotified との同一性比較)
+        - hud.hint() + uiSfx.warp() // ノードごとに最初の1回のみ(achievedNotified との同一性比較)
   - sections.exit(SECTION.plan)
 
 ### update(dtRaw) の続き(マップ表示・カメラの再同期)
@@ -369,8 +369,8 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
       - handleNodeRightClick() // 右クリックごと。ノードをヒットしたぶんだけ消費する
         - selectedNodeIdx = ヒットしたノードの idx + nodeGizmo.openMenu() // ヒット時。true を返して消費
       - handleMapClick() // 左クリックごと。常に消費する
-        - selectedNodeIdx = idx + sfx.warp() // 既存ノードをヒットした場合
-        - planDisplay.path.nearestSample() // 直近の sync でキャッシュした cameraPos/attractors で isOccluded な点を候補から除外してから最寄りを探す → plan.addNode() + sfx.warp() // 計画軌道上をヒットした場合
+        - selectedNodeIdx = idx + uiSfx.warp() // 既存ノードをヒットした場合
+        - planDisplay.path.nearestSample() // 直近の sync でキャッシュした cameraPos/attractors で isOccluded な点を候補から除外してから最寄りを探す → plan.addNode() + uiSfx.warp() // 計画軌道上をヒットした場合
         - selectedNodeIdx = null // どちらにも当たらなかった場合
       - dragNodeToNearestSample() // ノードを incoming arc の最寄り点へ移し、元のΔv成分を保ったまま新しいノード状態へ焼き直す
     - mapActions.handleEmptySpaceRightClick(input, simTime) // [!cameraSystem.overviewMode] 即 return。マーカーにもノードにも当たらなかった右クリックだけが届く。ContextMenu<MapPickable> で「オブジェクトリストウィンドウを表示」/(クリエイティブのみ)「オブジェクトを配置」/「設定メニューを開く」
@@ -424,8 +424,8 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
     - ship.syncPlayer(fo, cameraSystem, displayTime, isActive, ephemeris, attractors, visibilityPolicy?.entity('player', isActive))
       - displayState(displayTime) // current.at または predicted.at。null なら renderObject.visible=false のみで以下は現在状態のまま
       - renderObject の position / quaternion / visible // displayState 基準(未来ゴースト表示中は将来位置)。ガンサイトズームで隠れるのは isActive の艦だけ
-      - thrustEffects.sync(this.thrust, maxAccel, ...) → sfx.setThrust(firing)(isActive のみ) + core/outer の sync() or hide() // this.thrust は PlayerThrottle/PlanExecutor どちらが立てても同じ。displayState(displayTime) ?? this.state。displayState が null なら visible=false 扱いで呼び自分で隠れる
-      - rcsEffects.sync() → sfx.setRcs(rotating) + puff の sync() or hide() ×4 // 同上
+      - thrustEffects.sync(this.thrust, maxAccel, ...) → worldSfx.setThrust(firing)(isActive のみ) + core/outer の sync() or hide() // this.thrust は PlayerThrottle/PlanExecutor どちらが立てても同じ。displayState(displayTime) ?? this.state。displayState が null なら visible=false 扱いで呼び自分で隠れる
+      - rcsEffects.sync() → worldSfx.setRcs(rotating) + puff の sync() or hide() ×4 // 同上
       - belt.sync() // 引数なし。各リンクの position/quaternion を平行移動+ツイストから導出するだけで、表示可否は renderObject.visible に従う
       - radiator.sync() // ヒンジ Group の rotation.y へ展開角を書く
       - reentryEffects.sync() // qdyn が REENTRY_GLOW_MIN_Q 未満、または !visible なら隠すだけ
