@@ -377,6 +377,50 @@ order, `bgm.stop()` at run end, `EnvironmentScene` receiving `pipeline.sunLight`
 
 ---
 
+## The two merges of `main` into the PR branch (`4e21f958`, then `78370b6b`)
+
+Upstream landed the **run-lifecycle rework** — `Launcher` owns the `Game` and recreates it
+in-page, `Game.dispose()` became the root of a disposal chain, the HUD grew per-view roots —
+while PR #4 was open, then landed `PlanAttractors` on top of that during the merge itself.
+Both are merged in.
+
+**Merge, not rebase, and that was the right call.** 11 of this branch's 14 commits touch the
+conflict set; a rebase would have replayed the same three conflicts eleven times, against
+intermediate states of `main.ts`/`launcher.ts` that never existed on either side. The merge
+resolves each once. It also matches house style — `upstream/main` is itself a chain of merge
+commits from the other contributors' workspaces. `git rerere` is on, so the seven recorded
+resolutions replay automatically if this has to be redone.
+
+Same union pattern as the earlier rebase, with one new wrinkle: upstream did not merely add
+prose alongside ours, it **rewrote the paragraphs describing a lifecycle that no longer
+exists**. So the resolution was "take upstream's rewritten text wholesale, then re-apply the
+audio facts onto it" rather than keeping both sides.
+
+- `src/launcher.ts` — upstream's `startRun`/`endRun` shape with the audio set threaded in.
+  `SNAPSHOT_PENDING_KEY` and the `sessionStorage` stash are gone with the page-reload model.
+  **`onUserGesture` moved inside `startRun`**: `Input` is rebuilt with every `Game`, so the
+  `audioEngine.unlock()` + `bgm.autoStart()` wiring must be re-applied per run, not once at
+  boot. `sfx.resumeBgm()` → `bgm.resume()`; run-end silence is
+  `worldSfx.setThrust(false)` + `bgm.stop()`.
+- `src/main.ts` — Launcher-owns-Game construction; `initHud` returns the four audio objects and
+  passes them to `Launcher`, which no longer builds a `Game` here at all.
+- `src/game/game.ts` — **a semantic conflict git merged cleanly.** Upstream's new
+  `Game.dispose()` calls `this._sfx.setThrust/setRcs`; that field was renamed on this branch.
+  No conflict marker, no textual overlap — `npm run typecheck` is what caught it. Worth
+  remembering: a clean merge is not a correct one.
+- `src/game/targeter.ts` — kept upstream's `handleThemeChange`, dropped a comment about an sfx
+  argument this branch had already removed.
+- `CLAUDE.md`, `OWNERSHIP.md`, `CALLSTACK.md`, `refactoring_todo.md` — upstream's rewritten
+  prose with the audio names re-applied. One miss on the first pass (`OWNERSHIP.md`'s
+  `startRun` line still said `sfx.resumeBgm()`) was found by grepping the docs for stale audio
+  identifiers afterwards; do that sweep as a matter of course, the conflict markers do not
+  cover semantic staleness.
+
+Verified after each merge: typecheck clean, and all four harnesses unchanged — 54,240 notes
+still bit-identical to the pre-refactor baseline.
+
+---
+
 ## Before handing off to the other contributors
 
 - [ ] **Smoke test by ear** (`npm run dev`): fire, reload, warp blip, altitude alarm, BGM
