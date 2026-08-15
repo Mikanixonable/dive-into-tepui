@@ -128,6 +128,18 @@ export class CameraSystem {
 
   setMapMode(open: boolean): void { this._overviewMode = open; }
 
+  private readonly chaseResetBtn: HTMLElement | null;
+
+  // 追従リセットボタン押下で、現在のビューに応じたカメラをリセットする。
+  private readonly handleChaseReset = (e: PointerEvent): void => {
+    e.stopPropagation();
+    if (this.overviewMode) {
+      this.mapCamera.reset();
+    } else {
+      this.combatCamera.reset();
+    }
+  };
+
   // 両カメラとフォーカス候補ラベルを構築し、常用ショートリストパネルの選択操作を配線する。
   // saved があれば両カメラをその視点から組む。
   constructor(
@@ -147,17 +159,14 @@ export class CameraSystem {
       saveBodyClassToggles(this._bodyClassToggles);
     };
 
-    const chaseResetBtn = _hud.root.querySelector('#hud-chase-reset') as HTMLElement | null;
-    if (chaseResetBtn) {
-      chaseResetBtn.addEventListener('pointerdown', (e) => {
-        e.stopPropagation();
-        if (this.overviewMode) {
-          this.mapCamera.reset();
-        } else {
-          this.combatCamera.reset();
-        }
-      });
-    }
+    this.chaseResetBtn = _hud.root.querySelector('#hud-chase-reset') as HTMLElement | null;
+    this.chaseResetBtn?.addEventListener('pointerdown', this.handleChaseReset);
+  }
+
+  // 表示パネルを取り除き、追従リセットボタンへの配線を解く。
+  dispose(): void {
+    this.chaseResetBtn?.removeEventListener('pointerdown', this.handleChaseReset);
+    this.viewOptionsPanel.dispose();
   }
 
   // 現在アクティブなカメラ(広範囲視点/戦闘追従視点)を返す。
