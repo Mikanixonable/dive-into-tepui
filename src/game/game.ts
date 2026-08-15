@@ -477,6 +477,9 @@ export class Game {
     this.entities.syncPlayers(
       player, fo, this.cameraSystem, displayTime, this.ephemeris, displayAttractors, visibilityPolicy,
     );
+    this.entities.syncBases(
+      this.controlledBase, fo, this.cameraSystem, displayTime, visibilityPolicy,
+    );
     this.entities.sync(fo, displayTime);
     this.entities.applyVisibility(
       visibilityPolicy, player, overviewMode, fo, this.cameraSystem.activeCamera, displayAttractors,

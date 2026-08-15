@@ -29,7 +29,7 @@ export class ThrustEffects {
   // (RcsEffects.sync と同じ役割 — 全艦のプルームは描画するが、音は操作対象だけ)。
   sync(
     fo: FloatingOrigin, playerPos: Vec3, thrust: Vec3 | null, maxAccel: number,
-    visible: boolean, audible: boolean, camera: CameraSystem,
+    visible: boolean, audible: boolean, camera: CameraSystem, plumeScale = 1.0,
   ): void {
     const firing = thrust !== null && visible;
     if (audible) this._worldSfx.setThrust(firing);
@@ -44,11 +44,13 @@ export class ThrustEffects {
     // 揺らぎと出力比(全開加速度に対する比、0..1)からサイズを決める
     const ratio = maxAccel > 0 ? Math.min(1, mag / maxAccel) : 0;
     const flick = 0.8 + 0.2 * Math.random();
-    const sc = (1.5 + 2.5 * ratio) * flick;
+    const sc = (1.5 + 2.5 * ratio) * flick * plumeScale;
     const camQuat = camera.activeCamera.quaternion;
     // 推力方向の逆側にコア・アウターを置く
-    this.core.sync(fo.RtoThreeV3(addScaled(playerPos, d, -3.4)), sc * 1.6, 0.85 * flick, camQuat);
-    this.outer.sync(fo.RtoThreeV3(addScaled(playerPos, d, -5.6)), sc * 3.6, 0.32 * flick, camQuat);
+    const offsetCore = -3.4 * plumeScale;
+    const offsetOuter = -5.6 * plumeScale;
+    this.core.sync(fo.RtoThreeV3(addScaled(playerPos, d, offsetCore)), sc * 1.6, 0.85 * flick, camQuat);
+    this.outer.sync(fo.RtoThreeV3(addScaled(playerPos, d, offsetOuter)), sc * 3.6, 0.32 * flick, camQuat);
   }
 
   // core/outer ビルボードを scene から取り除き解放する。
