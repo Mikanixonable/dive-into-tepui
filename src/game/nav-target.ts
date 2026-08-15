@@ -17,11 +17,20 @@ import { Hud } from './hud/hud';
 import { MarkerManager } from './marker/marker-manager';
 import { ORBIT_POINT_GLYPH } from './marker/marker-glyphs';
 import { CameraSystem } from './camera/camera-system';
+import type { ProjectFn } from './camera/camera-system';
 import { MapPickable } from './map-pickable';
+import { pickNearest } from './map-pickable';
+import type { Base } from './game-entity/base';
+import type { Input } from './input/input';
+import { pickRadiusSq } from './input/pointer-precision';
+import * as C from './const';
+import { ContextMenu } from './hud/context-menu';
+import { MenuAction, MenuCommon } from './hud/menu-actions';
 
 const Z_HAT: Vec3 = v3(0, 0, 1);
 
 export class NavTarget {
+  private readonly baseMenu: ContextMenu<Base, MenuAction>;
   private targetId: string | null = null;
   private targetName: string | null = null;
   // 自機軌道上の AN/DN の絶対位置(地球中心)。対象の軌道面が定まらなければ両方 null。
@@ -34,7 +43,12 @@ export class NavTarget {
   private attractors: readonly Attractor[] = [];
   private readonly pickableCache: MapPickable[] = [];
 
-  constructor(private readonly _hud: Hud, private readonly markerManager: MarkerManager) {}
+  constructor(private readonly _hud: Hud, private readonly markerManager: MarkerManager) {
+    this.baseMenu = new ContextMenu<Base, MenuAction>(_hud.layers.popup, _hud.overlayManager);
+    this.baseMenu.onSelect = (act, base) => {
+      if (act === 'navTarget') this.toggleTarget(base.id, '基地');
+    };
+  }
 
   get id(): string | null {
     return this.targetId;
@@ -110,6 +124,31 @@ export class NavTarget {
 
   clearIfTargeting(id: string): void {
     if (this.targetId === id) this.targetId = null;
+  }
+
+  // 基地用コンテキストメニューを片付ける。
+  dispose(): void {
+    this.baseMenu.dispose();
+  }
+
+  // 戦闘ビューの右クリックで基地を航法ターゲットに設定/解除する。基地に当たらなければ
+  // クリックを消費せず、Targeter の敵ターゲット選択へフォールスルーさせる。ビューはここでは
+  // 持たないので毎フレーム引数で受け取り、マップ視点では何もしない。
+  updateCombatBasePicking(entities: EntityManager, input: Input, project: ProjectFn, overviewMode: boolean): void {
+    if (overviewMode) return;
+    input.takeRightClicks((click) => {
+      const pickables = entities.bases.filter((b) => b.alive).map((base) => ({ pos: base.state.r, base }));
+      // pointer:coarse では許容半径を広げる。
+      const picked = pickNearest(
+        pickables, click.x, click.y, project, pickRadiusSq(C.TARGET_LOCK_PICK_PX_SQ, C.TARGET_LOCK_PICK_PX_SQ_COARSE),
+      );
+      if (!picked) return false;
+      this.baseMenu.open(click.x, click.y, picked.base, [
+        MenuCommon.navTarget(this.targetId === picked.base.id),
+        MenuCommon.cancel(),
+      ]);
+      return true;
+    });
   }
 
   // id が航法ターゲットになれる(軌道面が定まる)かどうか。

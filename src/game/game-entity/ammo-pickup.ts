@@ -43,17 +43,6 @@ export class AmmoPickup extends GameEntity {
     this.marker = new EntityMarker(this, markerManager, 'mk-ammo', ENTITY_GLYPH.ammo, false);
   }
 
-  // メッシュのマテリアルも解放する。
-  dispose(): void {
-    super.dispose();
-    this.renderObject.traverse((child) => {
-      const mesh = child as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      if (Array.isArray(mesh.material)) mesh.material.forEach((m) => m.dispose());
-      else mesh.material.dispose();
-    });
-  }
-
   // セーブデータへ変換する。
   serialize(): AmmoPickupSaveData {
     return {

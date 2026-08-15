@@ -97,39 +97,53 @@ export class Input {
   // 直近に成立したクリックがタッチ由来だったか。真なら、二重計上を避けるため
   // ブラウザ標準の dblclick イベントによる合成をこちらで抑止する。
   private lastPointerUpWasTouch = false;
+  private readonly target: HTMLElement;
 
   // キーボード・ポインタ・ホイールのイベントリスナーを登録する。
   constructor(target: HTMLElement) {
+    this.target = target;
     this.attachKeyboardListeners();
-    this.attachPointerListeners(target);
-    this.attachWheelListener(target);
+    this.attachPointerListeners();
+    this.attachWheelListener();
   }
 
   // キーボードイベントを購読し、押下エッジと押下中セットを更新する。
   private attachKeyboardListeners(): void {
-    window.addEventListener('keydown', (e) => {
-      // Space スクロール・矢印キーのページスクロールと、割り当ての無い Tab による
-      // フォーカス移動(ゲームが操作不能になる)を抑止する
-      if (e.code === FOCUS_GUARD_CODE || SCROLL_GUARD_KEYS.some((k) => matchesCode(k, e.code))) {
-        e.preventDefault();
-      }
-      if (!e.repeat) {
-        this.pendingPresses.push(e.code);
-        this.onUserGesture?.();
-      }
-      this.keys.add(e.code);
-      this.notePointerKind('mouse');
-    });
-    window.addEventListener('keyup', (e) => {
-      if (META_CODES.includes(e.code)) this.releaseAll();
-      else this.keys.delete(e.code);
-    });
-    window.addEventListener('blur', () => this.releaseAll());
-    window.addEventListener('pagehide', () => this.releaseAll());
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) this.releaseAll();
-    });
+    window.addEventListener('keydown', this.handleKeyDown);
+    window.addEventListener('keyup', this.handleKeyUp);
+    window.addEventListener('blur', this.handleBlur);
+    window.addEventListener('pagehide', this.handlePageHide);
+    document.addEventListener('visibilitychange', this.handleVisibilityChange);
   }
+
+  // keydown を受け、押下エッジ(pendingPresses)と押下中セット(keys)へ反映する。
+  private readonly handleKeyDown = (e: KeyboardEvent): void => {
+    // Space スクロール・矢印キーのページスクロールと、割り当ての無い Tab による
+    // フォーカス移動(ゲームが操作不能になる)を抑止する
+    if (e.code === FOCUS_GUARD_CODE || SCROLL_GUARD_KEYS.some((k) => matchesCode(k, e.code))) {
+      e.preventDefault();
+    }
+    if (!e.repeat) {
+      this.pendingPresses.push(e.code);
+      this.onUserGesture?.();
+    }
+    this.keys.add(e.code);
+    this.notePointerKind('mouse');
+  };
+
+  // keyup を受け、Command キーなら押下中状態を丸ごと解除し、それ以外は押下中セットから外す。
+  private readonly handleKeyUp = (e: KeyboardEvent): void => {
+    if (META_CODES.includes(e.code)) this.releaseAll();
+    else this.keys.delete(e.code);
+  };
+
+  private readonly handleBlur = (): void => this.releaseAll();
+  private readonly handlePageHide = (): void => this.releaseAll();
+
+  // タブが非表示になったら押下中・ドラッグ中の状態をすべて解除する。
+  private readonly handleVisibilityChange = (): void => {
+    if (document.hidden) this.releaseAll();
+  };
 
   // 押下中・ドラッグ中の状態をすべて解除する。keyup / pointerup が届かないまま
   // 操作が中断された場合の復帰点。
@@ -142,24 +156,29 @@ export class Input {
   }
 
   // target のポインタイベントを購読する。
-  private attachPointerListeners(target: HTMLElement): void {
-    target.addEventListener('contextmenu', (e) => e.preventDefault());
-    target.style.touchAction = 'none'; // ブラウザのスクロール/ピンチを奪う
-    target.addEventListener('pointerdown', (e) => this.onPointerDown(target, e));
-    target.addEventListener('pointermove', (e) => this.onPointerMove(e));
-    target.addEventListener('pointerup', (e) => this.onPointerUp(e));
-    target.addEventListener('pointercancel', (e) => this.onPointerCancel(e));
+  private attachPointerListeners(): void {
+    this.target.addEventListener('contextmenu', this.handleContextMenu);
+    this.target.style.touchAction = 'none'; // ブラウザのスクロール/ピンチを奪う
+    this.target.addEventListener('pointerdown', this.handlePointerDown);
+    this.target.addEventListener('pointermove', this.handlePointerMove);
+    this.target.addEventListener('pointerup', this.handlePointerUp);
+    this.target.addEventListener('pointercancel', this.handlePointerCancel);
     // マウスのダブルクリック連打判定(タイミング・移動量とも)はブラウザの標準実装に委ねる。
     // タッチ由来のクリックは自前で合成する(registerTap)ため、二重に積まないよう除外する。
-    target.addEventListener('dblclick', (e) => {
-      if (e.button === 0 && !this.lastPointerUpWasTouch) {
-        this.pendingDoubleClicks.push({ x: e.clientX, y: e.clientY });
-      }
-    });
+    this.target.addEventListener('dblclick', this.handleDblClick);
   }
 
+  private readonly handleContextMenu = (e: Event): void => e.preventDefault();
+
+  // 左ボタンかつタッチ由来のクリックでなければ、ダブルクリックとして積む。
+  private readonly handleDblClick = (e: MouseEvent): void => {
+    if (e.button === 0 && !this.lastPointerUpWasTouch) {
+      this.pendingDoubleClicks.push({ x: e.clientX, y: e.clientY });
+    }
+  };
+
   // 左ボタン・右ボタンはともにドラッグ/ピンチ開始(右クリックは閾値未満ならコンテキストメニュー用のクリックとして扱う)、中ボタンはパン開始として扱う。
-  private onPointerDown(target: HTMLElement, e: PointerEvent): void {
+  private readonly handlePointerDown = (e: PointerEvent): void => {
     this.notePointerKind(e.pointerType === 'touch' ? 'touch' : 'mouse');
     this.onUserGesture?.();
     const isRight = e.button === 2 || (e.button === 0 && e.ctrlKey);
@@ -177,24 +196,24 @@ export class Input {
       } else if (this.pointers.size === 1) {
         this.dragging = true;
         this.dragMoved = 0;
-        target.setPointerCapture(e.pointerId);
+        this.target.setPointerCapture(e.pointerId);
         if (e.pointerType === 'touch') this.startLongPress(e.pointerId, { x: e.clientX, y: e.clientY });
       }
     } else if (isRight) {
       this.rightActive = true;
       this.rightDragMoved = 0;
-      target.setPointerCapture(e.pointerId);
+      this.target.setPointerCapture(e.pointerId);
     } else if (e.button === 1) {
       // 中ボタンの既定動作(オートスクロール)を抑止する。
       e.preventDefault();
       this.panDragging = true;
       this.panDragMoved = 0;
-      target.setPointerCapture(e.pointerId);
+      this.target.setPointerCapture(e.pointerId);
     }
-  }
+  };
 
   // アクティブなジェスチャ(ピンチ/パン/ドラッグ)に応じて移動量を積算する。
-  private onPointerMove = (e: PointerEvent): void => {
+  private readonly handlePointerMove = (e: PointerEvent): void => {
     this.notePointerKind(e.pointerType === 'touch' ? 'touch' : 'mouse');
     const p = this.pointers.get(e.pointerId);
     if (p) {
@@ -246,7 +265,7 @@ export class Input {
 
   // ドラッグ量が閾値未満ならクリックとして記録し、各ジェスチャを終了する。
   // 長押しが成立済みのポインタは、離した瞬間に左クリックまで合成しないよう除外する。
-  private onPointerUp = (e: PointerEvent): void => {
+  private readonly handlePointerUp = (e: PointerEvent): void => {
     const isRight = e.button === 2 || (e.button === 0 && e.ctrlKey);
     const isLeft = e.button === 0 && !e.ctrlKey;
     if (isLeft || e.pointerType === 'touch') {
@@ -286,7 +305,7 @@ export class Input {
   }
 
   // ポインタ消失時に全ジェスチャ状態をリセットする。
-  private onPointerCancel(e: PointerEvent): void {
+  private readonly handlePointerCancel = (e: PointerEvent): void => {
     this.pointers.delete(e.pointerId);
     this.dragging = false;
     this.panDragging = false;
@@ -295,7 +314,7 @@ export class Input {
     this.pinchCentroid = null;
     this.pinchAngle = 0;
     if (this.longPressPointerId === e.pointerId) this.cancelLongPress();
-  }
+  };
 
   // moved が閾値未満(ドラッグでなくクリック)なら e の座標を queue に積み、積んだかを返す。
   // 左・中・右ボタン共通のクリック判定はここに一本化する。
@@ -365,17 +384,16 @@ export class Input {
     return { x: x / this.pointers.size, y: y / this.pointers.size };
   }
 
-  // ホイール操作を wheel 量として積算する。
-  private attachWheelListener(target: HTMLElement): void {
-    target.addEventListener(
-      'wheel',
-      (e) => {
-        e.preventDefault();
-        this.wheel += e.deltaY;
-      },
-      { passive: false },
-    );
+  // target のホイールイベントを購読する。
+  private attachWheelListener(): void {
+    this.target.addEventListener('wheel', this.handleWheel, { passive: false });
   }
+
+  // ホイール操作を wheel 量として積算する。
+  private readonly handleWheel = (e: WheelEvent): void => {
+    e.preventDefault();
+    this.wheel += e.deltaY;
+  };
 
   // アクティブな2点間の距離を返す。
   private currentPinchDist(): number {
@@ -507,6 +525,27 @@ export class Input {
   // 今フレームのマウス移動量・パン量・ホイール量を返す。
   mouse(): MouseDelta {
     return this.frameMouse;
+  }
+
+  // window/document/canvas(target)に張った12個のリスナーを外し、releaseAll() で
+  // 押下中・ドラッグ中の状態も畳む。target は GameScene 所有で Input 自身より長生きするため、
+  // ここで確実に外さないと次に構築する Input へも同じイベントが二重に配送され続ける。
+  dispose(): void {
+    // window/document に張った5個。
+    window.removeEventListener('keydown', this.handleKeyDown);
+    window.removeEventListener('keyup', this.handleKeyUp);
+    window.removeEventListener('blur', this.handleBlur);
+    window.removeEventListener('pagehide', this.handlePageHide);
+    document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+    // canvas(target)に張った7個。
+    this.target.removeEventListener('contextmenu', this.handleContextMenu);
+    this.target.removeEventListener('pointerdown', this.handlePointerDown);
+    this.target.removeEventListener('pointermove', this.handlePointerMove);
+    this.target.removeEventListener('pointerup', this.handlePointerUp);
+    this.target.removeEventListener('pointercancel', this.handlePointerCancel);
+    this.target.removeEventListener('dblclick', this.handleDblClick);
+    this.target.removeEventListener('wheel', this.handleWheel);
+    this.releaseAll();
   }
 }
 
