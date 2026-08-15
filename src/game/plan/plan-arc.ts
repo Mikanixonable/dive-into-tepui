@@ -155,6 +155,9 @@ export class PlanArc {
   private _end: number;
   // 累計積分step数。PLAN_ARC_MAX_STEPS は継ぎ足し込みの区間全体に対する上限。
   private steps = 0;
+  // 積分へ要求した間引き下限のうち最も粗い値。実際に記録されたサンプルの下限を決して下回らない
+  // 側へ倒す — 下回ると、粗すぎる区間をそのまま使い回せると誤って答えることになる。
+  private decimation = 0;
   // 非有限・天体衝突・累計ステップ数上限で積分を打ち切ったか。一度立てば以後 integrateTo は
   // 何もしない。
   private truncated = false;
@@ -192,10 +195,13 @@ export class PlanArc {
   }
 
   // この arc が引数の区間をそのまま表せるか(= 作り直さずに済むか)。sourceRevision/apsisCenterId
-  // は完全一致を要求する。積分済みの間引き間隔が、要求区間(end で決まる)の求める間引き間隔の
+  // は完全一致を要求する。積分済みの間引き下限が、要求区間(end で決まる)の求める下限の
   // PLAN_ARC_MAX_SAMPLE_COARSENING 倍を超えて粗ければ、区間を狭めるだけでは折れ線のクリック
-  // 候補が飛び飛びの点になってしまうので表せないと答える。state0 が同一参照なら、その粗さの
-  // 判定を満たす限り常に表せる。tracksLiveAnchor(計画が空の間の唯一の区間)では state0 が
+  // 候補が飛び飛びの点になってしまうので表せないと答える。比べるのは間引き下限どうしで、実際の
+  // サンプル間隔ではない — 間隔は刻み幅(PLAN_ARC_STEPS_PER_REV)でも決まり、そちらは作り直しても
+  // 同じ値になるので、間隔を下限と比べると縮めようのない粗さを理由に毎フレーム作り直すことになる。
+  // state0 が同一参照なら、その粗さの判定を満たす限り常に表せる。
+  // tracksLiveAnchor(計画が空の間の唯一の区間)では state0 が
   // 自機を毎フレーム追従するため厳密一致では判定できない — 直近の生成結果からの位置の変化が
   // 描画解像度のサンプル間隔(区間長 / PLAN_ARC_MAX_SAMPLES)未満なら、同じ軌道が時間方向に
   // 進んだだけとみなして表せると答える。ただしこの閾値判定は「同じ軌道が進んだだけ」という
@@ -207,7 +213,7 @@ export class PlanArc {
   ): boolean {
     if (sourceRevision !== this.sourceRevision || apsisCenterId !== this.apsisCenterId) return false;
     const sampleInterval = (end - this.state0.t) / C.PLAN_ARC_MAX_SAMPLES;
-    if (this._trajectory.sampleInterval > sampleInterval * C.PLAN_ARC_MAX_SAMPLE_COARSENING) return false;
+    if (this.decimation > sampleInterval * C.PLAN_ARC_MAX_SAMPLE_COARSENING) return false;
     if (state0 === this.state0) return true;
     if (!tracksLiveAnchor) return false;
     if (anchorJumped(this.state0, state0)) return false;
@@ -300,6 +306,7 @@ export class PlanArc {
     const trajectory = this._trajectory;
     const duration = Math.max(0, end - this.state0.t);
     const sampleInterval = duration / C.PLAN_ARC_MAX_SAMPLES;
+    this.decimation = Math.max(this.decimation, sampleInterval);
 
     let steps = 0;
     // 重力源は各ステップの開始・中点・終了時刻で解決する。月のように速く動く天体を長時間
