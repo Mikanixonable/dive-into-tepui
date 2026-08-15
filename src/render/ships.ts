@@ -541,14 +541,14 @@ export function buildBarrelMesh(): THREE.Group {
 export function buildBaseModel(): THREE.Group {
   const g = new THREE.Group();
 
-  // マテリアル定義 (落ち着いたダークチタン・エアロスペースメタリック基調の配色)
-  const redTrussMat = new THREE.MeshStandardMaterial({ color: 0x282e3a, flatShading: true, roughness: 0.35, metalness: 0.85 });
-  const grayFrameMat = new THREE.MeshStandardMaterial({ color: 0x1e2430, flatShading: true, roughness: 0.4, metalness: 0.8 });
-  const whiteModuleMat = new THREE.MeshStandardMaterial({ color: 0xd6dae2, flatShading: true, roughness: 0.25, metalness: 0.5 });
-  const weatheredTubeMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, flatShading: true, roughness: 0.4, metalness: 0.6 });
+  // マテリアル定義 (トラス以外は清潔感あふれるセラミックホワイト・エアロスペース基調)
+  const redTrussMat = new THREE.MeshStandardMaterial({ color: 0x282e3a, flatShading: true, roughness: 0.35, metalness: 0.85 }); // トラス構造はダークチタン
+  const grayFrameMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, flatShading: true, roughness: 0.25, metalness: 0.35 }); // 白基調外骨格
+  const whiteModuleMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, flatShading: true, roughness: 0.2, metalness: 0.3 });  // 純白セラミック居住区
+  const weatheredTubeMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, flatShading: true, roughness: 0.3, metalness: 0.4 }); // オフホワイト連結チューブ
   const glassMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.35, roughness: 0.1, metalness: 0.9 });
   const bioGlowMat = new THREE.MeshStandardMaterial({ color: 0x059669, emissive: 0x10b981, emissiveIntensity: 0.7, roughness: 0.2 });
-  const radiatorMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, flatShading: true, roughness: 0.15, metalness: 0.9 });
+  const radiatorMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, flatShading: true, roughness: 0.15, metalness: 0.9 });
   const solarPanelMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, flatShading: true, roughness: 0.25, metalness: 0.7 });
 
   // ディテール追加用マテリアル
@@ -561,22 +561,22 @@ export function buildBaseModel(): THREE.Group {
   const navRedMat = new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xf87171, emissiveIntensity: 1.2 });
   const navGreenMat = new THREE.MeshStandardMaterial({ color: 0x10b981, emissive: 0x34d399, emissiveIntensity: 1.2 });
 
-  // コンテナ・タンク群用カラーパレット (洗練されたシックなインダストリアルカラー)
+  // コンテナ・タンク群用カラーパレット (多様なリアル宇宙貨物コンテナカラー)
   const containerMats = [
-    new THREE.MeshStandardMaterial({ color: 0x2d3748, flatShading: true, roughness: 0.45, metalness: 0.6 }), // スレートガンメタル
-    new THREE.MeshStandardMaterial({ color: 0x1e293b, flatShading: true, roughness: 0.5, metalness: 0.6 }),  // ディープネイビー
-    new THREE.MeshStandardMaterial({ color: 0x475569, flatShading: true, roughness: 0.4, metalness: 0.7 }),  // クールチタン
-    new THREE.MeshStandardMaterial({ color: 0x3b332b, flatShading: true, roughness: 0.5, metalness: 0.5 }),  // ダークブロンズ
-    new THREE.MeshStandardMaterial({ color: 0x1e222a, flatShading: true, roughness: 0.6, metalness: 0.7 }),  // チャコールスチール
-    new THREE.MeshStandardMaterial({ color: 0x64748b, flatShading: true, roughness: 0.4, metalness: 0.6 }),  // ミューテッドピューター
+    new THREE.MeshStandardMaterial({ color: 0xf8fafc, flatShading: true, roughness: 0.3, metalness: 0.4 }),  // ホワイトコンテナ
+    new THREE.MeshStandardMaterial({ color: 0x1e293b, flatShading: true, roughness: 0.5, metalness: 0.6 }),  // チャコールスレート
+    new THREE.MeshStandardMaterial({ color: 0x1e3a8a, flatShading: true, roughness: 0.4, metalness: 0.7 }),  // インダストリアルネイビー
+    new THREE.MeshStandardMaterial({ color: 0xb45309, flatShading: true, roughness: 0.5, metalness: 0.5 }),  // テラコッタ貨物
+    new THREE.MeshStandardMaterial({ color: 0x065f46, flatShading: true, roughness: 0.4, metalness: 0.6 }),  // カーゴエメラルド
+    new THREE.MeshStandardMaterial({ color: 0x475569, flatShading: true, roughness: 0.4, metalness: 0.7 }),  // チタンピューター
   ];
   const neonAccentMat = new THREE.MeshStandardMaterial({ color: 0x0ea5e9, emissive: 0x38bdf8, emissiveIntensity: 0.8 });
   const hazardOrangeMat = new THREE.MeshStandardMaterial({ color: 0xd97706, emissive: 0xf59e0b, emissiveIntensity: 0.7 });
 
   const tankMats = [
-    new THREE.MeshStandardMaterial({ color: 0xcbd5e1, flatShading: true, roughness: 0.2, metalness: 0.9 }),
-    new THREE.MeshStandardMaterial({ color: 0x1e293b, flatShading: true, roughness: 0.3, metalness: 0.8 }),
-    new THREE.MeshStandardMaterial({ color: 0x64748b, flatShading: true, roughness: 0.25, metalness: 0.85 }),
+    new THREE.MeshStandardMaterial({ color: 0xf8fafc, flatShading: true, roughness: 0.2, metalness: 0.8 }), // 白セラミックタンク
+    new THREE.MeshStandardMaterial({ color: 0xe2e8f0, flatShading: true, roughness: 0.25, metalness: 0.7 }), // シルバーホワイトタンク
+    new THREE.MeshStandardMaterial({ color: 0xcbd5e1, flatShading: true, roughness: 0.25, metalness: 0.75 }), // チタンホワイトタンク
   ];
 
   // 1) 連結主トラス部 (長径約100m, Z = -35m 〜 +50m)
@@ -638,7 +638,7 @@ export function buildBaseModel(): THREE.Group {
   }
 
   // 3) 中腹ドッキング部 (Z = 0m, 矩形パレット / 艀状フレーム $40 \times 12 \times 50$m)
-  const dockPalletMat = new THREE.MeshStandardMaterial({ color: 0x1e2430, flatShading: true, roughness: 0.35, metalness: 0.85 });
+  const dockPalletMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, flatShading: true, roughness: 0.25, metalness: 0.4 });
   const palletFrame = new THREE.Mesh(new THREE.BoxGeometry(42, 6, 52), dockPalletMat);
   palletFrame.position.set(0, -3, 0);
   g.add(palletFrame);
@@ -661,7 +661,7 @@ export function buildBaseModel(): THREE.Group {
   g.add(hatchRing);
 
   // 4箇所のドックスロット構造体 (Dock 0..3)
-  const slotCollarMat = new THREE.MeshStandardMaterial({ color: 0x2a303c, flatShading: true, roughness: 0.35, metalness: 0.85 });
+  const slotCollarMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, flatShading: true, roughness: 0.25, metalness: 0.4 });
   const slotRingMat = new THREE.MeshStandardMaterial({ color: 0xd97706, emissive: 0xf59e0b, emissiveIntensity: 0.7, roughness: 0.3 });
 
   const slotDefs = [
@@ -789,7 +789,7 @@ export function buildBaseModel(): THREE.Group {
   cwCore.position.set(0, 0, cwCenterZ);
   g.add(cwCore);
 
-  // 巨大円柱タンク群 (3種類)
+  // 巨大円柱タンク群 (3種類 - ホワイト合金仕上げ)
   const tank1 = new THREE.Mesh(new THREE.CylinderGeometry(6.5, 6.5, 34, 12), tankMats[0]!);
   tank1.position.set(11, 11, cwCenterZ - 10);
   tank1.rotation.x = Math.PI / 2;
@@ -805,18 +805,75 @@ export function buildBaseModel(): THREE.Group {
   tank3.rotation.x = Math.PI / 2;
   g.add(tank3);
 
-  // 規格化貨物コンテナ群 (大小さまざまな直方体, 三角柱, 三角錐, 扁平三角柱, 円柱, 球体)
-  const containerGeoms = [
-    new THREE.BoxGeometry(6, 6, 12),                       // 直方体
-    new THREE.CylinderGeometry(0, 5, 8, 3),                 // 三角錐
-    new THREE.CylinderGeometry(4.5, 4.5, 10, 3),            // 三角柱
-    new THREE.CylinderGeometry(5, 5, 4, 3),                 // 扁平三角柱
-    new THREE.CylinderGeometry(3.5, 3.5, 8, 12),            // 短い円柱
-    new THREE.SphereGeometry(3.5, 8, 6),                    // 球体
-    new THREE.CylinderGeometry(2.5, 2.5, 14, 10),           // 長い円柱
+  // 【コンテナ生成用ヘルパー】ISO規格リアル宇宙貨物コンテナ
+  const buildContainer = (w: number, h: number, d: number, mat: THREE.Material, tagMat?: THREE.Material): THREE.Group => {
+    const container = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    container.add(body);
+
+    // 8箇所のコーナーキャスティング (ISO 規格角型金具)
+    const cSize = Math.min(w, h, d) * 0.16;
+    const cornerGeo = new THREE.BoxGeometry(cSize, cSize, cSize);
+    const cornerMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, flatShading: true, roughness: 0.3, metalness: 0.8 });
+    for (const sx of [-1, 1]) {
+      for (const sy of [-1, 1]) {
+        for (const sz of [-1, 1]) {
+          const corner = new THREE.Mesh(cornerGeo, cornerMat);
+          corner.position.set(sx * (w / 2), sy * (h / 2), sz * (d / 2));
+          container.add(corner);
+        }
+      }
+    }
+
+    // 側面の波板コルゲート構造 (Corrugated Wall Ribs)
+    const grooveMat = new THREE.MeshStandardMaterial({ color: 0x090d14, flatShading: true, roughness: 0.8, metalness: 0.2 });
+    const ribCount = Math.max(3, Math.floor(d / 1.6));
+    for (let i = 0; i < ribCount; i++) {
+      const zPos = -d / 2 + ((i + 0.5) * d) / ribCount;
+      for (const sx of [-1, 1]) {
+        const rib = new THREE.Mesh(new THREE.BoxGeometry(0.12, h * 0.85, 0.45), grooveMat);
+        rib.position.set(sx * (w / 2 + 0.04), 0, zPos);
+        container.add(rib);
+      }
+    }
+
+    // 後部ダブルドア・ツインロックバー (Rear Latch Doors & Locking Rods)
+    const doorZ = d / 2 + 0.05;
+    const doorSeam = new THREE.Mesh(new THREE.BoxGeometry(0.08, h * 0.88, 0.12), grooveMat);
+    doorSeam.position.set(0, 0, doorZ);
+    container.add(doorSeam);
+
+    const barGeo = new THREE.CylinderGeometry(0.08, 0.08, h * 0.82, 6);
+    const barMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, flatShading: true, roughness: 0.2, metalness: 0.9 });
+    for (const bx of [-w * 0.24, w * 0.24]) {
+      const lockBar = new THREE.Mesh(barGeo, barMat);
+      lockBar.position.set(bx, 0, doorZ);
+      container.add(lockBar);
+
+      // ロックハンドレバー
+      const handle = new THREE.Mesh(new THREE.BoxGeometry(w * 0.18, 0.08, 0.1), barMat);
+      handle.position.set(bx + (bx > 0 ? -w * 0.08 : w * 0.08), -h * 0.15, doorZ + 0.04);
+      container.add(handle);
+    }
+
+    // コンテナID標識タグ
+    if (tagMat) {
+      const tag = new THREE.Mesh(new THREE.BoxGeometry(w * 0.35, h * 0.25, 0.1), tagMat);
+      tag.position.set(w * 0.22, h * 0.22, doorZ + 0.02);
+      container.add(tag);
+    }
+
+    return container;
+  };
+
+  // 規格化宇宙貨物コンテナ群の配置 (4方向のドッキングラック)
+  const containerDims = [
+    { w: 6, h: 6, d: 12 },
+    { w: 5, h: 5, d: 10 },
+    { w: 6, h: 5, d: 14 },
+    { w: 5.5, h: 5.5, d: 11 },
   ];
 
-  // コンテナの整列・配置 (4方向のドッキングラック)
   let cIdx = 0;
   for (let z = cwCenterZ - 25; z <= cwCenterZ + 25; z += 12) {
     const slots = [
@@ -826,20 +883,14 @@ export function buildBaseModel(): THREE.Group {
       new THREE.Vector3(0, -12, z),
     ];
     for (const pos of slots) {
-      const geom = containerGeoms[cIdx % containerGeoms.length]!;
+      const dim = containerDims[cIdx % containerDims.length]!;
       const mat = containerMats[cIdx % containerMats.length]!;
-      const container = new THREE.Mesh(geom, mat);
+      const tagMat = cIdx % 3 === 0 ? (cIdx % 6 === 0 ? neonAccentMat : hazardOrangeMat) : undefined;
+      
+      const container = buildContainer(dim.w, dim.h, dim.d, mat, tagMat);
       container.position.copy(pos);
       container.rotation.set((cIdx * 0.4) % Math.PI, (cIdx * 0.7) % Math.PI, (cIdx * 0.3) % Math.PI);
       g.add(container);
-
-      // 蛍光色アクセントタグ / ディティール機器
-      if (cIdx % 3 === 0) {
-        const accentMat = cIdx % 6 === 0 ? neonAccentMat : hazardOrangeMat;
-        const tag = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), accentMat);
-        tag.position.copy(pos).add(new THREE.Vector3(1.5, 1.5, 1.5));
-        g.add(tag);
-      }
 
       cIdx++;
     }
