@@ -191,7 +191,7 @@ programs is on its own a reason for the layer, and it arrives before either of t
 1. ~~**The union + a second composer.**~~ **Done** — [done.md](done.md) §10.
 2. ~~**Playback extraction** (`TrackPlayback`).~~ **Done** — [done.md](done.md) §10.
 3. ~~**`Conductor`, ambient line only.**~~ **Done** — [done.md](done.md) §13.
-4. **Pause/resume** (ducking, per §2a-1), still unused.
+4. ~~**Pause/resume** (ducking, per §2a-1).~~ **Done** — [done.md](done.md) §14.
 5. **The audition line** + `beginAudition`/`endAudition` + `SettingsView` wiring. The
    behavioural change; `check-rotation` is rewritten here.
 6. **Crossfade**, once 2c's open question is settled.
