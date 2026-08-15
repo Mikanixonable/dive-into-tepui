@@ -55,7 +55,7 @@ function mixString(acc: number, value: string): number {
 // 届いた瞬間に一度だけ変わる — 伸びている間の変化を revision に載せると、覆い切りに
 // 何フレームもかかる長い表示期間で計画の再積分が毎フレーム走り続ける。
 function predictionCoverage(entity: GameEntity, planEnd: number): number {
-  const tip = entity.predictedTrajectory?.state.t;
+  const tip = entity.predicted?.state.t;
   if (tip === undefined) return NO_PREDICTION;
   return tip >= planEnd ? PREDICTION_COVERS_PLAN : PREDICTION_SHORT;
 }
