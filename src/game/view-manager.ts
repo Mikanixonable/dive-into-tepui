@@ -101,6 +101,12 @@ export class ViewManager {
     this.applyChrome();
   }
 
+  // ドックの登録を OverlayManager の台帳から下ろす。台帳は Hud のもので自分より長生きするため、
+  // 開いたまま消えると、以後どのビューでも入力を塞ぐハンドルが残る。
+  dispose(): void {
+    this.hud.overlayManager.close('dock-view');
+  }
+
   // isDockOpen が変化したフレームだけ OverlayManager 側の登録を追従させる。
   private syncDockOverlay(wasDockOpen: boolean): void {
     if (this.isDockOpen === wasDockOpen) return;

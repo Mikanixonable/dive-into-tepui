@@ -801,6 +801,15 @@ export class ShipPlacerPanel implements OverlayHandle {
     return this.panel.contains(target);
   }
 
+  // panelRoot へ追加したパネル DOM を取り除き、popupRoot に開く基準天体・系の ObjectPicker も
+  // あわせて片付ける。
+  dispose(): void {
+    this.close();
+    this.panel.remove();
+    this.attractor.dispose();
+    this.lagrangeSecondary.dispose();
+  }
+
   // OverlayManager からの項目ショートカット配送を受ける。Enter で確定する。
   handleShortcut(code: string): boolean {
     if (code !== 'Enter') return false;
