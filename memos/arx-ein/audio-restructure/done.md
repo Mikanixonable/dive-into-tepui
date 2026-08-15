@@ -234,6 +234,44 @@ Still 54,240 notes identical against the `33524dc9` reference.
 
 ---
 
+## 8. Playback extracted from the conductor
+
+Step 2 of roadmap §2d, no crossfade. `Bgm` now conducts — which track, when, user volume, the
+one scheduler pump — and `bgm/track-playback.ts`'s `TrackPlayback` is one sounding piece: its
+own gain, its `Composer`, its step position, `scheduleUntil(deadline)` and `playNote`.
+
+**The two gain layers landed with it**, because they are what makes the split mean anything:
+the master gain (user volume, outlives every track) and the playback gain (that piece's fade).
+One node doing both would have `setVolume` and a fade ramping the same `AudioParam`, where the
+later call cancels the earlier one's shape.
+
+**`Bgm` holds `TrackPlayback | null`, not a list.** Nothing plays two pieces at once yet, and a
+list without a crossfade would be speculative. Making that field plural *is* the crossfade
+change — which is the whole reason the unit was extracted now.
+
+Two details that had to be preserved rather than reinvented:
+
+- **Rotation must not restart the beat.** The old code kept one gain and one `nextTime` across
+  a track change, so the new track continued on the same grid. The new `openPlayback` takes
+  the outgoing playback's `nextStepTime` as the incoming one's start, reproducing that.
+- **Rotation must not fade in.** Only `start()` fades; `TrackPlayback` opens at full gain and
+  `fadeIn()` is a separate call, so a mid-session track change stays the hard cut it was.
+
+**Verified end-to-end, not just at the composer.** A second harness drives both the `33524dc9`
+`Bgm` and the new one through a fake `AudioContext` (stubbed `setInterval`, pinned
+`Math.random`, `playTrack(0)` for a deterministic opening track), pumps 400 simulated seconds
+— **crossing the 300 s rotation** — and compares every scheduled oscillator with its note-gain
+envelope:
+
+> 3537 scheduled notes identical, and the routing asserted as
+> `note -> noteGain -> playbackGain -> masterGain -> destination`.
+
+The one intended difference is the fade curve: previously one exponential ramp `0.0001 ->
+volume`; now `0.0001 -> 1` on the playback gain times a constant master. Same endpoint, same
+shape, different starting infinitesimal — inaudible, and not claimed as bit-identical.
+
+---
+
 ## The rebase onto the new `main` (`5ff773e4`)
 
 Upstream landed the deferred rendering pipeline while this branch was in flight, and it
