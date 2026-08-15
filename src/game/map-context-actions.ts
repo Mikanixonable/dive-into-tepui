@@ -2,7 +2,9 @@
 // メニュー項目・プロパティウィンドウの構築、選ばれた操作の各所有者への配分。候補集合と
 // 表示可否は map-pickables.ts の MapPickables から読む — 「何が選べるか」と「選んだら
 // どうなるか」を分けている。
+import * as THREE from 'three/webgpu';
 import { Hud } from './hud/hud';
+import { Base } from './game-entity/base';
 import { fmtAmmoStatus, fmtDist, fmtEnergy, fmtSpeed, fmtTime } from './hud/utils';
 import { orbitInfo, relativeInfo } from './hud/orbit-info';
 import { ContextMenu, MenuItem } from './hud/context-menu';
@@ -18,7 +20,7 @@ import { pickRadiusSq } from './input/pointer-precision';
 import { EntityManager } from './simulation/entity-manager';
 import { Ephemeris } from '../physics/ephemeris';
 import { NavTarget } from './nav-target';
-import { CameraSystem, ProjectFn } from './camera/camera-system';
+import { CameraSystem } from './camera/camera-system';
 import { PlanEditor } from './plan/plan-editor';
 import { SimSpeedManager } from './sim-speed-manager';
 import type { PauseMenu } from './hud/pause-menu';
@@ -241,24 +243,84 @@ export class MapContextActions {
     this.menu.open(clientX, clientY, target, this.itemsFor(target, simTime));
   }
 
-  // 戦闘ビューの右クリック。マップと同じ被選択物の仕組みで敵・自艦を拾い、当たれば同じ
-  // プロパティウィンドウを開く(同じ対象は常に同じ窓 — §7-2)。外れれば空域メニューへ落ちる。
-  // マップ視点では何もしない。
+  // 戦闘ビューの右クリック。アイコン/マーカーの位置判定ではなく、3Dモデル(renderObject)に対する
+  // レイキャストで当たったエンティティ(自艦・他艦・敵・基地)のプロパティウィンドウを開く。
+  // 3Dモデルに当たらなければ空域メニューへ落とす。マップ視点では何もしない。
   handleCombatRightClick(
-    input: Input, project: ProjectFn, simTime: number, overviewMode: boolean,
+    input: Input, simTime: number, overviewMode: boolean,
   ): void {
     if (overviewMode) return;
     input.takeRightClicks((p) => {
-      const candidates: MapPickable[] = [
-        ...this.entities.players.filter((ship) => ship.alive).map((ship) => ({ id: ship.id, name: ship.name, pos: ship.state.r, kind: 'player' as const })),
-        ...this.entities.enemies.filter((enemy) => enemy.alive).map((enemy) => ({ id: enemy.id, name: enemy.name, pos: enemy.state.r, kind: 'ship' as const })),
-        ...this.entities.bases.filter((base) => base.alive).map((base) => ({ id: base.id, name: base.name, pos: base.state.r, kind: 'base' as const })),
-      ];
-      const picked = pickNearest(candidates, p.x, p.y, project, pickRadiusSq(C.TARGET_LOCK_PICK_PX_SQ, C.TARGET_LOCK_PICK_PX_SQ_COARSE));
-      if (picked) this.openPropertyWindow(p.x, p.y, picked, simTime);
-      else this.openEmptySpaceMenu(p.x, p.y, simTime);
+      const hitEntity = this.raycastCombatEntity(p.x, p.y);
+      if (hitEntity) {
+        this.openPropertyWindow(p.x, p.y, this.entityToPickable(hitEntity), simTime);
+      } else {
+        this.openEmptySpaceMenu(p.x, p.y, simTime);
+      }
       return true;
     });
+  }
+
+  // 画面上の右クリック座標(clientX, clientY)から 3D 空間へレイキャストし、最初にヒットした 3D メッシュの GameEntity を返す
+  private raycastCombatEntity(clientX: number, clientY: number): GameEntity | null {
+    const camera = this.cameraSystem.activeCamera;
+    if (!camera) return null;
+
+    const mouse = new THREE.Vector2(
+      (clientX / window.innerWidth) * 2 - 1,
+      -(clientY / window.innerHeight) * 2 + 1,
+    );
+
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(mouse, camera);
+
+    const entityMap = new Map<THREE.Object3D, GameEntity>();
+    const renderObjects: THREE.Object3D[] = [];
+
+    for (const ship of this.entities.players) {
+      if (ship.alive && ship.renderObject.visible) {
+        renderObjects.push(ship.renderObject);
+        entityMap.set(ship.renderObject, ship);
+      }
+    }
+    for (const enemy of this.entities.enemies) {
+      if (enemy.alive && enemy.renderObject.visible) {
+        renderObjects.push(enemy.renderObject);
+        entityMap.set(enemy.renderObject, enemy);
+      }
+    }
+    for (const base of this.entities.bases) {
+      if (base.alive && base.renderObject.visible) {
+        renderObjects.push(base.renderObject);
+        entityMap.set(base.renderObject, base);
+      }
+    }
+
+    if (renderObjects.length === 0) return null;
+
+    const intersects = raycaster.intersectObjects(renderObjects, true);
+    if (intersects.length === 0) return null;
+
+    for (const hit of intersects) {
+      let curr: THREE.Object3D | null = hit.object;
+      while (curr) {
+        const entity = entityMap.get(curr);
+        if (entity) return entity;
+        curr = curr.parent;
+      }
+    }
+
+    return null;
+  }
+
+  private entityToPickable(entity: GameEntity): MapPickable {
+    if (entity instanceof Player) {
+      return { id: entity.id, name: entity.name, pos: entity.state.r, kind: 'player' };
+    }
+    if (entity instanceof Base) {
+      return { id: entity.id, name: entity.name, pos: entity.state.r, kind: 'base' };
+    }
+    return { id: entity.id, name: entity.name, pos: entity.state.r, kind: 'ship' };
   }
 
   // 軌道オブジェクトウィンドウをマップ視点である間は常設で表示し、開いている全プロパティ
