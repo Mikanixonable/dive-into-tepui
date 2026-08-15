@@ -2,7 +2,6 @@
 // メニュー項目・プロパティウィンドウの構築、選ばれた操作の各所有者への配分。候補集合と
 // 表示可否は map-pickables.ts の MapPickables から読む — 「何が選べるか」と「選んだら
 // どうなるか」を分けている。
-import * as THREE from 'three/webgpu';
 import { Hud } from './hud/hud';
 import { Base } from './game-entity/base';
 import { fmtAmmoStatus, fmtDist, fmtEnergy, fmtSpeed, fmtTime } from './hud/utils';
@@ -32,6 +31,7 @@ import type { Stage } from './stages/stage';
 import { Player, planExecutionLabel, type PlanExecutionMode } from './player/player';
 import type { GameEntity } from './game-entity/game-entity';
 import { len, sub, v3 } from '../physics/vec3';
+import { metersPerPixel } from '../physics/projection';
 import type { ObjectType } from './creative/ship-placer-panel';
 import type { KinematicState } from '../physics/kinematic-state';
 import { Attractor, orbitalElementsOf, strongestAttractor } from '../physics/attractor';
@@ -243,15 +243,15 @@ export class MapContextActions {
     this.menu.open(clientX, clientY, target, this.itemsFor(target, simTime));
   }
 
-  // 戦闘ビューの右クリック。マーカー位置やバウンディング領域ではなく、
-  // 実体の 3D メッシュ(表面三角形)に直接ヒットした場合のみプロパティウィンドウを開く。
-  // メッシュ部以外(隙間・背景)は空域メニューへ落とす。マップ視点では何もしない。
+  // 戦闘ビューの右クリック。カメラの視点・画角・実体サイズ(Base 100m / Enemy 90m / Player 5m)から
+  // 画面上の視覚半径を正確に求め、機体・基地の表示領域へのヒット判定を行う。
+  // ヒットしなかった場合(背景・空域)は空域設定メニューを開く。
   handleCombatRightClick(
     input: Input, simTime: number, overviewMode: boolean,
   ): void {
     if (overviewMode) return;
     input.takeRightClicks((p) => {
-      const hitEntity = this.raycastCombatEntity(p.x, p.y);
+      const hitEntity = this.pickCombatEntityAtPoint(p.x, p.y);
       if (hitEntity) {
         this.openPropertyWindow(p.x, p.y, this.entityToPickable(hitEntity), simTime);
       } else {
@@ -261,55 +261,50 @@ export class MapContextActions {
     });
   }
 
-  // 画面上の右クリック座標(clientX, clientY)から 3D メッシュ群への厳格なレイキャストを行い、最初にヒットした GameEntity を返す
-  private raycastCombatEntity(clientX: number, clientY: number): GameEntity | null {
-    const camera = this.cameraSystem.activeCamera;
-    if (!camera) return null;
+  // 画面上の右クリック座標(clientX, clientY)において、実体の 3D モデル表示領域にヒットした GameEntity を返す
+  private pickCombatEntityAtPoint(clientX: number, clientY: number): GameEntity | null {
+    const view = this.cameraSystem.activeViewpoint;
+    const project = this.cameraSystem.activeCameraProjection;
+    const viewportHeight = window.innerHeight;
 
-    camera.updateMatrixWorld(true);
-
-    const mouse = new THREE.Vector2(
-      (clientX / window.innerWidth) * 2 - 1,
-      -(clientY / window.innerHeight) * 2 + 1,
-    );
-
-    const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(mouse, camera);
-
-    const candidates: GameEntity[] = [
-      ...this.entities.players.filter((p) => p.alive),
-      ...this.entities.enemies.filter((e) => e.alive),
-      ...this.entities.bases.filter((b) => b.alive),
+    const candidates: { entity: GameEntity; radius: number }[] = [
+      ...this.entities.players.filter((p) => p.alive).map((p) => ({ entity: p, radius: p.radius || 5 })),
+      ...this.entities.enemies.filter((e) => e.alive).map((e) => ({ entity: e, radius: e.radius || 90 })),
+      ...this.entities.bases.filter((b) => b.alive).map((b) => ({ entity: b, radius: b.radius || 100 })),
     ];
 
-    if (candidates.length === 0) return null;
+    let bestEntity: GameEntity | null = null;
+    let minDepth = Infinity;
 
-    const allMeshes: THREE.Mesh[] = [];
-    const meshToEntityMap = new Map<THREE.Mesh, GameEntity>();
+    for (const item of candidates) {
+      const entity = item.entity;
+      const pos = entity.state.r;
+      const proj = project(pos);
+      if (!proj.front) continue;
 
-    for (const entity of candidates) {
-      if (entity.renderObject.visible) {
-        entity.renderObject.updateMatrixWorld(true);
-        entity.renderObject.traverse((child) => {
-          if (child instanceof THREE.Mesh && child.visible) {
-            child.updateMatrixWorld(true);
-            if (!child.geometry.boundingSphere) {
-              child.geometry.computeBoundingSphere();
-            }
-            allMeshes.push(child);
-            meshToEntityMap.set(child, entity);
-          }
-        });
+      const dx = clientX - proj.x;
+      const dy = clientY - proj.y;
+      const distSq = dx * dx + dy * dy;
+
+      // カメラから対象までの視線奥行き距離
+      const depth = len(sub(pos, view.position));
+
+      // この距離における 1 ピクセルあたりの実距離 [m/px]
+      const mpp = metersPerPixel(view, pos, viewportHeight);
+
+      // 3D モデルの物理半径を画面上のピクセル半径へ投影
+      // クリック操作の最小許容値として 12px、実サイズに基づく投影ピクセル半径を適用
+      const visualRadiusPx = Math.max(12, item.radius / Math.max(1e-6, mpp));
+
+      if (distSq <= visualRadiusPx * visualRadiusPx) {
+        if (depth < minDepth) {
+          minDepth = depth;
+          bestEntity = entity;
+        }
       }
     }
 
-    if (allMeshes.length === 0) return null;
-
-    const intersects = raycaster.intersectObjects(allMeshes, false);
-    if (intersects.length === 0) return null;
-
-    const hitMesh = intersects[0]!.object as THREE.Mesh;
-    return meshToEntityMap.get(hitMesh) ?? null;
+    return bestEntity;
   }
 
   private entityToPickable(entity: GameEntity): MapPickable {
