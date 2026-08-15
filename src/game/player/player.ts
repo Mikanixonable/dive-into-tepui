@@ -74,8 +74,6 @@ export class Player extends Ship {
   private readonly reentryEffects: ReentryEffects;
   private readonly markers: PlayerMarkers;
   declare readonly orbitLine: OrbitLine;
-  declare readonly predictedLine: TrajectoryLine;
-  declare readonly actualLine: TrajectoryLine;
   // この艦自身のマニューバ計画。PlanEditor はアクティブ艦のこれを編集する。
   readonly plan = new Plan();
   readonly planExecutor: PlanExecutor;
@@ -127,11 +125,6 @@ export class Player extends Ship {
     // 自機軌道線: 明るいグレー。ターゲット(オレンジ)より目立たせない配色。
     this.orbitLine = new OrbitLine(0xbfc9d4, 0.55, C.LINE_RENDER_ORDER.shipOrbit);
     _scene.add(this.orbitLine.line);
-    this.predictedLine = new TrajectoryLine(0xbfc9d4, 0.55, C.LINE_RENDER_ORDER.predicted);
-    _scene.add(this.predictedLine.line);
-    // 過去の軌跡は未来線と同色にし、既に通り過ぎた区間だと読めるよう不透明度だけ落とす。
-    this.actualLine = new TrajectoryLine(0xbfc9d4, 0.3, C.LINE_RENDER_ORDER.predicted);
-    _scene.add(this.actualLine.line);
 
     if (saved) {
       // 旧セーブは followPlan: boolean だった(true→'instant' / false→'off')。
@@ -177,6 +170,16 @@ export class Player extends Ship {
       w: v3(),
       inertia: Player.INERTIA,
     };
+  }
+
+  // 自機軌道線と同色。ターゲット(オレンジ)より目立たせない配色。
+  protected override createPredictedLine(): TrajectoryLine {
+    return new TrajectoryLine(0xbfc9d4, 0.55, C.LINE_RENDER_ORDER.predicted);
+  }
+
+  // 過去の軌跡は未来線と同色にし、既に通り過ぎた区間だと読めるよう不透明度だけ落とす。
+  protected override createActualLine(): TrajectoryLine {
+    return new TrajectoryLine(0xbfc9d4, 0.3, C.LINE_RENDER_ORDER.predicted);
   }
 
   // HP を HP_REGEN_RATE で maxHp まで自然回復させる。
@@ -517,10 +520,6 @@ export class Player extends Ship {
     this.markers.dispose();
     this.playerScene.remove(this.orbitLine.line);
     this.orbitLine.dispose();
-    this.playerScene.remove(this.predictedLine.line);
-    this.predictedLine.dispose();
-    this.playerScene.remove(this.actualLine.line);
-    this.actualLine.dispose();
     this.thrustEffects.dispose(this.playerScene);
     this.rcsEffects.dispose(this.playerScene);
     this.reentryEffects.dispose(this.playerScene);

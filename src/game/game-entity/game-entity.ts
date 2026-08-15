@@ -101,12 +101,14 @@ export class GameEntity {
   // 未来位置を計画軌道の衝突体として引かれるか。剛体接触への参加(collides)とは別の判断
   // で、こちらは「数分から数日先まで伸びる線が相手にするだけの寿命を持つか」を言う。
   protected readonly predictedAsPlanCollider: boolean = false;
-  // 表示時刻(未来ゴースト)の位置でメッシュ・マーカーを描く種別か。
-  protected readonly predictedForDisplay: boolean = false;
+  // 表示時刻(未来ゴースト)の位置でメッシュとマーカーを描く種別か。予測線を出すかとは
+  // 無関係で、線の側は predictedLine を持っているかがそのまま答えになる。
+  protected readonly predictedForGhost: boolean = false;
 
   // 予測列を伸ばす種別か。上の理由のどれか1つでも立てば伸ばす。
   get predictsFuture(): boolean {
-    return this.predictedAsGravitySource || this.predictedAsPlanCollider || this.predictedForDisplay;
+    return this.predictedAsGravitySource || this.predictedAsPlanCollider
+      || this.predictedForGhost || this.predictedLine !== null;
   }
   protected readonly scene?: THREE.Scene;
 
@@ -160,26 +162,66 @@ export class GameEntity {
     this.orbitLine.sync(show ? this.orbitalElementsAround(center) : null, fo, camera, force);
   }
 
+  // 自分の予測線・実軌道線を作る。線を持つ種別だけが上書きする。
+  protected createPredictedLine(): TrajectoryLine | null {
+    return null;
+  }
+  protected createActualLine(): TrajectoryLine | null {
+    return null;
+  }
+
+  // 予測線を出す。既に出ていれば何もしない。線を持たない種別では何も起きない。
+  showPredictedLine(): void {
+    if (this.predictedLine !== null) return;
+    const line = this.createPredictedLine();
+    if (line === null) return;
+    this.scene?.add(line.line);
+    this.predictedLine = line;
+  }
+
+  // 予測線を消す。線そのものを捨てるので、出し直すと作り直しになる。
+  hidePredictedLine(): void {
+    if (this.predictedLine === null) return;
+    this.scene?.remove(this.predictedLine.line);
+    this.predictedLine.dispose();
+    this.predictedLine = null;
+  }
+
+  // 実軌道の過去線を出す。既に出ていれば何もしない。
+  showActualLine(): void {
+    if (this.actualLine !== null) return;
+    const line = this.createActualLine();
+    if (line === null) return;
+    this.scene?.add(line.line);
+    this.actualLine = line;
+  }
+
+  // 実軌道の過去線を消す。
+  hideActualLine(): void {
+    if (this.actualLine === null) return;
+    this.scene?.remove(this.actualLine.line);
+    this.actualLine.dispose();
+    this.actualLine = null;
+  }
+
   // predictedLine を現在時刻以降の predicted に、actualLine を
   // [simTime - pastDuration, simTime] の actual に合わせる(未来線の先頭と過去線の
   // 末尾が常に現在位置で接するようにする)。pastDuration が保持窓を超える分は
-  // TrajectoryLine 側が保持区間の先頭へクランプする。show が false のときは両方を非表示にする。
+  // TrajectoryLine 側が保持区間の先頭へクランプする。描くかどうかは線を持っているかが
+  // そのまま答えなので、ここでは判定しない。
   // simTime は描く区間の境目、displayTime は座標系から慣性系へ戻す時刻。
   syncTrajectoryLines(
-    show: boolean, frame: ReferenceFrame, simTime: number, displayTime: number, pastDuration: number,
+    frame: ReferenceFrame, simTime: number, displayTime: number, pastDuration: number,
     ephemeris: Ephemeris, fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
   ): void {
     if (this.predictedLine !== null) {
-      this.predictedLine.syncGeometry(
-        show ? this.predicted : null, simTime, null, frame, ephemeris, attractors,
-      );
+      this.predictedLine.syncGeometry(this.predicted, simTime, null, frame, ephemeris, attractors);
       this.predictedLine.syncTransform(frame, displayTime, ephemeris, fo, attractors);
       this.predictedLine.sync(camera);
     }
     if (this.actualLine !== null) {
-      const drawPast = show && pastDuration > 0;
       this.actualLine.syncGeometry(
-        drawPast ? this.actual : null, simTime - pastDuration, simTime, frame, ephemeris, attractors,
+        this.actual, simTime - pastDuration, simTime, frame, ephemeris, attractors,
       );
       this.actualLine.syncTransform(frame, displayTime, ephemeris, fo, attractors);
       this.actualLine.sync(camera);
@@ -345,6 +387,8 @@ export class GameEntity {
     this.scene?.remove(this.renderObject);
     this.equatorNodes?.dispose();
     this.marker?.dispose();
+    this.hidePredictedLine();
+    this.hideActualLine();
     this.renderObject.traverse((child) => {
       const mesh = child as THREE.Mesh;
       if (!mesh.isMesh) return;

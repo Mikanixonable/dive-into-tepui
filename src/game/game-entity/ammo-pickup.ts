@@ -24,7 +24,7 @@ export type AmmoPickupInit =
 export class AmmoPickup extends GameEntity {
   protected readonly bcInv = C.SMALL_DEBRIS_BCINV;
   protected readonly srpCoeff = C.SMALL_DEBRIS_SRP_COEFF;
-  protected readonly predictedForDisplay = true;
+  protected readonly predictedForGhost = true;
 
   // 補給メッシュを組み立て、質量と衝突半径を設定する。id 省略時はここで一意に発番する。
   public constructor(init: AmmoPickupInit, scene: THREE.Scene, markerManager: MarkerManager) {
