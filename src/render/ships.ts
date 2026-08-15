@@ -629,18 +629,8 @@ export function buildBaseModel(): THREE.Group {
     g.add(mountJoint);
   }
 
-  // 3) 中腹ドッキング部 (Z = 0m, 矩形パレット / 艀状フレーム $42 \times 6 \times 52$m)
+  // 3) 中腹ドッキング部 (Z = 0m)
   const dockPalletMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, flatShading: true, roughness: 0.2, metalness: 0.3 });
-  const palletFrame = new THREE.Mesh(new THREE.BoxGeometry(42, 6, 52), dockPalletMat);
-  palletFrame.position.set(0, -3, 0);
-  g.add(palletFrame);
-
-  // 【ディテール: ドッキングパレット外周のパネル溝(Groove Line)】
-  for (const sy of [-6.1, 0.1]) {
-    const grooveX = new THREE.Mesh(new THREE.BoxGeometry(42.4, 0.3, 0.6), panelGrooveMat);
-    grooveX.position.set(0, sy, 0);
-    g.add(grooveX);
-  }
 
   // 中央メインドッキングハッチ (Y = +6m, Z = 0)
   const hatchDoor = new THREE.Mesh(new THREE.CylinderGeometry(10, 10, 2, 16), dockPalletMat);
