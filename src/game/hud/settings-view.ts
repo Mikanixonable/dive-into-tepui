@@ -11,6 +11,7 @@ export class SettingsView implements OverlayHandle {
   private readonly bgm: Bgm;
   private _isOpen = false;
   private activeTrack: number | null = null;
+  private bgmPlayingAtOpen = false;
   private readonly stopButton: Button;
   private readonly trackButtons: Button[] = [];
 
@@ -132,12 +133,18 @@ export class SettingsView implements OverlayHandle {
       'title-menu-open', show && document.getElementById('stage-select') !== null,
     );
     if (show) {
+      this.bgmPlayingAtOpen = this.bgm.isPlaying;
       this.overlayManager.open('settings-view', this, {
         kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: true,
         exclusiveGroup: 'system-modal',
       });
     } else {
       this.overlayManager.close('settings-view');
+      // 試聴セッションが止めた BGM だけを閉じるときに元へ戻す — 開いた時点で流れていなかったもの
+      // (勝敗確定後など)は再開しない。試聴を流したまま閉じたなら、その曲がそのまま流れ続ける。
+      if (this.bgmPlayingAtOpen && !this.bgm.isPlaying) this.bgm.resume();
+      this.activeTrack = null;
+      this.updateTrackButtons();
     }
     this.onOpenChange?.(show);
   }
