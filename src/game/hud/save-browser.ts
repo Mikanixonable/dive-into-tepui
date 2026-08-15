@@ -149,7 +149,7 @@ export class SaveBrowser implements OverlayHandle {
   // compact 幅でだけ、左右ペインのどちらを表示するか(タブで切り替える)。
   private mobilePane: 'slots' | 'snapshots' = 'slots';
 
-  // ページ再読込などスロット切替の実処理は呼び出し側が行う。
+  // スロット切替の実処理は呼び出し側が行う。
   onSlotSwitched: (() => void) | null = null;
   // スナップショットのロードは Game を作り直すことで表現するため、実処理は呼び出し側が行う。
   onLoadSnapshot: ((snapshotId: string) => void) | null = null;
@@ -516,8 +516,10 @@ export class SaveBrowser implements OverlayHandle {
     this.rebuild();
   }
 
+  // 遷移を要求する前に自分を閉じる — 開いたままだと次の周回でも入力を遮断し続ける。
   private handlePlaySlot(id: string): void {
     this.slots.setActiveSlot(id);
+    this.close();
     this.onSlotSwitched?.();
   }
 
@@ -528,6 +530,7 @@ export class SaveBrowser implements OverlayHandle {
     if (!name) return;
     const slot = this.slots.createSlot(name);
     this.slots.setActiveSlot(slot.id);
+    this.close();
     this.onSlotSwitched?.();
   }
 
@@ -551,12 +554,15 @@ export class SaveBrowser implements OverlayHandle {
     this.rebuild();
   }
 
+  // loadable でなければ理由をヒントに出すだけ。loadable なら、遷移を要求する前に自分を
+  // 閉じてから onLoadSnapshot を呼ぶ — 開いたままだと次の周回でも入力を遮断し続ける。
   private handleLoadSnapshot(snapId: string, loadable: boolean): void {
     if (!loadable) {
       this.setStatus('いま遊んでいるセーブデータ・ステージのスナップショットだけを復元できます。', true);
       this.rebuild();
       return;
     }
+    this.close();
     this.onLoadSnapshot?.(snapId);
   }
 

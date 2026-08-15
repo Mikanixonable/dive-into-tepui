@@ -11,9 +11,6 @@ import { FrameSections } from './frame-sections';
 import { GpuTimings } from './gpu-timings';
 import { GraphicsSettings } from './render/graphics-settings';
 import { RenderPipeline } from './render/pipeline/render-pipeline';
-import {
-  ACCENT, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM, FONT_FAMILY, FONT_M, FONT_XL, RADIUS_S, RADIUS_M,
-} from './game/theme';
 import { Hud } from './game/hud/hud';
 import { PauseMenu } from './game/hud/pause-menu';
 import { SettingsView } from './game/hud/settings-view';
@@ -28,51 +25,7 @@ import { SaveBrowser } from './game/hud/save-browser';
 import { SnapshotControls } from './snapshot-controls';
 import { Launcher } from './launcher';
 import { showLoading, hideLoading } from './loading-overlay';
-
-// 初期化中・実行中を問わず、継続不能な例外は画面内で明示する。
-// 壊れた Game/renderer を同一ページ内で再利用せず、復旧はページ全体の再読込だけにする。
-function showFatalError(title: string, message: string, error: unknown): void {
-  hideLoading();
-  if (document.getElementById('fatal-error-overlay')) return;
-
-  const overlay = document.createElement('div');
-  overlay.id = 'fatal-error-overlay';
-  overlay.setAttribute('role', 'alertdialog');
-  overlay.setAttribute('aria-modal', 'true');
-  overlay.style.cssText =
-    'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:20px;' +
-    `color:${TEXT};background:${BG};font-family:${FONT_FAMILY};font-size:${FONT_XL};text-align:center;line-height:2;z-index:1000`;
-
-  const panel = document.createElement('div');
-  panel.style.cssText =
-    `max-width:680px;background:${SURFACE_OPAQUE};border:1px solid ${EDGE};border-radius:${RADIUS_M};padding:22px 32px`;
-
-  const heading = document.createElement('div');
-  heading.style.color = ACCENT;
-  heading.textContent = title;
-  panel.appendChild(heading);
-
-  const description = document.createElement('div');
-  description.textContent = message;
-  panel.appendChild(description);
-
-  const detail = document.createElement('div');
-  detail.style.cssText = `color:${TEXT_DIM};font-size:${FONT_M};overflow-wrap:anywhere`;
-  detail.textContent = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
-  panel.appendChild(detail);
-
-  const reload = document.createElement('button');
-  reload.type = 'button';
-  reload.style.cssText =
-    `margin-top:14px;padding:8px 18px;color:${TEXT};background:${BG};border:1px solid ${ACCENT};` +
-    `border-radius:${RADIUS_S};font:inherit;cursor:pointer`;
-  reload.textContent = 'ページを再読み込み';
-  reload.addEventListener('click', () => location.reload());
-  panel.appendChild(reload);
-  overlay.appendChild(panel);
-  document.body.appendChild(overlay);
-  reload.focus();
-}
+import { showFatalError } from './fatal-error';
 
 // ローディング表示下で canvas を作り WebGPU シーンを初期化する
 async function initScene(graphics: GraphicsSettings): Promise<GameScene> {
@@ -109,10 +62,15 @@ function startAnimationLoop(
       sections.endFrame();
       // このフレームで Game が消費しなかった入力エッジだけが残っている。
       snapshotControls.handleInput(game.input, game);
-      launcher.handleInput(game.input, game);
+      launcher.handleInput(game.input);
+      // 入力の処理中に周回が畳まれたら(再出撃キーなど)、捨てた Game には触らずこのフレームを終える。
+      if (launcher.current !== game) {
+        requestAnimationFrame(animate);
+        return;
+      }
       perf.handleInput(game.input);
       autoSave.update(game);
-      launcher.update(game);
+      launcher.update();
       const t1 = perf.on ? performance.now() : 0;
       game.sync();
       const t2 = perf.on ? performance.now() : 0;
