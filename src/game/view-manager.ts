@@ -34,6 +34,7 @@ export class ViewManager {
   private worldView: WorldViewId;
   private isDockOpen = false;
   private docking: Docking | null = null;
+  private controlledBaseProvider: (() => Base | null) | null = null;
 
   // ドックの開閉の正本はこのクラス(isDockOpen)自身であり続ける — OverlayManager へは
   // 「開いた/閉じた」を通知するだけの一方向で、この adapter は leaveDock() を呼び戻すのみ。
@@ -69,6 +70,10 @@ export class ViewManager {
   // Docking は ViewManager より後に生成されるので、生成後に登録する。
   setDocking(docking: Docking): void {
     this.docking = docking;
+  }
+
+  setControlledBaseProvider(provider: () => Base | null): void {
+    this.controlledBaseProvider = provider;
   }
 
   // ビュー遷移の唯一の入口。遷移できない場合は何もしない。既に next にいる場合でも
@@ -154,12 +159,12 @@ export class ViewManager {
     if (availableBases.length === 1) {
       const base = availableBases[0]!;
       if (!(this.current === 'dock' && this.docking?.activeBase === base)) {
-        items.push({ id: `dock:${base.id}`, label: `Dock (${base.name})`, viewId: 'dock', base });
+        items.push({ id: `dock:${base.id}`, label: `Base (${base.name})`, viewId: 'dock', base });
       }
     } else if (availableBases.length > 1) {
       for (const base of availableBases) {
         if (this.current === 'dock' && this.docking?.activeBase === base) continue;
-        items.push({ id: `dock:${base.id}`, label: `Dock: ${base.name}`, viewId: 'dock', base });
+        items.push({ id: `dock:${base.id}`, label: `Base: ${base.name}`, viewId: 'dock', base });
       }
     }
 
@@ -178,7 +183,11 @@ export class ViewManager {
   // そのビューへいま入れるか。ドックは対象基地が要り、戦闘は操作対象の艦が要る。
   private canEnter(view: ViewId): boolean {
     if (view === 'dock') return this.docking?.canEnterDock() ?? false;
-    if (view === 'combat') return this.activePlayers.current !== null;
+    if (view === 'combat') {
+      return this.activePlayers.current !== null
+        || (this.controlledBaseProvider?.() !== null)
+        || (this.docking?.getAvailableBases().length ?? 0) > 0;
+    }
     return true;
   }
 
@@ -213,7 +222,7 @@ export class ViewManager {
 
     if (this.current === 'map') {
       if (!this.canEnter('combat')) {
-        this.hud.hint('操作できる艦がいません');
+        this.hud.hint('操作できる艦または基地がいません');
         return;
       }
       this.setView('combat');

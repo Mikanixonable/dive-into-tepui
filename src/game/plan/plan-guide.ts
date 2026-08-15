@@ -6,7 +6,7 @@ import { addScaled, dot, len, norm, sub } from '../../physics/vec3';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { fmtDist, fmtSpeed, fmtTime } from '../hud/utils';
-import { Sfx } from '../../audio/sfx';
+import { UiSfx } from '../../audio/sfx/ui-sfx';
 import { ProjectFn } from '../camera/camera-system';
 import { MarkerManager } from '../marker/marker-manager';
 import { DIRECTION_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-glyphs';
@@ -21,7 +21,7 @@ export class PlanGuide {
 
   constructor(
     private readonly _hud: Hud,
-    private readonly _sfx: Sfx,
+    private readonly _uiSfx: UiSfx,
     private readonly markerManager: MarkerManager,
   ) {
   }
@@ -115,7 +115,7 @@ export class PlanGuide {
     } else {
       this._hud.hint(`✓ ノード達成 — 残り ${remain} 件`, 4000);
     }
-    this._sfx.warp();
+    this._uiSfx.warp();
   }
 }
 
