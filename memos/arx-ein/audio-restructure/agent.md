@@ -24,7 +24,7 @@ audio/
     bgm.ts                 the app-facing window: user volume (master gain), the one
                            lookahead pump, and the musical lines it advances
     conductor.ts           one musical line: which track, when it gives way to the
-                           next, and the piece currently sounding
+                           next, the piece sounding, and this line's own gain
     track-playback.ts      one sounding piece: its own gain, composer, step
                            position, and note -> WebAudio
     composer.ts            the note-generation seam. Names no WebAudio type
