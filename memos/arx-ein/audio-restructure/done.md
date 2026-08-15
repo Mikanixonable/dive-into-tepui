@@ -141,6 +141,44 @@ does not apply the way it does to `game.ts`.
 
 ---
 
+## 5. Separate playback control from note generation
+
+`bgm.ts` had grown to two responsibilities: controlling *when* music plays (volume, fades,
+rotation, preview) and generating *what* it plays. arx-ein called this out and asked for the
+split, both to loosen the coupling and as a stepping stone toward tracks whose **inner
+workings** differ, not just their parameters.
+
+Three files now:
+
+| file | responsibility |
+| --- | --- |
+| `bgm.ts` | playback control: volume + persistence, fade in/out, track rotation, the lookahead pump, and turning a note into WebAudio nodes (`playNote`) |
+| `compositor.ts` | the `Compositor` seam: `stepDurSec` + `notesAt(step): readonly CompositorNote[]` |
+| `phasing-compositor.ts` | `PhasingCompositor` — the Reich-style algorithm, the only one so far |
+
+**The seam is deliberately WebAudio-free.** A `CompositorNote` carries its onset as
+`offsetSec` *relative to the step*, not an absolute `AudioContext` time, so a compositor never
+names an audio type and is a pure function of `step`. That is what makes an algorithm's output
+readable and comparable without an `AudioContext` — the equivalence harness below depends on
+it, and so will any future compositor's verification.
+
+Naming follows arx-ein's own sketch (see [roadmap.md](roadmap.md) §2) so the planned conductor
+layer slots in above without a rename. Note `render/pipeline/` separately uses "composite" for
+its final render pass; different folder, different domain, but worth knowing if the collision
+ever grates.
+
+Small things that came with it: the pump/lookahead/fade/rotation magic numbers are now named
+constants, `selectTrack` is shared by startup and rotation, and `nextTrackIndex` gained a
+guard for a single-track registry — the old expression computed an out-of-range index when
+`BGM_TRACKS.length === 1` and would have crashed on the first rotation. Latent, never hit with
+five tracks, fixed while the code was open.
+
+**Verified sound-identical again** with the same harness, updated to read
+`PhasingCompositor.notesAt` on the new side and `Bgm.scheduleStep` on the old: 54,240 notes
+across 5 tracks, bit-identical. `bgm.ts` went 250 → 172 lines.
+
+---
+
 ## The rebase onto the new `main` (`5ff773e4`)
 
 Upstream landed the deferred rendering pipeline while this branch was in flight, and it
