@@ -39,10 +39,199 @@ main.ts
 │                           ... 常設パネル6枚、1パネル1クラス(buildHudDom が作った要素索引 `els: Map<string, HTMLElement>` を
 │                           共有で受け取るだけで DOM は持たない)。それぞれ自分のパネルへのみ書く
 ├── Sfx                  ... 同上
-├── PauseMenu            ... 同上。DOM は Hud.layers.system 配下。onPauseMenuOpenChange を Game.pause()/resume() へ配線。onOpenSnapshots / onOpenPerfWindow は main.ts が pauseMenu.toggle(false) + saveBrowser.open() / perf.open() へ配線。onQuitToTitle は launcher.returnToTitle() への一行委譲。コンストラクタは GraphicsSettings に加え DebugTargetHost(狭い構造的インターフェース、debug-target.ts)も取り、描画タブの GraphicsPanel へそのまま渡す — main.ts は initScene 直後に組んだ RenderPipeline を渡す(RenderPipeline がこの型を実装する)
-├── Launcher               ... 「Game インスタンスを捨てて次の周回へ移る」判断(再出撃・タイトル復帰・スナップショットのロード・スロット切替)の唯一の持ち主。`location.*` を呼ぶのはこのクラスだけで、game/ 配下は一切呼ばない。initHud() の直後・ステージ解決の前に main.ts が new する(Hud・UnlockManager・SaveSlots・SnapshotService・Sfx を参照で持つ)。`resolveStage()` が起動する StageClass を、`initialSaveFor(stageClass)` が initialSave を、`noteLaunched(stageClass)`(Game 構築後に呼ぶ)がスロットへの起動記録と restart() 用のステージ記憶を担う。rAF ループが `snapshotControls.handleInput` の直後に `handleInput(game.input, game)` を、`autoSave.update` の直後に `update(game)` を呼ぶ
-│   └── ResultScreen        ... `#hud-result`(hud/hud-root.ts が Hud.layers.system 配下へ静的に構築)の表示のみを担う。Launcher が自身(hud, `this` = RunTransitions)を渡してコンストラクタで new する。`show(result)` が hud.overlayManager へ 'result' として登録する(closeOnEscape/closeOnOutsideClick とも false、gatesInput のみ true)。「再出撃」「タイトル画面に戻る」の2ボタンはそのまま launcher.restart()/returnToTitle() を呼ぶ
-├── SaveBrowser            ... Game 自身を構築引数に取るため Game より後に main.ts が new する。Game 側はこれへの参照を一切持たない(`open()`/`close()` が `game.pause()`/`resume()` を直接呼ぶだけ)。DOM は Hud.layers.system 配下。`onLoadSnapshot`/`onSlotSwitched` コールバックを main.ts が launcher.loadSnapshot(id)/launcher.switchSlot() へ配線する
+├── PauseMenu            ... 同上。DOM は Hud.layers.system 配下。onPauseMenuOpenChange を launcher.current?.pause()/.resume() へ配線。onOpenSnapshots / onOpenPerfWindow は main.ts が pauseMenu.toggle(false) + saveBrowser.open() / perf.open() へ配線。onQuitToTitle は launcher.returnToTitle() への一行委譲。コンストラクタは GraphicsSettings に加え DebugTargetHost(狭い構造的インターフェース、debug-target.ts)も取り、描画タブの GraphicsPanel へそのまま渡す — main.ts は initScene 直後に組んだ RenderPipeline を渡す(RenderPipeline がこの型を実装する)
+├── Launcher               ... 「Game インスタンスを捨てて次の周回へ移る」判断(再出撃・タイトル復帰・スナップショットのロード・スロット切替)の唯一の持ち主であり、**今の周回の `Game` 自身の持ち主でもある**(private `game: Game | null`、公開 `current` ゲッターが `CurrentGameSource`(`save-browser.ts`)を満たす — `PerfMeter`/`SaveBrowser` はこの `current` を経由し、`Game` をフィールドに持たない)。`location.*` を呼ぶのはこのクラスだけで、game/ 配下は一切呼ばない。initHud() の直後・main.ts が組む他の main.ts 所有リソース(GameScene・PauseMenu・SettingsView・FrameSections・GraphicsSettings・RenderPipeline を含む)が揃った直後に main.ts が new する(いずれも参照で持つ)。`start()`(main.ts から一度だけ呼ばれる)が private `resolveStage()`(起動する StageClass を解決)→ private `startRun(stageClass)` の順に進める。`startRun` は private `initialSaveFor(stageClass)` で initialSave を求め、天体暦を組み、`earthSpinPhase0` を引き、`this.game = new Game(...)` で今回の周回を構築し、private `noteLaunched(stageClass)`(スロットへの起動記録と restart() 用のステージ記憶)を呼ぶ。rAF ループが `snapshotControls.handleInput` の直後に `handleInput(game.input, game)` を、`autoSave.update` の直後に `update(game)` を呼ぶ(いずれもその場で解決済みの `game` を引数として渡すだけで、`this.current` を読み直さない)
+│   ├── ResultScreen        ... `#hud-result`(hud/hud-root.ts が Hud.layers.system 配下へ静的に構築)の表示のみを担う。Launcher が自身(hud, `this` = RunTransitions)を渡してコンストラクタで new する。`show(result)` が hud.overlayManager へ 'result' として登録する(closeOnEscape/closeOnOutsideClick とも false、gatesInput のみ true)。「再出撃」「タイトル画面に戻る」の2ボタンはそのまま launcher.restart()/returnToTitle() を呼ぶ
+│   └── Game
+│       ├── Input
+│       ├── TouchControls?       ... タッチデバイスのみ。ViewManager のコンストラクタ引数として参照で渡す
+│       ├── MarkerManager        ... DOM の親は Hud.layers.marker / Hud.svgOverlay、所有は Game
+│       │   ├── GroupedMarkers (combatMarkers)  ... 画面上で近接する戦闘対象(敵+自機以外の生存中の全自機)マーカーのまとめ + 画面外方位マーカー。呼ぶのは Targeter.syncTargetMarkers
+│       │   └── LeadMarkers                     ... 戦闘対象ごとの LEAD マーカーと最終ロック時刻。呼ぶのは Targeter.syncTargetMarkers
+│       ├── CameraSystem
+│       │   ├── CombatCameraSystem
+│       │   │   ├── ChaseCamera
+│       │   │   └── GunsightCamera
+│       │   ├── OverviewCamera
+│       │   ├── FocusMarkers
+│       │   └── ViewOptionsPanel(viewOptionsPanel) ... DOM は Hud.layers.panel 配下(表示パネル)。天体クラス別トグル(軌道線/ラベル)
+│       │                                       + 天球グリッドトグルの2セクションを1枚に持つ(後者の状態は Navball が正本 — 下記参照)。
+│       │                                       座標系の選択は持たない
+│       ├── FrameControls                  ... 座標系パネル。カメラ(視点)区画と軌道計画(描画基準)区画がそれぞれ
+│       │                                       中心・回転の2ゾーンを持ち、OverviewCamera・DisplayWindowManager.frame を書く。
+│       │                                       自分の状態は「カメラの基準に追随」トグル(followCamera)だけ。
+│       │                                       パネル DOM は Hud.layers.panel 配下。CameraSystem の直後、PlanEditor より前に
+│       │                                       construct する(PlanEditor が構築引数として参照を受け取るため)
+│       │   ├── AnchorZone × 2                 ... カメラ/並進ゾーン。ObjectPicker + SegmentedControl(いまいる系のクイックボタン)。ObjectPicker のポップアップは Hud.layers.popup 配下
+│       │   └── RotationZone × 2               ... カメラ回転/計画軌道回転ゾーン。SegmentedControl のみ
+│       ├── MapPickables                   ... マップ・戦闘ビュー双方の被選択物の候補列(`pickables`)と
+│       │                                       `MapVisibilityPolicy`(`visibilityPolicy`)の正本。「何が選べるか」だけを
+│       │                                       答える。ActivePlayerController/EntityManager/Ephemeris/NavTarget/CameraSystem/
+│       │                                       PlanEditor を参照で持つ(所有しない)。activeStage を要る MapContextActions と
+│       │                                       同じ理由で、activeStage の直後・MapContextActions より先に construct する
+│       ├── MapContextActions              ... 被選択物への右クリック解決(handleRightClick/handleCombatRightClick)・
+│       │   │                                   種別別プロパティ/操作の配分・開いているプロパティウィンドウ集合。
+│       │   │                                   候補列自体は持たず MapPickables を参照で持つ。Game への参照は持たず、
+│       │   │                                   操作の実行先(ActivePlayerController・FrameControls・activeStage・
+│       │   │                                   Targeter)を個別に参照で持つ。「非クリップは高々1枚」の
+│       │   │                                   排他自体は Hud.overlayManager が持つ(PROPERTY_WINDOW_TEMP_GROUP、
+│       │   │                                   下記参照共有の表)
+│       │   ├── ContextMenu<MapPickable>       ... 空域右クリック('empty-space')専用メニュー。マップ・戦闘どちらの空振りもここへ落ちる(openEmptySpaceMenu で共有)。DOM は Hud.layers.popup 配下
+│       │   ├── windows: Map<string, WindowEntry>  ... {win: PropertyWindow<MenuAction>, target}。オブジェクト1つ(`${kind}:${id}`)につき高々1枚。呼び出しごとに new。PropertyWindow は Hud.layers.window 配下に append
+│       │   └── ObjectListPanel                ... DOM は Hud.layers.panel 配下(hud/object-list-panel.ts)。軌道オブジェクトウィンドウ(一覧 + クリックで選択状態 + ダブルクリックでフォーカス移動 + 右クリックでプロパティウィンドウ)。マップ視点である間は常設表示
+│       ├── NavTarget                      ... 航法ターゲット(id)と自機軌道との相対 AN/DN・▲/▽ マーカー
+│       ├── Navball                        ... 天球グリッド6トグルの正本。DOM は持たない —
+│       │                                       CameraSystem.viewOptionsPanel(表示パネル)の天球グリッドセクションを
+│       │                                       コンストラクタで配線するだけ(CameraSystem の構築後に construct する)
+│       ├── ActivePlayerController         ... 操作対象艦(0..n隻のうちどれを操作するか)の切替・削除と、それに伴う各所有者への伝播を1箇所へ集める(`set`/`setOrNull` は Targeter・Sfx へ、`remove` は NavTarget・Targeter・CameraSystem(フォーカス解除)へ)。PlanEditor・MapContextActions・ViewManager への参照は持たない — PlanEditor はこちらを参照で持つ側で、逆方向の参照は無い。Game.player はこれへ転送する getter。起動時の操作対象艦は自分で解決する(構築引数の activePlayerId → entities.players の id 一致 → 先頭 → null)
+│       ├── SimSpeedManager
+│       ├── DisplayWindowManager           ... 「どの座標系で(frame)・いつを(displayTime)見るか」の正本(表示期間・
+│       │                                       未来ゴーストスライダー・frame)と、1フレーム分の DisplayWindow
+│       │                                       ({frame, simTime, referencePeriod, duration, pastDuration, displayTime})・
+│       │                                       重力源窓(解析天体+重力を持つ生存中の GameEntity の合流)を resolve() で
+│       │                                       1回だけ確定させ、update・sync 両フェーズの全消費者へ共有する。
+│       │                                       Ephemeris・EntityManager を参照で持つ(所有しない)。entities の直後に
+│       │                                       construct する(entities 自身のコンストラクタが EffectsSystem の
+│       │                                       生成まで終えている)
+│       │   └── PredictPanel               ... DOM は Hud.layers.panel 配下(hud/predict-panel.ts)。未来/過去の期間ピル列(各行は DurationPillRow)と未来位置スライダー。画面下端の帯として
+│       │                                       #hud-predict-wrap に開閉トグル(hud/hud-root.ts の buildCollapseToggle)と
+│       │                                       並べて包まれる。開閉状態はトグル対象要素の `.collapsed` クラスが正本(この
+│       │                                       クラス自身は持たない)で、ビューの往復では戻さない(折りたたみは
+│       │                                       ビューの性質ではなく操作者の選択)
+│       ├── PlanEditor                     ... plan は活艦(ship)の Plan への転送 getter。正本ではない
+│       │   ├── PlanDisplay                ... 計画の未来表示(「見えるとき何を見せるか」)
+│       │   │   └── PlanPath         ... 計画折れ線 + per-arc 積分キャッシュ + 画面判定
+│       │   │       ├── PlanArc[]          ... 区間ごとの積分結果。各々 DynamicTrajectory 1本(積分の正本)を持つ。区間を作り直すたびインスタンスごと差し替わる(既存インスタンスの書き換えではない)
+│       │   │       └── TrajectoryLine[]   ... 区間 index ごとの折れ線プール。区間数が減っても捨てず隠すだけ(色は index で決まるため使い回す)
+│       │   ├── NodeGizmo                   ... ノードハンドル/Δv 矢の DOM は Hud.layers.marker 配下
+│       │   │   └── ContextMenu<number>     ... DOM は Hud.layers.popup 配下
+│       │   └── PlanPanel(panel)            ... 計画パネル(hud/plan-panel.ts)の DOM 一式(ノード一覧・Δv 手入力フォーム)
+│       │       └── HoldButton ×6               ... Δv 6方向の長押しボタン(dvButtons、PlanEditor.updateEditing がこれ経由で読む)
+│       ├── PlanGuide                       ... 直近ノードの接近/達成通知済みフラグ(ノード自体への参照)を持つ
+│       ├── Docking                        ... 基地への収容・発進(EntityManager/CameraSystem/ActivePlayerController/
+│       │                                       ViewManager にまたがる横断)。Game への参照は持たず、ポーズだけは
+│       │                                       pauseGame/resumeGame の2クロージャで受け取る(「クロージャ注入を避け
+│       │                                       参照を渡す」規則への暫定的な例外。理由は docking.ts のコンストラクタ
+│       │                                       コメントと CLAUDE.md にある)
+│       │   └── DockView                       ... DOM は Hud.layers.view 配下。格納艦/部品/ショップタブのフルスクリーン UI
+│       ├── ViewManager                    ... 現在のビュー(combat/map/dock)の正本。遷移は setView() ひとつに集約。
+│       │                                       ActivePlayerController・TouchControls | null はいずれもコンストラクタ引数
+│       │                                       (ViewManager より先に生成される)。docking への参照は ViewManager より後に
+│       │                                       生成されるため setDocking() で構築後に注入される(private フィールドとして
+│       │                                       保持)。Stage への参照は持たないが、生成は activeStage より後 — 初期ビューを
+│       │                                       canEnter('combat') で解決するので、Stage の初期配置で自機が置かれた後
+│       │                                       でなければ判定できない
+│       ├── ViewBadge                      ... DOM は Hud.layers.notify 配下。ViewManager を参照するだけで自身は状態を持たない
+│       │   └── ContextMenu<true, ViewId>  ... DOM は Hud.layers.popup 配下
+│       ├── Stage (activeStage)            ... Game のコンストラクタが受け取る解決済みの StageClass を直接 new し、
+│       │                                       saved(StageSaveData | undefined)と StageDeps 一式(hud/sfx/scene/entities/
+│       │                                       unlockManager/fx/markerManager/ephemeris/simulator/activePlayers、
+│       │                                       stage.ts 参照)を渡す(分岐は無く、CREATIVE も同じ経路)。
+│       │                                       コンストラクタ一段で初期化が完結し、新規開始の世界の初期状態(自機を含む)と
+│       │                                       ブリーフィングは各具象ステージのコンストラクタ末尾の begin() → init(entities)
+│       │                                       が行う(基底のコンストラクタからは呼べない — 具象側のフィールド初期化が
+│       │                                       super() の後に走るため)。自機を置くのは protected addPlayer(init?) で、
+│       │                                       new Player → entities.addPlayer → activePlayers.claimIfNone をこの1箇所に
+│       │                                       まとめる(初期弾薬は PlayerInit.ammo として艦の構築引数に載る)。
+│       │                                       起動時の天体暦は Stage の静的 async createEphemeris(phaseOffsets)
+│       │                                       が既定実装(天体暦プロファイル解決 + 精密暦パック取得の末に
+│       │                                       new Ephemeris(...))を持ち、StageDebugAltSystem だけが自前の
+│       │                                       架空レジストリを同期的に返す override を持つ — 読むのは Game
+│       │                                       ではなく main.ts(Stage の構築より前に済ませ、完成した
+│       │                                       Ephemeris を Game のコンストラクタへ渡す)。
+│       │                                       隻数の静的宣言は無い — 何隻をどこへ置くかは init の中身。
+│       │                                       freeProcurement/executesPlans は
+│       │                                       インスタンス側の既定 false なフラグ、authoring は既定 null の ObjectAuthoring
+│       │                                       (配置・複製の口)。CreativeStage だけが両方を有効にし、authoring は自身を返す。
+│       │                                       _activePlayers は StageDeps の一つとして引数で受け取り(protected _activePlayers)、
+│       │                                       CreativeStage.placeObject の艦の配置も同じ addPlayer を通る。
+│       │                                       喪失した自機の回収は
+│       │                                       ActivePlayerController.reclaimDead() が全ステージ共通で毎フレーム無条件に
+│       │                                       行うので、ここに対応するフラグはない
+│       │   ├── ScoreCounter
+│       │   ├── Logistics                  ... 補給の投入判断
+│       │   ├── StageStatusPanel           ... DOM は Hud.layers.panel 配下。HP/補助メッセージ/撃墜数。#hud-stagestatus の表示を書くのはこのクラスだけで、sync(player | null, …) の null が畳む指示(保持中の艦参照もそこで落とす)。戦闘ビュー専用 — マップビューでは同じ画面下端中央を PREDICT バーが占める
+│       │   ├── ScoreAttackTimer           ... Stage0 のみ
+│       │   ├── WaveAttack                 ... Stage00・CreativeStage がそれぞれのコンストラクタで1個ずつ生成し、private readonly waveAttack として保持する(stage-utils/wave-attack.ts)。波状攻撃フェーズ(waiting_for_ammo/spawning_enemies/active_combat)・タイマー・波数の正本。CreativeStage 側は waveAttackEnabled(自身のフィールド、既定 false)が true の間だけ update を呼ぶ — 敵の AI 自体(behaveAllEnemies)はトグルと無関係に毎フレーム進む
+│       │   └── ShipPlacerPanel            ... CreativeStage のみ。パネル本体は Hud.layers.panel 配下、ObjectPicker のポップアップは Hud.layers.popup 配下(別々の引数で受け取る)。艦艇配置フォーム(開閉状態 isOpen も自身が持つ)
+│       ├── EnvironmentScene               ... game/celestial/ 配下(game/ への依存を持つため render/ から移動)
+│       │   ├── CelestialBody[]             ... CELESTIAL_BODIES(celestial-registry.ts)から1体ずつ生成。地球=EarthBody・太陽=SunBody・pointBrightness 未指定の惑星/月/土星等=SphereBody・pointBrightness 指定の惑星(金星・木星・水星・火星・土星・天王星)=PointBody。木星・土星・天王星・海王星は SOLAR_SYSTEM の CelestialBodyDef.rings(物理データ)を own し、build 時に RingView を1つ生成してシーン直下へ追加(本体メッシュの子ではない — sphere-body.ts/point-body.ts 参照)。SphereBody/PointBody は build 時に CelestialSurface(render/celestial-surface.ts、メッシュと昼夜陰影の uniform)を1つ own する
+│       │   ├── PointFieldView              ... 小惑星帯・トロヤ群・ヒルダ群・カイパーベルト cold/hot・散乱円盤の点群(群ごとに1つの InstancedMesh、計11200点)。point-field.ts の PointFieldDef 配列(POINT_FIELD_DEFS)から build 時に一度だけ生成し、以後は不変
+│       │   │   └── groups: readonly PointFieldGroupView[] ... PointFieldDef 1つにつき1インスタンス。群ごとの描画半径・色は point-field-view.ts の GROUP_VIEW が持つ
+│       │   │       ├── points: readonly PointElements[]   ... 決定論的乱数(mulberry32、ASTEROID_SEED)で生成、生成後は読み取り専用
+│       │   │       ├── positions: Vec3[]    ... 各点の太陽中心位置。update がラウンドロビン(1/8点/フレーム)で書き換える唯一の書き手
+│       │   │       ├── sunPos: Vec3         ... 直近 update 時点の太陽 ECI 位置。sync の ECI 化(太陽中心→ECI)がここを読む
+│       │   │       └── cursor: number       ... ラウンドロビンの次回開始添字
+│       │   ├── AmbientLight / DirectionalLight / stars メッシュ ... 平行光/環境光はどの lit-opaque メッシュも直接照らさない(自機・デブリ・薬莢は render/pipeline/lit-layer.ts の LIT_OPAQUE_LAYER に立ち、既定チャンネルの world パスには描かれないため)。両ライトの役目は、EnvironmentScene.sync が毎フレーム書く強度/位置を SunLight(RenderPipeline 所有)へ生値として渡す入力であることと、LIT_OPAQUE_LAYER も enable しておくことでマテリアルパス/G バッファパスがそのチャンネルだけへ絞ったカメラでも light.layers.test(camera.layers) を通過し続けること(通過しないと NodeMaterial がそのメッシュの setupLightingModel を一切呼ばず、G バッファ/照度バッファの中身に関わらず真っ黒になる)。天体は各自の CelestialSurface が sunDirection uniform を持って自分で陰影を計算するのでこの光を受けない
+│       │   ├── OrbitLine (geoLine)         ... 静止軌道の参照線(天体ではない特例、個別フィールドのまま)
+│       │   ├── referenceLines: ReadonlyMap<OrbitingId, OrbitLine> ... SOLAR_SYSTEM の公転天体ぶん自動生成(衛星=旧月線色、惑星=白)。天体の登録追加だけで線が増える
+│       │   └── CelestialGrid              ... 赤道面/黄道面それぞれの基準円・緯経線グリッド・両極マーカー
+│       ├── Targeter                       ... ContextMenu を持たない(施策5 §7-2)。第一/第二ターゲットの設定・解除は
+│       │   │                                   MapContextActions が開くプロパティウィンドウの targetPrimary/targetSecondary
+│       │   │                                   項目から setPrimaryTarget()/setSecondaryTarget() を呼ぶ形に一本化
+│       │   ├── OrbitLine                  ... 第一ターゲット軌道線(オレンジ)
+│       │   └── OrbitLine (secondaryOrbitLine) ... 第二ターゲット軌道線(シアン)
+│       ├── EntityManager                  ... エンティティ配列の保持と、破片(entity)の生成窓口である EffectsSystem
+│       │                                       の所有。コンストラクタ引数 saved(GameSaveData | undefined)があれば
+│       │                                       その顔ぶれを復元するだけで、新規開始では全配列が空のまま始まる
+│       │                                       (起動時の顔ぶれを組むのは Stage.init — どの艦を操作するかも決めない。
+│       │                                       ActivePlayerController が自分で解決する)。simTime は持たない
+│       │   ├── InstancedPool (bulletBodyPool) ... geometry/material は render/ships.ts のモジュールスコープ
+│       │   │                                      共有リソースを参照するだけ(所有しない)。sync が毎フレーム push する
+│       │   ├── InstancedPool (bulletHaloPool)
+│       │   ├── InstancedPool (plasmaPool)
+│       │   ├── InstancedPool (casingPool)
+│       │   ├── InstancedPool[] (debrisFragmentPools) ... 破片(fragment)バリアントごとに1本(render/ships.ts の
+│       │   │                                      debrisFragmentResources が持つジオメトリ配列と1本の白マテリアルを共有)。
+│       │   │                                      push の第2引数に DebrisPiece.fragmentColor(per-instance color)を渡す
+│       │   ├── EffectsSystem               ... フラッシュ・破片の生成窓口。コンストラクタは EntityManager 自身(this)を
+│       │   │                                      受け取る(addDebris 呼び出し用の注入クロージャは持たない)
+│       │   │   └── FlashEffectManager
+│       │   │       ├── InstancedPool (pool)   ... geometry/material は render/billboard.ts の flashResources() が持つ
+│       │   │       │                              共有リソースを参照するだけ(所有しない)。sync が毎フレーム push する
+│       │   │       └── FlashEffect[]          ... 各々 THREE.Object3D(transform)のみ持つ(geometry/material は持たない)
+│       │   ├── Player[] (players)         ... 自機。ステージモードでは1隻のみ。操作対象(Game.player)は
+│       │   │                                  この配列内の1隻への参照(§3-4 参照)
+│       │   │   ├── PlayerThrottle
+│       │   │   ├── PlayerFire
+│       │   │   ├── Belt
+│       │   │   │   └── BeltPhysics
+│       │   │   │       └── BeltSection[]  ... 剛体接触用プロキシ
+│       │   │   ├── ThermalSystem
+│       │   │   ├── RadiatorSystem         ... 放熱板2枚の展開度・損耗度。ヒンジ Group は Player.renderObject 配下を名前で参照
+│       │   │   │   └── foldProxies (Record<side, RadiatorFold[]>) ... 側ごとの剛体接触用プロキシ。折り数まで
+│       │   │   │       遅延生成し以後使い回す。collisionFolds() が毎 substep 位置を置き直すだけで、
+│       │   │   │       Verlet 等の独立した力学は持たない(艦の姿勢+展開度から一意に決まる剛体の取り付け)
+│       │   │   ├── PowerSystem            ... 太陽電池の蓄電量。パネル法線は機体固定 (0,1,0)、可動部なし
+│       │   │   ├── ThrustEffects → Billboard ×2
+│       │   │   ├── RcsEffects    → Billboard ×8   ... 状態なし。ノズル1基につき1枚、配置は RCS_NOZZLES が正本
+│       │   │   ├── ReentryEffects → Billboard ×2   ... 状態なし。強度は毎フレーム qdyn から導く
+│       │   │   ├── PlayerMarkers          ... 方向マーカー・ボアサイト・マップ上の自機位置(操作対象の艦だけが sync する)
+│       │   │   ├── OrbitLine              ... 自機軌道線。中心天体は毎フレーム state から導出(strongestAttractor)。
+│       │   │   │                              表示抑制(setSuppressed)は Game.sync がこの艦自身の supersedesAnalyticEllipse(...)から渡す(§付録参照)
+│       │   │   ├── TrajectoryLine         ... 自機予測軌道線。Game.sync が毎フレーム this.syncTrajectoryLine(操作対象, ...)を呼ぶ
+│       │   │   ├── TrajectoryLine         ... 自機過去軌跡線(pastTrajectoryLine)。同じ syncTrajectoryLine が actualTrajectory の [simTime - pastDuration, simTime] を描く
+│       │   │   ├── Plan                   ... この艦自身のマニューバ計画(正本)。ノード列 + アンカー
+│       │   │   └── PlanExecutor           ... この艦自身の計画実行状態機械(正本)。CreativeStage が艦ごとに呼ぶだけで保持しない
+│       │   ├── Enemy[]                    ... 各々 OrbitLine を持つ
+│       │   ├── Bullet[]                    ... 各々コンストラクタで Sfx への参照を持つ(至近通過音を自分の checkLoss から鳴らすため)。
+│       │   │                                  renderObject はシーンへ足さない(GameEntity の addToScene=false) — bulletBodyPool/bulletHaloPool/plasmaPool が
+│       │   │                                  renderObject の変換を読んで描画する。renderObject 自体は Bullet.sync が書き込む変換の置き場所として残る
+│       │   ├── DebrisPiece[] (casings)      ... 各々コンストラクタで Sfx・EffectsSystem への参照を持つ(接触音・ガスパフを自分の collideWith から出すため)。
+│       │   │                                  renderObject はシーンへ足さない(addToScene=false) — casingPool が renderObject の変換を読んで描画する
+│       │   ├── DebrisPiece[] (debris)       ... 同上。fragment 種別のみ renderObject もシーンへ足さない(addToScene=false) —
+│       │   │                                  renderObject は変換の置き場所のみで、debrisFragmentPools[fragmentVariant] が読んで描画する。
+│       │   │                                  barrel/magazineFrame 種別は個別メッシュのまま(addToScene=true)
+│       │   ├── AmmoPickup[]
+│       │   ├── Base[]                     ... 各々 baseState(money/inventory/dockedShips)と OrbitLine を持つ
+│       │   └── Asteroid[]                 ... 重力を及ぼし・受ける小天体。mass/radius はコンストラクタ引数から mu = G・mass を導いて固定。
+│       │                                       j2/c22 を渡した場合は degree2(pole/tesseral)も構築時に att から一括で固定
+│       ├── Simulator                      ... 実シミュレーション。EntityManager・Ephemeris・FrameSections の参照を受け取って回すだけ(いずれも所有しない)
+│       │   └── ContactPhysics             ... 接触の検出(physics/sphere-contact.ts)・剛体解決(physics/collision-response.ts)を
+│       │                                       substep ごと(resolveSubstep)/フレームに1回のベルト(resolveBelt)で呼ぶ列挙・順序付け層
+│       └── Predictor                      ... 予測列の駆動。EntityManager の参照を受け取って回すだけ(所有しない)。
+│                                               状態はラウンドロビンのカーソルのみ
+├── SaveBrowser            ... `Game` はフィールドに持たず、`CurrentGameSource`(`{readonly current: Game | null}`、この節が正本)を構築引数で受け取る — 実際に渡るのは `Launcher`(`current` が `Launcher.game` を指す)。`open()`/`close()` は `gameSource.current?.pause()`/`.resume()` を呼ぶ。Game 側はこれへの参照を一切持たない。DOM は Hud.layers.system 配下。`onLoadSnapshot`/`onSlotSwitched` コールバックを main.ts が launcher.loadSnapshot(id)/launcher.switchSlot() へ配線する
 ├── SnapshotControls       ... Hud・PauseMenu・SaveBrowser・SnapshotService を参照で持つ。`[F5]`/`[F9]` を扱う(一覧表示中の `[Esc]` は扱わない — `SaveBrowser` が `hud.overlayManager` へ自ら登録し、`Game.handleInput` の `closeTopmostOnEscape()` が閉じる)。main.ts が SaveBrowser 構築後に new し、rAF ループが `game.update(dt)` の直後に `handleInput(game.input, game)` を呼ぶ(Game 側が消費しなかった入力エッジだけを見る)
 ├── AutoSave               ... SnapshotService を参照で持つ。startAnimationLoop() へその場で渡すだけで main() 側は変数に束縛しない
 ├── FrameSections        ... update の区間別所要時間の集計器(frame-sections.ts)。main.ts が new し、Game(コンストラクタ引数)・PerfMeter(コンストラクタ引数)へ参照で渡す。Game はさらに Simulator のコンストラクタ引数として同じ参照を渡す。rAF ループが game.update(dt) を beginFrame()/endFrame() で挟む。区間の境界(enter/exit)を打つのは Game.update / Simulator.advance だけで、累計を持つのはこのオブジェクト。enabled の書き手は PerfMeter.open()/close() のみ
@@ -118,197 +307,8 @@ main.ts
 │                           EnvironmentScene(game/celestial/environment-scene.ts)へ構築引数として参照で
 │                           渡す(Game のコンストラクタが `pipeline.sunLight` を渡す)。EnvironmentScene.sync
 │                           が毎フレーム set() で書く唯一の書き手で、LightPrepass が読む唯一の読み手
-├── PerfMeter            ... 負荷確認ウィンドウ。Game を PerfCountSource として、GameScene.renderer(WebGPURenderer)を draw call/triangle 数の読み取り元として、いずれも構築時に参照で受け取る(renderer 参照の新設は main.ts 側の GameScene を経由し、Game には持たせない)。rAF ループが `game.update(dt)` → `snapshotControls.handleInput(...)` の直後に `perf.handleInput(game.input)` を呼び、`[F3]` を消費する(Game は PerfMeter への参照を一切持たない)。FrameSections と GpuTimings も構築時に参照で受け取り、update内訳と描画の GPU 行を組む(開閉で両方の enabled を書く)。表示する PropertyWindow を自分で new/dispose し、DOM は Hud.layers.window 配下。開いている間だけ on が真になり計測が走る(同時に FrameSections.enabled も真にする)。`Game.perfCounts()` は自分では数えず、EntityManager・Predictor・Simulator・PlanEditor・Ephemeris・MapPickables 各自の `perfCounts()` を1つにマージし、`displayDurationSec`(= DisplayWindowManager.current.duration)・`warp` を足すだけ
-├── GameScene            (createGameScene: canvas / THREE.Scene / WebGPURenderer)
-└── Game
-    ├── Input
-    ├── TouchControls?       ... タッチデバイスのみ。ViewManager のコンストラクタ引数として参照で渡す
-    ├── MarkerManager        ... DOM の親は Hud.layers.marker / Hud.svgOverlay、所有は Game
-    │   ├── GroupedMarkers (combatMarkers)  ... 画面上で近接する戦闘対象(敵+自機以外の生存中の全自機)マーカーのまとめ + 画面外方位マーカー。呼ぶのは Targeter.syncTargetMarkers
-    │   └── LeadMarkers                     ... 戦闘対象ごとの LEAD マーカーと最終ロック時刻。呼ぶのは Targeter.syncTargetMarkers
-    ├── CameraSystem
-    │   ├── CombatCameraSystem
-    │   │   ├── ChaseCamera
-    │   │   └── GunsightCamera
-    │   ├── OverviewCamera
-    │   ├── FocusMarkers
-    │   └── ViewOptionsPanel(viewOptionsPanel) ... DOM は Hud.layers.panel 配下(表示パネル)。天体クラス別トグル(軌道線/ラベル)
-    │                                       + 天球グリッドトグルの2セクションを1枚に持つ(後者の状態は Navball が正本 — 下記参照)。
-    │                                       座標系の選択は持たない
-    ├── FrameControls                  ... 座標系パネル。カメラ(視点)区画と軌道計画(描画基準)区画がそれぞれ
-    │                                       中心・回転の2ゾーンを持ち、OverviewCamera・DisplayWindowManager.frame を書く。
-    │                                       自分の状態は「カメラの基準に追随」トグル(followCamera)だけ。
-    │                                       パネル DOM は Hud.layers.panel 配下。CameraSystem の直後、PlanEditor より前に
-    │                                       construct する(PlanEditor が構築引数として参照を受け取るため)
-    │   ├── AnchorZone × 2                 ... カメラ/並進ゾーン。ObjectPicker + SegmentedControl(いまいる系のクイックボタン)。ObjectPicker のポップアップは Hud.layers.popup 配下
-    │   └── RotationZone × 2               ... カメラ回転/計画軌道回転ゾーン。SegmentedControl のみ
-    ├── MapPickables                   ... マップ・戦闘ビュー双方の被選択物の候補列(`pickables`)と
-    │                                       `MapVisibilityPolicy`(`visibilityPolicy`)の正本。「何が選べるか」だけを
-    │                                       答える。ActivePlayerController/EntityManager/Ephemeris/NavTarget/CameraSystem/
-    │                                       PlanEditor を参照で持つ(所有しない)。activeStage を要る MapContextActions と
-    │                                       同じ理由で、activeStage の直後・MapContextActions より先に construct する
-    ├── MapContextActions              ... 被選択物への右クリック解決(handleRightClick/handleCombatRightClick)・
-    │   │                                   種別別プロパティ/操作の配分・開いているプロパティウィンドウ集合。
-    │   │                                   候補列自体は持たず MapPickables を参照で持つ。Game への参照は持たず、
-    │   │                                   操作の実行先(ActivePlayerController・FrameControls・activeStage・
-    │   │                                   Targeter)を個別に参照で持つ。「非クリップは高々1枚」の
-    │   │                                   排他自体は Hud.overlayManager が持つ(PROPERTY_WINDOW_TEMP_GROUP、
-    │   │                                   下記参照共有の表)
-    │   ├── ContextMenu<MapPickable>       ... 空域右クリック('empty-space')専用メニュー。マップ・戦闘どちらの空振りもここへ落ちる(openEmptySpaceMenu で共有)。DOM は Hud.layers.popup 配下
-    │   ├── windows: Map<string, WindowEntry>  ... {win: PropertyWindow<MenuAction>, target}。オブジェクト1つ(`${kind}:${id}`)につき高々1枚。呼び出しごとに new。PropertyWindow は Hud.layers.window 配下に append
-    │   └── ObjectListPanel                ... DOM は Hud.layers.panel 配下(hud/object-list-panel.ts)。軌道オブジェクトウィンドウ(一覧 + クリックで選択状態 + ダブルクリックでフォーカス移動 + 右クリックでプロパティウィンドウ)。マップ視点である間は常設表示
-    ├── NavTarget                      ... 航法ターゲット(id)と自機軌道との相対 AN/DN・▲/▽ マーカー
-    ├── Navball                        ... 天球グリッド6トグルの正本。DOM は持たない —
-    │                                       CameraSystem.viewOptionsPanel(表示パネル)の天球グリッドセクションを
-    │                                       コンストラクタで配線するだけ(CameraSystem の構築後に construct する)
-    ├── ActivePlayerController         ... 操作対象艦(0..n隻のうちどれを操作するか)の切替・削除と、それに伴う各所有者への伝播を1箇所へ集める(`set`/`setOrNull` は Targeter・Sfx へ、`remove` は NavTarget・Targeter・CameraSystem(フォーカス解除)へ)。PlanEditor・MapContextActions・ViewManager への参照は持たない — PlanEditor はこちらを参照で持つ側で、逆方向の参照は無い。Game.player はこれへ転送する getter。起動時の操作対象艦は自分で解決する(構築引数の activePlayerId → entities.players の id 一致 → 先頭 → null)
-    ├── SimSpeedManager
-    ├── DisplayWindowManager           ... 「どの座標系で(frame)・いつを(displayTime)見るか」の正本(表示期間・
-    │                                       未来ゴーストスライダー・frame)と、1フレーム分の DisplayWindow
-    │                                       ({frame, simTime, referencePeriod, duration, pastDuration, displayTime})・
-    │                                       重力源窓(解析天体+重力を持つ生存中の GameEntity の合流)を resolve() で
-    │                                       1回だけ確定させ、update・sync 両フェーズの全消費者へ共有する。
-    │                                       Ephemeris・EntityManager を参照で持つ(所有しない)。entities の直後に
-    │                                       construct する(entities 自身のコンストラクタが EffectsSystem の
-    │                                       生成まで終えている)
-    │   └── PredictPanel               ... DOM は Hud.layers.panel 配下(hud/predict-panel.ts)。未来/過去の期間ピル列(各行は DurationPillRow)と未来位置スライダー。画面下端の帯として
-    │                                       #hud-predict-wrap に開閉トグル(hud/hud-root.ts の buildCollapseToggle)と
-    │                                       並べて包まれる。開閉状態はトグル対象要素の `.collapsed` クラスが正本(この
-    │                                       クラス自身は持たない)で、ビューの往復では戻さない(折りたたみは
-    │                                       ビューの性質ではなく操作者の選択)
-    ├── PlanEditor                     ... plan は活艦(ship)の Plan への転送 getter。正本ではない
-    │   ├── PlanDisplay                ... 計画の未来表示(「見えるとき何を見せるか」)
-    │   │   └── PlanPath         ... 計画折れ線 + per-arc 積分キャッシュ + 画面判定
-    │   │       ├── PlanArc[]          ... 区間ごとの積分結果。各々 DynamicTrajectory 1本(積分の正本)を持つ。区間を作り直すたびインスタンスごと差し替わる(既存インスタンスの書き換えではない)
-    │   │       └── TrajectoryLine[]   ... 区間 index ごとの折れ線プール。区間数が減っても捨てず隠すだけ(色は index で決まるため使い回す)
-    │   ├── NodeGizmo                   ... ノードハンドル/Δv 矢の DOM は Hud.layers.marker 配下
-    │   │   └── ContextMenu<number>     ... DOM は Hud.layers.popup 配下
-    │   └── PlanPanel(panel)            ... 計画パネル(hud/plan-panel.ts)の DOM 一式(ノード一覧・Δv 手入力フォーム)
-    │       └── HoldButton ×6               ... Δv 6方向の長押しボタン(dvButtons、PlanEditor.updateEditing がこれ経由で読む)
-    ├── PlanGuide                       ... 直近ノードの接近/達成通知済みフラグ(ノード自体への参照)を持つ
-    ├── Docking                        ... 基地への収容・発進(EntityManager/CameraSystem/ActivePlayerController/
-    │                                       ViewManager にまたがる横断)。Game への参照は持たず、ポーズだけは
-    │                                       pauseGame/resumeGame の2クロージャで受け取る(「クロージャ注入を避け
-    │                                       参照を渡す」規則への暫定的な例外。理由は docking.ts のコンストラクタ
-    │                                       コメントと CLAUDE.md にある)
-    │   └── DockView                       ... DOM は Hud.layers.view 配下。格納艦/部品/ショップタブのフルスクリーン UI
-    ├── ViewManager                    ... 現在のビュー(combat/map/dock)の正本。遷移は setView() ひとつに集約。
-    │                                       ActivePlayerController・TouchControls | null はいずれもコンストラクタ引数
-    │                                       (ViewManager より先に生成される)。docking への参照は ViewManager より後に
-    │                                       生成されるため setDocking() で構築後に注入される(private フィールドとして
-    │                                       保持)。Stage への参照は持たないが、生成は activeStage より後 — 初期ビューを
-    │                                       canEnter('combat') で解決するので、Stage の初期配置で自機が置かれた後
-    │                                       でなければ判定できない
-    ├── ViewBadge                      ... DOM は Hud.layers.notify 配下。ViewManager を参照するだけで自身は状態を持たない
-    │   └── ContextMenu<true, ViewId>  ... DOM は Hud.layers.popup 配下
-    ├── Stage (activeStage)            ... Game のコンストラクタが受け取る解決済みの StageClass を直接 new し、
-    │                                       saved(StageSaveData | undefined)と StageDeps 一式(hud/sfx/scene/entities/
-    │                                       unlockManager/fx/markerManager/ephemeris/simulator/activePlayers、
-    │                                       stage.ts 参照)を渡す(分岐は無く、CREATIVE も同じ経路)。
-    │                                       コンストラクタ一段で初期化が完結し、新規開始の世界の初期状態(自機を含む)と
-    │                                       ブリーフィングは各具象ステージのコンストラクタ末尾の begin() → init(entities)
-    │                                       が行う(基底のコンストラクタからは呼べない — 具象側のフィールド初期化が
-    │                                       super() の後に走るため)。自機を置くのは protected addPlayer(init?) で、
-    │                                       new Player → entities.addPlayer → activePlayers.claimIfNone をこの1箇所に
-    │                                       まとめる(初期弾薬は PlayerInit.ammo として艦の構築引数に載る)。
-    │                                       起動時の天体暦は Stage の静的 async createEphemeris(phaseOffsets)
-    │                                       が既定実装(天体暦プロファイル解決 + 精密暦パック取得の末に
-    │                                       new Ephemeris(...))を持ち、StageDebugAltSystem だけが自前の
-    │                                       架空レジストリを同期的に返す override を持つ — 読むのは Game
-    │                                       ではなく main.ts(Stage の構築より前に済ませ、完成した
-    │                                       Ephemeris を Game のコンストラクタへ渡す)。
-    │                                       隻数の静的宣言は無い — 何隻をどこへ置くかは init の中身。
-    │                                       freeProcurement/executesPlans は
-    │                                       インスタンス側の既定 false なフラグ、authoring は既定 null の ObjectAuthoring
-    │                                       (配置・複製の口)。CreativeStage だけが両方を有効にし、authoring は自身を返す。
-    │                                       _activePlayers は StageDeps の一つとして引数で受け取り(protected _activePlayers)、
-    │                                       CreativeStage.placeObject の艦の配置も同じ addPlayer を通る。
-    │                                       喪失した自機の回収は
-    │                                       ActivePlayerController.reclaimDead() が全ステージ共通で毎フレーム無条件に
-    │                                       行うので、ここに対応するフラグはない
-    │   ├── ScoreCounter
-    │   ├── Logistics                  ... 補給の投入判断
-    │   ├── StageStatusPanel           ... DOM は Hud.layers.panel 配下。HP/補助メッセージ/撃墜数。#hud-stagestatus の表示を書くのはこのクラスだけで、sync(player | null, …) の null が畳む指示(保持中の艦参照もそこで落とす)。戦闘ビュー専用 — マップビューでは同じ画面下端中央を PREDICT バーが占める
-    │   ├── ScoreAttackTimer           ... Stage0 のみ
-    │   ├── WaveAttack                 ... Stage00・CreativeStage がそれぞれのコンストラクタで1個ずつ生成し、private readonly waveAttack として保持する(stage-utils/wave-attack.ts)。波状攻撃フェーズ(waiting_for_ammo/spawning_enemies/active_combat)・タイマー・波数の正本。CreativeStage 側は waveAttackEnabled(自身のフィールド、既定 false)が true の間だけ update を呼ぶ — 敵の AI 自体(behaveAllEnemies)はトグルと無関係に毎フレーム進む
-    │   └── ShipPlacerPanel            ... CreativeStage のみ。パネル本体は Hud.layers.panel 配下、ObjectPicker のポップアップは Hud.layers.popup 配下(別々の引数で受け取る)。艦艇配置フォーム(開閉状態 isOpen も自身が持つ)
-    ├── EnvironmentScene               ... game/celestial/ 配下(game/ への依存を持つため render/ から移動)
-    │   ├── CelestialBody[]             ... CELESTIAL_BODIES(celestial-registry.ts)から1体ずつ生成。地球=EarthBody・太陽=SunBody・pointBrightness 未指定の惑星/月/土星等=SphereBody・pointBrightness 指定の惑星(金星・木星・水星・火星・土星・天王星)=PointBody。木星・土星・天王星・海王星は SOLAR_SYSTEM の CelestialBodyDef.rings(物理データ)を own し、build 時に RingView を1つ生成してシーン直下へ追加(本体メッシュの子ではない — sphere-body.ts/point-body.ts 参照)。SphereBody/PointBody は build 時に CelestialSurface(render/celestial-surface.ts、メッシュと昼夜陰影の uniform)を1つ own する
-    │   ├── PointFieldView              ... 小惑星帯・トロヤ群・ヒルダ群・カイパーベルト cold/hot・散乱円盤の点群(群ごとに1つの InstancedMesh、計11200点)。point-field.ts の PointFieldDef 配列(POINT_FIELD_DEFS)から build 時に一度だけ生成し、以後は不変
-    │   │   └── groups: readonly PointFieldGroupView[] ... PointFieldDef 1つにつき1インスタンス。群ごとの描画半径・色は point-field-view.ts の GROUP_VIEW が持つ
-    │   │       ├── points: readonly PointElements[]   ... 決定論的乱数(mulberry32、ASTEROID_SEED)で生成、生成後は読み取り専用
-    │   │       ├── positions: Vec3[]    ... 各点の太陽中心位置。update がラウンドロビン(1/8点/フレーム)で書き換える唯一の書き手
-    │   │       ├── sunPos: Vec3         ... 直近 update 時点の太陽 ECI 位置。sync の ECI 化(太陽中心→ECI)がここを読む
-    │   │       └── cursor: number       ... ラウンドロビンの次回開始添字
-    │   ├── AmbientLight / DirectionalLight / stars メッシュ ... 平行光/環境光はどの lit-opaque メッシュも直接照らさない(自機・デブリ・薬莢は render/pipeline/lit-layer.ts の LIT_OPAQUE_LAYER に立ち、既定チャンネルの world パスには描かれないため)。両ライトの役目は、EnvironmentScene.sync が毎フレーム書く強度/位置を SunLight(RenderPipeline 所有)へ生値として渡す入力であることと、LIT_OPAQUE_LAYER も enable しておくことでマテリアルパス/G バッファパスがそのチャンネルだけへ絞ったカメラでも light.layers.test(camera.layers) を通過し続けること(通過しないと NodeMaterial がそのメッシュの setupLightingModel を一切呼ばず、G バッファ/照度バッファの中身に関わらず真っ黒になる)。天体は各自の CelestialSurface が sunDirection uniform を持って自分で陰影を計算するのでこの光を受けない
-    │   ├── OrbitLine (geoLine)         ... 静止軌道の参照線(天体ではない特例、個別フィールドのまま)
-    │   ├── referenceLines: ReadonlyMap<OrbitingId, OrbitLine> ... SOLAR_SYSTEM の公転天体ぶん自動生成(衛星=旧月線色、惑星=白)。天体の登録追加だけで線が増える
-    │   └── CelestialGrid              ... 赤道面/黄道面それぞれの基準円・緯経線グリッド・両極マーカー
-    ├── Targeter                       ... ContextMenu を持たない(施策5 §7-2)。第一/第二ターゲットの設定・解除は
-    │   │                                   MapContextActions が開くプロパティウィンドウの targetPrimary/targetSecondary
-    │   │                                   項目から setPrimaryTarget()/setSecondaryTarget() を呼ぶ形に一本化
-    │   ├── OrbitLine                  ... 第一ターゲット軌道線(オレンジ)
-    │   └── OrbitLine (secondaryOrbitLine) ... 第二ターゲット軌道線(シアン)
-    ├── EntityManager                  ... エンティティ配列の保持と、破片(entity)の生成窓口である EffectsSystem
-    │                                       の所有。コンストラクタ引数 saved(GameSaveData | undefined)があれば
-    │                                       その顔ぶれを復元するだけで、新規開始では全配列が空のまま始まる
-    │                                       (起動時の顔ぶれを組むのは Stage.init — どの艦を操作するかも決めない。
-    │                                       ActivePlayerController が自分で解決する)。simTime は持たない
-    │   ├── InstancedPool (bulletBodyPool) ... geometry/material は render/ships.ts のモジュールスコープ
-    │   │                                      共有リソースを参照するだけ(所有しない)。sync が毎フレーム push する
-    │   ├── InstancedPool (bulletHaloPool)
-    │   ├── InstancedPool (plasmaPool)
-    │   ├── InstancedPool (casingPool)
-    │   ├── InstancedPool[] (debrisFragmentPools) ... 破片(fragment)バリアントごとに1本(render/ships.ts の
-    │   │                                      debrisFragmentResources が持つジオメトリ配列と1本の白マテリアルを共有)。
-    │   │                                      push の第2引数に DebrisPiece.fragmentColor(per-instance color)を渡す
-    │   ├── EffectsSystem               ... フラッシュ・破片の生成窓口。コンストラクタは EntityManager 自身(this)を
-    │   │                                      受け取る(addDebris 呼び出し用の注入クロージャは持たない)
-    │   │   └── FlashEffectManager
-    │   │       ├── InstancedPool (pool)   ... geometry/material は render/billboard.ts の flashResources() が持つ
-    │   │       │                              共有リソースを参照するだけ(所有しない)。sync が毎フレーム push する
-    │   │       └── FlashEffect[]          ... 各々 THREE.Object3D(transform)のみ持つ(geometry/material は持たない)
-    │   ├── Player[] (players)         ... 自機。ステージモードでは1隻のみ。操作対象(Game.player)は
-    │   │                                  この配列内の1隻への参照(§3-4 参照)
-    │   │   ├── PlayerThrottle
-    │   │   ├── PlayerFire
-    │   │   ├── Belt
-    │   │   │   └── BeltPhysics
-    │   │   │       └── BeltSection[]  ... 剛体接触用プロキシ
-    │   │   ├── ThermalSystem
-    │   │   ├── RadiatorSystem         ... 放熱板2枚の展開度・損耗度。ヒンジ Group は Player.renderObject 配下を名前で参照
-    │   │   │   └── foldProxies (Record<side, RadiatorFold[]>) ... 側ごとの剛体接触用プロキシ。折り数まで
-    │   │   │       遅延生成し以後使い回す。collisionFolds() が毎 substep 位置を置き直すだけで、
-    │   │   │       Verlet 等の独立した力学は持たない(艦の姿勢+展開度から一意に決まる剛体の取り付け)
-    │   │   ├── PowerSystem            ... 太陽電池の蓄電量。パネル法線は機体固定 (0,1,0)、可動部なし
-    │   │   ├── ThrustEffects → Billboard ×2
-    │   │   ├── RcsEffects    → Billboard ×8   ... 状態なし。ノズル1基につき1枚、配置は RCS_NOZZLES が正本
-    │   │   ├── ReentryEffects → Billboard ×2   ... 状態なし。強度は毎フレーム qdyn から導く
-    │   │   ├── PlayerMarkers          ... 方向マーカー・ボアサイト・マップ上の自機位置(操作対象の艦だけが sync する)
-    │   │   ├── OrbitLine              ... 自機軌道線。中心天体は毎フレーム state から導出(strongestAttractor)。
-    │   │   │                              表示抑制(setSuppressed)は Game.sync がこの艦自身の supersedesAnalyticEllipse(...)から渡す(§付録参照)
-    │   │   ├── TrajectoryLine         ... 自機予測軌道線。Game.sync が毎フレーム this.syncTrajectoryLine(操作対象, ...)を呼ぶ
-    │   │   ├── TrajectoryLine         ... 自機過去軌跡線(pastTrajectoryLine)。同じ syncTrajectoryLine が actualTrajectory の [simTime - pastDuration, simTime] を描く
-    │   │   ├── Plan                   ... この艦自身のマニューバ計画(正本)。ノード列 + アンカー
-    │   │   └── PlanExecutor           ... この艦自身の計画実行状態機械(正本)。CreativeStage が艦ごとに呼ぶだけで保持しない
-    │   ├── Enemy[]                    ... 各々 OrbitLine を持つ
-    │   ├── Bullet[]                    ... 各々コンストラクタで Sfx への参照を持つ(至近通過音を自分の checkLoss から鳴らすため)。
-    │   │                                  renderObject はシーンへ足さない(GameEntity の addToScene=false) — bulletBodyPool/bulletHaloPool/plasmaPool が
-    │   │                                  renderObject の変換を読んで描画する。renderObject 自体は Bullet.sync が書き込む変換の置き場所として残る
-    │   ├── DebrisPiece[] (casings)      ... 各々コンストラクタで Sfx・EffectsSystem への参照を持つ(接触音・ガスパフを自分の collideWith から出すため)。
-    │   │                                  renderObject はシーンへ足さない(addToScene=false) — casingPool が renderObject の変換を読んで描画する
-    │   ├── DebrisPiece[] (debris)       ... 同上。fragment 種別のみ renderObject もシーンへ足さない(addToScene=false) —
-    │   │                                  renderObject は変換の置き場所のみで、debrisFragmentPools[fragmentVariant] が読んで描画する。
-    │   │                                  barrel/magazineFrame 種別は個別メッシュのまま(addToScene=true)
-    │   ├── AmmoPickup[]
-    │   ├── Base[]                     ... 各々 baseState(money/inventory/dockedShips)と OrbitLine を持つ
-    │   └── Asteroid[]                 ... 重力を及ぼし・受ける小天体。mass/radius はコンストラクタ引数から mu = G・mass を導いて固定。
-    │                                       j2/c22 を渡した場合は degree2(pole/tesseral)も構築時に att から一括で固定
-    ├── Simulator                      ... 実シミュレーション。EntityManager・Ephemeris・FrameSections の参照を受け取って回すだけ(いずれも所有しない)
-    │   └── ContactPhysics             ... 接触の検出(physics/sphere-contact.ts)・剛体解決(physics/collision-response.ts)を
-    │                                       substep ごと(resolveSubstep)/フレームに1回のベルト(resolveBelt)で呼ぶ列挙・順序付け層
-    └── Predictor                      ... 予測列の駆動。EntityManager の参照を受け取って回すだけ(所有しない)。
-                                            状態はラウンドロビンのカーソルのみ
+├── PerfMeter            ... 負荷確認ウィンドウ。構築時に参照で持つのは GameScene.renderer(WebGPURenderer、draw call/triangle 数の読み取り元)だけで、`Game`/`PerfCountSource` はフィールドに持たない — `record(counts, ...)` が毎フレーム `main.ts` の `game`(= `Launcher.current`)を引数として受け取り、そのまま `flush(counts, ...)` へ渡す(`AutoSave`/`SnapshotControls` と同じ「保持せず引数で読む」形)。rAF ループが `game.update(dt)` → `snapshotControls.handleInput(...)` の直後に `perf.handleInput(game.input)` を呼び、`[F3]` を消費する(Game は PerfMeter への参照を一切持たない)。FrameSections と GpuTimings も構築時に参照で受け取り、update内訳と描画の GPU 行を組む(開閉で両方の enabled を書く)。表示する PropertyWindow を自分で new/dispose し、DOM は Hud.layers.window 配下。開いている間だけ on が真になり計測が走る(同時に FrameSections.enabled も真にする)。`Game.perfCounts()` は自分では数えず、EntityManager・Predictor・Simulator・PlanEditor・Ephemeris・MapPickables 各自の `perfCounts()` を1つにマージし、`displayDurationSec`(= DisplayWindowManager.current.duration)・`warp` を足すだけ
+└── GameScene            (createGameScene: canvas / THREE.Scene / WebGPURenderer)
 ```
 
 木に現れないインスタンス:
@@ -393,13 +393,13 @@ main.ts
 
 | 対象 | 所有者 | 参照する側 |
 | --- | --- | --- |
-| `THREE.Scene` | `GameScene`(main.ts) | Game(`_scene` として保持)・各描画物を持つクラス |
+| `THREE.Scene` | `GameScene`(main.ts) | Game(`_scene` として保持)・各描画物を持つクラス。`GameScene` 自体は `Launcher`(コンストラクタ引数、`new Game(this.gs, ...)` に渡すだけ)も参照で持つ |
 | `WebGPURenderer` | `GameScene`(main.ts) | RenderPipeline とその内部の GBufferPass・LightPrepass(いずれも構築引数。実際に `render`/`setRenderTarget`/`setMRT`/`getDrawingBufferSize` を呼ぶのはこの3クラスだけ)・GpuTimings・PerfMeter(いずれも構築引数)・Input(`domElement` のみをコンストラクタで一度読む)。Game はこれへの参照を持たない(`render()` は `pipeline.render(scene, camera)` を呼ぶだけ) |
-| `Hud` / `Sfx` | main.ts | Game(コンストラクタ引数で受け取り)経由でほぼ全サブシステム(hud/sfx は必ず対で注入する方針)。`Sfx` は `Launcher`(コンストラクタ引数、`update` が決着の瞬間に `setThrust(false)`/`stopBgm()` を呼ぶ)へも直接渡る |
+| `Hud` / `Sfx` | main.ts | Game(コンストラクタ引数で受け取り)経由でほぼ全サブシステム(hud/sfx は必ず対で注入する方針)。両方とも `Launcher`(コンストラクタ引数)へも直接渡る — `Hud` は `ResultScreen` の構築と `new Game(...)` の両方に、`Sfx` は同様に `new Game(...)` と `update` が決着の瞬間に呼ぶ `setThrust(false)`/`stopBgm()` の両方に使う |
 | `Hud.overlayManager`(`OverlayManager`) | `Hud`(`buildHudDom` が構築) | 全オーバーレイ所有クラス(`ContextMenu`/`ObjectPicker`/`PropertyWindow`/`PauseMenu`/`SaveBrowser`/`ShipPlacerPanel`/`HelpPanel`、および `ResultScreen`・`ViewManager.dockOverlayHandle`)がコンストラクタ引数または `hud.overlayManager` 経由で受け取り、`open`/`close`/`reconfigure` を自分自身に対して呼ぶ。台帳(重なり順・排他グループ)の正本はこのクラスだけが持つ |
-| `PauseMenu` | main.ts | Game(`Game.handleInput` が `hud.overlayManager.closeTopmostOnEscape()` で閉じ切れなかったときだけ `toggle(true)` を呼ぶ。開閉の一時停止反映は main.ts 側の配線)・MapContextActions(空域右クリックの「設定メニューを開く」項目)。コンストラクタは `RenderPipeline` を `DebugTargetHost` として受け取り、そのまま `GraphicsPanel` へ転送するだけで自身は保持しない |
+| `PauseMenu` | main.ts | Game(`Game.handleInput` が `hud.overlayManager.closeTopmostOnEscape()` で閉じ切れなかったときだけ `toggle(true)` を呼ぶ。開閉の一時停止反映は main.ts 側の配線)・MapContextActions(空域右クリックの「設定メニューを開く」項目)・`Launcher`(コンストラクタ引数、`new Game(...)` に渡すだけ)。コンストラクタは `RenderPipeline` を `DebugTargetHost` として受け取り、そのまま `GraphicsPanel` へ転送するだけで自身は保持しない |
 | `MarkerManager` | Game | マーカーを出す全モジュール(PlayerMarkers・Targeter・NavTarget・Logistics・FocusMarkers・PlanGuide・PlanDisplay)。`combatMarkers`/`leadMarkers` は参照共有ではなく MarkerManager 自身の子(§1 参照) |
-| `Ephemeris` | main.ts(`Stage.createEphemeris` 経由で `Game` の構築より前に完成させる) | Game(コンストラクタ引数)経由で EnvironmentScene・Simulator・OverviewCamera・FocusMarkers・NavTarget・PlanEditor(→PlanDisplay)・DisplayWindowManager(コンストラクタ引数) |
+| `Ephemeris` | `Launcher`(モジュール private な `initEphemeris` が `Stage.createEphemeris` 経由で `Game` の構築より前に完成させる) | Game(コンストラクタ引数)経由で EnvironmentScene・Simulator・OverviewCamera・FocusMarkers・NavTarget・PlanEditor(→PlanDisplay)・DisplayWindowManager(コンストラクタ引数) |
 | `CameraSystem.bodyClassToggles`(`BodyClassToggles`) | CameraSystem | 表示パネル(`ViewOptionsPanel` の天体クラス別セクション)が書き換え、読む側はすべて `MapVisibilityPolicy` を通す(`MapPickables.refresh`・`FocusMarkers.update`・`EnvironmentScene.sync`/参照線・`Game.sync` → Stage/Logistics/CreativeStage/Targeter)。マップの描画・ピック候補・軌道オブジェクト一覧・配置UIの基準天体が同じ1つの状態を共有するための唯一の持ち主。初期値は `localStorage`(`tepui.bodyClassToggles`)から読み込み(`camera-system.ts` の `loadBodyClassToggles`)、トグルのたびに `saveBodyClassToggles` で書き戻す(同上) |
 | `EntityManager` | Game | Simulator(コンストラクタ引数、配列を直接持たず参照だけ回す)・ContactPhysics(`Simulator.advance` が呼び出しのたびに参照を渡すだけで保持しない)・Targeter・NavTarget・Enemy.behave・Stage/stages/・Logistics・EffectsSystem・NanWatchdog(いずれも読み取り + `addXxx`/`findPlayer`/`findEnemy` 経由の追加・参照のみ)・PlanEditor(コンストラクタ引数。`update` が `simulation/attractors.ts` の `planAttractorProvider`/`planSourceRevision` を組むのに読むだけで保持しない)・DisplayWindowManager(コンストラクタ引数、`attractorsAt` が `entities.attractors()` を読むだけ)。`attractors()` は毎回のフィルタ呼び出しで正本を持たない(§付録「正本でないもの」) |
 | `PlanPath` | PlanDisplay | PlanEditor(ノードの画面判定 `projectPoint` / `nearestSample` のみ、`planDisplay.path` 経由) |
@@ -416,9 +416,9 @@ main.ts
 | `SaveBrowser` | main.ts | SnapshotControls(コンストラクタ引数、`[F9]` と一覧表示中の `[Esc]` で `open()`/`close()` を呼ぶ)。Game はこれへの参照を持たない |
 | `SnapshotControls` | main.ts | rAF ループ(`startAnimationLoop` が `game.update(dt)` の直後に `handleInput(game.input, game)` を呼ぶ) |
 | `GpuTimings` | main.ts | rAF ループ(`game.render()` の直後に `resolve()`)・PerfMeter(コンストラクタ引数。`enabled` を開閉で書き、`record` で全パスを採取する)・RenderPipeline(コンストラクタ引数、GBufferPass・LightPrepass へさらに転送。3クラスとも各パスの `renderer.render()` 呼び出し直前に `beginPass(id)` を呼ぶだけで、集計そのものは持たない) |
-| `RenderPipeline` | main.ts | Game(コンストラクタ引数。`render()` が `pipeline.render(scene, camera)` を呼ぶだけ)・PauseMenu(`initHud` を経由するコンストラクタ引数、`DebugTargetHost` としてのみ見える。`debugTarget` フィールドの唯一の書き手は `GraphicsPanel`)。自身が構築・所有する `SunLight` は `EnvironmentScene` へ構築引数として参照で渡す(公開 getter `sunLight` 経由、Game のコンストラクタが仲介する) |
-| `GraphicsSettings` | main.ts | `createGameScene`(`antialias` を読み、`bindResolutionTarget` で `GameScene` を反映先に登録)・`RenderPipeline`(構築時に `antialias` を読むだけ)・`GraphicsPanel`(品質プリセット/解像度/詳細度/各トグルの唯一の書き手 — `debugTarget` はこれとは別に `RenderPipeline` 自身が持つ)・`EnvironmentScene` と各 `CelestialBody.sync`(読み手) |
-| `FrameSections` | main.ts | Game(コンストラクタ引数。`update` が区間境界へ `enter`/`exit` を打つだけ)・Simulator(Game 経由のコンストラクタ引数。軌道積分/接触/姿勢の3区間の境界を自分で打つ)・PerfMeter(コンストラクタ引数。`enabled` を開閉で書き、`record` で全区間 + `otherMs()` を採取する) |
+| `RenderPipeline` | main.ts | Game(コンストラクタ引数。`render()` が `pipeline.render(scene, camera)` を呼ぶだけ)・PauseMenu(`initHud` を経由するコンストラクタ引数、`DebugTargetHost` としてのみ見える。`debugTarget` フィールドの唯一の書き手は `GraphicsPanel`)・`Launcher`(コンストラクタ引数、`new Game(...)` に渡すだけ)。自身が構築・所有する `SunLight` は `EnvironmentScene` へ構築引数として参照で渡す(公開 getter `sunLight` 経由、Game のコンストラクタが仲介する) |
+| `GraphicsSettings` | main.ts | `createGameScene`(`antialias` を読み、`bindResolutionTarget` で `GameScene` を反映先に登録)・`RenderPipeline`(構築時に `antialias` を読むだけ)・`GraphicsPanel`(品質プリセット/解像度/詳細度/各トグルの唯一の書き手 — `debugTarget` はこれとは別に `RenderPipeline` 自身が持つ)・`EnvironmentScene` と各 `CelestialBody.sync`(読み手)・`Launcher`(コンストラクタ引数、`new Game(...)` に渡すだけ) |
+| `FrameSections` | main.ts | Game(コンストラクタ引数。`update` が区間境界へ `enter`/`exit` を打つだけ)・Simulator(Game 経由のコンストラクタ引数。軌道積分/接触/姿勢の3区間の境界を自分で打つ)・PerfMeter(コンストラクタ引数。`enabled` を開閉で書き、`record` で全区間 + `otherMs()` を採取する)・`Launcher`(コンストラクタ引数、`new Game(...)` に渡すだけ) |
 | `PerfMeter` | main.ts | rAF ループ(`startAnimationLoop` が `snapshotControls.handleInput` の直後に `perf.handleInput(game.input)` を呼び、`[F3]` で `toggle()` する)・PauseMenu(`onOpenPerfWindow` 経由で `open()`) |
 | `PropertyWindow`(負荷確認ウィンドウ) | PerfMeter(`open()` で new し `close()`/✕ で dispose する1枚) | PerfMeter 自身のみ。500ms ごとの flush で `syncRows` へ行一式を渡す |
 | `FocusMarkers.bodyPickables(t, visibilityPolicy)` の戻り値 | CameraSystem(→FocusMarkers、呼ぶたびに作り直す使い捨て配列) | `MapPickables.refresh()` が読んで生存中の自機・敵船・弾薬・基地・NavTarget のアイコン・`PlanDisplay.apsisMarkers` と合流させ、`MapContextActions.handleRightClick`(`pickNearest`)/`OverviewCamera.update` の被選択物候補として渡し直す。引数の `MapVisibilityPolicy` が admits した天体+ラグランジュ点だけを返し、遮蔽・ラベル衝突でこのフレームに描かれなかった対象は `pickable: false` を伴って残す(表示設定で消えているわけではないので候補からは落とさない) |
@@ -477,7 +477,7 @@ main.ts
 | 航法ターゲット(id)・相対 AN/DN | `NavTarget` | `update()` が自機軌道要素 + `Ephemeris` から毎フレーム再算出する導出値だが、対象の id 自体(`toggleTarget` で変わる)は正本 |
 | 勝敗フェーズ | `Stage`(private `_phase`) | 変更は Stage 自身のみ。外部は `phase`/`isPlaying` を読む |
 | 決着した周回の結果画面の内容(`StageResult` = `{win, title, detailHtml}`) | `Stage`(private `_result`) | `protected decide(phase, result)` が `_phase` と同時に書き込む唯一の入口(`onWin`/`recordPlayerLost`/各ステージの独自の決着経路が呼ぶ)。外部は `result` getter で読む。表示するのは `Launcher.update` — `Stage` 自身は結果画面を出さない。`StageResult` はセーブに含まれない(`serialize()` が保存するのは `phase` のみ)ので、決着済み `phase` を持つ復元セーブでは `Launcher` 側の `fallbackResult(phase)` が見出しだけの内容へ差し替える |
-| 今回起動した StageClass | `Launcher`(private `launchedStage`) | `noteLaunched(stageClass)`(main.ts が `new Game(...)` の直後に呼ぶ)が書く唯一の入口。`restart()` がこれを読んで `?stage=<launchedStage.id>` を組む(未設定なら何もしない) |
+| 今回起動した StageClass | `Launcher`(private `launchedStage`) | private `noteLaunched(stageClass)`(`startRun` が `this.game = new Game(...)` の直後に自分で呼ぶ)が書く唯一の入口。`restart()` がこれを読んで `?stage=<launchedStage.id>` を組む(未設定なら何もしない) |
 | 結果画面を出したか | `Launcher`(private `resultShown`) | `update(game)` が決着した最初のフレームで true にする。以後の `update` 呼び出しはこのフラグだけを見て即 return するので、結果画面は決着につき一度しか出さない |
 | 発射数・命中数・撃破数・出撃数 | `ScoreCounter` | 所有は Stage |
 | 補給の投入間隔タイマー | `Logistics` | 投入できない間は進めない(再開直後のフレームで判定させるため) |
@@ -486,7 +486,7 @@ main.ts
 | ウェーブフェーズ・波数 | `WaveAttack`(Stage00・CreativeStage がそれぞれ1個 own) | |
 | 残り時間 | `ScoreAttackTimer`(Stage0) | |
 | ステージクリア回数 | **localStorage**(`tepui.clearCounts`) | UnlockManager はその読み書き窓口。インスタンスは正本ではない |
-| ポーズ | `Game.paused` | 駆動源は `PauseMenu.onPauseMenuOpenChange` と `SaveBrowser.open()`/`close()` の2つ。どちらもシステム窓で、開いている間だけ止める |
+| ポーズ | `Game.paused` | 駆動源は `PauseMenu.onPauseMenuOpenChange`・`SettingsView.onOpenChange`・`SaveBrowser.open()`/`close()` の3つ。いずれもシステム窓で、開いている間だけ止める。main.ts の2つのコールバックは `launcher.current?.pause()`/`.resume()` を、`SaveBrowser` は自身が構築時に受け取る `CurrentGameSource`(= `Launcher`)経由で `gameSource.current?.pause()`/`.resume()` を呼ぶ — いずれも `Game` への参照を保持せず、その場で `Launcher.current` を読むだけ |
 | スナップショット一覧の表示状態 | `SaveBrowser`(private `_visible`) | `open()`/`close()` のみが書き換える。毎フレーム sync は持たず、操作のたびに自分で DOM を作り直す一発モーダル |
 | 一時エフェクト(フラッシュ)の配列 | `FlashEffectManager.effects` | 各要素は位置を時刻つきの `KinematicState` で持ち、`updateFlashEffects` がその時刻から `simTime` まで移流させる |
 | 地球自転の初期位相 | `EarthBody.phase0`(既定 0、乱数は持たない) | `spinPhase0()`/`setSpinPhase0()` で読み書き可能。乱数を引くのは `main.ts` の1箇所だけ(`initialSave?.earthSpinPhase0 ?? Math.random() * 2π`)。`Game` のコンストラクタはその結果を `earthSpinPhase0: number` 引数としてそのまま受け取り、`new EnvironmentScene(scene, ephemeris, earthSpinPhase0)` として構築時に一度だけ渡す。`EnvironmentScene` のコンストラクタは受け取った値で無条件に `setSpinPhase0` を呼ぶ(地球が現在のレジストリに無ければ対象が見つからず何もしないだけ)。セーブは `EnvironmentScene.earthSpinPhase0()` 経由 |

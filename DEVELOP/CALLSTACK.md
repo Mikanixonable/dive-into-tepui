@@ -27,10 +27,11 @@
 ## main.ts / rAF ループ
 
 - animate(now)
+  - const game = launcher.current // launcher.start() が解決するまで(または将来 Game を作り直す間)は null。null なら以下を全て飛ばし、次フレームを予約するだけで戻る
   - game.update(dt) // dt = 実経過秒。game 側で 0.1s に clamp される
   - snapshotControls.handleInput(game.input, game) // このフレームで game.update が消費しなかった入力エッジだけを見る。K.clipSnapshot/K.openSnapshots(Esc は扱わない — 一覧を閉じる Esc は overlayManager 経由で game.handleInput 側が既に消費している)
     - [K.clipSnapshot] [!activeStage.isPlaying] hud.hint() // 決着後は拒否。それ以外は snapshotService.capture(game, 'manual', null, true) + hud.hint()
-    - [K.openSnapshots] browser の open()/close() をトグル // open() 前に pauseMenu.toggle(false)。open() が game.pause()、close() が game.resume() を呼ぶ
+    - [K.openSnapshots] browser の open()/close() をトグル // open() 前に pauseMenu.toggle(false)。open() が gameSource.current?.pause()、close() が gameSource.current?.resume() を呼ぶ(gameSource = launcher)
   - launcher.handleInput(game.input, game) // snapshotControls の後、このフレームでまだ消費されていない入力エッジだけを見る。[!activeStage.isPlaying] のときだけ K.restart を取る
     - restart() → location.replace(`?stage=<launchedStage.id>`) // 同じステージを新規に開始し直す(決着直前の自動スナップショットへは戻らない)
   - perf.handleInput(game.input) // [K.togglePerfWindow] toggle()
@@ -38,8 +39,8 @@
   - launcher.update(game) // 決着した最初のフレームだけ動く(resultShown フラグで以降は即 return): sfx.setThrust(false) + sfx.stopBgm() → slots.noteRunEnded(activeSlotId) → resultScreen.show(activeStage.result ?? phase からのフォールバック)
   - game.sync()
   - game.render()
-  - gpu.resolve() // 窓の開閉によらず毎フレーム。renderer.resolveTimestampsAsync('render') を投げ、前フレームの GPU 時間が非同期で届く。呼ばないと時刻印クエリが溜まって上限に当たるので条件を付けない。render 区間の計測(t3)の後に置き、計測自身の費用を render へ混ぜない
-  - perf.record() // 負荷確認ウィンドウが開いている間(perf.on)だけ。500ms ごとに Game.perfCounts() を読んで PropertyWindow の行へ流す
+  - gpu.resolve() // 窓の開閉によらず、game が存在する限り毎フレーム。renderer.resolveTimestampsAsync('render') を投げ、前フレームの GPU 時間が非同期で届く。呼ばないと時刻印クエリが溜まって上限に当たるので条件を付けない。render 区間の計測(t3)の後に置き、計測自身の費用を render へ混ぜない
+  - perf.record(game, ...) // 負荷確認ウィンドウが開いている間(perf.on)だけ。counts(= game)を引数で受け取り保持しない。500ms ごとに counts.perfCounts() を読んで PropertyWindow の行へ流す
 
 ---
 
