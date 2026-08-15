@@ -1107,15 +1107,9 @@ export function buildBaseModel(): THREE.Group {
     g.add(seam);
   }
 
-  // 【3秒に1回点滅する航空管制ストロボライト (8箇所)】
-  // 上部4箇所: 居住区トップ4隅 (蛍光エメラルド)
-  // 下部4箇所: 貨物区ボトム4隅 (緋色)
-  const emeraldStrobeMat = new THREE.MeshStandardMaterial({
-    color: 0x00ff9d,
-    emissive: 0x00ff9d,
-    emissiveIntensity: 0.1,
-  });
-  const scarletStrobeMat = new THREE.MeshStandardMaterial({
+  // 【2秒に1回赤く点滅する航空管制ストロボライト (8箇所)】
+  // 上部4箇所(居住区トップ4隅) & 下部4箇所(貨物区ボトム4隅): 鮮烈な赤色航空管制灯
+  const redControlStrobeMat = new THREE.MeshStandardMaterial({
     color: 0xff1744,
     emissive: 0xff1744,
     emissiveIntensity: 0.1,
@@ -1124,7 +1118,7 @@ export function buildBaseModel(): THREE.Group {
   // 上部4角 (居住区トップ)
   for (const ex of [-8.2, 8.2]) {
     for (const ey of [-8.2, 8.2]) {
-      const strobe = new THREE.Mesh(new THREE.SphereGeometry(0.7, 10, 8), emeraldStrobeMat);
+      const strobe = new THREE.Mesh(new THREE.SphereGeometry(0.7, 10, 8), redControlStrobeMat);
       strobe.position.set(ex, ey, mainCenterZ + 24);
       g.add(strobe);
     }
@@ -1133,18 +1127,17 @@ export function buildBaseModel(): THREE.Group {
   // 下部4角 (貨物区ボトム)
   for (const cx of [-7.2, 7.2]) {
     for (const cy of [-7.2, 7.2]) {
-      const strobe = new THREE.Mesh(new THREE.SphereGeometry(0.7, 10, 8), scarletStrobeMat);
+      const strobe = new THREE.Mesh(new THREE.SphereGeometry(0.7, 10, 8), redControlStrobeMat);
       strobe.position.set(cx, cy, cwCenterZ - 68);
       g.add(strobe);
     }
   }
 
-  // 3秒周期(0.18秒間)の点滅フラッシュアニメーション
+  // 2秒周期 (0.16秒間強烈に赤く閃光点滅)
   g.onBeforeRender = () => {
-    const t = (performance.now() / 1000) % 3.0;
-    const flash = t < 0.18 ? 4.5 : 0.1;
-    emeraldStrobeMat.emissiveIntensity = flash;
-    scarletStrobeMat.emissiveIntensity = flash;
+    const t = (performance.now() / 1000) % 2.0; // 2.0秒周期
+    const flash = t < 0.16 ? 5.0 : 0.1;
+    redControlStrobeMat.emissiveIntensity = flash;
   };
 
   // 【化学プラント / 蒸留塔 (Distillation Towers Complex - 倍長バージョン)】
