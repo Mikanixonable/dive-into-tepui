@@ -38,6 +38,8 @@ export type RingVisualState = {
 export type RingVisual = {
   readonly object: THREE.Object3D;
   readonly sync: (state: RingVisualState) => void;
+  // 自前の geometry/material を解放する。object をシーンから外すのは呼び出し側の責務。
+  readonly dispose: () => void;
 };
 
 function colorNode(color: readonly [number, number, number]): Vec3Node {
@@ -159,7 +161,11 @@ function sectorParts(arcs: readonly RingArcDef[] | undefined): readonly { start:
 function combineVisuals(visuals: readonly RingVisual[]): RingVisual {
   const group = new THREE.Group();
   for (const visual of visuals) group.add(visual.object);
-  return { object: group, sync: (state) => visuals.forEach((visual) => visual.sync(state)) };
+  return {
+    object: group,
+    sync: (state) => visuals.forEach((visual) => visual.sync(state)),
+    dispose: () => visuals.forEach((visual) => visual.dispose()),
+  };
 }
 
 function buildAnnulusMesh(
@@ -173,7 +179,7 @@ function buildAnnulusMesh(
   const { material, sync } = physicalMaterial(colorNode(optics.color), optics);
   const mesh = new THREE.Mesh(geo, material);
   mesh.rotation.x = RING_TILT;
-  return { object: mesh, sync };
+  return { object: mesh, sync, dispose: () => { geo.dispose(); material.dispose(); } };
 }
 
 /** 薄い環。アークは非重複sectorへ分割するため、実効tauが二重合成されない。 */
@@ -208,7 +214,7 @@ function buildLineRingSegment(
   const { material, sync } = lineOpticsMaterial(colorNode(optics.color), optics);
   const line = new THREE.Line(geo, material);
   line.rotation.x = RING_TILT;
-  return { object: line, sync };
+  return { object: line, sync, dispose: () => { geo.dispose(); material.dispose(); } };
 }
 
 /** 実幅が細い環の1px前後表示。アークは非重複sectorへ分割するため、実効tauが二重合成されない。 */
@@ -262,5 +268,5 @@ export function createTorusRing(
   const { material, sync } = physicalMaterial(colorNode(optics.color), optics);
   const mesh = new THREE.Mesh(geo, material);
   mesh.rotation.x = RING_TILT;
-  return { object: mesh, sync };
+  return { object: mesh, sync, dispose: () => { geo.dispose(); material.dispose(); } };
 }
