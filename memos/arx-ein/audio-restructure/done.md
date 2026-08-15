@@ -104,6 +104,43 @@ spawn-notification blip plus the pickup sound); the entire entity/stage/docking 
 
 ---
 
+## 4. Split the BGM engine from its composition data
+
+`Bgm.scheduleStep` had a lot of *composition* hardcoded into engine code: the transposition
+table `[0, 2, 3, 1]` and its 192-step cycle, the 768-step octave shift, the pad/drone/sparkle
+cadences, the per-layer levels and lengths, and the sparkle's three hand-scheduled echoes.
+All five tracks therefore shared one structure and could differ only in pitch material.
+
+**`BgmTrack` now describes a track in full** — `scale`, `stepDur`, two `PulseVoice`s (pattern,
+waveform, level, length, attack, step offset, optional detuned harmonic), a `PadLayer`, a
+`DroneLayer`, an optional `SparkleLayer`, and two `PhaseCycle`s (`transpose`, `octave`).
+`scheduleStep` reads all of it off the track and holds no composition of its own.
+
+Engine-side helpers that came out of it: `phaseValue(cycle, step)` (both the transposition and
+the octave shift are "a cycle of values, each held for N steps" — one helper, two uses),
+`scaleFreq(...)` (was the `getFreq` closure), and a private `scheduleVoice` so voice A and
+voice B go through one path. `SEMITONES_PER_SCALE_STEP = 2` is named at module level; it is
+the approximation that converts a scale-step transposition into a frequency ratio for the
+pad/drone layers, which are given in Hz and so cannot transpose by index.
+
+**Verified sound-identical, not assumed.** A throwaway harness transpiled both the `HEAD` and
+working-tree versions of `bgm.ts` + `bgm-tracks.ts`, stubbed `toneAt` as a recorder, and ran
+3072 steps (two full 1536-step super-cycles) for every track:
+
+> 54,240 scheduled notes compared across 5 tracks — frequency, time, duration, volume,
+> waveform and attack all bit-identical.
+
+That is the property this commit is supposed to have: it is a mechanism change, and
+**every track still carries the values the engine used to hardcode**, so nothing sounds
+different yet. Actually differentiating the tracks is a follow-up data edit — deliberately
+kept out of this commit so the refactor could be proven inert.
+
+`bgm-tracks.ts` grew 106 → 362 lines. That is the cost of each track being self-describing,
+and it is a data file rather than a logic module, so the project's 200-line module standard
+does not apply the way it does to `game.ts`.
+
+---
+
 ## The rebase onto the new `main` (`5ff773e4`)
 
 Upstream landed the deferred rendering pipeline while this branch was in flight, and it
