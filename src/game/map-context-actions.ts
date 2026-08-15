@@ -245,25 +245,20 @@ export class MapContextActions {
   // プロパティウィンドウを開く(同じ対象は常に同じ窓 — §7-2)。外れれば空域メニューへ落ちる。
   // マップ視点では何もしない。
   handleCombatRightClick(
-    input: Input, targets: readonly CombatTarget[], project: ProjectFn, simTime: number, overviewMode: boolean,
+    input: Input, project: ProjectFn, simTime: number, overviewMode: boolean,
   ): void {
     if (overviewMode) return;
     input.takeRightClicks((p) => {
       const candidates: MapPickable[] = [
-        ...targets.filter((t) => t.alive).map((t) => this.combatTargetPickable(t)),
-        ...this.entities.bases.filter((b) => b.alive).map((b) => ({ id: b.id, name: b.name, pos: b.state.r, kind: 'base' as const })),
+        ...this.entities.players.filter((ship) => ship.alive).map((ship) => ({ id: ship.id, name: ship.name, pos: ship.state.r, kind: 'player' as const })),
+        ...this.entities.enemies.filter((enemy) => enemy.alive).map((enemy) => ({ id: enemy.id, name: enemy.name, pos: enemy.state.r, kind: 'ship' as const })),
+        ...this.entities.bases.filter((base) => base.alive).map((base) => ({ id: base.id, name: base.name, pos: base.state.r, kind: 'base' as const })),
       ];
       const picked = pickNearest(candidates, p.x, p.y, project, pickRadiusSq(C.TARGET_LOCK_PICK_PX_SQ, C.TARGET_LOCK_PICK_PX_SQ_COARSE));
       if (picked) this.openPropertyWindow(p.x, p.y, picked, simTime);
       else this.openEmptySpaceMenu(p.x, p.y, simTime);
       return true;
     });
-  }
-
-  // CombatTarget(Enemy | Player)を、対応する MapPickable の kind へ変換する。
-  private combatTargetPickable(target: CombatTarget): MapPickable {
-    const kind = target instanceof Player ? 'player' : 'ship';
-    return { id: target.id, name: target.name, pos: target.state.r, kind };
   }
 
   // 軌道オブジェクトウィンドウをマップ視点である間は常設で表示し、開いている全プロパティ
