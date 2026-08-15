@@ -220,9 +220,6 @@ CLAUDE.md「悪いデータ構造」の3項目に同時に当たる — 正デ�
 
 ### I. 格納艦の生存期間を誰も管理していない
 
-- `Base.dispose()`(`base.ts:104-108`)は `orbitLine` しか片付けない。マップから基地を削除すると
-  **中の `Player` のメッシュがシーンに残ったままリークする**(`obj` はコンストラクタで `scene.add` 済み、
-  `dispose()` は誰も呼ばない)。
 - `parkPlayer`(`entity-manager.ts:165-172`)は `equatorNodes` だけ畳み、`marker`/`orbitLine`/`trajectoryLine`
   には触れない。sync が届かないので更新されないだけで、最後の状態が残っていないか要確認。
 
@@ -328,7 +325,7 @@ CLAUDE.md「曖昧な区別: 区別すべきものを同じ名前で指す命名
 | 3 | 価格表を切り出し、`initDefaultParts` もそこから引く | H |
 | 4 | 取引層を立て、`DockView` から業務処理を全部移す。`handleLaunch` の splice も `Docking` 側へ | G |
 | 5 | `Docking` の `Game` 参照を外す。`ViewManager` との命名衝突を直す | D, F |
-| 6 | 生存期間(`Base.dispose` と park の後始末)、id 採番、発進位置の定数化、`BaseState` の平坦化 | I, K, M |
+| 6 | park の後始末、id 採番、発進位置の定数化、`BaseState` の平坦化 | I, K, M |
 | 7 | HUD 側の `dock` 改名 | L |
 | 8 | 収容判定の掃引化 / ワープゲート | J |
 
