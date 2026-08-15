@@ -1,51 +1,42 @@
 # Future — roadmap
 
-Ordered by what unblocks what, not by appeal. Items 1–2 are freely actionable; item 3 is
+Ordered by what unblocks what, not by appeal. Item 1 is freely actionable; item 2 is
 blocked on a design question that belongs to hedalu244.
+
+> The engine/data split that used to head this list is **done** — see [done.md](done.md) §4.
+> `BgmTrack` now carries each track's whole structure, so everything below is edited as data
+> unless it says otherwise.
 
 ---
 
-## 1. Split the BGM engine from the composition data
-
-**Refactoring that directly serves the artistic goals.** `Bgm.scheduleStep` currently hardcodes
-a lot of *composition* into engine code:
-
-- the transposition table `[0, 2, 3, 1]` and the 192-step macro cycle
-- the 768-step global octave shift
-- pad cadence (`step % 32`), drone cadence (`step % 64`)
-- the sparkle trigger (`step % 8 === 5`) and its three hand-scheduled echo offsets
-
-Those are per-track artistic decisions living in shared engine code. Moving them into the
-`BgmTrack` schema makes the five existing tracks genuinely distinct from each other and gives
-every later idea a place to hook into. Low-risk, self-contained, no other module touches it.
-
-Note the current structure while editing: the two pulse patterns have **coprime lengths**
-(16 vs 12 steps) so the voices phase against each other — that is the Steve Reich idea the
-whole piece is built on. The three nesting tiers give a 1536-step super-cycle. Don't
-flatten any of that while parameterizing it.
-
-## 2. Artistic work on the BGM
+## 1. Artistic work on the BGM
 
 All of it must stay **asset-free** — synthesized at runtime, no audio files. That is a
 deliberate design choice, recorded in `DEVELOP/SPEC.md` §8, and worth keeping.
 
+- **Differentiate the five tracks.** The split landed with every track carrying identical
+  structure values (that was deliberate — it kept the refactor provably sound-identical), so
+  the tracks still differ only in pitch material and tempo. Giving each its own transposition
+  plan, cadences and levels is now a pure data edit in `bgm-tracks.ts`, and it is the cheapest
+  real improvement available.
 - **Track transitions.** The ~5-minute switch is currently a hard cut mid-phase. Either
-  crossfade, or switch only on a macro-cycle boundary so the new track enters in phase. Small
-  and self-contained.
+  crossfade, or switch only on a macro-cycle boundary so the new track enters in phase. The
+  super-cycle length is now derivable from the track data (the `transpose`/`octave` cycles),
+  which is what a phase-aligned switch needs.
 - **Stereo.** Everything currently sums mono into `ctx.destination`. A shared output bus with
   a `StereoPannerNode` per voice widens the BGM cheaply — **and that same bus is the
-  foundation the mic system (item 3) needs**, so it pays for itself twice. Probably the
+  foundation the mic system (item 2) needs**, so it pays for itself twice. Probably the
   highest-value single change here.
 - **Asset-free effects.** A `ConvolverNode` reverb needs no files if the impulse response is
   generated from decaying noise at unlock time. A feedback-delay node could replace the
-  sparkle's three hand-scheduled echoes.
+  sparkle echoes, which are still scheduled one tone per echo (`SparkleLayer.echoes`).
 - **Adaptive music** (layering intensity on game state — combat vs. map view, reentry heat,
   time warp). Attractive, but this is a *wiring* question as much as an audio one: `Bgm` would
   need a per-frame `update(...)` called from the orchestration with explicit arguments, in the
   spirit of refactor-fixed rule 18 (read shared state fields passed in; never reach into
   input-source-specific state). **Sketch it and propose the wiring before building it.**
 
-## 3. The mic system — BLOCKED, do not start without asking
+## 2. The mic system — BLOCKED, do not start without asking
 
 This is `memos/hedalu244/sfx_todo.md`'s remaining content, and the biggest piece left:
 positional world SFX taking a mic position as an argument, with distance attenuation, panning
