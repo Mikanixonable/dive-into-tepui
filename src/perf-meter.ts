@@ -82,7 +82,6 @@ export class PerfMeter {
 
   // ?perf=1 が付いていれば起動直後から窓を開く。
   constructor(
-    private readonly counts: PerfCountSource,
     private readonly root: HTMLElement,
     private readonly renderer: WebGPURenderer,
     private readonly sections: FrameSections,
@@ -142,7 +141,8 @@ export class PerfMeter {
   }
 
   // このフレームの update/sync/render 所要時間を積算し、表示更新のタイミングなら flush する。
-  record(updateMs: number, syncMs: number, renderMs: number, now: number): void {
+  // counts は同じフレームで計測対象になっていた Game 自身が渡す。
+  record(counts: PerfCountSource, updateMs: number, syncMs: number, renderMs: number, now: number): void {
     this.addSample(this.updateStats, updateMs);
     this.addSample(this.syncStats, syncMs);
     this.addSample(this.renderStats, renderMs);
@@ -155,7 +155,7 @@ export class PerfMeter {
     }
     for (const [i, stats] of this.gpuStats.entries()) this.addSample(stats, this.gpu.msOf(i as GpuPassId));
     this.frames++;
-    this.flush(now);
+    this.flush(counts, now);
   }
 
   private addSample(stats: PhaseStats, value: number): void {
@@ -186,10 +186,10 @@ export class PerfMeter {
   }
 
   // 500ms ごとに蓄積した計測値から表示行を組み、窓へ反映する。
-  private flush(now: number): void {
+  private flush(counts: PerfCountSource, now: number): void {
     if (!this.win || now - this.lastFlush < 500) return;
     const n = Math.max(1, this.frames);
-    const c = this.counts.perfCounts();
+    const c = counts.perfCounts();
     this.rows = this.buildRows(c, n, now - this.lastFlush);
     this.win.syncRows(this.rows);
     // 次の集計期間へ向けてリセットする
