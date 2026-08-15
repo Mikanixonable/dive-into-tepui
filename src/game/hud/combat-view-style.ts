@@ -14,6 +14,8 @@ export const COMBAT_VIEW_STYLE = `
   backdrop-filter: blur(14px) saturate(82%);
   -webkit-backdrop-filter: blur(14px) saturate(82%);
   box-shadow: 0 12px 30px var(--shade-1);
+  max-height: var(--combat-panel-max-h);
+  overflow-y: auto;
 }
 #hud:not(.dock-mode) .hud-combat-root.active .hud-rail-right > #hud-status,
 #hud:not(.dock-mode) .hud-combat-root.active .hud-rail-left > #hud-orbit,

@@ -180,6 +180,16 @@ class SpatialGridPlane {
     this.label.textContent = `${bestLevel.spacing >= SPATIAL_GRID_SPACING ? '⊞' : '＋'} ${spacingLabel(bestLevel.spacing)}`;
     this.label.style.display = '';
   }
+
+  // 全ズーム段の線を親から外して解放し、スケールラベルを document.body から外す。
+  dispose(): void {
+    for (const level of this.levels) {
+      level.line.removeFromParent();
+      level.line.geometry.dispose();
+      level.material.dispose();
+    }
+    this.label.remove();
+  }
 }
 
 export class SpatialGrid {
@@ -202,5 +212,12 @@ export class SpatialGrid {
     this.ecliptic.sync(visible && ecliptic, ECLIPTIC_BASIS, origin, floatingOrigin, camera, cameraDistance);
     this.equator.sync(visible && equator, EQUATOR_BASIS, origin, floatingOrigin, camera, cameraDistance);
     this.moonOrbit.sync(visible && moonOrbit, moonBasis, origin, floatingOrigin, camera, cameraDistance);
+  }
+
+  // 3面ぶんの SpatialGridPlane を解放する。
+  dispose(): void {
+    this.ecliptic.dispose();
+    this.equator.dispose();
+    this.moonOrbit.dispose();
   }
 }

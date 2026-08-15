@@ -248,6 +248,8 @@ export class PredictPanel {
   private readonly jumpEditEl: HTMLElement;
   private readonly jumpInput: DurationValueInput;
   private readonly ticks: HTMLElement;
+  private readonly wrap: HTMLElement;
+  private readonly unsubscribeCollapsedView: () => void;
 
   private editingJump = false;
   private sliderSteps = 1000;
@@ -336,19 +338,19 @@ export class PredictPanel {
     this.panel.appendChild(this.ticks);
 
     // トグルとバー本体を1つの縦積み flex にまとめ、バーを畳んでもトグルだけがその場に残るようにする。
-    const wrap = document.createElement('div');
-    wrap.id = 'hud-predict-wrap';
-    wrap.appendChild(this.panel);
-    const collapseToggle = buildCollapseToggle(wrap, 'hud-predict-toggle', '', this.panel, PREDICT_TOGGLE_LABELS);
+    this.wrap = document.createElement('div');
+    this.wrap.id = 'hud-predict-wrap';
+    this.wrap.appendChild(this.panel);
+    const collapseToggle = buildCollapseToggle(this.wrap, 'hud-predict-toggle', '', this.panel, PREDICT_TOGGLE_LABELS);
     const applyCollapsedState = (): void => {
       const collapsed = loadPanelCollapsed('hud-predict') ?? false;
       this.panel.classList.toggle('collapsed', collapsed);
       syncCollapseToggle(collapseToggle, this.panel, PREDICT_TOGGLE_LABELS);
     };
     applyCollapsedState();
-    onPanelCollapsedViewChange(applyCollapsedState);
+    this.unsubscribeCollapsedView = onPanelCollapsedViewChange(applyCollapsedState);
     collapseToggle.addEventListener('click', () => savePanelCollapsed('hud-predict', this.panel.classList.contains('collapsed')));
-    root.appendChild(wrap);
+    root.appendChild(this.wrap);
   }
 
   // state をパネルへ反映する。編集中の行はユーザー入力を壊さないよう再描画しない。
@@ -367,6 +369,12 @@ export class PredictPanel {
 
   private setVisible(visible: boolean): void {
     this.panel.classList.toggle('hidden', !visible);
+  }
+
+  // パネルの DOM を取り除き、折りたたみ状態変化の購読を解く。
+  public dispose(): void {
+    this.unsubscribeCollapsedView();
+    this.wrap.remove();
   }
 
   // スライダーの段階数・つまみ位置・未予測区間の表示を反映する。
