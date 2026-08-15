@@ -24,6 +24,11 @@ import { PlayerThrottle } from '../player/player-throttle';
 import type { Controllable } from './controllable';
 import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
+import { ThrustEffects } from '../player/thrust-effects';
+import { RcsEffects } from '../player/rcs-effects';
+import type { CameraSystem } from '../camera/camera-system';
+import type { FloatingOrigin } from '../floating-origin';
+import type { MapVisibility } from '../celestial/map-visibility';
 
 // 基地のドッキングハッチのローカル位置および外向き法線ベクトル (中腹ドッキングパレット上部)
 export const BASE_HATCH_LOCAL_POS: Vec3 = v3(0, 8.5, 0);
@@ -80,6 +85,8 @@ export class Base extends GameEntity implements Controllable {
 
   // --- Controllable 実装 ---
   readonly throttle: PlayerThrottle;
+  readonly thrustEffects: ThrustEffects;
+  readonly rcsEffects: RcsEffects;
   private baseFuel: number;
   get totalThrust(): number { return C.BASE_THRUST; }
   get totalTorque(): number { return C.BASE_TORQUE; }
@@ -140,6 +147,8 @@ export class Base extends GameEntity implements Controllable {
     this.name = name;
     this.baseFuel = 'saved' in init && init.saved.fuel !== undefined ? init.saved.fuel : C.BASE_MAX_FUEL;
     this.throttle = new PlayerThrottle(hud, 'saved' in init ? init.saved.throttle : undefined);
+    this.thrustEffects = new ThrustEffects(scene, worldSfx);
+    this.rcsEffects = new RcsEffects(scene, worldSfx);
     this.orbitLine = new OrbitLine(C.COLOR_BASE_ORBIT_LINE, 0.35, C.LINE_RENDER_ORDER.shipOrbit);
     this.equatorNodes = new EquatorNodeMarkerPair(this, markerManager);
     this.marker = new EntityMarker(this, markerManager, 'mk-base', ENTITY_GLYPH.ship);
@@ -264,9 +273,36 @@ export class Base extends GameEntity implements Controllable {
     });
   }
 
+  // 基地のメッシュ・推力プルーム・RCS パフ・音・軌道線を同期する。
+  syncBase(
+    fo: FloatingOrigin,
+    camera: CameraSystem,
+    displayTime: number,
+    isControlled: boolean,
+    visibility: MapVisibility | null = null,
+  ): void {
+    const displayState = this.displayState(displayTime);
+    const mapEntityVisible = !camera.overviewMode || visibility === null || visibility.category;
+    this.renderObject.visible = displayState !== null && mapEntityVisible;
+    if (displayState !== null) {
+      this.renderObject.position.copy(fo.RtoThreeV3(displayState.r));
+      this.renderObject.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
+    }
+
+    const effectState = displayState ?? this.state;
+    const effectVisible = displayState !== null && mapEntityVisible;
+    const maxAccel = this.mass > 0 ? this.totalThrust / this.mass : 0;
+    this.thrustEffects.sync(fo, effectState.r, this.thrust, maxAccel, effectVisible, isControlled, camera, 6.0);
+    this.rcsEffects.sync(fo, effectState.r, this.torque, this.att, effectVisible, camera, isControlled, 6.0);
+  }
+
   dispose(): void {
     super.dispose();
-    this.scene?.remove(this.orbitLine.line);
+    if (this.scene) {
+      this.thrustEffects.dispose(this.scene);
+      this.rcsEffects.dispose(this.scene);
+      this.scene.remove(this.orbitLine.line);
+    }
     this.orbitLine.dispose();
     // 格納艦は entities.players から外れているため、ここでしか回収できない。
     for (const entry of this.baseState.dockedShips) entry.player.dispose();
