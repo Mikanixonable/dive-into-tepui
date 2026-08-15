@@ -6,6 +6,7 @@ import { Input } from '../input/input';
 import { KEY_MAPPING as K, KeyBinding } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
 import type { ThrottleSaveData } from '../save-data';
+import type { Controllable } from '../game-entity/controllable';
 
 // 並進6方向の連打ラッチ判定対象キー一覧。
 const THRUST_KEYS: readonly KeyBinding[] = [K.thrustForward, K.thrustBackward, K.thrustLeft, K.thrustRight, K.thrustUp, K.thrustDown];
@@ -95,7 +96,7 @@ export class PlayerThrottle {
 
   // 入力から機体座標系の推力加速度を組み立てて返す。入力が無ければ null。
   // ベルト物理が使う推力加速度の表示用状態も併せて更新する。
-  updateThrustState(input: Input, att: Attitude, simDt: number, ship: import('../game-entity/ship').Ship): Vec3 | null {
+  updateThrustState(input: Input, att: Attitude, simDt: number, ship: Controllable): Vec3 | null {
     const thrust = this.buildThrust(input, att.q, ship, simDt);
     if (!thrust) {
       this.stopThrust();
@@ -144,7 +145,7 @@ export class PlayerThrottle {
   }
 
   // 6方向の並進入力から機体座標系の推力加速度ベクトルを求める。入力が無ければ null。
-  private buildThrust(input: Input, q: Attitude['q'], ship: import('../game-entity/ship').Ship, simDt: number): Vec3 | null {
+  private buildThrust(input: Input, q: Attitude['q'], ship: Controllable, simDt: number): Vec3 | null {
     if (isThrustKillSwitchActive(input)) return null;
     const axX = (this.isThrustHeld(input, K.thrustLeft) ? 1 : 0) + (this.isThrustHeld(input, K.thrustRight) ? -1 : 0);
     const axY = (this.isThrustHeld(input, K.thrustUp) ? 1 : 0) + (this.isThrustHeld(input, K.thrustDown) ? -1 : 0);
@@ -187,7 +188,7 @@ export class PlayerThrottle {
     fineAttitude: boolean,
     dt: number,
     simDt: number,
-    ship: import('../game-entity/ship').Ship,
+    ship: Controllable,
     onProgradeHoldReleased: () => void,
   ): Vec3 {
     const inertia = att.inertia;

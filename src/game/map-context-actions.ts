@@ -71,6 +71,13 @@ export class MapContextActions {
   setDocking(docking: Docking): void { this.docking = docking; }
   private docking: Docking | null = null;
 
+  setControlledBaseHandler(handler: (base: Base | null) => void, getControlledBase: () => Base | null): void {
+    this.controlBaseHandler = handler;
+    this.getControlledBase = getControlledBase;
+  }
+  private controlBaseHandler: ((base: Base | null) => void) | null = null;
+  private getControlledBase: (() => Base | null) | null = null;
+
   // 候補集合(pickables)と、メニュー項目の実行先を参照として受け取る。
   constructor(
     private readonly hud: Hud,
@@ -595,6 +602,7 @@ export class MapContextActions {
       itemsFor: (target) => {
         const base = this.entities.findBase(target.id);
         const activeShip = this.activePlayers.current;
+        const isControlled = base && this.getControlledBase ? this.getControlledBase() === base : false;
         const subLabel = base
           ? `基地 / 所持金: ${base.baseState.money.toLocaleString()} Cr / 格納船: ${base.baseState.dockedShips.length}隻`
           : '基地';
@@ -609,8 +617,15 @@ export class MapContextActions {
           }
         }
 
+        const controlItem: readonly MenuItem<MenuAction>[] = base
+          ? [isControlled
+            ? { label: '操作を解除', act: 'deactivateBase' }
+            : { label: '基地を操作', act: 'activateBase' }]
+          : [];
+
         return [
           { type: 'header', label: base?.name ?? target.name, subLabel },
+          ...controlItem,
           ...dockItems,
           { label: '基地ビューを開く', act: 'openDock' },
           MenuCommon.focus(),
@@ -623,7 +638,11 @@ export class MapContextActions {
       run: (act, target) => {
         const base = this.entities.findBase(target.id);
         const activeShip = this.activePlayers.current;
-        if (act === 'dock') {
+        if (act === 'activateBase') {
+          if (base && this.controlBaseHandler) this.controlBaseHandler(base);
+        } else if (act === 'deactivateBase') {
+          if (this.controlBaseHandler) this.controlBaseHandler(null);
+        } else if (act === 'dock') {
           if (activeShip && base) this.docking?.dockTo(activeShip, base);
         } else if (act === 'undock') {
           if (activeShip) this.docking?.undock(activeShip);
@@ -633,6 +652,7 @@ export class MapContextActions {
           if (activeShip && base) this.docking?.openTransfer(activeShip, base);
         } else if (act === 'delete') {
           if (base) {
+            if (this.getControlledBase?.() === base) this.controlBaseHandler?.(null);
             this.docking?.clearActiveBaseIf(base);
             base.alive = false;
           }

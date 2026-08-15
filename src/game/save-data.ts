@@ -96,11 +96,17 @@ export interface BaseSaveData {
   name?: string;
   r: Vec3SaveData;
   v: Vec3SaveData;
+  // 姿勢と角速度。旧セーブには無いため任意。
+  q?: QuatSaveData;
+  w?: Vec3SaveData;
   money: number;
+  // 基地の燃料。旧セーブには無いため任意。
+  fuel?: number;
   inventory: AnyPart[];
   // 格納中の艦は entities.players に含まれないため、艦本体(軌道状態・parts・弾薬・計画)を
   // まるごとここへ保存する。復元時に Player を作り直し、DockedShipEntry.player を張り直す。
   dockedShips: PlayerSaveData[];
+  throttle?: ThrottleSaveData;
 }
 
 export interface EnemySaveData extends EntitySaveData {
