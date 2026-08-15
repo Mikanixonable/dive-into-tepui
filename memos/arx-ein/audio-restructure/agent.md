@@ -14,7 +14,7 @@ read this file first, then whichever of the linked files the task needs.
 
 `src/audio/` is the shared substrate at the root plus one folder per concern:
 
-```
+```text
 audio/
   audio-engine.ts        AudioContext lifecycle (unlock), shared noise buffer,
                          and the tone/noiseBurst primitive voices  (70)
