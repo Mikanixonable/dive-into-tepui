@@ -30,8 +30,8 @@ import type { CameraSystem } from '../camera/camera-system';
 import type { FloatingOrigin } from '../floating-origin';
 import type { MapVisibility } from '../celestial/map-visibility';
 
-// 基地のドッキングハッチのローカル位置および外向き法線ベクトル (中腹ドッキングパレット上部)
-export const BASE_HATCH_LOCAL_POS: Vec3 = v3(0, 8.5, 0);
+// 基地のドッキングハッチのローカル位置および外向き法線ベクトル (中腹ドッキングパレット上部, 3倍スケール対応)
+export const BASE_HATCH_LOCAL_POS: Vec3 = v3(0, 25.5, 0);
 export const BASE_HATCH_LOCAL_NORMAL: Vec3 = v3(0, 1, 0);
 
 export interface BaseDockSlot {
@@ -41,10 +41,10 @@ export interface BaseDockSlot {
 }
 
 export const BASE_DOCK_SLOTS: readonly BaseDockSlot[] = [
-  { id: 0, localPos: v3(-11, 7.5, -14), localNormal: v3(0, 1, 0) },
-  { id: 1, localPos: v3(11, 7.5, -14), localNormal: v3(0, 1, 0) },
-  { id: 2, localPos: v3(-11, 7.5, 14), localNormal: v3(0, 1, 0) },
-  { id: 3, localPos: v3(11, 7.5, 14), localNormal: v3(0, 1, 0) },
+  { id: 0, localPos: v3(-33, 22.5, -42), localNormal: v3(0, 1, 0) },
+  { id: 1, localPos: v3(33, 22.5, -42), localNormal: v3(0, 1, 0) },
+  { id: 2, localPos: v3(-33, 22.5, 42), localNormal: v3(0, 1, 0) },
+  { id: 3, localPos: v3(33, 22.5, 42), localNormal: v3(0, 1, 0) },
 ];
 
 // 収容中の艦のエントリ。parts は player.parts と同一参照(修理は艦へ直接反映される)。
@@ -141,8 +141,8 @@ export class Base extends GameEntity implements Controllable {
     } else if (att && !att.inertia) {
       this.att = { ...this.att, inertia: v3(C.BASE_INERTIA_X, C.BASE_INERTIA_Y, C.BASE_INERTIA_Z) };
     }
-    this.mass = 1e6;
-    this.radius = 110;
+    this.mass = 3e6;
+    this.radius = 330;
     this.collides = true;
     this.name = name;
     this.baseFuel = 'saved' in init && init.saved.fuel !== undefined ? init.saved.fuel : C.BASE_MAX_FUEL;

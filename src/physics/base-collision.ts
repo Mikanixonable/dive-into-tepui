@@ -38,8 +38,8 @@ interface BVHNode {
 }
 
 export class BaseCollisionGeometry {
-  // 外接球半径 [m] (早期棄却判定用)
-  public readonly outerRadius = 110;
+  // 外接球半径 [m] (早期棄却判定用 - 3倍スケール対応)
+  public readonly outerRadius = 330;
 
   // LOD0: フルポリゴン BVH
   private readonly lod0Triangles: Triangle[] = [];
@@ -49,14 +49,14 @@ export class BaseCollisionGeometry {
   private readonly lod1Triangles: Triangle[] = [];
   private lod1BVH: BVHNode | null = null;
 
-  // LOD2: 複合 OBB (主要3ブロック)
+  // LOD2: 複合 OBB (主要3ブロック - 3倍スケール対応)
   private readonly lod2OBBs: OBB[] = [
-    // 主要部 (居住区・農場)
-    { center: v3(0, 0, 75), halfSizes: v3(12, 12, 28) },
+    // 主要部 (居住区・研究ドーム)
+    { center: v3(0, 0, 225), halfSizes: v3(36, 36, 84) },
     // トラス・ドック部
-    { center: v3(0, 0, 0), halfSizes: v3(22, 10, 43) },
+    { center: v3(0, 0, 0), halfSizes: v3(66, 30, 129) },
     // カウンターウェイト部
-    { center: v3(0, 0, -75), halfSizes: v3(18, 18, 36) },
+    { center: v3(0, 0, -225), halfSizes: v3(54, 54, 108) },
   ];
 
   constructor() {
