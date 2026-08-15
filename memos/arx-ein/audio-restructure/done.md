@@ -272,6 +272,21 @@ shape, different starting infinitesimal — inaudible, and not claimed as bit-id
 
 ---
 
+## 9. Preview no longer rotates
+
+The settings-view 試聴 shared `pump()`'s 5-minute rotation, so auditioning a track long enough
+swapped it. With the conductor role explicit this is one flag: `Bgm.rotates`, set true by
+`start()` and cleared by `playTrack` right after.
+
+It belongs to the conductor, not to `TrackPlayback` — the playback has no opinion about why it
+is sounding — and it is not two playback modules, which was the first idea floated.
+
+Checked with a fake `AudioContext` over 700 simulated seconds, `Math.random` pinned: preview
+stays on `[0]`; ambient rotates `[2,1,2]`; and stopping a preview then resuming rotates again
+`[0,2,1]`, so opting out does not leak into normal playback.
+
+---
+
 ## The rebase onto the new `main` (`5ff773e4`)
 
 Upstream landed the deferred rendering pipeline while this branch was in flight, and it

@@ -23,6 +23,8 @@ export class Bgm {
   private trackIdx = 0;
   private trackStartTime = 0;
   private autoStarted = false;
+  // 曲送りの対象か。試聴は選んだ曲を鳴らし続けるので、その間だけ false になる。
+  private rotates = true;
 
   // 保存済みの音量設定を読み込む。
   constructor(private readonly engine: AudioEngine) {
@@ -75,6 +77,8 @@ export class Bgm {
     const safeIndex = Math.max(0, Math.min(BGM_TRACKS.length - 1, Math.floor(index)));
     this.stop(0.05);
     this.start(safeIndex);
+    // 試聴は選んだ曲そのものを聴くためのものなので、居座っても曲送りしない。
+    this.rotates = false;
   }
 
   // 試聴停止後や、ゲーム中の BGM を再開する。
@@ -101,6 +105,7 @@ export class Bgm {
     const index = trackIdx === undefined
       ? Math.floor(Math.random() * BGM_TRACKS.length)
       : Math.max(0, Math.min(BGM_TRACKS.length - 1, trackIdx));
+    this.rotates = true;
     this.openPlayback(index, ctx, ctx.currentTime + START_DELAY_SEC);
     this.playback?.fadeIn(FADE_IN_SEC);
     this.timer = setInterval(() => this.pump(), PUMP_INTERVAL_MS);
@@ -140,7 +145,7 @@ export class Bgm {
     // クロスフェードは挟まない。ミニマルミュージックなので、パターンが切り替わるだけでも
     // フェーズの変化として違和感なくアンビエントに馴染む。次の曲は前の曲が刻み終えた
     // 時刻から続けて始めるので、拍が途切れることもない。
-    if (ctx.currentTime - this.trackStartTime > TRACK_ROTATION_SEC) {
+    if (this.rotates && ctx.currentTime - this.trackStartTime > TRACK_ROTATION_SEC) {
       const startAt = this.playback?.nextStepTime ?? ctx.currentTime + START_DELAY_SEC;
       this.openPlayback(this.nextTrackIndex(), ctx, startAt);
     }

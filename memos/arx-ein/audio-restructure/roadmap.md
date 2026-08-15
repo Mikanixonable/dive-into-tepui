@@ -148,14 +148,13 @@ building it before either is a layer with one implementation and no transitions.
 2. **Playback extraction** (`TrackPlayback`), no crossfade yet.
 3. **Crossfade**, once 2c's open question is settled.
 
-### 2e. Known bug this architecture should absorb
+### 2e. Known bug this architecture absorbed
 
-**試聴 in the settings view rotates after `TRACK_ROTATION_SEC`.** `pump()` applies the
-5-minute rotation regardless of how playback started, so auditioning a track long enough
-swaps it for another — not what a sound test does. The fix is not two playback modules:
-rotation is a *policy the conductor applies to the ambient playback*, and a preview playback
-simply is not subject to it. Until the playback split lands, one flag on `Bgm` (set by
-`playTrack`, cleared by `autoStart`/`resume`) covers it.
+**試聴 in the settings view rotated after `TRACK_ROTATION_SEC`** — auditioning a track long
+enough swapped it for another, which is not what a sound test does. Fixed once the conductor
+role was explicit: rotation is a policy `Bgm` applies to the ambient playback, and `playTrack`
+opts out of it. Not two playback modules, and not a property of `TrackPlayback` — the playback
+does not care why it is sounding.
 
 ## 3. The mic system — BLOCKED, do not start without asking
 
