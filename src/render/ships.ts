@@ -545,7 +545,6 @@ export function buildBaseModel(): THREE.Group {
   const redTrussMat = new THREE.MeshStandardMaterial({ color: 0x581111, flatShading: true, roughness: 0.4, metalness: 0.5 }); // 暗い赤基調主トラス構造
   const grayFrameMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, flatShading: true, roughness: 0.2, metalness: 0.35 });  // 白基調外骨格
   const whiteModuleMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.15, metalness: 0.25 }); // 純白セラミック居住区
-  const glassMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.35, roughness: 0.1, metalness: 0.9 });
 
   // ディテール追加用マテリアル (白系基調のライトアロイ)
   const conduitMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, flatShading: true, roughness: 0.3, metalness: 0.7 });
@@ -847,17 +846,29 @@ export function buildBaseModel(): THREE.Group {
     }
   }
 
-  // 研究所・天体観測ドーム (純粋な強化ガラス観測デッキ - 0.7倍 5.6m)
-  const obsDome = new THREE.Mesh(new THREE.SphereGeometry(5.6, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2), glassMat);
-  obsDome.position.set(0, 0, mainCenterZ + 25);
-  obsDome.rotation.x = -Math.PI / 2;
-  g.add(obsDome);
+  // 【先端レドーム: 反五角台形双角塔 (Gyroelongated Pentagonal Birotunda Radome, 直径 10.2m = 居住区の2/3)】
+  const radomeRadius = 5.1;
+  const radomeGroup = new THREE.Group();
+  radomeGroup.position.set(0, 0, mainCenterZ + 25);
 
-  // 観測ドーム内部の研究コンソール
-  const obsCore = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 5, 10), sensorPodMat);
-  obsCore.position.set(0, 0, mainCenterZ + 23);
-  obsCore.rotation.x = Math.PI / 2;
-  g.add(obsCore);
+  // 反五角台形双角塔 (Johnson solid J48) 幾何学多面体メッシュ
+  const birotundaGeo = new THREE.IcosahedronGeometry(radomeRadius, 1);
+  const birotundaMesh = new THREE.Mesh(birotundaGeo, whiteModuleMat);
+  radomeGroup.add(birotundaMesh);
+
+  // 幾何学多面体パネル継手フレーム (Johnson Solid の頂点・稜線グリッド)
+  const wireGeo = new THREE.WireframeGeometry(birotundaGeo);
+  const wireLineMat = new THREE.LineBasicMaterial({ color: 0x475569 });
+  const wireLines = new THREE.LineSegments(wireGeo, wireLineMat);
+  radomeGroup.add(wireLines);
+
+  // レドーム土台のマウントアダプターカラー
+  const radomeCollar = new THREE.Mesh(new THREE.CylinderGeometry(5.2, 5.5, 1.4, 10), grayFrameMat);
+  radomeCollar.position.set(0, 0, mainCenterZ + 19.5);
+  radomeCollar.rotation.x = Math.PI / 2;
+  g.add(radomeCollar);
+
+  g.add(radomeGroup);
 
   // 【センサー・アンテナ群 (磁気センサーブーム)】
   // 2) 磁気センサー (Magnetometer Boom - 長尺ブーム先端の3軸センサー)
@@ -888,6 +899,55 @@ export function buildBaseModel(): THREE.Group {
   const cwCore = new THREE.Mesh(new THREE.BoxGeometry(14, 14, 136), grayFrameMat);
   cwCore.position.set(0, 0, cwCenterZ);
   g.add(cwCore);
+
+  // 【貨物部トラス接続部: 宇宙ステーション風 分節式小型居住モジュール & 4基の多面体状タンク】
+  const habJunctionGroup = new THREE.Group();
+  habJunctionGroup.position.set(0, 0, -112);
+
+  // 1) 筒状構造が3分節して接合したモジュール (Segmented Habitation Cylinders)
+  for (let s = 0; s < 3; s++) {
+    const segZ = -6 + s * 6;
+    const segCylinder = new THREE.Mesh(new THREE.CylinderGeometry(2.8, 2.8, 4.8, 12), whiteModuleMat);
+    segCylinder.position.set(0, 0, segZ);
+    segCylinder.rotation.x = Math.PI / 2;
+    habJunctionGroup.add(segCylinder);
+
+    const segRing = new THREE.Mesh(new THREE.CylinderGeometry(3.1, 3.1, 0.6, 12), conduitJointMat);
+    segRing.position.set(0, 0, segZ);
+    segRing.rotation.x = Math.PI / 2;
+    habJunctionGroup.add(segRing);
+
+    for (let wA = 0; wA < Math.PI * 2; wA += Math.PI / 2) {
+      const pWin = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.5, 0.3), windowGlowMat);
+      pWin.position.set(Math.cos(wA) * 2.82, Math.sin(wA) * 2.82, segZ);
+      habJunctionGroup.add(pWin);
+    }
+  }
+
+  // 2) 4基の小型多面体状タンク (Polyhedral Fuel/Gas Tanks)
+  const polyTankGeo = new THREE.IcosahedronGeometry(2.2, 0);
+  const polyTankPositions: readonly [number, number][] = [
+    [-5.8, -5.8],
+    [ 5.8, -5.8],
+    [-5.8,  5.8],
+    [ 5.8,  5.8],
+  ];
+
+  for (const [ptX, ptY] of polyTankPositions) {
+    const pTank = new THREE.Mesh(polyTankGeo, tankMats[0]!);
+    pTank.position.set(ptX, ptY, 0);
+    habJunctionGroup.add(pTank);
+
+    const mountStrut = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 3.0, 6), conduitMat);
+    mountStrut.position.set(ptX * 0.7, ptY * 0.7, 0);
+    mountStrut.quaternion.setFromUnitVectors(
+      new THREE.Vector3(0, 1, 0),
+      new THREE.Vector3(ptX, ptY, 0).normalize()
+    );
+    habJunctionGroup.add(mountStrut);
+  }
+
+  g.add(habJunctionGroup);
 
   // 【貨物区本体の表面凹凸ディテール (配線・計測デバイス箱・パネル溝)】
   // 1) 4隅の長尺配線・流体パイプライン
