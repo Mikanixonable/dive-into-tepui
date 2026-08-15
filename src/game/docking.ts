@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import * as C from './const';
-import { v3, len, sub } from '../physics/vec3';
+import { v3, len, sub, dot, norm } from '../physics/vec3';
 import { kinematicState } from '../physics/kinematic-state';
 import { Hud } from './hud/hud';
 import { DockView } from './hud/dock-view';
@@ -70,13 +70,28 @@ export class Docking {
     return target;
   }
 
-  // ドッキング可能判定 (距離・相対速度)
+  // ドッキング可能判定 (距離・ハッチ前方正面判定・相対速度)
   canDock(ship: Player, target: GameEntity): boolean {
     if (!ship.alive || !target.alive || ship === target) return false;
     if (this.getDockedTarget(ship) === target) return false;
-    const dist = len(sub(ship.state.r, target.state.r));
     const relSpeed = len(sub(ship.state.v, target.state.v));
-    return dist <= C.DOCK_CAPTURE_DIST && relSpeed <= C.DOCK_CAPTURE_REL_V;
+    if (relSpeed > C.DOCK_CAPTURE_REL_V) return false;
+
+    if (target instanceof Base) {
+      // 基地の場合は特定のドッキングハッチ前方エリア(距離80m以内・正面60度コーン内)でのみドッキング可能
+      const hatchPos = target.getHatchWorldPos();
+      const hatchNormal = target.getHatchWorldNormal();
+      const distToHatch = len(sub(ship.state.r, hatchPos));
+      if (distToHatch > C.HATCH_DOCK_MAX_DIST) return false;
+
+      const dirToShip = norm(sub(ship.state.r, hatchPos));
+      const alignment = dot(dirToShip, hatchNormal);
+      return alignment >= C.HATCH_DOCK_MIN_ALIGNMENT;
+    }
+
+    // 船対船ドッキングは従来の距離判定
+    const dist = len(sub(ship.state.r, target.state.r));
+    return dist <= C.DOCK_CAPTURE_DIST;
   }
 
   // 船または基地への物理ドッキングを実行。

@@ -3,7 +3,8 @@ import { GameEntity } from './game-entity';
 import { EntityIdAllocator } from './entity-id';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Attitude } from '../../physics/attitude';
-import { v3 } from '../../physics/vec3';
+import { qRotate } from '../../physics/attitude';
+import { add, v3, Vec3 } from '../../physics/vec3';
 import type { AnyPart, Part } from './parts';
 import { partFromSaveData } from './parts';
 import { Player } from '../player/player';
@@ -18,6 +19,10 @@ import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 import type { BaseSaveData } from '../save-data';
 import { OrbitLine } from '../orbit-line';
 import * as C from '../const';
+
+// 基地のドッキングハッチのローカル位置および外向き法線ベクトル
+export const BASE_HATCH_LOCAL_POS: Vec3 = v3(0, 32.5, 0);
+export const BASE_HATCH_LOCAL_NORMAL: Vec3 = v3(0, 1, 0);
 
 // 収容中の艦のエントリ。parts は player.parts と同一参照(修理は艦へ直接反映される)。
 // hp/maxHp は艦一覧タブ表示用の集計値で、修理のたびに書き戻す。
@@ -99,6 +104,16 @@ export class Base extends GameEntity {
         };
       });
     }
+  }
+
+  // 基地のドッキングハッチのワールド座標を取得する
+  getHatchWorldPos(): Vec3 {
+    return add(this.state.r, qRotate(this.att.q, BASE_HATCH_LOCAL_POS));
+  }
+
+  // 基地のドッキングハッチのワールド正面法線ベクトルを取得する
+  getHatchWorldNormal(): Vec3 {
+    return qRotate(this.att.q, BASE_HATCH_LOCAL_NORMAL);
   }
 
   dispose(): void {
