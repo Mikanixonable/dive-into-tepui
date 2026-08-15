@@ -384,6 +384,15 @@ export class CreativeStage extends Stage {
     return '';
   }
 
+  // 配置プレビューの軌道線・設定パネル・艦艇配置パネルを片付けたうえで super.dispose() を呼ぶ。
+  dispose(): void {
+    super.dispose();
+    this.previewOrbitLine.line.removeFromParent();
+    this.previewOrbitLine.dispose();
+    this.creativeOptionsPanel.remove();
+    this.placerPanel.dispose();
+  }
+
   serialize(): CreativeStageSaveData {
     return {
       ...super.serialize(),
