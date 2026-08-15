@@ -298,4 +298,63 @@ export const BGM_TRACKS: BgmTrack[] = [
       },
     },
   },
+  {
+    // The Original のアレンジ。ステレオ機能のテストも兼ねる。
+    kind: 'phasing',
+    name: 'Imitation',
+    instruments: [
+      { kind: 'tone', id: 'voiceA', params: { wave: 'sine', level: 0.05, attackSec: 0.015, pan: -0.5 } },
+      { kind: 'tone', id: 'voiceA-harmonic', params: { wave: 'triangle', level: 0.02, attackSec: 0.015, pan: -0.5 } },
+      { kind: 'tone', id: 'voiceB', params: { wave: 'triangle', level: 0.05, attackSec: 0.02, pan: 0.5 } },
+      { kind: 'tone', id: 'pads', params: { wave: 'triangle', level: 0.02, attackSec: 4.5, pan: -0.2 } },
+      { kind: 'tone', id: 'drone', params: { wave: 'sine', level: 0.04, attackSec: 6, pan: 0 } },
+      { kind: 'tone', id: 'sparkle', params: { wave: 'square', level: 0.02, attackSec: 0.01, pan: 0.2 } },
+    ],
+    params: {
+      stepDur: 0.3,
+      scale: [146.83, 164.81, 174.61, 220, 261.63, 293.66, 329.63, 345.22], // D3, E3, F3, A3, C4, D4, E4, F4
+      transpose: { values: [0, -1, 4, 2], everySteps: 192 },
+      octave: { values: [0, 1], everySteps: 768 },
+      voiceA: {
+        pattern: [4, 2, 5, 3, 7, 2, 6, 0, 5, 3, 6, 2, 7, 4, 6, 0],
+        instrument: 'voiceA',
+        lengthRatio: 1.3,
+        stepOffset: 0,
+        harmonic: { ratio: 2.003, instrument: 'voiceA-harmonic', lengthRatio: 0.7 },
+      },
+      voiceB: {
+        pattern: [7, 3, 5, 2, 6, 4, 5, 3, 6, 2, 4, 5],
+        instrument: 'voiceB',
+        lengthRatio: 1.1,
+        stepOffset: 0.5,
+        harmonic: null,
+      },
+      pads: {
+        chords: [
+          [73.42, 98, 130.81, 196],
+          [82.41, 110, 146.83, 220],
+          [98, 130.81, 174.61, 261.63],
+          [110, 146.83, 196, 293.66],
+        ],
+        everySteps: 32,
+        instrument: 'pads',
+        lengthRatio: 34,
+      },
+      drone: {
+        voices: [{ pitch: 36.71, velocity: 1 }, { pitch: 73.42, velocity: 0.6 }], // D1, D2
+        everySteps: 64,
+        instrument: 'drone',
+        lengthRatio: 66,
+      },
+      sparkle: {
+        everySteps: 10,
+        atStep: 5,
+        indexStride: 6,
+        octaveOffset: 2,
+        durationSec: 0.5,
+        instrument: 'sparkle',
+        echoes: [{ delaySec: 0.6, velocity: 0.4 }, { delaySec: 1.2, velocity: 0.2 }, { delaySec: 1.8, velocity: 0.1 }],
+      },
+    },
+  },
 ];
