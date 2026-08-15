@@ -12,13 +12,16 @@ export const SKELETON_STYLE = `
   font-family: var(--font-family);
   /* body 直下の他要素(タッチ操作パッド・天球グリッドのラベル層)との前後関係を決める。
      #hud の内側の重なり順は overlay-layer.ts のレイヤが持つ。 */
-  color: var(--text); user-select: text; z-index: 10;
+  color: var(--text); color-scheme: var(--theme-tone); user-select: text; z-index: 10;
   font-size: var(--font-l);
 }
+/* ステージ選択画面より前面に出す既存の一時停止メニュー。タイトル中だけ付く。 */
+#hud.title-menu-open { z-index: 110; }
 /* 読み取りたい数値は選択できるようにするが、操作部品とマーカーは対象外にする —
    ボタンの連打やカメラドラッグのたびにラベルが選択されると操作の邪魔になる。 */
 #hud .ctx-menu-item,
-#hud .mk, #hud .rail-toggle, #hud-chase-reset, #hud-viewbadge .vb-view-btn { user-select: none; }
+#hud .mk, #hud .rail-toggle, #hud-chase-reset,
+#hud-viewbadge .vb-view-btn { user-select: none; }
 ${OVERLAY_LAYER_STYLE}
 /* #hud 直下の兄弟同士の重なり順は overlay-layer.ts のレイヤが持つ。
    マーカー内優先度: タッチ長押し(5) > 宇宙船(4) > 敵(3) > 弾薬(2) > 軌道要素・その他(1) > デフォルト(0) */
@@ -41,34 +44,45 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 
 /* ゲーム状態由来の表示/非表示。パネルの折りたたみ(利用者の好み)とは別軸。 */
 #hud .hidden { display: none !important; }
+#hud .hud-world-root {
+  position: absolute; inset: 0; display: none; pointer-events: none;
+}
+#hud .hud-world-root.active { display: block; }
 #hud .panel {
-  position: absolute; background: var(--surface);
-  border: 1px solid var(--edge); border-radius: var(--radius-m);
-  padding: var(--space-4) var(--space-5); line-height: 1.5; backdrop-filter: blur(4px);
+  position: absolute; background: var(--glass-quiet);
+  border: 0; border-radius: var(--radius-panel);
+  padding: var(--space-5); line-height: 1.5;
+  box-shadow: 0 12px 32px var(--shade-1);
+  backdrop-filter: blur(14px) saturate(82%);
 }
 #hud .panel h3 {
-  font-size: var(--font-s); letter-spacing: 2.5px; color: var(--accent);
-  border-bottom: 1px solid var(--accent-edge-soft); margin-bottom: var(--space-3); padding-bottom: var(--space-2);
-  font-weight: 600;
+  font-size: var(--font-s); letter-spacing: 0.06em; color: var(--title);
+  border: 0; margin-bottom: var(--space-4); padding: 0;
+  font-weight: 600; text-transform: none;
 }
 /* PanelShell: 見出し行に折りたたみトグルを添える共通外枠。 */
 #hud .panel-shell-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
 #hud .panel-shell-head h3 { flex: 1 1 auto; min-width: 0; }
 #hud .panel-shell-collapse {
-  flex: 0 0 auto; background: none; border: none; color: var(--text-dim); font: inherit; cursor: pointer; pointer-events: auto;
+  flex: 0 0 auto; width: 24px; height: 24px; background: transparent; border: 0;
+  border-radius: var(--radius-micro); color: var(--muted); font: inherit; cursor: pointer; pointer-events: auto;
 }
+#hud .panel-shell-collapse:hover { color: var(--accent-near); background: var(--surface-2); }
+#hud .panel-shell-collapse:focus-visible { outline: 2px solid var(--accent-near); outline-offset: 2px; }
 #hud .panel-shell-body.collapsed { display: none !important; }
 #hud .row { display: flex; justify-content: space-between; gap: var(--space-5); }
 #hud .row .k { color: var(--text-dim); }
-#hud .row .v { color: var(--text); min-width: 90px; text-align: right; }
+#hud .row .v {
+  color: var(--text); min-width: 90px; text-align: right; font-variant-numeric: tabular-nums;
+}
 /* パネル内の数値・テキスト入力欄(ValueInput)の既定幅。見た目自体は widgets/ の .w-input が持つ。 */
 #hud .panel input[type="number"], #hud .panel input[type="text"] { width: 64px; }
 
 /* マップ系パネルは左右のレール内で通常フローに積む。内容が増えても他の
    パネルを押し退けるだけで、固定座標による重なりを起こさない。 */
 #hud .hud-rail {
-  position: absolute; top: 40px; bottom: 12px;
-  display: flex; flex-direction: column; align-items: stretch; gap: var(--space-4);
+  position: absolute; top: 48px; bottom: 12px;
+  display: flex; flex-direction: column; align-items: stretch; gap: 7px;
   pointer-events: none; min-height: 0; overflow-x: hidden; overflow-y: auto;
   scrollbar-width: thin; overscroll-behavior: contain;
 }
@@ -78,43 +92,34 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 /* マップモード中はレールの空き領域を掴んでもタッチスクロールできる —
    カメラドラッグとの競合はレールが奪ってよい(レールは置き場であって 3D 操作面ではない)。
    常時 auto にすると、マップ以外でパネルが1枚も無い空のレールが背後のカメラ操作を阻害する。 */
-#hud.map-mode .hud-rail { pointer-events: auto; touch-action: pan-y; }
+#hud .hud-map-root.active .hud-rail { pointer-events: auto; touch-action: pan-y; }
 #hud .rail-toggle {
-  display: none; position: absolute; top: 8px; z-index: 20; pointer-events: auto;
-  width: 26px; height: 26px; border: 1px solid var(--edge); border-radius: var(--radius-m);
-  background: var(--surface); color: var(--accent); cursor: pointer;
+  width: 30px; height: 30px; border: 0; border-radius: var(--radius-control);
+  background: var(--surface-2); color: var(--accent); cursor: pointer; pointer-events: auto;
+  transition: color var(--transition-fast), background var(--transition-fast);
 }
-#hud.map-mode .rail-toggle { display: block; }
-#hud #hud-rail-toggle-left { left: 8px; }
-#hud #hud-rail-toggle-right { right: 8px; }
-/* レールの折りたたみはマップビューの収納機構 — 右レールは戦闘ビューでも TARGET を常設で
-   載せているので、畳んだ効果自体をマップビューに限る(トグル自体も map-mode でしか出ない)。 */
-#hud.map-mode .hud-rail.collapsed { width: 0; }
-#hud.map-mode .hud-rail.collapsed > .panel { display: none !important; }
+#hud .rail-toggle:hover { color: var(--accent-near); background: var(--surface-3); }
+#hud .rail-toggle:focus-visible {
+  outline: 2px solid var(--accent-near); outline-offset: 2px;
+}
+#hud .rail-toggle { display: none; position: absolute; top: 8px; z-index: 20; }
+#hud:not(.dock-mode) .rail-toggle { display: block; }
+#hud .hud-world-root .rail-toggle-left { left: 8px; }
+#hud .hud-world-root .rail-toggle-right { right: 8px; }
+/* 左右ドックの収納はマップ/戦闘の両ビューで使う。ドックビューではトグルごと隠す。 */
+#hud:not(.dock-mode) .hud-rail.collapsed { width: 0; }
+#hud:not(.dock-mode) .hud-rail.collapsed > .panel { display: none !important; }
 /* ドックビュー(造船ドック)が背後のマップごとレールを覆うので、開閉トグルは出さない。 */
 #hud.dock-mode .rail-toggle { display: none; }
 
-/* 戦闘シェルフ: 常設ステータス計器の並び。広幅(pointer:fine)は下端、coarse/狭幅は上端に
-   置く — 下端は #hud-stagestatus・タッチパッド・PREDICT バーが既に取り合っているため。 */
-#hud-combat-shelf {
-  position: absolute; left: 12px; right: 12px; bottom: calc(12px + var(--safe-b));
-  display: flex; align-items: flex-end; gap: var(--space-5);
-  pointer-events: none; z-index: 1;
-}
-#hud-combat-shelf > .panel {
-  position: relative; inset: auto; transform: none; pointer-events: auto;
-  flex: 0 0 228px; width: 228px; box-sizing: border-box; font-size: var(--font-xs);
-  max-height: var(--shelf-h); overflow-y: auto;
-}
-/* STATUS+ORBIT は左詰めのまま、CONTACTS だけ右端へ押し出す。 */
-#hud-combat-shelf > #hud-enemies { margin-left: auto; }
-
 /* 画面固定バッジ(④): マップの縮尺・視点リセット・グローバルステータス・トースト等。 */
-/* マップモードでは #hud-rail-toggle-right(right:8px, 26px 角)がこの位置に重なるので、
+/* マップモードでは #hud-rail-toggle-left(left:8px, 26px 角)がこの位置に重なるので、
    その右端(8+26=34px)より確実に外側へ避けておく。 */
 #hud-viewbadge {
-  position: absolute; top: 8px; right: 44px;
+  position: absolute; top: 8px; left: 48px;
   display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-2) var(--space-4); border-radius: var(--radius-control);
+  background: var(--glass-quiet); backdrop-filter: blur(14px) saturate(82%);
   color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: 1.2px;
   white-space: nowrap; opacity: 0.9;
 }
@@ -123,16 +128,16 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 /* span. まで指定して .w-btn 側の font-size/padding/background より確実に勝たせる
    (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
 #hud-viewbadge span.vb-view-btn {
-  background: transparent;
-  border-radius: var(--radius-m); padding: var(--space-1) var(--space-3);
+  background: var(--surface-2);
+  border-radius: var(--radius-micro); padding: var(--space-1) var(--space-3);
   color: var(--text-dim); font: inherit; letter-spacing: inherit;
 }
 #hud-viewbadge span.vb-view-btn:hover { color: var(--text); border-color: var(--accent-soft); }
 #hud-globalstatus {
   position: absolute; top: 0; left: 50%; transform: translateX(-50%);
   pointer-events: auto;
-  padding: var(--space-2) var(--space-5); border-radius: 0 0 var(--radius-m) var(--radius-m);
-  background: var(--surface); border: 1px solid var(--edge); border-top: none; backdrop-filter: blur(4px);
+  padding: var(--space-3) var(--space-5); border-radius: 0 0 var(--radius-panel) var(--radius-panel);
+  background: var(--glass-quiet); border: 0; backdrop-filter: blur(14px) saturate(82%);
   font-size: var(--font-s); letter-spacing: 1px; font-variant-numeric: tabular-nums;
   color: var(--text-dim);
   display: flex; align-items: center; gap: var(--space-4); white-space: nowrap;
@@ -142,8 +147,9 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud-globalstatus .gs-sep { color: var(--edge); }
 #hud-map-scale {
   position: absolute; right: 12px; bottom: 12px; display: none; pointer-events: none;
-  padding: var(--space-2) var(--space-4) var(--space-3); border: 1px solid var(--edge); border-radius: var(--radius-m);
-  background: var(--surface); color: var(--text-dim); font-size: var(--font-xxs); line-height: 1.1;
+  padding: var(--space-2) var(--space-4) var(--space-3); border: 0; border-radius: var(--radius-control);
+  background: var(--glass-quiet); backdrop-filter: blur(14px) saturate(82%);
+  color: var(--text-dim); font-size: var(--font-xxs); line-height: 1.1;
   font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap;
 }
 #hud-map-scale .map-scale-value { color: var(--text); }
@@ -161,9 +167,10 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud-map-scale .map-scale-tick.end { right: 0; }
 #hud-hint {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-  background: var(--surface); border: 1px solid var(--accent-edge); border-radius: var(--radius-m);
+  background: var(--glass-focus); border: 0; border-radius: var(--radius-panel);
   padding: var(--space-4) var(--space-6);
   color: var(--accent-soft); font-size: var(--font-xl);
+  box-shadow: 0 16px 48px var(--shade-1); backdrop-filter: blur(20px) saturate(82%);
   transition: opacity var(--transition-slow); opacity: 0; text-align: center;
 }
 #hud-chase-reset {
@@ -172,24 +179,27 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
   width: 32px; height: 32px; border-radius: 50%;
   display: flex; justify-content: center; align-items: center;
   padding: 0;
-  border: 1px solid var(--edge); background: var(--surface); color: var(--text-dim);
+  border: 0; background: var(--glass-quiet); color: var(--text-dim);
+  backdrop-filter: blur(14px) saturate(82%);
 }
-#hud-chase-reset:hover { border-color: var(--accent); color: var(--accent); }
+#hud-chase-reset:hover { background: var(--surface-2); color: var(--accent-near); }
+#hud-chase-reset:focus-visible { outline: 2px solid var(--accent-near); outline-offset: 2px; }
 #hud-toast {
   position: absolute; top: 18%; left: 50%; transform: translateX(-50%);
-  background: var(--surface); border: 1px solid var(--edge); border-radius: var(--radius-m); padding: var(--space-5) var(--space-6);
+  background: var(--glass-focus); border: 0; border-radius: var(--radius-panel); padding: var(--space-5) var(--space-6);
   color: var(--text); font-size: var(--font-xl); text-align: center;
+  box-shadow: 0 16px 48px var(--shade-1); backdrop-filter: blur(20px) saturate(82%);
   transition: opacity var(--transition-slow); opacity: 0; line-height: 1.8;
 }
 #hud .sim-speed-hot { color: var(--accent); }
-#hud .mode-tgt { color: var(--danger); }
+#hud .mode-tgt { color: var(--accent); }
 #hud .warn-hot { color: var(--danger); }
 
 /* マーカー面(層)の意匠。位置固定バッジ・マップパネルとは異なる世界座標投影の側。 */
 .mk {
   position: absolute; transform: translate(-50%, -50%);
   text-align: center; white-space: nowrap; text-shadow: 0 0 4px var(--bg), 0 0 2px var(--bg);
-  width: 24px; height: 24px;
+  width: 24px; height: 24px; transition: opacity 300ms ease;
 }
 .mk .sym { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: var(--glyph-base); line-height: 1; }
 .mk .lbl { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); font-size: var(--font-xs); letter-spacing: 1px; }
@@ -201,10 +211,10 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 .mk-boresight { color: var(--text-strong); font-size: var(--glyph-boresight); }
 #mk-bore .sym { width: 48px; height: 48px; }
 #mk-bore .lbl { top: -14px; left: 19px; transform: none; font-size: var(--font-xxs); letter-spacing: .4px; color: var(--text-dim); text-shadow: 0 0 3px var(--bg); }
-.mk-target { color: var(--text-strong); }
+.mk-target { color: var(--accent); }
 .mk-secondary-target { color: var(--accent-secondary); }
 .mk-enemy { color: var(--text-strong); }
-.mk-lead { color: var(--danger); }
+.mk-lead { color: var(--accent); }
 .mk-pro { color: var(--axis-prograde); }
 .mk-retro { color: var(--axis-prograde); }
 .mk-nrm { color: var(--axis-normal); }
@@ -218,6 +228,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud .mk-mnode .lbl, #hud .mk-burn .lbl { margin-top: var(--space-2); }
 .mk-burn { color: var(--accent); text-shadow: 0 0 8px color-mix(in srgb, var(--accent) var(--glow-strong), transparent); }
 .mk-self { color: ${C.COLOR_MARKER_SELF}; }
+.mk-planet-nearby-label .lbl { margin-top: 18px; font-size: var(--font-xxs); white-space: nowrap; }
 .mk-ammo { color: var(--accent-soft); text-shadow: 0 0 6px color-mix(in srgb, var(--accent-soft) var(--glow-strong), transparent), 0 0 3px var(--bg); }
 #mk-bore .lbl { top: auto; left: 100%; bottom: 100%; margin: 0 0 var(--space-1) var(--space-3); white-space: pre; text-align: left; font-size: var(--font-xxs); line-height: 1.2; }
 .mk-planned { color: ${C.COLOR_MARKER_PLANNED}; text-shadow: 0 0 6px color-mix(in srgb, ${C.COLOR_MARKER_PLANNED} var(--glow-strong), transparent), 0 0 3px var(--bg); }
@@ -228,7 +239,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 .mk-poi { color: var(--text-strong); text-shadow: 0 0 4px var(--bg); }
 .mk-poi .sym { font-size: var(--glyph-poi); }
 .mk-poi .lbl { font-size: var(--font-s); border-radius: var(--radius-s); background: var(--surface-weak); }
-.mk-poi.mk-lagrange .lbl { font-size: var(--font-xxs); white-space: pre; line-height: 1.25; text-align: center; }
+.mk-poi.mk-lagrange .lbl { font-size: calc(var(--font-s) * 0.7); white-space: pre; line-height: 1.25; text-align: center; }
 .mk-poi.mk-lagrange .lbl::first-line { font-size: var(--font-s); }
 .mk-base { color: ${C.COLOR_BASE_ORBIT_LINE}; text-shadow: 0 0 4px var(--bg); }
 .mk-base .lbl { font-size: var(--font-s); border-radius: var(--radius-s); background: var(--surface-weak); border: 1px solid var(--fill-3); }
@@ -243,17 +254,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
   #hud .panel h3 { font-size: var(--font-xs); letter-spacing: 1.5px; margin-bottom: var(--space-2); }
   #hud .row { gap: var(--space-4); }
   #hud .row .v { min-width: 64px; }
-  #hud-combat-shelf {
-    position: absolute; display: flex; left: 8px; right: 8px; top: 76px; bottom: auto;
-    align-items: stretch; gap: var(--space-3); overflow-x: auto; overflow-y: hidden; pointer-events: auto;
-    scrollbar-width: thin; overscroll-behavior-x: contain; z-index: 1;
-  }
-  #hud-combat-shelf > .panel {
-    position: relative; inset: auto; transform: none; flex: 0 0 178px;
-    width: 178px; min-width: 0; overflow-y: auto;
-  }
-  #hud-combat-shelf > #hud-enemies { margin-left: 0; }
-  #hud:not(.map-mode) #hud-viewbadge { display: none; }
+  #hud:not(.map-ui-active) #hud-viewbadge { display: none; }
   #hud-hint { bottom: auto; top: 26%; max-width: 92vw; white-space: normal; }
   #hud-toast { max-width: 92vw; padding: var(--space-5) var(--space-5); font-size: var(--font-l); }
   #hud .hud-rail { top: 8px; bottom: 8px; gap: var(--space-3); }
@@ -270,9 +271,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 }
 @media ${MQ_COMPACT} {
   #hud .hud-rail { font-size: var(--font-xxs); }
-  #hud.map-mode .hud-rail { bottom: calc(28vh + 16px); bottom: calc(28dvh + 16px); }
-  #hud-combat-shelf { top: 72px; }
-  #hud-combat-shelf > .panel { flex-basis: min(168px, calc(100vw - 16px)); width: min(168px, calc(100vw - 16px)); }
+#hud .hud-map-root.active .hud-rail { bottom: calc(28vh + 16px); bottom: calc(28dvh + 16px); }
 }
 @media ${MQ_COARSE} {
   #hud .hud-rail { bottom: 62px; }
@@ -280,11 +279,15 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 }
 @media ${MQ_COARSE_SHORT} {
   #hud .hud-rail { bottom: 52px; }
-  #hud-combat-shelf { top: 60px; }
   #hud-chase-reset { top: 34px; }
 }
 @media ${MQ_SHORT} {
-  #hud-combat-shelf { top: 60px; }
   #hud-map-scale { bottom: 52px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #hud *, #hud *::before, #hud *::after {
+    animation-duration: 0.001ms !important; animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important; scroll-behavior: auto !important;
+  }
 }
 `;

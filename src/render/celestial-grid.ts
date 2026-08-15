@@ -5,6 +5,7 @@ import { Q_ECL_TO_ECI } from '../physics/ecliptic';
 import { STAR_SHELL_RADIUS } from './stars';
 
 export interface CelestialGridVisibility {
+  readonly stars: boolean;
   readonly ecliptic: boolean;
   readonly eclipticPlane: boolean;
   readonly eclipticPole: boolean;
@@ -13,6 +14,9 @@ export interface CelestialGridVisibility {
   readonly equatorPlane: boolean;
   readonly equatorPole: boolean;
   readonly equatorGrid: boolean;
+  readonly eclipticScaleGrid: boolean;
+  readonly equatorScaleGrid: boolean;
+  readonly moonOrbitScaleGrid: boolean;
 }
 
 // 面を張る直交基底。e1/e2 が面内、pole が法線(北極方向)。
@@ -131,10 +135,13 @@ class GridPlane {
   private readonly labelLayer: HTMLDivElement;
   private readonly labels: HTMLDivElement[] = [];
   private readonly gridLabels: { el: HTMLDivElement; lat: number; lon: number }[] = [];
-  private readonly basis: PlaneBasis;
+  private basis: PlaneBasis;
+  private readonly initialBasis: PlaneBasis;
+  private readonly basisRotation = new THREE.Quaternion();
 
   constructor(scene: THREE.Scene, basis: PlaneBasis, color: number, name: string) {
     this.basis = basis;
+    this.initialBasis = basis;
     this.labelLayer = document.createElement('div');
     this.labelLayer.className = 'celestial-grid-labels';
     Object.assign(this.labelLayer.style, { position: 'fixed', inset: '0', pointerEvents: 'none', zIndex: '8' });
@@ -192,6 +199,20 @@ class GridPlane {
     }
   }
 
+  setBasis(basis: PlaneBasis): void {
+    const poleDot = this.basis.pole.dot(basis.pole);
+    if (poleDot > 1 - 1e-10 && this.basis.e1.dot(basis.e1) > 1 - 1e-10) return;
+    this.basis = basis;
+    const initialRotation = new THREE.Matrix4().makeBasis(
+      this.initialBasis.e1, this.initialBasis.e2, this.initialBasis.pole,
+    );
+    const targetRotation = new THREE.Matrix4().makeBasis(basis.e1, basis.e2, basis.pole);
+    const initialQ = new THREE.Quaternion().setFromRotationMatrix(initialRotation);
+    const targetQ = new THREE.Quaternion().setFromRotationMatrix(targetRotation);
+    this.basisRotation.copy(targetQ).multiply(initialQ.invert());
+    for (const obj of [this.planeLine, this.gridLine, this.poleLine]) obj.quaternion.copy(this.basisRotation);
+  }
+
   sync(planeVisible: boolean, poleVisible: boolean, gridVisible: boolean, origin: THREE.Vector3, scale: number, camera: THREE.Camera): void {
     this.planeLine.visible = planeVisible;
     this.gridLine.visible = gridVisible;
@@ -199,6 +220,7 @@ class GridPlane {
     for (const obj of [this.planeLine, this.gridLine, this.poleLine]) {
       obj.position.copy(origin);
       obj.scale.setScalar(scale);
+      obj.quaternion.copy(this.basisRotation);
     }
     this.labels.forEach((el) => { el.style.display = 'none'; });
     const show = (el: HTMLDivElement, p: THREE.Vector3, below = false) => {
@@ -264,7 +286,7 @@ export class CelestialGrid {
     this.ecliptic = new GridPlane(scene, ECLIPTIC_BASIS, 0xc0a878, 'ECLIPTIC');
   }
 
-  // 星殻と同じくカメラ追従の固定半径殻として、6 トグルぶんの可視状態を反映する。
+  // 星殻と同じくカメラ追従の固定半径殻として、2 面ぶんの可視状態を反映する。
   // scale は星殻半径 STAR_SHELL_RADIUS に対する拡大率(広範囲視点では呼び出し側が
   // CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS を渡す)。
   sync(visibility: CelestialGridVisibility, cam: THREE.Camera, scale: number): void {

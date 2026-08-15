@@ -51,7 +51,9 @@ export class Launcher implements RunTransitions {
 
   // ?title=1 は選択画面へ強制する。?stage= は共有リンク・デバッグ用の明示指定として最優先。
   // どちらも無ければアクティブスロットの直近起動を再開し、それも無ければ選択画面を出す。
-  async resolveStage(): Promise<StageClass> {
+  async resolveStage(
+    onTitleEscape?: () => void, onTitleClose?: () => void, onSettings?: () => void,
+  ): Promise<StageClass> {
     const params = new URLSearchParams(location.search);
     if (params.get('title') !== '1') {
       const fromParam = findStageClass(params.get('stage'));
@@ -59,7 +61,7 @@ export class Launcher implements RunTransitions {
       const resumed = resumableStageClass(this.unlockManager, this.slots);
       if (resumed !== null) return resumed;
     }
-    return selectStage(this.unlockManager);
+    return selectStage(this.unlockManager, onTitleEscape, onTitleClose, onSettings);
   }
 
   // ページ再読込を挟んだスナップショットのロード要求を最優先で使う。無ければ、

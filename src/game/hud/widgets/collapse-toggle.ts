@@ -21,7 +21,7 @@ export const PREDICT_TOGGLE_LABELS: CollapseToggleLabels = {
 };
 
 // button の見た目(グリフ・aria-expanded・title)を target の collapsed クラスに合わせる。
-function syncCollapseToggle(button: HTMLElement, target: HTMLElement, labels: CollapseToggleLabels): void {
+export function syncCollapseToggle(button: HTMLElement, target: HTMLElement, labels: CollapseToggleLabels): void {
   const collapsed = target.classList.contains('collapsed');
   button.textContent = collapsed ? labels.collapsedGlyph : labels.expandedGlyph;
   button.setAttribute('aria-expanded', String(!collapsed));

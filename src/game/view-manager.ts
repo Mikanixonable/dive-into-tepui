@@ -10,13 +10,13 @@ import { DisplayWindowManager } from './display-window-manager';
 import { MapContextActions } from './map-context-actions';
 import type { Docking } from './docking';
 import type { ActivePlayerController } from './active-player-controller';
-import { syncNavballPlacement } from './hud/hud-root';
+import { setPanelCollapsedView } from './hud/panel-shell';
 import type { OverlayHandle } from './hud/overlay-manager';
 
 export type ViewId = 'combat' | 'map' | 'dock';
 
 // 3D 世界を描くビュー。ドックはこのどちらかに重なる形で開き、閉じると元へ戻る。
-type WorldViewId = 'combat' | 'map';
+export type WorldViewId = 'combat' | 'map';
 
 // TODO: 戦闘⇔マップの切り替えと、ドックの開閉という2つの責務が同居している。分けるには
 // 3つのビューを1つの排他選択として外へ見せている口(current / setView / selectableViews)を
@@ -35,6 +35,9 @@ export class ViewManager {
   };
 
   get current(): ViewId { return this.isDockOpen ? 'dock' : this.worldView; }
+
+  get isMapView(): boolean { return this.worldView === 'map'; }
+  get isCombatView(): boolean { return this.worldView === 'combat'; }
 
   // このビューが 3D 世界を描くか。ドックは画面全体を不透明に覆い 3D 世界を持たない。
   get rendersWorld(): boolean { return !this.isDockOpen; }
@@ -128,14 +131,12 @@ export class ViewManager {
     return true;
   }
 
-  // 現在のビューに合わせて HUD の見た目と、カメラ・計画編集・未来表示の各フラグを揃える。
-  // ここが決めるのはビュー起因の表示/非表示だけで、パネルの折りたたみはユーザーが
-  // マップビューの中で選んだ独立した状態なので、ビューの往復では触らない。
+  // 現在のビューに合わせて HUD の見た目と、カメラ・計画編集・未来表示・収納状態の各フラグを揃える。
   private applyChrome(): void {
     const map = this.worldView === 'map';
-    this.hud.root.classList.toggle('map-mode', map);
+    setPanelCollapsedView(map ? 'map' : 'combat');
+    this.hud.setWorldView(map ? 'map' : 'combat');
     this.hud.root.classList.toggle('dock-mode', this.isDockOpen);
-    syncNavballPlacement(this.hud.root, map);
     this.touchControls?.setMapMode(map);
     this.cameraSystem.setMapMode(map);
     this.editor.setMapMode(map);

@@ -6,6 +6,7 @@ import { R_EARTH } from '../physics/solar-system';
 
 const SEG = 160;
 const V_SEG = 3; // 鉛直方向4頂点: 0=下端フェード, 1=核(緑), 2=中間(赤), 3=上端フェード
+const INTENSITY_SCALE = 0.15; // 発光全体の強さ倍率
 
 export class Aurora {
   readonly mesh: THREE.Mesh;
@@ -86,7 +87,7 @@ export class Aurora {
 
       // 時間による色の揺らぎ
       const flick = 0.8 + 0.2 * Math.sin(19 * th + cPhase * 4.1);
-      const coreInt = intensity * flick;
+      const coreInt = intensity * flick * INTENSITY_SCALE;
 
       // 4層のグラデーション色 (加算合成なので 0 で透明)
       const colArr = [

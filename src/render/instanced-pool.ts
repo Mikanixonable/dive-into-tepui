@@ -36,12 +36,12 @@ export class InstancedPool {
     this.count = 0;
   }
 
-  // obj が非表示なら何もしない。容量を超えた分は描画されない。matrixWorld を使うので、
-  // シーン外の Object3D(あるいはその子)を渡す側は事前に updateMatrixWorld() を呼んでおく。
-  push(obj: THREE.Object3D, color?: THREE.Color): void {
-    if (!obj.visible || this.count >= this.capacity) return;
-    obj.updateMatrixWorld();
-    this.mesh.setMatrixAt(this.count, obj.matrixWorld);
+  // visible な renderObject を capacity まで受け付け、matrixWorld をインスタンスへ転写する。
+  // シーン外の Object3D は事前に matrixWorld を同期して渡す。
+  push(renderObject: THREE.Object3D, color?: THREE.Color): void {
+    if (!renderObject.visible || this.count >= this.capacity) return;
+    renderObject.updateMatrixWorld();
+    this.mesh.setMatrixAt(this.count, renderObject.matrixWorld);
     if (color && this.mesh.instanceColor) this.mesh.setColorAt(this.count, color);
     this.count++;
   }

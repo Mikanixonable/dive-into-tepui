@@ -10,6 +10,7 @@ export { TabBar } from './tab-bar';
 export { Slider, type SliderOptions } from './slider';
 export {
   buildCollapseToggle,
+  syncCollapseToggle,
   type CollapseToggleLabels,
   COLLAPSE_EXPANDED_GLYPH,
   COLLAPSE_COLLAPSED_GLYPH,

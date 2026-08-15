@@ -12,10 +12,11 @@ import { Attractor, orbitalElementsOf } from '../../physics/attractor';
 import { haloState, lissajousState } from '../../physics/halo';
 import type { FloatingOrigin } from '../floating-origin';
 import { Vec3, add } from '../../physics/vec3';
+import { isOccluded } from '../../physics/occlusion';
 import { ToggleSwitch } from '../hud/widgets';
 import { hudRail } from '../hud/hud-root';
 import type { CameraSystem, ProjectFn } from '../camera/camera-system';
-import { Ammo } from '../game-entity/ammo';
+import { AmmoPickup } from '../game-entity/ammo-pickup';
 import { Base } from '../game-entity/base';
 import { generateDriftingEnemy } from './spawner/enemy-generator';
 import { WaveAttack } from './stage-utils/wave-attack';
@@ -54,9 +55,12 @@ export class CreativeStage extends Stage {
   // (値ではなく参照なので、境界での読み取りは常にその時点の時間加速段を反映する)。
   private simSpeed: SimSpeedManager | null = null;
   private readonly playerIdAllocator = new EntityIdAllocator('creative-player-');
-  private readonly ammoIdAllocator = new EntityIdAllocator('creative-ammo-');
-  // フォールバック名(Player-N 等)の連番。id とは独立(同名は許容する)。
-  private nextFallbackNameSeq = 1;
+  private readonly ammoPickupIdAllocator = new EntityIdAllocator('creative-ammo-');
+  // フォールバック名(vessel-N/Enemy-N/AmmoPickup-N/Base-N)の種類別連番。id とは独立(同名は許容する)。
+  private nextVesselNameSeq = 1;
+  private nextEnemyNameSeq = 1;
+  private nextAmmoPickupNameSeq = 1;
+  private nextBaseNameSeq = 1;
 
   briefingHtml(): string {
     return '<b>クリエイティブモード</b><br>マップから艦艇を配置して軌道を眺められる。';
@@ -71,18 +75,18 @@ export class CreativeStage extends Stage {
     // 以後の新規配置が既存 id と衝突しないよう、この時点で存在する艦・補給の id を予約する
     // (スナップショットからの再開では entities が復元済み — 新規開始では空なので何もしない)。
     for (const p of this._entities.players) this.playerIdAllocator.next(p.id);
-    for (const a of this._entities.ammos) this.ammoIdAllocator.next(a.id);
+    for (const ammoPickup of this._entities.ammoPickups) this.ammoPickupIdAllocator.next(ammoPickup.id);
 
     this.previewOrbitLine = new OrbitLine(0xffffff, 0.6, C.LINE_RENDER_ORDER.plan);
     this._scene.add(this.previewOrbitLine.line);
 
     this.placerPanel = new ShipPlacerPanel(
-      this._hud.layers.panel, this._hud.layers.popup, this._ephemeris, this._hud.overlayManager,
+      this._hud.mapRoot, this._hud.layers.popup, this._ephemeris, this._hud.overlayManager,
     );
     this.placerPanel.onConfirm = (name, form) => this.placeObject(name, form);
     this.waveAttack = new WaveAttack(this._hud, this._sfx, this._fx, this._scene, this._ephemeris, savedCreative?.waveAttack);
     this.waveAttackEnabled = savedCreative?.waveAttackEnabled ?? false;
-    this.creativeOptionsPanel = this.buildCreativeOptionsPanel(this._hud.layers.panel);
+    this.creativeOptionsPanel = this.buildCreativeOptionsPanel(this._hud.mapRoot);
 
     this.begin();
   }
@@ -112,7 +116,10 @@ export class CreativeStage extends Stage {
     visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     super.sync(player, fo, cameraSystem, displayTime, visibilityPolicy);
-    this.syncPreview(fo, cameraSystem.activeCameraProjection, cameraSystem.activeCamera);
+    this.syncPreview(
+      fo, cameraSystem.activeCameraProjection, cameraSystem.activeCamera,
+      cameraSystem.overviewMode, cameraSystem.activeCameraPos, this._ephemeris.attractorsAt(displayTime),
+    );
     this.placerPanel.setIssues(this.issues);
     this.creativeOptionsPanel.classList.toggle('hidden', !cameraSystem.overviewMode);
   }
@@ -182,13 +189,20 @@ export class CreativeStage extends Stage {
   }
 
   // 配置プレビューの軌道線と ▷ マーカーを update が求めた値へ同期する。
-  private syncPreview(fo: FloatingOrigin, project: ProjectFn, camera: THREE.Camera): void {
+  private syncPreview(
+    fo: FloatingOrigin, project: ProjectFn, camera: THREE.Camera,
+    overviewMode: boolean, cameraPos: Vec3, attractors: readonly Attractor[],
+  ): void {
     if (!this.preview) {
       this.previewOrbitLine.sync(null, fo, camera);
-      this._markerManager.hide('creative-preview');
+      this._markerManager.fadeOut('creative-preview');
       return;
     }
     this.previewOrbitLine.sync(this.preview.elements, fo, camera, true);
+    if (overviewMode && isOccluded(cameraPos, this.preview.pos, attractors)) {
+      this._markerManager.hide('creative-preview');
+      return;
+    }
     this._markerManager.setPosition(
       'creative-preview', 'mk-self', ENTITY_GLYPH.preview, this.preview.pos, project,
       'PREVIEW', 1, C.COLOR_MARKER_ALLY, 0, false, false,
@@ -208,22 +222,22 @@ export class CreativeStage extends Stage {
       
       if (form.objectType === 'player') {
         const id = this.playerIdAllocator.next();
-        const finalName = name || `Player-${this.nextFallbackNameSeq++}`;
+        const finalName = name || `vessel-${this.nextVesselNameSeq++}`;
         const ship = this.addPlayer({ name: finalName, state, id });
         this._hud.hint(`${ship.name} を配置`);
       } else if (form.objectType === 'enemy') {
-        const finalName = name || `Enemy-${this.nextFallbackNameSeq++}`;
+        const finalName = name || `Enemy-${this.nextEnemyNameSeq++}`;
         const enemy = generateDriftingEnemy(finalName, state, C.ENEMY_MAX_HP, '#ff6a00', '#ff6a00', this._hud, this._sfx, this._fx, this._scene);
         this._entities.addEnemy(enemy);
         this._hud.hint(`${enemy.name} を配置`);
       } else if (form.objectType === 'ammo') {
-        const id = this.ammoIdAllocator.next();
-        const ammo = new Ammo({ state, id }, this._scene, this._markerManager);
-        this._entities.addAmmo(ammo);
-        const finalName = name || `Ammo-${this.nextFallbackNameSeq++}`;
+        const id = this.ammoPickupIdAllocator.next();
+        const ammoPickup = new AmmoPickup({ state, id }, this._scene, this._markerManager);
+        this._entities.addAmmoPickup(ammoPickup);
+        const finalName = name || `AmmoPickup-${this.nextAmmoPickupNameSeq++}`;
         this._hud.hint(`${finalName} を配置`);
       } else if (form.objectType === 'base') {
-        const finalName = name || `Base-${this.nextFallbackNameSeq++}`;
+        const finalName = name || `Base-${this.nextBaseNameSeq++}`;
         const base = new Base({ state, name: finalName }, this._scene, this._hud, this._sfx, this._fx, this._markerManager);
         this._entities.addBase(base);
         this._hud.hint(`${base.name} を配置`);
@@ -298,8 +312,7 @@ export class CreativeStage extends Stage {
   }
 
   // 通常ステージと同じ残弾監視・回収・遠方補給の再投入を行い、配置プレビューとフォームの
-  // フィールド単位の検証結果を求め直す。'powered' な艦の姿勢整列・出力段選択も全艦ぶん進める
-  // (操作対象艦に限らない — Player.behave は操作対象艦でしか走らないため)。
+  // フィールド単位の検証結果を求め直す。'powered' な艦の自動計画実行も全艦ぶん進める。
   // 既存敵の AI 行動は常に進める。トグルが制御するのは新規ウェーブの発生のみ
   // (OFF の間は waveAttack.update を止め、既に出ている敵はそのまま残る)。
   // ノードの消化・点火・遮断は Simulator のイベント境界(applySimulationEvents)で行う。

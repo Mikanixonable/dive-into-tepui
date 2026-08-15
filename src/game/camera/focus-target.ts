@@ -1,4 +1,4 @@
-// OverviewCamera の注視対象。天体候補列から毎フレーム引く 'object' と、座標系に焼き込んだ
+// MapCamera の注視対象。天体候補列から毎フレーム引く 'object' と、座標系に焼き込んだ
 // 固定点を表す 'point' の判別共用体。
 import { FramePoint, ReferenceFrame, toFramePoint } from '../../physics/frame';
 import { Vec3 } from '../../physics/vec3';

@@ -114,10 +114,10 @@ export class Player extends Ship {
     const saved = 'saved' in init ? init.saved : undefined;
     this.throttle = new PlayerThrottle(_hud, saved?.throttle);
     this.fire = new PlayerFire(this, _hud, _sfx, _scene, _fx, 'saved' in init ? { saved: init.saved.fire } : { ammo: init.ammo });
-    this.belt = new Belt(this.obj, this);
+    this.belt = new Belt(this.renderObject, this);
     this.thermal = new ThermalSystem(_hud, _sfx, saved?.thermal);
-    this.radiator = new RadiatorSystem(this.obj, this, saved?.radiator);
-    this.power = new PowerSystem(this.obj, saved?.power);
+    this.radiator = new RadiatorSystem(this.renderObject, this, saved?.radiator);
+    this.power = new PowerSystem(this.renderObject, saved?.power);
     this.thrustEffects = new ThrustEffects(_scene, _sfx);
     this.rcsEffects = new RcsEffects(_scene, _sfx);
     this.reentryEffects = new ReentryEffects(_scene);
@@ -204,7 +204,7 @@ export class Player extends Ship {
   // 毎フレーム、全ての自機に対して1度だけ呼ぶ。input が null の艦はこのフレーム操作されないので、
   // 次フレームへ持ち越してはならない連続指令をここで畳む。受動状態(ベルト物理・HP自然回復)は
   // 操作の可否によらず進める。
-  behave(
+  public updatePlayerControls(
     input: Input | null,
     dt: number,
     simDt: number,
@@ -456,10 +456,10 @@ export class Player extends Ship {
     // メッシュ本体の位置・姿勢
     const displayState = this.displayState(displayTime);
     const mapEntityVisible = !camera.overviewMode || visibility === null || visibility.category;
-    this.obj.visible = displayState !== null && mapEntityVisible && !(isActive && camera.zoomActive);
+    this.renderObject.visible = displayState !== null && mapEntityVisible && !(isActive && camera.zoomActive);
     if (displayState !== null) {
-      this.obj.position.copy(fo.RtoThreeV3(displayState.r));
-      this.obj.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
+      this.renderObject.position.copy(fo.RtoThreeV3(displayState.r));
+      this.renderObject.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
     }
 
     // 推力/RCS エフェクトとベルト。機体メッシュと同じ displayState に載せる —
@@ -475,7 +475,7 @@ export class Player extends Ship {
     this.radiator.sync();
     this.power.sync();
     // マーカーと軌道線。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
-    this.markers.sync(this.state, displayState, this.att, camera.overviewMode, isActive, camera.activeCameraProjection, camera.activeCameraScale, this.name, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.overviewCamera.focus), ephemeris.registry, attractors, visibility);
+    this.markers.sync(this.state, displayState, this.att, camera.overviewMode, isActive, camera.activeCameraPos, camera.activeCameraProjection, camera.activeCameraScale, this.name, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.mapCamera.focus), ephemeris.registry, attractors, visibility);
 
     this.syncOrbitLine(true, fo, camera.activeCamera, attractors, this.thrust !== null);
   }

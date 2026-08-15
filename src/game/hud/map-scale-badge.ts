@@ -4,12 +4,19 @@ import { formatMapScaleDistance, mapScaleFor } from './map-scale';
 import type { Game } from '../game';
 
 export class MapScaleBadge {
-  constructor(private readonly els: Map<string, HTMLElement>) {}
+  public constructor(private readonly els: Map<string, HTMLElement>) {
+    const panel = this.els.get('map-scale');
+    if (!panel || panel.querySelector('.map-scale-label')) return;
+    const label = document.createElement('span');
+    label.className = 'map-scale-label';
+    label.textContent = '縮尺';
+    panel.prepend(label);
+  }
 
   // マップ視点の縮尺は、カメラから画面中心までではなく、現在フォーカスしている対象の
   // 深度における meters-per-pixel から求める。パンしてもフォーカス対象を基準にするため、
   // 同じ天体を見続ける限り、表示値はスクロールズームだけに対応して変化する。
-  sync(game: Game): void {
+  public sync(game: Game): void {
     const panel = this.els.get('map-scale');
     if (!panel) return;
     const overview = game.cameraSystem.overviewMode;
@@ -18,7 +25,7 @@ export class MapScaleBadge {
     panel.style.display = overview ? 'block' : 'none';
     if (!overview) return;
 
-    const focus = game.cameraSystem.overviewCamera.resolvedFocus;
+    const focus = game.cameraSystem.mapCamera.resolvedFocus;
     const metersPerPixel = game.cameraSystem.activeCameraScale(focus);
     const scale = mapScaleFor(metersPerPixel);
     const ruler = this.els.get('map-scale-ruler');
@@ -29,6 +36,7 @@ export class MapScaleBadge {
     const valueEl = this.els.get('map-scale-value');
     const text = formatMapScaleDistance(scale.distanceM);
     if (valueEl && valueEl.textContent !== text) valueEl.textContent = text;
+    panel.setAttribute('aria-label', `マップ縮尺 ${text}`);
     ruler.style.width = `${scale.widthPx.toFixed(2)}px`;
     ruler.setAttribute('aria-label', `${text} の縮尺`);
   }

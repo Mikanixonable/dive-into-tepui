@@ -93,7 +93,10 @@ export class PlanDisplay {
     }
     const { simTime, displayTime } = displayWindow;
     this.attractors = this.ephemeris.attractorsAt(displayTime);
-    this.path.update(planData, this.ephemeris, displayWindow.frame, simTime, this.attractors, attractorProvider);
+    this.path.update(
+      planData, this.ephemeris, displayWindow.frame, simTime, this.attractors, attractorProvider,
+      displayWindow.duration,
+    );
     this.ghost = this.ghostAt(displayTime, simTime);
     this.apsisIcons = this.apsisIconsOf();
     this.impactIcons = this.impactIconsOf();
@@ -111,10 +114,10 @@ export class PlanDisplay {
     // 毎フレーム更新しておかないと、クリック当たり判定が古い視点のまま行われてしまう。
     this.path.setVisible(this.path.nodeCount > 0);
     this.path.sync(fo, project, scale, cameraPos, camera);
-    this.syncGhost(project);
+    this.syncGhost(project, overviewMode, cameraPos);
     this.syncApsisMarkers(project, overviewMode, cameraPos);
-    this.syncImpactMarkers(project);
-    this.syncTickMarkers(project);
+    this.syncImpactMarkers(project, overviewMode, cameraPos);
+    this.syncTickMarkers(project, overviewMode, cameraPos);
   }
 
   // 計画折れ線・ゴーストマーカー・アプシスアイコンを非表示にする。
@@ -153,9 +156,13 @@ export class PlanDisplay {
   }
 
   // ⬢ ゴーストマーカーを計画位置に置く。計画がそこまで届いていなければ隠す。
-  private syncGhost(project: ProjectFn): void {
+  private syncGhost(project: ProjectFn, overviewMode: boolean, cameraPos: Vec3): void {
     if (!this.ghost) {
       this.markerManager.hide('plannedPlayer');
+      return;
+    }
+    if (overviewMode && isOccluded(cameraPos, this.ghost.pos, this.attractors)) {
+      this.markerManager.fadeOut('plannedPlayer');
       return;
     }
     this.markerManager.setPosition(
@@ -266,20 +273,27 @@ export class PlanDisplay {
   private syncApsisMarkers(project: ProjectFn, overviewMode: boolean, cameraPos: Vec3): void {
     for (const key of ['apsisPe', 'apsisAp'] as const) {
       const icon = this.apsisIcons.find((m) => m.id === key);
-      if (icon && !(overviewMode && isOccluded(cameraPos, icon.pos, this.attractors))) {
-        this.markerManager.setPosition(key, 'mk-apsis', ORBIT_POINT_GLYPH.apsis, icon.pos, project, icon.label);
-      } else {
+      if (!icon) {
         this.markerManager.hide(key);
+      } else if (overviewMode && isOccluded(cameraPos, icon.pos, this.attractors)) {
+        this.markerManager.fadeOut(key);
+      } else {
+        this.markerManager.setPosition(key, 'mk-apsis', ORBIT_POINT_GLYPH.apsis, icon.pos, project, icon.label);
       }
     }
   }
 
   // ✕ 衝突マーカーを update が求めた位置に置き、出ていないものを隠す。
-  private syncImpactMarkers(project: ProjectFn): void {
+  private syncImpactMarkers(project: ProjectFn, overviewMode: boolean, cameraPos: Vec3): void {
     for (const key of IMPACT_MARKER_KEYS) {
       const icon = this.impactIcons.find((m) => m.key === key);
-      if (icon) this.markerManager.setPosition(key, 'mk-impact', ORBIT_POINT_GLYPH.impact, icon.pos, project, icon.label);
-      else this.markerManager.hide(key);
+      if (!icon) {
+        this.markerManager.hide(key);
+      } else if (overviewMode && isOccluded(cameraPos, icon.pos, this.attractors)) {
+        this.markerManager.fadeOut(key);
+      } else {
+        this.markerManager.setPosition(key, 'mk-impact', ORBIT_POINT_GLYPH.impact, icon.pos, project, icon.label);
+      }
     }
   }
 
@@ -287,7 +301,7 @@ export class PlanDisplay {
   // 採否を決め、既に採用済みの目盛から PLAN_TICK_MIN_PX 未満しか離れない候補は捨てる —
   // 離心軌道では近地点付近と遠地点付近で候補の画面間隔が桁違いになるため、区間全体で
   // 一つの単位に揃えず、この局所判定に任せることで区間ごとに異なる単位が選ばれてよい。
-  private syncTickMarkers(project: ProjectFn): void {
+  private syncTickMarkers(project: ProjectFn, overviewMode: boolean, cameraPos: Vec3): void {
     const icons = this.tickIcons;
     const n = icons.length;
     const projected = icons.map((icon) => project(icon.pos));
@@ -297,7 +311,8 @@ export class PlanDisplay {
     const minPxSq = C.PLAN_TICK_MIN_PX ** 2;
     for (const rank of ranksDesc) {
       for (let i = 0; i < n; i++) {
-        if (icons[i]!.rank !== rank || !projected[i]!.front) continue;
+        if (icons[i]!.rank !== rank || !projected[i]!.front
+          || (overviewMode && isOccluded(cameraPos, icons[i]!.pos, this.attractors))) continue;
         if (this.isFarFromShown(projected, shown, i, minPxSq)) shown[i] = true;
       }
     }
@@ -314,7 +329,12 @@ export class PlanDisplay {
 
     for (let i = 0; i < n; i++) {
       const icon = icons[i]!;
-      if (!shown[i]) { this.markerManager.hide(icon.key); continue; }
+      const occluded = overviewMode && isOccluded(cameraPos, icon.pos, this.attractors);
+      if (!shown[i] || occluded) {
+        if (occluded) this.markerManager.fadeOut(icon.key);
+        else this.markerManager.hide(icon.key);
+        continue;
+      }
       const p = projected[i]!;
       const depth = finestShown === null ? 0 : Math.min(Math.max(icon.rank - finestShown, 0), maxDepth);
       const label = this.isFarFromShown(projected, shown, i, labelMinPxSq) ? icon.label : '';

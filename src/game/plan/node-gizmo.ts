@@ -1,7 +1,7 @@
 // 軌道計画ノードの対話的 DOM レイヤ。ノードハンドル・Δv アーム・コンテキストメニューを
 // 画面座標に絶対配置し、pointer イベントを処理してコールバックを発火する。
 import * as C from '../const';
-import { ACCENT, ACCENT_SOFT, ACCENT_FILL, ACCENT_FILL_STRONG, TEXT, BG, FONT_FAMILY, FONT_XS } from '../theme';
+import { FONT_FAMILY, FONT_XS } from '../theme';
 import { ContextMenu } from '../hud/context-menu';
 import { MenuAction, MenuCommon } from '../hud/menu-actions';
 import type { OverlayManager } from '../hud/overlay-manager';
@@ -16,13 +16,13 @@ const STYLE = `
   position: absolute; transform: translate(-50%, -50%);
   width: 22px; height: 22px; border-radius: 50%; touch-action: none;
   pointer-events: auto; cursor: grab;
-  border: 2px solid ${ACCENT_SOFT}; background: ${ACCENT_FILL};
+  border: 2px solid var(--accent-soft); background: var(--accent-fill);
 }
-#node-gizmo .gz-node.on { border-color: ${ACCENT}; background: ${ACCENT_FILL_STRONG}; }
+#node-gizmo .gz-node.on { border-color: var(--accent); background: var(--accent-fill-strong); }
 #node-gizmo .gz-node .gz-lbl {
   position: absolute; top: 26px; left: 50%; transform: translateX(-50%);
-  font-size: ${FONT_XS}; color: ${TEXT}; white-space: nowrap;
-  text-shadow: 0 0 4px ${BG}, 0 0 2px ${BG};
+  font-size: ${FONT_XS}; color: var(--text); white-space: nowrap;
+  text-shadow: 0 0 4px var(--bg), 0 0 2px var(--bg);
 }
 #node-gizmo .gz-axis {
   position: absolute; transform: translate(-50%, -50%);
@@ -30,11 +30,11 @@ const STYLE = `
   pointer-events: auto; cursor: grab;
   /* 背景は透明にしつつ、ラベルのテキストは表示する */
   background: transparent; border: none;
-  color: ${TEXT}; font-size: ${FONT_XS}; font-weight: bold; letter-spacing: 1px;
+  color: var(--text); font-size: ${FONT_XS}; font-weight: bold; letter-spacing: 1px;
   display: flex; align-items: center; justify-content: center;
-  text-shadow: 0 0 2px ${BG}, 0 0 4px ${BG};
+  text-shadow: 0 0 2px var(--bg), 0 0 4px var(--bg);
 }
-#node-gizmo .gz-axis:active { cursor: grabbing; color: ${ACCENT_SOFT}; }
+#node-gizmo .gz-axis:active { cursor: grabbing; color: var(--accent-soft); }
 `;
 
 export interface NodeHandleSpec {

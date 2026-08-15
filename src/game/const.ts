@@ -164,9 +164,13 @@ export const MAG_ROUNDS = 32; // 1 マガジンの装弾数
 export const INITIAL_MAGS = 3; // ゲーム開始時に連結されているマガジン数
 export const AMMO_PICKUP_MAGS = 6; // 補給 1 個の取り込みで増えるマガジン数
 export const AMMO_PICKUP_RADIUS = 100; // 取り込み距離 [m](ゲームプレイ上の吸収判定。物理サイズではない)
+export const MAP_AMMO_FADE_START = 5e7;
+export const MAP_AMMO_FADE_END = 1e8;
+export const MAP_PLANET_SHIP_LABEL_START = 5e8;
+export const MAP_PLANET_SHIP_LABEL_END = 1e9;
 export const AMMO_PHYS_RADIUS = 1.3; // 補給の物理接触用の半径 [m](見た目に近い実寸)
 export const LOGISTICS_LOW_MAGS = 7; // 残りマガジンがこれ未満になると付近の軌道に補給を投入
-export const MAX_AMMO = 3; // 同時に存在する補給の最大数
+export const MAX_ACTIVE_AMMO_PICKUPS = 3; // 同時に存在する補給の最大数
 export const LOGISTICS_CHECK_INTERVAL = 20; // 補給投入判定の間隔 [sim s]
 export const LOGISTICS_MIN_DIST = 625; // 補給投入位置(自機軌道上の位相シフト距離)下限 [m]
 export const LOGISTICS_MAX_DIST = 1250; // 同上限 [m]
@@ -301,6 +305,9 @@ export const LEAD_MAX_TIME = 25; // これより先にしか当たらない見�
 
 // --- 軌道計画モード([M]) ---
 export const OVERVIEW_CAMERA_MIN_DIST = 1e5; // 広範囲視点カメラの注視点までの距離 [m]
+export const OVERVIEW_CAMERA_FOV_MIN = 15; // 広範囲視点の最小垂直画角 [deg]
+export const OVERVIEW_CAMERA_FOV_MAX = 120; // 広範囲視点の最大垂直画角 [deg]
+export const OVERVIEW_CAMERA_FOV_STEP = 1; // HUD から入力する画角の刻み [deg]
 // 冥王星(遠日点約70AU)やエリス(遠日点約97AU)、散乱円盤の遠日点(数百AU)まで
 // 視界に収められる引きの上限。
 export const OVERVIEW_CAMERA_MAX_DIST = 1e14;
@@ -312,7 +319,7 @@ export const OVERVIEW_CAMERA_NEAR_RATIO = 1000;
 // 天球グリッド(CELESTIAL_SHELL_RADIUS)より大きくなる(dist=1e14 で near=1e11)。
 // near クリップは光軸からの角度 θ に対して球殻上の点を R·cosθ まで切り詰めるので、
 // R そのものでなく画面対角の半視野角 θ_diag での R·cosθ_diag を上限に取らないと、
-// 画面中心だけ残して周辺・四隅の星が消える(OverviewCamera.near 参照)。
+// 画面中心だけ残して周辺・四隅の星が消える(MapCamera.near 参照)。
 // 1 未満のこの係数はその余弦にさらに掛ける安全マージン。
 export const OVERVIEW_CAMERA_NEAR_SHELL_MARGIN = 0.9;
 // 広範囲視点の far も near と同様に固定値ではなく dist に連動させる
@@ -447,11 +454,6 @@ export const PREDICT_PLAYER_BUDGET_RATIO = 0.5;
 // までは at() がほぼ全時刻で null を返し、次フレームの乖離判定で必ず破棄されるので、
 // その1サンプル分(sampleInterval / 刻み幅 ≒ 10 ステップ)を下回る配分は作り直しを繰り返す。
 export const PREDICT_MIN_ENTITY_STEPS = 16;
-// 将来時刻を積分していく間に、重力源配列・空間グリッドを組み直す間隔(積分先端の経過時間 [s])。
-// この間だけ重力源の位置を据え置く。ステップ数で切ると、表示期間を年スケールにしたときの粗い
-// 刻み幅では据え置きが数か月に相当してしまうので、実時間で切る。月がこの時間に動く距離は
-// 月自身の軌道の 1/1000 未満。
-export const ATTRACTOR_REBUILD_SEC = 3600;
 // [N] 自動ワープ: 残り時間 / MARGIN 以下の最大シミュレーション速度を選び、STOP 秒前に解除。
 export const AUTOWARP_MARGIN = 2;
 export const AUTOWARP_STOP = 10;

@@ -3,7 +3,7 @@ import { add, addScaled, dot, lenSq, norm, scale, sub, v3, Vec3 } from '../physi
 import { Attractor, strongestAttractor } from '../physics/attractor';
 import { OrbitLine } from './orbit-line';
 import * as C from './const';
-import { ACCENT_SECONDARY } from './theme';
+import { ACCENT, ACCENT_SECONDARY, THEME_CHANGE_EVENT, type ThemePalette } from './theme';
 import { Enemy } from './game-entity/enemy';
 import type { EntityManager } from './simulation/entity-manager';
 import { Player } from './player/player';
@@ -21,6 +21,8 @@ import type { Ephemeris } from '../physics/ephemeris';
 import type { DisplayWindow } from './display-window-manager';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import type { MapVisibilityPolicy } from './celestial/map-visibility';
+import { mapPlanetFadeOpacity, nearestPlanetDistance } from './celestial/planet-distance';
+import { isOccluded } from '../physics/occlusion';
 
 export type CombatTarget = Enemy | Player;
 
@@ -45,8 +47,8 @@ export class Targeter {
   // ターゲット軌道のハイライト線(オレンジ)。自機軌道とほぼ重なるケースが多い
   // (近傍ランデブー狙いのため)。埋もれて見えなくならないよう強い不透明度にし、
   // renderOrder を自機軌道より上げて透明オブジェクトの描画順に依存せず必ず上に描く。
-  readonly orbitLine = new OrbitLine(0xff6a00, 0.9, C.LINE_RENDER_ORDER.target);
-  // 第二ターゲットのハイライト線(シアン)。第一より薄い renderOrder に置く。
+  readonly orbitLine = new OrbitLine(ACCENT, 0.9, C.LINE_RENDER_ORDER.target);
+  // 第二ターゲットのハイライト線(Secondary accent)。第一より薄い renderOrder に置く。
   readonly secondaryOrbitLine = new OrbitLine(ACCENT_SECONDARY, 0.9, C.LINE_RENDER_ORDER.secondaryTarget);
 
   // sfx は現状未使用だが、hud/sfx は必ず対で注入する方針のため受け取る(フィールドとしては保持しない)。
@@ -56,6 +58,13 @@ export class Targeter {
   ) {
     scene.add(this.secondaryOrbitLine.line);
     scene.add(this.orbitLine.line);
+
+    window.addEventListener(THEME_CHANGE_EVENT, (event: Event) => {
+      const palette = (event as CustomEvent<ThemePalette>).detail;
+      if (!palette) return;
+      this.orbitLine.setColor(palette.accent);
+      this.secondaryOrbitLine.setColor(palette.secondary);
+    });
   }
 
   // 生存判定込みの現在の第一ターゲット。撃破後は target を保持したままにせず、ここで
@@ -178,6 +187,7 @@ export class Targeter {
   syncTargetMarkers(
     player: Player | null, targets: readonly CombatTarget[], displayTime: number, simTime: number,
     cameraSystem: CameraSystem, visibilityPolicy: MapVisibilityPolicy | null,
+    registry: Ephemeris['registry'], attractors: readonly Attractor[],
   ): void {
     const overviewMode = cameraSystem.overviewMode;
     const project = cameraSystem.activeCameraProjection;
@@ -195,12 +205,24 @@ export class Targeter {
       const role: MarkerRole =
         tgt === this.aliveTarget ? 'primary' : tgt === this.aliveSecondaryTarget ? 'secondary' : 'none';
       const item = tgt.markerItem(role, viewerPos, ds.r, ds.v, overviewMode);
+      const mapOccluded = overviewMode && isOccluded(cameraSystem.activeCameraPos, ds.r, attractors);
+      const mapOpacity = mapOccluded
+        ? 0
+        : tgt instanceof Enemy && overviewMode
+          ? mapPlanetFadeOpacity(nearestPlanetDistance(ds.r, registry, attractors))
+          : 1;
       this.markerItemScratch.push(visibility ? {
         ...item,
         sym: visibility.icon ? item.sym : '',
         name: visibility.label ? item.name : '',
         detail: visibility.label ? item.detail : '',
-      } : item);
+        opacity: mapOpacity,
+        occluded: mapOccluded,
+      } : {
+        ...item,
+        opacity: mapOpacity,
+        occluded: mapOccluded,
+      });
     }
     this.markerManager.combatMarkers.sync(this.markerItemScratch, project, overviewMode, screenScale);
     if (player) {

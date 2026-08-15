@@ -134,7 +134,7 @@ export class RenderPipeline implements DebugTargetHost {
   // world パス → debugTarget に応じたマテリアルでキャンバスへ合成する composite パスの順に
   // 実行する。Game.render() から毎フレーム1回呼ぶ。デバッグ表示を選んでいてもいずれのパスも
   // 省略しない — 見せるのは通常のフレームが実際に生成した中身であるべきため。
-  render(scene: THREE.Scene, camera: THREE.PerspectiveCamera): void {
+  render(scene: THREE.Scene, camera: THREE.Camera): void {
     this.renderer.getDrawingBufferSize(this.drawingBufferSize);
     const width = this.drawingBufferSize.x;
     const height = this.drawingBufferSize.y;
@@ -167,8 +167,10 @@ export class RenderPipeline implements DebugTargetHost {
 
     // composite パス。QuadMesh.render も内部で renderer.render() を呼ぶので、world パスとは
     // 別の GPU 計測枠が付く。
-    this.depthDebugNear.value = camera.near;
-    this.depthDebugFar.value = camera.far;
+    if (camera instanceof THREE.PerspectiveCamera || camera instanceof THREE.OrthographicCamera) {
+      this.depthDebugNear.value = camera.near;
+      this.depthDebugFar.value = camera.far;
+    }
     this.quad.material = this.compositeMaterials[this.debugTarget];
     this.gpu.beginPass(GPU_PASS.composite);
     this.quad.render(this.renderer);

@@ -12,7 +12,7 @@ import { KEY_MAPPING as K } from './game/input/key-mapping';
 // 計測表示に載せるエンティティ数・シミュレーション規模の一式。
 export type PerfCounts = {
   players: number; enemies: number; bullets: number; casings: number;
-  debris: number; ammos: number; asteroids: number; bases: number;
+  debris: number; ammoPickups: number; asteroids: number; bases: number;
   predicted: number; predictComplete: number; predictDiscarded: number; predictorSteps: number;
   mapMode: boolean; mapItems: number; mapLabels: number; displayDurationSec: number;
   simSubsteps: number; orbitSteps: number; gravitySources: number;
@@ -287,7 +287,7 @@ export class PerfMeter {
       { key: 'ent-bullets', label: 'bullets', value: `${c.bullets}`, group: 'エンティティ' },
       { key: 'ent-casings', label: 'casings', value: `${c.casings}`, group: 'エンティティ' },
       { key: 'ent-debris', label: 'debris', value: `${c.debris}`, group: 'エンティティ' },
-      { key: 'ent-ammos', label: 'ammos', value: `${c.ammos}`, group: 'エンティティ' },
+      { key: 'ent-ammo-pickups', label: 'ammoPickups', value: `${c.ammoPickups}`, group: 'エンティティ' },
       { key: 'ent-asteroids', label: 'asteroids', value: `${c.asteroids}`, group: 'エンティティ' },
       { key: 'ent-bases', label: 'bases', value: `${c.bases}`, group: 'エンティティ' },
 

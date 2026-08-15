@@ -5,7 +5,7 @@ import { Attractor } from '../../physics/attractor';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { GameEntity } from '../game-entity/game-entity';
-import { Ammo } from '../game-entity/ammo';
+import { AmmoPickup } from '../game-entity/ammo-pickup';
 import { Asteroid } from '../game-entity/asteroid';
 import { DebrisPiece } from '../game-entity/debris-piece';
 import { Enemy } from '../game-entity/enemy';
@@ -34,7 +34,7 @@ export class EntityManager {
   readonly bullets: Bullet[] = [];
   readonly casings: DebrisPiece[] = [];
   readonly debris: DebrisPiece[] = [];
-  readonly ammos: Ammo[] = [];
+  public readonly ammoPickups: AmmoPickup[] = [];
   readonly asteroids: Asteroid[] = [];
   // 自機。操作対象(Game.player)もこの配列の1隻で、積分・衝突・寿命判定・予測では
   // 他の艦と対等に扱う。ステージモードでは1隻だけが入る。
@@ -88,8 +88,8 @@ export class EntityManager {
     for (const data of save.enemies) {
       this.addEnemy(new Enemy({ saved: data, simTime }, hud, sfx, this.effects, scene));
     }
-    for (const data of save.ammos) {
-      this.addAmmo(new Ammo({ saved: data, simTime }, scene, markerManager));
+    for (const data of save.ammoPickups) {
+      this.addAmmoPickup(new AmmoPickup({ saved: data, simTime }, scene, markerManager));
     }
     for (const data of save.bases) {
       this.addBase(new Base({ saved: data, simTime }, scene, hud, sfx, this.effects, markerManager));
@@ -191,8 +191,8 @@ export class EntityManager {
   }
 
   // 弾薬ピックアップを登録する。
-  addAmmo(ammo: Ammo): void {
-    this.ammos.push(ammo);
+  public addAmmoPickup(ammoPickup: AmmoPickup): void {
+    this.ammoPickups.push(ammoPickup);
     this.invalidateCaches();
   }
 
@@ -229,7 +229,7 @@ export class EntityManager {
     this.cachedOtherEntities.push(
       ...this.enemies,
       ...this.bullets,
-      ...this.ammos,
+      ...this.ammoPickups,
       ...this.asteroids,
       ...this.casings,
       ...this.debris,
@@ -271,7 +271,7 @@ export class EntityManager {
     this.prune(this.bullets);
     this.prune(this.casings);
     this.prune(this.debris);
-    this.prune(this.ammos);
+    this.prune(this.ammoPickups);
     this.prune(this.asteroids);
     this.prune(this.bases);
   }
@@ -296,7 +296,7 @@ export class EntityManager {
     for (const e of this.all()) e.requestHistoryDuration(sec);
   }
 
-  // 毎フレーム、全ての自機へ behave を1度ずつ通す。操作できるのは操作対象艦だけで、
+  // 毎フレーム、全ての自機へ updatePlayerControls を1度ずつ通す。操作できるのは操作対象艦だけで、
   // 操作できないワープ倍率ではどの艦も操作できない — その2つは同じ「操作できない」状態なので、
   // input を渡すかどうかの1つの判断にまとめる。
   updatePlayers(
@@ -306,7 +306,14 @@ export class EntityManager {
     const operable = simSpeed.canShipAct;
     const simDt = dt * simSpeed.simSpeed;
     for (const ship of this.players) {
-      ship.behave(ship === activePlayer && operable ? input : null, dt, simDt, this, activeStage, ephemeris);
+      ship.updatePlayerControls(
+        ship === activePlayer && operable ? input : null,
+        dt,
+        simDt,
+        this,
+        activeStage,
+        ephemeris,
+      );
     }
   }
 
@@ -335,11 +342,14 @@ export class EntityManager {
   syncPlayerTrajectoryLines(
     activePlayer: Player | null, displayWindow: DisplayWindow, overviewMode: boolean, ephemeris: Ephemeris,
     fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
+    visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
-    const { frame, simTime, duration, pastDuration } = displayWindow;
+    const { frame, simTime, displayTime, duration, pastDuration } = displayWindow;
     for (const ship of this.players) {
+      const isActive = ship === activePlayer;
+      const show = isActive && (visibilityPolicy?.entity('player', isActive).orbit ?? true);
       ship.syncTrajectoryLine(
-        ship === activePlayer, frame, simTime, pastDuration, ephemeris, fo, camera, attractors);
+        show, frame, simTime, displayTime, pastDuration, ephemeris, fo, camera, attractors);
       ship.orbitLine.setSuppressed(ship.supersedesAnalyticEllipse(simTime, duration, overviewMode));
     }
   }
@@ -351,10 +361,12 @@ export class EntityManager {
     fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
   ): void {
     if (visibilityPolicy) {
-      for (const ship of this.players) if (!visibilityPolicy.entity('player', ship === activePlayer).category) ship.obj.visible = false;
-      for (const enemy of this.enemies) if (!visibilityPolicy.entity('ship').category) enemy.obj.visible = false;
-      for (const ammo of this.ammos) if (!visibilityPolicy.entity('ammo').category) ammo.obj.visible = false;
-      for (const base of this.bases) if (!visibilityPolicy.entity('base').category) base.obj.visible = false;
+      for (const ship of this.players) if (!visibilityPolicy.entity('player', ship === activePlayer).category) ship.renderObject.visible = false;
+      for (const enemy of this.enemies) if (!visibilityPolicy.entity('ship').category) enemy.renderObject.visible = false;
+      for (const ammoPickup of this.ammoPickups) {
+        if (!visibilityPolicy.entity('ammo').category) ammoPickup.renderObject.visible = false;
+      }
+      for (const base of this.bases) if (!visibilityPolicy.entity('base').category) base.renderObject.visible = false;
     }
     for (const ship of this.players) {
       ship.orbitLine.setDisplayEnabled(!overviewMode || (visibilityPolicy?.entity('player', ship === activePlayer).orbit ?? false));
@@ -389,24 +401,24 @@ export class EntityManager {
   // 艦が1隻も無い間は距離を添えない。
   syncMarkers(
     cameraSystem: CameraSystem, displayTime: number, viewerPos: Vec3 | null,
-    visibilityPolicy: MapVisibilityPolicy | null,
+    attractors: readonly Attractor[], visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     const project = cameraSystem.activeCameraProjection;
     const scale = cameraSystem.activeCameraScale;
     const overviewMode = cameraSystem.overviewMode;
     const visibilityOf = (kind: 'ammo' | 'base'): MapVisibility | null =>
       (overviewMode ? visibilityPolicy?.entity(kind) ?? null : null);
-    for (const ammo of this.ammos) {
-      ammo.marker?.sync(project, scale, displayTime, overviewMode, viewerPos, visibilityOf('ammo'));
+    for (const ammoPickup of this.ammoPickups) {
+      ammoPickup.marker?.sync(project, scale, displayTime, overviewMode, cameraSystem.activeCameraPos, viewerPos, attractors, visibilityOf('ammo'));
     }
     for (const base of this.bases) {
-      base.marker?.sync(project, scale, displayTime, overviewMode, viewerPos, visibilityOf('base'));
+      base.marker?.sync(project, scale, displayTime, overviewMode, cameraSystem.activeCameraPos, viewerPos, attractors, visibilityOf('base'));
     }
   }
 
   // 自機以外のメッシュを displayTime 時点の状態に同期する。自機はエフェクト・ベルト・
   // 軌道線まで持つので Player.syncPlayer が担当する。弾本体・弾ハロー・プラズマ弾・薬莢・
-  // 破片(fragment)の変換は各エンティティの obj に同期された後、InstancedPool へ push する。
+  // 破片(fragment)の変換は各エンティティの renderObject に同期された後、InstancedPool へ push する。
   sync(fo: FloatingOrigin, displayTime: number): void {
     for (const e of this.otherEntities()) e.sync(fo, displayTime);
 
@@ -416,20 +428,20 @@ export class EntityManager {
     this.casingPool.beginFrame();
     for (const pool of this.debrisFragmentPools) pool.beginFrame();
     for (const b of this.bullets) {
-      if (!b.obj.visible) continue;
+      if (!b.renderObject.visible) continue;
       if (b.type === 'plasma') {
-        this.plasmaPool.push(b.obj);
+        this.plasmaPool.push(b.renderObject);
         continue;
       }
       // 本体+ハローの Group。シーン外なので matrixWorld は自前で更新する必要があり、
       // 親で1回呼べば子(本体・ハロー)まで連鎖して更新される。
-      b.obj.updateMatrixWorld();
-      this.bulletBodyPool.push(b.obj.children[0]!);
-      this.bulletHaloPool.push(b.obj.children[1]!);
+      b.renderObject.updateMatrixWorld();
+      this.bulletBodyPool.push(b.renderObject.children[0]!);
+      this.bulletHaloPool.push(b.renderObject.children[1]!);
     }
-    for (const c of this.casings) this.casingPool.push(c.obj);
+    for (const c of this.casings) this.casingPool.push(c.renderObject);
     for (const d of this.debris) {
-      if (d.kind === 'fragment') this.debrisFragmentPools[d.fragmentVariant]!.push(d.obj, d.fragmentColor!);
+      if (d.kind === 'fragment') this.debrisFragmentPools[d.fragmentVariant]!.push(d.renderObject, d.fragmentColor!);
     }
     this.bulletBodyPool.endFrame();
     this.bulletHaloPool.endFrame();
@@ -439,14 +451,14 @@ export class EntityManager {
   }
 
   // 負荷確認ウィンドウが読む、保持配列ごとの現在の個体数。
-  perfCounts(): Pick<PerfCounts, 'players' | 'enemies' | 'bullets' | 'casings' | 'debris' | 'ammos' | 'asteroids' | 'bases'> {
+  perfCounts(): Pick<PerfCounts, 'players' | 'enemies' | 'bullets' | 'casings' | 'debris' | 'ammoPickups' | 'asteroids' | 'bases'> {
     return {
       players: this.players.length,
       enemies: this.enemies.length,
       bullets: this.bullets.length,
       casings: this.casings.length,
       debris: this.debris.length,
-      ammos: this.ammos.length,
+      ammoPickups: this.ammoPickups.length,
       asteroids: this.asteroids.length,
       bases: this.bases.length,
     };

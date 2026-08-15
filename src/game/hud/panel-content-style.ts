@@ -1,14 +1,14 @@
 // 個々のパネルの中身の CSS: SHIP STATUS/ORBIT/TARGET/CONTACTS の行、軌道オブジェクト一覧、
-// 軌道計画、表示設定、表示時刻、座標系、艦艇配置、ナビボール、ステージステータス、
+// 軌道計画、表示設定、表示時刻、カメラ・軌道、艦艇配置、ナビボール、ステージステータス、
 // 設定・ヘルプ・終了画面。骨格(層・レール・シェルフ・バッジ)は skeleton-style.ts が持つ。
 import * as C from '../const';
 import { MQ_COARSE, MQ_COARSE_SHORT, MQ_COMPACT, MQ_MEDIUM_DOWN, MQ_SHORT } from './breakpoints';
 
 export const PANEL_CONTENT_STYLE = `
 #hud-status h3 { font-size: var(--font-xxs); }
-/* マップビューでは艦固有の情報を右クリックのプロパティウィンドウで参照するので、常設の
-   SHIP STATUS は畳んでパネル占有面積を減らす。戦闘ビューでは従来どおり常設のまま。 */
-#hud.map-mode #hud-status { display: none; }
+/* 通常のマップビューでは艦固有の情報を右クリックのプロパティウィンドウで参照するので、常設の
+   SHIP STATUS は畳んでパネル占有面積を減らす。クリエイティブでは配置後の操作用に表示する。 */
+#hud:not(.creative-mode) .hud-map-root.active #hud-status { display: none; }
 #hud-orbit h3 { font-size: var(--font-xxs); }
 #hud-status .v, #hud-orbit .v { min-width: 75px; }
 /* R/F/G/T の代替操作ボタン(タッチ・マウスどちらでも常設)。 */
@@ -23,7 +23,7 @@ body.touch-ui-active #hud-status .status-throttle-touch { display: flex; }
 #hud .hud-rail-right > #hud-target h3 { font-size: var(--font-xxs); }
 #hud-enemies h3 { font-size: var(--font-xxs); }
 #hud-enemies .erow { display: flex; justify-content: space-between; gap: var(--space-4); color: var(--text-dim); }
-#hud-enemies .erow.tgt { color: var(--danger); }
+#hud-enemies .erow.tgt { color: var(--accent); }
 
 #hud .hud-rail > #hud-shipplacer { max-height: none; overflow: visible; }
 #hud .hud-rail > #hud-plan { width: 100%; min-width: 0; max-width: none; max-height: none; overflow: visible; }
@@ -65,7 +65,7 @@ body.touch-ui-active #hud-status .status-throttle-touch { display: flex; }
 #hud-plan { min-width: 0; width: 100%; max-width: 300px; overflow-wrap: anywhere; }
 #hud .w-group { margin-bottom: var(--space-3); }
 #hud .w-toggle { margin-bottom: var(--space-3); }
-/* body-class-row: カテゴリー見出し + アイコン/ラベル/軌道線トグルの1行(MAP VIEW・表示パネル)。
+/* body-class-row: カテゴリー見出し + アイコン/ラベル/軌道線トグルの1行(太陽系・表示パネル)。
    見出しは幅を固定して縦に揃え、長い名前(ラグランジュ点など)は省略する。 */
 #hud .body-class-row { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); }
 #hud .body-class-row .body-class-title {
@@ -78,7 +78,7 @@ body.touch-ui-active #hud-status .status-throttle-touch { display: flex; }
 #hud span.body-class-icon-btn { min-width: 20px; padding: var(--space-2) var(--space-3); text-align: center; font-size: var(--font-m); }
 #hud .body-class-row.category-off .body-class-icon-btn.on { border-color: var(--edge); color: var(--text-dim); font-weight: 700; opacity: .65; }
 #hud .body-class-row.category-off .body-class-icon-btn.disabled { opacity: .35; }
-/* MAP VIEW の左列は navball ウィンドウの右に置き、重なりを避ける。 */
+/* 太陽系パネルの左列は navball ウィンドウの右に置き、重なりを避ける。 */
 #hud-view-options { width: 100%; pointer-events: auto; }
 #hud-view-options .view-options-title { display: flex; align-items: center; gap: var(--space-2); }
 #hud-view-options .view-options-collapse { margin-left: auto; background: none; border: none; color: var(--text-dim); font: inherit; cursor: pointer; pointer-events: auto; }
@@ -105,7 +105,7 @@ body.touch-ui-active #hud-status .status-throttle-touch { display: flex; }
   width: 26px; height: 26px; border: 1px solid var(--edge); border-radius: var(--radius-m);
   background: var(--surface); color: var(--accent);
 }
-#hud.map-mode #hud-predict-toggle { display: block; }
+#hud .hud-map-root.active #hud-predict-toggle { display: block; }
 #hud.dock-mode #hud-predict-toggle { display: none; }
 #hud-predict .predict-row1, #hud-predict .predict-row2 { display: flex; align-items: center; gap: var(--space-3); }
 #hud-predict .predict-row1 { flex-wrap: wrap; margin-bottom: var(--space-2); }
@@ -143,16 +143,30 @@ body.touch-ui-active #hud-status .status-throttle-touch { display: flex; }
   position: absolute;
   font-size: var(--font-xxs); color: var(--text-dim); white-space: nowrap;
 }
-#hud-frame-controls { width: 100%; pointer-events: auto; }
-#hud-frame-controls .hud-frame-scroll-zone {
+#hud .hud-frame-controls { width: 100%; pointer-events: auto; }
+#hud .hud-frame-controls .hud-frame-scroll-zone {
   max-height: min(240px, 30vh); max-height: min(240px, 30dvh); overflow-y: auto;
   scrollbar-width: thin;
 }
 /* 座標系の候補が増えても、見出しの右側へボタンを押し出さない。 */
-#hud-frame-controls .hud-frame-origin-zone > .w-group:first-child > .w-group-title,
-#hud-frame-controls .hud-frame-rotation-zone > .w-group-title {
+#hud .hud-frame-controls .hud-frame-origin-zone > .w-group:first-child > .w-group-title,
+#hud .hud-frame-controls .hud-frame-rotation-zone > .w-group-title {
   flex: 0 0 100%; min-width: 0;
 }
+#hud .hud-frame-controls .camera-fov-control {
+  display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3);
+}
+#hud .hud-frame-controls .camera-control-label {
+  flex: 0 0 42px; color: var(--text-dim); font-size: var(--font-xs); letter-spacing: 1px;
+}
+#hud .hud-frame-controls .camera-fov-control .w-slider { flex: 1 1 auto; min-width: 60px; }
+#hud .hud-frame-controls .camera-fov-control .w-slider:disabled,
+#hud .hud-frame-controls .camera-fov-control .w-input:disabled { opacity: .4; cursor: not-allowed; }
+#hud .hud-frame-controls .camera-fov-control .w-input { width: 54px; }
+#hud .hud-frame-controls .camera-control-unit { color: var(--text-dim); font-size: var(--font-xs); }
+#hud .hud-frame-controls .camera-fov-reset { width: 100%; box-sizing: border-box; margin-bottom: var(--space-3); text-align: center; }
+#hud .hud-frame-controls .camera-reference-view-buttons { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); }
+#hud .hud-frame-controls .camera-reference-view-buttons .w-btn { flex: 1 1 0; text-align: center; }
 #hud-creative-options { width: 100%; pointer-events: auto; }
 /* 艦艇配置パネル(クリエイティブモード限定): MANEUVER PLAN の下、右上に縦積みする。 */
 #hud-shipplacer { width: 100%; pointer-events: auto; max-height: 70vh; max-height: 70dvh; overflow-y: auto; }
@@ -237,12 +251,53 @@ body.touch-ui-active #hud-status .status-throttle-touch { display: flex; }
 #hud-pause-menu .pm-row {
   display: flex; justify-content: space-between; align-items: center; gap: var(--space-6); padding: var(--space-3) 0;
 }
+#hud-pause-menu .pm-theme-row { align-items: center; }
+#hud-pause-menu .pm-theme-preview { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 3px; }
+#hud-pause-menu .pm-theme-swatch { width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 0 1px color-mix(in srgb, var(--title) 24%, transparent); }
+#hud-pause-menu .pm-theme-select { flex: 1 1 180px; min-width: 0; color-scheme: var(--theme-tone); }
 /* span. まで指定して .w-btn 側の padding/font-size より確実に勝たせる
    (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
 #hud-pause-menu span.pm-quit { margin-top: var(--space-5); text-align: center; padding: var(--space-4) var(--space-5); font-size: var(--font-m); }
 #hud-pause-menu .pm-close-row { margin-top: var(--space-5); text-align: center; }
 #hud-pause-menu .w-tabs { margin-bottom: var(--space-4); }
 #hud-pause-menu .gp-body { display: flex; flex-direction: column; gap: var(--space-4); }
+#hud-settings-view {
+  inset: 0; display: none; overflow-y: auto; pointer-events: auto;
+  padding: clamp(24px, 7vh, 72px) max(var(--space-6), 6vw);
+  border-radius: 0; background: var(--shade-2); box-shadow: none;
+}
+#hud-settings-view .sv-header,
+#hud-settings-view .sv-description,
+#hud-settings-view .sv-section,
+#hud-settings-view .sv-footer { width: min(100%, 720px); margin-inline: auto; }
+#hud-settings-view .sv-header {
+  display: flex; align-items: baseline; gap: var(--space-4);
+  border-bottom: 1px solid var(--edge); padding-bottom: var(--space-4);
+}
+#hud-settings-view .sv-header h2 { color: var(--title); font-size: var(--font-2xl); letter-spacing: 0.08em; }
+#hud-settings-view .sv-eyebrow { color: var(--accent); font-size: var(--font-xxs); letter-spacing: 0.12em; }
+#hud-settings-view .sv-description { margin-top: var(--space-5); color: var(--text-dim); font-size: var(--font-s); }
+#hud-settings-view .sv-section { margin-top: var(--space-7); }
+#hud-settings-view .sv-section h3 { color: var(--accent); font-size: var(--font-m); letter-spacing: 0.08em; }
+#hud-settings-view .sv-volume-row {
+  display: flex; align-items: center; gap: var(--space-4); margin-top: var(--space-4);
+  padding: var(--space-4); background: var(--surface-1); border: 1px solid var(--edge);
+}
+#hud-settings-view .sv-label { width: 4em; color: var(--text-dim); }
+#hud-settings-view .sv-volume-row .w-slider { flex: 1; }
+#hud-settings-view .sv-volume-value { width: 4em; color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
+#hud-settings-view .sv-track-list { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-4); }
+#hud-settings-view .sv-track-row {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-4);
+  min-height: 44px; padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
+  background: var(--surface-1); border: 1px solid transparent;
+}
+#hud-settings-view .sv-track-row:has(.w-btn.on) { border-color: var(--accent); background: var(--surface-2); }
+#hud-settings-view .sv-track-label { display: flex; align-items: baseline; gap: var(--space-4); color: var(--text); }
+#hud-settings-view .sv-track-number { color: var(--text-dim); font-size: var(--font-xxs); font-variant-numeric: tabular-nums; }
+#hud-settings-view .sv-preview-button { min-width: 76px; text-align: center; }
+#hud-settings-view .sv-track-actions { margin-top: var(--space-4); text-align: right; }
+#hud-settings-view .sv-footer { margin-top: var(--space-8); text-align: center; }
 
 @media ${MQ_MEDIUM_DOWN} {
   #hud-plan { min-width: 0; max-width: none; }
@@ -251,6 +306,7 @@ body.touch-ui-active #hud-status .status-throttle-touch { display: flex; }
   #hud-result .detail { font-size: var(--font-l); padding: var(--space-5) var(--space-6); max-width: 92vw; }
   #navball { top: 76px; width: 96px !important; height: auto !important; }
   #hud-pause-menu { min-width: 0; width: 78vw; }
+  #hud-settings-view { padding-inline: var(--space-5); }
   #hud-stagestatus { bottom: 8px; width: min(62vw, 440px); min-width: 0; max-height: 62px; overflow-y: auto; padding: var(--space-3) var(--space-5); gap: var(--space-4); }
   /* このブレークポイントのレール幅に合わせて左右の隙間を再計算する。 */
   #hud-predict-wrap {

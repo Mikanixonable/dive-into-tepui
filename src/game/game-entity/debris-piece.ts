@@ -21,14 +21,14 @@ export type DebrisKind =
   | { kind: 'casing'; bornSim: number; };
 
 // DebrisKind の種別に応じたメッシュを構築する。fragment は InstancedPool 経由で描くため
-// ジオメトリを持たない — size だけを obj.scale へ焼き、どのバリアント/色を使うかは
+// ジオメトリを持たない — size だけを renderObject.scale へ焼き、どのバリアント/色を使うかは
 // DebrisPiece 自身が持つ(EntityManager.sync が variant ごとのプールへ push する)。
-function buildDebrisObj(debrisKind: DebrisKind): THREE.Object3D {
+function buildDebrisRenderObject(debrisKind: DebrisKind): THREE.Object3D {
   switch (debrisKind.kind) {
     case 'fragment': {
-      const obj = new THREE.Object3D();
-      obj.scale.setScalar(debrisKind.size);
-      return obj;
+      const renderObject = new THREE.Object3D();
+      renderObject.scale.setScalar(debrisKind.size);
+      return renderObject;
     }
     case 'barrel': return buildBarrelMesh();
     case 'magazineFrame': return buildMagazineFrame();
@@ -56,8 +56,15 @@ export class DebrisPiece extends GameEntity {
     radius?: number,
     scene?: THREE.Scene,
   ) {
-    // 薬莢・破片は InstancedPool 経由で描画するため、obj をシーンへ足さない。
-    super(state, buildDebrisObj(debrisKind), scene, att, undefined, debrisKind.kind !== 'casing' && debrisKind.kind !== 'fragment');
+    // 薬莢・破片の renderObject は InstancedPool へ渡す変換を保持する。
+    super(
+      state,
+      buildDebrisRenderObject(debrisKind),
+      scene,
+      att,
+      undefined,
+      debrisKind.kind !== 'casing' && debrisKind.kind !== 'fragment',
+    );
     this.radius = radius ?? 0;
     this.collides = debrisKind.kind !== 'fragment';
     if (debrisKind.kind === 'fragment') {
@@ -108,7 +115,7 @@ export class DebrisPiece extends GameEntity {
   // シーンからの除去に加え、自身が所有するジオメトリ・マテリアルを解放する。
   dispose(): void {
     super.dispose();
-    this.obj.traverse((child) => {
+    this.renderObject.traverse((child) => {
       const mesh = child as THREE.Mesh;
       if (!mesh.isMesh) return;
       // 共有ジオメトリを解放しないよう、所有権フラグが立つものだけ処理する。

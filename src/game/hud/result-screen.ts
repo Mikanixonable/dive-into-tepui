@@ -1,6 +1,6 @@
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { StageResult } from '../stages/stage';
-import { FONT_L, SPACE_6, TEXT_DIM } from '../theme';
+import { FONT_L, SPACE_6 } from '../theme';
 import type { Hud } from './hud';
 import type { OverlayHandle } from './overlay-manager';
 
@@ -37,7 +37,7 @@ export class ResultScreen implements OverlayHandle {
       <h1>${result.title ?? (result.win ? 'MISSION COMPLETE' : 'SHIP LOST')}</h1>
       <div class="detail">${result.detailHtml}</div>
       <div class="restart" style="cursor: pointer;">[${K.restart.label}] キーまたはタップで再出撃</div>
-      <div class="title-return" style="margin-top: ${SPACE_6}; color: ${TEXT_DIM}; font-size: ${FONT_L}; cursor: pointer; text-decoration: underline;">タイトル画面に戻る</div>`;
+      <div class="title-return" style="margin-top: ${SPACE_6}; color: var(--text-dim); font-size: ${FONT_L}; cursor: pointer; text-decoration: underline;">タイトル画面に戻る</div>`;
     e.querySelector('.restart')!.addEventListener('click', () => this.transitions.restart());
     e.querySelector('.title-return')!.addEventListener('click', () => this.transitions.returnToTitle());
     this.hud.overlayManager.open('result', this, {

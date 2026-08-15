@@ -13,25 +13,23 @@ import type { OverlayHandle, OverlayManager } from './overlay-manager';
 const STYLE = `
 #hud .ctx-menu {
   position: fixed; display: none; min-width: 168px;
-  pointer-events: auto; background: var(--surface); border: 1px solid var(--edge);
-  border-radius: var(--radius-m); overflow: hidden; font-size: var(--font-m);
+  pointer-events: auto; padding: var(--space-2); background: var(--glass-focus); border: 0;
+  border-radius: var(--radius-panel); overflow: hidden; font-size: var(--font-m);
   font-family: var(--font-family); user-select: none;
+  box-shadow: 0 16px 48px var(--shade-1); backdrop-filter: blur(20px) saturate(82%);
   -webkit-user-select: none;
 }
 #hud .ctx-menu-item {
-  padding: var(--space-4) var(--space-5); color: var(--text); cursor: pointer;
-  border-bottom: 1px solid var(--edge);
+  padding: var(--space-4) var(--space-5); color: var(--body); cursor: pointer;
+  border: 0; border-radius: var(--radius-micro);
 }
-#hud .ctx-menu-item:last-child { border-bottom: none; }
 #hud .ctx-menu-item:hover, #hud .ctx-menu-item:active {
-  background: var(--accent-fill); color: var(--accent-soft);
+  background: var(--surface-2); color: var(--accent-near);
 }
+#hud .ctx-menu-item:focus-visible { outline: 2px solid var(--accent-near); outline-offset: -2px; }
 #hud .ctx-menu-header {
   padding: var(--space-4) var(--space-5);
-  border-bottom: 1px solid var(--edge);
-  background: var(--shade-1);
-  color: var(--text);
-  font-weight: bold;
+  border: 0; background: transparent; color: var(--title); font-weight: 600;
 }
 #hud .ctx-menu-header-sub {
   font-size: var(--font-s);
@@ -72,30 +70,34 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
   private target: T | null = null;
   private requestedX = 0;
   private requestedY = 0;
-  onSelect: ((act: A, target: T) => void) | null = null;
+  private previouslyFocused: HTMLElement | null = null;
+  public onSelect: ((act: A, target: T) => void) | null = null;
+  public onClose: (() => void) | null = null;
 
   // メニュー要素を popupLayer(#hud の popup レイヤ)へ追加する。ESC・項目ショートカット・
   // 要素外へのポインタ操作での自動クローズは overlayManager への登録を通じて配送される。
-  constructor(popupLayer: HTMLElement, private readonly overlayManager: OverlayManager) {
+  public constructor(popupLayer: HTMLElement, private readonly overlayManager: OverlayManager) {
     this.overlayId = `ctx-menu-${ContextMenu.nextId++}`;
     ensureStyle();
     this.el = document.createElement('div');
     this.el.className = 'ctx-menu';
+    this.el.setAttribute('role', 'menu');
     popupLayer.appendChild(this.el);
     this.el.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.el.addEventListener('contextmenu', (e) => e.preventDefault());
+    this.el.addEventListener('keydown', (event) => this.handleMenuNavigation(event));
     onViewportChange(() => {
       if (this.target !== null) this.positionWithinViewport();
     });
   }
 
-  contains(target: Node): boolean {
+  public contains(target: Node): boolean {
     return this.el.contains(target);
   }
 
   // OverlayManager からの項目ショートカット配送を受ける。一致する項目があれば
   // クリックと同じ経路(close→onSelect)で選択したことにする。
-  handleShortcut(code: string): boolean {
+  public handleShortcut(code: string): boolean {
     if (this.target === null) return false;
     // 各項目のクリックリスナは自分自身を閉包で持つが、ここはコード文字列しか受け取らない
     // ので、開いた項目の DOM を dataset 経由で引き直す。
@@ -113,7 +115,8 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
 
   // target を対象として items を描画し、指定した画面座標に開く。項目クリックで
   // onSelect(act, target) を発火して閉じる。
-  open(clientX: number, clientY: number, target: T, items: readonly MenuItem<A>[]): void {
+  public open(clientX: number, clientY: number, target: T, items: readonly MenuItem<A>[]): void {
+    this.previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     this.target = target;
     this.requestedX = clientX;
     this.requestedY = clientY;
@@ -123,6 +126,7 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
       if (it.type === 'header') {
         const header = document.createElement('div');
         header.className = 'ctx-menu-header';
+        header.setAttribute('role', 'presentation');
         const main = document.createElement('div');
         main.textContent = it.label;
         header.appendChild(main);
@@ -137,6 +141,8 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
       }
       const item = document.createElement('div');
       item.className = 'ctx-menu-item';
+      item.setAttribute('role', 'menuitem');
+      item.tabIndex = -1;
       item.dataset['act'] = it.act || '';
       item.dataset['shortcut'] = it.shortcut || '';
       item.textContent = it.label + (it.shortcut ? ` [${shortcutKeyLabel(it.shortcut)}]` : '');
@@ -148,6 +154,12 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
         this.close();
         if (t !== null) this.onSelect?.(act, t);
       });
+      item.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        item.click();
+      });
+      item.addEventListener('focus', () => this.setRovingItem(item));
       this.el.appendChild(item);
     }
     this.el.style.display = 'block';
@@ -156,6 +168,37 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
     this.overlayManager.open(this.overlayId, this, {
       kind: 'popup', closeOnEscape: true, closeOnOutsideClick: true, gatesInput: false,
     });
+    const firstItem = this.el.querySelector<HTMLElement>('.ctx-menu-item');
+    if (firstItem) {
+      this.setRovingItem(firstItem);
+      firstItem.focus({ preventScroll: true });
+    }
+  }
+
+  private handleMenuNavigation(event: KeyboardEvent): void {
+    if (event.key === 'Tab') {
+      this.close();
+      return;
+    }
+    const menuItems = Array.from(this.el.querySelectorAll<HTMLElement>('.ctx-menu-item'));
+    if (menuItems.length === 0) return;
+    const currentIndex = Math.max(0, menuItems.indexOf(document.activeElement as HTMLElement));
+    let nextIndex: number | null = null;
+    if (event.key === 'ArrowDown') nextIndex = (currentIndex + 1) % menuItems.length;
+    if (event.key === 'ArrowUp') nextIndex = (currentIndex - 1 + menuItems.length) % menuItems.length;
+    if (event.key === 'Home') nextIndex = 0;
+    if (event.key === 'End') nextIndex = menuItems.length - 1;
+    if (nextIndex === null) return;
+    event.preventDefault();
+    const nextItem = menuItems[nextIndex]!;
+    this.setRovingItem(nextItem);
+    nextItem.focus({ preventScroll: true });
+  }
+
+  private setRovingItem(activeItem: HTMLElement): void {
+    for (const item of Array.from(this.el.querySelectorAll<HTMLElement>('.ctx-menu-item'))) {
+      item.tabIndex = item === activeItem ? 0 : -1;
+    }
   }
 
   private positionWithinViewport(): void {
@@ -172,9 +215,14 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
   }
 
   // メニューを閉じ、保持中の対象を破棄する。
-  close(): void {
+  public close(): void {
+    const wasOpen = this.target !== null;
     this.el.style.display = 'none';
     this.target = null;
     this.overlayManager.close(this.overlayId);
+    const focusTarget = this.previouslyFocused;
+    this.previouslyFocused = null;
+    if (focusTarget?.isConnected) focusTarget.focus({ preventScroll: true });
+    if (wasOpen) this.onClose?.();
   }
 }
