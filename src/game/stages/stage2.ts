@@ -44,16 +44,16 @@ export class Stage2 extends Stage {
     const player = this.addPlayer();
     const base = player.state;
     const hud = this._hud;
-    const sfx = this._sfx;
+    const worldSfx = this._worldSfx;
     const fx = this._fx;
     const scene = this._scene;
     // 通常軌道の敵
-    this.addEnemy(generatePhasedEnemy('HOSTILE-α', base, 1800, 2, 0xff4a3d, C.COLOR_ENEMY_ORBIT_LINE, hud, sfx, fx, scene), entities);
-    this.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, -2600, 3000, 2, 0xff7a2d, C.COLOR_ENEMY_ORBIT_LINE, hud, sfx, fx, scene), entities);
+    this.addEnemy(generatePhasedEnemy('HOSTILE-α', base, 1800, 2, 0xff4a3d, C.COLOR_ENEMY_ORBIT_LINE, hud, worldSfx, fx, scene), entities);
+    this.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, -2600, 3000, 2, 0xff7a2d, C.COLOR_ENEMY_ORBIT_LINE, hud, worldSfx, fx, scene), entities);
     // モルニヤ級の高楕円軌道の敵
-    this.addEnemy(generateMolniyaEnemy('MOLNIYA-γ', base.t, 0.4, 2.6, 3, 0xe0409f, C.COLOR_ENEMY_ORBIT_LINE, hud, sfx, fx, scene), entities);
-    this.addEnemy(generateMolniyaEnemy('MOLNIYA-δ', base.t, 2.5, 0.9, 3, 0xbf3dff, C.COLOR_ENEMY_ORBIT_LINE, hud, sfx, fx, scene), entities);
-    this.addEnemy(generateMolniyaEnemy('MOLNIYA-ε', base.t, 4.6, 3.8, 3, 0xff2d6b, C.COLOR_ENEMY_ORBIT_LINE, hud, sfx, fx, scene), entities);
+    this.addEnemy(generateMolniyaEnemy('MOLNIYA-γ', base.t, 0.4, 2.6, 3, 0xe0409f, C.COLOR_ENEMY_ORBIT_LINE, hud, worldSfx, fx, scene), entities);
+    this.addEnemy(generateMolniyaEnemy('MOLNIYA-δ', base.t, 2.5, 0.9, 3, 0xbf3dff, C.COLOR_ENEMY_ORBIT_LINE, hud, worldSfx, fx, scene), entities);
+    this.addEnemy(generateMolniyaEnemy('MOLNIYA-ε', base.t, 4.6, 3.8, 3, 0xff2d6b, C.COLOR_ENEMY_ORBIT_LINE, hud, worldSfx, fx, scene), entities);
   }
   // 敵の行動と補給品の湧きを進める。
   update(dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {

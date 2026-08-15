@@ -5,7 +5,7 @@ import { Vec3, len } from '../../physics/vec3';
 import { atmosphericDensity } from '../../physics/atmosphere';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
-import { Sfx } from '../../audio/sfx';
+import { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { ThermalSaveData } from '../save-data';
 
 // checkThermalLimits の戻り値: 限界超過の種別。null なら超過なし。
@@ -31,7 +31,7 @@ export class ThermalSystem {
 
   constructor(
     private readonly _hud: Hud,
-    private readonly _sfx: Sfx,
+    private readonly _worldSfx: WorldSfx,
     saved?: ThermalSaveData,
   ) {
     if (saved) {
@@ -99,7 +99,7 @@ export class ThermalSystem {
     if (hot && !this.heatWarned) {
       this.heatWarned = true;
       this._hud.hint('警告: 空力加熱・動圧が危険域 — 高度を上げよ', 4000);
-      this._sfx.altAlarm();
+      this._worldSfx.altAlarm();
     } else if (!hot && this.hullTemp < 0.6 * C.MAX_HULL_TEMP) {
       this.heatWarned = false;
     }
@@ -132,7 +132,7 @@ export class ThermalSystem {
         if (!this.altWarnedThresholds.has(th)) {
           this.altWarnedThresholds.add(th);
           this._hud.hint(`警告: 高度が${Math.round(th / 1000)}km以下です`, 3000);
-          this._sfx.altAlarm();
+          this._worldSfx.altAlarm();
         }
       } else if (this.altEma > th + HYSTERESIS) {
         this.altWarnedThresholds.delete(th);

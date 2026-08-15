@@ -369,7 +369,7 @@ THREE 非依存かつ純粋であっても、次のものは `physics/` に置�
 
 - `PauseMenu`(BGM・一時停止・タイトルへ戻る)… **複数モジュールにまたがることが本質**の
   GUI なので、所有者を `main.ts` に置く。
-- `Hud.hint()` / `toast()` / `Sfx` … 共有サービス。所有者の議論の対象外。
+- `Hud.hint()` / `toast()` / `WorldSfx`/`UiSfx` … 共有サービス。所有者の議論の対象外。
 - `hud/context-menu.ts` / `hud/widgets/`(押せる/切り替えられる/入力できる DOM は
   `Button`/`ToggleSwitch`/`SegmentedControl`/`HoldButton`/`CloseButton`/`ValueInput`/`Meter`/
   `TabBar`/`buildCollapseToggle`/`Slider` の10種に限り、これ以外を自作しない)/ `hud/frame-labels.ts` …

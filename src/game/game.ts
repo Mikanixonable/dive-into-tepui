@@ -22,7 +22,8 @@ import { Input } from './input/input';
 import { TouchControls } from './input/touch';
 import { Hud } from './hud/hud';
 import { PauseMenu } from './hud/pause-menu';
-import { Sfx } from '../audio/sfx';
+import { WorldSfx } from '../audio/sfx/world-sfx';
+import { UiSfx } from '../audio/sfx/ui-sfx';
 import { GameScene } from '../render/scene';
 import type { GraphicsSettings } from '../render/graphics-settings';
 import type { RenderPipeline } from '../render/pipeline/render-pipeline';
@@ -47,7 +48,8 @@ export class Game {
   readonly input: Input;
   private readonly touchControls: TouchControls | null;
   private readonly _hud: Hud;
-  private readonly _sfx: Sfx;
+  private readonly _worldSfx: WorldSfx;
+  private readonly _uiSfx: UiSfx;
   private readonly pauseMenu: PauseMenu;
   private readonly markerManager: MarkerManager;
   private readonly _ephemeris: Ephemeris;
@@ -98,7 +100,8 @@ export class Game {
     gs: GameScene,
     stageClass: StageClass,
     hud: Hud,
-    sfx: Sfx,
+    worldSfx: WorldSfx,
+    uiSfx: UiSfx,
     pauseMenu: PauseMenu,
     unlockManager: UnlockManager,
     sections: FrameSections,
@@ -112,7 +115,8 @@ export class Game {
     this._scene = gs.scene;
     this.pipeline = pipeline;
     this._hud = hud;
-    this._sfx = sfx;
+    this._worldSfx = worldSfx;
+    this._uiSfx = uiSfx;
     this.pauseMenu = pauseMenu;
     this.unlockManager = unlockManager;
 
@@ -120,7 +124,7 @@ export class Game {
 
     this.markerManager = new MarkerManager(this._hud.layers.marker, this._hud.svgOverlay);
 
-    this.entities = new EntityManager(this._scene, this._hud, this._sfx, this.markerManager, initialSave);
+    this.entities = new EntityManager(this._scene, this._hud, this._worldSfx, this.markerManager, initialSave);
     this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, this.ephemeris, this.entities);
 
     this.cameraSystem = new CameraSystem(
@@ -129,22 +133,22 @@ export class Game {
       this.ephemeris,
       initialSave?.camera,
     );
-    this.simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
+    this.simSpeedManager = new SimSpeedManager(this._hud, this._uiSfx);
     this.frameControls = new FrameControls(
       this._hud.mapRoot, this._hud.layers.popup, this.ephemeris, this.cameraSystem.mapCamera,
       this.displayWindowManager, this._hud.overlayManager,
     );
 
-    this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene);
+    this.targeter = new Targeter(this._hud, this.markerManager, this._scene);
     this.navTarget = new NavTarget(this._hud, this.markerManager);
     this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
     this._environment = new EnvironmentScene(this._scene, this.ephemeris, graphics, pipeline.sunLight, earthSpinPhase0);
     this.activePlayers = new ActivePlayerController(
-      initialSave?.activePlayerId, this.entities, this.cameraSystem, this.targeter, this.navTarget, this._sfx,
+      initialSave?.activePlayerId, this.entities, this.cameraSystem, this.targeter, this.navTarget, this._worldSfx,
     );
     this.editor = new PlanEditor(
       this._hud,
-      this._sfx,
+      this._uiSfx,
       this.simSpeedManager,
       this.ephemeris,
       this.entities,
@@ -154,12 +158,11 @@ export class Game {
       this.displayWindowManager,
       this.frameControls,
     );
-    this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager);
+    this.guide = new PlanGuide(this._hud, this._uiSfx, this.markerManager);
 
     this.input = new Input(gs.renderer.domElement);
     this.touchControls = new TouchControls(this.input);
     this.input.onPointerKindChange = (kind) => this.touchControls?.setPointerKind(kind);
-    this.input.onUserGesture = () => this._sfx.unlock();
     this.input.onLongPressFeedback = (point) => {
       if (point) this.markerManager.set('longpress', 'mk-longpress', '', point.x, point.y, true);
       else this.markerManager.hide('longpress');
@@ -172,7 +175,7 @@ export class Game {
     this.predictor = new Predictor(this.entities, this.ephemeris);
 
     this.activeStage = new stageClass(
-      initialSave?.stage, this._hud, this._sfx, this._scene, this.entities, this.unlockManager,
+      initialSave?.stage, this._hud, this._worldSfx, this._uiSfx, this._scene, this.entities, this.unlockManager,
       this.entities.effects, this.markerManager, this.ephemeris, this.simulator, this.activePlayers,
     );
     this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
@@ -197,7 +200,7 @@ export class Game {
     this.nanWatchdog = new NanWatchdog(this._hud);
     this.docking = new Docking(
       () => this.pause(), () => this.resume(),
-      this._hud, this._sfx, this._scene, this.entities.effects, this.markerManager,
+      this._hud, this._worldSfx, this._scene, this.entities.effects, this.markerManager,
       this.entities, this.mapActions, this.cameraSystem, this.viewManager,
       this.activePlayers, this.activeStage,
     );
@@ -209,7 +212,7 @@ export class Game {
 
   pause(): void {
     this.simulator.lastSimDt = 0;
-    this._sfx.setThrust(false);
+    this._worldSfx.setThrust(false);
     // 一時停止へ入る際に、全自機の連続指令を畳む。
     this.entities.clearTransientCommands();
     this._isPaused = true;
@@ -227,12 +230,12 @@ export class Game {
     this.viewManager.dispose();
     this.mapActions.dispose();
     this.activeStage.dispose();
-    // Hud・Sfx はこのゲームより長生きするので、書き換えたクラス・差し込んだ参照・鳴らしている
+    // Hud・効果音はこのゲームより長生きするので、書き換えたクラス・差し込んだ参照・鳴らしている
     // 継続音を元へ戻す。BGM は周回の外側が決めるものなので触らない。
     this._hud.root.classList.remove('creative-mode');
     this._hud.statusPanel.setInput(null);
-    this._sfx.setThrust(false);
-    this._sfx.setRcs(false);
+    this._worldSfx.setThrust(false);
+    this._worldSfx.setRcs(false);
     this.touchControls?.dispose();
     this.input.dispose();
     this.editor.dispose();

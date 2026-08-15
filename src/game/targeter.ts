@@ -8,7 +8,6 @@ import { Enemy } from './game-entity/enemy';
 import type { EntityManager } from './simulation/entity-manager';
 import { Player } from './player/player';
 import { Hud } from './hud/hud';
-import { Sfx } from '../audio/sfx';
 import { Input, PointerPoint } from './input/input';
 import { CameraSystem, ProjectFn } from './camera/camera-system';
 import type { GroupedMarkerItem } from './marker/grouped-markers';
@@ -59,9 +58,8 @@ export class Targeter {
     this.secondaryOrbitLine.setColor(palette.secondary);
   };
 
-  // sfx は現状未使用だが、hud/sfx は必ず対で注入する方針のため受け取る(フィールドとしては保持しない)。
   constructor(
-    private readonly _hud: Hud, _sfx: Sfx, private readonly markerManager: MarkerManager,
+    private readonly _hud: Hud, private readonly markerManager: MarkerManager,
     scene: THREE.Scene,
   ) {
     scene.add(this.secondaryOrbitLine.line);

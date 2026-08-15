@@ -5,7 +5,7 @@
 
 ## 読み方 / 扱う範囲
 
-- 扱うのは **正本だけ**。キャッシュ・メモ化・導出値・参照共有(hud/sfx/scene など)は所有関係として
+- 扱うのは **正本だけ**。キャッシュ・メモ化・導出値・参照共有(hud/worldSfx/scene など)は所有関係として
   数えない。混同しやすいものだけ末尾の付録に「正本でないもの」として列挙する。
 - インスタンス保持木は「`new` した側が所有者」。コンストラクタ/フィールド初期化子で他所から
   受け取っているだけのものは所有ではなく **参照共有** として別項に分ける。
@@ -38,9 +38,12 @@ main.ts
 │   └── StatusPanel / OrbitPanel / TargetPanel / ContactsPanel / GlobalStatusBar / MapScaleBadge
 │                           ... 常設パネル6枚、1パネル1クラス(buildHudDom が作った要素索引 `els: Map<string, HTMLElement>` を
 │                           共有で受け取るだけで DOM は持たない)。それぞれ自分のパネルへのみ書く
-├── Sfx                  ... 同上
+├── AudioEngine          ... AudioContext の生成・再開(unlock)と共有ノイズバッファ・基本ボイス(tone/noiseBurst)の正本。Bgm/WorldSfx/UiSfx がコンストラクタ引数で参照を持つ。unlock と Bgm.autoStart は Launcher が周回ごとに game.input.onUserGesture へ配線する(Game はこの2つへの参照を持たない)
+├── Bgm                  ... BGM の再生状態・音量(localStorage `tepui.settings.bgm_vol`)の正本。再生中の曲を TrackPlayback として1つ持ち(曲ごとのフェード用ゲイン・Composer・楽器一式・ステップ位置はそちら)、曲の切替時に作り直す。役目を終えた TrackPlayback は private `retire` がその曲の `soundingUntil`(最後にスケジュールした音が消える時刻)に `dispose()` し、曲ごとのゲインと楽器の定位を音声グラフから外す — `stop()` と `openPlayback()` の両方がここを通る。ユーザー音量を表すマスターゲインだけは曲を跨いで生き続ける。SettingsView(音量・試聴)と Launcher(周回の開始で resume、決着で stop)が参照で持ち、PauseMenu の音量スライダは main.ts が setVolume へ配線する
+├── WorldSfx             ... ゲーム世界内の出来事の単発効果音とスラスタ/RCS ループ音。所有は Hud と同様(main.ts が new し Launcher 経由で Game へ参照で渡す)
+├── UiSfx                ... 操作・通知の効果音(どこでも一定音量)。所有は Hud と同様(main.ts が new し Launcher 経由で Game へ参照で渡す)
 ├── PauseMenu            ... 同上。DOM は Hud.layers.system 配下。onPauseMenuOpenChange を launcher.current?.pause()/.resume() へ配線。onOpenSnapshots / onOpenPerfWindow は main.ts が pauseMenu.toggle(false) + saveBrowser.open() / perf.open() へ配線。onQuitToTitle は launcher.returnToTitle() への一行委譲。コンストラクタは GraphicsSettings に加え DebugTargetHost(狭い構造的インターフェース、debug-target.ts)も取り、描画タブの GraphicsPanel へそのまま渡す — main.ts は initScene 直後に組んだ RenderPipeline を渡す(RenderPipeline がこの型を実装する)
-├── Launcher               ... 「Game インスタンスを捨てて次の周回へ移る」判断(再出撃・タイトル復帰・スナップショットのロード・スロット切替)の唯一の持ち主であり、**今の周回の `Game` 自身の持ち主でもある**(private `game: Game | null`、公開 `current` ゲッターが `CurrentGameSource`(`save-browser.ts`)を満たす — `PerfMeter`/`SaveBrowser` はこの `current` を経由し、`Game` をフィールドに持たない)。捨てて作り直す処理は private `endRun()`(`game?.dispose()` → `game = null` → `resultScreen.close()` → `resultShown = false` → `pauseMenu.toggle(false)`、既に何も動いていなくても安全)と private `startRun(stageClass, snapshotId?)`(`endRun()` → `initialSaveFor` → 天体暦構築 → `earthSpinPhase0` → `this.game = new Game(...)` → `noteLaunched(stageClass)` → `sfx.resumeBgm()`)に閉じ、同じページ内で完結する — `location.*` を呼ぶのは `resolveStage()` の `location.search` 読み取りだけで、遷移そのものはどこも呼ばない。initHud() の直後・main.ts が組む他の main.ts 所有リソース(GameScene・PauseMenu・SettingsView・FrameSections・GraphicsSettings・RenderPipeline を含む)が揃った直後に main.ts が new する(いずれも参照で持つ)。`start()`(main.ts から一度だけ呼ばれる)が private `resolveStage()`(起動する StageClass を解決)→ `startRun(stageClass)` の順に進める。`restart()`/`returnToTitle()`/`loadSnapshot(id)`/`switchSlot()` は同期メソッドのまま `startRun`/`selectStageScreen()`(`resolveStage`/`returnToTitle`/`switchSlot` が共有する private ラッパー)の Promise 連鎖を投げっぱなしにし、失敗は private `fail(err)` が `fatal-error.ts`(main.ts 所有)の `showFatalError` へ委ねる。rAF ループは `snapshotControls.handleInput` の直後に `handleInput(input)` を、`autoSave.update` の直後に `update()` を呼ぶ(いずれも引数なし — `Launcher` 自身が保持する `this.game`/`this.current` を読む。`Launcher.handleInput` が同じフレーム内で `restart()` を起こすと `this.game` がその場で差し替わるため、main.ts の rAF ループは `handleInput` の直後に `launcher.current !== game` を確かめ、変わっていればそのフレームの残り — `PerfMeter.handleInput`/`AutoSave.update`/`Launcher.update`/`Game.sync`/`Game.render`/`GpuTimings.resolve` — を飛ばして次フレームへ進む)
+├── Launcher               ... 「Game インスタンスを捨てて次の周回へ移る」判断(再出撃・タイトル復帰・スナップショットのロード・スロット切替)の唯一の持ち主であり、**今の周回の `Game` 自身の持ち主でもある**(private `game: Game | null`、公開 `current` ゲッターが `CurrentGameSource`(`save-browser.ts`)を満たす — `PerfMeter`/`SaveBrowser` はこの `current` を経由し、`Game` をフィールドに持たない)。捨てて作り直す処理は private `endRun()`(`game?.dispose()` → `game = null` → `resultScreen.close()` → `resultShown = false` → `pauseMenu.toggle(false)`、既に何も動いていなくても安全)と private `startRun(stageClass, snapshotId?)`(`endRun()` → `initialSaveFor` → 天体暦構築 → `earthSpinPhase0` → `this.game = new Game(...)` → `game.input.onUserGesture` へ `audioEngine.unlock()`+`bgm.autoStart()` を配線(`Input` は周回ごとに作り直されるため、配線もそのたびに張り直す) → `noteLaunched(stageClass)` → `bgm.resume()`)に閉じ、同じページ内で完結する — `location.*` を呼ぶのは `resolveStage()` の `location.search` 読み取りだけで、遷移そのものはどこも呼ばない。initHud() の直後・main.ts が組む他の main.ts 所有リソース(GameScene・PauseMenu・SettingsView・FrameSections・GraphicsSettings・RenderPipeline を含む)が揃った直後に main.ts が new する(いずれも参照で持つ)。`start()`(main.ts から一度だけ呼ばれる)が private `resolveStage()`(起動する StageClass を解決)→ `startRun(stageClass)` の順に進める。`restart()`/`returnToTitle()`/`loadSnapshot(id)`/`switchSlot()` は同期メソッドのまま `startRun`/`selectStageScreen()`(`resolveStage`/`returnToTitle`/`switchSlot` が共有する private ラッパー)の Promise 連鎖を投げっぱなしにし、失敗は private `fail(err)` が `fatal-error.ts`(main.ts 所有)の `showFatalError` へ委ねる。rAF ループは `snapshotControls.handleInput` の直後に `handleInput(input)` を、`autoSave.update` の直後に `update()` を呼ぶ(いずれも引数なし — `Launcher` 自身が保持する `this.game`/`this.current` を読む。`Launcher.handleInput` が同じフレーム内で `restart()` を起こすと `this.game` がその場で差し替わるため、main.ts の rAF ループは `handleInput` の直後に `launcher.current !== game` を確かめ、変わっていればそのフレームの残り — `PerfMeter.handleInput`/`AutoSave.update`/`Launcher.update`/`Game.sync`/`Game.render`/`GpuTimings.resolve` — を飛ばして次フレームへ進む)
 │   ├── ResultScreen        ... `#hud-result`(hud/hud-root.ts が Hud.layers.system 配下へ静的に構築)の表示のみを担う。Launcher が自身(hud, `this` = RunTransitions)を渡してコンストラクタで new する。`show(result)` が hud.overlayManager へ 'result' として登録する(closeOnEscape/closeOnOutsideClick とも false、gatesInput のみ true)。「再出撃」「タイトル画面に戻る」の2ボタンはそのまま launcher.restart()/returnToTitle() を呼ぶ。`close()`(冪等)が DOM を隠し `overlayManager.close('result')` する唯一の入口で、`Launcher.endRun()` が全ての遷移の先頭で呼ぶ
 │   └── Game
 │       ├── Input
@@ -83,7 +86,7 @@ main.ts
 │       ├── Navball                        ... 天球グリッド6トグルの正本。DOM は持たない —
 │       │                                       CameraSystem.viewOptionsPanel(表示パネル)の天球グリッドセクションを
 │       │                                       コンストラクタで配線するだけ(CameraSystem の構築後に construct する)
-│       ├── ActivePlayerController         ... 操作対象艦(0..n隻のうちどれを操作するか)の切替・削除と、それに伴う各所有者への伝播を1箇所へ集める(`set`/`setOrNull` は Targeter・Sfx へ、`remove` は NavTarget・Targeter・CameraSystem(フォーカス解除)へ)。PlanEditor・MapContextActions・ViewManager への参照は持たない — PlanEditor はこちらを参照で持つ側で、逆方向の参照は無い。Game.player はこれへ転送する getter。起動時の操作対象艦は自分で解決する(構築引数の activePlayerId → entities.players の id 一致 → 先頭 → null)
+│       ├── ActivePlayerController         ... 操作対象艦(0..n隻のうちどれを操作するか)の切替・削除と、それに伴う各所有者への伝播を1箇所へ集める(`set`/`setOrNull` は Targeter・WorldSfx へ、`remove` は NavTarget・Targeter・CameraSystem(フォーカス解除)へ)。PlanEditor・MapContextActions・ViewManager への参照は持たない — PlanEditor はこちらを参照で持つ側で、逆方向の参照は無い。Game.player はこれへ転送する getter。起動時の操作対象艦は自分で解決する(構築引数の activePlayerId → entities.players の id 一致 → 先頭 → null)
 │       ├── SimSpeedManager
 │       ├── DisplayWindowManager           ... 「どの座標系で(frame)・いつを(displayTime)見るか」の正本(表示期間・
 │       │                                       未来ゴーストスライダー・frame)と、1フレーム分の DisplayWindow
@@ -124,7 +127,7 @@ main.ts
 │       ├── ViewBadge                      ... DOM は Hud.layers.notify 配下。ViewManager を参照するだけで自身は状態を持たない
 │       │   └── ContextMenu<true, ViewId>  ... DOM は Hud.layers.popup 配下
 │       ├── Stage (activeStage)            ... Game のコンストラクタが受け取る解決済みの StageClass を直接 new し、
-│       │                                       saved(StageSaveData | undefined)と StageDeps 一式(hud/sfx/scene/entities/
+│       │                                       saved(StageSaveData | undefined)と StageDeps 一式(hud/worldSfx/uiSfx/scene/entities/
 │       │                                       unlockManager/fx/markerManager/ephemeris/simulator/activePlayers、
 │       │                                       stage.ts 参照)を渡す(分岐は無く、CREATIVE も同じ経路)。
 │       │                                       コンストラクタ一段で初期化が完結し、新規開始の世界の初期状態(自機を含む)と
@@ -214,10 +217,10 @@ main.ts
 │       │   │   ├── Plan                   ... この艦自身のマニューバ計画(正本)。ノード列 + アンカー
 │       │   │   └── PlanExecutor           ... この艦自身の計画実行状態機械(正本)。CreativeStage が艦ごとに呼ぶだけで保持しない
 │       │   ├── Enemy[]                    ... 各々 OrbitLine を持つ
-│       │   ├── Bullet[]                    ... 各々コンストラクタで Sfx への参照を持つ(至近通過音を自分の checkLoss から鳴らすため)。
+│       │   ├── Bullet[]                    ... 各々コンストラクタで WorldSfx への参照を持つ(至近通過音を自分の checkLoss から鳴らすため)。
 │       │   │                                  renderObject はシーンへ足さない(GameEntity の addToScene=false) — bulletBodyPool/bulletHaloPool/plasmaPool が
 │       │   │                                  renderObject の変換を読んで描画する。renderObject 自体は Bullet.sync が書き込む変換の置き場所として残る
-│       │   ├── DebrisPiece[] (casings)      ... 各々コンストラクタで Sfx・EffectsSystem への参照を持つ(接触音・ガスパフを自分の collideWith から出すため)。
+│       │   ├── DebrisPiece[] (casings)      ... 各々コンストラクタで WorldSfx・EffectsSystem への参照を持つ(接触音・ガスパフを自分の collideWith から出すため)。
 │       │   │                                  renderObject はシーンへ足さない(addToScene=false) — casingPool が renderObject の変換を読んで描画する
 │       │   ├── DebrisPiece[] (debris)       ... 同上。fragment 種別のみ renderObject もシーンへ足さない(addToScene=false) —
 │       │   │                                  renderObject は変換の置き場所のみで、debrisFragmentPools[fragmentVariant] が読んで描画する。
@@ -375,9 +378,11 @@ main.ts
   `map` に載ったテクスチャへは届かない。`TextureLoader` で読んだものは、読んだクラスが
   フィールドに保持して自分で解放する。
 - **`Game` より長生きするものへの配線は必ず解く。** canvas(`GameScene` 所有)・`window` /
-  `document`・`Hud` の各レイヤと恒久要素・`OverlayManager` の台帳・`Sfx` の継続音が該当する。
+  `document`・`Hud` の各レイヤと恒久要素・`OverlayManager` の台帳・`WorldSfx` の継続音が該当する。
   ここを残すと、次の `Game` と二重に発火する/入力を塞ぐ死んだハンドルが残る/前の周回の音が
-  鳴り続ける。逆に、それらの入れ物自体(canvas・`Hud.layers`・`svgOverlay`)は取り除かず、
+  鳴り続ける。音声そのもの(`AudioEngine`/`Bgm`/`WorldSfx`/`UiSfx`)は main.ts 所有で
+  `Game` より長生きするため、この連鎖の対象ではない — ただし `Bgm` の中では同じ規則が働いて
+  いて、捨てた `TrackPlayback` は `retire` が切り離す(§1 の `Bgm` を見よ)。逆に、それらの入れ物自体(canvas・`Hud.layers`・`svgOverlay`)は取り除かず、
   中身を空にするだけにとどめる。
 
 自前の scene / DOM / リスナーを一切持たないノード(`Simulator` / `Predictor` /
@@ -395,7 +400,9 @@ main.ts
 | --- | --- | --- |
 | `THREE.Scene` | `GameScene`(main.ts) | Game(`_scene` として保持)・各描画物を持つクラス。`GameScene` 自体は `Launcher`(コンストラクタ引数、`new Game(this.gs, ...)` に渡すだけ)も参照で持つ |
 | `WebGPURenderer` | `GameScene`(main.ts) | RenderPipeline とその内部の GBufferPass・LightPrepass(いずれも構築引数。実際に `render`/`setRenderTarget`/`setMRT`/`getDrawingBufferSize` を呼ぶのはこの3クラスだけ)・GpuTimings・PerfMeter(いずれも構築引数)・Input(`domElement` のみをコンストラクタで一度読む)。Game はこれへの参照を持たない(`render()` は `pipeline.render(scene, camera)` を呼ぶだけ) |
-| `Hud` / `Sfx` | main.ts | Game(コンストラクタ引数で受け取り)経由でほぼ全サブシステム(hud/sfx は必ず対で注入する方針)。両方とも `Launcher`(コンストラクタ引数)へも直接渡る — `Hud` は `ResultScreen` の構築と `new Game(...)` の両方に、`Sfx` は同様に `new Game(...)` と `update` が決着の瞬間に呼ぶ `setThrust(false)`/`stopBgm()` の両方に使う |
+| `Hud` | main.ts | Game(コンストラクタ引数で受け取り)経由でほぼ全サブシステム |
+| `WorldSfx` / `UiSfx` | main.ts | Game 経由で、各消費側は実際に鳴らす側だけをコンストラクタ引数で受け取る(世界内の音は `WorldSfx`、操作・通知音は `UiSfx`、`Logistics` だけが両方)。`WorldSfx` は `Launcher`(コンストラクタ引数。`new Game(...)` と、`update` が決着の瞬間に呼ぶ `setThrust(false)` の両方に使う)へも直接渡る |
+| `AudioEngine` / `Bgm` | main.ts | `AudioEngine` は `Bgm`/`WorldSfx`/`UiSfx`(それぞれコンストラクタ引数)だけが持つ。`Bgm` は `SettingsView`(音量・試聴)・`Launcher`(周回の開始で `resume()`、決着で `stop()`)へ渡り、`PauseMenu` の音量スライダと `game.input.onUserGesture`(unlock + autoStart)は Launcher が周回ごとに配線する。Game 自身はどちらへの参照も持たない |
 | `Hud.overlayManager`(`OverlayManager`) | `Hud`(`buildHudDom` が構築) | 全オーバーレイ所有クラス(`ContextMenu`/`ObjectPicker`/`PropertyWindow`/`PauseMenu`/`SaveBrowser`/`ShipPlacerPanel`/`HelpPanel`、および `ResultScreen`・`ViewManager.dockOverlayHandle`)がコンストラクタ引数または `hud.overlayManager` 経由で受け取り、`open`/`close`/`reconfigure` を自分自身に対して呼ぶ。台帳(重なり順・排他グループ)の正本はこのクラスだけが持つ |
 | `PauseMenu` | main.ts | Game(`Game.handleInput` が `hud.overlayManager.closeTopmostOnEscape()` で閉じ切れなかったときだけ `toggle(true)` を呼ぶ。開閉の一時停止反映は main.ts 側の配線)・MapContextActions(空域右クリックの「設定メニューを開く」項目)・`Launcher`(コンストラクタ引数、`new Game(...)` に渡すだけ)。コンストラクタは `RenderPipeline` を `DebugTargetHost` として受け取り、そのまま `GraphicsPanel` へ転送するだけで自身は保持しない |
 | `MarkerManager` | Game | マーカーを出す全モジュール(PlayerMarkers・Targeter・NavTarget・Logistics・FocusMarkers・PlanGuide・PlanDisplay)。`combatMarkers`/`leadMarkers` は参照共有ではなく MarkerManager 自身の子(§1 参照) |
