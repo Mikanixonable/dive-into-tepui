@@ -1,7 +1,7 @@
 // RCS パフ(姿勢制御スラスタの噴射煙)。指令トルクに寄与するノズルを選び、その先へ噴射煙を置く。
 import * as THREE from 'three/webgpu';
 import { Attitude, qRotate } from '../../physics/attitude';
-import { Vec3, add, addScaled, cross, dot, lenSq, scale, v3 } from '../../physics/vec3';
+import { Vec3, add, cross, dot, lenSq, scale, v3 } from '../../physics/vec3';
 import { Billboard } from '../../render/billboard';
 import { RCS_NOZZLES } from '../../render/rcs-nozzles';
 import * as C from '../const';
@@ -37,6 +37,7 @@ export class RcsEffects {
     visible: boolean,
     camera: CameraSystem,
     audible: boolean,
+    plumeScale = 1.0,
   ): void {
     // 回転していない、またはズーム視点なら全パフを隠して終える
     const rotating = visible && lenSq(torque) > C.RCS_PUFF_TORQUE_EPS * C.RCS_PUFF_TORQUE_EPS;
@@ -54,8 +55,10 @@ export class RcsEffects {
       }
       // ノズルの先へプルームを置き、明滅させる
       const flick = 0.6 + Math.random() * 0.4;
-      const pos = qRotate(att.q, addScaled(puff.pos, puff.exhaust, PLUME_OFFSET));
-      puff.plume.sync(fo.RtoThreeV3(add(playerPos, pos)), 0.55 * flick, 0.75 * flick, camera.activeCamera.quaternion);
+      const offsetDist = PLUME_OFFSET * plumeScale;
+      const localPos = add(scale(puff.pos, plumeScale), scale(puff.exhaust, offsetDist));
+      const pos = qRotate(att.q, localPos);
+      puff.plume.sync(fo.RtoThreeV3(add(playerPos, pos)), 0.55 * flick * plumeScale, 0.75 * flick, camera.activeCamera.quaternion);
     }
   }
 

@@ -355,6 +355,20 @@ export class EntityManager {
     }
   }
 
+  // 全基地のメッシュ・エフェクト(推力プルーム・RCS音・パフ)を同期する。
+  syncBases(
+    controlledBase: Base | null, fo: FloatingOrigin, cameraSystem: CameraSystem,
+    displayTime: number, visibilityPolicy: MapVisibilityPolicy | null,
+  ): void {
+    for (const base of this.bases) {
+      if (!base.alive) continue;
+      base.syncBase(
+        fo, cameraSystem, displayTime, base === controlledBase,
+        visibilityPolicy?.entity('base') ?? null,
+      );
+    }
+  }
+
   // 全自機の予測軌道線を同期し、それで解析楕円を代替できる艦は楕円側を抑制する。
   // 積分予測を描くのは操作対象艦だけ — 他の艦は常に解析楕円のまま。
   syncPlayerTrajectoryLines(
