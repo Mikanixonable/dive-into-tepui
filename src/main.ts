@@ -14,7 +14,10 @@ import { RenderPipeline } from './render/pipeline/render-pipeline';
 import { Hud } from './game/hud/hud';
 import { PauseMenu } from './game/hud/pause-menu';
 import { SettingsView } from './game/hud/settings-view';
-import { Sfx } from './audio/sfx';
+import { AudioEngine } from './audio/audio-engine';
+import { Bgm } from './audio/bgm/bgm';
+import { UiSfx } from './audio/sfx/ui-sfx';
+import { WorldSfx } from './audio/sfx/world-sfx';
 import { UnlockManager } from './game/unlock-manager';
 import { LocalStorageSaveStore } from './game/save/save-store';
 import { SaveSlots } from './game/save/save-slots';
@@ -102,20 +105,25 @@ function startAnimationLoop(
   });
 }
 
-// hud/sfx はタイトル(ステージ選択)画面の時点から使えるべきなので、Game より先に main.ts が
-// 生成して所有し、Launcher には参照として渡す。pauseMenu も同様に main.ts が所有し、開閉に
-// 応じた一時停止の反映(launcher.current?.pause()/resume())も持ち主である main.ts がここで配線する。
+// hud と音声一式(AudioEngine/Bgm/WorldSfx/UiSfx)はタイトル(ステージ選択)画面の時点から
+// 使えるべきなので、Game より先に main.ts が生成して所有し、Launcher には参照として渡す。
+// pauseMenu も同様に main.ts が所有し、開閉に応じた一時停止の反映
+// (launcher.current?.pause()/resume())も持ち主である main.ts がここで配線する。
 // pipeline はここで組む PauseMenu の描画タブ(GraphicsPanel)がデバッグ表示の選択を書き込む先。
 function initHud(graphics: GraphicsSettings, pipeline: RenderPipeline): {
-  hud: Hud; sfx: Sfx; pauseMenu: PauseMenu; settingsView: SettingsView;
+  hud: Hud; audioEngine: AudioEngine; bgm: Bgm; worldSfx: WorldSfx; uiSfx: UiSfx;
+  pauseMenu: PauseMenu; settingsView: SettingsView;
 } {
   const hud = new Hud();
-  const sfx = new Sfx();
+  const audioEngine = new AudioEngine();
+  const bgm = new Bgm(audioEngine);
+  const worldSfx = new WorldSfx(audioEngine);
+  const uiSfx = new UiSfx(audioEngine);
   const pauseMenu = new PauseMenu(hud.layers.system, hud.overlayManager, graphics, pipeline);
-  const settingsView = new SettingsView(hud.layers.system, hud.overlayManager, sfx);
-  pauseMenu.setBgmVolume(sfx.getBgmVolume());
-  pauseMenu.onBgmVolumeChange = (vol) => sfx.setBgmVolume(vol);
-  return { hud, sfx, pauseMenu, settingsView };
+  const settingsView = new SettingsView(hud.layers.system, hud.overlayManager, bgm);
+  pauseMenu.setBgmVolume(bgm.getVolume());
+  pauseMenu.onBgmVolumeChange = (vol) => bgm.setVolume(vol);
+  return { hud, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView };
 }
 
 // 索引を読み、旧セーブを取り込み、遊ぶ先のスロットが必ず1つある状態にする。
@@ -138,12 +146,14 @@ async function main() {
   const gs = await initScene(graphics);
   const gpu = new GpuTimings(gs.renderer);
   const pipeline = new RenderPipeline(gs.renderer, graphics, gpu);
-  const { hud, sfx, pauseMenu, settingsView } = initHud(graphics, pipeline);
+  const { hud, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView } = initHud(graphics, pipeline);
   const sections = new FrameSections();
 
   const launcher = new Launcher(
-    hud, gs, sfx, pauseMenu, settingsView, unlockmanager, sections, graphics, pipeline, slots, snapshotService,
+    hud, gs, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView, unlockmanager, sections,
+    graphics, pipeline, slots, snapshotService,
   );
+
 
   // 「ゲームを中断してタイトル画面に戻る」
   pauseMenu.onQuitToTitle = () => launcher.returnToTitle();

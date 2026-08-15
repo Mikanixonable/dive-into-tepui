@@ -12,7 +12,7 @@ import * as C from '../const';
 import { buildBulletMesh, buildPlasmaMesh } from '../../render/ships';
 import { Enemy } from './enemy';
 import { Player } from '../player/player';
-import type { Sfx } from '../../audio/sfx';
+import type { WorldSfx } from '../../audio/sfx/world-sfx';
 
 
 const tmpQuat = new THREE.Quaternion();
@@ -35,11 +35,11 @@ export class Bullet extends GameEntity {
     readonly damage: number;
     private passedClose: boolean = false; // 至近通過音を鳴らし終えたか
     private readonly lifetime: number;
-    private readonly _sfx: Sfx;
+    private readonly _worldSfx: WorldSfx;
 
     // accent: plasma 弾のみ使う発光色(未指定なら buildPlasmaMesh の既定色)。normal 弾では無視する。
     // damage は着弾時に与える HP。撃った側の武装で決まるので、弾自身が持ち歩く。
-    constructor(state: KinematicState, lifetime: number, shooter: Shooter, type: BulletType, damage: number, sfx: Sfx, scene?: THREE.Scene) {
+    constructor(state: KinematicState, lifetime: number, shooter: Shooter, type: BulletType, damage: number, worldSfx: WorldSfx, scene?: THREE.Scene) {
         // renderObject は InstancedPool へ渡す変換を保持する。
         super(state, type === 'plasma' ? buildPlasmaMesh() : buildBulletMesh(), scene, undefined, undefined, false);
         this.bornSim = state.t;
@@ -47,7 +47,7 @@ export class Bullet extends GameEntity {
         this.shooter = shooter;
         this.type = type;
         this.damage = damage;
-        this._sfx = sfx;
+        this._worldSfx = worldSfx;
         this.mass = C.BULLET_MASS;
         this.radius = C.BULLET_RADIUS;
         this.collides = true;
@@ -85,7 +85,7 @@ export class Bullet extends GameEntity {
         if (this.shooter === 'enemy' && !this.passedClose
           && lenSq(sub(this.state.r, playerPos)) < C.BULLET_CLOSE_PASS_DIST * C.BULLET_CLOSE_PASS_DIST) {
             this.passedClose = true;
-            if (this.type === 'plasma') this._sfx.magneticInterference();
+            if (this.type === 'plasma') this._worldSfx.magneticInterference();
         }
         // 至近通過音は消滅判定より先に評価する — 同じ substep で寿命が尽きる弾でも通過音は鳴らす。
         if (containingBody(this.state.r, attractors, 0) !== null

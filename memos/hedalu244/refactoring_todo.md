@@ -50,7 +50,7 @@
 - **行数** — `game/hud/dock-view.ts` 1086 / `game/creative/ship-placer-panel.ts` 853 /
   `game/map-context-actions.ts` 847 / `game/plan/plan-editor.ts` 787 /
   `game/hud/save-browser.ts` 614 / `game/const.ts` 587 / `render/ships.ts` 582 /
-  `audio/sfx.ts` 546 / `game/game.ts` 511。200 行基準を大きく超える。
+  `game/game.ts` 514。200 行基準を大きく超える。
   `game.ts` はコンストラクタでの配線(for 文・条件分岐なし)と、update/handleInput/sync の
   3フェーズの呼び出し順制御からなる。フェーズ側には視点(マップ/戦闘)や自機の有無による
   条件分岐が残っており、これ以上削るならフェーズそのものを別モジュールへ移す判断が要る。
@@ -102,8 +102,6 @@ belt-physics.ts の機体⇔ワールド変換の分散もあるらしい。
 
 ## 引数整理
 参照されていない引数を減らしていきたい
-hud、sfx注入パターンのなかで今後必要なくなる可能性が高いものを分離。
-（どうせ使うから「セットで注入する」が無意味に守られている）
 
 ## playerのfireのロジック まだまだ簡略化できそう、修正もできそう。
 

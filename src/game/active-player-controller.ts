@@ -7,7 +7,7 @@ import type { EntityManager } from './simulation/entity-manager';
 import type { CameraSystem } from './camera/camera-system';
 import type { Targeter } from './targeter';
 import type { NavTarget } from './nav-target';
-import type { Sfx } from '../audio/sfx';
+import type { WorldSfx } from '../audio/sfx/world-sfx';
 
 export class ActivePlayerController {
   private _current: Player | null;
@@ -20,7 +20,7 @@ export class ActivePlayerController {
     private readonly cameraSystem: CameraSystem,
     private readonly targeter: Targeter,
     private readonly navTarget: NavTarget,
-    private readonly sfx: Sfx,
+    private readonly worldSfx: WorldSfx,
   ) {
     this._current = entities.players.find((p) => p.id === activePlayerId) ?? entities.players[0] ?? null;
   }
@@ -48,7 +48,7 @@ export class ActivePlayerController {
     }
     this._current?.clearTransientCommands();
     this._current = null;
-    this.sfx.setRcs(false);
+    this.worldSfx.setRcs(false);
   }
 
   // 艦を削除する。操作対象だった場合は他の生存艦へ引き継ぐか、無ければ未配置状態へ戻す。

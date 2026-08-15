@@ -84,7 +84,7 @@ export class CreativeStage extends Stage {
       this._hud.mapRoot, this._hud.layers.popup, this._ephemeris, this._hud.overlayManager,
     );
     this.placerPanel.onConfirm = (name, form) => this.placeObject(name, form);
-    this.waveAttack = new WaveAttack(this._hud, this._sfx, this._fx, this._scene, this._ephemeris, savedCreative?.waveAttack);
+    this.waveAttack = new WaveAttack(this._hud, this._worldSfx, this._fx, this._scene, this._ephemeris, savedCreative?.waveAttack);
     this.waveAttackEnabled = savedCreative?.waveAttackEnabled ?? false;
     this.creativeOptionsPanel = this.buildCreativeOptionsPanel(this._hud.mapRoot);
 
@@ -227,7 +227,7 @@ export class CreativeStage extends Stage {
         this._hud.hint(`${ship.name} を配置`);
       } else if (form.objectType === 'enemy') {
         const finalName = name || `Enemy-${this.nextEnemyNameSeq++}`;
-        const enemy = generateDriftingEnemy(finalName, state, C.ENEMY_MAX_HP, '#ff6a00', '#ff6a00', this._hud, this._sfx, this._fx, this._scene);
+        const enemy = generateDriftingEnemy(finalName, state, C.ENEMY_MAX_HP, '#ff6a00', '#ff6a00', this._hud, this._worldSfx, this._fx, this._scene);
         this._entities.addEnemy(enemy);
         this._hud.hint(`${enemy.name} を配置`);
       } else if (form.objectType === 'ammo') {
@@ -238,7 +238,7 @@ export class CreativeStage extends Stage {
         this._hud.hint(`${finalName} を配置`);
       } else if (form.objectType === 'base') {
         const finalName = name || `Base-${this.nextBaseNameSeq++}`;
-        const base = new Base({ state, name: finalName }, this._scene, this._hud, this._sfx, this._fx, this._markerManager);
+        const base = new Base({ state, name: finalName }, this._scene, this._hud, this._worldSfx, this._fx, this._markerManager);
         this._entities.addBase(base);
         this._hud.hint(`${base.name} を配置`);
       }

@@ -38,15 +38,15 @@ export class Stage1 extends Stage {
     const player = this.addPlayer();
     const base = player.state;
     const hud = this._hud;
-    const sfx = this._sfx;
+    const worldSfx = this._worldSfx;
     const fx = this._fx;
     const scene = this._scene;
     // 各種軌道パターンの敵を配置する
-    this.addEnemy(generatePhasedEnemy('HOSTILE-α', base, 1400, 2, 0xff4a3d, C.COLOR_ENEMY_ORBIT_LINE, hud, sfx, fx, scene), entities);
-    this.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, -2800, 2500, 2, 0xff7a2d, C.COLOR_ENEMY_ORBIT_LINE, hud, sfx, fx, scene), entities);
-    this.addEnemy(generateCrossingEnemy('HOSTILE-γ', base, 2200, 2, 0xe0409f, C.COLOR_ENEMY_ORBIT_LINE, hud, sfx, fx, scene), entities);
-    this.addEnemy(generateEllipticEnemy('HOSTILE-δ', base, 5000, 3, 0xbf3dff, C.COLOR_ENEMY_ORBIT_LINE, hud, sfx, fx, scene), entities);
-    this.addEnemy(generatePhasedEnemy('HOSTILE-ε', base, 60000, 3, 0xff2d6b, C.COLOR_ENEMY_ORBIT_LINE, hud, sfx, fx, scene), entities);
+    this.addEnemy(generatePhasedEnemy('HOSTILE-α', base, 1400, 2, 0xff4a3d, C.COLOR_ENEMY_ORBIT_LINE, hud, worldSfx, fx, scene), entities);
+    this.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, -2800, 2500, 2, 0xff7a2d, C.COLOR_ENEMY_ORBIT_LINE, hud, worldSfx, fx, scene), entities);
+    this.addEnemy(generateCrossingEnemy('HOSTILE-γ', base, 2200, 2, 0xe0409f, C.COLOR_ENEMY_ORBIT_LINE, hud, worldSfx, fx, scene), entities);
+    this.addEnemy(generateEllipticEnemy('HOSTILE-δ', base, 5000, 3, 0xbf3dff, C.COLOR_ENEMY_ORBIT_LINE, hud, worldSfx, fx, scene), entities);
+    this.addEnemy(generatePhasedEnemy('HOSTILE-ε', base, 60000, 3, 0xff2d6b, C.COLOR_ENEMY_ORBIT_LINE, hud, worldSfx, fx, scene), entities);
   }
   // 1フレーム分、敵の行動と補給ロジスティクスを進める。
   update(dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
