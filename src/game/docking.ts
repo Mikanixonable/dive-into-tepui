@@ -70,7 +70,7 @@ export class Docking {
     return target;
   }
 
-  // ドッキング可能判定 (距離・ハッチ前方正面判定・相対速度)
+  // ドッキング可能判定 (距離・ドックスロット前方正面判定・相対速度)
   canDock(ship: Player, target: GameEntity): boolean {
     if (!ship.alive || !target.alive || ship === target) return false;
     if (this.getDockedTarget(ship) === target) return false;
@@ -78,15 +78,31 @@ export class Docking {
     if (relSpeed > C.DOCK_CAPTURE_REL_V) return false;
 
     if (target instanceof Base) {
-      // 基地の場合は特定のドッキングハッチ前方エリア(距離80m以内・正面60度コーン内)でのみドッキング可能
+      if (target.baseState.dockedShips.length >= C.BASE_MAX_SHIPS) return false;
+
+      // 1) 基地の 4 箇所のドックスロットのいずれかの前方エリア判定
+      for (let i = 0; i < C.BASE_MAX_SHIPS; i++) {
+        const slotPos = target.getSlotWorldPos(i);
+        const slotNormal = target.getSlotWorldNormal(i);
+        const distToSlot = len(sub(ship.state.r, slotPos));
+        if (distToSlot <= C.SLOT_DOCK_MAX_DIST) {
+          const dirToShip = norm(sub(ship.state.r, slotPos));
+          const alignment = dot(dirToShip, slotNormal);
+          if (alignment >= C.SLOT_DOCK_MIN_ALIGNMENT) return true;
+        }
+      }
+
+      // 2) または中央ハッチ前方エリア判定
       const hatchPos = target.getHatchWorldPos();
       const hatchNormal = target.getHatchWorldNormal();
       const distToHatch = len(sub(ship.state.r, hatchPos));
-      if (distToHatch > C.HATCH_DOCK_MAX_DIST) return false;
+      if (distToHatch <= C.HATCH_DOCK_MAX_DIST) {
+        const dirToShip = norm(sub(ship.state.r, hatchPos));
+        const alignment = dot(dirToShip, hatchNormal);
+        if (alignment >= C.HATCH_DOCK_MIN_ALIGNMENT) return true;
+      }
 
-      const dirToShip = norm(sub(ship.state.r, hatchPos));
-      const alignment = dot(dirToShip, hatchNormal);
-      return alignment >= C.HATCH_DOCK_MIN_ALIGNMENT;
+      return false;
     }
 
     // 船対船ドッキングは従来の距離判定
@@ -179,6 +195,11 @@ export class Docking {
 
   // 手動で艦を基地へ収容する
   storeInBase(ship: Player, base: Base): void {
+    if (base.baseState.dockedShips.length >= C.BASE_MAX_SHIPS) {
+      this.hud.hint(`基地のドックが満杯です (最大 ${C.BASE_MAX_SHIPS} 隻)`);
+      return;
+    }
+    const slotIndex = base.getAvailableSlotIndex() ?? 0;
     this.undock(ship);
     base.baseState.dockedShips.push({
       id: ship.id,
@@ -187,8 +208,10 @@ export class Docking {
       maxHp: ship.maxHp,
       parts: ship.parts,
       player: ship,
+      slotIndex,
     });
-    ship.renderObject.visible = false;
+    base.attachDockedShipMesh(ship, slotIndex);
+
     const wasActive = this.activePlayers.current === ship;
     this.mapActions.close();
     this.cameraSystem.mapCamera.clearFocusIf(ship.id);
@@ -202,14 +225,18 @@ export class Docking {
       this.activePlayers.setOrNull(this.entities.players.find((p) => p.alive) ?? null);
       if (this.activePlayers.current === null) this.viewManager.setView('map');
     }
-    this.hud.hint(`${ship.name} を基地に収納しました`);
+    this.hud.hint(`${ship.name} を基地のドック ${slotIndex + 1} に収納しました`);
   }
 
   private buildShip(base: Base): void {
+    if (base.baseState.dockedShips.length >= C.BASE_MAX_SHIPS) {
+      this.hud.hint(`基地のドックが満杯です (最大 ${C.BASE_MAX_SHIPS} 隻)`);
+      return;
+    }
+    const slotIndex = base.getAvailableSlotIndex() ?? 0;
     const no = ++this.nextBuiltShipNo;
     const id = `${base.id}-built-${no}`;
     const ship = new Player(this.hud, this.sfx, this.scene, this.effects, this.markerManager, { name: `新造艦-${no}`, state: base.state, id });
-    ship.renderObject.visible = false;
     base.baseState.dockedShips.push({
       id: ship.id,
       name: ship.name,
@@ -217,17 +244,41 @@ export class Docking {
       maxHp: ship.maxHp,
       parts: ship.parts,
       player: ship,
+      slotIndex,
     });
-    this.hud.hint(`${ship.name} を建造しました`);
+    base.attachDockedShipMesh(ship, slotIndex);
+    this.hud.hint(`${ship.name} を建造しました (ドック ${slotIndex + 1})`);
   }
 
   private launch(ship: Player, base: Base): void {
-    const br = base.state.r;
-    ship.state = kinematicState(base.state.t, v3(br.x + 600, br.y, br.z), base.state.v);
+    const idx = base.baseState.dockedShips.findIndex((s) => s.player === ship || s.id === ship.id);
+    const slotIndex = idx >= 0 ? base.baseState.dockedShips[idx]!.slotIndex : 0;
+
+    if (idx >= 0) {
+      base.baseState.dockedShips.splice(idx, 1);
+    }
+    base.detachDockedShipMesh(ship);
+
+    // ドックスロットの位置・法線からワールド座標・分離速度を算出
+    const slotPos = base.getSlotWorldPos(slotIndex);
+    const slotNormal = base.getSlotWorldNormal(slotIndex);
+
+    const launchPos = v3(
+      slotPos.x + slotNormal.x * 15,
+      slotPos.y + slotNormal.y * 15,
+      slotPos.z + slotNormal.z * 15,
+    );
+    const launchVel = v3(
+      base.state.v.x + slotNormal.x * 2.5,
+      base.state.v.y + slotNormal.y * 2.5,
+      base.state.v.z + slotNormal.z * 2.5,
+    );
+
+    ship.state = kinematicState(base.state.t, launchPos, launchVel);
     this.entities.addPlayer(ship);
     this.activePlayers.set(ship);
     this.viewManager.setView('combat');
-    this.hud.hint(`${ship.name} を発進しました`);
+    this.hud.hint(`${ship.name} がドック ${slotIndex + 1} から切り離され発進しました`);
   }
 }
 
