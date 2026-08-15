@@ -445,6 +445,41 @@ reaches* the value, not *what it asserts*. Changing an expectation would have be
 distrust.
 
 
+## 14. `Conductor.pause()` / `resume()`, and the line's own gain
+
+Roadmap §2d step 4. Still unused — step 5 wires it — so nothing audible changed.
+
+Ducking needs a gain the line owns, which is the routing change step 3 deliberately deferred:
+`note -> noteGain -> panner -> playbackGain -> conductorGain -> masterGain`. **Three gain layers
+now, and they cannot be collapsed.** Each has a different writer for a different reason — user
+volume, this line ducking, this piece fading — and two writers on one `AudioParam` means the
+later call cancels the earlier one's shape. There is also a concrete failure if the line ducked
+through the *piece's* gain instead: rotation opens a new `TrackPlayback` at gain 1, so a paused
+line would come back un-ducked the moment its track changed.
+
+`pause()`/`resume()` are `setTargetAtTime` ramps to `DUCK_LEVEL` / 1 over `DUCK_FADE_SEC` (0.3 s).
+The line keeps being advanced while ducked, so it resumes wherever it would have been rather than
+where it left off — the interim recorded in roadmap §2a-1, upgradeable inside these two method
+bodies plus a `resumeAt` on `TrackPlayback`.
+
+New harness `check-pause.mjs` covers what is otherwise unreachable: the duck ramp, the restore
+ramp, and that ticking continues across both. It carries an `EXPECT_NOTES_WHILE_PAUSED` flag at
+the top — flip it to `false` when proper pause lands and the third assertion inverts, rather than
+deleting the check. Verified it can fail: flipped, it reports `202 notes over the paused 20s`
+against an expectation of zero.
+
+Two existing harnesses needed updating, both because the *structure* moved rather than the sound:
+
+- `compare-playback` asserts the routing chain by walking it, so it gained the `conductorGain`
+  hop. **Its note comparison was untouched and still reports 3745 identical notes** — that is the
+  part that would have caught an audible change, and it did not fire.
+- `count-leaks` was inferring how many playbacks existed from the gain count, which the new
+  permanent gain threw off (it started reporting a fractional leak). Rewritten around a stronger
+  invariant that needs no such arithmetic: **live persistent nodes must not grow with session
+  length.** 23 nodes built over 15 min and 86 over an hour, 9 live in both cases. That check
+  survives further layers without edits, which the old one would not have.
+
+
 ## The two merges of `main` into the PR branch (`4e21f958`, then `78370b6b`)
 
 Upstream landed the **run-lifecycle rework** — `Launcher` owns the `Game` and recreates it

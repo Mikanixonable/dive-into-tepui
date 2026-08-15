@@ -8,8 +8,11 @@ import { TrackPlayback } from './track-playback';
 const START_DELAY_SEC = 0.15; // 再生開始から最初のステップまでの余裕
 const FADE_IN_SEC = 4;
 const TRACK_ROTATION_SEC = 300; // 1曲を流し続ける長さ
+const DUCK_FADE_SEC = 0.3; // 線を伏せる/戻すときのフェード
+const DUCK_LEVEL = 0.0001; // 伏せたときの到達値。指数では 0 へ近づけないため
 
 export class Conductor {
+  private readonly gain: GainNode;
   private playback: TrackPlayback | null = null;
   private trackIdx = 0;
   private trackStartTime = 0;
@@ -17,10 +20,12 @@ export class Conductor {
   private rotates = true;
 
   // destination は持ち主のマスターゲイン。ctx は unlock 済みのものを受け取る。
-  constructor(
-    private readonly ctx: AudioContext,
-    private readonly destination: AudioNode,
-  ) {}
+  // この線ぶんのゲインをここで組む。曲ごとのフェードとは別の層で、線そのものを伏せるのに使う。
+  constructor(private readonly ctx: AudioContext, destination: AudioNode) {
+    this.gain = ctx.createGain();
+    this.gain.gain.setValueAtTime(1, ctx.currentTime);
+    this.gain.connect(destination);
+  }
 
   // いま鳴らしている曲。停止したあと同じ曲から再開するために読む。
   get currentTrackIndex(): number {
@@ -45,6 +50,16 @@ export class Conductor {
     this.playback.fadeOut(fadeSec);
     this.retire(this.playback);
     this.playback = null;
+  }
+
+  // この線を無音へ伏せる。刻みは進み続けるので、戻したときは伏せていた間に進んだ位置から聞こえる。
+  pause(): void {
+    this.gain.gain.setTargetAtTime(DUCK_LEVEL, this.ctx.currentTime, DUCK_FADE_SEC / 3);
+  }
+
+  // 伏せた線を元の音量へ戻す。
+  resume(): void {
+    this.gain.gain.setTargetAtTime(1, this.ctx.currentTime, DUCK_FADE_SEC / 3);
   }
 
   // deadline より前に始まる音をすべてスケジュールする。曲送りの時刻を過ぎていれば、
@@ -74,7 +89,7 @@ export class Conductor {
     this.trackStartTime = this.ctx.currentTime;
     const track = BGM_TRACKS[index]!;
     const composer = createComposer(track);
-    this.playback = new TrackPlayback(this.ctx, composer, track.instruments, this.destination, startAt);
+    this.playback = new TrackPlayback(this.ctx, composer, track.instruments, this.gain, startAt);
   }
 
   // 同じ曲が連続しないよう、今の曲以外から次の曲を選ぶ。曲が1つしかなければそのまま。
