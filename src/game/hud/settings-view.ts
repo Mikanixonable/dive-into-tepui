@@ -1,5 +1,5 @@
-import type { Bgm } from '../../audio/bgm';
-import { BGM_TRACKS } from '../../audio/bgm-tracks';
+import type { Bgm } from '../../audio/bgm/bgm';
+import { BGM_TRACKS } from '../../audio/bgm/bgm-tracks';
 import type { OverlayHandle, OverlayManager } from './overlay-manager';
 import { Button, CloseButton, Slider } from './widgets';
 

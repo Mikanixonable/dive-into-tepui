@@ -7,7 +7,7 @@ import { Enemy } from '../../game-entity/enemy';
 import { Player } from '../../player/player';
 import type { Stage } from '../stage';
 import type { Hud } from '../../hud/hud';
-import type { WorldSfx } from '../../../audio/world-sfx';
+import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../../vfx/effects-system';
 import type { Ephemeris } from '../../../physics/ephemeris';
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
