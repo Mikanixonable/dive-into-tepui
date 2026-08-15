@@ -243,14 +243,15 @@ export class MapContextActions {
     this.menu.open(clientX, clientY, target, this.itemsFor(target, simTime));
   }
 
-  // 戦闘ビューの右クリック。3Dモデル(renderObject)への直撃レイキャスト優先で判定し、
-  // 遠距離等で直撃を外した場合も近傍判定(pickNearest)で判定してプロパティウィンドウを開く。
+  // 戦闘ビューの右クリック。マーカー位置やバウンディング領域ではなく、
+  // 実体の 3D メッシュ(表面三角形)に直接ヒットした場合のみプロパティウィンドウを開く。
+  // メッシュ部以外(隙間・背景)は空域メニューへ落とす。マップ視点では何もしない。
   handleCombatRightClick(
     input: Input, simTime: number, overviewMode: boolean,
   ): void {
     if (overviewMode) return;
     input.takeRightClicks((p) => {
-      const hitEntity = this.raycastCombatEntity(p.x, p.y) ?? this.pickNearestCombatEntity(p.x, p.y);
+      const hitEntity = this.raycastCombatEntity(p.x, p.y);
       if (hitEntity) {
         this.openPropertyWindow(p.x, p.y, this.entityToPickable(hitEntity), simTime);
       } else {
@@ -260,7 +261,7 @@ export class MapContextActions {
     });
   }
 
-  // 画面上の右クリック座標(clientX, clientY)から 3D 空間へレイキャストし、ヒットした 3D メッシュまたはバウンディングボックスの GameEntity を返す
+  // 画面上の右クリック座標(clientX, clientY)から 3D メッシュ群への厳格なレイキャストを行い、最初にヒットした GameEntity を返す
   private raycastCombatEntity(clientX: number, clientY: number): GameEntity | null {
     const camera = this.cameraSystem.activeCamera;
     if (!camera) return null;
@@ -283,86 +284,32 @@ export class MapContextActions {
 
     if (candidates.length === 0) return null;
 
-    const renderObjects: THREE.Object3D[] = [];
-    const entityMap = new Map<THREE.Object3D, GameEntity>();
+    const allMeshes: THREE.Mesh[] = [];
+    const meshToEntityMap = new Map<THREE.Mesh, GameEntity>();
 
     for (const entity of candidates) {
       if (entity.renderObject.visible) {
         entity.renderObject.updateMatrixWorld(true);
-        renderObjects.push(entity.renderObject);
-        entityMap.set(entity.renderObject, entity);
-      }
-    }
-
-    // 1. まず 3D メッシュ表面への三角形交差判定を試みる
-    if (renderObjects.length > 0) {
-      const intersects = raycaster.intersectObjects(renderObjects, true);
-      if (intersects.length > 0) {
-        for (const hit of intersects) {
-          let curr: THREE.Object3D | null = hit.object;
-          while (curr) {
-            const entity = entityMap.get(curr);
-            if (entity) return entity;
-            curr = curr.parent;
+        entity.renderObject.traverse((child) => {
+          if (child instanceof THREE.Mesh && child.visible) {
+            child.updateMatrixWorld(true);
+            if (!child.geometry.boundingSphere) {
+              child.geometry.computeBoundingSphere();
+            }
+            allMeshes.push(child);
+            meshToEntityMap.set(child, entity);
           }
-        }
+        });
       }
     }
 
-    // 2. メッシュ表面直撃が無い場合(トラスアームの間隙・太陽電池パネル外縁・低ポリモデル端部)、3Dバウンディングボックスで判定
-    let closestEntity: GameEntity | null = null;
-    let minDistance = Infinity;
+    if (allMeshes.length === 0) return null;
 
-    const hitPoint = new THREE.Vector3();
-    const box = new THREE.Box3();
+    const intersects = raycaster.intersectObjects(allMeshes, false);
+    if (intersects.length === 0) return null;
 
-    for (const entity of candidates) {
-      if (!entity.renderObject.visible) continue;
-
-      box.setFromObject(entity.renderObject);
-      const margin = Math.max(5, entity.radius * 0.2);
-      box.expandByScalar(margin);
-
-      const intersection = raycaster.ray.intersectBox(box, hitPoint);
-      if (intersection) {
-        const dist = hitPoint.distanceTo(raycaster.ray.origin);
-        if (dist < minDistance) {
-          minDistance = dist;
-          closestEntity = entity;
-        }
-      }
-    }
-
-    return closestEntity;
-  }
-
-  private pickNearestCombatEntity(clientX: number, clientY: number): GameEntity | null {
-    const project = this.cameraSystem.activeCameraProjection;
-    const candidates = [
-      ...this.entities.players.filter((p) => p.alive).map((p) => ({ pos: p.state.r, kind: 'player' as const, entity: p })),
-      ...this.entities.enemies.filter((e) => e.alive).map((e) => ({ pos: e.state.r, kind: 'ship' as const, entity: e })),
-      ...this.entities.bases.filter((b) => b.alive).map((b) => ({ pos: b.state.r, kind: 'base' as const, entity: b })),
-    ];
-
-    let bestEntity: GameEntity | null = null;
-    let minDistSq = Infinity;
-
-    for (const item of candidates) {
-      const proj = project(item.pos);
-      if (!proj.front) continue;
-      const dx = clientX - proj.x;
-      const dy = clientY - proj.y;
-      const distSq = dx * dx + dy * dy;
-
-      // 画面上での許容半径: 基地(150px) / 敵艦(100px) / 自艦(60px)
-      const allowedPxSq = item.kind === 'base' ? 22500 : (item.kind === 'ship' ? 10000 : 3600);
-      if (distSq <= allowedPxSq && distSq < minDistSq) {
-        minDistSq = distSq;
-        bestEntity = item.entity;
-      }
-    }
-
-    return bestEntity;
+    const hitMesh = intersects[0]!.object as THREE.Mesh;
+    return meshToEntityMap.get(hitMesh) ?? null;
   }
 
   private entityToPickable(entity: GameEntity): MapPickable {
