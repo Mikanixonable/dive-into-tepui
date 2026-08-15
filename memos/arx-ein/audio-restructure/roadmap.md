@@ -40,31 +40,31 @@ deliberate design choice, recorded in `DEVELOP/SPEC.md` §8, and worth keeping.
 ## 2. The conductor — arx-ein's planned BGM architecture
 
 **Not scheduled yet; recorded here so the shape is known before anything is built against it.**
-This is arx-ein's own sketch (2026-08-15), and the `Compositor` seam that landed with the
+This is arx-ein's own sketch (2026-08-15), and the `Composer` seam that landed with the
 playback/generation split was named and placed to be its bottom layer.
 
 Three layers, from the top:
 
 - **Conductor** — owns *which* music is playing and manages the transitions between pieces:
   simple play/stop, and eventually more intricate ones (crossfade, phase-aligned handover).
-  It talks to compositors only through a shared interface, so it never learns how any
+  It talks to composers only through a shared interface, so it never learns how any
   particular piece generates its notes. This is the part of today's `Bgm` that picks and
   rotates tracks; the WebAudio-facing half of `Bgm` stays where it is.
-- **Compositors** — the note-generation algorithms, each a different *way of making music*
-  rather than a different set of numbers. The current `PhasingCompositor` is one. A second one
+- **Composers** — the note-generation algorithms, each a different *way of making music*
+  rather than a different set of numbers. The current `PhasingComposer` is one. A second one
   (something generative, a canon, a drone-only piece) is the point of the layer existing.
-- **Tracks** — the parameters a compositor consumes, essentially what `BgmTrack` is now. Each
-  compositor will want its own parameter type, so a track needs to say which compositor it is
+- **Tracks** — the parameters a composer consumes, essentially what `BgmTrack` is now. Each
+  composer will want its own parameter type, so a track needs to say which composer it is
   for; how that association is expressed is an open question (a discriminated union over a
   `kind` field is the obvious first candidate, matching how the project types `PlayerInit`
   and friends).
 
-**Already in place**: `compositor.ts`'s `Compositor` (`stepDurSec` + `notesAt(step)`), which is
+**Already in place**: `composer.ts`'s `Composer` (`stepDurSec` + `notesAt(step)`), which is
 deliberately WebAudio-free so any implementation's output can be verified without an
 `AudioContext`. **Still to decide**: where the conductor sits relative to `Bgm` (extracted
-from it, or above it), whether a crossfade needs two compositors running at once — which would
+from it, or above it), whether a crossfade needs two composers running at once — which would
 mean two gain chains, so `Bgm`'s single `gain` field would have to become one per voice-in-flight
-— and how a track declares its compositor.
+— and how a track declares its composer.
 
 ## 3. The mic system — BLOCKED, do not start without asking
 
