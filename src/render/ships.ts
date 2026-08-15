@@ -801,36 +801,63 @@ export function buildBaseModel(): THREE.Group {
     }
   }
 
-  // 居住区 (白い円筒が正方形プランで複雑に接合 - 0.7倍)
-  const gridPositions = [-4.2, 0, 4.2];
-  for (const x of gridPositions) {
-    for (const y of gridPositions) {
-      const tube = new THREE.Mesh(new THREE.CylinderGeometry(1.75, 1.75, 40, 8), whiteModuleMat);
-      tube.position.set(x, y, mainCenterZ - 3);
-      tube.rotation.x = Math.PI / 2;
-      g.add(tube);
+  // 【居住区上部4隅の切り欠き (Recessed Corner Notches)】
+  for (const cx of [-7.7, 7.7]) {
+    for (const cy of [-7.7, 7.7]) {
+      const cornerNotch = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.2, 12), panelGrooveMat);
+      cornerNotch.position.set(cx, cy, mainCenterZ + 20);
+      g.add(cornerNotch);
+    }
+  }
 
-      // 【ディテール: 小さな発光窓 (Portholes / Illuminated Windows)】
-      for (let zWin = mainCenterZ - 18; zWin <= mainCenterZ + 12; zWin += 6) {
-        if (Math.abs(x) === 4.2 || Math.abs(y) === 4.2) {
-          const winAngle = Math.atan2(y, x);
-          const winX = x + Math.cos(winAngle) * 1.76;
-          const winY = y + Math.sin(winAngle) * 1.76;
-          const win = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.6, 0.28), windowGlowMat);
-          win.position.set(winX, winY, zWin);
-          g.add(win);
-        }
+  // 【居住区: 十字状ディテール (中央＋4方向の十字配置モジュール & 十字溝チャネル)】
+  const crossPositions: readonly [number, number][] = [
+    [0, 0],
+    [4.2, 0],
+    [-4.2, 0],
+    [0, 4.2],
+    [0, -4.2],
+  ];
+  for (const [x, y] of crossPositions) {
+    const tube = new THREE.Mesh(new THREE.CylinderGeometry(2.0, 2.0, 40, 10), whiteModuleMat);
+    tube.position.set(x, y, mainCenterZ - 3);
+    tube.rotation.x = Math.PI / 2;
+    g.add(tube);
+
+    const flange = new THREE.Mesh(new THREE.CylinderGeometry(2.3, 2.3, 0.6, 10), conduitJointMat);
+    flange.position.set(x, y, mainCenterZ - 3);
+    flange.rotation.x = Math.PI / 2;
+    g.add(flange);
+
+    // 【ディテール: 発光窓 (Portholes / Illuminated Windows)】
+    for (let zWin = mainCenterZ - 18; zWin <= mainCenterZ + 12; zWin += 6) {
+      if (x !== 0 || y !== 0) {
+        const winAngle = Math.atan2(y, x);
+        const winX = x + Math.cos(winAngle) * 2.02;
+        const winY = y + Math.sin(winAngle) * 2.02;
+        const win = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.6, 0.3), windowGlowMat);
+        win.position.set(winX, winY, zWin);
+        g.add(win);
       }
     }
   }
 
-  // 【居住区下部: ハニカム構造集積体ソーラーパドル一対 (±X側面 Z = 54m)】
+  // 十字構造交差溝チャネル (Cross Seam Groove Channels)
+  const crossChannelH = new THREE.Mesh(new THREE.BoxGeometry(15.6, 0.8, 0.4), panelGrooveMat);
+  crossChannelH.position.set(0, 0, mainCenterZ);
+  g.add(crossChannelH);
+
+  const crossChannelV = new THREE.Mesh(new THREE.BoxGeometry(0.8, 15.6, 0.4), panelGrooveMat);
+  crossChannelV.position.set(0, 0, mainCenterZ);
+  g.add(crossChannelV);
+
+  // 【居住区下部: ハニカム構造集積体ソーラーパドル一対 (彩度の低い明るいターコイズ・鏡面反射)】
   const solarCellMat = new THREE.MeshStandardMaterial({
-    color: 0x0284c7,
-    emissive: 0x0369a1,
-    emissiveIntensity: 0.3,
-    roughness: 0.1,
-    metalness: 0.85,
+    color: 0x5eead4,
+    emissive: 0x2dd4bf,
+    emissiveIntensity: 0.15,
+    roughness: 0.02,
+    metalness: 0.98,
   });
 
   for (const sideX of [-1, 1]) {
@@ -847,7 +874,7 @@ export function buildBaseModel(): THREE.Group {
     boom.rotation.z = Math.PI / 2;
     paddleGroup.add(boom);
 
-    // ハニカム構造セル集積体 (Hexagonal Honeycomb Cell Cluster - 19個の六角セル集積, 白いバックフレーム板削除)
+    // ハニカム構造セル集積体 (Hexagonal Honeycomb Cell Cluster - 19個の六角セル集積)
     const hexCellGeo = new THREE.CylinderGeometry(1.1, 1.1, 0.45, 6);
     const hexBezelGeo = new THREE.CylinderGeometry(1.2, 1.2, 0.4, 6);
 
@@ -870,18 +897,37 @@ export function buildBaseModel(): THREE.Group {
     g.add(paddleGroup);
   }
 
-  // 【先端レドーム: 反五角台形双角塔 (Gyroelongated Pentagonal Birotunda Radome, 直径 10.2m = 居住区の2/3)】
+  // 【先端レドーム: 立方八面体 (Cuboctahedron Radome, 直径 10.2m = 居住区の2/3)】
   const radomeRadius = 5.1;
   const radomeGroup = new THREE.Group();
   radomeGroup.position.set(0, 0, mainCenterZ + 25);
 
-  // 反五角台形双角塔 (Johnson solid J48) 幾何学多面体メッシュ
-  const birotundaGeo = new THREE.IcosahedronGeometry(radomeRadius, 1);
-  const birotundaMesh = new THREE.Mesh(birotundaGeo, whiteModuleMat);
-  radomeGroup.add(birotundaMesh);
+  // 立方八面体 (Cuboctahedron: 12頂点, 8正三角形面 + 6正方形面)
+  const c = 1 / Math.sqrt(2);
+  const cuboctahedronVertices = [
+    -c, -c,  0,   c, -c,  0,   c,  c,  0,  -c,  c,  0,
+    -c,  0, -c,   c,  0, -c,   c,  0,  c,  -c,  0,  c,
+     0, -c, -c,   0,  c, -c,   0,  c,  c,   0, -c,  c
+  ];
+  const cuboctahedronIndices = [
+    // 8つの正三角形面
+    0, 8, 1,   1, 5, 2,   2, 9, 3,   3, 4, 0,
+    0, 7, 11,  1, 11, 6,  2, 6, 10,  3, 10, 4,
+    // 6つの正方形面 (各2つの三角形で構成)
+    0, 1, 11,  0, 11, 7,
+    1, 2, 6,   1, 6, 5,
+    2, 3, 10,  2, 10, 9,
+    3, 0, 4,   3, 4, 7,
+    4, 5, 9,   4, 8, 5,
+    7, 6, 10,  7, 11, 6
+  ];
 
-  // 幾何学多面体パネル継手フレーム (Johnson Solid の頂点・稜線グリッド)
-  const wireGeo = new THREE.WireframeGeometry(birotundaGeo);
+  const cuboctahedronGeo = new THREE.PolyhedronGeometry(cuboctahedronVertices, cuboctahedronIndices, radomeRadius, 0);
+  const cuboctahedronMesh = new THREE.Mesh(cuboctahedronGeo, whiteModuleMat);
+  radomeGroup.add(cuboctahedronMesh);
+
+  // 立方八面体の頂点・稜線継手フレーム
+  const wireGeo = new THREE.WireframeGeometry(cuboctahedronGeo);
   const wireLineMat = new THREE.LineBasicMaterial({ color: 0x475569 });
   const wireLines = new THREE.LineSegments(wireGeo, wireLineMat);
   radomeGroup.add(wireLines);
@@ -1136,10 +1182,11 @@ export function buildBaseModel(): THREE.Group {
     g.add(flange);
   }
 
-  // 高圧球形ガスタンク (3基)
+  // 高圧多面体ガスタンク (3基)
   const sphereTankPositions: readonly [number, number, number][] = [[-13, 13, -35], [13, -13, 20], [0, 15, -45]];
+  const polyGasTankGeo = new THREE.IcosahedronGeometry(6.0, 0);
   for (const [sX, sY, sZ] of sphereTankPositions) {
-    const sphereTank = new THREE.Mesh(new THREE.SphereGeometry(6.0, 14, 12), tankMats[2]!);
+    const sphereTank = new THREE.Mesh(polyGasTankGeo, tankMats[2]!);
     sphereTank.position.set(sX, sY, cwCenterZ + sZ);
     g.add(sphereTank);
 
