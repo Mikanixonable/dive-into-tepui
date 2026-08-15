@@ -39,7 +39,7 @@ main.ts
 │                           ... 常設パネル6枚、1パネル1クラス(buildHudDom が作った要素索引 `els: Map<string, HTMLElement>` を
 │                           共有で受け取るだけで DOM は持たない)。それぞれ自分のパネルへのみ書く
 ├── AudioEngine          ... AudioContext の生成・再開(unlock)と共有ノイズバッファ・基本ボイス(tone/noiseBurst)の正本。Bgm/WorldSfx/UiSfx がコンストラクタ引数で参照を持つ。unlock と Bgm.autoStart は main.ts が game.input.onUserGesture へ配線する(Game はこの2つへの参照を持たない)
-├── Bgm                  ... BGM の再生状態・音量(localStorage `tepui.settings.bgm_vol`)の正本。SettingsView(音量・試聴)と Launcher(決着の瞬間の stop)が参照で持ち、PauseMenu の音量スライダは main.ts が setVolume へ配線する
+├── Bgm                  ... BGM の再生状態・音量(localStorage `tepui.settings.bgm_vol`)の正本。再生中の曲の Compositor(現状 PhasingCompositor)を持ち、曲の切替時に作り直す。SettingsView(音量・試聴)と Launcher(決着の瞬間の stop)が参照で持ち、PauseMenu の音量スライダは main.ts が setVolume へ配線する
 ├── WorldSfx             ... ゲーム世界内の出来事の単発効果音とスラスタ/RCS ループ音。所有は Hud と同様(main.ts が new し Game へ参照で渡す)
 ├── UiSfx                ... 操作・通知の効果音(どこでも一定音量)。所有は Hud と同様(main.ts が new し Game へ参照で渡す)
 ├── PauseMenu            ... 同上。DOM は Hud.layers.system 配下。onPauseMenuOpenChange を Game.pause()/resume() へ配線。onOpenSnapshots / onOpenPerfWindow は main.ts が pauseMenu.toggle(false) + saveBrowser.open() / perf.open() へ配線。onQuitToTitle は launcher.returnToTitle() への一行委譲。コンストラクタは GraphicsSettings に加え DebugTargetHost(狭い構造的インターフェース、debug-target.ts)も取り、描画タブの GraphicsPanel へそのまま渡す — main.ts は initScene 直後に組んだ RenderPipeline を渡す(RenderPipeline がこの型を実装する)
