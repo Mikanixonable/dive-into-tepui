@@ -8,7 +8,8 @@ import { ScoreCounter } from './stage-utils/score-counter';
 import { StageStatusPanel } from './stage-utils/stage-status-panel';
 import { EffectsSystem } from '../vfx/effects-system';
 import { Hud } from '../hud/hud';
-import { Sfx } from '../../audio/sfx';
+import { WorldSfx } from '../../audio/sfx/world-sfx';
+import { UiSfx } from '../../audio/sfx/ui-sfx';
 import type { ClearCounts, UnlockManager } from '../unlock-manager';
 import type { EntityManager } from '../simulation/entity-manager';
 import { SimSpeedManager } from '../sim-speed-manager';
@@ -35,7 +36,8 @@ const BRIEFING_TOAST_MS = 12000;
 // これをそのまま基底へ渡す。
 export type StageDeps = [
   hud: Hud,
-  sfx: Sfx,
+  worldSfx: WorldSfx,
+  uiSfx: UiSfx,
   scene: THREE.Scene,
   entities: EntityManager,
   unlockManager: UnlockManager,
@@ -115,7 +117,8 @@ export abstract class Stage {
   private readonly statusPanel: StageStatusPanel;
 
   protected readonly _hud: Hud;
-  protected readonly _sfx: Sfx;
+  protected readonly _worldSfx: WorldSfx;
+  protected readonly _uiSfx: UiSfx;
   protected readonly _scene: THREE.Scene;
   protected readonly _fx: EffectsSystem;
   protected readonly _unlockManager: UnlockManager;
@@ -141,9 +144,10 @@ export abstract class Stage {
   // 補給タイマー未経過から始まり begin() が初期配置を行う。固有の内訳を持つ具象ステージは
   // 自分のコンストラクタで super(saved, ...deps) を呼んでから自分の分を組み立て、末尾で begin() を呼ぶ。
   constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
-    const [hud, sfx, scene, entities, unlockManager, fx, markerManager, ephemeris, simulator, activePlayers] = deps;
+    const [hud, worldSfx, uiSfx, scene, entities, unlockManager, fx, markerManager, ephemeris, simulator, activePlayers] = deps;
     this._hud = hud;
-    this._sfx = sfx;
+    this._worldSfx = worldSfx;
+    this._uiSfx = uiSfx;
     this._scene = scene;
     this._unlockManager = unlockManager;
     this._fx = fx;
@@ -155,7 +159,7 @@ export abstract class Stage {
     this.scoreCounter = new ScoreCounter(saved?.scoreCounter);
     this._phase = saved?.phase ?? 'playing';
     this.restored = saved !== undefined;
-    this.logistics = new Logistics(hud, sfx, scene, entities, markerManager, saved?.logistics);
+    this.logistics = new Logistics(hud, worldSfx, uiSfx, scene, entities, markerManager, saved?.logistics);
     this.statusPanel = new StageStatusPanel(hud.combatRoot);
   }
 
@@ -191,7 +195,7 @@ export abstract class Stage {
   // 自機を1隻置き、操作対象が居なければそれを操作対象にする。艦の隻数は0..n隻が一般形で、
   // 何隻をどこへ置くかはステージ自身の宣言。
   protected addPlayer(init?: PlayerInit): Player {
-    const ship = new Player(this._hud, this._sfx, this._scene, this._fx, this._markerManager, init);
+    const ship = new Player(this._hud, this._worldSfx, this._scene, this._fx, this._markerManager, init);
     this._entities.addPlayer(ship);
     this._activePlayers.claimIfNone(ship);
     return ship;

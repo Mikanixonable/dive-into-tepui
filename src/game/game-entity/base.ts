@@ -10,7 +10,7 @@ import { partFromSaveData } from './parts';
 import { Player } from '../player/player';
 import { buildBaseModel } from '../../render/ships';
 import type { Hud } from '../hud/hud';
-import type { Sfx } from '../../audio/sfx';
+import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';
@@ -82,13 +82,13 @@ export class Base extends GameEntity {
     return this.collisionGeom.testSphereCollision(sphereCenter, sphereRadius, this.state.r, this.att.q, warpLevel);
   }
 
-  // hud/sfx/fx/markerManager は格納艦(Player)の組み立てに要る。格納艦は entities.players へ
+  // hud/worldSfx/fx/markerManager は格納艦(Player)の組み立てに要る。格納艦は entities.players へ
   // 入らない — それが「格納中」の定義であり、艦自身の状態としては何も倒さない。
   constructor(
     init: BaseInit,
     scene: THREE.Scene,
     hud: Hud,
-    sfx: Sfx,
+    worldSfx: WorldSfx,
     fx: EffectsSystem,
     markerManager: MarkerManager,
   ) {
@@ -114,7 +114,7 @@ export class Base extends GameEntity {
       this.baseState.money = init.saved.money;
       this.baseState.inventory = init.saved.inventory.map(partFromSaveData);
       this.baseState.dockedShips = init.saved.dockedShips.map((shipData, idx) => {
-        const player = new Player(hud, sfx, scene, fx, markerManager, { saved: shipData, simTime: init.simTime });
+        const player = new Player(hud, worldSfx, scene, fx, markerManager, { saved: shipData, simTime: init.simTime });
         const slotIndex = idx < C.BASE_MAX_SHIPS ? idx : 0;
         this.attachDockedShipMesh(player, slotIndex);
         return {

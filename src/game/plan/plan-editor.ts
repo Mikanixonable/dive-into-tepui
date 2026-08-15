@@ -11,7 +11,7 @@ import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { ContextMenu } from '../hud/context-menu';
 import { MenuAction, MenuCommon } from '../hud/menu-actions';
-import { Sfx } from '../../audio/sfx';
+import { UiSfx } from '../../audio/sfx/ui-sfx';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { FloatingOrigin } from '../floating-origin';
 import type { CameraSystem } from '../camera/camera-system';
@@ -97,7 +97,7 @@ export class PlanEditor {
   // ノードギズモと計画パネルの DOM を組み立て、両者のコールバックを配線する。
   constructor(
     private readonly _hud: Hud,
-    private readonly _sfx: Sfx,
+    private readonly _uiSfx: UiSfx,
     private readonly simSpeedManager: SimSpeedManager,
     private readonly ephemeris: Ephemeris,
     entities: EntityManager,
@@ -132,7 +132,7 @@ export class PlanEditor {
     g.onNodeSelect = (idx) => {
       this.selectedNodeIdx = idx;
       this.closeMenu();
-      this._sfx.warp();
+      this._uiSfx.warp();
     };
     g.onNodeDragMove = (idx, clientX, clientY) => {
       this.closeMenu();
@@ -251,7 +251,7 @@ export class PlanEditor {
     }
     if (bestNodeIdx !== null) {
       this.selectedNodeIdx = bestNodeIdx;
-      this._sfx.warp();
+      this._uiSfx.warp();
       return;
     }
 
@@ -305,7 +305,7 @@ export class PlanEditor {
       return;
     }
     this.selectedNodeIdx = idx;
-    this._sfx.warp();
+    this._uiSfx.warp();
   }
 
   // 既存ノード近傍ならそれを選択してコンテキストメニューを開き true を返す。外れは false。
@@ -382,7 +382,7 @@ export class PlanEditor {
     const replacement = plan.replaceNode(idx, rebuilt ?? picked.state);
     if (!replacement) return;
     this.selectedNode = replacement;
-    this._sfx.warp();
+    this._uiSfx.warp();
     if (hasDownstreamNodes) this._hud.hint('ノード位置を変更しました。後続ノードを再設定してください');
   }
 
@@ -462,7 +462,7 @@ export class PlanEditor {
     const bodyArr = this.bodyState(arr);
     const dvWorld = fromOrbitAxes(bodyArr, v3(pro, nrm, rad));
     this.selectedNode = plan.replaceNode(this.selectedNodeIdx, kinematicState(node.t, node.r, add(arr.v, dvWorld)));
-    this._sfx.warp();
+    this._uiSfx.warp();
   }
 
   // Δv アームのラッチ前ドラッグ量を選択中ノードの Δv へ加算する。
