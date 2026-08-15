@@ -5,11 +5,13 @@ export { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../physics/solar-system';
 export const MAX_PLACED_SHIPS = 50;
 
 // --- 基地ドッキング ---
-// 収容判定: 基地との距離(m)と相対速度(m/s)がこれ以内なら収容可能とみなす。
+export const BASE_MAX_SHIPS = 4;        // 基地が保有・格納できる宇宙船の最大数
 export const DOCK_CAPTURE_DIST = 500;    // [m] (船船ドッキング用)
 export const DOCK_CAPTURE_REL_V = 20;   // [m/s]
 export const HATCH_DOCK_MAX_DIST = 80;        // 基地ハッチ前での最大ドッキング距離 [m]
 export const HATCH_DOCK_MIN_ALIGNMENT = 0.5;  // ハッチ正面コーンの最小内積 (cos 60° = 0.5)
+export const SLOT_DOCK_MAX_DIST = 50;         // 各ドックスロット前での最大ドッキング距離 [m]
+export const SLOT_DOCK_MIN_ALIGNMENT = 0.5;   // スロット正面コーンの最小内積 (cos 60° = 0.5)
 
 
 // ラグランジュ点配置(ハロー/リサジュー)の既定振幅 [km]。

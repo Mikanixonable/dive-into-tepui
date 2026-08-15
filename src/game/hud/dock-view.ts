@@ -564,7 +564,7 @@ export class DockView {
     frag.appendChild(this.buildSectionHeader(
       '格納艦',
       '発進する艦を選択するか、整備画面で搭載部品を確認します。',
-      `${ships.length} 隻`,
+      `${ships.length} / ${C.BASE_MAX_SHIPS} 隻`,
     ));
     if (ships.length === 0) {
       const empty = document.createElement('div');
@@ -605,7 +605,7 @@ export class DockView {
     info.className = 'dock-ship-info';
     const name = document.createElement('span');
     name.className = 'dock-ship-name';
-    name.textContent = s.name || `艦 #${i + 1}`;
+    name.textContent = `${s.name || `艦 #${i + 1}`} [ドック ${s.slotIndex + 1}]`;
     const hp = document.createElement('span');
     hp.className = 'dock-ship-hp';
     hp.textContent = `HP ${Math.round(s.hp ?? 0).toLocaleString()} / ${Math.round(s.maxHp ?? 0).toLocaleString()}`;
@@ -626,15 +626,20 @@ export class DockView {
 
   // 新造(既定パーツ一式の艦を1隻、格納艦へ加える)行。
   private buildNewShipHeader(base: Base): HTMLElement {
-    const canAfford = this.freeProcurement || base.baseState.money >= NEW_SHIP_COST;
+    const isFull = base.baseState.dockedShips.length >= C.BASE_MAX_SHIPS;
+    const canAfford = !isFull && (this.freeProcurement || base.baseState.money >= NEW_SHIP_COST);
     const row = document.createElement('div');
     row.className = 'dock-parts-header';
     const label = document.createElement('span');
     label.className = 'dock-ship-label';
-    label.textContent = '既定構成の艦を新造して格納庫へ追加します。';
+    label.textContent = isFull
+      ? `基地のドックが満杯です (最大 ${C.BASE_MAX_SHIPS} 隻)`
+      : '既定構成の艦を新造して格納庫へ追加します。';
     row.appendChild(label);
     const btn = new Button(
-      `新造 · ${this.freeProcurement ? 'コストなし' : `${NEW_SHIP_COST.toLocaleString()} Cr`}`,
+      isFull
+        ? 'ドック満杯'
+        : `新造 · ${this.freeProcurement ? 'コストなし' : `${NEW_SHIP_COST.toLocaleString()} Cr`}`,
       () => this.handleBuildShip(),
     );
     btn.element.classList.add('dock-btn', 'dock-btn-primary');

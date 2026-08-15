@@ -564,6 +564,22 @@ export function buildBaseModel(): THREE.Group {
     module.rotation.z = Math.PI / 2;
     module.rotation.y = -angle;
     g.add(module);
+
+    // --- 4箇所のドックスロット構造体 (Dock 0..3, 外端 r = 102m) ---
+    const slotCollarMat = new THREE.MeshStandardMaterial({ color: 0x4a5260, flatShading: true, roughness: 0.35, metalness: 0.8 });
+    const slotRingMat = new THREE.MeshStandardMaterial({ color: 0xffaa00, emissive: 0xffaa00, emissiveIntensity: 1.8, roughness: 0.3 });
+
+    const slotCollar = new THREE.Mesh(new THREE.CylinderGeometry(8.5, 9, 2.5, 12), slotCollarMat);
+    slotCollar.position.copy(dir).multiplyScalar(moduleOffset + 14);
+    slotCollar.rotation.z = Math.PI / 2;
+    slotCollar.rotation.y = -angle;
+    g.add(slotCollar);
+
+    const slotRing = new THREE.Mesh(new THREE.CylinderGeometry(6.5, 6.5, 0.8, 12), slotRingMat);
+    slotRing.position.copy(dir).multiplyScalar(moduleOffset + 15.3);
+    slotRing.rotation.z = Math.PI / 2;
+    slotRing.rotation.y = -angle;
+    g.add(slotRing);
   }
 
   for (const side of [1, -1]) {
