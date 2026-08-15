@@ -284,5 +284,9 @@ export class Docking {
     this.viewManager.setView('combat');
     this.hud.hint(`${ship.name} がドック ${slotIndex + 1} から切り離され発進しました`);
   }
-}
 
+  // ドックビューの DOM を片付ける。
+  dispose(): void {
+    this.dockView.dispose();
+  }
+}
