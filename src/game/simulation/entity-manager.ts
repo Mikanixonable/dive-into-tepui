@@ -380,7 +380,7 @@ export class EntityManager {
     for (const ship of this.players) {
       const isActive = ship === activePlayer;
       const show = isActive && (visibilityPolicy?.entity('player', isActive).orbit ?? true);
-      ship.syncTrajectoryLine(
+      ship.syncTrajectoryLines(
         show, frame, simTime, displayTime, pastDuration, ephemeris, fo, camera, attractors);
       ship.orbitLine.setSuppressed(ship.supersedesAnalyticEllipse(simTime, duration, overviewMode));
     }
