@@ -39,32 +39,123 @@ deliberate design choice, recorded in `DEVELOP/SPEC.md` §8, and worth keeping.
 
 ## 2. The conductor — arx-ein's planned BGM architecture
 
-**Not scheduled yet; recorded here so the shape is known before anything is built against it.**
-This is arx-ein's own sketch (2026-08-15), and the `Composer` seam that landed with the
-playback/generation split was named and placed to be its bottom layer.
+arx-ein's own sketch (2026-08-15), worked through in discussion on 2026-08-15. Three layers:
+a **conductor** owning which music plays and how pieces hand over, **composers** as the
+note-generation algorithms behind one shared interface, and **tracks** as the parameters a
+composer consumes. The `Composer` seam already landed to be the bottom of it.
 
-Three layers, from the top:
+### 2a. Conductor: extract the playback, not the conductor
 
-- **Conductor** — owns *which* music is playing and manages the transitions between pieces:
-  simple play/stop, and eventually more intricate ones (crossfade, phase-aligned handover).
-  It talks to composers only through a shared interface, so it never learns how any
-  particular piece generates its notes. This is the part of today's `Bgm` that picks and
-  rotates tracks; the WebAudio-facing half of `Bgm` stays where it is.
-- **Composers** — the note-generation algorithms, each a different *way of making music*
-  rather than a different set of numbers. The current `PhasingComposer` is one. A second one
-  (something generative, a canon, a drone-only piece) is the point of the layer existing.
-- **Tracks** — the parameters a composer consumes, essentially what `BgmTrack` is now. Each
-  composer will want its own parameter type, so a track needs to say which composer it is
-  for; how that association is expressed is an open question (a discriminated union over a
-  `kind` field is the obvious first candidate, matching how the project types `PlayerInit`
-  and friends).
+The natural framing — "is the conductor extracted from `Bgm`, or does it sit above `Bgm`?" —
+resolves differently than it looks, and **crossfade is what settles it**:
 
-**Already in place**: `composer.ts`'s `Composer` (`stepDurSec` + `notesAt(step)`), which is
-deliberately WebAudio-free so any implementation's output can be verified without an
-`AudioContext`. **Still to decide**: where the conductor sits relative to `Bgm` (extracted
-from it, or above it), whether a crossfade needs two composers running at once — which would
-mean two gain chains, so `Bgm`'s single `gain` field would have to become one per voice-in-flight
-— and how a track declares its composer.
+> If two pieces must sound at once, then whatever owns *one gain + one step counter + one
+> composer* has to be instantiable more than once.
+
+`Bgm` owns exactly one of each today. Making it hold two would turn those fields into arrays,
+i.e. it becomes a conductor over an internal collection — which is the "above" shape with the
+layers fused. So the plural thing is the **playback**, not the conductor, and that is what
+should be extracted:
+
+```text
+Bgm (public face, plays the conductor role)     TrackPlayback (0..n)
+  masterGain   <- user volume                     gain      <- this piece's own envelope
+  timer        <- one pump for everyone           composer
+  volume, autoStarted                             step, nextTime
+  trackIdx, trackStartTime                        scheduleUntil(deadline)
+  playbacks: TrackPlayback[]
+```
+
+Why `Bgm` keeps its name rather than being renamed `Conductor`:
+
+- The conductor is a singleton; extracting a singleton out of a singleton buys little.
+- `Bgm` is a shared service in `OWNERSHIP.md`, held by `main.ts`, `Launcher` and
+  `SettingsView`. Renaming the public face is churn across those plus the docs for no
+  behavioural gain. "Conductor" is the *role* `Bgm` plays.
+- **One timer, not one per playback.** `Bgm.pump()` stays the single `setInterval` and calls
+  `playback.scheduleUntil(now + LOOKAHEAD_SEC)` on each live playback. Per-playback timers
+  would work (each schedules against `ctx.currentTime`, so no drift bug) but buy nothing and
+  cost the conductor its control of ordering.
+
+### 2b. Tracks: a discriminated union over `kind`, switched in exactly one factory
+
+```ts
+// bgm/bgm-tracks.ts
+export type BgmTrack =
+  | { kind: 'phasing'; name: string; params: PhasingParams }
+  | { kind: 'drone';   name: string; params: DroneParams };
+```
+
+- **What is common vs per-kind** has a clean test: *what does a consumer read without caring
+  which kind it is?* `SettingsView` reads `.name` to build the preview list, so `name` is
+  common. Nothing outside the factory reads `params`.
+- **The factory needs its own file** (`bgm/create-composer.ts`), not `composer.ts`: it must
+  import every implementation, and `phasing-composer.ts` already imports `composer.ts`, so
+  putting it there creates an import cycle. Keeping the seam dependency-free is also what
+  lets a new composer be written without touching it.
+- **Not in `bgm-tracks.ts` either** — that is a data registry, the analogue of
+  `solar-system.ts`'s `SOLAR_SYSTEM`, and those stay data plus a `kind` discriminant with the
+  switches elsewhere. (The per-kind *schemas* do live there, the same way `CelestialBodyDef`
+  keeps its star/planet/satellite variants together.)
+- **Force exhaustiveness** with a `default` branch assigning to `never`, so a new `kind`
+  without a factory branch is a compile error rather than a runtime fallthrough. Same class of
+  switch `refactor-fixed` rule 3 blesses for `CelestialBodyDef.kind`: closed by construction,
+  since a composer cannot exist without an implementation.
+- **Rejected alternative**: a `createComposer()` method on each track object. That puts
+  functions in the data registry and gives every track a closure.
+- **Open wrinkle**: `Composer.stepDurSec` assumes a uniform step grid. A composer with
+  irregular rhythm can still declare a fine grid and return `[]` on most steps — a step is a
+  scheduling quantum, not a musical beat — but be deliberate about that rather than
+  discovering it later.
+
+### 2c. Crossfade: two gain layers, and two lifetime traps
+
+Today every note routes `osc -> noteGain -> bgm.gain -> destination`, one gain for everything.
+Note that `playTrack` **already** creates two gain nodes transiently (`stop(0.05)` ramps the
+old one down while its scheduled notes still sound through it, then `start()` builds a new
+one) — but the old node is dropped, so nothing can shape it afterwards. Fine for a hard cut,
+useless for a controlled crossfade.
+
+```text
+notes of piece A -> playbackGain(A) -+
+                                     +-> masterGain (user volume) -> destination
+notes of piece B -> playbackGain(B) -+
+```
+
+- **The two layers must be separate params.** If one gain does both jobs, a volume change
+  during a crossfade writes the same `AudioParam` the fade is ramping, and the later call
+  cancels the earlier one's shape. Split, they are orthogonal.
+- **Trap 1: stop pumping the outgoing piece when its fade starts**, or it keeps scheduling
+  notes into a gain heading for zero.
+- **Trap 2: do not tear a playback down the instant its fade ends... but do wait for the
+  fade.** Already-scheduled notes are long — pads run `stepDur * 34` (~20 s) and the drone
+  `stepDur * 66` (~40 s on the slowest track). Because the playback gain reaches ~0, the tail
+  is inaudible, so teardown is *fade duration + epsilon*, not *longest outstanding note*. It
+  is emphatically not "immediately", which would chop a drone mid-decay audibly.
+- **Open question worth settling before writing the crossfade**: a musical handover wants to
+  start B at a sensible point in A's cycle, which needs A's position within its super-cycle.
+  Either `Composer` exposes something like `superCycleSteps`, or the conductor computes it
+  from track data — and the latter leaks phasing-specific knowledge into the conductor, which
+  is the thing the seam exists to prevent.
+
+### 2d. Build order
+
+The conductor layer earns its keep once a second composer exists **or** crossfade lands;
+building it before either is a layer with one implementation and no transitions. Agreed order:
+
+1. **The union + a second composer.** Independent of the conductor, and it is what *proves*
+   the seam is real: if a second algorithm slots in without `Bgm` changing, the design holds.
+2. **Playback extraction** (`TrackPlayback`), no crossfade yet.
+3. **Crossfade**, once 2c's open question is settled.
+
+### 2e. Known bug this architecture should absorb
+
+**試聴 in the settings view rotates after `TRACK_ROTATION_SEC`.** `pump()` applies the
+5-minute rotation regardless of how playback started, so auditioning a track long enough
+swaps it for another — not what a sound test does. The fix is not two playback modules:
+rotation is a *policy the conductor applies to the ambient playback*, and a preview playback
+simply is not subject to it. Until the playback split lands, one flag on `Bgm` (set by
+`playTrack`, cleared by `autoStart`/`resume`) covers it.
 
 ## 3. The mic system — BLOCKED, do not start without asking
 
