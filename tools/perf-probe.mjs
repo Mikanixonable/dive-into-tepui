@@ -124,22 +124,39 @@ async function waitForDebugPage(port) {
   throw new Error('Chrome DevTools endpoint did not become ready.');
 }
 
+// 1リクエストの待ち時間の上限。ページのレンダラが落ちるとその接続宛の応答は二度と返らないので、
+// 上限が無いと待ち続けて条件マトリクスがそこで永久に止まる(実際に止まった)。重い条件では
+// 1フレームが数秒になるため、フレーム数回ぶんの余裕を見た値にする。
+const REQUEST_TIMEOUT_MS = 30_000;
+
 function connectDevTools(url, onEvent) {
   const socket = new WebSocket(url);
   let nextId = 1;
   const pending = new Map();
+  // 待っている全リクエストを失敗させる。接続が死んだ後に個々のタイムアウトを待たせない。
+  const failAll = (reason) => {
+    for (const [id, { reject, timer }] of pending) {
+      clearTimeout(timer);
+      pending.delete(id);
+      reject(new Error(reason));
+    }
+  };
   socket.addEventListener('message', (event) => {
     const response = JSON.parse(event.data);
     if (!response.id) {
       onEvent(response);
+      // レンダラが落ちた時点で、この接続宛の応答はもう返らない。
+      if (response.method === 'Inspector.targetCrashed') failAll('Renderer target crashed.');
       return;
     }
     if (!pending.has(response.id)) return;
-    const { resolve, reject } = pending.get(response.id);
+    const { resolve, reject, timer } = pending.get(response.id);
+    clearTimeout(timer);
     pending.delete(response.id);
     if (response.error) reject(new Error(response.error.message));
     else resolve(response.result);
   });
+  socket.addEventListener('close', () => failAll('Chrome DevTools WebSocket closed.'), { once: true });
   const opened = new Promise((resolve, reject) => {
     socket.addEventListener('open', resolve, { once: true });
     socket.addEventListener('error', () => reject(new Error('Chrome DevTools WebSocket failed.')), { once: true });
@@ -148,8 +165,20 @@ function connectDevTools(url, onEvent) {
     opened,
     send(method, params = {}) {
       const id = nextId++;
-      socket.send(JSON.stringify({ id, method, params }));
-      return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          pending.delete(id);
+          reject(new Error(`Timed out after ${REQUEST_TIMEOUT_MS}ms: ${method}`));
+        }, REQUEST_TIMEOUT_MS);
+        pending.set(id, { resolve, reject, timer });
+        try {
+          socket.send(JSON.stringify({ id, method, params }));
+        } catch (e) {
+          clearTimeout(timer);
+          pending.delete(id);
+          reject(e);
+        }
+      });
     },
     async evaluate(expression) {
       const result = await this.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
@@ -159,6 +188,34 @@ function connectDevTools(url, onEvent) {
       return result.result.value;
     },
     close: () => socket.close(),
+  };
+}
+
+// 接続が死んでも条件マトリクスを続けられるように、張り直せる接続として扱う。レンダラが落ちると
+// その接続宛の応答は返らなくなるが、Chrome 自体は生きていて新しいページ target を持つので、
+// target を取り直して繋ぎ直せば残りの条件は計測できる。
+async function createSession(debugPort, onEvent) {
+  let current = null;
+  const attach = async () => {
+    const devTools = connectDevTools(await waitForDebugPage(debugPort), onEvent);
+    await devTools.opened;
+    await devTools.send('Runtime.enable');
+    await devTools.send('Page.enable');
+    await devTools.send('Inspector.enable');
+    await devTools.send('Emulation.setDeviceMetricsOverride', {
+      width: 1280, height: 800, deviceScaleFactor: 1, mobile: false,
+    });
+    current = devTools;
+  };
+  await attach();
+  return {
+    send: (method, params) => current.send(method, params),
+    evaluate: (expression) => current.evaluate(expression),
+    async reconnect() {
+      current?.close();
+      await attach();
+    },
+    close: () => current?.close(),
   };
 }
 
@@ -436,6 +493,12 @@ async function runCondition(devTools, baseUrl, cond, fatalEvents) {
     } catch (e) {
       lastErr = e;
       console.error(`[perf-probe] condition "${label}" attempt ${attempt + 1} failed: ${e.message}`);
+      // 接続が死んだまま再試行しても同じところで失敗するので、張り直してから次を試す。
+      try {
+        await devTools.reconnect();
+      } catch (reconnectError) {
+        console.error(`[perf-probe] reconnect failed: ${reconnectError.message}`);
+      }
       await sleep(500);
     }
   }
@@ -617,17 +680,10 @@ async function main() {
       'about:blank',
     ], { stdio: 'ignore' });
 
-    devTools = connectDevTools(await waitForDebugPage(debugPort), (event) => {
+    devTools = await createSession(debugPort, (event) => {
       if (event.method === 'Runtime.exceptionThrown') fatalEvents.push(event);
       if (event.method === 'Runtime.consoleAPICalled' && event.params?.type === 'error') fatalEvents.push(event);
       if (event.method === 'Inspector.targetCrashed') fatalEvents.push(event);
-    });
-    await devTools.opened;
-    await devTools.send('Runtime.enable');
-    await devTools.send('Page.enable');
-    await devTools.send('Inspector.enable');
-    await devTools.send('Emulation.setDeviceMetricsOverride', {
-      width: 1280, height: 800, deviceScaleFactor: 1, mobile: false,
     });
 
     const mode = process.env.PERF_MODE ?? 'matrix';
