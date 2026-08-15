@@ -17,6 +17,7 @@ function titleCase(s: string): string {
 
 // 画面右上のバッジ: ゲームタイトル・現在のモード・現在のビュー(クリックで遷移メニュー)。
 export class ViewBadge {
+  private readonly el: HTMLElement;
   private readonly modeEl: HTMLElement;
   private readonly viewButton: Button;
   // ContextMenu は target !== null であることを onSelect 発火の条件にしているので、
@@ -49,9 +50,16 @@ export class ViewBadge {
 
     for (const el of [title, this.modeEl, this.viewButton.element]) badge.appendChild(el);
     root.appendChild(badge);
+    this.el = badge;
 
     this.menu.onSelect = (view) => this.viewManager.setView(view);
     this.menu.onClose = () => this.viewButton.element.setAttribute('aria-expanded', 'false');
+  }
+
+  // バッジの DOM と遷移メニューを片付ける。
+  public dispose(): void {
+    this.menu.dispose();
+    this.el.remove();
   }
 
   // モード名とビューボタンの表示を反映する。

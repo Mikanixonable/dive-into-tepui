@@ -164,4 +164,8 @@ export class Docking {
     this.hud.hint(`${ship.name} を発進しました`);
   }
 
+  // ドックビューの DOM を片付ける。
+  dispose(): void {
+    this.dockView.dispose();
+  }
 }

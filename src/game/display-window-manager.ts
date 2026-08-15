@@ -241,4 +241,9 @@ export class DisplayWindowManager {
     const raw = Math.round(this._current.duration / SLIDER_TARGET_STEP_SEC);
     return Math.max(SLIDER_MIN_STEPS, Math.min(SLIDER_MAX_STEPS, raw));
   }
+
+  // 操作パネルの DOM を片付ける。
+  dispose(): void {
+    this.panel.dispose();
+  }
 }
