@@ -1,9 +1,11 @@
-// BGM の再生制御。音量とその保存、フェードイン/アウト、曲の切替と試聴、先読みスケジューラの
-// 駆動、そして Composer が作った音を WebAudio へ流すところまでを持つ。
-// どんな音を作るかは Composer の責務で、このクラスは中身を知らない。
+// BGM の指揮。どの曲をいつ鳴らすか(自動開始・試聴・再開・停止・一定時間での曲送り)を決め、
+// ユーザー音量をマスターゲインとして持ち、先読みスケジューラを回して再生中の曲を進める。
+// 1曲ぶんの発音そのものは TrackPlayback、どんな音を作るかは Composer の責務。
+// ゲインは2層: マスター(音量)と曲ごと(フェード)。混ぜると音量操作とフェードが同じ
+// AudioParam を奪い合うので、別々に保つ。
 import { BGM_TRACKS } from './bgm-tracks';
-import { Composer, ComposerNote } from './composer';
 import { createComposer } from './create-composer';
+import { TrackPlayback } from './track-playback';
 import { AudioEngine } from '../audio-engine';
 
 const BGM_VOL_KEY = 'tepui.settings.bgm_vol'; // localStorage キー
@@ -14,11 +16,9 @@ const FADE_IN_SEC = 4;
 const TRACK_ROTATION_SEC = 300; // 1曲を流し続ける長さ
 
 export class Bgm {
-  private gain: GainNode | null = null;
+  private masterGain: GainNode | null = null;
+  private playback: TrackPlayback | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
-  private composer: Composer | null = null;
-  private nextTime = 0;
-  private step = 0;
   private volume = 1;
   private trackIdx = 0;
   private trackStartTime = 0;
@@ -51,8 +51,8 @@ export class Bgm {
       /* 保存できなくても再生自体は反映する */
     }
     const ctx = this.engine.ctx;
-    if (ctx && this.gain && this.timer) {
-      this.gain.gain.setTargetAtTime(Math.max(0.0001, vol), ctx.currentTime, 0.1);
+    if (ctx && this.masterGain && this.timer) {
+      this.masterGain.gain.setTargetAtTime(Math.max(0.0001, vol), ctx.currentTime, 0.1);
     } else if (vol > 0 && !this.timer) {
       this.start();
     }
@@ -83,44 +83,45 @@ export class Bgm {
     this.start(this.trackIdx);
   }
 
-  // fadeSec 秒かけてフェードアウトし、停止する。
+  // fadeSec 秒かけてフェードアウトし、停止する。スケジュール済みの音は曲ごとのゲインを
+  // 通って一緒に減衰するので、鳴らし終えるのを待つ必要はない。
   stop(fadeSec = 2.5): void {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
     }
-    const ctx = this.engine.ctx;
-    if (ctx && this.gain) {
-      this.gain.gain.setTargetAtTime(0.0001, ctx.currentTime, fadeSec / 3);
-    }
+    this.playback?.fadeOut(fadeSec);
+    this.playback = null;
   }
 
   // 再生を開始し、先読みスケジューラを起動する。曲は指定が無ければランダムに選ぶ。
   private start(trackIdx?: number): void {
     const ctx = this.engine.ctx;
     if (!ctx || this.timer) return;
-    // マスターゲインをフェードインさせながら生成する
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(Math.max(0.0001, this.volume), ctx.currentTime + FADE_IN_SEC);
-    g.connect(ctx.destination);
-    this.gain = g;
-    this.nextTime = ctx.currentTime + START_DELAY_SEC;
-    this.selectTrack(
-      trackIdx === undefined
-        ? Math.floor(Math.random() * BGM_TRACKS.length)
-        : Math.max(0, Math.min(BGM_TRACKS.length - 1, trackIdx)),
-      ctx,
-    );
+    const index = trackIdx === undefined
+      ? Math.floor(Math.random() * BGM_TRACKS.length)
+      : Math.max(0, Math.min(BGM_TRACKS.length - 1, trackIdx));
+    this.openPlayback(index, ctx, ctx.currentTime + START_DELAY_SEC);
+    this.playback?.fadeIn(FADE_IN_SEC);
     this.timer = setInterval(() => this.pump(), PUMP_INTERVAL_MS);
   }
 
-  // 指定した曲の Composer を組み、ステップを先頭へ戻す。
-  private selectTrack(index: number, ctx: AudioContext): void {
+  // 指定した曲の再生を組み、startAt から刻み始める。
+  private openPlayback(index: number, ctx: AudioContext, startAt: number): void {
     this.trackIdx = index;
-    this.composer = createComposer(BGM_TRACKS[index]!);
     this.trackStartTime = ctx.currentTime;
-    this.step = 0;
+    const composer = createComposer(BGM_TRACKS[index]!);
+    this.playback = new TrackPlayback(ctx, composer, this.ensureMasterGain(ctx), startAt);
+  }
+
+  // ユーザー音量を表すマスターゲイン。曲を跨いで生き続ける唯一のノード。
+  private ensureMasterGain(ctx: AudioContext): GainNode {
+    if (this.masterGain) return this.masterGain;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(Math.max(0.0001, this.volume), ctx.currentTime);
+    g.connect(ctx.destination);
+    this.masterGain = g;
+    return g;
   }
 
   // 同じ曲が連続しないよう、今の曲以外から次の曲を選ぶ。曲が1つしかなければそのまま。
@@ -134,39 +135,16 @@ export class Bgm {
   // 先読み時間の範囲までステップを刻み進める。一定時間おきに曲を切り替える。
   private pump(): void {
     const ctx = this.engine.ctx;
-    if (!ctx || !this.gain) return;
+    if (!ctx) return;
 
     // クロスフェードは挟まない。ミニマルミュージックなので、パターンが切り替わるだけでも
-    // フェーズの変化として違和感なくアンビエントに馴染む。
+    // フェーズの変化として違和感なくアンビエントに馴染む。次の曲は前の曲が刻み終えた
+    // 時刻から続けて始めるので、拍が途切れることもない。
     if (ctx.currentTime - this.trackStartTime > TRACK_ROTATION_SEC) {
-      this.selectTrack(this.nextTrackIndex(), ctx);
+      const startAt = this.playback?.nextStepTime ?? ctx.currentTime + START_DELAY_SEC;
+      this.openPlayback(this.nextTrackIndex(), ctx, startAt);
     }
 
-    const composer = this.composer;
-    if (!composer) return;
-    while (this.nextTime < ctx.currentTime + LOOKAHEAD_SEC) {
-      for (const note of composer.notesAt(this.step)) this.playNote(note, this.nextTime);
-      this.step++;
-      this.nextTime += composer.stepDurSec;
-    }
-  }
-
-  // 1音を、ステップ開始時刻 stepTime を基準にスケジュールする。
-  private playNote(note: ComposerNote, stepTime: number): void {
-    const ctx = this.engine.ctx;
-    const dest = this.gain;
-    if (!ctx || !dest) return;
-    const t = stepTime + note.offsetSec;
-    const osc = ctx.createOscillator();
-    osc.type = note.wave;
-    osc.frequency.value = note.freq;
-    // 立ち上がり~減衰のゲイン包絡を組み、クリックノイズを避ける
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.linearRampToValueAtTime(note.level, t + note.attackSec);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + note.durationSec);
-    osc.connect(gain).connect(dest);
-    osc.start(t);
-    osc.stop(t + note.durationSec + 0.05);
+    this.playback?.scheduleUntil(ctx.currentTime + LOOKAHEAD_SEC);
   }
 }
