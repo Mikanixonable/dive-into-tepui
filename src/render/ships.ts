@@ -541,32 +541,32 @@ export function buildBarrelMesh(): THREE.Group {
 export function buildBaseModel(): THREE.Group {
   const g = new THREE.Group();
 
-  // マテリアル定義
-  const redTrussMat = new THREE.MeshStandardMaterial({ color: 0xd42a2a, flatShading: true, roughness: 0.5, metalness: 0.6 });
-  const grayFrameMat = new THREE.MeshStandardMaterial({ color: 0x4a5260, flatShading: true, roughness: 0.5, metalness: 0.7 });
-  const whiteModuleMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee, flatShading: true, roughness: 0.3, metalness: 0.6 });
-  const weatheredTubeMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, flatShading: true, roughness: 0.45, metalness: 0.5 });
-  const glassMat = new THREE.MeshStandardMaterial({ color: 0x66ffee, transparent: true, opacity: 0.6, roughness: 0.1, metalness: 0.2 });
-  const bioGlowMat = new THREE.MeshStandardMaterial({ color: 0x22cc55, emissive: 0x22cc55, emissiveIntensity: 1.6, roughness: 0.3 });
-  const radiatorMat = new THREE.MeshStandardMaterial({ color: 0xdedede, flatShading: true, roughness: 0.2, metalness: 0.85 });
-  const solarPanelMat = new THREE.MeshStandardMaterial({ color: 0x1a3a5c, flatShading: true, roughness: 0.3, metalness: 0.6 });
+  // マテリアル定義 (落ち着いたダークチタン・エアロスペースメタリック基調の配色)
+  const redTrussMat = new THREE.MeshStandardMaterial({ color: 0x282e3a, flatShading: true, roughness: 0.35, metalness: 0.85 });
+  const grayFrameMat = new THREE.MeshStandardMaterial({ color: 0x1e2430, flatShading: true, roughness: 0.4, metalness: 0.8 });
+  const whiteModuleMat = new THREE.MeshStandardMaterial({ color: 0xd6dae2, flatShading: true, roughness: 0.25, metalness: 0.5 });
+  const weatheredTubeMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, flatShading: true, roughness: 0.4, metalness: 0.6 });
+  const glassMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.35, roughness: 0.1, metalness: 0.9 });
+  const bioGlowMat = new THREE.MeshStandardMaterial({ color: 0x059669, emissive: 0x10b981, emissiveIntensity: 0.7, roughness: 0.2 });
+  const radiatorMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, flatShading: true, roughness: 0.15, metalness: 0.9 });
+  const solarPanelMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, flatShading: true, roughness: 0.25, metalness: 0.7 });
 
-  // コンテナ・タンク群用カラーパレット (アースカラー・暗色・蛍光色アクセント)
+  // コンテナ・タンク群用カラーパレット (洗練されたシックなインダストリアルカラー)
   const containerMats = [
-    new THREE.MeshStandardMaterial({ color: 0x3b4432, flatShading: true, roughness: 0.5, metalness: 0.5 }), // オリーブ
-    new THREE.MeshStandardMaterial({ color: 0x8a4628, flatShading: true, roughness: 0.5, metalness: 0.4 }), // テラコッタ
-    new THREE.MeshStandardMaterial({ color: 0x24272c, flatShading: true, roughness: 0.6, metalness: 0.7 }), // チャコール
-    new THREE.MeshStandardMaterial({ color: 0x1d4e54, flatShading: true, roughness: 0.4, metalness: 0.6 }), // ダークティール
-    new THREE.MeshStandardMaterial({ color: 0x5c4228, flatShading: true, roughness: 0.5, metalness: 0.4 }), // アースブラウン
-    new THREE.MeshStandardMaterial({ color: 0x9e8765, flatShading: true, roughness: 0.45, metalness: 0.5 }), // サンド
+    new THREE.MeshStandardMaterial({ color: 0x2d3748, flatShading: true, roughness: 0.45, metalness: 0.6 }), // スレートガンメタル
+    new THREE.MeshStandardMaterial({ color: 0x1e293b, flatShading: true, roughness: 0.5, metalness: 0.6 }),  // ディープネイビー
+    new THREE.MeshStandardMaterial({ color: 0x475569, flatShading: true, roughness: 0.4, metalness: 0.7 }),  // クールチタン
+    new THREE.MeshStandardMaterial({ color: 0x3b332b, flatShading: true, roughness: 0.5, metalness: 0.5 }),  // ダークブロンズ
+    new THREE.MeshStandardMaterial({ color: 0x1e222a, flatShading: true, roughness: 0.6, metalness: 0.7 }),  // チャコールスチール
+    new THREE.MeshStandardMaterial({ color: 0x64748b, flatShading: true, roughness: 0.4, metalness: 0.6 }),  // ミューテッドピューター
   ];
-  const neonAccentMat = new THREE.MeshStandardMaterial({ color: 0x00ffcc, emissive: 0x00ffcc, emissiveIntensity: 1.8 });
-  const hazardOrangeMat = new THREE.MeshStandardMaterial({ color: 0xff6a00, emissive: 0xff6a00, emissiveIntensity: 1.5 });
+  const neonAccentMat = new THREE.MeshStandardMaterial({ color: 0x0ea5e9, emissive: 0x38bdf8, emissiveIntensity: 0.8 });
+  const hazardOrangeMat = new THREE.MeshStandardMaterial({ color: 0xd97706, emissive: 0xf59e0b, emissiveIntensity: 0.7 });
 
   const tankMats = [
-    new THREE.MeshStandardMaterial({ color: 0xcccccc, flatShading: true, roughness: 0.3, metalness: 0.8 }),
-    new THREE.MeshStandardMaterial({ color: 0xd86020, flatShading: true, roughness: 0.4, metalness: 0.6 }),
-    new THREE.MeshStandardMaterial({ color: 0x2a3848, flatShading: true, roughness: 0.35, metalness: 0.75 }),
+    new THREE.MeshStandardMaterial({ color: 0xcbd5e1, flatShading: true, roughness: 0.2, metalness: 0.9 }),
+    new THREE.MeshStandardMaterial({ color: 0x1e293b, flatShading: true, roughness: 0.3, metalness: 0.8 }),
+    new THREE.MeshStandardMaterial({ color: 0x64748b, flatShading: true, roughness: 0.25, metalness: 0.85 }),
   ];
 
   // 1) 連結赤色トラス部 (長径約100m, Z = -35m 〜 +50m)
@@ -608,13 +608,13 @@ export function buildBaseModel(): THREE.Group {
   }
 
   // 3) 中腹ドッキング部 (Z = 0m, 矩形パレット / 艀状フレーム $40 \times 12 \times 50$m)
-  const dockPalletMat = new THREE.MeshStandardMaterial({ color: 0x3a4250, flatShading: true, roughness: 0.4, metalness: 0.8 });
+  const dockPalletMat = new THREE.MeshStandardMaterial({ color: 0x1e2430, flatShading: true, roughness: 0.35, metalness: 0.85 });
   const palletFrame = new THREE.Mesh(new THREE.BoxGeometry(42, 6, 52), dockPalletMat);
   palletFrame.position.set(0, -3, 0);
   g.add(palletFrame);
 
   // 中央ドッキングハッチ (Y = +6m, Z = 0)
-  const hatchRingMat = new THREE.MeshStandardMaterial({ color: 0x00ffcc, emissive: 0x00ffcc, emissiveIntensity: 2.2, roughness: 0.2, metalness: 0.8 });
+  const hatchRingMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, emissive: 0x38bdf8, emissiveIntensity: 0.9, roughness: 0.2, metalness: 0.8 });
   const hatchDoor = new THREE.Mesh(new THREE.CylinderGeometry(10, 10, 2, 16), dockPalletMat);
   hatchDoor.position.set(0, 7, 0);
   g.add(hatchDoor);
@@ -624,8 +624,8 @@ export function buildBaseModel(): THREE.Group {
   g.add(hatchRing);
 
   // 4箇所のドックスロット構造体 (Dock 0..3)
-  const slotCollarMat = new THREE.MeshStandardMaterial({ color: 0x4a5260, flatShading: true, roughness: 0.35, metalness: 0.8 });
-  const slotRingMat = new THREE.MeshStandardMaterial({ color: 0xffaa00, emissive: 0xffaa00, emissiveIntensity: 1.8, roughness: 0.3 });
+  const slotCollarMat = new THREE.MeshStandardMaterial({ color: 0x2a303c, flatShading: true, roughness: 0.35, metalness: 0.85 });
+  const slotRingMat = new THREE.MeshStandardMaterial({ color: 0xd97706, emissive: 0xf59e0b, emissiveIntensity: 0.7, roughness: 0.3 });
 
   const slotDefs = [
     { pos: new THREE.Vector3(22, 0, 0), rot: new THREE.Vector3(0, 0, -Math.PI / 2) }, // Slot 0 (+X)
