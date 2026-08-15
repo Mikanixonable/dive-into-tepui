@@ -1107,25 +1107,25 @@ export function buildBaseModel(): THREE.Group {
     g.add(seam);
   }
 
-  // 【2秒に1回強烈に自発光・実光源照明を放つ高照度赤色航空管制ストロボシステム】
-  // 1) 超高輝度加算合成レンズフレア用マテリアル (Additive Blending Lens Flare)
-  const flareMat = new THREE.MeshBasicMaterial({
-    color: 0xff0044,
-    transparent: true,
-    opacity: 0,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    toneMapped: false,
+  // 【航空管制塔構造体 (8箇所) & 2秒周期で鮮烈に赤く強烈に自発光点滅するストロボライト】
+  // MeshStandardMaterial を使用し markLitOpaque(g) にて Layer 1 (Gバッファ/Litパス) へ登録させる
+  const redControlStrobeMat = new THREE.MeshStandardMaterial({
+    color: 0x330005,
+    emissive: 0x220000,
+    emissiveIntensity: 0.1,
+    flatShading: true,
+    roughness: 0.1,
+    metalness: 0.1,
   });
 
-  const flareCoreMat = new THREE.MeshBasicMaterial({
-    color: 0x330008,
-    toneMapped: false,
+  const strobeHaloMat = new THREE.MeshStandardMaterial({
+    color: 0xff0033,
+    emissive: 0xff0033,
+    emissiveIntensity: 0.1,
+    flatShading: true,
+    roughness: 0.05,
+    metalness: 0.05,
   });
-
-  // 閃光時に周囲を物理的に赤く照らし出す PointLight 実光源
-  const pointLights: THREE.PointLight[] = [];
-  const flareMeshes: THREE.Mesh[] = [];
 
   const beaconCoords: readonly [number, number, number][] = [
     // 居住区上部4隅
@@ -1145,58 +1145,48 @@ export function buildBaseModel(): THREE.Group {
     [ 7.2,  7.2, cwCenterZ - 68],
   ];
 
-  // 12箇所の航空管制灯ノード
   for (let i = 0; i < beaconCoords.length; i++) {
     const [bx, by, bz] = beaconCoords[i]!;
 
-    // 発光コア球体
-    const coreMesh = new THREE.Mesh(new THREE.SphereGeometry(1.0, 10, 8), flareCoreMat);
-    coreMesh.position.set(bx, by, bz);
-    g.add(coreMesh);
+    // 航空管制塔マウントスパイアタワー構造体
+    const towerSpire = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.75, 4.0, 8), sensorPodMat);
+    towerSpire.position.set(bx, by, bz);
+    towerSpire.rotation.x = Math.PI / 2;
+    g.add(towerSpire);
 
-    // 加算合成レンズフレア（バースト閃光体）
-    const flareMesh = new THREE.Mesh(new THREE.OctahedronGeometry(6.0, 2), flareMat);
-    flareMesh.position.set(bx, by, bz);
-    flareMesh.scale.setScalar(0.01);
-    g.add(flareMesh);
-    flareMeshes.push(flareMesh);
+    // 発光ストロボ球コア (径 1.6m)
+    const strobeCore = new THREE.Mesh(new THREE.SphereGeometry(1.6, 12, 10), redControlStrobeMat);
+    strobeCore.position.set(bx, by, bz + (bz > 0 ? 2.2 : -2.2));
+    g.add(strobeCore);
 
-    // 主要4隅 (上部2箇所, 下部2箇所) に周りを物理照らす PointLight を配置
-    if (i === 0 || i === 3 || i === 8 || i === 11) {
-      const pLight = new THREE.PointLight(0xff0044, 0, 300, 1.5);
-      pLight.position.set(bx * 1.5, by * 1.5, bz);
-      g.add(pLight);
-      pointLights.push(pLight);
-    }
+    // 高輝度ハロー発光リング
+    const haloRing = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.4, 0.4, 12), strobeHaloMat);
+    haloRing.position.set(bx, by, bz + (bz > 0 ? 2.2 : -2.2));
+    haloRing.rotation.x = Math.PI / 2;
+    g.add(haloRing);
   }
 
-  // 2秒周期 (0.16秒間、レンズフレア爆発＋PointLight実光源照射で強烈に自発光フラッシュ)
+  // 2秒周期 (0.18秒間、emissiveIntensity = 40.0〜50.0 で真の強烈赤色発光)
   g.onBeforeRender = () => {
     const t = (performance.now() / 1000) % 2.0; // 2.0秒周期
-    if (t < 0.16) {
-      // フラッシュ時: コアが輝く純白ピンク赤 0xff88aa に変化
-      flareCoreMat.color.setHex(0xff88aa);
-      flareMat.opacity = 0.95;
+    if (t < 0.18) {
+      // 発光時: 明るいビビッドレッド 0xff0044、エミッシブ強度 40.0
+      redControlStrobeMat.color.setHex(0xff3355);
+      redControlStrobeMat.emissive.setHex(0xff0033);
+      redControlStrobeMat.emissiveIntensity = 40.0;
 
-      for (const fm of flareMeshes) {
-        fm.scale.setScalar(1.0); // 12mの大口径加算レンズフレアバースト
-      }
-
-      for (const pl of pointLights) {
-        pl.intensity = 12000.0; // 物理的な赤色発光ライトで周囲の船体・宇宙を強烈に照射
-      }
+      strobeHaloMat.color.setHex(0xff6688);
+      strobeHaloMat.emissive.setHex(0xff0044);
+      strobeHaloMat.emissiveIntensity = 50.0;
     } else {
-      // 消灯時
-      flareCoreMat.color.setHex(0x330008);
-      flareMat.opacity = 0;
+      // 消灯時: 暗い待機色
+      redControlStrobeMat.color.setHex(0x330005);
+      redControlStrobeMat.emissive.setHex(0x110000);
+      redControlStrobeMat.emissiveIntensity = 0.05;
 
-      for (const fm of flareMeshes) {
-        fm.scale.setScalar(0.01);
-      }
-
-      for (const pl of pointLights) {
-        pl.intensity = 0;
-      }
+      strobeHaloMat.color.setHex(0x220003);
+      strobeHaloMat.emissive.setHex(0x110000);
+      strobeHaloMat.emissiveIntensity = 0.05;
     }
   };
 
