@@ -409,7 +409,7 @@ export class DockView {
     const title = document.createElement('h1');
     title.id = 'dock-view-title';
     title.className = 'dock-title';
-    title.textContent = 'Dock';
+    title.textContent = 'Base';
     const subtitle = document.createElement('span');
     subtitle.className = 'dock-subtitle';
     subtitle.textContent = '艦の整備、補給、調達';
