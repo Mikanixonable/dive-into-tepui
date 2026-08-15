@@ -7,7 +7,7 @@ import { Enemy } from '../../game-entity/enemy';
 import { Player } from '../../player/player';
 import type { Stage } from '../stage';
 import type { Hud } from '../../hud/hud';
-import type { Sfx } from '../../../audio/sfx';
+import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../../vfx/effects-system';
 import type { Ephemeris } from '../../../physics/ephemeris';
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
@@ -34,7 +34,7 @@ export class WaveAttack {
   // saved があればその状態(フェーズ・タイマー・ウェーブ数)から始める。
   constructor(
     private readonly hud: Hud,
-    private readonly sfx: Sfx,
+    private readonly worldSfx: WorldSfx,
     private readonly fx: EffectsSystem,
     private readonly scene: THREE.Scene,
     private readonly ephemeris: Ephemeris,
@@ -48,7 +48,7 @@ export class WaveAttack {
   // ウェーブ番号を進め、敵を生成して addEnemy 経由でエンティティ管理に登録する。
   spawnWave(player: Player, addEnemy: (enemy: Enemy) => void, forcedPattern?: 'linear' | 'random'): void {
     const wave = ++this._waveCount;
-    const enemies = generateWave(player.state, wave, this.ephemeris, this.hud, this.sfx, this.fx, this.scene, forcedPattern);
+    const enemies = generateWave(player.state, wave, this.ephemeris, this.hud, this.worldSfx, this.fx, this.scene, forcedPattern);
     for (const enemy of enemies) addEnemy(enemy);
   }
 
@@ -254,7 +254,7 @@ function waveShipPosition(pattern: 'linear' | 'random', i: number, shipCount: nu
 }
 
 // ウェーブ番号に応じた隻数・編成・接近軌道を決め、敵艦の配列を生成する。
-export function generateWave(player: KinematicState, waveNumber: number, ephemeris: Ephemeris, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene: THREE.Scene, forcedPattern?: 'linear' | 'random'): Enemy[] {
+export function generateWave(player: KinematicState, waveNumber: number, ephemeris: Ephemeris, hud: Hud, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene, forcedPattern?: 'linear' | 'random'): Enemy[] {
   const calculatedCount = C.STAGE00_WAVE_BASE_SHIPS + Math.floor((waveNumber - 1) * C.STAGE00_WAVE_SHIPS_PER_WAVE);
   const shipCount = Math.min(calculatedCount, C.STAGE00_WAVE_MAX_SHIPS);
   const centerR = pickWaveCenter(player, waveNumber);
@@ -270,7 +270,7 @@ export function generateWave(player: KinematicState, waveNumber: number, ephemer
     const accent = subGroups[i % subGroups.length]!;
     const position = waveShipPosition(pattern, i, shipCount, centerR, approachDir);
     const state: KinematicState = kinematicState(player.t, position, centerV);
-    enemies.push(generateApproachingEnemy(`W${waveNumber}-${i + 1}`, state, C.STAGE0_ENEMY_HP, accent, accent, typeIndex, waveNumber, hud, sfx, fx, scene));
+    enemies.push(generateApproachingEnemy(`W${waveNumber}-${i + 1}`, state, C.STAGE0_ENEMY_HP, accent, accent, typeIndex, waveNumber, hud, worldSfx, fx, scene));
   }
   return enemies;
 }
