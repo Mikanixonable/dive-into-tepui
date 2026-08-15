@@ -24,6 +24,19 @@ import * as C from '../const';
 export const BASE_HATCH_LOCAL_POS: Vec3 = v3(0, 32.5, 0);
 export const BASE_HATCH_LOCAL_NORMAL: Vec3 = v3(0, 1, 0);
 
+export interface BaseDockSlot {
+  readonly id: number;
+  readonly localPos: Vec3;
+  readonly localNormal: Vec3;
+}
+
+export const BASE_DOCK_SLOTS: readonly BaseDockSlot[] = [
+  { id: 0, localPos: v3(103, 0, 0), localNormal: v3(1, 0, 0) },
+  { id: 1, localPos: v3(0, 0, 103), localNormal: v3(0, 0, 1) },
+  { id: 2, localPos: v3(-103, 0, 0), localNormal: v3(-1, 0, 0) },
+  { id: 3, localPos: v3(0, 0, -103), localNormal: v3(0, 0, -1) },
+];
+
 // 収容中の艦のエントリ。parts は player.parts と同一参照(修理は艦へ直接反映される)。
 // hp/maxHp は艦一覧タブ表示用の集計値で、修理のたびに書き戻す。
 export interface DockedShipEntry {
@@ -33,6 +46,7 @@ export interface DockedShipEntry {
   maxHp: number;
   readonly parts: Part[];
   readonly player: Player;
+  slotIndex: number;
 }
 
 export interface BaseState {
@@ -91,9 +105,10 @@ export class Base extends GameEntity {
     if ('saved' in init) {
       this.baseState.money = init.saved.money;
       this.baseState.inventory = init.saved.inventory.map(partFromSaveData);
-      this.baseState.dockedShips = init.saved.dockedShips.map((shipData) => {
+      this.baseState.dockedShips = init.saved.dockedShips.map((shipData, idx) => {
         const player = new Player(hud, sfx, scene, fx, markerManager, { saved: shipData, simTime: init.simTime });
-        player.renderObject.visible = false;
+        const slotIndex = idx < C.BASE_MAX_SHIPS ? idx : 0;
+        this.attachDockedShipMesh(player, slotIndex);
         return {
           id: player.id,
           name: player.name,
@@ -101,6 +116,7 @@ export class Base extends GameEntity {
           maxHp: player.maxHp,
           parts: player.parts,
           player,
+          slotIndex,
         };
       });
     }
@@ -114,6 +130,51 @@ export class Base extends GameEntity {
   // 基地のドッキングハッチのワールド正面法線ベクトルを取得する
   getHatchWorldNormal(): Vec3 {
     return qRotate(this.att.q, BASE_HATCH_LOCAL_NORMAL);
+  }
+
+  // 指定スロットのワールド位置を取得する
+  getSlotWorldPos(slotIndex: number): Vec3 {
+    const slot = BASE_DOCK_SLOTS[slotIndex] ?? BASE_DOCK_SLOTS[0]!;
+    return add(this.state.r, qRotate(this.att.q, slot.localPos));
+  }
+
+  // 指定スロットの外向き法線ベクトルを取得する
+  getSlotWorldNormal(slotIndex: number): Vec3 {
+    const slot = BASE_DOCK_SLOTS[slotIndex] ?? BASE_DOCK_SLOTS[0]!;
+    return qRotate(this.att.q, slot.localNormal);
+  }
+
+  // 利用可能な空きスロット番号(0..3)を返す。満杯なら null。
+  getAvailableSlotIndex(): number | null {
+    const occupied = new Set(this.baseState.dockedShips.map((s) => s.slotIndex));
+    for (let i = 0; i < C.BASE_MAX_SHIPS; i++) {
+      if (!occupied.has(i)) return i;
+    }
+    return null;
+  }
+
+  // 格納艦の 3D メッシュを基地ドックスロットへアタッチ表示する
+  attachDockedShipMesh(ship: Player, slotIndex: number): void {
+    const slot = BASE_DOCK_SLOTS[slotIndex] ?? BASE_DOCK_SLOTS[0]!;
+    const shipObj = ship.renderObject;
+    shipObj.visible = true;
+    shipObj.position.set(slot.localPos.x, slot.localPos.y, slot.localPos.z);
+
+    const dir = new THREE.Vector3(slot.localNormal.x, slot.localNormal.y, slot.localNormal.z);
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
+    shipObj.quaternion.copy(q);
+
+    if (shipObj.parent !== this.renderObject) {
+      this.renderObject.add(shipObj);
+    }
+  }
+
+  // 発行時、格納艦の 3D メッシュを基地ドックスロットから分離する
+  detachDockedShipMesh(ship: Player): void {
+    const shipObj = ship.renderObject;
+    if (shipObj.parent === this.renderObject) {
+      this.renderObject.remove(shipObj);
+    }
   }
 
   dispose(): void {
