@@ -1,6 +1,6 @@
 // HUD の骨格 CSS: #hud 自体・レイヤ・マーカー面の重なり順・パネル外枠(PanelShell)の
-// 共通部・左右レール・戦闘シェルフ・画面固定バッジ。個々のパネルの中身は
-// panel-content-style.ts が持つ。
+// 共通部・左右レール(マップ/戦闘ビューそれぞれ自身のレール)・画面固定バッジ。
+// 個々のパネルの中身は panel-content-style.ts が持つ。
 import * as C from '../const';
 import { OVERLAY_LAYER_STYLE } from './overlay-layer';
 import { MQ_COARSE, MQ_COARSE_SHORT, MQ_COMPACT, MQ_MEDIUM_DOWN, MQ_SHORT } from './breakpoints';
@@ -283,6 +283,13 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 }
 @media ${MQ_SHORT} {
   #hud-map-scale { bottom: 52px; }
+  /* 右レールは STATUS の下に CONTACTS が積まれる2段構成(TARGET はロック時のみ表示) —
+     short 高さでは画面中央近くまで達するので、ヒントの上端をその下へ逃がす。40px は
+     この高さで有効な .hud-rail 自身の top(MQ_MEDIUM_DOWN)、--combat-panel-max-h の
+     2枚分 + 間の --space-3 が両パネルとも上限いっぱいに伸びた最悪ケースの下端、
+     15px はその下端からの余白 — --combat-panel-max-h が変わってもヒントはこの式で
+     追従する。 */
+  #hud-hint { top: calc(40px + var(--combat-panel-max-h) * 2 + var(--space-3) + 15px); }
 }
 @media (prefers-reduced-motion: reduce) {
   #hud *, #hud *::before, #hud *::after {

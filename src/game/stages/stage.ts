@@ -266,6 +266,12 @@ export abstract class Stage {
     });
   }
 
+  // statusPanel を片付ける。自前の DOM/シーンオブジェクトを持つ具象ステージは
+  // super.dispose() を呼んでから続きを片付ける。
+  dispose(): void {
+    this.statusPanel.dispose();
+  }
+
   // スコア・決着状態・補給タイマーをセーブデータへ変換する。固有の内訳を持つ具象ステージは
   // これを拡張した戻り値型で override する。
   serialize(): StageSaveData {

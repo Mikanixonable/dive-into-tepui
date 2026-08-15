@@ -87,4 +87,9 @@ export class AnchorZone {
     this.picker.setSelected(id);
     this.quick.setSelected(id);
   }
+
+  // 保持している ObjectPicker を片付ける。
+  dispose(): void {
+    this.picker.dispose();
+  }
 }
