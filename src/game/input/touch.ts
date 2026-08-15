@@ -125,6 +125,7 @@ interface Btn {
 
 export class TouchControls {
   private readonly root: HTMLElement;
+  private readonly styleEl: HTMLStyleElement;
   // トグル系ボタン: タップの押下フィードバック(.pressed)とは独立に実際のモード状態で光らせる。
   private readonly toggleButtons = new Map<KeyBinding, HTMLElement>();
   // 並進6方向ボタン: ラッチ中かどうかを syncModeButtons が .on で反映する。
@@ -174,8 +175,11 @@ export class TouchControls {
 
   // 仮想パッド一式の DOM を組み立てる。
   constructor(private readonly input: Input) {
-    this.root = this.buildRoot();
-    window.addEventListener('tepui-release-touch-inputs', () => this.releaseAllInputs());
+    const built = this.buildRoot();
+    this.root = built.root;
+    this.styleEl = built.style;
+    window.addEventListener('tepui-release-touch-inputs', this.handleReleaseTouchInputs);
+    // 並進・回転・射撃・ズーム・雑多ボタンの各領域を組み立てる。
     this.buildTranslationPad(this.root);
     this.buildRotationPad(this.root);
     this.buildModeColumn(this.root);
@@ -184,12 +188,14 @@ export class TouchControls {
     this.buildUtilRow(this.root);
   }
 
+  private readonly handleReleaseTouchInputs = (): void => this.releaseAllInputs();
+
   private releaseAllInputs(): void {
     for (const release of this.releaseCallbacks) release();
   }
 
-  // スタイルシートと仮想パッドのルート要素を document へ追加し、ルート要素を返す。
-  private buildRoot(): HTMLElement {
+  // スタイルシートと仮想パッドのルート要素を document へ追加し、両方を返す。
+  private buildRoot(): { root: HTMLElement; style: HTMLStyleElement } {
     const style = document.createElement('style');
     style.textContent = STYLE;
     document.head.appendChild(style);
@@ -197,7 +203,14 @@ export class TouchControls {
     const root = document.createElement('div');
     root.id = 'touch-ui';
     document.body.appendChild(root);
-    return root;
+    return { root, style };
+  }
+
+  // window に張ったリスナーを外し、追加したスタイルシート・仮想パッド一式の DOM を取り除く。
+  dispose(): void {
+    window.removeEventListener('tepui-release-touch-inputs', this.handleReleaseTouchInputs);
+    this.root.remove();
+    this.styleEl.remove();
   }
 
   // b.key を押しっぱなし操作するボタンを1つ組み立てて parent へ追加する。registry を渡すと

@@ -27,19 +27,21 @@
 ## main.ts / rAF ループ
 
 - animate(now)
+  - const game = launcher.current // launcher.start() が解決するまで(または周回の切り替え中)は null。null なら以下を全て飛ばし、次フレームを予約するだけで戻る
   - game.update(dt) // dt = 実経過秒。game 側で 0.1s に clamp される
   - snapshotControls.handleInput(game.input, game) // このフレームで game.update が消費しなかった入力エッジだけを見る。K.clipSnapshot/K.openSnapshots(Esc は扱わない — 一覧を閉じる Esc は overlayManager 経由で game.handleInput 側が既に消費している)
     - [K.clipSnapshot] [!activeStage.isPlaying] hud.hint() // 決着後は拒否。それ以外は snapshotService.capture(game, 'manual', null, true) + hud.hint()
-    - [K.openSnapshots] browser の open()/close() をトグル // open() 前に pauseMenu.toggle(false)。open() が game.pause()、close() が game.resume() を呼ぶ
-  - launcher.handleInput(game.input, game) // snapshotControls の後、このフレームでまだ消費されていない入力エッジだけを見る。[!activeStage.isPlaying] のときだけ K.restart を取る
-    - restart() → location.replace(`?stage=<launchedStage.id>`) // 同じステージを新規に開始し直す(決着直前の自動スナップショットへは戻らない)
+    - [K.openSnapshots] browser の open()/close() をトグル // open() 前に pauseMenu.toggle(false)。open() が gameSource.current?.pause()、close() が gameSource.current?.resume() を呼ぶ(gameSource = launcher)
+  - launcher.handleInput(game.input) // snapshotControls の後、このフレームでまだ消費されていない入力エッジだけを見る(引数の game は渡さない — launcher 自身が持つ this.game を読む)。[!activeStage.isPlaying] のときだけ K.restart を取る
+    - restart() → endRun() → startRun(launchedStage) // 今の Game を dispose してから同じステージで new Game(...) する(未起動なら何もしない)
+  - [launcher.current !== game] requestAnimationFrame(animate) して return // 直前の handleInput が周回を畳んだ(K.restart など)場合、捨てた game にはこれ以降一切触らない。perf.handleInput 以降・perf.record・gpu.resolve ともこのフレームは飛ばす
   - perf.handleInput(game.input) // [K.togglePerfWindow] toggle()
   - autoSave.update(game) // 前回撮影から AUTOSAVE_INTERVAL_REAL_SEC(実時間60秒)経っていれば snapshotService.capture(game, 'auto', null, false) // game.isPaused または !activeStage.isPlaying なら何も撮らない
-  - launcher.update(game) // 決着した最初のフレームだけ動く(resultShown フラグで以降は即 return): worldSfx.setThrust(false) + bgm.stop() → slots.noteRunEnded(activeSlotId) → resultScreen.show(activeStage.result ?? phase からのフォールバック)
+  - launcher.update() // 決着した最初のフレームだけ動く(resultShown フラグで以降は即 return): worldSfx.setThrust(false) + bgm.stop() → slots.noteRunEnded(activeSlotId) → resultScreen.show(activeStage.result ?? phase からのフォールバック)
   - game.sync()
   - game.render()
-  - gpu.resolve() // 窓の開閉によらず毎フレーム。renderer.resolveTimestampsAsync('render') を投げ、前フレームの GPU 時間が非同期で届く。呼ばないと時刻印クエリが溜まって上限に当たるので条件を付けない。render 区間の計測(t3)の後に置き、計測自身の費用を render へ混ぜない
-  - perf.record() // 負荷確認ウィンドウが開いている間(perf.on)だけ。500ms ごとに Game.perfCounts() を読んで PropertyWindow の行へ流す
+  - gpu.resolve() // 窓の開閉によらず、game が存在する限り毎フレーム。renderer.resolveTimestampsAsync('render') を投げ、前フレームの GPU 時間が非同期で届く。呼ばないと時刻印クエリが溜まって上限に当たるので条件を付けない。render 区間の計測(t3)の後に置き、計測自身の費用を render へ混ぜない
+  - perf.record(game, ...) // 負荷確認ウィンドウが開いている間(perf.on)だけ。counts(= game)を引数で受け取り保持しない。500ms ごとに counts.perfCounts() を読んで PropertyWindow の行へ流す
 
 ---
 
@@ -417,7 +419,7 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
       - RingView.sync()(SphereBody/PointBody から rings がある天体のみ呼ばれる)→ 環グループの位置・スケールは本体メッシュに揃え、姿勢は spinAngle=0 の spinOrientation で本体とは別個に組む(環は本体メッシュの子ではないので自転位相を継承しない)。厚み0かつ非テクスチャの細帯ごとに、その天体の実 ECI 位置での CameraSystem.activeCameraScale(metersPerPixel)と帯の実幅から thinBandBlend() で annulus/line の重み(和が1)と被覆率を求め、重みが0でない側を visible にして coverage へ掛ける
     - sunLight.position(= ephemeris.sunDirFrom(fo.r, displayTime))・intensity 更新 // 平行光は描画原点近傍の実スケール物体だけを照らす。天体は body.sync 内で自分の真の位置から陰影を計算済み
     - ambient.intensity 更新 // lit から導出
-    - syncStars() // starsMesh をカメラへ追従、overviewMode でさらに拡大
+    - syncStars() // 星殻をカメラへ追従、overviewMode でさらに拡大
     - syncReferenceLines(simTime, fo, overviewMode, focus, toggles) → geoLine.sync() + [referenceLines の各 OrbitLine ごと] showsReferenceLine(id, focus, toggles) が true のときだけ line.sync(orbitElementsFor(id, simTime), …)、false なら null 渡しで非表示 // !overviewMode では全線 null。惑星線は常時、衛星線は focus がその衛星系(地球系除く)を指すときだけ show
     - celestialGrid.sync() // navball.gridVisibility の6トグルと overviewMode に応じたスケールを反映
   - entities.syncPlayers(player, fo, cameraSystem, displayTime, ephemeris, displayAttractors, visibilityPolicy) // 全自機ごとに ship.syncPlayer(...) を呼ぶ。方向マーカー・ボアサイト・ガンサイトズームの隠れは isActive(=ship===player)の艦だけ

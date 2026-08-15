@@ -319,6 +319,13 @@ export class MapContextActions {
     for (const key of [...this.windows.keys()]) this.closeWindow(key);
   }
 
+  // 開いているメニュー・ウィンドウを畳んだうえで、常設の一覧パネルと自身のメニューを取り除く。
+  dispose(): void {
+    this.close();
+    this.menu.dispose();
+    this.objectListPanel.dispose();
+  }
+
   private readonly handlers: Record<MapPickable['kind'], PickHandler> = {
     'body': {
       itemsFor: (target, simTime) => {

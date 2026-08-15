@@ -157,4 +157,11 @@ export class SphereBody extends CelestialBody {
     this.activeLevel = level;
     for (const [lvl, surface] of this.surfaces) surface.mesh.visible = lvl === level;
   }
+
+  // 全分割段の表面と環を解放し、group を親から外す。
+  dispose(): void {
+    this.group.removeFromParent();
+    for (const surface of this.surfaces.values()) surface.dispose();
+    this.ring?.dispose();
+  }
 }

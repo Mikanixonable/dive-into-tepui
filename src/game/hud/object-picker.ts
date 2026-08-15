@@ -88,6 +88,7 @@ export class ObjectPicker<T> implements OverlayHandle {
   private isOpen = false;
   private readonly onSelect: (value: T) => void;
   private previouslyFocused: HTMLElement | null = null;
+  private disposed = false;
 
   // title は見出し、root はポップアップを popup レイヤへ追加する親。
   public constructor(
@@ -217,6 +218,15 @@ export class ObjectPicker<T> implements OverlayHandle {
     const focusTarget = this.previouslyFocused;
     this.previouslyFocused = null;
     (focusTarget?.isConnected ? focusTarget : this.trigger.element).focus({ preventScroll: true });
+  }
+
+  // 開いていれば閉じ、トリガーボタンとポップアップの両方を取り除く。以後このインスタンスは使えない。
+  public dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.close();
+    this.element.remove();
+    this.pop.remove();
   }
 
   private focusOption(index: number): void {

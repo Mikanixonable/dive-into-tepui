@@ -35,6 +35,11 @@ export class EffectsSystem {
     this._flashEffects.syncFlashEffects(fo, activeCamera, zoomActive);
   }
 
+  // フラッシュ群の描画資源を破棄する。
+  dispose(): void {
+    this._flashEffects.dispose();
+  }
+
   // プラズマ弾命中フラッシュを生成する。
   spawnPlasmaFlash(state: KinematicState): void {
     this.spawnFlash(state,

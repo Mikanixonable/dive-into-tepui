@@ -50,6 +50,14 @@ export class Targeter {
   // 第二ターゲットのハイライト線(Secondary accent)。第一より薄い renderOrder に置く。
   readonly secondaryOrbitLine = new OrbitLine(ACCENT_SECONDARY, 0.9, C.LINE_RENDER_ORDER.secondaryTarget);
 
+  // テーマ切替でターゲット軌道線の色を合わせ直す。
+  private readonly handleThemeChange = (event: Event): void => {
+    const palette = (event as CustomEvent<ThemePalette>).detail;
+    if (!palette) return;
+    this.orbitLine.setColor(palette.accent);
+    this.secondaryOrbitLine.setColor(palette.secondary);
+  };
+
   constructor(
     private readonly _hud: Hud, private readonly markerManager: MarkerManager,
     scene: THREE.Scene,
@@ -57,12 +65,16 @@ export class Targeter {
     scene.add(this.secondaryOrbitLine.line);
     scene.add(this.orbitLine.line);
 
-    window.addEventListener(THEME_CHANGE_EVENT, (event: Event) => {
-      const palette = (event as CustomEvent<ThemePalette>).detail;
-      if (!palette) return;
-      this.orbitLine.setColor(palette.accent);
-      this.secondaryOrbitLine.setColor(palette.secondary);
-    });
+    window.addEventListener(THEME_CHANGE_EVENT, this.handleThemeChange);
+  }
+
+  // 第一・第二ターゲットの軌道線をシーンから外し、テーマ切替の購読を解く。
+  dispose(): void {
+    window.removeEventListener(THEME_CHANGE_EVENT, this.handleThemeChange);
+    this.orbitLine.line.removeFromParent();
+    this.orbitLine.dispose();
+    this.secondaryOrbitLine.line.removeFromParent();
+    this.secondaryOrbitLine.dispose();
   }
 
   // 生存判定込みの現在の第一ターゲット。撃破後は target を保持したままにせず、ここで

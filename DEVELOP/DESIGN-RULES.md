@@ -41,7 +41,7 @@ HUD の見た目・配置・操作(色/寸法トークン、ウィジェット�
    keydown/pointerdown を張らない。
 4. **見た目はトークンからのみ導く。** 色・透明度段階・余白・角丸・フォントサイズ・トランジションは
    `theme.ts` の有限集合から選ぶ。リテラル値の直書きを禁止する(§2)。
-5. **レイアウトは流し込み+変数、固定 px は最終手段。** 位置は「レール/シェルフ/中央モーダル/
+5. **レイアウトは流し込み+変数、固定 px は最終手段。** 位置は「レール/常設計器/中央モーダル/
    画面固定バッジ」の4種の置き場のどれかに属させる(§5)。同じ長さを複数箇所へ書き写さない。
 6. **タッチは第一級入力。** すべての操作はタッチだけで完結できる。タップ最小寸法は
    `--hit-target-min`(44px)。ホバーは装飾であり情報を持たない(`title` 属性だけの説明を禁止)。
@@ -236,27 +236,30 @@ ESC の持ち主は `Game.handleInput`(`game.ts`)の1箇所だけ——`input.ta
 
 1. **レール(`.hud-rail`、`hud-root.ts` の `hudRail(root, 'left'|'right')`)** — マップ系パネルの
    縦積み。中身は通常の flex フロー(`.hud-rail > .panel { position: relative; inset: auto; }`)に
-   積み、絶対座標を持たない。畳める(`.hud-rail.collapsed`)——ただし折りたたみの効果自体は
-   マップビュー限定(`#hud.map-mode .hud-rail.collapsed`)。右レールは TARGET のような戦闘
-   ビューでも常設のパネルを載せるので、レールの折りたたみ(マップの収納機構)が戦闘ビューの
-   パネルを巻き込んで消してはならない。
-2. **戦闘シェルフ(`#hud-combat-shelf`)** — SHIP STATUS/ORBIT/CONTACTS の常設計器の横並び。
-   これも flex フローで、個々のパネルは `position: relative`。絶対座標は `#hud-combat-shelf` 自身
-   ではなく、その親 `#hud-combat-shelf-wrap`(`hud-root.ts` の `buildInfoPanels` が組む)が持つ——
-   シェルフ全体を1つの `buildCollapseToggle`(`#hud-combat-shelf-toggle`)でまとめて畳めるように、
-   トグルをシェルフの外側(wrap の直接の子)に置くための分割で、シェルフを畳んでもトグル自身は
-   隠れない。個々のパネルの折りたたみ(`PanelShell`)とは独立な、もう一段上の折りたたみ。
+   積み、絶対座標を持たない。畳める(`.hud-rail.collapsed`)。`buildWorldRoot` がマップビュー・
+   戦闘ビューそれぞれに別の DOM ルート(`.hud-map-root`/`.hud-combat-root`)を組み、両方が自分
+   専用の左右一対のレールを持つ——片方を畳んでも、常にどちらか一方しか `.active` にならない
+   もう一方のルートのパネルには影響しない。
+2. **常設計器(戦闘ビュー自身の `.hud-rail-left`/`.hud-rail-right` — ①と同じレール機構の、
+   戦闘ビュー専用インスタンス)** — `hud-root.ts` の `buildInfoPanels` が組む SHIP STATUS/
+   ORBIT/TARGET/CONTACTS の常設計器。左レールに ORBIT、右レールに SHIP STATUS・
+   TARGET(ロック時のみ表示)・CONTACTS が積まれ、①と同じ flex フロー・折りたたみ規則
+   (レール単位・`PanelShell` のパネル単位の二段)に従う。①と違う点は、各パネル自身の高さに
+   上限がかかること——`combat-view-style.ts` が `max-height: var(--combat-panel-max-h)` と
+   `overflow-y: auto` を与え、超えた分はパネル内スクロールになる(`--combat-panel-max-h` の
+   値そのものは `layout-tokens.ts` がブレークポイントごとに再代入する、この置き場固有の寸法
+   トークン)。常設計器は戦況を隠しすぎないよう、狭い/低い画面でも一定高さに収まる。
 3. **中央モーダル(`OverlayManager` の `kind: 'modal'`)** — 画面全体を覆う/画面中央に寄せる
    全画面 UI。`DockView`(`position: fixed; inset: 0`)・`SaveBrowser`(`inset:0` の scrim +
    中央寄せパネル)・`ResultScreen`・`HelpPanel`・`PauseMenu`(いずれも `top/left:50%` +
    `transform:translate(...)` か `inset:0` の flex 中央寄せという定型を使う)。
-4. **画面固定バッジ** — レール/シェルフのどちらにも属さない、置き場を持たない単発の表示
+4. **画面固定バッジ** — ①②のいずれにも属さない、置き場を持たない単発の表示
    (`ViewBadge`/`GlobalStatusBar`/`MapScaleBadge`/`ChaseReset`/`Hint`/`Toast`)。
 
 **リテラルな `top`/`left`/`right`/`bottom` の絶対座標直書きが許されるのは、置き場に参加しない
 ④画面固定バッジと、③中央モーダルの中央寄せそのもの(`top/left:50%+transform` または `inset:0`の
 どちらかの定型)だけ**——①②に乗るパネル自身は `position: relative` のままで、置き場のコンテナ
-(`.hud-rail`/`#hud-combat-shelf-wrap`)が絶対座標を持つ。ある要素をどの種に属させるか迷ったら、
+(`.hud-rail`)が絶対座標を持つ。ある要素をどの種に属させるか迷ったら、
 「動かせる/畳める/レイアウトに参加すべきか」で判断する——参加すべきなら①か②、一点固定でよいものだけ
 ④。
 
@@ -271,16 +274,16 @@ ESC の持ち主は `Game.handleInput`(`game.ts`)の1箇所だけ——`input.ta
 クラスを読みたい呼び出しは `isCompactViewport()` を使う——`pointer-precision.ts` の
 `isCoarsePointer()` と異なり起動時にキャッシュしない(画面幅は回転・リサイズで頻繁に変わるため)。
 
-**レール幅・シェルフ高のようなブレークポイントごとに値が変わる寸法は、`hud/layout-tokens.ts` の
-CSS カスタムプロパティ(`--rail-w-left`/`--rail-w-right`/`--shelf-h`)へ持たせ、`:root` への
+**レール幅・戦闘パネル高上限のようなブレークポイントごとに値が変わる寸法は、`hud/layout-tokens.ts` の
+CSS カスタムプロパティ(`--rail-w-left`/`--rail-w-right`/`--combat-panel-max-h`)へ持たせ、`:root` への
 再代入をブレークポイントの数だけ書く。** 参照側は `var(--rail-w-left)` のように読むだけにし、
 `min(300px, 30vw)` のような式そのものを複数箇所へ複製しない。
 
 ### 骨格 CSS とパネル内容 CSS の分割
 
 共有の基底スタイル(1つの `<style>` として `hud-root.ts` が注入する)は4ファイルに分かれる:
-`layout-tokens.ts`(上記の寸法変数)、`skeleton-style.ts`(層・レール・シェルフ・`PanelShell`
-共通部・画面固定バッジの骨格、および `.mk-*` マーカー色)、`panel-content-style.ts`(SHIP STATUS/
+`layout-tokens.ts`(上記の寸法変数)、`skeleton-style.ts`(層・レール(戦闘ビュー自身のインスタンス
+含む)・`PanelShell` 共通部・画面固定バッジの骨格、および `.mk-*` マーカー色)、`panel-content-style.ts`(SHIP STATUS/
 ORBIT/TARGET/CONTACTS の行、軌道オブジェクト一覧、軌道計画、表示設定、表示時刻、座標系、艦艇配置、
 ナビボール、ステージステータス、設定・ヘルプ・終了画面の中身)、`hud/widgets/widget-style.ts`
 (ウィジェット共通、§3)。**自己完結した個別コンポーネント**(`DockView`/`SaveBrowser`/

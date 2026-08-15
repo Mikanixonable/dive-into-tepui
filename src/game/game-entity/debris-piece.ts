@@ -111,21 +111,4 @@ export class DebrisPiece extends GameEntity {
       this.alive = false;
     }
   }
-
-  // シーンからの除去に加え、自身が所有するジオメトリ・マテリアルを解放する。
-  dispose(): void {
-    super.dispose();
-    this.renderObject.traverse((child) => {
-      const mesh = child as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      // 共有ジオメトリを解放しないよう、所有権フラグが立つものだけ処理する。
-      if (mesh.userData.ownsGeometry && mesh.geometry) {
-        mesh.geometry.dispose();
-      }
-      if (mesh.userData.ownsMaterial && mesh.material) {
-        if (Array.isArray(mesh.material)) mesh.material.forEach((m) => m.dispose());
-        else mesh.material.dispose();
-      }
-    });
-  }
 }

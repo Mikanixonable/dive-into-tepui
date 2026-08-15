@@ -147,6 +147,7 @@ export class ObjectListPanel {
   private prevSort: ObjectListSort | null = null;
   private prevFilter: ObjectListFilter | null | undefined = undefined;
   private readonly breadcrumb: HTMLElement;
+  private readonly unsubscribeCollapsedView: () => void;
 
   public constructor(root: HTMLElement, registry: CelestialRegistry) {
     this.registry = registry;
@@ -205,7 +206,7 @@ export class ObjectListPanel {
       syncCollapseToggle(collapseToggle, body, COLLAPSE_LABELS);
     };
     applyCollapsedState();
-    onPanelCollapsedViewChange(applyCollapsedState);
+    this.unsubscribeCollapsedView = onPanelCollapsedViewChange(applyCollapsedState);
     collapseToggle.addEventListener('click', () => savePanelCollapsed('hud-object-list', body.classList.contains('collapsed')));
     this.breadcrumb = document.createElement('div');
     this.breadcrumb.className = 'object-list-breadcrumb';
@@ -245,6 +246,12 @@ export class ObjectListPanel {
   }
 
   public select(id: string | null): void { this.selectedId = id; }
+
+  // パネルを取り除き、折りたたみ状態変化の購読を解く。
+  public dispose(): void {
+    this.unsubscribeCollapsedView();
+    this.panel.remove();
+  }
 
   // 種別ごとの区画へ、既存行は使い回しつつ id 差分だけ足し引きする。行のクリックリスナーは
   // 生成時の1回だけ張るので、ここで毎フレーム innerHTML を書き換えてはいけない

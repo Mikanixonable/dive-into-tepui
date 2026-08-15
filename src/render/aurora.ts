@@ -63,6 +63,13 @@ export class Aurora {
       0.55 + 0.2 * Math.sin(phase * 0.7 + this.phaseOffset * 2.1) * Math.sin(phase * 0.23 + this.phaseOffset);
   }
 
+  // mesh を親から外し、ジオメトリ・マテリアルを解放する。
+  dispose(): void {
+    this.mesh.removeFromParent();
+    this.geo.dispose();
+    this.material.dispose();
+  }
+
   // phase 時点のカーテン形状を positions/colors へ書き込む(GPU への反映は呼び出し側)。
   private writeVertices(phase: number): void {
     const sPhase = this.geomSeed + phase;

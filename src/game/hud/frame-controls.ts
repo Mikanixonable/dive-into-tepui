@@ -241,4 +241,12 @@ export class FrameControls {
     this.cameraSummary.textContent = this.cameraSummaryText();
     this.orbitSummary.textContent = this.orbitSummaryText();
   }
+
+  // カメラ・軌道の両パネルと、保持している座標系選択ゾーンを片付ける。
+  dispose(): void {
+    this.cameraCenterZone.dispose();
+    this.planCenterZone.dispose();
+    this.cameraPanel.remove();
+    this.orbitPanel.remove();
+  }
 }

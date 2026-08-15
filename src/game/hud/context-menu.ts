@@ -71,6 +71,8 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
   private requestedX = 0;
   private requestedY = 0;
   private previouslyFocused: HTMLElement | null = null;
+  private disposed = false;
+  private readonly unsubscribeViewport: () => void;
   public onSelect: ((act: A, target: T) => void) | null = null;
   public onClose: (() => void) | null = null;
 
@@ -86,7 +88,7 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
     this.el.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.el.addEventListener('contextmenu', (e) => e.preventDefault());
     this.el.addEventListener('keydown', (event) => this.handleMenuNavigation(event));
-    onViewportChange(() => {
+    this.unsubscribeViewport = onViewportChange(() => {
       if (this.target !== null) this.positionWithinViewport();
     });
   }
@@ -224,5 +226,14 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
     this.previouslyFocused = null;
     if (focusTarget?.isConnected) focusTarget.focus({ preventScroll: true });
     if (wasOpen) this.onClose?.();
+  }
+
+  // 開いていれば閉じ、要素とビューポート変化の購読を取り除く。以後このインスタンスは使えない。
+  public dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.close();
+    this.unsubscribeViewport();
+    this.el.remove();
   }
 }
