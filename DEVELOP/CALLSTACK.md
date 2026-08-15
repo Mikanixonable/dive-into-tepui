@@ -567,9 +567,12 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
   `PlanArc.represents(state0, end, sourceRevision, apsisCenterId, tracksLiveAnchor)` で決まる。
   `sourceRevision`(重力源プロバイダの revision)/`apsisCenterId` が食い違えば即座に作り直す
   (`new PlanArc(...)` — constructor 内で end までの同期的な RK4 積分)。一致していても、積分済みの
-  間引き間隔が今回の要求区間の求める間引き間隔([表示期間]を大きく縮めた直後など)を
-  `PLAN_ARC_MAX_SAMPLE_COARSENING` 倍を超えて上回っていれば作り直す(クリック候補が飛び飛びの点に
-  なるのを避けるため)。`state0` が同一参照(ノードを置いた後の区間の通常のフレーム。`end` だけが
+  サンプルを記録したときの間引き下限が今回の要求区間の求める下限([表示期間]を大きく縮めた
+  直後など)を `PLAN_ARC_MAX_SAMPLE_COARSENING` 倍を超えて上回っていれば作り直す(クリック候補が
+  飛び飛びの点になるのを避けるため)。比べるのは下限どうしで、実際のサンプル間隔ではない —
+  間隔は刻み幅(1周 / `PLAN_ARC_STEPS_PER_REV`)でも決まり、そちらは作り直しても同じ値になるので、
+  間隔を下限と比べると `'orbit'` プリセット(要求下限 = 1周 / `PLAN_ARC_MAX_SAMPLES`)で判定が
+  恒真になり、縮めようのない粗さを理由に毎フレーム区間全体を作り直すことになる。`state0` が同一参照(ノードを置いた後の区間の通常のフレーム。`end` だけが
   動く編集も含む)なら represents は真 — 実際に `end` が動いていれば `arc.setEnd(end)` が終端だけを
   動かす: 積分先端が要求終端にサンプル間隔未満まで届いていれば継ぎ足さず、届いていなければ現在の
   積分先端から続きを刻む(区間全体は作り直さない)。`tracksLiveAnchor`(計画が空のあいだの唯一の
