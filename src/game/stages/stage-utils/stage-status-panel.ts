@@ -154,8 +154,10 @@ export class StageStatusPanel {
     this.player = player;
     if (!player) {
       this.panel.style.display = 'none';
+      this.panel.classList.add('hidden');
       return;
     }
+    this.panel.style.display = '';
     const { hp, maxHp } = player;
     const throttleIdx = player.throttleIdx;
     const low = hp <= maxHp * LOW_HP_RATIO;
