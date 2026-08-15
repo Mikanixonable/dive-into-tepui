@@ -7,6 +7,8 @@ import { orbitInfo } from './orbit-info';
 import { Attractor } from '../../physics/attractor';
 import type { Game } from '../game';
 
+import { Player } from '../player/player';
+
 const SYNC_INTERVAL_MS = 100;
 
 export class OrbitPanel {
@@ -15,9 +17,9 @@ export class OrbitPanel {
   constructor(private readonly els: Map<string, HTMLElement>) {}
 
   sync(game: Game, attractors: readonly Attractor[]): void {
-    const player = game.player;
+    const entity = game.activeControllableEntity;
     const el = document.getElementById('hud-orbit');
-    if (!player) {
+    if (!entity) {
       el?.classList.add('hidden');
       return;
     }
@@ -27,11 +29,11 @@ export class OrbitPanel {
     if (now < this.nextSyncAt) return;
     this.nextSyncAt = now + SYNC_INTERVAL_MS;
 
-    const oi = orbitInfo(player, attractors);
-    const thermal = player.thermal;
+    const oi = orbitInfo(entity, attractors);
+    const thermal = entity instanceof Player ? entity.thermal : null;
     this.setText('center', oi.centerName);
     this.setText('alt', fmtDist(oi.alt));
-    this.els.get('alt')?.classList.toggle('warn-hot', thermal.altDescendWarned);
+    this.els.get('alt')?.classList.toggle('warn-hot', thermal?.altDescendWarned ?? false);
     this.setText('spd', fmtSpeed(oi.spd));
     this.setText('ap', fmtDist(oi.apAlt));
     this.setText('pe', fmtDist(oi.peAlt));
@@ -40,13 +42,23 @@ export class OrbitPanel {
     // 動圧・機体温度は閾値超過で警告表示にする。
     const qEl = this.els.get('qdyn');
     if (qEl) {
-      qEl.textContent = thermal.qdyn >= 10 ? `${(thermal.qdyn / 1000).toFixed(2)} kPa` : '0.00 kPa';
-      qEl.classList.toggle('warn-hot', thermal.qdyn > 0.5 * C.MAX_DYN_PRESSURE);
+      if (thermal) {
+        qEl.textContent = thermal.qdyn >= 10 ? `${(thermal.qdyn / 1000).toFixed(2)} kPa` : '0.00 kPa';
+        qEl.classList.toggle('warn-hot', thermal.qdyn > 0.5 * C.MAX_DYN_PRESSURE);
+      } else {
+        qEl.textContent = '---';
+        qEl.classList.remove('warn-hot');
+      }
     }
     const tEl = this.els.get('temp');
     if (tEl) {
-      tEl.textContent = `${thermal.hullTemp.toFixed(0)} K`;
-      tEl.classList.toggle('warn-hot', thermal.hullTemp > 0.7 * C.MAX_HULL_TEMP);
+      if (thermal) {
+        tEl.textContent = `${thermal.hullTemp.toFixed(0)} K`;
+        tEl.classList.toggle('warn-hot', thermal.hullTemp > 0.7 * C.MAX_HULL_TEMP);
+      } else {
+        tEl.textContent = '---';
+        tEl.classList.remove('warn-hot');
+      }
     }
   }
 

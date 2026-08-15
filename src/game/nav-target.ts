@@ -16,8 +16,10 @@ import type { EntityManager } from './simulation/entity-manager';
 import { Hud } from './hud/hud';
 import { MarkerManager } from './marker/marker-manager';
 import { ORBIT_POINT_GLYPH } from './marker/marker-glyphs';
-import { CameraSystem, ProjectFn } from './camera/camera-system';
-import { MapPickable, pickNearest } from './map-pickable';
+import { CameraSystem } from './camera/camera-system';
+import type { ProjectFn } from './camera/camera-system';
+import { MapPickable } from './map-pickable';
+import { pickNearest } from './map-pickable';
 import type { Base } from './game-entity/base';
 import type { Input } from './input/input';
 import { pickRadiusSq } from './input/pointer-precision';
@@ -28,7 +30,6 @@ import { MenuAction, MenuCommon } from './hud/menu-actions';
 const Z_HAT: Vec3 = v3(0, 0, 1);
 
 export class NavTarget {
-  // 戦闘ビューで基地を右クリックしたときの航法ターゲット設定/解除メニュー。
   private readonly baseMenu: ContextMenu<Base, MenuAction>;
   private targetId: string | null = null;
   private targetName: string | null = null;
