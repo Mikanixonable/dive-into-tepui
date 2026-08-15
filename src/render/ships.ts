@@ -573,8 +573,37 @@ export function buildBaseModel(): THREE.Group {
   }
 
   const beacon = new THREE.Mesh(new THREE.SphereGeometry(3, 8, 6), beaconMat);
-  beacon.position.set(0, 30, 0);
+  beacon.position.set(0, -30, 0); // 中央ハブ下端へビーコンを配置
   g.add(beacon);
+
+  // --- ドッキングハッチ構造物 (中央ハブ上端 y = +30m に配置) ---
+  const hatchRingMat = new THREE.MeshStandardMaterial({ color: 0x00ffcc, emissive: 0x00ffcc, emissiveIntensity: 2.2, roughness: 0.2, metalness: 0.8 });
+  const hatchCollarMat = new THREE.MeshStandardMaterial({ color: 0x3a4250, flatShading: true, roughness: 0.4, metalness: 0.85 });
+  const hatchDoorMat = new THREE.MeshStandardMaterial({ color: 0x141a24, flatShading: true, roughness: 0.3, metalness: 0.9 });
+
+  // 外郭カラー (台座)
+  const hatchCollar = new THREE.Mesh(new THREE.CylinderGeometry(14, 15, 3, 12), hatchCollarMat);
+  hatchCollar.position.set(0, 31.5, 0);
+  g.add(hatchCollar);
+
+  // ドッキングドア本体
+  const hatchDoor = new THREE.Mesh(new THREE.CylinderGeometry(9, 9, 1.5, 12), hatchDoorMat);
+  hatchDoor.position.set(0, 32.2, 0);
+  g.add(hatchDoor);
+
+  // 発光ドッキングリング
+  const hatchRing = new THREE.Mesh(new THREE.CylinderGeometry(11, 11, 1, 16), hatchRingMat);
+  hatchRing.position.set(0, 32.5, 0);
+  g.add(hatchRing);
+
+  // 4箇所のドッキングガイドライト (発光球)
+  const guideLightMat = new THREE.MeshStandardMaterial({ color: 0x00ffaa, emissive: 0x00ffaa, emissiveIntensity: 3.0 });
+  for (let i = 0; i < 4; i++) {
+    const angle = (i / 4) * Math.PI * 2;
+    const light = new THREE.Mesh(new THREE.SphereGeometry(1.4, 8, 6), guideLightMat);
+    light.position.set(Math.cos(angle) * 12.5, 32.8, Math.sin(angle) * 12.5);
+    g.add(light);
+  }
 
   // このメッシュは cloneIndependent を経由しないので、自分で G バッファ対象へ加える。
   markLitOpaque(g);
