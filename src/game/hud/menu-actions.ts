@@ -9,6 +9,8 @@ export type MenuAction =
   | 'addNode'
   | 'activate'
   | 'deactivate'
+  | 'activateBase'
+  | 'deactivateBase'
   | 'planExecCycle'
   | 'duplicate'
   | 'delete'

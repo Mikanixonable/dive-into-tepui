@@ -209,6 +209,7 @@ export class Simulator {
     for (const p of this.entities.players) p.att = stepAttitude(p.att, p.torque, simDt);
 
     for (const e of this.entities.enemies) if (e.alive) e.att = stepAttitude(e.att, e.torque, simDt);
+    for (const base of this.entities.bases) if (base.alive) base.att = stepAttitude(base.att, base.torque, simDt);
     if (!passiveWarpLod) {
       for (const cs of this.entities.casings) cs.att = stepAttitude(cs.att, cs.torque, simDt);
       for (const d of this.entities.debris) d.att = stepAttitude(d.att, d.torque, simDt);

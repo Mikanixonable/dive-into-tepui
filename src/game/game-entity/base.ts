@@ -20,6 +20,10 @@ import type { BaseSaveData } from '../save-data';
 import { OrbitLine } from '../orbit-line';
 import * as C from '../const';
 import { BaseCollisionGeometry, RayHit, SphereHit } from '../../physics/base-collision';
+import { PlayerThrottle } from '../player/player-throttle';
+import type { Controllable } from './controllable';
+import type { Input } from '../input/input';
+import { KEY_MAPPING as K } from '../input/key-mapping';
 
 // 基地のドッキングハッチのローカル位置および外向き法線ベクトル (中腹ドッキングパレット上部)
 export const BASE_HATCH_LOCAL_POS: Vec3 = v3(0, 8.5, 0);
@@ -64,7 +68,7 @@ export type BaseInit =
   | { readonly state: KinematicState; readonly name?: string; readonly att?: Attitude; readonly id?: string }
   | { readonly saved: BaseSaveData; readonly simTime: number };
 
-export class Base extends GameEntity {
+export class Base extends GameEntity implements Controllable {
   readonly collisionGeom = new BaseCollisionGeometry();
   readonly predictsFuture = true;
   declare readonly orbitLine: OrbitLine;
@@ -73,6 +77,22 @@ export class Base extends GameEntity {
     inventory: [],
     dockedShips: []
   };
+
+  // --- Controllable 実装 ---
+  readonly throttle: PlayerThrottle;
+  private baseFuel: number;
+  get totalThrust(): number { return C.BASE_THRUST; }
+  get totalTorque(): number { return C.BASE_TORQUE; }
+  get totalFuelConsumptionRate(): number { return C.BASE_FUEL_RATE; }
+  get fuel(): number { return this.baseFuel; }
+  get maxFuel(): number { return C.BASE_MAX_FUEL; }
+
+  consumeFuel(amount: number): number {
+    if (amount <= 0) return 1.0;
+    const actual = Math.min(this.baseFuel, amount);
+    this.baseFuel -= actual;
+    return actual / amount;
+  }
 
   raycast(rayOrigin: Vec3, rayDir: Vec3, maxDist: number, warpLevel = 1): RayHit | null {
     return this.collisionGeom.raycast(rayOrigin, rayDir, maxDist, this.state.r, this.att.q, warpLevel);
@@ -100,11 +120,26 @@ export class Base extends GameEntity {
         id: init.saved.id,
       }
       : { state: init.state, name: init.name ?? '基地', att: init.att, id: init.id };
-    super(state, buildBaseModel(), scene, att, idAllocator.next(id));
+    const savedAtt: Attitude | undefined = 'saved' in init && init.saved.q
+      ? {
+        q: { ...init.saved.q },
+        w: init.saved.w ? v3(init.saved.w.x, init.saved.w.y, init.saved.w.z) : v3(),
+        inertia: v3(C.BASE_INERTIA_X, C.BASE_INERTIA_Y, C.BASE_INERTIA_Z),
+      }
+      : undefined;
+    super(state, buildBaseModel(), scene, savedAtt ?? att, idAllocator.next(id));
+    // 姿勢に慣性モーメントを設定（既定の identityAttitude は inertia=(1,1,1) なので上書きが必要）
+    if (!savedAtt && !att) {
+      this.att = { ...this.att, inertia: v3(C.BASE_INERTIA_X, C.BASE_INERTIA_Y, C.BASE_INERTIA_Z) };
+    } else if (att && !att.inertia) {
+      this.att = { ...this.att, inertia: v3(C.BASE_INERTIA_X, C.BASE_INERTIA_Y, C.BASE_INERTIA_Z) };
+    }
     this.mass = 1e6;
     this.radius = 110;
     this.collides = true;
     this.name = name;
+    this.baseFuel = 'saved' in init && init.saved.fuel !== undefined ? init.saved.fuel : C.BASE_MAX_FUEL;
+    this.throttle = new PlayerThrottle(hud, 'saved' in init ? init.saved.throttle : undefined);
     this.orbitLine = new OrbitLine(C.COLOR_BASE_ORBIT_LINE, 0.35, C.LINE_RENDER_ORDER.shipOrbit);
     this.equatorNodes = new EquatorNodeMarkerPair(this, markerManager);
     this.marker = new EntityMarker(this, markerManager, 'mk-base', ENTITY_GLYPH.ship);
@@ -189,6 +224,46 @@ export class Base extends GameEntity {
     shipObj.visible = true;
   }
 
+  // --- 操作制御 ---
+
+  // 毎フレーム、操作対象の基地に対して1度だけ呼ぶ。input が null なら操作されない。
+  updateBaseControls(input: Input | null, dt: number, simDt: number): void {
+    if (input === null) {
+      this.clearTransientCommands();
+      return;
+    }
+    this.handleEdgeInput(input);
+    this.torque = this.throttle.updateTorque(
+      this.att, this.state.r, this.state.v, input, false, dt, simDt, this,
+      () => {},  // 基地はプログレードホールド解除のヒントを出さない
+    );
+    this.throttle.updateThrustLatches(input);
+    this.thrust = this.throttle.updateThrustState(input, this.att, simDt, this);
+    if (this.thrust !== null) this.invalidatePrediction();
+  }
+
+  clearTransientCommands(): void {
+    this.thrust = null;
+    this.torque = v3();
+    this.throttle.clearTransientState();
+  }
+
+  // 基地側のキー（RCS減衰・プログレード・スロットル等）を1フレーム分消費する。
+  private handleEdgeInput(input: Input): void {
+    input.takeKeys((code) => {
+      switch (code) {
+        case K.rcsDampToggle.code: this.throttle.toggleRcsDamp(); return true;
+        case K.progradeReset.code: this.throttle.enableProgradeReset(); return true;
+        case K.progradeHoldToggle.code: this.throttle.toggleProgradeHold(); return true;
+        case K.throttleLow.code: this.throttle.setThrottlePreset(0); return true;
+        case K.throttleMid.code: this.throttle.setThrottlePreset(1); return true;
+        case K.throttleHigh.code: this.throttle.setThrottlePreset(2); return true;
+        case K.throttleMax.code: this.throttle.setThrottlePreset(3); return true;
+        default: return false;
+      }
+    });
+  }
+
   dispose(): void {
     super.dispose();
     this.scene?.remove(this.orbitLine.line);
@@ -205,9 +280,13 @@ export class Base extends GameEntity {
       name: this.name,
       r: { ...this.state.r },
       v: { ...this.state.v },
+      q: { ...this.att.q },
+      w: { ...this.att.w },
       money: this.baseState.money,
+      fuel: this.baseFuel,
       inventory: this.baseState.inventory.map(p => ({ ...p })),
       dockedShips: this.baseState.dockedShips.map(entry => entry.player.serialize()),
+      throttle: this.throttle.serialize(),
     };
   }
 }
