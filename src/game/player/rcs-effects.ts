@@ -7,7 +7,7 @@ import { RCS_NOZZLES } from '../../render/rcs-nozzles';
 import * as C from '../const';
 import type { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
-import { Sfx } from '../../audio/sfx';
+import { WorldSfx } from '../../audio/sfx/world-sfx';
 
 // ノズルからプルーム中心までの距離 [m]
 const PLUME_OFFSET = 0.55;
@@ -23,7 +23,7 @@ export class RcsEffects {
   // 全ノズルのプルームのビルボードを生成し scene へ追加する。
   constructor(
     scene: THREE.Scene,
-    private readonly _sfx: Sfx,
+    private readonly _worldSfx: WorldSfx,
   ) {
     for (const { plume } of this.puffs) scene.add(plume.mesh);
   }
@@ -41,7 +41,7 @@ export class RcsEffects {
     // 回転していない、またはズーム視点なら全パフを隠して終える
     const rotating = visible && lenSq(torque) > C.RCS_PUFF_TORQUE_EPS * C.RCS_PUFF_TORQUE_EPS;
     // 全艦のプルームは描画するが、共有音源を更新するのは操作対象だけ。
-    if (audible) this._sfx.setRcs(rotating);
+    if (audible) this._worldSfx.setRcs(rotating);
     if (!rotating || camera.zoomActive) {
       for (const { plume } of this.puffs) plume.hide();
       return;
