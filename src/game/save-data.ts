@@ -114,7 +114,7 @@ export interface EnemySaveData extends EntitySaveData {
   burstDelay?: number;
 }
 
-export interface AmmoSaveData extends EntitySaveData {
+export interface AmmoPickupSaveData extends EntitySaveData {
 }
 
 export interface ScoreCounterSaveData {
@@ -244,24 +244,32 @@ export interface ChaseCameraSaveData {
   followAttitude: boolean;
 }
 
-// OverviewCamera のフォーカス対象(FocusTarget の保存形)。'point' は焼き込み先の座標系
+// MapCamera のフォーカス対象(FocusTarget の保存形)。'point' は焼き込み先の座標系
 // (center/rotatingWith)と、その座標系相対の点をそのまま持つ。
 export type FocusTargetSaveData =
   | { kind: 'object'; id: string }
   | { kind: 'point'; center: string; rotatingWith: string | null; point: Vec3SaveData };
 
-export interface OverviewCameraSaveData {
+export interface MapCameraSaveData {
   offset: Vec3SaveData;
   pan: Vec3SaveData;
   up: Vec3SaveData;
   rotatingWith: string | null;
   focus: FocusTargetSaveData;
+  // 旧セーブデータには無い。無ければ既定のオイラー操作。
+  rotationMode?: 'quaternion' | 'euler';
+  // 旧セーブデータには無い。無ければ既定の広範囲視点 FOV。
+  fovDeg?: number;
+  // 旧セーブデータには無い。無ければ赤道面。
+  referencePlane?: 'ecliptic' | 'equator' | 'moonOrbit';
+  projectionMode?: 'perspective' | 'orthographic';
+  orthographicHalfHeight?: number;
 }
 
 export interface CameraSaveData {
   view: 'combat' | 'map';
   chase: ChaseCameraSaveData;
-  overview: OverviewCameraSaveData;
+  overview: MapCameraSaveData;
 }
 
 export interface GameSaveData {
@@ -276,7 +284,7 @@ export interface GameSaveData {
   players: PlayerSaveData[];
   activePlayerId: string | null;
   enemies: EnemySaveData[];
-  ammos: AmmoSaveData[];
+  ammoPickups: AmmoPickupSaveData[];
   bases: BaseSaveData[];
   stage: StageSaveData;
   // 旧セーブデータには無いフィールドなので任意。無ければ視点は既定のまま始まる。

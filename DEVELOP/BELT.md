@@ -13,13 +13,13 @@
 | `src/render/ships.ts` | `buildMagazineMesh()`(4×8=32 発が見えるケージ。原点は平たい直方体 X 4.0 × Y 1.0 × Z 3.0 の中心)、`MAG_BELT_PITCH = MAG_WIDTH + 0.18`、給弾口の位置 `MAG_BELT_ANCHOR_X` |
 | `src/game/player/belt-physics.ts` (`BeltSection`) | 剛体接触用プロキシ。`mass = 5`, `radius = 0.8`, `collides = true` |
 
-`Belt` は `Player` が所有(`player.ts:66` で `new Belt(this.obj)`)。リンク群は
-`player.obj` の子なので、機体の位置・姿勢は THREE の親子関係で自動的に付いてくる。
+`Belt` は `Player` が所有(`player.ts:66` で `new Belt(this.renderObject)`)。リンク群は
+`player.renderObject` の子なので、機体の位置・姿勢は THREE の親子関係で自動的に付いてくる。
 物理はすべて**機体座標系**(機体原点基準)で解かれる。
 
 ## 毎フレームの流れ
 
-- update フェーズ: `Player.behave` → `Belt.update(dt, mags, rounds, att, thrustAccelVec)`
+- update フェーズ: `Player.updatePlayerControls` → `Belt.update(dt, mags, rounds, att, thrustAccelVec)`
   (`player.ts:133`)
 - update フェーズ: `ContactPhysics.resolveBelt` → `belt.collisionSections(...)` で
   ワールド ECI のプロキシを渡し、解決後 `belt.applyCollisionSections(...)` で書き戻す

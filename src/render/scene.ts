@@ -12,7 +12,7 @@ export interface GameScene {
 
 // 描画は自機中心のフローティングオリジン(単位: m)。宇宙船(数m)から
 // 地球(半径6,371km)・星空シェル(3.5e7m)までを1つの深度レンジに収める。
-// カメラ(CombatCameraSystem / OverviewCamera)はそれぞれ自身の near/far を持ち、この
+// カメラ(CombatCameraSystem / MapCamera)はそれぞれ自身の near/far を持ち、この
 // モジュールでは生成しない — アスペクト比も各カメラが毎フレーム自己補正する。
 export async function createGameScene(canvas: HTMLCanvasElement, graphics: GraphicsSettings): Promise<GameScene> {
   const scene = new THREE.Scene();

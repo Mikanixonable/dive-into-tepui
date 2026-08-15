@@ -153,7 +153,8 @@ const LAYOUT_HELPERS = `
   const visible = (el) => {
     if (!el) return false;
     const s = getComputedStyle(el);
-    return s.display !== 'none' && s.visibility !== 'hidden';
+    const r = el.getBoundingClientRect();
+    return s.display !== 'none' && s.visibility !== 'hidden' && r.width > 0 && r.height > 0;
   };
   const rect = (el) => {
     const r = el.getBoundingClientRect();
@@ -235,17 +236,13 @@ async function checkCombatLayout() {
     const layout = await devTools.evaluate(`(() => {
       ${LAYOUT_HELPERS}
       const errors = [];
-      const shelfEl = document.getElementById('hud-combat-shelf');
-      const shelf = rect(shelfEl);
-      if (!insideViewport(shelf)) errors.push('combat shelf outside viewport');
-      const shelfIds = ['hud-status', 'hud-orbit', 'hud-enemies'];
+      const combatRoot = document.querySelector('.hud-combat-root.active');
+      const shelf = rect(combatRoot);
+      if (!insideViewport(shelf)) errors.push('combat root outside viewport');
+      const shelfIds = ['hud-status', 'hud-orbit', 'hud-enemies', 'hud-target'];
       const shelfPanels = shelfIds.map((id) => document.getElementById(id)).filter(visible).map(rect);
       for (const panel of shelfPanels) {
-        // シェルフのスクロール内容の右端まではみ出して良い。縦は常にシェルフ内。
-        if (panel.left < shelf.left - 0.5 || panel.right > shelf.left + shelfEl.scrollWidth + 0.5
-          || panel.top < shelf.top - 0.5 || panel.bottom > shelf.top + shelfEl.scrollHeight + 0.5) {
-          errors.push('outside combat shelf: ' + panel.id);
-        }
+        if (!insideViewport(panel)) errors.push('outside combat root: ' + panel.id);
       }
       for (let i = 0; i < shelfPanels.length; i++) {
         for (let j = i + 1; j < shelfPanels.length; j++) {
@@ -306,7 +303,7 @@ async function checkMapLayout() {
     const layout = await devTools.evaluate(`(() => {
       ${LAYOUT_HELPERS}
       const errors = [];
-      const railEls = [...document.querySelectorAll('.hud-rail')];
+      const railEls = [...document.querySelectorAll('.hud-map-root.active .hud-rail')];
       const rails = railEls.map(rect);
       for (const rail of rails) if (!insideViewport(rail)) errors.push('rail outside viewport: ' + rail.id);
       if (rails.length !== 2) errors.push('expected two map rails, found ' + rails.length);
@@ -344,8 +341,8 @@ async function checkMapLayout() {
       throw new Error(`Map layout failed at ${width}x${height}: ${layout.errors.join('; ')}; ${JSON.stringify(layout)}`);
     }
     const collapse = await devTools.evaluate(`(() => {
-      const toggles = [...document.querySelectorAll('.rail-toggle')];
-      const rails = [...document.querySelectorAll('.hud-rail')];
+      const toggles = [...document.querySelectorAll('.hud-map-root.active .rail-toggle')];
+      const rails = [...document.querySelectorAll('.hud-map-root.active .hud-rail')];
       toggles.forEach((toggle) => toggle.click());
       const collapsed = rails.every((rail) => rail.classList.contains('collapsed')
         && [...rail.querySelectorAll(':scope > .panel')].every((panel) => getComputedStyle(panel).display === 'none'));
@@ -548,9 +545,9 @@ try {
     const chromeState = await devTools.evaluate(`(() => {
       ${LAYOUT_HELPERS}
       return {
-        combatView: !document.getElementById('hud').classList.contains('map-mode'),
-        statusShown: visible(document.getElementById('hud-status')),
-        railTogglesHidden: [...document.querySelectorAll('.rail-toggle')].every((el) => !visible(el)),
+        combatView: Boolean(document.querySelector('.hud-combat-root.active')),
+        combatRootShown: visible(document.querySelector('.hud-combat-root.active')),
+        railTogglesHidden: [...document.querySelectorAll('.hud-map-root .rail-toggle')].every((el) => !visible(el)),
         predictHidden: !visible(document.getElementById('hud-predict')),
       };
     })()`);
@@ -561,12 +558,16 @@ try {
   } else {
     // 艦を1隻も置いていないクリエイティブは、マップビューのまま戦闘用パネルを出さない。
     // 配置パネルは右クリックから開く物なので、この時点では閉じている。
+    await devTools.evaluate(`(() => {
+      document.querySelectorAll('.hud-map-root.active .rail-toggle')
+        .forEach((toggle) => toggle.click());
+    })()`);
     const chromeState = await devTools.evaluate(`(() => {
       ${LAYOUT_HELPERS}
       return {
-        mapView: document.getElementById('hud').classList.contains('map-mode'),
+        mapView: Boolean(document.querySelector('.hud-map-root.active')),
         viewOptionsShown: visible(document.getElementById('hud-view-options')),
-        frameControlsShown: visible(document.getElementById('hud-frame-controls')),
+        frameControlsShown: [...document.querySelectorAll('.hud-map-root.active .hud-frame-controls')].some(visible),
         objectListShown: visible(document.getElementById('hud-object-list')),
         predictShown: visible(document.getElementById('hud-predict')),
         statusHidden: !visible(document.getElementById('hud-status')),
@@ -579,27 +580,30 @@ try {
 
     // 戦闘ビューへ入れるのは操作できる艦がある時だけなので、[M] が通ること自体が配置の成立を示す。
     // レールの折りたたみはビューの持ち物ではないため、往復しても保たれる。
-    await devTools.evaluate(`document.querySelector('.rail-toggle').click()`);
-    const collapsedLeft = await devTools.evaluate(`document.getElementById('hud-rail-left').classList.contains('collapsed')`);
+    await devTools.evaluate(`document.querySelector('.hud-map-root.active .rail-toggle').click()`);
+    const collapsedLeft = await devTools.evaluate(`document.querySelector('.hud-map-root.active .hud-rail-left').classList.contains('collapsed')`);
     if (!collapsedLeft) throw new Error('Could not collapse the left rail before the map round trip.');
     await pressKey('m', 'KeyM', 77);
     await waitFor(
-      `!document.getElementById('hud').classList.contains('map-mode')`,
+      `Boolean(document.querySelector('.hud-combat-root.active'))`,
       '[M] to leave the map (a placed ship must be operable for combat view to be enterable)',
     );
-    const combat = await devTools.evaluate(`({
-      railTogglesHidden: [...document.querySelectorAll('.rail-toggle')].every((el) => getComputedStyle(el).display === 'none'),
-    })`);
+    const combat = await devTools.evaluate(`(() => {
+      ${LAYOUT_HELPERS}
+      return {
+      railTogglesHidden: [...document.querySelectorAll('.hud-map-root .rail-toggle')].every((el) => !visible(el)),
+      };
+    })()`);
     expectAll('Combat view still shows the map rail toggles', combat);
     await pressKey('m', 'KeyM', 77);
-    await waitFor(`document.getElementById('hud').classList.contains('map-mode')`, '[M] to return to the map');
+    await waitFor(`Boolean(document.querySelector('.hud-map-root.active'))`, '[M] to return to the map');
     const backToMap = await devTools.evaluate(`({
-      mapView: document.getElementById('hud').classList.contains('map-mode'),
-      collapseKept: document.getElementById('hud-rail-left').classList.contains('collapsed'),
-      toggleGlyphs: JSON.stringify([...document.querySelectorAll('.rail-toggle')].map((el) => el.textContent)) === '["▶","▶"]',
+      mapView: Boolean(document.querySelector('.hud-map-root.active')),
+      collapseKept: document.querySelector('.hud-map-root.active .hud-rail-left').classList.contains('collapsed'),
+      toggleGlyphs: JSON.stringify([...document.querySelectorAll('.hud-map-root.active .rail-toggle')].map((el) => el.textContent)) === '["▶","▶"]',
     })`);
     expectAll('Rail collapse state did not survive the map round trip', backToMap);
-    await devTools.evaluate(`document.querySelector('.rail-toggle').click()`);
+    await devTools.evaluate(`document.querySelector('.hud-map-root.active .rail-toggle').click()`);
 
     // 天体マーカーの右クリックはプロパティウィンドウを開き、画面を狭めても視界内に留まる。
     // マーカー自身は pointer-events:none で、当たり判定はキャンバス上の座標で解かれる。

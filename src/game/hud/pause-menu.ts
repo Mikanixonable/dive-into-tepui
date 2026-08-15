@@ -1,5 +1,7 @@
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import { SPACE_4, SPACE_6 } from '../theme';
+import {
+  ACTIVE_THEME_ID, applyThemePalette, getThemePalette, SPACE_4, SPACE_6, THEME_PRESETS,
+} from '../theme';
 import type { GraphicsSettings } from '../../render/graphics-settings';
 import type { DebugTargetHost } from '../../render/pipeline/debug-target';
 import { GraphicsPanel } from './graphics-panel';
@@ -22,6 +24,7 @@ export class PauseMenu implements OverlayHandle {
   onBgmVolumeChange: ((vol: number) => void) | null = null;
   onOpenSnapshots: (() => void) | null = null;
   onOpenPerfWindow: (() => void) | null = null;
+  onOpenSettings: (() => void) | null = null;
 
   private readonly overlayManager: OverlayManager;
   private readonly bgmSlider: Slider;
@@ -71,6 +74,50 @@ export class PauseMenu implements OverlayHandle {
     bgmRow.appendChild(this.bgmMute.element);
     general.appendChild(bgmRow);
 
+    const themeRow = document.createElement('div');
+    themeRow.className = 'pm-row pm-theme-row';
+    const themeLabel = document.createElement('span');
+    themeLabel.className = 'k';
+    themeLabel.textContent = '配色';
+    themeRow.appendChild(themeLabel);
+    const themePreview = document.createElement('span');
+    themePreview.className = 'pm-theme-preview';
+    themePreview.setAttribute('aria-hidden', 'true');
+    const updateThemePreview = (id: string): void => {
+      const palette = getThemePalette(id);
+      if (!palette) return;
+      themePreview.replaceChildren();
+      for (const color of [palette.accent, palette.accentNear, palette.secondary]) {
+        const swatch = document.createElement('span');
+        swatch.className = 'pm-theme-swatch';
+        swatch.style.backgroundColor = color;
+        themePreview.appendChild(swatch);
+      }
+    };
+    const themeSelect = document.createElement('select');
+    themeSelect.className = 'w-input pm-theme-select';
+    themeSelect.setAttribute('aria-label', '配色プリセット');
+    for (const palette of THEME_PRESETS) {
+      const option = document.createElement('option');
+      option.value = palette.id;
+      option.textContent = `● ${palette.name}`;
+      option.style.color = palette.accent;
+      option.title = palette.description;
+      themeSelect.appendChild(option);
+    }
+    themeSelect.value = ACTIVE_THEME_ID;
+    updateThemePreview(themeSelect.value);
+    themeSelect.addEventListener('change', () => {
+      if (!applyThemePalette(themeSelect.value)) {
+        themeSelect.value = ACTIVE_THEME_ID;
+        return;
+      }
+      updateThemePreview(themeSelect.value);
+    });
+    themeRow.appendChild(themePreview);
+    themeRow.appendChild(themeSelect);
+    this.panel.appendChild(themeRow);
+
     const snapshotRow = document.createElement('div');
     snapshotRow.className = 'pm-row';
     snapshotRow.style.marginTop = SPACE_6;
@@ -86,6 +133,14 @@ export class PauseMenu implements OverlayHandle {
     perfBtn.element.style.flex = '1';
     perfRow.appendChild(perfBtn.element);
     general.appendChild(perfRow);
+
+    const settingsRow = document.createElement('div');
+    settingsRow.className = 'pm-row';
+    settingsRow.style.marginTop = SPACE_4;
+    const settingsBtn = new Button('設定ビューを開く', () => this.onOpenSettings?.());
+    settingsBtn.element.style.flex = '1';
+    settingsRow.appendChild(settingsBtn.element);
+    general.appendChild(settingsRow);
 
     const quitBtn = new Button('ゲームを中断してタイトル画面に戻る', () => this.onQuitToTitle?.());
     quitBtn.element.classList.add('pm-quit');
@@ -139,6 +194,11 @@ export class PauseMenu implements OverlayHandle {
     if (show === this._isOpen) return;
     this._isOpen = show;
     this.panel.style.display = show ? 'block' : 'none';
+    // タイトル選択画面(#stage-select)は HUD より前面にあるため、タイトル中に
+    // メニューを開いたときだけ HUD をその上へ出す。通常のゲーム中は影響しない。
+    this.panel.closest<HTMLElement>('#hud')?.classList.toggle(
+      'title-menu-open', show && document.getElementById('stage-select') !== null,
+    );
     if (show) {
       // ESCメニュー表示中も、背景のマップ切替とカメラ操作は受け付ける(gatesInput: false)。
       this.overlayManager.open('pause-menu', this, {

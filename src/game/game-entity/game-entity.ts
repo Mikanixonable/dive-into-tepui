@@ -32,7 +32,7 @@ const identityAttitude = (): Attitude => ({
   inertia: v3(1, 1, 1),
 });
 
-// 軌道上を運動するゲーム内エンティティの基底。mesh・HP・生死・姿勢・AI といったゲーム側の
+// 軌道上を運動するゲーム内エンティティの基底。表示ルート・HP・生死・姿勢・AI といったゲーム側の
 // 付帯情報と、種別ごとの積分パラメータ(bcInv・historyDuration)を持つ。
 export class GameEntity {
   readonly actualTrajectory: DynamicTrajectory;
@@ -43,12 +43,6 @@ export class GameEntity {
   get prevState(): KinematicState { return this.actualTrajectory.prevState; }
   get history(): StateQueue { return this.actualTrajectory.history; }
 
-  // orbitalElementsAround(center) のメモ。state の参照同一性(KinematicState は不変で step ごとに
-  // 新しい参照へ差し替わる)と center.id で無効化する。
-  private _memoState: KinematicState | null = null;
-  private _memoCenterId: string | null = null;
-  private _memoElements: OrbitalElements | null = null;
-
   private static readonly idAllocator = new EntityIdAllocator('entity-');
 
   // 一意な識別子。表示名(name)とは別の概念。
@@ -56,7 +50,7 @@ export class GameEntity {
   // マーカー・一覧・ウィンドウに出す表示名。既定は id で、名前を持つ種別がコンストラクタで上書きする。
   name: string;
   att: Attitude;
-  obj: THREE.Object3D;
+  public readonly renderObject: THREE.Object3D;
   alive = true;
   mass = 1; // 剛体接触の換算質量
   radius = 0; // 物理的な半径 [m]。0 = 点。Attractor.radius と同じ量
@@ -109,13 +103,12 @@ export class GameEntity {
   private truncated = false;
   get predictionTruncated(): boolean { return this.truncated; }
 
-  // 初期状態と姿勢からエンティティを構築する。scene を渡すと obj を即座にシーンへ追加する。
-  // id 省略時はこの基底が自動採番する(復元 id を渡すクラスはそれをそのまま通す)。addToScene
-  // を false にすると obj をシーンへ足さない — InstancedPool 経由で描画する種別(弾・薬莢)が
-  // 使う。obj 自体は sync が書き込む変換の置き場所として残る。
-  constructor(
+  // 初期状態と姿勢からエンティティを構築する。addToScene は renderObject を scene へ
+  // 直接登録する種別に指定し、インスタンス描画種別では同期用の変換として保持する。
+  // id 省略時はこの基底が自動採番する。
+  public constructor(
     state: KinematicState,
-    obj: THREE.Object3D,
+    renderObject: THREE.Object3D,
     scene?: THREE.Scene,
     att: Attitude = identityAttitude(),
     id?: string,
@@ -125,9 +118,9 @@ export class GameEntity {
     this.id = id ?? GameEntity.idAllocator.next();
     this.name = this.id;
     this.att = att;
-    this.obj = obj;
+    this.renderObject = renderObject;
     this.scene = scene;
-    if (addToScene) this.scene?.add(this.obj);
+    if (addToScene) this.scene?.add(this.renderObject);
   }
 
   // 質量から剛体接触の換算質量と重力定数 μ を同時に定める。別々に書くと引力の強さと
@@ -139,12 +132,7 @@ export class GameEntity {
 
   // center を中心とする接触軌道要素。中心は呼び出し側が選ぶ(例: strongestAttractor)。
   orbitalElementsAround(center: Attractor): OrbitalElements | null {
-    if (this._memoState !== this.state || this._memoCenterId !== center.id) {
-      this._memoState = this.state;
-      this._memoCenterId = center.id;
-      this._memoElements = orbitalElementsOf(this.state, center);
-    }
-    return this._memoElements;
+    return orbitalElementsOf(this.state, center);
   }
 
   // orbitLine を、現在位置で最も強く引く天体を中心とする軌道楕円に合わせる。
@@ -161,15 +149,16 @@ export class GameEntity {
   // [simTime - pastDuration, simTime] の actualTrajectory に合わせる(未来線の先頭と過去線の
   // 末尾が常に現在位置で接するようにする)。pastDuration が保持窓を超える分は
   // TrajectoryLine 側が保持区間の先頭へクランプする。show が false のときは両方を非表示にする。
+  // simTime は描く区間の境目、displayTime は座標系から慣性系へ戻す時刻。
   syncTrajectoryLine(
-    show: boolean, frame: ReferenceFrame, simTime: number, pastDuration: number, ephemeris: Ephemeris,
-    fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
+    show: boolean, frame: ReferenceFrame, simTime: number, displayTime: number, pastDuration: number,
+    ephemeris: Ephemeris, fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
   ): void {
     if (this.trajectoryLine !== null) {
       this.trajectoryLine.syncGeometry(
         show ? this.predictedTrajectory : null, simTime, null, frame, ephemeris, attractors,
       );
-      this.trajectoryLine.syncTransform(frame, simTime, ephemeris, fo, attractors);
+      this.trajectoryLine.syncTransform(frame, displayTime, ephemeris, fo, attractors);
       this.trajectoryLine.sync(camera);
     }
     if (this.pastTrajectoryLine !== null) {
@@ -177,7 +166,7 @@ export class GameEntity {
       this.pastTrajectoryLine.syncGeometry(
         drawPast ? this.actualTrajectory : null, simTime - pastDuration, simTime, frame, ephemeris, attractors,
       );
-      this.pastTrajectoryLine.syncTransform(frame, simTime, ephemeris, fo, attractors);
+      this.pastTrajectoryLine.syncTransform(frame, displayTime, ephemeris, fo, attractors);
       this.pastTrajectoryLine.sync(camera);
     }
   }
@@ -305,12 +294,12 @@ export class GameEntity {
   sync(fo: FloatingOrigin, displayTime: number): void {
     const s = this.displayState(displayTime);
     if (s === null) {
-      this.obj.visible = false;
+      this.renderObject.visible = false;
       return;
     }
-    this.obj.visible = true;
-    this.obj.position.copy(fo.RtoThreeV3(s.r));
-    this.obj.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
+    this.renderObject.visible = true;
+    this.renderObject.position.copy(fo.RtoThreeV3(s.r));
+    this.renderObject.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
   }
 
   // playerPos は「自機からの距離」で消える種別(弾)のために一律で渡す。attractors はその
@@ -337,7 +326,7 @@ export class GameEntity {
 
   // メッシュを scene から、マーカーを HUD から取り除く。
   dispose(): void {
-    this.scene?.remove(this.obj);
+    this.scene?.remove(this.renderObject);
     this.equatorNodes?.dispose();
     this.marker?.dispose();
   }

@@ -1,10 +1,10 @@
-// レスポンシブブレークポイントの唯一の定義。幅は compact(<700px)/medium(700〜1100px)/
-// wide(>1100px)の3クラスとし、coarse(pointer:coarse)・short(高さ<500px)を直交する2軸として
+// レスポンシブブレークポイントの唯一の定義。幅は compact(<760px)/medium(760〜1183px)/
+// wide(1184px以上)の3クラスとし、coarse(pointer:coarse)・short(高さ<500px)を直交する2軸として
 // 併用する。各 CSS ファイルはここが export するメディアクエリ文字列だけを参照し、
 // 900px/520px 等の閾値を自分では書かない。
 
-export const COMPACT_MAX_WIDTH = 699; // これ以下が compact。
-export const MEDIUM_MAX_WIDTH = 1100; // これ以下が medium(compact を含む)。
+export const COMPACT_MAX_WIDTH = 759; // これ以下が compact。
+export const MEDIUM_MAX_WIDTH = 1183; // これ以下が medium(compact を含む)。
 export const SHORT_MAX_HEIGHT = 499; // これ以下が short。
 
 export const MQ_COARSE = '(pointer: coarse)';

@@ -1,0 +1,2515 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Dive into Tepui UI design system reference — rebuilt version 3">
+  <title>Dive into Tepui — UI Design System Reference V3</title>
+  <!--
+    Review-only font loading. All selected families use SIL OFL 1.1.
+    Production must self-host WOFF2 files and include each OFL text.
+  -->
+  <style>
+    @import url("https://fonts.googleapis.com/css2?family=Arimo:ital,wght@0,400;0,600;0,700;1,400&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=Zen+Kaku+Gothic+Antique:wght@400;500;700&family=Zen+Old+Mincho:wght@400;500;600&display=swap");
+
+    :root {
+      color-scheme: dark;
+
+      --font-ui: "Arimo", "Zen Kaku Gothic Antique", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+      --font-editorial: "Cormorant Garamond", "Zen Old Mincho", "Hiragino Mincho ProN", "Yu Mincho", serif;
+      --font-console: "IBM Plex Mono", "Zen Kaku Gothic Antique", "Hiragino Kaku Gothic ProN", "Yu Gothic", monospace;
+
+      --page: #07080a;
+      --surface-0: #0b0d11;
+      --surface-1: #101217;
+      --surface-2: #181b21;
+      --surface-3: #20242b;
+      --glass: rgb(13 15 19 / 0.58);
+      --glass-heavy: rgb(9 11 14 / 0.76);
+      --ink-title: #eeeaf5;
+      --ink-body: #c3bec9;
+      --ink-muted: #89838f;
+      --ink-faint: #5f5a65;
+      --ink-bright: #ffffff;
+      --page-light: #f0eee9;
+      --surface-light-1: #e6e2dc;
+      --surface-light-2: #d9d4cd;
+      --ink-title-light: #17141b;
+      --ink-body-light: #514c56;
+      --ink-muted-light: #746e78;
+
+      --accent-h: 12;
+      --accent-s: 100%;
+      --accent-l: 56%;
+      --accent-light-l: 40%;
+      --accent: hsl(var(--accent-h) var(--accent-s) var(--accent-l));
+      --accent-on-light: hsl(var(--accent-h) var(--accent-s) var(--accent-light-l));
+      --accent-soft: hsl(var(--accent-h) 80% 66%);
+      --danger: #ff4058;
+      --axis-prograde: #3b82f6;
+      --axis-normal: #10b981;
+      --axis-radial: #ef4444;
+
+      --type-brand: clamp(3.5rem, 11vw, 9.75rem);
+      --type-subtitle: clamp(1.45rem, 3vw, 2.625rem);
+      --type-display: clamp(2.15rem, 5vw, 4.5rem);
+      --type-window: 0.9375rem;
+      --type-body: 0.9375rem;
+      --type-aux: 0.75rem;
+      --type-label: 0.6875rem;
+      --type-console: 0.8125rem;
+
+      --space-1: 0.25rem;
+      --space-2: 0.375rem;
+      --space-3: 0.625rem;
+      --space-4: 0.875rem;
+      --space-5: 1.25rem;
+      --space-6: 1.75rem;
+      --space-7: 2.625rem;
+
+      --radius-control: 0.875rem;
+      --radius-card: 1.375rem;
+      --radius-window: 2.125rem;
+      --radius-feature: 3rem;
+      --radius-pill: 999px;
+      --max-width: 92rem;
+      --shadow-window: 0 24px 80px rgb(0 0 0 / 0.3);
+      --shadow-solid: 0 18px 60px rgb(0 0 0 / 0.24);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      overflow-x: hidden;
+      background:
+        radial-gradient(circle at 76% 7%, hsl(var(--accent-h) 72% 42% / 0.08), transparent 30rem),
+        var(--page);
+      color: var(--ink-body);
+      font-family: var(--font-ui);
+      font-size: var(--type-body);
+      line-height: 1.55;
+      text-rendering: optimizeLegibility;
+      font-synthesis: none;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    button,
+    a {
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    a {
+      color: inherit;
+    }
+
+    button {
+      border: 0;
+    }
+
+    svg {
+      display: block;
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 3px;
+    }
+
+    ::selection {
+      background: var(--accent);
+      color: #08090c;
+    }
+
+    .page-shell {
+      width: min(100%, var(--max-width));
+      margin-inline: auto;
+      padding-inline: clamp(0.875rem, 2.4vw, 2.25rem);
+    }
+
+    .svg-defs {
+      position: absolute;
+      width: 0;
+      height: 0;
+      overflow: hidden;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: rgb(7 8 10 / 0.64);
+      box-shadow: 0 10px 34px rgb(0 0 0 / 0.16);
+      backdrop-filter: blur(22px) saturate(115%);
+    }
+
+    .topbar-inner {
+      min-height: 3.125rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-5);
+    }
+
+    .mini-brand {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      color: var(--ink-title);
+      font-size: var(--type-label);
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-decoration: none;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .mini-mark {
+      width: 1.625rem;
+      height: 1.625rem;
+      color: var(--accent);
+    }
+
+    .topnav {
+      display: flex;
+      gap: var(--space-2);
+      padding-block: var(--space-2);
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .topnav::-webkit-scrollbar {
+      display: none;
+    }
+
+    .topnav a {
+      min-height: 2.25rem;
+      display: inline-flex;
+      align-items: center;
+      padding-inline: var(--space-4);
+      border-radius: var(--radius-pill);
+      color: var(--ink-muted);
+      font-size: var(--type-label);
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-decoration: none;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .topnav a:hover {
+      background: var(--surface-2);
+      color: var(--ink-title);
+    }
+
+    .hero-stage {
+      position: relative;
+      min-height: min(54rem, calc(100vh - 3.125rem));
+      overflow: hidden;
+      isolation: isolate;
+      background: #090a0d;
+    }
+
+    .generative-canvas {
+      position: absolute;
+      inset: -0.75rem;
+      z-index: -3;
+      width: calc(100% + 1.5rem);
+      height: calc(100% + 1.5rem);
+      filter: blur(4px) contrast(1.08) saturate(0.9);
+      image-rendering: pixelated;
+      transform: scale(1.02);
+    }
+
+    .pixel-wash {
+      position: absolute;
+      inset: 0;
+      z-index: -2;
+      pointer-events: none;
+      background:
+        repeating-linear-gradient(90deg, rgb(255 255 255 / 0.025) 0 1px, transparent 1px 7px),
+        repeating-linear-gradient(0deg, rgb(0 0 0 / 0.07) 0 2px, transparent 2px 8px);
+      mix-blend-mode: soft-light;
+    }
+
+    .hero-vignette {
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      background:
+        linear-gradient(90deg, rgb(7 8 10 / 0.28), transparent 60%),
+        linear-gradient(0deg, rgb(7 8 10 / 0.92), transparent 34%),
+        radial-gradient(circle at 50% 45%, transparent 32%, rgb(7 8 10 / 0.38) 100%);
+    }
+
+    .hero-grid {
+      min-height: inherit;
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(18rem, 0.65fr);
+      gap: clamp(1.25rem, 4vw, 4rem);
+      align-items: end;
+      padding-block: clamp(2.5rem, 7vw, 5.5rem) clamp(2rem, 4.5vw, 3.75rem);
+    }
+
+    .hero-copy {
+      min-width: 0;
+      align-self: center;
+    }
+
+    .eyebrow {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      margin: 0 0 var(--space-3);
+      color: var(--ink-muted);
+      font-family: var(--font-console);
+      font-size: var(--type-label);
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow::before {
+      width: 1.75rem;
+      height: 0.1875rem;
+      border-radius: var(--radius-pill);
+      background: var(--accent);
+      content: "";
+    }
+
+    .logotype {
+      width: min(100%, 61rem);
+      margin: 0;
+      color: #fff;
+      font-size: var(--type-brand);
+      font-weight: 400;
+      letter-spacing: -0.065em;
+      line-height: 0.72;
+      text-transform: uppercase;
+      mix-blend-mode: difference;
+    }
+
+    .logo-line {
+      position: relative;
+      width: fit-content;
+      display: block;
+      white-space: nowrap;
+    }
+
+    .logo-line:nth-child(2) {
+      margin-left: 0.42em;
+    }
+
+    .logo-line:nth-child(3) {
+      margin-left: 0.84em;
+    }
+
+    .logo-ornament {
+      position: absolute;
+      left: calc(100% + 0.75rem);
+      color: #fff;
+      font-family: var(--font-console);
+      font-size: clamp(0.65rem, 1.3vw, 1.05rem);
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      line-height: 1;
+    }
+
+    .logo-line:nth-child(1) .logo-ornament {
+      top: 0.02em;
+    }
+
+    .logo-line:nth-child(2) .logo-ornament {
+      bottom: 0.04em;
+    }
+
+    .logo-line:nth-child(3) .logo-ornament {
+      top: 0.02em;
+    }
+
+    .hero-subtitle {
+      width: fit-content;
+      margin: clamp(1.15rem, 2.8vw, 2rem) 0 0 0.12em;
+      color: var(--accent);
+      font-family: var(--font-editorial);
+      font-size: var(--type-subtitle);
+      font-weight: 300;
+      letter-spacing: 0.012em;
+      line-height: 1;
+      mix-blend-mode: difference;
+    }
+
+    .hero-subtitle-ja {
+      width: fit-content;
+      margin: var(--space-2) 0 0 0.22em;
+      color: var(--accent);
+      font-family: var(--font-editorial);
+      font-size: clamp(0.95rem, 1.55vw, 1.25rem);
+      font-weight: 400;
+      line-height: 1.3;
+      mix-blend-mode: difference;
+    }
+
+    .hero-meta {
+      max-width: 42rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+      margin-top: var(--space-5);
+    }
+
+    .meta-pill {
+      min-height: 1.875rem;
+      display: inline-flex;
+      align-items: center;
+      padding-inline: var(--space-3);
+      border-radius: var(--radius-pill);
+      background: rgb(9 11 14 / 0.58);
+      box-shadow: 0 8px 26px rgb(0 0 0 / 0.14);
+      color: var(--ink-body);
+      font-family: var(--font-console);
+      font-size: 0.625rem;
+      letter-spacing: 0.06em;
+      backdrop-filter: blur(16px);
+    }
+
+    .surface-glass,
+    .surface-frost,
+    .surface-solid {
+      overflow: hidden;
+    }
+
+    .surface-glass {
+      border-radius: var(--radius-window);
+      background: var(--glass);
+      box-shadow: var(--shadow-window);
+      backdrop-filter: blur(24px) saturate(115%);
+    }
+
+    .surface-frost {
+      border-radius: var(--radius-feature);
+      background:
+        linear-gradient(135deg, rgb(255 255 255 / 0.13), rgb(255 255 255 / 0.035)),
+        rgb(13 15 19 / 0.47);
+      box-shadow: 0 30px 100px rgb(0 0 0 / 0.34);
+      backdrop-filter: blur(30px) saturate(120%);
+    }
+
+    .surface-solid {
+      border-radius: var(--radius-window);
+      background: var(--surface-1);
+      box-shadow: var(--shadow-solid);
+    }
+
+    .theme-console {
+      align-self: end;
+      padding: var(--space-5);
+    }
+
+    .window-heading {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: var(--space-4);
+      margin-bottom: var(--space-4);
+    }
+
+    .window-heading h2,
+    .window-heading h3 {
+      margin: 0;
+      color: var(--ink-title);
+      font-size: var(--type-window);
+      font-weight: 600;
+      line-height: 1.25;
+    }
+
+    .window-heading p {
+      margin: var(--space-1) 0 0;
+      color: var(--ink-muted);
+      font-size: var(--type-aux);
+      line-height: 1.45;
+    }
+
+    .status-dot {
+      width: 0.625rem;
+      height: 0.625rem;
+      flex: 0 0 auto;
+      margin-top: 0.2rem;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 18px hsl(var(--accent-h) var(--accent-s) var(--accent-l) / 0.56);
+    }
+
+    .slider-stack {
+      display: grid;
+      gap: var(--space-3);
+    }
+
+    .slider-row {
+      display: grid;
+      grid-template-columns: 5.8rem minmax(0, 1fr) 3.5rem;
+      gap: var(--space-3);
+      align-items: center;
+      min-height: 2.375rem;
+      padding: var(--space-2) var(--space-3);
+      border-radius: var(--radius-control);
+      background: rgb(255 255 255 / 0.055);
+    }
+
+    .slider-label {
+      color: var(--ink-body);
+      font-size: var(--type-aux);
+    }
+
+    .slider-value {
+      color: var(--ink-title);
+      font-family: var(--font-console);
+      font-size: var(--type-label);
+      text-align: right;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      height: 0.3rem;
+      margin: 0;
+      appearance: none;
+      border-radius: var(--radius-pill);
+      background: linear-gradient(90deg, #ff213f, #ff7b00);
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      width: 1rem;
+      height: 1rem;
+      appearance: none;
+      border-radius: 50%;
+      background: var(--ink-bright);
+      box-shadow: 0 3px 12px rgb(0 0 0 / 0.3);
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 1rem;
+      height: 1rem;
+      border: 0;
+      border-radius: 50%;
+      background: var(--ink-bright);
+      box-shadow: 0 3px 12px rgb(0 0 0 / 0.3);
+    }
+
+    .theme-readout {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--space-2);
+      margin-top: var(--space-3);
+    }
+
+    .color-readout {
+      min-width: 0;
+      padding: var(--space-3);
+      border-radius: var(--radius-card);
+      background: rgb(255 255 255 / 0.065);
+    }
+
+    .color-readout.light {
+      background: rgb(240 238 233 / 0.92);
+      color: var(--ink-title-light);
+    }
+
+    .color-chip {
+      width: 100%;
+      height: 2rem;
+      margin-bottom: var(--space-2);
+      border-radius: var(--radius-control);
+      background: var(--accent);
+    }
+
+    .color-readout.light .color-chip {
+      background: var(--accent-on-light);
+    }
+
+    .readout-label {
+      display: block;
+      color: var(--ink-muted);
+      font-size: 0.625rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .color-readout.light .readout-label {
+      color: var(--ink-muted-light);
+    }
+
+    .readout-code {
+      display: block;
+      margin-top: 0.125rem;
+      color: var(--ink-title);
+      font-family: var(--font-console);
+      font-size: 0.75rem;
+      white-space: nowrap;
+    }
+
+    .color-readout.light .readout-code {
+      color: var(--ink-title-light);
+    }
+
+    .contrast-note {
+      display: block;
+      margin-top: 0.1rem;
+      color: var(--ink-muted);
+      font-size: 0.625rem;
+    }
+
+    .color-readout.light .contrast-note {
+      color: var(--ink-muted-light);
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+      margin-top: var(--space-3);
+    }
+
+    .button {
+      min-height: 2.5rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-2);
+      padding-inline: var(--space-4);
+      border-radius: var(--radius-pill);
+      background: var(--surface-3);
+      color: var(--ink-title);
+      cursor: pointer;
+      font-size: var(--type-aux);
+      font-weight: 600;
+    }
+
+    .button:hover {
+      background: #2b3039;
+    }
+
+    .button.primary {
+      background: var(--ink-title);
+      color: var(--page);
+    }
+
+    .button.accent {
+      background: var(--accent);
+      color: #09090a;
+    }
+
+    .button.quiet {
+      background: rgb(255 255 255 / 0.06);
+      color: var(--ink-body);
+    }
+
+    .copy-status {
+      min-height: 1rem;
+      margin: var(--space-2) 0 0;
+      color: var(--ink-muted);
+      font-size: 0.625rem;
+    }
+
+    .section {
+      position: relative;
+      padding-block: clamp(2.75rem, 6vw, 5.5rem);
+    }
+
+    .section + .section {
+      padding-top: clamp(2rem, 4vw, 3.75rem);
+    }
+
+    .section-head {
+      display: grid;
+      grid-template-columns: minmax(0, 0.82fr) minmax(18rem, 1.18fr);
+      gap: clamp(1rem, 4vw, 4rem);
+      align-items: end;
+      margin-bottom: var(--space-6);
+    }
+
+    .section-index {
+      margin: 0 0 var(--space-2);
+      color: var(--accent);
+      font-family: var(--font-console);
+      font-size: var(--type-label);
+      font-weight: 500;
+      letter-spacing: 0.1em;
+    }
+
+    .section-title {
+      margin: 0;
+      color: var(--ink-title);
+      font-size: var(--type-display);
+      font-weight: 400;
+      letter-spacing: -0.045em;
+      line-height: 0.94;
+    }
+
+    .section-title .ornament {
+      display: inline-block;
+      margin-left: 0.25em;
+      color: var(--accent);
+      font-family: var(--font-console);
+      font-size: 0.22em;
+      letter-spacing: 0.08em;
+      vertical-align: super;
+    }
+
+    .section-lead {
+      max-width: 46rem;
+      margin: 0;
+      color: var(--ink-muted);
+      font-size: clamp(0.82rem, 1.2vw, 0.95rem);
+      line-height: 1.7;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--space-3);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--space-3);
+    }
+
+    .compact-card {
+      min-width: 0;
+      padding: var(--space-5);
+      border-radius: var(--radius-card);
+      background: var(--surface-1);
+      box-shadow: 0 16px 48px rgb(0 0 0 / 0.14);
+    }
+
+    .compact-card h3 {
+      margin: 0;
+      color: var(--ink-title);
+      font-size: var(--type-window);
+      font-weight: 600;
+    }
+
+    .compact-card p {
+      margin: var(--space-2) 0 0;
+      color: var(--ink-muted);
+      font-size: var(--type-aux);
+      line-height: 1.62;
+    }
+
+    .compact-card a {
+      display: inline-flex;
+      margin-top: var(--space-3);
+      color: var(--accent);
+      font-family: var(--font-console);
+      font-size: var(--type-label);
+      text-decoration: none;
+    }
+
+    .research-sign {
+      width: 2.5rem;
+      height: 2.5rem;
+      display: grid;
+      place-items: center;
+      margin-bottom: var(--space-4);
+      border-radius: 0.75rem;
+      background: var(--surface-2);
+      color: var(--accent);
+      font-family: var(--font-console);
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .type-showcase {
+      display: grid;
+      gap: var(--space-3);
+    }
+
+    .type-row {
+      display: grid;
+      grid-template-columns: minmax(8.5rem, 0.28fr) minmax(0, 0.72fr);
+      gap: var(--space-5);
+      align-items: baseline;
+      padding: var(--space-5);
+      border-radius: var(--radius-card);
+      background: var(--surface-1);
+    }
+
+    .type-meta {
+      color: var(--ink-muted);
+      font-family: var(--font-console);
+      font-size: var(--type-label);
+      line-height: 1.55;
+    }
+
+    .type-sample {
+      min-width: 0;
+      margin: 0;
+      color: var(--ink-title);
+      overflow-wrap: anywhere;
+    }
+
+    .type-sample.neutral {
+      font-size: clamp(1.75rem, 4vw, 3.7rem);
+      font-weight: 400;
+      letter-spacing: -0.035em;
+      line-height: 0.95;
+    }
+
+    .type-sample.editorial {
+      color: var(--accent);
+      font-family: var(--font-editorial);
+      font-size: clamp(1.8rem, 4vw, 3.4rem);
+      font-weight: 300;
+      line-height: 1;
+    }
+
+    .type-sample.editorial-ja {
+      font-family: var(--font-editorial);
+      font-size: clamp(1.35rem, 3vw, 2.4rem);
+      font-weight: 400;
+      line-height: 1.3;
+    }
+
+    .type-sample.console {
+      font-family: var(--font-console);
+      font-size: clamp(0.85rem, 1.8vw, 1.1rem);
+      font-weight: 400;
+      line-height: 1.65;
+    }
+
+    .role-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: var(--space-2);
+      margin-top: var(--space-3);
+    }
+
+    .role-card {
+      min-height: 8.5rem;
+      padding: var(--space-4);
+      border-radius: var(--radius-card);
+      background: var(--surface-1);
+    }
+
+    .role-name {
+      display: block;
+      color: var(--ink-muted);
+      font-family: var(--font-console);
+      font-size: 0.625rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .role-sample {
+      display: block;
+      margin-top: var(--space-3);
+      color: var(--ink-title);
+    }
+
+    .role-card.aux .role-sample {
+      color: var(--ink-muted);
+      font-size: var(--type-aux);
+    }
+
+    .role-card.strong .role-sample {
+      font-weight: 600;
+    }
+
+    .role-card.italic .role-sample {
+      font-family: var(--font-editorial);
+      font-size: 1.25rem;
+      font-style: italic;
+    }
+
+    .role-card.mono .role-sample {
+      font-family: var(--font-console);
+      font-size: var(--type-console);
+    }
+
+    .adaptive-demo {
+      min-height: 24rem;
+      position: relative;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      overflow: hidden;
+      border-radius: var(--radius-feature);
+      background:
+        radial-gradient(circle at 24% 38%, var(--accent) 0 4%, transparent 5%),
+        radial-gradient(circle at 72% 35%, #f4f1eb 0 20%, transparent 21%),
+        linear-gradient(118deg, #06070a 0 42%, #dedbd4 42% 67%, #14161a 67%);
+      box-shadow: var(--shadow-window);
+    }
+
+    .adaptive-demo::before {
+      position: absolute;
+      inset: 0;
+      background:
+        repeating-linear-gradient(90deg, transparent 0 11px, rgb(255 255 255 / 0.04) 11px 12px),
+        radial-gradient(ellipse at center, transparent 20%, rgb(0 0 0 / 0.35));
+      content: "";
+      mix-blend-mode: overlay;
+    }
+
+    .adaptive-copy {
+      position: relative;
+      z-index: 1;
+      align-self: end;
+      grid-column: 1 / -1;
+      padding: clamp(1.25rem, 4vw, 3rem);
+    }
+
+    .adaptive-copy h3 {
+      margin: 0;
+      color: #fff;
+      font-size: clamp(2.8rem, 8vw, 7rem);
+      font-weight: 400;
+      letter-spacing: -0.06em;
+      line-height: 0.78;
+      text-transform: uppercase;
+      mix-blend-mode: difference;
+    }
+
+    .adaptive-copy p {
+      width: fit-content;
+      margin: var(--space-4) 0 0;
+      color: var(--accent);
+      font-family: var(--font-editorial);
+      font-size: var(--type-subtitle);
+      font-weight: 300;
+      line-height: 1;
+      mix-blend-mode: difference;
+    }
+
+    .surface-stage {
+      position: relative;
+      min-height: 38rem;
+      overflow: hidden;
+      border-radius: var(--radius-feature);
+      background:
+        radial-gradient(circle at 22% 18%, hsl(var(--accent-h) 90% 50% / 0.6), transparent 20%),
+        radial-gradient(circle at 82% 74%, #e7e5df 0 6%, transparent 22%),
+        linear-gradient(135deg, #15171c, #08090c 58%, #272b32);
+      box-shadow: var(--shadow-window);
+    }
+
+    .surface-stage::before {
+      position: absolute;
+      inset: 0;
+      background:
+        repeating-linear-gradient(90deg, rgb(255 255 255 / 0.025) 0 1px, transparent 1px 9px),
+        repeating-linear-gradient(0deg, rgb(0 0 0 / 0.06) 0 3px, transparent 3px 10px);
+      content: "";
+      mix-blend-mode: soft-light;
+    }
+
+    .surface-window-grid {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--space-3);
+      align-items: end;
+      min-height: inherit;
+      padding: clamp(1rem, 3vw, 2.25rem);
+    }
+
+    .window-sample {
+      min-height: 18rem;
+      padding: var(--space-5);
+    }
+
+    .window-sample .sample-tag {
+      color: var(--accent);
+      font-family: var(--font-console);
+      font-size: var(--type-label);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .window-sample h3 {
+      margin: var(--space-3) 0 0;
+      color: var(--ink-title);
+      font-size: 1.35rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .window-sample p {
+      margin: var(--space-2) 0 0;
+      color: var(--ink-muted);
+      font-size: var(--type-aux);
+      line-height: 1.6;
+    }
+
+    .sample-rows {
+      display: grid;
+      gap: var(--space-2);
+      margin-top: var(--space-5);
+    }
+
+    .sample-row {
+      min-height: 2.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-3);
+      padding-inline: var(--space-3);
+      border-radius: var(--radius-control);
+      background: rgb(255 255 255 / 0.06);
+      color: var(--ink-body);
+      font-size: var(--type-aux);
+    }
+
+    .surface-solid .sample-row {
+      background: var(--surface-2);
+    }
+
+    .sample-row code {
+      color: var(--ink-title);
+      font-family: var(--font-console);
+      font-size: var(--type-label);
+    }
+
+    .pattern-board {
+      display: grid;
+      grid-template-columns: minmax(18rem, 0.72fr) minmax(0, 1.28fr);
+      gap: var(--space-3);
+      align-items: start;
+    }
+
+    .pattern-stack {
+      display: grid;
+      gap: var(--space-3);
+    }
+
+    .pattern-card {
+      padding: var(--space-5);
+      border-radius: var(--radius-card);
+      background: var(--surface-1);
+      box-shadow: 0 16px 48px rgb(0 0 0 / 0.12);
+    }
+
+    .pattern-card h3 {
+      margin: 0;
+      color: var(--ink-title);
+      font-size: var(--type-window);
+      font-weight: 600;
+    }
+
+    .pattern-card > p {
+      margin: var(--space-1) 0 var(--space-4);
+      color: var(--ink-muted);
+      font-size: var(--type-aux);
+    }
+
+    .tab-list {
+      display: flex;
+      gap: var(--space-1);
+      padding: var(--space-1);
+      border-radius: var(--radius-pill);
+      background: var(--surface-2);
+    }
+
+    .tab {
+      min-height: 2.25rem;
+      flex: 1;
+      border-radius: var(--radius-pill);
+      background: transparent;
+      color: var(--ink-muted);
+      cursor: pointer;
+      font-size: var(--type-label);
+      font-weight: 600;
+    }
+
+    .tab.active {
+      background: var(--ink-title);
+      color: var(--page);
+    }
+
+    .input-shell {
+      min-height: 2.75rem;
+      display: grid;
+      grid-template-columns: 5.5rem 1fr auto;
+      gap: var(--space-3);
+      align-items: center;
+      padding-inline: var(--space-3);
+      border-radius: var(--radius-control);
+      background: var(--surface-2);
+    }
+
+    .input-shell label {
+      color: var(--ink-muted);
+      font-size: var(--type-label);
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .input-shell input {
+      min-width: 0;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--ink-title);
+      font-family: var(--font-console);
+      font-size: var(--type-console);
+    }
+
+    .input-unit {
+      color: var(--ink-muted);
+      font-family: var(--font-console);
+      font-size: var(--type-label);
+    }
+
+    .data-table {
+      display: grid;
+      gap: var(--space-1);
+    }
+
+    .data-row {
+      min-height: 2.5rem;
+      display: grid;
+      grid-template-columns: minmax(7rem, 1fr) 6rem 4rem;
+      gap: var(--space-3);
+      align-items: center;
+      padding-inline: var(--space-3);
+      border-radius: var(--radius-control);
+      background: var(--surface-2);
+      color: var(--ink-body);
+      font-size: var(--type-aux);
+    }
+
+    .data-row.head {
+      min-height: 1.75rem;
+      background: transparent;
+      color: var(--ink-muted);
+      font-size: 0.625rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .data-row code {
+      color: var(--ink-title);
+      font-family: var(--font-console);
+      font-size: var(--type-label);
+      text-align: right;
+    }
+
+    .data-state {
+      justify-self: end;
+      padding: 0.2rem 0.5rem;
+      border-radius: var(--radius-pill);
+      background: hsl(var(--accent-h) var(--accent-s) var(--accent-l) / 0.12);
+      color: var(--accent);
+      font-size: 0.625rem;
+      font-weight: 600;
+    }
+
+    .hud-console {
+      min-height: 27rem;
+      position: relative;
+      overflow: hidden;
+      border-radius: var(--radius-window);
+      background:
+        radial-gradient(circle at 68% 34%, hsl(var(--accent-h) 80% 50% / 0.15), transparent 20%),
+        #06070a;
+      box-shadow: var(--shadow-solid);
+    }
+
+    .hud-console::before {
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(90deg, transparent 49.8%, rgb(255 255 255 / 0.05) 50%, transparent 50.2%),
+        linear-gradient(0deg, transparent 49.8%, rgb(255 255 255 / 0.05) 50%, transparent 50.2%);
+      background-size: 4rem 4rem;
+      content: "";
+    }
+
+    .hud-target {
+      position: absolute;
+      top: 40%;
+      left: 58%;
+      width: 4.5rem;
+      height: 4.5rem;
+      color: var(--accent);
+      transform: translate(-50%, -50%);
+    }
+
+    .hud-value {
+      position: absolute;
+      padding: var(--space-3);
+      border-radius: var(--radius-control);
+      background: rgb(8 9 12 / 0.7);
+      box-shadow: 0 12px 38px rgb(0 0 0 / 0.22);
+      font-family: var(--font-console);
+      backdrop-filter: blur(14px);
+    }
+
+    .hud-value.top-left {
+      top: var(--space-4);
+      left: var(--space-4);
+    }
+
+    .hud-value.bottom-right {
+      right: var(--space-4);
+      bottom: var(--space-4);
+      text-align: right;
+    }
+
+    .hud-value span {
+      display: block;
+      color: var(--ink-muted);
+      font-size: 0.625rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .hud-value strong {
+      display: block;
+      margin-top: 0.15rem;
+      color: var(--ink-title);
+      font-size: 1rem;
+      font-weight: 500;
+    }
+
+    .console-lines {
+      position: relative;
+      min-height: 8.5rem;
+      max-width: none;
+      padding: var(--space-4);
+      border-radius: var(--radius-card);
+      background: rgb(7 8 10 / 0.78);
+      box-shadow: 0 16px 52px rgb(0 0 0 / 0.25);
+      color: var(--ink-body);
+      font-family: var(--font-console);
+      font-size: var(--type-console);
+      line-height: 1.62;
+      backdrop-filter: blur(18px);
+    }
+
+    .console-lines .prompt {
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    .console-lines .comment {
+      color: var(--ink-muted);
+      font-style: italic;
+    }
+
+    .symbol-groups {
+      display: grid;
+      gap: var(--space-3);
+    }
+
+    .symbol-group {
+      padding: var(--space-5);
+      border-radius: var(--radius-window);
+      background: var(--surface-1);
+      box-shadow: 0 18px 56px rgb(0 0 0 / 0.14);
+    }
+
+    .symbol-group-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: var(--space-4);
+      margin-bottom: var(--space-4);
+    }
+
+    .symbol-group h3 {
+      margin: 0;
+      color: var(--ink-title);
+      font-size: var(--type-window);
+    }
+
+    .symbol-count {
+      color: var(--ink-muted);
+      font-family: var(--font-console);
+      font-size: var(--type-label);
+    }
+
+    .symbol-grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: var(--space-2);
+    }
+
+    .symbol-item {
+      min-height: 7.25rem;
+      display: grid;
+      place-items: center;
+      align-content: center;
+      gap: var(--space-3);
+      padding: var(--space-3);
+      border-radius: var(--radius-card);
+      background: var(--surface-2);
+      color: var(--ink-title);
+    }
+
+    .symbol-item.accent {
+      color: var(--accent);
+    }
+
+    .symbol-item svg {
+      width: 2rem;
+      height: 2rem;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.5;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+    }
+
+    .symbol-item span {
+      color: var(--ink-muted);
+      font-family: var(--font-console);
+      font-size: 0.625rem;
+      text-align: center;
+    }
+
+    .token-layout {
+      display: grid;
+      grid-template-columns: minmax(18rem, 0.72fr) minmax(0, 1.28fr);
+      gap: var(--space-3);
+      align-items: start;
+    }
+
+    .token-panel {
+      padding: var(--space-5);
+    }
+
+    .swatch-stack {
+      display: grid;
+      gap: var(--space-2);
+    }
+
+    .swatch {
+      min-height: 3.25rem;
+      display: grid;
+      grid-template-columns: 2.75rem 1fr auto;
+      gap: var(--space-3);
+      align-items: center;
+      padding-inline: var(--space-3);
+      border-radius: var(--radius-control);
+      background: var(--surface-2);
+    }
+
+    .swatch-color {
+      width: 2rem;
+      height: 2rem;
+      border-radius: 0.625rem;
+      background: var(--swatch-color);
+    }
+
+    .swatch strong {
+      color: var(--ink-title);
+      font-size: var(--type-aux);
+    }
+
+    .swatch code {
+      color: var(--ink-muted);
+      font-family: var(--font-console);
+      font-size: var(--type-label);
+    }
+
+    .code-region {
+      overflow: hidden;
+      border-radius: var(--radius-window);
+      background: #050609;
+      box-shadow: var(--shadow-solid);
+    }
+
+    .code-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-4);
+      padding: var(--space-4) var(--space-5);
+      background: var(--surface-1);
+      color: var(--ink-title);
+      font-size: var(--type-aux);
+      font-weight: 600;
+    }
+
+    .code-heading span:last-child {
+      color: var(--ink-muted);
+      font-family: var(--font-console);
+      font-size: 0.625rem;
+      font-weight: 400;
+    }
+
+    pre {
+      max-height: 34rem;
+      margin: 0;
+      padding: var(--space-5);
+      overflow: auto;
+      color: var(--ink-body);
+      font-family: var(--font-console);
+      font-size: 0.75rem;
+      line-height: 1.6;
+      tab-size: 2;
+    }
+
+    .license-list {
+      display: grid;
+      gap: var(--space-2);
+      margin-top: var(--space-3);
+    }
+
+    .license-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: var(--space-3);
+      align-items: center;
+      min-height: 2.75rem;
+      padding-inline: var(--space-3);
+      border-radius: var(--radius-control);
+      background: var(--surface-2);
+      font-size: var(--type-aux);
+    }
+
+    .license-row code {
+      color: var(--accent);
+      font-family: var(--font-console);
+      font-size: var(--type-label);
+    }
+
+    footer {
+      padding-block: var(--space-6);
+      background: #050609;
+    }
+
+    .footer-inner {
+      display: flex;
+      justify-content: space-between;
+      gap: var(--space-4);
+      color: var(--ink-muted);
+      font-family: var(--font-console);
+      font-size: 0.625rem;
+    }
+
+    @media (max-width: 68rem) {
+      .hero-grid,
+      .section-head,
+      .pattern-board,
+      .token-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-grid {
+        align-items: center;
+      }
+
+      .theme-console {
+        width: min(100%, 34rem);
+      }
+
+      .grid-3,
+      .surface-window-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .surface-window-grid .window-sample:last-child {
+        grid-column: 1 / -1;
+      }
+
+      .role-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .symbol-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 44rem) {
+      .topbar-inner {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 0;
+        padding-top: var(--space-2);
+      }
+
+      .topnav {
+        width: 100%;
+      }
+
+      .hero-stage {
+        min-height: auto;
+      }
+
+      .hero-grid {
+        min-height: 48rem;
+        padding-top: 3rem;
+      }
+
+      .logo-ornament {
+        left: calc(100% + 0.35rem);
+      }
+
+      .grid-3,
+      .grid-2,
+      .surface-window-grid,
+      .theme-readout {
+        grid-template-columns: 1fr;
+      }
+
+      .surface-window-grid .window-sample:last-child {
+        grid-column: auto;
+      }
+
+      .type-row {
+        grid-template-columns: 1fr;
+        gap: var(--space-3);
+      }
+
+      .symbol-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .slider-row {
+        grid-template-columns: 4.4rem minmax(0, 1fr) 3rem;
+      }
+
+      .footer-inner {
+        flex-direction: column;
+      }
+    }
+
+    @media (max-width: 28rem) {
+      .role-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .symbol-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .data-row {
+        grid-template-columns: 1fr auto;
+      }
+
+      .data-row > :last-child {
+        display: none;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html {
+        scroll-behavior: auto;
+      }
+
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    @supports not (backdrop-filter: blur(1px)) {
+      .surface-glass,
+      .surface-frost,
+      .topbar,
+      .hud-value,
+      .console-lines {
+        background: rgb(10 12 16 / 0.94);
+      }
+    }
+  </style>
+</head>
+<body>
+  <svg class="svg-defs" aria-hidden="true">
+    <defs>
+      <symbol id="brand-mark" viewBox="0 0 48 48">
+        <path d="M8 11h25M20 11v27M11 34 38 8M28 31a8 8 0 1 0 0-16"></path>
+        <circle cx="28" cy="23" r="2" fill="currentColor" stroke="none"></circle>
+      </symbol>
+
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6 18 18M18 6 6 18"></path></symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"></path></symbol>
+      <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m7 9 5 5 5-5"></path></symbol>
+      <symbol id="i-save" viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5zM8 4v6h8V4M8 20v-6h8v6"></path></symbol>
+      <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="1.5"></circle><path d="M12 2v4M12 18v4M2 12h4M18 12h4"></path></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7z"></path></symbol>
+      <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"></path></symbol>
+      <symbol id="i-expand" viewBox="0 0 24 24"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"></path></symbol>
+      <symbol id="i-filter" viewBox="0 0 24 24"><path d="M4 5h16l-6 7v6l-4 2v-8z"></path></symbol>
+      <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"></circle><path d="M12 10v7M12 7v1"></path></symbol>
+      <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 7H4v-5M4 7c2-3 5-4 8-4 5 0 9 4 9 9s-4 9-9 9c-4 0-7-2-8-5"></path></symbol>
+      <symbol id="i-dock" viewBox="0 0 24 24"><path d="M4 5h16v14H4zM9 5v14M9 11h11"></path></symbol>
+
+      <symbol id="m-ship" viewBox="0 0 24 24"><path d="m12 3 7 17-7-4-7 4z" fill="currentColor" stroke="none"></path></symbol>
+      <symbol id="m-body" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="currentColor" stroke="none"></circle></symbol>
+      <symbol id="m-ghost" viewBox="0 0 24 24"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z" stroke-dasharray="2 2"></path></symbol>
+      <symbol id="m-ammo" viewBox="0 0 24 24"><path d="M5 5h14v14H5zM9 5v4h6V5M9 19v-4h6v4"></path></symbol>
+      <symbol id="m-prograde" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"></circle><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"></circle></symbol>
+      <symbol id="m-retrograde" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"></circle><path d="m9 9 6 6M15 9l-6 6"></path></symbol>
+      <symbol id="m-radial" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2.5"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path></symbol>
+      <symbol id="m-target" viewBox="0 0 24 24"><path d="M3 12h14M13 8l4 4-4 4M19 5v14"></path></symbol>
+      <symbol id="m-ascending" viewBox="0 0 24 24"><path d="m12 4 8 15H4zM8 19h8"></path></symbol>
+      <symbol id="m-descending" viewBox="0 0 24 24"><path d="m12 20 8-15H4zM8 5h8"></path></symbol>
+      <symbol id="m-apsis" viewBox="0 0 24 24"><path d="m12 4 8 8-8 8-8-8z"></path></symbol>
+      <symbol id="m-maneuver" viewBox="0 0 24 24"><path d="m12 3 9 9-9 9-9-9z"></path><circle cx="12" cy="12" r="2"></circle></symbol>
+      <symbol id="m-burn" viewBox="0 0 24 24"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9zM7 12h9M13 9l3 3-3 3"></path></symbol>
+      <symbol id="m-impact" viewBox="0 0 24 24"><path d="m8 8 8 8M16 8l-8 8M5 6a10 10 0 0 1 14 0M5 18a10 10 0 0 0 14 0"></path></symbol>
+      <symbol id="m-preview" viewBox="0 0 24 24"><path d="m6 4 13 8-13 8z" stroke-dasharray="3 2"></path></symbol>
+    </defs>
+  </svg>
+
+  <header class="topbar">
+    <div class="page-shell topbar-inner">
+      <a class="mini-brand" href="#top">
+        <svg class="mini-mark" aria-hidden="true"><use href="#brand-mark"></use></svg>
+        <span>Dive into Tepui / V3</span>
+      </a>
+      <nav class="topnav" aria-label="標本内ナビゲーション">
+        <a href="#research">Research</a>
+        <a href="#type">Type</a>
+        <a href="#contrast">Contrast</a>
+        <a href="#surfaces">Surfaces</a>
+        <a href="#patterns">Patterns</a>
+        <a href="#symbols">Symbols</a>
+        <a href="#tokens">Tokens</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero-stage" aria-labelledby="hero-title">
+      <canvas class="generative-canvas" id="generative-canvas" aria-hidden="true"></canvas>
+      <div class="pixel-wash" aria-hidden="true"></div>
+      <div class="hero-vignette" aria-hidden="true"></div>
+      <div class="page-shell hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow">UI Design System / Rebuilt Third Edition</p>
+          <h1 class="logotype" id="hero-title">
+            <span class="logo-line">DIVE<sup class="logo-ornament">∴03</sup></span>
+            <span class="logo-line">INTO<sub class="logo-ornament">ECI₀</sub></span>
+            <span class="logo-line">TEPUI<sup class="logo-ornament">Ω⁺</sup></span>
+          </h1>
+          <p class="hero-subtitle">The Orbit Is the Battlefield</p>
+          <p class="hero-subtitle-ja">軌道が戦場になる</p>
+          <div class="hero-meta" aria-label="第三版の主要要素">
+            <span class="meta-pill">NO WINDOW OUTLINE</span>
+            <span class="meta-pill">GENERATIVE MOSAIC</span>
+            <span class="meta-pill">OFL TYPE ONLY</span>
+            <span class="meta-pill">Δvₙ / μ⊕ / ECI₀</span>
+          </div>
+        </div>
+
+        <aside class="surface-frost theme-console" aria-labelledby="theme-console-title">
+          <div class="window-heading">
+            <div>
+              <h2 id="theme-console-title">Accent calibrator</h2>
+              <p>赤寄りオレンジを調整し、後で固定するHEXを取得する。</p>
+            </div>
+            <span class="status-dot" aria-hidden="true"></span>
+          </div>
+
+          <div class="slider-stack">
+            <label class="slider-row">
+              <span class="slider-label">Hue</span>
+              <input id="accent-hue" type="range" min="0" max="35" value="12">
+              <output class="slider-value" id="accent-hue-output" for="accent-hue">12°</output>
+            </label>
+            <label class="slider-row">
+              <span class="slider-label">Saturation</span>
+              <input id="accent-saturation" type="range" min="60" max="100" value="100">
+              <output class="slider-value" id="accent-saturation-output" for="accent-saturation">100%</output>
+            </label>
+            <label class="slider-row">
+              <span class="slider-label">Dark L</span>
+              <input id="accent-dark-lightness" type="range" min="40" max="70" value="56">
+              <output class="slider-value" id="accent-dark-lightness-output" for="accent-dark-lightness">56%</output>
+            </label>
+            <label class="slider-row">
+              <span class="slider-label">Light L</span>
+              <input id="accent-light-lightness" type="range" min="24" max="50" value="40">
+              <output class="slider-value" id="accent-light-lightness-output" for="accent-light-lightness">40%</output>
+            </label>
+          </div>
+
+          <div class="theme-readout">
+            <div class="color-readout">
+              <div class="color-chip" aria-hidden="true"></div>
+              <span class="readout-label">On dark</span>
+              <strong class="readout-code" id="accent-dark-hex">#FF4B1F</strong>
+              <span class="contrast-note" id="accent-dark-contrast">Contrast 5.99:1 / AA</span>
+            </div>
+            <div class="color-readout light">
+              <div class="color-chip" aria-hidden="true"></div>
+              <span class="readout-label">On light</span>
+              <strong class="readout-code" id="accent-light-hex">#CC2900</strong>
+              <span class="contrast-note" id="accent-light-contrast">Contrast 4.66:1 / AA</span>
+            </div>
+          </div>
+
+          <div class="button-row">
+            <button class="button primary" id="copy-theme" type="button">Copy CSS</button>
+            <button class="button quiet" id="reset-theme" type="button">Reset</button>
+          </div>
+          <p class="copy-status" id="copy-status" role="status" aria-live="polite">Initial: H 12° / S 100% / Dark 56% / Light 40%</p>
+        </aside>
+      </div>
+    </section>
+
+    <section class="section page-shell" id="research" aria-labelledby="research-title">
+      <div class="section-head">
+        <div>
+          <p class="section-index">01 / SOURCE EXTRACTION</p>
+          <h2 class="section-title" id="research-title">Borrow principles,<br>not surfaces<span class="ornament">⌁R</span></h2>
+        </div>
+        <p class="section-lead">参照3サイトから、3D/WebGLを空間として使うこと、文字と映像を競合させないこと、色数を抑えること、ロゴの形を反復することを抽出した。直接確認できない表現は、依頼者が読み取った特徴を要件の正本としている。</p>
+      </div>
+
+      <div class="grid-3">
+        <article class="compact-card">
+          <div class="research-sign">L / 3D</div>
+          <h3>Lusion — procedural scene</h3>
+          <p>抽象形状、微視的なノイズ、3D空間内の文字。背景は強く、UIの書体と色は少なく保つ。</p>
+          <a href="https://lusion.co/">Official site ↗</a>
+        </article>
+        <article class="compact-card">
+          <div class="research-sign">/NK</div>
+          <h3>nk.studio — slash &amp; particles</h3>
+          <p>ネオンの斜線と粒子を一貫した視覚語彙にし、WebGL背景はコンテンツを邪魔しない速度と密度にする。</p>
+          <a href="https://www.nk.studio/">Official site ↗</a>
+        </article>
+        <article class="compact-card">
+          <div class="research-sign">LCO</div>
+          <h3>Locomotive — type as a scene</h3>
+          <p>巨大な文字、古典的なセリフ、抽象形状、変則配置を一つのリズムとして扱う。</p>
+          <a href="https://locomotive.ca/">Official site ↗</a>
+        </article>
+      </div>
+    </section>
+
+    <section class="section page-shell" id="type" aria-labelledby="type-title">
+      <div class="section-head">
+        <div>
+          <p class="section-index">02 / TYPOGRAPHY</p>
+          <h2 class="section-title" id="type-title">Classic voice,<br>machine measure<span class="ornament">ΣTYPE</span></h2>
+        </div>
+        <p class="section-lead">第二版の書体構成へ戻す。Helvetica的なニュートラルさはArimo、古典的な副題はCormorant Garamond / Zen Old Mincho、CUIと物理量はIBM Plex Monoが担当する。全書体はSIL OFL 1.1で組み込み可能。</p>
+      </div>
+
+      <div class="type-showcase">
+        <article class="type-row">
+          <div class="type-meta">NEUTRAL SANS<br>Arimo 400<br>Zen Kaku Gothic Antique 400</div>
+          <p class="type-sample neutral">DIVE INTO TEPUI<br>軌道力学と静かな機械</p>
+        </article>
+        <article class="type-row">
+          <div class="type-meta">EDITORIAL SERIF<br>Cormorant Garamond 300<br>Zen Old Mincho 400</div>
+          <div>
+            <p class="type-sample editorial">The Orbit Is the Battlefield</p>
+            <p class="type-sample editorial-ja">軌道が戦場になる</p>
+          </div>
+        </article>
+        <article class="type-row">
+          <div class="type-meta">CONSOLE MONO<br>IBM Plex Mono 400 / 600<br>Tabular figures</div>
+          <p class="type-sample console">ECI₀  r = 6,791,000 m<br>Δvₙ = +12.48 m/s  Ω = 214.76°<br><em>// estimate: T−00:42.8</em></p>
+        </article>
+        <article class="type-row">
+          <div class="type-meta">DISPLAY ORNAMENT<br>Unicode + SVG<br>Meaning stays separate</div>
+          <p class="type-sample neutral">∴ ⟡ ⌁ Ω⁺ Δvₙ μ⊕ CO₂ Fe³⁺</p>
+        </article>
+      </div>
+
+      <div class="role-grid" aria-label="文字ロールの見本">
+        <article class="role-card aux">
+          <span class="role-name">Auxiliary / 12px</span>
+          <span class="role-sample">補助説明は少し小さく、灰色へ寄せる。不可欠な情報だけには使わない。</span>
+        </article>
+        <article class="role-card strong">
+          <span class="role-name">Strong / 600</span>
+          <span class="role-sample">燃焼残量 12.48 m/s。重要語だけを一段階太くする。</span>
+        </article>
+        <article class="role-card italic">
+          <span class="role-name">Editorial italic</span>
+          <span class="role-sample">A quiet passage through shadow.</span>
+        </article>
+        <article class="role-card mono">
+          <span class="role-name">Mono italic / estimate</span>
+          <span class="role-sample"><em>predicted Ω +0.002°</em><br>actual Ω +0.001°</span>
+        </article>
+      </div>
+    </section>
+
+    <section class="section page-shell" id="contrast" aria-labelledby="contrast-title">
+      <div class="section-head">
+        <div>
+          <p class="section-index">03 / ADAPTIVE CONTRAST</p>
+          <h2 class="section-title" id="contrast-title">Type crosses<br>the image<span class="ornament">±INK</span></h2>
+        </div>
+        <p class="section-lead">映像へ重なるタイトルだけは白のdifference、副題は第二版の赤橙セリフをdifference合成する。通常UIには使わず、背景輝度を判定する実装または固定Scrimへ縮退する。</p>
+      </div>
+
+      <div class="adaptive-demo" aria-label="明暗が混在する背景上での反転文字見本">
+        <div class="adaptive-copy">
+          <h3>Beyond<br>the limb<sup>⁺</sup></h3>
+          <p>Light becomes structure</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section page-shell" id="surfaces" aria-labelledby="surfaces-title">
+      <div class="section-head">
+        <div>
+          <p class="section-index">04 / BORDERLESS SURFACES</p>
+          <h2 class="section-title" id="surfaces-title">Boundary by blur<br>and tone<span class="ornament">34R</span></h2>
+        </div>
+        <p class="section-lead">ウィンドウの外周線は使わない。Solidは背景との面色差、GlassとFrostedは背景ぼけと柔らかな面の影で境界を作る。標準半径34px、Feature半径48px。内側余白は14〜20pxへ詰める。</p>
+      </div>
+
+      <div class="surface-stage">
+        <div class="surface-window-grid">
+          <article class="surface-solid window-sample">
+            <span class="sample-tag">Solid / opaque</span>
+            <h3>Orbit elements</h3>
+            <p>情報密度が高い画面。背景との差だけで輪郭を作る。</p>
+            <div class="sample-rows">
+              <div class="sample-row"><span>Inclination</span><code>51.640°</code></div>
+              <div class="sample-row"><span>Periapsis</span><code>408.2 km</code></div>
+              <div class="sample-row"><span>Apoapsis</span><code>421.7 km</code></div>
+            </div>
+          </article>
+
+          <article class="surface-glass window-sample">
+            <span class="sample-tag">Glass / 24px blur</span>
+            <h3>Target solution</h3>
+            <p>動く背景の存在を残しながら、値の直下は弱い面で安定させる。</p>
+            <div class="sample-rows">
+              <div class="sample-row"><span>Range</span><code>2.48 km</code></div>
+              <div class="sample-row"><span>Closure</span><code>−4.2 m/s</code></div>
+              <div class="sample-row"><span>Lead</span><code>0.87°</code></div>
+            </div>
+          </article>
+
+          <article class="surface-frost window-sample">
+            <span class="sample-tag">Frosted / 30px blur</span>
+            <h3>Stage unlocked</h3>
+            <p>章扉や一時的なFeature面。広い丸みと光の面差を使う。</p>
+            <div class="sample-rows">
+              <div class="sample-row"><span>Molniya field</span><code>STAGE 02</code></div>
+              <div class="sample-row"><span>Apogee</span><code>39,700 km</code></div>
+              <div class="sample-row"><span>Status</span><code>READY</code></div>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section page-shell" id="patterns" aria-labelledby="patterns-title">
+      <div class="section-head">
+        <div>
+          <p class="section-index">05 / UI PATTERNS</p>
+          <h2 class="section-title" id="patterns-title">Dense, quiet,<br>operable<span class="ornament">UI₀</span></h2>
+        </div>
+        <p class="section-lead">余白を狭めても操作領域は44pxを保つ。部品の境界も面色で示し、Accentは現在位置と確定操作へ限定する。数値はIBM Plex Mono、説明はNeutral Sansへ分担する。</p>
+      </div>
+
+      <div class="pattern-board">
+        <div class="pattern-stack">
+          <section class="pattern-card" aria-labelledby="buttons-title">
+            <h3 id="buttons-title">Buttons</h3>
+            <p>白いPrimary、単一のAccent、面色のSecondary。</p>
+            <div class="button-row">
+              <button class="button primary" type="button">Commit burn</button>
+              <button class="button accent" type="button">Current</button>
+              <button class="button" type="button">Preview</button>
+              <button class="button quiet" type="button">Cancel</button>
+            </div>
+          </section>
+
+          <section class="pattern-card" aria-labelledby="tabs-title">
+            <h3 id="tabs-title">Segmented tabs</h3>
+            <p>外枠を使わず、一つの面の中で選択を反転する。</p>
+            <div class="tab-list" role="tablist" aria-label="表示モード">
+              <button class="tab active" role="tab" aria-selected="true" type="button">Orbit</button>
+              <button class="tab" role="tab" aria-selected="false" type="button">Target</button>
+              <button class="tab" role="tab" aria-selected="false" type="button">System</button>
+            </div>
+          </section>
+
+          <section class="pattern-card" aria-labelledby="input-title">
+            <h3 id="input-title">Input</h3>
+            <p>入力面を沈め、単位を固定する。</p>
+            <div class="input-shell">
+              <label for="delta-v-input">Δv normal</label>
+              <input id="delta-v-input" type="text" value="+12.480" inputmode="decimal">
+              <span class="input-unit">m/s</span>
+            </div>
+          </section>
+
+          <section class="pattern-card" aria-labelledby="table-title">
+            <h3 id="table-title">Dense rows</h3>
+            <p>罫線の代わりに丸いrowと間隔で列を保つ。</p>
+            <div class="data-table" role="table" aria-label="軌道要素">
+              <div class="data-row head" role="row"><span role="columnheader">Element</span><span role="columnheader">Value</span><span role="columnheader">State</span></div>
+              <div class="data-row" role="row"><span role="cell">Inclination</span><code role="cell">51.640°</code><span class="data-state" role="cell">LOCK</span></div>
+              <div class="data-row" role="row"><span role="cell">Eccentricity</span><code role="cell">0.00104</code><span class="data-state" role="cell">NOM</span></div>
+              <div class="data-row" role="row"><span role="cell">RAAN Ω</span><code role="cell">214.760°</code><span class="data-state" role="cell">DRIFT</span></div>
+            </div>
+          </section>
+        </div>
+
+        <div class="pattern-stack">
+          <section class="hud-console" aria-label="HUDと局所Glassの見本">
+            <svg class="hud-target" aria-label="Target marker"><use href="#i-target"></use></svg>
+            <div class="hud-value top-left">
+              <span>Target / E-03</span>
+              <strong>2.48 km</strong>
+            </div>
+            <div class="hud-value bottom-right">
+              <span>Closure</span>
+              <strong>−4.2 m/s</strong>
+            </div>
+          </section>
+
+          <section class="console-lines" aria-label="IBM Plex Mono Console見本">
+            <div><span class="prompt">tepui@eci:~$</span> plan --node N-04</div>
+            <div>Δv = [+0.00, +12.48, −0.84] m/s</div>
+            <div>TOF = 00:06:42.8 / Ω = 214.760°</div>
+            <div class="comment">// estimate converges within 0.02 m/s</div>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <section class="section page-shell" id="symbols" aria-labelledby="symbols-title">
+      <div class="section-head">
+        <div>
+          <p class="section-index">06 / SYMBOL SYSTEM</p>
+          <h2 class="section-title" id="symbols-title">Twenty-seven<br>quiet signs<span class="ornament">24×24</span></h2>
+        </div>
+        <p class="section-lead">操作12種、世界マーカー15種。実体は塗り、方向は中心または矢、軌道点は中空、予測は破線、危険は交差で表す。Unicode装飾とは分離し、操作の正本はSVGにする。</p>
+      </div>
+
+      <div class="symbol-groups">
+        <section class="symbol-group" aria-labelledby="ui-symbols-title">
+          <div class="symbol-group-head">
+            <h3 id="ui-symbols-title">UI actions</h3>
+            <span class="symbol-count">12 / stroke 1.5</span>
+          </div>
+          <div class="symbol-grid">
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#i-close"></use></svg><span>close</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#i-menu"></use></svg><span>menu</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#i-chevron"></use></svg><span>chevron</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#i-save"></use></svg><span>save</span></div>
+            <div class="symbol-item accent"><svg aria-hidden="true"><use href="#i-target"></use></svg><span>target</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#i-play"></use></svg><span>play</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#i-pause"></use></svg><span>pause</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#i-expand"></use></svg><span>expand</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#i-filter"></use></svg><span>filter</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#i-info"></use></svg><span>info</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#i-undo"></use></svg><span>undo</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#i-dock"></use></svg><span>dock</span></div>
+          </div>
+        </section>
+
+        <section class="symbol-group" aria-labelledby="world-symbols-title">
+          <div class="symbol-group-head">
+            <h3 id="world-symbols-title">World markers</h3>
+            <span class="symbol-count">15 / entity · direction · orbit · prediction · hazard</span>
+          </div>
+          <div class="symbol-grid">
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#m-ship"></use></svg><span>ship</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#m-body"></use></svg><span>body</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#m-ghost"></use></svg><span>ghost</span></div>
+            <div class="symbol-item accent"><svg aria-hidden="true"><use href="#m-ammo"></use></svg><span>ammo</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#m-prograde"></use></svg><span>prograde</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#m-retrograde"></use></svg><span>retrograde</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#m-radial"></use></svg><span>radial</span></div>
+            <div class="symbol-item accent"><svg aria-hidden="true"><use href="#m-target"></use></svg><span>target</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#m-ascending"></use></svg><span>ascending</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#m-descending"></use></svg><span>descending</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#m-apsis"></use></svg><span>apsis</span></div>
+            <div class="symbol-item accent"><svg aria-hidden="true"><use href="#m-maneuver"></use></svg><span>maneuver</span></div>
+            <div class="symbol-item accent"><svg aria-hidden="true"><use href="#m-burn"></use></svg><span>burn</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#m-impact"></use></svg><span>impact</span></div>
+            <div class="symbol-item"><svg aria-hidden="true"><use href="#m-preview"></use></svg><span>preview</span></div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="section page-shell" id="tokens" aria-labelledby="tokens-title">
+      <div class="section-head">
+        <div>
+          <p class="section-index">07 / TOKENS &amp; HANDOFF</p>
+          <h2 class="section-title" id="tokens-title">One page,<br>one source<span class="ornament">JSON</span></h2>
+        </div>
+        <p class="section-lead">画面と機械可読manifestを同じHTMLへ置く。色調整後はCopy CSSの出力を正本へ固定し、Google Fontsを自己配信WOFF2へ置換する。</p>
+      </div>
+
+      <div class="token-layout">
+        <div class="pattern-stack">
+          <section class="surface-solid token-panel" aria-labelledby="palette-title">
+            <div class="window-heading">
+              <div>
+                <h3 id="palette-title">Core palette</h3>
+                <p>Accent以外はニュートラル系列で固定。</p>
+              </div>
+            </div>
+            <div class="swatch-stack">
+              <div class="swatch"><span class="swatch-color" style="--swatch-color: var(--page)"></span><strong>Page</strong><code>#07080A</code></div>
+              <div class="swatch"><span class="swatch-color" style="--swatch-color: var(--surface-1)"></span><strong>Surface 1</strong><code>#101217</code></div>
+              <div class="swatch"><span class="swatch-color" style="--swatch-color: var(--ink-title)"></span><strong>Title</strong><code>#EEEAF5</code></div>
+              <div class="swatch"><span class="swatch-color" style="--swatch-color: var(--ink-body)"></span><strong>Body</strong><code>#C3BEC9</code></div>
+              <div class="swatch"><span class="swatch-color" style="--swatch-color: var(--ink-muted)"></span><strong>Muted</strong><code>#89838F</code></div>
+              <div class="swatch"><span class="swatch-color" style="--swatch-color: var(--accent)"></span><strong>Accent / live</strong><code id="palette-accent-hex">#FF4B1F</code></div>
+            </div>
+          </section>
+
+          <section class="surface-solid token-panel" aria-labelledby="license-title">
+            <div class="window-heading">
+              <div>
+                <h3 id="license-title">Embeddable font set</h3>
+                <p>本番はWOFF2とOFL本文を自己配信する。</p>
+              </div>
+            </div>
+            <div class="license-list">
+              <div class="license-row"><span>Arimo Variable</span><code>OFL-1.1</code></div>
+              <div class="license-row"><span>Zen Kaku Gothic Antique</span><code>OFL-1.1</code></div>
+              <div class="license-row"><span>Cormorant Garamond</span><code>OFL-1.1</code></div>
+              <div class="license-row"><span>Zen Old Mincho</span><code>OFL-1.1</code></div>
+              <div class="license-row"><span>IBM Plex Mono</span><code>OFL-1.1</code></div>
+            </div>
+          </section>
+        </div>
+
+        <section class="code-region" aria-labelledby="css-token-title">
+          <div class="code-heading">
+            <span id="css-token-title">CSS token excerpt</span>
+            <span>live initial values</span>
+          </div>
+          <pre>:root {
+  --font-ui:
+    "Arimo", "Zen Kaku Gothic Antique", sans-serif;
+  --font-editorial:
+    "Cormorant Garamond", "Zen Old Mincho", serif;
+  --font-console:
+    "IBM Plex Mono", "Zen Kaku Gothic Antique", monospace;
+
+  --page: #07080a;
+  --surface-1: #101217;
+  --surface-2: #181b21;
+  --ink-title: #eeeaf5;
+  --ink-body: #c3bec9;
+  --ink-muted: #89838f;
+
+  --accent-h: 12;
+  --accent-s: 100%;
+  --accent-l: 56%;
+  --accent-light-l: 40%;
+  --accent: hsl(12 100% 56%);           /* #FF4B1F */
+  --accent-on-light: hsl(12 100% 40%);  /* #CC2900 */
+
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 10px;
+  --space-4: 14px;
+  --space-5: 20px;
+  --space-6: 28px;
+  --space-7: 42px;
+
+  --radius-control: 14px;
+  --radius-card: 22px;
+  --radius-window: 34px;
+  --radius-feature: 48px;
+}
+
+.window-glass {
+  background: rgb(13 15 19 / 0.58);
+  border-radius: var(--radius-window);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 0.3);
+  backdrop-filter: blur(24px) saturate(115%);
+}
+
+.adaptive-title {
+  color: #fff;
+  mix-blend-mode: difference;
+}</pre>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="page-shell footer-inner">
+      <span>Dive into Tepui / UI Design System Reference / Rebuilt V3</span>
+      <span>Machine-readable source: #design-system-manifest</span>
+    </div>
+  </footer>
+
+  <script type="application/json" id="design-system-manifest">
+  {
+    "name": "Dive into Tepui UI Design System",
+    "version": "3.0.0-rebuilt",
+    "status": "proposal",
+    "foundation": "TYPOGRAPHY_LOGOTYPE_SYMBOL_PROPOSAL_V2.md",
+    "principles": [
+      "scene-first-interface-quiet",
+      "one-accent-many-neutrals",
+      "shape-by-type-not-boxes",
+      "boundary-without-outline"
+    ],
+    "fonts": {
+      "neutral": {
+        "latin": "Arimo",
+        "japanese": "Zen Kaku Gothic Antique",
+        "license": "SIL OFL 1.1"
+      },
+      "editorial": {
+        "latin": "Cormorant Garamond",
+        "japanese": "Zen Old Mincho",
+        "license": "SIL OFL 1.1"
+      },
+      "console": {
+        "latin": "IBM Plex Mono",
+        "japaneseFallback": "Zen Kaku Gothic Antique",
+        "license": "SIL OFL 1.1"
+      }
+    },
+    "accentTuner": {
+      "hue": {"min": 0, "max": 35, "default": 12},
+      "saturation": {"min": 60, "max": 100, "default": 100},
+      "darkLightness": {"min": 40, "max": 70, "default": 56},
+      "lightLightness": {"min": 24, "max": 50, "default": 40},
+      "defaultDarkHex": "#FF4B1F",
+      "defaultLightHex": "#CC2900"
+    },
+    "spacingPx": [4, 6, 10, 14, 20, 28, 42],
+    "radiusPx": {
+      "control": 14,
+      "card": 22,
+      "window": 34,
+      "feature": 48,
+      "pill": 999
+    },
+    "surfaces": {
+      "windowOutline": "none",
+      "solidBoundary": "tone-difference",
+      "glassBoundary": "backdrop-blur-plus-soft-shadow",
+      "glassBlurPx": 24,
+      "frostBlurPx": 30
+    },
+    "display": {
+      "titleBlend": "difference-white",
+      "subtitleBlend": "difference-accent",
+      "subtitleStyle": "version-2-editorial-serif",
+      "ornaments": ["∴", "⟡", "⌁", "Ω", "Δ", "μ", "Σ", "⁺", "⁻", "₀", "₁", "₂", "₃"]
+    },
+    "generativeBackground": {
+      "renderer": "low-resolution-canvas-2d",
+      "layers": ["gradient-bodies", "capsules", "orbits", "particles", "pixel-noise", "blur"],
+      "reducedMotion": "single-static-frame",
+      "hiddenPage": "pause-animation"
+    },
+    "symbols": {
+      "grid": "24x24",
+      "stroke": 1.5,
+      "uiCount": 12,
+      "worldCount": 15,
+      "total": 27
+    }
+  }
+  </script>
+
+  <script>
+    (function () {
+      "use strict";
+
+      const DEFAULT_THEME = {
+        hue: 12,
+        saturation: 100,
+        darkLightness: 56,
+        lightLightness: 40
+      };
+
+      const themeState = {...DEFAULT_THEME};
+      const root = document.documentElement;
+      const hueInput = document.getElementById("accent-hue");
+      const saturationInput = document.getElementById("accent-saturation");
+      const darkLightnessInput = document.getElementById("accent-dark-lightness");
+      const lightLightnessInput = document.getElementById("accent-light-lightness");
+      const hueOutput = document.getElementById("accent-hue-output");
+      const saturationOutput = document.getElementById("accent-saturation-output");
+      const darkLightnessOutput = document.getElementById("accent-dark-lightness-output");
+      const lightLightnessOutput = document.getElementById("accent-light-lightness-output");
+      const darkHexOutput = document.getElementById("accent-dark-hex");
+      const lightHexOutput = document.getElementById("accent-light-hex");
+      const darkContrastOutput = document.getElementById("accent-dark-contrast");
+      const lightContrastOutput = document.getElementById("accent-light-contrast");
+      const paletteAccentOutput = document.getElementById("palette-accent-hex");
+      const copyStatus = document.getElementById("copy-status");
+      const copyButton = document.getElementById("copy-theme");
+      const resetButton = document.getElementById("reset-theme");
+
+      function hslToRgb(hue, saturation, lightness) {
+        const normalizedSaturation = saturation / 100;
+        const normalizedLightness = lightness / 100;
+        const chroma = (1 - Math.abs(2 * normalizedLightness - 1)) * normalizedSaturation;
+        const sector = ((hue % 360) + 360) % 360 / 60;
+        const secondComponent = chroma * (1 - Math.abs(sector % 2 - 1));
+        let redPrime = 0;
+        let greenPrime = 0;
+        let bluePrime = 0;
+
+        if (sector < 1) {
+          redPrime = chroma;
+          greenPrime = secondComponent;
+        } else if (sector < 2) {
+          redPrime = secondComponent;
+          greenPrime = chroma;
+        } else if (sector < 3) {
+          greenPrime = chroma;
+          bluePrime = secondComponent;
+        } else if (sector < 4) {
+          greenPrime = secondComponent;
+          bluePrime = chroma;
+        } else if (sector < 5) {
+          redPrime = secondComponent;
+          bluePrime = chroma;
+        } else {
+          redPrime = chroma;
+          bluePrime = secondComponent;
+        }
+
+        const match = normalizedLightness - chroma / 2;
+        return [
+          Math.round((redPrime + match) * 255),
+          Math.round((greenPrime + match) * 255),
+          Math.round((bluePrime + match) * 255)
+        ];
+      }
+
+      function componentToHex(component) {
+        return component.toString(16).padStart(2, "0").toUpperCase();
+      }
+
+      function hslToHex(hue, saturation, lightness) {
+        const [red, green, blue] = hslToRgb(hue, saturation, lightness);
+        return "#" + componentToHex(red) + componentToHex(green) + componentToHex(blue);
+      }
+
+      function channelLuminance(channel) {
+        const normalizedChannel = channel / 255;
+        if (normalizedChannel <= 0.04045) {
+          return normalizedChannel / 12.92;
+        }
+        return Math.pow((normalizedChannel + 0.055) / 1.055, 2.4);
+      }
+
+      function relativeLuminance(red, green, blue) {
+        return 0.2126 * channelLuminance(red)
+          + 0.7152 * channelLuminance(green)
+          + 0.0722 * channelLuminance(blue);
+      }
+
+      function computeContrast(foregroundRgb, backgroundRgb) {
+        const foregroundLuminance = relativeLuminance(...foregroundRgb);
+        const backgroundLuminance = relativeLuminance(...backgroundRgb);
+        const lighter = Math.max(foregroundLuminance, backgroundLuminance);
+        const darker = Math.min(foregroundLuminance, backgroundLuminance);
+        return (lighter + 0.05) / (darker + 0.05);
+      }
+
+      function setRangeGradient(input, percentage, startColor, endColor) {
+        input.style.background = "linear-gradient(90deg, "
+          + startColor + " 0%, " + endColor + " " + percentage
+          + "%, rgb(255 255 255 / 0.16) " + percentage + "%)";
+      }
+
+      function syncThemeControls() {
+        hueInput.value = String(themeState.hue);
+        saturationInput.value = String(themeState.saturation);
+        darkLightnessInput.value = String(themeState.darkLightness);
+        lightLightnessInput.value = String(themeState.lightLightness);
+
+        hueOutput.value = themeState.hue + "°";
+        saturationOutput.value = themeState.saturation + "%";
+        darkLightnessOutput.value = themeState.darkLightness + "%";
+        lightLightnessOutput.value = themeState.lightLightness + "%";
+
+        const darkRgb = hslToRgb(themeState.hue, themeState.saturation, themeState.darkLightness);
+        const lightRgb = hslToRgb(themeState.hue, themeState.saturation, themeState.lightLightness);
+        const darkHex = hslToHex(themeState.hue, themeState.saturation, themeState.darkLightness);
+        const lightHex = hslToHex(themeState.hue, themeState.saturation, themeState.lightLightness);
+        const darkContrast = computeContrast(darkRgb, [7, 8, 10]);
+        const lightContrast = computeContrast(lightRgb, [240, 238, 233]);
+
+        root.style.setProperty("--accent-h", String(themeState.hue));
+        root.style.setProperty("--accent-s", themeState.saturation + "%");
+        root.style.setProperty("--accent-l", themeState.darkLightness + "%");
+        root.style.setProperty("--accent-light-l", themeState.lightLightness + "%");
+
+        darkHexOutput.textContent = darkHex;
+        lightHexOutput.textContent = lightHex;
+        paletteAccentOutput.textContent = darkHex;
+        darkContrastOutput.textContent = "Contrast " + darkContrast.toFixed(2) + ":1"
+          + (darkContrast >= 4.5 ? " / AA" : " / large type");
+        lightContrastOutput.textContent = "Contrast " + lightContrast.toFixed(2) + ":1"
+          + (lightContrast >= 4.5 ? " / AA" : " / large type");
+
+        setRangeGradient(hueInput, (themeState.hue / 35) * 100, "#ff213f", "#ff7b00");
+        setRangeGradient(saturationInput, ((themeState.saturation - 60) / 40) * 100, "#9a6257", darkHex);
+        setRangeGradient(darkLightnessInput, ((themeState.darkLightness - 40) / 30) * 100, "#5b1605", darkHex);
+        setRangeGradient(lightLightnessInput, ((themeState.lightLightness - 24) / 26) * 100, "#551400", lightHex);
+      }
+
+      function readThemeControls() {
+        themeState.hue = Number(hueInput.value);
+        themeState.saturation = Number(saturationInput.value);
+        themeState.darkLightness = Number(darkLightnessInput.value);
+        themeState.lightLightness = Number(lightLightnessInput.value);
+        syncThemeControls();
+        copyStatus.textContent = "Live preview updated. Copy CSS when the color is final.";
+      }
+
+      async function copyThemeCss() {
+        const darkHex = hslToHex(themeState.hue, themeState.saturation, themeState.darkLightness);
+        const lightHex = hslToHex(themeState.hue, themeState.saturation, themeState.lightLightness);
+        const cssText = "--accent: " + darkHex + ";\n--accent-on-light: " + lightHex + ";\n"
+          + "--accent-h: " + themeState.hue + ";\n"
+          + "--accent-s: " + themeState.saturation + "%;\n"
+          + "--accent-l: " + themeState.darkLightness + "%;\n"
+          + "--accent-light-l: " + themeState.lightLightness + "%;";
+
+        try {
+          await navigator.clipboard.writeText(cssText);
+          copyStatus.textContent = "Copied: " + darkHex + " / " + lightHex;
+        } catch (_error) {
+          const fallbackInput = document.createElement("textarea");
+          fallbackInput.value = cssText;
+          fallbackInput.setAttribute("readonly", "");
+          fallbackInput.style.position = "fixed";
+          fallbackInput.style.opacity = "0";
+          document.body.appendChild(fallbackInput);
+          fallbackInput.select();
+          document.execCommand("copy");
+          fallbackInput.remove();
+          copyStatus.textContent = "Copied: " + darkHex + " / " + lightHex;
+        }
+      }
+
+      function resetTheme() {
+        Object.assign(themeState, DEFAULT_THEME);
+        syncThemeControls();
+        copyStatus.textContent = "Reset: #FF4B1F / #CC2900";
+      }
+
+      [hueInput, saturationInput, darkLightnessInput, lightLightnessInput].forEach(function (input) {
+        input.addEventListener("input", readThemeControls);
+      });
+      copyButton.addEventListener("click", copyThemeCss);
+      resetButton.addEventListener("click", resetTheme);
+      syncThemeControls();
+
+      const canvas = document.getElementById("generative-canvas");
+      const context = canvas.getContext("2d");
+      const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+      const particles = [];
+      let animationFrameId = 0;
+      let sceneWidth = 0;
+      let sceneHeight = 0;
+      let seed = 17431;
+
+      function random() {
+        seed = seed * 1664525 + 1013904223 >>> 0;
+        return seed / 4294967296;
+      }
+
+      for (let i = 0; i < 54; i += 1) {
+        particles.push({
+          x: random(),
+          y: random(),
+          radius: 0.6 + random() * 2.2,
+          phase: random() * Math.PI * 2,
+          speed: 0.08 + random() * 0.2,
+          depth: 0.25 + random() * 0.75
+        });
+      }
+
+      function resizeGenerativeCanvas() {
+        const bounds = canvas.getBoundingClientRect();
+        const pixelScale = 0.22;
+        sceneWidth = Math.max(120, Math.ceil(bounds.width * pixelScale));
+        sceneHeight = Math.max(100, Math.ceil(bounds.height * pixelScale));
+        canvas.width = sceneWidth;
+        canvas.height = sceneHeight;
+        renderGenerativeScene(0);
+      }
+
+      function drawBlob(x, y, radius, hueOffset, alpha) {
+        const gradient = context.createRadialGradient(
+          x - radius * 0.28,
+          y - radius * 0.32,
+          radius * 0.05,
+          x,
+          y,
+          radius
+        );
+        gradient.addColorStop(
+          0,
+          "hsla(" + (themeState.hue + hueOffset) + ", "
+            + Math.max(45, themeState.saturation - 8) + "%, 70%, " + alpha + ")"
+        );
+        gradient.addColorStop(
+          0.34,
+          "hsla(" + themeState.hue + ", "
+            + Math.max(50, themeState.saturation - 18) + "%, 42%, " + alpha * 0.72 + ")"
+        );
+        gradient.addColorStop(1, "rgba(4, 5, 8, 0)");
+        context.fillStyle = gradient;
+        context.beginPath();
+        context.arc(x, y, radius, 0, Math.PI * 2);
+        context.fill();
+      }
+
+      function drawCapsule(x, y, length, width, angle, alpha) {
+        context.save();
+        context.translate(x, y);
+        context.rotate(angle);
+        const gradient = context.createLinearGradient(-length / 2, 0, length / 2, 0);
+        gradient.addColorStop(0, "rgba(238, 234, 245, 0)");
+        gradient.addColorStop(0.4, "rgba(238, 234, 245, " + alpha + ")");
+        gradient.addColorStop(0.62, "hsla(" + themeState.hue + ", "
+          + themeState.saturation + "%, " + themeState.darkLightness + "%, " + alpha * 0.82 + ")");
+        gradient.addColorStop(1, "rgba(238, 234, 245, 0)");
+        context.fillStyle = gradient;
+        context.beginPath();
+        context.roundRect(-length / 2, -width / 2, length, width, width / 2);
+        context.fill();
+        context.restore();
+      }
+
+      function renderGenerativeScene(timestamp) {
+        if (!context) {
+          return;
+        }
+
+        const time = reducedMotionQuery.matches ? 0 : timestamp / 1000;
+        const background = context.createLinearGradient(0, 0, sceneWidth, sceneHeight);
+        background.addColorStop(0, "#050609");
+        background.addColorStop(0.54, "#11141a");
+        background.addColorStop(1, "#06070a");
+        context.fillStyle = background;
+        context.fillRect(0, 0, sceneWidth, sceneHeight);
+
+        drawBlob(
+          sceneWidth * (0.74 + Math.sin(time * 0.13) * 0.05),
+          sceneHeight * (0.3 + Math.cos(time * 0.11) * 0.05),
+          Math.min(sceneWidth, sceneHeight) * 0.42,
+          -4,
+          0.88
+        );
+        drawBlob(
+          sceneWidth * (0.42 + Math.cos(time * 0.09) * 0.06),
+          sceneHeight * (0.75 + Math.sin(time * 0.12) * 0.04),
+          Math.min(sceneWidth, sceneHeight) * 0.26,
+          12,
+          0.46
+        );
+
+        drawCapsule(
+          sceneWidth * 0.7,
+          sceneHeight * 0.57,
+          sceneWidth * 0.42,
+          Math.max(8, sceneHeight * 0.08),
+          -0.36 + Math.sin(time * 0.15) * 0.08,
+          0.48
+        );
+        drawCapsule(
+          sceneWidth * 0.34,
+          sceneHeight * 0.3,
+          sceneWidth * 0.28,
+          Math.max(6, sceneHeight * 0.045),
+          0.58 + Math.cos(time * 0.12) * 0.06,
+          0.26
+        );
+
+        context.save();
+        context.translate(sceneWidth * 0.67, sceneHeight * 0.48);
+        context.rotate(-0.28 + time * 0.012);
+        context.strokeStyle = "hsla(" + themeState.hue + ", "
+          + themeState.saturation + "%, " + themeState.darkLightness + "%, 0.46)";
+        context.lineWidth = Math.max(0.7, sceneWidth / 700);
+        context.beginPath();
+        context.ellipse(0, 0, sceneWidth * 0.3, sceneHeight * 0.18, 0, 0, Math.PI * 2);
+        context.stroke();
+        context.restore();
+
+        particles.forEach(function (particle) {
+          const drift = time * particle.speed;
+          const x = (particle.x * sceneWidth + drift * sceneWidth * 0.035 * particle.depth) % sceneWidth;
+          const y = particle.y * sceneHeight + Math.sin(drift + particle.phase) * sceneHeight * 0.035;
+          const alpha = 0.12 + particle.depth * 0.42;
+          context.fillStyle = particle.depth > 0.68
+            ? "hsla(" + themeState.hue + ", " + themeState.saturation + "%, "
+              + themeState.darkLightness + "%, " + alpha + ")"
+            : "rgba(238, 234, 245, " + alpha + ")";
+          context.fillRect(x, y, particle.radius, particle.radius);
+        });
+
+        for (let i = 0; i < 90; i += 1) {
+          const x = (i * 97 + Math.floor(time * 3) * 31) % sceneWidth;
+          const y = (i * 53 + Math.floor(time * 2) * 17) % sceneHeight;
+          const noiseAlpha = 0.018 + (i % 5) * 0.008;
+          context.fillStyle = "rgba(255, 255, 255, " + noiseAlpha + ")";
+          context.fillRect(x, y, 1 + i % 3, 1 + (i * 2) % 3);
+        }
+      }
+
+      function animateGenerativeScene(timestamp) {
+        renderGenerativeScene(timestamp);
+        if (!reducedMotionQuery.matches && !document.hidden) {
+          animationFrameId = window.requestAnimationFrame(animateGenerativeScene);
+        }
+      }
+
+      function startGenerativeScene() {
+        window.cancelAnimationFrame(animationFrameId);
+        if (reducedMotionQuery.matches) {
+          renderGenerativeScene(0);
+          return;
+        }
+        animationFrameId = window.requestAnimationFrame(animateGenerativeScene);
+      }
+
+      document.addEventListener("visibilitychange", function () {
+        if (document.hidden) {
+          window.cancelAnimationFrame(animationFrameId);
+        } else {
+          startGenerativeScene();
+        }
+      });
+
+      reducedMotionQuery.addEventListener("change", startGenerativeScene);
+      const canvasResizeObserver = new ResizeObserver(resizeGenerativeCanvas);
+      canvasResizeObserver.observe(canvas);
+      resizeGenerativeCanvas();
+      startGenerativeScene();
+    }());
+  </script>
+</body>
+</html>

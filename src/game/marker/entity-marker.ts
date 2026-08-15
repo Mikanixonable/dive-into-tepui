@@ -9,6 +9,9 @@ import { DIRECTION_GLYPH, ENTITY_GLYPH } from './marker-glyphs';
 import type { ProjectFn, ScaleFn } from '../camera/camera-system';
 import type { MapVisibility } from '../celestial/map-visibility';
 import type { GameEntity } from '../game-entity/game-entity';
+import * as C from '../const';
+import { isOccluded } from '../../physics/occlusion';
+import type { Attractor } from '../../physics/attractor';
 
 // 画面外方位矢印の不透明度。実位置マーカーより控えめに出す。
 const BEARING_OPACITY = 0.9;
@@ -35,7 +38,7 @@ export class EntityMarker {
   // 隠す。viewerPos があればラベルにそこからの距離を添える。
   sync(
     project: ProjectFn, scale: ScaleFn, displayTime: number, overviewMode: boolean,
-    viewerPos: Vec3 | null, visibility: MapVisibility | null,
+    cameraPos: Vec3, viewerPos: Vec3 | null, attractors: readonly Attractor[], visibility: MapVisibility | null,
   ): void {
     const state = this.owner.alive ? this.owner.displayState(displayTime) : null;
     if (!state || (visibility && !visibility.pickable)) {
@@ -49,11 +52,22 @@ export class EntityMarker {
     const shownLabel = visibility?.label === false ? '' : label;
     const p = project(state.r);
     if (overviewMode) {
+      const occluded = isOccluded(cameraPos, state.r, attractors);
+      const distance = viewerPos === null ? Infinity : len(sub(state.r, viewerPos));
+      const mapOpacity = this.className === 'mk-ammo'
+        ? Math.max(0, Math.min(1, (C.MAP_AMMO_FADE_END - distance)
+          / (C.MAP_AMMO_FADE_END - C.MAP_AMMO_FADE_START)))
+        : 1;
+      if (mapOpacity <= 0) {
+        this.hide();
+        return;
+      }
       this.markerManager.set(
         this.key, this.className, visibility?.icon === false ? '' : ENTITY_GLYPH.ship,
-        p.x, p.y, p.front, shownLabel, 1, undefined,
+        p.x, p.y, p.front, shownLabel, mapOpacity, undefined,
         this.markerManager.headingRotationDeg(state.r, state.v, project, scale),
       );
+      if (occluded) this.markerManager.fadeOut(this.key);
       this.markerManager.hide(this.bearingKey);
       return;
     }
