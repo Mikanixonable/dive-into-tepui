@@ -256,8 +256,8 @@
 
 ## 8. 戦闘 BGM
 
-- WebAudio 合成によるループ BGM(アセット不要)。再生制御は `src/audio/bgm/bgm.ts`、音を作るアルゴリズムは `src/audio/bgm/phasing-composer.ts`(共通の口は `bgm/composer.ts`、トラックの kind から実装を選ぶのは `bgm/create-composer.ts`)、その値は `src/audio/bgm/bgm-tracks.ts`。
-- スティーブ・ライヒ風のアンビエント・ミニマル。旋法的な音集合を、長さの互いに素な 2 つのパルス・パターンで反復してフェイジングさせ、四度堆積のパッドと低いドローンを重ねる(sine/triangle のみ、打楽器なし)。作曲データは `bgm/bgm-tracks.ts` に複数トラックあり、約 5 分ごとに次のトラックへ切り替わる。
+- WebAudio 合成によるループ BGM(アセット不要)。再生制御は `src/audio/bgm/bgm.ts`、音を作るアルゴリズムは `src/audio/bgm/composers/phasing-composer.ts`(共通の口は `bgm/composer.ts`、トラックの kind から実装を選ぶのは `bgm/composer-factory.ts`)、その値は `src/audio/bgm/tracks/tracks.ts`。
+- スティーブ・ライヒ風のアンビエント・ミニマル。旋法的な音集合を、長さの互いに素な 2 つのパルス・パターンで反復してフェイジングさせ、四度堆積のパッドと低いドローンを重ねる(sine/triangle のみ、打楽器なし)。作曲データは `bgm/tracks/tracks.ts` に複数トラックあり、約 5 分ごとに次のトラックへ切り替わる。
 - 初回ユーザー操作(オーディオ unlock)で 4 秒フェードイン、勝敗確定でフェードアウト。効果音を邪魔しない音量に設定。
 - 設定ビューの BGM 欄で音量調整と各トラックの試聴ができる。試聴中は選んだ曲が鳴り続け、通常再生の曲送り(約5分)は適用されない。試聴の停止中は無音で、設定ビューを閉じるとき「開いた時点で流れていたのに今は止まっている」場合だけ通常再生を再開する(勝敗確定後などもともと止まっていた BGM は勝手に再開しない)。試聴を流したまま閉じた場合は、その曲がそのまま BGM として流れ続ける。
 

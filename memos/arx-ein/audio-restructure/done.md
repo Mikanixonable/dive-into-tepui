@@ -124,7 +124,7 @@ the approximation that converts a scale-step transposition into a frequency rati
 pad/drone layers, which are given in Hz and so cannot transpose by index.
 
 **Verified sound-identical, not assumed.** A throwaway harness transpiled both the `HEAD` and
-working-tree versions of `bgm.ts` + `bgm-tracks.ts`, stubbed `toneAt` as a recorder, and ran
+working-tree versions of `bgm.ts` + `tracks/tracks.ts`, stubbed `toneAt` as a recorder, and ran
 3072 steps (two full 1536-step super-cycles) for every track:
 
 > 54,240 scheduled notes compared across 5 tracks — frequency, time, duration, volume,
@@ -135,7 +135,7 @@ That is the property this commit is supposed to have: it is a mechanism change, 
 different yet. Actually differentiating the tracks is a follow-up data edit — deliberately
 kept out of this commit so the refactor could be proven inert.
 
-`bgm-tracks.ts` grew 106 → 362 lines. That is the cost of each track being self-describing,
+`tracks/tracks.ts` grew 106 → 362 lines. That is the cost of each track being self-describing,
 and it is a data file rather than a logic module, so the project's 200-line module standard
 does not apply the way it does to `game.ts`.
 
@@ -154,7 +154,7 @@ Three files now:
 | --- | --- |
 | `bgm.ts` | playback control: volume + persistence, fade in/out, track rotation, the lookahead pump, and turning a note into WebAudio nodes (`playNote`) |
 | `composer.ts` | the `Composer` seam: `stepDurSec` + `notesAt(step): readonly ComposerNote[]` |
-| `phasing-composer.ts` | `PhasingComposer` — the Reich-style algorithm, the only one so far |
+| `composers/phasing-composer.ts` | `PhasingComposer` — the Reich-style algorithm, the only one so far |
 
 **The seam is deliberately WebAudio-free.** A `ComposerNote` carries its onset as
 `offsetSec` *relative to the step*, not an absolute `AudioContext` time, so a composer never
@@ -185,7 +185,7 @@ Two housekeeping changes arx-ein asked for.
 
 **Folders.** `src/audio/` was seven flat files. It is now `audio-engine.ts` at the root plus
 `bgm/` and `sfx/`, matching the shape `src/game/` uses (shared thing at the root, concerns in
-subfolders). The engine stays at the root because both folders build on it. `bgm-tracks.ts`
+subfolders). The engine stays at the root because both folders build on it. `tracks/tracks.ts`
 keeps its prefix inside `bgm/` — it is named after its exports (`BgmTrack`, `BGM_TRACKS`), the
 same way `plan/plan-path.ts` is.
 
@@ -217,16 +217,16 @@ export type BgmTrack =
 which kind it is?* (`SettingsView` reads it for the preview list; nothing outside the factory
 reads `params`). Today's schema became `PhasingParams`, unchanged apart from losing `name`.
 
-**`bgm/create-composer.ts` is the single place the union is switched on**, in its own file
+**`bgm/composer-factory.ts` is the single place the union is switched on**, in its own file
 because it must import every implementation while the implementations import the seam —
 putting it in `composer.ts` would be an import cycle. Its `default` branch assigns to `never`;
 this was checked by temporarily adding a `'canon'` kind, which failed compilation at exactly
 that line, then reverting.
 
-**`bgm/sketch-composer.ts` is the blank slate** — implements `Composer`, returns no notes, and
+**`bgm/composers/sketch-composer.ts` is the blank slate** — implements `Composer`, returns no notes, and
 has **no `BGM_TRACKS` entry**, so rotation can never land on silence. The music is arx-ein's to
 design; when `notesAt` returns something, add a track for it. If it wants scale-index-to-Hz
-conversion, `phasing-composer.ts`'s `scaleFreq` is already in a shape that can be lifted into a
+conversion, `composers/phasing-composer.ts`'s `scaleFreq` is already in a shape that can be lifted into a
 shared module — deliberately not done in advance, since which helpers the second algorithm
 actually wants is unknown until it exists.
 
@@ -284,6 +284,37 @@ is sounding — and it is not two playback modules, which was the first idea flo
 Checked with a fake `AudioContext` over 700 simulated seconds, `Math.random` pinned: preview
 stays on `[0]`; ambient rotates `[2,1,2]`; and stopping a preview then resuming rotates again
 `[0,2,1]`, so opting out does not leak into normal playback.
+
+---
+
+## 10. bgm/ sub-foldered, tracks split from their types
+
+Layout arx-ein asked for. `bgm/` root now holds only the four modules that are one-of-a-kind
+— `bgm.ts` (conductor), `track-playback.ts` (one sounding piece), `composer.ts` (the seam),
+`composer-factory.ts` (kind -> implementation) — with the two growing sets in their own
+folders: `composers/` for the algorithms and `tracks/` for the data.
+
+`bgm-tracks.ts` split into `tracks/types.ts` (the `BgmTrack` union first, then one
+comment-fenced section per composer's params) and `tracks/tracks.ts` (`BGM_TRACKS` itself).
+`create-composer.ts` became `composer-factory.ts` so it does not read as one more
+`*-composer.ts` implementation.
+
+**Why the fenced schema file rather than each composer owning its params**: the params are
+what a *track author* reads, and a track author wants one file listing every shape a track can
+take. The composer implementer is the other audience, and they already have the fence to work
+within. Colocation is the plausible alternative if `types.ts` ever gets unwieldy — composers
+would export their own params and `types.ts` would import them to form the union, which stays
+cycle-free because composers do not import the union.
+
+Dependency direction after the move, all one-way:
+`tracks/types.ts` (imports nothing) <- `tracks/tracks.ts`, `composers/*`, `composer-factory.ts`;
+`composer.ts` (imports nothing) <- `composers/*`, `track-playback.ts`, `composer-factory.ts`.
+
+All three harnesses re-run. Note that `compare-playback.mjs` had to switch from `playTrack(0)`
+to `autoStart()`: the preview no longer rotates by design, so driving the preview path made the
+old and new diverge legitimately at the 300 s mark. It now compares the ambient path and again
+reports every scheduled note identical across a rotation. Their shared module loading moved
+into a `load-bgm.mjs` helper, so the next move only needs one file updated.
 
 ---
 

@@ -1,9 +1,9 @@
 // トラックの kind と Composer の実装を結びつける唯一の場所。ここに分岐が集まっているので、
 // Composer を増やしても再生側(bgm.ts)は変わらない。
-import { BgmTrack } from './bgm-tracks';
+import { BgmTrack } from './tracks/types';
 import { Composer } from './composer';
-import { PhasingComposer } from './phasing-composer';
-import { SketchComposer } from './sketch-composer';
+import { PhasingComposer } from './composers/phasing-composer';
+import { SketchComposer } from './composers/sketch-composer';
 
 // トラックの kind から、そのパラメータを消費する Composer を組む。
 // kind を増やしたらここへ分岐を足す — 足し忘れは default の never 代入がコンパイルエラーにする。

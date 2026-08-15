@@ -3,8 +3,8 @@
 // 1曲ぶんの発音そのものは TrackPlayback、どんな音を作るかは Composer の責務。
 // ゲインは2層: マスター(音量)と曲ごと(フェード)。混ぜると音量操作とフェードが同じ
 // AudioParam を奪い合うので、別々に保つ。
-import { BGM_TRACKS } from './bgm-tracks';
-import { createComposer } from './create-composer';
+import { BGM_TRACKS } from './tracks/tracks';
+import { createComposer } from './composer-factory';
 import { TrackPlayback } from './track-playback';
 import { AudioEngine } from '../audio-engine';
 
