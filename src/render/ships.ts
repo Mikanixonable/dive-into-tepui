@@ -1158,6 +1158,10 @@ export function buildBaseModel(): THREE.Group {
   }
 
   // 【コンテナ生成用ヘルパー】ISO規格リアル宇宙貨物コンテナ
+  const containerCornerMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, flatShading: true, roughness: 0.3, metalness: 0.8 });
+  const containerGrooveMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, flatShading: true, roughness: 0.6, metalness: 0.3 });
+  const containerBarMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, flatShading: true, roughness: 0.2, metalness: 0.9 });
+
   const buildContainer = (w: number, h: number, d: number, mat: THREE.Material, tagMat?: THREE.Material): THREE.Group => {
     const container = new THREE.Group();
     const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
@@ -1165,41 +1169,38 @@ export function buildBaseModel(): THREE.Group {
 
     const cSize = Math.min(w, h, d) * 0.16;
     const cornerGeo = new THREE.BoxGeometry(cSize, cSize, cSize);
-    const cornerMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, flatShading: true, roughness: 0.3, metalness: 0.8 });
     for (const sx of [-1, 1]) {
       for (const sy of [-1, 1]) {
         for (const sz of [-1, 1]) {
-          const corner = new THREE.Mesh(cornerGeo, cornerMat);
+          const corner = new THREE.Mesh(cornerGeo, containerCornerMat);
           corner.position.set(sx * (w / 2), sy * (h / 2), sz * (d / 2));
           container.add(corner);
         }
       }
     }
 
-    const grooveMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, flatShading: true, roughness: 0.6, metalness: 0.3 });
     const ribCount = Math.max(3, Math.floor(d / 1.6));
     for (let i = 0; i < ribCount; i++) {
       const zPos = -d / 2 + ((i + 0.5) * d) / ribCount;
       for (const sx of [-1, 1]) {
-        const rib = new THREE.Mesh(new THREE.BoxGeometry(0.12, h * 0.85, 0.45), grooveMat);
+        const rib = new THREE.Mesh(new THREE.BoxGeometry(0.12, h * 0.85, 0.45), containerGrooveMat);
         rib.position.set(sx * (w / 2 + 0.04), 0, zPos);
         container.add(rib);
       }
     }
 
     const doorZ = d / 2 + 0.05;
-    const doorSeam = new THREE.Mesh(new THREE.BoxGeometry(0.08, h * 0.88, 0.12), grooveMat);
+    const doorSeam = new THREE.Mesh(new THREE.BoxGeometry(0.08, h * 0.88, 0.12), containerGrooveMat);
     doorSeam.position.set(0, 0, doorZ);
     container.add(doorSeam);
 
     const barGeo = new THREE.CylinderGeometry(0.08, 0.08, h * 0.82, 6);
-    const barMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, flatShading: true, roughness: 0.2, metalness: 0.9 });
     for (const bx of [-w * 0.24, w * 0.24]) {
-      const lockBar = new THREE.Mesh(barGeo, barMat);
+      const lockBar = new THREE.Mesh(barGeo, containerBarMat);
       lockBar.position.set(bx, 0, doorZ);
       container.add(lockBar);
 
-      const handle = new THREE.Mesh(new THREE.BoxGeometry(w * 0.18, 0.08, 0.1), barMat);
+      const handle = new THREE.Mesh(new THREE.BoxGeometry(w * 0.18, 0.08, 0.1), containerBarMat);
       handle.position.set(bx + (bx > 0 ? -w * 0.08 : w * 0.08), -h * 0.15, doorZ + 0.04);
       container.add(handle);
     }
