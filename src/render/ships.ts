@@ -575,44 +575,97 @@ export function buildBaseModel(): THREE.Group {
     new THREE.MeshStandardMaterial({ color: 0xe2e8f0, flatShading: true, roughness: 0.25, metalness: 0.7 }),  // プラチナホワイトタンク
   ];
 
-  // 1) 2倍長連結主トラス部 (長径約170m, Z = -60m 〜 +110m)
+  // 1) 現状の倍の長さ (340m) & 鉄塔風・超高密度立体格子トラス構造 (Steel Transmission Tower Lattice)
   const trussRadius = 9;
-  const trussLength = 170;
+  const trussLength = 340;
   const trussCenterZ = 25;
+  const zMin = trussCenterZ - trussLength / 2; // -145m
+  const zMax = trussCenterZ + trussLength / 2; // +195m
+
+  // 主ビーム (縦方向コード 3本 + 内側面補強ストリンガー 3本)
   for (let i = 0; i < 3; i++) {
     const a = (i / 3) * Math.PI * 2;
-    const beam = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, trussLength, 6), redTrussMat);
-    beam.position.set(Math.cos(a) * trussRadius, Math.sin(a) * trussRadius, trussCenterZ);
+    const cosA = Math.cos(a);
+    const sinA = Math.sin(a);
+
+    // 主コードビーム
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, trussLength, 6), redTrussMat);
+    beam.position.set(cosA * trussRadius, sinA * trussRadius, trussCenterZ);
     beam.rotation.x = Math.PI / 2;
     g.add(beam);
 
-    // 【ディテール: 配管パイプライン】主ビームの外側に沿う燃料/冷却配管
-    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, trussLength + 2, 6), conduitMat);
-    pipe.position.set(Math.cos(a) * (trussRadius + 1.8), Math.sin(a) * (trussRadius + 1.8), trussCenterZ);
+    // 内側面補強ストリンガー
+    const innerBeam = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, trussLength, 6), redTrussMat);
+    innerBeam.position.set(cosA * (trussRadius * 0.5), sinA * (trussRadius * 0.5), trussCenterZ);
+    innerBeam.rotation.x = Math.PI / 2;
+    g.add(innerBeam);
+
+    // 沿う流体配管パイプライン
+    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, trussLength + 4, 6), conduitMat);
+    pipe.position.set(cosA * (trussRadius + 1.8), sinA * (trussRadius + 1.8), trussCenterZ);
     pipe.rotation.x = Math.PI / 2;
     g.add(pipe);
 
-    // 配管継手リング (15mおき)
-    for (let pz = -55; pz <= 105; pz += 15) {
+    // 配管フランジ継手リング (12mおき)
+    for (let pz = zMin; pz <= zMax; pz += 12) {
       const joint = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.48, 0.6, 8), conduitJointMat);
-      joint.position.set(Math.cos(a) * (trussRadius + 1.8), Math.sin(a) * (trussRadius + 1.8), pz);
+      joint.position.set(cosA * (trussRadius + 1.8), sinA * (trussRadius + 1.8), pz);
       joint.rotation.x = Math.PI / 2;
       g.add(joint);
     }
   }
-  // トラス斜材 (クロスブレース - 2倍長)
-  for (let z = -55; z <= 100; z += 10) {
+
+  // 鉄塔風・立体Xクロスラティス & 横方向バルクヘッドリング & 内部Kブレース
+  const stepZ = 10;
+  for (let z = zMin; z < zMax; z += stepZ) {
+    const zNext = z + stepZ;
+
     for (let i = 0; i < 3; i++) {
       const a1 = (i / 3) * Math.PI * 2;
       const a2 = (((i + 1) % 3) / 3) * Math.PI * 2;
+
       const p1 = new THREE.Vector3(Math.cos(a1) * trussRadius, Math.sin(a1) * trussRadius, z);
-      const p2 = new THREE.Vector3(Math.cos(a2) * trussRadius, Math.sin(a2) * trussRadius, z + 10);
-      const mid = p1.clone().add(p2).multiplyScalar(0.5);
-      const len = p1.distanceTo(p2);
-      const strut = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, len, 4), redTrussMat);
-      strut.position.copy(mid);
-      strut.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), p2.clone().sub(p1).normalize());
-      g.add(strut);
+      const p2 = new THREE.Vector3(Math.cos(a2) * trussRadius, Math.sin(a2) * trussRadius, z);
+      const p1Next = new THREE.Vector3(Math.cos(a1) * trussRadius, Math.sin(a1) * trussRadius, zNext);
+      const p2Next = new THREE.Vector3(Math.cos(a2) * trussRadius, Math.sin(a2) * trussRadius, zNext);
+
+      // 横方向リブ（バルクヘッド枠）
+      const hMid = p1.clone().add(p2).multiplyScalar(0.5);
+      const hLen = p1.distanceTo(p2);
+      const hStrut = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.65, hLen, 4), redTrussMat);
+      hStrut.position.copy(hMid);
+      hStrut.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), p2.clone().sub(p1).normalize());
+      g.add(hStrut);
+
+      // 斜めXブレース (対角線1: p1 -> p2Next)
+      const dMid1 = p1.clone().add(p2Next).multiplyScalar(0.5);
+      const dLen1 = p1.distanceTo(p2Next);
+      const dStrut1 = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, dLen1, 4), redTrussMat);
+      dStrut1.position.copy(dMid1);
+      dStrut1.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), p2Next.clone().sub(p1).normalize());
+      g.add(dStrut1);
+
+      // 斜めXブレース (対角線2: p2 -> p1Next)
+      const dMid2 = p2.clone().add(p1Next).multiplyScalar(0.5);
+      const dLen2 = p2.distanceTo(p1Next);
+      const dStrut2 = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, dLen2, 4), redTrussMat);
+      dStrut2.position.copy(dMid2);
+      dStrut2.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), p1Next.clone().sub(p2).normalize());
+      g.add(dStrut2);
+
+      // 内部放射状Kブレース (中心軸 z -> ノード p1)
+      const centerNode = new THREE.Vector3(0, 0, z);
+      const kMid = centerNode.clone().add(p1).multiplyScalar(0.5);
+      const kLen = centerNode.distanceTo(p1);
+      const kStrut = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, kLen, 4), conduitJointMat);
+      kStrut.position.copy(kMid);
+      kStrut.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), p1.clone().sub(centerNode).normalize());
+      g.add(kStrut);
+
+      // 節点ガセットジョイント (Node Gusset Hub)
+      const nodeHub = new THREE.Mesh(new THREE.SphereGeometry(0.9, 8, 8), conduitJointMat);
+      nodeHub.position.copy(p1);
+      g.add(nodeHub);
     }
   }
 
