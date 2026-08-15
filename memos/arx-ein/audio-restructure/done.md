@@ -153,14 +153,14 @@ Three files now:
 | file | responsibility |
 | --- | --- |
 | `bgm.ts` | playback control: volume + persistence, fade in/out, track rotation, the lookahead pump, and turning a note into WebAudio nodes (`playNote`) |
-| `compositor.ts` | the `Compositor` seam: `stepDurSec` + `notesAt(step): readonly CompositorNote[]` |
-| `phasing-compositor.ts` | `PhasingCompositor` — the Reich-style algorithm, the only one so far |
+| `composer.ts` | the `Composer` seam: `stepDurSec` + `notesAt(step): readonly ComposerNote[]` |
+| `phasing-composer.ts` | `PhasingComposer` — the Reich-style algorithm, the only one so far |
 
-**The seam is deliberately WebAudio-free.** A `CompositorNote` carries its onset as
-`offsetSec` *relative to the step*, not an absolute `AudioContext` time, so a compositor never
+**The seam is deliberately WebAudio-free.** A `ComposerNote` carries its onset as
+`offsetSec` *relative to the step*, not an absolute `AudioContext` time, so a composer never
 names an audio type and is a pure function of `step`. That is what makes an algorithm's output
 readable and comparable without an `AudioContext` — the equivalence harness below depends on
-it, and so will any future compositor's verification.
+it, and so will any future composer's verification.
 
 Naming follows arx-ein's own sketch (see [roadmap.md](roadmap.md) §2) so the planned conductor
 layer slots in above without a rename. Note `render/pipeline/` separately uses "composite" for
@@ -174,8 +174,31 @@ guard for a single-track registry — the old expression computed an out-of-rang
 five tracks, fixed while the code was open.
 
 **Verified sound-identical again** with the same harness, updated to read
-`PhasingCompositor.notesAt` on the new side and `Bgm.scheduleStep` on the old: 54,240 notes
+`PhasingComposer.notesAt` on the new side and `Bgm.scheduleStep` on the old: 54,240 notes
 across 5 tracks, bit-identical. `bgm.ts` went 250 → 172 lines.
+
+---
+
+## 6. Foldered `src/audio/`, and Compositor -> Composer
+
+Two housekeeping changes arx-ein asked for.
+
+**Folders.** `src/audio/` was seven flat files. It is now `audio-engine.ts` at the root plus
+`bgm/` and `sfx/`, matching the shape `src/game/` uses (shared thing at the root, concerns in
+subfolders). The engine stays at the root because both folders build on it. `bgm-tracks.ts`
+keeps its prefix inside `bgm/` — it is named after its exports (`BgmTrack`, `BGM_TRACKS`), the
+same way `plan/plan-path.ts` is.
+
+**Rename.** `Compositor` -> `Composer` (`CompositorNote` -> `ComposerNote`,
+`PhasingCompositor` -> `PhasingComposer`, and both file names). "Compositor" collides with the
+render pipeline's composite pass and historically means a typesetter; a composer writes music,
+which is what the interface does. Cheap now, and per the project's no-traces rule the old name
+returns zero hits.
+
+25 files outside `src/audio/` had import paths rewritten. Verified with the same harness —
+still 54,240 notes identical — and the harness is now pinned to commit `33524dc9`, the last
+one where the composition logic lived in `Bgm.scheduleStep`, so it stays a valid reference for
+any further restructuring.
 
 ---
 

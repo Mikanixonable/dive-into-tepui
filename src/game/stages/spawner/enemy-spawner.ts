@@ -6,7 +6,7 @@ import { randSym } from '../../../physics/random';
 import { add, len, norm, scale } from '../../../physics/vec3';
 import * as C from '../../const';
 import { Hud } from '../../hud/hud';
-import { WorldSfx } from '../../../audio/world-sfx';
+import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../../vfx/effects-system';
 import { Enemy } from '../../game-entity/enemy';
 import { generateDriftingEnemy } from './enemy-generator';

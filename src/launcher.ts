@@ -10,8 +10,8 @@ import type { UnlockManager } from './game/unlock-manager';
 import type { SaveSlots } from './game/save/save-slots';
 import type { SnapshotService } from './game/save/snapshot-service';
 import type { GameSaveData } from './game/save-data';
-import type { WorldSfx } from './audio/world-sfx';
-import type { Bgm } from './audio/bgm';
+import type { WorldSfx } from './audio/sfx/world-sfx';
+import type { Bgm } from './audio/bgm/bgm';
 
 // スナップショットのロードを跨いで次のページ読込へ渡す先。ロードは Game を作り直す
 // (=ページ再読込)ことで表現するため、どれを復元するかは sessionStorage 経由で伝える。
