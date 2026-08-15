@@ -207,7 +207,7 @@ export function buildAmmoPickup(count = 4): THREE.Group {
   }
 
   // 先端にビーコンを追加する
-  const beacon = new THREE.Mesh(ammoPickupBeaconGeometry, ammoPickupBeaconMaterial.clone());
+  const beacon = withDispose(new THREE.Mesh(ammoPickupBeaconGeometry, ammoPickupBeaconMaterial.clone()), false, true);
   beacon.position.y = (count / 2) * (MAG_THICKNESS + 0.12) + 0.4;
   g.add(beacon);
   return g;
@@ -545,7 +545,7 @@ export function buildBaseModel(): THREE.Group {
   const panelMat = new THREE.MeshStandardMaterial({ color: 0x1a3a5c, flatShading: true, roughness: 0.35, metalness: 0.55 });
   const beaconMat = new THREE.MeshStandardMaterial({ color: 0xff6a00, emissive: 0xff6a00, emissiveIntensity: 1.2, roughness: 0.4 });
 
-  const hub = new THREE.Mesh(new THREE.CylinderGeometry(18, 18, 60, 8), hullMat);
+  const hub = withDispose(new THREE.Mesh(new THREE.CylinderGeometry(18, 18, 60, 8), hullMat));
   g.add(hub);
 
   const trussLength = 70;
@@ -554,12 +554,12 @@ export function buildBaseModel(): THREE.Group {
     const angle = (i / 4) * Math.PI * 2;
     const dir = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
 
-    const truss = new THREE.Mesh(new THREE.BoxGeometry(trussLength, 4, 4), trussMat);
+    const truss = withDispose(new THREE.Mesh(new THREE.BoxGeometry(trussLength, 4, 4), trussMat));
     truss.position.copy(dir).multiplyScalar(18 + trussLength / 2);
     truss.rotation.y = -angle;
     g.add(truss);
 
-    const module = new THREE.Mesh(new THREE.CylinderGeometry(10, 10, 26, 8), hullMat);
+    const module = withDispose(new THREE.Mesh(new THREE.CylinderGeometry(10, 10, 26, 8), hullMat));
     module.position.copy(dir).multiplyScalar(moduleOffset);
     module.rotation.z = Math.PI / 2;
     module.rotation.y = -angle;
@@ -567,12 +567,12 @@ export function buildBaseModel(): THREE.Group {
   }
 
   for (const side of [1, -1]) {
-    const panel = new THREE.Mesh(new THREE.BoxGeometry(60, 1.5, 22), panelMat);
+    const panel = withDispose(new THREE.Mesh(new THREE.BoxGeometry(60, 1.5, 22), panelMat));
     panel.position.set(side * (18 + 34), 0, 0);
     g.add(panel);
   }
 
-  const beacon = new THREE.Mesh(new THREE.SphereGeometry(3, 8, 6), beaconMat);
+  const beacon = withDispose(new THREE.Mesh(new THREE.SphereGeometry(3, 8, 6), beaconMat));
   beacon.position.set(0, 30, 0);
   g.add(beacon);
 
