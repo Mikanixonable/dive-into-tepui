@@ -18,7 +18,7 @@ import * as C from '../const';
 import { DisplayDurationSource, PlanData } from './plan';
 import { PlanPath } from './plan-path';
 import type { DisplayWindow } from '../display-window-manager';
-import type { PlanAttractorProvider } from '../simulation/attractors';
+import type { PlanAttractorProvider } from './plan-attractors';
 
 // 近地点・遠地点アイコン。右クリックの被選択物であると同時に、表示するラベルを持つ。
 interface ApsisIcon extends MapPickable {

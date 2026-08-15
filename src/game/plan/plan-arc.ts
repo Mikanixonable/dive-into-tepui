@@ -7,8 +7,8 @@ import { Attractor, localOrbitPeriod } from '../../physics/attractor';
 import { containingBody, sweptHermiteSphereToi } from '../../physics/sphere-contact';
 import { apsisCrossing } from '../../physics/trajectory-features';
 import { isBurnedUp } from '../../physics/atmosphere';
-import { attractorsNearInto, classifyAttractors } from '../simulation/attractors';
-import type { ClassifiedAttractors, PlanAttractorProvider, PlanAttractorSources } from '../simulation/attractors';
+import { attractorsNearInto } from '../simulation/attractors';
+import type { PlanAttractorProvider } from './plan-attractors';
 import { addScaled, len, scale, sub, Vec3 } from '../../physics/vec3';
 import * as C from '../const';
 
@@ -41,24 +41,6 @@ export interface PlanImpact {
 }
 
 type ImpactCandidate = { body: Attractor; toi: number };
-
-// ある時刻の重力源・衝突体と、そこから導かれる空間分類・衝突体の id 索引。
-type HeldSources = {
-  readonly t: number;
-  readonly sources: PlanAttractorSources;
-  readonly collisionById: ReadonlyMap<string, Attractor>;
-  readonly classified: ClassifiedAttractors;
-};
-
-// 時刻 t の対象一式を一度に解決する。
-function holdSources(provider: PlanAttractorProvider, t: number): HeldSources {
-  const sources = provider.at(t);
-  const collisionById = new Map<string, Attractor>();
-  for (const body of sources.collision) {
-    if (!collisionById.has(body.id)) collisionById.set(body.id, body);
-  }
-  return { t, sources, collisionById, classified: classifyAttractors(sources.gravity) };
-}
 
 // 刻み幅。その場で最も強く引く天体を中心とする軌道運動の時間スケール(低軌道では細かく、
 // 遠地点では粗くなる)を PLAN_ARC_STEPS_PER_REV 等分した値と、最も近い天体の表面までの
@@ -313,11 +295,10 @@ export class PlanArc {
     // 据え置くと、月周回の予測が固定された月の重力場を積分してしまうため、天体暦の時刻依存性
     // を積分へ反映する。
     while (trajectory.state.t < end - EPOCH_EPS) {
-      const startHeld = holdSources(this.provider, trajectory.state.t);
-      const startSources = startHeld.sources;
+      const startHeld = this.provider.at(trajectory.state.t);
       // sweptHermiteSphereToi は開始時点で既に overlap している場合は null を返し、離散判定へ
       // 委譲する契約なので、衝突体全体に対してここでその離散判定を満たす。
-      const containing = containingBody(trajectory.state.r, startSources.collision, 0);
+      const containing = containingBody(trajectory.state.r, startHeld.collision, 0);
       if (containing) {
         this.impact = { state: trajectory.state, body: containing };
         this.truncated = true;
@@ -326,7 +307,7 @@ export class PlanArc {
 
       // 最後の1歩は end にちょうど着地させる — 終端がそのままノードの到達状態になる。
       const dt = Math.min(
-        stepDt(trajectory.state, startSources.gravity, startSources.collision),
+        stepDt(trajectory.state, startHeld.gravity, startHeld.collision),
         end - trajectory.state.t,
       );
       if (dt <= 1e-9) {
@@ -335,12 +316,12 @@ export class PlanArc {
         // 一定比率で縮み続け、符号は反転しないまま dt だけが 0 に収束する)。打ち切りが
         // truncated を立てないと、実際には衝突コースの区間が正常終端として扱われてしまう
         // ので、最寄り天体への衝突として記録する。
-        const nearest = nearestByClearance(trajectory.state.r, startSources.collision);
+        const nearest = nearestByClearance(trajectory.state.r, startHeld.collision);
         if (nearest) this.impact = { state: trajectory.state, body: nearest };
         this.truncated = true;
         break;
       }
-      const midHeld = holdSources(this.provider, trajectory.state.t + dt / 2);
+      const midHeld = this.provider.at(trajectory.state.t + dt / 2);
       const stepAttractors = attractorsNearInto(
         trajectory.state.r, midHeld.classified, this.stepAttractorsScratch,
       );
@@ -359,16 +340,16 @@ export class PlanArc {
         if (crossing?.kind === 'periapsis' && this.periapsisState === null) this.periapsisState = crossing.state;
         if (crossing?.kind === 'apoapsis' && this.apoapsisState === null) this.apoapsisState = crossing.state;
       }
-      const endHeld = holdSources(this.provider, trajectory.state.t);
+      const endHeld = this.provider.at(trajectory.state.t);
       // 区間を跨いだ表面接触は、開始/終了時刻の全 collision body を候補にして掃引判定する。
       this.collisionCandidatesById.clear();
       this.collisionCandidates.length = 0;
-      for (const body of startHeld.sources.collision) {
+      for (const body of startHeld.collision) {
         if (this.collisionCandidatesById.has(body.id)) continue;
         this.collisionCandidatesById.set(body.id, body);
         this.collisionCandidates.push(body);
       }
-      for (const body of endHeld.sources.collision) {
+      for (const body of endHeld.collision) {
         if (this.collisionCandidatesById.has(body.id)) continue;
         this.collisionCandidatesById.set(body.id, body);
         this.collisionCandidates.push(body);
@@ -384,7 +365,7 @@ export class PlanArc {
         break;
       }
       if (isBurnedUp(r, stepAttractors, C.REENTRY_ALT)) {
-        const earth = endHeld.sources.collision.find((a) => a.id === 'earth');
+        const earth = endHeld.collision.find((a) => a.id === 'earth');
         if (earth) this.impact = { state: trajectory.state, body: earth };
         this.truncated = true;
         break;
