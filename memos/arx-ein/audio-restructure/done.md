@@ -377,6 +377,40 @@ order, `bgm.stop()` at run end, `EnvironmentScene` receiving `pipeline.sunLight`
 
 ---
 
+## 12. Discarded playbacks are disconnected, not just faded
+
+Found while writing up upstream's disposal chain: nothing in `src/audio/` called `.disconnect()`,
+so every track rotation, preview click and run boundary stranded a `TrackPlayback`'s gain and all
+six of its instrument panners on `masterGain` for the rest of the session — 85 persistent nodes
+after an hour where 8 is correct.
+
+The fix hangs on one question, **"when has this piece gone quiet"**, and the first design got
+that question wrong: it proposed waiting for the fade to finish. Rotation deliberately does not
+fade at all (the pattern just switches and already-scheduled notes ring out), and once a piece's
+oscillators have stopped nothing flows through its gain whatever the fade is doing — so the fade
+is neither necessary nor sufficient. `TrackPlayback.soundingUntil` answers the real question from
+what it already tracks while scheduling.
+
+- `Instrument` gains a required `dispose()`; `ToneInstrument` disconnects its panner.
+- `TrackPlayback` tracks its latest note end, exposes `soundingUntil` (+ `RELEASE_TAIL_SEC` for
+  the instrument's own release), and disposes instruments then gain.
+- `Bgm.retire(playback)` is the single retirement path, taken by both `stop()` and
+  `openPlayback()` — the latter is what fixes rotation, which previously dropped the outgoing
+  piece without so much as fading it.
+- `Bgm` itself gets no `dispose()`, and `masterGain` stays. Nothing tears the audio layer down,
+  and the repo rule is not to add one speculatively.
+
+`RELEASE_TAIL_SEC` = 0.25 s was measured, not guessed: sweeping it shows 18 notes cut short at 0,
+none at 0.04. The requirement is exactly `ToneInstrument`'s `+0.05` release past `durationSec`, so
+0.25 is 5x headroom for a longer-tailed instrument.
+
+Verified: 85 live nodes → 8, and 0 notes cut short across 40,887 scheduled in an hour. The other
+four harnesses are unchanged, which is the important negative result — retirement moved no
+scheduled sound. **The cut-note check itself was tested**: it first passed against a deliberately
+broken margin because its instrumentation had silently failed to apply, and now reports 190 cuts
+for that value. A harness never seen to fail proves nothing.
+
+
 ## The two merges of `main` into the PR branch (`4e21f958`, then `78370b6b`)
 
 Upstream landed the **run-lifecycle rework** — `Launcher` owns the `Game` and recreates it
