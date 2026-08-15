@@ -1,4 +1,5 @@
-import type { Sfx } from '../../audio/sfx';
+import type { Bgm } from '../../audio/bgm/bgm';
+import { BGM_TRACKS } from '../../audio/bgm/tracks/tracks';
 import type { OverlayHandle, OverlayManager } from './overlay-manager';
 import { Button, CloseButton, Slider } from './widgets';
 
@@ -7,17 +8,18 @@ import { Button, CloseButton, Slider } from './widgets';
 export class SettingsView implements OverlayHandle {
   private readonly panel: HTMLElement;
   private readonly overlayManager: OverlayManager;
-  private readonly sfx: Sfx;
+  private readonly bgm: Bgm;
   private _isOpen = false;
   private activeTrack: number | null = null;
+  private bgmPlayingAtOpen = false;
   private readonly stopButton: Button;
   private readonly trackButtons: Button[] = [];
 
   onOpenChange: ((open: boolean) => void) | null = null;
 
-  constructor(root: HTMLElement, overlayManager: OverlayManager, sfx: Sfx) {
+  constructor(root: HTMLElement, overlayManager: OverlayManager, bgm: Bgm) {
     this.overlayManager = overlayManager;
-    this.sfx = sfx;
+    this.bgm = bgm;
 
     this.panel = document.createElement('section');
     this.panel.id = 'hud-settings-view';
@@ -62,9 +64,9 @@ export class SettingsView implements OverlayHandle {
     };
     const volumeSlider = new Slider({ min: 0, max: 1, step: 0.05 }, (value) => {
       updateVolumeValue(value);
-      this.sfx.setBgmVolume(value);
+      this.bgm.setVolume(value);
     });
-    volumeSlider.setValue(this.sfx.getBgmVolume());
+    volumeSlider.setValue(this.bgm.getVolume());
     updateVolumeValue(volumeSlider.getValue());
     volumeRow.appendChild(volumeSlider.element);
     volumeRow.appendChild(volumeValue);
@@ -72,7 +74,7 @@ export class SettingsView implements OverlayHandle {
 
     const trackList = document.createElement('div');
     trackList.className = 'sv-track-list';
-    for (const [index, track] of this.sfx.getBgmTracks().entries()) {
+    for (const [index, track] of BGM_TRACKS.entries()) {
       const row = document.createElement('div');
       row.className = 'sv-track-row';
       const trackLabel = document.createElement('div');
@@ -96,7 +98,7 @@ export class SettingsView implements OverlayHandle {
     const trackActions = document.createElement('div');
     trackActions.className = 'sv-track-actions';
     this.stopButton = new Button('試聴を停止', () => {
-      this.sfx.stopBgm(0.15);
+      this.bgm.stop(0.15);
       this.activeTrack = null;
       this.updateTrackButtons();
     });
@@ -131,18 +133,24 @@ export class SettingsView implements OverlayHandle {
       'title-menu-open', show && document.getElementById('stage-select') !== null,
     );
     if (show) {
+      this.bgmPlayingAtOpen = this.bgm.isPlaying;
       this.overlayManager.open('settings-view', this, {
         kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: true,
         exclusiveGroup: 'system-modal',
       });
     } else {
       this.overlayManager.close('settings-view');
+      // 試聴セッションが止めた BGM だけを閉じるときに元へ戻す — 開いた時点で流れていなかったもの
+      // (勝敗確定後など)は再開しない。試聴を流したまま閉じたなら、その曲がそのまま流れ続ける。
+      if (this.bgmPlayingAtOpen && !this.bgm.isPlaying) this.bgm.resume();
+      this.activeTrack = null;
+      this.updateTrackButtons();
     }
     this.onOpenChange?.(show);
   }
 
   private previewTrack(index: number): void {
-    this.sfx.playBgmTrack(index);
+    this.bgm.playTrack(index);
     this.activeTrack = index;
     this.updateTrackButtons();
   }

@@ -16,7 +16,7 @@ import { TrajectoryLine } from '../trajectory-line';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { DisplayDurationSource, PlanData, TimeRange, segmentDurationFrom } from './plan';
 import { PlanArc } from './plan-arc';
-import type { PlanAttractorProvider } from '../simulation/attractors';
+import type { PlanAttractorProvider } from './plan-attractors';
 import * as C from '../const';
 
 const SEGMENT_COLORS = [0xffb36b, 0xff8a26, 0xff6a00];

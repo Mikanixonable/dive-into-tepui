@@ -3,6 +3,7 @@
 // 表示可否は map-pickables.ts の MapPickables から読む — 「何が選べるか」と「選んだら
 // どうなるか」を分けている。
 import { Hud } from './hud/hud';
+import { Base } from './game-entity/base';
 import { fmtAmmoStatus, fmtDist, fmtEnergy, fmtSpeed, fmtTime } from './hud/utils';
 import { orbitInfo, relativeInfo } from './hud/orbit-info';
 import { ContextMenu, MenuItem } from './hud/context-menu';
@@ -18,7 +19,7 @@ import { pickRadiusSq } from './input/pointer-precision';
 import { EntityManager } from './simulation/entity-manager';
 import { Ephemeris } from '../physics/ephemeris';
 import { NavTarget } from './nav-target';
-import { CameraSystem, ProjectFn } from './camera/camera-system';
+import { CameraSystem } from './camera/camera-system';
 import { PlanEditor } from './plan/plan-editor';
 import { SimSpeedManager } from './sim-speed-manager';
 import type { PauseMenu } from './hud/pause-menu';
@@ -29,7 +30,8 @@ import type { FrameControls } from './hud/frame-controls';
 import type { Stage } from './stages/stage';
 import { Player, planExecutionLabel, type PlanExecutionMode } from './player/player';
 import type { GameEntity } from './game-entity/game-entity';
-import { len, sub, v3 } from '../physics/vec3';
+import { add, cross, len, norm, scale, sub, v3 } from '../physics/vec3';
+import { metersPerPixel } from '../physics/projection';
 import type { ObjectType } from './creative/ship-placer-panel';
 import type { KinematicState } from '../physics/kinematic-state';
 import { Attractor, orbitalElementsOf, strongestAttractor } from '../physics/attractor';
@@ -68,6 +70,13 @@ export class MapContextActions {
   // Docking は MapContextActions より後に生成されるので、生成後に登録する。
   setDocking(docking: Docking): void { this.docking = docking; }
   private docking: Docking | null = null;
+
+  setControlledBaseHandler(handler: (base: Base | null) => void, getControlledBase: () => Base | null): void {
+    this.controlBaseHandler = handler;
+    this.getControlledBase = getControlledBase;
+  }
+  private controlBaseHandler: ((base: Base | null) => void) | null = null;
+  private getControlledBase: (() => Base | null) | null = null;
 
   // 候補集合(pickables)と、メニュー項目の実行先を参照として受け取る。
   constructor(
@@ -241,25 +250,90 @@ export class MapContextActions {
     this.menu.open(clientX, clientY, target, this.itemsFor(target, simTime));
   }
 
-  // 戦闘ビューの右クリック。マップと同じ被選択物の仕組みで敵・自艦を拾い、当たれば同じ
-  // プロパティウィンドウを開く(同じ対象は常に同じ窓 — §7-2)。外れれば空域メニューへ落ちる。
-  // マップ視点では何もしない。
+  // 戦闘ビューの右クリック。カメラの視点・画角・実体サイズ(Base 100m / Enemy 90m / Player 5m)から
+  // 画面上の視覚半径を正確に求め、機体・基地の表示領域へのヒット判定を行う。
+  // ヒットしなかった場合(背景・空域)は空域設定メニューを開く。
   handleCombatRightClick(
-    input: Input, targets: readonly CombatTarget[], project: ProjectFn, simTime: number, overviewMode: boolean,
+    input: Input, simTime: number, overviewMode: boolean,
   ): void {
     if (overviewMode) return;
     input.takeRightClicks((p) => {
-      const picked = this.targeter.pickTargetAt(p, targets, project);
-      if (picked) this.openPropertyWindow(p.x, p.y, this.combatTargetPickable(picked), simTime);
-      else this.openEmptySpaceMenu(p.x, p.y, simTime);
+      const hitEntity = this.pickCombatEntityAtPoint(p.x, p.y);
+      if (hitEntity) {
+        this.openPropertyWindow(p.x, p.y, this.entityToPickable(hitEntity), simTime);
+      } else {
+        this.openEmptySpaceMenu(p.x, p.y, simTime);
+      }
       return true;
     });
   }
 
-  // CombatTarget(Enemy | Player)を、対応する MapPickable の kind へ変換する。
-  private combatTargetPickable(target: CombatTarget): MapPickable {
-    const kind = target instanceof Player ? 'player' : 'ship';
-    return { id: target.id, name: target.name, pos: target.state.r, kind };
+  // 画面上の右クリック座標(clientX, clientY)において、実体の 3D モデル表示領域にヒットした GameEntity を返す
+  private pickCombatEntityAtPoint(clientX: number, clientY: number): GameEntity | null {
+    const view = this.cameraSystem.activeViewpoint;
+    const project = this.cameraSystem.activeCameraProjection;
+    const viewportHeight = window.innerHeight;
+
+    const candidates: { entity: GameEntity; radius: number }[] = [
+      ...this.entities.players.filter((p) => p.alive).map((p) => ({ entity: p, radius: p.radius || 5 })),
+      ...this.entities.enemies.filter((e) => e.alive).map((e) => ({ entity: e, radius: e.radius || 90 })),
+      ...this.entities.bases.filter((b) => b.alive).map((b) => ({ entity: b, radius: b.radius || 100 })),
+    ];
+
+    let bestEntity: GameEntity | null = null;
+    let minDepth = Infinity;
+
+    for (const item of candidates) {
+      const entity = item.entity;
+      const pos = entity.state.r;
+      const proj = project(pos);
+      if (!proj.front) continue;
+
+      const dx = clientX - proj.x;
+      const dy = clientY - proj.y;
+      const distSq = dx * dx + dy * dy;
+
+      // カメラから対象までの視線奥行き距離
+      const depth = len(sub(pos, view.position));
+
+      // この距離における 1 ピクセルあたりの実距離 [m/px]
+      const mpp = metersPerPixel(view, pos, viewportHeight);
+
+      // 3D モデルの物理半径を画面上のピクセル半径へ投影
+      // クリック操作の最小許容値として 12px、実サイズに基づく投影ピクセル半径を適用
+      const visualRadiusPx = Math.max(12, item.radius / Math.max(1e-6, mpp));
+
+      if (distSq <= visualRadiusPx * visualRadiusPx) {
+        if (entity instanceof Base) {
+          // 基地の場合は BVH メッシュRay判定による精緻なヒットテストを実施
+          const camFwd = norm(sub(view.lookTarget, view.position));
+          const camUp = norm(view.up);
+          const camRight = norm(cross(camFwd, camUp));
+          const offsetX = (clientX - window.innerWidth / 2) * mpp;
+          const offsetY = -(clientY - window.innerHeight / 2) * mpp;
+          const rayTarget = add(add(add(view.position, scale(camFwd, depth)), scale(camRight, offsetX)), scale(camUp, offsetY));
+          const rayDir = norm(sub(rayTarget, view.position));
+          const hit = entity.raycast(view.position, rayDir, depth * 2, 1);
+          if (!hit) continue; // 実際のメッシュへの非命中の場合は判定を落とす
+        }
+        if (depth < minDepth) {
+          minDepth = depth;
+          bestEntity = entity;
+        }
+      }
+    }
+
+    return bestEntity;
+  }
+
+  private entityToPickable(entity: GameEntity): MapPickable {
+    if (entity instanceof Player) {
+      return { id: entity.id, name: entity.name, pos: entity.state.r, kind: 'player' };
+    }
+    if (entity instanceof Base) {
+      return { id: entity.id, name: entity.name, pos: entity.state.r, kind: 'base' };
+    }
+    return { id: entity.id, name: entity.name, pos: entity.state.r, kind: 'ship' };
   }
 
   // 軌道オブジェクトウィンドウをマップ視点である間は常設で表示し、開いている全プロパティ
@@ -442,18 +516,30 @@ export class MapContextActions {
     'player': {
       itemsFor: (target, simTime) => {
         const ship = this.entities.findPlayer(target.id);
-        const isActive = ship === this.activePlayers.current;
+        const activeShip = this.activePlayers.current;
+        const isActive = ship === activeShip;
         const activate: readonly MenuItem<MenuAction>[] = [
           isActive ? { label: '操作対象を解除', act: 'deactivate' } : { label: '操作対象にする', act: 'activate' },
         ];
         const remove: readonly MenuItem<MenuAction>[] = isActive ? [] : [{ label: '削除', act: 'delete' }];
-        // 計画を実行するステージだけに出す。駆動源が無いところで選ばせても何も起きない。
         const mode = ship?.planExecution ?? 'off';
         const planExec: readonly MenuItem<MenuAction>[] = this.activeStage.executesPlans
           ? [{ label: `軌道計画の実行: ${planExecutionLabel(mode)}`, act: 'planExecCycle', keepOpen: true }]
           : [];
+
+        const dockItems: MenuItem<MenuAction>[] = [];
+        if (activeShip && ship && !isActive && this.docking) {
+          const isDocked = this.docking.getDockedTarget(activeShip) === ship;
+          if (isDocked) {
+            dockItems.push(MenuCommon.transferResources(), MenuCommon.undock());
+          } else if (this.docking.canDock(activeShip, ship)) {
+            dockItems.push(MenuCommon.dock());
+          }
+        }
+
         return [
           ...this.combatTargetLockItems(ship),
+          ...dockItems,
           ...planExec,
           ...activate,
           MenuCommon.focus(),
@@ -464,13 +550,19 @@ export class MapContextActions {
         ];
       },
       run: (act, target) => {
-        if (act === 'activate') {
-          const ship = this.entities.findPlayer(target.id);
+        const activeShip = this.activePlayers.current;
+        const ship = this.entities.findPlayer(target.id);
+        if (act === 'dock') {
+          if (activeShip && ship) this.docking?.dockTo(activeShip, ship);
+        } else if (act === 'undock') {
+          if (activeShip) this.docking?.undock(activeShip);
+        } else if (act === 'transferResources') {
+          if (activeShip && ship) this.docking?.openTransfer(activeShip, ship);
+        } else if (act === 'activate') {
           if (ship) this.activePlayers.set(ship);
         } else if (act === 'deactivate') {
-          if (this.entities.findPlayer(target.id) === this.activePlayers.current) this.activePlayers.setOrNull(null);
+          if (ship === this.activePlayers.current) this.activePlayers.setOrNull(null);
         } else if (act === 'planExecCycle') {
-          const ship = this.entities.findPlayer(target.id);
           if (ship) {
             const next = PLAN_EXECUTION_MODES[(PLAN_EXECUTION_MODES.indexOf(ship.planExecution) + 1) % PLAN_EXECUTION_MODES.length]!;
             ship.planExecution = next;
@@ -478,10 +570,9 @@ export class MapContextActions {
         } else if (act === 'duplicate') {
           this.runDuplicate(target);
         } else if (act === 'delete') {
-          const ship = this.entities.findPlayer(target.id);
           if (ship) this.activePlayers.remove(ship);
         } else if (act === 'targetPrimary' || act === 'targetSecondary') {
-          this.runTargetLock(act, this.entities.findPlayer(target.id));
+          this.runTargetLock(act, ship);
         } else {
           this.runBodyShip(act, target);
         }
@@ -510,12 +601,33 @@ export class MapContextActions {
     'base': {
       itemsFor: (target) => {
         const base = this.entities.findBase(target.id);
+        const activeShip = this.activePlayers.current;
+        const isControlled = base && this.getControlledBase ? this.getControlledBase() === base : false;
         const subLabel = base
           ? `基地 / 所持金: ${base.baseState.money.toLocaleString()} Cr / 格納船: ${base.baseState.dockedShips.length}隻`
           : '基地';
+
+        const dockItems: MenuItem<MenuAction>[] = [];
+        if (activeShip && base && this.docking) {
+          const isDocked = this.docking.getDockedTarget(activeShip) === base;
+          if (isDocked) {
+            dockItems.push(MenuCommon.transferResources(), MenuCommon.storeInBase(), MenuCommon.undock());
+          } else if (this.docking.canDock(activeShip, base)) {
+            dockItems.push(MenuCommon.dock());
+          }
+        }
+
+        const controlItem: readonly MenuItem<MenuAction>[] = base
+          ? [isControlled
+            ? { label: '操作を解除', act: 'deactivateBase' }
+            : { label: '基地を操作', act: 'activateBase' }]
+          : [];
+
         return [
           { type: 'header', label: base?.name ?? target.name, subLabel },
-          { label: 'ドックビューを開く', act: 'openDock' },
+          ...controlItem,
+          ...dockItems,
+          { label: '基地ビューを開く', act: 'openDock' },
           MenuCommon.focus(),
           ...this.navTargetItems(target, 0),
           ...this.duplicateItems(),
@@ -525,8 +637,22 @@ export class MapContextActions {
       },
       run: (act, target) => {
         const base = this.entities.findBase(target.id);
-        if (act === 'delete') {
+        const activeShip = this.activePlayers.current;
+        if (act === 'activateBase') {
+          if (base && this.controlBaseHandler) this.controlBaseHandler(base);
+        } else if (act === 'deactivateBase') {
+          if (this.controlBaseHandler) this.controlBaseHandler(null);
+        } else if (act === 'dock') {
+          if (activeShip && base) this.docking?.dockTo(activeShip, base);
+        } else if (act === 'undock') {
+          if (activeShip) this.docking?.undock(activeShip);
+        } else if (act === 'storeInBase') {
+          if (activeShip && base) this.docking?.storeInBase(activeShip, base);
+        } else if (act === 'transferResources') {
+          if (activeShip && base) this.docking?.openTransfer(activeShip, base);
+        } else if (act === 'delete') {
           if (base) {
+            if (this.getControlledBase?.() === base) this.controlBaseHandler?.(null);
             this.docking?.clearActiveBaseIf(base);
             base.alive = false;
           }

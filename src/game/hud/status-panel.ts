@@ -10,6 +10,8 @@ import { fmtAmmoStatus } from './utils';
 import type { Game } from '../game';
 import type { Input } from '../input/input';
 import type { KeyBinding } from '../input/key-mapping';
+import { Player } from '../player/player';
+import { Base } from '../game-entity/base';
 
 const SYNC_INTERVAL_MS = 100;
 
@@ -78,8 +80,8 @@ export class StatusPanel {
   }
 
   public sync(game: Game): void {
-    const player = game.player;
-    if (!player) {
+    const target = game.activeControllableEntity;
+    if (!target) {
       document.getElementById('hud-status')?.classList.add('hidden');
       return;
     }
@@ -94,21 +96,58 @@ export class StatusPanel {
     if (now < this.nextSyncAt) return;
     this.nextSyncAt = now + SYNC_INTERVAL_MS;
 
-    this.syncState('rcs', player.rcsDamp, 'near');
+    const throttleObj = target instanceof Player ? target : (target instanceof Base ? target : null);
+    if (!throttleObj) return;
+
+    this.syncState('rcs', throttleObj.throttle.rcsDamp, 'near');
     this.setText(
       'throttle',
-      `${C.THROTTLE_LABELS[player.throttleIdx]} (${C.THROTTLE_LEVELS[player.throttleIdx]!.toFixed(1)} m/s²)`,
+      `${C.THROTTLE_LABELS[throttleObj.throttle.throttleIdx]} (${C.THROTTLE_LEVELS[throttleObj.throttle.throttleIdx]!.toFixed(1)} m/s²)`,
     );
-    this.throttleControl?.setSelected(player.throttleIdx);
-    this.syncState('fine', player.fineAttitude, 'near');
+    this.throttleControl?.setSelected(throttleObj.throttle.throttleIdx);
+    const fineAtt = target instanceof Player ? target.fineAttitude : false;
+    this.syncState('fine', fineAtt, 'near');
     const cameraFollowsAttitude = game.cameraSystem.combatCamera.camFollowAttitude;
     this.syncState('camfollow', cameraFollowsAttitude, 'signal');
     this.followButton?.setOn(cameraFollowsAttitude);
-    this.syncState('prohold', player.progradeHold, 'near');
+    this.syncState('prohold', throttleObj.throttle.progradeHold, 'near');
+
+    let currentFuel = 0;
+    let maxFuel = 0;
+    if (target instanceof Player) {
+      currentFuel = target.totalFuel;
+      maxFuel = target.totalMaxFuel;
+    } else if (target instanceof Base) {
+      currentFuel = target.fuel;
+      maxFuel = target.maxFuel;
+    }
+
+    const clampedFuel = Math.max(0, Math.min(maxFuel, currentFuel));
+    const fuelPercent = maxFuel > 0 ? (clampedFuel / maxFuel) * 100 : 0;
+    const fuelValueText = `${Math.round(clampedFuel)} / ${Math.round(maxFuel)}`;
+
+    const fuelMeter = this.els.get('rcs-fuel-meter');
+    if (fuelMeter) {
+      fuelMeter.classList.toggle('critical', maxFuel > 0 && clampedFuel < maxFuel * 0.2);
+      fuelMeter.setAttribute('aria-valuemax', String(maxFuel));
+      fuelMeter.setAttribute('aria-valuenow', String(clampedFuel));
+      fuelMeter.setAttribute('aria-valuetext', fuelValueText);
+    }
+    const fuelFill = this.els.get('rcs-fuel-fill');
+    if (fuelFill) {
+      fuelFill.style.width = `${fuelPercent.toFixed(1)}%`;
+    }
+    this.setText('rcs-fuel-value', fuelValueText);
+
     const ammo = this.els.get('ammo');
     if (ammo) {
-      ammo.textContent = fmtAmmoStatus(player.roundsInMag, player.magsLeft, player.reloadTimer);
-      ammo.classList.toggle('warn-hot', player.reloadTimer > 0 || player.magsLeft < 4);
+      if (target instanceof Player) {
+        ammo.textContent = fmtAmmoStatus(target.roundsInMag, target.magsLeft, target.reloadTimer);
+        ammo.classList.toggle('warn-hot', target.reloadTimer > 0 || target.magsLeft < 4);
+      } else if (target instanceof Base) {
+        ammo.textContent = `Fuel: ${Math.round(target.fuel)} / ${target.maxFuel}`;
+        ammo.classList.toggle('warn-hot', target.fuel < target.maxFuel * 0.2);
+      }
     }
   }
 

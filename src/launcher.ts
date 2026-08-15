@@ -13,7 +13,10 @@ import type { UnlockManager } from './game/unlock-manager';
 import type { SaveSlots } from './game/save/save-slots';
 import type { SnapshotService } from './game/save/snapshot-service';
 import type { GameSaveData } from './game/save-data';
-import type { Sfx } from './audio/sfx';
+import type { AudioEngine } from './audio/audio-engine';
+import type { Bgm } from './audio/bgm/bgm';
+import type { WorldSfx } from './audio/sfx/world-sfx';
+import type { UiSfx } from './audio/sfx/ui-sfx';
 import type { GameScene } from './render/scene';
 import type { GraphicsSettings } from './render/graphics-settings';
 import type { RenderPipeline } from './render/pipeline/render-pipeline';
@@ -67,7 +70,10 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   constructor(
     private readonly hud: Hud,
     private readonly gs: GameScene,
-    private readonly sfx: Sfx,
+    private readonly audioEngine: AudioEngine,
+    private readonly bgm: Bgm,
+    private readonly worldSfx: WorldSfx,
+    private readonly uiSfx: UiSfx,
     private readonly pauseMenu: PauseMenu,
     private readonly settingsView: SettingsView,
     private readonly unlockManager: UnlockManager,
@@ -133,11 +139,17 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     // 地球の自転初期位相。起動ごとに無作為だが、下位を決定的に保つため乱数はここでだけ引く。
     const earthSpinPhase0 = initialSave?.earthSpinPhase0 ?? Math.random() * 2 * Math.PI;
     this.game = new Game(
-      this.gs, stageClass, this.hud, this.sfx, this.pauseMenu, this.unlockManager, this.sections,
-      ephemeris, this.graphics, this.pipeline, earthSpinPhase0, initialSave,
+      this.gs, stageClass, this.hud, this.worldSfx, this.uiSfx, this.pauseMenu, this.unlockManager,
+      this.sections, ephemeris, this.graphics, this.pipeline, earthSpinPhase0, initialSave,
     );
+    // AudioContext は実際のユーザー操作でしか作れないため、unlock は入力エッジの発火点へ配線する。
+    // Input は周回ごとに作り直されるので、配線もそのたびに張り直す。
+    this.game.input.onUserGesture = () => {
+      this.audioEngine.unlock();
+      this.bgm.autoStart();
+    };
     this.noteLaunched(stageClass);
-    this.sfx.resumeBgm();
+    this.bgm.resume();
   }
 
   // snapshotId を最優先で使う。無ければ、起動するステージがアクティブスロットの直前起動と
@@ -169,8 +181,8 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   update(): void {
     if (this.game === null || this.resultShown || this.game.activeStage.isPlaying) return;
     this.resultShown = true;
-    this.sfx.setThrust(false);
-    this.sfx.stopBgm();
+    this.worldSfx.setThrust(false);
+    this.bgm.stop();
     const activeSlotId = this.slots.activeSlotId;
     if (activeSlotId !== null) this.slots.noteRunEnded(activeSlotId);
     this.resultScreen.show(this.game.activeStage.result ?? fallbackResult(this.game.activeStage.phase));

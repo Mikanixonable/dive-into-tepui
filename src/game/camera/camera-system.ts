@@ -9,7 +9,6 @@ import { MapPickable } from '../map-pickable';
 import { MarkerManager } from '../marker/marker-manager';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import { Player } from '../player/player';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { Vec3 } from '../../physics/vec3';
@@ -41,6 +40,8 @@ function saveBodyClassToggles(v: BodyClassToggles): void {
     /* localStorage 不可なら保存しない(次回リロード時は既定値に戻る) */
   }
 }
+
+import type { GameEntity } from '../game-entity/game-entity';
 
 export type ProjectFn = (worldPos: Vec3) => Projected;
 export type ScaleFn = (worldPos: Vec3) => number;
@@ -174,6 +175,10 @@ export class CameraSystem {
     return this.overviewMode ? this.mapCamera.camera : this.combatCamera.camera;
   }
 
+  get activeViewpoint(): Viewpoint {
+    return this.overviewMode ? this.mapCamera.viewpoint : this.combatCamera.viewpoint;
+  }
+
   // アクティブカメラの位置(描画原点になる値)を返す。戦闘ビューにいることは操作対象艦がいることを
   // 意味する(ViewManager が canEnter で保証する)ので、この値は実在した艦から計算されたものになる。
   get activeCameraPos(): Vec3 {
@@ -189,7 +194,7 @@ export class CameraSystem {
   // displayTime/attractors は広範囲視点の座標系変換にのみ使う — 線・メッシュと同じ表示時刻でないと
   // 回転系選択時にカメラだけが現在時刻に取り残される。
   update(
-    player: Player | null,
+    player: GameEntity | null,
     displayTime: number,
     input: Input,
     dt: number,

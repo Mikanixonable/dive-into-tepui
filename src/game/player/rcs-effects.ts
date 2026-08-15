@@ -1,13 +1,13 @@
 // RCS パフ(姿勢制御スラスタの噴射煙)。指令トルクに寄与するノズルを選び、その先へ噴射煙を置く。
 import * as THREE from 'three/webgpu';
 import { Attitude, qRotate } from '../../physics/attitude';
-import { Vec3, add, addScaled, cross, dot, lenSq, scale, v3 } from '../../physics/vec3';
+import { Vec3, add, cross, dot, lenSq, scale, v3 } from '../../physics/vec3';
 import { Billboard } from '../../render/billboard';
 import { RCS_NOZZLES } from '../../render/rcs-nozzles';
 import * as C from '../const';
 import type { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
-import { Sfx } from '../../audio/sfx';
+import { WorldSfx } from '../../audio/sfx/world-sfx';
 
 // ノズルからプルーム中心までの距離 [m]
 const PLUME_OFFSET = 0.55;
@@ -23,7 +23,7 @@ export class RcsEffects {
   // 全ノズルのプルームのビルボードを生成し scene へ追加する。
   constructor(
     scene: THREE.Scene,
-    private readonly _sfx: Sfx,
+    private readonly _worldSfx: WorldSfx,
   ) {
     for (const { plume } of this.puffs) scene.add(plume.mesh);
   }
@@ -37,11 +37,12 @@ export class RcsEffects {
     visible: boolean,
     camera: CameraSystem,
     audible: boolean,
+    plumeScale = 1.0,
   ): void {
     // 回転していない、またはズーム視点なら全パフを隠して終える
     const rotating = visible && lenSq(torque) > C.RCS_PUFF_TORQUE_EPS * C.RCS_PUFF_TORQUE_EPS;
     // 全艦のプルームは描画するが、共有音源を更新するのは操作対象だけ。
-    if (audible) this._sfx.setRcs(rotating);
+    if (audible) this._worldSfx.setRcs(rotating);
     if (!rotating || camera.zoomActive) {
       for (const { plume } of this.puffs) plume.hide();
       return;
@@ -54,8 +55,10 @@ export class RcsEffects {
       }
       // ノズルの先へプルームを置き、明滅させる
       const flick = 0.6 + Math.random() * 0.4;
-      const pos = qRotate(att.q, addScaled(puff.pos, puff.exhaust, PLUME_OFFSET));
-      puff.plume.sync(fo.RtoThreeV3(add(playerPos, pos)), 0.55 * flick, 0.75 * flick, camera.activeCamera.quaternion);
+      const offsetDist = PLUME_OFFSET * plumeScale;
+      const localPos = add(scale(puff.pos, plumeScale), scale(puff.exhaust, offsetDist));
+      const pos = qRotate(att.q, localPos);
+      puff.plume.sync(fo.RtoThreeV3(add(playerPos, pos)), 0.55 * flick * plumeScale, 0.75 * flick, camera.activeCamera.quaternion);
     }
   }
 
