@@ -11,9 +11,8 @@ export interface RunTransitions {
 }
 
 // 結果画面(#hud-result)の表示と OverlayManager 登録を担う。次に何をするかは注入された
-// transitions が決める。閉じる手段は再出撃/タイトルへの遷移(いずれもページ離脱かリロードで
-// 表現される)のみなので、ESC・外側クリックでは閉じない — 登録するのは入力ゲート
-// (タッチパッドの解放・背景入力の遮断)のためだけ。
+// transitions が決める。ESC・外側クリックでは閉じない — 登録するのは入力ゲート
+// (タッチパッドの解放・背景入力の遮断)のためで、実際に閉じるのは close() の呼び出しだけ。
 export class ResultScreen implements OverlayHandle {
   constructor(
     private readonly hud: Hud,
@@ -24,7 +23,15 @@ export class ResultScreen implements OverlayHandle {
     return document.getElementById('hud-result')?.contains(target) ?? false;
   }
 
-  close(): void {}
+  // 何も表示していない状態で呼んでも安全。
+  close(): void {
+    const e = document.getElementById('hud-result');
+    if (e) {
+      e.style.display = 'none';
+      e.style.pointerEvents = 'none';
+    }
+    this.hud.overlayManager.close('result');
+  }
 
   // result の内容で #hud-result を組み立てて表示する。
   show(result: StageResult): void {
