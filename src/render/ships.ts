@@ -1107,21 +1107,32 @@ export function buildBaseModel(): THREE.Group {
     g.add(seam);
   }
 
-  // 【2秒に1回赤く強烈に点滅する高照度航空管制ストロボライト】
-  // 居住区の全8隅 (上部4隅 + 下部4隅) ＋ 貨物区ボトム4隅
-  const redControlStrobeMat = new THREE.MeshStandardMaterial({
+  // 【2秒に1回強烈に自発光・点滅する高照度赤色航空管制ストロボライト (発光・オーラ効果付き)】
+  // MeshBasicMaterial + toneMapped: false により陰影の影響を受けず完全に自己発光する
+  const redControlStrobeMat = new THREE.MeshBasicMaterial({
+    color: 0x330008,
+    toneMapped: false,
+  });
+
+  const auraMat = new THREE.MeshBasicMaterial({
     color: 0xff0033,
-    emissive: 0xff0033,
-    emissiveIntensity: 0.3,
+    transparent: true,
+    opacity: 0.05,
+    toneMapped: false,
+    depthWrite: false,
   });
 
   // 1) 居住区の全8つの隅 (上部4隅 Z = mainCenterZ + 24 & 下部4隅 Z = mainCenterZ - 24)
   for (const ex of [-8.2, 8.2]) {
     for (const ey of [-8.2, 8.2]) {
       for (const ez of [mainCenterZ - 24, mainCenterZ + 24]) {
-        const strobe = new THREE.Mesh(new THREE.SphereGeometry(0.85, 12, 10), redControlStrobeMat);
+        const strobe = new THREE.Mesh(new THREE.SphereGeometry(0.9, 12, 10), redControlStrobeMat);
         strobe.position.set(ex, ey, ez);
         g.add(strobe);
+
+        const aura = new THREE.Mesh(new THREE.SphereGeometry(2.2, 12, 10), auraMat);
+        aura.position.set(ex, ey, ez);
+        g.add(aura);
       }
     }
   }
@@ -1129,17 +1140,26 @@ export function buildBaseModel(): THREE.Group {
   // 2) 貨物区ボトム4隅 (Z = cwCenterZ - 68)
   for (const cx of [-7.2, 7.2]) {
     for (const cy of [-7.2, 7.2]) {
-      const strobe = new THREE.Mesh(new THREE.SphereGeometry(0.85, 12, 10), redControlStrobeMat);
+      const strobe = new THREE.Mesh(new THREE.SphereGeometry(0.9, 12, 10), redControlStrobeMat);
       strobe.position.set(cx, cy, cwCenterZ - 68);
       g.add(strobe);
+
+      const aura = new THREE.Mesh(new THREE.SphereGeometry(2.2, 12, 10), auraMat);
+      aura.position.set(cx, cy, cwCenterZ - 68);
+      g.add(aura);
     }
   }
 
-  // 2秒周期 (0.16秒間超高輝度 12.0 で鮮烈に赤く閃光点滅)
+  // 2秒周期 (0.16秒間、眩しい高輝度自発光 0xff3366 + 発光オーラで強烈に自発光フラッシュ)
   g.onBeforeRender = () => {
     const t = (performance.now() / 1000) % 2.0; // 2.0秒周期
-    const flash = t < 0.16 ? 12.0 : 0.3; // 発光量を大幅に引き上げ
-    redControlStrobeMat.emissiveIntensity = flash;
+    if (t < 0.16) {
+      redControlStrobeMat.color.setHex(0xff3366); // 発光時: 鮮烈な自発光ブライトレッド
+      auraMat.opacity = 0.85;                     // オーラ拡散発光
+    } else {
+      redControlStrobeMat.color.setHex(0x330008); // 消灯時: 暗い待機赤色
+      auraMat.opacity = 0.05;
+    }
   };
 
   // 【化学プラント / 蒸留塔 (Distillation Towers Complex - 倍長バージョン)】
