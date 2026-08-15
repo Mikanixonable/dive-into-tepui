@@ -1,8 +1,8 @@
 # Disposal — what `dispose()` is here, and what audio owes it
 
-Written after merging upstream's lifecycle rework into this branch. Nothing in `src/audio/`
-implements `dispose()` yet; this file explains the rule, works out how much of it applies to
-audio, and records the one real defect the audit found.
+Written after merging upstream's lifecycle rework into this branch. It explains the rule, works
+out how much of it applies to audio (less than it looks), and records the one real defect the
+audit found in `Bgm` — since fixed, with the measurements that justify the fix's one constant.
 
 ## 1. Why the repo grew a disposal chain at all
 
@@ -94,67 +94,71 @@ reference. So:
   away after `stop()`. The two loop channels are the exception, and `setThrust(false)` /
   `setRcs(false)` is already their off switch.
 
-That leaves `Bgm`, and `Bgm` has a genuine problem.
+That left `Bgm`, which had a genuine problem.
 
-## 4. The defect: discarded playbacks stay connected
+## 4. The defect that was here, and the fix
 
 `TrackPlayback` builds a `GainNode` for the piece, and each of its instruments builds a
-`StereoPannerNode` that lives for the whole piece. When the track changes:
+`StereoPannerNode` that lives for the whole piece. Both discard paths dropped the reference
+without disconnecting anything — there was not one `.disconnect()` call in `src/audio/` — and a
+node that is still connected to a reachable node is still part of the audio graph and is not
+collectable. Every discarded playback therefore left its gain and all of its instrument panners
+hanging off `masterGain` permanently, summing zero into the mix forever.
 
-```ts
-stop(fadeSec = 2.5): void {
-  if (this.timer) { clearInterval(this.timer); this.timer = null; }
-  this.playback?.fadeOut(fadeSec);
-  this.playback = null;
-}
+Worse on the rotation path than the stop path: `openPlayback` overwrote `this.playback` without
+even fading the outgoing piece (deliberately — already-scheduled notes ring out and the beat
+continues seamlessly), so rotation stranded a playback still at full gain.
 
-fadeOut(sec: number): void {
-  this.gain.gain.setTargetAtTime(0.0001, this.ctx.currentTime, sec / 3);
-}
-```
+Measured with `count-leaks.mjs`, five tracks at six instruments each:
 
-The gain is ramped to near-silence and the reference is dropped — but **nothing is ever
-disconnected**. There is not one `.disconnect()` call anywhere in `src/audio/`. A node that is
-still connected to a reachable node is still part of the audio graph and is not collectable, so
-every discarded playback leaves its gain and all of its instrument panners hanging off
-`masterGain` permanently, quietly summing zero into the mix forever.
-
-Measured with `count-leaks.mjs` (in the harness folder), against the current five tracks at six
-instruments each:
-
-| session | playbacks opened | should be live | actually live | leaked |
+| session | playbacks opened | persistent nodes built | live before | live after |
 | --- | --- | --- | --- | --- |
-| 15 min | 3 | 8 | 22 | **14** |
-| 60 min | 12 | 8 | 85 | **77** |
+| 15 min | 3 | 22 | 22 | 8 |
+| 60 min | 12 | 85 | 85 | 8 |
 
-That is **7 nodes per track rotation** (1 gain + 6 panners), one rotation every
-`TRACK_ROTATION_SEC` = 300 s. Every preview click in the settings view and every run boundary
-adds another 7 on top, since both go through the same `stop()` → `openPlayback()` path.
+8 is correct: `masterGain`, plus the one playing track's gain and its six panners.
 
-It is not audible today and it is not urgent — 77 silent nodes is nothing next to the ~10,000
-note oscillators an hour legitimately schedules and releases. It matters for two reasons:
+### What decides when it is safe to disconnect
 
-1. It is unbounded in session length, and the next thing on the roadmap makes it worse. The
-   conductor/crossfade design has two playbacks alive at once by construction, and the
-   instrument/DSP work adds filters, delays and LFOs per instrument — a leak of 7 nodes per
-   rotation becomes a leak of dozens.
-2. It is precisely the class of bug the rest of the repo just spent a lifecycle rework
-   eliminating. Audio being `main.ts`-owned exempts it from the *chain*, not from the *rule*.
+The first design here proposed waiting for the fade to finish. **That was wrong**, for two
+reasons found on implementing it: rotation does not fade at all, so there is no fade to wait
+on; and once a piece's oscillators have stopped, nothing flows through its gain whatever the
+fade is doing, so the fade is not the quantity that matters either way.
 
-## 5. What to do about it (deferred, own commit)
+The right deadline is **when the piece goes quiet**. `TrackPlayback` already knows it — it
+tracks the latest `noteStart + durationSec` as it schedules — and exposes it as `soundingUntil`,
+plus `RELEASE_TAIL_SEC` for the instrument's own release past the note length. `Bgm.retire` is
+the single path both `stop()` and `openPlayback()` take, and it schedules
+`playback.dispose()` for that time.
 
-The shape that fits both the repo rule and the roadmap:
+`RELEASE_TAIL_SEC` = 0.25 s is not a guess. Sweeping it against the harness's cut-note check:
 
-- Give `TrackPlayback` a `dispose()` that disconnects its own gain and tells each instrument to
-  disconnect its persistent nodes. Instruments need a `dispose()` on the `Instrument` interface
-  for this — which is the right place for it anyway, since the DSP work will give them filters
-  and LFOs that have the same lifetime.
-- `Bgm.stop()`/`openPlayback()` cannot dispose the outgoing playback *immediately* — it is
-  still fading out, and disconnecting mid-fade cuts the tail off. Dispose it after the fade
-  completes. A `setTimeout(fadeSec * 1000 + margin)` is the obvious way and is fine; the pump
-  is already an interval, so this adds no new kind of moving part.
-- `Bgm` itself gets a `dispose()` only if something ever needs to tear down the whole audio
-  layer — nothing does today, so per rule 3, do not add one speculatively.
-- `masterGain` stays. It is the one node that legitimately outlives every piece.
+| tail | notes cut short over an hour |
+| --- | --- |
+| 0 | 18 |
+| 0.04 | 0 |
+| 0.25 | 0 |
 
-Not started. This file records the finding so it is not re-derived from scratch.
+The requirement is exactly `ToneInstrument`'s own `+0.05` release past `durationSec`; 0.25 is
+5x headroom for an instrument with a longer tail.
+
+### Shape
+
+- `Instrument.dispose()` is **required** on the interface, not optional. The interface's own
+  contract already says persistent nodes are built in the constructor, and the whole point is
+  that `TrackPlayback` can retire a piece without knowing which implementation it holds. The
+  DSP work wants this anyway — filters and LFOs have the same whole-piece lifetime.
+- `TrackPlayback.dispose()` disposes its instruments and then its gain — reverse construction
+  order, the same rule `Game.dispose()` follows.
+- `Bgm` gets **no** `dispose()`. Nothing wants to tear the whole audio layer down, and rule 3
+  says do not add one speculatively. `masterGain` stays for the same reason it always did.
+- The wait is a `setTimeout`. It has to be, because `stop()` clears the pump interval, so a
+  list drained by the pump would never be drained after a stop. `MarkerManager`'s occlusion
+  fades are the existing precedent for `setTimeout` in this repo.
+
+### Testing the test
+
+The cut-note check in `count-leaks.mjs` initially reported success against a deliberately broken
+margin (`RELEASE_TAIL_SEC = -30`), because the instrumentation that records disconnect times had
+silently failed to apply. It now reports 190 cut notes for that value and 0 for the real one. A
+verification harness that has never been seen to fail is not evidence.

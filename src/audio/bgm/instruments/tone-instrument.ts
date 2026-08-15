@@ -38,4 +38,9 @@ export class ToneInstrument implements Instrument {
     osc.start(when);
     osc.stop(when + durationSec + 0.05);
   }
+
+  // 定位を音声グラフから外す。
+  dispose(): void {
+    this.output.disconnect();
+  }
 }

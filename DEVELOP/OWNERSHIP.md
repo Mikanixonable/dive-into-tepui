@@ -39,7 +39,7 @@ main.ts
 │                           ... 常設パネル6枚、1パネル1クラス(buildHudDom が作った要素索引 `els: Map<string, HTMLElement>` を
 │                           共有で受け取るだけで DOM は持たない)。それぞれ自分のパネルへのみ書く
 ├── AudioEngine          ... AudioContext の生成・再開(unlock)と共有ノイズバッファ・基本ボイス(tone/noiseBurst)の正本。Bgm/WorldSfx/UiSfx がコンストラクタ引数で参照を持つ。unlock と Bgm.autoStart は Launcher が周回ごとに game.input.onUserGesture へ配線する(Game はこの2つへの参照を持たない)
-├── Bgm                  ... BGM の再生状態・音量(localStorage `tepui.settings.bgm_vol`)の正本。再生中の曲を TrackPlayback として1つ持ち(曲ごとのフェード用ゲイン・Composer・楽器一式・ステップ位置はそちら)、曲の切替時に作り直す。ユーザー音量を表すマスターゲインだけは曲を跨いで生き続ける。SettingsView(音量・試聴)と Launcher(周回の開始で resume、決着で stop)が参照で持ち、PauseMenu の音量スライダは main.ts が setVolume へ配線する
+├── Bgm                  ... BGM の再生状態・音量(localStorage `tepui.settings.bgm_vol`)の正本。再生中の曲を TrackPlayback として1つ持ち(曲ごとのフェード用ゲイン・Composer・楽器一式・ステップ位置はそちら)、曲の切替時に作り直す。役目を終えた TrackPlayback は private `retire` がその曲の `soundingUntil`(最後にスケジュールした音が消える時刻)に `dispose()` し、曲ごとのゲインと楽器の定位を音声グラフから外す — `stop()` と `openPlayback()` の両方がここを通る。ユーザー音量を表すマスターゲインだけは曲を跨いで生き続ける。SettingsView(音量・試聴)と Launcher(周回の開始で resume、決着で stop)が参照で持ち、PauseMenu の音量スライダは main.ts が setVolume へ配線する
 ├── WorldSfx             ... ゲーム世界内の出来事の単発効果音とスラスタ/RCS ループ音。所有は Hud と同様(main.ts が new し Launcher 経由で Game へ参照で渡す)
 ├── UiSfx                ... 操作・通知の効果音(どこでも一定音量)。所有は Hud と同様(main.ts が new し Launcher 経由で Game へ参照で渡す)
 ├── PauseMenu            ... 同上。DOM は Hud.layers.system 配下。onPauseMenuOpenChange を launcher.current?.pause()/.resume() へ配線。onOpenSnapshots / onOpenPerfWindow は main.ts が pauseMenu.toggle(false) + saveBrowser.open() / perf.open() へ配線。onQuitToTitle は launcher.returnToTitle() への一行委譲。コンストラクタは GraphicsSettings に加え DebugTargetHost(狭い構造的インターフェース、debug-target.ts)も取り、描画タブの GraphicsPanel へそのまま渡す — main.ts は initScene 直後に組んだ RenderPipeline を渡す(RenderPipeline がこの型を実装する)
@@ -380,7 +380,9 @@ main.ts
 - **`Game` より長生きするものへの配線は必ず解く。** canvas(`GameScene` 所有)・`window` /
   `document`・`Hud` の各レイヤと恒久要素・`OverlayManager` の台帳・`WorldSfx` の継続音が該当する。
   ここを残すと、次の `Game` と二重に発火する/入力を塞ぐ死んだハンドルが残る/前の周回の音が
-  鳴り続ける。逆に、それらの入れ物自体(canvas・`Hud.layers`・`svgOverlay`)は取り除かず、
+  鳴り続ける。音声そのもの(`AudioEngine`/`Bgm`/`WorldSfx`/`UiSfx`)は main.ts 所有で
+  `Game` より長生きするため、この連鎖の対象ではない — ただし `Bgm` の中では同じ規則が働いて
+  いて、捨てた `TrackPlayback` は `retire` が切り離す(§1 の `Bgm` を見よ)。逆に、それらの入れ物自体(canvas・`Hud.layers`・`svgOverlay`)は取り除かず、
   中身を空にするだけにとどめる。
 
 自前の scene / DOM / リスナーを一切持たないノード(`Simulator` / `Predictor` /
