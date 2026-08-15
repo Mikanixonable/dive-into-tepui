@@ -288,6 +288,7 @@ export class Game {
     this.sections.enter(SECTION.integrate);
     this.simulator.advance(dt, simDt, this.player, this.activeStage, this.simSpeedManager, this.nanWatchdog);
     this.sections.exit(SECTION.integrate);
+    this.docking.updateDockedPhysics();
     // 積分後の状態でこのフレームの表示窓を確定させ、以降の消費者へ共有する。
     this.displayWindowManager.resolve(this.simulator.simTime, this.player);
     // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全エンティティを見る。

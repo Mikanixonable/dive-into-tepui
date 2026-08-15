@@ -435,18 +435,30 @@ export class MapContextActions {
     'player': {
       itemsFor: (target, simTime) => {
         const ship = this.entities.findPlayer(target.id);
-        const isActive = ship === this.activePlayers.current;
+        const activeShip = this.activePlayers.current;
+        const isActive = ship === activeShip;
         const activate: readonly MenuItem<MenuAction>[] = [
           isActive ? { label: '操作対象を解除', act: 'deactivate' } : { label: '操作対象にする', act: 'activate' },
         ];
         const remove: readonly MenuItem<MenuAction>[] = isActive ? [] : [{ label: '削除', act: 'delete' }];
-        // 計画を実行するステージだけに出す。駆動源が無いところで選ばせても何も起きない。
         const mode = ship?.planExecution ?? 'off';
         const planExec: readonly MenuItem<MenuAction>[] = this.activeStage.executesPlans
           ? [{ label: `軌道計画の実行: ${planExecutionLabel(mode)}`, act: 'planExecCycle', keepOpen: true }]
           : [];
+
+        const dockItems: MenuItem<MenuAction>[] = [];
+        if (activeShip && ship && !isActive && this.docking) {
+          const isDocked = this.docking.getDockedTarget(activeShip) === ship;
+          if (isDocked) {
+            dockItems.push(MenuCommon.transferResources(), MenuCommon.undock());
+          } else if (this.docking.canDock(activeShip, ship)) {
+            dockItems.push(MenuCommon.dock());
+          }
+        }
+
         return [
           ...this.combatTargetLockItems(ship),
+          ...dockItems,
           ...planExec,
           ...activate,
           MenuCommon.focus(),
@@ -457,13 +469,19 @@ export class MapContextActions {
         ];
       },
       run: (act, target) => {
-        if (act === 'activate') {
-          const ship = this.entities.findPlayer(target.id);
+        const activeShip = this.activePlayers.current;
+        const ship = this.entities.findPlayer(target.id);
+        if (act === 'dock') {
+          if (activeShip && ship) this.docking?.dockTo(activeShip, ship);
+        } else if (act === 'undock') {
+          if (activeShip) this.docking?.undock(activeShip);
+        } else if (act === 'transferResources') {
+          if (activeShip && ship) this.docking?.openTransfer(activeShip, ship);
+        } else if (act === 'activate') {
           if (ship) this.activePlayers.set(ship);
         } else if (act === 'deactivate') {
-          if (this.entities.findPlayer(target.id) === this.activePlayers.current) this.activePlayers.setOrNull(null);
+          if (ship === this.activePlayers.current) this.activePlayers.setOrNull(null);
         } else if (act === 'planExecCycle') {
-          const ship = this.entities.findPlayer(target.id);
           if (ship) {
             const next = PLAN_EXECUTION_MODES[(PLAN_EXECUTION_MODES.indexOf(ship.planExecution) + 1) % PLAN_EXECUTION_MODES.length]!;
             ship.planExecution = next;
@@ -471,10 +489,9 @@ export class MapContextActions {
         } else if (act === 'duplicate') {
           this.runDuplicate(target);
         } else if (act === 'delete') {
-          const ship = this.entities.findPlayer(target.id);
           if (ship) this.activePlayers.remove(ship);
         } else if (act === 'targetPrimary' || act === 'targetSecondary') {
-          this.runTargetLock(act, this.entities.findPlayer(target.id));
+          this.runTargetLock(act, ship);
         } else {
           this.runBodyShip(act, target);
         }
@@ -503,12 +520,25 @@ export class MapContextActions {
     'base': {
       itemsFor: (target) => {
         const base = this.entities.findBase(target.id);
+        const activeShip = this.activePlayers.current;
         const subLabel = base
           ? `基地 / 所持金: ${base.baseState.money.toLocaleString()} Cr / 格納船: ${base.baseState.dockedShips.length}隻`
           : '基地';
+
+        const dockItems: MenuItem<MenuAction>[] = [];
+        if (activeShip && base && this.docking) {
+          const isDocked = this.docking.getDockedTarget(activeShip) === base;
+          if (isDocked) {
+            dockItems.push(MenuCommon.transferResources(), MenuCommon.storeInBase(), MenuCommon.undock());
+          } else if (this.docking.canDock(activeShip, base)) {
+            dockItems.push(MenuCommon.dock());
+          }
+        }
+
         return [
           { type: 'header', label: base?.name ?? target.name, subLabel },
-          { label: 'ドックビューを開く', act: 'openDock' },
+          ...dockItems,
+          { label: '基地ビューを開く', act: 'openDock' },
           MenuCommon.focus(),
           ...this.navTargetItems(target, 0),
           ...this.duplicateItems(),
@@ -518,7 +548,16 @@ export class MapContextActions {
       },
       run: (act, target) => {
         const base = this.entities.findBase(target.id);
-        if (act === 'delete') {
+        const activeShip = this.activePlayers.current;
+        if (act === 'dock') {
+          if (activeShip && base) this.docking?.dockTo(activeShip, base);
+        } else if (act === 'undock') {
+          if (activeShip) this.docking?.undock(activeShip);
+        } else if (act === 'storeInBase') {
+          if (activeShip && base) this.docking?.storeInBase(activeShip, base);
+        } else if (act === 'transferResources') {
+          if (activeShip && base) this.docking?.openTransfer(activeShip, base);
+        } else if (act === 'delete') {
           if (base) {
             this.docking?.clearActiveBaseIf(base);
             base.alive = false;
