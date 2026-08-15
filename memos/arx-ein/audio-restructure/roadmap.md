@@ -240,21 +240,10 @@ and only the per-note nodes are transient.
 
 ### 3g. `dispose()` for playbacks and instruments
 
-**Do this before §2c (crossfade) or the bus work, not after.** Discarded `TrackPlayback`s are
-never disconnected — nothing in `src/audio/` calls `.disconnect()` at all — so every track
-rotation, preview click and run boundary strands 7 nodes (1 gain + 6 instrument panners) on
-`masterGain` forever: 77 after an hour of play. Silent and harmless today.
-
-It stops being harmless the moment either of the two designs above lands. Crossfade keeps two
-playbacks alive by construction, and buses/effects give each instrument filters, delays and
-LFOs with the same whole-piece lifetime — the same leak then strands dozens per rotation
-instead of seven, in exactly the code being written.
-
-Shape, measurements and the boundary against the repo's own disposal chain are in
-[disposal.md](disposal.md) §5. Short version: `dispose()` on the `Instrument` interface,
-`TrackPlayback.dispose()` disconnecting its gain and its instruments, called *after* the
-fade-out completes rather than at `stop()`. `masterGain` stays; `Bgm` itself needs no
-`dispose()` until something wants to tear the whole audio layer down.
+~~Discarded `TrackPlayback`s are never disconnected, so every rotation, preview and run boundary
+strands 7 nodes on `masterGain` forever.~~ **Done** — see [done.md](done.md) §12 and
+[disposal.md](disposal.md) §4. `Instrument.dispose()` is now part of the seam, so an instrument
+written for the bus/effect work below already has the place to release its filters and LFOs.
 
 ## 4. The mic system — BLOCKED, do not start without asking
 

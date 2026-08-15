@@ -94,8 +94,20 @@ export class Bgm {
       clearInterval(this.timer);
       this.timer = null;
     }
-    this.playback?.fadeOut(fadeSec);
-    this.playback = null;
+    if (this.playback) {
+      this.playback.fadeOut(fadeSec);
+      this.retire(this.playback);
+      this.playback = null;
+    }
+  }
+
+  // 役目を終えた再生を、鳴り終える時刻に切り離す。まだ鳴っているうちに切ると尾が途切れるので、
+  // フェードの残りではなく、その再生がスケジュール済みの音が消える時刻まで待つ。
+  private retire(playback: TrackPlayback): void {
+    const ctx = this.engine.ctx;
+    // 時計が無ければ待つ意味も無い。
+    const waitSec = ctx ? Math.max(0, playback.soundingUntil - ctx.currentTime) : 0;
+    setTimeout(() => playback.dispose(), waitSec * 1000);
   }
 
   // 再生を開始し、先読みスケジューラを起動する。曲は指定が無ければランダムに選ぶ。
@@ -111,8 +123,9 @@ export class Bgm {
     this.timer = setInterval(() => this.pump(), PUMP_INTERVAL_MS);
   }
 
-  // 指定した曲の再生を組み、startAt から刻み始める。
+  // 指定した曲の再生を組み、startAt から刻み始める。前の曲が残っていれば退役させる。
   private openPlayback(index: number, ctx: AudioContext, startAt: number): void {
+    if (this.playback) this.retire(this.playback);
     this.trackIdx = index;
     this.trackStartTime = ctx.currentTime;
     const track = BGM_TRACKS[index]!;
