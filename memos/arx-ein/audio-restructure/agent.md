@@ -16,19 +16,25 @@ read this file first, then whichever of the linked files the task needs.
 
 ```text
 audio/
-  audio-engine.ts        AudioContext lifecycle (unlock), shared noise buffer,
-                         and the tone/noiseBurst primitive voices  (70)
+  audio-engine.ts          AudioContext lifecycle (unlock), shared noise buffer,
+                           and the tone/noiseBurst primitive voices
   bgm/
-    bgm.ts               playback control: volume + persistence, fades, track
-                         rotation, the lookahead pump, note -> WebAudio  (172)
-    composer.ts          the note-generation seam. Names no WebAudio type  (20)
-    phasing-composer.ts  PhasingComposer — the Reich-style algorithm, the only
-                         one so far  (132)
-    bgm-tracks.ts        BgmTrack schema + BGM_TRACKS: each track in full  (362)
+    bgm.ts                 conducts: which track, when, user volume (master gain),
+                           and the one lookahead scheduler pump
+    track-playback.ts      one sounding piece: its own gain, composer, step
+                           position, and note -> WebAudio
+    composer.ts            the note-generation seam. Names no WebAudio type
+    composer-factory.ts    the single switch from a track's kind to its composer
+    composers/
+      phasing-composer.ts  the Reich-style algorithm
+      sketch-composer.ts   blank slate for the second algorithm
+    tracks/
+      types.ts             BgmTrack union + each kind's params, fenced per composer
+      tracks.ts            BGM_TRACKS, the data itself
   sfx/
-    world-sfx.ts         sounds emitted by objects/events in the game world,
-                         plus the thrust/RCS loop channels  (262)
-    ui-sfx.ts            position-less operation/notification blips  (12)
+    world-sfx.ts           sounds emitted by objects/events in the game world,
+                           plus the thrust/RCS loop channels
+    ui-sfx.ts              position-less operation/notification blips
 ```
 
 `audio-engine.ts` stays at the root because both folders build on it — the same shape
@@ -61,7 +67,7 @@ rendering pipeline in). `npm run typecheck` green.
 ## Future — the tracks can now be made distinct
 
 Giving each track its own transposition plan, cadences and levels is now a pure data edit in
-`bgm-tracks.ts`, and it is the cheapest real improvement left. The stereo output bus is the
+`tracks/tracks.ts`, and it is the cheapest real improvement left. The stereo output bus is the
 highest-value structural one (the mic system needs it too). **arx-ein's planned conductor /
 composer architecture is recorded in [roadmap.md](roadmap.md) §2** — the `Composer` seam
 was named and placed to be its bottom layer, so read that before building anything above
