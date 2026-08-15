@@ -22,7 +22,7 @@ import { Player } from '../player/player';
 import { Bullet } from './bullet';
 import type { Stage } from '../stages/stage';
 import { Hud } from '../hud/hud';
-import { Sfx } from '../../audio/sfx';
+import { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { SimSpeedManager } from '../sim-speed-manager';
 import type { EnemySaveData } from '../save-data';
@@ -84,7 +84,7 @@ export class Enemy extends Ship {
   // false の間はこの機体が射撃を行わない。移動・AI の他の判定には影響しない。
   fireEnabled = true;
 
-  private readonly _sfx: Sfx;
+  private readonly _worldSfx: WorldSfx;
   private readonly _fx: EffectsSystem;
   public readonly enemyKind: EnemyKind;
 
@@ -92,7 +92,7 @@ export class Enemy extends Ship {
   constructor(
     init: EnemyInit,
     _hud: Hud,
-    sfx: Sfx,
+    worldSfx: WorldSfx,
     fx: EffectsSystem,
     scene?: THREE.Scene,
   ) {
@@ -110,7 +110,7 @@ export class Enemy extends Ship {
       : init;
     const renderObject = buildEnemyRenderObject(enemyKind, accent);
     super(name, state, renderObject, att, C.ENEMY_RADIUS, C.ENEMY_MAX_HP, scene, id);
-    this._sfx = sfx;
+    this._worldSfx = worldSfx;
     this._fx = fx;
     this.enemyKind = enemyKind;
     this.accent = accent;
@@ -181,7 +181,7 @@ export class Enemy extends Ship {
 
   // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。
   private impactEffect(bullet: Bullet, impactPoint: Vec3): void {
-    this._sfx.enemyHit();
+    this._worldSfx.enemyHit();
     if (bullet.type === 'plasma') {
       this._fx.spawnPlasmaFlash(kinematicState(this.state.t, impactPoint, this.state.v));
     } else {
@@ -192,7 +192,7 @@ export class Enemy extends Ship {
 
   // 撃破時の爆発音・エフェクトを発生させる。
   private destroyEffect(): void {
-    this._sfx.explosion();
+    this._worldSfx.explosion();
     // 敵機は自機の ENEMY_SCALE 倍サイズなので、撃破エフェクトも見合った大きさにする
     this._fx.spawnShipDestroyEffect(this.state, C.ENEMY_SCALE, C.COLOR_ENEMY_DESTROY_FRAG);
   }
@@ -227,7 +227,7 @@ export class Enemy extends Ship {
     // 弾以外(天体・他艦・デブリ等)との接触は Δv ベースの物理ダメージとして扱う。
     if (!this.applyCollisionDamage(contact.impulse / this.mass)) return;
     if (this.hp > 0) {
-      this._sfx.clank();
+      this._worldSfx.clank();
       this._fx.spawnGasPuff(this.state);
       return;
     }
@@ -323,7 +323,7 @@ export class Enemy extends Ship {
 
     const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
 
-    const pb = new Bullet(kinematicState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', C.PLAYER_BULLET_DAMAGE, this._sfx, this.scene);
+    const pb = new Bullet(kinematicState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', C.PLAYER_BULLET_DAMAGE, this._worldSfx, this.scene);
     pb.renderObject.position.set(r.x, r.y, r.z);
     // 進行方向に向ける
     const mz = new THREE.Matrix4().lookAt(
