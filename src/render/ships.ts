@@ -547,14 +547,12 @@ export function buildBaseModel(): THREE.Group {
   const whiteModuleMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.15, metalness: 0.25 }); // 純白セラミック居住区
   const glassMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.35, roughness: 0.1, metalness: 0.9 });
   const radiatorMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, flatShading: true, roughness: 0.15, metalness: 0.9 });
-  const solarPanelMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, flatShading: true, roughness: 0.25, metalness: 0.7 });
 
   // ディテール追加用マテリアル (白系基調のライトアロイ)
   const conduitMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, flatShading: true, roughness: 0.3, metalness: 0.7 });
   const conduitJointMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, flatShading: true, roughness: 0.35, metalness: 0.75 });
   const windowGlowMat = new THREE.MeshStandardMaterial({ color: 0xfef08a, emissive: 0xfde047, emissiveIntensity: 0.95, roughness: 0.2 });
   const sensorPodMat = new THREE.MeshStandardMaterial({ color: 0x64748b, flatShading: true, roughness: 0.3, metalness: 0.7 });
-  const dishMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, flatShading: true, roughness: 0.15, metalness: 0.85 });
   const panelGrooveMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, flatShading: true, roughness: 0.7, metalness: 0.3 });
   const navRedMat = new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xf87171, emissiveIntensity: 1.2 });
   const navGreenMat = new THREE.MeshStandardMaterial({ color: 0x10b981, emissive: 0x34d399, emissiveIntensity: 1.2 });
@@ -619,49 +617,11 @@ export function buildBaseModel(): THREE.Group {
     }
   }
 
-  // 2) 放熱板 & シダの葉構造・再帰的太陽光パネル (トラス部中腹)
+  // 2) 大型放熱板 (トラス部中腹)
   for (const side of [1, -1]) {
-    // 大型放熱板
     const radiator = new THREE.Mesh(new THREE.BoxGeometry(45, 0.8, 22), radiatorMat);
     radiator.position.set(side * 28, 0, 30);
     g.add(radiator);
-
-    // 【シダの葉構造 (Fern Leaf Fractal Structure) 太陽電池アレイ】
-    const fernGroup = new THREE.Group();
-    fernGroup.position.set(side * 12, 0, -20);
-
-    // シダの主軸 (Main Rachis)
-    const mainRachis = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.5, 75, 8), conduitMat);
-    mainRachis.position.set(side * 37.5, 0, 0);
-    mainRachis.rotation.z = (side * Math.PI) / 2;
-    fernGroup.add(mainRachis);
-
-    // 一次羽状枝 (Pinna Branches 8対) ＆ 二次小羽片マイクロセル (Pinnules)
-    for (let pIdx = 0; pIdx < 8; pIdx++) {
-      const pDist = 8 + pIdx * 8;
-      const pinnaLen = 16 - pIdx * 1.2;
-
-      for (const pSide of [1, -1]) {
-        const pinnaBranch = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.2, pinnaLen, 6), conduitJointMat);
-        const pinnaX = side * pDist;
-        const pinnaZ = pSide * (pinnaLen * 0.4);
-        pinnaBranch.position.set(pinnaX, 0, pinnaZ);
-        pinnaBranch.rotation.y = pSide * 0.7; // 45度斜めに分岐
-        pinnaBranch.rotation.z = (side * Math.PI) / 2;
-        fernGroup.add(pinnaBranch);
-
-        // 小羽片 (Pinnule leaflets - 太陽光セルマイクロブレード)
-        const leafCount = 5;
-        for (let l = 0; l < leafCount; l++) {
-          const lPos = (l / leafCount) * pinnaLen - pinnaLen / 2;
-          const leaflet = new THREE.Mesh(new THREE.BoxGeometry(5.5, 0.2, 2.2), solarPanelMat);
-          leaflet.position.set(pinnaX + (side * lPos * 0.6), 0, pinnaZ + (pSide * lPos * 0.7));
-          leaflet.rotation.y = pSide * 0.7;
-          fernGroup.add(leaflet);
-        }
-      }
-    }
-    g.add(fernGroup);
 
     // ギミック関節
     const mountJoint = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 3.5, 10), sensorPodMat);
@@ -883,17 +843,6 @@ export function buildBaseModel(): THREE.Group {
     tipProbe.position.set(0, 0, mainCenterZ + 70.5).add(magAxis.clone().multiplyScalar(1.5));
     g.add(tipProbe);
   }
-
-  // 3) 通信パラボラアンテナ (High-Gain Antenna Dish & Deep-Space Dish)
-  const dish1 = new THREE.Mesh(new THREE.CylinderGeometry(5.5, 0.6, 1.4, 16, 1, true), dishMat);
-  dish1.position.set(8, -12, mainCenterZ + 15);
-  dish1.rotation.x = Math.PI / 2 + 0.4;
-  g.add(dish1);
-
-  const dish2 = new THREE.Mesh(new THREE.CylinderGeometry(4.0, 0.5, 1.0, 14, 1, true), dishMat);
-  dish2.position.set(-8, -12, mainCenterZ + 10);
-  dish2.rotation.x = Math.PI / 2 - 0.3;
-  g.add(dish2);
 
 
   // 5) カウンターウェイト部 (化学蒸留プラントコンプレックス + 200箱貨物コンテナ群 Z = -120m 〜 -40m)
