@@ -20,8 +20,8 @@ import type { BaseSaveData } from '../save-data';
 import { OrbitLine } from '../orbit-line';
 import * as C from '../const';
 
-// 基地のドッキングハッチのローカル位置および外向き法線ベクトル
-export const BASE_HATCH_LOCAL_POS: Vec3 = v3(0, 32.5, 0);
+// 基地のドッキングハッチのローカル位置および外向き法線ベクトル (中腹ドッキングパレット上部)
+export const BASE_HATCH_LOCAL_POS: Vec3 = v3(0, 8.5, 0);
 export const BASE_HATCH_LOCAL_NORMAL: Vec3 = v3(0, 1, 0);
 
 export interface BaseDockSlot {
@@ -31,10 +31,10 @@ export interface BaseDockSlot {
 }
 
 export const BASE_DOCK_SLOTS: readonly BaseDockSlot[] = [
-  { id: 0, localPos: v3(103, 0, 0), localNormal: v3(1, 0, 0) },
-  { id: 1, localPos: v3(0, 0, 103), localNormal: v3(0, 0, 1) },
-  { id: 2, localPos: v3(-103, 0, 0), localNormal: v3(-1, 0, 0) },
-  { id: 3, localPos: v3(0, 0, -103), localNormal: v3(0, 0, -1) },
+  { id: 0, localPos: v3(22, 0, 0), localNormal: v3(1, 0, 0) },
+  { id: 1, localPos: v3(0, 0, 26), localNormal: v3(0, 0, 1) },
+  { id: 2, localPos: v3(-22, 0, 0), localNormal: v3(-1, 0, 0) },
+  { id: 3, localPos: v3(0, 0, -26), localNormal: v3(0, 0, -1) },
 ];
 
 // 収容中の艦のエントリ。parts は player.parts と同一参照(修理は艦へ直接反映される)。
@@ -94,7 +94,7 @@ export class Base extends GameEntity {
       : { state: init.state, name: init.name ?? '基地', att: init.att, id: init.id };
     super(state, buildBaseModel(), scene, att, idAllocator.next(id));
     this.mass = 1e6;
-    this.radius = 100;
+    this.radius = 110;
     this.collides = true;
     this.name = name;
     this.orbitLine = new OrbitLine(C.COLOR_BASE_ORBIT_LINE, 0.35, C.LINE_RENDER_ORDER.shipOrbit);
