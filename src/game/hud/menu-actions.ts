@@ -15,7 +15,11 @@ export type MenuAction =
   | 'cancel'
   | 'openShipPlacer'
   | 'openDock'
-  | 'openSettings';
+  | 'openSettings'
+  | 'dock'
+  | 'undock'
+  | 'storeInBase'
+  | 'transferResources';
 
 // 共通メニュー項目ファクトリ。shortcut は KeyboardEvent.code — OverlayManager.dispatchShortcut
 // が Input のエッジキューから受け取る値と同じ表記にする。
@@ -39,4 +43,8 @@ export const MenuCommon = {
     label: isTarget ? '第二ターゲット解除' : '第二ターゲットに設定',
     act: 'targetSecondary',
   }),
+  dock: (): MenuItem<MenuAction> => ({ label: 'ドッキング', act: 'dock' }),
+  undock: (): MenuItem<MenuAction> => ({ label: 'ドッキング解除', act: 'undock' }),
+  storeInBase: (): MenuItem<MenuAction> => ({ label: '基地に収納', act: 'storeInBase' }),
+  transferResources: (): MenuItem<MenuAction> => ({ label: '物資・電力の融通', act: 'transferResources' }),
 };
