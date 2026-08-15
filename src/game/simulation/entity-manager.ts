@@ -300,7 +300,7 @@ export class EntityManager {
   // 操作できないワープ倍率ではどの艦も操作できない — その2つは同じ「操作できない」状態なので、
   // input を渡すかどうかの1つの判断にまとめる。
   updatePlayers(
-    activePlayer: Player | null, input: Input, simSpeed: SimSpeedManager,
+    activePlayer: Player | null, input: Input | null, simSpeed: SimSpeedManager,
     dt: number, activeStage: Stage, ephemeris: Ephemeris,
   ): void {
     const operable = simSpeed.canShipAct;
@@ -317,9 +317,27 @@ export class EntityManager {
     }
   }
 
-  // 操作できない間、全自機の連続指令(推力・トルク・射撃・噴射ラッチ)を畳む。
+  // 毎フレーム、操作対象の基地へ updateBaseControls を1度ずつ通す。
+  // 操作対象でない基地は clearTransientCommands で慣性飛行に戻る。
+  updateBases(
+    controlledBase: Base | null, input: Input, simSpeed: SimSpeedManager, dt: number,
+  ): void {
+    const operable = simSpeed.canShipAct;
+    const simDt = dt * simSpeed.simSpeed;
+    for (const base of this.bases) {
+      if (!base.alive) continue;
+      base.updateBaseControls(
+        base === controlledBase && operable ? input : null,
+        dt,
+        simDt,
+      );
+    }
+  }
+
+  // 操作できない間、全自機・操作中基地の連続指令(推力・トルク・射撃・噴射ラッチ)を畳む。
   clearTransientCommands(): void {
     for (const ship of this.players) ship.clearTransientCommands();
+    for (const base of this.bases) base.clearTransientCommands();
   }
 
   // 全自機のメッシュ・エフェクト・マーカーを同期する。方向マーカーや照準ズームは操作艦だけの
