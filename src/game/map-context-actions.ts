@@ -249,8 +249,12 @@ export class MapContextActions {
   ): void {
     if (overviewMode) return;
     input.takeRightClicks((p) => {
-      const picked = this.targeter.pickTargetAt(p, targets, project);
-      if (picked) this.openPropertyWindow(p.x, p.y, this.combatTargetPickable(picked), simTime);
+      const candidates: MapPickable[] = [
+        ...targets.filter((t) => t.alive).map((t) => this.combatTargetPickable(t)),
+        ...this.entities.bases.filter((b) => b.alive).map((b) => ({ id: b.id, name: b.name, pos: b.state.r, kind: 'base' as const })),
+      ];
+      const picked = pickNearest(candidates, p.x, p.y, project, pickRadiusSq(C.TARGET_LOCK_PICK_PX_SQ, C.TARGET_LOCK_PICK_PX_SQ_COARSE));
+      if (picked) this.openPropertyWindow(p.x, p.y, picked, simTime);
       else this.openEmptySpaceMenu(p.x, p.y, simTime);
       return true;
     });
