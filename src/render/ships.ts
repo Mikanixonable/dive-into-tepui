@@ -651,14 +651,9 @@ export function buildBaseModel(): THREE.Group {
   }
 
   // 中央メインドッキングハッチ (Y = +6m, Z = 0)
-  const hatchRingMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, emissive: 0x38bdf8, emissiveIntensity: 0.9, roughness: 0.2, metalness: 0.8 });
   const hatchDoor = new THREE.Mesh(new THREE.CylinderGeometry(10, 10, 2, 16), dockPalletMat);
   hatchDoor.position.set(0, 7, 0);
   g.add(hatchDoor);
-
-  const hatchRing = new THREE.Mesh(new THREE.CylinderGeometry(11, 11, 1, 16), hatchRingMat);
-  hatchRing.position.set(0, 8.2, 0);
-  g.add(hatchRing);
 
   // 【一箇所に集約した2x2格子状ドッキングベイスロット (Dock 0..3)】
   const gridSlotPos = [
