@@ -411,6 +411,40 @@ broken margin because its instrumentation had silently failed to apply, and now 
 for that value. A harness never seen to fail proves nothing.
 
 
+## 13. `Conductor` — one class per continuous musical line
+
+Roadmap §2d step 3. Pure refactor: the ambient line only, no pause, no audition line.
+
+`Bgm` was doing two jobs that stop being one job the moment there are two independent musical
+lines. What moved out to `Conductor`: the current `TrackPlayback`, `trackIdx`/`trackStartTime`,
+track selection (`nextTrackIndex`), rotation timing, `openPlayback`, `retire`, and the constants
+that go with them (`START_DELAY_SEC`, `FADE_IN_SEC`, `TRACK_ROTATION_SEC`). What stayed on `Bgm`:
+the master gain, the one `setInterval` pump and `LOOKAHEAD_SEC`, the volume and its persistence,
+`autoStarted`, and the public API every caller already holds — `Launcher` and `SettingsView` are
+untouched.
+
+`Bgm.ambient` is `Conductor | null`, built lazily on first play, because a `Conductor` holds its
+`AudioContext` and there is none before `unlock()`. That mirrors `masterGain`'s existing laziness
+for the same reason. `autoStarted` stays on `Bgm` (decided with arx-ein): it is about the first
+user gesture, which is an app-level event, not a property of any one line.
+
+**`rotates` is still mutable, passed as `start(trackIdx, rotates)`.** With a single line,
+`playTrack` still has to pin the track it was asked for, so the policy cannot yet be fixed at
+construction — that happens in step 5, when the audition line makes it a per-line fact. Passing
+it as an argument does remove the write-then-overwrite (`start()` set it true and `playTrack()`
+set it false on the next line), so the smell is gone even though the field is not yet `readonly`.
+
+Verified: all five harnesses green **with their assertions unchanged**, and `check-rotation`
+reproduces the exact same track sequences as before the refactor — `[0]`, `[2,3,2]`, `[0,3,2]`,
+same seed, same choices, same rotation timing. That identity is the whole evidence for this step.
+
+One harness edit was needed and it is worth being precise about why it does not weaken that:
+`check-rotation` observes which track is playing by reading a private field, and that field moved.
+Re-pointing the probe from `bgm.trackIdx` to `bgm.ambient.currentTrackIndex` changes *how it
+reaches* the value, not *what it asserts*. Changing an expectation would have been the thing to
+distrust.
+
+
 ## The two merges of `main` into the PR branch (`4e21f958`, then `78370b6b`)
 
 Upstream landed the **run-lifecycle rework** — `Launcher` owns the `Game` and recreates it
