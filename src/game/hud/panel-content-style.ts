@@ -11,6 +11,36 @@ export const PANEL_CONTENT_STYLE = `
 #hud:not(.creative-mode) .hud-map-root.active #hud-status { display: none; }
 #hud-orbit h3 { font-size: var(--font-xxs); }
 #hud-status .v, #hud-orbit .v { min-width: 75px; }
+#hud-status .rcs-fuel-readout {
+  display: inline-grid;
+  grid-template-columns: minmax(64px, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  width: 128px;
+}
+#hud-status .rcs-fuel-meter {
+  height: 6px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--bar-bg);
+}
+#hud-status .rcs-fuel-fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 180ms;
+}
+#hud-status .rcs-fuel-meter.critical .rcs-fuel-fill {
+  background: var(--danger);
+}
+#hud-status .rcs-fuel-value {
+  min-width: 48px;
+  color: var(--text);
+  font-size: var(--font-xxs);
+  text-align: right;
+}
 /* R/F/G/T の代替操作ボタン(タッチ・マウスどちらでも常設)。 */
 #hud-status .status-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
 #hud-status .status-actions .w-btn { font-size: var(--font-xxs); padding: var(--space-2) var(--space-3); }

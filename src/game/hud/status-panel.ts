@@ -111,6 +111,34 @@ export class StatusPanel {
     this.syncState('camfollow', cameraFollowsAttitude, 'signal');
     this.followButton?.setOn(cameraFollowsAttitude);
     this.syncState('prohold', throttleObj.throttle.progradeHold, 'near');
+
+    let currentFuel = 0;
+    let maxFuel = 0;
+    if (target instanceof Player) {
+      currentFuel = target.totalFuel;
+      maxFuel = target.totalMaxFuel;
+    } else if (target instanceof Base) {
+      currentFuel = target.fuel;
+      maxFuel = target.maxFuel;
+    }
+
+    const clampedFuel = Math.max(0, Math.min(maxFuel, currentFuel));
+    const fuelPercent = maxFuel > 0 ? (clampedFuel / maxFuel) * 100 : 0;
+    const fuelValueText = `${Math.round(clampedFuel)} / ${Math.round(maxFuel)}`;
+
+    const fuelMeter = this.els.get('rcs-fuel-meter');
+    if (fuelMeter) {
+      fuelMeter.classList.toggle('critical', maxFuel > 0 && clampedFuel < maxFuel * 0.2);
+      fuelMeter.setAttribute('aria-valuemax', String(maxFuel));
+      fuelMeter.setAttribute('aria-valuenow', String(clampedFuel));
+      fuelMeter.setAttribute('aria-valuetext', fuelValueText);
+    }
+    const fuelFill = this.els.get('rcs-fuel-fill');
+    if (fuelFill) {
+      fuelFill.style.width = `${fuelPercent.toFixed(1)}%`;
+    }
+    this.setText('rcs-fuel-value', fuelValueText);
+
     const ammo = this.els.get('ammo');
     if (ammo) {
       if (target instanceof Player) {
