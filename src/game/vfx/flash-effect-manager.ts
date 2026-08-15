@@ -26,9 +26,13 @@ export interface FlashEffect {
 export class FlashEffectManager {
   effects: FlashEffect[] = [];
   private readonly pool: InstancedPool;
+  private readonly geometry: THREE.BufferGeometry;
+  private readonly material: THREE.Material;
 
   constructor(scene: THREE.Scene) {
     const { geometry, material } = flashResources();
+    this.geometry = geometry;
+    this.material = material;
     // Billboard の既定 renderOrder(5)に合わせる。
     this.pool = new InstancedPool(scene, geometry, material, C.MAX_FLASHES, true, 5);
   }
@@ -68,5 +72,13 @@ export class FlashEffectManager {
       this.pool.push(fx.transform, fx.color);
     }
     this.pool.endFrame();
+  }
+
+  // flashResources() が個体ごとに新規生成する geometry/material を、プールと共に破棄する。
+  dispose(): void {
+    this.pool.dispose();
+    this.geometry.dispose();
+    this.material.dispose();
+    this.effects.length = 0;
   }
 }
