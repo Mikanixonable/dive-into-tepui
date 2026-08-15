@@ -125,6 +125,11 @@ export class NavTarget {
     if (this.targetId === id) this.targetId = null;
   }
 
+  // 基地用コンテキストメニューを片付ける。
+  dispose(): void {
+    this.baseMenu.dispose();
+  }
+
   // 戦闘ビューの右クリックで基地を航法ターゲットに設定/解除する。基地に当たらなければ
   // クリックを消費せず、Targeter の敵ターゲット選択へフォールスルーさせる。ビューはここでは
   // 持たないので毎フレーム引数で受け取り、マップ視点では何もしない。

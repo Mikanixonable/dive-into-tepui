@@ -12,8 +12,16 @@ import type { Docking } from './docking';
 import type { ActivePlayerController } from './active-player-controller';
 import { setPanelCollapsedView } from './hud/panel-shell';
 import type { OverlayHandle } from './hud/overlay-manager';
+import type { Base } from './game-entity/base';
 
 export type ViewId = 'combat' | 'map' | 'dock';
+
+export interface ViewMenuItem {
+  readonly id: string;
+  readonly label: string;
+  readonly viewId: ViewId;
+  readonly base?: Base;
+}
 
 // 3D 世界を描くビュー。ドックはこのどちらかに重なる形で開き、閉じると元へ戻る。
 export type WorldViewId = 'combat' | 'map';
@@ -101,6 +109,12 @@ export class ViewManager {
     this.applyChrome();
   }
 
+  // ドックの登録を OverlayManager の台帳から下ろす。台帳は Hud のもので自分より長生きするため、
+  // 開いたまま消えると、以後どのビューでも入力を塞ぐハンドルが残る。
+  dispose(): void {
+    this.hud.overlayManager.close('dock-view');
+  }
+
   // isDockOpen が変化したフレームだけ OverlayManager 側の登録を追従させる。
   private syncDockOverlay(wasDockOpen: boolean): void {
     if (this.isDockOpen === wasDockOpen) return;
@@ -122,6 +136,43 @@ export class ViewManager {
   selectableViews(): readonly ViewId[] {
     const all: readonly ViewId[] = ['combat', 'map', 'dock'];
     return all.filter((v) => v !== this.current && this.canEnter(v));
+  }
+
+  // ビュー選択 UI に並べる詳細な遷移項目の一覧を取得する。
+  getSelectableMenuItems(): readonly ViewMenuItem[] {
+    const items: ViewMenuItem[] = [];
+
+    if (this.current !== 'combat' && this.canEnter('combat')) {
+      items.push({ id: 'combat', label: 'Combat', viewId: 'combat' });
+    }
+
+    if (this.current !== 'map') {
+      items.push({ id: 'map', label: 'Map', viewId: 'map' });
+    }
+
+    const availableBases = this.docking?.getAvailableBases() ?? [];
+    if (availableBases.length === 1) {
+      const base = availableBases[0]!;
+      if (!(this.current === 'dock' && this.docking?.activeBase === base)) {
+        items.push({ id: `dock:${base.id}`, label: `Dock (${base.name})`, viewId: 'dock', base });
+      }
+    } else if (availableBases.length > 1) {
+      for (const base of availableBases) {
+        if (this.current === 'dock' && this.docking?.activeBase === base) continue;
+        items.push({ id: `dock:${base.id}`, label: `Dock: ${base.name}`, viewId: 'dock', base });
+      }
+    }
+
+    return items;
+  }
+
+  // ビュー選択 UI で選ばれた項目を実行する。
+  selectMenuItem(item: ViewMenuItem): void {
+    if (item.viewId === 'dock' && item.base && this.docking) {
+      this.docking.activate(item.base);
+    } else {
+      this.setView(item.viewId);
+    }
   }
 
   // そのビューへいま入れるか。ドックは対象基地が要り、戦闘は操作対象の艦が要る。
