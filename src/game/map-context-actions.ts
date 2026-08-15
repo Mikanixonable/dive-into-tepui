@@ -243,15 +243,14 @@ export class MapContextActions {
     this.menu.open(clientX, clientY, target, this.itemsFor(target, simTime));
   }
 
-  // 戦闘ビューの右クリック。アイコン/マーカーの位置判定ではなく、3Dモデル(renderObject)に対する
-  // レイキャストで当たったエンティティ(自艦・他艦・敵・基地)のプロパティウィンドウを開く。
-  // 3Dモデルに当たらなければ空域メニューへ落とす。マップ視点では何もしない。
+  // 戦闘ビューの右クリック。3Dモデル(renderObject)への直撃レイキャスト優先で判定し、
+  // 遠距離等で直撃を外した場合も近傍判定(pickNearest)で判定してプロパティウィンドウを開く。
   handleCombatRightClick(
     input: Input, simTime: number, overviewMode: boolean,
   ): void {
     if (overviewMode) return;
     input.takeRightClicks((p) => {
-      const hitEntity = this.raycastCombatEntity(p.x, p.y);
+      const hitEntity = this.raycastCombatEntity(p.x, p.y) ?? this.pickNearestCombatEntity(p.x, p.y);
       if (hitEntity) {
         this.openPropertyWindow(p.x, p.y, this.entityToPickable(hitEntity), simTime);
       } else {
@@ -266,6 +265,8 @@ export class MapContextActions {
     const camera = this.cameraSystem.activeCamera;
     if (!camera) return null;
 
+    camera.updateMatrixWorld(true);
+
     const mouse = new THREE.Vector2(
       (clientX / window.innerWidth) * 2 - 1,
       -(clientY / window.innerHeight) * 2 + 1,
@@ -279,18 +280,21 @@ export class MapContextActions {
 
     for (const ship of this.entities.players) {
       if (ship.alive && ship.renderObject.visible) {
+        ship.renderObject.updateMatrixWorld(true);
         renderObjects.push(ship.renderObject);
         entityMap.set(ship.renderObject, ship);
       }
     }
     for (const enemy of this.entities.enemies) {
       if (enemy.alive && enemy.renderObject.visible) {
+        enemy.renderObject.updateMatrixWorld(true);
         renderObjects.push(enemy.renderObject);
         entityMap.set(enemy.renderObject, enemy);
       }
     }
     for (const base of this.entities.bases) {
       if (base.alive && base.renderObject.visible) {
+        base.renderObject.updateMatrixWorld(true);
         renderObjects.push(base.renderObject);
         entityMap.set(base.renderObject, base);
       }
@@ -311,6 +315,17 @@ export class MapContextActions {
     }
 
     return null;
+  }
+
+  private pickNearestCombatEntity(clientX: number, clientY: number): GameEntity | null {
+    const project = this.cameraSystem.activeCameraProjection;
+    const candidates: (MapPickable & { entity: GameEntity })[] = [
+      ...this.entities.players.filter((p) => p.alive).map((p) => ({ id: p.id, name: p.name, pos: p.state.r, kind: 'player' as const, entity: p })),
+      ...this.entities.enemies.filter((e) => e.alive).map((e) => ({ id: e.id, name: e.name, pos: e.state.r, kind: 'ship' as const, entity: e })),
+      ...this.entities.bases.filter((b) => b.alive).map((b) => ({ id: b.id, name: b.name, pos: b.state.r, kind: 'base' as const, entity: b })),
+    ];
+    const picked = pickNearest(candidates, clientX, clientY, project, pickRadiusSq(C.TARGET_LOCK_PICK_PX_SQ, C.TARGET_LOCK_PICK_PX_SQ_COARSE));
+    return picked?.entity ?? null;
   }
 
   private entityToPickable(entity: GameEntity): MapPickable {
