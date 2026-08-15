@@ -55,21 +55,31 @@ export class Docking {
     this.viewManager.setDocking(this);
   }
 
+  // 生存中の全基地を返す。
+  getAvailableBases(): readonly Base[] {
+    return this.entities.bases.filter((b) => b.alive);
+  }
+
   // 基地を選択状態にする(遷移はしない) — マップの左クリック選択と、明示的にドックへ
   // 入る操作(activate)の両方がここを通る。
   selectBase(base: Base): void {
     this._activeBase = base;
   }
 
-  // 基地を選択し、そのままドックビューへ遷移する。
+  // 基地を選択し、そのままドックビューへ遷移する。既にドック表示中なら画面を更新する。
   activate(base: Base): void {
+    const isSameBase = this._activeBase === base;
     this.selectBase(base);
-    this.viewManager.setView('dock');
+    if (this.viewManager.current === 'dock') {
+      if (!isSameBase) this.enterDock();
+    } else {
+      this.viewManager.setView('dock');
+    }
   }
 
-  // ドックビューへ遷移できるか。対象基地が健在な間だけ true。
+  // ドックビューへ遷移できるか。1つ以上の生存基地が存在すれば true。
   canEnterDock(): boolean {
-    return this._activeBase !== null && this._activeBase.alive;
+    return this.getAvailableBases().length > 0;
   }
 
   // 対象基地が消えたらドックへ入れなくする。表示中なら元のビューへ戻す。
@@ -81,7 +91,11 @@ export class Docking {
 
   // ドックビューの開閉は ViewManager が遷移の一部として呼ぶ。ドック中は時間を止める。
   enterDock(): void {
-    if (!this._activeBase) return;
+    if (!this._activeBase || !this._activeBase.alive) {
+      const available = this.getAvailableBases();
+      if (available.length === 0) return;
+      this._activeBase = available[0]!;
+    }
     this.pauseGame();
     this.dockView.open(this._activeBase, this.activePlayers.current, this.activeStage.freeProcurement);
   }
@@ -164,4 +178,8 @@ export class Docking {
     this.hud.hint(`${ship.name} を発進しました`);
   }
 
+  // ドックビューの DOM を片付ける。
+  dispose(): void {
+    this.dockView.dispose();
+  }
 }

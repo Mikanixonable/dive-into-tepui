@@ -132,6 +132,7 @@ export class ViewOptionsPanel {
   private readonly gridCurrent = new Map<keyof CelestialGridVisibility, boolean>();
 
   private readonly panel: HTMLElement;
+  private readonly unsubscribeCollapsedView: () => void;
 
   public constructor(root: HTMLElement) {
     // パネル本体とタイトル
@@ -156,7 +157,7 @@ export class ViewOptionsPanel {
       syncCollapseToggle(collapseToggle, body, VIEW_OPTIONS_COLLAPSE_LABELS);
     };
     applyCollapsedState();
-    onPanelCollapsedViewChange(applyCollapsedState);
+    this.unsubscribeCollapsedView = onPanelCollapsedViewChange(applyCollapsedState);
     collapseToggle.addEventListener('click', () => savePanelCollapsed('hud-view-options', body.classList.contains('collapsed')));
 
     // マップに出す天体のクラスごとに、アイコン(点)・ラベル(名前)・軌道線を個別に切り替える。
@@ -315,6 +316,12 @@ export class ViewOptionsPanel {
   // パネルの表示/非表示を切り替える。
   public setVisible(visible: boolean): void {
     this.panel.classList.toggle('hidden', !visible);
+  }
+
+  // パネルを取り除き、折りたたみ状態変化の購読を解く。
+  public dispose(): void {
+    this.unsubscribeCollapsedView();
+    this.panel.remove();
   }
 
   // クラス別トグルの表示状態を現在値へ合わせる。

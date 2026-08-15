@@ -263,6 +263,18 @@ export class MarkerManager {
     this.markerDictionary.delete(key);
   }
 
+  // マーカー・引き出し線のプールを一括で片付ける。root/svgOverlay 自体は Hud の所有物なので
+  // 中身を空にするだけにとどめる。
+  dispose(): void {
+    // 破棄後に発火して片付けた要素を触りにいかないよう、保留中のフェードは先に解除する。
+    for (const timer of this.occlusionFadeTimers.values()) clearTimeout(timer);
+    this.occlusionFadeTimers.clear();
+    for (const m of this.markerDictionary.values()) m.root.remove();
+    this.markerDictionary.clear();
+    for (const line of this.svgLinePool) line.remove();
+    this.svgLinePool.length = 0;
+  }
+
   private cancelOcclusionFade(key: string): void {
     const timer = this.occlusionFadeTimers.get(key);
     if (timer === undefined) return;
