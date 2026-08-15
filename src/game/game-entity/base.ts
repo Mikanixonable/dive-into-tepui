@@ -41,10 +41,10 @@ export interface BaseDockSlot {
 }
 
 export const BASE_DOCK_SLOTS: readonly BaseDockSlot[] = [
-  { id: 0, localPos: v3(22, 0, 0), localNormal: v3(1, 0, 0) },
-  { id: 1, localPos: v3(0, 0, 26), localNormal: v3(0, 0, 1) },
-  { id: 2, localPos: v3(-22, 0, 0), localNormal: v3(-1, 0, 0) },
-  { id: 3, localPos: v3(0, 0, -26), localNormal: v3(0, 0, -1) },
+  { id: 0, localPos: v3(-11, 7.5, -14), localNormal: v3(0, 1, 0) },
+  { id: 1, localPos: v3(11, 7.5, -14), localNormal: v3(0, 1, 0) },
+  { id: 2, localPos: v3(-11, 7.5, 14), localNormal: v3(0, 1, 0) },
+  { id: 3, localPos: v3(11, 7.5, 14), localNormal: v3(0, 1, 0) },
 ];
 
 // 収容中の艦のエントリ。parts は player.parts と同一参照(修理は艦へ直接反映される)。

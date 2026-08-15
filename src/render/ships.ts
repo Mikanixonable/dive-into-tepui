@@ -650,7 +650,7 @@ export function buildBaseModel(): THREE.Group {
     g.add(grooveX);
   }
 
-  // 中央ドッキングハッチ (Y = +6m, Z = 0)
+  // 中央メインドッキングハッチ (Y = +6m, Z = 0)
   const hatchRingMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, emissive: 0x38bdf8, emissiveIntensity: 0.9, roughness: 0.2, metalness: 0.8 });
   const hatchDoor = new THREE.Mesh(new THREE.CylinderGeometry(10, 10, 2, 16), dockPalletMat);
   hatchDoor.position.set(0, 7, 0);
@@ -660,33 +660,24 @@ export function buildBaseModel(): THREE.Group {
   hatchRing.position.set(0, 8.2, 0);
   g.add(hatchRing);
 
-  // 4箇所のドックスロット構造体 (Dock 0..3)
-  const slotCollarMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, flatShading: true, roughness: 0.25, metalness: 0.4 });
-  const slotRingMat = new THREE.MeshStandardMaterial({ color: 0xd97706, emissive: 0xf59e0b, emissiveIntensity: 0.7, roughness: 0.3 });
-
-  const slotDefs = [
-    { pos: new THREE.Vector3(22, 0, 0), rot: new THREE.Vector3(0, 0, -Math.PI / 2) }, // Slot 0 (+X)
-    { pos: new THREE.Vector3(0, 0, 26), rot: new THREE.Vector3(Math.PI / 2, 0, 0) },   // Slot 1 (+Z)
-    { pos: new THREE.Vector3(-22, 0, 0), rot: new THREE.Vector3(0, 0, Math.PI / 2) },  // Slot 2 (-X)
-    { pos: new THREE.Vector3(0, 0, -26), rot: new THREE.Vector3(-Math.PI / 2, 0, 0) }, // Slot 3 (-Z)
+  // 【一箇所に集約した2x2格子状ドッキングベイスロット (Dock 0..3)】
+  const gridSlotPos = [
+    { x: -11, z: -14 }, // Slot 0
+    { x:  11, z: -14 }, // Slot 1
+    { x: -11, z:  14 }, // Slot 2
+    { x:  11, z:  14 }, // Slot 3
   ];
 
   let sIdx = 0;
-  for (const s of slotDefs) {
-    const collar = new THREE.Mesh(new THREE.CylinderGeometry(8.5, 9, 2.5, 12), slotCollarMat);
-    collar.position.copy(s.pos);
-    collar.rotation.set(s.rot.x, s.rot.y, s.rot.z);
+  for (const slotPos of gridSlotPos) {
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(4.5, 5.0, 1.2, 12), dockPalletMat);
+    collar.position.set(slotPos.x, 7.2, slotPos.z);
     g.add(collar);
 
-    const ring = new THREE.Mesh(new THREE.CylinderGeometry(6.5, 6.5, 0.8, 12), slotRingMat);
-    ring.position.copy(s.pos).add(s.pos.clone().normalize().multiplyScalar(1.2));
-    ring.rotation.set(s.rot.x, s.rot.y, s.rot.z);
-    g.add(ring);
-
-    // 【ディテール: 航行ガイドビーコンライト (赤/緑)】
+    // 航行ガイドビーコンライト (赤/緑)
     const beaconMat = sIdx % 2 === 0 ? navRedMat : navGreenMat;
-    const beaconLight = new THREE.Mesh(new THREE.SphereGeometry(0.6, 8, 6), beaconMat);
-    beaconLight.position.copy(s.pos).add(new THREE.Vector3(0, 4.8, 0));
+    const beaconLight = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 6), beaconMat);
+    beaconLight.position.set(slotPos.x, 8.2, slotPos.z);
     g.add(beaconLight);
 
     sIdx++;
@@ -866,7 +857,7 @@ export function buildBaseModel(): THREE.Group {
     return container;
   };
 
-  // 規格化宇宙貨物コンテナ群の配置 (4方向のドッキングラック)
+  // 規格化宇宙貨物コンテナ群の整列配置 (4方向のドッキングラック)
   const containerDims = [
     { w: 6, h: 6, d: 12 },
     { w: 5, h: 5, d: 10 },
@@ -889,7 +880,8 @@ export function buildBaseModel(): THREE.Group {
       
       const container = buildContainer(dim.w, dim.h, dim.d, mat, tagMat);
       container.position.copy(pos);
-      container.rotation.set((cIdx * 0.4) % Math.PI, (cIdx * 0.7) % Math.PI, (cIdx * 0.3) % Math.PI);
+      // 機体軸に完全平行へ整然と整列配置
+      container.rotation.set(0, 0, 0);
       g.add(container);
 
       cIdx++;
