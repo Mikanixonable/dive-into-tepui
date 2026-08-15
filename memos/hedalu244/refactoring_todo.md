@@ -39,15 +39,21 @@
 | 黄道/赤道の面・極・グリッド6トグル | `render/celestial-grid.ts`(新、`EnvironmentScene` 所有)、可視状態は `Navball.gridVisibility` | ⚠️ Ctx を広げた(→ 4-1) |
 
 ### 巨大モジュールの分割
-`game.ts` / `plan-editor.ts` / `ship-placer-panel.ts`
-  モジュール 200行 の基準を大きく超える。`ship-placer-panel.ts` はフィールド宣言だけで20行以上あり、
-  「軌道要素フォーム」と「ラグランジュ点フォーム」で分割の余地がある。
+`ship-placer-panel.ts` / `plan-editor.ts` / `dock-view.ts` はモジュール 200行 の基準を
+大きく超える。`ship-placer-panel.ts` はフィールド宣言だけで40行以上あり、「軌道要素フォーム」と
+「ラグランジュ点フォーム」で分割の余地がある。`plan-editor.ts` は Δv 編集(キー/ボタン/ドラッグ/
+ラッチ)と `NodeGizmo`/`PlanGizmo3D` の配線が同居しており、分割の余地がある。`dock-view.ts` は
+格納艦/部品/ショップの3タブを1クラスの `buildShipsTab`/`buildPartsTab`/`buildShopTab` 以下に
+持ち、部品タブ関連(`buildPartsTab`〜`buildWarehouseList` 等)だけで200行を超えており、
+タブ単位での分割の余地がある。
 
-- **行数** — `hud/dom.ts` 1036 / `plan/plan-editor.ts` 816 / `render/ships.ts` 570 /
-  `game/const.ts` 554 / `game/game.ts` 555 / `audio/sfx.ts` 519。200 行基準を大きく超える。
-  `plan-editor.ts` は Δv 編集(キー/ボタン/ドラッグ/ラッチ)とノードギズモの配線が同居しており、
-  分割の余地がある。`game.ts` は for 文と条件分岐を持たない配線のみになっているので、
-  これ以上削るならフェーズ(update/sync)そのものを別モジュールへ移す判断が要る。
+- **行数** — `game/hud/dock-view.ts` 1086 / `game/creative/ship-placer-panel.ts` 853 /
+  `game/map-context-actions.ts` 847 / `game/plan/plan-editor.ts` 787 /
+  `game/hud/save-browser.ts` 614 / `game/const.ts` 587 / `render/ships.ts` 582 /
+  `audio/sfx.ts` 546 / `game/game.ts` 511。200 行基準を大きく超える。
+  `game.ts` はコンストラクタでの配線(for 文・条件分岐なし)と、update/handleInput/sync の
+  3フェーズの呼び出し順制御からなる。フェーズ側には視点(マップ/戦闘)や自機の有無による
+  条件分岐が残っており、これ以上削るならフェーズそのものを別モジュールへ移す判断が要る。
 
 
 ## marker周りの責務漏洩(情報が古そう。要調査)
