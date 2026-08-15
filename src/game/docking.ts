@@ -14,7 +14,7 @@ import type { EntityManager } from './simulation/entity-manager';
 import type { MapContextActions } from './map-context-actions';
 import type { CameraSystem } from './camera/camera-system';
 import type { ViewManager } from './view-manager';
-import type { Sfx } from '../audio/sfx';
+import type { WorldSfx } from '../audio/world-sfx';
 import type { EffectsSystem } from './vfx/effects-system';
 import type { MarkerManager } from './marker/marker-manager';
 import type { ActivePlayerController } from './active-player-controller';
@@ -37,7 +37,7 @@ export class Docking {
     private readonly pauseGame: () => void,
     private readonly resumeGame: () => void,
     private readonly hud: Hud,
-    private readonly sfx: Sfx,
+    private readonly worldSfx: WorldSfx,
     private readonly scene: THREE.Scene,
     private readonly effects: EffectsSystem,
     private readonly markerManager: MarkerManager,
@@ -124,8 +124,8 @@ export class Docking {
     // 操作中の艦を収容する際は、連続指令と噴射音を同時に畳む。
     if (wasActive) {
       ship.clearTransientCommands();
-      this.sfx.setThrust(false);
-      this.sfx.setRcs(false);
+      this.worldSfx.setThrust(false);
+      this.worldSfx.setRcs(false);
     }
     this.entities.parkPlayer(ship);
     if (wasActive) {
@@ -141,7 +141,7 @@ export class Docking {
   private buildShip(base: Base): void {
     const no = ++this.nextBuiltShipNo;
     const id = `${base.id}-built-${no}`;
-    const ship = new Player(this.hud, this.sfx, this.scene, this.effects, this.markerManager, { name: `新造艦-${no}`, state: base.state, id });
+    const ship = new Player(this.hud, this.worldSfx, this.scene, this.effects, this.markerManager, { name: `新造艦-${no}`, state: base.state, id });
     ship.renderObject.visible = false;
     base.baseState.dockedShips.push({
       id: ship.id,
