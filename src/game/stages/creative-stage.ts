@@ -378,10 +378,9 @@ export class CreativeStage extends Stage {
     this._hud.hint(reason);
   }
 
-  // ステージ固有の補助メッセージは無いが、null を返すと StageStatusPanel 自体が非表示になるので、
-  // 装甲・エンジン出力・温度・電力の表示のためだけに空文字を返す。
+  // クリエイティブモードの戦闘ビューでステータスウィンドウ(状況表示・自機装甲/温度/電力ゲージ・放熱板操作)を明示的に表示する。
   hudSubStatus(): string {
-    return '';
+    return this.waveAttackEnabled ? '波状攻撃: ON' : 'クリエイティブ';
   }
 
   // 配置プレビューの軌道線・設定パネル・艦艇配置パネルを片付けたうえで super.dispose() を呼ぶ。
