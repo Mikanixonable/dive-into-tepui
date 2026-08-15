@@ -12,12 +12,17 @@ export const MOON_VIS_DIST = 4.5e7; // 月メッシュの表示距離(角直径�
 // 実太陽の視直径(約0.53°)よりやや大きめ + ハロー分
 export const SUN_VISUAL_SIZE = 2.4e6;
 
+export interface Stars {
+  readonly mesh: THREE.Mesh;
+  dispose(): void;
+}
+
 // 星空の球殻メッシュを構築する。
-export function createStars(): THREE.Mesh {
+export function createStars(): Stars {
   const geo = new THREE.SphereGeometry(STAR_SHELL_RADIUS, 64, 64);
   const texture = new THREE.TextureLoader().load(starsTextureUrl);
   texture.colorSpace = THREE.SRGBColorSpace;
-  
+
   const mat = new THREE.MeshBasicMaterial({
     map: texture,
     side: THREE.BackSide,
@@ -27,18 +32,27 @@ export function createStars(): THREE.Mesh {
     // 落ちて黒く抜けることがあるため明示的に無効化する。
     depthTest: false,
   });
-  
+
   const mesh = new THREE.Mesh(geo, mat);
   // EnvironmentScene.sync が毎フレーム position をカメラ位置へ合わせる殻なので、
   // 外接球によるフラスタム判定は常に「視界内」を返し意味を持たない。
   mesh.frustumCulled = false;
   mesh.renderOrder = -10;
-  return mesh;
+  return {
+    mesh,
+    // ジオメトリ・マテリアル・テクスチャを解放する。mesh をシーンから外すのは呼び出し側。
+    dispose(): void {
+      geo.dispose();
+      mat.dispose();
+      texture.dispose();
+    },
+  };
 }
 
 export interface Sun {
-  billboard: Billboard;
-  mesh: THREE.Mesh;
+  readonly billboard: Billboard;
+  readonly mesh: THREE.Mesh;
+  dispose(): void;
 }
 
 // 月の表面。テクスチャの経度原点がモデルの本初子午線(+Z)と揃うようジオメトリを回す。
@@ -49,7 +63,18 @@ export function createMoon(): CelestialSurface {
 }
 
 export function createSun(): Sun {
-  return { billboard: new Billboard(0xfff3d0, -9), mesh: createSunMesh() };
+  const billboard = new Billboard(0xfff3d0, -9);
+  const mesh = createSunMesh();
+  return {
+    billboard,
+    mesh,
+    // billboard とメッシュのジオメトリ・マテリアルを解放する。両方をシーンから外すのは呼び出し側。
+    dispose(): void {
+      billboard.dispose();
+      mesh.geometry.dispose();
+      (mesh.material as THREE.Material).dispose();
+    },
+  };
 }
 
 // 単位球(半径1)の太陽本体。自己発光する光源そのものなので、シーンの照明を受けない
