@@ -113,10 +113,14 @@ export class Docking {
   // 船または基地への物理ドッキングを実行。
   dockTo(ship: Player, target: GameEntity): void {
     if (!ship.alive || !target.alive) return;
-    this.dockedPairs.set(ship.id, target);
-    // 相対速度をゼロにする
-    ship.state = kinematicState(ship.state.t, ship.state.r, target.state.v);
-    this.hud.hint(`${ship.name} が ${target.name || '対象'} にドッキングしました`);
+    if (target instanceof Base) {
+      this.storeInBase(ship, target);
+    } else {
+      this.dockedPairs.set(ship.id, target);
+      // 相対速度をゼロにする
+      ship.state = kinematicState(ship.state.t, ship.state.r, target.state.v);
+      this.hud.hint(`${ship.name} が ${target.name || '対象'} にドッキングしました`);
+    }
   }
 
   // ドッキング解除
