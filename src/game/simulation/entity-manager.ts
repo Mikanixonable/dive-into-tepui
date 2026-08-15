@@ -24,7 +24,7 @@ import type { Ephemeris } from '../../physics/ephemeris';
 import type { DisplayWindow } from '../display-window-manager';
 import type { GameSaveData } from '../save-data';
 import type { Hud } from '../hud/hud';
-import type { Sfx } from '../../audio/sfx';
+import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { PerfCounts } from '../../perf-meter';
@@ -58,7 +58,7 @@ export class EntityManager {
   constructor(
     scene: THREE.Scene,
     hud: Hud,
-    sfx: Sfx,
+    worldSfx: WorldSfx,
     markerManager: MarkerManager,
     saved?: GameSaveData,
   ) {
@@ -73,26 +73,26 @@ export class EntityManager {
     this.casingPool = new InstancedPool(scene, casingBody.geometry, casingBody.material, C.MAX_CASINGS);
     this.debrisFragmentPools = debrisFragment.geometries.map(
       (geo) => new InstancedPool(scene, geo, debrisFragment.material, C.MAX_DEBRIS, true));
-    this.effects = new EffectsSystem(scene, this, sfx);
-    if (saved) this.restoreFromSave(saved, hud, sfx, scene, markerManager);
+    this.effects = new EffectsSystem(scene, this, worldSfx);
+    if (saved) this.restoreFromSave(saved, hud, worldSfx, scene, markerManager);
   }
 
   // スナップショットから自機・敵・弾薬・基地を復元する。
   private restoreFromSave(
-    save: GameSaveData, hud: Hud, sfx: Sfx, scene: THREE.Scene, markerManager: MarkerManager,
+    save: GameSaveData, hud: Hud, worldSfx: WorldSfx, scene: THREE.Scene, markerManager: MarkerManager,
   ): void {
     const simTime = save.simTime;
     for (const data of save.players) {
-      this.addPlayer(new Player(hud, sfx, scene, this.effects, markerManager, { saved: data, simTime }));
+      this.addPlayer(new Player(hud, worldSfx, scene, this.effects, markerManager, { saved: data, simTime }));
     }
     for (const data of save.enemies) {
-      this.addEnemy(new Enemy({ saved: data, simTime }, hud, sfx, this.effects, scene));
+      this.addEnemy(new Enemy({ saved: data, simTime }, hud, worldSfx, this.effects, scene));
     }
     for (const data of save.ammoPickups) {
       this.addAmmoPickup(new AmmoPickup({ saved: data, simTime }, scene, markerManager));
     }
     for (const data of save.bases) {
-      this.addBase(new Base({ saved: data, simTime }, scene, hud, sfx, this.effects, markerManager));
+      this.addBase(new Base({ saved: data, simTime }, scene, hud, worldSfx, this.effects, markerManager));
     }
   }
 
@@ -300,7 +300,7 @@ export class EntityManager {
   // 操作できないワープ倍率ではどの艦も操作できない — その2つは同じ「操作できない」状態なので、
   // input を渡すかどうかの1つの判断にまとめる。
   updatePlayers(
-    activePlayer: Player | null, input: Input, simSpeed: SimSpeedManager,
+    activePlayer: Player | null, input: Input | null, simSpeed: SimSpeedManager,
     dt: number, activeStage: Stage, ephemeris: Ephemeris,
   ): void {
     const operable = simSpeed.canShipAct;
@@ -317,9 +317,27 @@ export class EntityManager {
     }
   }
 
-  // 操作できない間、全自機の連続指令(推力・トルク・射撃・噴射ラッチ)を畳む。
+  // 毎フレーム、操作対象の基地へ updateBaseControls を1度ずつ通す。
+  // 操作対象でない基地は clearTransientCommands で慣性飛行に戻る。
+  updateBases(
+    controlledBase: Base | null, input: Input, simSpeed: SimSpeedManager, dt: number,
+  ): void {
+    const operable = simSpeed.canShipAct;
+    const simDt = dt * simSpeed.simSpeed;
+    for (const base of this.bases) {
+      if (!base.alive) continue;
+      base.updateBaseControls(
+        base === controlledBase && operable ? input : null,
+        dt,
+        simDt,
+      );
+    }
+  }
+
+  // 操作できない間、全自機・操作中基地の連続指令(推力・トルク・射撃・噴射ラッチ)を畳む。
   clearTransientCommands(): void {
     for (const ship of this.players) ship.clearTransientCommands();
+    for (const base of this.bases) base.clearTransientCommands();
   }
 
   // 全自機のメッシュ・エフェクト・マーカーを同期する。方向マーカーや照準ズームは操作艦だけの
@@ -333,6 +351,20 @@ export class EntityManager {
       ship.syncPlayer(
         fo, cameraSystem, displayTime, ship === activePlayer, ephemeris, attractors,
         visibilityPolicy?.entity('player', ship === activePlayer) ?? null,
+      );
+    }
+  }
+
+  // 全基地のメッシュ・エフェクト(推力プルーム・RCS音・パフ)を同期する。
+  syncBases(
+    controlledBase: Base | null, fo: FloatingOrigin, cameraSystem: CameraSystem,
+    displayTime: number, visibilityPolicy: MapVisibilityPolicy | null,
+  ): void {
+    for (const base of this.bases) {
+      if (!base.alive) continue;
+      base.syncBase(
+        fo, cameraSystem, displayTime, base === controlledBase,
+        visibilityPolicy?.entity('base') ?? null,
       );
     }
   }
