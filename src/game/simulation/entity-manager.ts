@@ -24,7 +24,7 @@ import type { Ephemeris } from '../../physics/ephemeris';
 import type { DisplayWindow } from '../display-window-manager';
 import type { GameSaveData } from '../save-data';
 import type { Hud } from '../hud/hud';
-import type { WorldSfx } from '../../audio/world-sfx';
+import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { PerfCounts } from '../../perf-meter';

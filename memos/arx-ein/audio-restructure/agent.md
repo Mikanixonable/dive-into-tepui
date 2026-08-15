@@ -12,17 +12,27 @@ read this file first, then whichever of the linked files the task needs.
 
 ## Where the work sits
 
-`src/audio/` is now six modules plus one data file:
+`src/audio/` is the shared substrate at the root plus one folder per concern:
 
-| file | holds | lines |
-| --- | --- | --- |
-| `audio-engine.ts` | `AudioEngine` — AudioContext lifecycle (`unlock`), shared white-noise buffer, and the `tone`/`noiseBurst` primitive voices everything else is built from | 70 |
-| `bgm.ts` | `Bgm` — playback control: volume + persistence, fades, track rotation, the lookahead pump, and note -> WebAudio | 172 |
-| `compositor.ts` | `Compositor` / `CompositorNote` — the note-generation seam. Names no WebAudio type | 20 |
-| `phasing-compositor.ts` | `PhasingCompositor` — the Reich-style algorithm, the only one so far | 132 |
-| `bgm-tracks.ts` | `BgmTrack` schema + `BGM_TRACKS` — each track described in full: scale, tempo, both pulse voices, pad/drone/sparkle layers, transposition and octave cycles | 362 |
-| `world-sfx.ts` | `WorldSfx` — sounds emitted by objects/events in the game world, plus the thrust/RCS loop channels | 262 |
-| `ui-sfx.ts` | `UiSfx` — position-less operation/notification blips | 12 |
+```
+audio/
+  audio-engine.ts        AudioContext lifecycle (unlock), shared noise buffer,
+                         and the tone/noiseBurst primitive voices  (70)
+  bgm/
+    bgm.ts               playback control: volume + persistence, fades, track
+                         rotation, the lookahead pump, note -> WebAudio  (172)
+    composer.ts          the note-generation seam. Names no WebAudio type  (20)
+    phasing-composer.ts  PhasingComposer — the Reich-style algorithm, the only
+                         one so far  (132)
+    bgm-tracks.ts        BgmTrack schema + BGM_TRACKS: each track in full  (362)
+  sfx/
+    world-sfx.ts         sounds emitted by objects/events in the game world,
+                         plus the thrust/RCS loop channels  (262)
+    ui-sfx.ts            position-less operation/notification blips  (12)
+```
+
+`audio-engine.ts` stays at the root because both folders build on it — the same shape
+`src/game/` uses (an orchestrator at the root, concerns in subfolders).
 
 Nothing else in the repo synthesizes audio. There are no audio-file assets and that is a
 deliberate design choice worth keeping (recorded in `DEVELOP/SPEC.md` §8).
@@ -37,7 +47,7 @@ section has been deleted from their memo. Details and rationale in [done.md](don
 3. `6afff4e5` split the rest of `Sfx` into `WorldSfx` / `UiSfx`, narrow ~20 injection sites.
 4. the BGM engine/data split — `BgmTrack` now carries each track's whole structure.
    Verified sound-identical over 54,240 scheduled notes; see [done.md](done.md) §4.
-5. the playback/generation split — `Bgm` controls playback, a `Compositor` generates the
+5. the playback/generation split — `Bgm` controls playback, a `Composer` generates the
    notes. Same verification; see [done.md](done.md) §5.
 
 ## Present — nothing in flight
@@ -53,7 +63,7 @@ rendering pipeline in). `npm run typecheck` green.
 Giving each track its own transposition plan, cadences and levels is now a pure data edit in
 `bgm-tracks.ts`, and it is the cheapest real improvement left. The stereo output bus is the
 highest-value structural one (the mic system needs it too). **arx-ein's planned conductor /
-compositor architecture is recorded in [roadmap.md](roadmap.md) §2** — the `Compositor` seam
+composer architecture is recorded in [roadmap.md](roadmap.md) §2** — the `Composer` seam
 was named and placed to be its bottom layer, so read that before building anything above
 `Bgm`. The mic system is the biggest remaining piece but is **blocked on a design question
 hedalu244 raised themselves** — do not start it without asking.

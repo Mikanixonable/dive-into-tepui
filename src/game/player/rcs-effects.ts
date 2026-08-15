@@ -7,7 +7,7 @@ import { RCS_NOZZLES } from '../../render/rcs-nozzles';
 import * as C from '../const';
 import type { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
-import { WorldSfx } from '../../audio/world-sfx';
+import { WorldSfx } from '../../audio/sfx/world-sfx';
 
 // ノズルからプルーム中心までの距離 [m]
 const PLUME_OFFSET = 0.55;

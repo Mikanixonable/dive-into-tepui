@@ -4,7 +4,7 @@
 // どのノード時刻へ自動ワープするかは呼び出し側(PlanEditor)が決めて渡す。
 import * as C from './const';
 import { Hud } from './hud/hud';
-import { UiSfx } from '../audio/ui-sfx';
+import { UiSfx } from '../audio/sfx/ui-sfx';
 import { KinematicState } from '../physics/kinematic-state';
 import type { Input } from './input/input';
 import { KEY_MAPPING as K } from './input/key-mapping';
