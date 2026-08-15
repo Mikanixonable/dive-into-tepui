@@ -202,6 +202,38 @@ any further restructuring.
 
 ---
 
+## 7. Tracks became a discriminated union, with a blank slate for the second algorithm
+
+Step 1 of roadmap §2d. `BgmTrack` was the phasing algorithm's parameter type with a `name`
+bolted on; it is now a union over `kind`:
+
+```ts
+export type BgmTrack =
+  | { kind: 'phasing'; name: string; params: PhasingParams }
+  | { kind: 'sketch';  name: string; params: SketchParams };
+```
+
+`name` is the only common field — the test being *what does a consumer read without caring
+which kind it is?* (`SettingsView` reads it for the preview list; nothing outside the factory
+reads `params`). Today's schema became `PhasingParams`, unchanged apart from losing `name`.
+
+**`bgm/create-composer.ts` is the single place the union is switched on**, in its own file
+because it must import every implementation while the implementations import the seam —
+putting it in `composer.ts` would be an import cycle. Its `default` branch assigns to `never`;
+this was checked by temporarily adding a `'canon'` kind, which failed compilation at exactly
+that line, then reverting.
+
+**`bgm/sketch-composer.ts` is the blank slate** — implements `Composer`, returns no notes, and
+has **no `BGM_TRACKS` entry**, so rotation can never land on silence. The music is arx-ein's to
+design; when `notesAt` returns something, add a track for it. If it wants scale-index-to-Hz
+conversion, `phasing-composer.ts`'s `scaleFreq` is already in a shape that can be lifted into a
+shared module — deliberately not done in advance, since which helpers the second algorithm
+actually wants is unknown until it exists.
+
+Still 54,240 notes identical against the `33524dc9` reference.
+
+---
+
 ## The rebase onto the new `main` (`5ff773e4`)
 
 Upstream landed the deferred rendering pipeline while this branch was in flight, and it
