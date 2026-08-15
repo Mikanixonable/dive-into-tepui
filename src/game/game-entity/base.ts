@@ -75,7 +75,7 @@ export type BaseInit =
 
 export class Base extends GameEntity implements Controllable {
   readonly collisionGeom = new BaseCollisionGeometry();
-  protected readonly predictedForDisplay = true;
+  protected readonly predictedForGhost = true;
   declare readonly orbitLine: OrbitLine;
   public baseState: BaseState = {
     money: 100000,

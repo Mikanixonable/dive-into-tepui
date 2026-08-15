@@ -380,8 +380,13 @@ export class EntityManager {
     for (const ship of this.players) {
       const isActive = ship === activePlayer;
       const show = isActive && (visibilityPolicy?.entity('player', isActive).orbit ?? true);
+      // 線を持っているかがそのまま「描くか」なので、出す・消すはここで決めきる。
+      if (show) ship.showPredictedLine();
+      else ship.hidePredictedLine();
+      if (show && pastDuration > 0) ship.showActualLine();
+      else ship.hideActualLine();
       ship.syncTrajectoryLines(
-        show, frame, simTime, displayTime, pastDuration, ephemeris, fo, camera, attractors);
+        frame, simTime, displayTime, pastDuration, ephemeris, fo, camera, attractors);
       ship.orbitLine.setSuppressed(ship.supersedesAnalyticEllipse(simTime, duration, overviewMode));
     }
   }

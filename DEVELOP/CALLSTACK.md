@@ -496,7 +496,8 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
     - [overviewMode] translationZone.setItems(pickables) / setNearby(members, pickables) / setSelected(displayWindow.frame.center) // 未来表示(計画折れ線・予測軌道線・交点マーカー)の描画座標系の原点
     - [overviewMode] planRotationZone.setNearby(members) / setSelected(displayWindow.frame.rotatingWith)
   - entities.syncPlayerTrajectoryLines(player, displayWindow, overviewMode, ephemeris, fo, cameraSystem.activeCamera, displayAttractors, visibilityPolicy) // 計画折れ線と同じ座標系(displayWindow.frame)で bake する
-    - [entities.players ごと] ship.syncTrajectoryLines(show, frame, simTime, displayTime, pastDuration, ephemeris, fo, camera, displayAttractors) // show は「操作対象艦であり、かつ軌道線トグルが立っている」。それ以外は trajectory=null で畳む
+    - [entities.players ごと] ship.showPredictedLine()/hidePredictedLine()・showActualLine()/hideActualLine() // 「操作対象艦であり、かつ軌道線トグルが立っている」(過去線は加えて pastDuration>0)なら線を持たせ、そうでなければ線ごと捨てる
+    - [entities.players ごと] ship.syncTrajectoryLines(frame, simTime, displayTime, pastDuration, ephemeris, fo, camera, displayAttractors) // 描くかは線を持っているかがそのまま答えなので、ここでは判定しない
       - predictedLine.syncGeometry(show ? predicted : null, simTime, null, frame, ...) // predicted.samplesOldestFirst() を frame で bake(点列の参照が変わらない限り再bakeしない)。simTime は描画区間の下限で sampler の時刻写像だけを動かす — 線の先頭は predicted を simTime で補間した点になる。上限は null(先端まで無制限)
       - predictedLine.syncTransform()
       - predictedLine.sync(camera) // 頂点2未満なら curve.clear()
