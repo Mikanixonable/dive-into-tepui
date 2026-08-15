@@ -2,14 +2,13 @@
 // 決めるところまでを受け持ち、いつ鳴らすか(再生・停止・曲の切替)と、音を実際に WebAudio へ
 // 流すことは持たない。WebAudio に依存しないので、生成される音列だけを取り出して検証できる。
 
-// 1音ぶんの指示。発音位置だけがステップ開始からの相対時刻で、残りは秒とレベルの絶対値。
+// 1音ぶんの指示。どんな響きになるかは楽器の側が決めるので、ここには音そのものの作り方を書かない。
 export interface ComposerNote {
+  instrument: string; // この音を鳴らす楽器の id。トラックの instruments が持つ名前
   freq: number;
   offsetSec: number; // ステップ開始からの相対時刻
   durationSec: number;
-  level: number;
-  wave: OscillatorType;
-  attackSec: number;
+  velocity: number; // 0..1。どれくらい強く鳴らすか。音量や音色への効き方は楽器が決める
 }
 
 export interface Composer {

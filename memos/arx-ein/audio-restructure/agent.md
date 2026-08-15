@@ -25,11 +25,15 @@ audio/
                            position, and note -> WebAudio
     composer.ts            the note-generation seam. Names no WebAudio type
     composer-factory.ts    the single switch from a track's kind to its composer
+    instrument.ts          the sound-making seam: play(freq, when, duration, velocity)
+    instrument-factory.ts  the single switch from an instrument's kind to its class
     composers/
       phasing-composer.ts  the Reich-style algorithm
       sketch-composer.ts   blank slate for the second algorithm
+    instruments/
+      tone-instrument.ts   one oscillator + envelope + pan; the only one so far
     tracks/
-      types.ts             BgmTrack union + each kind's params, fenced per composer
+      types.ts             BgmTrack union + params, fenced per composer and instrument
       tracks.ts            BGM_TRACKS, the data itself
   sfx/
     world-sfx.ts           sounds emitted by objects/events in the game world,
