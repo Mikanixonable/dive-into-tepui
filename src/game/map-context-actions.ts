@@ -30,7 +30,7 @@ import type { FrameControls } from './hud/frame-controls';
 import type { Stage } from './stages/stage';
 import { Player, planExecutionLabel, type PlanExecutionMode } from './player/player';
 import type { GameEntity } from './game-entity/game-entity';
-import { len, sub, v3 } from '../physics/vec3';
+import { add, cross, len, norm, scale, sub, v3 } from '../physics/vec3';
 import { metersPerPixel } from '../physics/projection';
 import type { ObjectType } from './creative/ship-placer-panel';
 import type { KinematicState } from '../physics/kinematic-state';
@@ -297,6 +297,18 @@ export class MapContextActions {
       const visualRadiusPx = Math.max(12, item.radius / Math.max(1e-6, mpp));
 
       if (distSq <= visualRadiusPx * visualRadiusPx) {
+        if (entity instanceof Base) {
+          // 基地の場合は BVH メッシュRay判定による精緻なヒットテストを実施
+          const camFwd = norm(sub(view.lookTarget, view.position));
+          const camUp = norm(view.up);
+          const camRight = norm(cross(camFwd, camUp));
+          const offsetX = (clientX - window.innerWidth / 2) * mpp;
+          const offsetY = -(clientY - window.innerHeight / 2) * mpp;
+          const rayTarget = add(add(add(view.position, scale(camFwd, depth)), scale(camRight, offsetX)), scale(camUp, offsetY));
+          const rayDir = norm(sub(rayTarget, view.position));
+          const hit = entity.raycast(view.position, rayDir, depth * 2, 1);
+          if (!hit) continue; // 実際のメッシュへの非命中の場合は判定を落とす
+        }
         if (depth < minDepth) {
           minDepth = depth;
           bestEntity = entity;
