@@ -699,22 +699,22 @@ export function buildBaseModel(): THREE.Group {
     sIdx++;
   }
 
-  // 4) 主要部 (居住区 + クライレスラービル風アールデコ装飾 + 研究所観測ドーム $22 \times 22 \times 52$m, Z = +50m 〜 +100m)
+  // 4) 主要部 (居住区 + クライレスラービル風アールデコ装飾 + 研究所観測ドーム $15.4 \times 15.4 \times 52$m, 太さ0.7倍化, Z = +49m 〜 +101m)
   const mainCenterZ = 75;
-  // 白基調外骨格フレーム
-  const exoskeleton = new THREE.Mesh(new THREE.BoxGeometry(22, 22, 52), grayFrameMat);
+  // 白基調外骨格フレーム (太さ0.7倍: 22m -> 15.4m)
+  const exoskeleton = new THREE.Mesh(new THREE.BoxGeometry(15.4, 15.4, 52), grayFrameMat);
   exoskeleton.position.set(0, 0, mainCenterZ);
   g.add(exoskeleton);
 
-  // 【クライスラービル風アールデコ・ディテール】
+  // 【クライスラービル風アールデコ・ディテール (0.7倍スケール)】
   // 1) 垂直ピアーモールディング (Vertical Piers & Recessed Seams)
-  for (const px of [-11.1, -5.5, 0, 5.5, 11.1]) {
-    for (const py of [-11.1, 11.1]) {
-      const vPier = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 50), conduitMat);
+  for (const px of [-7.8, -3.85, 0, 3.85, 7.8]) {
+    for (const py of [-7.8, 7.8]) {
+      const vPier = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.25, 50), conduitMat);
       vPier.position.set(px, py, mainCenterZ);
       g.add(vPier);
 
-      const vPierY = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.5, 50), conduitMat);
+      const vPierY = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.4, 50), conduitMat);
       vPierY.position.set(py, px, mainCenterZ);
       g.add(vPierY);
     }
@@ -722,22 +722,22 @@ export function buildBaseModel(): THREE.Group {
 
   // 2) 段層セットバックモールディング (Terraced Step-back Moldings)
   for (let zStep = mainCenterZ - 20; zStep <= mainCenterZ + 20; zStep += 10) {
-    const stepMolding = new THREE.Mesh(new THREE.BoxGeometry(22.8, 22.8, 0.8), grayFrameMat);
+    const stepMolding = new THREE.Mesh(new THREE.BoxGeometry(16.0, 16.0, 0.8), grayFrameMat);
     stepMolding.position.set(0, 0, zStep);
     g.add(stepMolding);
 
-    const seamRing = new THREE.Mesh(new THREE.BoxGeometry(23.2, 23.2, 0.25), panelGrooveMat);
+    const seamRing = new THREE.Mesh(new THREE.BoxGeometry(16.3, 16.3, 0.25), panelGrooveMat);
     seamRing.position.set(0, 0, zStep);
     g.add(seamRing);
 
     // ホイールキャップ型メダリオンレリーフ (Wheel-cap Medallions)
-    for (const mx of [-11.5, 11.5]) {
-      const medallion = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 0.3, 12), conduitJointMat);
+    for (const mx of [-8.0, 8.0]) {
+      const medallion = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.25, 12), conduitJointMat);
       medallion.position.set(mx, 0, zStep);
       medallion.rotation.z = Math.PI / 2;
       g.add(medallion);
 
-      const medallionY = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 0.3, 12), conduitJointMat);
+      const medallionY = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.25, 12), conduitJointMat);
       medallionY.position.set(0, mx, zStep);
       medallionY.rotation.x = Math.PI / 2;
       g.add(medallionY);
@@ -745,9 +745,9 @@ export function buildBaseModel(): THREE.Group {
   }
 
   // 3) ガーゴイル風・翼状コーナーアビオニクススパイア (Eagle-head Gargoyle Corner Spires)
-  for (const gx of [-11.8, 11.8]) {
-    for (const gy of [-11.8, 11.8]) {
-      const gargoyleSpire = new THREE.Mesh(new THREE.ConeGeometry(1.8, 7.0, 4), grayFrameMat);
+  for (const gx of [-8.2, 8.2]) {
+    for (const gy of [-8.2, 8.2]) {
+      const gargoyleSpire = new THREE.Mesh(new THREE.ConeGeometry(1.3, 5.0, 4), grayFrameMat);
       gargoyleSpire.position.set(gx * 1.08, gy * 1.08, mainCenterZ + 18);
       gargoyleSpire.rotation.x = Math.PI / 2 + 0.3;
       gargoyleSpire.rotation.z = Math.atan2(gy, gx);
@@ -757,47 +757,47 @@ export function buildBaseModel(): THREE.Group {
 
   // 4) サンバースト冠状アールデコアーチ (Sunburst Crown Radiac Arch Ribs)
   for (let aIdx = 0; aIdx < 4; aIdx++) {
-    const archRadius = 11 - aIdx * 1.8;
+    const archRadius = 7.7 - aIdx * 1.3;
     const archZ = mainCenterZ + 20 + aIdx * 1.5;
-    const crownArch = new THREE.Mesh(new THREE.CylinderGeometry(archRadius, archRadius + 0.6, 0.8, 16), grayFrameMat);
+    const crownArch = new THREE.Mesh(new THREE.CylinderGeometry(archRadius, archRadius + 0.5, 0.8, 16), grayFrameMat);
     crownArch.position.set(0, 0, archZ);
     g.add(crownArch);
 
-    const archGroove = new THREE.Mesh(new THREE.CylinderGeometry(archRadius + 0.7, archRadius + 0.7, 0.2, 16), panelGrooveMat);
+    const archGroove = new THREE.Mesh(new THREE.CylinderGeometry(archRadius + 0.6, archRadius + 0.6, 0.2, 16), panelGrooveMat);
     archGroove.position.set(0, 0, archZ);
     g.add(archGroove);
   }
 
   // 【ディテール: 計測機器ポッド (Sensor / Avionics pods) 4箇所】
-  for (const sx of [-11.3, 11.3]) {
-    for (const sy of [-11.3, 11.3]) {
-      const pod = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.6, 6), sensorPodMat);
+  for (const sx of [-7.9, 7.9]) {
+    for (const sy of [-7.9, 7.9]) {
+      const pod = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 4.5), sensorPodMat);
       pod.position.set(sx, sy, mainCenterZ);
       g.add(pod);
 
       // ポッド先端のセンサーレンズ
-      const lens = new THREE.Mesh(new THREE.SphereGeometry(0.6, 8, 6), neonAccentMat);
-      lens.position.set(sx, sy, mainCenterZ + 3.2);
+      const lens = new THREE.Mesh(new THREE.SphereGeometry(0.45, 8, 6), neonAccentMat);
+      lens.position.set(sx, sy, mainCenterZ + 2.4);
       g.add(lens);
     }
   }
 
-  // 居住区 (白い円筒が正方形プランで複雑に接合)
-  const gridPositions = [-6, 0, 6];
+  // 居住区 (白い円筒が正方形プランで複雑に接合 - 0.7倍)
+  const gridPositions = [-4.2, 0, 4.2];
   for (const x of gridPositions) {
     for (const y of gridPositions) {
-      const tube = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 40, 8), whiteModuleMat);
+      const tube = new THREE.Mesh(new THREE.CylinderGeometry(1.75, 1.75, 40, 8), whiteModuleMat);
       tube.position.set(x, y, mainCenterZ - 3);
       tube.rotation.x = Math.PI / 2;
       g.add(tube);
 
       // 【ディテール: 小さな発光窓 (Portholes / Illuminated Windows)】
       for (let zWin = mainCenterZ - 18; zWin <= mainCenterZ + 12; zWin += 6) {
-        if (Math.abs(x) === 6 || Math.abs(y) === 6) {
+        if (Math.abs(x) === 4.2 || Math.abs(y) === 4.2) {
           const winAngle = Math.atan2(y, x);
-          const winX = x + Math.cos(winAngle) * 2.52;
-          const winY = y + Math.sin(winAngle) * 2.52;
-          const win = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.7, 0.35), windowGlowMat);
+          const winX = x + Math.cos(winAngle) * 1.76;
+          const winY = y + Math.sin(winAngle) * 1.76;
+          const win = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.6, 0.28), windowGlowMat);
           win.position.set(winX, winY, zWin);
           g.add(win);
         }
@@ -807,40 +807,39 @@ export function buildBaseModel(): THREE.Group {
 
   // 【幾何学的配管ネットワーク (合流・分岐する樹状管構造)】
   // 主幹パイプライン (幹)
-  for (const pipeX of [-6.8, 6.8]) {
-    const mainPipe = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 46, 8), conduitMat);
-    mainPipe.position.set(pipeX, 6.8, mainCenterZ);
+  for (const pipeX of [-4.8, 4.8]) {
+    const mainPipe = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 46, 8), conduitMat);
+    mainPipe.position.set(pipeX, 4.8, mainCenterZ);
     mainPipe.rotation.x = Math.PI / 2;
     g.add(mainPipe);
 
     // 45度分岐マニホールド Joint
     for (let zJ = mainCenterZ - 15; zJ <= mainCenterZ + 15; zJ += 15) {
-      const jointHub = new THREE.Mesh(new THREE.SphereGeometry(0.75, 8, 8), conduitJointMat);
-      jointHub.position.set(pipeX, 6.8, zJ);
+      const jointHub = new THREE.Mesh(new THREE.SphereGeometry(0.6, 8, 8), conduitJointMat);
+      jointHub.position.set(pipeX, 4.8, zJ);
       g.add(jointHub);
 
       // 分岐枝パイプ (モジュール外周をまわるループ)
-      const branchPipe = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 14, 6), conduitMat);
-      branchPipe.position.set(pipeX / 2, 6.8, zJ);
+      const branchPipe = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 10, 6), conduitMat);
+      branchPipe.position.set(pipeX / 2, 4.8, zJ);
       branchPipe.rotation.z = Math.PI / 2;
       g.add(branchPipe);
     }
   }
 
-  // 研究所・天体観測ドーム (純粋な強化ガラス観測デッキ)
-  const obsDome = new THREE.Mesh(new THREE.SphereGeometry(8, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2), glassMat);
+  // 研究所・天体観測ドーム (純粋な強化ガラス観測デッキ - 0.7倍 5.6m)
+  const obsDome = new THREE.Mesh(new THREE.SphereGeometry(5.6, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2), glassMat);
   obsDome.position.set(0, 0, mainCenterZ + 25);
   obsDome.rotation.x = -Math.PI / 2;
   g.add(obsDome);
 
   // 観測ドーム内部の研究コンソール
-  const obsCore = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 3.5, 6, 10), sensorPodMat);
+  const obsCore = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 5, 10), sensorPodMat);
   obsCore.position.set(0, 0, mainCenterZ + 23);
   obsCore.rotation.x = Math.PI / 2;
   g.add(obsCore);
 
   // 【センサー・アンテナ群 (磁気センサーブーム)】
-
   // 2) 磁気センサー (Magnetometer Boom - 長尺ブーム先端の3軸センサー)
   const magBoom = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.15, 45, 6), redTrussMat);
   magBoom.position.set(0, 0, mainCenterZ + 48);
@@ -863,28 +862,28 @@ export function buildBaseModel(): THREE.Group {
   }
 
 
-  // 5) カウンターウェイト部 (化学蒸留プラントコンプレックス + 200箱貨物コンテナ群 Z = -120m 〜 -40m)
-  const cwCenterZ = -75;
-  const cwCore = new THREE.Mesh(new THREE.BoxGeometry(14, 14, 68), grayFrameMat);
+  // 5) カウンターウェイト部 (化学蒸留プラントコンプレックス + 136m倍長貨物区 Z = -237m 〜 -101m)
+  const cwCenterZ = -169;
+  // 貨物区の長さを現状の倍(68m -> 136m)に拡張
+  const cwCore = new THREE.Mesh(new THREE.BoxGeometry(14, 14, 136), grayFrameMat);
   cwCore.position.set(0, 0, cwCenterZ);
   g.add(cwCore);
 
-  // 【化学プラント / 蒸留塔 (Distillation Towers Complex)】
-  // 蒸留塔 1 (フランジリング・凝縮器・リフレクションライン付き)
-  const tower1 = new THREE.Mesh(new THREE.CylinderGeometry(5.5, 5.5, 50, 16), tankMats[0]!);
+  // 【化学プラント / 蒸留塔 (Distillation Towers Complex - 倍長バージョン)】
+  // 蒸留塔 1 (100m長)
+  const tower1 = new THREE.Mesh(new THREE.CylinderGeometry(5.5, 5.5, 100, 16), tankMats[0]!);
   tower1.position.set(13, 13, cwCenterZ - 5);
   tower1.rotation.x = Math.PI / 2;
   g.add(tower1);
 
   // 蒸留塔の段数フランジリング
-  for (let zFlange = cwCenterZ - 28; zFlange <= cwCenterZ + 18; zFlange += 5) {
+  for (let zFlange = cwCenterZ - 52; zFlange <= cwCenterZ + 42; zFlange += 6) {
     const flange = new THREE.Mesh(new THREE.CylinderGeometry(6.3, 6.3, 0.5, 16), conduitJointMat);
     flange.position.set(13, 13, zFlange);
     flange.rotation.x = Math.PI / 2;
     g.add(flange);
 
-    // キャットウォーク作業足場
-    if ((zFlange - cwCenterZ) % 15 === 0) {
+    if ((zFlange - cwCenterZ) % 18 === 0) {
       const catwalk = new THREE.Mesh(new THREE.CylinderGeometry(8.5, 8.5, 0.4, 12), conduitMat);
       catwalk.position.set(13, 13, zFlange);
       catwalk.rotation.x = Math.PI / 2;
@@ -892,13 +891,13 @@ export function buildBaseModel(): THREE.Group {
     }
   }
 
-  // 蒸留塔 2
-  const tower2 = new THREE.Mesh(new THREE.CylinderGeometry(4.8, 4.8, 42, 14), tankMats[1]!);
+  // 蒸留塔 2 (84m長)
+  const tower2 = new THREE.Mesh(new THREE.CylinderGeometry(4.8, 4.8, 84, 14), tankMats[1]!);
   tower2.position.set(-13, -13, cwCenterZ + 2);
   tower2.rotation.x = Math.PI / 2;
   g.add(tower2);
 
-  for (let zFlange = cwCenterZ - 18; zFlange <= cwCenterZ + 20; zFlange += 6) {
+  for (let zFlange = cwCenterZ - 40; zFlange <= cwCenterZ + 40; zFlange += 7) {
     const flange = new THREE.Mesh(new THREE.CylinderGeometry(5.5, 5.5, 0.5, 14), conduitJointMat);
     flange.position.set(-13, -13, zFlange);
     flange.rotation.x = Math.PI / 2;
@@ -906,13 +905,12 @@ export function buildBaseModel(): THREE.Group {
   }
 
   // 高圧球形ガスタンク (3基)
-  const sphereTankPositions: readonly [number, number, number][] = [[-13, 13, -15], [13, -13, 10], [0, 15, -25]];
+  const sphereTankPositions: readonly [number, number, number][] = [[-13, 13, -35], [13, -13, 20], [0, 15, -45]];
   for (const [sX, sY, sZ] of sphereTankPositions) {
     const sphereTank = new THREE.Mesh(new THREE.SphereGeometry(6.0, 14, 12), tankMats[2]!);
     sphereTank.position.set(sX, sY, cwCenterZ + sZ);
     g.add(sphereTank);
 
-    // 接続バルブ
     const valve = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 2, 8), hazardOrangeMat);
     valve.position.set(sX, sY + 6.2, cwCenterZ + sZ);
     g.add(valve);
@@ -924,7 +922,6 @@ export function buildBaseModel(): THREE.Group {
     const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
     container.add(body);
 
-    // 8箇所のコーナーキャスティング (ISO 規格角型金具)
     const cSize = Math.min(w, h, d) * 0.16;
     const cornerGeo = new THREE.BoxGeometry(cSize, cSize, cSize);
     const cornerMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, flatShading: true, roughness: 0.3, metalness: 0.8 });
@@ -938,7 +935,6 @@ export function buildBaseModel(): THREE.Group {
       }
     }
 
-    // 側面の波板コルゲート構造 (Corrugated Wall Ribs)
     const grooveMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, flatShading: true, roughness: 0.6, metalness: 0.3 });
     const ribCount = Math.max(3, Math.floor(d / 1.6));
     for (let i = 0; i < ribCount; i++) {
@@ -950,7 +946,6 @@ export function buildBaseModel(): THREE.Group {
       }
     }
 
-    // 後部ダブルドア・ツインロックバー
     const doorZ = d / 2 + 0.05;
     const doorSeam = new THREE.Mesh(new THREE.BoxGeometry(0.08, h * 0.88, 0.12), grooveMat);
     doorSeam.position.set(0, 0, doorZ);
@@ -963,13 +958,11 @@ export function buildBaseModel(): THREE.Group {
       lockBar.position.set(bx, 0, doorZ);
       container.add(lockBar);
 
-      // ロックハンドレバー
       const handle = new THREE.Mesh(new THREE.BoxGeometry(w * 0.18, 0.08, 0.1), barMat);
       handle.position.set(bx + (bx > 0 ? -w * 0.08 : w * 0.08), -h * 0.15, doorZ + 0.04);
       container.add(handle);
     }
 
-    // コンテナID標識タグ
     if (tagMat) {
       const tag = new THREE.Mesh(new THREE.BoxGeometry(w * 0.35, h * 0.25, 0.1), tagMat);
       tag.position.set(w * 0.22, h * 0.22, doorZ + 0.02);
@@ -985,10 +978,8 @@ export function buildBaseModel(): THREE.Group {
     const kind = typeIdx % 8;
 
     if (kind === 0) {
-      // 1) Dry ISO Box (標準ドライコンテナ)
       cargo.add(buildContainer(4.5, 4.5, 9.0, mat, tagMat));
     } else if (kind === 1) {
-      // 2) Reefer (冷凍コンテナ)
       const reeferMat = containerMats[0]!;
       const c = buildContainer(4.5, 4.8, 9.0, reeferMat, tagMat);
       const cooler = new THREE.Mesh(new THREE.BoxGeometry(4.0, 4.0, 0.4), sensorPodMat);
@@ -999,7 +990,6 @@ export function buildBaseModel(): THREE.Group {
       c.add(coolerLed);
       cargo.add(c);
     } else if (kind === 2) {
-      // 3) ISO Tanktainer (フレーム内蔵円筒圧力タンク)
       const w = 4.5, h = 4.5, d = 9.0;
       const frameMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, flatShading: true, roughness: 0.3, metalness: 0.8 });
       const frame = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), frameMat);
@@ -1013,7 +1003,6 @@ export function buildBaseModel(): THREE.Group {
       }
       cargo.add(frame);
     } else if (kind === 3) {
-      // 4) Flat-Rack Heavy Payload (フラットラック重量機器)
       const w = 4.5, h = 1.0, d = 9.0;
       const bed = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), containerMats[1]!);
       cargo.add(bed);
@@ -1026,7 +1015,6 @@ export function buildBaseModel(): THREE.Group {
         cargo.add(strap);
       }
     } else if (kind === 4) {
-      // 5) Gas Bottle Pack (集合高圧ボンベラック)
       const w = 4.5, h = 4.5, d = 9.0;
       const frame = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), containerMats[3]!);
       cargo.add(frame);
@@ -1039,7 +1027,6 @@ export function buildBaseModel(): THREE.Group {
         }
       }
     } else if (kind === 5) {
-      // 6) Spherical Fuel Pod Cluster (ツイン球形液体燃料ポッドセル)
       const w = 4.5, h = 4.5, d = 9.0;
       const frameMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, flatShading: true, roughness: 0.3, metalness: 0.7 });
       const frame = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), frameMat);
@@ -1050,12 +1037,10 @@ export function buildBaseModel(): THREE.Group {
         cargo.add(sphereTank);
       }
     } else if (kind === 6) {
-      // 7) Hexagonal Prism Cargo Vault (六角柱型ストレージコンテナ)
       const hexMat = containerMats[2]!;
       const hexBody = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.4, 8.8, 6), hexMat);
       hexBody.rotation.x = Math.PI / 2;
       cargo.add(hexBody);
-      // 周状補強フランジ
       for (const zRing of [-3.0, 0, 3.0]) {
         const ring = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.6, 0.4, 6), conduitJointMat);
         ring.position.set(0, 0, zRing);
@@ -1063,7 +1048,6 @@ export function buildBaseModel(): THREE.Group {
         cargo.add(ring);
       }
     } else {
-      // 8) Truss Frame Equipment Rack (オープン格子トラス＋アビオニクスキューブ)
       const w = 4.5, h = 4.5, d = 9.0;
       const trussFrameMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, flatShading: true, roughness: 0.25, metalness: 0.5 });
       const outerFrame = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), trussFrameMat);
@@ -1077,27 +1061,42 @@ export function buildBaseModel(): THREE.Group {
     return cargo;
   };
 
+  // 【居住区用の少量貨物モジュール (12個の小型コンテナポッド群)】
+  let habCargoIdx = 0;
+  for (const quadX of [-1, 1]) {
+    for (const quadY of [-1, 1]) {
+      for (let zH = mainCenterZ - 14; zH <= mainCenterZ + 10; zH += 12) {
+        const posX = quadX * 9.2;
+        const posY = quadY * 9.2;
+        const mat = containerMats[habCargoIdx % containerMats.length]!;
+        const habCargo = buildAdvancedCargoGroup(habCargoIdx, mat);
+        habCargo.position.set(posX, posY, zH);
+        habCargo.scale.set(0.65, 0.65, 0.65); // 居住区用小型化
+        habCargo.rotation.set(0, 0, 0);
+        g.add(habCargo);
+        habCargoIdx++;
+      }
+    }
+  }
+
   // 決定論的疑似乱数ヘルパー (再現性のある不規則乱雑配置)
   const pseudoHash = (n: number): number => {
     const x = Math.sin(n * 12.9898 + 78.233) * 43758.5453;
     return x - Math.floor(x);
   };
 
-  // 【貨物量半分(100個) & 角度揃え(0,0,0)の乱雑・不規則配置】
+  // 【貨物区(136m倍長)用メイン貨物配置 (100個) & 角度揃え(0,0,0)】
   let cIdx = 0;
-  for (let zStep = 0; zStep < 20; zStep++) {
-    const zBase = cwCenterZ - 30 + zStep * 3.3;
+  for (let zStep = 0; zStep < 40; zStep++) {
+    const zBase = cwCenterZ - 62 + zStep * 3.2;
     for (const quadX of [-1, 1]) {
       for (const quadY of [-1, 1]) {
-        // スロットごとの不規則な空き・虫食い配置 (乱雑さの創出)
         const randSeed = zStep * 100 + (quadX > 0 ? 10 : 0) + (quadY > 0 ? 1 : 0);
-        if (pseudoHash(randSeed) < 0.45) continue; // 45%の確率で空きスロット
+        if (pseudoHash(randSeed) < 0.52) continue; // 52%の確率で空きスロット
 
-        // スタック高さの不規則なバラつき (1〜4段)
         const stackLimit = 1 + Math.floor(pseudoHash(randSeed * 1.5) * 3.8);
 
         for (let layer = 0; layer < stackLimit; layer++) {
-          // 微小なZ軸スライド・段差オフセット (角度は0,0,0のまま位置だけ乱雑に散らす)
           const zOffset = (pseudoHash(randSeed + layer * 7) - 0.5) * 2.6;
           const posX = quadX * (9.5 + layer * 4.6);
           const posY = quadY * (9.5 + layer * 4.6);
