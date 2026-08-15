@@ -40,7 +40,8 @@ export class Bgm {
     return this.volume;
   }
 
-  get isPlaying(): boolean {
+  // 先読みスケジューラが動いているか。stop() 直後のフェードアウト中は false。
+  get isRunning(): boolean {
     return this.timer !== null;
   }
 
