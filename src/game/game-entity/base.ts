@@ -31,7 +31,7 @@ import type { FloatingOrigin } from '../floating-origin';
 import type { MapVisibility } from '../celestial/map-visibility';
 
 // 基地のドッキングハッチのローカル位置および外向き法線ベクトル (中腹ドッキングパレット上部, 3倍スケール対応)
-export const BASE_HATCH_LOCAL_POS: Vec3 = v3(0, 25.5, 0);
+export const BASE_HATCH_LOCAL_POS: Vec3 = v3(0, 21.0, 0);
 export const BASE_HATCH_LOCAL_NORMAL: Vec3 = v3(0, 1, 0);
 
 export interface BaseDockSlot {
@@ -41,10 +41,10 @@ export interface BaseDockSlot {
 }
 
 export const BASE_DOCK_SLOTS: readonly BaseDockSlot[] = [
-  { id: 0, localPos: v3(-33, 22.5, -42), localNormal: v3(0, 1, 0) },
-  { id: 1, localPos: v3(33, 22.5, -42), localNormal: v3(0, 1, 0) },
-  { id: 2, localPos: v3(-33, 22.5, 42), localNormal: v3(0, 1, 0) },
-  { id: 3, localPos: v3(33, 22.5, 42), localNormal: v3(0, 1, 0) },
+  { id: 0, localPos: v3(-16.5, 21.0, -16.5), localNormal: v3(0, 1, 0) },
+  { id: 1, localPos: v3( 16.5, 21.0, -16.5), localNormal: v3(0, 1, 0) },
+  { id: 2, localPos: v3(-16.5, 21.0,  16.5), localNormal: v3(0, 1, 0) },
+  { id: 3, localPos: v3( 16.5, 21.0,  16.5), localNormal: v3(0, 1, 0) },
 ];
 
 // 収容中の艦のエントリ。parts は player.parts と同一参照(修理は艦へ直接反映される)。

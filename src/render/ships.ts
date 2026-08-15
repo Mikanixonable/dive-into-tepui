@@ -553,8 +553,6 @@ export function buildBaseModel(): THREE.Group {
   const windowGlowMat = new THREE.MeshStandardMaterial({ color: 0xfef08a, emissive: 0xfde047, emissiveIntensity: 0.95, roughness: 0.2 });
   const sensorPodMat = new THREE.MeshStandardMaterial({ color: 0x64748b, flatShading: true, roughness: 0.3, metalness: 0.7 });
   const panelGrooveMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, flatShading: true, roughness: 0.7, metalness: 0.3 });
-  const navRedMat = new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xf87171, emissiveIntensity: 1.2 });
-  const navGreenMat = new THREE.MeshStandardMaterial({ color: 0x10b981, emissive: 0x34d399, emissiveIntensity: 1.2 });
 
   // コンテナ・タンク群用カラーパレット (統一感のあるホワイト・シルバー・プラチナ基調)
   const containerMats = [
@@ -668,33 +666,55 @@ export function buildBaseModel(): THREE.Group {
     }
   }
 
-  // 3) 中腹ドッキング部 (Z = 0m)
+  // 3) 中腹ドッキング部 (Z = 0m, 現状の半分スケールに縮小＋詳細メカニカルディテール)
   const dockPalletMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, flatShading: true, roughness: 0.2, metalness: 0.3 });
 
-  // 中央メインドッキングハッチ (Y = +6m, Z = 0)
-  const hatchDoor = new THREE.Mesh(new THREE.CylinderGeometry(10, 10, 2, 16), dockPalletMat);
+  // 中央メインドッキングハッチ (直系5.2mに縮小)
+  const hatchDoor = new THREE.Mesh(new THREE.CylinderGeometry(5.2, 5.2, 1.4, 16), dockPalletMat);
   hatchDoor.position.set(0, 7, 0);
   g.add(hatchDoor);
 
-  // 【一箇所に集約した2x2格子状ドッキングベイスロット (Dock 0..3)】
+  const hatchRing = new THREE.Mesh(new THREE.CylinderGeometry(5.6, 5.6, 0.3, 16), panelGrooveMat);
+  hatchRing.position.set(0, 7.7, 0);
+  g.add(hatchRing);
+
+  // 【半分に縮小した格子状ドッキングベイスロット (Dock 0..3 - 5.5m間隔)】
   const gridSlotPos = [
-    { x: -11, z: -14 }, // Slot 0
-    { x:  11, z: -14 }, // Slot 1
-    { x: -11, z:  14 }, // Slot 2
-    { x:  11, z:  14 }, // Slot 3
+    { x: -5.5, z: -5.5 }, // Slot 0
+    { x:  5.5, z: -5.5 }, // Slot 1
+    { x: -5.5, z:  5.5 }, // Slot 2
+    { x:  5.5, z:  5.5 }, // Slot 3
   ];
 
   let sIdx = 0;
   for (const slotPos of gridSlotPos) {
-    const collar = new THREE.Mesh(new THREE.CylinderGeometry(4.5, 5.0, 1.2, 12), dockPalletMat);
-    collar.position.set(slotPos.x, 7.2, slotPos.z);
+    // 縮小ドッキングカラー (径2.4m)
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.7, 0.8, 12), dockPalletMat);
+    collar.position.set(slotPos.x, 7.0, slotPos.z);
     g.add(collar);
 
-    // 航行ガイドビーコンライト (赤/緑)
-    const beaconMat = sIdx % 2 === 0 ? navRedMat : navGreenMat;
-    const beaconLight = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 6), beaconMat);
-    beaconLight.position.set(slotPos.x, 8.2, slotPos.z);
-    g.add(beaconLight);
+    // 【ディテール: 空気圧ロックラッチクランプ (4箇所/スロット)】
+    for (let cAngle = 0; cAngle < Math.PI * 2; cAngle += Math.PI / 2) {
+      const clamp = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.6, 0.4), sensorPodMat);
+      clamp.position.set(
+        slotPos.x + Math.cos(cAngle) * 2.6,
+        7.3,
+        slotPos.z + Math.sin(cAngle) * 2.6
+      );
+      clamp.rotation.y = cAngle;
+      g.add(clamp);
+    }
+
+    // 【ディテール: 光学レーザーアライメントセンサー (シアンLED)】
+    const laserSensor = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 6), neonAccentMat);
+    laserSensor.position.set(slotPos.x, 7.5, slotPos.z);
+    g.add(laserSensor);
+
+    // 【ディテール: アンビリカル燃料供給給油ポート】
+    const umbilicalPort = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 1.2, 6), conduitJointMat);
+    umbilicalPort.position.set(slotPos.x + 1.8, 6.8, slotPos.z + 1.8);
+    umbilicalPort.rotation.x = Math.PI / 2;
+    g.add(umbilicalPort);
 
     sIdx++;
   }
@@ -868,6 +888,86 @@ export function buildBaseModel(): THREE.Group {
   const cwCore = new THREE.Mesh(new THREE.BoxGeometry(14, 14, 136), grayFrameMat);
   cwCore.position.set(0, 0, cwCenterZ);
   g.add(cwCore);
+
+  // 【貨物区本体の表面凹凸ディテール (配線・計測デバイス箱・パネル溝)】
+  // 1) 4隅の長尺配線・流体パイプライン
+  for (const bx of [-7.1, 7.1]) {
+    for (const by of [-7.1, 7.1]) {
+      const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 138, 8), conduitMat);
+      cable.position.set(bx, by, cwCenterZ);
+      cable.rotation.x = Math.PI / 2;
+      g.add(cable);
+
+      for (let zClamp = cwCenterZ - 60; zClamp <= cwCenterZ + 60; zClamp += 15) {
+        const clamp = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.5), conduitJointMat);
+        clamp.position.set(bx, by, zClamp);
+        g.add(clamp);
+      }
+    }
+  }
+
+  // 2) 表面計測デバイス箱 (16箇所) & レンズ
+  for (let dIdx = 0; dIdx < 16; dIdx++) {
+    const zBox = cwCenterZ - 56 + dIdx * 7.5;
+    const face = dIdx % 4;
+    const boxX = face === 0 ? 7.2 : (face === 1 ? -7.2 : 0);
+    const boxY = face === 2 ? 7.2 : (face === 3 ? -7.2 : 0);
+
+    const devBox = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.2, 2.5), sensorPodMat);
+    devBox.position.set(boxX, boxY, zBox);
+    g.add(devBox);
+
+    const lens = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 6), neonAccentMat);
+    lens.position.set(boxX * 1.05, boxY * 1.05, zBox);
+    g.add(lens);
+  }
+
+  // 3) リセスパネル溝ライン (8箇所)
+  for (let zSeam = cwCenterZ - 60; zSeam <= cwCenterZ + 60; zSeam += 16) {
+    const seam = new THREE.Mesh(new THREE.BoxGeometry(14.4, 14.4, 0.35), panelGrooveMat);
+    seam.position.set(0, 0, zSeam);
+    g.add(seam);
+  }
+
+  // 【3秒に1回点滅する航空管制ストロボライト (8箇所)】
+  // 上部4箇所: 居住区トップ4隅 (蛍光エメラルド)
+  // 下部4箇所: 貨物区ボトム4隅 (緋色)
+  const emeraldStrobeMat = new THREE.MeshStandardMaterial({
+    color: 0x00ff9d,
+    emissive: 0x00ff9d,
+    emissiveIntensity: 0.1,
+  });
+  const scarletStrobeMat = new THREE.MeshStandardMaterial({
+    color: 0xff1744,
+    emissive: 0xff1744,
+    emissiveIntensity: 0.1,
+  });
+
+  // 上部4角 (居住区トップ)
+  for (const ex of [-8.2, 8.2]) {
+    for (const ey of [-8.2, 8.2]) {
+      const strobe = new THREE.Mesh(new THREE.SphereGeometry(0.7, 10, 8), emeraldStrobeMat);
+      strobe.position.set(ex, ey, mainCenterZ + 24);
+      g.add(strobe);
+    }
+  }
+
+  // 下部4角 (貨物区ボトム)
+  for (const cx of [-7.2, 7.2]) {
+    for (const cy of [-7.2, 7.2]) {
+      const strobe = new THREE.Mesh(new THREE.SphereGeometry(0.7, 10, 8), scarletStrobeMat);
+      strobe.position.set(cx, cy, cwCenterZ - 68);
+      g.add(strobe);
+    }
+  }
+
+  // 3秒周期(0.18秒間)の点滅フラッシュアニメーション
+  g.onBeforeRender = () => {
+    const t = (performance.now() / 1000) % 3.0;
+    const flash = t < 0.18 ? 4.5 : 0.1;
+    emeraldStrobeMat.emissiveIntensity = flash;
+    scarletStrobeMat.emissiveIntensity = flash;
+  };
 
   // 【化学プラント / 蒸留塔 (Distillation Towers Complex - 倍長バージョン)】
   // 蒸留塔 1 (100m長)
