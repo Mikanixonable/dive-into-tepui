@@ -480,6 +480,48 @@ Two existing harnesses needed updating, both because the *structure* moved rathe
   survives further layers without edits, which the old one would not have.
 
 
+## 15. The audition line — two `Conductor`s, and the bug goes away
+
+Roadmap §2d step 5, and the first behavioural change since the merge.
+
+`Bgm` now holds two lines. `ambient` is the gameplay music, built once and kept. `audition` is
+built by `playTrack` and destroyed by `stopAudition`/`endAudition`, with its own gain and its own
+chain to the master. `rotates` is a constructor argument on both, so it is a fact about a line
+rather than a flag anyone can write — **the old bug is now unrepresentable**, not fixed: the
+audition line has no way to reach gameplay's rotation policy, because it is a different object.
+
+What the player sees: opening the settings view ducks the gameplay music, auditioning is heard on
+its own line, closing destroys the audition and un-ducks gameplay. Stopping an audition leaves the
+panel silent, since gameplay stays ducked while it is open.
+
+`SettingsView` lost `bgmPlayingAtOpen` entirely. It existed because the view had to remember audio
+state the audio layer did not; pause/resume is symmetric, so a line that was silent at open is
+ducked and un-ducked back to silence with nothing to remember. The view now reports two events and
+holds no audio state. `Bgm.isRunning` went with it — it had no other reader, and unused API is not
+kept around.
+
+Two supporting changes fell out. The pump is now shared and lifecycle-managed by a private
+`syncPump()` — it runs while *any* line is sounding, rather than being started and cleared by
+`start`/`stop` directly, which no longer works when a line can be silent while another plays.
+And `Conductor.dispose(fadeSec)` fades, retires the piece, then disconnects the line's own gain
+once it goes quiet — the whole-line counterpart of §12's per-piece retirement.
+
+One deliberate consequence worth knowing: raising the volume from zero *inside* the settings view
+now starts the gameplay line ducked, so it is heard on close rather than immediately. The pause
+menu's slider is unaffected. That follows from the panel's premise — gameplay music is paused
+while it is open — and the master gain still applies to the audition line, so the slider is
+audible while previewing.
+
+Verified. `check-rotation` was rewritten (this is the step where changing an expectation is the
+point) and gained the two cases that pin the fix: **`ambient under audition` produces `[2,3,2]`,
+byte-identical to plain ambient** — the audition disturbs nothing — and `ambient after close`
+still rotates where the old code pinned it for the rest of the run. `count-leaks` gained an
+audition-cycle scenario, since the audition line is created and destroyed repeatedly and
+`Conductor.dispose()` was previously unexercised: **566 persistent nodes built over an hour of
+auditions, 9 still live** — the same 9 as ambient alone. Confirmed that check can fail by breaking
+the gain disconnect, which reports live nodes growing 24 -> 69.
+
+
 ## The two merges of `main` into the PR branch (`4e21f958`, then `78370b6b`)
 
 Upstream landed the **run-lifecycle rework** — `Launcher` owns the `Game` and recreates it
