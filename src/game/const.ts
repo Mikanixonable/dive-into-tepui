@@ -13,6 +13,15 @@ export const HATCH_DOCK_MIN_ALIGNMENT = 0.5;  // ハッチ正面コーンの最�
 export const SLOT_DOCK_MAX_DIST = 50;         // 各ドックスロット前での最大ドッキング距離 [m]
 export const SLOT_DOCK_MIN_ALIGNMENT = 0.5;   // スロット正面コーンの最小内積 (cos 60° = 0.5)
 
+// --- 基地操縦 ---
+export const BASE_THRUST = 5000;       // 基地の総推力 [N]（1e6 kg で 0.005 m/s² の低加速度）
+export const BASE_TORQUE = 50000;      // 基地のトルク [N·m]
+export const BASE_FUEL_RATE = 0.5;     // 基地の燃料消費レート
+export const BASE_MAX_FUEL = 50000;    // 基地の最大燃料
+export const BASE_INERTIA_X = 1e8;     // 基地の慣性モーメント（ほぼ対称の大質量構造物）
+export const BASE_INERTIA_Y = 1e8;
+export const BASE_INERTIA_Z = 1.2e8;   // 長軸方向はやや大きい
+
 
 // ラグランジュ点配置(ハロー/リサジュー)の既定振幅 [km]。
 // 副天体ごとに主天体との距離が3桁近く違うため、妥当なオーダーを副天体ごとに別々に持つ。

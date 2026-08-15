@@ -5,6 +5,8 @@ import { v3 } from '../physics/vec3';
 import type { PerfCounts } from '../perf-meter';
 import { FrameSections, SECTION } from '../frame-sections';
 import { Player } from './player/player';
+import { Base } from './game-entity/base';
+import type { GameEntity } from './game-entity/game-entity';
 import { CameraSystem } from './camera/camera-system';
 import { Stage, StageClass } from './stages/stage';
 import { MarkerManager } from './marker/marker-manager';
@@ -58,6 +60,11 @@ export class Game {
   // 操作対象艦(0..n 隻のうちどれを操作するか)の切替を持つ。
   readonly activePlayers: ActivePlayerController;
   get player(): Player | null { return this.activePlayers.current; }
+  private _controlledBase: Base | null = null;
+  get controlledBase(): Base | null { return this._controlledBase; }
+  get activeControllableEntity(): GameEntity | null {
+    return this._controlledBase ?? this.player ?? this.entities.bases.find((b) => b.alive) ?? null;
+  }
   readonly simSpeedManager: SimSpeedManager;
 
   private readonly editor: PlanEditor;
@@ -205,7 +212,26 @@ export class Game {
       this.activePlayers, this.activeStage,
     );
     this.mapActions.setDocking(this.docking);
+    this.mapActions.setControlledBaseHandler(
+      (b) => this.setControlledBase(b),
+      () => this.controlledBase,
+    );
+    this.viewManager.setControlledBaseProvider(() => this.controlledBase);
     this.viewBadge = new ViewBadge(this._hud.layers.notify, this._hud.layers.notify, this.viewManager, this._hud.overlayManager);
+  }
+
+  setControlledBase(base: Base | null): void {
+    if (this._controlledBase === base) return;
+    if (this._controlledBase) {
+      this._controlledBase.clearTransientCommands();
+    }
+    this._controlledBase = base;
+    if (base) {
+      this.activePlayers.setOrNull(null);
+      this._hud.hint(`基地「${base.name}」の操作モードに入りました (WASDQE: 噴射 / IJKLUO: 姿勢制御 / T: RCS減衰 / C: プログレード)`);
+    } else {
+      this._hud.hint('基地の操作を解除しました');
+    }
   }
 
   // ------------------------------------------------------------------ lifecycle
@@ -265,7 +291,8 @@ export class Game {
     // ポーズ中も決着後も飛ばせない。決着は積分を止めないので、飛ばすと描画原点になるカメラ位置
     // だけが絶対 ECI に取り残され、追従対象もフォーカス天体も軌道速度で流れて即フレームアウトする。
     // ポーズ中は積分が止まるが、カメラの旋回・ズーム・パンの入力をここで消化している。
-    const displayWindow = this.displayWindowManager.resolve(this.simulator.simTime, this.player);
+    const activeControllable = this.activeControllableEntity;
+    const displayWindow = this.displayWindowManager.resolve(this.simulator.simTime, activeControllable);
     const overviewMode = this.cameraSystem.overviewMode;
     // 計画表示、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
     this._environment.update(displayWindow.displayTime, overviewMode);
@@ -276,7 +303,7 @@ export class Game {
     this.sections.exit(SECTION.plan);
     this.sections.enter(SECTION.camera);
     this.cameraSystem.update(
-      this.player, displayWindow.displayTime, this.input, dt, this.mapPickables.pickables,
+      activeControllable, displayWindow.displayTime, this.input, dt, this.mapPickables.pickables,
       this.displayWindowManager.attractorsAt(displayWindow.displayTime),
     );
     this.sections.exit(SECTION.camera);
@@ -298,8 +325,19 @@ export class Game {
     this.entities.requestHistoryDuration(this.displayWindowManager.current.pastDuration);
     this.sections.enter(SECTION.player);
     this.nanWatchdog.checkPlayer('frameStart', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
+    if (this.activePlayers.current !== null && this._controlledBase !== null) {
+      this._controlledBase.clearTransientCommands();
+      this._controlledBase = null;
+    }
+    if (this._controlledBase && !this._controlledBase.alive) {
+      this.setControlledBase(null);
+    }
+    const playerInput = this._controlledBase !== null ? null : this.input;
     this.entities.updatePlayers(
-      this.player, this.input, this.simSpeedManager, dt, this.activeStage, this.ephemeris,
+      this.player, playerInput, this.simSpeedManager, dt, this.activeStage, this.ephemeris,
+    );
+    this.entities.updateBases(
+      this._controlledBase, this.input, this.simSpeedManager, dt,
     );
     this.nanWatchdog.checkPlayer(
       'player.updatePlayerControls',
@@ -322,7 +360,7 @@ export class Game {
     this.sections.exit(SECTION.integrate);
     this.docking.updateDockedPhysics();
     // 積分後の状態でこのフレームの表示窓を確定させ、以降の消費者へ共有する。
-    this.displayWindowManager.resolve(this.simulator.simTime, this.player);
+    this.displayWindowManager.resolve(this.simulator.simTime, this.activeControllableEntity);
     // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全エンティティを見る。
     this.nanWatchdog.checkAll('simulator.advance', this.player, this.entities, this.simulator.simTime, dt, simDt);
 
@@ -401,14 +439,15 @@ export class Game {
   // ------------------------------------------------------------------ sync
 
   sync(): void {
+    const activeControllable = this.activeControllableEntity;
     const player = this.player;
     // 積分が終わった状態でこのフレームの表示窓を確定させ、sync 全体で共有する。
-    const displayWindow = this.displayWindowManager.resolve(this.simulator.simTime, player);
+    const displayWindow = this.displayWindowManager.resolve(this.simulator.simTime, activeControllable);
     this.viewBadge.sync(this.activeStage.stageClass.selectLabel);
     // 原点(位置)はアクティブカメラの ECI 位置 — cameraSystem.update() は update フェーズの
     // 毎フレーム呼ばれるので、この sync の時点で activeCameraPos は確定済み。
     // 速度基準は自機のまま(弾の相対速度描画・再突入エフェクトが前提とする値で、原点とは別concern)。
-    const fo = new FloatingOrigin(this.cameraSystem.activeCameraPos, player?.state.v ?? v3());
+    const fo = new FloatingOrigin(this.cameraSystem.activeCameraPos, activeControllable?.state.v ?? v3());
 
     // 表示時刻 = 未来ゴーストのスライダーぶん先取りした simTime。
     const { displayTime, simTime } = displayWindow;
