@@ -6,11 +6,15 @@ import { Instrument } from './instrument';
 import { createInstrument } from './instrument-factory';
 import { InstrumentDef } from './tracks/types';
 
+// 楽器は音符の長さのあとに短いリリースを持つ。鳴り終える時刻に見込んでおく余裕。
+const RELEASE_TAIL_SEC = 0.25;
+
 export class TrackPlayback {
   private readonly gain: GainNode;
   private readonly instruments: Map<string, Instrument>;
   private step = 0;
   private nextTime: number;
+  private lastNoteEnd: number;
 
   // destination は持ち主のマスターゲイン。最初のステップは startTime から刻み始める。
   // 楽器は曲の頭で一度だけ組み、以降は音符ごとに id で引く。
@@ -29,11 +33,17 @@ export class TrackPlayback {
       throw new Error('BGM track declares duplicate instrument ids');
     }
     this.nextTime = startTime;
+    this.lastNoteEnd = startTime;
   }
 
   // 次に刻むステップの開始時刻。曲を差し替えるとき、continuous に繋ぐ側がここから始める。
   get nextStepTime(): number {
     return this.nextTime;
+  }
+
+  // これまでにスケジュールした音がすべて消え、この再生を切り離してよくなる時刻。
+  get soundingUntil(): number {
+    return this.lastNoteEnd + RELEASE_TAIL_SEC;
   }
 
   // deadline より前に始まる音をすべてスケジュールし、その分ステップを進める。
@@ -57,12 +67,20 @@ export class TrackPlayback {
     this.gain.gain.setTargetAtTime(0.0001, this.ctx.currentTime, sec / 3);
   }
 
+  // 音声グラフから自分を切り離す。鳴り終えた(soundingUntil を過ぎた)あとに持ち主が呼ぶ。
+  dispose(): void {
+    for (const instrument of this.instruments.values()) instrument.dispose();
+    this.gain.disconnect();
+  }
+
   // 1音を、ステップ開始時刻 stepTime を基準に、指定された楽器へ渡す。
   private playNote(note: ComposerNote, stepTime: number): void {
     const instrument = this.instruments.get(note.instrument);
     if (instrument === undefined) {
       throw new Error(`BGM note references an undeclared instrument: ${note.instrument}`);
     }
-    instrument.play(note.freq, stepTime + note.offsetSec, note.durationSec, note.velocity);
+    const startAt = stepTime + note.offsetSec;
+    instrument.play(note.freq, startAt, note.durationSec, note.velocity);
+    this.lastNoteEnd = Math.max(this.lastNoteEnd, startAt + note.durationSec);
   }
 }
