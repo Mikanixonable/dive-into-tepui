@@ -5,6 +5,7 @@ import starsTextureUrl from '../assets/8k_stars.jpg';
 import moonTextureUrl from '../assets/8k_moon.jpg';
 import { Billboard } from './billboard';
 import { CelestialSurface } from './celestial-surface';
+import { WORLD_BACKGROUND_LAYER } from './pipeline/lit-layer';
 
 export const STAR_SHELL_RADIUS = 3.5e7; // [m] 自機中心に固定するので視差は出ない
 export const SUN_DISTANCE = 4.2e7; // 太陽ビルボードの表示距離(方向のみ実天体暦に従う)
@@ -37,6 +38,7 @@ export function createStars(): Stars {
   // EnvironmentScene.sync が毎フレーム position をカメラ位置へ合わせる殻なので、
   // 外接球によるフラスタム判定は常に「視界内」を返し意味を持たない。
   mesh.frustumCulled = false;
+  mesh.layers.set(WORLD_BACKGROUND_LAYER);
   mesh.renderOrder = -10;
   return {
     mesh,
