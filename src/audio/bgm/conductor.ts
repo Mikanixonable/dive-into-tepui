@@ -16,12 +16,15 @@ export class Conductor {
   private playback: TrackPlayback | null = null;
   private trackIdx = 0;
   private trackStartTime = 0;
-  // 曲送りの対象か。線ごとの方針なので、線が複数になったら構築時に固定する。
-  private rotates = true;
 
   // destination は持ち主のマスターゲイン。ctx は unlock 済みのものを受け取る。
+  // rotates は線ごとの方針で、あとから変わらない — ゲーム中の線は送り、試聴の線は送らない。
   // この線ぶんのゲインをここで組む。曲ごとのフェードとは別の層で、線そのものを伏せるのに使う。
-  constructor(private readonly ctx: AudioContext, destination: AudioNode) {
+  constructor(
+    private readonly ctx: AudioContext,
+    destination: AudioNode,
+    private readonly rotates: boolean,
+  ) {
     this.gain = ctx.createGain();
     this.gain.gain.setValueAtTime(1, ctx.currentTime);
     this.gain.connect(destination);
@@ -32,13 +35,17 @@ export class Conductor {
     return this.trackIdx;
   }
 
+  // 曲を鳴らしている最中か。持ち主が刻みを回す必要があるかの判断に使う。
+  get isSounding(): boolean {
+    return this.playback !== null;
+  }
+
   // 曲を開いて刻み始める。trackIdx を省くと無作為に選ぶ。
-  start(trackIdx: number | undefined, rotates: boolean): void {
+  start(trackIdx?: number): void {
     if (BGM_TRACKS.length === 0) return;
     const index = trackIdx === undefined
       ? Math.floor(Math.random() * BGM_TRACKS.length)
       : Math.max(0, Math.min(BGM_TRACKS.length - 1, Math.floor(trackIdx)));
-    this.rotates = rotates;
     this.openPlayback(index, this.ctx.currentTime + START_DELAY_SEC);
     this.playback?.fadeIn(FADE_IN_SEC);
   }
@@ -50,6 +57,15 @@ export class Conductor {
     this.playback.fadeOut(fadeSec);
     this.retire(this.playback);
     this.playback = null;
+  }
+
+  // この線を畳む。フェードアウトし、鳴り終えたところで自分のゲインごと音声グラフから外す。
+  // 以降この線は使えない。
+  dispose(fadeSec: number): void {
+    const quietAt = this.playback?.soundingUntil ?? this.ctx.currentTime;
+    this.stop(fadeSec);
+    const waitSec = Math.max(0, quietAt - this.ctx.currentTime);
+    setTimeout(() => this.gain.disconnect(), waitSec * 1000);
   }
 
   // この線を無音へ伏せる。刻みは進み続けるので、戻したときは伏せていた間に進んだ位置から聞こえる。

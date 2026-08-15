@@ -11,7 +11,6 @@ export class SettingsView implements OverlayHandle {
   private readonly bgm: Bgm;
   private _isOpen = false;
   private activeTrack: number | null = null;
-  private bgmPlayingAtOpen = false;
   private readonly stopButton: Button;
   private readonly trackButtons: Button[] = [];
 
@@ -98,7 +97,7 @@ export class SettingsView implements OverlayHandle {
     const trackActions = document.createElement('div');
     trackActions.className = 'sv-track-actions';
     this.stopButton = new Button('試聴を停止', () => {
-      this.bgm.stop(0.15);
+      this.bgm.stopAudition();
       this.activeTrack = null;
       this.updateTrackButtons();
     });
@@ -132,17 +131,17 @@ export class SettingsView implements OverlayHandle {
     this.panel.closest<HTMLElement>('#hud')?.classList.toggle(
       'title-menu-open', show && document.getElementById('stage-select') !== null,
     );
+    // 開いている間はゲーム中の BGM を伏せ、試聴だけが聞こえる状態にする。閉じたら試聴の線を
+    // 畳んでゲーム側を戻す — 開いた時点で鳴っていなければ、戻しても無音のまま。
     if (show) {
-      this.bgmPlayingAtOpen = this.bgm.isRunning;
+      this.bgm.beginAudition();
       this.overlayManager.open('settings-view', this, {
         kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: true,
         exclusiveGroup: 'system-modal',
       });
     } else {
       this.overlayManager.close('settings-view');
-      // 試聴セッションが止めた BGM だけを閉じるときに元へ戻す — 開いた時点で流れていなかったもの
-      // (勝敗確定後など)は再開しない。試聴を流したまま閉じたなら、その曲がそのまま流れ続ける。
-      if (this.bgmPlayingAtOpen && !this.bgm.isRunning) this.bgm.resume();
+      this.bgm.endAudition();
       this.activeTrack = null;
       this.updateTrackButtons();
     }
