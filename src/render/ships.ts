@@ -950,14 +950,16 @@ export function buildBaseModel(): THREE.Group {
     return container;
   };
 
-  // 【多彩な貨物ビルダー: 5種類の貨物モジュール (白系基調)】
+  // 【多彩な貨物ビルダー: 8種類の多様な規格化宇宙貨物モジュール (白系基調)】
   const buildAdvancedCargoGroup = (typeIdx: number, mat: THREE.Material, tagMat?: THREE.Material): THREE.Group => {
     const cargo = new THREE.Group();
-    const kind = typeIdx % 5;
+    const kind = typeIdx % 8;
 
     if (kind === 0) {
+      // 1) Dry ISO Box (標準ドライコンテナ)
       cargo.add(buildContainer(4.5, 4.5, 9.0, mat, tagMat));
     } else if (kind === 1) {
+      // 2) Reefer (冷凍コンテナ)
       const reeferMat = containerMats[0]!;
       const c = buildContainer(4.5, 4.8, 9.0, reeferMat, tagMat);
       const cooler = new THREE.Mesh(new THREE.BoxGeometry(4.0, 4.0, 0.4), sensorPodMat);
@@ -968,6 +970,7 @@ export function buildBaseModel(): THREE.Group {
       c.add(coolerLed);
       cargo.add(c);
     } else if (kind === 2) {
+      // 3) ISO Tanktainer (フレーム内蔵円筒圧力タンク)
       const w = 4.5, h = 4.5, d = 9.0;
       const frameMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, flatShading: true, roughness: 0.3, metalness: 0.8 });
       const frame = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), frameMat);
@@ -981,6 +984,7 @@ export function buildBaseModel(): THREE.Group {
       }
       cargo.add(frame);
     } else if (kind === 3) {
+      // 4) Flat-Rack Heavy Payload (フラットラック重量機器)
       const w = 4.5, h = 1.0, d = 9.0;
       const bed = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), containerMats[1]!);
       cargo.add(bed);
@@ -992,7 +996,8 @@ export function buildBaseModel(): THREE.Group {
         strap.position.set(0, 2.0, zS);
         cargo.add(strap);
       }
-    } else {
+    } else if (kind === 4) {
+      // 5) Gas Bottle Pack (集合高圧ボンベラック)
       const w = 4.5, h = 4.5, d = 9.0;
       const frame = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), containerMats[3]!);
       cargo.add(frame);
@@ -1004,6 +1009,41 @@ export function buildBaseModel(): THREE.Group {
           cargo.add(bottle);
         }
       }
+    } else if (kind === 5) {
+      // 6) Spherical Fuel Pod Cluster (ツイン球形液体燃料ポッドセル)
+      const w = 4.5, h = 4.5, d = 9.0;
+      const frameMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, flatShading: true, roughness: 0.3, metalness: 0.7 });
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), frameMat);
+      cargo.add(frame);
+      for (const zSph of [-2.2, 2.2]) {
+        const sphereTank = new THREE.Mesh(new THREE.SphereGeometry(1.9, 12, 10), tankMats[0]!);
+        sphereTank.position.set(0, 0, zSph);
+        cargo.add(sphereTank);
+      }
+    } else if (kind === 6) {
+      // 7) Hexagonal Prism Cargo Vault (六角柱型ストレージコンテナ)
+      const hexMat = containerMats[2]!;
+      const hexBody = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.4, 8.8, 6), hexMat);
+      hexBody.rotation.x = Math.PI / 2;
+      cargo.add(hexBody);
+      // 周状補強フランジ
+      for (const zRing of [-3.0, 0, 3.0]) {
+        const ring = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.6, 0.4, 6), conduitJointMat);
+        ring.position.set(0, 0, zRing);
+        ring.rotation.x = Math.PI / 2;
+        cargo.add(ring);
+      }
+    } else {
+      // 8) Truss Frame Equipment Rack (オープン格子トラス＋アビオニクスキューブ)
+      const w = 4.5, h = 4.5, d = 9.0;
+      const trussFrameMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, flatShading: true, roughness: 0.25, metalness: 0.5 });
+      const outerFrame = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), trussFrameMat);
+      cargo.add(outerFrame);
+      for (const zCube of [-2.0, 2.0]) {
+        const avCube = new THREE.Mesh(new THREE.BoxGeometry(3.2, 3.2, 3.2), sensorPodMat);
+        avCube.position.set(0, 0, zCube);
+        cargo.add(avCube);
+      }
     }
     return cargo;
   };
@@ -1014,18 +1054,18 @@ export function buildBaseModel(): THREE.Group {
     return x - Math.floor(x);
   };
 
-  // 【貨物量半分(200個) & 角度揃え(0,0,0)の乱雑・不規則配置】
+  // 【貨物量半分(100個) & 角度揃え(0,0,0)の乱雑・不規則配置】
   let cIdx = 0;
-  for (let zStep = 0; zStep < 22; zStep++) {
-    const zBase = cwCenterZ - 32 + zStep * 3.1;
+  for (let zStep = 0; zStep < 20; zStep++) {
+    const zBase = cwCenterZ - 30 + zStep * 3.3;
     for (const quadX of [-1, 1]) {
       for (const quadY of [-1, 1]) {
         // スロットごとの不規則な空き・虫食い配置 (乱雑さの創出)
         const randSeed = zStep * 100 + (quadX > 0 ? 10 : 0) + (quadY > 0 ? 1 : 0);
-        if (pseudoHash(randSeed) < 0.35) continue; // 35%の確率で空きスロット
+        if (pseudoHash(randSeed) < 0.45) continue; // 45%の確率で空きスロット
 
-        // スタック高さの不規則なバラつき (1〜5段)
-        const stackLimit = 1 + Math.floor(pseudoHash(randSeed * 1.5) * 4.9);
+        // スタック高さの不規則なバラつき (1〜4段)
+        const stackLimit = 1 + Math.floor(pseudoHash(randSeed * 1.5) * 3.8);
 
         for (let layer = 0; layer < stackLimit; layer++) {
           // 微小なZ軸スライド・段差オフセット (角度は0,0,0のまま位置だけ乱雑に散らす)
@@ -1042,13 +1082,13 @@ export function buildBaseModel(): THREE.Group {
           g.add(cargoObj);
 
           cIdx++;
-          if (cIdx >= 200) break;
+          if (cIdx >= 100) break;
         }
-        if (cIdx >= 200) break;
+        if (cIdx >= 100) break;
       }
-      if (cIdx >= 200) break;
+      if (cIdx >= 100) break;
     }
-    if (cIdx >= 200) break;
+    if (cIdx >= 100) break;
   }
 
   // 基地の全体サイズを 3倍 に変更
