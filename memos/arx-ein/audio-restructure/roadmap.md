@@ -18,7 +18,7 @@ deliberate design choice, recorded in `DEVELOP/SPEC.md` §8, and worth keeping.
 - **Differentiate the five tracks.** The split landed with every track carrying identical
   structure values (that was deliberate — it kept the refactor provably sound-identical), so
   the tracks still differ only in pitch material and tempo. Giving each its own transposition
-  plan, cadences and levels is now a pure data edit in `bgm-tracks.ts`, and it is the cheapest
+  plan, cadences and levels is now a pure data edit in `tracks/tracks.ts`, and it is the cheapest
   real improvement available.
 - **Track transitions.** The ~5-minute switch is currently a hard cut mid-phase. Either
   crossfade, or switch only on a macro-cycle boundary so the new track enters in phase. The
@@ -80,7 +80,7 @@ Why `Bgm` keeps its name rather than being renamed `Conductor`:
 ### 2b. Tracks: a discriminated union over `kind`, switched in exactly one factory
 
 ```ts
-// bgm/bgm-tracks.ts
+// bgm/tracks/types.ts
 export type BgmTrack =
   | { kind: 'phasing'; name: string; params: PhasingParams }
   | { kind: 'drone';   name: string; params: DroneParams };
@@ -89,11 +89,11 @@ export type BgmTrack =
 - **What is common vs per-kind** has a clean test: *what does a consumer read without caring
   which kind it is?* `SettingsView` reads `.name` to build the preview list, so `name` is
   common. Nothing outside the factory reads `params`.
-- **The factory needs its own file** (`bgm/create-composer.ts`), not `composer.ts`: it must
-  import every implementation, and `phasing-composer.ts` already imports `composer.ts`, so
+- **The factory needs its own file** (`bgm/composer-factory.ts`), not `composer.ts`: it must
+  import every implementation, and `composers/phasing-composer.ts` already imports `composer.ts`, so
   putting it there creates an import cycle. Keeping the seam dependency-free is also what
   lets a new composer be written without touching it.
-- **Not in `bgm-tracks.ts` either** — that is a data registry, the analogue of
+- **Not in `tracks/tracks.ts` either** — that is a data registry, the analogue of
   `solar-system.ts`'s `SOLAR_SYSTEM`, and those stay data plus a `kind` discriminant with the
   switches elsewhere. (The per-kind *schemas* do live there, the same way `CelestialBodyDef`
   keeps its star/planet/satellite variants together.)
