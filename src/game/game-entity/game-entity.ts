@@ -324,10 +324,22 @@ export class GameEntity {
     return this.equatorNodes ??= new EquatorNodeMarkerPair(this, markerManager);
   }
 
-  // メッシュを scene から、マーカーを HUD から取り除く。
+  // メッシュを scene から、マーカーを HUD から取り除く。配下メッシュのジオメトリ・マテリアルも
+  // 解放するが、共有資源を巻き添えにしないよう所有権フラグが立つものだけを対象にする。
   dispose(): void {
     this.scene?.remove(this.renderObject);
     this.equatorNodes?.dispose();
     this.marker?.dispose();
+    this.renderObject.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      if (mesh.userData.ownsGeometry && mesh.geometry) {
+        mesh.geometry.dispose();
+      }
+      if (mesh.userData.ownsMaterial && mesh.material) {
+        if (Array.isArray(mesh.material)) mesh.material.forEach((m) => m.dispose());
+        else mesh.material.dispose();
+      }
+    });
   }
 }
