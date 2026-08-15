@@ -1,8 +1,11 @@
-import type { Game } from './game/game';
+import { Game } from './game/game';
 import type { Input } from './game/input/input';
 import { KEY_MAPPING as K } from './game/input/key-mapping';
 import { ResultScreen, type RunTransitions } from './game/hud/result-screen';
+import type { CurrentGameSource } from './game/hud/save-browser';
 import type { Hud } from './game/hud/hud';
+import type { PauseMenu } from './game/hud/pause-menu';
+import type { SettingsView } from './game/hud/settings-view';
 import type { GamePhase, StageClass, StageResult } from './game/stages/stage';
 import { findStageClass } from './game/stages/stage-dictionary';
 import { selectStage } from './game/stage-select';
@@ -11,6 +14,13 @@ import type { SaveSlots } from './game/save/save-slots';
 import type { SnapshotService } from './game/save/snapshot-service';
 import type { GameSaveData } from './game/save-data';
 import type { Sfx } from './audio/sfx';
+import type { GameScene } from './render/scene';
+import type { GraphicsSettings } from './render/graphics-settings';
+import type { RenderPipeline } from './render/pipeline/render-pipeline';
+import type { FrameSections } from './frame-sections';
+import type { Ephemeris } from './physics/ephemeris';
+import type { AttractorId } from './physics/attractor';
+import { showLoading, hideLoading } from './loading-overlay';
 
 // スナップショットのロードを跨いで次のページ読込へ渡す先。ロードは Game を作り直す
 // (=ページ再読込)ことで表現するため、どれを復元するかは sessionStorage 経由で伝える。
@@ -32,28 +42,54 @@ function fallbackResult(phase: GamePhase): StageResult {
   return { win: phase !== 'lost', title: null, detailHtml: '結果の記録がありません' };
 }
 
+// ローディング表示の下で、このステージの天体暦を組む。
+async function initEphemeris(
+  stageClass: StageClass, phaseOffsets: Partial<Record<AttractorId, number>>,
+): Promise<Ephemeris> {
+  showLoading();
+  try {
+    return await stageClass.createEphemeris(phaseOffsets);
+  } finally {
+    hideLoading();
+  }
+}
+
 // 再出撃・タイトル復帰・スナップショットのロード・スロット切替 — 「Game インスタンスを
 // 捨てて次の周回へ移る」判断を1箇所へ集約する。game/ 配下は location.* を一切知らない。
-export class Launcher implements RunTransitions {
+// 今動いている周回の Game 自体もここが保持する。
+export class Launcher implements RunTransitions, CurrentGameSource {
   private readonly resultScreen: ResultScreen;
+  private game: Game | null = null;
   private launchedStage: StageClass | null = null;
   private resultShown = false;
 
+  get current(): Game | null { return this.game; }
+
   constructor(
-    hud: Hud,
+    private readonly hud: Hud,
+    private readonly gs: GameScene,
+    private readonly sfx: Sfx,
+    private readonly pauseMenu: PauseMenu,
+    private readonly settingsView: SettingsView,
     private readonly unlockManager: UnlockManager,
+    private readonly sections: FrameSections,
+    private readonly graphics: GraphicsSettings,
+    private readonly pipeline: RenderPipeline,
     private readonly slots: SaveSlots,
     private readonly snapshotService: SnapshotService,
-    private readonly sfx: Sfx,
   ) {
     this.resultScreen = new ResultScreen(hud, this);
   }
 
+  // タイトル解決から Game の起動までを行う。
+  async start(): Promise<void> {
+    const stageClass = await this.resolveStage();
+    await this.startRun(stageClass);
+  }
+
   // ?title=1 は選択画面へ強制する。?stage= は共有リンク・デバッグ用の明示指定として最優先。
   // どちらも無ければアクティブスロットの直近起動を再開し、それも無ければ選択画面を出す。
-  async resolveStage(
-    onTitleEscape?: () => void, onTitleClose?: () => void, onSettings?: () => void,
-  ): Promise<StageClass> {
+  private async resolveStage(): Promise<StageClass> {
     const params = new URLSearchParams(location.search);
     if (params.get('title') !== '1') {
       const fromParam = findStageClass(params.get('stage'));
@@ -61,7 +97,25 @@ export class Launcher implements RunTransitions {
       const resumed = resumableStageClass(this.unlockManager, this.slots);
       if (resumed !== null) return resumed;
     }
-    return selectStage(this.unlockManager, onTitleEscape, onTitleClose, onSettings);
+    return selectStage(
+      this.unlockManager,
+      () => { if (!this.hud.overlayManager.closeTopmostOnEscape()) this.pauseMenu.toggle(); },
+      () => this.pauseMenu.toggle(false),
+      () => this.settingsView.toggle(true),
+    );
+  }
+
+  // 天体暦の構築から Game の生成までを行い、起動をスロットへ記録する。
+  private async startRun(stageClass: StageClass): Promise<void> {
+    const initialSave = this.initialSaveFor(stageClass);
+    const ephemeris = await initEphemeris(stageClass, initialSave?.phaseOffsets ?? {});
+    // 地球の自転初期位相。起動ごとに無作為だが、下位を決定的に保つため乱数はここでだけ引く。
+    const earthSpinPhase0 = initialSave?.earthSpinPhase0 ?? Math.random() * 2 * Math.PI;
+    this.game = new Game(
+      this.gs, stageClass, this.hud, this.sfx, this.pauseMenu, this.unlockManager, this.sections,
+      ephemeris, this.graphics, this.pipeline, earthSpinPhase0, initialSave,
+    );
+    this.noteLaunched(stageClass);
   }
 
   // ページ再読込を挟んだスナップショットのロード要求を最優先で使う。無ければ、
@@ -70,7 +124,7 @@ export class Launcher implements RunTransitions {
   // noteLaunched は Game 構築後に呼ばれるため、この時点の lastStageId は今回の起動より
   // 前の値を指している。本体の欠損・バージョン不一致・ステージ不一致は
   // SnapshotService.load() に判定させ、復元できない場合は通常の新規起動状態をそのまま使う。
-  initialSaveFor(stageClass: StageClass): GameSaveData | undefined {
+  private initialSaveFor(stageClass: StageClass): GameSaveData | undefined {
     const activeSlotId = this.slots.activeSlotId;
     const pendingSnapshotId = sessionStorage.getItem(SNAPSHOT_PENDING_KEY);
     sessionStorage.removeItem(SNAPSHOT_PENDING_KEY);
@@ -86,7 +140,7 @@ export class Launcher implements RunTransitions {
   }
 
   // 実際に遊び始めたステージをスロットへ記録し、restart() のために覚えておく。
-  noteLaunched(stageClass: StageClass): void {
+  private noteLaunched(stageClass: StageClass): void {
     this.launchedStage = stageClass;
     const activeSlotId = this.slots.activeSlotId;
     if (activeSlotId !== null) this.slots.noteLaunch(activeSlotId, stageClass.id);
