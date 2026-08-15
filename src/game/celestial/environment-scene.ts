@@ -8,7 +8,7 @@ import { OrbitalElements } from '../../physics/elements';
 import { Attractor, AttractorId, OrbitingId, orbitalElementsOf } from '../../physics/attractor';
 import { Vec3, v3, sub, len } from '../../physics/vec3';
 import { OrbitLine } from '../orbit-line';
-import { createStars, STAR_SHELL_RADIUS } from '../../render/stars';
+import { createStars, Stars, STAR_SHELL_RADIUS } from '../../render/stars';
 import { CelestialGrid, CelestialGridVisibility } from '../../render/celestial-grid';
 import { SpatialGrid } from '../../render/spatial-grid';
 import { CameraSystem } from '../camera/camera-system';
@@ -63,7 +63,7 @@ export class EnvironmentScene {
   // ための存在。天体は各自の CelestialSurface が sunDirection uniform を持って
   // 自分で陰影を計算するので、いずれにせよこの光を受けない。
   private readonly directionalLight: THREE.DirectionalLight;
-  readonly starsMesh: THREE.Mesh;
+  private readonly stars: Stars;
   readonly celestialGrid: CelestialGrid;
   readonly spatialGrid: SpatialGrid;
   private readonly bodies: readonly CelestialBody[];
@@ -110,8 +110,8 @@ export class EnvironmentScene {
     // 加えておかないと、間接光評価そのものがスキップされてしまう。
     this.ambient.layers.enable(LIT_OPAQUE_LAYER);
     this.directionalLight.layers.enable(LIT_OPAQUE_LAYER);
-    this.starsMesh = createStars();
-    scene.add(this.starsMesh);
+    this.stars = createStars();
+    scene.add(this.stars.mesh);
     this.celestialGrid = new CelestialGrid(scene);
     this.spatialGrid = new SpatialGrid(scene);
 
@@ -216,9 +216,9 @@ export class EnvironmentScene {
   // 星球はカメラに追従する固定半径の殻。広範囲視点では CELESTIAL_SHELL_RADIUS まで拡大する
   // (far は dist に連動して毎フレーム変わるため、殻の拡大率はそこから独立させる)。
   private syncStars(cameraSystem: CameraSystem, visible = true): void {
-    this.starsMesh.position.copy(cameraSystem.activeCamera.position);
-    this.starsMesh.scale.setScalar(cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
-    this.starsMesh.visible = visible;
+    this.stars.mesh.position.copy(cameraSystem.activeCamera.position);
+    this.stars.mesh.scale.setScalar(cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
+    this.stars.mesh.visible = visible;
   }
 
   private toThreeNormal(normal: Vec3): THREE.Vector3 {
@@ -290,7 +290,7 @@ export class EnvironmentScene {
   private removeReferenceLine(id: OrbitingId): void {
     const line = this.referenceLines.get(id);
     if (!line) return;
-    line.line.parent?.remove(line.line);
+    line.line.removeFromParent();
     line.dispose();
     this.referenceLines.delete(id);
   }
@@ -307,5 +307,26 @@ export class EnvironmentScene {
       degree2: null, isStar: centerDef.kind === 'star',
     };
     return orbitalElementsOf(this.ephemeris.stateOf(id, simTime), center);
+  }
+
+  // 天体ビュー・星殻・グリッド・点群・参照線・照明を残さず解放する。
+  dispose(): void {
+    // 静止軌道参照リングと公転天体ぶんの参照軌道線。
+    this.geoLine.line.removeFromParent();
+    this.geoLine.dispose();
+    for (const id of [...this.referenceLines.keys()]) this.removeReferenceLine(id);
+    // 環境光・平行光。
+    this.ambient.removeFromParent();
+    this.ambient.dispose();
+    this.directionalLight.removeFromParent();
+    this.directionalLight.dispose();
+    // 星殻・天球グリッド・空間グリッド。
+    this.stars.mesh.removeFromParent();
+    this.stars.dispose();
+    this.celestialGrid.dispose();
+    this.spatialGrid.dispose();
+    // 各天体ビューと、マップを一度でも開いていれば生成済みの小天体点群。
+    for (const body of this.bodies) body.dispose();
+    this.pointFieldView?.dispose();
   }
 }
