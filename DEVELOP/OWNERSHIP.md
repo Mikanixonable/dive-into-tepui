@@ -355,6 +355,38 @@ main.ts
 
 ---
 
+## 1-2. 破棄(dispose)の連鎖
+
+**破棄は §1 の保持木をそのまま逆順に辿る。** 所有者が自分の `dispose()` で、自分が `new` した
+持ち物の `dispose()` を呼ぶ。`Game.dispose()` がその根で、構築の逆順に各サブシステムを1行ずつ
+呼ぶだけ(`game.ts`)。逆順なのは、後から組んだものほど先に組んだものを参照しているため。
+
+各ノードが片付けるのは **自分が生成して scene / DOM / `window` / `document` / canvas へ足したもの**
+だけ。判断の境界は3つ。
+
+- **共有資源は触らない。** モジュールスコープで一度だけ作られ、`Game` の生死と無関係に生き続ける
+  もの — `render/ships.ts` の `memoParse` キャッシュと弾・薬莢・破片の geometry/material、
+  `render/celestial-surface.ts` の `sharedLodGeometries`、`render/glow-texture.ts` の
+  `getGlowTexture()`、`ensureStyle()` 系の `<style>` — は解放してはいけない。壊すと、次に作られる
+  同種のオブジェクトが解放済みバッファを引く。エンティティのメッシュ配下では、この境界を
+  `userData.ownsGeometry` / `ownsMaterial` が生成時に宣言し、`GameEntity.dispose()` が唯一の
+  消費側として読む。
+- **テクスチャは連鎖しない。** three の `Material.dispose()` は `'dispose'` イベントを飛ばすだけで、
+  `map` に載ったテクスチャへは届かない。`TextureLoader` で読んだものは、読んだクラスが
+  フィールドに保持して自分で解放する。
+- **`Game` より長生きするものへの配線は必ず解く。** canvas(`GameScene` 所有)・`window` /
+  `document`・`Hud` の各レイヤと恒久要素・`OverlayManager` の台帳・`Sfx` の継続音が該当する。
+  ここを残すと、次の `Game` と二重に発火する/入力を塞ぐ死んだハンドルが残る/前の周回の音が
+  鳴り続ける。逆に、それらの入れ物自体(canvas・`Hud.layers`・`svgOverlay`)は取り除かず、
+  中身を空にするだけにとどめる。
+
+自前の scene / DOM / リスナーを一切持たないノード(`Simulator` / `Predictor` /
+`ActivePlayerController` / `SimSpeedManager` / `NanWatchdog` / `PlanGuide` / `MapPickables` /
+`Navball` / 各 HUD コントローラ、および `Stage` の具象クラスの大半)は `dispose()` を**持たない** —
+参照が切れれば GC される。空の `dispose()` を置かない。
+
+---
+
 ## 2. 参照共有(所有ではない)
 
 複数箇所から使われるため、所有者から参照だけを配って回っているもの。**所有権は移らない。**
