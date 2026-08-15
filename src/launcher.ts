@@ -21,10 +21,7 @@ import type { FrameSections } from './frame-sections';
 import type { Ephemeris } from './physics/ephemeris';
 import type { AttractorId } from './physics/attractor';
 import { showLoading, hideLoading } from './loading-overlay';
-
-// スナップショットのロードを跨いで次のページ読込へ渡す先。ロードは Game を作り直す
-// (=ページ再読込)ことで表現するため、どれを復元するかは sessionStorage 経由で伝える。
-const SNAPSHOT_PENDING_KEY = 'tepui.pendingSnapshot';
+import { showFatalError } from './fatal-error';
 
 // アクティブスロットの直近起動が今も選択可能(ロック解除済み・選択画面から隠されていない)なら、
 // そのステージクラスを返す。再開できる情報が無ければ null。
@@ -62,6 +59,8 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   private game: Game | null = null;
   private launchedStage: StageClass | null = null;
   private resultShown = false;
+  // 遷移中に再入すると、組み立て中の Game が dispose されないまま取り残される。
+  private transitioning = false;
 
   get current(): Game | null { return this.game; }
 
@@ -83,8 +82,14 @@ export class Launcher implements RunTransitions, CurrentGameSource {
 
   // タイトル解決から Game の起動までを行う。
   async start(): Promise<void> {
-    const stageClass = await this.resolveStage();
-    await this.startRun(stageClass);
+    if (this.transitioning) return;
+    this.transitioning = true;
+    try {
+      const stageClass = await this.resolveStage();
+      await this.startRun(stageClass);
+    } finally {
+      this.transitioning = false;
+    }
   }
 
   // ?title=1 は選択画面へ強制する。?stage= は共有リンク・デバッグ用の明示指定として最優先。
@@ -97,6 +102,11 @@ export class Launcher implements RunTransitions, CurrentGameSource {
       const resumed = resumableStageClass(this.unlockManager, this.slots);
       if (resumed !== null) return resumed;
     }
+    return this.selectStageScreen();
+  }
+
+  // 選択画面を出し、選ばれたステージクラスで解決される Promise を返す。
+  private selectStageScreen(): Promise<StageClass> {
     return selectStage(
       this.unlockManager,
       () => { if (!this.hud.overlayManager.closeTopmostOnEscape()) this.pauseMenu.toggle(); },
@@ -105,9 +115,20 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     );
   }
 
-  // 天体暦の構築から Game の生成までを行い、起動をスロットへ記録する。
-  private async startRun(stageClass: StageClass): Promise<void> {
-    const initialSave = this.initialSaveFor(stageClass);
+  // 現在の周回を畳む。Game を破棄し、結果画面と一時停止メニューを閉じる。
+  // 何も動いていない状態で呼んでも安全。
+  private endRun(): void {
+    this.game?.dispose();
+    this.game = null;
+    this.resultScreen.close();
+    this.resultShown = false;
+    this.pauseMenu.toggle(false);
+  }
+
+  // 現在の周回を畳んだ上で、天体暦の構築から Game の生成までを行い、起動をスロットへ記録する。
+  private async startRun(stageClass: StageClass, snapshotId?: string): Promise<void> {
+    this.endRun();
+    const initialSave = this.initialSaveFor(stageClass, snapshotId);
     const ephemeris = await initEphemeris(stageClass, initialSave?.phaseOffsets ?? {});
     // 地球の自転初期位相。起動ごとに無作為だが、下位を決定的に保つため乱数はここでだけ引く。
     const earthSpinPhase0 = initialSave?.earthSpinPhase0 ?? Math.random() * 2 * Math.PI;
@@ -116,20 +137,18 @@ export class Launcher implements RunTransitions, CurrentGameSource {
       ephemeris, this.graphics, this.pipeline, earthSpinPhase0, initialSave,
     );
     this.noteLaunched(stageClass);
+    this.sfx.resumeBgm();
   }
 
-  // ページ再読込を挟んだスナップショットのロード要求を最優先で使う。無ければ、
-  // 起動するステージがアクティブスロットの直前起動と同じ場合(=そのスロットで
-  // 進行中だった周回の再開)に限り、そのステージの最新スナップショットを自動で復元する。
-  // noteLaunched は Game 構築後に呼ばれるため、この時点の lastStageId は今回の起動より
-  // 前の値を指している。本体の欠損・バージョン不一致・ステージ不一致は
+  // snapshotId を最優先で使う。無ければ、起動するステージがアクティブスロットの直前起動と
+  // 同じ場合(=そのスロットで進行中だった周回の再開)に限り、そのステージの最新スナップショット
+  // を自動で復元する。noteLaunched は Game 構築後に呼ばれるため、この時点の lastStageId は
+  // 今回の起動より前の値を指している。本体の欠損・バージョン不一致・ステージ不一致は
   // SnapshotService.load() に判定させ、復元できない場合は通常の新規起動状態をそのまま使う。
-  private initialSaveFor(stageClass: StageClass): GameSaveData | undefined {
+  private initialSaveFor(stageClass: StageClass, snapshotId?: string): GameSaveData | undefined {
     const activeSlotId = this.slots.activeSlotId;
-    const pendingSnapshotId = sessionStorage.getItem(SNAPSHOT_PENDING_KEY);
-    sessionStorage.removeItem(SNAPSHOT_PENDING_KEY);
     const resumesLastLaunchedStage = activeSlotId !== null && this.slots.activeSlot()?.lastStageId === stageClass.id;
-    const initialSnapshotId = pendingSnapshotId
+    const initialSnapshotId = snapshotId
       ?? (resumesLastLaunchedStage ? this.slots.latestSnapshot(activeSlotId, stageClass.id)?.id ?? null : null);
     const initialSave = initialSnapshotId !== null
       ? this.snapshotService.load(initialSnapshotId, stageClass.id) ?? undefined
@@ -139,7 +158,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     return initialSave;
   }
 
-  // 実際に遊び始めたステージをスロットへ記録し、restart() のために覚えておく。
+  // 実際に遊び始めたステージをスロットへ記録し、restart()/loadSnapshot() のために覚えておく。
   private noteLaunched(stageClass: StageClass): void {
     this.launchedStage = stageClass;
     const activeSlotId = this.slots.activeSlotId;
@@ -147,39 +166,76 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   }
 
   // 決着した最初のフレームだけ、周回を締めて結果画面を出す。
-  update(game: Game): void {
-    if (this.resultShown || game.activeStage.isPlaying) return;
+  update(): void {
+    if (this.game === null || this.resultShown || this.game.activeStage.isPlaying) return;
     this.resultShown = true;
     this.sfx.setThrust(false);
     this.sfx.stopBgm();
     const activeSlotId = this.slots.activeSlotId;
     if (activeSlotId !== null) this.slots.noteRunEnded(activeSlotId);
-    this.resultScreen.show(game.activeStage.result ?? fallbackResult(game.activeStage.phase));
+    this.resultScreen.show(this.game.activeStage.result ?? fallbackResult(this.game.activeStage.phase));
   }
 
-  // [R] は決着後だけ再出撃キーとして働く。game.update が消費しなかったエッジだけを見る。
-  handleInput(input: Input, game: Game): void {
-    if (game.activeStage.isPlaying) return;
+  // [R] は決着後だけ再出撃キーとして働く。この呼び出し時点で game.update が消費しなかった
+  // エッジだけを見る。
+  handleInput(input: Input): void {
+    if (this.game === null || this.game.activeStage.isPlaying) return;
     if (input.takeKey(K.restart)) this.restart();
   }
 
-  // ?stage= を明示して replace する: 素のリロードでは選択画面へ戻るため。
+  // 現在の起動ステージへ作り直す。まだ何も起動していなければ何もしない。
   restart(): void {
     if (this.launchedStage === null) return;
-    location.replace(`${location.pathname}?stage=${this.launchedStage.id}`);
+    if (this.transitioning) return;
+    this.transitioning = true;
+    this.startRun(this.launchedStage)
+      .catch((err) => this.fail(err))
+      .finally(() => { this.transitioning = false; });
   }
 
+  // 選択画面を出し直し、選ばれたステージで作り直す。
   returnToTitle(): void {
-    location.assign(`${location.pathname}?title=1`);
+    if (this.transitioning) return;
+    this.transitioning = true;
+    this.endRun();
+    this.selectStageScreen()
+      .then((stageClass) => this.startRun(stageClass))
+      .catch((err) => this.fail(err))
+      .finally(() => { this.transitioning = false; });
   }
 
-  // スナップショットのロードは別のゲームを始めることなので、ページごと作り直す。
+  // 現在の起動ステージを、指定したスナップショットの状態から作り直す。
+  // まだ何も起動していなければ何もしない。
   loadSnapshot(snapshotId: string): void {
-    sessionStorage.setItem(SNAPSHOT_PENDING_KEY, snapshotId);
-    location.assign(location.pathname);
+    if (this.launchedStage === null) return;
+    if (this.transitioning) return;
+    this.transitioning = true;
+    this.startRun(this.launchedStage, snapshotId)
+      .catch((err) => this.fail(err))
+      .finally(() => { this.transitioning = false; });
   }
 
+  // アクティブスロットが切り替わった後に呼ぶ。再開できる起動先があればそれで、
+  // 無ければ選択画面で決めたステージで作り直す。
   switchSlot(): void {
-    location.assign(location.pathname);
+    if (this.transitioning) return;
+    this.transitioning = true;
+    this.endRun();
+    const resumed = resumableStageClass(this.unlockManager, this.slots);
+    (resumed !== null ? Promise.resolve(resumed) : this.selectStageScreen())
+      .then((stageClass) => this.startRun(stageClass))
+      .catch((err) => this.fail(err))
+      .finally(() => { this.transitioning = false; });
+  }
+
+  // 次の周回への遷移そのものが失敗すると current が null のまま何も進まなくなるため、
+  // 拾って明示する。
+  private fail(err: unknown): void {
+    console.error(err);
+    showFatalError(
+      '次の周回の開始に失敗しました。',
+      'ブラウザやGPUの状態を確認し、ページを再読み込みしてください。',
+      err,
+    );
   }
 }
