@@ -15,4 +15,6 @@ export abstract class CelestialBody {
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris,
     graphics: GraphicsSettings,
   ): void;
+  // build(scene) で登録した自分のメッシュ一式をシーンから外し、GPU 資源を解放する。
+  abstract dispose(): void;
 }

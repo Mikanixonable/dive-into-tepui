@@ -26,8 +26,9 @@ export class StatusPanel {
     this.throttleControl = this.buildThrottleControl();
   }
 
-  // Game 構築後に Input を差し込む。ボタン構築時にはまだ存在しないための late injection。
-  public setInput(input: Input): void {
+  // 操作の受け口となる Input を差し込む。ボタン構築時にはまだ存在しないための late injection で、
+  // null は「今は受け口が無い」— このパネルは Game より長生きするので、その状態が実在する。
+  public setInput(input: Input | null): void {
     this.input = input;
   }
 
