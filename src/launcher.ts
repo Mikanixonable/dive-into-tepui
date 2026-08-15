@@ -10,7 +10,7 @@ import type { UnlockManager } from './game/unlock-manager';
 import type { SaveSlots } from './game/save/save-slots';
 import type { SnapshotService } from './game/save/snapshot-service';
 import type { GameSaveData } from './game/save-data';
-import type { Sfx } from './audio/sfx';
+import type { WorldSfx } from './audio/world-sfx';
 import type { Bgm } from './audio/bgm';
 
 // スナップショットのロードを跨いで次のページ読込へ渡す先。ロードは Game を作り直す
@@ -45,7 +45,7 @@ export class Launcher implements RunTransitions {
     private readonly unlockManager: UnlockManager,
     private readonly slots: SaveSlots,
     private readonly snapshotService: SnapshotService,
-    private readonly sfx: Sfx,
+    private readonly worldSfx: WorldSfx,
     private readonly bgm: Bgm,
   ) {
     this.resultScreen = new ResultScreen(hud, this);
@@ -98,7 +98,7 @@ export class Launcher implements RunTransitions {
   update(game: Game): void {
     if (this.resultShown || game.activeStage.isPlaying) return;
     this.resultShown = true;
-    this.sfx.setThrust(false);
+    this.worldSfx.setThrust(false);
     this.bgm.stop();
     const activeSlotId = this.slots.activeSlotId;
     if (activeSlotId !== null) this.slots.noteRunEnded(activeSlotId);

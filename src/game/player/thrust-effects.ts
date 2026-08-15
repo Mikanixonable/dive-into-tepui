@@ -8,7 +8,7 @@ import { Vec3, addScaled, len, scale } from '../../physics/vec3';
 import { Billboard } from '../../render/billboard';
 import type { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
-import { Sfx } from '../../audio/sfx';
+import { WorldSfx } from '../../audio/world-sfx';
 
 export class ThrustEffects {
   private readonly core = new Billboard(0xaee6ff);
@@ -17,7 +17,7 @@ export class ThrustEffects {
   // core/outer ビルボードを scene に登録する。
   constructor(
     scene: THREE.Scene,
-    private readonly _sfx: Sfx,
+    private readonly _worldSfx: WorldSfx,
   ) {
     scene.add(this.core.mesh);
     scene.add(this.outer.mesh);
@@ -32,7 +32,7 @@ export class ThrustEffects {
     visible: boolean, audible: boolean, camera: CameraSystem,
   ): void {
     const firing = thrust !== null && visible;
-    if (audible) this._sfx.setThrust(firing);
+    if (audible) this._worldSfx.setThrust(firing);
 
     if (!firing || camera.zoomActive) {
       this.core.hide();

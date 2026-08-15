@@ -1,9 +1,10 @@
-// WebAudio による合成効果音(アセット不要)。AudioEngine が共有する素材(ノイズバッファ・
-// 基本ボイス)と、ここで組む専用のオシレータ/フィルタで、単発音とループ音を鳴らす。
+// ゲーム世界内の物体・出来事(発砲・被弾・接触・爆発・噴射など)が発する合成効果音
+// (アセット不要)。AudioEngine が共有する素材(ノイズバッファ・基本ボイス)と、ここで組む
+// 専用のオシレータ/フィルタで、単発音とループ音を鳴らす。
 // AudioContext が unlock されるまでは、どのメソッドも無音のまま何もしない。
 import { AudioEngine } from './audio-engine';
 
-export class Sfx {
+export class WorldSfx {
   private thrustGain: GainNode | null = null;
   private rcsGain: GainNode | null = null;
 
@@ -235,11 +236,6 @@ export class Sfx {
     osc.connect(gain).connect(ctx.destination);
     osc.start(t);
     osc.stop(t + 0.2);
-  }
-
-  // 時間warp切替音。
-  warp(): void {
-    this.engine.tone(660, 0.06, 0.08, 'sine');
   }
 
   // 高度低下警報: 短い二音の警告音(熱防御警報よりは緊急度の低いトーン)

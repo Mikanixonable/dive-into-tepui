@@ -6,7 +6,7 @@ import { Vec3 } from '../../physics/vec3';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
 import type { Contact } from '../simulation/contact';
-import type { Sfx } from '../../audio/sfx';
+import type { WorldSfx } from '../../audio/world-sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
 import { buildBarrelMesh, buildCasingMesh, buildMagazineFrame, DEBRIS_FRAGMENT_VARIANT_COUNT } from '../../render/ships';
 import { GameEntity } from './game-entity';
@@ -51,7 +51,7 @@ export class DebrisPiece extends GameEntity {
     state: KinematicState,
     readonly debrisKind: DebrisKind,
     att: Attitude,
-    private readonly _sfx: Sfx,
+    private readonly _worldSfx: WorldSfx,
     private readonly _fx: EffectsSystem,
     radius?: number,
     scene?: THREE.Scene,
@@ -92,7 +92,7 @@ export class DebrisPiece extends GameEntity {
       this._fx.spawnGasPuff(kinematicState(contact.selfState.t, contact.point, contact.selfState.v));
       return;
     }
-    if (this.debrisKind.kind === 'casing' && other instanceof Player) this._sfx.clank();
+    if (this.debrisKind.kind === 'casing' && other instanceof Player) this._worldSfx.clank();
   }
 
   // 薬莢の寿命切れ絶対時刻を返す。薬莢以外、またはすでに過ぎていれば null。

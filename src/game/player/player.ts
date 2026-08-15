@@ -13,7 +13,7 @@ import type { Contact } from '../simulation/contact';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
-import { Sfx } from '../../audio/sfx';
+import { WorldSfx } from '../../audio/world-sfx';
 import { buildPlayerShip } from '../../render/ships';
 import { OrbitLine } from '../orbit-line';
 import { TrajectoryLine } from '../trajectory-line';
@@ -82,7 +82,7 @@ export class Player extends Ship {
   planExecution: PlanExecutionMode = 'off';
 
   private readonly _hud: Hud;
-  private readonly _sfx: Sfx;
+  private readonly _worldSfx: WorldSfx;
   private readonly _fx: EffectsSystem;
   private readonly playerScene: THREE.Scene;
 
@@ -91,7 +91,7 @@ export class Player extends Ship {
   // init 省略時は名前 'PLAYER'・既定軌道の新規艦になる。複数隻を並べるときは name/state を
   // 指定して区別する(name が艦の識別子になる)。
   constructor(
-    _hud: Hud, _sfx: Sfx, _scene: THREE.Scene, _fx: EffectsSystem, markerManager: MarkerManager,
+    _hud: Hud, _worldSfx: WorldSfx, _scene: THREE.Scene, _fx: EffectsSystem, markerManager: MarkerManager,
     init: PlayerInit = {},
   ) {
     const name = 'saved' in init ? (init.saved.name || init.saved.id) : (init.name ?? 'PLAYER');
@@ -105,7 +105,7 @@ export class Player extends Ship {
 
     super(name, state, buildPlayerShip(), att, C.PLAYER_HULL_RADIUS, C.PLAYER_MAX_HP, _scene, id);
     this._hud = _hud;
-    this._sfx = _sfx;
+    this._worldSfx = _worldSfx;
     this._fx = _fx;
     this.playerScene = _scene;
     this.mass = C.PLAYER_MASS;
@@ -113,13 +113,13 @@ export class Player extends Ship {
 
     const saved = 'saved' in init ? init.saved : undefined;
     this.throttle = new PlayerThrottle(_hud, saved?.throttle);
-    this.fire = new PlayerFire(this, _hud, _sfx, _scene, _fx, 'saved' in init ? { saved: init.saved.fire } : { ammo: init.ammo });
+    this.fire = new PlayerFire(this, _hud, _worldSfx, _scene, _fx, 'saved' in init ? { saved: init.saved.fire } : { ammo: init.ammo });
     this.belt = new Belt(this.renderObject, this);
-    this.thermal = new ThermalSystem(_hud, _sfx, saved?.thermal);
+    this.thermal = new ThermalSystem(_hud, _worldSfx, saved?.thermal);
     this.radiator = new RadiatorSystem(this.renderObject, this, saved?.radiator);
     this.power = new PowerSystem(this.renderObject, saved?.power);
-    this.thrustEffects = new ThrustEffects(_scene, _sfx);
-    this.rcsEffects = new RcsEffects(_scene, _sfx);
+    this.thrustEffects = new ThrustEffects(_scene, _worldSfx);
+    this.rcsEffects = new RcsEffects(_scene, _worldSfx);
     this.reentryEffects = new ReentryEffects(_scene);
     this.markers = new PlayerMarkers(markerManager, this.id);
     this.planExecutor = new PlanExecutor(_hud);
@@ -342,7 +342,7 @@ export class Player extends Ship {
     // 弾以外との接触は Δv ベースの物理ダメージとして、無作為なパーツへ振り分ける。
     if (!this.applyCollisionDamage(contact.impulse / this.mass)) return;
     if (this.hp > 0) {
-      this._sfx.clank();
+      this._worldSfx.clank();
       this._fx.spawnGasPuff(this.state);
       return;
     }
@@ -367,7 +367,7 @@ export class Player extends Ship {
     if (!this.applyCollisionDamage(contact.impulse / this.mass, damagedPart)) return;
     if (damagedPart && damagedPart.hp <= 0) this.radiatorBreakEffect(side);
     if (this.hp > 0) {
-      this._sfx.clank();
+      this._worldSfx.clank();
       this._fx.spawnGasPuff(this.state);
       return;
     }
@@ -403,7 +403,7 @@ export class Player extends Ship {
 
   // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。
   private impactEffect(bullet: Bullet, impactPoint: Vec3): void {
-    this._sfx.hit();
+    this._worldSfx.hit();
     if (bullet.type === 'plasma') {
       this._fx.spawnPlasmaFlash(kinematicState(this.state.t, impactPoint, this.state.v));
     } else {
@@ -414,13 +414,13 @@ export class Player extends Ship {
 
   // 機体喪失時の爆発音・爆発エフェクトを発生させる。
   private destroyEffect(): void {
-    this._sfx.explosion();
+    this._worldSfx.explosion();
     this._fx.spawnShipDestroyEffect(this.state, 1, C.COLOR_PLAYER_DESTROY_FRAG);
   }
 
   // ラジエーターが全損した瞬間の破片エフェクトを、そのパネル先端付近から発生させる。
   private radiatorBreakEffect(side: RadiatorSide): void {
-    this._sfx.hit();
+    this._worldSfx.hit();
     const tipR = this.radiator.tipWorldPosition(side, this.state.r, this.att);
     this._fx.scatterFragments(this.state.t, tipR, this.state.v, 4, C.COLOR_PLAYER_DESTROY_FRAG, C.DESTROY_FRAG_SIZE_MIN, C.DESTROY_FRAG_SIZE_MAX, 8.0);
   }

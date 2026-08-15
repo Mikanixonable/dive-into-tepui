@@ -7,7 +7,8 @@ import * as C from '../../const';
 import { AmmoPickup } from '../../game-entity/ammo-pickup';
 import { kinematicState, orbitAxes } from '../../../physics/kinematic-state';
 import { Hud } from '../../hud/hud';
-import { Sfx } from '../../../audio/sfx';
+import { WorldSfx } from '../../../audio/world-sfx';
+import { UiSfx } from '../../../audio/ui-sfx';
 import { Player } from '../../player/player';
 import { MarkerManager } from '../../marker/marker-manager';
 import type { EntityManager } from '../../simulation/entity-manager';
@@ -23,7 +24,8 @@ export class Logistics {
   // saved があればその状態(次回投入判定時刻・自動投入の有効/無効)から始める。
   constructor(
     private readonly _hud: Hud,
-    private readonly _sfx: Sfx,
+    private readonly _worldSfx: WorldSfx,
+    private readonly _uiSfx: UiSfx,
     private readonly _scene: THREE.Scene,
     private readonly entities: EntityManager,
     private readonly markerManager: MarkerManager,
@@ -63,7 +65,7 @@ export class Logistics {
     );
     // 投入して演出とヒントを出す
     this.entities.addAmmoPickup(ammoPickup);
-    this._sfx.warp();
+    this._uiSfx.warp();
     this._hud.hint('付近の軌道に補給が投入された — ▣ 弾薬マーカーへ接近して回収', 5000);
   }
 
@@ -107,7 +109,7 @@ export class Logistics {
       ) continue;
       ammoPickup.alive = false;
       player.onPickup(C.AMMO_PICKUP_MAGS);
-      this._sfx.pickup();
+      this._worldSfx.pickup();
       this._hud.hint(`補給取り込み — ベルト +${C.AMMO_PICKUP_MAGS} 連`, 3000);
     }
   }

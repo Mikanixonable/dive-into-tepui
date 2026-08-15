@@ -75,7 +75,7 @@ class Game {
 class PlanGuide {
   public constructor(
     private readonly hud: Hud,
-    private readonly sfx: Sfx,
+    private readonly uiSfx: UiSfx,
   ) {}
 }
 ```

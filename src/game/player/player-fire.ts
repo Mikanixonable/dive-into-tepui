@@ -10,7 +10,7 @@ import * as C from '../const';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
-import { Sfx } from '../../audio/sfx';
+import { WorldSfx } from '../../audio/world-sfx';
 import { Ship } from '../game-entity/ship';
 import { Bullet } from '../game-entity/bullet';
 import type { EntityManager } from '../simulation/entity-manager';
@@ -59,7 +59,7 @@ export class PlayerFire {
   constructor(
     private readonly player: Player,
     private readonly _hud: Hud,
-    private readonly _sfx: Sfx,
+    private readonly _worldSfx: WorldSfx,
     private readonly _scene: THREE.Scene,
     private readonly _fx: EffectsSystem,
     init: FireInit = {},
@@ -125,7 +125,7 @@ export class PlayerFire {
 
     if (this.player.totalFireRate <= 0) {
       if (!this.wasEmptyClick) {
-        this._sfx.emptyClick();
+        this._worldSfx.emptyClick();
         this._hud.hint('武装が損傷しており発射できない', 3000);
         this.wasEmptyClick = true;
       }
@@ -134,7 +134,7 @@ export class PlayerFire {
 
     if (!this.left) {
       if (!this.wasEmptyClick) {
-        this._sfx.emptyClick();
+        this._worldSfx.emptyClick();
         this._hud.hint('弾薬切れ — 軌道上の補給 ▣ を回収せよ', 3000);
         this.wasEmptyClick = true;
       }
@@ -162,7 +162,7 @@ export class PlayerFire {
 
     // 起動時のタイムラグ
     if (justStartedFiring) {
-      this._sfx.spinUp();
+      this._worldSfx.spinUp();
       this.cooldown = C.SPINUP_TIME;
       return;
     }
@@ -182,14 +182,14 @@ export class PlayerFire {
         return;
       case 'mag-reload':
         this.spawnEjectedMagazineFrame(this.player);
-        this._sfx.magFeed();
+        this._worldSfx.magFeed();
         this.cooldown = 1 / this.player.totalFireRate;
         return;
       case 'barrel-reload':
         this.spawnEjectedMagazineFrame(this.player);
         this.cooldown = C.RELOAD_TIME;
         this.dropBarrel(this.player);
-        this._sfx.playReload();
+        this._worldSfx.playReload();
         return;
     }
   }
@@ -225,7 +225,7 @@ export class PlayerFire {
     this.rounds = C.MAG_ROUNDS;
     this.barrel = C.MAGS_PER_BARREL;
     this.cooldown = C.RELOAD_TIME;
-    this._sfx.playReload();
+    this._worldSfx.playReload();
     this.dropBarrel(this.player);
     return true;
   }
@@ -257,7 +257,7 @@ export class PlayerFire {
 
     activeStage.scoreCounter.recordShot();
     this.player.thermal.addGunHeat(1);
-    this._sfx.fire();
+    this._worldSfx.fire();
   }
 
   // 弾丸: 機首方向 + 散布界
@@ -279,7 +279,7 @@ export class PlayerFire {
       'player',
       'normal',
       ship.weaponDamage,
-      this._sfx,
+      this._worldSfx,
       this._scene,
     );
     entities.addBullet(bullet);
