@@ -541,8 +541,8 @@ export function buildBarrelMesh(): THREE.Group {
 export function buildBaseModel(): THREE.Group {
   const g = new THREE.Group();
 
-  // マテリアル定義 (全構造を清潔感あふれるセラミックホワイト・シルバーチタン白系で統一)
-  const redTrussMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, flatShading: true, roughness: 0.25, metalness: 0.45 }); // 白基調主トラス構造
+  // マテリアル定義 (トラス構造は鮮烈なインダストリアルレッド, その他は白系セラミックホワイト)
+  const redTrussMat = new THREE.MeshStandardMaterial({ color: 0xcc2222, flatShading: true, roughness: 0.35, metalness: 0.55 }); // 赤基調主トラス構造
   const grayFrameMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, flatShading: true, roughness: 0.2, metalness: 0.35 });  // 白基調外骨格
   const whiteModuleMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.15, metalness: 0.25 }); // 純白セラミック居住区
   const glassMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.35, roughness: 0.1, metalness: 0.9 });
@@ -575,12 +575,23 @@ export function buildBaseModel(): THREE.Group {
     new THREE.MeshStandardMaterial({ color: 0xe2e8f0, flatShading: true, roughness: 0.25, metalness: 0.7 }),  // プラチナホワイトタンク
   ];
 
-  // 1) 現状の倍の長さ (340m) & 鉄塔風・超高密度立体格子トラス構造 (Steel Transmission Tower Lattice)
+  // 1) 居住部(+49m)と貨物部(-110m)を連結する赤基調の鉄塔風立体格子トラス (貫通せず端部で強固に接合)
+  const zMin = -110; // 貨物部トップ接合部
+  const zMax = 49;   // 居住部ボトム接合部
+  const trussLength = zMax - zMin; // 159m
+  const trussCenterZ = (zMin + zMax) / 2; // -30.5m
   const trussRadius = 9;
-  const trussLength = 340;
-  const trussCenterZ = 25;
-  const zMin = trussCenterZ - trussLength / 2; // -145m
-  const zMax = trussCenterZ + trussLength / 2; // +195m
+
+  // 居住部・貨物部との結合用大型フランジアダプター構造 (両端接合ノード)
+  const topAdapter = new THREE.Mesh(new THREE.CylinderGeometry(14, 14, 3, 16), redTrussMat);
+  topAdapter.position.set(0, 0, zMax);
+  topAdapter.rotation.x = Math.PI / 2;
+  g.add(topAdapter);
+
+  const bottomAdapter = new THREE.Mesh(new THREE.CylinderGeometry(14, 14, 3, 16), redTrussMat);
+  bottomAdapter.position.set(0, 0, zMin);
+  bottomAdapter.rotation.x = Math.PI / 2;
+  g.add(bottomAdapter);
 
   // 主ビーム (縦方向コード 3本 + 内側面補強ストリンガー 3本)
   for (let i = 0; i < 3; i++) {
@@ -588,7 +599,7 @@ export function buildBaseModel(): THREE.Group {
     const cosA = Math.cos(a);
     const sinA = Math.sin(a);
 
-    // 主コードビーム
+    // 赤基調主コードビーム
     const beam = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, trussLength, 6), redTrussMat);
     beam.position.set(cosA * trussRadius, sinA * trussRadius, trussCenterZ);
     beam.rotation.x = Math.PI / 2;
@@ -601,7 +612,7 @@ export function buildBaseModel(): THREE.Group {
     g.add(innerBeam);
 
     // 沿う流体配管パイプライン
-    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, trussLength + 4, 6), conduitMat);
+    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, trussLength + 2, 6), conduitMat);
     pipe.position.set(cosA * (trussRadius + 1.8), sinA * (trussRadius + 1.8), trussCenterZ);
     pipe.rotation.x = Math.PI / 2;
     g.add(pipe);
@@ -618,7 +629,7 @@ export function buildBaseModel(): THREE.Group {
   // 鉄塔風・立体Xクロスラティス & 横方向バルクヘッドリング & 内部Kブレース
   const stepZ = 10;
   for (let z = zMin; z < zMax; z += stepZ) {
-    const zNext = z + stepZ;
+    const zNext = Math.min(z + stepZ, zMax);
 
     for (let i = 0; i < 3; i++) {
       const a1 = (i / 3) * Math.PI * 2;
@@ -669,17 +680,36 @@ export function buildBaseModel(): THREE.Group {
     }
   }
 
-  // 2) 大型放熱板 (トラス部中腹)
+  // 2) 六角形ユニット結合放熱板 (長方形シルエット枠内に6角形ハニカムセルを隙間なく結合)
   for (const side of [1, -1]) {
-    const radiator = new THREE.Mesh(new THREE.BoxGeometry(45, 0.8, 22), radiatorMat);
-    radiator.position.set(side * 28, 0, 30);
-    g.add(radiator);
+    const radiatorGroup = new THREE.Group();
+    radiatorGroup.position.set(side * 28, 0, -30);
 
-    // ギミック関節
+    // 長方形外周保護枠 (45.5m x 22.5m シルエット)
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(45.5, 0.6, 22.5), grayFrameMat);
+    radiatorGroup.add(frame);
+
+    // 六角形放熱ユニット群 (Hexagonal Honeycomb Cells)
+    const hexGeo = new THREE.CylinderGeometry(1.6, 1.6, 0.5, 6);
+    for (let ix = -6; ix <= 6; ix++) {
+      const posX = ix * 3.2;
+      for (let iz = -3; iz <= 3; iz++) {
+        const posZ = iz * 3.0 + (Math.abs(ix) % 2 === 1 ? 1.5 : 0);
+        if (Math.abs(posZ) <= 10) {
+          const hexUnit = new THREE.Mesh(hexGeo, radiatorMat);
+          hexUnit.position.set(posX, 0, posZ);
+          radiatorGroup.add(hexUnit);
+        }
+      }
+    }
+
+    // ギミック関節マウント
     const mountJoint = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 3.5, 10), sensorPodMat);
-    mountJoint.position.set(side * 8, 0, 30);
+    mountJoint.position.set(-side * 20, 0, 0);
     mountJoint.rotation.z = Math.PI / 2;
-    g.add(mountJoint);
+    radiatorGroup.add(mountJoint);
+
+    g.add(radiatorGroup);
   }
 
   // 3) 中腹ドッキング部 (Z = 0m)
