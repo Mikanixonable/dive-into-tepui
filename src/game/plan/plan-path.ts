@@ -325,6 +325,12 @@ export class PlanPath {
     this.group.visible = v;
   }
 
+  // group をシーンから外し、プールした折れ線を解放する。
+  dispose(): void {
+    this.group.removeFromParent();
+    for (const line of this.lines) line.dispose();
+  }
+
   // i 番目の折れ線を返す(なければ生成して group へ追加する)。区間の色は index で決まる。
   private lineAt(i: number): TrajectoryLine {
     while (this.lines.length <= i) {

@@ -450,6 +450,34 @@ export class EntityManager {
     for (const pool of this.debrisFragmentPools) pool.endFrame();
   }
 
+  // 保持する全エンティティと描画資源プールを破棄する。cleanup/prune は死亡した
+  // エンティティしか片付けないため、生存中のまま呼ばれるケースをここで担う。
+  dispose(): void {
+    this.disposeAll(this.players);
+    this.disposeAll(this.enemies);
+    this.disposeAll(this.bullets);
+    this.disposeAll(this.casings);
+    this.disposeAll(this.debris);
+    this.disposeAll(this.ammoPickups);
+    this.disposeAll(this.asteroids);
+    this.disposeAll(this.bases);
+
+    this.bulletBodyPool.dispose();
+    this.bulletHaloPool.dispose();
+    this.plasmaPool.dispose();
+    this.casingPool.dispose();
+    for (const pool of this.debrisFragmentPools) pool.dispose();
+
+    this.effects.dispose();
+    this.invalidateCaches();
+  }
+
+  // 配列内の各エンティティを破棄したうえで、配列自体も空にする。
+  private disposeAll<T extends GameEntity>(arr: T[]): void {
+    for (const e of arr) e.dispose();
+    arr.length = 0;
+  }
+
   // 負荷確認ウィンドウが読む、保持配列ごとの現在の個体数。
   perfCounts(): Pick<PerfCounts, 'players' | 'enemies' | 'bullets' | 'casings' | 'debris' | 'ammoPickups' | 'asteroids' | 'bases'> {
     return {

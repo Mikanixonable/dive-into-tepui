@@ -131,6 +131,12 @@ export class NodeGizmo {
     this.menu.close();
   }
 
+  // コンテキストメニューを片付け、ノードハンドル・Δv アームの DOM を取り除く。
+  dispose(): void {
+    this.menu.dispose();
+    this.root.remove();
+  }
+
   // ノードハンドル・Δv アームの DOM を渡された仕様に同期する。仕様に無くなった要素は破棄する。
   sync(nodes: NodeHandleSpec[], axes: AxisHandleSpec[] | null): void {
     const seen = new Set<number>();
