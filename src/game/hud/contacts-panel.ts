@@ -1,107 +1,158 @@
-// 常設 CONTACTS パネル(#hud-enemies)の同期: 生存中の敵を距離順に一覧表示する。戦闘ビュー専用。
-import { Vec3, len, sub } from '../../physics/vec3';
+// 常設 CONTACTS パネル(#hud-enemies)の同期: コンタクト中の敵を距離順で示す。戦闘ビュー専用。
+import { len, sub } from '../../physics/vec3';
+import { fmtDist } from './utils';
+import type { Vec3 } from '../../physics/vec3';
 import type { Enemy } from '../game-entity/enemy';
 import type { CombatTarget } from '../targeter';
-import { fmtDist } from './utils';
-import { ACCENT_SECONDARY, TEXT_DIM } from '../theme';
 import type { Game } from '../game';
 
 const SYNC_INTERVAL_MS = 250;
 
 type EnemyRow =
-  | { kind: 'single'; name: string; dist: number; targeted: boolean; secondary: boolean }
-  | { kind: 'wave'; waveId: number; count: number; dist: number; targeted: boolean; secondary: boolean };
+  | {
+    readonly kind: 'single';
+    readonly name: string;
+    readonly distanceM: number;
+    readonly targeted: boolean;
+    readonly secondary: boolean;
+  }
+  | {
+    readonly kind: 'wave';
+    readonly waveId: number;
+    readonly count: number;
+    readonly distanceM: number;
+    readonly targeted: boolean;
+    readonly secondary: boolean;
+  };
 
 export class ContactsPanel {
   private nextSyncAt = 0;
+  private hasContacts = false;
 
-  constructor(private readonly els: Map<string, HTMLElement>) {}
+  public constructor(private readonly els: ReadonlyMap<string, HTMLElement>) {}
 
-  sync(game: Game): void {
+  public sync(game: Game): void {
     const player = game.player;
-    const el = document.getElementById('hud-enemies');
+    const panel = document.getElementById('hud-enemies');
     if (!player) {
-      el?.classList.add('hidden');
+      this.hasContacts = false;
+      panel?.classList.add('hidden');
       return;
     }
-    el?.classList.toggle('hidden', game.cameraSystem.overviewMode);
 
     const now = performance.now();
-    if (now < this.nextSyncAt) return;
-    this.nextSyncAt = now + SYNC_INTERVAL_MS;
+    if (now >= this.nextSyncAt) {
+      this.nextSyncAt = now + SYNC_INTERVAL_MS;
 
-    const { kills, totalEnemiesSpawned } = game.activeStage.scoreCounter;
-    this.setText('count', `${totalEnemiesSpawned - kills}/${totalEnemiesSpawned}`);
-    const tgt = game.targeter.aliveTarget;
-    const secTgt = game.targeter.aliveSecondaryTarget;
-    this.setEnemyList(this.buildEnemyRows(game.entities.enemies.filter((e) => e.alive), player.state.r, tgt, secTgt));
+      const { kills, totalEnemiesSpawned } = game.activeStage.scoreCounter;
+      const remainingCount = totalEnemiesSpawned - kills;
+      const count = this.els.get('count');
+      if (count) {
+        count.textContent = `${remainingCount} / ${totalEnemiesSpawned}`;
+        count.setAttribute('aria-label', `残存 ${remainingCount}、合計 ${totalEnemiesSpawned}`);
+      }
+      const primaryTarget = game.targeter.aliveTarget;
+      const secondaryTarget = game.targeter.aliveSecondaryTarget;
+      const rows = this.buildEnemyRows(
+        game.entities.enemies.filter((enemy) => enemy.alive),
+        player.state.r,
+        primaryTarget,
+        secondaryTarget,
+      );
+      this.hasContacts = rows.length > 0;
+      this.syncEnemyList(rows);
+    }
+
+    // 更新間隔中も直前の敵有無を維持する。ここで戦闘ビュー判定だけを行うと、
+    // 敵0件で隠したパネルを次のフレームに再表示してしまう。
+    panel?.classList.toggle('hidden', game.cameraSystem.overviewMode || !this.hasContacts);
   }
 
-  // id 要素のテキストを、変化があるときだけ書き換える。
-  private setText(id: string, text: string): void {
-    const e = this.els.get(id);
-    if (e && e.textContent !== text) e.textContent = text;
-  }
-
-  // 敵一覧パネルの行データを、waveId を持つ敵ごとに「第N波」1行へ集約して組み立てる。
+  // waveId を持つ敵ごとに「第N波」1行へ集約して組み立てる。
   // waveId 不在の敵は個別の行になる。ターゲット/第二ターゲットが波のメンバーなら、
   // その波の行を強調する側に倒す。
   private buildEnemyRows(
     enemies: readonly Enemy[],
-    playerPos: Vec3,
-    tgt: CombatTarget | null,
-    secTgt: CombatTarget | null,
+    playerPositionEci: Vec3,
+    primaryTarget: CombatTarget | null,
+    secondaryTarget: CombatTarget | null,
   ): EnemyRow[] {
     const singles: EnemyRow[] = [];
-    const waves = new Map<number, { count: number; nearestDist: number; targeted: boolean; secondary: boolean }>();
-    for (const e of enemies) {
-      const dist = len(sub(e.state.r, playerPos));
-      const targeted = e === tgt;
-      const secondary = e === secTgt;
-      if (e.waveId === undefined) {
-        singles.push({ kind: 'single', name: e.name, dist, targeted, secondary });
+    const waves = new Map<
+      number,
+      { count: number; nearestDistanceM: number; targeted: boolean; secondary: boolean }
+    >();
+    for (const enemy of enemies) {
+      const distanceM = len(sub(enemy.state.r, playerPositionEci));
+      const targeted = enemy === primaryTarget;
+      const secondary = enemy === secondaryTarget;
+      if (enemy.waveId === undefined) {
+        singles.push({ kind: 'single', name: enemy.name, distanceM, targeted, secondary });
         continue;
       }
-      const w = waves.get(e.waveId);
-      if (!w) {
-        waves.set(e.waveId, { count: 1, nearestDist: dist, targeted, secondary });
+      const waveSummary = waves.get(enemy.waveId);
+      if (!waveSummary) {
+        waves.set(enemy.waveId, { count: 1, nearestDistanceM: distanceM, targeted, secondary });
       } else {
-        // 波の代表距離は最も近い個体、強調表示は波内のいずれかがターゲットなら点灯させる
-        w.count++;
-        w.nearestDist = Math.min(w.nearestDist, dist);
-        w.targeted = w.targeted || targeted;
-        w.secondary = w.secondary || secondary;
+        // 波の代表距離は最も近い個体を使い、波内にターゲットがいれば強調する。
+        waveSummary.count += 1;
+        waveSummary.nearestDistanceM = Math.min(waveSummary.nearestDistanceM, distanceM);
+        waveSummary.targeted = waveSummary.targeted || targeted;
+        waveSummary.secondary = waveSummary.secondary || secondary;
       }
     }
-    const waveRows: EnemyRow[] = Array.from(waves.entries()).map(([waveId, w]) => ({
+    const waveRows: EnemyRow[] = Array.from(waves.entries()).map(([waveId, waveSummary]) => ({
       kind: 'wave',
       waveId,
-      count: w.count,
-      dist: w.nearestDist,
-      targeted: w.targeted,
-      secondary: w.secondary,
+      count: waveSummary.count,
+      distanceM: waveSummary.nearestDistanceM,
+      targeted: waveSummary.targeted,
+      secondary: waveSummary.secondary,
     }));
-    return [...singles, ...waveRows].sort((a, b) => a.dist - b.dist);
+    return [...singles, ...waveRows].sort((a, b) => a.distanceM - b.distanceM);
   }
 
-  // 敵一覧パネルの本文を、距離順の行として書き換える。第二ターゲットは第一と別に
-  // シアンで強調する(CSS クラスでなくインライン色。この2色目は theme.ts の ACCENT_SECONDARY)。
-  private setEnemyList(rows: EnemyRow[]): void {
+  // 距離順のリストへ同期する。第一・隣接・第二は色と状態語で識別する。
+  private syncEnemyList(rows: readonly EnemyRow[]): void {
     const list = this.els.get('elist');
     if (!list) return;
     if (rows.length === 0) {
-      list.innerHTML = `<div style="color:${TEXT_DIM}">残存目標なし</div>`;
+      const empty = document.createElement('li');
+      empty.className = 'contact-empty';
+      empty.textContent = '残存目標なし';
+      list.replaceChildren(empty);
       return;
     }
-    list.innerHTML = rows
-      .map((r) => {
-        // 1つの波に第一・第二ターゲットが混在しうる。インライン色は .tgt のクラス指定に勝つため、
-        // 第一ターゲットを含む行は ▶ と同じ色に倒す。
-        const style = r.secondary && !r.targeted ? ` style="color:${ACCENT_SECONDARY}"` : '';
-        const mark = r.targeted ? '▶ ' : r.secondary ? '▷ ' : '';
-        const label = r.kind === 'wave' ? `第${r.waveId}波 ×${r.count}` : r.name;
-        return `<div class="erow${r.targeted ? ' tgt' : ''}"${style}><span>${mark}${label}</span><span>${fmtDist(r.dist)}</span></div>`;
-      })
-      .join('');
+
+    const adjacentIndex = rows.findIndex((row) => !row.targeted && !row.secondary);
+    const items = rows.map((row, index) => {
+      const isAdjacent = index === adjacentIndex;
+      const role = row.targeted ? '第一' : row.secondary ? '第二' : isAdjacent ? '隣接' : '';
+      const label = row.kind === 'wave' ? `第${row.waveId}波 ×${row.count}` : row.name;
+      const distance = fmtDist(row.distanceM);
+      const item = document.createElement('li');
+      item.className = [
+        'contact-row',
+        row.targeted ? 'primary' : '',
+        row.secondary && !row.targeted ? 'secondary' : '',
+        isAdjacent ? 'near' : '',
+      ].filter(Boolean).join(' ');
+      if (row.targeted) item.setAttribute('aria-current', 'true');
+      item.setAttribute('aria-label', [label, distance, role ? `${role}ターゲット` : '未選択'].join('、'));
+
+      const name = document.createElement('span');
+      name.className = 'contact-name';
+      name.textContent = label;
+      const distanceValue = document.createElement('span');
+      distanceValue.className = 'contact-distance';
+      distanceValue.textContent = distance;
+      const roleLabel = document.createElement('span');
+      roleLabel.className = 'contact-role';
+      roleLabel.textContent = role;
+      roleLabel.setAttribute('aria-hidden', 'true');
+      item.append(name, distanceValue, roleLabel);
+      return item;
+    });
+    list.replaceChildren(...items);
   }
 }

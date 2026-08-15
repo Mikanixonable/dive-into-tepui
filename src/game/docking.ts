@@ -117,12 +117,11 @@ export class Docking {
       player: ship,
     });
     // parkPlayer した艦は以後 syncPlayer が呼ばれないので、可視状態を一度だけここで確定させる。
-    ship.obj.visible = false;
+    ship.renderObject.visible = false;
     const wasActive = this.activePlayers.current === ship;
     this.mapActions.close();
-    this.cameraSystem.overviewCamera.clearFocusIf(ship.id);
-    // 収容される艦がまさに操作対象だった場合、噴射中の推力/RCS音は艦自身の毎フレーム
-    // 更新(player.behave)が以後走らなくなることで止まらなくなる — 明示的に止める。
+    this.cameraSystem.mapCamera.clearFocusIf(ship.id);
+    // 操作中の艦を収容する際は、連続指令と噴射音を同時に畳む。
     if (wasActive) {
       ship.clearTransientCommands();
       this.sfx.setThrust(false);
@@ -143,7 +142,7 @@ export class Docking {
     const no = ++this.nextBuiltShipNo;
     const id = `${base.id}-built-${no}`;
     const ship = new Player(this.hud, this.sfx, this.scene, this.effects, this.markerManager, { name: `新造艦-${no}`, state: base.state, id });
-    ship.obj.visible = false;
+    ship.renderObject.visible = false;
     base.baseState.dockedShips.push({
       id: ship.id,
       name: ship.name,

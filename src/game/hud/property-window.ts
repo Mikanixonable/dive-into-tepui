@@ -17,9 +17,10 @@ import type { OverlayHandle, OverlayManager, OverlaySpec } from './overlay-manag
 const STYLE = `
 #hud .prop-window {
   position: fixed; display: block; min-width: 200px; max-width: 280px;
-  pointer-events: auto; background: var(--surface); border: 1px solid var(--edge);
-  border-radius: var(--radius-m); overflow: hidden; font-size: var(--font-m);
+  pointer-events: auto; background: var(--glass-focus); border: 0;
+  border-radius: var(--radius-window); overflow: hidden; font-size: var(--font-m);
   font-family: var(--font-family); user-select: none;
+  box-shadow: 0 16px 48px var(--shade-1); backdrop-filter: blur(20px) saturate(82%);
   -webkit-user-select: none;
 }
 /* compact: ドラッグで動かす小窓ではなく、画面下 40% のボトムシートとして開く
@@ -28,14 +29,13 @@ const STYLE = `
   #hud .prop-window {
     right: 0; bottom: 0; width: 100%; min-width: 0; max-width: 100%;
     max-height: 40vh; max-height: 40dvh; overflow-y: auto;
-    border-radius: var(--radius-l) var(--radius-l) 0 0;
+    border-radius: var(--radius-window) var(--radius-window) 0 0;
   }
 }
 #hud .prop-window-header {
   display: flex; align-items: flex-start; gap: var(--space-3);
-  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-5);
-  border-bottom: 1px solid var(--edge);
-  background: var(--shade-1);
+  padding: var(--space-5) var(--space-4) var(--space-4) var(--space-5);
+  border: 0; background: transparent;
   cursor: move;
 }
 @media ${MQ_COMPACT} {
@@ -45,16 +45,16 @@ const STYLE = `
 #hud .prop-window-title-main { color: var(--text); font-weight: bold; overflow-wrap: break-word; }
 #hud .prop-window-title-sub { color: var(--text); opacity: 0.7; font-size: var(--font-s); margin-top: var(--space-1); }
 #hud .prop-window-title-input {
-  width: 100%; background: var(--surface); border: 1px solid var(--accent); border-radius: var(--radius-s);
+  width: 100%; background: var(--surface-2); border: 1px solid transparent; border-radius: var(--radius-control);
   color: var(--text); font: inherit; font-weight: bold; padding: var(--space-1) var(--space-2); box-sizing: border-box;
 }
 #hud .prop-window-btn {
   flex: none; width: 18px; height: 18px; line-height: 18px; text-align: center;
-  border: 1px solid var(--edge); border-radius: var(--radius-s); background: transparent; color: var(--text);
+  border: 0; border-radius: var(--radius-micro); background: var(--surface-2); color: var(--text);
   cursor: pointer; font-size: var(--font-s); padding: 0;
 }
-#hud .prop-window-btn:hover { background: var(--accent-fill); color: var(--accent-soft); }
-#hud .prop-window-btn.clipped { border-color: var(--accent); color: var(--accent); }
+#hud .prop-window-btn:hover { background: var(--surface-3); color: var(--accent-near); }
+#hud .prop-window-btn.clipped { background: var(--accent-fill); color: var(--accent); }
 #hud .prop-window-rows { padding: var(--space-2) 0; }
 #hud .prop-window-row {
   display: flex; justify-content: space-between; gap: var(--space-4); padding: var(--space-2) var(--space-5); color: var(--text);
@@ -69,18 +69,22 @@ const STYLE = `
   padding: var(--space-2) var(--space-5); color: var(--text); opacity: 0.6; cursor: pointer;
 }
 #hud .prop-window-row-group-toggle:hover { opacity: 1; color: var(--accent-soft); }
-#hud .prop-window-items { border-top: 1px solid var(--edge); }
-#hud .prop-window-item {
-  padding: var(--space-4) var(--space-5); color: var(--text); cursor: pointer; border-bottom: 1px solid var(--edge);
+#hud .prop-window-items {
+  padding: var(--space-2);
+  background: color-mix(in srgb, var(--surface-0) 28%, transparent);
 }
-#hud .prop-window-item:last-child { border-bottom: none; }
+#hud .prop-window-item {
+  padding: var(--space-4) var(--space-5); color: var(--body); cursor: pointer;
+  border: 0; border-radius: var(--radius-micro);
+}
 #hud .prop-window-item:hover, #hud .prop-window-item:active {
-  background: var(--accent-fill); color: var(--accent-soft);
+  background: var(--surface-2); color: var(--accent-near);
 }
 #hud .prop-window-item.on {
-  color: var(--accent); background: var(--accent-fill-weak);
+  color: var(--accent); background: var(--accent-fill);
 }
 #hud .prop-window-item.on::before { content: '▪ '; }
+#hud .prop-window-item:focus-visible { outline: 2px solid var(--accent-near); outline-offset: -2px; }
 `;
 
 let styleInjected = false;
@@ -171,20 +175,20 @@ export class PropertyWindow<A extends string = string> implements OverlayHandle 
 
   // keepOpen はクリックした項目自身の PropertyWindowItem.keepOpen — 呼び出し側はこれを見て
   // 自動クローズを抑制するかを判断する(クリップ状態は別に呼び出し側が持つ)。
-  onSelect: ((act: A, keepOpen: boolean) => void) | null = null;
+  public onSelect: ((act: A, keepOpen: boolean) => void) | null = null;
   // 閉じられた(dispose 済み)ことを呼び出し側の管理台帳へ知らせる。ESC・外側クリック・
   // ✕ ボタンのどの経路で閉じても等しく発火する。
-  onClose: (() => void) | null = null;
+  public onClose: (() => void) | null = null;
   // クリップボタンで状態が反転したことを通知する。呼び出し側が状態に応じた見た目の
   // 追従(一覧の表示等)を行うためだけの通知で、排他は overlayManager 自身が持つ。
-  onClipChange: ((clipped: boolean) => void) | null = null;
+  public onClipChange: ((clipped: boolean) => void) | null = null;
 
   // clientX/clientY を左上角として root の子として開き、content の内容で組み立てる。
   // ヘッダ・行・操作項目の3段を構築してから DOM に追加し、viewport.ts のビューポート変化通知を購読する。
   // tempWindowGroup を渡すと、クリップされていない間だけ OverlayManager 上の排他グループに
   // 参加する一時ウィンドウになる(ESC・外側クリックで自動的に閉じ、同グループの他方も追い出す)。
   // 省略すると(例: 負荷確認ウィンドウ)ESC・外側クリックのどちらでも閉じない常設ウィンドウになる。
-  constructor(
+  public constructor(
     root: HTMLElement, clientX: number, clientY: number, content: PropertyWindowContent<A>,
     private readonly overlayManager: OverlayManager, private readonly tempWindowGroup?: string,
   ) {
@@ -192,6 +196,7 @@ export class PropertyWindow<A extends string = string> implements OverlayHandle 
     ensureStyle();
     this.el = document.createElement('div');
     this.el.className = 'prop-window';
+    this.el.setAttribute('role', 'dialog');
 
     const header = document.createElement('div');
     header.className = 'prop-window-header';
@@ -199,6 +204,8 @@ export class PropertyWindow<A extends string = string> implements OverlayHandle 
     title.className = 'prop-window-title';
     this.titleMainEl = document.createElement('div');
     this.titleMainEl.className = 'prop-window-title-main';
+    this.titleMainEl.id = `${this.overlayId}-title`;
+    this.el.setAttribute('aria-labelledby', this.titleMainEl.id);
     this.titleSubEl = document.createElement('div');
     this.titleSubEl.className = 'prop-window-title-sub';
     title.appendChild(this.titleMainEl);
@@ -253,13 +260,13 @@ export class PropertyWindow<A extends string = string> implements OverlayHandle 
     this.overlayManager.open(this.overlayId, this, this.currentSpec());
   }
 
-  contains(target: Node): boolean {
+  public contains(target: Node): boolean {
     return this.el.contains(target);
   }
 
   // OverlayManager からの項目ショートカット配送を受ける。クリップ中は受け付けない —
   // 一時ウィンドウは高々1枚なので、クリップされていないウィンドウどうしがキーを取り合うことはない。
-  handleShortcut(code: string): boolean {
+  public handleShortcut(code: string): boolean {
     if (this._clipped) return false;
     const items = this.itemsEl.querySelectorAll<HTMLElement>('.prop-window-item');
     for (const item of Array.from(items)) {
@@ -284,7 +291,7 @@ export class PropertyWindow<A extends string = string> implements OverlayHandle 
   }
 
   // タイトル・サブタイトルを変化があった要素だけ差分更新する。
-  syncHeader(title: string, subtitle: string | undefined): void {
+  public syncHeader(title: string, subtitle: string | undefined): void {
     if (title !== this.lastTitle) {
       this.lastTitle = title;
       this.titleMainEl.textContent = title;
@@ -326,7 +333,7 @@ export class PropertyWindow<A extends string = string> implements OverlayHandle 
 
   // 操作項目の集合・ラベル・ショートカットが変わったときだけ DOM を組み直す。クリップ済み
   // ウィンドウでは可変な状態(操作対象か等)に応じて呼び出し側から毎フレーム渡されうる。
-  syncItems(items: readonly PropertyWindowItem<A>[]): void {
+  public syncItems(items: readonly PropertyWindowItem<A>[]): void {
     const key = items.map((it) => `${it.act} ${it.label} ${it.shortcut ?? ''} ${it.selected ?? ''} ${it.keepOpen ?? ''}`).join('|');
     if (key === this.lastItemsKey) return;
     this.lastItemsKey = key;
@@ -334,6 +341,8 @@ export class PropertyWindow<A extends string = string> implements OverlayHandle 
     for (const it of items) {
       const row = document.createElement('div');
       row.className = 'prop-window-item';
+      row.setAttribute('role', 'button');
+      row.tabIndex = 0;
       row.classList.toggle('on', it.selected === true);
       row.textContent = it.label + (it.shortcut ? ` [${shortcutKeyLabel(it.shortcut)}]` : '');
       row.dataset['act'] = it.act;
@@ -343,6 +352,11 @@ export class PropertyWindow<A extends string = string> implements OverlayHandle 
         // 外側 pointerdown 検出のキャプチャリスナへ伝播しないようにする。
         e.stopPropagation();
         this.onSelect?.(it.act, it.keepOpen === true);
+      });
+      row.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        row.click();
       });
       this.itemsEl.appendChild(row);
     }
@@ -370,7 +384,7 @@ export class PropertyWindow<A extends string = string> implements OverlayHandle 
   // 変わった場合のみ行 DOM 全体を組み直す — 操作項目・ヘッダのリスナには触れないので副作用はない。
   // 描画順は「group を持つ行(グループ見出し単位、初出順)」→「無印の行」→「collapsible な行
   // (末尾の「詳細」トグルの下)」。グループ・詳細トグルの開閉状態はウィンドウが自分で持つ。
-  syncRows(rows: readonly PropertyRow[]): void {
+  public syncRows(rows: readonly PropertyRow[]): void {
     const shapeKey = rows.map((r) => `${r.key}${r.group ?? ''}${r.collapsible ?? ''}`).join('');
     if (shapeKey === this.lastRowShapeKey) {
       for (const r of rows) {
@@ -462,7 +476,7 @@ export class PropertyWindow<A extends string = string> implements OverlayHandle 
     this.reclamp();
   }
 
-  get clipped(): boolean {
+  public get clipped(): boolean {
     return this._clipped;
   }
 
@@ -476,7 +490,7 @@ export class PropertyWindow<A extends string = string> implements OverlayHandle 
   }
 
   // window レイヤ内で最前面にする。
-  bringToFront(): void {
+  public bringToFront(): void {
     bringOverlayToFront(this.el);
   }
 
@@ -489,7 +503,7 @@ export class PropertyWindow<A extends string = string> implements OverlayHandle 
   // 要求座標をビューポート内へクランプして配置する。ドラッグ・resize 再クランプ・
   // 既存ウィンドウを右クリック位置へ動かす呼び出し元の全てから呼ぶ。compact ではボトムシートの
   // 位置を CSS が持つので何もしない(前回の非 compact 時の left/top が残っていれば消す)。
-  moveTo(clientX: number, clientY: number): void {
+  public moveTo(clientX: number, clientY: number): void {
     if (isCompactViewport()) {
       this.el.style.left = '';
       this.el.style.top = '';
@@ -538,7 +552,7 @@ export class PropertyWindow<A extends string = string> implements OverlayHandle 
 
   // DOM ノードと登録したグローバルリスナを取り除き、overlayManager からも外す。
   // 以後このインスタンスは使えない。
-  dispose(): void {
+  public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
     this.overlayManager.close(this.overlayId);
@@ -548,7 +562,7 @@ export class PropertyWindow<A extends string = string> implements OverlayHandle 
 
   // OverlayHandle 実装: ✕ ボタンと同じ「破棄して呼び出し側へ通知する」経路。ESC・外側クリック
   // どちらで閉じてもここを通るので、onClose の発火経路は一本化される。
-  close(): void {
+  public close(): void {
     this.dispose();
     this.onClose?.();
   }

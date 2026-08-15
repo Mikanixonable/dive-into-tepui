@@ -41,6 +41,11 @@ export interface FinalSegment {
   readonly apsisCenter: Attractor | null;
 }
 
+export interface PlanPathSample {
+  readonly state: KinematicState;
+  readonly arcIdx: number;
+}
+
 export class PlanPath {
   readonly group = new THREE.Group();
   // 先頭 activeCount 本がこのフレームの区間の積分結果に対応する(区間が減れば末尾を捨てる)。
@@ -67,6 +72,10 @@ export class PlanPath {
   // ポインタイベント起点でフレーム外なので、直近の sync から引き継ぐ)。
   private cameraPos: Vec3 | null = null;
   private final: FinalSegment | null = null;
+  // 計画を積分して保持する範囲とは別に、画面へ描く時間窓を持つ。ノードが複数あると
+  // 計画全体は表示期間より長くなり得るため、折れ線と目盛が同じ窓を読むようにする。
+  private displayFrom = 0;
+  private displayTo = 0;
   // 直近の update() で作り直した区間の本数と、積分に回した積分step数の合計
   // (作り直し・継ぎ足しの両方を含む)。
   lastRebuiltArcs = 0;
@@ -85,10 +94,13 @@ export class PlanPath {
     planData: PlanData,
     ephemeris: Ephemeris, frame: ReferenceFrame, currentTime: number,
     attractors: readonly Attractor[], attractorProvider: PlanAttractorProvider,
+    displayDurationSec: number,
   ): void {
     this.frame = frame;
     this.ephemeris = ephemeris;
     this.unbakeTime = currentTime;
+    this.displayFrom = currentTime;
+    this.displayTo = currentTime + Math.max(0, displayDurationSec);
     this.attractors = attractors;
     this.unbakeTransform = ephemeris.frameTransformAt(frame, currentTime, attractors);
     this.lastRebuiltArcs = 0;
@@ -152,9 +164,13 @@ export class PlanPath {
         gapSize = C.PLAN_ARC_GAP_PX * mpp;
       }
       line.setDash(dashSize, gapSize);
-      // 描画範囲の上限は arc.end — 積分結果が継ぎ足しで先まで伸びていても、この区間として
-      // 答える範囲だけを描く。
-      line.syncGeometry(arc.trajectory, null, arc.end, this.frame, this.ephemeris, this.attractors);
+      // 計画全体が表示期間より長くても、折れ線は表示窓内だけを描く。
+      line.syncGeometry(
+        arc.trajectory,
+        Math.max(this.displayFrom, arc.state0.t),
+        Math.min(this.displayTo, arc.end),
+        this.frame, this.ephemeris, this.attractors,
+      );
       line.syncTransform(this.frame, this.unbakeTime, this.ephemeris, fo, this.attractors);
       line.sync(camera);
     }
@@ -180,8 +196,11 @@ export class PlanPath {
     for (let i = 0; i < this.activeCount; i++) {
       const samples = this.arcs[i]!.samples;
       if (samples.length === 0) continue;
-      minT = Math.min(minT, samples[0]!.t);
-      maxT = Math.max(maxT, samples[samples.length - 1]!.t);
+      const from = Math.max(samples[0]!.t, this.displayFrom);
+      const to = Math.min(samples[samples.length - 1]!.t, this.displayTo);
+      if (from > to) continue;
+      minT = Math.min(minT, from);
+      maxT = Math.max(maxT, to);
     }
     if (minT > maxT) return null;
     return { min: minT, max: maxT };
@@ -201,9 +220,16 @@ export class PlanPath {
 
   // 時刻 t を保持区間に含む最初の arc から補間した状態を返す。どの arc の外でも null。
   sampleAt(t: number): KinematicState | null {
+    return this.sampleAtWithArc(t)?.state ?? null;
+  }
+
+  // 時刻 t の補間状態と、それが属する区間の index を返す。ノードを別区間へ移すときは、
+  // その区間までに適用済みの Δv を差し引いてから新しい到着状態を組み立てる必要があるため、
+  // PlanEditor は sampleAt() ではなくこちらを使う。
+  sampleAtWithArc(t: number): PlanPathSample | null {
     for (let i = 0; i < this.activeCount; i++) {
       const s = this.arcs[i]!.at(t);
-      if (s) return s;
+      if (s) return { state: s, arcIdx: i };
     }
     return null;
   }

@@ -26,6 +26,8 @@ export interface GroupedMarkerItem {
   bearingVisible?: boolean; // false のときは画面外でも方位マーカーを出さない
   color?: string; // 画面内マーカー自体の色。省略時は cls の CSS 色に従う
   symMarkup?: boolean;
+  opacity?: number; // 画面内マーカーの不透明度。0 以下なら非表示
+  occluded?: boolean; // 惑星遮蔽中は表示位置を維持したままフェードアウトする
 }
 
 const bearingKey = (key: string): string => `${key}-bearing`;
@@ -57,12 +59,23 @@ export class GroupedMarkers {
     this.groupNearby(placed);
 
     for (const m of placed) {
+      const opacity = m.item.opacity ?? 1;
+      if (m.item.occluded) {
+        this.markerManager.fadeOut(m.item.key);
+        this.markerManager.hide(bearingKey(m.item.key));
+        continue;
+      }
+      if (opacity <= 0) {
+        this.markerManager.hide(m.item.key);
+        this.markerManager.hide(bearingKey(m.item.key));
+        continue;
+      }
       const label = m.labeled ? this.label(m.item, m.count) : '';
       const rotationDeg = overviewMode
         ? this.markerManager.headingRotationDeg(m.item.pos, m.item.vel, project, scale)
         : undefined;
       this.markerManager.set(
-        m.item.key, m.item.cls, m.item.sym, m.p.x, m.p.y, m.p.front, label, 1, m.item.color,
+        m.item.key, m.item.cls, m.item.sym, m.p.x, m.p.y, m.p.front, label, opacity, m.item.color,
         rotationDeg, m.item.symMarkup,
       );
       // 画面外(背面を含む)の対象は、画面端の方位マーカーで方位だけを示す。
@@ -82,7 +95,7 @@ export class GroupedMarkers {
     // 画面座標が近いものを同じグループへまとめる
     const groups: PlacedItem[][] = [];
     for (const m of placed) {
-      if (!m.p.front) continue;
+      if (!m.p.front || (m.item.opacity ?? 1) <= 0) continue;
       const near = groups.find((g) => this.isNear(g[0]!.p, m.p));
       if (near) near.push(m);
       else groups.push([m]);

@@ -53,6 +53,12 @@ const MAX_SUBDIVIDE_DEPTH = 24;
 // 焼き直さないための遊び。
 const SCALE_REBAKE_RATIO = 1.2;
 
+// カメラ視線方向の変化に対する焼き直し閾値(なす角の余弦)。適応分割は焼いた瞬間の視線方向を
+// 基準に「手前だけ細かく、奥は MAX_EDGE_TURN 相当に粗く」焼くため、距離が変わらず向きだけ
+// 変わる周回でも粗い区間が手前に回り込み得る。その回り込みが目立たない角度に MAX_EDGE_TURN と
+// 同程度の値を採る。
+const CAM_DIR_REBAKE_COS = Math.cos((5 * Math.PI) / 180);
+
 // f32 の相対量子化幅(仮数23bit)。sample の座標系は LEO スケールの絶対座標を含みうるため、
 // これをそのまま頂点バッファ(f32)へ書くと、その大きさに応じた量子化ノイズが生じ、近距離の
 // カメラからは画面上のピクセル単位のずれとして見えてしまう。頂点バッファへは常にカメラ近傍の
@@ -100,6 +106,7 @@ export class Curve {
   private hasBaked = false;
   private lastRevision: unknown = undefined;
   private bakedScale: number | null = null;
+  private readonly bakedCamFwd = new THREE.Vector3();
 
   // 頂点バッファ(f32)へ書く直前に bakedLocal の全頂点から差し引く基準点。sample が返す
   // 座標系のまま、カメラの現在位置に追従させる。
@@ -125,6 +132,7 @@ export class Curve {
   private readonly camFwd = new THREE.Vector3();
   private readonly camPos = new THREE.Vector3();
   private camTanHalfFov = 0;
+  private camOrthoHalfHeight = 0;
   private camNear = 0;
 
   // 現在の初期区間に割り当てられた頂点予算(rebake がこの値までしか subdivide に積ませない)。
@@ -181,9 +189,19 @@ export class Curve {
   private cacheCameraFrame(camera: THREE.Camera): void {
     camera.getWorldDirection(this.camFwd);
     this.camPos.setFromMatrixPosition(camera.matrixWorld);
-    const fovDeg = camera instanceof THREE.PerspectiveCamera ? camera.fov : 50;
-    this.camTanHalfFov = Math.tan((fovDeg * Math.PI) / 360);
-    this.camNear = camera instanceof THREE.PerspectiveCamera ? camera.near : MIN_DEPTH;
+    if (camera instanceof THREE.PerspectiveCamera) {
+      this.camTanHalfFov = Math.tan((camera.fov * Math.PI) / 360);
+      this.camOrthoHalfHeight = 0;
+      this.camNear = camera.near;
+    } else if (camera instanceof THREE.OrthographicCamera) {
+      this.camTanHalfFov = 0;
+      this.camOrthoHalfHeight = (camera.top - camera.bottom) * 0.5;
+      this.camNear = camera.near;
+    } else {
+      this.camTanHalfFov = Math.tan((50 * Math.PI) / 360);
+      this.camOrthoHalfHeight = 0;
+      this.camNear = MIN_DEPTH;
+    }
   }
 
   // local 座標(sample が返す座標系、pivot 差し引き前)の点における m/px を返す。
@@ -202,6 +220,7 @@ export class Curve {
     const effective = depth >= this.camNear
       ? depth
       : Math.max(this.camNear, Math.sqrt(dx * dx + dy * dy + dz * dz));
+    if (this.camOrthoHalfHeight > 0) return (2 * this.camOrthoHalfHeight) / window.innerHeight;
     return metersPerPixelFromTanHalfFov(this.camTanHalfFov, effective, window.innerHeight);
   }
 
@@ -297,22 +316,24 @@ export class Curve {
     }
   }
 
-  // 曲線を(必要なら)焼き直し、GPU バッファへ反映する。revision・画面スケールのどちらも
-  // 前回と実質同じであれば焼き直しも GPU への再アップロードも省く。
+  // 曲線を(必要なら)焼き直し、GPU バッファへ反映する。revision・画面スケール・カメラ視線
+  // 方向のいずれも前回と実質同じであれば焼き直しも GPU への再アップロードも省く。
   setCurve(sample: CurveSampler, opts: SetCurveOptions): void {
     const { revision, camera } = opts;
     this.cacheCameraFrame(camera);
     const scaleNow = this.representativeScale(sample);
     const scaleChanged = this.bakedScale === null
       || scaleNow / this.bakedScale > SCALE_REBAKE_RATIO || this.bakedScale / scaleNow > SCALE_REBAKE_RATIO;
+    const camDirChanged = this.camFwd.dot(this.bakedCamFwd) < CAM_DIR_REBAKE_COS;
     const revisionChanged = !this.hasBaked || revision !== this.lastRevision;
-    const rebaked = revisionChanged || scaleChanged;
+    const rebaked = revisionChanged || scaleChanged || camDirChanged;
 
     if (rebaked) {
       this.rebake(sample);
       this.hasBaked = true;
       this.lastRevision = revision;
       this.bakedScale = scaleNow;
+      this.bakedCamFwd.copy(this.camFwd);
     }
 
     // pivot はカメラ近傍に据え続ける基準点。焼き直した頂点はまだ pivot 差し引き後の
@@ -390,6 +411,13 @@ export class Curve {
   // マテリアルの不透明度を書き換える。
   setOpacity(opacity: number): void {
     this.mat.opacity = opacity;
+  }
+
+  // マテリアルを作り直さず色だけ更新する。テーマ切替時も GPU の頂点バッファを維持できる。
+  setColor(color: THREE.ColorRepresentation): void {
+    const material = this.mat as THREE.LineBasicMaterial | THREE.LineDashedMaterial;
+    material.color.set(color);
+    material.needsUpdate = true;
   }
 
   // sample の座標系をワールドへ写す変換を渡す。実際に line へ書く position/quaternion は
