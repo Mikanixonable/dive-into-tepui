@@ -146,12 +146,12 @@ export class RenderPipeline implements DebugTargetHost {
     // ライティングパス。G バッファだけを読むので scene は渡さない。
     this.lightPrepass.render(camera, width, height);
 
-    // マテリアルパス。LIT_OPAQUE_LAYER のオブジェクトを this.target(このあとの world パスと
-    // 共有 — 最初の書き込みなのでクリアする)へ描く。「マテリアル」デバッグ表示を選んでいる
+    // マテリアルパス。LIT_OPAQUE_LAYER のオブジェクトと背景専用レイヤーを this.target(このあとの
+    // world パスと共有 — 最初の書き込みなのでクリアする)へ描く。「マテリアル」デバッグ表示を選んでいる
     // ときだけ、自前のターゲットへも同じジオメトリをもう一度描く。
     this.materialPass.render(scene, camera, this.target, width, height, this.debugTarget === 'material');
 
-    // world パス。マテリアルパスが LIT_OPAQUE_LAYER をチャンネル0から外しているので、
+    // world パス。マテリアルパスが LIT_OPAQUE_LAYER と背景専用レイヤーをチャンネル0から外しているので、
     // 既定のカメラマスクで描く限りここでは自動的に重複しない。autoClear を落として
     // マテリアルパスの描画(色・深度とも)を残したまま重ね描きする — world パスは透明物
     // (オービットライン・プルーム・ビルボードなど)を自分の描画順の最後に描くため、不透明な

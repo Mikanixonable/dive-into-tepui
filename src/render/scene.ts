@@ -16,6 +16,9 @@ export interface GameScene {
 // モジュールでは生成しない — アスペクト比も各カメラが毎フレーム自己補正する。
 export async function createGameScene(canvas: HTMLCanvasElement, graphics: GraphicsSettings): Promise<GameScene> {
   const scene = new THREE.Scene();
+  // RenderPipeline はカメラのレイヤーを一時的に不透明物/背景へ絞る。Scene 自身が既定の
+  // layer 0 だけだと、その時点で子要素の走査まで止まるため、コンテナとして全レイヤーを受ける。
+  scene.layers.enableAll();
 
   // antialias も trackTimestamp もレンダラ生成時にしか渡せない。前者は設定変更が次回起動から
   // 効く理由で、後者はデバイスの要求機能に載るため負荷確認ウィンドウの開閉では切り替えられない。
