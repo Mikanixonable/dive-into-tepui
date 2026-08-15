@@ -1107,36 +1107,38 @@ export function buildBaseModel(): THREE.Group {
     g.add(seam);
   }
 
-  // 【2秒に1回赤く点滅する航空管制ストロボライト (8箇所)】
-  // 上部4箇所(居住区トップ4隅) & 下部4箇所(貨物区ボトム4隅): 鮮烈な赤色航空管制灯
+  // 【2秒に1回赤く強烈に点滅する高照度航空管制ストロボライト】
+  // 居住区の全8隅 (上部4隅 + 下部4隅) ＋ 貨物区ボトム4隅
   const redControlStrobeMat = new THREE.MeshStandardMaterial({
-    color: 0xff1744,
-    emissive: 0xff1744,
-    emissiveIntensity: 0.1,
+    color: 0xff0033,
+    emissive: 0xff0033,
+    emissiveIntensity: 0.3,
   });
 
-  // 上部4角 (居住区トップ)
+  // 1) 居住区の全8つの隅 (上部4隅 Z = mainCenterZ + 24 & 下部4隅 Z = mainCenterZ - 24)
   for (const ex of [-8.2, 8.2]) {
     for (const ey of [-8.2, 8.2]) {
-      const strobe = new THREE.Mesh(new THREE.SphereGeometry(0.7, 10, 8), redControlStrobeMat);
-      strobe.position.set(ex, ey, mainCenterZ + 24);
-      g.add(strobe);
+      for (const ez of [mainCenterZ - 24, mainCenterZ + 24]) {
+        const strobe = new THREE.Mesh(new THREE.SphereGeometry(0.85, 12, 10), redControlStrobeMat);
+        strobe.position.set(ex, ey, ez);
+        g.add(strobe);
+      }
     }
   }
 
-  // 下部4角 (貨物区ボトム)
+  // 2) 貨物区ボトム4隅 (Z = cwCenterZ - 68)
   for (const cx of [-7.2, 7.2]) {
     for (const cy of [-7.2, 7.2]) {
-      const strobe = new THREE.Mesh(new THREE.SphereGeometry(0.7, 10, 8), redControlStrobeMat);
+      const strobe = new THREE.Mesh(new THREE.SphereGeometry(0.85, 12, 10), redControlStrobeMat);
       strobe.position.set(cx, cy, cwCenterZ - 68);
       g.add(strobe);
     }
   }
 
-  // 2秒周期 (0.16秒間強烈に赤く閃光点滅)
+  // 2秒周期 (0.16秒間超高輝度 12.0 で鮮烈に赤く閃光点滅)
   g.onBeforeRender = () => {
     const t = (performance.now() / 1000) % 2.0; // 2.0秒周期
-    const flash = t < 0.16 ? 5.0 : 0.1;
+    const flash = t < 0.16 ? 12.0 : 0.3; // 発光量を大幅に引き上げ
     redControlStrobeMat.emissiveIntensity = flash;
   };
 
