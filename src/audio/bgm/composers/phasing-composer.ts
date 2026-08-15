@@ -58,12 +58,11 @@ export class PhasingComposer implements Composer {
       const chord = pads.chords[Math.floor(step / pads.everySteps) % pads.chords.length]!;
       for (const pitch of chord) {
         notes.push({
+          instrument: pads.instrument,
           freq: pitch * freqRatio,
           offsetSec: 0,
           durationSec: params.stepDur * pads.lengthRatio,
-          level: pads.level,
-          wave: pads.wave,
-          attackSec: pads.attack,
+          velocity: 1,
         });
       }
     }
@@ -72,12 +71,11 @@ export class PhasingComposer implements Composer {
     if (step % drone.everySteps === 0) {
       for (const voice of drone.voices) {
         notes.push({
+          instrument: drone.instrument,
           freq: voice.pitch * freqRatio,
           offsetSec: 0,
           durationSec: params.stepDur * drone.lengthRatio,
-          level: voice.level,
-          wave: drone.wave,
-          attackSec: drone.attack,
+          velocity: voice.velocity,
         });
       }
     }
@@ -86,15 +84,10 @@ export class PhasingComposer implements Composer {
     if (sparkle !== null && step % sparkle.everySteps === sparkle.atStep) {
       const index = (step * sparkle.indexStride) % params.scale.length;
       const freq = scaleFreq(params.scale, index, transpose, octave + sparkle.octaveOffset);
-      const base = {
-        freq,
-        durationSec: sparkle.durationSec,
-        wave: sparkle.wave,
-        attackSec: sparkle.attack,
-      };
-      notes.push({ ...base, offsetSec: 0, level: sparkle.level });
+      const base = { instrument: sparkle.instrument, freq, durationSec: sparkle.durationSec };
+      notes.push({ ...base, offsetSec: 0, velocity: 1 });
       for (const echo of sparkle.echoes) {
-        notes.push({ ...base, offsetSec: echo.delaySec, level: echo.level });
+        notes.push({ ...base, offsetSec: echo.delaySec, velocity: echo.velocity });
       }
     }
 
@@ -109,22 +102,20 @@ export class PhasingComposer implements Composer {
     const freq = scaleFreq(params.scale, index, transpose, octave);
     const offsetSec = params.stepDur * voice.stepOffset;
     const notes: ComposerNote[] = [{
+      instrument: voice.instrument,
       freq,
       offsetSec,
       durationSec: params.stepDur * voice.lengthRatio,
-      level: voice.level,
-      wave: voice.wave,
-      attackSec: voice.attack,
+      velocity: 1,
     }];
     const harmonic = voice.harmonic;
     if (harmonic !== null) {
       notes.push({
+        instrument: harmonic.instrument,
         freq: freq * harmonic.ratio,
         offsetSec,
         durationSec: params.stepDur * harmonic.lengthRatio,
-        level: harmonic.level,
-        wave: harmonic.wave,
-        attackSec: voice.attack,
+        velocity: 1,
       });
     }
     return notes;

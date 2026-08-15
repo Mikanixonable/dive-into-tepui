@@ -318,6 +318,41 @@ into a `load-bgm.mjs` helper, so the next move only needs one file updated.
 
 ---
 
+## 11. Instruments — step 1 of roadmap §3
+
+The note vocabulary carried its own synthesis (`wave`, `level`, `attackSec`), which capped what
+a composer could ask for at "one oscillator". A note now names an **instrument** and a
+**velocity**, and the instrument decides what that sounds like.
+
+- `instrument.ts` — the seam: `play(freq, when, durationSec, velocity)`.
+- `instruments/tone-instrument.ts` — the only implementation so far, reproducing the old voice
+  exactly, plus a persistent `StereoPannerNode`. **Pan is a per-instrument parameter**, which
+  is how the stereo item from §1 got absorbed.
+- `instrument-factory.ts` — the same union+`never`-guard shape as `composer-factory.ts`.
+- `TrackPlayback` builds the track's instruments once and looks them up by id; an unknown or
+  duplicated id throws rather than going silently quiet.
+
+**`level` → `velocity` is a boundary fix, not a rename.** Level is an absolute gain (a mixing
+decision — it belongs to the instrument); velocity is how hard the note is struck, and the
+instrument chooses what that drives. Today it scales gain; tomorrow it can open a filter.
+
+The five phasing tracks each declare six instruments (`voiceA`, `voiceA-harmonic`, `voiceB`,
+`pads`, `drone`, `sparkle`) derived mechanically from their old per-layer `wave`/`level`/
+`attack`, with within-layer differences (the drone's quieter second voice, the sparkle's
+decaying echoes) becoming velocities.
+
+**Verified, and better than expected**: I budgeted for last-bit drift in gain, since velocity ×
+level replaces a literal, and taught the harness a relative tolerance. It was not needed —
+all 54,240 notes match exactly, because velocity is exactly 1 wherever it is not a ratio, and
+the ratios round-trip. End-to-end, 3745 scheduled notes still match across a rotation, with
+routing now asserted as `note -> noteGain -> instrumentPanner -> playbackGain -> masterGain ->
+destination`.
+
+Pans are all 0 in the migrated data, so nothing moved in the stereo field yet — placing the
+layers is a data edit whenever you want it.
+
+---
+
 ## The rebase onto the new `main` (`5ff773e4`)
 
 Upstream landed the deferred rendering pipeline while this branch was in flight, and it

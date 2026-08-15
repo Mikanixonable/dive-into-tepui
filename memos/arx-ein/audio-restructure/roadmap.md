@@ -24,10 +24,9 @@ deliberate design choice, recorded in `DEVELOP/SPEC.md` §8, and worth keeping.
   crossfade, or switch only on a macro-cycle boundary so the new track enters in phase. The
   super-cycle length is now derivable from the track data (the `transpose`/`octave` cycles),
   which is what a phase-aligned switch needs.
-- **Stereo.** Everything currently sums mono into `ctx.destination`. A shared output bus with
-  a `StereoPannerNode` per voice widens the BGM cheaply — **and that same bus is the
-  foundation the mic system (item 3) needs**, so it pays for itself twice. Probably the
-  highest-value single change here.
+- **Stereo** is now part of §3: pan is a per-instrument parameter, so widening the BGM is a
+  data edit once instruments exist. The output bus it implies is also **the foundation the mic
+  system (§4) needs**, so it pays for itself twice.
 - **Asset-free effects.** A `ConvolverNode` reverb needs no files if the impulse response is
   generated from decaying noise at unlock time. A feedback-delay node could replace the
   sparkle echoes, which are still scheduled one tone per echo (`SparkleLayer.echoes`).
@@ -156,7 +155,90 @@ role was explicit: rotation is a policy `Bgm` applies to the ambient playback, a
 opts out of it. Not two playback modules, and not a property of `TrackPlayback` — the playback
 does not care why it is sounding.
 
-## 3. The mic system — BLOCKED, do not start without asking
+## 3. Instruments — the DSP layer, so composers can actually design sound
+
+Discussed 2026-08-15. The note vocabulary (one oscillator, linear attack, exponential decay) is
+too thin to compose against, and the WebAudio DSP palette is unused. The unlock is noticing
+there are **two different DSP needs that want opposite treatments**:
+
+| | lifetime | configured by | expressed as |
+| --- | --- | --- | --- |
+| **voice / instrument** — what makes a note a bell vs a pad | per note | pitch/velocity + patch params | **code** + a params type |
+| **bus effects** — reverb, delay, chorus, compression | once per piece | scalars only | **data** + a factory |
+
+Conflating them is what makes "parameter-driven DAW" feel like it needs a big machine.
+
+### 3a. No DSP inside composers
+
+A composer would have to return audio graphs, so it would import WebAudio types, so it would
+stop being a pure function of `step` — and that property is what lets every change be proven
+inert by diffing note streams. The fix strengthens it instead: a note saying
+`instrument: 'bell', velocity: 0.8` is *more* abstract than one carrying `wave`/`attackSec`,
+which are instrument concerns that leaked into the note.
+
+### 3b. The performer already exists — it is `TrackPlayback`
+
+It receives notes and makes sound; what it lacks is an instrument set instead of one hardcoded
+voice. So the new concept is `Instrument`, not a new layer. Three roles, one new abstraction:
+
+```text
+Composer   (pure)   what to play, how hard  -> notes referencing instruments
+Instrument (code)   what that sounds like   -> per-note voice + persistent modulation
+Effect     (data)   how it sits in the mix  -> bus chains, shared      [not yet built]
+```
+
+`level` becomes `velocity` on the note. Not a rename: level is an absolute gain (a mixing
+decision, belongs to the instrument), velocity is how hard the note is struck, and **the
+instrument decides what that does** — gain, filter opening, FM index, attack length.
+
+### 3c. Why instruments are code but effects are data
+
+The fully declarative version (`nodes: {...}, connections: [...]`) is a trap. It works until
+you need **modulation**, which is where WebAudio's power lives: ramps on an `AudioParam`, an
+LFO connected *into* a param, cutoff tracking pitch, envelope depth scaled by velocity.
+Expressing that in data means inventing an expression language — i.e. reimplementing Max/MSP
+in JSON. In code it is four lines and type-checked.
+
+Effects are the opposite: a fixed small graph with scalar knobs and no per-note automation, so
+`{kind:'reverb', decaySec, mix}` really is complete. Both halves then use the same
+union + factory shape the composers already use, so the whole subsystem has one mental model.
+
+### 3d. Contracts to hold instruments to
+
+1. **`play(freq, when, durationSec, velocity)` must never read `ctx.currentTime`.** The
+   scheduler runs `LOOKAHEAD_SEC` ahead; every automation point derives from `when`. This is
+   the easiest way to silently break the lookahead.
+2. **No reverb inside a voice** — convolution and delay belong on a shared bus. This is most of
+   the argument for having buses at all.
+3. **Node budget.** 2 nodes/note today; a rich voice is 5–8, and at ~25 notes/s that is a few
+   hundred nodes/s created and discarded. Fine for WebAudio, but ambition belongs on buses,
+   not multiplied per voice.
+4. **Duration is known up front, so there is no note-off** — the instrument schedules its own
+   release at `when + durationSec`. Simple and sufficient, but it means an *indefinitely held*
+   note has no expression in this design. That wall is fine to leave standing for now.
+
+Persistent modulation is supported naturally: an instrument is constructed once per playback
+with `(ctx, destination, params)`, so an LFO that runs across notes lives in its constructor
+and only the per-note nodes are transient.
+
+### 3e. Settled questions
+
+- **Instrument identity is a string id** (`'pads'`), resolved by the playback; an unknown id is
+  a loud error, not a silent skip.
+- **One named output per instrument, no sends yet.** Sends (dry + N depths sharing one reverb)
+  are a real capability and a real complexity; add them when a piece wants one.
+- **Instrument defs live per track**, like composer params. A shared preset library is the
+  natural refactor once two tracks want the same patch.
+
+### 3f. Build order
+
+1. ~~`Instrument` + notes carrying `instrument`/`velocity` + per-instrument `pan`, no buses.~~
+   **Done** — see [done.md](done.md) §11. Writing a richer instrument is now a new class, a
+   params type, a fence in `tracks/types.ts` and a factory branch.
+2. **Buses + the effect union**, when reverb or delay is first wanted.
+3. **Then design** — both a composer and its instruments.
+
+## 4. The mic system — BLOCKED, do not start without asking
 
 This is `memos/hedalu244/sfx_todo.md`'s remaining content, and the biggest piece left:
 positional world SFX taking a mic position as an argument, with distance attenuation, panning

@@ -115,8 +115,9 @@ export class Bgm {
   private openPlayback(index: number, ctx: AudioContext, startAt: number): void {
     this.trackIdx = index;
     this.trackStartTime = ctx.currentTime;
-    const composer = createComposer(BGM_TRACKS[index]!);
-    this.playback = new TrackPlayback(ctx, composer, this.ensureMasterGain(ctx), startAt);
+    const track = BGM_TRACKS[index]!;
+    const composer = createComposer(track);
+    this.playback = new TrackPlayback(ctx, composer, track.instruments, this.ensureMasterGain(ctx), startAt);
   }
 
   // ユーザー音量を表すマスターゲイン。曲を跨いで生き続ける唯一のノード。
