@@ -49,7 +49,7 @@ passes the SFX reference around.
 `Bgm.resume()` arrived with the settings view but had no caller, so stopping a track preview
 left the game silent for the rest of the run.
 
-**The rule implemented**: `SettingsView` snapshots `bgm.isPlaying` when it opens
+**The rule implemented**: `SettingsView` snapshots `bgm.isRunning` when it opens
 (`bgmPlayingAtOpen`), and on close calls `bgm.resume()` only if that snapshot was true and
 the BGM is stopped now — it restores exactly what the preview session broke, nothing more.
 
@@ -59,7 +59,7 @@ the BGM is stopped now — it restores exactly what the preview session broke, n
 | preview still playing at close | no restart; that track simply continues as the BGM |
 | BGM already off at open (run-end fade-out, title screen) | left alone — a decided run's silence is never resurrected |
 
-Also in this commit: `Bgm` gained a one-line `isPlaying` getter; each open starts a fresh
+Also in this commit: `Bgm` gained a one-line `isRunning` getter; each open starts a fresh
 preview session (the 再生中 highlight resets on close, so it cannot go stale against the
 5-minute rotation); and `DEVELOP/SPEC.md` §8's second bullet was corrected — it still
 described a long-gone "A minor, 8-bar loop, Am–F–G–Am" BGM instead of the actual phasing
