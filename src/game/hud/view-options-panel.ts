@@ -34,8 +34,8 @@ const BODY_CLASS_ROWS: readonly BodyClassRow[] = [
 const VIEW_OPTIONS_COLLAPSE_LABELS: CollapseToggleLabels = {
   expandedGlyph: COLLAPSE_EXPANDED_GLYPH,
   collapsedGlyph: COLLAPSE_COLLAPSED_GLYPH,
-  expandedTitle: '太陽系を閉じる',
-  collapsedTitle: '太陽系を開く',
+  expandedTitle: '表示を閉じる',
+  collapsedTitle: '表示を開く',
 };
 
 const ENTITY_ROWS: readonly BodyClassRow[] = [
@@ -143,7 +143,7 @@ export class ViewOptionsPanel {
     const titleRow = document.createElement('div');
     titleRow.className = 'view-options-title';
     const title = document.createElement('h3');
-    title.textContent = '太陽系';
+    title.textContent = '表示';
     titleRow.appendChild(title);
     this.panel.appendChild(titleRow);
 
