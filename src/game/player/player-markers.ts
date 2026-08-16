@@ -13,6 +13,8 @@ import { isPositionInFocusedSystem } from '../celestial/body-visibility';
 import { findNearestPlanet } from '../celestial/planet-distance';
 import type { MapVisibility } from '../celestial/map-visibility';
 import { isOccluded } from '../../physics/occlusion';
+import type { ReferenceFrame } from '../../physics/frame';
+import type { Ephemeris } from '../../physics/ephemeris';
 
 import type { Ship } from '../game-entity/ship';
 
@@ -29,7 +31,13 @@ export class PlayerMarkers {
   // currentState: 現在の自機状態(方向マーカー・ボアサイト用)。
   // displayState: スライダー位置の状態(null なら予測期間超過)、▲ マーカー用。
   // 表示名は改名可能なので毎フレーム引数で受け取り、保持しない。
-  sync(currentState: KinematicState, displayState: KinematicState | null, att: Attitude, overviewMode: boolean, isActive: boolean, cameraPos: Vec3, project: ProjectFn, scaleFn: ScaleFn, name: string, rounds = 0, _reloadTimer = 0, beltLinks = 0, muzzleSpeed = 0, focusId?: string, registry?: CelestialRegistry, attractors: readonly Attractor[] = [], visibility: MapVisibility | null = null): void {
+  sync(
+    currentState: KinematicState, displayState: KinematicState | null, att: Attitude,
+    overviewMode: boolean, isActive: boolean, cameraPos: Vec3, project: ProjectFn, scaleFn: ScaleFn,
+    name: string, rounds = 0, _reloadTimer = 0, beltLinks = 0, muzzleSpeed = 0, focusId?: string,
+    registry?: CelestialRegistry, attractors: readonly Attractor[] = [], visibility: MapVisibility | null = null,
+    frame?: ReferenceFrame, displayTime?: number, ephemeris?: Ephemeris,
+  ): void {
     const selfKey = `self-${this.id}`;
     const nearbyLabelKey = `${selfKey}-planet-label`;
 
@@ -64,7 +72,7 @@ export class PlayerMarkers {
           this.markerManager.hide(nearbyLabelKey);
           const shipOccluded = isOccluded(cameraPos, displayState.r, attractors);
           if (fadedOpacity > 0 && !shipOccluded) {
-            const rotationDeg = this.markerManager.headingRotationDeg(displayState.r, displayState.v, project, scaleFn, attractors);
+            const rotationDeg = this.markerManager.headingRotationDeg(displayState.r, displayState.v, project, scaleFn, attractors, frame, displayTime, ephemeris);
             const sym = visibility?.icon === false ? '' : (overviewMode && this.owner ? this.owner.headingHpMarkerSvg() : (this.owner ? this.owner.hpMarkerSvg() : ENTITY_GLYPH.ship));
             const symMarkup = overviewMode && !!this.owner;
             this.markerManager.setPosition(
