@@ -64,7 +64,6 @@ export const THEME_PRESETS: readonly ThemePalette[] = [
 
 const THEME_STORAGE_KEY = 'tepui.theme-palette';
 const DEFAULT_THEME_ID = 'fluorescent-red-blue';
-export const THEME_CHANGE_EVENT = 'tepui-theme-change';
 
 function findThemePalette(id: string | null): ThemePalette {
   return THEME_PRESETS.find((palette) => palette.id === id) ?? THEME_PRESETS.find((palette) => palette.id === DEFAULT_THEME_ID)!;
@@ -375,9 +374,6 @@ export function applyThemePalette(id: string): boolean {
     }
     root.style.colorScheme = palette.tone;
     root.dataset['theme'] = palette.id;
-  }
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent<ThemePalette>(THEME_CHANGE_EVENT, { detail: palette }));
   }
   return true;
 }
