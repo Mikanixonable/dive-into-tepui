@@ -444,20 +444,26 @@ export const SHIP_HISTORY_DURATION = 5580; // Ship の過去列の保持時間 [
 // PREDICT_MAX_SAMPLES で頭打ちなので、この値が決めるのは間引きの粗さ(補間精度)の下限。
 export const HISTORY_DURATION_MAX = DISPLAY_DURATION_MAX;
 // 1周回あたりの予測の積分ステップ数。刻み幅をその場の周期に比例させることで、低軌道でも
-// 遠方の長周期軌道でも精度が一定になる。
+// 遠方の長周期軌道でも精度が一定になる。同時にこれは遅い軌道のコスト上限でもあり、既定の
+// 表示期間では GEO 以遠でこの項が採用値になって、下限だけで刻む場合の 1/7(GEO)〜1/279(日心)
+// までステップ数が落ちる。離心軌道では1周の中でも刻みが変わる(モルニヤで近地点 20s /
+// 遠地点 167s)ので、定数刻みでは届かない「安くて同じ精度」の側に出られる。
 export const PREDICT_STEPS_PER_REV = 600;
 // 1個体の予測列の積分ステップ数・保持サンプル数の上限。予測の長さは表示期間(最大1年)に
 // 追従するので、1周回基準の刻みのままではステップ数もメモリも青天井になる。長い期間では
 // これらが刻み幅と間引き間隔を決め、軌道の形の精度と引き換えに費用を頭打ちにする。
+// 刻み幅を決めるのは horizon > PREDICT_MAX_STEPS × PREDICT_MIN_STEP_DT(≒4.6日)のときだけ。
 export const PREDICT_MAX_STEPS = 20000;
 export const PREDICT_MAX_SAMPLES = 2000;
 export const PREDICT_STEP_BUDGET = 500; // Predictor が1フレームに配る予測ステップ数の上限
 export const PREDICT_COMBAT_STEP_BUDGET = 128; // 戦闘中は自機の線だけを粗く維持する
-// 予測刻みの下限。予測は固定のフレーム予算でホライズンまで伸ばす表示側の近似なので、
+// 予測刻みの下限 [s]。予測は固定のフレーム予算でホライズンまで伸ばす表示側の近似なので、
 // 実シミュレーションより粗く刻むこと自体が目的である — 細かくすれば届く先が近くなるだけで、
-// 折れ線の誤差は間引き間隔が支配しているので見える精度は増えない。本体の1サブステップの
-// 上限を、これ以上細かくする意味のない目安として共有する。
-export const PREDICT_MIN_STEP_DT = SUBSTEP_MAX_DT;
+// 折れ線の誤差は間引き補間(PREDICT_SAMPLE_ERROR)が支配しているので見える精度は増えない。
+// これ以上粗くできない理由は月にある: 低月周回では中心天体が ECI 中を動くぶんの dt² 誤差が
+// 支配的で、20s で既に 419m(PREDICT_RESET_DIST の 84%)。LEO は同条件で 0.29m と余裕が
+// 1700 倍あるので、LEO だけを見て上げると月周回だけが破綻する。
+export const PREDICT_MIN_STEP_DT = 20;
 export const PREDICT_RESET_DIST = 500; // 予測位置と実位置がこれを超えて乖離したら予測列を破棄 [m](補間誤差 30m より十分大きい)
 // TRAJECTORY_SAMPLES_PER_REV で間引いた列を補間したときの位置誤差 [m]。三次エルミート補間の
 // 誤差は間引き間隔の4乗で効くので、上限で間引きが粗くなる長い表示期間では
