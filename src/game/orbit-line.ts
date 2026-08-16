@@ -116,7 +116,7 @@ export class OrbitLine {
       this.snapCenterPos = el.center.state.r;
     }
 
-    this.curve.setCurve(this.sampler, { revision: this.revision, camera });
+    this.curve.setCurve(this.sampler, { revision: this.revision, camera, loops: 1 });
     this.curve.setVisible(true);
   }
 
