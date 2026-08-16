@@ -20,7 +20,7 @@ import { Ephemeris } from '../../physics/ephemeris';
 import type { Simulator } from '../simulation/simulator';
 import type { StageSaveData } from '../save-data';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
-import type { ObjectType } from '../creative/ship-placer-panel';
+import type { ObjectType } from '../creative/object-placer-panel';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { ActivePlayerController } from '../active-player-controller';
 import type { AttractorId } from '../../physics/attractor';
@@ -66,8 +66,8 @@ export interface StageClass {
 // 軌道上へオブジェクトを配置・複製する編集機能。これを持つステージだけがマップの
 // 「配置」「複製」項目を出す。focusId はマップの現在フォーカスで、基準天体の初期選択に使う。
 export interface ObjectAuthoring {
-  openShipPlacer(focusId?: string): void;
-  openShipPlacerForDuplicate(objectType: ObjectType, state: KinematicState): void;
+  openObjectPlacer(focusId?: string): void;
+  openObjectPlacerForDuplicate(objectType: ObjectType, state: KinematicState): void;
 }
 
 export type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
