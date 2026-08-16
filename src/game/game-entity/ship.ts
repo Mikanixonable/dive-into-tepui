@@ -272,8 +272,6 @@ export abstract class Ship extends GameEntity {
     const pts = '12,1.5 17.5,21 12,16.5 6.5,21';
     if (isEnemy) {
       return `<svg viewBox="0 0 24 24" width="24" height="24" aria-label="HP ${Math.max(0, this.hp)} / ${this.maxHp}">` +
-        `<clipPath id="${clipId}"><rect x="0" y="${fillTopY}" width="24" height="24"/></clipPath>` +
-        `<polygon points="${pts}" fill="currentColor" fill-opacity="0.2" clip-path="url(#${clipId})"/>` +
         `<polygon points="${pts}" fill="none" stroke="currentColor" stroke-width="1.8"/>` +
         `</svg>`;
     }
