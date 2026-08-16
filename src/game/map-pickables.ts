@@ -164,13 +164,14 @@ export class MapPickables {
   private appendPickable(item: MapPickable): void {
     this.addCandidate(
       item.id, item.name, item.pos, item.kind, item.detail, item.priority,
-      item.time, item.pickable,
+      item.time, item.pickable, item.ownerName,
     );
   }
 
   private addCandidate(
     id: string, name: string, pos: MapPickable['pos'], kind: MapPickable['kind'],
     detail?: string, priority?: number, time?: number, pickable?: boolean,
+    ownerName?: string,
   ): void {
     const key = `${kind}:${id}`;
     this.activeRecordKeys.add(key);
@@ -192,6 +193,7 @@ export class MapPickables {
     item.time = time;
     item.inFocusedSystem = undefined;
     item.pickable = pickable;
+    item.ownerName = ownerName;
     this.candidateItems.push(item);
   }
 

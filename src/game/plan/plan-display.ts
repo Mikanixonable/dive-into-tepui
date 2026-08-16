@@ -218,7 +218,7 @@ export class PlanDisplay {
     }
     if (pe && ap && (apDist - peDist) / (apDist + peDist) < C.APSIS_MIN_ECC) return [];
 
-    const namePrefix = ownerName ? `${ownerName} (計画)` : undefined;
+    const namePrefix = ownerName ? (this.path.nodeCount > 0 ? `${ownerName} (計画)` : ownerName) : undefined;
     const icons: ApsisIcon[] = [];
     if (pe && peCenter) {
       const peSpec = getApsisLabelSpec('pe', peCenter.id);

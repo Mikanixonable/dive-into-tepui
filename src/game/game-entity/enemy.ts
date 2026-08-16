@@ -159,8 +159,12 @@ export class Enemy extends Ship {
   markerItem(role: 'none' | 'primary' | 'secondary', viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): GroupedMarkerItem {
     // 距離は優先度(近いほど高)とラベル表示の両方に使う
     const dist = len(sub(pos, viewerPos));
-    // 代表選出の優先度: 第一ターゲット > 第二ターゲット > 距離が近い順
-    const priority = role === 'primary' ? Infinity : role === 'secondary' ? Number.MAX_SAFE_INTEGER : -dist;
+    // 代表選出の優先度: 第一ターゲット > 第二ターゲット > 距離が近い順 (天体 > 船・エンティティ)
+    const priority = role === 'primary'
+      ? C.MARKER_PRIORITY.PRIMARY_TARGET
+      : role === 'secondary'
+        ? C.MARKER_PRIORITY.SECONDARY_TARGET
+        : C.MARKER_PRIORITY.ENEMY - dist / 1e9;
     return {
       key: `enemy-${this.name}`,
       cls: role === 'primary' ? 'mk-target' : 'mk-enemy',
