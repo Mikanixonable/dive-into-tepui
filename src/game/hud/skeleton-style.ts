@@ -221,19 +221,19 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 .mk-rad { color: var(--axis-radial); }
 .mk-tgtdir { color: ${C.COLOR_MARKER_TGTDIR}; }
 .mk-node { color: ${C.COLOR_MARKER_NODE}; }
-.mk-boardpass { color: ${C.COLOR_MARKER_BOARDPASS}; text-shadow: 0 0 5px color-mix(in srgb, ${C.COLOR_MARKER_BOARDPASS} var(--glow-strong), transparent), 0 0 10px color-mix(in srgb, ${C.COLOR_MARKER_BOARDPASS} var(--glow-weak), transparent); }
+.mk-boardpass { color: ${C.COLOR_MARKER_BOARDPASS}; }
 .mk-boardpass .sym { font-size: var(--font-xxs); }
 .mk-mnode { color: var(--accent-soft); }
 .mk-mnode .lbl { white-space: pre; line-height: 1.25; }
 #hud .mk-mnode .lbl, #hud .mk-burn .lbl { margin-top: var(--space-2); }
-.mk-burn { color: var(--accent); text-shadow: 0 0 8px color-mix(in srgb, var(--accent) var(--glow-strong), transparent); }
+.mk-burn { color: var(--accent); }
 .mk-self { color: ${C.COLOR_MARKER_SELF}; }
 .mk-planet-nearby-label .lbl { margin-top: 18px; font-size: var(--font-xxs); white-space: nowrap; }
-.mk-ammo { color: var(--accent-soft); text-shadow: 0 0 6px color-mix(in srgb, var(--accent-soft) var(--glow-strong), transparent), 0 0 3px var(--bg); }
+.mk-ammo { color: var(--accent-soft); }
 .mk-boresight .lbl { top: auto; left: 100%; bottom: 100%; margin: 0 0 var(--space-1) var(--space-3); white-space: pre; text-align: left; font-size: var(--font-xxs); line-height: 1.2; }
-.mk-planned { color: ${C.COLOR_MARKER_PLANNED}; text-shadow: 0 0 6px color-mix(in srgb, ${C.COLOR_MARKER_PLANNED} var(--glow-strong), transparent), 0 0 3px var(--bg); }
-.mk-apsis { color: ${C.COLOR_MARKER_PLANNED}; text-shadow: 0 0 6px color-mix(in srgb, ${C.COLOR_MARKER_PLANNED} var(--glow-strong), transparent), 0 0 3px var(--bg); }
-.mk-impact { color: var(--danger); text-shadow: 0 0 6px color-mix(in srgb, var(--danger) var(--glow-strong), transparent), 0 0 3px var(--bg); }
+.mk-planned { color: ${C.COLOR_MARKER_PLANNED}; }
+.mk-apsis { color: ${C.COLOR_MARKER_PLANNED}; }
+.mk-impact { color: var(--danger); }
 .mk-plantick { color: var(--text-dim); }
 .mk-plantick .sym svg { display: block; }
 .mk-poi { color: var(--text-strong); text-shadow: 0 0 4px var(--bg); }

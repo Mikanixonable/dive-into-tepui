@@ -169,11 +169,10 @@ export class MarkerManager {
 
     if (color) {
       m.root.style.color = color;
-      m.root.style.textShadow = `0 0 4px ${color}`;
     } else {
       m.root.style.color = '';
-      m.root.style.textShadow = '';
     }
+    m.root.style.textShadow = '';
 
     // シンボルの中心合わせは CSS が持つ(.mk 枠が投影点に中心揃え、.sym は inset:0 の
     // flex 中央寄せ)。ここで平行移動を足すと二重にかかって像からずれるので、回転だけを扱う。
