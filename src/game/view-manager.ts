@@ -39,7 +39,7 @@ export class ViewManager {
   // ドックの開閉の正本はこのクラス(isDockOpen)自身であり続ける — OverlayManager へは
   // 「開いた/閉じた」を通知するだけの一方向で、この adapter は leaveDock() を呼び戻すのみ。
   private readonly dockOverlayHandle: OverlayHandle = {
-    contains: (target) => this.docking?.dockView.element.contains(target) ?? false,
+    contains: (target) => this.docking?.baseView.element.contains(target) ?? false,
     close: () => this.leaveDock(),
   };
 
@@ -110,25 +110,25 @@ export class ViewManager {
     if (!this.isDockOpen) return;
     this.docking?.leaveDock();
     this.isDockOpen = false;
-    this.hud.overlayManager.close('dock-view');
+    this.hud.overlayManager.close('base-view');
     this.applyChrome();
   }
 
   // ドックの登録を OverlayManager の台帳から下ろす。台帳は Hud のもので自分より長生きするため、
   // 開いたまま消えると、以後どのビューでも入力を塞ぐハンドルが残る。
   dispose(): void {
-    this.hud.overlayManager.close('dock-view');
+    this.hud.overlayManager.close('base-view');
   }
 
   // isDockOpen が変化したフレームだけ OverlayManager 側の登録を追従させる。
   private syncDockOverlay(wasDockOpen: boolean): void {
     if (this.isDockOpen === wasDockOpen) return;
     if (this.isDockOpen) {
-      this.hud.overlayManager.open('dock-view', this.dockOverlayHandle, {
+      this.hud.overlayManager.open('base-view', this.dockOverlayHandle, {
         kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: true,
       });
     } else {
-      this.hud.overlayManager.close('dock-view');
+      this.hud.overlayManager.close('base-view');
     }
   }
 
@@ -196,7 +196,7 @@ export class ViewManager {
     const map = this.worldView === 'map';
     setPanelCollapsedView(map ? 'map' : 'combat');
     this.hud.setWorldView(map ? 'map' : 'combat');
-    this.hud.root.classList.toggle('dock-mode', this.isDockOpen);
+    this.hud.root.classList.toggle('base-mode', this.isDockOpen);
     this.touchControls?.setMapMode(map);
     this.cameraSystem.setMapMode(map);
     this.editor.setMapMode(map);

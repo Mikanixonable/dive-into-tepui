@@ -11,7 +11,7 @@ import { MQ_COMPACT, MQ_SHORT } from './breakpoints';
 const STYLE = `
 /* 戦闘・マップと対等な全画面ビュー。情報面は Solid を基調にし、
    選択中の艦とその整備コンテキストだけ Focus Glass へ持ち上げる。 */
-#dock-view.dock-view-overlay {
+#base-view.base-view-overlay {
   position: fixed; inset: 0;
   display: flex;
   box-sizing: border-box;
@@ -21,229 +21,229 @@ const STYLE = `
   pointer-events: auto;
   padding: max(var(--space-6), var(--safe-t)) max(var(--space-5), var(--safe-r)) max(var(--space-5), var(--safe-b)) max(var(--space-5), var(--safe-l));
 }
-#dock-view .dock-panel {
+#base-view .dock-panel {
   width: min(100%, 1160px); min-width: 0; min-height: 0; margin: 0 auto;
   display: flex; flex-direction: column;
 }
-#dock-view .dock-header {
+#base-view .dock-header {
   display: grid; grid-template-columns: minmax(180px, 0.72fr) minmax(300px, 1.4fr) auto;
   align-items: center; gap: var(--space-6);
   flex: 0 0 auto; padding: 15px 17px 11px;
   border-radius: var(--radius-window) var(--radius-window) 0 0;
   background: var(--surface-1);
 }
-#dock-view .dock-title-group { min-width: 0; }
-#dock-view .dock-kicker {
+#base-view .dock-title-group { min-width: 0; }
+#base-view .dock-kicker {
   display: block; margin-bottom: var(--space-2);
   color: var(--accent); font-size: var(--font-xs); line-height: 1.3;
 }
-#dock-view .dock-title {
+#base-view .dock-title {
   display: block; margin: 0; color: var(--title);
   font-size: var(--font-2xl); font-weight: 500; line-height: 1; letter-spacing: -0.035em;
 }
-#dock-view .dock-subtitle {
+#base-view .dock-subtitle {
   display: block; margin-top: var(--space-2);
   color: var(--muted); font-size: var(--font-s); line-height: 1.4;
 }
-#dock-view .dock-tabs { min-width: 0; justify-content: center; }
-#dock-view .dock-tabs .w-btn {
+#base-view .dock-tabs { min-width: 0; justify-content: center; }
+#base-view .dock-tabs .w-btn {
   min-height: 34px; padding: 7px 11px;
   border: 0; border-radius: var(--radius-control);
   background: transparent; color: var(--muted);
 }
-#dock-view .dock-tabs .w-btn:hover { background: var(--surface-2); color: var(--accent-near); }
-#dock-view .dock-tabs .w-btn.on { background: var(--accent-fill); color: var(--accent); }
-#dock-view .w-close {
+#base-view .dock-tabs .w-btn:hover { background: var(--surface-2); color: var(--accent-near); }
+#base-view .dock-tabs .w-btn.on { background: var(--accent-fill); color: var(--accent); }
+#base-view .w-close {
   width: 34px; height: 34px; border: 0; border-radius: var(--radius-control);
   background: var(--surface-2); color: var(--muted);
 }
-#dock-view .w-close:hover { background: var(--surface-3); color: var(--accent-near); }
-#dock-view .dock-status-bar {
+#base-view .w-close:hover { background: var(--surface-3); color: var(--accent-near); }
+#base-view .dock-status-bar {
   flex: 0 0 auto; padding: 0 17px 13px;
   border-radius: 0 0 var(--radius-window) var(--radius-window);
   background: var(--surface-1); color: var(--muted);
   font-size: var(--font-s); font-variant-numeric: tabular-nums;
 }
-#dock-view .dock-status-bar::before {
+#base-view .dock-status-bar::before {
   content: "∗"; margin-right: var(--space-3); color: var(--accent-secondary);
 }
-#dock-view .dock-body {
+#base-view .dock-body {
   flex: 1 1 0; min-height: 0; margin-top: 9px; padding: var(--space-6) 0;
   overflow-y: auto; scrollbar-width: thin; outline: none;
 }
-#dock-view .dock-body:focus-visible,
-#dock-view .dock-ship-select:focus-visible,
-#dock-view .dock-part-swap-select:focus-visible,
-#dock-view .w-btn:focus-visible,
-#dock-view .w-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-#dock-view .dock-section { display: flex; flex-direction: column; gap: 9px; }
-#dock-view .dock-section-head {
+#base-view .dock-body:focus-visible,
+#base-view .dock-ship-select:focus-visible,
+#base-view .dock-part-swap-select:focus-visible,
+#base-view .w-btn:focus-visible,
+#base-view .w-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+#base-view .dock-section { display: flex; flex-direction: column; gap: 9px; }
+#base-view .dock-section-head {
   display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-6);
   padding: 0 var(--space-2) var(--space-5);
 }
-#dock-view .dock-section-copy { min-width: 0; }
-#dock-view .dock-section-title {
+#base-view .dock-section-copy { min-width: 0; }
+#base-view .dock-section-title {
   margin: 0; color: var(--title); font-size: var(--font-xl); font-weight: 600; line-height: 1.3;
 }
-#dock-view .dock-section-description {
+#base-view .dock-section-description {
   margin: var(--space-2) 0 0; color: var(--muted); font-size: var(--font-s); line-height: 1.55;
 }
-#dock-view .dock-section-count {
+#base-view .dock-section-count {
   flex: 0 0 auto; padding: 5px 8px; border-radius: var(--radius-control);
   background: var(--surface-1); color: var(--muted); font-size: var(--font-xs);
   font-variant-numeric: tabular-nums;
 }
-#dock-view .dock-empty {
+#base-view .dock-empty {
   padding: var(--space-6); border-radius: var(--radius-panel);
   background: var(--surface-1); color: var(--muted); text-align: center; line-height: 1.8;
 }
 /* Ships tab */
-#dock-view .dock-ship-list { display: flex; flex-direction: column; gap: 7px; }
-#dock-view .dock-ship-row {
+#base-view .dock-ship-list { display: flex; flex-direction: column; gap: 7px; }
+#base-view .dock-ship-row {
   position: relative; display: flex; align-items: center; gap: var(--space-5);
   padding: 9px 12px; border-radius: var(--radius-panel); background: var(--surface-1);
   transition: color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
 }
-#dock-view .dock-ship-row:hover:not(.is-selected) { background: var(--surface-2); }
-#dock-view .dock-ship-row.is-selected {
+#base-view .dock-ship-row:hover:not(.is-selected) { background: var(--surface-2); }
+#base-view .dock-ship-row.is-selected {
   background: var(--glass-focus); backdrop-filter: blur(20px) saturate(82%);
   -webkit-backdrop-filter: blur(20px) saturate(82%);
   box-shadow: 0 16px 48px var(--shadow, var(--shade-1));
 }
-#dock-view .dock-ship-row.is-selected::before {
+#base-view .dock-ship-row.is-selected::before {
   content: ""; position: absolute; top: 12px; bottom: 12px; left: 6px; width: 3px;
   border-radius: var(--radius-control); background: var(--accent);
 }
-#dock-view .dock-ship-select {
+#base-view .dock-ship-select {
   flex: 1 1 auto; min-width: 0; display: block; padding: var(--space-3) var(--space-4);
   border: 0; border-radius: var(--radius-control); background: transparent; color: inherit;
   font: inherit; text-align: left; cursor: pointer;
 }
-#dock-view .dock-ship-info { flex: 1; display: flex; flex-direction: column; gap: var(--space-1); }
-#dock-view .dock-ship-name { color: var(--title); font-size: var(--font-l); font-weight: 500; }
-#dock-view .dock-ship-row:not(.is-selected) .dock-ship-select:hover .dock-ship-name { color: var(--accent-near); }
-#dock-view .dock-ship-row.is-selected .dock-ship-name { color: var(--accent); }
-#dock-view .dock-ship-hp { color: var(--muted); font-size: var(--font-s); font-variant-numeric: tabular-nums; }
-#dock-view .dock-ship-row.is-critical .dock-ship-hp { color: var(--danger); }
-#dock-view .dock-ship-actions { display: flex; flex: 0 0 auto; gap: 5px; }
+#base-view .dock-ship-info { flex: 1; display: flex; flex-direction: column; gap: var(--space-1); }
+#base-view .dock-ship-name { color: var(--title); font-size: var(--font-l); font-weight: 500; }
+#base-view .dock-ship-row:not(.is-selected) .dock-ship-select:hover .dock-ship-name { color: var(--accent-near); }
+#base-view .dock-ship-row.is-selected .dock-ship-name { color: var(--accent); }
+#base-view .dock-ship-hp { color: var(--muted); font-size: var(--font-s); font-variant-numeric: tabular-nums; }
+#base-view .dock-ship-row.is-critical .dock-ship-hp { color: var(--danger); }
+#base-view .dock-ship-actions { display: flex; flex: 0 0 auto; gap: 5px; }
 /* Parts tab */
-#dock-view .dock-parts-header {
+#base-view .dock-parts-header {
   display: flex; align-items: center; gap: var(--space-5); padding: 11px 13px;
   border-radius: var(--radius-panel); background: var(--surface-1);
 }
-#dock-view .dock-parts-header.dock-focus-panel {
+#base-view .dock-parts-header.dock-focus-panel {
   background: var(--glass-focus); backdrop-filter: blur(20px) saturate(82%);
   -webkit-backdrop-filter: blur(20px) saturate(82%);
   box-shadow: 0 16px 48px var(--shadow, var(--shade-1));
 }
-#dock-view .dock-ship-label { flex: 1; color: var(--body); font-size: var(--font-m); }
-#dock-view .dock-ship-label strong { color: var(--accent); font-weight: 600; }
-#dock-view .dock-part-list { display: flex; flex-direction: column; gap: 7px; }
-#dock-view .dock-part-row {
+#base-view .dock-ship-label { flex: 1; color: var(--body); font-size: var(--font-m); }
+#base-view .dock-ship-label strong { color: var(--accent); font-weight: 600; }
+#base-view .dock-part-list { display: flex; flex-direction: column; gap: 7px; }
+#base-view .dock-part-row {
   display: flex; flex-direction: column; gap: var(--space-3); padding: 9px 11px;
   border-radius: var(--radius-panel); background: var(--surface-2);
 }
-#dock-view .dock-part-info { display: flex; flex-direction: column; gap: var(--space-1); }
-#dock-view .dock-part-name { color: var(--title); font-size: var(--font-m); font-weight: 500; }
-#dock-view .dock-part-type { color: var(--muted); font-size: var(--font-xs); }
-#dock-view .dock-part-hp-meter .w-meter-track { height: 7px; border-radius: var(--radius-control); overflow: hidden; }
-#dock-view .dock-part-hp-meter .w-meter-fill { border-radius: var(--radius-control); transition: width var(--transition-slow); }
-#dock-view .dock-part-hp-text { color: var(--muted); font-size: var(--font-s); text-align: right; font-variant-numeric: tabular-nums; }
-#dock-view .dock-part-row-main {
+#base-view .dock-part-info { display: flex; flex-direction: column; gap: var(--space-1); }
+#base-view .dock-part-name { color: var(--title); font-size: var(--font-m); font-weight: 500; }
+#base-view .dock-part-type { color: var(--muted); font-size: var(--font-xs); }
+#base-view .dock-part-hp-meter .w-meter-track { height: 7px; border-radius: var(--radius-control); overflow: hidden; }
+#base-view .dock-part-hp-meter .w-meter-fill { border-radius: var(--radius-control); transition: width var(--transition-slow); }
+#base-view .dock-part-hp-text { color: var(--muted); font-size: var(--font-s); text-align: right; font-variant-numeric: tabular-nums; }
+#base-view .dock-part-row-main {
   display: grid; grid-template-columns: minmax(120px, 1fr) minmax(96px, 140px);
   align-items: center; gap: var(--space-5);
 }
-#dock-view .dock-warehouse-row-main { grid-template-columns: minmax(120px, 1fr) auto; }
-#dock-view .dock-part-actions {
+#base-view .dock-warehouse-row-main { grid-template-columns: minmax(120px, 1fr) auto; }
+#base-view .dock-part-actions {
   grid-column: 1 / -1; display: flex; align-items: center; justify-content: flex-end; gap: 5px; flex-wrap: wrap;
 }
-#dock-view .dock-part-swap-row {
+#base-view .dock-part-swap-row {
   display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3);
   border-radius: var(--radius-control); background: var(--surface-1);
   color: var(--muted); font-size: var(--font-s);
 }
-#dock-view .dock-part-swap-select {
+#base-view .dock-part-swap-select {
   flex: 1; min-width: 0; padding: 7px 9px;
   border: 0; border-radius: var(--radius-control);
   background: var(--surface-3); color: var(--title); font: inherit; font-size: var(--font-s);
 }
-#dock-view .dock-parts-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
-#dock-view .dock-parts-col {
+#base-view .dock-parts-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+#base-view .dock-parts-col {
   display: flex; flex-direction: column; gap: var(--space-4); min-width: 0;
   padding: 13px; border-radius: var(--radius-window); background: var(--surface-1);
 }
-#dock-view .dock-col-title { margin: 0; color: var(--title); font-size: var(--font-m); font-weight: 600; }
+#base-view .dock-col-title { margin: 0; color: var(--title); font-size: var(--font-m); font-weight: 600; }
 /* Shop tab */
-#dock-view .dock-shop-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
-#dock-view .dock-shop-item {
+#base-view .dock-shop-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+#base-view .dock-shop-item {
   display: flex; align-items: center; gap: var(--space-5); min-width: 0; padding: 11px 13px;
   border-radius: var(--radius-panel); background: var(--surface-1);
 }
-#dock-view .dock-shop-info { flex: 1; display: flex; flex-direction: column; gap: var(--space-1); }
-#dock-view .dock-shop-name { color: var(--title); font-size: var(--font-l); font-weight: 500; }
-#dock-view .dock-shop-type { color: var(--muted); font-size: var(--font-xs); }
-#dock-view .dock-shop-props { color: var(--body); font-size: var(--font-s); line-height: 1.45; }
-#dock-view .dock-shop-stats { color: var(--muted); font-size: var(--font-xs); font-variant-numeric: tabular-nums; }
-#dock-view .dock-shop-actions { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); }
-#dock-view .dock-shop-price { color: var(--title); font-size: var(--font-m); font-variant-numeric: tabular-nums; }
+#base-view .dock-shop-info { flex: 1; display: flex; flex-direction: column; gap: var(--space-1); }
+#base-view .dock-shop-name { color: var(--title); font-size: var(--font-l); font-weight: 500; }
+#base-view .dock-shop-type { color: var(--muted); font-size: var(--font-xs); }
+#base-view .dock-shop-props { color: var(--body); font-size: var(--font-s); line-height: 1.45; }
+#base-view .dock-shop-stats { color: var(--muted); font-size: var(--font-xs); font-variant-numeric: tabular-nums; }
+#base-view .dock-shop-actions { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); }
+#base-view .dock-shop-price { color: var(--title); font-size: var(--font-m); font-variant-numeric: tabular-nums; }
 /* ドック内の操作は Borderless。主要操作、サービス完了系、補助操作の三段に分ける。 */
-#dock-view span.dock-btn {
+#base-view span.dock-btn {
   padding: 7px 10px; border: 0; border-radius: var(--radius-control);
   background: var(--surface-2); color: var(--body); white-space: nowrap;
 }
-#dock-view span.dock-btn:hover { background: var(--surface-3); color: var(--accent-near); }
-#dock-view span.dock-btn-primary { background: var(--accent-fill); color: var(--accent); }
-#dock-view span.dock-btn-primary:hover { background: var(--accent-fill-strong); color: var(--accent-near); }
-#dock-view span.dock-btn-service { color: var(--body); }
-#dock-view span.dock-btn-service:hover { background: var(--surface-3); color: var(--accent-near); }
-#dock-view span.dock-btn-complete.disabled { opacity: 0.72; color: var(--accent-secondary); }
-#dock-view span.dock-btn-quiet { color: var(--muted); }
+#base-view span.dock-btn:hover { background: var(--surface-3); color: var(--accent-near); }
+#base-view span.dock-btn-primary { background: var(--accent-fill); color: var(--accent); }
+#base-view span.dock-btn-primary:hover { background: var(--accent-fill-strong); color: var(--accent-near); }
+#base-view span.dock-btn-service { color: var(--body); }
+#base-view span.dock-btn-service:hover { background: var(--surface-3); color: var(--accent-near); }
+#base-view span.dock-btn-complete.disabled { opacity: 0.72; color: var(--accent-secondary); }
+#base-view span.dock-btn-quiet { color: var(--muted); }
 
 @media ${MQ_COMPACT} {
-  #dock-view.dock-view-overlay {
+  #base-view.base-view-overlay {
     align-items: flex-end; padding: max(var(--space-4), var(--safe-t)) 0 0;
   }
-  #dock-view .dock-panel {
+  #base-view .dock-panel {
     height: 94dvh; max-height: 100%; overflow: hidden; border-radius: var(--radius-window) var(--radius-window) 0 0;
     background: var(--surface-0);
   }
-  #dock-view .dock-header {
+  #base-view .dock-header {
     grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-4);
     padding: 13px 13px 9px;
   }
-  #dock-view .dock-title { font-size: var(--font-xl); }
-  #dock-view .dock-subtitle { display: none; }
-  #dock-view .dock-tabs {
+  #base-view .dock-title { font-size: var(--font-xl); }
+  #base-view .dock-subtitle { display: none; }
+  #base-view .dock-tabs {
     grid-column: 1 / -1; grid-row: 2; justify-content: flex-start;
     overflow-x: auto; scrollbar-width: none;
   }
-  #dock-view .dock-tabs::-webkit-scrollbar { display: none; }
-  #dock-view .dock-tabs .w-btn { flex: 1 0 auto; text-align: center; }
-  #dock-view .dock-status-bar { padding: 0 13px 11px; }
-  #dock-view .dock-body { margin-top: 0; padding: 13px; }
-  #dock-view .dock-section-head { align-items: flex-start; padding-inline: 0; }
-  #dock-view .dock-ship-row { align-items: stretch; flex-direction: column; gap: var(--space-3); }
-  #dock-view .dock-ship-actions { display: grid; grid-template-columns: 1fr 1fr; }
-  #dock-view .dock-ship-actions .dock-btn { justify-content: center; text-align: center; }
-  #dock-view .dock-parts-header { align-items: flex-start; flex-direction: column; }
-  #dock-view .dock-parts-header .dock-btn { align-self: stretch; text-align: center; }
-  #dock-view .dock-parts-columns, #dock-view .dock-shop-list { grid-template-columns: 1fr; }
-  #dock-view .dock-parts-col { padding: 11px; }
-  #dock-view .dock-part-row-main { grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-4); }
-  #dock-view .dock-part-row-main:not(.dock-warehouse-row-main) .dock-part-hp-meter { grid-column: 1 / -1; grid-row: 2; }
-  #dock-view .dock-warehouse-row-main .dock-part-actions { grid-column: 1 / -1; justify-content: flex-end; }
-  #dock-view .dock-part-swap-row { align-items: stretch; flex-wrap: wrap; }
-  #dock-view .dock-part-swap-select { flex-basis: calc(100% - 80px); }
-  #dock-view .dock-shop-item { align-items: stretch; flex-direction: column; }
-  #dock-view .dock-shop-actions { align-items: center; flex-direction: row; justify-content: space-between; }
+  #base-view .dock-tabs::-webkit-scrollbar { display: none; }
+  #base-view .dock-tabs .w-btn { flex: 1 0 auto; text-align: center; }
+  #base-view .dock-status-bar { padding: 0 13px 11px; }
+  #base-view .dock-body { margin-top: 0; padding: 13px; }
+  #base-view .dock-section-head { align-items: flex-start; padding-inline: 0; }
+  #base-view .dock-ship-row { align-items: stretch; flex-direction: column; gap: var(--space-3); }
+  #base-view .dock-ship-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  #base-view .dock-ship-actions .dock-btn { justify-content: center; text-align: center; }
+  #base-view .dock-parts-header { align-items: flex-start; flex-direction: column; }
+  #base-view .dock-parts-header .dock-btn { align-self: stretch; text-align: center; }
+  #base-view .dock-parts-columns, #base-view .dock-shop-list { grid-template-columns: 1fr; }
+  #base-view .dock-parts-col { padding: 11px; }
+  #base-view .dock-part-row-main { grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-4); }
+  #base-view .dock-part-row-main:not(.dock-warehouse-row-main) .dock-part-hp-meter { grid-column: 1 / -1; grid-row: 2; }
+  #base-view .dock-warehouse-row-main .dock-part-actions { grid-column: 1 / -1; justify-content: flex-end; }
+  #base-view .dock-part-swap-row { align-items: stretch; flex-wrap: wrap; }
+  #base-view .dock-part-swap-select { flex-basis: calc(100% - 80px); }
+  #base-view .dock-shop-item { align-items: stretch; flex-direction: column; }
+  #base-view .dock-shop-actions { align-items: center; flex-direction: row; justify-content: space-between; }
 }
 
 @media ${MQ_SHORT} {
-  #dock-view.dock-view-overlay { padding-top: var(--space-3); }
-  #dock-view .dock-header { padding-top: 9px; padding-bottom: 7px; }
-  #dock-view .dock-subtitle { display: none; }
-  #dock-view .dock-status-bar { padding-bottom: 9px; }
-  #dock-view .dock-body { padding-top: 9px; padding-bottom: 9px; }
+  #base-view.base-view-overlay { padding-top: var(--space-3); }
+  #base-view .dock-header { padding-top: 9px; padding-bottom: 7px; }
+  #base-view .dock-subtitle { display: none; }
+  #base-view .dock-status-bar { padding-bottom: 9px; }
+  #base-view .dock-body { padding-top: 9px; padding-bottom: 9px; }
 }
 `;
 
@@ -363,7 +363,7 @@ function formatCatalogProperty(name: string, value: number | string): string {
   }
 }
 
-export class DockView {
+export class BaseView {
   private readonly el: HTMLElement;
   private readonly tabBar: TabBar<DockTab>;
   private readonly moneyLabel: HTMLElement;
@@ -377,7 +377,7 @@ export class DockView {
 
   // 外部コールバック
   public onLaunchShip: ((ship: Player, base: Base) => void) | null = null;
-  // 「新造」ボタン。実際の艦の生成は Docking 側が行う(DockView は UI のみ)。
+  // 「新造」ボタン。実際の艦の生成は Docking 側が行う(BaseView は UI のみ)。
   public onBuildShip: ((base: Base) => void) | null = null;
   public onClose: (() => void) | null = null;
 
@@ -387,12 +387,12 @@ export class DockView {
   public constructor(root: HTMLElement) {
     ensureStyle();
     this.el = document.createElement('div');
-    this.el.id = 'dock-view';
-    this.el.className = 'dock-view-overlay';
+    this.el.id = 'base-view';
+    this.el.className = 'base-view-overlay';
     this.el.style.display = 'none';
     this.el.setAttribute('role', 'dialog');
     this.el.setAttribute('aria-modal', 'true');
-    this.el.setAttribute('aria-labelledby', 'dock-view-title');
+    this.el.setAttribute('aria-labelledby', 'base-view-title');
     this.el.addEventListener('keydown', (event) => this.trapFocus(event));
 
     const panel = document.createElement('div');
@@ -407,7 +407,7 @@ export class DockView {
     kicker.className = 'dock-kicker';
     kicker.textContent = 'Base operations';
     const title = document.createElement('h1');
-    title.id = 'dock-view-title';
+    title.id = 'base-view-title';
     title.className = 'dock-title';
     title.textContent = 'Base';
     const subtitle = document.createElement('span');
