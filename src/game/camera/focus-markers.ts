@@ -309,8 +309,17 @@ export class FocusMarkers {
           if (cell === undefined) continue;
           for (const other of cell) {
             if (Math.hypot(current.x - other.x, current.y - other.y) >= FOCUS_LABEL_PRIORITY_PX) continue;
-            if (current.label.labelPriority > other.label.labelPriority) hiddenByPriority.add(other.label.id);
-            else if (other.label.labelPriority > current.label.labelPriority) hiddenByPriority.add(current.label.id);
+            if (current.label.labelPriority > other.label.labelPriority) {
+              hiddenByPriority.add(other.label.id);
+            } else if (other.label.labelPriority > current.label.labelPriority) {
+              hiddenByPriority.add(current.label.id);
+            } else {
+              // 優先度が等しい場合の決定論的タイブレーク (格子順に依存せずチラつきを防ぐ)
+              if (current.label.depth > other.label.depth) hiddenByPriority.add(current.label.id);
+              else if (other.label.depth > current.label.depth) hiddenByPriority.add(other.label.id);
+              else if (current.label.id > other.label.id) hiddenByPriority.add(current.label.id);
+              else hiddenByPriority.add(other.label.id);
+            }
           }
         }
       }

@@ -10,7 +10,7 @@ import type { GameEntity } from './game-entity/game-entity';
 import { CameraSystem } from './camera/camera-system';
 import { Stage, StageClass } from './stages/stage';
 import { MarkerManager } from './marker/marker-manager';
-import { ActivePlayerController } from './active-player-controller';
+import { ActiveControllableController } from './active-controllable-controller';
 import { UnlockManager } from './unlock-manager';
 import { Targeter } from './targeter';
 import { PlanEditor } from './plan/plan-editor';
@@ -58,12 +58,11 @@ export class Game {
   get ephemeris(): Ephemeris { return this._ephemeris; }
   readonly cameraSystem: CameraSystem;
   // 操作対象艦(0..n 隻のうちどれを操作するか)の切替を持つ。
-  readonly activePlayers: ActivePlayerController;
+  readonly activePlayers: ActiveControllableController;
   get player(): Player | null { return this.activePlayers.current; }
-  private _controlledBase: Base | null = null;
-  get controlledBase(): Base | null { return this._controlledBase; }
+  get controlledBase(): Base | null { return this.activePlayers.controlledBase; }
   get activeControllableEntity(): GameEntity | null {
-    return this._controlledBase ?? this.player ?? this.entities.bases.find((b) => b.alive) ?? null;
+    return this.controlledBase ?? this.player ?? this.entities.bases.find((b) => b.alive) ?? null;
   }
   readonly simSpeedManager: SimSpeedManager;
 
@@ -150,8 +149,8 @@ export class Game {
     this.navTarget = new NavTarget(this._hud, this.markerManager);
     this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
     this._environment = new EnvironmentScene(this._scene, this.ephemeris, graphics, pipeline.sunLight, earthSpinPhase0);
-    this.activePlayers = new ActivePlayerController(
-      initialSave?.activePlayerId, this.entities, this.cameraSystem, this.targeter, this.navTarget, this._worldSfx,
+    this.activePlayers = new ActiveControllableController(
+      initialSave?.activePlayerId, this.entities, this.cameraSystem, this.targeter, this.navTarget, this._worldSfx, this._hud,
     );
     this.editor = new PlanEditor(
       this._hud,
@@ -221,17 +220,7 @@ export class Game {
   }
 
   setControlledBase(base: Base | null): void {
-    if (this._controlledBase === base) return;
-    if (this._controlledBase) {
-      this._controlledBase.clearTransientCommands();
-    }
-    this._controlledBase = base;
-    if (base) {
-      this.activePlayers.setOrNull(null);
-      this._hud.hint(`基地「${base.name}」の操作モードに入りました (WASDQE: 噴射 / IJKLUO: 姿勢制御 / T: RCS減衰 / C: プログレード)`);
-    } else {
-      this._hud.hint('基地の操作を解除しました');
-    }
+    this.activePlayers.setBase(base);
   }
 
   // ------------------------------------------------------------------ lifecycle
@@ -287,7 +276,7 @@ export class Game {
     this.handleInput(dt);
     this.sections.exit(SECTION.input);
 
-    if (!this._isPaused) this.advanceSimulation(dt);
+    if (!this._isPaused && this.activeStage.isPlaying) this.advanceSimulation(dt);
     // ポーズ中も決着後も飛ばせない。決着は積分を止めないので、飛ばすと描画原点になるカメラ位置
     // だけが絶対 ECI に取り残され、追従対象もフォーカス天体も軌道速度で流れて即フレームアウトする。
     // ポーズ中は積分が止まるが、カメラの旋回・ズーム・パンの入力をここで消化している。
@@ -325,19 +314,12 @@ export class Game {
     this.entities.requestHistoryDuration(this.displayWindowManager.current.pastDuration);
     this.sections.enter(SECTION.player);
     this.nanWatchdog.checkPlayer('frameStart', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
-    if (this.activePlayers.current !== null && this._controlledBase !== null) {
-      this._controlledBase.clearTransientCommands();
-      this._controlledBase = null;
-    }
-    if (this._controlledBase && !this._controlledBase.alive) {
-      this.setControlledBase(null);
-    }
-    const playerInput = this._controlledBase !== null ? null : this.input;
+    const playerInput = this.controlledBase !== null ? null : this.input;
     this.entities.updatePlayers(
       this.player, playerInput, this.simSpeedManager, dt, this.activeStage, this.ephemeris,
     );
     this.entities.updateBases(
-      this._controlledBase, this.input, this.simSpeedManager, dt,
+      this.controlledBase, this.input, this.simSpeedManager, dt,
     );
     this.nanWatchdog.checkPlayer(
       'player.updatePlayerControls',
@@ -388,28 +370,31 @@ export class Game {
     this.sections.exit(SECTION.plan);
   }
 
-  // ポインタ入力を優先順位順(=呼ぶ順)に配る。各受け手はいまがマップ視点か・操作艦の有無かを
+  // ポインタ入力をビューに応じて配分する。各受け手はいまがマップ視点か・操作艦の有無かを
   // 自分で見るので、ここで決めるのは順序だけ。このフレームの cameraSystem.update が終わって
   // 初めて投影がこのフレームの値になるので、update の末尾に置く。ポーズ中、または入力を
-  // ゲートするオーバーレイ(セーブブラウザ・ドック等)が開いている間は配らない(背景の誤操作を防ぐ)。
+  // ゲートするオーバーレイ(セーブブラウザ・基地画面等)が開いている間は配らない(背景の誤操作を防ぐ)。
   private handlePointerInput(): void {
     if (this._isPaused || this._hud.overlayManager.isInputGated()) return;
     const simTime = this.simulator.simTime;
-    const project = this.cameraSystem.activeCameraProjection;
-    const overviewMode = this.cameraSystem.overviewMode;
-    // マーカー(右クリック/左クリック/ダブルクリック)→ ノード → 空域の優先順は呼ぶ順そのもの。
     if (this.viewManager.isMapView) {
       this.handleMapPointerInput(simTime);
-      return;
+    } else {
+      this.handleCombatPointerInput(simTime);
     }
+  }
+
+  private handleCombatPointerInput(simTime: number): void {
     if (!this.player) return;
+    const project = this.cameraSystem.activeCameraProjection;
+    const overviewMode = this.cameraSystem.overviewMode;
     const combatTargets = this.entities.getCombatTargets(this.player);
     this.targeter.handleTargetSelectKey(this.input, combatTargets, project, overviewMode);
     this.mapActions.handleCombatRightClick(this.input, simTime, overviewMode);
   }
 
   private handleMapPointerInput(simTime: number): void {
-    this.mapActions.handleRightClick(this.input, simTime);
+    this.mapActions.handleMapRightClick(this.input, simTime);
     this.mapActions.handleLeftClick(this.input);
     this.mapActions.handleDoubleClick(this.input);
     this.editor.handleMapPointer(this.input);

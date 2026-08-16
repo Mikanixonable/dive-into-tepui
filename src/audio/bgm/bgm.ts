@@ -1,30 +1,26 @@
-// BGM の指揮。どの曲をいつ鳴らすか(自動開始・試聴・再開・停止・一定時間での曲送り)を決め、
-// ユーザー音量をマスターゲインとして持ち、先読みスケジューラを回して再生中の曲を進める。
-// 1曲ぶんの発音そのものは TrackPlayback、どんな音を作るかは Composer の責務。
-// ゲインは2層: マスター(音量)と曲ごと(フェード)。混ぜると音量操作とフェードが同じ
-// AudioParam を奪い合うので、別々に保つ。
+// BGM の公開窓口。ユーザー音量をマスターゲインとして持ち、音楽の線(Conductor)を束ねて、
+// 唯一の先読みタイマーでそれらを進める。どの曲をいつ鳴らすかは線それぞれの責務。
+// 線は2本ある: ゲーム中の BGM と、設定画面での試聴。互いのノード鎖は独立していて、
+// 試聴はゲーム側の状態に触れない — 設定画面を開いている間ゲーム側は伏せておき、
+// 閉じたら試聴の線を畳んでゲーム側を戻す。
+// ゲインは3層: マスター(ユーザー音量)、線ごと(その線を伏せる)、曲ごと(その曲のフェード)。
+// 1つのノードに兼ねさせると、書き手の違う操作が同じ AudioParam を奪い合い、後の呼び出しが
+// 前の形を打ち消すので、層を分けて持つ。
 import { BGM_TRACKS } from './tracks/tracks';
-import { createComposer } from './composer-factory';
-import { TrackPlayback } from './track-playback';
+import { Conductor } from './conductor';
 import { AudioEngine } from '../audio-engine';
 
 const BGM_VOL_KEY = 'tepui.settings.bgm_vol'; // localStorage キー
 const PUMP_INTERVAL_MS = 120; // スケジューラを回す間隔
 const LOOKAHEAD_SEC = 0.6; // この先ぶんまでまとめてスケジュールし、タイマー精度に依存しないようにする
-const START_DELAY_SEC = 0.15; // 再生開始から最初のステップまでの余裕
-const FADE_IN_SEC = 4;
-const TRACK_ROTATION_SEC = 300; // 1曲を流し続ける長さ
+const AUDITION_FADE_SEC = 0.15; // 試聴を切り替える・止めるときのフェード
 
 export class Bgm {
   private masterGain: GainNode | null = null;
-  private playback: TrackPlayback | null = null;
+  private ambient: Conductor | null = null;
+  private audition: Conductor | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private volume = 1;
-  private trackIdx = 0;
-  private trackStartTime = 0;
-  private autoStarted = false;
-  // 曲送りの対象か。試聴は選んだ曲を鳴らし続けるので、その間だけ false になる。
-  private rotates = true;
 
   // 保存済みの音量設定を読み込む。
   constructor(private readonly engine: AudioEngine) {
@@ -36,12 +32,10 @@ export class Bgm {
     }
   }
 
+  // === 共通 (conductor によらない操作) ===
+
   getVolume(): number {
     return this.volume;
-  }
-
-  get isPlaying(): boolean {
-    return this.timer !== null;
   }
 
   // 設定画面からの音量変更。再生中なら即反映し、停止中に正の音量へ上げたら再生を始める。
@@ -53,87 +47,14 @@ export class Bgm {
       /* 保存できなくても再生自体は反映する */
     }
     const ctx = this.engine.ctx;
-    if (ctx && this.masterGain && this.timer) {
+    if (!ctx) return;
+    if (this.masterGain) {
       this.masterGain.gain.setTargetAtTime(Math.max(0.0001, vol), ctx.currentTime, 0.1);
-    } else if (vol > 0 && !this.timer) {
-      this.start();
     }
+    if (vol > 0) this.start();
   }
 
-  // 起動後最初のユーザー操作(unlock 直後)から呼ばれ、一度だけ再生を始める。
-  // 2回目以降と、明示的な再生・停止(playTrack/stop)が先に走っていた場合は何もしない。
-  autoStart(): void {
-    if (this.autoStarted || !this.engine.ctx) return;
-    this.autoStarted = true;
-    if (this.volume > 0) this.start();
-  }
-
-  // 指定した曲を先頭から試聴する。AudioContext の unlock も最初のクリックで行う。
-  playTrack(index: number): void {
-    this.engine.unlock();
-    // 明示的に曲を選んだ後は、最初の操作での自動開始に上書きさせない
-    this.autoStarted = true;
-    if (!this.engine.ctx || BGM_TRACKS.length === 0) return;
-    const safeIndex = Math.max(0, Math.min(BGM_TRACKS.length - 1, Math.floor(index)));
-    this.stop(0.05);
-    this.start(safeIndex);
-    // 試聴は選んだ曲そのものを聴くためのものなので、居座っても曲送りしない。
-    this.rotates = false;
-  }
-
-  // 試聴停止後や、ゲーム中の BGM を再開する。
-  resume(): void {
-    if (this.volume <= 0 || !this.engine.ctx || this.timer) return;
-    this.start(this.trackIdx);
-  }
-
-  // fadeSec 秒かけてフェードアウトし、停止する。スケジュール済みの音は曲ごとのゲインを
-  // 通って一緒に減衰するので、鳴らし終えるのを待つ必要はない。
-  stop(fadeSec = 2.5): void {
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = null;
-    }
-    if (this.playback) {
-      this.playback.fadeOut(fadeSec);
-      this.retire(this.playback);
-      this.playback = null;
-    }
-  }
-
-  // 役目を終えた再生を、鳴り終える時刻に切り離す。まだ鳴っているうちに切ると尾が途切れるので、
-  // フェードの残りではなく、その再生がスケジュール済みの音が消える時刻まで待つ。
-  private retire(playback: TrackPlayback): void {
-    const ctx = this.engine.ctx;
-    // 時計が無ければ待つ意味も無い。
-    const waitSec = ctx ? Math.max(0, playback.soundingUntil - ctx.currentTime) : 0;
-    setTimeout(() => playback.dispose(), waitSec * 1000);
-  }
-
-  // 再生を開始し、先読みスケジューラを起動する。曲は指定が無ければランダムに選ぶ。
-  private start(trackIdx?: number): void {
-    const ctx = this.engine.ctx;
-    if (!ctx || this.timer) return;
-    const index = trackIdx === undefined
-      ? Math.floor(Math.random() * BGM_TRACKS.length)
-      : Math.max(0, Math.min(BGM_TRACKS.length - 1, trackIdx));
-    this.rotates = true;
-    this.openPlayback(index, ctx, ctx.currentTime + START_DELAY_SEC);
-    this.playback?.fadeIn(FADE_IN_SEC);
-    this.timer = setInterval(() => this.pump(), PUMP_INTERVAL_MS);
-  }
-
-  // 指定した曲の再生を組み、startAt から刻み始める。前の曲が残っていれば退役させる。
-  private openPlayback(index: number, ctx: AudioContext, startAt: number): void {
-    if (this.playback) this.retire(this.playback);
-    this.trackIdx = index;
-    this.trackStartTime = ctx.currentTime;
-    const track = BGM_TRACKS[index]!;
-    const composer = createComposer(track);
-    this.playback = new TrackPlayback(ctx, composer, track.instruments, this.ensureMasterGain(ctx), startAt);
-  }
-
-  // ユーザー音量を表すマスターゲイン。曲を跨いで生き続ける唯一のノード。
+  // ユーザー音量を表すマスターゲイン。線を跨いで生き続ける唯一のノード。
   private ensureMasterGain(ctx: AudioContext): GainNode {
     if (this.masterGain) return this.masterGain;
     const g = ctx.createGain();
@@ -143,27 +64,116 @@ export class Bgm {
     return g;
   }
 
-  // 同じ曲が連続しないよう、今の曲以外から次の曲を選ぶ。曲が1つしかなければそのまま。
-  private nextTrackIndex(): number {
-    if (BGM_TRACKS.length <= 1) return this.trackIdx;
-    let next = Math.floor(Math.random() * (BGM_TRACKS.length - 1));
-    if (next >= this.trackIdx) next++;
-    return next;
+  // どれかの線が鳴っている間だけ刻みを回す。
+  private syncPump(): void {
+    const sounding = (this.ambient?.isSounding ?? false) || (this.audition?.isSounding ?? false);
+    if (sounding && !this.timer) {
+      this.timer = setInterval(() => this.pump(), PUMP_INTERVAL_MS);
+    } else if (!sounding && this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
   }
 
-  // 先読み時間の範囲までステップを刻み進める。一定時間おきに曲を切り替える。
+  // 先読み時間の範囲まで、動いている線をすべて刻み進める。
   private pump(): void {
     const ctx = this.engine.ctx;
     if (!ctx) return;
+    const deadline = ctx.currentTime + LOOKAHEAD_SEC;
+    this.ambient?.advance(deadline);
+    this.audition?.advance(deadline);
+  }
 
-    // クロスフェードは挟まない。ミニマルミュージックなので、パターンが切り替わるだけでも
-    // フェーズの変化として違和感なくアンビエントに馴染む。次の曲は前の曲が刻み終えた
-    // 時刻から続けて始めるので、拍が途切れることもない。
-    if (this.rotates && ctx.currentTime - this.trackStartTime > TRACK_ROTATION_SEC) {
-      const startAt = this.playback?.nextStepTime ?? ctx.currentTime + START_DELAY_SEC;
-      this.openPlayback(this.nextTrackIndex(), ctx, startAt);
+  // === ゲーム内BGM (ambient conductor) ===
+  // これが既定の conductor なので、特別扱いとし、関連するメソッド名から目的語 (ambient) を省く。
+
+  // 伏せる指示。線は最初に鳴らすときまで組まれないので、その間の指示をここで覚えておく。
+  private paused = false;
+  // 一度きりの自動開始を使い切ったか。
+  private autoStartUsed = false;
+
+  // ゲーム内 BGM を開く。すでに鳴っていれば何もしない。
+  private start(trackIdx?: number): void {
+    const ctx = this.engine.ctx;
+    if (!ctx) return;
+    const line = this.ensureAmbient(ctx);
+    if (line.isSounding) return;
+    line.start(trackIdx);
+    this.syncPump();
+  }
+
+  // 最初のユーザー操作から呼ばれ、ゲーム内 BGM を一度だけ始める。この操作はキー入力・
+  // ポインタ入力のたびに飛ぶので、二度目以降は何もしない — 決着で止めた BGM が、次の
+  // キー入力で蘇らないため。
+  ensureStarted(): void {
+    if (this.autoStartUsed || !this.engine.ctx) return;
+    this.autoStartUsed = true;
+    if (this.volume > 0) this.start();
+  }
+
+  // ゲーム内 BGM を再開する。直前に鳴らしていた曲から始める。
+  resume(): void {
+    const ctx = this.engine.ctx;
+    if (this.volume <= 0 || !ctx) return;
+    this.start(this.ensureAmbient(ctx).currentTrackIndex);
+  }
+
+  // ゲーム中の BGM の線。AudioContext ができるまでは組めないので、最初に鳴らすときに作る。
+  private ensureAmbient(ctx: AudioContext): Conductor {
+    if (!this.ambient) {
+      this.ambient = new Conductor(ctx, this.ensureMasterGain(ctx), true);
+      if (this.paused) this.ambient.pause();
     }
+    return this.ambient;
+  }
 
-    this.playback?.scheduleUntil(ctx.currentTime + LOOKAHEAD_SEC);
+  // ゲーム中の BGM を fadeSec 秒かけてフェードアウトする。
+  stop(fadeSec = 2.5): void {
+    this.ambient?.stop(fadeSec);
+    this.syncPump();
+  }
+
+  // === 試聴用 BGM (audition conductor) ===
+  // begin/end は設定画面の開閉そのもので、試聴の線とゲーム内 BGM の両方に効く。
+
+  // 設定画面が開いた。ゲーム内 BGM を伏せ、試聴だけが聞こえる状態にする。
+  // まだ線が無ければ、組まれたときに伏せた状態から始める。
+  beginAudition(): void {
+    this.paused = true;
+    this.ambient?.pause();
+  }
+
+
+  // 指定した曲を先頭から試聴する。AudioContext の unlock も最初のクリックで行う。
+  // 試聴の線は曲送りしないので、選んだ曲がそのまま鳴り続ける。
+  playAudition(index: number): void {
+    this.engine.unlock();
+    const ctx = this.engine.ctx;
+    if (!ctx || BGM_TRACKS.length === 0) return;
+    this.disposeAudition();
+    this.audition = new Conductor(ctx, this.ensureMasterGain(ctx), false);
+    this.audition.start(index);
+    this.syncPump();
+  }
+
+  // 試聴を止める。設定画面は開いたままなので、ゲーム中の BGM は伏せたまま。
+  stopAudition(): void {
+    this.disposeAudition();
+    this.syncPump();
+  }
+
+  // 設定画面が閉じた。試聴の線を畳み、ゲーム中の BGM を元へ戻す。
+  // 開いた時点で鳴っていなかった場合は伏せて戻すだけなので、無音のままになる。
+  endAudition(): void {
+    this.paused = false;
+    this.disposeAudition();
+    this.ambient?.resume();
+    this.syncPump();
+  }
+
+  // 試聴の線があれば畳む。
+  private disposeAudition(): void {
+    this.audition?.dispose(AUDITION_FADE_SEC);
+    this.audition = null;
   }
 }

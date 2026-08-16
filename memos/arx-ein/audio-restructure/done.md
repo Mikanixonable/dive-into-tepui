@@ -49,7 +49,7 @@ passes the SFX reference around.
 `Bgm.resume()` arrived with the settings view but had no caller, so stopping a track preview
 left the game silent for the rest of the run.
 
-**The rule implemented**: `SettingsView` snapshots `bgm.isPlaying` when it opens
+**The rule implemented**: `SettingsView` snapshots `bgm.isRunning` when it opens
 (`bgmPlayingAtOpen`), and on close calls `bgm.resume()` only if that snapshot was true and
 the BGM is stopped now — it restores exactly what the preview session broke, nothing more.
 
@@ -59,7 +59,7 @@ the BGM is stopped now — it restores exactly what the preview session broke, n
 | preview still playing at close | no restart; that track simply continues as the BGM |
 | BGM already off at open (run-end fade-out, title screen) | left alone — a decided run's silence is never resurrected |
 
-Also in this commit: `Bgm` gained a one-line `isPlaying` getter; each open starts a fresh
+Also in this commit: `Bgm` gained a one-line `isRunning` getter; each open starts a fresh
 preview session (the 再生中 highlight resets on close, so it cannot go stale against the
 5-minute rotation); and `DEVELOP/SPEC.md` §8's second bullet was corrected — it still
 described a long-gone "A minor, 8-bar loop, Am–F–G–Am" BGM instead of the actual phasing
@@ -409,6 +409,117 @@ four harnesses are unchanged, which is the important negative result — retirem
 scheduled sound. **The cut-note check itself was tested**: it first passed against a deliberately
 broken margin because its instrumentation had silently failed to apply, and now reports 190 cuts
 for that value. A harness never seen to fail proves nothing.
+
+
+## 13. `Conductor` — one class per continuous musical line
+
+Roadmap §2d step 3. Pure refactor: the ambient line only, no pause, no audition line.
+
+`Bgm` was doing two jobs that stop being one job the moment there are two independent musical
+lines. What moved out to `Conductor`: the current `TrackPlayback`, `trackIdx`/`trackStartTime`,
+track selection (`nextTrackIndex`), rotation timing, `openPlayback`, `retire`, and the constants
+that go with them (`START_DELAY_SEC`, `FADE_IN_SEC`, `TRACK_ROTATION_SEC`). What stayed on `Bgm`:
+the master gain, the one `setInterval` pump and `LOOKAHEAD_SEC`, the volume and its persistence,
+`autoStarted`, and the public API every caller already holds — `Launcher` and `SettingsView` are
+untouched.
+
+`Bgm.ambient` is `Conductor | null`, built lazily on first play, because a `Conductor` holds its
+`AudioContext` and there is none before `unlock()`. That mirrors `masterGain`'s existing laziness
+for the same reason. `autoStarted` stays on `Bgm` (decided with arx-ein): it is about the first
+user gesture, which is an app-level event, not a property of any one line.
+
+**`rotates` is still mutable, passed as `start(trackIdx, rotates)`.** With a single line,
+`playTrack` still has to pin the track it was asked for, so the policy cannot yet be fixed at
+construction — that happens in step 5, when the audition line makes it a per-line fact. Passing
+it as an argument does remove the write-then-overwrite (`start()` set it true and `playTrack()`
+set it false on the next line), so the smell is gone even though the field is not yet `readonly`.
+
+Verified: all five harnesses green **with their assertions unchanged**, and `check-rotation`
+reproduces the exact same track sequences as before the refactor — `[0]`, `[2,3,2]`, `[0,3,2]`,
+same seed, same choices, same rotation timing. That identity is the whole evidence for this step.
+
+One harness edit was needed and it is worth being precise about why it does not weaken that:
+`check-rotation` observes which track is playing by reading a private field, and that field moved.
+Re-pointing the probe from `bgm.trackIdx` to `bgm.ambient.currentTrackIndex` changes *how it
+reaches* the value, not *what it asserts*. Changing an expectation would have been the thing to
+distrust.
+
+
+## 14. `Conductor.pause()` / `resume()`, and the line's own gain
+
+Roadmap §2d step 4. Still unused — step 5 wires it — so nothing audible changed.
+
+Ducking needs a gain the line owns, which is the routing change step 3 deliberately deferred:
+`note -> noteGain -> panner -> playbackGain -> conductorGain -> masterGain`. **Three gain layers
+now, and they cannot be collapsed.** Each has a different writer for a different reason — user
+volume, this line ducking, this piece fading — and two writers on one `AudioParam` means the
+later call cancels the earlier one's shape. There is also a concrete failure if the line ducked
+through the *piece's* gain instead: rotation opens a new `TrackPlayback` at gain 1, so a paused
+line would come back un-ducked the moment its track changed.
+
+`pause()`/`resume()` are `setTargetAtTime` ramps to `DUCK_LEVEL` / 1 over `DUCK_FADE_SEC` (0.3 s).
+The line keeps being advanced while ducked, so it resumes wherever it would have been rather than
+where it left off — the interim recorded in roadmap §2a-1, upgradeable inside these two method
+bodies plus a `resumeAt` on `TrackPlayback`.
+
+New harness `check-pause.mjs` covers what is otherwise unreachable: the duck ramp, the restore
+ramp, and that ticking continues across both. It carries an `EXPECT_NOTES_WHILE_PAUSED` flag at
+the top — flip it to `false` when proper pause lands and the third assertion inverts, rather than
+deleting the check. Verified it can fail: flipped, it reports `202 notes over the paused 20s`
+against an expectation of zero.
+
+Two existing harnesses needed updating, both because the *structure* moved rather than the sound:
+
+- `compare-playback` asserts the routing chain by walking it, so it gained the `conductorGain`
+  hop. **Its note comparison was untouched and still reports 3745 identical notes** — that is the
+  part that would have caught an audible change, and it did not fire.
+- `count-leaks` was inferring how many playbacks existed from the gain count, which the new
+  permanent gain threw off (it started reporting a fractional leak). Rewritten around a stronger
+  invariant that needs no such arithmetic: **live persistent nodes must not grow with session
+  length.** 23 nodes built over 15 min and 86 over an hour, 9 live in both cases. That check
+  survives further layers without edits, which the old one would not have.
+
+
+## 15. The audition line — two `Conductor`s, and the bug goes away
+
+Roadmap §2d step 5, and the first behavioural change since the merge.
+
+`Bgm` now holds two lines. `ambient` is the gameplay music, built once and kept. `audition` is
+built by `playTrack` and destroyed by `stopAudition`/`endAudition`, with its own gain and its own
+chain to the master. `rotates` is a constructor argument on both, so it is a fact about a line
+rather than a flag anyone can write — **the old bug is now unrepresentable**, not fixed: the
+audition line has no way to reach gameplay's rotation policy, because it is a different object.
+
+What the player sees: opening the settings view ducks the gameplay music, auditioning is heard on
+its own line, closing destroys the audition and un-ducks gameplay. Stopping an audition leaves the
+panel silent, since gameplay stays ducked while it is open.
+
+`SettingsView` lost `bgmPlayingAtOpen` entirely. It existed because the view had to remember audio
+state the audio layer did not; pause/resume is symmetric, so a line that was silent at open is
+ducked and un-ducked back to silence with nothing to remember. The view now reports two events and
+holds no audio state. `Bgm.isRunning` went with it — it had no other reader, and unused API is not
+kept around.
+
+Two supporting changes fell out. The pump is now shared and lifecycle-managed by a private
+`syncPump()` — it runs while *any* line is sounding, rather than being started and cleared by
+`start`/`stop` directly, which no longer works when a line can be silent while another plays.
+And `Conductor.dispose(fadeSec)` fades, retires the piece, then disconnects the line's own gain
+once it goes quiet — the whole-line counterpart of §12's per-piece retirement.
+
+One deliberate consequence worth knowing: raising the volume from zero *inside* the settings view
+now starts the gameplay line ducked, so it is heard on close rather than immediately. The pause
+menu's slider is unaffected. That follows from the panel's premise — gameplay music is paused
+while it is open — and the master gain still applies to the audition line, so the slider is
+audible while previewing.
+
+Verified. `check-rotation` was rewritten (this is the step where changing an expectation is the
+point) and gained the two cases that pin the fix: **`ambient under audition` produces `[2,3,2]`,
+byte-identical to plain ambient** — the audition disturbs nothing — and `ambient after close`
+still rotates where the old code pinned it for the rest of the run. `count-leaks` gained an
+audition-cycle scenario, since the audition line is created and destroyed repeatedly and
+`Conductor.dispose()` was previously unexercised: **566 persistent nodes built over an hour of
+auditions, 9 still live** — the same 9 as ambient alone. Confirmed that check can fail by breaking
+the gain disconnect, which reports live nodes growing 24 -> 69.
 
 
 ## The two merges of `main` into the PR branch (`4e21f958`, then `78370b6b`)

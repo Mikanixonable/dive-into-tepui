@@ -49,7 +49,7 @@ export const BASE_DOCK_SLOTS: readonly BaseDockSlot[] = [
 
 // 収容中の艦のエントリ。parts は player.parts と同一参照(修理は艦へ直接反映される)。
 // hp/maxHp は艦一覧タブ表示用の集計値で、修理のたびに書き戻す。
-export interface DockedShipEntry {
+export interface DockedVesselEntry {
   readonly id: string;
   readonly name: string;
   hp: number;
@@ -62,7 +62,7 @@ export interface DockedShipEntry {
 export interface BaseState {
   money: number;
   inventory: AnyPart[];
-  dockedShips: DockedShipEntry[];
+  dockedVessels: DockedVesselEntry[];
 }
 
 const idAllocator = new EntityIdAllocator('base-');
@@ -80,7 +80,7 @@ export class Base extends GameEntity implements Controllable {
   public baseState: BaseState = {
     money: 100000,
     inventory: [],
-    dockedShips: []
+    dockedVessels: []
   };
 
   // --- Controllable 実装 ---
@@ -156,11 +156,12 @@ export class Base extends GameEntity implements Controllable {
 
     if ('saved' in init) {
       this.baseState.money = init.saved.money;
-      this.baseState.inventory = init.saved.inventory.map(partFromSaveData);
-      this.baseState.dockedShips = init.saved.dockedShips.map((shipData, idx) => {
+      this.baseState.inventory = (init.saved.inventory ?? []).map(partFromSaveData);
+      const savedVessels = init.saved.dockedVessels ?? init.saved.dockedShips ?? [];
+      this.baseState.dockedVessels = savedVessels.map((shipData, idx) => {
         const player = new Player(hud, worldSfx, scene, fx, markerManager, { saved: shipData, simTime: init.simTime });
-        const slotIndex = idx < C.BASE_MAX_SHIPS ? idx : 0;
-        this.attachDockedShipMesh(player, slotIndex);
+        const slotIndex = idx < C.BASE_MAX_VESSELS ? idx : 0;
+        this.attachDockedVesselMesh(player, slotIndex);
         return {
           id: player.id,
           name: player.name,
@@ -198,15 +199,15 @@ export class Base extends GameEntity implements Controllable {
 
   // 利用可能な空きスロット番号(0..3)を返す。満杯なら null。
   getAvailableSlotIndex(): number | null {
-    const occupied = new Set(this.baseState.dockedShips.map((s) => s.slotIndex));
-    for (let i = 0; i < C.BASE_MAX_SHIPS; i++) {
+    const occupied = new Set(this.baseState.dockedVessels.map((s) => s.slotIndex));
+    for (let i = 0; i < C.BASE_MAX_VESSELS; i++) {
       if (!occupied.has(i)) return i;
     }
     return null;
   }
 
   // 格納艦の 3D メッシュを基地ドックスロットへアタッチ表示する
-  attachDockedShipMesh(ship: Player, slotIndex: number): void {
+  attachDockedVesselMesh(ship: Player, slotIndex: number): void {
     const slot = BASE_DOCK_SLOTS[slotIndex] ?? BASE_DOCK_SLOTS[0]!;
     const shipObj = ship.renderObject;
     shipObj.visible = true;
@@ -222,7 +223,7 @@ export class Base extends GameEntity implements Controllable {
   }
 
   // 発進時、格納艦の 3D メッシュを基地ドックスロットから分離し、ワールド Scene へ復帰させる
-  detachDockedShipMesh(ship: Player): void {
+  detachDockedVesselMesh(ship: Player): void {
     const shipObj = ship.renderObject;
     if (shipObj.parent === this.renderObject) {
       this.renderObject.remove(shipObj);
@@ -305,8 +306,8 @@ export class Base extends GameEntity implements Controllable {
     }
     this.orbitLine.dispose();
     // 格納艦は entities.players から外れているため、ここでしか回収できない。
-    for (const entry of this.baseState.dockedShips) entry.player.dispose();
-    this.baseState.dockedShips = [];
+    for (const entry of this.baseState.dockedVessels) entry.player.dispose();
+    this.baseState.dockedVessels = [];
   }
 
   // セーブデータへ変換する。格納艦は player.serialize() に委ねる。
@@ -321,7 +322,7 @@ export class Base extends GameEntity implements Controllable {
       money: this.baseState.money,
       fuel: this.baseFuel,
       inventory: this.baseState.inventory.map(p => ({ ...p })),
-      dockedShips: this.baseState.dockedShips.map(entry => entry.player.serialize()),
+      dockedVessels: this.baseState.dockedVessels.map(entry => entry.player.serialize()),
       throttle: this.throttle.serialize(),
     };
   }

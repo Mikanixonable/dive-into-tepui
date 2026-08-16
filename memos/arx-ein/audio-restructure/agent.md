@@ -21,8 +21,10 @@ audio/
   audio-engine.ts          AudioContext lifecycle (unlock), shared noise buffer,
                            and the tone/noiseBurst primitive voices
   bgm/
-    bgm.ts                 conducts: which track, when, user volume (master gain),
-                           and the one lookahead scheduler pump
+    bgm.ts                 the app-facing window: user volume (master gain), the one
+                           lookahead pump, and the musical lines it advances
+    conductor.ts           one musical line: which track, when it gives way to the
+                           next, the piece sounding, and this line's own gain
     track-playback.ts      one sounding piece: its own gain, composer, step
                            position, and note -> WebAudio
     composer.ts            the note-generation seam. Names no WebAudio type
@@ -49,7 +51,7 @@ audio/
 Nothing else in the repo synthesizes audio. There are no audio-file assets and that is a
 deliberate design choice worth keeping (recorded in `DEVELOP/SPEC.md` §8).
 
-## Past — five pieces of work, all shipped
+## Past — what has shipped
 
 The whole of hedalu244's `memos/hedalu244/sfx_todo.md` "sfxとbgmの分離" plan is done and that
 section has been deleted from their memo. Details and rationale in [done.md](done.md).
@@ -61,21 +63,32 @@ section has been deleted from their memo. Details and rationale in [done.md](don
    Verified sound-identical over 54,240 scheduled notes; see [done.md](done.md) §4.
 5. the playback/generation split — `Bgm` controls playback, a `Composer` generates the
    notes. Same verification; see [done.md](done.md) §5.
+6. the `BgmTrack` union + a blank second composer, then `bgm/` sub-foldered into
+   `composers/` / `instruments/` / `tracks/`; see §10.
+7. the `Instrument` seam, which is also where per-instrument pan came from; see §11.
+8. discarded playbacks are disconnected rather than merely faded — 85 stranded audio nodes
+   an hour down to 8; see §12 and [disposal.md](disposal.md).
+9. `Conductor` extracted: one class per continuous musical line; see §13.
 
-## Present — nothing in flight
+Everything above is on `main`. PR #4 carried items 1–8 and was merged after being confirmed
+by ear.
 
-Branch `workspace5`, on top of `5ff773e4` (the current `main`, which brought the deferred
-rendering pipeline in). `npm run typecheck` green.
+## Present
 
-**Not reviewed by hedalu244 or mikanixonable yet**, and not smoke-tested by ear — see the
-"before handing off" list in [done.md](done.md).
+Branch `workspace5` on the shared repo (`origin` is Mikanixonable's; every contributor has a
+`workspaceN` branch there). `npm run typecheck` green, five harnesses green.
+
+Next is roadmap §2d step 4 — pause/resume on `Conductor`, by ducking (§2a-1) — then step 5,
+the audition line. **Step 5 is the first behavioural change since the merge**; steps 3 and 4
+are deliberately inert so that when behaviour does move, there is no ambiguity about which
+change moved it.
 
 ## Future — the tracks can now be made distinct
 
 Giving each track its own transposition plan, cadences and levels is now a pure data edit in
-`tracks/tracks.ts`, and it is the cheapest real improvement left. The stereo output bus is the
-highest-value structural one (the mic system needs it too). **arx-ein's planned conductor /
-composer architecture is recorded in [roadmap.md](roadmap.md) §2** — the `Composer` seam
-was named and placed to be its bottom layer, so read that before building anything above
-`Bgm`. The mic system is the biggest remaining piece but is **blocked on a design question
-hedalu244 raised themselves** — do not start it without asking.
+`tracks/tracks.ts`, and it is the cheapest real improvement left. **The two-line design
+(gameplay music and auditioning as independent `Conductor`s) is recorded in
+[roadmap.md](roadmap.md) §2a**, and it exists to keep auditioning from perturbing the
+adaptive-music state the gameplay line will carry — read it before building anything above
+`Conductor`. The mic system is the biggest remaining piece but is **blocked on a design
+question hedalu244 raised themselves** — do not start it without asking.

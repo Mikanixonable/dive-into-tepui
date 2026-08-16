@@ -120,9 +120,10 @@ export class MapContextActions {
     };
   }
 
-  // 右クリック位置の最寄り候補を探し、当たればその種別に応じたプロパティウィンドウを開いて消費する。
-  // マップ視点でなければ候補列(pickables.pickables)が更新されていないので何もしない。
-  handleRightClick(input: Input, simTime: number): void {
+  // 右クリック位置の最寄りの被選択物(天体・自艦・他艦・ノード等)のプロパティウィンドウを開く。
+  // 当たらなければ消費せず、handleEmptySpaceRightClick へ読み進める。
+  // ラベル衝突で非表示になった天体は、表示されている別のラベルの背後から拾わない。
+  handleMapRightClick(input: Input, simTime: number): void {
     if (!this.cameraSystem.overviewMode) return;
     input.takeRightClicks((p) => {
       const target = pickNearest(
@@ -604,7 +605,7 @@ export class MapContextActions {
         const activeShip = this.activePlayers.current;
         const isControlled = base && this.getControlledBase ? this.getControlledBase() === base : false;
         const subLabel = base
-          ? `基地 / 所持金: ${base.baseState.money.toLocaleString()} Cr / 格納船: ${base.baseState.dockedShips.length}隻`
+          ? `基地 / 所持金: ${base.baseState.money.toLocaleString()} Cr / 格納艦艇: ${base.baseState.dockedVessels.length}隻`
           : '基地';
 
         const dockItems: MenuItem<MenuAction>[] = [];
@@ -865,7 +866,7 @@ export class MapContextActions {
     if (!base) return [];
     const rows: PropertyRow[] = [
       { key: 'money', label: '所持金', value: `${base.baseState.money.toLocaleString()} Cr` },
-      { key: 'ships', label: '格納艦数', value: `${base.baseState.dockedShips.length}` },
+      { key: 'vessels', label: '格納艦艇数', value: `${base.baseState.dockedVessels.length}` },
     ];
     if (player) rows.push({ key: 'dist', label: '距離', value: fmtDist(len(sub(base.state.r, player.state.r))) });
     rows.push(...this.orbitRows(base, attractors));
