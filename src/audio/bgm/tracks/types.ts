@@ -11,7 +11,7 @@ import { InstrumentDef } from '../instruments/types';
 // どの Composer も音符を出す以上それを鳴らす楽器が要るため。
 export type BgmTrack =
   | { kind: 'phasing'; name: string; instruments: InstrumentDef[]; params: PhasingParams }
-  | { kind: 'sketch'; name: string; instruments: InstrumentDef[]; params: SketchParams };
+  | { kind: 'antipode'; name: string; instruments: InstrumentDef[]; params: AntipodeParams };
 
 // ================================================================== Composer params
 
@@ -81,10 +81,21 @@ export interface PhasingParams {
   sparkle: SparkleLayer | null;
 }
 
-// ---------------------------------------------------------------- sketch-composer
+// -------------------------------------------------------------- antipode-composer
 
-// これから設計する2つ目のアルゴリズム(composers/sketch-composer.ts)のパラメータ。
+// 一定ステップごとに和音を短く打ち込む層。構成音は scale のインデックスで与える。
+export interface AntipodeStabLayer {
+  everySteps: number;
+  notes: number[]; // 和音の構成音インデックス
+  octaveOffset: number;
+  durationSec: number;
+  instrument: string;
+}
+
+// 2つ目の作曲アルゴリズム(composers/antipode-composer.ts)のパラメータ。
 // 必要なフィールドは音を書きながら足す。
-export interface SketchParams {
+export interface AntipodeParams {
   stepDur: number; // 1ステップの秒数
+  scale: number[]; // Hz。層が音階インデックスで引く音集合
+  stab: AntipodeStabLayer;
 }
