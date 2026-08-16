@@ -780,7 +780,8 @@ export class MapContextActions {
         shortcut: showShortcuts ? it.shortcut : undefined,
         selected: it.selected, keepOpen: it.keepOpen,
       }));
-    return { title: header?.label ?? target.name, subtitle: header?.subLabel, items };
+    const subtitle = target.ownerName ? `所属: ${target.ownerName}` : header?.subLabel;
+    return { title: header?.label ?? target.name, subtitle, items };
   }
 
   // 種別ごとのプロパティ行。値の導出は sync フェーズで毎フレーム呼び直す(表示専用のため)。
@@ -929,7 +930,9 @@ export class MapContextActions {
   private apsisRows(target: MapPickable, attractors: readonly Attractor[], simTime: number): PropertyRow[] {
     const center = strongestAttractor(target.pos, attractors);
     const alt = len(sub(target.pos, center.state.r)) - center.radius;
-    const rows: PropertyRow[] = [{ key: 'alt', label: '高度', value: fmtDist(alt) }];
+    const rows: PropertyRow[] = [];
+    if (target.ownerName) rows.push({ key: 'owner', label: '所属軌道', value: target.ownerName });
+    rows.push({ key: 'alt', label: '高度', value: fmtDist(alt) });
     if (target.time !== undefined) rows.push({ key: 'time', label: '通過まで', value: `T+${fmtTime(target.time - simTime)}` });
     return rows;
   }
@@ -939,7 +942,9 @@ export class MapContextActions {
     const targetName = target.kind === 'relnode'
       ? (this.navTarget.name ?? '対象')
       : celestialBodyName(strongestAttractor(target.pos, attractors).id);
-    const rows: PropertyRow[] = [{ key: 'target', label: '対象', value: targetName }];
+    const rows: PropertyRow[] = [];
+    if (target.ownerName) rows.push({ key: 'owner', label: '所属軌道', value: target.ownerName });
+    rows.push({ key: 'target', label: '対象', value: targetName });
     if (target.time !== undefined) rows.push({ key: 'time', label: '通過まで', value: `T+${fmtTime(target.time - simTime)}` });
     return rows;
   }
