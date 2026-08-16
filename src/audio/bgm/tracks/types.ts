@@ -1,7 +1,8 @@
 // トラック宣言の型。1曲がどの Composer で鳴るか(kind)と、その Composer が食うパラメータ
-// (params)、そして音符を実際の響きにする楽器(instruments)の形をここで定める。
-// 曲そのもののデータは tracks.ts。
-// Composer や Instrument を増やすときは、対応する区画へ params 型を書き、union へ1行加える。
+// (params)の形をここで定める。曲そのもののデータは tracks.ts、
+// 音符を実際の響きにする楽器の宣言は ../instruments/types.ts。
+// Composer を増やすときは、対応する区画へ params 型を書き、union へ1行加える。
+import { InstrumentDef } from '../instruments/types';
 
 // ============================================================================ 共通
 
@@ -10,15 +11,9 @@
 // どの Composer も音符を出す以上それを鳴らす楽器が要るため。
 export type BgmTrack =
   | { kind: 'phasing'; name: string; instruments: InstrumentDef[]; params: PhasingParams }
-  | { kind: 'sketch'; name: string; instruments: InstrumentDef[]; params: SketchParams };
-
-// 1つの楽器の宣言。id は Composer が出す音符から参照される名前で、曲の中で一意。
-export type InstrumentDef =
-  | { kind: 'tone'; id: string; params: ToneParams };
+  | { kind: 'antipode'; name: string; instruments: InstrumentDef[]; params: AntipodeParams };
 
 // ================================================================== Composer params
-
-// --------------------------------------------------------------- phasing-composer
 
 // 一定ステップごとに値を切り替える循環。everySteps ごとに values を1つ進み、末尾で先頭へ戻る。
 // values の長さ × everySteps がこの循環の一巡で、曲全体の周期はこれらの最小公倍数になる。
@@ -26,6 +21,8 @@ export interface PhaseCycle {
   values: number[];
   everySteps: number;
 }
+
+// --------------------------------------------------------------- phasing-composer
 
 // パルス声部へ重ねる倍音。整数比からわずかにずらすと、うなりが厚みになる。
 export interface VoiceHarmonic {
@@ -84,22 +81,32 @@ export interface PhasingParams {
   sparkle: SparkleLayer | null;
 }
 
-// ---------------------------------------------------------------- sketch-composer
+// -------------------------------------------------------------- antipode-composer
 
-// これから設計する2つ目のアルゴリズム(composers/sketch-composer.ts)のパラメータ。
-// 必要なフィールドは音を書きながら足す。
-export interface SketchParams {
-  stepDur: number; // 1ステップの秒数
+// 一定ステップごとに和音を短く打ち込む層。構成音は scale のインデックスで与える。
+export interface AntipodeStabLayer {
+  everySteps: number;
+  repeatFor: number; // 同じ和音を何回続けて鳴らすか
+  chords: number[][]; // 和音の構成音インデックス
+  octaveOffset: number;
+  durationSec: number;
+  instrument: string;
 }
 
-// ================================================================ Instrument params
+// 一定ステップごとに notes を1つずつなぞる音型の層。stab と違い、そのステップでは
+// 1音だけを鳴らす。長さは指定せず、次の音が来るまでの間隔(stepDur * everySteps)を使う。
+export interface AntipodeArpLayer {
+  everySteps: number;
+  notes: number[]; // 音型の構成音インデックス。1周期でここを先頭から順になぞる
+  octaveOffset: number;
+  instrument: string;
+}
 
-// --------------------------------------------------------------- tone-instrument
-
-// 発振器1つを包絡で鳴らすだけの楽器(instruments/tone-instrument.ts)のパラメータ。
-export interface ToneParams {
-  wave: OscillatorType;
-  level: number; // velocity 1 のときの音量
-  attackSec: number;
-  pan: number; // -1(左)〜 1(右)
+// 2つ目の作曲アルゴリズム(composers/antipode-composer.ts)のパラメータ。
+export interface AntipodeParams {
+  stepDur: number; // 1ステップの秒数
+  scale: number[]; // Hz。層が音階インデックスで引く音集合
+  transpose: PhaseCycle; // 音階ステップ単位の移調
+  stab: AntipodeStabLayer;
+  arps: AntipodeArpLayer[]; // 各層が自分の everySteps で独立に進む。0個でも鳴らせる
 }
