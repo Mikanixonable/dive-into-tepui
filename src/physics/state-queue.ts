@@ -74,17 +74,6 @@ export class StateQueue {
     this.deque.deleteRightN(Math.max(0, this.deque.size - Math.max(keep, minCount)));
   }
 
-  // 直近 n 件までに切り詰める(古い順から捨てる)。
-  capCount(n: number): void {
-    if (this.deque.size > n) this.deque.deleteRightN(this.deque.size - n);
-  }
-
-  // t 以上のサンプルをすべて捨てる。不連続な差し替え(DynamicTrajectory.reset)で、直前まで
-  // 「これから訪れるはずだった未来」として積まれていたサンプルを無効化するために使う。
-  discardFrom(t: number): void {
-    this.deque.deleteLeftN(this.bisect(t));
-  }
-
   // 最新のサンプル1件だけを捨てる。空なら何もしない。
   discardNewest(): void {
     if (!this.deque.empty) this.deque.deleteLeftN(1);
