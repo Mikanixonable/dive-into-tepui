@@ -8,6 +8,14 @@ import { metersPerPixelFromTanHalfFov, MIN_DEPTH } from '../physics/projection';
 
 export type CurveDash = { readonly dashSize: number; readonly gapSize: number };
 
+// 線の見た目を決める値。
+export type LineStyle = {
+  readonly color: string | number;
+  readonly opacity: number;
+  readonly renderOrder: number;
+  readonly dash?: CurveDash;
+};
+
 export type CurveOptions = {
   readonly color: number | string;
   readonly opacity?: number;
