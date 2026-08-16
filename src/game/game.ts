@@ -18,6 +18,7 @@ import { DisplayWindowManager } from './display-window-manager';
 import { PlanGuide } from './plan/plan-guide';
 import { SimSpeedManager } from './sim-speed-manager';
 import { EntityManager } from './simulation/entity-manager';
+import { EntityLineManager } from './entity-line-manager';
 import { Simulator } from './simulation/simulator';
 import { Predictor } from './simulation/predictor';
 import { Input } from './input/input';
@@ -90,6 +91,7 @@ export class Game {
   readonly targeter: Targeter;
   readonly navTarget: NavTarget;
   readonly entities: EntityManager;
+  private readonly entityLines: EntityLineManager;
   readonly simulator: Simulator;
   private readonly predictor: Predictor;
   private readonly nanWatchdog: NanWatchdog;
@@ -131,6 +133,7 @@ export class Game {
     this.markerManager = new MarkerManager(this._hud.layers.marker, this._hud.svgOverlay);
 
     this.entities = new EntityManager(this._scene, this._hud, this._worldSfx, this.markerManager, initialSave);
+    this.entityLines = new EntityLineManager(this.entities);
     this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, this.ephemeris, this.entities);
 
     this.cameraSystem = new CameraSystem(
@@ -304,6 +307,12 @@ export class Game {
     this.sections.enter(SECTION.pointer);
     this.handlePointerInput();
     this.sections.exit(SECTION.pointer);
+
+    // 表示可否・ターゲット・操作艦・ビューがこのフレームの確定値になった後に判断する。
+    this.entityLines.update(
+      this.player, this.targeter.aliveTarget, this.targeter.aliveSecondaryTarget,
+      overviewMode, displayWindow, this.mapPickables.visibilityPolicy,
+    );
   }
 
   // 自機の行動 → ステージ → 積分 → 予測 → エフェクトの順に1フレーム進める
@@ -467,10 +476,6 @@ export class Game {
     );
     this.entities.sync(fo, displayTime);
     this.entities.applyVisibility(visibilityPolicy, player);
-    this.entities.syncOrbitLines(
-      overviewMode, fo, this.cameraSystem.activeCamera, displayAttractors, visibilityPolicy,
-      this.targeter.aliveTarget, this.targeter.aliveSecondaryTarget, displayWindow, this.ephemeris,
-    );
     this.entities.syncMarkers(this.cameraSystem, displayTime, player?.state.r ?? null, displayAttractors, visibilityPolicy);
 
     this.entities.effects.sync(fo, this.cameraSystem.activeCamera, this.cameraSystem.zoomActive);
@@ -495,11 +500,7 @@ export class Game {
     this.editor.sync(this.cameraSystem, simTime, fo);
 
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
-    this.entities.syncPlayerTrajectoryLines(
-      player, displayWindow, overviewMode, this.ephemeris, fo,
-      this.cameraSystem.activeCamera, displayAttractors, visibilityPolicy,
-      this.targeter.aliveTarget, this.targeter.aliveSecondaryTarget,
-    );
+    this.entityLines.sync(displayWindow, fo, this.cameraSystem.activeCamera, displayAttractors, this.ephemeris);
 
     if (player) {
       this.touchControls?.syncModeButtons(
