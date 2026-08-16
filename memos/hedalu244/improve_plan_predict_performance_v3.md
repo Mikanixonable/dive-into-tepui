@@ -219,16 +219,20 @@ CDP ドライバで stage1・マップビュー・ノード1個を作ってか�
 - **状態量**(その瞬間の在庫): エンティティ数・`mapMode`・`warp`・`gravitySources`。スナップショットで正しい。
 - **累積カウンタ**: 暦キャッシュの hit/miss。`PerfMeter` が前回 flush との差を取っており正しい。
 - **フレームあたりの率**: `predicted` / `predictComplete` / `predictDiscarded` / `predictorSteps`
-  (`Predictor.update` の冒頭で毎フレーム 0 にリセット)、`simSubsteps` / `orbitSteps`
-  (`Simulator.advance` の冒頭で同じ)、`planArcs` / `planSteps`(`PlanPath.update` の冒頭で同じ)。
-  **この8項目は、500ms ごとに1フレームだけ覗いた値である。**
+  (`Predictor.update` の冒頭で毎フレーム 0 にリセット)、`simSubsteps` / `orbitSteps` /
+  `gravitySources`(`Simulator.advance` の冒頭で同じ)、`planArcs` / `planSteps`
+  (`PlanPath.update` の冒頭で同じ)。
+  **この9項目は、500ms ごとに1フレームだけ覗いた値だった。**
 
 影響: 第2章 A-4 の「6体全部が**毎フレーム**破棄され、1体も完成しない」は、実際には
 「覗いたそのフレームでは 6/0 だった」までしか言えていない。`plan-arcs` が常に 2 という観測も同様。
-今回の実測1では、まさにこの8項目のうち2つ(`planArcs`/`planSteps`)がフレームごとに 0 と
+今回の実測1では、まさにこの9項目のうち2つ(`planArcs`/`planSteps`)がフレームごとに 0 と
 212/424 を往復していることが分かった。**平均でも最大でもない値を読んでいたことになる。**
 
-A-4 に手を付ける前に、ここは `avg / max` 集計へ直す必要がある(第4段の前提)。
+**対応済み** — 9項目を `RATE_COUNTS` の表に集め、ms 系と同じ `PhaseStats` へ毎フレーム積んで
+`avg / max` で出すようにした。`record` が `perfCounts()` を1フレームに1回だけ解決し、解決済みの
+`PerfCounts` を `flush` へ渡す。行とグループの並びは変えていない。
+**以後の計測は、この形で取り直した値を基準にする。**
 
 ## A-0: 積分がいまも最大の単一項目(未着手)
 
@@ -362,11 +366,14 @@ A-4 が残っている以上、これが次に効く。範囲 (i)(予測線を�
 **順序は「測れるようにする → 効果が大きい順 → 正しさに関わる判断」。**
 第0段(プローブの繰り返し)は完了済み。
 
-### 第0.5段: フレーム率8項目の集計を直す
+### 第0.5段(完了): フレーム率9項目の集計を直す
 
 `predicted` / `predictComplete` / `predictDiscarded` / `predictorSteps` / `simSubsteps` /
-`orbitSteps` / `planArcs` / `planSteps` を、ms 系と同じく毎フレーム積んで `avg / max` で出す
-(第2章「計測環境」)。これが無いと第1段の効果も A-4 の実態も読めない。
+`orbitSteps` / `gravitySources` / `planArcs` / `planSteps` を、ms 系と同じく毎フレーム積んで
+`avg / max` で出すようにした(第2章「計測環境」)。これが無いと第1段の効果も A-4 の実態も読めない。
+
+**次にベースラインを取り直すときは、この形で 6条件 × 5ラウンドを走らせ直す必要がある**
+— 上の表に載っている率の値はすべて旧・スナップショット読みなので、新しい値と直接は比べられない。
 
 ### 第1段: 高ワープでの毎フレーム全再積分を止める 【判断1(ii) 承認後】
 
