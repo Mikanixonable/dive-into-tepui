@@ -155,7 +155,7 @@ function buildSvgOverlay(root: HTMLElement): SVGSVGElement {
 // 常設の情報パネル(VESSEL/ORBIT/TARGET/CONTACTS)を左右のドックへ組む。左右レールの
 // 収納トグルと各 PanelShell の折りたたみは、現在ビューの永続状態を利用する。
 function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
-  const status = new PanelShell(rightRail, 'hud-status', 'Vessel');
+  const status = new PanelShell(rightRail, 'hud-vessel-status', 'Vessel');
   configureCombatPanel(status);
   status.body.innerHTML = `
     <dl class="metric-list">
@@ -245,7 +245,7 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
       <p class="target-help">軌道要素は右クリックで表示</p>
     </div>`;
 
-  const enemies = new PanelShell(rightRail, 'hud-enemies', 'Contacts', isCompactViewport());
+  const enemies = new PanelShell(rightRail, 'hud-enemies', 'Enemies', isCompactViewport());
   configureCombatPanel(enemies);
   const count = document.createElement('span');
   count.className = 'panel-count';
@@ -272,7 +272,7 @@ function buildMapScale(root: HTMLElement): void {
 
 // 画面全体のグローバルステータス(MET・時間加速・NODE WARP)を組む。
 function buildGlobalStatus(root: HTMLElement): void {
-  const bar = createHudElement('section', 'hud-globalstatus', root);
+  const bar = createHudElement('section', 'hud-simulation-status', root);
   bar.setAttribute('aria-label', 'Mission status');
   bar.innerHTML = `
     <span class="k">Mission time</span><output class="v" data-id="met">—</output>
