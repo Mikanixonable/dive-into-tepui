@@ -209,8 +209,8 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud .mk-bearing-triangle .sym { font-size: var(--glyph-2-3); }
 #hud .mk-ally-dir .sym { font-size: var(--glyph-1-3); }
 .mk-boresight { color: var(--text-strong); font-size: var(--glyph-boresight); }
-#mk-bore .sym { width: 48px; height: 48px; }
-#mk-bore .lbl { top: -14px; left: 19px; transform: none; font-size: var(--font-xxs); letter-spacing: .4px; color: var(--text-dim); text-shadow: 0 0 3px var(--bg); }
+.mk-boresight .sym { width: 48px; height: 48px; }
+.mk-boresight .lbl { top: -14px; left: 19px; transform: none; font-size: var(--font-xxs); letter-spacing: .4px; color: var(--text-dim); text-shadow: 0 0 3px var(--bg); }
 .mk-target { color: var(--accent); }
 .mk-secondary-target { color: var(--accent-secondary); }
 .mk-enemy { color: var(--text-strong); }
@@ -230,7 +230,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 .mk-self { color: ${C.COLOR_MARKER_SELF}; }
 .mk-planet-nearby-label .lbl { margin-top: 18px; font-size: var(--font-xxs); white-space: nowrap; }
 .mk-ammo { color: var(--accent-soft); text-shadow: 0 0 6px color-mix(in srgb, var(--accent-soft) var(--glow-strong), transparent), 0 0 3px var(--bg); }
-#mk-bore .lbl { top: auto; left: 100%; bottom: 100%; margin: 0 0 var(--space-1) var(--space-3); white-space: pre; text-align: left; font-size: var(--font-xxs); line-height: 1.2; }
+.mk-boresight .lbl { top: auto; left: 100%; bottom: 100%; margin: 0 0 var(--space-1) var(--space-3); white-space: pre; text-align: left; font-size: var(--font-xxs); line-height: 1.2; }
 .mk-planned { color: ${C.COLOR_MARKER_PLANNED}; text-shadow: 0 0 6px color-mix(in srgb, ${C.COLOR_MARKER_PLANNED} var(--glow-strong), transparent), 0 0 3px var(--bg); }
 .mk-apsis { color: ${C.COLOR_MARKER_PLANNED}; text-shadow: 0 0 6px color-mix(in srgb, ${C.COLOR_MARKER_PLANNED} var(--glow-strong), transparent), 0 0 3px var(--bg); }
 .mk-impact { color: var(--danger); text-shadow: 0 0 6px color-mix(in srgb, var(--danger) var(--glow-strong), transparent), 0 0 3px var(--bg); }
