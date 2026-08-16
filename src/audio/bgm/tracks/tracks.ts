@@ -357,4 +357,28 @@ export const BGM_TRACKS: BgmTrack[] = [
       },
     },
   },
+  {
+    kind: 'antipode',
+    name: 'Madrid-Weber (sketch)',
+    instruments: [
+      { kind: 'unison', id: 'stab', params: {
+        wave: 'sawtooth', voices: 3, detuneCents: 8, level: 0.2, attackSec: 0.01,
+        filterOptions: { type: 'lowpass', frequency: 900, Q: 0.8 }, pan: 0 } },
+    ],
+    params: {
+      stepDur: 0.1,
+      scale: [146.83, 155.56, 196, 220, 233.08, 293.66, 311.13, 392], // D3, D#3, G3, A3, A#3, D4, D#4, G4
+      transpose: {
+        values: [-1, 3, 0],
+        everySteps: 8
+      },
+      stab: {
+        everySteps: 3,
+        chords: [[0, 1, 4], [2, 3, 5]],
+        octaveOffset: 1,
+        durationSec: 0.9,
+        instrument: 'stab'
+      },
+    },
+  },
 ];
