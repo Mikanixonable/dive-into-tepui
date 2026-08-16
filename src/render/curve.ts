@@ -5,17 +5,7 @@
 // THREE.Vector3/THREE.Camera と数値だけ。
 import * as THREE from 'three/webgpu';
 import { metersPerPixelFromTanHalfFov, MIN_DEPTH } from '../physics/projection';
-
-// 破線パターン。dashSize/gapSize は sample が返す座標系での実距離 [m]。
-export type CurveDash = { readonly dashSize: number; readonly gapSize: number };
-
-// 線の見た目を決める値。
-export type LineStyle = {
-  readonly color: string | number;
-  readonly opacity: number;
-  readonly renderOrder: number;
-  readonly dash?: CurveDash;
-};
+import type { LineStyle } from './line-style';
 
 export type CurveOptions = {
   readonly style: LineStyle;
