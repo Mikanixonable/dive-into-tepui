@@ -9,7 +9,7 @@ export class CombatHudController {
 
   public sync(game: Game, attractors: readonly Attractor[]): void {
     this.hud.globalStatusBar.sync(game);
-    this.hud.statusPanel.sync(game);
+    this.hud.vesselPanel.sync(game);
     this.hud.orbitPanel.sync(game, attractors);
     this.hud.targetPanel.sync(game, attractors);
     this.hud.contactsPanel.sync(game);

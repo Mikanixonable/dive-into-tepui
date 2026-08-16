@@ -34,7 +34,7 @@ interface RadiatorButtonDom {
   lastFillColor: string;
 }
 
-export class StageStatusPanel {
+export class StatusPanel {
   private readonly panel: HTMLElement;
   private readonly leftText: HTMLElement;
   private readonly leftWidgets: HTMLElement;

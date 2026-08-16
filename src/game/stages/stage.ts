@@ -5,7 +5,7 @@ import { Enemy } from '../game-entity/enemy';
 import { Player, type PlayerInit } from '../player/player';
 import { Logistics } from './stage-utils/logistics';
 import { ScoreCounter } from './stage-utils/score-counter';
-import { StageStatusPanel } from './stage-utils/stage-status-panel';
+import { StatusPanel } from './stage-utils/status-panel';
 import { EffectsSystem } from '../vfx/effects-system';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
@@ -114,7 +114,7 @@ export abstract class Stage {
 
   readonly scoreCounter: ScoreCounter;
   protected readonly logistics: Logistics;
-  private readonly statusPanel: StageStatusPanel;
+  private readonly statusPanel: StatusPanel;
 
   protected readonly _hud: Hud;
   protected readonly _worldSfx: WorldSfx;
@@ -160,7 +160,7 @@ export abstract class Stage {
     this._phase = saved?.phase ?? 'playing';
     this.restored = saved !== undefined;
     this.logistics = new Logistics(hud, worldSfx, uiSfx, scene, entities, markerManager, saved?.logistics);
-    this.statusPanel = new StageStatusPanel(hud.combatRoot);
+    this.statusPanel = new StatusPanel(hud.combatRoot);
   }
 
   // 新規開始なら初期配置・ブリーフィングを行う。具象ステージは自分のコンストラクタの

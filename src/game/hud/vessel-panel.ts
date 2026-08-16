@@ -17,7 +17,7 @@ const SYNC_INTERVAL_MS = 100;
 
 const THROTTLE_KEYS: readonly KeyBinding[] = [K.throttleLow, K.throttleMid, K.throttleHigh, K.throttleMax];
 
-export class StatusPanel {
+export class VesselPanel {
   private nextSyncAt = 0;
   private input: Input | null = null;
   private followButton: Button | null = null;
