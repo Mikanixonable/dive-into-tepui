@@ -43,7 +43,7 @@ export class EquatorNodeMarkerPair {
   // 軌道面が赤道面とほぼ一致する場合は何も出さない。位置は sample 時刻で bake し displayTime で
   // un-bake して frame へ変換する。
   update(
-    _frame: ReferenceFrame, displayTime: number, ephemeris: Ephemeris,
+    frame: ReferenceFrame, displayTime: number, ephemeris: Ephemeris,
     state: KinematicState = this.owner.state, samples: readonly KinematicState[] | null = null,
   ): void {
     this.icons = [];
@@ -53,12 +53,9 @@ export class EquatorNodeMarkerPair {
     if (!eqNormal) return;
 
     // un-bake は表示時刻に固定なので、両交点で同じ変換を使い回す。
-    // 中心天体の座標系を使う(軌道楕円は中心天体固定で描かれるため、UIの基準天体が別の天体でも
-    // 昇降点が軌道から乖離しないようにする)。
-    const centerFrame = ephemeris.frameOf(center.id, null);
-    const unbakeTf = ephemeris.frameTransformAt(centerFrame, displayTime, this.attractors);
+    const unbakeTf = ephemeris.frameTransformAt(frame, displayTime, this.attractors);
     const toDisplay = (r: Vec3, t: number): Vec3 =>
-      toInertialPoint(unbakeTf, toFramePoint(ephemeris.frameTransformAt(centerFrame, t, this.attractors), r));
+      toInertialPoint(unbakeTf, toFramePoint(ephemeris.frameTransformAt(frame, t, this.attractors), r));
 
     const crossings = samples
       ? this.sampledCrossings(samples, center, eqNormal)
