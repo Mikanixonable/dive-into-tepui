@@ -436,8 +436,8 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
   - entities.applyVisibility(visibilityPolicy, player) // 天体クラス別トグルに応じた自機・敵・弾薬・基地のメッシュ表示。visibilityPolicy が null(戦闘ビュー)のときは非表示扱いを一切かけない
     - [visibilityPolicy] 自機・敵・弾薬・基地それぞれ、その種別の category が admit しなければ renderObject.visible=false
   - entities.syncOrbitLines(overviewMode, fo, camera, displayAttractors, visibilityPolicy, targeter.aliveTarget, targeter.aliveSecondaryTarget) // 敵・基地それぞれの軌道線を表示要否ごと同期する
-    - [entities.enemies ごと] show = overviewMode かつ生存かつ visibilityPolicy が admit する orbit かつ第一・第二ターゲットのどちらでもない → orbitLine.setDisplayEnabled(show)、show のときだけ enemy.syncOrbitLine(fo, camera, attractors)(中心天体は strongestAttractor(enemy.state.r, attractors))
-    - [entities.bases ごと] show = overviewMode かつ visibilityPolicy が admit する orbit → orbitLine.setDisplayEnabled(show)、show のときだけ base.syncOrbitLine(fo, camera, attractors)
+    - [entities.enemies ごと] show = overviewMode かつ生存かつ visibilityPolicy が admit する orbit かつ第一・第二ターゲットのどちらでもない → show なら showOrbitLine() + enemy.syncOrbitLine(fo, camera, attractors)(中心天体は strongestAttractor(enemy.state.r, attractors))、false なら hideOrbitLine()(線そのものを捨てる)
+    - [entities.bases ごと] show = overviewMode かつ visibilityPolicy が admit する orbit → show なら showOrbitLine() + base.syncOrbitLine(fo, camera, attractors)、false なら hideOrbitLine()(線そのものを捨てる)
   - entities.syncMarkers(cameraSystem, displayTime, player?.state.r ?? null, visibilityPolicy) // ammoPickups/bases の各 marker?.sync。displayState(displayTime) → [overviewMode] headingDeg(ds.r, ds.v) → set('entity-<id>', 'mk-ammo'|'mk-base', '▲', rotationDeg) / [!overviewMode] set('entity-<id>', 種別ごとの字形) + setBearing('entity-<id>-bearing')。ラベルは name + viewerPos があれば距離
   - effects.sync(fo, camera, cameraSystem.zoomActive) → flashEffectManager.syncFlashEffects()
     - pool.beginFrame() → (生存中のフラッシュごとに transform へ位置/スケール/カメラ正対回転を書き、color = baseColor×opacity で push) → pool.endFrame() // 寿命・移流は update フェーズで済んでいる。opacity には zoomActive かつ dimsInGunsight のフラッシュだけ ZOOM_MUZZLE_FLASH_SCALE が掛かる
