@@ -233,8 +233,8 @@ export abstract class Ship extends GameEntity {
   public hpMarkerSvg(): string {
     const segments = Math.max(3, Math.round(this.maxHp / 3) * 3);
     const lit = Math.max(0, Math.min(segments, Math.round((this.hp / this.maxHp) * segments)));
-    // 正三角形から、後部がV字にへこんだ矢尻シルエット(12,2 -> 21,20 -> 12,16 -> 3,20)。
-    const points: [number, number][] = [[12, 2], [21, 20], [12, 16], [3, 20]];
+    // 後部がV字にへこんだ鋭角矢尻シルエット(3/5角度: 12,1.5 -> 17.5,21 -> 12,16.5 -> 6.5,21)。
+    const points: [number, number][] = [[12, 1.5], [17.5, 21], [12, 16.5], [6.5, 21]];
     const lines: string[] = [];
     const emit = (i: number, j: number, k: number, a: number, b: number): void => {
       if (b <= a) return;
@@ -261,20 +261,26 @@ export abstract class Ship extends GameEntity {
     return `<svg viewBox="0 0 24 24" width="24" height="24" aria-label="HP ${Math.max(0, this.hp)} / ${this.maxHp}">${lines.join('')}</svg>`;
   }
 
-  // 進行方向へ回転させても崩れない HP 表現。後部が凹んだ矢尻の外形と、底辺からの塗り高さで
-  // 残HP比を示す。敵機は isEnemy=true で中抜き(アウトライン)スタイルにする。
+  // 進行方向へ回転させても崩れない HP 表現。後部が凹んだ鋭角矢尻の外形と、底辺からの塗り高さで
+  // 残HP比を示す。味方・自機は単色塗りつぶし(fill-opacity: 1)、敵機は中抜きスタイル。
   public headingHpMarkerSvg(isEnemy = false): string {
     const ratio = this.maxHp > 0 ? Math.max(0, Math.min(1, this.hp / this.maxHp)) : 0;
-    const apexY = 2;
-    const baseY = 20;
+    const apexY = 1.5;
+    const baseY = 21;
     const fillTopY = (baseY - ratio * (baseY - apexY)).toFixed(2);
     const clipId = `hpfill-${this.name}`;
-    const pts = '12,2 21,20 12,16 3,20';
-    const fillOpacity = isEnemy ? '0.2' : '0.65';
+    const pts = '12,1.5 17.5,21 12,16.5 6.5,21';
+    if (isEnemy) {
+      return `<svg viewBox="0 0 24 24" width="24" height="24" aria-label="HP ${Math.max(0, this.hp)} / ${this.maxHp}">` +
+        `<clipPath id="${clipId}"><rect x="0" y="${fillTopY}" width="24" height="24"/></clipPath>` +
+        `<polygon points="${pts}" fill="currentColor" fill-opacity="0.2" clip-path="url(#${clipId})"/>` +
+        `<polygon points="${pts}" fill="none" stroke="currentColor" stroke-width="1.8"/>` +
+        `</svg>`;
+    }
     return `<svg viewBox="0 0 24 24" width="24" height="24" aria-label="HP ${Math.max(0, this.hp)} / ${this.maxHp}">` +
       `<clipPath id="${clipId}"><rect x="0" y="${fillTopY}" width="24" height="24"/></clipPath>` +
-      `<polygon points="${pts}" fill="currentColor" fill-opacity="${fillOpacity}" clip-path="url(#${clipId})"/>` +
-      `<polygon points="${pts}" fill="none" stroke="currentColor" stroke-width="1.8"/>` +
+      `<polygon points="${pts}" fill="currentColor" fill-opacity="1" clip-path="url(#${clipId})"/>` +
+      `<polygon points="${pts}" fill="none" stroke="currentColor" stroke-width="1.5"/>` +
       `</svg>`;
   }
 
