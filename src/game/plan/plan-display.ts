@@ -82,7 +82,7 @@ export class PlanDisplay {
   // 計画折れ線を再積分し、表示時刻のゴースト位置と近地点・遠地点アイコンを求め直す。
   // 起点が null のときは何も求めない — 出さない計画の位置は持たない。
   update(
-    planData: PlanData | null, displayWindow: DisplayWindow, attractorProvider: PlanAttractorProvider,
+    planData: PlanData | null, displayWindow: DisplayWindow, attractorProvider: PlanAttractorProvider, ownerName?: string,
   ): void {
     if (planData === null) {
       this.ghost = null;
@@ -98,7 +98,7 @@ export class PlanDisplay {
       displayWindow.duration,
     );
     this.ghost = this.ghostAt(displayTime, simTime);
-    this.apsisIcons = this.apsisIconsOf();
+    this.apsisIcons = this.apsisIconsOf(ownerName);
     this.impactIcons = this.impactIconsOf();
     this.tickIcons = this.tickIconsOf(displayWindow.tickLabelMode, simTime);
   }
@@ -194,7 +194,7 @@ export class PlanDisplay {
   // 両方揃っているときだけ、2点の中心からの距離比から離心率相当の値を求め、ほぼ円
   // (APSIS_MIN_ECC 未満)なら方向が不定として両方隠す — 片方しか無い場合(双曲線軌道等)は
   // この判定自体を行わず、そのまま出す。
-  private apsisIconsOf(): readonly ApsisIcon[] {
+  private apsisIconsOf(ownerName?: string): readonly ApsisIcon[] {
     const final = this.path.finalSegment();
     if (!final) return [];
     const pe = final.periapsis;
@@ -217,10 +217,12 @@ export class PlanDisplay {
     }
     if (pe && ap && (apDist - peDist) / (apDist + peDist) < C.APSIS_MIN_ECC) return [];
 
+    const namePrefix = ownerName ? `${ownerName} (計画)` : undefined;
     const icons: ApsisIcon[] = [];
     if (pe && peCenter) {
       icons.push({
         id: 'apsisPe', name: '近地点', kind: 'apsis',
+        ownerName: namePrefix,
         pos: this.path.toDisplay(pe.r, pe.t),
         time: pe.t,
         label: `Pe ${fmtDist(peDist - peCenter.radius)}`,
@@ -229,6 +231,7 @@ export class PlanDisplay {
     if (ap && apCenter) {
       icons.push({
         id: 'apsisAp', name: '遠地点', kind: 'apsis',
+        ownerName: namePrefix,
         pos: this.path.toDisplay(ap.r, ap.t),
         time: ap.t,
         label: `Ap ${fmtDist(apDist - apCenter.radius)}`,
