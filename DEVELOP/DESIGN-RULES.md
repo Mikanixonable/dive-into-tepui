@@ -107,7 +107,7 @@ HUD の見た目・配置・操作(色/寸法トークン、ウィジェット�
 
 **CSS でない箇所(JS が組み立てるインライン `style="..."` 属性、THREE に渡す色)は `var(--…)` を
 経由せず `theme.ts` の TS 定数を直接読んでよい**(CSS カスタムプロパティは DOM の外には意味を持た
-ないため)。`hud/target-panel.ts`/`hud/contacts-panel.ts`/`hud/result-screen.ts`/`hud/pause-menu.ts`
+ないため)。`hud/target-panel.ts`/`hud/enemies-panel.ts`/`hud/result-screen.ts`/`hud/pause-menu.ts`
 がこの形で `theme.ts` の定数を直接 import し、`innerHTML` の中の `style="color:${TEXT_DIM}"` に
 埋め込んでいるのはこの例外に沿う。**`<style>` タグへ注入する CSS テンプレートリテラルの中で
 `${TEXT_DIM}` のように定数を直接埋め込むのはこの例外に**当たらない**(それは CSS 文字列であり、
@@ -250,11 +250,11 @@ ESC の持ち主は `Game.handleInput`(`game.ts`)の1箇所だけ——`input.ta
    値そのものは `layout-tokens.ts` がブレークポイントごとに再代入する、この置き場固有の寸法
    トークン)。常設計器は戦況を隠しすぎないよう、狭い/低い画面でも一定高さに収まる。
 3. **中央モーダル(`OverlayManager` の `kind: 'modal'`)** — 画面全体を覆う/画面中央に寄せる
-   全画面 UI。`DockView`(`position: fixed; inset: 0`)・`SaveBrowser`(`inset:0` の scrim +
+   全画面 UI。`BaseView`(`position: fixed; inset: 0`)・`SaveBrowser`(`inset:0` の scrim +
    中央寄せパネル)・`ResultScreen`・`HelpPanel`・`PauseMenu`(いずれも `top/left:50%` +
    `transform:translate(...)` か `inset:0` の flex 中央寄せという定型を使う)。
 4. **画面固定バッジ** — ①②のいずれにも属さない、置き場を持たない単発の表示
-   (`ViewBadge`/`GlobalStatusBar`/`MapScaleBadge`/`ChaseReset`/`Hint`/`Toast`)。
+   (`ViewBadge`/`SimulationStatusBar`/`MapScaleBadge`/`ChaseReset`/`Hint`/`Toast`)。
 
 **リテラルな `top`/`left`/`right`/`bottom` の絶対座標直書きが許されるのは、置き場に参加しない
 ④画面固定バッジと、③中央モーダルの中央寄せそのもの(`top/left:50%+transform` または `inset:0`の
@@ -286,7 +286,7 @@ CSS カスタムプロパティ(`--rail-w-left`/`--rail-w-right`/`--combat-panel
 含む)・`PanelShell` 共通部・画面固定バッジの骨格、および `.mk-*` マーカー色)、`panel-content-style.ts`(SHIP STATUS/
 ORBIT/TARGET/CONTACTS の行、軌道オブジェクト一覧、軌道計画、表示設定、表示時刻、座標系、艦艇配置、
 ナビボール、ステージステータス、設定・ヘルプ・終了画面の中身)、`hud/widgets/widget-style.ts`
-(ウィジェット共通、§3)。**自己完結した個別コンポーネント**(`DockView`/`SaveBrowser`/
+(ウィジェット共通、§3)。**自己完結した個別コンポーネント**(`BaseView`/`SaveBrowser`/
 `ContextMenu`/`ObjectPicker`/`PropertyWindow`/`AnchorZone`/`FrameControls` など)は、代わりに
 自分のモジュールに `const STYLE` を持ち、初回構築時に自分で `<style>` を注入してよい——ただし
 トークンの参照規約(§2)とブレークポイントの参照規約(このセクション)は同じく適用される。

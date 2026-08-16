@@ -29,13 +29,13 @@ main.ts
 ├── Hud                  ... initHud() でタイトル(ステージ選択)画面より前に生成、Game へ参照を渡す。
 │   │                       root 直下の重なり順は layers: OverlayLayers(overlay-layer.ts、marker/panel/window/popup/gate/view/notify/system の
 │   │                       8層、この順に z-index 10〜17。gate は入力ゲートの遮蔽幕(#hud-overlay-shield)専用で、
-│   │                       ゲート対象(marker/panel/window/popup)より上・ゲートを開き得るモーダル(view の DockView、
+│   │                       ゲート対象(marker/panel/window/popup)より上・ゲートを開き得るモーダル(view の BaseView、
 │   │                       system のヘルプ・一時停止・セーブブラウザ)より下に置く)が正本 — z-index を持つのは overlay-layer.ts だけで、他の全 DOM 所有者は
 │   │                       自分がどの層の子になるかを選ぶだけ。層内の前後は DOM 順、最前面化は bringToFront() のみ
 │   ├── OverlayManager   ... 全オーバーレイ(モーダル/ポップアップ/ウィンドウ)の論理的な重なり順・ESC 配送先・
 │   │                       外側クリック閉じ・入力ゲートの正本(§2「参照共有」の表も参照)
 │   ├── HelpPanel        ... `[H]` トグルの開閉状態の正本。本文 DOM(`#hud-help`)も自身のコンストラクタで組む
-│   └── StatusPanel / OrbitPanel / TargetPanel / ContactsPanel / GlobalStatusBar / MapScaleBadge
+│   └── VesselPanel / OrbitPanel / TargetPanel / EnemiesPanel / SimulationStatusBar / MapScaleBadge
 │                           ... 常設パネル6枚、1パネル1クラス(buildHudDom が作った要素索引 `els: Map<string, HTMLElement>` を
 │                           共有で受け取るだけで DOM は持たない)。それぞれ自分のパネルへのみ書く
 ├── AudioEngine          ... AudioContext の生成・再開(unlock)と共有ノイズバッファ・基本ボイス(tone/noiseBurst)の正本。Bgm/WorldSfx/UiSfx がコンストラクタ引数で参照を持つ。unlock と Bgm.ensureStarted は Launcher が周回ごとに game.input.onUserGesture へ配線する(Game はこの2つへの参照を持たない)
@@ -116,7 +116,7 @@ main.ts
 │       │                                       pauseGame/resumeGame の2クロージャで受け取る(「クロージャ注入を避け
 │       │                                       参照を渡す」規則への暫定的な例外。理由は docking.ts のコンストラクタ
 │       │                                       コメントと CLAUDE.md にある)
-│       │   └── DockView                       ... DOM は Hud.layers.view 配下。格納艦/部品/ショップタブのフルスクリーン UI
+│       │   └── BaseView                       ... DOM は Hud.layers.view 配下。格納艦/部品/ショップタブのフルスクリーン UI
 │       ├── ViewManager                    ... 現在のビュー(combat/map/dock)の正本。遷移は setView() ひとつに集約。
 │       │                                       ActivePlayerController・TouchControls | null はいずれもコンストラクタ引数
 │       │                                       (ViewManager より先に生成される)。docking への参照は ViewManager より後に
@@ -153,7 +153,7 @@ main.ts
 │       │                                       行うので、ここに対応するフラグはない
 │       │   ├── ScoreCounter
 │       │   ├── Logistics                  ... 補給の投入判断
-│       │   ├── StageStatusPanel           ... DOM は Hud.layers.panel 配下。HP/補助メッセージ/撃墜数。#hud-stagestatus の表示を書くのはこのクラスだけで、sync(player | null, …) の null が畳む指示(保持中の艦参照もそこで落とす)。戦闘ビュー専用 — マップビューでは同じ画面下端中央を PREDICT バーが占める
+│       │   ├── StatusPanel                ... DOM は Hud.layers.panel 配下。HP/補助メッセージ/撃墜数。#hud-stagestatus の表示を書くのはこのクラスだけで、sync(player | null, …) の null が畳む指示(保持中の艦参照もそこで落とす)。戦闘ビュー専用 — マップビューでは同じ画面下端中央を PREDICT バーが占める
 │       │   ├── ScoreAttackTimer           ... Stage0 のみ
 │       │   ├── WaveAttack                 ... Stage00・CreativeStage がそれぞれのコンストラクタで1個ずつ生成し、private readonly waveAttack として保持する(stage-utils/wave-attack.ts)。波状攻撃フェーズ(waiting_for_ammo/spawning_enemies/active_combat)・タイマー・波数の正本。CreativeStage 側は waveAttackEnabled(自身のフィールド、既定 false)が true の間だけ update を呼ぶ — 敵の AI 自体(behaveAllEnemies)はトグルと無関係に毎フレーム進む
 │       │   └── ShipPlacerPanel            ... CreativeStage のみ。パネル本体は Hud.layers.panel 配下、ObjectPicker のポップアップは Hud.layers.popup 配下(別々の引数で受け取る)。艦艇配置フォーム(開閉状態 isOpen も自身が持つ)
@@ -559,13 +559,13 @@ main.ts
   `Player`=rcsDampToggle・progradeReset・fineAttitudeToggle・progradeHoldToggle・throttle*・reload・thrust*・pitch/yaw/roll)、
   `game.ts` が持つのは「どのモジュールに先に配るか」という順序だけ。
   ステージ選択画面のキー(`Stage.selectKeys`)はステージ定義側のデータなので KEY_MAPPING には含めない。
-- **常設パネル6枚(`StatusPanel`/`OrbitPanel`/`TargetPanel`/`ContactsPanel`/`GlobalStatusBar`/`MapScaleBadge`)は
+- **常設パネル6枚(`VesselPanel`/`OrbitPanel`/`TargetPanel`/`EnemiesPanel`/`SimulationStatusBar`/`MapScaleBadge`)は
   いずれも表示専用**。Game を丸ごと読んで自分1枚だけへ書き、他モジュールの状態やDOMは操作しない —
   1パネル1クラスなので、他クラスの状態や DOM に触れる理由自体が生じない。ステージ固有の状況パネルは
-  `Stage`(`StageStatusPanel`)、タッチUIのトグル点灯は
+  `Stage`(`StatusPanel`)、タッチUIのトグル点灯は
   `TouchControls.syncModeButtons()` が担当し、いずれも game.sync が自機/ステージの状態を渡す。
 - **HUD パネルの表示はその所有者だけが書く**。`#hud-status`/`#hud-orbit`/`#hud-enemies`/`#hud-target` は
-  それぞれ `StatusPanel`/`OrbitPanel`/`ContactsPanel`/`TargetPanel`、`#hud-stagestatus` は `StageStatusPanel`、MAP VIEW パネルとフォーカスラベルは
+  それぞれ `VesselPanel`/`OrbitPanel`/`EnemiesPanel`/`TargetPanel`、`#hud-stagestatus` は `StatusPanel`、MAP VIEW パネルとフォーカスラベルは
   `CameraSystem`、ビュー起因だけで決まるものは `#hud.map-mode` の CSS。**1つの要素を2箇所が書くと、
   同じフレームの後に走ったほうが必ず勝つため、先に書いたほうの条件式が黙って死ぬ。**
 - **HUD マーカーは対象の持ち主が出す**。自機由来(方向/ボアサイト/マップ上の自機)は `PlayerMarkers`、
