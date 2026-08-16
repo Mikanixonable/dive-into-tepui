@@ -470,7 +470,9 @@ export class MapContextActions {
     'apsis': {
       itemsFor: (target, simTime) => {
         const apsisTime = target.time;
-        const apsisLabel = target.id === 'apsisAp' ? '遠点 (Ap)' : '近点 (Pe)';
+        const defaultName = target.id === 'apsisAp' ? '遠点' : '近点';
+        const nameJa = target.name || defaultName;
+        const apsisLabel = `${nameJa} (${target.id === 'apsisAp' ? 'Ap' : 'Pe'})`;
         const apsisSubLabel = apsisTime !== undefined ? `到達まで T+${fmtTime(apsisTime - simTime)}` : undefined;
         return [
           { type: 'header', label: apsisLabel, subLabel: apsisSubLabel },
@@ -920,11 +922,13 @@ export class MapContextActions {
     const el = primary && self ? orbitalElementsOf(self.state, primary) : null;
     if (!el) return rows;
     const apsis = apsisAltitudes(el);
+    const apSpec = getApsisLabelSpec('ap', el.center.id);
+    const peSpec = getApsisLabelSpec('pe', el.center.id);
     rows.push(
-      { key: 'ap', label: '遠地点 AP', value: fmtDist(apsis.ap), group: '軌道' },
-      { key: 'pe', label: '近地点 PE', value: fmtDist(apsis.pe), group: '軌道' },
-      { key: 'inc', label: '傾斜角 INC', value: `${el.incDeg.toFixed(2)}°`, group: '軌道' },
-      { key: 'prd', label: '周期 PRD', value: fmtTime(el.period), group: '軌道' },
+      { key: 'ap', label: apSpec.full, value: fmtDist(apsis.ap), group: '軌道' },
+      { key: 'pe', label: peSpec.full, value: fmtDist(apsis.pe), group: '軌道' },
+      { key: 'inc', label: ORBIT_ELEMENT_LABELS.inc.full, value: `${el.incDeg.toFixed(2)}°`, group: '軌道' },
+      { key: 'prd', label: ORBIT_ELEMENT_LABELS.prd.full, value: fmtTime(el.period), group: '軌道' },
     );
     return rows;
   }

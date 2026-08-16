@@ -8,6 +8,7 @@ import type { OverlayHandle, OverlayManager } from '../hud/overlay-manager';
 import { BodyClass, bodyClassOf } from '../celestial/body-class';
 import { sameSystemIds } from '../celestial/body-visibility';
 import { celestialBodyName } from '../hud/frame-labels';
+import { getApsisLabelSpec } from '../hud/orbit-labels';
 import { CollinearPoint } from '../../physics/halo';
 import { AttractorId } from '../../physics/attractor';
 import { bodyDef, primaryOf, CelestialRegistry, SOLAR_SYSTEM, MU_EARTH, R_EARTH, SIDEREAL_DAY, J2_EARTH } from '../../physics/solar-system';
@@ -215,6 +216,7 @@ interface SliderRow {
   readonly element: HTMLElement;
   readonly input: HTMLInputElement;
   readonly slider: HTMLInputElement;
+  setLabel(text: string): void;
   setTicks(labels: readonly string[]): void;
   setMapping(toT: (value: number) => number, fromT: (t: number) => number): void;
   // bindRelativeSlider が結んだ行にだけ立つ: 基準値相対スライダーの基準をいまの input.value へ
@@ -256,10 +258,15 @@ function sliderField(root: HTMLElement, label: string, defaultValue: number, ste
     input.value = String(Math.round(fromT(Number(slider.value) / 1000) / step) * step);
   });
 
+  const titleEl = row.querySelector('.w-group-title');
+
   return {
     element: wrap,
     input,
     slider,
+    setLabel(text) {
+      if (titleEl) titleEl.textContent = text;
+    },
     setTicks(labels) {
       ticksEl.innerHTML = '';
       for (const text of labels) {
@@ -511,6 +518,10 @@ export class ObjectPlacerPanel implements OverlayHandle {
     const presetRow = document.createElement('div');
     presetRow.className = 'w-group preset-row';
     const refreshPresets = (): void => {
+      const peSpec = getApsisLabelSpec('pe', this.attractorValue);
+      const apSpec = getApsisLabelSpec('ap', this.attractorValue);
+      peAlt.setLabel(`${peSpec.nameJa}高度 [km]`);
+      apAlt.setLabel(`${apSpec.nameJa}高度 [km]`);
       presetRow.innerHTML = '';
       const presets = PRESETS_BY_BODY[this.attractorValue] ?? [];
       presetRow.classList.toggle('hidden', presets.length === 0);

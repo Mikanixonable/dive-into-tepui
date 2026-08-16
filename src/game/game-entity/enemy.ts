@@ -169,7 +169,7 @@ export class Enemy extends Ship {
       vel,
       priority,
       name: this.name,
-      detail: fmtMarkerDist(dist),
+      detail: overviewMode ? '' : fmtMarkerDist(dist),
       // 敵本体・距離ラベル・画面外方位マーカーは同じ色で統一する。
       bearingColor: C.COLOR_MARKER_ENEMY,
       bearingSym: ENTITY_GLYPH.ship,

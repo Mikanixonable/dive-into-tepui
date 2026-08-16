@@ -2,6 +2,7 @@
 // 長押しボタン)を組み立て、値を書き込む。何を書き込むかの計算(状態から表示値を導く・
 // 入力値をノードへ反映する)は PlanEditor が持ち、このクラスは表示専用。
 import { OrbitalElements, apsisAltitudes } from '../../physics/elements';
+import { getApsisLabelSpec } from '../hud/orbit-labels';
 import { Vec3 } from '../../physics/vec3';
 import { AXIS_NORMAL, AXIS_PROGRADE, AXIS_RADIAL } from '../theme';
 import { HoldButton, ValueInput } from '../hud/widgets';
@@ -83,14 +84,16 @@ function planPanelHtml(
   // 噴射後の軌道要素、近地点が大気圏内なら警告
   if (selEl) {
     const apsis = apsisAltitudes(selEl);
+    const apSpec = getApsisLabelSpec('ap', selEl.center.id);
+    const peSpec = getApsisLabelSpec('pe', selEl.center.id);
     s +=
       '<div style="margin-top:4px;color:var(--text);font-size:11px;letter-spacing:1px">噴射後の軌道</div>' +
-      row('遠地点 AP', fmtDist(apsis.ap)) +
-      row('近地点 PE', fmtDist(apsis.pe)) +
+      row(`${apSpec.nameJa} ${apSpec.short}`, fmtDist(apsis.ap)) +
+      row(`${peSpec.nameJa} ${peSpec.short}`, fmtDist(apsis.pe)) +
       row('傾斜角 INC', isFinite(selEl.incDeg) ? `${selEl.incDeg.toFixed(2)}°` : '---') +
       row('周期 PRD', fmtTime(selEl.period));
     if (warnAtmosphere && isFinite(apsis.pe) && apsis.pe < 120e3) {
-      s += '<div style="color:var(--accent);margin-top:2px">⚠ 近地点が大気圏内</div>';
+      s += `<div style="color:var(--accent);margin-top:2px">⚠ ${peSpec.nameJa}が大気圏内</div>`;
     }
   }
   // 操作キーのヒント
