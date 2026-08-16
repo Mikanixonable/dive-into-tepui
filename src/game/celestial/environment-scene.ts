@@ -243,7 +243,7 @@ export class EnvironmentScene {
       focusId,
       nearbyIds,
     );
-    this.geoLine.sync(this.geoElements, fo, camera, false);
+    this.geoLine.sync(this.geoElements, fo, camera);
     for (const id of this.referenceIds) {
       if (!visibilityPolicy.body(id).orbit) {
         this.removeReferenceLine(id);
@@ -251,7 +251,7 @@ export class EnvironmentScene {
       }
       const line = this.ensureReferenceLine(id);
       const el = this.orbitElementsFor(id, simTime);
-      line.sync(el, fo, camera, false);
+      line.sync(el, fo, camera);
       const dist = len(sub(this.ephemeris.stateOf(id, simTime).r, cameraPos));
       line.setOpacity(this.referenceLineOpacityAt(id, dist));
     }

@@ -131,10 +131,7 @@ export class Enemy extends Ship {
       this.burstLeft = init.saved.burstLeft;
       this.burstDelay = init.saved.burstDelay;
       this.alive = init.saved.alive;
-      if (!this.alive) {
-        this.renderObject.visible = false;
-        this.orbitLine.line.visible = false;
-      }
+      if (!this.alive) this.renderObject.visible = false;
     }
   }
 

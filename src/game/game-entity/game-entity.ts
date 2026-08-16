@@ -152,14 +152,12 @@ export class GameEntity {
     return orbitalElementsOf(this.state, center);
   }
 
-  // orbitLine を、現在位置で最も強く引く天体を中心とする軌道楕円に合わせる。
-  // show が false のときは非表示にする。force は OrbitLine.sync へそのまま渡す。
-  syncOrbitLine(
-    show: boolean, fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[], force = false,
-  ): void {
+  // orbitLine を現在位置で最も強く引く天体まわりの軌道楕円に合わせる。呼ぶこと自体が
+  // 「描く」という決定を表すので、隠したいフレームは呼び出し側が呼ばずに済ませる。
+  syncOrbitLine(fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[]): void {
     if (this.orbitLine === null) return;
     const center = strongestAttractor(this.state.r, attractors);
-    this.orbitLine.sync(show ? this.orbitalElementsAround(center) : null, fo, camera, force);
+    this.orbitLine.sync(this.orbitalElementsAround(center), fo, camera);
   }
 
   // 自分の予測線・実軌道線を作る。線を持つ種別だけが上書きする。

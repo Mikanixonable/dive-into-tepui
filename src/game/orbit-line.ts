@@ -72,8 +72,9 @@ export class OrbitLine {
   };
 
   // 毎フレーム呼ぶ。fo = 描画のフローティングオリジン、camera = 画面上のサジッタを実距離へ
-  // 換算するための描画カメラ。force = 要素が能動的に変化している間(推力中・ノード編集中)は
-  // true。
+  // 換算するための描画カメラ。el が null なら軌道要素を持たない状態として非表示にする。
+  // force = 要素が能動的に変化している間(配置プレビューの編集中など)は true にして、
+  // 変化が再生成の閾値に届かなくても毎フレーム焼き直させる。
   sync(el: OrbitalElements | null, fo: FloatingOrigin, camera: THREE.Camera, force = false): void {
     if (!el || el.e >= 0.98 || !isFinite(el.a) || el.a <= 0) {
       this.snap = null;

@@ -396,26 +396,35 @@ export class EntityManager {
     }
   }
 
-  // 天体クラス別トグルに応じて自機・敵・弾薬・基地のメッシュ表示/軌道線表示を揃える。
-  // visibilityPolicy が null(戦闘ビュー)のときは非表示扱いを一切かけない。
-  applyVisibility(
-    visibilityPolicy: MapVisibilityPolicy | null, activePlayer: Player | null, overviewMode: boolean,
-    fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
-  ): void {
-    if (visibilityPolicy) {
-      for (const ship of this.players) if (!visibilityPolicy.entity('player', ship === activePlayer).category) ship.renderObject.visible = false;
-      for (const enemy of this.enemies) if (!visibilityPolicy.entity('ship').category) enemy.renderObject.visible = false;
-      for (const ammoPickup of this.ammoPickups) {
-        if (!visibilityPolicy.entity('ammo').category) ammoPickup.renderObject.visible = false;
-      }
-      for (const base of this.bases) if (!visibilityPolicy.entity('base').category) base.renderObject.visible = false;
+  // 天体クラス別トグルに応じて自機・敵・弾薬・基地のメッシュ表示を揃える。visibilityPolicy が
+  // null(戦闘ビュー)のときは非表示扱いを一切かけない。
+  applyVisibility(visibilityPolicy: MapVisibilityPolicy | null, activePlayer: Player | null): void {
+    if (!visibilityPolicy) return;
+    for (const ship of this.players) if (!visibilityPolicy.entity('player', ship === activePlayer).category) ship.renderObject.visible = false;
+    for (const enemy of this.enemies) if (!visibilityPolicy.entity('ship').category) enemy.renderObject.visible = false;
+    for (const ammoPickup of this.ammoPickups) {
+      if (!visibilityPolicy.entity('ammo').category) ammoPickup.renderObject.visible = false;
     }
+    for (const base of this.bases) if (!visibilityPolicy.entity('base').category) base.renderObject.visible = false;
+  }
+
+  // 敵・基地の軌道線を表示要否ごと同期する。第一/第二ターゲットの敵は Targeter 自身の
+  // ハイライト線と重なるので除く。非表示と決めたものは幾何を焼き直さない — 隠れている線を
+  // 毎フレーム焼くだけ無駄になる。
+  syncOrbitLines(
+    overviewMode: boolean, fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
+    visibilityPolicy: MapVisibilityPolicy | null, primaryTarget: CombatTarget | null, secondaryTarget: CombatTarget | null,
+  ): void {
     for (const enemy of this.enemies) {
-      enemy.orbitLine.setDisplayEnabled(!overviewMode || (visibilityPolicy?.entity('ship').orbit ?? false));
+      const show = overviewMode && enemy.alive && (visibilityPolicy?.entity('ship').orbit ?? false)
+        && enemy !== primaryTarget && enemy !== secondaryTarget;
+      enemy.orbitLine.setDisplayEnabled(show);
+      if (show) enemy.syncOrbitLine(fo, camera, attractors);
     }
     for (const base of this.bases) {
-      base.syncOrbitLine(overviewMode, fo, camera, attractors);
-      base.orbitLine.setDisplayEnabled(!overviewMode || (visibilityPolicy?.entity('base').orbit ?? false));
+      const show = overviewMode && (visibilityPolicy?.entity('base').orbit ?? false);
+      base.orbitLine.setDisplayEnabled(show);
+      if (show) base.syncOrbitLine(fo, camera, attractors);
     }
   }
 
