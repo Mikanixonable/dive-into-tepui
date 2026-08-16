@@ -201,7 +201,8 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
   text-align: center; white-space: nowrap; text-shadow: 0 0 4px var(--bg), 0 0 2px var(--bg);
   width: 24px; height: 24px; transition: opacity 300ms ease;
 }
-.mk .sym { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: var(--glyph-base); line-height: 1; transition: opacity 200ms ease; }
+.mk .sym { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: var(--glyph-base); line-height: 1; transition: opacity 200ms ease; transform-origin: 50% 50%; }
+.mk .sym svg { display: block; width: 100%; height: 100%; }
 .mk .lbl { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); font-size: var(--font-xs); letter-spacing: 1px; transition: opacity 200ms ease; }
 .mk .sym.priority-hidden, .mk .lbl.priority-hidden { opacity: 0; pointer-events: none; }
 #hud .mk .lbl { margin-top: var(--space-1); }
@@ -236,9 +237,10 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 .mk-apsis { color: ${C.COLOR_MARKER_PLANNED}; }
 .mk-impact { color: var(--danger); }
 .mk-plantick { color: var(--text-dim); }
-.mk-plantick .sym svg { display: block; }
+.mk-plantick .sym svg { display: block; width: auto; height: auto; }
 .mk-poi { color: var(--text-strong); text-shadow: 0 0 4px var(--bg); }
-.mk-poi .sym { font-size: var(--glyph-poi); }
+.mk-poi:not(.mk-lagrange) .sym { font-size: calc(var(--glyph-poi) * 0.8); }
+.mk-poi.mk-lagrange .sym { font-size: calc(var(--glyph-poi) * 1.5); }
 .mk-poi .lbl { font-size: var(--font-s); border-radius: var(--radius-s); background: var(--surface-weak); }
 .mk-poi.mk-lagrange .lbl { font-size: calc(var(--font-s) * 0.7); white-space: pre; line-height: 1.25; text-align: center; }
 .mk-poi.mk-lagrange .lbl::first-line { font-size: var(--font-s); }

@@ -121,7 +121,7 @@ export class Player extends Ship {
     this.thrustEffects = new ThrustEffects(_scene, _worldSfx);
     this.rcsEffects = new RcsEffects(_scene, _worldSfx);
     this.reentryEffects = new ReentryEffects(_scene);
-    this.markers = new PlayerMarkers(markerManager, this.id);
+    this.markers = new PlayerMarkers(markerManager, this.id, this);
     this.planExecutor = new PlanExecutor(_hud);
 
     // 自機軌道線: 明るいグレー。ターゲット(オレンジ)より目立たせない配色。
