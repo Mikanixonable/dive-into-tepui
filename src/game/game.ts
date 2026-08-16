@@ -481,6 +481,10 @@ export class Game {
       player, combatTargets, displayTime, simTime, this.cameraSystem, visibilityPolicy,
       this.ephemeris.registry, displayAttractors,
     );
+    this.cameraSystem.focusMarkers.syncSubLabels(
+      this.markerManager.combatMarkers, this.ephemeris.registry, displayAttractors,
+      overviewMode, project,
+    );
     this.navTarget.sync(this.cameraSystem);
     this.entities.syncEquatorNodes(this.cameraSystem);
     this.mapPickables.syncVisibility();

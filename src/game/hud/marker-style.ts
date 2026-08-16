@@ -86,14 +86,16 @@ export const MARKER_STYLE = `
 .mk-poi { color: var(--text-strong); text-shadow: 0 0 4px var(--bg); }
 .mk-poi:not(.mk-lagrange) .sym { font-size: calc(var(--glyph-poi) * var(--mk-scale-poi)); }
 .mk-poi.mk-lagrange .sym { font-size: calc(var(--glyph-poi) * var(--mk-scale-lagrange)); }
-.mk-poi .lbl { font-size: var(--font-s); border-radius: var(--radius-s); background: var(--surface-weak); }
+.mk-poi .lbl { font-size: var(--font-s); border-radius: var(--radius-s); background: var(--surface-weak); white-space: pre; line-height: 1.25; text-align: center; }
+.mk-poi:not(.mk-lagrange) .lbl { font-size: calc(var(--font-s) * 0.85); }
+.mk-poi:not(.mk-lagrange) .lbl::first-line { font-size: var(--font-s); font-weight: 500; }
 .mk-poi.mk-lagrange .lbl { font-size: calc(var(--font-s) * 0.7); white-space: pre; line-height: 1.25; text-align: center; }
 .mk-poi.mk-lagrange .lbl::first-line { font-size: var(--font-s); }
 #hud .mk-poi .lbl { margin-top: var(--space-2); padding: var(--space-1) var(--space-2); }
 
 .mk-base { color: ${C.COLOR_BASE_ORBIT_LINE}; text-shadow: 0 0 4px var(--bg); }
 .mk-geolabel { color: var(--text-dim); font-size: var(--font-xxs); pointer-events: none; }
-.mk-geolabel .sym { font-size: var(--font-xxs); letter-spacing: 1.2px; opacity: 0.45; white-space: nowrap; text-shadow: 0 0 3px var(--bg); }
+.mk-geolabel .sym { font-size: var(--font-xxs); letter-spacing: 1.2px; opacity: 0.75; white-space: nowrap; text-shadow: 0 0 3px var(--bg); }
 
 /* スケール用 CSS トークンによる標準化設定 */
 .mk-apsis .sym, .mk-node .sym, .mk-mnode .sym, .mk-burn .sym, .mk-planned .sym { font-size: calc(var(--glyph-base) * var(--mk-scale-element)); }
