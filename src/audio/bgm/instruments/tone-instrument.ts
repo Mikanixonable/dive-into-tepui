@@ -1,6 +1,6 @@
 // 発振器1つを立ち上がり~指数減衰の包絡で鳴らすだけの、いちばん素朴な楽器。
 // 定位(pan)だけは曲の間ずっと要るので、パンナーはコンストラクタで組んで使い回す。
-import { ToneParams } from '../tracks/types';
+import { ToneParams } from './types';
 import { Instrument } from '../instrument';
 
 // 減衰の到達値。0 へは指数で近づけないので、聞こえない程度の小さな値で止める。
