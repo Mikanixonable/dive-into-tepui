@@ -127,8 +127,9 @@ export class MapContextActions {
   handleMapRightClick(input: Input, simTime: number): void {
     if (!this.cameraSystem.overviewMode) return;
     input.takeRightClicks((p) => {
+      const candidates = this.pickables.pickables.filter((item) => item.pickable !== false);
       const target = pickNearest(
-        this.pickables.pickables, p.x, p.y, this.cameraSystem.activeCameraProjection,
+        candidates, p.x, p.y, this.cameraSystem.activeCameraProjection,
         pickRadiusSq(C.MAP_PICK_PX_SQ, C.MAP_PICK_PX_SQ_COARSE),
       );
       if (!target) return false;
@@ -190,7 +191,7 @@ export class MapContextActions {
   handleLeftClick(input: Input): void {
     if (!this.cameraSystem.overviewMode) return;
     input.takeClicks((p) => {
-      const candidates = this.pickables.pickables.filter((i) => i.kind === 'player' || i.kind === 'base');
+      const candidates = this.pickables.pickables.filter((i) => (i.kind === 'player' || i.kind === 'base') && i.pickable !== false);
       const target = pickNearest(candidates, p.x, p.y, this.cameraSystem.activeCameraProjection, pickRadiusSq(C.MAP_PICK_PX_SQ, C.MAP_PICK_PX_SQ_COARSE));
       if (!target) return false;
       this.selectPickable(target, p.x, p.y);
