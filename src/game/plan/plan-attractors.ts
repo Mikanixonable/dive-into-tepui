@@ -8,8 +8,9 @@ import type { ClassifiedAttractors } from '../simulation/attractors';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { GameEntity } from '../game-entity/game-entity';
 
-// ある時刻の、積分1ステップが必要とする対象一式。collision は mu=0 の表示天体も含む全天体に
-// 未来状態を引ける collides entity を加えたもの、gravity はそのうち引力を持つものと動的重力源。
+// ある時刻の、積分1ステップが必要とする対象一式。collision は mu=0 の表示天体も含む全解析天体に
+// 未来状態を引ける predictedAsPlanCollider な entity を加えたもの、gravity はそのうち引力を
+// 持つものと動的重力源。
 export type PlanSourcesAt = {
   readonly t: number;
   readonly gravity: readonly Attractor[];
@@ -78,9 +79,9 @@ export function planSourceRevision(
   if (!Number.isFinite(planEnd)) {
     return mixNumber(acc, ++unresolvedPlanEndTick);
   }
-  // provider の出力に現れるのは、将来時刻の状態を答えられる個体 — predictsFuture が真のもの —
-  // だけなので、その id と予測の届き具合を畳み込む。id が集合の顔ぶれの変化を、届き具合が
-  // 各個体の引ける時刻範囲の変化を表す。
+  // provider の出力に現れるのは、将来時刻の状態を答えられる個体 — 重力源として predictsFuture が
+  // 真のもの、衝突体として predictedAsPlanCollider が真のもの — だけなので、その id と予測の
+  // 届き具合を畳み込む。id が集合の顔ぶれの変化を、届き具合が各個体の引ける時刻範囲の変化を表す。
   const excluded = new Set(excludedEntityIds);
   for (const e of entities.attractors()) {
     if (!e.predictsFuture) continue;
@@ -88,7 +89,7 @@ export function planSourceRevision(
     acc = mixNumber(acc, predictionCoverage(e, planEnd));
   }
   for (const e of entities.all()) {
-    if (!e.alive || !e.predictsFuture || !e.collides || !(e.radius > 0) || excluded.has(e.id)) continue;
+    if (!e.alive || !e.predictedAsPlanCollider || excluded.has(e.id)) continue;
     acc = mixString(acc, e.id);
     acc = mixNumber(acc, predictionCoverage(e, planEnd));
   }
@@ -144,6 +145,7 @@ export class PlanAttractors implements PlanAttractorProvider {
     const gravity: Attractor[] = [];
     const collisionById = new Map<AttractorId, Attractor>();
     // 解析天体は mu=0 の表示天体も含めて全数が衝突対象で、そのうち引力を持つものが重力源。
+    // 計画線が惑星や衛星で終端するのはこの経路で、entity 側の宣言とは関係しない。
     for (const body of this.ephemeris.attractorsAt(t)) {
       collision.push(body);
       if (!collisionById.has(body.id)) collisionById.set(body.id, body);
@@ -155,7 +157,7 @@ export class PlanAttractors implements PlanAttractorProvider {
       gravity.push({ id: e.id, mu: e.mu, radius: e.radius, degree2: e.degree2, isStar: e.isStar, state });
     }
     for (const e of this.entities.all()) {
-      if (!e.alive || !e.collides || !(e.radius > 0) || this.excluded.has(e.id) || collisionById.has(e.id)) continue;
+      if (!e.alive || !e.predictedAsPlanCollider || this.excluded.has(e.id) || collisionById.has(e.id)) continue;
       const state = e.displayState(t, this.ephemeris);
       if (state === null) continue;
       const body = { id: e.id, mu: e.mu, radius: e.radius, degree2: e.degree2, isStar: e.isStar, state };
