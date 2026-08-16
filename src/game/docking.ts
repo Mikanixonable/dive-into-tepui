@@ -3,7 +3,7 @@ import * as C from './const';
 import { v3, len, sub, dot, norm } from '../physics/vec3';
 import { kinematicState } from '../physics/kinematic-state';
 import { Hud } from './hud/hud';
-import { DockView } from './hud/dock-view';
+import { BaseView } from './hud/base-view';
 import { ResourceTransferDialog } from './hud/resource-transfer-dialog';
 import { Base } from './game-entity/base';
 import { Player } from './player/player';
@@ -19,7 +19,7 @@ import type { ActivePlayerController } from './active-player-controller';
 import type { Stage } from './stages/stage';
 
 export class Docking {
-  readonly dockView: DockView;
+  readonly baseView: BaseView;
   readonly transferDialog: ResourceTransferDialog;
   // 選択中/ドックビューの対象基地。設定されている間だけドックビューへ遷移できる。
   private _activeBase: Base | null = null;
@@ -46,10 +46,10 @@ export class Docking {
     private readonly activePlayers: ActivePlayerController,
     private readonly activeStage: Stage,
   ) {
-    this.dockView = new DockView(this.hud.layers.view);
-    this.dockView.onClose = () => this.viewManager.leaveDock();
-    this.dockView.onLaunchShip = (ship, base) => this.launch(ship, base);
-    this.dockView.onBuildShip = (base) => this.buildShip(base);
+    this.baseView = new BaseView(this.hud.layers.view);
+    this.baseView.onClose = () => this.viewManager.leaveDock();
+    this.baseView.onLaunchShip = (ship, base) => this.launch(ship, base);
+    this.baseView.onBuildShip = (base) => this.buildShip(base);
     this.viewManager.setDocking(this);
 
     this.transferDialog = new ResourceTransferDialog(this.hud.layers.view, this.hud.overlayManager);
@@ -170,11 +170,11 @@ export class Docking {
       this._activeBase = available[0]!;
     }
     this.pauseGame();
-    this.dockView.open(this._activeBase, this.activePlayers.current, this.activeStage.freeProcurement);
+    this.baseView.open(this._activeBase, this.activePlayers.current, this.activeStage.freeProcurement);
   }
 
   leaveDock(): void {
-    this.dockView.close();
+    this.baseView.close();
     this.resumeGame();
   }
 
@@ -285,8 +285,8 @@ export class Docking {
     this.hud.hint(`${ship.name} がドック ${slotIndex + 1} から切り離され発進しました`);
   }
 
-  // ドックビューの DOM を片付ける。
+  // 基地ビューの DOM を片付ける。
   dispose(): void {
-    this.dockView.dispose();
+    this.baseView.dispose();
   }
 }
