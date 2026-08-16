@@ -235,7 +235,8 @@ export class Targeter {
         occluded: mapOccluded,
       });
     }
-    this.markerManager.combatMarkers.sync(this.markerItemScratch, project, overviewMode, screenScale);
+    const celestialLabels = overviewMode ? cameraSystem.focusMarkers.activeLabels : [];
+    this.markerManager.combatMarkers.sync(this.markerItemScratch, project, overviewMode, screenScale, celestialLabels);
     if (player) {
       this.markerManager.leadMarkers.sync(
         player, this.aliveScratch, this.aliveTarget, this.aliveSecondaryTarget, simTime, overviewMode, project);
