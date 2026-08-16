@@ -7,15 +7,18 @@
 // 投影手順(project → set)を一元化したもの。headingRotationDeg は進行方向(ECI 速度)を
 // 向くグリフの回転角を求める。camera-system.ts が MarkerManager に依存しているため、
 // ProjectFn/ScaleFn 型を直接 import せず同形の関数型で受ける(循環 import を避ける)。
-import { Vec3, addScaled, norm } from '../../physics/vec3';
+import { Vec3, addScaled, norm, sub, v3 } from '../../physics/vec3';
 import { Projected } from '../../physics/projection';
 import * as C from '../const';
 import { FILL_4 } from '../theme';
 import { GroupedMarkers } from './grouped-markers';
 import { LeadMarkers } from './lead-markers';
 import { isOccluded } from '../../physics/occlusion';
-import type { Attractor } from '../../physics/attractor';
-
+import { Attractor, strongestAttractor } from '../../physics/attractor';
+import type { ReferenceFrame } from '../../physics/frame';
+import { toFrameDir } from '../../physics/frame';
+import { qRotate } from '../../physics/attitude';
+import type { Ephemeris } from '../../physics/ephemeris';
 
 type ProjectFn = (worldPos: Vec3) => Projected;
 type ScaleFn = (worldPos: Vec3) => number;
@@ -27,6 +30,11 @@ interface MarkerRecord {
   fixedLabel: boolean;
   hidden: boolean;
   occlusionHidden: boolean;
+  x: number;
+  y: number;
+  priority: number;
+  iconHiddenByPriority: boolean;
+  labelHiddenByPriority: boolean;
 }
 
 interface ActiveLabel {
@@ -37,6 +45,37 @@ interface ActiveLabel {
   h: number;
   dx: number;
   dy: number;
+}
+
+function defaultPriorityForClass(key: string, cls: string): number {
+  if (cls.includes('mk-poi')) {
+    return key.includes('-l') ? C.MARKER_PRIORITY.LAGRANGE : C.MARKER_PRIORITY.SATELLITE_SMALL_BODY;
+  }
+  if (cls.includes('mk-target')) return C.MARKER_PRIORITY.PRIMARY_TARGET;
+  if (cls.includes('mk-impact')) return C.MARKER_PRIORITY.IMPACT;
+  if (cls.includes('mk-secondary-target')) return C.MARKER_PRIORITY.SECONDARY_TARGET;
+  if (cls.includes('mk-base')) return C.MARKER_PRIORITY.BASE;
+  if (cls.includes('mk-self')) return C.MARKER_PRIORITY.PLAYER;
+  if (cls.includes('mk-enemy')) return C.MARKER_PRIORITY.ENEMY;
+  if (cls.includes('mk-ammo')) return C.MARKER_PRIORITY.AMMO;
+  if (cls.includes('mk-mnode') || cls.includes('mk-burn')) return C.MARKER_PRIORITY.MANEUVER_NODE;
+  if (cls.includes('mk-node') || cls.includes('mk-relnode') || cls.includes('mk-eqnode') || cls.includes('mk-boardpass')) {
+    return C.MARKER_PRIORITY.ORBITAL_NODE;
+  }
+  return 0;
+}
+
+const NEVER_HIDE_ICON_CLASSES = [
+  'mk-boresight', 'mk-lead', 'mk-pro', 'mk-retro', 'mk-nrm', 'mk-rad', 'mk-tgtdir', 'mk-boardpass', 'mk-impact',
+];
+
+function canHideIconByPriority(m: MarkerRecord): boolean {
+  if (m.fixedLabel) return false;
+  const cls = m.root.className;
+  for (const c of NEVER_HIDE_ICON_CLASSES) {
+    if (cls.includes(c)) return false;
+  }
+  return true;
 }
 
 // ラベルの概算矩形を入れる画面空間グリッドのセル幅。ラベルの幅は文字数に
@@ -96,19 +135,31 @@ export class MarkerManager {
     rotationDeg?: number,
     symMarkup = false,
     fixedLabel = false,
+    priority?: number,
   ): void {
     let m = this.markerDictionary.get(key);
+    const itemPriority = priority ?? defaultPriorityForClass(key, cls);
     if (!m) {
       const root = el('div', `mk-${key}`, this.root, `mk ${cls}`);
       const symEl = el('span', `mk-${key}-s`, root, 'sym');
       const lblEl = el('span', `mk-${key}-l`, root, 'lbl');
-      m = { root, sym: symEl, lbl: lblEl, fixedLabel, hidden: !visible, occlusionHidden: false };
+      m = {
+        root, sym: symEl, lbl: lblEl, fixedLabel, hidden: !visible, occlusionHidden: false,
+        x, y, priority: itemPriority, iconHiddenByPriority: false, labelHiddenByPriority: false,
+      };
       this.markerDictionary.set(key, m);
     }
     this.cancelOcclusionFade(key);
     m.occlusionHidden = false;
     m.fixedLabel = fixedLabel;
     m.hidden = !visible;
+    m.x = x;
+    m.y = y;
+    m.priority = itemPriority;
+    m.iconHiddenByPriority = false;
+    m.labelHiddenByPriority = false;
+    m.sym.classList.remove('priority-hidden');
+    m.lbl.classList.remove('priority-hidden');
     m.root.style.display = visible ? 'block' : 'none';
     if (!visible) return;
     m.root.style.left = `${x.toFixed(1)}px`;
@@ -122,11 +173,10 @@ export class MarkerManager {
 
     if (color) {
       m.root.style.color = color;
-      m.root.style.textShadow = `0 0 4px ${color}`;
     } else {
       m.root.style.color = '';
-      m.root.style.textShadow = '';
     }
+    m.root.style.textShadow = '';
 
     // シンボルの中心合わせは CSS が持つ(.mk 枠が投影点に中心揃え、.sym は inset:0 の
     // flex 中央寄せ)。ここで平行移動を足すと二重にかかって像からずれるので、回転だけを扱う。
@@ -150,9 +200,10 @@ export class MarkerManager {
     rotationDeg?: number,
     symMarkup = false,
     fixedLabel = false,
+    priority?: number,
   ): void {
     const p = project(worldPos);
-    this.set(key, cls, sym, p.x, p.y, p.front, label, opacity, color, rotationDeg, symMarkup, fixedLabel);
+    this.set(key, cls, sym, p.x, p.y, p.front, label, opacity, color, rotationDeg, symMarkup, fixedLabel, priority);
   }
 
   // 遮蔽判定を行い、天体に遮蔽されている場合は fadeOut、表示されている場合は setPosition するヘルパー。
@@ -166,11 +217,12 @@ export class MarkerManager {
     attractors: readonly Attractor[],
     overviewMode: boolean,
     label = '',
+    priority?: number,
   ): void {
     if (overviewMode && isOccluded(cameraPos, worldPos, attractors)) {
       this.fadeOut(key);
     } else {
-      this.setPosition(key, cls, sym, worldPos, project, label);
+      this.setPosition(key, cls, sym, worldPos, project, label, 1, undefined, undefined, false, false, priority);
     }
   }
 
@@ -190,22 +242,41 @@ export class MarkerManager {
     rotationDeg?: number,
     symMarkup = false,
     fixedLabel = false,
+    priority?: number,
   ): void {
     const p = project(addScaled(origin, norm(dir), C.MARKER_DIR_DIST));
-    this.set(key, cls, sym, p.x, p.y, p.front, label, opacity, color, rotationDeg, symMarkup, fixedLabel);
+    this.set(key, cls, sym, p.x, p.y, p.front, label, opacity, color, rotationDeg, symMarkup, fixedLabel, priority);
   }
 
-  // worldPos にいる対象の進行方向(ECI 速度 vel)を、上向きグリフをその方向へ向ける
+  // worldPos にいる対象の進行方向(基準天体相対速度・表示座標系)を、上向きグリフをその方向へ向ける
   // rotationDeg に変換する(atan2 は 0=右方向を返すため +90 して補正する)。
   // set/setPosition の rotationDeg 引数へそのまま渡せる。速度が視線とほぼ平行で
   // 投影差が縮退し方位を定められないときは undefined を返す。
-  headingRotationDeg(worldPos: Vec3, vel: Vec3, project: ProjectFn, scale: ScaleFn): number | undefined {
-    const probe = scale(worldPos) * C.MARKER_HEADING_PROBE_PX;
+  headingRotationDeg(
+    worldPos: Vec3,
+    vel: Vec3,
+    project: ProjectFn,
+    scale: ScaleFn,
+    attractors: readonly Attractor[] = [],
+    frame?: ReferenceFrame,
+    displayTime?: number,
+    ephemeris?: Ephemeris,
+  ): number | undefined {
+    const center = attractors.length > 0 ? strongestAttractor(worldPos, attractors) : null;
+    let relVel = center ? sub(vel, center.state.v) : vel;
+    if (frame && displayTime !== undefined && ephemeris && attractors.length > 0) {
+      const tf = ephemeris.frameTransformAt(frame, displayTime, attractors);
+      if (tf) {
+        const vFrame = toFrameDir(tf, relVel);
+        relVel = qRotate(tf.q, v3(vFrame.x, vFrame.y, vFrame.z));
+      }
+    }
+    const probe = Math.max(1, scale(worldPos) * 2);
     const p0 = project(worldPos);
-    const p1 = project(addScaled(worldPos, norm(vel), probe));
+    const p1 = project(addScaled(worldPos, norm(relVel), probe));
     const dx = p1.x - p0.x;
     const dy = p1.y - p0.y;
-    if (Math.hypot(dx, dy) < C.MARKER_HEADING_DEGENERATE_PX) return undefined;
+    if (Math.hypot(dx, dy) < 0.1) return undefined;
     return (Math.atan2(dy, dx) * 180) / Math.PI + 90;
   }
 
@@ -303,22 +374,61 @@ export class MarkerManager {
     this.occlusionFadeTimers.delete(key);
   }
 
-  // 全マーカーのラベルどうしの重なりを緩和し、ずらした分だけ引き出し線を描く。
-  resolveCollisions(): void {
+  // 全マーカーの優先度に基づくアイコン/ラベル間引きと、残ったラベルどうしの衝突緩和。
+  // マップモード(overviewMode === true)でのみ優先度間引きを行う。戦闘ビュー(overviewMode === false)では照準や敵アイコン等を隠さない。
+  resolveCollisions(overviewMode = false): void {
+    const activeRecords: MarkerRecord[] = [];
+    for (const m of this.markerDictionary.values()) {
+      if (m.hidden || m.occlusionHidden || m.root.style.opacity === '0') continue;
+      m.iconHiddenByPriority = false;
+      m.labelHiddenByPriority = false;
+      m.sym.classList.remove('priority-hidden');
+      m.lbl.classList.remove('priority-hidden');
+      activeRecords.push(m);
+    }
+
+    // マップモード(overviewMode === true)のときのみ、画面上の近接に基づく優先度間引きを行う。
+    if (overviewMode) {
+      const clusterDistPx = C.MARKER_CLUSTER_PX;
+      for (let i = 0; i < activeRecords.length; i++) {
+        const a = activeRecords[i]!;
+        for (let j = i + 1; j < activeRecords.length; j++) {
+          const b = activeRecords[j]!;
+          if (Math.hypot(a.x - b.x, a.y - b.y) >= clusterDistPx) continue;
+
+          if (a.priority > b.priority) {
+            b.labelHiddenByPriority = true;
+            // 差が100以上の異なるカテゴリ間 (例: 天体 > 船, 船 > 弾薬, 船 > 軌道要素) はアイコンも非表示 (保護対象を除く)
+            if (a.priority - b.priority >= 100 && canHideIconByPriority(b)) {
+              b.iconHiddenByPriority = true;
+            }
+          } else if (b.priority > a.priority) {
+            a.labelHiddenByPriority = true;
+            if (b.priority - a.priority >= 100 && canHideIconByPriority(a)) {
+              a.iconHiddenByPriority = true;
+            }
+          }
+        }
+      }
+    }
+
+    // アイコン/ラベルの間引き結果を反映 (priority-hidden クラスのトグルによる CSS フェード)
+    for (const m of activeRecords) {
+      m.sym.classList.toggle('priority-hidden', m.iconHiddenByPriority);
+      m.lbl.classList.toggle('priority-hidden', m.labelHiddenByPriority);
+    }
+
     const active = this.activeScratch;
     this.activeCount = 0;
 
     // 表示中のマーカーと、そのラベルの推定矩形を集める
-    for (const m of this.markerDictionary.values()) {
-      if (m.hidden || !m.lbl.textContent || m.fixedLabel || m.root.style.opacity === '0') {
+    for (const m of activeRecords) {
+      if (m.labelHiddenByPriority || !m.lbl.textContent || m.fixedLabel) {
         m.lbl.style.transform = 'translateX(-50%)';
         continue;
       }
-      const xStr = m.root.style.left;
-      const yStr = m.root.style.top;
-      if (!xStr || !yStr) continue;
-      const x = parseFloat(xStr);
-      const y = parseFloat(yStr);
+      const x = m.x;
+      const y = m.y;
 
       const textLen = m.lbl.textContent.length;
       const w = textLen * 6.5 + 4; // 概算幅 [px]

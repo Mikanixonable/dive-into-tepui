@@ -15,8 +15,9 @@ import type { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';
 import { EntityMarker } from '../marker/entity-marker';
-import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 import type { BaseSaveData } from '../save-data';
+import { Plan } from '../plan/plan';
+import type { PlanExecutionMode } from '../player/player';
 import * as C from '../const';
 import { BaseCollisionGeometry, RayHit, SphereHit } from '../../physics/base-collision';
 import { PlayerThrottle } from '../player/player-throttle';
@@ -72,9 +73,27 @@ export type BaseInit =
   | { readonly state: KinematicState; readonly name?: string; readonly att?: Attitude; readonly id?: string }
   | { readonly saved: BaseSaveData; readonly simTime: number };
 
+export function baseMarkerSvg(): string {
+  const pts = "12,2.5 19.43,6.08 21.26,14.11 16.12,20.56 7.88,20.56 2.74,14.11 4.57,6.08";
+  return `<svg viewBox="0 0 24 24" width="24" height="24" aria-label="Base">` +
+    `<polygon points="${pts}" fill="none" stroke="currentColor" stroke-width="1.8"/>` +
+    `</svg>`;
+}
+
 export class Base extends GameEntity implements Controllable {
   readonly collisionGeom = new BaseCollisionGeometry();
   protected readonly predictedForGhost = true;
+  readonly plan = new Plan();
+  planExecution: PlanExecutionMode = 'off';
+  fineAttitude = false;
+  declare equatorNodes: EquatorNodeMarkerPair;
+
+  ensureEquatorNodes(markerManager: MarkerManager): EquatorNodeMarkerPair {
+    if (!this.equatorNodes) {
+      this.equatorNodes = new EquatorNodeMarkerPair(this, markerManager);
+    }
+    return this.equatorNodes;
+  }
   public baseState: BaseState = {
     money: 100000,
     inventory: [],
@@ -148,7 +167,7 @@ export class Base extends GameEntity implements Controllable {
     this.thrustEffects = new ThrustEffects(scene, worldSfx);
     this.rcsEffects = new RcsEffects(scene, worldSfx);
     this.equatorNodes = new EquatorNodeMarkerPair(this, markerManager);
-    this.marker = new EntityMarker(this, markerManager, 'mk-base', ENTITY_GLYPH.ship);
+    this.marker = new EntityMarker(this, markerManager, 'mk-base', baseMarkerSvg(), true);
 
     if ('saved' in init) {
       this.baseState.money = init.saved.money;

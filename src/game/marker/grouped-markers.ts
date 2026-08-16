@@ -8,8 +8,12 @@
 import { Vec3 } from '../../physics/vec3';
 import { Projected } from '../../physics/projection';
 import type { ProjectFn, ScaleFn } from '../camera/camera-system';
+import type { ActiveCelestialLabel } from '../camera/focus-markers';
 import type { MarkerManager } from './marker-manager';
 import { DIRECTION_GLYPH } from './marker-glyphs';
+import type { Attractor } from '../../physics/attractor';
+import type { ReferenceFrame } from '../../physics/frame';
+import type { Ephemeris } from '../../physics/ephemeris';
 
 export interface GroupedMarkerItem {
   key: string; // 対象を一意に識別するマーカーキー
@@ -52,11 +56,21 @@ export class GroupedMarkers {
   // 空配列を渡せばよく、専用の hide は要らない)。overviewMode 中は対象そのものが
   // 画面内に見えているので、画面端の方位マーカーは出さず、代わりに vel から進行方向を
   // 求めてマーカー自体を回す(円軌道では静止画から回転方向が読めないための対策)。
-  sync(items: readonly GroupedMarkerItem[], project: ProjectFn, overviewMode: boolean, scale: ScaleFn): void {
+  sync(
+    items: readonly GroupedMarkerItem[],
+    project: ProjectFn,
+    overviewMode: boolean,
+    scale: ScaleFn,
+    celestialLabels: readonly ActiveCelestialLabel[] = [],
+    attractors: readonly Attractor[] = [],
+    frame?: ReferenceFrame,
+    displayTime?: number,
+    ephemeris?: Ephemeris,
+  ): void {
     const placed: PlacedItem[] = items.map(
       (item) => ({ item, p: project(item.pos), count: 1, labeled: true }),
     );
-    this.groupNearby(placed);
+    this.groupNearby(placed, celestialLabels);
 
     for (const m of placed) {
       const opacity = m.item.opacity ?? 1;
@@ -72,11 +86,11 @@ export class GroupedMarkers {
       }
       const label = m.labeled ? this.label(m.item, m.count) : '';
       const rotationDeg = overviewMode
-        ? this.markerManager.headingRotationDeg(m.item.pos, m.item.vel, project, scale)
+        ? this.markerManager.headingRotationDeg(m.item.pos, m.item.vel, project, scale, attractors, frame, displayTime, ephemeris)
         : undefined;
       this.markerManager.set(
         m.item.key, m.item.cls, m.item.sym, m.p.x, m.p.y, m.p.front, label, opacity, m.item.color,
-        rotationDeg, m.item.symMarkup,
+        rotationDeg, m.item.symMarkup, false, m.item.priority,
       );
       // 画面外(背面を含む)の対象は、画面端の方位マーカーで方位だけを示す。
       // bearingVisible は味方機など、距離によって方位マーカーを抑制する対象に使う。
@@ -91,7 +105,8 @@ export class GroupedMarkers {
   }
 
   // 画面手前にあるものだけをクラスタ化し、優先度が最大のものを代表に据える。
-  private groupNearby(placed: readonly PlacedItem[]): void {
+  // 天体ラベルと近接している船マーカーは天体優先(天体 > 船)でラベルを落とす。
+  private groupNearby(placed: readonly PlacedItem[], celestialLabels: readonly ActiveCelestialLabel[]): void {
     // 画面座標が近いものを同じグループへまとめる
     const groups: PlacedItem[][] = [];
     for (const m of placed) {
@@ -106,6 +121,18 @@ export class GroupedMarkers {
       g.sort((a, b) => b.item.priority - a.item.priority);
       g[0]!.count = g.length;
       for (const m of g.slice(1)) m.labeled = false;
+    }
+    // 天体ラベル(優先度 2000 以上)と画面上で近接している船マーカー(優先度 900 以下)はラベルを隠す
+    if (celestialLabels.length > 0) {
+      for (const m of placed) {
+        if (!m.labeled || !m.p.front) continue;
+        for (const c of celestialLabels) {
+          if (c.labelVisible && Math.hypot(m.p.x - c.x, m.p.y - c.y) < this.clusterRadiusPx) {
+            m.labeled = false;
+            break;
+          }
+        }
+      }
     }
   }
 

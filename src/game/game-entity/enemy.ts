@@ -146,20 +146,24 @@ export class Enemy extends Ship {
   markerItem(role: 'none' | 'primary' | 'secondary', viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): GroupedMarkerItem {
     // 距離は優先度(近いほど高)とラベル表示の両方に使う
     const dist = len(sub(pos, viewerPos));
-    // 代表選出の優先度: 第一ターゲット > 第二ターゲット > 距離が近い順
-    const priority = role === 'primary' ? Infinity : role === 'secondary' ? Number.MAX_SAFE_INTEGER : -dist;
+    // 代表選出の優先度: 第一ターゲット > 第二ターゲット > 距離が近い順 (天体 > 船・エンティティ)
+    const priority = role === 'primary'
+      ? C.MARKER_PRIORITY.PRIMARY_TARGET
+      : role === 'secondary'
+        ? C.MARKER_PRIORITY.SECONDARY_TARGET
+        : C.MARKER_PRIORITY.ENEMY - dist / 1e9;
     return {
       key: `enemy-${this.name}`,
       cls: role === 'primary' ? 'mk-target' : 'mk-enemy',
-      sym: overviewMode ? this.headingHpMarkerSvg() : this.hpMarkerSvg(),
+      sym: overviewMode ? this.headingHpMarkerSvg(true) : this.hpMarkerSvg(),
       pos,
       vel,
       priority,
       name: this.name,
-      detail: fmtMarkerDist(dist),
+      detail: overviewMode ? '' : fmtMarkerDist(dist),
       // 敵本体・距離ラベル・画面外方位マーカーは同じ色で統一する。
       bearingColor: C.COLOR_MARKER_ENEMY,
-      bearingSym: ENTITY_GLYPH.ship,
+      bearingSym: ENTITY_GLYPH.enemyShip,
       bearingClass: 'mk-dir mk-bearing-triangle',
       color: C.COLOR_MARKER_ENEMY,
       symMarkup: true,

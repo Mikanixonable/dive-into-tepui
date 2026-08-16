@@ -201,16 +201,18 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
   text-align: center; white-space: nowrap; text-shadow: 0 0 4px var(--bg), 0 0 2px var(--bg);
   width: 24px; height: 24px; transition: opacity 300ms ease;
 }
-.mk .sym { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: var(--glyph-base); line-height: 1; }
-.mk .lbl { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); font-size: var(--font-xs); letter-spacing: 1px; }
+.mk .sym { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: var(--glyph-base); line-height: 1; transition: opacity 200ms ease; transform-origin: 50% 50%; }
+.mk .sym svg { display: block; width: 100%; height: 100%; }
+.mk .lbl { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); font-size: var(--font-xs); letter-spacing: 1px; transition: opacity 200ms ease; }
+.mk .sym.priority-hidden, .mk .lbl.priority-hidden { opacity: 0; pointer-events: none; }
 #hud .mk .lbl { margin-top: var(--space-1); }
 .mk-enemy .lbl, .mk-target .lbl { font-size: var(--font-xxs); line-height: 1.2; white-space: pre; }
 .mk-dir { color: var(--text-strong); font-size: var(--font-s); text-shadow: none; }
 #hud .mk-bearing-triangle .sym { font-size: var(--glyph-2-3); }
 #hud .mk-ally-dir .sym { font-size: var(--glyph-1-3); }
 .mk-boresight { color: var(--text-strong); font-size: var(--glyph-boresight); }
-#mk-bore .sym { width: 48px; height: 48px; }
-#mk-bore .lbl { top: -14px; left: 19px; transform: none; font-size: var(--font-xxs); letter-spacing: .4px; color: var(--text-dim); text-shadow: 0 0 3px var(--bg); }
+.mk-boresight .sym { width: 48px; height: 48px; }
+.mk-boresight .lbl { top: -14px; left: 19px; transform: none; font-size: var(--font-xxs); letter-spacing: .4px; color: var(--text-dim); text-shadow: 0 0 3px var(--bg); }
 .mk-target { color: var(--accent); }
 .mk-secondary-target { color: var(--accent-secondary); }
 .mk-enemy { color: var(--text-strong); }
@@ -221,27 +223,32 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 .mk-rad { color: var(--axis-radial); }
 .mk-tgtdir { color: ${C.COLOR_MARKER_TGTDIR}; }
 .mk-node { color: ${C.COLOR_MARKER_NODE}; }
-.mk-boardpass { color: ${C.COLOR_MARKER_BOARDPASS}; text-shadow: 0 0 5px color-mix(in srgb, ${C.COLOR_MARKER_BOARDPASS} var(--glow-strong), transparent), 0 0 10px color-mix(in srgb, ${C.COLOR_MARKER_BOARDPASS} var(--glow-weak), transparent); }
+.mk-boardpass { color: ${C.COLOR_MARKER_BOARDPASS}; }
 .mk-boardpass .sym { font-size: var(--font-xxs); }
 .mk-mnode { color: var(--accent-soft); }
 .mk-mnode .lbl { white-space: pre; line-height: 1.25; }
 #hud .mk-mnode .lbl, #hud .mk-burn .lbl { margin-top: var(--space-2); }
-.mk-burn { color: var(--accent); text-shadow: 0 0 8px color-mix(in srgb, var(--accent) var(--glow-strong), transparent); }
+.mk-burn { color: var(--accent); }
 .mk-self { color: ${C.COLOR_MARKER_SELF}; }
 .mk-planet-nearby-label .lbl { margin-top: 18px; font-size: var(--font-xxs); white-space: nowrap; }
-.mk-ammo { color: var(--accent-soft); text-shadow: 0 0 6px color-mix(in srgb, var(--accent-soft) var(--glow-strong), transparent), 0 0 3px var(--bg); }
-#mk-bore .lbl { top: auto; left: 100%; bottom: 100%; margin: 0 0 var(--space-1) var(--space-3); white-space: pre; text-align: left; font-size: var(--font-xxs); line-height: 1.2; }
-.mk-planned { color: ${C.COLOR_MARKER_PLANNED}; text-shadow: 0 0 6px color-mix(in srgb, ${C.COLOR_MARKER_PLANNED} var(--glow-strong), transparent), 0 0 3px var(--bg); }
-.mk-apsis { color: ${C.COLOR_MARKER_PLANNED}; text-shadow: 0 0 6px color-mix(in srgb, ${C.COLOR_MARKER_PLANNED} var(--glow-strong), transparent), 0 0 3px var(--bg); }
-.mk-impact { color: var(--danger); text-shadow: 0 0 6px color-mix(in srgb, var(--danger) var(--glow-strong), transparent), 0 0 3px var(--bg); }
+.mk-ammo { color: var(--accent-soft); }
+.mk-boresight .lbl { top: auto; left: 100%; bottom: 100%; margin: 0 0 var(--space-1) var(--space-3); white-space: pre; text-align: left; font-size: var(--font-xxs); line-height: 1.2; }
+.mk-planned { color: ${C.COLOR_MARKER_PLANNED}; }
+.mk-apsis { color: ${C.COLOR_MARKER_PLANNED}; }
+.mk-impact { color: var(--danger); }
 .mk-plantick { color: var(--text-dim); }
-.mk-plantick .sym svg { display: block; }
+.mk-plantick .sym svg { display: block; width: auto; height: auto; }
 .mk-poi { color: var(--text-strong); text-shadow: 0 0 4px var(--bg); }
-.mk-poi .sym { font-size: var(--glyph-poi); }
+.mk-poi:not(.mk-lagrange) .sym { font-size: calc(var(--glyph-poi) * 0.8); }
+.mk-poi.mk-lagrange .sym { font-size: calc(var(--glyph-poi) * 1.5); }
 .mk-poi .lbl { font-size: var(--font-s); border-radius: var(--radius-s); background: var(--surface-weak); }
 .mk-poi.mk-lagrange .lbl { font-size: calc(var(--font-s) * 0.7); white-space: pre; line-height: 1.25; text-align: center; }
 .mk-poi.mk-lagrange .lbl::first-line { font-size: var(--font-s); }
 .mk-base { color: ${C.COLOR_BASE_ORBIT_LINE}; text-shadow: 0 0 4px var(--bg); }
+.mk-apsis .sym, .mk-node .sym, .mk-mnode .sym, .mk-burn .sym, .mk-planned .sym, .mk-plantick .sym { font-size: calc(var(--glyph-base) * 0.5); }
+.mk-apsis .sym svg, .mk-node .sym svg, .mk-mnode .sym svg, .mk-burn .sym svg, .mk-planned .sym svg, .mk-plantick .sym svg { width: 50%; height: 50%; }
+.mk-self .sym, .mk-enemy .sym, .mk-target .sym, .mk-secondary-target .sym { font-size: calc(var(--glyph-base) * 0.6667); }
+.mk-self .sym svg, .mk-enemy .sym svg, .mk-target .sym svg, .mk-secondary-target .sym svg { width: 66.67%; height: 66.67%; }
 #hud .mk-poi .lbl { margin-top: var(--space-2); padding: var(--space-1) var(--space-2); }
 .mk-longpress { width: 40px; height: 40px; }
 .mk-longpress .sym { border: 2px solid var(--accent); border-radius: 50%; box-sizing: border-box; }
