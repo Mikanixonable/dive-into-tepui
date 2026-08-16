@@ -251,8 +251,8 @@ export class EnvironmentScene {
     if ('earth' in this.ephemeris.registry) {
       const earthPos = this.ephemeris.positionOf('earth', simTime);
       const distToEarth = len(sub(earthPos, cameraPos));
-      // フェードアウト距離を従来の2倍(120,000km〜360,000km)にし、透明度を下げて視認性を向上(0.55 * geoFade)
-      const geoFade = 1.0 - Math.min(1, Math.max(0, (distToEarth - 1.2e8) / 2.4e8));
+      // フェードアウト距離をさらに2倍(240,000km〜720,000km)にし、視認性を維持(0.55 * geoFade)
+      const geoFade = 1.0 - Math.min(1, Math.max(0, (distToEarth - 2.4e8) / 4.8e8));
       this.geoLine.setOpacity(0.55 * geoFade);
     }
     for (const id of this.referenceIds) {
@@ -287,8 +287,8 @@ export class EnvironmentScene {
     const earthPos = this.ephemeris.positionOf('earth', displayTime);
     const cameraPos = cameraSystem.activeCameraPos;
     const distToEarth = len(sub(earthPos, cameraPos));
-    // フェードアウト距離を従来の2倍(120,000km〜360,000km)にし、透明度を下げて視認性を向上(0.90 * geoFade)
-    const geoFade = 1.0 - Math.min(1, Math.max(0, (distToEarth - 1.2e8) / 2.4e8));
+    // フェードアウト距離をさらに2倍(240,000km〜720,000km)にし、視認性を維持(0.90 * geoFade)
+    const geoFade = 1.0 - Math.min(1, Math.max(0, (distToEarth - 2.4e8) / 4.8e8));
     const labelOpacity = 0.90 * geoFade;
 
     if (labelOpacity <= 0.02) {
