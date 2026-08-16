@@ -59,6 +59,17 @@ function lagrangeMarkerLabel(id: OrbitingId, n: 1 | 2 | 3 | 4 | 5): string {
   return `L${n}\n${celestialBodyName(id)}`;
 }
 
+// サブ行テキスト用のクリーンな Unicode 記号を取得する(SVG タグ文字列を避ける)。
+function cleanSubLabelGlyph(item: GroupedMarkerItem): string {
+  const cls = item.cls;
+  if (cls.includes('mk-self')) return '▲';
+  if (cls.includes('mk-base')) return '⬡';
+  if (cls.includes('mk-enemy')) return '△';
+  if (cls.includes('mk-ammo')) return '▣';
+  if (item.sym && !item.sym.trim().startsWith('<')) return item.sym.trim();
+  return '▲';
+}
+
 // 惑星 > 準惑星 > 衛星・小惑星・彗星 > ラグランジュ点。
 // 恒星は太陽系の基準点なので、惑星と同じ最上位として常に残す。
 const LABEL_PRIORITY: Record<'star' | 'planet' | 'dwarf' | 'satellite' | 'smallBody' | 'lagrange', number> = {
@@ -455,12 +466,14 @@ export class FocusMarkers {
 
       if (total <= maxLines) {
         for (const entry of entries) {
-          subLines.push(`${entry.prefix}${entry.item.sym} ${entry.item.name}`);
+          const glyph = cleanSubLabelGlyph(entry.item);
+          subLines.push(`${entry.prefix}${glyph} ${entry.item.name}`);
         }
       } else {
         for (let i = 0; i < 2; i++) {
           const entry = entries[i]!;
-          subLines.push(`${entry.prefix}${entry.item.sym} ${entry.item.name}`);
+          const glyph = cleanSubLabelGlyph(entry.item);
+          subLines.push(`${entry.prefix}${glyph} ${entry.item.name}`);
         }
         subLines.push(`+${total - 2} 隻`);
       }
