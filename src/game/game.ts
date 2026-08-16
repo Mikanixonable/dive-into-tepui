@@ -370,28 +370,31 @@ export class Game {
     this.sections.exit(SECTION.plan);
   }
 
-  // ポインタ入力を優先順位順(=呼ぶ順)に配る。各受け手はいまがマップ視点か・操作艦の有無かを
+  // ポインタ入力をビューに応じて配分する。各受け手はいまがマップ視点か・操作艦の有無かを
   // 自分で見るので、ここで決めるのは順序だけ。このフレームの cameraSystem.update が終わって
   // 初めて投影がこのフレームの値になるので、update の末尾に置く。ポーズ中、または入力を
-  // ゲートするオーバーレイ(セーブブラウザ・ドック等)が開いている間は配らない(背景の誤操作を防ぐ)。
+  // ゲートするオーバーレイ(セーブブラウザ・基地画面等)が開いている間は配らない(背景の誤操作を防ぐ)。
   private handlePointerInput(): void {
     if (this._isPaused || this._hud.overlayManager.isInputGated()) return;
     const simTime = this.simulator.simTime;
-    const project = this.cameraSystem.activeCameraProjection;
-    const overviewMode = this.cameraSystem.overviewMode;
-    // マーカー(右クリック/左クリック/ダブルクリック)→ ノード → 空域の優先順は呼ぶ順そのもの。
     if (this.viewManager.isMapView) {
       this.handleMapPointerInput(simTime);
-      return;
+    } else {
+      this.handleCombatPointerInput(simTime);
     }
+  }
+
+  private handleCombatPointerInput(simTime: number): void {
     if (!this.player) return;
+    const project = this.cameraSystem.activeCameraProjection;
+    const overviewMode = this.cameraSystem.overviewMode;
     const combatTargets = this.entities.getCombatTargets(this.player);
     this.targeter.handleTargetSelectKey(this.input, combatTargets, project, overviewMode);
     this.mapActions.handleCombatRightClick(this.input, simTime, overviewMode);
   }
 
   private handleMapPointerInput(simTime: number): void {
-    this.mapActions.handleRightClick(this.input, simTime);
+    this.mapActions.handleMapRightClick(this.input, simTime);
     this.mapActions.handleLeftClick(this.input);
     this.mapActions.handleDoubleClick(this.input);
     this.editor.handleMapPointer(this.input);

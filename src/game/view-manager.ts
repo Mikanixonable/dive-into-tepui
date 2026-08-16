@@ -97,8 +97,8 @@ export class ViewManager {
     // 背後のマップを維持するので、計画編集の後始末(空ノードの間引き)を起こさない。
     const nextWorld = this.worldView;
     if (prevWorld !== nextWorld) {
-      if (prevWorld === 'map') this.closeMap();
-      if (nextWorld === 'map') this.openMap();
+      if (prevWorld === 'map') this.leaveMap();
+      if (nextWorld === 'map') this.enterMap();
     }
     if (next === 'dock') this.docking?.enterDock();
     this.syncDockOverlay(wasDockOpen);
@@ -204,12 +204,12 @@ export class ViewManager {
   }
 
   // マップへ入るときの支度。
-  private openMap(): void {
+  private enterMap(): void {
     this.editor.selectedNodeIdx = null;
   }
 
   // マップから出るときの後始末。開いたままの編集 UI とメニューを畳む。
-  private closeMap(): void {
+  private leaveMap(): void {
     this.editor.onMapClosed();
     this.editor.closeMenu();
     this.mapActions.close();
