@@ -309,11 +309,13 @@ export function buildPlasmaMesh(): THREE.Mesh {
     plasmaGeomFixed = true;
   }
   if (!plasmaBodyMat) {
-    plasmaBodyMat = (m.material as THREE.MeshBasicMaterial).clone();
-    plasmaBodyMat.color.set(C.COLOR_ENEMY_PLASMA);
-    // 不透明にするため AdditiveBlending は設定しない
-    plasmaBodyMat.transparent = false;
-    plasmaBodyMat.opacity = 1.0;
+    plasmaBodyMat = new THREE.MeshBasicMaterial({
+      color: C.COLOR_ENEMY_PLASMA,
+      transparent: false,
+      opacity: 1.0,
+      depthWrite: true,
+      blending: THREE.NormalBlending,
+    });
   }
   m.material = plasmaBodyMat;
 
