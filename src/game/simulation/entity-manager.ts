@@ -391,6 +391,7 @@ export class EntityManager {
   applyVisibility(
     visibilityPolicy: MapVisibilityPolicy | null, activePlayer: Player | null, overviewMode: boolean,
     fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
+    displayWindow?: DisplayWindow, ephemeris?: Ephemeris,
   ): void {
     if (visibilityPolicy) {
       for (const ship of this.players) if (!visibilityPolicy.entity('player', ship === activePlayer).category) ship.renderObject.visible = false;
@@ -407,7 +408,7 @@ export class EntityManager {
       enemy.orbitLine.setDisplayEnabled(!overviewMode || (visibilityPolicy?.entity('ship').orbit ?? false));
     }
     for (const base of this.bases) {
-      base.syncOrbitLine(overviewMode, fo, camera, attractors);
+      base.syncOrbitLine(overviewMode, fo, camera, attractors, false, displayWindow?.frame, displayWindow?.displayTime, ephemeris);
       base.orbitLine.setDisplayEnabled(!overviewMode || (visibilityPolicy?.entity('base').orbit ?? false));
     }
   }
