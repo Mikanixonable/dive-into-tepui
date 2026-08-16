@@ -3,7 +3,7 @@
 import { MQ_COARSE, MQ_COMPACT, MQ_MEDIUM_DOWN } from './breakpoints';
 
 export const COMBAT_VIEW_STYLE = `
-#hud:not(.dock-mode) .hud-combat-root.active #hud-status,
+#hud:not(.dock-mode) .hud-combat-root.active #hud-vessel-status,
 #hud:not(.dock-mode) .hud-combat-root.active #hud-orbit,
 #hud:not(.dock-mode) .hud-combat-root.active #hud-enemies,
 #hud:not(.dock-mode) .hud-combat-root.active #hud-target {
@@ -17,7 +17,7 @@ export const COMBAT_VIEW_STYLE = `
   max-height: var(--combat-panel-max-h);
   overflow-y: auto;
 }
-#hud:not(.dock-mode) .hud-combat-root.active .hud-rail-right > #hud-status,
+#hud:not(.dock-mode) .hud-combat-root.active .hud-rail-right > #hud-vessel-status,
 #hud:not(.dock-mode) .hud-combat-root.active .hud-rail-left > #hud-orbit,
 #hud:not(.dock-mode) .hud-combat-root.active .hud-rail-right > #hud-enemies {
   width: 100%;
@@ -86,11 +86,11 @@ export const COMBAT_VIEW_STYLE = `
 #hud:not(.dock-mode) .hud-combat-root.active .combat-panel .state-signal {
   color: var(--accent-secondary);
 }
-#hud:not(.dock-mode) .hud-combat-root.active #hud-status .status-actions {
+#hud:not(.dock-mode) .hud-combat-root.active #hud-vessel-status .status-actions {
   gap: 5px;
   margin-top: 7px;
 }
-#hud:not(.dock-mode) .hud-combat-root.active #hud-status .status-actions .w-btn {
+#hud:not(.dock-mode) .hud-combat-root.active #hud-vessel-status .status-actions .w-btn {
   padding: 6px 8px;
   border: 0;
   border-radius: var(--radius-control, 11px);
@@ -98,31 +98,31 @@ export const COMBAT_VIEW_STYLE = `
   color: var(--text-dim);
   font-size: var(--font-xxs);
 }
-#hud:not(.dock-mode) .hud-combat-root.active #hud-status .status-actions .w-btn.on {
+#hud:not(.dock-mode) .hud-combat-root.active #hud-vessel-status .status-actions .w-btn.on {
   background: var(--accent-fill);
   color: var(--accent);
 }
-#hud:not(.dock-mode) .hud-combat-root.active #hud-status .status-actions .w-btn:hover {
+#hud:not(.dock-mode) .hud-combat-root.active #hud-vessel-status .status-actions .w-btn:hover {
   background: var(--fill-2);
   color: var(--accent-near, var(--accent-soft));
 }
-#hud:not(.dock-mode) .hud-combat-root.active #hud-status .status-actions .status-action-primary {
+#hud:not(.dock-mode) .hud-combat-root.active #hud-vessel-status .status-actions .status-action-primary {
   background: var(--accent-fill-weak);
   color: var(--accent);
 }
-#hud:not(.dock-mode) .hud-combat-root.active #hud-status .status-throttle-touch {
+#hud:not(.dock-mode) .hud-combat-root.active #hud-vessel-status .status-throttle-touch {
   margin-top: 7px;
 }
-#hud:not(.dock-mode) .hud-combat-root.active #hud-status .status-throttle-touch .w-group-title {
+#hud:not(.dock-mode) .hud-combat-root.active #hud-vessel-status .status-throttle-touch .w-group-title {
   color: var(--text-dim);
   letter-spacing: 0;
 }
-#hud:not(.dock-mode) .hud-combat-root.active #hud-status .status-throttle-touch .w-btn {
+#hud:not(.dock-mode) .hud-combat-root.active #hud-vessel-status .status-throttle-touch .w-btn {
   border: 0;
   border-radius: var(--radius-control, 11px);
   background: var(--fill-1);
 }
-#hud:not(.dock-mode) .hud-combat-root.active #hud-status .status-throttle-touch .w-btn.on {
+#hud:not(.dock-mode) .hud-combat-root.active #hud-vessel-status .status-throttle-touch .w-btn.on {
   background: var(--accent-fill);
   color: var(--accent);
 }
@@ -250,7 +250,7 @@ export const COMBAT_VIEW_STYLE = `
   font-size: var(--font-xs);
 }
 
-#hud:not(.dock-mode) .hud-combat-root.active #hud-globalstatus {
+#hud:not(.dock-mode) .hud-combat-root.active #hud-simulation-status {
   border: 0;
   border-radius: 0 0 var(--radius-panel, 16px) var(--radius-panel, 16px);
   background: var(--glass-quiet, var(--surface));
@@ -258,8 +258,8 @@ export const COMBAT_VIEW_STYLE = `
   -webkit-backdrop-filter: blur(14px) saturate(82%);
   box-shadow: 0 10px 28px var(--shade-1);
 }
-#hud:not(.dock-mode) .hud-combat-root.active #hud-globalstatus .k { color: var(--text-dim); }
-#hud:not(.dock-mode) .hud-combat-root.active #hud-globalstatus .gs-sep { color: var(--fill-4); }
+#hud:not(.dock-mode) .hud-combat-root.active #hud-simulation-status .k { color: var(--text-dim); }
+#hud:not(.dock-mode) .hud-combat-root.active #hud-simulation-status .gs-sep { color: var(--fill-4); }
 #hud:not(.dock-mode) .hud-combat-root.active #hud-chase-reset {
   border: 0;
   border-radius: var(--radius-control, 11px);
@@ -277,23 +277,23 @@ export const COMBAT_VIEW_STYLE = `
 }
 #hud:not(.dock-mode) .hud-combat-root.active .combat-panel .panel-shell-collapse:focus-visible,
 #hud:not(.dock-mode) .hud-combat-root.active #hud-chase-reset:focus-visible,
-#hud:not(.dock-mode) .hud-combat-root.active #hud-status .w-btn:focus-visible {
+#hud:not(.dock-mode) .hud-combat-root.active #hud-vessel-status .w-btn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  #hud:not(.dock-mode) .hud-combat-root.active #hud-status,
+  #hud:not(.dock-mode) .hud-combat-root.active #hud-vessel-status,
   #hud:not(.dock-mode) .hud-combat-root.active #hud-orbit,
   #hud:not(.dock-mode) .hud-combat-root.active #hud-enemies,
   #hud:not(.dock-mode) .hud-combat-root.active #hud-target,
-  #hud:not(.dock-mode) .hud-combat-root.active #hud-globalstatus,
+  #hud:not(.dock-mode) .hud-combat-root.active #hud-simulation-status,
   #hud:not(.dock-mode) .hud-combat-root.active #hud-chase-reset {
     background: var(--surface);
   }
 }
 @media ${MQ_MEDIUM_DOWN} {
-  #hud:not(.dock-mode) .hud-combat-root.active #hud-status,
+  #hud:not(.dock-mode) .hud-combat-root.active #hud-vessel-status,
   #hud:not(.dock-mode) .hud-combat-root.active #hud-orbit,
   #hud:not(.dock-mode) .hud-combat-root.active #hud-enemies,
   #hud:not(.dock-mode) .hud-combat-root.active #hud-target {
@@ -314,7 +314,7 @@ export const COMBAT_VIEW_STYLE = `
 }
 @media (prefers-reduced-motion: reduce) {
   #hud:not(.dock-mode) .hud-combat-root.active .combat-panel *,
-  #hud:not(.dock-mode) .hud-combat-root.active #hud-globalstatus,
+  #hud:not(.dock-mode) .hud-combat-root.active #hud-simulation-status,
   #hud:not(.dock-mode) .hud-combat-root.active #hud-chase-reset {
     transition-duration: 0.001ms !important;
   }

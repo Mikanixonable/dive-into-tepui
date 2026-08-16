@@ -5,8 +5,8 @@ import type { HudWorldView } from './panel-shell';
 import { VesselPanel } from './vessel-panel';
 import { OrbitPanel } from './orbit-panel';
 import { TargetPanel } from './target-panel';
-import { ContactsPanel } from './contacts-panel';
-import { GlobalStatusBar } from './global-status-bar';
+import { EnemiesPanel } from './enemies-panel';
+import { SimulationStatusBar } from './simulation-status-bar';
 import { MapScaleBadge } from './map-scale-badge';
 import type { Input } from '../input/input';
 import type { OverlayLayers } from './overlay-layer';
@@ -21,12 +21,12 @@ export class Hud {
   readonly svgOverlay: SVGSVGElement;
   readonly overlayManager: OverlayManager;
   readonly helpPanel: HelpPanel;
-  readonly globalStatusBar: GlobalStatusBar;
+  readonly simulationStatusBar: SimulationStatusBar;
   readonly mapScaleBadge: MapScaleBadge;
   readonly vesselPanel: VesselPanel;
   readonly orbitPanel: OrbitPanel;
   readonly targetPanel: TargetPanel;
-  readonly contactsPanel: ContactsPanel;
+  readonly enemiesPanel: EnemiesPanel;
   private hintUntil = 0;
   private toastUntil = 0;
 
@@ -42,12 +42,12 @@ export class Hud {
     this.svgOverlay = svgOverlay;
     this.overlayManager = overlayManager;
     this.helpPanel = helpPanel;
-    this.globalStatusBar = new GlobalStatusBar(els);
+    this.simulationStatusBar = new SimulationStatusBar(els);
     this.mapScaleBadge = new MapScaleBadge(els);
     this.vesselPanel = new VesselPanel(els);
     this.orbitPanel = new OrbitPanel(els);
     this.targetPanel = new TargetPanel(els);
-    this.contactsPanel = new ContactsPanel(els);
+    this.enemiesPanel = new EnemiesPanel(els);
     this.setWorldView('combat');
   }
 

@@ -25,7 +25,7 @@ type EnemyRow =
     readonly secondary: boolean;
   };
 
-export class ContactsPanel {
+export class EnemiesPanel {
   private nextSyncAt = 0;
   private hasContacts = false;
 

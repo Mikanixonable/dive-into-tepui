@@ -32,7 +32,7 @@ import { Player, planExecutionLabel, type PlanExecutionMode } from './player/pla
 import type { GameEntity } from './game-entity/game-entity';
 import { add, cross, len, norm, scale, sub, v3 } from '../physics/vec3';
 import { metersPerPixel } from '../physics/projection';
-import type { ObjectType } from './creative/ship-placer-panel';
+import type { ObjectType } from './creative/object-placer-panel';
 import type { KinematicState } from '../physics/kinematic-state';
 import { Attractor, orbitalElementsOf, strongestAttractor } from '../physics/attractor';
 import { apsisAltitudes } from '../physics/elements';
@@ -581,7 +581,7 @@ export class MapContextActions {
     'empty-space': {
       itemsFor: () => {
         const placeItem: readonly MenuItem<MenuAction>[] = this.activeStage.authoring && this.cameraSystem.overviewMode
-          ? [{ label: 'オブジェクトを配置する', act: 'openShipPlacer', shortcut: 'Enter' }]
+          ? [{ label: 'オブジェクトを配置する', act: 'openObjectPlacer', shortcut: 'Enter' }]
           : [];
         return [
           ...placeItem,
@@ -590,8 +590,8 @@ export class MapContextActions {
         ];
       },
       run: (act) => {
-        if (act === 'openShipPlacer') {
-          this.activeStage.authoring?.openShipPlacer(
+        if (act === 'openObjectPlacer') {
+          this.activeStage.authoring?.openObjectPlacer(
             focusTargetId(this.cameraSystem.mapCamera.focus));
         } else if (act === 'openSettings') {
           this.pauseMenu.toggle(true);
@@ -712,7 +712,7 @@ export class MapContextActions {
     if (!authoring) return;
     const source = this.duplicateSourceFor(target);
     if (!source) return;
-    authoring.openShipPlacerForDuplicate(source.objectType, source.state);
+    authoring.openObjectPlacerForDuplicate(source.objectType, source.state);
   }
 
   // MapPickable を、複製できる実体の種類とその現在状態へ解決する。複製できない種別(天体・
