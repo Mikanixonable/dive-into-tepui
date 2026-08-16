@@ -289,7 +289,7 @@ export class MarkerManager {
 
     // 表示中のマーカーと、そのラベルの推定矩形を集める
     for (const m of this.markerDictionary.values()) {
-      if (m.hidden || !m.lbl.textContent || m.fixedLabel) {
+      if (m.hidden || !m.lbl.textContent || m.fixedLabel || m.root.style.opacity === '0') {
         m.lbl.style.transform = 'translateX(-50%)';
         continue;
       }
@@ -436,6 +436,12 @@ export class MarkerManager {
         line.setAttribute('y2', (a.oy + a.dy - a.h / 2).toString());
         line.setAttribute('stroke', FILL_4);
         line.setAttribute('stroke-width', '1');
+        const opacity = a.m.root.style.opacity;
+        if (opacity) {
+          line.setAttribute('stroke-opacity', opacity);
+        } else {
+          line.removeAttribute('stroke-opacity');
+        }
         // 既存ノードの appendChild は同じノードを移動するだけなので、active 順を保つ。
         this.svgOverlay.appendChild(line);
         lineIndex++;
