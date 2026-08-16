@@ -1,6 +1,6 @@
 // ドックビュー: 基地に接岸した際に開くフルスクリーンUI。
 // 格納されている船の一覧、部品の確認・修理・換装、ショップを提供する。
-import type { Base, DockedShipEntry } from '../game-entity/base';
+import type { Base, DockedVesselEntry } from '../game-entity/base';
 import type { Player } from '../player/player';
 import type { AnyPart, Part, PartType, RcsTankPart } from '../game-entity/parts';
 import { createPart } from '../game-entity/parts';
@@ -299,8 +299,8 @@ const PART_SELL_RATE = 0.5;
 const PART_FALLBACK_VALUE_PER_MAXHP = 20;
 // RCSタンクへの燃料補給コスト: 1kgあたりのクレジット
 const RCS_REFUEL_PRICE_PER_KG = 2;
-// 新造艦(既定パーツ一式)の価格。SHOP_CATALOG の最安構成の合計(≈31,500 Cr)に組立分を上乗せした額。
-const NEW_SHIP_COST = 35000;
+// 新造艦艇(既定パーツ一式)の価格。SHOP_CATALOG の最安構成の合計(≈31,500 Cr)に組立分を上乗せした額。
+const NEW_VESSEL_COST = 35000;
 
 // 部品の売却基準額を見積もる。ショップカタログに type/name が一致する項目があればその価格を、
 // なければ maxHp から概算した価格を使う(艦に最初から積まれていた部品など由来不明なもの向け)。
@@ -320,7 +320,7 @@ function refuelCost(tank: RcsTankPart): number {
 export type DockTab = 'ships' | 'parts' | 'shop';
 
 const TAB_ITEMS: readonly (readonly [DockTab, string])[] = [
-  ['ships', '格納艦'],
+  ['ships', '格納艦艇'],
   ['parts', '部品'],
   ['shop', 'ショップ'],
 ];
@@ -370,15 +370,15 @@ export class BaseView {
   private readonly bodyEl: HTMLElement;
   private _visible = false;
   private currentBase: Base | null = null;
-  private currentShip: Player | null = null;
+  private currentVessel: Player | null = null;
   private currentTab: DockTab = 'ships';
   private freeProcurement = false;
   private previouslyFocused: HTMLElement | null = null;
 
   // 外部コールバック
-  public onLaunchShip: ((ship: Player, base: Base) => void) | null = null;
+  public onLaunchVessel: ((ship: Player, base: Base) => void) | null = null;
   // 「新造」ボタン。実際の艦の生成は Docking 側が行う(BaseView は UI のみ)。
-  public onBuildShip: ((base: Base) => void) | null = null;
+  public onBuildVessel: ((base: Base) => void) | null = null;
   public onClose: (() => void) | null = null;
 
   public get visible(): boolean { return this._visible; }
@@ -463,10 +463,10 @@ export class BaseView {
     this.currentBase = base;
     this.freeProcurement = freeProcurement;
     // inspectShip が基地に格納されていれば選択状態にする
-    if (inspectShip && base.baseState.dockedShips.some((s) => s.id === inspectShip.id)) {
-      this.currentShip = inspectShip;
+    if (inspectShip && base.baseState.dockedVessels.some((s) => s.id === inspectShip.id)) {
+      this.currentVessel = inspectShip;
     } else {
-      this.currentShip = null;
+      this.currentVessel = null;
     }
     this.currentTab = 'ships';
     this.refresh();
@@ -479,7 +479,7 @@ export class BaseView {
     this.el.style.display = 'none';
     this._visible = false;
     this.currentBase = null;
-    this.currentShip = null;
+    this.currentVessel = null;
     const focusTarget = this.previouslyFocused;
     this.previouslyFocused = null;
     if (focusTarget?.isConnected) focusTarget.focus({ preventScroll: true });
@@ -526,7 +526,7 @@ export class BaseView {
 
     this.bodyEl.innerHTML = '';
     switch (this.currentTab) {
-      case 'ships': this.bodyEl.appendChild(this.buildShipsTab()); break;
+      case 'ships': this.bodyEl.appendChild(this.buildVesselsTab()); break;
       case 'parts': this.bodyEl.appendChild(this.buildPartsTab()); break;
       case 'shop': this.bodyEl.appendChild(this.buildShopTab()); break;
     }
@@ -555,38 +555,38 @@ export class BaseView {
     return header;
   }
 
-  // ─── 格納艦タブ ───────────────────────────────────────────
-  private buildShipsTab(): HTMLElement {
+  // ─── 格納艦艇タブ ───────────────────────────────────────────
+  private buildVesselsTab(): HTMLElement {
     const base = this.currentBase!;
     const frag = document.createElement('section');
     frag.className = 'dock-section';
-    const ships = base.baseState.dockedShips;
+    const ships = base.baseState.dockedVessels;
     frag.appendChild(this.buildSectionHeader(
-      '格納艦',
+      '格納艦艇',
       '発進する艦を選択するか、整備画面で搭載部品を確認します。',
-      `${ships.length} / ${C.BASE_MAX_SHIPS} 隻`,
+      `${ships.length} / ${C.BASE_MAX_VESSELS} 隻`,
     ));
     if (ships.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'dock-empty';
-      empty.textContent = '格納艦はありません。ランデブー後に収容するか、新造してください。';
+      empty.textContent = '格納艦艇はありません。ランデブー後に収容するか、新造してください。';
       frag.appendChild(empty);
     } else {
       const list = document.createElement('div');
       list.className = 'dock-ship-list';
       list.setAttribute('role', 'list');
-      ships.forEach((s, i) => list.appendChild(this.buildShipRow(s, i)));
+      ships.forEach((s, i) => list.appendChild(this.buildVesselRow(s, i)));
       frag.appendChild(list);
     }
-    frag.appendChild(this.buildNewShipHeader(base));
+    frag.appendChild(this.buildNewVesselHeader(base));
     return frag;
   }
 
-  private buildShipRow(s: DockedShipEntry, i: number): HTMLElement {
+  private buildVesselRow(s: DockedVesselEntry, i: number): HTMLElement {
     const row = document.createElement('div');
     row.className = 'dock-ship-row';
     row.setAttribute('role', 'listitem');
-    const selected = this.currentShip?.id === s.id;
+    const selected = this.currentVessel?.id === s.id;
     row.classList.toggle('is-selected', selected);
     const hpRatio = s.maxHp > 0 ? s.hp / s.maxHp : 0;
     row.classList.toggle('is-critical', hpRatio <= 0.3);
@@ -597,7 +597,7 @@ export class BaseView {
     select.setAttribute('aria-pressed', String(selected));
     select.setAttribute('aria-label', `${s.name || `艦 ${i + 1}`}を選択`);
     select.addEventListener('click', () => {
-      this.currentShip = s.player;
+      this.currentVessel = s.player;
       this.refresh();
     });
 
@@ -625,22 +625,22 @@ export class BaseView {
   }
 
   // 新造(既定パーツ一式の艦を1隻、格納艦へ加える)行。
-  private buildNewShipHeader(base: Base): HTMLElement {
-    const isFull = base.baseState.dockedShips.length >= C.BASE_MAX_SHIPS;
-    const canAfford = !isFull && (this.freeProcurement || base.baseState.money >= NEW_SHIP_COST);
+  private buildNewVesselHeader(base: Base): HTMLElement {
+    const isFull = base.baseState.dockedVessels.length >= C.BASE_MAX_VESSELS;
+    const canAfford = !isFull && (this.freeProcurement || base.baseState.money >= NEW_VESSEL_COST);
     const row = document.createElement('div');
     row.className = 'dock-parts-header';
     const label = document.createElement('span');
     label.className = 'dock-ship-label';
     label.textContent = isFull
-      ? `基地のドックが満杯です (最大 ${C.BASE_MAX_SHIPS} 隻)`
-      : '既定構成の艦を新造して格納庫へ追加します。';
+      ? `基地のドックが満杯です (最大 ${C.BASE_MAX_VESSELS} 隻)`
+      : '既定構成の艦艇を新造して格納庫へ追加します。';
     row.appendChild(label);
     const btn = new Button(
       isFull
         ? 'ドック満杯'
-        : `新造 · ${this.freeProcurement ? 'コストなし' : `${NEW_SHIP_COST.toLocaleString()} Cr`}`,
-      () => this.handleBuildShip(),
+        : `新造 · ${this.freeProcurement ? 'コストなし' : `${NEW_VESSEL_COST.toLocaleString()} Cr`}`,
+      () => this.handleBuildVessel(),
     );
     btn.element.classList.add('dock-btn', 'dock-btn-primary');
     btn.setEnabled(canAfford);
@@ -654,9 +654,9 @@ export class BaseView {
   private buildPartsTab(): HTMLElement {
     const base = this.currentBase!;
     // 選択艦がなければ最初の艦を表示。倉庫は基地の持ち物なので、格納艦が居なくても出す。
-    const ship = this.currentShip ?? null;
-    const shipData = (ship ? base.baseState.dockedShips.find((s) => s.id === ship.id) : undefined)
-      ?? base.baseState.dockedShips[0]
+    const ship = this.currentVessel ?? null;
+    const shipData = (ship ? base.baseState.dockedVessels.find((s) => s.id === ship.id) : undefined)
+      ?? base.baseState.dockedVessels[0]
       ?? null;
 
     const frag = document.createElement('section');
@@ -705,7 +705,7 @@ export class BaseView {
   }
 
   // 艦の全部品をまとめて修理するボタンの行。
-  private buildRepairAllHeader(base: Base, shipData: DockedShipEntry): HTMLElement {
+  private buildRepairAllHeader(base: Base, shipData: DockedVesselEntry): HTMLElement {
     const totalRepairCost = shipData.parts.reduce((sum, p) => sum + (p.maxHp - p.hp) * REPAIR_COST_PER_HP, 0);
     const enabled = totalRepairCost > 0 && (this.freeProcurement || base.baseState.money >= totalRepairCost);
     const row = document.createElement('div');
@@ -731,7 +731,7 @@ export class BaseView {
   }
 
   // 搭載部品1件の行を作る。同じ type の在庫があれば換装欄を、rcs_tank なら補給ボタンを添える。
-  private buildInstalledPartRow(base: Base, shipData: DockedShipEntry, p: Part, i: number): HTMLElement {
+  private buildInstalledPartRow(base: Base, shipData: DockedVesselEntry, p: Part, i: number): HTMLElement {
     const hpPct = Math.max(0, Math.min(100, (p.hp / p.maxHp) * 100));
     const repairCost = (p.maxHp - p.hp) * REPAIR_COST_PER_HP;
     const canRepair = repairCost > 0 && (this.freeProcurement || base.baseState.money >= repairCost);
@@ -939,28 +939,28 @@ export class BaseView {
   private handleLaunch(idx: number): void {
     const base = this.currentBase;
     if (!base) return;
-    const shipData = base.baseState.dockedShips[idx];
+    const shipData = base.baseState.dockedVessels[idx];
     if (!shipData) return;
-    this.onLaunchShip?.(shipData.player, base);
-    base.baseState.dockedShips.splice(idx, 1);
-    if (this.currentShip === shipData.player) this.currentShip = null;
+    this.onLaunchVessel?.(shipData.player, base);
+    base.baseState.dockedVessels.splice(idx, 1);
+    if (this.currentVessel === shipData.player) this.currentVessel = null;
     this.refresh();
   }
 
   // 新造費用を払い、実際の艦の生成(Docking 側)を要求する。
-  private handleBuildShip(): void {
+  private handleBuildVessel(): void {
     const base = this.currentBase;
     if (!base) return;
-    if (!this.freeProcurement && base.baseState.money < NEW_SHIP_COST) return;
-    if (!this.freeProcurement) base.baseState.money -= NEW_SHIP_COST;
-    this.onBuildShip?.(base);
+    if (!this.freeProcurement && base.baseState.money < NEW_VESSEL_COST) return;
+    if (!this.freeProcurement) base.baseState.money -= NEW_VESSEL_COST;
+    this.onBuildVessel?.(base);
     this.refresh();
   }
 
   private handleInspect(idx: number): void {
-    const shipData = this.currentBase?.baseState.dockedShips[idx];
+    const shipData = this.currentBase?.baseState.dockedVessels[idx];
     if (!shipData) return;
-    this.currentShip = shipData.player;
+    this.currentVessel = shipData.player;
     this.currentTab = 'parts';
     this.refresh();
   }
@@ -968,7 +968,7 @@ export class BaseView {
   private handleRepairPart(shipId: string, partIdx: number): void {
     const base = this.currentBase;
     if (!base) return;
-    const shipData = base.baseState.dockedShips.find((s) => s.id === shipId);
+    const shipData = base.baseState.dockedVessels.find((s) => s.id === shipId);
     if (!shipData) return;
 
     const part: Part | undefined = shipData.parts[partIdx];
@@ -985,7 +985,7 @@ export class BaseView {
   private handleRepairAll(shipId: string): void {
     const base = this.currentBase;
     if (!base) return;
-    const shipData = base.baseState.dockedShips.find((s) => s.id === shipId);
+    const shipData = base.baseState.dockedVessels.find((s) => s.id === shipId);
     if (!shipData) return;
 
     const parts = shipData.parts;
@@ -1000,7 +1000,7 @@ export class BaseView {
 
   // 格納中は shipData.parts が艦本体の parts 配列と同一参照なので、修理は艦へ直接反映される。
   // hp/maxHp の集計スナップショットだけは別に持っているので、艦一覧タブの表示用にここで揃える。
-  private syncDockedSnapshot(shipData: DockedShipEntry): void {
+  private syncDockedSnapshot(shipData: DockedVesselEntry): void {
     shipData.player.refreshFromParts();
     shipData.hp = shipData.player.hp;
     shipData.maxHp = shipData.player.maxHp;
@@ -1011,7 +1011,7 @@ export class BaseView {
   private handleSwapPart(shipId: string, partIdx: number, invId: string): void {
     const base = this.currentBase;
     if (!base) return;
-    const shipData = base.baseState.dockedShips.find((s) => s.id === shipId);
+    const shipData = base.baseState.dockedVessels.find((s) => s.id === shipId);
     const installed = shipData?.parts[partIdx];
     if (!shipData || !installed) return;
 
@@ -1029,7 +1029,7 @@ export class BaseView {
   private handleRefuelInstalled(shipId: string, partIdx: number): void {
     const base = this.currentBase;
     if (!base) return;
-    const shipData = base.baseState.dockedShips.find((s) => s.id === shipId);
+    const shipData = base.baseState.dockedVessels.find((s) => s.id === shipId);
     const part = shipData?.parts[partIdx];
     if (!part || part.type !== 'rcs_tank') return;
     this.refuelTank(base, part as RcsTankPart);
