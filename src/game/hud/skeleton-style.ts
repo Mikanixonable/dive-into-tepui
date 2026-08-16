@@ -201,8 +201,9 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
   text-align: center; white-space: nowrap; text-shadow: 0 0 4px var(--bg), 0 0 2px var(--bg);
   width: 24px; height: 24px; transition: opacity 300ms ease;
 }
-.mk .sym { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: var(--glyph-base); line-height: 1; }
-.mk .lbl { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); font-size: var(--font-xs); letter-spacing: 1px; }
+.mk .sym { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: var(--glyph-base); line-height: 1; transition: opacity 200ms ease; }
+.mk .lbl { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); font-size: var(--font-xs); letter-spacing: 1px; transition: opacity 200ms ease; }
+.mk .sym.priority-hidden, .mk .lbl.priority-hidden { opacity: 0; pointer-events: none; }
 #hud .mk .lbl { margin-top: var(--space-1); }
 .mk-enemy .lbl, .mk-target .lbl { font-size: var(--font-xxs); line-height: 1.2; white-space: pre; }
 .mk-dir { color: var(--text-strong); font-size: var(--font-s); text-shadow: none; }
