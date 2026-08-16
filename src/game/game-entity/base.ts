@@ -4,7 +4,7 @@ import { EntityIdAllocator } from './entity-id';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Attitude } from '../../physics/attitude';
 import { qRotate } from '../../physics/attitude';
-import { add, v3, Vec3 } from '../../physics/vec3';
+import { add, len, sub, v3, Vec3 } from '../../physics/vec3';
 import type { AnyPart, Part } from './parts';
 import { partFromSaveData } from './parts';
 import { Player } from '../player/player';
@@ -14,10 +14,14 @@ import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';
-import { EntityMarker } from '../marker/entity-marker';
 import type { BaseSaveData } from '../save-data';
 import { Plan } from '../plan/plan';
 import type { PlanExecutionMode } from '../player/player';
+import { generateRandomName } from '../random-name';
+import type { GroupedMarkerItem } from '../marker/grouped-markers';
+import type { MarkerRole } from '../targeter';
+import { fmtMarkerDist } from '../hud/utils';
+import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 import * as C from '../const';
 import { BaseCollisionGeometry, RayHit, SphereHit } from '../../physics/base-collision';
 import { PlayerThrottle } from '../player/player-throttle';
@@ -134,7 +138,7 @@ export class Base extends GameEntity implements Controllable {
     hud: Hud,
     worldSfx: WorldSfx,
     fx: EffectsSystem,
-    markerManager: MarkerManager,
+    private readonly markerManager: MarkerManager,
   ) {
     const { state, name, att, id } = 'saved' in init
       ? {
@@ -143,7 +147,7 @@ export class Base extends GameEntity implements Controllable {
         att: undefined,
         id: init.saved.id,
       }
-      : { state: init.state, name: init.name ?? '基地', att: init.att, id: init.id };
+      : { state: init.state, name: init.name ?? generateRandomName('base'), att: init.att, id: init.id };
     const savedAtt: Attitude | undefined = 'saved' in init && init.saved.q
       ? {
         q: { ...init.saved.q },
@@ -167,7 +171,6 @@ export class Base extends GameEntity implements Controllable {
     this.thrustEffects = new ThrustEffects(scene, worldSfx);
     this.rcsEffects = new RcsEffects(scene, worldSfx);
     this.equatorNodes = new EquatorNodeMarkerPair(this, markerManager);
-    this.marker = new EntityMarker(this, markerManager, 'mk-base', baseMarkerSvg(), true);
 
     if ('saved' in init) {
       this.baseState.money = init.saved.money;
@@ -312,12 +315,39 @@ export class Base extends GameEntity implements Controllable {
     this.rcsEffects.sync(fo, effectState.r, this.torque, this.att, effectVisible, camera, isControlled, 6.0);
   }
 
+  markerItem(role: MarkerRole, viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): GroupedMarkerItem {
+    const dist = len(sub(pos, viewerPos));
+    const priority = role === 'primary'
+      ? C.MARKER_PRIORITY.PRIMARY_TARGET
+      : role === 'secondary'
+        ? C.MARKER_PRIORITY.SECONDARY_TARGET
+        : C.MARKER_PRIORITY.BASE - dist / 1e9;
+    return {
+      key: `base-${this.id}`,
+      cls: role === 'primary' ? 'mk-target' : 'mk-base',
+      sym: baseMarkerSvg(),
+      pos,
+      vel,
+      priority,
+      name: this.name,
+      detail: overviewMode ? '' : fmtMarkerDist(dist),
+      bearingColor: C.COLOR_MARKER_ALLY,
+      bearingSym: ENTITY_GLYPH.base,
+      bearingClass: 'mk-dir mk-ally-dir',
+      bearingVisible: false,
+      color: C.COLOR_MARKER_ALLY,
+      symMarkup: true,
+    };
+  }
+
   dispose(): void {
     super.dispose();
     if (this.scene) {
       this.thrustEffects.dispose(this.scene);
       this.rcsEffects.dispose(this.scene);
     }
+    this.markerManager.remove(`base-${this.id}`);
+    this.markerManager.remove(`base-${this.id}-bearing`);
     // 格納艦は entities.players から外れているため、ここでしか回収できない。
     for (const entry of this.baseState.dockedVessels) entry.player.dispose();
     this.baseState.dockedVessels = [];
