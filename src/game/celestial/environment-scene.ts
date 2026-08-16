@@ -284,10 +284,11 @@ export class EnvironmentScene {
     const pHat = this.geoElements.pHat;
     const qHat = this.geoElements.qHat;
 
-    const numLabels = 4;
+    const numLabels = 1;
+    for (let i = 1; i < 4; i++) markerManager.hide(keys[i]!);
     for (let i = 0; i < numLabels; i++) {
       const key = keys[i]!;
-      const theta = (i * Math.PI) / 2 + Math.PI / 4;
+      const theta = Math.PI / 4;
       const cosT = Math.cos(theta);
       const sinT = Math.sin(theta);
 
@@ -315,7 +316,7 @@ export class EnvironmentScene {
         p0.y,
         p0.front,
         '',
-        0.45,
+        0.75,
         undefined,
         rotDeg,
         false,
