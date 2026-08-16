@@ -375,7 +375,9 @@ export class FocusMarkers {
         });
       }
       this.markerManager.setPosition(
-        lbl.id, lbl.isLagrange ? 'mk-poi mk-lagrange' : 'mk-poi', lbl.showIcon ? ENTITY_GLYPH.body : '', lbl.pos, project,
+        lbl.id, lbl.isLagrange ? 'mk-poi mk-lagrange' : 'mk-poi',
+        lbl.showIcon ? (lbl.isLagrange ? ENTITY_GLYPH.lagrange : ENTITY_GLYPH.body) : '',
+        lbl.pos, project,
         isLabelVisible ? lbl.markerLabel : '',
         markerOpacity, undefined, undefined, false, false, lbl.labelPriority,
       );
