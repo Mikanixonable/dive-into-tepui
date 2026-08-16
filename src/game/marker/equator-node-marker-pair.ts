@@ -66,10 +66,12 @@ export class EquatorNodeMarkerPair {
     this.icons = [
       {
         id: this.anKey, name: `${this.owner.name}の${centerName}赤道昇交点`, kind: 'eqnode',
+        ownerName: this.owner.name,
         pos: toDisplay(crossings.asc.r, crossings.asc.t), time: crossings.asc.t, label: 'EqAN',
       },
       {
         id: this.dnKey, name: `${this.owner.name}の${centerName}赤道降交点`, kind: 'eqnode',
+        ownerName: this.owner.name,
         pos: toDisplay(crossings.desc.r, crossings.desc.t), time: crossings.desc.t, label: 'EqDN',
       },
     ];

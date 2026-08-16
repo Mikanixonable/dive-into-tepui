@@ -33,6 +33,7 @@ export class NavTarget {
   private readonly baseMenu: ContextMenu<Base, MenuAction>;
   private targetId: string | null = null;
   private targetName: string | null = null;
+  private ownerName: string | null = null;
   // 自機軌道上の AN/DN の絶対位置(地球中心)。対象の軌道面が定まらなければ両方 null。
   private anPos: Vec3 | null = null;
   private dnPos: Vec3 | null = null;
@@ -89,6 +90,7 @@ export class NavTarget {
   ): void {
     const { simTime, displayTime, frame } = displayWindow;
     this.anPos = this.dnPos = this.anTime = this.dnTime = null;
+    this.ownerName = player?.name ?? null;
     this.attractors = ephemeris.attractorsAt(displayTime);
     if (!this.targetId) return;
     // 航法ターゲット自身の赤道交点は、自機の軌道要素が求まるかどうかとは無関係に出す。
@@ -188,8 +190,9 @@ export class NavTarget {
   // 右クリック対象として公開する AN/DN アイコン。計算できているぶんだけ返す。
   mapPickables(): MapPickable[] {
     this.pickableCache.length = 0;
-    if (this.anPos && this.anTime !== null) this.pickableCache.push({ id: 'nav-an', name: 'AN', pos: this.anPos, time: this.anTime, kind: 'relnode' });
-    if (this.dnPos && this.dnTime !== null) this.pickableCache.push({ id: 'nav-dn', name: 'DN', pos: this.dnPos, time: this.dnTime, kind: 'relnode' });
+    const ownerName = this.ownerName ?? undefined;
+    if (this.anPos && this.anTime !== null) this.pickableCache.push({ id: 'nav-an', name: 'AN', pos: this.anPos, time: this.anTime, kind: 'relnode', ownerName });
+    if (this.dnPos && this.dnTime !== null) this.pickableCache.push({ id: 'nav-dn', name: 'DN', pos: this.dnPos, time: this.dnTime, kind: 'relnode', ownerName });
     return this.pickableCache;
   }
 

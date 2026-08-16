@@ -720,7 +720,7 @@ export class PlanEditor {
     this.attractors.resolve(
       excludedIds, this.plan?.revision ?? 0, this.lastPlanEnd, displayWindow.simTime,
     );
-    this.planDisplay.update(this.displayedPlan, displayWindow, this.attractors);
+    this.planDisplay.update(this.displayedPlan, displayWindow, this.attractors, ship?.name);
     this.updateEquatorNodes(displayWindow);
   }
 
