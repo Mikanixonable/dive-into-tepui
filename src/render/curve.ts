@@ -434,10 +434,6 @@ export class Curve {
     this.applyVisible();
   }
 
-  get visible(): boolean {
-    return this.line.visible;
-  }
-
   // 折れ線は2点以上ないと描けないので、頂点数不足のときは表示要求に関わらず隠す。
   private applyVisible(): void {
     this.line.visible = this.wantVisible && this.vertexCount >= 2;

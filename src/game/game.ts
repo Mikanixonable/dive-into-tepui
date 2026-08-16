@@ -511,6 +511,7 @@ export class Game {
     this.entities.syncPlayerTrajectoryLines(
       player, displayWindow, overviewMode, this.ephemeris, fo,
       this.cameraSystem.activeCamera, displayAttractors, visibilityPolicy,
+      this.targeter.aliveTarget, this.targeter.aliveSecondaryTarget,
     );
 
     if (player) {
