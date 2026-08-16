@@ -8,11 +8,23 @@ import { SOLAR_SYSTEM, bodyDef, primaryOf } from '../../src/physics/solar-system
 import {
   TRIANGULAR_STABILITY_MASS_RATIO, collinearClearanceRatio, hasStableTriangularPoints,
 } from '../../src/physics/lagrange';
-import { BodyClassToggles, DEFAULT_BODY_CLASS_TOGGLES, isPositionInFocusedSystem, systemChainAt, systemMembersAt, visibleBodyIds } from '../../src/game/celestial/body-visibility';
+import { BodyClassToggles, DEFAULT_BODY_CLASS_TOGGLES, isPositionInFocusedSystem, systemChainAt, systemMembersAt } from '../../src/game/celestial/body-visibility';
 import { MapVisibilityPolicy } from '../../src/game/celestial/map-visibility';
 import { v3, addScaled } from '../../src/physics/vec3';
 
 const MIN_CLEARANCE = 10;
+
+function visibleBodyIds(
+  registry: any, focusId: any, toggles: BodyClassToggles, nearbyIds: Iterable<any> = [],
+): ReadonlySet<string> {
+  const policy = new MapVisibilityPolicy(registry, toggles, focusId, nearbyIds);
+  const set = new Set<string>();
+  for (const id of Object.keys(registry)) {
+    const p = policy.body(id as any);
+    if (p.icon || p.label) set.add(id);
+  }
+  return set;
+}
 
 // 衛星クラスの Icon/Label を畳んだトグル。フォーカス由来・カメラ近傍由来の追加規則は、
 // クラストグル自身が既にその天体を足している間は観測できないので、その規則を固定する
@@ -111,7 +123,7 @@ export function register(): void {
       playerLabel: false,
     });
     assert.deepEqual(policy.entity('player', true), {
-      category: true, icon: true, label: false, orbit: false, pickable: true,
+      category: true, icon: true, label: false, orbit: true, pickable: true,
     });
     assert.deepEqual(policy.entity('player', false), {
       category: false, icon: false, label: false, orbit: false, pickable: false,
