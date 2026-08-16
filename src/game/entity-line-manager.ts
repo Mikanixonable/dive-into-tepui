@@ -35,14 +35,17 @@ export class EntityLineManager {
 
     for (const ship of this.entities.players) {
       const isActive = ship === activePlayer;
-      const orbit = visibilityPolicy?.entity('player', isActive).orbit;
+      const visible = visibilityPolicy?.entity('player', isActive).orbit ?? true;
       const asTarget = targetStyleOf(ship);
-      if (asTarget !== null && (orbit ?? true)) ship.showOrbitLine(asTarget);
+      const showLines = (isActive || overviewMode) && visible && asTarget === null;
+      // 戦闘ビューの操作艦は、積分した予測線ではなく解析楕円で軌道を描く。
+      const ownEllipse = showLines && !overviewMode;
+      if (asTarget !== null && visible) ship.showOrbitLine(asTarget);
+      else if (ownEllipse) ship.showOrbitLine(C.LINE_STYLE.playerOrbit);
       else ship.hideOrbitLine();
-      const showTrajectory = (isActive || overviewMode) && (orbit ?? true) && asTarget === null;
-      if (showTrajectory) ship.showPredictedLine(C.LINE_STYLE.playerPredicted);
+      if (showLines && !ownEllipse) ship.showPredictedLine(C.LINE_STYLE.playerPredicted);
       else ship.hidePredictedLine();
-      if (showTrajectory && pastDuration > 0) ship.showActualLine(C.LINE_STYLE.playerActual);
+      if (showLines && pastDuration > 0) ship.showActualLine(C.LINE_STYLE.playerActual);
       else ship.hideActualLine();
     }
     for (const enemy of this.entities.enemies) {
@@ -71,13 +74,14 @@ export class EntityLineManager {
       const predictedTo = ship.predictionTruncated ? null : simTime + duration;
       ship.syncTrajectoryLines(
         frame, simTime, displayTime, pastDuration, predictedTo, ephemeris, fo, camera, attractors);
-      ship.syncOrbitLine(fo, camera, attractors, false, frame, displayTime, ephemeris);
+      // 噴射中は軌道要素が動き続けるので、閾値を待たずに焼き直す。
+      ship.syncOrbitLine(fo, camera, attractors, ship.thrust !== null, frame, displayTime, ephemeris);
     }
     for (const enemy of this.entities.enemies) {
-      enemy.syncOrbitLine(fo, camera, attractors, false, frame, displayTime, ephemeris);
+      enemy.syncOrbitLine(fo, camera, attractors, enemy.thrust !== null, frame, displayTime, ephemeris);
     }
     for (const base of this.entities.bases) {
-      base.syncOrbitLine(fo, camera, attractors, false, frame, displayTime, ephemeris);
+      base.syncOrbitLine(fo, camera, attractors, base.thrust !== null, frame, displayTime, ephemeris);
     }
   }
 }

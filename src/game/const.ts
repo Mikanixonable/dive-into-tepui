@@ -595,7 +595,7 @@ export const COLOR_STAGE0_GROUP_ACCENTS = ['#ff4a3d', '#3dc6ff', '#3dff8f', '#ff
 // 各線が自分の値を単独で決めず、この表で一括して割り当てる。
 export const LINE_RENDER_ORDER = {
   reference: 0,        // 天体の参照軌道線
-  shipOrbit: 1,        // 自機の解析楕円
+  shipOrbit: 1,        // 自機・敵・拠点の解析楕円
   secondaryTarget: 2,  // 第二ターゲットの軌道線
   target: 3,           // 主ターゲットの軌道線
   plan: 4,             // 計画軌道(破線)
@@ -606,6 +606,7 @@ export const LINE_RENDER_ORDER = {
 export const LINE_STYLE = {
   enemyOrbit: { color: COLOR_ENEMY_ORBIT_LINE, opacity: 0.35, renderOrder: LINE_RENDER_ORDER.shipOrbit },
   baseOrbit: { color: COLOR_BASE_ORBIT_LINE, opacity: 0.35, renderOrder: LINE_RENDER_ORDER.shipOrbit },
+  playerOrbit: { color: COLOR_PLAYER_ORBIT_LINE, opacity: 0.55, renderOrder: LINE_RENDER_ORDER.shipOrbit },
   playerPredicted: { color: COLOR_PLAYER_ORBIT_LINE, opacity: 0.55, renderOrder: LINE_RENDER_ORDER.predicted },
   playerActual: { color: COLOR_PLAYER_ORBIT_LINE, opacity: 0.3, renderOrder: LINE_RENDER_ORDER.predicted },
 } as const satisfies Record<string, LineStyle>;
