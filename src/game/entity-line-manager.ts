@@ -3,13 +3,19 @@
 import * as THREE from 'three/webgpu';
 import { Attractor } from '../physics/attractor';
 import { Ephemeris } from '../physics/ephemeris';
+import type { LineStyle } from '../render/curve';
 import * as C from './const';
 import { FloatingOrigin } from './floating-origin';
 import { Player } from './player/player';
+import { currentThemePalette } from './theme';
 import type { CombatTarget } from './targeter';
 import type { EntityManager } from './simulation/entity-manager';
 import type { DisplayWindow } from './display-window-manager';
 import type { MapVisibilityPolicy } from './celestial/map-visibility';
+
+// ターゲットの軌道はほぼ自機の軌道と重なることが多く(近傍ランデブーを狙うため)、
+// 埋もれて見えなくならないよう不透明度を上げる。
+const TARGET_LINE_OPACITY = 0.9;
 
 export class EntityLineManager {
   constructor(private readonly entities: EntityManager) {}
@@ -21,20 +27,30 @@ export class EntityLineManager {
     overviewMode: boolean, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     const { pastDuration } = displayWindow;
+    const palette = currentThemePalette();
+    const primaryStyle: LineStyle = { color: palette.accent, opacity: TARGET_LINE_OPACITY, renderOrder: C.LINE_RENDER_ORDER.target };
+    const secondaryStyle: LineStyle = { color: palette.secondary, opacity: TARGET_LINE_OPACITY, renderOrder: C.LINE_RENDER_ORDER.secondaryTarget };
+    const targetStyleOf = (e: CombatTarget): LineStyle | null =>
+      e === primaryTarget ? primaryStyle : e === secondaryTarget ? secondaryStyle : null;
+
     for (const ship of this.entities.players) {
       const isActive = ship === activePlayer;
-      const show = (isActive || overviewMode)
-        && (visibilityPolicy?.entity('player', isActive).orbit ?? true)
-        && ship !== primaryTarget && ship !== secondaryTarget;
-      if (show) ship.showPredictedLine(C.LINE_STYLE.playerPredicted);
+      const orbit = visibilityPolicy?.entity('player', isActive).orbit;
+      const asTarget = targetStyleOf(ship);
+      if (asTarget !== null && (orbit ?? true)) ship.showOrbitLine(asTarget);
+      else ship.hideOrbitLine();
+      const showTrajectory = (isActive || overviewMode) && (orbit ?? true) && asTarget === null;
+      if (showTrajectory) ship.showPredictedLine(C.LINE_STYLE.playerPredicted);
       else ship.hidePredictedLine();
-      if (show && pastDuration > 0) ship.showActualLine(C.LINE_STYLE.playerActual);
+      if (showTrajectory && pastDuration > 0) ship.showActualLine(C.LINE_STYLE.playerActual);
       else ship.hideActualLine();
     }
     for (const enemy of this.entities.enemies) {
-      const show = overviewMode && enemy.alive && (visibilityPolicy?.entity('ship').orbit ?? false)
-        && enemy !== primaryTarget && enemy !== secondaryTarget;
-      if (show) enemy.showOrbitLine({ ...C.LINE_STYLE.enemyOrbit, color: enemy.orbitLineColor });
+      const asTarget = targetStyleOf(enemy);
+      const orbit = visibilityPolicy?.entity('ship').orbit;
+      // ターゲットはビューを問わず出し、可視性の既定も通常の線(false)と逆向き(true)。
+      const show = asTarget !== null ? (orbit ?? true) : overviewMode && enemy.alive && (orbit ?? false);
+      if (show) enemy.showOrbitLine(asTarget ?? { ...C.LINE_STYLE.enemyOrbit, color: enemy.orbitLineColor });
       else enemy.hideOrbitLine();
     }
     for (const base of this.entities.bases) {
@@ -55,6 +71,7 @@ export class EntityLineManager {
       const predictedTo = ship.predictionTruncated ? null : simTime + duration;
       ship.syncTrajectoryLines(
         frame, simTime, displayTime, pastDuration, predictedTo, ephemeris, fo, camera, attractors);
+      ship.syncOrbitLine(fo, camera, attractors, false, frame, displayTime, ephemeris);
     }
     for (const enemy of this.entities.enemies) {
       enemy.syncOrbitLine(fo, camera, attractors, false, frame, displayTime, ephemeris);
