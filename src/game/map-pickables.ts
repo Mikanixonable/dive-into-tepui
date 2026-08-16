@@ -18,6 +18,7 @@ import { isOccluded } from '../physics/occlusion';
 import { apsisAltitudes } from '../physics/elements';
 import { isPositionInFocusedSystem, systemMembersAt } from './celestial/body-visibility';
 import { MapVisibilityPolicy } from './celestial/map-visibility';
+import { MarkerManager } from './marker/marker-manager';
 import type { DisplayWindow } from './display-window-manager';
 import type { PerfCounts } from '../perf-meter';
 
@@ -42,6 +43,24 @@ export class MapPickables {
   // 同じ時刻で求め直すために読む。
   get lastSimTime(): number { return this._lastSimTime; }
 
+  // 画面描画・マーカー同期完了後に、最新の可視性状態(ラベル・アイコン非表示)を
+  // MapPickable.pickable へ反映する。
+  syncVisibility(): void {
+    const focusMarkers = this.cameraSystem.focusMarkers;
+    const combatMarkers = this.markerManager.combatMarkers;
+    for (const item of this.candidateItems) {
+      if (item.kind === 'body') {
+        item.pickable = focusMarkers.isBodyPickable(item.id);
+      } else if (item.kind === 'player') {
+        item.pickable = combatMarkers.isPickable(`player-${item.id}`);
+      } else if (item.kind === 'ship') {
+        item.pickable = combatMarkers.isPickable(`enemy-${item.id}`);
+      } else if (item.kind === 'base') {
+        item.pickable = combatMarkers.isPickable(`base-${item.id}`);
+      }
+    }
+  }
+
   // 候補の供給元を参照として受け取る。
   constructor(
     private readonly activePlayers: ActivePlayerController,
@@ -50,6 +69,7 @@ export class MapPickables {
     private readonly navTarget: NavTarget,
     private readonly cameraSystem: CameraSystem,
     private readonly editor: PlanEditor,
+    private readonly markerManager: MarkerManager,
   ) {}
 
   // マップの天体ラベル(表示のみ)と航法ターゲットの AN/DN を求め直したうえで、このフレームの

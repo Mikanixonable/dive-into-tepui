@@ -157,6 +157,7 @@ export class EntityManager {
     targets = [];
     for (const enemy of this.enemies) targets.push(enemy);
     for (const player of this.players) if (player !== excludePlayer) targets.push(player);
+    for (const base of this.bases) targets.push(base);
     this.cachedCombatTargetsByExcludedPlayer.set(excludePlayer, targets);
     return targets;
   }
@@ -164,7 +165,7 @@ export class EntityManager {
   private rebuildCombatTargetsIfNeeded(): void {
     if (this.combatTargetsRevision === this._collectionRevision) return;
     this.cachedCombatTargets.length = 0;
-    this.cachedCombatTargets.push(...this.enemies, ...this.players);
+    this.cachedCombatTargets.push(...this.enemies, ...this.players, ...this.bases);
     this.cachedCombatTargetsByExcludedPlayer.clear();
     this.combatTargetsRevision = this._collectionRevision;
   }
@@ -411,9 +412,6 @@ export class EntityManager {
       (overviewMode ? visibilityPolicy?.entity(kind) ?? null : null);
     for (const ammoPickup of this.ammoPickups) {
       ammoPickup.marker?.sync(project, scale, displayTime, overviewMode, cameraSystem.activeCameraPos, viewerPos, attractors, visibilityOf('ammo'));
-    }
-    for (const base of this.bases) {
-      base.marker?.sync(project, scale, displayTime, overviewMode, cameraSystem.activeCameraPos, viewerPos, attractors, visibilityOf('base'));
     }
   }
 

@@ -636,4 +636,4 @@ export const PLANET_ORBIT_LINE_FADE_FAR_DIST = 1e10; // 1000万km
 export const SATELLITE_ORBIT_LINE_FADE_NEAR_DIST = 5e8; // 50万km
 export const SATELLITE_ORBIT_LINE_FADE_FAR_DIST = 1e9; // 100万km
 // 参照軌道線が完全表示のときの不透明度。
-export const REFERENCE_LINE_OPACITY = 0.1;
+export const REFERENCE_LINE_OPACITY = 0.3;
