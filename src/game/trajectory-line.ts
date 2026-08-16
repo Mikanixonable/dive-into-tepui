@@ -28,7 +28,8 @@ import { extrapolatedRelativeStates } from '../physics/kepler-extrapolation';
 import { StateQueue } from '../physics/state-queue';
 import { add } from '../physics/vec3';
 import { FloatingOrigin } from './floating-origin';
-import { Curve, CurveSampler, LineStyle } from '../render/curve';
+import { Curve, CurveSampler } from '../render/curve';
+import { LineStyle } from '../render/line-style';
 
 // 1本の折れ線が持てる頂点数。ここを超えた分は描かれない(Curve のバッファ確保上限)。
 const MAX_VERTICES = 16384;

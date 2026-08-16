@@ -7,7 +7,8 @@
 import * as THREE from 'three/webgpu';
 import { OrbitalElements } from '../physics/elements';
 import { FloatingOrigin } from './floating-origin';
-import { Curve, CurveSampler, LineStyle } from '../render/curve';
+import { Curve, CurveSampler } from '../render/curve';
+import { LineStyle } from '../render/line-style';
 import { ReferenceFrame, FrameTransform, toFramePoint } from '../physics/frame';
 import type { Ephemeris } from '../physics/ephemeris';
 import { Attractor } from '../physics/attractor';
