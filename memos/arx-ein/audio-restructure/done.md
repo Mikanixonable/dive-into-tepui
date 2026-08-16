@@ -34,7 +34,7 @@ dropped their now-redundant `bgm` prefixes (`bgmStep` → `step`, etc.).
   calls `setThrust` every frame, so the channels materialize immediately after unlock anyway,
   and their gains start at 0 — behavior is identical.
 - **`Bgm.autoStart()` exists because BGM must start exactly once**, when the context first
-  becomes available. It is guarded by a private `autoStarted` flag that `playTrack()` also
+  becomes available. It is guarded by a private one-shot flag (now `autoStartUsed`) that the preview path also
   sets, so auditioning a track in the settings view forfeits the auto-start — otherwise
   stopping a preview could be undone by the next keypress in game. `main.ts` wires
   `input.onUserGesture = () => { audioEngine.unlock(); bgm.autoStart(); }`.
@@ -420,12 +420,12 @@ lines. What moved out to `Conductor`: the current `TrackPlayback`, `trackIdx`/`t
 track selection (`nextTrackIndex`), rotation timing, `openPlayback`, `retire`, and the constants
 that go with them (`START_DELAY_SEC`, `FADE_IN_SEC`, `TRACK_ROTATION_SEC`). What stayed on `Bgm`:
 the master gain, the one `setInterval` pump and `LOOKAHEAD_SEC`, the volume and its persistence,
-`autoStarted`, and the public API every caller already holds — `Launcher` and `SettingsView` are
+the auto-start latch, and the public API every caller already holds — `Launcher` and `SettingsView` are
 untouched.
 
 `Bgm.ambient` is `Conductor | null`, built lazily on first play, because a `Conductor` holds its
 `AudioContext` and there is none before `unlock()`. That mirrors `masterGain`'s existing laziness
-for the same reason. `autoStarted` stays on `Bgm` (decided with arx-ein): it is about the first
+for the same reason. The auto-start latch stays on `Bgm` (decided with arx-ein): it is about the first
 user gesture, which is an app-level event, not a property of any one line.
 
 **`rotates` is still mutable, passed as `start(trackIdx, rotates)`.** With a single line,
@@ -520,6 +520,59 @@ audition-cycle scenario, since the audition line is created and destroyed repeat
 `Conductor.dispose()` was previously unexercised: **566 persistent nodes built over an hour of
 auditions, 9 still live** — the same 9 as ambient alone. Confirmed that check can fail by breaking
 the gain disconnect, which reports live nodes growing 24 -> 69.
+
+
+## 16. 見直しで出た3件 — 遅延生成をまたぐ pause、対でない対、ラッチの帰属
+
+arx-ein が `Bgm` を「共通 / ambient / audition」の3節へコメントで切り分けた際、`started` が
+両方の conductor から書かれていて疎結合化の障害になっている、という指摘から出た3件。
+
+**1. 伏せる指示が線の遅延生成をまたがなかった(不具合)。** `pause()` は `this.ambient?.pause()`
+だけで、線がまだ組まれていないと指示ごと消えていた。そのあと線が作られると伏せられずに始まり、
+試聴の上にゲーム側 BGM が全音量で重なる。到達経路はタイトル画面で設定を開き、音量を 0 から
+上げる筋道。伏せているかを `Bgm` の private `paused` に持ち、`ensureAmbient` が線を組むときに
+適用する。**SPEC.md は既に正しい挙動を書いていた** — 直したのは実装が追いついていなかったぶん。
+
+**2. `pause()` と `resume()` が対ではなかった(罠)。** 前者は伏せるだけ、後者は「止まっていた
+BGM を鳴らし始める」で、続けて呼ぶと伏せたまま鳴り続けて無音になる。実際の対は
+`pause()`↔`endAudition()` と `resume()`↔`stop()` の2組。前者を出来事の名前
+(`beginAudition`/`endAudition`)へ戻して衝突を解いた。
+
+**3. `started` は「鳴っているか」ではなく「一度きりの自動開始を使い切ったか」だった。**
+`autoStartUsed` へ改名し、`playAudition` からの書き込みを落として ambient 専用にした。その
+書き込みは単一線時代の名残で、線が2本になった今は経路が消えている。
+
+実効的な仕事が1点だけであることは測って確かめた。新設した `check-autostart.mjs` でラッチを
+わざと外すと、「何度呼んでも開始は一度きり」は**通ったまま**で(`start()` が `isSounding` で
+弾くため)、落ちるのは「`stop()` のあと以後の操作で鳴り出さない」だけ。決着で黙らせた BGM が
+次のキー入力で蘇るのを止める、それがこのラッチの全部。
+
+改名の取りこぼしも掃除した: `CLAUDE.md` と `OWNERSHIP.md` に `autoStart` / `playTrack` が
+残っていた。ハーネス5本も旧 API 名で全滅していたので追随させた(`compare-playback` は BASE と
+現行の両方を回すので、`ensureStarted` が無ければ `autoStart` を呼ぶ形にしてある)。
+
+## 17. 作曲用プレビュー `tools/bgm-lab/`
+
+ゲームを起動して曲が進むのを待たないと値の変更が聞けない、という作曲側の詰まりを外す道具。
+`npm run bgm-lab` で 8081 番に立つ。1曲だけを鳴らし、**任意のステップから開始**、区間ループ、
+声部ごとの抜き差し、各循環の現在位置の表示。`tracks/tracks.ts` を保存すると再読込され、曲・
+開始位置・ミュートは `localStorage` から戻る。
+
+要るのは「待たされない」ことなので、開始ステップが本体。既定の曲は step 長 0.42s、オクターブの
+循環が 768 steps なので、**音域が動くまで実時間で5分24秒**かかる。そこを直接叩ける。
+
+**音を作る側(`Composer` / `Instrument`)は本番と同じものを import する。** ここが別実装だと
+聞こえ方がずれて、詰めた値が本編で再現しない。自前で持つのは刻みのループだけで、これは任意
+ステップ開始と区間ループという本番に無い要求のために要る。そのぶんは
+`check-lab-fidelity.mjs` が押さえていて、同じ曲・同じ開始位置で予約される発振器の列を
+`TrackPlayback` と突き合わせる — 全6曲 6,753音が一致。刻み幅を 0.1% ずらすだけで落ちる。
+
+構成は `lab-player.ts`(鳴らす仕組み、DOM を触らない)と `main.ts`(画面)に分けてある。前者を
+DOM から切り離してあるのは、上の照合を node 上で回せるようにするため。ビルドは
+`webpack.bgm-lab.config.js` で本体とは別 — こちらは保存のたびに再読込したいが、本体の config は
+`liveReload: false`(実行中のゲームが再読込されると困る)なので、同居させられない。出力先も
+`.bgm-lab/`(gitignore)で `docs/` には触れない。`tsconfig.json` の `include` に `tools` を
+足したので、この道具も `npm run typecheck` の対象。
 
 
 ## The two merges of `main` into the PR branch (`4e21f958`, then `78370b6b`)
