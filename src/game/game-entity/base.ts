@@ -90,14 +90,8 @@ export class Base extends GameEntity implements Controllable {
   readonly plan = new Plan();
   planExecution: PlanExecutionMode = 'off';
   fineAttitude = false;
+  // 基地は常に赤道交点マーカーを出すので、コンストラクタで必ず組む。
   declare equatorNodes: EquatorNodeMarkerPair;
-
-  ensureEquatorNodes(markerManager: MarkerManager): EquatorNodeMarkerPair {
-    if (!this.equatorNodes) {
-      this.equatorNodes = new EquatorNodeMarkerPair(this, markerManager);
-    }
-    return this.equatorNodes;
-  }
   public baseState: BaseState = {
     money: 100000,
     inventory: [],
