@@ -102,10 +102,12 @@ export interface BaseSaveData {
   money: number;
   // 基地の燃料。旧セーブには無いため任意。
   fuel?: number;
-  inventory: AnyPart[];
+  // 倉庫在庫部品。旧セーブには無いため任意。
+  inventory?: AnyPart[];
   // 格納中の艦は entities.players に含まれないため、艦本体(軌道状態・parts・弾薬・計画)を
-  // まるごとここへ保存する。復元時に Player を作り直し、DockedShipEntry.player を張り直す。
-  dockedShips: PlayerSaveData[];
+  // まるごとここへ保存する。復元時に Player を作り直し、DockedVesselEntry.player を張り直す。
+  dockedVessels: PlayerSaveData[];
+  dockedShips?: PlayerSaveData[];
   throttle?: ThrottleSaveData;
 }
 
