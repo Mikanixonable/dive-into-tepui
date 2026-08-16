@@ -78,15 +78,15 @@ export function apsisAltitudes(el: OrbitalElements): { pe: number; ap: number } 
   };
 }
 
-// 中心天体の ID に応じた近点・遠点の日本語名称 (例: 近地点 PE / 遠地点 AP, 近月点 PE / 遠月点 AP 等)
+// 中心天体の ID に応じた近点・遠点の日本語・英語正式名称 (例: 近地点 Perigee / 遠地点 Apogee, 近月点 Perilune / 遠月点 Apolune 等)
 export function fmtApsisName(type: 'pe' | 'ap', centerId: string): string {
   const isEarth = centerId === 'earth';
   const isSun = centerId === 'sun';
   const isMoon = centerId === 'moon';
   if (type === 'pe') {
-    return isEarth ? '近地点 PE' : isSun ? '近日点 PE' : isMoon ? '近月点 PE' : '近点 PE';
+    return isEarth ? '近地点 Perigee' : isSun ? '近日点 Perihelion' : isMoon ? '近月点 Perilune' : '近点 Periapsis';
   } else {
-    return isEarth ? '遠地点 AP' : isSun ? '遠日点 AP' : isMoon ? '遠月点 AP' : '遠点 AP';
+    return isEarth ? '遠地点 Apogee' : isSun ? '遠日点 Aphelion' : isMoon ? '遠月点 Apolune' : '遠点 Apoapsis';
   }
 }
 

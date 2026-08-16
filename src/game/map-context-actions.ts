@@ -22,7 +22,7 @@ import { NavTarget } from './nav-target';
 import { CameraSystem } from './camera/camera-system';
 import { PlanEditor } from './plan/plan-editor';
 import { SimSpeedManager } from './sim-speed-manager';
-import { fmtApsisName } from '../physics/elements';
+import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from './hud/orbit-labels';
 import type { PauseMenu } from './hud/pause-menu';
 import { Targeter, type CombatTarget } from './targeter';
 import type { Docking } from './docking';
@@ -805,18 +805,20 @@ export class MapContextActions {
   // 「軌道」グループにまとめ、ウィンドウ先頭の折り畳みセクションへ描かれる。
   private orbitRows(entity: GameEntity, attractors: readonly Attractor[]): PropertyRow[] {
     const oi = orbitInfo(entity, attractors);
+    const apSpec = getApsisLabelSpec('ap', oi.centerId);
+    const peSpec = getApsisLabelSpec('pe', oi.centerId);
     const group = '軌道';
     return [
       { key: 'center', label: '基準天体', value: oi.centerName, group },
-      { key: 'alt', label: '高度', value: fmtDist(oi.alt), group },
-      { key: 'spd', label: '速度', value: fmtSpeed(oi.spd), group },
-      { key: 'ap', label: fmtApsisName('ap', oi.centerId), value: fmtDist(oi.apAlt), group },
-      { key: 'pe', label: fmtApsisName('pe', oi.centerId), value: fmtDist(oi.peAlt), group },
+      { key: 'alt', label: ORBIT_ELEMENT_LABELS.alt.full, value: fmtDist(oi.alt), group },
+      { key: 'spd', label: ORBIT_ELEMENT_LABELS.spd.full, value: fmtSpeed(oi.spd), group },
+      { key: 'ap', label: apSpec.full, value: fmtDist(oi.apAlt), group },
+      { key: 'pe', label: peSpec.full, value: fmtDist(oi.peAlt), group },
       {
-        key: 'inc', label: '傾斜角 INC',
+        key: 'inc', label: ORBIT_ELEMENT_LABELS.inc.full,
         value: isFinite(oi.incDeg) ? `${oi.incDeg.toFixed(2)}°` : '---', group,
       },
-      { key: 'prd', label: '周期 PRD', value: fmtTime(oi.period), group },
+      { key: 'prd', label: ORBIT_ELEMENT_LABELS.prd.full, value: fmtTime(oi.period), group },
     ];
   }
 
