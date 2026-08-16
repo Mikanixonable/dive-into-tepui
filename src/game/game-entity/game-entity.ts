@@ -4,7 +4,6 @@ import { KinematicState } from '../../physics/kinematic-state';
 import { OrbitalElements, keplerPeriod } from '../../physics/elements';
 import { Attitude } from '../../physics/attitude';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
-import { StateQueue } from '../../physics/state-queue';
 import { Attractor, Degree2Gravity, orbitalElementsOf, localOrbitPeriod, reachedBody, strongestAttractor } from '../../physics/attractor';
 import { containingBody } from '../../physics/sphere-contact';
 import { isBurnedUp } from '../../physics/atmosphere';
@@ -41,7 +40,6 @@ export class GameEntity {
   // 不連続な差し替え専用の口(剛体接触・反動など)。
   set state(s: KinematicState) { this.actualTrajectory.reset(s); }
   get prevState(): KinematicState { return this.actualTrajectory.prevState; }
-  get history(): StateQueue { return this.actualTrajectory.history; }
 
   private static readonly idAllocator = new EntityIdAllocator('entity-');
 
