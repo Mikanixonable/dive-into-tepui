@@ -3,8 +3,8 @@
 // 折れ線化する共通土台になる。
 // 頂点の解像度そのものの決定(画面上のサジッタに応じた適応分割)は render/curve.ts の Curve に
 // 委ねる。このモジュールの責務は、DynamicTrajectory の保持区間から描画対象の時刻範囲を切り出し、
-// エルミート補間で連続な曲線関数(t∈[0,1])に変換して Curve へ渡すことと、その曲線が描かれる
-// 座標系の管理。
+// 連続な曲線関数(t∈[0,1])として Curve へ渡すことと、その曲線が描かれる座標系の管理。
+// 時刻から状態への内挿そのものは physics/state-queue.ts の StateQueue.at に委ねる。
 //
 // 座標変換は physics/frame.ts / physics/ephemeris.ts へ委譲する二段構え:
 //  - bake(点列・frame が変わったときだけ, syncGeometry): 各サンプルの KinematicState を
@@ -17,11 +17,12 @@
 // THREE の合成は world = position + quaternion·vertex なので、原点まわりの un-bake 回転 →
 // 平行移動の順で正しい。
 import * as THREE from 'three/webgpu';
-import { KinematicState, hermiteInterpolate, kinematicState } from '../physics/kinematic-state';
+import { KinematicState, kinematicState } from '../physics/kinematic-state';
 import { ReferenceFrame, toFrameState } from '../physics/frame';
 import { Attractor } from '../physics/attractor';
 import type { Ephemeris } from '../physics/ephemeris';
 import { DynamicTrajectory } from '../physics/dynamic-trajectory';
+import { StateQueue } from '../physics/state-queue';
 import { FloatingOrigin } from './floating-origin';
 import { Curve, CurveDash, CurveSampler } from '../render/curve';
 
@@ -48,8 +49,8 @@ export class TrajectoryLine {
   private revision: object = {};
   private readonly unbakeQuat = new THREE.Quaternion();
 
-  // bake 済みの frame 相対状態列。sampler クロージャがこれを参照してエルミート補間する。
-  private baked: readonly KinematicState[] = [];
+  // bake 済みの frame 相対状態列。sampler はこの列に時刻を渡すだけ。
+  private baked = new StateQueue();
   // 描画区間の下限(bake 済み区間の先頭へクランプ済み)。null は下限なし(保持区間全体を描く)。
   private startTime: number | null = null;
   // 描画区間の上限(bake 済み区間の末尾へクランプ済み)。null は上限なし。
@@ -61,23 +62,19 @@ export class TrajectoryLine {
     this.line = this.curve.object;
   }
 
-  // t∈[0,1] を [startTime, endTime] の時刻範囲へ線形に写し、その時刻を挟む2点間を
-  // エルミート補間する。
+  // t∈[0,1] を [startTime, endTime] の時刻範囲へ線形に写して列から引く。内挿そのものは
+  // StateQueue.at が持つ — このクロージャの責務は時刻への写像だけ。
   private readonly sampler: CurveSampler = (t, out) => {
-    const baked = this.baked;
-    const n = baked.length;
-    if (n === 0) return;
-    if (n === 1) { out.set(baked[0]!.r.x, baked[0]!.r.y, baked[0]!.r.z); return; }
-    const start = this.startTime ?? baked[0]!.t;
-    const end = this.endTime ?? baked[n - 1]!.t;
-    const time = start + (end - start) * t;
-    let lo = 0, hi = n - 1;
-    while (hi - lo > 1) {
-      const mid = (lo + hi) >> 1;
-      if (baked[mid]!.t <= time) lo = mid; else hi = mid;
-    }
-    const r = hermiteInterpolate(baked[lo]!, baked[hi]!, time, true).r;
-    out.set(r.x, r.y, r.z);
+    const oldest = this.baked.oldest;
+    const newest = this.baked.newest;
+    if (oldest === null || newest === null) return;
+    const start = this.startTime ?? oldest.t;
+    const end = this.endTime ?? newest.t;
+    // 写した時刻が丸めで保持範囲をわずかに外れることがあるので、引く前に列の端へ寄せる。
+    const time = Math.min(newest.t, Math.max(oldest.t, start + (end - start) * t));
+    const s = this.baked.at(time);
+    if (s === null) return;
+    out.set(s.r.x, s.r.y, s.r.z);
   };
 
   // trajectory の保持区間のうち [from, to] を描く対象にする。trajectory が null なら曲線を持たない
@@ -97,13 +94,15 @@ export class TrajectoryLine {
       // hermiteInterpolate は座標系に依らない (時刻, 位置, 接線) の多項式なので、座標系相対の
       // 位置と速度をそのまま KinematicState に詰めて渡す(この慣性系ブランドは関数の外へ出ない)。
       // 座標系の原点・姿勢はサンプルごとの時刻で評価する(回転系は時刻で向きが変わるため)。
-      this.baked = samples.map((s) => {
+      const queue = new StateQueue(Math.max(1, samples.length));
+      for (const s of samples) {
         const rel = toFrameState(ephemeris.frameTransformAt(frame, s.t, attractors), s);
-        return kinematicState(s.t, rel.r, rel.v);
-      });
+        queue.push(kinematicState(s.t, rel.r, rel.v));
+      }
+      this.baked = queue;
     }
-    this.startTime = this.baked.length > 0 ? Math.max(from ?? -Infinity, this.baked[0]!.t) : null;
-    this.endTime = this.baked.length > 0 ? Math.min(to ?? Infinity, this.baked[this.baked.length - 1]!.t) : null;
+    this.startTime = this.baked.size > 0 ? Math.max(from ?? -Infinity, this.baked.oldest!.t) : null;
+    this.endTime = this.baked.size > 0 ? Math.min(to ?? Infinity, this.baked.newest!.t) : null;
     if (rebaked || from !== this.lastFrom || to !== this.lastTo) {
       this.lastFrom = from;
       this.lastTo = to;
@@ -115,10 +114,9 @@ export class TrajectoryLine {
   // 描画カメラ。描く区間が潰れている(bake 済み点列が2点未満、または有効な開始時刻が終了時刻
   // 以上)なら曲線を持たない状態へ戻す。
   sync(camera: THREE.Camera): void {
-    const baked = this.baked;
     const start = this.startTime;
     const end = this.endTime;
-    if (baked.length < 2 || start === null || end === null || start >= end) {
+    if (this.baked.size < 2 || start === null || end === null || start >= end) {
       this.curve.clear();
       return;
     }
