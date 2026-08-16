@@ -379,10 +379,16 @@ export class FocusMarkers {
         continue;
       }
       const markerOpacity = projectedState.opacity;
-      // 画面上でより優先度の高い親/主天体に吸収されたマーカー(hiddenByPriority)は、アイコンとラベル両方を非表示にする
-      const isPriorityHidden = hiddenByPriority.has(lbl.id);
-      const isLabelVisible = lbl.showLabel && !isPriorityHidden;
-      const isIconVisible = lbl.showIcon && !isPriorityHidden;
+      // 画面上でより優先度の高い親/主天体に吸収されたマーカー(hiddenByPriority)は、マーカーDOMを確実に隠し衝突緩和走査からも除外する
+      if (hiddenByPriority.has(lbl.id)) {
+        lbl.pickable = false;
+        const rec = this.bodyPickableRecords.get(lbl.id);
+        if (rec) rec.pickable = false;
+        this.markerManager.hide(lbl.id);
+        continue;
+      }
+      const isLabelVisible = lbl.showLabel;
+      const isIconVisible = lbl.showIcon;
       lbl.pickable = isLabelVisible || isIconVisible;
       const rec = this.bodyPickableRecords.get(lbl.id);
       if (rec) rec.pickable = lbl.pickable;
