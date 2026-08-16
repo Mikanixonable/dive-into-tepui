@@ -81,8 +81,7 @@ export class Predictor {
       const tipState = e.predicted?.state ?? e.state;
       // 刻み幅を決める重力源はステップ開始時刻で評価する。予測の重力源を長時間保持すると、
       // 月のように速く動く天体の位置が固定され、近傍周回の予測が実軌道から離れてしまう。
-      // e 自身は除く — 外挿された自分の姿が問い合わせ位置のすぐ近くに現れると
-      // strongestAttractor に選ばれ、そこからの距離で刻む dt が潰れて伸長が止まる。
+      // 自分の引力を自分に加算しないよう、e 自身は一覧から除く。
       const currentClassified = classifyAttractors(
         predictedAttractorsAt(this.ephemeris, this.entities, tipState.t),
       );
@@ -93,10 +92,9 @@ export class Predictor {
       // の中点で attractorsAt を解決しており、予測だけ過去の天体位置を保持しないようにする。
       const remaining = simTime + horizon - tipState.t;
       if (!(remaining > 1e-9)) break;
-      // 刻み幅とケプラー外挿の中心天体は、どちらもこの1回の strongestAttractor から求める
-      // (localOrbitPeriod 内部の重複呼び出しを避ける)。ただし外挿の中心は解析天体(Ephemeris
-      // の登録天体)に限る — Asteroid など動的重力源が最強のときだけ、解析天体だけの一覧
-      // (gravityAttractorsAt、同じ t なのでリングキャッシュに当たる)から選び直す。
+      // 刻み幅とケプラー外挿の中心天体は、どちらもこの1回の strongestAttractor から求める。
+      // ただし外挿の中心は解析天体(Ephemeris の登録天体)に限る — 動的重力源が最強のときは、
+      // 解析天体だけの一覧(同じ t なのでリングキャッシュに当たる)から選び直す。
       const rawCenter = strongestAttractor(tipState.r, currentAttractors);
       const extrapolationCenter = rawCenter.id in this.ephemeris.registry
         ? rawCenter
