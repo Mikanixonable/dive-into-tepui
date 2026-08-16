@@ -86,9 +86,10 @@ export const MARKER_STYLE = `
 .mk-poi { color: var(--text-strong); text-shadow: 0 0 4px var(--bg); }
 .mk-poi:not(.mk-lagrange) .sym { font-size: calc(var(--glyph-poi) * var(--mk-scale-poi)); }
 .mk-poi.mk-lagrange .sym { font-size: calc(var(--glyph-poi) * var(--mk-scale-lagrange)); }
-.mk-poi .lbl { font-size: var(--font-s); border-radius: var(--radius-s); background: var(--surface-weak); white-space: pre; line-height: 1.25; text-align: center; }
+.mk-poi .lbl { font-size: var(--font-s); border-radius: var(--radius-s); background: var(--surface-weak); white-space: pre; line-height: 1.25; text-align: center; display: inline-flex; flex-direction: column; align-items: flex-start; }
 .mk-poi:not(.mk-lagrange) .lbl { font-size: calc(var(--font-s) * 0.85); }
-.mk-poi:not(.mk-lagrange) .lbl::first-line { font-size: var(--font-s); font-weight: 500; }
+.mk-poi:not(.mk-lagrange) .lbl .lbl-main { align-self: center; font-size: var(--font-s); font-weight: 500; color: var(--text-strong); }
+.mk-poi:not(.mk-lagrange) .lbl .lbl-sub { font-size: calc(var(--font-s) * 0.78); color: var(--text-dim); opacity: 0.85; line-height: 1.2; white-space: nowrap; text-align: left; font-weight: normal; }
 .mk-poi.mk-lagrange .lbl { font-size: calc(var(--font-s) * 0.7); white-space: pre; line-height: 1.25; text-align: center; }
 .mk-poi.mk-lagrange .lbl::first-line { font-size: var(--font-s); }
 #hud .mk-poi .lbl { margin-top: var(--space-2); padding: var(--space-1) var(--space-2); }
