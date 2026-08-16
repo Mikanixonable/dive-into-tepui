@@ -3,7 +3,7 @@
 import { BgmTrack } from './tracks/types';
 import { Composer } from './composer';
 import { PhasingComposer } from './composers/phasing-composer';
-import { SketchComposer } from './composers/sketch-composer';
+import { AntipodeComposer } from './composers/antipode-composer';
 
 // トラックの kind から、そのパラメータを消費する Composer を組む。
 // kind を増やしたらここへ分岐を足す — 足し忘れは default の never 代入がコンパイルエラーにする。
@@ -12,8 +12,8 @@ export function createComposer(track: BgmTrack): Composer {
   switch (track.kind) {
     case 'phasing':
       return new PhasingComposer(track.params);
-    case 'sketch':
-      return new SketchComposer(track.params);
+    case 'antipode':
+      return new AntipodeComposer(track.params);
     default: {
       const unknown: never = track;
       throw new Error(`unknown BGM track kind: ${JSON.stringify(unknown)}`);

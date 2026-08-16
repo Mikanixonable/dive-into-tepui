@@ -32,11 +32,13 @@ audio/
     instrument.ts          the sound-making seam: play(freq, when, duration, velocity)
     instrument-factory.ts  the single switch from an instrument's kind to its class
     composers/
+      scale.ts             index -> frequency, shared by the composers
       phasing-composer.ts  the Reich-style algorithm
-      sketch-composer.ts   blank slate for the second algorithm
+      antipode-composer.ts the second algorithm; still a sketch
     instruments/
       types.ts             InstrumentDef union + params, fenced per instrument
-      tone-instrument.ts   one oscillator + envelope + pan; the only one so far
+      tone-instrument.ts   one oscillator + envelope + pan
+      unison-instrument.ts detuned stack through a shared filter
     tracks/
       types.ts             BgmTrack union + params, fenced per composer
       tracks.ts            BGM_TRACKS, the data itself
