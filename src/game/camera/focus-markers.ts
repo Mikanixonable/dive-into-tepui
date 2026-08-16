@@ -361,10 +361,9 @@ export class FocusMarkers {
         continue;
       }
       const markerOpacity = projectedState.opacity;
-      // 優先度で隠すのはラベルだけ。アイコンまで消すと、表示設定の icon/label 分離と
-      // フォーカス対象の存在表示が崩れる。
+      // ラベルテキストが表示されている対象のみをクリック・フォーカス対象(pickable)にする。
       const isLabelVisible = lbl.showLabel && !hiddenByPriority.has(lbl.id);
-      lbl.pickable = lbl.showIcon || isLabelVisible;
+      lbl.pickable = isLabelVisible;
       if (projectedState.front && (lbl.showIcon || isLabelVisible)) {
         this.activeCelestialLabels.push({
           id: lbl.id,
