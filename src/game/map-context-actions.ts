@@ -127,8 +127,9 @@ export class MapContextActions {
   handleMapRightClick(input: Input, simTime: number): void {
     if (!this.cameraSystem.overviewMode) return;
     input.takeRightClicks((p) => {
+      const candidates = this.pickables.pickables.filter((item) => item.pickable !== false);
       const target = pickNearest(
-        this.pickables.pickables, p.x, p.y, this.cameraSystem.activeCameraProjection,
+        candidates, p.x, p.y, this.cameraSystem.activeCameraProjection,
         pickRadiusSq(C.MAP_PICK_PX_SQ, C.MAP_PICK_PX_SQ_COARSE),
       );
       if (!target) return false;
@@ -190,7 +191,7 @@ export class MapContextActions {
   handleLeftClick(input: Input): void {
     if (!this.cameraSystem.overviewMode) return;
     input.takeClicks((p) => {
-      const candidates = this.pickables.pickables.filter((i) => i.kind === 'player' || i.kind === 'base');
+      const candidates = this.pickables.pickables.filter((i) => (i.kind === 'player' || i.kind === 'base') && i.pickable !== false);
       const target = pickNearest(candidates, p.x, p.y, this.cameraSystem.activeCameraProjection, pickRadiusSq(C.MAP_PICK_PX_SQ, C.MAP_PICK_PX_SQ_COARSE));
       if (!target) return false;
       this.selectPickable(target, p.x, p.y);
@@ -469,11 +470,11 @@ export class MapContextActions {
     },
     'apsis': {
       itemsFor: (target, simTime) => {
-        const apsisTime = target.time;
-        const apsisLabel = target.id === 'apsisAp' ? '遠点 (Ap)' : '近点 (Pe)';
-        const apsisSubLabel = apsisTime !== undefined ? `到達まで T+${fmtTime(apsisTime - simTime)}` : undefined;
+        const centerId = strongestAttractor(target.pos, this.ephemeris.attractorsAt(simTime)).id;
+        const peOrAp = target.id === 'apsisAp' ? 'ap' : 'pe';
+        const spec = getApsisLabelSpec(peOrAp, centerId);
         return [
-          { type: 'header', label: apsisLabel, subLabel: apsisSubLabel },
+          { type: 'header', label: spec.nameJa, subLabel: spec.nameEn },
           MenuCommon.warp(),
           MenuCommon.addNode(),
           MenuCommon.focus(),
@@ -483,13 +484,10 @@ export class MapContextActions {
       run: (act, target) => this.runApsisRelnode(act, target),
     },
     'relnode': {
-      itemsFor: (target, simTime) => {
-        const relTime = target.time;
-        const relLabel = target.id === 'nav-an' ? '昇交点 (AN)' : '降交点 (DN)';
-        const targetName = this.navTarget.name ?? '対象';
-        const relSubLabel = `対 ${targetName}面` + (relTime !== undefined ? ` / T+${fmtTime(relTime - simTime)}` : '');
+      itemsFor: (target) => {
+        const spec = target.id === 'nav-an' ? ORBIT_ELEMENT_LABELS.an : ORBIT_ELEMENT_LABELS.dn;
         return [
-          { type: 'header', label: relLabel, subLabel: relSubLabel },
+          { type: 'header', label: spec.nameJa, subLabel: spec.nameEn },
           MenuCommon.warp(),
           MenuCommon.addNode(),
           MenuCommon.focus(),
@@ -500,13 +498,12 @@ export class MapContextActions {
     },
     'eqnode': {
       itemsFor: (target, simTime) => {
-        const eqTime = target.time;
         const isAn = target.id.endsWith('-eqan');
+        const spec = isAn ? ORBIT_ELEMENT_LABELS.eqAn : ORBIT_ELEMENT_LABELS.eqDn;
         const centerName = celestialBodyName(strongestAttractor(target.pos, this.ephemeris.attractorsAt(simTime)).id);
-        const eqLabel = `${centerName}赤道${isAn ? '昇' : '降'}交点 (${isAn ? 'EqAN' : 'EqDN'})`;
-        const eqSubLabel = eqTime !== undefined ? `到達まで T+${fmtTime(eqTime - simTime)}` : undefined;
+        const label = `${centerName}${spec.nameJa}`;
         return [
-          { type: 'header', label: eqLabel, subLabel: eqSubLabel },
+          { type: 'header', label, subLabel: spec.nameEn },
           MenuCommon.warp(),
           MenuCommon.addNode(),
           MenuCommon.focus(),
@@ -621,8 +618,8 @@ export class MapContextActions {
 
         const controlItem: readonly MenuItem<MenuAction>[] = base
           ? [isControlled
-            ? { label: '操作を解除', act: 'deactivateBase' }
-            : { label: '基地を操作', act: 'activateBase' }]
+            ? { label: '操作対象を解除', act: 'deactivate' }
+            : { label: '操作対象にする', act: 'activate' }]
           : [];
 
         return [
@@ -640,7 +637,11 @@ export class MapContextActions {
       run: (act, target) => {
         const base = this.entities.findBase(target.id);
         const activeShip = this.activePlayers.current;
-        if (act === 'activateBase') {
+        if (act === 'activate') {
+          if (base) this.activePlayers.setBase(base);
+        } else if (act === 'deactivate') {
+          if (base && this.activePlayers.controlledBase === base) this.activePlayers.setBase(null);
+        } else if (act === 'activateBase') {
           if (base && this.controlBaseHandler) this.controlBaseHandler(base);
         } else if (act === 'deactivateBase') {
           if (this.controlBaseHandler) this.controlBaseHandler(null);
@@ -781,7 +782,8 @@ export class MapContextActions {
         shortcut: showShortcuts ? it.shortcut : undefined,
         selected: it.selected, keepOpen: it.keepOpen,
       }));
-    const subtitle = target.ownerName ? `所属: ${target.ownerName}` : header?.subLabel;
+    const isOrbitPoint = target.kind === 'apsis' || target.kind === 'relnode' || target.kind === 'eqnode';
+    const subtitle = (target.ownerName && !isOrbitPoint) ? `所属: ${target.ownerName}` : header?.subLabel;
     return { title: header?.label ?? target.name, subtitle, items };
   }
 
@@ -868,7 +870,9 @@ export class MapContextActions {
   private baseRows(target: MapPickable, attractors: readonly Attractor[], player: Player | null): PropertyRow[] {
     const base = this.entities.findBase(target.id);
     if (!base) return [];
+    const isControlled = this.activePlayers.controlledBase === base;
     const rows: PropertyRow[] = [
+      { key: 'operated', label: '操作対象か', value: isControlled ? 'はい' : 'いいえ', collapsible: true },
       { key: 'money', label: '所持金', value: `${base.baseState.money.toLocaleString()} Cr` },
       { key: 'vessels', label: '格納艦艇数', value: `${base.baseState.dockedVessels.length}` },
     ];
@@ -920,11 +924,13 @@ export class MapContextActions {
     const el = primary && self ? orbitalElementsOf(self.state, primary) : null;
     if (!el) return rows;
     const apsis = apsisAltitudes(el);
+    const apSpec = getApsisLabelSpec('ap', el.center.id);
+    const peSpec = getApsisLabelSpec('pe', el.center.id);
     rows.push(
-      { key: 'ap', label: '遠地点 AP', value: fmtDist(apsis.ap), group: '軌道' },
-      { key: 'pe', label: '近地点 PE', value: fmtDist(apsis.pe), group: '軌道' },
-      { key: 'inc', label: '傾斜角 INC', value: `${el.incDeg.toFixed(2)}°`, group: '軌道' },
-      { key: 'prd', label: '周期 PRD', value: fmtTime(el.period), group: '軌道' },
+      { key: 'ap', label: apSpec.full, value: fmtDist(apsis.ap), group: '軌道' },
+      { key: 'pe', label: peSpec.full, value: fmtDist(apsis.pe), group: '軌道' },
+      { key: 'inc', label: ORBIT_ELEMENT_LABELS.inc.full, value: `${el.incDeg.toFixed(2)}°`, group: '軌道' },
+      { key: 'prd', label: ORBIT_ELEMENT_LABELS.prd.full, value: fmtTime(el.period), group: '軌道' },
     );
     return rows;
   }

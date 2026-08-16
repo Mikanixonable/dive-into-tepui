@@ -90,7 +90,8 @@ export class MapPickables {
       this.appendPickable(item);
     }
     for (const ship of this.entities.players) {
-      if (!visibilityPolicy.entity('player', ship === this.activePlayers.current).pickable) continue;
+      const vPlayer = visibilityPolicy.entity('player', ship === this.activePlayers.current);
+      if (!vPlayer.pickable) continue;
       const pos = ship.displayState(displayTime)?.r;
       if (pos) {
         const center = strongestAttractor(ship.state.r, attractors);
@@ -100,24 +101,29 @@ export class MapPickables {
           ship.id, ship.name, pos, 'player',
           `HP ${Math.round(ship.hp)}/${Math.round(ship.maxHp)} · PE ${pe}`,
           ship === this.activePlayers.current ? -100 : 0,
+          undefined, vPlayer.label,
         );
       }
     }
     for (const enemy of this.entities.enemies) {
-      if (!enemy.alive || !visibilityPolicy.entity('ship').pickable) continue;
+      const vShip = visibilityPolicy.entity('ship');
+      if (!enemy.alive || !vShip.pickable) continue;
       const pos = enemy.displayState(displayTime)?.r;
-      if (pos) this.addCandidate(enemy.id, enemy.name, pos, 'ship');
+      if (pos) this.addCandidate(enemy.id, enemy.name, pos, 'ship', undefined, undefined, undefined, vShip.label);
     }
     for (const ammoPickup of this.entities.ammoPickups) {
-      if (!ammoPickup.alive || !visibilityPolicy.entity('ammo').pickable) continue;
+      const vAmmo = visibilityPolicy.entity('ammo');
+      if (!ammoPickup.alive || !vAmmo.pickable) continue;
       const pos = ammoPickup.displayState(displayTime)?.r;
-      if (pos) this.addCandidate(ammoPickup.id, ammoPickup.name, pos, 'ammo');
+      if (pos) this.addCandidate(ammoPickup.id, ammoPickup.name, pos, 'ammo', undefined, undefined, undefined, vAmmo.label);
     }
     for (const base of this.entities.bases) {
-      if (!base.alive || !visibilityPolicy.entity('base').pickable) continue;
+      const vBase = visibilityPolicy.entity('base');
+      if (!base.alive || !vBase.pickable) continue;
       const pos = base.displayState(displayTime)?.r;
       if (pos) this.addCandidate(
         base.id, base.name, pos, 'base', `格納 ${base.baseState.dockedVessels.length} 艇`,
+        undefined, undefined, vBase.label,
       );
     }
     for (const item of this.navTarget.mapPickables()) this.appendPickable(item);
@@ -164,13 +170,14 @@ export class MapPickables {
   private appendPickable(item: MapPickable): void {
     this.addCandidate(
       item.id, item.name, item.pos, item.kind, item.detail, item.priority,
-      item.time, item.pickable,
+      item.time, item.pickable, item.ownerName,
     );
   }
 
   private addCandidate(
     id: string, name: string, pos: MapPickable['pos'], kind: MapPickable['kind'],
     detail?: string, priority?: number, time?: number, pickable?: boolean,
+    ownerName?: string,
   ): void {
     const key = `${kind}:${id}`;
     this.activeRecordKeys.add(key);
@@ -192,6 +199,7 @@ export class MapPickables {
     item.time = time;
     item.inFocusedSystem = undefined;
     item.pickable = pickable;
+    item.ownerName = ownerName;
     this.candidateItems.push(item);
   }
 

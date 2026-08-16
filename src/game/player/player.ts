@@ -20,6 +20,7 @@ import { isBurnedUp } from '../../physics/atmosphere';
 import type { CameraSystem } from '../camera/camera-system';
 import { focusTargetId } from '../camera/focus-target';
 import type { MapVisibility } from '../celestial/map-visibility';
+import type { DisplayWindow } from '../display-window-manager';
 import type { Stage } from '../stages/stage';
 import { PlayerThrottle } from './player-throttle';
 import { PlayerFire, type AmmoLoad } from './player-fire';
@@ -116,7 +117,7 @@ export class Player extends Ship {
     this.thrustEffects = new ThrustEffects(_scene, _worldSfx);
     this.rcsEffects = new RcsEffects(_scene, _worldSfx);
     this.reentryEffects = new ReentryEffects(_scene);
-    this.markers = new PlayerMarkers(markerManager, this.id);
+    this.markers = new PlayerMarkers(markerManager, this.id, this);
     this.planExecutor = new PlanExecutor(_hud);
 
     if (saved) {
@@ -438,6 +439,7 @@ export class Player extends Ship {
     ephemeris: Ephemeris,
     attractors: readonly Attractor[],
     visibility: MapVisibility | null = null,
+    displayWindow?: DisplayWindow,
   ): void {
     // メッシュ本体の位置・姿勢
     const displayState = this.displayState(displayTime);
@@ -461,7 +463,7 @@ export class Player extends Ship {
     this.radiator.sync();
     this.power.sync();
     // マーカー。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
-    this.markers.sync(this.state, displayState, this.att, camera.overviewMode, isActive, camera.activeCameraPos, camera.activeCameraProjection, camera.activeCameraScale, this.name, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.mapCamera.focus), ephemeris.registry, attractors, visibility);
+    this.markers.sync(this.state, displayState, this.att, camera.overviewMode, isActive, camera.activeCameraPos, camera.activeCameraProjection, camera.activeCameraScale, this.name, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.mapCamera.focus), ephemeris.registry, attractors, visibility, displayWindow?.frame, displayTime, ephemeris);
   }
 
   // 艦は任意のタイミングで削除されうるので、Player が所有する線・ビルボード・HUD も一度だけ解放する。
@@ -474,7 +476,11 @@ export class Player extends Ship {
     bearingVisible: boolean; color: string; symMarkup: boolean;
   } {
     const dist = len(sub(pos, viewerPos));
-    const priority = role === 'primary' ? Infinity : role === 'secondary' ? Number.MAX_SAFE_INTEGER : -dist;
+    const priority = role === 'primary'
+      ? C.MARKER_PRIORITY.PRIMARY_TARGET
+      : role === 'secondary'
+        ? C.MARKER_PRIORITY.SECONDARY_TARGET
+        : C.MARKER_PRIORITY.PLAYER;
     return {
       key: `player-${this.id}`,
       cls: role === 'primary' ? 'mk-target' : 'mk-enemy', // player も味方ターゲットとして mk-enemy に準じる
