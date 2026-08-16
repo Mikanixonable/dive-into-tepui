@@ -505,12 +505,12 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
     - [CreativeStage] syncPreview(fo, project) // update が求めた preview の軌道線 + ▷ PREVIEW マーカー。preview が null なら両方隠す
     - [CreativeStage] placerPanel.setIssues(issues) // update が求めた issues を渡すだけ。前回と同内容なら panel 側が DOM に触らず即 return
     - [CreativeStage] creativeOptionsPanel.classList.toggle('hidden', !cameraSystem.overviewMode) // 「設定」パネル(補給の自動投入・敵の波状攻撃トグル)はオーバービューでだけ出す
-  - hud.globalStatusBar.sync(game) // #hud-globalstatus。Game インスタンスを直接読む(narrow ctx を介さない常設パネル群の1つ)。MET は毎フレーム、時間加速/NODE WARP 残りは約10Hz(SYNC_INTERVAL_MS)にスロットル
+  - hud.simulationStatusBar.sync(game) // #hud-globalstatus。Game インスタンスを直接読む(narrow ctx を介さない常設パネル群の1つ)。MET は毎フレーム、時間加速/NODE WARP 残りは約10Hz(SYNC_INTERVAL_MS)にスロットル
   - hud.mapScaleBadge.sync(game) // #hud-map-scale。overviewMode のみ表示、フォーカス対象の深度における meters-per-pixel から縮尺バーを毎フレーム求め直す(スロットル無し)
-  - hud.statusPanel.sync(game) // #hud-status。自機不在なら隠す(表示/非表示の切替は毎フレーム)。行の値(RCS制動/並進出力/微調整/進行方向ホールド/視点のRCS追従/弾薬)は約10Hzにスロットル
+  - hud.vesselPanel.sync(game) // #hud-status。自機不在なら隠す(表示/非表示の切替は毎フレーム)。行の値(RCS制動/並進出力/微調整/進行方向ホールド/視点のRCS追従/弾薬)は約10Hzにスロットル
   - hud.orbitPanel.sync(game, attractors) // #hud-orbit。自機不在なら隠す、overviewMode でも畳む(切替は毎フレーム)。orbitInfo 由来の行(基準天体/高度/速度/AP/PE/INC/PRD/動圧/機体温度)は約10Hzにスロットル
   - hud.targetPanel.sync(game, attractors) // #hud-target。ロック中ターゲットの有無による表示切替は毎フレーム。relativeInfo 由来の行(名前/装甲/距離/接近速度/相対速度)は約10Hzにスロットル。軌道要素・相対傾斜角はここには無く、右クリックのプロパティウィンドウが持つ
-  - hud.contactsPanel.sync(game) // #hud-enemies。自機不在なら隠す、overviewMode でも畳む(切替は毎フレーム)。撃墜数バッジ・waveId 集約済みの敵一覧は約4Hz(250ms)にスロットル
+  - hud.enemiesPanel.sync(game) // #hud-enemies。自機不在なら隠す、overviewMode でも畳む(切替は毎フレーム)。撃墜数バッジ・waveId 集約済みの敵一覧は約4Hz(250ms)にスロットル
   - hud.tick() // ヒント/トーストのフェードアウト
   - guide.sync(player, simTime, editMode, project, editor.planDisplay.path) // NODE/BURN の位置と方向は path.toDisplay/toDisplayDir を通し、計画折れ線と同じ座標系へ載せる。 player の有無をここで問わず毎フレーム呼ぶ。内部で player.plan から引く
     - markerManager.hide('nd') + hide('burn') // player 不在・editMode・または直近ノードが無い場合
