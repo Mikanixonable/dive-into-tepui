@@ -137,10 +137,14 @@ export class GameEntity {
   // show が false のときは非表示にする。force は OrbitLine.sync へそのまま渡す。
   syncOrbitLine(
     show: boolean, fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[], force = false,
+    frame?: ReferenceFrame, displayTime?: number, ephemeris?: Ephemeris,
   ): void {
     if (this.orbitLine === null) return;
     const center = strongestAttractor(this.state.r, attractors);
-    this.orbitLine.sync(show ? this.orbitalElementsAround(center) : null, fo, camera, force);
+    this.orbitLine.sync(
+      show ? this.orbitalElementsAround(center) : null, fo, camera, force,
+      frame, displayTime, ephemeris, attractors,
+    );
   }
 
   // trajectoryLine を現在時刻以降の predictedTrajectory に、pastTrajectoryLine を
