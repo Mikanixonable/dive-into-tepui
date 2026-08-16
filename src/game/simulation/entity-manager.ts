@@ -386,30 +386,48 @@ export class EntityManager {
     }
   }
 
-  // 天体クラス別トグルに応じて自機・敵・弾薬・基地のメッシュ表示/軌道線表示を揃える。
+  // 天体クラス別トグルに応じて自機・敵・弾薬・基地のメッシュ表示を揃える。
   // visibilityPolicy が null(戦闘ビュー)のときは非表示扱いを一切かけない。
   applyVisibility(
-    visibilityPolicy: MapVisibilityPolicy | null, activePlayer: Player | null, overviewMode: boolean,
-    fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
-    displayWindow?: DisplayWindow, ephemeris?: Ephemeris,
+    visibilityPolicy: MapVisibilityPolicy | null, activePlayer: Player | null,
   ): void {
-    if (visibilityPolicy) {
-      for (const ship of this.players) if (!visibilityPolicy.entity('player', ship === activePlayer).category) ship.renderObject.visible = false;
-      for (const enemy of this.enemies) if (!visibilityPolicy.entity('ship').category) enemy.renderObject.visible = false;
-      for (const ammoPickup of this.ammoPickups) {
-        if (!visibilityPolicy.entity('ammo').category) ammoPickup.renderObject.visible = false;
-      }
-      for (const base of this.bases) if (!visibilityPolicy.entity('base').category) base.renderObject.visible = false;
+    if (!visibilityPolicy) return;
+    for (const ship of this.players) if (!visibilityPolicy.entity('player', ship === activePlayer).category) ship.renderObject.visible = false;
+    for (const enemy of this.enemies) if (!visibilityPolicy.entity('ship').category) enemy.renderObject.visible = false;
+    for (const ammoPickup of this.ammoPickups) {
+      if (!visibilityPolicy.entity('ammo').category) ammoPickup.renderObject.visible = false;
     }
-    for (const ship of this.players) {
-      ship.orbitLine.setDisplayEnabled(!overviewMode || (visibilityPolicy?.entity('player', ship === activePlayer).orbit ?? false));
-    }
-    for (const enemy of this.enemies) {
-      enemy.orbitLine.setDisplayEnabled(!overviewMode || (visibilityPolicy?.entity('ship').orbit ?? false));
-    }
-    for (const base of this.bases) {
-      base.syncOrbitLine(overviewMode, fo, camera, attractors, false, displayWindow?.frame, displayWindow?.displayTime, ephemeris);
-      base.orbitLine.setDisplayEnabled(!overviewMode || (visibilityPolicy?.entity('base').orbit ?? false));
+    for (const base of this.bases) if (!visibilityPolicy.entity('base').category) base.renderObject.visible = false;
+  }
+
+  // 全エンティティの基本軌道線を一括同期する。
+  syncOrbitLines(
+    overviewMode: boolean,
+    fo: FloatingOrigin,
+    camera: THREE.Camera,
+    attractors: readonly Attractor[],
+    visibilityPolicy: MapVisibilityPolicy | null,
+    displayWindow?: DisplayWindow,
+    ephemeris?: Ephemeris,
+    activePlayer?: Player | null,
+    primaryTarget?: GameEntity | null,
+    secondaryTarget?: GameEntity | null,
+  ): void {
+    const frame = displayWindow?.frame;
+    const displayTime = displayWindow?.displayTime;
+
+    for (const entity of this.all()) {
+      if (!entity.orbitLine) continue;
+
+      const isSelf = entity === activePlayer;
+      const entityKind = entity instanceof Player ? 'player' : (entity instanceof Base ? 'base' : 'ship');
+      const entityVisibility = visibilityPolicy?.entity(entityKind, isSelf);
+
+      const isTarget = entity === primaryTarget || entity === secondaryTarget;
+      const showOrbit = overviewMode && entity.alive && !isTarget && (entityVisibility?.orbit ?? true);
+
+      const force = entity instanceof Player && entity.thrust !== null;
+      entity.syncOrbitLine(showOrbit, fo, camera, attractors, force, frame, displayTime, ephemeris);
     }
   }
 

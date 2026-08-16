@@ -179,17 +179,15 @@ export class Targeter {
 
   // ターゲットに紐づく表示物(軌道線・的通過マーク・方位マーカー)をまとめて更新する。
   // ターゲットの選定を持つのがここなので、その表示もここに閉じる。
-  // ターゲットに紐づく表示物(軌道線・的通過マーク・方位マーカー)をまとめて更新する。
-  // ターゲットの選定を持つのがここなので、その表示もここに閉じる。
   sync(
-    fo: FloatingOrigin, player: Player | null, targets: readonly CombatTarget[], cameraSystem: CameraSystem,
+    fo: FloatingOrigin, player: Player | null, cameraSystem: CameraSystem,
     attractors: readonly Attractor[], visibilityPolicy: MapVisibilityPolicy | null = null,
     displayWindow?: DisplayWindow, ephemeris?: Ephemeris,
   ): void {
     const overviewMode = cameraSystem.overviewMode;
     const project = cameraSystem.activeCameraProjection;
     const camera = cameraSystem.activeCamera;
-    this.syncOrbitLine(fo, player, targets, overviewMode, camera, attractors, visibilityPolicy, displayWindow, ephemeris);
+    this.syncOrbitLine(fo, player, camera, attractors, visibilityPolicy, displayWindow, ephemeris);
     this.syncBoardMarkers(project);
     this.syncTargetDirMarkers(player, overviewMode, project);
   }
@@ -246,7 +244,7 @@ export class Targeter {
 
   // 第一・第二ターゲットのハイライト線を最新の状態に合わせる。
   private syncOrbitLine(
-    fo: FloatingOrigin, player: Player | null, targets: readonly CombatTarget[], overviewMode: boolean,
+    fo: FloatingOrigin, player: Player | null,
     camera: THREE.Camera, attractors: readonly Attractor[], visibilityPolicy: MapVisibilityPolicy | null,
     displayWindow?: DisplayWindow, ephemeris?: Ephemeris,
   ): void {
@@ -254,11 +252,6 @@ export class Targeter {
     const secTgt = this.aliveSecondaryTarget;
     const frame = displayWindow?.frame;
     const displayTime = displayWindow?.displayTime;
-    for (const t of targets) {
-      const entityVisibility = visibilityPolicy?.entity(t instanceof Player ? 'player' : 'ship', t === player);
-      const showGray = overviewMode && t.alive && t !== tgt && t !== secTgt && (entityVisibility?.orbit ?? true);
-      t.syncOrbitLine(showGray, fo, camera, attractors, false, frame, displayTime, ephemeris);
-    }
 
     const targetVisibility = tgt === null ? null : visibilityPolicy?.entity(tgt instanceof Player ? 'player' : 'ship', tgt === player);
     if (tgt && (targetVisibility?.orbit ?? true)) {
