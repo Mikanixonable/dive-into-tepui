@@ -336,9 +336,17 @@ export class GameEntity {
     return true;
   }
 
-  // 表示時刻 t の状態。予測を持たない/予測期間を超えた時刻は null。
-  displayState(t: number): KinematicState | null {
-    return t <= this.actual.state.t ? this.actual.at(t) : (this._predicted?.at(t) ?? null);
+  // 表示時刻 t の状態。予測を持たない/予測期間を超えた時刻は null。ephemeris を渡すと、
+  // 通常の予測列で答えられない未来時刻を、先端を extrapolationCenter まわりの二体軌道と
+  // みなして外挿する(先端が中心天体を持たない、打ち切られている、予測列自体を持たない
+  // のいずれかでは外挿しない)。
+  displayState(t: number, ephemeris?: Ephemeris): KinematicState | null {
+    if (t <= this.actual.state.t) return this.actual.at(t);
+    const predicted = this._predicted;
+    const normal = predicted?.at(t) ?? null;
+    if (normal !== null || ephemeris === undefined) return normal;
+    if (predicted === null || this.truncated || predicted.extrapolationCenter === null) return null;
+    return predicted.extrapolatedAt(t, ephemeris.stateOf(predicted.extrapolationCenter.id, t));
   }
 
   // displayTime の描画位置・姿勢を fo 経由でメッシュへ同期する。
