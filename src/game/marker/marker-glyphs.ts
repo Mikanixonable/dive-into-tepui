@@ -7,7 +7,7 @@
 export const ENTITY_GLYPH = {
   ship: '▲',
   enemyShip: '△',
-  base: '⬢',
+  base: '⬡',
   body: '●',
   lagrange: '✦',
   ghost: '⬢',
