@@ -251,8 +251,9 @@ export class EnvironmentScene {
     if ('earth' in this.ephemeris.registry) {
       const earthPos = this.ephemeris.positionOf('earth', simTime);
       const distToEarth = len(sub(earthPos, cameraPos));
-      const geoFade = 1.0 - Math.min(1, Math.max(0, (distToEarth - 6e7) / 1.2e8));
-      this.geoLine.setOpacity(0.35 * geoFade);
+      // フェードアウト距離を従来の2倍(120,000km〜360,000km)にし、透明度を下げて視認性を向上(0.55 * geoFade)
+      const geoFade = 1.0 - Math.min(1, Math.max(0, (distToEarth - 1.2e8) / 2.4e8));
+      this.geoLine.setOpacity(0.55 * geoFade);
     }
     for (const id of this.referenceIds) {
       if (!visibilityPolicy.body(id).orbit) {
@@ -286,9 +287,9 @@ export class EnvironmentScene {
     const earthPos = this.ephemeris.positionOf('earth', displayTime);
     const cameraPos = cameraSystem.activeCameraPos;
     const distToEarth = len(sub(earthPos, cameraPos));
-    // 近距離(60,000km以内)ではくっきり表示(1.0)、クローズダウン/ズームアウト(180,000km以上)でフェードアウト
-    const geoFade = 1.0 - Math.min(1, Math.max(0, (distToEarth - 6e7) / 1.2e8));
-    const labelOpacity = 0.65 * geoFade;
+    // フェードアウト距離を従来の2倍(120,000km〜360,000km)にし、透明度を下げて視認性を向上(0.90 * geoFade)
+    const geoFade = 1.0 - Math.min(1, Math.max(0, (distToEarth - 1.2e8) / 2.4e8));
+    const labelOpacity = 0.90 * geoFade;
 
     if (labelOpacity <= 0.02) {
       for (const key of keys) markerManager.hide(key);
