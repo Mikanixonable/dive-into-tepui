@@ -3,10 +3,11 @@
 //
 // samples は常に「先端(state)を含む、間引き済みのサンプル列」という不変条件だけを前提にする
 // ため、過去方向の履歴にも未来方向の予測列にも同じ実装をそのまま使える。
-import { KinematicState } from './kinematic-state';
+import { KinematicState, kinematicState } from './kinematic-state';
 import { StateQueue } from './state-queue';
 import { Attractor } from './attractor';
-import { Vec3 } from './vec3';
+import { extrapolatedRelativeState } from './kepler-extrapolation';
+import { Vec3, add } from './vec3';
 import { stepDynamics } from './dynamics';
 
 export class DynamicTrajectory {
@@ -21,6 +22,9 @@ export class DynamicTrajectory {
   // 早期 return は samples の参照同一性で判定するため、内容が変わっていない間は同じ配列参照を
   // 返し続けないと、呼び出し側が同一内容を渡しても毎フレーム焼き直しになってしまう。
   private _samplesCache: readonly KinematicState[] | null = null;
+  // 直近の step で渡された、先端位置で最も強く引く解析天体。extrapolatedAt が二体軌道の
+  // 中心に使う。
+  private _extrapolationCenter: Attractor | null = null;
 
   // state・prevState をともに初期状態で始める。
   constructor(state: KinematicState) {
@@ -30,6 +34,7 @@ export class DynamicTrajectory {
 
   get state(): KinematicState { return this._samples.newest!; }
   get prevState(): KinematicState { return this._prevState; }
+  get extrapolationCenter(): Attractor | null { return this._extrapolationCenter; }
   // 列の最も古い端での間引き間隔 [s]。列がどれだけ粗いかは列自身の属性であり、積んだ後に
   // 呼び出し側の設定が変わっても、既に積んだサンプルの粗さは変わらない。保持窓が飽和した
   // 列では、この端が最も古い保持サンプルとその1つ新しい側を挟む補間区間にあたる。
@@ -41,6 +46,7 @@ export class DynamicTrajectory {
   // 秒以上離れているときだけ次の先端に置き換わらず追加保持される(解像度を落とす箇所は
   // ここ)。保持窓は keepDuration。keepDuration = 0 なら常に前の先端を捨てて置き換えるだけ
   // (デブリ・薬莢のコストをゼロに保つ)。
+  // extrapolationCenter は extrapolatedAt が使う中心天体(省略時 null)。
   step(
     dt: number,
     attractors: readonly Attractor[],
@@ -49,6 +55,7 @@ export class DynamicTrajectory {
     thrust: Vec3 | null,
     sampleInterval: number,
     keepDuration: number,
+    extrapolationCenter: Attractor | null = null,
   ): void {
     const prev = this.state;
     const next = stepDynamics(prev, dt, attractors, bcInv, srpCoeff, thrust);
@@ -59,14 +66,17 @@ export class DynamicTrajectory {
     }
     this._samples.push(next);
     this._prevState = prev;
+    this._extrapolationCenter = extrapolationCenter;
     this._samplesCache = null;
   }
 
   // 不連続な差し替え(剛体接触・反動など、積分を経ない外部からの上書き)。push の訂正契約
   // (StateQueue 冒頭のコメント)により、新しい時刻以降の無効になったサンプルは捨てられる。
+  // 中心天体も、差し替えで先端の軌道自体が変わるため破棄する。
   reset(state: KinematicState): void {
     this._prevState = this.state;
     this._samples.push(state);
+    this._extrapolationCenter = null;
     this._samplesCache = null;
   }
 
@@ -79,4 +89,16 @@ export class DynamicTrajectory {
 
   // 保持区間内(最古 〜 先端)の任意時刻の状態。区間外は null。
   at(t: number): KinematicState | null { return this._samples.at(t); }
+
+  // state より新しい時刻 t を、先端(state)を extrapolationCenter まわりの二体ケプラー軌道と
+  // みなして外挿する。t が state 以前、または中心天体を保持していなければ at(t) と同じ。
+  // centerStateAtT は問い合わせ時刻 t における中心天体の ECI 状態 — 天体暦への依存を
+  // 持ち込まないため、解決は呼び出し側が行う。
+  extrapolatedAt(t: number, centerStateAtT: KinematicState): KinematicState | null {
+    const tip = this.state;
+    if (t <= tip.t || this._extrapolationCenter === null) return this.at(t);
+    const rel = extrapolatedRelativeState(tip, this._extrapolationCenter, t);
+    if (rel === null) return null;
+    return kinematicState(t, add(rel.r, centerStateAtT.r), add(rel.v, centerStateAtT.v));
+  }
 }

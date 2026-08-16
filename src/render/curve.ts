@@ -5,18 +5,14 @@
 // THREE.Vector3/THREE.Camera と数値だけ。
 import * as THREE from 'three/webgpu';
 import { metersPerPixelFromTanHalfFov, MIN_DEPTH } from '../physics/projection';
-
-export type CurveDash = { readonly dashSize: number; readonly gapSize: number };
+import type { LineStyle } from './line-style';
 
 export type CurveOptions = {
-  readonly color: number | string;
-  readonly opacity?: number;
-  readonly renderOrder?: number;
+  readonly style: LineStyle;
   // 生成時に確保する頂点数の上限。バッファは生成時に1回だけ確保し、以後は差し替えない
   // (WebGPURenderer は描画対象ごとに頂点バッファの束縛をキャッシュしており、ジオメトリや
   // 属性ごと差し替えても新しい頂点は反映されない)。
   readonly maxVertices: number;
-  readonly dash?: CurveDash;
 };
 
 // t∈[0,1] の位置における曲線上の点を out へ書く。sample(0) と sample(1) が一致する(周期的
@@ -98,6 +94,10 @@ export class Curve {
   private vertexCount = 0;
   private wantVisible = true;
 
+  // 直近に setStyle で反映済みの見た目。個別 setter を経由すると null に戻し、
+  // 次の setStyle が確実に書き直すようにする。
+  private appliedStyle: LineStyle | null = null;
+
   // 直近に適応分割で焼いた頂点(sample が返した座標系のまま、変換前)。倍精度で持つ理由は
   // pivot 自体の精度を落とさないため — GPU へ渡す positions(f32)は常にこの配列から pivot
   // を差し引いた差分として書く。
@@ -138,10 +138,11 @@ export class Curve {
   // 現在の初期区間に割り当てられた頂点予算(rebake がこの値までしか subdivide に積ませない)。
   private segmentBakedLimit = 0;
 
-  // color/opacity/renderOrder はマテリアルと描画順、maxVertices は確保する頂点バッファの
-  // 上限。dash を渡すと破線(LineDashedMaterial、頂点ごとの累積距離を焼く)。
+  // style はマテリアルと描画順、maxVertices は確保する頂点バッファの上限。style.dash が
+  // あれば破線(LineDashedMaterial、頂点ごとの累積距離を焼く)。
   constructor(opts: CurveOptions) {
-    const { color, opacity = 1, renderOrder = 0, maxVertices, dash } = opts;
+    const { style, maxVertices } = opts;
+    const { color, opacity, renderOrder, dash } = style;
     this.maxVertices = maxVertices;
     this.maxSegments = Math.max(0, maxVertices - 1);
     this.positions = new Float32Array(maxVertices * 3);
@@ -174,6 +175,7 @@ export class Curve {
     // 既定のフラスタム判定が使う外接球は古いまま(初期値は全頂点ゼロ)になる。
     this.line.frustumCulled = false;
     this.object = this.line;
+    this.appliedStyle = style;
   }
 
   // 連続した折れ線(0-1, 1-2, ...)のインデックスを埋める。
@@ -406,11 +408,13 @@ export class Curve {
       this.mat.dashSize = dashSize;
       this.mat.gapSize = gapSize;
     }
+    this.appliedStyle = null;
   }
 
   // マテリアルの不透明度を書き換える。
   setOpacity(opacity: number): void {
     this.mat.opacity = opacity;
+    this.appliedStyle = null;
   }
 
   // マテリアルを作り直さず色だけ更新する。テーマ切替時も GPU の頂点バッファを維持できる。
@@ -418,6 +422,30 @@ export class Curve {
     const material = this.mat as THREE.LineBasicMaterial | THREE.LineDashedMaterial;
     material.color.set(color);
     material.needsUpdate = true;
+    this.appliedStyle = null;
+  }
+
+  setRenderOrder(renderOrder: number): void {
+    this.line.renderOrder = renderOrder;
+    this.appliedStyle = null;
+  }
+
+  // 見た目をまとめて書き換える。適用済みの値と一致するなら何もしない。
+  setStyle(style: LineStyle): void {
+    const applied = this.appliedStyle;
+    if (applied
+      && applied.color === style.color
+      && applied.opacity === style.opacity
+      && applied.renderOrder === style.renderOrder
+      && applied.dash?.dashSize === style.dash?.dashSize
+      && applied.dash?.gapSize === style.dash?.gapSize) {
+      return;
+    }
+    this.setColor(style.color);
+    this.setOpacity(style.opacity);
+    this.setRenderOrder(style.renderOrder);
+    if (style.dash) this.setDash(style.dash.dashSize, style.dash.gapSize);
+    this.appliedStyle = style;
   }
 
   // sample の座標系をワールドへ写す変換を渡す。実際に line へ書く position/quaternion は
@@ -432,10 +460,6 @@ export class Curve {
   setVisible(v: boolean): void {
     this.wantVisible = v;
     this.applyVisible();
-  }
-
-  get visible(): boolean {
-    return this.line.visible;
   }
 
   // 折れ線は2点以上ないと描けないので、頂点数不足のときは表示要求に関わらず隠す。
