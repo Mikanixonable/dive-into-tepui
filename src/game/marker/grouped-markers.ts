@@ -12,6 +12,8 @@ import type { ActiveCelestialLabel } from '../camera/focus-markers';
 import type { MarkerManager } from './marker-manager';
 import { DIRECTION_GLYPH } from './marker-glyphs';
 
+import type { Attractor } from '../../physics/attractor';
+
 export interface GroupedMarkerItem {
   key: string; // 対象を一意に識別するマーカーキー
   cls: string; // 画面内マーカーの CSS クラス
@@ -59,6 +61,7 @@ export class GroupedMarkers {
     overviewMode: boolean,
     scale: ScaleFn,
     celestialLabels: readonly ActiveCelestialLabel[] = [],
+    attractors: readonly Attractor[] = [],
   ): void {
     const placed: PlacedItem[] = items.map(
       (item) => ({ item, p: project(item.pos), count: 1, labeled: true }),
@@ -79,7 +82,7 @@ export class GroupedMarkers {
       }
       const label = m.labeled ? this.label(m.item, m.count) : '';
       const rotationDeg = overviewMode
-        ? this.markerManager.headingRotationDeg(m.item.pos, m.item.vel, project, scale)
+        ? this.markerManager.headingRotationDeg(m.item.pos, m.item.vel, project, scale, attractors)
         : undefined;
       this.markerManager.set(
         m.item.key, m.item.cls, m.item.sym, m.p.x, m.p.y, m.p.front, label, opacity, m.item.color,
