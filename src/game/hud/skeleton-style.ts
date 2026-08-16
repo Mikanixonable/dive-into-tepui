@@ -133,7 +133,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
   color: var(--text-dim); font: inherit; letter-spacing: inherit;
 }
 #hud-viewbadge span.vb-view-btn:hover { color: var(--text); border-color: var(--accent-soft); }
-#hud-globalstatus {
+#hud-simulation-status {
   position: absolute; top: 0; left: 50%; transform: translateX(-50%);
   pointer-events: auto;
   padding: var(--space-3) var(--space-5); border-radius: 0 0 var(--radius-panel) var(--radius-panel);
@@ -143,8 +143,8 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
   display: flex; align-items: center; gap: var(--space-4); white-space: nowrap;
   max-width: calc(100vw - var(--space-6) * 2); overflow-x: auto; scrollbar-width: none;
 }
-#hud-globalstatus .v { color: var(--text); }
-#hud-globalstatus .gs-sep { color: var(--edge); }
+#hud-simulation-status .v { color: var(--text); }
+#hud-simulation-status .gs-sep { color: var(--edge); }
 #hud-map-scale {
   position: absolute; right: 12px; bottom: 12px; display: none; pointer-events: none;
   padding: var(--space-2) var(--space-4) var(--space-3); border: 0; border-radius: var(--radius-control);

@@ -5,26 +5,26 @@ import * as C from '../const';
 import { MQ_COARSE, MQ_COARSE_SHORT, MQ_COMPACT, MQ_MEDIUM_DOWN, MQ_SHORT } from './breakpoints';
 
 export const PANEL_CONTENT_STYLE = `
-#hud-status h3 { font-size: var(--font-xxs); }
+#hud-vessel-status h3 { font-size: var(--font-xxs); }
 /* 通常のマップビューでは艦固有の情報を右クリックのプロパティウィンドウで参照するので、常設の
    SHIP STATUS は畳んでパネル占有面積を減らす。クリエイティブでは配置後の操作用に表示する。 */
-#hud:not(.creative-mode) .hud-map-root.active #hud-status { display: none; }
+#hud:not(.creative-mode) .hud-map-root.active #hud-vessel-status { display: none; }
 #hud-orbit h3 { font-size: var(--font-xxs); }
-#hud-status .v, #hud-orbit .v { min-width: 75px; }
-#hud-status .rcs-fuel-readout {
+#hud-vessel-status .v, #hud-orbit .v { min-width: 75px; }
+#hud-vessel-status .rcs-fuel-readout {
   display: inline-grid;
   grid-template-columns: minmax(64px, 1fr) auto;
   align-items: center;
   gap: 6px;
   width: 128px;
 }
-#hud-status .rcs-fuel-meter {
+#hud-vessel-status .rcs-fuel-meter {
   height: 6px;
   overflow: hidden;
   border-radius: var(--radius-pill);
   background: var(--bar-bg);
 }
-#hud-status .rcs-fuel-fill {
+#hud-vessel-status .rcs-fuel-fill {
   display: block;
   width: 0;
   height: 100%;
@@ -32,23 +32,23 @@ export const PANEL_CONTENT_STYLE = `
   background: var(--accent);
   transition: width 180ms;
 }
-#hud-status .rcs-fuel-meter.critical .rcs-fuel-fill {
+#hud-vessel-status .rcs-fuel-meter.critical .rcs-fuel-fill {
   background: var(--danger);
 }
-#hud-status .rcs-fuel-value {
+#hud-vessel-status .rcs-fuel-value {
   min-width: 48px;
   color: var(--text);
   font-size: var(--font-xxs);
   text-align: right;
 }
 /* R/F/G/T の代替操作ボタン(タッチ・マウスどちらでも常設)。 */
-#hud-status .status-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
-#hud-status .status-actions .w-btn { font-size: var(--font-xxs); padding: var(--space-2) var(--space-3); }
+#hud-vessel-status .status-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
+#hud-vessel-status .status-actions .w-btn { font-size: var(--font-xxs); padding: var(--space-2) var(--space-3); }
 /* スロットル 1-4 の SegmentedControl。§7-1 の決定によりタッチ UI が出ている間だけ表示する —
    表示条件はタッチパッドの出し入れ(touch.ts の setPointerKind が付ける body.touch-ui-active)と
    同じものに載せ、ここで別の判定を作らない。 */
-#hud-status .status-throttle-touch { display: none; margin-top: var(--space-3); }
-body.touch-ui-active #hud-status .status-throttle-touch { display: flex; }
+#hud-vessel-status .status-throttle-touch { display: none; margin-top: var(--space-3); }
+body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; }
 #hud .hud-rail-right > #hud-target { width: 100%; box-sizing: border-box; font-size: var(--font-xs); }
 #hud .hud-rail-right > #hud-target h3 { font-size: var(--font-xxs); }
 #hud-enemies h3 { font-size: var(--font-xxs); }

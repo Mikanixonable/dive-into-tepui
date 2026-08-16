@@ -21,7 +21,7 @@ import { Base } from '../game-entity/base';
 import { generateDriftingEnemy } from './spawner/enemy-generator';
 import { WaveAttack } from './stage-utils/wave-attack';
 import * as C from '../const';
-import { ElementsForm, LagrangeForm, ObjectType, ReferenceAttractor, ShipPlacerForm, ShipPlacerPanel } from '../creative/ship-placer-panel';
+import { ElementsForm, LagrangeForm, ObjectType, ReferenceAttractor, ObjectPlacerForm, ObjectPlacerPanel } from '../creative/object-placer-panel';
 import { validateEllipticPlacementFields, validateBaseReferenceFields, validateLagrangePlacementFields, PlacementFieldIssue } from '../creative/placement-validation';
 import { elementsFormFromState } from '../creative/duplicate-form';
 import { OrbitLine } from '../orbit-line';
@@ -40,7 +40,7 @@ export class CreativeStage extends Stage {
   readonly executesPlans = true;
   readonly authoring: ObjectAuthoring = this;
 
-  private readonly placerPanel: ShipPlacerPanel;
+  private readonly placerPanel: ObjectPlacerPanel;
   // 補給の自動投入・敵の波状攻撃を切り替えるトグルを載せたパネル。マップ視点でだけ出す。
   private readonly creativeOptionsPanel: HTMLElement;
   private readonly waveAttack: WaveAttack;
@@ -80,7 +80,7 @@ export class CreativeStage extends Stage {
     this.previewOrbitLine = new OrbitLine(0xffffff, 0.6, C.LINE_RENDER_ORDER.plan);
     this._scene.add(this.previewOrbitLine.line);
 
-    this.placerPanel = new ShipPlacerPanel(
+    this.placerPanel = new ObjectPlacerPanel(
       this._hud.mapRoot, this._hud.layers.popup, this._ephemeris, this._hud.overlayManager,
     );
     this.placerPanel.onConfirm = (name, form) => this.placeObject(name, form);
@@ -124,9 +124,9 @@ export class CreativeStage extends Stage {
     this.creativeOptionsPanel.classList.toggle('hidden', !cameraSystem.overviewMode);
   }
 
-  // 艦艇配置モーダルを開く (MapContextActions から呼ばれる)。focusId はマップの現在フォーカスで、
+  // オブジェクト配置モーダルを開く (MapContextActions から呼ばれる)。focusId はマップの現在フォーカスで、
   // 基準天体になれる ID なら基準天体の初期選択に使う。
-  openShipPlacer(focusId?: string): void {
+  openObjectPlacer(focusId?: string): void {
     this.placerPanel.open(focusId !== undefined ? { kind: 'body', attractor: focusId as ReferenceAttractor } : undefined);
   }
 
@@ -135,7 +135,7 @@ export class CreativeStage extends Stage {
   // 満たす値が求まったときだけ、その値をプリセットして開く。逆算できない状態(双曲線軌道など)や、
   // 基地なのに基準天体が月でない(地球が支配的な複製元など)ときは、値だけを引き継ぐと
   // 制約に反した軌道が黙って配置できてしまうので、種類だけを引き継いで通常の新規配置として開く。
-  openShipPlacerForDuplicate(objectType: ObjectType, state: KinematicState): void {
+  openObjectPlacerForDuplicate(objectType: ObjectType, state: KinematicState): void {
     const attractors = this._ephemeris.attractorsAt(this._simulator.simTime);
     const form = elementsFormFromState(state, attractors, this._ephemeris.originId);
     if (form && validateBaseReferenceFields(objectType, 'elements', form.attractor).length === 0) {
@@ -148,7 +148,7 @@ export class CreativeStage extends Stage {
 
   // フォーム値から配置プレビューの軌道要素と位置を求める。軌道要素指定以外の配置方法・
   // 入力を解釈できない値のときは null(プレビューを出さない)。
-  private computePreview(form: ShipPlacerForm): { elements: OrbitalElements; pos: Vec3 } | null {
+  private computePreview(form: ObjectPlacerForm): { elements: OrbitalElements; pos: Vec3 } | null {
     if (form.placementMode !== 'elements') return null;
     try {
       const state = this.buildInitialState(form);
@@ -162,7 +162,7 @@ export class CreativeStage extends Stage {
 
   // フォーム値をフィールド単位で検証する。assertValidForm(確定時、最初の問題で例外を投げる)と
   // 同じ検証呼び出しを共有し、両者が食い違うことを防ぐ。
-  private computeFieldIssues(form: ShipPlacerForm): PlacementFieldIssue[] {
+  private computeFieldIssues(form: ObjectPlacerForm): PlacementFieldIssue[] {
     const issues = [...validateBaseReferenceFields(
       form.objectType, form.placementMode, form.placementMode === 'elements' ? form.attractor : undefined,
     )];
@@ -210,7 +210,7 @@ export class CreativeStage extends Stage {
   }
 
   // フォーム値から KinematicState を組み立て、配置する。
-  private placeObject(name: string, form: ShipPlacerForm): void {
+  private placeObject(name: string, form: ObjectPlacerForm): void {
     if (form.objectType === 'player' && this._entities.players.length >= C.MAX_PLACED_SHIPS) {
       this._hud.hint(`配置数が上限(${C.MAX_PLACED_SHIPS}隻)に達しています`);
       return;
@@ -250,7 +250,7 @@ export class CreativeStage extends Stage {
 
   // フォームの placementMode に応じて軌道要素指定(stateFromOrbitalElements)かラグランジュ点指定
   // (haloState/lissajousState)のどちらかで KinematicState を組み立てる。
-  private buildInitialState(form: ShipPlacerForm): KinematicState {
+  private buildInitialState(form: ObjectPlacerForm): KinematicState {
     if (form.placementMode === 'lagrange') return this.buildLagrangeState(form);
     return this.buildElementsState(form);
   }
@@ -301,7 +301,7 @@ export class CreativeStage extends Stage {
 
   // フォームの値が物理的に成立するか検証する。computeFieldIssues と同じ検証呼び出しを共有し、
   // 不正なら最初の問題を理由に例外を投げる。
-  private assertValidForm(form: ShipPlacerForm): void {
+  private assertValidForm(form: ObjectPlacerForm): void {
     const [firstIssue] = this.computeFieldIssues(form);
     if (firstIssue) throw new Error(firstIssue.message);
   }

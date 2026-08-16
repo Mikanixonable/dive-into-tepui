@@ -7,7 +7,7 @@ import { Attractor, AttractorId, orbitalElementsOf, frameOfAttractor, strongestA
 import { OrbitalElements, apsisAltitudes, trueAnomalyAt } from '../../physics/elements';
 import { toFrameState } from '../../physics/frame';
 import { Vec3, cross, dot, len, norm, v3 } from '../../physics/vec3';
-import type { ElementsForm } from './ship-placer-panel';
+import type { ElementsForm } from './object-placer-panel';
 
 const RAD_TO_DEG = 180 / Math.PI;
 const Y_POLE: Vec3 = v3(0, 1, 0);
