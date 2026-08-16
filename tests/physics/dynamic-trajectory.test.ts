@@ -4,14 +4,17 @@
 // ここでの検証は GameEntity.actualTrajectory(過去列側)としての用法をそのまま代表する。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
+import { Attractor } from '../../src/physics/attractor';
+import { extrapolatedRelativeState } from '../../src/physics/kepler-extrapolation';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH, SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { DynamicTrajectory } from '../../src/physics/dynamic-trajectory';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
-import { len, sub, v3 } from '../../src/physics/vec3';
+import { add, len, sub, v3 } from '../../src/physics/vec3';
 
 const EPH = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0 }); // 初期位相を固定して決定的にする
 const bodiesAt = (t: number) => EPH.attractorsAt(t); // step() が要求する重力源をステップ中点で引く
+const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(), v3()), degree2: null, isStar: false };
 
 function circularState(t = 0): KinematicState {
   const r0 = R_EARTH + 420e3;
@@ -166,5 +169,49 @@ export function register(): void {
     e.reset(kinematicState(e.state.t, v3(1, 0, 0), v3(0, 1, 0)));
     const d = e.samplesOldestFirst();
     assert.notEqual(d, c, 'a reset must invalidate the memoized reference');
+  });
+
+  test('dynamic-trajectory: extrapolationCenter は既定 null で、省略した step からは変わらない', () => {
+    const e = new DynamicTrajectory(circularState());
+    assert.equal(e.extrapolationCenter, null);
+    e.step(10, bodiesAt(e.state.t + 5), 0, 0, null, 10, 1e6); // 中心天体を渡さない既存呼び出し
+    assert.equal(e.extrapolationCenter, null, '省略時は from before と同じ挙動(null のまま)');
+  });
+
+  test('dynamic-trajectory: step に渡した中心天体が extrapolationCenter に反映され、reset で破棄される', () => {
+    const e = new DynamicTrajectory(circularState());
+    e.step(10, bodiesAt(e.state.t + 5), 0, 0, null, 10, 1e6, EARTH);
+    assert.equal(e.extrapolationCenter, EARTH);
+
+    e.reset(kinematicState(e.state.t, v3(1, 0, 0), v3(0, 1, 0)));
+    assert.equal(e.extrapolationCenter, null, '不連続な差し替えで中心天体は破棄される');
+  });
+
+  test('dynamic-trajectory: extrapolatedAt は保持区間内・t<=state.t では at(t) と同じ', () => {
+    const e = new DynamicTrajectory(circularState());
+    for (let i = 0; i < 5; i++) e.step(10, bodiesAt(e.state.t + 5), 0, 0, null, 10, 1e6, EARTH);
+    const mid = e.state.t - 20;
+    assert.deepEqual(e.extrapolatedAt(mid, e.state), e.at(mid));
+    assert.equal(e.extrapolatedAt(e.state.t, e.state), e.state);
+  });
+
+  test('dynamic-trajectory: 中心天体を保持していなければ、先端より先でも extrapolatedAt は at(t) と同じ(null)', () => {
+    const e = new DynamicTrajectory(circularState());
+    e.step(10, bodiesAt(e.state.t + 5), 0, 0, null, 10, 1e6); // 中心天体なし
+    assert.equal(e.extrapolatedAt(e.state.t + 100, e.state), e.at(e.state.t + 100));
+  });
+
+  test('dynamic-trajectory: extrapolatedAt は先端より先を二体軌道として外挿し、中心天体の位置・速度を足し戻す', () => {
+    const e = new DynamicTrajectory(circularState());
+    e.step(10, [EARTH], 0, 0, null, 10, 1e6, EARTH); // EARTH のみを重力源にした純二体積分
+    const t = e.state.t + 1000;
+
+    const rel = extrapolatedRelativeState(e.state, EARTH, t)!;
+    const movingCenter = kinematicState(t, v3(1e6, 2e6, -3e6), v3(10, -20, 30));
+    const extrapolated = e.extrapolatedAt(t, movingCenter);
+    assert.ok(extrapolated);
+    assert.deepEqual(extrapolated!.r, add(rel.r, movingCenter.r));
+    assert.deepEqual(extrapolated!.v, add(rel.v, movingCenter.v));
+    assert.equal(extrapolated!.t, t);
   });
 }
