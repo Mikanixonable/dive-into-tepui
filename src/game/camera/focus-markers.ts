@@ -10,13 +10,22 @@ import { occlusionOpacity } from '../../physics/occlusion';
 import { BodyClassToggles, systemMembersAt } from '../celestial/body-visibility';
 import { bodyClassOf } from '../celestial/body-class';
 import { MapVisibilityPolicy } from '../celestial/map-visibility';
-import { FOCUS_LABEL_PRIORITY_PX, LAGRANGE_MIN_CLEARANCE_RATIO } from '../const';
+import { FOCUS_LABEL_PRIORITY_PX, LAGRANGE_MIN_CLEARANCE_RATIO, MARKER_PRIORITY } from '../const';
 import type { MapPickable } from '../map-pickable';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 
 type MutableMapPickable = { -readonly [K in keyof MapPickable]: MapPickable[K] };
 type ProjectedFocusLabel = { label: FocusLabel; x: number; y: number };
 type FocusProjection = { occluded: boolean; opacity: number; x: number; y: number; front: boolean };
+
+export interface ActiveCelestialLabel {
+  readonly id: string;
+  readonly x: number;
+  readonly y: number;
+  readonly priority: number;
+  readonly iconVisible: boolean;
+  readonly labelVisible: boolean;
+}
 
 export interface FocusLabel {
   id: string;
@@ -52,12 +61,12 @@ function lagrangeMarkerLabel(id: OrbitingId, n: 1 | 2 | 3 | 4 | 5): string {
 // 惑星 > 準惑星 > 衛星・小惑星・彗星 > ラグランジュ点。
 // 恒星は太陽系の基準点なので、惑星と同じ最上位として常に残す。
 const LABEL_PRIORITY: Record<'star' | 'planet' | 'dwarf' | 'satellite' | 'smallBody' | 'lagrange', number> = {
-  star: 4,
-  planet: 4,
-  dwarf: 3,
-  satellite: 2,
-  smallBody: 2,
-  lagrange: 1,
+  star: MARKER_PRIORITY.STAR_PLANET,
+  planet: MARKER_PRIORITY.STAR_PLANET,
+  dwarf: MARKER_PRIORITY.DWARF_PLANET,
+  satellite: MARKER_PRIORITY.SATELLITE_SMALL_BODY,
+  smallBody: MARKER_PRIORITY.SATELLITE_SMALL_BODY,
+  lagrange: MARKER_PRIORITY.LAGRANGE,
 };
 
 export class FocusMarkers {
@@ -89,8 +98,10 @@ export class FocusMarkers {
   private readonly cellRowPool: Map<number, ProjectedFocusLabel[]>[] = [];
   private shownIdsScratch: string[] = [];
   private readonly nowShownScratch = new Set<string>();
+  private readonly activeCelestialLabels: ActiveCelestialLabel[] = [];
 
   get shownLabelCount(): number { return this.shownLabels.length; }
+  get activeLabels(): readonly ActiveCelestialLabel[] { return this.activeCelestialLabels; }
 
   // レジストリからラベルの全集合を1度だけ組む。ラグランジュ点は5点まとめてではなく、
   // 共線点・三角点それぞれの成立条件を満たす点だけを持たせる。
@@ -339,6 +350,7 @@ export class FocusMarkers {
 
     const shownIds = this.shownIdsScratch;
     shownIds.length = 0;
+    this.activeCelestialLabels.length = 0;
     for (const lbl of this.shownLabels) {
       shownIds.push(lbl.id);
       const projectedState = frame.get(lbl.id);
@@ -351,11 +363,22 @@ export class FocusMarkers {
       const markerOpacity = projectedState.opacity;
       // 優先度で隠すのはラベルだけ。アイコンまで消すと、表示設定の icon/label 分離と
       // フォーカス対象の存在表示が崩れる。
-      lbl.pickable = lbl.showIcon || !hiddenByPriority.has(lbl.id);
+      const isLabelVisible = lbl.showLabel && !hiddenByPriority.has(lbl.id);
+      lbl.pickable = lbl.showIcon || isLabelVisible;
+      if (projectedState.front && (lbl.showIcon || isLabelVisible)) {
+        this.activeCelestialLabels.push({
+          id: lbl.id,
+          x: projectedState.x,
+          y: projectedState.y,
+          priority: lbl.labelPriority,
+          iconVisible: lbl.showIcon,
+          labelVisible: isLabelVisible,
+        });
+      }
       this.markerManager.setPosition(
         lbl.id, lbl.isLagrange ? 'mk-poi mk-lagrange' : 'mk-poi', lbl.showIcon ? ENTITY_GLYPH.body : '', lbl.pos, project,
-        lbl.showLabel && !hiddenByPriority.has(lbl.id) ? lbl.markerLabel : '',
-        markerOpacity,
+        isLabelVisible ? lbl.markerLabel : '',
+        markerOpacity, undefined, undefined, false, false, lbl.labelPriority,
       );
     }
     const nowShown = this.nowShownScratch;
@@ -370,6 +393,7 @@ export class FocusMarkers {
 
   // マップモードを抜けたときの後始末(戦闘ビューには天体ラベルを出さない)。
   hideLabels(): void {
+    this.activeCelestialLabels.length = 0;
     for (const lbl of this.allLabels) this.markerManager.hide(lbl.id);
   }
 }
