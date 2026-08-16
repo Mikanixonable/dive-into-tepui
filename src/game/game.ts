@@ -483,7 +483,7 @@ export class Game {
     );
     this.cameraSystem.focusMarkers.syncSubLabels(
       this.markerManager.combatMarkers, this.ephemeris.registry, displayAttractors,
-      overviewMode, project,
+      overviewMode, project, this.cameraSystem.activeCameraPos,
     );
     this.navTarget.sync(this.cameraSystem);
     this.entities.syncEquatorNodes(this.cameraSystem);
