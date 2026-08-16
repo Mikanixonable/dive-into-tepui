@@ -27,10 +27,11 @@ export type PlanAttractorProvider = {
 
 const REVISION_MIX_PRIME = 16777619;
 const REVISION_SEED = 2166136261 | 0;
-// 予測列の届き具合の3値。「持たない」を「届いていない」と混ぜないための区別。
+// 予測列の届き具合の4値。「持たない」「打ち切られた」を「届いていない」と混ぜないための区別。
 const NO_PREDICTION = -1;
 const PREDICTION_SHORT = 0;
 const PREDICTION_COVERS_PLAN = 1;
+const PREDICTION_TRUNCATED = 2;
 
 // 保持する時刻の数。1ステップが引くのは開始・中点・終了の3時刻で、ある歩の終了は次の歩の開始と
 // 一致する。その一致だけを拾えばよいので、少数で足りる。
@@ -53,11 +54,14 @@ function mixString(acc: number, value: string): number {
 
 // その個体の予測列が計画の終端 planEnd まで届いているか。伸長の途中では値が動かず、
 // 届いた瞬間に一度だけ変わる — 伸びている間の変化を revision に載せると、覆い切りに
-// 何フレームもかかる長い表示期間で計画の再積分が毎フレーム走り続ける。
+// 何フレームもかかる長い表示期間で計画の再積分が毎フレーム走り続ける。届いていない間は
+// 打ち切りの有無で分ける — 打ち切られた列は先端から先を外挿できず、その個体が重力源・
+// 衝突体の一覧から丸ごと落ちる。
 function predictionCoverage(entity: GameEntity, planEnd: number): number {
   const tip = entity.predicted?.state.t;
   if (tip === undefined) return NO_PREDICTION;
-  return tip >= planEnd ? PREDICTION_COVERS_PLAN : PREDICTION_SHORT;
+  if (tip >= planEnd) return PREDICTION_COVERS_PLAN;
+  return entity.predictionTruncated ? PREDICTION_TRUNCATED : PREDICTION_SHORT;
 }
 
 // provider が返す内容を変えうる入力だけを畳み込んだ世代値。planEnd は計画の折れ線が届いている
