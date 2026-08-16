@@ -43,8 +43,8 @@ export class TargetPanel {
       distanceM: relative.dist,
       closingMps: relative.closing,
       relativeSpeedMps: relative.relSpeed,
-      hp: target.hp,
-      maxHp: target.maxHp,
+      hp: 'hp' in target ? (target as { hp: number }).hp : 1000,
+      maxHp: 'maxHp' in target ? (target as { maxHp: number }).maxHp : 1000,
     });
   }
 
