@@ -89,21 +89,13 @@ export function classifyAttractors(attractors: readonly Attractor[]): Classified
   return { always, grid };
 }
 
-// 位置 pos から見た重力源一覧 = 常に含める天体 + pos の27近傍グリッドに載っている天体。
+// 位置 pos から見た重力源一覧 = 常に含める天体 + pos の27近傍グリッドに載っている天体を、
+// out へ書き込む。out は呼び出し側が所有し、この呼び出しの完了後に保持してはいけない。
 // excludeId を渡すと、その id の天体をまるごと一覧から除く — pos を持つ本人が重力源
 // (Asteroid など)のとき、自分自身を引く項ができるのを防ぐ。まるごと落とすので
 // ECI 原点補正項(attractorAccel の第2項、問い合わせ位置に依存しない)も一緒に失うが、
 // GameEntity が取りうる質量では無視できる大きさ(1e12 kg の小惑星が2 AUにあるとき
 // 7e-25 m/s² 程度)にとどまる。
-export function attractorsNear(pos: Vec3, classified: ClassifiedAttractors, excludeId?: AttractorId): readonly Attractor[] {
-  const nearby = classified.grid.neighbors(pos);
-  const merged = nearby.length === 0 ? classified.always : [...classified.always, ...nearby];
-  return excludeId === undefined ? merged : merged.filter((a) => a.id !== excludeId);
-}
-
-// attractorsNear と同じ順序の一覧を out へ書き込む再利用版。out は呼び出し側が所有し、
-// この呼び出しの完了後に保持してはいけない。返した配列を保持したい呼び出し側は
-// attractorsNear を使う。excludeId は attractorsNear と同じ。
 export function attractorsNearInto(
   pos: Vec3,
   classified: ClassifiedAttractors,
