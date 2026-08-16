@@ -49,6 +49,7 @@ function defaultPriorityForClass(key: string, cls: string): number {
     return key.includes('-l') ? C.MARKER_PRIORITY.LAGRANGE : C.MARKER_PRIORITY.SATELLITE_SMALL_BODY;
   }
   if (cls.includes('mk-target')) return C.MARKER_PRIORITY.PRIMARY_TARGET;
+  if (cls.includes('mk-impact')) return C.MARKER_PRIORITY.IMPACT;
   if (cls.includes('mk-secondary-target')) return C.MARKER_PRIORITY.SECONDARY_TARGET;
   if (cls.includes('mk-base')) return C.MARKER_PRIORITY.BASE;
   if (cls.includes('mk-self')) return C.MARKER_PRIORITY.PLAYER;
@@ -62,7 +63,7 @@ function defaultPriorityForClass(key: string, cls: string): number {
 }
 
 const NEVER_HIDE_ICON_CLASSES = [
-  'mk-boresight', 'mk-lead', 'mk-pro', 'mk-retro', 'mk-nrm', 'mk-rad', 'mk-tgtdir', 'mk-boardpass',
+  'mk-boresight', 'mk-lead', 'mk-pro', 'mk-retro', 'mk-nrm', 'mk-rad', 'mk-tgtdir', 'mk-boardpass', 'mk-impact',
 ];
 
 function canHideIconByPriority(m: MarkerRecord): boolean {
@@ -154,8 +155,8 @@ export class MarkerManager {
     m.priority = itemPriority;
     m.iconHiddenByPriority = false;
     m.labelHiddenByPriority = false;
-    m.sym.style.display = '';
-    m.lbl.style.display = '';
+    m.sym.classList.remove('priority-hidden');
+    m.lbl.classList.remove('priority-hidden');
     m.root.style.display = visible ? 'block' : 'none';
     if (!visible) return;
     m.root.style.left = `${x.toFixed(1)}px`;
@@ -360,8 +361,8 @@ export class MarkerManager {
       if (m.hidden || m.occlusionHidden || m.root.style.opacity === '0') continue;
       m.iconHiddenByPriority = false;
       m.labelHiddenByPriority = false;
-      m.sym.style.display = '';
-      m.lbl.style.display = '';
+      m.sym.classList.remove('priority-hidden');
+      m.lbl.classList.remove('priority-hidden');
       activeRecords.push(m);
     }
 
@@ -390,10 +391,10 @@ export class MarkerManager {
       }
     }
 
-    // アイコン/ラベルの間引き結果を反映
+    // アイコン/ラベルの間引き結果を反映 (priority-hidden クラスのトグルによる CSS フェード)
     for (const m of activeRecords) {
-      if (m.iconHiddenByPriority) m.sym.style.display = 'none';
-      if (m.labelHiddenByPriority) m.lbl.style.display = 'none';
+      m.sym.classList.toggle('priority-hidden', m.iconHiddenByPriority);
+      m.lbl.classList.toggle('priority-hidden', m.labelHiddenByPriority);
     }
 
     const active = this.activeScratch;
