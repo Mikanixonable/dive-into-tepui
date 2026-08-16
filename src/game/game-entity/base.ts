@@ -73,9 +73,9 @@ export type BaseInit =
   | { readonly saved: BaseSaveData; readonly simTime: number };
 
 export function baseMarkerSvg(): string {
+  const pts = "12,2.5 19.43,6.08 21.26,14.11 16.12,20.56 7.88,20.56 2.74,14.11 4.57,6.08";
   return `<svg viewBox="0 0 24 24" width="24" height="24" aria-label="Base">` +
-    `<polygon points="12,3 20.66,8 20.66,18 12,23 3.34,18 3.34,8" fill="currentColor" fill-opacity="0.3" stroke="currentColor" stroke-width="1.8"/>` +
-    `<circle cx="12" cy="13" r="3" fill="currentColor"/>` +
+    `<polygon points="${pts}" fill="none" stroke="currentColor" stroke-width="1.8"/>` +
     `</svg>`;
 }
 

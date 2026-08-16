@@ -245,6 +245,10 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 .mk-poi.mk-lagrange .lbl { font-size: calc(var(--font-s) * 0.7); white-space: pre; line-height: 1.25; text-align: center; }
 .mk-poi.mk-lagrange .lbl::first-line { font-size: var(--font-s); }
 .mk-base { color: ${C.COLOR_BASE_ORBIT_LINE}; text-shadow: 0 0 4px var(--bg); }
+.mk-apsis .sym, .mk-node .sym, .mk-mnode .sym, .mk-burn .sym, .mk-planned .sym, .mk-plantick .sym { font-size: calc(var(--glyph-base) * 0.5); }
+.mk-apsis .sym svg, .mk-node .sym svg, .mk-mnode .sym svg, .mk-burn .sym svg, .mk-planned .sym svg, .mk-plantick .sym svg { width: 50%; height: 50%; }
+.mk-self .sym, .mk-enemy .sym, .mk-target .sym, .mk-secondary-target .sym { font-size: calc(var(--glyph-base) * 0.6667); }
+.mk-self .sym svg, .mk-enemy .sym svg, .mk-target .sym svg, .mk-secondary-target .sym svg { width: 66.67%; height: 66.67%; }
 #hud .mk-poi .lbl { margin-top: var(--space-2); padding: var(--space-1) var(--space-2); }
 .mk-longpress { width: 40px; height: 40px; }
 .mk-longpress .sym { border: 2px solid var(--accent); border-radius: 50%; box-sizing: border-box; }
