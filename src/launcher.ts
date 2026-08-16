@@ -146,7 +146,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     // Input は周回ごとに作り直されるので、配線もそのたびに張り直す。
     this.game.input.onUserGesture = () => {
       this.audioEngine.unlock();
-      this.bgm.autoStart();
+      this.bgm.ensureStarted();
     };
     this.noteLaunched(stageClass);
     this.bgm.resume();
