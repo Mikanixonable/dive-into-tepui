@@ -305,6 +305,23 @@ export const MARKER_DIR_DIST = 5e4; // 方向マーカーを投影する仮想�
 export const MARKER_CLUSTER_PX = 40; // これより画面上で近いマーカー同士は1つの代表にまとめる [px]
 // 天体ラベルからこれより画面上で近いラグランジュ点ラベルは、天体ラベルを優先して隠す [px]
 export const FOCUS_LABEL_PRIORITY_PX = 40;
+
+// マーカーラベル優先度 (数値が大きいものが優先。天体 > 船・エンティティ)
+export const MARKER_PRIORITY = {
+  STAR_PLANET: 5000,
+  DWARF_PLANET: 4000,
+  SATELLITE_SMALL_BODY: 3000,
+  LAGRANGE: 2000,
+  PRIMARY_TARGET: 900,
+  SECONDARY_TARGET: 800,
+  BASE: 700,
+  PLAYER: 600,
+  ENEMY: 500,
+  AMMO: 300,
+  MANEUVER_NODE: 150,
+  ORBITAL_NODE: 100,
+} as const;
+
 // 共線点(L1/L2/L3)を持たせる下限。副天体の半径を単位とした L1 までの距離で、これを下回る系は
 // L1 が表面すれすれに来てハロー軌道の振幅が収まらない(フォボス 1.5・イオ 5.8 が落ちる)。
 export const LAGRANGE_MIN_CLEARANCE_RATIO = 10;

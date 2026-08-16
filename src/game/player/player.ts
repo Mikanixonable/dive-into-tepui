@@ -488,7 +488,11 @@ export class Player extends Ship {
     bearingVisible: boolean; color: string; symMarkup: boolean;
   } {
     const dist = len(sub(pos, viewerPos));
-    const priority = role === 'primary' ? Infinity : role === 'secondary' ? Number.MAX_SAFE_INTEGER : -dist;
+    const priority = role === 'primary'
+      ? C.MARKER_PRIORITY.PRIMARY_TARGET
+      : role === 'secondary'
+        ? C.MARKER_PRIORITY.SECONDARY_TARGET
+        : C.MARKER_PRIORITY.PLAYER;
     return {
       key: `player-${this.id}`,
       cls: role === 'primary' ? 'mk-target' : 'mk-enemy', // player も味方ターゲットとして mk-enemy に準じる
