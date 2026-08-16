@@ -618,8 +618,8 @@ export class MapContextActions {
 
         const controlItem: readonly MenuItem<MenuAction>[] = base
           ? [isControlled
-            ? { label: '操作を解除', act: 'deactivateBase' }
-            : { label: '基地を操作', act: 'activateBase' }]
+            ? { label: '操作対象を解除', act: 'deactivate' }
+            : { label: '操作対象にする', act: 'activate' }]
           : [];
 
         return [
@@ -637,7 +637,11 @@ export class MapContextActions {
       run: (act, target) => {
         const base = this.entities.findBase(target.id);
         const activeShip = this.activePlayers.current;
-        if (act === 'activateBase') {
+        if (act === 'activate') {
+          if (base) this.activePlayers.setBase(base);
+        } else if (act === 'deactivate') {
+          if (base && this.activePlayers.controlledBase === base) this.activePlayers.setBase(null);
+        } else if (act === 'activateBase') {
           if (base && this.controlBaseHandler) this.controlBaseHandler(base);
         } else if (act === 'deactivateBase') {
           if (this.controlBaseHandler) this.controlBaseHandler(null);
@@ -866,7 +870,9 @@ export class MapContextActions {
   private baseRows(target: MapPickable, attractors: readonly Attractor[], player: Player | null): PropertyRow[] {
     const base = this.entities.findBase(target.id);
     if (!base) return [];
+    const isControlled = this.activePlayers.controlledBase === base;
     const rows: PropertyRow[] = [
+      { key: 'operated', label: '操作対象か', value: isControlled ? 'はい' : 'いいえ', collapsible: true },
       { key: 'money', label: '所持金', value: `${base.baseState.money.toLocaleString()} Cr` },
       { key: 'vessels', label: '格納艦艇数', value: `${base.baseState.dockedVessels.length}` },
     ];
