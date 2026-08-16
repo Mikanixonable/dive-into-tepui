@@ -370,28 +370,9 @@ export class EntityManager {
     }
   }
 
-  // 全自機の予測軌道線を同期し、それで解析楕円を代替できる艦は楕円側を抑制する。
-  // 積分予測を描くのは操作対象艦だけ — 他の艦は常に解析楕円のまま。
-  syncPlayerTrajectoryLines(
-    activePlayer: Player | null, displayWindow: DisplayWindow, overviewMode: boolean, ephemeris: Ephemeris,
-    fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
-    visibilityPolicy: MapVisibilityPolicy | null,
-  ): void {
-    const { frame, simTime, displayTime, duration, pastDuration } = displayWindow;
-    for (const ship of this.players) {
-      const isActive = ship === activePlayer;
-      const show = isActive && (visibilityPolicy?.entity('player', isActive).orbit ?? true);
-      ship.syncTrajectoryLine(
-        show, frame, simTime, displayTime, pastDuration, ephemeris, fo, camera, attractors);
-      ship.orbitLine.setSuppressed(ship.supersedesAnalyticEllipse(simTime, duration, overviewMode));
-    }
-  }
-
-  // 天体クラス別トグルに応じて自機・敵・弾薬・基地のメッシュ表示を揃える。
-  // visibilityPolicy が null(戦闘ビュー)のときは非表示扱いを一切かけない。
-  applyVisibility(
-    visibilityPolicy: MapVisibilityPolicy | null, activePlayer: Player | null,
-  ): void {
+  // 天体クラス別トグルに応じて自機・敵・弾薬・基地のメッシュ表示を揃える。visibilityPolicy が
+  // null(戦闘ビュー)のときは非表示扱いを一切かけない。
+  applyVisibility(visibilityPolicy: MapVisibilityPolicy | null, activePlayer: Player | null): void {
     if (!visibilityPolicy) return;
     for (const ship of this.players) if (!visibilityPolicy.entity('player', ship === activePlayer).category) ship.renderObject.visible = false;
     for (const enemy of this.enemies) if (!visibilityPolicy.entity('ship').category) enemy.renderObject.visible = false;
@@ -399,37 +380,6 @@ export class EntityManager {
       if (!visibilityPolicy.entity('ammo').category) ammoPickup.renderObject.visible = false;
     }
     for (const base of this.bases) if (!visibilityPolicy.entity('base').category) base.renderObject.visible = false;
-  }
-
-  // 全エンティティの基本軌道線を一括同期する。
-  syncOrbitLines(
-    overviewMode: boolean,
-    fo: FloatingOrigin,
-    camera: THREE.Camera,
-    attractors: readonly Attractor[],
-    visibilityPolicy: MapVisibilityPolicy | null,
-    displayWindow?: DisplayWindow,
-    ephemeris?: Ephemeris,
-    activePlayer?: Player | null,
-    primaryTarget?: GameEntity | null,
-    secondaryTarget?: GameEntity | null,
-  ): void {
-    const frame = displayWindow?.frame;
-    const displayTime = displayWindow?.displayTime;
-
-    for (const entity of this.all()) {
-      if (!entity.orbitLine) continue;
-
-      const isSelf = entity === activePlayer;
-      const entityKind = entity instanceof Player ? 'player' : (entity instanceof Base ? 'base' : 'ship');
-      const entityVisibility = visibilityPolicy?.entity(entityKind, isSelf);
-
-      const isTarget = entity === primaryTarget || entity === secondaryTarget;
-      const showOrbit = overviewMode && entity.alive && !isTarget && (entityVisibility?.orbit ?? true);
-
-      const force = entity instanceof Player && entity.thrust !== null;
-      entity.syncOrbitLine(showOrbit, fo, camera, attractors, force, frame, displayTime, ephemeris);
-    }
   }
 
   // マップ表示中だけ、全基地の赤道交点マーカーを求め直す(戦闘ビューでは誰も読まない)。基地は

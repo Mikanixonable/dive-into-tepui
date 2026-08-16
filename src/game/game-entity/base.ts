@@ -15,7 +15,6 @@ import type { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';
 import type { BaseSaveData } from '../save-data';
-import { OrbitLine } from '../orbit-line';
 import { Plan } from '../plan/plan';
 import type { PlanExecutionMode } from '../player/player';
 import { generateRandomName } from '../random-name';
@@ -87,8 +86,7 @@ export function baseMarkerSvg(): string {
 
 export class Base extends GameEntity implements Controllable {
   readonly collisionGeom = new BaseCollisionGeometry();
-  readonly predictsFuture = true;
-  declare readonly orbitLine: OrbitLine;
+  protected readonly predictedForGhost = true;
   readonly plan = new Plan();
   planExecution: PlanExecutionMode = 'off';
   fineAttitude = false;
@@ -172,9 +170,7 @@ export class Base extends GameEntity implements Controllable {
     this.throttle = new PlayerThrottle(hud, 'saved' in init ? init.saved.throttle : undefined);
     this.thrustEffects = new ThrustEffects(scene, worldSfx);
     this.rcsEffects = new RcsEffects(scene, worldSfx);
-    this.orbitLine = new OrbitLine(C.COLOR_BASE_ORBIT_LINE, 0.35, C.LINE_RENDER_ORDER.shipOrbit);
     this.equatorNodes = new EquatorNodeMarkerPair(this, markerManager);
-    scene.add(this.orbitLine.line);
 
     if ('saved' in init) {
       this.baseState.money = init.saved.money;
@@ -349,9 +345,7 @@ export class Base extends GameEntity implements Controllable {
     if (this.scene) {
       this.thrustEffects.dispose(this.scene);
       this.rcsEffects.dispose(this.scene);
-      this.scene.remove(this.orbitLine.line);
     }
-    this.orbitLine.dispose();
     this.markerManager.remove(`base-${this.id}`);
     this.markerManager.remove(`base-${this.id}-bearing`);
     // 格納艦は entities.players から外れているため、ここでしか回収できない。

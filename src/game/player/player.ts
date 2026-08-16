@@ -15,8 +15,6 @@ import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { buildPlayerShip } from '../../render/ships';
-import { OrbitLine } from '../orbit-line';
-import { TrajectoryLine } from '../trajectory-line';
 import { Attractor, reachedBody } from '../../physics/attractor';
 import { isBurnedUp } from '../../physics/atmosphere';
 import type { CameraSystem } from '../camera/camera-system';
@@ -75,9 +73,6 @@ export class Player extends Ship {
   private readonly rcsEffects: RcsEffects;
   private readonly reentryEffects: ReentryEffects;
   private readonly markers: PlayerMarkers;
-  declare readonly orbitLine: OrbitLine;
-  declare readonly trajectoryLine: TrajectoryLine;
-  declare readonly pastTrajectoryLine: TrajectoryLine;
   // この艦自身のマニューバ計画。PlanEditor はアクティブ艦のこれを編集する。
   readonly plan = new Plan();
   readonly planExecutor: PlanExecutor;
@@ -125,15 +120,6 @@ export class Player extends Ship {
     this.reentryEffects = new ReentryEffects(_scene);
     this.markers = new PlayerMarkers(markerManager, this.id, this);
     this.planExecutor = new PlanExecutor(_hud);
-
-    // 自機軌道線: 明るいグレー。ターゲット(オレンジ)より目立たせない配色。
-    this.orbitLine = new OrbitLine(0xbfc9d4, 0.55, C.LINE_RENDER_ORDER.shipOrbit);
-    _scene.add(this.orbitLine.line);
-    this.trajectoryLine = new TrajectoryLine(0xbfc9d4, 0.55, C.LINE_RENDER_ORDER.predicted);
-    _scene.add(this.trajectoryLine.line);
-    // 過去の軌跡は未来線と同色にし、既に通り過ぎた区間だと読めるよう不透明度だけ落とす。
-    this.pastTrajectoryLine = new TrajectoryLine(0xbfc9d4, 0.3, C.LINE_RENDER_ORDER.predicted);
-    _scene.add(this.pastTrajectoryLine.line);
 
     if (saved) {
       // 旧セーブは followPlan: boolean だった(true→'instant' / false→'off')。
@@ -395,7 +381,7 @@ export class Player extends Ship {
     else if (limit === 'heat-internal') reason = '排熱が追いつかず、機体は熱で機能不全に陥った';
     else if (limit === 'dynpressure') reason = '動圧が構造限界を超え、機体は空力的に分解した';
     else if (isBurnedUp(this.state.r, attractors, C.PLAYER_MIN_ALT)) reason = '大気圏に突入し機体は焼失した';
-    else if (reachedBody(this.actualTrajectory.prevState, this.state, attractors, C.PLAYER_MIN_ALT) !== null) reason = '天体の地表へ到達し機体は失われた';
+    else if (reachedBody(this.actual.prevState, this.state, attractors, C.PLAYER_MIN_ALT) !== null) reason = '天体の地表へ到達し機体は失われた';
     if (reason === null) return;
 
     this.alive = false;
@@ -444,7 +430,7 @@ export class Player extends Ship {
     );
   }
 
-  // 自機のメッシュ・エフェクト・ベルト・マーカー・軌道線を displayTime の状態へ同期する。
+  // 自機のメッシュ・エフェクト・ベルト・マーカーを displayTime の状態へ同期する。
   // isActive はこの艦が操作対象かどうか。操作対象だけがガンサイト時に隠れ、方位マーカーとRCS音を出す。
   syncPlayer(
     fo: FloatingOrigin,
@@ -520,12 +506,6 @@ export class Player extends Ship {
     this.disposed = true;
     this.clearTransientCommands();
     this.markers.dispose();
-    this.playerScene.remove(this.orbitLine.line);
-    this.orbitLine.dispose();
-    this.playerScene.remove(this.trajectoryLine.line);
-    this.trajectoryLine.dispose();
-    this.playerScene.remove(this.pastTrajectoryLine.line);
-    this.pastTrajectoryLine.dispose();
     this.thrustEffects.dispose(this.playerScene);
     this.rcsEffects.dispose(this.playerScene);
     this.reentryEffects.dispose(this.playerScene);
