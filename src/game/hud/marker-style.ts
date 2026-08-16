@@ -92,6 +92,8 @@ export const MARKER_STYLE = `
 #hud .mk-poi .lbl { margin-top: var(--space-2); padding: var(--space-1) var(--space-2); }
 
 .mk-base { color: ${C.COLOR_BASE_ORBIT_LINE}; text-shadow: 0 0 4px var(--bg); }
+.mk-geolabel { color: var(--text-dim); font-size: var(--font-xxs); pointer-events: none; }
+.mk-geolabel .sym { font-size: var(--font-xxs); letter-spacing: 1.2px; opacity: 0.45; white-space: nowrap; text-shadow: 0 0 3px var(--bg); }
 
 /* スケール用 CSS トークンによる標準化設定 */
 .mk-apsis .sym, .mk-node .sym, .mk-mnode .sym, .mk-burn .sym, .mk-planned .sym { font-size: calc(var(--glyph-base) * var(--mk-scale-element)); }
