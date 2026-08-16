@@ -5,7 +5,7 @@ export { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../physics/solar-system';
 export const MAX_PLACED_SHIPS = 50;
 
 // --- 基地ドッキング ---
-export const BASE_MAX_SHIPS = 4;        // 基地が保有・格納できる宇宙船の最大数
+export const BASE_MAX_VESSELS = 4;      // 基地が保有・格納できる艦艇の最大数
 export const DOCK_CAPTURE_DIST = 500;    // [m] (船船ドッキング用)
 export const DOCK_CAPTURE_REL_V = 20;   // [m/s]
 export const HATCH_DOCK_MAX_DIST = 80;        // 基地ハッチ前での最大ドッキング距離 [m]
