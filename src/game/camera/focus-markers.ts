@@ -413,8 +413,8 @@ export class FocusMarkers {
   }
 
   // クローズダウン時に非表示になった船・敵機・基地を、所属親天体ラベルの下にサブテキスト行として描画する。
-  // 距離 500 km 未満: 左揃え・目立たない色のリスト表示 (最大3行)
-  // 距離 500 km 以上: 第2段階の省略表示として 1行でアイコンと数のみ表示 (衛星系もまとめて表示・プレフィックスなし)
+  // 距離 500万 km 未満: 左揃え・目立たない色のリスト表示 (最大3行)
+  // 距離 500万 km 以上: 第2段階の省略表示として 1行でアイコンと数のみ表示 (衛星系もまとめて表示・プレフィックスなし)
   syncSubLabels(
     groupedMarkers: GroupedMarkers,
     registry: CelestialRegistry,
@@ -428,7 +428,7 @@ export class FocusMarkers {
     const hiddenItems = groupedMarkers.getHiddenItems();
     if (hiddenItems.length === 0) return;
 
-    const DIST_STAGE2_THRESHOLD = 500e3; // 500 km in meters
+    const DIST_STAGE2_THRESHOLD = 5e9; // 5,000,000 km (500万km) in meters
 
     const itemsByTargetBody = new Map<string, { prefix: string; item: GroupedMarkerItem }[]>();
 
@@ -442,7 +442,7 @@ export class FocusMarkers {
       let prefix = '';
 
       if (isStage2) {
-        // 第2段階 (500km以上): 「月:」などのプレフィックスを表示せず、主親天体(地球等)へ集約
+        // 第2段階 (500万km以上): 「月:」などのプレフィックスを表示せず、主親天体(地球等)へ集約
         const primaryId = primaryOf(registry, center.id as OrbitingId);
         if (primaryId && this.bodyPickableRecords.get(primaryId)?.pickable) {
           targetId = primaryId;
@@ -451,7 +451,7 @@ export class FocusMarkers {
         }
         prefix = '';
       } else {
-        // 第1段階 (500km未満): 直近天体ラベルがあればそこへ、なければ親天体へ「月:」プレフィックス付きで繰り上げ
+        // 第1段階 (500万km未満): 直近天体ラベルがあればそこへ、なければ親天体へ「月:」プレフィックス付きで繰り上げ
         const rec = this.bodyPickableRecords.get(center.id);
         if (rec?.pickable) {
           targetId = center.id;
@@ -484,7 +484,7 @@ export class FocusMarkers {
       const subDivs: string[] = [];
 
       if (isStage2) {
-        // 第2段階 (500km以上): アイコンと個数のみの1行省略表示 (衛星系の船もまとめてカウント)
+        // 第2段階 (500万km以上): アイコンと個数のみの1行省略表示 (衛星系の船もまとめてカウント)
         let nEnemy = 0;
         let nAlly = 0;
         let nBase = 0;
