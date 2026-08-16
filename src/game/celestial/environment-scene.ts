@@ -248,6 +248,12 @@ export class EnvironmentScene {
       nearbyIds,
     );
     this.geoLine.sync(this.geoElements, fo, camera, false);
+    if ('earth' in this.ephemeris.registry) {
+      const earthPos = this.ephemeris.positionOf('earth', simTime);
+      const distToEarth = len(sub(earthPos, cameraPos));
+      const geoFade = 1.0 - Math.min(1, Math.max(0, (distToEarth - 6e7) / 1.2e8));
+      this.geoLine.setOpacity(0.35 * geoFade);
+    }
     for (const id of this.referenceIds) {
       if (!visibilityPolicy.body(id).orbit) {
         this.removeReferenceLine(id);
@@ -279,6 +285,16 @@ export class EnvironmentScene {
 
     const earthPos = this.ephemeris.positionOf('earth', displayTime);
     const cameraPos = cameraSystem.activeCameraPos;
+    const distToEarth = len(sub(earthPos, cameraPos));
+    // 近距離(60,000km以内)ではくっきり表示(1.0)、クローズダウン/ズームアウト(180,000km以上)でフェードアウト
+    const geoFade = 1.0 - Math.min(1, Math.max(0, (distToEarth - 6e7) / 1.2e8));
+    const labelOpacity = 0.65 * geoFade;
+
+    if (labelOpacity <= 0.02) {
+      for (const key of keys) markerManager.hide(key);
+      return;
+    }
+
     const project = cameraSystem.activeCameraProjection;
     const rGeo = this.geoElements.a;
     const pHat = this.geoElements.pHat;
@@ -316,7 +332,7 @@ export class EnvironmentScene {
         p0.y,
         p0.front,
         '',
-        0.75,
+        labelOpacity,
         undefined,
         rotDeg,
         false,
