@@ -522,6 +522,11 @@ export class ObjectPlacerPanel implements OverlayHandle {
       const apSpec = getApsisLabelSpec('ap', this.attractorValue);
       peAlt.setLabel(`${peSpec.nameJa}高度 [km]`);
       apAlt.setLabel(`${apSpec.nameJa}高度 [km]`);
+      sizeMode.setItems([
+        ['apsides', `${peSpec.nameJa}+${apSpec.nameJa}`],
+        ['semiMajorEcc', '半長軸+離心率'],
+        ['periodEcc', '周期+離心率'],
+      ]);
       presetRow.innerHTML = '';
       const presets = PRESETS_BY_BODY[this.attractorValue] ?? [];
       presetRow.classList.toggle('hidden', presets.length === 0);
