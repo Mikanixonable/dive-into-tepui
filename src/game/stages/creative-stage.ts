@@ -169,7 +169,7 @@ export class CreativeStage extends Stage {
     if (form.placementMode === 'elements') {
       const center = this.referenceAttractor(form);
       const common = {
-        centerRadius: center.radius, mu: center.mu,
+        centerRadius: center.radius, mu: center.mu, centerId: center.id,
         incDeg: form.incDeg, raanDeg: form.raanDeg, argpDeg: form.argpDeg, nuDeg: form.nuDeg,
       };
       issues.push(...validateEllipticPlacementFields(
