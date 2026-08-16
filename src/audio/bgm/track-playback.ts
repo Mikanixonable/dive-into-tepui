@@ -4,7 +4,7 @@
 import { Composer, ComposerNote } from './composer';
 import { Instrument } from './instrument';
 import { createInstrument } from './instrument-factory';
-import { InstrumentDef } from './tracks/types';
+import { InstrumentDef } from './instruments/types';
 
 // 楽器は音符の長さのあとに短いリリースを持つ。鳴り終える時刻に見込んでおく余裕。
 const RELEASE_TAIL_SEC = 0.25;
