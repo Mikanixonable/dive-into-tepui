@@ -176,7 +176,7 @@ export class Enemy extends Ship {
       detail: overviewMode ? '' : fmtMarkerDist(dist),
       // 敵本体・距離ラベル・画面外方位マーカーは同じ色で統一する。
       bearingColor: C.COLOR_MARKER_ENEMY,
-      bearingSym: ENTITY_GLYPH.ship,
+      bearingSym: ENTITY_GLYPH.enemyShip,
       bearingClass: 'mk-dir mk-bearing-triangle',
       color: C.COLOR_MARKER_ENEMY,
       symMarkup: true,

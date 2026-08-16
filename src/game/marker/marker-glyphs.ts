@@ -6,7 +6,10 @@
 // 3D 空間に実在する物。
 export const ENTITY_GLYPH = {
   ship: '▲',
+  enemyShip: '△',
+  base: '⬢',
   body: '●',
+  lagrange: '✦',
   ghost: '⬢',
   ammo: '▣',
   preview: '▷',

@@ -151,7 +151,7 @@ export class Base extends GameEntity implements Controllable {
     this.rcsEffects = new RcsEffects(scene, worldSfx);
     this.orbitLine = new OrbitLine(C.COLOR_BASE_ORBIT_LINE, 0.35, C.LINE_RENDER_ORDER.shipOrbit);
     this.equatorNodes = new EquatorNodeMarkerPair(this, markerManager);
-    this.marker = new EntityMarker(this, markerManager, 'mk-base', ENTITY_GLYPH.ship, false);
+    this.marker = new EntityMarker(this, markerManager, 'mk-base', ENTITY_GLYPH.base, false);
     scene.add(this.orbitLine.line);
 
     if ('saved' in init) {
