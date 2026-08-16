@@ -76,20 +76,26 @@ export class Predictor {
     // 引力を持たないエンティティは重力源一覧に載り得ないので、除外の走査ごと省く。
     const selfId = e.mu !== 0 ? e.id : undefined;
     let consumed = 0;
+    // 中心天体を選ぶ窓は、1歩前の中点で解決したものを持ち越す。1歩あたりの暦の解決が中点の
+    // 1回だけになり、代わりにこの窓の天体位置が半歩ぶん古くなる。ここから決まるのは刻み幅と
+    // ケプラー外挿の中心天体だけで、前者は RK4 が受ける影響の小さい量、後者は step の後に
+    // 記録されるため元から1歩ぶん古い。
+    let centerWindow: readonly Attractor[] | null = null;
     while (consumed < budgetSteps) {
       const tipState = e.predicted?.state ?? e.state;
       // 先端が表示窓を覆っていたらここで抜ける。刻み幅を残り時間で切らないので先端はホライズンを
       // 少し越えて止まり、simTime が追いつくまでの数フレームは重力源の解決ごと省ける。
       if (tipState.t >= simTime + horizon) break;
       // 刻み幅とケプラー外挿の中心天体は、どちらもこの1回の strongestAttractor から求める。
-      // 窓はステップ開始時刻で評価する — 重力源を長時間保持すると、月のように速く動く天体の
-      // 位置が固定され、近傍周回の予測が実軌道から離れてしまう。自分自身は距離ゼロで必ず
-      // 最強になるので候補から除く。
+      // 最初の1歩には持ち越す窓が無いので先端時刻で解決する。自分自身は距離ゼロで必ず最強に
+      // なるので候補から除く。
       const rawCenter = strongestAttractor(
-        tipState.r, predictedAttractorsAt(this.ephemeris, this.entities, tipState.t), selfId,
+        tipState.r,
+        centerWindow ?? predictedAttractorsAt(this.ephemeris, this.entities, tipState.t),
+        selfId,
       );
       // 外挿の中心は解析天体(Ephemeris の登録天体)に限る — 動的重力源が最強のときは、
-      // 解析天体だけの一覧(同じ t なのでリングキャッシュに当たる)から選び直す。
+      // 解析天体だけの一覧から先端時刻で選び直す。
       const extrapolationCenter = rawCenter.id in this.ephemeris.registry
         ? rawCenter
         : strongestAttractor(tipState.r, this.ephemeris.gravityAttractorsAt(tipState.t));
@@ -105,13 +111,13 @@ export class Predictor {
       );
       // RK4 の各ステップには、その中点時刻の重力源を渡す。実シミュレーションも各サブステップ
       // の中点で attractorsAt を解決しており、予測だけ過去の天体位置を保持しないようにする。
-      const stepClassified = classifyAttractors(
-        predictedAttractorsAt(this.ephemeris, this.entities, tipState.t + dt / 2),
-      );
+      const stepWindow = predictedAttractorsAt(this.ephemeris, this.entities, tipState.t + dt / 2);
+      const stepClassified = classifyAttractors(stepWindow);
       const stepAttractors = attractorsNearInto(
         tipState.r, stepClassified, this.stepAttractorsScratch, selfId,
       );
       if (!e.stepPredicted(stepAttractors, simTime, dt, horizon, extrapolationCenter)) break;
+      centerWindow = stepWindow;
       consumed++;
       this.lastSteps++;
     }
