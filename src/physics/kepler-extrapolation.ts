@@ -1,5 +1,4 @@
-// 予測列の先端を中心天体まわりの二体ケプラー軌道とみなして外挿する純関数群。呼び出し側が
-// 明示的に呼んだときだけ動く外挿であり、暗黙のフォールバックではない。THREE/DOM 非依存。
+// 予測列の先端を中心天体まわりの二体ケプラー軌道とみなして外挿する純関数群。THREE/DOM 非依存。
 import { Attractor, orbitalElementsOf } from './attractor';
 import {
   OrbitalElements,
@@ -30,10 +29,9 @@ function findExtrapolationOrbit(
   return { el, nu0 };
 }
 
-// tip を center まわりの二体ケプラー軌道とみなし、時刻 t における中心天体相対の状態を返す
-// (位置・速度は ECI 方向・原点だけ center に取った相対値 — stateFromOrbitalElements と同じ
-// 扱いで、絶対 ECI 化は呼び出し側が center の位置・速度を加えて行う)。軌道要素が求まらない、
-// 離心率が高すぎる、長半径が非有限・非正、center に質量が無いのいずれかでは null。
+// tip を center まわりの二体ケプラー軌道とみなした、時刻 t における中心天体相対の状態
+// (位置・速度は ECI 方向のまま原点だけ center に取った相対値。絶対 ECI 化は center の
+// 位置・速度を足して行う)。外挿できない軌道では null。
 export function extrapolatedRelativeState(tip: KinematicState, center: Attractor, t: number): KinematicState | null {
   const orbit = findExtrapolationOrbit(tip, center);
   if (orbit === null) return null;

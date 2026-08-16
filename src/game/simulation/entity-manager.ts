@@ -369,11 +369,9 @@ export class EntityManager {
     }
   }
 
-  // 全自機の予測軌道線を同期する。積分予測を描くのは、戦闘ビューでは操作対象艦だけ(Predictor が
-  // 操作艦しか予測しないため)、マップビューでは表示され得る全自機 — ただし Targeter が第一/
-  // 第二ターゲットにしている艦は Targeter 自身のハイライト線と重なるので除く。線の末尾は
-  // simTime + duration まで(予測が届かない先はケプラー外挿で継ぐ)、打ち切られた予測(再突入等)
-  // だけは打ち切られた先端で止める。
+  // 全自機の予測軌道線を同期する。線を出すのは戦闘ビューでは操作対象艦、マップビューでは
+  // 表示され得る全自機で、Targeter の第一・第二ターゲットはそちらのハイライト線が担う。
+  // 線の末尾は simTime + duration、打ち切られた予測(再突入等)は打ち切られた先端。
   syncPlayerTrajectoryLines(
     activePlayer: Player | null, displayWindow: DisplayWindow, overviewMode: boolean, ephemeris: Ephemeris,
     fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
@@ -408,9 +406,8 @@ export class EntityManager {
     for (const base of this.bases) if (!visibilityPolicy.entity('base').category) base.renderObject.visible = false;
   }
 
-  // 敵・基地の軌道線を表示要否ごと同期する。第一/第二ターゲットの敵は Targeter 自身の
-  // ハイライト線と重なるので除く。非表示と決めたものは線そのものを持たせない — 隠れている線の
-  // 頂点バッファを抱え続けるだけ無駄になる。
+  // 敵・基地の軌道線を、このフレームに出すものだけ生成して同期する。第一/第二ターゲットの敵は
+  // Targeter 自身のハイライト線が担う。
   syncOrbitLines(
     overviewMode: boolean, fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
     visibilityPolicy: MapVisibilityPolicy | null, primaryTarget: CombatTarget | null, secondaryTarget: CombatTarget | null,
