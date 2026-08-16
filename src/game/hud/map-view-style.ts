@@ -131,7 +131,7 @@ export const MAP_VIEW_STYLE = `
 }
 #hud .hud-map-root.active #hud-object-list .object-list-detail { color: var(--muted); }
 
-/* View: 種別、表示要素、参照面を先に読ませ、選択色は小さな点灯へ絞る。 */
+/* View: 種別、表示要素、天球を先に読ませ、選択色は小さな点灯へ絞る。 */
 #hud .hud-map-root.active #hud-view-options .view-options-section-heading {
   display: grid;
   grid-template-columns: 96px minmax(0, 1fr);
