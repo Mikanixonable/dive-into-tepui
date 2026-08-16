@@ -2,7 +2,7 @@
 // root/svgOverlay の公開・常設パネル群の所有を担う。
 import { buildHudDom } from './hud-root';
 import type { HudWorldView } from './panel-shell';
-import { StatusPanel } from './status-panel';
+import { VesselPanel } from './vessel-panel';
 import { OrbitPanel } from './orbit-panel';
 import { TargetPanel } from './target-panel';
 import { ContactsPanel } from './contacts-panel';
@@ -23,7 +23,7 @@ export class Hud {
   readonly helpPanel: HelpPanel;
   readonly globalStatusBar: GlobalStatusBar;
   readonly mapScaleBadge: MapScaleBadge;
-  readonly statusPanel: StatusPanel;
+  readonly vesselPanel: VesselPanel;
   readonly orbitPanel: OrbitPanel;
   readonly targetPanel: TargetPanel;
   readonly contactsPanel: ContactsPanel;
@@ -44,7 +44,7 @@ export class Hud {
     this.helpPanel = helpPanel;
     this.globalStatusBar = new GlobalStatusBar(els);
     this.mapScaleBadge = new MapScaleBadge(els);
-    this.statusPanel = new StatusPanel(els);
+    this.vesselPanel = new VesselPanel(els);
     this.orbitPanel = new OrbitPanel(els);
     this.targetPanel = new TargetPanel(els);
     this.contactsPanel = new ContactsPanel(els);

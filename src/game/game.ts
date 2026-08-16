@@ -174,7 +174,7 @@ export class Game {
       if (point) this.markerManager.set('longpress', 'mk-longpress', '', point.x, point.y, true);
       else this.markerManager.hide('longpress');
     };
-    this._hud.statusPanel.setInput(this.input);
+    this._hud.vesselPanel.setInput(this.input);
     this.combatHud = new CombatHudController(this._hud);
     this.mapHud = new MapHudController(this._hud);
 
@@ -259,7 +259,7 @@ export class Game {
     // Hud・効果音はこのゲームより長生きするので、書き換えたクラス・差し込んだ参照・鳴らしている
     // 継続音を元へ戻す。BGM は周回の外側が決めるものなので触らない。
     this._hud.root.classList.remove('creative-mode');
-    this._hud.statusPanel.setInput(null);
+    this._hud.vesselPanel.setInput(null);
     this._worldSfx.setThrust(false);
     this._worldSfx.setRcs(false);
     this.touchControls?.dispose();
