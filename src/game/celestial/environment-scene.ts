@@ -310,20 +310,12 @@ export class EnvironmentScene {
       const sinT = Math.sin(theta);
 
       const pos = add(earthPos, add(scale(pHat, rGeo * cosT), scale(qHat, rGeo * sinT)));
-      const tangent = add(scale(pHat, -sinT), scale(qHat, cosT));
 
       const p0 = project(pos);
       if (!p0.front || isOccluded(cameraPos, pos, attractors)) {
         markerManager.hide(key);
         continue;
       }
-
-      const pNext = project(add(pos, scale(tangent, 1e5)));
-      const dx = pNext.x - p0.x;
-      const dy = pNext.y - p0.y;
-      let rotDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
-      if (rotDeg > 90) rotDeg -= 180;
-      else if (rotDeg < -90) rotDeg += 180;
 
       markerManager.set(
         key,
@@ -335,7 +327,7 @@ export class EnvironmentScene {
         '',
         labelOpacity,
         undefined,
-        rotDeg,
+        undefined,
         false,
         true,
         C.MARKER_PRIORITY.ORBITAL_NODE,
