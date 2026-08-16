@@ -115,7 +115,7 @@ export function register(): void {
   // 掛けると、衛星の質量比が 1 になって主天体が距離ぶんまるごとずれる — 主天体と衛星の
   // 相対位置は正しいままなので、主天体の日心位置を直に見ないと分からない。
   test('equatorial-satellites: 主天体の質量が未測定の系では、衛星を足しても主天体が動かない', () => {
-    for (const [primary, satellite] of [['quaoar', 'weywot'], ['orcus', 'vanth'], ['didymos', 'dimorphos']] as const) {
+    for (const [primary, satellite] of [['quaoar', 'weywot'], ['orcus', 'vanth']] as const) {
       const withoutSatellite = { ...SOLAR_SYSTEM } as Record<string, CelestialBodyDef>;
       delete withoutSatellite[satellite];
       const bare = new Ephemeris(withoutSatellite, 'earth', EPOCH_T_OFFSET, {});
@@ -128,12 +128,15 @@ export function register(): void {
   // 質量比が決まらない系にラグランジュ点を作らせない(共線点を解く反復が発散するか、
   // L1 が主天体の中心へ落ちる)。
   test('equatorial-satellites: どちらかの質量が未測定の系はラグランジュ点を持たない', () => {
-    for (const id of ['quaoar', 'orcus', 'didymos', 'puck', 'styx', 'kerberos'] as const) {
+    for (const id of ['quaoar', 'orcus', 'puck', 'styx', 'kerberos'] as const) {
       assert.equal(eph.hasUsableCollinearPoints(id, 10), false, `${id} の共線点`);
       assert.equal(eph.hasStableTriangularPoints(id), false, `${id} の三角点`);
     }
-    // 両方の質量が判明している系はこれまで通り持つ。
+    // 両方の質量が判明していれば持つ。ディディモスは質量比が 1e-19 台まで小さいので、
+    // 「質量が小さい」ことと「質量が未測定」ことが混ざっていないかを分ける。
     assert.equal(eph.hasUsableCollinearPoints('moon', 10), true, '地球-月の共線点');
     assert.equal(eph.hasStableTriangularPoints('moon'), true, '地球-月の三角点');
+    assert.equal(eph.hasUsableCollinearPoints('didymos', 10), true, '太陽-ディディモスの共線点');
+    assert.equal(eph.hasStableTriangularPoints('didymos'), true, '太陽-ディディモスの三角点');
   });
 }
