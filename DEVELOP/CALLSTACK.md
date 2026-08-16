@@ -130,10 +130,10 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
   - sections.enter(SECTION.pointer)
   - handlePointerInput()
   - sections.exit(SECTION.pointer)
-  - entityLines.update(player, targeter.aliveTarget, targeter.aliveSecondaryTarget, cameraSystem.overviewMode, displayWindow, mapPickables.visibilityPolicy) // 表示可否・ターゲット・操作艦・ビューがこのフレームの確定値になった後に判断する。艦・敵・基地それぞれへ線の出し入れとスタイルだけを決める(形状と変換は sync フェーズの entityLines.sync が担う)
-    - [entities.players ごと] show = (ship===player || overviewMode) && visibilityPolicy が admit する orbit && ship が第一・第二ターゲットのどちらでもない → show なら showPredictedLine(LINE_STYLE.playerPredicted)、そうでなければ hidePredictedLine()。show かつ pastDuration>0 なら showActualLine(LINE_STYLE.playerActual)、そうでなければ hideActualLine()
-    - [entities.enemies ごと] show = overviewMode && 生存 && visibilityPolicy が admit する orbit && enemy が第一・第二ターゲットのどちらでもない → show なら showOrbitLine(LINE_STYLE.enemyOrbit に個体色を載せたもの)、そうでなければ hideOrbitLine()
-    - [entities.bases ごと] show = overviewMode && visibilityPolicy が admit する orbit → show なら showOrbitLine(LINE_STYLE.baseOrbit)、そうでなければ hideOrbitLine()
+  - entityLines.update(player, targeter.aliveTarget, targeter.aliveSecondaryTarget, cameraSystem.overviewMode, displayWindow, mapPickables.visibilityPolicy) // 表示可否・ターゲット・操作艦・ビューがこのフレームの確定値になった後に判断する。艦・敵・基地それぞれへ線の出し入れとスタイルだけを決める(形状と変換は sync フェーズの entityLines.sync が担う)。ターゲット用スタイルは theme.ts の currentThemePalette() から毎フレーム組む(第一=palette.accent、第二=palette.secondary、不透明度は TARGET_LINE_OPACITY=0.9、renderOrder は LINE_RENDER_ORDER.target/.secondaryTarget) — 静的な LINE_STYLE 表には置けない(テーマ追従が要るため)
+    - [entities.players ごと] asTarget = 第一・第二ターゲットのどちらかに該当すればそのスタイル、なければ null。orbit = visibilityPolicy?.entity('player', isActive).orbit。asTarget !== null かつ (orbit ?? true) なら showOrbitLine(asTarget)、そうでなければ hideOrbitLine() — ビューを問わず出す。show = (ship===player || overviewMode) && (orbit ?? true) && asTarget === null → show なら showPredictedLine(LINE_STYLE.playerPredicted)、そうでなければ hidePredictedLine()。show かつ pastDuration>0 なら showActualLine(LINE_STYLE.playerActual)、そうでなければ hideActualLine()(ターゲットにされている自機は predictedLine/actualLine を出さない)
+    - [entities.enemies ごと] asTarget = 同上。orbit = visibilityPolicy?.entity('ship').orbit。show = asTarget !== null ? (orbit ?? true) : overviewMode && 生存 && (orbit ?? false) — ターゲットはビューを問わず出し、可視性の既定も通常の線(false)と逆向き(true)。show なら showOrbitLine(asTarget ?? LINE_STYLE.enemyOrbit に個体色を載せたもの)、そうでなければ hideOrbitLine()
+    - [entities.bases ごと] show = overviewMode && (visibilityPolicy?.entity('base').orbit ?? false) → show なら showOrbitLine(LINE_STYLE.baseOrbit)、そうでなければ hideOrbitLine()
 
 ### advanceSimulation(dt)
 
@@ -398,14 +398,14 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
   - fo = new FloatingOrigin(cameraSystem.activeCameraPos, player?.state.v ?? v3()) // sync() 冒頭のローカル変数(Game はフィールドとして持たない)。r=アクティブカメラのECI位置(update フェーズの cameraSystem.update() で確定済み)、v=自機速度(艦が無ければゼロ)。以降の sync 系はこの fo だけを参照する
   - { displayTime, simTime } = displayWindow // displayTime は未来ゴーストのスライダーが立っている間だけ先の時刻、simTime は積分後の simulator.simTime と一致する値
   - attractors = displayWindowManager.attractorsAt(simTime) // 解析天体 + 重力を持つ生存中の GameEntity(小惑星)の合流窓。EntityManager.cleanup へ渡す表面到達判定用の配列(解析天体のみ)とは別物。現在状態を数値で読ませる HUD パネル・プロパティ行・frameControls がこちらを取る
-  - displayAttractors = displayWindowManager.attractorsAt(displayTime) // 同じ合流窓を表示時刻で引いたもの。画面に描く幾何(entityLines.sync の軌道線・折れ線、targeter.sync のハイライト線)がこちらを取る — 天体メッシュは displayTime に置かれるので、楕円の中心天体位置や un-bake を simTime で取ると同一画面上でずれる
+  - displayAttractors = displayWindowManager.attractorsAt(displayTime) // 同じ合流窓を表示時刻で引いたもの。画面に描く幾何(entityLines.sync の軌道線・折れ線 — ターゲットのハイライト線も含む)がこちらを取る — 天体メッシュは displayTime に置かれるので、楕円の中心天体位置や un-bake を simTime で取ると同一画面上でずれる
   - cameraSystem.sync(fo) // 最初に呼ぶ: 後続の sync とマーカー投影が今フレームのカメラ行列を読む
     - syncCameraToViewpoint(active.camera, active.viewpoint, fo) // active = overviewMode ? overviewCamera : combatCamera。両カメラの viewpoint→THREE.PerspectiveCamera 反映はここ一箇所
     - viewOptionsPanel.setVisible(overviewMode) + setBodyClassToggles(bodyClassToggles) // 表示パネル。点灯反映は overviewMode のみ(天球グリッドセクションはボタン自身が押されるたび自分の on を反転するので、per frame の押し出しは無い — Navball.setGridVisibility() は construct 時に1回だけ)
     - focusMarkers.syncLabels() → markerManager.setPosition() // ラベルごと。overviewMode のみ
     - focusMarkers.hideLabels() // !overviewMode のみ
   - project = cameraSystem.activeCameraProjection / overviewMode = cameraSystem.overviewMode // 以降の sync 系へ配る共通値
-  - visibilityPolicy = mapPickables.visibilityPolicy // ここでは組まず、update フェーズの mapPickables.refresh() が確定させた同じ MapVisibilityPolicy を読む(マップビュー以外では refresh 自身が null に落とす)。environment.sync / entities.syncPlayers・applyVisibility・syncMarkers / activeStage.sync / targeter.sync・syncTargetMarkers がすべてこれを受け取る
+  - visibilityPolicy = mapPickables.visibilityPolicy // ここでは組まず、update フェーズの mapPickables.refresh() が確定させた同じ MapVisibilityPolicy を読む(マップビュー以外では refresh 自身が null に落とす)。environment.sync / entities.syncPlayers・applyVisibility・syncMarkers / activeStage.sync / targeter.syncTargetMarkers がすべてこれを受け取る
   - combatTargets = entities.getCombatTargets(player) // 敵 + 自機以外の生存中の全自機
   - environment.sync(player?.state.r ?? null, fo, displayTime, cameraSystem, navball.gridVisibility, visibilityPolicy)
     - lit = sunlitFactor(playerPos, ephemeris.sunDirFrom(playerPos, displayTime), …)。playerPos が null(艦がいない)のときと overviewMode では 1.0 固定
@@ -442,10 +442,7 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
   - entities.syncMarkers(cameraSystem, displayTime, player?.state.r ?? null, visibilityPolicy) // ammoPickups/bases の各 marker?.sync。displayState(displayTime) → [overviewMode] headingDeg(ds.r, ds.v) → set('entity-<id>', 'mk-ammo'|'mk-base', '▲', rotationDeg) / [!overviewMode] set('entity-<id>', 種別ごとの字形) + setBearing('entity-<id>-bearing')。ラベルは name + viewerPos があれば距離
   - effects.sync(fo, camera, cameraSystem.zoomActive) → flashEffectManager.syncFlashEffects()
     - pool.beginFrame() → (生存中のフラッシュごとに transform へ位置/スケール/カメラ正対回転を書き、color = baseColor×opacity で push) → pool.endFrame() // 寿命・移流は update フェーズで済んでいる。opacity には zoomActive かつ dimsInGunsight のフラッシュだけ ZOOM_MUZZLE_FLASH_SCALE が掛かる
-  - [player] targeter.sync(fo, player, cameraSystem, displayAttractors, visibilityPolicy) // ターゲットに紐づく表示物をまとめて
-    - syncOrbitLine(fo, player, camera, attractors, visibilityPolicy) // 第一・第二ターゲットのハイライト線のみ。中心天体は対象ごとに strongestAttractor(target.state.r, attractors) で導出
-      - orbitLine.sync() // 第一ターゲット軌道線(オレンジ)。visibilityPolicy が admit しなければ null を渡して消す
-      - secondaryOrbitLine.sync() // 第二ターゲット軌道線(シアン)。同上
+  - targeter.sync(player, cameraSystem) // 的通過マーク・方位マーカーのみ。ターゲットのハイライト線は持たない(entityLines.update/.sync がそのエンティティ自身の orbitLine をターゲット用スタイルで出す — 上記参照)
     - syncBoardMarkers(project) // 的通過マークの表示(スロットごと)。第一ターゲットのみ
     - syncTargetDirMarkers(player, overviewMode, project) // ◇/◆ tgtdir/atgdir。overviewMode or 第一ターゲット無しなら hide。第一ターゲットのみ
   - targeter.syncTargetMarkers(player, combatTargets, displayTime, simTime, cameraSystem, visibilityPolicy) // 位置は機体メッシュと同じ displayState 基準
@@ -489,6 +486,7 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
       - actualLine.syncGeometry(actual, simTime - pastDuration, simTime, frame, ...) // 過去線は actual の保持列。下限が保持窓より古ければ TrajectoryLine 側が保持区間の先頭へクランプする。actual は extrapolationCenter を持たないので外挿は起きない
       - actualLine.syncTransform()
       - actualLine.sync(camera)
+    - [entities.players ごと] ship.syncOrbitLine(fo, camera, displayAttractors, false, frame, displayTime, ephemeris) // 第一/第二ターゲットにされている艦だけが orbitLine を持つ。中心天体は strongestAttractor(ship.state.r, attractors)。線を持たなければ何もしない
     - [entities.enemies ごと] enemy.syncOrbitLine(fo, camera, displayAttractors, false, frame, displayTime, ephemeris) // 中心天体は strongestAttractor(enemy.state.r, attractors)。線を持たなければ何もしない
     - [entities.bases ごと] base.syncOrbitLine(fo, camera, displayAttractors, false, frame, displayTime, ephemeris) // 同上
   - mapActions.sync(simTime, attractors, player) // 軌道オブジェクトウィンドウ。overviewMode は引数ではなく内部で cameraSystem.overviewMode を読む。overviewMode の間は常設表示で mapPickables.pickables を行として書き出す
