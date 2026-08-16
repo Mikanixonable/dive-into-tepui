@@ -359,36 +359,56 @@ export const BGM_TRACKS: BgmTrack[] = [
   },
   {
     kind: 'antipode',
-    name: 'Madrid-Weber (sketch)',
+    name: 'Madrid-Weber v1',
     instruments: [
       { kind: 'unison', id: 'stab', params: {
-        wave: 'sawtooth', voices: 3, detuneCents: 8, level: 0.2, attackSec: 0.01,
-        filterOptions: { type: 'lowpass', frequency: 600, Q: 0.8 }, pan: 0 } },
-      { kind: 'tone', id: 'arp', params: {
-        wave: 'sine', level: 0.25, attackSec: 0.1, pan: 0
-      }}
+        wave: 'sawtooth', voices: 3, detuneCents: 8, level: 0.08, attackSec: 0.01,
+        filterOptions: { type: 'lowpass', frequency: 500, Q: 0.8 }, pan: 0 } },
+      { kind: 'tone', id: 'arp1', params: {
+        wave: 'sine', level: 0.1, attackSec: 0.1, pan: -0.7
+      }},
+      { kind: 'tone', id: 'arp2', params: {
+        wave: 'sine', level: 0.08, attackSec: 0.05, pan: 0.7
+      }},
+      { kind: 'unison', id: 'arp3', params: {
+        wave: 'triangle', voices: 5, detuneCents: 12, level: 0.1, attackSec: 0.02,
+        filterOptions: { type: 'bandpass', frequency: 1600, Q: 1 }, pan: 0 } },
     ],
     params: {
-      stepDur: 0.05,
+      stepDur: 0.1,
       scale: [146.83, 155.56, 174.61, 196, 233.08, 293.66, 311.13, 349.23], // D3, D#3, F3, G3, A#3, D4, D#4, F4
       transpose: {
         values: [-1, 1, 0],
         everySteps: 180
       },
       stab: {
-        everySteps: 6,
+        everySteps: 3,
         repeatFor: 6,
         chords: [[0, 1, 4], [2, 3, 5]],
-        octaveOffset: 1,
+        octaveOffset: 0,
         durationSec: 0.9,
         instrument: 'stab'
       },
-      arp: {
-        everySteps: 3,
-        notes: [0, 2, 4, 3, 5, 7, 1],
-        octaveOffset: 0,
-        instrument: 'arp'
-      }
+      arps: [
+        {
+          everySteps: 2,
+          notes: [0, 2, 4, 3, 5, 7, 1],
+          octaveOffset: 1,
+          instrument: 'arp1'
+        },
+        {
+          everySteps: 2,
+          notes: [3, 5, 7, 1, 0, 2, 4, 6],
+          octaveOffset: 1,
+          instrument: 'arp2'
+        },
+        {
+          everySteps: 9,
+          notes: [6, 1, 2, 4],
+          octaveOffset: 2,
+          instrument: 'arp3'
+        }
+      ]
     },
   },
 ];

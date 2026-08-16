@@ -34,7 +34,9 @@ audio/
     composers/
       utils.ts             cycle lookup + index -> frequency, shared by the composers
       phasing-composer.ts  the Reich-style algorithm
-      antipode-composer.ts the second algorithm; still a sketch
+      antipode-composer.ts the second algorithm: a stab layer + any number of independent
+                           arp layers, each drifting against the others and against
+                           transpose. First finished track is Madrid-Weber v1
     instruments/
       types.ts             InstrumentDef union + params, fenced per instrument
       tone-instrument.ts   one oscillator + envelope + pan

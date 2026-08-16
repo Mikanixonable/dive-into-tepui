@@ -594,6 +594,40 @@ Composer の params は**曲の中身そのもの**(音階・パターン・カ�
 6,753音一致もそのまま。
 
 
+## 19. `AntipodeComposer` — 2つ目の作曲アルゴリズムの最初の完成曲
+
+型の scaffold(`AntipodeStabLayer`/`AntipodeParams`)を arx-ein が書き、そこから実装した。
+一定ステップごとに和音を短く打ち込む層(stab)に、音階を1つずつなぞる音型の層(arp、
+のちに複数持てる `arps` へ)を重ねる形。stab・各 arp 層・移調はそれぞれ自分の間隔
+(`everySteps`)で独立に進むので、周期が食い違うぶんだけ組み合わせが移り変わり続ける
+— どれも一巡するには全員の周期の最小公倍数だけかかる。
+
+途中で足した仕掛けが2つ:
+
+- **`stab.repeatFor`** — 同じ和音を打ち込み `repeatFor` 回ぶん続けてから次へ進む(進む
+  間隔は `everySteps * repeatFor`)。`cycleAt` の間隔引数を差し替えるだけで表現でき、
+  新しい概念は要らなかった。
+- **`arps: AntipodeArpLayer[]`**(単数の `arp` から複数へ)— 各層が自分の `everySteps`
+  で独立に鳴る。同じ間隔でも `notes` の長さが違えば一巡が揃わず、なお互いにずれ続ける。
+
+**`AntipodeArpLayer` に `durationSec` が無い。** `stab` は明示の値を持つが、arp は
+指定が無いぶん `stepDur * everySteps`(次の音が来るまでの間隔)を長さに使う — 頼まれて
+いないフィールドを型へ足すより、与えられた値から導く側を選んだ。
+
+**`Madrid-Weber v1`** が最初の完成曲。stab の和音周期36 step、arp1/arp2 は同じ
+`everySteps=2` でも `notes` の長さが違う(7個と8個)ので14 step と16 step で別々に一巡し、
+arp3 は `everySteps=9` でゆっくり進む — 4層とも step 0 で重なったあとすぐにばらける様子は
+`check-lab-fidelity` のトレースで確認済み。「v1」の名は、さらに層を足す余地を残したまま
+一区切りとしたことを示す。
+
+`arpNotes` は当初 `arps.map(...)` を副作用(`push`)だけに使う書き方だったのを `flatMap`
+へ直した — 戻り値を捨てる `map` は本来の使い方ではなく、このコードベースでは `flatMap` が
+複数レイヤーを1つの配列へ畳む場合の既存の書き方(`focus-markers.ts` など)。
+
+音を作る側の楽器2つ(`unison`/`tone`)は既存のものをそのまま複数の id で使い回している
+— 新しい楽器の実装は無し。ハーネス8本と typecheck は一貫して不変。
+
+
 ## The two merges of `main` into the PR branch (`4e21f958`, then `78370b6b`)
 
 Upstream landed the **run-lifecycle rework** — `Launcher` owns the `Game` and recreates it
