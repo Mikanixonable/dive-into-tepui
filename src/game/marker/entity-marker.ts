@@ -65,7 +65,7 @@ export class EntityMarker {
       this.markerManager.set(
         this.key, this.className, visibility?.icon === false ? '' : ENTITY_GLYPH.ship,
         p.x, p.y, p.front, shownLabel, mapOpacity, undefined,
-        this.markerManager.headingRotationDeg(state.r, state.v, project, scale),
+        this.markerManager.headingRotationDeg(state.r, state.v, project, scale, attractors),
       );
       if (occluded) this.markerManager.fadeOut(this.key);
       this.markerManager.hide(this.bearingKey);
