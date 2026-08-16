@@ -1,17 +1,16 @@
 // マップモードの地球中心広範囲視点カメラ。太陽回転系への切替とフォーカス対象の選択を持つ。
 import * as THREE from 'three/webgpu';
-import { Vec3, add, addScaled, cross, dot, lenSq, norm, scale, sub, v3 } from '../../physics/vec3';
+import { Vec3, add, addScaled, cross, dot, len, lenSq, norm, scale, sub, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { MouseDelta } from '../input/input';
 import { metersPerPixelAtDepth, ProjectionMode, Viewpoint } from '../../physics/projection';
 import { ReferenceFrame, FrameDir, frameDir, framePoint, toFrameDir, toInertialDir, toInertialPoint } from '../../physics/frame';
-import { OrbitingId } from '../../physics/attractor';
+import { OrbitingId, Attractor, strongestAttractor } from '../../physics/attractor';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Quat, qFromAxisAngle, qFromForwardUp, qMul, qNormalize, qRotate } from '../../physics/attitude';
 import { ECI_POLE, ECL_POLE_ECI, ECL_VERNAL } from '../../physics/ecliptic';
 import { MapPickable } from '../map-pickable';
-import { Attractor } from '../../physics/attractor';
 import { bodyDef } from '../../physics/solar-system';
 import { FocusTarget } from './focus-target';
 import { MapCameraSaveData } from '../save-data';
@@ -165,11 +164,27 @@ export class MapCamera {
     return qFromForwardUp(norm(offset), norm(up)) ?? { x: 0, y: 0, z: 0, w: 1 };
   }
 
-  // Euler 操作の極はカメラ座標系の +Y ではなく、表示時刻の地球自転軸にする。
-  // 座標系が慣性系以外でも、地球の自転軸を同じ座標系へ変換してから使う。
+  // カメラの位置に応じて、ロールリセットおよびオイラー極軸の基準ベクトル(ECI 座標系)を返す。
+  // カメラが天体近傍(1,000,000 km 以内)にある場合は最寄り天体の自転軸、広域にある場合は黄道面法線。
+  private referenceUpAxisEci(): Vec3 {
+    if (this.attractors.length > 0) {
+      const cameraPos = this.viewpoint.position;
+      const nearest = strongestAttractor(cameraPos, this.attractors);
+      const distToBody = len(sub(cameraPos, nearest.state.r));
+      const PLANETARY_SCALE_THRESHOLD = 1e9; // 1,000,000 km in meters
+
+      if (distToBody <= PLANETARY_SCALE_THRESHOLD && nearest.id in this.ephemeris.registry) {
+        return this.ephemeris.poleAt(nearest.id, this.displayTime)?.axis ?? ECI_POLE;
+      }
+    }
+    return ECL_POLE_ECI;
+  }
+
+  // Euler 操作の極はカメラ座標系の +Y ではなく、カメラ位置に応じた自転軸または黄道面法線にする。
+  // 座標系が慣性系以外でも、基準軸を同じ座標系へ変換してから使う。
   private eulerPolarAxis(): Vec3 {
     const tf = this.ephemeris.frameTransformAt(this._cameraFrame, this.displayTime, this.attractors);
-    return norm(frameDirVector(toFrameDir(tf, this.framePlaneNormal('equator'))));
+    return norm(frameDirVector(toFrameDir(tf, this.referenceUpAxisEci())));
   }
 
   private eulerBasis(polar: Vec3): { reference: Vec3; east: Vec3 } {
@@ -351,11 +366,12 @@ export class MapCamera {
     return Math.max(C.OVERVIEW_CAMERA_MIN_DIST, bodyDef(this.ephemeris.registry, this._focus.id).radius);
   }
 
-  // カメラのロールのみを初期状態(ワールド上方)に戻す。
+  // カメラのロールのみを初期状態(天体近傍: 自転軸、広域: 黄道面法線)に戻す。
   reset(): void {
     const tf = this.ephemeris.frameTransformAt(this._cameraFrame, this.displayTime, this.attractors);
     const offset = qRotate(this.rotationQ, FRAME_FORWARD);
-    const up = norm(frameDirVector(toFrameDir(tf, WORLD_UP)));
+    const upAxisEci = this.referenceUpAxisEci();
+    const up = norm(frameDirVector(toFrameDir(tf, upAxisEci)));
     const projectedUp = norm(this.projectOntoPlane(up, offset));
     this.setRotationBasis(offset, projectedUp);
     this._hud.hint('マップ視点のロールをリセット');
