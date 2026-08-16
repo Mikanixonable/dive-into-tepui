@@ -101,8 +101,7 @@ export class GameEntity {
   // 未来位置を計画軌道の衝突体として引かれるか。剛体接触への参加(collides)とは別の判断
   // で、こちらは「数分から数日先まで伸びる線が相手にするだけの寿命を持つか」を言う。
   protected readonly predictedAsPlanCollider: boolean = false;
-  // 表示時刻(未来ゴースト)の位置でメッシュとマーカーを描く種別か。予測線を出すかとは
-  // 無関係で、線の側は predictedLine を持っているかがそのまま答えになる。
+  // 表示時刻(未来ゴースト)の位置でメッシュとマーカーを描く種別か。
   protected readonly predictedForGhost: boolean = false;
 
   // 予測列を伸ばす種別か。上の理由のどれか1つでも立てば伸ばす。
@@ -157,7 +156,7 @@ export class GameEntity {
     return null;
   }
 
-  // 軌道楕円の線を出す。既に出ていれば何もしない。線を持たない種別では何も起きない。
+  // 軌道楕円の線を出す。既に出ていれば何もしない。
   showOrbitLine(): void {
     if (this.orbitLine !== null) return;
     const line = this.createOrbitLine();
@@ -166,7 +165,7 @@ export class GameEntity {
     this.orbitLine = line;
   }
 
-  // 軌道楕円の線を消す。線そのものを捨てるので、出し直すと作り直しになる。
+  // 軌道楕円の線を消す。出し直すと作り直しになる。
   hideOrbitLine(): void {
     if (this.orbitLine === null) return;
     this.scene?.remove(this.orbitLine.line);
@@ -174,8 +173,7 @@ export class GameEntity {
     this.orbitLine = null;
   }
 
-  // orbitLine を現在位置で最も強く引く天体まわりの軌道楕円に合わせる。呼ぶこと自体が
-  // 「描く」という決定を表すので、隠したいフレームは呼び出し側が呼ばずに済ませる。
+  // orbitLine を現在位置で最も強く引く天体まわりの軌道楕円に合わせる。線を持たなければ何もしない。
   syncOrbitLine(fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[]): void {
     if (this.orbitLine === null) return;
     const center = strongestAttractor(this.state.r, attractors);
@@ -190,7 +188,7 @@ export class GameEntity {
     return null;
   }
 
-  // 予測線を出す。既に出ていれば何もしない。線を持たない種別では何も起きない。
+  // 予測線を出す。既に出ていれば何もしない。
   showPredictedLine(): void {
     if (this.predictedLine !== null) return;
     const line = this.createPredictedLine();
@@ -199,7 +197,7 @@ export class GameEntity {
     this.predictedLine = line;
   }
 
-  // 予測線を消す。線そのものを捨てるので、出し直すと作り直しになる。
+  // 予測線を消す。出し直すと作り直しになる。
   hidePredictedLine(): void {
     if (this.predictedLine === null) return;
     this.scene?.remove(this.predictedLine.line);
@@ -226,10 +224,7 @@ export class GameEntity {
 
   // predictedLine を [simTime, predictedTo] の predicted に、actualLine を
   // [simTime - pastDuration, simTime] の actual に合わせる(未来線の先頭と過去線の
-  // 末尾が常に現在位置で接するようにする)。predictedTo が保持区間の先端を超える分は
-  // TrajectoryLine 側が先端からのケプラー外挿で継ぐ(null は継がず先端で止める)。
-  // pastDuration が保持窓を超える分は TrajectoryLine 側が保持区間の先頭へクランプする。
-  // 描くかどうかは線を持っているかがそのまま答えなので、ここでは判定しない。
+  // 末尾が常に現在位置で接するようにする)。predictedTo に null を渡すと未来線を先端で止める。
   // simTime は描く区間の境目、displayTime は座標系から慣性系へ戻す時刻。
   syncTrajectoryLines(
     frame: ReferenceFrame, simTime: number, displayTime: number, pastDuration: number, predictedTo: number | null,
@@ -357,9 +352,8 @@ export class GameEntity {
   }
 
   // 表示時刻 t の状態。予測を持たない/予測期間を超えた時刻は null。ephemeris を渡すと、
-  // 通常の予測列で答えられない未来時刻を、先端を extrapolationCenter まわりの二体軌道と
-  // みなして外挿する(先端が中心天体を持たない、打ち切られている、予測列自体を持たない
-  // のいずれかでは外挿しない)。
+  // 予測列で答えられない未来時刻を、先端を中心天体まわりの二体軌道とみなして外挿した値で
+  // 答える(外挿もできなければ null)。
   displayState(t: number, ephemeris?: Ephemeris): KinematicState | null {
     if (t <= this.actual.state.t) return this.actual.at(t);
     const predicted = this._predicted;
