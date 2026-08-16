@@ -21,7 +21,7 @@
 import * as THREE from 'three/webgpu';
 import { KinematicState, kinematicState } from '../physics/kinematic-state';
 import { ReferenceFrame, toFrameState } from '../physics/frame';
-import { Attractor } from '../physics/attractor';
+import { Attractor, localOrbitPeriod } from '../physics/attractor';
 import type { Ephemeris } from '../physics/ephemeris';
 import { DynamicTrajectory } from '../physics/dynamic-trajectory';
 import { extrapolatedRelativeStates } from '../physics/kepler-extrapolation';
@@ -33,7 +33,9 @@ import { LineStyle } from '../render/line-style';
 
 // 1本の折れ線が持てる頂点数。数周ぶんの軌跡なら数百頂点で収束するが、28日表示のように
 // 数百周が重なる区間は何頂点あっても収束しないので、ここは「どこで頭打ちにするか」の値。
-// 400周を至近から見る最悪条件でも残留誤差が 99% の区間で 0.6px 以下に収まる水準を採る。
+// マップの通常のズームで残留誤差が 99% の区間でサジッタ目標(0.5px)を下回る水準を採る
+// (400周ぶんの軌跡の内側にカメラを置くと 1.4px ほどまで上がるが、その視点では軌跡自体が
+// 画面を埋める網目になっていて見分けられない)。
 const MAX_VERTICES = 4096;
 
 // 外挿区間に足すサンプル数の上限。
@@ -47,6 +49,16 @@ const NO_SAMPLES: readonly KinematicState[] = [];
 // 履歴が空(baseInterval が 0)なら外挿する区間全体を64分割した間隔にする。
 function extrapolationTargetInterval(baseInterval: number, span: number): number {
   return baseInterval > 0 ? baseInterval : span / 64;
+}
+
+// 描画区間 [start, end] が at のまわりに何周ぶんあるかの粗い見積もり。周期が定まらない
+// (双曲軌道など)なら1周とみなす。
+function loopCount(
+  at: KinematicState | null, start: number | null, end: number | null, attractors: readonly Attractor[],
+): number {
+  if (at === null || start === null || end === null) return 1;
+  const period = localOrbitPeriod(at.r, attractors);
+  return Number.isFinite(period) && period > 0 ? (end - start) / period : 1;
 }
 
 // tip(保持区間の末尾)から to までを、tip を center まわりの二体ケプラー軌道とみなして外挿した
@@ -85,6 +97,8 @@ export class TrajectoryLine {
   private startTime: number | null = null;
   // 描画区間の上限(bake 済み区間の末尾へクランプ済み)。null は上限なし。
   private endTime: number | null = null;
+  // 描画区間が中心天体まわりに何周ぶんあるかの見積もり。
+  private loops = 1;
 
   // 単色の折れ線を構築する。style.dash があれば破線になる。
   constructor(style: LineStyle) {
@@ -149,6 +163,7 @@ export class TrajectoryLine {
     }
     this.startTime = this.baked.size > 0 ? Math.max(from ?? -Infinity, this.baked.oldest!.t) : null;
     this.endTime = this.baked.size > 0 ? Math.min(to ?? Infinity, this.baked.newest!.t) : null;
+    this.loops = loopCount(samples.length > 0 ? samples[0]! : null, this.startTime, this.endTime, attractors);
     if (rebaked || from !== this.lastFrom || to !== this.lastTo) {
       this.lastFrom = from;
       this.lastTo = to;
@@ -166,7 +181,7 @@ export class TrajectoryLine {
       this.curve.clear();
       return;
     }
-    this.curve.setCurve(this.sampler, { revision: this.revision, camera });
+    this.curve.setCurve(this.sampler, { revision: this.revision, camera, loops: this.loops });
   }
 
   // 毎フレーム: 剛体 un-bake(回転) + フローティングオリジン補正(平行移動 = 座標系原点)。
