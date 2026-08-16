@@ -7,15 +7,14 @@
 // 投影手順(project → set)を一元化したもの。headingRotationDeg は進行方向(ECI 速度)を
 // 向くグリフの回転角を求める。camera-system.ts が MarkerManager に依存しているため、
 // ProjectFn/ScaleFn 型を直接 import せず同形の関数型で受ける(循環 import を避ける)。
-import { Vec3, addScaled, norm } from '../../physics/vec3';
+import { Vec3, addScaled, norm, sub } from '../../physics/vec3';
 import { Projected } from '../../physics/projection';
 import * as C from '../const';
 import { FILL_4 } from '../theme';
 import { GroupedMarkers } from './grouped-markers';
 import { LeadMarkers } from './lead-markers';
 import { isOccluded } from '../../physics/occlusion';
-import type { Attractor } from '../../physics/attractor';
-
+import { Attractor, strongestAttractor } from '../../physics/attractor';
 
 type ProjectFn = (worldPos: Vec3) => Projected;
 type ScaleFn = (worldPos: Vec3) => number;
@@ -245,17 +244,25 @@ export class MarkerManager {
     this.set(key, cls, sym, p.x, p.y, p.front, label, opacity, color, rotationDeg, symMarkup, fixedLabel, priority);
   }
 
-  // worldPos にいる対象の進行方向(ECI 速度 vel)を、上向きグリフをその方向へ向ける
+  // worldPos にいる対象の進行方向(基準天体相対速度)を、上向きグリフをその方向へ向ける
   // rotationDeg に変換する(atan2 は 0=右方向を返すため +90 して補正する)。
   // set/setPosition の rotationDeg 引数へそのまま渡せる。速度が視線とほぼ平行で
   // 投影差が縮退し方位を定められないときは undefined を返す。
-  headingRotationDeg(worldPos: Vec3, vel: Vec3, project: ProjectFn, scale: ScaleFn): number | undefined {
-    const probe = scale(worldPos) * C.MARKER_HEADING_PROBE_PX;
+  headingRotationDeg(
+    worldPos: Vec3,
+    vel: Vec3,
+    project: ProjectFn,
+    scale: ScaleFn,
+    attractors: readonly Attractor[] = [],
+  ): number | undefined {
+    const center = attractors.length > 0 ? strongestAttractor(worldPos, attractors) : null;
+    const relVel = center ? sub(vel, center.state.v) : vel;
+    const probe = Math.max(1, scale(worldPos) * 2);
     const p0 = project(worldPos);
-    const p1 = project(addScaled(worldPos, norm(vel), probe));
+    const p1 = project(addScaled(worldPos, norm(relVel), probe));
     const dx = p1.x - p0.x;
     const dy = p1.y - p0.y;
-    if (Math.hypot(dx, dy) < C.MARKER_HEADING_DEGENERATE_PX) return undefined;
+    if (Math.hypot(dx, dy) < 0.1) return undefined;
     return (Math.atan2(dy, dx) * 180) / Math.PI + 90;
   }
 
