@@ -148,7 +148,7 @@ export class Game {
       this.displayWindowManager, this._hud.overlayManager,
     );
 
-    this.targeter = new Targeter(this._hud, this.markerManager, this._scene);
+    this.targeter = new Targeter(this._hud, this.markerManager);
     this.navTarget = new NavTarget(this._hud, this.markerManager);
     this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
     this._environment = new EnvironmentScene(this._scene, this.ephemeris, graphics, pipeline.sunLight, earthSpinPhase0);
@@ -259,7 +259,6 @@ export class Game {
     this.editor.dispose();
     this._environment.dispose();
     this.navTarget.dispose();
-    this.targeter.dispose();
     this.frameControls.dispose();
     this.cameraSystem.dispose();
     this.displayWindowManager.dispose();
@@ -480,7 +479,7 @@ export class Game {
 
     this.entities.effects.sync(fo, this.cameraSystem.activeCamera, this.cameraSystem.zoomActive);
 
-    this.targeter.sync(fo, player, this.cameraSystem, displayAttractors, visibilityPolicy, displayWindow, this.ephemeris);
+    this.targeter.sync(player, this.cameraSystem);
     this.targeter.syncTargetMarkers(
       player, combatTargets, displayTime, simTime, this.cameraSystem, visibilityPolicy,
       this.ephemeris.registry, displayAttractors,
