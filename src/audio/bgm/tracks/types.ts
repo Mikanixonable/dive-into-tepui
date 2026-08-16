@@ -86,6 +86,7 @@ export interface PhasingParams {
 // 一定ステップごとに和音を短く打ち込む層。構成音は scale のインデックスで与える。
 export interface AntipodeStabLayer {
   everySteps: number;
+  repeatFor: number; // 同じ和音を何回続けて鳴らすか
   chords: number[][]; // 和音の構成音インデックス
   octaveOffset: number;
   durationSec: number;
