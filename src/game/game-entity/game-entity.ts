@@ -98,7 +98,7 @@ export class GameEntity {
   }
   // 未来位置を計画軌道の衝突体として引かれるか。剛体接触への参加(collides)とは別の判断
   // で、こちらは「数分から数日先まで伸びる線が相手にするだけの寿命を持つか」を言う。
-  protected readonly predictedAsPlanCollider: boolean = false;
+  readonly predictedAsPlanCollider: boolean = false;
   // 表示時刻(未来ゴースト)の位置でメッシュとマーカーを描く種別か。
   protected readonly predictedForGhost: boolean = false;
 
