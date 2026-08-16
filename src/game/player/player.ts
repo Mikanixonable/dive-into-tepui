@@ -23,6 +23,7 @@ import type { CameraSystem } from '../camera/camera-system';
 import { focusTargetId } from '../camera/focus-target';
 import type { MapVisibility } from '../celestial/map-visibility';
 import type { DisplayWindow } from '../display-window-manager';
+import { generateRandomName } from '../random-name';
 import type { Stage } from '../stages/stage';
 import { PlayerThrottle } from './player-throttle';
 import { PlayerFire, type AmmoLoad } from './player-fire';
@@ -95,7 +96,7 @@ export class Player extends Ship {
     _hud: Hud, _worldSfx: WorldSfx, _scene: THREE.Scene, _fx: EffectsSystem, markerManager: MarkerManager,
     init: PlayerInit = {},
   ) {
-    const name = 'saved' in init ? (init.saved.name || init.saved.id) : (init.name ?? 'PLAYER');
+    const name = 'saved' in init ? (init.saved.name || init.saved.id) : (init.name ?? generateRandomName('player'));
     const state = 'saved' in init
       ? kinematicState(init.simTime, v3(init.saved.r.x, init.saved.r.y, init.saved.r.z), v3(init.saved.v.x, init.saved.v.y, init.saved.v.z))
       : (init.state ?? Player.makeInitialState());

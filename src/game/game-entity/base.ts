@@ -19,6 +19,7 @@ import type { BaseSaveData } from '../save-data';
 import { OrbitLine } from '../orbit-line';
 import { Plan } from '../plan/plan';
 import type { PlanExecutionMode } from '../player/player';
+import { generateRandomName } from '../random-name';
 import * as C from '../const';
 import { BaseCollisionGeometry, RayHit, SphereHit } from '../../physics/base-collision';
 import { PlayerThrottle } from '../player/player-throttle';
@@ -145,7 +146,7 @@ export class Base extends GameEntity implements Controllable {
         att: undefined,
         id: init.saved.id,
       }
-      : { state: init.state, name: init.name ?? '基地', att: init.att, id: init.id };
+      : { state: init.state, name: init.name ?? generateRandomName('base'), att: init.att, id: init.id };
     const savedAtt: Attitude | undefined = 'saved' in init && init.saved.q
       ? {
         q: { ...init.saved.q },
