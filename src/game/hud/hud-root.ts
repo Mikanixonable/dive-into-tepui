@@ -203,8 +203,8 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
       </div>
       <div class="row metric"><dt class="k">高度</dt><dd class="v"><output data-id="alt">—</output></dd></div>
       <div class="row metric"><dt class="k">速度</dt><dd class="v"><output data-id="spd">—</output></dd></div>
-      <div class="row metric"><dt class="k">遠地点 Ap</dt><dd class="v"><output data-id="ap">—</output></dd></div>
-      <div class="row metric"><dt class="k">近地点 Pe</dt><dd class="v"><output data-id="pe">—</output></dd></div>
+      <div class="row metric"><dt class="k" data-id="ap-label">遠地点 Ap</dt><dd class="v"><output data-id="ap">—</output></dd></div>
+      <div class="row metric"><dt class="k" data-id="pe-label">近地点 Pe</dt><dd class="v"><output data-id="pe">—</output></dd></div>
       <div class="row metric"><dt class="k">傾斜角</dt><dd class="v"><output data-id="inc">—</output></dd></div>
       <div class="row metric"><dt class="k">周期</dt><dd class="v"><output data-id="prd">—</output></dd></div>
       <div class="row metric"><dt class="k">動圧 q</dt><dd class="v"><output data-id="qdyn">—</output></dd></div>

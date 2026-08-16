@@ -6,8 +6,9 @@ import { Attractor, strongestAttractor } from '../../physics/attractor';
 import { isOccluded } from '../../physics/occlusion';
 import { Projected } from '../../physics/projection';
 import type { Ephemeris } from '../../physics/ephemeris';
-import { SIM_EPOCH_SEC, fmtMarkerDist, fmtDist } from '../hud/utils';
+import { SIM_EPOCH_SEC, fmtMarkerDist } from '../hud/utils';
 import { celestialBodyName } from '../hud/frame-labels';
+import { getApsisLabelSpec } from '../hud/orbit-labels';
 import { TickLabelMode, TickRank, calendarBoundaries, tickLabel } from '../hud/calendar-ticks';
 import { MarkerManager } from '../marker/marker-manager';
 import { ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-glyphs';
@@ -220,21 +221,23 @@ export class PlanDisplay {
     const namePrefix = ownerName ? `${ownerName} (計画)` : undefined;
     const icons: ApsisIcon[] = [];
     if (pe && peCenter) {
+      const peSpec = getApsisLabelSpec('pe', peCenter.id);
       icons.push({
-        id: 'apsisPe', name: '近地点', kind: 'apsis',
+        id: 'apsisPe', name: peSpec.nameJa, kind: 'apsis',
         ownerName: namePrefix,
         pos: this.path.toDisplay(pe.r, pe.t),
         time: pe.t,
-        label: `Pe ${fmtDist(peDist - peCenter.radius)}`,
+        label: peSpec.short,
       });
     }
     if (ap && apCenter) {
+      const apSpec = getApsisLabelSpec('ap', apCenter.id);
       icons.push({
-        id: 'apsisAp', name: '遠地点', kind: 'apsis',
+        id: 'apsisAp', name: apSpec.nameJa, kind: 'apsis',
         ownerName: namePrefix,
         pos: this.path.toDisplay(ap.r, ap.t),
         time: ap.t,
-        label: `Ap ${fmtDist(apDist - apCenter.radius)}`,
+        label: apSpec.short,
       });
     }
     return icons;

@@ -1,6 +1,7 @@
 // Creative のフォーム入力をDOMやTHREEに依存せず検証する小さな境界。
 import { semiMajorFromPeriod } from '../../physics/elements';
 import { AttractorId } from '../../physics/attractor';
+import { getApsisLabelSpec } from '../hud/orbit-labels';
 
 // UI 側が「どの入力欄が悪いか」を示すための識別子。
 export type PlacementFieldId =
@@ -16,13 +17,16 @@ export type EllipticSizeInput =
   | { sizeMode: 'periodEcc'; periodHours: number; eccentricity: number };
 
 export type EllipticPlacementInput = {
-  centerRadius: number; mu: number;
+  centerRadius: number; mu: number; centerId?: string;
   incDeg: number; raanDeg: number; argpDeg: number; nuDeg: number;
 } & EllipticSizeInput;
 
 // 入力が有効な楕円軌道を表すか、フィールドごとに検証する。問題がなければ空配列を返す。
 export function validateEllipticPlacementFields(input: EllipticPlacementInput): PlacementFieldIssue[] {
   const issues: PlacementFieldIssue[] = [];
+  const peSpec = getApsisLabelSpec('pe', input.centerId ?? 'earth');
+  const apSpec = getApsisLabelSpec('ap', input.centerId ?? 'earth');
+
   const angleFields: readonly [PlacementFieldId, number][] = [
     ['inclination', input.incDeg], ['raan', input.raanDeg],
     ['argumentOfPeriapsis', input.argpDeg], ['trueAnomaly', input.nuDeg],
@@ -34,10 +38,10 @@ export function validateEllipticPlacementFields(input: EllipticPlacementInput): 
     if (!Number.isFinite(input.peAltKm)) issues.push({ field: 'periapsisAltitude', message: '有限な数値を入力してください' });
     if (!Number.isFinite(input.apAltKm)) issues.push({ field: 'apoapsisAltitude', message: '有限な数値を入力してください' });
     if (Number.isFinite(input.peAltKm) && input.peAltKm < 0) {
-      issues.push({ field: 'periapsisAltitude', message: '近地点高度は 0 以上にしてください' });
+      issues.push({ field: 'periapsisAltitude', message: `${peSpec.nameJa}高度は 0 以上にしてください` });
     }
     if (Number.isFinite(input.peAltKm) && Number.isFinite(input.apAltKm) && input.apAltKm < input.peAltKm) {
-      issues.push({ field: 'apoapsisAltitude', message: '遠地点高度は近地点高度以上にしてください' });
+      issues.push({ field: 'apoapsisAltitude', message: `${apSpec.nameJa}高度は${peSpec.nameJa}高度以上にしてください` });
     }
     return issues;
   }
@@ -58,7 +62,7 @@ export function validateEllipticPlacementFields(input: EllipticPlacementInput): 
     if (Number.isFinite(a) && !(a > 0 && a * (1 - input.eccentricity) > input.centerRadius)) {
       issues.push({
         field: input.sizeMode === 'semiMajorEcc' ? 'semiMajorAxis' : 'period',
-        message: '近地点が天体表面より上の楕円軌道にしてください',
+        message: `${peSpec.nameJa}が天体表面より上の楕円軌道にしてください`,
       });
     }
   }
