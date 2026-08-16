@@ -103,7 +103,7 @@ export abstract class Ship extends GameEntity {
   }
 
   // パーツの換装・セーブ復元後にだけ呼ぶ type 別参照を再構築する。parts 配列は
-  // DockView/Player の換装経路で splice され、その直後に refreshFromParts が呼ばれる。
+  // BaseView/Player の換装経路で splice され、その直後に refreshFromParts が呼ばれる。
   private rebuildPartReferences(): void {
     this.thrusterPartRefs.length = 0;
     this.rcsTankPartRefs.length = 0;

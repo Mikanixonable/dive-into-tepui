@@ -1,6 +1,6 @@
 // ドックビュー: 基地に接岸した際に開くフルスクリーンUI。
 // 格納されている船の一覧、部品の確認・修理・換装、ショップを提供する。
-import type { Base, DockedShipEntry } from '../game-entity/base';
+import type { Base, DockedVesselEntry } from '../game-entity/base';
 import type { Player } from '../player/player';
 import type { AnyPart, Part, PartType, RcsTankPart } from '../game-entity/parts';
 import { createPart } from '../game-entity/parts';
@@ -11,7 +11,7 @@ import { MQ_COMPACT, MQ_SHORT } from './breakpoints';
 const STYLE = `
 /* 戦闘・マップと対等な全画面ビュー。情報面は Solid を基調にし、
    選択中の艦とその整備コンテキストだけ Focus Glass へ持ち上げる。 */
-#dock-view.dock-view-overlay {
+#base-view.base-view-overlay {
   position: fixed; inset: 0;
   display: flex;
   box-sizing: border-box;
@@ -21,229 +21,229 @@ const STYLE = `
   pointer-events: auto;
   padding: max(var(--space-6), var(--safe-t)) max(var(--space-5), var(--safe-r)) max(var(--space-5), var(--safe-b)) max(var(--space-5), var(--safe-l));
 }
-#dock-view .dock-panel {
+#base-view .dock-panel {
   width: min(100%, 1160px); min-width: 0; min-height: 0; margin: 0 auto;
   display: flex; flex-direction: column;
 }
-#dock-view .dock-header {
+#base-view .dock-header {
   display: grid; grid-template-columns: minmax(180px, 0.72fr) minmax(300px, 1.4fr) auto;
   align-items: center; gap: var(--space-6);
   flex: 0 0 auto; padding: 15px 17px 11px;
   border-radius: var(--radius-window) var(--radius-window) 0 0;
   background: var(--surface-1);
 }
-#dock-view .dock-title-group { min-width: 0; }
-#dock-view .dock-kicker {
+#base-view .dock-title-group { min-width: 0; }
+#base-view .dock-kicker {
   display: block; margin-bottom: var(--space-2);
   color: var(--accent); font-size: var(--font-xs); line-height: 1.3;
 }
-#dock-view .dock-title {
+#base-view .dock-title {
   display: block; margin: 0; color: var(--title);
   font-size: var(--font-2xl); font-weight: 500; line-height: 1; letter-spacing: -0.035em;
 }
-#dock-view .dock-subtitle {
+#base-view .dock-subtitle {
   display: block; margin-top: var(--space-2);
   color: var(--muted); font-size: var(--font-s); line-height: 1.4;
 }
-#dock-view .dock-tabs { min-width: 0; justify-content: center; }
-#dock-view .dock-tabs .w-btn {
+#base-view .dock-tabs { min-width: 0; justify-content: center; }
+#base-view .dock-tabs .w-btn {
   min-height: 34px; padding: 7px 11px;
   border: 0; border-radius: var(--radius-control);
   background: transparent; color: var(--muted);
 }
-#dock-view .dock-tabs .w-btn:hover { background: var(--surface-2); color: var(--accent-near); }
-#dock-view .dock-tabs .w-btn.on { background: var(--accent-fill); color: var(--accent); }
-#dock-view .w-close {
+#base-view .dock-tabs .w-btn:hover { background: var(--surface-2); color: var(--accent-near); }
+#base-view .dock-tabs .w-btn.on { background: var(--accent-fill); color: var(--accent); }
+#base-view .w-close {
   width: 34px; height: 34px; border: 0; border-radius: var(--radius-control);
   background: var(--surface-2); color: var(--muted);
 }
-#dock-view .w-close:hover { background: var(--surface-3); color: var(--accent-near); }
-#dock-view .dock-status-bar {
+#base-view .w-close:hover { background: var(--surface-3); color: var(--accent-near); }
+#base-view .dock-status-bar {
   flex: 0 0 auto; padding: 0 17px 13px;
   border-radius: 0 0 var(--radius-window) var(--radius-window);
   background: var(--surface-1); color: var(--muted);
   font-size: var(--font-s); font-variant-numeric: tabular-nums;
 }
-#dock-view .dock-status-bar::before {
+#base-view .dock-status-bar::before {
   content: "∗"; margin-right: var(--space-3); color: var(--accent-secondary);
 }
-#dock-view .dock-body {
+#base-view .dock-body {
   flex: 1 1 0; min-height: 0; margin-top: 9px; padding: var(--space-6) 0;
   overflow-y: auto; scrollbar-width: thin; outline: none;
 }
-#dock-view .dock-body:focus-visible,
-#dock-view .dock-ship-select:focus-visible,
-#dock-view .dock-part-swap-select:focus-visible,
-#dock-view .w-btn:focus-visible,
-#dock-view .w-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-#dock-view .dock-section { display: flex; flex-direction: column; gap: 9px; }
-#dock-view .dock-section-head {
+#base-view .dock-body:focus-visible,
+#base-view .dock-ship-select:focus-visible,
+#base-view .dock-part-swap-select:focus-visible,
+#base-view .w-btn:focus-visible,
+#base-view .w-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+#base-view .dock-section { display: flex; flex-direction: column; gap: 9px; }
+#base-view .dock-section-head {
   display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-6);
   padding: 0 var(--space-2) var(--space-5);
 }
-#dock-view .dock-section-copy { min-width: 0; }
-#dock-view .dock-section-title {
+#base-view .dock-section-copy { min-width: 0; }
+#base-view .dock-section-title {
   margin: 0; color: var(--title); font-size: var(--font-xl); font-weight: 600; line-height: 1.3;
 }
-#dock-view .dock-section-description {
+#base-view .dock-section-description {
   margin: var(--space-2) 0 0; color: var(--muted); font-size: var(--font-s); line-height: 1.55;
 }
-#dock-view .dock-section-count {
+#base-view .dock-section-count {
   flex: 0 0 auto; padding: 5px 8px; border-radius: var(--radius-control);
   background: var(--surface-1); color: var(--muted); font-size: var(--font-xs);
   font-variant-numeric: tabular-nums;
 }
-#dock-view .dock-empty {
+#base-view .dock-empty {
   padding: var(--space-6); border-radius: var(--radius-panel);
   background: var(--surface-1); color: var(--muted); text-align: center; line-height: 1.8;
 }
 /* Ships tab */
-#dock-view .dock-ship-list { display: flex; flex-direction: column; gap: 7px; }
-#dock-view .dock-ship-row {
+#base-view .dock-ship-list { display: flex; flex-direction: column; gap: 7px; }
+#base-view .dock-ship-row {
   position: relative; display: flex; align-items: center; gap: var(--space-5);
   padding: 9px 12px; border-radius: var(--radius-panel); background: var(--surface-1);
   transition: color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
 }
-#dock-view .dock-ship-row:hover:not(.is-selected) { background: var(--surface-2); }
-#dock-view .dock-ship-row.is-selected {
+#base-view .dock-ship-row:hover:not(.is-selected) { background: var(--surface-2); }
+#base-view .dock-ship-row.is-selected {
   background: var(--glass-focus); backdrop-filter: blur(20px) saturate(82%);
   -webkit-backdrop-filter: blur(20px) saturate(82%);
   box-shadow: 0 16px 48px var(--shadow, var(--shade-1));
 }
-#dock-view .dock-ship-row.is-selected::before {
+#base-view .dock-ship-row.is-selected::before {
   content: ""; position: absolute; top: 12px; bottom: 12px; left: 6px; width: 3px;
   border-radius: var(--radius-control); background: var(--accent);
 }
-#dock-view .dock-ship-select {
+#base-view .dock-ship-select {
   flex: 1 1 auto; min-width: 0; display: block; padding: var(--space-3) var(--space-4);
   border: 0; border-radius: var(--radius-control); background: transparent; color: inherit;
   font: inherit; text-align: left; cursor: pointer;
 }
-#dock-view .dock-ship-info { flex: 1; display: flex; flex-direction: column; gap: var(--space-1); }
-#dock-view .dock-ship-name { color: var(--title); font-size: var(--font-l); font-weight: 500; }
-#dock-view .dock-ship-row:not(.is-selected) .dock-ship-select:hover .dock-ship-name { color: var(--accent-near); }
-#dock-view .dock-ship-row.is-selected .dock-ship-name { color: var(--accent); }
-#dock-view .dock-ship-hp { color: var(--muted); font-size: var(--font-s); font-variant-numeric: tabular-nums; }
-#dock-view .dock-ship-row.is-critical .dock-ship-hp { color: var(--danger); }
-#dock-view .dock-ship-actions { display: flex; flex: 0 0 auto; gap: 5px; }
+#base-view .dock-ship-info { flex: 1; display: flex; flex-direction: column; gap: var(--space-1); }
+#base-view .dock-ship-name { color: var(--title); font-size: var(--font-l); font-weight: 500; }
+#base-view .dock-ship-row:not(.is-selected) .dock-ship-select:hover .dock-ship-name { color: var(--accent-near); }
+#base-view .dock-ship-row.is-selected .dock-ship-name { color: var(--accent); }
+#base-view .dock-ship-hp { color: var(--muted); font-size: var(--font-s); font-variant-numeric: tabular-nums; }
+#base-view .dock-ship-row.is-critical .dock-ship-hp { color: var(--danger); }
+#base-view .dock-ship-actions { display: flex; flex: 0 0 auto; gap: 5px; }
 /* Parts tab */
-#dock-view .dock-parts-header {
+#base-view .dock-parts-header {
   display: flex; align-items: center; gap: var(--space-5); padding: 11px 13px;
   border-radius: var(--radius-panel); background: var(--surface-1);
 }
-#dock-view .dock-parts-header.dock-focus-panel {
+#base-view .dock-parts-header.dock-focus-panel {
   background: var(--glass-focus); backdrop-filter: blur(20px) saturate(82%);
   -webkit-backdrop-filter: blur(20px) saturate(82%);
   box-shadow: 0 16px 48px var(--shadow, var(--shade-1));
 }
-#dock-view .dock-ship-label { flex: 1; color: var(--body); font-size: var(--font-m); }
-#dock-view .dock-ship-label strong { color: var(--accent); font-weight: 600; }
-#dock-view .dock-part-list { display: flex; flex-direction: column; gap: 7px; }
-#dock-view .dock-part-row {
+#base-view .dock-ship-label { flex: 1; color: var(--body); font-size: var(--font-m); }
+#base-view .dock-ship-label strong { color: var(--accent); font-weight: 600; }
+#base-view .dock-part-list { display: flex; flex-direction: column; gap: 7px; }
+#base-view .dock-part-row {
   display: flex; flex-direction: column; gap: var(--space-3); padding: 9px 11px;
   border-radius: var(--radius-panel); background: var(--surface-2);
 }
-#dock-view .dock-part-info { display: flex; flex-direction: column; gap: var(--space-1); }
-#dock-view .dock-part-name { color: var(--title); font-size: var(--font-m); font-weight: 500; }
-#dock-view .dock-part-type { color: var(--muted); font-size: var(--font-xs); }
-#dock-view .dock-part-hp-meter .w-meter-track { height: 7px; border-radius: var(--radius-control); overflow: hidden; }
-#dock-view .dock-part-hp-meter .w-meter-fill { border-radius: var(--radius-control); transition: width var(--transition-slow); }
-#dock-view .dock-part-hp-text { color: var(--muted); font-size: var(--font-s); text-align: right; font-variant-numeric: tabular-nums; }
-#dock-view .dock-part-row-main {
+#base-view .dock-part-info { display: flex; flex-direction: column; gap: var(--space-1); }
+#base-view .dock-part-name { color: var(--title); font-size: var(--font-m); font-weight: 500; }
+#base-view .dock-part-type { color: var(--muted); font-size: var(--font-xs); }
+#base-view .dock-part-hp-meter .w-meter-track { height: 7px; border-radius: var(--radius-control); overflow: hidden; }
+#base-view .dock-part-hp-meter .w-meter-fill { border-radius: var(--radius-control); transition: width var(--transition-slow); }
+#base-view .dock-part-hp-text { color: var(--muted); font-size: var(--font-s); text-align: right; font-variant-numeric: tabular-nums; }
+#base-view .dock-part-row-main {
   display: grid; grid-template-columns: minmax(120px, 1fr) minmax(96px, 140px);
   align-items: center; gap: var(--space-5);
 }
-#dock-view .dock-warehouse-row-main { grid-template-columns: minmax(120px, 1fr) auto; }
-#dock-view .dock-part-actions {
+#base-view .dock-warehouse-row-main { grid-template-columns: minmax(120px, 1fr) auto; }
+#base-view .dock-part-actions {
   grid-column: 1 / -1; display: flex; align-items: center; justify-content: flex-end; gap: 5px; flex-wrap: wrap;
 }
-#dock-view .dock-part-swap-row {
+#base-view .dock-part-swap-row {
   display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3);
   border-radius: var(--radius-control); background: var(--surface-1);
   color: var(--muted); font-size: var(--font-s);
 }
-#dock-view .dock-part-swap-select {
+#base-view .dock-part-swap-select {
   flex: 1; min-width: 0; padding: 7px 9px;
   border: 0; border-radius: var(--radius-control);
   background: var(--surface-3); color: var(--title); font: inherit; font-size: var(--font-s);
 }
-#dock-view .dock-parts-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
-#dock-view .dock-parts-col {
+#base-view .dock-parts-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+#base-view .dock-parts-col {
   display: flex; flex-direction: column; gap: var(--space-4); min-width: 0;
   padding: 13px; border-radius: var(--radius-window); background: var(--surface-1);
 }
-#dock-view .dock-col-title { margin: 0; color: var(--title); font-size: var(--font-m); font-weight: 600; }
+#base-view .dock-col-title { margin: 0; color: var(--title); font-size: var(--font-m); font-weight: 600; }
 /* Shop tab */
-#dock-view .dock-shop-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
-#dock-view .dock-shop-item {
+#base-view .dock-shop-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+#base-view .dock-shop-item {
   display: flex; align-items: center; gap: var(--space-5); min-width: 0; padding: 11px 13px;
   border-radius: var(--radius-panel); background: var(--surface-1);
 }
-#dock-view .dock-shop-info { flex: 1; display: flex; flex-direction: column; gap: var(--space-1); }
-#dock-view .dock-shop-name { color: var(--title); font-size: var(--font-l); font-weight: 500; }
-#dock-view .dock-shop-type { color: var(--muted); font-size: var(--font-xs); }
-#dock-view .dock-shop-props { color: var(--body); font-size: var(--font-s); line-height: 1.45; }
-#dock-view .dock-shop-stats { color: var(--muted); font-size: var(--font-xs); font-variant-numeric: tabular-nums; }
-#dock-view .dock-shop-actions { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); }
-#dock-view .dock-shop-price { color: var(--title); font-size: var(--font-m); font-variant-numeric: tabular-nums; }
+#base-view .dock-shop-info { flex: 1; display: flex; flex-direction: column; gap: var(--space-1); }
+#base-view .dock-shop-name { color: var(--title); font-size: var(--font-l); font-weight: 500; }
+#base-view .dock-shop-type { color: var(--muted); font-size: var(--font-xs); }
+#base-view .dock-shop-props { color: var(--body); font-size: var(--font-s); line-height: 1.45; }
+#base-view .dock-shop-stats { color: var(--muted); font-size: var(--font-xs); font-variant-numeric: tabular-nums; }
+#base-view .dock-shop-actions { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); }
+#base-view .dock-shop-price { color: var(--title); font-size: var(--font-m); font-variant-numeric: tabular-nums; }
 /* ドック内の操作は Borderless。主要操作、サービス完了系、補助操作の三段に分ける。 */
-#dock-view span.dock-btn {
+#base-view span.dock-btn {
   padding: 7px 10px; border: 0; border-radius: var(--radius-control);
   background: var(--surface-2); color: var(--body); white-space: nowrap;
 }
-#dock-view span.dock-btn:hover { background: var(--surface-3); color: var(--accent-near); }
-#dock-view span.dock-btn-primary { background: var(--accent-fill); color: var(--accent); }
-#dock-view span.dock-btn-primary:hover { background: var(--accent-fill-strong); color: var(--accent-near); }
-#dock-view span.dock-btn-service { color: var(--body); }
-#dock-view span.dock-btn-service:hover { background: var(--surface-3); color: var(--accent-near); }
-#dock-view span.dock-btn-complete.disabled { opacity: 0.72; color: var(--accent-secondary); }
-#dock-view span.dock-btn-quiet { color: var(--muted); }
+#base-view span.dock-btn:hover { background: var(--surface-3); color: var(--accent-near); }
+#base-view span.dock-btn-primary { background: var(--accent-fill); color: var(--accent); }
+#base-view span.dock-btn-primary:hover { background: var(--accent-fill-strong); color: var(--accent-near); }
+#base-view span.dock-btn-service { color: var(--body); }
+#base-view span.dock-btn-service:hover { background: var(--surface-3); color: var(--accent-near); }
+#base-view span.dock-btn-complete.disabled { opacity: 0.72; color: var(--accent-secondary); }
+#base-view span.dock-btn-quiet { color: var(--muted); }
 
 @media ${MQ_COMPACT} {
-  #dock-view.dock-view-overlay {
+  #base-view.base-view-overlay {
     align-items: flex-end; padding: max(var(--space-4), var(--safe-t)) 0 0;
   }
-  #dock-view .dock-panel {
+  #base-view .dock-panel {
     height: 94dvh; max-height: 100%; overflow: hidden; border-radius: var(--radius-window) var(--radius-window) 0 0;
     background: var(--surface-0);
   }
-  #dock-view .dock-header {
+  #base-view .dock-header {
     grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-4);
     padding: 13px 13px 9px;
   }
-  #dock-view .dock-title { font-size: var(--font-xl); }
-  #dock-view .dock-subtitle { display: none; }
-  #dock-view .dock-tabs {
+  #base-view .dock-title { font-size: var(--font-xl); }
+  #base-view .dock-subtitle { display: none; }
+  #base-view .dock-tabs {
     grid-column: 1 / -1; grid-row: 2; justify-content: flex-start;
     overflow-x: auto; scrollbar-width: none;
   }
-  #dock-view .dock-tabs::-webkit-scrollbar { display: none; }
-  #dock-view .dock-tabs .w-btn { flex: 1 0 auto; text-align: center; }
-  #dock-view .dock-status-bar { padding: 0 13px 11px; }
-  #dock-view .dock-body { margin-top: 0; padding: 13px; }
-  #dock-view .dock-section-head { align-items: flex-start; padding-inline: 0; }
-  #dock-view .dock-ship-row { align-items: stretch; flex-direction: column; gap: var(--space-3); }
-  #dock-view .dock-ship-actions { display: grid; grid-template-columns: 1fr 1fr; }
-  #dock-view .dock-ship-actions .dock-btn { justify-content: center; text-align: center; }
-  #dock-view .dock-parts-header { align-items: flex-start; flex-direction: column; }
-  #dock-view .dock-parts-header .dock-btn { align-self: stretch; text-align: center; }
-  #dock-view .dock-parts-columns, #dock-view .dock-shop-list { grid-template-columns: 1fr; }
-  #dock-view .dock-parts-col { padding: 11px; }
-  #dock-view .dock-part-row-main { grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-4); }
-  #dock-view .dock-part-row-main:not(.dock-warehouse-row-main) .dock-part-hp-meter { grid-column: 1 / -1; grid-row: 2; }
-  #dock-view .dock-warehouse-row-main .dock-part-actions { grid-column: 1 / -1; justify-content: flex-end; }
-  #dock-view .dock-part-swap-row { align-items: stretch; flex-wrap: wrap; }
-  #dock-view .dock-part-swap-select { flex-basis: calc(100% - 80px); }
-  #dock-view .dock-shop-item { align-items: stretch; flex-direction: column; }
-  #dock-view .dock-shop-actions { align-items: center; flex-direction: row; justify-content: space-between; }
+  #base-view .dock-tabs::-webkit-scrollbar { display: none; }
+  #base-view .dock-tabs .w-btn { flex: 1 0 auto; text-align: center; }
+  #base-view .dock-status-bar { padding: 0 13px 11px; }
+  #base-view .dock-body { margin-top: 0; padding: 13px; }
+  #base-view .dock-section-head { align-items: flex-start; padding-inline: 0; }
+  #base-view .dock-ship-row { align-items: stretch; flex-direction: column; gap: var(--space-3); }
+  #base-view .dock-ship-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  #base-view .dock-ship-actions .dock-btn { justify-content: center; text-align: center; }
+  #base-view .dock-parts-header { align-items: flex-start; flex-direction: column; }
+  #base-view .dock-parts-header .dock-btn { align-self: stretch; text-align: center; }
+  #base-view .dock-parts-columns, #base-view .dock-shop-list { grid-template-columns: 1fr; }
+  #base-view .dock-parts-col { padding: 11px; }
+  #base-view .dock-part-row-main { grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-4); }
+  #base-view .dock-part-row-main:not(.dock-warehouse-row-main) .dock-part-hp-meter { grid-column: 1 / -1; grid-row: 2; }
+  #base-view .dock-warehouse-row-main .dock-part-actions { grid-column: 1 / -1; justify-content: flex-end; }
+  #base-view .dock-part-swap-row { align-items: stretch; flex-wrap: wrap; }
+  #base-view .dock-part-swap-select { flex-basis: calc(100% - 80px); }
+  #base-view .dock-shop-item { align-items: stretch; flex-direction: column; }
+  #base-view .dock-shop-actions { align-items: center; flex-direction: row; justify-content: space-between; }
 }
 
 @media ${MQ_SHORT} {
-  #dock-view.dock-view-overlay { padding-top: var(--space-3); }
-  #dock-view .dock-header { padding-top: 9px; padding-bottom: 7px; }
-  #dock-view .dock-subtitle { display: none; }
-  #dock-view .dock-status-bar { padding-bottom: 9px; }
-  #dock-view .dock-body { padding-top: 9px; padding-bottom: 9px; }
+  #base-view.base-view-overlay { padding-top: var(--space-3); }
+  #base-view .dock-header { padding-top: 9px; padding-bottom: 7px; }
+  #base-view .dock-subtitle { display: none; }
+  #base-view .dock-status-bar { padding-bottom: 9px; }
+  #base-view .dock-body { padding-top: 9px; padding-bottom: 9px; }
 }
 `;
 
@@ -299,8 +299,8 @@ const PART_SELL_RATE = 0.5;
 const PART_FALLBACK_VALUE_PER_MAXHP = 20;
 // RCSタンクへの燃料補給コスト: 1kgあたりのクレジット
 const RCS_REFUEL_PRICE_PER_KG = 2;
-// 新造艦(既定パーツ一式)の価格。SHOP_CATALOG の最安構成の合計(≈31,500 Cr)に組立分を上乗せした額。
-const NEW_SHIP_COST = 35000;
+// 新造艦艇(既定パーツ一式)の価格。SHOP_CATALOG の最安構成の合計(≈31,500 Cr)に組立分を上乗せした額。
+const NEW_VESSEL_COST = 35000;
 
 // 部品の売却基準額を見積もる。ショップカタログに type/name が一致する項目があればその価格を、
 // なければ maxHp から概算した価格を使う(艦に最初から積まれていた部品など由来不明なもの向け)。
@@ -320,7 +320,7 @@ function refuelCost(tank: RcsTankPart): number {
 export type DockTab = 'ships' | 'parts' | 'shop';
 
 const TAB_ITEMS: readonly (readonly [DockTab, string])[] = [
-  ['ships', '格納艦'],
+  ['ships', '格納艦艇'],
   ['parts', '部品'],
   ['shop', 'ショップ'],
 ];
@@ -363,22 +363,22 @@ function formatCatalogProperty(name: string, value: number | string): string {
   }
 }
 
-export class DockView {
+export class BaseView {
   private readonly el: HTMLElement;
   private readonly tabBar: TabBar<DockTab>;
   private readonly moneyLabel: HTMLElement;
   private readonly bodyEl: HTMLElement;
   private _visible = false;
   private currentBase: Base | null = null;
-  private currentShip: Player | null = null;
+  private currentVessel: Player | null = null;
   private currentTab: DockTab = 'ships';
   private freeProcurement = false;
   private previouslyFocused: HTMLElement | null = null;
 
   // 外部コールバック
-  public onLaunchShip: ((ship: Player, base: Base) => void) | null = null;
-  // 「新造」ボタン。実際の艦の生成は Docking 側が行う(DockView は UI のみ)。
-  public onBuildShip: ((base: Base) => void) | null = null;
+  public onLaunchVessel: ((ship: Player, base: Base) => void) | null = null;
+  // 「新造」ボタン。実際の艦の生成は Docking 側が行う(BaseView は UI のみ)。
+  public onBuildVessel: ((base: Base) => void) | null = null;
   public onClose: (() => void) | null = null;
 
   public get visible(): boolean { return this._visible; }
@@ -387,12 +387,12 @@ export class DockView {
   public constructor(root: HTMLElement) {
     ensureStyle();
     this.el = document.createElement('div');
-    this.el.id = 'dock-view';
-    this.el.className = 'dock-view-overlay';
+    this.el.id = 'base-view';
+    this.el.className = 'base-view-overlay';
     this.el.style.display = 'none';
     this.el.setAttribute('role', 'dialog');
     this.el.setAttribute('aria-modal', 'true');
-    this.el.setAttribute('aria-labelledby', 'dock-view-title');
+    this.el.setAttribute('aria-labelledby', 'base-view-title');
     this.el.addEventListener('keydown', (event) => this.trapFocus(event));
 
     const panel = document.createElement('div');
@@ -407,7 +407,7 @@ export class DockView {
     kicker.className = 'dock-kicker';
     kicker.textContent = 'Base operations';
     const title = document.createElement('h1');
-    title.id = 'dock-view-title';
+    title.id = 'base-view-title';
     title.className = 'dock-title';
     title.textContent = 'Base';
     const subtitle = document.createElement('span');
@@ -463,10 +463,10 @@ export class DockView {
     this.currentBase = base;
     this.freeProcurement = freeProcurement;
     // inspectShip が基地に格納されていれば選択状態にする
-    if (inspectShip && base.baseState.dockedShips.some((s) => s.id === inspectShip.id)) {
-      this.currentShip = inspectShip;
+    if (inspectShip && base.baseState.dockedVessels.some((s) => s.id === inspectShip.id)) {
+      this.currentVessel = inspectShip;
     } else {
-      this.currentShip = null;
+      this.currentVessel = null;
     }
     this.currentTab = 'ships';
     this.refresh();
@@ -479,7 +479,7 @@ export class DockView {
     this.el.style.display = 'none';
     this._visible = false;
     this.currentBase = null;
-    this.currentShip = null;
+    this.currentVessel = null;
     const focusTarget = this.previouslyFocused;
     this.previouslyFocused = null;
     if (focusTarget?.isConnected) focusTarget.focus({ preventScroll: true });
@@ -526,7 +526,7 @@ export class DockView {
 
     this.bodyEl.innerHTML = '';
     switch (this.currentTab) {
-      case 'ships': this.bodyEl.appendChild(this.buildShipsTab()); break;
+      case 'ships': this.bodyEl.appendChild(this.buildVesselsTab()); break;
       case 'parts': this.bodyEl.appendChild(this.buildPartsTab()); break;
       case 'shop': this.bodyEl.appendChild(this.buildShopTab()); break;
     }
@@ -555,38 +555,38 @@ export class DockView {
     return header;
   }
 
-  // ─── 格納艦タブ ───────────────────────────────────────────
-  private buildShipsTab(): HTMLElement {
+  // ─── 格納艦艇タブ ───────────────────────────────────────────
+  private buildVesselsTab(): HTMLElement {
     const base = this.currentBase!;
     const frag = document.createElement('section');
     frag.className = 'dock-section';
-    const ships = base.baseState.dockedShips;
+    const ships = base.baseState.dockedVessels;
     frag.appendChild(this.buildSectionHeader(
-      '格納艦',
+      '格納艦艇',
       '発進する艦を選択するか、整備画面で搭載部品を確認します。',
-      `${ships.length} / ${C.BASE_MAX_SHIPS} 隻`,
+      `${ships.length} / ${C.BASE_MAX_VESSELS} 隻`,
     ));
     if (ships.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'dock-empty';
-      empty.textContent = '格納艦はありません。ランデブー後に収容するか、新造してください。';
+      empty.textContent = '格納艦艇はありません。ランデブー後に収容するか、新造してください。';
       frag.appendChild(empty);
     } else {
       const list = document.createElement('div');
       list.className = 'dock-ship-list';
       list.setAttribute('role', 'list');
-      ships.forEach((s, i) => list.appendChild(this.buildShipRow(s, i)));
+      ships.forEach((s, i) => list.appendChild(this.buildVesselRow(s, i)));
       frag.appendChild(list);
     }
-    frag.appendChild(this.buildNewShipHeader(base));
+    frag.appendChild(this.buildNewVesselHeader(base));
     return frag;
   }
 
-  private buildShipRow(s: DockedShipEntry, i: number): HTMLElement {
+  private buildVesselRow(s: DockedVesselEntry, i: number): HTMLElement {
     const row = document.createElement('div');
     row.className = 'dock-ship-row';
     row.setAttribute('role', 'listitem');
-    const selected = this.currentShip?.id === s.id;
+    const selected = this.currentVessel?.id === s.id;
     row.classList.toggle('is-selected', selected);
     const hpRatio = s.maxHp > 0 ? s.hp / s.maxHp : 0;
     row.classList.toggle('is-critical', hpRatio <= 0.3);
@@ -597,7 +597,7 @@ export class DockView {
     select.setAttribute('aria-pressed', String(selected));
     select.setAttribute('aria-label', `${s.name || `艦 ${i + 1}`}を選択`);
     select.addEventListener('click', () => {
-      this.currentShip = s.player;
+      this.currentVessel = s.player;
       this.refresh();
     });
 
@@ -625,22 +625,22 @@ export class DockView {
   }
 
   // 新造(既定パーツ一式の艦を1隻、格納艦へ加える)行。
-  private buildNewShipHeader(base: Base): HTMLElement {
-    const isFull = base.baseState.dockedShips.length >= C.BASE_MAX_SHIPS;
-    const canAfford = !isFull && (this.freeProcurement || base.baseState.money >= NEW_SHIP_COST);
+  private buildNewVesselHeader(base: Base): HTMLElement {
+    const isFull = base.baseState.dockedVessels.length >= C.BASE_MAX_VESSELS;
+    const canAfford = !isFull && (this.freeProcurement || base.baseState.money >= NEW_VESSEL_COST);
     const row = document.createElement('div');
     row.className = 'dock-parts-header';
     const label = document.createElement('span');
     label.className = 'dock-ship-label';
     label.textContent = isFull
-      ? `基地のドックが満杯です (最大 ${C.BASE_MAX_SHIPS} 隻)`
-      : '既定構成の艦を新造して格納庫へ追加します。';
+      ? `基地のドックが満杯です (最大 ${C.BASE_MAX_VESSELS} 隻)`
+      : '既定構成の艦艇を新造して格納庫へ追加します。';
     row.appendChild(label);
     const btn = new Button(
       isFull
         ? 'ドック満杯'
-        : `新造 · ${this.freeProcurement ? 'コストなし' : `${NEW_SHIP_COST.toLocaleString()} Cr`}`,
-      () => this.handleBuildShip(),
+        : `新造 · ${this.freeProcurement ? 'コストなし' : `${NEW_VESSEL_COST.toLocaleString()} Cr`}`,
+      () => this.handleBuildVessel(),
     );
     btn.element.classList.add('dock-btn', 'dock-btn-primary');
     btn.setEnabled(canAfford);
@@ -654,9 +654,9 @@ export class DockView {
   private buildPartsTab(): HTMLElement {
     const base = this.currentBase!;
     // 選択艦がなければ最初の艦を表示。倉庫は基地の持ち物なので、格納艦が居なくても出す。
-    const ship = this.currentShip ?? null;
-    const shipData = (ship ? base.baseState.dockedShips.find((s) => s.id === ship.id) : undefined)
-      ?? base.baseState.dockedShips[0]
+    const ship = this.currentVessel ?? null;
+    const shipData = (ship ? base.baseState.dockedVessels.find((s) => s.id === ship.id) : undefined)
+      ?? base.baseState.dockedVessels[0]
       ?? null;
 
     const frag = document.createElement('section');
@@ -705,7 +705,7 @@ export class DockView {
   }
 
   // 艦の全部品をまとめて修理するボタンの行。
-  private buildRepairAllHeader(base: Base, shipData: DockedShipEntry): HTMLElement {
+  private buildRepairAllHeader(base: Base, shipData: DockedVesselEntry): HTMLElement {
     const totalRepairCost = shipData.parts.reduce((sum, p) => sum + (p.maxHp - p.hp) * REPAIR_COST_PER_HP, 0);
     const enabled = totalRepairCost > 0 && (this.freeProcurement || base.baseState.money >= totalRepairCost);
     const row = document.createElement('div');
@@ -731,7 +731,7 @@ export class DockView {
   }
 
   // 搭載部品1件の行を作る。同じ type の在庫があれば換装欄を、rcs_tank なら補給ボタンを添える。
-  private buildInstalledPartRow(base: Base, shipData: DockedShipEntry, p: Part, i: number): HTMLElement {
+  private buildInstalledPartRow(base: Base, shipData: DockedVesselEntry, p: Part, i: number): HTMLElement {
     const hpPct = Math.max(0, Math.min(100, (p.hp / p.maxHp) * 100));
     const repairCost = (p.maxHp - p.hp) * REPAIR_COST_PER_HP;
     const canRepair = repairCost > 0 && (this.freeProcurement || base.baseState.money >= repairCost);
@@ -939,28 +939,28 @@ export class DockView {
   private handleLaunch(idx: number): void {
     const base = this.currentBase;
     if (!base) return;
-    const shipData = base.baseState.dockedShips[idx];
+    const shipData = base.baseState.dockedVessels[idx];
     if (!shipData) return;
-    this.onLaunchShip?.(shipData.player, base);
-    base.baseState.dockedShips.splice(idx, 1);
-    if (this.currentShip === shipData.player) this.currentShip = null;
+    this.onLaunchVessel?.(shipData.player, base);
+    base.baseState.dockedVessels.splice(idx, 1);
+    if (this.currentVessel === shipData.player) this.currentVessel = null;
     this.refresh();
   }
 
   // 新造費用を払い、実際の艦の生成(Docking 側)を要求する。
-  private handleBuildShip(): void {
+  private handleBuildVessel(): void {
     const base = this.currentBase;
     if (!base) return;
-    if (!this.freeProcurement && base.baseState.money < NEW_SHIP_COST) return;
-    if (!this.freeProcurement) base.baseState.money -= NEW_SHIP_COST;
-    this.onBuildShip?.(base);
+    if (!this.freeProcurement && base.baseState.money < NEW_VESSEL_COST) return;
+    if (!this.freeProcurement) base.baseState.money -= NEW_VESSEL_COST;
+    this.onBuildVessel?.(base);
     this.refresh();
   }
 
   private handleInspect(idx: number): void {
-    const shipData = this.currentBase?.baseState.dockedShips[idx];
+    const shipData = this.currentBase?.baseState.dockedVessels[idx];
     if (!shipData) return;
-    this.currentShip = shipData.player;
+    this.currentVessel = shipData.player;
     this.currentTab = 'parts';
     this.refresh();
   }
@@ -968,7 +968,7 @@ export class DockView {
   private handleRepairPart(shipId: string, partIdx: number): void {
     const base = this.currentBase;
     if (!base) return;
-    const shipData = base.baseState.dockedShips.find((s) => s.id === shipId);
+    const shipData = base.baseState.dockedVessels.find((s) => s.id === shipId);
     if (!shipData) return;
 
     const part: Part | undefined = shipData.parts[partIdx];
@@ -985,7 +985,7 @@ export class DockView {
   private handleRepairAll(shipId: string): void {
     const base = this.currentBase;
     if (!base) return;
-    const shipData = base.baseState.dockedShips.find((s) => s.id === shipId);
+    const shipData = base.baseState.dockedVessels.find((s) => s.id === shipId);
     if (!shipData) return;
 
     const parts = shipData.parts;
@@ -1000,7 +1000,7 @@ export class DockView {
 
   // 格納中は shipData.parts が艦本体の parts 配列と同一参照なので、修理は艦へ直接反映される。
   // hp/maxHp の集計スナップショットだけは別に持っているので、艦一覧タブの表示用にここで揃える。
-  private syncDockedSnapshot(shipData: DockedShipEntry): void {
+  private syncDockedSnapshot(shipData: DockedVesselEntry): void {
     shipData.player.refreshFromParts();
     shipData.hp = shipData.player.hp;
     shipData.maxHp = shipData.player.maxHp;
@@ -1011,7 +1011,7 @@ export class DockView {
   private handleSwapPart(shipId: string, partIdx: number, invId: string): void {
     const base = this.currentBase;
     if (!base) return;
-    const shipData = base.baseState.dockedShips.find((s) => s.id === shipId);
+    const shipData = base.baseState.dockedVessels.find((s) => s.id === shipId);
     const installed = shipData?.parts[partIdx];
     if (!shipData || !installed) return;
 
@@ -1029,7 +1029,7 @@ export class DockView {
   private handleRefuelInstalled(shipId: string, partIdx: number): void {
     const base = this.currentBase;
     if (!base) return;
-    const shipData = base.baseState.dockedShips.find((s) => s.id === shipId);
+    const shipData = base.baseState.dockedVessels.find((s) => s.id === shipId);
     const part = shipData?.parts[partIdx];
     if (!part || part.type !== 'rcs_tank') return;
     this.refuelTank(base, part as RcsTankPart);
