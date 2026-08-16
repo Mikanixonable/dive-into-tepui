@@ -2,7 +2,7 @@
 // GameEntity。呼び出し側が「いつの瞬間か」を決めて1回だけ呼び、同じ配列をそのステップの
 // 全エンティティに使い回す — 重力天体どうしの相互作用を処理順に依存させないため。
 import type { Ephemeris } from '../../physics/ephemeris';
-import type { Attractor } from '../../physics/attractor';
+import type { Attractor, AttractorId } from '../../physics/attractor';
 import { SpatialGrid } from '../../physics/spatial-grid';
 import { Vec3 } from '../../physics/vec3';
 import { GRAVITY_ALWAYS_COUNT, GRAVITY_NEGLIGIBLE_ACCEL } from '../const';
@@ -26,15 +26,18 @@ export function attractorsAt(ephemeris: Ephemeris, entities: EntityManager, t: n
   return mergeAttractors(gravityBodiesAt(ephemeris, t), entities.attractors());
 }
 
-// 時刻 t での重力源一覧(予測用)。動的重力天体も t の状態で組み、t の状態が得られない
-// 天体は落とす — 現在位置で凍結すると「その時刻に居ない場所」から引くことになる。
+// 時刻 t での重力源一覧(予測用)。動的重力天体も t の状態で組む — 現在位置で凍結すると
+// 「その時刻に居ない場所」から引くことになる。予測列で答えられない天体は先端からの
+// ケプラー外挿(GameEntity.displayState)で継ぎ、それでも答えられない天体だけ落ちる。
 export function predictedAttractorsAt(ephemeris: Ephemeris, entities: EntityManager, t: number): readonly Attractor[] {
+  // 先に解析天体の窓を引いておくと、外挿が問い合わせる中心天体の stateOf がそのキャッシュへ当たる。
+  const bodies = gravityBodiesAt(ephemeris, t);
   const dynamic: Attractor[] = [];
   for (const e of entities.attractors()) {
-    const s = e.displayState(t);
+    const s = e.displayState(t, ephemeris);
     if (s !== null) dynamic.push({ id: e.id, mu: e.mu, radius: e.radius, degree2: e.degree2, isStar: e.isStar, state: s });
   }
-  return mergeAttractors(gravityBodiesAt(ephemeris, t), dynamic);
+  return mergeAttractors(bodies, dynamic);
 }
 
 // 重力源一覧を、常に含める天体(always)と空間グリッドに載せる天体(grid)へ分けたもの。
@@ -87,21 +90,35 @@ export function classifyAttractors(attractors: readonly Attractor[]): Classified
 }
 
 // 位置 pos から見た重力源一覧 = 常に含める天体 + pos の27近傍グリッドに載っている天体。
-export function attractorsNear(pos: Vec3, classified: ClassifiedAttractors): readonly Attractor[] {
+// excludeId を渡すと、その id の天体をまるごと一覧から除く — pos を持つ本人が重力源
+// (Asteroid など)のとき、自分自身を引く項ができるのを防ぐ。まるごと落とすので
+// ECI 原点補正項(attractorAccel の第2項、問い合わせ位置に依存しない)も一緒に失うが、
+// GameEntity が取りうる質量では無視できる大きさ(1e12 kg の小惑星が2 AUにあるとき
+// 7e-25 m/s² 程度)にとどまる。
+export function attractorsNear(pos: Vec3, classified: ClassifiedAttractors, excludeId?: AttractorId): readonly Attractor[] {
   const nearby = classified.grid.neighbors(pos);
-  return nearby.length === 0 ? classified.always : [...classified.always, ...nearby];
+  const merged = nearby.length === 0 ? classified.always : [...classified.always, ...nearby];
+  return excludeId === undefined ? merged : merged.filter((a) => a.id !== excludeId);
 }
 
 // attractorsNear と同じ順序の一覧を out へ書き込む再利用版。out は呼び出し側が所有し、
 // この呼び出しの完了後に保持してはいけない。返した配列を保持したい呼び出し側は
-// attractorsNear を使う。
+// attractorsNear を使う。excludeId は attractorsNear と同じ。
 export function attractorsNearInto(
   pos: Vec3,
   classified: ClassifiedAttractors,
   out: Attractor[],
+  excludeId?: AttractorId,
 ): Attractor[] {
   out.length = 0;
   for (const a of classified.always) out.push(a);
   classified.grid.appendNeighborsInto(pos, out);
+  if (excludeId === undefined) return out;
+  // excludeId に一致する要素を、確保を増やさずその場で詰め直して落とす。
+  let w = 0;
+  for (const a of out) {
+    if (a.id !== excludeId) out[w++] = a;
+  }
+  out.length = w;
   return out;
 }

@@ -134,7 +134,9 @@ export class PlanAttractors implements PlanAttractorProvider {
   }
 
   // 解析天体の窓は1回だけ引き、衝突体と重力源の両方をそこから組む — 同じ時刻の重力源を
-  // 別の窓として引き直すと、同じ天体の位置を二度計算することになる。
+  // 別の窓として引き直すと、同じ天体の位置を二度計算することになる。この窓を動的重力源の
+  // displayState 外挿より先に引くのも同じ理由で、外挿が問い合わせる中心天体の stateOf を
+  // そのキャッシュへ当てる。
   private resolveAt(t: number): PlanSourcesAt {
     const collision: Attractor[] = [];
     const gravity: Attractor[] = [];
@@ -146,13 +148,13 @@ export class PlanAttractors implements PlanAttractorProvider {
       if (body.mu !== 0) gravity.push(body);
     }
     for (const e of this.entities.attractors()) {
-      const state = e.displayState(t);
+      const state = e.displayState(t, this.ephemeris);
       if (state === null) continue;
       gravity.push({ id: e.id, mu: e.mu, radius: e.radius, degree2: e.degree2, isStar: e.isStar, state });
     }
     for (const e of this.entities.all()) {
       if (!e.alive || !e.collides || !(e.radius > 0) || this.excluded.has(e.id) || collisionById.has(e.id)) continue;
-      const state = e.displayState(t);
+      const state = e.displayState(t, this.ephemeris);
       if (state === null) continue;
       const body = { id: e.id, mu: e.mu, radius: e.radius, degree2: e.degree2, isStar: e.isStar, state };
       collision.push(body);
