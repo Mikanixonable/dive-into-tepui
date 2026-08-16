@@ -18,6 +18,15 @@ export class StateQueue {
   // 最新サンプル(補間しない生の値)。空なら null。
   get newest(): KinematicState | null { return this.deque.empty ? null : this.deque.peekLeft(); }
 
+  // 最も古いサンプル(補間しない生の値)。空なら null。
+  get oldest(): KinematicState | null { return this.deque.empty ? null : this.deque.peekRight(); }
+
+  // 最も新しい2サンプルの時刻差 [s]。2件未満なら 0。
+  get newestGap(): number {
+    if (this.deque.size < 2) return 0;
+    return this.deque.at(0).t - this.deque.at(1).t;
+  }
+
   // 最も古い2サンプルの時刻差 [s]。2件未満なら 0。列の古い端での間引きの粗さを表し、
   // その端を挟む at() の補間誤差を見積もる基準になる。
   get oldestGap(): number {
@@ -65,15 +74,9 @@ export class StateQueue {
     this.deque.deleteRightN(Math.max(0, this.deque.size - Math.max(keep, minCount)));
   }
 
-  // 直近 n 件までに切り詰める(古い順から捨てる)。
-  capCount(n: number): void {
-    if (this.deque.size > n) this.deque.deleteRightN(this.deque.size - n);
-  }
-
-  // t 以上のサンプルをすべて捨てる。不連続な差し替え(DynamicTrajectory.reset)で、直前まで
-  // 「これから訪れるはずだった未来」として積まれていたサンプルを無効化するために使う。
-  discardFrom(t: number): void {
-    this.deque.deleteLeftN(this.bisect(t));
+  // 最新のサンプル1件だけを捨てる。空なら何もしない。
+  discardNewest(): void {
+    if (!this.deque.empty) this.deque.deleteLeftN(1);
   }
 
   // 保持しているサンプルを古い順(= 内部の降順と逆順)の配列で返す。折れ線描画
@@ -94,6 +97,10 @@ export class StateQueue {
     const idx = this.bisect(t);
     if (idx >= this.deque.size) return oldest; // t === oldest.t
 
-    return hermiteInterpolate(this.deque.at(idx - 1), this.deque.at(idx), t);
+    // bisect の契約から deque.at(idx - 1) は「t 以上で最も古い」サンプル。時刻がちょうど
+    // 一致するならそれ自身が答えで、補間する必要がない。
+    const newer = this.deque.at(idx - 1);
+    if (newer.t === t) return newer;
+    return hermiteInterpolate(newer, this.deque.at(idx), t);
   }
 }
