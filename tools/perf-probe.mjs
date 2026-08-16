@@ -358,6 +358,27 @@ async function shipMarkerScreenPos(devTools) {
 // オレンジ色は自機軌道の白線とほぼ重なって見分けが付かなかったが、マーカー近傍への
 // クリックは NODE_PICK_PX=30px の許容内に収まり、確実にノードが置けた)。
 // 成否は .gz-node(node-gizmo.ts の各ノードハンドル)の増加で確認する。
+// 軌道予測パネルの未来側の表示期間ピル(1周/1日/7日/28日)を押す。過去側の行(.predict-past)は
+// 同じラベルを持つので除いて探す。押せたら true。
+async function selectDisplayDuration(devTools, pillLabel) {
+  const rect = await devTools.evaluate(`(() => {
+    const rows = [...document.querySelectorAll('.predict-row1')].filter((r) => !r.classList.contains('predict-past'));
+    for (const row of rows) {
+      for (const b of row.querySelectorAll('.predict-pills .w-btn')) {
+        if (b.textContent === ${JSON.stringify(pillLabel)}) {
+          const r = b.getBoundingClientRect();
+          return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+        }
+      }
+    }
+    return null;
+  })()`);
+  if (!rect) return false;
+  await leftClickAt(devTools, rect.x, rect.y);
+  await sleep(300);
+  return true;
+}
+
 async function attemptPlaceNode(devTools) {
   const focused = await focusCameraOnShip(devTools);
   await sleep(700);
@@ -433,7 +454,7 @@ function median(nums) {
 // ============================================================================================
 async function runConditionOnce(devTools, baseUrl, cond, fatalEvents) {
   const {
-    label, stage, warp = 1, view = 'combat', placeNode = false,
+    label, stage, warp = 1, view = 'combat', placeNode = false, duration = null,
     samples = 10, intervalMs = 500, settleMs = 3000,
   } = cond;
   fatalEvents.length = 0;
@@ -448,6 +469,11 @@ async function runConditionOnce(devTools, baseUrl, cond, fatalEvents) {
       // (plan-guide.ts)、置いたノードはワープを上げても消費されない。それでも「操作」自体は
       // 軌道が暴れていない自然な状態でやるほうが確実なので、ワープ増速は最後に回す。
       const actualView = await ensureView(devTools, view);
+      let durationResult = null;
+      if (view === 'map' && duration) {
+        durationResult = await selectDisplayDuration(devTools, duration);
+        if (!durationResult) throw new Error(`display duration pill "${duration}" not found`);
+      }
       let nodeResult = null;
       if (view === 'map' && placeNode) {
         nodeResult = await attemptPlaceNode(devTools);
@@ -493,7 +519,7 @@ async function runConditionOnce(devTools, baseUrl, cond, fatalEvents) {
 
       return {
         label, stage, requestedWarp: warp, requestedView: view, actualView,
-        placeNode, nodeResult,
+        placeNode, nodeResult, duration, durationResult,
         actualWarpAtSampleStart: parseRowValue(sampleRows[0]?.find((r) => r.key === 'warp')?.value ?? '').avg ?? null,
         samples, intervalMs, settleMs,
         rows: summary,
@@ -594,9 +620,16 @@ function defaultMatrix() {
 
     // (d) エンティティ数の多いステージ(debug-load: 小惑星+破片を多数配置)。
     // マップビューは全個体が予測対象になるので、予測の伸長そのものを測れる唯一の条件。
+    // 28日プリセットは、刻み幅の horizon/PREDICT_MAX_STEPS 項が効き始める唯一の条件。
     { label: 'debug-load-combat-warp65536', stage: 'debug-load', warp: 65536, view: 'combat', ...common },
     { label: 'debug-load-combat-warp1', stage: 'debug-load', warp: 1, view: 'combat', ...common },
     { label: 'debug-load-map-warp1', stage: 'debug-load', warp: 1, view: 'map', placeNode: false, ...common },
+    // 多数の遠方個体を、伸長が毎フレーム必要になるワープで。×65536 は積分だけで 8.7s/frame に
+    // なり計測にならないので、フレーム時間が読める段まで落とす。
+    { label: 'debug-load-map-warp1024', stage: 'debug-load', warp: 1024, view: 'map', placeNode: false, ...common },
+    // 28日プリセットは horizon/PREDICT_MAX_STEPS 項が効き始める唯一の条件。予測列は
+    // この長さでは伸び切らず、予算を飽和させたまま推移する。
+    { label: 'stage1-map-warp1-dur28d', stage: '1', warp: 1, view: 'map', placeNode: false, duration: '28日', ...common, settleMs: 8000 },
   ];
 }
 
