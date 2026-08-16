@@ -345,12 +345,12 @@ export class EntityManager {
   syncPlayers(
     activePlayer: Player | null, fo: FloatingOrigin, cameraSystem: CameraSystem,
     displayTime: number, ephemeris: Ephemeris, attractors: readonly Attractor[],
-    visibilityPolicy: MapVisibilityPolicy | null,
+    visibilityPolicy: MapVisibilityPolicy | null, displayWindow?: DisplayWindow,
   ): void {
     for (const ship of this.players) {
       ship.syncPlayer(
         fo, cameraSystem, displayTime, ship === activePlayer, ephemeris, attractors,
-        visibilityPolicy?.entity('player', ship === activePlayer) ?? null,
+        visibilityPolicy?.entity('player', ship === activePlayer) ?? null, displayWindow,
       );
     }
   }
