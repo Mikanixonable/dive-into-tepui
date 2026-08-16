@@ -21,7 +21,7 @@ export class Bgm {
   private audition: Conductor | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private volume = 1;
-  private autoStarted = false;
+  private started = false;
 
   // 保存済みの音量設定を読み込む。
   constructor(private readonly engine: AudioEngine) {
@@ -32,6 +32,8 @@ export class Bgm {
       /* localStorage 不可の環境では既定値(ON)のまま */
     }
   }
+
+  // === 共通 (conductor によらない操作) ===
 
   getVolume(): number {
     return this.volume;
@@ -53,25 +55,87 @@ export class Bgm {
     if (vol > 0) this.start();
   }
 
-  // 起動後最初のユーザー操作(unlock 直後)から呼ばれ、一度だけ再生を始める。
-  // 2回目以降と、明示的な再生・停止(playTrack/stop)が先に走っていた場合は何もしない。
-  autoStart(): void {
-    if (this.autoStarted || !this.engine.ctx) return;
-    this.autoStarted = true;
+  // ユーザー音量を表すマスターゲイン。線を跨いで生き続ける唯一のノード。
+  private ensureMasterGain(ctx: AudioContext): GainNode {
+    if (this.masterGain) return this.masterGain;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(Math.max(0.0001, this.volume), ctx.currentTime);
+    g.connect(ctx.destination);
+    this.masterGain = g;
+    return g;
+  }
+
+  // どれかの線が鳴っている間だけ刻みを回す。
+  private syncPump(): void {
+    const sounding = (this.ambient?.isSounding ?? false) || (this.audition?.isSounding ?? false);
+    if (sounding && !this.timer) {
+      this.timer = setInterval(() => this.pump(), PUMP_INTERVAL_MS);
+    } else if (!sounding && this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+  }
+
+  // 先読み時間の範囲まで、動いている線をすべて刻み進める。
+  private pump(): void {
+    const ctx = this.engine.ctx;
+    if (!ctx) return;
+    const deadline = ctx.currentTime + LOOKAHEAD_SEC;
+    this.ambient?.advance(deadline);
+    this.audition?.advance(deadline);
+  }
+
+  // === ゲーム内BGM (ambient conductor) ===
+  // これが既定の conductor なので、特別扱いとし、関連するメソッド名から目的語 (ambient) を省く。
+
+  // ゲーム内 BGM を開く。すでに鳴っていれば何もしない。
+  private start(trackIdx?: number): void {
+    const ctx = this.engine.ctx;
+    if (!ctx) return;
+    const line = this.ensureAmbient(ctx);
+    if (line.isSounding) return;
+    line.start(trackIdx);
+    this.syncPump();
+  }
+
+  ensureStarted(): void {
+    if (this.started || !this.engine.ctx) return;
+    this.started = true;
     if (this.volume > 0) this.start();
   }
 
-  // 設定画面が開いた。ゲーム中の BGM を伏せ、試聴だけが聞こえる状態にする。
-  beginAudition(): void {
+  // ゲーム内 BGM を伏せる。
+  pause(): void {
     this.ambient?.pause();
   }
 
+  // ゲーム内 BGM を再開する。直前に鳴らしていた曲から始める。
+  resume(): void {
+    const ctx = this.engine.ctx;
+    if (this.volume <= 0 || !ctx) return;
+    this.start(this.ensureAmbient(ctx).currentTrackIndex);
+  }
+
+  // ゲーム中の BGM の線。AudioContext ができるまでは組めないので、最初に鳴らすときに作る。
+  private ensureAmbient(ctx: AudioContext): Conductor {
+    if (!this.ambient) this.ambient = new Conductor(ctx, this.ensureMasterGain(ctx), true);
+    return this.ambient;
+  }
+
+  // ゲーム中の BGM を fadeSec 秒かけてフェードアウトする。
+  stop(fadeSec = 2.5): void {
+    this.ambient?.stop(fadeSec);
+    this.syncPump();
+  }
+
+  // === 試聴用 BGM (audition conductor) ===
+
   // 指定した曲を先頭から試聴する。AudioContext の unlock も最初のクリックで行う。
   // 試聴の線は曲送りしないので、選んだ曲がそのまま鳴り続ける。
-  playTrack(index: number): void {
+  playAudition(index: number): void {
     this.engine.unlock();
     // 明示的に曲を選んだ後は、最初の操作での自動開始に上書きさせない
-    this.autoStarted = true;
+    this.started = true;
     const ctx = this.engine.ctx;
     if (!ctx || BGM_TRACKS.length === 0) return;
     this.disposeAudition();
@@ -94,68 +158,9 @@ export class Bgm {
     this.syncPump();
   }
 
-  // ゲーム中の BGM を再開する。直前に鳴らしていた曲から始める。
-  resume(): void {
-    const ctx = this.engine.ctx;
-    if (this.volume <= 0 || !ctx) return;
-    this.start(this.ensureAmbient(ctx).currentTrackIndex);
-  }
-
-  // ゲーム中の BGM を fadeSec 秒かけてフェードアウトする。
-  stop(fadeSec = 2.5): void {
-    this.ambient?.stop(fadeSec);
-    this.syncPump();
-  }
-
-  // ゲーム中の線に曲を開かせる。すでに鳴っていれば何もしない。
-  private start(trackIdx?: number): void {
-    const ctx = this.engine.ctx;
-    if (!ctx) return;
-    const line = this.ensureAmbient(ctx);
-    if (line.isSounding) return;
-    line.start(trackIdx);
-    this.syncPump();
-  }
-
   // 試聴の線があれば畳む。
   private disposeAudition(): void {
     this.audition?.dispose(AUDITION_FADE_SEC);
     this.audition = null;
-  }
-
-  // どれかの線が鳴っている間だけ刻みを回す。
-  private syncPump(): void {
-    const sounding = (this.ambient?.isSounding ?? false) || (this.audition?.isSounding ?? false);
-    if (sounding && !this.timer) {
-      this.timer = setInterval(() => this.pump(), PUMP_INTERVAL_MS);
-    } else if (!sounding && this.timer) {
-      clearInterval(this.timer);
-      this.timer = null;
-    }
-  }
-
-  // ゲーム中の BGM の線。AudioContext ができるまでは組めないので、最初に鳴らすときに作る。
-  private ensureAmbient(ctx: AudioContext): Conductor {
-    if (!this.ambient) this.ambient = new Conductor(ctx, this.ensureMasterGain(ctx), true);
-    return this.ambient;
-  }
-
-  // ユーザー音量を表すマスターゲイン。線を跨いで生き続ける唯一のノード。
-  private ensureMasterGain(ctx: AudioContext): GainNode {
-    if (this.masterGain) return this.masterGain;
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(Math.max(0.0001, this.volume), ctx.currentTime);
-    g.connect(ctx.destination);
-    this.masterGain = g;
-    return g;
-  }
-
-  // 先読み時間の範囲まで、動いている線をすべて刻み進める。
-  private pump(): void {
-    const ctx = this.engine.ctx;
-    if (!ctx) return;
-    const deadline = ctx.currentTime + LOOKAHEAD_SEC;
-    this.ambient?.advance(deadline);
-    this.audition?.advance(deadline);
   }
 }
