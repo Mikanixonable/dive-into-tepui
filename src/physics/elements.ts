@@ -78,6 +78,18 @@ export function apsisAltitudes(el: OrbitalElements): { pe: number; ap: number } 
   };
 }
 
+// 中心天体の ID に応じた近点・遠点の日本語・英語正式名称 (例: 近地点 Perigee / 遠地点 Apogee, 近月点 Perilune / 遠月点 Apolune 等)
+export function fmtApsisName(type: 'pe' | 'ap', centerId: string): string {
+  const isEarth = centerId === 'earth';
+  const isSun = centerId === 'sun';
+  const isMoon = centerId === 'moon';
+  if (type === 'pe') {
+    return isEarth ? '近地点 Perigee' : isSun ? '近日点 Perihelion' : isMoon ? '近月点 Perilune' : '近点 Periapsis';
+  } else {
+    return isEarth ? '遠地点 Apogee' : isSun ? '遠日点 Aphelion' : isMoon ? '遠月点 Apolune' : '遠点 Apoapsis';
+  }
+}
+
 // 平均近点角 M → 離心近点角 E(ケプラー方程式 M = E − e sin E をニュートン法で解く。楕円のみ)。
 export function eccentricAnomalyFromMean(m: number, e: number): number {
   const M = Math.atan2(Math.sin(m), Math.cos(m)); // [-π, π] へ畳んで初期値 E=M の収束を安定させる
