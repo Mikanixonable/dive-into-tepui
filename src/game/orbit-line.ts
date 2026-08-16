@@ -8,6 +8,7 @@ import * as THREE from 'three/webgpu';
 import { OrbitalElements } from '../physics/elements';
 import { FloatingOrigin } from './floating-origin';
 import { Curve, CurveSampler } from '../render/curve';
+import { LineStyle } from '../render/line-style';
 import { ReferenceFrame, FrameTransform, toFramePoint } from '../physics/frame';
 import type { Ephemeris } from '../physics/ephemeris';
 import { Attractor } from '../physics/attractor';
@@ -33,33 +34,16 @@ export class OrbitLine {
   private snapCenterPos: Vec3 = v3();
   // Curve へ渡す revision。楕円を作り直すたびに新しいオブジェクトへ差し替える。
   private revision: object = {};
-  private suppressed = false;
-  private displayEnabled = true;
 
-  // 表示の有効/無効を切り替える。
-  setDisplayEnabled(value: boolean): void {
-    this.displayEnabled = value;
-    this.applyVisible();
-  }
-
-  // 楕円線の表示を抑制する。抑制を解いたフレームでそのまま描き戻せるよう、直近の sync が
-  // 有効な軌道要素を得ていた場合(snap がある)に限って表示へ戻す — 次の sync を待つと、
-  // 抑制が解ける原因になった線が既に消えている1フレームのあいだ、どの線も出ない。
-  setSuppressed(value: boolean): void {
-    this.suppressed = value;
-    this.applyVisible();
-  }
-
-  // 有効な軌道要素を得ている(snap がある)ときだけ、表示要求どおりに描く。
-  private applyVisible(): void {
-    this.curve.setVisible(this.displayEnabled && !this.suppressed && this.snap !== null);
-  }
-
-  // renderOrder は、この線が他の線と重なったときにどちらを手前へ描くかを決める —
+  // style.renderOrder は、この線が他の線と重なったときにどちらを手前へ描くかを決める —
   // 透明描画どうしの前後は描画順でしか決まらない。
-  constructor(color: string | number, opacity = 0.5, renderOrder = 0) {
-    this.curve = new Curve({ color, opacity, renderOrder, maxVertices: MAX_VERTICES });
+  constructor(style: LineStyle) {
+    this.curve = new Curve({ style, maxVertices: MAX_VERTICES });
     this.line = this.curve.object;
+  }
+
+  setStyle(style: LineStyle): void {
+    this.curve.setStyle(style);
   }
 
   // 不透明度を書き換える。天体からの距離に応じて描画側がフェードさせる。
@@ -69,6 +53,10 @@ export class OrbitLine {
 
   setColor(color: string | number): void {
     this.curve.setColor(color);
+  }
+
+  setRenderOrder(renderOrder: number): void {
+    this.curve.setRenderOrder(renderOrder);
   }
 
   // 離心近点角 E=t·2π を軌道要素で位置へ写す、閉曲線サンプラ。読むのは snap で、
@@ -94,8 +82,8 @@ export class OrbitLine {
   };
 
   // 毎フレーム呼ぶ。fo = 描画のフローティングオリジン、camera = 画面上のサジッタを実距離へ
-  // 換算するための描画カメラ。force = 要素が能動的に変化している間(推力中・ノード編集中)は
-  // true。
+  // 換算するための描画カメラ。el が null なら軌道要素を持たない状態として非表示にする。
+  // force = 要素が能動的に変化している間(推力中・ノード編集中)は true。
   sync(
     el: OrbitalElements | null, fo: FloatingOrigin, camera: THREE.Camera, force = false,
     frame?: ReferenceFrame, displayTime?: number, ephemeris?: Ephemeris, attractors?: readonly Attractor[],
@@ -103,7 +91,7 @@ export class OrbitLine {
     if (!el || el.e >= 0.98 || !isFinite(el.a) || el.a <= 0) {
       this.snap = null;
       this.snapTf = null;
-      this.applyVisible();
+      this.curve.setVisible(false);
       return;
     }
 
@@ -127,7 +115,7 @@ export class OrbitLine {
     }
 
     this.curve.setCurve(this.sampler, { revision: this.revision, camera });
-    this.applyVisible();
+    this.curve.setVisible(true);
   }
 
   // 現在の要素が直近のスナップショットから許容誤差を超えて変化していれば true(要再生成)。

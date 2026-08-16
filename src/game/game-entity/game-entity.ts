@@ -11,6 +11,7 @@ import { Vec3, len, sub, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import { OrbitLine } from '../orbit-line';
 import { TrajectoryLine } from '../trajectory-line';
+import { LineStyle } from '../../render/line-style';
 import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import * as C from '../const';
@@ -34,12 +35,12 @@ const identityAttitude = (): Attitude => ({
 // 軌道上を運動するゲーム内エンティティの基底。表示ルート・HP・生死・姿勢・AI といったゲーム側の
 // 付帯情報と、種別ごとの積分パラメータ(bcInv・historyDuration)を持つ。
 export class GameEntity {
-  readonly actualTrajectory: DynamicTrajectory;
+  readonly actual: DynamicTrajectory;
 
-  get state(): KinematicState { return this.actualTrajectory.state; }
+  get state(): KinematicState { return this.actual.state; }
   // 不連続な差し替え専用の口(剛体接触・反動など)。
-  set state(s: KinematicState) { this.actualTrajectory.reset(s); }
-  get prevState(): KinematicState { return this.actualTrajectory.prevState; }
+  set state(s: KinematicState) { this.actual.reset(s); }
+  get prevState(): KinematicState { return this.actual.prevState; }
 
   private static readonly idAllocator = new EntityIdAllocator('entity-');
 
@@ -67,9 +68,9 @@ export class GameEntity {
   // 自身の軌道楕円を描く線。null = 持たない。
   orbitLine: OrbitLine | null = null;
   // 自身の予測軌道を描く線。null = 持たない。
-  trajectoryLine: TrajectoryLine | null = null;
+  predictedLine: TrajectoryLine | null = null;
   // 過去に通ってきた軌跡の線。持たせるかは種別の判断。
-  pastTrajectoryLine: TrajectoryLine | null = null;
+  actualLine: TrajectoryLine | null = null;
   // 自身の軌道と中心天体の赤道面との交点マーカー。null = まだ出す必要が生じていない。
   equatorNodes: EquatorNodeMarkerPair | null = null;
   // 自身の位置を指すマーカー。null = 出さない。
@@ -88,14 +89,30 @@ export class GameEntity {
   protected get historyDuration(): number {
     return Math.max(this.baseHistoryDuration, this.requestedHistoryDuration);
   }
-  // 未来を予測する種別か。既定 false。予測する長さは表示期間に追従するので、
-  // 種別ごとに決まるのは可否だけ。
-  readonly predictsFuture: boolean = false;
+  // 未来の状態を引かれる理由。読み手も成り立つ条件も理由ごとに違うので、1つの真偽値へ
+  // 畳まずに別々に持つ。予測する長さは表示期間に追従するため、ここで決まるのは可否だけ。
+
+  // 未来位置を重力源として引かれるか。引力を持つなら、予測と計画の積分が未来時刻の
+  // この個体を必要とする。
+  get predictedAsGravitySource(): boolean {
+    return this.mu !== 0;
+  }
+  // 未来位置を計画軌道の衝突体として引かれるか。剛体接触への参加(collides)とは別の判断
+  // で、こちらは「数分から数日先まで伸びる線が相手にするだけの寿命を持つか」を言う。
+  protected readonly predictedAsPlanCollider: boolean = false;
+  // 表示時刻(未来ゴースト)の位置でメッシュとマーカーを描く種別か。
+  protected readonly predictedForGhost: boolean = false;
+
+  // 予測列を伸ばす種別か。上の理由のどれか1つでも立てば伸ばす。
+  get predictsFuture(): boolean {
+    return this.predictedAsGravitySource || this.predictedAsPlanCollider
+      || this.predictedForGhost || this.predictedLine !== null;
+  }
   protected readonly scene?: THREE.Scene;
 
   // 未来の予測列。
-  private _predictedTrajectory: DynamicTrajectory | null = null;
-  get predictedTrajectory(): DynamicTrajectory | null { return this._predictedTrajectory; }
+  private _predicted: DynamicTrajectory | null = null;
+  get predicted(): DynamicTrajectory | null { return this._predicted; }
   // 積分中に再突入高度を割った/非有限値が出て打ち切られたか。打ち切られた列はそれ以上
   // 伸びない(新しい列を作るまで恒久的)。
   private truncated = false;
@@ -112,7 +129,7 @@ export class GameEntity {
     id?: string,
     addToScene = true,
   ) {
-    this.actualTrajectory = new DynamicTrajectory(state);
+    this.actual = new DynamicTrajectory(state);
     this.id = id ?? GameEntity.idAllocator.next();
     this.name = this.id;
     this.att = att;
@@ -133,43 +150,95 @@ export class GameEntity {
     return orbitalElementsOf(this.state, center);
   }
 
-  // orbitLine を、現在位置で最も強く引く天体を中心とする軌道楕円に合わせる。
-  // show が false のときは非表示にする。force は OrbitLine.sync へそのまま渡す。
+  // 軌道楕円の線を style で出す。既に出ていれば style を塗り直す。
+  showOrbitLine(style: LineStyle): void {
+    if (this.orbitLine !== null) {
+      this.orbitLine.setStyle(style);
+      return;
+    }
+    const line = new OrbitLine(style);
+    this.scene?.add(line.line);
+    this.orbitLine = line;
+  }
+
+  // 軌道楕円の線を消す。出し直すと作り直しになる。
+  hideOrbitLine(): void {
+    if (this.orbitLine === null) return;
+    this.scene?.remove(this.orbitLine.line);
+    this.orbitLine.dispose();
+    this.orbitLine = null;
+  }
+
+  // orbitLine を現在位置で最も強く引く天体まわりの軌道楕円に合わせる。線を持たなければ何もしない。
+  // frame / displayTime / ephemeris を渡すと、その座標系・時刻で楕円を描く。
   syncOrbitLine(
-    show: boolean, fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[], force = false,
+    fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[], force = false,
     frame?: ReferenceFrame, displayTime?: number, ephemeris?: Ephemeris,
   ): void {
     if (this.orbitLine === null) return;
     const center = strongestAttractor(this.state.r, attractors);
     this.orbitLine.sync(
-      show ? this.orbitalElementsAround(center) : null, fo, camera, force,
-      frame, displayTime, ephemeris, attractors,
+      this.orbitalElementsAround(center), fo, camera, force, frame, displayTime, ephemeris, attractors,
     );
   }
 
-  // trajectoryLine を現在時刻以降の predictedTrajectory に、pastTrajectoryLine を
-  // [simTime - pastDuration, simTime] の actualTrajectory に合わせる(未来線の先頭と過去線の
-  // 末尾が常に現在位置で接するようにする)。pastDuration が保持窓を超える分は
-  // TrajectoryLine 側が保持区間の先頭へクランプする。show が false のときは両方を非表示にする。
+  // 予測線を style で出す。既に出ていれば style を塗り直す。
+  showPredictedLine(style: LineStyle): void {
+    if (this.predictedLine !== null) {
+      this.predictedLine.setStyle(style);
+      return;
+    }
+    const line = new TrajectoryLine(style);
+    this.scene?.add(line.line);
+    this.predictedLine = line;
+  }
+
+  // 予測線を消す。出し直すと作り直しになる。
+  hidePredictedLine(): void {
+    if (this.predictedLine === null) return;
+    this.scene?.remove(this.predictedLine.line);
+    this.predictedLine.dispose();
+    this.predictedLine = null;
+  }
+
+  // 実軌道の過去線を style で出す。既に出ていれば style を塗り直す。
+  showActualLine(style: LineStyle): void {
+    if (this.actualLine !== null) {
+      this.actualLine.setStyle(style);
+      return;
+    }
+    const line = new TrajectoryLine(style);
+    this.scene?.add(line.line);
+    this.actualLine = line;
+  }
+
+  // 実軌道の過去線を消す。
+  hideActualLine(): void {
+    if (this.actualLine === null) return;
+    this.scene?.remove(this.actualLine.line);
+    this.actualLine.dispose();
+    this.actualLine = null;
+  }
+
+  // predictedLine を [simTime, predictedTo] の predicted に、actualLine を
+  // [simTime - pastDuration, simTime] の actual に合わせる(未来線の先頭と過去線の
+  // 末尾が常に現在位置で接するようにする)。predictedTo に null を渡すと未来線を先端で止める。
   // simTime は描く区間の境目、displayTime は座標系から慣性系へ戻す時刻。
-  syncTrajectoryLine(
-    show: boolean, frame: ReferenceFrame, simTime: number, displayTime: number, pastDuration: number,
+  syncTrajectoryLines(
+    frame: ReferenceFrame, simTime: number, displayTime: number, pastDuration: number, predictedTo: number | null,
     ephemeris: Ephemeris, fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
   ): void {
-    if (this.trajectoryLine !== null) {
-      this.trajectoryLine.syncGeometry(
-        show ? this.predictedTrajectory : null, simTime, null, frame, ephemeris, attractors,
-      );
-      this.trajectoryLine.syncTransform(frame, displayTime, ephemeris, fo, attractors);
-      this.trajectoryLine.sync(camera);
+    if (this.predictedLine !== null) {
+      this.predictedLine.syncGeometry(this.predicted, simTime, predictedTo, frame, ephemeris, attractors);
+      this.predictedLine.syncTransform(frame, displayTime, ephemeris, fo, attractors);
+      this.predictedLine.sync(camera);
     }
-    if (this.pastTrajectoryLine !== null) {
-      const drawPast = show && pastDuration > 0;
-      this.pastTrajectoryLine.syncGeometry(
-        drawPast ? this.actualTrajectory : null, simTime - pastDuration, simTime, frame, ephemeris, attractors,
+    if (this.actualLine !== null) {
+      this.actualLine.syncGeometry(
+        this.actual, simTime - pastDuration, simTime, frame, ephemeris, attractors,
       );
-      this.pastTrajectoryLine.syncTransform(frame, displayTime, ephemeris, fo, attractors);
-      this.pastTrajectoryLine.sync(camera);
+      this.actualLine.syncTransform(frame, displayTime, ephemeris, fo, attractors);
+      this.actualLine.sync(camera);
     }
   }
 
@@ -178,20 +247,6 @@ export class GameEntity {
   requestHistoryDuration(sec: number): void {
     if (this.baseHistoryDuration <= 0) return;
     this.requestedHistoryDuration = Math.max(0, Math.min(C.HISTORY_DURATION_MAX, sec));
-  }
-
-  // 自分の解析楕円(orbitLine)をこの予測軌道線で隠してよいかを返す。マップビューでは楕円が
-  // 表示期間 [simTime, simTime + horizon] 全体の代替を担うため、予測がそこまで覆っている
-  // (天体貫入などで打ち切られ、以後伸びない場合も含む)ときだけ隠す。戦闘ビューには表示期間を
-  // 見せるという用途がなく、予測線が描かれてさえいれば解析楕円と並んで見える方が誤読を招くので、
-  // 覆っているかを問わず隠す。
-  supersedesAnalyticEllipse(simTime: number, horizon: number, overviewMode: boolean): boolean {
-    const line = this.trajectoryLine;
-    if (!line || !line.visible) return false;
-    if (!overviewMode) return true;
-    if (this.predictionTruncated) return true;
-    const tip = this.predictedTrajectory?.state.t;
-    return tip !== undefined && tip >= simTime + horizon;
   }
 
   // 保持窓が keepDuration の列へ積む最小間隔 [s]。その場で最も強く引く天体を中心とする
@@ -211,7 +266,7 @@ export class GameEntity {
     const interval = this.historyDuration > 0
       ? this.sampleInterval(attractors, this.state, this.historyDuration)
       : 0;
-    this.actualTrajectory.step(dt, attractors, this.bcInv, this.srpCoeff, this.thrust, interval, this.historyDuration);
+    this.actual.step(dt, attractors, this.bcInv, this.srpCoeff, this.thrust, interval, this.historyDuration);
   }
 
   // シミュレーションを正確に区切る必要がある次の絶対時刻。寿命など、既知の時刻で
@@ -222,14 +277,14 @@ export class GameEntity {
 
   // 予測列を破棄する。
   invalidatePrediction(): void {
-    this._predictedTrajectory = null;
+    this._predicted = null;
   }
 
   // 実状態との位置ずれが許容量を超えていたら予測列を破棄する。破棄したら true。
   // attractors は simTime の重力源一覧。
   discardPredictionIfDiverged(simTime: number, attractors: readonly Attractor[]): boolean {
-    if (this._predictedTrajectory === null) return false;
-    const predictedState = this._predictedTrajectory.at(simTime);
+    if (this._predicted === null) return false;
+    const predictedState = this._predicted.at(simTime);
     if (predictedState !== null
       && len(sub(predictedState.r, this.state.r)) <= this.divergenceTolerance(attractors)) {
       return false;
@@ -251,7 +306,7 @@ export class GameEntity {
     const center = strongestAttractor(this.state.r, attractors);
     const period = keplerPeriod(len(sub(this.state.r, center.state.r)), center.mu);
     const span = isFinite(period) && period > 0 ? period : C.SHIP_HISTORY_DURATION;
-    const interval = this._predictedTrajectory?.sampleInterval ?? 0;
+    const interval = this._predicted?.sampleInterval ?? 0;
     const coarsening = Math.max(1, interval / (span / C.TRAJECTORY_SAMPLES_PER_REV));
     const raw = C.PREDICT_SAMPLE_ERROR * coarsening ** 4;
     // 局所軌道周期に対応する長半径(ケプラー第三法則)。中心天体の μ が取れなければ
@@ -263,20 +318,27 @@ export class GameEntity {
   }
 
   // 予測列の先端を、呼び出し側が確定させた重力源 attractors のもとで dt ぶん1ステップ伸ばす。
-  // horizon は simTime から先に予測する長さ [s]。伸ばせなかったら false。
-  stepPredicted(attractors: readonly Attractor[], simTime: number, dt: number, horizon: number): boolean {
+  // horizon は simTime から先に予測する長さ [s]。extrapolationCenter は先端位置で最も強く引く
+  // 解析天体(外挿用、省略時 null)。伸ばせなかったら false。
+  stepPredicted(
+    attractors: readonly Attractor[], simTime: number, dt: number, horizon: number,
+    extrapolationCenter: Attractor | null = null,
+  ): boolean {
     if (!this.predictsFuture) return false;
-    if (this._predictedTrajectory === null) {
-      this._predictedTrajectory = new DynamicTrajectory(this.actualTrajectory.state);
+    if (this._predicted === null) {
+      this._predicted = new DynamicTrajectory(this.actual.state);
       this.truncated = false;
     }
     if (this.truncated) return false;
-    const p = this._predictedTrajectory;
+    const p = this._predicted;
 
     // 先端が既にホライズンへ達していたら、それ以上は伸ばさない。
     if (p.state.t >= simTime + horizon) return false;
 
-    p.step(dt, attractors, this.bcInv, this.srpCoeff, null, this.sampleInterval(attractors, p.state, horizon), horizon);
+    p.step(
+      dt, attractors, this.bcInv, this.srpCoeff, null,
+      this.sampleInterval(attractors, p.state, horizon), horizon, extrapolationCenter,
+    );
 
     // 有限チェック
     const { r, v } = p.state;
@@ -287,9 +349,16 @@ export class GameEntity {
     return true;
   }
 
-  // 表示時刻 t の状態。予測を持たない/予測期間を超えた時刻は null。
-  displayState(t: number): KinematicState | null {
-    return t <= this.actualTrajectory.state.t ? this.actualTrajectory.at(t) : (this._predictedTrajectory?.at(t) ?? null);
+  // 表示時刻 t の状態。予測を持たない/予測期間を超えた時刻は null。ephemeris を渡すと、
+  // 予測列で答えられない未来時刻を、先端を中心天体まわりの二体軌道とみなして外挿した値で
+  // 答える(外挿もできなければ null)。
+  displayState(t: number, ephemeris?: Ephemeris): KinematicState | null {
+    if (t <= this.actual.state.t) return this.actual.at(t);
+    const predicted = this._predicted;
+    const normal = predicted?.at(t) ?? null;
+    if (normal !== null || ephemeris === undefined) return normal;
+    if (predicted === null || this.truncated || predicted.extrapolationCenter === null) return null;
+    return predicted.extrapolatedAt(t, ephemeris.stateOf(predicted.extrapolationCenter.id, t));
   }
 
   // displayTime の描画位置・姿勢を fo 経由でメッシュへ同期する。
@@ -308,7 +377,7 @@ export class GameEntity {
   // 時刻の重力源一覧(表面到達判定に使う)。
   checkLoss(_dt: number, _simTime: number, _activeStage: Stage, _playerPos: Vec3, attractors: readonly Attractor[]): void {
     if (!this.alive) return;
-    if (reachedBody(this.actualTrajectory.prevState, this.state, attractors, 0) !== null
+    if (reachedBody(this.actual.prevState, this.state, attractors, 0) !== null
       || isBurnedUp(this.state.r, attractors, C.DEBRIS_REENTRY_ALT)) this.alive = false;
   }
 
@@ -332,6 +401,9 @@ export class GameEntity {
     this.scene?.remove(this.renderObject);
     this.equatorNodes?.dispose();
     this.marker?.dispose();
+    this.hideOrbitLine();
+    this.hidePredictedLine();
+    this.hideActualLine();
     this.renderObject.traverse((child) => {
       const mesh = child as THREE.Mesh;
       if (!mesh.isMesh) return;

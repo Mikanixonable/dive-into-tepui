@@ -170,10 +170,11 @@ main.ts
 │       │   ├── referenceLines: ReadonlyMap<OrbitingId, OrbitLine> ... SOLAR_SYSTEM の公転天体ぶん自動生成(衛星=旧月線色、惑星=白)。天体の登録追加だけで線が増える
 │       │   └── CelestialGrid              ... 赤道面/黄道面それぞれの基準円・緯経線グリッド・両極マーカー
 │       ├── Targeter                       ... ContextMenu を持たない(施策5 §7-2)。第一/第二ターゲットの設定・解除は
-│       │   │                                   MapContextActions が開くプロパティウィンドウの targetPrimary/targetSecondary
-│       │   │                                   項目から setPrimaryTarget()/setSecondaryTarget() を呼ぶ形に一本化
-│       │   ├── OrbitLine                  ... 第一ターゲット軌道線(オレンジ)
-│       │   └── OrbitLine (secondaryOrbitLine) ... 第二ターゲット軌道線(シアン)
+│       │                                       MapContextActions が開くプロパティウィンドウの targetPrimary/targetSecondary
+│       │                                       項目から setPrimaryTarget()/setSecondaryTarget() を呼ぶ形に一本化。
+│       │                                       軌道線は own しない — ターゲットのハイライト線はターゲットにされた
+│       │                                       エンティティ自身の OrbitLine を EntityLineManager がターゲット用スタイルで
+│       │                                       出す(下記 EntityLineManager 参照)
 │       ├── EntityManager                  ... エンティティ配列の保持と、破片(entity)の生成窓口である EffectsSystem
 │       │                                       の所有。コンストラクタ引数 saved(GameSaveData | undefined)があれば
 │       │                                       その顔ぶれを復元するだけで、新規開始では全配列が空のまま始まる
@@ -210,13 +211,12 @@ main.ts
 │       │   │   ├── RcsEffects    → Billboard ×8   ... 状態なし。ノズル1基につき1枚、配置は RCS_NOZZLES が正本
 │       │   │   ├── ReentryEffects → Billboard ×2   ... 状態なし。強度は毎フレーム qdyn から導く
 │       │   │   ├── PlayerMarkers          ... 方向マーカー・ボアサイト・マップ上の自機位置(操作対象の艦だけが sync する)
-│       │   │   ├── OrbitLine              ... 自機軌道線。中心天体は毎フレーム state から導出(strongestAttractor)。
-│       │   │   │                              表示抑制(setSuppressed)は Game.sync がこの艦自身の supersedesAnalyticEllipse(...)から渡す(§付録参照)
-│       │   │   ├── TrajectoryLine         ... 自機予測軌道線。Game.sync が毎フレーム this.syncTrajectoryLine(操作対象, ...)を呼ぶ
-│       │   │   ├── TrajectoryLine         ... 自機過去軌跡線(pastTrajectoryLine)。同じ syncTrajectoryLine が actualTrajectory の [simTime - pastDuration, simTime] を描く
+│       │   │   ├── TrajectoryLine         ... 自機予測軌道線。EntityLineManager.update が showPredictedLine/hidePredictedLine で出し入れし、EntityLineManager.sync が毎フレーム ship.syncTrajectoryLines(...) で形状と変換を合わせる
+│       │   │   ├── TrajectoryLine         ... 自機過去軌跡線(actualLine)。同じ EntityLineManager.update/sync が showActualLine/hideActualLine で出し入れし、syncTrajectoryLines が actual の [simTime - pastDuration, simTime] を描く
+│       │   │   ├── OrbitLine              ... 解析楕円。EntityLineManager が showOrbitLine(style)/hideOrbitLine で出し入れする。持つのは第一/第二ターゲットにされている間(ターゲット用スタイル、ビューを問わず出て predictedLine/actualLine は隠れる)と、戦闘ビューの操作艦(LINE_STYLE.playerOrbit、このとき predictedLine の代わりになる)
 │       │   │   ├── Plan                   ... この艦自身のマニューバ計画(正本)。ノード列 + アンカー
 │       │   │   └── PlanExecutor           ... この艦自身の計画実行状態機械(正本)。CreativeStage が艦ごとに呼ぶだけで保持しない
-│       │   ├── Enemy[]                    ... 各々 OrbitLine を持つ
+│       │   ├── Enemy[]                    ... 各々 OrbitLine を持ちうる(EntityLineManager が showOrbitLine(style)/hideOrbitLine で出し入れし、見た目も style で決める。第一/第二ターゲットのときはテーマ色のターゲット用スタイル(EntityLineManager.update が currentThemePalette() から組む)になり、ビューを問わず出る)
 │       │   ├── Bullet[]                    ... 各々コンストラクタで WorldSfx への参照を持つ(至近通過音を自分の checkLoss から鳴らすため)。
 │       │   │                                  renderObject はシーンへ足さない(GameEntity の addToScene=false) — bulletBodyPool/bulletHaloPool/plasmaPool が
 │       │   │                                  renderObject の変換を読んで描画する。renderObject 自体は Bullet.sync が書き込む変換の置き場所として残る
@@ -226,9 +226,13 @@ main.ts
 │       │   │                                  renderObject は変換の置き場所のみで、debrisFragmentPools[fragmentVariant] が読んで描画する。
 │       │   │                                  barrel/magazineFrame 種別は個別メッシュのまま(addToScene=true)
 │       │   ├── AmmoPickup[]
-│       │   ├── Base[]                     ... 各々 baseState(money/inventory/dockedShips)と OrbitLine を持つ
+│       │   ├── Base[]                     ... 各々 baseState(money/inventory/dockedShips)を持ち、OrbitLine を持ちうる(同上)
 │       │   └── Asteroid[]                 ... 重力を及ぼし・受ける小天体。mass/radius はコンストラクタ引数から mu = G・mass を導いて固定。
 │       │                                       j2/c22 を渡した場合は degree2(pole/tesseral)も構築時に att から一括で固定
+│       ├── EntityLineManager              ... EntityManager の参照を受け取って回すだけ(所有しない)。自前の状態は持たない。
+│       │                                       entities の直後に construct する。update が各エンティティの
+│       │                                       orbitLine/predictedLine/actualLine を出す/消す/スタイルを決め、sync は
+│       │                                       それらの形状と変換だけを合わせる(生成・破棄はしない)
 │       ├── Simulator                      ... 実シミュレーション。EntityManager・Ephemeris・FrameSections の参照を受け取って回すだけ(いずれも所有しない)
 │       │   └── ContactPhysics             ... 接触の検出(physics/sphere-contact.ts)・剛体解決(physics/collision-response.ts)を
 │       │                                       substep ごと(resolveSubstep)/フレームに1回のベルト(resolveBelt)で呼ぶ列挙・順序付け層
@@ -332,12 +336,15 @@ main.ts
   1度だけ組む(§付録「正本でないもの」は参照しない — 導出は構築時の1回きり)。
 - 全ての `GameEntity`(Player・Enemy[]・Bullet[]・DebrisPiece[]・AmmoPickup[]・BeltSection[] — 木の
   どのノードも例外なく)は `physics/dynamic-trajectory.ts` の `DynamicTrajectory` を1本、フィールド名
-  `actualTrajectory` で保持する(state/prevState と保持サンプル列そのものの正本)。GameEntity ごとに繰り返さず
+  `actual` で保持する(state/prevState と保持サンプル列そのものの正本)。GameEntity ごとに繰り返さず
   ここに一括で記す。`DynamicTrajectory` 自身は軌道要素を持たない — `GameEntity.orbitalElementsAround(center)` が
   呼び出しごとに現在の `state` と `center` から導出する(中心天体 `center` は呼び出し側が都度選ぶので
-  `DynamicTrajectory`/`GameEntity` の状態ではない)。`predictsFuture = true` の
-  GameEntity(Ship・AmmoPickup のみ)は、`Predictor` が
-  `stepPredicted` を呼んだ時点で2本目の `DynamicTrajectory` を `predictedTrajectory` として追加で持つ
+  `DynamicTrajectory`/`GameEntity` の状態ではない)。別に `extrapolationCenter`(`step` の呼び出し側が
+  渡した、先端位置で最も強く引く解析天体)は `DynamicTrajectory` 自身が持つ数少ない状態の1つで、
+  `extrapolatedAt` が先端より先を二体軌道として外挿する中心にそのまま使う — 呼び出しごとに導出し
+  直すのではなく直近の `step`時点のスナップショットを保持し、`reset` で破棄する。`predictsFuture` が真の
+  GameEntity(Ship・Base・AmmoPickup・Asteroid)は、`Predictor` が
+  `stepPredicted` を呼んだ時点で2本目の `DynamicTrajectory` を `predicted` として追加で持つ
   (§付録「正本でないもの」参照 — 未来位置のキャッシュであり、正データではない)。予測する長さ
   (horizon)は種別ごとの定数ではなく、`Predictor.update` が毎フレーム `DisplayWindowManager.current.duration`
   (`resolve(simTime, player)` が update フェーズ・sync フェーズそれぞれで確定させたもの)から渡す引数。
@@ -429,7 +436,7 @@ main.ts
 | `PerfMeter` | main.ts | rAF ループ(`startAnimationLoop` が `snapshotControls.handleInput` の直後に `perf.handleInput(game.input)` を呼び、`[F3]` で `toggle()` する)・PauseMenu(`onOpenPerfWindow` 経由で `open()`) |
 | `PropertyWindow`(負荷確認ウィンドウ) | PerfMeter(`open()` で new し `close()`/✕ で dispose する1枚) | PerfMeter 自身のみ。500ms ごとの flush で `syncRows` へ行一式を渡す |
 | `FocusMarkers.bodyPickables(t, visibilityPolicy)` の戻り値 | CameraSystem(→FocusMarkers、呼ぶたびに作り直す使い捨て配列) | `MapPickables.refresh()` が読んで生存中の自機・敵船・弾薬・基地・NavTarget のアイコン・`PlanDisplay.apsisMarkers` と合流させ、`MapContextActions.handleRightClick`(`pickNearest`)/`OverviewCamera.update` の被選択物候補として渡し直す。引数の `MapVisibilityPolicy` が admits した天体+ラグランジュ点だけを返し、遮蔽・ラベル衝突でこのフレームに描かれなかった対象は `pickable: false` を伴って残す(表示設定で消えているわけではないので候補からは落とさない) |
-| `MapVisibilityPolicy`(1フレームの使い捨て) | `MapPickables`(`refresh` が `registry`/`bodyClassToggles`/`focusTargetId(...)`/`systemMembersAt(cameraPos, ...)` から毎フレーム1つ組み立て、`visibilityPolicy` getter で公開。`refresh` 前と、マップ視点でないフレームは null — `refresh` は早期 return の前に null を代入するので、読む側はビューを見て潰す必要がない) | `FocusMarkers.update`(引数)/ `Game.sync` が `mapPickables.visibilityPolicy` を読んで `EnvironmentScene.sync`・参照線 / `Stage.sync`・`EntityManager.syncMarkers`・`Targeter.sync` へ配る。受け取り側は渡されなければ同じ4入力から自前で組む経路も残す(マップ経路の外からも呼べるようにするためで、マップ描画中は必ず共有インスタンス)。天体は `body(id)`、エンティティは `entity(kind, isActivePlayer)` で `{category, icon, label, orbit, pickable}` を返す判定関数であって状態を持たない(正本は `CameraSystem.bodyClassToggles` とフォーカス・カメラ位置) |
+| `MapVisibilityPolicy`(1フレームの使い捨て) | `MapPickables`(`refresh` が `registry`/`bodyClassToggles`/`focusTargetId(...)`/`systemMembersAt(cameraPos, ...)` から毎フレーム1つ組み立て、`visibilityPolicy` getter で公開。`refresh` 前と、マップ視点でないフレームは null — `refresh` は早期 return の前に null を代入するので、読む側はビューを見て潰す必要がない) | `FocusMarkers.update`(引数)/ `Game.sync` が `mapPickables.visibilityPolicy` を読んで `EnvironmentScene.sync`・参照線 / `Stage.sync`・`EntityManager.syncMarkers`・`Targeter.syncTargetMarkers` へ配る。受け取り側は渡されなければ同じ4入力から自前で組む経路も残す(マップ経路の外からも呼べるようにするためで、マップ描画中は必ず共有インスタンス)。天体は `body(id)`、エンティティは `entity(kind, isActivePlayer)` で `{category, icon, label, orbit, pickable}` を返す判定関数であって状態を持たない(正本は `CameraSystem.bodyClassToggles` とフォーカス・カメラ位置) |
 | `FocusMarkers.allLabels` | CameraSystem(→FocusMarkers、構築時に1度だけ) | `MapContextActions.sync()` が id/isLagrange から親子関係(parentOf)を組むのに読む |
 | `PlanDisplay.apsisMarkers` | PlanEditor(→PlanDisplay) | `MapPickables.refresh()` が他の候補と合流させ、`MapContextActions.handleRightClick`/`OverviewCamera.update` へ1本の候補列として渡す |
 
@@ -440,7 +447,7 @@ main.ts
 | 状態 | 正本の所有者 | 備考 |
 | --- | --- | --- |
 | 自機の位置・速度・エポック (ECI) | `Player.state` | 書き換えるのは RK4 積分(Simulator)・反動(PlayerFire)・接触(ContactPhysics) |
-| エンティティの過去 state 列(`StateQueue`) | `GameEntity.actualTrajectory`(`DynamicTrajectory` が内部に持つ `StateQueue`。先端(`state`)も同じ列の最新要素) | 記録するのは `DynamicTrajectory.step` だけ。時間窓は `historyDuration` = `max(baseHistoryDuration, requestedHistoryDuration)`(前者は種別固定で既定 0、Ship/Asteroid のみ `SHIP_HISTORY_DURATION`。後者は過去表示の要求で、`Game.advanceSimulation` が毎フレーム `entities.requestHistoryDuration(displayWindow.pastDuration)` として全エンティティへ配る — 履歴を持たない種別は無視し、`HISTORY_DURATION_MAX` で頭打ち)、間引き間隔は `sampleInterval()`(軌道周期ベース)で `cleanup` に渡す |
+| エンティティの過去 state 列(`StateQueue`) | `GameEntity.actual`(`DynamicTrajectory` が内部に持つ `StateQueue`。先端(`state`)も同じ列の最新要素) | 記録するのは `DynamicTrajectory.step` だけ。時間窓は `historyDuration` = `max(baseHistoryDuration, requestedHistoryDuration)`(前者は種別固定で既定 0、Ship/Asteroid のみ `SHIP_HISTORY_DURATION`。後者は過去表示の要求で、`Game.advanceSimulation` が毎フレーム `entities.requestHistoryDuration(displayWindow.pastDuration)` として全エンティティへ配る — 履歴を持たない種別は無視し、`HISTORY_DURATION_MAX` で頭打ち)、間引き間隔は `sampleInterval()`(軌道周期ベース)で `cleanup` に渡す |
 | 自機の姿勢・角速度 | `Player.att` | 積分は Simulator.stepAttitudes に一元化 |
 | 機体座標系トルク | `Player.torque` | 毎フレーム PlayerThrottle の戻り値で上書きされる |
 | 推力加速度 | `GameEntity.thrust` | 自機は `PlayerThrottle.updateThrustState` の戻り値で毎フレーム上書き。無推力なら null |
@@ -473,7 +480,7 @@ main.ts
 | 直近ノードの接近/達成通知済み | `PlanGuide`(`approachNotified` / `achievedNotified`) | 通知済みのノードそのものへの参照。編集のたびノードは別インスタンスへ置き換わるので、同一性比較がそのまま「同じノードについて通知済みか」の判定になる |
 | 予測表示期間の選択(`durationKey`)・任意期間の秒数(`customDurationSec`)・未来ゴーストスライダー(`sliderT`)・未来表示の禁止(`forceCurrent`)・目盛りラベルの表記(`tickLabelMode`) | `DisplayWindowManager` | いずれも private(`forceCurrent`/`tickLabelMode` のみ get/set アクセサで外部公開)。`forceCurrent` に true をセットすると `sliderT` も 0 へ戻す。期間の切替(`durationKey` 変更、または任意期間の確定)でも同様に `sliderT` を 0 へ戻す |
 | 未来表示(計画折れ線・予測軌道線・交点マーカー)を描く座標系(`frame`) | `DisplayWindowManager` | `OverviewCamera.cameraFrame`(視点固定座標系)とは別の正本。get/set アクセサ(`frame`)で公開。書き換えは `FrameControls` の「軌道計画(描画基準)」区画の中心/回転ゾーン(`planCenterZone`/`planRotationZone`)のみ、いずれも `Ephemeris.frameOf(center, rotatingWith)` 経由。同区画の「カメラの基準に追随」トグル(`followCamera`、既定 on)が on の間は `setFocus` によるカメラ側フォーカス移動もここへ連動する |
-| 予測到達割合(`predictionRatio`)・直近 `sync()` で受け取った表示期間(`lastDuration`) | `DisplayWindowManager` | いずれも private な導出値。`predictionRatio` は `sync(player)` が呼ばれるたび private `predictionCoverageRatio(player)` が自機の `predictedTrajectory.state.t` と `current`(simTime, duration)から自分で求め直す(外部からの書き込みはない)。`lastDuration` は直近の `resolve()` 呼び出しが確定させた表示期間を憶えておくだけの値で、ジャンプ入力(DOM イベント、フレーム外)が `sliderT` を逆算する際にだけ参照される |
+| 予測到達割合(`predictionRatio`)・直近 `sync()` で受け取った表示期間(`lastDuration`) | `DisplayWindowManager` | いずれも private な導出値。`predictionRatio` は `sync(player)` が呼ばれるたび private `predictionCoverageRatio(player)` が自機の `predicted.state.t` と `current`(simTime, duration)から自分で求め直す(外部からの書き込みはない)。`lastDuration` は直近の `resolve()` 呼び出しが確定させた表示期間を憶えておくだけの値で、ジャンプ入力(DOM イベント、フレーム外)が `sliderT` を逆算する際にだけ参照される |
 | マップ視点(注視点相対オフセット・パン・上方向)・座標系(cameraFrame)・フォーカス(FocusTarget)・Viewpoint | `OverviewCamera` | `viewpoint: Viewpoint` は `CombatCameraSystem` と同じ形。`CameraSystem` はこの `viewpoint` を読むだけで自分では持たない。フォーカスは `camera/focus-target.ts` の `FocusTarget`(`{kind:'object', id}` または `{kind:'point', frame, point}`)で、`{kind:'object'}` が指す実位置は `OverviewCamera` が持たず、`update` の引数(`MapPickables.refresh()`)から毎フレーム引き直す。書き換えは `setFocusTarget`/`setCameraRotation` のみ、いずれも `FrameControls` の「カメラ(視点)」区画の中心/回転ゾーン(`cameraCenterZone`/`cameraRotationZone`)から呼ばれる |
 | 戦闘視点(Viewpoint: position/lookTarget/up/fovDeg/aspect)・照準ズーム中か(zoomActive) | `CombatCameraSystem` | rot(クオータニオン)/dist・姿勢追従フラグ(camFollowAttitude)は内部の `ChaseCamera` が持つが、追従対象そのものは保持せず、`CameraSystem.update` から渡る `player` を毎フレーム `chaseCamera.update`/`toggleFollowAttitude` の引数として転送するだけ。`[G]`(`K.followAttitudeToggle`)を読んで `chaseCamera.toggleFollowAttitude(player)` を呼ぶのもこのクラス自身の `update`(`CameraSystem` は読まない)。zoomActive はこのクラス自身の `update` が `Input` から読んで保持する |
 | 現在のビュー(combat/map/dock) | `ViewManager`(private `worldView`/`isDockOpen`) | 遷移は基本的に `setView()` のみ(影響先 `CameraSystem.overviewMode` / `PlanEditor.editMode` / `DisplayWindowManager.forceCurrent` / タッチUI を一斉に切り替える)だが、`leaveDock()` だけは例外で、ドックを閉じて背後のビューへ戻るだけの操作を `setView()` を経由せず `isDockOpen` を直接倒して行う(`worldView` は動かさないので `canEnter` チェックも不要)。`worldView` が背後の 3D 側ビュー、`isDockOpen` がドックの開閉を持ち、`current` はこの2つから導出する。`isDockOpen` は `ViewManager` が正本のままで、`hud.overlayManager` へは `syncDockOverlay`(`setView`/`leaveDock` いずれからも呼ばれる)が開閉を通知するだけの一方向 — `OverlayManager.closeTopmostOnEscape()` が `'dock-view'` を閉じるときは `private dockOverlayHandle`(`close` が `this.leaveDock()` を呼ぶだけの adapter)を経由して戻ってくる |
@@ -598,13 +605,13 @@ main.ts
 | 解析楕円の中心天体(`strongestAttractor(state.r, attractors)` の結果) | `state`(と `attractors`)から都度導く選択であり、`GameEntity`/`Plan`/`PlanDisplay`/`OrbitLine` のどれもこれを状態として保持しない — 選ぶ GUI もない | 呼ぶたび再計算 |
 | `GameEntity.orbitalElementsAround(center)` | `state` と呼び出し側の `center` から毎回求める軽量な導出値。保持しないことで、表示側が無効化条件を持ち忘れても古い軌道要素を再利用しない | 呼び出しのたび |
 | `GameEntity.prevState`(→ `current.prevState`) | 直前の `step`/`reset` 時点の state を持つ専用フィールド(先端を含む保持サンプル列とは別) | `step`/`reset` のたび更新 |
-| `GameEntity.predictedTrajectory` | `actualTrajectory.state` + ephemeris から `Predictor` が漸進的に構築する未来軌道のキャッシュ(`predictsFuture = false` のクラスでは常に null)。伸ばす長さ(horizon)は `DisplayWindowManager.durationSec(referencePeriod)` の毎フレーム値で、`GameEntity`/`Predictor` のどちらにも独立した状態としては残らない | `discardPredictionIfDiverged` の距離判定(§3-4 (a))、または `Player.updatePlayerControls` の推力確定直後(§3-4 (b))。無効化は破棄のみで即再構築はしない — 次フレーム以降の通常の予算配分で伸び直す |
+| `GameEntity.predicted` | `actual.state` + ephemeris から `Predictor` が漸進的に構築する未来軌道のキャッシュ(`predictsFuture = false` のクラスでは常に null)。伸ばす長さ(horizon)は `DisplayWindowManager.durationSec(referencePeriod)` の毎フレーム値で、`GameEntity`/`Predictor` のどちらにも独立した状態としては残らない | `discardPredictionIfDiverged` の距離判定(§3-4 (a))、または `Player.updatePlayerControls` の推力確定直後(§3-4 (b))。無効化は破棄のみで即再構築はしない — 次フレーム以降の通常の予算配分で伸び直す |
 | `SimSpeedManager.canResupplyAmmo` | `simSpeed === 1` の派生 getter(等倍限定) | 呼ぶたび再計算 |
 | `OrbitLine.snap` | 楕円ジオメトリの再生成判定用スナップショット(長半径・離心率・`hHat`/`pHat`) | 要素ドリフト・`force`・初回 |
 | `DynamicTrajectory.sampleInterval` | 保持サンプル列の最も古い端での間引き間隔(`StateQueue.oldestGap`)。列がどれだけ粗いかという列自身の属性で、`GameEntity.divergenceTolerance` が乖離判定の許容量をここから引く(現在の表示期間から引くと、期間を縮めた瞬間に既存の粗い列を破棄し続ける) | 状態として持たず、読むたび列から導出する |
+| `DynamicTrajectory.extrapolationCenter` | 直近の `step` に渡された、先端位置で最も強く引く解析天体。どれが解析天体かの判定は `step` の呼び出し側(現状 `Predictor.advanceBudget` のみ)が行い、`DynamicTrajectory` 自身は `Ephemeris` を持たないので判定しない。`TrajectoryLine.syncGeometry` が先端より先を外挿する中心にそのまま使う(列を返す `kepler-extrapolation.ts` の `extrapolatedRelativeStates` へ直接渡す)。1点だけを答える `DynamicTrajectory.extrapolatedAt` は `GameEntity.displayState` の `ephemeris` 引数が経由し、`predictedAttractorsAt`/`PlanAttractors.resolveAt` が未来時刻の重力源・衝突体を引くのに使う | `step`(引数省略時は `null` のまま)のたび、`reset` で破棄 |
 | `FocusLabel.pickable` | このフレームに画面上で掴めるか。`update` が表示対象を true で置き直し、`syncLabels` が天体による遮蔽なら false、ラベル衝突で名前を落とした場合はアイコンが残るかどうか(`showIcon`)で上書きする。`bodyPickables` が候補の `pickable` に映すだけで、候補からは落とさない | `update` → `syncLabels` の順に毎フレーム書き換え |
-| `TrajectoryLine.startTime` / `.endTime`(描画区間の下限/上限) | `syncGeometry` の `from`/`to` 引数を、それぞれ bake 済み区間の先頭/末尾時刻へクランプした値(`to` が `null` なら上限なし)。`GameEntity.trajectoryLine`(`syncTrajectoryLine` は `from=simTime`/`to=null` を渡す — 予測線は先端まで無制限に描く)、`GameEntity.pastTrajectoryLine`(同じ `syncTrajectoryLine` が `from=simTime - pastDuration`/`to=simTime` を渡す — 保持窓より古い下限はここでクランプされ、それが過去表示長の頭打ちそのものになる)と `PlanPath` の per-index `TrajectoryLine`(`from=null`/`to=arc.end` — 積分先端が継ぎ足しでその区間の答える範囲より先まで伸びていても、そこで描画を止める)の双方が使う。線の先頭頂点は `startTime` で保持列を補間した点になるので、実状態そのものではない(`GameEntity.trajectoryLine` 側の乖離は `discardPredictionIfDiverged` の許容量内に収まる) | `syncGeometry` を呼ぶたび(=表示中は毎フレーム)。ただし bake 自体(`baked` の再構築)は保持列の参照か `frame` が変わったときだけ — `from`/`to` の変化だけなら revision の差し替えで足りる |
-| 自機 `OrbitLine` の表示抑制(`setSuppressed` の引数) | この艦自身の `supersedesAnalyticEllipse(simTime, horizon, overviewMode)` から導く真偽値。マップビューでは予測が表示範囲を覆いきるまで解析楕円を代替表示として残し、戦闘ビューでは予測線が描かれてさえいれば抑制する(視点近傍しか映さないため「覆いきったか」は意味を持たない)。`OrbitLine` 自身はこの理由を持たない | `Game.sync` が毎フレーム渡し直す |
+| `TrajectoryLine.startTime` / `.endTime`(描画区間の下限/上限) | `syncGeometry` の `from`/`to` 引数を、それぞれ bake 済み区間(保持列 + 外挿ぶん)の先頭/末尾時刻へクランプした値(`to` が `null` なら上限なし)。`GameEntity.predictedLine`(`syncTrajectoryLines` は `from=simTime`/`to=predictedTo`(`ship.predictionTruncated` なら `null`、それ以外は `simTime + duration`)を渡す — 保持列が `to` に届かない間は `extrapolationCenter` まわりの二体ケプラー外挿で継ぎ足す)、`GameEntity.actualLine`(同じ `syncTrajectoryLines` が `from=simTime - pastDuration`/`to=simTime` を渡す — 保持窓より古い下限はここでクランプされ、それが過去表示長の頭打ちそのものになる)と `PlanPath` の per-index `TrajectoryLine`(`from=null`/`to=arc.end` — `PlanArc.trajectory` は `extrapolationCenter` を持たないので外挿は起きず、積分先端が継ぎ足しでその区間の答える範囲より先まで伸びていても、そこで描画を止める)の双方が使う。線の先頭頂点は `startTime` で保持列を補間した点になるので、実状態そのものではない(`GameEntity.predictedLine` 側の乖離は `discardPredictionIfDiverged` の許容量内に収まる) | `syncGeometry` を呼ぶたび(=表示中は毎フレーム)。ただし bake 自体(`baked` の再構築)は保持列の参照か `frame` が変わったときだけ、外挿区間を持つ間はそれに加えて `to` が外挿1サンプルぶんの間隔以上動いたときだけ — それ未満の `from`/`to` の変化は revision の差し替えで足りる |
 | `PlanArc.state0` / `.sourceRevision` / `.apsisCenterId`(readonly、constructor で確定) | この arc がどの入力から作られたかのスナップショット。`sourceRevision` は `PlanAttractors` の `revision`、すなわち `planSourceRevision(...)` が計画の編集世代・除外 id 集合・`predictsFuture` が真の各対象個体の id と予測の届き具合(予測列なし / 計画終端 `planEnd` まで届いていない / 届いている、の3値)を 32bit へ畳み込んだ値。伸長の途中では値が動かず、届いた瞬間に一度だけ変わる。`PlanPath.update` が区間ごとに今フレームの値を `represents(state0, end, sourceRevision, apsisCenterId, tracksLiveAnchor)` へ渡して一致を問う | 一致しなければ `PlanPath.update` が `new PlanArc(...)` を作って丸ごと差し替える(この3値自体は既存インスタンス上では書き換わらない) |
 | `PlanArc._end`(`.end` getter) / `.samples`(getter、メモ化) | `_end` は「この arc が答える終端時刻」— `_trajectory` の積分先端(`.state.t`)より手前にも先にもなりうる(`setEnd` の継ぎ足しで先端が `_end` を追い越すこともある)。`samples` は `_trajectory.samplesOldestFirst()` を `_end` でクリップした結果を `(元配列の参照, _end)` でメモ化したもの — 切る必要が無ければ元配列をそのまま返すので、`TrajectoryLine.syncGeometry` の参照同一性による再bake抑制が効く | `_end` は `setEnd(end)` の呼び出しごとに書き換え。`samples` は `_trajectory` が実際に積分を進める(`step` が呼ばれる)たび、または `_end` が動くたび再計算 |
 | `PlanArc.periapsisState` / `.apoapsisState` | 同じ積分ループの中で、`apsisCenter`(呼び出し側が渡す基準天体。末尾区間以外は null で検出自体を省く)に対して `physics/trajectory-features.ts` の `apsisCrossing` をステップ対ごとに掛けた結果、最初に見つかった近地点・遠地点(それぞれ独立)。折れ線サンプルではなく積分の生ステップ対から求めるので、衝突コースで動径速度が符号反転しない区間は近地点側が null のまま残る。読み出し用の `periapsisPoint()`/`apoapsisPoint()` は、その状態の時刻が `_end` を超えていれば(区間が縮んでその先で見つかったことになれば)null を返す | インスタンス生成時に null で初期化され、以後は見つかった時が最初の1回だけ確定 — `setEnd` → `integrateTo` の継ぎ足しで積分が続いても再リセットはされない(arc を丸ごと差し替えることだけが唯一のリセット契機) |
@@ -629,7 +636,7 @@ main.ts
 `Vec3` / `KinematicState` / `Quat` / `Attitude` は **不変**。値を進めるときは中身を書き換えず、
 新しいオブジェクトを作って差し替える(`stepRK4` は新しい `KinematicState` を、`stepAttitude` は
 新しい `Attitude` を返す)。これは最適化ではなく整合性の前提で、`physics/dynamic-trajectory.ts` の
-`DynamicTrajectory`(`GameEntity.actualTrajectory`)は先端(`state`)を保持サンプル列(`StateQueue`)の
+`DynamicTrajectory`(`GameEntity.actual`)は先端(`state`)を保持サンプル列(`StateQueue`)の
 最新要素そのものとして持ち、`step`/`reset` のたび新しい先端をその列へ積む。積む前の先端を捨てず
 そのまま保持サンプルとして列に残せる(間引きに値しなければ捨てて新しい先端で置き換える)のは、
 「state が差し替え以外では変化しない」からである。参照を共有したまま中身を書き換えると保持側が

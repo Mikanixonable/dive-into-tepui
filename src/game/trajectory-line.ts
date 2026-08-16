@@ -1,10 +1,12 @@
 // 時刻付き点列(KinematicState)を1本の単色折れ線として描く汎用描画基盤。OrbitLine(解析的な楕円)の
 // 兄弟で、こちらは計画軌道・予測軌道・履歴軌道など「DynamicTrajectory が保持する任意の点列」を
-// 折れ線化する共通土台になる。
+// 折れ線化する共通土台になる。保持区間が描画上限(to)に届かないときは、先端を中心天体まわりの
+// 二体軌道とみなしたケプラー外挿(kepler-extrapolation.ts)で to まで継ぎ足す — 中心天体を
+// 持たない列(計画軌道の各区間など)ではこの継ぎ足しは起きない。
 // 頂点の解像度そのものの決定(画面上のサジッタに応じた適応分割)は render/curve.ts の Curve に
-// 委ねる。このモジュールの責務は、DynamicTrajectory の保持区間から描画対象の時刻範囲を切り出し、
-// 連続な曲線関数(t∈[0,1])として Curve へ渡すことと、その曲線が描かれる座標系の管理。
-// 時刻から状態への内挿そのものは physics/state-queue.ts の StateQueue.at に委ねる。
+// 委ねる。このモジュールの責務は、DynamicTrajectory の保持区間(+ 外挿ぶん)から描画対象の
+// 時刻範囲を切り出し、連続な曲線関数(t∈[0,1])として Curve へ渡すことと、その曲線が描かれる
+// 座標系の管理。時刻から状態への内挿そのものは physics/state-queue.ts の StateQueue.at に委ねる。
 //
 // 座標変換は physics/frame.ts / physics/ephemeris.ts へ委譲する二段構え:
 //  - bake(点列・frame が変わったときだけ, syncGeometry): 各サンプルの KinematicState を
@@ -22,21 +24,44 @@ import { ReferenceFrame, toFrameState } from '../physics/frame';
 import { Attractor } from '../physics/attractor';
 import type { Ephemeris } from '../physics/ephemeris';
 import { DynamicTrajectory } from '../physics/dynamic-trajectory';
+import { extrapolatedRelativeStates } from '../physics/kepler-extrapolation';
 import { StateQueue } from '../physics/state-queue';
+import { add } from '../physics/vec3';
 import { FloatingOrigin } from './floating-origin';
-import { Curve, CurveDash, CurveSampler } from '../render/curve';
+import { Curve, CurveSampler } from '../render/curve';
+import { LineStyle } from '../render/line-style';
 
 // 1本の折れ線が持てる頂点数。ここを超えた分は描かれない(Curve のバッファ確保上限)。
 const MAX_VERTICES = 16384;
 
-// 破線パターン。dashSize/gapSize は表示座標系の実距離 [m](Curve が LineDashedMaterial の
-// lineDistance 属性へそのまま渡すため、scale=1 前提でメートルを直接渡せる)。
-// 呼び出し側が毎フレーム書き換えてよい。
-export type DashPattern = CurveDash;
+// 外挿区間に足すサンプル数の上限。
+const MAX_EXTRAPOLATED_SAMPLES = 2048;
 
 // 描く軌跡が無いときの点列。再 bake するかを点列の参照同一性で判定するので、そのフレームだけ
 // 空になった線が毎フレーム焼き直しにならないよう、共有インスタンスを使う。
 const NO_SAMPLES: readonly KinematicState[] = [];
+
+// 外挿区間に使う目標サンプル間隔 [s]。既存の保持列の間引き間隔(baseInterval)に合わせ、
+// 履歴が空(baseInterval が 0)なら外挿する区間全体を64分割した間隔にする。
+function extrapolationTargetInterval(baseInterval: number, span: number): number {
+  return baseInterval > 0 ? baseInterval : span / 64;
+}
+
+// tip(保持区間の末尾)から to までを、tip を center まわりの二体ケプラー軌道とみなして外挿した
+// ECI 絶対状態列(時刻昇順、tip 自身は含まない)。kepler-extrapolation.ts の返り値は center 相対
+// なので、各サンプル自身の時刻における center の ECI 状態を足し戻す。離心率が高すぎる・
+// 双曲線などで外挿できない場合は空配列。
+function extrapolatedTailStates(
+  tip: KinematicState, center: Attractor, to: number, baseInterval: number, ephemeris: Ephemeris,
+): KinematicState[] {
+  const span = to - tip.t;
+  const target = extrapolationTargetInterval(baseInterval, span);
+  const count = Math.min(MAX_EXTRAPOLATED_SAMPLES, Math.max(2, Math.ceil(span / target)));
+  return extrapolatedRelativeStates(tip, center, to, count).map((s) => {
+    const centerState = ephemeris.stateOf(center.id, s.t);
+    return kinematicState(s.t, add(s.r, centerState.r), add(s.v, centerState.v));
+  });
+}
 
 export class TrajectoryLine {
   private readonly curve: Curve;
@@ -45,6 +70,9 @@ export class TrajectoryLine {
   private lastFrame: ReferenceFrame | null = null;
   private lastFrom: number | null = null;
   private lastTo: number | null = null;
+  // 直近に焼き込んだ外挿区間の to。外挿を持たない bake では null に戻す — 次に外挿区間が
+  // 必要になったフレームで必ず焼き直させるため。
+  private lastExtrapolatedTo: number | null = null;
   // Curve へ渡す revision。(samples, frame, from) の組が変わったときだけ新しいオブジェクトへ差し替える。
   private revision: object = {};
   private readonly unbakeQuat = new THREE.Quaternion();
@@ -56,9 +84,9 @@ export class TrajectoryLine {
   // 描画区間の上限(bake 済み区間の末尾へクランプ済み)。null は上限なし。
   private endTime: number | null = null;
 
-  // 単色の折れ線を構築する。dash を渡すと破線になる。
-  constructor(color: number, opacity = 0.85, renderOrder = 2, dash?: DashPattern) {
-    this.curve = new Curve({ color, opacity, renderOrder, maxVertices: MAX_VERTICES, dash });
+  // 単色の折れ線を構築する。style.dash があれば破線になる。
+  constructor(style: LineStyle) {
+    this.curve = new Curve({ style, maxVertices: MAX_VERTICES });
     this.line = this.curve.object;
   }
 
@@ -77,29 +105,45 @@ export class TrajectoryLine {
     out.set(s.r.x, s.r.y, s.r.z);
   };
 
-  // trajectory の保持区間のうち [from, to] を描く対象にする。trajectory が null なら曲線を持たない
-  // 状態にする。from/to はそれぞれ描画の下限/上限時刻で、null ならその側は無制限(保持区間の
-  // 端まで)。保持区間の外は補間できないので、それぞれ区間の先頭/末尾へクランプする。
-  // 座標系相対への焼き直し(非剛体変形)は(点列, frame)が変わったときだけ行う — from/to は
-  // sampler の時刻写像だけを変えるので、焼き直さず revision の差し替えだけで足りる。
+  // trajectory の保持区間のうち [from, to] を描く対象にする。trajectory が null なら曲線を
+  // 持たない状態にする。from/to はそれぞれ描画の下限/上限時刻で、null ならその側は無制限。
+  // 区間の外は補間できないので、それぞれ先頭/末尾へクランプする。保持区間の末尾が to に届かず、
+  // かつ先端が中心天体を持つ場合は、二体ケプラー軌道とみなして to まで外挿し継ぎ足す。
+  // 座標系相対への焼き直し(frameTransformAt を伴う高コストな処理)は、保持列の参照または
+  // frame が変わったときだけ行う。外挿区間を持つ間はそれに加え、to が外挿1サンプルぶんの間隔
+  // 以上動いたときにも焼き直す — 動いた分がその間隔未満なら、描画末尾が最大1間隔ぶん遅れる
+  // だけで見た目には出ない。
   syncGeometry(
     trajectory: DynamicTrajectory | null, from: number | null, to: number | null, frame: ReferenceFrame,
     ephemeris: Ephemeris, attractors: readonly Attractor[],
   ): void {
     const samples = trajectory?.samplesOldestFirst() ?? NO_SAMPLES;
-    const rebaked = samples !== this.lastSamples || frame !== this.lastFrame;
+    const tip = samples.length > 0 ? samples[samples.length - 1]! : null;
+    const center = trajectory?.extrapolationCenter ?? null;
+    const extrapolating = to !== null && tip !== null && center !== null && to > tip.t;
+
+    const rebaked = !extrapolating
+      ? samples !== this.lastSamples || frame !== this.lastFrame
+      : samples !== this.lastSamples || frame !== this.lastFrame || this.lastExtrapolatedTo === null
+        || Math.abs(to! - this.lastExtrapolatedTo) >= extrapolationTargetInterval(trajectory!.sampleInterval, to! - tip!.t);
+
     if (rebaked) {
       this.lastSamples = samples;
       this.lastFrame = frame;
+      const tail = extrapolating
+        ? extrapolatedTailStates(tip!, center!, to!, trajectory!.sampleInterval, ephemeris)
+        : [];
+      const combined = tail.length > 0 ? [...samples, ...tail] : samples;
       // hermiteInterpolate は座標系に依らない (時刻, 位置, 接線) の多項式なので、座標系相対の
       // 位置と速度をそのまま KinematicState に詰めて渡す(この慣性系ブランドは関数の外へ出ない)。
       // 座標系の原点・姿勢はサンプルごとの時刻で評価する(回転系は時刻で向きが変わるため)。
-      const queue = new StateQueue(Math.max(1, samples.length));
-      for (const s of samples) {
+      const queue = new StateQueue(Math.max(1, combined.length));
+      for (const s of combined) {
         const rel = toFrameState(ephemeris.frameTransformAt(frame, s.t, attractors), s);
         queue.push(kinematicState(s.t, rel.r, rel.v));
       }
       this.baked = queue;
+      this.lastExtrapolatedTo = extrapolating ? to : null;
     }
     this.startTime = this.baked.size > 0 ? Math.max(from ?? -Infinity, this.baked.oldest!.t) : null;
     this.endTime = this.baked.size > 0 ? Math.min(to ?? Infinity, this.baked.newest!.t) : null;
@@ -139,12 +183,24 @@ export class TrajectoryLine {
     this.curve.setVisible(v);
   }
 
-  get visible(): boolean {
-    return this.curve.visible;
-  }
-
   setDash(dashSize: number, gapSize: number): void {
     this.curve.setDash(dashSize, gapSize);
+  }
+
+  setStyle(style: LineStyle): void {
+    this.curve.setStyle(style);
+  }
+
+  setColor(color: string | number): void {
+    this.curve.setColor(color);
+  }
+
+  setOpacity(opacity: number): void {
+    this.curve.setOpacity(opacity);
+  }
+
+  setRenderOrder(renderOrder: number): void {
+    this.curve.setRenderOrder(renderOrder);
   }
 
   dispose(): void {

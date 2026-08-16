@@ -186,7 +186,10 @@ export class Simulator {
   // 全エンティティを dt だけ積分する。重力源はこのステップの中点(t + dt/2)で1回だけ組み、
   // 空間グリッドへ分類してから全エンティティで使い回す — 各自が積分後の新しい位置を読みに
   // 行くと、本来対称であるべき相互作用に処理順依存の誤差が入る。各エンティティは自身の位置の
-  // 27近傍グリッドを引き直すだけで、分類そのものはこのステップで1回。積分後の simTime を返す。
+  // 27近傍グリッドを自分自身を除いて引き直すだけで、分類そのものはこのステップで1回 —
+  // 除外は各自の取り出し結果にしか効かないので、A から見た B・B から見た A はどちらも
+  // このステップで組んだ同じ classified から引いたままで、対称性は崩れない。
+  // 積分後の simTime を返す。
   private substep(
     simTime: number,
     dt: number,
@@ -197,7 +200,9 @@ export class Simulator {
     const classified = classifyAttractors(sources);
     for (const e of this.entities.all()) {
       if (passiveWarpLod && this.isPassiveWarpEntity(e)) continue;
-      e.stepActual(dt, attractorsNearInto(e.state.r, classified, this.nearbyAttractorsScratch));
+      // 引力を持たないエンティティは重力源一覧に載り得ないので、除外の走査ごと省く。
+      const selfId = e.mu !== 0 ? e.id : undefined;
+      e.stepActual(dt, attractorsNearInto(e.state.r, classified, this.nearbyAttractorsScratch, selfId));
       this.lastOrbitSteps++;
     }
 

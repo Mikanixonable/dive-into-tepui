@@ -27,16 +27,17 @@ export type PlanAttractorProvider = {
 
 const REVISION_MIX_PRIME = 16777619;
 const REVISION_SEED = 2166136261 | 0;
-// 予測列の届き具合の3値。「持たない」を「届いていない」と混ぜないための区別。
+// 予測列の届き具合の4値。「持たない」「打ち切られた」を「届いていない」と混ぜないための区別。
 const NO_PREDICTION = -1;
 const PREDICTION_SHORT = 0;
 const PREDICTION_COVERS_PLAN = 1;
+const PREDICTION_TRUNCATED = 2;
 
 // 保持する時刻の数。1ステップが引くのは開始・中点・終了の3時刻で、ある歩の終了は次の歩の開始と
 // 一致する。その一致だけを拾えばよいので、少数で足りる。
 const HELD_SLOTS = 4;
 
-// 計画の終端が未確定なフレームで、毎回異なる revision を作るための連番。
+// 計画の終端がまだ求まっていないフレームで、毎回異なる revision を作るための連番。
 let unresolvedPlanEndTick = 0;
 
 // 32bit 整数への畳み込み。非有限な value は 0 として畳み込まれ、結果は常に有限。
@@ -53,26 +54,28 @@ function mixString(acc: number, value: string): number {
 
 // その個体の予測列が計画の終端 planEnd まで届いているか。伸長の途中では値が動かず、
 // 届いた瞬間に一度だけ変わる — 伸びている間の変化を revision に載せると、覆い切りに
-// 何フレームもかかる長い表示期間で計画の再積分が毎フレーム走り続ける。
+// 何フレームもかかる長い表示期間で計画の再積分が毎フレーム走り続ける。届いていない間は
+// 打ち切りの有無で分ける — 打ち切られた列は先端から先を外挿できず、その個体が重力源・
+// 衝突体の一覧から丸ごと落ちる。
 function predictionCoverage(entity: GameEntity, planEnd: number): number {
-  const tip = entity.predictedTrajectory?.state.t;
+  const tip = entity.predicted?.state.t;
   if (tip === undefined) return NO_PREDICTION;
-  return tip >= planEnd ? PREDICTION_COVERS_PLAN : PREDICTION_SHORT;
+  if (tip >= planEnd) return PREDICTION_COVERS_PLAN;
+  return entity.predictionTruncated ? PREDICTION_TRUNCATED : PREDICTION_SHORT;
 }
 
-// provider が返す内容を変えうる入力だけを畳み込んだ世代値。planEnd は計画の折れ線が届いている
-// 終端時刻で、simTime より後の有限値でなければ毎回異なる値を返す。
+// provider が返す内容を変えうる入力だけを畳み込んだ世代値。planEnd は計画区間列自身の
+// 積分終端(表示窓でクリップしない)で、有限でなければ毎回異なる値を返す。
 export function planSourceRevision(
   entities: EntityManager,
   excludedEntityIds: readonly AttractorId[],
   planRevision: number,
   planEnd: number,
-  simTime: number,
 ): number {
   // 時刻に依らない入力 — 計画の編集と除外集合。
   let acc = mixNumber(REVISION_SEED, planRevision);
   for (const id of excludedEntityIds) acc = mixString(acc, id);
-  if (!Number.isFinite(planEnd) || !(planEnd > simTime)) {
+  if (!Number.isFinite(planEnd)) {
     return mixNumber(acc, ++unresolvedPlanEndTick);
   }
   // provider の出力に現れるのは、将来時刻の状態を答えられる個体 — predictsFuture が真のもの —
@@ -111,9 +114,8 @@ export class PlanAttractors implements PlanAttractorProvider {
     excludedEntityIds: readonly AttractorId[],
     planRevision: number,
     planEnd: number,
-    simTime: number,
   ): void {
-    const next = planSourceRevision(this.entities, excludedEntityIds, planRevision, planEnd, simTime);
+    const next = planSourceRevision(this.entities, excludedEntityIds, planRevision, planEnd);
     if (next === this.revisionValue) return;
     this.revisionValue = next;
     this.excluded = new Set(excludedEntityIds);
@@ -134,7 +136,9 @@ export class PlanAttractors implements PlanAttractorProvider {
   }
 
   // 解析天体の窓は1回だけ引き、衝突体と重力源の両方をそこから組む — 同じ時刻の重力源を
-  // 別の窓として引き直すと、同じ天体の位置を二度計算することになる。
+  // 別の窓として引き直すと、同じ天体の位置を二度計算することになる。この窓を動的重力源の
+  // displayState 外挿より先に引くのも同じ理由で、外挿が問い合わせる中心天体の stateOf を
+  // そのキャッシュへ当てる。
   private resolveAt(t: number): PlanSourcesAt {
     const collision: Attractor[] = [];
     const gravity: Attractor[] = [];
@@ -146,13 +150,13 @@ export class PlanAttractors implements PlanAttractorProvider {
       if (body.mu !== 0) gravity.push(body);
     }
     for (const e of this.entities.attractors()) {
-      const state = e.displayState(t);
+      const state = e.displayState(t, this.ephemeris);
       if (state === null) continue;
       gravity.push({ id: e.id, mu: e.mu, radius: e.radius, degree2: e.degree2, isStar: e.isStar, state });
     }
     for (const e of this.entities.all()) {
       if (!e.alive || !e.collides || !(e.radius > 0) || this.excluded.has(e.id) || collisionById.has(e.id)) continue;
-      const state = e.displayState(t);
+      const state = e.displayState(t, this.ephemeris);
       if (state === null) continue;
       const body = { id: e.id, mu: e.mu, radius: e.radius, degree2: e.degree2, isStar: e.isStar, state };
       collision.push(body);
