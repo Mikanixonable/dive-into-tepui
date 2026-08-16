@@ -481,14 +481,16 @@ export class Game {
       this.controlledBase, fo, this.cameraSystem, displayTime, visibilityPolicy,
     );
     this.entities.sync(fo, displayTime);
-    this.entities.applyVisibility(
-      visibilityPolicy, player, overviewMode, fo, this.cameraSystem.activeCamera, displayAttractors,
+    this.entities.applyVisibility(visibilityPolicy, player);
+    this.entities.syncOrbitLines(
+      overviewMode, fo, this.cameraSystem.activeCamera, displayAttractors, visibilityPolicy,
+      this.targeter.aliveTarget, this.targeter.aliveSecondaryTarget,
     );
     this.entities.syncMarkers(this.cameraSystem, displayTime, player?.state.r ?? null, displayAttractors, visibilityPolicy);
 
     this.entities.effects.sync(fo, this.cameraSystem.activeCamera, this.cameraSystem.zoomActive);
 
-    this.targeter.sync(fo, player, combatTargets, this.cameraSystem, displayAttractors, visibilityPolicy);
+    this.targeter.sync(fo, player, this.cameraSystem, displayAttractors, visibilityPolicy);
     this.targeter.syncTargetMarkers(
       player, combatTargets, displayTime, simTime, this.cameraSystem, visibilityPolicy,
       this.ephemeris.registry, displayAttractors,

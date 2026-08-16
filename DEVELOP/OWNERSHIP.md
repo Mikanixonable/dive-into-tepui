@@ -601,7 +601,7 @@ main.ts
 | `GameEntity.prevState`(→ `current.prevState`) | 直前の `step`/`reset` 時点の state を持つ専用フィールド(`history` とは別) | `step`/`reset` のたび更新 |
 | `GameEntity.predicted` | `actual.state` + ephemeris から `Predictor` が漸進的に構築する未来軌道のキャッシュ(`predictsFuture = false` のクラスでは常に null)。伸ばす長さ(horizon)は `DisplayWindowManager.durationSec(referencePeriod)` の毎フレーム値で、`GameEntity`/`Predictor` のどちらにも独立した状態としては残らない | `discardPredictionIfDiverged` の距離判定(§3-4 (a))、または `Player.updatePlayerControls` の推力確定直後(§3-4 (b))。無効化は破棄のみで即再構築はしない — 次フレーム以降の通常の予算配分で伸び直す |
 | `SimSpeedManager.canResupplyAmmo` | `simSpeed === 1` の派生 getter(等倍限定) | 呼ぶたび再計算 |
-| `OrbitLine.snap` | 楕円ジオメトリの再生成判定用スナップショット(長半径・離心率・`hHat`/`pHat`) | 要素ドリフト・`force`・初回 |
+| `OrbitLine.snap` | 楕円ジオメトリの再生成判定用スナップショット(長半径・離心率・`hHat`/`pHat`) | 要素ドリフト・初回 |
 | `DynamicTrajectory.sampleInterval` | 直近の `step` に渡された間引き間隔。列がどれだけ粗いかという列自身の属性で、`GameEntity.divergenceTolerance` が乖離判定の許容量をここから引く(現在の表示期間から引くと、期間を縮めた瞬間に既存の粗い列を破棄し続ける) | `step` のたび |
 | `DynamicTrajectory.extrapolationCenter` | 直近の `step` に渡された、先端位置で最も強く引く解析天体。どれが解析天体かの判定は `step` の呼び出し側(現状 `Predictor.advanceBudget` のみ)が行い、`DynamicTrajectory` 自身は `Ephemeris` を持たないので判定しない。`TrajectoryLine.syncGeometry` が先端より先を外挿する中心にそのまま使う(列を返す `kepler-extrapolation.ts` の `extrapolatedRelativeStates` へ直接渡す)。1点だけを答える `DynamicTrajectory.extrapolatedAt` は `GameEntity.displayState` の `ephemeris` 引数が経由し、`predictedAttractorsAt`/`PlanAttractors.resolveAt` が未来時刻の重力源・衝突体を引くのに使う | `step`(引数省略時は `null` のまま)のたび、`reset` で破棄 |
 | `FocusLabel.pickable` | このフレームに画面上で掴めるか。`update` が表示対象を true で置き直し、`syncLabels` が天体による遮蔽なら false、ラベル衝突で名前を落とした場合はアイコンが残るかどうか(`showIcon`)で上書きする。`bodyPickables` が候補の `pickable` に映すだけで、候補からは落とさない | `update` → `syncLabels` の順に毎フレーム書き換え |
