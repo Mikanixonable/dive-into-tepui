@@ -134,7 +134,7 @@ export class SettingsView implements OverlayHandle {
     // 開いている間はゲーム中の BGM を伏せ、試聴だけが聞こえる状態にする。閉じたら試聴の線を
     // 畳んでゲーム側を戻す — 開いた時点で鳴っていなければ、戻しても無音のまま。
     if (show) {
-      this.bgm.pause();
+      this.bgm.beginAudition();
       this.overlayManager.open('settings-view', this, {
         kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: true,
         exclusiveGroup: 'system-modal',

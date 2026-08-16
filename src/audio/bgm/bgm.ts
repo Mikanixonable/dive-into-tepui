@@ -107,12 +107,6 @@ export class Bgm {
     if (this.volume > 0) this.start();
   }
 
-  // ゲーム内 BGM を伏せる。まだ線が無ければ、組まれたときに伏せた状態から始める。
-  pause(): void {
-    this.paused = true;
-    this.ambient?.pause();
-  }
-
   // ゲーム内 BGM を再開する。直前に鳴らしていた曲から始める。
   resume(): void {
     const ctx = this.engine.ctx;
@@ -136,6 +130,15 @@ export class Bgm {
   }
 
   // === 試聴用 BGM (audition conductor) ===
+  // begin/end は設定画面の開閉そのもので、試聴の線とゲーム内 BGM の両方に効く。
+
+  // 設定画面が開いた。ゲーム内 BGM を伏せ、試聴だけが聞こえる状態にする。
+  // まだ線が無ければ、組まれたときに伏せた状態から始める。
+  beginAudition(): void {
+    this.paused = true;
+    this.ambient?.pause();
+  }
+
 
   // 指定した曲を先頭から試聴する。AudioContext の unlock も最初のクリックで行う。
   // 試聴の線は曲送りしないので、選んだ曲がそのまま鳴り続ける。
