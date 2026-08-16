@@ -34,7 +34,7 @@ interface RadiatorButtonDom {
   lastFillColor: string;
 }
 
-export class StageStatusPanel {
+export class StatusPanel {
   private readonly panel: HTMLElement;
   private readonly leftText: HTMLElement;
   private readonly leftWidgets: HTMLElement;
@@ -152,10 +152,9 @@ export class StageStatusPanel {
   // 内容が変わったフレームだけに絞る。
   sync(player: Player | null, message: string, kills: number): void {
     this.player = player;
-    if (!player) {
-      this.panel.style.display = 'none';
-      return;
-    }
+    this.panel.classList.toggle('hidden', !player);
+    if (!player) return;
+
     const { hp, maxHp } = player;
     const throttleIdx = player.throttleIdx;
     const low = hp <= maxHp * LOW_HP_RATIO;

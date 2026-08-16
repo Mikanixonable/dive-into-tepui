@@ -17,7 +17,7 @@ const SYNC_INTERVAL_MS = 100;
 
 const THROTTLE_KEYS: readonly KeyBinding[] = [K.throttleLow, K.throttleMid, K.throttleHigh, K.throttleMax];
 
-export class StatusPanel {
+export class VesselPanel {
   private nextSyncAt = 0;
   private input: Input | null = null;
   private followButton: Button | null = null;
@@ -82,14 +82,14 @@ export class StatusPanel {
   public sync(game: Game): void {
     const target = game.activeControllableEntity;
     if (!target) {
-      document.getElementById('hud-status')?.classList.add('hidden');
+      document.getElementById('hud-vessel-status')?.classList.add('hidden');
       return;
     }
     // 通常のマップビューでは艦固有の情報をプロパティウィンドウで参照するので畳む。
     // クリエイティブでは配置後の艦を常に操作できるため、マップビューでも VESSEL を表示する。
     // CSS 側でも同じ条件を持つが、未配置状態からの復帰時は JS で明示的に戻す。
     if (!game.cameraSystem.overviewMode || game.activeStage.id === 'creative') {
-      document.getElementById('hud-status')?.classList.remove('hidden');
+      document.getElementById('hud-vessel-status')?.classList.remove('hidden');
     }
 
     const now = performance.now();

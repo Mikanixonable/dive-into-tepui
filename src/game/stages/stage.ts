@@ -5,7 +5,7 @@ import { Enemy } from '../game-entity/enemy';
 import { Player, type PlayerInit } from '../player/player';
 import { Logistics } from './stage-utils/logistics';
 import { ScoreCounter } from './stage-utils/score-counter';
-import { StageStatusPanel } from './stage-utils/stage-status-panel';
+import { StatusPanel } from './stage-utils/status-panel';
 import { EffectsSystem } from '../vfx/effects-system';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
@@ -20,7 +20,7 @@ import { Ephemeris } from '../../physics/ephemeris';
 import type { Simulator } from '../simulation/simulator';
 import type { StageSaveData } from '../save-data';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
-import type { ObjectType } from '../creative/ship-placer-panel';
+import type { ObjectType } from '../creative/object-placer-panel';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { ActivePlayerController } from '../active-player-controller';
 import type { AttractorId } from '../../physics/attractor';
@@ -66,8 +66,8 @@ export interface StageClass {
 // 軌道上へオブジェクトを配置・複製する編集機能。これを持つステージだけがマップの
 // 「配置」「複製」項目を出す。focusId はマップの現在フォーカスで、基準天体の初期選択に使う。
 export interface ObjectAuthoring {
-  openShipPlacer(focusId?: string): void;
-  openShipPlacerForDuplicate(objectType: ObjectType, state: KinematicState): void;
+  openObjectPlacer(focusId?: string): void;
+  openObjectPlacerForDuplicate(objectType: ObjectType, state: KinematicState): void;
 }
 
 export type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
@@ -114,7 +114,7 @@ export abstract class Stage {
 
   readonly scoreCounter: ScoreCounter;
   protected readonly logistics: Logistics;
-  private readonly statusPanel: StageStatusPanel;
+  private readonly statusPanel: StatusPanel;
 
   protected readonly _hud: Hud;
   protected readonly _worldSfx: WorldSfx;
@@ -160,7 +160,7 @@ export abstract class Stage {
     this._phase = saved?.phase ?? 'playing';
     this.restored = saved !== undefined;
     this.logistics = new Logistics(hud, worldSfx, uiSfx, scene, entities, markerManager, saved?.logistics);
-    this.statusPanel = new StageStatusPanel(hud.combatRoot);
+    this.statusPanel = new StatusPanel(hud.combatRoot);
   }
 
   // 新規開始なら初期配置・ブリーフィングを行う。具象ステージは自分のコンストラクタの
