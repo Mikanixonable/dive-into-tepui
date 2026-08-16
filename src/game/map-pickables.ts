@@ -117,7 +117,7 @@ export class MapPickables {
       if (!base.alive || !visibilityPolicy.entity('base').pickable) continue;
       const pos = base.displayState(displayTime)?.r;
       if (pos) this.addCandidate(
-        base.id, base.name, pos, 'base', `格納 ${base.baseState.dockedShips.length} 隻`,
+        base.id, base.name, pos, 'base', `格納 ${base.baseState.dockedVessels.length} 艇`,
       );
     }
     for (const item of this.navTarget.mapPickables()) this.appendPickable(item);
