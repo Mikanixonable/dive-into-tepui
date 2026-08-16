@@ -26,6 +26,20 @@ export interface PerfCountSource {
   perfCounts(): PerfCounts;
 }
 
+// フレームごとに数え直される項目。集計期間の1フレームだけを覗くと実態を取り違えるので、
+// ms系と同じく毎フレーム積んで avg/max で出す。
+const RATE_COUNTS: readonly { key: string; label: string; group: string; read: (c: PerfCounts) => number }[] = [
+  { key: 'plan-arcs', label: '再生成区間', group: '計画軌道', read: (c) => c.planArcs },
+  { key: 'plan-steps', label: '積分step', group: '計画軌道', read: (c) => c.planSteps },
+  { key: 'pred-tracked', label: 'tracked', group: '予測', read: (c) => c.predicted },
+  { key: 'pred-complete', label: 'complete', group: '予測', read: (c) => c.predictComplete },
+  { key: 'pred-discard', label: 'discard', group: '予測', read: (c) => c.predictDiscarded },
+  { key: 'pred-steps', label: 'steps', group: '予測', read: (c) => c.predictorSteps },
+  { key: 'sim-substeps', label: 'substeps', group: 'シミュレーション', read: (c) => c.simSubsteps },
+  { key: 'sim-orbit', label: '軌道積分', group: 'シミュレーション', read: (c) => c.orbitSteps },
+  { key: 'sim-sources', label: '重力源', group: 'シミュレーション', read: (c) => c.gravitySources },
+];
+
 interface PhaseStats {
   sum: number;
   max: number;
@@ -67,6 +81,8 @@ export class PerfMeter {
   private readonly sectionStats = Array.from({ length: SECTION_COUNT + 1 }, newPhaseStats);
   // 描画パスごとの GPU 時間の統計。
   private readonly gpuStats = Array.from({ length: GPU_PASS_COUNT }, newPhaseStats);
+  // 個数系の統計。RATE_COUNTS と添字で対応する。
+  private readonly rateStats = Array.from({ length: RATE_COUNTS.length }, newPhaseStats);
   private frames = 0;
   private lastFlush = performance.now();
   // 前回フラッシュ時点の暦キャッシュ累計。表示する集計期間分の差分を取るために持つ。
@@ -105,6 +121,7 @@ export class PerfMeter {
     this.resetStats(this.triangleStats);
     for (const s of this.sectionStats) this.resetStats(s);
     for (const s of this.gpuStats) this.resetStats(s);
+    for (const s of this.rateStats) this.resetStats(s);
     this.sections.enabled = true;
     this.gpu.enabled = true;
     this.frames = 0;
@@ -140,8 +157,8 @@ export class PerfMeter {
     if (input.takeKey(K.togglePerfWindow)) this.toggle();
   }
 
-  // このフレームの update/sync/render 所要時間を積算し、表示更新のタイミングなら flush する。
-  // counts は同じフレームで計測対象になっていた Game 自身が渡す。
+  // このフレームの update/sync/render 所要時間と、フレームごとに数え直される個数系の値を積算し、
+  // 表示更新のタイミングなら flush する。counts は同じフレームで計測対象になっていた Game 自身が渡す。
   record(counts: PerfCountSource, updateMs: number, syncMs: number, renderMs: number, now: number): void {
     this.addSample(this.updateStats, updateMs);
     this.addSample(this.syncStats, syncMs);
@@ -154,8 +171,10 @@ export class PerfMeter {
       this.addSample(stats, i < SECTION_COUNT ? this.sections.msOf(i as SectionId) : this.sections.otherMs());
     }
     for (const [i, stats] of this.gpuStats.entries()) this.addSample(stats, this.gpu.msOf(i as GpuPassId));
+    const c = counts.perfCounts();
+    for (const [i, stats] of this.rateStats.entries()) this.addSample(stats, RATE_COUNTS[i]!.read(c));
     this.frames++;
-    this.flush(counts, now);
+    this.flush(c, now);
   }
 
   private addSample(stats: PhaseStats, value: number): void {
@@ -186,11 +205,10 @@ export class PerfMeter {
   }
 
   // 500ms ごとに蓄積した計測値から表示行を組み、窓へ反映する。
-  private flush(counts: PerfCountSource, now: number): void {
+  private flush(counts: PerfCounts, now: number): void {
     if (!this.win || now - this.lastFlush < 500) return;
     const n = Math.max(1, this.frames);
-    const c = counts.perfCounts();
-    this.rows = this.buildRows(c, n, now - this.lastFlush);
+    this.rows = this.buildRows(counts, n, now - this.lastFlush);
     this.win.syncRows(this.rows);
     // 次の集計期間へ向けてリセットする
     this.resetStats(this.updateStats);
@@ -200,6 +218,7 @@ export class PerfMeter {
     this.resetStats(this.triangleStats);
     for (const s of this.sectionStats) this.resetStats(s);
     for (const s of this.gpuStats) this.resetStats(s);
+    for (const s of this.rateStats) this.resetStats(s);
     this.frames = 0;
     this.lastFlush = now;
   }
@@ -259,17 +278,7 @@ export class PerfMeter {
       this.countRow('draw-calls', 'draw calls', '描画', this.drawCallStats, frames),
       this.countRow('draw-tris', 'triangles', '描画', this.triangleStats, frames),
 
-      { key: 'plan-arcs', label: '再生成区間', value: `${c.planArcs}`, group: '計画軌道' },
-      { key: 'plan-steps', label: '積分step', value: `${c.planSteps}`, group: '計画軌道' },
-
-      { key: 'pred-tracked', label: 'tracked', value: `${c.predicted}`, group: '予測' },
-      { key: 'pred-complete', label: 'complete', value: `${c.predictComplete}`, group: '予測' },
-      { key: 'pred-discard', label: 'discard', value: `${c.predictDiscarded}`, group: '予測' },
-      { key: 'pred-steps', label: 'steps', value: `${c.predictorSteps}`, group: '予測' },
-
-      { key: 'sim-substeps', label: 'substeps', value: `${c.simSubsteps}`, group: 'シミュレーション' },
-      { key: 'sim-orbit', label: '軌道積分', value: `${c.orbitSteps}`, group: 'シミュレーション' },
-      { key: 'sim-sources', label: '重力源', value: `${c.gravitySources}`, group: 'シミュレーション' },
+      ...RATE_COUNTS.map((r, i) => this.countRow(r.key, r.label, r.group, this.rateStats[i]!, frames)),
 
       { key: 'eph-attr', label: 'attractorsAt', value: `hit ${attrHits} / miss ${attrMisses}`, group: '暦キャッシュ' },
       { key: 'eph-all', label: '全リング', value: `hit ${timeHits} / miss ${timeMisses}`, group: '暦キャッシュ' },
