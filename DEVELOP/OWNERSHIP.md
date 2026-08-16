@@ -332,7 +332,7 @@ main.ts
   1度だけ組む(§付録「正本でないもの」は参照しない — 導出は構築時の1回きり)。
 - 全ての `GameEntity`(Player・Enemy[]・Bullet[]・DebrisPiece[]・AmmoPickup[]・BeltSection[] — 木の
   どのノードも例外なく)は `physics/dynamic-trajectory.ts` の `DynamicTrajectory` を1本、フィールド名
-  `actualTrajectory` で保持する(state/history/prevState の正本)。GameEntity ごとに繰り返さず
+  `actualTrajectory` で保持する(state/prevState と保持サンプル列そのものの正本)。GameEntity ごとに繰り返さず
   ここに一括で記す。`DynamicTrajectory` 自身は軌道要素を持たない — `GameEntity.orbitalElementsAround(center)` が
   呼び出しごとに現在の `state` と `center` から導出する(中心天体 `center` は呼び出し側が都度選ぶので
   `DynamicTrajectory`/`GameEntity` の状態ではない)。`predictsFuture = true` の
@@ -440,7 +440,7 @@ main.ts
 | 状態 | 正本の所有者 | 備考 |
 | --- | --- | --- |
 | 自機の位置・速度・エポック (ECI) | `Player.state` | 書き換えるのは RK4 積分(Simulator)・反動(PlayerFire)・接触(ContactPhysics) |
-| エンティティの過去 state 列(`StateQueue`) | `GameEntity.history`(→ `current.history`) | 記録するのは `DynamicTrajectory.step` だけ。時間窓は `historyDuration` = `max(baseHistoryDuration, requestedHistoryDuration)`(前者は種別固定で既定 0、Ship/Asteroid のみ `SHIP_HISTORY_DURATION`。後者は過去表示の要求で、`Game.advanceSimulation` が毎フレーム `entities.requestHistoryDuration(displayWindow.pastDuration)` として全エンティティへ配る — 履歴を持たない種別は無視し、`HISTORY_DURATION_MAX` で頭打ち)、間引き間隔は `sampleInterval()`(軌道周期ベース)で `cleanup` に渡す |
+| エンティティの過去 state 列(`StateQueue`) | `GameEntity.actualTrajectory`(`DynamicTrajectory` が内部に持つ `StateQueue`。先端(`state`)も同じ列の最新要素) | 記録するのは `DynamicTrajectory.step` だけ。時間窓は `historyDuration` = `max(baseHistoryDuration, requestedHistoryDuration)`(前者は種別固定で既定 0、Ship/Asteroid のみ `SHIP_HISTORY_DURATION`。後者は過去表示の要求で、`Game.advanceSimulation` が毎フレーム `entities.requestHistoryDuration(displayWindow.pastDuration)` として全エンティティへ配る — 履歴を持たない種別は無視し、`HISTORY_DURATION_MAX` で頭打ち)、間引き間隔は `sampleInterval()`(軌道周期ベース)で `cleanup` に渡す |
 | 自機の姿勢・角速度 | `Player.att` | 積分は Simulator.stepAttitudes に一元化 |
 | 機体座標系トルク | `Player.torque` | 毎フレーム PlayerThrottle の戻り値で上書きされる |
 | 推力加速度 | `GameEntity.thrust` | 自機は `PlayerThrottle.updateThrustState` の戻り値で毎フレーム上書き。無推力なら null |
@@ -597,11 +597,11 @@ main.ts
 | `OrbitalElements.center`(`Attractor`) | その軌道要素をどの天体まわりで取ったか。要素と同じ寿命でその天体の `t` 時点スナップショットを抱えるので、要素そのものより長く持ち回してはならない(`OrbitLine` は楕円の平行移動先をここから引く) | 要素を作り直すたび |
 | 解析楕円の中心天体(`strongestAttractor(state.r, attractors)` の結果) | `state`(と `attractors`)から都度導く選択であり、`GameEntity`/`Plan`/`PlanDisplay`/`OrbitLine` のどれもこれを状態として保持しない — 選ぶ GUI もない | 呼ぶたび再計算 |
 | `GameEntity.orbitalElementsAround(center)` | `state` と呼び出し側の `center` から毎回求める軽量な導出値。保持しないことで、表示側が無効化条件を持ち忘れても古い軌道要素を再利用しない | 呼び出しのたび |
-| `GameEntity.prevState`(→ `current.prevState`) | 直前の `step`/`reset` 時点の state を持つ専用フィールド(`history` とは別) | `step`/`reset` のたび更新 |
+| `GameEntity.prevState`(→ `current.prevState`) | 直前の `step`/`reset` 時点の state を持つ専用フィールド(先端を含む保持サンプル列とは別) | `step`/`reset` のたび更新 |
 | `GameEntity.predictedTrajectory` | `actualTrajectory.state` + ephemeris から `Predictor` が漸進的に構築する未来軌道のキャッシュ(`predictsFuture = false` のクラスでは常に null)。伸ばす長さ(horizon)は `DisplayWindowManager.durationSec(referencePeriod)` の毎フレーム値で、`GameEntity`/`Predictor` のどちらにも独立した状態としては残らない | `discardPredictionIfDiverged` の距離判定(§3-4 (a))、または `Player.updatePlayerControls` の推力確定直後(§3-4 (b))。無効化は破棄のみで即再構築はしない — 次フレーム以降の通常の予算配分で伸び直す |
 | `SimSpeedManager.canResupplyAmmo` | `simSpeed === 1` の派生 getter(等倍限定) | 呼ぶたび再計算 |
 | `OrbitLine.snap` | 楕円ジオメトリの再生成判定用スナップショット(長半径・離心率・`hHat`/`pHat`) | 要素ドリフト・`force`・初回 |
-| `DynamicTrajectory.sampleInterval` | 直近の `step` に渡された間引き間隔。列がどれだけ粗いかという列自身の属性で、`GameEntity.divergenceTolerance` が乖離判定の許容量をここから引く(現在の表示期間から引くと、期間を縮めた瞬間に既存の粗い列を破棄し続ける) | `step` のたび |
+| `DynamicTrajectory.sampleInterval` | 保持サンプル列の最も古い端での間引き間隔(`StateQueue.oldestGap`)。列がどれだけ粗いかという列自身の属性で、`GameEntity.divergenceTolerance` が乖離判定の許容量をここから引く(現在の表示期間から引くと、期間を縮めた瞬間に既存の粗い列を破棄し続ける) | 状態として持たず、読むたび列から導出する |
 | `FocusLabel.pickable` | このフレームに画面上で掴めるか。`update` が表示対象を true で置き直し、`syncLabels` が天体による遮蔽なら false、ラベル衝突で名前を落とした場合はアイコンが残るかどうか(`showIcon`)で上書きする。`bodyPickables` が候補の `pickable` に映すだけで、候補からは落とさない | `update` → `syncLabels` の順に毎フレーム書き換え |
 | `TrajectoryLine.startTime` / `.endTime`(描画区間の下限/上限) | `syncGeometry` の `from`/`to` 引数を、それぞれ bake 済み区間の先頭/末尾時刻へクランプした値(`to` が `null` なら上限なし)。`GameEntity.trajectoryLine`(`syncTrajectoryLine` は `from=simTime`/`to=null` を渡す — 予測線は先端まで無制限に描く)、`GameEntity.pastTrajectoryLine`(同じ `syncTrajectoryLine` が `from=simTime - pastDuration`/`to=simTime` を渡す — 保持窓より古い下限はここでクランプされ、それが過去表示長の頭打ちそのものになる)と `PlanPath` の per-index `TrajectoryLine`(`from=null`/`to=arc.end` — 積分先端が継ぎ足しでその区間の答える範囲より先まで伸びていても、そこで描画を止める)の双方が使う。線の先頭頂点は `startTime` で保持列を補間した点になるので、実状態そのものではない(`GameEntity.trajectoryLine` 側の乖離は `discardPredictionIfDiverged` の許容量内に収まる) | `syncGeometry` を呼ぶたび(=表示中は毎フレーム)。ただし bake 自体(`baked` の再構築)は保持列の参照か `frame` が変わったときだけ — `from`/`to` の変化だけなら revision の差し替えで足りる |
 | 自機 `OrbitLine` の表示抑制(`setSuppressed` の引数) | この艦自身の `supersedesAnalyticEllipse(simTime, horizon, overviewMode)` から導く真偽値。マップビューでは予測が表示範囲を覆いきるまで解析楕円を代替表示として残し、戦闘ビューでは予測線が描かれてさえいれば抑制する(視点近傍しか映さないため「覆いきったか」は意味を持たない)。`OrbitLine` 自身はこの理由を持たない | `Game.sync` が毎フレーム渡し直す |
@@ -629,9 +629,11 @@ main.ts
 `Vec3` / `KinematicState` / `Quat` / `Attitude` は **不変**。値を進めるときは中身を書き換えず、
 新しいオブジェクトを作って差し替える(`stepRK4` は新しい `KinematicState` を、`stepAttitude` は
 新しい `Attitude` を返す)。これは最適化ではなく整合性の前提で、`physics/dynamic-trajectory.ts` の
-`DynamicTrajectory`(`GameEntity.actualTrajectory`)が `step`/`reset` のたび state を差し替え、差し替え前の
-state を条件付きで `history` へ送れるのは「state が差し替え以外では変化しない」からである。
-参照を共有したまま中身を書き換えると保持側が変化を検知できず、メモが黙って腐り、履歴も取り落とす。
+`DynamicTrajectory`(`GameEntity.actualTrajectory`)は先端(`state`)を保持サンプル列(`StateQueue`)の
+最新要素そのものとして持ち、`step`/`reset` のたび新しい先端をその列へ積む。積む前の先端を捨てず
+そのまま保持サンプルとして列に残せる(間引きに値しなければ捨てて新しい先端で置き換える)のは、
+「state が差し替え以外では変化しない」からである。参照を共有したまま中身を書き換えると保持側が
+変化を検知できず、メモが黙って腐り、保持サンプル列も取り落とす。
 
 `KinematicState` は `{t, r, v}`(エポック付き状態ベクトル)で、**予測点列・エンティティ履歴・計画ノードは
 すべてこの 1 型で表す**。同じ情報量の型を複数持たない(旧 `TrajectorySample` / `LineSample` /
