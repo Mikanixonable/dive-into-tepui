@@ -47,9 +47,14 @@ export class GroupedMarkers {
   // 前フレームに出したキー。集合から消えた対象のマーカーを片付けるために覚えておく。
   private shownKeys: readonly string[] = [];
   private readonly visibleKeys = new Set<string>();
+  private readonly hiddenItemsList: GroupedMarkerItem[] = [];
 
   isPickable(key: string): boolean {
     return this.visibleKeys.has(key);
+  }
+
+  getHiddenItems(): readonly GroupedMarkerItem[] {
+    return this.hiddenItemsList;
   }
 
   constructor(
@@ -107,10 +112,13 @@ export class GroupedMarkers {
     }
 
     this.visibleKeys.clear();
+    this.hiddenItemsList.length = 0;
     for (const m of placed) {
       const opacity = m.item.opacity ?? 1;
       if (m.labeled && opacity > 0 && !m.item.occluded && m.p.front) {
         this.visibleKeys.add(m.item.key);
+      } else {
+        this.hiddenItemsList.push(m.item);
       }
     }
 
