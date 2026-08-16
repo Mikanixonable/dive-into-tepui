@@ -210,11 +210,11 @@ main.ts
 │       │   │   ├── RcsEffects    → Billboard ×8   ... 状態なし。ノズル1基につき1枚、配置は RCS_NOZZLES が正本
 │       │   │   ├── ReentryEffects → Billboard ×2   ... 状態なし。強度は毎フレーム qdyn から導く
 │       │   │   ├── PlayerMarkers          ... 方向マーカー・ボアサイト・マップ上の自機位置(操作対象の艦だけが sync する)
-│       │   │   ├── TrajectoryLine         ... 自機予測軌道線。Game.sync が毎フレーム this.syncTrajectoryLines(操作対象, ...)を呼ぶ
-│       │   │   ├── TrajectoryLine         ... 自機過去軌跡線(actualLine)。同じ syncTrajectoryLines が actual の [simTime - pastDuration, simTime] を描く
+│       │   │   ├── TrajectoryLine         ... 自機予測軌道線。EntityLineManager.update が showPredictedLine/hidePredictedLine で出し入れし、EntityLineManager.sync が毎フレーム ship.syncTrajectoryLines(...) で形状と変換を合わせる
+│       │   │   ├── TrajectoryLine         ... 自機過去軌跡線(actualLine)。同じ EntityLineManager.update/sync が showActualLine/hideActualLine で出し入れし、syncTrajectoryLines が actual の [simTime - pastDuration, simTime] を描く
 │       │   │   ├── Plan                   ... この艦自身のマニューバ計画(正本)。ノード列 + アンカー
 │       │   │   └── PlanExecutor           ... この艦自身の計画実行状態機械(正本)。CreativeStage が艦ごとに呼ぶだけで保持しない
-│       │   ├── Enemy[]                    ... 各々 OrbitLine を持ちうる(EntityManager.syncOrbitLines が showOrbitLine(style)/hideOrbitLine で出し入れし、見た目も style で決める)
+│       │   ├── Enemy[]                    ... 各々 OrbitLine を持ちうる(EntityLineManager が showOrbitLine(style)/hideOrbitLine で出し入れし、見た目も style で決める)
 │       │   ├── Bullet[]                    ... 各々コンストラクタで WorldSfx への参照を持つ(至近通過音を自分の checkLoss から鳴らすため)。
 │       │   │                                  renderObject はシーンへ足さない(GameEntity の addToScene=false) — bulletBodyPool/bulletHaloPool/plasmaPool が
 │       │   │                                  renderObject の変換を読んで描画する。renderObject 自体は Bullet.sync が書き込む変換の置き場所として残る
@@ -227,6 +227,10 @@ main.ts
 │       │   ├── Base[]                     ... 各々 baseState(money/inventory/dockedShips)を持ち、OrbitLine を持ちうる(同上)
 │       │   └── Asteroid[]                 ... 重力を及ぼし・受ける小天体。mass/radius はコンストラクタ引数から mu = G・mass を導いて固定。
 │       │                                       j2/c22 を渡した場合は degree2(pole/tesseral)も構築時に att から一括で固定
+│       ├── EntityLineManager              ... EntityManager の参照を受け取って回すだけ(所有しない)。自前の状態は持たない。
+│       │                                       entities の直後に construct する。update が各エンティティの
+│       │                                       orbitLine/predictedLine/actualLine を出す/消す/スタイルを決め、sync は
+│       │                                       それらの形状と変換だけを合わせる(生成・破棄はしない)
 │       ├── Simulator                      ... 実シミュレーション。EntityManager・Ephemeris・FrameSections の参照を受け取って回すだけ(いずれも所有しない)
 │       │   └── ContactPhysics             ... 接触の検出(physics/sphere-contact.ts)・剛体解決(physics/collision-response.ts)を
 │       │                                       substep ごと(resolveSubstep)/フレームに1回のベルト(resolveBelt)で呼ぶ列挙・順序付け層
