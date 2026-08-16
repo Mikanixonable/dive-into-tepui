@@ -318,8 +318,12 @@ export class GameEntity {
   }
 
   // 予測列の先端を、呼び出し側が確定させた重力源 attractors のもとで dt ぶん1ステップ伸ばす。
-  // horizon は simTime から先に予測する長さ [s]。伸ばせなかったら false。
-  stepPredicted(attractors: readonly Attractor[], simTime: number, dt: number, horizon: number): boolean {
+  // horizon は simTime から先に予測する長さ [s]。extrapolationCenter は先端位置で最も強く引く
+  // 解析天体(外挿用、省略時 null)。伸ばせなかったら false。
+  stepPredicted(
+    attractors: readonly Attractor[], simTime: number, dt: number, horizon: number,
+    extrapolationCenter: Attractor | null = null,
+  ): boolean {
     if (!this.predictsFuture) return false;
     if (this._predicted === null) {
       this._predicted = new DynamicTrajectory(this.actual.state);
@@ -331,7 +335,10 @@ export class GameEntity {
     // 先端が既にホライズンへ達していたら、それ以上は伸ばさない。
     if (p.state.t >= simTime + horizon) return false;
 
-    p.step(dt, attractors, this.bcInv, this.srpCoeff, null, this.sampleInterval(attractors, p.state, horizon), horizon);
+    p.step(
+      dt, attractors, this.bcInv, this.srpCoeff, null,
+      this.sampleInterval(attractors, p.state, horizon), horizon, extrapolationCenter,
+    );
 
     // 有限チェック
     const { r, v } = p.state;

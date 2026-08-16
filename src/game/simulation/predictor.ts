@@ -6,7 +6,9 @@ import { GameEntity } from '../game-entity/game-entity';
 import { Player } from '../player/player';
 import { Ephemeris } from '../../physics/ephemeris';
 import type { Attractor } from '../../physics/attractor';
-import { localOrbitPeriod } from '../../physics/attractor';
+import { strongestAttractor } from '../../physics/attractor';
+import { keplerPeriod } from '../../physics/elements';
+import { len, sub } from '../../physics/vec3';
 import { attractorsNearInto, classifyAttractors, predictedAttractorsAt } from './attractors';
 import type { PerfCounts } from '../../perf-meter';
 
@@ -87,11 +89,19 @@ export class Predictor {
       // の中点で attractorsAt を解決しており、予測だけ過去の天体位置を保持しないようにする。
       const remaining = simTime + horizon - tipState.t;
       if (!(remaining > 1e-9)) break;
+      // 刻み幅とケプラー外挿の中心天体は、どちらもこの1回の strongestAttractor から求める
+      // (localOrbitPeriod 内部の重複呼び出しを避ける)。ただし外挿の中心は解析天体(Ephemeris
+      // の登録天体)に限る — Asteroid など動的重力源が最強のときだけ、解析天体だけの一覧
+      // (gravityAttractorsAt、同じ t なのでリングキャッシュに当たる)から選び直す。
+      const rawCenter = strongestAttractor(tipState.r, currentAttractors);
+      const extrapolationCenter = rawCenter.id in this.ephemeris.registry
+        ? rawCenter
+        : strongestAttractor(tipState.r, this.ephemeris.gravityAttractorsAt(tipState.t));
       const dt = Math.min(
         remaining,
         Math.max(
           C.PREDICT_MIN_STEP_DT,
-          localOrbitPeriod(tipState.r, currentAttractors) / C.PREDICT_STEPS_PER_REV,
+          keplerPeriod(len(sub(tipState.r, rawCenter.state.r)), rawCenter.mu) / C.PREDICT_STEPS_PER_REV,
           horizon / C.PREDICT_MAX_STEPS,
         ),
       );
@@ -101,7 +111,7 @@ export class Predictor {
       const stepAttractors = attractorsNearInto(
         tipState.r, stepClassified, this.stepAttractorsScratch,
       );
-      if (!e.stepPredicted(stepAttractors, simTime, dt, horizon)) break;
+      if (!e.stepPredicted(stepAttractors, simTime, dt, horizon, extrapolationCenter)) break;
       consumed++;
       this.lastSteps++;
     }

@@ -335,7 +335,10 @@ main.ts
   `actual` で保持する(state/history/prevState の正本)。GameEntity ごとに繰り返さず
   ここに一括で記す。`DynamicTrajectory` 自身は軌道要素を持たない — `GameEntity.orbitalElementsAround(center)` が
   呼び出しごとに現在の `state` と `center` から導出する(中心天体 `center` は呼び出し側が都度選ぶので
-  `DynamicTrajectory`/`GameEntity` の状態ではない)。`predictsFuture` が真の
+  `DynamicTrajectory`/`GameEntity` の状態ではない)。別に `extrapolationCenter`(`step` の呼び出し側が
+  渡した、先端位置で最も強く引く解析天体)は `DynamicTrajectory` 自身が持つ数少ない状態の1つで、
+  `extrapolatedAt` が先端より先を二体軌道として外挿する中心にそのまま使う — 呼び出しごとに導出し
+  直すのではなく直近の `step`時点のスナップショットを保持し、`reset` で破棄する。`predictsFuture` が真の
   GameEntity(Ship・Base・AmmoPickup・Asteroid)は、`Predictor` が
   `stepPredicted` を呼んだ時点で2本目の `DynamicTrajectory` を `predicted` として追加で持つ
   (§付録「正本でないもの」参照 — 未来位置のキャッシュであり、正データではない)。予測する長さ
@@ -602,6 +605,7 @@ main.ts
 | `SimSpeedManager.canResupplyAmmo` | `simSpeed === 1` の派生 getter(等倍限定) | 呼ぶたび再計算 |
 | `OrbitLine.snap` | 楕円ジオメトリの再生成判定用スナップショット(長半径・離心率・`hHat`/`pHat`) | 要素ドリフト・`force`・初回 |
 | `DynamicTrajectory.sampleInterval` | 直近の `step` に渡された間引き間隔。列がどれだけ粗いかという列自身の属性で、`GameEntity.divergenceTolerance` が乖離判定の許容量をここから引く(現在の表示期間から引くと、期間を縮めた瞬間に既存の粗い列を破棄し続ける) | `step` のたび |
+| `DynamicTrajectory.extrapolationCenter` | 直近の `step` に渡された、先端位置で最も強く引く解析天体。どれが解析天体かの判定は `step` の呼び出し側(現状 `Predictor.advanceBudget` のみ)が行い、`DynamicTrajectory` 自身は `Ephemeris` を持たないので判定しない。`extrapolatedAt` が先端より先を外挿する中心にそのまま使う | `step`(引数省略時は `null` のまま)のたび、`reset` で破棄 |
 | `FocusLabel.pickable` | このフレームに画面上で掴めるか。`update` が表示対象を true で置き直し、`syncLabels` が天体による遮蔽なら false、ラベル衝突で名前を落とした場合はアイコンが残るかどうか(`showIcon`)で上書きする。`bodyPickables` が候補の `pickable` に映すだけで、候補からは落とさない | `update` → `syncLabels` の順に毎フレーム書き換え |
 | `TrajectoryLine.startTime` / `.endTime`(描画区間の下限/上限) | `syncGeometry` の `from`/`to` 引数を、それぞれ bake 済み区間の先頭/末尾時刻へクランプした値(`to` が `null` なら上限なし)。`GameEntity.predictedLine`(`syncTrajectoryLines` は `from=simTime`/`to=null` を渡す — 予測線は先端まで無制限に描く)、`GameEntity.actualLine`(同じ `syncTrajectoryLines` が `from=simTime - pastDuration`/`to=simTime` を渡す — 保持窓より古い下限はここでクランプされ、それが過去表示長の頭打ちそのものになる)と `PlanPath` の per-index `TrajectoryLine`(`from=null`/`to=arc.end` — 積分先端が継ぎ足しでその区間の答える範囲より先まで伸びていても、そこで描画を止める)の双方が使う。線の先頭頂点は `startTime` で保持列を補間した点になるので、実状態そのものではない(`GameEntity.predictedLine` 側の乖離は `discardPredictionIfDiverged` の許容量内に収まる) | `syncGeometry` を呼ぶたび(=表示中は毎フレーム)。ただし bake 自体(`baked` の再構築)は保持列の参照か `frame` が変わったときだけ — `from`/`to` の変化だけなら revision の差し替えで足りる |
 | 自機 `OrbitLine` の表示抑制(`setSuppressed` の引数) | この艦自身の `supersedesAnalyticEllipse(simTime, horizon, overviewMode)` から導く真偽値。マップビューでは予測が表示範囲を覆いきるまで解析楕円を代替表示として残し、戦闘ビューでは予測線が描かれてさえいれば抑制する(視点近傍しか映さないため「覆いきったか」は意味を持たない)。`OrbitLine` 自身はこの理由を持たない | `Game.sync` が毎フレーム渡し直す |
