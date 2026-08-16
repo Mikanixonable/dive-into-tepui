@@ -13,6 +13,8 @@ import * as C from '../const';
 import { FILL_4 } from '../theme';
 import { GroupedMarkers } from './grouped-markers';
 import { LeadMarkers } from './lead-markers';
+import { isOccluded } from '../../physics/occlusion';
+import type { Attractor } from '../../physics/attractor';
 
 
 type ProjectFn = (worldPos: Vec3) => Projected;
@@ -151,6 +153,25 @@ export class MarkerManager {
   ): void {
     const p = project(worldPos);
     this.set(key, cls, sym, p.x, p.y, p.front, label, opacity, color, rotationDeg, symMarkup, fixedLabel);
+  }
+
+  // 遮蔽判定を行い、天体に遮蔽されている場合は fadeOut、表示されている場合は setPosition するヘルパー。
+  setNodePosition(
+    key: string,
+    cls: string,
+    sym: string,
+    worldPos: Vec3,
+    project: ProjectFn,
+    cameraPos: Vec3,
+    attractors: readonly Attractor[],
+    overviewMode: boolean,
+    label = '',
+  ): void {
+    if (overviewMode && isOccluded(cameraPos, worldPos, attractors)) {
+      this.fadeOut(key);
+    } else {
+      this.setPosition(key, cls, sym, worldPos, project, label);
+    }
   }
 
   // 3D空間上の「方向」を示すマーカー(プログレード/ボアサイト/BURN など、実在の位置を
