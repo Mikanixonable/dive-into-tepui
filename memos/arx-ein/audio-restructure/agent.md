@@ -35,9 +35,10 @@ audio/
       phasing-composer.ts  the Reich-style algorithm
       sketch-composer.ts   blank slate for the second algorithm
     instruments/
+      types.ts             InstrumentDef union + params, fenced per instrument
       tone-instrument.ts   one oscillator + envelope + pan; the only one so far
     tracks/
-      types.ts             BgmTrack union + params, fenced per composer and instrument
+      types.ts             BgmTrack union + params, fenced per composer
       tracks.ts            BGM_TRACKS, the data itself
   sfx/
     world-sfx.ts           sounds emitted by objects/events in the game world,

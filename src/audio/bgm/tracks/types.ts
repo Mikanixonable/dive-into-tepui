@@ -1,7 +1,8 @@
 // トラック宣言の型。1曲がどの Composer で鳴るか(kind)と、その Composer が食うパラメータ
-// (params)、そして音符を実際の響きにする楽器(instruments)の形をここで定める。
-// 曲そのもののデータは tracks.ts。
-// Composer や Instrument を増やすときは、対応する区画へ params 型を書き、union へ1行加える。
+// (params)の形をここで定める。曲そのもののデータは tracks.ts、
+// 音符を実際の響きにする楽器の宣言は ../instruments/types.ts。
+// Composer を増やすときは、対応する区画へ params 型を書き、union へ1行加える。
+import { InstrumentDef } from '../instruments/types';
 
 // ============================================================================ 共通
 
@@ -11,10 +12,6 @@
 export type BgmTrack =
   | { kind: 'phasing'; name: string; instruments: InstrumentDef[]; params: PhasingParams }
   | { kind: 'sketch'; name: string; instruments: InstrumentDef[]; params: SketchParams };
-
-// 1つの楽器の宣言。id は Composer が出す音符から参照される名前で、曲の中で一意。
-export type InstrumentDef =
-  | { kind: 'tone'; id: string; params: ToneParams };
 
 // ================================================================== Composer params
 
@@ -90,16 +87,4 @@ export interface PhasingParams {
 // 必要なフィールドは音を書きながら足す。
 export interface SketchParams {
   stepDur: number; // 1ステップの秒数
-}
-
-// ================================================================ Instrument params
-
-// --------------------------------------------------------------- tone-instrument
-
-// 発振器1つを包絡で鳴らすだけの楽器(instruments/tone-instrument.ts)のパラメータ。
-export interface ToneParams {
-  wave: OscillatorType;
-  level: number; // velocity 1 のときの音量
-  attackSec: number;
-  pan: number; // -1(左)〜 1(右)
 }
