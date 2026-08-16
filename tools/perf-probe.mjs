@@ -593,8 +593,10 @@ function defaultMatrix() {
     { label: 'creative-map-warp1-noship', stage: 'creative', warp: 1, view: 'map', placeNode: false, ...common },
 
     // (d) エンティティ数の多いステージ(debug-load: 小惑星+破片を多数配置)。
+    // マップビューは全個体が予測対象になるので、予測の伸長そのものを測れる唯一の条件。
     { label: 'debug-load-combat-warp65536', stage: 'debug-load', warp: 65536, view: 'combat', ...common },
     { label: 'debug-load-combat-warp1', stage: 'debug-load', warp: 1, view: 'combat', ...common },
+    { label: 'debug-load-map-warp1', stage: 'debug-load', warp: 1, view: 'map', placeNode: false, ...common },
   ];
 }
 
