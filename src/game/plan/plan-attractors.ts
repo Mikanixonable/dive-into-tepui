@@ -37,7 +37,7 @@ const PREDICTION_TRUNCATED = 2;
 // 一致する。その一致だけを拾えばよいので、少数で足りる。
 const HELD_SLOTS = 4;
 
-// 計画の終端が未確定なフレームで、毎回異なる revision を作るための連番。
+// 計画の終端がまだ求まっていないフレームで、毎回異なる revision を作るための連番。
 let unresolvedPlanEndTick = 0;
 
 // 32bit 整数への畳み込み。非有限な value は 0 として畳み込まれ、結果は常に有限。
@@ -64,19 +64,18 @@ function predictionCoverage(entity: GameEntity, planEnd: number): number {
   return entity.predictionTruncated ? PREDICTION_TRUNCATED : PREDICTION_SHORT;
 }
 
-// provider が返す内容を変えうる入力だけを畳み込んだ世代値。planEnd は計画の折れ線が届いている
-// 終端時刻で、simTime より後の有限値でなければ毎回異なる値を返す。
+// provider が返す内容を変えうる入力だけを畳み込んだ世代値。planEnd は計画区間列自身の
+// 積分終端(表示窓でクリップしない)で、有限でなければ毎回異なる値を返す。
 export function planSourceRevision(
   entities: EntityManager,
   excludedEntityIds: readonly AttractorId[],
   planRevision: number,
   planEnd: number,
-  simTime: number,
 ): number {
   // 時刻に依らない入力 — 計画の編集と除外集合。
   let acc = mixNumber(REVISION_SEED, planRevision);
   for (const id of excludedEntityIds) acc = mixString(acc, id);
-  if (!Number.isFinite(planEnd) || !(planEnd > simTime)) {
+  if (!Number.isFinite(planEnd)) {
     return mixNumber(acc, ++unresolvedPlanEndTick);
   }
   // provider の出力に現れるのは、将来時刻の状態を答えられる個体 — predictsFuture が真のもの —
@@ -115,9 +114,8 @@ export class PlanAttractors implements PlanAttractorProvider {
     excludedEntityIds: readonly AttractorId[],
     planRevision: number,
     planEnd: number,
-    simTime: number,
   ): void {
-    const next = planSourceRevision(this.entities, excludedEntityIds, planRevision, planEnd, simTime);
+    const next = planSourceRevision(this.entities, excludedEntityIds, planRevision, planEnd);
     if (next === this.revisionValue) return;
     this.revisionValue = next;
     this.excluded = new Set(excludedEntityIds);
