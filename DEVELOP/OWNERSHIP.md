@@ -213,7 +213,7 @@ main.ts
 │       │   │   ├── PlayerMarkers          ... 方向マーカー・ボアサイト・マップ上の自機位置(操作対象の艦だけが sync する)
 │       │   │   ├── TrajectoryLine         ... 自機予測軌道線。EntityLineManager.update が showPredictedLine/hidePredictedLine で出し入れし、EntityLineManager.sync が毎フレーム ship.syncTrajectoryLines(...) で形状と変換を合わせる
 │       │   │   ├── TrajectoryLine         ... 自機過去軌跡線(actualLine)。同じ EntityLineManager.update/sync が showActualLine/hideActualLine で出し入れし、syncTrajectoryLines が actual の [simTime - pastDuration, simTime] を描く
-│       │   │   ├── OrbitLine              ... 第一/第二ターゲットにされている間だけ持つ。EntityLineManager が showOrbitLine(ターゲット用スタイル)/hideOrbitLine で出し入れし(ビューを問わず出る)、そのとき predictedLine/actualLine は隠れる
+│       │   │   ├── OrbitLine              ... 解析楕円。EntityLineManager が showOrbitLine(style)/hideOrbitLine で出し入れする。持つのは第一/第二ターゲットにされている間(ターゲット用スタイル、ビューを問わず出て predictedLine/actualLine は隠れる)と、戦闘ビューの操作艦(LINE_STYLE.playerOrbit、このとき predictedLine の代わりになる)
 │       │   │   ├── Plan                   ... この艦自身のマニューバ計画(正本)。ノード列 + アンカー
 │       │   │   └── PlanExecutor           ... この艦自身の計画実行状態機械(正本)。CreativeStage が艦ごとに呼ぶだけで保持しない
 │       │   ├── Enemy[]                    ... 各々 OrbitLine を持ちうる(EntityLineManager が showOrbitLine(style)/hideOrbitLine で出し入れし、見た目も style で決める。第一/第二ターゲットのときはテーマ色のターゲット用スタイル(EntityLineManager.update が currentThemePalette() から組む)になり、ビューを問わず出る)
