@@ -22,6 +22,7 @@ import { NavTarget } from './nav-target';
 import { CameraSystem } from './camera/camera-system';
 import { PlanEditor } from './plan/plan-editor';
 import { SimSpeedManager } from './sim-speed-manager';
+import { fmtApsisName } from '../physics/elements';
 import type { PauseMenu } from './hud/pause-menu';
 import { Targeter, type CombatTarget } from './targeter';
 import type { Docking } from './docking';
@@ -809,8 +810,8 @@ export class MapContextActions {
       { key: 'center', label: '基準天体', value: oi.centerName, group },
       { key: 'alt', label: '高度', value: fmtDist(oi.alt), group },
       { key: 'spd', label: '速度', value: fmtSpeed(oi.spd), group },
-      { key: 'ap', label: '遠地点 AP', value: fmtDist(oi.apAlt), group },
-      { key: 'pe', label: '近地点 PE', value: fmtDist(oi.peAlt), group },
+      { key: 'ap', label: fmtApsisName('ap', oi.centerId), value: fmtDist(oi.apAlt), group },
+      { key: 'pe', label: fmtApsisName('pe', oi.centerId), value: fmtDist(oi.peAlt), group },
       {
         key: 'inc', label: '傾斜角 INC',
         value: isFinite(oi.incDeg) ? `${oi.incDeg.toFixed(2)}°` : '---', group,
