@@ -261,21 +261,15 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
       - nanWatchdog.checkPlayer('simulator.advance(ベルト)')
     - lastSimDt = simDt
   - sections.exit(SECTION.integrate)
+  - docking.updateDockedPhysics() // ドッキング中の艦の速度をドッキング相手のそれへ揃える(位置は書き換えない)。相手か自艦のどちらかが失われたペアはここで解消する
   - displayWindowManager.resolve(simulator.simTime, player) // 積分後の状態でこのフレームの表示窓を確定させ、以降の消費者へ共有する
   - nanWatchdog.checkAll('simulator.advance', player, entities, simTime, dt, simDt) // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全エンティティを見る
   - targeter.updateBoardMarks(dt, player, entities) // 既存マークの経過時間を進め、寿命切れを捨てる。自機もターゲットも居なければ全消し
     - boardMarks.push() // 通常弾が的の面を自機側から通過した場合のみ
   - activePlayers.reclaimDead() // 喪失艦を配列・操作対象から回収する。全ステージ共通で毎フレーム無条件に呼ぶ(喪失した自機も他のエンティティと同じく速やかに取り除く)
     - entities.players のうち !alive な艦ごと → activePlayers.remove(lost) → navTarget.clearIfTargeting(lost.id) / targeter.clearIfTargeting(lost) / overviewCamera.clearFocusIf(lost.id) / entities.removePlayer(lost)
-<<<<<<< HEAD
-    - 掃引で操作対象そのものを失った場合だけ reclaimAfterLoss() → 生存艦が居れば activePlayers.set(次の艦)、居なければ setOrNull(null)(sfx.setRcs(false)。カメラの追従対象は毎フレーム引数で渡り直すだけなのでここでは何もしない。ビューはここでは切り替えない)。元から操作対象が居ない状態(手動解除・未配置)では何もしない
-  - docking.updateDockedPhysics() // 物理ドッキング中の艦の運動状態(位置・速度)を主天体/主艦に完全同期する
-  - docking.checkProximity() // 内部で viewManager.current==='dock' なら即 return。それ以外はドッキング状態の定期更新と掃除を行う (自動収納は行わず、手動ドッキング＋手动収納へ変更)
-=======
     - 掃引で操作対象そのものを失った場合だけ reclaimAfterLoss() → 生存艦が居れば activePlayers.set(次の艦)、居なければ setOrNull(null)(worldSfx.setRcs(false)。カメラの追従対象は毎フレーム引数で渡り直すだけなのでここでは何もしない。ビューはここでは切り替えない)。元から操作対象が居ない状態(手動解除・未配置)では何もしない
-  - docking.checkProximity() // 内部で viewManager.current==='dock' なら即 return。それ以外は全 base × 全生存艦を見て、距離・相対速度が閾値内の艦を収容(EntityManager.parkPlayer で破棄せず除去。alive には触れない)
-    - [収容した艦が操作対象だった] activePlayers.setOrNull(次の生存艦、居なければ null) → [game.player===null] viewManager.setView('map') // 操縦できる艦が無くなれば戦闘ビューに映すものが無いためマップへ
->>>>>>> origin/main
+  - docking.checkProximity() // 内部で viewManager.current==='dock' なら即 return。それ以外は docking.updateDockedPhysics() を呼ぶだけで、収容の判定はしない(基地への収容は storeInBase を呼ぶ操作から起きる)
   - sections.enter(SECTION.predict)
   - predictor.update(simTime, player, displayWindowManager.current.duration, mode) // simulator.advance 内の substep cleanup 後に呼ぶ(死んだ個体を予測しない・積分後の実状態と突き合わせる)。horizon = displayWindowManager.current.duration(直前の displayWindowManager.resolve() が確定させた窓を読むだけ)。mode は 'map'(entities.all() 全対象・PREDICT_STEP_BUDGET)/'combat'(自機のみ・PREDICT_COMBAT_STEP_BUDGET)、cameraSystem.overviewMode で選ぶ
     - discardPredictionIfDiverged(simTime, attractors) // entities.all() のうち predictsFuture=true の対象のみ、毎フレーム無条件。attractors は simTime ぶんを1回だけ classifyAttractors し、対象ごとに attractorsNearInto でその位置の近傍へ絞ったもの(advanceBudget とは別のスクラッチ配列)
