@@ -112,17 +112,14 @@ export class TrajectoryLine {
     out.set(r.x, r.y, r.z);
   };
 
-  // trajectory の保持区間のうち [from, to] を描く対象にする。保持区間の末尾が to に届かない場合、
-  // 先端(trajectory.extrapolationCenter)を中心天体まわりの二体軌道とみなして to まで外挿し
-  // 継ぎ足す — 中心天体を持たない、または軌道要素が求まらない(高離心率・双曲線)場合は外挿せず
-  // 保持区間の末尾で止まる。trajectory が null なら曲線を持たない状態にする。from/to はそれぞれ
-  // 描画の下限/上限時刻で、null ならその側は無制限(保持区間または外挿区間の端まで)。区間の外は
-  // 補間できないので、それぞれ先頭/末尾へクランプする。
-  // 座標系相対への焼き直し(非剛体変形、frameTransformAt を伴う高コストな処理)は、保持列の参照
-  // または frame が変わったときだけ行う。外挿区間を持つ間はそれに加え、to が外挿1サンプルぶんの
-  // 間隔以上動いたときだけ焼き直す — to は毎フレーム動くが、動いた分がその間隔未満なら据え置いて
-  // よい(描画末尾が最大1間隔ぶん遅れるだけで見た目には出ない)。それ以外(from/to の小さな移動)は
-  // 焼き直さず revision の差し替えだけで足りる。
+  // trajectory の保持区間のうち [from, to] を描く対象にする。trajectory が null なら曲線を
+  // 持たない状態にする。from/to はそれぞれ描画の下限/上限時刻で、null ならその側は無制限。
+  // 区間の外は補間できないので、それぞれ先頭/末尾へクランプする。保持区間の末尾が to に届かず、
+  // かつ先端が中心天体を持つ場合は、二体ケプラー軌道とみなして to まで外挿し継ぎ足す。
+  // 座標系相対への焼き直し(frameTransformAt を伴う高コストな処理)は、保持列の参照または
+  // frame が変わったときだけ行う。外挿区間を持つ間はそれに加え、to が外挿1サンプルぶんの間隔
+  // 以上動いたときにも焼き直す — 動いた分がその間隔未満なら、描画末尾が最大1間隔ぶん遅れる
+  // だけで見た目には出ない。
   syncGeometry(
     trajectory: DynamicTrajectory | null, from: number | null, to: number | null, frame: ReferenceFrame,
     ephemeris: Ephemeris, attractors: readonly Attractor[],
