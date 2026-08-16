@@ -72,6 +72,7 @@ export class PlanPath {
   // ポインタイベント起点でフレーム外なので、直近の sync から引き継ぐ)。
   private cameraPos: Vec3 | null = null;
   private final: FinalSegment | null = null;
+  private _plannedEnd = NaN;
   // 計画を積分して保持する範囲とは別に、画面へ描く時間窓を持つ。ノードが複数あると
   // 計画全体は表示期間より長くなり得るため、折れ線と目盛が同じ窓を読むようにする。
   private displayFrom = 0;
@@ -107,6 +108,7 @@ export class PlanPath {
     this.lastSteps = 0;
     // 起点→node…→末尾区間に分解する
     const segments = buildSegments(planData, ephemeris, this.displayDuration);
+    this._plannedEnd = segments[segments.length - 1]!.end;
     // ノードが1つも無い間はその唯一の区間(末尾区間)の起点が毎フレーム自機を追従する。
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i]!;
@@ -204,6 +206,12 @@ export class PlanPath {
     }
     if (minT > maxT) return null;
     return { min: minT, max: maxT };
+  }
+
+  // 直近の update() が組んだ区間列の終端時刻。timeRange() と異なり表示窓でクリップしないので、
+  // simTime には依らない。update() を一度も通していなければ NaN。
+  get plannedEnd(): number {
+    return this._plannedEnd;
   }
 
   // この折れ線が経由するノードの数。
