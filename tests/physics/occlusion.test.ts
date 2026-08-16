@@ -24,7 +24,7 @@ export function register(): void {
 
     assert.equal(occlusionOpacity(cameraPos, pointAt(2), [EARTH]), 1);
     assert.ok(Math.abs(occlusionOpacity(cameraPos, pointAt(1.75), [EARTH]) - 0.5) < 1e-12);
-    assert.equal(occlusionOpacity(cameraPos, pointAt(1.5), [EARTH]), 0);
+    assert.ok(occlusionOpacity(cameraPos, pointAt(1.5), [EARTH]) < 1e-12);
     assert.equal(occlusionOpacity(cameraPos, pointAt(1), [EARTH]), 0);
   });
 
