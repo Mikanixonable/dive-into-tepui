@@ -41,7 +41,7 @@ export class LeadMarkers {
       // 主照準とは反対向き（逆三角形方向）の三尖星。線だけで描き、中央に
       // 小さな切り欠きを残すことで、敵マーカーや照準と識別しやすくする。
       const star = '<svg viewBox="0 0 24 24" width="24" height="24" aria-label="LEAD"><g fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="butt"><path d="M12 14.3V22"/><path d="M12 14.3V22" transform="rotate(120 12 12)"/><path d="M12 14.3V22" transform="rotate(240 12 12)"/></g></svg>';
-      const color = tgt instanceof Player ? C.COLOR_MARKER_ALLY : tgt.accentColor;
+      const color = 'accentColor' in tgt ? (tgt as { accentColor: string }).accentColor : C.COLOR_MARKER_ALLY;
       this.markerManager.setPosition(markerKey(tgt), 'mk-lead', star, lead, project, '', 1, color, undefined, true);
       shownKeys.push(markerKey(tgt));
     }
