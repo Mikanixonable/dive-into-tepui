@@ -242,8 +242,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 .mk-poi.mk-lagrange .lbl { font-size: calc(var(--font-s) * 0.7); white-space: pre; line-height: 1.25; text-align: center; }
 .mk-poi.mk-lagrange .lbl::first-line { font-size: var(--font-s); }
 .mk-base { color: ${C.COLOR_BASE_ORBIT_LINE}; text-shadow: 0 0 4px var(--bg); }
-.mk-base .lbl { font-size: var(--font-s); border-radius: var(--radius-s); background: var(--surface-weak); border: 1px solid var(--fill-3); }
-#hud .mk-poi .lbl, #hud .mk-base .lbl { margin-top: var(--space-2); padding: var(--space-1) var(--space-2); }
+#hud .mk-poi .lbl { margin-top: var(--space-2); padding: var(--space-1) var(--space-2); }
 .mk-longpress { width: 40px; height: 40px; }
 .mk-longpress .sym { border: 2px solid var(--accent); border-radius: 50%; box-sizing: border-box; }
 

@@ -13,6 +13,8 @@ import * as C from '../const';
 import { FILL_4 } from '../theme';
 import { GroupedMarkers } from './grouped-markers';
 import { LeadMarkers } from './lead-markers';
+import { isOccluded } from '../../physics/occlusion';
+import type { Attractor } from '../../physics/attractor';
 
 
 type ProjectFn = (worldPos: Vec3) => Projected;
@@ -153,6 +155,25 @@ export class MarkerManager {
     this.set(key, cls, sym, p.x, p.y, p.front, label, opacity, color, rotationDeg, symMarkup, fixedLabel);
   }
 
+  // 遮蔽判定を行い、天体に遮蔽されている場合は fadeOut、表示されている場合は setPosition するヘルパー。
+  setNodePosition(
+    key: string,
+    cls: string,
+    sym: string,
+    worldPos: Vec3,
+    project: ProjectFn,
+    cameraPos: Vec3,
+    attractors: readonly Attractor[],
+    overviewMode: boolean,
+    label = '',
+  ): void {
+    if (overviewMode && isOccluded(cameraPos, worldPos, attractors)) {
+      this.fadeOut(key);
+    } else {
+      this.setPosition(key, cls, sym, worldPos, project, label);
+    }
+  }
+
   // 3D空間上の「方向」を示すマーカー(プログレード/ボアサイト/BURN など、実在の位置を
   // 持たない)。origin から dir(単位ベクトル)方向へ MARKER_DIR_DIST だけ離れた仮想点を
   // 投影する。origin は自機位置で統一する。
@@ -289,7 +310,7 @@ export class MarkerManager {
 
     // 表示中のマーカーと、そのラベルの推定矩形を集める
     for (const m of this.markerDictionary.values()) {
-      if (m.hidden || !m.lbl.textContent || m.fixedLabel) {
+      if (m.hidden || !m.lbl.textContent || m.fixedLabel || m.root.style.opacity === '0') {
         m.lbl.style.transform = 'translateX(-50%)';
         continue;
       }
@@ -436,6 +457,12 @@ export class MarkerManager {
         line.setAttribute('y2', (a.oy + a.dy - a.h / 2).toString());
         line.setAttribute('stroke', FILL_4);
         line.setAttribute('stroke-width', '1');
+        const opacity = a.m.root.style.opacity;
+        if (opacity) {
+          line.setAttribute('stroke-opacity', opacity);
+        } else {
+          line.removeAttribute('stroke-opacity');
+        }
         // 既存ノードの appendChild は同じノードを移動するだけなので、active 順を保つ。
         this.svgOverlay.appendChild(line);
         lineIndex++;
