@@ -23,8 +23,8 @@ export class Docking {
   readonly transferDialog: ResourceTransferDialog;
   // 選択中/ドックビューの対象基地。設定されている間だけドックビューへ遷移できる。
   private _activeBase: Base | null = null;
-  // 新造艦の連番。基地をまたいで一意な id/表示名を割り振るだけの用途。
-  private nextBuiltShipNo = 0;
+  // 新造艦艇の連番。基地をまたいで一意な id/表示名を割り振るだけの用途。
+  private nextBuiltVesselNo = 0;
 
   // 船と船、船と基地の物理ドッキングペア (shipId -> targetEntity)
   private readonly dockedPairs = new Map<string, GameEntity>();
@@ -48,8 +48,8 @@ export class Docking {
   ) {
     this.baseView = new BaseView(this.hud.layers.view);
     this.baseView.onClose = () => this.viewManager.leaveDock();
-    this.baseView.onLaunchShip = (ship, base) => this.launch(ship, base);
-    this.baseView.onBuildShip = (base) => this.buildShip(base);
+    this.baseView.onLaunchVessel = (ship, base) => this.launch(ship, base);
+    this.baseView.onBuildVessel = (base) => this.buildVessel(base);
     this.viewManager.setDocking(this);
 
     this.transferDialog = new ResourceTransferDialog(this.hud.layers.view, this.hud.overlayManager);
@@ -78,10 +78,10 @@ export class Docking {
     if (relSpeed > C.DOCK_CAPTURE_REL_V) return false;
 
     if (target instanceof Base) {
-      if (target.baseState.dockedShips.length >= C.BASE_MAX_SHIPS) return false;
+      if (target.baseState.dockedVessels.length >= C.BASE_MAX_VESSELS) return false;
 
       // 1) 基地の 4 箇所のドックスロットのいずれかの前方エリア判定
-      for (let i = 0; i < C.BASE_MAX_SHIPS; i++) {
+      for (let i = 0; i < C.BASE_MAX_VESSELS; i++) {
         const slotPos = target.getSlotWorldPos(i);
         const slotNormal = target.getSlotWorldNormal(i);
         const distToSlot = len(sub(ship.state.r, slotPos));
@@ -199,13 +199,13 @@ export class Docking {
 
   // 手動で艦を基地へ収容する
   storeInBase(ship: Player, base: Base): void {
-    if (base.baseState.dockedShips.length >= C.BASE_MAX_SHIPS) {
-      this.hud.hint(`基地のドックが満杯です (最大 ${C.BASE_MAX_SHIPS} 隻)`);
+    if (base.baseState.dockedVessels.length >= C.BASE_MAX_VESSELS) {
+      this.hud.hint(`基地のドックが満杯です (最大 ${C.BASE_MAX_VESSELS} 隻)`);
       return;
     }
     const slotIndex = base.getAvailableSlotIndex() ?? 0;
     this.undock(ship);
-    base.baseState.dockedShips.push({
+    base.baseState.dockedVessels.push({
       id: ship.id,
       name: ship.name,
       hp: ship.hp,
@@ -214,7 +214,7 @@ export class Docking {
       player: ship,
       slotIndex,
     });
-    base.attachDockedShipMesh(ship, slotIndex);
+    base.attachDockedVesselMesh(ship, slotIndex);
 
     const wasActive = this.activePlayers.current === ship;
     this.mapActions.close();
@@ -232,16 +232,16 @@ export class Docking {
     this.hud.hint(`${ship.name} を基地のドック ${slotIndex + 1} に収納しました`);
   }
 
-  private buildShip(base: Base): void {
-    if (base.baseState.dockedShips.length >= C.BASE_MAX_SHIPS) {
-      this.hud.hint(`基地のドックが満杯です (最大 ${C.BASE_MAX_SHIPS} 隻)`);
+  private buildVessel(base: Base): void {
+    if (base.baseState.dockedVessels.length >= C.BASE_MAX_VESSELS) {
+      this.hud.hint(`基地のドックが満杯です (最大 ${C.BASE_MAX_VESSELS} 隻)`);
       return;
     }
     const slotIndex = base.getAvailableSlotIndex() ?? 0;
-    const no = ++this.nextBuiltShipNo;
+    const no = ++this.nextBuiltVesselNo;
     const id = `${base.id}-built-${no}`;
     const ship = new Player(this.hud, this.worldSfx, this.scene, this.effects, this.markerManager, { name: `新造艦-${no}`, state: base.state, id });
-    base.baseState.dockedShips.push({
+    base.baseState.dockedVessels.push({
       id: ship.id,
       name: ship.name,
       hp: ship.hp,
@@ -250,18 +250,18 @@ export class Docking {
       player: ship,
       slotIndex,
     });
-    base.attachDockedShipMesh(ship, slotIndex);
+    base.attachDockedVesselMesh(ship, slotIndex);
     this.hud.hint(`${ship.name} を建造しました (ドック ${slotIndex + 1})`);
   }
 
   private launch(ship: Player, base: Base): void {
-    const idx = base.baseState.dockedShips.findIndex((s) => s.player === ship || s.id === ship.id);
-    const slotIndex = idx >= 0 ? base.baseState.dockedShips[idx]!.slotIndex : 0;
+    const idx = base.baseState.dockedVessels.findIndex((s) => s.player === ship || s.id === ship.id);
+    const slotIndex = idx >= 0 ? base.baseState.dockedVessels[idx]!.slotIndex : 0;
 
     if (idx >= 0) {
-      base.baseState.dockedShips.splice(idx, 1);
+      base.baseState.dockedVessels.splice(idx, 1);
     }
-    base.detachDockedShipMesh(ship);
+    base.detachDockedVesselMesh(ship);
 
     // ドックスロットの位置・法線からワールド座標・分離速度を算出
     const slotPos = base.getSlotWorldPos(slotIndex);
