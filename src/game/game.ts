@@ -468,7 +468,7 @@ export class Game {
     );
 
     this.entities.syncPlayers(
-      player, fo, this.cameraSystem, displayTime, this.ephemeris, displayAttractors, visibilityPolicy,
+      player, fo, this.cameraSystem, displayTime, this.ephemeris, displayAttractors, visibilityPolicy, displayWindow,
     );
     this.entities.syncBases(
       this.controlledBase, fo, this.cameraSystem, displayTime, visibilityPolicy,
@@ -516,7 +516,7 @@ export class Game {
     this.guide.sync(player, simTime, this.editor.editMode, project, this.editor.planDisplay.path);
 
     // このフレームのマーカーが出揃った後でなければならないので最後に置く。
-    this.markerManager.resolveCollisions();
+    this.markerManager.resolveCollisions(this.cameraSystem.overviewMode);
   }
 
   // ------------------------------------------------------------------ render
