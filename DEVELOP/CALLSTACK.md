@@ -274,7 +274,7 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
   - predictor.update(simTime, player, displayWindowManager.current.duration, mode) // simulator.advance 内の substep cleanup 後に呼ぶ(死んだ個体を予測しない・積分後の実状態と突き合わせる)。horizon = displayWindowManager.current.duration(直前の displayWindowManager.resolve() が確定させた窓を読むだけ)。mode は 'map'(entities.all() 全対象・PREDICT_STEP_BUDGET)/'combat'(自機のみ・PREDICT_COMBAT_STEP_BUDGET)、cameraSystem.overviewMode で選ぶ
     - discardPredictionIfDiverged(simTime, attractors) // entities.all() のうち predictsFuture=true の対象のみ、毎フレーム無条件。attractors は simTime ぶんを1回だけ classifyAttractors し、対象ごとに attractorsNearInto でその位置の近傍へ絞ったもの(advanceBudget とは別のスクラッチ配列)
       - invalidatePrediction() // predicted.at(simTime) が実位置から許容量を超えて乖離、または区間外のときのみ。許容量は PREDICT_RESET_DIST を下限に、保持サンプルの間引きが粗いぶんの補間誤差まで広げる
-    - advanceBudget(player, ...) // 予算 PREDICT_STEP_BUDGET を操作対象の艦優先で消費。先端が simTime + horizon を覆っていたらループ冒頭で抜ける(重力源を1回も解決せず消費 0)。ループごとに predictedAttractorsAt(ephemeris, entities, tip.t)(先端の時刻 tip.t で他の重力天体の displayState(tip.t, ephemeris) を引き直す — まだその時刻に達していない天体は先端からの二体ケプラー外挿で継ぎ、外挿もできない天体だけその回落ちる)→ classifyAttractors → attractorsNearInto(自分自身の id を除く)で重力源を決め、その1回の strongestAttractor から dt(keplerPeriod / PREDICT_STEPS_PER_REV、horizon / PREDICT_MAX_STEPS で下限、horizon そのもので上限)と外挿用の中心天体(解析天体でなければ gravityAttractorsAt から選び直す)を両方求める(stepActual に対する substep と同じ分担)。predictsFuture=false の個体は消費 0 で即 return
+    - advanceBudget(player, ...) // 予算 PREDICT_STEP_BUDGET を操作対象の艦優先で消費。先端が simTime + horizon を覆っていたらループ冒頭で抜ける(重力源を1回も解決せず消費 0)。ループごとに predictedAttractorsAt(ephemeris, entities, tip.t)(先端の時刻 tip.t で他の重力天体の displayState(tip.t, ephemeris) を引き直す — まだその時刻に達していない天体は先端からの二体ケプラー外挿で継ぎ、外挿もできない天体だけその回落ちる)を分類・絞り込みせずそのまま strongestAttractor(tip.r, ..., selfId)(自分自身の id を除いた線形走査)へ渡し、その1回の結果(rawCenter)から dt(keplerPeriod / PREDICT_STEPS_PER_REV、horizon / PREDICT_MAX_STEPS で下限、horizon そのもので上限)と外挿用の中心天体(解析天体でなければ gravityAttractorsAt から選び直す)を両方求める。積分に渡す重力源はこれとは別に、ステップ中点時刻 tip.t + dt/2 の predictedAttractorsAt を classifyAttractors → attractorsNearInto(自分自身の id を除く)で絞って決める(stepActual に対する substep と同じ分担)。predictsFuture=false の個体は消費 0 で即 return
       - player.stepPredicted(attractors, simTime, dt, horizon, extrapolationCenter) // ホライズン超過・打ち切り済みのいずれかで false を返すまで、dt・attractors を都度計算し直しながら1ステップずつ繰り返し呼ぶ(噴射中でも伸ばす)。extrapolationCenter は predicted.step() へそのまま渡り、sync フェーズで TrajectoryLine.syncGeometry が読み戻して先端より先の外挿に使う
         - predicted.step() // 呼び出し側が確定させた attractors で1ステップ積分
     - advanceBudget(entity, ...) // 残り予算を entities.all() 上のカーソル位置から1周ぶん配る(player は優先枠で処理済みなのでここでは飛ばす)。1体の取り分は max(PREDICT_MIN_ENTITY_STEPS, floor(残額 / 残り訪問数)) を残額で頭打ちにした値で、使い残しは次の個体へ回る。先端が既に horizon を覆っている個体と、entity.stepPredicted() が最初から false(predictsFuture=false/truncated)の個体は、消費 0 で次へ即進む
@@ -596,17 +596,21 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
   `stateOf`/`positionOf`/`attractorsAt` などを呼ぶたび、ヒットしなければ
   恒星→惑星-衛星系重心→惑星/衛星の合成をゼロから評価する。`attractorsAt` は
   同一 `t` に対して同一の配列参照を返すため、呼び出し側は返り値やその要素を書き換えてはならない。
-- **重力積分が使う配列は3経路(`Simulator.substep`/`Predictor.advanceBudget`/`PlanArc` の private
-  `integrateTo`)とも同じ組み立て: 合流(`gravityBodiesAt` の解析天体 + 生存中の重力天体)→
-  `classifyAttractors` → `attractorsNearInto`(問い合わせ位置の27近傍グリッド)。**
+- **積分器へ実際に渡す重力源配列は3経路(`Simulator.substep`/`Predictor.advanceBudget` のステップ
+  中点評価/`PlanArc` の private `integrateTo`)とも同じ組み立て: 合流(`gravityBodiesAt` の解析天体 +
+  生存中の重力天体)→ `classifyAttractors` → `attractorsNearInto`(問い合わせ位置の27近傍グリッド)。**
   `Simulator`/`Predictor` はここへ積分対象自身の id を渡して除く — 重力を持つ `GameEntity`
   (`Asteroid`)が自分自身を引く項を作らないため。`PlanArc` が積分するのは常に `mu=0` の自機なので、
   この除外を渡していない。
   `substep` はサブステップ中点で1回だけ合流・分類し、その結果をそのサブステップの全エンティティへ
-  使い回す(処理順に依存した誤差を避けるため)。`Predictor` は各対象の予測先端の時刻ごとに
-  `predictedAttractorsAt` で他の重力天体を引き直す(その時刻に届いていない天体は先端からの
-  二体ケプラー外挿(`GameEntity.displayState` の `ephemeris` 引数)で継ぐ — 現在位置に凍結すると
-  「その時刻に居ない場所」から引くことになるため。外挿もできない天体だけ落ちる)。`PlanArc` は `PlanEditor` が持ち続ける
+  使い回す(処理順に依存した誤差を避けるため)。`Predictor` は各対象の予測先端の時刻ごとに、この
+  組み立てをステップ中点時刻(`tip.t + dt/2`)で1回行う — 予測先端そのものの時刻(`tip.t`)での
+  重力源解決は分類を経ず、`predictedAttractorsAt` の窓をそのまま `strongestAttractor` へ渡して
+  1回の線形走査で中心天体と刻み幅 `dt` を決める(`excludeId` で自分自身だけ除く。1点しか
+  問い合わせないので分類の元が取れない)。どちらの時刻でも `predictedAttractorsAt` は他の重力天体を
+  引き直す(その時刻に届いていない天体は先端からの二体ケプラー外挿(`GameEntity.displayState` の
+  `ephemeris` 引数)で継ぐ — 現在位置に凍結すると「その時刻に居ない場所」から引くことになるため。
+  外挿もできない天体だけ落ちる)。`PlanArc` は `PlanEditor` が持ち続ける
   `plan/plan-attractors.ts` の `PlanAttractors` へ積分時刻ごとに問い合わせる。同じ時刻への問い合わせだけを
   数スロット保持し(ある歩の終了時刻は次の歩の開始時刻と一致する)、`resolve` が畳んだ revision が
   動いたときにだけ捨てる。解析天体の窓は1回だけ引いて衝突体と重力源の両方をそこから組むので、同じ

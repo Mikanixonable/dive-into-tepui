@@ -74,6 +74,12 @@ function gridCellSize(gridded: readonly Attractor[]): number {
 // もセル一辺も一覧全体から導くので、ある天体がどちらへ入るかは他の天体しだいで決まる。grid の
 // 天体はセルの27近傍からしか加算されない — 遠い問い合わせ位置で落とす直達項 mu/d² はセル一辺で
 // GRAVITY_NEGLIGIBLE_ACCEL 以下、同時に落ちる ECI 原点補正項 mu/D² は D > d の間これより小さい。
+//
+// **分類は計算量オーダーを下げるためのもので、1回の分類を多数の問い合わせ位置で使い回すことが
+// 成立条件。** 重力源 N 体を M 点で素朴に総当たりすると O(NM) だが、分類を1回だけ払えば
+// (コストは mu の全ソートに支配され O(N log N))、以降は各点が always の本数と自セル近傍の
+// 密度しか見ないので N に依らない。したがって1点ごとに分類し直す使い方は、O(N) の線形走査を
+// O(N log N) へ置き換えるだけで常に損になる — その場合は窓をそのまま走査する。
 export function classifyAttractors(attractors: readonly Attractor[]): ClassifiedAttractors {
   const thresholdMu = alwaysThresholdMu(attractors);
   const always: Attractor[] = [];
