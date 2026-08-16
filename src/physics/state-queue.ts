@@ -18,6 +18,9 @@ export class StateQueue {
   // 最新サンプル(補間しない生の値)。空なら null。
   get newest(): KinematicState | null { return this.deque.empty ? null : this.deque.peekLeft(); }
 
+  // 最も古いサンプル(補間しない生の値)。空なら null。
+  get oldest(): KinematicState | null { return this.deque.empty ? null : this.deque.peekRight(); }
+
   // 最も古い2サンプルの時刻差 [s]。2件未満なら 0。列の古い端での間引きの粗さを表し、
   // その端を挟む at() の補間誤差を見積もる基準になる。
   get oldestGap(): number {
