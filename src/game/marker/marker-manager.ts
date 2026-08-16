@@ -61,6 +61,19 @@ function defaultPriorityForClass(key: string, cls: string): number {
   return 0;
 }
 
+const NEVER_HIDE_ICON_CLASSES = [
+  'mk-boresight', 'mk-lead', 'mk-pro', 'mk-retro', 'mk-nrm', 'mk-rad', 'mk-tgtdir', 'mk-boardpass',
+];
+
+function canHideIconByPriority(m: MarkerRecord): boolean {
+  if (m.fixedLabel) return false;
+  const cls = m.root.className;
+  for (const c of NEVER_HIDE_ICON_CLASSES) {
+    if (cls.includes(c)) return false;
+  }
+  return true;
+}
+
 // ラベルの概算矩形を入れる画面空間グリッドのセル幅。ラベルの幅は文字数に
 // よって変わるため、各ラベルは矩形がまたがる全セルへ登録する。
 const COLLISION_BUCKET_SIZE = 64;
@@ -340,8 +353,9 @@ export class MarkerManager {
     this.occlusionFadeTimers.delete(key);
   }
 
-  // 全マーカーの優先度に基づくアイコン/ラベル間引きと、残ったラベルどうしの衝突緩和
-  resolveCollisions(): void {
+  // 全マーカーの優先度に基づくアイコン/ラベル間引きと、残ったラベルどうしの衝突緩和。
+  // マップモード(overviewMode === true)でのみ優先度間引きを行う。戦闘ビュー(overviewMode === false)では照準や敵アイコン等を隠さない。
+  resolveCollisions(overviewMode = false): void {
     const activeRecords: MarkerRecord[] = [];
     for (const m of this.markerDictionary.values()) {
       if (m.hidden || m.occlusionHidden || m.root.style.opacity === '0') continue;
@@ -352,24 +366,26 @@ export class MarkerManager {
       activeRecords.push(m);
     }
 
-    // 画面上で近接 (MARKER_CLUSTER_PX = 40px) するマーカー同士の優先度比較
-    const clusterDistPx = C.MARKER_CLUSTER_PX;
-    for (let i = 0; i < activeRecords.length; i++) {
-      const a = activeRecords[i]!;
-      for (let j = i + 1; j < activeRecords.length; j++) {
-        const b = activeRecords[j]!;
-        if (Math.hypot(a.x - b.x, a.y - b.y) >= clusterDistPx) continue;
+    // マップモード(overviewMode === true)のときのみ、画面上の近接に基づく優先度間引きを行う。
+    if (overviewMode) {
+      const clusterDistPx = C.MARKER_CLUSTER_PX;
+      for (let i = 0; i < activeRecords.length; i++) {
+        const a = activeRecords[i]!;
+        for (let j = i + 1; j < activeRecords.length; j++) {
+          const b = activeRecords[j]!;
+          if (Math.hypot(a.x - b.x, a.y - b.y) >= clusterDistPx) continue;
 
-        if (a.priority > b.priority) {
-          b.labelHiddenByPriority = true;
-          // 差が100以上の異なるカテゴリ間 (例: 天体 > 船, 船 > 弾薬, 船 > 軌道要素, 弾薬 > 軌道要素) はアイコンも非表示
-          if (a.priority - b.priority >= 100) {
-            b.iconHiddenByPriority = true;
-          }
-        } else if (b.priority > a.priority) {
-          a.labelHiddenByPriority = true;
-          if (b.priority - a.priority >= 100) {
-            a.iconHiddenByPriority = true;
+          if (a.priority > b.priority) {
+            b.labelHiddenByPriority = true;
+            // 差が100以上の異なるカテゴリ間 (例: 天体 > 船, 船 > 弾薬, 船 > 軌道要素) はアイコンも非表示 (保護対象を除く)
+            if (a.priority - b.priority >= 100 && canHideIconByPriority(b)) {
+              b.iconHiddenByPriority = true;
+            }
+          } else if (b.priority > a.priority) {
+            a.labelHiddenByPriority = true;
+            if (b.priority - a.priority >= 100 && canHideIconByPriority(a)) {
+              a.iconHiddenByPriority = true;
+            }
           }
         }
       }

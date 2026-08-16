@@ -515,7 +515,7 @@ export class Game {
     this.guide.sync(player, simTime, this.editor.editMode, project, this.editor.planDisplay.path);
 
     // このフレームのマーカーが出揃った後でなければならないので最後に置く。
-    this.markerManager.resolveCollisions();
+    this.markerManager.resolveCollisions(this.cameraSystem.overviewMode);
   }
 
   // ------------------------------------------------------------------ render
