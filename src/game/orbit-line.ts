@@ -26,18 +26,6 @@ export class OrbitLine {
   private snap: OrbitalElements | null = null;
   // Curve へ渡す revision。楕円を作り直すたびに新しいオブジェクトへ差し替える。
   private revision: object = {};
-  private displayEnabled = true;
-
-  // 表示の有効/無効を切り替える。
-  setDisplayEnabled(value: boolean): void {
-    this.displayEnabled = value;
-    this.applyVisible();
-  }
-
-  // 有効な軌道要素を得ている(snap がある)ときだけ、表示要求どおりに描く。
-  private applyVisible(): void {
-    this.curve.setVisible(this.displayEnabled && this.snap !== null);
-  }
 
   // renderOrder は、この線が他の線と重なったときにどちらを手前へ描くかを決める —
   // 透明描画どうしの前後は描画順でしか決まらない。
@@ -78,7 +66,7 @@ export class OrbitLine {
   sync(el: OrbitalElements | null, fo: FloatingOrigin, camera: THREE.Camera, force = false): void {
     if (!el || el.e >= 0.98 || !isFinite(el.a) || el.a <= 0) {
       this.snap = null;
-      this.applyVisible();
+      this.curve.setVisible(false);
       return;
     }
     // 頂点を自機相対座標で毎フレーム書き直すと、osculating 要素の微小なゆらぎで楕円が
@@ -91,7 +79,7 @@ export class OrbitLine {
     }
 
     this.curve.setCurve(this.sampler, { revision: this.revision, camera });
-    this.applyVisible();
+    this.curve.setVisible(true);
   }
 
   // 現在の要素が直近のスナップショットから許容誤差を超えて変化していれば true(要再生成)。

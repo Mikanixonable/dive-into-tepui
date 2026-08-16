@@ -214,7 +214,7 @@ main.ts
 │       │   │   ├── TrajectoryLine         ... 自機過去軌跡線(actualLine)。同じ syncTrajectoryLines が actual の [simTime - pastDuration, simTime] を描く
 │       │   │   ├── Plan                   ... この艦自身のマニューバ計画(正本)。ノード列 + アンカー
 │       │   │   └── PlanExecutor           ... この艦自身の計画実行状態機械(正本)。CreativeStage が艦ごとに呼ぶだけで保持しない
-│       │   ├── Enemy[]                    ... 各々 OrbitLine を持つ
+│       │   ├── Enemy[]                    ... 各々 OrbitLine を持ちうる(EntityManager.syncOrbitLines が showOrbitLine/hideOrbitLine で出し入れ)
 │       │   ├── Bullet[]                    ... 各々コンストラクタで WorldSfx への参照を持つ(至近通過音を自分の checkLoss から鳴らすため)。
 │       │   │                                  renderObject はシーンへ足さない(GameEntity の addToScene=false) — bulletBodyPool/bulletHaloPool/plasmaPool が
 │       │   │                                  renderObject の変換を読んで描画する。renderObject 自体は Bullet.sync が書き込む変換の置き場所として残る
@@ -224,7 +224,7 @@ main.ts
 │       │   │                                  renderObject は変換の置き場所のみで、debrisFragmentPools[fragmentVariant] が読んで描画する。
 │       │   │                                  barrel/magazineFrame 種別は個別メッシュのまま(addToScene=true)
 │       │   ├── AmmoPickup[]
-│       │   ├── Base[]                     ... 各々 baseState(money/inventory/dockedShips)と OrbitLine を持つ
+│       │   ├── Base[]                     ... 各々 baseState(money/inventory/dockedShips)を持ち、OrbitLine を持ちうる(同上)
 │       │   └── Asteroid[]                 ... 重力を及ぼし・受ける小天体。mass/radius はコンストラクタ引数から mu = G・mass を導いて固定。
 │       │                                       j2/c22 を渡した場合は degree2(pole/tesseral)も構築時に att から一括で固定
 │       ├── Simulator                      ... 実シミュレーション。EntityManager・Ephemeris・FrameSections の参照を受け取って回すだけ(いずれも所有しない)

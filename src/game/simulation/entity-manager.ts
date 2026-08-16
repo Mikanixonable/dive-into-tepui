@@ -409,8 +409,8 @@ export class EntityManager {
   }
 
   // 敵・基地の軌道線を表示要否ごと同期する。第一/第二ターゲットの敵は Targeter 自身の
-  // ハイライト線と重なるので除く。非表示と決めたものは幾何を焼き直さない — 隠れている線を
-  // 毎フレーム焼くだけ無駄になる。
+  // ハイライト線と重なるので除く。非表示と決めたものは線そのものを持たせない — 隠れている線の
+  // 頂点バッファを抱え続けるだけ無駄になる。
   syncOrbitLines(
     overviewMode: boolean, fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
     visibilityPolicy: MapVisibilityPolicy | null, primaryTarget: CombatTarget | null, secondaryTarget: CombatTarget | null,
@@ -418,13 +418,15 @@ export class EntityManager {
     for (const enemy of this.enemies) {
       const show = overviewMode && enemy.alive && (visibilityPolicy?.entity('ship').orbit ?? false)
         && enemy !== primaryTarget && enemy !== secondaryTarget;
-      enemy.orbitLine.setDisplayEnabled(show);
-      if (show) enemy.syncOrbitLine(fo, camera, attractors);
+      if (!show) { enemy.hideOrbitLine(); continue; }
+      enemy.showOrbitLine();
+      enemy.syncOrbitLine(fo, camera, attractors);
     }
     for (const base of this.bases) {
       const show = overviewMode && (visibilityPolicy?.entity('base').orbit ?? false);
-      base.orbitLine.setDisplayEnabled(show);
-      if (show) base.syncOrbitLine(fo, camera, attractors);
+      if (!show) { base.hideOrbitLine(); continue; }
+      base.showOrbitLine();
+      base.syncOrbitLine(fo, camera, attractors);
     }
   }
 

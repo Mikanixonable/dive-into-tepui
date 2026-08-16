@@ -76,7 +76,6 @@ export type BaseInit =
 export class Base extends GameEntity implements Controllable {
   readonly collisionGeom = new BaseCollisionGeometry();
   protected readonly predictedForGhost = true;
-  declare readonly orbitLine: OrbitLine;
   public baseState: BaseState = {
     money: 100000,
     inventory: [],
@@ -149,10 +148,8 @@ export class Base extends GameEntity implements Controllable {
     this.throttle = new PlayerThrottle(hud, 'saved' in init ? init.saved.throttle : undefined);
     this.thrustEffects = new ThrustEffects(scene, worldSfx);
     this.rcsEffects = new RcsEffects(scene, worldSfx);
-    this.orbitLine = new OrbitLine(C.COLOR_BASE_ORBIT_LINE, 0.35, C.LINE_RENDER_ORDER.shipOrbit);
     this.equatorNodes = new EquatorNodeMarkerPair(this, markerManager);
     this.marker = new EntityMarker(this, markerManager, 'mk-base', ENTITY_GLYPH.ship);
-    scene.add(this.orbitLine.line);
 
     if ('saved' in init) {
       this.baseState.money = init.saved.money;
@@ -296,14 +293,16 @@ export class Base extends GameEntity implements Controllable {
     this.rcsEffects.sync(fo, effectState.r, this.torque, this.att, effectVisible, camera, isControlled, 6.0);
   }
 
+  protected override createOrbitLine(): OrbitLine {
+    return new OrbitLine(C.COLOR_BASE_ORBIT_LINE, 0.35, C.LINE_RENDER_ORDER.shipOrbit);
+  }
+
   dispose(): void {
     super.dispose();
     if (this.scene) {
       this.thrustEffects.dispose(this.scene);
       this.rcsEffects.dispose(this.scene);
-      this.scene.remove(this.orbitLine.line);
     }
-    this.orbitLine.dispose();
     // 格納艦は entities.players から外れているため、ここでしか回収できない。
     for (const entry of this.baseState.dockedShips) entry.player.dispose();
     this.baseState.dockedShips = [];

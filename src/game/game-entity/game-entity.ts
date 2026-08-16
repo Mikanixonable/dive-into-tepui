@@ -66,7 +66,7 @@ export class GameEntity {
   thrust: Vec3 | null = null;
   // 機体座標系トルク。既定ゼロ = 自由回転。
   torque: Vec3 = v3();
-  // 自身の軌道楕円を描く線。null = 持たない(Enemy/Base が構築する)。
+  // 自身の軌道楕円を描く線。null = 持たない。
   orbitLine: OrbitLine | null = null;
   // 自身の予測軌道を描く線。null = 持たない。
   predictedLine: TrajectoryLine | null = null;
@@ -150,6 +150,28 @@ export class GameEntity {
   // center を中心とする接触軌道要素。中心は呼び出し側が選ぶ(例: strongestAttractor)。
   orbitalElementsAround(center: Attractor): OrbitalElements | null {
     return orbitalElementsOf(this.state, center);
+  }
+
+  // 自分の軌道楕円の線を作る。線を持つ種別だけが上書きする。
+  protected createOrbitLine(): OrbitLine | null {
+    return null;
+  }
+
+  // 軌道楕円の線を出す。既に出ていれば何もしない。線を持たない種別では何も起きない。
+  showOrbitLine(): void {
+    if (this.orbitLine !== null) return;
+    const line = this.createOrbitLine();
+    if (line === null) return;
+    this.scene?.add(line.line);
+    this.orbitLine = line;
+  }
+
+  // 軌道楕円の線を消す。線そのものを捨てるので、出し直すと作り直しになる。
+  hideOrbitLine(): void {
+    if (this.orbitLine === null) return;
+    this.scene?.remove(this.orbitLine.line);
+    this.orbitLine.dispose();
+    this.orbitLine = null;
   }
 
   // orbitLine を現在位置で最も強く引く天体まわりの軌道楕円に合わせる。呼ぶこと自体が
@@ -387,6 +409,7 @@ export class GameEntity {
     this.scene?.remove(this.renderObject);
     this.equatorNodes?.dispose();
     this.marker?.dispose();
+    this.hideOrbitLine();
     this.hidePredictedLine();
     this.hideActualLine();
     this.renderObject.traverse((child) => {
