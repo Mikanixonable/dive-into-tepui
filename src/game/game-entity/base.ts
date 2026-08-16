@@ -17,6 +17,8 @@ import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';
 import { EntityMarker } from '../marker/entity-marker';
 import type { BaseSaveData } from '../save-data';
 import { OrbitLine } from '../orbit-line';
+import { Plan } from '../plan/plan';
+import type { PlanExecutionMode } from '../player/player';
 import * as C from '../const';
 import { BaseCollisionGeometry, RayHit, SphereHit } from '../../physics/base-collision';
 import { PlayerThrottle } from '../player/player-throttle';
@@ -83,6 +85,17 @@ export class Base extends GameEntity implements Controllable {
   readonly collisionGeom = new BaseCollisionGeometry();
   readonly predictsFuture = true;
   declare readonly orbitLine: OrbitLine;
+  readonly plan = new Plan();
+  planExecution: PlanExecutionMode = 'off';
+  fineAttitude = false;
+  declare equatorNodes: EquatorNodeMarkerPair;
+
+  ensureEquatorNodes(markerManager: MarkerManager): EquatorNodeMarkerPair {
+    if (!this.equatorNodes) {
+      this.equatorNodes = new EquatorNodeMarkerPair(this, markerManager);
+    }
+    return this.equatorNodes;
+  }
   public baseState: BaseState = {
     money: 100000,
     inventory: [],
