@@ -25,6 +25,13 @@ const APPROACH_STEP_SAFETY = 0.5;
 const ANCHOR_JUMP_SPEED_MARGIN = 2;
 const ANCHOR_JUMP_MIN_DIST = 1;
 
+// 時刻昇順の states から t より前のものを落とす。
+function dropBefore(states: KinematicState[], t: number): void {
+  let cut = 0;
+  while (cut < states.length && states[cut]!.t < t) cut++;
+  if (cut > 0) states.splice(0, cut);
+}
+
 // 起点の差し替えが連続な伝播で説明できない(= 別の軌道へ飛んだ)か。時刻の前後関係は
 // 代理指標として成立しない — 別艦への切り替えやドック発進では新しい起点が普通に前回より
 // 後の時刻を持つので、状態そのものの差を見る。
@@ -124,31 +131,30 @@ function nearestByClearance(pos: Vec3, bodies: readonly Attractor[]): Attractor 
 }
 
 export class PlanArc {
-  readonly state0: KinematicState;
   readonly sourceRevision: number;
   readonly apsisCenterId: string | null;
-  // 直近の integrateTo で回した積分step数(生成時、または setEnd による継ぎ足し時。
+  // 直近の integrateTo で回した積分step数(生成時、または setRange による継ぎ足し時。
   // 継ぎ足さなかった呼び出しでは 0)。
   lastSteps = 0;
 
   private readonly provider: PlanAttractorProvider;
   private readonly apsisCenter: Attractor | null;
   private readonly _trajectory: DynamicTrajectory;
+  // この区間が答える範囲 [_state0.t, _end]。両端とも setRange が動かす。
+  private _state0: KinematicState;
   private _end: number;
-  // 累計積分step数。PLAN_ARC_MAX_STEPS は継ぎ足し込みの区間全体に対する上限。
-  private steps = 0;
   // 積分へ要求した間引き下限のうち最も粗い値。実際に記録されたサンプルの下限を決して下回らない
   // 側へ倒す — 下回ると、粗すぎる区間をそのまま使い回せると誤って答えることになる。
   private decimation = 0;
-  // 非有限・天体衝突・累計ステップ数上限で積分を打ち切ったか。一度立てば以後 integrateTo は
+  // 非有限・天体衝突・刻み幅の潰れで積分を打ち切ったか。一度立てば以後 integrateTo は
   // 何もしない。
   private truncated = false;
   // 積分中に最初に天体表面へ達した状態とその天体。到達しなければ null。
   private impact: PlanImpact | null = null;
-  // 積分中に最初に見つかった近地点・遠地点。apsisCenter が null、またはその極値へ
-  // 区間が届かなければ null のまま。
-  private periapsisState: KinematicState | null = null;
-  private apoapsisState: KinematicState | null = null;
+  // 積分中に見つかった近地点・遠地点を時刻昇順に持つ。区間の先頭より前のものは落とすので、
+  // 先頭要素が常に「いま答える範囲で最初の極値」になる。
+  private readonly periapsides: KinematicState[] = [];
+  private readonly apoapsides: KinematicState[] = [];
   private samplesCache: {
     readonly source: readonly KinematicState[]; readonly end: number; readonly result: readonly KinematicState[];
   } | null = null;
@@ -166,7 +172,7 @@ export class PlanArc {
   constructor(
     state0: KinematicState, end: number, provider: PlanAttractorProvider, apsisCenter: Attractor | null,
   ) {
-    this.state0 = state0;
+    this._state0 = state0;
     this.sourceRevision = provider.revision;
     this.apsisCenterId = apsisCenter?.id ?? null;
     this.provider = provider;
@@ -183,35 +189,51 @@ export class PlanArc {
   // サンプル間隔ではない — 間隔は刻み幅(PLAN_ARC_STEPS_PER_REV)でも決まり、そちらは作り直しても
   // 同じ値になるので、間隔を下限と比べると縮めようのない粗さを理由に毎フレーム作り直すことになる。
   // state0 が同一参照なら、その粗さの判定を満たす限り常に表せる。
-  // tracksLiveAnchor(計画が空の間の唯一の区間)では state0 が
-  // 自機を毎フレーム追従するため厳密一致では判定できない — 直近の生成結果からの位置の変化が
-  // 描画解像度のサンプル間隔(区間長 / PLAN_ARC_MAX_SAMPLES)未満なら、同じ軌道が時間方向に
-  // 進んだだけとみなして表せると答える。ただしこの閾値判定は「同じ軌道が進んだだけ」という
-  // 前提の上でだけ正しいので、起点が別の軌道へ飛んだ場合(別艦への切り替え・ドック発進・
-  // 衝突による状態上書き)は anchorJumped で先に弾く。
+  // tracksLiveAnchor(計画が空の間の唯一の区間)では state0 が自機を毎フレーム追従するため
+  // 厳密一致では判定できない — 新しい起点がこの arc の積分結果そのものの上に、折れ線1区間ぶんの
+  // 長さ(速度 × サンプル間隔)より近く載っているなら、描く線は変わらないので表せると答える。
+  // 自機が噴射すれば自由伝播したこの積分から離れていくので、この判定はそのとき自然に落ちる。
+  // 起点の時刻が答える範囲を越えていれば at が null を返し、そこでも落ちる — 1フレームの
+  // 時間送りが区間長を上回るワープでは、窓が丸ごと入れ替わるのでそれが正しい。
+  // ただしこの判定は「同じ軌道が進んだだけ」という前提の上でだけ正しいので、起点が別の軌道へ
+  // 飛んだ場合(別艦への切り替え・ドック発進・衝突による状態上書き)は anchorJumped で先に弾く。
   represents(
     state0: KinematicState, end: number, sourceRevision: number, apsisCenterId: string | null,
     tracksLiveAnchor: boolean,
   ): boolean {
     if (sourceRevision !== this.sourceRevision || apsisCenterId !== this.apsisCenterId) return false;
-    const sampleInterval = (end - this.state0.t) / C.PLAN_ARC_MAX_SAMPLES;
+    const sampleInterval = (end - this._state0.t) / C.PLAN_ARC_MAX_SAMPLES;
     if (this.decimation > sampleInterval * C.PLAN_ARC_MAX_SAMPLE_COARSENING) return false;
-    if (state0 === this.state0) return true;
+    if (state0 === this._state0) return true;
     if (!tracksLiveAnchor) return false;
-    if (anchorJumped(this.state0, state0)) return false;
-    return Math.abs(state0.t - this.state0.t) < sampleInterval;
+    if (anchorJumped(this._state0, state0)) return false;
+    const onArc = this.at(state0.t);
+    if (onArc === null) return false;
+    return len(sub(state0.r, onArc.r)) < len(state0.v) * sampleInterval;
   }
 
-  // 描く終端を end へ動かす。伸びたぶんは現在の積分先端から継ぎ足し、縮んだぶんは積分結果を
-  // 捨てずに答える範囲だけを狭める。
-  setEnd(end: number): void {
+  // 答える範囲を [start.t, end] へ動かす。先頭は自身の積分結果上の start.t の状態へ進め(積分は
+  // し直さない)、終端は伸びたぶんを現在の積分先端から継ぎ足す。start は represents が真を
+  // 返したときの起点でなければならない — 積分結果の外を指す start では先頭が動かない。
+  setRange(start: KinematicState, end: number): void {
+    if (start.t > this._state0.t) {
+      const front = this.at(start.t);
+      if (front !== null) this._state0 = front;
+    }
     this._end = end;
     // 先端が要求終端に届かない差がサンプル間隔未満なら折れ線の見た目は変わらないので継ぎ足さ
     // ない。毎フレームわずかに伸びる終端(空の計画の末尾区間)に1歩ずつ着地させると、通常の
     // 刻み幅より遥かに細かいステップをフレーム数ぶん積むことになる。
-    const threshold = (end - this.state0.t) / C.PLAN_ARC_MAX_SAMPLES;
+    const threshold = (end - this._state0.t) / C.PLAN_ARC_MAX_SAMPLES;
     if (!this.truncated && end > this._trajectory.state.t + threshold) this.integrateTo(end);
     else this.lastSteps = 0;
+    dropBefore(this.periapsides, this._state0.t);
+    dropBefore(this.apoapsides, this._state0.t);
+  }
+
+  // この区間が答える範囲の先頭状態。
+  get state0(): KinematicState {
+    return this._state0;
   }
 
   // この区間が答える終端時刻。
@@ -261,16 +283,18 @@ export class PlanArc {
     return this.impact && this.withinEnd(this.impact.state.t) ? this.impact : null;
   }
 
-  // 積分中に最初に見つかった近地点。中心天体へ接近し続けたまま表面へ達する
+  // 答える範囲で最初の近地点。中心天体へ接近し続けたまま表面へ達する
   // (衝突軌道で近地点が存在しない)場合や、end を超えていれば null。
   periapsisPoint(): KinematicState | null {
-    return this.periapsisState && this.withinEnd(this.periapsisState.t) ? this.periapsisState : null;
+    const first = this.periapsides[0];
+    return first && this.withinEnd(first.t) ? first : null;
   }
 
-  // 積分中に最初に見つかった遠地点。楕円でない、区間がそこまで届かない、または end を
+  // 答える範囲で最初の遠地点。楕円でない、区間がそこまで届かない、または end を
   // 超えていれば null。
   apoapsisPoint(): KinematicState | null {
-    return this.apoapsisState && this.withinEnd(this.apoapsisState.t) ? this.apoapsisState : null;
+    const first = this.apoapsides[0];
+    return first && this.withinEnd(first.t) ? first : null;
   }
 
   // t が現在の end 以内(丸め誤差込み)か。impactPoint/periapsisPoint/apoapsisPoint が
@@ -281,12 +305,16 @@ export class PlanArc {
 
   // end まで積分結果を伸ばす。呼び出し時点の積分先端から続きを刻むので、区間全体を作り直さ
   // ない。いずれかの天体の表面へ接触するか、地球大気で焼失(REENTRY_ALT)したら、その時点で
-  // 打ち切る(非有限・累計ステップ数上限に達した場合も同様) — 一度打ち切ったら以後は何もしない。
+  // 打ち切る(非有限の場合も同様) — 一度打ち切ったら以後は何もしない。
+  // PLAN_ARC_MAX_STEPS は1回の呼び出しに対する上限で、使い切っても打ち切りではない — 続きは
+  // 次の呼び出しが刻む。区間が生きたまま何フレームも使い回されるので、生涯累計を上限にすると
+  // 描く窓が先端を追い越しても伸びなくなり、線が縮んで戻らなくなる。
   private integrateTo(end: number): void {
     if (this.truncated) { this.lastSteps = 0; return; }
 
     const trajectory = this._trajectory;
-    const duration = Math.max(0, end - this.state0.t);
+    const tipAtStart = trajectory.state.t;
+    const duration = Math.max(0, end - this._state0.t);
     const sampleInterval = duration / C.PLAN_ARC_MAX_SAMPLES;
     this.decimation = Math.max(this.decimation, sampleInterval);
 
@@ -335,10 +363,10 @@ export class PlanArc {
         this.truncated = true;
         break;
       }
-      if (this.apsisCenter && (this.periapsisState === null || this.apoapsisState === null)) {
+      if (this.apsisCenter) {
         const crossing = apsisCrossing(this.apsisCenter, prev, trajectory.state);
-        if (crossing?.kind === 'periapsis' && this.periapsisState === null) this.periapsisState = crossing.state;
-        if (crossing?.kind === 'apoapsis' && this.apoapsisState === null) this.apoapsisState = crossing.state;
+        if (crossing?.kind === 'periapsis') this.periapsides.push(crossing.state);
+        if (crossing?.kind === 'apoapsis') this.apoapsides.push(crossing.state);
       }
       const endHeld = this.provider.at(trajectory.state.t);
       // 区間を跨いだ表面接触は、開始/終了時刻の全 collision body を候補にして掃引判定する。
@@ -370,14 +398,16 @@ export class PlanArc {
         this.truncated = true;
         break;
       }
-      this.steps++;
       steps++;
-      if (this.steps >= C.PLAN_ARC_MAX_STEPS) {
-        this.truncated = true;
-        break;
-      }
+      if (steps >= C.PLAN_ARC_MAX_STEPS) break;
     }
 
+    // 予算を使い切ったのに先端がサンプル1つぶんも進まないのは、刻み幅が潰れて収束していない
+    // 状態 — 次の呼び出しでも同じことになるので、ここで打ち切る。
+    if (steps >= C.PLAN_ARC_MAX_STEPS && sampleInterval > 0
+      && trajectory.state.t - tipAtStart < sampleInterval) {
+      this.truncated = true;
+    }
     this.lastSteps = steps;
   }
 }
