@@ -41,7 +41,7 @@
   - game.sync()
   - game.render()
   - gpu.resolve() // 窓の開閉によらず、game が存在する限り毎フレーム。renderer.resolveTimestampsAsync('render') を投げ、前フレームの GPU 時間が非同期で届く。呼ばないと時刻印クエリが溜まって上限に当たるので条件を付けない。render 区間の計測(t3)の後に置き、計測自身の費用を render へ混ぜない
-  - perf.record(game, ...) // 負荷確認ウィンドウが開いている間(perf.on)だけ。counts(= game)を引数で受け取り保持しない。500ms ごとに counts.perfCounts() を読んで PropertyWindow の行へ流す
+  - perf.record(game, ...) // 負荷確認ウィンドウが開いている間(perf.on)だけ。counts(= game)を引数で受け取り保持しない。毎フレーム counts.perfCounts() を読み、フレームごとに数え直される個数系(RATE_COUNTS)を ms 系と同じく積む。行を組んで PropertyWindow へ流すのは 500ms ごと
 
 ---
 
