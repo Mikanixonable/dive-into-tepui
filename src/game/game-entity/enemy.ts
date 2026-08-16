@@ -74,7 +74,7 @@ export type EnemyInit =
 export class Enemy extends Ship {
   accent: string | number; // マーカー色・集団識別。全敵が保持する
   waveId?: number; // stage00 のウェーブ敵のみ。生存ウェーブ集計に使う
-  declare readonly orbitLine: OrbitLine;
+  private readonly orbitLineColor: string | number;
 
   // 実行時状態(遅延初期化)。未設定 = まだその状態に入っていない
   lastFireSim?: number; // 最後に発砲判定した時刻。初回は発砲タイミングをずらすため遅延初期化
@@ -122,9 +122,7 @@ export class Enemy extends Ship {
     const visualBounds = new THREE.Box3().setFromObject(this.renderObject);
     const visualSphere = visualBounds.getBoundingSphere(new THREE.Sphere());
     this.radius = visualSphere.radius;
-    // 自身の軌道線を作ってシーンへ登録する
-    this.orbitLine = new OrbitLine(orbitLineColor, 0.35, C.LINE_RENDER_ORDER.shipOrbit);
-    scene?.add(this.orbitLine.line);
+    this.orbitLineColor = orbitLineColor;
 
     if ('saved' in init) {
       this.setOverallHp(init.saved.health);
@@ -135,11 +133,8 @@ export class Enemy extends Ship {
     }
   }
 
-  // メッシュと軌道線をシーンから取り除く。
-  dispose(): void {
-    super.dispose();
-    this.scene?.remove(this.orbitLine.line);
-    this.orbitLine.dispose();
+  protected override createOrbitLine(): OrbitLine {
+    return new OrbitLine(this.orbitLineColor, 0.35, C.LINE_RENDER_ORDER.shipOrbit);
   }
 
   // 個体色の CSS 表記。方位マーカー・LEAD マーカーの着色に使う。
