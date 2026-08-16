@@ -15,7 +15,6 @@ import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { buildPlayerShip } from '../../render/ships';
-import { OrbitLine } from '../orbit-line';
 import { TrajectoryLine } from '../trajectory-line';
 import { Attractor, reachedBody } from '../../physics/attractor';
 import { isBurnedUp } from '../../physics/atmosphere';
@@ -73,7 +72,6 @@ export class Player extends Ship {
   private readonly rcsEffects: RcsEffects;
   private readonly reentryEffects: ReentryEffects;
   private readonly markers: PlayerMarkers;
-  declare readonly orbitLine: OrbitLine;
   // この艦自身のマニューバ計画。PlanEditor はアクティブ艦のこれを編集する。
   readonly plan = new Plan();
   readonly planExecutor: PlanExecutor;
@@ -121,10 +119,6 @@ export class Player extends Ship {
     this.reentryEffects = new ReentryEffects(_scene);
     this.markers = new PlayerMarkers(markerManager, this.id);
     this.planExecutor = new PlanExecutor(_hud);
-
-    // 自機軌道線: 明るいグレー。ターゲット(オレンジ)より目立たせない配色。
-    this.orbitLine = new OrbitLine(0xbfc9d4, 0.55, C.LINE_RENDER_ORDER.shipOrbit);
-    _scene.add(this.orbitLine.line);
 
     if (saved) {
       // 旧セーブは followPlan: boolean だった(true→'instant' / false→'off')。
@@ -445,7 +439,7 @@ export class Player extends Ship {
     );
   }
 
-  // 自機のメッシュ・エフェクト・ベルト・マーカー・軌道線を displayTime の状態へ同期する。
+  // 自機のメッシュ・エフェクト・ベルト・マーカーを displayTime の状態へ同期する。
   // isActive はこの艦が操作対象かどうか。操作対象だけがガンサイト時に隠れ、方位マーカーとRCS音を出す。
   syncPlayer(
     fo: FloatingOrigin,
@@ -477,10 +471,8 @@ export class Player extends Ship {
     this.belt.sync();
     this.radiator.sync();
     this.power.sync();
-    // マーカーと軌道線。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
+    // マーカー。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
     this.markers.sync(this.state, displayState, this.att, camera.overviewMode, isActive, camera.activeCameraPos, camera.activeCameraProjection, camera.activeCameraScale, this.name, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.mapCamera.focus), ephemeris.registry, attractors, visibility);
-
-    this.syncOrbitLine(true, fo, camera.activeCamera, attractors, this.thrust !== null);
   }
 
   // 艦は任意のタイミングで削除されうるので、Player が所有する線・ビルボード・HUD も一度だけ解放する。
@@ -518,8 +510,6 @@ export class Player extends Ship {
     this.disposed = true;
     this.clearTransientCommands();
     this.markers.dispose();
-    this.playerScene.remove(this.orbitLine.line);
-    this.orbitLine.dispose();
     this.thrustEffects.dispose(this.playerScene);
     this.rcsEffects.dispose(this.playerScene);
     this.reentryEffects.dispose(this.playerScene);
