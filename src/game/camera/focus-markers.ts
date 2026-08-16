@@ -157,6 +157,10 @@ export class FocusMarkers {
     for (const label of labels) this.labelsById.set(label.id, label);
   }
 
+  isBodyPickable(id: string): boolean {
+    return this.labelsById.get(id)?.pickable ?? true;
+  }
+
   // 表示中の天体・ラグランジュ点の時刻 t の座標。軌道オブジェクト一覧・右クリック候補も
   // 同じ表示ポリシーを通し、非表示設定の対象を選べない状態にする。遮蔽やラベル衝突で
   // マーカーを描かなかった対象は pickable: false を伴って出す — 表示設定で消えているわけでは
@@ -269,7 +273,7 @@ export class FocusMarkers {
       const d = displayMap[lbl.id]!;
       lbl.showIcon = d.icon;
       lbl.showLabel = d.label;
-      lbl.pickable = true;
+      lbl.pickable = this.labelsById.get(lbl.id)?.pickable ?? true;
       shown.push(lbl);
     }
     this.shownLabels = shown;
@@ -356,6 +360,8 @@ export class FocusMarkers {
       const projectedState = frame.get(lbl.id);
       if (projectedState === undefined || projectedState.occluded) {
         lbl.pickable = false;
+        const rec = this.bodyPickableRecords.get(lbl.id);
+        if (rec) rec.pickable = false;
         if (projectedState?.occluded) this.markerManager.fadeOut(lbl.id);
         else this.markerManager.hide(lbl.id);
         continue;
@@ -364,6 +370,8 @@ export class FocusMarkers {
       // ラベルテキストが表示されている対象のみをクリック・フォーカス対象(pickable)にする。
       const isLabelVisible = lbl.showLabel && !hiddenByPriority.has(lbl.id);
       lbl.pickable = isLabelVisible;
+      const rec = this.bodyPickableRecords.get(lbl.id);
+      if (rec) rec.pickable = isLabelVisible;
       if (projectedState.front && (lbl.showIcon || isLabelVisible)) {
         this.activeCelestialLabels.push({
           id: lbl.id,

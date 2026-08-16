@@ -46,6 +46,11 @@ interface PlacedItem {
 export class GroupedMarkers {
   // 前フレームに出したキー。集合から消えた対象のマーカーを片付けるために覚えておく。
   private shownKeys: readonly string[] = [];
+  private readonly visibleKeys = new Set<string>();
+
+  isPickable(key: string): boolean {
+    return this.visibleKeys.has(key);
+  }
 
   constructor(
     private readonly markerManager: MarkerManager,
@@ -99,6 +104,14 @@ export class GroupedMarkers {
         bearingKey(m.item.key), m.item.bearingClass ?? 'mk-dir', m.item.bearingSym ?? DIRECTION_GLYPH.bearing,
         m.p, '', 1, m.item.bearingColor,
       );
+    }
+
+    this.visibleKeys.clear();
+    for (const m of placed) {
+      const opacity = m.item.opacity ?? 1;
+      if (m.labeled && opacity > 0 && !m.item.occluded && m.p.front) {
+        this.visibleKeys.add(m.item.key);
+      }
     }
 
     this.retire(items.map((item) => item.key));
