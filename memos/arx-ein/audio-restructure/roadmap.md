@@ -43,38 +43,83 @@ a **conductor** owning which music plays and how pieces hand over, **composers**
 note-generation algorithms behind one shared interface, and **tracks** as the parameters a
 composer consumes. The `Composer` seam already landed to be the bottom of it.
 
-### 2a. Conductor: extract the playback, not the conductor
+### 2a. Conductor is a class, one per independent musical line
 
-The natural framing — "is the conductor extracted from `Bgm`, or does it sit above `Bgm`?" —
-resolves differently than it looks, and **crossfade is what settles it**:
+**Decided 2026-08-16, after consulting Mikanixonable.** This supersedes the earlier conclusion
+that `Bgm` should merely *play* the conductor role; the argument for that was "the conductor is a
+singleton, and extracting a singleton out of a singleton buys little," which was sound at the
+time and whose premise no longer holds.
 
-> If two pieces must sound at once, then whatever owns *one gain + one step counter + one
-> composer* has to be instantiable more than once.
-
-`Bgm` owns exactly one of each today. Making it hold two would turn those fields into arrays,
-i.e. it becomes a conductor over an internal collection — which is the "above" shape with the
-layers fused. So the plural thing is the **playback**, not the conductor, and that is what
-should be extracted:
+**Auditioning and gameplay music are two independent lines**, each with its own node chain, and
+they must not interfere. That is a requirement of the adaptive-music work (§1): the gameplay line
+will carry state that responds to what is happening in game, and opening the settings panel must
+not perturb it. Two independent programs means the conducting role — which piece plays, when it
+gives way to the next, how it is shaped over time — becomes **plural**, and a plural role earns a
+class.
 
 ```text
-Bgm (public face, plays the conductor role)     TrackPlayback (0..n)
-  masterGain   <- user volume                     gain      <- this piece's own envelope
-  timer        <- one pump for everyone           composer
-  volume, autoStarted                             step, nextTime
-  trackIdx, trackStartTime                        scheduleUntil(deadline)
-  playbacks: TrackPlayback[]
+Bgm (the app-facing service: a mixing desk and a clock)
+  masterGain    <- user volume, shared by both lines
+  timer         <- the one pump, advances whichever lines are active
+  volume, autoStarted
+  ambient:  Conductor        <- gameplay music. permanent. grows adaptive layers later
+  audition: Conductor | null <- built when the settings panel opens, destroyed on close
+
+Conductor (one continuous musical line)
+  gain          <- this line's own output, feeding masterGain
+  playback: TrackPlayback | null
+  trackIdx, trackStartTime
+  rotates       <- fixed at construction, not a mutable flag
+
+TrackPlayback (one sounding piece — unchanged)
 ```
 
-Why `Bgm` keeps its name rather than being renamed `Conductor`:
+`Bgm` keeps its name: what is left there is not conducting. It is the master gain, the one clock,
+the line slots and the volume persistence, and it is what `main.ts` / `Launcher` / `SettingsView`
+already hold.
 
-- The conductor is a singleton; extracting a singleton out of a singleton buys little.
-- `Bgm` is a shared service in `OWNERSHIP.md`, held by `main.ts`, `Launcher` and
-  `SettingsView`. Renaming the public face is churn across those plus the docs for no
-  behavioural gain. "Conductor" is the *role* `Bgm` plays.
-- **One timer, not one per playback.** `Bgm.pump()` stays the single `setInterval` and calls
-  `playback.scheduleUntil(now + LOOKAHEAD_SEC)` on each live playback. Per-playback timers
-  would work (each schedules against `ctx.currentTime`, so no drift bug) but buy nothing and
-  cost the conductor its control of ordering.
+- **Rotation stops being a flag.** It is a constructor argument per line, so the audition line's
+  "do not rotate" cannot leak into gameplay — the two are different objects. The bug this
+  replaces (a pinned preview silently disabling rotation for the rest of the run) becomes
+  unrepresentable rather than fixed.
+- **One timer, not one per line.** `Bgm.pump()` stays the single `setInterval` and advances each
+  active line. Per-line timers would work (each schedules against `ctx.currentTime`, so no drift
+  bug) but buy nothing and cost `Bgm` its control of ordering.
+- **`bgmPlayingAtOpen` disappears from `SettingsView`.** It exists only because the view has to
+  remember audio state the audio layer does not. Pause/resume makes that symmetric and internal;
+  the view is left reporting two events, `beginAudition()` / `endAudition()`.
+- **Destroying the audition line is already implemented** — `Conductor.dispose()` →
+  `TrackPlayback.dispose()` → instruments, retiring at `soundingUntil` (see
+  [disposal.md](disposal.md)). The audition line is that machinery's first whole-line consumer.
+
+Build order: extract `Conductor` with the ambient line alone (pure refactor, harnesses green) →
+add pause/resume → add the audition line and the `SettingsView` wiring (the behavioural change).
+`Conductor` holds `TrackPlayback | null`, **not** an array — plural pieces arrive with crossfade
+(§2c), and guessing that interface now is guessing.
+
+### 2a-1. Pause is ducking for now, and should become real later
+
+**Interim, chosen deliberately.** `Conductor.pause()` ducks the line's gain to silence and keeps
+being advanced; `resume()` un-ducks. So the gameplay line keeps *running* while the settings panel
+is open and comes back wherever it would have been, rather than where it left off — over a long
+settings session it can rotate to another track unheard.
+
+Acceptable now for two reasons. The game itself is already paused while the panel is open
+(`SettingsView.onOpenChange` → `launcher.current?.pause()`), so no game events are driving
+adaptive state that could desynchronise. And it is strictly better than what it replaces, which
+*stopped* the BGM outright and lost its position entirely.
+
+**Proper pause** stops advancing the line and rebases its clock on resume, so the step counter
+continues untouched and the line keeps its `TrackPlayback`, instruments and their nodes alive
+across the pause — which is the point, since adaptive music will accumulate per-line state that
+must not be rebuilt because someone opened a panel. WebAudio cannot unschedule, so already-queued
+notes still need the duck; the addition is the stop-advancing and the rebase.
+
+Contained by construction: only the two method bodies change, plus a `resumeAt(time)` on
+`TrackPlayback` to rebase `nextTime`. `beginAudition`/`endAudition` and every call site stay
+identical, so nothing built now has to be torn out. Two sub-decisions when it is done: whether
+`trackStartTime` is rebased too (it should be, or a long settings session rotates the instant you
+close), and the duck fade length, which is audible on both edges.
 
 ### 2b. Tracks: a discriminated union over `kind`, switched in exactly one factory
 
@@ -139,21 +184,34 @@ notes of piece B -> playbackGain(B) -+
 
 ### 2d. Build order
 
-The conductor layer earns its keep once a second composer exists **or** crossfade lands;
-building it before either is a layer with one implementation and no transitions. Agreed order:
+The original plan held that the conductor layer earns its keep only once a second composer
+exists or crossfade lands. **The audition line supersedes that** — two independent musical
+programs is on its own a reason for the layer, and it arrives before either of the other two.
 
-1. **The union + a second composer.** Independent of the conductor, and it is what *proves*
-   the seam is real: if a second algorithm slots in without `Bgm` changing, the design holds.
-2. **Playback extraction** (`TrackPlayback`), no crossfade yet.
-3. **Crossfade**, once 2c's open question is settled.
+1. ~~**The union + a second composer.**~~ **Done** — [done.md](done.md) §10.
+2. ~~**Playback extraction** (`TrackPlayback`).~~ **Done** — [done.md](done.md) §10.
+3. ~~**`Conductor`, ambient line only.**~~ **Done** — [done.md](done.md) §13.
+4. ~~**Pause/resume** (ducking, per §2a-1).~~ **Done** — [done.md](done.md) §14.
+5. ~~**The audition line** + `beginAudition`/`endAudition` + `SettingsView` wiring.~~
+   **Done** — [done.md](done.md) §15.
+6. **Crossfade**, once 2c's open question is settled.
 
-### 2e. Known bug this architecture absorbed
+### 2e. The bug this architecture makes unrepresentable
 
 **試聴 in the settings view rotated after `TRACK_ROTATION_SEC`** — auditioning a track long
-enough swapped it for another, which is not what a sound test does. Fixed once the conductor
-role was explicit: rotation is a policy `Bgm` applies to the ambient playback, and `playTrack`
-opts out of it. Not two playback modules, and not a property of `TrackPlayback` — the playback
-does not care why it is sounding.
+enough swapped it for another, which is not what a sound test does.
+
+The first answer was a mutable `rotates` flag on `Bgm`: `start()` sets it true, `playTrack()`
+sets it false immediately afterwards. That stops the audition rotating, and **introduces a worse
+bug in exchange**: nothing sets it back. Close the settings panel while a preview is still
+playing — the supported way to adopt a track as the music — and rotation stays off for the rest
+of the run, which in CREATIVE never ends. Both symptoms come from one cause: a policy belonging
+to one line, stored on an object shared with the other.
+
+Two `Conductor`s with `rotates` fixed at construction removes the cause. The audition line cannot
+write gameplay's rotation policy because it is not the same object, so there is no state to
+forget to restore. Still not two playback modules, and still not a property of `TrackPlayback` —
+the playback does not care why it is sounding.
 
 ## 3. Instruments — the DSP layer, so composers can actually design sound
 

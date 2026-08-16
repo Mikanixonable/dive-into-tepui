@@ -100,3 +100,12 @@ export function toInertialState(tf: FrameTransform, t: number, s: FrameKinematic
   const v = add(add(tf.originVel, qRotate(tf.q, s.v)), cross(tf.omega, sub(r, tf.origin)));
   return kinematicState(t, r, v);
 }
+
+// 時刻 t における位置 r (慣性系) を、表示時刻 displayTime の frame 基準系に un-bake して求める
+export function unbakeToDisplayPoint(
+  unbakeTf: FrameTransform,
+  pointTf: FrameTransform,
+  r: Vec3,
+): Vec3 {
+  return toInertialPoint(unbakeTf, toFramePoint(pointTf, r));
+}

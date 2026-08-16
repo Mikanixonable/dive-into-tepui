@@ -52,18 +52,14 @@ export function register(): void {
     assert.ok(len(sub(rev.r, herm.r)) < 1e-6, 'argument order should not matter');
   });
 
-  test('kinematic-state: hermiteInterpolate rejects out-of-range t unless extrapolation is allowed', () => {
+  test('kinematic-state: hermiteInterpolate rejects out-of-range t', () => {
     const a = kinematicState(100, v3(R_EARTH + 420e3, 0, 0), v3(0, 0, 7660));
     const b = kinematicState(200, v3(R_EARTH + 420e3, 0, 766e3), v3(-880, 0, 7610));
 
     assert.throws(() => hermiteInterpolate(a, b, 250), /区間/, 'past the end');
     assert.throws(() => hermiteInterpolate(a, b, 50), /区間/, 'before the start');
-    // 同時刻の2点は(外挿を許しても)補間できない
-    assert.throws(() => hermiteInterpolate(a, kinematicState(a.t, b.r, b.v), a.t, true), /同時刻/);
-
-    const out = hermiteInterpolate(a, b, 250, true);
-    assert.equal(out.t, 250);
-    assert.ok(Number.isFinite(len(out.r)) && Number.isFinite(len(out.v)), 'extrapolation stays finite');
+    // 同時刻の2点は補間できない
+    assert.throws(() => hermiteInterpolate(a, kinematicState(a.t, b.r, b.v), a.t), /同時刻/);
   });
 
   test('kinematic-state: orbitAxes returns an orthonormal basis', () => {

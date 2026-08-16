@@ -9,9 +9,14 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "outDir": "tests/dist",
-    "rootDir": "."
+    "rootDir": ".",
+    "paths": {
+      "three/webgpu": ["./node_modules/@types/three/build/three.webgpu.d.ts"]
+    }
   },
   "include": [
+    "src/types/three-shims.d.ts",
+    "src/render/geometry-validator.ts",
     "src/physics/vec3.ts",
     "src/physics/attitude.ts",
     "src/physics/atmosphere.ts",

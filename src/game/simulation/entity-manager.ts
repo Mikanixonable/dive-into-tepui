@@ -407,23 +407,26 @@ export class EntityManager {
   }
 
   // 敵・基地の軌道線を、このフレームに出すものだけ生成して同期する。第一/第二ターゲットの敵は
-  // Targeter 自身のハイライト線が担う。
+  // Targeter 自身のハイライト線が担う。displayWindow / ephemeris を渡すと、その座標系・時刻で描く。
   syncOrbitLines(
     overviewMode: boolean, fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
     visibilityPolicy: MapVisibilityPolicy | null, primaryTarget: CombatTarget | null, secondaryTarget: CombatTarget | null,
+    displayWindow?: DisplayWindow, ephemeris?: Ephemeris,
   ): void {
+    const frame = displayWindow?.frame;
+    const displayTime = displayWindow?.displayTime;
     for (const enemy of this.enemies) {
       const show = overviewMode && enemy.alive && (visibilityPolicy?.entity('ship').orbit ?? false)
         && enemy !== primaryTarget && enemy !== secondaryTarget;
       if (!show) { enemy.hideOrbitLine(); continue; }
       enemy.showOrbitLine();
-      enemy.syncOrbitLine(fo, camera, attractors);
+      enemy.syncOrbitLine(fo, camera, attractors, false, frame, displayTime, ephemeris);
     }
     for (const base of this.bases) {
       const show = overviewMode && (visibilityPolicy?.entity('base').orbit ?? false);
       if (!show) { base.hideOrbitLine(); continue; }
       base.showOrbitLine();
-      base.syncOrbitLine(fo, camera, attractors);
+      base.syncOrbitLine(fo, camera, attractors, false, frame, displayTime, ephemeris);
     }
   }
 

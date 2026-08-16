@@ -225,7 +225,7 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
       - substep()
         - attractorsAt(ephemeris, entities, simTime + dt/2) // サブステップ中点で1回だけ: ephemeris.attractorsAt(t) の mu!==0 部分(gravityBodiesAt)+ entities.attractors()(mu!==0 の生存中 GameEntity)を合流
         - classifyAttractors(attractors) // 同じく1回だけ: μ の重い順 GRAVITY_ALWAYS_COUNT 本を always へ、残りを SpatialGrid へ分類。しきい値 μ(alwaysThresholdMu)もセル一辺(gridCellSize = √(最重グリッド天体 μ / GRAVITY_NEGLIGIBLE_ACCEL))もこの一覧から毎回導く
-        - entity.stepActual(dt, attractorsNearInto(entity.state.r, classified, scratch, entity.id)) → actual.step() → stepDynamics()(history 記録)
+        - entity.stepActual(dt, attractorsNearInto(entity.state.r, classified, scratch, entity.id)) → actual.step() → stepDynamics()(保持サンプル列への記録)
           // 自機(全隻)・敵・弾・薬莢・デブリ・補給・基地・小惑星それぞれ、個体ごと。alive のみ実行。attractorsNearInto は always + 自身の位置の27近傍グリッドから自分自身の id を除いたもの。それらの重力 + J2 + 大気抵抗(bcInv)+ 自身の thrust
       - nanWatchdog.checkPlayer('simulator.advance(軌道積分)')
       - stepAttitudes(subDt) → stepAttitude() → entity.att へ代入 // 自機・敵・薬莢・デブリ・補給すべて同じ subDt で一律に積分する
@@ -584,7 +584,7 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
   `contactPhysics.resolveSubstep()`/`resolveBelt()` の解決結果書き戻し / 反動など、state へ代入する
   すべての経路が記録契機になる(前者は `actual.step` 経由、後者は `actual.reset`
   経由)。`game/simulation/contact.ts` の掃引接触判定と `targeter.updateBoardMarks()` が読む
-  「直前サブステップ位置」(`entity.prevState.r`)は history の間引き対象とは別フィールドなので、
+  「直前サブステップ位置」(`entity.prevState.r`)は先端を含む保持サンプル列とは別フィールドなので、
   `historyDuration = 0` の弾でも常に供給される。
 - **`TouchControls` は per-frame の update を持たない**。DOM の pointer イベントから
   `input.setVirtualKey()` を呼ぶだけで、per-frame の接点は `game.sync` からの

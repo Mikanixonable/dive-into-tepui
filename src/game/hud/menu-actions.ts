@@ -15,7 +15,7 @@ export type MenuAction =
   | 'duplicate'
   | 'delete'
   | 'cancel'
-  | 'openShipPlacer'
+  | 'openObjectPlacer'
   | 'openDock'
   | 'openSettings'
   | 'dock'

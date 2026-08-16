@@ -1,9 +1,9 @@
 // 時刻付き状態(KinematicState)を「いま」として保持し、1ステップ前進させ、任意時刻を引ける単位。
 // THREE/DOM 非依存の純データ構造(StateQueue/Ephemeris と同じ「純粋だが状態を持つ」枠)。
 //
-// history は常に「自分の state より古い時刻のサンプル列」という不変条件だけを前提にする
+// samples は常に「先端(state)を含む、間引き済みのサンプル列」という不変条件だけを前提にする
 // ため、過去方向の履歴にも未来方向の予測列にも同じ実装をそのまま使える。
-import { KinematicState, hermiteInterpolate, kinematicState } from './kinematic-state';
+import { KinematicState, kinematicState } from './kinematic-state';
 import { StateQueue } from './state-queue';
 import { Attractor } from './attractor';
 import { extrapolatedRelativeState } from './kepler-extrapolation';
@@ -11,13 +11,13 @@ import { Vec3, add } from './vec3';
 import { stepDynamics } from './dynamics';
 
 export class DynamicTrajectory {
-  private _state: KinematicState;
-  // 直前ステップの状態。history とは別フィールドで持つ — 間引かれた history からは
+  // 直前ステップの状態。samples とは別フィールドで持つ — 間引かれた samples からは
   // 「直前サブステップの位置」が取れないため(ワープ中は1サンプルが数百秒に相当する)。
   private _prevState: KinematicState;
-  // state より古いサンプル列(間引き済み)。件数ではなく時間窓(keepDuration)+ 間隔
-  // (sampleInterval)で管理し、両者は種別ごとに step の呼び出し元が渡す。
-  private readonly _history = new StateQueue();
+  // 先端(state)を含む、間引き済みのサンプル列。件数ではなく時間窓(keepDuration)+ 間隔
+  // (sampleInterval)で管理し、両者は種別ごとに step の呼び出し元が渡す。最新要素が
+  // 先端(state)そのもの。空になることはない。
+  private readonly _samples = new StateQueue();
   // samplesOldestFirst() の結果のメモ。step/reset で無効化する — TrajectoryLine.syncGeometry の
   // 早期 return は samples の参照同一性で判定するため、内容が変わっていない間は同じ配列参照を
   // 返し続けないと、呼び出し側が同一内容を渡しても毎フレーム焼き直しになってしまう。
@@ -28,26 +28,24 @@ export class DynamicTrajectory {
 
   // state・prevState をともに初期状態で始める。
   constructor(state: KinematicState) {
-    this._state = state;
+    this._samples.push(state);
     this._prevState = state;
   }
 
-  get state(): KinematicState { return this._state; }
+  get state(): KinematicState { return this._samples.newest!; }
   get prevState(): KinematicState { return this._prevState; }
-  get history(): StateQueue { return this._history; }
   get extrapolationCenter(): Attractor | null { return this._extrapolationCenter; }
   // 列の最も古い端での間引き間隔 [s]。列がどれだけ粗いかは列自身の属性であり、積んだ後に
   // 呼び出し側の設定が変わっても、既に積んだサンプルの粗さは変わらない。保持窓が飽和した
   // 列では、この端が最も古い保持サンプルとその1つ新しい側を挟む補間区間にあたる。
-  get sampleInterval(): number { return this._history.oldestGap; }
+  get sampleInterval(): number { return this._samples.oldestGap; }
 
   // 全天体重力 + 2次重力場 + 大気抵抗 + 太陽輻射圧 + 推力で 1 ステップ RK4 積分する
   // (dynamics.ts の stepDynamics)。attractors はそのステップぶん呼び出し側が確定させた
-  // 重力源一覧。
-  // keepDuration > 0 かつ、直前の state が最新の記録サンプルから sampleInterval 秒以上
-  // 離れているときだけ、その直前の state を history へ積む(解像度を落とす箇所はここ)。
-  // 積んだ後は keepDuration を保持窓として history.cleanup する。keepDuration = 0 なら
-  // history には一切触らない(デブリ・薬莢のコストをゼロに保つ)。
+  // 重力源一覧。先端は常に samples の最新要素で、1つ手前の保持サンプルから sampleInterval
+  // 秒以上離れているときだけ次の先端に置き換わらず追加保持される(解像度を落とす箇所は
+  // ここ)。保持窓は keepDuration。keepDuration = 0 なら常に前の先端を捨てて置き換えるだけ
+  // (デブリ・薬莢のコストをゼロに保つ)。
   // extrapolationCenter は extrapolatedAt が使う中心天体(省略時 null)。
   step(
     dt: number,
@@ -59,65 +57,47 @@ export class DynamicTrajectory {
     keepDuration: number,
     extrapolationCenter: Attractor | null = null,
   ): void {
-    const prev = this._state;
+    const prev = this.state;
     const next = stepDynamics(prev, dt, attractors, bcInv, srpCoeff, thrust);
-    // 間引き済み history への記録
-    if (keepDuration > 0) {
-      const newest = this._history.newest;
-      if (newest === null || prev.t - newest.t >= sampleInterval) {
-        this._history.push(prev);
-        this._history.cleanup(keepDuration, 2);
-      }
+    if (keepDuration > 0 && (this._samples.size < 2 || this._samples.newestGap >= sampleInterval)) {
+      this._samples.cleanup(keepDuration, 2);
+    } else {
+      this._samples.discardNewest();
     }
+    this._samples.push(next);
     this._prevState = prev;
-    this._state = next;
     this._extrapolationCenter = extrapolationCenter;
     this._samplesCache = null;
   }
 
-  // 不連続な差し替え(剛体接触・反動など、積分を経ない外部からの上書き)。history 側に
-  // new state の時刻以降のサンプルが残っていると「history は state より古い」という
-  // 不変条件が壊れるため、その分を捨てる。中心天体も、差し替えで先端の軌道自体が変わる
-  // ため破棄する。
+  // 不連続な差し替え(剛体接触・反動など、積分を経ない外部からの上書き)。push の訂正契約
+  // (StateQueue 冒頭のコメント)により、新しい時刻以降の無効になったサンプルは捨てられる。
+  // 中心天体も、差し替えで先端の軌道自体が変わるため破棄する。
   reset(state: KinematicState): void {
-    this._history.discardFrom(state.t);
-    this._prevState = this._state;
-    this._state = state;
+    this._prevState = this.state;
+    this._samples.push(state);
     this._extrapolationCenter = null;
     this._samplesCache = null;
   }
 
-  // 保持区間(history の最古 〜 state)を古い順に並べた1本の列。step/reset を挟まない限り
-  // 同じ配列参照を返す(TrajectoryLine.syncGeometry の再 bake 抑制が参照同一性で判定するため)。
+  // 保持区間全体を古い順に並べた1本の列。step/reset を挟まない限り同じ配列参照を返す
+  // (TrajectoryLine.syncGeometry の再 bake 抑制が参照同一性で判定するため)。
   samplesOldestFirst(): readonly KinematicState[] {
-    if (this._samplesCache === null) {
-      const out = this._history.toArrayOldestFirst();
-      out.push(this._state);
-      this._samplesCache = out;
-    }
+    if (this._samplesCache === null) this._samplesCache = this._samples.toArrayOldestFirst();
     return this._samplesCache;
   }
 
-  // 保持区間内(history の最古 〜 state)の任意時刻の状態。区間外は null。
-  // history が空なら t === state.t のときだけ state を返す。history の最新サンプルより
-  // 新しければ state との間を、それ以前は history 自身の補間を使う — 列と state をまたぐ
-  // 継ぎ目をここに閉じ込めるので、呼び出し側が両者を突き合わせる必要がない。
-  at(t: number): KinematicState | null {
-    if (t > this._state.t) return null;
-    if (t === this._state.t) return this._state;
-    const newest = this._history.newest;
-    if (newest === null) return null;
-    if (t > newest.t) return hermiteInterpolate(newest, this._state, t);
-    return this._history.at(t);
-  }
+  // 保持区間内(最古 〜 先端)の任意時刻の状態。区間外は null。
+  at(t: number): KinematicState | null { return this._samples.at(t); }
 
   // state より新しい時刻 t を、先端(state)を extrapolationCenter まわりの二体ケプラー軌道と
   // みなして外挿する。t が state 以前、または中心天体を保持していなければ at(t) と同じ。
   // centerStateAtT は問い合わせ時刻 t における中心天体の ECI 状態 — 天体暦への依存を
   // 持ち込まないため、解決は呼び出し側が行う。
   extrapolatedAt(t: number, centerStateAtT: KinematicState): KinematicState | null {
-    if (t <= this._state.t || this._extrapolationCenter === null) return this.at(t);
-    const rel = extrapolatedRelativeState(this._state, this._extrapolationCenter, t);
+    const tip = this.state;
+    if (t <= tip.t || this._extrapolationCenter === null) return this.at(t);
+    const rel = extrapolatedRelativeState(tip, this._extrapolationCenter, t);
     if (rel === null) return null;
     return kinematicState(t, add(rel.r, centerStateAtT.r), add(rel.v, centerStateAtT.v));
   }

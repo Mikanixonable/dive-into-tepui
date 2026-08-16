@@ -380,6 +380,11 @@ export class MapCamera {
       this.lastResolvedFocus = v3();
       return this.lastResolvedFocus;
     }
+    if (focus.id in this.ephemeris.registry) {
+      this.missingFocusFrames = 0;
+      this.lastResolvedFocus = this.ephemeris.positionOf(focus.id, displayTime);
+      return this.lastResolvedFocus;
+    }
     const candidate = candidates.find((c) => c.id === focus.id);
     if (candidate) {
       this.missingFocusFrames = 0;

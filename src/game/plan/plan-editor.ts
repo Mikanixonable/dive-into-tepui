@@ -719,7 +719,7 @@ export class PlanEditor {
     // revision は前フレームの終端(lastPlanEnd)を基準に畳み込む — 今フレームの終端は
     // このあとの planDisplay.update が決めるので、渡す時点ではまだ確定していない。
     this.attractors.resolve(excludedIds, this.plan?.revision ?? 0, this.lastPlanEnd);
-    this.planDisplay.update(this.displayedPlan, displayWindow, this.attractors);
+    this.planDisplay.update(this.displayedPlan, displayWindow, this.attractors, ship?.name);
     this.updateEquatorNodes(displayWindow);
   }
 

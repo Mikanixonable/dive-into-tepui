@@ -47,21 +47,17 @@ export function fromOrbitAxes(s: KinematicState, x: Vec3): Vec3 {
 // 2状態間の3次エルミート補間。両端の位置を通り、両端の速度を接線とする3次多項式で
 // 時刻 t の位置を、その微分で速度を求める(粗いサンプル列でも軌道を滑らかに再現できる)。
 // a.t > b.t(逆順)でも同じ多項式が定まるので、順序は問わない。
-// allowExtrapolation は区間外の t を許可する。多項式は区間外で急速に発散し、軌道として
-// 破綻した状態(地球内部の位置、脱出速度を超える速度など)を平然と返すため、既定では
-// 禁止する。呼び出し側が短い外挿と分かったうえで使う場合のみ true にすること。
+// 区間外の t は拒否する。多項式は区間外で急速に発散し、軌道として破綻した状態
+// (地球内部の位置、脱出速度を超える速度など)を平然と返すため。
 export function hermiteInterpolate(
   a: KinematicState,
   b: KinematicState,
   t: number,
-  allowExtrapolation = false,
 ): KinematicState {
   const h = b.t - a.t;
   if (h === 0) throw new Error(`hermiteInterpolate: 両端が同時刻 (t=${a.t}) で補間できない`);
-  if (!allowExtrapolation && (t - a.t) * (t - b.t) > 0) {
-    throw new Error(
-      `hermiteInterpolate: t=${t} が区間 [${a.t}, ${b.t}] の外(外挿するなら allowExtrapolation=true)`,
-    );
+  if ((t - a.t) * (t - b.t) > 0) {
+    throw new Error(`hermiteInterpolate: t=${t} が区間 [${a.t}, ${b.t}] の外`);
   }
 
   const s = (t - a.t) / h;
