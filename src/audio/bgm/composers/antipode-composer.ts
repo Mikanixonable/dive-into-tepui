@@ -16,10 +16,12 @@ export class AntipodeComposer implements Composer {
   notesAt(step: number): ComposerNote[] {
     const { scale, transpose, stab } = this.params;
     if (step % stab.everySteps !== 0) return [];
-    // 和音は打ち込み1回につき1つ、移調はそれ自身の間隔で進む。周期が食い違うぶんだけ、
-    // どちらも一巡するまで同じ組み合わせが戻ってこない。
+    // 和音は everySteps ごとに打ち込みつつ、同じ和音を repeatFor 回続けたあとで次へ進む
+    // (進む間隔は everySteps * repeatFor)。移調はそれ自身の間隔で独立に進むので、同じ和音の
+    // 繰り返し中でも移調が切り替われば響きは変わる。周期が食い違うぶんだけ、どちらも
+    // 一巡するまで同じ組み合わせが戻ってこない。
     const shift = phaseValue(transpose, step);
-    const chord = cycleAt(stab.chords, stab.everySteps, step);
+    const chord = cycleAt(stab.chords, stab.everySteps * stab.repeatFor, step);
     return chord.map((index) => ({
       instrument: stab.instrument,
       freq: scaleFreq(scale, index, shift, stab.octaveOffset),

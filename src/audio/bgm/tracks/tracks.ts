@@ -370,10 +370,11 @@ export const BGM_TRACKS: BgmTrack[] = [
       scale: [146.83, 155.56, 196, 220, 233.08, 293.66, 311.13, 392], // D3, D#3, G3, A3, A#3, D4, D#4, G4
       transpose: {
         values: [-1, 3, 0],
-        everySteps: 8
+        everySteps: 120
       },
       stab: {
         everySteps: 3,
+        repeatFor: 8,
         chords: [[0, 1, 4], [2, 3, 5]],
         octaveOffset: 1,
         durationSec: 0.9,
