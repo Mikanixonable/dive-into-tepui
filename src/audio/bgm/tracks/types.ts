@@ -93,6 +93,13 @@ export interface AntipodeStabLayer {
   instrument: string;
 }
 
+export interface AntipodeArpLayer {
+  everySteps: number;
+  notes: number[];
+  octaveOffset: number;
+  instrument: string;
+}
+
 // 2つ目の作曲アルゴリズム(composers/antipode-composer.ts)のパラメータ。
 // 必要なフィールドは音を書きながら足す。
 export interface AntipodeParams {
@@ -100,4 +107,5 @@ export interface AntipodeParams {
   scale: number[]; // Hz。層が音階インデックスで引く音集合
   transpose: PhaseCycle; // 音階ステップ単位の移調
   stab: AntipodeStabLayer;
+  arp: AntipodeArpLayer;
 }
