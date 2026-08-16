@@ -379,24 +379,26 @@ export class FocusMarkers {
         continue;
       }
       const markerOpacity = projectedState.opacity;
-      // ラベルテキストが表示されている対象のみをクリック・フォーカス対象(pickable)にする。
-      const isLabelVisible = lbl.showLabel && !hiddenByPriority.has(lbl.id);
-      lbl.pickable = isLabelVisible;
+      // 画面上でより優先度の高い親/主天体に吸収されたマーカー(hiddenByPriority)は、アイコンとラベル両方を非表示にする
+      const isPriorityHidden = hiddenByPriority.has(lbl.id);
+      const isLabelVisible = lbl.showLabel && !isPriorityHidden;
+      const isIconVisible = lbl.showIcon && !isPriorityHidden;
+      lbl.pickable = isLabelVisible || isIconVisible;
       const rec = this.bodyPickableRecords.get(lbl.id);
-      if (rec) rec.pickable = isLabelVisible;
-      if (projectedState.front && (lbl.showIcon || isLabelVisible)) {
+      if (rec) rec.pickable = lbl.pickable;
+      if (projectedState.front && (isIconVisible || isLabelVisible)) {
         this.activeCelestialLabels.push({
           id: lbl.id,
           x: projectedState.x,
           y: projectedState.y,
           priority: lbl.labelPriority,
-          iconVisible: lbl.showIcon,
+          iconVisible: isIconVisible,
           labelVisible: isLabelVisible,
         });
       }
       this.markerManager.setPosition(
         lbl.id, lbl.isLagrange ? 'mk-poi mk-lagrange' : 'mk-poi',
-        lbl.showIcon ? (lbl.isLagrange ? ENTITY_GLYPH.lagrange : ENTITY_GLYPH.body) : '',
+        isIconVisible ? (lbl.isLagrange ? ENTITY_GLYPH.lagrange : ENTITY_GLYPH.body) : '',
         lbl.pos, project,
         isLabelVisible ? lbl.markerLabel : '',
         markerOpacity, undefined, undefined, false, false, lbl.labelPriority,
