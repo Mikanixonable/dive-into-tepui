@@ -120,9 +120,10 @@ export class MapContextActions {
     };
   }
 
-  // 右クリック位置の最寄り候補を探し、当たればその種別に応じたプロパティウィンドウを開いて消費する。
-  // マップ視点でなければ候補列(pickables.pickables)が更新されていないので何もしない。
-  handleRightClick(input: Input, simTime: number): void {
+  // 右クリック位置の最寄りの被選択物(天体・自艦・他艦・ノード等)のプロパティウィンドウを開く。
+  // 当たらなければ消費せず、handleEmptySpaceRightClick へ読み進める。
+  // ラベル衝突で非表示になった天体は、表示されている別のラベルの背後から拾わない。
+  handleMapRightClick(input: Input, simTime: number): void {
     if (!this.cameraSystem.overviewMode) return;
     input.takeRightClicks((p) => {
       const target = pickNearest(
