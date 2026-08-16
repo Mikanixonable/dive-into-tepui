@@ -22,6 +22,7 @@ import { NavTarget } from './nav-target';
 import { CameraSystem } from './camera/camera-system';
 import { PlanEditor } from './plan/plan-editor';
 import { SimSpeedManager } from './sim-speed-manager';
+import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from './hud/orbit-labels';
 import type { PauseMenu } from './hud/pause-menu';
 import { Targeter, type CombatTarget } from './targeter';
 import type { Docking } from './docking';
@@ -32,7 +33,7 @@ import { Player, planExecutionLabel, type PlanExecutionMode } from './player/pla
 import type { GameEntity } from './game-entity/game-entity';
 import { add, cross, len, norm, scale, sub, v3 } from '../physics/vec3';
 import { metersPerPixel } from '../physics/projection';
-import type { ObjectType } from './creative/ship-placer-panel';
+import type { ObjectType } from './creative/object-placer-panel';
 import type { KinematicState } from '../physics/kinematic-state';
 import { Attractor, orbitalElementsOf, strongestAttractor } from '../physics/attractor';
 import { apsisAltitudes } from '../physics/elements';
@@ -120,9 +121,10 @@ export class MapContextActions {
     };
   }
 
-  // 右クリック位置の最寄り候補を探し、当たればその種別に応じたプロパティウィンドウを開いて消費する。
-  // マップ視点でなければ候補列(pickables.pickables)が更新されていないので何もしない。
-  handleRightClick(input: Input, simTime: number): void {
+  // 右クリック位置の最寄りの被選択物(天体・自艦・他艦・ノード等)のプロパティウィンドウを開く。
+  // 当たらなければ消費せず、handleEmptySpaceRightClick へ読み進める。
+  // ラベル衝突で非表示になった天体は、表示されている別のラベルの背後から拾わない。
+  handleMapRightClick(input: Input, simTime: number): void {
     if (!this.cameraSystem.overviewMode) return;
     input.takeRightClicks((p) => {
       const target = pickNearest(
@@ -581,7 +583,7 @@ export class MapContextActions {
     'empty-space': {
       itemsFor: () => {
         const placeItem: readonly MenuItem<MenuAction>[] = this.activeStage.authoring && this.cameraSystem.overviewMode
-          ? [{ label: 'オブジェクトを配置する', act: 'openShipPlacer', shortcut: 'Enter' }]
+          ? [{ label: 'オブジェクトを配置する', act: 'openObjectPlacer', shortcut: 'Enter' }]
           : [];
         return [
           ...placeItem,
@@ -590,8 +592,8 @@ export class MapContextActions {
         ];
       },
       run: (act) => {
-        if (act === 'openShipPlacer') {
-          this.activeStage.authoring?.openShipPlacer(
+        if (act === 'openObjectPlacer') {
+          this.activeStage.authoring?.openObjectPlacer(
             focusTargetId(this.cameraSystem.mapCamera.focus));
         } else if (act === 'openSettings') {
           this.pauseMenu.toggle(true);
@@ -604,7 +606,7 @@ export class MapContextActions {
         const activeShip = this.activePlayers.current;
         const isControlled = base && this.getControlledBase ? this.getControlledBase() === base : false;
         const subLabel = base
-          ? `基地 / 所持金: ${base.baseState.money.toLocaleString()} Cr / 格納船: ${base.baseState.dockedShips.length}隻`
+          ? `基地 / 所持金: ${base.baseState.money.toLocaleString()} Cr / 格納艦艇: ${base.baseState.dockedVessels.length}隻`
           : '基地';
 
         const dockItems: MenuItem<MenuAction>[] = [];
@@ -712,7 +714,7 @@ export class MapContextActions {
     if (!authoring) return;
     const source = this.duplicateSourceFor(target);
     if (!source) return;
-    authoring.openShipPlacerForDuplicate(source.objectType, source.state);
+    authoring.openObjectPlacerForDuplicate(source.objectType, source.state);
   }
 
   // MapPickable を、複製できる実体の種類とその現在状態へ解決する。複製できない種別(天体・
@@ -779,7 +781,8 @@ export class MapContextActions {
         shortcut: showShortcuts ? it.shortcut : undefined,
         selected: it.selected, keepOpen: it.keepOpen,
       }));
-    return { title: header?.label ?? target.name, subtitle: header?.subLabel, items };
+    const subtitle = target.ownerName ? `所属: ${target.ownerName}` : header?.subLabel;
+    return { title: header?.label ?? target.name, subtitle, items };
   }
 
   // 種別ごとのプロパティ行。値の導出は sync フェーズで毎フレーム呼び直す(表示専用のため)。
@@ -802,18 +805,20 @@ export class MapContextActions {
   // 「軌道」グループにまとめ、ウィンドウ先頭の折り畳みセクションへ描かれる。
   private orbitRows(entity: GameEntity, attractors: readonly Attractor[]): PropertyRow[] {
     const oi = orbitInfo(entity, attractors);
+    const apSpec = getApsisLabelSpec('ap', oi.centerId);
+    const peSpec = getApsisLabelSpec('pe', oi.centerId);
     const group = '軌道';
     return [
       { key: 'center', label: '基準天体', value: oi.centerName, group },
-      { key: 'alt', label: '高度', value: fmtDist(oi.alt), group },
-      { key: 'spd', label: '速度', value: fmtSpeed(oi.spd), group },
-      { key: 'ap', label: '遠地点 AP', value: fmtDist(oi.apAlt), group },
-      { key: 'pe', label: '近地点 PE', value: fmtDist(oi.peAlt), group },
+      { key: 'alt', label: ORBIT_ELEMENT_LABELS.alt.full, value: fmtDist(oi.alt), group },
+      { key: 'spd', label: ORBIT_ELEMENT_LABELS.spd.full, value: fmtSpeed(oi.spd), group },
+      { key: 'ap', label: apSpec.full, value: fmtDist(oi.apAlt), group },
+      { key: 'pe', label: peSpec.full, value: fmtDist(oi.peAlt), group },
       {
-        key: 'inc', label: '傾斜角 INC',
+        key: 'inc', label: ORBIT_ELEMENT_LABELS.inc.full,
         value: isFinite(oi.incDeg) ? `${oi.incDeg.toFixed(2)}°` : '---', group,
       },
-      { key: 'prd', label: '周期 PRD', value: fmtTime(oi.period), group },
+      { key: 'prd', label: ORBIT_ELEMENT_LABELS.prd.full, value: fmtTime(oi.period), group },
     ];
   }
 
@@ -865,7 +870,7 @@ export class MapContextActions {
     if (!base) return [];
     const rows: PropertyRow[] = [
       { key: 'money', label: '所持金', value: `${base.baseState.money.toLocaleString()} Cr` },
-      { key: 'ships', label: '格納艦数', value: `${base.baseState.dockedShips.length}` },
+      { key: 'vessels', label: '格納艦艇数', value: `${base.baseState.dockedVessels.length}` },
     ];
     if (player) rows.push({ key: 'dist', label: '距離', value: fmtDist(len(sub(base.state.r, player.state.r))) });
     rows.push(...this.orbitRows(base, attractors));
@@ -928,7 +933,9 @@ export class MapContextActions {
   private apsisRows(target: MapPickable, attractors: readonly Attractor[], simTime: number): PropertyRow[] {
     const center = strongestAttractor(target.pos, attractors);
     const alt = len(sub(target.pos, center.state.r)) - center.radius;
-    const rows: PropertyRow[] = [{ key: 'alt', label: '高度', value: fmtDist(alt) }];
+    const rows: PropertyRow[] = [];
+    if (target.ownerName) rows.push({ key: 'owner', label: '所属軌道', value: target.ownerName });
+    rows.push({ key: 'alt', label: '高度', value: fmtDist(alt) });
     if (target.time !== undefined) rows.push({ key: 'time', label: '通過まで', value: `T+${fmtTime(target.time - simTime)}` });
     return rows;
   }
@@ -938,7 +945,9 @@ export class MapContextActions {
     const targetName = target.kind === 'relnode'
       ? (this.navTarget.name ?? '対象')
       : celestialBodyName(strongestAttractor(target.pos, attractors).id);
-    const rows: PropertyRow[] = [{ key: 'target', label: '対象', value: targetName }];
+    const rows: PropertyRow[] = [];
+    if (target.ownerName) rows.push({ key: 'owner', label: '所属軌道', value: target.ownerName });
+    rows.push({ key: 'target', label: '対象', value: targetName });
     if (target.time !== undefined) rows.push({ key: 'time', label: '通過まで', value: `T+${fmtTime(target.time - simTime)}` });
     return rows;
   }

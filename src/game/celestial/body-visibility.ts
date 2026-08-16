@@ -197,22 +197,6 @@ export function alwaysFullyVisibleIds(
   return ids;
 }
 
-// いま表示する(=候補・計算対象になる)天体の集合。alwaysFullyVisibleIds に加え、
-// クラスの Icon か Label のどちらかが立っている天体を足す——どちらも off の天体はマップ上の
-// 何にもならないので、ピック候補や配置UIの基準天体からも除く。
-export function visibleBodyIds(
-  registry: CelestialRegistry, focusId: AttractorId | undefined, toggles: BodyClassToggles,
-  nearbyIds: Iterable<AttractorId> = [],
-): ReadonlySet<AttractorId> {
-  const visible = new Set(alwaysFullyVisibleIds(registry, focusId, nearbyIds, toggles));
-  for (const id of Object.keys(registry)) {
-    const cls = bodyClassOf(registry, id);
-    const { icon, label } = classIconLabel(cls, toggles);
-    if (icon || label) visible.add(id);
-  }
-  return visible;
-}
-
 // 天体 id 1つの Icon/Label 表示可否。alwaysFullyVisibleIds に含まれる天体は呼び出し側で
 // 個別に true/true とすること(この関数はクラストグルだけを読む)。
 export function bodyIconLabel(

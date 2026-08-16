@@ -4,7 +4,6 @@ import { KinematicState } from '../../physics/kinematic-state';
 import { OrbitalElements, keplerPeriod } from '../../physics/elements';
 import { Attitude } from '../../physics/attitude';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
-import { StateQueue } from '../../physics/state-queue';
 import { Attractor, Degree2Gravity, orbitalElementsOf, localOrbitPeriod, reachedBody, strongestAttractor } from '../../physics/attractor';
 import { containingBody } from '../../physics/sphere-contact';
 import { isBurnedUp } from '../../physics/atmosphere';
@@ -41,7 +40,6 @@ export class GameEntity {
   // 不連続な差し替え専用の口(剛体接触・反動など)。
   set state(s: KinematicState) { this.actual.reset(s); }
   get prevState(): KinematicState { return this.actual.prevState; }
-  get history(): StateQueue { return this.actual.history; }
 
   private static readonly idAllocator = new EntityIdAllocator('entity-');
 
@@ -174,10 +172,16 @@ export class GameEntity {
   }
 
   // orbitLine を現在位置で最も強く引く天体まわりの軌道楕円に合わせる。線を持たなければ何もしない。
-  syncOrbitLine(fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[]): void {
+  // frame / displayTime / ephemeris を渡すと、その座標系・時刻で楕円を描く。
+  syncOrbitLine(
+    fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[], force = false,
+    frame?: ReferenceFrame, displayTime?: number, ephemeris?: Ephemeris,
+  ): void {
     if (this.orbitLine === null) return;
     const center = strongestAttractor(this.state.r, attractors);
-    this.orbitLine.sync(this.orbitalElementsAround(center), fo, camera);
+    this.orbitLine.sync(
+      this.orbitalElementsAround(center), fo, camera, force, frame, displayTime, ephemeris, attractors,
+    );
   }
 
   // 自分の予測線・実軌道線を作る。線を持つ種別だけが上書きする。
