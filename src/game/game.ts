@@ -287,7 +287,7 @@ export class Game {
     this.handleInput(dt);
     this.sections.exit(SECTION.input);
 
-    if (!this._isPaused) this.advanceSimulation(dt);
+    if (!this._isPaused && this.activeStage.isPlaying) this.advanceSimulation(dt);
     // ポーズ中も決着後も飛ばせない。決着は積分を止めないので、飛ばすと描画原点になるカメラ位置
     // だけが絶対 ECI に取り残され、追従対象もフォーカス天体も軌道速度で流れて即フレームアウトする。
     // ポーズ中は積分が止まるが、カメラの旋回・ズーム・パンの入力をここで消化している。
