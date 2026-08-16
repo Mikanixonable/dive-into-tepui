@@ -15,7 +15,6 @@ import type { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';
 import { EntityMarker } from '../marker/entity-marker';
-import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 import type { BaseSaveData } from '../save-data';
 import { OrbitLine } from '../orbit-line';
 import * as C from '../const';
@@ -72,6 +71,13 @@ const idAllocator = new EntityIdAllocator('base-');
 export type BaseInit =
   | { readonly state: KinematicState; readonly name?: string; readonly att?: Attitude; readonly id?: string }
   | { readonly saved: BaseSaveData; readonly simTime: number };
+
+export function baseMarkerSvg(): string {
+  return `<svg viewBox="0 0 24 24" width="24" height="24" aria-label="Base">` +
+    `<polygon points="12,3 20.66,8 20.66,18 12,23 3.34,18 3.34,8" fill="currentColor" fill-opacity="0.3" stroke="currentColor" stroke-width="1.8"/>` +
+    `<circle cx="12" cy="13" r="3" fill="currentColor"/>` +
+    `</svg>`;
+}
 
 export class Base extends GameEntity implements Controllable {
   readonly collisionGeom = new BaseCollisionGeometry();
@@ -151,7 +157,7 @@ export class Base extends GameEntity implements Controllable {
     this.rcsEffects = new RcsEffects(scene, worldSfx);
     this.orbitLine = new OrbitLine(C.COLOR_BASE_ORBIT_LINE, 0.35, C.LINE_RENDER_ORDER.shipOrbit);
     this.equatorNodes = new EquatorNodeMarkerPair(this, markerManager);
-    this.marker = new EntityMarker(this, markerManager, 'mk-base', ENTITY_GLYPH.base, false);
+    this.marker = new EntityMarker(this, markerManager, 'mk-base', baseMarkerSvg(), true);
     scene.add(this.orbitLine.line);
 
     if ('saved' in init) {
