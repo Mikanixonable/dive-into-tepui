@@ -32,7 +32,7 @@ export function register(): void {
     }
     // 500秒ぶん進めて間隔 23s なので、間引き後のサンプル数はおよそ 20 件前後のはず
     // (毎ステップ記録すれば100件になるところを大幅に間引けていることを確認する)。
-    assert.ok(e.history.size > 5 && e.history.size < 30, `expected a decimated history, got ${e.history.size}`);
+    assert.ok(e.samplesOldestFirst().length > 5 && e.samplesOldestFirst().length < 30, `expected a decimated history, got ${e.samplesOldestFirst().length}`);
   });
 
   test('dynamic-trajectory: sampleInterval reports the interval the series was actually decimated at', () => {
@@ -46,12 +46,12 @@ export function register(): void {
     assert.equal(e.sampleInterval, 50, '既に積んだサンプルの粗さは呼び出し側の設定変更で変わらない');
   });
 
-  test('dynamic-trajectory: step never touches history when keepDuration is 0', () => {
+  test('dynamic-trajectory: step retains nothing but the tip when keepDuration is 0', () => {
     const e = new DynamicTrajectory(circularState());
     for (let i = 0; i < 50; i++) {
       e.step(1, bodiesAt(e.state.t + 0.5), 0, 0, null, 1, 0);
     }
-    assert.equal(e.history.size, 0);
+    assert.equal(e.samplesOldestFirst().length, 1, 'keepDuration が 0 なら先端以外は積まれない');
   });
 
   test('dynamic-trajectory: keepDuration bounds how many history samples accumulate', () => {
@@ -62,7 +62,7 @@ export function register(): void {
     for (let i = 0; i < 500; i++) { // 5000秒ぶん進める(保持窓の25倍)
       e.step(dt, bodiesAt(e.state.t + dt / 2), 0, 0, null, sampleInterval, keepDuration);
     }
-    assert.ok(e.history.size < 30, `history should stay bounded by keepDuration, got ${e.history.size} samples`);
+    assert.ok(e.samplesOldestFirst().length < 30, `history should stay bounded by keepDuration, got ${e.samplesOldestFirst().length} samples`);
   });
 
   test('dynamic-trajectory: at() matches direct re-integration within interpolation error', () => {
@@ -92,10 +92,10 @@ export function register(): void {
     for (let i = 0; i < 10; i++) {
       e.step(dt, bodiesAt(e.state.t + dt / 2), 0, 0, null, dt, 100000); // 毎ステップ記録: history = t=0..80, state.t=90
     }
-    assert.ok(e.history.at(50), 'sanity: t=50 should be recorded before reset');
+    assert.ok(e.at(50), 'sanity: t=50 should be recorded before reset');
     e.reset(kinematicState(50, v3(1, 0, 0), v3(0, 1, 0)));
-    assert.equal(e.history.at(50), null, 'the sample at the reset time itself should be discarded');
-    assert.ok(e.history.at(30), 'samples strictly before the reset time should survive');
+    assert.equal(e.at(50), e.state, 'the sample at the reset time is the reset state itself');
+    assert.ok(e.at(30), 'samples strictly before the reset time should survive');
     assert.equal(e.state.t, 50);
   });
 

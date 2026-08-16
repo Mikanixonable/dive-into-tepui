@@ -52,14 +52,14 @@ export type LagrangeForm = {
 
 // 確定時点のフォーム値。placementMode を判別子とし、選ばれた配置方法(・サイズ/形・軌道種別)が
 // 実際に使う値だけを持つ。
-export type ShipPlacerForm = { readonly objectType: ObjectType } & (ElementsForm | LagrangeForm);
+export type ObjectPlacerForm = { readonly objectType: ObjectType } & (ElementsForm | LagrangeForm);
 
 // open() の事前入力: 'body' は基準天体だけをその値へ合わせる(他のフィールドは前回の値のまま) —
 // マップの現在フォーカスを新規配置の初期値にする経路。'objectType' は種類だけを合わせる —
 // 複製元の軌道要素一式は引き継げない(または引き継ぐと基地の基準天体制約に反する)ときの経路。
 // 'form' は種類を objectType に固定し、軌道要素一式をその値へ書き換える —
 // 軌道要素をそのまま引き継げる複製の経路。
-export type ShipPlacerPreset =
+export type ObjectPlacerPreset =
   | { readonly kind: 'body'; readonly attractor: ReferenceAttractor }
   | { readonly kind: 'objectType'; readonly objectType: ObjectType }
   | { readonly kind: 'form'; readonly objectType: ObjectType; readonly form: ElementsForm };
@@ -326,8 +326,8 @@ const ALTITUDE_REF_FLOOR_KM = 100;
 // 周期の基準値の下限(h): 高度と同じ床を使うと大きすぎて操作不能になるため、周期のオーダーに合わせる。
 const PERIOD_REF_FLOOR_HOURS = 0.1;
 
-export class ShipPlacerPanel implements OverlayHandle {
-  onConfirm: ((name: string, form: ShipPlacerForm) => void) | null = null;
+export class ObjectPlacerPanel implements OverlayHandle {
+  onConfirm: ((name: string, form: ObjectPlacerForm) => void) | null = null;
   onClose: (() => void) | null = null;
 
   private _isOpen = false;
@@ -393,7 +393,7 @@ export class ShipPlacerPanel implements OverlayHandle {
     this.lagrangeSystemItems = lagrangeSystemItemsOf(ephemeris, orbitingIds);
 
     this.panel = document.createElement('div');
-    this.panel.id = 'hud-shipplacer';
+    this.panel.id = 'hud-object-placer';
     this.panel.className = 'panel hidden';
     // モーダルとして画面右上に配置
     this.panel.style.position = 'fixed';
@@ -676,9 +676,9 @@ export class ShipPlacerPanel implements OverlayHandle {
     this.close();
   }
 
-  // 現在のフォームの値を、選ばれた組・種別が使う値だけを読み取って ShipPlacerForm へ組む。
+  // 現在のフォームの値を、選ばれた組・種別が使う値だけを読み取って ObjectPlacerForm へ組む。
   // プレビュー用にも使用。
-  getForm(): ShipPlacerForm {
+  getForm(): ObjectPlacerForm {
     const objectType = this.objectTypeValue;
     if (this.placementModeValue === 'lagrange') {
       const common = {
@@ -764,9 +764,9 @@ export class ShipPlacerPanel implements OverlayHandle {
     this.issueList.classList.toggle('hidden', issues.length === 0);
   }
 
-  // パネルを開く。preset の種別で事前入力の範囲が変わる(ShipPlacerPreset 参照)。
+  // パネルを開く。preset の種別で事前入力の範囲が変わる(ObjectPlacerPreset 参照)。
   // 'body' は基準天体が現在の種類で選べる ID のときだけ差し替える。
-  open(preset?: ShipPlacerPreset): void {
+  open(preset?: ObjectPlacerPreset): void {
     if (preset?.kind === 'form') {
       this.selectObjectType(preset.objectType);
       this.applyElementsForm(preset.form);
@@ -782,7 +782,7 @@ export class ShipPlacerPanel implements OverlayHandle {
     }
     this._isOpen = true;
     this.panel.classList.remove('hidden');
-    this.overlayManager.open('ship-placer', this, {
+    this.overlayManager.open('object-placer', this, {
       kind: 'window', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: false,
     });
   }
@@ -793,7 +793,7 @@ export class ShipPlacerPanel implements OverlayHandle {
     if (!this._isOpen) return;
     this._isOpen = false;
     this.panel.classList.add('hidden');
-    this.overlayManager.close('ship-placer');
+    this.overlayManager.close('object-placer');
     this.onClose?.();
   }
 
