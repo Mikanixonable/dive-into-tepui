@@ -14,7 +14,6 @@ import type { PerfCounts } from '../../perf-meter';
 
 export class Predictor {
   private cursor = 0;
-  private readonly currentAttractorsScratch: Attractor[] = [];
   private readonly stepAttractorsScratch: Attractor[] = [];
   private readonly divergenceAttractorsScratch: Attractor[] = [];
 
@@ -37,7 +36,7 @@ export class Predictor {
     this.finished = 0;
     this.discarded = 0;
     this.lastSteps = 0;
-    const classified = classifyAttractors(this.ephemeris.attractorsAt(simTime));
+    const classified = classifyAttractors(this.ephemeris.gravityAttractorsAt(simTime));
     for (const e of all) {
       if (!e.predictsFuture) continue;
       const attractors = attractorsNearInto(e.state.r, classified, this.divergenceAttractorsScratch);
@@ -82,19 +81,15 @@ export class Predictor {
       // 先端が表示窓を覆っていたらここで抜ける。刻み幅を残り時間で切らないので先端はホライズンを
       // 少し越えて止まり、simTime が追いつくまでの数フレームは重力源の解決ごと省ける。
       if (tipState.t >= simTime + horizon) break;
-      // 刻み幅を決める重力源はステップ開始時刻で評価する。予測の重力源を長時間保持すると、
-      // 月のように速く動く天体の位置が固定され、近傍周回の予測が実軌道から離れてしまう。
-      // 自分の引力を自分に加算しないよう、e 自身は一覧から除く。
-      const currentClassified = classifyAttractors(
-        predictedAttractorsAt(this.ephemeris, this.entities, tipState.t),
-      );
-      const currentAttractors = attractorsNearInto(
-        tipState.r, currentClassified, this.currentAttractorsScratch, selfId,
-      );
       // 刻み幅とケプラー外挿の中心天体は、どちらもこの1回の strongestAttractor から求める。
-      // ただし外挿の中心は解析天体(Ephemeris の登録天体)に限る — 動的重力源が最強のときは、
+      // 窓はステップ開始時刻で評価する — 重力源を長時間保持すると、月のように速く動く天体の
+      // 位置が固定され、近傍周回の予測が実軌道から離れてしまう。自分自身は距離ゼロで必ず
+      // 最強になるので候補から除く。
+      const rawCenter = strongestAttractor(
+        tipState.r, predictedAttractorsAt(this.ephemeris, this.entities, tipState.t), selfId,
+      );
+      // 外挿の中心は解析天体(Ephemeris の登録天体)に限る — 動的重力源が最強のときは、
       // 解析天体だけの一覧(同じ t なのでリングキャッシュに当たる)から選び直す。
-      const rawCenter = strongestAttractor(tipState.r, currentAttractors);
       const extrapolationCenter = rawCenter.id in this.ephemeris.registry
         ? rawCenter
         : strongestAttractor(tipState.r, this.ephemeris.gravityAttractorsAt(tipState.t));

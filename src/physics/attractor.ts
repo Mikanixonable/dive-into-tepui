@@ -73,16 +73,22 @@ export function attractorAccel(r: Vec3, attractor: Attractor): Vec3 {
 // なく、ECI の運動方程式に実際に現れる寄与(attractorAccel)で比べる — 素の引力で比べると
 // ECI が太陽と共に自由落下していることを無視した比較になり、地心 2.6e5 km 以遠で太陽が
 // 地球に勝ってしまう。「何のためにどの天体を選ぶか」は呼び出し側の判断で、この関数は
-// 材料を一つ返すだけ。
-export function strongestAttractor(r: Vec3, attractors: readonly Attractor[]): Attractor {
-  let best = attractors[0]!;
-  let bestMagSq = lenSq(attractorAccel(r, best));
-  for (let i = 1; i < attractors.length; i++) {
+// 材料を一つ返すだけ。excludeId を渡すと、その id の天体を候補から外す — r を持つ本人が
+// 重力源のとき、自分自身が距離ゼロで必ず最強になるのを避ける。
+export function strongestAttractor(
+  r: Vec3,
+  attractors: readonly Attractor[],
+  excludeId?: AttractorId,
+): Attractor {
+  let best: Attractor | null = null;
+  let bestMagSq = -Infinity;
+  for (let i = 0; i < attractors.length; i++) {
     const attractor = attractors[i]!;
+    if (attractor.id === excludeId) continue;
     const magSq = lenSq(attractorAccel(r, attractor));
-    if (magSq > bestMagSq) { best = attractor; bestMagSq = magSq; }
+    if (best === null || magSq > bestMagSq) { best = attractor; bestMagSq = magSq; }
   }
-  return best;
+  return best!;
 }
 
 // 位置 r における軌道運動の時間スケール [s]。最も強く引く天体を中心とする円軌道の周期。
