@@ -168,7 +168,7 @@ export class Enemy extends Ship {
     return {
       key: `enemy-${this.name}`,
       cls: role === 'primary' ? 'mk-target' : 'mk-enemy',
-      sym: overviewMode ? this.headingHpMarkerSvg() : this.hpMarkerSvg(),
+      sym: overviewMode ? this.headingHpMarkerSvg(true) : this.hpMarkerSvg(),
       pos,
       vel,
       priority,
