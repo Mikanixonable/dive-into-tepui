@@ -191,6 +191,18 @@ export class TrajectoryLine {
     this.curve.setDash(dashSize, gapSize);
   }
 
+  setColor(color: string | number): void {
+    this.curve.setColor(color);
+  }
+
+  setOpacity(opacity: number): void {
+    this.curve.setOpacity(opacity);
+  }
+
+  setRenderOrder(renderOrder: number): void {
+    this.curve.setRenderOrder(renderOrder);
+  }
+
   dispose(): void {
     this.curve.dispose();
   }
