@@ -1,6 +1,6 @@
 // 楽器宣言の kind と Instrument の実装を結びつける唯一の場所。ここに分岐が集まっているので、
 // 楽器を増やしても再生側(track-playback.ts)は変わらない。
-import { InstrumentDef } from './tracks/types';
+import { InstrumentDef } from './instruments/types';
 import { Instrument } from './instrument';
 import { ToneInstrument } from './instruments/tone-instrument';
 

@@ -299,7 +299,7 @@ and only the per-note nodes are transient.
 
 1. ~~`Instrument` + notes carrying `instrument`/`velocity` + per-instrument `pan`, no buses.~~
    **Done** — see [done.md](done.md) §11. Writing a richer instrument is now a new class, a
-   params type, a fence in `tracks/types.ts` and a factory branch.
+   params type, a fence in `instruments/types.ts` and a factory branch.
 2. **Buses + the effect union**, when reverb or delay is first wanted.
 3. **Then design** — both a composer and its instruments.
 

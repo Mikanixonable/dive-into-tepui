@@ -307,7 +307,8 @@ would export their own params and `types.ts` would import them to form the union
 cycle-free because composers do not import the union.
 
 Dependency direction after the move, all one-way:
-`tracks/types.ts` (imports nothing) <- `tracks/tracks.ts`, `composers/*`, `composer-factory.ts`;
+`tracks/types.ts` <- `tracks/tracks.ts`, `composers/*`, `composer-factory.ts`
+(it imports only `instruments/types.ts`, for the instrument list a track declares — see §18);
 `composer.ts` (imports nothing) <- `composers/*`, `track-playback.ts`, `composer-factory.ts`.
 
 All three harnesses re-run. Note that `compare-playback.mjs` had to switch from `playTrack(0)`
@@ -573,6 +574,24 @@ DOM から切り離してあるのは、上の照合を node 上で回せるよ�
 `liveReload: false`(実行中のゲームが再読込されると困る)なので、同居させられない。出力先も
 `.bgm-lab/`(gitignore)で `docs/` には触れない。`tsconfig.json` の `include` に `tools` を
 足したので、この道具も `npm run typecheck` の対象。
+
+
+## 18. 楽器宣言の型を instruments/types.ts へ
+
+`tracks/types.ts` が「トラック宣言の型」と「楽器宣言の型」の両方を抱えていた。`InstrumentDef` と
+`ToneParams` を `instruments/types.ts` へ移し、楽器の実装と同じ階層に置いた。
+
+**なぜ Composer の params は `tracks/` に残すのか。** 対称に見えないが、これは非対称でよい。
+Composer の params は**曲の中身そのもの**(音階・パターン・カデンツ)で、`tracks.ts` の実体は
+ほぼそれ。曲を編集することと Composer の params を編集することは同じ作業なので、型が `tracks/`
+にあるのが自然。対して楽器宣言は**曲をまたいで共有される語彙**(どの曲も `tone` を使える)で、
+トラックはそれを id で参照するだけ。だから楽器側の階層へ寄せる。
+
+依存は一方向のまま。`instruments/types.ts` は何も import せず、`tracks/types.ts` がそれを引く
+(`BgmTrack.instruments` のため)。循環は無い。
+
+型だけの移動なので鳴り方は変わらない。ハーネス7本とも不変で、`check-lab-fidelity` の
+6,753音一致もそのまま。
 
 
 ## The two merges of `main` into the PR branch (`4e21f958`, then `78370b6b`)
