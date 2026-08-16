@@ -13,7 +13,8 @@
     "ci": "npm run verify:source && npm run typecheck && npm run test:physics && npm run build && npm run verify:release && npm run smoke:browser",
     "typecheck": "tsc --noEmit",
     "test:physics": "tsc -p tsconfig.test.json && node tests/dist/tests/physics/index.js",
-    "export-assets": "node tools/export-models.mjs"
+    "export-assets": "node tools/export-models.mjs",
+    "bgm-lab": "node node_modules/webpack-cli/bin/cli.js serve --config webpack.bgm-lab.config.js --mode development"
   },
   "devDependencies": {
     "@types/three": "^0.185.4",

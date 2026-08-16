@@ -15,6 +15,13 @@ to hedalu244.
 All of it must stay **asset-free** — synthesized at runtime, no audio files. That is a
 deliberate design choice, recorded in `DEVELOP/SPEC.md` §8, and worth keeping.
 
+> **Tooling for this is in place: `npm run bgm-lab`.** One track, no game, start from any step,
+> loop a step range, mute individual voices, and a live readout of where each cycle is. Saving
+> `tracks/tracks.ts` reloads it. It uses the real `Composer`/`Instrument`, and the notes it
+> schedules are verified identical to `TrackPlayback`'s (`check-lab-fidelity.mjs`), so a value
+> tuned there reproduces in game. The octave cycle turns over every 768 steps (~5.4 min), which
+> is why hearing a change through the game was the bottleneck this removes.
+
 - **Differentiate the five tracks.** The split landed with every track carrying identical
   structure values (that was deliberate — it kept the refactor provably sound-identical), so
   the tracks still differ only in pitch material and tempo. Giving each its own transposition
@@ -61,7 +68,7 @@ class.
 Bgm (the app-facing service: a mixing desk and a clock)
   masterGain    <- user volume, shared by both lines
   timer         <- the one pump, advances whichever lines are active
-  volume, autoStarted
+  volume, autoStartUsed
   ambient:  Conductor        <- gameplay music. permanent. grows adaptive layers later
   audition: Conductor | null <- built when the settings panel opens, destroyed on close
 

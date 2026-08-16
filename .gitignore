@@ -4,3 +4,4 @@ tests/dist/
 docs/
 .DS_Store
 .claude/
+.bgm-lab/
