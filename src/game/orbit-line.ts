@@ -26,7 +26,6 @@ export class OrbitLine {
   private snap: OrbitalElements | null = null;
   // Curve へ渡す revision。楕円を作り直すたびに新しいオブジェクトへ差し替える。
   private revision: object = {};
-  private suppressed = false;
   private displayEnabled = true;
 
   // 表示の有効/無効を切り替える。
@@ -35,17 +34,9 @@ export class OrbitLine {
     this.applyVisible();
   }
 
-  // 楕円線の表示を抑制する。抑制を解いたフレームでそのまま描き戻せるよう、直近の sync が
-  // 有効な軌道要素を得ていた場合(snap がある)に限って表示へ戻す — 次の sync を待つと、
-  // 抑制が解ける原因になった線が既に消えている1フレームのあいだ、どの線も出ない。
-  setSuppressed(value: boolean): void {
-    this.suppressed = value;
-    this.applyVisible();
-  }
-
   // 有効な軌道要素を得ている(snap がある)ときだけ、表示要求どおりに描く。
   private applyVisible(): void {
-    this.curve.setVisible(this.displayEnabled && !this.suppressed && this.snap !== null);
+    this.curve.setVisible(this.displayEnabled && this.snap !== null);
   }
 
   // renderOrder は、この線が他の線と重なったときにどちらを手前へ描くかを決める —

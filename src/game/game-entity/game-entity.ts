@@ -66,7 +66,7 @@ export class GameEntity {
   thrust: Vec3 | null = null;
   // 機体座標系トルク。既定ゼロ = 自由回転。
   torque: Vec3 = v3();
-  // 自身の軌道楕円を描く線。null = 持たない。
+  // 自身の軌道楕円を描く線。null = 持たない(Enemy/Base が構築する)。
   orbitLine: OrbitLine | null = null;
   // 自身の予測軌道を描く線。null = 持たない。
   predictedLine: TrajectoryLine | null = null;
@@ -204,18 +204,19 @@ export class GameEntity {
     this.actualLine = null;
   }
 
-  // predictedLine を現在時刻以降の predicted に、actualLine を
+  // predictedLine を [simTime, predictedTo] の predicted に、actualLine を
   // [simTime - pastDuration, simTime] の actual に合わせる(未来線の先頭と過去線の
-  // 末尾が常に現在位置で接するようにする)。pastDuration が保持窓を超える分は
-  // TrajectoryLine 側が保持区間の先頭へクランプする。描くかどうかは線を持っているかが
-  // そのまま答えなので、ここでは判定しない。
+  // 末尾が常に現在位置で接するようにする)。predictedTo が保持区間の先端を超える分は
+  // TrajectoryLine 側が先端からのケプラー外挿で継ぐ(null は継がず先端で止める)。
+  // pastDuration が保持窓を超える分は TrajectoryLine 側が保持区間の先頭へクランプする。
+  // 描くかどうかは線を持っているかがそのまま答えなので、ここでは判定しない。
   // simTime は描く区間の境目、displayTime は座標系から慣性系へ戻す時刻。
   syncTrajectoryLines(
-    frame: ReferenceFrame, simTime: number, displayTime: number, pastDuration: number,
+    frame: ReferenceFrame, simTime: number, displayTime: number, pastDuration: number, predictedTo: number | null,
     ephemeris: Ephemeris, fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
   ): void {
     if (this.predictedLine !== null) {
-      this.predictedLine.syncGeometry(this.predicted, simTime, null, frame, ephemeris, attractors);
+      this.predictedLine.syncGeometry(this.predicted, simTime, predictedTo, frame, ephemeris, attractors);
       this.predictedLine.syncTransform(frame, displayTime, ephemeris, fo, attractors);
       this.predictedLine.sync(camera);
     }
@@ -233,20 +234,6 @@ export class GameEntity {
   requestHistoryDuration(sec: number): void {
     if (this.baseHistoryDuration <= 0) return;
     this.requestedHistoryDuration = Math.max(0, Math.min(C.HISTORY_DURATION_MAX, sec));
-  }
-
-  // 自分の解析楕円(orbitLine)をこの予測軌道線で隠してよいかを返す。マップビューでは楕円が
-  // 表示期間 [simTime, simTime + horizon] 全体の代替を担うため、予測がそこまで覆っている
-  // (天体貫入などで打ち切られ、以後伸びない場合も含む)ときだけ隠す。戦闘ビューには表示期間を
-  // 見せるという用途がなく、予測線が描かれてさえいれば解析楕円と並んで見える方が誤読を招くので、
-  // 覆っているかを問わず隠す。
-  supersedesAnalyticEllipse(simTime: number, horizon: number, overviewMode: boolean): boolean {
-    const line = this.predictedLine;
-    if (!line || !line.visible) return false;
-    if (!overviewMode) return true;
-    if (this.predictionTruncated) return true;
-    const tip = this.predicted?.state.t;
-    return tip !== undefined && tip >= simTime + horizon;
   }
 
   // 保持窓が keepDuration の列へ積む最小間隔 [s]。その場で最も強く引く天体を中心とする

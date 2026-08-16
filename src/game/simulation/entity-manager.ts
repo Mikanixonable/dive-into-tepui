@@ -369,25 +369,30 @@ export class EntityManager {
     }
   }
 
-  // 全自機の予測軌道線を同期し、それで解析楕円を代替できる艦は楕円側を抑制する。
-  // 積分予測を描くのは操作対象艦だけ — 他の艦は常に解析楕円のまま。
+  // 全自機の予測軌道線を同期する。積分予測を描くのは、戦闘ビューでは操作対象艦だけ(Predictor が
+  // 操作艦しか予測しないため)、マップビューでは表示され得る全自機 — ただし Targeter が第一/
+  // 第二ターゲットにしている艦は Targeter 自身のハイライト線と重なるので除く。線の末尾は
+  // simTime + duration まで(予測が届かない先はケプラー外挿で継ぐ)、打ち切られた予測(再突入等)
+  // だけは打ち切られた先端で止める。
   syncPlayerTrajectoryLines(
     activePlayer: Player | null, displayWindow: DisplayWindow, overviewMode: boolean, ephemeris: Ephemeris,
     fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
-    visibilityPolicy: MapVisibilityPolicy | null,
+    visibilityPolicy: MapVisibilityPolicy | null, primaryTarget: CombatTarget | null, secondaryTarget: CombatTarget | null,
   ): void {
     const { frame, simTime, displayTime, duration, pastDuration } = displayWindow;
     for (const ship of this.players) {
       const isActive = ship === activePlayer;
-      const show = isActive && (visibilityPolicy?.entity('player', isActive).orbit ?? true);
+      const show = (isActive || overviewMode)
+        && (visibilityPolicy?.entity('player', isActive).orbit ?? true)
+        && ship !== primaryTarget && ship !== secondaryTarget;
       // 線を持っているかがそのまま「描くか」なので、出す・消すはここで決めきる。
       if (show) ship.showPredictedLine();
       else ship.hidePredictedLine();
       if (show && pastDuration > 0) ship.showActualLine();
       else ship.hideActualLine();
+      const predictedTo = ship.predictionTruncated ? null : simTime + duration;
       ship.syncTrajectoryLines(
-        frame, simTime, displayTime, pastDuration, ephemeris, fo, camera, attractors);
-      ship.orbitLine.setSuppressed(ship.supersedesAnalyticEllipse(simTime, duration, overviewMode));
+        frame, simTime, displayTime, pastDuration, predictedTo, ephemeris, fo, camera, attractors);
     }
   }
 
@@ -404,9 +409,6 @@ export class EntityManager {
         if (!visibilityPolicy.entity('ammo').category) ammoPickup.renderObject.visible = false;
       }
       for (const base of this.bases) if (!visibilityPolicy.entity('base').category) base.renderObject.visible = false;
-    }
-    for (const ship of this.players) {
-      ship.orbitLine.setDisplayEnabled(!overviewMode || (visibilityPolicy?.entity('player', ship === activePlayer).orbit ?? false));
     }
     for (const enemy of this.enemies) {
       enemy.orbitLine.setDisplayEnabled(!overviewMode || (visibilityPolicy?.entity('ship').orbit ?? false));
