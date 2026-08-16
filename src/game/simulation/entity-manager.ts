@@ -384,9 +384,9 @@ export class EntityManager {
         && (visibilityPolicy?.entity('player', isActive).orbit ?? true)
         && ship !== primaryTarget && ship !== secondaryTarget;
       // 線を持っているかがそのまま「描くか」なので、出す・消すはここで決めきる。
-      if (show) ship.showPredictedLine();
+      if (show) ship.showPredictedLine(C.LINE_STYLE.playerPredicted);
       else ship.hidePredictedLine();
-      if (show && pastDuration > 0) ship.showActualLine();
+      if (show && pastDuration > 0) ship.showActualLine(C.LINE_STYLE.playerActual);
       else ship.hideActualLine();
       const predictedTo = ship.predictionTruncated ? null : simTime + duration;
       ship.syncTrajectoryLines(
@@ -419,13 +419,13 @@ export class EntityManager {
       const show = overviewMode && enemy.alive && (visibilityPolicy?.entity('ship').orbit ?? false)
         && enemy !== primaryTarget && enemy !== secondaryTarget;
       if (!show) { enemy.hideOrbitLine(); continue; }
-      enemy.showOrbitLine();
+      enemy.showOrbitLine({ ...C.LINE_STYLE.enemyOrbit, color: enemy.orbitLineColor });
       enemy.syncOrbitLine(fo, camera, attractors, false, frame, displayTime, ephemeris);
     }
     for (const base of this.bases) {
       const show = overviewMode && (visibilityPolicy?.entity('base').orbit ?? false);
       if (!show) { base.hideOrbitLine(); continue; }
-      base.showOrbitLine();
+      base.showOrbitLine(C.LINE_STYLE.baseOrbit);
       base.syncOrbitLine(fo, camera, attractors, false, frame, displayTime, ephemeris);
     }
   }

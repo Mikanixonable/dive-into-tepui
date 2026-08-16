@@ -436,8 +436,8 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
   - entities.applyVisibility(visibilityPolicy, player) // 天体クラス別トグルに応じた自機・敵・弾薬・基地のメッシュ表示。visibilityPolicy が null(戦闘ビュー)のときは非表示扱いを一切かけない
     - [visibilityPolicy] 自機・敵・弾薬・基地それぞれ、その種別の category が admit しなければ renderObject.visible=false
   - entities.syncOrbitLines(overviewMode, fo, camera, displayAttractors, visibilityPolicy, targeter.aliveTarget, targeter.aliveSecondaryTarget) // 敵・基地それぞれの軌道線を表示要否ごと同期する
-    - [entities.enemies ごと] show = overviewMode かつ生存かつ visibilityPolicy が admit する orbit かつ第一・第二ターゲットのどちらでもない → show なら showOrbitLine() + enemy.syncOrbitLine(fo, camera, attractors)(中心天体は strongestAttractor(enemy.state.r, attractors))、false なら hideOrbitLine()(線そのものを捨てる)
-    - [entities.bases ごと] show = overviewMode かつ visibilityPolicy が admit する orbit → show なら showOrbitLine() + base.syncOrbitLine(fo, camera, attractors)、false なら hideOrbitLine()(線そのものを捨てる)
+    - [entities.enemies ごと] show = overviewMode かつ生存かつ visibilityPolicy が admit する orbit かつ第一・第二ターゲットのどちらでもない → show なら showOrbitLine(LINE_STYLE.enemyOrbit に個体色を載せたもの) + enemy.syncOrbitLine(fo, camera, attractors)(中心天体は strongestAttractor(enemy.state.r, attractors))、false なら hideOrbitLine()(線そのものを捨てる)
+    - [entities.bases ごと] show = overviewMode かつ visibilityPolicy が admit する orbit → show なら showOrbitLine(LINE_STYLE.baseOrbit) + base.syncOrbitLine(fo, camera, attractors)、false なら hideOrbitLine()(線そのものを捨てる)
   - entities.syncMarkers(cameraSystem, displayTime, player?.state.r ?? null, visibilityPolicy) // ammoPickups/bases の各 marker?.sync。displayState(displayTime) → [overviewMode] headingDeg(ds.r, ds.v) → set('entity-<id>', 'mk-ammo'|'mk-base', '▲', rotationDeg) / [!overviewMode] set('entity-<id>', 種別ごとの字形) + setBearing('entity-<id>-bearing')。ラベルは name + viewerPos があれば距離
   - effects.sync(fo, camera, cameraSystem.zoomActive) → flashEffectManager.syncFlashEffects()
     - pool.beginFrame() → (生存中のフラッシュごとに transform へ位置/スケール/カメラ正対回転を書き、color = baseColor×opacity で push) → pool.endFrame() // 寿命・移流は update フェーズで済んでいる。opacity には zoomActive かつ dimsInGunsight のフラッシュだけ ZOOM_MUZZLE_FLASH_SCALE が掛かる
@@ -490,7 +490,7 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
     - [overviewMode] planRotationZone.setNearby(members) / setSelected(displayWindow.frame.rotatingWith)
   - entities.syncPlayerTrajectoryLines(player, displayWindow, overviewMode, ephemeris, fo, cameraSystem.activeCamera, displayAttractors, visibilityPolicy, targeter.aliveTarget, targeter.aliveSecondaryTarget) // 計画折れ線と同じ座標系(displayWindow.frame)で bake する
     - [entities.players ごと] show = (操作対象艦 || overviewMode) && visibilityPolicy が admit する orbit && Targeter の第一/第二ターゲットでない
-    - [entities.players ごと] ship.showPredictedLine()/hidePredictedLine()・showActualLine()/hideActualLine() // show(過去線は加えて pastDuration>0)なら線を持たせ、そうでなければ線ごと捨てる
+    - [entities.players ごと] ship.showPredictedLine(LINE_STYLE.playerPredicted)/hidePredictedLine()・showActualLine(LINE_STYLE.playerActual)/hideActualLine() // show(過去線は加えて pastDuration>0)なら線を持たせ、そうでなければ線ごと捨てる
     - [entities.players ごと] predictedTo = ship.predictionTruncated ? null : simTime + duration
     - [entities.players ごと] ship.syncTrajectoryLines(frame, simTime, displayTime, pastDuration, predictedTo, ephemeris, fo, camera, displayAttractors) // 描くかは線を持っているかがそのまま答えなので、ここでは判定しない
       - predictedLine.syncGeometry(show ? predicted : null, simTime, predictedTo, frame, ...) // predicted.samplesOldestFirst() を frame で bake(点列の参照が変わらない限り再bakeしない)。simTime は描画区間の下限で sampler の時刻写像だけを動かす — 線の先頭は predicted を simTime で補間した点になる。上限 predictedTo に保持列の先端が届かなければ、先端を extrapolationCenter まわりの二体軌道とみなして継ぎ足す(中心天体を持たない、または軌道要素が求まらなければ先端で止まる)
