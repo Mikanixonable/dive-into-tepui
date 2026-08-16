@@ -113,9 +113,12 @@ export class NavTarget {
     const anEci = toInertialState(tf, anT, frameKinematicState(positionOnOrbit(playerEl, nodes.asc), v3(0, 0, 0))).r;
     const dnEci = toInertialState(tf, dnT, frameKinematicState(positionOnOrbit(playerEl, nodes.desc), v3(0, 0, 0))).r;
     // un-bake は表示時刻に固定なので、両交点で同じ変換を使い回す。
-    const unbakeTf = ephemeris.frameTransformAt(frame, displayTime, this.attractors);
+    // 自機中心天体の座標系を使う(軌道楕円は中心天体固定で描かれるため、UIの基準天体が別の天体でも
+    // 昇降点が軌道から乖離しないようにする)。
+    const centerFrame = ephemeris.frameOf(playerCenter.id, null);
+    const unbakeTf = ephemeris.frameTransformAt(centerFrame, displayTime, this.attractors);
     const toDisplay = (r: Vec3, t: number): Vec3 =>
-      toInertialPoint(unbakeTf, toFramePoint(ephemeris.frameTransformAt(frame, t, this.attractors), r));
+      toInertialPoint(unbakeTf, toFramePoint(ephemeris.frameTransformAt(centerFrame, t, this.attractors), r));
     this.anPos = toDisplay(anEci, anT);
     this.dnPos = toDisplay(dnEci, dnT);
     this.anTime = anT;

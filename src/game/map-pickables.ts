@@ -14,7 +14,7 @@ import { PlanEditor } from './plan/plan-editor';
 import type { ActivePlayerController } from './active-player-controller';
 import { len, sub } from '../physics/vec3';
 import { strongestAttractor } from '../physics/attractor';
-import { isOccluded, occlusionOpacity } from '../physics/occlusion';
+import { isOccluded } from '../physics/occlusion';
 import { apsisAltitudes } from '../physics/elements';
 import { isPositionInFocusedSystem, systemMembersAt } from './celestial/body-visibility';
 import { MapVisibilityPolicy } from './celestial/map-visibility';
@@ -143,12 +143,15 @@ export class MapPickables {
 
     // マップビューでは player だけ、フォーカス天体の系に所属するかで候補を絞る。表示側と
     // 同じ判定なので、地球の裏側の player は表示・選択でき、土星系の player はどちらにも
-    // 現れない。他の候補は従来どおり天体遮蔽でピック対象から除く。
+    // 現れない。天体(body)は MapVisibilityPolicy が選んだ候補を維持する(カメラ遮蔽で
+    // 一覧や被選択候補から除くと、小衛星ディモルフォスのように公転・カメラ移動に伴い
+    // 一覧の行が明滅してしまうため)。その他の候補(船・弾薬・基地・軌道点)は天体遮蔽で
+    // ピック対象から除く。
     for (const item of this.candidateItems) {
       const included = item.kind === 'player'
         ? item.inFocusedSystem ?? isPositionInFocusedSystem(this.ephemeris.registry, focusId, item.pos, displayAttractors)
         : item.kind === 'body'
-          ? occlusionOpacity(this.cameraSystem.activeCameraPos, item.pos, displayAttractors) > 0
+          ? true
           : !isOccluded(this.cameraSystem.activeCameraPos, item.pos, displayAttractors);
       if (included) this.visibleItems.push(item);
     }
