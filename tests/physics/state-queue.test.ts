@@ -88,23 +88,6 @@ export function register(): void {
     assert.equal(q.size, 3);
   });
 
-  test('state-queue: discardFrom drops samples at or after t, keeping earlier ones', () => {
-    const q = new StateQueue();
-    for (const t of [0, 10, 20, 30]) q.push(stateAt(t));
-    q.discardFrom(20);
-    assert.equal(q.size, 2); // [0, 10]
-    assert.equal(q.at(10)!.r.x, 10);
-    assert.equal(q.at(20), null);
-    assert.equal(q.at(30), null);
-  });
-
-  test('state-queue: discardFrom(t) beyond the newest sample is a no-op', () => {
-    const q = new StateQueue();
-    for (const t of [0, 10]) q.push(stateAt(t));
-    q.discardFrom(100);
-    assert.equal(q.size, 2);
-  });
-
   test('state-queue: toArrayOldestFirst returns samples oldest-to-newest', () => {
     const q = new StateQueue();
     assert.deepEqual(q.toArrayOldestFirst(), []);

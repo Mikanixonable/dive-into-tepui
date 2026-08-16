@@ -437,7 +437,7 @@ export const PLAN_TICK_HOUR_FAMILY_MAX_COUNT = 1200;
 // 現在表示中の最細目盛からの相対階層(0/1/2以上)で半径を引く。
 export const PLAN_TICK_RADIUS_PX = [1.5, 2.5, 3.5] as const;
 
-// --- エンティティの過去・未来状態列(physics/dynamic-trajectory.ts の DynamicTrajectory.history/Predictor) ---
+// --- エンティティの過去・未来状態列(physics/dynamic-trajectory.ts の DynamicTrajectory/Predictor) ---
 export const TRAJECTORY_SAMPLES_PER_REV = 32; // 1周回あたりの保持サンプル数(補間誤差 30m 程度に収まる実測値)
 export const SHIP_HISTORY_DURATION = 5580; // Ship の過去列の保持時間 [s]。LEO(420km)の公転周期に近似
 // 過去表示の要求で伸ばせる保持時間の上限 [s]。保持サンプル数は間引きにより
