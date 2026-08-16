@@ -4,8 +4,7 @@
 import { Vec3, v3 } from '../physics/vec3';
 import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from '../physics/elements';
 import { Attractor, OrbitingId, frameOfAttractor, strongestAttractor } from '../physics/attractor';
-import { isOccluded } from '../physics/occlusion';
-import { frameKinematicState, toFramePoint, toFrameState, toInertialPoint, toInertialState } from '../physics/frame';
+import { frameKinematicState, toFrameState, toInertialState, unbakeToDisplayPoint } from '../physics/frame';
 import { bodyDef } from '../physics/solar-system';
 import type { Ephemeris } from '../physics/ephemeris';
 import { qRotate } from '../physics/attitude';
@@ -114,10 +113,9 @@ export class NavTarget {
     const dnT = simTime + tofBetween(playerEl, nu0, nodes.desc);
     const anEci = toInertialState(tf, anT, frameKinematicState(positionOnOrbit(playerEl, nodes.asc), v3(0, 0, 0))).r;
     const dnEci = toInertialState(tf, dnT, frameKinematicState(positionOnOrbit(playerEl, nodes.desc), v3(0, 0, 0))).r;
-    // un-bake は表示時刻に固定なので、両交点で同じ変換を使い回す。
     const unbakeTf = ephemeris.frameTransformAt(frame, displayTime, this.attractors);
     const toDisplay = (r: Vec3, t: number): Vec3 =>
-      toInertialPoint(unbakeTf, toFramePoint(ephemeris.frameTransformAt(frame, t, this.attractors), r));
+      unbakeToDisplayPoint(unbakeTf, ephemeris.frameTransformAt(frame, t, this.attractors), r);
     this.anPos = toDisplay(anEci, anT);
     this.dnPos = toDisplay(dnEci, dnT);
     this.anTime = anT;
@@ -201,12 +199,9 @@ export class NavTarget {
     const project = cameraSystem.activeCameraProjection;
     const overviewMode = cameraSystem.overviewMode;
     const cameraPos = cameraSystem.activeCameraPos;
-    const hidden = (pos: Vec3): boolean => overviewMode && isOccluded(cameraPos, pos, this.attractors);
     if (!this.anPos) this.markerManager.hide('nav-an');
-    else if (hidden(this.anPos)) this.markerManager.fadeOut('nav-an');
-    else this.markerManager.setPosition('nav-an', 'mk-node', ORBIT_POINT_GLYPH.ascendingNode, this.anPos, project, 'AN');
+    else this.markerManager.setNodePosition('nav-an', 'mk-node', ORBIT_POINT_GLYPH.ascendingNode, this.anPos, project, cameraPos, this.attractors, overviewMode, 'AN');
     if (!this.dnPos) this.markerManager.hide('nav-dn');
-    else if (hidden(this.dnPos)) this.markerManager.fadeOut('nav-dn');
-    else this.markerManager.setPosition('nav-dn', 'mk-node', ORBIT_POINT_GLYPH.descendingNode, this.dnPos, project, 'DN');
+    else this.markerManager.setNodePosition('nav-dn', 'mk-node', ORBIT_POINT_GLYPH.descendingNode, this.dnPos, project, cameraPos, this.attractors, overviewMode, 'DN');
   }
 }
