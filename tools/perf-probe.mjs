@@ -8,9 +8,16 @@
 //   PERF_ONLY=map node tools/perf-probe.mjs         # label にこの文字列を含む条件だけ実行(数字境界で区切って一致判定)
 //   PERF_OUT=out.json node tools/perf-probe.mjs     # 結果をファイルにも書く(常に stdout にも出す)
 //
+// 過去のコミットを測るときは、`src/` だけをそのコミットの内容へ戻してビルドし、このプローブ自身は
+// 現在の版のまま走らせる(プローブはビルド済みの docs/ を外側から駆動するだけなので、
+// 計測側と被計測側を別の版にできる):
+//   git restore --source=<commit> --worktree src/ && npm run build && node tools/perf-probe.mjs
+//   git restore --worktree src/                                        # 測り終えたら戻す
+//
 // 環境変数:
 //   共通:        CHROME_PATH
-//   matrix モード: PERF_SAMPLES(既定10) PERF_INTERVAL_MS(既定500) PERF_SETTLE_MS(既定3000) PERF_ONLY
+//   matrix モード: PERF_SAMPLES(既定10) PERF_INTERVAL_MS(既定500) PERF_SETTLE_MS(既定3000)
+//                  PERF_REPEATS(既定3) PERF_ONLY
 //   timeseries モード: PERF_TS_STAGE(既定'1') PERF_TS_WARPS(既定'1,64,1024')
 //                      PERF_TS_INTERVAL_MS(既定300) PERF_TS_DURATIONS(既定 warp=1のみ60・他30秒)
 //
@@ -424,8 +431,9 @@ function median(nums) {
 
 // ============================================================================================
 // 条件マトリクスモード: 起動 → ワープ/ビュー/ノードを整えて設定(settle)→ N サンプル取得 → 中央値化。
+// これを1条件につき PERF_REPEATS 回(既定3)繰り返し、ラウンド間の中央値を採る。
 // ============================================================================================
-async function runCondition(devTools, baseUrl, cond, fatalEvents) {
+async function runConditionOnce(devTools, baseUrl, cond, fatalEvents) {
   const {
     label, stage, warp = 1, view = 'combat', placeNode = false,
     samples = 10, intervalMs = 500, settleMs = 3000,
@@ -471,11 +479,15 @@ async function runCondition(devTools, baseUrl, cond, fatalEvents) {
         const avgs = entry.parsed.map((p) => p.avg).filter((v) => v !== undefined);
         const p95s = entry.parsed.map((p) => p.p95).filter((v) => v !== null && v !== undefined);
         const maxs = entry.parsed.map((p) => p.max).filter((v) => v !== null && v !== undefined);
+        const hits = entry.parsed.map((p) => p.hit).filter((v) => v !== undefined);
+        const misses = entry.parsed.map((p) => p.miss).filter((v) => v !== undefined);
         summary[key] = {
           label: entry.label,
           medianAvg: avgs.length ? median(avgs) : null,
           medianP95: p95s.length ? median(p95s) : null,
           medianMax: maxs.length ? median(maxs) : null,
+          medianHit: hits.length ? median(hits) : null,
+          medianMiss: misses.length ? median(misses) : null,
           lastRaw: entry.raws.at(-1),
           samples: entry.raws,
         };
@@ -503,6 +515,57 @@ async function runCondition(devTools, baseUrl, cond, fatalEvents) {
     }
   }
   return { label, stage, requestedWarp: warp, requestedView: view, error: String(lastErr), fatalEvents: [...fatalEvents] };
+}
+
+// 同じ行の、ラウンドをまたいだ集計。中央値だけでは「その数字を信じてよいか」が判断できないので、
+// 各ラウンドの値と、中央値に対する振れ幅の比(spread)を併記する。
+function mergeRepeats(runs) {
+  const merged = {};
+  const keys = new Set(runs.flatMap((r) => Object.keys(r.rows)));
+  for (const key of keys) {
+    const entries = runs.map((r) => r.rows[key]).filter(Boolean);
+    const stat = (field) => {
+      const values = entries.map((e) => e[field]).filter((v) => v !== null && v !== undefined);
+      if (values.length === 0) return { value: null, values: [], spread: null };
+      const mid = median(values);
+      const width = Math.max(...values) - Math.min(...values);
+      return { value: mid, values, spread: mid ? width / Math.abs(mid) : null };
+    };
+    const avg = stat('medianAvg');
+    const miss = stat('medianMiss');
+    const hit = stat('medianHit');
+    merged[key] = {
+      label: entries[0].label,
+      medianAvg: avg.value, avgRuns: avg.values, avgSpread: avg.spread,
+      medianP95: stat('medianP95').value,
+      medianMax: stat('medianMax').value,
+      medianHit: hit.value, hitRuns: hit.values,
+      medianMiss: miss.value, missRuns: miss.values, missSpread: miss.spread,
+      lastRaw: entries.at(-1).lastRaw,
+    };
+  }
+  return merged;
+}
+
+// 1条件を repeats 回、そのつどページ読み込みからやり直して測り、行ごとにラウンド間の中央値を採る。
+// 1回きりの値は同じビルドでも update が2倍近く振れるため、ビルド間の比較には使えない。
+// 計測できたラウンドが1つも無ければ、最後の失敗をそのまま返す。
+async function runCondition(devTools, baseUrl, cond, fatalEvents, repeats) {
+  const runs = [];
+  for (let round = 0; round < repeats; round++) {
+    console.error(`[perf-probe]   round ${round + 1}/${repeats}`);
+    runs.push(await runConditionOnce(devTools, baseUrl, cond, fatalEvents));
+  }
+  const measured = runs.filter((r) => r.rows);
+  if (measured.length === 0) return { ...runs.at(-1), repeats, measuredRounds: 0 };
+  return {
+    ...measured[0],
+    repeats,
+    measuredRounds: measured.length,
+    attempts: runs.map((r) => r.attempt ?? null),
+    rows: mergeRepeats(measured),
+    fatalEvents: runs.flatMap((r) => r.fatalEvents ?? []),
+  };
 }
 
 function defaultMatrix() {
@@ -554,15 +617,16 @@ function matchesOnly(label, only) {
 
 async function runMatrix(devTools, baseUrl) {
   const only = process.env.PERF_ONLY;
+  const repeats = Math.max(1, parseInt(process.env.PERF_REPEATS ?? '3', 10));
   const all = defaultMatrix().filter((c) => matchesOnly(c.label, only));
   const fatalEvents = [];
   const results = [];
   for (const cond of all) {
     console.error(`[perf-probe] running condition: ${cond.label}`);
-    const result = await runCondition(devTools, baseUrl, cond, fatalEvents);
+    const result = await runCondition(devTools, baseUrl, cond, fatalEvents, repeats);
     results.push(result);
   }
-  return { mode: 'matrix', generatedAt: new Date().toISOString(), results };
+  return { mode: 'matrix', generatedAt: new Date().toISOString(), repeats, results };
 }
 
 // ============================================================================================
