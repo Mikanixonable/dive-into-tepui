@@ -1,6 +1,6 @@
 // 多ノードの計画軌道を arc 単位で描く。Plan の corners を区間へ分解し、区間ごとに PlanArc
 // (積分結果)と TrajectoryLine(折れ線)を index で対応付けて持つ。起点・重力源・apsisCenter が
-// 変われば PlanArc を作り直し、終端だけが動いた区間は PlanArc.setEnd に継ぎ足し/縮小させる —
+// 変われば PlanArc を作り直し、答える範囲だけが動いた区間は PlanArc.setRange に動かさせる —
 // どちらの場合も折れ線はその区間の TrajectoryLine プールを使い回す。画面判定も同じ表示変換を
 // 通すため描画とずれない。
 import * as THREE from 'three/webgpu';
@@ -89,7 +89,7 @@ export class PlanPath {
   }
 
   // 起点とノード列から区間列を組み直す。起点・重力源・apsisCenter が既存の arc と一致する区間は
-  // setEnd で終端だけ動かし、一致しない区間は arc を作り直す。表示変換の文脈(座標系・
+  // setRange で答える範囲だけを動かし、一致しない区間は arc を作り直す。表示変換の文脈(座標系・
   // un-bake 時刻)もこのフレームのものに更新する。
   update(
     planData: PlanData,
@@ -120,7 +120,7 @@ export class PlanPath {
         this.arcs[i] = arc;
         this.lastRebuiltArcs++;
       } else {
-        arc.setEnd(seg.end);
+        arc.setRange(seg.state0, seg.end);
       }
       this.lastSteps += arc.lastSteps;
     }
