@@ -88,6 +88,9 @@ export class Bgm {
   // === ゲーム内BGM (ambient conductor) ===
   // これが既定の conductor なので、特別扱いとし、関連するメソッド名から目的語 (ambient) を省く。
 
+  // 伏せる指示。線は最初に鳴らすときまで組まれないので、その間の指示をここで覚えておく。
+  private paused = false;
+
   // ゲーム内 BGM を開く。すでに鳴っていれば何もしない。
   private start(trackIdx?: number): void {
     const ctx = this.engine.ctx;
@@ -104,8 +107,9 @@ export class Bgm {
     if (this.volume > 0) this.start();
   }
 
-  // ゲーム内 BGM を伏せる。
+  // ゲーム内 BGM を伏せる。まだ線が無ければ、組まれたときに伏せた状態から始める。
   pause(): void {
+    this.paused = true;
     this.ambient?.pause();
   }
 
@@ -118,7 +122,10 @@ export class Bgm {
 
   // ゲーム中の BGM の線。AudioContext ができるまでは組めないので、最初に鳴らすときに作る。
   private ensureAmbient(ctx: AudioContext): Conductor {
-    if (!this.ambient) this.ambient = new Conductor(ctx, this.ensureMasterGain(ctx), true);
+    if (!this.ambient) {
+      this.ambient = new Conductor(ctx, this.ensureMasterGain(ctx), true);
+      if (this.paused) this.ambient.pause();
+    }
     return this.ambient;
   }
 
@@ -153,6 +160,7 @@ export class Bgm {
   // 設定画面が閉じた。試聴の線を畳み、ゲーム中の BGM を元へ戻す。
   // 開いた時点で鳴っていなかった場合は伏せて戻すだけなので、無音のままになる。
   endAudition(): void {
+    this.paused = false;
     this.disposeAudition();
     this.ambient?.resume();
     this.syncPump();
