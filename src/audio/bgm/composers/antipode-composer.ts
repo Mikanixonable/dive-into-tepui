@@ -1,7 +1,8 @@
-// 2つ目の作曲アルゴリズム。一定ステップごとに和音を短く打ち込む層(stab)と、音階を1つずつ
-// なぞる層(arp)を重ねる。stab・arp・移調はそれぞれ自分の間隔で独立に進むので、周期が
-// 食い違うぶんだけ組み合わせが移り変わる — 同じ和音が違う高さで、同じ音型が違う和音の上で
-// 鳴る。音階・和音・音型・間隔は AntipodeParams が持つ。
+// 2つ目の作曲アルゴリズム。一定ステップごとに和音を短く打ち込む層(stab)に、音階を1つずつ
+// なぞる音型の層(arps、複数可)を重ねる。stab・各 arp 層・移調はそれぞれ自分の間隔で独立に
+// 進むので、周期が食い違うぶんだけ組み合わせが移り変わる — 同じ和音が違う高さで、同じ音型が
+// 違う和音の上で鳴り、複数の arp 層どうしも互いの位置に関知せずずれていく。
+// 音階・和音・音型・間隔は AntipodeParams が持つ。
 import { AntipodeParams } from '../tracks/types';
 import { Composer, ComposerNote } from '../composer';
 import { cycleAt, phaseValue, scaleFreq } from './utils';
@@ -13,14 +14,13 @@ export class AntipodeComposer implements Composer {
     return this.params.stepDur;
   }
 
-  // stab と arp のうち、このステップが打ち込みの位置になっている層だけを移調して返す。
+  // stab と各 arp 層のうち、このステップが打ち込みの位置になっている層だけを移調して返す。
   notesAt(step: number): ComposerNote[] {
     const { transpose } = this.params;
     const shift = phaseValue(transpose, step);
     const notes: ComposerNote[] = [];
     notes.push(...this.stabNotes(step, shift));
-    const arpNote = this.arpNote(step, shift);
-    if (arpNote !== null) notes.push(arpNote);
+    notes.push(...this.arpNotes(step, shift));
     return notes;
   }
 
@@ -41,19 +41,22 @@ export class AntipodeComposer implements Composer {
     }));
   }
 
-  // このステップが打ち込みの位置なら、notes を1つずつなぞる音型の現在位置を返す。
-  private arpNote(step: number, shift: number): ComposerNote | null {
-    const { scale, stepDur, arp } = this.params;
-    if (step % arp.everySteps !== 0) return null;
-    const index = cycleAt(arp.notes, arp.everySteps, step);
-    // 音の長さは指定が無いので、次の音が来るまでの間隔(stepDur * everySteps)をそのまま使う —
-    // 途切れず受け渡される歌い方になる。
-    return {
-      instrument: arp.instrument,
-      freq: scaleFreq(scale, index, shift, arp.octaveOffset),
-      offsetSec: 0,
-      durationSec: stepDur * arp.everySteps,
-      velocity: 1,
-    };
+  // 各 arp 層のうち、このステップが打ち込みの位置になっているものだけ、notes を1つずつ
+  // なぞる音型の現在位置を返す。層どうしは互いの間隔に関知しない。
+  private arpNotes(step: number, shift: number): ComposerNote[] {
+    const { scale, stepDur, arps } = this.params;
+    // 音の長さは arp 側に指定が無いので、次の音が来るまでの間隔(stepDur * everySteps)を
+    // そのまま使う — 途切れず受け渡される歌い方になる。
+    return arps.flatMap((arp): ComposerNote[] => {
+      if (step % arp.everySteps !== 0) return [];
+      const index = cycleAt(arp.notes, arp.everySteps, step);
+      return [{
+        instrument: arp.instrument,
+        freq: scaleFreq(scale, index, shift, arp.octaveOffset),
+        offsetSec: 0,
+        durationSec: stepDur * arp.everySteps,
+        velocity: 1,
+      }];
+    });
   }
 }

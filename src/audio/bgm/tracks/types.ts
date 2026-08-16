@@ -93,19 +93,20 @@ export interface AntipodeStabLayer {
   instrument: string;
 }
 
+// 一定ステップごとに notes を1つずつなぞる音型の層。stab と違い、そのステップでは
+// 1音だけを鳴らす。長さは指定せず、次の音が来るまでの間隔(stepDur * everySteps)を使う。
 export interface AntipodeArpLayer {
   everySteps: number;
-  notes: number[];
+  notes: number[]; // 音型の構成音インデックス。1周期でここを先頭から順になぞる
   octaveOffset: number;
   instrument: string;
 }
 
 // 2つ目の作曲アルゴリズム(composers/antipode-composer.ts)のパラメータ。
-// 必要なフィールドは音を書きながら足す。
 export interface AntipodeParams {
   stepDur: number; // 1ステップの秒数
   scale: number[]; // Hz。層が音階インデックスで引く音集合
   transpose: PhaseCycle; // 音階ステップ単位の移調
   stab: AntipodeStabLayer;
-  arp: AntipodeArpLayer;
+  arps: AntipodeArpLayer[]; // 各層が自分の everySteps で独立に進む。0個でも鳴らせる
 }
