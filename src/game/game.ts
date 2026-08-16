@@ -457,6 +457,7 @@ export class Game {
     this._environment.sync(
       player?.state.r ?? null, fo, displayTime,
       this.cameraSystem, this.navball.gridVisibility, visibilityPolicy,
+      this.markerManager,
     );
 
     this.entities.syncPlayers(

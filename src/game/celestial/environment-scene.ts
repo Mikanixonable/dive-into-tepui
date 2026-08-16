@@ -6,7 +6,9 @@ import { kinematicState } from '../../physics/kinematic-state';
 import { CelestialRegistry, SolarSystemId, bodyDef, primaryOf } from '../../physics/solar-system';
 import { OrbitalElements } from '../../physics/elements';
 import { Attractor, AttractorId, OrbitingId, orbitalElementsOf } from '../../physics/attractor';
-import { Vec3, v3, sub, len } from '../../physics/vec3';
+import { add, len, scale, sub, v3, Vec3 } from '../../physics/vec3';
+import { isOccluded } from '../../physics/occlusion';
+import type { MarkerManager } from '../marker/marker-manager';
 import { OrbitLine } from '../orbit-line';
 import { createStars, Stars, STAR_SHELL_RADIUS } from '../../render/stars';
 import { CelestialGrid, CelestialGridVisibility } from '../../render/celestial-grid';
@@ -149,6 +151,7 @@ export class EnvironmentScene {
     cameraSystem: CameraSystem,
     gridVisibility: CelestialGridVisibility,
     sharedVisibilityPolicy: MapVisibilityPolicy | null = null,
+    markerManager: MarkerManager | null = null,
   ): void {
     // lit は自機位置の日照率。主星が無いレジストリでは日照そのものが無意味なので計算を飛ばす。
     let lit = 1.0;
@@ -197,6 +200,7 @@ export class EnvironmentScene {
       displayTime, floatingOrigin, cameraSystem.overviewMode,
       focusTargetId(cameraSystem.mapCamera.focus), cameraSystem.bodyClassToggles,
       visibilityPolicy, nearbyIds, cameraSystem.activeCamera, cameraSystem.activeCameraPos);
+    this.syncGeoLabels(displayTime, cameraSystem.overviewMode, cameraSystem, markerManager, this.ephemeris.attractorsAt(displayTime));
     this.celestialGrid.sync(
       gridVisibility, cameraSystem.activeCamera,
       cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
@@ -254,6 +258,70 @@ export class EnvironmentScene {
       line.sync(el, fo, camera, false);
       const dist = len(sub(this.ephemeris.stateOf(id, simTime).r, cameraPos));
       line.setOpacity(this.referenceLineOpacityAt(id, dist));
+    }
+  }
+
+  // 静止軌道に沿った半透明の小さなテキスト文字ラベルを描画する。
+  private syncGeoLabels(
+    displayTime: number,
+    overviewMode: boolean,
+    cameraSystem: CameraSystem,
+    markerManager: MarkerManager | null,
+    attractors: readonly Attractor[],
+  ): void {
+    const keys = ['geolabel-0', 'geolabel-1', 'geolabel-2', 'geolabel-3'];
+    if (!markerManager || !overviewMode || !this.geoElements || !('earth' in this.ephemeris.registry)) {
+      if (markerManager) {
+        for (const key of keys) markerManager.hide(key);
+      }
+      return;
+    }
+
+    const earthPos = this.ephemeris.positionOf('earth', displayTime);
+    const cameraPos = cameraSystem.activeCameraPos;
+    const project = cameraSystem.activeCameraProjection;
+    const rGeo = this.geoElements.a;
+    const pHat = this.geoElements.pHat;
+    const qHat = this.geoElements.qHat;
+
+    const numLabels = 4;
+    for (let i = 0; i < numLabels; i++) {
+      const key = keys[i]!;
+      const theta = (i * Math.PI) / 2 + Math.PI / 4;
+      const cosT = Math.cos(theta);
+      const sinT = Math.sin(theta);
+
+      const pos = add(earthPos, add(scale(pHat, rGeo * cosT), scale(qHat, rGeo * sinT)));
+      const tangent = add(scale(pHat, -sinT), scale(qHat, cosT));
+
+      const p0 = project(pos);
+      if (!p0.front || isOccluded(cameraPos, pos, attractors)) {
+        markerManager.hide(key);
+        continue;
+      }
+
+      const pNext = project(add(pos, scale(tangent, 1e5)));
+      const dx = pNext.x - p0.x;
+      const dy = pNext.y - p0.y;
+      let rotDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
+      if (rotDeg > 90) rotDeg -= 180;
+      else if (rotDeg < -90) rotDeg += 180;
+
+      markerManager.set(
+        key,
+        'mk-geolabel',
+        'GEO (35,786km)',
+        p0.x,
+        p0.y,
+        p0.front,
+        '',
+        0.45,
+        undefined,
+        rotDeg,
+        false,
+        true,
+        C.MARKER_PRIORITY.ORBITAL_NODE,
+      );
     }
   }
 
