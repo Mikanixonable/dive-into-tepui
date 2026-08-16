@@ -199,12 +199,12 @@ export const AXIS_NORMAL = '#10b981';
 export const AXIS_RADIAL = '#ef4444';
 
 // 文字サイズ。8段。マーカーのグリフサイズ(GLYPH_*)はこれとは別スケール。
-export const FONT_XXS = '9px';
-export const FONT_XS = '10px';
-export const FONT_S = '11px';
-export const FONT_M = '12px';
-export const FONT_L = '13px';
-export const FONT_XL = '16px';
+export const FONT_XXS = '11px';
+export const FONT_XS = '12px';
+export const FONT_S = '13px';
+export const FONT_M = '14px';
+export const FONT_L = '15px';
+export const FONT_XL = '18px';
 export const FONT_2XL = '24px';
 export const FONT_3XL = '34px';
 
