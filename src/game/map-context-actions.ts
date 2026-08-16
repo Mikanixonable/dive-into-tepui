@@ -469,13 +469,11 @@ export class MapContextActions {
     },
     'apsis': {
       itemsFor: (target, simTime) => {
-        const apsisTime = target.time;
-        const defaultName = target.id === 'apsisAp' ? '遠点' : '近点';
-        const nameJa = target.name || defaultName;
-        const apsisLabel = `${nameJa} (${target.id === 'apsisAp' ? 'Ap' : 'Pe'})`;
-        const apsisSubLabel = apsisTime !== undefined ? `到達まで T+${fmtTime(apsisTime - simTime)}` : undefined;
+        const centerId = strongestAttractor(target.pos, this.ephemeris.attractorsAt(simTime)).id;
+        const peOrAp = target.id === 'apsisAp' ? 'ap' : 'pe';
+        const spec = getApsisLabelSpec(peOrAp, centerId);
         return [
-          { type: 'header', label: apsisLabel, subLabel: apsisSubLabel },
+          { type: 'header', label: spec.nameJa, subLabel: spec.nameEn },
           MenuCommon.warp(),
           MenuCommon.addNode(),
           MenuCommon.focus(),
@@ -485,13 +483,10 @@ export class MapContextActions {
       run: (act, target) => this.runApsisRelnode(act, target),
     },
     'relnode': {
-      itemsFor: (target, simTime) => {
-        const relTime = target.time;
-        const relLabel = target.id === 'nav-an' ? '昇交点 (AN)' : '降交点 (DN)';
-        const targetName = this.navTarget.name ?? '対象';
-        const relSubLabel = `対 ${targetName}面` + (relTime !== undefined ? ` / T+${fmtTime(relTime - simTime)}` : '');
+      itemsFor: (target) => {
+        const spec = target.id === 'nav-an' ? ORBIT_ELEMENT_LABELS.an : ORBIT_ELEMENT_LABELS.dn;
         return [
-          { type: 'header', label: relLabel, subLabel: relSubLabel },
+          { type: 'header', label: spec.nameJa, subLabel: spec.nameEn },
           MenuCommon.warp(),
           MenuCommon.addNode(),
           MenuCommon.focus(),
@@ -502,13 +497,12 @@ export class MapContextActions {
     },
     'eqnode': {
       itemsFor: (target, simTime) => {
-        const eqTime = target.time;
         const isAn = target.id.endsWith('-eqan');
+        const spec = isAn ? ORBIT_ELEMENT_LABELS.eqAn : ORBIT_ELEMENT_LABELS.eqDn;
         const centerName = celestialBodyName(strongestAttractor(target.pos, this.ephemeris.attractorsAt(simTime)).id);
-        const eqLabel = `${centerName}赤道${isAn ? '昇' : '降'}交点 (${isAn ? 'EqAN' : 'EqDN'})`;
-        const eqSubLabel = eqTime !== undefined ? `到達まで T+${fmtTime(eqTime - simTime)}` : undefined;
+        const label = `${centerName}${spec.nameJa}`;
         return [
-          { type: 'header', label: eqLabel, subLabel: eqSubLabel },
+          { type: 'header', label, subLabel: spec.nameEn },
           MenuCommon.warp(),
           MenuCommon.addNode(),
           MenuCommon.focus(),
@@ -783,7 +777,8 @@ export class MapContextActions {
         shortcut: showShortcuts ? it.shortcut : undefined,
         selected: it.selected, keepOpen: it.keepOpen,
       }));
-    const subtitle = target.ownerName ? `所属: ${target.ownerName}` : header?.subLabel;
+    const isOrbitPoint = target.kind === 'apsis' || target.kind === 'relnode' || target.kind === 'eqnode';
+    const subtitle = (target.ownerName && !isOrbitPoint) ? `所属: ${target.ownerName}` : header?.subLabel;
     return { title: header?.label ?? target.name, subtitle, items };
   }
 
