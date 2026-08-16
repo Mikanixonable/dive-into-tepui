@@ -74,16 +74,20 @@ export class Predictor {
   // budgetSteps を上限に予測列を1ステップずつ伸ばし、消費したステップ数を返す。
   private advanceBudget(e: GameEntity, budgetSteps: number, simTime: number, horizon: number): number {
     if (!e.predictsFuture) return 0;
+    // 引力を持たないエンティティは重力源一覧に載り得ないので、除外の走査ごと省く。
+    const selfId = e.mu !== 0 ? e.id : undefined;
     let consumed = 0;
     while (consumed < budgetSteps) {
       const tipState = e.predicted?.state ?? e.state;
       // 刻み幅を決める重力源はステップ開始時刻で評価する。予測の重力源を長時間保持すると、
       // 月のように速く動く天体の位置が固定され、近傍周回の予測が実軌道から離れてしまう。
+      // e 自身は除く — 外挿された自分の姿が問い合わせ位置のすぐ近くに現れると
+      // strongestAttractor に選ばれ、そこからの距離で刻む dt が潰れて伸長が止まる。
       const currentClassified = classifyAttractors(
         predictedAttractorsAt(this.ephemeris, this.entities, tipState.t),
       );
       const currentAttractors = attractorsNearInto(
-        tipState.r, currentClassified, this.currentAttractorsScratch,
+        tipState.r, currentClassified, this.currentAttractorsScratch, selfId,
       );
       // RK4 の各ステップには、その中点時刻の重力源を渡す。実シミュレーションも各サブステップ
       // の中点で attractorsAt を解決しており、予測だけ過去の天体位置を保持しないようにする。
@@ -109,7 +113,7 @@ export class Predictor {
         predictedAttractorsAt(this.ephemeris, this.entities, tipState.t + dt / 2),
       );
       const stepAttractors = attractorsNearInto(
-        tipState.r, stepClassified, this.stepAttractorsScratch,
+        tipState.r, stepClassified, this.stepAttractorsScratch, selfId,
       );
       if (!e.stepPredicted(stepAttractors, simTime, dt, horizon, extrapolationCenter)) break;
       consumed++;
