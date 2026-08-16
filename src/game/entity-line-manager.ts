@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { Attractor } from '../physics/attractor';
 import { Ephemeris } from '../physics/ephemeris';
-import type { LineStyle } from '../render/curve';
+import type { LineStyle } from '../render/line-style';
 import * as C from './const';
 import { FloatingOrigin } from './floating-origin';
 import { Player } from './player/player';

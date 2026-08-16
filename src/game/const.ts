@@ -1,5 +1,5 @@
 // ゲームバランス・チューニング定数
-import type { LineStyle } from '../render/curve';
+import type { LineStyle } from '../render/line-style';
 export { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../physics/solar-system';
 
 // 軌道上へ配置できる自機の上限隻数。
