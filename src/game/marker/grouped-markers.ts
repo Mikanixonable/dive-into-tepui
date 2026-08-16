@@ -42,6 +42,7 @@ interface PlacedItem {
   count: number; // 自分がまとめた件数(1 = 単独)
   labeled: boolean; // false = 代表に吸収されたのでラベルを出さない
   groupMembers?: readonly GroupedMarkerItem[];
+  hiddenByCelestialLabel?: boolean;
 }
 
 export class GroupedMarkers {
@@ -114,12 +115,26 @@ export class GroupedMarkers {
 
     this.visibleKeys.clear();
     this.hiddenItemsList.length = 0;
+    const addedKeys = new Set<string>();
+
     for (const m of placed) {
       const opacity = m.item.opacity ?? 1;
       if (m.labeled && opacity > 0 && !m.item.occluded && m.p.front) {
         this.visibleKeys.add(m.item.key);
-      } else {
-        this.hiddenItemsList.push(m.item);
+      }
+      // 天体ラベルと近接してマーカーが非表示化され、かつ惑星に遮蔽(掩蔽)されていないオブジェクトのみを天体サブ行の候補とする
+      if (m.hiddenByCelestialLabel && !m.item.occluded && m.p.front) {
+        if (m.groupMembers && m.groupMembers.length > 0) {
+          for (const member of m.groupMembers) {
+            if (!addedKeys.has(member.key) && !member.occluded) {
+              addedKeys.add(member.key);
+              this.hiddenItemsList.push(member);
+            }
+          }
+        } else if (!addedKeys.has(m.item.key)) {
+          addedKeys.add(m.item.key);
+          this.hiddenItemsList.push(m.item);
+        }
       }
     }
 
@@ -152,6 +167,7 @@ export class GroupedMarkers {
         for (const c of celestialLabels) {
           if (c.labelVisible && Math.hypot(m.p.x - c.x, m.p.y - c.y) < this.clusterRadiusPx) {
             m.labeled = false;
+            m.hiddenByCelestialLabel = true;
             break;
           }
         }
