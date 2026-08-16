@@ -79,6 +79,9 @@ export class Predictor {
     let consumed = 0;
     while (consumed < budgetSteps) {
       const tipState = e.predicted?.state ?? e.state;
+      // 先端が表示窓を覆っていたらここで抜ける。刻み幅を残り時間で切らないので先端はホライズンを
+      // 少し越えて止まり、simTime が追いつくまでの数フレームは重力源の解決ごと省ける。
+      if (tipState.t >= simTime + horizon) break;
       // 刻み幅を決める重力源はステップ開始時刻で評価する。予測の重力源を長時間保持すると、
       // 月のように速く動く天体の位置が固定され、近傍周回の予測が実軌道から離れてしまう。
       // 自分の引力を自分に加算しないよう、e 自身は一覧から除く。
@@ -88,10 +91,6 @@ export class Predictor {
       const currentAttractors = attractorsNearInto(
         tipState.r, currentClassified, this.currentAttractorsScratch, selfId,
       );
-      // RK4 の各ステップには、その中点時刻の重力源を渡す。実シミュレーションも各サブステップ
-      // の中点で attractorsAt を解決しており、予測だけ過去の天体位置を保持しないようにする。
-      const remaining = simTime + horizon - tipState.t;
-      if (!(remaining > 1e-9)) break;
       // 刻み幅とケプラー外挿の中心天体は、どちらもこの1回の strongestAttractor から求める。
       // ただし外挿の中心は解析天体(Ephemeris の登録天体)に限る — 動的重力源が最強のときは、
       // 解析天体だけの一覧(同じ t なのでリングキャッシュに当たる)から選び直す。
@@ -99,14 +98,18 @@ export class Predictor {
       const extrapolationCenter = rawCenter.id in this.ephemeris.registry
         ? rawCenter
         : strongestAttractor(tipState.r, this.ephemeris.gravityAttractorsAt(tipState.t));
+      // 1歩の上限は表示窓ぶん。その場の周期が表示窓よりずっと長い遠方の個体では、1歩が窓を
+      // 何倍も飛び越えて、窓の中身が両端からの補間だけになってしまう。
       const dt = Math.min(
-        remaining,
+        horizon,
         Math.max(
           C.PREDICT_MIN_STEP_DT,
           keplerPeriod(len(sub(tipState.r, rawCenter.state.r)), rawCenter.mu) / C.PREDICT_STEPS_PER_REV,
           horizon / C.PREDICT_MAX_STEPS,
         ),
       );
+      // RK4 の各ステップには、その中点時刻の重力源を渡す。実シミュレーションも各サブステップ
+      // の中点で attractorsAt を解決しており、予測だけ過去の天体位置を保持しないようにする。
       const stepClassified = classifyAttractors(
         predictedAttractorsAt(this.ephemeris, this.entities, tipState.t + dt / 2),
       );
