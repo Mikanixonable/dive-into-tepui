@@ -420,6 +420,10 @@ export class Curve {
     material.needsUpdate = true;
   }
 
+  setRenderOrder(renderOrder: number): void {
+    this.line.renderOrder = renderOrder;
+  }
+
   // sample の座標系をワールドへ写す変換を渡す。実際に line へ書く position/quaternion は
   // pivot 分の補正を経るため、渡した値がそのまま line.position/quaternion にはならない。
   setTransform(position: THREE.Vector3, quaternion?: THREE.Quaternion): void {
