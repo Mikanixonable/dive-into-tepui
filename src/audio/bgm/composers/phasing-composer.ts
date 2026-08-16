@@ -6,6 +6,7 @@
 // 長さは各周期の最小公倍数まで伸びる。音階・パターン・各レイヤーの値は PhasingParams が持つ。
 import { PhaseCycle, PhasingParams, PulseVoice } from '../tracks/types';
 import { Composer, ComposerNote } from '../composer';
+import { scaleFreq } from './scale';
 
 // 1スケールステップあたりの半音数の近似(長2度)。音階を引く声部は移調をインデックスの
 // 足し引きで表せるが、Hz で直接与えるパッドとドローンは周波数比が要るのでこれで換算する。
@@ -14,24 +15,6 @@ const SEMITONES_PER_SCALE_STEP = 2;
 // 一定ステップごとに切り替わる循環から、このステップの値を取り出す。
 function phaseValue(cycle: PhaseCycle, step: number): number {
   return cycle.values[Math.floor(step / cycle.everySteps) % cycle.values.length]!;
-}
-
-// 音階インデックスへ移調とオクターブシフトを適用し、周波数へ解決する。
-// 音階の端を越えたぶんはオクターブへ繰り上げ・繰り下げて折り返す。
-function scaleFreq(scale: number[], index: number, transpose: number, octave: number): number {
-  let absoluteIdx = index + transpose;
-  let octShift = octave;
-  // 音階の上端を超えたらオクターブを上げて折り返す
-  while (absoluteIdx >= scale.length) {
-    absoluteIdx -= scale.length;
-    octShift++;
-  }
-  // 下端を下回ったらオクターブを下げて折り返す
-  while (absoluteIdx < 0) {
-    absoluteIdx += scale.length;
-    octShift--;
-  }
-  return scale[absoluteIdx]! * Math.pow(2, octShift);
 }
 
 export class PhasingComposer implements Composer {
