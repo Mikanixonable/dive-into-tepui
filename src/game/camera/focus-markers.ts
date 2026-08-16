@@ -413,8 +413,8 @@ export class FocusMarkers {
   }
 
   // クローズダウン時に非表示になった船・敵機・基地を、所属親天体ラベルの下にサブテキスト行として描画する。
-  // 距離 1,000万 km 未満: 左揃え・目立たない色のリスト表示 (最大3行)
-  // 距離 1,000万 km 以上: 第2段階の省略表示として 1行でアイコンと数のみ表示 (例: △3 ▲1)
+  // 距離 500 km 未満: 左揃え・目立たない色のリスト表示 (最大3行)
+  // 距離 500 km 以上: 第2段階の省略表示として 1行でアイコンと数のみ表示 (衛星系もまとめて表示・プレフィックスなし)
   syncSubLabels(
     groupedMarkers: GroupedMarkers,
     registry: CelestialRegistry,
@@ -428,22 +428,40 @@ export class FocusMarkers {
     const hiddenItems = groupedMarkers.getHiddenItems();
     if (hiddenItems.length === 0) return;
 
+    const DIST_STAGE2_THRESHOLD = 500e3; // 500 km in meters
+
     const itemsByTargetBody = new Map<string, { prefix: string; item: GroupedMarkerItem }[]>();
 
     for (const item of hiddenItems) {
       const center = strongestAttractor(item.pos, attractors);
+      const centerLbl = this.labelsById.get(center.id);
+      const distToCenter = centerLbl ? len(sub(centerLbl.pos, cameraPos)) : Infinity;
+      const isStage2 = distToCenter >= DIST_STAGE2_THRESHOLD;
+
       let targetId: string | null = null;
       let prefix = '';
 
-      const rec = this.bodyPickableRecords.get(center.id);
-      if (rec?.pickable) {
-        targetId = center.id;
-        prefix = '';
-      } else {
+      if (isStage2) {
+        // 第2段階 (500km以上): 「月:」などのプレフィックスを表示せず、主親天体(地球等)へ集約
         const primaryId = primaryOf(registry, center.id as OrbitingId);
         if (primaryId && this.bodyPickableRecords.get(primaryId)?.pickable) {
           targetId = primaryId;
-          prefix = `${celestialBodyName(center.id as AttractorId)}: `;
+        } else if (this.bodyPickableRecords.get(center.id)?.pickable) {
+          targetId = center.id;
+        }
+        prefix = '';
+      } else {
+        // 第1段階 (500km未満): 直近天体ラベルがあればそこへ、なければ親天体へ「月:」プレフィックス付きで繰り上げ
+        const rec = this.bodyPickableRecords.get(center.id);
+        if (rec?.pickable) {
+          targetId = center.id;
+          prefix = '';
+        } else {
+          const primaryId = primaryOf(registry, center.id as OrbitingId);
+          if (primaryId && this.bodyPickableRecords.get(primaryId)?.pickable) {
+            targetId = primaryId;
+            prefix = `${celestialBodyName(center.id as AttractorId)}: `;
+          }
         }
       }
 
@@ -457,8 +475,6 @@ export class FocusMarkers {
       }
     }
 
-    const DIST_STAGE2_THRESHOLD = 1e10; // 10,000,000 km in meters
-
     for (const [bodyId, entries] of itemsByTargetBody) {
       const lbl = this.labelsById.get(bodyId);
       if (!lbl || !lbl.showLabel || !lbl.pickable) continue;
@@ -468,40 +484,31 @@ export class FocusMarkers {
       const subDivs: string[] = [];
 
       if (isStage2) {
-        // 第2段階 (1,000万km以上): アイコンと個数のみの1行省略表示
-        const entriesByPrefix = new Map<string, GroupedMarkerItem[]>();
+        // 第2段階 (500km以上): アイコンと個数のみの1行省略表示 (衛星系の船もまとめてカウント)
+        let nEnemy = 0;
+        let nAlly = 0;
+        let nBase = 0;
+        let nAmmo = 0;
+
         for (const entry of entries) {
-          let list = entriesByPrefix.get(entry.prefix);
-          if (!list) {
-            list = [];
-            entriesByPrefix.set(entry.prefix, list);
-          }
-          list.push(entry.item);
+          const item = entry.item;
+          if (item.cls.includes('mk-enemy')) nEnemy++;
+          else if (item.cls.includes('mk-base')) nBase++;
+          else if (item.cls.includes('mk-ammo')) nAmmo++;
+          else nAlly++;
         }
 
-        for (const [prefix, items] of entriesByPrefix) {
-          let nEnemy = 0;
-          let nAlly = 0;
-          let nBase = 0;
-          let nAmmo = 0;
-          for (const item of items) {
-            if (item.cls.includes('mk-enemy')) nEnemy++;
-            else if (item.cls.includes('mk-base')) nBase++;
-            else if (item.cls.includes('mk-ammo')) nAmmo++;
-            else nAlly++;
-          }
-          const parts: string[] = [];
-          if (nEnemy > 0) parts.push(`△${nEnemy}`);
-          if (nAlly > 0) parts.push(`▲${nAlly}`);
-          if (nBase > 0) parts.push(`⬡${nBase}`);
-          if (nAmmo > 0) parts.push(`▣${nAmmo}`);
+        const parts: string[] = [];
+        if (nEnemy > 0) parts.push(`△${nEnemy}`);
+        if (nAlly > 0) parts.push(`▲${nAlly}`);
+        if (nBase > 0) parts.push(`⬡${nBase}`);
+        if (nAmmo > 0) parts.push(`▣${nAmmo}`);
 
-          if (parts.length > 0) {
-            subDivs.push(`<div class="lbl-sub">${prefix}${parts.join(' ')}</div>`);
-          }
+        if (parts.length > 0) {
+          subDivs.push(`<div class="lbl-sub">${parts.join(' ')}</div>`);
         }
       } else {
-        // 第1段階 (1,000万km未満): 左揃えのリスト表示 (最大3行)
+        // 第1段階 (500km未満): 左揃えのリスト表示 (最大3行)
         entries.sort((a, b) => (b.item.priority ?? 0) - (a.item.priority ?? 0));
         const maxLines = 3;
         const total = entries.length;
