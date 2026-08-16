@@ -15,14 +15,14 @@ export type BgmTrack =
 
 // ================================================================== Composer params
 
-// --------------------------------------------------------------- phasing-composer
-
 // 一定ステップごとに値を切り替える循環。everySteps ごとに values を1つ進み、末尾で先頭へ戻る。
 // values の長さ × everySteps がこの循環の一巡で、曲全体の周期はこれらの最小公倍数になる。
 export interface PhaseCycle {
   values: number[];
   everySteps: number;
 }
+
+// --------------------------------------------------------------- phasing-composer
 
 // パルス声部へ重ねる倍音。整数比からわずかにずらすと、うなりが厚みになる。
 export interface VoiceHarmonic {
@@ -86,7 +86,7 @@ export interface PhasingParams {
 // 一定ステップごとに和音を短く打ち込む層。構成音は scale のインデックスで与える。
 export interface AntipodeStabLayer {
   everySteps: number;
-  notes: number[]; // 和音の構成音インデックス
+  chords: number[][]; // 和音の構成音インデックス
   octaveOffset: number;
   durationSec: number;
   instrument: string;
@@ -97,5 +97,6 @@ export interface AntipodeStabLayer {
 export interface AntipodeParams {
   stepDur: number; // 1ステップの秒数
   scale: number[]; // Hz。層が音階インデックスで引く音集合
+  transpose: PhaseCycle; // 音階ステップ単位の移調
   stab: AntipodeStabLayer;
 }
