@@ -9,7 +9,7 @@ import { PlanEditor } from './plan/plan-editor';
 import { DisplayWindowManager } from './display-window-manager';
 import { MapContextActions } from './map-context-actions';
 import type { Docking } from './docking';
-import type { ActivePlayerController } from './active-player-controller';
+import type { ActiveControllableController } from './active-controllable-controller';
 import { setPanelCollapsedView } from './hud/panel-shell';
 import type { OverlayHandle } from './hud/overlay-manager';
 import type { Base } from './game-entity/base';
@@ -57,7 +57,7 @@ export class ViewManager {
     private readonly cameraSystem: CameraSystem,
     private readonly displayWindow: DisplayWindowManager,
     private readonly mapActions: MapContextActions,
-    private readonly activePlayers: ActivePlayerController,
+    private readonly activePlayers: ActiveControllableController,
     private readonly touchControls: TouchControls | null,
     requestedView?: WorldViewId,
   ) {
