@@ -103,14 +103,14 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
   outline: 2px solid var(--accent-near); outline-offset: 2px;
 }
 #hud .rail-toggle { display: none; position: absolute; top: 8px; z-index: 20; }
-#hud:not(.dock-mode) .rail-toggle { display: block; }
+#hud:not(.base-mode) .rail-toggle { display: block; }
 #hud .hud-world-root .rail-toggle-left { left: 8px; }
 #hud .hud-world-root .rail-toggle-right { right: 8px; }
-/* 左右ドックの収納はマップ/戦闘の両ビューで使う。ドックビューではトグルごと隠す。 */
-#hud:not(.dock-mode) .hud-rail.collapsed { width: 0; }
-#hud:not(.dock-mode) .hud-rail.collapsed > .panel { display: none !important; }
-/* ドックビュー(造船ドック)が背後のマップごとレールを覆うので、開閉トグルは出さない。 */
-#hud.dock-mode .rail-toggle { display: none; }
+/* 左右ドックの収納はマップ/戦闘の両ビューで使う。基地ビューではトグルごと隠す。 */
+#hud:not(.base-mode) .hud-rail.collapsed { width: 0; }
+#hud:not(.base-mode) .hud-rail.collapsed > .panel { display: none !important; }
+/* 基地ビュー(造船ドック)が背後のマップごとレールを覆うので、開閉トグルは出さない。 */
+#hud.base-mode .rail-toggle { display: none; }
 
 /* 画面固定バッジ(④): マップの縮尺・視点リセット・グローバルステータス・トースト等。 */
 /* マップモードでは #hud-rail-toggle-left(left:8px, 26px 角)がこの位置に重なるので、
