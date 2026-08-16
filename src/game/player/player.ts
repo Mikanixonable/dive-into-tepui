@@ -22,6 +22,7 @@ import { isBurnedUp } from '../../physics/atmosphere';
 import type { CameraSystem } from '../camera/camera-system';
 import { focusTargetId } from '../camera/focus-target';
 import type { MapVisibility } from '../celestial/map-visibility';
+import type { DisplayWindow } from '../display-window-manager';
 import type { Stage } from '../stages/stage';
 import { PlayerThrottle } from './player-throttle';
 import { PlayerFire, type AmmoLoad } from './player-fire';
@@ -452,6 +453,7 @@ export class Player extends Ship {
     ephemeris: Ephemeris,
     attractors: readonly Attractor[],
     visibility: MapVisibility | null = null,
+    displayWindow?: DisplayWindow,
   ): void {
     // メッシュ本体の位置・姿勢
     const displayState = this.displayState(displayTime);
@@ -475,7 +477,7 @@ export class Player extends Ship {
     this.radiator.sync();
     this.power.sync();
     // マーカー。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
-    this.markers.sync(this.state, displayState, this.att, camera.overviewMode, isActive, camera.activeCameraPos, camera.activeCameraProjection, camera.activeCameraScale, this.name, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.mapCamera.focus), ephemeris.registry, attractors, visibility);
+    this.markers.sync(this.state, displayState, this.att, camera.overviewMode, isActive, camera.activeCameraPos, camera.activeCameraProjection, camera.activeCameraScale, this.name, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.mapCamera.focus), ephemeris.registry, attractors, visibility, displayWindow?.frame, displayTime, ephemeris);
   }
 
   // 艦は任意のタイミングで削除されうるので、Player が所有する線・ビルボード・HUD も一度だけ解放する。
