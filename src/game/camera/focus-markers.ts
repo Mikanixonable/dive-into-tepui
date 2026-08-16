@@ -1,5 +1,5 @@
 // マップモードのフォーカス対象(天体・ラグランジュ点)ラベルの算出と HUD マーカーへの反映。
-import { Vec3, v3 } from '../../physics/vec3';
+import { Vec3, v3, sub, len } from '../../physics/vec3';
 import { Attractor, AttractorId, OrbitingId, strongestAttractor } from '../../physics/attractor';
 import { CelestialRegistry, primaryOf } from '../../physics/solar-system';
 import { ProjectFn } from './camera-system';
@@ -412,13 +412,16 @@ export class FocusMarkers {
     this.shownIdsScratch.length = 0;
   }
 
-  // クローズダウン時に非表示になった船・敵機・基地を、所属親天体ラベルの下にサブテキスト行(最大3行)として描画する。
+  // クローズダウン時に非表示になった船・敵機・基地を、所属親天体ラベルの下にサブテキスト行として描画する。
+  // 距離 1,000万 km 未満: 左揃え・目立たない色のリスト表示 (最大3行)
+  // 距離 1,000万 km 以上: 第2段階の省略表示として 1行でアイコンと数のみ表示 (例: △3 ▲1)
   syncSubLabels(
     groupedMarkers: GroupedMarkers,
     registry: CelestialRegistry,
     attractors: readonly Attractor[],
     overviewMode: boolean,
     project: ProjectFn,
+    cameraPos: Vec3,
   ): void {
     if (!overviewMode) return;
 
@@ -454,31 +457,71 @@ export class FocusMarkers {
       }
     }
 
+    const DIST_STAGE2_THRESHOLD = 1e10; // 10,000,000 km in meters
+
     for (const [bodyId, entries] of itemsByTargetBody) {
       const lbl = this.labelsById.get(bodyId);
       if (!lbl || !lbl.showLabel || !lbl.pickable) continue;
 
-      entries.sort((a, b) => (b.item.priority ?? 0) - (a.item.priority ?? 0));
+      const distToBody = len(sub(lbl.pos, cameraPos));
+      const isStage2 = distToBody >= DIST_STAGE2_THRESHOLD;
+      const subDivs: string[] = [];
 
-      const maxLines = 3;
-      const subLines: string[] = [];
-      const total = entries.length;
-
-      if (total <= maxLines) {
+      if (isStage2) {
+        // 第2段階 (1,000万km以上): アイコンと個数のみの1行省略表示
+        const entriesByPrefix = new Map<string, GroupedMarkerItem[]>();
         for (const entry of entries) {
-          const glyph = cleanSubLabelGlyph(entry.item);
-          subLines.push(`${entry.prefix}${glyph} ${entry.item.name}`);
+          let list = entriesByPrefix.get(entry.prefix);
+          if (!list) {
+            list = [];
+            entriesByPrefix.set(entry.prefix, list);
+          }
+          list.push(entry.item);
+        }
+
+        for (const [prefix, items] of entriesByPrefix) {
+          let nEnemy = 0;
+          let nAlly = 0;
+          let nBase = 0;
+          let nAmmo = 0;
+          for (const item of items) {
+            if (item.cls.includes('mk-enemy')) nEnemy++;
+            else if (item.cls.includes('mk-base')) nBase++;
+            else if (item.cls.includes('mk-ammo')) nAmmo++;
+            else nAlly++;
+          }
+          const parts: string[] = [];
+          if (nEnemy > 0) parts.push(`△${nEnemy}`);
+          if (nAlly > 0) parts.push(`▲${nAlly}`);
+          if (nBase > 0) parts.push(`⬡${nBase}`);
+          if (nAmmo > 0) parts.push(`▣${nAmmo}`);
+
+          if (parts.length > 0) {
+            subDivs.push(`<div class="lbl-sub">${prefix}${parts.join(' ')}</div>`);
+          }
         }
       } else {
-        for (let i = 0; i < 2; i++) {
-          const entry = entries[i]!;
-          const glyph = cleanSubLabelGlyph(entry.item);
-          subLines.push(`${entry.prefix}${glyph} ${entry.item.name}`);
+        // 第1段階 (1,000万km未満): 左揃えのリスト表示 (最大3行)
+        entries.sort((a, b) => (b.item.priority ?? 0) - (a.item.priority ?? 0));
+        const maxLines = 3;
+        const total = entries.length;
+
+        if (total <= maxLines) {
+          for (const entry of entries) {
+            const glyph = cleanSubLabelGlyph(entry.item);
+            subDivs.push(`<div class="lbl-sub">${entry.prefix}${glyph} ${entry.item.name}</div>`);
+          }
+        } else {
+          for (let i = 0; i < 2; i++) {
+            const entry = entries[i]!;
+            const glyph = cleanSubLabelGlyph(entry.item);
+            subDivs.push(`<div class="lbl-sub">${entry.prefix}${glyph} ${entry.item.name}</div>`);
+          }
+          subDivs.push(`<div class="lbl-sub">+${total - 2} 隻</div>`);
         }
-        subLines.push(`+${total - 2} 隻`);
       }
 
-      const fullLabelText = `${lbl.markerLabel}\n${subLines.join('\n')}`;
+      const fullLabelText = `<span class="lbl-main">${lbl.markerLabel}</span>${subDivs.join('')}`;
 
       const proj = this.frameScratch.get(lbl.id);
       if (proj && proj.front && !proj.occluded) {
