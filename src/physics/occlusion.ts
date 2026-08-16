@@ -9,8 +9,8 @@ import { addScaled, dot, len, lenSq, sub, Vec3 } from './vec3';
 // その天体の表面上・近傍にある(その天体を回っている物体など)場合に、丸め誤差で
 // 自己遮蔽と誤判定しないためのマージン。
 const OCCLUSION_MARGIN = 1;
-const OCCLUSION_FADE_START = 2;
-const OCCLUSION_FADE_END = 1.5;
+const OCCLUSION_FADE_START = 1.5;
+const OCCLUSION_FADE_END = 1.0;
 
 // 天体マーカーの遮蔽・近接フェード係数を返す。
 // ここでいう R は実距離ではなく、カメラから見た手前の天体の見かけの角半径。マップ
