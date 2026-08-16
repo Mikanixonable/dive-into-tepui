@@ -21,7 +21,6 @@ export class Bgm {
   private audition: Conductor | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private volume = 1;
-  private started = false;
 
   // 保存済みの音量設定を読み込む。
   constructor(private readonly engine: AudioEngine) {
@@ -90,6 +89,8 @@ export class Bgm {
 
   // 伏せる指示。線は最初に鳴らすときまで組まれないので、その間の指示をここで覚えておく。
   private paused = false;
+  // 一度きりの自動開始を使い切ったか。
+  private autoStartUsed = false;
 
   // ゲーム内 BGM を開く。すでに鳴っていれば何もしない。
   private start(trackIdx?: number): void {
@@ -101,9 +102,12 @@ export class Bgm {
     this.syncPump();
   }
 
+  // 最初のユーザー操作から呼ばれ、ゲーム内 BGM を一度だけ始める。この操作はキー入力・
+  // ポインタ入力のたびに飛ぶので、二度目以降は何もしない — 決着で止めた BGM が、次の
+  // キー入力で蘇らないため。
   ensureStarted(): void {
-    if (this.started || !this.engine.ctx) return;
-    this.started = true;
+    if (this.autoStartUsed || !this.engine.ctx) return;
+    this.autoStartUsed = true;
     if (this.volume > 0) this.start();
   }
 
@@ -144,8 +148,6 @@ export class Bgm {
   // 試聴の線は曲送りしないので、選んだ曲がそのまま鳴り続ける。
   playAudition(index: number): void {
     this.engine.unlock();
-    // 明示的に曲を選んだ後は、最初の操作での自動開始に上書きさせない
-    this.started = true;
     const ctx = this.engine.ctx;
     if (!ctx || BGM_TRACKS.length === 0) return;
     this.disposeAudition();
