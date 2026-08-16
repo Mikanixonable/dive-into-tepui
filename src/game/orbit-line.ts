@@ -14,8 +14,10 @@ import type { Ephemeris } from '../physics/ephemeris';
 import { Attractor } from '../physics/attractor';
 import { add, v3, Vec3 } from '../physics/vec3';
 
-// Curve の頂点予算。楕円は閉曲線なので初期分割・分割上限のみで足り、固定サンプル数は持たない。
-const MAX_VERTICES = 4096;
+// Curve の頂点予算。描くのは常に1周ぶんの楕円なので、離心率・ズーム・見る向きを振っても
+// 適応分割は 360 頂点ほどで収束する(サジッタ目標 0.5px を満たして自ら止まる)。それを超える
+// 曲線を渡されても、逸脱の大きい区間から順に分割するぶん全体が少し粗くなるだけで済む。
+const MAX_VERTICES = 512;
 
 // 再生成の閾値: これを超えて要素が動いたときだけ楕円を作り直す
 const TOL_SMA = 3e-4; // 長半径の相対変化
