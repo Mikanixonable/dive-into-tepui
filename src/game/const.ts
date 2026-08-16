@@ -453,7 +453,11 @@ export const PREDICT_MAX_STEPS = 20000;
 export const PREDICT_MAX_SAMPLES = 2000;
 export const PREDICT_STEP_BUDGET = 500; // Predictor が1フレームに配る予測ステップ数の上限
 export const PREDICT_COMBAT_STEP_BUDGET = 128; // 戦闘中は自機の線だけを粗く維持する
-export const PREDICT_MIN_STEP_DT = SUBSTEP_MAX_DT; // 予測刻みの下限(本体シミュレーションより細かくする理由がないため同じ値)
+// 予測刻みの下限。予測は固定のフレーム予算でホライズンまで伸ばす表示側の近似なので、
+// 実シミュレーションより粗く刻むこと自体が目的である — 細かくすれば届く先が近くなるだけで、
+// 折れ線の誤差は間引き間隔が支配しているので見える精度は増えない。本体の1サブステップの
+// 上限を、これ以上細かくする意味のない目安として共有する。
+export const PREDICT_MIN_STEP_DT = SUBSTEP_MAX_DT;
 export const PREDICT_RESET_DIST = 500; // 予測位置と実位置がこれを超えて乖離したら予測列を破棄 [m](補間誤差 30m より十分大きい)
 // TRAJECTORY_SAMPLES_PER_REV で間引いた列を補間したときの位置誤差 [m]。三次エルミート補間の
 // 誤差は間引き間隔の4乗で効くので、上限で間引きが粗くなる長い表示期間では
