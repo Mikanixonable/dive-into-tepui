@@ -452,9 +452,48 @@ function median(nums) {
 // 条件マトリクスモード: 起動 → ワープ/ビュー/ノードを整えて設定(settle)→ N サンプル取得 → 中央値化。
 // これを1条件につき PERF_REPEATS 回(既定3)繰り返し、ラウンド間の中央値を採る。
 // ============================================================================================
+// 表示パネルの「軌道線(⌒)」ボタンを、指定した天体クラス行だけ desiredOn の状態にする。
+// 行の識別子はカテゴリボタンの title(`<ラベル>を表示`)しかないので、そこから行を辿って
+// ボタン列の3つ目(0=アイコン 1=ラベル 2=軌道線)を見る。既にその状態なら押さない
+// (トグルなので、押すこと自体を目的にすると初期値が変わったときに逆を向く)。
+// 衛星・ラグランジュ点の行は軌道線ボタンを持たないので err を返す。
+async function setOrbitLineFor(devTools, rowLabel, desiredOn) {
+  // 表示パネルは既定で畳まれているので、本文が隠れていれば先に開く。
+  await devTools.evaluate(`(() => {
+    const body = document.querySelector('#hud-view-options .view-options-body');
+    if (body && body.classList.contains('collapsed')) {
+      document.querySelector('#hud-view-options-toggle')?.click();
+    }
+  })()`);
+  await sleep(200);
+  const probe = await devTools.evaluate(`(() => {
+    const panel = document.querySelector('#hud-view-options');
+    const cat = document.querySelector('#hud-view-options [title=${JSON.stringify(`${rowLabel}を表示`)}]');
+    if (!cat) return { err: 'no category button', panelHidden: panel ? panel.className : 'no panel' };
+    const row = cat.closest('.body-class-row');
+    if (!row) return { err: 'no row' };
+    const btns = row.querySelectorAll('.body-class-btns .body-class-icon-btn');
+    if (btns.length < 3) return { err: 'row has ' + btns.length + ' buttons (needs orbit)' };
+    const r = btns[2].getBoundingClientRect();
+    if (r.width === 0) return { err: 'orbit button has zero width', panelClass: panel ? panel.className : '?' };
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2, wasOn: btns[2].classList.contains('on') };
+  })()`);
+  if (!probe || probe.err) return { ok: false, ...(probe ?? { err: 'evaluate returned null' }) };
+  if (probe.wasOn === desiredOn) return { ok: true, wasOn: probe.wasOn, clicked: false };
+  await leftClickAt(devTools, probe.x, probe.y);
+  await sleep(250);
+  const nowOn = await devTools.evaluate(`(() => {
+    const cat = document.querySelector('#hud-view-options [title=${JSON.stringify(`${rowLabel}を表示`)}]');
+    const btns = cat?.closest('.body-class-row')?.querySelectorAll('.body-class-btns .body-class-icon-btn');
+    return btns ? btns[2].classList.contains('on') : false;
+  })()`);
+  return { ok: nowOn === desiredOn, wasOn: probe.wasOn, nowOn, clicked: true };
+}
+
 async function runConditionOnce(devTools, baseUrl, cond, fatalEvents) {
   const {
     label, stage, warp = 1, view = 'combat', placeNode = false, duration = null,
+    orbitLines = null,
     samples = 10, intervalMs = 500, settleMs = 3000,
   } = cond;
   fatalEvents.length = 0;
@@ -473,6 +512,13 @@ async function runConditionOnce(devTools, baseUrl, cond, fatalEvents) {
       if (view === 'map' && duration) {
         durationResult = await selectDisplayDuration(devTools, duration);
         if (!durationResult) throw new Error(`display duration pill "${duration}" not found`);
+      }
+      let orbitLineResult = null;
+      if (view === 'map' && orbitLines) {
+        orbitLineResult = {};
+        for (const rowLabel of orbitLines.rows) {
+          orbitLineResult[rowLabel] = await setOrbitLineFor(devTools, rowLabel, orbitLines.on);
+        }
       }
       let nodeResult = null;
       if (view === 'map' && placeNode) {
@@ -519,7 +565,7 @@ async function runConditionOnce(devTools, baseUrl, cond, fatalEvents) {
 
       return {
         label, stage, requestedWarp: warp, requestedView: view, actualView,
-        placeNode, nodeResult, duration, durationResult,
+        placeNode, nodeResult, duration, durationResult, orbitLines, orbitLineResult,
         actualWarpAtSampleStart: parseRowValue(sampleRows[0]?.find((r) => r.key === 'warp')?.value ?? '').avg ?? null,
         samples, intervalMs, settleMs,
         rows: summary,
@@ -630,6 +676,22 @@ function defaultMatrix() {
     // 28日プリセットは horizon/PREDICT_MAX_STEPS 項が効き始める唯一の条件。予測列は
     // この長さでは伸び切らず、予算を飽和させたまま推移する。
     { label: 'stage1-map-warp1-dur28d', stage: '1', warp: 1, view: 'map', placeNode: false, duration: '28日', ...common, settleMs: 8000 },
+
+    // (e) 外挿タイルの焼き直し(TrajectoryLine.syncGeometry)。焼き直しは
+    // 「|to - 前回の to| >= 予測列の間引き間隔」で起きるので、simDt が間引き間隔を超える
+    // ワープ段では毎フレームになる。1回で最大 MAX_EXTRAPOLATED_SAMPLES = 2048 サンプルぶんの
+    // ephemeris.stateOf(すべて別時刻 = リングキャッシュ全ミス)+ frameTransformAt を払う。
+    // これは update ではなく sync フェーズに乗るので、sync 行を見ること。
+    { label: 'stage1-map-warp1024-dur28d', stage: '1', warp: 1024, view: 'map', placeNode: false, duration: '28日', ...common, settleMs: 8000 },
+    { label: 'stage1-map-warp65536-dur28d', stage: '1', warp: 65536, view: 'map', placeNode: false, duration: '28日', ...common, settleMs: 8000 },
+
+    // (f) 軌道線トグルの影響。DEFAULT_BODY_CLASS_TOGGLES は敵・基地・弾薬・自艦の
+    // Orbit をすべて既定 true にしているので、マップビューでは元から描かれている。
+    // したがって測るべきは「開いた状態」ではなく既定 vs 切った状態。
+    // stage00 は波状攻撃で敵数が増えるので、敵の軌道線が最も効く条件になる。
+    { label: 'stage1-map-warp1-orbitoff', stage: '1', warp: 1, view: 'map', placeNode: false, orbitLines: { rows: ['敵', '基地', '弾薬'], on: false }, ...common },
+    { label: 'stage00-map-warp1', stage: '00', warp: 1, view: 'map', placeNode: false, ...common, settleMs: 20000 },
+    { label: 'stage00-map-warp1-orbitoff', stage: '00', warp: 1, view: 'map', placeNode: false, orbitLines: { rows: ['敵', '基地', '弾薬'], on: false }, ...common, settleMs: 20000 },
   ];
 }
 
