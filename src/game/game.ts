@@ -190,7 +190,7 @@ export class Game {
     this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
     // activeStage(authoring/executesPlans を読む)を要るので、その直後に生成する。
     this.mapPickables = new MapPickables(
-      this.activePlayers, this.entities, this.ephemeris, this.navTarget, this.cameraSystem, this.editor,
+      this.activePlayers, this.entities, this.ephemeris, this.navTarget, this.cameraSystem, this.editor, this.markerManager,
     );
     this.mapActions = new MapContextActions(
       this._hud, this.entities, this.ephemeris, this.navTarget,
@@ -465,6 +465,7 @@ export class Game {
     this._environment.sync(
       player?.state.r ?? null, fo, displayTime,
       this.cameraSystem, this.navball.gridVisibility, visibilityPolicy,
+      this.markerManager,
     );
 
     this.entities.syncPlayers(
@@ -484,8 +485,13 @@ export class Game {
       player, combatTargets, displayTime, simTime, this.cameraSystem, visibilityPolicy,
       this.ephemeris.registry, displayAttractors,
     );
+    this.cameraSystem.focusMarkers.syncSubLabels(
+      this.markerManager.combatMarkers, this.ephemeris.registry, displayAttractors,
+      overviewMode, project, this.cameraSystem.activeCameraPos,
+    );
     this.navTarget.sync(this.cameraSystem);
     this.entities.syncEquatorNodes(this.cameraSystem);
+    this.mapPickables.syncVisibility();
 
     if (this.viewManager.isMapView) {
       this.displayWindowManager.sync(player);

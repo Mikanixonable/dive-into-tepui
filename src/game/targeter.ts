@@ -2,6 +2,7 @@ import { add, addScaled, dot, lenSq, norm, scale, sub, v3, Vec3 } from '../physi
 import { Attractor } from '../physics/attractor';
 import * as C from './const';
 import { Enemy } from './game-entity/enemy';
+import { Base } from './game-entity/base';
 import type { EntityManager } from './simulation/entity-manager';
 import { Player } from './player/player';
 import { Hud } from './hud/hud';
@@ -19,7 +20,7 @@ import type { MapVisibilityPolicy } from './celestial/map-visibility';
 import { mapPlanetFadeOpacity, nearestPlanetDistance } from './celestial/planet-distance';
 import { isOccluded } from '../physics/occlusion';
 
-export type CombatTarget = Enemy | Player;
+export type CombatTarget = Enemy | Player | Base;
 
 // マーカー上での対象の役割。第一/第二ターゲットは色と字形が変わる。
 export type MarkerRole = 'none' | 'primary' | 'secondary';
@@ -171,7 +172,7 @@ export class Targeter {
       this.aliveScratch.push(tgt);
       const ds = tgt.displayState(displayTime);
       if (!ds) continue;
-      const visibility = visibilityPolicy?.entity(tgt instanceof Player ? 'player' : 'ship', tgt === player);
+      const visibility = visibilityPolicy?.entity(tgt instanceof Player ? 'player' : (tgt instanceof Base ? 'base' : 'ship'), tgt === player);
       if (visibility && !visibility.pickable) continue;
       const role: MarkerRole =
         tgt === this.aliveTarget ? 'primary' : tgt === this.aliveSecondaryTarget ? 'secondary' : 'none';

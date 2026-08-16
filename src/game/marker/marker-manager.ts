@@ -168,7 +168,11 @@ export class MarkerManager {
     if (symMarkup) {
       if (m.sym.innerHTML !== sym) m.sym.innerHTML = sym;
     } else if (m.sym.textContent !== sym) m.sym.textContent = sym;
-    if (m.lbl.textContent !== label) m.lbl.textContent = label;
+    if (label.includes('<')) {
+      if (m.lbl.innerHTML !== label) m.lbl.innerHTML = label;
+    } else if (m.lbl.textContent !== label) {
+      m.lbl.textContent = label;
+    }
     if (fixedLabel) m.lbl.style.transform = 'none';
 
     if (color) {

@@ -41,11 +41,23 @@ interface PlacedItem {
   p: Projected;
   count: number; // 自分がまとめた件数(1 = 単独)
   labeled: boolean; // false = 代表に吸収されたのでラベルを出さない
+  groupMembers?: readonly GroupedMarkerItem[];
+  hiddenByCelestialLabel?: boolean;
 }
 
 export class GroupedMarkers {
   // 前フレームに出したキー。集合から消えた対象のマーカーを片付けるために覚えておく。
   private shownKeys: readonly string[] = [];
+  private readonly visibleKeys = new Set<string>();
+  private readonly hiddenItemsList: GroupedMarkerItem[] = [];
+
+  isPickable(key: string): boolean {
+    return this.visibleKeys.has(key);
+  }
+
+  getHiddenItems(): readonly GroupedMarkerItem[] {
+    return this.hiddenItemsList;
+  }
 
   constructor(
     private readonly markerManager: MarkerManager,
@@ -84,7 +96,7 @@ export class GroupedMarkers {
         this.markerManager.hide(bearingKey(m.item.key));
         continue;
       }
-      const label = m.labeled ? this.label(m.item, m.count) : '';
+      const label = m.labeled ? this.label(m.item, m.count, m.groupMembers) : '';
       const rotationDeg = overviewMode
         ? this.markerManager.headingRotationDeg(m.item.pos, m.item.vel, project, scale, attractors, frame, displayTime, ephemeris)
         : undefined;
@@ -99,6 +111,31 @@ export class GroupedMarkers {
         bearingKey(m.item.key), m.item.bearingClass ?? 'mk-dir', m.item.bearingSym ?? DIRECTION_GLYPH.bearing,
         m.p, '', 1, m.item.bearingColor,
       );
+    }
+
+    this.visibleKeys.clear();
+    this.hiddenItemsList.length = 0;
+    const addedKeys = new Set<string>();
+
+    for (const m of placed) {
+      const opacity = m.item.opacity ?? 1;
+      if (m.labeled && opacity > 0 && !m.item.occluded && m.p.front) {
+        this.visibleKeys.add(m.item.key);
+      }
+      // 天体ラベルと近接してマーカーが非表示化され、かつ惑星に遮蔽(掩蔽)されていないオブジェクトのみを天体サブ行の候補とする
+      if (m.hiddenByCelestialLabel && !m.item.occluded && m.p.front) {
+        if (m.groupMembers && m.groupMembers.length > 0) {
+          for (const member of m.groupMembers) {
+            if (!addedKeys.has(member.key) && !member.occluded) {
+              addedKeys.add(member.key);
+              this.hiddenItemsList.push(member);
+            }
+          }
+        } else if (!addedKeys.has(m.item.key)) {
+          addedKeys.add(m.item.key);
+          this.hiddenItemsList.push(m.item);
+        }
+      }
     }
 
     this.retire(items.map((item) => item.key));
@@ -120,6 +157,7 @@ export class GroupedMarkers {
       if (g.length <= 1) continue;
       g.sort((a, b) => b.item.priority - a.item.priority);
       g[0]!.count = g.length;
+      g[0]!.groupMembers = g.map((m) => m.item);
       for (const m of g.slice(1)) m.labeled = false;
     }
     // 天体ラベル(優先度 2000 以上)と画面上で近接している船マーカー(優先度 900 以下)はラベルを隠す
@@ -129,6 +167,7 @@ export class GroupedMarkers {
         for (const c of celestialLabels) {
           if (c.labelVisible && Math.hypot(m.p.x - c.x, m.p.y - c.y) < this.clusterRadiusPx) {
             m.labeled = false;
+            m.hiddenByCelestialLabel = true;
             break;
           }
         }
@@ -141,10 +180,17 @@ export class GroupedMarkers {
     return Math.hypot(a.x - b.x, a.y - b.y) < this.clusterRadiusPx;
   }
 
-  // 代表のラベル文字列を組み立てる。count > 1 のときは "xN" を付ける。
-  private label(item: GroupedMarkerItem, count: number): string {
-    const head = count > 1 ? `${item.name} x${count}` : item.name;
-    return item.detail === '' ? head : `${head}\n${item.detail}`;
+  // 代表のラベル文字列を組み立てる。
+  //   - 2隻近接の時: 2行でそれぞれの正式名称を表示
+  //   - 3隻以上近接の時: "xN" の形式とし、正式名称は表示しない
+  private label(item: GroupedMarkerItem, count: number, members?: readonly GroupedMarkerItem[]): string {
+    if (count === 2 && members && members.length >= 2) {
+      return `${members[0]!.name}\n${members[1]!.name}`;
+    }
+    if (count >= 3) {
+      return `x${count}`;
+    }
+    return item.detail === '' ? item.name : `${item.name}\n${item.detail}`;
   }
 
   // key は対象(敵)ごとに一意で増え続けるため hide ではなく remove で DOM ごと片付ける。
