@@ -74,8 +74,9 @@ export class PlanEditor {
   // フレームを跨いで持ち続ける。
   private readonly attractors: PlanAttractors;
 
-  // 直近の update() が描いた折れ線が届いている終端時刻。一度も描いていなければ NaN。
-  private get lastPlanEnd(): number { return this.planDisplay.path.timeRange()?.max ?? NaN; }
+  // 直近の update() が組んだ計画区間列の終端時刻(表示窓でクリップしない)。一度も
+  // update していなければ NaN。
+  private get lastPlanEnd(): number { return this.planDisplay.path.plannedEnd; }
 
   private _editMode = false;
   get editMode(): boolean { return this._editMode; }
@@ -717,9 +718,7 @@ export class PlanEditor {
     const excludedIds = ship === null ? [] : [ship.id];
     // revision は前フレームの終端(lastPlanEnd)を基準に畳み込む — 今フレームの終端は
     // このあとの planDisplay.update が決めるので、渡す時点ではまだ確定していない。
-    this.attractors.resolve(
-      excludedIds, this.plan?.revision ?? 0, this.lastPlanEnd, displayWindow.simTime,
-    );
+    this.attractors.resolve(excludedIds, this.plan?.revision ?? 0, this.lastPlanEnd);
     this.planDisplay.update(this.displayedPlan, displayWindow, this.attractors);
     this.updateEquatorNodes(displayWindow);
   }

@@ -21,11 +21,9 @@
 //   timeseries モード: PERF_TS_STAGE(既定'1') PERF_TS_WARPS(既定'1,64,1024')
 //                      PERF_TS_INTERVAL_MS(既定300) PERF_TS_DURATIONS(既定 warp=1のみ60・他30秒)
 //
-// 既知の限界: PerfMeter の predictDiscarded 等のカウンタ系の値は 500ms flush 時点の
-// 「その1フレームだけ」のスナップショットで、flush 期間の合計ではない(perf-meter.ts の
-// buildRows は counts.perfCounts() を1回しか呼ばない)。本プローブがそれより速く読んでも
-// 同じ値を読み直すだけになりうるので、時系列サンプリングは全イベントを保証する計測では
-// なく、500ms 周期のストロボ的な観測になる。
+// 既知の限界: PerfMeter が predictDiscarded 等のカウンタ系を積むのは毎フレームだが、DOM へ
+// 出るのは 500ms ごとの flush 期間の avg/max なので、本プローブがそれより速く読んでも同じ値を
+// 読み直すだけになりうる。時系列サンプリングは 500ms 周期のストロボ的な観測になる。
 import { accessSync, constants, mkdtempSync, rmSync, createReadStream, statSync, writeFileSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
@@ -631,12 +629,10 @@ async function runMatrix(devTools, baseUrl) {
 
 // ============================================================================================
 // 時系列モード: 予測破棄(predictDiscarded)の sawtooth 再現確認。
-// PerfMeter の集計値は 500ms ごとの flush 時点の「その1フレームだけ」のスナップショットで
-// (Predictor.tracked/discarded/finished/lastSteps は毎フレーム 0 に戻り、その回の値がそのまま
-// perfCounts() として使われる — フラッシュ期間の合計ではない)、DOM もその瞬間の値を次の
-// flush まで保持するだけなので、それより速く読んでも「同じ値をもう一度読むだけ」になりうる。
-// したがって本プローブの時系列も「破棄が起きた真の全イベント」を保証できるものではなく、
-// 500ms 周期のストロボ的な観測になる。この限界は正直に報告する。
+// PerfMeter は毎フレーム積むが、DOM へ出るのは 500ms ごとの flush 期間の avg/max で、次の
+// flush までその値を保持するだけなので、それより速く読んでも「同じ値をもう一度読むだけ」に
+// なりうる。したがって本プローブの時系列も「破棄が起きた真の全イベント」を保証できるものでは
+// なく、500ms 周期のストロボ的な観測になる。この限界は正直に報告する。
 // ============================================================================================
 // 1回の evaluate で4行分まとめて読む(往復を4回に増やさない)。
 async function sampleTimeseriesRows(devTools) {
