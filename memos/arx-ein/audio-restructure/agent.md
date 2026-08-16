@@ -32,7 +32,7 @@ audio/
     instrument.ts          the sound-making seam: play(freq, when, duration, velocity)
     instrument-factory.ts  the single switch from an instrument's kind to its class
     composers/
-      scale.ts             index -> frequency, shared by the composers
+      utils.ts             cycle lookup + index -> frequency, shared by the composers
       phasing-composer.ts  the Reich-style algorithm
       antipode-composer.ts the second algorithm; still a sketch
     instruments/
