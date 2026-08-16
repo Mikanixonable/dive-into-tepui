@@ -343,8 +343,10 @@ export class PlanPath {
   private lineAt(i: number): TrajectoryLine {
     while (this.lines.length <= i) {
       const idx = this.lines.length;
-      const line = new TrajectoryLine(arcColor(idx), C.PLAN_ARC_OPACITY, C.LINE_RENDER_ORDER.plan,
-        { dashSize: C.PLAN_ARC_DASH_PX, gapSize: C.PLAN_ARC_GAP_PX });
+      const line = new TrajectoryLine({
+        color: arcColor(idx), opacity: C.PLAN_ARC_OPACITY, renderOrder: C.LINE_RENDER_ORDER.plan,
+        dash: { dashSize: C.PLAN_ARC_DASH_PX, gapSize: C.PLAN_ARC_GAP_PX },
+      });
       this.lines.push(line);
       this.group.add(line.line);
     }

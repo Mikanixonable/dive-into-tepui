@@ -73,7 +73,7 @@ export class EnvironmentScene {
 
   // 静止軌道高度の参照リングは実在の天体ではないので、以下の天体駆動の配列とは別に持つ。
   // 地球が現在のレジストリに無ければ null(sync は非表示のまま何もしない)。
-  readonly geoLine = new OrbitLine(0x8b93a0, 0.2, C.LINE_RENDER_ORDER.reference);
+  readonly geoLine = new OrbitLine({ color: 0x8b93a0, opacity: 0.2, renderOrder: C.LINE_RENDER_ORDER.reference });
   private readonly geoElements: OrbitalElements | null;
   // 公転天体1体につき1本、registry から自動生成する参照軌道線(衛星は親惑星中心、
   // 惑星は太陽中心)。マップモード専用で、天体暦の状態から作られる表示なのでここが所有する。
@@ -281,7 +281,7 @@ export class EnvironmentScene {
     if (existing) return existing;
     const color = bodyDef(this.ephemeris.registry, id).kind === 'satellite'
       ? SATELLITE_REFERENCE_LINE_COLOR : PLANET_REFERENCE_LINE_COLOR;
-    const line = new OrbitLine(color, C.REFERENCE_LINE_OPACITY, C.LINE_RENDER_ORDER.reference);
+    const line = new OrbitLine({ color, opacity: C.REFERENCE_LINE_OPACITY, renderOrder: C.LINE_RENDER_ORDER.reference });
     this.scene.add(line.line);
     this.referenceLines.set(id, line);
     return line;

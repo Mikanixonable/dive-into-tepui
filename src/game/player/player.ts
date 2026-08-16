@@ -15,7 +15,6 @@ import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { buildPlayerShip } from '../../render/ships';
-import { TrajectoryLine } from '../trajectory-line';
 import { Attractor, reachedBody } from '../../physics/attractor';
 import { isBurnedUp } from '../../physics/atmosphere';
 import type { CameraSystem } from '../camera/camera-system';
@@ -164,16 +163,6 @@ export class Player extends Ship {
       w: v3(),
       inertia: Player.INERTIA,
     };
-  }
-
-  // 自機軌道線と同色。ターゲット(オレンジ)より目立たせない配色。
-  protected override createPredictedLine(): TrajectoryLine {
-    return new TrajectoryLine(0xbfc9d4, 0.55, C.LINE_RENDER_ORDER.predicted);
-  }
-
-  // 過去の軌跡は未来線と同色にし、既に通り過ぎた区間だと読めるよう不透明度だけ落とす。
-  protected override createActualLine(): TrajectoryLine {
-    return new TrajectoryLine(0xbfc9d4, 0.3, C.LINE_RENDER_ORDER.predicted);
   }
 
   // HP を HP_REGEN_RATE で maxHp まで自然回復させる。

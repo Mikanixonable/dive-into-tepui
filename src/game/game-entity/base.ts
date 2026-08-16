@@ -17,7 +17,6 @@ import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';
 import { EntityMarker } from '../marker/entity-marker';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 import type { BaseSaveData } from '../save-data';
-import { OrbitLine } from '../orbit-line';
 import * as C from '../const';
 import { BaseCollisionGeometry, RayHit, SphereHit } from '../../physics/base-collision';
 import { PlayerThrottle } from '../player/player-throttle';
@@ -292,10 +291,6 @@ export class Base extends GameEntity implements Controllable {
     const maxAccel = this.mass > 0 ? this.totalThrust / this.mass : 0;
     this.thrustEffects.sync(fo, effectState.r, this.thrust, maxAccel, effectVisible, isControlled, camera, 6.0);
     this.rcsEffects.sync(fo, effectState.r, this.torque, this.att, effectVisible, camera, isControlled, 6.0);
-  }
-
-  protected override createOrbitLine(): OrbitLine {
-    return new OrbitLine(C.COLOR_BASE_ORBIT_LINE, 0.35, C.LINE_RENDER_ORDER.shipOrbit);
   }
 
   dispose(): void {
