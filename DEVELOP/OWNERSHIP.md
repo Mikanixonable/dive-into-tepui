@@ -604,6 +604,7 @@ main.ts
 | `GameEntity.prevState`(→ `current.prevState`) | 直前の `step`/`reset` 時点の state を持つ専用フィールド(先端を含む保持サンプル列とは別) | `step`/`reset` のたび更新 |
 | `GameEntity.predicted` | `actual.state` + ephemeris から `Predictor` が漸進的に構築する未来軌道のキャッシュ(`predictsFuture = false` のクラスでは常に null)。伸ばす長さ(horizon)は `DisplayWindowManager.durationSec(referencePeriod)` の毎フレーム値で、`GameEntity`/`Predictor` のどちらにも独立した状態としては残らない | `discardPredictionIfDiverged` の距離判定(§3-4 (a))、または `Player.updatePlayerControls` の推力確定直後(§3-4 (b))。無効化は破棄のみで即再構築はしない — 次フレーム以降の通常の予算配分で伸び直す |
 | `GameEntity.predictedApsides` | `predicted` を新規作成した瞬間の `extrapolationCenter` を中心に固定した `ApsisTrack`。`stepPredicted` が積分ステップ対をそのつど `observe` へ渡して溜める、`predicted` 自身の副産物のキャッシュ | `predicted` と寿命を共にする(`invalidatePrediction` で同時に破棄) |
+| `GameEntity.predictedImpact` | `stepPredicted` が1ステップごとに `attractor.ts` の `reachedBody`(掃引)と `atmosphere.ts` の `burnUpBody`(地球のみ、`REENTRY_ALT` マージン)を順に問い、いずれかが非 null ならその `BodyImpact`(到達天体とその瞬間の状態)を書く。掃引が当たったステップでは `burnUpBody` を問わないので、記録されるのは補間した交差点であってステップ終端の天体内部の状態ではない。`predicted` 自身の副産物のキャッシュ | `predicted` と寿命を共にする(`invalidatePrediction` で同時に破棄) |
 | `SimSpeedManager.canResupplyAmmo` | `simSpeed === 1` の派生 getter(等倍限定) | 呼ぶたび再計算 |
 | `OrbitLine.snap` | 楕円ジオメトリの再生成判定用スナップショット(長半径・離心率・`hHat`/`pHat`) | 要素ドリフト・`force`・初回 |
 | `DynamicTrajectory.sampleInterval` | 保持サンプル列の最も古い端での間引き間隔(`StateQueue.oldestGap`)。列がどれだけ粗いかという列自身の属性で、`GameEntity.divergenceTolerance` が乖離判定の許容量をここから引く(現在の表示期間から引くと、期間を縮めた瞬間に既存の粗い列を破棄し続ける) | 状態として持たず、読むたび列から導出する |
