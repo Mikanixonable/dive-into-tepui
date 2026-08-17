@@ -23,6 +23,8 @@ export class Predictor {
   discarded = 0; // 乖離判定で破棄した個体数
   lastSteps = 0; // 実体側で消費した積分ステップ数
   lastPlanSteps = 0; // 計画の弧で消費した積分ステップ数
+  lastBodies = 0; // 弧が解決した天体の延べ数
+  lastRevisits = 0; // そのうち期限到来で訪問したものの数
 
   constructor(
     private readonly entities: EntityManager,
@@ -46,6 +48,8 @@ export class Predictor {
     this.discarded = 0;
     this.lastSteps = 0;
     this.lastPlanSteps = 0;
+    this.lastBodies = 0;
+    this.lastRevisits = 0;
     const classified = classifyAttractors(this.ephemeris.gravityAttractorsAt(simTime));
     for (const e of this.entities.all()) {
       if (!e.predictsFuture) continue;
@@ -115,19 +119,27 @@ export class Predictor {
   // 両方がこの1本を共有する。
   private grow(arc: PredictedArc, budgetSteps: number): number {
     let consumed = 0;
-    while (consumed < budgetSteps && arc.step()) consumed++;
+    while (consumed < budgetSteps && arc.step()) {
+      consumed++;
+      this.lastBodies += arc.lastResolvedBodies;
+      this.lastRevisits += arc.lastRevisitedBodies;
+    }
     return consumed;
   }
 
   // 負荷確認ウィンドウが読む、直近フレームの予測伸長の集計値。planSteps は計画の弧ぶんの
   // 積分step数 — 区間の再生成数(planArcs)は plan/plan-editor.ts が答える。
-  perfCounts(): Pick<PerfCounts, 'predicted' | 'predictComplete' | 'predictDiscarded' | 'predictorSteps' | 'planSteps'> {
+  perfCounts(): Pick<PerfCounts,
+  'predicted' | 'predictComplete' | 'predictDiscarded' | 'predictorSteps' | 'planSteps'
+  | 'arcBodies' | 'arcRevisits'> {
     return {
       predicted: this.tracked,
       predictComplete: this.finished,
       predictDiscarded: this.discarded,
       predictorSteps: this.lastSteps,
       planSteps: this.lastPlanSteps,
+      arcBodies: this.lastBodies,
+      arcRevisits: this.lastRevisits,
     };
   }
 }

@@ -17,7 +17,7 @@ import { TrajectoryLine } from '../trajectory-line';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { DisplayDurationSource, PlanData, TimeRange, segmentDurationFrom } from './plan';
 import { PredictedArc } from '../simulation/predicted-arc';
-import type { FutureAttractorProvider } from '../simulation/future-attractors';
+import type { FutureAttractorProvider } from '../simulation/arc-bodies';
 import type { Controllable } from '../game-entity/controllable';
 import { clipSamplesTo, stateAt, withinEnd } from './arc-range';
 import { goldenSectionMin } from '../../physics/optimize';
