@@ -253,6 +253,17 @@ export const GRAVITY_ALWAYS_COUNT = 15;
 // この値まで落ちる距離として天体構成から導かれる。
 export const GRAVITY_NEGLIGIBLE_ACCEL = 1e-8;
 
+// --- 弧が引く天体の絞り込み(game/simulation/arc-bodies.ts) ---
+// 一覧の外にある天体が「いつまで効き得ないか」を見積もるときの、相対速さの安全率と下限 [m/s]。
+// 見積りは保守的でありさえすればよく、精密である必要はない — 外れても訪問が1回増えるだけで、
+// 逆に短く見積もりすぎることだけが取りこぼしになる。下限は、相対速度がいま 0 の天体にも
+// 有限の期限を与えるために要る。
+export const ARC_BODY_CLOSING_SAFETY = 2;
+export const ARC_BODY_CLOSING_MARGIN = 2000;
+// 一覧へ入れておく先読み時間を、そのときの刻み幅の何歩ぶんに取るか。次の1歩で表面へ届きうる
+// 天体が一覧の外に残ると、その歩の掃引到達判定がその天体を見ないまま通り抜ける。
+export const ARC_BODY_LEAD_STEPS = 4;
+
 // --- 被弾・撃破エフェクト(フラッシュ/破片) ---
 export const BULLET_IMPACT_FLASH_SIZE0 = 1.5;
 export const BULLET_IMPACT_FLASH_SIZE1 = 6;

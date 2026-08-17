@@ -9,8 +9,7 @@ import { keplerPeriod } from '../../physics/elements';
 import { ApsisTrack } from '../../physics/trajectory-features';
 import { burnUpBody } from '../../physics/atmosphere';
 import { dot, len, sub } from '../../physics/vec3';
-import { attractorsNearInto } from './attractors';
-import type { FutureAttractorProvider, FutureSourcesAt } from './future-attractors';
+import { ArcBodies, type ArcBodyWindow, type FutureAttractorProvider } from './arc-bodies';
 import * as C from '../const';
 
 // keepDuration ぶんを保持する列へ積む最小間隔 [s]。軌道周期 period を TRAJECTORY_SAMPLES_PER_REV
@@ -26,11 +25,11 @@ export class PredictedArc {
   private _truncated = false;
   private _impact: BodyImpact | null = null;
   private _apsides: ApsisTrack | null = null;
+  // この弧が引く天体の一覧。
+  private readonly bodies: ArcBodies;
   // 前歩の中点で解決した窓の持ち越し。刻み幅と外挿・極値の中心天体の解決だけに使うので、
   // 半歩〜1フレーム古い内容で構わない(RK4 は鈍感、外挿中心は元から1歩古い)。
-  private carriedSources: FutureSourcesAt | null = null;
-  private readonly stepAttractorsScratch: Attractor[] = [];
-  private readonly collisionScratch: Attractor[] = [];
+  private carriedSources: ArcBodyWindow | null = null;
   // 要求された間引き下限(span / ARC_MAX_SAMPLES)の最も粗い値。周期由来の間隔は含めない —
   // 含めると、作り直しても同じ値になる粗さを理由に represents が毎フレーム作り直しを命じる。
   private _decimation = 0;
@@ -47,18 +46,23 @@ export class PredictedArc {
   // 次のノードを置くと、実際に積分し直した結果と繋がらなくなるため)。
   constructor(
     readonly state0: KinematicState,
-    private readonly sources: FutureAttractorProvider,
+    sources: FutureAttractorProvider,
     private readonly bcInv: number,
     private readonly srpCoeff: number,
     private readonly keplerTail: boolean,
     // 重力源・衝突体から自分自身を除く id(mu≠0 の重力源 entity のときだけ渡す)。
-    private readonly excludeId?: AttractorId,
+    excludeId?: AttractorId,
   ) {
     this._trajectory = new DynamicTrajectory(state0);
     this.requiredEnd = state0.t;
     this.retainFrom = state0.t;
     this.sourceRevision = sources.revision;
+    this.bodies = new ArcBodies(sources, excludeId);
   }
+
+  // 直近の1歩が解決した天体の数と、そのうち期限到来で訪問したものの数。
+  get lastResolvedBodies(): number { return this.bodies.lastResolved; }
+  get lastRevisitedBodies(): number { return this.bodies.lastRevisited; }
 
   get trajectory(): DynamicTrajectory { return this._trajectory; }
   get truncated(): boolean { return this._truncated; }
@@ -90,8 +94,8 @@ export class PredictedArc {
     this._decimation = Math.max(this._decimation, span / C.ARC_MAX_SAMPLES);
 
     // 中心窓は最初の1歩だけ先端時刻で解決し、以後は前歩の中点で解決した窓を持ち越す。
-    const held = this.carriedSources ?? this.sources.at(tip.t);
-    const rawCenter = strongestAttractor(tip.r, held.gravity, this.excludeId);
+    const held = this.carriedSources ?? this.bodies.resolve(tip.t, tip, 0);
+    const rawCenter = strongestAttractor(tip.r, held.gravity);
     // 外挿・近地点/遠地点の中心は解析天体に限る(動的重力源は天体暦で位置を引けない)。
     const analyticCenter = strongestAttractor(tip.r, held.analyticGravity);
 
@@ -102,10 +106,9 @@ export class PredictedArc {
 
     // RK4 の各ステップにはその中点時刻の重力源を渡す。実シミュレーションも各サブステップの
     // 中点で重力源を解決しており、弧だけ過去の天体位置を据え置かないようにする。
-    const mid = this.sources.at(tip.t + dt / 2);
-    const stepAttractors = attractorsNearInto(tip.r, mid.classified, this.stepAttractorsScratch, this.excludeId);
+    const mid = this.bodies.resolve(tip.t + dt / 2, tip, dt);
     this._trajectory.step(
-      dt, stepAttractors, this.bcInv, this.srpCoeff, null, sampleInterval, span,
+      dt, mid.gravity, this.bcInv, this.srpCoeff, null, sampleInterval, span,
       this.keplerTail ? analyticCenter : null,
     );
 
@@ -138,7 +141,6 @@ export class PredictedArc {
     let approachDt = Infinity;
     // 動径接近率が正(接近中)の天体だけを対象に、表面までの残距離ぶんの猶予を見る。
     for (const body of collisionBodies) {
-      if (body.id === this.excludeId) continue;
       const relR = sub(tip.r, body.state.r);
       const dist = len(relR);
       const clearance = dist - body.radius;
@@ -151,24 +153,12 @@ export class PredictedArc {
   }
 
   // 表面到達・焼失の判定。掃引が交差点を見つければそれを、そうでなく大気で焼失していれば
-  // その状態を到達点として記録し、どちらかが立てば打ち切る。候補は自分自身を除いた衝突体
-  // 全体 — 自分が predictedAsPlanCollider な重力源(小惑星)のとき、自分の外挿位置への
-  // 自己衝突を防ぐ。
+  // その状態を到達点として記録し、どちらかが立てば打ち切る。
   private checkImpact(prev: KinematicState, collision: readonly Attractor[]): void {
-    const candidates = this.excludeId === undefined ? collision : this.withoutSelf(collision);
-    const reached = reachedBody(prev, this._trajectory.state, candidates, 0);
-    const burnedUpAt = reached === null ? burnUpBody(this._trajectory.state.r, candidates, C.REENTRY_ALT) : null;
+    const reached = reachedBody(prev, this._trajectory.state, collision, 0);
+    const burnedUpAt = reached === null ? burnUpBody(this._trajectory.state.r, collision, C.REENTRY_ALT) : null;
     if (reached !== null) this._impact = reached;
     else if (burnedUpAt !== null) this._impact = { body: burnedUpAt, state: this._trajectory.state };
     if (reached !== null || burnedUpAt !== null) this._truncated = true;
-  }
-
-  // collision から自分自身(excludeId)を除いた配列を collisionScratch へ書き戻す。
-  private withoutSelf(collision: readonly Attractor[]): readonly Attractor[] {
-    this.collisionScratch.length = 0;
-    for (const body of collision) {
-      if (body.id !== this.excludeId) this.collisionScratch.push(body);
-    }
-    return this.collisionScratch;
   }
 }

@@ -30,6 +30,11 @@ export function icrfToGameEci(a: Vec3): Vec3 {
 }
 
 export class OriginCenteredEphemeris {
+  // 直前に引いた時刻の原点天体の状態。同じ時刻で複数の天体を引くとき、原点側の評価は
+  // 天体ごとに同じ値を返すので1回で足りる。
+  private lastOriginJdTdb = NaN;
+  private lastOriginState: BarycentricState | null = null;
+
   constructor(
     private readonly absolute: AbsoluteEphemeris,
     readonly originId: AttractorId,
@@ -42,15 +47,25 @@ export class OriginCenteredEphemeris {
     return this.absolute.hasBody(id);
   }
 
+  // 天体 id の、originId 中心・ゲーム ECI 軸の状態。収録されていない天体は例外を投げる。
   stateOf(id: AttractorId, simTime: number): KinematicState {
     if (!this.absolute.hasBody(id)) throw new MissingEphemerisBodyError(id);
     const jdTdb = this.epochJdTdb + simTime / 86400;
     const body = this.absolute.barycentricStateOf(id, jdTdb);
-    const origin = this.absolute.barycentricStateOf(this.originId, jdTdb);
+    const origin = this.originStateAt(jdTdb);
     return kinematicState(
       simTime,
       icrfToGameEci(sub(body.r, origin.r)),
       icrfToGameEci(sub(body.v, origin.v)),
     );
+  }
+
+  // 時刻 jdTdb の原点天体の重心状態。
+  private originStateAt(jdTdb: number): BarycentricState {
+    if (this.lastOriginState === null || this.lastOriginJdTdb !== jdTdb) {
+      this.lastOriginState = this.absolute.barycentricStateOf(this.originId, jdTdb);
+      this.lastOriginJdTdb = jdTdb;
+    }
+    return this.lastOriginState;
   }
 }

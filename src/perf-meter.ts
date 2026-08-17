@@ -14,6 +14,7 @@ export type PerfCounts = {
   players: number; enemies: number; bullets: number; casings: number;
   debris: number; ammoPickups: number; asteroids: number; bases: number;
   predicted: number; predictComplete: number; predictDiscarded: number; predictorSteps: number;
+  arcBodies: number; arcRevisits: number;
   mapMode: boolean; mapItems: number; mapLabels: number; displayDurationSec: number;
   simSubsteps: number; orbitSteps: number; gravitySources: number;
   planArcs: number; planSteps: number;
@@ -35,6 +36,8 @@ const RATE_COUNTS: readonly { key: string; label: string; group: string; read: (
   { key: 'pred-complete', label: 'complete', group: '予測', read: (c) => c.predictComplete },
   { key: 'pred-discard', label: 'discard', group: '予測', read: (c) => c.predictDiscarded },
   { key: 'pred-steps', label: 'steps', group: '予測', read: (c) => c.predictorSteps },
+  { key: 'arc-bodies', label: '解決天体', group: '予測', read: (c) => c.arcBodies },
+  { key: 'arc-revisits', label: '期限訪問', group: '予測', read: (c) => c.arcRevisits },
   { key: 'sim-substeps', label: 'substeps', group: 'シミュレーション', read: (c) => c.simSubsteps },
   { key: 'sim-orbit', label: '軌道積分', group: 'シミュレーション', read: (c) => c.orbitSteps },
   { key: 'sim-sources', label: '重力源', group: 'シミュレーション', read: (c) => c.gravitySources },
