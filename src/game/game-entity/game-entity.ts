@@ -7,6 +7,7 @@ import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { Attractor, Degree2Gravity, orbitalElementsOf, localOrbitPeriod, reachedBody, strongestAttractor } from '../../physics/attractor';
 import { containingBody } from '../../physics/sphere-contact';
 import { isBurnedUp } from '../../physics/atmosphere';
+import { ApsisTrack } from '../../physics/trajectory-features';
 import { Vec3, len, sub, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import { OrbitLine } from '../orbit-line';
@@ -112,6 +113,10 @@ export class GameEntity {
   // 未来の予測列。
   private _predicted: DynamicTrajectory | null = null;
   get predicted(): DynamicTrajectory | null { return this._predicted; }
+  // 予測列の積分中に見つかった近地点・遠地点。中心天体は列を作った時点で最も強く引く
+  // 解析天体に固定する。
+  private _predictedApsides: ApsisTrack | null = null;
+  get predictedApsides(): ApsisTrack | null { return this._predictedApsides; }
   // 積分中に再突入高度を割った/非有限値が出て打ち切られたか。打ち切られた列はそれ以上
   // 伸びない(新しい列を作るまで恒久的)。
   private truncated = false;
@@ -284,6 +289,7 @@ export class GameEntity {
   // 予測列を破棄する。
   invalidatePrediction(): void {
     this._predicted = null;
+    this._predictedApsides = null;
   }
 
   // 実状態との位置ずれが許容量を超えていたら予測列を破棄する。破棄したら true。
@@ -325,7 +331,8 @@ export class GameEntity {
 
   // 予測列の先端を、呼び出し側が確定させた重力源 attractors のもとで dt ぶん1ステップ伸ばす。
   // horizon は simTime から先に予測する長さ [s]。extrapolationCenter は先端位置で最も強く引く
-  // 解析天体(外挿用、省略時 null)。伸ばせなかったら false。
+  // 解析天体(外挿用、省略時 null)。伸ばした間の近地点・遠地点も predictedApsides へ溜める。
+  // 伸ばせなかったら false。
   stepPredicted(
     attractors: readonly Attractor[], simTime: number, dt: number, horizon: number,
     extrapolationCenter: Attractor | null = null,
@@ -333,6 +340,7 @@ export class GameEntity {
     if (!this.predictsFuture) return false;
     if (this._predicted === null) {
       this._predicted = new DynamicTrajectory(this.actual.state);
+      this._predictedApsides = extrapolationCenter ? new ApsisTrack(extrapolationCenter) : null;
       this.truncated = false;
     }
     if (this.truncated) return false;
@@ -341,6 +349,7 @@ export class GameEntity {
     // 先端が既にホライズンへ達していたら、それ以上は伸ばさない。
     if (p.state.t >= simTime + horizon) return false;
 
+    const prev = p.state;
     p.step(
       dt, attractors, this.bcInv, this.srpCoeff, null,
       this.sampleInterval(attractors, p.state, horizon), horizon, extrapolationCenter,
@@ -350,6 +359,7 @@ export class GameEntity {
     const { r, v } = p.state;
     const finite = Number.isFinite(r.x) && Number.isFinite(r.y) && Number.isFinite(r.z)
       && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
+    if (finite) this._predictedApsides?.observe(prev, p.state);
     if (!finite || containingBody(r, attractors, 0) !== null || isBurnedUp(r, attractors, C.REENTRY_ALT)) this.truncated = true;
 
     return true;
