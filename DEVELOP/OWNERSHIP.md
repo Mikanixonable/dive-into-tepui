@@ -345,6 +345,11 @@ main.ts
   同じ `stepPredicted` は `predicted` を新規作成した瞬間の `extrapolationCenter` を中心に固定した
   `physics/trajectory-features.ts` の `ApsisTrack` を `predictedApsides` として併せて持ち、以後の
   各ステップの積分区間を `observe` へ渡して近地点・遠地点を溜める(§付録「正本でないもの」参照)。
+- `plan/predicted-arc.ts` の `PredictedArc` は、この `predicted`/`predictedApsides`/`predictedImpact` を
+  `plan-arc.ts` の `PlanArc` と同じ読み取り面(`[state0, end]` にクリップした
+  `state0`/`end`/`trajectory`/`samples`/`at`/`endState`/`impactPoint`/`periapsisPoint`/`apoapsisPoint`/`lastSteps`)で
+  答えるだけの薄いラッパーで、自身は何も所有しない — 積分の正本はあくまで `GameEntity.predicted` 側にある。
+  現時点ではまだどこからも `new` されない。
 - `STAGE_CLASSES`(stage-dictionary.ts のモジュールスコープ、`export const`)… クラス参照(`StageClass`)の
   並びだけを持つ配列で、`Stage` インスタンスは1つも作らない。選択画面のラベル・解放条件(`isUnlocked`)・
   起動時の天体暦(静的 async `createEphemeris`)はすべて各クラスの静的宣言

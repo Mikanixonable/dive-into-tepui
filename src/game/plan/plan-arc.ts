@@ -10,10 +10,8 @@ import { burnUpBody } from '../../physics/atmosphere';
 import { attractorsNearInto } from '../simulation/attractors';
 import type { PlanAttractorProvider } from './plan-attractors';
 import { addScaled, len, scale, sub, Vec3 } from '../../physics/vec3';
+import { EPOCH_EPS, clipSamplesTo, stateAt, withinEnd } from './arc-range';
 import * as C from '../const';
-
-// 積分の終端は要求時刻に対して丸め誤差ぶん手前に落ちうる。この幅までは終端そのものとみなす。
-const EPOCH_EPS = 1e-6;
 
 // 天体接近時、1ステップで表面までの距離を跨いでしまわないための安全率
 // (表面までの距離 ÷ 相対速度 に掛ける上限係数)。
@@ -236,23 +234,14 @@ export class PlanArc {
     if (this.samplesCache && this.samplesCache.source === source && this.samplesCache.end === this._end) {
       return this.samplesCache.result;
     }
-    let result = source;
-    if (source.length > 0 && source[source.length - 1]!.t > this._end) {
-      // source は時刻昇順なので、末尾から end を超える間だけ削ればよい。
-      let cut = source.length;
-      while (cut > 0 && source[cut - 1]!.t > this._end) cut--;
-      result = source.slice(0, cut);
-    }
+    const result = clipSamplesTo(source, this._end);
     this.samplesCache = { source, end: this._end, result };
     return result;
   }
 
   // 時刻 t の状態。end を超える、または保持区間外なら null。
   at(t: number): KinematicState | null {
-    if (t > this._end + EPOCH_EPS) return null;
-    const tip = this._trajectory.state;
-    if (t > tip.t) return t - tip.t <= EPOCH_EPS ? tip : null;
-    return this._trajectory.at(t);
+    return stateAt(this._trajectory, t, this._end);
   }
 
   // 終端(= 次のノードの噴射直前)の状態。終端まで到達できなかった区間は null。
@@ -263,27 +252,21 @@ export class PlanArc {
   // 積分中に最初に天体表面へ達した状態と、その天体。end を超えていれば(区間が縮んで
   // その先で見つかったことになれば)null。到達しなければ null。
   impactPoint(): BodyImpact | null {
-    return this.impact && this.withinEnd(this.impact.state.t) ? this.impact : null;
+    return this.impact && withinEnd(this.impact.state.t, this._end) ? this.impact : null;
   }
 
   // 答える範囲で最初の近地点。中心天体へ接近し続けたまま表面へ達する
   // (衝突軌道で近地点が存在しない)場合や、end を超えていれば null。
   periapsisPoint(): KinematicState | null {
     const first = this.apsisTrack?.periapsis ?? null;
-    return first && this.withinEnd(first.t) ? first : null;
+    return first && withinEnd(first.t, this._end) ? first : null;
   }
 
   // 答える範囲で最初の遠地点。楕円でない、区間がそこまで届かない、または end を
   // 超えていれば null。
   apoapsisPoint(): KinematicState | null {
     const first = this.apsisTrack?.apoapsis ?? null;
-    return first && this.withinEnd(first.t) ? first : null;
-  }
-
-  // t が現在の end 以内(丸め誤差込み)か。impactPoint/periapsisPoint/apoapsisPoint が
-  // 保持している状態を end でクリップするために使う。
-  private withinEnd(t: number): boolean {
-    return t <= this._end + EPOCH_EPS;
+    return first && withinEnd(first.t, this._end) ? first : null;
   }
 
   // end まで積分結果を伸ばす。呼び出し時点の積分先端から続きを刻むので、区間全体を作り直さ
