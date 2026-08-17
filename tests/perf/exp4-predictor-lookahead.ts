@@ -4,15 +4,16 @@
 import { keplerPeriod } from '../../src/physics/elements';
 import {
   MU_EARTH, R_EARTH, INITIAL_ALT,
+  ARC_MIN_STEP_DT, ARC_STEPS_PER_REV,
   ARC_STEP_BUDGET, ARC_COMBAT_STEP_BUDGET, ARC_INTERACTIVE_RATIO,
   ARC_MIN_ITEM_STEPS, SIM_SPEED_LEVELS,
 } from './common';
 
 // predictor.ts の dt サイジング式(実験1-Bで実測: LEO では常に 20 に飽和する)。
 // horizon は 'orbit' プリセット既定 = その場の周期そのもの、を仮定するので
-// horizon/ARC_MAX_STEPS(=period/20000) は period/600 より必ず小さく、事実上効かない。
+// horizon/ARC_MAX_STEPS(=period/ARC_MAX_STEPS)は period/ARC_STEPS_PER_REV より必ず小さく、事実上効かない。
 function predictorDt(period: number): number {
-  return Math.max(20, period / 600);
+  return Math.max(ARC_MIN_STEP_DT, period / ARC_STEPS_PER_REV);
 }
 
 type BudgetScenario = { label: string; steps: number };
