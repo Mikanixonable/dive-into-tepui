@@ -255,6 +255,11 @@ export class PlanArc {
     return this.impact && withinEnd(this.impact.state.t, this._end) ? this.impact : null;
   }
 
+  // 近地点・遠地点の検出に使っている中心天体。apsisCenter を持たずに生成された区間では null。
+  get apsisCenter(): Attractor | null {
+    return this.apsisTrack?.center ?? null;
+  }
+
   // 答える範囲で最初の近地点。中心天体へ接近し続けたまま表面へ達する
   // (衝突軌道で近地点が存在しない)場合や、end を超えていれば null。
   periapsisPoint(): KinematicState | null {
