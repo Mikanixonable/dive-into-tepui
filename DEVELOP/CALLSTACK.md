@@ -108,6 +108,19 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
     - ghostAt(displayTime) // 折れ線が displayTime に届かなければ null
     - apsisIconsOf() // path.finalSegment() の periapsis/apoapsis(末尾 arc が積分中に見つけた値)と apsisCenter(検出時と同じ基準天体)を読み、その天体の位置だけを ephemeris.positionOf(center.id, 極値の時刻) で引き直して距離を出す。両方あるとき (遠地点距離-近地点距離)/(遠地点距離+近地点距離) < APSIS_MIN_ECC なら空、片方のみ(双曲線等)ならそのまま出す
     - player.equatorNodes.update(displayWindow.frame, displayWindow.displayTime, ephemeris, finalSegment.state0, finalSegment.samples) // 操作艦の EqAN/EqDN。代表軌道は計画の最終区間なので、交点は解析楕円ではなく積分折れ線の上に載る
+  - sections.exit(SECTION.plan)
+  - sections.enter(SECTION.predict)
+  - predictor.update(simulator.simTime, player, displayWindow.duration, cameraSystem.overviewMode) // advanceSimulation の外、無条件(ポーズ中・決着後も呼ぶ — simTime が止まっている間は乖離が起きないので、予測は伸び切ったところで止まるだけ)。horizon = displayWindow.duration
+    - discardPredictionIfDiverged(simTime, attractors) // entities.all() のうち predictsFuture=true の対象全てへ、ビューによらず毎フレーム。attractors は simTime ぶんを1回だけ classifyAttractors し、対象ごとに attractorsNearInto でその位置の近傍へ絞ったもの(advanceBudget とは別のスクラッチ配列)
+      - invalidatePrediction() // predicted.at(simTime) が実位置から許容量を超えて乖離、または区間外のときのみ。許容量は PREDICT_RESET_DIST を下限に、保持サンプルの間引きが粗いぶんの補間誤差まで広げる
+    - targets = overviewMode ? entities.all() : entities.all().filter(e => e===player || e.predictedAsGravitySource || e.predictedAsPlanCollider) // 伸長対象。マップビューは全エンティティ、戦闘ビューは操作艦 + 計画軌道が重力源・衝突体として読む個体(通常ステージでは該当0体) — 折れ線自体は戦闘ビューでも描かれるため
+    - advanceBudget(player, ...) // 予算(overviewMode ? PREDICT_STEP_BUDGET : PREDICT_COMBAT_STEP_BUDGET)を操作対象の艦優先で消費。ensurePredictedArc(futureAttractors) で弧を得て(無ければ消費 0)、requiredEnd = simTime + horizon / retainFrom = simTime を書いてから budgetSteps を上限に arc.step() を繰り返し呼ぶ
+      - player.ensurePredictedArc(futureAttractors) // predictsFuture=false なら null。無ければ actual.state を起点に新規生成(mu≠0 なら自身の id を excludeId として渡す)
+      - arc.step() // !needsGrowth(打ち切り済み、または先端が requiredEnd に到達済み)なら即 false。中心窓は最初の1歩だけ先端時刻で解決し、以後は前歩の中点窓(carriedSources)を持ち越して rawCenter(刻み幅・重力源用、excludeId で自身を除く)/analyticCenter(外挿・アプシス中心用、解析天体だけの窓から解決)を求める。刻み幅は軌道項(keplerPeriod/ARC_STEPS_PER_REV)・粗化項(span/ARC_MAX_STEPS)・接近項(動径接近率×ARC_APPROACH_SAFETY、中心窓の衝突体を走査)の最も厳しい値を ARC_MIN_STEP_DT で下限にした値。積分の重力源は中点時刻で新たに解決した窓(mid)から attractorsNearInto で絞る
+        - trajectory.step(dt, stepAttractors, bcInv, srpCoeff, null, sampleInterval, span, analyticCenter) // 有限でなければ truncated を立てて終了。有限なら ApsisTrack.observe(prev, next) → reachedBody(prev, next, mid.collision)/burnUpBody で表面到達・焼失を判定し(collision は mu=0 天体と predictedAsPlanCollider entity を含む、excludeId で自身を除く)、mid を carriedSources として持ち越す
+    - advanceBudget(entity, ...) // 残り予算を targets 上のカーソル位置から1周ぶん配る(player は優先枠で処理済みなのでここでは飛ばす)。1体の取り分は max(PREDICT_MIN_ENTITY_STEPS, floor(残額 / 残り訪問数)) を残額で頭打ちにした値で、使い残しは次の個体へ回る。ensurePredictedArc が null、または arc.step() が最初から false(needsGrowth=false)の個体は、消費 0 で次へ即進む
+  - sections.exit(SECTION.predict)
+  - sections.enter(SECTION.plan)
   - targeter.updateEquatorNodes(cameraSystem.overviewMode, displayWindow, ephemeris) // 内部で !overviewMode なら即 return(戦闘ビューでは誰も読まないため)。マップ表示中だけ戦闘ターゲット(aliveTarget)の EqAN/EqDN を求め直す
   - entities.updateBaseEquatorNodes(cameraSystem.overviewMode, displayWindow, ephemeris) // 内部で !overviewMode なら即 return。マップ表示中だけ生存中の全基地の EqAN/EqDN を求め直す(選択の有無によらず常に出す)
   - sections.exit(SECTION.plan)
@@ -134,7 +147,7 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
 
 ### advanceSimulation(dt)
 
-自機の行動 → ステージ → 積分 → 予測 → エフェクトの順に1フレーム進める。艦の行動(`entities.updatePlayers`)
+自機の行動 → ステージ → 積分 → エフェクトの順に1フレーム進める。艦の行動(`entities.updatePlayers`)
 はステージの決着状態を問わず常に全自機ぶん呼ばれる — `input` が届かない艦(操作対象でない艦、
 および操作できないワープ倍率では全艦)はその内部で連続指令を畳むだけになる(残骸・弾の epoch を
 含め、どの状況でも他の段は進め続ける)。
@@ -271,16 +284,6 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
     - entities.players のうち !alive な艦ごと → activePlayers.remove(lost) → navTarget.clearIfTargeting(lost.id) / targeter.clearIfTargeting(lost) / overviewCamera.clearFocusIf(lost.id) / entities.removePlayer(lost)
     - 掃引で操作対象そのものを失った場合だけ reclaimAfterLoss() → 生存艦が居れば activePlayers.set(次の艦)、居なければ setOrNull(null)(worldSfx.setRcs(false)。カメラの追従対象は毎フレーム引数で渡り直すだけなのでここでは何もしない。ビューはここでは切り替えない)。元から操作対象が居ない状態(手動解除・未配置)では何もしない
   - docking.checkProximity() // 内部で viewManager.current==='dock' なら即 return。それ以外は docking.updateDockedPhysics() を呼ぶだけで、収容の判定はしない(基地への収容は storeInBase を呼ぶ操作から起きる)
-  - sections.enter(SECTION.predict)
-  - predictor.update(simTime, player, displayWindowManager.current.duration, mode) // simulator.advance 内の substep cleanup 後に呼ぶ(死んだ個体を予測しない・積分後の実状態と突き合わせる)。horizon = displayWindowManager.current.duration(直前の displayWindowManager.resolve() が確定させた窓を読むだけ)。mode は 'map'(entities.all() 全対象・PREDICT_STEP_BUDGET)/'combat'(自機のみ・PREDICT_COMBAT_STEP_BUDGET)、cameraSystem.overviewMode で選ぶ
-    - discardPredictionIfDiverged(simTime, attractors) // entities.all() のうち predictsFuture=true の対象のみ、毎フレーム無条件。attractors は simTime ぶんを1回だけ classifyAttractors し、対象ごとに attractorsNearInto でその位置の近傍へ絞ったもの(advanceBudget とは別のスクラッチ配列)
-      - invalidatePrediction() // predicted.at(simTime) が実位置から許容量を超えて乖離、または区間外のときのみ。許容量は PREDICT_RESET_DIST を下限に、保持サンプルの間引きが粗いぶんの補間誤差まで広げる
-    - advanceBudget(player, ...) // 予算 PREDICT_STEP_BUDGET を操作対象の艦優先で消費。ensurePredictedArc(futureAttractors) で弧を得て(無ければ消費 0)、requiredEnd = simTime + horizon / retainFrom = simTime を書いてから budgetSteps を上限に arc.step() を繰り返し呼ぶ
-      - player.ensurePredictedArc(futureAttractors) // predictsFuture=false なら null。無ければ actual.state を起点に新規生成(mu≠0 なら自身の id を excludeId として渡す)
-      - arc.step() // !needsGrowth(打ち切り済み、または先端が requiredEnd に到達済み)なら即 false。中心窓は最初の1歩だけ先端時刻で解決し、以後は前歩の中点窓(carriedSources)を持ち越して rawCenter(刻み幅・重力源用、excludeId で自身を除く)/analyticCenter(外挿・アプシス中心用、解析天体だけの窓から解決)を求める。刻み幅は軌道項(keplerPeriod/ARC_STEPS_PER_REV)・粗化項(span/ARC_MAX_STEPS)・接近項(動径接近率×ARC_APPROACH_SAFETY、中心窓の衝突体を走査)の最も厳しい値を ARC_MIN_STEP_DT で下限にした値。積分の重力源は中点時刻で新たに解決した窓(mid)から attractorsNearInto で絞る
-        - trajectory.step(dt, stepAttractors, bcInv, srpCoeff, null, sampleInterval, span, analyticCenter) // 有限でなければ truncated を立てて終了。有限なら ApsisTrack.observe(prev, next) → reachedBody(prev, next, mid.collision)/burnUpBody で表面到達・焼失を判定し(collision は mu=0 天体と predictedAsPlanCollider entity を含む、excludeId で自身を除く)、mid を carriedSources として持ち越す
-    - advanceBudget(entity, ...) // 残り予算を entities.all() 上のカーソル位置から1周ぶん配る(player は優先枠で処理済みなのでここでは飛ばす)。1体の取り分は max(PREDICT_MIN_ENTITY_STEPS, floor(残額 / 残り訪問数)) を残額で頭打ちにした値で、使い残しは次の個体へ回る。ensurePredictedArc が null、または arc.step() が最初から false(needsGrowth=false)の個体は、消費 0 で次へ即進む
-  - sections.exit(SECTION.predict)
   - sections.enter(SECTION.effects)
   - effects.update(dt, simulator.simTime) → flashEffectManager.updateFlashEffects() // フラッシュの寿命と、各エフェクトの時刻から simTime までの移流。playing/player を問わず常に進める(決着直後の爆発を止めないため)
   - sections.exit(SECTION.effects)
