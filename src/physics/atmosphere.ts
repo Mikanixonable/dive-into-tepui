@@ -67,16 +67,16 @@ export function dragAccel(r: Vec3, v: Vec3, bcInv: number): Vec3 {
   return v3(vrx * k, vry * k, vrz * k);
 }
 
-// 位置 r が、大気を持つ天体の表面から margin 以内まで沈み込んでいるか。このモデルが表す
-// 大気は地球のものだけなので、判定対象も地球に限る。
-export function isBurnedUp<T extends { readonly id: string; readonly radius: number; readonly state: KinematicState }>(
+// 位置 r が、大気を持つ天体の表面から margin 以内まで沈み込んでいれば、その天体。このモデルが
+// 表す大気は地球のものだけなので、判定対象も地球に限る。
+export function burnUpBody<T extends { readonly id: string; readonly radius: number; readonly state: KinematicState }>(
   r: Vec3,
   bodies: readonly T[],
   margin: number,
-): boolean {
+): T | null {
   for (const body of bodies) {
     if (body.id !== 'earth') continue;
-    if (len(sub(r, body.state.r)) < body.radius + margin) return true;
+    if (len(sub(r, body.state.r)) < body.radius + margin) return body;
   }
-  return false;
+  return null;
 }
