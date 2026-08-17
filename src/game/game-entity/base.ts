@@ -4,7 +4,7 @@ import { EntityIdAllocator } from './entity-id';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Attitude } from '../../physics/attitude';
 import { qRotate } from '../../physics/attitude';
-import { add, v3, Vec3 } from '../../physics/vec3';
+import { add, len, sub, v3, Vec3 } from '../../physics/vec3';
 import type { AnyPart, Part } from './parts';
 import { partFromSaveData } from './parts';
 import { Player } from '../player/player';
@@ -14,10 +14,14 @@ import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';
-import { EntityMarker } from '../marker/entity-marker';
-import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 import type { BaseSaveData } from '../save-data';
-import { OrbitLine } from '../orbit-line';
+import { Plan } from '../plan/plan';
+import type { PlanExecutionMode } from '../player/player';
+import { generateRandomName } from '../random-name';
+import type { GroupedMarkerItem } from '../marker/grouped-markers';
+import type { MarkerRole } from '../targeter';
+import { fmtMarkerDist } from '../hud/utils';
+import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 import * as C from '../const';
 import { BaseCollisionGeometry, RayHit, SphereHit } from '../../physics/base-collision';
 import { PlayerThrottle } from '../player/player-throttle';
@@ -73,9 +77,21 @@ export type BaseInit =
   | { readonly state: KinematicState; readonly name?: string; readonly att?: Attitude; readonly id?: string }
   | { readonly saved: BaseSaveData; readonly simTime: number };
 
+export function baseMarkerSvg(): string {
+  const pts = "12,2.5 19.43,6.08 21.26,14.11 16.12,20.56 7.88,20.56 2.74,14.11 4.57,6.08";
+  return `<svg viewBox="0 0 24 24" width="24" height="24" aria-label="Base">` +
+    `<polygon points="${pts}" fill="none" stroke="currentColor" stroke-width="1.8"/>` +
+    `</svg>`;
+}
+
 export class Base extends GameEntity implements Controllable {
   readonly collisionGeom = new BaseCollisionGeometry();
   protected readonly predictedForGhost = true;
+  readonly plan = new Plan();
+  planExecution: PlanExecutionMode = 'off';
+  fineAttitude = false;
+  // 基地は常に赤道交点マーカーを出すので、コンストラクタで必ず組む。
+  declare equatorNodes: EquatorNodeMarkerPair;
   public baseState: BaseState = {
     money: 100000,
     inventory: [],
@@ -116,7 +132,7 @@ export class Base extends GameEntity implements Controllable {
     hud: Hud,
     worldSfx: WorldSfx,
     fx: EffectsSystem,
-    markerManager: MarkerManager,
+    private readonly markerManager: MarkerManager,
   ) {
     const { state, name, att, id } = 'saved' in init
       ? {
@@ -125,7 +141,7 @@ export class Base extends GameEntity implements Controllable {
         att: undefined,
         id: init.saved.id,
       }
-      : { state: init.state, name: init.name ?? '基地', att: init.att, id: init.id };
+      : { state: init.state, name: init.name ?? generateRandomName('base'), att: init.att, id: init.id };
     const savedAtt: Attitude | undefined = 'saved' in init && init.saved.q
       ? {
         q: { ...init.saved.q },
@@ -149,7 +165,6 @@ export class Base extends GameEntity implements Controllable {
     this.thrustEffects = new ThrustEffects(scene, worldSfx);
     this.rcsEffects = new RcsEffects(scene, worldSfx);
     this.equatorNodes = new EquatorNodeMarkerPair(this, markerManager);
-    this.marker = new EntityMarker(this, markerManager, 'mk-base', ENTITY_GLYPH.ship);
 
     if ('saved' in init) {
       this.baseState.money = init.saved.money;
@@ -294,8 +309,29 @@ export class Base extends GameEntity implements Controllable {
     this.rcsEffects.sync(fo, effectState.r, this.torque, this.att, effectVisible, camera, isControlled, 6.0);
   }
 
-  protected override createOrbitLine(): OrbitLine {
-    return new OrbitLine(C.COLOR_BASE_ORBIT_LINE, 0.35, C.LINE_RENDER_ORDER.shipOrbit);
+  markerItem(role: MarkerRole, viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): GroupedMarkerItem {
+    const dist = len(sub(pos, viewerPos));
+    const priority = role === 'primary'
+      ? C.MARKER_PRIORITY.PRIMARY_TARGET
+      : role === 'secondary'
+        ? C.MARKER_PRIORITY.SECONDARY_TARGET
+        : C.MARKER_PRIORITY.BASE - dist / 1e9;
+    return {
+      key: `base-${this.id}`,
+      cls: role === 'primary' ? 'mk-target' : 'mk-base',
+      sym: baseMarkerSvg(),
+      pos,
+      vel,
+      priority,
+      name: this.name,
+      detail: overviewMode ? '' : fmtMarkerDist(dist),
+      bearingColor: C.COLOR_MARKER_ALLY,
+      bearingSym: ENTITY_GLYPH.base,
+      bearingClass: 'mk-dir mk-ally-dir',
+      bearingVisible: false,
+      color: C.COLOR_MARKER_ALLY,
+      symMarkup: true,
+    };
   }
 
   dispose(): void {
@@ -304,6 +340,8 @@ export class Base extends GameEntity implements Controllable {
       this.thrustEffects.dispose(this.scene);
       this.rcsEffects.dispose(this.scene);
     }
+    this.markerManager.remove(`base-${this.id}`);
+    this.markerManager.remove(`base-${this.id}-bearing`);
     // 格納艦は entities.players から外れているため、ここでしか回収できない。
     for (const entry of this.baseState.dockedVessels) entry.player.dispose();
     this.baseState.dockedVessels = [];
