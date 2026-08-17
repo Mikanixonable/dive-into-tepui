@@ -590,14 +590,11 @@ LEO に艦がいなければ(月周回・L点)自然に大きな刻みが許さ�
   それは測定の外れ値であって発見ではない(`軌道積分数` が 0 対 1968 なのだから、前者が
   下回らなければおかしい)。
 - ビルドと測定の間には数分の冷却を挟む。
-- **セーブ復帰の混入**: プローブは Chrome プロファイルをマトリクス全体で使い回す。
-  `AutoSave` が書いた(または起動リトライで時間を食ううちに書かれた)スナップショットは、
-  同じステージの次の起動で `Launcher.initialSaveFor` に拾われる — `Stage.checkWin()` が常に
-  false のステージでは `SaveSlots.noteRunEnded` が呼ばれず `lastStageId` が残り続けるので、
-  一度書かれると以後ずっと復帰する。復帰した起動では `Stage.begin()` が `init()` を飛ばし
-  (`stage.ts:169`)、**スナップショットに載らない種類のエンティティ(小惑星・破片)は
-  世界から消える**(`snapshot-service.ts:79-95` / `entity-manager.ts:81-97` は
-  players/enemies/ammos/bases しか往復しない)。
+- **各ラウンドは必ず新規の周回として始まる**: プローブは Chrome プロファイルをマトリクス全体で
+  使い回すので、`Page.navigate` の直前に `Storage.clearDataForOrigin` で localStorage を消す。
+  これが無いと、(a) `AutoSave` のスナップショットが同じステージの次の起動で復帰し、
+  復帰した周回では `Stage.init()` が走らず**スナップショットに載らない小惑星・破片が
+  世界から消える**、(b) 表示パネルのトグルが後続の条件へ持ち越される。
 - **セクションの意味**: `予測` = 全ての弧の積分成長(計画の弧を含む。`Predictor.update` を包む)。
   `計画` = 区間列の組み立てと表示物の導出+`Targeter.updateEquatorNodes` 等+`PlanGuide.update` の
   合算(3箇所が同一セクションに enter/exit する)。`plan歩` は `Predictor` 計上の計画弧の歩数。
@@ -621,9 +618,10 @@ PERF_ONLY='stage1-combat-warp65536,map-warp65536-node0,map-warp1-node0,map-warp1
   5. `creative-map-warp65536-noship` — エンティティ0体、`積分` 単体
   6. `stage1-map-warp1-dur28d` — 28日プリセット、`予測` が最大になる条件
 
+- **多数個体は `debug-load-*` で測れる**(小惑星300体・破片500個が実際に置かれる。
+  `debug-load-map-warp1` で `pred追跡` 301 / `積分` 233 ms)。案1の測定に使うときは
+  **マトリクスの末尾へ足す** — 1〜6 の位置を動かさないため。
 - **マトリクスに入れていない条件と理由**:
-  - `debug-load-*`(多数個体)— 3-1 のセーブ復帰の混入で小惑星・破片が world から消え、
-    実測は「自機1隻だけ」になる。多数個体を測るにはプローブ側の手当てが要る。
   - **Δv 編集中**(interactive 予算が張り付く状態)— `stage1-map-warp1-node1` は settle 後に
     計画の弧が伸び切るので `plan歩` = 0 で、この状態を測れていない。ノードを置いたまま
     Δv を動かし続ける操作をプローブに足す必要がある。
