@@ -5,6 +5,7 @@
 // 符号反転を直接見て求める — どちらも同じ黄金分割探索/二分法の補間機構を使う。
 import { Attractor } from './attractor';
 import { hermiteInterpolate, KinematicState } from './kinematic-state';
+import { goldenSectionMin } from './optimize';
 import { dot, len, sub, Vec3 } from './vec3';
 
 // 極値探索・交点二分法の反復回数。固定回数にしているのは、収束判定にすると反復回数が
@@ -25,28 +26,9 @@ function atParam(a: KinematicState, b: KinematicState, u: number): KinematicStat
 function refineExtremum(
   center: Attractor, a: KinematicState, b: KinematicState, findMax: boolean,
 ): KinematicState {
-  const phi = (Math.sqrt(5) - 1) / 2;
-  // [lo, hi] を [0,1] 全体から始め、区間内の2点 u1<u2 を評価して劣る側を毎回捨てる。
-  let lo = 0, hi = 1;
-  let u1 = hi - phi * (hi - lo);
-  let u2 = lo + phi * (hi - lo);
-  let f1 = distFromCenter(center, atParam(a, b, u1));
-  let f2 = distFromCenter(center, atParam(a, b, u2));
-  for (let i = 0; i < REFINE_ITERATIONS; i++) {
-    const takeRight = findMax ? f1 < f2 : f1 > f2;
-    if (takeRight) {
-      lo = u1;
-      u1 = u2; f1 = f2;
-      u2 = lo + phi * (hi - lo);
-      f2 = distFromCenter(center, atParam(a, b, u2));
-    } else {
-      hi = u2;
-      u2 = u1; f2 = f1;
-      u1 = hi - phi * (hi - lo);
-      f1 = distFromCenter(center, atParam(a, b, u1));
-    }
-  }
-  return atParam(a, b, (lo + hi) / 2);
+  const sign = findMax ? -1 : 1;
+  const u = goldenSectionMin(0, 1, (u) => sign * distFromCenter(center, atParam(a, b, u)), REFINE_ITERATIONS);
+  return atParam(a, b, u);
 }
 
 export type ApsisKind = 'periapsis' | 'apoapsis';
