@@ -26,20 +26,6 @@ export function attractorsAt(ephemeris: Ephemeris, entities: EntityManager, t: n
   return mergeAttractors(gravityBodiesAt(ephemeris, t), entities.attractors());
 }
 
-// 時刻 t での重力源一覧(予測用)。動的重力天体も t の状態で組む — 現在位置で凍結すると
-// 「その時刻に居ない場所」から引くことになる。予測列で答えられない天体は先端からの
-// ケプラー外挿(GameEntity.displayState)で継ぎ、それでも答えられない天体だけ落ちる。
-export function predictedAttractorsAt(ephemeris: Ephemeris, entities: EntityManager, t: number): readonly Attractor[] {
-  // 先に解析天体の窓を引いておくと、外挿が問い合わせる中心天体の stateOf がそのキャッシュへ当たる。
-  const bodies = gravityBodiesAt(ephemeris, t);
-  const dynamic: Attractor[] = [];
-  for (const e of entities.attractors()) {
-    const s = e.displayState(t, ephemeris);
-    if (s !== null) dynamic.push({ id: e.id, mu: e.mu, radius: e.radius, degree2: e.degree2, isStar: e.isStar, state: s });
-  }
-  return mergeAttractors(bodies, dynamic);
-}
-
 // 重力源一覧を、常に含める天体(always)と空間グリッドに載せる天体(grid)へ分けたもの。
 export type ClassifiedAttractors = {
   readonly always: readonly Attractor[];
@@ -74,6 +60,12 @@ function gridCellSize(gridded: readonly Attractor[]): number {
 // もセル一辺も一覧全体から導くので、ある天体がどちらへ入るかは他の天体しだいで決まる。grid の
 // 天体はセルの27近傍からしか加算されない — 遠い問い合わせ位置で落とす直達項 mu/d² はセル一辺で
 // GRAVITY_NEGLIGIBLE_ACCEL 以下、同時に落ちる ECI 原点補正項 mu/D² は D > d の間これより小さい。
+//
+// **分類は計算量オーダーを下げるためのもので、1回の分類を多数の問い合わせ位置で使い回すことが
+// 成立条件。** 重力源 N 体を M 点で素朴に総当たりすると O(NM) だが、分類を1回だけ払えば
+// (コストは mu の全ソートに支配され O(N log N))、以降は各点が always の本数と自セル近傍の
+// 密度しか見ないので N に依らない。したがって1点ごとに分類し直す使い方は、O(N) の線形走査を
+// O(N log N) へ置き換えるだけで常に損になる — その場合は窓をそのまま走査する。
 export function classifyAttractors(attractors: readonly Attractor[]): ClassifiedAttractors {
   const thresholdMu = alwaysThresholdMu(attractors);
   const always: Attractor[] = [];

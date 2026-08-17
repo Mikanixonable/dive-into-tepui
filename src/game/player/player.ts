@@ -16,7 +16,7 @@ import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { buildPlayerShip } from '../../render/ships';
 import { Attractor, reachedBody } from '../../physics/attractor';
-import { isBurnedUp } from '../../physics/atmosphere';
+import { burnUpBody } from '../../physics/atmosphere';
 import type { CameraSystem } from '../camera/camera-system';
 import { focusTargetId } from '../camera/focus-target';
 import type { MapVisibility } from '../celestial/map-visibility';
@@ -380,7 +380,7 @@ export class Player extends Ship {
     if (limit === 'heat-aero') reason = '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した';
     else if (limit === 'heat-internal') reason = '排熱が追いつかず、機体は熱で機能不全に陥った';
     else if (limit === 'dynpressure') reason = '動圧が構造限界を超え、機体は空力的に分解した';
-    else if (isBurnedUp(this.state.r, attractors, C.PLAYER_MIN_ALT)) reason = '大気圏に突入し機体は焼失した';
+    else if (burnUpBody(this.state.r, attractors, C.PLAYER_MIN_ALT) !== null) reason = '大気圏に突入し機体は焼失した';
     else if (reachedBody(this.actual.prevState, this.state, attractors, C.PLAYER_MIN_ALT) !== null) reason = '天体の地表へ到達し機体は失われた';
     if (reason === null) return;
 
