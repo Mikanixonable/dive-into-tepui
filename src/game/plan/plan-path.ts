@@ -20,6 +20,7 @@ import { PlanArc } from './plan-arc';
 import { PredictedArc } from './predicted-arc';
 import type { PlanAttractorProvider } from './plan-attractors';
 import type { Player } from '../player/player';
+import { goldenSectionMin } from '../../physics/optimize';
 import * as C from '../const';
 
 const SEGMENT_COLORS = [0xffb36b, 0xff8a26, 0xff6a00];
@@ -29,6 +30,9 @@ const OFFSCREEN: Projected = { x: 0, y: 0, front: false };
 
 // 時刻の近さで tie-break するときに同点とみなす幅[s]。
 const TIME_TIE_SEC = 1e-6;
+
+// nearestSample が最寄りサンプルの左右区間を補間曲線上で細分するときの黄金分割探索の反復回数。
+const NEAREST_SAMPLE_REFINE_ITERATIONS = 20;
 
 // apsisCenter は末尾区間だけが持つ、起点自身の時刻の重力源から選んだ中心天体。
 type Segment = { state0: KinematicState; end: number; apsisCenter: Attractor | null };
@@ -286,13 +290,15 @@ export class PlanPath {
     return this.project(this.toDisplay(r, t));
   }
 
-  // 画面座標に最も近い計画軌道のサンプル(maxPx 以内)。なければ null。range を渡すと、
+  // 画面座標に最も近い計画軌道上の点(maxPx 以内)。なければ null。range を渡すと、
   // その時刻範囲に入るサンプルだけを候補にする。まず画面距離だけで最寄りの arc を選び
   // (バーン前後で arc をまたぐと t の大小関係が逆転するため、複数 arc を通して時刻を
   // 比べると誤った arc を選びかねない)、その arc の中で画面最短距離から NEAREST_SAMPLE_TIE_PX
   // 以内の候補に絞ってから referenceT に最も近い時刻を選ぶ — 新規配置は範囲の下端(= 最も
   // 早く到達する時刻)を、既存ノードのドラッグはそのノードの現在時刻を渡すことで、
   // 「表示期間が延びて折れ線が自分自身に重なる区間」の曖昧さを呼び出しの意図どおりに解く。
+  // こうして選んだ1点の左右の隣接サンプルまでを区間とし、区間内では画面距離が単峰であると
+  // みなして黄金分割探索を掛け、補間曲線上の最寄り点まで追い込む。
   nearestSample(mx: number, my: number, maxPx: number, referenceT: number, range?: TimeRange): { state: KinematicState, arcIdx: number } | null {
     const maxDSq = maxPx * maxPx;
     const cameraPos = this.cameraPos;
@@ -301,9 +307,11 @@ export class PlanPath {
     // 表示座標への変換をサンプルごとに1回だけ行い、遮蔽判定と投影で共有する。un-bake 側の
     // 変換は時刻が固定なのでループの外で1回だけ引く。
     const unbakeTf = ephemeris ? this.currentUnbakeTransform() : null;
-    const candidates: { state: KinematicState; arcIdx: number; dSq: number }[] = [];
+    const candidates: { state: KinematicState; arcIdx: number; sampleIdx: number; dSq: number }[] = [];
     for (let i = 0; i < this.activeCount; i++) {
-      for (const s of this.arcs[i]!.samples) {
+      const samples = this.arcs[i]!.samples;
+      for (let j = 0; j < samples.length; j++) {
+        const s = samples[j]!;
         if (range && (s.t < range.min || s.t > range.max)) continue;
         const pos = ephemeris && unbakeTf
           ? toInertialPoint(unbakeTf, toFramePoint(ephemeris.frameTransformAt(this.frame, s.t, this.attractors), s.r))
@@ -314,7 +322,7 @@ export class PlanPath {
         const p = this.project ? this.project(pos) : OFFSCREEN;
         if (!p.front) continue;
         const dSq = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
-        if (dSq <= maxDSq) candidates.push({ state: s, arcIdx: i, dSq });
+        if (dSq <= maxDSq) candidates.push({ state: s, arcIdx: i, sampleIdx: j, dSq });
       }
     }
     if (candidates.length === 0) return null;
@@ -333,7 +341,29 @@ export class PlanPath {
       if (!best || d < bestD - TIME_TIE_SEC
         || (Math.abs(d - bestD) <= TIME_TIE_SEC && c.state.t < best.state.t)) best = c;
     }
-    return best ? { state: best.state, arcIdx: best.arcIdx } : null;
+    if (!best) return null;
+
+    const arc = this.arcs[best.arcIdx]!;
+    const samples = arc.samples;
+    let lo = best.sampleIdx > 0 ? samples[best.sampleIdx - 1]!.t : best.state.t;
+    let hi = best.sampleIdx < samples.length - 1 ? samples[best.sampleIdx + 1]!.t : best.state.t;
+    if (range) {
+      lo = Math.max(lo, range.min);
+      hi = Math.min(hi, range.max);
+    }
+    if (hi <= lo) return { state: best.state, arcIdx: best.arcIdx };
+
+    // 時刻 t の画面距離の2乗。arc が t を答えられない、または画面裏に投影される場合は Infinity。
+    const f = (t: number): number => {
+      const state = arc.at(t);
+      if (!state) return Infinity;
+      const p = this.projectPoint(state.r, t);
+      if (!p.front) return Infinity;
+      return (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
+    };
+    const t = goldenSectionMin(lo, hi, f, NEAREST_SAMPLE_REFINE_ITERATIONS);
+    const refined = arc.at(t);
+    return { state: refined ?? best.state, arcIdx: best.arcIdx };
   }
 
   // update() がまだ呼ばれていない経路にも、従来どおり遅延評価で対応する。ただし通常の
