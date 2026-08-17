@@ -1,7 +1,7 @@
 // 多ノードの計画軌道を arc 単位で描く。Plan の corners を区間へ分解し、区間ごとに区間ソース
 // (PlanArc の積分結果か、ノードを1つも持たない末尾区間だけが使う PredictedArc)と
 // TrajectoryLine(折れ線)を index で対応付けて持つ。起点・重力源・apsisCenter が既存の PlanArc
-// と変われば作り直し、答える範囲だけが動いた区間は PlanArc.setRange に動かさせる — どちらの
+// と変われば作り直し、終端だけが動いた区間は PlanArc.setEnd に動かさせる — どちらの
 // 場合も折れ線はその区間の TrajectoryLine プールを使い回す。画面判定も同じ表示変換を通すため
 // 描画とずれない。
 import * as THREE from 'three/webgpu';
@@ -96,7 +96,7 @@ export class PlanPath {
 
   // 起点とノード列から区間列を組み直す。ノードを1つも持たない唯一の区間は ship の予測列を
   // PredictedArc として答え、それ以外の区間は起点・重力源・apsisCenter が既存の PlanArc と
-  // 一致すれば setRange で答える範囲だけを動かし、一致しなければ作り直す。表示変換の文脈
+  // 一致すれば setEnd で終端だけを動かし、一致しなければ作り直す。表示変換の文脈
   // (座標系・un-bake 時刻)もこのフレームのものに更新する。
   update(
     planData: PlanData, ship: Player | null,
@@ -129,14 +129,12 @@ export class PlanPath {
       const prevArc = this.arcs[i];
       const existing = prevArc instanceof PlanArc ? prevArc : undefined;
       let arc: PlanArc;
-      // 起点追従の区間は上の分岐が PredictedArc として扱うので、ここに残る区間の
-      // tracksLiveAnchor は常に false。
-      if (!existing || !existing.represents(seg.state0, seg.end, attractorProvider.revision, apsisCenterId, false)) {
+      if (!existing || !existing.represents(seg.state0, seg.end, attractorProvider.revision, apsisCenterId)) {
         arc = new PlanArc(seg.state0, seg.end, attractorProvider, seg.apsisCenter);
         this.arcs[i] = arc;
         this.lastRebuiltArcs++;
       } else {
-        existing.setRange(seg.state0, seg.end);
+        existing.setEnd(seg.end);
         arc = existing;
       }
       this.lastSteps += arc.lastSteps;

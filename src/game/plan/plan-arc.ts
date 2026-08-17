@@ -17,22 +17,6 @@ import * as C from '../const';
 // (表面までの距離 ÷ 相対速度 に掛ける上限係数)。
 const APPROACH_STEP_SAFETY = 0.5;
 
-// 起点が別の軌道へ飛んだと認めるための余裕係数と、時間差ゼロでも認める位置差の下限[m]。
-// 同じ軌道が dt だけ進んだだけなら位置差は高々「速度 × dt」に収まるので、その
-// ANCHOR_JUMP_SPEED_MARGIN 倍を超える差は連続な伝播では説明が付かない。
-const ANCHOR_JUMP_SPEED_MARGIN = 2;
-const ANCHOR_JUMP_MIN_DIST = 1;
-
-// 起点の差し替えが連続な伝播で説明できない(= 別の軌道へ飛んだ)か。時刻の前後関係は
-// 代理指標として成立しない — 別艦への切り替えやドック発進では新しい起点が普通に前回より
-// 後の時刻を持つので、状態そのものの差を見る。
-function anchorJumped(prev: KinematicState, next: KinematicState): boolean {
-  const dt = Math.abs(next.t - prev.t);
-  const speed = Math.max(len(prev.v), len(next.v));
-  const reachable = speed * dt * ANCHOR_JUMP_SPEED_MARGIN + ANCHOR_JUMP_MIN_DIST;
-  return len(sub(next.r, prev.r)) > reachable;
-}
-
 type ImpactCandidate = { body: Attractor; toi: number };
 
 // 刻み幅。その場で最も強く引く天体を中心とする軌道運動の時間スケール(低軌道では細かく、
@@ -119,14 +103,15 @@ function nearestByClearance(pos: Vec3, bodies: readonly Attractor[]): Attractor 
 export class PlanArc {
   private readonly sourceRevision: number;
   private readonly apsisCenterId: string | null;
-  // 直近の integrateTo で回した積分step数(生成時、または setRange による継ぎ足し時。
+  // 直近の integrateTo で回した積分step数(生成時、または setEnd による継ぎ足し時。
   // 継ぎ足さなかった呼び出しでは 0)。
   lastSteps = 0;
 
   private readonly provider: PlanAttractorProvider;
   private readonly _trajectory: DynamicTrajectory;
-  // この区間が答える範囲 [_state0.t, _end]。両端とも setRange が動かす。
-  private _state0: KinematicState;
+  // この区間が答える範囲 [_state0.t, _end]。_state0 は生成時に決まり、以後動かない。
+  // _end だけ setEnd が動かす。
+  private readonly _state0: KinematicState;
   private _end: number;
   // 積分へ要求した間引き下限のうち最も粗い値。実際に記録されたサンプルの下限を決して下回らない
   // 側へ倒す — 下回ると、粗すぎる区間をそのまま使い回せると誤って答えることになる。
@@ -170,46 +155,24 @@ export class PlanArc {
   // 候補が飛び飛びの点になってしまうので表せないと答える。比べるのは間引き下限どうしで、実際の
   // サンプル間隔ではない — 間隔は刻み幅(PLAN_ARC_STEPS_PER_REV)でも決まり、そちらは作り直しても
   // 同じ値になるので、間隔を下限と比べると縮めようのない粗さを理由に毎フレーム作り直すことになる。
-  // state0 が同一参照なら、その粗さの判定を満たす限り常に表せる。
-  // tracksLiveAnchor(計画が空の間の唯一の区間)では state0 が自機を毎フレーム追従するため
-  // 厳密一致では判定できない — 新しい起点がこの arc の積分結果そのものの上に、折れ線1区間ぶんの
-  // 長さ(速度 × サンプル間隔)より近く載っているなら、描く線は変わらないので表せると答える。
-  // 自機が噴射すれば自由伝播したこの積分から離れていくので、この判定はそのとき自然に落ちる。
-  // 起点の時刻が答える範囲を越えていれば at が null を返し、そこでも落ちる — 1フレームの
-  // 時間送りが区間長を上回るワープでは、窓が丸ごと入れ替わるのでそれが正しい。
-  // ただしこの判定は「同じ軌道が進んだだけ」という前提の上でだけ正しいので、起点が別の軌道へ
-  // 飛んだ場合(別艦への切り替え・ドック発進・衝突による状態上書き)は anchorJumped で先に弾く。
+  // 起点は state0 が同一参照かどうかで判定する。
   represents(
     state0: KinematicState, end: number, sourceRevision: number, apsisCenterId: string | null,
-    tracksLiveAnchor: boolean,
   ): boolean {
     if (sourceRevision !== this.sourceRevision || apsisCenterId !== this.apsisCenterId) return false;
     const sampleInterval = (end - this._state0.t) / C.PLAN_ARC_MAX_SAMPLES;
     if (this.decimation > sampleInterval * C.PLAN_ARC_MAX_SAMPLE_COARSENING) return false;
-    if (state0 === this._state0) return true;
-    if (!tracksLiveAnchor) return false;
-    if (anchorJumped(this._state0, state0)) return false;
-    const onArc = this.at(state0.t);
-    if (onArc === null) return false;
-    return len(sub(state0.r, onArc.r)) < len(state0.v) * sampleInterval;
+    return state0 === this._state0;
   }
 
-  // 答える範囲を [start.t, end] へ動かす。先頭は自身の積分結果上の start.t の状態へ進め(積分は
-  // し直さない)、終端は伸びたぶんを現在の積分先端から継ぎ足す。start は represents が真を
-  // 返したときの起点でなければならない — 積分結果の外を指す start では先頭が動かない。
-  setRange(start: KinematicState, end: number): void {
-    if (start.t > this._state0.t) {
-      const front = this.at(start.t);
-      if (front !== null) this._state0 = front;
-    }
+  // 答える範囲の終端を end へ動かす。伸びたぶんは現在の積分先端から継ぎ足す(積分をし直さない)。
+  setEnd(end: number): void {
     this._end = end;
     // 先端が要求終端に届かない差がサンプル間隔未満なら折れ線の見た目は変わらないので継ぎ足さ
-    // ない。毎フレームわずかに伸びる終端(空の計画の末尾区間)に1歩ずつ着地させると、通常の
-    // 刻み幅より遥かに細かいステップをフレーム数ぶん積むことになる。
+    // ない。終端へ1歩ずつ着地させると、通常の刻み幅より遥かに細かいステップを積むことになる。
     const threshold = (end - this._state0.t) / C.PLAN_ARC_MAX_SAMPLES;
     if (!this.truncated && end > this._trajectory.state.t + threshold) this.integrateTo(end);
     else this.lastSteps = 0;
-    this.apsisTrack?.dropBefore(this._state0.t);
   }
 
   // この区間が答える範囲の先頭状態。
