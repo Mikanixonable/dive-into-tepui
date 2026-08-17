@@ -1,6 +1,7 @@
 // GameEntity.predicted をフレーム予算内でラウンドロビンに伸ばす。1歩ぶんの積分(刻み幅・窓解決・
 // 到達判定)は game/simulation/predicted-arc.ts の PredictedArc へ移り、ここは予算の配分だけを持つ。
-// mode='map' で全エンティティ、'combat' で自機のみを対象にする。
+// 伸長対象は overviewMode=true で全エンティティ、false で操作艦 + 計画軌道が重力源・衝突体として
+// 読む個体に絞るが、乖離判定はビューによらず毎フレーム全エンティティへ行う。
 import * as C from '../const';
 import { EntityManager } from './entity-manager';
 import { GameEntity } from '../game-entity/game-entity';
@@ -26,17 +27,17 @@ export class Predictor {
     private readonly futureAttractors: FutureAttractors,
   ) {}
 
-  // entities.cleanup(...) の後に呼ぶ。horizon は simTime から先に予測する長さ [s]。
-  update(simTime: number, player: Player | null, horizon: number, mode: 'map' | 'combat' = 'map'): void {
-    const all = mode === 'map' ? this.entities.all() : player ? [player] : [];
-
-    // 伸長を止めている間も実状態は進み続けるため、乖離判定は毎フレーム全対象に行う。
+  // Game.update の本流から無条件に(ポーズ中・決着後も)呼ぶ。horizon は simTime から先に
+  // 予測する長さ [s]。overviewMode はマップビューかどうかで、伸長対象と予算だけを左右する。
+  update(simTime: number, player: Player | null, horizon: number, overviewMode: boolean): void {
+    // 乖離判定はビューによらず毎フレーム全エンティティへ行う。伸長を止めている個体を放置すると
+    // 古い予測列が凍結されたまま FutureAttractors に読まれ続けるため。
     this.tracked = 0;
     this.finished = 0;
     this.discarded = 0;
     this.lastSteps = 0;
     const classified = classifyAttractors(this.ephemeris.gravityAttractorsAt(simTime));
-    for (const e of all) {
+    for (const e of this.entities.all()) {
       if (!e.predictsFuture) continue;
       const attractors = attractorsNearInto(e.state.r, classified, this.divergenceAttractorsScratch);
       if (e.discardPredictionIfDiverged(simTime, attractors)) this.discarded++;
@@ -45,12 +46,21 @@ export class Predictor {
       if (reachedHorizon || e.predictionTruncated) this.finished++;
     }
 
+    // マップビューは全エンティティを伸ばす。戦闘ビューは操作艦に加え、計画軌道の折れ線が
+    // 重力源・衝突体として読む個体だけ(通常ステージでは該当0体) — 折れ線自体は戦闘ビューでも
+    // 描かれるので、その依存先だけは画面に出ていなくても伸ばし続ける必要がある。
+    const targets = overviewMode
+      ? this.entities.all()
+      : this.entities.all().filter(
+        (e) => e === player || e.predictedAsGravitySource || e.predictedAsPlanCollider,
+      );
+
     // 操作対象の艦は先頭で処理する。艦の予測を計画軌道が重力源として読むため、艦の予測完成を
     // 他の個体より優先するが、上限は PREDICT_PLAYER_BUDGET_RATIO に抑えて残りをラウンドロビンへ回す。
-    const frameBudget = mode === 'map' ? C.PREDICT_STEP_BUDGET : C.PREDICT_COMBAT_STEP_BUDGET;
+    const frameBudget = overviewMode ? C.PREDICT_STEP_BUDGET : C.PREDICT_COMBAT_STEP_BUDGET;
     let budget = frameBudget;
     if (player) {
-      const others = all.some((e) => e !== player);
+      const others = targets.some((e) => e !== player);
       const playerBudget = others ? Math.floor(frameBudget * C.PREDICT_PLAYER_BUDGET_RATIO) : frameBudget;
       budget -= this.advanceBudget(player, playerBudget, simTime, horizon);
     }
@@ -58,15 +68,15 @@ export class Predictor {
     // 1体あたりの取り分は残額を残り訪問数で均等割りする。1体が丸ごと消費すると、後続の個体が
     // PREDICT_MIN_ENTITY_STEPS に届かないまま次フレームの乖離判定で破棄され、作り直しを繰り返す。
     let visited = 0;
-    while (budget > 0 && visited < all.length) {
-      const e = all[(this.cursor + visited) % all.length]!;
+    while (budget > 0 && visited < targets.length) {
+      const e = targets[(this.cursor + visited) % targets.length]!;
       if (e !== player) {
-        const share = Math.max(C.PREDICT_MIN_ENTITY_STEPS, Math.floor(budget / (all.length - visited)));
+        const share = Math.max(C.PREDICT_MIN_ENTITY_STEPS, Math.floor(budget / (targets.length - visited)));
         budget -= this.advanceBudget(e, Math.min(budget, share), simTime, horizon);
       }
       visited++;
     }
-    this.cursor = all.length > 0 ? (this.cursor + visited) % all.length : 0;
+    this.cursor = targets.length > 0 ? (this.cursor + visited) % targets.length : 0;
   }
 
   // budgetSteps を上限に予測列を1歩ずつ伸ばし、消費した歩数を返す。要求終端・保持窓の左端を

@@ -286,10 +286,17 @@ export class Game {
     const activeControllable = this.activeControllableEntity;
     const displayWindow = this.displayWindowManager.resolve(this.simulator.simTime, activeControllable);
     const overviewMode = this.cameraSystem.overviewMode;
-    // 計画表示、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
+    // 計画表示、予測伸長、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
     this._environment.update(displayWindow.displayTime, overviewMode);
     this.sections.enter(SECTION.plan);
     this.editor.update(displayWindow);
+    this.sections.exit(SECTION.plan);
+    // ポーズ中・決着後も無条件に呼ぶ: simTime が止まっている間は乖離が起きないので、
+    // 予測は伸び切ったところで止まるだけで害はない。
+    this.sections.enter(SECTION.predict);
+    this.predictor.update(this.simulator.simTime, this.player, displayWindow.duration, overviewMode);
+    this.sections.exit(SECTION.predict);
+    this.sections.enter(SECTION.plan);
     this.targeter.updateEquatorNodes(overviewMode, displayWindow, this.ephemeris);
     this.entities.updateBaseEquatorNodes(overviewMode, displayWindow, this.ephemeris);
     this.sections.exit(SECTION.plan);
@@ -309,7 +316,7 @@ export class Game {
     this.sections.exit(SECTION.pointer);
   }
 
-  // 自機の行動 → ステージ → 積分 → 予測 → エフェクトの順に1フレーム進める
+  // 自機の行動 → ステージ → 積分 → エフェクトの順に1フレーム進める
   // (残骸・弾の epoch はどの状況でも進め続ける)。
   private advanceSimulation(dt: number): void {
     // 過去表示に要る履歴の長さを、積分がサンプルを積む前に要求しておく。表示窓は前フレームの
@@ -352,14 +359,6 @@ export class Game {
     this.targeter.updateBoardMarks(dt, this.player, this.entities);
     this.activePlayers.reclaimDead();
     this.docking.checkProximity();
-
-    // Simulator 内の substep cleanup 後に呼ぶ: 死んだ個体を予測せず、積分後の実状態と突き合わせる。
-    this.sections.enter(SECTION.predict);
-    this.predictor.update(
-      this.simulator.simTime, this.player, this.displayWindowManager.current.duration,
-      this.cameraSystem.overviewMode ? 'map' : 'combat',
-    );
-    this.sections.exit(SECTION.predict);
 
     this.sections.enter(SECTION.effects);
     this.entities.effects.update(dt, this.simulator.simTime);
