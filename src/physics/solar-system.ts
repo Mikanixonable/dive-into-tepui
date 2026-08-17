@@ -1865,7 +1865,7 @@ export const SOLAR_SYSTEM = {
   didymos: {
     kind: 'planet',
     id: 'didymos',
-    mu: 0,
+    mu: GRAVITATIONAL_CONSTANT * 5.2e11,
     radius: 398.5, // 三軸の最長半軸(外接球)
     shape: { kind: 'triaxial', a: 398.5, b: 391.5, c: 380.5 },
     orbit: planetOrbit({

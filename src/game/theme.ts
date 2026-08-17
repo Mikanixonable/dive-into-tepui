@@ -64,7 +64,6 @@ export const THEME_PRESETS: readonly ThemePalette[] = [
 
 const THEME_STORAGE_KEY = 'tepui.theme-palette';
 const DEFAULT_THEME_ID = 'fluorescent-red-blue';
-export const THEME_CHANGE_EVENT = 'tepui-theme-change';
 
 function findThemePalette(id: string | null): ThemePalette {
   return THEME_PRESETS.find((palette) => palette.id === id) ?? THEME_PRESETS.find((palette) => palette.id === DEFAULT_THEME_ID)!;
@@ -81,6 +80,13 @@ function readStoredThemeId(): string | null {
 
 export const ACTIVE_THEME = findThemePalette(readStoredThemeId());
 export const ACTIVE_THEME_ID = ACTIVE_THEME.id;
+
+let activePalette: ThemePalette = ACTIVE_THEME;
+
+// 現在適用されているパレット。applyThemePalette で差し替わる。
+export function currentThemePalette(): ThemePalette {
+  return activePalette;
+}
 
 export function getThemePalette(id: string): ThemePalette | undefined {
   return THEME_PRESETS.find((palette) => palette.id === id);
@@ -199,12 +205,12 @@ export const AXIS_NORMAL = '#10b981';
 export const AXIS_RADIAL = '#ef4444';
 
 // 文字サイズ。8段。マーカーのグリフサイズ(GLYPH_*)はこれとは別スケール。
-export const FONT_XXS = '9px';
-export const FONT_XS = '10px';
-export const FONT_S = '11px';
-export const FONT_M = '12px';
-export const FONT_L = '13px';
-export const FONT_XL = '16px';
+export const FONT_XXS = '11px';
+export const FONT_XS = '12px';
+export const FONT_S = '13px';
+export const FONT_M = '14px';
+export const FONT_L = '15px';
+export const FONT_XL = '18px';
 export const FONT_2XL = '24px';
 export const FONT_3XL = '34px';
 
@@ -348,11 +354,12 @@ export function injectThemeVariables(): void {
   }
 }
 
-// ESCメニューからの変更を、再起動せずに現在のDOMへ反映する。静的な色を持つ3D線などは
-// THEME_CHANGE_EVENT を購読して個別に更新し、DOM/CSSはここで一括してカスタムプロパティを差し替える。
+// ESCメニューからの変更を、再起動せずに現在のDOMへ反映する。DOM/CSSのカスタムプロパティを
+// 一括で差し替え、currentThemePalette が返す現在のパレットも更新する。
 export function applyThemePalette(id: string): boolean {
   const palette = getThemePalette(id);
   if (!palette) return false;
+  activePalette = palette;
   if (typeof window !== 'undefined') {
     try {
       window.localStorage.setItem(THEME_STORAGE_KEY, id);
@@ -367,9 +374,6 @@ export function applyThemePalette(id: string): boolean {
     }
     root.style.colorScheme = palette.tone;
     root.dataset['theme'] = palette.id;
-  }
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent<ThemePalette>(THEME_CHANGE_EVENT, { detail: palette }));
   }
   return true;
 }

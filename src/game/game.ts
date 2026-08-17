@@ -19,6 +19,7 @@ import { PlanGuide } from './plan/plan-guide';
 import { SimSpeedManager } from './sim-speed-manager';
 import { EntityManager } from './simulation/entity-manager';
 import { FutureAttractors } from './simulation/future-attractors';
+import { EntityLineManager } from './entity-line-manager';
 import { Simulator } from './simulation/simulator';
 import { Predictor } from './simulation/predictor';
 import { Input } from './input/input';
@@ -92,6 +93,7 @@ export class Game {
   readonly navTarget: NavTarget;
   readonly entities: EntityManager;
   private readonly futureAttractors: FutureAttractors;
+  private readonly entityLines: EntityLineManager;
   readonly simulator: Simulator;
   private readonly predictor: Predictor;
   private readonly nanWatchdog: NanWatchdog;
@@ -134,6 +136,7 @@ export class Game {
 
     this.entities = new EntityManager(this._scene, this._hud, this._worldSfx, this.markerManager, initialSave);
     this.futureAttractors = new FutureAttractors(this.ephemeris, this.entities);
+    this.entityLines = new EntityLineManager(this.entities);
     this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, this.ephemeris, this.entities);
 
     this.cameraSystem = new CameraSystem(
@@ -148,7 +151,7 @@ export class Game {
       this.displayWindowManager, this._hud.overlayManager,
     );
 
-    this.targeter = new Targeter(this._hud, this.markerManager, this._scene);
+    this.targeter = new Targeter(this._hud, this.markerManager);
     this.navTarget = new NavTarget(this._hud, this.markerManager);
     this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
     this._environment = new EnvironmentScene(this._scene, this.ephemeris, graphics, pipeline.sunLight, earthSpinPhase0);
@@ -190,7 +193,7 @@ export class Game {
     this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
     // activeStage(authoring/executesPlans を読む)を要るので、その直後に生成する。
     this.mapPickables = new MapPickables(
-      this.activePlayers, this.entities, this.ephemeris, this.navTarget, this.cameraSystem, this.editor,
+      this.activePlayers, this.entities, this.ephemeris, this.navTarget, this.cameraSystem, this.editor, this.markerManager,
     );
     this.mapActions = new MapContextActions(
       this._hud, this.entities, this.ephemeris, this.navTarget,
@@ -259,7 +262,6 @@ export class Game {
     this.editor.dispose();
     this._environment.dispose();
     this.navTarget.dispose();
-    this.targeter.dispose();
     this.frameControls.dispose();
     this.cameraSystem.dispose();
     this.displayWindowManager.dispose();
@@ -316,6 +318,12 @@ export class Game {
     this.sections.enter(SECTION.pointer);
     this.handlePointerInput();
     this.sections.exit(SECTION.pointer);
+
+    // 表示可否・ターゲット・操作艦・ビューがこのフレームの確定値になった後に判断する。
+    this.entityLines.update(
+      this.player, this.targeter.aliveTarget, this.targeter.aliveSecondaryTarget,
+      overviewMode, displayWindow, this.mapPickables.visibilityPolicy,
+    );
   }
 
   // 自機の行動 → ステージ → 積分 → エフェクトの順に1フレーム進める
@@ -461,31 +469,33 @@ export class Game {
     this._environment.sync(
       player?.state.r ?? null, fo, displayTime,
       this.cameraSystem, this.navball.gridVisibility, visibilityPolicy,
+      this.markerManager,
     );
 
     this.entities.syncPlayers(
-      player, fo, this.cameraSystem, displayTime, this.ephemeris, displayAttractors, visibilityPolicy,
+      player, fo, this.cameraSystem, displayTime, this.ephemeris, displayAttractors, visibilityPolicy, displayWindow,
     );
     this.entities.syncBases(
       this.controlledBase, fo, this.cameraSystem, displayTime, visibilityPolicy,
     );
     this.entities.sync(fo, displayTime);
     this.entities.applyVisibility(visibilityPolicy, player);
-    this.entities.syncOrbitLines(
-      overviewMode, fo, this.cameraSystem.activeCamera, displayAttractors, visibilityPolicy,
-      this.targeter.aliveTarget, this.targeter.aliveSecondaryTarget, displayWindow, this.ephemeris,
-    );
     this.entities.syncMarkers(this.cameraSystem, displayTime, player?.state.r ?? null, displayAttractors, visibilityPolicy);
 
     this.entities.effects.sync(fo, this.cameraSystem.activeCamera, this.cameraSystem.zoomActive);
 
-    this.targeter.sync(fo, player, this.cameraSystem, displayAttractors, visibilityPolicy, displayWindow, this.ephemeris);
+    this.targeter.sync(player, this.cameraSystem);
     this.targeter.syncTargetMarkers(
       player, combatTargets, displayTime, simTime, this.cameraSystem, visibilityPolicy,
       this.ephemeris.registry, displayAttractors,
     );
+    this.cameraSystem.focusMarkers.syncSubLabels(
+      this.markerManager.combatMarkers, this.ephemeris.registry, displayAttractors,
+      overviewMode, project, this.cameraSystem.activeCameraPos,
+    );
     this.navTarget.sync(this.cameraSystem);
     this.entities.syncEquatorNodes(this.cameraSystem);
+    this.mapPickables.syncVisibility();
 
     if (this.viewManager.isMapView) {
       this.displayWindowManager.sync(player);
@@ -499,11 +509,7 @@ export class Game {
     this.editor.sync(this.cameraSystem, simTime, fo);
 
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
-    this.entities.syncPlayerTrajectoryLines(
-      player, displayWindow, overviewMode, this.ephemeris, fo,
-      this.cameraSystem.activeCamera, displayAttractors, visibilityPolicy,
-      this.targeter.aliveTarget, this.targeter.aliveSecondaryTarget,
-    );
+    this.entityLines.sync(displayWindow, fo, this.cameraSystem.activeCamera, displayAttractors, this.ephemeris);
 
     if (player) {
       this.touchControls?.syncModeButtons(
@@ -520,7 +526,7 @@ export class Game {
     this.guide.sync(player, simTime, this.editor.editMode, project, this.editor.planDisplay.path);
 
     // このフレームのマーカーが出揃った後でなければならないので最後に置く。
-    this.markerManager.resolveCollisions();
+    this.markerManager.resolveCollisions(this.cameraSystem.overviewMode);
   }
 
   // ------------------------------------------------------------------ render

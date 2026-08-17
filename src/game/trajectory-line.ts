@@ -28,18 +28,14 @@ import { extrapolatedRelativeStates } from '../physics/kepler-extrapolation';
 import { StateQueue } from '../physics/state-queue';
 import { add } from '../physics/vec3';
 import { FloatingOrigin } from './floating-origin';
-import { Curve, CurveDash, CurveSampler } from '../render/curve';
+import { Curve, CurveSampler } from '../render/curve';
+import { LineStyle } from '../render/line-style';
 
 // 1本の折れ線が持てる頂点数。ここを超えた分は描かれない(Curve のバッファ確保上限)。
 const MAX_VERTICES = 16384;
 
 // 外挿区間に足すサンプル数の上限。
 const MAX_EXTRAPOLATED_SAMPLES = 2048;
-
-// 破線パターン。dashSize/gapSize は表示座標系の実距離 [m](Curve が LineDashedMaterial の
-// lineDistance 属性へそのまま渡すため、scale=1 前提でメートルを直接渡せる)。
-// 呼び出し側が毎フレーム書き換えてよい。
-export type DashPattern = CurveDash;
 
 // 描く軌跡が無いときの点列。再 bake するかを点列の参照同一性で判定するので、そのフレームだけ
 // 空になった線が毎フレーム焼き直しにならないよう、共有インスタンスを使う。
@@ -88,9 +84,9 @@ export class TrajectoryLine {
   // 描画区間の上限(bake 済み区間の末尾へクランプ済み)。null は上限なし。
   private endTime: number | null = null;
 
-  // 単色の折れ線を構築する。dash を渡すと破線になる。
-  constructor(color: number, opacity = 0.85, renderOrder = 2, dash?: DashPattern) {
-    this.curve = new Curve({ color, opacity, renderOrder, maxVertices: MAX_VERTICES, dash });
+  // 単色の折れ線を構築する。style.dash があれば破線になる。
+  constructor(style: LineStyle) {
+    this.curve = new Curve({ style, maxVertices: MAX_VERTICES });
     this.line = this.curve.object;
   }
 
@@ -189,6 +185,22 @@ export class TrajectoryLine {
 
   setDash(dashSize: number, gapSize: number): void {
     this.curve.setDash(dashSize, gapSize);
+  }
+
+  setStyle(style: LineStyle): void {
+    this.curve.setStyle(style);
+  }
+
+  setColor(color: string | number): void {
+    this.curve.setColor(color);
+  }
+
+  setOpacity(opacity: number): void {
+    this.curve.setOpacity(opacity);
+  }
+
+  setRenderOrder(renderOrder: number): void {
+    this.curve.setRenderOrder(renderOrder);
   }
 
   dispose(): void {

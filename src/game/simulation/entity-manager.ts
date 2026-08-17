@@ -157,6 +157,7 @@ export class EntityManager {
     targets = [];
     for (const enemy of this.enemies) targets.push(enemy);
     for (const player of this.players) if (player !== excludePlayer) targets.push(player);
+    for (const base of this.bases) targets.push(base);
     this.cachedCombatTargetsByExcludedPlayer.set(excludePlayer, targets);
     return targets;
   }
@@ -164,7 +165,7 @@ export class EntityManager {
   private rebuildCombatTargetsIfNeeded(): void {
     if (this.combatTargetsRevision === this._collectionRevision) return;
     this.cachedCombatTargets.length = 0;
-    this.cachedCombatTargets.push(...this.enemies, ...this.players);
+    this.cachedCombatTargets.push(...this.enemies, ...this.players, ...this.bases);
     this.cachedCombatTargetsByExcludedPlayer.clear();
     this.combatTargetsRevision = this._collectionRevision;
   }
@@ -345,12 +346,12 @@ export class EntityManager {
   syncPlayers(
     activePlayer: Player | null, fo: FloatingOrigin, cameraSystem: CameraSystem,
     displayTime: number, ephemeris: Ephemeris, attractors: readonly Attractor[],
-    visibilityPolicy: MapVisibilityPolicy | null,
+    visibilityPolicy: MapVisibilityPolicy | null, displayWindow?: DisplayWindow,
   ): void {
     for (const ship of this.players) {
       ship.syncPlayer(
         fo, cameraSystem, displayTime, ship === activePlayer, ephemeris, attractors,
-        visibilityPolicy?.entity('player', ship === activePlayer) ?? null,
+        visibilityPolicy?.entity('player', ship === activePlayer) ?? null, displayWindow,
       );
     }
   }
@@ -369,31 +370,6 @@ export class EntityManager {
     }
   }
 
-  // 全自機の予測軌道線を同期する。線を出すのは戦闘ビューでは操作対象艦、マップビューでは
-  // 表示され得る全自機で、Targeter の第一・第二ターゲットはそちらのハイライト線が担う。
-  // 線の末尾は simTime + duration、打ち切られた予測(再突入等)は打ち切られた先端。
-  syncPlayerTrajectoryLines(
-    activePlayer: Player | null, displayWindow: DisplayWindow, overviewMode: boolean, ephemeris: Ephemeris,
-    fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
-    visibilityPolicy: MapVisibilityPolicy | null, primaryTarget: CombatTarget | null, secondaryTarget: CombatTarget | null,
-  ): void {
-    const { frame, simTime, displayTime, duration, pastDuration } = displayWindow;
-    for (const ship of this.players) {
-      const isActive = ship === activePlayer;
-      const show = (isActive || overviewMode)
-        && (visibilityPolicy?.entity('player', isActive).orbit ?? true)
-        && ship !== primaryTarget && ship !== secondaryTarget;
-      // 線を持っているかがそのまま「描くか」なので、出す・消すはここで決めきる。
-      if (show) ship.showPredictedLine();
-      else ship.hidePredictedLine();
-      if (show && pastDuration > 0) ship.showActualLine();
-      else ship.hideActualLine();
-      const predictedTo = ship.predictionTruncated ? null : simTime + duration;
-      ship.syncTrajectoryLines(
-        frame, simTime, displayTime, pastDuration, predictedTo, ephemeris, fo, camera, attractors);
-    }
-  }
-
   // 天体クラス別トグルに応じて自機・敵・弾薬・基地のメッシュ表示を揃える。visibilityPolicy が
   // null(戦闘ビュー)のときは非表示扱いを一切かけない。
   applyVisibility(visibilityPolicy: MapVisibilityPolicy | null, activePlayer: Player | null): void {
@@ -404,30 +380,6 @@ export class EntityManager {
       if (!visibilityPolicy.entity('ammo').category) ammoPickup.renderObject.visible = false;
     }
     for (const base of this.bases) if (!visibilityPolicy.entity('base').category) base.renderObject.visible = false;
-  }
-
-  // 敵・基地の軌道線を、このフレームに出すものだけ生成して同期する。第一/第二ターゲットの敵は
-  // Targeter 自身のハイライト線が担う。displayWindow / ephemeris を渡すと、その座標系・時刻で描く。
-  syncOrbitLines(
-    overviewMode: boolean, fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
-    visibilityPolicy: MapVisibilityPolicy | null, primaryTarget: CombatTarget | null, secondaryTarget: CombatTarget | null,
-    displayWindow?: DisplayWindow, ephemeris?: Ephemeris,
-  ): void {
-    const frame = displayWindow?.frame;
-    const displayTime = displayWindow?.displayTime;
-    for (const enemy of this.enemies) {
-      const show = overviewMode && enemy.alive && (visibilityPolicy?.entity('ship').orbit ?? false)
-        && enemy !== primaryTarget && enemy !== secondaryTarget;
-      if (!show) { enemy.hideOrbitLine(); continue; }
-      enemy.showOrbitLine();
-      enemy.syncOrbitLine(fo, camera, attractors, false, frame, displayTime, ephemeris);
-    }
-    for (const base of this.bases) {
-      const show = overviewMode && (visibilityPolicy?.entity('base').orbit ?? false);
-      if (!show) { base.hideOrbitLine(); continue; }
-      base.showOrbitLine();
-      base.syncOrbitLine(fo, camera, attractors, false, frame, displayTime, ephemeris);
-    }
   }
 
   // マップ表示中だけ、全基地の赤道交点マーカーを求め直す(戦闘ビューでは誰も読まない)。基地は
@@ -460,9 +412,6 @@ export class EntityManager {
       (overviewMode ? visibilityPolicy?.entity(kind) ?? null : null);
     for (const ammoPickup of this.ammoPickups) {
       ammoPickup.marker?.sync(project, scale, displayTime, overviewMode, cameraSystem.activeCameraPos, viewerPos, attractors, visibilityOf('ammo'));
-    }
-    for (const base of this.bases) {
-      base.marker?.sync(project, scale, displayTime, overviewMode, cameraSystem.activeCameraPos, viewerPos, attractors, visibilityOf('base'));
     }
   }
 

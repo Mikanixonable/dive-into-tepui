@@ -4,6 +4,7 @@
 import type { Attractor } from './attractor';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, addScaled, cross, dot, len, norm, rotateAxis, scale, sub, v3 } from './vec3';
+import { getApsisLabelSpec } from '../game/hud/orbit-labels';
 
 export interface OrbitalElements {
   a: number; // 軌道長半径 [m] (双曲線では負)
@@ -69,7 +70,7 @@ export function orbitalElementsFromState(rel: KinematicState, center: Attractor)
   };
 }
 
-// 中心天体表面からの近地点・遠地点高度。遠地点は楕円軌道のみ(双曲線・放物線は NaN)。
+// 中心天体表面からの近点・遠点高度。遠地点は楕円軌道のみ(双曲線・放物線は NaN)。
 export function apsisAltitudes(el: OrbitalElements): { pe: number; ap: number } {
   const centerRadius = el.center.radius;
   return {
@@ -80,14 +81,7 @@ export function apsisAltitudes(el: OrbitalElements): { pe: number; ap: number } 
 
 // 中心天体の ID に応じた近点・遠点の日本語・英語正式名称 (例: 近地点 Perigee / 遠地点 Apogee, 近月点 Perilune / 遠月点 Apolune 等)
 export function fmtApsisName(type: 'pe' | 'ap', centerId: string): string {
-  const isEarth = centerId === 'earth';
-  const isSun = centerId === 'sun';
-  const isMoon = centerId === 'moon';
-  if (type === 'pe') {
-    return isEarth ? '近地点 Perigee' : isSun ? '近日点 Perihelion' : isMoon ? '近月点 Perilune' : '近点 Periapsis';
-  } else {
-    return isEarth ? '遠地点 Apogee' : isSun ? '遠日点 Aphelion' : isMoon ? '遠月点 Apolune' : '遠点 Apoapsis';
-  }
+  return getApsisLabelSpec(type, centerId).full;
 }
 
 // 平均近点角 M → 離心近点角 E(ケプラー方程式 M = E − e sin E をニュートン法で解く。楕円のみ)。

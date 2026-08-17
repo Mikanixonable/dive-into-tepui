@@ -235,10 +235,10 @@ export class ViewOptionsPanel {
     this.bodyClassButtons = bodyClassButtons;
     this.bodyClassCategoryButtons = bodyClassCategories;
 
-    // 天球グリッド(黄道・赤道)。天体クラスと同じ行の形(見出し+アイコン列)を流用する。
+    // 天球(参照面:黄道・赤道、環境:星空)。天体クラスと同じ行の形(見出し+アイコン列)を流用する。
     const gridButtons: (readonly [keyof CelestialGridVisibility, Button])[] = [];
     const gridCategories: (readonly [keyof CelestialGridVisibility, Button, HTMLElement, readonly Button[]])[] = [];
-    appendSectionHeading(body, '参照面', GRID_COLUMNS);
+    appendSectionHeading(body, '天球', GRID_COLUMNS);
     for (const group of GRID_TOGGLE_GROUPS) {
       const rowEl = document.createElement('div');
       rowEl.className = 'body-class-row grid-class-row';
@@ -251,7 +251,7 @@ export class ViewOptionsPanel {
       rowEl.appendChild(btnsEl);
       const individualButtons: Button[] = [];
       for (const [key, glyph, itemTitle] of group.items) {
-        const button = this.toggleButton(glyph, itemTitle, key, this.gridCurrent, (k, on) => this.onGridToggle?.(k, on));
+        const button = this.toggleButton(glyph, itemTitle, key, this.gridCurrent, (key, on) => this.onGridToggle?.(key, on));
         button.element.classList.add('body-class-icon-btn');
         btnsEl.appendChild(button.element);
         gridButtons.push([key, button]);
@@ -262,6 +262,13 @@ export class ViewOptionsPanel {
     }
     this.gridButtons = gridButtons;
     this.gridCategoryButtons = gridCategories;
+
+    const starsRow = document.createElement('div');
+    starsRow.className = 'body-class-row grid-class-row';
+    this.starsButton = this.toggleButton('星空', '星空を表示', 'stars', this.gridCurrent, (key, on) => this.onGridToggle?.(key, on));
+    this.starsButton.element.classList.add('body-class-title');
+    starsRow.appendChild(this.starsButton.element);
+    body.appendChild(starsRow);
 
     appendSectionHeading(body, '空間グリッド', SPATIAL_GRID_COLUMNS);
     for (const [key, label, description] of SPATIAL_GRID_ROWS) {
@@ -279,20 +286,6 @@ export class ViewOptionsPanel {
       body.appendChild(row);
       gridButtons.push([key, titleButton], [key, gridButton]);
     }
-
-    const environmentHeading = document.createElement('div');
-    environmentHeading.className = 'view-options-section-heading';
-    const environmentTitle = document.createElement('span');
-    environmentTitle.className = 'view-options-section-title';
-    environmentTitle.textContent = '環境';
-    environmentHeading.appendChild(environmentTitle);
-    body.appendChild(environmentHeading);
-    const starsRow = document.createElement('div');
-    starsRow.className = 'body-class-row grid-class-row';
-    this.starsButton = this.toggleButton('星空', '星空を表示', 'stars', this.gridCurrent, (key, on) => this.onGridToggle?.(key, on));
-    this.starsButton.element.classList.add('body-class-title');
-    starsRow.appendChild(this.starsButton.element);
-    body.appendChild(starsRow);
 
     hudRail(root, 'left').appendChild(this.panel);
   }

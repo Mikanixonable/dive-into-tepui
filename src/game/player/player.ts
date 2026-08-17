@@ -15,12 +15,13 @@ import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { buildPlayerShip } from '../../render/ships';
-import { TrajectoryLine } from '../trajectory-line';
 import { Attractor, reachedBody } from '../../physics/attractor';
 import { burnUpBody } from '../../physics/atmosphere';
 import type { CameraSystem } from '../camera/camera-system';
 import { focusTargetId } from '../camera/focus-target';
 import type { MapVisibility } from '../celestial/map-visibility';
+import type { DisplayWindow } from '../display-window-manager';
+import { generateRandomName } from '../random-name';
 import type { Stage } from '../stages/stage';
 import { PlayerThrottle } from './player-throttle';
 import { PlayerFire, type AmmoLoad } from './player-fire';
@@ -90,7 +91,7 @@ export class Player extends Ship {
     _hud: Hud, _worldSfx: WorldSfx, _scene: THREE.Scene, _fx: EffectsSystem, markerManager: MarkerManager,
     init: PlayerInit = {},
   ) {
-    const name = 'saved' in init ? (init.saved.name || init.saved.id) : (init.name ?? 'PLAYER');
+    const name = 'saved' in init ? (init.saved.name || init.saved.id) : (init.name ?? generateRandomName('player'));
     const state = 'saved' in init
       ? kinematicState(init.simTime, v3(init.saved.r.x, init.saved.r.y, init.saved.r.z), v3(init.saved.v.x, init.saved.v.y, init.saved.v.z))
       : (init.state ?? Player.makeInitialState());
@@ -117,7 +118,7 @@ export class Player extends Ship {
     this.thrustEffects = new ThrustEffects(_scene, _worldSfx);
     this.rcsEffects = new RcsEffects(_scene, _worldSfx);
     this.reentryEffects = new ReentryEffects(_scene);
-    this.markers = new PlayerMarkers(markerManager, this.id);
+    this.markers = new PlayerMarkers(markerManager, this.id, this);
     this.planExecutor = new PlanExecutor(_hud);
 
     if (saved) {
@@ -164,16 +165,6 @@ export class Player extends Ship {
       w: v3(),
       inertia: Player.INERTIA,
     };
-  }
-
-  // 自機軌道線と同色。ターゲット(オレンジ)より目立たせない配色。
-  protected override createPredictedLine(): TrajectoryLine {
-    return new TrajectoryLine(0xbfc9d4, 0.55, C.LINE_RENDER_ORDER.predicted);
-  }
-
-  // 過去の軌跡は未来線と同色にし、既に通り過ぎた区間だと読めるよう不透明度だけ落とす。
-  protected override createActualLine(): TrajectoryLine {
-    return new TrajectoryLine(0xbfc9d4, 0.3, C.LINE_RENDER_ORDER.predicted);
   }
 
   // HP を HP_REGEN_RATE で maxHp まで自然回復させる。
@@ -449,6 +440,7 @@ export class Player extends Ship {
     ephemeris: Ephemeris,
     attractors: readonly Attractor[],
     visibility: MapVisibility | null = null,
+    displayWindow?: DisplayWindow,
   ): void {
     // メッシュ本体の位置・姿勢
     const displayState = this.displayState(displayTime);
@@ -472,7 +464,7 @@ export class Player extends Ship {
     this.radiator.sync();
     this.power.sync();
     // マーカー。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
-    this.markers.sync(this.state, displayState, this.att, camera.overviewMode, isActive, camera.activeCameraPos, camera.activeCameraProjection, camera.activeCameraScale, this.name, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.mapCamera.focus), ephemeris.registry, attractors, visibility);
+    this.markers.sync(this.state, displayState, this.att, camera.overviewMode, isActive, camera.activeCameraPos, camera.activeCameraProjection, camera.activeCameraScale, this.name, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.mapCamera.focus), ephemeris.registry, attractors, visibility, displayWindow?.frame, displayTime, ephemeris);
   }
 
   // 艦は任意のタイミングで削除されうるので、Player が所有する線・ビルボード・HUD も一度だけ解放する。
@@ -485,7 +477,11 @@ export class Player extends Ship {
     bearingVisible: boolean; color: string; symMarkup: boolean;
   } {
     const dist = len(sub(pos, viewerPos));
-    const priority = role === 'primary' ? Infinity : role === 'secondary' ? Number.MAX_SAFE_INTEGER : -dist;
+    const priority = role === 'primary'
+      ? C.MARKER_PRIORITY.PRIMARY_TARGET
+      : role === 'secondary'
+        ? C.MARKER_PRIORITY.SECONDARY_TARGET
+        : C.MARKER_PRIORITY.PLAYER;
     return {
       key: `player-${this.id}`,
       cls: role === 'primary' ? 'mk-target' : 'mk-enemy', // player も味方ターゲットとして mk-enemy に準じる

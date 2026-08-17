@@ -170,10 +170,11 @@ main.ts
 │       │   ├── referenceLines: ReadonlyMap<OrbitingId, OrbitLine> ... SOLAR_SYSTEM の公転天体ぶん自動生成(衛星=旧月線色、惑星=白)。天体の登録追加だけで線が増える
 │       │   └── CelestialGrid              ... 赤道面/黄道面それぞれの基準円・緯経線グリッド・両極マーカー
 │       ├── Targeter                       ... ContextMenu を持たない(施策5 §7-2)。第一/第二ターゲットの設定・解除は
-│       │   │                                   MapContextActions が開くプロパティウィンドウの targetPrimary/targetSecondary
-│       │   │                                   項目から setPrimaryTarget()/setSecondaryTarget() を呼ぶ形に一本化
-│       │   ├── OrbitLine                  ... 第一ターゲット軌道線(オレンジ)
-│       │   └── OrbitLine (secondaryOrbitLine) ... 第二ターゲット軌道線(シアン)
+│       │                                       MapContextActions が開くプロパティウィンドウの targetPrimary/targetSecondary
+│       │                                       項目から setPrimaryTarget()/setSecondaryTarget() を呼ぶ形に一本化。
+│       │                                       軌道線は own しない — ターゲットのハイライト線はターゲットにされた
+│       │                                       エンティティ自身の OrbitLine を EntityLineManager がターゲット用スタイルで
+│       │                                       出す(下記 EntityLineManager 参照)
 │       ├── EntityManager                  ... エンティティ配列の保持と、破片(entity)の生成窓口である EffectsSystem
 │       │                                       の所有。コンストラクタ引数 saved(GameSaveData | undefined)があれば
 │       │                                       その顔ぶれを復元するだけで、新規開始では全配列が空のまま始まる
@@ -210,11 +211,12 @@ main.ts
 │       │   │   ├── RcsEffects    → Billboard ×8   ... 状態なし。ノズル1基につき1枚、配置は RCS_NOZZLES が正本
 │       │   │   ├── ReentryEffects → Billboard ×2   ... 状態なし。強度は毎フレーム qdyn から導く
 │       │   │   ├── PlayerMarkers          ... 方向マーカー・ボアサイト・マップ上の自機位置(操作対象の艦だけが sync する)
-│       │   │   ├── TrajectoryLine         ... 自機予測軌道線。Game.sync が毎フレーム this.syncTrajectoryLines(操作対象, ...)を呼ぶ
-│       │   │   ├── TrajectoryLine         ... 自機過去軌跡線(actualLine)。同じ syncTrajectoryLines が actual の [simTime - pastDuration, simTime] を描く
+│       │   │   ├── TrajectoryLine         ... 自機予測軌道線。EntityLineManager.update が showPredictedLine/hidePredictedLine で出し入れし、EntityLineManager.sync が毎フレーム ship.syncTrajectoryLines(...) で形状と変換を合わせる
+│       │   │   ├── TrajectoryLine         ... 自機過去軌跡線(actualLine)。同じ EntityLineManager.update/sync が showActualLine/hideActualLine で出し入れし、syncTrajectoryLines が actual の [simTime - pastDuration, simTime] を描く
+│       │   │   ├── OrbitLine              ... 解析楕円。EntityLineManager が showOrbitLine(style)/hideOrbitLine で出し入れする。持つのは第一/第二ターゲットにされている間(ターゲット用スタイル、ビューを問わず出て predictedLine/actualLine は隠れる)と、戦闘ビューの操作艦(LINE_STYLE.playerOrbit、このとき predictedLine の代わりになる)
 │       │   │   ├── Plan                   ... この艦自身のマニューバ計画(正本)。ノード列 + アンカー
 │       │   │   └── PlanExecutor           ... この艦自身の計画実行状態機械(正本)。CreativeStage が艦ごとに呼ぶだけで保持しない
-│       │   ├── Enemy[]                    ... 各々 OrbitLine を持ちうる(EntityManager.syncOrbitLines が showOrbitLine/hideOrbitLine で出し入れ)
+│       │   ├── Enemy[]                    ... 各々 OrbitLine を持ちうる(EntityLineManager が showOrbitLine(style)/hideOrbitLine で出し入れし、見た目も style で決める。第一/第二ターゲットのときはテーマ色のターゲット用スタイル(EntityLineManager.update が currentThemePalette() から組む)になり、ビューを問わず出る)
 │       │   ├── Bullet[]                    ... 各々コンストラクタで WorldSfx への参照を持つ(至近通過音を自分の checkLoss から鳴らすため)。
 │       │   │                                  renderObject はシーンへ足さない(GameEntity の addToScene=false) — bulletBodyPool/bulletHaloPool/plasmaPool が
 │       │   │                                  renderObject の変換を読んで描画する。renderObject 自体は Bullet.sync が書き込む変換の置き場所として残る
@@ -230,6 +232,10 @@ main.ts
 │       ├── FutureAttractors                ... 計画・予測の積分が時刻ごとに引く重力源・衝突体(game/simulation/future-attractors.ts)。
 │       │                                       Ephemeris・EntityManager の参照を受け取って回すだけ(所有しない)。
 │       │                                       PlanEditor・Predictor が構築引数として同じ参照を持つ
+│       ├── EntityLineManager              ... EntityManager の参照を受け取って回すだけ(所有しない)。自前の状態は持たない。
+│       │                                       entities の直後に construct する。update が各エンティティの
+│       │                                       orbitLine/predictedLine/actualLine を出す/消す/スタイルを決め、sync は
+│       │                                       それらの形状と変換だけを合わせる(生成・破棄はしない)
 │       ├── Simulator                      ... 実シミュレーション。EntityManager・Ephemeris・FrameSections の参照を受け取って回すだけ(いずれも所有しない)
 │       │   └── ContactPhysics             ... 接触の検出(physics/sphere-contact.ts)・剛体解決(physics/collision-response.ts)を
 │       │                                       substep ごと(resolveSubstep)/フレームに1回のベルト(resolveBelt)で呼ぶ列挙・順序付け層
@@ -447,7 +453,7 @@ main.ts
 | `PerfMeter` | main.ts | rAF ループ(`startAnimationLoop` が `snapshotControls.handleInput` の直後に `perf.handleInput(game.input)` を呼び、`[F3]` で `toggle()` する)・PauseMenu(`onOpenPerfWindow` 経由で `open()`) |
 | `PropertyWindow`(負荷確認ウィンドウ) | PerfMeter(`open()` で new し `close()`/✕ で dispose する1枚) | PerfMeter 自身のみ。500ms ごとの flush で `syncRows` へ行一式を渡す |
 | `FocusMarkers.bodyPickables(t, visibilityPolicy)` の戻り値 | CameraSystem(→FocusMarkers、呼ぶたびに作り直す使い捨て配列) | `MapPickables.refresh()` が読んで生存中の自機・敵船・弾薬・基地・NavTarget のアイコン・`PlanDisplay.apsisMarkers` と合流させ、`MapContextActions.handleRightClick`(`pickNearest`)/`OverviewCamera.update` の被選択物候補として渡し直す。引数の `MapVisibilityPolicy` が admits した天体+ラグランジュ点だけを返し、遮蔽・ラベル衝突でこのフレームに描かれなかった対象は `pickable: false` を伴って残す(表示設定で消えているわけではないので候補からは落とさない) |
-| `MapVisibilityPolicy`(1フレームの使い捨て) | `MapPickables`(`refresh` が `registry`/`bodyClassToggles`/`focusTargetId(...)`/`systemMembersAt(cameraPos, ...)` から毎フレーム1つ組み立て、`visibilityPolicy` getter で公開。`refresh` 前と、マップ視点でないフレームは null — `refresh` は早期 return の前に null を代入するので、読む側はビューを見て潰す必要がない) | `FocusMarkers.update`(引数)/ `Game.sync` が `mapPickables.visibilityPolicy` を読んで `EnvironmentScene.sync`・参照線 / `Stage.sync`・`EntityManager.syncMarkers`・`Targeter.sync` へ配る。受け取り側は渡されなければ同じ4入力から自前で組む経路も残す(マップ経路の外からも呼べるようにするためで、マップ描画中は必ず共有インスタンス)。天体は `body(id)`、エンティティは `entity(kind, isActivePlayer)` で `{category, icon, label, orbit, pickable}` を返す判定関数であって状態を持たない(正本は `CameraSystem.bodyClassToggles` とフォーカス・カメラ位置) |
+| `MapVisibilityPolicy`(1フレームの使い捨て) | `MapPickables`(`refresh` が `registry`/`bodyClassToggles`/`focusTargetId(...)`/`systemMembersAt(cameraPos, ...)` から毎フレーム1つ組み立て、`visibilityPolicy` getter で公開。`refresh` 前と、マップ視点でないフレームは null — `refresh` は早期 return の前に null を代入するので、読む側はビューを見て潰す必要がない) | `FocusMarkers.update`(引数)/ `Game.sync` が `mapPickables.visibilityPolicy` を読んで `EnvironmentScene.sync`・参照線 / `Stage.sync`・`EntityManager.syncMarkers`・`Targeter.syncTargetMarkers` へ配る。受け取り側は渡されなければ同じ4入力から自前で組む経路も残す(マップ経路の外からも呼べるようにするためで、マップ描画中は必ず共有インスタンス)。天体は `body(id)`、エンティティは `entity(kind, isActivePlayer)` で `{category, icon, label, orbit, pickable}` を返す判定関数であって状態を持たない(正本は `CameraSystem.bodyClassToggles` とフォーカス・カメラ位置) |
 | `FocusMarkers.allLabels` | CameraSystem(→FocusMarkers、構築時に1度だけ) | `MapContextActions.sync()` が id/isLagrange から親子関係(parentOf)を組むのに読む |
 | `PlanDisplay.apsisMarkers` | PlanEditor(→PlanDisplay) | `MapPickables.refresh()` が他の候補と合流させ、`MapContextActions.handleRightClick`/`OverviewCamera.update` へ1本の候補列として渡す |
 

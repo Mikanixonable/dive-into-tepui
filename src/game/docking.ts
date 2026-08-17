@@ -17,6 +17,7 @@ import type { EffectsSystem } from './vfx/effects-system';
 import type { MarkerManager } from './marker/marker-manager';
 import type { ActivePlayerController } from './active-player-controller';
 import type { Stage } from './stages/stage';
+import { generateRandomName } from './random-name';
 
 export class Docking {
   readonly baseView: BaseView;
@@ -240,7 +241,8 @@ export class Docking {
     const slotIndex = base.getAvailableSlotIndex() ?? 0;
     const no = ++this.nextBuiltVesselNo;
     const id = `${base.id}-built-${no}`;
-    const ship = new Player(this.hud, this.worldSfx, this.scene, this.effects, this.markerManager, { name: `新造艦-${no}`, state: base.state, id });
+    const shipName = generateRandomName('player');
+    const ship = new Player(this.hud, this.worldSfx, this.scene, this.effects, this.markerManager, { name: shipName, state: base.state, id });
     base.baseState.dockedVessels.push({
       id: ship.id,
       name: ship.name,

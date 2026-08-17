@@ -12,7 +12,7 @@ const EARTH: Attractor = {
 };
 
 export function register(): void {
-  test('occlusion: マップ上の見かけ半径を基準に2Rから1.5Rでフェードする', () => {
+  test('occlusion: マップ上の見かけ半径を基準に1.5Rから1.0Rでフェードする', () => {
     const cameraPos = v3(-2e7, 0, 0);
     const centerDistance = 2e7;
     const apparentRadius = Math.asin(EARTH.radius / centerDistance);
@@ -22,10 +22,10 @@ export function register(): void {
       return v3(cameraPos.x + dir.x * 6e7, dir.y * 6e7, 0);
     };
 
-    assert.equal(occlusionOpacity(cameraPos, pointAt(2), [EARTH]), 1);
-    assert.ok(Math.abs(occlusionOpacity(cameraPos, pointAt(1.75), [EARTH]) - 0.5) < 1e-12);
-    assert.ok(occlusionOpacity(cameraPos, pointAt(1.5), [EARTH]) < 1e-12);
-    assert.equal(occlusionOpacity(cameraPos, pointAt(1), [EARTH]), 0);
+    assert.equal(occlusionOpacity(cameraPos, pointAt(1.5), [EARTH]), 1);
+    assert.ok(Math.abs(occlusionOpacity(cameraPos, pointAt(1.25), [EARTH]) - 0.5) < 1e-12);
+    assert.ok(occlusionOpacity(cameraPos, pointAt(1), [EARTH]) < 1e-12);
+    assert.equal(occlusionOpacity(cameraPos, pointAt(0.5), [EARTH]), 0);
   });
 
   test('occlusion: 天体の裏側の点は遮蔽される', () => {

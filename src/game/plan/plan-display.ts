@@ -6,8 +6,9 @@ import { Attractor, strongestAttractor } from '../../physics/attractor';
 import { isOccluded } from '../../physics/occlusion';
 import { Projected } from '../../physics/projection';
 import type { Ephemeris } from '../../physics/ephemeris';
-import { SIM_EPOCH_SEC, fmtMarkerDist, fmtDist } from '../hud/utils';
+import { SIM_EPOCH_SEC, fmtMarkerDist } from '../hud/utils';
 import { celestialBodyName } from '../hud/frame-labels';
+import { getApsisLabelSpec } from '../hud/orbit-labels';
 import { TickLabelMode, TickRank, calendarBoundaries, tickLabel } from '../hud/calendar-ticks';
 import { MarkerManager } from '../marker/marker-manager';
 import { ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-glyphs';
@@ -19,7 +20,7 @@ import { DisplayDurationSource, PlanData } from './plan';
 import { PlanPath } from './plan-path';
 import type { DisplayWindow } from '../display-window-manager';
 import type { FutureAttractorProvider } from '../simulation/future-attractors';
-import type { Player } from '../player/player';
+import type { Controllable } from '../game-entity/controllable';
 
 // 近地点・遠地点アイコン。右クリックの被選択物であると同時に、表示するラベルを持つ。
 interface ApsisIcon extends MapPickable {
@@ -82,9 +83,9 @@ export class PlanDisplay {
 
   // 計画折れ線を再積分し、表示時刻のゴースト位置と近地点・遠地点アイコンを求め直す。
   // 起点が null のときは何も求めない — 出さない計画の位置は持たない。ship はノードの無い
-  // 唯一の区間を PlanPath が自機の予測列として答えるために渡す。
+  // 唯一の区間を PlanPath が操作対象の予測列として答えるために渡す。
   update(
-    planData: PlanData | null, displayWindow: DisplayWindow, attractorProvider: FutureAttractorProvider, ship: Player | null,
+    planData: PlanData | null, displayWindow: DisplayWindow, attractorProvider: FutureAttractorProvider, ship: Controllable | null,
   ): void {
     if (planData === null) {
       this.ghost = null;
@@ -219,24 +220,26 @@ export class PlanDisplay {
     }
     if (pe && ap && (apDist - peDist) / (apDist + peDist) < C.APSIS_MIN_ECC) return [];
 
-    const namePrefix = ownerName ? `${ownerName} (計画)` : undefined;
+    const namePrefix = ownerName ? (this.path.nodeCount > 0 ? `${ownerName} (計画)` : ownerName) : undefined;
     const icons: ApsisIcon[] = [];
     if (pe && peCenter) {
+      const peSpec = getApsisLabelSpec('pe', peCenter.id);
       icons.push({
-        id: 'apsisPe', name: '近地点', kind: 'apsis',
+        id: 'apsisPe', name: peSpec.nameJa, kind: 'apsis',
         ownerName: namePrefix,
         pos: this.path.toDisplay(pe.r, pe.t),
         time: pe.t,
-        label: `Pe ${fmtDist(peDist - peCenter.radius)}`,
+        label: peSpec.short,
       });
     }
     if (ap && apCenter) {
+      const apSpec = getApsisLabelSpec('ap', apCenter.id);
       icons.push({
-        id: 'apsisAp', name: '遠地点', kind: 'apsis',
+        id: 'apsisAp', name: apSpec.nameJa, kind: 'apsis',
         ownerName: namePrefix,
         pos: this.path.toDisplay(ap.r, ap.t),
         time: ap.t,
-        label: `Ap ${fmtDist(apDist - apCenter.radius)}`,
+        label: apSpec.short,
       });
     }
     return icons;

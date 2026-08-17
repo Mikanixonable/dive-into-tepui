@@ -231,8 +231,8 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   flex-direction: column; text-align: center;
 }
 #hud-result h1 { font-size: var(--font-3xl); letter-spacing: 6px; margin-bottom: var(--space-6); }
-#hud-result.win h1 { color: var(--text); text-shadow: 0 0 18px color-mix(in srgb, var(--text) var(--glow-weak), transparent); }
-#hud-result.lose h1 { color: var(--accent); text-shadow: 0 0 18px color-mix(in srgb, var(--accent) var(--glow-strong), transparent); }
+#hud-result.win h1 { color: var(--text); }
+#hud-result.lose h1 { color: var(--accent); }
 #hud-result .detail {
   font-size: var(--font-xl); line-height: 2; color: var(--text);
   background: var(--surface); border: 1px solid var(--edge); border-radius: var(--radius-m); padding: var(--space-6) var(--space-6);
