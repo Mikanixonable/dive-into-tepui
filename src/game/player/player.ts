@@ -22,6 +22,7 @@ import { focusTargetId } from '../camera/focus-target';
 import type { MapVisibility } from '../celestial/map-visibility';
 import type { DisplayWindow } from '../display-window-manager';
 import { generateRandomName } from '../random-name';
+import { celestialBodyName } from '../hud/frame-labels';
 import type { Stage } from '../stages/stage';
 import { PlayerThrottle } from './player-throttle';
 import { PlayerFire, type AmmoLoad } from './player-fire';
@@ -377,11 +378,17 @@ export class Player extends Ship {
 
     // 熱・動圧・大気突入・地表到達のいずれかを喪失理由として判定する
     let reason: string | null = null;
-    if (limit === 'heat-aero') reason = '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した';
-    else if (limit === 'heat-internal') reason = '排熱が追いつかず、機体は熱で機能不全に陥った';
-    else if (limit === 'dynpressure') reason = '動圧が構造限界を超え、機体は空力的に分解した';
-    else if (burnUpBody(this.state.r, attractors, C.PLAYER_MIN_ALT) !== null) reason = '大気圏に突入し機体は焼失した';
-    else if (reachedBody(this.actual.prevState, this.state, attractors, C.PLAYER_MIN_ALT) !== null) reason = '天体の地表へ到達し機体は失われた';
+    if (limit === 'heat-aero') reason = `${this.name} は断熱圧縮による加熱で熱防御が飽和し、焼失した`;
+    else if (limit === 'heat-internal') reason = `${this.name} は排熱が追いつかず、熱で機能不全に陥った`;
+    else if (limit === 'dynpressure') reason = `${this.name} は動圧が構造限界を超え、空力的に分解した`;
+    else {
+      const burnUp = burnUpBody(this.state.r, attractors, C.PLAYER_MIN_ALT);
+      if (burnUp !== null) reason = `${this.name} は ${celestialBodyName(burnUp.id)} の大気圏に突入し、焼失した`;
+      else {
+        const impact = reachedBody(this.actual.prevState, this.state, attractors, C.PLAYER_MIN_ALT);
+        if (impact !== null) reason = `${this.name} は ${celestialBodyName(impact.body.id)} の地表へ到達し、失われた`;
+      }
+    }
     if (reason === null) return;
 
     this.alive = false;
