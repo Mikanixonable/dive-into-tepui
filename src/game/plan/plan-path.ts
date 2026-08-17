@@ -1,12 +1,12 @@
 // 多ノードの計画軌道を arc 単位で描く。Plan の corners を区間へ分解し、区間ごとに区間ソース
-// (PlanArc の積分結果か、ノードを1つも持たない末尾区間だけが使う PredictedArc)と
-// TrajectoryLine(折れ線)を index で対応付けて持つ。起点・重力源・apsisCenter が既存の PlanArc
-// と変われば作り直し、終端だけが動いた区間は PlanArc.setEnd に動かさせる — どちらの
-// 場合も折れ線はその区間の TrajectoryLine プールを使い回す。画面判定も同じ表示変換を通すため
-// 描画とずれない。
+// (SegmentSource: 統一 PredictedArc への参照と、そこから読む [from, to])と TrajectoryLine(折れ線)を
+// index で対応付けて持つ。ノードを1つも持たない唯一の区間は自機自身の予測弧を借用し(owned=false)、
+// それ以外は起点・重力源が既存の弧と変われば作り直し、終端だけが動いた区間は requiredEnd の
+// 書き換えだけで済ませる — どちらの場合も折れ線はその区間の TrajectoryLine プールを使い回す。
+// 画面判定も同じ表示変換を通すため描画とずれない。
 import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../physics/kinematic-state';
-import { Attractor, strongestAttractor } from '../../physics/attractor';
+import { Attractor, BodyImpact } from '../../physics/attractor';
 import { Vec3, v3 } from '../../physics/vec3';
 import { FrameTransform, ReferenceFrame, toFrameDir, toFramePoint, toInertialDir, toInertialPoint } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -16,10 +16,10 @@ import { FloatingOrigin } from '../floating-origin';
 import { TrajectoryLine } from '../trajectory-line';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { DisplayDurationSource, PlanData, TimeRange, segmentDurationFrom } from './plan';
-import { PlanArc } from './plan-arc';
-import { PredictedArc } from './predicted-arc';
+import { PredictedArc } from '../simulation/predicted-arc';
 import type { FutureAttractorProvider } from '../simulation/future-attractors';
 import type { Player } from '../player/player';
+import { clipSamplesTo, stateAt, withinEnd } from './arc-range';
 import { goldenSectionMin } from '../../physics/optimize';
 import * as C from '../const';
 
@@ -27,6 +27,7 @@ const SEGMENT_COLORS = [0xffb36b, 0xff8a26, 0xff6a00];
 const arcColor = (i: number): number => SEGMENT_COLORS[Math.min(i, SEGMENT_COLORS.length - 1)]!;
 
 const OFFSCREEN: Projected = { x: 0, y: 0, front: false };
+const NO_SAMPLES: readonly KinematicState[] = [];
 
 // 時刻の近さで tie-break するときに同点とみなす幅[s]。
 const TIME_TIE_SEC = 1e-6;
@@ -34,13 +35,18 @@ const TIME_TIE_SEC = 1e-6;
 // nearestSample が最寄りサンプルの左右区間を補間曲線上で細分するときの黄金分割探索の反復回数。
 const NEAREST_SAMPLE_REFINE_ITERATIONS = 20;
 
-// apsisCenter は末尾区間だけが持つ、起点自身の時刻の重力源から選んだ中心天体。
-type Segment = { state0: KinematicState; end: number; apsisCenter: Attractor | null };
+type Segment = { state0: KinematicState; end: number };
 
-// 最後のバーン後(これから乗る軌道)の区間。samples はその区間(PlanArc または PredictedArc)の
-// samples をそのまま渡す参照で、その区間の終端(end)が変わらない限り同一参照を保つ。
+// 1区間ぶんの積分ソース。owned が真なら PlanPath がこの弧の生成・requiredEnd/retainFrom の
+// 書き込みまで持つ(伸ばすのは Predictor の予算パス — growableArcs 参照)。偽ならノードを1つも
+// 持たない唯一の区間で、arc は操作艦自身の予測弧をそのまま借りたもの(艦の予測がまだ無い
+// フレームは null)。
+type SegmentSource = { arc: PredictedArc | null; from: number; to: number; owned: boolean };
+
+// 最後のバーン後(これから乗る軌道)の区間。samples はその区間の(クリップ済み)積分結果を
+// そのまま渡す参照で、その区間の終端(end)が変わらない限り同一参照を保つ。
 // periapsis/apoapsis は、区間が地表到達等で打ち切られてその極値へ届かなければ null。
-// apsisCenter はその極値を検出した区間自身が答える中心天体。
+// apsisCenter はその極値を検出した弧自身が答える中心天体。
 export interface FinalSegment {
   readonly state0: KinematicState;
   readonly samples: readonly KinematicState[];
@@ -56,10 +62,8 @@ export interface PlanPathSample {
 
 export class PlanPath {
   readonly group = new THREE.Group();
-  // 先頭 activeCount 本がこのフレームの区間に対応する(区間が減れば末尾を捨てる)。ノードを
-  // 1つも持たない唯一の区間は自機の予測列を答える PredictedArc、それ以外は自前で積分する
-  // PlanArc。
-  private arcs: (PlanArc | PredictedArc)[] = [];
+  // 先頭 activeCount 本がこのフレームの区間に対応する(区間が減れば末尾を捨てる)。
+  private sources: SegmentSource[] = [];
   // 折れ線は index ごとのプールとして持ち、区間数が減っても捨てない(色は index で決まるので
   // 使い回す)。
   private lines: TrajectoryLine[] = [];
@@ -87,10 +91,12 @@ export class PlanPath {
   // 計画全体は表示期間より長くなり得るため、折れ線と目盛が同じ窓を読むようにする。
   private displayFrom = 0;
   private displayTo = 0;
-  // 直近の update() で作り直した区間の本数と、積分に回した積分step数の合計
-  // (作り直し・継ぎ足しの両方を含む)。
+  // clipSamplesTo が実際に切り詰めた(= 新規配列を作った)結果を区間の index ごとに
+  // (元配列, to) でメモ化する。TrajectoryLine.syncGeometry の再 bake 抑制やクリック候補の
+  // 走査が同一フレーム内で何度も同じ配列参照を要求するため。
+  private readonly samplesCache: ({ source: readonly KinematicState[]; to: number; result: readonly KinematicState[] } | null)[] = [];
+  // 直近の update() で作り直した区間の本数。
   lastRebuiltArcs = 0;
-  lastSteps = 0;
 
   // group をシーンへ登録する(初期状態は非表示)。
   constructor(scene: THREE.Scene, private readonly displayDuration: DisplayDurationSource) {
@@ -98,10 +104,10 @@ export class PlanPath {
     scene.add(this.group);
   }
 
-  // 起点とノード列から区間列を組み直す。ノードを1つも持たない唯一の区間は ship の予測列を
-  // PredictedArc として答え、それ以外の区間は起点・重力源・apsisCenter が既存の PlanArc と
-  // 一致すれば setEnd で終端だけを動かし、一致しなければ作り直す。表示変換の文脈
-  // (座標系・un-bake 時刻)もこのフレームのものに更新する。
+  // 起点とノード列から区間列を組み直す。ノードを1つも持たない唯一の区間は ship 自身の予測弧を
+  // 借用し、それ以外の区間は起点・重力源が既存の弧と一致すれば requiredEnd/retainFrom の
+  // 書き換えだけで済ませ、一致しなければ作り直す(伸ばすのは呼び出し側の予算パス — growableArcs
+  // 参照)。表示変換の文脈(座標系・un-bake 時刻)もこのフレームのものに更新する。
   update(
     planData: PlanData, ship: Player | null,
     ephemeris: Ephemeris, frame: ReferenceFrame, currentTime: number,
@@ -116,45 +122,58 @@ export class PlanPath {
     this.attractors = attractors;
     this.unbakeTransform = ephemeris.frameTransformAt(frame, currentTime, attractors);
     this.lastRebuiltArcs = 0;
-    this.lastSteps = 0;
     // 起点→node…→末尾区間に分解する
     const segments = buildSegments(planData, ephemeris, this.displayDuration);
     this._plannedEnd = segments[segments.length - 1]!.end;
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i]!;
       const isFinal = i === segments.length - 1;
-      // ノードが1つも無い間の唯一の区間は自機の予測列そのもの。予測がまだ生えていない
-      // フレームは何も答えず、次のフレームで生え直す。
+      // ノードが1つも無い間の唯一の区間は自機の予測弧そのものを借りる。艦の予測がまだ
+      // 生えていないフレームは何も答えず、次のフレームで生え直す。
       if (planData.nodes.length === 0 && isFinal && ship !== null) {
-        this.arcs[i] = new PredictedArc(ship, seg.state0, seg.end);
+        const arc = ship.predictedArc;
+        arc?.apsides?.dropBefore(seg.state0.t);
+        this.sources[i] = { arc, from: seg.state0.t, to: seg.end, owned: false };
         continue;
       }
-      const apsisCenterId = seg.apsisCenter?.id ?? null;
-      const prevArc = this.arcs[i];
-      const existing = prevArc instanceof PlanArc ? prevArc : undefined;
-      let arc: PlanArc;
-      if (!existing || !existing.represents(seg.state0, seg.end, attractorProvider.revision, apsisCenterId)) {
-        arc = new PlanArc(seg.state0, seg.end, attractorProvider, seg.apsisCenter);
-        this.arcs[i] = arc;
+      const prev = this.sources[i];
+      let arc = prev?.owned ? prev.arc : null;
+      if (!arc || !arc.represents(seg.state0, seg.end, attractorProvider.revision)) {
+        // 惑星への周回計画のみが対象なので、自機自身の弾道係数(SHIP_BCINV/SHIP_SRP_COEFF)で
+        // 積分する。外挿の尾は持たない(keplerTail=false) — 尾の上にノードを置くと、
+        // 実際に積分し直した次のノードと繋がらなくなるため。
+        arc = new PredictedArc(
+          seg.state0, attractorProvider, C.SHIP_BCINV, C.SHIP_SRP_COEFF, /* keplerTail */ false,
+        );
         this.lastRebuiltArcs++;
-      } else {
-        existing.setEnd(seg.end);
-        arc = existing;
       }
-      this.lastSteps += arc.lastSteps;
+      arc.requiredEnd = seg.end;
+      arc.retainFrom = seg.state0.t;
+      this.sources[i] = { arc, from: seg.state0.t, to: seg.end, owned: true };
     }
-    this.arcs.length = segments.length;
+    this.sources.length = segments.length;
+    this.samplesCache.length = segments.length;
     this.activeCount = segments.length;
     this._nodeCount = planData.nodes.length;
-    const finalArc = this.arcs[segments.length - 1]!;
+    const finalSource = this.sources[segments.length - 1]!;
     const finalSeg = segments[segments.length - 1]!;
     this.final = {
       state0: finalSeg.state0,
-      samples: finalArc.samples,
-      periapsis: finalArc.periapsisPoint(),
-      apoapsis: finalArc.apoapsisPoint(),
-      apsisCenter: finalArc.apsisCenter,
+      samples: this.samplesOf(segments.length - 1, finalSource),
+      periapsis: this.periapsisOf(finalSource),
+      apoapsis: this.apoapsisOf(finalSource),
+      apsisCenter: finalSource.arc?.apsides?.center ?? null,
     };
+  }
+
+  // このフレーム owned な弧を区間順(= 時刻順)で返す。Predictor の予算パスが実際に伸ばす対象。
+  growableArcs(): readonly PredictedArc[] {
+    const out: PredictedArc[] = [];
+    for (let i = 0; i < this.activeCount; i++) {
+      const source = this.sources[i]!;
+      if (source.owned && source.arc) out.push(source.arc);
+    }
+    return out;
   }
 
   // 最後のバーン後の区間。update() を一度も通していなければ null。
@@ -163,7 +182,7 @@ export class PlanPath {
   }
 
   // 各区間の折れ線メッシュを最新のサンプル列へ同期し、区間数が減った分の線を隠す。ノードを
-  // 1つも持たない区間(PredictedArc)は自機の predictedLine が描くので、ここでは折れ線を
+  // 1つも持たない区間(借用のみ)は自機の predictedLine が描くので、ここでは折れ線を
   // 隠すだけにする。画面判定が使う視点(project)もここで受け取り、毎フレーム上書きする。
   // 破線のドット/隙間は各区間のサンプル列中央の代表点で scale(m/px)を引き、ピクセル指定を
   // 実距離に直してから渡す — ズームによらず画面上の間隔を一定に保つため。camera は各区間の
@@ -173,14 +192,14 @@ export class PlanPath {
     this.cameraPos = cameraPos;
     if (this.ephemeris === null) return;
     for (let i = 0; i < this.activeCount; i++) {
-      const arc = this.arcs[i]!;
+      const source = this.sources[i]!;
       const line = this.lineAt(i);
-      if (arc instanceof PredictedArc) {
+      if (!source.owned || !source.arc) {
         line.setVisible(false);
         continue;
       }
       line.setVisible(true);
-      const samples = arc.samples;
+      const samples = this.samplesOf(i, source);
       let dashSize = C.PLAN_ARC_DASH_PX;
       let gapSize = C.PLAN_ARC_GAP_PX;
       if (samples.length > 0) {
@@ -192,15 +211,15 @@ export class PlanPath {
       line.setDash(dashSize, gapSize);
       // 計画全体が表示期間より長くても、折れ線は表示窓内だけを描く。
       line.syncGeometry(
-        arc.trajectory,
-        Math.max(this.displayFrom, arc.state0.t),
-        Math.min(this.displayTo, arc.end),
+        source.arc.trajectory,
+        Math.max(this.displayFrom, source.from),
+        Math.min(this.displayTo, source.to),
         this.frame, this.ephemeris, this.attractors,
       );
       line.syncTransform(this.frame, this.unbakeTime, this.ephemeris, fo, this.attractors);
       line.sync(camera);
     }
-    // 線プールは区間数が減っても捨てずに残すので、隠す範囲は arcs でなく lines の本数まで見る。
+    // 線プールは区間数が減っても捨てずに残すので、隠す範囲は sources でなく lines の本数まで見る。
     for (let i = this.activeCount; i < this.lines.length; i++) this.lines[i]!.setVisible(false);
   }
 
@@ -209,7 +228,7 @@ export class PlanPath {
   impactPoints(): readonly { readonly state: KinematicState; readonly body: Attractor; readonly arcIdx: number }[] {
     const out: { state: KinematicState; body: Attractor; arcIdx: number }[] = [];
     for (let i = 0; i < this.activeCount; i++) {
-      const impact = this.arcs[i]?.impactPoint();
+      const impact = this.impactOf(this.sources[i]!);
       if (impact) out.push({ state: impact.state, body: impact.body, arcIdx: i });
     }
     return out;
@@ -220,7 +239,7 @@ export class PlanPath {
     let minT = Infinity;
     let maxT = -Infinity;
     for (let i = 0; i < this.activeCount; i++) {
-      const samples = this.arcs[i]!.samples;
+      const samples = this.samplesOf(i, this.sources[i]!);
       if (samples.length === 0) continue;
       const from = Math.max(samples[0]!.t, this.displayFrom);
       const to = Math.min(samples[samples.length - 1]!.t, this.displayTo);
@@ -246,7 +265,10 @@ export class PlanPath {
   // 各ノードの到達時点(噴射直前)の状態。到達前に打ち切られた区間は null。
   arrivalStates(): (KinematicState | null)[] {
     const out: (KinematicState | null)[] = [];
-    for (let i = 0; i < this._nodeCount; i++) out.push(this.arcs[i]?.endState() ?? null);
+    for (let i = 0; i < this._nodeCount; i++) {
+      const source = this.sources[i];
+      out.push(source ? this.stateAtSource(source, source.to) : null);
+    }
     return out;
   }
 
@@ -260,7 +282,7 @@ export class PlanPath {
   // PlanEditor は sampleAt() ではなくこちらを使う。
   sampleAtWithArc(t: number): PlanPathSample | null {
     for (let i = 0; i < this.activeCount; i++) {
-      const s = this.arcs[i]!.at(t);
+      const s = this.stateAtSource(this.sources[i]!, t);
       if (s) return { state: s, arcIdx: i };
     }
     return null;
@@ -309,7 +331,7 @@ export class PlanPath {
     const unbakeTf = ephemeris ? this.currentUnbakeTransform() : null;
     const candidates: { state: KinematicState; arcIdx: number; sampleIdx: number; dSq: number }[] = [];
     for (let i = 0; i < this.activeCount; i++) {
-      const samples = this.arcs[i]!.samples;
+      const samples = this.samplesOf(i, this.sources[i]!);
       for (let j = 0; j < samples.length; j++) {
         const s = samples[j]!;
         if (range && (s.t < range.min || s.t > range.max)) continue;
@@ -343,8 +365,8 @@ export class PlanPath {
     }
     if (!best) return null;
 
-    const arc = this.arcs[best.arcIdx]!;
-    const samples = arc.samples;
+    const source = this.sources[best.arcIdx]!;
+    const samples = this.samplesOf(best.arcIdx, source);
     let lo = best.sampleIdx > 0 ? samples[best.sampleIdx - 1]!.t : best.state.t;
     let hi = best.sampleIdx < samples.length - 1 ? samples[best.sampleIdx + 1]!.t : best.state.t;
     if (range) {
@@ -353,16 +375,16 @@ export class PlanPath {
     }
     if (hi <= lo) return { state: best.state, arcIdx: best.arcIdx };
 
-    // 時刻 t の画面距離の2乗。arc が t を答えられない、または画面裏に投影される場合は Infinity。
+    // 時刻 t の画面距離の2乗。source が t を答えられない、または画面裏に投影される場合は Infinity。
     const f = (t: number): number => {
-      const state = arc.at(t);
+      const state = this.stateAtSource(source, t);
       if (!state) return Infinity;
       const p = this.projectPoint(state.r, t);
       if (!p.front) return Infinity;
       return (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
     };
     const t = goldenSectionMin(lo, hi, f, NEAREST_SAMPLE_REFINE_ITERATIONS);
-    const refined = arc.at(t);
+    const refined = this.stateAtSource(source, t);
     return { state: refined ?? best.state, arcIdx: best.arcIdx };
   }
 
@@ -376,6 +398,44 @@ export class PlanPath {
       );
     }
     return this.unbakeTransform;
+  }
+
+  // source を to でクリップしたサンプル列。source.arc が無ければ空配列。end で実際に切り詰めが
+  // 要ったとき(source.arc.trajectory 自身は end を越えて伸び続ける)だけ index ごとに
+  // (元配列, to) でメモ化する — 同じフレーム内の複数の読者(sync/timeRange/nearestSample)へ
+  // 同じ配列参照を返し続けないと、TrajectoryLine の再 bake 抑制が毎回働かなくなる。
+  private samplesOf(i: number, source: SegmentSource): readonly KinematicState[] {
+    if (!source.arc) return NO_SAMPLES;
+    const raw = source.arc.trajectory.samplesOldestFirst();
+    const cached = this.samplesCache[i];
+    if (cached && cached.source === raw && cached.to === source.to) return cached.result;
+    const result = clipSamplesTo(raw, source.to);
+    this.samplesCache[i] = { source: raw, to: source.to, result };
+    return result;
+  }
+
+  // source が答える範囲を to でクリップしたうえでの時刻 t の状態。
+  private stateAtSource(source: SegmentSource, t: number): KinematicState | null {
+    return source.arc ? stateAt(source.arc.trajectory, t, source.to) : null;
+  }
+
+  // source の弧が天体表面へ達した状態。to を超えていれば(区間が縮んでその先で見つかったことに
+  // なれば)null。
+  private impactOf(source: SegmentSource): BodyImpact | null {
+    const impact = source.arc?.impact ?? null;
+    return impact && withinEnd(impact.state.t, source.to) ? impact : null;
+  }
+
+  // source が答える範囲で最初の近地点。to を超えていれば null。
+  private periapsisOf(source: SegmentSource): KinematicState | null {
+    const first = source.arc?.apsides?.periapsis ?? null;
+    return first && withinEnd(first.t, source.to) ? first : null;
+  }
+
+  // source が答える範囲で最初の遠地点。to を超えていれば null。
+  private apoapsisOf(source: SegmentSource): KinematicState | null {
+    const first = source.arc?.apsides?.apoapsis ?? null;
+    return first && withinEnd(first.t, source.to) ? first : null;
   }
 
   // group 全体の表示/非表示を切り替える。
@@ -403,8 +463,7 @@ export class PlanPath {
 }
 
 // 起点から nodes を順にたどって区間列を返す。先頭 nodes.length 本は次のノードで終わり、
-// 末尾の1本は segmentDurationFrom ぶん伸び、その起点自身の時刻で選んだ中心天体を持つ
-// (表示時刻の重力源では表示時刻に応じて中心天体が変わり、区間の物理そのものと食い違う)。
+// 末尾の1本は segmentDurationFrom ぶん伸びる。
 function buildSegments(
   planData: PlanData,
   ephemeris: Ephemeris, displayDuration: DisplayDurationSource,
@@ -413,15 +472,10 @@ function buildSegments(
   let state0 = planData.anchor;
   // ノードを1つずつ経由点として区間を切り出す
   for (const node of planData.nodes) {
-    segments.push({ state0, end: node.t, apsisCenter: null });
+    segments.push({ state0, end: node.t });
     state0 = node;
   }
-  // 区間長と中心天体は同じ起点・同じ時刻の問いなので、天体窓は1回だけ引いて両方に使う。
   const attractors = ephemeris.attractorsAt(state0.t);
-  segments.push({
-    state0,
-    end: state0.t + segmentDurationFrom(state0, attractors, displayDuration),
-    apsisCenter: strongestAttractor(state0.r, attractors),
-  });
+  segments.push({ state0, end: state0.t + segmentDurationFrom(state0, attractors, displayDuration) });
   return segments;
 }

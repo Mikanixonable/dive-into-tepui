@@ -396,19 +396,7 @@ export const DISPLAY_DURATION_MAX = 365 * 86400; // 手動レンジで指定で�
 // サンプルが1件も残らず、どの時刻も引けない列になる。
 export const DISPLAY_DURATION_MIN = 3600;
 
-// --- 軌道計画の折れ線(plan/plan-arc.ts) ---
-export const PLAN_ARC_MAX_SAMPLES = 2000; // 1区間が保持するサンプル数の上限
-// 積分済みのサンプル列が、要求区間の求める間引き間隔に対して何倍まで粗くてよいか。表示期間を
-// 短くしたときは積分結果を捨てず答える範囲だけを狭めるが、狭めた区間に残るサンプルが数点まで
-// 減ると、折れ線上のクリック候補が飛び飛びの点になる。これを超えて粗ければ区間を作り直す。
-export const PLAN_ARC_MAX_SAMPLE_COARSENING = 8;
-// 1周回あたりの積分ステップ数。RK4 の誤差は1周あたりのステップ数でほぼ決まるので、
-// これを固定すると高度・離心率によらず精度が揃う(28日ぶんの LEO を積分して長半径誤差 1km 未満)。
-export const PLAN_ARC_STEPS_PER_REV = 100;
-// 1回の積分呼び出し(= 区間ごとに1フレーム1回)で回せる積分ステップ数の上限。手動レンジで
-// 年スケールの表示期間を許すと 1周回 / PLAN_ARC_STEPS_PER_REV のままではステップ数が
-// フレーム時間を圧迫するので、超えたらそこで止めて続きを次のフレームへ回す。
-export const PLAN_ARC_MAX_STEPS = 20000;
+// --- 軌道計画の折れ線(plan/plan-path.ts) ---
 // 計画軌道の折れ線を破線で描くときの、破線1本・間隔の画面上の長さ [px] と不透明度。
 // 実距離ではなく画面ピクセルで持つのは、マップの倍率が数桁変わるため実距離で固定すると
 // 拡大時は数本の線分に、縮小時はサブピクセルになって実線と区別できなくなるため。
@@ -456,8 +444,13 @@ export const ARC_STEPS_PER_REV = 600;
 // 刻み幅を決めるのは span > ARC_MAX_STEPS × ARC_MIN_STEP_DT(≒4.6日)のときだけ。
 export const ARC_MAX_STEPS = 20000;
 export const ARC_MAX_SAMPLES = 2000;
-export const PREDICT_STEP_BUDGET = 500; // Predictor が1フレームに配る予測ステップ数の上限
-export const PREDICT_COMBAT_STEP_BUDGET = 128; // 戦闘中は自機の線だけを粗く維持する
+// 積分済みのサンプル列が、要求区間の求める間引き間隔に対して何倍まで粗くてよいか
+// (PredictedArc.represents 用)。表示期間を短くしたときは積分結果を捨てず答える範囲だけを
+// 狭めるが、狭めた区間に残るサンプルが数点まで減ると、折れ線上のクリック候補が飛び飛びの
+// 点になる。これを超えて粗ければ弧を作り直す。
+export const ARC_MAX_SAMPLE_COARSENING = 8;
+export const ARC_STEP_BUDGET = 500; // Predictor が1フレームに配る予測ステップ数の上限
+export const ARC_COMBAT_STEP_BUDGET = 128; // 戦闘中は自機の線・計画の弧だけを粗く維持する
 // 予測刻みの下限 [s]。予測は固定のフレーム予算でホライズンまで伸ばす表示側の近似なので、
 // 実シミュレーションより粗く刻むこと自体が目的である — 細かくすれば届く先が近くなるだけで、
 // 折れ線の誤差は間引き補間(PREDICT_SAMPLE_ERROR)が支配しているので見える精度は増えない。
@@ -475,14 +468,15 @@ export const PREDICT_RESET_DIST = 500; // 予測位置と実位置がこれを�
 // 誤差は間引き間隔の4乗で効くので、上限で間引きが粗くなる長い表示期間では
 // PREDICT_RESET_DIST をこの値から外挿した幅まで広げないと、正しい列まで破棄してしまう。
 export const PREDICT_SAMPLE_ERROR = 30;
-// 1フレームの予測予算のうち操作対象の艦に割ける割合の上限。優先はするが独占はさせない —
-// 予測は表示だけでなく計画軌道の重力源や衝突判定の相手としても消費されるため、艦の予測が
-// 完成するまで他の個体が止まると、計画軌道の形が艦の予測進捗に依存してしまう。
-export const PREDICT_PLAYER_BUDGET_RATIO = 0.5;
-// ラウンドロビンで1体に必ず渡すステップ数の下限。予測列の history に最初のサンプルが積まれる
-// までは at() がほぼ全時刻で null を返し、次フレームの乖離判定で必ず破棄されるので、
-// その1サンプル分(sampleInterval / 刻み幅 ≒ 10 ステップ)を下回る配分は作り直しを繰り返す。
-export const PREDICT_MIN_ENTITY_STEPS = 16;
+// 1フレームの予測予算のうち、操作艦の弧+計画軌道の弧(interactive 枠)に割ける割合の上限。
+// 優先はするが独占はさせない — 計画の弧は他個体の予測を重力源・衝突判定の相手として読むため、
+// 編集直後の計画にこの枠を丸ごと食わせると、その依存先(background 側)の予測の成長が止まる。
+export const ARC_INTERACTIVE_RATIO = 0.5;
+// background のラウンドロビンで1体に必ず渡すステップ数の下限。予測列の history に最初の
+// サンプルが積まれるまでは at() がほぼ全時刻で null を返し、次フレームの乖離判定で必ず
+// 破棄されるので、その1サンプル分(sampleInterval / 刻み幅 ≒ 10 ステップ)を下回る配分は
+// 作り直しを繰り返す。
+export const ARC_MIN_ITEM_STEPS = 16;
 // [N] 自動ワープ: 残り時間 / MARGIN 以下の最大シミュレーション速度を選び、STOP 秒前に解除。
 export const AUTOWARP_MARGIN = 2;
 export const AUTOWARP_STOP = 10;

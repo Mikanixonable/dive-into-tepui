@@ -30,6 +30,7 @@ import { focusPoint } from '../camera/focus-target';
 import { Attractor, orbitalElementsOf, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
 import { toFrameState } from '../../physics/frame';
 import type { FutureAttractors } from '../simulation/future-attractors';
+import type { PredictedArc } from '../simulation/predicted-arc';
 import type { DisplayWindow } from '../display-window-manager';
 import type { PerfCounts } from '../../perf-meter';
 
@@ -750,12 +751,15 @@ export class PlanEditor {
     }
   }
 
-  // 負荷確認ウィンドウが読む、直近フレームの計画区間の積分規模。
-  perfCounts(): Pick<PerfCounts, 'planArcs' | 'planSteps'> {
-    return {
-      planArcs: this.planDisplay.path.lastRebuiltArcs,
-      planSteps: this.planDisplay.path.lastSteps,
-    };
+  // 負荷確認ウィンドウが読む、直近フレームに作り直した計画区間の本数。
+  perfCounts(): Pick<PerfCounts, 'planArcs'> {
+    return { planArcs: this.planDisplay.path.lastRebuiltArcs };
+  }
+
+  // Predictor の予算パスへ渡す、このフレーム owned な計画区間の弧。表示していない計画の弧は
+  // 伸ばさない。
+  growableArcs(): readonly PredictedArc[] {
+    return this.displayedPlan === null ? [] : this.planDisplay.path.growableArcs();
   }
 
   // このフレームに出す折れ線の材料。出す価値のある折れ線が無ければ null — ノードの無い計画は
