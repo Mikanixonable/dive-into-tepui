@@ -1,7 +1,7 @@
 // 実験5: 予測の刻み幅を「その場の軌道周期に比例させる」必要があるかを、精度で測る。
 //
-// predictor.ts の dt は max(PREDICT_MIN_STEP_DT, localOrbitPeriod/PREDICT_STEPS_PER_REV,
-// horizon/PREDICT_MAX_STEPS) で、真ん中の項だけが重力源の解決を要求する。その1項のために
+// predictor.ts の dt は max(ARC_MIN_STEP_DT, localOrbitPeriod/ARC_STEPS_PER_REV,
+// horizon/ARC_MAX_STEPS) で、真ん中の項だけが重力源の解決を要求する。その1項のために
 // 1ステップにつき暦をもう1回引いている(exp3 ではこれが1反復コストの約半分)。
 //
 // 「周期に比例させる」と「定数にする」は、比例定数/定数の取り方次第で dt をいくらでも
@@ -20,7 +20,7 @@ import { v3, sub, len, cross, norm, scale, add } from '../../src/physics/vec3';
 import { stepDynamics } from '../../src/physics/dynamics';
 import {
   buildEphemeris, initialLeoState, posError,
-  PREDICT_MIN_STEP_DT, PREDICT_STEPS_PER_REV, PREDICT_MAX_STEPS,
+  ARC_MIN_STEP_DT, ARC_STEPS_PER_REV, ARC_MAX_STEPS,
   R_EARTH, SHIP_BCINV,
 } from './common';
 
@@ -153,7 +153,7 @@ function partC(ephemeris: Ephemeris, regimes: readonly Regime[]): void {
     const { period, radius } = scaleOf(ephemeris, regime.state);
     const dt = Math.min(
       HORIZON_SEC,
-      Math.max(PREDICT_MIN_STEP_DT, period / PREDICT_STEPS_PER_REV, HORIZON_SEC / PREDICT_MAX_STEPS),
+      Math.max(ARC_MIN_STEP_DT, period / ARC_STEPS_PER_REV, HORIZON_SEC / ARC_MAX_STEPS),
     );
     return { regime, period, radius, dt, steps: Math.ceil(HORIZON_SEC / dt) };
   });
@@ -202,8 +202,8 @@ function partD(ephemeris: Ephemeris, regimes: readonly Regime[]): void {
       const start = ephemeris.gravityAttractorsAt(a.t);
       resolveA++;
       const dt = Math.min(end - a.t, Math.max(
-        PREDICT_MIN_STEP_DT, localOrbitPeriod(a.r, start) / PREDICT_STEPS_PER_REV,
-        HORIZON_SEC / PREDICT_MAX_STEPS,
+        ARC_MIN_STEP_DT, localOrbitPeriod(a.r, start) / ARC_STEPS_PER_REV,
+        HORIZON_SEC / ARC_MAX_STEPS,
       ));
       const mid = ephemeris.gravityAttractorsAt(a.t + dt / 2);
       resolveA++;
@@ -219,12 +219,12 @@ function partD(ephemeris: Ephemeris, regimes: readonly Regime[]): void {
     resolveB++;
     while (end - b.t > 1e-9) {
       const dt = Math.min(end - b.t, Math.max(
-        PREDICT_MIN_STEP_DT, localOrbitPeriod(b.r, sizing) / PREDICT_STEPS_PER_REV,
-        HORIZON_SEC / PREDICT_MAX_STEPS,
+        ARC_MIN_STEP_DT, localOrbitPeriod(b.r, sizing) / ARC_STEPS_PER_REV,
+        HORIZON_SEC / ARC_MAX_STEPS,
       ));
       const fresh = Math.min(end - b.t, Math.max(
-        PREDICT_MIN_STEP_DT, localOrbitPeriod(b.r, ephemeris.gravityAttractorsAt(b.t)) / PREDICT_STEPS_PER_REV,
-        HORIZON_SEC / PREDICT_MAX_STEPS,
+        ARC_MIN_STEP_DT, localOrbitPeriod(b.r, ephemeris.gravityAttractorsAt(b.t)) / ARC_STEPS_PER_REV,
+        HORIZON_SEC / ARC_MAX_STEPS,
       ));
       maxRatio = Math.max(maxRatio, Math.max(dt / fresh, fresh / dt));
       const mid = ephemeris.gravityAttractorsAt(b.t + dt / 2);
