@@ -29,8 +29,8 @@ import type { FrameControls } from '../hud/frame-controls';
 import { focusPoint } from '../camera/focus-target';
 import { Attractor, orbitalElementsOf, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
 import { toFrameState } from '../../physics/frame';
-import { PlanAttractors } from './plan-attractors';
-import type { EntityManager } from '../simulation/entity-manager';
+import type { FutureAttractors } from '../simulation/future-attractors';
+import type { PredictedArc } from '../simulation/predicted-arc';
 import type { DisplayWindow } from '../display-window-manager';
 import type { PerfCounts } from '../../perf-meter';
 
@@ -71,9 +71,6 @@ export class PlanEditor {
 
   readonly planDisplay: PlanDisplay;
   private readonly gizmo3d: PlanGizmo3D;
-  // 計画の積分が時刻ごとに引く重力源・衝突体。世代値が動いたときだけ保持を捨てるので、
-  // フレームを跨いで持ち続ける。
-  private readonly attractors: PlanAttractors;
 
   // 直近の update() が組んだ計画区間列の終端時刻(表示窓でクリップしない)。一度も
   // update していなければ NaN。
@@ -102,7 +99,8 @@ export class PlanEditor {
     private readonly _uiSfx: UiSfx,
     private readonly simSpeedManager: SimSpeedManager,
     private readonly ephemeris: Ephemeris,
-    entities: EntityManager,
+    // 計画の積分が時刻ごとに引く重力源・衝突体。
+    private readonly attractors: FutureAttractors,
     scene: THREE.Scene,
     private readonly markerManager: MarkerManager,
     private readonly activePlayers: ActivePlayerController,
@@ -110,7 +108,6 @@ export class PlanEditor {
     private readonly frameControls: FrameControls,
   ) {
     this.planDisplay = new PlanDisplay(scene, markerManager, ephemeris, displayDuration);
-    this.attractors = new PlanAttractors(ephemeris, entities);
     this.nodeGizmo = new NodeGizmo(this._hud.layers.marker, this._hud.layers.popup, this._hud.overlayManager);
     this.orbitMenu = new ContextMenu<KinematicState, MenuAction>(this._hud.layers.popup, this._hud.overlayManager);
     this.gizmo3d = new PlanGizmo3D();
@@ -720,7 +717,7 @@ export class PlanEditor {
     // revision は前フレームの終端(lastPlanEnd)を基準に畳み込む — 今フレームの終端は
     // このあとの planDisplay.update が決めるので、渡す時点ではまだ確定していない。
     this.attractors.resolve(excludedIds, this.plan?.revision ?? 0, this.lastPlanEnd);
-    this.planDisplay.update(this.displayedPlan, displayWindow, this.attractors, ship?.name);
+    this.planDisplay.update(this.displayedPlan, displayWindow, this.attractors, ship);
     this.updateEquatorNodes(displayWindow);
   }
 
@@ -755,12 +752,15 @@ export class PlanEditor {
     }
   }
 
-  // 負荷確認ウィンドウが読む、直近フレームの計画区間の積分規模。
-  perfCounts(): Pick<PerfCounts, 'planArcs' | 'planSteps'> {
-    return {
-      planArcs: this.planDisplay.path.lastRebuiltArcs,
-      planSteps: this.planDisplay.path.lastSteps,
-    };
+  // 負荷確認ウィンドウが読む、直近フレームに作り直した計画区間の本数。
+  perfCounts(): Pick<PerfCounts, 'planArcs'> {
+    return { planArcs: this.planDisplay.path.lastRebuiltArcs };
+  }
+
+  // Predictor の予算パスへ渡す、このフレーム owned な計画区間の弧。表示していない計画の弧は
+  // 伸ばさない。
+  growableArcs(): readonly PredictedArc[] {
+    return this.displayedPlan === null ? [] : this.planDisplay.path.growableArcs();
   }
 
   // このフレームに出す折れ線の材料。出す価値のある折れ線が無ければ null — ノードの無い計画は

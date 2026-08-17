@@ -3,7 +3,7 @@ import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { Ship } from './ship';
 import { Attractor } from '../../physics/attractor';
-import { isBurnedUp } from '../../physics/atmosphere';
+import { burnUpBody } from '../../physics/atmosphere';
 import type { GameEntity } from './game-entity';
 import type { Contact } from '../simulation/contact';
 import { Attitude } from '../../physics/attitude';
@@ -238,7 +238,7 @@ export class Enemy extends Ship {
   // 大気突入による自然死。固体表面への接触は collideWith が扱う。
   checkLoss(_dt: number, simTime: number, activeStage: Stage, _playerPos: Vec3, attractors: readonly Attractor[]): void {
     if (!this.alive) return;
-    if (!isBurnedUp(this.state.r, attractors, C.REENTRY_ALT)) return;
+    if (burnUpBody(this.state.r, attractors, C.REENTRY_ALT) === null) return;
     this.alive = false;
     this.destroyEffect();
     activeStage.recordEnemyDeath(this, simTime, 'reentry');

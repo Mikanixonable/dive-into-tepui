@@ -19,7 +19,8 @@ import * as C from '../const';
 import { DisplayDurationSource, PlanData } from './plan';
 import { PlanPath } from './plan-path';
 import type { DisplayWindow } from '../display-window-manager';
-import type { PlanAttractorProvider } from './plan-attractors';
+import type { FutureAttractorProvider } from '../simulation/future-attractors';
+import type { Controllable } from '../game-entity/controllable';
 
 // 近地点・遠地点アイコン。右クリックの被選択物であると同時に、表示するラベルを持つ。
 interface ApsisIcon extends MapPickable {
@@ -81,9 +82,10 @@ export class PlanDisplay {
   }
 
   // 計画折れ線を再積分し、表示時刻のゴースト位置と近地点・遠地点アイコンを求め直す。
-  // 起点が null のときは何も求めない — 出さない計画の位置は持たない。
+  // 起点が null のときは何も求めない — 出さない計画の位置は持たない。ship はノードの無い
+  // 唯一の区間を PlanPath が操作対象の予測列として答えるために渡す。
   update(
-    planData: PlanData | null, displayWindow: DisplayWindow, attractorProvider: PlanAttractorProvider, ownerName?: string,
+    planData: PlanData | null, displayWindow: DisplayWindow, attractorProvider: FutureAttractorProvider, ship: Controllable | null,
   ): void {
     if (planData === null) {
       this.ghost = null;
@@ -95,11 +97,11 @@ export class PlanDisplay {
     const { simTime, displayTime } = displayWindow;
     this.attractors = this.ephemeris.attractorsAt(displayTime);
     this.path.update(
-      planData, this.ephemeris, displayWindow.frame, simTime, this.attractors, attractorProvider,
+      planData, ship, this.ephemeris, displayWindow.frame, simTime, this.attractors, attractorProvider,
       displayWindow.duration,
     );
     this.ghost = this.ghostAt(displayTime, simTime);
-    this.apsisIcons = this.apsisIconsOf(ownerName);
+    this.apsisIcons = this.apsisIconsOf(ship?.name);
     this.impactIcons = this.impactIconsOf();
     this.tickIcons = this.tickIconsOf(displayWindow.tickLabelMode, simTime);
   }
@@ -243,7 +245,7 @@ export class PlanDisplay {
     return icons;
   }
 
-  // 天体衝突が検出された地点(区間ごとに高々1つ)。衝突天体は判定そのもの(PlanArc)が
+  // 天体衝突が検出された地点(区間ごとに高々1つ)。衝突天体は判定そのもの(積分弧)が
   // 返したものをそのまま使う — ここで中心天体を引き直すと、判定に使った天体・時刻と
   // 一致しない高度が出かねない。
   private impactIconsOf(): readonly ImpactIcon[] {

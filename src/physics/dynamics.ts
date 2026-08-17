@@ -1,6 +1,5 @@
 // 与えられた加速度による RK4 積分の器(ケプラーの二体問題の解析式込み)、天体の2次重力場に
-// よる摂動、および一質点にかかる全加速度(重力 + 2次重力場 + 大気抵抗 + 推力)の合成。
-// ゲーム本体(game-entity/game-entity.ts)と軌道計画(plan/plan-arc.ts)の積分が共有する
+// よる摂動、および一質点にかかる全加速度(重力 + 2次重力場 + 大気抵抗 + 推力)の合成の
 // 唯一の定義箇所。THREE/DOM 非依存の純関数。
 import { Attractor, Degree2Gravity, attractorAccel } from './attractor';
 import { KinematicState, kinematicState } from './kinematic-state';
