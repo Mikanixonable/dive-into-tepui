@@ -3,10 +3,10 @@
 // (PlanPath)が区間ごとにこれを持ち、生成・終端の伸縮・破棄を判断する。
 import { KinematicState, hermiteInterpolate, kinematicState } from '../../physics/kinematic-state';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
-import { Attractor, localOrbitPeriod } from '../../physics/attractor';
+import { Attractor, BodyImpact, localOrbitPeriod } from '../../physics/attractor';
 import { containingBody, sweptHermiteSphereToi } from '../../physics/sphere-contact';
 import { ApsisTrack } from '../../physics/trajectory-features';
-import { isBurnedUp } from '../../physics/atmosphere';
+import { burnUpBody } from '../../physics/atmosphere';
 import { attractorsNearInto } from '../simulation/attractors';
 import type { PlanAttractorProvider } from './plan-attractors';
 import { addScaled, len, scale, sub, Vec3 } from '../../physics/vec3';
@@ -33,11 +33,6 @@ function anchorJumped(prev: KinematicState, next: KinematicState): boolean {
   const speed = Math.max(len(prev.v), len(next.v));
   const reachable = speed * dt * ANCHOR_JUMP_SPEED_MARGIN + ANCHOR_JUMP_MIN_DIST;
   return len(sub(next.r, prev.r)) > reachable;
-}
-
-export interface PlanImpact {
-  readonly state: KinematicState;
-  readonly body: Attractor;
 }
 
 type ImpactCandidate = { body: Attractor; toi: number };
@@ -71,7 +66,7 @@ function findImpact(
   prev: KinematicState, next: KinematicState, candidates: readonly Attractor[],
   startBodies: ReadonlyMap<string, Attractor>, endBodies: ReadonlyMap<string, Attractor>,
   hits: ImpactCandidate[],
-): PlanImpact | null {
+): BodyImpact | null {
   let hitCount = 0;
   for (const body of candidates) {
     const bStart = startBodies.get(body.id);
@@ -142,7 +137,7 @@ export class PlanArc {
   // 何もしない。
   private truncated = false;
   // 積分中に最初に天体表面へ達した状態とその天体。到達しなければ null。
-  private impact: PlanImpact | null = null;
+  private impact: BodyImpact | null = null;
   private readonly apsisTrack: ApsisTrack | null;
   private samplesCache: {
     readonly source: readonly KinematicState[]; readonly end: number; readonly result: readonly KinematicState[];
@@ -267,7 +262,7 @@ export class PlanArc {
 
   // 積分中に最初に天体表面へ達した状態と、その天体。end を超えていれば(区間が縮んで
   // その先で見つかったことになれば)null。到達しなければ null。
-  impactPoint(): PlanImpact | null {
+  impactPoint(): BodyImpact | null {
     return this.impact && this.withinEnd(this.impact.state.t) ? this.impact : null;
   }
 
@@ -376,9 +371,9 @@ export class PlanArc {
         this.truncated = true;
         break;
       }
-      if (isBurnedUp(r, stepAttractors, C.REENTRY_ALT)) {
-        const earth = endHeld.collision.find((a) => a.id === 'earth');
-        if (earth) this.impact = { state: trajectory.state, body: earth };
+      const burnedUpAt = burnUpBody(r, endHeld.collision, C.REENTRY_ALT);
+      if (burnedUpAt !== null) {
+        this.impact = { state: trajectory.state, body: burnedUpAt };
         this.truncated = true;
         break;
       }
