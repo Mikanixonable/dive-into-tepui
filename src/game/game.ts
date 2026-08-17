@@ -294,7 +294,9 @@ export class Game {
     // ポーズ中・決着後も無条件に呼ぶ: simTime が止まっている間は乖離が起きないので、
     // 予測は伸び切ったところで止まるだけで害はない。
     this.sections.enter(SECTION.predict);
-    this.predictor.update(this.simulator.simTime, this.player, displayWindow.duration, overviewMode);
+    this.predictor.update(
+      this.simulator.simTime, this.player, displayWindow.duration, overviewMode, this.editor.growableArcs(),
+    );
     this.sections.exit(SECTION.predict);
     this.sections.enter(SECTION.plan);
     this.targeter.updateEquatorNodes(overviewMode, displayWindow, this.ephemeris);
