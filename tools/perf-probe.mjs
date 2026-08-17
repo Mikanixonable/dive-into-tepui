@@ -131,8 +131,9 @@ async function waitForDebugPage(port) {
 
 // 1リクエストの待ち時間の上限。ページのレンダラが落ちるとその接続宛の応答は二度と返らないので、
 // 上限が無いと待ち続けて条件マトリクスがそこで永久に止まる(実際に止まった)。重い条件では
-// 1フレームが数秒になるため、フレーム数回ぶんの余裕を見た値にする。
-const REQUEST_TIMEOUT_MS = 30_000;
+// 1フレームが1秒を超えるため、フレーム数十回ぶんの余裕を見る — ここを詰めると遅いマシンで
+// ラウンドを取りこぼし、中央値を採るラウンド数が減って値の信頼性が落ちる。
+const REQUEST_TIMEOUT_MS = 60_000;
 
 function connectDevTools(url, onEvent) {
   const socket = new WebSocket(url);
@@ -246,6 +247,19 @@ async function wheelAt(devTools, x, y, deltaY) {
   });
 }
 
+// ゲームが localStorage に置くもの(セーブスロット・スナップショット・表示トグル・
+// パネルの畳み方)を全部消す。Chrome プロファイルは条件マトリクス全体で使い回すので、
+// 消さないと前のラウンドの状態が次の起動へ持ち越される:
+//   - オートセーブが書いたスナップショットは、同じステージの次の起動で復帰し、
+//     復帰した周回では Stage.init() が走らない。スナップショットに載らない種別
+//     (小惑星・破片)は世界から消え、多数個体を測るはずの条件が自機1隻だけになる。
+//   - 表示パネルのトグルは永続するので、軌道線を切る条件の後は、以降の条件が
+//     切られたままの状態で始まる。
+// 条件・ラウンドごとに必ず新規の周回として起動させるため、navigate の直前に呼ぶ。
+async function clearSavedState(devTools, origin) {
+  await devTools.send('Storage.clearDataForOrigin', { origin, storageTypes: 'local_storage' });
+}
+
 // 条件式が真になるまでポーリングする。固定 sleep ではなく条件で待つ(rAF ループの都合)。
 async function waitForCondition(fn, label, timeoutMs = 8000, intervalMs = 50) {
   const deadline = Date.now() + timeoutMs;
@@ -256,7 +270,7 @@ async function waitForCondition(fn, label, timeoutMs = 8000, intervalMs = 50) {
   throw new Error(`Timed out waiting for ${label}.`);
 }
 
-async function bootAndWaitReady(devTools, timeoutMs = 30000) {
+async function bootAndWaitReady(devTools, timeoutMs = 60000) {
   let state;
   const deadline = Date.now() + timeoutMs;
   do {
@@ -500,6 +514,7 @@ async function runConditionOnce(devTools, baseUrl, cond, fatalEvents) {
   let lastErr = null;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
+      await clearSavedState(devTools, baseUrl);
       await devTools.send('Page.navigate', { url });
       await bootAndWaitReady(devTools);
       // ビュー切替・ノード配置は等速(×1)の落ち着いた軌道のうちに行う — マップビュー中は
@@ -746,6 +761,7 @@ async function sampleTimeseriesRows(devTools) {
 async function runTimeseriesForWarp(devTools, baseUrl, { stage, warp, durationSec, intervalMs }, fatalEvents) {
   fatalEvents.length = 0;
   const url = `${baseUrl}/?stage=${encodeURIComponent(stage)}&perf=1`;
+  await clearSavedState(devTools, baseUrl);
   await devTools.send('Page.navigate', { url });
   await bootAndWaitReady(devTools);
   await raiseWarpTo(devTools, warp);
