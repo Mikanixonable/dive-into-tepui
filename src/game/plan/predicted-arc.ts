@@ -1,6 +1,5 @@
-// 自機の予測列を、計画軌道の1区間として答える。GameEntity.predicted を [state0.t, end] の
-// 範囲に切って答えるだけで積分は一切持たないので、PlanArc と違い毎フレーム作り直してよい。
-// PlanArc と同じ形で答えるため、PlanPath は両者を区別せず読める。
+// GameEntity の予測列を、計画軌道の1区間として [state0.t, end] の範囲に切って答える。
+// 答えるのは列の持ち主が既に求め終えた値だけなので、生成は軽く、毎フレーム作り直してよい。
 import { KinematicState } from '../../physics/kinematic-state';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { Attractor, BodyImpact } from '../../physics/attractor';
@@ -8,7 +7,7 @@ import { GameEntity } from '../game-entity/game-entity';
 import { clipSamplesTo, stateAt, withinEnd } from './arc-range';
 
 export class PredictedArc {
-  // 積分を持たないので常に0。
+  // 直近に回した積分ステップ数。常に0。
   public readonly lastSteps = 0;
 
   private readonly _state0: KinematicState;

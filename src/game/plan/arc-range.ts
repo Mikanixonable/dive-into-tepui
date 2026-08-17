@@ -1,5 +1,5 @@
-// PlanArc と PredictedArc が共有する、1本の DynamicTrajectory を [state0.t, end] の範囲に
-// 限って答える処理。答え方をここへ集約することで、区間の切り方が両者で食い違わないようにする。
+// 1本の DynamicTrajectory を、答える範囲の終端 end で切って読む処理。end を越える時刻と
+// サンプルを落とし、丸め誤差ぶんだけ先端を越えるだけの時刻は先端そのものとして答える。
 import { KinematicState } from '../../physics/kinematic-state';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 
