@@ -7,6 +7,7 @@ import { orbitInfo } from './orbit-info';
 import { Attractor } from '../../physics/attractor';
 import type { Game } from '../game';
 
+import { getApsisLabelSpec } from './orbit-labels';
 import { Player } from '../player/player';
 
 const SYNC_INTERVAL_MS = 100;
@@ -30,11 +31,15 @@ export class OrbitPanel {
     this.nextSyncAt = now + SYNC_INTERVAL_MS;
 
     const oi = orbitInfo(entity, attractors);
+    const apSpec = getApsisLabelSpec('ap', oi.centerId);
+    const peSpec = getApsisLabelSpec('pe', oi.centerId);
     const thermal = entity instanceof Player ? entity.thermal : null;
     this.setText('center', oi.centerName);
     this.setText('alt', fmtDist(oi.alt));
     this.els.get('alt')?.classList.toggle('warn-hot', thermal?.altDescendWarned ?? false);
     this.setText('spd', fmtSpeed(oi.spd));
+    this.setText('ap-label', `${apSpec.nameJa} ${apSpec.short}`);
+    this.setText('pe-label', `${peSpec.nameJa} ${peSpec.short}`);
     this.setText('ap', fmtDist(oi.apAlt));
     this.setText('pe', fmtDist(oi.peAlt));
     this.setText('inc', `${oi.incDeg.toFixed(2)}°`);

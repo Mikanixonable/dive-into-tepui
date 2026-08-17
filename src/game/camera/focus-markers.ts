@@ -1,7 +1,7 @@
 // マップモードのフォーカス対象(天体・ラグランジュ点)ラベルの算出と HUD マーカーへの反映。
-import { Vec3, v3 } from '../../physics/vec3';
-import { Attractor, AttractorId, OrbitingId } from '../../physics/attractor';
-import { primaryOf } from '../../physics/solar-system';
+import { Vec3, v3, sub, len } from '../../physics/vec3';
+import { Attractor, AttractorId, OrbitingId, strongestAttractor } from '../../physics/attractor';
+import { CelestialRegistry, primaryOf } from '../../physics/solar-system';
 import { ProjectFn } from './camera-system';
 import { MarkerManager } from '../marker/marker-manager';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -10,13 +10,23 @@ import { occlusionOpacity } from '../../physics/occlusion';
 import { BodyClassToggles, systemMembersAt } from '../celestial/body-visibility';
 import { bodyClassOf } from '../celestial/body-class';
 import { MapVisibilityPolicy } from '../celestial/map-visibility';
-import { FOCUS_LABEL_PRIORITY_PX, LAGRANGE_MIN_CLEARANCE_RATIO } from '../const';
+import { FOCUS_LABEL_PRIORITY_PX, LAGRANGE_MIN_CLEARANCE_RATIO, MARKER_PRIORITY } from '../const';
 import type { MapPickable } from '../map-pickable';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
+import type { GroupedMarkers, GroupedMarkerItem } from '../marker/grouped-markers';
 
 type MutableMapPickable = { -readonly [K in keyof MapPickable]: MapPickable[K] };
 type ProjectedFocusLabel = { label: FocusLabel; x: number; y: number };
 type FocusProjection = { occluded: boolean; opacity: number; x: number; y: number; front: boolean };
+
+export interface ActiveCelestialLabel {
+  readonly id: string;
+  readonly x: number;
+  readonly y: number;
+  readonly priority: number;
+  readonly iconVisible: boolean;
+  readonly labelVisible: boolean;
+}
 
 export interface FocusLabel {
   id: string;
@@ -49,15 +59,26 @@ function lagrangeMarkerLabel(id: OrbitingId, n: 1 | 2 | 3 | 4 | 5): string {
   return `L${n}\n${celestialBodyName(id)}`;
 }
 
+// サブ行テキスト用のクリーンな Unicode 記号を取得する(SVG タグ文字列を避ける)。
+function cleanSubLabelGlyph(item: GroupedMarkerItem): string {
+  const cls = item.cls;
+  if (cls.includes('mk-self')) return '▲';
+  if (cls.includes('mk-base')) return '⬡';
+  if (cls.includes('mk-enemy')) return '△';
+  if (cls.includes('mk-ammo')) return '▣';
+  if (item.sym && !item.sym.trim().startsWith('<')) return item.sym.trim();
+  return '▲';
+}
+
 // 惑星 > 準惑星 > 衛星・小惑星・彗星 > ラグランジュ点。
 // 恒星は太陽系の基準点なので、惑星と同じ最上位として常に残す。
 const LABEL_PRIORITY: Record<'star' | 'planet' | 'dwarf' | 'satellite' | 'smallBody' | 'lagrange', number> = {
-  star: 4,
-  planet: 4,
-  dwarf: 3,
-  satellite: 2,
-  smallBody: 2,
-  lagrange: 1,
+  star: MARKER_PRIORITY.STAR_PLANET,
+  planet: MARKER_PRIORITY.STAR_PLANET,
+  dwarf: MARKER_PRIORITY.DWARF_PLANET,
+  satellite: MARKER_PRIORITY.SATELLITE_SMALL_BODY,
+  smallBody: MARKER_PRIORITY.SATELLITE_SMALL_BODY,
+  lagrange: MARKER_PRIORITY.LAGRANGE,
 };
 
 export class FocusMarkers {
@@ -89,8 +110,10 @@ export class FocusMarkers {
   private readonly cellRowPool: Map<number, ProjectedFocusLabel[]>[] = [];
   private shownIdsScratch: string[] = [];
   private readonly nowShownScratch = new Set<string>();
+  private readonly activeCelestialLabels: ActiveCelestialLabel[] = [];
 
   get shownLabelCount(): number { return this.shownLabels.length; }
+  get activeLabels(): readonly ActiveCelestialLabel[] { return this.activeCelestialLabels; }
 
   // レジストリからラベルの全集合を1度だけ組む。ラグランジュ点は5点まとめてではなく、
   // 共線点・三角点それぞれの成立条件を満たす点だけを持たせる。
@@ -144,6 +167,10 @@ export class FocusMarkers {
     for (const id of this.registryIds) appendBody(id, 0);
     this.allLabels = labels;
     for (const label of labels) this.labelsById.set(label.id, label);
+  }
+
+  isBodyPickable(id: string): boolean {
+    return this.labelsById.get(id)?.pickable ?? true;
   }
 
   // 表示中の天体・ラグランジュ点の時刻 t の座標。軌道オブジェクト一覧・右クリック候補も
@@ -258,7 +285,7 @@ export class FocusMarkers {
       const d = displayMap[lbl.id]!;
       lbl.showIcon = d.icon;
       lbl.showLabel = d.label;
-      lbl.pickable = true;
+      lbl.pickable = this.labelsById.get(lbl.id)?.pickable ?? true;
       shown.push(lbl);
     }
     this.shownLabels = shown;
@@ -339,23 +366,48 @@ export class FocusMarkers {
 
     const shownIds = this.shownIdsScratch;
     shownIds.length = 0;
+    this.activeCelestialLabels.length = 0;
     for (const lbl of this.shownLabels) {
       shownIds.push(lbl.id);
       const projectedState = frame.get(lbl.id);
       if (projectedState === undefined || projectedState.occluded) {
         lbl.pickable = false;
+        const rec = this.bodyPickableRecords.get(lbl.id);
+        if (rec) rec.pickable = false;
         if (projectedState?.occluded) this.markerManager.fadeOut(lbl.id);
         else this.markerManager.hide(lbl.id);
         continue;
       }
       const markerOpacity = projectedState.opacity;
-      // 優先度で隠すのはラベルだけ。アイコンまで消すと、表示設定の icon/label 分離と
-      // フォーカス対象の存在表示が崩れる。
-      lbl.pickable = lbl.showIcon || !hiddenByPriority.has(lbl.id);
+      // 画面上でより優先度の高い親/主天体に吸収されたマーカー(hiddenByPriority)は、マーカーDOMを確実に隠し衝突緩和走査からも除外する
+      if (hiddenByPriority.has(lbl.id)) {
+        lbl.pickable = false;
+        const rec = this.bodyPickableRecords.get(lbl.id);
+        if (rec) rec.pickable = false;
+        this.markerManager.hide(lbl.id);
+        continue;
+      }
+      const isLabelVisible = lbl.showLabel;
+      const isIconVisible = lbl.showIcon;
+      lbl.pickable = isLabelVisible || isIconVisible;
+      const rec = this.bodyPickableRecords.get(lbl.id);
+      if (rec) rec.pickable = lbl.pickable;
+      if (projectedState.front && (isIconVisible || isLabelVisible)) {
+        this.activeCelestialLabels.push({
+          id: lbl.id,
+          x: projectedState.x,
+          y: projectedState.y,
+          priority: lbl.labelPriority,
+          iconVisible: isIconVisible,
+          labelVisible: isLabelVisible,
+        });
+      }
       this.markerManager.setPosition(
-        lbl.id, lbl.isLagrange ? 'mk-poi mk-lagrange' : 'mk-poi', lbl.showIcon ? ENTITY_GLYPH.body : '', lbl.pos, project,
-        lbl.showLabel && !hiddenByPriority.has(lbl.id) ? lbl.markerLabel : '',
-        markerOpacity,
+        lbl.id, lbl.isLagrange ? 'mk-poi mk-lagrange' : 'mk-poi',
+        isIconVisible ? (lbl.isLagrange ? ENTITY_GLYPH.lagrange : ENTITY_GLYPH.body) : '',
+        lbl.pos, project,
+        isLabelVisible ? lbl.markerLabel : '',
+        markerOpacity, undefined, undefined, false, false, lbl.labelPriority,
       );
     }
     const nowShown = this.nowShownScratch;
@@ -368,8 +420,140 @@ export class FocusMarkers {
     this.shownIdsScratch.length = 0;
   }
 
+  // クローズダウン時に非表示になった船・敵機・基地を、所属親天体ラベルの下にサブテキスト行として描画する。
+  // 距離 500万 km 未満: 左揃え・目立たない色のリスト表示 (最大3行)
+  // 距離 500万 km 以上: 第2段階の省略表示として 1行でアイコンと数のみ表示 (衛星系もまとめて表示・プレフィックスなし)
+  syncSubLabels(
+    groupedMarkers: GroupedMarkers,
+    registry: CelestialRegistry,
+    attractors: readonly Attractor[],
+    overviewMode: boolean,
+    project: ProjectFn,
+    cameraPos: Vec3,
+  ): void {
+    if (!overviewMode) return;
+
+    const hiddenItems = groupedMarkers.getHiddenItems();
+    if (hiddenItems.length === 0) return;
+
+    const DIST_STAGE2_THRESHOLD = 5e9; // 5,000,000 km (500万km) in meters
+
+    const itemsByTargetBody = new Map<string, { prefix: string; item: GroupedMarkerItem }[]>();
+
+    for (const item of hiddenItems) {
+      const center = strongestAttractor(item.pos, attractors);
+      const centerLbl = this.labelsById.get(center.id);
+      const distToCenter = centerLbl ? len(sub(centerLbl.pos, cameraPos)) : Infinity;
+      const isStage2 = distToCenter >= DIST_STAGE2_THRESHOLD;
+
+      let targetId: string | null = null;
+      let prefix = '';
+
+      if (isStage2) {
+        // 第2段階 (500万km以上): 「月:」などのプレフィックスを表示せず、主親天体(地球等)へ集約
+        const primaryId = primaryOf(registry, center.id as OrbitingId);
+        if (primaryId && this.bodyPickableRecords.get(primaryId)?.pickable) {
+          targetId = primaryId;
+        } else if (this.bodyPickableRecords.get(center.id)?.pickable) {
+          targetId = center.id;
+        }
+        prefix = '';
+      } else {
+        // 第1段階 (500万km未満): 直近天体ラベルがあればそこへ、なければ親天体へ「月:」プレフィックス付きで繰り上げ
+        const rec = this.bodyPickableRecords.get(center.id);
+        if (rec?.pickable) {
+          targetId = center.id;
+          prefix = '';
+        } else {
+          const primaryId = primaryOf(registry, center.id as OrbitingId);
+          if (primaryId && this.bodyPickableRecords.get(primaryId)?.pickable) {
+            targetId = primaryId;
+            prefix = `${celestialBodyName(center.id as AttractorId)}: `;
+          }
+        }
+      }
+
+      if (targetId) {
+        let list = itemsByTargetBody.get(targetId);
+        if (!list) {
+          list = [];
+          itemsByTargetBody.set(targetId, list);
+        }
+        list.push({ prefix, item });
+      }
+    }
+
+    for (const [bodyId, entries] of itemsByTargetBody) {
+      const lbl = this.labelsById.get(bodyId);
+      if (!lbl || !lbl.showLabel || !lbl.pickable) continue;
+
+      const distToBody = len(sub(lbl.pos, cameraPos));
+      const isStage2 = distToBody >= DIST_STAGE2_THRESHOLD;
+      const subDivs: string[] = [];
+
+      if (isStage2) {
+        // 第2段階 (500万km以上): アイコンと個数のみの1行省略表示 (衛星系の船もまとめてカウント)
+        let nEnemy = 0;
+        let nAlly = 0;
+        let nBase = 0;
+        let nAmmo = 0;
+
+        for (const entry of entries) {
+          const item = entry.item;
+          if (item.cls.includes('mk-enemy')) nEnemy++;
+          else if (item.cls.includes('mk-base')) nBase++;
+          else if (item.cls.includes('mk-ammo')) nAmmo++;
+          else nAlly++;
+        }
+
+        const parts: string[] = [];
+        if (nEnemy > 0) parts.push(`△${nEnemy}`);
+        if (nAlly > 0) parts.push(`▲${nAlly}`);
+        if (nBase > 0) parts.push(`⬡${nBase}`);
+        if (nAmmo > 0) parts.push(`▣${nAmmo}`);
+
+        if (parts.length > 0) {
+          subDivs.push(`<div class="lbl-sub">${parts.join(' ')}</div>`);
+        }
+      } else {
+        // 第1段階 (500km未満): 左揃えのリスト表示 (最大3行)
+        entries.sort((a, b) => (b.item.priority ?? 0) - (a.item.priority ?? 0));
+        const maxLines = 3;
+        const total = entries.length;
+
+        if (total <= maxLines) {
+          for (const entry of entries) {
+            const glyph = cleanSubLabelGlyph(entry.item);
+            subDivs.push(`<div class="lbl-sub">${entry.prefix}${glyph} ${entry.item.name}</div>`);
+          }
+        } else {
+          for (let i = 0; i < 2; i++) {
+            const entry = entries[i]!;
+            const glyph = cleanSubLabelGlyph(entry.item);
+            subDivs.push(`<div class="lbl-sub">${entry.prefix}${glyph} ${entry.item.name}</div>`);
+          }
+          subDivs.push(`<div class="lbl-sub">+${total - 2} 隻</div>`);
+        }
+      }
+
+      const fullLabelText = `<span class="lbl-main">${lbl.markerLabel}</span>${subDivs.join('')}`;
+
+      const proj = this.frameScratch.get(lbl.id);
+      if (proj && proj.front && !proj.occluded) {
+        this.markerManager.setPosition(
+          lbl.id, lbl.isLagrange ? 'mk-poi mk-lagrange' : 'mk-poi',
+          lbl.showIcon ? (lbl.isLagrange ? ENTITY_GLYPH.lagrange : ENTITY_GLYPH.body) : '',
+          lbl.pos, project,
+          fullLabelText,
+          proj.opacity, undefined, undefined, false, false, lbl.labelPriority,
+        );
+      }
+    }
+  }
+
   // マップモードを抜けたときの後始末(戦闘ビューには天体ラベルを出さない)。
   hideLabels(): void {
+    this.activeCelestialLabels.length = 0;
     for (const lbl of this.allLabels) this.markerManager.hide(lbl.id);
   }
 }

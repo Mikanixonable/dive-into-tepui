@@ -79,9 +79,9 @@ const SORTS: readonly (readonly [ObjectListSort, string])[] = [
 const OBJECT_GLYPHS: Readonly<Record<MapPickKind, string>> = {
   body: ENTITY_GLYPH.body,
   player: ENTITY_GLYPH.ship,
-  ship: '△',
+  ship: ENTITY_GLYPH.enemyShip,
   ammo: ENTITY_GLYPH.ammo,
-  base: '⬡',
+  base: ENTITY_GLYPH.base,
   apsis: ORBIT_POINT_GLYPH.apsis,
   relnode: ORBIT_POINT_GLYPH.ascendingNode,
   eqnode: ORBIT_POINT_GLYPH.descendingNode,
