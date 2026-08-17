@@ -9,7 +9,8 @@ import type { Attractor } from '../../physics/attractor';
 import { strongestAttractor } from '../../physics/attractor';
 import { keplerPeriod } from '../../physics/elements';
 import { len, sub } from '../../physics/vec3';
-import { attractorsNearInto, classifyAttractors, predictedAttractorsAt } from './attractors';
+import { attractorsNearInto, classifyAttractors } from './attractors';
+import type { FutureAttractors } from './future-attractors';
 import type { PerfCounts } from '../../perf-meter';
 
 export class Predictor {
@@ -25,6 +26,7 @@ export class Predictor {
   constructor(
     private readonly entities: EntityManager,
     private readonly ephemeris: Ephemeris,
+    private readonly futureAttractors: FutureAttractors,
   ) {}
 
   // entities.cleanup(...) の後に呼ぶ。horizon は simTime から先に予測する長さ [s]。
@@ -91,7 +93,7 @@ export class Predictor {
       // なるので候補から除く。
       const rawCenter = strongestAttractor(
         tipState.r,
-        centerWindow ?? predictedAttractorsAt(this.ephemeris, this.entities, tipState.t),
+        centerWindow ?? this.futureAttractors.at(tipState.t).gravity,
         selfId,
       );
       // 外挿の中心は解析天体(Ephemeris の登録天体)に限る — 動的重力源が最強のときは、
@@ -111,13 +113,12 @@ export class Predictor {
       );
       // RK4 の各ステップには、その中点時刻の重力源を渡す。実シミュレーションも各サブステップ
       // の中点で attractorsAt を解決しており、予測だけ過去の天体位置を保持しないようにする。
-      const stepWindow = predictedAttractorsAt(this.ephemeris, this.entities, tipState.t + dt / 2);
-      const stepClassified = classifyAttractors(stepWindow);
+      const sources = this.futureAttractors.at(tipState.t + dt / 2);
       const stepAttractors = attractorsNearInto(
-        tipState.r, stepClassified, this.stepAttractorsScratch, selfId,
+        tipState.r, sources.classified, this.stepAttractorsScratch, selfId,
       );
       if (!e.stepPredicted(stepAttractors, simTime, dt, horizon, extrapolationCenter)) break;
-      centerWindow = stepWindow;
+      centerWindow = sources.gravity;
       consumed++;
       this.lastSteps++;
     }
