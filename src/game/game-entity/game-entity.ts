@@ -113,6 +113,9 @@ export class GameEntity {
 
   // 未来の予測列を保持する統一積分弧(game/simulation/predicted-arc.ts の PredictedArc)。
   private _predictedArc: PredictedArc | null = null;
+  // 弧そのもの(素の読み取り専用アクセス)。plan/plan-path.ts がノードの無い末尾区間として
+  // 丸ごと借用するために公開する — 生成は ensurePredictedArc の専任のまま。
+  get predictedArc(): PredictedArc | null { return this._predictedArc; }
   get predicted(): DynamicTrajectory | null { return this._predictedArc?.trajectory ?? null; }
   // 弧の積分中に見つかった近地点・遠地点。中心天体は弧を作った時点で最も強く引く解析天体に固定する。
   get predictedApsides(): ApsisTrack | null { return this._predictedArc?.apsides ?? null; }
@@ -293,7 +296,8 @@ export class GameEntity {
   ensurePredictedArc(sources: FutureAttractorProvider): PredictedArc | null {
     if (!this.predictsFuture) return null;
     this._predictedArc ??= new PredictedArc(
-      this.actual.state, sources, this.bcInv, this.srpCoeff, this.mu !== 0 ? this.id : undefined,
+      this.actual.state, sources, this.bcInv, this.srpCoeff, /* keplerTail */ true,
+      this.mu !== 0 ? this.id : undefined,
     );
     return this._predictedArc;
   }

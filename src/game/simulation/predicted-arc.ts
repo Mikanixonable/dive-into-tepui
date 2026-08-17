@@ -31,24 +31,33 @@ export class PredictedArc {
   private carriedSources: FutureSourcesAt | null = null;
   private readonly stepAttractorsScratch: Attractor[] = [];
   private readonly collisionScratch: Attractor[] = [];
+  // 要求された間引き下限(span / ARC_MAX_SAMPLES)の最も粗い値。周期由来の間隔は含めない —
+  // 含めると、作り直しても同じ値になる粗さを理由に represents が毎フレーム作り直しを命じる。
+  private _decimation = 0;
 
   // 所有者が毎フレーム書く。積分先端が到達すべき絶対時刻と、保持窓の左端。
   requiredEnd: number;
   retainFrom: number;
+  // 生成時の sources.revision。represents が完全一致を要求する。
+  readonly sourceRevision: number;
 
   // state0 を起点に先端を構築する。requiredEnd/retainFrom は state0.t で初期化され、
-  // 所有者が書き換えるまで needsGrowth は偽のまま。
+  // 所有者が書き換えるまで needsGrowth は偽のまま。keplerTail は先端の先を二体ケプラー外挿で
+  // 継ぐか — 実体の予測列は継ぐ(true)、計画の区間は継がない(false: 外挿の暫定値の上に
+  // 次のノードを置くと、実際に積分し直した結果と繋がらなくなるため)。
   constructor(
     readonly state0: KinematicState,
     private readonly sources: FutureAttractorProvider,
     private readonly bcInv: number,
     private readonly srpCoeff: number,
+    private readonly keplerTail: boolean,
     // 重力源・衝突体から自分自身を除く id(mu≠0 の重力源 entity のときだけ渡す)。
     private readonly excludeId?: AttractorId,
   ) {
     this._trajectory = new DynamicTrajectory(state0);
     this.requiredEnd = state0.t;
     this.retainFrom = state0.t;
+    this.sourceRevision = sources.revision;
   }
 
   get trajectory(): DynamicTrajectory { return this._trajectory; }
@@ -57,12 +66,28 @@ export class PredictedArc {
   get apsides(): ApsisTrack | null { return this._apsides; }
   // 打ち切られておらず、先端がまだ requiredEnd に届いていないか。
   get needsGrowth(): boolean { return !this._truncated && this._trajectory.state.t < this.requiredEnd; }
+  get decimation(): number { return this._decimation; }
+
+  // この弧が (state0, end) を持つ区間をそのまま表せるか(= 作り直さずに使い回せるか)。
+  // sourceRevision は完全一致を要求する。積分済みの間引き下限が、要求区間(end で決まる)の
+  // 求める下限の ARC_MAX_SAMPLE_COARSENING 倍を超えて粗ければ、区間を狭めるだけでは折れ線の
+  // クリック候補が飛び飛びの点になってしまうので表せないと答える。比べるのは間引き下限どうしで、
+  // 実際のサンプル間隔ではない — 間隔は刻み幅(ARC_STEPS_PER_REV)でも決まり、そちらは作り直しても
+  // 同じ値になるので、間隔を下限と比べると縮めようのない粗さを理由に毎フレーム作り直すことになる。
+  // 起点は state0 が同一参照かどうかで判定する。
+  represents(state0: KinematicState, end: number, sourceRevision: number): boolean {
+    if (sourceRevision !== this.sourceRevision) return false;
+    const sampleInterval = (end - this.state0.t) / C.ARC_MAX_SAMPLES;
+    if (this._decimation > sampleInterval * C.ARC_MAX_SAMPLE_COARSENING) return false;
+    return state0 === this.state0;
+  }
 
   // 1歩伸ばす。伸ばせなければ(既に requiredEnd に達している/打ち切り済みなら)false。
   step(): boolean {
     if (!this.needsGrowth) return false;
     const tip = this._trajectory.state;
     const span = Math.max(0, this.requiredEnd - this.retainFrom);
+    this._decimation = Math.max(this._decimation, span / C.ARC_MAX_SAMPLES);
 
     // 中心窓は最初の1歩だけ先端時刻で解決し、以後は前歩の中点で解決した窓を持ち越す。
     const held = this.carriedSources ?? this.sources.at(tip.t);
@@ -79,7 +104,10 @@ export class PredictedArc {
     // 中点で重力源を解決しており、弧だけ過去の天体位置を据え置かないようにする。
     const mid = this.sources.at(tip.t + dt / 2);
     const stepAttractors = attractorsNearInto(tip.r, mid.classified, this.stepAttractorsScratch, this.excludeId);
-    this._trajectory.step(dt, stepAttractors, this.bcInv, this.srpCoeff, null, sampleInterval, span, analyticCenter);
+    this._trajectory.step(
+      dt, stepAttractors, this.bcInv, this.srpCoeff, null, sampleInterval, span,
+      this.keplerTail ? analyticCenter : null,
+    );
 
     const { r, v } = this._trajectory.state;
     const finite = Number.isFinite(r.x) && Number.isFinite(r.y) && Number.isFinite(r.z)
