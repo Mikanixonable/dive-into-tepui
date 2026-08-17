@@ -1,28 +1,31 @@
-// 計画軌道の積分が時刻ごとに参照する重力源・衝突体と、その解決。積分は時刻を単調に進めながら
-// 1ステップにつき複数の時刻を引くので、同じ時刻への問い合わせだけを保持し、世代値が動いたら
-// まとめて捨てる。保持の要否はこのモジュールの中だけで決まり、外から捨てさせることはない。
+// 計画・予測の積分が時刻ごとに参照する重力源・衝突体と、その解決。世代値(revision)が、
+// 答える内容を変えうる入力(計画の編集・除外集合・各個体の予測の届き具合)の変化を
+// 呼び出し側の再積分キャッシュへ伝える。
 import type { Ephemeris } from '../../physics/ephemeris';
 import type { Attractor, AttractorId } from '../../physics/attractor';
-import { classifyAttractors } from '../simulation/attractors';
-import type { ClassifiedAttractors } from '../simulation/attractors';
-import type { EntityManager } from '../simulation/entity-manager';
+import { classifyAttractors, ClassifiedAttractors, mergeAttractors } from './attractors';
+import type { EntityManager } from './entity-manager';
 import type { GameEntity } from '../game-entity/game-entity';
 
-// ある時刻の、積分1ステップが必要とする対象一式。collision は mu=0 の表示天体も含む全天体に
-// 未来状態を引ける collides entity を加えたもの、gravity はそのうち引力を持つものと動的重力源。
-export type PlanSourcesAt = {
+// ある時刻の、積分1ステップが必要とする対象一式。collision は mu=0 の表示天体も含む全解析天体に
+// 未来状態を引ける predictedAsPlanCollider な entity を加えたもの、gravity はそのうち引力を
+// 持つものと動的重力源。
+export type FutureSourcesAt = {
   readonly t: number;
   readonly gravity: readonly Attractor[];
+  // gravity のうち解析天体だけの部分集合。ケプラー外挿・近地点/遠地点の中心天体は天体暦で
+  // 位置を引ける相手でなければならないので、動的重力源を含む gravity ではなくこちらを使う。
+  readonly analyticGravity: readonly Attractor[];
   readonly collision: readonly Attractor[];
   readonly collisionById: ReadonlyMap<AttractorId, Attractor>;
   readonly classified: ClassifiedAttractors;
 };
 
-// PlanArc は現在状態の配列を凍結せず、各積分時刻に同じ provider を呼ぶ。revision は provider が
-// 答える内容が変わったことを PlanArc の再積分キャッシュへ伝える。
-export type PlanAttractorProvider = {
+// 積分は現在状態の配列を凍結せず、各積分時刻に同じ provider を呼ぶ。revision は provider が
+// 答える内容が変わったことを呼び出し側の再積分キャッシュへ伝える。
+export type FutureAttractorProvider = {
   readonly revision: number;
-  readonly at: (t: number) => PlanSourcesAt;
+  readonly at: (t: number) => FutureSourcesAt;
 };
 
 const REVISION_MIX_PRIME = 16777619;
@@ -32,10 +35,6 @@ const NO_PREDICTION = -1;
 const PREDICTION_SHORT = 0;
 const PREDICTION_COVERS_PLAN = 1;
 const PREDICTION_TRUNCATED = 2;
-
-// 保持する時刻の数。1ステップが引くのは開始・中点・終了の3時刻で、ある歩の終了は次の歩の開始と
-// 一致する。その一致だけを拾えばよいので、少数で足りる。
-const HELD_SLOTS = 4;
 
 // 計画の終端がまだ求まっていないフレームで、毎回異なる revision を作るための連番。
 let unresolvedPlanEndTick = 0;
@@ -66,7 +65,7 @@ function predictionCoverage(entity: GameEntity, planEnd: number): number {
 
 // provider が返す内容を変えうる入力だけを畳み込んだ世代値。planEnd は計画区間列自身の
 // 積分終端(表示窓でクリップしない)で、有限でなければ毎回異なる値を返す。
-export function planSourceRevision(
+function futureSourceRevision(
   entities: EntityManager,
   excludedEntityIds: readonly AttractorId[],
   planRevision: number,
@@ -78,9 +77,9 @@ export function planSourceRevision(
   if (!Number.isFinite(planEnd)) {
     return mixNumber(acc, ++unresolvedPlanEndTick);
   }
-  // provider の出力に現れるのは、将来時刻の状態を答えられる個体 — predictsFuture が真のもの —
-  // だけなので、その id と予測の届き具合を畳み込む。id が集合の顔ぶれの変化を、届き具合が
-  // 各個体の引ける時刻範囲の変化を表す。
+  // provider の出力に現れるのは、将来時刻の状態を答えられる個体 — 重力源として predictsFuture が
+  // 真のもの、衝突体として predictedAsPlanCollider が真のもの — だけなので、その id と予測の
+  // 届き具合を畳み込む。id が集合の顔ぶれの変化を、届き具合が各個体の引ける時刻範囲の変化を表す。
   const excluded = new Set(excludedEntityIds);
   for (const e of entities.attractors()) {
     if (!e.predictsFuture) continue;
@@ -88,18 +87,16 @@ export function planSourceRevision(
     acc = mixNumber(acc, predictionCoverage(e, planEnd));
   }
   for (const e of entities.all()) {
-    if (!e.alive || !e.predictsFuture || !e.collides || !(e.radius > 0) || excluded.has(e.id)) continue;
+    if (!e.alive || !e.predictedAsPlanCollider || excluded.has(e.id)) continue;
     acc = mixString(acc, e.id);
     acc = mixNumber(acc, predictionCoverage(e, planEnd));
   }
   return acc;
 }
 
-export class PlanAttractors implements PlanAttractorProvider {
+export class FutureAttractors implements FutureAttractorProvider {
   private revisionValue = 0;
   private excluded: ReadonlySet<AttractorId> = new Set();
-  private readonly held: (PlanSourcesAt | null)[] = new Array(HELD_SLOTS).fill(null);
-  private cursor = 0;
 
   constructor(
     private readonly ephemeris: Ephemeris,
@@ -108,60 +105,55 @@ export class PlanAttractors implements PlanAttractorProvider {
 
   get revision(): number { return this.revisionValue; }
 
-  // このフレームの入力を渡す。答える内容が変わっていれば、保持していた解決結果もここで捨てる
-  // — 呼び出し側は入力を渡すだけで、何を捨てるかを知る必要はない。
+  // このフレームの入力を渡す。答える内容が変わっていれば revision を進める — 呼び出し側は
+  // 入力を渡すだけで、何が答えを変えるかを知る必要はない。
   resolve(
     excludedEntityIds: readonly AttractorId[],
     planRevision: number,
     planEnd: number,
   ): void {
-    const next = planSourceRevision(this.entities, excludedEntityIds, planRevision, planEnd);
+    const next = futureSourceRevision(this.entities, excludedEntityIds, planRevision, planEnd);
     if (next === this.revisionValue) return;
     this.revisionValue = next;
     this.excluded = new Set(excludedEntityIds);
-    this.held.fill(null);
-    this.cursor = 0;
   }
 
-  // 時刻 t の対象一式。**返り値の配列と Map は保持され使い回されるので、呼び出し側で
-  // 書き換えてはならない。**
-  at(t: number): PlanSourcesAt {
-    for (const entry of this.held) {
-      if (entry !== null && entry.t === t) return entry;
-    }
-    const resolved = this.resolveAt(t);
-    this.held[this.cursor] = resolved;
-    this.cursor = (this.cursor + 1) % HELD_SLOTS;
-    return resolved;
+  // 時刻 t の対象一式。**返り値の配列と Map は呼び出し側が保持してよいが、書き換えては
+  // ならない**(弧が中心窓として次の歩まで持ち越す)。
+  at(t: number): FutureSourcesAt {
+    return this.resolveAt(t);
   }
 
   // 解析天体の窓は1回だけ引き、衝突体と重力源の両方をそこから組む — 同じ時刻の重力源を
   // 別の窓として引き直すと、同じ天体の位置を二度計算することになる。この窓を動的重力源の
   // displayState 外挿より先に引くのも同じ理由で、外挿が問い合わせる中心天体の stateOf を
   // そのキャッシュへ当てる。
-  private resolveAt(t: number): PlanSourcesAt {
+  private resolveAt(t: number): FutureSourcesAt {
     const collision: Attractor[] = [];
-    const gravity: Attractor[] = [];
+    const analyticGravity: Attractor[] = [];
     const collisionById = new Map<AttractorId, Attractor>();
     // 解析天体は mu=0 の表示天体も含めて全数が衝突対象で、そのうち引力を持つものが重力源。
+    // 積分がこの経路で惑星や衛星に終端するのは entity 側の宣言とは関係しない。
     for (const body of this.ephemeris.attractorsAt(t)) {
       collision.push(body);
       if (!collisionById.has(body.id)) collisionById.set(body.id, body);
-      if (body.mu !== 0) gravity.push(body);
+      if (body.mu !== 0) analyticGravity.push(body);
     }
+    const dynamicGravity: Attractor[] = [];
     for (const e of this.entities.attractors()) {
       const state = e.displayState(t, this.ephemeris);
       if (state === null) continue;
-      gravity.push({ id: e.id, mu: e.mu, radius: e.radius, degree2: e.degree2, isStar: e.isStar, state });
+      dynamicGravity.push({ id: e.id, mu: e.mu, radius: e.radius, degree2: e.degree2, isStar: e.isStar, state });
     }
+    const gravity = mergeAttractors(analyticGravity, dynamicGravity);
     for (const e of this.entities.all()) {
-      if (!e.alive || !e.collides || !(e.radius > 0) || this.excluded.has(e.id) || collisionById.has(e.id)) continue;
+      if (!e.alive || !e.predictedAsPlanCollider || this.excluded.has(e.id) || collisionById.has(e.id)) continue;
       const state = e.displayState(t, this.ephemeris);
       if (state === null) continue;
       const body = { id: e.id, mu: e.mu, radius: e.radius, degree2: e.degree2, isStar: e.isStar, state };
       collision.push(body);
       collisionById.set(e.id, body);
     }
-    return { t, gravity, collision, collisionById, classified: classifyAttractors(gravity) };
+    return { t, gravity, analyticGravity, collision, collisionById, classified: classifyAttractors(gravity) };
   }
 }
