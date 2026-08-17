@@ -1,7 +1,7 @@
 // 重力を及ぼすもの。位置・速度は ECI(地球は原点に静止)。THREE/DOM 非依存の純関数群。
 import { Quat } from './attitude';
 import { FrameTransform, toFrameState } from './frame';
-import { KinematicState, kinematicState } from './kinematic-state';
+import { KinematicState, hermiteInterpolate, kinematicState } from './kinematic-state';
 import { OrbitalElements, orbitalElementsFromState, keplerPeriod } from './elements';
 import { containingBody, sweptHermiteSphereToi } from './sphere-contact';
 import { Vec3, lenSq, len, sub, v3 } from './vec3';
@@ -107,14 +107,22 @@ export function frameOfAttractor(center: Attractor): FrameTransform {
   return { origin: center.state.r, originVel: center.state.v, q: IDENTITY_QUAT, omega: v3() };
 }
 
-// prev→next の1ステップの間に、半径 + margin の表面へ到達した天体。到達が無ければ null。
-// 複数に到達していれば最も早いものを返す。prev と next が同一時刻のときは点判定になる。
+// 天体表面へ到達した瞬間の状態と、その相手の天体。
+export interface BodyImpact {
+  readonly body: Attractor;
+  readonly state: KinematicState;
+}
+
+// prev→next の1ステップの間に、半径 + margin の表面へ到達した天体と、到達した瞬間の状態。
+// 到達が無ければ null。複数に到達していれば最も早いものを、掃引が求めた到達割合(toi)から
+// hermiteInterpolate で組んだ状態とともに返す。掃引が空振りした(開始時点で既に沈んでいる、
+// または区間が無い)場合は離散判定へ委譲し、prev/next いずれかそのものを到達状態として返す。
 export function reachedBody(
   prev: KinematicState,
   next: KinematicState,
   bodies: readonly Attractor[],
   margin: number,
-): Attractor | null {
+): BodyImpact | null {
   let earliest: Attractor | null = null;
   let earliestToi = Infinity;
   for (const body of bodies) {
@@ -126,8 +134,14 @@ export function reachedBody(
       earliestToi = toi;
     }
   }
-  // 掃引判定は開始時点で既に沈んでいる場合と区間の無い場合を離散判定へ委譲する。
-  return earliest ?? containingBody(prev.r, bodies, margin) ?? containingBody(next.r, bodies, margin);
+  if (earliest !== null) {
+    return { body: earliest, state: hermiteInterpolate(prev, next, prev.t + (next.t - prev.t) * earliestToi) };
+  }
+  const containingPrev = containingBody(prev.r, bodies, margin);
+  if (containingPrev !== null) return { body: containingPrev, state: prev };
+  const containingNext = containingBody(next.r, bodies, margin);
+  if (containingNext !== null) return { body: containingNext, state: next };
+  return null;
 }
 
 // 天体 center を中心とする接触軌道要素。中心の選び方には関与しない — 呼び出し側が
