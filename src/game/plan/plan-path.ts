@@ -18,7 +18,7 @@ import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { DisplayDurationSource, PlanData, TimeRange, segmentDurationFrom } from './plan';
 import { PlanArc } from './plan-arc';
 import { PredictedArc } from './predicted-arc';
-import type { PlanAttractorProvider } from './plan-attractors';
+import type { FutureAttractorProvider } from '../simulation/future-attractors';
 import type { Player } from '../player/player';
 import { goldenSectionMin } from '../../physics/optimize';
 import * as C from '../const';
@@ -105,7 +105,7 @@ export class PlanPath {
   update(
     planData: PlanData, ship: Player | null,
     ephemeris: Ephemeris, frame: ReferenceFrame, currentTime: number,
-    attractors: readonly Attractor[], attractorProvider: PlanAttractorProvider,
+    attractors: readonly Attractor[], attractorProvider: FutureAttractorProvider,
     displayDurationSec: number,
   ): void {
     this.frame = frame;
