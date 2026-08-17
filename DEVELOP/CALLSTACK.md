@@ -101,10 +101,10 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
     - excludedIds = activePlayers.current ? [活性艦.id] : []
     - attractors.resolve(excludedIds, plan?.revision ?? 0, lastPlanEnd) // PlanEditor が持ち続ける PlanAttractors へ今フレームの入力を渡す。続く path.update より前に呼ぶ。今フレームの計画終端は path.update がこれから決めるので、revision は前フレームの終端(PlanPath.plannedEnd = lastPlanEnd。表示窓でクリップしない区間列自身の終端なので simTime には依らない)を基準に畳む。値が動いたときだけ、保持していた時刻ごとの解決結果を捨てる。revision が前回と同じで起点・終端・基準天体も動いていない区間は再積分せず前回の積分結果を使う
     - path.update() // 起点(plan.anchorOr が返す — 凍結済みならそれ、無ければ渡された自機の現在状態)とノード列を区間へ分解。表示座標系と un-bake 時刻もここで確定。buildSegments は末尾区間の起点時刻の天体窓を1回だけ引き、区間長(segmentDurationFrom)と基準天体(strongestAttractor → Segment.apsisCenter)の両方をそこから決める
-      - [区間ごと・ノード0件かつ末尾区間かつ活性艦あり] new PredictedArc(ship, state0, end) // ship.predicted を [state0.t, end] に切って答えるだけで積分はしない。represents/setRange は呼ばず毎フレーム作り直す。ship.predicted がまだ無いフレームは何も答えない
-      - [それ以外の区間] arc.represents(state0, end, sourceRevision, apsisCenterId, false) // 既存 arc(instanceof PlanArc で PredictedArc を除外してから問う)が今フレームの区間をそのまま表せるか。sourceRevision/apsisCenterId の不一致・積分済みサンプル間隔の粗さのいずれかで false
+      - [区間ごと・ノード0件かつ末尾区間かつ活性艦あり] new PredictedArc(ship, state0, end) // ship.predicted を [state0.t, end] に切って答えるだけで積分はしない。represents/setEnd は呼ばず毎フレーム作り直す。ship.predicted がまだ無いフレームは何も答えない
+      - [それ以外の区間] arc.represents(state0, end, sourceRevision, apsisCenterId) // 既存 arc(instanceof PlanArc で PredictedArc を除外してから問う)が今フレームの区間をそのまま表せるか。sourceRevision/apsisCenterId の不一致・積分済みサンプル間隔の粗さ・state0 の参照不一致のいずれかで false
         - [false、または対応する arc がまだ無い] new PlanArc(state0, end, provider, apsisCenter) // constructor が end まで同期的に DynamicTrajectory で RK4 積分(重い)。刻み幅ごとの重力源は provider.at(t).classified → attractorsNearInto。provider は解析天体の窓を1回だけ引いて衝突体と重力源の両方をそこから組み、同じ時刻への問い合わせだけを数スロット保持する。末尾区間だけ apsisCenter(区間起点の重力源スナップショット)が渡り、積分の各ステップ対で apsisCrossing による近地点/遠地点検出が走る
-        - [true] arc.setRange(state0, end) // 渡された state0.t が arc 自身の現在の先頭より後ろなら、自身の積分結果上のその時刻の状態(at()、積分し直さない)へ先頭を進める。終端は積分先端が要求終端にサンプル間隔未満まで届いていなければ integrateTo() で継ぎ足す(区間を作り直さない)。届いていれば何もしない
+        - [true] arc.setEnd(end) // 終端だけを動かす。積分先端が要求終端にサンプル間隔未満まで届いていなければ integrateTo() で継ぎ足す(区間を作り直さない)。届いていれば何もしない
     - ghostAt(displayTime) // 折れ線が displayTime に届かなければ null
     - apsisIconsOf() // path.finalSegment() の periapsis/apoapsis(末尾 arc が積分中に見つけた値)と apsisCenter(検出時と同じ基準天体)を読み、その天体の位置だけを ephemeris.positionOf(center.id, 極値の時刻) で引き直して距離を出す。両方あるとき (遠地点距離-近地点距離)/(遠地点距離+近地点距離) < APSIS_MIN_ECC なら空、片方のみ(双曲線等)ならそのまま出す
     - player.equatorNodes.update(displayWindow.frame, displayWindow.displayTime, ephemeris, finalSegment.state0, finalSegment.samples) // 操作艦の EqAN/EqDN。代表軌道は計画の最終区間なので、交点は解析楕円ではなく積分折れ線の上に載る
@@ -303,10 +303,10 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
 - sections.enter(SECTION.plan)
 - editor.update(displayWindow) // 計画折れ線の再積分とアプシスアイコン(赤道交点の更新/mapPickables.refresh より前)。内部で先に attractors.resolve(...) を呼び、PlanAttractors の保持を要否判定する — 今フレームの計画終端はこの呼び出し自身がこれから決めるので、revision の量子化は前フレームの終端(lastPlanEnd)を基準にする。provider.revision が前回と同じで起点・終端・基準天体も動いていない区間は再積分せず前回の積分結果を使う
   - path.update() // plan の corners を区間へ分解。表示座標系と un-bake 時刻もここで確定。buildSegments は末尾区間の起点時刻の天体窓を1回だけ引き、区間長(segmentDurationFrom)と基準天体(strongestAttractor → Segment.apsisCenter)の両方をそこから決める
-    - [区間ごと・ノード0件かつ末尾区間かつ活性艦あり] new PredictedArc(ship, state0, end) // ship.predicted を [state0.t, end] に切って答えるだけで積分はしない。represents/setRange は呼ばず毎フレーム作り直す。ship.predicted がまだ無いフレームは何も答えない
-    - [それ以外の区間] arc.represents(state0, end, sourceRevision, apsisCenterId, false) // 既存 arc(instanceof PlanArc で PredictedArc を除外してから問う)が今フレームの区間をそのまま表せるか。sourceRevision/apsisCenterId の不一致・積分済みサンプル間隔の粗さのいずれかで false
+    - [区間ごと・ノード0件かつ末尾区間かつ活性艦あり] new PredictedArc(ship, state0, end) // ship.predicted を [state0.t, end] に切って答えるだけで積分はしない。represents/setEnd は呼ばず毎フレーム作り直す。ship.predicted がまだ無いフレームは何も答えない
+    - [それ以外の区間] arc.represents(state0, end, sourceRevision, apsisCenterId) // 既存 arc(instanceof PlanArc で PredictedArc を除外してから問う)が今フレームの区間をそのまま表せるか。sourceRevision/apsisCenterId の不一致・積分済みサンプル間隔の粗さ・state0 の参照不一致のいずれかで false
       - [false、または対応する arc がまだ無い] new PlanArc(state0, end, provider, apsisCenter) // constructor が end まで同期的に DynamicTrajectory で RK4 積分(重い)。刻み幅ごとの重力源は provider.at(t).classified → attractorsNearInto。provider は解析天体の窓を1回だけ引いて衝突体と重力源の両方をそこから組み、同じ時刻への問い合わせだけを数スロット保持する。末尾区間だけ apsisCenter(区間起点の重力源スナップショット)が渡り、積分の各ステップ対で apsisCrossing による近地点/遠地点検出が走る
-      - [true] arc.setRange(state0, end) // 渡された state0.t が arc 自身の現在の先頭より後ろなら、自身の積分結果上のその時刻の状態(at()、積分し直さない)へ先頭を進める。終端は積分先端が要求終端にサンプル間隔未満まで届いていなければ integrateTo() で継ぎ足す(区間を作り直さない)。届いていれば何もしない
+      - [true] arc.setEnd(end) // 終端だけを動かす。積分先端が要求終端にサンプル間隔未満まで届いていなければ integrateTo() で継ぎ足す(区間を作り直さない)。届いていれば何もしない
   - ghostAt(displayTime) // 折れ線が displayTime に届かなければ null
   - apsisIconsOf() // path.finalSegment() の periapsis/apoapsis(末尾 arc が積分中に見つけた値)と apsisCenter(検出時と同じ基準天体)を読み、その天体の位置だけを ephemeris.positionOf(center.id, 極値の時刻) で引き直して距離を出す。両方あるとき (遠地点距離-近地点距離)/(遠地点距離+近地点距離) < APSIS_MIN_ECC なら空、片方のみ(双曲線等)ならそのまま出す
   - player.equatorNodes.update(displayWindow.frame, displayWindow.displayTime, ephemeris, finalSegment.state0, finalSegment.samples) // 操作艦の EqAN/EqDN。代表軌道は計画の最終区間なので、交点は解析楕円ではなく積分折れ線の上に載る
@@ -564,23 +564,22 @@ advanceSimulation の後、`update` 自身の続きとして呼ぶ(個別メソ�
   含む)。substep が長大になる高ワープでは弾もすり抜けるが、`canShipAct` が同じ閾値で発砲自体を
   止めているので実害は無い。
 - **計画軌道 RK4 の作り直し**は `PlanPath.update` が区間ごとに問う
-  `PlanArc.represents(state0, end, sourceRevision, apsisCenterId, false)` で決まる(渡す
-  `tracksLiveAnchor` は現在の呼び出し元では常に `false` — 計画が空のあいだの唯一の区間は
-  `PlanArc` ではなく `PredictedArc` として毎フレーム作り直すので、上の呼び出し木の該当箇所を見る)。
-  `sourceRevision`(重力源プロバイダの revision)/`apsisCenterId` が食い違えば即座に作り直す
-  (`new PlanArc(...)` — constructor 内で end までの同期的な RK4 積分)。一致していても、積分済みの
-  サンプルを記録したときの間引き下限が今回の要求区間の求める下限([表示期間]を大きく縮めた
-  直後など)を `PLAN_ARC_MAX_SAMPLE_COARSENING` 倍を超えて上回っていれば作り直す(クリック候補が
+  `PlanArc.represents(state0, end, sourceRevision, apsisCenterId)` で決まる(計画が空のあいだの
+  唯一の区間は `PlanArc` ではなく `PredictedArc` として毎フレーム作り直すので、上の呼び出し木の
+  該当箇所を見る)。`sourceRevision`(重力源プロバイダの revision)/`apsisCenterId` が食い違えば
+  即座に作り直す(`new PlanArc(...)` — constructor 内で end までの同期的な RK4 積分)。一致していても、
+  積分済みのサンプルを記録したときの間引き下限が今回の要求区間の求める下限([表示期間]を大きく
+  縮めた直後など)を `PLAN_ARC_MAX_SAMPLE_COARSENING` 倍を超えて上回っていれば作り直す(クリック候補が
   飛び飛びの点になるのを避けるため)。比べるのは下限どうしで、実際のサンプル間隔ではない —
   間隔は刻み幅(1周 / `PLAN_ARC_STEPS_PER_REV`)でも決まり、そちらは作り直しても同じ値になるので、
   間隔を下限と比べると `'orbit'` プリセット(要求下限 = 1周 / `PLAN_ARC_MAX_SAMPLES`)で判定が
-  恒真になり、縮めようのない粗さを理由に毎フレーム区間全体を作り直すことになる。`tracksLiveAnchor`
-  が常に `false` な今の呼び出し元では、represents が真になるのは `state0` が arc 自身の現在の
-  `state0`(constructor 時点の値ではなく、直近の `setRange` で進んだ先頭)と同一参照のときだけ
-  (ノードを置いた後の区間の通常のフレーム。`end` だけが動く編集も含む) — 実際に `end` が動いていれば
-  `arc.setRange(state0, end)` が終端だけを動かす: 積分先端が要求終端にサンプル間隔未満まで届いていれば
-  継ぎ足さず、届いていなければ現在の積分先端から続きを刻む(区間全体は作り直さない)。マップモード中でも
-  大半のフレームは represents が真で `line.syncTransform()`(O(1) の剛体変換)だけで済む。
+  恒真になり、縮めようのない粗さを理由に毎フレーム区間全体を作り直すことになる。その2つのゲートを
+  抜けたら、渡された `state0` が arc 自身の `state0`(生成時に決まり、以後動かない)と同一参照かどうか
+  だけで判定する(ノードを置いた後の区間の通常のフレーム。`end` だけが動く編集も含む) — 実際に
+  `end` が動いていれば `arc.setEnd(end)` が終端だけを動かす: 積分先端が要求終端にサンプル間隔未満まで
+  届いていれば継ぎ足さず、届いていなければ現在の積分先端から続きを刻む(区間全体は作り直さない)。
+  マップモード中でも大半のフレームは represents が真で `line.syncTransform()`(O(1) の剛体変換)だけで
+  済む。
 - **過去 state の記録・prevState の更新は `physics/dynamic-trajectory.ts` の `DynamicTrajectory`(`GameEntity.actual`)の
   `step`/`reset` が行う**ので、この木には独立ノードとして現れない。`entity.stepActual()` /
   `contactPhysics.resolveSubstep()`/`resolveBelt()` の解決結果書き戻し / 反動など、state へ代入する
