@@ -49,6 +49,7 @@ import { register as registerChebyshevEphemeris } from './chebyshev-ephemeris.te
 import { register as registerPackedAbsoluteEphemeris } from './packed-absolute-ephemeris.test';
 import { register as registerSaveEphemerisContext } from './save-ephemeris-context.test';
 import { register as registerGeometry } from './geometry.test';
+import { register as registerOptimize } from './optimize.test';
 import './creative-placement-validation.test';
 
 registerVec3();
@@ -99,6 +100,7 @@ registerChebyshevEphemeris();
 registerPackedAbsoluteEphemeris();
 registerSaveEphemerisContext();
 registerGeometry();
+registerOptimize();
 
 runAll().catch((error) => {
   console.error(error);
