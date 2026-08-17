@@ -8,6 +8,7 @@ import * as THREE from 'three/webgpu';
 import { OrbitalElements } from '../physics/elements';
 import { FloatingOrigin } from './floating-origin';
 import { Curve, CurveSampler } from '../render/curve';
+import { LineStyle } from '../render/line-style';
 import { ReferenceFrame, FrameTransform, toFramePoint } from '../physics/frame';
 import type { Ephemeris } from '../physics/ephemeris';
 import { Attractor } from '../physics/attractor';
@@ -34,11 +35,15 @@ export class OrbitLine {
   // Curve へ渡す revision。楕円を作り直すたびに新しいオブジェクトへ差し替える。
   private revision: object = {};
 
-  // renderOrder は、この線が他の線と重なったときにどちらを手前へ描くかを決める —
+  // style.renderOrder は、この線が他の線と重なったときにどちらを手前へ描くかを決める —
   // 透明描画どうしの前後は描画順でしか決まらない。
-  constructor(color: string | number, opacity = 0.5, renderOrder = 0) {
-    this.curve = new Curve({ color, opacity, renderOrder, maxVertices: MAX_VERTICES });
+  constructor(style: LineStyle) {
+    this.curve = new Curve({ style, maxVertices: MAX_VERTICES });
     this.line = this.curve.object;
+  }
+
+  setStyle(style: LineStyle): void {
+    this.curve.setStyle(style);
   }
 
   // 不透明度を書き換える。天体からの距離に応じて描画側がフェードさせる。
@@ -48,6 +53,10 @@ export class OrbitLine {
 
   setColor(color: string | number): void {
     this.curve.setColor(color);
+  }
+
+  setRenderOrder(renderOrder: number): void {
+    this.curve.setRenderOrder(renderOrder);
   }
 
   // 離心近点角 E=t·2π を軌道要素で位置へ写す、閉曲線サンプラ。読むのは snap で、

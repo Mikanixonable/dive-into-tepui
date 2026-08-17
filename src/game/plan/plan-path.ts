@@ -1,6 +1,6 @@
 // 多ノードの計画軌道を arc 単位で描く。Plan の corners を区間へ分解し、区間ごとに区間ソース
 // (SegmentSource: 統一 PredictedArc への参照と、そこから読む [from, to])と TrajectoryLine(折れ線)を
-// index で対応付けて持つ。ノードを1つも持たない唯一の区間は自機自身の予測弧を借用し(owned=false)、
+// index で対応付けて持つ。ノードを1つも持たない唯一の区間は操作対象自身の予測弧を借用し(owned=false)、
 // それ以外は起点・重力源が既存の弧と変われば作り直し、終端だけが動いた区間は requiredEnd の
 // 書き換えだけで済ませる — どちらの場合も折れ線はその区間の TrajectoryLine プールを使い回す。
 // 画面判定も同じ表示変換を通すため描画とずれない。
@@ -18,7 +18,7 @@ import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { DisplayDurationSource, PlanData, TimeRange, segmentDurationFrom } from './plan';
 import { PredictedArc } from '../simulation/predicted-arc';
 import type { FutureAttractorProvider } from '../simulation/future-attractors';
-import type { Player } from '../player/player';
+import type { Controllable } from '../game-entity/controllable';
 import { clipSamplesTo, stateAt, withinEnd } from './arc-range';
 import { goldenSectionMin } from '../../physics/optimize';
 import * as C from '../const';
@@ -109,7 +109,7 @@ export class PlanPath {
   // 書き換えだけで済ませ、一致しなければ作り直す(伸ばすのは呼び出し側の予算パス — growableArcs
   // 参照)。表示変換の文脈(座標系・un-bake 時刻)もこのフレームのものに更新する。
   update(
-    planData: PlanData, ship: Player | null,
+    planData: PlanData, ship: Controllable | null,
     ephemeris: Ephemeris, frame: ReferenceFrame, currentTime: number,
     attractors: readonly Attractor[], attractorProvider: FutureAttractorProvider,
     displayDurationSec: number,
@@ -128,7 +128,7 @@ export class PlanPath {
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i]!;
       const isFinal = i === segments.length - 1;
-      // ノードが1つも無い間の唯一の区間は自機の予測弧そのものを借りる。艦の予測がまだ
+      // ノードが1つも無い間の唯一の区間は操作対象の予測弧そのものを借りる。その予測がまだ
       // 生えていないフレームは何も答えず、次のフレームで生え直す。
       if (planData.nodes.length === 0 && isFinal && ship !== null) {
         const arc = ship.predictedArc;
@@ -182,7 +182,7 @@ export class PlanPath {
   }
 
   // 各区間の折れ線メッシュを最新のサンプル列へ同期し、区間数が減った分の線を隠す。ノードを
-  // 1つも持たない区間(借用のみ)は自機の predictedLine が描くので、ここでは折れ線を
+  // 1つも持たない区間(借用のみ)は操作対象自身の predictedLine が描くので、ここでは折れ線を
   // 隠すだけにする。画面判定が使う視点(project)もここで受け取り、毎フレーム上書きする。
   // 破線のドット/隙間は各区間のサンプル列中央の代表点で scale(m/px)を引き、ピクセル指定を
   // 実距離に直してから渡す — ズームによらず画面上の間隔を一定に保つため。camera は各区間の
@@ -453,8 +453,10 @@ export class PlanPath {
   private lineAt(i: number): TrajectoryLine {
     while (this.lines.length <= i) {
       const idx = this.lines.length;
-      const line = new TrajectoryLine(arcColor(idx), C.PLAN_ARC_OPACITY, C.LINE_RENDER_ORDER.plan,
-        { dashSize: C.PLAN_ARC_DASH_PX, gapSize: C.PLAN_ARC_GAP_PX });
+      const line = new TrajectoryLine({
+        color: arcColor(idx), opacity: C.PLAN_ARC_OPACITY, renderOrder: C.LINE_RENDER_ORDER.plan,
+        dash: { dashSize: C.PLAN_ARC_DASH_PX, gapSize: C.PLAN_ARC_GAP_PX },
+      });
       this.lines.push(line);
       this.group.add(line.line);
     }

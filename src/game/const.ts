@@ -1,4 +1,5 @@
 // ゲームバランス・チューニング定数
+import type { LineStyle } from '../render/line-style';
 export { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../physics/solar-system';
 
 // 軌道上へ配置できる自機の上限隻数。
@@ -305,6 +306,24 @@ export const MARKER_DIR_DIST = 5e4; // 方向マーカーを投影する仮想�
 export const MARKER_CLUSTER_PX = 40; // これより画面上で近いマーカー同士は1つの代表にまとめる [px]
 // 天体ラベルからこれより画面上で近いラグランジュ点ラベルは、天体ラベルを優先して隠す [px]
 export const FOCUS_LABEL_PRIORITY_PX = 40;
+
+// マーカーラベル優先度 (数値が大きいものが優先。天体 > 船・エンティティ)
+export const MARKER_PRIORITY = {
+  STAR_PLANET: 5000,
+  DWARF_PLANET: 4000,
+  SATELLITE_SMALL_BODY: 3000,
+  LAGRANGE: 2000,
+  PRIMARY_TARGET: 900,
+  IMPACT: 850,
+  SECONDARY_TARGET: 800,
+  BASE: 700,
+  PLAYER: 600,
+  ENEMY: 500,
+  AMMO: 300,
+  MANEUVER_NODE: 150,
+  ORBITAL_NODE: 100,
+} as const;
+
 // 共線点(L1/L2/L3)を持たせる下限。副天体の半径を単位とした L1 までの距離で、これを下回る系は
 // L1 が表面すれすれに来てハロー軌道の振幅が収まらない(フォボス 1.5・イオ 5.8 が落ちる)。
 export const LAGRANGE_MIN_CLEARANCE_RATIO = 10;
@@ -570,7 +589,7 @@ export const COLOR_MARKER_NODE = '#8b93a0';
 export const COLOR_MARKER_BOARDPASS = '#ffffff';
 export const COLOR_MARKER_SELF = '#dfe3e8';
 export const COLOR_MARKER_PLANNED = '#8fd0ff';
-export const COLOR_MARKER_ALLY = '#00ffff';
+export const COLOR_MARKER_ALLY = '#ffffff';
 export const COLOR_MARKER_ENEMY = '#ffffff';
 export const COLOR_MARKER_HP_EMPTY = 'rgba(120, 125, 130, .2)';
 export const COLOR_BULLET_IMPACT_FLASH = '#ffe2a0';
@@ -584,6 +603,7 @@ export const COLOR_PLAYER_DESTROY_FRAG = '#9fd8e8';
 export const COLOR_ENEMY_DESTROY_FRAG = '#ff6a4a';
 export const COLOR_ENEMY_ORBIT_LINE = '#565b63';
 export const COLOR_BASE_ORBIT_LINE = '#4f8f7d'; // 拠点(味方施設)の軌道線。落ち着いた緑がかった色で他線と区別
+export const COLOR_PLAYER_ORBIT_LINE = '#bfc9d4'; // 自機の軌道線(予測線・過去線)に共通の色
 export const COLOR_ENEMY_PLASMA = '#ff3333'; // 蛍光色の赤
 export const COLOR_SHIP_DARK_HULL = '#2e3340';
 export const COLOR_STAGE0_GROUP_ACCENTS = ['#ff4a3d', '#3dc6ff', '#3dff8f', '#ffe23d', '#bf3dff'];
@@ -593,12 +613,21 @@ export const COLOR_STAGE0_GROUP_ACCENTS = ['#ff4a3d', '#3dc6ff', '#3dff8f', '#ff
 // 各線が自分の値を単独で決めず、この表で一括して割り当てる。
 export const LINE_RENDER_ORDER = {
   reference: 0,        // 天体の参照軌道線
-  shipOrbit: 1,        // 自機の解析楕円
+  shipOrbit: 1,        // 自機・敵・拠点の解析楕円
   secondaryTarget: 2,  // 第二ターゲットの軌道線
   target: 3,           // 主ターゲットの軌道線
   plan: 4,             // 計画軌道(破線)
   predicted: 5,        // 積分予測線。解析楕円の代替なので、両方出る境界フレームでは必ずこちらを手前に置く
 } as const;
+
+// 役割ごとの軌道線の見た目(色・不透明度・描画順)を一括して決める表。
+export const LINE_STYLE = {
+  enemyOrbit: { color: COLOR_ENEMY_ORBIT_LINE, opacity: 0.35, renderOrder: LINE_RENDER_ORDER.shipOrbit },
+  baseOrbit: { color: COLOR_BASE_ORBIT_LINE, opacity: 0.35, renderOrder: LINE_RENDER_ORDER.shipOrbit },
+  playerOrbit: { color: COLOR_PLAYER_ORBIT_LINE, opacity: 0.55, renderOrder: LINE_RENDER_ORDER.shipOrbit },
+  playerPredicted: { color: COLOR_PLAYER_ORBIT_LINE, opacity: 0.55, renderOrder: LINE_RENDER_ORDER.predicted },
+  playerActual: { color: COLOR_PLAYER_ORBIT_LINE, opacity: 0.3, renderOrder: LINE_RENDER_ORDER.predicted },
+} as const satisfies Record<string, LineStyle>;
 
 // 惑星・衛星の参照軌道線のフェード距離 [m]。カメラから天体までの距離がこれ未満なら非表示、
 // FAR 以上なら完全表示、その間は距離に応じて線形にフェードインする。
@@ -607,4 +636,4 @@ export const PLANET_ORBIT_LINE_FADE_FAR_DIST = 1e10; // 1000万km
 export const SATELLITE_ORBIT_LINE_FADE_NEAR_DIST = 5e8; // 50万km
 export const SATELLITE_ORBIT_LINE_FADE_FAR_DIST = 1e9; // 100万km
 // 参照軌道線が完全表示のときの不透明度。
-export const REFERENCE_LINE_OPACITY = 0.1;
+export const REFERENCE_LINE_OPACITY = 0.3;

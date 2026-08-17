@@ -32,18 +32,25 @@ audio/
     instrument.ts          the sound-making seam: play(freq, when, duration, velocity)
     instrument-factory.ts  the single switch from an instrument's kind to its class
     composers/
+      utils.ts             cycle lookup + index -> frequency, shared by the composers
       phasing-composer.ts  the Reich-style algorithm
-      sketch-composer.ts   blank slate for the second algorithm
+      antipode-composer.ts the second algorithm: a stab layer + any number of independent
+                           arp layers, each drifting against the others and against
+                           transpose. First finished track is Madrid-Weber v1
     instruments/
-      tone-instrument.ts   one oscillator + envelope + pan; the only one so far
+      types.ts             InstrumentDef union + params, fenced per instrument
+      tone-instrument.ts   one oscillator + envelope + pan
+      unison-instrument.ts detuned stack through a shared filter
     tracks/
-      types.ts             BgmTrack union + params, fenced per composer and instrument
+      types.ts             BgmTrack union + params, fenced per composer
       tracks.ts            BGM_TRACKS, the data itself
   sfx/
     world-sfx.ts           sounds emitted by objects/events in the game world,
                            plus the thrust/RCS loop channels
     ui-sfx.ts              position-less operation/notification blips
 ```
+
+作曲用のプレビューは `tools/bgm-lab/`(`npm run bgm-lab`)。ゲームを起動せずに1曲を鳴らす。
 
 `audio-engine.ts` stays at the root because both folders build on it — the same shape
 `src/game/` uses (an orchestrator at the root, concerns in subfolders).
@@ -69,6 +76,9 @@ section has been deleted from their memo. Details and rationale in [done.md](don
 8. discarded playbacks are disconnected rather than merely faded — 85 stranded audio nodes
    an hour down to 8; see §12 and [disposal.md](disposal.md).
 9. `Conductor` extracted: one class per continuous musical line; see §13.
+10. 線ぶんのゲインと pause/resume、そして試聴を独立した線にする(§14–15)。
+11. 伏せる指示が線の遅延生成をまたぐ修正と、`beginAudition` / `autoStartUsed` への整理。
+12. 作曲用プレビュー `tools/bgm-lab/`(`npm run bgm-lab`)。
 
 Everything above is on `main`. PR #4 carried items 1–8 and was merged after being confirmed
 by ear.
@@ -76,12 +86,12 @@ by ear.
 ## Present
 
 Branch `workspace5` on the shared repo (`origin` is Mikanixonable's; every contributor has a
-`workspaceN` branch there). `npm run typecheck` green, five harnesses green.
+`workspaceN` branch there). `npm run typecheck` green, 8 harnesses green. PR #5 carries items
+9–12 and is open.
 
-Next is roadmap §2d step 4 — pause/resume on `Conductor`, by ducking (§2a-1) — then step 5,
-the audition line. **Step 5 is the first behavioural change since the merge**; steps 3 and 4
-are deliberately inert so that when behaviour does move, there is no ambiguity about which
-change moved it.
+Roadmap §2 の第五段まで完了。次は §1 の作曲そのもので、そのための `npm run bgm-lab` も
+用意してある。構造の宿題として残っているのは §2a-1(伏せるだけの pause を本来の形へ)と
+§2c(クロスフェード)。
 
 ## Future — the tracks can now be made distinct
 
