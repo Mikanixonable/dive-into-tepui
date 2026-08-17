@@ -3,7 +3,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { Attractor } from '../../src/physics/attractor';
-import { apsisCrossing, findEquatorCrossings } from '../../src/physics/trajectory-features';
+import { apsisCrossing, ApsisTrack, findEquatorCrossings } from '../../src/physics/trajectory-features';
 import { keplerPeriod, stateFromOrbitalElements, trueAnomalyFromMean } from '../../src/physics/elements';
 import { kinematicState, KinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
@@ -85,6 +85,54 @@ export function register(): void {
     const prev = stateAtMeanAnomaly(a, e, incDeg, raan, argp, -0.5);
     const next = stateAtMeanAnomaly(a, e, incDeg, raan, argp, -0.3);
     assert.equal(apsisCrossing(EARTH, prev, next), null);
+  });
+
+  // 2周回ぶんの近地点・遠地点をまたぐステップ対を、時刻昇順(m=0 の近地点→m=π の遠地点→
+  // m=2π の近地点→m=3π の遠地点)で作る。
+  const apsisStepPairs = (): readonly (readonly [KinematicState, KinematicState])[] =>
+    [-dm, Math.PI - dm, 2 * Math.PI - dm, 3 * Math.PI - dm].map((m0) => [
+      stateAtMeanAnomaly(a, e, incDeg, raan, argp, m0),
+      stateAtMeanAnomaly(a, e, incDeg, raan, argp, m0 + 2 * dm),
+    ] as const);
+
+  test('trajectory-features: ApsisTrack accumulates periapsis/apoapsis in ascending time order and answers the first', () => {
+    const pairs = apsisStepPairs();
+    const track = new ApsisTrack(EARTH);
+    for (const [prev, next] of pairs) track.observe(prev, next);
+
+    const expectedFirstPeriapsis = apsisCrossing(EARTH, ...pairs[0]!)!.state;
+    const expectedFirstApoapsis = apsisCrossing(EARTH, ...pairs[1]!)!.state;
+    assert.deepEqual(track.periapsis, expectedFirstPeriapsis);
+    assert.deepEqual(track.apoapsis, expectedFirstApoapsis);
+    assert.ok(track.periapsis!.t < track.apoapsis!.t, 'periapsis should precede apoapsis in time');
+  });
+
+  test('trajectory-features: ApsisTrack.dropBefore drops earlier extrema and promotes the next one to the front', () => {
+    const period = keplerPeriod(a, MU_EARTH);
+    const pairs = apsisStepPairs();
+    const track = new ApsisTrack(EARTH);
+    for (const [prev, next] of pairs) track.observe(prev, next);
+
+    const expectedSecondPeriapsis = apsisCrossing(EARTH, ...pairs[2]!)!.state;
+    const expectedSecondApoapsis = apsisCrossing(EARTH, ...pairs[3]!)!.state;
+    // 1つめの近地点(t≈0)・遠地点(t≈period/2)は落ち、2つめ(t≈period, t≈1.5period)が先頭になる。
+    track.dropBefore(period * 0.75);
+    assert.deepEqual(track.periapsis, expectedSecondPeriapsis);
+    assert.deepEqual(track.apoapsis, expectedSecondApoapsis);
+  });
+
+  test('trajectory-features: ApsisTrack answers null with no observations or no crossings observed', () => {
+    const track = new ApsisTrack(EARTH);
+    assert.equal(track.periapsis, null);
+    assert.equal(track.apoapsis, null);
+
+    // 遠地点手前でまだ遠ざかり続けている脚 — 符号反転がなく極値が見つからない対。
+    track.observe(
+      stateAtMeanAnomaly(a, e, incDeg, raan, argp, Math.PI / 4),
+      stateAtMeanAnomaly(a, e, incDeg, raan, argp, Math.PI / 2),
+    );
+    assert.equal(track.periapsis, null);
+    assert.equal(track.apoapsis, null);
   });
 
   test('trajectory-features: findEquatorCrossings finds ascending/descending nodes at zero latitude with the correct sign', () => {

@@ -5,7 +5,7 @@ import { KinematicState, hermiteInterpolate, kinematicState } from '../../physic
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { Attractor, localOrbitPeriod } from '../../physics/attractor';
 import { containingBody, sweptHermiteSphereToi } from '../../physics/sphere-contact';
-import { apsisCrossing } from '../../physics/trajectory-features';
+import { ApsisTrack } from '../../physics/trajectory-features';
 import { isBurnedUp } from '../../physics/atmosphere';
 import { attractorsNearInto } from '../simulation/attractors';
 import type { PlanAttractorProvider } from './plan-attractors';
@@ -24,13 +24,6 @@ const APPROACH_STEP_SAFETY = 0.5;
 // ANCHOR_JUMP_SPEED_MARGIN 倍を超える差は連続な伝播では説明が付かない。
 const ANCHOR_JUMP_SPEED_MARGIN = 2;
 const ANCHOR_JUMP_MIN_DIST = 1;
-
-// 時刻昇順の states から t より前のものを落とす。
-function dropBefore(states: KinematicState[], t: number): void {
-  let cut = 0;
-  while (cut < states.length && states[cut]!.t < t) cut++;
-  if (cut > 0) states.splice(0, cut);
-}
 
 // 起点の差し替えが連続な伝播で説明できない(= 別の軌道へ飛んだ)か。時刻の前後関係は
 // 代理指標として成立しない — 別艦への切り替えやドック発進では新しい起点が普通に前回より
@@ -131,14 +124,13 @@ function nearestByClearance(pos: Vec3, bodies: readonly Attractor[]): Attractor 
 }
 
 export class PlanArc {
-  readonly sourceRevision: number;
-  readonly apsisCenterId: string | null;
+  private readonly sourceRevision: number;
+  private readonly apsisCenterId: string | null;
   // 直近の integrateTo で回した積分step数(生成時、または setRange による継ぎ足し時。
   // 継ぎ足さなかった呼び出しでは 0)。
   lastSteps = 0;
 
   private readonly provider: PlanAttractorProvider;
-  private readonly apsisCenter: Attractor | null;
   private readonly _trajectory: DynamicTrajectory;
   // この区間が答える範囲 [_state0.t, _end]。両端とも setRange が動かす。
   private _state0: KinematicState;
@@ -151,10 +143,7 @@ export class PlanArc {
   private truncated = false;
   // 積分中に最初に天体表面へ達した状態とその天体。到達しなければ null。
   private impact: PlanImpact | null = null;
-  // 積分中に見つかった近地点・遠地点を時刻昇順に持つ。区間の先頭より前のものは落とすので、
-  // 先頭要素が常に「いま答える範囲で最初の極値」になる。
-  private readonly periapsides: KinematicState[] = [];
-  private readonly apoapsides: KinematicState[] = [];
+  private readonly apsisTrack: ApsisTrack | null;
   private samplesCache: {
     readonly source: readonly KinematicState[]; readonly end: number; readonly result: readonly KinematicState[];
   } | null = null;
@@ -176,7 +165,7 @@ export class PlanArc {
     this.sourceRevision = provider.revision;
     this.apsisCenterId = apsisCenter?.id ?? null;
     this.provider = provider;
-    this.apsisCenter = apsisCenter;
+    this.apsisTrack = apsisCenter ? new ApsisTrack(apsisCenter) : null;
     this._trajectory = new DynamicTrajectory(state0);
     this._end = end;
     this.integrateTo(end);
@@ -227,8 +216,7 @@ export class PlanArc {
     const threshold = (end - this._state0.t) / C.PLAN_ARC_MAX_SAMPLES;
     if (!this.truncated && end > this._trajectory.state.t + threshold) this.integrateTo(end);
     else this.lastSteps = 0;
-    dropBefore(this.periapsides, this._state0.t);
-    dropBefore(this.apoapsides, this._state0.t);
+    this.apsisTrack?.dropBefore(this._state0.t);
   }
 
   // この区間が答える範囲の先頭状態。
@@ -286,14 +274,14 @@ export class PlanArc {
   // 答える範囲で最初の近地点。中心天体へ接近し続けたまま表面へ達する
   // (衝突軌道で近地点が存在しない)場合や、end を超えていれば null。
   periapsisPoint(): KinematicState | null {
-    const first = this.periapsides[0];
+    const first = this.apsisTrack?.periapsis ?? null;
     return first && this.withinEnd(first.t) ? first : null;
   }
 
   // 答える範囲で最初の遠地点。楕円でない、区間がそこまで届かない、または end を
   // 超えていれば null。
   apoapsisPoint(): KinematicState | null {
-    const first = this.apoapsides[0];
+    const first = this.apsisTrack?.apoapsis ?? null;
     return first && this.withinEnd(first.t) ? first : null;
   }
 
@@ -363,11 +351,7 @@ export class PlanArc {
         this.truncated = true;
         break;
       }
-      if (this.apsisCenter) {
-        const crossing = apsisCrossing(this.apsisCenter, prev, trajectory.state);
-        if (crossing?.kind === 'periapsis') this.periapsides.push(crossing.state);
-        if (crossing?.kind === 'apoapsis') this.apoapsides.push(crossing.state);
-      }
+      this.apsisTrack?.observe(prev, trajectory.state);
       const endHeld = this.provider.at(trajectory.state.t);
       // 区間を跨いだ表面接触は、開始/終了時刻の全 collision body を候補にして掃引判定する。
       this.collisionCandidatesById.clear();
