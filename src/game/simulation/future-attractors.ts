@@ -1,6 +1,6 @@
-// 計画・予測の積分が時刻ごとに参照する重力源・衝突体と、その解決。積分は時刻を単調に進めながら
-// 1ステップにつき複数の時刻を引くので、同じ時刻への問い合わせだけを保持し、世代値が動いたら
-// まとめて捨てる。保持の要否はこのモジュールの中だけで決まり、外から捨てさせることはない。
+// 計画・予測の積分が時刻ごとに参照する重力源・衝突体と、その解決。世代値(revision)が、
+// 答える内容を変えうる入力(計画の編集・除外集合・各個体の予測の届き具合)の変化を
+// 呼び出し側の再積分キャッシュへ伝える。
 import type { Ephemeris } from '../../physics/ephemeris';
 import type { Attractor, AttractorId } from '../../physics/attractor';
 import { classifyAttractors, ClassifiedAttractors, mergeAttractors } from './attractors';
@@ -35,10 +35,6 @@ const NO_PREDICTION = -1;
 const PREDICTION_SHORT = 0;
 const PREDICTION_COVERS_PLAN = 1;
 const PREDICTION_TRUNCATED = 2;
-
-// 保持する時刻の数。1ステップが引くのは開始・中点・終了の3時刻で、ある歩の終了は次の歩の開始と
-// 一致する。その一致だけを拾えばよいので、少数で足りる。
-const HELD_SLOTS = 4;
 
 // 計画の終端がまだ求まっていないフレームで、毎回異なる revision を作るための連番。
 let unresolvedPlanEndTick = 0;
@@ -101,8 +97,6 @@ function futureSourceRevision(
 export class FutureAttractors implements FutureAttractorProvider {
   private revisionValue = 0;
   private excluded: ReadonlySet<AttractorId> = new Set();
-  private readonly held: (FutureSourcesAt | null)[] = new Array(HELD_SLOTS).fill(null);
-  private cursor = 0;
 
   constructor(
     private readonly ephemeris: Ephemeris,
@@ -111,8 +105,8 @@ export class FutureAttractors implements FutureAttractorProvider {
 
   get revision(): number { return this.revisionValue; }
 
-  // このフレームの入力を渡す。答える内容が変わっていれば、保持していた解決結果もここで捨てる
-  // — 呼び出し側は入力を渡すだけで、何を捨てるかを知る必要はない。
+  // このフレームの入力を渡す。答える内容が変わっていれば revision を進める — 呼び出し側は
+  // 入力を渡すだけで、何が答えを変えるかを知る必要はない。
   resolve(
     excludedEntityIds: readonly AttractorId[],
     planRevision: number,
@@ -122,20 +116,12 @@ export class FutureAttractors implements FutureAttractorProvider {
     if (next === this.revisionValue) return;
     this.revisionValue = next;
     this.excluded = new Set(excludedEntityIds);
-    this.held.fill(null);
-    this.cursor = 0;
   }
 
-  // 時刻 t の対象一式。**返り値の配列と Map は保持され使い回されるので、呼び出し側で
-  // 書き換えてはならない。**
+  // 時刻 t の対象一式。**返り値の配列と Map は呼び出し側が保持してよいが、書き換えては
+  // ならない**(弧が中心窓として次の歩まで持ち越す)。
   at(t: number): FutureSourcesAt {
-    for (const entry of this.held) {
-      if (entry !== null && entry.t === t) return entry;
-    }
-    const resolved = this.resolveAt(t);
-    this.held[this.cursor] = resolved;
-    this.cursor = (this.cursor + 1) % HELD_SLOTS;
-    return resolved;
+    return this.resolveAt(t);
   }
 
   // 解析天体の窓は1回だけ引き、衝突体と重力源の両方をそこから組む — 同じ時刻の重力源を
