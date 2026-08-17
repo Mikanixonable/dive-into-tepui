@@ -15,7 +15,7 @@ import { LineStyle } from '../../render/line-style';
 import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { PredictedArc, trajectorySampleInterval } from '../simulation/predicted-arc';
-import type { FutureAttractorProvider } from '../simulation/future-attractors';
+import type { FutureAttractorProvider } from '../simulation/arc-bodies';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
 import type { Contact } from '../simulation/contact';

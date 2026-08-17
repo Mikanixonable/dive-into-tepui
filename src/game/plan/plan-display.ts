@@ -19,7 +19,7 @@ import * as C from '../const';
 import { DisplayDurationSource, PlanData } from './plan';
 import { PlanPath } from './plan-path';
 import type { DisplayWindow } from '../display-window-manager';
-import type { FutureAttractorProvider } from '../simulation/future-attractors';
+import type { FutureAttractorProvider } from '../simulation/arc-bodies';
 import type { Controllable } from '../game-entity/controllable';
 
 // 近地点・遠地点アイコン。右クリックの被選択物であると同時に、表示するラベルを持つ。
