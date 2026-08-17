@@ -29,8 +29,7 @@ import type { FrameControls } from '../hud/frame-controls';
 import { focusPoint } from '../camera/focus-target';
 import { Attractor, orbitalElementsOf, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
 import { toFrameState } from '../../physics/frame';
-import { PlanAttractors } from './plan-attractors';
-import type { EntityManager } from '../simulation/entity-manager';
+import type { FutureAttractors } from '../simulation/future-attractors';
 import type { DisplayWindow } from '../display-window-manager';
 import type { PerfCounts } from '../../perf-meter';
 
@@ -70,9 +69,6 @@ export class PlanEditor {
 
   readonly planDisplay: PlanDisplay;
   private readonly gizmo3d: PlanGizmo3D;
-  // 計画の積分が時刻ごとに引く重力源・衝突体。世代値が動いたときだけ保持を捨てるので、
-  // フレームを跨いで持ち続ける。
-  private readonly attractors: PlanAttractors;
 
   // 直近の update() が組んだ計画区間列の終端時刻(表示窓でクリップしない)。一度も
   // update していなければ NaN。
@@ -101,7 +97,8 @@ export class PlanEditor {
     private readonly _uiSfx: UiSfx,
     private readonly simSpeedManager: SimSpeedManager,
     private readonly ephemeris: Ephemeris,
-    entities: EntityManager,
+    // 計画の積分が時刻ごとに引く重力源・衝突体。
+    private readonly attractors: FutureAttractors,
     scene: THREE.Scene,
     private readonly markerManager: MarkerManager,
     private readonly activePlayers: ActivePlayerController,
@@ -109,7 +106,6 @@ export class PlanEditor {
     private readonly frameControls: FrameControls,
   ) {
     this.planDisplay = new PlanDisplay(scene, markerManager, ephemeris, displayDuration);
-    this.attractors = new PlanAttractors(ephemeris, entities);
     this.nodeGizmo = new NodeGizmo(this._hud.layers.marker, this._hud.layers.popup, this._hud.overlayManager);
     this.orbitMenu = new ContextMenu<KinematicState, MenuAction>(this._hud.layers.popup, this._hud.overlayManager);
     this.gizmo3d = new PlanGizmo3D();

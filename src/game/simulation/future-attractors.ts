@@ -1,17 +1,16 @@
-// 計画軌道の積分が時刻ごとに参照する重力源・衝突体と、その解決。積分は時刻を単調に進めながら
+// 計画・予測の積分が時刻ごとに参照する重力源・衝突体と、その解決。積分は時刻を単調に進めながら
 // 1ステップにつき複数の時刻を引くので、同じ時刻への問い合わせだけを保持し、世代値が動いたら
 // まとめて捨てる。保持の要否はこのモジュールの中だけで決まり、外から捨てさせることはない。
 import type { Ephemeris } from '../../physics/ephemeris';
 import type { Attractor, AttractorId } from '../../physics/attractor';
-import { classifyAttractors } from '../simulation/attractors';
-import type { ClassifiedAttractors } from '../simulation/attractors';
-import type { EntityManager } from '../simulation/entity-manager';
+import { classifyAttractors, ClassifiedAttractors } from './attractors';
+import type { EntityManager } from './entity-manager';
 import type { GameEntity } from '../game-entity/game-entity';
 
 // ある時刻の、積分1ステップが必要とする対象一式。collision は mu=0 の表示天体も含む全解析天体に
 // 未来状態を引ける predictedAsPlanCollider な entity を加えたもの、gravity はそのうち引力を
 // 持つものと動的重力源。
-export type PlanSourcesAt = {
+export type FutureSourcesAt = {
   readonly t: number;
   readonly gravity: readonly Attractor[];
   readonly collision: readonly Attractor[];
@@ -19,11 +18,11 @@ export type PlanSourcesAt = {
   readonly classified: ClassifiedAttractors;
 };
 
-// PlanArc は現在状態の配列を凍結せず、各積分時刻に同じ provider を呼ぶ。revision は provider が
-// 答える内容が変わったことを PlanArc の再積分キャッシュへ伝える。
-export type PlanAttractorProvider = {
+// 積分は現在状態の配列を凍結せず、各積分時刻に同じ provider を呼ぶ。revision は provider が
+// 答える内容が変わったことを呼び出し側の再積分キャッシュへ伝える。
+export type FutureAttractorProvider = {
   readonly revision: number;
-  readonly at: (t: number) => PlanSourcesAt;
+  readonly at: (t: number) => FutureSourcesAt;
 };
 
 const REVISION_MIX_PRIME = 16777619;
@@ -67,7 +66,7 @@ function predictionCoverage(entity: GameEntity, planEnd: number): number {
 
 // provider が返す内容を変えうる入力だけを畳み込んだ世代値。planEnd は計画区間列自身の
 // 積分終端(表示窓でクリップしない)で、有限でなければ毎回異なる値を返す。
-export function planSourceRevision(
+function futureSourceRevision(
   entities: EntityManager,
   excludedEntityIds: readonly AttractorId[],
   planRevision: number,
@@ -96,10 +95,10 @@ export function planSourceRevision(
   return acc;
 }
 
-export class PlanAttractors implements PlanAttractorProvider {
+export class FutureAttractors implements FutureAttractorProvider {
   private revisionValue = 0;
   private excluded: ReadonlySet<AttractorId> = new Set();
-  private readonly held: (PlanSourcesAt | null)[] = new Array(HELD_SLOTS).fill(null);
+  private readonly held: (FutureSourcesAt | null)[] = new Array(HELD_SLOTS).fill(null);
   private cursor = 0;
 
   constructor(
@@ -116,7 +115,7 @@ export class PlanAttractors implements PlanAttractorProvider {
     planRevision: number,
     planEnd: number,
   ): void {
-    const next = planSourceRevision(this.entities, excludedEntityIds, planRevision, planEnd);
+    const next = futureSourceRevision(this.entities, excludedEntityIds, planRevision, planEnd);
     if (next === this.revisionValue) return;
     this.revisionValue = next;
     this.excluded = new Set(excludedEntityIds);
@@ -126,7 +125,7 @@ export class PlanAttractors implements PlanAttractorProvider {
 
   // 時刻 t の対象一式。**返り値の配列と Map は保持され使い回されるので、呼び出し側で
   // 書き換えてはならない。**
-  at(t: number): PlanSourcesAt {
+  at(t: number): FutureSourcesAt {
     for (const entry of this.held) {
       if (entry !== null && entry.t === t) return entry;
     }
@@ -140,12 +139,12 @@ export class PlanAttractors implements PlanAttractorProvider {
   // 別の窓として引き直すと、同じ天体の位置を二度計算することになる。この窓を動的重力源の
   // displayState 外挿より先に引くのも同じ理由で、外挿が問い合わせる中心天体の stateOf を
   // そのキャッシュへ当てる。
-  private resolveAt(t: number): PlanSourcesAt {
+  private resolveAt(t: number): FutureSourcesAt {
     const collision: Attractor[] = [];
     const gravity: Attractor[] = [];
     const collisionById = new Map<AttractorId, Attractor>();
     // 解析天体は mu=0 の表示天体も含めて全数が衝突対象で、そのうち引力を持つものが重力源。
-    // 計画線が惑星や衛星で終端するのはこの経路で、entity 側の宣言とは関係しない。
+    // 積分がこの経路で惑星や衛星に終端するのは entity 側の宣言とは関係しない。
     for (const body of this.ephemeris.attractorsAt(t)) {
       collision.push(body);
       if (!collisionById.has(body.id)) collisionById.set(body.id, body);

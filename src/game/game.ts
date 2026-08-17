@@ -18,6 +18,7 @@ import { DisplayWindowManager } from './display-window-manager';
 import { PlanGuide } from './plan/plan-guide';
 import { SimSpeedManager } from './sim-speed-manager';
 import { EntityManager } from './simulation/entity-manager';
+import { FutureAttractors } from './simulation/future-attractors';
 import { Simulator } from './simulation/simulator';
 import { Predictor } from './simulation/predictor';
 import { Input } from './input/input';
@@ -90,6 +91,7 @@ export class Game {
   readonly targeter: Targeter;
   readonly navTarget: NavTarget;
   readonly entities: EntityManager;
+  private readonly futureAttractors: FutureAttractors;
   readonly simulator: Simulator;
   private readonly predictor: Predictor;
   private readonly nanWatchdog: NanWatchdog;
@@ -131,6 +133,7 @@ export class Game {
     this.markerManager = new MarkerManager(this._hud.layers.marker, this._hud.svgOverlay);
 
     this.entities = new EntityManager(this._scene, this._hud, this._worldSfx, this.markerManager, initialSave);
+    this.futureAttractors = new FutureAttractors(this.ephemeris, this.entities);
     this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, this.ephemeris, this.entities);
 
     this.cameraSystem = new CameraSystem(
@@ -157,7 +160,7 @@ export class Game {
       this._uiSfx,
       this.simSpeedManager,
       this.ephemeris,
-      this.entities,
+      this.futureAttractors,
       this._scene,
       this.markerManager,
       this.activePlayers,
@@ -178,7 +181,7 @@ export class Game {
     this.mapHud = new MapHudController(this._hud);
 
     this.simulator = new Simulator(this.entities, this.ephemeris, sections, initialSave?.simTime ?? 0);
-    this.predictor = new Predictor(this.entities, this.ephemeris);
+    this.predictor = new Predictor(this.entities, this.ephemeris, this.futureAttractors);
 
     this.activeStage = new stageClass(
       initialSave?.stage, this._hud, this._worldSfx, this._uiSfx, this._scene, this.entities, this.unlockManager,

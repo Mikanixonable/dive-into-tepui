@@ -18,7 +18,7 @@ import * as C from '../const';
 import { DisplayDurationSource, PlanData } from './plan';
 import { PlanPath } from './plan-path';
 import type { DisplayWindow } from '../display-window-manager';
-import type { PlanAttractorProvider } from './plan-attractors';
+import type { FutureAttractorProvider } from '../simulation/future-attractors';
 import type { Player } from '../player/player';
 
 // 近地点・遠地点アイコン。右クリックの被選択物であると同時に、表示するラベルを持つ。
@@ -84,7 +84,7 @@ export class PlanDisplay {
   // 起点が null のときは何も求めない — 出さない計画の位置は持たない。ship はノードの無い
   // 唯一の区間を PlanPath が自機の予測列として答えるために渡す。
   update(
-    planData: PlanData | null, displayWindow: DisplayWindow, attractorProvider: PlanAttractorProvider, ship: Player | null,
+    planData: PlanData | null, displayWindow: DisplayWindow, attractorProvider: FutureAttractorProvider, ship: Player | null,
   ): void {
     if (planData === null) {
       this.ghost = null;
