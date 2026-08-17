@@ -1,8 +1,8 @@
-// 軌道の特徴点を探す純粋関数群。接触軌道要素の解析式は評価エポックが変わるだけで値が
-// 動く(J2 短周期振動が1周回で数十km)ため、実際に描かれている積分結果と一致させたい
-// 特徴点はここで求める。赤道交点(findEquatorCrossings)はサンプル列(折れ線)を走査して
-// 求め、アプシス(apsisCrossing)は積分の1ステップごとに動径速度の符号反転を直接見て求める
-// — どちらも同じ黄金分割探索/二分法の補間機構(refineExtremum/findCrossing)を使う。
+// 軌道の特徴点を探す純粋関数群と、それを積分の進行に沿って溜める入れ物。接触軌道要素の解析式は
+// 評価エポックが変わるだけで値が動く(J2 短周期振動が1周回で数十km)ため、実際に描かれている
+// 積分結果と一致させたい特徴点はここで求める。赤道交点(findEquatorCrossings)はサンプル列
+// (折れ線)を走査して求め、アプシス(apsisCrossing/ApsisTrack)は積分の1ステップごとに動径速度の
+// 符号反転を直接見て求める — どちらも同じ黄金分割探索/二分法の補間機構を使う。
 import { Attractor } from './attractor';
 import { hermiteInterpolate, KinematicState } from './kinematic-state';
 import { dot, len, sub, Vec3 } from './vec3';
@@ -72,6 +72,46 @@ export function apsisCrossing(center: Attractor, prev: KinematicState, next: Kin
     return { state: refineExtremum(center, prev, next, true), kind: 'apoapsis' };
   }
   return null;
+}
+
+// 時刻昇順の states から t より前のものを落とす。
+function dropBefore(states: KinematicState[], t: number): void {
+  let cut = 0;
+  while (cut < states.length && states[cut]!.t < t) cut++;
+  if (cut > 0) states.splice(0, cut);
+}
+
+// 中心天体を生成時に固定し、積分の1ステップ対を時刻順に observe へ渡すと、見つかった
+// 近地点・遠地点を時刻昇順に溜める。dropBefore で範囲の先頭より前を落とすので、
+// periapsis/apoapsis は常に「いま答える範囲で最初の極値」を返す。
+export class ApsisTrack {
+  private readonly periapsides: KinematicState[] = [];
+  private readonly apoapsides: KinematicState[] = [];
+
+  public constructor(private readonly center: Attractor) {}
+
+  // prev→next の1ステップを apsisCrossing に掛け、見つかった極値を種類ごとの列へ追加する。
+  public observe(prev: KinematicState, next: KinematicState): void {
+    const crossing = apsisCrossing(this.center, prev, next);
+    if (crossing?.kind === 'periapsis') this.periapsides.push(crossing.state);
+    if (crossing?.kind === 'apoapsis') this.apoapsides.push(crossing.state);
+  }
+
+  // 両列から t より前(< t)の要素を先頭から落とす。
+  public dropBefore(t: number): void {
+    dropBefore(this.periapsides, t);
+    dropBefore(this.apoapsides, t);
+  }
+
+  // 時刻昇順の列で最初の近地点。無ければ null。
+  public get periapsis(): KinematicState | null {
+    return this.periapsides[0] ?? null;
+  }
+
+  // 時刻昇順の列で最初の遠地点。無ければ null。
+  public get apoapsis(): KinematicState | null {
+    return this.apoapsides[0] ?? null;
+  }
 }
 
 // [a, b] 区間内で、中心天体の赤道面(pole に垂直な面)を横切る点を、符号反転する
