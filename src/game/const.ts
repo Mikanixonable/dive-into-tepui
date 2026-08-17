@@ -437,24 +437,25 @@ export const PLAN_TICK_HOUR_FAMILY_MAX_COUNT = 1200;
 // 現在表示中の最細目盛からの相対階層(0/1/2以上)で半径を引く。
 export const PLAN_TICK_RADIUS_PX = [1.5, 2.5, 3.5] as const;
 
-// --- エンティティの過去・未来状態列(physics/dynamic-trajectory.ts の DynamicTrajectory/Predictor) ---
+// --- エンティティの過去・未来状態列(physics/dynamic-trajectory.ts の DynamicTrajectory、
+// game/simulation/predicted-arc.ts の PredictedArc/Predictor) ---
 export const TRAJECTORY_SAMPLES_PER_REV = 32; // 1周回あたりの保持サンプル数(補間誤差 30m 程度に収まる実測値)
 export const SHIP_HISTORY_DURATION = 5580; // Ship の過去列の保持時間 [s]。LEO(420km)の公転周期に近似
 // 過去表示の要求で伸ばせる保持時間の上限 [s]。保持サンプル数は間引きにより
-// PREDICT_MAX_SAMPLES で頭打ちなので、この値が決めるのは間引きの粗さ(補間精度)の下限。
+// ARC_MAX_SAMPLES で頭打ちなので、この値が決めるのは間引きの粗さ(補間精度)の下限。
 export const HISTORY_DURATION_MAX = DISPLAY_DURATION_MAX;
-// 1周回あたりの予測の積分ステップ数。刻み幅をその場の周期に比例させることで、低軌道でも
+// 1周回あたりの予測列の積分ステップ数。刻み幅をその場の周期に比例させることで、低軌道でも
 // 遠方の長周期軌道でも精度が一定になる。同時にこれは遅い軌道のコスト上限でもあり、既定の
 // 表示期間では GEO 以遠でこの項が採用値になって、下限だけで刻む場合の 1/7(GEO)〜1/279(日心)
 // までステップ数が落ちる。離心軌道では1周の中でも刻みが変わる(モルニヤで近地点 20s /
 // 遠地点 167s)ので、定数刻みでは届かない「安くて同じ精度」の側に出られる。
-export const PREDICT_STEPS_PER_REV = 600;
+export const ARC_STEPS_PER_REV = 600;
 // 1個体の予測列の積分ステップ数・保持サンプル数の上限。予測の長さは表示期間(最大1年)に
 // 追従するので、1周回基準の刻みのままではステップ数もメモリも青天井になる。長い期間では
 // これらが刻み幅と間引き間隔を決め、軌道の形の精度と引き換えに費用を頭打ちにする。
-// 刻み幅を決めるのは horizon > PREDICT_MAX_STEPS × PREDICT_MIN_STEP_DT(≒4.6日)のときだけ。
-export const PREDICT_MAX_STEPS = 20000;
-export const PREDICT_MAX_SAMPLES = 2000;
+// 刻み幅を決めるのは span > ARC_MAX_STEPS × ARC_MIN_STEP_DT(≒4.6日)のときだけ。
+export const ARC_MAX_STEPS = 20000;
+export const ARC_MAX_SAMPLES = 2000;
 export const PREDICT_STEP_BUDGET = 500; // Predictor が1フレームに配る予測ステップ数の上限
 export const PREDICT_COMBAT_STEP_BUDGET = 128; // 戦闘中は自機の線だけを粗く維持する
 // 予測刻みの下限 [s]。予測は固定のフレーム予算でホライズンまで伸ばす表示側の近似なので、
@@ -462,8 +463,13 @@ export const PREDICT_COMBAT_STEP_BUDGET = 128; // 戦闘中は自機の線だけ
 // 折れ線の誤差は間引き補間(PREDICT_SAMPLE_ERROR)が支配しているので見える精度は増えない。
 // これ以上粗くできない理由は月にある: 低月周回では中心天体が ECI 中を動くぶんの dt² 誤差が
 // 支配的で、20s で既に 419m(PREDICT_RESET_DIST の 84%)。LEO は同条件で 0.29m と余裕が
-// 1700 倍あるので、LEO だけを見て上げると月周回だけが破綻する。
-export const PREDICT_MIN_STEP_DT = 20;
+// 1700 倍あるので、LEO だけを見て上げると月周回だけが破綻する。刻みの下限は同時に、天体接近時
+// (下の ARC_APPROACH_SAFETY)の接近項が幾何級数的に潰れるのも防ぐ。
+export const ARC_MIN_STEP_DT = 20;
+// 天体接近時、1ステップで表面までの残距離を跨がないための安全率。動径接近率(表面までの
+// 距離の減り方)に掛かる上限係数で、相対速さそのものではなく接近している成分だけを見る
+// — でないと円軌道でも常に効いて粗化項(ARC_MAX_STEPS)を不当に上書きしてしまう。
+export const ARC_APPROACH_SAFETY = 0.5;
 export const PREDICT_RESET_DIST = 500; // 予測位置と実位置がこれを超えて乖離したら予測列を破棄 [m](補間誤差 30m より十分大きい)
 // TRAJECTORY_SAMPLES_PER_REV で間引いた列を補間したときの位置誤差 [m]。三次エルミート補間の
 // 誤差は間引き間隔の4乗で効くので、上限で間引きが粗くなる長い表示期間では

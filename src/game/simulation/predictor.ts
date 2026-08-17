@@ -1,4 +1,5 @@
-// GameEntity.predicted をフレーム予算内でラウンドロビンに伸ばす。
+// GameEntity.predicted をフレーム予算内でラウンドロビンに伸ばす。1歩ぶんの積分(刻み幅・窓解決・
+// 到達判定)は game/simulation/predicted-arc.ts の PredictedArc へ移り、ここは予算の配分だけを持つ。
 // mode='map' で全エンティティ、'combat' で自機のみを対象にする。
 import * as C from '../const';
 import { EntityManager } from './entity-manager';
@@ -6,16 +7,12 @@ import { GameEntity } from '../game-entity/game-entity';
 import { Player } from '../player/player';
 import { Ephemeris } from '../../physics/ephemeris';
 import type { Attractor } from '../../physics/attractor';
-import { strongestAttractor } from '../../physics/attractor';
-import { keplerPeriod } from '../../physics/elements';
-import { len, sub } from '../../physics/vec3';
 import { attractorsNearInto, classifyAttractors } from './attractors';
 import type { FutureAttractors } from './future-attractors';
 import type { PerfCounts } from '../../perf-meter';
 
 export class Predictor {
   private cursor = 0;
-  private readonly stepAttractorsScratch: Attractor[] = [];
   private readonly divergenceAttractorsScratch: Attractor[] = [];
 
   tracked = 0; // 予測対象の個体数
@@ -72,53 +69,16 @@ export class Predictor {
     this.cursor = all.length > 0 ? (this.cursor + visited) % all.length : 0;
   }
 
-  // budgetSteps を上限に予測列を1ステップずつ伸ばし、消費したステップ数を返す。
+  // budgetSteps を上限に予測列を1歩ずつ伸ばし、消費した歩数を返す。要求終端・保持窓の左端を
+  // 弧へ書いてから step() を呼ぶだけで、刻み幅・窓解決・到達判定は弧(PredictedArc)の責務。
   private advanceBudget(e: GameEntity, budgetSteps: number, simTime: number, horizon: number): number {
-    if (!e.predictsFuture) return 0;
-    // 引力を持たないエンティティは重力源一覧に載り得ないので、除外の走査ごと省く。
-    const selfId = e.mu !== 0 ? e.id : undefined;
+    const arc = e.ensurePredictedArc(this.futureAttractors);
+    if (arc === null) return 0;
+    arc.requiredEnd = simTime + horizon;
+    arc.retainFrom = simTime;
     let consumed = 0;
-    // 中心天体を選ぶ窓は、1歩前の中点で解決したものを持ち越す。1歩あたりの暦の解決が中点の
-    // 1回だけになり、代わりにこの窓の天体位置が半歩ぶん古くなる。ここから決まるのは刻み幅と
-    // ケプラー外挿の中心天体だけで、前者は RK4 が受ける影響の小さい量、後者は step の後に
-    // 記録されるため元から1歩ぶん古い。
-    let centerWindow: readonly Attractor[] | null = null;
-    while (consumed < budgetSteps) {
-      const tipState = e.predicted?.state ?? e.state;
-      // 先端が表示窓を覆っていたらここで抜ける。刻み幅を残り時間で切らないので先端はホライズンを
-      // 少し越えて止まり、simTime が追いつくまでの数フレームは重力源の解決ごと省ける。
-      if (tipState.t >= simTime + horizon) break;
-      // 刻み幅とケプラー外挿の中心天体は、どちらもこの1回の strongestAttractor から求める。
-      // 最初の1歩には持ち越す窓が無いので先端時刻で解決する。自分自身は距離ゼロで必ず最強に
-      // なるので候補から除く。
-      const rawCenter = strongestAttractor(
-        tipState.r,
-        centerWindow ?? this.futureAttractors.at(tipState.t).gravity,
-        selfId,
-      );
-      // 外挿の中心は解析天体(Ephemeris の登録天体)に限る — 動的重力源が最強のときは、
-      // 解析天体だけの一覧から先端時刻で選び直す。
-      const extrapolationCenter = rawCenter.id in this.ephemeris.registry
-        ? rawCenter
-        : strongestAttractor(tipState.r, this.ephemeris.gravityAttractorsAt(tipState.t));
-      // 1歩の上限は表示窓ぶん。その場の周期が表示窓よりずっと長い遠方の個体では、1歩が窓を
-      // 何倍も飛び越えて、窓の中身が両端からの補間だけになってしまう。
-      const dt = Math.min(
-        horizon,
-        Math.max(
-          C.PREDICT_MIN_STEP_DT,
-          keplerPeriod(len(sub(tipState.r, rawCenter.state.r)), rawCenter.mu) / C.PREDICT_STEPS_PER_REV,
-          horizon / C.PREDICT_MAX_STEPS,
-        ),
-      );
-      // RK4 の各ステップには、その中点時刻の重力源を渡す。実シミュレーションも各サブステップ
-      // の中点で attractorsAt を解決しており、予測だけ過去の天体位置を保持しないようにする。
-      const sources = this.futureAttractors.at(tipState.t + dt / 2);
-      const stepAttractors = attractorsNearInto(
-        tipState.r, sources.classified, this.stepAttractorsScratch, selfId,
-      );
-      if (!e.stepPredicted(stepAttractors, simTime, dt, horizon, extrapolationCenter)) break;
-      centerWindow = sources.gravity;
+    // step() が false を返したら(requiredEnd 到達・打ち切りのいずれか)、予算が残っていてもそこで止まる。
+    while (consumed < budgetSteps && arc.step()) {
       consumed++;
       this.lastSteps++;
     }

@@ -104,7 +104,7 @@ main.ts
 │       ├── PlanEditor                     ... plan は活艦(ship)の Plan への転送 getter。正本ではない
 │       │   ├── PlanDisplay                ... 計画の未来表示(「見えるとき何を見せるか」)
 │       │   │   └── PlanPath         ... 計画折れ線 + per-arc 積分キャッシュ + 画面判定
-│       │   │       ├── arcs[]              ... `PlanPath.arcs`。区間ごとの区間ソース — ノード0件の唯一の区間だけ PredictedArc(自機の GameEntity.predicted を読むだけで積分を持たず、毎フレーム作り直す)、それ以外は PlanArc(各々 DynamicTrajectory 1本 = 積分の正本を持ち、区間を作り直すたびインスタンスごと差し替わる。既存インスタンスの書き換えではない)
+│       │   │       ├── arcs[]              ... `PlanPath.arcs`。区間ごとの区間ソース — ノード0件の唯一の区間だけ plan/predicted-arc.ts の PredictedArc(game/simulation/predicted-arc.ts の同名クラスとは別物。自機の GameEntity.predicted を読むだけで積分を持たず、毎フレーム作り直す)、それ以外は PlanArc(各々 DynamicTrajectory 1本 = 積分の正本を持ち、区間を作り直すたびインスタンスごと差し替わる。既存インスタンスの書き換えではない)
 │       │   │       └── TrajectoryLine[]   ... 区間 index ごとの折れ線プール。区間数が減っても捨てず隠すだけ(色は index で決まるため使い回す)
 │       │   ├── NodeGizmo                   ... ノードハンドル/Δv 矢の DOM は Hud.layers.marker 配下
 │       │   │   └── ContextMenu<number>     ... DOM は Hud.layers.popup 配下
@@ -340,20 +340,27 @@ main.ts
   渡した、先端位置で最も強く引く解析天体)は `DynamicTrajectory` 自身が持つ数少ない状態の1つで、
   `extrapolatedAt` が先端より先を二体軌道として外挿する中心にそのまま使う — 呼び出しごとに導出し
   直すのではなく直近の `step`時点のスナップショットを保持し、`reset` で破棄する。`predictsFuture` が真の
-  GameEntity(Ship・Base・AmmoPickup・Asteroid)は、`Predictor` が
-  `stepPredicted` を呼んだ時点で2本目の `DynamicTrajectory` を `predicted` として追加で持つ
-  (§付録「正本でないもの」参照 — 未来位置のキャッシュであり、正データではない)。予測する長さ
-  (horizon)は種別ごとの定数ではなく、`Predictor.update` が毎フレーム `DisplayWindowManager.current.duration`
-  (`resolve(simTime, player)` が update フェーズ・sync フェーズそれぞれで確定させたもの)から渡す引数。
-  同じ `stepPredicted` は `predicted` を新規作成した瞬間の `extrapolationCenter` を中心に固定した
-  `physics/trajectory-features.ts` の `ApsisTrack` を `predictedApsides` として併せて持ち、以後の
-  各ステップの積分区間を `observe` へ渡して近地点・遠地点を溜める(§付録「正本でないもの」参照)。
-- `plan/predicted-arc.ts` の `PredictedArc` は、この `predicted`/`predictedApsides`/`predictedImpact` を
+  GameEntity(Ship・Base・AmmoPickup・Asteroid)は、`game/simulation/predicted-arc.ts` の
+  `PredictedArc` を1本、フィールド名 `_predictedArc` で追加で持つ(`GameEntity.ensurePredictedArc`が
+  遅延生成、`invalidatePrediction` が破棄)。積分先端そのものの正本は `PredictedArc` 自身が持つ
+  `DynamicTrajectory`(フィールド名 `_trajectory`)で、`GameEntity.predicted`/`predictedApsides`/
+  `predictedImpact`/`predictionTruncated` はこれへの薄い転送 getter(`_predictedArc` が無ければ
+  `null`/`false`)——(§付録「正本でないもの」参照 — 未来位置のキャッシュであり、正データではない)。
+  予測する長さ(horizon)は種別ごとの定数ではなく、`Predictor` が毎フレーム `DisplayWindowManager.current.duration`
+  (`resolve(simTime, player)` が update フェーズ・sync フェーズそれぞれで確定させたもの)から
+  `PredictedArc.requiredEnd = simTime + horizon` / `retainFrom = simTime` へ書き込む2つの可変フィールド。
+  `PredictedArc` は先端位置で最も強く引く解析天体を中心に固定した `physics/trajectory-features.ts` の
+  `ApsisTrack` を、最初の有限な1ステップで生成して以後保持し(`_apsides`)、各ステップの積分区間を
+  `observe` へ渡して近地点・遠地点を溜める(§付録「正本でないもの」参照)。刻み幅の解決に使う
+  重力源窓の持ち越し(`carriedSources`)とスクラッチ配列(`stepAttractorsScratch`/`collisionScratch`)も
+  `PredictedArc` 自身の所有。
+- `plan/predicted-arc.ts` の `PredictedArc`(`game/simulation/predicted-arc.ts` の同名クラスとは別の、
+  積分を行わないクラス)は、`GameEntity` の `predicted`/`predictedApsides`/`predictedImpact` を
   `plan-arc.ts` の `PlanArc` と同じ読み取り面(`[state0, end]` にクリップした
   `state0`/`end`/`trajectory`/`samples`/`at`/`endState`/`impactPoint`/`periapsisPoint`/`apoapsisPoint`/`apsisCenter`/`lastSteps`)で
-  答えるだけの薄いラッパーで、自身は何も所有しない — 積分の正本はあくまで `GameEntity.predicted` 側にある。
-  `plan-path.ts` の `PlanPath.update` だけが `new` する — 計画がノードを1つも持たない唯一の区間で、
-  操作艦を `entity` として渡して毎フレーム作り直す。
+  答えるだけの薄いラッパーで、自身は何も所有しない — 積分の正本はあくまで `GameEntity` 側(の
+  `_predictedArc`)にある。`plan-path.ts` の `PlanPath.update` だけが `new` する — 計画がノードを
+  1つも持たない唯一の区間で、操作艦を `entity` として渡して毎フレーム作り直す。
 - `STAGE_CLASSES`(stage-dictionary.ts のモジュールスコープ、`export const`)… クラス参照(`StageClass`)の
   並びだけを持つ配列で、`Stage` インスタンスは1つも作らない。選択画面のラベル・解放条件(`isUnlocked`)・
   起動時の天体暦(静的 async `createEphemeris`)はすべて各クラスの静的宣言
@@ -612,9 +619,9 @@ main.ts
 | 解析楕円の中心天体(`strongestAttractor(state.r, attractors)` の結果) | `state`(と `attractors`)から都度導く選択であり、`GameEntity`/`Plan`/`PlanDisplay`/`OrbitLine` のどれもこれを状態として保持しない — 選ぶ GUI もない | 呼ぶたび再計算 |
 | `GameEntity.orbitalElementsAround(center)` | `state` と呼び出し側の `center` から毎回求める軽量な導出値。保持しないことで、表示側が無効化条件を持ち忘れても古い軌道要素を再利用しない | 呼び出しのたび |
 | `GameEntity.prevState`(→ `current.prevState`) | 直前の `step`/`reset` 時点の state を持つ専用フィールド(先端を含む保持サンプル列とは別) | `step`/`reset` のたび更新 |
-| `GameEntity.predicted` | `actual.state` + ephemeris から `Predictor` が漸進的に構築する未来軌道のキャッシュ(`predictsFuture = false` のクラスでは常に null)。伸ばす長さ(horizon)は `DisplayWindowManager.durationSec(referencePeriod)` の毎フレーム値で、`GameEntity`/`Predictor` のどちらにも独立した状態としては残らない | `discardPredictionIfDiverged` の距離判定(§3-4 (a))、または `Player.updatePlayerControls` の推力確定直後(§3-4 (b))。無効化は破棄のみで即再構築はしない — 次フレーム以降の通常の予算配分で伸び直す |
-| `GameEntity.predictedApsides` | `predicted` を新規作成した瞬間の `extrapolationCenter` を中心に固定した `ApsisTrack`。`stepPredicted` が積分ステップ対をそのつど `observe` へ渡して溜める、`predicted` 自身の副産物のキャッシュ | `predicted` と寿命を共にする(`invalidatePrediction` で同時に破棄) |
-| `GameEntity.predictedImpact` | `stepPredicted` が1ステップごとに `attractor.ts` の `reachedBody`(掃引)と `atmosphere.ts` の `burnUpBody`(地球のみ、`REENTRY_ALT` マージン)を順に問い、いずれかが非 null ならその `BodyImpact`(到達天体とその瞬間の状態)を書く。掃引が当たったステップでは `burnUpBody` を問わないので、記録されるのは補間した交差点であってステップ終端の天体内部の状態ではない。`predicted` 自身の副産物のキャッシュ | `predicted` と寿命を共にする(`invalidatePrediction` で同時に破棄) |
+| `GameEntity.predicted` | `game/simulation/predicted-arc.ts` の `PredictedArc`(`_predictedArc`)が持つ `DynamicTrajectory` への転送 getter。`Predictor` が毎フレーム `requiredEnd`/`retainFrom` を書いてから予算ぶん `PredictedArc.step()` を呼び、漸進的に伸ばす未来軌道のキャッシュ(`predictsFuture = false` のクラスでは常に null)。伸ばす長さ(horizon)は `DisplayWindowManager.durationSec(referencePeriod)` の毎フレーム値で、`GameEntity`/`Predictor`/`PredictedArc` のいずれにも独立した状態としては残らない | `discardPredictionIfDiverged` の距離判定(§3-4 (a))、または `Player.updatePlayerControls` の推力確定直後(§3-4 (b))。無効化は破棄のみで即再構築はしない — 次フレーム以降の通常の予算配分で伸び直す |
+| `GameEntity.predictedApsides` | `PredictedArc` が最初の有限な1ステップで、その時点の `analyticCenter`(先端位置で最も強く引く解析天体)を中心に固定して生成する `ApsisTrack`。`PredictedArc.step` が積分ステップ対をそのつど `observe` へ渡して溜める、`_predictedArc` 自身の副産物のキャッシュ | `predicted` と寿命を共にする(`invalidatePrediction` で同時に破棄) |
+| `GameEntity.predictedImpact` | `PredictedArc.step` が1ステップごとに、その中点時刻の窓の衝突体全体(`mu = 0` の表示天体を含む全解析天体 + 生存 `predictedAsPlanCollider` entity、自身の `excludeId` は除く)に対して `attractor.ts` の `reachedBody`(掃引)と `atmosphere.ts` の `burnUpBody`(地球のみ、`REENTRY_ALT` マージン)を順に問い、いずれかが非 null ならその `BodyImpact`(到達天体とその瞬間の状態)を書く。掃引が当たったステップでは `burnUpBody` を問わないので、記録されるのは補間した交差点であってステップ終端の天体内部の状態ではない。`_predictedArc` 自身の副産物のキャッシュ | `predicted` と寿命を共にする(`invalidatePrediction` で同時に破棄) |
 | `SimSpeedManager.canResupplyAmmo` | `simSpeed === 1` の派生 getter(等倍限定) | 呼ぶたび再計算 |
 | `OrbitLine.snap` | 楕円ジオメトリの再生成判定用スナップショット(長半径・離心率・`hHat`/`pHat`) | 要素ドリフト・`force`・初回 |
 | `DynamicTrajectory.sampleInterval` | 保持サンプル列の最も古い端での間引き間隔(`StateQueue.oldestGap`)。列がどれだけ粗いかという列自身の属性で、`GameEntity.divergenceTolerance` が乖離判定の許容量をここから引く(現在の表示期間から引くと、期間を縮めた瞬間に既存の粗い列を破棄し続ける) | 状態として持たず、読むたび列から導出する |

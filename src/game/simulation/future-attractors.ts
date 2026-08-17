@@ -3,7 +3,7 @@
 // まとめて捨てる。保持の要否はこのモジュールの中だけで決まり、外から捨てさせることはない。
 import type { Ephemeris } from '../../physics/ephemeris';
 import type { Attractor, AttractorId } from '../../physics/attractor';
-import { classifyAttractors, ClassifiedAttractors } from './attractors';
+import { classifyAttractors, ClassifiedAttractors, mergeAttractors } from './attractors';
 import type { EntityManager } from './entity-manager';
 import type { GameEntity } from '../game-entity/game-entity';
 
@@ -13,6 +13,9 @@ import type { GameEntity } from '../game-entity/game-entity';
 export type FutureSourcesAt = {
   readonly t: number;
   readonly gravity: readonly Attractor[];
+  // gravity のうち解析天体だけの部分集合。ケプラー外挿・近地点/遠地点の中心天体は天体暦で
+  // 位置を引ける相手でなければならないので、動的重力源を含む gravity ではなくこちらを使う。
+  readonly analyticGravity: readonly Attractor[];
   readonly collision: readonly Attractor[];
   readonly collisionById: ReadonlyMap<AttractorId, Attractor>;
   readonly classified: ClassifiedAttractors;
@@ -141,20 +144,22 @@ export class FutureAttractors implements FutureAttractorProvider {
   // そのキャッシュへ当てる。
   private resolveAt(t: number): FutureSourcesAt {
     const collision: Attractor[] = [];
-    const gravity: Attractor[] = [];
+    const analyticGravity: Attractor[] = [];
     const collisionById = new Map<AttractorId, Attractor>();
     // 解析天体は mu=0 の表示天体も含めて全数が衝突対象で、そのうち引力を持つものが重力源。
     // 積分がこの経路で惑星や衛星に終端するのは entity 側の宣言とは関係しない。
     for (const body of this.ephemeris.attractorsAt(t)) {
       collision.push(body);
       if (!collisionById.has(body.id)) collisionById.set(body.id, body);
-      if (body.mu !== 0) gravity.push(body);
+      if (body.mu !== 0) analyticGravity.push(body);
     }
+    const dynamicGravity: Attractor[] = [];
     for (const e of this.entities.attractors()) {
       const state = e.displayState(t, this.ephemeris);
       if (state === null) continue;
-      gravity.push({ id: e.id, mu: e.mu, radius: e.radius, degree2: e.degree2, isStar: e.isStar, state });
+      dynamicGravity.push({ id: e.id, mu: e.mu, radius: e.radius, degree2: e.degree2, isStar: e.isStar, state });
     }
+    const gravity = mergeAttractors(analyticGravity, dynamicGravity);
     for (const e of this.entities.all()) {
       if (!e.alive || !e.predictedAsPlanCollider || this.excluded.has(e.id) || collisionById.has(e.id)) continue;
       const state = e.displayState(t, this.ephemeris);
@@ -163,6 +168,6 @@ export class FutureAttractors implements FutureAttractorProvider {
       collision.push(body);
       collisionById.set(e.id, body);
     }
-    return { t, gravity, collision, collisionById, classified: classifyAttractors(gravity) };
+    return { t, gravity, analyticGravity, collision, collisionById, classified: classifyAttractors(gravity) };
   }
 }

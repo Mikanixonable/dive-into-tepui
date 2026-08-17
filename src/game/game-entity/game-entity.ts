@@ -13,6 +13,8 @@ import { OrbitLine } from '../orbit-line';
 import { TrajectoryLine } from '../trajectory-line';
 import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
+import { PredictedArc, trajectorySampleInterval } from '../simulation/predicted-arc';
+import type { FutureAttractorProvider } from '../simulation/future-attractors';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
 import type { Contact } from '../simulation/contact';
@@ -84,7 +86,7 @@ export class GameEntity {
 
   // 実際に保持する過去列の長さ [s]。過去表示の要求(requestHistoryDuration)が種別の既定値より
   // 長ければそちらに従う。保持サンプル数は sampleInterval の間引きにより
-  // PREDICT_MAX_SAMPLES で頭打ちなので、長くしてもメモリは有界。
+  // ARC_MAX_SAMPLES で頭打ちなので、長くしてもメモリは有界。
   protected get historyDuration(): number {
     return Math.max(this.baseHistoryDuration, this.requestedHistoryDuration);
   }
@@ -109,20 +111,16 @@ export class GameEntity {
   }
   protected readonly scene?: THREE.Scene;
 
-  // 未来の予測列。
-  private _predicted: DynamicTrajectory | null = null;
-  get predicted(): DynamicTrajectory | null { return this._predicted; }
-  // 予測列の積分中に見つかった近地点・遠地点。中心天体は列を作った時点で最も強く引く
-  // 解析天体に固定する。
-  private _predictedApsides: ApsisTrack | null = null;
-  get predictedApsides(): ApsisTrack | null { return this._predictedApsides; }
-  // 予測列の積分中に最初に天体表面へ達した状態とその天体。到達しなければ null。
-  private _predictedImpact: BodyImpact | null = null;
-  get predictedImpact(): BodyImpact | null { return this._predictedImpact; }
-  // 積分中に再突入高度を割った/非有限値が出て打ち切られたか。打ち切られた列はそれ以上
-  // 伸びない(新しい列を作るまで恒久的)。
-  private truncated = false;
-  get predictionTruncated(): boolean { return this.truncated; }
+  // 未来の予測列を保持する統一積分弧(game/simulation/predicted-arc.ts の PredictedArc)。
+  private _predictedArc: PredictedArc | null = null;
+  get predicted(): DynamicTrajectory | null { return this._predictedArc?.trajectory ?? null; }
+  // 弧の積分中に見つかった近地点・遠地点。中心天体は弧を作った時点で最も強く引く解析天体に固定する。
+  get predictedApsides(): ApsisTrack | null { return this._predictedArc?.apsides ?? null; }
+  // 弧の積分中に最初に天体表面へ達した状態とその天体。到達しなければ null。
+  get predictedImpact(): BodyImpact | null { return this._predictedArc?.impact ?? null; }
+  // 積分中に再突入高度を割った/非有限値が出て打ち切られたか。打ち切られた弧はそれ以上
+  // 伸びない(新しい弧を作るまで恒久的)。
+  get predictionTruncated(): boolean { return this._predictedArc?.truncated ?? false; }
 
   // 初期状態と姿勢からエンティティを構築する。addToScene は renderObject を scene へ
   // 直接登録する種別に指定し、インスタンス描画種別では同期用の変換として保持する。
@@ -265,9 +263,7 @@ export class GameEntity {
   // 保持窓が keepDuration の列へ積む最小間隔 [s]。その場で最も強く引く天体を中心とする
   // 軌道周期を等分し、窓が長いときは保持サンプル数の上限側で頭打ちにする。
   protected sampleInterval(attractors: readonly Attractor[], state: KinematicState, keepDuration: number): number {
-    const period = localOrbitPeriod(state.r, attractors);
-    const span = isFinite(period) && period > 0 ? period : C.SHIP_HISTORY_DURATION;
-    return Math.max(span / C.TRAJECTORY_SAMPLES_PER_REV, keepDuration / C.PREDICT_MAX_SAMPLES);
+    return trajectorySampleInterval(localOrbitPeriod(state.r, attractors), keepDuration);
   }
 
   // 重力源 + J2 + 大気抵抗 + 自身の推力で 1 ステップ積分する。attractors はこのステップの
@@ -290,16 +286,24 @@ export class GameEntity {
 
   // 予測列を破棄する。
   invalidatePrediction(): void {
-    this._predicted = null;
-    this._predictedApsides = null;
-    this._predictedImpact = null;
+    this._predictedArc = null;
+  }
+
+  // 未来の予測列を保持する弧を返す(無ければ現在状態を起点に作る)。予測しない種別は null。
+  ensurePredictedArc(sources: FutureAttractorProvider): PredictedArc | null {
+    if (!this.predictsFuture) return null;
+    this._predictedArc ??= new PredictedArc(
+      this.actual.state, sources, this.bcInv, this.srpCoeff, this.mu !== 0 ? this.id : undefined,
+    );
+    return this._predictedArc;
   }
 
   // 実状態との位置ずれが許容量を超えていたら予測列を破棄する。破棄したら true。
   // attractors は simTime の重力源一覧。
   discardPredictionIfDiverged(simTime: number, attractors: readonly Attractor[]): boolean {
-    if (this._predicted === null) return false;
-    const predictedState = this._predicted.at(simTime);
+    const predicted = this.predicted;
+    if (predicted === null) return false;
+    const predictedState = predicted.at(simTime);
     if (predictedState !== null
       && len(sub(predictedState.r, this.state.r)) <= this.divergenceTolerance(attractors)) {
       return false;
@@ -321,7 +325,7 @@ export class GameEntity {
     const center = strongestAttractor(this.state.r, attractors);
     const period = keplerPeriod(len(sub(this.state.r, center.state.r)), center.mu);
     const span = isFinite(period) && period > 0 ? period : C.SHIP_HISTORY_DURATION;
-    const interval = this._predicted?.sampleInterval ?? 0;
+    const interval = this.predicted?.sampleInterval ?? 0;
     const coarsening = Math.max(1, interval / (span / C.TRAJECTORY_SAMPLES_PER_REV));
     const raw = C.PREDICT_SAMPLE_ERROR * coarsening ** 4;
     // 局所軌道周期に対応する長半径(ケプラー第三法則)。中心天体の μ が取れなければ
@@ -332,61 +336,15 @@ export class GameEntity {
     return Math.max(C.PREDICT_RESET_DIST, Math.min(raw, orbitScale * DIVERGENCE_TOLERANCE_MAX_ORBIT_RATIO));
   }
 
-  // 予測列の先端を、呼び出し側が確定させた重力源 attractors のもとで dt ぶん1ステップ伸ばす。
-  // horizon は simTime から先に予測する長さ [s]。extrapolationCenter は先端位置で最も強く引く
-  // 解析天体(外挿用、省略時 null)。伸ばした間の近地点・遠地点も predictedApsides へ、
-  // 天体表面への到達点も predictedImpact へ溜める。伸ばせなかったら false。
-  stepPredicted(
-    attractors: readonly Attractor[], simTime: number, dt: number, horizon: number,
-    extrapolationCenter: Attractor | null = null,
-  ): boolean {
-    if (!this.predictsFuture) return false;
-    if (this._predicted === null) {
-      this._predicted = new DynamicTrajectory(this.actual.state);
-      this._predictedApsides = extrapolationCenter ? new ApsisTrack(extrapolationCenter) : null;
-      this.truncated = false;
-    }
-    if (this.truncated) return false;
-    const p = this._predicted;
-
-    // 先端が既にホライズンへ達していたら、それ以上は伸ばさない。
-    if (p.state.t >= simTime + horizon) return false;
-
-    const prev = p.state;
-    p.step(
-      dt, attractors, this.bcInv, this.srpCoeff, null,
-      this.sampleInterval(attractors, p.state, horizon), horizon, extrapolationCenter,
-    );
-
-    // 有限チェック
-    const { r, v } = p.state;
-    const finite = Number.isFinite(r.x) && Number.isFinite(r.y) && Number.isFinite(r.z)
-      && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
-    if (!finite) {
-      this.truncated = true;
-    } else {
-      this._predictedApsides?.observe(prev, p.state);
-      // 表面へ到達していれば掃引が求めた交差点そのものを到達点に採る。そこへ届く前に大気で
-      // 焼失するなら、焼失させた天体をステップ終端の状態とともに採る。
-      const reached = reachedBody(prev, p.state, attractors, 0);
-      const burnedUpAt = reached === null ? burnUpBody(r, attractors, C.REENTRY_ALT) : null;
-      if (reached !== null) this._predictedImpact = reached;
-      else if (burnedUpAt !== null) this._predictedImpact = { body: burnedUpAt, state: p.state };
-      if (reached !== null || burnedUpAt !== null) this.truncated = true;
-    }
-
-    return true;
-  }
-
   // 表示時刻 t の状態。予測を持たない/予測期間を超えた時刻は null。ephemeris を渡すと、
   // 予測列で答えられない未来時刻を、先端を中心天体まわりの二体軌道とみなして外挿した値で
   // 答える(外挿もできなければ null)。
   displayState(t: number, ephemeris?: Ephemeris): KinematicState | null {
     if (t <= this.actual.state.t) return this.actual.at(t);
-    const predicted = this._predicted;
+    const predicted = this.predicted;
     const normal = predicted?.at(t) ?? null;
     if (normal !== null || ephemeris === undefined) return normal;
-    if (predicted === null || this.truncated || predicted.extrapolationCenter === null) return null;
+    if (predicted === null || this.predictionTruncated || predicted.extrapolationCenter === null) return null;
     return predicted.extrapolatedAt(t, ephemeris.stateOf(predicted.extrapolationCenter.id, t));
   }
 
