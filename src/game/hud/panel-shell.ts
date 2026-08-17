@@ -111,6 +111,7 @@ export class PanelShell {
   readonly el: HTMLElement;
   readonly titleEl: HTMLHeadingElement;
   readonly body: HTMLElement;
+  private readonly unsubscribeCollapsedView: () => void;
 
   // parent の子として id のパネルを組む。title は見出しの初期テキスト — 呼び出し側は
   // titleEl を直接書き換えて埋め込み要素(件数バッジ等)を足してよい。折りたたみ状態は
@@ -145,7 +146,7 @@ export class PanelShell {
       syncCollapseToggle(toggle, this.body, labels);
     };
     applyCollapsedState();
-    onPanelCollapsedViewChange(applyCollapsedState);
+    this.unsubscribeCollapsedView = onPanelCollapsedViewChange(applyCollapsedState);
     toggle.addEventListener('click', () => {
       savePanelCollapsed(id, this.body.classList.contains('collapsed'));
     });
@@ -157,5 +158,13 @@ export class PanelShell {
   // 好み)とは別軸 — 隠れている間に畳み外ししても、再表示時にその状態のまま出てくる。
   setHidden(hidden: boolean): void {
     this.el.classList.toggle('hidden', hidden);
+  }
+
+  // 折りたたみ状態変化の購読を解いてから DOM を取り除く。セッションを通して生き続ける
+  // 常設パネル(VESSEL/ORBIT/TARGET/CONTACTS)は呼ばなくてよいが、Game の再構築ごとに
+  // 作り直されるパネルは呼ばないと購読が積み上がる。
+  dispose(): void {
+    this.unsubscribeCollapsedView();
+    this.el.remove();
   }
 }

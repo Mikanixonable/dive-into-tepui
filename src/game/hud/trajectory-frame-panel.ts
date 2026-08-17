@@ -5,24 +5,13 @@ import { RotationZone } from './rotation-zone';
 import { ToggleSwitch } from './widgets';
 import { celestialBodyName } from './frame-labels';
 import { hudRail } from './hud-root';
+import { PanelShell } from './panel-shell';
 import type { MapPickable } from '../map-pickable';
 import type { DisplayWindowManager } from '../display-window-manager';
 import type { OverlayManager } from './overlay-manager';
 
-function buildPanel(root: HTMLElement, id: string, titleText: string): HTMLElement {
-  const panel = document.createElement('div');
-  panel.id = id;
-  panel.className = 'panel hidden hud-frame-controls';
-  panel.addEventListener('pointerdown', (e) => e.stopPropagation());
-  const title = document.createElement('h3');
-  title.textContent = titleText;
-  panel.appendChild(title);
-  hudRail(root, 'left').appendChild(panel);
-  return panel;
-}
-
 export class TrajectoryFramePanel {
-  private readonly panel: HTMLElement;
+  private readonly shell: PanelShell;
   private readonly planCenterZone: AnchorZone;
   private readonly planRotationZone: RotationZone;
   private readonly followToggle: ToggleSwitch;
@@ -37,7 +26,9 @@ export class TrajectoryFramePanel {
     private readonly displayWindow: DisplayWindowManager,
     overlayManager: OverlayManager,
   ) {
-    this.panel = buildPanel(panelRoot, 'hud-trajectory-frame', '軌道フレーム');
+    this.shell = new PanelShell(hudRail(panelRoot, 'left'), 'hud-trajectory-frame', '軌道フレーム');
+    this.shell.el.classList.add('hidden', 'hud-frame-controls');
+    this.shell.el.addEventListener('pointerdown', (e) => e.stopPropagation());
 
     // 描く線は必ずどこかの座標系に焼き込まれるので「どこにも固定しない」状態が無く、
     // 太陽系空間への固定はプルダウンの恒星そのものにあたる。
@@ -47,22 +38,22 @@ export class TrajectoryFramePanel {
       if (id === null) return;
       this.displayWindow.frame = ephemeris.frameOf(id, this.displayWindow.frame.rotatingWith);
     };
-    this.panel.appendChild(this.planCenterZone.element);
+    this.shell.body.appendChild(this.planCenterZone.element);
 
     this.planRotationZone = new RotationZone('線を一緒に回す', ephemeris);
     this.planRotationZone.element.classList.add('hud-frame-scroll-zone', 'hud-frame-rotation-zone');
     this.planRotationZone.onSelect = (rotatingWith) => {
       this.displayWindow.frame = ephemeris.frameOf(this.displayWindow.frame.center, rotatingWith);
     };
-    this.panel.appendChild(this.planRotationZone.element);
+    this.shell.body.appendChild(this.planRotationZone.element);
 
     this.followToggle = new ToggleSwitch('カメラの基準に追随', (on: boolean) => { this.followCamera = on; });
     this.followToggle.setOn(this.followCamera);
-    this.panel.appendChild(this.followToggle.element);
+    this.shell.body.appendChild(this.followToggle.element);
 
     this.orbitSummary = document.createElement('div');
     this.orbitSummary.className = 'frame-summary';
-    this.panel.appendChild(this.orbitSummary);
+    this.shell.body.appendChild(this.orbitSummary);
   }
 
   private orbitSummaryText(): string {
@@ -73,7 +64,7 @@ export class TrajectoryFramePanel {
   }
 
   public sync(pickables: readonly MapPickable[], members: readonly string[], isVisible: boolean): void {
-    this.panel.classList.toggle('hidden', !isVisible);
+    this.shell.setHidden(!isVisible);
     if (!isVisible) return;
 
     this.planCenterZone.setItems(pickables);
@@ -88,6 +79,6 @@ export class TrajectoryFramePanel {
 
   public dispose(): void {
     this.planCenterZone.dispose();
-    this.panel.remove();
+    this.shell.dispose();
   }
 }

@@ -69,6 +69,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-object-list .object-list-head { position: sticky; top: calc(var(--space-4) * -1); margin: calc(var(--space-4) * -1) calc(var(--space-5) * -1) 0; padding: var(--space-4) var(--space-5) 0; background: var(--surface-opaque); z-index: 1; }
 #hud-object-list .object-list-search { padding: var(--space-1) var(--space-2); }
 #hud-object-list .object-list-search .w-input { width: 100%; }
+#hud-object-list .object-list-controls { display: flex; flex-wrap: wrap; }
 #hud-object-list .object-list-head .w-group { padding: var(--space-1) var(--space-2); }
 #hud-object-list .object-list-head .w-btn { font-size: var(--font-xxs); }
 #hud-object-list .object-list-collapse {
@@ -140,6 +141,9 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-predict .predict-row1, #hud-predict .predict-row2 { display: flex; align-items: center; gap: var(--space-3); }
 #hud-predict .predict-row1 { flex-wrap: wrap; margin-bottom: var(--space-2); }
 #hud-predict .predict-pills { display: inline-flex; gap: var(--space-3); flex-wrap: wrap; align-items: center; }
+#hud-predict .predict-past.collapsed { display: none; }
+#hud-predict span.predict-past-toggle { margin-left: auto; padding: 0 var(--space-2); font-size: var(--font-xxs); color: var(--text-dim); }
+#hud-predict .predict-tick-mode { margin-left: auto; }
 /* span. まで指定して .w-btn 側の display/padding より確実に勝たせる
    (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
 #hud-predict span.predict-reset {

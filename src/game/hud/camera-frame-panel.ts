@@ -8,23 +8,12 @@ import { RotationZone } from './rotation-zone';
 import { Button, SegmentedControl, Slider, ToggleSwitch, ValueInput } from './widgets';
 import { celestialBodyName } from './frame-labels';
 import { hudRail } from './hud-root';
+import { PanelShell } from './panel-shell';
 import type { MapPickable } from '../map-pickable';
 import type { OverlayManager } from './overlay-manager';
 
-function buildPanel(root: HTMLElement, id: string, titleText: string): HTMLElement {
-  const panel = document.createElement('div');
-  panel.id = id;
-  panel.className = 'panel hidden hud-frame-controls';
-  panel.addEventListener('pointerdown', (e) => e.stopPropagation());
-  const title = document.createElement('h3');
-  title.textContent = titleText;
-  panel.appendChild(title);
-  hudRail(root, 'left').appendChild(panel);
-  return panel;
-}
-
 export class CameraFramePanel {
-  private readonly panel: HTMLElement;
+  private readonly shell: PanelShell;
   private readonly cameraCenterZone: AnchorZone;
   private readonly cameraRotationZone: RotationZone;
   private readonly cameraRotationModeToggle: ToggleSwitch;
@@ -46,27 +35,29 @@ export class CameraFramePanel {
     private readonly mapCamera: MapCamera,
     overlayManager: OverlayManager,
   ) {
-    this.panel = buildPanel(panelRoot, 'hud-camera-controls', 'カメラ');
+    this.shell = new PanelShell(hudRail(panelRoot, 'left'), 'hud-camera-controls', 'カメラ');
+    this.shell.el.classList.add('hidden', 'hud-frame-controls');
+    this.shell.el.addEventListener('pointerdown', (e) => e.stopPropagation());
 
     this.cameraCenterZone = new AnchorZone(popupRoot, '基準にする天体', ephemeris, '固定を解除', overlayManager);
     this.cameraCenterZone.element.classList.add('hud-frame-scroll-zone', 'hud-frame-origin-zone');
     this.cameraCenterZone.onSelect = (id) => this.onSelectCenter?.(id);
-    this.panel.appendChild(this.cameraCenterZone.element);
+    this.shell.body.appendChild(this.cameraCenterZone.element);
 
     this.cameraRotationZone = new RotationZone('視点を一緒に回す', ephemeris);
     this.cameraRotationZone.element.classList.add('hud-frame-scroll-zone', 'hud-frame-rotation-zone');
     this.cameraRotationZone.onSelect = (rotatingWith) => mapCamera.setCameraRotation(rotatingWith);
-    this.panel.appendChild(this.cameraRotationZone.element);
+    this.shell.body.appendChild(this.cameraRotationZone.element);
 
     this.cameraRotationModeToggle = new ToggleSwitch('クオータニオン操作', (on) => {
       mapCamera.setCameraRotationMode(on ? 'quaternion' : 'euler');
     });
-    this.panel.appendChild(this.cameraRotationModeToggle.element);
+    this.shell.body.appendChild(this.cameraRotationModeToggle.element);
 
     this.projectionToggle = new ToggleSwitch('平行投影', (on) => {
       mapCamera.setProjectionMode(on ? 'orthographic' : 'perspective');
     });
-    this.panel.appendChild(this.projectionToggle.element);
+    this.shell.body.appendChild(this.projectionToggle.element);
 
     const fovGroup = document.createElement('div');
     fovGroup.className = 'camera-fov-control';
@@ -91,29 +82,29 @@ export class CameraFramePanel {
     fovUnit.className = 'camera-control-unit';
     fovUnit.textContent = '°';
     fovGroup.appendChild(fovUnit);
-    this.panel.appendChild(fovGroup);
+    this.shell.body.appendChild(fovGroup);
     this.fovResetButton = new Button('画角リセット', () => mapCamera.resetFov());
     this.fovResetButton.element.classList.add('camera-fov-reset');
     this.fovResetButton.element.title = '画角をデフォルトに戻す';
-    this.panel.appendChild(this.fovResetButton.element);
+    this.shell.body.appendChild(this.fovResetButton.element);
 
     this.referencePlaneControl = new SegmentedControl<CameraReferencePlane>('視点の基準面', [
       ['ecliptic', '黄道面'],
       ['equator', '赤道面'],
       ['moonOrbit', '月軌道面'],
     ], (plane) => mapCamera.setReferencePlane(plane));
-    this.panel.appendChild(this.referencePlaneControl.element);
+    this.shell.body.appendChild(this.referencePlaneControl.element);
 
     const referenceViewGroup = document.createElement('div');
     referenceViewGroup.className = 'camera-reference-view-buttons';
     this.aboveButton = new Button('真上', () => mapCamera.setReferenceView('above'));
     this.sideButton = new Button('真横', () => mapCamera.setReferenceView('side'));
     referenceViewGroup.append(this.aboveButton.element, this.sideButton.element);
-    this.panel.appendChild(referenceViewGroup);
+    this.shell.body.appendChild(referenceViewGroup);
 
     this.cameraSummary = document.createElement('div');
     this.cameraSummary.className = 'frame-summary';
-    this.panel.appendChild(this.cameraSummary);
+    this.shell.body.appendChild(this.cameraSummary);
   }
 
   private cameraSummaryText(): string {
@@ -127,7 +118,7 @@ export class CameraFramePanel {
   }
 
   public sync(pickables: readonly MapPickable[], members: readonly string[], isVisible: boolean): void {
-    this.panel.classList.toggle('hidden', !isVisible);
+    this.shell.setHidden(!isVisible);
     if (!isVisible) return;
 
     this.cameraCenterZone.setItems(pickables);
@@ -153,6 +144,6 @@ export class CameraFramePanel {
 
   public dispose(): void {
     this.cameraCenterZone.dispose();
-    this.panel.remove();
+    this.shell.dispose();
   }
 }
