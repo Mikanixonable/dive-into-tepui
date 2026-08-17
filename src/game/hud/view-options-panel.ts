@@ -90,12 +90,23 @@ const SPATIAL_GRID_COLUMNS: readonly ViewOptionColumn[] = [
   { glyph: '十', label: '縮尺' },
 ];
 
-// トグルのグリフと意味をカラム見出しで常に並記し、色だけに識別を委ねない。
+// セクション自身の折りたたみトグルの見た目(見出し文言はセクションごとに異なるので汎用の語にする)。
+const SECTION_COLLAPSE_LABELS: CollapseToggleLabels = {
+  expandedGlyph: COLLAPSE_EXPANDED_GLYPH,
+  collapsedGlyph: COLLAPSE_COLLAPSED_GLYPH,
+  expandedTitle: 'このセクションを折りたたむ',
+  collapsedTitle: 'このセクションを開く',
+};
+
+// トグルのグリフと意味をカラム見出しで常に並記し、色だけに識別を委ねない。見出しに
+// セクション単位の折りたたみトグルを添え、返した本文コンテナへ以降の行を足していく。
 function appendSectionHeading(
   parent: HTMLElement,
+  id: string,
   title: string,
   columns: readonly ViewOptionColumn[],
-): void {
+  defaultCollapsed: boolean,
+): { readonly section: HTMLElement; readonly unsubscribe: () => void } {
   const heading = document.createElement('div');
   heading.className = 'view-options-section-heading';
 
@@ -114,6 +125,22 @@ function appendSectionHeading(
   }
   heading.appendChild(legend);
   parent.appendChild(heading);
+
+  const section = document.createElement('div');
+  section.className = 'view-options-section';
+  parent.appendChild(section);
+
+  const toggle = buildCollapseToggle(heading, `${id}-collapse`, 'view-options-section-collapse', section, SECTION_COLLAPSE_LABELS);
+  const applyCollapsedState = (): void => {
+    const collapsed = loadPanelCollapsed(id) ?? defaultCollapsed;
+    section.classList.toggle('collapsed', collapsed);
+    syncCollapseToggle(toggle, section, SECTION_COLLAPSE_LABELS);
+  };
+  applyCollapsedState();
+  const unsubscribe = onPanelCollapsedViewChange(applyCollapsedState);
+  toggle.addEventListener('click', () => savePanelCollapsed(id, section.classList.contains('collapsed')));
+
+  return { section, unsubscribe };
 }
 
 export class ViewOptionsPanel {
@@ -133,6 +160,7 @@ export class ViewOptionsPanel {
 
   private readonly panel: HTMLElement;
   private readonly unsubscribeCollapsedView: () => void;
+  private readonly unsubscribeSectionCollapsedViews: (() => void)[] = [];
 
   public constructor(root: HTMLElement) {
     // パネル本体とタイトル
@@ -165,12 +193,13 @@ export class ViewOptionsPanel {
     // という明示の意思表示にあたる。
     const bodyClassButtons: (readonly [keyof BodyClassToggles, Button])[] = [];
     const bodyClassCategories: (readonly [keyof BodyClassToggles, Button, HTMLElement, readonly Button[]])[] = [];
-    const rowGroups: readonly { readonly title: string; readonly rows: readonly BodyClassRow[] }[] = [
-      { title: '天体', rows: BODY_CLASS_ROWS },
-      { title: '機体と設備', rows: ENTITY_ROWS },
+    const rowGroups: readonly { readonly id: string; readonly title: string; readonly rows: readonly BodyClassRow[] }[] = [
+      { id: 'view-options-section-bodies', title: '天体', rows: BODY_CLASS_ROWS },
+      { id: 'view-options-section-entities', title: '機体と設備', rows: ENTITY_ROWS },
     ];
     for (const group of rowGroups) {
-      appendSectionHeading(body, group.title, OBJECT_COLUMNS);
+      const { section, unsubscribe } = appendSectionHeading(body, group.id, group.title, OBJECT_COLUMNS, false);
+      this.unsubscribeSectionCollapsedViews.push(unsubscribe);
       for (const row of group.rows) {
         const rowEl = document.createElement('div');
         rowEl.className = 'body-class-row';
@@ -228,7 +257,7 @@ export class ViewOptionsPanel {
           bodyClassButtons.push([orbitKey, orbit]);
         }
 
-        body.appendChild(rowEl);
+        section.appendChild(rowEl);
         bodyClassCategories.push([row.categoryKey, category, rowEl, individualButtons]);
       }
     }
@@ -236,9 +265,11 @@ export class ViewOptionsPanel {
     this.bodyClassCategoryButtons = bodyClassCategories;
 
     // 天球(参照面:黄道・赤道、環境:星空)。天体クラスと同じ行の形(見出し+アイコン列)を流用する。
+    // 普段の主用途ではないので、既定で畳んでおく。
     const gridButtons: (readonly [keyof CelestialGridVisibility, Button])[] = [];
     const gridCategories: (readonly [keyof CelestialGridVisibility, Button, HTMLElement, readonly Button[]])[] = [];
-    appendSectionHeading(body, '天球', GRID_COLUMNS);
+    const gridSection = appendSectionHeading(body, 'view-options-section-grid', '天球', GRID_COLUMNS, true);
+    this.unsubscribeSectionCollapsedViews.push(gridSection.unsubscribe);
     for (const group of GRID_TOGGLE_GROUPS) {
       const rowEl = document.createElement('div');
       rowEl.className = 'body-class-row grid-class-row';
@@ -257,20 +288,22 @@ export class ViewOptionsPanel {
         gridButtons.push([key, button]);
         individualButtons.push(button);
       }
-      body.appendChild(rowEl);
+      gridSection.section.appendChild(rowEl);
       gridCategories.push([group.categoryKey, category, rowEl, individualButtons]);
     }
-    this.gridButtons = gridButtons;
-    this.gridCategoryButtons = gridCategories;
 
     const starsRow = document.createElement('div');
     starsRow.className = 'body-class-row grid-class-row';
     this.starsButton = this.toggleButton('星空', '星空を表示', 'stars', this.gridCurrent, (key, on) => this.onGridToggle?.(key, on));
     this.starsButton.element.classList.add('body-class-title');
     starsRow.appendChild(this.starsButton.element);
-    body.appendChild(starsRow);
+    gridSection.section.appendChild(starsRow);
+    this.gridButtons = gridButtons;
+    this.gridCategoryButtons = gridCategories;
 
-    appendSectionHeading(body, '空間グリッド', SPATIAL_GRID_COLUMNS);
+    // 縮尺グリッドも同様に、既定は畳んでおく。
+    const spatialGridSection = appendSectionHeading(body, 'view-options-section-spatial-grid', '空間グリッド', SPATIAL_GRID_COLUMNS, true);
+    this.unsubscribeSectionCollapsedViews.push(spatialGridSection.unsubscribe);
     for (const [key, label, description] of SPATIAL_GRID_ROWS) {
       const row = document.createElement('div');
       row.className = 'body-class-row grid-class-row';
@@ -283,7 +316,7 @@ export class ViewOptionsPanel {
       gridButton.element.classList.add('body-class-icon-btn');
       buttons.appendChild(gridButton.element);
       row.appendChild(buttons);
-      body.appendChild(row);
+      spatialGridSection.section.appendChild(row);
       gridButtons.push([key, titleButton], [key, gridButton]);
     }
 
@@ -314,6 +347,7 @@ export class ViewOptionsPanel {
   // パネルを取り除き、折りたたみ状態変化の購読を解く。
   public dispose(): void {
     this.unsubscribeCollapsedView();
+    for (const unsubscribe of this.unsubscribeSectionCollapsedViews) unsubscribe();
     this.panel.remove();
   }
 

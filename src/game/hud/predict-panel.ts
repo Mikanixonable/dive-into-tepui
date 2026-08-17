@@ -241,6 +241,7 @@ export class PredictPanel {
   private readonly panel: HTMLElement;
   private readonly durationRow: DurationPillRow<FixedDurationKey, DisplayDurationKey>;
   private readonly pastDurationRow: DurationPillRow<FixedPastDurationKey, DisplayPastDurationKey>;
+  private readonly pastToggleBtn: Button;
   private readonly tickLabelModeSwitch: ToggleSwitch;
   private readonly slider: Slider;
   private readonly absoluteLabel: HTMLElement;
@@ -266,13 +267,18 @@ export class PredictPanel {
     title.textContent = '軌道予測';
     this.panel.appendChild(title);
 
-    // 行1: 未来/過去それぞれの期間ピル(1周/1日/7日/28日/任意…、過去はさらに なし)。
+    // 行1: 未来の期間ピル(1周/1日/7日/28日/任意…)。行末の「過去 ▸」は既定で畳んだ過去行の開閉。
     this.durationRow = new DurationPillRow<FixedDurationKey, DisplayDurationKey>(
       '未来', FIXED_DURATIONS,
       (key) => this.onDurationSelect?.(key),
       (sec) => this.onCustomDurationConfirm?.(sec),
     );
+    this.pastToggleBtn = new Button('', () => this.togglePastRow());
+    this.pastToggleBtn.element.classList.add('predict-past-toggle');
+    this.durationRow.element.appendChild(this.pastToggleBtn.element);
     this.panel.appendChild(this.durationRow.element);
+
+    // 過去の期間ピル(未来行と同形、さらに なし)。既定は「なし」が主用途なので畳んで始める。
     this.pastDurationRow = new DurationPillRow<FixedPastDurationKey, DisplayPastDurationKey>(
       '過去', FIXED_PAST_DURATIONS,
       (key) => this.onPastDurationSelect?.(key),
@@ -280,16 +286,14 @@ export class PredictPanel {
     );
     this.pastDurationRow.element.classList.add('predict-past');
     this.panel.appendChild(this.pastDurationRow.element);
+    this.applyPastRowCollapsed(loadPanelCollapsed('hud-predict-past') ?? true);
 
-    // 期間の2行に続けて、目盛りラベルの表記(UTC カレンダー / 現在からの経過時間)を選ぶ。
-    const modeRow = document.createElement('div');
-    modeRow.className = 'predict-row1';
+    // 目盛りラベルの表記(UTC カレンダー / 現在からの経過時間)はスクラバー行に同居させる。
     this.tickLabelModeSwitch = new ToggleSwitch(
-      '目盛りを相対表記',
+      '相対表記',
       (on) => this.onTickLabelModeChange?.(on ? 'relative' : 'absolute'),
     );
-    modeRow.appendChild(this.tickLabelModeSwitch.element);
-    this.panel.appendChild(modeRow);
+    this.tickLabelModeSwitch.element.classList.add('predict-tick-mode');
 
     // 行2: 現在に戻すボタン + スクラバー + T+読み値(クリックで直接ジャンプ入力に変わる)。
     const row2 = document.createElement('div');
@@ -330,6 +334,7 @@ export class PredictPanel {
     this.jumpEditEl.className = 'predict-value-input hidden';
     this.jumpEditEl.appendChild(this.jumpInput.element);
     row2.appendChild(this.jumpEditEl);
+    row2.appendChild(this.tickLabelModeSwitch.element);
     this.panel.appendChild(row2);
 
     // 行3: 目盛り。スクラバーの直下に置く。
@@ -375,6 +380,19 @@ export class PredictPanel {
   public dispose(): void {
     this.unsubscribeCollapsedView();
     this.wrap.remove();
+  }
+
+  private togglePastRow(): void {
+    const collapsed = !this.pastDurationRow.element.classList.contains('collapsed');
+    this.applyPastRowCollapsed(collapsed);
+    savePanelCollapsed('hud-predict-past', collapsed);
+  }
+
+  // 過去行の開閉を反映し、トグルボタンの見た目(向き・タイトル)も合わせる。
+  private applyPastRowCollapsed(collapsed: boolean): void {
+    this.pastDurationRow.element.classList.toggle('collapsed', collapsed);
+    this.pastToggleBtn.setLabel(collapsed ? '過去 ▸' : '過去 ▾');
+    this.pastToggleBtn.element.title = collapsed ? '過去表示を開く' : '過去表示を畳む';
   }
 
   // スライダーの段階数・つまみ位置・未予測区間の表示を反映する。

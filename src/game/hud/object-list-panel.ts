@@ -185,15 +185,19 @@ export class ObjectListPanel {
       filterControl.setSelected(this.filter);
     });
     filterControl.setSelected(this.filter);
-    head.appendChild(filterControl.element);
 
-    // 並び順はフィルタとは別行 — 絞り込みと並べ替えは独立な操作であることを見た目でも分ける。
     const sortControl = new SegmentedControl<ObjectListSort>('並び順', SORTS, (key) => {
       this.sort = key;
       sortControl.setSelected(key);
     });
     sortControl.setSelected(this.sort);
-    head.appendChild(sortControl.element);
+
+    // 絞り込みと並べ替えは独立な操作だが、幅に収まる限り1行にまとめて表示を詰める
+    // (収まらない幅ではラップして2行になる)。
+    const controlsRow = document.createElement('div');
+    controlsRow.className = 'object-list-controls';
+    controlsRow.append(filterControl.element, sortControl.element);
+    head.appendChild(controlsRow);
     this.panel.appendChild(head);
     // 見出し以外をまとめて畳める区画にする — 一覧は常時表示で画面右を大きく占有するため。
     const body = document.createElement('div');

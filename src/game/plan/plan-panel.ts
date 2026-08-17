@@ -8,6 +8,7 @@ import { AXIS_NORMAL, AXIS_PROGRADE, AXIS_RADIAL } from '../theme';
 import { HoldButton, ValueInput } from '../hud/widgets';
 import { fmtDist, fmtTime } from '../hud/utils';
 import { hudRail } from '../hud/hud-root';
+import { PanelShell } from '../hud/panel-shell';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 
 export interface DvButtons {
@@ -96,10 +97,8 @@ function planPanelHtml(
       s += `<div style="color:var(--accent);margin-top:2px">⚠ ${peSpec.nameJa}が大気圏内</div>`;
     }
   }
-  // 操作キーのヒント
-  const dvKeys =
-    `${K.dvPrograde.label}/${K.dvRetrograde.label}・${K.dvNormal.label}/${K.dvAntinormal.label}・${K.dvRadialOut.label}/${K.dvRadialIn.label}`;
-  s += `<div style="margin-top:6px;color:var(--text-dim);font-size:11px">[クリック] ノード配置/選択 [ノードをドラッグ] 時刻移動とマニューバ維持 [手動設定のΔT] 軌道上の位置を数値指定 [矢印ハンドル/${dvKeys}/パネルのボタン] 長押しでΔv調整、ハンドルは大きくドラッグし続けると加速 <br>[右クリック] メニュー(自動ワープ/削除) [${K.deleteNode.label}] 選択ノード削除 [${K.fineAttitudeToggle.label}] 微調整 [${K.toggleMapMode.label}] 確定して戻る(時間は進み続ける)</div>`;
+  // 操作方法の詳細はヘルプパネルの「ノードのドラッグ」等の行が持つので、ここでは開き方だけ示す。
+  s += `<div style="margin-top:6px;color:var(--text-dim);font-size:11px">[${K.help.label}] で操作方法を表示</div>`;
   return s;
 }
 
@@ -108,7 +107,7 @@ export class PlanPanel {
   onDvInputChange: ((pro: number, nrm: number, rad: number) => void) | null = null;
   onPositionInputChange: ((secondsFromNow: number) => void) | null = null;
 
-  private readonly panel: HTMLElement;
+  private readonly shell: PanelShell;
   private readonly body: HTMLElement;
   private readonly editForm: HTMLElement;
   private readonly proInput: ValueInput;
@@ -118,18 +117,15 @@ export class PlanPanel {
 
   // パネルの DOM を組み立て、右レールへ追加する。
   constructor(panelRoot: HTMLElement) {
-    this.panel = document.createElement('div');
-    this.panel.id = 'hud-plan';
-    this.panel.className = 'panel hidden';
-    this.panel.innerHTML = `
-      <h3>軌道計画 [${K.toggleMapMode.label}]</h3>
+    this.shell = new PanelShell(hudRail(panelRoot, 'right'), 'hud-plan', `軌道計画 [${K.toggleMapMode.label}]`);
+    this.shell.body.innerHTML = `
       <div data-id="planbody"></div>
       <div data-id="planedit" class="hidden" style="margin-top:8px; padding-top:8px; border-top:1px solid var(--fill-2)">
         <div style="font-size:10px; color:var(--text-dim); margin-bottom:4px;">ノード位置（現在時刻からの ΔT [s]）</div>
       </div>
     `;
-    this.body = this.panel.querySelector<HTMLElement>('[data-id="planbody"]')!;
-    this.editForm = this.panel.querySelector<HTMLElement>('[data-id="planedit"]')!;
+    this.body = this.shell.body.querySelector<HTMLElement>('[data-id="planbody"]')!;
+    this.editForm = this.shell.body.querySelector<HTMLElement>('[data-id="planedit"]')!;
 
     const positionRow = document.createElement('div');
     positionRow.className = 'w-group';
@@ -162,8 +158,6 @@ export class PlanPanel {
 
     const { buttons } = buildDvButtons();
     this.dvButtons = buttons;
-
-    hudRail(panelRoot, 'right').appendChild(this.panel);
   }
 
   // ノード一覧・噴射後軌道要素・Δv 手動入力欄を現在値へ合わせる。選択中ノードが無ければ
@@ -173,7 +167,7 @@ export class PlanPanel {
     nodeSecondsFromNow: number | null, warnAtmosphere: boolean, hasSelection: boolean,
   ): void {
     const html = planPanelHtml(nodes, selEl, warnAtmosphere);
-    this.panel.classList.toggle('hidden', !hasSelection);
+    this.shell.setHidden(!hasSelection);
     if (this.body.innerHTML !== html) this.body.innerHTML = html;
 
     if (hasSelection && localDv) {
@@ -191,11 +185,11 @@ export class PlanPanel {
   }
 
   hide(): void {
-    this.panel.classList.add('hidden');
+    this.shell.setHidden(true);
   }
 
   // パネルの DOM を取り除く。
   dispose(): void {
-    this.panel.remove();
+    this.shell.dispose();
   }
 }

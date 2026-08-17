@@ -134,12 +134,16 @@ export const MAP_VIEW_STYLE = `
 /* View: 種別、表示要素、天球を先に読ませ、選択色は小さな点灯へ絞る。 */
 #hud .hud-map-root.active #hud-view-options .view-options-section-heading {
   display: grid;
-  grid-template-columns: 96px minmax(0, 1fr);
+  grid-template-columns: 96px minmax(0, 1fr) 20px;
   align-items: end;
   gap: var(--space-3);
   margin: var(--space-5) 0 var(--space-2);
 }
 #hud .hud-map-root.active #hud-view-options .view-options-section-heading:first-child { margin-top: 0; }
+#hud .hud-map-root.active #hud-view-options .view-options-section-collapse {
+  background: none; border: none; color: var(--text-dim); font: inherit; cursor: pointer; pointer-events: auto;
+}
+#hud .hud-map-root.active #hud-view-options .view-options-section.collapsed { display: none; }
 #hud .hud-map-root.active #hud-view-options .view-options-section-title {
   color: var(--body);
   font-size: var(--font-xs);
@@ -285,7 +289,7 @@ export const MAP_VIEW_STYLE = `
   #hud .hud-map-root.active #hud-object-list,
   #hud .hud-map-root.active #hud-view-options,
   #hud .hud-map-root.active .hud-frame-controls { border-radius: var(--radius-panel); }
-  #hud .hud-map-root.active #hud-view-options .view-options-section-heading,
+  #hud .hud-map-root.active #hud-view-options .view-options-section-heading { grid-template-columns: 82px minmax(0, 1fr) 20px; }
   #hud .hud-map-root.active #hud-view-options .body-class-row { grid-template-columns: 82px minmax(0, 1fr); }
   #hud .hud-map-root.active #hud-view-options .view-options-column { font-size: 8px; }
 }
@@ -301,7 +305,7 @@ export const MAP_VIEW_STYLE = `
   }
   #hud .hud-map-root.active #hud-object-list .object-list-head .w-group-title,
   #hud .hud-map-root.active #hud-object-list .object-list-detail { font-size: 8px; }
-  #hud .hud-map-root.active #hud-view-options .view-options-section-heading,
+  #hud .hud-map-root.active #hud-view-options .view-options-section-heading { grid-template-columns: 68px minmax(0, 1fr) 20px; }
   #hud .hud-map-root.active #hud-view-options .body-class-row { grid-template-columns: 68px minmax(0, 1fr); }
   #hud .hud-map-root.active #hud-view-options .view-options-column { overflow: hidden; text-overflow: ellipsis; }
   #hud .hud-map-root.active #hud-predict .predict-row1 { align-items: flex-start; }
