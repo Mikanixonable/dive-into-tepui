@@ -1,8 +1,9 @@
-// 多ノードの計画軌道を arc 単位で描く。Plan の corners を区間へ分解し、区間ごとに PlanArc
-// (積分結果)と TrajectoryLine(折れ線)を index で対応付けて持つ。起点・重力源・apsisCenter が
-// 変われば PlanArc を作り直し、答える範囲だけが動いた区間は PlanArc.setRange に動かさせる —
-// どちらの場合も折れ線はその区間の TrajectoryLine プールを使い回す。画面判定も同じ表示変換を
-// 通すため描画とずれない。
+// 多ノードの計画軌道を arc 単位で描く。Plan の corners を区間へ分解し、区間ごとに区間ソース
+// (PlanArc の積分結果か、ノードを1つも持たない末尾区間だけが使う PredictedArc)と
+// TrajectoryLine(折れ線)を index で対応付けて持つ。起点・重力源・apsisCenter が既存の PlanArc
+// と変われば作り直し、答える範囲だけが動いた区間は PlanArc.setRange に動かさせる — どちらの
+// 場合も折れ線はその区間の TrajectoryLine プールを使い回す。画面判定も同じ表示変換を通すため
+// 描画とずれない。
 import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../physics/kinematic-state';
 import { Attractor, strongestAttractor } from '../../physics/attractor';
@@ -16,7 +17,9 @@ import { TrajectoryLine } from '../trajectory-line';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { DisplayDurationSource, PlanData, TimeRange, segmentDurationFrom } from './plan';
 import { PlanArc } from './plan-arc';
+import { PredictedArc } from './predicted-arc';
 import type { PlanAttractorProvider } from './plan-attractors';
+import type { Player } from '../player/player';
 import * as C from '../const';
 
 const SEGMENT_COLORS = [0xffb36b, 0xff8a26, 0xff6a00];
@@ -30,9 +33,10 @@ const TIME_TIE_SEC = 1e-6;
 // apsisCenter は末尾区間だけが持つ、起点自身の時刻の重力源から選んだ中心天体。
 type Segment = { state0: KinematicState; end: number; apsisCenter: Attractor | null };
 
-// 最後のバーン後(これから乗る軌道)の区間。samples は PlanArc.samples をそのまま渡す参照で、
-// その区間の終端(end)が変わらない限り同一参照を保つ。periapsis/apoapsis は、区間が地表到達等で
-// 打ち切られてその極値へ届かなければ null。apsisCenter はその極値を測った中心天体。
+// 最後のバーン後(これから乗る軌道)の区間。samples はその区間(PlanArc または PredictedArc)の
+// samples をそのまま渡す参照で、その区間の終端(end)が変わらない限り同一参照を保つ。
+// periapsis/apoapsis は、区間が地表到達等で打ち切られてその極値へ届かなければ null。
+// apsisCenter はその極値を検出した区間自身が答える中心天体。
 export interface FinalSegment {
   readonly state0: KinematicState;
   readonly samples: readonly KinematicState[];
@@ -48,8 +52,10 @@ export interface PlanPathSample {
 
 export class PlanPath {
   readonly group = new THREE.Group();
-  // 先頭 activeCount 本がこのフレームの区間の積分結果に対応する(区間が減れば末尾を捨てる)。
-  private arcs: PlanArc[] = [];
+  // 先頭 activeCount 本がこのフレームの区間に対応する(区間が減れば末尾を捨てる)。ノードを
+  // 1つも持たない唯一の区間は自機の予測列を答える PredictedArc、それ以外は自前で積分する
+  // PlanArc。
+  private arcs: (PlanArc | PredictedArc)[] = [];
   // 折れ線は index ごとのプールとして持ち、区間数が減っても捨てない(色は index で決まるので
   // 使い回す)。
   private lines: TrajectoryLine[] = [];
@@ -88,11 +94,12 @@ export class PlanPath {
     scene.add(this.group);
   }
 
-  // 起点とノード列から区間列を組み直す。起点・重力源・apsisCenter が既存の arc と一致する区間は
-  // setRange で答える範囲だけを動かし、一致しない区間は arc を作り直す。表示変換の文脈(座標系・
-  // un-bake 時刻)もこのフレームのものに更新する。
+  // 起点とノード列から区間列を組み直す。ノードを1つも持たない唯一の区間は ship の予測列を
+  // PredictedArc として答え、それ以外の区間は起点・重力源・apsisCenter が既存の PlanArc と
+  // 一致すれば setRange で答える範囲だけを動かし、一致しなければ作り直す。表示変換の文脈
+  // (座標系・un-bake 時刻)もこのフレームのものに更新する。
   update(
-    planData: PlanData,
+    planData: PlanData, ship: Player | null,
     ephemeris: Ephemeris, frame: ReferenceFrame, currentTime: number,
     attractors: readonly Attractor[], attractorProvider: PlanAttractorProvider,
     displayDurationSec: number,
@@ -109,18 +116,28 @@ export class PlanPath {
     // 起点→node…→末尾区間に分解する
     const segments = buildSegments(planData, ephemeris, this.displayDuration);
     this._plannedEnd = segments[segments.length - 1]!.end;
-    // ノードが1つも無い間はその唯一の区間(末尾区間)の起点が毎フレーム自機を追従する。
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i]!;
-      const tracksLiveAnchor = planData.nodes.length === 0 && i === segments.length - 1;
+      const isFinal = i === segments.length - 1;
+      // ノードが1つも無い間の唯一の区間は自機の予測列そのもの。予測がまだ生えていない
+      // フレームは何も答えず、次のフレームで生え直す。
+      if (planData.nodes.length === 0 && isFinal && ship !== null) {
+        this.arcs[i] = new PredictedArc(ship, seg.state0, seg.end);
+        continue;
+      }
       const apsisCenterId = seg.apsisCenter?.id ?? null;
-      let arc = this.arcs[i];
-      if (!arc || !arc.represents(seg.state0, seg.end, attractorProvider.revision, apsisCenterId, tracksLiveAnchor)) {
+      const prevArc = this.arcs[i];
+      const existing = prevArc instanceof PlanArc ? prevArc : undefined;
+      let arc: PlanArc;
+      // 起点追従の区間は上の分岐が PredictedArc として扱うので、ここに残る区間の
+      // tracksLiveAnchor は常に false。
+      if (!existing || !existing.represents(seg.state0, seg.end, attractorProvider.revision, apsisCenterId, false)) {
         arc = new PlanArc(seg.state0, seg.end, attractorProvider, seg.apsisCenter);
         this.arcs[i] = arc;
         this.lastRebuiltArcs++;
       } else {
-        arc.setRange(seg.state0, seg.end);
+        existing.setRange(seg.state0, seg.end);
+        arc = existing;
       }
       this.lastSteps += arc.lastSteps;
     }
@@ -134,7 +151,7 @@ export class PlanPath {
       samples: finalArc.samples,
       periapsis: finalArc.periapsisPoint(),
       apoapsis: finalArc.apoapsisPoint(),
-      apsisCenter: finalSeg.apsisCenter,
+      apsisCenter: finalArc.apsisCenter,
     };
   }
 
@@ -143,11 +160,12 @@ export class PlanPath {
     return this.final;
   }
 
-  // 各区間の折れ線メッシュを最新のサンプル列へ同期し、区間数が減った分の線を隠す。
-  // 画面判定が使う視点(project)もここで受け取り、毎フレーム上書きする。破線のドット/隙間は
-  // 各区間のサンプル列中央の代表点で scale(m/px)を引き、ピクセル指定を実距離に直してから渡す
-  // — ズームによらず画面上の間隔を一定に保つため。camera は各区間の折れ線の解像度を決める
-  // 画面上のサジッタを実距離へ換算するための描画カメラ。
+  // 各区間の折れ線メッシュを最新のサンプル列へ同期し、区間数が減った分の線を隠す。ノードを
+  // 1つも持たない区間(PredictedArc)は自機の predictedLine が描くので、ここでは折れ線を
+  // 隠すだけにする。画面判定が使う視点(project)もここで受け取り、毎フレーム上書きする。
+  // 破線のドット/隙間は各区間のサンプル列中央の代表点で scale(m/px)を引き、ピクセル指定を
+  // 実距離に直してから渡す — ズームによらず画面上の間隔を一定に保つため。camera は各区間の
+  // 折れ線の解像度を決める画面上のサジッタを実距離へ換算するための描画カメラ。
   sync(fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn, cameraPos: Vec3, camera: THREE.Camera): void {
     this.project = project;
     this.cameraPos = cameraPos;
@@ -155,6 +173,10 @@ export class PlanPath {
     for (let i = 0; i < this.activeCount; i++) {
       const arc = this.arcs[i]!;
       const line = this.lineAt(i);
+      if (arc instanceof PredictedArc) {
+        line.setVisible(false);
+        continue;
+      }
       line.setVisible(true);
       const samples = arc.samples;
       let dashSize = C.PLAN_ARC_DASH_PX;

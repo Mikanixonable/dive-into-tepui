@@ -3,7 +3,7 @@
 // PlanArc と同じ形で答えるため、PlanPath は両者を区別せず読める。
 import { KinematicState } from '../../physics/kinematic-state';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
-import { BodyImpact } from '../../physics/attractor';
+import { Attractor, BodyImpact } from '../../physics/attractor';
 import { GameEntity } from '../game-entity/game-entity';
 import { clipSamplesTo, stateAt, withinEnd } from './arc-range';
 
@@ -61,6 +61,11 @@ export class PredictedArc {
   public impactPoint(): BodyImpact | null {
     const impact = this.entity.predictedImpact;
     return impact && withinEnd(impact.state.t, this._end) ? impact : null;
+  }
+
+  // 近地点・遠地点の検出に使っている中心天体。予測列がまだ無ければ null。
+  public get apsisCenter(): Attractor | null {
+    return this.entity.predictedApsides?.center ?? null;
   }
 
   // 答える範囲で最初の近地点。end を超えていれば null。

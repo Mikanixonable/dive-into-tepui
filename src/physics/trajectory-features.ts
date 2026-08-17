@@ -88,11 +88,16 @@ export class ApsisTrack {
   private readonly periapsides: KinematicState[] = [];
   private readonly apoapsides: KinematicState[] = [];
 
-  public constructor(private readonly center: Attractor) {}
+  public constructor(private readonly _center: Attractor) {}
+
+  // 極値の検出に使っている中心天体。
+  public get center(): Attractor {
+    return this._center;
+  }
 
   // prev→next の1ステップを apsisCrossing に掛け、見つかった極値を種類ごとの列へ追加する。
   public observe(prev: KinematicState, next: KinematicState): void {
-    const crossing = apsisCrossing(this.center, prev, next);
+    const crossing = apsisCrossing(this._center, prev, next);
     if (crossing?.kind === 'periapsis') this.periapsides.push(crossing.state);
     if (crossing?.kind === 'apoapsis') this.apoapsides.push(crossing.state);
   }
