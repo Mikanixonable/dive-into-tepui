@@ -5,7 +5,7 @@ import { keplerPeriod } from '../../src/physics/elements';
 import {
   MU_EARTH, R_EARTH, INITIAL_ALT,
   ARC_MIN_STEP_DT, ARC_STEPS_PER_REV,
-  ARC_STEP_BUDGET, ARC_COMBAT_STEP_BUDGET, ARC_INTERACTIVE_RATIO,
+  ARC_STEP_BUDGET, ARC_INTERACTIVE_RATIO,
   ARC_MIN_ITEM_STEPS, SIM_SPEED_LEVELS,
 } from './common';
 
@@ -20,10 +20,9 @@ type BudgetScenario = { label: string; steps: number };
 
 function budgetScenarios(): BudgetScenario[] {
   return [
-    { label: 'マップ・自機のみ(他エンティティ無し→比率上限スキップ)', steps: ARC_STEP_BUDGET },
-    { label: `マップ・他エンティティあり(自機の取り分=budget×${ARC_INTERACTIVE_RATIO})`, steps: Math.floor(ARC_STEP_BUDGET * ARC_INTERACTIVE_RATIO) },
-    { label: '戦闘ビュー・自機のみ(all=[player]なので常にこれ)', steps: ARC_COMBAT_STEP_BUDGET },
-    { label: `マップ・混雑時最悪(ラウンドロビンの1体あたり下限 ARC_MIN_ITEM_STEPS)`, steps: ARC_MIN_ITEM_STEPS },
+    { label: '自機のみ(他に伸ばす対象無し→比率上限スキップ)', steps: ARC_STEP_BUDGET },
+    { label: `他にも対象あり(自機の取り分=budget×${ARC_INTERACTIVE_RATIO})`, steps: Math.floor(ARC_STEP_BUDGET * ARC_INTERACTIVE_RATIO) },
+    { label: `混雑時最悪(ラウンドロビンの1体あたり下限 ARC_MIN_ITEM_STEPS)`, steps: ARC_MIN_ITEM_STEPS },
   ];
 }
 
@@ -65,8 +64,8 @@ function analyzeOrbit(label: string, period: number): void {
 
 export function run(): void {
   console.log('# 実験4: 予測がどこまで先回りできるか\n');
-  console.log('前提: ARC_STEP_BUDGET=500(マップ), ARC_COMBAT_STEP_BUDGET=128(戦闘),');
-  console.log('ARC_INTERACTIVE_RATIO=0.5, ARC_MIN_ITEM_STEPS=16(混雑時のラウンドロビン下限)。');
+  console.log(`前提: ARC_STEP_BUDGET=${ARC_STEP_BUDGET}, ARC_INTERACTIVE_RATIO=${ARC_INTERACTIVE_RATIO},`);
+  console.log(`ARC_MIN_ITEM_STEPS=${ARC_MIN_ITEM_STEPS}(混雑時のラウンドロビン下限)。`);
   console.log('horizon(表示期間)は既定「1周」= その場の周期そのもの、を仮定する。');
 
   const rLeo = R_EARTH + INITIAL_ALT;
