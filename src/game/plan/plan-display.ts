@@ -242,7 +242,7 @@ export class PlanDisplay {
     return icons;
   }
 
-  // 天体衝突が検出された地点(区間ごとに高々1つ)。衝突天体は判定そのもの(PlanArc)が
+  // 天体衝突が検出された地点(区間ごとに高々1つ)。衝突天体は判定そのもの(積分弧)が
   // 返したものをそのまま使う — ここで中心天体を引き直すと、判定に使った天体・時刻と
   // 一致しない高度が出かねない。
   private impactIconsOf(): readonly ImpactIcon[] {
