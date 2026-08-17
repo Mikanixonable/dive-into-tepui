@@ -20,6 +20,7 @@ import { AmmoPickup } from '../game-entity/ammo-pickup';
 import { Base } from '../game-entity/base';
 import { generateDriftingEnemy } from './spawner/enemy-generator';
 import { WaveAttack } from './stage-utils/wave-attack';
+import { generateRandomName } from '../random-name';
 import * as C from '../const';
 import { ElementsForm, LagrangeForm, ObjectType, ReferenceAttractor, ObjectPlacerForm, ObjectPlacerPanel } from '../creative/object-placer-panel';
 import { validateEllipticPlacementFields, validateBaseReferenceFields, validateLagrangePlacementFields, PlacementFieldIssue } from '../creative/placement-validation';
@@ -56,11 +57,6 @@ export class CreativeStage extends Stage {
   private simSpeed: SimSpeedManager | null = null;
   private readonly playerIdAllocator = new EntityIdAllocator('creative-player-');
   private readonly ammoPickupIdAllocator = new EntityIdAllocator('creative-ammo-');
-  // フォールバック名(vessel-N/Enemy-N/AmmoPickup-N/Base-N)の種類別連番。id とは独立(同名は許容する)。
-  private nextVesselNameSeq = 1;
-  private nextEnemyNameSeq = 1;
-  private nextAmmoPickupNameSeq = 1;
-  private nextBaseNameSeq = 1;
 
   briefingHtml(): string {
     return '<b>クリエイティブモード</b><br>マップから艦艇を配置して軌道を眺められる。';
@@ -77,7 +73,7 @@ export class CreativeStage extends Stage {
     for (const p of this._entities.players) this.playerIdAllocator.next(p.id);
     for (const ammoPickup of this._entities.ammoPickups) this.ammoPickupIdAllocator.next(ammoPickup.id);
 
-    this.previewOrbitLine = new OrbitLine(0xffffff, 0.6, C.LINE_RENDER_ORDER.plan);
+    this.previewOrbitLine = new OrbitLine({ color: 0xffffff, opacity: 0.6, renderOrder: C.LINE_RENDER_ORDER.plan });
     this._scene.add(this.previewOrbitLine.line);
 
     this.placerPanel = new ObjectPlacerPanel(
@@ -169,7 +165,7 @@ export class CreativeStage extends Stage {
     if (form.placementMode === 'elements') {
       const center = this.referenceAttractor(form);
       const common = {
-        centerRadius: center.radius, mu: center.mu,
+        centerRadius: center.radius, mu: center.mu, centerId: center.id,
         incDeg: form.incDeg, raanDeg: form.raanDeg, argpDeg: form.argpDeg, nuDeg: form.nuDeg,
       };
       issues.push(...validateEllipticPlacementFields(
@@ -222,11 +218,11 @@ export class CreativeStage extends Stage {
       
       if (form.objectType === 'player') {
         const id = this.playerIdAllocator.next();
-        const finalName = name || `vessel-${this.nextVesselNameSeq++}`;
+        const finalName = name.trim() || generateRandomName('player');
         const ship = this.addPlayer({ name: finalName, state, id });
         this._hud.hint(`${ship.name} を配置`);
       } else if (form.objectType === 'enemy') {
-        const finalName = name || `Enemy-${this.nextEnemyNameSeq++}`;
+        const finalName = name.trim() || generateRandomName('enemy');
         const enemy = generateDriftingEnemy(finalName, state, C.ENEMY_MAX_HP, '#ff6a00', '#ff6a00', this._hud, this._worldSfx, this._fx, this._scene);
         this._entities.addEnemy(enemy);
         this._hud.hint(`${enemy.name} を配置`);
@@ -234,10 +230,10 @@ export class CreativeStage extends Stage {
         const id = this.ammoPickupIdAllocator.next();
         const ammoPickup = new AmmoPickup({ state, id }, this._scene, this._markerManager);
         this._entities.addAmmoPickup(ammoPickup);
-        const finalName = name || `AmmoPickup-${this.nextAmmoPickupNameSeq++}`;
+        const finalName = name.trim() || generateRandomName('ammo');
         this._hud.hint(`${finalName} を配置`);
       } else if (form.objectType === 'base') {
-        const finalName = name || `Base-${this.nextBaseNameSeq++}`;
+        const finalName = name.trim() || generateRandomName('base');
         const base = new Base({ state, name: finalName }, this._scene, this._hud, this._worldSfx, this._fx, this._markerManager);
         this._entities.addBase(base);
         this._hud.hint(`${base.name} を配置`);

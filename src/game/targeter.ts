@@ -1,10 +1,8 @@
-import * as THREE from 'three/webgpu';
 import { add, addScaled, dot, lenSq, norm, scale, sub, v3, Vec3 } from '../physics/vec3';
-import { Attractor, strongestAttractor } from '../physics/attractor';
-import { OrbitLine } from './orbit-line';
+import { Attractor } from '../physics/attractor';
 import * as C from './const';
-import { ACCENT, ACCENT_SECONDARY, THEME_CHANGE_EVENT, type ThemePalette } from './theme';
 import { Enemy } from './game-entity/enemy';
+import { Base } from './game-entity/base';
 import type { EntityManager } from './simulation/entity-manager';
 import { Player } from './player/player';
 import { Hud } from './hud/hud';
@@ -13,7 +11,6 @@ import { CameraSystem, ProjectFn } from './camera/camera-system';
 import type { GroupedMarkerItem } from './marker/grouped-markers';
 import { MarkerManager } from './marker/marker-manager';
 import { DIRECTION_GLYPH } from './marker/marker-glyphs';
-import { FloatingOrigin } from './floating-origin';
 import { pickNearest } from './map-pickable';
 import { pickRadiusSq } from './input/pointer-precision';
 import type { Ephemeris } from '../physics/ephemeris';
@@ -23,7 +20,7 @@ import type { MapVisibilityPolicy } from './celestial/map-visibility';
 import { mapPlanetFadeOpacity, nearestPlanetDistance } from './celestial/planet-distance';
 import { isOccluded } from '../physics/occlusion';
 
-export type CombatTarget = Enemy | Player;
+export type CombatTarget = Enemy | Player | Base;
 
 // マーカー上での対象の役割。第一/第二ターゲットは色と字形が変わる。
 export type MarkerRole = 'none' | 'primary' | 'secondary';
@@ -43,39 +40,9 @@ export class Targeter {
   // 保持し、的に貼り付いて見せる)。updateBoardMarks が寿命を持ち、syncBoardMarkers が描く。
   boardMarks: { off: Vec3; age: number; }[] = [];
 
-  // ターゲット軌道のハイライト線(オレンジ)。自機軌道とほぼ重なるケースが多い
-  // (近傍ランデブー狙いのため)。埋もれて見えなくならないよう強い不透明度にし、
-  // renderOrder を自機軌道より上げて透明オブジェクトの描画順に依存せず必ず上に描く。
-  readonly orbitLine = new OrbitLine(ACCENT, 0.9, C.LINE_RENDER_ORDER.target);
-  // 第二ターゲットのハイライト線(Secondary accent)。第一より薄い renderOrder に置く。
-  readonly secondaryOrbitLine = new OrbitLine(ACCENT_SECONDARY, 0.9, C.LINE_RENDER_ORDER.secondaryTarget);
-
-  // テーマ切替でターゲット軌道線の色を合わせ直す。
-  private readonly handleThemeChange = (event: Event): void => {
-    const palette = (event as CustomEvent<ThemePalette>).detail;
-    if (!palette) return;
-    this.orbitLine.setColor(palette.accent);
-    this.secondaryOrbitLine.setColor(palette.secondary);
-  };
-
   constructor(
     private readonly _hud: Hud, private readonly markerManager: MarkerManager,
-    scene: THREE.Scene,
-  ) {
-    scene.add(this.secondaryOrbitLine.line);
-    scene.add(this.orbitLine.line);
-
-    window.addEventListener(THEME_CHANGE_EVENT, this.handleThemeChange);
-  }
-
-  // 第一・第二ターゲットの軌道線をシーンから外し、テーマ切替の購読を解く。
-  dispose(): void {
-    window.removeEventListener(THEME_CHANGE_EVENT, this.handleThemeChange);
-    this.orbitLine.line.removeFromParent();
-    this.orbitLine.dispose();
-    this.secondaryOrbitLine.line.removeFromParent();
-    this.secondaryOrbitLine.dispose();
-  }
+  ) {}
 
   // 生存判定込みの現在の第一ターゲット。撃破後は target を保持したままにせず、ここで
   // 死亡個体を隠す(描画・軌道線更新など「生きているターゲットだけを見たい」箇所が使う)。
@@ -177,17 +144,11 @@ export class Targeter {
     }
   }
 
-  // ターゲットに紐づく表示物(軌道線・的通過マーク・方位マーカー)をまとめて更新する。
+  // ターゲットに紐づく表示物(的通過マーク・方位マーカー)をまとめて更新する。
   // ターゲットの選定を持つのがここなので、その表示もここに閉じる。
-  sync(
-    fo: FloatingOrigin, player: Player | null, cameraSystem: CameraSystem,
-    attractors: readonly Attractor[], visibilityPolicy: MapVisibilityPolicy | null = null,
-    displayWindow?: DisplayWindow, ephemeris?: Ephemeris,
-  ): void {
+  sync(player: Player | null, cameraSystem: CameraSystem): void {
     const overviewMode = cameraSystem.overviewMode;
     const project = cameraSystem.activeCameraProjection;
-    const camera = cameraSystem.activeCamera;
-    this.syncOrbitLine(fo, player, camera, attractors, visibilityPolicy, displayWindow, ephemeris);
     this.syncBoardMarkers(project);
     this.syncTargetDirMarkers(player, overviewMode, project);
   }
@@ -211,7 +172,7 @@ export class Targeter {
       this.aliveScratch.push(tgt);
       const ds = tgt.displayState(displayTime);
       if (!ds) continue;
-      const visibility = visibilityPolicy?.entity(tgt instanceof Player ? 'player' : 'ship', tgt === player);
+      const visibility = visibilityPolicy?.entity(tgt instanceof Player ? 'player' : (tgt instanceof Base ? 'base' : 'ship'), tgt === player);
       if (visibility && !visibility.pickable) continue;
       const role: MarkerRole =
         tgt === this.aliveTarget ? 'primary' : tgt === this.aliveSecondaryTarget ? 'secondary' : 'none';
@@ -235,38 +196,11 @@ export class Targeter {
         occluded: mapOccluded,
       });
     }
-    this.markerManager.combatMarkers.sync(this.markerItemScratch, project, overviewMode, screenScale);
+    const celestialLabels = overviewMode ? cameraSystem.focusMarkers.activeLabels : [];
+    this.markerManager.combatMarkers.sync(this.markerItemScratch, project, overviewMode, screenScale, celestialLabels, attractors);
     if (player) {
       this.markerManager.leadMarkers.sync(
         player, this.aliveScratch, this.aliveTarget, this.aliveSecondaryTarget, simTime, overviewMode, project);
-    }
-  }
-
-  // 第一・第二ターゲットのハイライト線を最新の状態に合わせる。
-  private syncOrbitLine(
-    fo: FloatingOrigin, player: Player | null,
-    camera: THREE.Camera, attractors: readonly Attractor[], visibilityPolicy: MapVisibilityPolicy | null,
-    displayWindow?: DisplayWindow, ephemeris?: Ephemeris,
-  ): void {
-    const tgt = this.aliveTarget;
-    const secTgt = this.aliveSecondaryTarget;
-    const frame = displayWindow?.frame;
-    const displayTime = displayWindow?.displayTime;
-
-    const targetVisibility = tgt === null ? null : visibilityPolicy?.entity(tgt instanceof Player ? 'player' : 'ship', tgt === player);
-    if (tgt && (targetVisibility?.orbit ?? true)) {
-      const center = strongestAttractor(tgt.state.r, attractors);
-      this.orbitLine.sync(tgt.orbitalElementsAround(center), fo, camera, false, frame, displayTime, ephemeris, attractors);
-    } else {
-      this.orbitLine.sync(null, fo, camera);
-    }
-
-    const secondaryVisibility = secTgt === null ? null : visibilityPolicy?.entity(secTgt instanceof Player ? 'player' : 'ship', secTgt === player);
-    if (secTgt && (secondaryVisibility?.orbit ?? true)) {
-      const center = strongestAttractor(secTgt.state.r, attractors);
-      this.secondaryOrbitLine.sync(secTgt.orbitalElementsAround(center), fo, camera, false, frame, displayTime, ephemeris, attractors);
-    } else {
-      this.secondaryOrbitLine.sync(null, fo, camera);
     }
   }
 

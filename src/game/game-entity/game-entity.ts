@@ -11,6 +11,7 @@ import { Vec3, len, sub, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import { OrbitLine } from '../orbit-line';
 import { TrajectoryLine } from '../trajectory-line';
+import { LineStyle } from '../../render/line-style';
 import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { PredictedArc, trajectorySampleInterval } from '../simulation/predicted-arc';
@@ -157,16 +158,13 @@ export class GameEntity {
     return orbitalElementsOf(this.state, center);
   }
 
-  // 自分の軌道楕円の線を作る。線を持つ種別だけが上書きする。
-  protected createOrbitLine(): OrbitLine | null {
-    return null;
-  }
-
-  // 軌道楕円の線を出す。既に出ていれば何もしない。
-  showOrbitLine(): void {
-    if (this.orbitLine !== null) return;
-    const line = this.createOrbitLine();
-    if (line === null) return;
+  // 軌道楕円の線を style で出す。既に出ていれば style を塗り直す。
+  showOrbitLine(style: LineStyle): void {
+    if (this.orbitLine !== null) {
+      this.orbitLine.setStyle(style);
+      return;
+    }
+    const line = new OrbitLine(style);
     this.scene?.add(line.line);
     this.orbitLine = line;
   }
@@ -192,19 +190,13 @@ export class GameEntity {
     );
   }
 
-  // 自分の予測線・実軌道線を作る。線を持つ種別だけが上書きする。
-  protected createPredictedLine(): TrajectoryLine | null {
-    return null;
-  }
-  protected createActualLine(): TrajectoryLine | null {
-    return null;
-  }
-
-  // 予測線を出す。既に出ていれば何もしない。
-  showPredictedLine(): void {
-    if (this.predictedLine !== null) return;
-    const line = this.createPredictedLine();
-    if (line === null) return;
+  // 予測線を style で出す。既に出ていれば style を塗り直す。
+  showPredictedLine(style: LineStyle): void {
+    if (this.predictedLine !== null) {
+      this.predictedLine.setStyle(style);
+      return;
+    }
+    const line = new TrajectoryLine(style);
     this.scene?.add(line.line);
     this.predictedLine = line;
   }
@@ -217,11 +209,13 @@ export class GameEntity {
     this.predictedLine = null;
   }
 
-  // 実軌道の過去線を出す。既に出ていれば何もしない。
-  showActualLine(): void {
-    if (this.actualLine !== null) return;
-    const line = this.createActualLine();
-    if (line === null) return;
+  // 実軌道の過去線を style で出す。既に出ていれば style を塗り直す。
+  showActualLine(style: LineStyle): void {
+    if (this.actualLine !== null) {
+      this.actualLine.setStyle(style);
+      return;
+    }
+    const line = new TrajectoryLine(style);
     this.scene?.add(line.line);
     this.actualLine = line;
   }
