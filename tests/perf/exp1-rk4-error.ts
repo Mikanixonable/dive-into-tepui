@@ -53,7 +53,7 @@ function partA(ephemeris: Ephemeris): void {
 
 function partB(ephemeris: Ephemeris): void {
   console.log('\n## 実験1-B: 予測の実効刻み幅の検証\n');
-  console.log('予測の dt = min(remaining, max(PREDICT_MIN_STEP_DT=20, localOrbitPeriod/PREDICT_STEPS_PER_REV(=600), horizon/PREDICT_MAX_STEPS(=20000)))');
+  console.log('予測の dt = min(remaining, max(ARC_MIN_STEP_DT=20, localOrbitPeriod/ARC_STEPS_PER_REV(=600), horizon/ARC_MAX_STEPS(=20000)))');
   console.log('horizon は表示期間既定値「1周」= その時点の周期そのもの、を仮定する(remaining は');
   console.log('その瞬間に予測を開始したときの初期値 = horizon 自身とする)。\n');
 

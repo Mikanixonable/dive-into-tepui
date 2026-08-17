@@ -102,7 +102,7 @@ export function run(): void {
   for (const nSteps of [128, 256, 500, 1000]) {
     console.log(`${nSteps} | ${(msPredictorStep * nSteps).toFixed(2)} | ${(msStep * nSteps).toFixed(3)}`);
   }
-  console.log('\n(参考: PREDICT_STEP_BUDGET=500(map)/PREDICT_COMBAT_STEP_BUDGET=128(combat) が実際の1フレーム上限)');
+  console.log('\n(参考: ARC_STEP_BUDGET=500(map)/ARC_COMBAT_STEP_BUDGET=128(combat) が実際の1フレーム上限)');
 }
 
 if (require.main === module) run();

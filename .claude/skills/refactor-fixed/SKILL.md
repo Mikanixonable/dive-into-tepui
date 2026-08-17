@@ -290,10 +290,10 @@ THREE 非依存かつ純粋であっても、次のものは `physics/` に置�
 
 語形は **`orbit` に統一**し、例外は定訳を採る `OrbitalElements` の1語だけ。`orbital*` を新設しない。
 点列を折れ線として描く共通描画基盤は `TrajectoryLine`(`OrbitLine` の兄弟) — 実装が限定されるのは
-「点列が積分済みであること」自体で、その点列を発生させたのが `PlanArc`(`path` 族)であっても
-描画側の族語は変わらない。
+「点列が積分済みであること」自体で、その点列を発生させたのが計画区間(`PlanPath` の
+`SegmentSource`)が持つ `PredictedArc` であっても描画側の族語は変わらない。
 
-計画した経路は `path`(`PlanArc` / `PlanPath`)、積分した軌跡は `trajectory`(`DynamicTrajectory`)。
+計画した経路は `path`(`PlanPath`)、積分した軌跡は `trajectory`(`DynamicTrajectory`)。
 この2語は概念が違うので共存させる。
 
 ## 11. `body` は天体、機体座標系は `ship`、重力源の値は `attractor`
@@ -554,8 +554,9 @@ DOM 検索を排他の範囲にしない。同じ親に**独立した状態を�
 **そのキーが結果を決める入力を漏れなく含んでいるか**を、キーではなく計算の側から確かめる。
 漏れた入力は「変わったのに古い結果を返す」形で表面化し、しかも表示が壊れるだけなので気付きにくい。
 
-- `PlanArc.key` は `state0`/`end` に加えて重力源の版と `apsisCenter` の id を持つ — 基準天体が
-  変われば同じ積分でも近地点/遠地点が変わるため。
+- `FutureAttractors` の世代値(`futureSourceRevision`)は、計画の編集世代・除外 id 集合に加えて
+  `predictsFuture` な各対象自身の id と予測の届き具合まで畳み込む — 個体が重力源・衝突体の
+  集合へ出入りする(生成・死亡)ことも、届く範囲が変わることも `at(t)` の答えを変えるため。
 - 乖離判定の許容量(`GameEntity.divergenceTolerance`)は、間引きの粗さを**列自身が記録している
   `DynamicTrajectory.sampleInterval`** から引く。現在の設定値(表示期間)から引くと、設定を
   変えた瞬間に既に積んだ列の粗さと閾値が食い違い、正しい列を破棄し続ける。
