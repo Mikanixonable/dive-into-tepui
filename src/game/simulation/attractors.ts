@@ -26,20 +26,6 @@ export function attractorsAt(ephemeris: Ephemeris, entities: EntityManager, t: n
   return mergeAttractors(gravityBodiesAt(ephemeris, t), entities.attractors());
 }
 
-// 時刻 t での重力源一覧(予測用)。動的重力天体も t の状態で組む — 現在位置で凍結すると
-// 「その時刻に居ない場所」から引くことになる。予測列で答えられない天体は先端からの
-// ケプラー外挿(GameEntity.displayState)で継ぎ、それでも答えられない天体だけ落ちる。
-export function predictedAttractorsAt(ephemeris: Ephemeris, entities: EntityManager, t: number): readonly Attractor[] {
-  // 先に解析天体の窓を引いておくと、外挿が問い合わせる中心天体の stateOf がそのキャッシュへ当たる。
-  const bodies = gravityBodiesAt(ephemeris, t);
-  const dynamic: Attractor[] = [];
-  for (const e of entities.attractors()) {
-    const s = e.displayState(t, ephemeris);
-    if (s !== null) dynamic.push({ id: e.id, mu: e.mu, radius: e.radius, degree2: e.degree2, isStar: e.isStar, state: s });
-  }
-  return mergeAttractors(bodies, dynamic);
-}
-
 // 重力源一覧を、常に含める天体(always)と空間グリッドに載せる天体(grid)へ分けたもの。
 export type ClassifiedAttractors = {
   readonly always: readonly Attractor[];

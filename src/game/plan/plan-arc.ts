@@ -8,7 +8,7 @@ import { containingBody, sweptHermiteSphereToi } from '../../physics/sphere-cont
 import { ApsisTrack } from '../../physics/trajectory-features';
 import { burnUpBody } from '../../physics/atmosphere';
 import { attractorsNearInto } from '../simulation/attractors';
-import type { PlanAttractorProvider } from './plan-attractors';
+import type { FutureAttractorProvider } from '../simulation/future-attractors';
 import { addScaled, len, scale, sub, Vec3 } from '../../physics/vec3';
 import { EPOCH_EPS, clipSamplesTo, stateAt, withinEnd } from './arc-range';
 import * as C from '../const';
@@ -107,7 +107,7 @@ export class PlanArc {
   // 継ぎ足さなかった呼び出しでは 0)。
   lastSteps = 0;
 
-  private readonly provider: PlanAttractorProvider;
+  private readonly provider: FutureAttractorProvider;
   private readonly _trajectory: DynamicTrajectory;
   // この区間が答える範囲 [_state0.t, _end]。_state0 は生成時に決まり、以後動かない。
   // _end だけ setEnd が動かす。
@@ -137,7 +137,7 @@ export class PlanArc {
   // 時刻ごとに重力源と衝突体を答える。apsisCenter は periapsisPoint/apoapsisPoint を検出する
   // 基準天体 — null なら検出自体を行わない。
   constructor(
-    state0: KinematicState, end: number, provider: PlanAttractorProvider, apsisCenter: Attractor | null,
+    state0: KinematicState, end: number, provider: FutureAttractorProvider, apsisCenter: Attractor | null,
   ) {
     this._state0 = state0;
     this.sourceRevision = provider.revision;
