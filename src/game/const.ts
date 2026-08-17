@@ -415,19 +415,7 @@ export const DISPLAY_DURATION_MAX = 365 * 86400; // 手動レンジで指定で�
 // サンプルが1件も残らず、どの時刻も引けない列になる。
 export const DISPLAY_DURATION_MIN = 3600;
 
-// --- 軌道計画の折れ線(plan/plan-arc.ts) ---
-export const PLAN_ARC_MAX_SAMPLES = 2000; // 1区間が保持するサンプル数の上限
-// 積分済みのサンプル列が、要求区間の求める間引き間隔に対して何倍まで粗くてよいか。表示期間を
-// 短くしたときは積分結果を捨てず答える範囲だけを狭めるが、狭めた区間に残るサンプルが数点まで
-// 減ると、折れ線上のクリック候補が飛び飛びの点になる。これを超えて粗ければ区間を作り直す。
-export const PLAN_ARC_MAX_SAMPLE_COARSENING = 8;
-// 1周回あたりの積分ステップ数。RK4 の誤差は1周あたりのステップ数でほぼ決まるので、
-// これを固定すると高度・離心率によらず精度が揃う(28日ぶんの LEO を積分して長半径誤差 1km 未満)。
-export const PLAN_ARC_STEPS_PER_REV = 100;
-// 1区間あたりの積分ステップ数の上限。手動レンジで年スケールの表示期間を許すと
-// 1周回 / PLAN_ARC_STEPS_PER_REV のままではステップ数がフレーム時間を圧迫するので、
-// 超えたら plan-arc.ts の再突入時と同じ「そこで打ち切って endState() を返す」経路に乗せる。
-export const PLAN_ARC_MAX_STEPS = 20000;
+// --- 軌道計画の折れ線(plan/plan-path.ts) ---
 // 計画軌道の折れ線を破線で描くときの、破線1本・間隔の画面上の長さ [px] と不透明度。
 // 実距離ではなく画面ピクセルで持つのは、マップの倍率が数桁変わるため実距離で固定すると
 // 拡大時は数本の線分に、縮小時はサブピクセルになって実線と区別できなくなるため。
@@ -456,46 +444,63 @@ export const PLAN_TICK_HOUR_FAMILY_MAX_COUNT = 1200;
 // 現在表示中の最細目盛からの相対階層(0/1/2以上)で半径を引く。
 export const PLAN_TICK_RADIUS_PX = [1.5, 2.5, 3.5] as const;
 
-// --- エンティティの過去・未来状態列(physics/dynamic-trajectory.ts の DynamicTrajectory/Predictor) ---
+// --- エンティティの過去・未来状態列(physics/dynamic-trajectory.ts の DynamicTrajectory、
+// game/simulation/predicted-arc.ts の PredictedArc/Predictor) ---
 export const TRAJECTORY_SAMPLES_PER_REV = 32; // 1周回あたりの保持サンプル数(補間誤差 30m 程度に収まる実測値)
 export const SHIP_HISTORY_DURATION = 5580; // Ship の過去列の保持時間 [s]。LEO(420km)の公転周期に近似
 // 過去表示の要求で伸ばせる保持時間の上限 [s]。保持サンプル数は間引きにより
-// PREDICT_MAX_SAMPLES で頭打ちなので、この値が決めるのは間引きの粗さ(補間精度)の下限。
+// ARC_MAX_SAMPLES で頭打ちなので、この値が決めるのは間引きの粗さ(補間精度)の下限。
 export const HISTORY_DURATION_MAX = DISPLAY_DURATION_MAX;
-// 1周回あたりの予測の積分ステップ数。刻み幅をその場の周期に比例させることで、低軌道でも
+// 1周回あたりの予測列の積分ステップ数。刻み幅をその場の周期に比例させることで、低軌道でも
 // 遠方の長周期軌道でも精度が一定になる。同時にこれは遅い軌道のコスト上限でもあり、既定の
-// 表示期間では GEO 以遠でこの項が採用値になって、下限だけで刻む場合の 1/7(GEO)〜1/279(日心)
+// 表示期間では GEO 以遠でこの項が採用値になって、下限だけで刻む場合の 1/14(GEO)〜1/558(日心)
 // までステップ数が落ちる。離心軌道では1周の中でも刻みが変わる(モルニヤで近地点 20s /
-// 遠地点 167s)ので、定数刻みでは届かない「安くて同じ精度」の側に出られる。
-export const PREDICT_STEPS_PER_REV = 600;
+// 遠地点 331s)ので、定数刻みでは届かない「安くて同じ精度」の側に出られる。
+// 300 での形状誤差は GEO 28日 0.14km・モルニヤ1日 0.08km・低月周回1周 0.71km(実測)と、
+// どのズームでもマップ 1px 未満に収まる(LEO は ARC_MIN_STEP_DT の 20s 床が支配するので
+// この値に依らない)。
+export const ARC_STEPS_PER_REV = 300;
 // 1個体の予測列の積分ステップ数・保持サンプル数の上限。予測の長さは表示期間(最大1年)に
 // 追従するので、1周回基準の刻みのままではステップ数もメモリも青天井になる。長い期間では
 // これらが刻み幅と間引き間隔を決め、軌道の形の精度と引き換えに費用を頭打ちにする。
-// 刻み幅を決めるのは horizon > PREDICT_MAX_STEPS × PREDICT_MIN_STEP_DT(≒4.6日)のときだけ。
-export const PREDICT_MAX_STEPS = 20000;
-export const PREDICT_MAX_SAMPLES = 2000;
-export const PREDICT_STEP_BUDGET = 500; // Predictor が1フレームに配る予測ステップ数の上限
-export const PREDICT_COMBAT_STEP_BUDGET = 128; // 戦闘中は自機の線だけを粗く維持する
+// 刻み幅を決めるのは span > ARC_MAX_STEPS × ARC_MIN_STEP_DT(≒4.6日)のときだけ。
+export const ARC_MAX_STEPS = 20000;
+export const ARC_MAX_SAMPLES = 2000;
+// 積分済みのサンプル列が、要求区間の求める間引き間隔に対して何倍まで粗くてよいか
+// (PredictedArc.represents 用)。表示期間を短くしたときは積分結果を捨てず答える範囲だけを
+// 狭めるが、狭めた区間に残るサンプルが数点まで減ると、折れ線上のクリック候補が飛び飛びの
+// 点になる。これを超えて粗ければ弧を作り直す。
+export const ARC_MAX_SAMPLE_COARSENING = 8;
+// Predictor が1フレームに配る積分ステップ数の上限。1歩 ≈ 0.32ms(101体窓の解決+分類+
+// 掃引到達判定、ブラウザ実測)なので、成長中の予測・計画が1フレームに使うのは ~95ms まで。
+export const ARC_STEP_BUDGET = 300;
+export const ARC_COMBAT_STEP_BUDGET = 128; // 戦闘中は自機の線・計画の弧だけを粗く維持する
 // 予測刻みの下限 [s]。予測は固定のフレーム予算でホライズンまで伸ばす表示側の近似なので、
 // 実シミュレーションより粗く刻むこと自体が目的である — 細かくすれば届く先が近くなるだけで、
 // 折れ線の誤差は間引き補間(PREDICT_SAMPLE_ERROR)が支配しているので見える精度は増えない。
 // これ以上粗くできない理由は月にある: 低月周回では中心天体が ECI 中を動くぶんの dt² 誤差が
 // 支配的で、20s で既に 419m(PREDICT_RESET_DIST の 84%)。LEO は同条件で 0.29m と余裕が
-// 1700 倍あるので、LEO だけを見て上げると月周回だけが破綻する。
-export const PREDICT_MIN_STEP_DT = 20;
+// 1700 倍あるので、LEO だけを見て上げると月周回だけが破綻する。刻みの下限は同時に、天体接近時
+// (下の ARC_APPROACH_SAFETY)の接近項が幾何級数的に潰れるのも防ぐ。
+export const ARC_MIN_STEP_DT = 20;
+// 天体接近時、1ステップで表面までの残距離を跨がないための安全率。動径接近率(表面までの
+// 距離の減り方)に掛かる上限係数で、相対速さそのものではなく接近している成分だけを見る
+// — でないと円軌道でも常に効いて粗化項(ARC_MAX_STEPS)を不当に上書きしてしまう。
+export const ARC_APPROACH_SAFETY = 0.5;
 export const PREDICT_RESET_DIST = 500; // 予測位置と実位置がこれを超えて乖離したら予測列を破棄 [m](補間誤差 30m より十分大きい)
 // TRAJECTORY_SAMPLES_PER_REV で間引いた列を補間したときの位置誤差 [m]。三次エルミート補間の
 // 誤差は間引き間隔の4乗で効くので、上限で間引きが粗くなる長い表示期間では
 // PREDICT_RESET_DIST をこの値から外挿した幅まで広げないと、正しい列まで破棄してしまう。
 export const PREDICT_SAMPLE_ERROR = 30;
-// 1フレームの予測予算のうち操作対象の艦に割ける割合の上限。優先はするが独占はさせない —
-// 予測は表示だけでなく計画軌道の重力源や衝突判定の相手としても消費されるため、艦の予測が
-// 完成するまで他の個体が止まると、計画軌道の形が艦の予測進捗に依存してしまう。
-export const PREDICT_PLAYER_BUDGET_RATIO = 0.5;
-// ラウンドロビンで1体に必ず渡すステップ数の下限。予測列の history に最初のサンプルが積まれる
-// までは at() がほぼ全時刻で null を返し、次フレームの乖離判定で必ず破棄されるので、
-// その1サンプル分(sampleInterval / 刻み幅 ≒ 10 ステップ)を下回る配分は作り直しを繰り返す。
-export const PREDICT_MIN_ENTITY_STEPS = 16;
+// 1フレームの予測予算のうち、操作艦の弧+計画軌道の弧(interactive 枠)に割ける割合の上限。
+// 優先はするが独占はさせない — 計画の弧は他個体の予測を重力源・衝突判定の相手として読むため、
+// 編集直後の計画にこの枠を丸ごと食わせると、その依存先(background 側)の予測の成長が止まる。
+export const ARC_INTERACTIVE_RATIO = 0.5;
+// background のラウンドロビンで1体に必ず渡すステップ数の下限。予測列の history に最初の
+// サンプルが積まれるまでは at() がほぼ全時刻で null を返し、次フレームの乖離判定で必ず
+// 破棄されるので、その1サンプル分(sampleInterval / 刻み幅 ≒ 10 ステップ)を下回る配分は
+// 作り直しを繰り返す。
+export const ARC_MIN_ITEM_STEPS = 16;
 // [N] 自動ワープ: 残り時間 / MARGIN 以下の最大シミュレーション速度を選び、STOP 秒前に解除。
 export const AUTOWARP_MARGIN = 2;
 export const AUTOWARP_STOP = 10;

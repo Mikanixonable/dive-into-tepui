@@ -18,6 +18,7 @@ import { DisplayWindowManager } from './display-window-manager';
 import { PlanGuide } from './plan/plan-guide';
 import { SimSpeedManager } from './sim-speed-manager';
 import { EntityManager } from './simulation/entity-manager';
+import { FutureAttractors } from './simulation/future-attractors';
 import { EntityLineManager } from './entity-line-manager';
 import { Simulator } from './simulation/simulator';
 import { Predictor } from './simulation/predictor';
@@ -91,6 +92,7 @@ export class Game {
   readonly targeter: Targeter;
   readonly navTarget: NavTarget;
   readonly entities: EntityManager;
+  private readonly futureAttractors: FutureAttractors;
   private readonly entityLines: EntityLineManager;
   readonly simulator: Simulator;
   private readonly predictor: Predictor;
@@ -133,6 +135,7 @@ export class Game {
     this.markerManager = new MarkerManager(this._hud.layers.marker, this._hud.svgOverlay);
 
     this.entities = new EntityManager(this._scene, this._hud, this._worldSfx, this.markerManager, initialSave);
+    this.futureAttractors = new FutureAttractors(this.ephemeris, this.entities);
     this.entityLines = new EntityLineManager(this.entities);
     this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, this.ephemeris, this.entities);
 
@@ -160,7 +163,7 @@ export class Game {
       this._uiSfx,
       this.simSpeedManager,
       this.ephemeris,
-      this.entities,
+      this.futureAttractors,
       this._scene,
       this.markerManager,
       this.activePlayers,
@@ -181,7 +184,7 @@ export class Game {
     this.mapHud = new MapHudController(this._hud);
 
     this.simulator = new Simulator(this.entities, this.ephemeris, sections, initialSave?.simTime ?? 0);
-    this.predictor = new Predictor(this.entities, this.ephemeris);
+    this.predictor = new Predictor(this.entities, this.ephemeris, this.futureAttractors);
 
     this.activeStage = new stageClass(
       initialSave?.stage, this._hud, this._worldSfx, this._uiSfx, this._scene, this.entities, this.unlockManager,
@@ -285,10 +288,19 @@ export class Game {
     const activeControllable = this.activeControllableEntity;
     const displayWindow = this.displayWindowManager.resolve(this.simulator.simTime, activeControllable);
     const overviewMode = this.cameraSystem.overviewMode;
-    // 計画表示、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
+    // 計画表示、予測伸長、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
     this._environment.update(displayWindow.displayTime, overviewMode);
     this.sections.enter(SECTION.plan);
     this.editor.update(displayWindow);
+    this.sections.exit(SECTION.plan);
+    // ポーズ中・決着後も無条件に呼ぶ: simTime が止まっている間は乖離が起きないので、
+    // 予測は伸び切ったところで止まるだけで害はない。
+    this.sections.enter(SECTION.predict);
+    this.predictor.update(
+      this.simulator.simTime, this.player, displayWindow.duration, overviewMode, this.editor.growableArcs(),
+    );
+    this.sections.exit(SECTION.predict);
+    this.sections.enter(SECTION.plan);
     this.targeter.updateEquatorNodes(overviewMode, displayWindow, this.ephemeris);
     this.entities.updateBaseEquatorNodes(overviewMode, displayWindow, this.ephemeris);
     this.sections.exit(SECTION.plan);
@@ -314,7 +326,7 @@ export class Game {
     );
   }
 
-  // 自機の行動 → ステージ → 積分 → 予測 → エフェクトの順に1フレーム進める
+  // 自機の行動 → ステージ → 積分 → エフェクトの順に1フレーム進める
   // (残骸・弾の epoch はどの状況でも進め続ける)。
   private advanceSimulation(dt: number): void {
     // 過去表示に要る履歴の長さを、積分がサンプルを積む前に要求しておく。表示窓は前フレームの
@@ -357,14 +369,6 @@ export class Game {
     this.targeter.updateBoardMarks(dt, this.player, this.entities);
     this.activePlayers.reclaimDead();
     this.docking.checkProximity();
-
-    // Simulator 内の substep cleanup 後に呼ぶ: 死んだ個体を予測せず、積分後の実状態と突き合わせる。
-    this.sections.enter(SECTION.predict);
-    this.predictor.update(
-      this.simulator.simTime, this.player, this.displayWindowManager.current.duration,
-      this.cameraSystem.overviewMode ? 'map' : 'combat',
-    );
-    this.sections.exit(SECTION.predict);
 
     this.sections.enter(SECTION.effects);
     this.entities.effects.update(dt, this.simulator.simTime);
