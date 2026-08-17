@@ -317,7 +317,18 @@ export class MapCamera {
     this._referencePlane = plane;
   }
 
+  // 基準面(ecliptic/equator/moonOrbit)の法線は cameraFrame 相対の方向として焼き込まれる
+  // (setRotationBasis)。焼き込み時の cameraFrame と、法線が実際に静止して見える基準系が
+  // 食い違うと、simTime が進むにつれ cameraFrame 自身の回転(公転)で視点がその基準面から
+  // ずれていく — 月軌道面を選んでも地球公転系などと合わせていれば徐々に傾いて見える不具合の
+  // 原因だったため、焼き込む前に基準面へ対応する回転系へ cameraFrame 自体を合わせる。
+  private cameraFrameRotatingWithFor(plane: CameraReferencePlane): OrbitingId | null {
+    if (plane === 'moonOrbit' && 'moon' in this.ephemeris.registry) return 'moon';
+    return null;
+  }
+
   public setReferenceView(view: CameraReferenceView): void {
+    this.setCameraRotation(this.cameraFrameRotatingWithFor(this._referencePlane));
     const tf = this.ephemeris.frameTransformAt(this._cameraFrame, this.displayTime, this.attractors);
     const normal = norm(frameDirVector(toFrameDir(tf, this.framePlaneNormal(this._referencePlane))));
     const currentOffset = qRotate(this.rotationQ, FRAME_FORWARD);
