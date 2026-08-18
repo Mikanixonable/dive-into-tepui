@@ -9,6 +9,7 @@ import { Attractor, reachedBody } from '../../physics/attractor';
 import type { InertiaTensor } from '../../physics/inertia-tensor';
 import { airspeed, burnUpBody } from '../../physics/atmosphere';
 import { ballisticCoeffInv, radiationPressureCoeff } from '../../physics/aerodynamics';
+import { buildVesselWireframe } from '../../render/vessel-wireframe';
 import type { HullCapsule } from './collision-shape';
 import { deriveCapsules } from './collision-shape';
 import type { HeatShielding } from './heat-shield';
@@ -305,6 +306,9 @@ export class Vessel extends GameEntity {
     this.faction = design.faction;
     this.assembly = design.assembly;
     this.collisionCapsules = design.assembly ? deriveCapsules(design.assembly.tree) : [];
+    if (design.assembly) {
+      this.renderObject.add(buildVesselWireframe(design.assembly.tree, this.collisionCapsules));
+    }
     this.massProperties = design.massProperties;
     this.mass = design.massProperties.mass;
     this.radius = design.radius;
