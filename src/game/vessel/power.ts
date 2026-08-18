@@ -37,7 +37,7 @@ export class PowerSystem {
   }
 
   // 毎フレーム呼ぶ。sunlit は sunlitFactor(0..1)、sunDir は太陽方向の単位ベクトル(world)。
-  update(dt: number, sunlit: number, sunDir: Vec3, att: Attitude, ship: import('../game-entity/ship').Ship): void {
+  update(dt: number, sunlit: number, sunDir: Vec3, att: Attitude, ship: import('../vessel/vessel').Vessel): void {
     // 展開度の更新
     const step = dt / C.RADIATOR_DEPLOY_TIME; // 同じ速度を使用
     for (const side of ['up', 'down'] as const) {

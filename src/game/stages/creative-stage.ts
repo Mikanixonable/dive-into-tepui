@@ -1,7 +1,7 @@
 // クリエイティブモード: 勝敗判定を発生させず、艦艇配置と軌道計画を自由に試すためのステージ。
 import type * as THREE from 'three/webgpu';
 import { Stage, type ObjectAuthoring, type StageDeps } from './stage';
-import type { Player } from '../player/player';
+import { Vessel } from '../vessel/vessel';
 import { EntityIdAllocator } from '../game-entity/entity-id';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { SimSpeedManager } from '../sim-speed-manager';
@@ -17,7 +17,6 @@ import { ToggleSwitch } from '../hud/widgets';
 import { hudRail } from '../hud/hud-root';
 import type { CameraSystem, ProjectFn } from '../camera/camera-system';
 import { AmmoPickup } from '../game-entity/ammo-pickup';
-import { Base } from '../game-entity/base';
 import { generateDriftingEnemy } from './spawner/enemy-generator';
 import { WaveAttack } from './stage-utils/wave-attack';
 import { generateRandomName } from '../random-name';
@@ -70,7 +69,7 @@ export class CreativeStage extends Stage {
 
     // 以後の新規配置が既存 id と衝突しないよう、この時点で存在する艦・補給の id を予約する
     // (スナップショットからの再開では entities が復元済み — 新規開始では空なので何もしない)。
-    for (const p of this._entities.players) this.playerIdAllocator.next(p.id);
+    for (const p of this._entities.ownShips()) this.playerIdAllocator.next(p.id);
     for (const ammoPickup of this._entities.ammoPickups) this.ammoPickupIdAllocator.next(ammoPickup.id);
 
     this.previewOrbitLine = new OrbitLine({ color: 0xffffff, opacity: 0.6, renderOrder: C.LINE_RENDER_ORDER.plan });
@@ -80,7 +79,7 @@ export class CreativeStage extends Stage {
       this._hud.mapRoot, this._hud.layers.popup, this._ephemeris, this._hud.overlayManager,
     );
     this.placerPanel.onConfirm = (name, form) => this.placeObject(name, form);
-    this.waveAttack = new WaveAttack(this._hud, this._worldSfx, this._fx, this._scene, this._ephemeris, savedCreative?.waveAttack);
+    this.waveAttack = new WaveAttack(this.vesselDeps, this._ephemeris, savedCreative?.waveAttack);
     this.waveAttackEnabled = savedCreative?.waveAttackEnabled ?? false;
     this.creativeOptionsPanel = this.buildCreativeOptionsPanel(this._hud.mapRoot);
 
@@ -108,7 +107,7 @@ export class CreativeStage extends Stage {
 
   // 共通のステータス表示に加えて、配置プレビューの軌道線とマーカーを同期する。
   sync(
-    player: Player | null, fo: FloatingOrigin, cameraSystem: CameraSystem, displayTime: number,
+    player: Vessel | null, fo: FloatingOrigin, cameraSystem: CameraSystem, displayTime: number,
     visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     super.sync(player, fo, cameraSystem, displayTime, visibilityPolicy);
@@ -207,7 +206,7 @@ export class CreativeStage extends Stage {
 
   // フォーム値から KinematicState を組み立て、配置する。
   private placeObject(name: string, form: ObjectPlacerForm): void {
-    if (form.objectType === 'player' && this._entities.players.length >= C.MAX_PLACED_SHIPS) {
+    if (form.objectType === 'player' && this._entities.ownShips().length >= C.MAX_PLACED_SHIPS) {
       this._hud.hint(`配置数が上限(${C.MAX_PLACED_SHIPS}隻)に達しています`);
       return;
     }
@@ -219,12 +218,12 @@ export class CreativeStage extends Stage {
       if (form.objectType === 'player') {
         const id = this.playerIdAllocator.next();
         const finalName = name.trim() || generateRandomName('player');
-        const ship = this.addPlayer({ name: finalName, state, id });
+        const ship = this.addOwnShip({ name: finalName, state, id });
         this._hud.hint(`${ship.name} を配置`);
       } else if (form.objectType === 'enemy') {
         const finalName = name.trim() || generateRandomName('enemy');
-        const enemy = generateDriftingEnemy(finalName, state, C.ENEMY_MAX_HP, '#ff6a00', '#ff6a00', this._hud, this._worldSfx, this._fx, this._scene);
-        this._entities.addEnemy(enemy);
+        const enemy = generateDriftingEnemy(finalName, state, '#ff6a00', '#ff6a00', this.vesselDeps);
+        this._entities.addVessel(enemy);
         this._hud.hint(`${enemy.name} を配置`);
       } else if (form.objectType === 'ammo') {
         const id = this.ammoPickupIdAllocator.next();
@@ -234,8 +233,8 @@ export class CreativeStage extends Stage {
         this._hud.hint(`${finalName} を配置`);
       } else if (form.objectType === 'base') {
         const finalName = name.trim() || generateRandomName('base');
-        const base = new Base({ state, name: finalName }, this._scene, this._hud, this._worldSfx, this._fx, this._markerManager);
-        this._entities.addBase(base);
+        const base = new Vessel({ orbitalBase: { state, name: finalName } }, this.vesselDeps);
+        this._entities.addVessel(base);
         this._hud.hint(`${base.name} を配置`);
       }
     } catch (error) {
@@ -312,12 +311,12 @@ export class CreativeStage extends Stage {
   // 既存敵の AI 行動は常に進める。トグルが制御するのは新規ウェーブの発生のみ
   // (OFF の間は waveAttack.update を止め、既に出ている敵はそのまま残る)。
   // ノードの消化・点火・遮断は Simulator のイベント境界(applySimulationEvents)で行う。
-  update(dt: number, player: Player | null, _entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
+  update(dt: number, player: Vessel | null, _entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
     if (player) {
       this.logistics.updateLogistics(simTime, player, simSpeed, true);
-      this.behaveAllEnemies(dt, player, this._entities, simTime, simSpeed);
+      this.behaveAllHostiles(dt, player, this._entities, simTime, simSpeed);
       if (this.waveAttackEnabled) {
-        this.waveAttack.update(dt, player, this._entities.enemies, simTime, this, (enemy) => this.addEnemy(enemy, this._entities));
+        this.waveAttack.update(dt, player, this._entities.hostileVessels(), simTime, this, (enemy) => this.addHostile(enemy, this._entities));
       }
     }
     const form = this.placerPanel.isOpen ? this.placerPanel.getForm() : null;
@@ -325,14 +324,14 @@ export class CreativeStage extends Stage {
     this.issues = form ? this.computeFieldIssues(form) : [];
     this.simSpeed = simSpeed;
     const simDt = dt * simSpeed.simSpeed;
-    for (const ship of this._entities.players) ship.planExecutor.update(ship, simDt, simTime, simSpeed);
+    for (const ship of this._entities.ownShips()) ship.planExecutor.update(ship, simDt, simTime, simSpeed);
   }
 
   // 'instant' の艦はノード時刻ちょうど、'powered' の艦は点火予定時刻を Simulator の既知
   // イベントとして返し、simTime がその時刻ちょうどで積分を切るようにする。
   nextSimulationEventTime(simTime: number): number | null {
     let next: number | null = null;
-    for (const ship of this._entities.players) {
+    for (const ship of this._entities.ownShips()) {
       const t = ship.planExecution === 'instant' ? ship.plan.firstNode()?.t
         : ship.planExecution === 'powered' && this.simSpeed
           ? (ship.planExecutor.nextEventTime(ship, simTime, this.simSpeed) ?? undefined)
@@ -345,7 +344,7 @@ export class CreativeStage extends Stage {
   // 'instant' はノード時刻ちょうどでノードの絶対状態へ乗り移り、'powered' は PlanExecutor に
   // 点火・遮断そのものを委ねる。
   applySimulationEvents(simTime: number): void {
-    for (const ship of this._entities.players) {
+    for (const ship of this._entities.ownShips()) {
       if (ship.planExecution === 'instant') {
         const node = ship.plan.firstNode();
         if (!node || node.t > simTime + 1e-9) continue;

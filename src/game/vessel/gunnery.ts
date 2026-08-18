@@ -11,13 +11,12 @@ import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
-import { Ship } from '../game-entity/ship';
+import { Vessel } from '../vessel/vessel';
 import { Bullet } from '../game-entity/bullet';
 import type { EntityManager } from '../simulation/entity-manager';
 import { MUZZLE_OFFSETS } from '../../render/ships';
 import { EffectsSystem } from '../vfx/effects-system';
 import type { Stage } from '../stages/stage';
-import { Player } from './player';
 import type { FireSaveData } from '../save-data';
 
 export type ConsumeResult = 'empty' | 'normal' | 'mag-reload' | 'barrel-reload';
@@ -46,7 +45,7 @@ function sunGlareSpreadScale(pos: Vec3, aimDir: Vec3, sunDir: Vec3): number {
   return 1;
 }
 
-export class PlayerFire {
+export class Gunnery {
   rounds = C.MAG_ROUNDS;
   mags = C.INITIAL_MAGS - 1;
   barrel = C.MAGS_PER_BARREL;
@@ -57,7 +56,7 @@ export class PlayerFire {
   muzzleIdx = 0; // 縦二連砲口の交互発射用
 
   constructor(
-    private readonly player: Player,
+    private readonly player: Vessel,
     private readonly _hud: Hud,
     private readonly _worldSfx: WorldSfx,
     private readonly _scene: THREE.Scene,
@@ -256,13 +255,13 @@ export class PlayerFire {
     this.spawnMuzzleFlash(this.player, muzzle, fwd);
 
     activeStage.scoreCounter.recordShot();
-    this.player.thermal.addGunHeat(1);
+    this.player.thermal?.addGunHeat(1);
     this._worldSfx.fire();
   }
 
   // 弾丸: 機首方向 + 散布界
   private spawnBullet(
-    ship: Ship, muzzle: Vec3, fwd: Vec3, entities: EntityManager, ephemeris: Ephemeris,
+    ship: Vessel, muzzle: Vec3, fwd: Vec3, entities: EntityManager, ephemeris: Ephemeris,
   ): void {
     const sunDir = ephemeris.sunDirFrom(ship.state.r, ship.state.t);
     const spreadScale = sunGlareSpreadScale(muzzle, fwd, sunDir);
@@ -287,7 +286,7 @@ export class PlayerFire {
 
   // 薬莢: -X 側へ排出(+X 側はマガジンベルトの給弾があるため)。
   // 初速は抑えてゆっくり漂わせる一方、回転速度は個体ごとに大きくばらつかせる。
-  private dropCasing(ship: Ship, muzzle: Vec3): void {
+  private dropCasing(ship: Vessel, muzzle: Vec3): void {
     // 機体姿勢基準の左右・上方向
     const right = qRotate(ship.att.q, v3(1, 0, 0));
     const up = qRotate(ship.att.q, v3(0, 1, 0));
@@ -310,12 +309,12 @@ export class PlayerFire {
   }
 
   // マズルフラッシュ: 発射した側の砲口の少し先に出す。
-  private spawnMuzzleFlash(ship: Ship, muzzle: Vec3, fwd: Vec3): void {
+  private spawnMuzzleFlash(ship: Vessel, muzzle: Vec3, fwd: Vec3): void {
     this._fx.spawnMuzzleFlash(kinematicState(ship.state.t, addScaled(muzzle, fwd, 1.2), ship.state.v));
   }
 
   // バレル交換時に円柱アイテムをデブリとして放出する。
-  dropBarrel(ship: Ship): void {
+  dropBarrel(ship: Vessel): void {
     // 下方に少し勢いをつけて放出
     const down = qRotate(ship.att.q, v3(0, -1, 0));
     this._fx.spawnBarrel(
@@ -334,7 +333,7 @@ export class PlayerFire {
 
   // マガジン1個を撃ち尽くした瞬間、-X 側(薬莢と同じ側)の位置から
   // 空になったマガジンの外枠(弾なし)をデブリとして放出する。
-  private spawnEjectedMagazineFrame(ship: Ship): void {
+  private spawnEjectedMagazineFrame(ship: Vessel): void {
     // 排出ポートの位置と初速
     const right = qRotate(ship.att.q, v3(1, 0, 0));
     const portWorld = add(ship.state.r, qRotate(ship.att.q, v3(-0.9, 0, 0)));

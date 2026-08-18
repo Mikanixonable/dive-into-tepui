@@ -10,9 +10,10 @@
     "verify:source": "node tools/verify-release.mjs --source-only",
     "verify:release": "node tools/verify-release.mjs",
     "smoke:browser": "node tools/browser-smoke.mjs",
-    "ci": "npm run verify:source && npm run typecheck && npm run test:physics && npm run build && npm run verify:release && npm run smoke:browser",
+    "ci": "npm run verify:source && npm run typecheck && npm run test:physics && npm run test:unit && npm run build && npm run verify:release && npm run smoke:browser",
     "typecheck": "tsc --noEmit",
     "test:physics": "tsc -p tsconfig.test.json && node tests/dist/tests/physics/index.js",
+    "test:unit": "tsc -p tsconfig.test.json && node tests/dist/tests/unit/index.js",
     "export-assets": "node tools/export-models.mjs",
     "bgm-lab": "node node_modules/webpack-cli/bin/cli.js serve --config webpack.bgm-lab.config.js --mode development"
   },

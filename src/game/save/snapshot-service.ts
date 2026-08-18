@@ -33,9 +33,9 @@ export class SnapshotService {
       hpRatio: player && player.maxHp > 0 ? Math.max(0, player.hp) / player.maxHp : 0,
       maxHp: player ? player.maxHp : 0,
       magazines: player ? player.magsLeft : 0,
-      money: game.entities.bases.reduce((sum, b) => sum + b.baseState.money, 0),
-      playerCount: game.entities.players.length,
-      enemyAliveCount: game.entities.enemies.filter(e => e.alive).length,
+      money: game.entities.baseVessels().reduce((sum, b) => sum + b.baseState!.money, 0),
+      playerCount: game.entities.ownShips().length,
+      enemyAliveCount: game.entities.hostileVessels().filter(e => e.alive).length,
       phase: game.activeStage.phase,
     };
 
@@ -84,11 +84,11 @@ function buildSaveData(game: Game): GameSaveData {
     ephemerisContext: { ...CURRENT_EPHEMERIS_CONTEXT },
     phaseOffsets: game.ephemeris.getPhaseOffsets(),
     earthSpinPhase0: game.environment.earthSpinPhase0(),
-    players: game.entities.players.map(p => p.serialize()),
+    players: game.entities.ownShips().map((v) => v.serializeAsShip()),
     activePlayerId: game.player ? game.player.id : null,
-    enemies: game.entities.enemies.map(e => e.serialize()),
+    enemies: game.entities.hostileVessels().map((v) => v.serializeAsHostile()),
     ammoPickups: game.entities.ammoPickups.map((ammoPickup) => ammoPickup.serialize()),
-    bases: game.entities.bases.map(b => b.serialize()),
+    bases: game.entities.baseVessels().map((v) => v.serializeAsBase()),
     stage: game.activeStage.serialize(),
     camera: { view: game.viewManager.serializeView(), ...game.cameraSystem.serialize() },
   };

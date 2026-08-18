@@ -4,13 +4,11 @@ import { FloatingOrigin } from './floating-origin';
 import { v3 } from '../physics/vec3';
 import type { PerfCounts } from '../perf-meter';
 import { FrameSections, SECTION } from '../frame-sections';
-import { Player } from './player/player';
-import { Base } from './game-entity/base';
-import type { GameEntity } from './game-entity/game-entity';
+import { Vessel } from './vessel/vessel';
 import { CameraSystem } from './camera/camera-system';
 import { Stage, StageClass } from './stages/stage';
 import { MarkerManager } from './marker/marker-manager';
-import { ActiveControllableController } from './active-controllable-controller';
+import { ActiveVesselController } from './active-vessel-controller';
 import { UnlockManager } from './unlock-manager';
 import { Targeter } from './targeter';
 import { PlanEditor } from './plan/plan-editor';
@@ -60,11 +58,11 @@ export class Game {
   get ephemeris(): Ephemeris { return this._ephemeris; }
   readonly cameraSystem: CameraSystem;
   // 操作対象艦(0..n 隻のうちどれを操作するか)の切替を持つ。
-  readonly activePlayers: ActiveControllableController;
-  get player(): Player | null { return this.activePlayers.current; }
-  get controlledBase(): Base | null { return this.activePlayers.controlledBase; }
-  get activeControllableEntity(): GameEntity | null {
-    return this.controlledBase ?? this.player ?? this.entities.bases.find((b) => b.alive) ?? null;
+  readonly activeVessels: ActiveVesselController;
+  get player(): Vessel | null { return this.activeVessels.current; }
+  // 追従カメラが見る対象。操作対象が居なければ生存中の基地を代わりに見る。
+  get followedVessel(): Vessel | null {
+    return this.player ?? this.entities.baseVessels().find((b) => b.alive) ?? null;
   }
   readonly simSpeedManager: SimSpeedManager;
 
@@ -155,7 +153,7 @@ export class Game {
     this.navTarget = new NavTarget(this._hud, this.markerManager);
     this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
     this._environment = new EnvironmentScene(this._scene, this.ephemeris, graphics, pipeline.sunLight, earthSpinPhase0);
-    this.activePlayers = new ActiveControllableController(
+    this.activeVessels = new ActiveVesselController(
       initialSave?.activePlayerId, this.entities, this.cameraSystem, this.targeter, this.navTarget, this._worldSfx, this._hud,
     );
     this.editor = new PlanEditor(
@@ -166,7 +164,7 @@ export class Game {
       this.futureAttractors,
       this._scene,
       this.markerManager,
-      this.activePlayers,
+      this.activeVessels,
       this.displayWindowManager,
       this.frameControls,
     );
@@ -188,24 +186,24 @@ export class Game {
 
     this.activeStage = new stageClass(
       initialSave?.stage, this._hud, this._worldSfx, this._uiSfx, this._scene, this.entities, this.unlockManager,
-      this.entities.effects, this.markerManager, this.ephemeris, this.simulator, this.activePlayers,
+      this.entities.effects, this.markerManager, this.ephemeris, this.simulator, this.activeVessels,
     );
     this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
     // activeStage(authoring/executesPlans を読む)を要るので、その直後に生成する。
     this.mapPickables = new MapPickables(
-      this.activePlayers, this.entities, this.ephemeris, this.navTarget, this.cameraSystem, this.editor, this.markerManager,
+      this.activeVessels, this.entities, this.ephemeris, this.navTarget, this.cameraSystem, this.editor, this.markerManager,
     );
     this.mapActions = new MapContextActions(
       this._hud, this.entities, this.ephemeris, this.navTarget,
       this.cameraSystem, this.editor, this.simSpeedManager, this.pauseMenu, this.mapPickables,
-      this.activePlayers, this.frameControls, this.activeStage, this.targeter,
+      this.activeVessels, this.frameControls, this.activeStage, this.targeter,
     );
 
     // 初期ビューは世界が組み上がった後にしか決まらない — 攻略ステージの自機は Stage の初期配置で
     // 置かれるので、戦闘ビューへ入れるかどうかはその後でなければ判定できない。
     this.viewManager = new ViewManager(
       this._hud, this.editor, this.cameraSystem, this.displayWindowManager, this.mapActions,
-      this.activePlayers, this.touchControls,
+      this.activeVessels, this.touchControls,
       initialSave?.camera?.view,
     );
 
@@ -214,19 +212,11 @@ export class Game {
       () => this.pause(), () => this.resume(),
       this._hud, this._worldSfx, this._scene, this.entities.effects, this.markerManager,
       this.entities, this.mapActions, this.cameraSystem, this.viewManager,
-      this.activePlayers, this.activeStage,
+      this.activeVessels, this.activeStage,
     );
     this.mapActions.setDocking(this.docking);
-    this.mapActions.setControlledBaseHandler(
-      (b) => this.setControlledBase(b),
-      () => this.controlledBase,
-    );
-    this.viewManager.setControlledBaseProvider(() => this.controlledBase);
+    this.viewManager.setControlledBaseProvider(() => this.player);
     this.viewBadge = new ViewBadge(this._hud.layers.notify, this._hud.layers.notify, this.viewManager, this._hud.overlayManager);
-  }
-
-  setControlledBase(base: Base | null): void {
-    this.activePlayers.setBase(base);
   }
 
   // ------------------------------------------------------------------ lifecycle
@@ -285,7 +275,7 @@ export class Game {
     // ポーズ中も決着後も飛ばせない。決着は積分を止めないので、飛ばすと描画原点になるカメラ位置
     // だけが絶対 ECI に取り残され、追従対象もフォーカス天体も軌道速度で流れて即フレームアウトする。
     // ポーズ中は積分が止まるが、カメラの旋回・ズーム・パンの入力をここで消化している。
-    const activeControllable = this.activeControllableEntity;
+    const activeControllable = this.followedVessel;
     const displayWindow = this.displayWindowManager.resolve(this.simulator.simTime, activeControllable);
     const overviewMode = this.cameraSystem.overviewMode;
     const canDisplayFuture = !this.displayWindowManager.forceCurrent;
@@ -336,15 +326,11 @@ export class Game {
     this.entities.requestHistoryDuration(this.displayWindowManager.current.pastDuration);
     this.sections.enter(SECTION.player);
     this.nanWatchdog.checkPlayer('frameStart', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
-    const playerInput = this.controlledBase !== null ? null : this.input;
-    this.entities.updatePlayers(
-      this.player, playerInput, this.simSpeedManager, dt, this.activeStage, this.ephemeris,
-    );
-    this.entities.updateBases(
-      this.controlledBase, this.input, this.simSpeedManager, dt,
+    this.entities.updateVessels(
+      this.player, this.input, this.simSpeedManager, dt, this.activeStage, this.ephemeris,
     );
     this.nanWatchdog.checkPlayer(
-      'player.updatePlayerControls',
+      'entities.updateVessels',
       this.player,
       this.simulator.simTime,
       dt,
@@ -364,12 +350,12 @@ export class Game {
     this.sections.exit(SECTION.integrate);
     this.docking.updateDockedPhysics();
     // 積分後の状態でこのフレームの表示窓を確定させ、以降の消費者へ共有する。
-    this.displayWindowManager.resolve(this.simulator.simTime, this.activeControllableEntity);
+    this.displayWindowManager.resolve(this.simulator.simTime, this.followedVessel);
     // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全エンティティを見る。
     this.nanWatchdog.checkAll('simulator.advance', this.player, this.entities, this.simulator.simTime, dt, simDt);
 
     this.targeter.updateBoardMarks(dt, this.player, this.entities);
-    this.activePlayers.reclaimDead();
+    this.activeVessels.reclaimDead();
     this.docking.checkProximity();
 
     this.sections.enter(SECTION.effects);
@@ -438,7 +424,7 @@ export class Game {
   // ------------------------------------------------------------------ sync
 
   sync(): void {
-    const activeControllable = this.activeControllableEntity;
+    const activeControllable = this.followedVessel;
     const player = this.player;
     // 積分が終わった状態でこのフレームの表示窓を確定させ、sync 全体で共有する。
     const displayWindow = this.displayWindowManager.resolve(this.simulator.simTime, activeControllable);
@@ -474,11 +460,8 @@ export class Game {
       this.markerManager,
     );
 
-    this.entities.syncPlayers(
+    this.entities.syncVessels(
       player, fo, this.cameraSystem, displayTime, this.ephemeris, displayAttractors, visibilityPolicy, displayWindow,
-    );
-    this.entities.syncBases(
-      this.controlledBase, fo, this.cameraSystem, displayTime, visibilityPolicy,
     );
     this.entities.sync(fo, displayTime);
     this.entities.applyVisibility(visibilityPolicy, player);

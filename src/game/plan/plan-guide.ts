@@ -10,7 +10,7 @@ import { UiSfx } from '../../audio/sfx/ui-sfx';
 import { ProjectFn } from '../camera/camera-system';
 import { MarkerManager } from '../marker/marker-manager';
 import { DIRECTION_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-glyphs';
-import type { Player } from '../player/player';
+import type { Vessel } from '../vessel/vessel';
 import type { PlanPath } from './plan-path';
 
 export class PlanGuide {
@@ -28,7 +28,7 @@ export class PlanGuide {
 
   // 実行時刻を過ぎたノードを計画から落とし、直近ノードへの接近と計画軌道の達成を
   // ノードごとに一度だけ通知する。player がいなければ何もしない。
-  update(player: Player | null, simTime: number, editMode: boolean, attractors: readonly Attractor[]): void {
+  update(player: Vessel | null, simTime: number, editMode: boolean, attractors: readonly Attractor[]): void {
     if (!player || editMode) return;
     const plan = player.plan;
     plan.consumeNodesUpTo(simTime - C.NODE_EXPIRE_GRACE, player.state);
@@ -45,7 +45,7 @@ export class PlanGuide {
   // 直近ノードの NODE・BURN マーカーを同期する。位置と方向は path の表示変換を通す —
   // 同じ計画を描いた折れ線とマーカーが同じ座標系に載っていなければ、線の上に立たない。
   sync(
-    player: Player | null, simTime: number, editMode: boolean, project: ProjectFn, path: PlanPath,
+    player: Vessel | null, simTime: number, editMode: boolean, project: ProjectFn, path: PlanPath,
   ): void {
     const node = editMode || !player ? undefined : player.plan.firstNode();
     if (!player || !node) {
@@ -96,7 +96,7 @@ export class PlanGuide {
 
   // 自機の軌道が目標軌道に十分近づいていれば達成を通知する。ノードと自機で最も強く引く
   // 天体が違えば、要素同士の比較自体が意味を持たないので判定しない。
-  private notifyAchieved(node: KinematicState, player: Player, attractors: readonly Attractor[]): void {
+  private notifyAchieved(node: KinematicState, player: Vessel, attractors: readonly Attractor[]): void {
     if (this.achievedNotified === node) return;
     const plan = player.plan;
     const playerCenter = strongestAttractor(player.state.r, attractors);

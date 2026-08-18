@@ -18,7 +18,7 @@ import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { DisplayDurationSource, PlanData, TimeRange, segmentDurationFrom } from './plan';
 import { PredictedArc } from '../simulation/predicted-arc';
 import type { FutureAttractorProvider } from '../simulation/arc-bodies';
-import type { Controllable } from '../game-entity/controllable';
+import type { Vessel } from '../vessel/vessel';
 import { clipSamplesTo, stateAt, withinEnd } from './arc-range';
 import { goldenSectionMin } from '../../physics/optimize';
 import * as C from '../const';
@@ -109,7 +109,7 @@ export class PlanPath {
   // 書き換えだけで済ませ、一致しなければ作り直す(伸ばすのは呼び出し側の予算パス — growableArcs
   // 参照)。表示変換の文脈(座標系・un-bake 時刻)もこのフレームのものに更新する。
   update(
-    planData: PlanData, ship: Controllable | null,
+    planData: PlanData, ship: Vessel | null,
     ephemeris: Ephemeris, frame: ReferenceFrame, currentTime: number,
     attractors: readonly Attractor[], attractorProvider: FutureAttractorProvider,
     displayDurationSec: number,

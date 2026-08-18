@@ -10,7 +10,7 @@ import { Input, MouseDelta } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
-import { Player } from '../player/player';
+import { Vessel } from '../vessel/vessel';
 import type { GameEntity } from '../game-entity/game-entity';
 import { Viewpoint } from '../../physics/projection';
 import { ChaseCamera } from './chase-camera';
@@ -74,7 +74,7 @@ export class CombatCameraSystem {
     if (input.takeKey(K.followAttitudeToggle)) this.chaseCamera.toggleFollowAttitude(player);
     this.zoomActive = input.down(K.gunsightZoom);
     // 操作対象艦がいなければ照準先が無いので、ズーム要求は無視して追跡視点のままにする。
-    const useGunsight = player instanceof Player && this.zoomActive;
+    const useGunsight = player instanceof Vessel && player.fire !== null && this.zoomActive;
     if (useGunsight) this.gunsightCamera.update(player);
     else this.chaseCamera.update(mouse, keyYaw, keyPitch, dt, player);
     const target = useGunsight ? this.gunsightCamera.viewpoint : this.chaseCamera.viewpoint;

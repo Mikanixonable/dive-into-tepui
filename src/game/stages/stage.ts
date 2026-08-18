@@ -1,8 +1,7 @@
 // 全ステージ共通の骨格。撃破数による勝利判定・常時解放・HUD補助表示なしを既定実装として持ち、
 // 必要なステージだけ override する。
 import * as THREE from 'three/webgpu';
-import { Enemy } from '../game-entity/enemy';
-import { Player, type PlayerInit } from '../player/player';
+import { Vessel, type CrewedShipInit, type VesselDeps } from '../vessel/vessel';
 import { Logistics } from './stage-utils/logistics';
 import { ScoreCounter } from './stage-utils/score-counter';
 import { StatusPanel } from './stage-utils/status-panel';
@@ -22,7 +21,7 @@ import type { StageSaveData } from '../save-data';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
 import type { ObjectType } from '../creative/object-placer-panel';
 import type { KinematicState } from '../../physics/kinematic-state';
-import type { ActivePlayerController } from '../active-player-controller';
+import type { ActiveVesselController } from '../active-vessel-controller';
 import type { AttractorId } from '../../physics/attractor';
 import { loadAbsoluteEphemeris } from '../../physics/ephemeris-catalog';
 import { profileAt } from '../../physics/ephemeris-profile';
@@ -45,7 +44,7 @@ export type StageDeps = [
   markerManager: MarkerManager,
   ephemeris: Ephemeris,
   simulator: Simulator,
-  activePlayers: ActivePlayerController,
+  activeVessels: ActiveVesselController,
 ];
 
 // ステージクラスの静的側。起動時の設定はここから読む。
@@ -126,7 +125,7 @@ export abstract class Stage {
   protected readonly _markerManager: MarkerManager;
   protected readonly _ephemeris: Ephemeris;
   protected readonly _simulator: Simulator;
-  protected readonly _activePlayers: ActivePlayerController;
+  protected readonly _activeVessels: ActiveVesselController;
 
   private _phase: GamePhase;
   get phase(): GamePhase { return this._phase; }
@@ -144,7 +143,7 @@ export abstract class Stage {
   // 補給タイマー未経過から始まり begin() が初期配置を行う。固有の内訳を持つ具象ステージは
   // 自分のコンストラクタで super(saved, ...deps) を呼んでから自分の分を組み立て、末尾で begin() を呼ぶ。
   constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
-    const [hud, worldSfx, uiSfx, scene, entities, unlockManager, fx, markerManager, ephemeris, simulator, activePlayers] = deps;
+    const [hud, worldSfx, uiSfx, scene, entities, unlockManager, fx, markerManager, ephemeris, simulator, activeVessels] = deps;
     this._hud = hud;
     this._worldSfx = worldSfx;
     this._uiSfx = uiSfx;
@@ -155,7 +154,7 @@ export abstract class Stage {
     this._markerManager = markerManager;
     this._ephemeris = ephemeris;
     this._simulator = simulator;
-    this._activePlayers = activePlayers;
+    this._activeVessels = activeVessels;
     this.scoreCounter = new ScoreCounter(saved?.scoreCounter);
     this._phase = saved?.phase ?? 'playing';
     this.restored = saved !== undefined;
@@ -179,38 +178,43 @@ export abstract class Stage {
   // ステータスパネルを同期する。fo・displayTime・visibilityPolicy は配置プレビューなど
   // ステージ固有の描画物を持つサブクラスが使う。
   sync(
-    player: Player | null, _fo: FloatingOrigin, cameraSystem: CameraSystem, _displayTime: number,
+    player: Vessel | null, _fo: FloatingOrigin, cameraSystem: CameraSystem, _displayTime: number,
     _visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     this.syncStatusPanel(player, cameraSystem.overviewMode);
   }
 
   // hudSubStatus() が null のとき、またはマップ視点のときはパネルを畳む。
-  private syncStatusPanel(player: Player | null, overviewMode: boolean): void {
+  private syncStatusPanel(player: Vessel | null, overviewMode: boolean): void {
     const message = this.hudSubStatus();
     const show = message !== null && !overviewMode;
     this.statusPanel.sync(show ? player : null, message ?? '', this.scoreCounter.kills);
   }
 
-  // 自機を1隻置き、操作対象が居なければそれを操作対象にする。艦の隻数は0..n隻が一般形で、
-  // 何隻をどこへ置くかはステージ自身の宣言。
-  protected addPlayer(init?: PlayerInit): Player {
-    const ship = new Player(this._hud, this._worldSfx, this._scene, this._fx, this._markerManager, init);
-    this._entities.addPlayer(ship);
-    this._activePlayers.claimIfNone(ship);
+  // 機体の組み立てに要る資源一式。ステージが機体を置くときに使う。
+  protected get vesselDeps(): VesselDeps {
+    return { hud: this._hud, worldSfx: this._worldSfx, scene: this._scene, fx: this._fx, markerManager: this._markerManager };
+  }
+
+  // 有人艦を1機置き、操作対象が居なければそれを操作対象にする。機数は0..n機が一般形で、
+  // 何機をどこへ置くかはステージ自身の宣言。
+  protected addOwnShip(init: CrewedShipInit = {}): Vessel {
+    const ship = new Vessel({ crewedShip: init }, this.vesselDeps);
+    this._entities.addVessel(ship);
+    this._activeVessels.claimIfNone(ship);
     return ship;
   }
 
-  // 敵を entities へ登録し、出撃数をスコアへ記録する。
-  protected addEnemy(enemy: Enemy, entities: EntityManager): void {
-    entities.addEnemy(enemy);
+  // 敵機を entities へ登録し、出撃数をスコアへ記録する。
+  protected addHostile(hostile: Vessel, entities: EntityManager): void {
+    entities.addVessel(hostile);
     this.scoreCounter.recordSpawnEnemy();
   }
 
   // 生存中の敵全てに AI 行動を1フレーム分実行させる。
-  protected behaveAllEnemies(dt: number, player: Player, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
-    for (const e of entities.enemies) {
-      if (e.alive) e.behave(dt, simTime, player, entities, simSpeed, this._ephemeris);
+  protected behaveAllHostiles(_dt: number, player: Vessel, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
+    for (const e of entities.hostileVessels()) {
+      if (e.alive) e.ai?.behave(simTime, player, entities, simSpeed, this._ephemeris);
     }
   }
 
@@ -218,7 +222,7 @@ export abstract class Stage {
   // 初期配置。既定では何も置かない。
   protected init(_entities: EntityManager): void { }
   // 毎フレーム呼ぶ。艦が1隻も無い間は player が null になる。
-  abstract update(dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void;
+  abstract update(dt: number, player: Vessel | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void;
 
   // Simulator がsubstepをイベント直前で切るためのhook。通常ステージには時刻固定イベントがない。
   nextSimulationEventTime(_simTime: number): number | null { return null; }
@@ -243,7 +247,7 @@ export abstract class Stage {
   }
 
   // 原因によらず勝利判定を通す: 再突入・離脱でも残存数 0 なら決着させる。
-  recordEnemyDeath(enemy: Enemy, simTime: number, cause: 'killed' | 'reentry' | 'despawn' = 'killed'): void {
+  recordEnemyDeath(enemy: Vessel, simTime: number, cause: 'killed' | 'reentry' | 'despawn' = 'killed'): void {
     if (cause === 'killed') {
       this.scoreCounter.recordKill();
       this._hud.hint(`${enemy.name} 撃破`);
