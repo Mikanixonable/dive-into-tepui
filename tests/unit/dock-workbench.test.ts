@@ -16,4 +16,20 @@ export function register(): void {
     assert.equal(session.dirty, false);
     assert.equal(session.validate().valid, true);
   });
+
+  test('dock workbench undo and redo restore both inventory and placements', () => {
+    const assembly = crewedAssembly(1000);
+    const removable = assembly.placements[0]!.part;
+    const session = new DockWorkbenchSession(
+      { targets: [{ id: 'ship-a', assembly }], inventory: [] },
+      () => ({ valid: true, errors: [] }),
+    );
+    session.removePlacement('ship-a', removable.id);
+    assert.equal(session.canUndo, true);
+    assert.equal(session.snapshot().inventory[0]!.id, removable.id);
+    assert.equal(session.undo(), true);
+    assert.equal(session.snapshot().inventory.length, 0);
+    assert.equal(session.redo(), true);
+    assert.equal(session.snapshot().inventory[0]!.id, removable.id);
+  });
 }

@@ -2,7 +2,7 @@
 // 目で確かめるためのもの。機体の renderObject の子として一度だけ組み、以後は機体と一緒に動く。
 import * as THREE from 'three/webgpu';
 import type { VesselTree } from '../game/vessel/tree';
-import { nodeById } from '../game/vessel/tree';
+import { nodeById, circumradius } from '../game/vessel/tree';
 import type { HullCapsule } from '../game/vessel/collision-shape';
 import { Vec3, add, cross, norm, scale, sub, v3 } from '../physics/vec3';
 
@@ -35,13 +35,23 @@ function lines(vertices: readonly number[], color: number): THREE.LineSegments {
   return mesh;
 }
 
+function edgeLine(from: Vec3, to: Vec3, edgeId: string, kind: string, color: number): THREE.Line {
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute([
+    from.x, from.y, from.z, to.x, to.y, to.z,
+  ], 3));
+  const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color, linewidth: 2 }));
+  line.userData.assemblyEdgeId = edgeId;
+  line.userData.edgeKind = kind;
+  line.userData.ownsGeometry = true;
+  line.userData.ownsMaterial = true;
+  return line;
+}
+
 // ツリーのエッジを直線で、カプセルを軸と両端の円で描く。
 export function buildVesselWireframe(
   tree: VesselTree, capsules: readonly HullCapsule[],
 ): THREE.Object3D {
-  const treeVertices: number[] = [];
-  for (const edge of tree.edges) push(treeVertices, nodeById(tree, edge.a).pos, nodeById(tree, edge.b).pos);
-
   const capsuleVertices: number[] = [];
   for (const capsule of capsules) {
     const axis = norm(sub(capsule.b, capsule.a));
@@ -51,6 +61,23 @@ export function buildVesselWireframe(
   }
 
   const group = new THREE.Group();
-  group.add(lines(treeVertices, TREE_COLOR), lines(capsuleVertices, CAPSULE_COLOR));
+  const topology = new THREE.Group();
+  topology.userData.assemblyTopology = true;
+  for (const edge of tree.edges) {
+    const color = edge.kind.kind === 'decoupler' ? 0xff6a00 : edge.kind.kind === 'truss' ? 0x687482 : TREE_COLOR;
+    topology.add(edgeLine(nodeById(tree, edge.a).pos, nodeById(tree, edge.b).pos, edge.id, edge.kind.kind, color));
+  }
+  for (const node of tree.nodes) {
+    const marker = new THREE.Mesh(
+      new THREE.SphereGeometry(Math.max(0.04, circumradius(node.section) * 0.06), 8, 4),
+      new THREE.MeshBasicMaterial({ color: 0xd8dce2 }),
+    );
+    marker.position.set(node.pos.x, node.pos.y, node.pos.z);
+    marker.userData.assemblyNodeId = node.id;
+    marker.userData.ownsGeometry = true;
+    marker.userData.ownsMaterial = true;
+    topology.add(marker);
+  }
+  group.add(topology, lines(capsuleVertices, CAPSULE_COLOR));
   return group;
 }

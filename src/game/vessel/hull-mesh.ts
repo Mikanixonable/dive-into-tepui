@@ -92,7 +92,9 @@ function placeInternalMarker(part: AnyPart, assembly: VesselAssembly): THREE.Obj
   if (!edgeId) return null;
   const edge = assembly.tree.edges.find((candidate) => candidate.id === edgeId);
   if (!edge) return null;
-  const frame = mountFrame(assembly.tree, { kind: 'surface', edgeId, along: edge.length / 2, around: 0 });
+  const frame = mountFrame(assembly.tree, edge.kind.kind === 'truss'
+    ? { kind: 'truss', edgeId, along: edge.length / 2, around: 0 }
+    : { kind: 'surface', edgeId, along: edge.length / 2, around: 0 });
   const size = Math.max(0.25, Math.min(2.5, Math.sqrt(Math.max(0.1, part.weight)) * 0.04));
   const color = part.type === 'dock' ? 0xff6a00 : 0x687482;
   const object = new THREE.Mesh(
