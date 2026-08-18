@@ -121,7 +121,7 @@ export class FutureAttractors implements FutureAttractorProvider {
     if (state === null) return null;
     return {
       id, mu: entity.mu, radius: entity.radius,
-      degree2: entity.degree2, isStar: entity.isStar, state,
+      degree2: entity.degree2, isStar: entity.isStar, state, accel: entity.accel,
     };
   }
 

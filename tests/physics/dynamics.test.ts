@@ -14,7 +14,8 @@ import { qFromAxisAngle, qRotate } from '../../src/physics/attitude';
 const EARTH_POLE = v3(0, 1, 0);
 const EARTH_DEGREE2: Degree2Gravity = { j2: J2_EARTH, refRadius: R_EARTH_EQ, pole: EARTH_POLE, tesseral: null };
 const EARTH: Attractor = {
-  id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), degree2: EARTH_DEGREE2, isStar: false,
+  id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(),
+  degree2: EARTH_DEGREE2, isStar: false,
 };
 
 function circularState() {
@@ -90,8 +91,8 @@ export function register(): void {
     const moonPos = v3(3.8e8, 0, 0);
     const attractors: readonly Attractor[] = [
       EARTH,
-      { id: 'moon', mu: MU_MOON, radius: R_MOON, state: kinematicState(0, moonPos, v3(0, 0, 0)), degree2: null, isStar: false },
-      { id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState(0, sunPos, v3(0, 0, 0)), degree2: null, isStar: true },
+      { id: 'moon', mu: MU_MOON, radius: R_MOON, state: kinematicState(0, moonPos, v3(0, 0, 0)), accel: v3(), degree2: null, isStar: false },
+      { id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState(0, sunPos, v3(0, 0, 0)), accel: v3(), degree2: null, isStar: true },
     ];
 
     const viaNew = stepDynamics(s0, dt, attractors, 0, 0, null);
@@ -313,7 +314,7 @@ export function register(): void {
     const sunPos = v3(1.495978707e11, 0, 0);
     const attractors: readonly Attractor[] = [
       EARTH,
-      { id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState(0, sunPos, v3(0, 0, 0)), degree2: null, isStar: true },
+      { id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState(0, sunPos, v3(0, 0, 0)), accel: v3(), degree2: null, isStar: true },
     ];
     const dt = 100;
     const srpCoeff = 1e-2;
