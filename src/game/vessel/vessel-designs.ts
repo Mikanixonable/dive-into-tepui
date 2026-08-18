@@ -3,7 +3,7 @@ import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { v3 } from '../../physics/vec3';
 import { buildEnemyShip, buildStage0EnemyShip } from '../../render/ships';
-import { buildHullMesh } from './hull-mesh';
+import { AssemblyRenderObject } from './assembly-render-object';
 import type { AnyPart } from '../game-entity/parts';
 import { hostileParts, tuneActuators } from './vessel-parts';
 import type { EnemyKind } from './enemy-ai';
@@ -57,7 +57,7 @@ export function crewedShipDesign(): VesselDesign {
   const assembly = crewedAssembly(C.PLAYER_MAX_HP);
   return {
     faction: 'ally',
-    renderObject: buildHullMesh(assembly),
+    renderObject: new AssemblyRenderObject(assembly).object,
     assembly,
     ...derivedFrom(assembly),
     radius: C.PLAYER_HULL_RADIUS,
@@ -78,7 +78,7 @@ export function orbitalBaseDesign(): VesselDesign {
     // Bases use the same assembly-driven renderer as ships.  Their fixed legacy
     // model remains available for older callers, but new base instances must
     // expose the individual assembly parts to the dock workbench.
-    renderObject: buildHullMesh(assembly),
+    renderObject: new AssemblyRenderObject(assembly).object,
     assembly,
     ...derivedFrom(assembly),
     radius: 330,
@@ -106,7 +106,7 @@ export function blueprintDesign(bp: VesselBlueprint): VesselDesign {
   const parts = assembly.placements.map((placement) => placement.part);
   return {
     faction: 'ally',
-    renderObject: buildHullMesh(assembly),
+    renderObject: new AssemblyRenderObject(assembly).object,
     assembly,
     parts,
     massProperties: massPropertiesFrom(deriveMassProperties(assembly)),
