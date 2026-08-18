@@ -45,6 +45,8 @@ export const DEPOSITS: readonly DepositDef[] = [
   { bodyId: 'mars', resourceId: 'carbon-dioxide', abundance: 1, access: 'atmosphere' },
   { bodyId: 'mars', resourceId: 'nitrogen', abundance: 0.1, access: 'atmosphere' },
   { bodyId: 'mars', resourceId: 'argon', abundance: 0.07, access: 'atmosphere' },
+  // 火星大気のキセノンは 0.08 ppm の桁。電気推進の推進剤としては最初の産地になる。
+  { bodyId: 'mars', resourceId: 'xenon', abundance: 0.0001, access: 'atmosphere' },
   { bodyId: 'mars', resourceId: 'water', abundance: 0.3, access: 'surface' },
 
   // 金星。着陸はせず、大気だけを捕集する。
@@ -56,6 +58,8 @@ export const DEPOSITS: readonly DepositDef[] = [
   { bodyId: 'jupiter', resourceId: 'hydrogen', abundance: 1, access: 'atmosphere' },
   { bodyId: 'jupiter', resourceId: 'helium', abundance: 0.4, access: 'atmosphere' },
   { bodyId: 'jupiter', resourceId: 'helium-3', abundance: 0.001, access: 'atmosphere' },
+  // 木星大気のキセノンは太陽組成の2倍ほどに濃縮されており、火星より濃い。
+  { bodyId: 'jupiter', resourceId: 'xenon', abundance: 0.002, access: 'atmosphere' },
 
   // 木星の衛星。カリストは放射線が最も弱く、イオは最も強い。
   { bodyId: 'callisto', resourceId: 'water', abundance: 0.8, access: 'surface' },
