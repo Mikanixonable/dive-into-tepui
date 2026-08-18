@@ -52,6 +52,8 @@ import { register as registerGeometry } from './geometry.test';
 import { register as registerOptimize } from './optimize.test';
 import { register as registerSectionMoments } from './section-moments.test';
 import { register as registerHullLoft } from './hull-loft.test';
+import { register as registerGravityGradient } from './gravity-gradient.test';
+import { register as registerGeomagnetic } from './geomagnetic.test';
 import './creative-placement-validation.test';
 
 registerVec3();
@@ -105,6 +107,8 @@ registerGeometry();
 registerOptimize();
 registerSectionMoments();
 registerHullLoft();
+registerGravityGradient();
+registerGeomagnetic();
 
 runAll().catch((error) => {
   console.error(error);
