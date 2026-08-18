@@ -386,6 +386,10 @@ export class Docking {
   // 設計から実機を1機作り、基地のドックへ置く。ドックの収容数を超える生産は、完成した時点では
   // なく開始時点で拒否する。資源が足りなければ在庫は一切減らない。
   private produceVessel(base: Vessel, blueprint: VesselBlueprint): void {
+    if (this.workbenchDirty) {
+      this.hud.hint('作業台の変更を先に確定または取消してください');
+      return;
+    }
     if (base.baseState!.dockedVessels.length >= base.dockCapacity) {
       this.hud.hint(`基地のドックが満杯です (最大 ${base.dockCapacity} 隻)`);
       return;
@@ -422,6 +426,10 @@ export class Docking {
   }
 
   private launch(ship: Vessel, base: Vessel): void {
+    if (this.workbenchDirty) {
+      this.hud.hint('作業台の変更を先に確定または取消してください');
+      return;
+    }
     const idx = base.baseState!.dockedVessels.findIndex((s) => s.vessel === ship || s.id === ship.id);
     const slotIndex = idx >= 0 ? base.baseState!.dockedVessels[idx]!.slotIndex : 0;
 
