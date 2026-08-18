@@ -240,8 +240,8 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
     // 弾命中を含む剛体接触・姿勢積分はいずれもこの中。simulator が contactPhysics(ContactPhysics)を所有する。
     // 弾も薬莢もデブリも天体も同じ ContactPhysics を通る一本の経路。resolveCollision は advance の内部で
     // simSpeed.canResolvePhysicalCollisions から求める(呼び出し側からは渡さない)
-    - [サブステップごと] ×ceil(simDt / maxStep) // 分割数は simDt と刻み上限のみで決まる(実 fps に依存しない)
-      - adaptiveMaxStep() → adaptiveSimulationMaxStep(生存する艦の state, R_EARTH + REENTRY_SUBSTEP_ALT, SUBSTEP_MAX_DT, REENTRY_SUBSTEP_MAX_DT)
+    - [サブステップごと] ×ceil(simDt / maxStep) // 分割数は simDt と刻み上限のみで決まる(実 fps に依存しない)。上限は SUBSTEP_MAX_COUNT 個で、超える時間送りでは刻み幅の側が伸びる
+      - adaptiveMaxStep(simDt) → adaptiveSimulationMaxStep(生存する艦の state, R_EARTH + REENTRY_SUBSTEP_ALT, max(SUBSTEP_MAX_DT, simDt / SUBSTEP_MAX_COUNT), REENTRY_SUBSTEP_MAX_DT)
         // 走査対象は entities.players と entities.enemies のみ。いずれかが再突入高度以下、または現在の降下率でその境界へ到達しうるとき、そのフレームの刻み上限が REENTRY_SUBSTEP_MAX_DT へ落ちる
       - nextEventTime(activeStage, passiveWarpLod) // activeStage.nextSimulationEventTime(simTime) と、エンティティ側の最小イベント時刻のうち早いものへ subDt を切り詰める
         // ステージ側は毎 substep 引き直す(艦の現在の Δv と加速度から毎回決まる生きた値のため)。エンティティ側(entityEventTime)は固定の絶対時刻なので控えを使い回し、simTime がその時刻へ到達したとき・entities.collectionRevision が変わったとき・passiveWarpLod が切り替わったときだけ全生存エンティティを走査し直す
