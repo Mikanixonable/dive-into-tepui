@@ -135,7 +135,7 @@ export const RCS_DAMP_RATE = 3.5; // RCS 回転制動の減衰係数 [1/s]
 export const RCS_MANUAL_OUTPUT_MIN = 0.3;
 export const RCS_MANUAL_OUTPUT_RAMP = 1.0;
 export const RCS_MANUAL_RAMP_TIME = 3.0; // [s]
-export const RCS_PUFF_TORQUE_EPS = 0.15; // RCSパフを表示する実トルクしきい値 [rad/s^2](inertia=1前提)
+export const RCS_PUFF_TORQUE_EPS = 0.15; // RCSパフを表示する角加速度のしきい値 [rad/s^2]
 
 // 微調整モード([V]キーでトグル、射撃中は自動でON)で角加速度に掛ける倍率
 export const FINE_ATTITUDE_SCALE = 0.5;
