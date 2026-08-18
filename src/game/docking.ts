@@ -10,6 +10,7 @@ import { hasBaseModule } from './vessel/capabilities';
 import type { VesselBlueprint } from './vessel/blueprint';
 import { createBlueprint } from './vessel/blueprint';
 import type { VesselAssembly } from './vessel/assembly';
+import type { PartPlacement } from './vessel/assembly';
 import { validateBlueprint } from './vessel/blueprint-validation';
 import { baseFacilities, basePowerAvailable } from './vessel/base-module';
 import { BlueprintLibrary } from './vessel/blueprint-library';
@@ -17,6 +18,7 @@ import { LocalStorageBlueprintStore } from './vessel/blueprint-store';
 import { producibility } from './economy/producibility';
 import { consumeProductionResources, productionBlueprintOf } from './vessel/production';
 import type { GameEntity } from './game-entity/game-entity';
+import type { AnyPart } from './game-entity/parts';
 import type { EntityManager } from './simulation/entity-manager';
 import type { MapContextActions } from './map-context-actions';
 import type { CameraSystem } from './camera/camera-system';
@@ -65,8 +67,8 @@ export class Docking {
     this.baseView.onLaunchVessel = (ship, base) => this.launch(ship, base);
     this.baseView.onProduceVessel = (base, blueprint) => this.produceVessel(base, blueprint);
     this.baseView.onWorkbenchRemove = (base, vessel, partId) => this.removeDockedPart(base, vessel, partId);
-    this.baseView.onWorkbenchDrop = () => {
-      this.hud.hint('部品を接続口へ移動してスナップしてから確定してください');
+    this.baseView.onWorkbenchDrop = (base, vessel, partId, fromInventory) => {
+      if (fromInventory) this.installDockedPart(base, vessel, partId);
     };
     this.viewManager.setDocking(this);
 
@@ -273,6 +275,28 @@ export class Docking {
     this.hud.hint('部品を基地倉庫へ移しました');
   }
 
+  private installDockedPart(base: Vessel, vessel: Vessel, partId: string): void {
+    if (!vessel.assembly || !base.baseState) return;
+    const inventoryIndex = base.baseState.inventory.findIndex((part) => part.id === partId);
+    if (inventoryIndex < 0) return;
+    const part = base.baseState.inventory[inventoryIndex]!;
+    const placement = defaultDockPlacement(vessel.assembly, part);
+    if (!placement) {
+      this.hud.hint('この部品を置ける接続点がありません');
+      return;
+    }
+    const result = this.commitDockedAssembly(base, vessel.id, {
+      tree: vessel.assembly.tree, placements: [...vessel.assembly.placements, placement],
+    });
+    if (!result.ok) {
+      this.hud.hint(`取り付けられません: ${result.reason}`);
+      return;
+    }
+    base.baseState.inventory.splice(inventoryIndex, 1);
+    this.baseView.openWorkbench(base, result.vessel);
+    this.hud.hint('部品をドック作業台へ取り付けました');
+  }
+
   // 設計から実機を1機作り、基地のドックへ置く。ドックの収容数を超える生産は、完成した時点では
   // なく開始時点で拒否する。資源が足りなければ在庫は一切減らない。
   private produceVessel(base: Vessel, blueprint: VesselBlueprint): void {
@@ -346,4 +370,20 @@ export class Docking {
   dispose(): void {
     this.baseView.dispose();
   }
+}
+
+const EXTERNAL_PART_TYPES = new Set([
+  'weapon', 'engine', 'rcs_thruster', 'solar_panel', 'radiator', 'combat_shield',
+  'heat_shield', 'communication', 'robot_arm', 'docking_port', 'container_coupling',
+]);
+
+function defaultDockPlacement(assembly: VesselAssembly, part: AnyPart): PartPlacement | null {
+  const edge = assembly.tree.edges.find((candidate) => candidate.kind.kind === 'hull') ?? assembly.tree.edges[0];
+  if (!edge) return null;
+  if (!EXTERNAL_PART_TYPES.has(part.type)) return { kind: 'internal', part, edgeIds: [edge.id] };
+  if (part.type === 'engine' && edge.portA.kind === 'axial') {
+    return { kind: 'external', part, mount: { kind: 'port', nodeId: edge.a, port: edge.portA } };
+  }
+  if (edge.kind.kind !== 'hull') return null;
+  return { kind: 'external', part, mount: { kind: 'surface', edgeId: edge.id, along: edge.length / 2, around: 0 } };
 }
