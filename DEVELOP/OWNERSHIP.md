@@ -224,7 +224,7 @@ main.ts
 │       │   │   │   └── BeltPhysics
 │       │   │   │       └── BeltSection[]  ... 剛体接触用プロキシ
 │       │   │   ├── ThermalSystem          ... 熱・電力の収支を持つ設計だけが持つ。他は null
-│       │   │   ├── RadiatorSystem         ... 放熱板2枚の展開度・損耗度。ヒンジ Group は Vessel.renderObject 配下を名前で参照
+│       │   │   ├── RadiatorSystem         ... 放熱板2枚の展開度・損耗度。ヒンジ Group と折り目は Vessel.renderObject 配下を名前で参照し、接触代理の位置もヒンジ Group の位置から測る
 │       │   │   │   └── foldProxies (Record<side, RadiatorFold[]>) ... 側ごとの剛体接触用プロキシ。折り数まで
 │       │   │   │       遅延生成し以後使い回す。collisionFolds() が毎 substep 位置を置き直すだけで、
 │       │   │   │       Verlet 等の独立した力学は持たない(艦の姿勢+展開度から一意に決まる剛体の取り付け)
