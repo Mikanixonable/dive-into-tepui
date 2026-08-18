@@ -42,17 +42,17 @@ const HOSTILE_HP_RATIO = {
 // 既定パーツの質量 [kg]。主要構造は外皮そのものであり、その質量は形状と肉厚から導かれるので
 // (§10-3)、hull 要素自身は質量を持たない。
 const CREWED_WEIGHT = {
-  hull: 0, cockpit: 135, engine: 90, rcsThruster: 8, flywheel: 25, rcsTank: 30,
-  radiator: 18, solarPanel: 12, weapon: 60, magazine: 20, ammunition: 40,
-  battery: 45, communication: 15, lifeSupport: 80, armor: 60,
+  hull: 0, cockpit: 115, engine: 80, rcsThruster: 8, flywheel: 25, rcsTank: 30,
+  radiator: 18, solarPanel: 12, weapon: 50, magazine: 20, ammunition: 30,
+  battery: 40, communication: 15, lifeSupport: 65, armor: 50,
 } as const;
 
 const HOSTILE_WEIGHT = {
-  hull: 0, engine: 800, flywheel: 300, rcsTank: 600, weapon: 900, armor: 1100,
+  hull: 0, engine: 1500, flywheel: 600, rcsTank: 1200, weapon: 1800, armor: 2140,
 } as const;
 
 const BASE_WEIGHT = {
-  baseModule: 1.5e6, cockpit: 6e5, engine: 3e4, flywheel: 2e4, rcsTank: 5e5,
+  baseModule: 1.362e6, cockpit: 6e5, engine: 3e4, flywheel: 2e4, rcsTank: 5e5,
 } as const;
 
 // 既定の有人艦が積む要素の消費電力 [W]。合計が C.CREWED_POWER_DRAW と一致する。

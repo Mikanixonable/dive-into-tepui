@@ -9,6 +9,7 @@
 import { Vec3, cross, dot, len, norm, scale, sub, v3, add, rotateAxis } from '../../physics/vec3';
 import type { CrossSection, Vec2 } from '../../physics/section-moments';
 import { placeSectionPrimitives } from '../../physics/section-moments';
+import { sectionOutline } from '../../physics/hull-loft';
 
 // 寸法の刻み [m]。エッジの長さと、外装要素の軸方向の取り付け位置がこの倍数を取る。
 export const DIMENSION_UNIT = 0.5;
@@ -239,6 +240,26 @@ export function circumradius(section: CrossSection): number {
     }
   }
   return maximum;
+}
+
+// 断面の内接円半径 [m]。断面の座標原点から輪郭までの最短距離であり、外皮の肉厚を測る向きを決める
+// (§10-3 の薄肉圧力容器の式が要求する肉厚は、面に垂直な向きの厚みである)。
+export function inradius(section: CrossSection): number {
+  const outline = sectionOutline(section);
+  let minimum = Infinity;
+  for (let i = 0; i < outline.length; i++) {
+    minimum = Math.min(minimum, segmentDistance(outline[i]!, outline[(i + 1) % outline.length]!));
+  }
+  return minimum;
+}
+
+// 原点から線分までの距離。
+function segmentDistance(p0: Vec2, p1: Vec2): number {
+  const dx = p1.x - p0.x;
+  const dy = p1.y - p0.y;
+  const lengthSq = dx * dx + dy * dy;
+  const t = lengthSq > 0 ? Math.min(1, Math.max(0, -(p0.x * dx + p0.y * dy) / lengthSq)) : 0;
+  return Math.hypot(p0.x + dx * t, p0.y + dy * t);
 }
 
 // ---------------------------------------------------------------------------
