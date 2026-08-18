@@ -2,7 +2,8 @@
 import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { v3 } from '../../physics/vec3';
-import { buildBaseModel, buildEnemyShip, buildPlayerShip, buildStage0EnemyShip } from '../../render/ships';
+import { buildBaseModel, buildEnemyShip, buildStage0EnemyShip } from '../../render/ships';
+import { buildHullMesh } from './hull-mesh';
 import type { AnyPart } from '../game-entity/parts';
 import { hostileParts } from './vessel-parts';
 import type { EnemyKind } from './enemy-ai';
@@ -52,7 +53,7 @@ export function crewedShipDesign(): VesselDesign {
   const assembly = crewedAssembly(C.PLAYER_MAX_HP);
   return {
     faction: 'ally',
-    renderObject: buildPlayerShip(),
+    renderObject: buildHullMesh(assembly),
     assembly,
     ...derivedFrom(assembly),
     radius: C.PLAYER_HULL_RADIUS,

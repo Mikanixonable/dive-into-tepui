@@ -20,7 +20,6 @@ function deepCloneGeometry(geo: THREE.BufferGeometry): THREE.BufferGeometry {
   return clone;
 }
 
-import playerData from '../assets/models/player.json';
 import enemyData from '../assets/models/enemy.json';
 import stage0EnemyDataA from '../assets/models/stage0EnemyA.json';
 import stage0EnemyDataB from '../assets/models/stage0EnemyB.json';
@@ -44,7 +43,7 @@ export const MUZZLE_OFFSETS: { x: number; y: number; z: number }[] = [
 // ラジエーターのヒンジ Group 名(機体座標系)。getObjectByName() で引く。
 export const RADIATOR_OBJECT_NAMES = { up: 'radiatorUp', down: 'radiatorDown' } as const;
 
-// 蛇腹1折りの一辺 [m]。tools/export-models.mjs と一致させる。
+// 蛇腹1折りの一辺 [m]。
 export const RADIATOR_SEGMENT_LENGTH = (2.3 * 4) / 6;
 
 // 全開時、各折りが展開軸から残す傾き。0 だと折り目の判別が数値的に不安定になるため、
@@ -52,12 +51,10 @@ export const RADIATOR_SEGMENT_LENGTH = (2.3 * 4) / 6;
 export const RADIATOR_DEPLOY_TILT = 15 * Math.PI / 180;
 
 // ラジエーター折り目 Group 名(ヒンジ Group の子孫として入れ子)。
-// tools/export-models.mjs の命名(`${radiatorUp/Down}Fold${i}`)と一致させる。
 export function radiatorFoldName(side: 'up' | 'down', fold: number): string {
   return `${RADIATOR_OBJECT_NAMES[side]}Fold${fold}`;
 }
 
-export { RADIATOR_HINGE } from './radiator-hinge';
 
 // マガジン寸法(機体座標系)。ベルト連結間隔(MAG_BELT_PITCH)は game.ts が
 // マガジンリンクの並びを計算するのに使う。純粋な数値なので JSON 化はしない。
@@ -118,7 +115,6 @@ function memoParseShared<T extends THREE.Object3D>(data: object): () => T {
   };
 }
 
-const parsePlayer = memoParse<THREE.Group>(playerData);
 const parseEnemy = memoParse<THREE.Group>(enemyData);
 const parseStage0EnemyA = memoParse<THREE.Group>(stage0EnemyDataA);
 const parseStage0EnemyB = memoParse<THREE.Group>(stage0EnemyDataB);
@@ -148,11 +144,6 @@ function initCasingResources(): void {
   casingMaterial.color.setHex(0xFF9F5E);
   casingMaterial.metalness = 0.8;
   casingMaterial.roughness = 0.3;
-}
-
-// 自機のメッシュを生成する。
-export function buildPlayerShip(): THREE.Group {
-  return parsePlayer();
 }
 
 // マガジンリンク1個分のメッシュを生成する。
