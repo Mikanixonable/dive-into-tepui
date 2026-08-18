@@ -336,6 +336,7 @@ const PART_TYPE_LABELS: Readonly<Record<PartType, string>> = {
   base_module: '基地モジュール',
   communication: '通信モジュール',
   autopilot: '自動操縦装置',
+  comm_station: '通信基地',
 };
 
 function formatPartMeta(part: Part): string {

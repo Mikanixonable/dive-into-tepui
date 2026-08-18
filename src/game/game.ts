@@ -1,5 +1,6 @@
 // ゲーム全体のオーケストレーション: 各システムの生成・保持と、フレームごとの呼び出し順序の決定。
 import * as THREE from 'three/webgpu';
+import { CommNetwork } from './comms/comm-network';
 import { FloatingOrigin } from './floating-origin';
 import { v3 } from '../physics/vec3';
 import type { PerfCounts } from '../perf-meter';
@@ -94,6 +95,8 @@ export class Game {
   private readonly entityLines: EntityLineManager;
   readonly simulator: Simulator;
   private readonly predictor: Predictor;
+  // 通信網。無人機へ指令が届くかを決める(§13)。
+  private readonly commNetwork: CommNetwork;
   private readonly nanWatchdog: NanWatchdog;
   private readonly docking: Docking;
   private readonly viewBadge: ViewBadge;
@@ -183,10 +186,12 @@ export class Game {
 
     this.simulator = new Simulator(this.entities, this.ephemeris, sections, initialSave?.simTime ?? 0);
     this.predictor = new Predictor(this.entities, this.ephemeris, this.futureAttractors);
+    this.commNetwork = new CommNetwork();
 
     this.activeStage = new stageClass(
       initialSave?.stage, this._hud, this._worldSfx, this._uiSfx, this._scene, this.entities, this.unlockManager,
       this.entities.effects, this.markerManager, this.ephemeris, this.simulator, this.activeVessels,
+      this.commNetwork,
     );
     this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
     // activeStage(authoring/executesPlans を読む)を要るので、その直後に生成する。
@@ -337,6 +342,12 @@ export class Game {
       this.simulator.lastSimDt,
     );
     this.sections.exit(SECTION.player);
+
+    // ステージが無人機の計画を進める前に、この時点の通信網を確定させる。
+    this.commNetwork.update(
+      this.simulator.simTime, this.ephemeris, this.entities.vessels,
+      this.ephemeris.attractorsAt(this.simulator.simTime),
+    );
 
     this.sections.enter(SECTION.stage);
     this.activeStage.update(dt, this.player, this.entities, this.simulator.simTime, this.simSpeedManager);

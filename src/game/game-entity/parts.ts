@@ -2,7 +2,7 @@ import { Vec3 } from '../../physics/vec3';
 
 export type PartType =
   | 'hull' | 'cockpit' | 'armor' | 'thruster' | 'rcs_tank' | 'radiator' | 'solar_panel' | 'weapon'
-  | 'base_module' | 'communication' | 'autopilot';
+  | 'base_module' | 'communication' | 'autopilot' | 'comm_station';
 
 export interface Part {
   readonly id: string;
@@ -88,13 +88,20 @@ export interface CommunicationPart extends Part {
   readonly range: number;
 }
 
+// 基地モジュールの通信基地区画。大型の通信設備であり、通信網の起点になる。
+export interface CommStationPart extends Part {
+  readonly type: 'comm_station';
+  // 通信圏の判定へ渡す到達距離 [m]。
+  readonly range: number;
+}
+
 export interface AutopilotPart extends Part {
   readonly type: 'autopilot';
 }
 
 export type AnyPart =
   | HullPart | CockpitPart | ArmorPart | ThrusterPart | RcsTankPart | RadiatorPart | SolarPanelPart | WeaponPart
-  | BaseModulePart | CommunicationPart | AutopilotPart;
+  | BaseModulePart | CommunicationPart | AutopilotPart | CommStationPart;
 
 type ExtractPart<TType extends PartType> = Extract<AnyPart, { type: TType }>;
 
@@ -129,5 +136,6 @@ export function partFromSaveData(data: AnyPart): AnyPart {
     case 'base_module': return createPart('base_module', data);
     case 'communication': return createPart('communication', data);
     case 'autopilot': return createPart('autopilot', data);
+    case 'comm_station': return createPart('comm_station', data);
   }
 }
