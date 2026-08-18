@@ -8,6 +8,9 @@ import { ResourceTransferDialog } from './hud/resource-transfer-dialog';
 import { Vessel, type VesselDeps } from './vessel/vessel';
 import { hasBaseModule } from './vessel/capabilities';
 import type { VesselBlueprint } from './vessel/blueprint';
+import { createBlueprint } from './vessel/blueprint';
+import type { VesselAssembly } from './vessel/assembly';
+import { validateBlueprint } from './vessel/blueprint-validation';
 import { baseFacilities, basePowerAvailable } from './vessel/base-module';
 import { BlueprintLibrary } from './vessel/blueprint-library';
 import { LocalStorageBlueprintStore } from './vessel/blueprint-store';
@@ -61,6 +64,10 @@ export class Docking {
     this.baseView.onClose = () => this.viewManager.leaveDock();
     this.baseView.onLaunchVessel = (ship, base) => this.launch(ship, base);
     this.baseView.onProduceVessel = (base, blueprint) => this.produceVessel(base, blueprint);
+    this.baseView.onWorkbenchRemove = (base, vessel, partId) => this.removeDockedPart(base, vessel, partId);
+    this.baseView.onWorkbenchDrop = () => {
+      this.hud.hint('部品を接続口へ移動してスナップしてから確定してください');
+    };
     this.viewManager.setDocking(this);
 
     this.transferDialog = new ResourceTransferDialog(this.hud.layers.view, this.hud.overlayManager);
@@ -144,6 +151,37 @@ export class Docking {
     return this.getAvailableBases().length > 0;
   }
 
+  /**
+   * Atomically replaces one docked vessel with the validated assembly produced by
+   * the workbench. The old vessel is kept untouched until validation succeeds.
+   */
+  commitDockedAssembly(base: Vessel, vesselId: string, assembly: VesselAssembly): { ok: true; vessel: Vessel } | { ok: false; reason: string } {
+    const state = base.baseState;
+    if (!state) return { ok: false, reason: '基地ではありません' };
+    const index = state.dockedVessels.findIndex((entry) => entry.id === vesselId);
+    if (index < 0) return { ok: false, reason: '対象艦がドックにありません' };
+    const previous = state.dockedVessels[index]!.vessel;
+    const blueprint = createBlueprint({
+      id: `${previous.id}-dock-edit`, name: previous.name, tree: assembly.tree,
+      placements: assembly.placements, now: Date.now(),
+    });
+    const issue = validateBlueprint(blueprint).find((candidate) => candidate.severity === 'error');
+    if (issue) return { ok: false, reason: issue.message };
+
+    const replacement = new Vessel({
+      blueprintShip: { blueprint, state: previous.state, name: previous.name, id: previous.id },
+    }, this.vesselDeps);
+    const slotIndex = state.dockedVessels[index]!.slotIndex;
+    base.detachDockedVesselMesh(previous);
+    state.dockedVessels.splice(index, 1, {
+      id: replacement.id, name: replacement.name, hp: replacement.hp, maxHp: replacement.maxHp,
+      parts: replacement.parts, vessel: replacement, slotIndex,
+    });
+    base.attachDockedVesselMesh(replacement, slotIndex);
+    previous.dispose();
+    return { ok: true, vessel: replacement };
+  }
+
   clearActiveBaseIf(base: Vessel): void {
     if (this._activeBase !== base) return;
     this._activeBase = null;
@@ -217,6 +255,22 @@ export class Docking {
       if (this.activeVessels.current === null) this.viewManager.setView('map');
     }
     this.hud.hint(`${ship.name} を基地のドック ${slotIndex + 1} に収納しました`);
+  }
+
+  private removeDockedPart(base: Vessel, vessel: Vessel, partId: string): void {
+    if (!vessel.assembly) return;
+    const removed = vessel.parts.find((part) => part.id === partId);
+    if (!removed) return;
+    const placements = vessel.assembly.placements.filter((placement) => placement.part.id !== partId);
+    if (placements.length === vessel.assembly.placements.length) return;
+    const result = this.commitDockedAssembly(base, vessel.id, { tree: vessel.assembly.tree, placements });
+    if (!result.ok) {
+      this.hud.hint(`取り外せません: ${result.reason}`);
+      return;
+    }
+    base.baseState!.inventory.push(removed);
+    this.baseView.openWorkbench(base, result.vessel);
+    this.hud.hint('部品を基地倉庫へ移しました');
   }
 
   // 設計から実機を1機作り、基地のドックへ置く。ドックの収容数を超える生産は、完成した時点では
