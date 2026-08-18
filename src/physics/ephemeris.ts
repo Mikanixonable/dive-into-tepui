@@ -537,8 +537,8 @@ export class Ephemeris {
     return this.gravityAttractorsCache.put(t, this.gravityIds.map((id) => this.attractorAt(id, t)));
   }
 
-  // 1天体ぶんの時刻 t での重力源表現。
-  private attractorAt(id: AttractorId, t: number): Attractor {
+  // 1天体ぶんの時刻 t での重力源表現。返る値は不変。
+  attractorAt(id: AttractorId, t: number): Attractor {
     const def = bodyDef(this.registry, id);
     return {
       id, mu: def.mu, radius: def.radius, state: this.stateOf(id, t),

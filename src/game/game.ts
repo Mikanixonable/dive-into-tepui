@@ -288,6 +288,7 @@ export class Game {
     const activeControllable = this.activeControllableEntity;
     const displayWindow = this.displayWindowManager.resolve(this.simulator.simTime, activeControllable);
     const overviewMode = this.cameraSystem.overviewMode;
+    const canDisplayFuture = !this.displayWindowManager.forceCurrent;
     // 計画表示、予測伸長、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
     this._environment.update(displayWindow.displayTime, overviewMode);
     this.sections.enter(SECTION.plan);
@@ -297,7 +298,8 @@ export class Game {
     // 予測は伸び切ったところで止まるだけで害はない。
     this.sections.enter(SECTION.predict);
     this.predictor.update(
-      this.simulator.simTime, this.player, displayWindow.duration, overviewMode, this.editor.growableArcs(),
+      this.simulator.simTime, this.player, displayWindow.duration,
+      canDisplayFuture, this.editor.growableArcs(),
     );
     this.sections.exit(SECTION.predict);
     this.sections.enter(SECTION.plan);

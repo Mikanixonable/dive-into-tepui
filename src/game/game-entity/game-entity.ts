@@ -15,7 +15,7 @@ import { LineStyle } from '../../render/line-style';
 import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { PredictedArc, trajectorySampleInterval } from '../simulation/predicted-arc';
-import type { FutureAttractorProvider } from '../simulation/future-attractors';
+import type { FutureAttractorProvider } from '../simulation/arc-bodies';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
 import type { Contact } from '../simulation/contact';
@@ -105,10 +105,16 @@ export class GameEntity {
   // 表示時刻(未来ゴースト)の位置でメッシュとマーカーを描く種別か。
   protected readonly predictedForGhost: boolean = false;
 
-  // 予測列を伸ばす種別か。上の理由のどれか1つでも立てば伸ばす。
-  get predictsFuture(): boolean {
+  // この個体の未来を読む消費者がいるか。ゴーストだけは表示時刻が未来へ動けるかに依るので、
+  // 動けるかどうかを引数で受け取る。
+  hasFutureReader(canDisplayFuture: boolean): boolean {
     return this.predictedAsGravitySource || this.predictedAsPlanCollider
-      || this.predictedForGhost || this.predictedLine !== null;
+      || (this.predictedForGhost && canDisplayFuture) || this.predictedLine !== null;
+  }
+
+  // 予測列を持ちうる種別か。上の理由のどれか1つでも立ちうれば持つ。
+  get predictsFuture(): boolean {
+    return this.hasFutureReader(true);
   }
   protected readonly scene?: THREE.Scene;
 

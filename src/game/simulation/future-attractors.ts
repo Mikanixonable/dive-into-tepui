@@ -1,32 +1,11 @@
-// 計画・予測の積分が時刻ごとに参照する重力源・衝突体と、その解決。世代値(revision)が、
-// 答える内容を変えうる入力(計画の編集・除外集合・各個体の予測の届き具合)の変化を
-// 呼び出し側の再積分キャッシュへ伝える。
+// 計画・予測の積分が引きうる天体の候補一覧と、そのうち1体を時刻ごとに解決する窓口。
+// 世代値(revision)が、答える内容を変えうる入力(計画の編集・除外集合・各個体の予測の
+// 届き具合)の変化を呼び出し側の再積分キャッシュへ伝える。
 import type { Ephemeris } from '../../physics/ephemeris';
 import type { Attractor, AttractorId } from '../../physics/attractor';
-import { classifyAttractors, ClassifiedAttractors, mergeAttractors } from './attractors';
 import type { EntityManager } from './entity-manager';
 import type { GameEntity } from '../game-entity/game-entity';
-
-// ある時刻の、積分1ステップが必要とする対象一式。collision は mu=0 の表示天体も含む全解析天体に
-// 未来状態を引ける predictedAsPlanCollider な entity を加えたもの、gravity はそのうち引力を
-// 持つものと動的重力源。
-export type FutureSourcesAt = {
-  readonly t: number;
-  readonly gravity: readonly Attractor[];
-  // gravity のうち解析天体だけの部分集合。ケプラー外挿・近地点/遠地点の中心天体は天体暦で
-  // 位置を引ける相手でなければならないので、動的重力源を含む gravity ではなくこちらを使う。
-  readonly analyticGravity: readonly Attractor[];
-  readonly collision: readonly Attractor[];
-  readonly collisionById: ReadonlyMap<AttractorId, Attractor>;
-  readonly classified: ClassifiedAttractors;
-};
-
-// 積分は現在状態の配列を凍結せず、各積分時刻に同じ provider を呼ぶ。revision は provider が
-// 答える内容が変わったことを呼び出し側の再積分キャッシュへ伝える。
-export type FutureAttractorProvider = {
-  readonly revision: number;
-  readonly at: (t: number) => FutureSourcesAt;
-};
+import type { FutureAttractorProvider, FutureBodyCandidate } from './arc-bodies';
 
 const REVISION_MIX_PRIME = 16777619;
 const REVISION_SEED = 2166136261 | 0;
@@ -94,9 +73,20 @@ function futureSourceRevision(
   return acc;
 }
 
+// 除外集合が前回と同じ顔ぶれか。
+function sameIds(a: readonly AttractorId[], b: readonly AttractorId[]): boolean {
+  return a.length === b.length && a.every((id, i) => id === b[i]);
+}
+
 export class FutureAttractors implements FutureAttractorProvider {
   private revisionValue = 0;
   private excluded: ReadonlySet<AttractorId> = new Set();
+  // 候補一覧と、それを組んだときの顔ぶれ(EntityManager の世代・除外集合)。
+  private candidateList: readonly FutureBodyCandidate[] = [];
+  private candidateEntities: ReadonlyMap<AttractorId, GameEntity> = new Map();
+  private candidateRevisionValue = 0;
+  private candidateRoster = -1;
+  private candidateExcluded: readonly AttractorId[] = [];
 
   constructor(
     private readonly ephemeris: Ephemeris,
@@ -105,6 +95,10 @@ export class FutureAttractors implements FutureAttractorProvider {
 
   get revision(): number { return this.revisionValue; }
 
+  get candidateRevision(): number { return this.candidateRevisionValue; }
+
+  candidates(): readonly FutureBodyCandidate[] { return this.candidateList; }
+
   // このフレームの入力を渡す。答える内容が変わっていれば revision を進める — 呼び出し側は
   // 入力を渡すだけで、何が答えを変えるかを知る必要はない。
   resolve(
@@ -112,48 +106,55 @@ export class FutureAttractors implements FutureAttractorProvider {
     planRevision: number,
     planEnd: number,
   ): void {
+    this.refreshCandidates(excludedEntityIds);
     const next = futureSourceRevision(this.entities, excludedEntityIds, planRevision, planEnd);
     if (next === this.revisionValue) return;
     this.revisionValue = next;
+  }
+
+  // 候補1体の時刻 t での状態。動的個体がその時刻を答えられなければ null。
+  bodyAt(id: AttractorId, t: number): Attractor | null {
+    const entity = this.candidateEntities.get(id);
+    if (entity === undefined) return this.ephemeris.attractorAt(id, t);
+    if (!entity.alive) return null;
+    const state = entity.displayState(t, this.ephemeris);
+    if (state === null) return null;
+    return {
+      id, mu: entity.mu, radius: entity.radius,
+      degree2: entity.degree2, isStar: entity.isStar, state,
+    };
+  }
+
+  // 候補一覧を、レジストリの天体と生存する動的個体から組み直す。顔ぶれと除外集合が
+  // 前回と同じなら何もしない。
+  private refreshCandidates(excludedEntityIds: readonly AttractorId[]): void {
+    if (this.candidateRoster === this.entities.collectionRevision
+      && sameIds(this.candidateExcluded, excludedEntityIds)) return;
+    this.candidateRoster = this.entities.collectionRevision;
+    this.candidateExcluded = [...excludedEntityIds];
     this.excluded = new Set(excludedEntityIds);
-  }
 
-  // 時刻 t の対象一式。**返り値の配列と Map は呼び出し側が保持してよいが、書き換えては
-  // ならない**(弧が中心窓として次の歩まで持ち越す)。
-  at(t: number): FutureSourcesAt {
-    return this.resolveAt(t);
-  }
-
-  // 解析天体の窓は1回だけ引き、衝突体と重力源の両方をそこから組む — 同じ時刻の重力源を
-  // 別の窓として引き直すと、同じ天体の位置を二度計算することになる。この窓を動的重力源の
-  // displayState 外挿より先に引くのも同じ理由で、外挿が問い合わせる中心天体の stateOf を
-  // そのキャッシュへ当てる。
-  private resolveAt(t: number): FutureSourcesAt {
-    const collision: Attractor[] = [];
-    const analyticGravity: Attractor[] = [];
-    const collisionById = new Map<AttractorId, Attractor>();
-    // 解析天体は mu=0 の表示天体も含めて全数が衝突対象で、そのうち引力を持つものが重力源。
-    // 積分がこの経路で惑星や衛星に終端するのは entity 側の宣言とは関係しない。
-    for (const body of this.ephemeris.attractorsAt(t)) {
-      collision.push(body);
-      if (!collisionById.has(body.id)) collisionById.set(body.id, body);
-      if (body.mu !== 0) analyticGravity.push(body);
+    // 解析天体は mu=0 の表示天体も含めて全数が表面到達の相手。
+    const list: FutureBodyCandidate[] = [];
+    for (const def of Object.values(this.ephemeris.registry)) {
+      list.push({ id: def.id, mu: def.mu, radius: def.radius, analytic: true, collision: true });
     }
-    const dynamicGravity: Attractor[] = [];
+    // 動的個体は、引力を持つものが重力源、predictedAsPlanCollider なものが表面到達の相手。
+    const byEntity = new Map<AttractorId, GameEntity>();
     for (const e of this.entities.attractors()) {
-      const state = e.displayState(t, this.ephemeris);
-      if (state === null) continue;
-      dynamicGravity.push({ id: e.id, mu: e.mu, radius: e.radius, degree2: e.degree2, isStar: e.isStar, state });
+      byEntity.set(e.id, e);
+      list.push({
+        id: e.id, mu: e.mu, radius: e.radius, analytic: false,
+        collision: e.predictedAsPlanCollider && !this.excluded.has(e.id),
+      });
     }
-    const gravity = mergeAttractors(analyticGravity, dynamicGravity);
     for (const e of this.entities.all()) {
-      if (!e.alive || !e.predictedAsPlanCollider || this.excluded.has(e.id) || collisionById.has(e.id)) continue;
-      const state = e.displayState(t, this.ephemeris);
-      if (state === null) continue;
-      const body = { id: e.id, mu: e.mu, radius: e.radius, degree2: e.degree2, isStar: e.isStar, state };
-      collision.push(body);
-      collisionById.set(e.id, body);
+      if (!e.alive || !e.predictedAsPlanCollider || this.excluded.has(e.id) || byEntity.has(e.id)) continue;
+      byEntity.set(e.id, e);
+      list.push({ id: e.id, mu: e.mu, radius: e.radius, analytic: false, collision: true });
     }
-    return { t, gravity, analyticGravity, collision, collisionById, classified: classifyAttractors(gravity) };
+    this.candidateList = list;
+    this.candidateEntities = byEntity;
+    this.candidateRevisionValue++;
   }
 }
