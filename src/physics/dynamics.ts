@@ -1,15 +1,19 @@
 // 与えられた加速度による RK4 積分の器(ケプラーの二体問題の解析式込み)、天体の2次重力場に
 // よる摂動、および一質点にかかる全加速度(重力 + 2次重力場 + 大気抵抗 + 推力)の合成の
 // 唯一の定義箇所。THREE/DOM 非依存の純関数。
-import { Attractor, Degree2Gravity, attractorAccel } from './attractor';
+import { Attractor, Degree2Gravity, attractorAccel, attractorPositionAt } from './attractor';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { dragAccel } from './atmosphere';
 import { sunlitFactor } from './shadow';
 import { srpAccel } from './srp';
 import { Vec3, add, cross, dot, v3 } from './vec3';
 
-// 状態(位置・速度)から加速度を返すコールバック。RK4 の各中間段(k1〜k4)ごとに呼ばれる。
-type AccelFn = (rx: number, ry: number, rz: number, vx: number, vy: number, vz: number) => Vec3;
+// 状態(位置・速度)から加速度を返すコールバック。RK4 の各中間段(k1〜k4)ごとに、その段が
+// 実際に評価されるべき絶対時刻 t とともに呼ばれる。RK4 が4次精度を持つのは非自励系
+// y' = f(t, y) の各段をそれぞれ正しい時刻で評価したときに限られ、t を1点(例えばステップ
+// 中点)へ凍結して自励系として解くと求積が中点則相当に落ち、大域誤差が O(h²) の2次へ
+// 退化する — 重力源が動く系(天体が段の間に位置を変える)では t を無視できない。
+type AccelFn = (t: number, rx: number, ry: number, rz: number, vx: number, vy: number, vz: number) => Vec3;
 
 // 天体の2次重力場による摂動加速度。rRel はその天体の中心からの相対位置。
 // J2(極方向の扁平)は軌道面に非対称なトルクを与えて昇交点を歳差させ、C22(赤道断面の
@@ -53,30 +57,32 @@ export function stepRK4(s: KinematicState, dt: number, accel: AccelFn): Kinemati
   const h2 = dt / 2;
   const h6 = dt / 6;
 
+  const tMid = s.t + h2;
+
   // k1
   const kr1x = v0x, kr1y = v0y, kr1z = v0z;
-  const a1 = accel(r0x, r0y, r0z, v0x, v0y, v0z);
+  const a1 = accel(s.t, r0x, r0y, r0z, v0x, v0y, v0z);
   const kv1x = a1.x, kv1y = a1.y, kv1z = a1.z;
 
   // k2
   const r2x = r0x + kr1x * h2, r2y = r0y + kr1y * h2, r2z = r0z + kr1z * h2;
   const v2x = v0x + kv1x * h2, v2y = v0y + kv1y * h2, v2z = v0z + kv1z * h2;
   const kr2x = v2x, kr2y = v2y, kr2z = v2z;
-  const a2 = accel(r2x, r2y, r2z, v2x, v2y, v2z);
+  const a2 = accel(tMid, r2x, r2y, r2z, v2x, v2y, v2z);
   const kv2x = a2.x, kv2y = a2.y, kv2z = a2.z;
 
   // k3
   const r3x = r0x + kr2x * h2, r3y = r0y + kr2y * h2, r3z = r0z + kr2z * h2;
   const v3x = v0x + kv2x * h2, v3y = v0y + kv2y * h2, v3z = v0z + kv2z * h2;
   const kr3x = v3x, kr3y = v3y, kr3z = v3z;
-  const a3 = accel(r3x, r3y, r3z, v3x, v3y, v3z);
+  const a3 = accel(tMid, r3x, r3y, r3z, v3x, v3y, v3z);
   const kv3x = a3.x, kv3y = a3.y, kv3z = a3.z;
 
   // k4
   const r4x = r0x + kr3x * dt, r4y = r0y + kr3y * dt, r4z = r0z + kr3z * dt;
   const v4x = v0x + kv3x * dt, v4y = v0y + kv3y * dt, v4z = v0z + kv3z * dt;
   const kr4x = v4x, kr4y = v4y, kr4z = v4z;
-  const a4 = accel(r4x, r4y, r4z, v4x, v4y, v4z);
+  const a4 = accel(s.t + dt, r4x, r4y, r4z, v4x, v4y, v4z);
   const kv4x = a4.x, kv4y = a4.y, kv4z = a4.z;
 
   return kinematicState(
@@ -96,8 +102,14 @@ export function stepRK4(s: KinematicState, dt: number, accel: AccelFn): Kinemati
 
 // 全天体からの重力(Σ attractorAccel — ECI が非慣性系であることの補正込み)と、2次重力場を
 // 持つ天体ぶんのその摂動、大気抵抗、太陽輻射圧。天体の同定は Attractor が自分で持つ degree2 に
-// 委ねるので、ここに固有名の分岐は現れない。
+// 委ねるので、ここに固有名の分岐は現れない。t は accel を評価すべき絶対時刻(RK4 の各段の
+// 時刻)で、重力項(質点・2次重力場とも)は attractorPositionAt で天体位置をその時刻へ外挿して
+// から評価する — 距離の3乗で効く重力はステップ幅ぶんの天体の移動が精度を左右するため。
+// 日照率(sunlitFactor)と輻射圧の太陽方向は attractor.state.t のまま据え置く: 遮蔽の幾何と
+// 1AU 先の太陽方向はステップ内での天体の移動にほとんど左右されず、外挿する意味が無い。
+// 大気抵抗は r/v だけの自励項なので時刻を持たない。
 function totalAccel(
+  t: number,
   r: Vec3,
   v: Vec3,
   attractors: readonly Attractor[],
@@ -106,11 +118,11 @@ function totalAccel(
 ): Vec3 {
   let ax = 0, ay = 0, az = 0;
   for (const attractor of attractors) {
-    const g = attractorAccel(r, attractor, attractor.state.t);
+    const g = attractorAccel(r, attractor, t);
     ax += g.x; ay += g.y; az += g.z;
     // 2次重力場は天体中心からの相対位置で評価する(質点重力と違い ECI 原点基準では組めない)。
     if (attractor.degree2 !== null) {
-      const b = attractor.state.r;
+      const b = attractorPositionAt(attractor, t);
       const d2 = degree2Accel(v3(r.x - b.x, r.y - b.y, r.z - b.z), attractor.mu, attractor.degree2);
       ax += d2.x; ay += d2.y; az += d2.z;
     }
@@ -136,8 +148,8 @@ export function stepDynamics(
   srpCoeff: number,
   thrust: Vec3 | null,
 ): KinematicState {
-  return stepRK4(state, dt, (rx, ry, rz, vx, vy, vz) => {
-    const a = totalAccel(v3(rx, ry, rz), v3(vx, vy, vz), attractors, bcInv, srpCoeff);
+  return stepRK4(state, dt, (t, rx, ry, rz, vx, vy, vz) => {
+    const a = totalAccel(t, v3(rx, ry, rz), v3(vx, vy, vz), attractors, bcInv, srpCoeff);
     return thrust ? add(a, thrust) : a;
   });
 }

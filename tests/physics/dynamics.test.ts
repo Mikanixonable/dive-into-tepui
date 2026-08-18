@@ -1,7 +1,7 @@
 // dynamics.ts の回帰テスト。stepDynamics は DynamicTrajectory.step が使う唯一の 1 ステップ実装。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import { kinematicState } from '../../src/physics/kinematic-state';
+import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH, R_EARTH_EQ, SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { OrbitalElements, keplerPeriod, stateFromOrbitalElements } from '../../src/physics/elements';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
@@ -83,6 +83,30 @@ function legacyAccel(r: Vec3, sunPos: Vec3, moonPos: Vec3): Vec3 {
   return add(add(add(central, sun), moon), j2);
 }
 
+// 原点に静止した点質量の地球(2次重力場なし)。
+const STATIC_EARTH: Attractor = {
+  id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(),
+  degree2: null, isStar: false,
+};
+const EARTH_MOON_DIST = 3.844e8; // 地球-月間距離(円軌道近似)[m]
+// 地球-月の重心を回る円軌道の角速度(縮約質量問題)。
+const EARTH_MOON_OMEGA = Math.sqrt((MU_EARTH + MU_MOON) / (EARTH_MOON_DIST * EARTH_MOON_DIST * EARTH_MOON_DIST));
+
+// 時刻 t における、円軌道を回る月を含む解析的な重力源窓(地球は原点に静止)。
+// state.t/r/v/accel のすべてを円運動の閉じた式で厳密に与えるので、attractorPositionAt に
+// よる段ごとの外挿の正しさをこの窓自体の近似誤差と混同せずに測れる。
+function earthMoonWindowAt(t: number): readonly Attractor[] {
+  const theta = EARTH_MOON_OMEGA * t;
+  const c = Math.cos(theta), s = Math.sin(theta);
+  const r = v3(EARTH_MOON_DIST * c, 0, EARTH_MOON_DIST * s);
+  const v = v3(-EARTH_MOON_DIST * EARTH_MOON_OMEGA * s, 0, EARTH_MOON_DIST * EARTH_MOON_OMEGA * c);
+  const a = v3(-EARTH_MOON_OMEGA * EARTH_MOON_OMEGA * r.x, 0, -EARTH_MOON_OMEGA * EARTH_MOON_OMEGA * r.z);
+  return [
+    STATIC_EARTH,
+    { id: 'moon', mu: MU_MOON, radius: R_MOON, state: kinematicState(t, r, v), accel: a, degree2: null, isStar: false },
+  ];
+}
+
 export function register(): void {
   test('dynamics: stepDynamics(bcInv=0, thrust=null) matches a hand-written legacy central-gravity + third-body + J2 composition to machine precision', () => {
     const s0 = circularState();
@@ -96,7 +120,7 @@ export function register(): void {
     ];
 
     const viaNew = stepDynamics(s0, dt, attractors, 0, 0, null);
-    const viaLegacy = stepRK4(s0, dt, (rx, ry, rz) => legacyAccel(v3(rx, ry, rz), sunPos, moonPos));
+    const viaLegacy = stepRK4(s0, dt, (_t, rx, ry, rz) => legacyAccel(v3(rx, ry, rz), sunPos, moonPos));
 
     const posErr = len(sub(viaNew.r, viaLegacy.r)) / len(viaLegacy.r);
     const velErr = len(sub(viaNew.v, viaLegacy.v)) / len(viaLegacy.v);
@@ -164,7 +188,7 @@ export function register(): void {
     const dt = 1; // 1秒刻み
     const steps = Math.round(period / dt);
     for (let i = 0; i < steps; i++) {
-      s = stepRK4(s, dt, (rx, ry, rz) => legacyCentralGravity(v3(rx, ry, rz)));
+      s = stepRK4(s, dt, (_t, rx, ry, rz) => legacyCentralGravity(v3(rx, ry, rz)));
     }
 
     const rMag = len(s.r);
@@ -197,7 +221,7 @@ export function register(): void {
     const totalSeconds = totalDays * 86400;
     const steps = Math.round(totalSeconds / dt);
     for (let i = 0; i < steps; i++) {
-      s = stepRK4(s, dt, (rx, ry, rz) => {
+      s = stepRK4(s, dt, (_t, rx, ry, rz) => {
         const r = v3(rx, ry, rz);
         return add(legacyCentralGravity(r), degree2Accel(r, MU_EARTH, EARTH_DEGREE2));
       });
@@ -341,5 +365,38 @@ export function register(): void {
     // 基準半径は地形としての表面半径とは別の量なので、取り違えていないことを確かめる。
     assert.equal(moon.degree2!.refRadius, R_MOON_GRAVITY);
     assert.notEqual(moon.degree2!.refRadius, R_MOON);
+  });
+
+  test("dynamics: stepDynamics keeps RK4's fourth-order convergence when the gravity source moves between stages", () => {
+    // 低月周回(月からの距離 a)を1周積分する。dt を変えても終端時刻がぴったり揃うよう、
+    // 刻み数を丸めてから period/steps へ刻み幅を丸め直す — これを怠ると沿軌道の位相差が
+    // 誤差を覆い隠し、収束次数の測定にならない。
+    const a = 1.838e6;
+    const vc = Math.sqrt(MU_MOON / a);
+    const period = 2 * Math.PI * Math.sqrt((a * a * a) / MU_MOON); // ~7071s
+    const moon0 = earthMoonWindowAt(0).find((b) => b.id === 'moon')!;
+    const initial = kinematicState(0, add(moon0.state.r, v3(a, 0, 0)), add(moon0.state.v, v3(0, 0, vc)));
+
+    // 各ステップで窓をステップ中点で1回だけ解決し、stepDynamics へ渡す
+    // (Simulator.substep が実運用で踏む経路そのもの)。
+    function integrate(dt: number): KinematicState {
+      const steps = Math.round(period / dt);
+      const stepDt = period / steps;
+      let s = initial;
+      for (let i = 0; i < steps; i++) {
+        s = stepDynamics(s, stepDt, earthMoonWindowAt(s.t + stepDt / 2), 0, 0, null);
+      }
+      return s;
+    }
+
+    const ref = integrate(period / 20000);
+    const err40 = len(sub(integrate(40).r, ref.r));
+    const err20 = len(sub(integrate(20).r, ref.r));
+    const ratio = err40 / err20;
+
+    // 実測: err40 ~= 0.51m, err20 ~= 0.030m, ratio ~= 17.2(次数 ~4.11)。段の時刻を凍結する
+    // 実装へ退化すると誤差が O(h²) になり、比は 4 前後、err20 は数百m まで悪化する。
+    assert.ok(ratio > 12, `dt-halving error ratio should reflect ~4th-order convergence: ${ratio} (err40=${err40}, err20=${err20})`);
+    assert.ok(err20 < 1, `dt=20 terminal position error should be sub-meter: ${err20} m`);
   });
 }
