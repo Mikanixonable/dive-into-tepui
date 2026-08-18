@@ -3,7 +3,7 @@ import * as assert from 'node:assert/strict';
 import { SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { ACTUATOR_MATERIALS } from '../../src/game/economy/actuator-materials';
 import { DEPOSITS, ENEMY_DROPS } from '../../src/game/economy/deposit';
-import { FACILITIES, FACILITY_IDS, INITIAL_FACILITY_IDS } from '../../src/game/economy/facility';
+import { FACILITIES, FACILITY_IDS, FacilityId, INITIAL_FACILITY_IDS } from '../../src/game/economy/facility';
 import { PROPELLANT_IDS, TANK_MATERIALS } from '../../src/game/economy/propellant-compatibility';
 import { RESOURCES, RESOURCE_IDS, ResourceId } from '../../src/game/economy/resource';
 import { ResourceLedger } from '../../src/game/economy/resource-ledger';
@@ -29,8 +29,11 @@ export function register(): void {
       const f = FACILITIES[id];
       assert.equal(f.id, id, `設備 ${id} の id がキーと違う`);
       for (const i of f.inputs) {
-        assert.ok(knownResource(i.resourceId), `設備 ${id} の入力に未登録の資源: ${i.resourceId}`);
-        assert.ok(Number.isFinite(i.rate) && i.rate > 0, `設備 ${id} の入力速度が不正: ${i.resourceId}`);
+        assert.ok(i.anyOf.length > 0, `設備 ${id} に選択肢の無い入力枠がある`);
+        for (const candidate of i.anyOf) {
+          assert.ok(knownResource(candidate), `設備 ${id} の入力に未登録の資源: ${candidate}`);
+        }
+        assert.ok(Number.isFinite(i.rate) && i.rate > 0, `設備 ${id} の入力速度が不正: ${i.anyOf.join('|')}`);
       }
       for (const o of f.outputs) {
         assert.ok(knownResource(o.resourceId), `設備 ${id} の出力に未登録の資源: ${o.resourceId}`);
@@ -41,8 +44,37 @@ export function register(): void {
         assert.ok(Number.isFinite(c.mass) && c.mass > 0, `設備 ${id} の建設費が不正: ${c.resourceId}`);
       }
       assert.ok(Number.isFinite(f.powerDraw) && f.powerDraw >= 0, `設備 ${id} の消費電力が不正`);
+      assert.ok(Number.isFinite(f.powerOutput) && f.powerOutput >= 0, `設備 ${id} の発電量が不正`);
       assert.ok(f.buildCost.length > 0, `設備 ${id} に建設費が無い`);
     }
+  });
+
+  test('economy: 発電設備だけが powerOutput を持ち、資源は出さない', () => {
+    const generators = FACILITY_IDS.filter((id) => FACILITIES[id].powerOutput > 0);
+    assert.deepEqual([...generators].sort(), ['fission-reactor', 'solar-array']);
+    for (const id of generators) {
+      // 電力は資源ではないため、発電設備の outputs は空になる。
+      assert.deepEqual(FACILITIES[id].outputs, [], `発電設備 ${id} が資源を出している`);
+    }
+    for (const id of FACILITY_IDS) {
+      if (generators.includes(id)) continue;
+      assert.equal(FACILITIES[id].powerOutput, 0, `発電設備でない ${id} が発電している`);
+    }
+  });
+
+  test('economy: 送電網は発電も消費もしない', () => {
+    const grid = FACILITIES['power-grid'];
+    assert.equal(grid.powerDraw, 0);
+    assert.equal(grid.powerOutput, 0);
+    assert.deepEqual(grid.outputs, []);
+  });
+
+  test('economy: 同じ役を果たす資源は anyOf に並ぶ', () => {
+    const anyOfOf = (id: FacilityId, index: number): readonly string[] => FACILITIES[id].inputs[index].anyOf;
+    assert.deepEqual(anyOfOf('fission-reactor', 0), ['uranium', 'thorium']);
+    assert.deepEqual(anyOfOf('electronics-factory', 1), ['copper', 'aluminium']);
+    assert.deepEqual(anyOfOf('winding-factory', 0), ['aluminium', 'copper']);
+    assert.deepEqual(anyOfOf('nuclear-fuel-refinery', 0), ['kreep-rock', 'm-type-ore']);
   });
 
   test('economy: requiresFacility が登録済みの設備を指し、自己参照しない', () => {
@@ -72,7 +104,7 @@ export function register(): void {
     for (const id of FACILITY_IDS) walk(id);
   });
 
-  test('economy: 最初から持っている設備が9つで、金属の板と殻と骨組みまでを賄う', () => {
+  test('economy: 最初から持っている設備が10基で、金属の板と殻と骨組みまでを賄う', () => {
     assert.deepEqual([...INITIAL_FACILITY_IDS].sort(), [
       'apatite-miner',
       'assembly-dock',
@@ -80,10 +112,13 @@ export function register(): void {
       'molten-salt-electrolysis',
       'molten-salt-preparation',
       'power-grid',
+      'regolith-miner',
       'rolling-mill',
       'smelter',
       'solar-array',
     ]);
+    // 溶融塩電解炉はレゴリスを要するため、レゴリス採掘機も最初の一組に含まれる。
+    assert.equal(INITIAL_FACILITY_IDS.length, 10);
     // エンジンも通信モジュールも磁気トルカも、この一組では作れない。
     for (const id of ['machine-shop', 'electronics-factory', 'winding-factory'] as const) {
       assert.ok(!INITIAL_FACILITY_IDS.includes(id), `${id} は最初から持っている設備ではない`);

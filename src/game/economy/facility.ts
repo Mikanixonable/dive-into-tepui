@@ -2,8 +2,15 @@
 // 採掘・加工・合成・発電を通した設備の一覧(FACILITIES)、および月面基地が最初から持つ一組。
 import { ResourceId } from './resource';
 
+// 出入りする資源の量。
 export interface FacilityAmount {
   readonly resourceId: ResourceId;
+  readonly rate: number; // kg/s
+}
+
+// 入力の1枠。anyOf は同じ役を果たす資源の並びで、そのうち1つを消費すれば足りる。
+export interface FacilityInput {
+  readonly anyOf: readonly ResourceId[];
   readonly rate: number; // kg/s
 }
 
@@ -15,9 +22,10 @@ export interface FacilityBuildCost {
 export interface FacilityDef {
   readonly id: string;
   readonly name: string;
-  readonly inputs: readonly FacilityAmount[];
+  readonly inputs: readonly FacilityInput[];
   readonly outputs: readonly FacilityAmount[];
-  readonly powerDraw: number; // W
+  readonly powerDraw: number; // W。動かすのに要る電力
+  readonly powerOutput: number; // W。発電設備が出す電力
   readonly buildCost: readonly FacilityBuildCost[];
   // これを作るのに要る別の設備。技術の前提ではなく物理的な前提だけを表す。
   readonly requiresFacility: readonly string[];
@@ -32,6 +40,10 @@ const POWER_LARGE = 1.5e6;
 const POWER_HUGE = 1e7;
 
 // 処理速度の段階 [kg/s]。採掘・一次処理・精密加工・微量抽出に対応する。
+// 発電量の段階 [W]。太陽電池アレイ1面と、外惑星でも設備を回せる原子炉1基。
+const POWER_OUTPUT_SOLAR_ARRAY = 2e6;
+const POWER_OUTPUT_REACTOR = 1e7;
+
 const RATE_MINING = 5e-2;
 const RATE_PROCESS = 2e-2;
 const RATE_FINE = 2e-3;
@@ -45,6 +57,7 @@ export const FACILITIES = {
     inputs: [],
     outputs: [{ resourceId: 'regolith', rate: RATE_MINING }],
     powerDraw: POWER_MEDIUM,
+    powerOutput: 0,
     buildCost: [
       { resourceId: 'iron', mass: 2 * TONNE },
       { resourceId: 'aluminium', mass: 1 * TONNE },
@@ -57,6 +70,7 @@ export const FACILITIES = {
     inputs: [],
     outputs: [{ resourceId: 'apatite', rate: RATE_MINING }],
     powerDraw: POWER_MEDIUM,
+    powerOutput: 0,
     buildCost: [
       { resourceId: 'iron', mass: 2 * TONNE },
       { resourceId: 'aluminium', mass: 1 * TONNE },
@@ -67,13 +81,14 @@ export const FACILITIES = {
   'molten-salt-preparation': {
     id: 'molten-salt-preparation',
     name: '溶融塩調製炉',
-    inputs: [{ resourceId: 'apatite', rate: RATE_PROCESS }],
+    inputs: [{ anyOf: ['apatite'], rate: RATE_PROCESS }],
     outputs: [
       { resourceId: 'molten-salt', rate: RATE_PROCESS },
       { resourceId: 'fluorine', rate: RATE_FINE },
       { resourceId: 'phosphorus', rate: RATE_FINE },
     ],
     powerDraw: POWER_MEDIUM,
+    powerOutput: 0,
     buildCost: [
       { resourceId: 'iron', mass: 3 * TONNE },
       { resourceId: 'titanium', mass: 1 * TONNE },
@@ -86,6 +101,7 @@ export const FACILITIES = {
     inputs: [],
     outputs: [{ resourceId: 'water', rate: RATE_MINING }],
     powerDraw: POWER_MEDIUM,
+    powerOutput: 0,
     buildCost: [
       { resourceId: 'iron', mass: 2 * TONNE },
       { resourceId: 'aluminium', mass: 1 * TONNE },
@@ -95,7 +111,7 @@ export const FACILITIES = {
   'regolith-heat-extraction': {
     id: 'regolith-heat-extraction',
     name: 'レゴリス加熱抽出設備',
-    inputs: [{ resourceId: 'regolith', rate: RATE_MINING }],
+    inputs: [{ anyOf: ['regolith'], rate: RATE_MINING }],
     outputs: [
       { resourceId: 'helium', rate: RATE_TRACE },
       { resourceId: 'hydrogen', rate: RATE_TRACE },
@@ -103,6 +119,7 @@ export const FACILITIES = {
       { resourceId: 'nitrogen', rate: RATE_TRACE },
     ],
     powerDraw: POWER_HUGE,
+    powerOutput: 0,
     buildCost: [
       { resourceId: 'iron', mass: 4 * TONNE },
       { resourceId: 'titanium', mass: 1 * TONNE },
@@ -113,14 +130,15 @@ export const FACILITIES = {
     id: 'molten-salt-electrolysis',
     name: '溶融塩電解炉',
     inputs: [
-      { resourceId: 'regolith', rate: RATE_PROCESS },
-      { resourceId: 'molten-salt', rate: RATE_FINE },
+      { anyOf: ['regolith'], rate: RATE_PROCESS },
+      { anyOf: ['molten-salt'], rate: RATE_FINE },
     ],
     outputs: [
       { resourceId: 'oxygen', rate: RATE_FINE },
       { resourceId: 'metal-mixture', rate: RATE_PROCESS },
     ],
     powerDraw: POWER_LARGE,
+    powerOutput: 0,
     buildCost: [
       { resourceId: 'iron', mass: 5 * TONNE },
       { resourceId: 'titanium', mass: 2 * TONNE },
@@ -131,7 +149,7 @@ export const FACILITIES = {
   smelter: {
     id: 'smelter',
     name: '製錬炉',
-    inputs: [{ resourceId: 'metal-mixture', rate: RATE_PROCESS }],
+    inputs: [{ anyOf: ['metal-mixture'], rate: RATE_PROCESS }],
     outputs: [
       { resourceId: 'aluminium', rate: RATE_FINE },
       { resourceId: 'iron', rate: RATE_FINE },
@@ -140,6 +158,7 @@ export const FACILITIES = {
       { resourceId: 'magnesium', rate: RATE_FINE },
     ],
     powerDraw: POWER_LARGE,
+    powerOutput: 0,
     buildCost: [
       { resourceId: 'iron', mass: 6 * TONNE },
       { resourceId: 'titanium', mass: 2 * TONNE },
@@ -149,12 +168,13 @@ export const FACILITIES = {
   'water-electrolysis': {
     id: 'water-electrolysis',
     name: '水の電解装置',
-    inputs: [{ resourceId: 'water', rate: RATE_PROCESS }],
+    inputs: [{ anyOf: ['water'], rate: RATE_PROCESS }],
     outputs: [
       { resourceId: 'hydrogen', rate: RATE_FINE },
       { resourceId: 'oxygen', rate: RATE_PROCESS },
     ],
     powerDraw: POWER_LARGE,
+    powerOutput: 0,
     buildCost: [
       { resourceId: 'iron', mass: 1 * TONNE },
       { resourceId: 'platinum-group', mass: 0.02 * TONNE },
@@ -164,12 +184,13 @@ export const FACILITIES = {
   'nuclear-fuel-refinery': {
     id: 'nuclear-fuel-refinery',
     name: '核燃料精製炉',
-    inputs: [{ resourceId: 'kreep-rock', rate: RATE_PROCESS }],
+    inputs: [{ anyOf: ['kreep-rock', 'm-type-ore'], rate: RATE_PROCESS }],
     outputs: [
       { resourceId: 'uranium', rate: RATE_TRACE },
       { resourceId: 'thorium', rate: RATE_TRACE },
     ],
     powerDraw: POWER_LARGE,
+    powerOutput: 0,
     buildCost: [
       { resourceId: 'titanium', mass: 3 * TONNE },
       { resourceId: 'platinum-group', mass: 0.1 * TONNE },
@@ -183,6 +204,7 @@ export const FACILITIES = {
     // 何が採れるかは天体に依るため、産出は DEPOSITS の 'atmosphere' が持つ。
     outputs: [],
     powerDraw: POWER_LARGE,
+    powerOutput: 0,
     buildCost: [
       { resourceId: 'titanium', mass: 4 * TONNE },
       { resourceId: 'carbon-composite', mass: 2 * TONNE },
@@ -195,10 +217,10 @@ export const FACILITIES = {
     id: 'rolling-mill',
     name: '圧延・成形機',
     inputs: [
-      { resourceId: 'aluminium', rate: RATE_PROCESS },
-      { resourceId: 'iron', rate: RATE_PROCESS },
-      { resourceId: 'titanium', rate: RATE_FINE },
-      { resourceId: 'magnesium', rate: RATE_FINE },
+      { anyOf: ['aluminium'], rate: RATE_PROCESS },
+      { anyOf: ['iron'], rate: RATE_PROCESS },
+      { anyOf: ['titanium'], rate: RATE_FINE },
+      { anyOf: ['magnesium'], rate: RATE_FINE },
     ],
     outputs: [
       { resourceId: 'tank-shell', rate: RATE_FINE },
@@ -206,6 +228,7 @@ export const FACILITIES = {
       { resourceId: 'truss-member', rate: RATE_FINE },
     ],
     powerDraw: POWER_MEDIUM,
+    powerOutput: 0,
     buildCost: [
       { resourceId: 'iron', mass: 4 * TONNE },
       { resourceId: 'titanium', mass: 1 * TONNE },
@@ -216,12 +239,13 @@ export const FACILITIES = {
     id: 'machine-shop',
     name: '機械工場',
     inputs: [
-      { resourceId: 'iron', rate: RATE_FINE },
-      { resourceId: 'titanium', rate: RATE_FINE },
-      { resourceId: 'truss-member', rate: RATE_FINE },
+      { anyOf: ['iron'], rate: RATE_FINE },
+      { anyOf: ['titanium'], rate: RATE_FINE },
+      { anyOf: ['truss-member'], rate: RATE_FINE },
     ],
     outputs: [{ resourceId: 'machinery', rate: RATE_FINE }],
     powerDraw: POWER_MEDIUM,
+    powerOutput: 0,
     buildCost: [
       { resourceId: 'iron', mass: 8 * TONNE },
       { resourceId: 'titanium', mass: 3 * TONNE },
@@ -233,12 +257,13 @@ export const FACILITIES = {
     id: 'electronics-factory',
     name: '電子機器工場',
     inputs: [
-      { resourceId: 'silicon', rate: RATE_FINE },
-      { resourceId: 'aluminium', rate: RATE_FINE },
-      { resourceId: 'platinum-group', rate: RATE_TRACE },
+      { anyOf: ['silicon'], rate: RATE_FINE },
+      { anyOf: ['copper', 'aluminium'], rate: RATE_FINE },
+      { anyOf: ['platinum-group'], rate: RATE_TRACE },
     ],
     outputs: [{ resourceId: 'electronics', rate: RATE_FINE }],
     powerDraw: POWER_MEDIUM,
+    powerOutput: 0,
     buildCost: [
       { resourceId: 'iron', mass: 4 * TONNE },
       { resourceId: 'silicon', mass: 1 * TONNE },
@@ -251,15 +276,16 @@ export const FACILITIES = {
     name: '巻線工場',
     // 製品ごとの要求資源は ACTUATOR_MATERIALS が正本で、ここは工場全体の入力を持つ。
     inputs: [
-      { resourceId: 'aluminium', rate: RATE_FINE },
-      { resourceId: 'iron', rate: RATE_FINE },
-      { resourceId: 'rare-earth', rate: RATE_TRACE },
+      { anyOf: ['aluminium', 'copper'], rate: RATE_FINE },
+      { anyOf: ['iron'], rate: RATE_FINE },
+      { anyOf: ['rare-earth'], rate: RATE_TRACE },
     ],
     outputs: [
       { resourceId: 'magnetorquer-coil', rate: RATE_FINE },
       { resourceId: 'flywheel-motor', rate: RATE_FINE },
     ],
     powerDraw: POWER_MEDIUM,
+    powerOutput: 0,
     buildCost: [
       { resourceId: 'iron', mass: 5 * TONNE },
       { resourceId: 'aluminium', mass: 2 * TONNE },
@@ -269,9 +295,10 @@ export const FACILITIES = {
   'carbon-fiber-furnace': {
     id: 'carbon-fiber-furnace',
     name: '炭素繊維製造炉',
-    inputs: [{ resourceId: 'carbon', rate: RATE_FINE }],
+    inputs: [{ anyOf: ['carbon'], rate: RATE_FINE }],
     outputs: [{ resourceId: 'carbon-composite', rate: RATE_FINE }],
     powerDraw: POWER_LARGE,
+    powerOutput: 0,
     buildCost: [
       { resourceId: 'iron', mass: 3 * TONNE },
       { resourceId: 'titanium', mass: 2 * TONNE },
@@ -282,23 +309,25 @@ export const FACILITIES = {
     id: 'polymer-furnace',
     name: '高分子合成炉',
     inputs: [
-      { resourceId: 'carbon', rate: RATE_FINE },
-      { resourceId: 'hydrogen', rate: RATE_TRACE },
+      { anyOf: ['carbon'], rate: RATE_FINE },
+      { anyOf: ['hydrogen'], rate: RATE_TRACE },
     ],
     outputs: [
       { resourceId: 'abs-resin', rate: RATE_FINE },
       { resourceId: 'htpb', rate: RATE_FINE },
     ],
     powerDraw: POWER_MEDIUM,
+    powerOutput: 0,
     buildCost: [{ resourceId: 'iron', mass: 2 * TONNE }],
     requiresFacility: [],
   },
   'catalyst-bed-furnace': {
     id: 'catalyst-bed-furnace',
     name: '触媒床製造炉',
-    inputs: [{ resourceId: 'platinum-group', rate: RATE_TRACE }],
+    inputs: [{ anyOf: ['platinum-group'], rate: RATE_TRACE }],
     outputs: [{ resourceId: 'catalyst-bed', rate: RATE_TRACE }],
     powerDraw: POWER_MEDIUM,
+    powerOutput: 0,
     buildCost: [
       { resourceId: 'iron', mass: 1 * TONNE },
       { resourceId: 'platinum-group', mass: 0.05 * TONNE },
@@ -308,9 +337,10 @@ export const FACILITIES = {
   'solar-cell-furnace': {
     id: 'solar-cell-furnace',
     name: '太陽電池製造炉',
-    inputs: [{ resourceId: 'silicon', rate: RATE_FINE }],
+    inputs: [{ anyOf: ['silicon'], rate: RATE_FINE }],
     outputs: [{ resourceId: 'solar-panel', rate: RATE_FINE }],
     powerDraw: POWER_MEDIUM,
+    powerOutput: 0,
     buildCost: [
       { resourceId: 'iron', mass: 3 * TONNE },
       { resourceId: 'silicon', mass: 1 * TONNE },
@@ -324,14 +354,15 @@ export const FACILITIES = {
     id: 'liquefier',
     name: '液化装置',
     inputs: [
-      { resourceId: 'hydrogen', rate: RATE_FINE },
-      { resourceId: 'oxygen', rate: RATE_FINE },
-      { resourceId: 'methane', rate: RATE_FINE },
-      { resourceId: 'nitrogen', rate: RATE_FINE },
-      { resourceId: 'helium', rate: RATE_TRACE },
+      { anyOf: ['hydrogen'], rate: RATE_FINE },
+      { anyOf: ['oxygen'], rate: RATE_FINE },
+      { anyOf: ['methane'], rate: RATE_FINE },
+      { anyOf: ['nitrogen'], rate: RATE_FINE },
+      { anyOf: ['helium'], rate: RATE_TRACE },
     ],
     outputs: [{ resourceId: 'cryogenic-propellant', rate: RATE_PROCESS }],
     powerDraw: POWER_LARGE,
+    powerOutput: 0,
     buildCost: [
       { resourceId: 'titanium', mass: 2 * TONNE },
       { resourceId: 'aluminium', mass: 2 * TONNE },
@@ -342,11 +373,12 @@ export const FACILITIES = {
     id: 'silane-furnace',
     name: 'シラン合成炉',
     inputs: [
-      { resourceId: 'silicon', rate: RATE_FINE },
-      { resourceId: 'hydrogen', rate: RATE_TRACE },
+      { anyOf: ['silicon'], rate: RATE_FINE },
+      { anyOf: ['hydrogen'], rate: RATE_TRACE },
     ],
     outputs: [{ resourceId: 'silane', rate: RATE_FINE }],
     powerDraw: POWER_MEDIUM,
+    powerOutput: 0,
     buildCost: [
       { resourceId: 'iron', mass: 2 * TONNE },
       { resourceId: 'silicon', mass: 0.5 * TONNE },
@@ -357,14 +389,15 @@ export const FACILITIES = {
     id: 'sabatier-reactor',
     name: 'サバティエ反応器',
     inputs: [
-      { resourceId: 'carbon-dioxide', rate: RATE_FINE },
-      { resourceId: 'hydrogen', rate: RATE_TRACE },
+      { anyOf: ['carbon-dioxide'], rate: RATE_FINE },
+      { anyOf: ['hydrogen'], rate: RATE_TRACE },
     ],
     outputs: [
       { resourceId: 'methane', rate: RATE_FINE },
       { resourceId: 'water', rate: RATE_FINE },
     ],
     powerDraw: POWER_MEDIUM,
+    powerOutput: 0,
     buildCost: [
       { resourceId: 'iron', mass: 2 * TONNE },
       { resourceId: 'catalyst-bed', mass: 0.02 * TONNE },
@@ -375,11 +408,12 @@ export const FACILITIES = {
     id: 'ammonia-furnace',
     name: 'アンモニア合成炉',
     inputs: [
-      { resourceId: 'nitrogen', rate: RATE_FINE },
-      { resourceId: 'hydrogen', rate: RATE_TRACE },
+      { anyOf: ['nitrogen'], rate: RATE_FINE },
+      { anyOf: ['hydrogen'], rate: RATE_TRACE },
     ],
     outputs: [{ resourceId: 'ammonia', rate: RATE_FINE }],
     powerDraw: POWER_LARGE,
+    powerOutput: 0,
     buildCost: [
       { resourceId: 'iron', mass: 3 * TONNE },
       { resourceId: 'catalyst-bed', mass: 0.05 * TONNE },
@@ -389,9 +423,10 @@ export const FACILITIES = {
   'hydrazine-furnace': {
     id: 'hydrazine-furnace',
     name: 'ヒドラジン合成炉',
-    inputs: [{ resourceId: 'ammonia', rate: RATE_FINE }],
+    inputs: [{ anyOf: ['ammonia'], rate: RATE_FINE }],
     outputs: [{ resourceId: 'hydrazine', rate: RATE_FINE }],
     powerDraw: POWER_MEDIUM,
+    powerOutput: 0,
     buildCost: [
       { resourceId: 'iron', mass: 2 * TONNE },
       { resourceId: 'catalyst-bed', mass: 0.02 * TONNE },
@@ -402,11 +437,12 @@ export const FACILITIES = {
     id: 'nitric-oxidizer-furnace',
     name: '硝酸酸化炉',
     inputs: [
-      { resourceId: 'nitrogen', rate: RATE_FINE },
-      { resourceId: 'oxygen', rate: RATE_FINE },
+      { anyOf: ['nitrogen'], rate: RATE_FINE },
+      { anyOf: ['oxygen'], rate: RATE_FINE },
     ],
     outputs: [{ resourceId: 'nitrogen-tetroxide', rate: RATE_FINE }],
     powerDraw: POWER_MEDIUM,
+    powerOutput: 0,
     buildCost: [{ resourceId: 'titanium', mass: 2 * TONNE }],
     requiresFacility: [],
   },
@@ -414,12 +450,13 @@ export const FACILITIES = {
     id: 'solid-grain-press',
     name: '固体グレイン成形機',
     inputs: [
-      { resourceId: 'aluminium', rate: RATE_FINE },
-      { resourceId: 'ammonium-perchlorate', rate: RATE_FINE },
-      { resourceId: 'htpb', rate: RATE_FINE },
+      { anyOf: ['aluminium'], rate: RATE_FINE },
+      { anyOf: ['ammonium-perchlorate'], rate: RATE_FINE },
+      { anyOf: ['htpb'], rate: RATE_FINE },
     ],
     outputs: [{ resourceId: 'solid-propellant', rate: RATE_FINE }],
     powerDraw: POWER_SMALL,
+    powerOutput: 0,
     buildCost: [{ resourceId: 'iron', mass: 2 * TONNE }],
     requiresFacility: [],
   },
@@ -427,23 +464,25 @@ export const FACILITIES = {
     id: 'perchlorate-furnace',
     name: '過塩素酸塩合成炉',
     inputs: [
-      { resourceId: 'chlorine', rate: RATE_FINE },
-      { resourceId: 'oxygen', rate: RATE_FINE },
+      { anyOf: ['chlorine'], rate: RATE_FINE },
+      { anyOf: ['oxygen'], rate: RATE_FINE },
     ],
     outputs: [{ resourceId: 'ammonium-perchlorate', rate: RATE_FINE }],
     powerDraw: POWER_MEDIUM,
+    powerOutput: 0,
     buildCost: [{ resourceId: 'titanium', mass: 1 * TONNE }],
     requiresFacility: [],
   },
   'deuterium-separator': {
     id: 'deuterium-separator',
     name: '重水素分離装置',
-    inputs: [{ resourceId: 'water', rate: RATE_PROCESS }],
+    inputs: [{ anyOf: ['water'], rate: RATE_PROCESS }],
     outputs: [
       { resourceId: 'heavy-water', rate: RATE_TRACE },
       { resourceId: 'deuterium', rate: RATE_TRACE },
     ],
     powerDraw: POWER_HUGE,
+    powerOutput: 0,
     buildCost: [
       { resourceId: 'titanium', mass: 4 * TONNE },
       { resourceId: 'rare-earth', mass: 0.2 * TONNE },
@@ -453,9 +492,10 @@ export const FACILITIES = {
   'helium-isotope-separator': {
     id: 'helium-isotope-separator',
     name: 'ヘリウム同位体分離装置',
-    inputs: [{ resourceId: 'helium', rate: RATE_TRACE }],
+    inputs: [{ anyOf: ['helium'], rate: RATE_TRACE }],
     outputs: [{ resourceId: 'helium-3', rate: RATE_TRACE }],
     powerDraw: POWER_HUGE,
+    powerOutput: 0,
     buildCost: [
       { resourceId: 'titanium', mass: 5 * TONNE },
       { resourceId: 'rare-earth', mass: 0.5 * TONNE },
@@ -468,18 +508,21 @@ export const FACILITIES = {
   'power-grid': {
     id: 'power-grid',
     name: '送電網',
+    // 発電も変換もせず、峰の発電設備の出力を永久影の基地へ届けるだけの設備。
     inputs: [],
     outputs: [],
     powerDraw: 0,
+    powerOutput: 0,
     buildCost: [{ resourceId: 'aluminium', mass: 1 * TONNE }],
     requiresFacility: [],
   },
   'fission-reactor': {
     id: 'fission-reactor',
     name: '原子炉',
-    inputs: [{ resourceId: 'uranium', rate: RATE_TRACE }],
+    inputs: [{ anyOf: ['uranium', 'thorium'], rate: RATE_TRACE }],
     outputs: [],
     powerDraw: 0,
+    powerOutput: POWER_OUTPUT_REACTOR,
     buildCost: [
       { resourceId: 'titanium', mass: 5 * TONNE },
       { resourceId: 'platinum-group', mass: 0.2 * TONNE },
@@ -493,6 +536,7 @@ export const FACILITIES = {
     inputs: [],
     outputs: [],
     powerDraw: 0,
+    powerOutput: POWER_OUTPUT_SOLAR_ARRAY,
     buildCost: [{ resourceId: 'solar-panel', mass: 2 * TONNE }],
     requiresFacility: [],
   },
@@ -500,11 +544,12 @@ export const FACILITIES = {
     id: 'fuel-cell-furnace',
     name: '燃料電池製造炉',
     inputs: [
-      { resourceId: 'platinum-group', rate: RATE_TRACE },
-      { resourceId: 'iron', rate: RATE_FINE },
+      { anyOf: ['platinum-group'], rate: RATE_TRACE },
+      { anyOf: ['iron'], rate: RATE_FINE },
     ],
     outputs: [{ resourceId: 'fuel-cell', rate: RATE_FINE }],
     powerDraw: POWER_MEDIUM,
+    powerOutput: 0,
     buildCost: [
       { resourceId: 'iron', mass: 2 * TONNE },
       { resourceId: 'platinum-group', mass: 0.05 * TONNE },
@@ -515,11 +560,12 @@ export const FACILITIES = {
     id: 'radioisotope-battery-furnace',
     name: '原子力電池製造炉',
     inputs: [
-      { resourceId: 'thorium', rate: RATE_TRACE },
-      { resourceId: 'titanium', rate: RATE_FINE },
+      { anyOf: ['thorium', 'uranium'], rate: RATE_TRACE },
+      { anyOf: ['titanium'], rate: RATE_FINE },
     ],
     outputs: [{ resourceId: 'radioisotope-battery', rate: RATE_FINE }],
     powerDraw: POWER_MEDIUM,
+    powerOutput: 0,
     buildCost: [
       { resourceId: 'titanium', mass: 2 * TONNE },
       { resourceId: 'platinum-group', mass: 0.05 * TONNE },
@@ -530,12 +576,13 @@ export const FACILITIES = {
     id: 'life-support-furnace',
     name: '生命維持装置製造炉',
     inputs: [
-      { resourceId: 'iron', rate: RATE_FINE },
-      { resourceId: 'titanium', rate: RATE_FINE },
-      { resourceId: 'platinum-group', rate: RATE_TRACE },
+      { anyOf: ['iron'], rate: RATE_FINE },
+      { anyOf: ['titanium'], rate: RATE_FINE },
+      { anyOf: ['platinum-group'], rate: RATE_TRACE },
     ],
     outputs: [{ resourceId: 'life-support', rate: RATE_FINE }],
     powerDraw: POWER_MEDIUM,
+    powerOutput: 0,
     buildCost: [
       { resourceId: 'iron', mass: 3 * TONNE },
       { resourceId: 'titanium', mass: 1 * TONNE },
@@ -547,14 +594,15 @@ export const FACILITIES = {
     id: 'farm-equipment-furnace',
     name: '農場設備製造炉',
     inputs: [
-      { resourceId: 'iron', rate: RATE_FINE },
-      { resourceId: 'silicon', rate: RATE_FINE },
-      { resourceId: 'carbon', rate: RATE_FINE },
-      { resourceId: 'abs-resin', rate: RATE_FINE },
-      { resourceId: 'phosphorus', rate: RATE_TRACE },
+      { anyOf: ['iron'], rate: RATE_FINE },
+      { anyOf: ['silicon'], rate: RATE_FINE },
+      { anyOf: ['carbon'], rate: RATE_FINE },
+      { anyOf: ['abs-resin', 'htpb'], rate: RATE_FINE },
+      { anyOf: ['phosphorus'], rate: RATE_TRACE },
     ],
     outputs: [{ resourceId: 'farm', rate: RATE_FINE }],
     powerDraw: POWER_MEDIUM,
+    powerOutput: 0,
     buildCost: [
       { resourceId: 'iron', mass: 3 * TONNE },
       { resourceId: 'silicon', mass: 1 * TONNE },
@@ -565,11 +613,12 @@ export const FACILITIES = {
     id: 'container-press',
     name: 'コンテナ成形機',
     inputs: [
-      { resourceId: 'aluminium', rate: RATE_FINE },
-      { resourceId: 'iron', rate: RATE_FINE },
+      { anyOf: ['aluminium'], rate: RATE_FINE },
+      { anyOf: ['iron'], rate: RATE_FINE },
     ],
     outputs: [{ resourceId: 'container', rate: RATE_FINE }],
     powerDraw: POWER_SMALL,
+    powerOutput: 0,
     buildCost: [{ resourceId: 'iron', mass: 2 * TONNE }],
     requiresFacility: [],
   },
@@ -577,11 +626,12 @@ export const FACILITIES = {
     id: 'water-tank-press',
     name: '水タンク成形機',
     inputs: [
-      { resourceId: 'aluminium', rate: RATE_FINE },
-      { resourceId: 'iron', rate: RATE_FINE },
+      { anyOf: ['aluminium'], rate: RATE_FINE },
+      { anyOf: ['iron'], rate: RATE_FINE },
     ],
     outputs: [{ resourceId: 'water-tank', rate: RATE_FINE }],
     powerDraw: POWER_SMALL,
+    powerOutput: 0,
     buildCost: [{ resourceId: 'iron', mass: 2 * TONNE }],
     requiresFacility: [],
   },
@@ -589,12 +639,13 @@ export const FACILITIES = {
     id: 'dock-structure-furnace',
     name: 'ドック構造製造炉',
     inputs: [
-      { resourceId: 'iron', rate: RATE_FINE },
-      { resourceId: 'titanium', rate: RATE_FINE },
-      { resourceId: 'aluminium', rate: RATE_FINE },
+      { anyOf: ['iron'], rate: RATE_FINE },
+      { anyOf: ['titanium'], rate: RATE_FINE },
+      { anyOf: ['aluminium'], rate: RATE_FINE },
     ],
     outputs: [{ resourceId: 'dock', rate: RATE_FINE }],
     powerDraw: POWER_MEDIUM,
+    powerOutput: 0,
     buildCost: [
       { resourceId: 'iron', mass: 5 * TONNE },
       { resourceId: 'titanium', mass: 2 * TONNE },
@@ -607,6 +658,7 @@ export const FACILITIES = {
     inputs: [],
     outputs: [],
     powerDraw: POWER_MEDIUM,
+    powerOutput: 0,
     buildCost: [{ resourceId: 'dock', mass: 5 * TONNE }],
     requiresFacility: ['dock-structure-furnace'],
   },
@@ -614,12 +666,13 @@ export const FACILITIES = {
     id: 'ammunition-furnace',
     name: '弾薬製造炉',
     inputs: [
-      { resourceId: 'iron', rate: RATE_FINE },
-      { resourceId: 'aluminium', rate: RATE_FINE },
-      { resourceId: 'htpb', rate: RATE_FINE },
+      { anyOf: ['iron'], rate: RATE_FINE },
+      { anyOf: ['aluminium'], rate: RATE_FINE },
+      { anyOf: ['htpb', 'abs-resin', 'solid-propellant'], rate: RATE_FINE },
     ],
     outputs: [{ resourceId: 'ammunition', rate: RATE_FINE }],
     powerDraw: POWER_MEDIUM,
+    powerOutput: 0,
     buildCost: [{ resourceId: 'iron', mass: 3 * TONNE }],
     requiresFacility: ['machine-shop'],
   },
@@ -636,6 +689,7 @@ export const INITIAL_FACILITY_IDS: readonly FacilityId[] = [
   'ice-miner',
   'apatite-miner',
   'molten-salt-preparation',
+  'regolith-miner',
   'molten-salt-electrolysis',
   'smelter',
   'rolling-mill',
