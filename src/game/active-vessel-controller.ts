@@ -1,7 +1,7 @@
 // 操作対象(0..n 機の機体のうちどれを操作するか)の切替・削除と、それに伴う各所有者への伝播
 // (ターゲッター・航法ターゲット・SFX、および remove() でのカメラのフォーカス解除)を1箇所へ集める。
 import type { Vessel } from './vessel/vessel';
-import { hasBaseModule } from './vessel/capabilities';
+import { hasBaseModule, hasCorePart } from './vessel/capabilities';
 import type { EntityManager } from './simulation/entity-manager';
 import type { CameraSystem } from './camera/camera-system';
 import type { Targeter } from './targeter';
@@ -23,12 +23,17 @@ export class ActiveVesselController {
     private readonly worldSfx: WorldSfx,
     private readonly hud?: Hud,
   ) {
-    this._current = entities.ownShips().find((v) => v.id === activePlayerId) ?? entities.ownShips()[0] ?? null;
+    this._current = entities.ownShips().find((v) => v.id === activePlayerId && hasCorePart(v))
+      ?? entities.ownShips().find((v) => hasCorePart(v)) ?? null;
   }
 
   get current(): Vessel | null { return this._current; }
   // 操作対象(追従カメラ・計画編集の対象)を差し替える。基地でも艦艇でも扱いは同じ。
   set(vessel: Vessel): void {
+    if (!hasCorePart(vessel)) {
+      this.hud?.hint(`「${vessel.name}」は貨物です。コア部品を取り付けるまで操作できません`);
+      return;
+    }
     if (this._current === vessel) return;
     this._current?.clearTransientCommands();
     this._current = vessel;
@@ -40,7 +45,7 @@ export class ActiveVesselController {
 
   // 操作対象が居ない間に増えた機体を、そのまま操作対象にする。既に操作中なら何もしない。
   claimIfNone(vessel: Vessel): void {
-    if (this._current === null) this.set(vessel);
+    if (this._current === null && hasCorePart(vessel)) this.set(vessel);
   }
 
   // vessel が null なら未操作状態(全滅・未収容、または操作対象の手動解除)へ戻す。
@@ -83,9 +88,8 @@ export class ActiveVesselController {
   }
 
   private reclaimAfterLoss(): void {
-    const next = this.entities.ownShips().find((v) => v.alive) ?? null;
+    const next = this.entities.ownShips().find((v) => v.alive && hasCorePart(v)) ?? null;
     if (next) this.set(next);
     else this.setOrNull(null);
   }
 }
-
