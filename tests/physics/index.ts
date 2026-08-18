@@ -53,6 +53,7 @@ import { register as registerOptimize } from './optimize.test';
 import { register as registerSectionMoments } from './section-moments.test';
 import { register as registerHullLoft } from './hull-loft.test';
 import { register as registerInertiaTensor } from './inertia-tensor.test';
+import { register as registerAerodynamics } from './aerodynamics.test';
 import { register as registerGravityGradient } from './gravity-gradient.test';
 import { register as registerGeomagnetic } from './geomagnetic.test';
 import './creative-placement-validation.test';
@@ -109,6 +110,7 @@ registerOptimize();
 registerSectionMoments();
 registerHullLoft();
 registerInertiaTensor();
+registerAerodynamics();
 registerGravityGradient();
 registerGeomagnetic();
 

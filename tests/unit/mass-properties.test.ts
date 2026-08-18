@@ -1,5 +1,5 @@
 // 形状ツリーから導いた質量特性(§10-3、§10-4)と内容積の割り当て(§12)の回帰テスト。
-// 既定の設計の導出値が const.ts の定数と一致することを固定する。
+// 既定の設計の導出値そのものを固定する — この値が機体の質量・慣性・投影面積になる。
 import * as assert from 'node:assert/strict';
 import * as C from '../../src/game/const';
 import { dot, len, scale, sub, v3 } from '../../src/physics/vec3';
@@ -11,6 +11,7 @@ import { createPart } from '../../src/game/game-entity/parts';
 import type { AnyPart } from '../../src/game/game-entity/parts';
 import type { PartPlacement, VesselAssembly } from '../../src/game/vessel/assembly';
 import { deriveMassProperties } from '../../src/game/vessel/mass-properties';
+import { ballisticCoeffInv } from '../../src/physics/aerodynamics';
 import { allocateInternalVolume, edgeInternalVolume } from '../../src/game/vessel/internal-volume';
 import {
   BUCKLING_RADIUS_RATIO, MIN_MANUFACTURING_THICKNESS, PRESSURE_SAFETY_FACTOR, STRUCTURAL_MATERIALS,
@@ -53,9 +54,9 @@ function relativeError(actual: number, expected: number): number {
 }
 
 export function register(): void {
-  test('既定の3設計のツリーが正しく、乾燥質量が現在の定数と一致する', () => {
+  test('既定の3設計のツリーが正しく、乾燥質量が設計の狙いどおりになる', () => {
     const cases = [
-      { name: 'crewed', assembly: crewedAssembly(C.PLAYER_MAX_HP), mass: C.PLAYER_MASS },
+      { name: 'crewed', assembly: crewedAssembly(C.PLAYER_MAX_HP), mass: 1061 },
       { name: 'base', assembly: orbitalBaseAssembly(C.BASE_MAX_HP), mass: 3e6 },
       { name: 'hostile', assembly: hostileAssembly(C.ENEMY_MAX_HP), mass: 10000 },
     ];
@@ -71,21 +72,26 @@ export function register(): void {
     }
   });
 
-  test('既定の有人艦の投影面積が、抗力と輻射圧の定数が含む参照断面積を挟む', () => {
-    const { principalAreas } = deriveMassProperties(crewedAssembly(C.PLAYER_MAX_HP));
-    // SHIP_SRP_COEFF = C_R·A/m。C_R = 1.3、m = PLAYER_MASS として参照断面積を戻す。
-    const reference = (C.SHIP_SRP_COEFF * C.PLAYER_MASS) / 1.3;
-    const values = [principalAreas.x, principalAreas.y, principalAreas.z];
-    assert.ok(Math.min(...values) < reference, `min ${Math.min(...values).toFixed(2)} m² vs ${reference.toFixed(2)}`);
-    assert.ok(Math.max(...values) > reference, `max ${Math.max(...values).toFixed(2)} m² vs ${reference.toFixed(2)}`);
+  test('既定の有人艦の投影面積が3軸で異なり、抗力が姿勢に依存する', () => {
+    const derived = deriveMassProperties(crewedAssembly(C.PLAYER_MAX_HP));
+    const { principalAreas, loadedMass } = derived;
+    for (const area of [principalAreas.x, principalAreas.y, principalAreas.z]) assert.ok(area > 0);
+    // 左右のトラスが x 軸方向に張り出すので、その向きから見た面積が最も小さい。
+    assert.ok(principalAreas.x < principalAreas.y);
+    assert.ok(principalAreas.y < principalAreas.z);
+    // 機首を進行方向へ向けた姿勢と、横腹を向けた姿勢とで弾道係数が変わる(§11-2)。
+    const nose = ballisticCoeffInv(principalAreas, loadedMass, v3(0, 0, 1));
+    const side = ballisticCoeffInv(principalAreas, loadedMass, v3(1, 0, 0));
+    assert.ok(side < nose, `side ${side} < nose ${nose}`);
+    // 向きを平均した値は3軸の値の間に収まる。
+    const mean = ballisticCoeffInv(principalAreas, loadedMass, v3());
+    assert.ok(mean > nose && mean > side);
   });
 
-  test('既定の有人艦の主慣性モーメントが、定数と同じ順序でロール軸が最小になる', () => {
+  test('既定の有人艦の主慣性モーメントは、ロール軸が最小でヨー軸が最大になる', () => {
     const derived = deriveMassProperties(crewedAssembly(C.PLAYER_MAX_HP));
-    // 定数はロール(Z) < ピッチ(X) < ヨー(Y) の順に大きい。導出したテンソルも同じ順序でなければ、
-    // 中間軸不安定性の現れる軸が変わってしまう。
-    assert.ok(C.PLAYER_INERTIA_ROLL < C.PLAYER_INERTIA_PITCH);
-    assert.ok(C.PLAYER_INERTIA_PITCH < C.PLAYER_INERTIA_YAW);
+    // ロール(Z) < ピッチ(X) < ヨー(Y) の順に大きい。この順序が変わると、中間軸不安定性の
+    // 現れる軸が変わってしまう。
     assert.ok(derived.inertia.izz < derived.inertia.ixx, `izz ${derived.inertia.izz} < ixx ${derived.inertia.ixx}`);
     assert.ok(derived.inertia.ixx < derived.inertia.iyy, `ixx ${derived.inertia.ixx} < iyy ${derived.inertia.iyy}`);
   });
@@ -316,13 +322,13 @@ export function register(): void {
   });
 
   test('既定の有人艦の導出値が測定した値のまま動かない', () => {
-    // 現在の const.ts の慣性の定数は、この形状が持つ慣性モーメントより3桁小さい値である
-    // (質量 1000 kg・全長 4.5 m の機体の慣性モーメントは 1e3 kg·m² の桁になる)。定数側は
-    // 姿勢応答の手触りとして選ばれた値なので、ここでは導出の値そのものを測定値として留める。
+    // 機体が実際に使う質量・慣性・投影面積そのもの。理論値のある量ではないので、測定した値を
+    // 留めて意図しない変化を捕まえる。慣性モーメントが 1e3 kg·m² の桁になるのは、質量 1000 kg・
+    // 全長 4.5 m の剛体として当然の大きさである。
     const derived = deriveMassProperties(crewedAssembly(C.PLAYER_MAX_HP));
     const pinned: Record<string, number> = {
-      dryMass: 1000.83, ixx: 1582.61, iyy: 2670.48, izz: 1496.26, iyz: -37.8702,
-      areaX: 10.4565, areaY: 12.4565, areaZ: 15.2622, comY: 0.0230309, comZ: -0.0838490,
+      dryMass: 1060.83, ixx: 1890.96, iyy: 2978.81, izz: 1496.29, iyz: -34.8276,
+      areaX: 10.4565, areaY: 12.4565, areaZ: 15.2622, comY: 0.0217283, comZ: 0.0481525,
     };
     const actual: Record<string, number> = {
       dryMass: derived.dryMass,

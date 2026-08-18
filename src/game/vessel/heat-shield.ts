@@ -46,8 +46,9 @@ export function heatShielding(
     if (shield.hp <= 0 || shield.ablatorMass <= 0 || shield.solidAngle <= 0) continue;
     // 取り付け口の外向きが、そのシールドが守る向きである。
     const facing = mountFrame(tree, placement.mount).z;
-    // 流れの来る側は -flow。両者のなす角が半頂角の内側なら、この流れは遮蔽されている。
-    if (Math.acos(Math.max(-1, Math.min(1, -dot(facing, flow)))) > shieldHalfAngle(shield.solidAngle)) continue;
+    // 対気速度の向きへ突っ込んでいくのだから、流れが当たるのは flow を向いた面である。
+    // 守る向きと対気速度のなす角が半頂角の内側なら、この流れは遮蔽されている。
+    if (Math.acos(Math.max(-1, Math.min(1, dot(facing, flow)))) > shieldHalfAngle(shield.solidAngle)) continue;
     shielded = Math.max(shielded, Math.min(1, shield.solidAngle / C.HEAT_SHIELD_FULL_SOLID_ANGLE));
   }
   if (shielded <= 0) return UNSHIELDED;
