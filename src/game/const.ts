@@ -82,6 +82,8 @@ export const SOLAR_CONSTANT = 1361; // 地球軌道の太陽定数 [W/m^2]
 // 船体への直撃(PLAYER_BULLET_DAMAGE)より軽い。損耗はドックで修理するまで戻らない。
 export const RADIATOR_BULLET_DAMAGE = 0.25;
 export const RADIATOR_CONTACT_DEPLOY = 0.15; // これ以上展開していると被弾対象になる展開度
+// 有効放熱面積 [m^2](左右2枚合計)。放熱板要素の面積と効率の積がこの値になる。
+export const RADIATOR_COOLING_AREA = 50;
 export const RADIATOR_EFFICIENCY_MULT = 1; // 放熱面積(RADIATOR_PANEL_AREA)に掛ける性能係数
 
 // --- 被弾による発熱 ---
@@ -91,6 +93,12 @@ export const BULLET_IMPACT_HEAT = 3.0e5; // 自機が被弾1発あたりに受�
 export const SOLAR_PANEL_AREA = 7.2; // 発電面積 [m^2](左右2枚合計)
 export const SOLAR_PANEL_EFFICIENCY = 0.25; // 太陽光→電力の変換効率
 export const POWER_CAPACITY = 1.5e6; // 蓄電容量 [J]
+// 既定の有人艦の定常消費電力の合計 [W]。通信・フライホイール・生命維持のぶん。
+export const CREWED_POWER_DRAW = 490;
+// 既定の有人艦の廃熱 [W]。消費電力の合計に、生命維持装置が別に出す熱を足したもの。
+export const CREWED_WASTE_HEAT = 590;
+// 既定の有人艦の RCS 推進剤搭載量 [kg]。
+export const CREWED_RCS_FUEL_CAPACITY = 1000;
 
 // --- 高度低下警告(EMA平滑化) ---
 export const ALT_EMA_TIME_CONST = 3; // 高度・降下率EMAの時定数 [s]

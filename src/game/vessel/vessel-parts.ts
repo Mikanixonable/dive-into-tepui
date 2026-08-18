@@ -15,6 +15,8 @@ export function createDefaultBaseModule(maxHp: number): BaseModulePart {
     hatch: { localPos: v3(0, 21.0, 0), localNormal: up },
     dockSlots: [slot(-16.5, -16.5), slot(16.5, -16.5), slot(-16.5, 16.5), slot(16.5, 16.5)],
     capacity: C.BASE_MAX_VESSELS,
+    storageCapacity: 1e6,
+    facilities: [],
     hatchCaptureDist: 80,
     hatchCaptureAlignment: 0.5,
     slotCaptureDist: 50,
@@ -26,14 +28,20 @@ export function createDefaultBaseModule(maxHp: number): BaseModulePart {
 // 既定パーツへの HP 配分比。合計 1 になるよう保つ(機体の maxHp をこの比で割り振る)。
 // 放熱板・太陽電池パドルは機体の左右2枚ぶんなので、パーツも side ごとに1枚ずつ持つ。
 const CREWED_HP_RATIO = {
-  hull: 0.40, cockpit: 0.10, thruster: 0.08, rcsTank: 0.08,
-  radiator: 0.05, solarPanel: 0.03, weapon: 0.08, armor: 0.10,
+  hull: 0.32, cockpit: 0.08, engine: 0.07, rcsThruster: 0.03, flywheel: 0.03, rcsTank: 0.07,
+  radiator: 0.05, solarPanel: 0.03, weapon: 0.07, magazine: 0.02, ammunition: 0.02,
+  battery: 0.03, communication: 0.02, lifeSupport: 0.03, armor: 0.05,
 } as const;
 
-// 無人の敵対機の HP 配分比。船体・主機・タンク・武装・装甲へ配る。合計 1 になるよう保つ。
+// 無人の敵対機の HP 配分比。船体・主機・姿勢制御・タンク・武装・装甲へ配る。合計 1 になるよう保つ。
 const HOSTILE_HP_RATIO = {
-  hull: 0.45, thruster: 0.12, rcsTank: 0.08, weapon: 0.15, armor: 0.20,
+  hull: 0.45, engine: 0.10, flywheel: 0.05, rcsTank: 0.08, weapon: 0.15, armor: 0.17,
 } as const;
+
+// 既定の有人艦が積む要素の消費電力 [W]。合計が C.CREWED_POWER_DRAW と一致する。
+const CREWED_DRAW = { communication: 30, flywheel: 60, lifeSupport: 400 } as const;
+// 生命維持装置が消費電力とは別に出す廃熱 [W]。乗員の代謝ぶん。
+const LIFE_SUPPORT_EXTRA_HEAT = 100;
 
 // maxHp を CREWED_HP_RATIO で割り振った、有人機の既定の搭載要素一式。
 export function crewedParts(maxHp: number): AnyPart[] {
@@ -43,22 +51,57 @@ export function crewedParts(maxHp: number): AnyPart[] {
     createPart(type, { maxHp: share(ratio), hp: share(ratio), ...props } as never);
   return [
     mk('hull', R.hull, { name: 'Basic Hull' }),
-    mk('cockpit', R.cockpit, { name: 'Cockpit' }),
-    mk('thruster', R.thruster, {
-      name: 'Standard RCS',
-      torque: C.MAX_ANG_ACCEL * Math.max(C.PLAYER_INERTIA_PITCH, C.PLAYER_INERTIA_YAW, C.PLAYER_INERTIA_ROLL),
+    mk('cockpit', R.cockpit, { name: 'Cockpit', crewCapacity: 2, pressurizedVolume: 8 }),
+    mk('engine', R.engine, {
+      name: 'Main Engine', cycle: 'pressure_fed', propellant: 'nitrogen-tetroxide',
       // 既定パーツだけを積んだ機体が、全開で THROTTLE_LEVELS の最大値の加速度になる推力。
       thrust: C.PLAYER_MASS * C.THROTTLE_LEVELS[C.THROTTLE_LEVELS.length - 1]!,
-      fuelConsumptionRate: 1,
+      specificImpulse: 320, length: 1.4, gimbalRange: 6, gimbalRate: 10,
+      throttleMin: 0.4, throttleMax: 1, fuelConsumptionRate: 1,
     }),
-    mk('rcs_tank', R.rcsTank, { name: 'Main RCS Tank', maxFuel: 1000, fuel: 1000 }),
-    mk('radiator', R.radiator, { name: 'Heat Radiator L', coolingRate: 25 }),
-    mk('radiator', R.radiator, { name: 'Heat Radiator R', coolingRate: 25 }),
-    mk('solar_panel', R.solarPanel, { name: 'Solar Array L', powerGeneration: 50 }),
-    mk('solar_panel', R.solarPanel, { name: 'Solar Array R', powerGeneration: 50 }),
+    mk('rcs_thruster', R.rcsThruster, {
+      name: 'Translation RCS', propellant: 'hydrazine',
+      thrust: C.PLAYER_MASS * C.THROTTLE_LEVELS[0]!, specificImpulse: 230,
+    }),
+    mk('flywheel', R.flywheel, {
+      name: 'Reaction Wheel',
+      maxTorque: C.MAX_ANG_ACCEL * Math.max(C.PLAYER_INERTIA_PITCH, C.PLAYER_INERTIA_YAW, C.PLAYER_INERTIA_ROLL),
+      maxAngularMomentum: 400, powerDraw: CREWED_DRAW.flywheel,
+    }),
+    mk('rcs_tank', R.rcsTank, {
+      name: 'Main RCS Tank', propellant: 'hydrazine', volume: 1.0, material: 'aluminium',
+      maxFuel: C.CREWED_RCS_FUEL_CAPACITY, fuel: C.CREWED_RCS_FUEL_CAPACITY,
+    }),
+    mk('radiator', R.radiator, {
+      name: 'Heat Radiator L',
+      area: C.RADIATOR_COOLING_AREA / 2, efficiency: C.RADIATOR_EFFICIENCY_MULT, deployable: true,
+    }),
+    mk('radiator', R.radiator, {
+      name: 'Heat Radiator R',
+      area: C.RADIATOR_COOLING_AREA / 2, efficiency: C.RADIATOR_EFFICIENCY_MULT, deployable: true,
+    }),
+    mk('solar_panel', R.solarPanel, {
+      name: 'Solar Array L',
+      area: C.SOLAR_PANEL_AREA / 2, efficiency: C.SOLAR_PANEL_EFFICIENCY, deployable: true, tracking: false,
+    }),
+    mk('solar_panel', R.solarPanel, {
+      name: 'Solar Array R',
+      area: C.SOLAR_PANEL_AREA / 2, efficiency: C.SOLAR_PANEL_EFFICIENCY, deployable: true, tracking: false,
+    }),
     mk('weapon', R.weapon, {
       name: 'Gatling Gun', weaponType: 'gatling',
       fireRate: 1 / C.FIRE_INTERVAL, damage: C.ENEMY_BULLET_DAMAGE, muzzleVelocity: C.MUZZLE_SPEED,
+      feedRate: 1 / C.FIRE_INTERVAL,
+    }),
+    mk('magazine', R.magazine, { name: 'Magazine Rack', ammoCapacity: C.INITIAL_MAGS }),
+    mk('ammunition', R.ammunition, { name: 'Gatling Rounds', weaponType: 'gatling', rounds: C.MAG_ROUNDS }),
+    mk('battery', R.battery, { name: 'Main Battery', capacity: C.POWER_CAPACITY, maxOutput: 5000 }),
+    mk('communication', R.communication, {
+      name: 'Relay', range: 4e8, bandwidth: 2e6, powerDraw: CREWED_DRAW.communication, directional: true,
+    }),
+    mk('life_support', R.lifeSupport, {
+      name: 'Life Support', crewCapacity: 2, powerDraw: CREWED_DRAW.lifeSupport,
+      consumableRate: 1e-5, extraWasteHeat: LIFE_SUPPORT_EXTRA_HEAT,
     }),
     mk('armor', R.armor, { name: 'Light Armor', damageReduction: 0.2 }),
   ];
@@ -72,15 +115,21 @@ export function hostileParts(maxHp: number): AnyPart[] {
     createPart(type, { maxHp: share(ratio), hp: share(ratio), ...props } as never);
   return [
     mk('hull', R.hull, { name: 'Hostile Hull' }),
-    mk('thruster', R.thruster, {
-      name: 'Hostile Thruster',
-      torque: C.MAX_ANG_ACCEL, thrust: 0, fuelConsumptionRate: 1,
+    mk('engine', R.engine, {
+      name: 'Hostile Engine', cycle: 'pressure_fed', propellant: 'nitrogen-tetroxide',
+      thrust: 0, specificImpulse: 300, fuelConsumptionRate: 1,
     }),
-    mk('rcs_tank', R.rcsTank, { name: 'Hostile Tank', maxFuel: 1000, fuel: 1000 }),
+    mk('flywheel', R.flywheel, {
+      name: 'Hostile Reaction Wheel', maxTorque: C.MAX_ANG_ACCEL, maxAngularMomentum: 400, powerDraw: 0,
+    }),
+    mk('rcs_tank', R.rcsTank, {
+      name: 'Hostile Tank', propellant: 'hydrazine', volume: 1.0, material: 'aluminium',
+      maxFuel: 1000, fuel: 1000,
+    }),
     mk('weapon', R.weapon, {
       name: 'Plasma Cannon', weaponType: 'cannon',
       fireRate: 1 / C.ENEMY_FIRE_INTERVAL, damage: C.PLAYER_BULLET_DAMAGE,
-      muzzleVelocity: C.PLASMA_BULLET_SPEED,
+      muzzleVelocity: C.PLASMA_BULLET_SPEED, feedRate: 1 / C.ENEMY_FIRE_INTERVAL,
     }),
     mk('armor', R.armor, { name: 'Hostile Armor', damageReduction: 0.2 }),
   ];
@@ -91,13 +140,22 @@ export function baseParts(maxHp: number): AnyPart[] {
   const half = Math.round(maxHp * 0.5);
   return [
     createDefaultBaseModule(half),
-    createPart('cockpit', { name: 'Control Room', maxHp: half, hp: half }),
-    createPart('thruster', {
-      name: 'Station Keeping Thruster', maxHp: 1, hp: 1,
-      torque: C.BASE_TORQUE, thrust: C.BASE_THRUST, fuelConsumptionRate: C.BASE_FUEL_RATE,
+    createPart('cockpit', {
+      name: 'Control Room', maxHp: half, hp: half, crewCapacity: 8, pressurizedVolume: 200,
+    }),
+    createPart('engine', {
+      name: 'Station Keeping Engine', maxHp: 1, hp: 1,
+      cycle: 'pressure_fed', propellant: 'nitrogen-tetroxide',
+      thrust: C.BASE_THRUST, specificImpulse: 300, fuelConsumptionRate: C.BASE_FUEL_RATE,
+    }),
+    createPart('flywheel', {
+      name: 'Station Reaction Wheel', maxHp: 1, hp: 1,
+      maxTorque: C.BASE_TORQUE, maxAngularMomentum: 1e6, powerDraw: 0,
     }),
     createPart('rcs_tank', {
-      name: 'Station Tank', maxHp: 1, hp: 1, maxFuel: C.BASE_MAX_FUEL, fuel: C.BASE_MAX_FUEL,
+      name: 'Station Tank', maxHp: 1, hp: 1,
+      propellant: 'hydrazine', volume: 40, material: 'aluminium',
+      maxFuel: C.BASE_MAX_FUEL, fuel: C.BASE_MAX_FUEL,
     }),
   ];
 }
