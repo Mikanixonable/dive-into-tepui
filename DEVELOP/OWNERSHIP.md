@@ -119,7 +119,14 @@ main.ts
 │       │                                       pauseGame/resumeGame の2クロージャで受け取る(「クロージャ注入を避け
 │       │                                       参照を渡す」規則への暫定的な例外。理由は docking.ts のコンストラクタ
 │       │                                       コメントと CLAUDE.md にある)
-│       │   ├── BaseView                       ... DOM は Hud.layers.view 配下。格納艦/部品/ショップタブのフルスクリーン UI
+│       │   ├── BlueprintLibrary               ... 生産にかけられる設計の保管庫(private blueprints)。永続化は
+│       │   │                                   LocalStorageBlueprintStore(鍵 tepui.blueprints)。BaseView へ参照で渡す
+│       │   ├── BaseView                       ... DOM は Hud.layers.view 配下。格納艦/部品/生産タブのフルスクリーン UI。
+│       │   │                                   通貨は存在しない — 修理は失われた耐久ぶんの資材、補給は積んでいる推進剤、
+│       │   │                                   換装は無償で、いずれも shortfall/canAfford/spend を通る。
+│       │   │                                   生産タブは設計ごとの生産可能性(不足の資源・設備・電力)と基地の在庫を出し、
+│       │   │                                   onProduceVessel(base, blueprint) で Docking.produceVessel を呼ぶ。
+│       │   │                                   デバッグ用の資源加算(資源 id + 質量 → base.baseState.resources)も同じタブが持つ
 │       │   └── ResourceTransferDialog        ... DOM は Hud.layers.view 配下。ドッキング中の2機の間で資源を移す
 │       │                                       ダイアログ(readonly transferDialog)。openTransfer() が開く
 │       ├── ViewManager                    ... 現在のビュー(combat/map/dock)の正本。遷移は setView() ひとつに集約。
@@ -141,7 +148,8 @@ main.ts
 │       │                                       super() の後に走るため)。ステージが自機を置くのは protected addOwnShip(init?) で、
 │       │                                       new Vessel → entities.addVessel → activeVessels.claimIfNone をまとめて行う
 │       │                                       (初期弾薬は CrewedShipInit.ammo として艦の構築引数に載る)。ステージ以外では
-│       │                                       Docking.buildVessel が new Vessel し(entities へは足さず基地の dockedVessels へ入る)、
+│       │                                       Docking.produceVessel が要求を集計し在庫を消費して new Vessel し
+│       │                                       (entities へは足さず基地の dockedVessels へ入る)、
 │       │                                       Docking.launch が発進時に entities.addVessel + activeVessels.set する — 新造艦が
 │       │                                       その場で操作対象を奪わないよう claimIfNone は通らない。EntityManager の
 │       │                                       restoreFromSave も new Vessel + addVessel する(操作対象は
@@ -224,16 +232,22 @@ main.ts
 │       │   │   │   └── BeltPhysics
 │       │   │   │       └── BeltSection[]  ... 剛体接触用プロキシ
 │       │   │   ├── ThermalSystem          ... 熱・電力の収支を持つ設計だけが持つ。他は null
-│       │   │   ├── RadiatorSystem         ... 放熱板2枚の展開度・損耗度。ヒンジ Group は Vessel.renderObject 配下を名前で参照
+│       │   │   ├── RadiatorSystem         ... 放熱板2枚の展開度・損耗度。ヒンジ Group と折り目は Vessel.renderObject 配下を名前で参照し、接触代理の位置もヒンジ Group の位置から測る
 │       │   │   │   └── foldProxies (Record<side, RadiatorFold[]>) ... 側ごとの剛体接触用プロキシ。折り数まで
 │       │   │   │       遅延生成し以後使い回す。collisionFolds() が毎 substep 位置を置き直すだけで、
 │       │   │   │       Verlet 等の独立した力学は持たない(艦の姿勢+展開度から一意に決まる剛体の取り付け)
 │       │   │   ├── PowerSystem            ... 太陽電池の蓄電量。パネル法線は機体固定 (0,1,0)、可動部なし
 │       │   │   ├── ThrustEffects → Billboard ×2
-│       │   │   ├── RcsEffects    → Billboard ×8   ... 状態なし。ノズル1基につき1枚、配置は RCS_NOZZLES が正本
+│       │   │   ├── AttitudeControlSystem  ... フライホイールの蓄積角運動量・アンローディング中かどうか・直近の配分(正本)。
+│       │   │   │                              手動操作も自動操縦もここへ要求を出し、Simulator.stepAttitudes が刻みごとに解く
+│       │   │   ├── RcsEffects    → Billboard ×n   ... 状態なし。スラスタ1基につき1枚を遅延生成。配置と噴射の有無は
+│       │   │   │                              ActuatorSet と直近の Allocation から読む(固定のノズル表は持たない)
 │       │   │   ├── ReentryEffects → Billboard ×2   ... 状態なし。強度は毎フレーム qdyn から導く
 │       │   │   ├── EnemyAi                ... 敵対勢力の機体だけが持つ行動則(バースト射撃の抽選と見越し射撃)。他は null
-│       │   │   ├── BaseState              ... 基地モジュールを積んだ機体だけが持つ在庫と収容(money/inventory/dockedVessels)。他は null
+│       │   │   ├── BaseState              ... 基地モジュールを積んだ機体だけが持つ在庫と収容
+│       │   │   │                              (inventory/dockedVessels/resources)。他は null
+│       │   │   │   └── ResourceLedger      ... 資源 id ごとの質量[kg]の帳簿(readonly resources)。生産がここから引く。
+│       │   │   │                              資源の帳簿を持つ実体はこれだけである
 │       │   │   ├── BaseCollisionGeometry  ... 基地モジュールを積んだ機体だけが持つ多段階(LOD0/1/2)の衝突形状(collisionGeom)。
 │       │   │   │                              構築時に一度組み、以後は姿勢と位置を引数で受けて判定するだけ。他は null
 │       │   │   ├── PilotMarkers          ... 方向マーカー・ボアサイト・マップ上の自機位置(操作対象の機体だけが sync する)
@@ -265,8 +279,10 @@ main.ts
 │       │                                       それらの形状と変換だけを合わせる(生成・破棄はしない)
 │       ├── CommNetwork                    ... このフレームの通信網(正本)。有効な中継点の集合を持ち、CoverageQuery として答える。Game が new し、Stage(StageDeps の12番目)へ参照で渡す。中継点そのものは Ephemeris と EntityManager から毎回組み直すので、ここが持つのは組み直した結果だけ
 │       ├── Simulator                      ... 実シミュレーション。EntityManager・Ephemeris・FrameSections の参照を受け取って回すだけ(いずれも所有しない)
-│       │   └── ContactPhysics             ... 接触の検出(physics/sphere-contact.ts)・剛体解決(physics/collision-response.ts)を
-│       │                                       substep ごと(resolveSubstep)/フレームに1回のベルト(resolveBelt)で呼ぶ列挙・順序付け層
+│       │   └── ContactPhysics             ... 接触の検出(physics/sphere-contact.ts・physics/capsule-contact.ts)・剛体解決
+│       │                                       (physics/collision-response.ts)を substep ごと(resolveSubstep)/フレームに1回の
+│       │                                       ベルト(resolveBelt)で呼ぶ列挙・順序付け層。狭域の形状は Vessel.collisionCapsules
+│       │                                       を持つ機体だけカプセル、それ以外は外接球。状態は走査用のスクラッチのみ
 │       └── Predictor                      ... 予測列の駆動。EntityManager・FutureAttractors の参照を受け取って回すだけ(所有しない)。
 │                                               状態はラウンドロビンのカーソルのみ
 ├── SaveBrowser            ... `Game` はフィールドに持たず、`CurrentGameSource`(`{readonly current: Game | null}`、この節が正本)を構築引数で受け取る — 実際に渡るのは `Launcher`(`current` が `Launcher.game` を指す)。`open()`/`close()` は `gameSource.current?.pause()`/`.resume()` を呼ぶ。Game 側はこれへの参照を一切持たない。DOM は Hud.layers.system 配下。`onLoadSnapshot`/`onSlotSwitched` コールバックを main.ts が launcher.loadSnapshot(id)/launcher.switchSlot() へ配線する
@@ -493,10 +509,15 @@ main.ts
 
 | 状態 | 正本の所有者 | 備考 |
 | --- | --- | --- |
+| 放熱板の展開度 | `RadiatorSystem.panels[side].deploy` | `Vessel.currentAreas` が `deployedFraction()` を読み、設計の `MassProperties.deployableAreas` を差し引いて抗力・輻射圧の面積を組む(投影面積の正本は設計側で、展開度を掛けるのはここだけ) |
 | 自機の位置・速度・エポック (ECI) | `Vessel.state` | 書き換えるのは RK4 積分(Simulator)・反動(Gunnery)・接触(ContactPhysics) |
 | エンティティの過去 state 列(`StateQueue`) | `GameEntity.actual`(`DynamicTrajectory` が内部に持つ `StateQueue`。先端(`state`)も同じ列の最新要素) | 記録するのは `DynamicTrajectory.step` だけ。時間窓は `historyDuration` = `max(baseHistoryDuration, requestedHistoryDuration)`(前者は種別固定で既定 0、Vessel/Asteroid のみ `SHIP_HISTORY_DURATION`。後者は過去表示の要求で、`Game.advanceSimulation` が毎フレーム `entities.requestHistoryDuration(displayWindow.pastDuration)` として全エンティティへ配る — 履歴を持たない種別は無視し、`HISTORY_DURATION_MAX` で頭打ち)、間引き間隔は `sampleInterval()`(軌道周期ベース)で `cleanup` に渡す |
 | 自機の姿勢・角速度 | `Vessel.att` | 積分は Simulator.stepAttitudes に一元化 |
-| 機体座標系トルク | `Vessel.torque` | 毎フレーム VesselThrottle の戻り値で上書きされる |
+| 軌道計画の自動実行モード | `Vessel.planExecution`(getter) | 書き換えは `Vessel.setPlanExecution` だけ。通知を伴う状態変更なので所有者を1つに定める |
+| 姿勢制御への要求トルク | `AttitudeControlSystem`(機体1隻に1つ) | 書き手は `VesselThrottle.updateTorque` の戻り値を渡す `Vessel.updateControls` と、`PlanExecutor.requestTorque` の2つだけ。直接 `Vessel.torque` へ書く経路は無い |
+| 機体座標系トルク | `Vessel.torque` | `Simulator.stepAttitudes` が姿勢積分の直前に `resolveAttitudeControl(subDt)` で確定する(要求をアクチュエータへ配分した結果) |
+| フライホイールの蓄積角運動量 | `AttitudeControlSystem.wheelMomentum` | `allocateControl` の返り値で毎刻み置き換わる。上限の 0.85 を超えるとアンローディングを開始し、0.30 を下回ると終了する |
+| アクチュエータ集合(スラスタの位置・噴射方向・最大推力、フライホイール、磁気トルカ) | `Vessel.actuatorSet()` | 形状ツリーの `mountFrame` と搭載要素から導く。HP が動いたときだけ組み直す |
 | 推力加速度 | `GameEntity.thrust` | 自機は `VesselThrottle.updateThrustState` の戻り値で毎フレーム上書き。無推力なら null |
 | HP / 生存 | `Vessel.hp`(`PartInventory` が搭載要素の残 HP 合計として持つ正本を転送する getter) / `GameEntity.alive` | 死亡は `alive = false` のみ。除去は機体以外が EntityManager.cleanup(→prune)、機体は ActiveVesselController.reclaimDead() |
 | RCS 制動・スロットル段・ホールド | `VesselThrottle` | |

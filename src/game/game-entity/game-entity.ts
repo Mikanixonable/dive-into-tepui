@@ -82,6 +82,10 @@ export class GameEntity {
   // フィールドではなくアクセサで答える(§11-2)。
   protected get bcInv(): number { return 0; }
   protected get srpCoeff(): number { return 0; }
+  // 予測が使う弾道係数の逆数。予測は未来の姿勢を持たないので、姿勢に依存しない値を答える —
+  // 現在の姿勢を固定して伸ばすと「いまの姿勢を保ち続ける」というプレイヤーが選んでいない仮定を
+  // 予測が置くことになる。既定では姿勢に依存しない bcInv をそのまま使う。
+  protected get predictionBcInv(): number { return this.bcInv; }
   // 種別ごとの過去列の保持時間 [s]。0 は履歴を持たない。
   protected readonly baseHistoryDuration: number = 0;
   private requestedHistoryDuration = 0;
@@ -297,7 +301,7 @@ export class GameEntity {
   ensurePredictedArc(sources: FutureAttractorProvider): PredictedArc | null {
     if (!this.predictsFuture) return null;
     this._predictedArc ??= new PredictedArc(
-      this.actual.state, sources, this.bcInv, this.srpCoeff, /* keplerTail */ true,
+      this.actual.state, sources, this.predictionBcInv, this.srpCoeff, /* keplerTail */ true,
       this.mu !== 0 ? this.id : undefined,
     );
     return this._predictedArc;
