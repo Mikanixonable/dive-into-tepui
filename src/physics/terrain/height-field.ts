@@ -1,4 +1,4 @@
-import { norm, v3, type Vec3 } from '../vec3';
+import { cross, norm, v3, type Vec3 } from '../vec3';
 
 export const MOON_RADIUS = 1_737_400;
 const TWO_PI = Math.PI * 2;
@@ -32,7 +32,7 @@ export function normalAt(bodyId: string, latRad: number, lonRad: number): Vec3 {
   const d = 1e-5;
   const p0 = surfacePointAt(bodyId, latRad - d, lonRad); const p1 = surfacePointAt(bodyId, latRad + d, lonRad);
   const q0 = surfacePointAt(bodyId, latRad, lonRad - d); const q1 = surfacePointAt(bodyId, latRad, lonRad + d);
-  return norm(v3((p1.x - p0.x) + (q1.x - q0.x), (p1.y - p0.y) + (q1.y - q0.y), (p1.z - p0.z) + (q1.z - q0.z)));
+  return norm(cross(v3(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z), v3(q1.x - q0.x, q1.y - q0.y, q1.z - q0.z)));
 }
 
 export function surfacePointAt(bodyId: string, latRad: number, lonRad: number): Vec3 {
