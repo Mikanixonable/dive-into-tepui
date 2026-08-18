@@ -196,15 +196,16 @@ export class ContactPhysics {
     attractors: readonly Attractor[],
     activeStage: Stage,
   ): void {
-    if (!player.alive || dt <= 1e-6) return;
+    const belt = player.belt;
+    if (!belt || !player.alive || dt <= 1e-6) return;
     this.beltParticipantScratch.length = 0;
-    for (const section of player.belt!.collisionSections(dt, player.state.r, player.state.v, player.att)) {
+    for (const section of belt.collisionSections(dt, player.state.r, player.state.v, player.att)) {
       if (isFiniteParticipant(section)) this.beltParticipantScratch.push(section);
     }
     this.collectParticipants(entities, this.otherScratch);
     this.collectAttractors(attractors, this.bodyScratch);
     this.resolveInOrder(this.beltParticipantScratch, this.otherScratch, this.bodyScratch, simTime, activeStage);
-    player.belt!.applyCollisionSections(dt, player.state.r, player.state.v, player.att);
+    belt.applyCollisionSections(dt, player.state.r, player.state.v, player.att);
   }
 
   private collectParticipants(source: readonly GameEntity[], out: GameEntity[]): void {
