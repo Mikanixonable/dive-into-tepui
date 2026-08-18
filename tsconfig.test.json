@@ -29,6 +29,8 @@
     "src/physics/capsule-contact.ts",
     "src/physics/gravity-gradient.ts",
     "src/physics/geomagnetic.ts",
+    "src/physics/attitude-control.ts",
+    "src/game/vessel/actuator-set.ts",
     "src/game/creative/placement-validation.ts",
     "src/game/celestial/point-field.ts",
     "src/physics/section-moments.ts",

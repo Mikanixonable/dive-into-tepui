@@ -10,9 +10,13 @@ import { kinematicState, orbitAxes } from '../../src/physics/kinematic-state';
 import { Vec3, add, v3 } from '../../src/physics/vec3';
 import { diagonalInertia } from '../../src/physics/inertia-tensor';
 
+// PlanExecutor が要求するトルクを記録する代役。実機では要求は姿勢制御系が配分するので、
+// ここでは最後の要求をそのまま torque として持つ。
+type FakeShip = PlanExecutorShip & { torque: Vec3 };
+
 // 円軌道もどきの状態(r=(1e7,0,0), v=(0,7000,0))を起点に、燃料無制限・全開加速度100m/s^2の
 // フェイク艦を作る。
-function makeShip(): PlanExecutorShip {
+function makeShip(): FakeShip {
   return {
     state: kinematicState(0, v3(1e7, 0, 0), v3(0, 7000, 0)),
     att: { q: { x: 0, y: 0, z: 0, w: 1 }, w: v3(), inertia: diagonalInertia(v3(1, 1, 1)) },
@@ -25,6 +29,8 @@ function makeShip(): PlanExecutorShip {
     torque: v3(),
     thrust: null,
     consumeFuel: () => 1,
+    setPlanExecution(this: FakeShip, mode) { (this as { planExecution: typeof mode }).planExecution = mode; },
+    requestTorque(this: FakeShip, torque) { this.torque = torque; },
   };
 }
 
@@ -174,7 +180,7 @@ export function register(): void {
     // alive は読み取り専用(PlanExecutor は書かない)なので、破壊後の艦は同じ plan/state を
     // 指す別オブジェクトとして渡す — targetNode は Plan のノード参照で同一性判定するため、
     // ship オブジェクト自体の同一性は問わない。
-    const destroyed: PlanExecutorShip = { ...ship, alive: false };
+    const destroyed: FakeShip = { ...ship, alive: false };
     executor.applyIgnitionAndCutoff(destroyed, 49.1, openGate, true);
     assert.equal(destroyed.thrust, null);
     assert.deepEqual(destroyed.torque, v3());
