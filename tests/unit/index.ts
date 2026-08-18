@@ -3,9 +3,11 @@
 import { runAll } from '../physics/harness';
 import { register as registerProducibility } from './producibility.test';
 import { register as registerResource } from './resource.test';
+import { register as registerResourceClosure } from './resource-closure.test';
 
 registerResource();
 registerProducibility();
+registerResourceClosure();
 
 runAll().catch((error) => {
   console.error(error);
