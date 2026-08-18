@@ -3,9 +3,8 @@ import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { v3 } from '../../physics/vec3';
 import { buildBaseModel, buildEnemyShip, buildPlayerShip, buildStage0EnemyShip } from '../../render/ships';
-import type { AnyPart, PartType } from '../game-entity/parts';
-import { createPart } from '../game-entity/parts';
-import { createDefaultBaseModule } from './base-module';
+import type { AnyPart } from '../game-entity/parts';
+import { baseParts, crewedParts, hostileParts } from './vessel-parts';
 import type { EnemyKind } from './enemy-ai';
 import { inertiaForEnemyKind } from './enemy-ai';
 import type { MassProperties } from './mass-properties';
@@ -35,47 +34,6 @@ export interface VesselDesign {
   readonly directionMarkers: boolean;
 }
 
-// 既定パーツへの HP 配分比。合計 1 になるよう保つ(機体の maxHp をこの比で割り振る)。
-// 放熱板・太陽電池パドルは機体の左右2枚ぶんなので、パーツも side ごとに1枚ずつ持つ。
-const CREWED_HP_RATIO = {
-  hull: 0.40, cockpit: 0.10, thruster: 0.08, rcsTank: 0.08,
-  radiator: 0.05, solarPanel: 0.03, weapon: 0.08, armor: 0.10,
-} as const;
-
-// 無人の敵対機の HP 配分比。船体・主機・タンク・武装・装甲へ配る。合計 1 になるよう保つ。
-const HOSTILE_HP_RATIO = {
-  hull: 0.45, thruster: 0.12, rcsTank: 0.08, weapon: 0.15, armor: 0.20,
-} as const;
-
-// maxHp を CREWED_HP_RATIO で割り振った、有人機の既定の搭載要素一式。
-function crewedParts(maxHp: number): AnyPart[] {
-  const R = CREWED_HP_RATIO;
-  const share = (ratio: number): number => Math.max(1, Math.round(maxHp * ratio));
-  const mk = <T extends PartType>(type: T, ratio: number, props: object): AnyPart =>
-    createPart(type, { maxHp: share(ratio), hp: share(ratio), ...props } as never);
-  return [
-    mk('hull', R.hull, { name: 'Basic Hull' }),
-    mk('cockpit', R.cockpit, { name: 'Cockpit' }),
-    mk('thruster', R.thruster, {
-      name: 'Standard RCS',
-      torque: C.MAX_ANG_ACCEL * Math.max(C.PLAYER_INERTIA_PITCH, C.PLAYER_INERTIA_YAW, C.PLAYER_INERTIA_ROLL),
-      // 既定パーツだけを積んだ機体が、全開で THROTTLE_LEVELS の最大値の加速度になる推力。
-      thrust: C.PLAYER_MASS * C.THROTTLE_LEVELS[C.THROTTLE_LEVELS.length - 1]!,
-      fuelConsumptionRate: 1,
-    }),
-    mk('rcs_tank', R.rcsTank, { name: 'Main RCS Tank', maxFuel: 1000, fuel: 1000 }),
-    mk('radiator', R.radiator, { name: 'Heat Radiator L', coolingRate: 25 }),
-    mk('radiator', R.radiator, { name: 'Heat Radiator R', coolingRate: 25 }),
-    mk('solar_panel', R.solarPanel, { name: 'Solar Array L', powerGeneration: 50 }),
-    mk('solar_panel', R.solarPanel, { name: 'Solar Array R', powerGeneration: 50 }),
-    mk('weapon', R.weapon, {
-      name: 'Gatling Gun', weaponType: 'gatling',
-      fireRate: 1 / C.FIRE_INTERVAL, damage: C.ENEMY_BULLET_DAMAGE, muzzleVelocity: C.MUZZLE_SPEED,
-    }),
-    mk('armor', R.armor, { name: 'Light Armor', damageReduction: 0.2 }),
-  ];
-}
-
 // 有人の艦艇。コックピットと主機と砲を積み、熱・電力の収支を自前で持つ。
 export function crewedShipDesign(): VesselDesign {
   return {
@@ -96,20 +54,10 @@ export function crewedShipDesign(): VesselDesign {
 
 // 軌道基地。基地モジュールと管制室を積む。砲も熱収支も持たない。
 export function orbitalBaseDesign(): VesselDesign {
-  const module = createDefaultBaseModule(Math.round(C.BASE_MAX_HP * 0.5));
-  const rest = Math.round(C.BASE_MAX_HP * 0.5);
   return {
     faction: 'ally',
     renderObject: buildBaseModel(),
-    parts: [
-      module,
-      createPart('cockpit', { name: 'Control Room', maxHp: rest, hp: rest }),
-      createPart('thruster', {
-        name: 'Station Keeping Thruster', maxHp: 1, hp: 1,
-        torque: C.BASE_TORQUE, thrust: C.BASE_THRUST, fuelConsumptionRate: C.BASE_FUEL_RATE,
-      }),
-      createPart('rcs_tank', { name: 'Station Tank', maxHp: 1, hp: 1, maxFuel: C.BASE_MAX_FUEL, fuel: C.BASE_MAX_FUEL }),
-    ],
+    parts: baseParts(C.BASE_MAX_HP),
     massProperties: massPropertiesOf(3e6, v3(C.BASE_INERTIA_X, C.BASE_INERTIA_Y, C.BASE_INERTIA_Z)),
     radius: 330,
     hpRegenRate: 0,
@@ -119,28 +67,6 @@ export function orbitalBaseDesign(): VesselDesign {
     maneuverEffectScale: 6,
     directionMarkers: false,
   };
-}
-
-// maxHp を HOSTILE_HP_RATIO で割り振った、無人の敵対機の搭載要素一式。
-function hostileParts(maxHp: number): AnyPart[] {
-  const R = HOSTILE_HP_RATIO;
-  const share = (ratio: number): number => Math.max(1, Math.round(maxHp * ratio));
-  const mk = <T extends PartType>(type: T, ratio: number, props: object): AnyPart =>
-    createPart(type, { maxHp: share(ratio), hp: share(ratio), ...props } as never);
-  return [
-    mk('hull', R.hull, { name: 'Hostile Hull' }),
-    mk('thruster', R.thruster, {
-      name: 'Hostile Thruster',
-      torque: C.MAX_ANG_ACCEL, thrust: 0, fuelConsumptionRate: 1,
-    }),
-    mk('rcs_tank', R.rcsTank, { name: 'Hostile Tank', maxFuel: 1000, fuel: 1000 }),
-    mk('weapon', R.weapon, {
-      name: 'Plasma Cannon', weaponType: 'cannon',
-      fireRate: 1 / C.ENEMY_FIRE_INTERVAL, damage: C.PLAYER_BULLET_DAMAGE,
-      muzzleVelocity: C.PLASMA_BULLET_SPEED,
-    }),
-    mk('armor', R.armor, { name: 'Hostile Armor', damageReduction: 0.2 }),
-  ];
 }
 
 // 敵対勢力の機体。見た目のスケールが大きいので、当たり半径はメッシュの外接球から取る。
