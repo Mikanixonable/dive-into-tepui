@@ -50,6 +50,8 @@ import { register as registerPackedAbsoluteEphemeris } from './packed-absolute-e
 import { register as registerSaveEphemerisContext } from './save-ephemeris-context.test';
 import { register as registerGeometry } from './geometry.test';
 import { register as registerOptimize } from './optimize.test';
+import { register as registerGravityGradient } from './gravity-gradient.test';
+import { register as registerGeomagnetic } from './geomagnetic.test';
 import './creative-placement-validation.test';
 
 registerVec3();
@@ -101,6 +103,8 @@ registerPackedAbsoluteEphemeris();
 registerSaveEphemerisContext();
 registerGeometry();
 registerOptimize();
+registerGravityGradient();
+registerGeomagnetic();
 
 runAll().catch((error) => {
   console.error(error);

@@ -26,6 +26,8 @@
     "src/game/plan/plan-executor.ts",
     "src/game/hud/layout.ts",
     "src/physics/sphere-contact.ts",
+    "src/physics/gravity-gradient.ts",
+    "src/physics/geomagnetic.ts",
     "src/game/creative/placement-validation.ts",
     "src/game/celestial/point-field.ts",
     "tests/physics/**/*.ts"
