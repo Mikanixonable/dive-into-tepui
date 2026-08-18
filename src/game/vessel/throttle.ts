@@ -1,6 +1,6 @@
 // プレイヤーの並進スロットル・姿勢制御(RCS)・プログレードホールド。
 import { Attitude, attitudeAlignTorque, qRotate } from '../../physics/attitude';
-import { Vec3, add, norm, scale, v3 } from '../../physics/vec3';
+import { Vec3, norm, scale, v3 } from '../../physics/vec3';
 import { inertiaTimes, principalMoments } from '../../physics/inertia-tensor';
 import * as C from '../const';
 import { Input } from '../input/input';
@@ -228,21 +228,20 @@ export class VesselThrottle {
       maxAngAccel *= actualRatio;
     }
     
+    // ホールド中の無入力なら整列トルクだけを返す。整列則は自前の微分ゲインで減衰を持つので、
+    // RCS 制動を重ねると過減衰になり、機首がプログレードへ寄るまでが遅くなる。
+    if (this.progradeHold && inX === 0 && inY === 0 && inZ === 0) {
+      return attitudeAlignTorque(v, r, att, C.PROGRADE_HOLD_KP, C.PROGRADE_HOLD_KD);
+    }
+
     // 指令はまず角加速度として組み、最後に慣性テンソルを掛けてトルクへ直す。慣性乗積を持つ機体
     // でも、押した軸に対して出る角加速度は指令どおりになる。
     const damp = (input: number, w: number): number =>
       this.rcsDamp && input === 0 ? -C.RCS_DAMP_RATE * w : 0;
-    const command = v3(
+    return inertiaTimes(inertia, v3(
       inX * maxAngAccel + damp(inX, att.w.x),
       inY * maxAngAccel + damp(inY, att.w.y),
       inZ * maxAngAccel + damp(inZ, att.w.z),
-    );
-    const manualTorque = inertiaTimes(inertia, command);
-
-    // 無入力かつホールド中なら自動整列トルクを加える(機首をプログレード v、上方向を r へ)
-    if (this.progradeHold && inX === 0 && inY === 0 && inZ === 0) {
-      return add(manualTorque, attitudeAlignTorque(v, r, att, C.PROGRADE_HOLD_KP, C.PROGRADE_HOLD_KD));
-    }
-    return manualTorque;
+    ));
   }
 }
