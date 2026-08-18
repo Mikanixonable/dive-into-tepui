@@ -81,6 +81,17 @@ const STYLE = `
   flex: 1 1 0; min-height: 0; margin-top: 9px; padding: var(--space-6) 0;
   overflow-y: auto; scrollbar-width: thin; outline: none;
 }
+#base-view .dock-workbench-stage {
+  min-height: 250px; display: grid; place-items: center; margin: 4px 0 12px;
+  border: 1px dashed var(--accent-secondary); border-radius: var(--radius-window);
+  background: rgba(12, 18, 25, 0.62); color: var(--accent-near); text-align: center;
+}
+#base-view .dock-part-property-window {
+  position: fixed; right: max(var(--space-5), var(--safe-r)); bottom: max(var(--space-5), var(--safe-b));
+  z-index: 3; min-width: 230px; padding: 13px 15px; border: 1px solid var(--accent-secondary);
+  border-radius: var(--radius-window); background: var(--surface-1); color: var(--body);
+  line-height: 1.65; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+}
 #base-view .dock-body:focus-visible,
 #base-view .dock-ship-select:focus-visible,
 #base-view .dock-part-swap-select:focus-visible,
@@ -546,8 +557,10 @@ export class BaseView {
     stage.addEventListener('dragover', (event) => event.preventDefault());
     stage.addEventListener('drop', (event) => {
       event.preventDefault();
-      const partId = event.dataTransfer?.getData('text/plain');
-      if (partId) this.onWorkbenchDrop?.(base, vessel, partId, true);
+      const raw = event.dataTransfer?.getData('application/x-tepui-part') ?? '';
+      if (!raw) return;
+      const [partId, source] = raw.split(':');
+      if (partId) this.onWorkbenchDrop?.(base, vessel, partId, source === 'inventory');
     });
     section.appendChild(stage);
 
@@ -588,7 +601,9 @@ export class BaseView {
     row.dataset.partId = part.id;
     row.dataset.fromInventory = String(fromInventory);
     row.textContent = `${part.name} · ${PART_TYPE_LABELS[part.type]} · ${Math.round(part.weight)} kg · HP ${Math.round(part.hp)}/${Math.round(part.maxHp)}`;
-    row.addEventListener('dragstart', (event) => event.dataTransfer?.setData('text/plain', part.id));
+    row.addEventListener('dragstart', (event) => {
+      event.dataTransfer?.setData('application/x-tepui-part', `${part.id}:${fromInventory ? 'inventory' : 'mounted'}`);
+    });
     row.addEventListener('click', () => this.showPartProperties(part));
     return row;
   }
