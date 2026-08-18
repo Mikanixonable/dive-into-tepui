@@ -3,6 +3,7 @@ import * as C from '../const';
 import { v3 } from '../../physics/vec3';
 import type { AnyPart, BaseModulePart, CommunicationPart, DockPort, PartType } from '../game-entity/parts';
 import { createPart } from '../game-entity/parts';
+import { catalystMassFor, needsCatalystBed } from '../economy/build-cost';
 
 // 通信モジュールの等級。到達距離 [m] と質量 [kg] を等級ごとに固定する。到達距離は
 // 機体側と中継点側の小さいほうで決まるので、積んだ等級がそのまま届く距離になる。
@@ -99,6 +100,11 @@ export function tuneActuators(parts: readonly AnyPart[], mass: number, maxMoment
     if (part.type === 'engine') part.thrust = mass * maxThrottle;
     else if (part.type === 'rcs_thruster') part.thrust = mass * C.THROTTLE_LEVELS[0]!;
     else if (part.type === 'flywheel') part.maxTorque = C.MAX_ANG_ACCEL * maxMoment;
+    // 触媒床は燃焼室の中にあり、その質量は推力に比例する。推力をここで決める以上、
+    // 触媒床の質量も同じ場所で決まる。
+    if (part.type === 'engine' || part.type === 'rcs_thruster') {
+      part.catalystMass = needsCatalystBed(part.propellant) ? catalystMassFor(part.thrust) : 0;
+    }
   }
 }
 

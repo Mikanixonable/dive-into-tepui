@@ -183,13 +183,13 @@ export function register(): void {
     }
   });
 
-  test('economy: 四酸化二窒素はアルミだけ、ヒドラジンは白金族を要する', () => {
+  test('economy: 四酸化二窒素はアルミだけを許し、ヒドラジンは触媒床の要求をタンクへ紐付けない', () => {
     // チタンとは応力腐食割れを起こす。
     assert.deepEqual(TANK_MATERIALS['nitrogen-tetroxide'].allowedMaterials, ['aluminium']);
     const hydrogenTank: readonly string[] = TANK_MATERIALS['liquid-hydrogen'].allowedMaterials;
     assert.ok(!hydrogenTank.includes('titanium'), '水素脆化によりチタンは使えない');
-    const hydrazineExtra: readonly string[] = TANK_MATERIALS.hydrazine.requiredResources;
-    assert.ok(hydrazineExtra.includes('platinum-group'));
+    // 触媒床の質量は推力に比例するので、要求はタンクではなくスラスタの建造費が持つ(§6-4)。
+    assert.deepEqual(TANK_MATERIALS.hydrazine.requiredResources, []);
     // 制約の緩い組は3金属すべてを許す。
     assert.equal(TANK_MATERIALS['liquid-oxygen'].allowedMaterials.length, 3);
   });

@@ -9,12 +9,14 @@ import { register as registerHeatShield } from './heat-shield.test';
 import { register as registerHullMesh } from './hull-mesh.test';
 import { register as registerMassProperties } from './mass-properties.test';
 import { register as registerProducibility } from './producibility.test';
+import { register as registerProduction } from './production.test';
 import { register as registerResource } from './resource.test';
 import { register as registerResourceClosure } from './resource-closure.test';
 import { register as registerVesselParts } from './vessel-parts.test';
 
 registerResource();
 registerProducibility();
+registerProduction();
 registerResourceClosure();
 registerCapabilities();
 registerVesselParts();
