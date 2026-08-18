@@ -136,6 +136,9 @@ export const FACILITIES = {
     outputs: [
       { resourceId: 'oxygen', rate: RATE_FINE },
       { resourceId: 'metal-mixture', rate: RATE_PROCESS },
+      // 媒体の塩化カルシウムは電解のたび陽極に塩素を出す。溶融塩へ戻す量を差し引いた
+      // 残りが、アパタイトの塩素を単体として取り出せる唯一の口である。
+      { resourceId: 'chlorine', rate: RATE_TRACE },
     ],
     powerDraw: POWER_LARGE,
     powerOutput: 0,
@@ -471,6 +474,45 @@ export const FACILITIES = {
     powerDraw: POWER_MEDIUM,
     powerOutput: 0,
     buildCost: [{ resourceId: 'titanium', mass: 1 * TONNE }],
+    requiresFacility: [],
+  },
+  'hydrogen-peroxide-furnace': {
+    id: 'hydrogen-peroxide-furnace',
+    name: '過酸化水素合成炉',
+    // 水素と酸素をパラジウム触媒の上で直接反応させる。反応器も配管も、
+    // 過酸化水素が分解しない高純度アルミで作る。
+    inputs: [
+      { anyOf: ['hydrogen'], rate: RATE_TRACE },
+      { anyOf: ['oxygen'], rate: RATE_FINE },
+    ],
+    outputs: [{ resourceId: 'hydrogen-peroxide', rate: RATE_FINE }],
+    powerDraw: POWER_MEDIUM,
+    powerOutput: 0,
+    buildCost: [
+      { resourceId: 'aluminium', mass: 1 * TONNE },
+      { resourceId: 'catalyst-bed', mass: 0.02 * TONNE },
+    ],
+    requiresFacility: [],
+  },
+  'superconductor-furnace': {
+    id: 'superconductor-furnace',
+    name: '超伝導線材製造炉',
+    // 希土類バリウム銅酸化物(REBCO)の線材。バリウムは KREEP 岩の希土類に随伴するため
+    // 資源としては別建てにしない。ニオブ・チタン合金の系はニオブが手に入らず採れない。
+    inputs: [
+      { anyOf: ['rare-earth'], rate: RATE_TRACE },
+      { anyOf: ['copper'], rate: RATE_TRACE },
+      { anyOf: ['oxygen'], rate: RATE_TRACE },
+    ],
+    outputs: [{ resourceId: 'superconductor', rate: RATE_TRACE }],
+    // 配向を揃える長時間の熱処理に電力を食う。
+    powerDraw: POWER_LARGE,
+    powerOutput: 0,
+    buildCost: [
+      { resourceId: 'iron', mass: 2 * TONNE },
+      { resourceId: 'titanium', mass: 1 * TONNE },
+      { resourceId: 'platinum-group', mass: 0.05 * TONNE },
+    ],
     requiresFacility: [],
   },
   'deuterium-separator': {
