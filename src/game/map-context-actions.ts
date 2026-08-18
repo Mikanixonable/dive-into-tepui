@@ -554,7 +554,7 @@ export class MapContextActions {
         } else if (act === 'planExecCycle') {
           if (ship) {
             const next = PLAN_EXECUTION_MODES[(PLAN_EXECUTION_MODES.indexOf(ship.planExecution) + 1) % PLAN_EXECUTION_MODES.length]!;
-            ship.planExecution = next;
+            ship.setPlanExecution(next);
           }
         } else if (act === 'duplicate') {
           this.runDuplicate(target);

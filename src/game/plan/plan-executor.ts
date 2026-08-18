@@ -23,12 +23,13 @@ export interface PlanExecutorShip {
   state: KinematicState;
   att: Attitude;
   readonly alive: boolean;
-  planExecution: PlanExecutionMode;
+  readonly planExecution: PlanExecutionMode;
+  setPlanExecution(mode: PlanExecutionMode): void;
   readonly plan: Plan;
   readonly mass: number;
   readonly totalThrust: number;
   readonly totalFuelConsumptionRate: number;
-  torque: Vec3;
+  requestTorque(torque: Vec3): void;
   thrust: Vec3 | null;
   consumeFuel(amount: number): number;
 }
@@ -100,7 +101,7 @@ export class PlanExecutor {
         return;
       }
       if (node.t <= simTime) this.missedWhileDark = true;
-      ship.torque = v3();
+      ship.requestTorque(v3());
       return;
     }
     // 圏内へ戻った。圏外にいる間に実行時刻を過ぎたノードは、点火時刻の決定にその時点の
@@ -146,7 +147,7 @@ export class PlanExecutor {
     const turnTime = turnTimeFor(errRad, C.MAX_ANG_ACCEL);
     const approachWindow = C.NODE_APPROACH_LEAD + burnDurationFor(dvMag, accel) + turnTime;
     if (node.t - simTime > approachWindow) {
-      ship.torque = v3();
+      ship.requestTorque(v3());
       return;
     }
 
@@ -156,7 +157,7 @@ export class PlanExecutor {
       return;
     }
     // 目標方向へ機首を向けるPD整列トルクをかけ、誤差角が閾値内なら点火待ちへ進める。
-    ship.torque = attitudeAlignTorque(fwd!, up!, ship.att, C.PROGRADE_HOLD_KP, C.PROGRADE_HOLD_KD);
+    ship.requestTorque(attitudeAlignTorque(fwd!, up!, ship.att, C.PROGRADE_HOLD_KP, C.PROGRADE_HOLD_KD));
     const errDeg = (errRad * 180) / Math.PI;
     this.phase = errDeg <= C.PLAN_EXECUTOR_ARM_ANGLE_DEG ? 'armed' : 'slew';
   }
@@ -165,7 +166,7 @@ export class PlanExecutor {
   // burnDirWorld/burnUpWorld を保持し続けるだけで、目標そのものは動かさない。
   private updateBurnOutput(ship: PlanExecutorShip, node: KinematicState, simDt: number): void {
     const dir = this.burnDirWorld!;
-    ship.torque = attitudeAlignTorque(dir, this.burnUpWorld!, ship.att, C.PROGRADE_HOLD_KP, C.PROGRADE_HOLD_KD);
+    ship.requestTorque(attitudeAlignTorque(dir, this.burnUpWorld!, ship.att, C.PROGRADE_HOLD_KP, C.PROGRADE_HOLD_KD));
 
     const remaining = burnCutoffProjection(node.v, ship.state.v, dir);
     this.phase = remaining < C.PLAN_EXECUTOR_TRIM_DV ? 'trim' : 'burn';
@@ -177,7 +178,7 @@ export class PlanExecutor {
     const ratio = ship.consumeFuel(ship.totalFuelConsumptionRate * presetScale * simDt);
     this.pendingAccel = maxAccel * presetScale * ratio;
     if (this.pendingAccel <= 0) {
-      ship.planExecution = 'off';
+      ship.setPlanExecution('off');
       this.stopIfActive(ship);
       this.hud.hint('燃料切れのため軌道計画の自動実行を中止した');
       return;
@@ -217,7 +218,7 @@ export class PlanExecutor {
       this.burnUpWorld = burnUpReference(dv, ship.state);
       this.pendingAccel = accel;
       this.phase = 'burn';
-      ship.torque = attitudeAlignTorque(this.burnDirWorld, this.burnUpWorld, ship.att, C.PROGRADE_HOLD_KP, C.PROGRADE_HOLD_KD);
+      ship.requestTorque(attitudeAlignTorque(this.burnDirWorld, this.burnUpWorld, ship.att, C.PROGRADE_HOLD_KP, C.PROGRADE_HOLD_KD));
       ship.thrust = scale(this.burnDirWorld, this.pendingAccel);
     }
     if (this.phase !== 'burn' && this.phase !== 'trim') return;
@@ -285,7 +286,7 @@ export class PlanExecutor {
   // ようにする単一の後始末。
   private clearState(ship: PlanExecutorShip): void {
     ship.thrust = null;
-    ship.torque = v3();
+    ship.requestTorque(v3());
     this.phase = 'idle';
     this.burnDirWorld = null;
     this.burnUpWorld = null;

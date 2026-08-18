@@ -220,7 +220,13 @@ export class Simulator {
 
   // 軌道積分と同じ刻み幅 simDt で全エンティティの姿勢を進める。
   private stepAttitudes(simDt: number, passiveWarpLod: boolean): void {
-    for (const v of this.entities.vessels) if (v.alive) v.att = stepAttitude(v.att, v.torque, simDt);
+    for (const v of this.entities.vessels) {
+      if (!v.alive) continue;
+      // 姿勢制御の要求をアクチュエータへ配分してから積分する。蓄積角運動量は積分と同じ刻みで
+      // 進める必要があるので、要求を出す側ではなくここで解く。
+      v.resolveAttitudeControl(simDt);
+      v.att = stepAttitude(v.att, v.torque, simDt);
+    }
     if (!passiveWarpLod) {
       for (const cs of this.entities.casings) cs.att = stepAttitude(cs.att, cs.torque, simDt);
       for (const d of this.entities.debris) d.att = stepAttitude(d.att, d.torque, simDt);
