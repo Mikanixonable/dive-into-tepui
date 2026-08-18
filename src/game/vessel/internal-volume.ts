@@ -159,19 +159,26 @@ function unknownEdge(id: string): never {
 }
 
 // 配管はエッジの長さに比例して容積を占めるので、口径の断面積に配置したエッジの長さの和を掛ける。
-function grossOccupiedVolume(tree: VesselTree, placement: InternalPlacement): number {
+export function grossOccupiedVolume(tree: VesselTree, placement: InternalPlacement): number {
   const { part } = placement;
   if (part.type !== 'plumbing') return occupiedVolumeOf(part);
   const bore = Math.PI * (part.bore / 2) ** 2;
   return placement.edgeIds.reduce((sum, id) => sum + bore * edgeById(tree, id).length, 0);
 }
 
-// エッジ列が軸方向に連なっていることを確かめる。連なるとは、2本が同じノードで出会い、両方がその
-// ノードの軸方向の口に付いていることをいう。
+// エッジ列が軸方向に連なっていることを確かめ、連なっていなければ例外を投げる。
 function requireAxiallyContiguous(tree: VesselTree, edgeIds: readonly string[]): void {
+  if (!axiallyContiguous(tree, edgeIds)) {
+    throw new Error(`edges ${edgeIds.join(', ')} are not axially contiguous`);
+  }
+}
+
+// エッジ列が軸方向に連なっているか。連なるとは、2本が同じノードで出会い、両方がその
+// ノードの軸方向の口に付いていることをいう。参照できないエッジがあれば例外を投げる。
+export function axiallyContiguous(tree: VesselTree, edgeIds: readonly string[]): boolean {
   if (edgeIds.length < 2) {
     edgeById(tree, edgeIds[0]!);
-    return;
+    return true;
   }
   const edges = edgeIds.map((id) => edgeById(tree, id));
   const reached = new Set<string>([edges[0]!.id]);
@@ -185,9 +192,7 @@ function requireAxiallyContiguous(tree: VesselTree, edgeIds: readonly string[]):
       }
     }
   }
-  if (reached.size !== edges.length) {
-    throw new Error(`edges ${edgeIds.join(', ')} are not axially contiguous`);
-  }
+  return reached.size === edges.length;
 }
 
 // 2本のエッジが、共有するノードの軸方向の口同士で出会っているか。

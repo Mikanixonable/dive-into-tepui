@@ -51,6 +51,10 @@
     "src/game/vessel/capabilities.ts",
     "src/game/vessel/vessel-parts.ts",
     "src/game/vessel/part-inventory.ts",
+    "src/game/vessel/blueprint.ts",
+    "src/game/vessel/blueprint-validation.ts",
+    "src/game/vessel/blueprint-library.ts",
+    "src/game/vessel/feed-network.ts",
     "tests/physics/**/*.ts",
     "tests/unit/**/*.ts"
   ]
