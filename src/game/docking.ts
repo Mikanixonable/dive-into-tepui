@@ -87,7 +87,10 @@ export class Docking {
       const base = this.workbenchCheckpoint?.base ?? this._activeBase;
       this.cancelWorkbench();
       const vessel = base?.baseState?.dockedVessels[0]?.vessel;
-      if (base?.alive && vessel) this.baseView.openWorkbench(base, vessel);
+      if (base?.alive && vessel) {
+        this.startWorkbench(base);
+        this.baseView.openWorkbench(base, vessel);
+      }
     };
     this.baseView.onWorkbenchTransfer = (base, from, to, partId) => {
       this.transferDockedPart(base, from, to, partId);
@@ -243,8 +246,10 @@ export class Docking {
   }
 
   private commitWorkbench(): void {
+    const base = this._activeBase;
     this.workbenchCheckpoint = null;
     this.workbenchDirty = false;
+    if (base?.alive) this.startWorkbench(base);
     this.hud.hint('ドックの変更を確定しました');
   }
 
