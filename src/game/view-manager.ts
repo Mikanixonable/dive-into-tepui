@@ -1,4 +1,4 @@
-// どのビューを表示しているかの正本と、ビュー間の遷移。戦闘・マップ・ドックは
+// どのビューを表示しているかの正本と、ビュー間の遷移。運用・マップ・ドックは
 // いずれも画面全体を占める対等なビューで、遷移は必ず setView() を通る。
 import { Hud } from './hud/hud';
 import { CameraSystem } from './camera/camera-system';
