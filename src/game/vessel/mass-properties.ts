@@ -26,12 +26,18 @@ export interface MassProperties {
   // 重心まわりの慣性テンソル [kg·m²]。3軸が非対称なら中間軸不安定性が現れる。
   readonly inertia: InertiaTensor;
   // 機体座標系の主軸3方向から見た投影面積 [m²]。抗力と輻射圧の断面積がここから決まる(§11-2)。
+  // 展開できる外装要素は完全に展開した状態で数えてある。
   readonly principalAreas: Vec3;
+  // そのうち、畳めば失われる分 [m²]。実行時の展開度を掛けて principalAreas から差し引くのは
+  // 展開度を持つ側(Vessel)の仕事で、設計から導くこの値は姿勢にも運用にも依存しない。
+  readonly deployableAreas: Vec3;
 }
 
 // 主慣性モーメントと投影面積を直接与えて、重心を原点に置いた質量特性を組む(§5-3)。
 export function massPropertiesOf(mass: number, moments: Vec3, principalAreas: Vec3): MassProperties {
-  return { mass, centerOfMass: v3(), inertia: diagonalInertia(moments), principalAreas };
+  return {
+    mass, centerOfMass: v3(), inertia: diagonalInertia(moments), principalAreas, deployableAreas: v3(),
+  };
 }
 
 // 形状から導いた値を、機体が持つ質量特性に直す。積んでいる推進剤も込みの総質量を採る。
@@ -41,6 +47,7 @@ export function massPropertiesFrom(derived: DerivedMassProperties): MassProperti
     centerOfMass: derived.centerOfMass,
     inertia: derived.inertia,
     principalAreas: derived.principalAreas,
+    deployableAreas: derived.deployableAreas,
   };
 }
 
@@ -50,7 +57,8 @@ export interface DerivedMassProperties {
   readonly loadedMass: number; // 推進剤と貨物を含む総質量 [kg]
   readonly centerOfMass: Vec3; // 船体ローカル座標
   readonly inertia: InertiaTensor; // 重心まわり
-  readonly principalAreas: Vec3; // 主軸3方向の投影面積 [m²]
+  readonly principalAreas: Vec3; // 主軸3方向の投影面積 [m²]。展開できる外装は展開した状態で数える
+  readonly deployableAreas: Vec3; // そのうち畳めば失われる分 [m²]
 }
 
 // 搭載要素の id から、それが収める推進剤の質量 [kg] を引く表。
@@ -135,6 +143,7 @@ export function deriveMassProperties(
     // 原点まわりの値を重心まわりへ戻す。平行軸の項を引くので質量の符号を反転させる。
     inertia: translateInertia(accumulator.inertia, -loadedMass, centerOfMass),
     principalAreas: combineProjectedAreas(projections, plates),
+    deployableAreas: plateAreas(plates.filter((plate) => plate.deployable)),
   };
 }
 
@@ -273,6 +282,7 @@ interface EdgeProjection {
 interface PlateProjection {
   readonly normal: Vec3;
   readonly area: number;
+  readonly deployable: boolean; // 実行時に畳めるか
 }
 
 // 評価方向とエッジ軸の内積がこの値以上なら、そのエッジの像は他の平行なエッジの像と重なりうるとみなす。
@@ -343,18 +353,27 @@ function footprintsTouch(x: EdgeProjection, y: EdgeProjection, axis: Vec3): bool
   return Math.sqrt(dot(lateral, lateral)) < x.extent + y.extent;
 }
 
+// 平板だけを主軸3方向へ畳んだ面積 [m²]。
+function plateAreas(plates: readonly PlateProjection[]): Vec3 {
+  const along = (axis: Vec3): number =>
+    plates.reduce((sum, plate) => sum + plate.area * Math.abs(dot(plate.normal, axis)), 0);
+  return v3(along(v3(1, 0, 0)), along(v3(0, 1, 0)), along(v3(0, 0, 1)));
+}
+
 // 外装要素の平板。放熱板と太陽電池パドルは自分の面積を、熱シールドは覆う接続口の断面積を持つ。
-// 面の向きは取り付け面の外向き法線とする。展開状態は読まない — 設計が定める最大の張り出しを採る。
+// 面の向きは取り付け面の外向き法線とする。展開状態はここでは読まず、完全に展開した張り出しを採る。
+// 畳めるのは放熱板だけとする — 太陽電池パドルは deployable を立てているが展開度を持つ系が無く、
+// 実行時に畳む手段が存在しない。
 function externalPlate(tree: VesselTree, placement: PartPlacement): PlateProjection | null {
   if (placement.kind !== 'external') return null;
   const { part } = placement;
   const normal = mountFrame(tree, placement.mount).z;
   if (part.type === 'solar_panel' || part.type === 'radiator') {
-    return part.area > 0 ? { normal, area: part.area } : null;
+    return part.area > 0 ? { normal, area: part.area, deployable: part.type === 'radiator' } : null;
   }
   if (part.type === 'heat_shield' && placement.mount.kind === 'port') {
     const area = sectionMoments(nodeById(tree, placement.mount.nodeId).section).area;
-    return area > 0 ? { normal, area } : null;
+    return area > 0 ? { normal, area, deployable: false } : null;
   }
   return null;
 }
