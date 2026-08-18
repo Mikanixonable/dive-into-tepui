@@ -10,7 +10,7 @@ import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
 import { len, sub, v3 } from '../../src/physics/vec3';
 
 const ZERO = v3(0, 0, 0);
-const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, ZERO, ZERO), degree2: null, isStar: false };
+const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, ZERO, ZERO), accel: ZERO, degree2: null, isStar: false };
 
 // tip から t までを stepDynamics(bcInv=0, srpCoeff=0, thrust=null) で密に積分した基準値。
 // EARTH は原点に静止しているので、返り値はそのまま中心天体相対 = 絶対 ECI になる。
