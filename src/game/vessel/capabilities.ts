@@ -35,6 +35,16 @@ export function hasAutopilotUnit(vessel: CapabilityVessel): boolean {
   return hasWorkingPart(vessel, 'autopilot');
 }
 
+// 有人コックピットまたは自動操縦装置を持つ構成は単独で運用できる宇宙船であり、
+// どちらも持たない構成は貨物として扱う。通信圏による現在の操作可否とは分けた分類である。
+export function hasCorePart(vessel: CapabilityVessel): boolean {
+  return hasCockpit(vessel) || hasAutopilotUnit(vessel);
+}
+
+export function isCargo(vessel: CapabilityVessel): boolean {
+  return !hasCorePart(vessel);
+}
+
 // 格納・倉庫・生産ができる。
 export function hasBaseModule(vessel: CapabilityVessel): boolean {
   return hasWorkingPart(vessel, 'base_module');
