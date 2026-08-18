@@ -8,7 +8,7 @@ import type { Vec2 } from '../../physics/section-moments';
 import { PORT_WIDTH_RATIO, placeSectionPrimitives, portHalfAngle } from '../../physics/section-moments';
 import { sectionOutline } from '../../physics/hull-loft';
 import { TANK_MATERIALS } from '../economy/propellant-compatibility';
-import type { AnyPart, PartType } from '../game-entity/parts';
+import type { PartType } from '../game-entity/parts';
 import type { PartPlacement } from './assembly';
 import type { MountPoint, PortRef, TreeEdge, TreeNode, VesselTree } from './tree';
 import {
@@ -58,12 +58,9 @@ const SELF_PRESSURIZING_PROPELLANTS: ReadonlySet<string> = new Set([
 // 熱シールドが同時に覆えるとみなす向きの開き [rad]。これを超えて散らばる向きを覆う姿勢は取れない。
 const HEAT_SHIELD_SPREAD = Math.PI / 2;
 
-// 取り付け位置が占める軸方向の長さ [m]。板は面積から一辺を取り、それ以外は寸法の刻みを最小の
-// 占有とみなす — 搭載要素は外形寸法を性能値として持たないので、面積を持つものだけが実寸で効く。
-function axialFootprint(part: AnyPart): number {
-  if (part.type === 'solar_panel' || part.type === 'radiator') return Math.sqrt(Math.max(part.area, 0));
-  return DIMENSION_UNIT;
-}
+// 取り付け座が占める長さ [m]。搭載要素は外形寸法を性能値として持たないので、寸法の刻みを座の
+// 大きさとみなす。板が張り出す先の広がりは座の取り合いに関わらない — 板は軸から外へ伸びる。
+const MOUNT_FOOTPRINT = DIMENSION_UNIT;
 
 function issue(severity: BlueprintIssue['severity'], targetId: string, message: string): BlueprintIssue {
   return { severity, targetId, message };
@@ -88,15 +85,18 @@ export function validateBlueprint(
   checkAdjacentPortInterference(bp, issues);
   checkTrussCrowding(bp, issues);
   checkSurfaceRcsInterference(bp, issues);
+  const volumeIssues = issues.length;
   checkInternalVolume(bp, issues);
+  // 内容積が解けない設計では質量特性も解けない。推力軸と質量の上限はそこで打ち切る。
+  const volumeResolved = issues.length === volumeIssues;
   checkTankMaterials(bp, issues);
   checkControl(bp, issues);
   checkFeedContinuity(bp, issues);
   checkPressurant(bp, issues);
   checkStages(bp, issues);
   checkHeatShields(bp, issues);
-  checkThrustAxis(bp, issues);
-  checkLimits(bp, limits, issues);
+  if (volumeResolved) checkThrustAxis(bp, issues);
+  checkLimits(bp, limits, volumeResolved, issues);
   return issues;
 }
 
@@ -190,25 +190,45 @@ function checkPortExclusivity(bp: VesselBlueprint, issues: BlueprintIssue[]): vo
   }
 }
 
-// 側面の口の寸法。width は周方向(口が乗る辺の長さ)、height は軸方向。
-interface PortExtent {
-  readonly width: number;
-  readonly height: number;
+// 側面の口の開口。size は周方向にも軸方向にも同じで、母断面の外接円半径に PORT_WIDTH_RATIO を
+// 掛けたもの — 円断面が切り落とす弦の長さを与えているのと同じ寸法である。ends は開口が断面の上で
+// 占める線分の両端で、辺より広い開口は辺からはみ出して隣の口とぶつかる。
+interface PortOpening {
+  readonly size: number;
+  readonly ends: readonly [Vec2, Vec2];
 }
 
-function lateralPortExtent(node: TreeNode, port: Extract<PortRef, { kind: 'lateral' }>): PortExtent {
-  const height = PORT_WIDTH_RATIO * circumradius(node.section);
+function portOpening(node: TreeNode, port: Extract<PortRef, { kind: 'lateral' }>): PortOpening {
+  const size = PORT_WIDTH_RATIO * circumradius(node.section);
   const primitive = placeSectionPrimitives(node.section).find((p) => p.id === port.primitiveId);
   if (!primitive) throw new Error(`unknown primitive "${port.primitiveId}"`);
   if (!primitive.vertices) {
-    const { shape } = primitive;
+    const { shape, phaseAngle } = primitive;
+    const count = shape.kind === 'circle' ? shape.branchCount : 2;
     const radius = shape.kind === 'circle' ? shape.radius
       : shape.kind === 'ellipse' ? shape.majorRadius : 0;
-    return { width: 2 * radius * Math.sin(portHalfAngle()), height };
+    const center = phaseAngle + (2 * Math.PI * (port.faceIndex % count)) / count;
+    const half = portHalfAngle();
+    return {
+      size,
+      ends: [
+        { x: radius * Math.cos(center - half), y: radius * Math.sin(center - half) },
+        { x: radius * Math.cos(center + half), y: radius * Math.sin(center + half) },
+      ],
+    };
   }
   const p0 = primitive.vertices[port.faceIndex % primitive.vertices.length]!;
   const p1 = primitive.vertices[(port.faceIndex + 1) % primitive.vertices.length]!;
-  return { width: Math.hypot(p1.x - p0.x, p1.y - p0.y), height };
+  const length = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+  const mid = { x: (p0.x + p1.x) / 2, y: (p0.y + p1.y) / 2 };
+  const along = { x: (p1.x - p0.x) / length, y: (p1.y - p0.y) / length };
+  return {
+    size,
+    ends: [
+      { x: mid.x - (along.x * size) / 2, y: mid.y - (along.y * size) / 2 },
+      { x: mid.x + (along.x * size) / 2, y: mid.y + (along.y * size) / 2 },
+    ],
+  };
 }
 
 // 側面の口から出るエッジの断面が、口の周方向・軸方向の両方の寸法に収まること。エッジの断面は
@@ -222,7 +242,7 @@ function checkLateralPortFit(tree: VesselTree, issues: BlueprintIssue[]): void {
       if (port.kind !== 'lateral') continue;
       const near = nodeById(tree, nearId);
       const far = nodeById(tree, farId);
-      const extent = lateralPortExtent(near, port);
+      const opening = portOpening(near, port);
       const frame = portFrame(near, port);
       const farBasis = nodeBasis(far);
       let halfAlong = 0;
@@ -233,37 +253,16 @@ function checkLateralPortFit(tree: VesselTree, issues: BlueprintIssue[]): void {
         halfAlong = Math.max(halfAlong, Math.abs(dot(offset, frame.y)));
         halfAxial = Math.max(halfAxial, Math.abs(dot(offset, frame.x)));
       }
-      if (2 * halfAlong > extent.width * (1 + 1e-9)) {
+      if (2 * halfAlong > opening.size * (1 + 1e-9)) {
         issues.push(issue('error', edge.id,
-          `側面の口の周方向の幅 ${extent.width.toFixed(3)} m に対し、断面が ${(2 * halfAlong).toFixed(3)} m あります`));
+          `側面の口の周方向の幅 ${opening.size.toFixed(3)} m に対し、断面が ${(2 * halfAlong).toFixed(3)} m あります`));
       }
-      if (2 * halfAxial > extent.height * (1 + 1e-9)) {
+      if (2 * halfAxial > opening.size * (1 + 1e-9)) {
         issues.push(issue('error', edge.id,
-          `側面の口の軸方向の幅 ${extent.height.toFixed(3)} m に対し、断面が ${(2 * halfAxial).toFixed(3)} m あります`));
+          `側面の口の軸方向の幅 ${opening.size.toFixed(3)} m に対し、断面が ${(2 * halfAxial).toFixed(3)} m あります`));
       }
     }
   }
-}
-
-// 側面の口が断面上で占める線分。円の口は弦、多角形の口はその辺そのもの。
-function lateralPortSegment(node: TreeNode, port: Extract<PortRef, { kind: 'lateral' }>): readonly [Vec2, Vec2] {
-  const primitive = placeSectionPrimitives(node.section).find((p) => p.id === port.primitiveId);
-  if (!primitive) throw new Error(`unknown primitive "${port.primitiveId}"`);
-  if (primitive.vertices) {
-    const p0 = primitive.vertices[port.faceIndex % primitive.vertices.length]!;
-    const p1 = primitive.vertices[(port.faceIndex + 1) % primitive.vertices.length]!;
-    return [p0, p1];
-  }
-  const { shape, phaseAngle } = primitive;
-  const count = shape.kind === 'circle' ? shape.branchCount : 2;
-  const radius = shape.kind === 'circle' ? shape.radius
-    : shape.kind === 'ellipse' ? shape.majorRadius : 0;
-  const center = phaseAngle + (2 * Math.PI * (port.faceIndex % count)) / count;
-  const half = portHalfAngle();
-  return [
-    { x: radius * Math.cos(center - half), y: radius * Math.sin(center - half) },
-    { x: radius * Math.cos(center + half), y: radius * Math.sin(center + half) },
-  ];
 }
 
 function crossZ(o: Vec2, a: Vec2, b: Vec2): number {
@@ -303,7 +302,7 @@ function checkAdjacentPortInterference(bp: VesselBlueprint, issues: BlueprintIss
       for (let j = i + 1; j < used.length; j++) {
         const a = used[i]!;
         const b = used[j]!;
-        if (!segmentsCross(lateralPortSegment(node, a.port), lateralPortSegment(node, b.port))) continue;
+        if (!segmentsCross(portOpening(node, a.port).ends, portOpening(node, b.port).ends)) continue;
         issues.push(issue('error', nodeId, `側面の口 "${a.owner}" と "${b.owner}" が断面の上で重なっています`));
       }
     }
@@ -316,7 +315,7 @@ function checkTrussCrowding(bp: VesselBlueprint, issues: BlueprintIssue[]): void
   for (const placement of externals(bp)) {
     if (placement.mount.kind !== 'truss') continue;
     const list = byEdge.get(placement.mount.edgeId) ?? [];
-    list.push({ along: placement.mount.along, half: axialFootprint(placement.part) / 2, id: placement.part.id });
+    list.push({ along: placement.mount.along, half: MOUNT_FOOTPRINT / 2, id: placement.part.id });
     byEdge.set(placement.mount.edgeId, list);
   }
   for (const [edgeId, mounted] of byEdge) {
@@ -337,7 +336,7 @@ function checkSurfaceRcsInterference(bp: VesselBlueprint, issues: BlueprintIssue
     id: placement.part.id,
     surfaceRcs: placement.part.type === 'rcs_thruster' && placement.mount.kind === 'surface',
     origin: mountFrame(bp.tree, placement.mount).origin,
-    radius: axialFootprint(placement.part) / 2,
+    radius: MOUNT_FOOTPRINT / 2,
   }));
   for (let i = 0; i < placed.length; i++) {
     const a = placed[i]!;
@@ -564,7 +563,12 @@ function checkThrustAxis(bp: VesselBlueprint, issues: BlueprintIssue[]): void {
 }
 
 // ノード数・総質量・最大寸法が上限以内であること。複合断面の構成要素数は checkSections が見る。
-function checkLimits(bp: VesselBlueprint, limits: BlueprintLimits, issues: BlueprintIssue[]): void {
+function checkLimits(
+  bp: VesselBlueprint,
+  limits: BlueprintLimits,
+  volumeResolved: boolean,
+  issues: BlueprintIssue[],
+): void {
   if (bp.tree.nodes.length > limits.maxNodes) {
     issues.push(issue('error', WHOLE_VESSEL,
       `ノードが ${bp.tree.nodes.length} 個で、上限 ${limits.maxNodes} 個を超えています`));
@@ -574,6 +578,7 @@ function checkLimits(bp: VesselBlueprint, limits: BlueprintLimits, issues: Bluep
     issues.push(issue('error', WHOLE_VESSEL,
       `最大寸法 ${dimension.toFixed(1)} m が上限 ${limits.maxDimension} m を超えています`));
   }
+  if (!volumeResolved) return;
   const mass = deriveMassProperties(assemblyOf(bp)).loadedMass;
   if (mass > limits.maxMass) {
     issues.push(issue('error', WHOLE_VESSEL,
