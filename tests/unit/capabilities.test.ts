@@ -10,6 +10,8 @@ import {
   hasCockpit,
   hasCommunication,
   hasEngine,
+  hasCorePart,
+  isCargo,
   isOperable,
 } from '../../src/game/vessel/capabilities';
 import { baseParts, crewedParts, hostileParts } from '../../src/game/vessel/vessel-parts';
@@ -70,5 +72,14 @@ export function register(): void {
     // 圏外では装置が健在でも自動操縦できない。
     assert.equal(canAutopilot(both, NEVER_IN_COVERAGE), false);
     assert.equal(isOperable(both, NEVER_IN_COVERAGE), false);
+  });
+
+  test('コア部品のない構成は貨物であり、コックピットまたは自動操縦装置で船になる', () => {
+    const cargo = vesselOf(hostileParts(1000));
+    assert.equal(hasCorePart(cargo), false);
+    assert.equal(isCargo(cargo), true);
+    const crewed = vesselOf(crewedParts(1000));
+    assert.equal(hasCorePart(crewed), true);
+    assert.equal(isCargo(crewed), false);
   });
 }

@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { v3 } from '../../physics/vec3';
-import { buildBaseModel, buildEnemyShip, buildStage0EnemyShip } from '../../render/ships';
+import { buildEnemyShip, buildStage0EnemyShip } from '../../render/ships';
 import { buildHullMesh } from './hull-mesh';
 import type { AnyPart } from '../game-entity/parts';
 import { hostileParts, tuneActuators } from './vessel-parts';
@@ -75,7 +75,10 @@ export function orbitalBaseDesign(): VesselDesign {
   const assembly = orbitalBaseAssembly(C.BASE_MAX_HP);
   return {
     faction: 'ally',
-    renderObject: buildBaseModel(),
+    // Bases use the same assembly-driven renderer as ships.  Their fixed legacy
+    // model remains available for older callers, but new base instances must
+    // expose the individual assembly parts to the dock workbench.
+    renderObject: buildHullMesh(assembly),
     assembly,
     ...derivedFrom(assembly),
     radius: 330,
