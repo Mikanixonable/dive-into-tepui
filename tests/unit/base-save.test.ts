@@ -51,4 +51,16 @@ export function register(): void {
       [0, 1],
     );
   });
+
+  test('base save: stable dockId is preferred over a stale slotIndex', () => {
+    assert.deepEqual(
+      resolveDockSlotIndices(
+        [{ vesselId: 'ship-a', slotIndex: 0, dockId: 'port-b' }],
+        [{ id: 'ship-a' }],
+        2,
+        new Map([['port-b', 1]]),
+      ),
+      [1],
+    );
+  });
 }

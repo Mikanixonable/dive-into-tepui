@@ -7,6 +7,7 @@ import {
   deriveBaseDockingPorts,
 } from '../../src/game/vessel/base-geometry';
 import { orbitalBaseAssembly } from '../../src/game/vessel/vessel-assemblies';
+import { validateBaseAssembly } from '../../src/game/vessel/base-assembly-validation';
 import { createPart, type BaseModulePart } from '../../src/game/game-entity/parts';
 import { test } from '../physics/harness';
 
@@ -83,5 +84,13 @@ export function register(): void {
       assert.ok(radius >= Math.hypot(capsule.a.x, capsule.a.y, capsule.a.z) + capsule.radius - 1e-9);
       assert.ok(radius >= Math.hypot(capsule.b.x, capsule.b.y, capsule.b.z) + capsule.radius - 1e-9);
     }
+  });
+
+  test('base geometry: base validation requires exactly one working base module', () => {
+    const assembly = orbitalBaseAssembly(C.BASE_MAX_HP);
+    const withoutModule = { ...assembly, placements: assembly.placements.filter((placement) => placement.part.type !== 'base_module') };
+    assert.ok(validateBaseAssembly(withoutModule).some((issue) => issue.includes('base_module')));
+    const duplicated = { ...assembly, placements: [...assembly.placements, assembly.placements.find((placement) => placement.part.type === 'base_module')!] };
+    assert.ok(validateBaseAssembly(duplicated).some((issue) => issue.includes('ちょうど1つ')));
   });
 }
