@@ -29,6 +29,12 @@ import type { MarkerManager } from './marker/marker-manager';
 import type { ActiveVesselController } from './active-vessel-controller';
 import { generateRandomName } from './random-name';
 
+interface WorkbenchCheckpoint {
+  readonly base: Vessel;
+  readonly inventory: readonly AnyPart[];
+  readonly targets: readonly { readonly id: string; readonly assembly: VesselAssembly }[];
+}
+
 export class Docking {
   readonly baseView: BaseView;
   readonly transferDialog: ResourceTransferDialog;
@@ -47,6 +53,8 @@ export class Docking {
   // 生産にかけられる設計の保管庫。
   private readonly blueprints: BlueprintLibrary;
   private readonly workbenchRaycaster = new THREE.Raycaster();
+  private workbenchCheckpoint: WorkbenchCheckpoint | null = null;
+  private workbenchDirty = false;
 
   constructor(
     private readonly pauseGame: () => void,
@@ -73,6 +81,13 @@ export class Docking {
     };
     this.baseView.onWorkbenchPointer = (_base, vessel, clientX, clientY) => {
       this.pickWorkbenchObject(vessel, clientX, clientY);
+    };
+    this.baseView.onWorkbenchCommit = () => this.commitWorkbench();
+    this.baseView.onWorkbenchCancel = () => {
+      const base = this.workbenchCheckpoint?.base ?? this._activeBase;
+      this.cancelWorkbench();
+      const vessel = base?.baseState?.dockedVessels[0]?.vessel;
+      if (base?.alive && vessel) this.baseView.openWorkbench(base, vessel);
     };
     this.viewManager.setDocking(this);
 
@@ -161,7 +176,7 @@ export class Docking {
    * Atomically replaces one docked vessel with the validated assembly produced by
    * the workbench. The old vessel is kept untouched until validation succeeds.
    */
-  commitDockedAssembly(base: Vessel, vesselId: string, assembly: VesselAssembly): { ok: true; vessel: Vessel } | { ok: false; reason: string } {
+  commitDockedAssembly(base: Vessel, vesselId: string, assembly: VesselAssembly, track = true): { ok: true; vessel: Vessel } | { ok: false; reason: string } {
     const state = base.baseState;
     if (!state) return { ok: false, reason: '基地ではありません' };
     const index = state.dockedVessels.findIndex((entry) => entry.id === vesselId);
@@ -185,6 +200,7 @@ export class Docking {
     });
     base.attachDockedVesselMesh(replacement, slotIndex);
     previous.dispose();
+    if (track) this.workbenchDirty = true;
     return { ok: true, vessel: replacement };
   }
 
@@ -201,12 +217,48 @@ export class Docking {
       this._activeBase = available[0]!;
     }
     this.pauseGame();
+    this.startWorkbench(this._activeBase);
     this.baseView.open(this._activeBase, this.activeVessels.current);
   }
 
   leaveDock(): void {
+    this.cancelWorkbench();
     this.baseView.close();
     this.resumeGame();
+  }
+
+  private startWorkbench(base: Vessel): void {
+    if (this.workbenchCheckpoint?.base === base) return;
+    this.cancelWorkbench();
+    this.workbenchCheckpoint = {
+      base,
+      inventory: [...(base.baseState?.inventory ?? [])],
+      targets: (base.baseState?.dockedVessels ?? []).flatMap((entry) =>
+        entry.vessel.assembly ? [{ id: entry.id, assembly: entry.vessel.assembly }] : []),
+    };
+    this.workbenchDirty = false;
+  }
+
+  private commitWorkbench(): void {
+    this.workbenchCheckpoint = null;
+    this.workbenchDirty = false;
+    this.hud.hint('ドックの変更を確定しました');
+  }
+
+  private cancelWorkbench(): void {
+    const checkpoint = this.workbenchCheckpoint;
+    if (!checkpoint) return;
+    if (this.workbenchDirty && checkpoint.base.baseState) {
+      for (const target of checkpoint.targets) {
+        const current = checkpoint.base.baseState.dockedVessels.find((entry) => entry.id === target.id);
+        if (!current) continue;
+        const result = this.commitDockedAssembly(checkpoint.base, target.id, target.assembly, false);
+        if (!result.ok) this.hud.hint(`変更を戻せません: ${result.reason}`);
+      }
+      checkpoint.base.baseState.inventory.splice(0, checkpoint.base.baseState.inventory.length, ...checkpoint.inventory);
+    }
+    this.workbenchCheckpoint = null;
+    this.workbenchDirty = false;
   }
 
   // ドッキング中の運動状態を同期 (毎フレーム call)
