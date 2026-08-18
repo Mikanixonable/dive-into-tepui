@@ -10,7 +10,7 @@ import type { CrossSection } from '../../physics/section-moments';
 import type { AnyPart } from '../game-entity/parts';
 import type { PartPlacement, VesselAssembly } from './assembly';
 import type { MountFrame, TreeEdge, VesselTree } from './tree';
-import { circumradius, edgeFrame, mountFrame, nodeById } from './tree';
+import { circumradius, edgeFrame, inradius, mountFrame, nodeById } from './tree';
 import type { InternalPlacement } from './internal-volume';
 import { allocateInternalVolume } from './internal-volume';
 import type { StructuralMaterial, StructuralMaterialId } from './hull-structure';
@@ -193,17 +193,20 @@ function addHullShell(
   const sectionB = nodeById(tree, edge.b).section;
   const radius = Math.max(circumradius(sectionA), circumradius(sectionB));
   const thickness = wallThickness(pressure, radius, material);
-  const shrink = Math.max(0, 1 - thickness / radius);
+  // 相似変形で内側の立体を作るので、縮小率は面に垂直な厚みが肉厚に等しくなる内接円半径で測る。
+  // 外接円の側では肉厚がその比のぶん厚くなるが、要求を下回る面は生じない。
+  const inner = Math.min(inradius(sectionA), inradius(sectionB));
+  const shrink = Math.max(0, 1 - thickness / inner);
   const outer = solidOf(sectionA, sectionB, edge.length, material.density, frame);
-  const inner = shrink > 0
+  const cavity = shrink > 0
     ? solidOf(scaleCrossSection(sectionA, shrink), scaleCrossSection(sectionB, shrink),
       edge.length, material.density, frame)
     : { mass: 0, center: v3(), inertiaAboutOrigin: ZERO_INERTIA };
 
-  const mass = outer.mass - inner.mass;
+  const mass = outer.mass - cavity.mass;
   if (!(mass > 0)) return;
-  const center = scale(sub(scale(outer.center, outer.mass), scale(inner.center, inner.mass)), 1 / mass);
-  const aboutOrigin = addInertia(outer.inertiaAboutOrigin, scaleInertia(inner.inertiaAboutOrigin, -1));
+  const center = scale(sub(scale(outer.center, outer.mass), scale(cavity.center, cavity.mass)), 1 / mass);
+  const aboutOrigin = addInertia(outer.inertiaAboutOrigin, scaleInertia(cavity.inertiaAboutOrigin, -1));
   addPart(into, mass, center, translateInertia(aboutOrigin, -mass, center));
 }
 

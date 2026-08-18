@@ -174,9 +174,9 @@ export function orbitalBaseAssembly(maxHp: number): VesselAssembly {
 // 六角形断面の胴体1本に主機と砲を付けただけの単純な機体。
 export function hostileAssembly(maxHp: number): VesselAssembly {
   const builder = new TreeBuilder();
-  const nose = builder.root('nose', v3(0, 0, 8), polygon(6, 2));
-  const mid = builder.extend(nose, AXIAL_AFT, 'fore', { kind: 'hull' }, 8, polygon(6, 4), 'mid-node');
-  builder.extend(mid, AXIAL_FORE, 'aft', { kind: 'hull' }, 8, polygon(6, 3), 'tail');
+  const nose = builder.root('nose', v3(0, 0, 5), polygon(6, 1.5));
+  const mid = builder.extend(nose, AXIAL_AFT, 'fore', { kind: 'hull' }, 5, polygon(6, 2.5), 'mid-node');
+  builder.extend(mid, AXIAL_FORE, 'aft', { kind: 'hull' }, 5, polygon(6, 2), 'tail');
 
   const tree = builder.tree();
   const placements = place(hostileParts(maxHp), (part) => {

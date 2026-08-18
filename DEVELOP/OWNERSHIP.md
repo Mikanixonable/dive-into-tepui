@@ -208,8 +208,10 @@ main.ts
 │       │   │                                  操作対象(Game.player)はこの配列内の1機への参照(§3-4 参照)。
 │       │   │                                  役割別の一覧(ownShips()/hostileVessels()/baseVessels())は
 │       │   │                                  faction と基地モジュールの有無から導く派生であって正本ではない
-│       │   │   ├── VesselAssembly         ... 形状ツリーとその上の搭載要素の配置。既定の3設計はいずれも質量特性を直接与える
-│       │   │   │                              経路を取るので、今のところ assembly は常に null
+│       │   │   ├── VesselAssembly         ... 形状ツリー(VesselTree)とその上の搭載要素の配置(PartPlacement[])。
+│       │   │   │                              既定の3設計のツリーは vessel/vessel-assemblies.ts が持ち、
+│       │   │   │                              deriveMassProperties() がそこから質量特性を導ける。ただし機体は
+│       │   │   │                              まだ質量特性を直接与える経路を取るので、Vessel.assembly は常に null
 │       │   │   ├── MassProperties         ... 乾燥質量・重心・慣性テンソル(正本)。VesselDesign が massPropertiesOf() で
 │       │   │   │                              組んだものをそのまま持つ。GameEntity.mass はここの mass から導く
 │       │   │   ├── PartInventory          ... 搭載要素の一覧と、そこから合成される HP・推力・トルク・放熱・発電・蓄電・
