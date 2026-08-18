@@ -63,11 +63,11 @@ export class PlanEditor {
 
   // 操作対象（自機船または基地）。ノードの起点として状態が要るときだけ引く。
   private get ship(): Vessel | null {
-    return this.activePlayers.current;
+    return this.activeVessels.current;
   }
 
   // 操作対象自身の計画。操作対象を切り替えると編集対象もその計画へ切り替わる。
-  get plan(): Plan | null { return this.activePlayers.current?.plan ?? null; }
+  get plan(): Plan | null { return this.activeVessels.current?.plan ?? null; }
 
   readonly planDisplay: PlanDisplay;
   private readonly gizmo3d: PlanGizmo3D;
@@ -103,7 +103,7 @@ export class PlanEditor {
     private readonly attractors: FutureAttractors,
     scene: THREE.Scene,
     private readonly markerManager: MarkerManager,
-    private readonly activePlayers: ActiveVesselController,
+    private readonly activeVessels: ActiveVesselController,
     private readonly displayDuration: DisplayDurationSource,
     private readonly frameControls: FrameControls,
   ) {

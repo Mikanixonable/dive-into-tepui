@@ -39,6 +39,8 @@
     "src/game/economy/facility.ts",
     "src/game/economy/deposit.ts",
     "src/game/economy/producibility.ts",
+    "src/game/vessel/capabilities.ts",
+    "src/game/vessel/vessel-parts.ts",
     "tests/physics/**/*.ts",
     "tests/unit/**/*.ts"
   ]
