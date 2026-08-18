@@ -3,18 +3,14 @@
 import type { Vessel, DockedVesselEntry } from '../vessel/vessel';
 import type { AnyPart, Part, PartType, RcsTankPart } from '../game-entity/parts';
 import { Button, CloseButton, Meter, TabBar, ValueInput } from './widgets';
-import type { VesselBlueprint } from '../vessel/blueprint';
-import type { BlueprintLibrary } from '../vessel/blueprint-library';
-import { buildPartFrom, crewedShipBlueprint, producibleParts } from '../vessel/default-blueprints';
+import { buildPartFrom, producibleParts } from '../vessel/default-blueprints';
 import { baseFacilities, basePowerAvailable } from '../vessel/base-module';
 import { producibility, type Requirement } from '../economy/producibility';
 import {
-  consumeProductionResources, partProductionBlueprintOf, productionBlueprintOf,
-  productionResourceDemand, productionTimeOf, refuelBlueprintOf, repairAllBlueprintOf,
-  repairBlueprintOf, DEFAULT_PRODUCTION_TIME_FACTOR,
+  consumeProductionResources, partProductionBlueprintOf, productionResourceDemand,
+  refuelBlueprintOf, repairAllBlueprintOf, repairBlueprintOf,
 } from '../vessel/production';
 import type { ProducibilityBlueprint } from '../economy/producibility';
-import { FACILITIES, type FacilityId } from '../economy/facility';
 import { RESOURCES, type ResourceId } from '../economy/resource';
 import { MQ_COMPACT, MQ_SHORT } from './breakpoints';
 
@@ -282,36 +278,6 @@ function formatResourceAmount(id: string, mass: number): string {
   return `${name} ${mass < 1 ? mass.toFixed(3) : mass.toFixed(1)} kg`;
 }
 
-// 不足1件を、何が足りないかと、それをどう賄うかの2行に開く。資源はそれを出力する設備へ、
-// 設備はそれが要求する設備へ辿るので、プレイヤーは不足を起点に連鎖を遡って読める。
-function describeRequirement(req: Requirement): { readonly title: string; readonly detail: string } {
-  if (req.kind === 'power') {
-    return {
-      title: `電力 ${(req.needed / 1000).toFixed(0)} kW (発電 ${(req.available / 1000).toFixed(0)} kW)`,
-      detail: '発電設備を増やすか、同時に動かす設備を減らす',
-    };
-  }
-  if (req.kind === 'facility') {
-    const def = FACILITIES[req.id as FacilityId];
-    const needs = def === undefined || def.requiresFacility.length === 0
-      ? 'なし'
-      : def.requiresFacility.map((id) => FACILITIES[id].name).join('・');
-    return {
-      title: `設備 ${def === undefined ? req.id : def.name} が無い`,
-      detail: `前提の設備: ${needs}`,
-    };
-  }
-  const makers = Object.values(FACILITIES)
-    .filter((def) => def.outputs.some((out) => out.resourceId === req.id))
-    .map((def) => def.name);
-  return {
-    title: req.needed > 0
-      ? `${formatResourceAmount(req.id, req.needed)} (在庫 ${req.available.toFixed(1)} kg)`
-      : `${formatResourceAmount(req.id, 0).replace(' 0.000 kg', '')} の所持`,
-    detail: makers.length === 0 ? '産地から採取する' : `作れる設備: ${makers.join('・')}`,
-  };
-}
-
 const PART_TYPE_LABELS: Readonly<Record<PartType, string>> = {
   hull: '船体',
   cockpit: '操縦区画',
@@ -358,7 +324,6 @@ export class BaseView {
   private readonly el: HTMLElement;
   private readonly tabBar: TabBar<DockTab>;
   private readonly statusLabel: HTMLElement;
-  private readonly blueprints: BlueprintLibrary;
   // デバッグ用の資源加算が、直前に何をどれだけ足したかの控え。
   private lastGrantText = '';
   private grantResourceId = '';
@@ -372,8 +337,6 @@ export class BaseView {
 
   // 外部コールバック
   public onLaunchVessel: ((ship: Vessel, base: Vessel) => void) | null = null;
-  // 「生産」ボタン。実際の艦の生成は Docking 側が行う(BaseView は UI のみ)。
-  public onProduceVessel: ((base: Vessel, blueprint: VesselBlueprint) => void) | null = null;
   public onClose: (() => void) | null = null;
   public onWorkbenchDrop: ((base: Vessel, vessel: Vessel, partId: string, fromInventory: boolean) => void) | null = null;
   public onWorkbenchRemove: ((base: Vessel, vessel: Vessel, partId: string) => void) | null = null;
@@ -385,9 +348,8 @@ export class BaseView {
   public get visible(): boolean { return this._visible; }
   public get element(): HTMLElement { return this.el; }
 
-  public constructor(root: HTMLElement, blueprints: BlueprintLibrary) {
+  public constructor(root: HTMLElement) {
     ensureStyle();
-    this.blueprints = blueprints;
     this.el = document.createElement('div');
     this.el.id = 'base-view';
     this.el.className = 'base-view-overlay';
@@ -1023,68 +985,21 @@ export class BaseView {
   }
 
   // ─── 生産タブ ───────────────────────────────────────────
-  // 設計ごとに、生産できるかどうかと足りないものを並べる。在庫と、デバッグ用の資源加算を添える。
+  // 完成船の設計からの直接生産は停止し、部品を倉庫へ作る機能だけを提供する。
   private buildProductionTab(): HTMLElement {
     const base = this.currentBase!;
     const frag = document.createElement('section');
     frag.className = 'dock-section';
-    const designs = this.availableBlueprints();
     frag.appendChild(this.buildSectionHeader(
-      '生産', '設計を指定し、資源と設備と電力を消費して実機を得ます。', `${designs.length} 設計`));
-    for (const bp of designs) frag.appendChild(this.buildProductionRow(base, bp));
+      '生産', '完成船の直接生産は停止中です。部品を倉庫へ作り、3D作業台でドック中の船へ取り付けます。', '部品中心'));
+    const unavailable = document.createElement('div');
+    unavailable.className = 'dock-empty';
+    unavailable.textContent = '新規船の3D下書き建造は準備中です。現在は部品生産とドック中の船の組み替えを利用してください。';
+    frag.appendChild(unavailable);
     frag.appendChild(this.buildPartProductionSection(base));
     frag.appendChild(this.buildInventorySection(base));
     frag.appendChild(this.buildGrantSection(base));
     return frag;
-  }
-
-  // 生産にかけられる設計。実装が最初から持つ既定の有人艦と、保管庫に保存された設計。
-  private availableBlueprints(): readonly VesselBlueprint[] {
-    return [crewedShipBlueprint(Date.now()), ...this.blueprints.list()];
-  }
-
-  private buildProductionRow(base: Vessel, bp: VesselBlueprint): HTMLElement {
-    const state = base.baseState!;
-    const missing = this.shortfall(base, productionBlueprintOf(bp));
-    const isFull = state.dockedVessels.length >= base.dockCapacity;
-    const seconds = productionTimeOf(bp, DEFAULT_PRODUCTION_TIME_FACTOR);
-
-    const row = document.createElement('div');
-    row.className = 'dock-part-row';
-    const main = document.createElement('div');
-    main.className = 'dock-part-row-main';
-    const info = document.createElement('div');
-    info.className = 'dock-part-info';
-    const name = document.createElement('span');
-    name.className = 'dock-part-name';
-    name.textContent = bp.name;
-    const meta = document.createElement('span');
-    meta.className = 'dock-part-type';
-    meta.textContent = `搭載要素 ${bp.placements.length} 点 · 生産時間 ${seconds.toFixed(0)} 秒`;
-    info.append(name, meta);
-    main.appendChild(info);
-
-    const actions = document.createElement('div');
-    actions.className = 'dock-part-actions';
-    // 生産は在庫と格納庫の両方を動かすので、押した後の表示はこの場で組み直す。
-    const btn = new Button(isFull ? 'ドック満杯' : '生産', () => {
-      this.onProduceVessel?.(base, bp);
-      this.refresh();
-    });
-    btn.element.classList.add('dock-btn', 'dock-btn-primary');
-    btn.setEnabled(!isFull && missing.length === 0);
-    actions.appendChild(btn.element);
-    main.appendChild(actions);
-    row.appendChild(main);
-
-    for (const req of missing) {
-      const { title, detail } = describeRequirement(req);
-      const line = document.createElement('div');
-      line.className = 'dock-part-type';
-      line.textContent = `不足: ${title} — ${detail}`;
-      row.appendChild(line);
-    }
-    return row;
   }
 
   // 搭載要素を1つだけ作って倉庫へ入れる。見本は既定の設計が実際に積んでいる要素そのものなので、
