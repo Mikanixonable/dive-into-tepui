@@ -34,6 +34,7 @@
     "src/game/economy/actuator-materials.ts",
     "src/game/economy/facility.ts",
     "src/game/economy/deposit.ts",
+    "src/game/economy/producibility.ts",
     "tests/physics/**/*.ts",
     "tests/unit/**/*.ts"
   ]
