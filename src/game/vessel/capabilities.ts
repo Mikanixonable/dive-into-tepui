@@ -1,6 +1,6 @@
 // 機体が何をできるか(操作・通信・自動操縦・格納・推進)を、積んでいる搭載要素から導く。
 import type { Vec3 } from '../../physics/vec3';
-import type { CommunicationPart, Part, PartType } from '../game-entity/parts';
+import type { CommStationPart, CommunicationPart, Part, PartType } from '../game-entity/parts';
 
 // 能力判定が機体に求める形。Vessel が構造的にこれを満たす。
 export interface CapabilityVessel {
@@ -45,8 +45,23 @@ export function hasEngine(vessel: CapabilityVessel): boolean {
   return hasWorkingPart(vessel, 'thruster');
 }
 
+// 通信基地の区画を持つ。通信網の起点になる。
+export function hasCommStation(vessel: CapabilityVessel): boolean {
+  return hasWorkingPart(vessel, 'comm_station');
+}
+
+// 健全な通信基地区画のうち最も遠くまで届く到達距離 [m]。1つも無ければ 0。
+export function commStationRange(vessel: CapabilityVessel): number {
+  let range = 0;
+  for (const p of vessel.parts) {
+    if (p.type !== 'comm_station' || p.hp <= 0) continue;
+    range = Math.max(range, (p as CommStationPart).range);
+  }
+  return range;
+}
+
 // 健全な通信モジュールのうち最も遠くまで届く到達距離 [m]。1つも無ければ 0。
-function communicationRange(vessel: CapabilityVessel): number {
+export function communicationRange(vessel: CapabilityVessel): number {
   let range = 0;
   for (const p of vessel.parts) {
     if (p.type !== 'communication' || p.hp <= 0) continue;

@@ -22,6 +22,7 @@ import type { MapVisibilityPolicy } from '../celestial/map-visibility';
 import type { ObjectType } from '../creative/object-placer-panel';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { ActiveVesselController } from '../active-vessel-controller';
+import type { CommNetwork } from '../comms/comm-network';
 import type { AttractorId } from '../../physics/attractor';
 import { loadAbsoluteEphemeris } from '../../physics/ephemeris-catalog';
 import { profileAt } from '../../physics/ephemeris-profile';
@@ -45,6 +46,7 @@ export type StageDeps = [
   ephemeris: Ephemeris,
   simulator: Simulator,
   activeVessels: ActiveVesselController,
+  commNetwork: CommNetwork,
 ];
 
 // ステージクラスの静的側。起動時の設定はここから読む。
@@ -126,6 +128,8 @@ export abstract class Stage {
   protected readonly _ephemeris: Ephemeris;
   protected readonly _simulator: Simulator;
   protected readonly _activeVessels: ActiveVesselController;
+  // このステージが動かす無人機へ指令が届くかを問い合わせる通信網。
+  protected readonly _commNetwork: CommNetwork;
 
   private _phase: GamePhase;
   get phase(): GamePhase { return this._phase; }
@@ -143,7 +147,8 @@ export abstract class Stage {
   // 補給タイマー未経過から始まり begin() が初期配置を行う。固有の内訳を持つ具象ステージは
   // 自分のコンストラクタで super(saved, ...deps) を呼んでから自分の分を組み立て、末尾で begin() を呼ぶ。
   constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
-    const [hud, worldSfx, uiSfx, scene, entities, unlockManager, fx, markerManager, ephemeris, simulator, activeVessels] = deps;
+    const [hud, worldSfx, uiSfx, scene, entities, unlockManager, fx, markerManager, ephemeris, simulator,
+      activeVessels, commNetwork] = deps;
     this._hud = hud;
     this._worldSfx = worldSfx;
     this._uiSfx = uiSfx;
@@ -155,6 +160,7 @@ export abstract class Stage {
     this._ephemeris = ephemeris;
     this._simulator = simulator;
     this._activeVessels = activeVessels;
+    this._commNetwork = commNetwork;
     this.scoreCounter = new ScoreCounter(saved?.scoreCounter);
     this._phase = saved?.phase ?? 'playing';
     this.restored = saved !== undefined;
