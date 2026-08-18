@@ -234,13 +234,13 @@ export class Player extends Ship {
 
   // 軌道・姿勢と同じsimulation clockで受動環境系を進める。Game.behaveのwall dtから
   // 分離し、各substep終端の位置・姿勢・太陽方向を使うことでwarp依存を防ぐ。
-  stepEnvironment(dt: number, ephemeris: Ephemeris, simTime: number): void {
+  // bodies はこの substep の天体窓で、恒星の取り出しと日照率の遮蔽体に使う。
+  stepEnvironment(dt: number, ephemeris: Ephemeris, simTime: number, bodies: readonly Attractor[]): void {
     if (!this.alive) return;
     this.radiator.update(dt, this.radiatorWear());
     const sunDir = ephemeris.sunDirFrom(this.state.r, simTime);
-    const attractorsNow = ephemeris.attractorsAt(simTime);
-    const star = attractorsNow.find((a) => a.id === ephemeris.starId);
-    const sunlit = star ? sunlitFactor(this.state.r, star, attractorsNow) : 1;
+    const star = bodies.find((a) => a.id === ephemeris.starId);
+    const sunlit = star ? sunlitFactor(this.state.r, star, bodies) : 1;
     this.thermal.setRadiatorLoad(
       this.radiator.radiatingArea(this.totalCoolingRate),
       this.radiator.solarLoad(sunlit, sunDir, this.att, this.totalCoolingRate),
