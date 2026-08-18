@@ -58,6 +58,8 @@ import { register as registerInertiaTensor } from './inertia-tensor.test';
 import { register as registerAerodynamics } from './aerodynamics.test';
 import { register as registerGravityGradient } from './gravity-gradient.test';
 import { register as registerGeomagnetic } from './geomagnetic.test';
+import { register as registerTsiolkovsky } from './tsiolkovsky.test';
+import { register as registerThrustAlignment } from './thrust-alignment.test';
 import './creative-placement-validation.test';
 
 registerVec3();
@@ -117,6 +119,8 @@ registerInertiaTensor();
 registerAerodynamics();
 registerGravityGradient();
 registerGeomagnetic();
+registerTsiolkovsky();
+registerThrustAlignment();
 
 runAll().catch((error) => {
   console.error(error);
