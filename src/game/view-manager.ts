@@ -48,8 +48,9 @@ export class ViewManager {
   get isMapView(): boolean { return this.worldView === 'map'; }
   get isCombatView(): boolean { return this.worldView === 'combat'; }
 
-  // このビューが 3D 世界を描くか。ドックは画面全体を不透明に覆い 3D 世界を持たない。
-  get rendersWorld(): boolean { return !this.isDockOpen; }
+  // ドックも基地と格納艦を見ながら編集する運用ビューなので、3D世界は描き続ける。
+  // 物理・入力の停止は Docking が管理し、描画だけを止めない。
+  get rendersWorld(): boolean { return true; }
 
   constructor(
     private readonly hud: Hud,
