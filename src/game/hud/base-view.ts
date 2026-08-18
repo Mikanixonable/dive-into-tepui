@@ -86,6 +86,7 @@ const STYLE = `
   border: 1px dashed var(--accent-secondary); border-radius: var(--radius-window);
   background: rgba(12, 18, 25, 0.62); color: var(--accent-near); text-align: center;
 }
+#base-view .dock-parts-actions { display: flex; justify-content: flex-end; gap: 7px; }
 #base-view .dock-part-property-window {
   position: fixed; right: max(var(--space-5), var(--safe-r)); bottom: max(var(--space-5), var(--safe-b));
   z-index: 3; min-width: 230px; padding: 13px 15px; border: 1px solid var(--accent-secondary);
@@ -375,6 +376,8 @@ export class BaseView {
   public onWorkbenchDrop: ((base: Vessel, vessel: Vessel, partId: string, fromInventory: boolean) => void) | null = null;
   public onWorkbenchRemove: ((base: Vessel, vessel: Vessel, partId: string) => void) | null = null;
   public onWorkbenchPointer: ((base: Vessel, vessel: Vessel, clientX: number, clientY: number) => void) | null = null;
+  public onWorkbenchCommit: (() => void) | null = null;
+  public onWorkbenchCancel: (() => void) | null = null;
 
   public get visible(): boolean { return this._visible; }
   public get element(): HTMLElement { return this.el; }
@@ -552,6 +555,14 @@ export class BaseView {
       section.appendChild(empty);
       return section;
     }
+    const actions = document.createElement('div');
+    actions.className = 'dock-parts-actions';
+    const commit = new Button('変更を確定', () => this.onWorkbenchCommit?.());
+    commit.element.classList.add('dock-btn', 'dock-btn-primary');
+    const cancel = new Button('変更を取消', () => this.onWorkbenchCancel?.());
+    cancel.element.classList.add('dock-btn', 'dock-btn-quiet');
+    actions.append(commit.element, cancel.element);
+    section.appendChild(actions);
     const filter = document.createElement('input');
     filter.type = 'search';
     filter.className = 'dock-part-swap-select';
