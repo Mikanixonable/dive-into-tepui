@@ -148,7 +148,7 @@ export class ViewManager {
     const items: ViewMenuItem[] = [];
 
     if (this.current !== 'combat' && this.canEnter('combat')) {
-      items.push({ id: 'combat', label: 'Combat', viewId: 'combat' });
+        items.push({ id: 'combat', label: 'Operations', viewId: 'combat' });
     }
 
     if (this.current !== 'map') {
