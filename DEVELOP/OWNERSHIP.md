@@ -55,13 +55,13 @@ main.ts
 │       │   ├── CombatCameraSystem
 │       │   │   ├── ChaseCamera
 │       │   │   └── GunsightCamera
-│       │   ├── OverviewCamera
+│       │   ├── MapCamera
 │       │   ├── FocusMarkers
 │       │   └── ViewOptionsPanel(viewOptionsPanel) ... DOM は Hud.layers.panel 配下(表示パネル)。天体クラス別トグル(軌道線/ラベル)
 │       │                                       + 天球グリッドトグルの2セクションを1枚に持つ(後者の状態は Navball が正本 — 下記参照)。
 │       │                                       座標系の選択は持たない
 │       ├── FrameControls                  ... 座標系パネル。カメラ(視点)区画と軌道計画(描画基準)区画がそれぞれ
-│       │                                       中心・回転の2ゾーンを持ち、OverviewCamera・DisplayWindowManager.frame を書く。
+│       │                                       中心・回転の2ゾーンを持ち、MapCamera・DisplayWindowManager.frame を書く。
 │       │                                       自分の状態は「カメラの基準に追随」トグル(followCamera)だけ。
 │       │                                       パネル DOM は Hud.layers.panel 配下。CameraSystem の直後、PlanEditor より前に
 │       │                                       construct する(PlanEditor が構築引数として参照を受け取るため)
@@ -86,7 +86,10 @@ main.ts
 │       ├── Navball                        ... 天球グリッド6トグルの正本。DOM は持たない —
 │       │                                       CameraSystem.viewOptionsPanel(表示パネル)の天球グリッドセクションを
 │       │                                       コンストラクタで配線するだけ(CameraSystem の構築後に construct する)
-│       ├── ActiveVesselController         ... 操作対象艦(0..n隻のうちどれを操作するか)の切替・削除と、それに伴う各所有者への伝播を1箇所へ集める(`set`/`setOrNull` は Targeter・WorldSfx へ、`remove` は NavTarget・Targeter・CameraSystem(フォーカス解除)へ)。PlanEditor・MapContextActions・ViewManager への参照は持たない — PlanEditor はこちらを参照で持つ側で、逆方向の参照は無い。Game.player はこれへ転送する getter。起動時の操作対象艦は自分で解決する(構築引数の activePlayerId → entities.ownShips() の id 一致 → 先頭 → null)
+│       ├── ActiveVesselController         ... 操作対象艦(0..n隻のうちどれを操作するか)の切替・削除と、それに伴う各所有者への伝播を1箇所へ集める(`set`/`setOrNull` は Targeter・WorldSfx へ、`remove` は NavTarget・Targeter・CameraSystem(フォーカス解除)へ)。Hud は任意の参照で、`set` が基地モジュールを積んだ機体を操作対象にしたときだけ操作モードのヒントを出す。PlanEditor・MapContextActions・ViewManager への参照は持たない — PlanEditor はこちらを参照で持つ側で、逆方向の参照は無い。Game.player はこれへ転送する getter。起動時の操作対象艦は自分で解決する(構築引数の activePlayerId → entities.ownShips() の id 一致 → 先頭 → null)
+│       │                                       Game.followedVessel は operated 艦、居なければ生存中の基地の先頭、
+│       │                                       どちらも無ければ null を返す getter(カメラ・描画原点の速度基準・表示窓が読む)。
+│       │                                       これも正本ではなく current と entities.baseVessels() からの導出
 │       ├── SimSpeedManager
 │       ├── DisplayWindowManager           ... 「どの座標系で(frame)・いつを(displayTime)見るか」の正本(表示期間・
 │       │                                       未来ゴーストスライダー・frame)と、1フレーム分の DisplayWindow
@@ -116,7 +119,9 @@ main.ts
 │       │                                       pauseGame/resumeGame の2クロージャで受け取る(「クロージャ注入を避け
 │       │                                       参照を渡す」規則への暫定的な例外。理由は docking.ts のコンストラクタ
 │       │                                       コメントと CLAUDE.md にある)
-│       │   └── BaseView                       ... DOM は Hud.layers.view 配下。格納艦/部品/ショップタブのフルスクリーン UI
+│       │   ├── BaseView                       ... DOM は Hud.layers.view 配下。格納艦/部品/ショップタブのフルスクリーン UI
+│       │   └── ResourceTransferDialog        ... DOM は Hud.layers.view 配下。ドッキング中の2機の間で資源を移す
+│       │                                       ダイアログ(readonly transferDialog)。openTransfer() が開く
 │       ├── ViewManager                    ... 現在のビュー(combat/map/dock)の正本。遷移は setView() ひとつに集約。
 │       │                                       ActiveVesselController・TouchControls | null はいずれもコンストラクタ引数
 │       │                                       (ViewManager より先に生成される)。docking への参照は ViewManager より後に
@@ -128,14 +133,19 @@ main.ts
 │       │   └── ContextMenu<true, ViewId>  ... DOM は Hud.layers.popup 配下
 │       ├── Stage (activeStage)            ... Game のコンストラクタが受け取る解決済みの StageClass を直接 new し、
 │       │                                       saved(StageSaveData | undefined)と StageDeps 一式(hud/worldSfx/uiSfx/scene/entities/
-│       │                                       unlockManager/fx/markerManager/ephemeris/simulator/activePlayers、
+│       │                                       unlockManager/fx/markerManager/ephemeris/simulator/activeVessels、
 │       │                                       stage.ts 参照)を渡す(分岐は無く、CREATIVE も同じ経路)。
 │       │                                       コンストラクタ一段で初期化が完結し、新規開始の世界の初期状態(自機を含む)と
 │       │                                       ブリーフィングは各具象ステージのコンストラクタ末尾の begin() → init(entities)
 │       │                                       が行う(基底のコンストラクタからは呼べない — 具象側のフィールド初期化が
-│       │                                       super() の後に走るため)。自機を置くのは protected addOwnShip(init?) で、
-│       │                                       new Vessel → entities.addOwnShip → activePlayers.claimIfNone をこの1箇所に
-│       │                                       まとめる(初期弾薬は PlayerInit.ammo として艦の構築引数に載る)。
+│       │                                       super() の後に走るため)。ステージが自機を置くのは protected addOwnShip(init?) で、
+│       │                                       new Vessel → entities.addVessel → activeVessels.claimIfNone をまとめて行う
+│       │                                       (初期弾薬は CrewedShipInit.ammo として艦の構築引数に載る)。ステージ以外では
+│       │                                       Docking.buildVessel が new Vessel し(entities へは足さず基地の dockedVessels へ入る)、
+│       │                                       Docking.launch が発進時に entities.addVessel + activeVessels.set する — 新造艦が
+│       │                                       その場で操作対象を奪わないよう claimIfNone は通らない。EntityManager の
+│       │                                       restoreFromSave も new Vessel + addVessel する(操作対象は
+│       │                                       ActiveVesselController が activePlayerId から自分で解決する)。
 │       │                                       起動時の天体暦は Stage の静的 async createEphemeris(phaseOffsets)
 │       │                                       が既定実装(天体暦プロファイル解決 + 精密暦パック取得の末に
 │       │                                       new Ephemeris(...))を持ち、StageDebugAltSystem だけが自前の
@@ -146,7 +156,7 @@ main.ts
 │       │                                       freeProcurement/executesPlans は
 │       │                                       インスタンス側の既定 false なフラグ、authoring は既定 null の ObjectAuthoring
 │       │                                       (配置・複製の口)。CreativeStage だけが両方を有効にし、authoring は自身を返す。
-│       │                                       _activePlayers は StageDeps の一つとして引数で受け取り(protected _activePlayers)、
+│       │                                       _activeVessels は StageDeps の一つとして引数で受け取り(protected _activeVessels)、
 │       │                                       CreativeStage.placeObject の艦の配置も同じ addOwnShip を通る。
 │       │                                       喪失した自機の回収は
 │       │                                       ActiveVesselController.reclaimDead() が全ステージ共通で毎フレーム無条件に
@@ -156,7 +166,7 @@ main.ts
 │       │   ├── StatusPanel                ... DOM は Hud.layers.panel 配下。HP/補助メッセージ/撃墜数。#hud-stagestatus の表示を書くのはこのクラスだけで、sync(player | null, …) の null が畳む指示(保持中の艦参照もそこで落とす)。戦闘ビュー専用 — マップビューでは同じ画面下端中央を PREDICT バーが占める
 │       │   ├── ScoreAttackTimer           ... Stage0 のみ
 │       │   ├── WaveAttack                 ... Stage00・CreativeStage がそれぞれのコンストラクタで1個ずつ生成し、private readonly waveAttack として保持する(stage-utils/wave-attack.ts)。波状攻撃フェーズ(waiting_for_ammo/spawning_enemies/active_combat)・タイマー・波数の正本。CreativeStage 側は waveAttackEnabled(自身のフィールド、既定 false)が true の間だけ update を呼ぶ — 敵の AI 自体(behaveAllHostiles)はトグルと無関係に毎フレーム進む
-│       │   └── ShipPlacerPanel            ... CreativeStage のみ。パネル本体は Hud.layers.panel 配下、ObjectPicker のポップアップは Hud.layers.popup 配下(別々の引数で受け取る)。艦艇配置フォーム(開閉状態 isOpen も自身が持つ)
+│       │   └── ObjectPlacerPanel            ... CreativeStage のみ。パネル本体は Hud.layers.panel 配下、ObjectPicker のポップアップは Hud.layers.popup 配下(別々の引数で受け取る)。艦艇配置フォーム(開閉状態 isOpen も自身が持つ)
 │       ├── EnvironmentScene               ... game/celestial/ 配下(game/ への依存を持つため render/ から移動)
 │       │   ├── CelestialBody[]             ... CELESTIAL_BODIES(celestial-registry.ts)から1体ずつ生成。地球=EarthBody・太陽=SunBody・pointBrightness 未指定の惑星/月/土星等=SphereBody・pointBrightness 指定の惑星(金星・木星・水星・火星・土星・天王星)=PointBody。木星・土星・天王星・海王星は SOLAR_SYSTEM の CelestialBodyDef.rings(物理データ)を own し、build 時に RingView を1つ生成してシーン直下へ追加(本体メッシュの子ではない — sphere-body.ts/point-body.ts 参照)。SphereBody/PointBody は build 時に CelestialSurface(render/celestial-surface.ts、メッシュと昼夜陰影の uniform)を1つ own する
 │       │   ├── PointFieldView              ... 小惑星帯・トロヤ群・ヒルダ群・カイパーベルト cold/hot・散乱円盤の点群(群ごとに1つの InstancedMesh、計11200点)。point-field.ts の PointFieldDef 配列(POINT_FIELD_DEFS)から build 時に一度だけ生成し、以後は不変
@@ -198,6 +208,10 @@ main.ts
 │       │   │                                  操作対象(Game.player)はこの配列内の1機への参照(§3-4 参照)。
 │       │   │                                  役割別の一覧(ownShips()/hostileVessels()/baseVessels())は
 │       │   │                                  faction と基地モジュールの有無から導く派生であって正本ではない
+│       │   │   ├── VesselAssembly         ... 形状ツリーとその上の搭載要素の配置。既定の3設計はいずれも質量特性を直接与える
+│       │   │   │                              経路を取るので、今のところ assembly は常に null
+│       │   │   ├── MassProperties         ... 乾燥質量・重心・慣性テンソル(正本)。VesselDesign が massPropertiesOf() で
+│       │   │   │                              組んだものをそのまま持つ。GameEntity.mass はここの mass から導く
 │       │   │   ├── PartInventory          ... 搭載要素の一覧と、そこから合成される HP・推力・冷却能力(正本)
 │       │   │   ├── VesselThrottle
 │       │   │   ├── Gunnery                ... 砲と給弾を積む設計だけが持つ。他は null
@@ -215,6 +229,8 @@ main.ts
 │       │   │   ├── ReentryEffects → Billboard ×2   ... 状態なし。強度は毎フレーム qdyn から導く
 │       │   │   ├── EnemyAi                ... 敵対勢力の機体だけが持つ行動則(バースト射撃の抽選と見越し射撃)。他は null
 │       │   │   ├── BaseState              ... 基地モジュールを積んだ機体だけが持つ在庫と収容(money/inventory/dockedVessels)。他は null
+│       │   │   ├── BaseCollisionGeometry  ... 基地モジュールを積んだ機体だけが持つ多段階(LOD0/1/2)の衝突形状(collisionGeom)。
+│       │   │   │                              構築時に一度組み、以後は姿勢と位置を引数で受けて判定するだけ。他は null
 │       │   │   ├── PilotMarkers          ... 方向マーカー・ボアサイト・マップ上の自機位置(操作対象の機体だけが sync する)
 │       │   │   ├── TrajectoryLine         ... 自機予測軌道線。EntityLineManager.update が showPredictedLine/hidePredictedLine で出し入れし、EntityLineManager.sync が毎フレーム ship.syncTrajectoryLines(...) で形状と変換を合わせる
 │       │   │   ├── TrajectoryLine         ... 自機過去軌跡線(actualLine)。同じ EntityLineManager.update/sync が showActualLine/hideActualLine で出し入れし、syncTrajectoryLines が actual の [simTime - pastDuration, simTime] を描く
@@ -432,20 +448,21 @@ main.ts
 | `Hud` | main.ts | Game(コンストラクタ引数で受け取り)経由でほぼ全サブシステム |
 | `WorldSfx` / `UiSfx` | main.ts | Game 経由で、各消費側は実際に鳴らす側だけをコンストラクタ引数で受け取る(世界内の音は `WorldSfx`、操作・通知音は `UiSfx`、`Logistics` だけが両方)。`WorldSfx` は `Launcher`(コンストラクタ引数。`new Game(...)` と、`update` が決着の瞬間に呼ぶ `setThrust(false)` の両方に使う)へも直接渡る |
 | `AudioEngine` / `Bgm` | main.ts | `AudioEngine` は `Bgm`/`WorldSfx`/`UiSfx`(それぞれコンストラクタ引数)だけが持つ。`Bgm` は `SettingsView`(音量・試聴)・`Launcher`(周回の開始で `resume()`、決着で `stop()`)へ渡り、`PauseMenu` の音量スライダと `game.input.onUserGesture`(unlock + ensureStarted)は Launcher が周回ごとに配線する。Game 自身はどちらへの参照も持たない |
-| `Hud.overlayManager`(`OverlayManager`) | `Hud`(`buildHudDom` が構築) | 全オーバーレイ所有クラス(`ContextMenu`/`ObjectPicker`/`PropertyWindow`/`PauseMenu`/`SaveBrowser`/`ShipPlacerPanel`/`HelpPanel`、および `ResultScreen`・`ViewManager.dockOverlayHandle`)がコンストラクタ引数または `hud.overlayManager` 経由で受け取り、`open`/`close`/`reconfigure` を自分自身に対して呼ぶ。台帳(重なり順・排他グループ)の正本はこのクラスだけが持つ |
+| `Hud.overlayManager`(`OverlayManager`) | `Hud`(`buildHudDom` が構築) | 全オーバーレイ所有クラス(`ContextMenu`/`ObjectPicker`/`PropertyWindow`/`PauseMenu`/`SaveBrowser`/`ObjectPlacerPanel`/`HelpPanel`、および `ResultScreen`・`ViewManager.dockOverlayHandle`)がコンストラクタ引数または `hud.overlayManager` 経由で受け取り、`open`/`close`/`reconfigure` を自分自身に対して呼ぶ。台帳(重なり順・排他グループ)の正本はこのクラスだけが持つ |
 | `PauseMenu` | main.ts | Game(`Game.handleInput` が `hud.overlayManager.closeTopmostOnEscape()` で閉じ切れなかったときだけ `toggle(true)` を呼ぶ。開閉の一時停止反映は main.ts 側の配線)・MapContextActions(空域右クリックの「設定メニューを開く」項目)・`Launcher`(コンストラクタ引数、`new Game(...)` に渡すだけ)。コンストラクタは `RenderPipeline` を `DebugTargetHost` として受け取り、そのまま `GraphicsPanel` へ転送するだけで自身は保持しない |
 | `MarkerManager` | Game | マーカーを出す全モジュール(PilotMarkers・Targeter・NavTarget・Logistics・FocusMarkers・PlanGuide・PlanDisplay)。`combatMarkers`/`leadMarkers` は参照共有ではなく MarkerManager 自身の子(§1 参照) |
-| `Ephemeris` | `Launcher`(モジュール private な `initEphemeris` が `Stage.createEphemeris` 経由で `Game` の構築より前に完成させる) | Game(コンストラクタ引数)経由で EnvironmentScene・Simulator・OverviewCamera・FocusMarkers・NavTarget・PlanEditor(→PlanDisplay)・FutureAttractors・DisplayWindowManager(コンストラクタ引数) |
+| `Ephemeris` | `Launcher`(モジュール private な `initEphemeris` が `Stage.createEphemeris` 経由で `Game` の構築より前に完成させる) | Game(コンストラクタ引数)経由で EnvironmentScene・Simulator・MapCamera・FocusMarkers・NavTarget・PlanEditor(→PlanDisplay)・FutureAttractors・DisplayWindowManager(コンストラクタ引数) |
 | `CameraSystem.bodyClassToggles`(`BodyClassToggles`) | CameraSystem | 表示パネル(`ViewOptionsPanel` の天体クラス別セクション)が書き換え、読む側はすべて `MapVisibilityPolicy` を通す(`MapPickables.refresh`・`FocusMarkers.update`・`EnvironmentScene.sync`/参照線・`Game.sync` → Stage/Logistics/CreativeStage/Targeter)。マップの描画・ピック候補・軌道オブジェクト一覧・配置UIの基準天体が同じ1つの状態を共有するための唯一の持ち主。初期値は `localStorage`(`tepui.bodyClassToggles`)から読み込み(`camera-system.ts` の `loadBodyClassToggles`)、トグルのたびに `saveBodyClassToggles` で書き戻す(同上) |
-| `EntityManager` | Game | Simulator(コンストラクタ引数、配列を直接持たず参照だけ回す)・ContactPhysics(`Simulator.advance` が呼び出しのたびに参照を渡すだけで保持しない)・Targeter・NavTarget・Vessel.behave・Stage/stages/・Logistics・EffectsSystem・NanWatchdog(いずれも読み取り + `addXxx`/`findOwnShip`/`findHostile` 経由の追加・参照のみ)・FutureAttractors(コンストラクタ引数。候補一覧の組み直し(`refreshCandidates`)/`futureSourceRevision` が読むだけ)・DisplayWindowManager(コンストラクタ引数、`attractorsAt` が `entities.attractors()` を読むだけ)。`attractors()` は毎回のフィルタ呼び出しで正本を持たない(§付録「正本でないもの」) |
+| `EntityManager` | Game | Simulator(コンストラクタ引数、配列を直接持たず参照だけ回す)・ContactPhysics(`Simulator.advance` が呼び出しのたびに参照を渡すだけで保持しない)・Targeter・NavTarget・Vessel.updateControls・Stage/stages/・Logistics・EffectsSystem・NanWatchdog(いずれも読み取り + `addXxx`/`findOwnShip`/`findHostile` 経由の追加・参照のみ)・FutureAttractors(コンストラクタ引数。候補一覧の組み直し(`refreshCandidates`)/`futureSourceRevision` が読むだけ)・DisplayWindowManager(コンストラクタ引数、`attractorsAt` が `entities.attractors()` を読むだけ)。`attractors()` は毎回のフィルタ呼び出しで正本を持たない(§付録「正本でないもの」) |
 | `FutureAttractors`(`game/simulation/future-attractors.ts`) | Game | PlanEditor(コンストラクタ引数。`resolve(...)` を呼ぶ)・Predictor(コンストラクタ引数。`resolve` は呼ばず、育てる弧(各 `PredictedArc` が own する `ArcBodies` 経由)が `candidates()`/`bodyAt` を読むだけ) |
 | `PlanPath` | PlanDisplay | PlanEditor(ノードの画面判定 `projectPoint` / `nearestSample` のみ、`planDisplay.path` 経由) |
 | `DisplayWindowManager`(`plan/plan.ts` の狭い `DisplayDurationSource`(`{durationSec(referencePeriod): number}`)としてのみ見える) | Game | PlanEditor(→PlanDisplay)(コンストラクタ引数で `PlanDisplay` → `PlanPath` へそのまま転送。末尾区間の長さ(`plan.ts` の `segmentDurationFrom`)と `Plan.nodeTimeRange` の上限が PREDICT パネルの選択に追従するための参照で、`PlanPath` はこれを保持するだけで書き換えない。`plan/` 配下は `durationSec` 以外の具象 `DisplayWindowManager` のフィールド・メソッドを一切読まない) |
 | `Plan`(活艦の) | `Vessel`(活艦自身、`PlanEditor` ではない) | PlanEditor(`plan` getter が活艦の `plan` を転送。艦がいなければ `null`)・PlanDisplay(`update` の引数で毎フレーム受ける。出さないフレームは `null`)・PlanGuide(引数では受けず、渡された `Vessel` の `plan` から自分で引く)・CreativeStage(`planExecution` 艦のノード消化) |
 | `PlanExecutor`(艦ごとの) | `Vessel`(艦自身) | CreativeStage(`update`/`nextSimulationEventTime`/`applySimulationEvents` から呼ぶだけで保持しない) |
+| `ActiveVesselController` | Game | ViewManager・Docking・MapContextActions・MapPickables・PlanEditor(いずれもコンストラクタ引数)・Stage(`StageDeps` の一員として `_activeVessels`、`addOwnShip` の `claimIfNone` で使う) |
 | `SimSpeedManager` | Game | PlanEditor(ノードメニューからの自動ワープ) |
 | `FrameControls` | Game | PlanEditor(構築引数。ノードメニューの「フォーカス」項目で `frameControls.setFocus(...)` を直接呼ぶ) |
-| `EffectsSystem`(`EntityManager.effects`) | EntityManager | Vessel・Gunnery・Vessel・Stage(`Game` は `entities.effects` 経由でのみ触れる。所有権は持たない) |
+| `EffectsSystem`(`EntityManager.effects`) | EntityManager | Vessel・Gunnery・EnemyAi・Stage(`Game` は `entities.effects` 経由でのみ触れる。所有権は持たない) |
 | `Vessel` / `Simulator` / `EntityManager` / `Stage` | Game | 毎フレームの引数として相互に渡される |
 | `UnlockManager` | main.ts | Launcher(コンストラクタ引数、`resolveStage` の `resumableStageClass` が `isUnlocked` を読み、選択画面が必要なときは引数として `selectStage` へ渡す)・各Stage（クリア後画面判定のため） |
 | `SnapshotService` | main.ts | Launcher(コンストラクタ引数、`initialSaveFor` から `load()` を呼んで `initialSave` を組む)・AutoSave(コンストラクタ引数)・SaveBrowser(コンストラクタ引数)・SnapshotControls(コンストラクタ引数、`[F5]` から `capture` を呼ぶ)。Game はこれへの参照を持たない |
@@ -458,10 +475,10 @@ main.ts
 | `FrameSections` | main.ts | Game(コンストラクタ引数。`update` が区間境界へ `enter`/`exit` を打つだけ)・Simulator(Game 経由のコンストラクタ引数。軌道積分/接触/姿勢の3区間の境界を自分で打つ)・PerfMeter(コンストラクタ引数。`enabled` を開閉で書き、`record` で全区間 + `otherMs()` を採取する)・`Launcher`(コンストラクタ引数、`new Game(...)` に渡すだけ) |
 | `PerfMeter` | main.ts | rAF ループ(`startAnimationLoop` が `snapshotControls.handleInput` の直後に `perf.handleInput(game.input)` を呼び、`[F3]` で `toggle()` する)・PauseMenu(`onOpenPerfWindow` 経由で `open()`) |
 | `PropertyWindow`(負荷確認ウィンドウ) | PerfMeter(`open()` で new し `close()`/✕ で dispose する1枚) | PerfMeter 自身のみ。500ms ごとの flush で `syncRows` へ行一式を渡す |
-| `FocusMarkers.bodyPickables(t, visibilityPolicy)` の戻り値 | CameraSystem(→FocusMarkers、呼ぶたびに作り直す使い捨て配列) | `MapPickables.refresh()` が読んで生存中の自機・敵船・弾薬・基地・NavTarget のアイコン・`PlanDisplay.apsisMarkers` と合流させ、`MapContextActions.handleRightClick`(`pickNearest`)/`OverviewCamera.update` の被選択物候補として渡し直す。引数の `MapVisibilityPolicy` が admits した天体+ラグランジュ点だけを返し、遮蔽・ラベル衝突でこのフレームに描かれなかった対象は `pickable: false` を伴って残す(表示設定で消えているわけではないので候補からは落とさない) |
+| `FocusMarkers.bodyPickables(t, visibilityPolicy)` の戻り値 | CameraSystem(→FocusMarkers、呼ぶたびに作り直す使い捨て配列) | `MapPickables.refresh()` が読んで生存中の自機・敵船・弾薬・基地・NavTarget のアイコン・`PlanDisplay.apsisMarkers` と合流させ、`MapContextActions.handleMapRightClick`(`pickNearest`)/`MapCamera.update` の被選択物候補として渡し直す。引数の `MapVisibilityPolicy` が admits した天体+ラグランジュ点だけを返し、遮蔽・ラベル衝突でこのフレームに描かれなかった対象は `pickable: false` を伴って残す(表示設定で消えているわけではないので候補からは落とさない) |
 | `MapVisibilityPolicy`(1フレームの使い捨て) | `MapPickables`(`refresh` が `registry`/`bodyClassToggles`/`focusTargetId(...)`/`systemMembersAt(cameraPos, ...)` から毎フレーム1つ組み立て、`visibilityPolicy` getter で公開。`refresh` 前と、マップ視点でないフレームは null — `refresh` は早期 return の前に null を代入するので、読む側はビューを見て潰す必要がない) | `FocusMarkers.update`(引数)/ `Game.sync` が `mapPickables.visibilityPolicy` を読んで `EnvironmentScene.sync`・参照線 / `Stage.sync`・`EntityManager.syncMarkers`・`Targeter.syncTargetMarkers` へ配る。受け取り側は渡されなければ同じ4入力から自前で組む経路も残す(マップ経路の外からも呼べるようにするためで、マップ描画中は必ず共有インスタンス)。天体は `body(id)`、エンティティは `entity(kind, isActivePlayer)` で `{category, icon, label, orbit, pickable}` を返す判定関数であって状態を持たない(正本は `CameraSystem.bodyClassToggles` とフォーカス・カメラ位置) |
 | `FocusMarkers.allLabels` | CameraSystem(→FocusMarkers、構築時に1度だけ) | `MapContextActions.sync()` が id/isLagrange から親子関係(parentOf)を組むのに読む |
-| `PlanDisplay.apsisMarkers` | PlanEditor(→PlanDisplay) | `MapPickables.refresh()` が他の候補と合流させ、`MapContextActions.handleRightClick`/`OverviewCamera.update` へ1本の候補列として渡す |
+| `PlanDisplay.apsisMarkers` | PlanEditor(→PlanDisplay) | `MapPickables.refresh()` が他の候補と合流させ、`MapContextActions.handleMapRightClick`/`MapCamera.update` へ1本の候補列として渡す |
 
 ---
 
@@ -502,9 +519,9 @@ main.ts
 | 選択中ノード・計画編集モード | `PlanEditor.selectedNode` / `.editMode` | 選択の正本はノード(`KinematicState`)そのものへの**参照**。`selectedNodeIdx` は `plan.nodes` から同一性で引き直す get/set のみで、列から消えたノード(削除・下流の切り捨て・消化)は自動的に「未選択」になる |
 | 直近ノードの接近/達成通知済み | `PlanGuide`(`approachNotified` / `achievedNotified`) | 通知済みのノードそのものへの参照。編集のたびノードは別インスタンスへ置き換わるので、同一性比較がそのまま「同じノードについて通知済みか」の判定になる |
 | 予測表示期間の選択(`durationKey`)・任意期間の秒数(`customDurationSec`)・未来ゴーストスライダー(`sliderT`)・未来表示の禁止(`forceCurrent`)・目盛りラベルの表記(`tickLabelMode`) | `DisplayWindowManager` | いずれも private(`forceCurrent`/`tickLabelMode` のみ get/set アクセサで外部公開)。`forceCurrent` に true をセットすると `sliderT` も 0 へ戻す。期間の切替(`durationKey` 変更、または任意期間の確定)でも同様に `sliderT` を 0 へ戻す |
-| 未来表示(計画折れ線・予測軌道線・交点マーカー)を描く座標系(`frame`) | `DisplayWindowManager` | `OverviewCamera.cameraFrame`(視点固定座標系)とは別の正本。get/set アクセサ(`frame`)で公開。書き換えは `FrameControls` の「軌道計画(描画基準)」区画の中心/回転ゾーン(`planCenterZone`/`planRotationZone`)のみ、いずれも `Ephemeris.frameOf(center, rotatingWith)` 経由。同区画の「カメラの基準に追随」トグル(`followCamera`、既定 on)が on の間は `setFocus` によるカメラ側フォーカス移動もここへ連動する |
+| 未来表示(計画折れ線・予測軌道線・交点マーカー)を描く座標系(`frame`) | `DisplayWindowManager` | `MapCamera.cameraFrame`(視点固定座標系)とは別の正本。get/set アクセサ(`frame`)で公開。書き換えは `FrameControls` の「軌道計画(描画基準)」区画の中心/回転ゾーン(`planCenterZone`/`planRotationZone`)のみ、いずれも `Ephemeris.frameOf(center, rotatingWith)` 経由。同区画の「カメラの基準に追随」トグル(`followCamera`、既定 on)が on の間は `setFocus` によるカメラ側フォーカス移動もここへ連動する |
 | 予測到達割合(`predictionRatio`)・直近 `sync()` で受け取った表示期間(`lastDuration`) | `DisplayWindowManager` | いずれも private な導出値。`predictionRatio` は `sync(player)` が呼ばれるたび private `predictionCoverageRatio(player)` が自機の `predicted.state.t` と `current`(simTime, duration)から自分で求め直す(外部からの書き込みはない)。`lastDuration` は直近の `resolve()` 呼び出しが確定させた表示期間を憶えておくだけの値で、ジャンプ入力(DOM イベント、フレーム外)が `sliderT` を逆算する際にだけ参照される |
-| マップ視点(注視点相対オフセット・パン・上方向)・座標系(cameraFrame)・フォーカス(FocusTarget)・Viewpoint | `OverviewCamera` | `viewpoint: Viewpoint` は `CombatCameraSystem` と同じ形。`CameraSystem` はこの `viewpoint` を読むだけで自分では持たない。フォーカスは `camera/focus-target.ts` の `FocusTarget`(`{kind:'object', id}` または `{kind:'point', frame, point}`)で、`{kind:'object'}` が指す実位置は `OverviewCamera` が持たず、`update` の引数(`MapPickables.refresh()`)から毎フレーム引き直す。書き換えは `setFocusTarget`/`setCameraRotation` のみ、いずれも `FrameControls` の「カメラ(視点)」区画の中心/回転ゾーン(`cameraCenterZone`/`cameraRotationZone`)から呼ばれる |
+| マップ視点(注視点相対オフセット・パン・上方向)・座標系(cameraFrame)・フォーカス(FocusTarget)・Viewpoint | `MapCamera` | `viewpoint: Viewpoint` は `CombatCameraSystem` と同じ形。`CameraSystem` はこの `viewpoint` を読むだけで自分では持たない。フォーカスは `camera/focus-target.ts` の `FocusTarget`(`{kind:'object', id}` または `{kind:'point', frame, point}`)で、`{kind:'object'}` が指す実位置は `MapCamera` が持たず、`update` の引数(`MapPickables.refresh()`)から毎フレーム引き直す。書き換えは `setFocusTarget`/`setCameraRotation` のみ、いずれも `FrameControls` の「カメラ(視点)」区画の中心/回転ゾーン(`cameraCenterZone`/`cameraRotationZone`)から呼ばれる |
 | 戦闘視点(Viewpoint: position/lookTarget/up/fovDeg/aspect)・照準ズーム中か(zoomActive) | `CombatCameraSystem` | rot(クオータニオン)/dist・姿勢追従フラグ(camFollowAttitude)は内部の `ChaseCamera` が持つが、追従対象そのものは保持せず、`CameraSystem.update` から渡る `player` を毎フレーム `chaseCamera.update`/`toggleFollowAttitude` の引数として転送するだけ。`[G]`(`K.followAttitudeToggle`)を読んで `chaseCamera.toggleFollowAttitude(player)` を呼ぶのもこのクラス自身の `update`(`CameraSystem` は読まない)。zoomActive はこのクラス自身の `update` が `Input` から読んで保持する |
 | 現在のビュー(combat/map/dock) | `ViewManager`(private `worldView`/`isDockOpen`) | 遷移は基本的に `setView()` のみ(影響先 `CameraSystem.overviewMode` / `PlanEditor.editMode` / `DisplayWindowManager.forceCurrent` / タッチUI を一斉に切り替える)だが、`leaveDock()` だけは例外で、ドックを閉じて背後のビューへ戻るだけの操作を `setView()` を経由せず `isDockOpen` を直接倒して行う(`worldView` は動かさないので `canEnter` チェックも不要)。`worldView` が背後の 3D 側ビュー、`isDockOpen` がドックの開閉を持ち、`current` はこの2つから導出する。`isDockOpen` は `ViewManager` が正本のままで、`hud.overlayManager` へは `syncDockOverlay`(`setView`/`leaveDock` いずれからも呼ばれる)が開閉を通知するだけの一方向 — `OverlayManager.closeTopmostOnEscape()` が `'dock-view'` を閉じるときは `private dockOverlayHandle`(`close` が `this.leaveDock()` を呼ぶだけの adapter)を経由して戻ってくる |
 | ドックビューの対象基地 | `Docking`(private `_activeBase`) | 基地の右クリックメニューで設定。これが空でない間だけ `ViewManager.selectableViews()` に `'dock'` が並ぶ |
@@ -560,9 +577,9 @@ main.ts
   の引数として `CombatCameraSystem.update` から毎フレーム受け取るので、この揃える対象には含まれない。
   `PlanEditor` も基準となる艦を保持せず、`plan` getter が `ActiveVesselController.current` を
   そのつど参照で読むだけなので、同じくこの揃える対象には含まれない。
-- **`OverviewCamera.cameraFrame`(視点を固定する座標系)と `DisplayWindowManager.frame`(未来表示を
+- **`MapCamera.cameraFrame`(視点を固定する座標系)と `DisplayWindowManager.frame`(未来表示を
   描く座標系)** は別の正本で、ユーザーが `FrameControls` の2区画×(中心・回転)の
-  4ゾーンからそれぞれ独立に選ぶ — 4ゾーンとも状態は書き込み先の2クラス(`OverviewCamera`・
+  4ゾーンからそれぞれ独立に選ぶ — 4ゾーンとも状態は書き込み先の2クラス(`MapCamera`・
   `DisplayWindowManager`)に残したまま `FrameControls` は仲介するだけなので、この独立性自体は
   ゾーンの分割で変わらない。両者を連動させるかどうかだけが `FrameControls` 自身の状態
   (`followCamera`)で、有効なあいだフォーカス移動が `frame` の中心も動かす。
@@ -575,7 +592,7 @@ main.ts
   同居する — 「マップに何を出すか」を1枚にまとめるための意図的な同居で、正本は分かれたまま)、
   `PredictPanel`(期間・未来位置スライダー)は DisplayWindowManager が
   持ち、それぞれ自分の状態だけを映して自分の状態だけを受け取る。座標系パネル(FrameControls)だけは
-  例外で、状態を持たず `OverviewCamera` と `DisplayWindowManager`(`frame`)という別々の所有者へ
+  例外で、状態を持たず `MapCamera` と `DisplayWindowManager`(`frame`)という別々の所有者へ
   4ゾーンから書き込む横断モジュール(上記「同時に切り替わる」節参照)。表示・非表示も各所有者が毎フレームの
   sync で押し出す(ViewManager は関与しない)。
 - **キー割り当ての正本は `input/key-mapping.ts` の `KEY_MAPPING`、キーの処理の正本は各担当モジュール**。
@@ -651,10 +668,12 @@ main.ts
 | `PlanPath.arrivalStates()` / `PlanEditor.nodeDv()` | 各区間の弧の終端状態、およびそこから求めるノード Δv の導出値(表示専用) | 呼ぶたび再計算(弧側の積分結果をそのまま読むので、描画中の計画軌道と同じ結果になる) |
 | `VesselThrottle.thrustAccelVec` | ベルト物理(`Belt.update`)向けの推力加速度ベクトル | 毎フレーム上書き。プルーム・エンジン音は `ThrustEffects.sync` が `ship.thrust`(`GameEntity` 側、`VesselThrottle`/`PlanExecutor` どちらが書いても同じ)を直接読むので、ここには含まれない |
 | `Vessel` の各 getter(`rcsDamp` / `magsLeft` 等) | throttle/fire への転送 | — |
+| `Game.followedVessel` | 操作対象艦(`activeVessels.current`)、居なければ `entities.baseVessels()` の生存する先頭からの導出。カメラ・描画原点の速度基準・表示窓が読む対象で、操作対象そのものとは別 | 呼ぶたび再計算 |
+| `Vessel.dockCapacity` | 基地モジュール部品の `capacity` への転送(部品を積んでいなければ 0)。収容上限は基地共通の定数ではなく部品の性能値 | 部品の付け替え |
 | `FocusMarkers` 内部の `shownLabels[].pos`(マップの描画マーカー用、private) | 天体暦から毎フレーム再計算。ただし `MapVisibilityPolicy.body(id).pickable` が立つ天体だけ — 対象外の天体は座標を引かない | `update(t, focusId, toggles, cameraPos)` 毎(`syncLabels()` はこの値をマーカーへ置くだけ) |
 | `NavTarget` の相対 AN/DN 位置・通過時刻 | 自機軌道要素 + 対象の軌道面法線からの導出値(id 自体は正本) | `update()` 毎に全消去→再算出 |
 | `CreativeStage.preview`(軌道要素 + 位置) | 艦艇配置フォームの現在値からの導出値(正本はフォームの DOM) | `update()` 毎に再算出。パネルを閉じている間・値を解釈できないときは null |
-| `CreativeStage.issues`(`PlacementFieldIssue[]`) | 艦艇配置フォームの現在値からの導出値(正本はフォームの DOM。centerRadius/mu は `Ephemeris` から引く) | `update()` 毎に再算出、`sync()` で `ShipPlacerPanel.setIssues()` へ push。パネルを閉じている間は空配列 |
+| `CreativeStage.issues`(`PlacementFieldIssue[]`) | 艦艇配置フォームの現在値からの導出値(正本はフォームの DOM。centerRadius/mu は `Ephemeris` から引く) | `update()` 毎に再算出、`sync()` で `ObjectPlacerPanel.setIssues()` へ push。パネルを閉じている間は空配列 |
 | `PlanDisplay.apsisMarkers` / アイコン位置 | `path.finalSegment()` の `periapsis`/`apoapsis`(末尾区間の弧が検出した値)を読み、検出時と同じ基準天体(`FinalSegment.apsisCenter`)に対して — その位置だけを極値の時刻で `ephemeris.positionOf` から引き直して — 距離・高度を出した導出値(軌道要素からの解析的な導出ではない — エポック依存の値だと Δv=0 のノード追加でも動いてしまうため) | `apsisIconsOf()` 毎(`update()` から呼ぶ) |
 | 操作艦の EqAN/EqDN 位置 | `PlanEditor.update` が渡す `PlanPath.finalSegment()` の `samples` を `findEquatorCrossings` で走査した導出値。それ以外の対象(戦闘ターゲット・基地・航法ターゲット)は軌道要素からの解析的な導出値 | `EquatorNodeMarkerPair.update()` 毎 || `MapPickables.pickables` | `FocusMarkers.bodyPickables(displayTime, visibility)`(そのフレームの `MapVisibilityPolicy` が admits した天体+ラグランジュ点) + 生存中の全 `entities.ownShips()`・敵船・弾薬・基地のうち `visibility.entity(kind, ...)` が admits したものの displayState + `NavTarget.mapPickables()` + `PlanDisplay.apsisMarkers` + `entities.all()` の各 `equatorNodes?.mapPickables()` の合成(保持しない使い捨て配列) | `mapPickables.refresh()`(`game.update` 内、`cameraSystem.update()` 直前)毎に作り直す |
 
@@ -670,8 +689,7 @@ main.ts
 変化を検知できず、メモが黙って腐り、保持サンプル列も取り落とす。
 
 `KinematicState` は `{t, r, v}`(エポック付き状態ベクトル)で、**予測点列・エンティティ履歴・計画ノードは
-すべてこの 1 型で表す**。同じ情報量の型を複数持たない(旧 `TrajectorySample` / `LineSample` /
-`PlannedNode.time` はここへ統合済み)ため、「状態」と「その時刻」が別々に渡されて食い違うことがない。
+すべてこの 1 型で表す**。同じ情報量の型を複数持たないため、「状態」と「その時刻」が別々に渡されて食い違うことがない。
 
 **例外はない。** RK4 の加速度評価も `dynamics.ts` の `stepDynamics`(内部で `attractor.ts` の
 `attractorAccel` の全天体ぶんの和 + 自身の `j2Accel` + `atmosphere.ts` の `dragAccel` を合成)が `Vec3` を返す

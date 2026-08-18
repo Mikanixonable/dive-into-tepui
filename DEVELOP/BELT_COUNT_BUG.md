@@ -3,8 +3,8 @@
 ヘッドレス Chrome + CDP でステージ1を実機駆動して計測した、**未修正の**問題。
 ベルトの実装そのものの説明は [BELT.md](BELT.md)。
 
-表示リンク数 `visibleCount = min(mags, 18)` 自体は `PlayerFire.mags` に忠実
-(約1300フレームの監視で、不一致は `Player.updatePlayerControls` 内の呼び出し順による1フレーム遅れのみ)。
+表示リンク数 `visibleCount = min(mags, 18)` 自体は `Gunnery.mags` に忠実
+(約1300フレームの監視で、不一致は `Vessel.updateControls` 内の呼び出し順による1フレーム遅れのみ)。
 残っているのは、**在庫が意図せず減る**問題と、**数えにくい**問題。
 
 ## 1 [解決済み] [R] 手動リロードが満タンのマガジンを破棄していた
