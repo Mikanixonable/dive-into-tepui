@@ -1,9 +1,16 @@
-import { AnyPart } from './game-entity/parts';
-import { EnemyKind } from './vessel/enemy-ai';
-import { AttractorId } from '../physics/attractor';
-import type { GamePhase } from './stages/stage';
-import type { WaveAttackSaveData } from './stages/stage-utils/wave-attack';
+import type { AnyPart } from './game-entity/parts';
 import type { VesselAssembly } from './vessel/assembly';
+
+// 保存形式は実行時の Stage / EnemyAi / 天体レジストリを参照しない。これらはすべて JSON 上では
+// 判別 union または文字列なので、ここで同じ形を定義して保存データ境界を純粋に保つ。
+type AttractorId = string;
+type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
+type EnemyKindSaveData = { kind: 'drifting' } | { kind: 'stage0'; typeIndex: number };
+interface WaveAttackSaveData {
+  waveState: 'waiting_for_ammo' | 'spawning_enemies' | 'active_combat';
+  spawnTimer: number;
+  waveCount: number;
+}
 
 export interface Vec3SaveData {
   x: number;
@@ -16,6 +23,186 @@ export interface QuatSaveData {
   y: number;
   z: number;
   w: number;
+}
+
+// PlayerSaveData と BaseSaveData が共有する、Three.js を含まない設計データ境界。
+// VesselAssembly は tree と部品の値だけを持つため、JSON 化しても実行時オブジェクトへの参照を持たない。
+export type AssemblySaveData = VesselAssembly;
+
+// 基地保存データの拡張形式。フィールド自体は旧セーブに無いため任意だが、現行の書き出しでは必ず
+// 1 を入れる。将来読めない形式を安全に既定基地へフォールバックするため、GameSaveData.version とは
+// 分けて管理する。
+export const BASE_SAVE_FORMAT_VERSION = 1;
+
+export interface DockBindingSaveData {
+  readonly vesselId: string;
+  readonly slotIndex: number;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isVec3Value(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return isFiniteNumber(value.x) && isFiniteNumber(value.y) && isFiniteNumber(value.z);
+}
+
+function isInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value);
+}
+
+function isPortRefValue(value: unknown): boolean {
+  if (!isRecord(value) || typeof value.kind !== 'string') return false;
+  if (value.kind === 'axial') return value.sign === 1 || value.sign === -1;
+  return value.kind === 'lateral'
+    && typeof value.primitiveId === 'string'
+    && isInteger(value.faceIndex)
+    && value.faceIndex >= 0;
+}
+
+function isPrimitiveShapeValue(value: unknown): boolean {
+  if (!isRecord(value) || typeof value.kind !== 'string') return false;
+  switch (value.kind) {
+    case 'circle':
+      return isFiniteNumber(value.radius) && value.radius > 0
+        && isInteger(value.branchCount) && value.branchCount >= 2 && value.branchCount <= 6;
+    case 'ellipse':
+      return isFiniteNumber(value.majorRadius) && value.majorRadius > 0
+        && isFiniteNumber(value.minorRadius) && value.minorRadius > 0;
+    case 'polygon':
+      return isFiniteNumber(value.radius) && value.radius > 0
+        && isInteger(value.sides) && [3, 4, 5, 6, 8].includes(value.sides);
+    case 'notched':
+      return isFiniteNumber(value.radius) && value.radius > 0
+        && isInteger(value.sides) && (value.sides === 6 || value.sides === 8);
+    default:
+      return false;
+  }
+}
+
+function isSectionValue(value: unknown): boolean {
+  if (!isRecord(value) || !Array.isArray(value.primitives) || value.primitives.length === 0) return false;
+  return value.primitives.every((primitive) => {
+    if (!isRecord(primitive) || typeof primitive.id !== 'string'
+      || !isPrimitiveShapeValue(primitive.shape) || !isFiniteNumber(primitive.phaseAngle)) return false;
+    if (primitive.attachment === null) return true;
+    if (!isRecord(primitive.attachment)) return false;
+    return typeof primitive.attachment.parentId === 'string'
+      && isInteger(primitive.attachment.parentFaceIndex)
+      && primitive.attachment.parentFaceIndex >= 0
+      && isInteger(primitive.attachment.childFaceIndex)
+      && primitive.attachment.childFaceIndex >= 0;
+  });
+}
+
+function isEdgeKindValue(value: unknown): boolean {
+  if (!isRecord(value) || typeof value.kind !== 'string') return false;
+  if (value.kind === 'hull') return true;
+  if (value.kind === 'truss') return isFiniteNumber(value.sectionSize) && value.sectionSize > 0;
+  return value.kind === 'decoupler' && isFiniteNumber(value.separationImpulse);
+}
+
+function isMountPointValue(value: unknown): boolean {
+  if (!isRecord(value) || typeof value.kind !== 'string') return false;
+  if (value.kind === 'port') {
+    return typeof value.nodeId === 'string' && isPortRefValue(value.port);
+  }
+  return (value.kind === 'surface' || value.kind === 'truss')
+    && typeof value.edgeId === 'string'
+    && isFiniteNumber(value.along)
+    && isFiniteNumber(value.around);
+}
+
+function isPartValue(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return typeof value.id === 'string'
+    && typeof value.type === 'string'
+    && typeof value.name === 'string'
+    && isFiniteNumber(value.weight)
+    && isFiniteNumber(value.maxHp)
+    && isFiniteNumber(value.hp);
+}
+
+// JSON から読んだ assembly の「形」を確認する。部品種別ごとの性能値や、ノード参照の意味的な検証は
+// Vessel 側で行うが、ここで配列・数値・判別子を絞ることで壊れた JSON が Three.js/幾何計算へ届かない。
+export function isAssemblySaveData(value: unknown): value is AssemblySaveData {
+  if (!isRecord(value) || !isRecord(value.tree)
+    || !Array.isArray(value.tree.nodes) || !Array.isArray(value.tree.edges)
+    || !Array.isArray(value.placements)) return false;
+
+  const nodesOk = value.tree.nodes.every((node) => isRecord(node)
+    && typeof node.id === 'string'
+    && isVec3Value(node.pos)
+    && isVec3Value(node.axis)
+    && isFiniteNumber(node.phaseAngle)
+    && isSectionValue(node.section));
+  if (!nodesOk) return false;
+
+  const edgesOk = value.tree.edges.every((edge) => isRecord(edge)
+    && typeof edge.id === 'string'
+    && typeof edge.a === 'string'
+    && typeof edge.b === 'string'
+    && isPortRefValue(edge.portA)
+    && isPortRefValue(edge.portB)
+    && isFiniteNumber(edge.length)
+    && edge.length > 0
+    && isEdgeKindValue(edge.kind));
+  if (!edgesOk) return false;
+
+  return value.placements.every((placement) => {
+    if (!isRecord(placement) || !isPartValue(placement.part)) return false;
+    if (placement.kind === 'external') return isMountPointValue(placement.mount);
+    return placement.kind === 'internal'
+      && Array.isArray(placement.edgeIds)
+      && placement.edgeIds.length > 0
+      && placement.edgeIds.every((id) => typeof id === 'string');
+  });
+}
+
+export function isSupportedBaseSaveFormat(formatVersion: number | undefined): boolean {
+  return formatVersion === undefined
+    || (Number.isInteger(formatVersion)
+      && formatVersion >= 1
+      && formatVersion <= BASE_SAVE_FORMAT_VERSION);
+}
+
+// 保存された slotIndex を優先しつつ、旧セーブ・重複・範囲外の割当は保存順の空きスロットへ移す。
+// 空きが無い場合も収容中の船を捨てず、既存復元経路と同じく 0 を返す。
+export function resolveDockSlotIndices(
+  bindings: readonly DockBindingSaveData[] | undefined,
+  vessels: readonly { readonly id: string }[],
+  capacity: number,
+): readonly number[] {
+  const slotCount = Number.isInteger(capacity) && capacity > 0 ? capacity : 0;
+  const byVesselId = new Map<string, number>();
+  const candidates: readonly unknown[] = Array.isArray(bindings) ? bindings : [];
+  for (const value of candidates) {
+    if (!isRecord(value) || typeof value.vesselId !== 'string') continue;
+    const slotIndex = value.slotIndex;
+    if (typeof slotIndex !== 'number' || !Number.isInteger(slotIndex)) continue;
+    if (slotIndex < 0 || slotIndex >= slotCount) continue;
+    byVesselId.set(value.vesselId, slotIndex);
+  }
+
+  const occupied = new Set<number>();
+  return vessels.map((vessel) => {
+    const requested = byVesselId.get(vessel.id);
+    if (requested !== undefined && !occupied.has(requested)) {
+      occupied.add(requested);
+      return requested;
+    }
+    for (let slot = 0; slot < slotCount; slot++) {
+      if (occupied.has(slot)) continue;
+      occupied.add(slot);
+      return slot;
+    }
+    return 0;
+  });
 }
 
 export interface EntitySaveData {
@@ -81,7 +268,7 @@ export interface PlayerSaveData extends EntitySaveData {
   throttle: ThrottleSaveData;
   parts: AnyPart[];
   // 第10版のドック編集で確定した形状・取付位置。旧セーブには無く、既定有人艦へ互換復元する。
-  assembly?: VesselAssembly;
+  assembly?: AssemblySaveData;
   plan: PlanSaveData | null;
   // 旧セーブデータには無いフィールドなので任意。無ければ followPlan から移行する。
   planExecution?: 'off' | 'instant' | 'powered';
@@ -104,17 +291,23 @@ export interface BaseSaveData {
   w?: Vec3SaveData;
   // 基地の燃料。旧セーブには無いため任意。
   fuel?: number;
+  // 基地本体の形状・取付位置。旧セーブには無いため、無ければ既定基地へフォールバックする。
+  assembly?: AssemblySaveData;
+  // 基地保存データの拡張形式。旧セーブには無いため任意。未指定は現行形式として読める。
+  formatVersion?: number;
   // 倉庫在庫部品。旧セーブには無いため任意。
   inventory?: AnyPart[];
   // 格納中の艦は entities.ownShips() に含まれないため、艦本体(軌道状態・parts・弾薬・計画)を
   // まるごとここへ保存する。復元時に Vessel を作り直し、DockedVesselEntry.player を張り直す。
   dockedVessels: PlayerSaveData[];
   dockedShips?: PlayerSaveData[];
+  // 格納船 id とドックスロットの対応。旧セーブには無いため、無ければ保存順で割り当てる。
+  dockBindings?: readonly DockBindingSaveData[];
   throttle?: ThrottleSaveData;
 }
 
 export interface EnemySaveData extends EntitySaveData {
-  enemyKind: EnemyKind;
+  enemyKind: EnemyKindSaveData;
   alive: boolean;
   health: number;
   accent: string | number;

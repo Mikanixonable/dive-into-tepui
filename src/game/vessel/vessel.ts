@@ -58,7 +58,16 @@ import { ReentryEffects } from '../vessel/reentry-effects';
 import { PilotMarkers } from '../vessel/pilot-markers';
 import { Plan } from '../plan/plan';
 import { PlanExecutor, type PlanExecutionMode } from '../plan/plan-executor';
-import type { BaseSaveData, EnemySaveData, PlanSaveData, PlayerSaveData } from '../save-data';
+import {
+  BASE_SAVE_FORMAT_VERSION,
+  isSupportedBaseSaveFormat,
+  resolveDockSlotIndices,
+  type AssemblySaveData,
+  type BaseSaveData,
+  type EnemySaveData,
+  type PlanSaveData,
+  type PlayerSaveData,
+} from '../save-data';
 import type { VesselAssembly } from './assembly';
 import type { MassProperties } from './mass-properties';
 import { hasBaseModule } from './capabilities';
@@ -68,7 +77,7 @@ import { EnemyAi, type EnemyKind } from './enemy-ai';
 import { PartInventory } from './part-inventory';
 import { baseMarkerSvg, headingHpMarkerSvg, notchedHpMarkerSvg } from './hp-marker-svg';
 import {
-  blueprintDesign, crewedShipDesign, hostileShipDesign, orbitalBaseDesign,
+  baseAssemblyFromSaveData, blueprintDesign, crewedShipDesign, hostileShipDesign, orbitalBaseDesign,
   type VesselDesign, type VesselFaction,
 } from './vessel-designs';
 import { createBlueprint, type VesselBlueprint } from './blueprint';
@@ -163,7 +172,20 @@ function resolveDesign(init: VesselInit): VesselDesign {
       tree: assembly.tree, placements: assembly.placements, now: 0,
     }));
   }
-  if ('orbitalBase' in init || 'savedBase' in init) return orbitalBaseDesign();
+  if ('orbitalBase' in init) return orbitalBaseDesign();
+  if ('savedBase' in init) {
+    const saved = init.savedBase;
+    if (!isSupportedBaseSaveFormat(saved.formatVersion)) return orbitalBaseDesign();
+    const assembly = baseAssemblyFromSaveData(saved.assembly);
+    if (!assembly) return orbitalBaseDesign();
+    try {
+      return orbitalBaseDesign(assembly);
+    } catch {
+      // 断面・エッジ・配置の意味的な破損は設計導出時に例外になることがある。セーブ全体を失わず、
+      // 既定基地で復元を続ける。
+      return orbitalBaseDesign();
+    }
+  }
   if ('hostileShip' in init) return hostileShipDesign(init.hostileShip.enemyKind, init.hostileShip.accent);
   return hostileShipDesign(init.savedHostile.enemyKind, init.savedHostile.accent);
 }
@@ -227,6 +249,22 @@ function resolveIdentity(init: VesselInit, design: VesselDesign): VesselIdentity
   return {
     name: d.name || '', state: savedState(d, init.simTime),
     att: savedAtt(d.q, d.w), id: d.id || undefined,
+  };
+}
+
+// assembly は Three.js の Object3D を含まない値だが、保存境界で部品・配列をコピーしておく。これにより
+// セーブ後の runtime 部品 HP や作業中の配列変更が、別の保存値を通じて設計へ逆流しない。
+function serializeAssembly(assembly: VesselAssembly): AssemblySaveData {
+  return {
+    tree: assembly.tree,
+    placements: assembly.placements.map((placement) => {
+      const part = { ...placement.part };
+      if (placement.kind === 'internal') return { ...placement, part, edgeIds: [...placement.edgeIds] };
+      const mount = placement.mount.kind === 'port'
+        ? { ...placement.mount, port: { ...placement.mount.port } }
+        : { ...placement.mount };
+      return { ...placement, part, mount };
+    }),
   };
 }
 
@@ -490,9 +528,10 @@ export class Vessel extends GameEntity {
       this.inventory.refuel(saved.fuel);
     }
     const savedVessels = saved.dockedVessels ?? saved.dockedShips ?? [];
+    const slotIndices = resolveDockSlotIndices(saved.dockBindings, savedVessels, this.dockCapacity);
     state.dockedVessels = savedVessels.map((data, idx) => {
       const vessel = new Vessel({ savedShip: data, simTime }, deps);
-      const slotIndex = idx < this.dockCapacity ? idx : 0;
+      const slotIndex = slotIndices[idx] ?? 0;
       this.attachDockedVesselMesh(vessel, slotIndex);
       return { id: vessel.id, name: vessel.name, hp: vessel.hp, maxHp: vessel.maxHp, parts: vessel.parts, vessel, slotIndex };
     });
@@ -1025,10 +1064,7 @@ export class Vessel extends GameEntity {
       power: this.power!.serialize(),
       throttle: this.throttle.serialize(),
       parts: this.parts.map((p) => ({ ...p })) as AnyPart[],
-      assembly: this.assembly ? {
-        tree: this.assembly.tree,
-        placements: this.assembly.placements.map((placement) => ({ ...placement })),
-      } : undefined,
+      assembly: this.assembly ? serializeAssembly(this.assembly) : undefined,
       planExecution: this._planExecution,
       fineAttitude: this._fineAttitude,
       plan: this.serializePlan(),
@@ -1066,8 +1102,11 @@ export class Vessel extends GameEntity {
       q: { ...this.att.q },
       w: { ...this.att.w },
       fuel: this.totalFuel,
+      formatVersion: BASE_SAVE_FORMAT_VERSION,
+      assembly: this.assembly ? serializeAssembly(this.assembly) : undefined,
       inventory: state.inventory.map((p) => ({ ...p })),
       dockedVessels: state.dockedVessels.map((entry) => entry.vessel.serializeAsShip()),
+      dockBindings: state.dockedVessels.map((entry) => ({ vesselId: entry.vessel.id, slotIndex: entry.slotIndex })),
       throttle: this.throttle.serialize(),
     };
   }
