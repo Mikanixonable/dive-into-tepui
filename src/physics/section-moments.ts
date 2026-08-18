@@ -1,6 +1,6 @@
 // 断面(基本断面を面で貼り合わせた複合体)の面積・重心・断面二次モーメントを、数値積分を使わず
-// すべて閉形式で求める純関数群。貼り合わせを平面同士の突き合わせに限ると基本断面同士が重ならない
-// ため、複合体の幾何量は構成要素の総和として厳密に書ける。THREE/DOM 非依存。
+// すべて閉形式で求める純関数群。基本断面同士が重ならない断面に限り、複合体の幾何量は構成要素の
+// 総和として厳密に書ける — 重なる断面は総和が成り立たないため例外になる。THREE/DOM 非依存。
 
 // 断面平面上の点 [m]。
 export interface Vec2 {
@@ -76,11 +76,9 @@ export interface PolygonMoments {
   readonly mxy: number; // ∫xy dA
 }
 
-type RawMoments = PolygonMoments;
+const ZERO_MOMENTS: PolygonMoments = { area: 0, mx: 0, my: 0, mxx: 0, myy: 0, mxy: 0 };
 
-const ZERO_MOMENTS: RawMoments = { area: 0, mx: 0, my: 0, mxx: 0, myy: 0, mxy: 0 };
-
-function addMoments(a: RawMoments, b: RawMoments): RawMoments {
+function addMoments(a: PolygonMoments, b: PolygonMoments): PolygonMoments {
   return {
     area: a.area + b.area,
     mx: a.mx + b.mx,
@@ -91,7 +89,7 @@ function addMoments(a: RawMoments, b: RawMoments): RawMoments {
   };
 }
 
-function subtractMoments(a: RawMoments, b: RawMoments): RawMoments {
+function subtractMoments(a: PolygonMoments, b: PolygonMoments): PolygonMoments {
   return {
     area: a.area - b.area,
     mx: a.mx - b.mx,
@@ -103,7 +101,7 @@ function subtractMoments(a: RawMoments, b: RawMoments): RawMoments {
 }
 
 // 図形を原点まわりに angle だけ回した後のモーメント。
-function rotateMoments(m: RawMoments, angle: number): RawMoments {
+function rotateMoments(m: PolygonMoments, angle: number): PolygonMoments {
   const c = Math.cos(angle);
   const s = Math.sin(angle);
   return {
@@ -141,7 +139,7 @@ export function polygonMomentsAboutOrigin(vertices: readonly Vec2[]): PolygonMom
 }
 
 // 原点まわりのモーメントを重心まわりへ平行軸の定理で移す。
-function toCentroidal(m: RawMoments): SectionMoments {
+function toCentroidal(m: PolygonMoments): SectionMoments {
   if (!(Math.abs(m.area) > 0)) throw new Error('section area is zero or not finite');
   const cx = m.mx / m.area;
   const cy = m.my / m.area;
@@ -236,17 +234,17 @@ export function circleSegmentMoments(radius: number, halfAngle: number): CircleS
 }
 
 // 側面の口が切り落とす弓形の半中心角 [rad]。弦の長さが母断面の半径 × PORT_WIDTH_RATIO になる角。
-function portHalfAngle(): number {
+export function portHalfAngle(): number {
   return Math.asin(PORT_WIDTH_RATIO / 2);
 }
 
 // 側面の口ぶんの弓形を差し引いた円断面の、原点まわりのモーメント。
-function circleMoments(radius: number, branchCount: number, phaseAngle: number): RawMoments {
+function circleMoments(radius: number, branchCount: number, phaseAngle: number): PolygonMoments {
   const disc = Math.PI * radius * radius;
   const discSecond = (Math.PI * radius ** 4) / 4;
-  let moments: RawMoments = { area: disc, mx: 0, my: 0, mxx: discSecond, myy: discSecond, mxy: 0 };
+  let moments: PolygonMoments = { area: disc, mx: 0, my: 0, mxx: discSecond, myy: discSecond, mxy: 0 };
   const segment = circleSegmentMoments(radius, portHalfAngle());
-  const alongX: RawMoments = {
+  const alongX: PolygonMoments = {
     area: segment.area,
     mx: segment.area * segment.centroidDist,
     my: 0,
@@ -262,10 +260,10 @@ function circleMoments(radius: number, branchCount: number, phaseAngle: number):
 }
 
 // 楕円断面の原点まわりのモーメント。長半径は phaseAngle の方向を向く。
-function ellipseMoments(majorRadius: number, minorRadius: number, phaseAngle: number): RawMoments {
+function ellipseMoments(majorRadius: number, minorRadius: number, phaseAngle: number): PolygonMoments {
   const a = majorRadius;
   const b = minorRadius;
-  const unrotated: RawMoments = {
+  const unrotated: PolygonMoments = {
     area: Math.PI * a * b,
     mx: 0,
     my: 0,
@@ -276,7 +274,7 @@ function ellipseMoments(majorRadius: number, minorRadius: number, phaseAngle: nu
   return rotateMoments(unrotated, phaseAngle);
 }
 
-// 辺を持つ基本断面。円と楕円は辺を持たないため、複合体の根としてしか使えない。
+// 辺を持つ基本断面。
 type PolygonalShape = Extract<PrimitiveShape, { kind: 'polygon' | 'notched' }>;
 
 function isPolygonal(shape: PrimitiveShape): shape is PolygonalShape {
@@ -300,9 +298,10 @@ export interface PlacedSectionPrimitive {
 }
 
 interface PlacedPrimitive extends PlacedSectionPrimitive {
-  readonly moments: RawMoments;
+  readonly moments: PolygonMoments;
 }
 
+// 複合体の根を、自身の回転位相のまま断面の座標原点へ置く。辺を持つ基本断面だけが配置後の輪郭を持つ。
 function placeRoot(primitive: SectionPrimitive): PlacedPrimitive {
   const shape = primitive.shape;
   const phase = primitive.phaseAngle;
@@ -367,9 +366,64 @@ function faceOf(vertices: readonly Vec2[], index: number, id: string): { from: V
   return { from: vertices[index]!, to: vertices[(index + 1) % vertices.length]! };
 }
 
+// 配置済みの2つの基本断面が重なっているとみなす、面積比の下限。突き合わせで辺だけを共有する
+// 正しい貼り合わせでも、変換の丸めで幅0の細片が残りうるので、その分だけ余裕を取る。
+const OVERLAP_AREA_RATIO = 1e-9;
+
+// 辺 a→b の左側にあれば正になる符号付き量。
+function sideOf(a: Vec2, b: Vec2, point: Vec2): number {
+  return (b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x);
+}
+
+// 直線 a→b と線分 from→to の交点。呼び出し側が両端の側を確かめてから使う。
+function edgeCrossing(a: Vec2, b: Vec2, from: Vec2, to: Vec2): Vec2 {
+  const sFrom = sideOf(a, b, from);
+  const t = sFrom / (sFrom - sideOf(a, b, to));
+  return { x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t };
+}
+
+// 反時計回りの凸多角形どうしが重なる面積。突き合わせで辺だけを共有するときは0になる。
+function convexOverlapArea(subject: readonly Vec2[], clip: readonly Vec2[]): number {
+  let output: readonly Vec2[] = subject;
+  for (let i = 0; i < clip.length && output.length > 0; i++) {
+    const a = clip[i]!;
+    const b = clip[(i + 1) % clip.length]!;
+    const input = output;
+    const clipped: Vec2[] = [];
+    for (let j = 0; j < input.length; j++) {
+      const previous = input[(j + input.length - 1) % input.length]!;
+      const current = input[j]!;
+      const previousInside = sideOf(a, b, previous) >= 0;
+      const currentInside = sideOf(a, b, current) >= 0;
+      if (previousInside !== currentInside) clipped.push(edgeCrossing(a, b, previous, current));
+      if (currentInside) clipped.push(current);
+    }
+    output = clipped;
+  }
+  return output.length < 3 ? 0 : Math.abs(polygonMomentsAboutOrigin(output).area);
+}
+
+// 配置済みの基本断面のうち、面積を分け合う組があれば例外を投げる。木構造として正しい断面でも
+// 図形は重なりうるため、総和が幾何量になるかどうかはここで確かめてはじめて言える。
+function requireDisjoint(placed: readonly PlacedPrimitive[]): void {
+  for (let i = 0; i < placed.length; i++) {
+    const a = placed[i]!;
+    if (!a.vertices) continue;
+    for (let j = i + 1; j < placed.length; j++) {
+      const b = placed[j]!;
+      if (!b.vertices) continue;
+      const overlap = convexOverlapArea(a.vertices, b.vertices);
+      const smaller = Math.min(Math.abs(a.moments.area), Math.abs(b.moments.area));
+      if (overlap > OVERLAP_AREA_RATIO * smaller) {
+        throw new Error(`primitives "${a.id}" and "${b.id}" overlap by ${overlap} m^2`);
+      }
+    }
+  }
+}
+
 // 複合体を根から辿り、すべての基本断面を断面の座標系へ配置する。木構造として不正な断面
 // (根が1つでない、親が存在しない、循環している、辺を持たない断面を子や親にしている、
-// 貼り合わせる2辺の長さが違う)に対しては例外を投げる。
+// 貼り合わせる2辺の長さが違う)と、図形として重なる断面に対しては例外を投げる。
 function placePrimitives(section: CrossSection): readonly PlacedPrimitive[] {
   const primitiveById = new Map<string, SectionPrimitive>();
   for (const primitive of section.primitives) {
@@ -401,11 +455,12 @@ function placePrimitives(section: CrossSection): readonly PlacedPrimitive[] {
   if (placed.length !== section.primitives.length) {
     throw new Error(`${section.primitives.length - placed.length} primitives are not reachable from the root`);
   }
+  requireDisjoint(placed);
   return placed;
 }
 
-// 複合断面全体の面積・重心・重心まわりの断面二次モーメント。基本断面同士は貼り合わせ面を共有して
-// 重ならないため、結果は構成要素の総和になる。木構造として不正な断面には例外を投げる。
+// 複合断面全体の面積・重心・重心まわりの断面二次モーメント。重ならない基本断面の総和として求まる。
+// 木構造として不正な断面と、図形として重なる断面には例外を投げる。
 export function sectionMoments(section: CrossSection): SectionMoments {
   let total = ZERO_MOMENTS;
   for (const primitive of placePrimitives(section)) {
@@ -415,7 +470,7 @@ export function sectionMoments(section: CrossSection): SectionMoments {
 }
 
 // 複合断面を構成する基本断面を、それぞれ断面の座標系へ配置して返す。順序は根から始まる幅優先で、
-// 木構造として不正な断面には例外を投げる。
+// 木構造として不正な断面と、図形として重なる断面には例外を投げる。
 export function placeSectionPrimitives(section: CrossSection): readonly PlacedSectionPrimitive[] {
   return placePrimitives(section);
 }

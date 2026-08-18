@@ -146,7 +146,7 @@ function reachableClosure(
     for (const [id, f] of facilities) {
       if (!built.has(id)) {
         if (!f.buildCost.every((c) => owned.has(c.resourceId))) continue;
-        if (!f.requiresFacility.every((r) => built.has(r as FacilityId))) continue;
+        if (!f.requiresFacility.every((r) => built.has(r))) continue;
       }
       if (!f.inputs.every((i) => i.anyOf.some((c) => owned.has(c)))) continue;
       built.add(id);

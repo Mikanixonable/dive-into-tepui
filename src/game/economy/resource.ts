@@ -1,6 +1,5 @@
 // 資源の静的事実の表: 貯蔵の性格と容積計算に要る密度(ResourceDef)と、
 // 元素・鉱石・中間素材・部材を通した資源の一覧(RESOURCES)。
-// キーがそのまま ResourceId となり、参照する側の網羅性はこの型が担保する。
 
 // 貯蔵の性格。容器と取り扱いの制約がここで決まる。
 export type ResourceStorage = 'bulk' | 'cryogenic' | 'pressurized' | 'hazardous';
@@ -143,8 +142,7 @@ export const RESOURCES = {
   superconductor: { id: 'superconductor', name: '超伝導材', symbol: 'SC', density: 6500, storage: 'bulk' },
 } satisfies Record<string, ResourceDef>;
 
-// RESOURCES を satisfies で受けているため、リテラルなキー集合がそのまま保たれる —
-// 資源を1つ足すと、それを Record のキーに使う側で欠落がコンパイルエラーになる。
+// 資源の id。
 export type ResourceId = keyof typeof RESOURCES;
 
 export const RESOURCE_IDS = Object.keys(RESOURCES) as readonly ResourceId[];

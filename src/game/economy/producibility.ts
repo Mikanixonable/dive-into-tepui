@@ -36,7 +36,7 @@ export interface BlueprintTank {
   readonly shellMass: number; // kg
 }
 
-// この関数が設計に対して要求する形。第2巻 §4-1 の VesselBlueprint が構造的にこれを満たす。
+// この関数が設計に対して要求する形。
 export interface ProducibilityBlueprint {
   readonly parts: readonly BlueprintPart[];
   readonly tanks: readonly BlueprintTank[];
@@ -81,21 +81,25 @@ function addFacilityResources(def: FacilityDef, ledger: ResourceLedger, demand: 
 export function producibility(
   bp: ProducibilityBlueprint,
   ledger: ResourceLedger,
-  facilities: readonly string[],
+  facilities: readonly FacilityId[],
   powerAvailable: number,
 ): readonly Requirement[] {
   const owned = new Set(facilities);
   const demand = new ResourceDemand();
-  const missingFacilities: string[] = [];
+  const missingFacilities: FacilityId[] = [];
+  const required = new Set<FacilityId>();
   // 建造の間に同時に動かす設備の消費電力。所持の有無に依らず、要る設備すべてを数える。
   let powerNeeded = 0;
 
+  // 要求された設備1基を数える。同じ設備を複数の搭載要素が要求しても、実物は1基なので
+  // 消費電力も資源も1回だけ数える。
   const requireFacility = (id: FacilityId): void => {
     const def: FacilityDef | undefined = FACILITIES[id];
     if (def === undefined) return;
+    if (required.has(id)) return;
+    required.add(id);
     powerNeeded += def.powerDraw;
     if (owned.has(id)) return;
-    if (missingFacilities.includes(id)) return;
     missingFacilities.push(id);
     addFacilityResources(def, ledger, demand);
   };

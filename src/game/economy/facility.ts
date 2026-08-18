@@ -28,7 +28,7 @@ export interface FacilityDef {
   readonly powerOutput: number; // W。発電設備が出す電力
   readonly buildCost: readonly FacilityBuildCost[];
   // これを作るのに要る別の設備。技術の前提ではなく物理的な前提だけを表す。
-  readonly requiresFacility: readonly string[];
+  readonly requiresFacility: readonly FacilityId[];
 }
 
 const TONNE = 1000; // [kg]
@@ -49,7 +49,8 @@ const RATE_PROCESS = 2e-2;
 const RATE_FINE = 2e-3;
 const RATE_TRACE = 1e-6;
 
-export const FACILITIES = {
+// 表のリテラルから id の集合を取り出すための素の値。FacilityDef としての検査は FACILITIES で受ける。
+const FACILITY_DEFS = {
   // 採掘と一次処理
   'regolith-miner': {
     id: 'regolith-miner',
@@ -718,9 +719,11 @@ export const FACILITIES = {
     buildCost: [{ resourceId: 'iron', mass: 3 * TONNE }],
     requiresFacility: ['machine-shop'],
   },
-} satisfies Record<string, FacilityDef>;
+} as const;
 
-export type FacilityId = keyof typeof FACILITIES;
+export type FacilityId = keyof typeof FACILITY_DEFS;
+
+export const FACILITIES: Record<FacilityId, FacilityDef> = FACILITY_DEFS;
 
 export const FACILITY_IDS = Object.keys(FACILITIES) as readonly FacilityId[];
 
