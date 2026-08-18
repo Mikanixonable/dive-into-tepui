@@ -119,7 +119,12 @@ main.ts
 │       │                                       pauseGame/resumeGame の2クロージャで受け取る(「クロージャ注入を避け
 │       │                                       参照を渡す」規則への暫定的な例外。理由は docking.ts のコンストラクタ
 │       │                                       コメントと CLAUDE.md にある)
-│       │   ├── BaseView                       ... DOM は Hud.layers.view 配下。格納艦/部品/ショップタブのフルスクリーン UI
+│       │   ├── BlueprintLibrary               ... 生産にかけられる設計の保管庫(private blueprints)。永続化は
+│       │   │                                   LocalStorageBlueprintStore(鍵 tepui.blueprints)。BaseView へ参照で渡す
+│       │   ├── BaseView                       ... DOM は Hud.layers.view 配下。格納艦/部品/生産/ショップタブのフルスクリーン UI。
+│       │   │                                   生産タブは設計ごとの生産可能性(不足の資源・設備・電力)と基地の在庫を出し、
+│       │   │                                   onProduceVessel(base, blueprint) で Docking.produceVessel を呼ぶ。
+│       │   │                                   デバッグ用の資源加算(資源 id + 質量 → base.baseState.resources)も同じタブが持つ
 │       │   └── ResourceTransferDialog        ... DOM は Hud.layers.view 配下。ドッキング中の2機の間で資源を移す
 │       │                                       ダイアログ(readonly transferDialog)。openTransfer() が開く
 │       ├── ViewManager                    ... 現在のビュー(combat/map/dock)の正本。遷移は setView() ひとつに集約。
@@ -141,7 +146,8 @@ main.ts
 │       │                                       super() の後に走るため)。ステージが自機を置くのは protected addOwnShip(init?) で、
 │       │                                       new Vessel → entities.addVessel → activeVessels.claimIfNone をまとめて行う
 │       │                                       (初期弾薬は CrewedShipInit.ammo として艦の構築引数に載る)。ステージ以外では
-│       │                                       Docking.buildVessel が new Vessel し(entities へは足さず基地の dockedVessels へ入る)、
+│       │                                       Docking.produceVessel が要求を集計し在庫を消費して new Vessel し
+│       │                                       (entities へは足さず基地の dockedVessels へ入る)、
 │       │                                       Docking.launch が発進時に entities.addVessel + activeVessels.set する — 新造艦が
 │       │                                       その場で操作対象を奪わないよう claimIfNone は通らない。EntityManager の
 │       │                                       restoreFromSave も new Vessel + addVessel する(操作対象は
@@ -233,7 +239,10 @@ main.ts
 │       │   │   ├── RcsEffects    → Billboard ×8   ... 状態なし。ノズル1基につき1枚、配置は RCS_NOZZLES が正本
 │       │   │   ├── ReentryEffects → Billboard ×2   ... 状態なし。強度は毎フレーム qdyn から導く
 │       │   │   ├── EnemyAi                ... 敵対勢力の機体だけが持つ行動則(バースト射撃の抽選と見越し射撃)。他は null
-│       │   │   ├── BaseState              ... 基地モジュールを積んだ機体だけが持つ在庫と収容(money/inventory/dockedVessels)。他は null
+│       │   │   ├── BaseState              ... 基地モジュールを積んだ機体だけが持つ在庫と収容
+│       │   │   │                              (money/inventory/dockedVessels/resources)。他は null
+│       │   │   │   └── ResourceLedger      ... 資源 id ごとの質量[kg]の帳簿(readonly resources)。生産がここから引く。
+│       │   │   │                              資源の帳簿を持つ実体はこれだけである
 │       │   │   ├── BaseCollisionGeometry  ... 基地モジュールを積んだ機体だけが持つ多段階(LOD0/1/2)の衝突形状(collisionGeom)。
 │       │   │   │                              構築時に一度組み、以後は姿勢と位置を引数で受けて判定するだけ。他は null
 │       │   │   ├── PilotMarkers          ... 方向マーカー・ボアサイト・マップ上の自機位置(操作対象の機体だけが sync する)
