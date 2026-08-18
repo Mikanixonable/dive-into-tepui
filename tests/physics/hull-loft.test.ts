@@ -1,6 +1,7 @@
 // hull-loft.ts の回帰テスト。ロフトの物理量は閉形式で求まるはずなので、円柱・直方体・角錐台・円錐の
 // 既知の解析解と、対称性から決まる慣性乗積の消失を固定する。輪郭を120点に落とす近似が入るのは曲線を
-// 含む断面だけなので、多角形断面については機械精度で一致することを要求する。
+// 含む断面だけなので、多角形断面については機械精度で一致することを要求し、曲線断面については
+// section-moments.ts の閉形式との差そのものを固定する。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import {
@@ -51,6 +52,16 @@ function houseSection(radius: number, phaseAngle: number): CrossSection {
       }),
     ],
   };
+}
+
+// 側面の口を branchCount 個持つ円断面。
+function circlePortSection(radius: number, branchCount: 2 | 3 | 4 | 5 | 6): CrossSection {
+  return { primitives: [primitive({ id: 'circle', shape: { kind: 'circle', radius, branchCount } })] };
+}
+
+// 楕円断面。
+function ellipseSection(majorRadius: number, minorRadius: number): CrossSection {
+  return { primitives: [primitive({ id: 'ellipse', shape: { kind: 'ellipse', majorRadius, minorRadius } })] };
 }
 
 // 半径 radius の円に内接する正 count 角形の輪郭。断面の口を持たない素の円を表すため、CrossSection を
@@ -263,6 +274,32 @@ export function register(): void {
     const inertia = loftInertia(base, offset, length, density);
     assert.ok(Math.abs(inertia.ixz) > 1e-3, `ixz が0でない: ${inertia.ixz}`);
     assert.ok(Math.abs(inertia.iyz) > 1e-3, `iyz が0でない: ${inertia.iyz}`);
+  });
+
+  test('hull-loft: 曲線断面では閉形式と折れ線の答えが折れ線ぶんだけ食い違う', () => {
+    // 断面の面積は section-moments.ts が閉形式で、ロフトは LOFT_SAMPLE_COUNT 点の内接折れ線で
+    // 求めるため、曲線断面では折れ線が内側に入るぶんロフトが小さく出る。LOFT_SAMPLE_COUNT を
+    // 変えるとこの差も変わる。
+    const length = 3.0;
+    const curved: readonly [string, CrossSection, number][] = [
+      ['口を3つ持つ円', circlePortSection(2.0, 3), 4.09e-4],
+      ['楕円', ellipseSection(2.0, 1.2), 5.04e-4],
+    ];
+    for (const [label, section, expected] of curved) {
+      const exact = sectionMoments(section).area;
+      const lofted = loftVolume(section, section, length) / length;
+      assert.ok(lofted < exact, `${label}: 折れ線は内接するので小さく出る (${lofted} vs ${exact})`);
+      close((exact - lofted) / exact, expected, 0.02 * expected, `${label}の相対差`);
+    }
+
+    // 分岐数6の円は正六角形に退化するので、曲線が残らず両者が機械精度で一致する。
+    const hexagonal = circlePortSection(2.0, 6);
+    close(
+      loftVolume(hexagonal, hexagonal, length) / length,
+      sectionMoments(hexagonal).area,
+      1e-12 * sectionMoments(hexagonal).area,
+      '正六角形に退化した円断面',
+    );
   });
 
   test('hull-loft: 側面の帯の面積が円柱と角柱の解析値と一致する', () => {
