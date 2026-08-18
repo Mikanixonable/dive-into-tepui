@@ -308,7 +308,8 @@ function loftMoments(outlines: LoftOutlines, length: number): LoftMoments {
     vxz += w * s * m.mx;
     vyz += w * s * m.my;
   }
-  // 積分変数を s から z へ戻す。無次元の s が1つ掛かるごとに length が1つ付く。
+  // 積分変数を s から z へ戻す。z = s·length かつ dz = length·ds なので、被積分項の s の冪が
+  // 1つ増えるごとに length も1つ増える。
   const h2 = length * length;
   return {
     volume: volume * length,

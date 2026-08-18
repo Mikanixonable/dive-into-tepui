@@ -362,4 +362,22 @@ export function register(): void {
       '存在しない親への貼り付けは不正',
     );
   });
+
+  test('section-moments: 木構造として正しくても図形が重なる断面は不正', () => {
+    // 正三角形を辺づたいに鎖状に貼っていくと6枚で一周し、7枚目が1枚目にそっくり重なる。
+    // 面積の総和は真の合併面積より1枚ぶん大きくなるので、答えを返してはならない。
+    const chain = (count: number): CrossSection => ({
+      primitives: Array.from({ length: count }, (_, i) =>
+        primitive({
+          id: `t${i}`,
+          shape: { kind: 'polygon', sides: 3, radius: 1 },
+          attachment: i === 0 ? null : { parentId: `t${i - 1}`, parentFaceIndex: 1, childFaceIndex: 0 },
+        }),
+      ),
+    });
+
+    const six = sectionMoments(chain(6));
+    close(six.area, 6 * regularArea(3, 1), 1e-9 * six.area, '重ならない6枚の面積');
+    assert.throws(() => sectionMoments(chain(7)), /overlap/, '7枚目は1枚目に重なる');
+  });
 }

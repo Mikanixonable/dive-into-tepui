@@ -15,6 +15,11 @@ function part(partId: string, count: number, mass: number): BlueprintPart {
   return { partId, count, buildCost: [{ resourceId: 'machinery', mass }], requiresFacility: [] };
 }
 
+// 資源を要さず、機械工場だけを要求する搭載要素。
+function shopPart(partId: string): BlueprintPart {
+  return { partId, count: 1, buildCost: [], requiresFacility: ['machine-shop'] };
+}
+
 // 何も要求しない設計を土台に、必要な部分だけを差し替える。
 function blueprint(over: Partial<ProducibilityBlueprint> = {}): ProducibilityBlueprint {
   return { parts: [], tanks: [], structure: [], requiresFacility: [], ...over };
@@ -89,6 +94,32 @@ export function register(): void {
     const draw = FACILITIES['machine-shop'].powerDraw;
     const reqs = producibility(bp, new ResourceLedger(), ['machine-shop'], draw - 1);
     assert.deepEqual(reqs, [{ kind: 'power', id: 'power', needed: draw, available: draw - 1 }]);
+  });
+
+  test('producibility: 同じ設備を2つの搭載要素が要求しても電力は1基ぶん', () => {
+    // 設備の実物は1基なので、要求が何件あっても同時に動く台数は増えない。
+    const draw = FACILITIES['machine-shop'].powerDraw;
+    const twice = blueprint({ parts: [shopPart('engine'), shopPart('tank')] });
+    assert.deepEqual(producibility(twice, new ResourceLedger(), ['machine-shop'], draw), []);
+
+    const once = blueprint({ parts: [shopPart('engine')] });
+    assert.deepEqual(
+      producibility(twice, new ResourceLedger(), ['machine-shop'], draw - 1),
+      producibility(once, new ResourceLedger(), ['machine-shop'], draw - 1),
+      '要求の件数は消費電力を変えない',
+    );
+  });
+
+  test('producibility: 同じ設備を持っていないときも資源要求は1件にまとまる', () => {
+    const twice = blueprint({ requiresFacility: ['machine-shop'], parts: [shopPart('engine')] });
+    const reqs = producibility(twice, new ResourceLedger(), [], 1e9);
+    assert.deepEqual(idsOf(reqs, 'facility'), ['machine-shop']);
+    const buildCost = FACILITIES['machine-shop'].buildCost;
+    for (const cost of buildCost) {
+      const matched = reqs.filter((r) => r.kind === 'resource' && r.id === cost.resourceId);
+      assert.equal(matched.length, 1, `${cost.resourceId} の要求は1件`);
+      assert.equal(matched[0]!.needed, cost.mass, `${cost.resourceId} は1基ぶんだけ要る`);
+    }
   });
 
   test('producibility: 四酸化二窒素はチタンだけの在庫では拒否される', () => {
