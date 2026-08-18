@@ -495,6 +495,7 @@ main.ts
 
 | 状態 | 正本の所有者 | 備考 |
 | --- | --- | --- |
+| 放熱板の展開度 | `RadiatorSystem.panels[side].deploy` | `Vessel.currentAreas` が `deployedFraction()` を読み、設計の `MassProperties.deployableAreas` を差し引いて抗力・輻射圧の面積を組む(投影面積の正本は設計側で、展開度を掛けるのはここだけ) |
 | 自機の位置・速度・エポック (ECI) | `Vessel.state` | 書き換えるのは RK4 積分(Simulator)・反動(Gunnery)・接触(ContactPhysics) |
 | エンティティの過去 state 列(`StateQueue`) | `GameEntity.actual`(`DynamicTrajectory` が内部に持つ `StateQueue`。先端(`state`)も同じ列の最新要素) | 記録するのは `DynamicTrajectory.step` だけ。時間窓は `historyDuration` = `max(baseHistoryDuration, requestedHistoryDuration)`(前者は種別固定で既定 0、Vessel/Asteroid のみ `SHIP_HISTORY_DURATION`。後者は過去表示の要求で、`Game.advanceSimulation` が毎フレーム `entities.requestHistoryDuration(displayWindow.pastDuration)` として全エンティティへ配る — 履歴を持たない種別は無視し、`HISTORY_DURATION_MAX` で頭打ち)、間引き間隔は `sampleInterval()`(軌道周期ベース)で `cleanup` に渡す |
 | 自機の姿勢・角速度 | `Vessel.att` | 積分は Simulator.stepAttitudes に一元化 |

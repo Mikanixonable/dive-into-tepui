@@ -113,6 +113,26 @@ export function register(): void {
     );
   });
 
+  test('放熱板を畳むと投影面積が減り、弾道係数が下がる', () => {
+    const derived = deriveMassProperties(crewedAssembly(C.PLAYER_MAX_HP));
+    const { principalAreas, deployableAreas, loadedMass } = derived;
+    // 畳めるのは放熱板だけ。前後を向いているので z 方向にだけ効く。
+    assert.ok(deployableAreas.z > 0, `${deployableAreas.z}`);
+    assert.ok(Math.abs(deployableAreas.x) < 1e-9 && Math.abs(deployableAreas.y) < 1e-9);
+    assert.ok(
+      relativeError(deployableAreas.z, C.RADIATOR_COOLING_AREA) < 1e-6,
+      `${deployableAreas.z} vs ${C.RADIATOR_COOLING_AREA}`,
+    );
+    // Vessel.currentAreas が展開度 1 と 0 で組む面積そのもの。
+    const deployed = principalAreas;
+    const stowed = sub(principalAreas, deployableAreas);
+    const nose = (areas: Vec3): number => ballisticCoeffInv(areas, loadedMass, v3(0, 0, 1));
+    assert.ok(nose(stowed) < nose(deployed) / 4, `${nose(stowed)} vs ${nose(deployed)}`);
+    // 畳んでも横から見た面積は変わらない — 放熱板は前後を向いている。
+    const side = (areas: Vec3): number => ballisticCoeffInv(areas, loadedMass, v3(1, 0, 0));
+    assert.ok(Math.abs(side(stowed) - side(deployed)) < 1e-12);
+  });
+
   test('横へずれて並ぶ平行なエッジの射影は和になり、前後に重なるものは最大値になる', () => {
     const section = square(0.5);
     const lateral: VesselTree = {
