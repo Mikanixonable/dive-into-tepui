@@ -73,12 +73,12 @@ export class DockWorkbenchSession {
   }
 
   public removePlacement(targetId: string, partId: string): AnyPart {
-    this.past.push(this.snapshot());
-    this.future.length = 0;
     const target = this.target(targetId);
     const placements = [...target.assembly.placements];
     const index = placements.findIndex((placement) => placement.part.id === partId);
     if (index < 0) throw new Error(`unknown placement: ${partId}`);
+    this.past.push(this.snapshot());
+    this.future.length = 0;
     const [removed] = placements.splice(index, 1);
     this.replaceTargetInternal(targetId, { tree: target.assembly.tree, placements });
     this.inventory.push(removed!.part);
@@ -86,15 +86,16 @@ export class DockWorkbenchSession {
   }
 
   public installPlacement(targetId: string, placement: PartPlacement, inventoryPartId?: string): void {
+    const target = this.target(targetId);
+    const inventoryIndex = inventoryPartId === undefined
+      ? -1 : this.inventory.findIndex((part) => part.id === inventoryPartId);
+    if (inventoryPartId !== undefined) {
+      if (inventoryIndex < 0) throw new Error(`unknown inventory part: ${inventoryPartId}`);
+      if (this.inventory[inventoryIndex]!.id !== placement.part.id) throw new Error('placement part mismatch');
+    }
     this.past.push(this.snapshot());
     this.future.length = 0;
-    const target = this.target(targetId);
-    if (inventoryPartId !== undefined) {
-      const index = this.inventory.findIndex((part) => part.id === inventoryPartId);
-      if (index < 0) throw new Error(`unknown inventory part: ${inventoryPartId}`);
-      if (this.inventory[index]!.id !== placement.part.id) throw new Error('placement part mismatch');
-      this.inventory.splice(index, 1);
-    }
+    if (inventoryIndex >= 0) this.inventory.splice(inventoryIndex, 1);
     this.replaceTargetInternal(targetId, {
       tree: target.assembly.tree,
       placements: [...target.assembly.placements, placement],
