@@ -1,9 +1,9 @@
-// 機体が何をできるかは、積んでいる搭載要素から導く。「これは基地か」のような種別の判定は無い。
+// 機体が何をできるか(操作・通信・自動操縦・格納・推進)を、積んでいる搭載要素から導く。
 import type { Vec3 } from '../../physics/vec3';
 import type { CommunicationPart, PartType } from '../game-entity/parts';
 import type { Vessel } from './vessel';
 
-// 通信圏の内外の問い合わせ。判定の中身はこの巻の外にあり、常に圏内とみなす実装を既定に置く。
+// 通信圏の内外の問い合わせ。ALWAYS_IN_COVERAGE は常に圏内と答える既定の実装。
 export interface CoverageQuery {
   inCoverage(pos: Vec3, moduleRange: number): boolean;
 }

@@ -1,5 +1,5 @@
-// 軌道上を飛ぶ物体は、艦艇も軌道基地も敵艦も、すべてこの1クラスである。物理的な差は
-// 積んでいる搭載要素だけであり、「これは基地か」という種別の判定は持たない。
+// 軌道上を飛ぶ物体は、艦艇も軌道基地も敵艦も、すべてこの1クラスである。何ができるかは
+// 積んでいる搭載要素から決まる。
 import * as THREE from 'three/webgpu';
 import { Attitude, qFromForwardUp } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
@@ -129,7 +129,7 @@ function progradeAttitude(state: KinematicState, inertia: Vec3): Attitude {
   return { q: qFromForwardUp(state.v, state.r) ?? { x: 0, y: 0, z: 0, w: 1 }, w: v3(), inertia };
 }
 
-// init から、この機体の設計と、位置・姿勢・名前・識別子を決める。
+// init が指す既定の設計を返す。
 function resolveDesign(init: VesselInit): VesselDesign {
   if ('crewedShip' in init || 'savedShip' in init) return crewedShipDesign();
   if ('orbitalBase' in init || 'savedBase' in init) return orbitalBaseDesign();
@@ -137,6 +137,7 @@ function resolveDesign(init: VesselInit): VesselDesign {
   return hostileShipDesign(init.savedHostile.enemyKind, init.savedHostile.accent);
 }
 
+// 機体を名指すもの一式。設計とは別に、init ごとに決まる。
 interface VesselIdentity {
   readonly name: string;
   readonly state: KinematicState;
@@ -144,6 +145,8 @@ interface VesselIdentity {
   readonly id: string | undefined;
 }
 
+// init から、この機体の位置・姿勢・表示名・識別子を決める。姿勢は与えられていなければ
+// 機首プログレードに置き、識別子は省略時に GameEntity 側の採番へ委ねて undefined を返す。
 function resolveIdentity(init: VesselInit, design: VesselDesign): VesselIdentity {
   const inertia = design.massProperties.inertia;
   type Xyz = { x: number; y: number; z: number };
@@ -194,11 +197,11 @@ function resolveIdentity(init: VesselInit, design: VesselDesign): VesselIdentity
 
 export class Vessel extends GameEntity {
   // 所属勢力。表示種別と、喪失をどう記録するかがここから決まる。
-  readonly faction: VesselFaction;
+  public readonly faction: VesselFaction;
   // ツリーと、その上に配置された搭載要素。形状からの導出はまだ通っていない。
-  readonly assembly: VesselAssembly | null = null;
+  public readonly assembly: VesselAssembly | null = null;
   // 乾燥質量・重心・慣性テンソル。assembly から導くか、直接与えられる。
-  readonly massProperties: MassProperties;
+  public readonly massProperties: MassProperties;
   // 搭載要素。HP と性能の唯一の源。
   private readonly inventory: PartInventory;
 
@@ -207,19 +210,19 @@ export class Vessel extends GameEntity {
   protected readonly baseHistoryDuration = C.SHIP_HISTORY_DURATION;
   protected readonly predictedForGhost = true;
 
-  readonly throttle: VesselThrottle;
+  public readonly throttle: VesselThrottle;
   // 砲と給弾ベルト。積んでいない設計では null。
-  readonly fire: Gunnery | null = null;
-  readonly belt: Belt | null = null;
+  public readonly fire: Gunnery | null = null;
+  public readonly belt: Belt | null = null;
   // 熱・放熱・電力の収支。持たない設計では null。
-  readonly thermal: ThermalSystem | null = null;
-  readonly radiator: RadiatorSystem | null = null;
-  readonly power: PowerSystem | null = null;
+  public readonly thermal: ThermalSystem | null = null;
+  public readonly radiator: RadiatorSystem | null = null;
+  public readonly power: PowerSystem | null = null;
   // 敵対勢力の行動則。持たない機体では null。
-  readonly ai: EnemyAi | null = null;
+  public readonly ai: EnemyAi | null = null;
   // 基地モジュールが与える在庫と収容。モジュールを積まない機体では null。
-  readonly baseState: BaseState | null = null;
-  readonly collisionGeom: BaseCollisionGeometry | null = null;
+  public readonly baseState: BaseState | null = null;
+  public readonly collisionGeom: BaseCollisionGeometry | null = null;
 
   private readonly thrustEffects: ThrustEffects | null = null;
   private readonly rcsEffects: RcsEffects | null = null;
@@ -227,16 +230,23 @@ export class Vessel extends GameEntity {
   private readonly markers: PilotMarkers | null = null;
 
   // この機体自身のマニューバ計画。PlanEditor は操作対象のこれを編集する。
-  readonly plan = new Plan();
-  readonly planExecutor: PlanExecutor;
-  planExecution: PlanExecutionMode = 'off';
-  fineAttitude = false;
+  public readonly plan = new Plan();
+  public readonly planExecutor: PlanExecutor;
+  // 軌道計画の自動実行モード。'powered' の間に手動の並進・回転入力があれば 'off' へ戻る。
+  public planExecution: PlanExecutionMode = 'off';
+  private _fineAttitude = false;
 
   // 個体色・集団識別。敵対勢力の機体だけが持つ。
-  accent: string | number | null = null;
-  waveId?: number;
-  readonly orbitLineColor: string | number | null = null;
-  readonly enemyKind: EnemyKind | null = null;
+  private _accent: string | number | null = null;
+  private _waveId: number | undefined = undefined;
+  private _orbitLineColor: string | number | null = null;
+  private _enemyKind: EnemyKind | null = null;
+
+  public get accent(): string | number | null { return this._accent; }
+  public get waveId(): number | undefined { return this._waveId; }
+  public get orbitLineColor(): string | number | null { return this._orbitLineColor; }
+  public get enemyKind(): EnemyKind | null { return this._enemyKind; }
+  public get fineAttitude(): boolean { return this._fineAttitude; }
 
   private readonly hpRegenRate: number;
   private readonly reentryAltMargin: number;
@@ -249,7 +259,9 @@ export class Vessel extends GameEntity {
   private readonly vesselScene: THREE.Scene;
   private disposed = false;
 
-  constructor(init: VesselInit, deps: VesselDeps) {
+  // 設計と識別を init から解決し、その設計が積むものだけを組み立てる。
+  public constructor(init: VesselInit, deps: VesselDeps) {
+    // 設計・識別と、そこから決まる物理量。
     const design = resolveDesign(init);
     const identity = resolveIdentity(init, design);
     super(identity.state, design.renderObject, deps.scene, identity.att, identity.id);
@@ -269,10 +281,12 @@ export class Vessel extends GameEntity {
     this.vesselScene = deps.scene;
     this.inventory = new PartInventory(design.parts);
 
+    // 姿勢・並進の操作は全ての機体が持つ。
     const savedShip = 'savedShip' in init ? init.savedShip : undefined;
     this.throttle = new VesselThrottle(deps.hud, savedShip?.throttle ?? ('savedBase' in init ? init.savedBase.throttle : undefined));
     this.planExecutor = new PlanExecutor(deps.hud);
 
+    // 設計が積むと言った系だけを組む。
     if (design.gunnery) {
       this.fire = new Gunnery(this, deps.hud, deps.worldSfx, deps.scene, deps.fx,
         savedShip ? { saved: savedShip.fire } : { ammo: 'crewedShip' in init ? init.crewedShip.ammo : undefined });
@@ -302,32 +316,36 @@ export class Vessel extends GameEntity {
       this.equatorNodes = new EquatorNodeMarkerPair(this, deps.markerManager);
     }
 
+    // 敵対勢力の機体だけが持つ個体色と集団識別。
     if ('hostileShip' in init) {
-      this.accent = init.hostileShip.accent;
-      this.orbitLineColor = init.hostileShip.orbitLineColor;
-      this.waveId = init.hostileShip.waveId;
-      this.enemyKind = init.hostileShip.enemyKind;
+      this._accent = init.hostileShip.accent;
+      this._orbitLineColor = init.hostileShip.orbitLineColor;
+      this._waveId = init.hostileShip.waveId;
+      this._enemyKind = init.hostileShip.enemyKind;
     }
 
+    // スナップショットからの復元は、組み上がった機体へ最後に載せる。
     if (savedShip) this.restoreShip(savedShip, deps.hud);
     if ('savedBase' in init) this.restoreBase(init.savedBase, init.simTime, deps);
     if ('savedHostile' in init) this.restoreHostile(init.savedHostile);
   }
 
   // --------------------------------------------------------------- 復元
+  // 有人艦の保存形から、自動実行モード・姿勢微調整・搭載要素・計画を戻す。
   private restoreShip(saved: PlayerSaveData, hud: Hud): void {
-    // 旧セーブは followPlan: boolean だった(true→'instant' / false→'off')。
+    // planExecution を持たず followPlan: boolean で保存された形も受ける(true→'instant')。
     this.planExecution = saved.planExecution ?? (saved.followPlan ? 'instant' : 'off');
-    this.fineAttitude = saved.fineAttitude ?? false;
+    this._fineAttitude = saved.fineAttitude ?? false;
     this.inventory.replaceAll(saved.parts.map(partFromSaveData));
     this.restorePlan(saved.plan, hud);
   }
 
+  // 敵対勢力の機体の保存形から、個体色・集団識別・残 HP・バースト射撃の途中経過を戻す。
   private restoreHostile(saved: EnemySaveData): void {
-    this.accent = saved.accent;
-    (this as { orbitLineColor: string | number }).orbitLineColor = saved.accent;
-    (this as { enemyKind: EnemyKind }).enemyKind = saved.enemyKind;
-    this.waveId = saved.waveId;
+    this._accent = saved.accent;
+    this._orbitLineColor = saved.accent;
+    this._enemyKind = saved.enemyKind;
+    this._waveId = saved.waveId;
     this.inventory.setOverallHp(saved.health);
     if (this.ai) {
       this.ai.burstLeft = saved.burstLeft;
@@ -337,6 +355,8 @@ export class Vessel extends GameEntity {
     if (!this.alive) this.renderObject.visible = false;
   }
 
+  // 基地の保存形から、所持金・在庫・燃料・収容中の機体を戻す。収容機は保存形から組み直し、
+  // スロットへ取り付けたうえで一覧へ加える。
   private restoreBase(saved: BaseSaveData, simTime: number, deps: VesselDeps): void {
     const state = this.baseState!;
     state.money = saved.money;
@@ -370,27 +390,27 @@ export class Vessel extends GameEntity {
   }
 
   // --------------------------------------------------------- 搭載要素と性能
-  get parts(): AnyPart[] { return this.inventory.parts; }
-  get hp(): number { return this.inventory.hp; }
-  get maxHp(): number { return this.inventory.maxHp; }
-  get totalTorque(): number { return this.inventory.totalTorque; }
-  get totalThrust(): number { return this.inventory.totalThrust; }
-  get totalFuelConsumptionRate(): number { return this.inventory.totalFuelConsumptionRate; }
-  get totalFuel(): number { return this.inventory.totalFuel; }
-  get totalMaxFuel(): number { return this.inventory.totalMaxFuel; }
-  get totalCoolingRate(): number { return this.inventory.totalCoolingRate; }
-  get totalPowerGeneration(): number { return this.inventory.totalPowerGeneration; }
-  get totalFireRate(): number { return this.inventory.totalFireRate; }
-  get weaponDamage(): number { return this.inventory.weaponDamage; }
-  get averageMuzzleVelocity(): number { return this.inventory.averageMuzzleVelocity; }
-  get radiatorParts(): readonly (Part | undefined)[] { return this.inventory.radiatorParts; }
-  get solarParts(): readonly (Part | undefined)[] { return this.inventory.solarParts; }
+  public get parts(): AnyPart[] { return this.inventory.parts; }
+  public get hp(): number { return this.inventory.hp; }
+  public get maxHp(): number { return this.inventory.maxHp; }
+  public get totalTorque(): number { return this.inventory.totalTorque; }
+  public get totalThrust(): number { return this.inventory.totalThrust; }
+  public get totalFuelConsumptionRate(): number { return this.inventory.totalFuelConsumptionRate; }
+  public get totalFuel(): number { return this.inventory.totalFuel; }
+  public get totalMaxFuel(): number { return this.inventory.totalMaxFuel; }
+  public get totalCoolingRate(): number { return this.inventory.totalCoolingRate; }
+  public get totalPowerGeneration(): number { return this.inventory.totalPowerGeneration; }
+  public get totalFireRate(): number { return this.inventory.totalFireRate; }
+  public get weaponDamage(): number { return this.inventory.weaponDamage; }
+  public get averageMuzzleVelocity(): number { return this.inventory.averageMuzzleVelocity; }
+  public get radiatorParts(): readonly (Part | undefined)[] { return this.inventory.radiatorParts; }
+  public get solarParts(): readonly (Part | undefined)[] { return this.inventory.solarParts; }
 
-  consumeFuel(amount: number): number { return this.inventory.consumeFuel(amount); }
-  refuel(amount: number): void { this.inventory.refuel(amount); }
-  refreshFromParts(): void { this.inventory.refresh(); }
-  applyDamageToParts(amount: number, part?: Part): void { this.inventory.applyDamage(amount, part); }
-  selfRepair(amount: number): void { this.inventory.selfRepair(amount); }
+  public consumeFuel(amount: number): number { return this.inventory.consumeFuel(amount); }
+  public refuel(amount: number): void { this.inventory.refuel(amount); }
+  public refreshFromParts(): void { this.inventory.refresh(); }
+  public applyDamageToParts(amount: number, part?: Part): void { this.inventory.applyDamage(amount, part); }
+  public selfRepair(amount: number): void { this.inventory.selfRepair(amount); }
 
   // 自身が受けた速度変化 dv = impulse/mass に応じたダメージをパーツへ適用し、
   // ダメージが発生したかを返す。part を指定すると割り振り先をそのパーツに固定する。
@@ -409,15 +429,15 @@ export class Vessel extends GameEntity {
   }
 
   // 収容できる機体数。基地モジュールを積んでいなければ 0。
-  get dockCapacity(): number { return this.baseModule?.capacity ?? 0; }
+  public get dockCapacity(): number { return this.baseModule?.capacity ?? 0; }
 
   // 中央ハッチのワールド位置と外向き法線。モジュールが無ければ機体そのものの位置を返す。
-  getHatchWorldPos(): Vec3 {
+  public getHatchWorldPos(): Vec3 {
     const port = this.baseModule?.hatch;
     return port ? portWorldPos(this, port) : this.state.r;
   }
 
-  getHatchWorldNormal(): Vec3 {
+  public getHatchWorldNormal(): Vec3 {
     const port = this.baseModule?.hatch;
     return port ? portWorldNormal(this, port) : v3(0, 1, 0);
   }
@@ -428,18 +448,18 @@ export class Vessel extends GameEntity {
     return slots[slotIndex] ?? slots[0]!;
   }
 
-  getSlotWorldPos(slotIndex: number): Vec3 {
+  public getSlotWorldPos(slotIndex: number): Vec3 {
     const port = this.slotPort(slotIndex);
     return port ? portWorldPos(this, port) : this.state.r;
   }
 
-  getSlotWorldNormal(slotIndex: number): Vec3 {
+  public getSlotWorldNormal(slotIndex: number): Vec3 {
     const port = this.slotPort(slotIndex);
     return port ? portWorldNormal(this, port) : v3(0, 1, 0);
   }
 
   // 利用可能な空きスロット番号を返す。満杯なら null。
-  getAvailableSlotIndex(): number | null {
+  public getAvailableSlotIndex(): number | null {
     if (!this.baseState) return null;
     const occupied = new Set(this.baseState.dockedVessels.map((s) => s.slotIndex));
     for (let i = 0; i < this.dockCapacity; i++) if (!occupied.has(i)) return i;
@@ -447,7 +467,7 @@ export class Vessel extends GameEntity {
   }
 
   // 収容判定の閾値。基地モジュールを積んでいなければ受け入れない。
-  canCapture(other: Vessel): boolean {
+  public canCapture(other: Vessel): boolean {
     const module = this.baseModule;
     if (!module || !this.baseState) return false;
     if (this.baseState.dockedVessels.length >= module.capacity) return false;
@@ -467,7 +487,7 @@ export class Vessel extends GameEntity {
   }
 
   // 収容した機体のメッシュを、指定スロットへ取り付けて表示する。
-  attachDockedVesselMesh(vessel: Vessel, slotIndex: number): void {
+  public attachDockedVesselMesh(vessel: Vessel, slotIndex: number): void {
     const port = this.slotPort(slotIndex);
     if (!port) return;
     const obj = vessel.renderObject;
@@ -479,38 +499,38 @@ export class Vessel extends GameEntity {
   }
 
   // 発進時、収容した機体のメッシュをスロットから分離し、ワールド Scene へ復帰させる。
-  detachDockedVesselMesh(vessel: Vessel): void {
+  public detachDockedVesselMesh(vessel: Vessel): void {
     const obj = vessel.renderObject;
     if (obj.parent === this.renderObject) this.renderObject.remove(obj);
     if (this.scene && obj.parent !== this.scene) this.scene.add(obj);
     obj.visible = true;
   }
 
-  raycast(rayOrigin: Vec3, rayDir: Vec3, maxDist: number, warpLevel = 1): RayHit | null {
+  public raycast(rayOrigin: Vec3, rayDir: Vec3, maxDist: number, warpLevel = 1): RayHit | null {
     return this.collisionGeom?.raycast(rayOrigin, rayDir, maxDist, this.state.r, this.att.q, warpLevel) ?? null;
   }
 
-  testSphereCollision(sphereCenter: Vec3, sphereRadius: number, warpLevel = 1): SphereHit | null {
+  public testSphereCollision(sphereCenter: Vec3, sphereRadius: number, warpLevel = 1): SphereHit | null {
     return this.collisionGeom?.testSphereCollision(sphereCenter, sphereRadius, this.state.r, this.att.q, warpLevel) ?? null;
   }
 
   // ----------------------------------------------------------------- 操作
-  get rcsDamp(): boolean { return this.throttle.rcsDamp; }
-  get throttleIdx(): number { return this.throttle.throttleIdx; }
-  get progradeHold(): boolean { return this.throttle.progradeHold; }
-  get roundsInMag(): number { return this.fire?.rounds ?? 0; }
-  get magsLeft(): number { return this.fire?.mags ?? 0; }
-  get magsLeftInBarrel(): number { return this.fire?.barrel ?? 0; }
-  get reloadTimer(): number { return this.fire?.cooldown ?? 0; }
-  get isFiring(): boolean { return this.fire?.isFiring ?? false; }
+  public get rcsDamp(): boolean { return this.throttle.rcsDamp; }
+  public get throttleIdx(): number { return this.throttle.throttleIdx; }
+  public get progradeHold(): boolean { return this.throttle.progradeHold; }
+  public get roundsInMag(): number { return this.fire?.rounds ?? 0; }
+  public get magsLeft(): number { return this.fire?.mags ?? 0; }
+  public get magsLeftInBarrel(): number { return this.fire?.barrel ?? 0; }
+  public get reloadTimer(): number { return this.fire?.cooldown ?? 0; }
+  public get isFiring(): boolean { return this.fire?.isFiring ?? false; }
 
   // 弾薬ピックアップで得たマグ数を加算する。
-  onPickup(mags: number): void { this.fire?.onPickup(mags); }
+  public onPickup(mags: number): void { this.fire?.onPickup(mags); }
 
   // 毎フレーム、全ての機体に対して1度だけ呼ぶ。input が null の機体はこのフレーム操作されないので、
   // 次フレームへ持ち越してはならない連続指令をここで畳む。受動状態(ベルト物理・HP自然回復)は
   // 操作の可否によらず進める。
-  updateControls(
+  public updateControls(
     input: Input | null,
     dt: number,
     simDt: number,
@@ -525,7 +545,7 @@ export class Vessel extends GameEntity {
     }
     input.takeKeys((code) => this.handleEdgePress(code));
     // 発砲中は姿勢微調整と同じ操作精度になる
-    const fine = this.fineAttitude || this.isFiring;
+    const fine = this._fineAttitude || this.isFiring;
     this.torque = this.throttle.updateTorque(
       this.att, this.state.r, this.state.v, input, fine, dt, simDt, this,
       () => this.hud.hint('進行方向ホールド解除(手動操作)'),
@@ -556,7 +576,7 @@ export class Vessel extends GameEntity {
 
   // 軌道・姿勢と同じ simulation clock で受動環境系を進める。bodies はこの substep の天体窓で、
   // 恒星の取り出しと日照率の遮蔽体に使う。
-  stepEnvironment(dt: number, ephemeris: Ephemeris, simTime: number, bodies: readonly Attractor[]): void {
+  public stepEnvironment(dt: number, ephemeris: Ephemeris, simTime: number, bodies: readonly Attractor[]): void {
     if (!this.alive || !this.thermal || !this.radiator || !this.power) return;
     this.radiator.update(dt, this.radiatorWear());
     const sunDir = ephemeris.sunDirFrom(this.state.r, simTime);
@@ -572,7 +592,7 @@ export class Vessel extends GameEntity {
 
   // 操作できない間、次のフレームへ持ち越してはならない連続指令を畳む。
   // 角速度によるcoast自体は継続する。
-  clearTransientCommands(): void {
+  public clearTransientCommands(): void {
     this.thrust = null;
     this.torque = v3();
     this.throttle.clearTransientState();
@@ -580,9 +600,9 @@ export class Vessel extends GameEntity {
   }
 
   // 姿勢微調整モードの ON/OFF を切り替える。
-  toggleFineAttitude(): void {
-    this.fineAttitude = !this.fineAttitude;
-    this.hud.hint(`姿勢微調整モード: ${this.fineAttitude ? 'ON' : 'OFF'}`);
+  public toggleFineAttitude(): void {
+    this._fineAttitude = !this._fineAttitude;
+    this.hud.hint(`姿勢微調整モード: ${this._fineAttitude ? 'ON' : 'OFF'}`);
   }
 
   // 機体側キー1個を処理する。処理したキーは true を返し input.takeKeys に消費させる。
@@ -653,7 +673,7 @@ export class Vessel extends GameEntity {
 
   // 弾は武装のダメージを、それ以外は接触の速度変化 Δv = impulse/mass を根拠にする
   // (前者はゲームバランス、後者は物理量で、統合すると前者の根拠が消える)。
-  collideWith(other: GameEntity | Attractor, contact: Contact, activeStage: Stage): void {
+  public collideWith(other: GameEntity | Attractor, contact: Contact, activeStage: Stage): void {
     if (!this.alive) return;
     const simTime = contact.selfState.t;
     if (other instanceof Bullet) {
@@ -671,9 +691,9 @@ export class Vessel extends GameEntity {
     this.destroyEffect();
   }
 
-  // 放熱板の接触代理(RadiatorFold)からの帰結。ダメージの割り振り先が side のパーツに
-  // 固定される点だけが collideWith(機体本体)との違い。
-  collideAtRadiator(side: RadiatorSide, other: GameEntity | Attractor, contact: Contact, activeStage: Stage): void {
+  // 放熱板の接触代理(RadiatorFold)が受けた接触を解決する。ダメージは side の放熱板パーツへ
+  // 入り、そのパーツが全損すれば破片エフェクトを出す。
+  public collideAtRadiator(side: RadiatorSide, other: GameEntity | Attractor, contact: Contact, activeStage: Stage): void {
     if (!this.alive) return;
     const simTime = contact.selfState.t;
     if (other instanceof Bullet) {
@@ -694,19 +714,19 @@ export class Vessel extends GameEntity {
   }
 
   // この機体の放熱板の、今フレームの接触代理一覧(展開中かつ健在な折りのみ)。
-  collisionFolds(simTime: number): GameEntity[] {
+  public collisionFolds(simTime: number): GameEntity[] {
     return this.radiator?.collisionFolds(this.state.r, this.state.v, this.att, simTime) ?? [];
   }
 
   // 交戦圏外への離脱によるデスポーン。
-  despawn(simTime: number, activeStage: Stage): void {
+  public despawn(simTime: number, activeStage: Stage): void {
     if (!this.alive) return;
     this.alive = false;
     this.recordLoss(activeStage, simTime, '', 'despawn');
   }
 
   // 熱防御の飽和・空力破壊・大気突入・天体の地表到達の判定(自然死)。
-  checkLoss(dt: number, simTime: number, activeStage: Stage, _viewerPos: Vec3, attractors: readonly Attractor[]): void {
+  public checkLoss(dt: number, simTime: number, activeStage: Stage, _viewerPos: Vec3, attractors: readonly Attractor[]): void {
     if (!this.alive) return;
     let reason: string | null = null;
     if (this.thermal) {
@@ -757,21 +777,21 @@ export class Vessel extends GameEntity {
 
   // ----------------------------------------------------------------- 表示
   // 個体色の CSS 表記。方位マーカー・LEAD マーカーの着色に使う。
-  get accentColor(): string {
+  public get accentColor(): string {
     if (this.accent === null) return C.COLOR_MARKER_ALLY;
     if (typeof this.accent === 'string') return this.accent;
     return '#' + this.accent.toString(16).padStart(6, '0');
   }
 
   // マーカープールのキー。同じ機体が同じ鍵を使い続けるように1箇所で決める。
-  get markerKey(): string {
+  public get markerKey(): string {
     if (this.baseState) return `base-${this.id}`;
     return this.faction === 'enemy' ? `enemy-${this.name}` : `player-${this.id}`;
   }
 
   // メッシュ・エフェクト・ベルト・マーカーを displayTime の状態へ同期する。
   // isActive はこの機体が操作対象かどうか。操作対象だけがガンサイト時に隠れ、方位マーカーを出す。
-  syncVessel(
+  public syncVessel(
     fo: FloatingOrigin,
     camera: CameraSystem,
     displayTime: number,
@@ -811,7 +831,8 @@ export class Vessel extends GameEntity {
   }
 
   // 画面マーカー1件ぶんの見た目。pos/vel は機体メッシュと同じ表示時刻の状態を使う。
-  markerItem(role: MarkerRole, viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): GroupedMarkerItem {
+  public markerItem(role: MarkerRole, viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): GroupedMarkerItem {
+    // 表示の優先度。ターゲットに指定されていればそれが勝ち、そうでなければ種別と距離で決まる。
     const dist = len(sub(pos, viewerPos));
     const isEnemy = this.faction === 'enemy';
     const ownPriority = this.baseState
@@ -820,6 +841,7 @@ export class Vessel extends GameEntity {
     const priority = role === 'primary'
       ? C.MARKER_PRIORITY.PRIMARY_TARGET
       : role === 'secondary' ? C.MARKER_PRIORITY.SECONDARY_TARGET : ownPriority;
+    // 図形と着色。基地は専用図形、機体はマップでは進行方向つき、戦闘ビューでは HP 刻み。
     const color = isEnemy ? C.COLOR_MARKER_ENEMY : C.COLOR_MARKER_ALLY;
     const sym = this.baseState
       ? baseMarkerSvg()
@@ -844,7 +866,7 @@ export class Vessel extends GameEntity {
   }
 
   // 自身に関するメッシュ・エフェクト・マーカー・収容中の機体を解放する。
-  dispose(): void {
+  public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
     this.clearTransientCommands();
@@ -862,7 +884,7 @@ export class Vessel extends GameEntity {
 
   // ----------------------------------------------------------------- 保存
   // 有人艦としての保存形。
-  serializeAsShip(): PlayerSaveData {
+  public serializeAsShip(): PlayerSaveData {
     return {
       id: this.id,
       name: this.name,
@@ -878,13 +900,13 @@ export class Vessel extends GameEntity {
       throttle: this.throttle.serialize(),
       parts: this.parts.map((p) => ({ ...p })) as AnyPart[],
       planExecution: this.planExecution,
-      fineAttitude: this.fineAttitude,
+      fineAttitude: this._fineAttitude,
       plan: this.serializePlan(),
     };
   }
 
   // 敵対勢力の機体としての保存形。
-  serializeAsHostile(): EnemySaveData {
+  public serializeAsHostile(): EnemySaveData {
     return {
       id: this.id,
       name: this.name,
@@ -893,18 +915,18 @@ export class Vessel extends GameEntity {
       v: { ...this.state.v },
       q: { ...this.att.q },
       w: { ...this.att.w },
-      enemyKind: this.enemyKind!,
+      enemyKind: this._enemyKind!,
       alive: this.alive,
       health: this.hp,
-      accent: this.accent!,
-      waveId: this.waveId,
+      accent: this._accent!,
+      waveId: this._waveId,
       burstLeft: this.ai?.burstLeft,
       burstDelay: this.ai?.burstDelay,
     };
   }
 
   // 基地モジュールを積んだ機体としての保存形。収容中の機体もここに含む。
-  serializeAsBase(): BaseSaveData {
+  public serializeAsBase(): BaseSaveData {
     const state = this.baseState!;
     return {
       id: this.id,

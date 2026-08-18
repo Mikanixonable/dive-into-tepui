@@ -47,7 +47,7 @@ export class Docking {
     private readonly mapActions: MapContextActions,
     private readonly cameraSystem: CameraSystem,
     private readonly viewManager: ViewManager,
-    private readonly activePlayers: ActiveVesselController,
+    private readonly activeVessels: ActiveVesselController,
     private readonly activeStage: Stage,
   ) {
     this.baseView = new BaseView(this.hud.layers.view);
@@ -85,7 +85,7 @@ export class Docking {
     // 基地モジュールを積んだ相手は、そのモジュールが定める口と閾値で受け入れを判定する。
     if (target instanceof Vessel && hasBaseModule(target)) return target.canCapture(ship);
 
-    // 船対船ドッキングは従来の距離判定
+    // 船対船のドッキングは距離だけで判定する
     const dist = len(sub(ship.state.r, target.state.r));
     return dist <= C.DOCK_CAPTURE_DIST;
   }
@@ -150,7 +150,7 @@ export class Docking {
       this._activeBase = available[0]!;
     }
     this.pauseGame();
-    this.baseView.open(this._activeBase, this.activePlayers.current, this.activeStage.freeProcurement);
+    this.baseView.open(this._activeBase, this.activeVessels.current, this.activeStage.freeProcurement);
   }
 
   leaveDock(): void {
@@ -179,8 +179,8 @@ export class Docking {
 
   // 手動で艦を基地へ収容する
   storeInBase(ship: Vessel, base: Vessel): void {
-    if (base.baseState!.dockedVessels.length >= C.BASE_MAX_VESSELS) {
-      this.hud.hint(`基地のドックが満杯です (最大 ${C.BASE_MAX_VESSELS} 隻)`);
+    if (base.baseState!.dockedVessels.length >= base.dockCapacity) {
+      this.hud.hint(`基地のドックが満杯です (最大 ${base.dockCapacity} 隻)`);
       return;
     }
     const slotIndex = base.getAvailableSlotIndex() ?? 0;
@@ -196,7 +196,7 @@ export class Docking {
     });
     base.attachDockedVesselMesh(ship, slotIndex);
 
-    const wasActive = this.activePlayers.current === ship;
+    const wasActive = this.activeVessels.current === ship;
     this.mapActions.close();
     this.cameraSystem.mapCamera.clearFocusIf(ship.id);
     if (wasActive) {
@@ -206,15 +206,15 @@ export class Docking {
     }
     this.entities.parkVessel(ship);
     if (wasActive) {
-      this.activePlayers.setOrNull(this.entities.ownShips().find((p) => p.alive) ?? null);
-      if (this.activePlayers.current === null) this.viewManager.setView('map');
+      this.activeVessels.setOrNull(this.entities.ownShips().find((p) => p.alive) ?? null);
+      if (this.activeVessels.current === null) this.viewManager.setView('map');
     }
     this.hud.hint(`${ship.name} を基地のドック ${slotIndex + 1} に収納しました`);
   }
 
   private buildVessel(base: Vessel): void {
-    if (base.baseState!.dockedVessels.length >= C.BASE_MAX_VESSELS) {
-      this.hud.hint(`基地のドックが満杯です (最大 ${C.BASE_MAX_VESSELS} 隻)`);
+    if (base.baseState!.dockedVessels.length >= base.dockCapacity) {
+      this.hud.hint(`基地のドックが満杯です (最大 ${base.dockCapacity} 隻)`);
       return;
     }
     const slotIndex = base.getAvailableSlotIndex() ?? 0;
@@ -261,7 +261,7 @@ export class Docking {
 
     ship.state = kinematicState(base.state.t, launchPos, launchVel);
     this.entities.addVessel(ship);
-    this.activePlayers.set(ship);
+    this.activeVessels.set(ship);
     this.viewManager.setView('combat');
     this.hud.hint(`${ship.name} がドック ${slotIndex + 1} から切り離され発進しました`);
   }

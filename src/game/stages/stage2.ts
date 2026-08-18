@@ -44,12 +44,12 @@ export class Stage2 extends Stage {
     const player = this.addOwnShip();
     const base = player.state;
     // 通常軌道の敵
-    this.addHostile(generatePhasedEnemy('HOSTILE-α', base, 1800, 2, 0xff4a3d, C.COLOR_ENEMY_ORBIT_LINE, this.vesselDeps), entities);
-    this.addHostile(generateCoellipticEnemy('HOSTILE-β', base, -2600, 3000, 2, 0xff7a2d, C.COLOR_ENEMY_ORBIT_LINE, this.vesselDeps), entities);
+    this.addHostile(generatePhasedEnemy('HOSTILE-α', base, 1800, 0xff4a3d, C.COLOR_ENEMY_ORBIT_LINE, this.vesselDeps), entities);
+    this.addHostile(generateCoellipticEnemy('HOSTILE-β', base, -2600, 3000, 0xff7a2d, C.COLOR_ENEMY_ORBIT_LINE, this.vesselDeps), entities);
     // モルニヤ級の高楕円軌道の敵
-    this.addHostile(generateMolniyaEnemy('MOLNIYA-γ', base.t, 0.4, 2.6, 3, 0xe0409f, C.COLOR_ENEMY_ORBIT_LINE, this.vesselDeps), entities);
-    this.addHostile(generateMolniyaEnemy('MOLNIYA-δ', base.t, 2.5, 0.9, 3, 0xbf3dff, C.COLOR_ENEMY_ORBIT_LINE, this.vesselDeps), entities);
-    this.addHostile(generateMolniyaEnemy('MOLNIYA-ε', base.t, 4.6, 3.8, 3, 0xff2d6b, C.COLOR_ENEMY_ORBIT_LINE, this.vesselDeps), entities);
+    this.addHostile(generateMolniyaEnemy('MOLNIYA-γ', base.t, 0.4, 2.6, 0xe0409f, C.COLOR_ENEMY_ORBIT_LINE, this.vesselDeps), entities);
+    this.addHostile(generateMolniyaEnemy('MOLNIYA-δ', base.t, 2.5, 0.9, 0xbf3dff, C.COLOR_ENEMY_ORBIT_LINE, this.vesselDeps), entities);
+    this.addHostile(generateMolniyaEnemy('MOLNIYA-ε', base.t, 4.6, 3.8, 0xff2d6b, C.COLOR_ENEMY_ORBIT_LINE, this.vesselDeps), entities);
   }
   // 敵の行動と補給品の湧きを進める。
   update(dt: number, player: Vessel | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {

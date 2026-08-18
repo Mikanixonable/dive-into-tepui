@@ -1,5 +1,6 @@
 // 基地モジュールが与える格納機構。ハッチとスロットの配置も、受け入れの閾値も、
 // 機体の定数ではなくこの部品の性能値から読む。
+import * as C from '../const';
 import { qRotate } from '../../physics/attitude';
 import { add, v3, Vec3 } from '../../physics/vec3';
 import type { AnyPart, BaseModulePart, DockPort, Part } from '../game-entity/parts';
@@ -16,7 +17,7 @@ export function createDefaultBaseModule(maxHp: number): BaseModulePart {
     hp: maxHp,
     hatch: { localPos: v3(0, 21.0, 0), localNormal: up },
     dockSlots: [slot(-16.5, -16.5), slot(16.5, -16.5), slot(-16.5, 16.5), slot(16.5, 16.5)],
-    capacity: 4,
+    capacity: C.BASE_MAX_VESSELS,
     hatchCaptureDist: 80,
     hatchCaptureAlignment: 0.5,
     slotCaptureDist: 50,

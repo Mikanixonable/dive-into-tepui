@@ -63,7 +63,7 @@ export class MapPickables {
 
   // 候補の供給元を参照として受け取る。
   constructor(
-    private readonly activePlayers: ActiveVesselController,
+    private readonly activeVessels: ActiveVesselController,
     private readonly entities: EntityManager,
     private readonly ephemeris: Ephemeris,
     private readonly navTarget: NavTarget,
@@ -100,7 +100,7 @@ export class MapPickables {
       displayTime, focusId, this.cameraSystem.bodyClassToggles,
       this.cameraSystem.activeCameraPos, visibilityPolicy,
     );
-    this.navTarget.update(this.activePlayers.current, this.entities, this.ephemeris, displayWindow);
+    this.navTarget.update(this.activeVessels.current, this.entities, this.ephemeris, displayWindow);
 
     // 船の位置は表示時刻の displayState — 機体メッシュや敵マーカーと同じ未来ゴースト位置に揃える。
     this.candidateItems.length = 0;
@@ -110,7 +110,7 @@ export class MapPickables {
       this.appendPickable(item);
     }
     for (const ship of this.entities.ownShips()) {
-      const vPlayer = visibilityPolicy.entity('player', ship === this.activePlayers.current);
+      const vPlayer = visibilityPolicy.entity('player', ship === this.activeVessels.current);
       if (!vPlayer.pickable) continue;
       const pos = ship.displayState(displayTime)?.r;
       if (pos) {
@@ -120,7 +120,7 @@ export class MapPickables {
         this.addCandidate(
           ship.id, ship.name, pos, 'player',
           `HP ${Math.round(ship.hp)}/${Math.round(ship.maxHp)} · PE ${pe}`,
-          ship === this.activePlayers.current ? -100 : 0,
+          ship === this.activeVessels.current ? -100 : 0,
           undefined, vPlayer.label,
         );
       }
@@ -153,7 +153,7 @@ export class MapPickables {
     }
 
     // 自艦からの距離は一覧の実用順と補助情報にだけ使う。軌道予測はここで増やさない。
-    const viewer = this.activePlayers.current?.state;
+    const viewer = this.activeVessels.current?.state;
     if (viewer) for (const item of this.candidateItems) {
       const d = len(sub(item.pos, viewer.r));
       // 相対速度は対の速度を持つ敵艦にだけ意味がある。
