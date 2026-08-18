@@ -332,7 +332,9 @@ export class Docking {
       checkpoint.base.baseState.inventory.splice(0, checkpoint.base.baseState.inventory.length, ...checkpoint.inventory);
       for (const id of [...this.drafts.keys()]) {
         if (checkpoint.drafts.some((draft) => draft.id === id)) continue;
-        this.drafts.get(id)?.render.dispose();
+        const draft = this.drafts.get(id);
+        draft?.render.object.removeFromParent();
+        draft?.render.dispose();
         this.drafts.delete(id);
       }
       for (const saved of checkpoint.drafts) {
@@ -423,13 +425,17 @@ export class Docking {
     const applied = this.applyTargetAssembly(base, targetId, result.assembly);
     if (!applied) return;
     const inventoryOwner = this._activeBase ?? base;
+    let returnedToInventory = true;
     if (target.kind === 'draft') {
       const draft = this.drafts.get(targetId);
-      if (draft?.ownedPartIds.delete(partId)) inventoryOwner.baseState!.inventory.push(placement.part);
+      returnedToInventory = draft?.ownedPartIds.delete(partId) ?? false;
+      if (returnedToInventory) inventoryOwner.baseState!.inventory.push(placement.part);
     } else {
       inventoryOwner.baseState!.inventory.push(placement.part);
     }
-    this.hud.hint(`${placement.part.name} を基地倉庫へ移しました`);
+    this.hud.hint(returnedToInventory
+      ? `${placement.part.name} を基地倉庫へ移しました`
+      : `${placement.part.name} を下書きから取り外しました`);
   }
 
   private transferWorkbenchPart(base: Vessel, fromTargetId: string, toTargetId: string, partId: string): void {
@@ -447,7 +453,10 @@ export class Docking {
     if (!destinationResult) return;
     const sourceResult = this.applyTargetAssembly(base, fromTargetId, sourceAssembly);
     if (!sourceResult) {
-      this.hud.hint('移送元を更新できないため、変更を停止しました'); return;
+      // 送り先はすでに適用済み。同じ部品が両方の構成に残ることのないよう、
+      // 検証を通っていた元の構成へ戻す。
+      this.applyTargetAssembly(base, toTargetId, to.assembly);
+      this.hud.hint('移送元を更新できないため、移送を取り消しました'); return;
     }
     this.hud.hint(`${sourcePlacement.part.name} を移送しました`);
   }
@@ -683,7 +692,11 @@ export class Docking {
     const slotIndex = base.getAvailableSlotIndex();
     if (slotIndex === null) return this.reportEditFailure('空きドックがありません');
     const blueprint = createBlueprint({ id: `${draft.id}-blueprint`, name: draft.name, tree: draft.assembly.tree, placements: draft.assembly.placements, now: Date.now() });
-    const production = productionBlueprintOf(blueprint);
+    // 倉庫から引いた(=生産時にすでに課金済みの)部品は建造費から除く。二重課金を避けるための
+    // 課金専用の設計で、実際に組み立てる vessel は draft.assembly をそのまま使う。
+    const chargedPlacements = draft.assembly.placements.filter((placement) => !draft.ownedPartIds.has(placement.part.id));
+    const chargeBlueprint = createBlueprint({ id: `${draft.id}-charge`, name: draft.name, tree: draft.assembly.tree, placements: chargedPlacements, now: Date.now() });
+    const production = productionBlueprintOf(chargeBlueprint);
     const requirements = producibility(production, base.baseState.resources, baseFacilities(base), basePowerAvailable(base));
     if (requirements.length > 0) {
       this.hud.hint(`建造資源・設備が不足しています: ${requirements.map((item) => item.id).join(', ')}`); return;
@@ -771,6 +784,10 @@ function freePort(assembly: VesselAssembly, nodeId: string): PortRef | null {
   for (const edge of assembly.tree.edges) {
     if (edge.a === nodeId) occupied.add(portKey(nodeId, edge.portA));
     if (edge.b === nodeId) occupied.add(portKey(nodeId, edge.portB));
+  }
+  for (const placement of assembly.placements) {
+    if (placement.kind !== 'external' || placement.mount.kind !== 'port') continue;
+    if (placement.mount.nodeId === nodeId) occupied.add(portKey(nodeId, placement.mount.port));
   }
   for (const port of [{ kind: 'axial', sign: 1 }, { kind: 'axial', sign: -1 }] as const) {
     if (!occupied.has(portKey(nodeId, port))) return port;
