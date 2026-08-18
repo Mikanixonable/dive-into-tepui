@@ -19,7 +19,7 @@ export interface BlueprintStore {
 export class BlueprintLibrary {
   private readonly store: BlueprintStore;
   private readonly clock: () => number;
-  private byId: Map<string, VesselBlueprint>;
+  private readonly byId: Map<string, VesselBlueprint>;
 
   public constructor(store: BlueprintStore, clock: () => number = () => Date.now()) {
     this.store = store;
