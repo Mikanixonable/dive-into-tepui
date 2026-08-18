@@ -374,6 +374,7 @@ export class BaseView {
   public onClose: (() => void) | null = null;
   public onWorkbenchDrop: ((base: Vessel, vessel: Vessel, partId: string, fromInventory: boolean) => void) | null = null;
   public onWorkbenchRemove: ((base: Vessel, vessel: Vessel, partId: string) => void) | null = null;
+  public onWorkbenchPointer: ((base: Vessel, vessel: Vessel, clientX: number, clientY: number) => void) | null = null;
 
   public get visible(): boolean { return this._visible; }
   public get element(): HTMLElement { return this.el; }
@@ -554,6 +555,9 @@ export class BaseView {
     const stage = document.createElement('div');
     stage.className = 'dock-workbench-stage';
     stage.textContent = '3D作業領域 · 接続口 / 外表面 / トラス取付点へスナップ';
+    stage.addEventListener('pointerdown', (event) => {
+      this.onWorkbenchPointer?.(base, vessel, event.clientX, event.clientY);
+    });
     stage.addEventListener('dragover', (event) => event.preventDefault());
     stage.addEventListener('drop', (event) => {
       event.preventDefault();

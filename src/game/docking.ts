@@ -46,6 +46,7 @@ export class Docking {
   private readonly vesselDeps: VesselDeps;
   // 生産にかけられる設計の保管庫。
   private readonly blueprints: BlueprintLibrary;
+  private readonly workbenchRaycaster = new THREE.Raycaster();
 
   constructor(
     private readonly pauseGame: () => void,
@@ -69,6 +70,9 @@ export class Docking {
     this.baseView.onWorkbenchRemove = (base, vessel, partId) => this.removeDockedPart(base, vessel, partId);
     this.baseView.onWorkbenchDrop = (base, vessel, partId, fromInventory) => {
       if (fromInventory) this.installDockedPart(base, vessel, partId);
+    };
+    this.baseView.onWorkbenchPointer = (_base, vessel, clientX, clientY) => {
+      this.pickWorkbenchObject(vessel, clientX, clientY);
     };
     this.viewManager.setDocking(this);
 
@@ -295,6 +299,36 @@ export class Docking {
     base.baseState.inventory.splice(inventoryIndex, 1);
     this.baseView.openWorkbench(base, result.vessel);
     this.hud.hint('部品をドック作業台へ取り付けました');
+  }
+
+  private pickWorkbenchObject(vessel: Vessel, clientX: number, clientY: number): void {
+    const width = Math.max(1, document.documentElement.clientWidth);
+    const height = Math.max(1, document.documentElement.clientHeight);
+    this.workbenchRaycaster.setFromCamera(
+      new THREE.Vector2((clientX / width) * 2 - 1, -(clientY / height) * 2 + 1),
+      this.cameraSystem.activeCamera,
+    );
+    const hit = this.workbenchRaycaster.intersectObjects(vessel.renderObject.children, true)[0];
+    let object: THREE.Object3D | null = hit?.object ?? null;
+    while (object) {
+      const partRef = object.userData['partVisualRef']?.partId as string | undefined;
+      if (partRef) {
+        const part = vessel.parts.find((candidate) => candidate.id === partRef);
+        this.hud.hint(part ? `選択: ${part.name} (${part.type})` : `選択: ${partRef}`);
+        return;
+      }
+      const edgeId = object.userData['assemblyEdgeId'] as string | undefined;
+      if (edgeId) {
+        this.hud.hint(`エッジ ${edgeId} · ${object.userData['edgeKind'] ?? 'hull'}`);
+        return;
+      }
+      const nodeId = object.userData['assemblyNodeId'] as string | undefined;
+      if (nodeId) {
+        this.hud.hint(`ノード ${nodeId}`);
+        return;
+      }
+      object = object.parent;
+    }
   }
 
   // 設計から実機を1機作り、基地のドックへ置く。ドックの収容数を超える生産は、完成した時点では
