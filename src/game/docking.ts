@@ -1,9 +1,6 @@
 import * as THREE from 'three/webgpu';
 import * as C from './const';
 import { v3, len, sub } from '../physics/vec3';
-import { add as addWorld, dot, lenSq, norm, scale as scaleWorld } from '../physics/vec3';
-import { qInvert, qRotate, type Quat } from '../physics/attitude';
-import type { Vec3 } from '../physics/vec3';
 import { kinematicState } from '../physics/kinematic-state';
 import { Hud } from './hud/hud';
 import { BaseView, type WorkbenchSelectionInfo, type WorkbenchTargetView } from './hud/base-view';
@@ -16,17 +13,16 @@ import type { PartPlacement } from './vessel/assembly';
 import { validateBlueprint } from './vessel/blueprint-validation';
 import {
   addEdge, addNode, editSection, moveNode, removeEdge, removeNode, removePlacement,
+  movePlacement,
   type EdgeDraft,
 } from './vessel/assembly-editor';
 import { AssemblyRenderObject } from './vessel/assembly-render-object';
 import { crewedAssembly } from './vessel/vessel-assemblies';
 import { productionBlueprintOf, consumeProductionResources } from './vessel/production';
 import { producibility } from './economy/producibility';
-import { baseFacilities, basePowerAvailable } from './vessel/base-module';
+import { baseFacilities, basePowerAvailable, deriveBaseDockingPorts } from './vessel/base-module';
+import { validateBaseAssembly } from './vessel/base-assembly-validation';
 import type { MountPoint, PortRef, TreeNode } from './vessel/tree';
-import { circumradius } from './vessel/tree';
-import type { RayHit, SphereHit } from '../physics/base-collision';
-import { deriveCapsules, type HullCapsule } from './vessel/collision-shape';
 import { add as addVec, scale as scaleVec } from '../physics/vec3';
 import type { GameEntity } from './game-entity/game-entity';
 import type { AnyPart } from './game-entity/parts';
@@ -96,6 +92,7 @@ export class Docking {
     this.baseView.onWorkbenchRemove = (base, targetId, partId) => this.removeWorkbenchPart(base, targetId, partId);
     this.baseView.onWorkbenchDrop = (base, targetId, partId, fromInventory) => {
       if (fromInventory) this.installWorkbenchPart(base, targetId, partId);
+      else this.moveWorkbenchPart(base, targetId, partId);
     };
     this.baseView.onWorkbenchPointer = (_base, targetId, clientX, clientY) => {
       this.pickWorkbenchObject(targetId, clientX, clientY);
@@ -299,6 +296,7 @@ export class Docking {
 
   private syncDraftRenders(base: Vessel): void {
     for (const draft of this.drafts.values()) {
+      draft.render.object.userData['workbenchDraft'] = true;
       if (draft.render.object.parent !== base.renderObject) base.renderObject.add(draft.render.object);
       draft.render.object.position.set(0, 0, 360 + this.draftSequence * 30);
       draft.render.object.visible = true;
@@ -470,6 +468,15 @@ export class Docking {
     this.hud.hint(`${part.name} を ${target.name} へ取り付けました`);
   }
 
+  private moveWorkbenchPart(base: Vessel, targetId: string, partId: string): void {
+    const target = this.targetById(base, targetId);
+    const mount = this.selectedMounts.get(targetId);
+    if (!target || !mount) return this.reportEditFailure('先に3D上の接続口または外表面を選択してください');
+    const result = movePlacement(target.assembly, { placementId: partId, mount }, editorOptions(target.name));
+    if (!result.accepted) return this.reportEditFailure(result.errors[0]?.message ?? '部品を移動できません');
+    this.applyTargetAssembly(base, targetId, result.assembly);
+  }
+
   private pickWorkbenchObject(targetId: string, clientX: number, clientY: number): void {
     const base = this._activeBase;
     const target = base ? this.targetById(base, targetId) : null;
@@ -633,47 +640,28 @@ export class Docking {
   }
 
   private commitBaseAssembly(base: Vessel, assembly: VesselAssembly, track = true): { ok: true; base: Vessel } | { ok: false; reason: string } {
-    const module = assembly.placements.map((placement) => placement.part).find((part) => part.type === 'base_module' && part.hp > 0);
-    if (!module || module.type !== 'base_module') return { ok: false, reason: '基地モジュールが必要です' };
     if (!base.baseState) return { ok: false, reason: '基地ではありません' };
-    if (module.capacity < base.baseState.dockedVessels.length) return { ok: false, reason: '現在の格納船数が新しいドック容量を超えています' };
-    const issue = assemblyError(assembly, base.name);
-    if (issue) return { ok: false, reason: issue };
-
-    const oldState = base.baseState;
-    const oldEntries = [...oldState.dockedVessels];
-    const oldInventory = [...oldState.inventory];
-    const resources = oldState.resources.storedIds.map((id) => [id, oldState.resources.amountOf(id)] as const);
-    const saved = base.serializeAsBase();
-    let replacement: Vessel;
-    try {
-      replacement = new Vessel({ savedBase: { ...saved, assembly }, simTime: base.state.t }, this.vesselDeps);
-    } catch (error) {
-      return { ok: false, reason: `基地の再構築に失敗しました: ${error instanceof Error ? error.message : String(error)}` };
+    const validation = validateBaseAssembly(assembly, base.baseState.dockedVessels.length);
+    if (validation.length > 0) return { ok: false, reason: validation[0]! };
+    const oldModule = base.parts.find((part) => part.type === 'base_module' && part.hp > 0);
+    const newModule = assembly.placements.map((placement) => placement.part)
+      .find((part) => part.type === 'base_module' && part.hp > 0);
+    if (!oldModule || !newModule || oldModule.type !== 'base_module' || newModule.type !== 'base_module') {
+      return { ok: false, reason: '基地モジュールを維持してください' };
     }
-    Object.defineProperty(replacement, 'collisionGeom', {
-      configurable: true, enumerable: true, writable: true, value: new AssemblyCollisionAdapter(assembly),
-    });
-    const duplicates = [...(replacement.baseState?.dockedVessels ?? [])];
-    for (const entry of duplicates) {
-      replacement.detachDockedVesselMesh(entry.vessel);
-      entry.vessel.dispose();
+    if (oldModule.id !== newModule.id) return { ok: false, reason: '基地モジュールのIDは変更できません' };
+    const oldPorts = deriveBaseDockingPorts(base.assembly, oldModule).slots;
+    const newPorts = deriveBaseDockingPorts(assembly, newModule).slots;
+    for (const entry of base.baseState.dockedVessels) {
+      if (!sameDockPort(oldPorts[entry.slotIndex], newPorts[entry.slotIndex])) {
+        return { ok: false, reason: `ドック ${entry.slotIndex + 1} は船が収容中のため変更できません` };
+      }
     }
-    for (const draft of this.drafts.values()) draft.render.object.removeFromParent();
-    for (const entry of oldEntries) base.detachDockedVesselMesh(entry.vessel);
-    oldState.dockedVessels = [];
-    this.entities.removeVessel(base);
-    this.entities.addVessel(replacement);
-    replacement.baseState!.inventory.splice(0, replacement.baseState!.inventory.length, ...oldInventory);
-    replacement.baseState!.resources.clear();
-    for (const [id, amount] of resources) replacement.baseState!.resources.add(id, amount);
-    replacement.baseState!.dockedVessels = oldEntries;
-    for (const entry of oldEntries) replacement.attachDockedVesselMesh(entry.vessel, entry.slotIndex);
-    this._activeBase = replacement;
-    if (this.workbenchCheckpoint) this.workbenchCheckpoint.base = replacement;
-    this.syncDraftRenders(replacement);
+    const applied = base.replaceAssembly(assembly);
+    if (!applied.ok) return applied;
+    this._activeBase = base;
     if (track) this.workbenchDirty = true;
-    return { ok: true, base: replacement };
+    return { ok: true, base };
   }
 
   private createDraft(base: Vessel): void {
@@ -759,79 +747,6 @@ const EXTERNAL_PART_TYPES = new Set([
   'heat_shield', 'communication', 'robot_arm', 'docking_port', 'container_coupling',
 ]);
 
-/**
- * 作業台で基地を差し替えた直後も、基地の実際のassemblyから狭域衝突を引く最小adapter。
- * BaseCollisionGeometryの旧固定LODは既定基地の弾道判定用に残し、カスタム基地ではツリーから導いた
- * hull/trussカプセルを raycast / sphere 接触へ使う。物理接触側はVessel.collisionCapsulesを既に読む。
- */
-class AssemblyCollisionAdapter {
-  public readonly outerRadius: number;
-  private readonly capsules: readonly HullCapsule[];
-
-  public constructor(assembly: VesselAssembly) {
-    this.capsules = deriveCapsules(assembly.tree);
-    let radius = 1;
-    for (const node of assembly.tree.nodes) radius = Math.max(radius, len(node.pos) + circumradius(node.section));
-    this.outerRadius = radius;
-  }
-
-  public raycast(rayOrigin: Vec3, rayDir: Vec3, maxDist: number,
-    basePos: Vec3, baseAtt: Quat, _warpLevel: number): RayHit | null {
-    const inv = qInvert(baseAtt);
-    const origin = qRotate(inv, sub(rayOrigin, basePos));
-    const direction = qRotate(inv, rayDir);
-    let best: { t: number; center: Vec3; radius: number } | null = null;
-    for (const capsule of this.capsules) {
-      const length = len(sub(capsule.b, capsule.a));
-      const steps = Math.max(1, Math.ceil(length / Math.max(capsule.radius, 0.5)));
-      for (let i = 0; i <= steps; i++) {
-        const center = addWorld(capsule.a, scaleWorld(sub(capsule.b, capsule.a), i / steps));
-        const hit = raySphere(origin, direction, center, capsule.radius);
-        if (hit && hit.t <= maxDist && (!best || hit.t < best.t)) best = { t: hit.t, center, radius: capsule.radius };
-      }
-    }
-    if (!best) return null;
-    const pointLocal = addWorld(origin, scaleWorld(direction, best.t));
-    return {
-      point: addWorld(basePos, qRotate(baseAtt, pointLocal)),
-      normal: norm(qRotate(baseAtt, sub(pointLocal, best.center))),
-      distance: best.t,
-    };
-  }
-
-  public testSphereCollision(sphereCenter: Vec3, sphereRadius: number,
-    basePos: Vec3, baseAtt: Quat, _warpLevel: number): SphereHit | null {
-    const inv = qInvert(baseAtt);
-    const center = qRotate(inv, sub(sphereCenter, basePos));
-    let best: { point: Vec3; radius: number; distance: number } | null = null;
-    for (const capsule of this.capsules) {
-      const ab = sub(capsule.b, capsule.a);
-      const lengthSq = lenSq(ab);
-      const t = lengthSq > 1e-12 ? Math.max(0, Math.min(1, dot(sub(center, capsule.a), ab) / lengthSq)) : 0;
-      const point = addWorld(capsule.a, scaleWorld(ab, t));
-      const distance = len(sub(center, point));
-      if (distance <= sphereRadius + capsule.radius && (!best || distance < best.distance)) best = { point, radius: capsule.radius, distance };
-    }
-    if (!best) return null;
-    const localNormal = norm(sub(center, best.point));
-    return {
-      point: addWorld(basePos, qRotate(baseAtt, best.point)),
-      normal: norm(qRotate(baseAtt, localNormal)),
-      depth: sphereRadius + best.radius - best.distance,
-    };
-  }
-}
-
-function raySphere(origin: Vec3, direction: Vec3, center: Vec3, radius: number): { t: number } | null {
-  const oc = sub(origin, center);
-  const b = dot(oc, direction);
-  const c = lenSq(oc) - radius * radius;
-  const discriminant = b * b - c;
-  if (discriminant < 0) return null;
-  const t = -b - Math.sqrt(discriminant);
-  return { t: t >= 0 ? t : -b + Math.sqrt(discriminant) };
-}
-
 function editorOptions(name: string): { readonly blueprintId: string; readonly blueprintName: string } {
   return { blueprintId: `workbench-${name}`, blueprintName: name };
 }
@@ -900,4 +815,17 @@ function defaultDockPlacement(assembly: VesselAssembly, part: AnyPart, selectedM
   }
   if (edge.kind.kind !== 'hull') return null;
   return { kind: 'external', part, mount: { kind: 'surface', edgeId: edge.id, along: edge.length / 2, around: 0 } };
+}
+
+function sameDockPort(
+  a: { readonly localPos: { x: number; y: number; z: number }; readonly localNormal: { x: number; y: number; z: number } } | undefined,
+  b: { readonly localPos: { x: number; y: number; z: number }; readonly localNormal: { x: number; y: number; z: number } } | undefined,
+): boolean {
+  if (!a || !b) return false;
+  return Math.abs(a.localPos.x - b.localPos.x) < 1e-9
+    && Math.abs(a.localPos.y - b.localPos.y) < 1e-9
+    && Math.abs(a.localPos.z - b.localPos.z) < 1e-9
+    && Math.abs(a.localNormal.x - b.localNormal.x) < 1e-9
+    && Math.abs(a.localNormal.y - b.localNormal.y) < 1e-9
+    && Math.abs(a.localNormal.z - b.localNormal.z) < 1e-9;
 }

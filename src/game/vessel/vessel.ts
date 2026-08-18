@@ -73,7 +73,8 @@ import type { MassProperties } from './mass-properties';
 import { hasBaseModule } from './capabilities';
 import { ResourceLedger } from '../economy/resource-ledger';
 import {
-  BaseState, baseAssemblyCollisionRadius, deriveBaseDockingPorts, DockedVesselEntry,
+  BaseState as RawBaseState, baseAssemblyCollisionRadius, deriveBaseDockingPorts,
+  DockedVesselEntry as RawDockedVesselEntry,
   portWorldPos, portWorldNormal,
 } from './base-module';
 import { EnemyAi, type EnemyKind } from './enemy-ai';
@@ -336,7 +337,7 @@ export class Vessel extends GameEntity {
   // 敵対勢力の行動則。持たない機体では null。
   public readonly ai: EnemyAi | null = null;
   // 基地モジュールが与える在庫と収容。モジュールを積まない機体では null。
-  public readonly baseState: BaseState | null = null;
+  public readonly baseState: RawBaseState<Vessel> | null = null;
   public collisionGeom: BaseCollisionGeometry | null = null;
 
   private readonly thrustEffects: ThrustEffects | null = null;
@@ -541,7 +542,12 @@ export class Vessel extends GameEntity {
       this.inventory.refuel(saved.fuel);
     }
     const savedVessels = saved.dockedVessels ?? saved.dockedShips ?? [];
-    const slotIndices = resolveDockSlotIndices(saved.dockBindings, savedVessels, this.dockCapacity);
+    const portIndexById = new Map<string, number>();
+    for (let slot = 0; slot < this.dockCapacity; slot++) {
+      const portId = this.getDockPortId(slot);
+      if (portId) portIndexById.set(portId, slot);
+    }
+    const slotIndices = resolveDockSlotIndices(saved.dockBindings, savedVessels, this.dockCapacity, portIndexById);
     state.dockedVessels = savedVessels.map((data, idx) => {
       const vessel = new Vessel({ savedShip: data, simTime }, deps);
       const slotIndex = slotIndices[idx] ?? 0;
@@ -596,19 +602,22 @@ export class Vessel extends GameEntity {
     if (!this.baseState) return { ok: false, reason: '基地ではありません' };
     try {
       const design = orbitalBaseDesign(assembly);
+      const capsules = deriveCapsules(assembly.tree);
+      const collisionGeom = new BaseCollisionGeometry(assembly);
+      const wireframe = buildVesselWireframe(assembly.tree, capsules);
       const dockedObjects = new Set(this.baseState.dockedVessels.map((entry) => entry.vessel.renderObject));
-      const oldChildren = [...this.renderObject.children].filter((child) => !dockedObjects.has(child));
+      const oldChildren = [...this.renderObject.children].filter((child) =>
+        !dockedObjects.has(child) && child.userData['workbenchDraft'] !== true);
       for (const child of oldChildren) {
         this.renderObject.remove(child);
         disposeVesselObject(child);
       }
       for (const child of [...design.renderObject.children]) this.renderObject.add(child);
-      const capsules = deriveCapsules(assembly.tree);
-      this.renderObject.add(buildVesselWireframe(assembly.tree, capsules));
+      this.renderObject.add(wireframe);
 
       this.assembly = assembly;
       this.collisionCapsules = capsules;
-      this.collisionGeom = new BaseCollisionGeometry(assembly);
+      this.collisionGeom = collisionGeom;
       this.massProperties = design.massProperties;
       this.mass = design.massProperties.mass;
       this.radius = design.radius;
@@ -1173,7 +1182,11 @@ export class Vessel extends GameEntity {
       assembly: this.assembly ? serializeAssembly(this.assembly) : undefined,
       inventory: state.inventory.map((p) => ({ ...p })),
       dockedVessels: state.dockedVessels.map((entry) => entry.vessel.serializeAsShip()),
-      dockBindings: state.dockedVessels.map((entry) => ({ vesselId: entry.vessel.id, slotIndex: entry.slotIndex })),
+      dockBindings: state.dockedVessels.map((entry) => ({
+        vesselId: entry.vessel.id,
+        slotIndex: entry.slotIndex,
+        dockId: this.getDockPortId(entry.slotIndex) ?? undefined,
+      })),
       throttle: this.throttle.serialize(),
     };
   }
@@ -1200,4 +1213,5 @@ function disposeVesselObject(object: THREE.Object3D): void {
   });
 }
 
-export type { DockedVesselEntry, BaseState };
+export type DockedVesselEntry = RawDockedVesselEntry<Vessel>;
+export type BaseState = RawBaseState<Vessel>;
