@@ -89,6 +89,9 @@ export class Docking {
       const vessel = base?.baseState?.dockedVessels[0]?.vessel;
       if (base?.alive && vessel) this.baseView.openWorkbench(base, vessel);
     };
+    this.baseView.onWorkbenchTransfer = (base, from, to, partId) => {
+      this.transferDockedPart(base, from, to, partId);
+    };
     this.viewManager.setDocking(this);
 
     this.transferDialog = new ResourceTransferDialog(this.hud.layers.view, this.hud.overlayManager);
@@ -331,6 +334,40 @@ export class Docking {
     this.hud.hint('部品を基地倉庫へ移しました');
   }
 
+  private transferDockedPart(base: Vessel, from: Vessel, to: Vessel, partId: string): void {
+    if (!from.assembly || !to.assembly || from === to) return;
+    const sourcePlacement = from.assembly.placements.find((placement) => placement.part.id === partId);
+    if (!sourcePlacement) return;
+    const sourceAssembly = {
+      tree: from.assembly.tree,
+      placements: from.assembly.placements.filter((placement) => placement.part.id !== partId),
+    };
+    const destinationAssembly = {
+      tree: to.assembly.tree,
+      placements: [...to.assembly.placements, sourcePlacement],
+    };
+    const sourceError = assemblyError(sourceAssembly, from.name);
+    const destinationError = assemblyError(destinationAssembly, to.name);
+    if (sourceError || destinationError) {
+      this.hud.hint(sourceError ?? destinationError ?? '移送先の検証に失敗しました');
+      return;
+    }
+    const destinationResult = this.commitDockedAssembly(base, to.id, destinationAssembly);
+    if (!destinationResult.ok) {
+      this.hud.hint(`移送先を更新できません: ${destinationResult.reason}`);
+      return;
+    }
+    const sourceResult = this.commitDockedAssembly(base, from.id, sourceAssembly);
+    if (!sourceResult.ok) {
+      // 予期しないランタイム失敗でも、先に更新した移送先を元へ戻す。
+      this.commitDockedAssembly(base, to.id, to.assembly, false);
+      this.hud.hint(`移送元を更新できません: ${sourceResult.reason}`);
+      return;
+    }
+    this.baseView.openWorkbench(base, sourceResult.vessel);
+    this.hud.hint(`${sourcePlacement.part.name} を ${to.name} へ移送しました`);
+  }
+
   private installDockedPart(base: Vessel, vessel: Vessel, partId: string): void {
     if (!vessel.assembly || !base.baseState) return;
     const inventoryIndex = base.baseState.inventory.findIndex((part) => part.id === partId);
@@ -470,6 +507,13 @@ const EXTERNAL_PART_TYPES = new Set([
   'weapon', 'engine', 'rcs_thruster', 'solar_panel', 'radiator', 'combat_shield',
   'heat_shield', 'communication', 'robot_arm', 'docking_port', 'container_coupling',
 ]);
+
+function assemblyError(assembly: VesselAssembly, name: string): string | null {
+  const blueprint = createBlueprint({
+    id: `dock-preview-${name}`, name, tree: assembly.tree, placements: assembly.placements, now: 0,
+  });
+  return validateBlueprint(blueprint).find((issue) => issue.severity === 'error')?.message ?? null;
+}
 
 function defaultDockPlacement(assembly: VesselAssembly, part: AnyPart): PartPlacement | null {
   const edge = assembly.tree.edges.find((candidate) => candidate.kind.kind === 'hull') ?? assembly.tree.edges[0];

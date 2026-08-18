@@ -87,6 +87,8 @@ const STYLE = `
   background: rgba(12, 18, 25, 0.62); color: var(--accent-near); text-align: center;
 }
 #base-view .dock-parts-actions { display: flex; justify-content: flex-end; gap: 7px; }
+#base-view .dock-workbench-part-wrap { display: flex; flex-direction: column; gap: 4px; margin-bottom: 7px; }
+#base-view .dock-workbench-transfer { display: flex; justify-content: flex-end; gap: 5px; }
 #base-view .dock-part-property-window {
   position: fixed; right: max(var(--space-5), var(--safe-r)); bottom: max(var(--space-5), var(--safe-b));
   z-index: 3; min-width: 230px; padding: 13px 15px; border: 1px solid var(--accent-secondary);
@@ -378,6 +380,7 @@ export class BaseView {
   public onWorkbenchPointer: ((base: Vessel, vessel: Vessel, clientX: number, clientY: number) => void) | null = null;
   public onWorkbenchCommit: (() => void) | null = null;
   public onWorkbenchCancel: (() => void) | null = null;
+  public onWorkbenchTransfer: ((base: Vessel, from: Vessel, to: Vessel, partId: string) => void) | null = null;
 
   public get visible(): boolean { return this._visible; }
   public get element(): HTMLElement { return this.el; }
@@ -602,7 +605,10 @@ export class BaseView {
     for (const part of vessel.parts) {
       const row = this.buildWorkbenchPartRow(part, false);
       row.addEventListener('dblclick', () => this.onWorkbenchRemove?.(base, vessel, part.id));
-      mounted.appendChild(row);
+      const wrapper = document.createElement('div');
+      wrapper.className = 'dock-workbench-part-wrap';
+      wrapper.append(row, this.buildTransferControl(base, vessel, part.id));
+      mounted.appendChild(wrapper);
     }
     const inventory = document.createElement('div');
     inventory.className = 'dock-parts-col';
@@ -618,6 +624,29 @@ export class BaseView {
     hint.textContent = '部品をダブルクリックすると取り外し候補になります。赤い候補は接続検証に失敗しています。';
     section.appendChild(hint);
     return section;
+  }
+
+  private buildTransferControl(base: Vessel, from: Vessel, partId: string): HTMLElement {
+    const control = document.createElement('div');
+    control.className = 'dock-workbench-transfer';
+    const select = document.createElement('select');
+    select.className = 'dock-part-swap-select';
+    select.setAttribute('aria-label', '移送先の格納艦');
+    for (const entry of base.baseState!.dockedVessels) {
+      if (entry.vessel === from) continue;
+      const option = document.createElement('option');
+      option.value = entry.id;
+      option.textContent = entry.name || entry.id;
+      select.appendChild(option);
+    }
+    const button = new Button('船へ移送', () => {
+      const target = base.baseState!.dockedVessels.find((entry) => entry.id === select.value)?.vessel;
+      if (target) this.onWorkbenchTransfer?.(base, from, target, partId);
+    });
+    button.element.classList.add('dock-btn', 'dock-btn-quiet');
+    button.setEnabled(select.options.length > 0);
+    control.append(select, button.element);
+    return control;
   }
 
   private buildWorkbenchPartRow(part: Part, fromInventory: boolean): HTMLElement {
