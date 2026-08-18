@@ -72,7 +72,10 @@ import type { VesselAssembly } from './assembly';
 import type { MassProperties } from './mass-properties';
 import { hasBaseModule } from './capabilities';
 import { ResourceLedger } from '../economy/resource-ledger';
-import { BaseState, DockedVesselEntry, portWorldPos, portWorldNormal } from './base-module';
+import {
+  BaseState, baseAssemblyCollisionRadius, deriveBaseDockingPorts, DockedVesselEntry,
+  portWorldPos, portWorldNormal,
+} from './base-module';
 import { EnemyAi, type EnemyKind } from './enemy-ai';
 import { PartInventory } from './part-inventory';
 import { baseMarkerSvg, headingHpMarkerSvg, notchedHpMarkerSvg } from './hp-marker-svg';
@@ -464,7 +467,17 @@ export class Vessel extends GameEntity {
     // 赤道交点マーカーを出す。
     if (hasBaseModule(this)) {
       this.baseState = { inventory: [], dockedVessels: [], resources: new ResourceLedger() };
-      this.collisionGeom = new BaseCollisionGeometry(design.assembly ?? undefined);
+      // assembly付きの基地は、旧render/shipsの固定形状ではなく保存されたassemblyから衝突形状を
+      // 導く。assembly無しの旧セーブは従来の固定LOD・半径を使い、旧データの挙動を変えない。
+      const savedBaseAssembly = 'savedBase' in init && isSupportedBaseSaveFormat(init.savedBase.formatVersion)
+        ? baseAssemblyFromSaveData(init.savedBase.assembly)
+        : null;
+      if ((savedBaseAssembly || !('savedBase' in init)) && this.assembly) {
+        this.radius = baseAssemblyCollisionRadius(this.assembly);
+        this.collisionGeom = new BaseCollisionGeometry(this.assembly);
+      } else {
+        this.collisionGeom = new BaseCollisionGeometry();
+      }
       this.equatorNodes = new EquatorNodeMarkerPair(this, deps.markerManager);
     }
 
@@ -624,23 +637,40 @@ export class Vessel extends GameEntity {
     return null;
   }
 
-  // 収容できる機体数。基地モジュールを積んでいなければ 0。
-  public get dockCapacity(): number { return this.baseModule?.capacity ?? 0; }
+  private get dockPorts() {
+    return deriveBaseDockingPorts(this.assembly, this.baseModule);
+  }
 
-  // 中央ハッチのワールド位置と外向き法線。モジュールが無ければ機体そのものの位置を返す。
+  // 収容できる機体数。固定base_module.capacityではなく、assemblyから解決できた安定ポート数を返す。
+  public get dockCapacity(): number { return this.dockPorts.slots.length; }
+
+  // 作業台・セーブが参照できる安定したドックポートID。slotIndexは表示順であり、永続参照には使わない。
+  public getDockPortId(slotIndex: number): string | null {
+    return this.dockPorts.slots[slotIndex]?.id ?? null;
+  }
+
+  public getSlotIndexForDockPortId(portId: string): number | null {
+    const index = this.dockPorts.slots.findIndex((port) => port.id === portId);
+    return index >= 0 ? index : null;
+  }
+
+  // 中央ハッチのワールド位置と外向き法線。カスタム基地でhatchが無い場合は最初のドック口を
+  // 互換用の主口として返し、口が一つも無ければ機体そのものへ戻す。
   public getHatchWorldPos(): Vec3 {
-    const port = this.baseModule?.hatch;
+    const ports = this.dockPorts;
+    const port = ports.hatch ?? ports.slots[0];
     return port ? portWorldPos(this, port) : this.state.r;
   }
 
   public getHatchWorldNormal(): Vec3 {
-    const port = this.baseModule?.hatch;
+    const ports = this.dockPorts;
+    const port = ports.hatch ?? ports.slots[0];
     return port ? portWorldNormal(this, port) : v3(0, 1, 0);
   }
 
   private slotPort(slotIndex: number): DockPort | null {
-    const slots = this.baseModule?.dockSlots;
-    if (!slots || slots.length === 0) return null;
+    const slots = this.dockPorts.slots;
+    if (slots.length === 0) return null;
     return slots[slotIndex] ?? slots[0]!;
   }
 
@@ -665,10 +695,12 @@ export class Vessel extends GameEntity {
   // 収容判定の閾値。基地モジュールを積んでいなければ受け入れない。
   public canCapture(other: Vessel): boolean {
     const module = this.baseModule;
-    if (!module || !this.baseState) return false;
-    if (this.baseState.dockedVessels.length >= module.capacity) return false;
-    if (len(sub(other.state.v, this.state.v)) > module.captureRelSpeed) return false;
-    const accepts = (port: DockPort, maxDist: number, minAlignment: number): boolean => {
+    const ports = this.dockPorts;
+    if (!module || !this.baseState || ports.slots.length === 0) return false;
+    if (this.baseState.dockedVessels.length >= ports.slots.length) return false;
+    if (len(sub(other.state.v, this.state.v)) > ports.captureRelSpeed) return false;
+    const accepts = (port: DockPort & { readonly maxVesselSize?: number }, maxDist: number, minAlignment: number): boolean => {
+      if (port.maxVesselSize !== undefined && other.radius > port.maxVesselSize) return false;
       const pos = portWorldPos(this, port);
       const d = sub(other.state.r, pos);
       const dist = len(d);
@@ -676,10 +708,12 @@ export class Vessel extends GameEntity {
       const normal = portWorldNormal(this, port);
       return (d.x * normal.x + d.y * normal.y + d.z * normal.z) / Math.max(dist, 1e-9) >= minAlignment;
     };
-    for (const slot of module.dockSlots) {
-      if (accepts(slot, module.slotCaptureDist, module.slotCaptureAlignment)) return true;
+    for (const slot of ports.slots) {
+      if (accepts(slot, ports.slotCaptureDist, ports.slotCaptureAlignment)) return true;
     }
-    return accepts(module.hatch, module.hatchCaptureDist, module.hatchCaptureAlignment);
+    return ports.hatch
+      ? accepts(ports.hatch, ports.hatchCaptureDist, ports.hatchCaptureAlignment)
+      : false;
   }
 
   // 収容した機体のメッシュを、指定スロットへ取り付けて表示する。
