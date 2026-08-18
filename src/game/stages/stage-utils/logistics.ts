@@ -3,6 +3,7 @@ import * as THREE from 'three/webgpu';
 import { randomQuat } from '../../../physics/attitude';
 import { randSym } from '../../../physics/random';
 import { add, len, lenSq, randVec, rotateAxis, sub, v3 } from '../../../physics/vec3';
+import { diagonalInertia } from '../../../physics/inertia-tensor';
 import * as C from '../../const';
 import { AmmoPickup } from '../../game-entity/ammo-pickup';
 import { kinematicState, orbitAxes } from '../../../physics/kinematic-state';
@@ -57,7 +58,7 @@ export class Logistics {
         att: {
           q: randomQuat(),
           w: v3(randSym(0.15), randSym(0.15), randSym(0.15)),
-          inertia: v3(1, 1.4, 1.2),
+          inertia: diagonalInertia(v3(1, 1.4, 1.2)),
         },
       },
       this._scene,

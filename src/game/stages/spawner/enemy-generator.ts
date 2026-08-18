@@ -6,6 +6,7 @@ import { MU_EARTH, R_EARTH } from '../../../physics/solar-system';
 import { stateFromOrbitalElements } from '../../../physics/elements';
 import { randSym } from '../../../physics/random';
 import { len, norm, rotateAxis, scale, v3 } from '../../../physics/vec3';
+import { diagonalInertia } from '../../../physics/inertia-tensor';
 import { Vessel, type VesselDeps } from '../../vessel/vessel';
 import { inertiaForEnemyKind } from '../../vessel/enemy-ai';
 
@@ -27,7 +28,7 @@ export function generateDriftingEnemy(name: string, state: KinematicState, accen
         // ランダムな姿勢・角速度を与える
         q: randomQuat(),
         w: v3(randSym(0.12), randSym(0.12), randSym(0.12)),
-        inertia: inertiaForEnemyKind({ kind: 'drifting' }),
+        inertia: diagonalInertia(inertiaForEnemyKind({ kind: 'drifting' })),
       },
       accent,
       orbitLineColor,
@@ -99,7 +100,7 @@ export function generateApproachingEnemy(
         // 機首をプログレードへ向ける
         q: qFromForwardUp(state.v, state.r) ?? randomQuat(),
         w: v3(0, 0, 0),
-        inertia: inertiaForEnemyKind({ kind: 'stage0', typeIndex }),
+        inertia: diagonalInertia(inertiaForEnemyKind({ kind: 'stage0', typeIndex })),
       },
       accent,
       orbitLineColor,

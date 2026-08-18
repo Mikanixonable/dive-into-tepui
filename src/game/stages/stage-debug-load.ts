@@ -11,6 +11,7 @@ import { randomQuat } from '../../physics/attitude';
 import { kinematicState } from '../../physics/kinematic-state';
 import { mulberry32 } from '../../physics/random';
 import { add, v3, Vec3 } from '../../physics/vec3';
+import { diagonalInertia } from '../../physics/inertia-tensor';
 import type { StageSaveData } from '../save-data';
 
 export class StageDebugLoad extends Stage {
@@ -36,13 +37,13 @@ export class StageDebugLoad extends Stage {
     for (let i = 0; i < C.DEBUG_LOAD_ASTEROID_COUNT; i++) {
       const offset = randomOffset(rand, C.DEBUG_LOAD_ASTEROID_MAX_DIST);
       const state = kinematicState(player.state.t, add(player.state.r, offset), player.state.v);
-      entities.addAsteroid(new Asteroid(state, C.DEBUG_LOAD_ASTEROID_MASS, C.DEBUG_LOAD_ASTEROID_RADIUS, this._scene, { q: randomQuat(rand), w: v3(0, 0, 0), inertia: v3(1, 1, 1) }));
+      entities.addAsteroid(new Asteroid(state, C.DEBUG_LOAD_ASTEROID_MASS, C.DEBUG_LOAD_ASTEROID_RADIUS, this._scene, { q: randomQuat(rand), w: v3(0, 0, 0), inertia: diagonalInertia(v3(1, 1, 1)) }));
     }
     for (let i = 0; i < C.DEBUG_LOAD_DEBRIS_COUNT; i++) {
       const offset = randomOffset(rand, C.DEBUG_LOAD_DEBRIS_MAX_DIST);
       const state = kinematicState(player.state.t, add(player.state.r, offset), player.state.v);
       const size = C.DESTROY_FRAG_SIZE_MIN + rand() * (C.DESTROY_FRAG_SIZE_MAX - C.DESTROY_FRAG_SIZE_MIN);
-      const att = { q: randomQuat(rand), w: v3(0, 0, 0), inertia: v3(1, 1, 1) };
+      const att = { q: randomQuat(rand), w: v3(0, 0, 0), inertia: diagonalInertia(v3(1, 1, 1)) };
       entities.addDebris(new DebrisPiece(state, { kind: 'fragment', accent: 0x888888, size }, att, this._worldSfx, this._fx, undefined, this._scene));
     }
   }

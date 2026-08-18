@@ -4,6 +4,7 @@
 // エッジの長さから一意に解けないため、位置はツリーの持ち物であり、validateTree がエッジの長さとの
 // 一致を確かめる。
 
+import * as C from '../const';
 import { Vec3, add, scale, v3 } from '../../physics/vec3';
 import type { CrossSection } from '../../physics/section-moments';
 import type { AnyPart, ExteriorPartType, PartType } from '../game-entity/parts';
@@ -11,6 +12,15 @@ import type { PartPlacement, VesselAssembly } from './assembly';
 import type { EdgeKind, PortRef, TreeEdge, TreeNode, VesselTree } from './tree';
 import { portFrame } from './tree';
 import { baseParts, crewedParts, hostileParts } from './vessel-parts';
+import type { DerivedMassProperties } from './mass-properties';
+import { deriveMassProperties } from './mass-properties';
+
+// 既定の有人艦の質量特性。ショップのカタログや弾道係数の見積もりが「既定艦と同じ桁」を書くために
+// 読む。形状は起動中に変わらないので1度だけ導いて使い回す。
+let crewedDerived: DerivedMassProperties | null = null;
+export function crewedMassProperties(): DerivedMassProperties {
+  return (crewedDerived ??= deriveMassProperties(crewedAssembly(C.PLAYER_MAX_HP)));
+}
 
 // 外装として機体の外側に取り付ける搭載要素の種別。これ以外は内容積に収める。
 const EXTERIOR_TYPES: ReadonlySet<PartType> = new Set<ExteriorPartType>([
@@ -119,7 +129,9 @@ export function crewedAssembly(maxHp: number): VesselAssembly {
     if (part.type === 'engine') {
       return { kind: 'external', part, mount: { kind: 'port', nodeId: 'tail', port: AXIAL_FORE } };
     }
-    if (part.type === 'weapon') {
+    if (part.type === 'weapon' || part.type === 'heat_shield') {
+      // 熱シールドは機首の口に付く。守る向きは口の外向き = 機首方向であり、機首を進行方向へ
+      // 向けているあいだだけ熱防御が効く(§11-3)。
       return { kind: 'external', part, mount: { kind: 'port', nodeId: 'nose', port: AXIAL_FORE } };
     }
     // RCS スラスタと通信機は外皮の表面に付く。重心から離すほど大きなトルクが得られる(§8-3)。

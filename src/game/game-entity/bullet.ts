@@ -26,7 +26,7 @@ export type BulletType = 'normal' | 'plasma';
 // 自弾と敵プラズマ弾の両方に使う。
 // geometry/material はビルダーが弾種ごとに共有するため、traverse による個別 dispose は行わない。
 export class Bullet extends GameEntity {
-    protected readonly bcInv = C.BULLET_BCINV;
+    protected override get bcInv(): number { return C.BULLET_BCINV; }
 
     readonly bornSim: number; // 発射時刻。初期 state のエポックそのもの
     readonly shooter: Shooter;
