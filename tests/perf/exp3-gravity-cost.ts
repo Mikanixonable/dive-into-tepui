@@ -7,7 +7,7 @@ import { Attractor } from '../../src/physics/attractor';
 import { stepDynamics } from '../../src/physics/dynamics';
 import {
   buildEphemeris, initialLeoState, classifyAttractors, attractorsNear,
-  predictedAttractorsAtNoEntities, SHIP_BCINV,
+  predictedAttractorsAtNoEntities, SHIP_BCINV, ARC_STEP_BUDGET,
 } from './common';
 
 // 毎回異なる t を作る(リングキャッシュに当たらないようにする)。無理数っぽい定数を掛けて
@@ -102,7 +102,7 @@ export function run(): void {
   for (const nSteps of [128, 256, 500, 1000]) {
     console.log(`${nSteps} | ${(msPredictorStep * nSteps).toFixed(2)} | ${(msStep * nSteps).toFixed(3)}`);
   }
-  console.log('\n(参考: ARC_STEP_BUDGET=500(map)/ARC_COMBAT_STEP_BUDGET=128(combat) が実際の1フレーム上限)');
+  console.log(`\n(参考: ARC_STEP_BUDGET=${ARC_STEP_BUDGET} が実際の1フレーム上限)`);
 }
 
 if (require.main === module) run();

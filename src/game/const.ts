@@ -253,6 +253,17 @@ export const GRAVITY_ALWAYS_COUNT = 15;
 // この値まで落ちる距離として天体構成から導かれる。
 export const GRAVITY_NEGLIGIBLE_ACCEL = 1e-8;
 
+// --- 弧が引く天体の絞り込み(game/simulation/arc-bodies.ts) ---
+// 一覧の外にある天体が「いつまで効き得ないか」を見積もるときの、相対速さの安全率と下限 [m/s]。
+// 見積りは保守的でありさえすればよく、精密である必要はない — 外れても訪問が1回増えるだけで、
+// 逆に短く見積もりすぎることだけが取りこぼしになる。下限は、相対速度がいま 0 の天体にも
+// 有限の期限を与えるために要る。
+export const ARC_BODY_CLOSING_SAFETY = 2;
+export const ARC_BODY_CLOSING_MARGIN = 2000;
+// 一覧へ入れておく先読み時間を、そのときの刻み幅の何歩ぶんに取るか。次の1歩で表面へ届きうる
+// 天体が一覧の外に残ると、その歩の掃引到達判定がその天体を見ないまま通り抜ける。
+export const ARC_BODY_LEAD_STEPS = 4;
+
 // --- 被弾・撃破エフェクト(フラッシュ/破片) ---
 export const BULLET_IMPACT_FLASH_SIZE0 = 1.5;
 export const BULLET_IMPACT_FLASH_SIZE1 = 6;
@@ -280,6 +291,14 @@ export const SIM_SPEED_LEVELS = [1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 13
 export const MAX_PHYS_SIM_SPEED = 4; // 推進・射撃・衝突解決・敵AIが有効な最大タイムワープ(SimSpeedManager の can* が参照)
 
 export const SUBSTEP_MAX_DT = 20; // 1サブステップの最大秒数 [s](Simulator.advance のサブステップ分割数の算出に使う)
+// 1フレームに許すサブステップ数の上限。これを超える時間送りが要求されたら刻み幅の側を伸ばす。
+// 刻み幅の上限が固定値だけだと substep 数がワープ倍率に正比例し、高ワープでは1フレームの値段が
+// そのまま倍率に比例して増える。再突入中の細分化はこれに優先する(加熱と動圧の積分結果が艦の
+// 生死を決め、それをプレイヤーが観測するため)。
+// 64 は最高ワープ(×65536)の LEO で1周あたり54歩。そこでの数値的な軌道減衰は 0.42 km/日で、
+// 同じ高度で大気抵抗が実際に削る 14 km/日 の 3% — 艦が焼ける時期は高ワープでも変わらない。
+// 1周27歩(K=32)まで粗くすると数値減衰が実ドラッグと同等になり、待つだけで艦が倍の速さで落ちる。
+export const SUBSTEP_MAX_COUNT = 64;
 export const REENTRY_SUBSTEP_ALT = 200e3; // 大気圏近傍で細分化を開始する高度 [m]
 export const REENTRY_SUBSTEP_MAX_DT = 1; // 大気圏近傍の最大積分刻み [s]
 
@@ -471,10 +490,10 @@ export const ARC_MAX_SAMPLES = 2000;
 // 狭めるが、狭めた区間に残るサンプルが数点まで減ると、折れ線上のクリック候補が飛び飛びの
 // 点になる。これを超えて粗ければ弧を作り直す。
 export const ARC_MAX_SAMPLE_COARSENING = 8;
-// Predictor が1フレームに配る積分ステップ数の上限。1歩 ≈ 0.32ms(101体窓の解決+分類+
-// 掃引到達判定、ブラウザ実測)なので、成長中の予測・計画が1フレームに使うのは ~95ms まで。
+// Predictor が1フレームに配る積分ステップ数の上限。1歩 ≈ 0.025〜0.055ms(弧が保持する
+// 一覧ぶんの天体解決+掃引到達判定、ブラウザ実測)なので、成長中の予測・計画が1フレームに
+// 使うのは ~7〜17ms まで。
 export const ARC_STEP_BUDGET = 300;
-export const ARC_COMBAT_STEP_BUDGET = 128; // 戦闘中は自機の線・計画の弧だけを粗く維持する
 // 予測刻みの下限 [s]。予測は固定のフレーム予算でホライズンまで伸ばす表示側の近似なので、
 // 実シミュレーションより粗く刻むこと自体が目的である — 細かくすれば届く先が近くなるだけで、
 // 折れ線の誤差は間引き補間(PREDICT_SAMPLE_ERROR)が支配しているので見える精度は増えない。
