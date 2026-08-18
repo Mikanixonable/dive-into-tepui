@@ -106,7 +106,7 @@ function totalAccel(
 ): Vec3 {
   let ax = 0, ay = 0, az = 0;
   for (const attractor of attractors) {
-    const g = attractorAccel(r, attractor);
+    const g = attractorAccel(r, attractor, attractor.state.t);
     ax += g.x; ay += g.y; az += g.z;
     // 2次重力場は天体中心からの相対位置で評価する(質点重力と違い ECI 原点基準では組めない)。
     if (attractor.degree2 !== null) {
