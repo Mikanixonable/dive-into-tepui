@@ -128,7 +128,8 @@ export function parseBlueprintFile(parsed: unknown): BlueprintParseResult {
   }
 
   const formatVersion = obj.formatVersion;
-  if (typeof formatVersion !== 'number' || formatVersion < 1 || formatVersion > BLUEPRINT_FILE_VERSION) {
+  if (!Number.isInteger(formatVersion) || (formatVersion as number) < 1
+    || (formatVersion as number) > BLUEPRINT_FILE_VERSION) {
     return { ok: false, reason: `対応していない形式のバージョンです (v${String(formatVersion)})` };
   }
   if (!Array.isArray(obj.blueprints)) {
@@ -160,8 +161,8 @@ export function checkBlueprintShape(value: unknown): VesselBlueprint | null {
     typeof obj.id !== 'string' || obj.id === '' ||
     typeof obj.name !== 'string' ||
     typeof tree !== 'object' || tree === null ||
-    !Array.isArray(tree.nodes) || !Array.isArray(tree.edges) ||
-    !Array.isArray(obj.placements) ||
+    !isArrayOf(tree.nodes, isTreeNodeShape) || !isArrayOf(tree.edges, isTreeEdgeShape) ||
+    !isArrayOf(obj.placements, isPlacementShape) ||
     !Array.isArray(obj.stageOrder) ||
     typeof obj.createdAt !== 'number' || typeof obj.updatedAt !== 'number'
   ) {
@@ -178,4 +179,38 @@ export function checkBlueprintShape(value: unknown): VesselBlueprint | null {
     feedNetwork: feedNetwork === undefined ? EMPTY_FEED_NETWORK : (feedNetwork as unknown as FeedNetwork),
     paint: paint === undefined ? DEFAULT_PAINT : paint,
   };
+}
+
+function isArrayOf(value: unknown, check: (element: Record<string, unknown>) => boolean): boolean {
+  if (!Array.isArray(value)) return false;
+  return value.every((element) =>
+    typeof element === 'object' && element !== null && check(element as Record<string, unknown>));
+}
+
+function isVec3Shape(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
+}
+
+function isTreeNodeShape(node: Record<string, unknown>): boolean {
+  return typeof node.id === 'string' && isVec3Shape(node.pos) && isVec3Shape(node.axis)
+    && Number.isFinite(node.phaseAngle) && typeof node.section === 'object' && node.section !== null;
+}
+
+function isTreeEdgeShape(edge: Record<string, unknown>): boolean {
+  const kind = edge.kind as Record<string, unknown> | undefined;
+  return typeof edge.id === 'string' && typeof edge.a === 'string' && typeof edge.b === 'string'
+    && Number.isFinite(edge.length)
+    && typeof kind === 'object' && kind !== null && typeof kind.kind === 'string';
+}
+
+function isPlacementShape(placement: Record<string, unknown>): boolean {
+  const part = placement.part as Record<string, unknown> | undefined;
+  if (typeof part !== 'object' || part === null || typeof part.id !== 'string') return false;
+  if (placement.kind === 'external') return typeof placement.mount === 'object' && placement.mount !== null;
+  if (placement.kind === 'internal') {
+    return Array.isArray(placement.edgeIds) && placement.edgeIds.every((id) => typeof id === 'string');
+  }
+  return false;
 }
