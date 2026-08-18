@@ -8,6 +8,9 @@ import { ResourceTransferDialog } from './hud/resource-transfer-dialog';
 import { Vessel, type VesselDeps } from './vessel/vessel';
 import { hasBaseModule } from './vessel/capabilities';
 import type { VesselBlueprint } from './vessel/blueprint';
+import { createBlueprint } from './vessel/blueprint';
+import type { VesselAssembly } from './vessel/assembly';
+import { validateBlueprint } from './vessel/blueprint-validation';
 import { baseFacilities, basePowerAvailable } from './vessel/base-module';
 import { BlueprintLibrary } from './vessel/blueprint-library';
 import { LocalStorageBlueprintStore } from './vessel/blueprint-store';
@@ -142,6 +145,37 @@ export class Docking {
 
   canEnterDock(): boolean {
     return this.getAvailableBases().length > 0;
+  }
+
+  /**
+   * Atomically replaces one docked vessel with the validated assembly produced by
+   * the workbench. The old vessel is kept untouched until validation succeeds.
+   */
+  commitDockedAssembly(base: Vessel, vesselId: string, assembly: VesselAssembly): { ok: true; vessel: Vessel } | { ok: false; reason: string } {
+    const state = base.baseState;
+    if (!state) return { ok: false, reason: '基地ではありません' };
+    const index = state.dockedVessels.findIndex((entry) => entry.id === vesselId);
+    if (index < 0) return { ok: false, reason: '対象艦がドックにありません' };
+    const previous = state.dockedVessels[index]!.vessel;
+    const blueprint = createBlueprint({
+      id: `${previous.id}-dock-edit`, name: previous.name, tree: assembly.tree,
+      placements: assembly.placements, now: Date.now(),
+    });
+    const issue = validateBlueprint(blueprint).find((candidate) => candidate.severity === 'error');
+    if (issue) return { ok: false, reason: issue.message };
+
+    const replacement = new Vessel({
+      blueprintShip: { blueprint, state: previous.state, name: previous.name, id: previous.id },
+    }, this.vesselDeps);
+    const slotIndex = state.dockedVessels[index]!.slotIndex;
+    base.detachDockedVesselMesh(previous);
+    state.dockedVessels.splice(index, 1, {
+      id: replacement.id, name: replacement.name, hp: replacement.hp, maxHp: replacement.maxHp,
+      parts: replacement.parts, vessel: replacement, slotIndex,
+    });
+    base.attachDockedVesselMesh(replacement, slotIndex);
+    previous.dispose();
+    return { ok: true, vessel: replacement };
   }
 
   clearActiveBaseIf(base: Vessel): void {
