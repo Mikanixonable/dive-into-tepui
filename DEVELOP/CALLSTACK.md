@@ -254,7 +254,12 @@ handlePointerInput 参照)。ステージが決着した(`activeStage.isPlaying`
         - entity.stepActual(dt, attractorsNearInto(entity.state.r, classified, scratch, entity.id)) → actual.step() → stepDynamics()(保持サンプル列への記録)
           // 自機(全隻)・敵・弾・薬莢・デブリ・補給・基地・小惑星それぞれ、個体ごと。alive のみ実行。attractorsNearInto は always + 自身の位置の27近傍グリッドから自分自身の id を除いたもの。それらの重力 + J2 + 大気抵抗(bcInv)+ 自身の thrust
       - nanWatchdog.checkPlayer('simulator.advance(軌道積分)')
-      - stepAttitudes(subDt) → stepAttitude() → entity.att へ代入 // 機体・薬莢・デブリ・補給すべて同じ subDt で一律に積分する
+      - stepAttitudes(subDt)
+        - [entities.vessels ごと] v.resolveAttitudeControl(subDt) → AttitudeControlSystem.resolve(actuatorSet(), state.r, att, subDt)
+          // 姿勢制御の要求(手動操作・自動操縦のどちらもここへ集まる)を allocateControl でアクチュエータへ配分し、
+          // 実際に出せたトルクを v.torque へ書く。蓄積角運動量は積分と同じ刻みで進める必要があるので、
+          // 要求を出す側ではなくここで解く。磁場は geomagneticField(state.r) を機体座標へ移して渡す
+        - stepAttitude() → entity.att へ代入 // 機体・薬莢・デブリ・補給すべて同じ subDt で一律に積分する
       - nanWatchdog.checkPlayer('simulator.advance(姿勢積分)')
       - surfaceBodies(resolveCollision, sources) // 表面を持つ相手として扱う天体。resolveCollision なら終点の全天体窓(ephemeris.attractorsAt(simTime)、mu=0 の表示天体も接触相手)、そうでなければ上の中点重力窓をそのまま
       - [entities.ownShips() ごと] p.stepEnvironment(subDt, ephemeris, simTime, surfaceBodies) // 熱・電力・ラジエータの受動状態。渡された窓から恒星を取り出し、同じ窓を日照率(sunlitFactor)の遮蔽体に使う
