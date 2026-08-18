@@ -65,9 +65,9 @@ export const PORT_WIDTH_RATIO = 1.0;
 // 貼り合わせる2辺の長さが等しいとみなす相対許容差。
 const FACE_LENGTH_TOLERANCE = 1e-9;
 
-// 原点まわりの生のモーメント。面積の足し引きがそのまま各項の加減算になるので、複合断面の合成と
-// 弓形の差し引きを同じ形で書ける。
-interface RawMoments {
+// 座標原点まわりの生のモーメント。面積の足し引きがそのまま各項の加減算になるので、複合断面の合成と
+// 弓形の差し引きを同じ形で書ける。重心まわりへ移す前の値なので、面積0の図形に対しても定義される。
+export interface PolygonMoments {
   readonly area: number;
   readonly mx: number; // ∫x dA
   readonly my: number; // ∫y dA
@@ -75,6 +75,8 @@ interface RawMoments {
   readonly myy: number; // ∫y² dA
   readonly mxy: number; // ∫xy dA
 }
+
+type RawMoments = PolygonMoments;
 
 const ZERO_MOMENTS: RawMoments = { area: 0, mx: 0, my: 0, mxx: 0, myy: 0, mxy: 0 };
 
@@ -114,8 +116,9 @@ function rotateMoments(m: RawMoments, angle: number): RawMoments {
   };
 }
 
-// 単純多角形の原点まわりの生のモーメント。頂点は反時計回りに与える。
-function polygonMoments(vertices: readonly Vec2[]): RawMoments {
+// 単純多角形の、座標原点まわりの生のモーメント。頂点は反時計回りに与える。頂点が3つ未満の頂点列には
+// 例外を投げるが、全頂点が一致した面積0の頂点列は零モーメントとして扱う。
+export function polygonMomentsAboutOrigin(vertices: readonly Vec2[]): PolygonMoments {
   if (vertices.length < 3) throw new Error(`polygon needs at least 3 vertices, got ${vertices.length}`);
   let area = 0;
   let mx = 0;
@@ -153,23 +156,23 @@ function toCentroidal(m: RawMoments): SectionMoments {
 
 // 単純多角形の面積 [m²]。頂点を反時計回りに与えると正になる。
 export function polygonArea(vertices: readonly Vec2[]): number {
-  return polygonMoments(vertices).area;
+  return polygonMomentsAboutOrigin(vertices).area;
 }
 
 // 単純多角形の重心。面積が0の退化した頂点列に対しては例外を投げる。
 export function polygonCentroid(vertices: readonly Vec2[]): Vec2 {
-  return toCentroidal(polygonMoments(vertices)).centroid;
+  return toCentroidal(polygonMomentsAboutOrigin(vertices)).centroid;
 }
 
 // 単純多角形の重心まわりの断面二次モーメント。
 export function polygonSecondMoments(vertices: readonly Vec2[]): SecondMoments {
-  const c = toCentroidal(polygonMoments(vertices));
+  const c = toCentroidal(polygonMomentsAboutOrigin(vertices));
   return { ix: c.ix, iy: c.iy, ixy: c.ixy };
 }
 
 // 単純多角形の、座標原点を通る軸まわりの断面二次モーメント。
 export function polygonSecondMomentsAboutOrigin(vertices: readonly Vec2[]): SecondMoments {
-  const m = polygonMoments(vertices);
+  const m = polygonMomentsAboutOrigin(vertices);
   return { ix: m.myy, iy: m.mxx, ixy: m.mxy };
 }
 
@@ -287,25 +290,31 @@ function polygonalVertices(shape: PolygonalShape, phaseAngle: number): readonly 
     : notchedPolygonVertices(shape.sides, shape.radius, phaseAngle);
 }
 
-// 複合体の中に配置し終えた基本断面。vertices は円と楕円では null。
-interface PlacedPrimitive {
+// 複合体の中に配置し終えた基本断面。vertices が null のとき(円と楕円)は shape と phaseAngle が
+// 断面の座標系での姿勢を表し、それ以外では vertices が配置後の輪郭を持つ。
+export interface PlacedSectionPrimitive {
   readonly id: string;
+  readonly shape: PrimitiveShape;
+  readonly phaseAngle: number;
   readonly vertices: readonly Vec2[] | null;
+}
+
+interface PlacedPrimitive extends PlacedSectionPrimitive {
   readonly moments: RawMoments;
 }
 
 function placeRoot(primitive: SectionPrimitive): PlacedPrimitive {
   const shape = primitive.shape;
   const phase = primitive.phaseAngle;
+  const identity = { id: primitive.id, shape, phaseAngle: phase };
   if (shape.kind === 'circle') {
-    return { id: primitive.id, vertices: null, moments: circleMoments(shape.radius, shape.branchCount, phase) };
+    return { ...identity, vertices: null, moments: circleMoments(shape.radius, shape.branchCount, phase) };
   }
   if (!isPolygonal(shape)) {
-    const moments = ellipseMoments(shape.majorRadius, shape.minorRadius, phase);
-    return { id: primitive.id, vertices: null, moments };
+    return { ...identity, vertices: null, moments: ellipseMoments(shape.majorRadius, shape.minorRadius, phase) };
   }
   const vertices = polygonalVertices(shape, phase);
-  return { id: primitive.id, vertices, moments: polygonMoments(vertices) };
+  return { ...identity, vertices, moments: polygonMomentsAboutOrigin(vertices) };
 }
 
 // 親の辺に子の辺を重ねて子を配置する。2辺は向きが逆になるように重なるので、子は親の外側に出る。
@@ -341,7 +350,13 @@ function placeChild(
     x: originX + cos * v.x - sin * v.y,
     y: originY + sin * v.x + cos * v.y,
   }));
-  return { id: primitive.id, vertices: placed, moments: polygonMoments(placed) };
+  return {
+    id: primitive.id,
+    shape: primitive.shape,
+    phaseAngle: primitive.phaseAngle,
+    vertices: placed,
+    moments: polygonMomentsAboutOrigin(placed),
+  };
 }
 
 // 反時計回りの頂点列の index 番目の辺。
@@ -397,4 +412,10 @@ export function sectionMoments(section: CrossSection): SectionMoments {
     total = addMoments(total, primitive.moments);
   }
   return toCentroidal(total);
+}
+
+// 複合断面を構成する基本断面を、それぞれ断面の座標系へ配置して返す。順序は根から始まる幅優先で、
+// 木構造として不正な断面には例外を投げる。
+export function placeSectionPrimitives(section: CrossSection): readonly PlacedSectionPrimitive[] {
+  return placePrimitives(section);
 }
