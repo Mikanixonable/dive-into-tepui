@@ -9,6 +9,8 @@ import { Attractor, reachedBody } from '../../physics/attractor';
 import type { InertiaTensor } from '../../physics/inertia-tensor';
 import { airspeed, burnUpBody } from '../../physics/atmosphere';
 import { ballisticCoeffInv, radiationPressureCoeff } from '../../physics/aerodynamics';
+import type { HullCapsule } from './collision-shape';
+import { deriveCapsules } from './collision-shape';
 import type { HeatShielding } from './heat-shield';
 import { UNSHIELDED, ablate, heatShielding } from './heat-shield';
 import { BaseCollisionGeometry, RayHit, SphereHit } from '../../physics/base-collision';
@@ -206,6 +208,8 @@ export class Vessel extends GameEntity {
   public readonly assembly: VesselAssembly | null;
   // 質量・重心・慣性テンソル・投影面積。assembly から導くか、直接与えられる。
   public readonly massProperties: MassProperties;
+  // 狭域の接触形状。ツリーのエッジ1本につき1つで、形状を持たない機体では空になり外接球のままになる。
+  public readonly collisionCapsules: readonly HullCapsule[];
   // 搭載要素。HP と性能の唯一の源。
   private readonly inventory: PartInventory;
 
@@ -219,6 +223,12 @@ export class Vessel extends GameEntity {
 
   protected override get srpCoeff(): number {
     return radiationPressureCoeff(this.massProperties.principalAreas, this.mass);
+  }
+
+  // 予測の空力は主軸3方向の投影面積の平均で行う(§X-7)。姿勢を保てば予測より落ちにくく、
+  // 回せば予測より速く落ちるという一方向のずれになる。
+  protected override get predictionBcInv(): number {
+    return ballisticCoeffInv(this.massProperties.principalAreas, this.mass, v3());
   }
 
   // 対気速度の向きから見た、いま効いている熱防御(§11-3)。形状を持たない機体は素の閾値を持つ。
@@ -294,6 +304,7 @@ export class Vessel extends GameEntity {
     this.name = identity.name;
     this.faction = design.faction;
     this.assembly = design.assembly;
+    this.collisionCapsules = design.assembly ? deriveCapsules(design.assembly.tree) : [];
     this.massProperties = design.massProperties;
     this.mass = design.massProperties.mass;
     this.radius = design.radius;
