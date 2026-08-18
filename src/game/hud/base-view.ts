@@ -264,6 +264,11 @@ function ensureStyle(): void {
 
 export type DockTab = 'ships' | 'parts' | 'production' | 'workbench';
 
+export type WorkbenchSelection =
+  | { readonly kind: 'part'; readonly id: string }
+  | { readonly kind: 'node'; readonly id: string }
+  | { readonly kind: 'edge'; readonly id: string };
+
 const TAB_ITEMS: readonly (readonly [DockTab, string])[] = [
   ['ships', '格納艦艇'],
   ['parts', '部品'],
@@ -333,6 +338,7 @@ export class BaseView {
   private currentBase: Vessel | null = null;
   private currentVessel: Vessel | null = null;
   private currentTab: DockTab = 'ships';
+  private selectedWorkbenchElement: WorkbenchSelection | null = null;
   private previouslyFocused: HTMLElement | null = null;
 
   // 外部コールバック
@@ -340,9 +346,14 @@ export class BaseView {
   public onClose: (() => void) | null = null;
   public onWorkbenchDrop: ((base: Vessel, vessel: Vessel, partId: string, fromInventory: boolean) => void) | null = null;
   public onWorkbenchRemove: ((base: Vessel, vessel: Vessel, partId: string) => void) | null = null;
-  public onWorkbenchPointer: ((base: Vessel, vessel: Vessel, clientX: number, clientY: number) => void) | null = null;
+  public onWorkbenchPointer: ((base: Vessel, vessel: Vessel, clientX: number, clientY: number) => WorkbenchSelection | null) | null = null;
+  public onWorkbenchNodeMove: ((base: Vessel, vessel: Vessel, nodeId: string, dx: number, dy: number, dz: number) => void) | null = null;
+  public onWorkbenchSectionScale: ((base: Vessel, vessel: Vessel, nodeId: string, factor: number) => void) | null = null;
+  public onWorkbenchEdgeRemove: ((base: Vessel, vessel: Vessel, edgeId: string) => void) | null = null;
   public onWorkbenchCommit: (() => void) | null = null;
   public onWorkbenchCancel: (() => void) | null = null;
+  public onWorkbenchNewDraft: ((base: Vessel) => void) | null = null;
+  public onWorkbenchBuildDraft: ((base: Vessel, vessel: Vessel) => void) | null = null;
   public onWorkbenchTransfer: ((base: Vessel, from: Vessel, to: Vessel, partId: string) => void) | null = null;
 
   public get visible(): boolean { return this._visible; }
@@ -426,7 +437,7 @@ export class BaseView {
     }
     this.currentBase = base;
     // inspectShip が基地に格納されていれば選択状態にする
-    if (inspectShip && base.baseState!.dockedVessels.some((s) => s.id === inspectShip.id)) {
+    if (inspectShip === base || (inspectShip && base.baseState!.dockedVessels.some((s) => s.id === inspectShip.id))) {
       this.currentVessel = inspectShip;
     } else {
       this.currentVessel = null;
@@ -440,6 +451,7 @@ export class BaseView {
 
   public openWorkbench(base: Vessel, vessel: Vessel): void {
     this.open(base, vessel);
+    this.currentVessel = vessel;
     this.currentTab = 'workbench';
     this.refresh();
   }
@@ -449,6 +461,7 @@ export class BaseView {
     this._visible = false;
     this.currentBase = null;
     this.currentVessel = null;
+    this.selectedWorkbenchElement = null;
     const focusTarget = this.previouslyFocused;
     this.previouslyFocused = null;
     if (focusTarget?.isConnected) focusTarget.focus({ preventScroll: true });
@@ -505,28 +518,39 @@ export class BaseView {
 
   private buildWorkbenchTab(): HTMLElement {
     const base = this.currentBase!;
-    const vessel = this.currentVessel ?? base.baseState!.dockedVessels[0]?.vessel ?? null;
+    const vessel = this.currentVessel ?? base;
     const section = document.createElement('section');
     section.className = 'dock-section';
     section.appendChild(this.buildSectionHeader(
       'ドック3D作業台',
       '部品をドラッグして作業台へ移し、クリックすると実機・仮構成共通のプロパティーを表示します。',
-      vessel ? `${vessel.parts.length} 搭載 / ${base.baseState!.inventory.length} 倉庫` : '対象なし',
+      `${vessel === base ? '基地本体' : vessel.name} · ${vessel.parts.length} 搭載 / ${base.baseState!.inventory.length} 倉庫`,
     ));
-    if (!vessel) {
-      const empty = document.createElement('div');
-      empty.className = 'dock-empty';
-      empty.textContent = '作業台へ置く格納艦を選択してください。';
-      section.appendChild(empty);
-      return section;
+    const targetPicker = document.createElement('div');
+    targetPicker.className = 'dock-parts-actions';
+    const baseButton = new Button('基地本体', () => { this.currentVessel = base; this.refresh(); });
+    baseButton.element.classList.add('dock-btn', 'dock-btn-primary');
+    targetPicker.appendChild(baseButton.element);
+    for (const [index, entry] of base.baseState!.dockedVessels.entries()) {
+      const targetButton = new Button(`船 ${entry.name || index + 1}`, () => {
+        this.currentVessel = entry.vessel;
+        this.refresh();
+      });
+      targetButton.element.classList.add('dock-btn', 'dock-btn-quiet');
+      targetPicker.appendChild(targetButton.element);
     }
+    section.appendChild(targetPicker);
     const actions = document.createElement('div');
     actions.className = 'dock-parts-actions';
+    const newDraft = new Button('新規船下書き', () => this.onWorkbenchNewDraft?.(base));
+    newDraft.element.classList.add('dock-btn', 'dock-btn-quiet');
+    const build = new Button('建造を確定', () => this.onWorkbenchBuildDraft?.(base, vessel));
+    build.element.classList.add('dock-btn', 'dock-btn-primary');
     const commit = new Button('変更を確定', () => this.onWorkbenchCommit?.());
     commit.element.classList.add('dock-btn', 'dock-btn-primary');
     const cancel = new Button('変更を取消', () => this.onWorkbenchCancel?.());
     cancel.element.classList.add('dock-btn', 'dock-btn-quiet');
-    actions.append(commit.element, cancel.element);
+    actions.append(newDraft.element, build.element, commit.element, cancel.element);
     section.appendChild(actions);
     const filter = document.createElement('input');
     filter.type = 'search';
@@ -544,7 +568,8 @@ export class BaseView {
     stage.className = 'dock-workbench-stage';
     stage.textContent = '3D作業領域 · 接続口 / 外表面 / トラス取付点へスナップ';
     stage.addEventListener('pointerdown', (event) => {
-      this.onWorkbenchPointer?.(base, vessel, event.clientX, event.clientY);
+      this.selectedWorkbenchElement = this.onWorkbenchPointer?.(base, vessel, event.clientX, event.clientY) ?? null;
+      this.refresh();
     });
     stage.addEventListener('dragover', (event) => event.preventDefault());
     stage.addEventListener('drop', (event) => {
@@ -555,6 +580,36 @@ export class BaseView {
       if (partId) this.onWorkbenchDrop?.(base, vessel, partId, source === 'inventory');
     });
     section.appendChild(stage);
+
+    if (this.selectedWorkbenchElement) {
+      const editor = document.createElement('div');
+      editor.className = 'dock-parts-actions';
+      const selected = this.selectedWorkbenchElement;
+      const label = document.createElement('span');
+      label.className = 'dock-section-count';
+      label.textContent = `${selected.kind === 'part' ? '部品' : selected.kind === 'node' ? 'ノード' : 'エッジ'} ${selected.id}`;
+      editor.appendChild(label);
+      if (selected.kind === 'node') {
+        for (const [caption, dx, dy, dz] of [
+          ['X+', 0.5, 0, 0], ['X-', -0.5, 0, 0], ['Y+', 0, 0.5, 0], ['Y-', 0, -0.5, 0],
+          ['Z+', 0, 0, 0.5], ['Z-', 0, 0, -0.5],
+        ] as const) {
+          const button = new Button(caption, () => this.onWorkbenchNodeMove?.(base, vessel, selected.id, dx, dy, dz));
+          button.element.classList.add('dock-btn', 'dock-btn-quiet');
+          editor.appendChild(button.element);
+        }
+        for (const [caption, factor] of [['断面+', 1.1], ['断面-', 0.9]] as const) {
+          const button = new Button(caption, () => this.onWorkbenchSectionScale?.(base, vessel, selected.id, factor));
+          button.element.classList.add('dock-btn', 'dock-btn-quiet');
+          editor.appendChild(button.element);
+        }
+      } else if (selected.kind === 'edge') {
+        const button = new Button('エッジを削除', () => this.onWorkbenchEdgeRemove?.(base, vessel, selected.id));
+        button.element.classList.add('dock-btn', 'dock-btn-quiet');
+        editor.appendChild(button.element);
+      }
+      section.appendChild(editor);
+    }
 
     const columns = document.createElement('div');
     columns.className = 'dock-parts-columns';
@@ -569,7 +624,8 @@ export class BaseView {
       row.addEventListener('dblclick', () => this.onWorkbenchRemove?.(base, vessel, part.id));
       const wrapper = document.createElement('div');
       wrapper.className = 'dock-workbench-part-wrap';
-      wrapper.append(row, this.buildTransferControl(base, vessel, part.id));
+      wrapper.append(row);
+      if (vessel !== base) wrapper.append(this.buildTransferControl(base, vessel, part.id));
       mounted.appendChild(wrapper);
     }
     const inventory = document.createElement('div');

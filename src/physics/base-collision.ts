@@ -3,6 +3,9 @@ import * as THREE from 'three/webgpu';
 import { Vec3, v3, add, sub, scale, dot, len, lenSq, norm, cross } from './vec3';
 import { Quat, qRotate, qInvert } from './attitude';
 import { buildBaseModel } from '../render/ships';
+import type { VesselAssembly } from '../game/vessel/assembly';
+import { hullShapeOf } from '../game/vessel/hull-shape';
+import { buildHullTriangles } from '../render/hull/hull-triangles';
 
 export interface RayHit {
   readonly point: Vec3; // 着弾ワールド座標
@@ -37,9 +40,54 @@ interface BVHNode {
   readonly right?: BVHNode;
 }
 
+function trianglesFromAssembly(assembly: VesselAssembly): Triangle[] {
+  const { positions, indices } = buildHullTriangles(hullShapeOf(assembly.tree, 'near'));
+  const triangles: Triangle[] = [];
+  for (let i = 0; i + 2 < indices.length; i += 3) {
+    const point = (index: number): Vec3 => v3(
+      positions[index * 3]!, positions[index * 3 + 1]!, positions[index * 3 + 2]!,
+    );
+    const a = point(indices[i]!);
+    const b = point(indices[i + 1]!);
+    const c = point(indices[i + 2]!);
+    const normal = norm(cross(sub(b, a), sub(c, a)));
+    if (lenSq(normal) > 1e-12) triangles.push({ a, b, c, normal });
+  }
+  return triangles;
+}
+
+function boundsOf(triangles: readonly Triangle[]): { min: Vec3; max: Vec3 } {
+  if (triangles.length === 0) return { min: v3(-1, -1, -1), max: v3(1, 1, 1) };
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  for (const triangle of triangles) {
+    for (const point of [triangle.a, triangle.b, triangle.c]) {
+      minX = Math.min(minX, point.x); minY = Math.min(minY, point.y); minZ = Math.min(minZ, point.z);
+      maxX = Math.max(maxX, point.x); maxY = Math.max(maxY, point.y); maxZ = Math.max(maxZ, point.z);
+    }
+  }
+  return { min: v3(minX, minY, minZ), max: v3(maxX, maxY, maxZ) };
+}
+
+function boundsObb(triangles: readonly Triangle[]): OBB {
+  const { min, max } = boundsOf(triangles);
+  return {
+    center: scale(add(min, max), 0.5),
+    halfSizes: scale(sub(max, min), 0.5),
+  };
+}
+
+function outerRadiusOf(triangles: readonly Triangle[]): number {
+  let radius = 1;
+  for (const triangle of triangles) {
+    radius = Math.max(radius, len(triangle.a), len(triangle.b), len(triangle.c));
+  }
+  return radius;
+}
+
 export class BaseCollisionGeometry {
   // 外接球半径 [m] (早期棄却判定用 - 3倍スケール対応)
-  public readonly outerRadius = 330;
+  public readonly outerRadius: number;
 
   // LOD0: フルポリゴン BVH
   private readonly lod0Triangles: Triangle[] = [];
@@ -50,18 +98,32 @@ export class BaseCollisionGeometry {
   private lod1BVH: BVHNode | null = null;
 
   // LOD2: 複合 OBB (主要3ブロック - 3倍スケール対応)
-  private readonly lod2OBBs: OBB[] = [
-    // 主要部 (居住区・研究ドーム)
-    { center: v3(0, 0, 225), halfSizes: v3(36, 36, 84) },
-    // トラス・ドック部
-    { center: v3(0, 0, 0), halfSizes: v3(66, 30, 129) },
-    // カウンターウェイト部
-    { center: v3(0, 0, -225), halfSizes: v3(54, 54, 108) },
-  ];
+  private readonly lod2OBBs: OBB[];
 
-  constructor() {
-    this.buildLOD0Geometry();
-    this.buildLOD1Geometry();
+  constructor(assembly?: VesselAssembly) {
+    if (assembly) {
+      const triangles = trianglesFromAssembly(assembly);
+      this.lod0Triangles.push(...triangles);
+      this.lod0BVH = this.buildBVH(triangles, 0);
+      // カスタム形状では専用の低LODメッシュをまだ持たないため、LOD1も同じ設計形状を使う。
+      // ワープ中の判定精度を落とすより、編集後の描画と衝突の不一致を避けることを優先する。
+      this.lod1Triangles.push(...triangles);
+      this.lod1BVH = this.buildBVH(triangles, 0);
+      this.lod2OBBs = [boundsObb(triangles)];
+      this.outerRadius = outerRadiusOf(triangles);
+    } else {
+      this.lod2OBBs = [
+        // 主要部 (居住区・研究ドーム)
+        { center: v3(0, 0, 225), halfSizes: v3(36, 36, 84) },
+        // トラス・ドック部
+        { center: v3(0, 0, 0), halfSizes: v3(66, 30, 129) },
+        // カウンターウェイト部
+        { center: v3(0, 0, -225), halfSizes: v3(54, 54, 108) },
+      ];
+      this.outerRadius = 330;
+      this.buildLOD0Geometry();
+      this.buildLOD1Geometry();
+    }
   }
 
   // -------------------------------------------------------------------
