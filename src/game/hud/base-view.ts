@@ -407,11 +407,11 @@ export class BaseView {
     titleGroup.className = 'dock-title-group';
     const kicker = document.createElement('span');
     kicker.className = 'dock-kicker';
-    kicker.textContent = 'Vessel operations';
+    kicker.textContent = 'Base operations';
     const title = document.createElement('h1');
     title.id = 'base-view-title';
     title.className = 'dock-title';
-    title.textContent = 'Vessel';
+    title.textContent = 'Base';
     const subtitle = document.createElement('span');
     subtitle.className = 'dock-subtitle';
     subtitle.textContent = '艦の整備、補給、調達';

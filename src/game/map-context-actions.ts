@@ -248,7 +248,7 @@ export class MapContextActions {
     this.menu.open(clientX, clientY, target, this.itemsFor(target, simTime));
   }
 
-  // 戦闘ビューの右クリック。カメラの視点・画角・実体サイズ(Vessel 100m / Vessel 90m / Vessel 5m)から
+  // 戦闘ビューの右クリック。カメラの視点・画角・実体サイズ(基地 100m / 敵機 90m / 自機 5m)から
   // 画面上の視覚半径を正確に求め、機体・基地の表示領域へのヒット判定を行う。
   // ヒットしなかった場合(背景・空域)は空域設定メニューを開く。
   handleCombatRightClick(
