@@ -1,10 +1,10 @@
-// 戦闘/マップそれぞれの HUD パネル同期をまとめる。DOM ルートの表示切替は Hud が持ち、
+// 運用/マップそれぞれの HUD パネル同期をまとめる。DOM ルートの表示切替は Hud が持ち、
 // ここではアクティブなビューのパネルだけを毎フレーム更新する。
 import type { Attractor } from '../../physics/attractor';
 import type { Game } from '../game';
 import type { Hud } from './hud';
 
-export class CombatHudController {
+export class OperationsHudController {
   public constructor(private readonly hud: Hud) {}
 
   public sync(game: Game, attractors: readonly Attractor[]): void {
@@ -15,6 +15,9 @@ export class CombatHudController {
     this.hud.enemiesPanel.sync(game);
   }
 }
+
+/** @deprecated Use OperationsHudController. Kept for internal save/build compatibility. */
+export { OperationsHudController as CombatHudController };
 
 export class MapHudController {
   public constructor(private readonly hud: Hud) {}
