@@ -86,6 +86,7 @@ const STYLE = `
   border: 1px dashed var(--accent-secondary); border-radius: var(--radius-window);
   background: rgba(12, 18, 25, 0.62); color: var(--accent-near); text-align: center;
 }
+#base-view .dock-parts-actions { display: flex; justify-content: flex-end; gap: 7px; }
 #base-view .dock-part-property-window {
   position: fixed; right: max(var(--space-5), var(--safe-r)); bottom: max(var(--space-5), var(--safe-b));
   z-index: 3; min-width: 230px; padding: 13px 15px; border: 1px solid var(--accent-secondary);
@@ -375,6 +376,8 @@ export class BaseView {
   public onWorkbenchDrop: ((base: Vessel, vessel: Vessel, partId: string, fromInventory: boolean) => void) | null = null;
   public onWorkbenchRemove: ((base: Vessel, vessel: Vessel, partId: string) => void) | null = null;
   public onWorkbenchPointer: ((base: Vessel, vessel: Vessel, clientX: number, clientY: number) => void) | null = null;
+  public onWorkbenchCommit: (() => void) | null = null;
+  public onWorkbenchCancel: (() => void) | null = null;
 
   public get visible(): boolean { return this._visible; }
   public get element(): HTMLElement { return this.el; }
@@ -552,6 +555,26 @@ export class BaseView {
       section.appendChild(empty);
       return section;
     }
+    const actions = document.createElement('div');
+    actions.className = 'dock-parts-actions';
+    const commit = new Button('変更を確定', () => this.onWorkbenchCommit?.());
+    commit.element.classList.add('dock-btn', 'dock-btn-primary');
+    const cancel = new Button('変更を取消', () => this.onWorkbenchCancel?.());
+    cancel.element.classList.add('dock-btn', 'dock-btn-quiet');
+    actions.append(commit.element, cancel.element);
+    section.appendChild(actions);
+    const filter = document.createElement('input');
+    filter.type = 'search';
+    filter.className = 'dock-part-swap-select';
+    filter.placeholder = '部品を検索 (名前 / 種別 / partRef)';
+    filter.setAttribute('aria-label', '作業台の部品を検索');
+    filter.addEventListener('input', () => {
+      const query = filter.value.trim().toLocaleLowerCase();
+      for (const row of Array.from(section.querySelectorAll<HTMLElement>('[data-workbench-part]'))) {
+        row.hidden = query.length > 0 && !(row.dataset.searchText ?? '').includes(query);
+      }
+    });
+    section.appendChild(filter);
     const stage = document.createElement('div');
     stage.className = 'dock-workbench-stage';
     stage.textContent = '3D作業領域 · 接続口 / 外表面 / トラス取付点へスナップ';
@@ -602,8 +625,10 @@ export class BaseView {
     row.type = 'button';
     row.draggable = true;
     row.className = 'dock-part-row';
+    row.dataset.workbenchPart = 'true';
     row.dataset.partId = part.id;
     row.dataset.fromInventory = String(fromInventory);
+    row.dataset.searchText = `${part.name} ${part.type} ${part.id}`.toLocaleLowerCase();
     row.textContent = `${part.name} · ${PART_TYPE_LABELS[part.type]} · ${Math.round(part.weight)} kg · HP ${Math.round(part.hp)}/${Math.round(part.maxHp)}`;
     row.addEventListener('dragstart', (event) => {
       event.dataTransfer?.setData('application/x-tepui-part', `${part.id}:${fromInventory ? 'inventory' : 'mounted'}`);
