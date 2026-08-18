@@ -328,7 +328,9 @@ const FACILITY_DEFS = {
   'catalyst-bed-furnace': {
     id: 'catalyst-bed-furnace',
     name: '触媒床製造炉',
-    inputs: [{ anyOf: ['platinum-group'], rate: RATE_TRACE }],
+    // 触媒床はアルミナ担体にイリジウムを 32 wt% 担持した複合体である。残る 68% の担体は
+    // 月の資源で足りるため、この炉が要求するのは白金族のぶんだけになる(§6-4)。
+    inputs: [{ anyOf: ['platinum-group'], rate: RATE_TRACE * 0.32 }],
     outputs: [{ resourceId: 'catalyst-bed', rate: RATE_TRACE }],
     powerDraw: POWER_MEDIUM,
     powerOutput: 0,

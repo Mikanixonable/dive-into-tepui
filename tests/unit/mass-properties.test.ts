@@ -56,7 +56,7 @@ function relativeError(actual: number, expected: number): number {
 export function register(): void {
   test('既定の3設計のツリーが正しく、乾燥質量が設計の狙いどおりになる', () => {
     const cases = [
-      { name: 'crewed', assembly: crewedAssembly(C.PLAYER_MAX_HP), mass: 1061 },
+      { name: 'crewed', assembly: crewedAssembly(C.PLAYER_MAX_HP), mass: 1153 },
       { name: 'base', assembly: orbitalBaseAssembly(C.BASE_MAX_HP), mass: 3e6 },
       { name: 'hostile', assembly: hostileAssembly(C.ENEMY_MAX_HP), mass: 10000 },
     ];
@@ -76,17 +76,88 @@ export function register(): void {
     const derived = deriveMassProperties(crewedAssembly(C.PLAYER_MAX_HP));
     const { principalAreas, loadedMass } = derived;
     for (const area of [principalAreas.x, principalAreas.y, principalAreas.z]) assert.ok(area > 0);
-    // 船体が z 軸に沿って細長いので、機首方向から見た面積が最も小さい。左右のトラスは
-    // x 軸方向へ張り出すぶん y 方向から見た面積を増やすので、y 方向が最も大きい。
-    assert.ok(principalAreas.z < principalAreas.x, `z ${principalAreas.z} < x ${principalAreas.x}`);
+    // 左右のトラスは x 軸方向へ張り出すぶん y 方向から見た面積を増やすので、x より y が大きい。
     assert.ok(principalAreas.x < principalAreas.y, `x ${principalAreas.x} < y ${principalAreas.y}`);
-    // 機首を進行方向へ向けたとき弾道係数が最小になる(§11-2)。
+    // 展開した放熱板は前後を向くので、機首方向から見た面積が最も大きい — 船体だけなら
+    // 機首方向が最小になるところを、放熱板が逆転させる。これが低軌道で放熱板を畳む理由になる。
+    assert.ok(principalAreas.z > principalAreas.y, `z ${principalAreas.z} > y ${principalAreas.y}`);
     const nose = ballisticCoeffInv(principalAreas, loadedMass, v3(0, 0, 1));
     const side = ballisticCoeffInv(principalAreas, loadedMass, v3(1, 0, 0));
-    assert.ok(nose < side, `nose ${nose} < side ${side}`);
+    assert.ok(nose > side, `nose ${nose} > side ${side}`);
     // 向きを平均した値は3軸の値の間に収まる。
     const mean = ballisticCoeffInv(principalAreas, loadedMass, v3());
-    assert.ok(mean > nose && mean > side);
+    assert.ok(mean < nose && mean > side);
+  });
+
+  test('外装要素が投影面積に寄与し、熱シールドを積むと投影面積が増える', () => {
+    const assembly = crewedAssembly(C.PLAYER_MAX_HP);
+    const withShield = deriveMassProperties(assembly);
+    const withoutShield = deriveMassProperties({
+      tree: assembly.tree,
+      placements: assembly.placements.filter((p) => p.part.type !== 'heat_shield'),
+    });
+    // 熱シールドは機首の接続口を覆うので、機首方向から見た面積だけが増える(§X-5)。
+    assert.ok(
+      withShield.principalAreas.z > withoutShield.principalAreas.z,
+      `${withShield.principalAreas.z} > ${withoutShield.principalAreas.z}`,
+    );
+    // 放熱板と太陽電池パドルも同じ経路で算入される。外すと機首方向の面積が大きく減る。
+    const bare = deriveMassProperties({
+      tree: assembly.tree,
+      placements: assembly.placements.filter(
+        (p) => p.part.type !== 'radiator' && p.part.type !== 'solar_panel'),
+    });
+    assert.ok(
+      withShield.principalAreas.z > bare.principalAreas.z * 4,
+      `${withShield.principalAreas.z} vs ${bare.principalAreas.z}`,
+    );
+  });
+
+  test('放熱板を畳むと投影面積が減り、弾道係数が下がる', () => {
+    const derived = deriveMassProperties(crewedAssembly(C.PLAYER_MAX_HP));
+    const { principalAreas, deployableAreas, loadedMass } = derived;
+    // 畳めるのは放熱板だけ。前後を向いているので z 方向にだけ効く。
+    assert.ok(deployableAreas.z > 0, `${deployableAreas.z}`);
+    assert.ok(Math.abs(deployableAreas.x) < 1e-9 && Math.abs(deployableAreas.y) < 1e-9);
+    assert.ok(
+      relativeError(deployableAreas.z, C.RADIATOR_COOLING_AREA) < 1e-6,
+      `${deployableAreas.z} vs ${C.RADIATOR_COOLING_AREA}`,
+    );
+    // Vessel.currentAreas が展開度 1 と 0 で組む面積そのもの。
+    const deployed = principalAreas;
+    const stowed = sub(principalAreas, deployableAreas);
+    const nose = (areas: Vec3): number => ballisticCoeffInv(areas, loadedMass, v3(0, 0, 1));
+    assert.ok(nose(stowed) < nose(deployed) / 4, `${nose(stowed)} vs ${nose(deployed)}`);
+    // 畳んでも横から見た面積は変わらない — 放熱板は前後を向いている。
+    const side = (areas: Vec3): number => ballisticCoeffInv(areas, loadedMass, v3(1, 0, 0));
+    assert.ok(Math.abs(side(stowed) - side(deployed)) < 1e-12);
+  });
+
+  test('横へずれて並ぶ平行なエッジの射影は和になり、前後に重なるものは最大値になる', () => {
+    const section = square(0.5);
+    const lateral: VesselTree = {
+      nodes: [
+        node('a0', v3(-2, 0, 0), section), node('a1', v3(-2, 0, 2), section),
+        node('b0', v3(2, 0, 0), section), node('b1', v3(2, 0, 2), section),
+      ],
+      edges: [hullEdge('a', 'a0', 'a1', 2), hullEdge('b', 'b0', 'b1', 2)],
+    };
+    // 前後(x 軸方向)へ並べ替えただけの同じ2本。
+    const inline: VesselTree = {
+      nodes: [
+        node('a0', v3(0, 0, 0), section), node('a1', v3(0, 0, 2), section),
+        node('b0', v3(0, 0, 4), section), node('b1', v3(0, 0, 6), section),
+      ],
+      edges: [hullEdge('a', 'a0', 'a1', 2), hullEdge('b', 'b0', 'b1', 2)],
+    };
+    const areaOf = (tree: VesselTree): number =>
+      deriveMassProperties({ tree, placements: [] }).principalAreas.z;
+    // どちらの2本も軸は z に平行。横へずれていれば像は重ならないので和、
+    // 同じ軸線上に並んでいれば重なるので最大値(＝1本ぶん)になる。
+    assert.ok(
+      Math.abs(areaOf(lateral) - 2 * areaOf(inline)) < 1e-9,
+      `${areaOf(lateral)} vs ${areaOf(inline)}`,
+    );
   });
 
   test('既定の有人艦の主慣性モーメントは、ロール軸が最小でヨー軸が最大になる', () => {
@@ -328,8 +399,8 @@ export function register(): void {
     // 全長 4.5 m の剛体として当然の大きさである。
     const derived = deriveMassProperties(crewedAssembly(C.PLAYER_MAX_HP));
     const pinned: Record<string, number> = {
-      dryMass: 1060.83, ixx: 1837.84, iyy: 2880.63, izz: 1541.36, iyz: 46.5864,
-      areaX: 10.2065, areaY: 12.4565, areaZ: 6.75407, comY: -0.0230480, comZ: 0.0245860,
+      dryMass: 1153.33, ixx: 2109.53, iyy: 3427.30, izz: 1860.82, iyz: 58.4158,
+      areaX: 10.2065, areaY: 12.4565, areaZ: 65.7643, comY: -0.0288296, comZ: -0.00686575,
     };
     const actual: Record<string, number> = {
       dryMass: derived.dryMass,

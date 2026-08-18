@@ -217,7 +217,7 @@ export class Game {
       () => this.pause(), () => this.resume(),
       this._hud, this._worldSfx, this._scene, this.entities.effects, this.markerManager,
       this.entities, this.mapActions, this.cameraSystem, this.viewManager,
-      this.activeVessels, this.activeStage,
+      this.activeVessels,
     );
     this.mapActions.setDocking(this.docking);
     this.viewManager.setControlledBaseProvider(() => this.player);

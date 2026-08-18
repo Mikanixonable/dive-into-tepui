@@ -4,11 +4,17 @@ import * as THREE from 'three/webgpu';
 import { Attitude, qFromForwardUp, qInvert, qRotate } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { MU_EARTH, R_EARTH, earthAltitudeOf } from '../../physics/solar-system';
-import { Vec3, len, sub, v3 } from '../../physics/vec3';
+import { Vec3, len, scale, sub, v3 } from '../../physics/vec3';
 import { Attractor, reachedBody } from '../../physics/attractor';
 import type { InertiaTensor } from '../../physics/inertia-tensor';
+import type { ActuatorSet } from '../../physics/attitude-control';
+import { AttitudeControlSystem } from './attitude-control-system';
+import { actuatorSetOf } from './actuator-set';
 import { airspeed, burnUpBody } from '../../physics/atmosphere';
 import { ballisticCoeffInv, radiationPressureCoeff } from '../../physics/aerodynamics';
+import { buildVesselWireframe } from '../../render/vessel-wireframe';
+import type { HullCapsule } from './collision-shape';
+import { deriveCapsules } from './collision-shape';
 import type { HeatShielding } from './heat-shield';
 import { UNSHIELDED, ablate, heatShielding } from './heat-shield';
 import { BaseCollisionGeometry, RayHit, SphereHit } from '../../physics/base-collision';
@@ -56,14 +62,16 @@ import type { BaseSaveData, EnemySaveData, PlanSaveData, PlayerSaveData } from '
 import type { VesselAssembly } from './assembly';
 import type { MassProperties } from './mass-properties';
 import { hasBaseModule } from './capabilities';
+import { ResourceLedger } from '../economy/resource-ledger';
 import { BaseState, DockedVesselEntry, portWorldPos, portWorldNormal } from './base-module';
 import { EnemyAi, type EnemyKind } from './enemy-ai';
 import { PartInventory } from './part-inventory';
 import { baseMarkerSvg, headingHpMarkerSvg, notchedHpMarkerSvg } from './hp-marker-svg';
 import {
-  crewedShipDesign, hostileShipDesign, orbitalBaseDesign,
+  blueprintDesign, crewedShipDesign, hostileShipDesign, orbitalBaseDesign,
   type VesselDesign, type VesselFaction,
 } from './vessel-designs';
+import type { VesselBlueprint } from './blueprint';
 
 export type { PlanExecutionMode };
 
@@ -82,6 +90,14 @@ export interface CrewedShipInit {
   readonly state?: KinematicState;
   readonly id?: string;
   readonly ammo?: AmmoLoad;
+}
+
+// 保存された設計から組む機体の新規配置。
+export interface BlueprintShipInit {
+  readonly blueprint: VesselBlueprint;
+  readonly name?: string;
+  readonly state: KinematicState;
+  readonly id?: string;
 }
 
 export interface OrbitalBaseInit {
@@ -105,6 +121,7 @@ export interface HostileShipInit {
 // どの既定の設計で組むか。saved* から始まるものはスナップショットの復元。
 export type VesselInit =
   | { readonly crewedShip: CrewedShipInit }
+  | { readonly blueprintShip: BlueprintShipInit }
   | { readonly orbitalBase: OrbitalBaseInit }
   | { readonly hostileShip: HostileShipInit }
   | { readonly savedShip: PlayerSaveData; readonly simTime: number }
@@ -135,6 +152,7 @@ function progradeAttitude(state: KinematicState, inertia: InertiaTensor): Attitu
 
 // init が指す既定の設計を返す。
 function resolveDesign(init: VesselInit): VesselDesign {
+  if ('blueprintShip' in init) return blueprintDesign(init.blueprintShip.blueprint);
   if ('crewedShip' in init || 'savedShip' in init) return crewedShipDesign();
   if ('orbitalBase' in init || 'savedBase' in init) return orbitalBaseDesign();
   if ('hostileShip' in init) return hostileShipDesign(init.hostileShip.enemyKind, init.hostileShip.accent);
@@ -192,6 +210,10 @@ function resolveIdentity(init: VesselInit, design: VesselDesign): VesselIdentity
     const { name, state, att, id } = init.hostileShip;
     return { name, state, att: { ...att, inertia }, id };
   }
+  if ('blueprintShip' in init) {
+    const { blueprint, name, state, id } = init.blueprintShip;
+    return { name: name ?? blueprint.name, state, att: progradeAttitude(state, inertia), id };
+  }
   const d = init.savedHostile;
   return {
     name: d.name || '', state: savedState(d, init.simTime),
@@ -206,6 +228,8 @@ export class Vessel extends GameEntity {
   public readonly assembly: VesselAssembly | null;
   // 質量・重心・慣性テンソル・投影面積。assembly から導くか、直接与えられる。
   public readonly massProperties: MassProperties;
+  // 狭域の接触形状。ツリーのエッジ1本につき1つで、形状を持たない機体では空になり外接球のままになる。
+  public readonly collisionCapsules: readonly HullCapsule[];
   // 搭載要素。HP と性能の唯一の源。
   private readonly inventory: PartInventory;
 
@@ -214,11 +238,26 @@ export class Vessel extends GameEntity {
   protected override get bcInv(): number {
     const { r, v } = this.state;
     const relative = qRotate(qInvert(this.att.q), airspeed(r, v));
-    return ballisticCoeffInv(this.massProperties.principalAreas, this.mass, relative);
+    return ballisticCoeffInv(this.currentAreas, this.mass, relative);
   }
 
   protected override get srpCoeff(): number {
-    return radiationPressureCoeff(this.massProperties.principalAreas, this.mass);
+    return radiationPressureCoeff(this.currentAreas, this.mass);
+  }
+
+  // 予測の空力は主軸3方向の投影面積の平均で行う(§X-7)。姿勢を保てば予測より落ちにくく、
+  // 回せば予測より速く落ちるという一方向のずれになる。展開度は姿勢と違っていま決まっている
+  // 構成なので、平均する対象には入れない。
+  protected override get predictionBcInv(): number {
+    return ballisticCoeffInv(this.currentAreas, this.mass, v3());
+  }
+
+  // いまの構成の主軸3方向の投影面積 [m²]。設計の値は放熱板を完全に展開した状態なので、畳んだ
+  // ぶんを差し引く — 展開したまま低軌道に留まれば、その面積ぶんの抗力を払い続けることになる。
+  private get currentAreas(): Vec3 {
+    const { principalAreas, deployableAreas } = this.massProperties;
+    if (!this.radiator) return principalAreas;
+    return sub(principalAreas, scale(deployableAreas, 1 - this.radiator.deployedFraction()));
   }
 
   // 対気速度の向きから見た、いま効いている熱防御(§11-3)。形状を持たない機体は素の閾値を持つ。
@@ -259,7 +298,14 @@ export class Vessel extends GameEntity {
   public readonly plan = new Plan();
   public readonly planExecutor: PlanExecutor;
   // 軌道計画の自動実行モード。'powered' の間に手動の並進・回転入力があれば 'off' へ戻る。
-  public planExecution: PlanExecutionMode = 'off';
+  // 書き換えは setPlanExecution だけが行う — 通知を伴う状態変更の所有者を1つに定める(T-7)。
+  private _planExecution: PlanExecutionMode = 'off';
+  // 姿勢制御系。手動操作も自動操縦も、この機体のトルクを直接書かずここへ要求を出す。
+  public readonly attitudeControl = new AttitudeControlSystem();
+  // アクチュエータ集合は形状と搭載要素から導く。要素が壊れると顔ぶれが変わるので、HP が
+  // 動いたときだけ組み直す。
+  private actuators: ActuatorSet | null = null;
+  private actuatorsHp = -1;
   private _fineAttitude = false;
 
   // 個体色・集団識別。敵対勢力の機体だけが持つ。
@@ -273,6 +319,34 @@ export class Vessel extends GameEntity {
   public get orbitLineColor(): string | number | null { return this._orbitLineColor; }
   public get enemyKind(): EnemyKind | null { return this._enemyKind; }
   public get fineAttitude(): boolean { return this._fineAttitude; }
+  public get planExecution(): PlanExecutionMode { return this._planExecution; }
+
+  // 軌道計画の自動実行モードを切り替える唯一の入口。reason があれば通知する。
+  public setPlanExecution(mode: PlanExecutionMode, reason?: string): void {
+    if (this._planExecution === mode) return;
+    this._planExecution = mode;
+    if (reason) this.hud.hint(reason);
+  }
+
+  // 姿勢トルクを要求する。手動操作・自動操縦のどちらもこの口を通る。
+  public requestTorque(torque: Vec3): void {
+    this.attitudeControl.requestTorque(torque);
+  }
+
+  // この機体のアクチュエータ集合。搭載要素が壊れて顔ぶれが変わったときだけ組み直す。
+  public actuatorSet(): ActuatorSet {
+    if (!this.actuators || this.actuatorsHp !== this.hp) {
+      this.actuators = actuatorSetOf(this.assembly, this.parts, this.massProperties.centerOfMass);
+      this.actuatorsHp = this.hp;
+    }
+    return this.actuators;
+  }
+
+  // 要求を1刻みぶんアクチュエータへ配分し、機体が実際に受けるトルクを確定する。
+  // 姿勢積分の直前に、シミュレーション時間の刻みで呼ぶ。
+  public resolveAttitudeControl(simDt: number): void {
+    this.torque = this.attitudeControl.resolve(this.actuatorSet(), this.state.r, this.att, simDt);
+  }
 
   private readonly hpRegenRate: number;
   private readonly reentryAltMargin: number;
@@ -294,6 +368,10 @@ export class Vessel extends GameEntity {
     this.name = identity.name;
     this.faction = design.faction;
     this.assembly = design.assembly;
+    this.collisionCapsules = design.assembly ? deriveCapsules(design.assembly.tree) : [];
+    if (design.assembly) {
+      this.renderObject.add(buildVesselWireframe(design.assembly.tree, this.collisionCapsules));
+    }
     this.massProperties = design.massProperties;
     this.mass = design.massProperties.mass;
     this.radius = design.radius;
@@ -338,7 +416,7 @@ export class Vessel extends GameEntity {
     // 基地モジュールを積んだ機体だけが在庫と収容を持ち、常設の軌道構造物として
     // 赤道交点マーカーを出す。
     if (hasBaseModule(this)) {
-      this.baseState = { money: 100000, inventory: [], dockedVessels: [] };
+      this.baseState = { inventory: [], dockedVessels: [], resources: new ResourceLedger() };
       this.collisionGeom = new BaseCollisionGeometry();
       this.equatorNodes = new EquatorNodeMarkerPair(this, deps.markerManager);
     }
@@ -361,7 +439,7 @@ export class Vessel extends GameEntity {
   // 有人艦の保存形から、自動実行モード・姿勢微調整・搭載要素・計画を戻す。
   private restoreShip(saved: PlayerSaveData, hud: Hud): void {
     // planExecution を持たず followPlan: boolean で保存された形も受ける(true→'instant')。
-    this.planExecution = saved.planExecution ?? (saved.followPlan ? 'instant' : 'off');
+    this._planExecution = saved.planExecution ?? (saved.followPlan ? 'instant' : 'off');
     this._fineAttitude = saved.fineAttitude ?? false;
     this.inventory.replaceAll(saved.parts.map(partFromSaveData));
     this.restorePlan(saved.plan, hud);
@@ -382,11 +460,10 @@ export class Vessel extends GameEntity {
     if (!this.alive) this.renderObject.visible = false;
   }
 
-  // 基地の保存形から、所持金・在庫・燃料・収容中の機体を戻す。収容機は保存形から組み直し、
+  // 基地の保存形から、在庫・燃料・収容中の機体を戻す。収容機は保存形から組み直し、
   // スロットへ取り付けたうえで一覧へ加える。
   private restoreBase(saved: BaseSaveData, simTime: number, deps: VesselDeps): void {
     const state = this.baseState!;
-    state.money = saved.money;
     state.inventory = (saved.inventory ?? []).map(partFromSaveData);
     if (saved.fuel !== undefined) {
       this.inventory.consumeFuel(this.inventory.totalFuel);
@@ -573,10 +650,10 @@ export class Vessel extends GameEntity {
     input.takeKeys((code) => this.handleEdgePress(code));
     // 発砲中は姿勢微調整と同じ操作精度になる
     const fine = this._fineAttitude || this.isFiring;
-    this.torque = this.throttle.updateTorque(
+    this.attitudeControl.requestTorque(this.throttle.updateTorque(
       this.att, this.state.r, this.state.v, input, fine, dt, simDt, this,
       () => this.hud.hint('進行方向ホールド解除(手動操作)'),
-    );
+    ));
     this.fire?.updateFireState(dt, input, activeStage, entities, ephemeris);
     this.throttle.updateThrustLatches(input);
     this.thrust = this.throttle.updateThrustState(input, this.att, simDt, this);
@@ -585,10 +662,9 @@ export class Vessel extends GameEntity {
 
     // 手動並進・手動回転は 'powered' 自動実行を中断する(進行方向ホールドが手動回転で
     // 解除されるのと同じ作法)。
-    if (this.planExecution === 'powered'
+    if (this._planExecution === 'powered'
       && (this.thrust !== null || this.throttle.hasManualRotationInput(input))) {
-      this.planExecution = 'off';
-      this.hud.hint('軌道計画の自動実行を中断(手動操作)');
+      this.setPlanExecution('off', '軌道計画の自動実行を中断(手動操作)');
     }
   }
 
@@ -622,6 +698,7 @@ export class Vessel extends GameEntity {
   public clearTransientCommands(): void {
     this.thrust = null;
     this.torque = v3();
+    this.attitudeControl.clearRequest();
     this.throttle.clearTransientState();
     this.fire?.stopFiring();
   }
@@ -844,7 +921,9 @@ export class Vessel extends GameEntity {
     const effectVisible = displayState !== null && mapEntityVisible;
     const maxAccel = this.mass > 0 ? this.totalThrust / this.mass : 0;
     this.thrustEffects?.sync(fo, effectState.r, this.thrust, maxAccel, effectVisible, isActive, camera, this.maneuverEffectScale);
-    this.rcsEffects?.sync(fo, effectState.r, this.torque, this.att, effectVisible, camera, isActive, this.maneuverEffectScale);
+    this.rcsEffects?.sync(
+      fo, effectState.r, this.attitudeControl.allocation, this.actuatorSet(), this.torque, this.att,
+      effectVisible, camera, isActive, this.maneuverEffectScale);
     this.reentryEffects?.sync(fo, effectState.r, effectState.v, this.thermal?.qdyn ?? 0, effectVisible, camera);
     this.belt?.sync();
     this.radiator?.sync();
@@ -926,7 +1005,7 @@ export class Vessel extends GameEntity {
       power: this.power!.serialize(),
       throttle: this.throttle.serialize(),
       parts: this.parts.map((p) => ({ ...p })) as AnyPart[],
-      planExecution: this.planExecution,
+      planExecution: this._planExecution,
       fineAttitude: this._fineAttitude,
       plan: this.serializePlan(),
     };
@@ -962,7 +1041,6 @@ export class Vessel extends GameEntity {
       v: { ...this.state.v },
       q: { ...this.att.q },
       w: { ...this.att.w },
-      money: state.money,
       fuel: this.totalFuel,
       inventory: state.inventory.map((p) => ({ ...p })),
       dockedVessels: state.dockedVessels.map((entry) => entry.vessel.serializeAsShip()),

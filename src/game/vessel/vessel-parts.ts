@@ -3,6 +3,7 @@ import * as C from '../const';
 import { v3 } from '../../physics/vec3';
 import type { AnyPart, BaseModulePart, CommunicationPart, DockPort, PartType } from '../game-entity/parts';
 import { createPart } from '../game-entity/parts';
+import { catalystMassFor, needsCatalystBed } from '../economy/build-cost';
 
 // 通信モジュールの等級。到達距離 [m] と質量 [kg] を等級ごとに固定する。到達距離は
 // 機体側と中継点側の小さいほうで決まるので、積んだ等級がそのまま届く距離になる。
@@ -63,7 +64,8 @@ export function createDefaultBaseModule(maxHp: number): BaseModulePart {
 // 既定パーツへの HP 配分比。合計 1 になるよう保つ(機体の maxHp をこの比で割り振る)。
 // 放熱板・太陽電池パドルは機体の左右2枚ぶんなので、パーツも side ごとに1枚ずつ持つ。
 const CREWED_HP_RATIO = {
-  hull: 0.30, cockpit: 0.08, heatShield: 0.02, engine: 0.07, rcsThruster: 0.03, flywheel: 0.03, rcsTank: 0.07,
+  hull: 0.30, cockpit: 0.08, heatShield: 0.02, engine: 0.07, rcsThruster: 0.03, flywheel: 0.03,
+  magnetorquer: 0.01, rcsTank: 0.07,
   radiator: 0.05, solarPanel: 0.03, weapon: 0.07, magazine: 0.02, ammunition: 0.02,
   battery: 0.03, communication: 0.02, lifeSupport: 0.03, armor: 0.05,
 } as const;
@@ -76,7 +78,7 @@ const HOSTILE_HP_RATIO = {
 // 既定パーツの質量 [kg]。主要構造は外皮そのものであり、その質量は形状と肉厚から導かれるので
 // (§10-3)、hull 要素自身は質量を持たない。
 const CREWED_WEIGHT = {
-  hull: 0, cockpit: 115, heatShield: 60, engine: 80, rcsThruster: 8, flywheel: 25, rcsTank: 30,
+  hull: 0, cockpit: 115, heatShield: 60, engine: 80, rcsThruster: 8, flywheel: 25, magnetorquer: 4.5, rcsTank: 30,
   radiator: 18, solarPanel: 12, weapon: 50, magazine: 20, ammunition: 30,
   battery: 40, communication: 15, lifeSupport: 65, armor: 50,
 } as const;
@@ -98,13 +100,23 @@ export function tuneActuators(parts: readonly AnyPart[], mass: number, maxMoment
     if (part.type === 'engine') part.thrust = mass * maxThrottle;
     else if (part.type === 'rcs_thruster') part.thrust = mass * C.THROTTLE_LEVELS[0]!;
     else if (part.type === 'flywheel') part.maxTorque = C.MAX_ANG_ACCEL * maxMoment;
+    // 触媒床は燃焼室の中にあり、その質量は推力に比例する。推力をここで決める以上、
+    // 触媒床の質量も同じ場所で決まる。
+    if (part.type === 'engine' || part.type === 'rcs_thruster') {
+      part.catalystMass = needsCatalystBed(part.propellant) ? catalystMassFor(part.thrust) : 0;
+    }
   }
 }
 
 // 既定の有人艦が積む要素の消費電力 [W]。合計が C.CREWED_POWER_DRAW と一致する。
-const CREWED_DRAW = { communication: 30, flywheel: 60, lifeSupport: 400 } as const;
+const CREWED_DRAW = { communication: 30, flywheel: 60, magnetorquer: 3.5, lifeSupport: 400 } as const;
 // 生命維持装置が消費電力とは別に出す廃熱 [W]。乗員の代謝ぶん。
 const LIFE_SUPPORT_EXTRA_HEAT = 100;
+
+// 既定の有人艦が積む RCS スラスタの数。船体の前後2ステーションに4方位ずつ、左右のトラスに
+// 2基ずつで、3軸の両向きのトルクを、対向するスラスタの推力が打ち消し合う形で出せる最小の組で
+// ある(配置は vessel-assemblies.ts の CREWED_RCS_MOUNTS)。
+export const CREWED_RCS_THRUSTER_COUNT = 12;
 
 // maxHp を CREWED_HP_RATIO で割り振った、有人機の既定の搭載要素一式。
 export function crewedParts(maxHp: number): AnyPart[] {
@@ -122,13 +134,18 @@ export function crewedParts(maxHp: number): AnyPart[] {
       thrust: 0, specificImpulse: 320, length: 1.4, gimbalRange: 6, gimbalRate: 10,
       throttleMin: 0.4, throttleMax: 1, fuelConsumptionRate: 1,
     }),
-    mk('rcs_thruster', R.rcsThruster, {
-      weight: CREWED_WEIGHT.rcsThruster, name: 'Translation RCS', propellant: 'hydrazine',
-      thrust: 0, specificImpulse: 230,
-    }),
+    ...Array.from({ length: CREWED_RCS_THRUSTER_COUNT }, (_unused, i) =>
+      mk('rcs_thruster', R.rcsThruster / CREWED_RCS_THRUSTER_COUNT, {
+        weight: CREWED_WEIGHT.rcsThruster, name: `RCS Thruster ${i + 1}`, propellant: 'hydrazine',
+        thrust: 0, specificImpulse: 230,
+      })),
     mk('flywheel', R.flywheel, {
       weight: CREWED_WEIGHT.flywheel, name: 'Reaction Wheel',
       maxTorque: 0, maxAngularMomentum: 400, powerDraw: CREWED_DRAW.flywheel,
+    }),
+    mk('magnetorquer', R.magnetorquer, {
+      weight: CREWED_WEIGHT.magnetorquer, name: 'Magnetorquer M',
+      maxMagneticMoment: C.MAGNETORQUER_MOMENT, powerDraw: CREWED_DRAW.magnetorquer,
     }),
     mk('rcs_tank', R.rcsTank, {
       weight: CREWED_WEIGHT.rcsTank, name: 'Main RCS Tank', propellant: 'hydrazine', volume: 1.0, material: 'aluminium',
@@ -187,7 +204,7 @@ export function hostileParts(maxHp: number): AnyPart[] {
       thrust: 0, specificImpulse: 300, fuelConsumptionRate: 1,
     }),
     mk('flywheel', R.flywheel, {
-      weight: HOSTILE_WEIGHT.flywheel, name: 'Hostile Reaction Wheel', maxTorque: C.MAX_ANG_ACCEL, maxAngularMomentum: 400, powerDraw: 0,
+      weight: HOSTILE_WEIGHT.flywheel, name: 'Hostile Reaction Wheel', maxTorque: 0, maxAngularMomentum: 400, powerDraw: 0,
     }),
     mk('rcs_tank', R.rcsTank, {
       weight: HOSTILE_WEIGHT.rcsTank, name: 'Hostile Tank', propellant: 'hydrazine', volume: 1.0, material: 'aluminium',

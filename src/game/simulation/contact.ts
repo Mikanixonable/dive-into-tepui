@@ -8,6 +8,9 @@ import { SpatialGrid } from '../../physics/spatial-grid';
 import { GameEntity } from '../game-entity/game-entity';
 import { Vessel } from '../vessel/vessel';
 import { CollisionResponse, resolveSphereCollision } from '../../physics/collision-response';
+import type { CapsuleContact, SweptCapsule } from '../../physics/capsule-contact';
+import { capsuleGapAt, sphereAsSweptCapsule, sweptCapsuleToi } from '../../physics/capsule-contact';
+import { sweptWorldCapsule } from '../vessel/collision-shape';
 import type { Attractor } from '../../physics/attractor';
 import type { Stage } from '../stages/stage';
 
@@ -110,6 +113,18 @@ function computeEntityResponse(
   // ずれていれば異なる瞬間の直前位置を結ぶ線分になり、掃引の意味を失う。
   const sweptValid = a.prevState.t < a.state.t && b.prevState.t < b.state.t
     && Math.abs(a.prevState.t - b.prevState.t) <= 1e-6 && Math.abs(a.state.t - b.state.t) <= 1e-6;
+  // カプセルを持つ機体が絡む組は狭域をカプセルで取る。広域の絞り込みは外接球のままで、
+  // 掃引した外接球が区間のどこかで交わる組だけがカプセルの総当たりへ進む。
+  const hasCapsules = (a instanceof Vessel && a.collisionCapsules.length > 0)
+    || (b instanceof Vessel && b.collisionCapsules.length > 0);
+  if (hasCapsules) {
+    const aPrev = sweptValid ? a.prevState.r : aWork.r;
+    const bPrev = sweptValid ? b.prevState.r : bWork.r;
+    if (!boundingSpheresMayTouch(a, b, aPrev, bPrev, aWork.r, bWork.r)) return null;
+    const contact = capsuleContactOf(a, b, aPrev, bPrev, aWork, bWork);
+    return contact === null ? null : capsuleResponse(a, b, aWork, bWork, contact);
+  }
+
   return resolveSphereCollision(
     { r: aWork.r, v: aWork.v, radius: a.radius, invMass: 1 / a.mass },
     { r: bWork.r, v: bWork.v, radius: b.radius, invMass: 1 / b.mass },
@@ -117,6 +132,81 @@ function computeEntityResponse(
     sweptValid ? a.prevState.r : undefined,
     sweptValid ? b.prevState.r : undefined,
   );
+}
+
+// エンティティ1つを掃引カプセルの列として表す。カプセルを持つ機体はその集合を、それ以外は外接球を
+// 両端の一致する退化したカプセルとして返す。
+function sweptShapesOf(e: GameEntity, prev: Vec3, now: Vec3, out: SweptCapsule[]): void {
+  out.length = 0;
+  if (e instanceof Vessel && e.collisionCapsules.length > 0) {
+    for (const capsule of e.collisionCapsules) out.push(sweptWorldCapsule(capsule, prev, now, e.att.q));
+    return;
+  }
+  out.push(sphereAsSweptCapsule(prev, now, e.radius));
+}
+
+// 広域の絞り込み。掃引した外接球が区間内のどこかで触れるか — 区間の両端で重なっている場合も含む。
+function boundingSpheresMayTouch(
+  a: GameEntity, b: GameEntity, aPrev: Vec3, bPrev: Vec3, aNow: Vec3, bNow: Vec3,
+): boolean {
+  const sum = a.radius + b.radius;
+  if (len(sub(bPrev, aPrev)) <= sum || len(sub(bNow, aNow)) <= sum) return true;
+  const x = sphereAsSweptCapsule(aPrev, aNow, a.radius);
+  const y = sphereAsSweptCapsule(bPrev, bNow, b.radius);
+  return sweptCapsuleToi(x, y) !== null;
+}
+
+const capsuleScratchA: SweptCapsule[] = [];
+const capsuleScratchB: SweptCapsule[] = [];
+
+// カプセルの当たりを、最も早い接触1件へまとめる。掃引で取れなければ、区間終端で重なっている組を
+// 離散のフォールバックとして拾う — 掃引は区間開始時点の重なりを検出しないため。
+function capsuleContactOf(
+  a: GameEntity, b: GameEntity, aPrev: Vec3, bPrev: Vec3, aWork: KinematicState, bWork: KinematicState,
+): CapsuleContact | null {
+  sweptShapesOf(a, aPrev, aWork.r, capsuleScratchA);
+  sweptShapesOf(b, bPrev, bWork.r, capsuleScratchB);
+  let best: CapsuleContact | null = null;
+  for (const x of capsuleScratchA) {
+    for (const y of capsuleScratchB) {
+      const hit = sweptCapsuleToi(x, y);
+      if (hit !== null && (best === null || hit.toi < best.toi)) best = hit;
+    }
+  }
+  if (best !== null) return best;
+  let deepest: CapsuleContact | null = null;
+  let deepestGap = 0;
+  for (const x of capsuleScratchA) {
+    for (const y of capsuleScratchB) {
+      const gap = capsuleGapAt(x, y, 1);
+      if (gap.normal === null || !(gap.gap < deepestGap)) continue;
+      deepestGap = gap.gap;
+      deepest = { toi: 1, normal: gap.normal, point: gap.point };
+    }
+  }
+  return deepest;
+}
+
+// カプセルの接触から剛体の反発を組む。位置は積分器が出した区間終端の値をそのまま残す — カプセルの
+// 押し戻しは軸のどこで触れたかによって向きが変わり、重心を動かすと質量比の効かない並進が乗る。
+function capsuleResponse(
+  a: GameEntity, b: GameEntity, aWork: KinematicState, bWork: KinematicState, contact: CapsuleContact,
+): CollisionResponse | null {
+  const invA = 1 / a.mass, invB = 1 / b.mass;
+  const invM = invA + invB;
+  if (!(invM > 0)) return null;
+  const base = {
+    rA: aWork.r, rB: bWork.r, normal: contact.normal, toi: contact.toi,
+  };
+  const vn = dot(sub(bWork.v, aWork.v), contact.normal);
+  if (!(vn < 0)) return { ...base, vA: aWork.v, vB: bWork.v, impulse: 0 };
+  const impulse = -((1 + RESTITUTION) * vn) / invM;
+  return {
+    ...base,
+    vA: sub(aWork.v, scale(contact.normal, impulse * invA)),
+    vB: add(bWork.v, scale(contact.normal, impulse * invB)),
+    impulse: Math.abs(impulse),
+  };
 }
 
 // 天体はこの関数の呼び出し区間の間ほぼ静止しているとみなす(軌道運動は1 substep で

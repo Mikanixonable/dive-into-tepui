@@ -2,6 +2,8 @@
 import { qRotate } from '../../physics/attitude';
 import { add, Vec3 } from '../../physics/vec3';
 import type { AnyPart, DockPort, Part } from '../game-entity/parts';
+import { FACILITIES, INITIAL_FACILITY_IDS, type FacilityId } from '../economy/facility';
+import { ResourceLedger } from '../economy/resource-ledger';
 import type { Vessel } from './vessel';
 
 // 収容中の機体のエントリ。parts は収容機の parts と同一参照(修理は機体へ直接反映される)。
@@ -16,11 +18,33 @@ export interface DockedVesselEntry {
   slotIndex: number;
 }
 
-// 基地モジュールを積んだ機体が抱える在庫と収容。
+// 基地モジュールを積んだ機体が抱える在庫と収容。資源の帳簿を持つのは基地モジュールを積んだ
+// 機体だけであり、生産はその帳簿から引く。
 export interface BaseState {
-  money: number;
   inventory: AnyPart[];
   dockedVessels: DockedVesselEntry[];
+  readonly resources: ResourceLedger;
+}
+
+// この基地が同時に回せる電力 [W]。生産の電力は基地の設備が発電するもので賄う — 機体自身の
+// 太陽電池パドルは機体の系を動かすためのものであり、基地の生産設備の規模とは桁が違う。
+export function basePowerAvailable(base: Vessel): number {
+  let total = 0;
+  for (const id of baseFacilities(base)) total += FACILITIES[id].powerOutput;
+  return total;
+}
+
+// この基地で使える生産設備。月面基地が地球から運ばれた最初の一組に、基地モジュール自身が
+// 備える設備を足したもの。表に無い id は落とす。
+export function baseFacilities(base: Vessel): readonly FacilityId[] {
+  const ids = new Set<FacilityId>(INITIAL_FACILITY_IDS);
+  for (const part of base.parts) {
+    if (part.type !== 'base_module') continue;
+    for (const id of part.facilities) {
+      if (id in FACILITIES) ids.add(id as FacilityId);
+    }
+  }
+  return [...ids];
 }
 
 // 口のワールド位置。
