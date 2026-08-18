@@ -24,6 +24,7 @@ import { register as registerPayload } from './payload.test';
 import { register as registerModulePick } from './module-pick.test';
 import { register as registerAdvancedVessel } from './advanced-vessel.test';
 import { register as registerDockingCluster } from './docking-cluster.test';
+import { register as registerAssemblyEditor } from './assembly-editor.test';
 
 registerResource();
 registerProducibility();
@@ -42,6 +43,7 @@ registerPayload();
 registerModulePick();
 registerAdvancedVessel();
 registerDockingCluster();
+registerAssemblyEditor();
 registerHullMesh();
 registerMassProperties();
 registerAttitudeControl();
