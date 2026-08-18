@@ -13,6 +13,7 @@ import { register as registerProduction } from './production.test';
 import { register as registerResource } from './resource.test';
 import { register as registerResourceClosure } from './resource-closure.test';
 import { register as registerVesselParts } from './vessel-parts.test';
+import { register as registerStages } from './stages.test';
 
 registerResource();
 registerProducibility();
@@ -20,6 +21,7 @@ registerProduction();
 registerResourceClosure();
 registerCapabilities();
 registerVesselParts();
+registerStages();
 registerHullMesh();
 registerMassProperties();
 registerAttitudeControl();
