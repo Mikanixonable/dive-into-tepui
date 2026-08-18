@@ -265,8 +265,10 @@ main.ts
 │       │                                       それらの形状と変換だけを合わせる(生成・破棄はしない)
 │       ├── CommNetwork                    ... このフレームの通信網(正本)。有効な中継点の集合を持ち、CoverageQuery として答える。Game が new し、Stage(StageDeps の12番目)へ参照で渡す。中継点そのものは Ephemeris と EntityManager から毎回組み直すので、ここが持つのは組み直した結果だけ
 │       ├── Simulator                      ... 実シミュレーション。EntityManager・Ephemeris・FrameSections の参照を受け取って回すだけ(いずれも所有しない)
-│       │   └── ContactPhysics             ... 接触の検出(physics/sphere-contact.ts)・剛体解決(physics/collision-response.ts)を
-│       │                                       substep ごと(resolveSubstep)/フレームに1回のベルト(resolveBelt)で呼ぶ列挙・順序付け層
+│       │   └── ContactPhysics             ... 接触の検出(physics/sphere-contact.ts・physics/capsule-contact.ts)・剛体解決
+│       │                                       (physics/collision-response.ts)を substep ごと(resolveSubstep)/フレームに1回の
+│       │                                       ベルト(resolveBelt)で呼ぶ列挙・順序付け層。狭域の形状は Vessel.collisionCapsules
+│       │                                       を持つ機体だけカプセル、それ以外は外接球。状態は走査用のスクラッチのみ
 │       └── Predictor                      ... 予測列の駆動。EntityManager・FutureAttractors の参照を受け取って回すだけ(所有しない)。
 │                                               状態はラウンドロビンのカーソルのみ
 ├── SaveBrowser            ... `Game` はフィールドに持たず、`CurrentGameSource`(`{readonly current: Game | null}`、この節が正本)を構築引数で受け取る — 実際に渡るのは `Launcher`(`current` が `Launcher.game` を指す)。`open()`/`close()` は `gameSource.current?.pause()`/`.resume()` を呼ぶ。Game 側はこれへの参照を一切持たない。DOM は Hud.layers.system 配下。`onLoadSnapshot`/`onSlotSwitched` コールバックを main.ts が launcher.loadSnapshot(id)/launcher.switchSlot() へ配線する

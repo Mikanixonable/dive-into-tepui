@@ -267,7 +267,8 @@ handlePointerInput 参照)。ステージが決着した(`activeStage.isPlaying`
         - resolveInOrder() // 1 substep 内で TOI 昇順に最大 CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP 件解決。超過分は次回へ持ち越し
           - SpatialGrid 構築(1回、以後の反復で使い回す) // セル一辺 = 2×max(半径+|区間変位−参加者平均変位|)、退化時のみ CONTACT_GRID_CELL_SIZE_FLOOR
           - collectCandidates()(1回だけ) // 27近傍のエンティティ間ペア(少なくとも一方が attacker)+ 全 attacker×天体ペアのうち、双方の contactsWith が true のものを候補列へ詰める。接触しない組み合わせも response=null の候補として残す
-          - [解決1件ごと、最大 CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP 回] earliestContact() // 候補列を1パス走査し、未解決かつ TOI 最小の1件を返す。直前の解決で状態が変わった当事者を含む候補だけ resolveSphereCollision(collision-response.ts)で response を引き直す
+          - [解決1件ごと、最大 CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP 回] earliestContact() // 候補列を1パス走査し、未解決かつ TOI 最小の1件を返す。直前の解決で状態が変わった当事者を含む候補だけ response を引き直す
+            // computeEntityResponse: 基地(collisionGeom)→ カプセルを持つ機体(boundingSpheresMayTouch で掃引外接球を通してから capsuleContactOf → capsuleResponse)→ それ以外は resolveSphereCollision(collision-response.ts)の順に分岐する
           - applyCandidate() → 双方(または片側、相手が天体の場合)の working state へ代入
             - [impulse > 0 のときだけ] a.collideWith(b, contact, activeStage) と b.collideWith(a, contact, activeStage) を順不同で呼ぶ // Contact は解決前の状態を保持するので呼び出し順に依らない
               - [Bullet.collideWith] alive = false // 相手への作用は相手側の collideWith が書く
