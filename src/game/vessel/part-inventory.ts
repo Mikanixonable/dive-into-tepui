@@ -1,9 +1,12 @@
 // 機体が積んでいる搭載要素の一覧と、そこから合成される HP と性能値。
 // HP も推力も冷却能力も、正本はここにある部品の側にある。
+import * as C from '../const';
 import type {
-  AnyPart, ArmorPart, CockpitPart, Part, PartType,
-  RadiatorPart, RcsTankPart, SolarPanelPart, ThrusterPart, WeaponPart,
+  AnyPart, ArmorPart, BatteryPart, CockpitPart, EnginePart, FlywheelPart, FuelCellPart, Part, PartType,
+  RadiatorPart, RcsTankPart, RcsThrusterPart, RtgPart, SolarPanelPart, WeaponPart,
 } from '../game-entity/parts';
+import { extraWasteHeatOf, powerDrawOf } from '../game-entity/parts';
+import type { PropellantId } from '../economy/propellant-compatibility';
 
 // 自然回復の対象外にする部品種別。外装パネルは機上で直せず、基地ドックの修理を要する。
 const SELF_REPAIR_EXCLUDED: readonly PartType[] = ['radiator', 'solar_panel'];
@@ -15,7 +18,12 @@ export class PartInventory {
 
   // type 走査は性能取得のたびに行わず、換装・復元時だけ組み直す。HP と燃料は部品本体で
   // 変化するため、これらは部品参照の固定配列であり、値のキャッシュではない。
-  private readonly thrusterRefs: ThrusterPart[] = [];
+  private readonly engineRefs: EnginePart[] = [];
+  private readonly rcsThrusterRefs: RcsThrusterPart[] = [];
+  private readonly flywheelRefs: FlywheelPart[] = [];
+  private readonly batteryRefs: BatteryPart[] = [];
+  private readonly fuelCellRefs: FuelCellPart[] = [];
+  private readonly rtgRefs: RtgPart[] = [];
   private readonly rcsTankRefs: RcsTankPart[] = [];
   private readonly radiatorRefs: [RadiatorPart | undefined, RadiatorPart | undefined] = [undefined, undefined];
   private readonly solarPanelRefs: [SolarPanelPart | undefined, SolarPanelPart | undefined] = [undefined, undefined];
@@ -44,7 +52,12 @@ export class PartInventory {
   }
 
   private rebuildReferences(): void {
-    this.thrusterRefs.length = 0;
+    this.engineRefs.length = 0;
+    this.rcsThrusterRefs.length = 0;
+    this.flywheelRefs.length = 0;
+    this.batteryRefs.length = 0;
+    this.fuelCellRefs.length = 0;
+    this.rtgRefs.length = 0;
     this.rcsTankRefs.length = 0;
     this.weaponRefs.length = 0;
     this.armorRefs.length = 0;
@@ -62,7 +75,12 @@ export class PartInventory {
         case 'hull': if (!this.hullPart) this.hullPart = part; break;
         case 'cockpit': if (!this.cockpitPart) this.cockpitPart = part; break;
         case 'armor': this.armorRefs.push(part); break;
-        case 'thruster': this.thrusterRefs.push(part); break;
+        case 'engine': this.engineRefs.push(part); break;
+        case 'rcs_thruster': this.rcsThrusterRefs.push(part); break;
+        case 'flywheel': this.flywheelRefs.push(part); break;
+        case 'battery': this.batteryRefs.push(part); break;
+        case 'fuel_cell': this.fuelCellRefs.push(part); break;
+        case 'rtg': this.rtgRefs.push(part); break;
         case 'rcs_tank': this.rcsTankRefs.push(part); break;
         case 'radiator':
           if (radiatorIndex < this.radiatorRefs.length) this.radiatorRefs[radiatorIndex] = part;
@@ -152,21 +170,30 @@ export class PartInventory {
     this.updateOverallHp();
   }
 
+  // 姿勢トルク [N·m]。健全なフライホイールの最大トルクの合計を、向きによらない1つの値として答える。
   public get totalTorque(): number {
     let total = 0;
-    for (const p of this.thrusterRefs) if (p.hp > 0) total += p.torque;
+    for (const p of this.flywheelRefs) if (p.hp > 0) total += p.maxTorque;
     return total;
   }
 
+  // 主機の推力の合計 [N]。並進 RCS は主機に数えない(§6-5)。
   public get totalThrust(): number {
     let total = 0;
-    for (const p of this.thrusterRefs) if (p.hp > 0) total += p.thrust;
+    for (const p of this.engineRefs) if (p.hp > 0) total += p.thrust;
+    return total;
+  }
+
+  // 並進 RCS スラスタの推力の合計 [N]。
+  public get totalRcsThrust(): number {
+    let total = 0;
+    for (const p of this.rcsThrusterRefs) if (p.hp > 0) total += p.thrust;
     return total;
   }
 
   public get totalFuelConsumptionRate(): number {
     let total = 0;
-    for (const p of this.thrusterRefs) if (p.hp > 0) total += p.fuelConsumptionRate;
+    for (const p of this.engineRefs) if (p.hp > 0) total += p.fuelConsumptionRate;
     return total;
   }
 
@@ -222,15 +249,56 @@ export class PartInventory {
     return this.solarPanelRefs;
   }
 
+  // 放熱能力。放熱板の面積と効率の積の合計で、有効放熱面積 [m^2] にあたる。
   public get totalCoolingRate(): number {
     let total = 0;
-    for (const p of this.radiatorRefs) if (p && p.hp > 0) total += p.coolingRate;
+    for (const p of this.radiatorRefs) if (p && p.hp > 0) total += p.area * p.efficiency;
     return total;
   }
 
+  // 発電量 [W]。太陽電池パドル・燃料電池・原子力電池の出力の合計(§6-5)。
+  // パドルの出力は地球軌道の太陽定数を正対で受けたときの値で、入射角と日照は電力系が掛ける。
   public get totalPowerGeneration(): number {
     let total = 0;
-    for (const p of this.solarPanelRefs) if (p && p.hp > 0) total += p.powerGeneration;
+    for (const p of this.solarPanelRefs) {
+      if (p && p.hp > 0) total += C.SOLAR_CONSTANT * p.area * p.efficiency;
+    }
+    for (const p of this.fuelCellRefs) if (p.hp > 0) total += p.ratedOutput;
+    for (const p of this.rtgRefs) if (p.hp > 0) total += p.ratedOutput;
+    return total;
+  }
+
+  // 蓄電容量 [J]。バッテリーの容量の合計。
+  public get totalEnergyStorage(): number {
+    let total = 0;
+    for (const p of this.batteryRefs) if (p.hp > 0) total += p.capacity;
+    return total;
+  }
+
+  // 全搭載要素の消費電力の合計 [W]。
+  public get totalPowerDraw(): number {
+    let total = 0;
+    for (const p of this.parts) total += powerDrawOf(p);
+    return total;
+  }
+
+  // 廃熱 [W]。電力は最終的にすべて熱になるので消費電力の合計を土台にし、
+  // 電照農場と生命維持装置が別に出す熱を足す(§6-5)。
+  public get totalWasteHeat(): number {
+    let total = 0;
+    for (const p of this.parts) total += powerDrawOf(p) + extraWasteHeatOf(p);
+    return total;
+  }
+
+  // その推進剤を収める健全なタンクの容積の合計 [m³]。
+  public propellantVolume(propellant: PropellantId): number {
+    let total = 0;
+    for (const p of this.parts) {
+      if (p.hp <= 0) continue;
+      if (p.type !== 'oxidizer_tank' && p.type !== 'reductant_tank' && p.type !== 'rcs_tank') continue;
+      if (p.propellant !== propellant) continue;
+      total += p.volume;
+    }
     return total;
   }
 

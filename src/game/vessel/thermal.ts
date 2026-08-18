@@ -7,6 +7,8 @@ import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { ThermalSaveData } from '../save-data';
+import type { HeatShielding } from './heat-shield';
+import { UNSHIELDED } from './heat-shield';
 
 // checkThermalLimits の戻り値: 限界超過の種別。null なら超過なし。
 // heat-aero: 空力加熱による飽和。heat-internal: 射撃発熱など大気のない状況での飽和。
@@ -20,6 +22,8 @@ export class ThermalSystem {
   private pendingHeat = 0; // 射撃・被弾など未反映の投入熱量 [J]
   private radiatorArea = 0; // ラジエーターによる追加放熱面積 [m^2]
   private radiatorSolarLoad = 0; // ラジエーターが受ける太陽入射 [W]
+  // 直近の updateThermal で見た熱防御。限界の判定はこれが決める(§11-3)。
+  private shielding: HeatShielding = UNSHIELDED;
 
   // --- 高度警告(EMA平滑化)状態 ---
   private altEma = NaN; // 高度の指数移動平均(離心率によるふらつきを均す)
@@ -67,6 +71,10 @@ export class ThermalSystem {
     this.qdyn = 0.5 * rho * s * s;
     // よどみ点加熱とステファン・ボルツマン冷却を合算し外殻温度を積分する
     const qdot = C.SG_CONST * Math.sqrt(rho / C.NOSE_RADIUS) * s * s * s;
+    // 熱シールドが遮蔽した入熱は外殻へ入らず、そのぶんアブレータを削る。
+    this.shielding = ship.heatShielding();
+    const incoming = qdot * C.HEAT_ABSORB_AREA;
+    ship.ablateHeatShields(incoming * this.shielding.shielded * dtSub);
     const cool =
       C.HULL_EMISS *
       C.STEFAN_BOLTZMANN *
@@ -79,7 +87,7 @@ export class ThermalSystem {
     this.hullTemp = Math.max(
       C.HULL_TEMP_FLOOR,
       this.hullTemp +
-        ((qdot * C.HEAT_ABSORB_AREA + cool + this.radiatorSolarLoad) / heatCapacity) * dtSub +
+        ((incoming * (1 - this.shielding.shielded) + cool + this.radiatorSolarLoad) / heatCapacity) * dtSub +
         this.pendingHeat / heatCapacity,
     );
     this.pendingHeat = 0;
@@ -87,20 +95,20 @@ export class ThermalSystem {
 
   // 熱防御の飽和・空力破壊を判定し、限界超過の種別を返す。
   checkThermalLimits(): ThermalLimit {
-    if (this.hullTemp > C.MAX_HULL_TEMP) {
+    if (this.hullTemp > this.shielding.tempLimit) {
       // 動圧の有無を大気の有無の指標として使い、加熱源(空力/射撃)を出し分ける
       return this.qdyn >= C.REENTRY_GLOW_MIN_Q ? 'heat-aero' : 'heat-internal';
     }
-    if (this.qdyn > C.MAX_DYN_PRESSURE) {
+    if (this.qdyn > this.shielding.dynPressureLimit) {
       return 'dynpressure';
     }
     // 危険域(70%/50%)に入ったら1回だけ警告する
-    const hot = this.hullTemp > 0.7 * C.MAX_HULL_TEMP || this.qdyn > 0.5 * C.MAX_DYN_PRESSURE;
+    const hot = this.hullTemp > 0.7 * this.shielding.tempLimit || this.qdyn > 0.5 * this.shielding.dynPressureLimit;
     if (hot && !this.heatWarned) {
       this.heatWarned = true;
       this._hud.hint('警告: 空力加熱・動圧が危険域 — 高度を上げよ', 4000);
       this._worldSfx.altAlarm();
-    } else if (!hot && this.hullTemp < 0.6 * C.MAX_HULL_TEMP) {
+    } else if (!hot && this.hullTemp < 0.6 * this.shielding.tempLimit) {
       this.heatWarned = false;
     }
     return null;

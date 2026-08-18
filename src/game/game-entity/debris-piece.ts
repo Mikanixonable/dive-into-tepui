@@ -37,8 +37,8 @@ function buildDebrisRenderObject(debrisKind: DebrisKind): THREE.Object3D {
 }
 
 export class DebrisPiece extends GameEntity {
-  protected readonly bcInv = C.SMALL_DEBRIS_BCINV;
-  protected readonly srpCoeff = C.SMALL_DEBRIS_SRP_COEFF;
+  protected override get bcInv(): number { return C.SMALL_DEBRIS_BCINV; }
+  protected override get srpCoeff(): number { return C.SMALL_DEBRIS_SRP_COEFF; }
 
   // fragment のみ意味を持つ: どのバリアントジオメトリを使うか、InstancedPool の
   // per-instance color へ渡す色。EntityManager.sync が variant ごとのプールへ push する。

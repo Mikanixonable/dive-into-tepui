@@ -208,11 +208,16 @@ main.ts
 │       │   │                                  操作対象(Game.player)はこの配列内の1機への参照(§3-4 参照)。
 │       │   │                                  役割別の一覧(ownShips()/hostileVessels()/baseVessels())は
 │       │   │                                  faction と基地モジュールの有無から導く派生であって正本ではない
-│       │   │   ├── VesselAssembly         ... 形状ツリーとその上の搭載要素の配置。既定の3設計はいずれも質量特性を直接与える
-│       │   │   │                              経路を取るので、今のところ assembly は常に null
-│       │   │   ├── MassProperties         ... 乾燥質量・重心・慣性テンソル(正本)。VesselDesign が massPropertiesOf() で
-│       │   │   │                              組んだものをそのまま持つ。GameEntity.mass はここの mass から導く
-│       │   │   ├── PartInventory          ... 搭載要素の一覧と、そこから合成される HP・推力・冷却能力(正本)
+│       │   │   ├── VesselAssembly         ... 形状ツリー(VesselTree)とその上の搭載要素の配置(PartPlacement[])。
+│       │   │   │                              既定の3設計のツリーは vessel/vessel-assemblies.ts が持ち、
+│       │   │   │                              deriveMassProperties() がそこから質量特性を導く。質量特性を直接
+│       │   │   │                              与える経路(敵艦・コンテナ)の機体では null
+│       │   │   ├── MassProperties         ... 質量・重心・慣性テンソル・主軸投影面積(正本)。assembly を持つ機体は
+│       │   │   │                              deriveMassProperties() の結果、持たない機体は massPropertiesOf() で
+│       │   │   │                              直接与えた値。GameEntity.mass と att.inertia はここから導く。
+│       │   │   │                              bcInv/srpCoeff も principalAreas と mass から毎回導く(§11-2)
+│       │   │   ├── PartInventory          ... 搭載要素の一覧と、そこから合成される HP・推力・トルク・放熱・発電・蓄電・
+│       │   │   │                              消費電力・廃熱(正本)。搭載要素の型と性能値は game-entity/parts.ts
 │       │   │   ├── VesselThrottle
 │       │   │   ├── Gunnery                ... 砲と給弾を積む設計だけが持つ。他は null
 │       │   │   ├── Belt
@@ -258,6 +263,7 @@ main.ts
 │       │                                       entities の直後に construct する。update が各エンティティの
 │       │                                       orbitLine/predictedLine/actualLine を出す/消す/スタイルを決め、sync は
 │       │                                       それらの形状と変換だけを合わせる(生成・破棄はしない)
+│       ├── CommNetwork                    ... このフレームの通信網(正本)。有効な中継点の集合を持ち、CoverageQuery として答える。Game が new し、Stage(StageDeps の12番目)へ参照で渡す。中継点そのものは Ephemeris と EntityManager から毎回組み直すので、ここが持つのは組み直した結果だけ
 │       ├── Simulator                      ... 実シミュレーション。EntityManager・Ephemeris・FrameSections の参照を受け取って回すだけ(いずれも所有しない)
 │       │   └── ContactPhysics             ... 接触の検出(physics/sphere-contact.ts)・剛体解決(physics/collision-response.ts)を
 │       │                                       substep ごと(resolveSubstep)/フレームに1回のベルト(resolveBelt)で呼ぶ列挙・順序付け層
@@ -458,7 +464,8 @@ main.ts
 | `PlanPath` | PlanDisplay | PlanEditor(ノードの画面判定 `projectPoint` / `nearestSample` のみ、`planDisplay.path` 経由) |
 | `DisplayWindowManager`(`plan/plan.ts` の狭い `DisplayDurationSource`(`{durationSec(referencePeriod): number}`)としてのみ見える) | Game | PlanEditor(→PlanDisplay)(コンストラクタ引数で `PlanDisplay` → `PlanPath` へそのまま転送。末尾区間の長さ(`plan.ts` の `segmentDurationFrom`)と `Plan.nodeTimeRange` の上限が PREDICT パネルの選択に追従するための参照で、`PlanPath` はこれを保持するだけで書き換えない。`plan/` 配下は `durationSec` 以外の具象 `DisplayWindowManager` のフィールド・メソッドを一切読まない) |
 | `Plan`(活艦の) | `Vessel`(活艦自身、`PlanEditor` ではない) | PlanEditor(`plan` getter が活艦の `plan` を転送。艦がいなければ `null`)・PlanDisplay(`update` の引数で毎フレーム受ける。出さないフレームは `null`)・PlanGuide(引数では受けず、渡された `Vessel` の `plan` から自分で引く)・CreativeStage(`planExecution` 艦のノード消化) |
-| `PlanExecutor`(艦ごとの) | `Vessel`(艦自身) | CreativeStage(`update`/`nextSimulationEventTime`/`applySimulationEvents` から呼ぶだけで保持しない) |
+| `PlanExecutor`(艦ごとの) | `Vessel`(艦自身) | CreativeStage(`update`/`nextSimulationEventTime`/`applySimulationEvents` から呼ぶだけで保持しない。指令が届いているかは `isOperable(ship, commNetwork)` を毎回引いて引数で渡す — PlanExecutor も Vessel も通信網への参照を持たない) |
+| `CommNetwork` | Game | Stage(StageDeps の12番目、`_commNetwork`)。CoverageQuery として `capabilities.ts` の `canAutopilot`/`isOperable` へ引数で渡る |
 | `ActiveVesselController` | Game | ViewManager・Docking・MapContextActions・MapPickables・PlanEditor(いずれもコンストラクタ引数)・Stage(`StageDeps` の一員として `_activeVessels`、`addOwnShip` の `claimIfNone` で使う) |
 | `SimSpeedManager` | Game | PlanEditor(ノードメニューからの自動ワープ) |
 | `FrameControls` | Game | PlanEditor(構築引数。ノードメニューの「フォーカス」項目で `frameControls.setFocus(...)` を直接呼ぶ) |
@@ -498,7 +505,7 @@ main.ts
 | ベルトのたわみ(節点位置・ツイスト) | `BeltPhysics` | 表示用リンク変換は Belt が毎フレーム導出 |
 | 外殻温度・動圧・高度警告 | `ThermalSystem` | 破壊判定そのものは `Vessel.checkLoss` |
 | 放熱板の展開度・損耗度 | `RadiatorSystem` | 温度は持たない。放熱面積と太陽入射を `ThermalSystem.setRadiatorLoad` へ渡すのは `Vessel` |
-| 太陽電池の蓄電量 | `PowerSystem` | メッシュ操作なし(パネルは固定)。`sync()` を持たない |
+| 太陽電池の蓄電量 | `PowerSystem` | 発電量は `PartInventory.totalPowerGeneration` が正本。メッシュ操作なし(パネルは固定)。`sync()` を持たない |
 | エンティティ配列(機体/弾/薬莢/デブリ/補給/小天体) | `EntityManager` | 機体は艦艇・軌道基地・敵艦をまとめた `vessels` 1本(役割別の `ownShips()`/`hostileVessels()`/`baseVessels()` は派生)。追加は `addVessel`/`addXxx` 経由。上限管理もここ(`vessels` のみ無上限で `prune` の対象外 — 除去は `ActiveVesselController.reclaimDead()` が担い、喪失した瞬間に配列から取り除かれる)。`Simulator` は参照を受け取って回すだけで配列を持たない |
 | 保持配列の顔ぶれの世代 | `EntityManager.collectionRevision`(private `_collectionRevision` + public getter) | `addXxx`/除去のたびに増える。`all()`/`attractors()` の結合キャッシュの再構築判定に使う。`alive` が false になっただけでは増えない(除去は機体以外が `cleanup` → `prune`、機体が `ActiveVesselController.reclaimDead()` で、それぞれ毎フレーム行う)。public getter は、結合配列そのものは参照が変わらないため、外から顔ぶれの変化を知る唯一の手段になる |
 | シミュレーション時刻 / 前フレームの simDt | `Simulator.simTime` / `.lastSimDt` | |
@@ -513,6 +520,7 @@ main.ts
 | Δv アーム/ボタンのホールド継続時間・ラッチ状態 | `PlanEditor.dvHoldTime` / `NodeGizmo.latch` | 6方向ぶんの経過秒数(ホールドレートのランプに使う)と、ドラッグがラッチへ入った軸/超過量。加算そのものは `PlanEditor.applyDv` に一本化 |
 | NaN 検出済みフラグ | `NanWatchdog`(Game 所有) | 一度検出したら以後の検査を止める |
 | マニューバ計画(ノード列・アンカー) | `Plan` | 所有は各 `Vessel`(艦ごとに1個。`PlanEditor.plan` は活艦のものを転送する getter)。起点とノード列は **`{ anchor, nodes } \| null` という1つの値**で持ち、`null` ⟺ ノードが1件も無い — 片方だけを更新できる形にしていない。ノードが1件も無い計画の起点は自機の現在状態そのものなので `Plan` 自身は持たず、借りる先を渡す `anchorOr(fallback)` が起点を読む唯一の口(`displayData(shipState)`/`addNode`/`nodeTimeRange` はいずれもこれを通る)。呼び出し側に `?? ship.state` を書かせないため、起点は `KinematicState | null` として外へ出さない — `PlanEditor.displayedPlan` は `plan.displayData(ship.state)` を毎フレーム解決し(`PlanData.anchor` は常に非 null)、`nodeTimeRange(idx, from, …)` も常に範囲を返す。凍結の有無そのものを答えるのは保存経路の `frozenData(): PlanData | null` だけで、その `null` は「保存すべき計画が無い」を意味する。ノード・起点とも 1 個の `KinematicState`(実行時刻 = `t`、Δv は導出値)。ノード列は `addNode` が挿入位置より後ろを破棄してから push するため常に実行時刻順。`addNode(postState, from)` はノードがまだ1件も無いときだけ `from` を起点として凍結し(既に凍結済みなら使わない)、`(凍結済みの起点 ?? from).t` 以前の状態は受け付けず `-1` を返す。`consumeNodesUpTo(t, actualState)` は実行時刻が `t` 以前のノードをまとめて取り除き、取り除いた件数を返すとともに、**残るノードがあるときだけ** `anchor` を `actualState`(実際に到達した状態)へ差し替える — 1件も残らなければ起点ごと捨てる。呼ぶのは `PlanGuide.update`・`PlanExecutor.finish`・`CreativeStage.applySimulationEvents` の3か所だけで、動力飛行の残差を消さずに以降の計画へ残すのが `actualState` を使う目的。編集世代 `revision`(private `_revision` + public getter)を増やすのは実際に変えた呼び出しだけ(`addNode`/`removeNode`/`replaceNode`/`consumeNodesUpTo`/`clear`。`applyNodeDv` は委譲先の `replaceNode` でのみ)。`_revision` は `{anchor, nodes}` の外に持ち、空↔非空をまたいでも単調増加する(キャッシュ鍵として衝突させないため)。ノードが1件も無いあいだ起点が自機を追うことは編集ではないので増やさない — その唯一の区間は `plan-path.ts` の `PlanPath.update` が毎フレーム自機の `PredictedArc` を借用(`owned: false`)として答えるだけで、`represents` による区間再利用判定自体を経由しない |
+| 機体の設計(ブループリント) | `BlueprintLibrary`(private `byId`) | 保存・読み込み・複製・削除・改名・取り込みはすべてこのクラスに閉じる。永続化そのものは `BlueprintStore`(既定は `LocalStorageBlueprintStore`、鍵は `tepui.blueprints`)が持ち、既存のセーブ(`tepui.saveIndex`/`tepui.snapshot.*`)とは鍵が分かれている。`VesselBlueprint` は不変値で、改名も複製も新しい値を返す(元を書き換えない)。`feedNetwork` が保持するのは手動で敷いた区間だけで、自動敷設ぶんは保存せず設計から毎回導出する |
 | 操作対象(アクティブ)機体 | `ActiveVesselController`(private `_current`) | 艦艇でも軌道基地でも同じ1つの参照。`Game.player` はこれへ転送するだけの getter。初期値は構築時に自分で解決する(構築引数の `activePlayerId` → `entities.ownShips()` の id 一致 → 先頭 → null)。以後の書き換えは `set(vessel)`/`setOrNull(vessel \| null)`/`remove(vessel)`/`reclaimDead()` の4つに閉じる。カメラ参照・ターゲット解除の副作用もすべてここに閉じる(下記「たまたま同時に切り替わる」節参照)。`remove` はマップの削除メニューなど明示的な取り除きから、`reclaimDead` は `Game.advanceSimulation` が全ステージ共通で毎フレーム無条件に呼ぶ(喪失した自機を他のエンティティと同じく速やかに回収する) |
 | 軌道計画の実行モード | `Vessel.planExecution`(型 `PlanExecutionMode` = `'off' \| 'instant' \| 'powered'` は `plan/plan-executor.ts` が定義し `vessel/vessel.ts` は re-export するだけ) | 全ての機体が持つ(既定 `'off'`)。`'instant'` は `CreativeStage.applySimulationEvents` がノード時刻ちょうどで `state` をノードの絶対状態へ置き換え、`'powered'` は `PlanExecutor` が姿勢制御・噴射で実行する。操作対象艦での手動並進(`this.thrust !== null`)・手動回転(`throttle.hasManualRotationInput`)は `Vessel.updateControls` が `'powered'` を `'off'` へ落とす |
 | PlanExecutor の状態機械(`phase`/`targetNode`/`burnDirWorld`/`burnUpWorld`/`pendingAccel`) | `PlanExecutor`(艦ごとの) | 艦の `planExecution`/ノード/生死/ゲートから毎フレーム `update` が導出。`targetNode` はノードの**参照**を持ち、`node.t` ではなく `node !== targetNode` で差し替わりを検出する(`Plan.applyNodeDv`/`replaceNode` は同じ `t` のまま新しいオブジェクトへ差し替えるため)。噴射ゲート(`simSpeed.canShipAct`)は保持せず、`update`/`applyIgnitionAndCutoff`/`nextEventTime` が各自引数で受け取る。`ship.torque`/`ship.thrust`/`ship.plan` は `PlanExecutor` が唯一書き換える(`'powered'` の間のみ)が、書き込みは `update`(毎フレーム、`Vessel.updateControls` の後)と `applyIgnitionAndCutoff`(simTime イベント境界ごと)の両方から起きる — 前者は「操作艦で `updateControls` が毎フレーム上書きする `thrust` を、その後で確実に正しい値へ戻す」役、後者は「点火・遮断の瞬間を simTime ちょうどに固定する」役で、互いの代わりにはならない |

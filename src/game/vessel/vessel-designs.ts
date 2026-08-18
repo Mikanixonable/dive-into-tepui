@@ -4,11 +4,13 @@ import * as C from '../const';
 import { v3 } from '../../physics/vec3';
 import { buildBaseModel, buildEnemyShip, buildPlayerShip, buildStage0EnemyShip } from '../../render/ships';
 import type { AnyPart } from '../game-entity/parts';
-import { baseParts, crewedParts, hostileParts } from './vessel-parts';
+import { hostileParts } from './vessel-parts';
 import type { EnemyKind } from './enemy-ai';
 import { inertiaForEnemyKind } from './enemy-ai';
+import type { VesselAssembly } from './assembly';
+import { crewedAssembly, orbitalBaseAssembly } from './vessel-assemblies';
 import type { MassProperties } from './mass-properties';
-import { massPropertiesOf } from './mass-properties';
+import { deriveMassProperties, massPropertiesFrom, massPropertiesOf } from './mass-properties';
 
 export type VesselFaction = 'ally' | 'enemy';
 
@@ -16,6 +18,8 @@ export type VesselFaction = 'ally' | 'enemy';
 export interface VesselDesign {
   readonly faction: VesselFaction;
   readonly renderObject: THREE.Object3D;
+  // 形状ツリーと搭載要素の配置。質量特性を直接与えられた機体(§5-3)では null。
+  readonly assembly: VesselAssembly | null;
   readonly parts: AnyPart[];
   readonly massProperties: MassProperties;
   // 剛体接触と被弾判定に使う外接半径 [m]。
@@ -34,14 +38,23 @@ export interface VesselDesign {
   readonly directionMarkers: boolean;
 }
 
+// アセンブリから質量特性を導き、搭載要素一式と併せて返す。部品は配置されたものそのものなので、
+// 設計が持つ一覧と形状が持つ一覧は同じ実体である。
+function derivedFrom(assembly: VesselAssembly): { parts: AnyPart[]; massProperties: MassProperties } {
+  return {
+    parts: assembly.placements.map((placement) => placement.part),
+    massProperties: massPropertiesFrom(deriveMassProperties(assembly)),
+  };
+}
+
 // 有人の艦艇。コックピットと主機と砲を積み、熱・電力の収支を自前で持つ。
 export function crewedShipDesign(): VesselDesign {
+  const assembly = crewedAssembly(C.PLAYER_MAX_HP);
   return {
     faction: 'ally',
     renderObject: buildPlayerShip(),
-    parts: crewedParts(C.PLAYER_MAX_HP),
-    massProperties: massPropertiesOf(
-      C.PLAYER_MASS, v3(C.PLAYER_INERTIA_PITCH, C.PLAYER_INERTIA_YAW, C.PLAYER_INERTIA_ROLL)),
+    assembly,
+    ...derivedFrom(assembly),
     radius: C.PLAYER_HULL_RADIUS,
     hpRegenRate: C.HP_REGEN_RATE,
     reentryAltMargin: C.PLAYER_MIN_ALT,
@@ -54,11 +67,12 @@ export function crewedShipDesign(): VesselDesign {
 
 // 軌道基地。基地モジュールと管制室を積む。砲も熱収支も持たない。
 export function orbitalBaseDesign(): VesselDesign {
+  const assembly = orbitalBaseAssembly(C.BASE_MAX_HP);
   return {
     faction: 'ally',
     renderObject: buildBaseModel(),
-    parts: baseParts(C.BASE_MAX_HP),
-    massProperties: massPropertiesOf(3e6, v3(C.BASE_INERTIA_X, C.BASE_INERTIA_Y, C.BASE_INERTIA_Z)),
+    assembly,
+    ...derivedFrom(assembly),
     radius: 330,
     hpRegenRate: 0,
     reentryAltMargin: C.PLAYER_MIN_ALT,
@@ -79,8 +93,9 @@ export function hostileShipDesign(enemyKind: EnemyKind, accent: string | number)
   return {
     faction: 'enemy',
     renderObject,
+    assembly: null,
     parts: hostileParts(C.ENEMY_MAX_HP),
-    massProperties: massPropertiesOf(10000, inertiaForEnemyKind(enemyKind)),
+    massProperties: massPropertiesOf(10000, inertiaForEnemyKind(enemyKind), v3(15, 15, 15)),
     radius: bounds.getBoundingSphere(new THREE.Sphere()).radius,
     hpRegenRate: 0,
     reentryAltMargin: C.REENTRY_ALT,
