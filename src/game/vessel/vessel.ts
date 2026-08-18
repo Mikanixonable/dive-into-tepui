@@ -4,11 +4,14 @@ import * as THREE from 'three/webgpu';
 import { Attitude, qFromForwardUp, qInvert, qRotate } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { MU_EARTH, R_EARTH, earthAltitudeOf } from '../../physics/solar-system';
-import { Vec3, len, sub, v3 } from '../../physics/vec3';
+import { Vec3, len, scale, sub, v3 } from '../../physics/vec3';
 import { Attractor, reachedBody } from '../../physics/attractor';
 import type { InertiaTensor } from '../../physics/inertia-tensor';
 import { airspeed, burnUpBody } from '../../physics/atmosphere';
 import { ballisticCoeffInv, radiationPressureCoeff } from '../../physics/aerodynamics';
+import { buildVesselWireframe } from '../../render/vessel-wireframe';
+import type { HullCapsule } from './collision-shape';
+import { deriveCapsules } from './collision-shape';
 import type { HeatShielding } from './heat-shield';
 import { UNSHIELDED, ablate, heatShielding } from './heat-shield';
 import { BaseCollisionGeometry, RayHit, SphereHit } from '../../physics/base-collision';
@@ -206,6 +209,8 @@ export class Vessel extends GameEntity {
   public readonly assembly: VesselAssembly | null;
   // 質量・重心・慣性テンソル・投影面積。assembly から導くか、直接与えられる。
   public readonly massProperties: MassProperties;
+  // 狭域の接触形状。ツリーのエッジ1本につき1つで、形状を持たない機体では空になり外接球のままになる。
+  public readonly collisionCapsules: readonly HullCapsule[];
   // 搭載要素。HP と性能の唯一の源。
   private readonly inventory: PartInventory;
 
@@ -214,11 +219,26 @@ export class Vessel extends GameEntity {
   protected override get bcInv(): number {
     const { r, v } = this.state;
     const relative = qRotate(qInvert(this.att.q), airspeed(r, v));
-    return ballisticCoeffInv(this.massProperties.principalAreas, this.mass, relative);
+    return ballisticCoeffInv(this.currentAreas, this.mass, relative);
   }
 
   protected override get srpCoeff(): number {
-    return radiationPressureCoeff(this.massProperties.principalAreas, this.mass);
+    return radiationPressureCoeff(this.currentAreas, this.mass);
+  }
+
+  // 予測の空力は主軸3方向の投影面積の平均で行う(§X-7)。姿勢を保てば予測より落ちにくく、
+  // 回せば予測より速く落ちるという一方向のずれになる。展開度は姿勢と違っていま決まっている
+  // 構成なので、平均する対象には入れない。
+  protected override get predictionBcInv(): number {
+    return ballisticCoeffInv(this.currentAreas, this.mass, v3());
+  }
+
+  // いまの構成の主軸3方向の投影面積 [m²]。設計の値は放熱板を完全に展開した状態なので、畳んだ
+  // ぶんを差し引く — 展開したまま低軌道に留まれば、その面積ぶんの抗力を払い続けることになる。
+  private get currentAreas(): Vec3 {
+    const { principalAreas, deployableAreas } = this.massProperties;
+    if (!this.radiator) return principalAreas;
+    return sub(principalAreas, scale(deployableAreas, 1 - this.radiator.deployedFraction()));
   }
 
   // 対気速度の向きから見た、いま効いている熱防御(§11-3)。形状を持たない機体は素の閾値を持つ。
@@ -294,6 +314,10 @@ export class Vessel extends GameEntity {
     this.name = identity.name;
     this.faction = design.faction;
     this.assembly = design.assembly;
+    this.collisionCapsules = design.assembly ? deriveCapsules(design.assembly.tree) : [];
+    if (design.assembly) {
+      this.renderObject.add(buildVesselWireframe(design.assembly.tree, this.collisionCapsules));
+    }
     this.massProperties = design.massProperties;
     this.mass = design.massProperties.mass;
     this.radius = design.radius;

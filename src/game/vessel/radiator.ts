@@ -228,6 +228,14 @@ export class RadiatorSystem {
 
   // HUD 表示用。
   deployOf(side: RadiatorSide): number { return this.panels[side].deploy; }
+
+  // 両面をならした展開度 0..1。壊れた面は畳んだのと同じく張り出しを持たない。面積は左右で
+  // 等分されているので、投影面積を減らす割合はこの平均そのものになる。
+  deployedFraction(): number {
+    const sides: readonly RadiatorSide[] = ['up', 'down'];
+    return sides.reduce(
+      (sum, side) => sum + (this.wear[side] >= 1 ? 0 : this.panels[side].deploy), 0) / sides.length;
+  }
   wearOf(side: RadiatorSide): number { return this.wear[side]; }
 
   // 損耗度(wear)は放熱板パーツの残 HP から導出される値なので含まない。
