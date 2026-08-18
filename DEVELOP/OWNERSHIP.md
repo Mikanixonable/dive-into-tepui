@@ -212,7 +212,8 @@ main.ts
 │       │   │   │                              経路を取るので、今のところ assembly は常に null
 │       │   │   ├── MassProperties         ... 乾燥質量・重心・慣性テンソル(正本)。VesselDesign が massPropertiesOf() で
 │       │   │   │                              組んだものをそのまま持つ。GameEntity.mass はここの mass から導く
-│       │   │   ├── PartInventory          ... 搭載要素の一覧と、そこから合成される HP・推力・冷却能力(正本)
+│       │   │   ├── PartInventory          ... 搭載要素の一覧と、そこから合成される HP・推力・トルク・放熱・発電・蓄電・
+│       │   │   │                              消費電力・廃熱(正本)。搭載要素の型と性能値は game-entity/parts.ts
 │       │   │   ├── VesselThrottle
 │       │   │   ├── Gunnery                ... 砲と給弾を積む設計だけが持つ。他は null
 │       │   │   ├── Belt
@@ -498,7 +499,7 @@ main.ts
 | ベルトのたわみ(節点位置・ツイスト) | `BeltPhysics` | 表示用リンク変換は Belt が毎フレーム導出 |
 | 外殻温度・動圧・高度警告 | `ThermalSystem` | 破壊判定そのものは `Vessel.checkLoss` |
 | 放熱板の展開度・損耗度 | `RadiatorSystem` | 温度は持たない。放熱面積と太陽入射を `ThermalSystem.setRadiatorLoad` へ渡すのは `Vessel` |
-| 太陽電池の蓄電量 | `PowerSystem` | メッシュ操作なし(パネルは固定)。`sync()` を持たない |
+| 太陽電池の蓄電量 | `PowerSystem` | 発電量は `PartInventory.totalPowerGeneration` が正本。メッシュ操作なし(パネルは固定)。`sync()` を持たない |
 | エンティティ配列(機体/弾/薬莢/デブリ/補給/小天体) | `EntityManager` | 機体は艦艇・軌道基地・敵艦をまとめた `vessels` 1本(役割別の `ownShips()`/`hostileVessels()`/`baseVessels()` は派生)。追加は `addVessel`/`addXxx` 経由。上限管理もここ(`vessels` のみ無上限で `prune` の対象外 — 除去は `ActiveVesselController.reclaimDead()` が担い、喪失した瞬間に配列から取り除かれる)。`Simulator` は参照を受け取って回すだけで配列を持たない |
 | 保持配列の顔ぶれの世代 | `EntityManager.collectionRevision`(private `_collectionRevision` + public getter) | `addXxx`/除去のたびに増える。`all()`/`attractors()` の結合キャッシュの再構築判定に使う。`alive` が false になっただけでは増えない(除去は機体以外が `cleanup` → `prune`、機体が `ActiveVesselController.reclaimDead()` で、それぞれ毎フレーム行う)。public getter は、結合配列そのものは参照が変わらないため、外から顔ぶれの変化を知る唯一の手段になる |
 | シミュレーション時刻 / 前フレームの simDt | `Simulator.simTime` / `.lastSimDt` | |
