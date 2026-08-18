@@ -10,6 +10,9 @@ import type { EnemyKind } from './enemy-ai';
 import { inertiaForEnemyKind } from './enemy-ai';
 import { principalMoments } from '../../physics/inertia-tensor';
 import type { VesselAssembly } from './assembly';
+import { assemblyOf, type VesselBlueprint } from './blueprint';
+import { circumradius } from './tree';
+import { len } from '../../physics/vec3';
 import { crewedAssembly, orbitalBaseAssembly } from './vessel-assemblies';
 import type { MassProperties } from './mass-properties';
 import { deriveMassProperties, massPropertiesFrom, massPropertiesOf } from './mass-properties';
@@ -82,6 +85,35 @@ export function orbitalBaseDesign(): VesselDesign {
     lifeSupport: false,
     maneuverEffectScale: 6,
     directionMarkers: false,
+  };
+}
+
+// 形状ツリーの外接半径 [m]。各ノードが自分の断面の外接円ぶんの広がりを持つ。
+function hullRadiusOf(assembly: VesselAssembly): number {
+  let radius = 0;
+  for (const node of assembly.tree.nodes) {
+    radius = Math.max(radius, len(node.pos) + circumradius(node.section));
+  }
+  return radius;
+}
+
+// 保存された設計から組む機体。積んでいる搭載要素が、そのまま積む系を決める。
+export function blueprintDesign(bp: VesselBlueprint): VesselDesign {
+  const assembly = assemblyOf(bp);
+  const parts = assembly.placements.map((placement) => placement.part);
+  return {
+    faction: 'ally',
+    renderObject: buildHullMesh(assembly),
+    assembly,
+    parts,
+    massProperties: massPropertiesFrom(deriveMassProperties(assembly)),
+    radius: hullRadiusOf(assembly),
+    hpRegenRate: C.HP_REGEN_RATE,
+    reentryAltMargin: C.PLAYER_MIN_ALT,
+    gunnery: parts.some((part) => part.type === 'weapon'),
+    lifeSupport: parts.some((part) => part.type === 'radiator'),
+    maneuverEffectScale: 1,
+    directionMarkers: parts.some((part) => part.type === 'cockpit'),
   };
 }
 

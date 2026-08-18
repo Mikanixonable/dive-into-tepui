@@ -147,6 +147,36 @@ export function deriveMassProperties(
   };
 }
 
+// 外皮・トラス・分離機構それぞれの構造材の質量 [kg]。生産が消費する構造材はこの内訳で決まる —
+// 外皮パネルとトラス部材は別の資源であり、合計だけでは要求を組めない。
+export interface StructuralMasses {
+  readonly hull: number;
+  readonly truss: number;
+  readonly decoupler: number;
+}
+
+export function structuralMasses(assembly: VesselAssembly): StructuralMasses {
+  const { tree, placements } = assembly;
+  const internals = internalPlacements(placements);
+  let hull = 0;
+  let truss = 0;
+  let decoupler = 0;
+  for (const edge of tree.edges) {
+    const frame = edgeFrame(tree, edge);
+    const one: Accumulator = { mass: 0, moment: v3(), inertia: ZERO_INERTIA };
+    if (edge.kind.kind === 'hull') {
+      addHullShell(one, tree, edge, frame, edgeMaterial(edge, internals), edgePressure(edge, internals));
+      hull += one.mass;
+    } else if (edge.kind.kind === 'truss') {
+      addTruss(one, edge, edge.kind.sectionSize, frame);
+      truss += one.mass;
+    } else {
+      decoupler += decouplerMass(sectionMoments(nodeById(tree, edge.a).section).area);
+    }
+  }
+  return { hull, truss, decoupler };
+}
+
 function internalPlacements(placements: readonly PartPlacement[]): readonly InternalPlacement[] {
   return placements
     .filter((p): p is Extract<PartPlacement, { kind: 'internal' }> => p.kind === 'internal')

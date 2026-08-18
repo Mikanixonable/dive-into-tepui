@@ -33,7 +33,6 @@ export class SnapshotService {
       hpRatio: player && player.maxHp > 0 ? Math.max(0, player.hp) / player.maxHp : 0,
       maxHp: player ? player.maxHp : 0,
       magazines: player ? player.magsLeft : 0,
-      money: game.entities.baseVessels().reduce((sum, b) => sum + b.baseState!.money, 0),
       playerCount: game.entities.ownShips().length,
       enemyAliveCount: game.entities.hostileVessels().filter(e => e.alive).length,
       phase: game.activeStage.phase,
