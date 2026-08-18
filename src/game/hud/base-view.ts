@@ -25,7 +25,7 @@ const STYLE = `
   position: fixed; inset: 0;
   display: flex;
   box-sizing: border-box;
-  background: var(--page);
+  background: rgba(5, 8, 12, 0.86);
   color: var(--body);
   font-family: var(--font-neutral, var(--font-family));
   pointer-events: auto;
