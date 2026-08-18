@@ -1,8 +1,42 @@
 // 既定の設計が積む搭載要素の一覧。HP の配分比と、各部品の性能値をここで決める。
 import * as C from '../const';
 import { v3 } from '../../physics/vec3';
-import type { AnyPart, BaseModulePart, DockPort, PartType } from '../game-entity/parts';
+import type { AnyPart, BaseModulePart, CommunicationPart, DockPort, PartType } from '../game-entity/parts';
 import { createPart } from '../game-entity/parts';
+
+// 通信モジュールの等級。到達距離 [m] と質量 [kg] を等級ごとに固定する。到達距離は
+// 機体側と中継点側の小さいほうで決まるので、積んだ等級がそのまま届く距離になる。
+export type CommModuleGrade = 'small' | 'medium' | 'large' | 'deepSpace';
+
+export const COMM_MODULE_SPECS: Readonly<Record<CommModuleGrade, {
+  readonly name: string; readonly range: number; readonly weight: number;
+}>> = {
+  small: { name: 'Comm Module S', range: 5.0e6, weight: 20 },
+  medium: { name: 'Comm Module M', range: 1.0e8, weight: 120 },
+  large: { name: 'Comm Module L', range: 2.0e9, weight: 800 },
+  deepSpace: { name: 'Deep Space Comm', range: 5 * 1.495978707e11, weight: 3000 },
+};
+
+// 指定等級の通信モジュールを1つ作る。
+export function createCommModule(grade: CommModuleGrade): CommunicationPart {
+  const spec = COMM_MODULE_SPECS[grade];
+  return createPart('communication', {
+    name: spec.name, weight: spec.weight, range: spec.range, maxHp: 1, hp: 1,
+  });
+}
+
+// 通信基地が積む通信モジュールの到達距離 [m] と質量 [kg]。地球-月間(約 384,000 km)には
+// 届かない値を選ぶ — 月の2つの基地だけでは地球低軌道が距離で圏外になる(§13-4)。
+export const COMM_STATION_RANGE = 2.0e8;
+const COMM_STATION_WEIGHT = 5000;
+
+// 通信基地の通信設備を1つ作る。通信基地は基地モジュールと大型の通信設備の組であり(§13-3)、
+// 設備そのものは他の機体が積むものと同じ通信モジュールである。
+export function createCommStation(): CommunicationPart {
+  return createPart('communication', {
+    name: 'Comm Station', weight: COMM_STATION_WEIGHT, range: COMM_STATION_RANGE, maxHp: 1, hp: 1,
+  });
+}
 
 // 既定の基地モジュール。中腹のドッキングパレット上部に中央ハッチ、その四隅にスロットを持つ。
 export function createDefaultBaseModule(maxHp: number): BaseModulePart {
@@ -190,5 +224,6 @@ export function baseParts(maxHp: number): AnyPart[] {
       propellant: 'hydrazine', volume: 40, material: 'aluminium',
       maxFuel: C.BASE_MAX_FUEL, fuel: C.BASE_MAX_FUEL,
     }),
+    createCommStation(),
   ];
 }

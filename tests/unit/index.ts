@@ -3,6 +3,7 @@
 import { runAll } from '../physics/harness';
 import { register as registerBlueprint } from './blueprint-validation.test';
 import { register as registerCapabilities } from './capabilities.test';
+import { register as registerCommCoverage, registerInitialCoverage } from './comm-coverage.test';
 import { register as registerHeatShield } from './heat-shield.test';
 import { register as registerMassProperties } from './mass-properties.test';
 import { register as registerProducibility } from './producibility.test';
@@ -18,6 +19,8 @@ registerVesselParts();
 registerMassProperties();
 registerHeatShield();
 registerBlueprint();
+registerCommCoverage();
+registerInitialCoverage();
 
 runAll().catch((error) => {
   console.error(error);

@@ -263,6 +263,7 @@ main.ts
 │       │                                       entities の直後に construct する。update が各エンティティの
 │       │                                       orbitLine/predictedLine/actualLine を出す/消す/スタイルを決め、sync は
 │       │                                       それらの形状と変換だけを合わせる(生成・破棄はしない)
+│       ├── CommNetwork                    ... このフレームの通信網(正本)。有効な中継点の集合を持ち、CoverageQuery として答える。Game が new し、Stage(StageDeps の12番目)へ参照で渡す。中継点そのものは Ephemeris と EntityManager から毎回組み直すので、ここが持つのは組み直した結果だけ
 │       ├── Simulator                      ... 実シミュレーション。EntityManager・Ephemeris・FrameSections の参照を受け取って回すだけ(いずれも所有しない)
 │       │   └── ContactPhysics             ... 接触の検出(physics/sphere-contact.ts)・剛体解決(physics/collision-response.ts)を
 │       │                                       substep ごと(resolveSubstep)/フレームに1回のベルト(resolveBelt)で呼ぶ列挙・順序付け層
@@ -463,7 +464,8 @@ main.ts
 | `PlanPath` | PlanDisplay | PlanEditor(ノードの画面判定 `projectPoint` / `nearestSample` のみ、`planDisplay.path` 経由) |
 | `DisplayWindowManager`(`plan/plan.ts` の狭い `DisplayDurationSource`(`{durationSec(referencePeriod): number}`)としてのみ見える) | Game | PlanEditor(→PlanDisplay)(コンストラクタ引数で `PlanDisplay` → `PlanPath` へそのまま転送。末尾区間の長さ(`plan.ts` の `segmentDurationFrom`)と `Plan.nodeTimeRange` の上限が PREDICT パネルの選択に追従するための参照で、`PlanPath` はこれを保持するだけで書き換えない。`plan/` 配下は `durationSec` 以外の具象 `DisplayWindowManager` のフィールド・メソッドを一切読まない) |
 | `Plan`(活艦の) | `Vessel`(活艦自身、`PlanEditor` ではない) | PlanEditor(`plan` getter が活艦の `plan` を転送。艦がいなければ `null`)・PlanDisplay(`update` の引数で毎フレーム受ける。出さないフレームは `null`)・PlanGuide(引数では受けず、渡された `Vessel` の `plan` から自分で引く)・CreativeStage(`planExecution` 艦のノード消化) |
-| `PlanExecutor`(艦ごとの) | `Vessel`(艦自身) | CreativeStage(`update`/`nextSimulationEventTime`/`applySimulationEvents` から呼ぶだけで保持しない) |
+| `PlanExecutor`(艦ごとの) | `Vessel`(艦自身) | CreativeStage(`update`/`nextSimulationEventTime`/`applySimulationEvents` から呼ぶだけで保持しない。指令が届いているかは `isOperable(ship, commNetwork)` を毎回引いて引数で渡す — PlanExecutor も Vessel も通信網への参照を持たない) |
+| `CommNetwork` | Game | Stage(StageDeps の12番目、`_commNetwork`)。CoverageQuery として `capabilities.ts` の `canAutopilot`/`isOperable` へ引数で渡る |
 | `ActiveVesselController` | Game | ViewManager・Docking・MapContextActions・MapPickables・PlanEditor(いずれもコンストラクタ引数)・Stage(`StageDeps` の一員として `_activeVessels`、`addOwnShip` の `claimIfNone` で使う) |
 | `SimSpeedManager` | Game | PlanEditor(ノードメニューからの自動ワープ) |
 | `FrameControls` | Game | PlanEditor(構築引数。ノードメニューの「フォーカス」項目で `frameControls.setFocus(...)` を直接呼ぶ) |

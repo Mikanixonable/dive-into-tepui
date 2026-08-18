@@ -327,8 +327,8 @@ export function register(): void {
     // 全長 4.5 m の剛体として当然の大きさである。
     const derived = deriveMassProperties(crewedAssembly(C.PLAYER_MAX_HP));
     const pinned: Record<string, number> = {
-      dryMass: 1060.83, ixx: 1890.96, iyy: 2978.81, izz: 1496.29, iyz: -34.8276,
-      areaX: 10.4565, areaY: 12.4565, areaZ: 15.2622, comY: 0.0217283, comZ: 0.0481525,
+      dryMass: 1060.83, ixx: 1837.84, iyy: 2880.63, izz: 1541.36, iyz: 46.5864,
+      areaX: 10.4565, areaY: 12.4565, areaZ: 15.2622, comY: -0.0230480, comZ: 0.0245860,
     };
     const actual: Record<string, number> = {
       dryMass: derived.dryMass,

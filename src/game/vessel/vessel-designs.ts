@@ -3,9 +3,8 @@ import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { v3 } from '../../physics/vec3';
 import { buildBaseModel, buildEnemyShip, buildPlayerShip, buildStage0EnemyShip } from '../../render/ships';
-import { principalMoments } from '../../physics/inertia-tensor';
 import type { AnyPart } from '../game-entity/parts';
-import { hostileParts, tuneActuators } from './vessel-parts';
+import { hostileParts } from './vessel-parts';
 import type { EnemyKind } from './enemy-ai';
 import { inertiaForEnemyKind } from './enemy-ai';
 import type { VesselAssembly } from './assembly';
@@ -39,13 +38,13 @@ export interface VesselDesign {
   readonly directionMarkers: boolean;
 }
 
-// アセンブリから質量特性を導き、その値に合わせてアクチュエータを整えた搭載要素一式を返す。
-// 部品は配置されたものそのものなので、設計が持つ一覧と形状が持つ一覧は同じ実体である。
+// アセンブリから質量特性を導き、搭載要素一式と併せて返す。部品は配置されたものそのものなので、
+// 設計が持つ一覧と形状が持つ一覧は同じ実体である。
 function derivedFrom(assembly: VesselAssembly): { parts: AnyPart[]; massProperties: MassProperties } {
-  const parts = assembly.placements.map((placement) => placement.part);
-  const derived = deriveMassProperties(assembly);
-  tuneActuators(parts, derived.loadedMass, principalMoments(derived.inertia).z);
-  return { parts, massProperties: massPropertiesFrom(derived) };
+  return {
+    parts: assembly.placements.map((placement) => placement.part),
+    massProperties: massPropertiesFrom(deriveMassProperties(assembly)),
+  };
 }
 
 // 有人の艦艇。コックピットと主機と砲を積み、熱・電力の収支を自前で持つ。
