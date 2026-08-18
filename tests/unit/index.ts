@@ -17,6 +17,7 @@ import { register as registerAssemblyMode } from './assembly-mode.test';
 import { register as registerDockingCapture } from './docking-capture.test';
 import { register as registerStages } from './stages.test';
 import { register as registerPayload } from './payload.test';
+import { register as registerModulePick } from './module-pick.test';
 
 registerResource();
 registerProducibility();
@@ -28,6 +29,7 @@ registerAssemblyMode();
 registerDockingCapture();
 registerStages();
 registerPayload();
+registerModulePick();
 registerHullMesh();
 registerMassProperties();
 registerAttitudeControl();
