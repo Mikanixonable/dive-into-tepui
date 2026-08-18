@@ -105,7 +105,7 @@ handlePointerInput 参照)。ステージが決着した(`activeStage.isPlaying`
     - path.update() // 起点(plan.anchorOr が返す — 凍結済みならそれ、無ければ渡された自機の現在状態)とノード列を区間へ分解。表示座標系と un-bake 時刻もここで確定。buildSegments は末尾区間の起点時刻の天体窓を1回だけ引き、区間長(segmentDurationFrom)を決める
       - [区間ごと・ノード0件かつ末尾区間かつ操作対象(艦または基地)あり] arc = ship.predictedArc; arc?.apsides?.dropBefore(state0.t) // 操作対象の弧をそのまま borrow(owned: false)。積分は Predictor が伸ばす。ship.predictedArc がまだ無いフレームは何も答えない
       - [それ以外の区間] arc?.represents(state0, end, sourceRevision) // 既存の owned な弧が今フレームの区間をそのまま表せるか(あれば)。sourceRevision の不一致・積分済みサンプル間隔の粗さ・state0 の参照不一致のいずれかで false
-        - [false、または対応する弧がまだ無い] new PredictedArc(state0, provider, SHIP_BCINV, SHIP_SRP_COEFF, keplerTail=false) // 空の弧を作るだけ(同期積分はしない) — 伸ばすのは後段の predictor.update
+        - [false、または対応する弧がまだ無い] new PredictedArc(state0, provider, 自機の平均投影面積から導いた bcInv, 同じく srpCoeff, keplerTail=false) // 空の弧を作るだけ(同期積分はしない) — 伸ばすのは後段の predictor.update
         - arc.requiredEnd = end; arc.retainFrom = state0.t // 再利用・新規のどちらでも毎フレーム書き直す
     - ghostAt(displayTime) // 折れ線が displayTime に届かなければ null
     - apsisIconsOf() // path.finalSegment() の periapsis/apoapsis(末尾の弧がこれまでに見つけた値)と apsisCenter(検出時と同じ基準天体)を読み、その天体の位置だけを ephemeris.positionOf(center.id, 極値の時刻) で引き直して距離を出す。両方あるとき (遠地点距離-近地点距離)/(遠地点距離+近地点距離) < APSIS_MIN_ECC なら空、片方のみ(双曲線等)ならそのまま出す
@@ -257,6 +257,9 @@ handlePointerInput 参照)。ステージが決着した(`activeStage.isPlaying`
       - nanWatchdog.checkPlayer('simulator.advance(姿勢積分)')
       - surfaceBodies(resolveCollision, sources) // 表面を持つ相手として扱う天体。resolveCollision なら終点の全天体窓(ephemeris.attractorsAt(simTime)、mu=0 の表示天体も接触相手)、そうでなければ上の中点重力窓をそのまま
       - [entities.ownShips() ごと] p.stepEnvironment(subDt, ephemeris, simTime, surfaceBodies) // 熱・電力・ラジエータの受動状態。渡された窓から恒星を取り出し、同じ窓を日照率(sunlitFactor)の遮蔽体に使う
+        - thermal.updateThermal(subDt, r, v, ship)
+          - ship.heatShielding() // 対気速度を機体座標系へ移し、その向きを守る熱シールドを探す(§11-3)。遮蔽された入熱は外殻へ入らない
+          - ship.ablateHeatShields(遮蔽した入熱) // アブレータを削る。尽きれば以後は素の閾値へ戻る
       - [resolveCollision のみ] contactPhysics.resolveSubstep(simTime, [...entities.all(), ...radiatorFolds], surfaceBodies, activeStage)
         // radiatorFolds = entities.ownShips() のうち alive なものの p.collisionFolds(simTime)(艦の姿勢・展開度から毎 substep 置き直す放熱板の接触代理)
         - isFiniteParticipant() / isFiniteAttractor() でエンティティ・天体を有限値のものだけへ絞る // 空間グリッドへ入れる前に落とす(NaN セル添字を防ぐ主たるガード)

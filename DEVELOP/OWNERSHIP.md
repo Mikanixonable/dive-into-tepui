@@ -210,10 +210,12 @@ main.ts
 │       │   │                                  faction と基地モジュールの有無から導く派生であって正本ではない
 │       │   │   ├── VesselAssembly         ... 形状ツリー(VesselTree)とその上の搭載要素の配置(PartPlacement[])。
 │       │   │   │                              既定の3設計のツリーは vessel/vessel-assemblies.ts が持ち、
-│       │   │   │                              deriveMassProperties() がそこから質量特性を導ける。ただし機体は
-│       │   │   │                              まだ質量特性を直接与える経路を取るので、Vessel.assembly は常に null
-│       │   │   ├── MassProperties         ... 乾燥質量・重心・慣性テンソル(正本)。VesselDesign が massPropertiesOf() で
-│       │   │   │                              組んだものをそのまま持つ。GameEntity.mass はここの mass から導く
+│       │   │   │                              deriveMassProperties() がそこから質量特性を導く。質量特性を直接
+│       │   │   │                              与える経路(敵艦・コンテナ)の機体では null
+│       │   │   ├── MassProperties         ... 質量・重心・慣性テンソル・主軸投影面積(正本)。assembly を持つ機体は
+│       │   │   │                              deriveMassProperties() の結果、持たない機体は massPropertiesOf() で
+│       │   │   │                              直接与えた値。GameEntity.mass と att.inertia はここから導く。
+│       │   │   │                              bcInv/srpCoeff も principalAreas と mass から毎回導く(§11-2)
 │       │   │   ├── PartInventory          ... 搭載要素の一覧と、そこから合成される HP・推力・トルク・放熱・発電・蓄電・
 │       │   │   │                              消費電力・廃熱(正本)。搭載要素の型と性能値は game-entity/parts.ts
 │       │   │   ├── VesselThrottle
