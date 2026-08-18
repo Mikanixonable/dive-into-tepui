@@ -10,6 +10,7 @@ import type { FittingShape, PanelSide } from '../../render/hull/part-meshes';
 import { buildFitting, buildRadiatorPanel, buildSolarPanel } from '../../render/hull/part-meshes';
 import type { AnyPart, PartType } from '../game-entity/parts';
 import type { VesselAssembly } from './assembly';
+import { partVisualRefOf } from './part-visual';
 import type { HullLod } from './hull-shape';
 import { hullShapeOf } from './hull-shape';
 import { circumradius, mountFrame } from './tree';
@@ -97,16 +98,22 @@ export function buildHullMesh(assembly: VesselAssembly, lod: HullLod = 'near'): 
   const sides: Record<'radiator' | 'solar_panel', PanelSides> = {
     radiator: new PanelSides(), solar_panel: new PanelSides(),
   };
-  for (const placement of assembly.placements) {
+  for (const [placementIndex, placement] of assembly.placements.entries()) {
     if (placement.kind !== 'external') continue;
+    const visualRef = partVisualRefOf(placement, placementIndex);
     const frame = mountFrame(assembly.tree, placement.mount);
     const part = placement.part;
     if (part.type === 'radiator' || part.type === 'solar_panel') {
-      group.add(placePanel(part, frame, sides[part.type]));
+      const panel = placePanel(part, frame, sides[part.type]);
+      panel.userData['partVisualRef'] = visualRef;
+      group.add(panel);
       continue;
     }
     const fitting = placeFitting(part, frame, scale);
-    if (fitting) group.add(fitting);
+    if (fitting) {
+      fitting.userData['partVisualRef'] = visualRef;
+      group.add(fitting);
+    }
   }
 
   markLitOpaque(group);
