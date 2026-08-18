@@ -1,7 +1,7 @@
 // デバッグ用ステージ: 重力を及ぼす小惑星と受ける破片の双方を多数配置し、万有引力計算の
 // 高負荷を常時再現する。タイトルの通常ボタン列には出ない。
 import { Stage, type StageDeps } from './stage';
-import type { Player } from '../player/player';
+import type { Vessel } from '../vessel/vessel';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { SimSpeedManager } from '../sim-speed-manager';
 import * as C from '../const';
@@ -31,7 +31,7 @@ export class StageDebugLoad extends Stage {
 
   // 自機を置き、引力を及ぼす小惑星(重力源)と、受けるだけの破片の双方を自機周囲へ散らす。
   protected init(entities: EntityManager): void {
-    const player = this.addPlayer({ ammo: { mags: 20, rounds: C.MAG_ROUNDS } });
+    const player = this.addOwnShip({ ammo: { mags: 20, rounds: C.MAG_ROUNDS } });
     const rand = mulberry32(C.DEBUG_LOAD_RNG_SEED);
     for (let i = 0; i < C.DEBUG_LOAD_ASTEROID_COUNT; i++) {
       const offset = randomOffset(rand, C.DEBUG_LOAD_ASTEROID_MAX_DIST);
@@ -47,7 +47,7 @@ export class StageDebugLoad extends Stage {
     }
   }
 
-  update(_dt: number, player: Player | null, _entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
+  update(_dt: number, player: Vessel | null, _entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
     if (!player) return;
     this.logistics.updateLogistics(simTime, player, simSpeed);
   }

@@ -2,7 +2,7 @@
 import { len, sub } from '../../physics/vec3';
 import { fmtDist } from './utils';
 import type { Vec3 } from '../../physics/vec3';
-import type { Enemy } from '../game-entity/enemy';
+import type { Vessel } from '../vessel/vessel';
 import type { CombatTarget } from '../targeter';
 import type { Game } from '../game';
 
@@ -54,7 +54,7 @@ export class EnemiesPanel {
       const primaryTarget = game.targeter.aliveTarget;
       const secondaryTarget = game.targeter.aliveSecondaryTarget;
       const rows = this.buildEnemyRows(
-        game.entities.enemies.filter((enemy) => enemy.alive),
+        game.entities.hostileVessels().filter((enemy) => enemy.alive),
         player.state.r,
         primaryTarget,
         secondaryTarget,
@@ -72,7 +72,7 @@ export class EnemiesPanel {
   // waveId 不在の敵は個別の行になる。ターゲット/第二ターゲットが波のメンバーなら、
   // その波の行を強調する側に倒す。
   private buildEnemyRows(
-    enemies: readonly Enemy[],
+    enemies: readonly Vessel[],
     playerPositionEci: Vec3,
     primaryTarget: CombatTarget | null,
     secondaryTarget: CombatTarget | null,

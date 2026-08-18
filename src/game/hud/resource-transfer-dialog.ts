@@ -1,6 +1,6 @@
 // ドッキング中の船同士・船と基地の間で電力・物資(弾薬・RCS燃料・パーツ)を融通するダイアログ。
-import { Player } from '../player/player';
-import { Base } from '../game-entity/base';
+import { Vessel } from '../vessel/vessel';
+import { hasBaseModule } from '../vessel/capabilities';
 import type { GameEntity } from '../game-entity/game-entity';
 import type { RcsTankPart } from '../game-entity/parts';
 import * as C from '../const';
@@ -84,7 +84,7 @@ export class ResourceTransferDialog {
   private readonly rootEl: HTMLElement;
   private isOpen = false;
 
-  private shipA: Player | null = null;
+  private shipA: Vessel | null = null;
   private entityB: GameEntity | null = null;
 
   public onClose?: () => void;
@@ -104,7 +104,7 @@ export class ResourceTransferDialog {
     parent.appendChild(this.rootEl);
   }
 
-  open(shipA: Player, entityB: GameEntity): void {
+  open(shipA: Vessel, entityB: GameEntity): void {
     this.shipA = shipA;
     this.entityB = entityB;
     this.isOpen = true;
@@ -140,14 +140,14 @@ export class ResourceTransferDialog {
     const a = this.shipA;
     const b = this.entityB;
 
-    const bName = b.name || (b instanceof Base ? '基地' : '他艦');
-    const isBBase = b instanceof Base;
-    const bShip = b instanceof Player ? b : null;
-    const bBase = isBBase ? (b as Base) : null;
+    const bName = b.name || (b instanceof Vessel && hasBaseModule(b) ? '基地' : '他艦');
+    const isBBase = b instanceof Vessel && hasBaseModule(b);
+    const bShip = b instanceof Vessel && !hasBaseModule(b) ? b : null;
+    const bBase = isBBase ? (b as Vessel) : null;
 
     // A metrics
-    const aPowerJ = a.power.chargeJ;
-    const aMags = a.fire.mags;
+    const aPowerJ = a.power!.chargeJ;
+    const aMags = a.fire!.mags;
     const aRcsTanks = a.parts.filter((p): p is RcsTankPart => p.type === 'rcs_tank');
     const aRcsFuel = aRcsTanks.reduce((sum, t) => sum + t.fuel, 0);
     const aRcsMaxFuel = aRcsTanks.reduce((sum, t) => sum + t.maxFuel, 0);
@@ -159,14 +159,14 @@ export class ResourceTransferDialog {
     let bRcsMaxFuel = 0;
 
     if (bShip) {
-      bPowerJ = bShip.power.chargeJ;
-      bMags = bShip.fire.mags;
+      bPowerJ = bShip.power!.chargeJ;
+      bMags = bShip.fire!.mags;
       const bRcsTanks = bShip.parts.filter((p): p is RcsTankPart => p.type === 'rcs_tank');
       bRcsFuel = bRcsTanks.reduce((sum, t) => sum + t.fuel, 0);
       bRcsMaxFuel = bRcsTanks.reduce((sum, t) => sum + t.maxFuel, 0);
     } else if (bBase) {
       bPowerJ = C.POWER_CAPACITY * 10; // Unlimited / large base power supply
-      bMags = 999; // Base has ample supply
+      bMags = 999; // Vessel has ample supply
       bRcsFuel = 10000;
       bRcsMaxFuel = 10000;
     }
@@ -259,7 +259,7 @@ export class ResourceTransferDialog {
           <!-- パーツ・物資 (Inventory / Parts) -->
           ${isBBase ? `
           <div class="rt-section">
-            <div class="rt-section-head">🧰 基地予備パーツ・物資 (Base Inventory)</div>
+            <div class="rt-section-head">🧰 基地予備パーツ・物資 (Vessel Inventory)</div>
             <div class="rt-grid">
               <div class="rt-card">
                 <div class="rt-card-title">${a.name} の構成パーツ</div>
@@ -271,11 +271,11 @@ export class ResourceTransferDialog {
                 <span class="rt-subtitle">※ パーツの換装・売却は基地格納後に行えます</span>
               </div>
               <div class="rt-card">
-                <div class="rt-card-title">基地在庫 (${bBase!.baseState.inventory.length} 件)</div>
+                <div class="rt-card-title">基地在庫 (${bBase!.baseState!.inventory.length} 件)</div>
                 <div class="rt-inv-list">
-                  ${bBase!.baseState.inventory.length === 0
+                  ${bBase!.baseState!.inventory.length === 0
                     ? '<div class="rt-subtitle">在庫パーツなし</div>'
-                    : bBase!.baseState.inventory.map((p) => `<div class="rt-inv-item"><span>${p.name} (${p.type})</span></div>`).join('')}
+                    : bBase!.baseState!.inventory.map((p) => `<div class="rt-inv-item"><span>${p.name} (${p.type})</span></div>`).join('')}
                 </div>
               </div>
             </div>
@@ -295,17 +295,17 @@ export class ResourceTransferDialog {
     const b = this.entityB;
     if (!a || !b) return;
 
-    const bShip = b instanceof Player ? b : null;
-    const bBase = b instanceof Base ? b : null;
+    const bShip = b instanceof Vessel && !hasBaseModule(b) ? b : null;
+    const bBase = b instanceof Vessel && hasBaseModule(b) ? b : null;
 
     root.querySelector('.rt-close-btn')?.addEventListener('click', () => this.close());
 
     // Power transfer A -> B
     root.querySelector('.rt-btn-p-to-b')?.addEventListener('click', () => {
       const amount = 100000; // 100 kJ
-      const transferred = Math.min(amount, a.power.chargeJ);
-      a.power.addChargeJ(-transferred);
-      if (bShip) bShip.power.addChargeJ(transferred);
+      const transferred = Math.min(amount, a.power!.chargeJ);
+      a.power!.addChargeJ(-transferred);
+      if (bShip) bShip.power!.addChargeJ(transferred);
       this.render();
     });
 
@@ -313,41 +313,41 @@ export class ResourceTransferDialog {
     root.querySelector('.rt-btn-p-to-a')?.addEventListener('click', () => {
       const amount = 100000;
       if (bBase) {
-        a.power.addChargeJ(amount);
+        a.power!.addChargeJ(amount);
       } else if (bShip) {
-        const transferred = Math.min(amount, bShip.power.chargeJ);
-        bShip.power.addChargeJ(-transferred);
-        a.power.addChargeJ(transferred);
+        const transferred = Math.min(amount, bShip.power!.chargeJ);
+        bShip.power!.addChargeJ(-transferred);
+        a.power!.addChargeJ(transferred);
       }
       this.render();
     });
 
     // Power All A -> B
     root.querySelector('.rt-btn-p-all-b')?.addEventListener('click', () => {
-      const transferred = a.power.chargeJ;
-      a.power.setChargeJ(0);
-      if (bShip) bShip.power.addChargeJ(transferred);
+      const transferred = a.power!.chargeJ;
+      a.power!.setChargeJ(0);
+      if (bShip) bShip.power!.addChargeJ(transferred);
       this.render();
     });
 
     // Power Fill A
     root.querySelector('.rt-btn-p-all-a')?.addEventListener('click', () => {
       if (bBase) {
-        a.power.setChargeJ(C.POWER_CAPACITY);
+        a.power!.setChargeJ(C.POWER_CAPACITY);
       } else if (bShip) {
-        const needed = C.POWER_CAPACITY - a.power.chargeJ;
-        const transferred = Math.min(needed, bShip.power.chargeJ);
-        bShip.power.addChargeJ(-transferred);
-        a.power.addChargeJ(transferred);
+        const needed = C.POWER_CAPACITY - a.power!.chargeJ;
+        const transferred = Math.min(needed, bShip.power!.chargeJ);
+        bShip.power!.addChargeJ(-transferred);
+        a.power!.addChargeJ(transferred);
       }
       this.render();
     });
 
     // Mags transfer A -> B
     root.querySelector('.rt-btn-m-to-b')?.addEventListener('click', () => {
-      if (a.fire.mags > 0) {
-        a.fire.mags -= 1;
-        if (bShip) bShip.fire.mags += 1;
+      if (a.fire!.mags > 0) {
+        a.fire!.mags -= 1;
+        if (bShip) bShip.fire!.mags += 1;
         this.render();
       }
     });
@@ -355,30 +355,30 @@ export class ResourceTransferDialog {
     // Mags transfer B -> A
     root.querySelector('.rt-btn-m-to-a')?.addEventListener('click', () => {
       if (bBase) {
-        a.fire.mags += 1;
+        a.fire!.mags += 1;
         this.render();
-      } else if (bShip && bShip.fire.mags > 0) {
-        bShip.fire.mags -= 1;
-        a.fire.mags += 1;
+      } else if (bShip && bShip.fire!.mags > 0) {
+        bShip.fire!.mags -= 1;
+        a.fire!.mags += 1;
         this.render();
       }
     });
 
     // Mags all A -> B
     root.querySelector('.rt-btn-m-all-b')?.addEventListener('click', () => {
-      if (bShip) bShip.fire.mags += a.fire.mags;
-      a.fire.mags = 0;
+      if (bShip) bShip.fire!.mags += a.fire!.mags;
+      a.fire!.mags = 0;
       this.render();
     });
 
     // Mags fill A
     root.querySelector('.rt-btn-m-all-a')?.addEventListener('click', () => {
       if (bBase) {
-        a.fire.mags = C.INITIAL_MAGS;
+        a.fire!.mags = C.INITIAL_MAGS;
       } else if (bShip) {
-        const transferred = bShip.fire.mags;
-        a.fire.mags += transferred;
-        bShip.fire.mags = 0;
+        const transferred = bShip.fire!.mags;
+        a.fire!.mags += transferred;
+        bShip.fire!.mags = 0;
       }
       this.render();
     });
@@ -410,12 +410,12 @@ export class ResourceTransferDialog {
     });
   }
 
-  private refillRcsFuel(ship: Player): void {
+  private refillRcsFuel(ship: Vessel): void {
     const tanks = ship.parts.filter((p): p is RcsTankPart => p.type === 'rcs_tank');
     for (const t of tanks) t.fuel = t.maxFuel;
   }
 
-  private transferRcsFuel(from: Player, to: Player | null, amountKg: number): void {
+  private transferRcsFuel(from: Vessel, to: Vessel | null, amountKg: number): void {
     const fromTanks = from.parts.filter((p): p is RcsTankPart => p.type === 'rcs_tank');
     let available = fromTanks.reduce((s, t) => s + t.fuel, 0);
     const toTransfer = Math.min(amountKg, available);
@@ -444,7 +444,7 @@ export class ResourceTransferDialog {
     }
   }
 
-  private balanceRcsFuel(shipA: Player, shipB: Player): void {
+  private balanceRcsFuel(shipA: Vessel, shipB: Vessel): void {
     const tanksA = shipA.parts.filter((p): p is RcsTankPart => p.type === 'rcs_tank');
     const tanksB = shipB.parts.filter((p): p is RcsTankPart => p.type === 'rcs_tank');
     const totalFuel = tanksA.reduce((s, t) => s + t.fuel, 0) + tanksB.reduce((s, t) => s + t.fuel, 0);

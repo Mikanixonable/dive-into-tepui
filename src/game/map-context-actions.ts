@@ -3,7 +3,8 @@
 // 表示可否は map-pickables.ts の MapPickables から読む — 「何が選べるか」と「選んだら
 // どうなるか」を分けている。
 import { Hud } from './hud/hud';
-import { Base } from './game-entity/base';
+import { Vessel, planExecutionLabel, type PlanExecutionMode } from './vessel/vessel';
+import { vesselMapKind } from './map-pickable';
 import { fmtAmmoStatus, fmtDist, fmtEnergy, fmtSpeed, fmtTime } from './hud/utils';
 import { orbitInfo, relativeInfo } from './hud/orbit-info';
 import { ContextMenu, MenuItem } from './hud/context-menu';
@@ -26,10 +27,9 @@ import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from './hud/orbit-labels';
 import type { PauseMenu } from './hud/pause-menu';
 import { Targeter, type CombatTarget } from './targeter';
 import type { Docking } from './docking';
-import type { ActivePlayerController } from './active-player-controller';
+import type { ActiveVesselController } from './active-vessel-controller';
 import type { FrameControls } from './hud/frame-controls';
 import type { Stage } from './stages/stage';
-import { Player, planExecutionLabel, type PlanExecutionMode } from './player/player';
 import type { GameEntity } from './game-entity/game-entity';
 import { add, cross, len, norm, scale, sub, v3 } from '../physics/vec3';
 import { metersPerPixel } from '../physics/projection';
@@ -72,12 +72,12 @@ export class MapContextActions {
   setDocking(docking: Docking): void { this.docking = docking; }
   private docking: Docking | null = null;
 
-  setControlledBaseHandler(handler: (base: Base | null) => void, getControlledBase: () => Base | null): void {
+  setControlledBaseHandler(handler: (base: Vessel | null) => void, getControlledBase: () => Vessel | null): void {
     this.controlBaseHandler = handler;
     this.getControlledBase = getControlledBase;
   }
-  private controlBaseHandler: ((base: Base | null) => void) | null = null;
-  private getControlledBase: (() => Base | null) | null = null;
+  private controlBaseHandler: ((base: Vessel | null) => void) | null = null;
+  private getControlledBase: (() => Vessel | null) | null = null;
 
   // 候補集合(pickables)と、メニュー項目の実行先を参照として受け取る。
   constructor(
@@ -90,7 +90,7 @@ export class MapContextActions {
     private readonly simSpeedManager: SimSpeedManager,
     private readonly pauseMenu: PauseMenu,
     private readonly pickables: MapPickables,
-    private readonly activePlayers: ActivePlayerController,
+    private readonly activePlayers: ActiveVesselController,
     private readonly frameControls: FrameControls,
     private readonly activeStage: Stage,
     private readonly targeter: Targeter,
@@ -213,7 +213,7 @@ export class MapContextActions {
       this.frameControls.setFocus({ kind: 'object', id: target.id });
       this.hud.hint(`${target.name} にフォーカス`);
       if (target.kind === 'player') {
-        const ship = this.entities.findPlayer(target.id);
+        const ship = this.entities.findOwnShip(target.id);
         if (ship) {
           this.activePlayers.set(ship);
           this.hud.hint(`${target.name} を操作対象に設定`);
@@ -231,7 +231,7 @@ export class MapContextActions {
     if (target.kind === 'player') {
       this.openPropertyWindow(clientX, clientY, target, this.pickables.lastSimTime);
     } else if (target.kind === 'base') {
-      const base = this.entities.findBase(target.id);
+      const base = this.entities.findBaseVessel(target.id);
       if (!base) return;
       this.docking?.selectBase(base);
       this.hud.hint(`${target.name} を選択`);
@@ -253,7 +253,7 @@ export class MapContextActions {
     this.menu.open(clientX, clientY, target, this.itemsFor(target, simTime));
   }
 
-  // 戦闘ビューの右クリック。カメラの視点・画角・実体サイズ(Base 100m / Enemy 90m / Player 5m)から
+  // 戦闘ビューの右クリック。カメラの視点・画角・実体サイズ(Vessel 100m / Vessel 90m / Vessel 5m)から
   // 画面上の視覚半径を正確に求め、機体・基地の表示領域へのヒット判定を行う。
   // ヒットしなかった場合(背景・空域)は空域設定メニューを開く。
   handleCombatRightClick(
@@ -278,9 +278,9 @@ export class MapContextActions {
     const viewportHeight = window.innerHeight;
 
     const candidates: { entity: GameEntity; radius: number }[] = [
-      ...this.entities.players.filter((p) => p.alive).map((p) => ({ entity: p, radius: p.radius || 5 })),
-      ...this.entities.enemies.filter((e) => e.alive).map((e) => ({ entity: e, radius: e.radius || 90 })),
-      ...this.entities.bases.filter((b) => b.alive).map((b) => ({ entity: b, radius: b.radius || 100 })),
+      ...this.entities.ownShips().filter((p) => p.alive).map((p) => ({ entity: p, radius: p.radius || 5 })),
+      ...this.entities.hostileVessels().filter((e) => e.alive).map((e) => ({ entity: e, radius: e.radius || 90 })),
+      ...this.entities.baseVessels().filter((b) => b.alive).map((b) => ({ entity: b, radius: b.radius || 100 })),
     ];
 
     let bestEntity: GameEntity | null = null;
@@ -307,8 +307,8 @@ export class MapContextActions {
       const visualRadiusPx = Math.max(12, item.radius / Math.max(1e-6, mpp));
 
       if (distSq <= visualRadiusPx * visualRadiusPx) {
-        if (entity instanceof Base) {
-          // 基地の場合は BVH メッシュRay判定による精緻なヒットテストを実施
+        if (entity instanceof Vessel && entity.collisionGeom) {
+          // 接触形状を持つ機体は BVH メッシュRay判定による精緻なヒットテストを実施
           const camFwd = norm(sub(view.lookTarget, view.position));
           const camUp = norm(view.up);
           const camRight = norm(cross(camFwd, camUp));
@@ -330,20 +330,15 @@ export class MapContextActions {
   }
 
   private entityToPickable(entity: GameEntity): MapPickable {
-    if (entity instanceof Player) {
-      return { id: entity.id, name: entity.name, pos: entity.state.r, kind: 'player' };
-    }
-    if (entity instanceof Base) {
-      return { id: entity.id, name: entity.name, pos: entity.state.r, kind: 'base' };
-    }
-    return { id: entity.id, name: entity.name, pos: entity.state.r, kind: 'ship' };
+    const kind = entity instanceof Vessel ? vesselMapKind(entity) : 'ship';
+    return { id: entity.id, name: entity.name, pos: entity.state.r, kind };
   }
 
   // 軌道オブジェクトウィンドウをマップ視点である間は常設で表示し、開いている全プロパティ
   // ウィンドウの値を最新化する。対象そのものが消滅していれば(撃破・回収・削除)閉じる —
   // 未来ゴースト時刻で位置が求まらないだけのフレーム(displayState が null)は候補列
   // (pickables.pickables)から外れるだけで消滅ではないので、生存判定は対象の alive で行う。
-  sync(simTime: number, attractors: readonly Attractor[], player: Player | null): void {
+  sync(simTime: number, attractors: readonly Attractor[], player: Vessel | null): void {
     const overviewMode = this.cameraSystem.overviewMode;
     this.objectListPanel.setVisible(overviewMode);
     // マップを離れると ViewManager.closeMap() が開いているウィンドウを閉じる。
@@ -380,12 +375,12 @@ export class MapContextActions {
   // 種別(天体・アプシス・AN/DN)は実体を持たないので、候補列に載っているかで判定する。
   private isTargetGone(target: MapPickable): boolean {
     switch (target.kind) {
-      case 'player': return this.entities.findPlayer(target.id) === undefined;
-      case 'ship': return !(this.entities.findEnemy(target.id)?.alive ?? false);
+      case 'player': return this.entities.findOwnShip(target.id) === undefined;
+      case 'ship': return !(this.entities.findHostile(target.id)?.alive ?? false);
       case 'ammo': return !(
         this.entities.ammoPickups.find((ammoPickup) => ammoPickup.id === target.id)?.alive ?? false
       );
-      case 'base': return !(this.entities.findBase(target.id)?.alive ?? false);
+      case 'base': return !(this.entities.findBaseVessel(target.id)?.alive ?? false);
       default: return !this.pickables.pickables.some((i) => this.windowKey(i) === this.windowKey(target));
     }
   }
@@ -429,7 +424,7 @@ export class MapContextActions {
     },
     'ship': {
       itemsFor: (target, simTime) => [
-        ...this.combatTargetLockItems(this.entities.findEnemy(target.id)),
+        ...this.combatTargetLockItems(this.entities.findHostile(target.id)),
         MenuCommon.focus(),
         ...this.navTargetItems(target, simTime),
         ...this.duplicateItems(),
@@ -438,12 +433,12 @@ export class MapContextActions {
       ],
       run: (act, target) => {
         if (act === 'delete') {
-          const enemy = this.entities.findEnemy(target.id);
+          const enemy = this.entities.findHostile(target.id);
           if (enemy) enemy.alive = false;
         } else if (act === 'duplicate') {
           this.runDuplicate(target);
         } else if (act === 'targetPrimary' || act === 'targetSecondary') {
-          this.runTargetLock(act, this.entities.findEnemy(target.id));
+          this.runTargetLock(act, this.entities.findHostile(target.id));
         } else {
           this.runBodyShip(act, target);
         }
@@ -514,7 +509,7 @@ export class MapContextActions {
     },
     'player': {
       itemsFor: (target, simTime) => {
-        const ship = this.entities.findPlayer(target.id);
+        const ship = this.entities.findOwnShip(target.id);
         const activeShip = this.activePlayers.current;
         const isActive = ship === activeShip;
         const activate: readonly MenuItem<MenuAction>[] = [
@@ -550,7 +545,7 @@ export class MapContextActions {
       },
       run: (act, target) => {
         const activeShip = this.activePlayers.current;
-        const ship = this.entities.findPlayer(target.id);
+        const ship = this.entities.findOwnShip(target.id);
         if (act === 'dock') {
           if (activeShip && ship) this.docking?.dockTo(activeShip, ship);
         } else if (act === 'undock') {
@@ -599,11 +594,11 @@ export class MapContextActions {
     },
     'base': {
       itemsFor: (target) => {
-        const base = this.entities.findBase(target.id);
+        const base = this.entities.findBaseVessel(target.id);
         const activeShip = this.activePlayers.current;
         const isControlled = base && this.getControlledBase ? this.getControlledBase() === base : false;
         const subLabel = base
-          ? `基地 / 所持金: ${base.baseState.money.toLocaleString()} Cr / 格納艦艇: ${base.baseState.dockedVessels.length}隻`
+          ? `基地 / 所持金: ${base.baseState!.money.toLocaleString()} Cr / 格納艦艇: ${base.baseState!.dockedVessels.length}隻`
           : '基地';
 
         const dockItems: MenuItem<MenuAction>[] = [];
@@ -635,12 +630,12 @@ export class MapContextActions {
         ];
       },
       run: (act, target) => {
-        const base = this.entities.findBase(target.id);
+        const base = this.entities.findBaseVessel(target.id);
         const activeShip = this.activePlayers.current;
         if (act === 'activate') {
-          if (base) this.activePlayers.setBase(base);
+          if (base) this.activePlayers.set(base);
         } else if (act === 'deactivate') {
-          if (base && this.activePlayers.controlledBase === base) this.activePlayers.setBase(null);
+          if (base && this.activePlayers.current === base) this.activePlayers.setOrNull(null);
         } else if (act === 'activateBase') {
           if (base && this.controlBaseHandler) this.controlBaseHandler(base);
         } else if (act === 'deactivateBase') {
@@ -723,11 +718,11 @@ export class MapContextActions {
   private duplicateSourceFor(target: MapPickable): { objectType: ObjectType; state: KinematicState } | null {
     switch (target.kind) {
       case 'player': {
-        const ship = this.entities.findPlayer(target.id);
+        const ship = this.entities.findOwnShip(target.id);
         return ship ? { objectType: 'player', state: ship.state } : null;
       }
       case 'ship': {
-        const enemy = this.entities.findEnemy(target.id);
+        const enemy = this.entities.findHostile(target.id);
         return enemy ? { objectType: 'enemy', state: enemy.state } : null;
       }
       case 'ammo': {
@@ -735,7 +730,7 @@ export class MapContextActions {
         return ammoPickup ? { objectType: 'ammo', state: ammoPickup.state } : null;
       }
       case 'base': {
-        const base = this.entities.findBase(target.id);
+        const base = this.entities.findBaseVessel(target.id);
         return base ? { objectType: 'base', state: base.state } : null;
       }
       default:
@@ -755,10 +750,10 @@ export class MapContextActions {
   // 別の実体を指してしまう。
   private renameHandlerFor(target: MapPickable): ((name: string) => void) | undefined {
     if (target.kind === 'player') {
-      return (name) => { const ship = this.entities.findPlayer(target.id); if (ship) ship.name = name; };
+      return (name) => { const ship = this.entities.findOwnShip(target.id); if (ship) ship.name = name; };
     }
     if (target.kind === 'base') {
-      return (name) => { const base = this.entities.findBase(target.id); if (base) base.name = name; };
+      return (name) => { const base = this.entities.findBaseVessel(target.id); if (base) base.name = name; };
     }
     return undefined;
   }
@@ -789,7 +784,7 @@ export class MapContextActions {
 
   // 種別ごとのプロパティ行。値の導出は sync フェーズで毎フレーム呼び直す(表示専用のため)。
   private buildRows(
-    target: MapPickable, attractors: readonly Attractor[], player: Player | null, simTime: number,
+    target: MapPickable, attractors: readonly Attractor[], player: Vessel | null, simTime: number,
   ): PropertyRow[] {
     switch (target.kind) {
       case 'player': return this.playerRows(target, attractors);
@@ -827,7 +822,7 @@ export class MapContextActions {
   // 名前は既にウィンドウのタイトルにあるので行には含めない。装甲・電力・弾薬を主要行とし、
   // それ以外(操作対象か・計画追従)は詳細トグル、軌道要素は「軌道」グループの下に畳む。
   private playerRows(target: MapPickable, attractors: readonly Attractor[]): PropertyRow[] {
-    const ship = this.entities.findPlayer(target.id);
+    const ship = this.entities.findOwnShip(target.id);
     if (!ship) return [];
     return [
       {
@@ -835,8 +830,8 @@ export class MapContextActions {
       },
       { key: 'follow', label: '計画実行', value: planExecutionLabel(ship.planExecution), collapsible: true },
       { key: 'hp', label: '装甲', value: `${Math.floor(ship.hp)} / ${ship.maxHp}` },
-      { key: 'temp', label: '温度', value: `${ship.thermal.hullTemp.toFixed(0)} K` },
-      { key: 'power', label: '電力', value: fmtEnergy(ship.power.chargeJ) },
+      { key: 'temp', label: '温度', value: `${ship.thermal!.hullTemp.toFixed(0)} K` },
+      { key: 'power', label: '電力', value: fmtEnergy(ship.power!.chargeJ) },
       { key: 'ammo', label: '弾薬', value: fmtAmmoStatus(ship.roundsInMag, ship.magsLeft, ship.reloadTimer) },
       ...this.orbitRows(ship, attractors),
     ];
@@ -844,8 +839,8 @@ export class MapContextActions {
 
   // 自艦がいなければ距離・接近速度・相対速度・相対傾斜角の行はそもそも出さない。
   // 装甲・距離・接近速度を主要行とし、相対速度は詳細トグル、軌道要素・相対傾斜角は「軌道」グループの下に畳む。
-  private shipRows(target: MapPickable, attractors: readonly Attractor[], player: Player | null): PropertyRow[] {
-    const enemy = this.entities.findEnemy(target.id);
+  private shipRows(target: MapPickable, attractors: readonly Attractor[], player: Vessel | null): PropertyRow[] {
+    const enemy = this.entities.findHostile(target.id);
     if (!enemy) return [];
     const rel = player ? relativeInfo(player, enemy, attractors) : null;
     const rows: PropertyRow[] = [{ key: 'hp', label: '装甲', value: `${Math.floor(enemy.hp)} / ${enemy.maxHp}` }];
@@ -867,14 +862,14 @@ export class MapContextActions {
   }
 
   // 自艦がいなければ距離の行は出さない。軌道要素は「軌道」グループの下に畳む。
-  private baseRows(target: MapPickable, attractors: readonly Attractor[], player: Player | null): PropertyRow[] {
-    const base = this.entities.findBase(target.id);
+  private baseRows(target: MapPickable, attractors: readonly Attractor[], player: Vessel | null): PropertyRow[] {
+    const base = this.entities.findBaseVessel(target.id);
     if (!base) return [];
-    const isControlled = this.activePlayers.controlledBase === base;
+    const isControlled = this.activePlayers.current === base;
     const rows: PropertyRow[] = [
       { key: 'operated', label: '操作対象か', value: isControlled ? 'はい' : 'いいえ', collapsible: true },
-      { key: 'money', label: '所持金', value: `${base.baseState.money.toLocaleString()} Cr` },
-      { key: 'vessels', label: '格納艦艇数', value: `${base.baseState.dockedVessels.length}` },
+      { key: 'money', label: '所持金', value: `${base.baseState!.money.toLocaleString()} Cr` },
+      { key: 'vessels', label: '格納艦艇数', value: `${base.baseState!.dockedVessels.length}` },
     ];
     if (player) rows.push({ key: 'dist', label: '距離', value: fmtDist(len(sub(base.state.r, player.state.r))) });
     rows.push(...this.orbitRows(base, attractors));
@@ -885,7 +880,7 @@ export class MapContextActions {
   private ammoPickupRows(
     target: MapPickable,
     attractors: readonly Attractor[],
-    player: Player | null,
+    player: Vessel | null,
   ): PropertyRow[] {
     const ammoPickup = this.entities.ammoPickups.find((candidate) => candidate.id === target.id);
     if (!ammoPickup) return [];
@@ -903,7 +898,7 @@ export class MapContextActions {
 
   // 実在の天体(現在のレジストリに登録された ID)なら種別・μ・半径・(公転していれば)軌道要素を、
   // ラグランジュ点なら種別のみを出す。
-  private bodyRows(target: MapPickable, attractors: readonly Attractor[], player: Player | null): PropertyRow[] {
+  private bodyRows(target: MapPickable, attractors: readonly Attractor[], player: Vessel | null): PropertyRow[] {
     const registry = this.ephemeris.registry;
     const rows: PropertyRow[] = [];
     if (player) rows.push({ key: 'dist', label: '自艦からの距離', value: fmtDist(len(sub(target.pos, player.state.r))) });

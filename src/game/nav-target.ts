@@ -1,5 +1,5 @@
 // マップ上の航法ターゲット(任意の MapPickable)の保持と、自機軌道との相対 AN/DN(昇交点・
-// 降交点)の算出・マーカー表示・被選択物としての公開。Targeter の戦闘ターゲット(Enemy 専用)
+// 降交点)の算出・マーカー表示・被選択物としての公開。Targeter の戦闘ターゲット(Vessel 専用)
 // とは独立に、月・ラグランジュ点なども対象にできる。
 import { Vec3, v3 } from '../physics/vec3';
 import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from '../physics/elements';
@@ -8,7 +8,7 @@ import { frameKinematicState, toFrameState, toInertialState, unbakeToDisplayPoin
 import { bodyDef } from '../physics/solar-system';
 import type { Ephemeris } from '../physics/ephemeris';
 import { qRotate } from '../physics/attitude';
-import { Player } from './player/player';
+import { Vessel } from './vessel/vessel';
 import type { GameEntity } from './game-entity/game-entity';
 import type { DisplayWindow } from './display-window-manager';
 import type { EntityManager } from './simulation/entity-manager';
@@ -19,7 +19,6 @@ import { CameraSystem } from './camera/camera-system';
 import type { ProjectFn } from './camera/camera-system';
 import { MapPickable } from './map-pickable';
 import { pickNearest } from './map-pickable';
-import type { Base } from './game-entity/base';
 import type { Input } from './input/input';
 import { pickRadiusSq } from './input/pointer-precision';
 import * as C from './const';
@@ -29,7 +28,7 @@ import { MenuAction, MenuCommon } from './hud/menu-actions';
 const Z_HAT: Vec3 = v3(0, 0, 1);
 
 export class NavTarget {
-  private readonly baseMenu: ContextMenu<Base, MenuAction>;
+  private readonly baseMenu: ContextMenu<Vessel, MenuAction>;
   private targetId: string | null = null;
   private targetName: string | null = null;
   private ownerName: string | null = null;
@@ -44,7 +43,7 @@ export class NavTarget {
   private readonly pickableCache: MapPickable[] = [];
 
   constructor(private readonly _hud: Hud, private readonly markerManager: MarkerManager) {
-    this.baseMenu = new ContextMenu<Base, MenuAction>(_hud.layers.popup, _hud.overlayManager);
+    this.baseMenu = new ContextMenu<Vessel, MenuAction>(_hud.layers.popup, _hud.overlayManager);
     this.baseMenu.onSelect = (act, base) => {
       if (act === 'navTarget') this.toggleTarget(base.id, '基地');
     };
@@ -85,7 +84,7 @@ export class NavTarget {
   // 直さないと月までの距離ぶんずれる。位置は通過時刻で bake し、displayWindow の表示時刻で
   // un-bake して描画座標系へ移す。
   update(
-    player: Player | null, entities: EntityManager, ephemeris: Ephemeris, displayWindow: DisplayWindow,
+    player: Vessel | null, entities: EntityManager, ephemeris: Ephemeris, displayWindow: DisplayWindow,
   ): void {
     const { simTime, displayTime, frame } = displayWindow;
     this.anPos = this.dnPos = this.anTime = this.dnTime = null;
@@ -137,7 +136,7 @@ export class NavTarget {
   handleCombatBaseClick(entities: EntityManager, input: Input, project: ProjectFn, overviewMode: boolean): void {
     if (overviewMode) return;
     input.takeRightClicks((click) => {
-      const pickables = entities.bases.filter((b) => b.alive).map((base) => ({ pos: base.state.r, base }));
+      const pickables = entities.baseVessels().filter((b) => b.alive).map((base) => ({ pos: base.state.r, base }));
       // pointer:coarse では許容半径を広げる。
       const picked = pickNearest(
         pickables, click.x, click.y, project, pickRadiusSq(C.TARGET_LOCK_PICK_PX_SQ, C.TARGET_LOCK_PICK_PX_SQ_COARSE),
@@ -176,13 +175,10 @@ export class NavTarget {
     return entity.orbitalElementsAround(center)?.hHat ?? null;
   }
 
-  // id を生存中の敵・自機・基地として引く。天体・ラグランジュ点は実体を持たないので null。
+  // id を生存中の機体として引く。天体・ラグランジュ点は実体を持たないので null。
   private resolveEntity(id: string, entities: EntityManager): GameEntity | null {
-    const enemy = entities.findEnemy(id);
-    return (enemy?.alive ? enemy : null)
-      ?? entities.players.find((p) => p.id === id)
-      ?? entities.bases.find((b) => b.id === id && b.alive)
-      ?? null;
+    const vessel = entities.findVessel(id);
+    return vessel?.alive ? vessel : null;
   }
 
   // 右クリック対象として公開する AN/DN アイコン。計算できているぶんだけ返す。
