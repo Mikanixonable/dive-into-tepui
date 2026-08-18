@@ -50,6 +50,7 @@ import { register as registerPackedAbsoluteEphemeris } from './packed-absolute-e
 import { register as registerSaveEphemerisContext } from './save-ephemeris-context.test';
 import { register as registerGeometry } from './geometry.test';
 import { register as registerOptimize } from './optimize.test';
+import { register as registerSectionMoments } from './section-moments.test';
 import './creative-placement-validation.test';
 
 registerVec3();
@@ -101,6 +102,7 @@ registerPackedAbsoluteEphemeris();
 registerSaveEphemerisContext();
 registerGeometry();
 registerOptimize();
+registerSectionMoments();
 
 runAll().catch((error) => {
   console.error(error);
