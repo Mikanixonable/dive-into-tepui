@@ -7,6 +7,12 @@ import { BaseView } from './hud/base-view';
 import { ResourceTransferDialog } from './hud/resource-transfer-dialog';
 import { Vessel, type VesselDeps } from './vessel/vessel';
 import { hasBaseModule } from './vessel/capabilities';
+import type { VesselBlueprint } from './vessel/blueprint';
+import { baseFacilities } from './vessel/base-module';
+import { BlueprintLibrary } from './vessel/blueprint-library';
+import { LocalStorageBlueprintStore } from './vessel/blueprint-store';
+import { producibility } from './economy/producibility';
+import { consumeProductionResources, productionBlueprintOf } from './vessel/production';
 import type { GameEntity } from './game-entity/game-entity';
 import type { EntityManager } from './simulation/entity-manager';
 import type { MapContextActions } from './map-context-actions';
@@ -32,8 +38,10 @@ export class Docking {
 
   get activeBase(): Vessel | null { return this._activeBase; }
 
-  // 機体の組み立てに要る資源。基地での新造がこれを使う。
+  // 機体の組み立てに要る資源。基地での生産がこれを使う。
   private readonly vesselDeps: VesselDeps;
+  // 生産にかけられる設計の保管庫。
+  private readonly blueprints: BlueprintLibrary;
 
   constructor(
     private readonly pauseGame: () => void,
@@ -50,10 +58,11 @@ export class Docking {
     private readonly activeVessels: ActiveVesselController,
     private readonly activeStage: Stage,
   ) {
-    this.baseView = new BaseView(this.hud.layers.view);
+    this.blueprints = new BlueprintLibrary(new LocalStorageBlueprintStore());
+    this.baseView = new BaseView(this.hud.layers.view, this.blueprints);
     this.baseView.onClose = () => this.viewManager.leaveDock();
     this.baseView.onLaunchVessel = (ship, base) => this.launch(ship, base);
-    this.baseView.onBuildVessel = (base) => this.buildVessel(base);
+    this.baseView.onProduceVessel = (base, blueprint) => this.produceVessel(base, blueprint);
     this.viewManager.setDocking(this);
 
     this.transferDialog = new ResourceTransferDialog(this.hud.layers.view, this.hud.overlayManager);
@@ -212,16 +221,31 @@ export class Docking {
     this.hud.hint(`${ship.name} を基地のドック ${slotIndex + 1} に収納しました`);
   }
 
-  private buildVessel(base: Vessel): void {
+  // 設計から実機を1機作り、基地のドックへ置く。ドックの収容数を超える生産は、完成した時点では
+  // なく開始時点で拒否する。資源が足りなければ在庫は一切減らない。
+  private produceVessel(base: Vessel, blueprint: VesselBlueprint): void {
     if (base.baseState!.dockedVessels.length >= base.dockCapacity) {
       this.hud.hint(`基地のドックが満杯です (最大 ${base.dockCapacity} 隻)`);
+      return;
+    }
+    const request = productionBlueprintOf(blueprint);
+    const missing = producibility(
+      request, base.baseState!.resources, baseFacilities(base), base.totalPowerGeneration,
+    );
+    if (missing.length > 0) {
+      this.hud.hint(`${blueprint.name} を生産できません (不足 ${missing.length} 件)`);
+      return;
+    }
+    if (!consumeProductionResources(request, base.baseState!.resources)) {
+      this.hud.hint(`${blueprint.name} の資源を確保できませんでした`);
       return;
     }
     const slotIndex = base.getAvailableSlotIndex() ?? 0;
     const no = ++this.nextBuiltVesselNo;
     const id = `${base.id}-built-${no}`;
     const shipName = generateRandomName('player');
-    const ship = new Vessel({ crewedShip: { name: shipName, state: base.state, id } }, this.vesselDeps);
+    const ship = new Vessel(
+      { blueprintShip: { blueprint, name: shipName, state: base.state, id } }, this.vesselDeps);
     base.baseState!.dockedVessels.push({
       id: ship.id,
       name: ship.name,
@@ -232,7 +256,7 @@ export class Docking {
       slotIndex,
     });
     base.attachDockedVesselMesh(ship, slotIndex);
-    this.hud.hint(`${ship.name} を建造しました (ドック ${slotIndex + 1})`);
+    this.hud.hint(`${ship.name} を生産しました (ドック ${slotIndex + 1})`);
   }
 
   private launch(ship: Vessel, base: Vessel): void {

@@ -54,8 +54,9 @@ export const TANK_MATERIALS = {
     propellantId: 'hydrazine',
     name: 'ヒドラジン',
     allowedMaterials: ['aluminium', 'iron'],
-    // 触媒床のイリジウムは白金族であり、月の資源だけでは得られない。
-    requiredResources: ['platinum-group'],
+    // 触媒床は燃焼室の中にあり、その質量は推力に比例する。推進剤の種別に紐付けると
+    // 比例させる相手がその場に無いため、要求はスラスタとエンジンの建造費が持つ(§6-4)。
+    requiredResources: [],
   },
 } satisfies Record<string, TankMaterialRequirement>;
 

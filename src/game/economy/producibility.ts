@@ -76,6 +76,15 @@ function addFacilityResources(def: FacilityDef, ledger: ResourceLedger, demand: 
   }
 }
 
+// タンク1基の殻を作る材料を在庫から選ぶ。適合する材料のどれか1つで殻を賄えれば足り、
+// 全滅したときだけ先頭を代表に立てる。判定と消費が同じ材料を選ぶよう、両者がこれを共有する。
+export function chooseTankMaterial(tank: BlueprintTank, ledger: ResourceLedger): ResourceId | null {
+  const compat = TANK_MATERIALS[tank.propellantId];
+  if (compat === undefined) return null;
+  const held = compat.allowedMaterials.find((id) => ledger.amountOf(id) >= tank.shellMass);
+  return held ?? compat.allowedMaterials[0] ?? null;
+}
+
 // 設計を生産できるかどうかを判定し、足りないものを列挙する。空配列なら生産できる。
 // ledger は読むだけで、判定は在庫を一切消費しない。
 export function producibility(
@@ -116,10 +125,8 @@ export function producibility(
   for (const tank of bp.tanks) {
     const compat = TANK_MATERIALS[tank.propellantId];
     if (compat === undefined) continue;
-    // 適合する材料のどれか1つで殻を作れれば足りる。全滅したときだけ先頭を代表に立てる。
-    const material = compat.allowedMaterials.find((id) => ledger.amountOf(id) >= tank.shellMass);
-    const charged = material ?? compat.allowedMaterials[0];
-    if (charged !== undefined) demand.add(charged, tank.shellMass);
+    const charged = chooseTankMaterial(tank, ledger);
+    if (charged !== null) demand.add(charged, tank.shellMass);
     for (const id of compat.requiredResources) {
       if (ledger.amountOf(id) > 0) continue;
       demand.add(id, 0);

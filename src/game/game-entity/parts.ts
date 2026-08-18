@@ -78,6 +78,7 @@ export interface EnginePart extends Part {
   ignitionPropellantLoss: number; // 点火1回あたりの推進剤損失 [kg]
   maxContinuousBurn: number; // 連続燃焼時間の上限 [s]。無制限なら Infinity
   fuelConsumptionRate: number; // kg/s(絞り 100% 時)
+  catalystMass: number; // 触媒床の質量 [kg]。触媒を要さない二液推進剤では 0
 }
 
 // 並進 RCS スラスタ。
@@ -86,6 +87,7 @@ export interface RcsThrusterPart extends Part {
   readonly propellant: PropellantId;
   thrust: number; // N
   specificImpulse: number; // s
+  catalystMass: number; // 触媒床の質量 [kg]。触媒を要さない二液推進剤では 0
 }
 
 export interface SolarPanelPart extends Part {
@@ -132,6 +134,7 @@ export interface RobotArmPart extends Part {
   readonly type: 'robot_arm';
   reach: number; // 到達距離 [m]
   payloadMass: number; // 可搬質量 [kg]
+  powerDraw: number; // W
 }
 
 export interface DockingPortPart extends Part {
@@ -210,6 +213,9 @@ export interface RtgPart extends Part {
   readonly type: 'rtg';
   ratedOutput: number; // 打ち上げ時の定格出力 [W]
   halfLife: number; // 半減期 [s]
+  // 崩壊熱 [W]。定格出力の14〜16倍あり、そのほぼ全量が廃熱になる。変換効率が等級で違うため
+  // 定格出力からは導けない。
+  thermalOutput: number;
 }
 
 export interface CockpitPart extends Part {
@@ -313,6 +319,7 @@ export interface DockPart extends Part {
   readonly type: 'dock';
   capacity: number; // 収容数
   maxVesselSize: number; // 収容できる機体の最大寸法 [m]
+  powerDraw: number; // W
 }
 
 export type AnyPart =
@@ -336,14 +343,15 @@ const PART_DEFAULTS: { readonly [K in PartType]: Omit<ExtractPart<K>, 'id' | 'ty
     cycle: 'pressure_fed', propellant: 'nitrogen-tetroxide', thrust: 0, specificImpulse: 300,
     length: 1, gimbalRange: 0, gimbalRate: 0, throttleMin: 0.4, throttleMax: 1,
     restarts: -1, ignitionPropellantLoss: 0, maxContinuousBurn: Infinity, fuelConsumptionRate: 0,
+    catalystMass: 0,
   },
-  rcs_thruster: { propellant: 'hydrazine', thrust: 0, specificImpulse: 230 },
+  rcs_thruster: { propellant: 'hydrazine', thrust: 0, specificImpulse: 230, catalystMass: 0 },
   solar_panel: { area: 0, efficiency: 0, deployable: true, tracking: false },
   radiator: { area: 0, efficiency: 1, deployable: true },
   combat_shield: { solidAngle: 0, ballisticResistance: 0, movable: false, powerDraw: 0 },
   heat_shield: { solidAngle: 0, ablatorMass: 0, ablationPerHeat: 0 },
   communication: { range: 0, bandwidth: 0, powerDraw: 0, directional: false },
-  robot_arm: { reach: 0, payloadMass: 0 },
+  robot_arm: { reach: 0, payloadMass: 0, powerDraw: 0 },
   docking_port: { portClass: 'standard', transferRate: 0 },
   container_coupling: { containerClass: 'standard' },
   oxidizer_tank: {
@@ -357,7 +365,7 @@ const PART_DEFAULTS: { readonly [K in PartType]: Omit<ExtractPart<K>, 'id' | 'ty
   water_tank: { volume: 0, shieldingThickness: 0 },
   battery: { capacity: 0, maxOutput: 0 },
   fuel_cell: { ratedOutput: 0, efficiency: 0.6, hydrogenRate: 0, oxygenRate: 0, regenerative: false },
-  rtg: { ratedOutput: 0, halfLife: 87.7 * 365.25 * 86400 },
+  rtg: { ratedOutput: 0, halfLife: 87.7 * 365.25 * 86400, thermalOutput: 0 },
   cockpit: { crewCapacity: 1, pressurizedVolume: 5 },
   autopilot: { powerDraw: 0 },
   magazine: { ammoCapacity: 0 },
@@ -374,7 +382,7 @@ const PART_DEFAULTS: { readonly [K in PartType]: Omit<ExtractPart<K>, 'id' | 'ty
   },
   farm: { cultivationArea: 0, lightSource: 'led', powerDraw: 0, extraWasteHeat: 0 },
   life_support: { crewCapacity: 0, powerDraw: 0, consumableRate: 0, extraWasteHeat: 0 },
-  dock: { capacity: 0, maxVesselSize: 0 },
+  dock: { capacity: 0, maxVesselSize: 0, powerDraw: 0 },
 } as const;
 
 // type の既定値に overrides を重ねてパーツを作る。id は呼び出しごとにランダム発行される。
@@ -406,6 +414,8 @@ export function powerDrawOf(part: AnyPart): number {
   switch (part.type) {
     case 'combat_shield': return part.movable ? part.powerDraw : 0;
     case 'communication': return part.powerDraw;
+    case 'robot_arm': return part.powerDraw;
+    case 'dock': return part.powerDraw;
     case 'autopilot': return part.powerDraw;
     case 'flywheel': return part.powerDraw;
     case 'magnetorquer': return part.powerDraw;
