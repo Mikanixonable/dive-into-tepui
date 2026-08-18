@@ -51,6 +51,7 @@ import { register as registerSaveEphemerisContext } from './save-ephemeris-conte
 import { register as registerGeometry } from './geometry.test';
 import { register as registerOptimize } from './optimize.test';
 import { register as registerSectionMoments } from './section-moments.test';
+import { register as registerHullLoft } from './hull-loft.test';
 import './creative-placement-validation.test';
 
 registerVec3();
@@ -103,6 +104,7 @@ registerSaveEphemerisContext();
 registerGeometry();
 registerOptimize();
 registerSectionMoments();
+registerHullLoft();
 
 runAll().catch((error) => {
   console.error(error);
