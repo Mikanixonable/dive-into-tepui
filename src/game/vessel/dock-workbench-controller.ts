@@ -1,6 +1,11 @@
 import type { AnyPart } from '../game-entity/parts';
-import type { PartPlacement } from './assembly';
-import { DockWorkbenchSession, type WorkbenchValidation } from './dock-workbench';
+import type { AssemblyEditResult } from './assembly-editor';
+import {
+  DockWorkbenchSession,
+  type WorkbenchTargetKind,
+  type WorkbenchValidation,
+} from './dock-workbench';
+import type { PartPlacement, VesselAssembly } from './assembly';
 import type { MateFailure, MateVerdict } from './assembly-mode';
 
 export interface SnapCandidate {
@@ -8,11 +13,14 @@ export interface SnapCandidate {
   readonly verdict: MateVerdict;
   readonly targetLabel: string;
   readonly position: { readonly x: number; readonly y: number; readonly z: number };
+  /** Retained with the preview so a base/draft preview cannot be applied to another kind. */
+  readonly targetKind?: WorkbenchTargetKind;
 }
 
 export interface DragState {
   readonly part: AnyPart;
   readonly sourceTargetId: string | null;
+  readonly sourceTargetKind: WorkbenchTargetKind | null;
   readonly sourceInventory: boolean;
   readonly candidate: SnapCandidate | null;
 }
@@ -29,7 +37,13 @@ export class DockWorkbenchController {
   public selectPart(partRef: string | null): void { this.selectedPartRef = partRef; }
 
   public beginDrag(part: AnyPart, sourceTargetId: string | null, sourceInventory: boolean): void {
-    this.drag = { part, sourceTargetId, sourceInventory, candidate: null };
+    this.drag = {
+      part,
+      sourceTargetId,
+      sourceTargetKind: sourceTargetId === null ? null : this.session.targetKind(sourceTargetId),
+      sourceInventory,
+      candidate: null,
+    };
     this.selectedPartRef = part.id;
   }
 
@@ -43,6 +57,14 @@ export class DockWorkbenchController {
     if (!drag) return this.session.validate();
     const candidate = drag.candidate;
     if (!candidate || !candidate.verdict.accepted) return this.session.validate();
+    const targetKind = this.session.targetKind(targetId);
+    if (candidate.targetKind !== undefined && candidate.targetKind !== targetKind) {
+      return {
+        valid: false,
+        errors: ['プレビューの対象種別が現在の作業対象と一致しません'],
+        targets: [this.session.validateTarget(targetId)],
+      };
+    }
     if (drag.sourceTargetId && !drag.sourceInventory) {
       this.session.movePlacement(drag.sourceTargetId, targetId, drag.part.id, candidate.placement);
     } else {
@@ -57,6 +79,29 @@ export class DockWorkbenchController {
     if (this.selectedPartRef === partRef) this.selectedPartRef = null;
     return removed;
   }
+
+  public applyAssemblyEdit(targetId: string, result: AssemblyEditResult, label?: string): WorkbenchValidation {
+    return this.session.applyAssemblyEdit(targetId, result, label);
+  }
+
+  public createNewVesselDraft(id: string, assembly: VesselAssembly): void {
+    this.session.createNewVesselDraft(id, assembly);
+  }
+
+  public validateTarget(targetId: string) {
+    return this.session.validateTarget(targetId);
+  }
+
+  public undo(): boolean { return this.session.undo(); }
+  public redo(): boolean { return this.session.redo(); }
+
+  public cancel(): void {
+    this.session.cancel();
+    this.drag = null;
+    this.selectedPartRef = null;
+  }
+
+  public snapshotBeforeBuild() { return this.session.snapshotBeforeBuild(); }
 
   public failureText(failure: MateFailure): string {
     const labels: Record<MateFailure, string> = {
