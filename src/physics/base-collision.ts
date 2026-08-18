@@ -3,6 +3,11 @@ import * as THREE from 'three/webgpu';
 import { Vec3, v3, add, sub, scale, dot, len, lenSq, norm, cross } from './vec3';
 import { Quat, qRotate, qInvert } from './attitude';
 import { buildBaseModel } from '../render/ships';
+import type { VesselAssembly } from '../game/vessel/assembly';
+import { hullShapeOf } from '../game/vessel/hull-shape';
+import { buildHullTriangles } from '../render/hull/hull-triangles';
+import { circumradius } from '../game/vessel/tree';
+import { deriveCapsules } from '../game/vessel/collision-shape';
 
 export interface RayHit {
   readonly point: Vec3; // 着弾ワールド座標
@@ -37,9 +42,62 @@ interface BVHNode {
   readonly right?: BVHNode;
 }
 
+interface Bounds {
+  readonly min: Vec3;
+  readonly max: Vec3;
+}
+
+function trianglesFromAssembly(assembly: VesselAssembly): Triangle[] {
+  const mesh = buildHullTriangles(hullShapeOf(assembly.tree, 'near'));
+  const triangles: Triangle[] = [];
+  const pointAt = (index: number): Vec3 => v3(
+    mesh.positions[index * 3]!, mesh.positions[index * 3 + 1]!, mesh.positions[index * 3 + 2]!,
+  );
+  for (let i = 0; i < mesh.indices.length; i += 3) {
+    const a = pointAt(mesh.indices[i]!);
+    const b = pointAt(mesh.indices[i + 1]!);
+    const c = pointAt(mesh.indices[i + 2]!);
+    const normal = norm(cross(sub(b, a), sub(c, a)));
+    if (lenSq(normal) > 1e-12) triangles.push({ a, b, c, normal });
+  }
+  return triangles;
+}
+
+function boundsOfTriangles(triangles: readonly Triangle[]): Bounds {
+  if (triangles.length === 0) return { min: v3(-1, -1, -1), max: v3(1, 1, 1) };
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  for (const triangle of triangles) {
+    for (const point of [triangle.a, triangle.b, triangle.c]) {
+      minX = Math.min(minX, point.x); minY = Math.min(minY, point.y); minZ = Math.min(minZ, point.z);
+      maxX = Math.max(maxX, point.x); maxY = Math.max(maxY, point.y); maxZ = Math.max(maxZ, point.z);
+    }
+  }
+  return { min: v3(minX, minY, minZ), max: v3(maxX, maxY, maxZ) };
+}
+
+function boundsToObb(bounds: Bounds): OBB {
+  const center = scale(add(bounds.min, bounds.max), 0.5);
+  return { center, halfSizes: scale(sub(bounds.max, bounds.min), 0.5) };
+}
+
+function outerRadiusOfTriangles(triangles: readonly Triangle[], assembly: VesselAssembly): number {
+  let radius = 0;
+  for (const triangle of triangles) {
+    radius = Math.max(radius, len(triangle.a), len(triangle.b), len(triangle.c));
+  }
+  // Hull triangles are normally non-empty. Keep a safe bound for a degenerate custom tree so that a
+  // malformed preview cannot disable broadphase checks before the higher-level validation rejects it.
+  for (const node of assembly.tree.nodes) radius = Math.max(radius, len(node.pos) + circumradius(node.section));
+  for (const capsule of deriveCapsules(assembly.tree)) {
+    radius = Math.max(radius, len(capsule.a) + capsule.radius, len(capsule.b) + capsule.radius);
+  }
+  return Math.max(radius, 1);
+}
+
 export class BaseCollisionGeometry {
-  // 外接球半径 [m] (早期棄却判定用 - 3倍スケール対応)
-  public readonly outerRadius = 330;
+  // 外接球半径 [m] (早期棄却判定用)。assembly指定時はその頂点から導く。
+  public readonly outerRadius: number;
 
   // LOD0: フルポリゴン BVH
   private readonly lod0Triangles: Triangle[] = [];
@@ -50,16 +108,32 @@ export class BaseCollisionGeometry {
   private lod1BVH: BVHNode | null = null;
 
   // LOD2: 複合 OBB (主要3ブロック - 3倍スケール対応)
-  private readonly lod2OBBs: OBB[] = [
-    // 主要部 (居住区・研究ドーム)
-    { center: v3(0, 0, 225), halfSizes: v3(36, 36, 84) },
-    // トラス・ドック部
-    { center: v3(0, 0, 0), halfSizes: v3(66, 30, 129) },
-    // カウンターウェイト部
-    { center: v3(0, 0, -225), halfSizes: v3(54, 54, 108) },
-  ];
+  private readonly lod2OBBs: OBB[];
 
-  constructor() {
+  constructor(assembly?: VesselAssembly) {
+    if (assembly) {
+      const triangles = trianglesFromAssembly(assembly);
+      const bounds = boundsOfTriangles(triangles);
+      this.outerRadius = outerRadiusOfTriangles(triangles, assembly);
+      this.lod0Triangles.push(...triangles);
+      this.lod0BVH = this.buildBVH(this.lod0Triangles, 0);
+      // カスタム形状は高warpでも固定旧基地のOBBへ落とさず、同じassembly形状を使う。これにより
+      // 作業台で伸縮・移設したトラスや外皮が、レイ・球接触の全LODで同じ境界になる。
+      this.lod1Triangles.push(...triangles);
+      this.lod1BVH = this.buildBVH(this.lod1Triangles, 0);
+      this.lod2OBBs = [boundsToObb(bounds)];
+      return;
+    }
+
+    this.outerRadius = 330;
+    this.lod2OBBs = [
+      // 主要部 (居住区・研究ドーム)
+      { center: v3(0, 0, 225), halfSizes: v3(36, 36, 84) },
+      // トラス・ドック部
+      { center: v3(0, 0, 0), halfSizes: v3(66, 30, 129) },
+      // カウンターウェイト部
+      { center: v3(0, 0, -225), halfSizes: v3(54, 54, 108) },
+    ];
     this.buildLOD0Geometry();
     this.buildLOD1Geometry();
   }
