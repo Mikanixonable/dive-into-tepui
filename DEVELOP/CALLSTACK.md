@@ -247,16 +247,17 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
         // ステージ側は毎 substep 引き直す(艦の現在の Δv と加速度から毎回決まる生きた値のため)。エンティティ側(entityEventTime)は固定の絶対時刻なので控えを使い回し、simTime がその時刻へ到達したとき・entities.collectionRevision が変わったとき・passiveWarpLod が切り替わったときだけ全生存エンティティを走査し直す
         // passiveWarpLod 中はまとめ積分に回る個体(Bullet / DebrisPiece)を走査から外すので、その締切では substep 境界が立たない
         - [CreativeStage] ship.planExecution==='instant' なら plan.firstNode()?.t、'powered' なら ship.planExecutor.nextEventTime(ship, simTime)(ゲートが閉じている間は常に null。armed 中は点火予定時刻、burn/trim 中は射影から求めた遮断予定時刻。どちらも対象ノードが targetNode(参照)と一致する間だけ)
-      - substep()
-        - attractorsAt(ephemeris, entities, simTime + dt/2) // サブステップ中点で1回だけ: ephemeris.attractorsAt(t) の mu!==0 部分(gravityBodiesAt)+ entities.attractors()(mu!==0 の生存中 GameEntity)を合流
-        - classifyAttractors(attractors) // 同じく1回だけ: μ の重い順 GRAVITY_ALWAYS_COUNT 本を always へ、残りを SpatialGrid へ分類。しきい値 μ(alwaysThresholdMu)もセル一辺(gridCellSize = √(最重グリッド天体 μ / GRAVITY_NEGLIGIBLE_ACCEL))もこの一覧から毎回導く
+      - attractorsAt(ephemeris, entities, simTime + dt/2) // サブステップ中点で1回だけ: ephemeris.attractorsAt(t) の mu!==0 部分(gravityBodiesAt)+ entities.attractors()(mu!==0 の生存中 GameEntity)を合流。この窓を substep へ渡し、剛体接触を解決しないワープ帯では表面到達判定にも使い回す
+      - substep(subDt, sources, passiveWarpLod)
+        - classifyAttractors(sources) // 同じく1回だけ: μ の重い順 GRAVITY_ALWAYS_COUNT 本を always へ、残りを SpatialGrid へ分類。しきい値 μ(alwaysThresholdMu)もセル一辺(gridCellSize = √(最重グリッド天体 μ / GRAVITY_NEGLIGIBLE_ACCEL))もこの一覧から毎回導く
         - entity.stepActual(dt, attractorsNearInto(entity.state.r, classified, scratch, entity.id)) → actual.step() → stepDynamics()(保持サンプル列への記録)
           // 自機(全隻)・敵・弾・薬莢・デブリ・補給・基地・小惑星それぞれ、個体ごと。alive のみ実行。attractorsNearInto は always + 自身の位置の27近傍グリッドから自分自身の id を除いたもの。それらの重力 + J2 + 大気抵抗(bcInv)+ 自身の thrust
       - nanWatchdog.checkPlayer('simulator.advance(軌道積分)')
       - stepAttitudes(subDt) → stepAttitude() → entity.att へ代入 // 自機・敵・薬莢・デブリ・補給すべて同じ subDt で一律に積分する
       - nanWatchdog.checkPlayer('simulator.advance(姿勢積分)')
-      - [entities.players ごと] p.stepEnvironment(subDt, ephemeris, simTime) // 熱・電力・ラジエータの受動状態
-      - [resolveCollision のみ] contactPhysics.resolveSubstep(simTime, [...entities.all(), ...radiatorFolds], attractorsNow, activeStage)
+      - surfaceBodies(resolveCollision, sources) // 表面を持つ相手として扱う天体。resolveCollision なら終点の全天体窓(ephemeris.attractorsAt(simTime)、mu=0 の表示天体も接触相手)、そうでなければ上の中点重力窓をそのまま
+      - [entities.players ごと] p.stepEnvironment(subDt, ephemeris, simTime, surfaceBodies) // 熱・電力・ラジエータの受動状態。渡された窓から恒星を取り出し、同じ窓を日照率(sunlitFactor)の遮蔽体に使う
+      - [resolveCollision のみ] contactPhysics.resolveSubstep(simTime, [...entities.all(), ...radiatorFolds], surfaceBodies, activeStage)
         // radiatorFolds = entities.players のうち alive なものの p.collisionFolds(simTime)(艦の姿勢・展開度から毎 substep 置き直す放熱板の接触代理)
         - isFiniteParticipant() / isFiniteAttractor() でエンティティ・天体を有限値のものだけへ絞る // 空間グリッドへ入れる前に落とす(NaN セル添字を防ぐ主たるガード)
         - resolveInOrder() // 1 substep 内で TOI 昇順に最大 CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP 件解決。超過分は次回へ持ち越し
@@ -277,7 +278,7 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
       - activeStage.applySimulationEvents(simTime) // simTime がイベント境界ちょうどに到達した substep の直後、接触解決の後
         - [CreativeStage] ship.planExecution==='instant' なら node.t 到達で、simTime 以前の最後のノードを ship.state に据え、plan.consumeNodesUpTo(simTime, そのノード) で消化する(複数ノードを跨いだフレームも一括消費)
         - [CreativeStage] ship.planExecution==='powered' なら ship.planExecutor.applyIgnitionAndCutoff(ship, simTime, simSpeed) // 冒頭で !ship.alive なら stopIfActive して return。armed→burn の点火(ECI 固定の噴射方向 burnDirWorld/burnUpWorld を確定し ship.torque/ship.thrust を立てる)、射影が0を切った遮断(plan.consumeNodesUpTo(node.t, ship.state) で実到達状態へアンカーを差し替え)。噴射ゲートが閉じていれば燃焼ごと中断する
-      - entities.cleanup(subDt, simTime, activeStage, playerPos, attractorsNow) // checkLoss(大気突入・天体表面への幾何的沈み込みのバックストップ)+ prune
+      - entities.cleanup(subDt, simTime, activeStage, playerPos, surfaceBodies) // checkLoss(大気突入・天体表面への幾何的沈み込みのバックストップ)+ prune
     - [resolveCollision && player] contactPhysics.resolveBelt(dt, simTime, player, entities.all(), attractorsAt(simTime), activeStage)
       // ベルトのみサブステップループの外、フレームに1回、実 dt で解決する(BeltPhysics は実 dt を要求する局所シミュレーションで、substep へ持ち込むとワープ時に破綻するため)
       - player.belt.collisionSections(dt, ...) // BeltSection(接触代理)へ変換
