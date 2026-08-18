@@ -4,9 +4,10 @@ import * as C from '../const';
 import { v3 } from '../../physics/vec3';
 import { buildBaseModel, buildEnemyShip, buildPlayerShip, buildStage0EnemyShip } from '../../render/ships';
 import type { AnyPart } from '../game-entity/parts';
-import { hostileParts } from './vessel-parts';
+import { hostileParts, tuneActuators } from './vessel-parts';
 import type { EnemyKind } from './enemy-ai';
 import { inertiaForEnemyKind } from './enemy-ai';
+import { principalMoments } from '../../physics/inertia-tensor';
 import type { VesselAssembly } from './assembly';
 import { crewedAssembly, orbitalBaseAssembly } from './vessel-assemblies';
 import type { MassProperties } from './mass-properties';
@@ -90,12 +91,17 @@ export function hostileShipDesign(enemyKind: EnemyKind, accent: string | number)
     : buildEnemyShip(accent);
   renderObject.scale.setScalar(C.ENEMY_SCALE);
   const bounds = new THREE.Box3().setFromObject(renderObject);
+  // 形状ツリーを持たない設計でも、アクチュエータの性能は質量特性から導く。形状から導く経路と
+  // 揃えないと、フライホイールの最大トルクが単位の合わない定数のまま残る。
+  const massProperties = massPropertiesOf(10000, inertiaForEnemyKind(enemyKind), v3(15, 15, 15));
+  const parts = hostileParts(C.ENEMY_MAX_HP);
+  tuneActuators(parts, massProperties.mass, principalMoments(massProperties.inertia).z);
   return {
     faction: 'enemy',
     renderObject,
     assembly: null,
-    parts: hostileParts(C.ENEMY_MAX_HP),
-    massProperties: massPropertiesOf(10000, inertiaForEnemyKind(enemyKind), v3(15, 15, 15)),
+    parts,
+    massProperties,
     radius: bounds.getBoundingSphere(new THREE.Sphere()).radius,
     hpRegenRate: 0,
     reentryAltMargin: C.REENTRY_ALT,
