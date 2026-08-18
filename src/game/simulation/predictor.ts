@@ -6,7 +6,7 @@
 import * as C from '../const';
 import { EntityManager } from './entity-manager';
 import { GameEntity } from '../game-entity/game-entity';
-import { Player } from '../player/player';
+import { Vessel } from '../vessel/vessel';
 import { Ephemeris } from '../../physics/ephemeris';
 import type { Attractor } from '../../physics/attractor';
 import { attractorsNearInto, classifyAttractors } from './attractors';
@@ -38,7 +38,7 @@ export class Predictor {
   // 持つ弧を時刻順に渡したもの(PlanEditor.growableArcs 経由) — requiredEnd/retainFrom は
   // 渡す前に書き込み済みなので、ここでは step() を呼ぶだけでよい。
   update(
-    simTime: number, player: Player | null, horizon: number, canDisplayFuture: boolean,
+    simTime: number, player: Vessel | null, horizon: number, canDisplayFuture: boolean,
     planArcs: readonly PredictedArc[],
   ): void {
     // 乖離判定は消費者の有無によらず毎フレーム行う。伸長を止めている個体を放置すると

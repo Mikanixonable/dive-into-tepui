@@ -18,7 +18,7 @@
 //
 // 一度検出したら以後は何もしない(ログの洪水と、汚染後の無意味な検査を避ける)。
 import { Hud } from './hud/hud';
-import { Player } from './player/player';
+import { Vessel } from './vessel/vessel';
 import { GameEntity } from './game-entity/game-entity';
 import { EntityManager } from './simulation/entity-manager';
 import { Vec3 } from '../physics/vec3';
@@ -43,7 +43,7 @@ export class NanWatchdog {
 
   // 自機と simTime だけを見る軽い検査。update の各フェーズ境界で呼ぶ。
   // phase には「直前に何が走ったか」を渡す(そこが発生源だと分かる)。艦がいなければ何もしない。
-  checkPlayer(phase: string, player: Player | null, simTime: number, dt: number, simDt: number): void {
+  checkPlayer(phase: string, player: Vessel | null, simTime: number, dt: number, simDt: number): void {
     if (this.tripped || !player) return;
     const { q, w } = player.att;
     const ok = finiteVec(player.state.r) && finiteVec(player.state.v)
@@ -57,7 +57,7 @@ export class NanWatchdog {
   // 全エンティティを走査する重い検査。自機より先に汚染されるのは他のエンティティ
   // (薬莢・破片・弾)であることが多く、それが接触を通じて自機へ伝播する。
   // フレームにつき一度だけ呼ぶこと。
-  checkAll(phase: string, player: Player | null, entities: EntityManager, simTime: number, dt: number, simDt: number): void {
+  checkAll(phase: string, player: Vessel | null, entities: EntityManager, simTime: number, dt: number, simDt: number): void {
     if (this.tripped) return;
     this.checkPlayer(phase, player, simTime, dt, simDt);
     if (this.tripped) return;

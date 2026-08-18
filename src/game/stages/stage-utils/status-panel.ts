@@ -5,8 +5,8 @@
 const LOW_HP_RATIO = 0.3;
 const RADIATOR_HIGH_WEAR = 0.5;
 import * as C from '../../const';
-import type { Player } from '../../player/player';
-import type { RadiatorSide } from '../../player/radiator';
+import type { Vessel } from '../../vessel/vessel';
+import type { RadiatorSide } from '../../vessel/radiator';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { fmtEnergy } from '../../hud/utils';
 import { DANGER } from '../../theme';
@@ -19,7 +19,7 @@ const RADIATOR_UI: Record<RadiatorSide, { label: string; key: string }> = {
   down: { label: '右', key: K.radiatorDeployRight.label },
 };
 
-import type { SolarSide } from '../../player/power';
+import type { SolarSide } from '../../vessel/power';
 const SOLAR_UI: Record<SolarSide, { label: string; key: string }> = {
   up: { label: '左', key: K.solarDeployLeft.label },
   down: { label: '右', key: K.solarDeployRight.label },
@@ -40,7 +40,7 @@ export class StatusPanel {
   private readonly leftWidgets: HTMLElement;
   private readonly centerCol: HTMLElement;
   private lastLeftHtml = '';
-  private player: Player | null = null;
+  private player: Vessel | null = null;
 
   // ラジエーターボタンだけは展開/収納のクリックリスナを保つため、innerHTML の再構築対象から
   // 外した永続 DOM にしてある
@@ -73,12 +73,12 @@ export class StatusPanel {
 
     const radiatorsCol = this.panel.querySelector<HTMLElement>('.radiators')!;
     this.solarButtons = {
-      up: this.buildButton(radiatorsCol, () => this.player?.power.toggle('up')),
-      down: this.buildButton(radiatorsCol, () => this.player?.power.toggle('down')),
+      up: this.buildButton(radiatorsCol, () => this.player?.power?.toggle('up')),
+      down: this.buildButton(radiatorsCol, () => this.player?.power?.toggle('down')),
     };
     this.radiatorButtons = {
-      up: this.buildButton(radiatorsCol, () => this.player?.radiator.toggle('up')),
-      down: this.buildButton(radiatorsCol, () => this.player?.radiator.toggle('down')),
+      up: this.buildButton(radiatorsCol, () => this.player?.radiator?.toggle('up')),
+      down: this.buildButton(radiatorsCol, () => this.player?.radiator?.toggle('down')),
     };
   }
 
@@ -150,7 +150,7 @@ export class StatusPanel {
 
   // 毎フレーム(sync 時)呼ぶ。player が null ならパネルを畳む。DOM の書き換えは
   // 内容が変わったフレームだけに絞る。
-  sync(player: Player | null, message: string, kills: number): void {
+  sync(player: Vessel | null, message: string, kills: number): void {
     this.player = player;
     this.panel.classList.toggle('hidden', !player);
     if (!player) return;
@@ -160,12 +160,12 @@ export class StatusPanel {
     const low = hp <= maxHp * LOW_HP_RATIO;
     const throttleVal = C.THROTTLE_LEVELS[throttleIdx];
     const throttleText = `${C.THROTTLE_LABELS[throttleIdx]} (${throttleVal!.toFixed(1)} m/s²)`;
-    const temp = Math.round(player.thermal.hullTemp);
+    const temp = Math.round(player.thermal?.hullTemp ?? 0);
     const tempHigh = temp > 0.7 * C.MAX_HULL_TEMP;
-    const qdyn = player.thermal.qdyn;
+    const qdyn = player.thermal?.qdyn ?? 0;
     const qdynHigh = qdyn > 0.5 * C.MAX_DYN_PRESSURE;
     const qdynText = qdyn >= 1000 ? `${(qdyn / 1000).toFixed(2)} kPa` : `${qdyn.toFixed(0)} Pa`;
-    const chargeJ = player.power.chargeJ;
+    const chargeJ = player.power?.chargeJ ?? 0;
 
     this.hpMeter.setRatio(hp / maxHp);
     this.hpMeter.setDanger(low);
@@ -182,18 +182,19 @@ export class StatusPanel {
     this.tempMeter.setDanger(tempHigh);
     this.tempMeter.setLabel(`${temp} / ${C.MAX_HULL_TEMP} K`);
 
-    this.powerMeter.setRatio(player.power.chargeRatio);
+    this.powerMeter.setRatio(player.power?.chargeRatio ?? 0);
     this.powerMeter.setLabel(`${fmtEnergy(chargeJ)} / ${fmtEnergy(C.POWER_CAPACITY)}`);
 
     this.centerCol.classList.toggle('warn', low);
 
+    // 太陽電池パドル・放熱板を積まない機体(軌道基地など)では、開閉ボタンは全損表示のまま動かない。
     const power = player.power;
-    this.syncButton(this.solarButtons.up, power.deployOf('up'), 0, 'パドル', SOLAR_UI.up);
-    this.syncButton(this.solarButtons.down, power.deployOf('down'), 0, 'パドル', SOLAR_UI.down);
+    this.syncButton(this.solarButtons.up, power?.deployOf('up') ?? 0, 0, 'パドル', SOLAR_UI.up);
+    this.syncButton(this.solarButtons.down, power?.deployOf('down') ?? 0, 0, 'パドル', SOLAR_UI.down);
 
     const radiator = player.radiator;
-    this.syncButton(this.radiatorButtons.up, radiator.deployOf('up'), radiator.wearOf('up'), '放熱板', RADIATOR_UI.up);
-    this.syncButton(this.radiatorButtons.down, radiator.deployOf('down'), radiator.wearOf('down'), '放熱板', RADIATOR_UI.down);
+    this.syncButton(this.radiatorButtons.up, radiator?.deployOf('up') ?? 0, radiator?.wearOf('up') ?? 1, '放熱板', RADIATOR_UI.up);
+    this.syncButton(this.radiatorButtons.down, radiator?.deployOf('down') ?? 0, radiator?.wearOf('down') ?? 1, '放熱板', RADIATOR_UI.down);
 
     const leftHtml = message ? `<div>${message}</div><div>撃墜 ${kills}</div>` : `<div>撃墜 ${kills}</div>`;
     if (this.lastLeftHtml !== leftHtml) {

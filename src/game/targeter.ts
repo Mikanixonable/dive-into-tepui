@@ -1,10 +1,9 @@
 import { add, addScaled, dot, lenSq, norm, scale, sub, v3, Vec3 } from '../physics/vec3';
 import { Attractor } from '../physics/attractor';
 import * as C from './const';
-import { Enemy } from './game-entity/enemy';
-import { Base } from './game-entity/base';
+import { Vessel } from './vessel/vessel';
+import { vesselMapKind } from './map-pickable';
 import type { EntityManager } from './simulation/entity-manager';
-import { Player } from './player/player';
 import { Hud } from './hud/hud';
 import { Input, PointerPoint } from './input/input';
 import { CameraSystem, ProjectFn } from './camera/camera-system';
@@ -20,7 +19,7 @@ import type { MapVisibilityPolicy } from './celestial/map-visibility';
 import { mapPlanetFadeOpacity, nearestPlanetDistance } from './celestial/planet-distance';
 import { isOccluded } from '../physics/occlusion';
 
-export type CombatTarget = Enemy | Player | Base;
+export type CombatTarget = Vessel | Vessel | Vessel;
 
 // マーカー上での対象の役割。第一/第二ターゲットは色と字形が変わる。
 export type MarkerRole = 'none' | 'primary' | 'secondary';
@@ -113,7 +112,7 @@ export class Targeter {
 
   // ターゲット位置に「自機の方を向いた的(標的面)」があると見なし、発射弾がその面を自機側から
   // 通過した点をターゲット相対で記録する。既存の記録は経過時間を進め、寿命切れを捨てる。
-  updateBoardMarks(dt: number, player: Player | null, entities: EntityManager): void {
+  updateBoardMarks(dt: number, player: Vessel | null, entities: EntityManager): void {
     const target = this.aliveTarget;
     // 記録側と描画側で同じ aliveTarget を見る: target のままだと撃破後も死亡個体の
     // 凍結位置を基準に ✦ を残し続けてしまう。
@@ -146,7 +145,7 @@ export class Targeter {
 
   // ターゲットに紐づく表示物(的通過マーク・方位マーカー)をまとめて更新する。
   // ターゲットの選定を持つのがここなので、その表示もここに閉じる。
-  sync(player: Player | null, cameraSystem: CameraSystem): void {
+  sync(player: Vessel | null, cameraSystem: CameraSystem): void {
     const overviewMode = cameraSystem.overviewMode;
     const project = cameraSystem.activeCameraProjection;
     this.syncBoardMarkers(project);
@@ -157,7 +156,7 @@ export class Targeter {
   // 位置は機体メッシュと同じ displayState — 揃えないと「機体は未来位置、マーカーは現在位置」に割れる。
   // 予測地平の先を指していて displayState を返せない対象と、可視性判定で選択不可の対象は出さない。
   syncTargetMarkers(
-    player: Player | null, targets: readonly CombatTarget[], displayTime: number, simTime: number,
+    player: Vessel | null, targets: readonly CombatTarget[], displayTime: number, simTime: number,
     cameraSystem: CameraSystem, visibilityPolicy: MapVisibilityPolicy | null,
     registry: Ephemeris['registry'], attractors: readonly Attractor[],
   ): void {
@@ -172,7 +171,7 @@ export class Targeter {
       this.aliveScratch.push(tgt);
       const ds = tgt.displayState(displayTime);
       if (!ds) continue;
-      const visibility = visibilityPolicy?.entity(tgt instanceof Player ? 'player' : (tgt instanceof Base ? 'base' : 'ship'), tgt === player);
+      const visibility = visibilityPolicy?.entity(vesselMapKind(tgt), tgt === player);
       if (visibility && !visibility.pickable) continue;
       const role: MarkerRole =
         tgt === this.aliveTarget ? 'primary' : tgt === this.aliveSecondaryTarget ? 'secondary' : 'none';
@@ -180,7 +179,7 @@ export class Targeter {
       const mapOccluded = overviewMode && isOccluded(cameraSystem.activeCameraPos, ds.r, attractors);
       const mapOpacity = mapOccluded
         ? 0
-        : tgt instanceof Enemy && overviewMode
+        : overviewMode
           ? mapPlanetFadeOpacity(nearestPlanetDistance(ds.r, registry, attractors))
           : 1;
       this.markerItemScratch.push(visibility ? {
@@ -221,7 +220,7 @@ export class Targeter {
 
   // ターゲット/その反対方向を指す方向マーカー(戦闘ビューのみ)。自機の軌道基準方向マーカー
   // (player-markers.ts)と同じ扱いで、自機位置を原点に置く。第一ターゲットのみ。
-  private syncTargetDirMarkers(player: Player | null, overviewMode: boolean, project: ProjectFn): void {
+  private syncTargetDirMarkers(player: Vessel | null, overviewMode: boolean, project: ProjectFn): void {
     const tgt = this.aliveTarget;
     if (overviewMode || !tgt || !player) {
       this.markerManager.hide('tgtdir');

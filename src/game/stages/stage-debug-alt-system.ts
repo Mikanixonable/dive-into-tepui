@@ -2,7 +2,7 @@
 // 1体も持たないため、輻射源・日照率・点群などの太陽系依存の経路が恒星0個でも安全に振る舞う
 // ことを実演する。タイトルの通常ボタン列には出ない。
 import { Stage, type StageDeps } from './stage';
-import type { Player } from '../player/player';
+import type { Vessel } from '../vessel/vessel';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { SimSpeedManager } from '../sim-speed-manager';
 import * as C from '../const';
@@ -78,13 +78,13 @@ export class StageDebugAltSystem extends Stage {
     const t = this._simulator.simTime;
     const primary = this._ephemeris.attractorsAt(t).find((a) => a.id === PRIMARY_ID)!;
     const rel = stateFromOrbitalElements(t, PRIMARY_RADIUS + 5e5, 0, 0, 0, 0, 0, primary.mu);
-    this.addPlayer({
+    this.addOwnShip({
       state: kinematicState(t, add(primary.state.r, rel.r), add(primary.state.v, rel.v)),
       ammo: { mags: 20, rounds: C.MAG_ROUNDS },
     });
   }
 
-  update(_dt: number, player: Player | null, _entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
+  update(_dt: number, player: Vessel | null, _entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
     if (!player) return;
     this.logistics.updateLogistics(simTime, player, simSpeed);
   }

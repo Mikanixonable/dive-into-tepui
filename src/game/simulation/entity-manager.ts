@@ -8,12 +8,12 @@ import { GameEntity } from '../game-entity/game-entity';
 import { AmmoPickup } from '../game-entity/ammo-pickup';
 import { Asteroid } from '../game-entity/asteroid';
 import { DebrisPiece } from '../game-entity/debris-piece';
-import { Enemy } from '../game-entity/enemy';
+import { Vessel, type VesselDeps } from '../vessel/vessel';
+import { hasBaseModule } from '../vessel/capabilities';
+import { vesselMapKind } from '../map-pickable';
 import { Bullet } from '../game-entity/bullet';
-import { Base } from '../game-entity/base';
 import { InstancedPool } from '../../render/instanced-pool';
 import { bulletBodyResources, bulletHaloResources, plasmaBodyResources, casingBodyResources, debrisFragmentResources } from '../../render/ships';
-import { Player } from '../player/player';
 import type { Stage } from '../stages/stage';
 import type { SimSpeedManager } from '../sim-speed-manager';
 import type { Input } from '../input/input';
@@ -30,16 +30,14 @@ import type { MarkerManager } from '../marker/marker-manager';
 import type { PerfCounts } from '../../perf-meter';
 
 export class EntityManager {
-  readonly enemies: Enemy[] = [];
   readonly bullets: Bullet[] = [];
   readonly casings: DebrisPiece[] = [];
   readonly debris: DebrisPiece[] = [];
   public readonly ammoPickups: AmmoPickup[] = [];
   readonly asteroids: Asteroid[] = [];
-  // 自機。操作対象(Game.player)もこの配列の1隻で、積分・衝突・寿命判定・予測では
-  // 他の艦と対等に扱う。ステージモードでは1隻だけが入る。
-  readonly players: Player[] = [];
-  readonly bases: Base[] = [];
+  // 軌道上を飛ぶ機体は艦艇も軌道基地も敵艦も、すべてこの1本の配列に入る。操作対象
+  // (Game.player)もこの配列の1機で、積分・衝突・寿命判定・予測では他と対等に扱う。
+  readonly vessels: Vessel[] = [];
 
   // 弾本体・弾ハロー・プラズマ弾・薬莢は geometry/material を全個体で共有するため、
   // 個別の scene 追加ではなく InstancedMesh 1本ずつのプールで描画する(sync が push する)。
@@ -77,23 +75,18 @@ export class EntityManager {
     if (saved) this.restoreFromSave(saved, hud, worldSfx, scene, markerManager);
   }
 
-  // スナップショットから自機・敵・弾薬・基地を復元する。
+  // スナップショットから機体・弾薬を復元する。
   private restoreFromSave(
     save: GameSaveData, hud: Hud, worldSfx: WorldSfx, scene: THREE.Scene, markerManager: MarkerManager,
   ): void {
     const simTime = save.simTime;
-    for (const data of save.players) {
-      this.addPlayer(new Player(hud, worldSfx, scene, this.effects, markerManager, { saved: data, simTime }));
-    }
-    for (const data of save.enemies) {
-      this.addEnemy(new Enemy({ saved: data, simTime }, hud, worldSfx, this.effects, scene));
-    }
+    const deps: VesselDeps = { hud, worldSfx, scene, fx: this.effects, markerManager };
+    for (const data of save.players) this.addVessel(new Vessel({ savedShip: data, simTime }, deps));
+    for (const data of save.enemies) this.addVessel(new Vessel({ savedHostile: data, simTime }, deps));
     for (const data of save.ammoPickups) {
       this.addAmmoPickup(new AmmoPickup({ saved: data, simTime }, scene, markerManager));
     }
-    for (const data of save.bases) {
-      this.addBase(new Base({ saved: data, simTime }, scene, hud, worldSfx, this.effects, markerManager));
-    }
+    for (const data of save.bases) this.addVessel(new Vessel({ savedBase: data, simTime }, deps));
   }
 
   // all()/otherEntities() はSimulatorの各substepから何度も呼ばれる。配列の内容が変わった
@@ -103,8 +96,11 @@ export class EntityManager {
   private readonly cachedOtherEntities: GameEntity[] = [];
   private readonly cachedAllEntities: GameEntity[] = [];
   private readonly cachedAttractors: GameEntity[] = [];
-  // Targeter/Game は取得した配列を読み取り専用として扱う(filter/sort等で破壊しない)ため、
-  // collectionRevision が変わるまで敵・自機の結合結果も再利用する。
+  private readonly cachedOwnShips: Vessel[] = [];
+  private readonly cachedHostiles: Vessel[] = [];
+  private readonly cachedBases: Vessel[] = [];
+  // Targeter/Game は取得した配列を読み取り専用として扱うため、collectionRevision が
+  // 変わるまで戦闘ターゲットの結合結果も再利用する。
   private combatTargetsRevision = -1;
 
   // 保持するエンティティの顔ぶれの世代。追加・除去・prune のいずれでも増える。
@@ -113,71 +109,85 @@ export class EntityManager {
   }
 
   private readonly cachedCombatTargets: CombatTarget[] = [];
-  private readonly cachedCombatTargetsByExcludedPlayer = new Map<Player, CombatTarget[]>();
+  private readonly cachedCombatTargetsByExcluded = new Map<Vessel, CombatTarget[]>();
 
-  // 敵を登録する。
-  addEnemy(enemy: Enemy): void {
-    this.enemies.push(enemy);
+  // 機体を登録する。艦艇・軌道基地・敵艦の区別は無い。
+  addVessel(vessel: Vessel): void {
+    this.vessels.push(vessel);
     this.invalidateCaches();
   }
 
-  // 自機を登録する。
-  addPlayer(player: Player): void {
-    this.players.push(player);
-    this.invalidateCaches();
-  }
-
-  // 自機を取り除き、メッシュを破棄する。
-  removePlayer(player: Player): void {
-    const i = this.players.indexOf(player);
+  // 機体を取り除き、メッシュを破棄する。
+  removeVessel(vessel: Vessel): void {
+    const i = this.vessels.indexOf(vessel);
     if (i < 0) return;
-    this.players.splice(i, 1);
+    this.vessels.splice(i, 1);
     this.invalidateCaches();
-    player.dispose();
+    vessel.dispose();
   }
 
-  // 自機を取り除くが破棄はしない(基地への収容など、後で addPlayer で復帰させる場合)。
+  // 機体を取り除くが破棄はしない(基地への収容など、後で addVessel で復帰させる場合)。
   // 配列から外れると毎フレームの同期が届かなくなるので、マーカーはここで畳む。
-  parkPlayer(player: Player): void {
-    const i = this.players.indexOf(player);
+  parkVessel(vessel: Vessel): void {
+    const i = this.vessels.indexOf(vessel);
     if (i < 0) return;
-    this.players.splice(i, 1);
-    player.equatorNodes?.dispose();
-    player.equatorNodes = null;
+    this.vessels.splice(i, 1);
+    vessel.equatorNodes?.dispose();
+    vessel.equatorNodes = null;
     this.invalidateCaches();
   }
 
   // ターゲットとなり得るエンティティの一覧を取得する。
-  getCombatTargets(excludePlayer: Player | null): CombatTarget[] {
+  getCombatTargets(exclude: Vessel | null): CombatTarget[] {
     this.rebuildCombatTargetsIfNeeded();
-    if (excludePlayer === null) return this.cachedCombatTargets;
+    if (exclude === null) return this.cachedCombatTargets;
 
-    let targets = this.cachedCombatTargetsByExcludedPlayer.get(excludePlayer);
+    let targets = this.cachedCombatTargetsByExcluded.get(exclude);
     if (targets) return targets;
-    targets = [];
-    for (const enemy of this.enemies) targets.push(enemy);
-    for (const player of this.players) if (player !== excludePlayer) targets.push(player);
-    for (const base of this.bases) targets.push(base);
-    this.cachedCombatTargetsByExcludedPlayer.set(excludePlayer, targets);
+    targets = this.vessels.filter((v) => v !== exclude);
+    this.cachedCombatTargetsByExcluded.set(exclude, targets);
     return targets;
   }
 
   private rebuildCombatTargetsIfNeeded(): void {
     if (this.combatTargetsRevision === this._collectionRevision) return;
     this.cachedCombatTargets.length = 0;
-    this.cachedCombatTargets.push(...this.enemies, ...this.players, ...this.bases);
-    this.cachedCombatTargetsByExcludedPlayer.clear();
+    this.cachedCombatTargets.push(...this.vessels);
+    this.cachedCombatTargetsByExcluded.clear();
     this.combatTargetsRevision = this._collectionRevision;
   }
 
-  // id で名指しされた自機を返す。見つからなければ null。
-  findPlayer(id: string): Player | null {
-    return this.players.find((p) => p.id === id) ?? null;
+  // id で名指しされた機体を返す。見つからなければ null。
+  findVessel(id: string): Vessel | null {
+    return this.vessels.find((v) => v.id === id) ?? null;
   }
 
-  // id で名指しされた敵を返す。見つからなければ null。
-  findEnemy(id: string): Enemy | null {
-    return this.enemies.find((e) => e.id === id) ?? null;
+  // 自勢力で基地モジュールを持たない機体。
+  ownShips(): readonly Vessel[] {
+    this.rebuildCachesIfNeeded();
+    return this.cachedOwnShips;
+  }
+
+  // 敵対勢力の機体。
+  hostileVessels(): readonly Vessel[] {
+    this.rebuildCachesIfNeeded();
+    return this.cachedHostiles;
+  }
+
+  // 基地モジュールを積んだ機体。
+  baseVessels(): readonly Vessel[] {
+    this.rebuildCachesIfNeeded();
+    return this.cachedBases;
+  }
+
+  // id で名指しされた自艦を返す。見つからなければ null。
+  findOwnShip(id: string): Vessel | null {
+    return this.ownShips().find((v) => v.id === id) ?? null;
+  }
+
+  // id で名指しされた敵機を返す。見つからなければ null。
+  findHostile(id: string): Vessel | null {
+    return this.hostileVessels().find((v) => v.id === id) ?? null;
   }
 
   // 弾を登録する。上限を超えた分は古いものから破棄する。
@@ -202,15 +212,9 @@ export class EntityManager {
     this.addCapped(this.asteroids, asteroid, C.MAX_ASTEROIDS);
   }
 
-  // 基地を登録する。
-  addBase(base: Base): void {
-    this.bases.push(base);
-    this.invalidateCaches();
-  }
-
   // ID で名指された基地を返す。見つからなければ null。
-  findBase(id: string): Base | null {
-    return this.bases.find(b => b.id === id) ?? null;
+  findBaseVessel(id: string): Vessel | null {
+    return this.baseVessels().find((v) => v.id === id) ?? null;
   }
 
   // 配列へ追加し、cap を超えたら先頭(最古)を1件破棄する。
@@ -228,16 +232,22 @@ export class EntityManager {
     if (this.cachedRevision === this._collectionRevision) return;
     this.cachedOtherEntities.length = 0;
     this.cachedOtherEntities.push(
-      ...this.enemies,
       ...this.bullets,
       ...this.ammoPickups,
       ...this.asteroids,
       ...this.casings,
       ...this.debris,
-      ...this.bases,
     );
     this.cachedAllEntities.length = 0;
-    this.cachedAllEntities.push(...this.cachedOtherEntities, ...this.players);
+    this.cachedAllEntities.push(...this.cachedOtherEntities, ...this.vessels);
+    this.cachedOwnShips.length = 0;
+    this.cachedHostiles.length = 0;
+    this.cachedBases.length = 0;
+    for (const v of this.vessels) {
+      if (v.faction === 'enemy') this.cachedHostiles.push(v);
+      else if (hasBaseModule(v)) this.cachedBases.push(v);
+      else this.cachedOwnShips.push(v);
+    }
     this.cachedAttractors.length = 0;
     for (const e of this.cachedAllEntities) {
       if (e.alive && e.mu !== 0) this.cachedAttractors.push(e);
@@ -245,7 +255,7 @@ export class EntityManager {
     this.cachedRevision = this._collectionRevision;
   }
 
-  // 自機以外の保持エンティティを1つの配列にまとめて返す。
+  // 機体以外の保持エンティティを1つの配列にまとめて返す。
   private otherEntities(): GameEntity[] {
     this.rebuildCachesIfNeeded();
     return this.cachedOtherEntities;
@@ -265,16 +275,14 @@ export class EntityManager {
   }
 
   // 全エンティティの寿命判定を行い、死亡したものを破棄・除去する。自機だけは各所の参照掃除と
-  // 次艦への引き継ぎが要るため、除去は ActivePlayerController.reclaimDead が担う。
+  // 次艦への引き継ぎが要るため、除去は ActiveVesselController.reclaimDead が担う。
   cleanup(dt: number, simTime: number, activeStage: Stage, playerPos: Vec3, attractors: readonly Attractor[]): void {
     for (const e of this.all()) e.checkLoss(dt, simTime, activeStage, playerPos, attractors);
-    this.prune(this.enemies);
     this.prune(this.bullets);
     this.prune(this.casings);
     this.prune(this.debris);
     this.prune(this.ammoPickups);
     this.prune(this.asteroids);
-    this.prune(this.bases);
   }
 
   // in-place フィルタ: 配列の参照はそのまま保つ。
@@ -297,18 +305,19 @@ export class EntityManager {
     for (const e of this.all()) e.requestHistoryDuration(sec);
   }
 
-  // 毎フレーム、全ての自機へ updatePlayerControls を1度ずつ通す。操作できるのは操作対象艦だけで、
-  // 操作できないワープ倍率ではどの艦も操作できない — その2つは同じ「操作できない」状態なので、
-  // input を渡すかどうかの1つの判断にまとめる。
-  updatePlayers(
-    activePlayer: Player | null, input: Input | null, simSpeed: SimSpeedManager,
+  // 毎フレーム、全ての機体へ updateControls を1度ずつ通す。操作できるのは操作対象だけで、
+  // 操作できないワープ倍率ではどの機体も操作できない — その2つは同じ「操作できない」状態
+  // なので、input を渡すかどうかの1つの判断にまとめる。
+  updateVessels(
+    activeVessel: Vessel | null, input: Input | null, simSpeed: SimSpeedManager,
     dt: number, activeStage: Stage, ephemeris: Ephemeris,
   ): void {
     const operable = simSpeed.canShipAct;
     const simDt = dt * simSpeed.simSpeed;
-    for (const ship of this.players) {
-      ship.updatePlayerControls(
-        ship === activePlayer && operable ? input : null,
+    for (const vessel of this.vessels) {
+      if (!vessel.alive) continue;
+      vessel.updateControls(
+        vessel === activeVessel && operable ? input : null,
         dt,
         simDt,
         this,
@@ -318,75 +327,47 @@ export class EntityManager {
     }
   }
 
-  // 毎フレーム、操作対象の基地へ updateBaseControls を1度ずつ通す。
-  // 操作対象でない基地は clearTransientCommands で慣性飛行に戻る。
-  updateBases(
-    controlledBase: Base | null, input: Input, simSpeed: SimSpeedManager, dt: number,
-  ): void {
-    const operable = simSpeed.canShipAct;
-    const simDt = dt * simSpeed.simSpeed;
-    for (const base of this.bases) {
-      if (!base.alive) continue;
-      base.updateBaseControls(
-        base === controlledBase && operable ? input : null,
-        dt,
-        simDt,
-      );
-    }
-  }
-
-  // 操作できない間、全自機・操作中基地の連続指令(推力・トルク・射撃・噴射ラッチ)を畳む。
+  // 操作できない間、全機体の連続指令(推力・トルク・射撃・噴射ラッチ)を畳む。
   clearTransientCommands(): void {
-    for (const ship of this.players) ship.clearTransientCommands();
-    for (const base of this.bases) base.clearTransientCommands();
+    for (const vessel of this.vessels) vessel.clearTransientCommands();
   }
 
-  // 全自機のメッシュ・エフェクト・マーカーを同期する。方向マーカーや照準ズームは操作艦だけの
-  // ものなので、どれが操作対象かを各艦へ渡す。
-  syncPlayers(
-    activePlayer: Player | null, fo: FloatingOrigin, cameraSystem: CameraSystem,
+  // 全機体のメッシュ・エフェクト・マーカーを同期する。方向マーカーや照準ズームは操作対象だけの
+  // ものなので、どれが操作対象かを各機体へ渡す。
+  syncVessels(
+    activeVessel: Vessel | null, fo: FloatingOrigin, cameraSystem: CameraSystem,
     displayTime: number, ephemeris: Ephemeris, attractors: readonly Attractor[],
     visibilityPolicy: MapVisibilityPolicy | null, displayWindow?: DisplayWindow,
   ): void {
-    for (const ship of this.players) {
-      ship.syncPlayer(
-        fo, cameraSystem, displayTime, ship === activePlayer, ephemeris, attractors,
-        visibilityPolicy?.entity('player', ship === activePlayer) ?? null, displayWindow,
+    for (const vessel of this.vessels) {
+      if (!vessel.alive) continue;
+      const isActive = vessel === activeVessel;
+      vessel.syncVessel(
+        fo, cameraSystem, displayTime, isActive, ephemeris, attractors,
+        visibilityPolicy?.entity(vesselMapKind(vessel), isActive) ?? null, displayWindow,
       );
     }
   }
 
-  // 全基地のメッシュ・エフェクト(推力プルーム・RCS音・パフ)を同期する。
-  syncBases(
-    controlledBase: Base | null, fo: FloatingOrigin, cameraSystem: CameraSystem,
-    displayTime: number, visibilityPolicy: MapVisibilityPolicy | null,
-  ): void {
-    for (const base of this.bases) {
-      if (!base.alive) continue;
-      base.syncBase(
-        fo, cameraSystem, displayTime, base === controlledBase,
-        visibilityPolicy?.entity('base') ?? null,
-      );
-    }
-  }
-
-  // 天体クラス別トグルに応じて自機・敵・弾薬・基地のメッシュ表示を揃える。visibilityPolicy が
+  // 天体クラス別トグルに応じて機体・弾薬のメッシュ表示を揃える。visibilityPolicy が
   // null(戦闘ビュー)のときは非表示扱いを一切かけない。
-  applyVisibility(visibilityPolicy: MapVisibilityPolicy | null, activePlayer: Player | null): void {
+  applyVisibility(visibilityPolicy: MapVisibilityPolicy | null, activeVessel: Vessel | null): void {
     if (!visibilityPolicy) return;
-    for (const ship of this.players) if (!visibilityPolicy.entity('player', ship === activePlayer).category) ship.renderObject.visible = false;
-    for (const enemy of this.enemies) if (!visibilityPolicy.entity('ship').category) enemy.renderObject.visible = false;
+    for (const vessel of this.vessels) {
+      if (!visibilityPolicy.entity(vesselMapKind(vessel), vessel === activeVessel).category) {
+        vessel.renderObject.visible = false;
+      }
+    }
     for (const ammoPickup of this.ammoPickups) {
       if (!visibilityPolicy.entity('ammo').category) ammoPickup.renderObject.visible = false;
     }
-    for (const base of this.bases) if (!visibilityPolicy.entity('base').category) base.renderObject.visible = false;
   }
 
   // マップ表示中だけ、全基地の赤道交点マーカーを求め直す(戦闘ビューでは誰も読まない)。基地は
   // 常設の軌道構造物で、接近・ドッキングは軌道面合わせそのものなので、選択の有無に関わらず出す。
   updateBaseEquatorNodes(overviewMode: boolean, displayWindow: DisplayWindow, ephemeris: Ephemeris): void {
     if (!overviewMode) return;
-    for (const base of this.bases) {
+    for (const base of this.baseVessels()) {
       if (base.alive) base.equatorNodes?.update(displayWindow.frame, displayWindow.displayTime, ephemeris);
     }
   }
@@ -416,7 +397,7 @@ export class EntityManager {
   }
 
   // 自機以外のメッシュを displayTime 時点の状態に同期する。自機はエフェクト・ベルト・
-  // 軌道線まで持つので Player.syncPlayer が担当する。弾本体・弾ハロー・プラズマ弾・薬莢・
+  // 軌道線まで持つので Vessel.syncPlayer が担当する。弾本体・弾ハロー・プラズマ弾・薬莢・
   // 破片(fragment)の変換は各エンティティの renderObject に同期された後、InstancedPool へ push する。
   sync(fo: FloatingOrigin, displayTime: number): void {
     for (const e of this.otherEntities()) e.sync(fo, displayTime);
@@ -452,14 +433,12 @@ export class EntityManager {
   // 保持する全エンティティと描画資源プールを破棄する。cleanup/prune は死亡した
   // エンティティしか片付けないため、生存中のまま呼ばれるケースをここで担う。
   dispose(): void {
-    this.disposeAll(this.players);
-    this.disposeAll(this.enemies);
+    this.disposeAll(this.vessels);
     this.disposeAll(this.bullets);
     this.disposeAll(this.casings);
     this.disposeAll(this.debris);
     this.disposeAll(this.ammoPickups);
     this.disposeAll(this.asteroids);
-    this.disposeAll(this.bases);
 
     this.bulletBodyPool.dispose();
     this.bulletHaloPool.dispose();
@@ -480,14 +459,14 @@ export class EntityManager {
   // 負荷確認ウィンドウが読む、保持配列ごとの現在の個体数。
   perfCounts(): Pick<PerfCounts, 'players' | 'enemies' | 'bullets' | 'casings' | 'debris' | 'ammoPickups' | 'asteroids' | 'bases'> {
     return {
-      players: this.players.length,
-      enemies: this.enemies.length,
+      players: this.ownShips().length,
+      enemies: this.hostileVessels().length,
       bullets: this.bullets.length,
       casings: this.casings.length,
       debris: this.debris.length,
       ammoPickups: this.ammoPickups.length,
       asteroids: this.asteroids.length,
-      bases: this.bases.length,
+      bases: this.baseVessels().length,
     };
   }
 }
