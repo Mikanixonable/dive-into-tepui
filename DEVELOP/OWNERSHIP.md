@@ -265,8 +265,10 @@ main.ts
 │       │                                       それらの形状と変換だけを合わせる(生成・破棄はしない)
 │       ├── CommNetwork                    ... このフレームの通信網(正本)。有効な中継点の集合を持ち、CoverageQuery として答える。Game が new し、Stage(StageDeps の12番目)へ参照で渡す。中継点そのものは Ephemeris と EntityManager から毎回組み直すので、ここが持つのは組み直した結果だけ
 │       ├── Simulator                      ... 実シミュレーション。EntityManager・Ephemeris・FrameSections の参照を受け取って回すだけ(いずれも所有しない)
-│       │   └── ContactPhysics             ... 接触の検出(physics/sphere-contact.ts)・剛体解決(physics/collision-response.ts)を
-│       │                                       substep ごと(resolveSubstep)/フレームに1回のベルト(resolveBelt)で呼ぶ列挙・順序付け層
+│       │   └── ContactPhysics             ... 接触の検出(physics/sphere-contact.ts・physics/capsule-contact.ts)・剛体解決
+│       │                                       (physics/collision-response.ts)を substep ごと(resolveSubstep)/フレームに1回の
+│       │                                       ベルト(resolveBelt)で呼ぶ列挙・順序付け層。狭域の形状は Vessel.collisionCapsules
+│       │                                       を持つ機体だけカプセル、それ以外は外接球。状態は走査用のスクラッチのみ
 │       └── Predictor                      ... 予測列の駆動。EntityManager・FutureAttractors の参照を受け取って回すだけ(所有しない)。
 │                                               状態はラウンドロビンのカーソルのみ
 ├── SaveBrowser            ... `Game` はフィールドに持たず、`CurrentGameSource`(`{readonly current: Game | null}`、この節が正本)を構築引数で受け取る — 実際に渡るのは `Launcher`(`current` が `Launcher.game` を指す)。`open()`/`close()` は `gameSource.current?.pause()`/`.resume()` を呼ぶ。Game 側はこれへの参照を一切持たない。DOM は Hud.layers.system 配下。`onLoadSnapshot`/`onSlotSwitched` コールバックを main.ts が launcher.loadSnapshot(id)/launcher.switchSlot() へ配線する
@@ -493,6 +495,7 @@ main.ts
 
 | 状態 | 正本の所有者 | 備考 |
 | --- | --- | --- |
+| 放熱板の展開度 | `RadiatorSystem.panels[side].deploy` | `Vessel.currentAreas` が `deployedFraction()` を読み、設計の `MassProperties.deployableAreas` を差し引いて抗力・輻射圧の面積を組む(投影面積の正本は設計側で、展開度を掛けるのはここだけ) |
 | 自機の位置・速度・エポック (ECI) | `Vessel.state` | 書き換えるのは RK4 積分(Simulator)・反動(Gunnery)・接触(ContactPhysics) |
 | エンティティの過去 state 列(`StateQueue`) | `GameEntity.actual`(`DynamicTrajectory` が内部に持つ `StateQueue`。先端(`state`)も同じ列の最新要素) | 記録するのは `DynamicTrajectory.step` だけ。時間窓は `historyDuration` = `max(baseHistoryDuration, requestedHistoryDuration)`(前者は種別固定で既定 0、Vessel/Asteroid のみ `SHIP_HISTORY_DURATION`。後者は過去表示の要求で、`Game.advanceSimulation` が毎フレーム `entities.requestHistoryDuration(displayWindow.pastDuration)` として全エンティティへ配る — 履歴を持たない種別は無視し、`HISTORY_DURATION_MAX` で頭打ち)、間引き間隔は `sampleInterval()`(軌道周期ベース)で `cleanup` に渡す |
 | 自機の姿勢・角速度 | `Vessel.att` | 積分は Simulator.stepAttitudes に一元化 |

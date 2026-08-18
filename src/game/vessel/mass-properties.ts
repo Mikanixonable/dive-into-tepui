@@ -26,12 +26,18 @@ export interface MassProperties {
   // 重心まわりの慣性テンソル [kg·m²]。3軸が非対称なら中間軸不安定性が現れる。
   readonly inertia: InertiaTensor;
   // 機体座標系の主軸3方向から見た投影面積 [m²]。抗力と輻射圧の断面積がここから決まる(§11-2)。
+  // 展開できる外装要素は完全に展開した状態で数えてある。
   readonly principalAreas: Vec3;
+  // そのうち、畳めば失われる分 [m²]。実行時の展開度を掛けて principalAreas から差し引くのは
+  // 展開度を持つ側(Vessel)の仕事で、設計から導くこの値は姿勢にも運用にも依存しない。
+  readonly deployableAreas: Vec3;
 }
 
 // 主慣性モーメントと投影面積を直接与えて、重心を原点に置いた質量特性を組む(§5-3)。
 export function massPropertiesOf(mass: number, moments: Vec3, principalAreas: Vec3): MassProperties {
-  return { mass, centerOfMass: v3(), inertia: diagonalInertia(moments), principalAreas };
+  return {
+    mass, centerOfMass: v3(), inertia: diagonalInertia(moments), principalAreas, deployableAreas: v3(),
+  };
 }
 
 // 形状から導いた値を、機体が持つ質量特性に直す。積んでいる推進剤も込みの総質量を採る。
@@ -41,6 +47,7 @@ export function massPropertiesFrom(derived: DerivedMassProperties): MassProperti
     centerOfMass: derived.centerOfMass,
     inertia: derived.inertia,
     principalAreas: derived.principalAreas,
+    deployableAreas: derived.deployableAreas,
   };
 }
 
@@ -50,7 +57,8 @@ export interface DerivedMassProperties {
   readonly loadedMass: number; // 推進剤と貨物を含む総質量 [kg]
   readonly centerOfMass: Vec3; // 船体ローカル座標
   readonly inertia: InertiaTensor; // 重心まわり
-  readonly principalAreas: Vec3; // 主軸3方向の投影面積 [m²]
+  readonly principalAreas: Vec3; // 主軸3方向の投影面積 [m²]。展開できる外装は展開した状態で数える
+  readonly deployableAreas: Vec3; // そのうち畳めば失われる分 [m²]
 }
 
 // 搭載要素の id から、それが収める推進剤の質量 [kg] を引く表。
@@ -91,18 +99,31 @@ export function deriveMassProperties(
     const frame = edgeFrame(tree, edge);
     if (edge.kind.kind === 'hull') {
       addHullShell(accumulator, tree, edge, frame, edgeMaterial(edge, internals), edgePressure(edge, internals));
-      projections.push({ axis: frame.z, areas: hullProjectedAreas(tree, edge, frame) });
+      projections.push({
+        axis: frame.z,
+        areas: hullProjectedAreas(tree, edge, frame),
+        center: midpointOf(frame, edge.length),
+        extent: Math.max(circumradius(nodeById(tree, edge.a).section), circumradius(nodeById(tree, edge.b).section)),
+      });
     } else if (edge.kind.kind === 'truss') {
       addTruss(accumulator, edge, edge.kind.sectionSize, frame);
-      projections.push({ axis: frame.z, areas: boxProjectedAreas(edge.kind.sectionSize, edge.length, frame) });
+      projections.push({
+        axis: frame.z,
+        areas: boxProjectedAreas(edge.kind.sectionSize, edge.length, frame),
+        center: midpointOf(frame, edge.length),
+        extent: edge.kind.sectionSize / 2,
+      });
     } else {
       const area = sectionMoments(nodeById(tree, edge.a).section).area;
       addPart(accumulator, decouplerMass(area), midpointOf(frame, edge.length), ZERO_INERTIA);
     }
   }
 
+  const plates: PlateProjection[] = [];
   for (const placement of placements) {
     addPart(accumulator, placement.part.weight, placementCenter(tree, placement, centroidByPartId), ZERO_INERTIA);
+    const plate = externalPlate(tree, placement);
+    if (plate) plates.push(plate);
   }
 
   const dryMass = accumulator.mass;
@@ -121,7 +142,8 @@ export function deriveMassProperties(
     centerOfMass,
     // 原点まわりの値を重心まわりへ戻す。平行軸の項を引くので質量の符号を反転させる。
     inertia: translateInertia(accumulator.inertia, -loadedMass, centerOfMass),
-    principalAreas: combineProjectedAreas(projections),
+    principalAreas: combineProjectedAreas(projections, plates),
+    deployableAreas: plateAreas(plates.filter((plate) => plate.deployable)),
   };
 }
 
@@ -252,39 +274,108 @@ function addTruss(into: Accumulator, edge: TreeEdge, sectionSize: number, frame:
 interface EdgeProjection {
   readonly axis: Vec3; // 船体ローカルでのエッジの軸方向(単位ベクトル)
   readonly areas: Vec3; // 主軸3方向から見た面積 [m²]
+  readonly center: Vec3; // エッジの中点(船体ローカル)
+  readonly extent: number; // 軸に垂直な向きの半径 [m]。像が横に重なるかの判定に使う
 }
 
-// 評価方向とエッジ軸の内積がこの値以上なら、そのエッジの像は他の平行なエッジの像と重なるとみなす。
+// 外装要素を、取り付け面の法線を持つ平板として表す。平板の投影面積は面積 × |法線·視線| で厳密。
+interface PlateProjection {
+  readonly normal: Vec3;
+  readonly area: number;
+  readonly deployable: boolean; // 実行時に畳めるか
+}
+
+// 評価方向とエッジ軸の内積がこの値以上なら、そのエッジの像は他の平行なエッジの像と重なりうるとみなす。
 const PROJECTION_OVERLAP_COS = Math.SQRT1_2;
 
-// エッジごとの投影面積を、主軸3方向それぞれの投影面積 [m²] へまとめる。投影面積は像の合併で
-// あって和ではないので、その向きから見て前後に重なるエッジ同士は足さずに最大値を採る。
-// TODO: 平行でも横へずれて並ぶエッジ(左右に伸びる2本のブームなど)は重ならないので、
-// 本来はここも和になる。像の重なりを実際に見て分ける。
-function combineProjectedAreas(projections: readonly EdgeProjection[]): Vec3 {
+// エッジごとの投影面積と外装要素の平板を、主軸3方向それぞれの投影面積 [m²] へまとめる。
+function combineProjectedAreas(
+  projections: readonly EdgeProjection[], plates: readonly PlateProjection[],
+): Vec3 {
   return v3(
-    combineAlong(projections, v3(1, 0, 0), (areas) => areas.x),
-    combineAlong(projections, v3(0, 1, 0), (areas) => areas.y),
-    combineAlong(projections, v3(0, 0, 1), (areas) => areas.z),
+    combineAlong(projections, plates, v3(1, 0, 0), (areas) => areas.x),
+    combineAlong(projections, plates, v3(0, 1, 0), (areas) => areas.y),
+    combineAlong(projections, plates, v3(0, 0, 1), (areas) => areas.z),
   );
 }
 
+// 1方向ぶんの畳み込み。投影面積は像の合併であって和ではないので、その向きから見て前後に重なる
+// エッジ同士は足さずに最大値を採る。重なるのは「軸が視線と平行に近く」かつ「視線に垂直な面へ
+// 落とした足跡が触れ合う」組に限る — 平行でも横へずれて並ぶ2本(左右へ伸びるブームなど)は
+// 重ならないので和になる。足跡は中点を中心とする半径 extent の円として近似し、円が触れ合う
+// ものを1つの束にまとめて束ごとに最大値を採り、束の間は足す。
+// 外装要素の平板は、像の重なりを見ずにすべて足す — 平板は取り付け面から張り出しており、
+// 船体の像に隠れる部分は張り出しに比べて小さい。
 function combineAlong(
   projections: readonly EdgeProjection[],
+  plates: readonly PlateProjection[],
   axis: Vec3,
   areaOf: (areas: Vec3) => number,
 ): number {
-  let overlapping = 0;
-  let disjoint = 0;
+  const parallel: EdgeProjection[] = [];
+  let total = 0;
   for (const projection of projections) {
-    const area = areaOf(projection.areas);
-    if (Math.abs(dot(projection.axis, axis)) >= PROJECTION_OVERLAP_COS) {
-      overlapping = Math.max(overlapping, area);
-    } else {
-      disjoint += area;
+    if (Math.abs(dot(projection.axis, axis)) >= PROJECTION_OVERLAP_COS) parallel.push(projection);
+    else total += areaOf(projection.areas);
+  }
+  for (const group of groupByFootprint(parallel, axis)) {
+    let maximum = 0;
+    for (const projection of group) maximum = Math.max(maximum, areaOf(projection.areas));
+    total += maximum;
+  }
+  for (const plate of plates) total += plate.area * Math.abs(dot(plate.normal, axis));
+  return total;
+}
+
+// 足跡が触れ合うエッジ同士を1つの束にまとめる。触れ合う関係は推移的に扱う — 3本が数珠つなぎに
+// 重なるとき、両端の2本が直接は触れていなくても像は1つながりになる。
+function groupByFootprint(
+  projections: readonly EdgeProjection[], axis: Vec3,
+): readonly (readonly EdgeProjection[])[] {
+  const groups: EdgeProjection[][] = [];
+  for (const projection of projections) {
+    const joined = groups.filter((group) => group.some((other) => footprintsTouch(projection, other, axis)));
+    const merged = joined.length > 0 ? joined[0]! : [];
+    if (joined.length === 0) groups.push(merged);
+    merged.push(projection);
+    for (const extra of joined.slice(1)) {
+      merged.push(...extra);
+      groups.splice(groups.indexOf(extra), 1);
     }
   }
-  return overlapping + disjoint;
+  return groups;
+}
+
+// 視線に垂直な面へ落とした2つの足跡(中点を中心とする半径 extent の円)が触れ合うか。
+function footprintsTouch(x: EdgeProjection, y: EdgeProjection, axis: Vec3): boolean {
+  const delta = sub(y.center, x.center);
+  const lateral = sub(delta, scale(axis, dot(delta, axis)));
+  return Math.sqrt(dot(lateral, lateral)) < x.extent + y.extent;
+}
+
+// 平板だけを主軸3方向へ畳んだ面積 [m²]。
+function plateAreas(plates: readonly PlateProjection[]): Vec3 {
+  const along = (axis: Vec3): number =>
+    plates.reduce((sum, plate) => sum + plate.area * Math.abs(dot(plate.normal, axis)), 0);
+  return v3(along(v3(1, 0, 0)), along(v3(0, 1, 0)), along(v3(0, 0, 1)));
+}
+
+// 外装要素の平板。放熱板と太陽電池パドルは自分の面積を、熱シールドは覆う接続口の断面積を持つ。
+// 面の向きは取り付け面の外向き法線とする。展開状態はここでは読まず、完全に展開した張り出しを採る。
+// 畳めるのは放熱板だけとする — 太陽電池パドルは deployable を立てているが展開度を持つ系が無く、
+// 実行時に畳む手段が存在しない。
+function externalPlate(tree: VesselTree, placement: PartPlacement): PlateProjection | null {
+  if (placement.kind !== 'external') return null;
+  const { part } = placement;
+  const normal = mountFrame(tree, placement.mount).z;
+  if (part.type === 'solar_panel' || part.type === 'radiator') {
+    return part.area > 0 ? { normal, area: part.area, deployable: part.type === 'radiator' } : null;
+  }
+  if (part.type === 'heat_shield' && placement.mount.kind === 'port') {
+    const area = sectionMoments(nodeById(tree, placement.mount.nodeId).section).area;
+    return area > 0 ? { normal, area, deployable: false } : null;
+  }
+  return null;
 }
 
 // hull エッジの、船体の x/y/z 各軸方向から見た投影面積 [m²]。
