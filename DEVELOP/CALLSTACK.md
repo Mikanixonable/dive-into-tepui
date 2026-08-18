@@ -110,18 +110,19 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
     - player.equatorNodes.update(displayWindow.frame, displayWindow.displayTime, ephemeris, finalSegment.state0, finalSegment.samples) // 操作艦の EqAN/EqDN。代表軌道は計画の最終区間なので、交点は解析楕円ではなく積分折れ線の上に載る
   - sections.exit(SECTION.plan)
   - sections.enter(SECTION.predict)
-  - predictor.update(simulator.simTime, player, displayWindow.duration, cameraSystem.overviewMode, editor.growableArcs()) // advanceSimulation の外、無条件(ポーズ中・決着後も呼ぶ — simTime が止まっている間は乖離が起きないので、予測は伸び切ったところで止まるだけ)。horizon = displayWindow.duration。growableArcs() は displayedPlan が無ければ空(表示していない計画の弧は伸ばさない)、あれば path.growableArcs()(owned な区間の弧を時刻順に)
+  - predictor.update(simulator.simTime, player, displayWindow.duration, !displayWindowManager.forceCurrent, editor.growableArcs()) // advanceSimulation の外、無条件(ポーズ中・決着後も呼ぶ — simTime が止まっている間は乖離が起きないので、予測は伸び切ったところで止まるだけ)。horizon = displayWindow.duration。第4引数は canDisplayFuture(表示時刻が現在より先へ動けるか)で、未来ゴーストが伸長理由として成り立つかを決める。growableArcs() は displayedPlan が無ければ空(表示していない計画の弧は伸ばさない)、あれば path.growableArcs()(owned な区間の弧を時刻順に)
     - discardPredictionIfDiverged(simTime, attractors) // entities.all() のうち predictsFuture=true の対象全てへ、ビューによらず毎フレーム。attractors は simTime ぶんを1回だけ classifyAttractors し、対象ごとに attractorsNearInto でその位置の近傍へ絞ったもの(advanceBudget とは別のスクラッチ配列)
       - invalidatePrediction() // predicted.at(simTime) が実位置から許容量を超えて乖離、または区間外のときのみ。許容量は PREDICT_RESET_DIST を下限に、保持サンプルの間引きが粗いぶんの補間誤差まで広げる
-    - targets = overviewMode ? entities.all() : entities.all().filter(e => e===player || e.predictedAsGravitySource || e.predictedAsPlanCollider) // background の伸長対象。マップビューは全エンティティ、戦闘ビューは操作艦 + 計画軌道が重力源・衝突体として読む個体(通常ステージでは該当0体) — 折れ線自体は戦闘ビューでも描かれるため
-    - interactiveBudget = (targets に player 以外がいる) ? floor(frameBudget(overviewMode ? ARC_STEP_BUDGET : ARC_COMBAT_STEP_BUDGET) × ARC_INTERACTIVE_RATIO) : frameBudget // 操作艦の弧 → 計画の弧(時刻順)が共有する上限枠。他に伸ばす対象が無ければ全額
-    - advanceBudget(player, interactiveBudget, ...) // ensurePredictedArc(futureAttractors) で弧を得て(無ければ消費 0)、requiredEnd = simTime + horizon / retainFrom = simTime を書いてから grow(arc, interactiveBudget) を呼ぶ
-      - player.ensurePredictedArc(futureAttractors) // predictsFuture=false なら null。無ければ actual.state を起点に新規生成(mu≠0 なら自身の id を excludeId として渡す)
+    - targets = entities.all().filter(e => e.hasFutureReader(canDisplayFuture)) // 伸長対象は、その個体の未来を読む消費者がいるものだけ(重力源・計画衝突体・canDisplayFuture なときのゴースト・予測線を持つもの のいずれか)。forceCurrent の戦闘ビューではゴーストが理由として立たず、操作艦にも予測線が付かない(解析楕円で描かれる)ので、通常ステージでは集合が空になる
+    - interactiveShip = player !== null && player.hasFutureReader(canDisplayFuture) ? player : null // 優先枠に載せる操作艦。読む消費者がいなければ null で、優先枠ごと飛ばす
+    - interactiveBudget = (targets に interactiveShip 以外がいる) ? floor(ARC_STEP_BUDGET × ARC_INTERACTIVE_RATIO) : ARC_STEP_BUDGET // 操作艦の弧 → 計画の弧(時刻順)が共有する上限枠。他に伸ばす対象が無ければ全額。1フレーム予算はビューによらず ARC_STEP_BUDGET 一本
+    - [interactiveShip !== null] advanceBudget(interactiveShip, interactiveBudget, ...) // ensurePredictedArc(futureAttractors) で弧を得て(無ければ消費 0)、requiredEnd = simTime + horizon / retainFrom = simTime を書いてから grow(arc, interactiveBudget) を呼ぶ
+      - interactiveShip.ensurePredictedArc(futureAttractors) // predictsFuture=false なら null。無ければ actual.state を起点に新規生成(mu≠0 なら自身の id を excludeId として渡す)
       - grow(arc, budgetSteps) // while (consumed < budgetSteps && arc.step()) consumed++
     - [interactiveBudget が残る限り、editor.growableArcs() の各弧を時刻順に] grow(arc, interactiveBudget) // requiredEnd/retainFrom は path.update が書き込み済みなので、そのまま伸ばすだけ。伸び切った弧は消費0で次の弧へ使い残しを回す — 近い区間から先に伸び切るので、線は自機側から外へ育って見える
-      - arc.step() // !needsGrowth(打ち切り済み、または先端が requiredEnd に到達済み)なら即 false。中心窓は最初の1歩だけ先端時刻で解決し、以後は前歩の中点窓(carriedSources)を持ち越して rawCenter(刻み幅・重力源用、excludeId で自身を除く)/analyticCenter(外挿・アプシス中心用、解析天体だけの窓から解決)を求める。刻み幅は軌道項(keplerPeriod/ARC_STEPS_PER_REV)・粗化項(span/ARC_MAX_STEPS)・接近項(動径接近率×ARC_APPROACH_SAFETY、中心窓の衝突体を走査)の最も厳しい値を ARC_MIN_STEP_DT で下限にした値。積分の重力源は中点時刻で新たに解決した窓(mid)から attractorsNearInto で絞る
-        - trajectory.step(dt, stepAttractors, bcInv, srpCoeff, null, sampleInterval, span, keplerTail ? analyticCenter : null) // 有限でなければ truncated を立てて終了。有限なら ApsisTrack.observe(prev, next) → reachedBody(prev, next, mid.collision)/burnUpBody で表面到達・焼失を判定し(collision は mu=0 天体と predictedAsPlanCollider entity を含む、excludeId で自身を除く)、mid を carriedSources として持ち越す。計画区間の own な弧は keplerTail=false なので extrapolationCenter は常に null
-    - advanceBudget(entity, ...) // 残り予算(interactive の使い残し込み)を targets 上のカーソル位置から1周ぶん配る(player は優先枠で処理済みなのでここでは飛ばす)。1体の取り分は max(ARC_MIN_ITEM_STEPS, floor(残額 / 残り訪問数)) を残額で頭打ちにした値で、使い残しは次の個体へ回る。ensurePredictedArc が null、または arc.step() が最初から false(needsGrowth=false)の個体は、消費 0 で次へ即進む
+      - arc.step() // !needsGrowth(打ち切り済み、または先端が requiredEnd に到達済み)なら即 false。中心窓は最初の1歩だけ先端時刻で bodies.resolve(tip.t, tip, 0)(ArcBodies、below)して解決し、以後は前歩の中点窓(carriedSources)を持ち越して rawCenter(刻み幅・重力源用 — 自身の除外は ArcBodies が候補からあらかじめ落とすので済み)/analyticCenter(外挿・アプシス中心用、解析天体だけの窓から解決)を求める。刻み幅は軌道項(keplerPeriod/ARC_STEPS_PER_REV)・粗化項(span/ARC_MAX_STEPS)・接近項(動径接近率×ARC_APPROACH_SAFETY、中心窓の衝突体を走査)の最も厳しい値を ARC_MIN_STEP_DT で下限にした値。積分の重力源は中点時刻で bodies.resolve(tip.t + dt/2, tip, dt) が返す窓(mid)の gravity をそのまま使う(分類・近傍絞り込みは経由しない)
+        - trajectory.step(dt, mid.gravity, bcInv, srpCoeff, null, sampleInterval, span, keplerTail ? analyticCenter : null) // 有限でなければ truncated を立てて終了。有限なら ApsisTrack.observe(prev, next) → reachedBody(prev, next, mid.collision)/burnUpBody で表面到達・焼失を判定し(collision は mu=0 天体と predictedAsPlanCollider entity を含む、自身は bodies が候補からあらかじめ除いてある)、mid を carriedSources として持ち越す。計画区間の own な弧は keplerTail=false なので extrapolationCenter は常に null
+    - advanceBudget(entity, ...) // 残り予算(interactive の使い残し込み)を targets 上のカーソル位置から1周ぶん配る(interactiveShip は優先枠で処理済みなのでここでは飛ばす)。1体の取り分は max(ARC_MIN_ITEM_STEPS, floor(残額 / 残り訪問数)) を残額で頭打ちにした値で、使い残しは次の個体へ回る。targets には未来を読まれない個体が入らないので、残り訪問数はその個体数ぶん小さい。ensurePredictedArc が null、または arc.step() が最初から false(needsGrowth=false)の個体は、消費 0 で次へ即進む
   - sections.exit(SECTION.predict)
   - sections.enter(SECTION.plan)
   - targeter.updateEquatorNodes(cameraSystem.overviewMode, displayWindow, ephemeris) // 内部で !overviewMode なら即 return(戦闘ビューでは誰も読まないため)。マップ表示中だけ戦闘ターゲット(aliveTarget)の EqAN/EqDN を求め直す
@@ -239,23 +240,24 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
     // 弾命中を含む剛体接触・姿勢積分はいずれもこの中。simulator が contactPhysics(ContactPhysics)を所有する。
     // 弾も薬莢もデブリも天体も同じ ContactPhysics を通る一本の経路。resolveCollision は advance の内部で
     // simSpeed.canResolvePhysicalCollisions から求める(呼び出し側からは渡さない)
-    - [サブステップごと] ×ceil(simDt / maxStep) // 分割数は simDt と刻み上限のみで決まる(実 fps に依存しない)
-      - adaptiveMaxStep() → adaptiveSimulationMaxStep(生存する艦の state, R_EARTH + REENTRY_SUBSTEP_ALT, SUBSTEP_MAX_DT, REENTRY_SUBSTEP_MAX_DT)
+    - [サブステップごと] ×ceil(simDt / maxStep) // 分割数は simDt と刻み上限のみで決まる(実 fps に依存しない)。上限は SUBSTEP_MAX_COUNT 個で、超える時間送りでは刻み幅の側が伸びる
+      - adaptiveMaxStep(simDt) → adaptiveSimulationMaxStep(生存する艦の state, R_EARTH + REENTRY_SUBSTEP_ALT, max(SUBSTEP_MAX_DT, simDt / SUBSTEP_MAX_COUNT), REENTRY_SUBSTEP_MAX_DT)
         // 走査対象は entities.players と entities.enemies のみ。いずれかが再突入高度以下、または現在の降下率でその境界へ到達しうるとき、そのフレームの刻み上限が REENTRY_SUBSTEP_MAX_DT へ落ちる
       - nextEventTime(activeStage, passiveWarpLod) // activeStage.nextSimulationEventTime(simTime) と、エンティティ側の最小イベント時刻のうち早いものへ subDt を切り詰める
         // ステージ側は毎 substep 引き直す(艦の現在の Δv と加速度から毎回決まる生きた値のため)。エンティティ側(entityEventTime)は固定の絶対時刻なので控えを使い回し、simTime がその時刻へ到達したとき・entities.collectionRevision が変わったとき・passiveWarpLod が切り替わったときだけ全生存エンティティを走査し直す
         // passiveWarpLod 中はまとめ積分に回る個体(Bullet / DebrisPiece)を走査から外すので、その締切では substep 境界が立たない
         - [CreativeStage] ship.planExecution==='instant' なら plan.firstNode()?.t、'powered' なら ship.planExecutor.nextEventTime(ship, simTime)(ゲートが閉じている間は常に null。armed 中は点火予定時刻、burn/trim 中は射影から求めた遮断予定時刻。どちらも対象ノードが targetNode(参照)と一致する間だけ)
-      - substep()
-        - attractorsAt(ephemeris, entities, simTime + dt/2) // サブステップ中点で1回だけ: ephemeris.attractorsAt(t) の mu!==0 部分(gravityBodiesAt)+ entities.attractors()(mu!==0 の生存中 GameEntity)を合流
-        - classifyAttractors(attractors) // 同じく1回だけ: μ の重い順 GRAVITY_ALWAYS_COUNT 本を always へ、残りを SpatialGrid へ分類。しきい値 μ(alwaysThresholdMu)もセル一辺(gridCellSize = √(最重グリッド天体 μ / GRAVITY_NEGLIGIBLE_ACCEL))もこの一覧から毎回導く
+      - attractorsAt(ephemeris, entities, simTime + dt/2) // サブステップ中点で1回だけ: ephemeris.attractorsAt(t) の mu!==0 部分(gravityBodiesAt)+ entities.attractors()(mu!==0 の生存中 GameEntity)を合流。この窓を substep へ渡し、剛体接触を解決しないワープ帯では表面到達判定にも使い回す
+      - substep(subDt, sources, passiveWarpLod)
+        - classifyAttractors(sources) // 同じく1回だけ: μ の重い順 GRAVITY_ALWAYS_COUNT 本を always へ、残りを SpatialGrid へ分類。しきい値 μ(alwaysThresholdMu)もセル一辺(gridCellSize = √(最重グリッド天体 μ / GRAVITY_NEGLIGIBLE_ACCEL))もこの一覧から毎回導く
         - entity.stepActual(dt, attractorsNearInto(entity.state.r, classified, scratch, entity.id)) → actual.step() → stepDynamics()(保持サンプル列への記録)
           // 自機(全隻)・敵・弾・薬莢・デブリ・補給・基地・小惑星それぞれ、個体ごと。alive のみ実行。attractorsNearInto は always + 自身の位置の27近傍グリッドから自分自身の id を除いたもの。それらの重力 + J2 + 大気抵抗(bcInv)+ 自身の thrust
       - nanWatchdog.checkPlayer('simulator.advance(軌道積分)')
       - stepAttitudes(subDt) → stepAttitude() → entity.att へ代入 // 自機・敵・薬莢・デブリ・補給すべて同じ subDt で一律に積分する
       - nanWatchdog.checkPlayer('simulator.advance(姿勢積分)')
-      - [entities.players ごと] p.stepEnvironment(subDt, ephemeris, simTime) // 熱・電力・ラジエータの受動状態
-      - [resolveCollision のみ] contactPhysics.resolveSubstep(simTime, [...entities.all(), ...radiatorFolds], attractorsNow, activeStage)
+      - surfaceBodies(resolveCollision, sources) // 表面を持つ相手として扱う天体。resolveCollision なら終点の全天体窓(ephemeris.attractorsAt(simTime)、mu=0 の表示天体も接触相手)、そうでなければ上の中点重力窓をそのまま
+      - [entities.players ごと] p.stepEnvironment(subDt, ephemeris, simTime, surfaceBodies) // 熱・電力・ラジエータの受動状態。渡された窓から恒星を取り出し、同じ窓を日照率(sunlitFactor)の遮蔽体に使う
+      - [resolveCollision のみ] contactPhysics.resolveSubstep(simTime, [...entities.all(), ...radiatorFolds], surfaceBodies, activeStage)
         // radiatorFolds = entities.players のうち alive なものの p.collisionFolds(simTime)(艦の姿勢・展開度から毎 substep 置き直す放熱板の接触代理)
         - isFiniteParticipant() / isFiniteAttractor() でエンティティ・天体を有限値のものだけへ絞る // 空間グリッドへ入れる前に落とす(NaN セル添字を防ぐ主たるガード)
         - resolveInOrder() // 1 substep 内で TOI 昇順に最大 CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP 件解決。超過分は次回へ持ち越し
@@ -276,7 +278,7 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
       - activeStage.applySimulationEvents(simTime) // simTime がイベント境界ちょうどに到達した substep の直後、接触解決の後
         - [CreativeStage] ship.planExecution==='instant' なら node.t 到達で、simTime 以前の最後のノードを ship.state に据え、plan.consumeNodesUpTo(simTime, そのノード) で消化する(複数ノードを跨いだフレームも一括消費)
         - [CreativeStage] ship.planExecution==='powered' なら ship.planExecutor.applyIgnitionAndCutoff(ship, simTime, simSpeed) // 冒頭で !ship.alive なら stopIfActive して return。armed→burn の点火(ECI 固定の噴射方向 burnDirWorld/burnUpWorld を確定し ship.torque/ship.thrust を立てる)、射影が0を切った遮断(plan.consumeNodesUpTo(node.t, ship.state) で実到達状態へアンカーを差し替え)。噴射ゲートが閉じていれば燃焼ごと中断する
-      - entities.cleanup(subDt, simTime, activeStage, playerPos, attractorsNow) // checkLoss(大気突入・天体表面への幾何的沈み込みのバックストップ)+ prune
+      - entities.cleanup(subDt, simTime, activeStage, playerPos, surfaceBodies) // checkLoss(大気突入・天体表面への幾何的沈み込みのバックストップ)+ prune
     - [resolveCollision && player] contactPhysics.resolveBelt(dt, simTime, player, entities.all(), attractorsAt(simTime), activeStage)
       // ベルトのみサブステップループの外、フレームに1回、実 dt で解決する(BeltPhysics は実 dt を要求する局所シミュレーションで、substep へ持ち込むとワープ時に破綻するため)
       - player.belt.collisionSections(dt, ...) // BeltSection(接触代理)へ変換
@@ -568,29 +570,29 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
   恒星→惑星-衛星系重心→惑星/衛星の合成をゼロから評価する。`attractorsAt` は
   同一 `t` に対して同一の配列参照を返すため、呼び出し側は返り値やその要素を書き換えてはならない。
 - **積分器へ実際に渡す重力源配列は、`Simulator.substep` だけが独自に合流(`gravityBodiesAt` の
-  解析天体 + 生存中の重力天体)→ `classifyAttractors` を行い、`game/simulation/predicted-arc.ts` の
-  `PredictedArc.step`(GameEntity の予測列・計画区間の own な弧のどちらもこの1本を通る)は
-  `game/simulation/future-attractors.ts` の
-  `FutureAttractors`(Game が生成し `Predictor`/`PlanEditor` が参照を共有)へ問い合わせて
-  `.classified` を受け取る。2経路とも最後は `attractorsNearInto`(問い合わせ位置の27近傍グリッド)
-  で絞る。**
-  `Simulator`/`PredictedArc`(`excludeId` が渡っていれば)はここへ積分対象自身の id を渡して除く —
+  解析天体 + 生存中の重力天体)→ `classifyAttractors` → `attractorsNearInto`(問い合わせ位置の
+  27近傍グリッド)で絞る。`game/simulation/predicted-arc.ts` の `PredictedArc.step`(GameEntity の
+  予測列・計画区間の own な弧のどちらもこの1本を通る)は分類を経由しない別の道を通る: 自前で持つ
+  `game/simulation/arc-bodies.ts` の `ArcBodies` へ問い合わせ、候補(`game/simulation/future-attractors.ts`
+  の `FutureAttractors`(Game が生成し `Predictor`/`PlanEditor` が参照を共有)が答えるレジストリ全天体
+  + 生存する動的個体)を毎歩ぜんぶ解決する代わりに、いま効きうる天体だけを成員として保持した窓を
+  受け取る。**
+  `Simulator`/`PredictedArc`(`excludeId` が渡っていれば)は自身の id を渡して候補からあらかじめ除く —
   重力を持つ `GameEntity`(`Asteroid`)が自分自身を引く項を作らないため。計画区間の own な弧が
   積分するのは常に `mu=0` の自機なので、この除外は渡らない(`excludeId` 省略)。
   `substep` はサブステップ中点で1回だけ合流・分類し、その結果をそのサブステップの全エンティティへ
-  使い回す(処理順に依存した誤差を避けるため)。`Predictor` は各対象ごと、伸長する歩の中点時刻
-  (`tip.t + dt/2`)で `FutureAttractors.at(...).classified` を1回だけ読む — 積分に渡す重力源は
-  ここでしか決まらない。中心天体と刻み幅 `dt` を決める窓は別物で、最初の1歩だけ予測先端そのものの
-  時刻(`tip.t`)で `FutureAttractors.at(tip.t).gravity` を分類なしのまま `strongestAttractor` へ
-  渡し(`excludeId` で自分自身だけ除く。1点しか問い合わせないので分類の元が取れない)、2歩目以降は
-  前の歩で解決した中点窓の `.gravity` をそのまま持ち越す(半歩ぶん古いが、そこから決まるのは `dt`
-  と外挿の中心天体だけなので許容する)。`FutureAttractors.at` は引くたびに他の重力天体を引き直す
-  (その時刻に届いていない天体は先端からの二体ケプラー外挿(`GameEntity.displayState` の
-  `ephemeris` 引数)で継ぐ — 現在位置に凍結すると「その時刻に居ない場所」から引くことになるため。
-  外挿もできない天体だけ落ちる)。`at(t)` は解決結果を保持せず毎回組むが、解析天体の窓は1回だけ
-  引いて衝突体と重力源の両方をそこから組むので、同じ時刻の天体位置を二度計算することはない。
-  返した配列は呼び出し側(弧の持ち越し窓)がフレームを跨いで保持してよく、書き換えない契約。
-  3経路とも `Ephemeris` の窓を直接書き換えず、常に新しい配列へ展開する。
+  使い回す(処理順に依存した誤差を避けるため)。`PredictedArc.step` は伸長する歩の中点時刻
+  (`tip.t + dt/2`)で `bodies.resolve(tip.t + dt/2, tip, dt)` を1回だけ呼ぶ — 積分に渡す重力源
+  (`mid.gravity`)はここでしか決まらない。中心天体と刻み幅 `dt` を決める窓は別物で、最初の1歩だけ
+  予測先端そのものの時刻(`tip.t`)で `bodies.resolve(tip.t, tip, 0)` を呼んで `strongestAttractor`
+  へ渡し、2歩目以降は前の歩で解決した中点窓の `.gravity`/`.analyticGravity` をそのまま持ち越す
+  (半歩ぶん古いが、そこから決まるのは `dt` と外挿の中心天体だけなので許容する)。`ArcBodies` は
+  成員でない候補まで毎歩ぜんぶ解決し直しはしない — 各候補は「最短でもこの時刻までは効き得ない」
+  期限(`nextVisitT`)を持ち、その時刻が来るまで成員判定を省く。その時刻に届いていない動的個体は
+  先端からの二体ケプラー外挿(`GameEntity.displayState` の `ephemeris` 引数)で継ぐ — 現在位置に
+  凍結すると「その時刻に居ない場所」から引くことになるため。外挿もできない個体だけ成員から落ちる。
+  `resolve` が返す配列は呼び出し側(弧の持ち越し窓)がフレームを跨いで保持してよく、書き換えない
+  契約。3経路とも `Ephemeris` の窓を直接書き換えず、常に新しい配列へ展開する。
 - **HUD マーカーは持ち主の `sync` が自分で出す**。`MarkerManager` が own するのは、1つの対象では
   決められない2集合(`combatMarkers` = 画面上のまとめ、`leadMarkers` = 自機と敵の両方に依存)だけで、
   どちらも `game.sync` から直接は呼ばれない — `targeter.syncTargetMarkers` が自機・敵の対象集合

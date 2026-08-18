@@ -71,18 +71,23 @@ export class Simulator {
     // 相互作用を起こさない。これらだけを最後に一度まとめて積分し、高warpのS倍走査を避ける。
     const passiveWarpLod = !resolveCollision && simDt > C.SUBSTEP_MAX_DT;
     while (this.simTime < targetTime - 1e-9) {
-      const maxStep = this.adaptiveMaxStep();
+      const maxStep = this.adaptiveMaxStep(simDt);
       const eventTime = this.nextEventTime(activeStage, passiveWarpLod);
       const subDt = simulationStepDuration(this.simTime, targetTime, maxStep, eventTime);
       // 浮動小数点の丸めでゼロ刻みになったイベントは現在時刻で消費して前進を保証する。
       if (subDt <= 1e-9) {
         activeStage.applySimulationEvents(this.simTime);
-        this.entities.cleanup(0, this.simTime, activeStage, player?.state.r ?? v3(), this.ephemeris.attractorsAt(this.simTime));
+        const surfaceBodies = this.surfaceBodies(resolveCollision, attractorsAt(this.ephemeris, this.entities, this.simTime));
+        this.entities.cleanup(0, this.simTime, activeStage, player?.state.r ?? v3(), surfaceBodies);
         continue;
       }
 
       this.sections.enter(SECTION.orbit);
-      this.simTime = this.substep(this.simTime, subDt, passiveWarpLod);
+      // 重力源はこのサブステップの中点で1回だけ組み、全エンティティで使い回す。
+      const sources = attractorsAt(this.ephemeris, this.entities, this.simTime + subDt / 2);
+      this.lastGravitySourceCount = sources.length;
+      this.substep(subDt, sources, passiveWarpLod);
+      this.simTime += subDt;
       this.sections.exit(SECTION.orbit);
       this.lastSubsteps++;
       nanWatchdog.checkPlayer('simulator.advance(軌道積分)', player, this.simTime, dt, subDt);
@@ -90,8 +95,10 @@ export class Simulator {
       this.stepAttitudes(subDt, passiveWarpLod);
       this.sections.exit(SECTION.attitude);
       nanWatchdog.checkPlayer('simulator.advance(姿勢積分)', player, this.simTime, dt, subDt);
-      for (const p of this.entities.players) p.stepEnvironment(subDt, this.ephemeris, this.simTime);
-      const attractorsNow = this.ephemeris.attractorsAt(this.simTime);
+      const surfaceBodies = this.surfaceBodies(resolveCollision, sources);
+      for (const p of this.entities.players) {
+        p.stepEnvironment(subDt, this.ephemeris, this.simTime, surfaceBodies);
+      }
       if (resolveCollision) {
         // 放熱板の折りは EntityManager に登録された実体ではなく、艦の姿勢から毎 substep
         // 置き直す接触代理なので、参加者リストへこの場で合流させる。
@@ -103,16 +110,16 @@ export class Simulator {
         }
         this.sections.enter(SECTION.contact);
         this.contactPhysics.resolveSubstep(
-          this.simTime, this.contactEntitiesScratch, attractorsNow, activeStage);
+          this.simTime, this.contactEntitiesScratch, surfaceBodies, activeStage);
         this.sections.exit(SECTION.contact);
         nanWatchdog.checkPlayer('simulator.advance(接触)', player, this.simTime, dt, subDt);
       }
       activeStage.applySimulationEvents(this.simTime);
       // 期限切れ弾が同じsubstepの接触解決へ進まないよう、既知境界の直後に回収する。
-      this.entities.cleanup(subDt, this.simTime, activeStage, player?.state.r ?? v3(), attractorsNow);
+      this.entities.cleanup(subDt, this.simTime, activeStage, player?.state.r ?? v3(), surfaceBodies);
     }
 
-    if (passiveWarpLod) this.stepPassiveWarpEntities(this.ephemeris.attractorsAt(this.simTime));
+    if (passiveWarpLod) this.stepPassiveWarpEntities(attractorsAt(this.ephemeris, this.entities, this.simTime));
 
     // ベルトは実dtで解く艦にくっついた局所シミュレーションなので、substepループの外で
     // フレームに1回だけ解決する。
@@ -128,8 +135,10 @@ export class Simulator {
     this.lastSimDt = simDt;
   }
 
-  // 生存する艦の高度から今フレームのサブステップ上限 [s] を求める。
-  private adaptiveMaxStep(): number {
+  // 生存する艦の高度と、このフレームの時間送り simDt から、今フレームのサブステップ上限 [s]
+  // を求める。simDt 由来の下駄は通常時の上限へ掛ける — 返り値へ掛けると再突入中の 1s 上限まで
+  // 押し上げてしまい、再突入優先が壊れる。
+  private adaptiveMaxStep(simDt: number): number {
     this.adaptiveStatesScratch.length = 0;
     // 加熱・動圧の積分結果が存続を左右し、その帰結をプレイヤーが観測するのは艦だけ。
     // 他の種別は大気圏に入れば失われるだけで、いつどれだけの精度で失われるかはプレイの結果を変えない。
@@ -142,7 +151,7 @@ export class Simulator {
     return adaptiveSimulationMaxStep(
       this.adaptiveStatesScratch,
       R_EARTH + C.REENTRY_SUBSTEP_ALT,
-      C.SUBSTEP_MAX_DT,
+      Math.max(C.SUBSTEP_MAX_DT, simDt / C.SUBSTEP_MAX_COUNT),
       C.REENTRY_SUBSTEP_MAX_DT,
     );
   }
@@ -183,20 +192,25 @@ export class Simulator {
     return next;
   }
 
-  // 全エンティティを dt だけ積分する。重力源はこのステップの中点(t + dt/2)で1回だけ組み、
-  // 空間グリッドへ分類してから全エンティティで使い回す — 各自が積分後の新しい位置を読みに
-  // 行くと、本来対称であるべき相互作用に処理順依存の誤差が入る。各エンティティは自身の位置の
-  // 27近傍グリッドを自分自身を除いて引き直すだけで、分類そのものはこのステップで1回 —
+  // このサブステップで表面を持つ相手として扱う天体。剛体接触を解決するワープ帯では、接触解決の
+  // ために組む終点の全天体窓(mu=0 の表示天体も相手になる)をそのまま使い、解決しないワープ帯
+  // では消費者が表面到達判定だけなので、積分のために組んだ中点の重力窓 gravityBodies を使い回す。
+  // 後者では mu=0 の表示天体36体への再突入判定を失い、代わりに動的重力源(小惑星)が相手に加わる。
+  private surfaceBodies(resolveCollision: boolean, gravityBodies: readonly Attractor[]): readonly Attractor[] {
+    return resolveCollision ? this.ephemeris.attractorsAt(this.simTime) : gravityBodies;
+  }
+
+  // 全エンティティを、渡された重力源 sources に対して dt だけ積分する。sources は呼び出し側が
+  // このステップの中点で1回だけ組んだもので、全エンティティがそれを共有する — 各自が積分後の
+  // 新しい位置を読みに行くと、本来対称であるべき相互作用に処理順依存の誤差が入る。各エンティティは
+  // 自身の位置の27近傍グリッドを自分自身を除いて引き直すだけで、分類そのものはこのステップで1回 —
   // 除外は各自の取り出し結果にしか効かないので、A から見た B・B から見た A はどちらも
   // このステップで組んだ同じ classified から引いたままで、対称性は崩れない。
-  // 積分後の simTime を返す。
   private substep(
-    simTime: number,
     dt: number,
+    sources: readonly Attractor[],
     passiveWarpLod: boolean,
-  ): number {
-    const sources = attractorsAt(this.ephemeris, this.entities, simTime + dt / 2);
-    this.lastGravitySourceCount = sources.length;
+  ): void {
     const classified = classifyAttractors(sources);
     for (const e of this.entities.all()) {
       if (passiveWarpLod && this.isPassiveWarpEntity(e)) continue;
@@ -205,8 +219,6 @@ export class Simulator {
       e.stepActual(dt, attractorsNearInto(e.state.r, classified, this.nearbyAttractorsScratch, selfId));
       this.lastOrbitSteps++;
     }
-
-    return simTime + dt;
   }
 
   // 軌道積分と同じ刻み幅 simDt で全エンティティの姿勢を進める。
