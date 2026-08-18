@@ -77,10 +77,10 @@ export function desaturationActive(momentum: Vec3, wheel: WheelSpec | null, acti
   return active ? ratio > DESATURATION_STOP_RATIO : ratio > DESATURATION_START_RATIO;
 }
 
-// アンローディング中にフライホイールへ与える減速トルク [N·m]。蓄積角運動量と同じ向きを持ち、
-// このトルクを出すあいだ dh/dt = −τ_wheel によって蓄積が減る。dt でこの刻みの排出量が
-// 蓄積を超えないよう頭打ちにするので、0 を跨いで逆向きに溜まることはない。
-export function desaturationTorque(momentum: Vec3, wheel: WheelSpec, dt: number): Vec3 {
+// アンローディングが目指す排出の速さ [N·m]。蓄積角運動量と同じ向きを持ち、この大きさの外部
+// トルクを蓄積と逆向きに出せた分だけ蓄積が減る。dt でこの刻みの排出量が蓄積を超えないよう
+// 頭打ちにするので、0 を跨いで逆向きに溜まることはない。
+export function desaturationDirection(momentum: Vec3, wheel: WheelSpec, dt: number): Vec3 {
   const h = len(momentum);
   if (!(h > 0)) return v3();
   const rate = Math.min(wheel.maxTorque, h / DESATURATION_TIME_CONSTANT, dt > 0 ? h / dt : Infinity);
@@ -114,26 +114,35 @@ export function allocateControl(
 ): Allocation {
   const { wheel, magnetorquer } = actuators;
 
-  let wheelTorque = v3();
   let magneticMoment = v3();
   let magneticTorque = v3();
+  let wheelTorque = v3();
+  let thrusterForces: readonly number[];
 
   if (desaturating && wheel) {
-    wheelTorque = desaturationTorque(momentum, wheel, dt);
+    // 排出したい外部トルクを要求へ上乗せし、磁気トルカ → RCS の順に出せるだけ出す。
+    // ホイールの指令は「要求から、実際に出た外部トルクを引いた残り」に決まる — 蓄積角運動量が
+    // 減るのは外部トルクが出た分だけであり、出なかったぶんまで減らすと角運動量が消えてしまう。
+    const dump = scale(desaturationDirection(momentum, wheel, dt), -1);
+    const externalTarget = add(request.torque, dump);
     magneticMoment = magnetorquer
-      ? magneticMomentFor(sub(request.torque, wheelTorque), field, magnetorquer.maxMagneticMoment)
+      ? magneticMomentFor(externalTarget, field, magnetorquer.maxMagneticMoment)
       : v3();
     magneticTorque = cross(magneticMoment, field);
+    thrusterForces = allocateThrusters(
+      actuators.thrusters, request.force, sub(externalTarget, magneticTorque));
+    const external = add(magneticTorque, wrenchOf(actuators.thrusters, thrusterForces).torque);
+    wheelTorque = clampWheelTorque(sub(request.torque, external), wheel, momentum, dt);
   } else {
     magneticMoment = magnetorquer
       ? magneticMomentFor(request.torque, field, magnetorquer.maxMagneticMoment)
       : v3();
     magneticTorque = cross(magneticMoment, field);
     if (wheel) wheelTorque = clampWheelTorque(sub(request.torque, magneticTorque), wheel, momentum, dt);
+    thrusterForces = allocateThrusters(
+      actuators.thrusters, request.force, sub(sub(request.torque, magneticTorque), wheelTorque));
   }
 
-  const residual = sub(sub(request.torque, magneticTorque), wheelTorque);
-  const thrusterForces = allocateThrusters(actuators.thrusters, request.force, residual);
   const thrusterWrench = wrenchOf(actuators.thrusters, thrusterForces);
 
   const powerDraw =

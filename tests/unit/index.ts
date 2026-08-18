@@ -1,6 +1,7 @@
 // DOM/THREE 非依存のゲームロジックの回帰テスト エントリポイント。
 // `npm run test:unit` から tsconfig.test.json でコンパイル後、これを node 実行する。
 import { runAll } from '../physics/harness';
+import { register as registerAttitudeControl } from './attitude-control.test';
 import { register as registerBlueprint } from './blueprint-validation.test';
 import { register as registerCapabilities } from './capabilities.test';
 import { register as registerCommCoverage, registerInitialCoverage } from './comm-coverage.test';
@@ -17,6 +18,7 @@ registerResourceClosure();
 registerCapabilities();
 registerVesselParts();
 registerMassProperties();
+registerAttitudeControl();
 registerHeatShield();
 registerBlueprint();
 registerCommCoverage();
