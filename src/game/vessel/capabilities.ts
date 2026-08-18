@@ -42,7 +42,7 @@ export function hasBaseModule(vessel: CapabilityVessel): boolean {
 
 // 主機を持つ。
 export function hasEngine(vessel: CapabilityVessel): boolean {
-  return hasWorkingPart(vessel, 'thruster');
+  return hasWorkingPart(vessel, 'engine');
 }
 
 // 健全な通信モジュールのうち最も遠くまで届く到達距離 [m]。1つも無ければ 0。

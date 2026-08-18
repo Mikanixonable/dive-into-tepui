@@ -267,9 +267,10 @@ export interface PartCatalogEntry {
   readonly props: Record<string, number | string>;
 }
 
-// 既定パーツ(game-entity/ship.ts の initDefaultParts)と同じ単位・同じ桁で書く。
+// 既定パーツ(vessel/vessel-parts.ts の crewedParts)と同じ単位・同じ桁で書く。
 // 桁がずれると、換装した瞬間に推力や耐久が別物になる。既定艦の値は
-// 重量 100 / 推力 PLAYER_MASS×最大スロットル / 冷却 25 / 発電 50 / 発射レート 1÷FIRE_INTERVAL。
+// 重量 100 / 推力 PLAYER_MASS×最大スロットル / 放熱面積 25 / 受光面積 SOLAR_PANEL_AREA÷2 /
+// 発射レート 1÷FIRE_INTERVAL。
 const DEFAULT_TORQUE = C.MAX_ANG_ACCEL * Math.max(C.PLAYER_INERTIA_PITCH, C.PLAYER_INERTIA_YAW, C.PLAYER_INERTIA_ROLL);
 const DEFAULT_THRUST = C.PLAYER_MASS * C.THROTTLE_LEVELS[C.THROTTLE_LEVELS.length - 1]!;
 const SHOP_CATALOG: readonly PartCatalogEntry[] = [
@@ -278,16 +279,18 @@ const SHOP_CATALOG: readonly PartCatalogEntry[] = [
   { type: 'cockpit', name: 'Basic Cockpit', price: 3000, weight: 100, maxHp: 100, props: {} },
   { type: 'armor', name: 'Light Armor', price: 2000, weight: 100, maxHp: 100, props: { damageReduction: 0.2 } },
   { type: 'armor', name: 'Heavy Armor', price: 8000, weight: 260, maxHp: 250, props: { damageReduction: 0.4 } },
-  { type: 'thruster', name: 'Standard RCS', price: 4000, weight: 100, maxHp: 80, props: { torque: DEFAULT_TORQUE, thrust: DEFAULT_THRUST, fuelConsumptionRate: 1 } },
-  { type: 'thruster', name: 'High-Thrust RCS', price: 10000, weight: 220, maxHp: 80, props: { torque: DEFAULT_TORQUE * 2, thrust: DEFAULT_THRUST * 2.5, fuelConsumptionRate: 2.5 } },
+  { type: 'engine', name: 'Standard Engine', price: 4000, weight: 100, maxHp: 80, props: { thrust: DEFAULT_THRUST, specificImpulse: 320, fuelConsumptionRate: 1 } },
+  { type: 'engine', name: 'High-Thrust Engine', price: 10000, weight: 220, maxHp: 80, props: { thrust: DEFAULT_THRUST * 2.5, specificImpulse: 300, fuelConsumptionRate: 2.5 } },
+  { type: 'flywheel', name: 'Reaction Wheel', price: 4000, weight: 100, maxHp: 80, props: { maxTorque: DEFAULT_TORQUE, maxAngularMomentum: 400, powerDraw: 60 } },
+  { type: 'flywheel', name: 'Large Reaction Wheel', price: 10000, weight: 220, maxHp: 80, props: { maxTorque: DEFAULT_TORQUE * 2, maxAngularMomentum: 900, powerDraw: 140 } },
   { type: 'rcs_tank', name: 'Small RCS Tank', price: 1500, weight: 60, maxHp: 50, props: { maxFuel: 600, fuel: 600 } },
   { type: 'rcs_tank', name: 'Large RCS Tank', price: 4000, weight: 210, maxHp: 110, props: { maxFuel: 2200, fuel: 2200 } },
-  { type: 'radiator', name: 'Heat Radiator', price: 3000, weight: 100, maxHp: 50, props: { coolingRate: 25 } },
-  { type: 'radiator', name: 'Advanced Radiator', price: 7000, weight: 160, maxHp: 60, props: { coolingRate: 55 } },
-  { type: 'solar_panel', name: 'Solar Array', price: 2500, weight: 100, maxHp: 30, props: { powerGeneration: 50 } },
-  { type: 'solar_panel', name: 'High-Efficiency Solar', price: 6000, weight: 130, maxHp: 30, props: { powerGeneration: 120 } },
-  { type: 'weapon', name: 'Gatling Gun', price: 5000, weight: 100, maxHp: 80, props: { weaponType: 'gatling', fireRate: 1 / C.FIRE_INTERVAL, damage: C.ENEMY_BULLET_DAMAGE, muzzleVelocity: C.MUZZLE_SPEED } },
-  { type: 'weapon', name: 'Heavy Cannon', price: 15000, weight: 220, maxHp: 120, props: { weaponType: 'cannon', fireRate: 4, damage: C.ENEMY_BULLET_DAMAGE * 5, muzzleVelocity: C.MUZZLE_SPEED * 1.5 } },
+  { type: 'radiator', name: 'Heat Radiator', price: 3000, weight: 100, maxHp: 50, props: { area: C.RADIATOR_COOLING_AREA / 2, efficiency: C.RADIATOR_EFFICIENCY_MULT } },
+  { type: 'radiator', name: 'Advanced Radiator', price: 7000, weight: 160, maxHp: 60, props: { area: C.RADIATOR_COOLING_AREA, efficiency: C.RADIATOR_EFFICIENCY_MULT } },
+  { type: 'solar_panel', name: 'Solar Array', price: 2500, weight: 100, maxHp: 30, props: { area: C.SOLAR_PANEL_AREA / 2, efficiency: C.SOLAR_PANEL_EFFICIENCY } },
+  { type: 'solar_panel', name: 'High-Efficiency Solar', price: 6000, weight: 130, maxHp: 30, props: { area: C.SOLAR_PANEL_AREA / 2, efficiency: C.SOLAR_PANEL_EFFICIENCY * 1.4 } },
+  { type: 'weapon', name: 'Gatling Gun', price: 5000, weight: 100, maxHp: 80, props: { weaponType: 'gatling', fireRate: 1 / C.FIRE_INTERVAL, damage: C.ENEMY_BULLET_DAMAGE, muzzleVelocity: C.MUZZLE_SPEED, feedRate: 1 / C.FIRE_INTERVAL } },
+  { type: 'weapon', name: 'Heavy Cannon', price: 15000, weight: 220, maxHp: 120, props: { weaponType: 'cannon', fireRate: 4, damage: C.ENEMY_BULLET_DAMAGE * 5, muzzleVelocity: C.MUZZLE_SPEED * 1.5, feedRate: 4 } },
 ];
 
 // 修理コスト: 1HPあたりのクレジット
@@ -328,14 +331,36 @@ const PART_TYPE_LABELS: Readonly<Record<PartType, string>> = {
   hull: '船体',
   cockpit: '操縦区画',
   armor: '装甲',
-  thruster: 'RCS 推進器',
-  rcs_tank: 'RCS タンク',
-  radiator: '放熱器',
-  solar_panel: '太陽電池',
   weapon: '武装',
-  base_module: '基地モジュール',
+  engine: '主機',
+  rcs_thruster: 'RCS スラスタ',
+  solar_panel: '太陽電池',
+  radiator: '放熱器',
+  combat_shield: '戦闘用シールド',
+  heat_shield: '熱シールド',
   communication: '通信モジュール',
+  robot_arm: 'ロボットアーム',
+  docking_port: 'ドッキングポート',
+  container_coupling: 'コンテナ接合部',
+  oxidizer_tank: '酸化剤タンク',
+  reductant_tank: '還元剤タンク',
+  pressurant_tank: '加圧ガスタンク',
+  rcs_tank: 'RCS タンク',
+  water_tank: '水タンク',
+  battery: 'バッテリー',
+  fuel_cell: '燃料電池',
+  rtg: '原子力電池',
   autopilot: '自動操縦装置',
+  magazine: '弾薬庫',
+  ammunition: '弾薬',
+  plumbing: '配管',
+  payload_bay: 'ペイロード倉庫',
+  flywheel: 'フライホイール',
+  magnetorquer: '磁気トルカ',
+  base_module: '基地モジュール',
+  farm: '農場',
+  life_support: '生命維持装置',
+  dock: 'ドック',
 };
 
 function formatPartMeta(part: Part): string {
@@ -352,8 +377,13 @@ function formatCatalogProperty(name: string, value: number | string): string {
     case 'fuelConsumptionRate': return `燃料消費 ${value} kg/s`;
     case 'maxFuel': return `燃料容量 ${Number(value).toLocaleString()} kg`;
     case 'fuel': return `初期燃料 ${Number(value).toLocaleString()} kg`;
-    case 'coolingRate': return `冷却性能 ${value}`;
-    case 'powerGeneration': return `発電 ${Number(value).toLocaleString()} W`;
+    case 'area': return `面積 ${Number(value).toLocaleString()} m²`;
+    case 'efficiency': return `効率 ${Math.round(Number(value) * 100)} %`;
+    case 'specificImpulse': return `比推力 ${value} s`;
+    case 'maxTorque': return `トルク ${Number(value).toLocaleString()} N·m`;
+    case 'maxAngularMomentum': return `蓄積角運動量 ${Number(value).toLocaleString()} N·m·s`;
+    case 'powerDraw': return `消費電力 ${Number(value).toLocaleString()} W`;
+    case 'feedRate': return `給弾要求 ${value} 発/s`;
     case 'weaponType': {
       const weaponTypeLabel = value === 'gatling' ? 'ガトリング' : value === 'cannon' ? 'キャノン' : value;
       return `武器形式 ${weaponTypeLabel}`;

@@ -5,11 +5,13 @@ import { register as registerCapabilities } from './capabilities.test';
 import { register as registerProducibility } from './producibility.test';
 import { register as registerResource } from './resource.test';
 import { register as registerResourceClosure } from './resource-closure.test';
+import { register as registerVesselParts } from './vessel-parts.test';
 
 registerResource();
 registerProducibility();
 registerResourceClosure();
 registerCapabilities();
+registerVesselParts();
 
 runAll().catch((error) => {
   console.error(error);

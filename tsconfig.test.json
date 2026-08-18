@@ -41,6 +41,7 @@
     "src/game/economy/producibility.ts",
     "src/game/vessel/capabilities.ts",
     "src/game/vessel/vessel-parts.ts",
+    "src/game/vessel/part-inventory.ts",
     "tests/physics/**/*.ts",
     "tests/unit/**/*.ts"
   ]
