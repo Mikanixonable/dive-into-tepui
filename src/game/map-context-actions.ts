@@ -85,7 +85,7 @@ export class MapContextActions {
     private readonly simSpeedManager: SimSpeedManager,
     private readonly pauseMenu: PauseMenu,
     private readonly pickables: MapPickables,
-    private readonly activePlayers: ActiveVesselController,
+    private readonly activeVessels: ActiveVesselController,
     private readonly frameControls: FrameControls,
     private readonly activeStage: Stage,
     private readonly targeter: Targeter,
@@ -210,7 +210,7 @@ export class MapContextActions {
       if (target.kind === 'player') {
         const ship = this.entities.findOwnShip(target.id);
         if (ship) {
-          this.activePlayers.set(ship);
+          this.activeVessels.set(ship);
           this.hud.hint(`${target.name} を操作対象に設定`);
         }
       }
@@ -248,7 +248,7 @@ export class MapContextActions {
     this.menu.open(clientX, clientY, target, this.itemsFor(target, simTime));
   }
 
-  // 戦闘ビューの右クリック。カメラの視点・画角・実体サイズ(Vessel 100m / Vessel 90m / Vessel 5m)から
+  // 戦闘ビューの右クリック。カメラの視点・画角・実体サイズ(基地 100m / 敵機 90m / 自機 5m)から
   // 画面上の視覚半径を正確に求め、機体・基地の表示領域へのヒット判定を行う。
   // ヒットしなかった場合(背景・空域)は空域設定メニューを開く。
   handleCombatRightClick(
@@ -505,7 +505,7 @@ export class MapContextActions {
     'player': {
       itemsFor: (target, simTime) => {
         const ship = this.entities.findOwnShip(target.id);
-        const activeShip = this.activePlayers.current;
+        const activeShip = this.activeVessels.current;
         const isActive = ship === activeShip;
         const activate: readonly MenuItem<MenuAction>[] = [
           isActive ? { label: '操作対象を解除', act: 'deactivate' } : { label: '操作対象にする', act: 'activate' },
@@ -539,7 +539,7 @@ export class MapContextActions {
         ];
       },
       run: (act, target) => {
-        const activeShip = this.activePlayers.current;
+        const activeShip = this.activeVessels.current;
         const ship = this.entities.findOwnShip(target.id);
         if (act === 'dock') {
           if (activeShip && ship) this.docking?.dockTo(activeShip, ship);
@@ -548,9 +548,9 @@ export class MapContextActions {
         } else if (act === 'transferResources') {
           if (activeShip && ship) this.docking?.openTransfer(activeShip, ship);
         } else if (act === 'activate') {
-          if (ship) this.activePlayers.set(ship);
+          if (ship) this.activeVessels.set(ship);
         } else if (act === 'deactivate') {
-          if (ship === this.activePlayers.current) this.activePlayers.setOrNull(null);
+          if (ship === this.activeVessels.current) this.activeVessels.setOrNull(null);
         } else if (act === 'planExecCycle') {
           if (ship) {
             const next = PLAN_EXECUTION_MODES[(PLAN_EXECUTION_MODES.indexOf(ship.planExecution) + 1) % PLAN_EXECUTION_MODES.length]!;
@@ -559,7 +559,7 @@ export class MapContextActions {
         } else if (act === 'duplicate') {
           this.runDuplicate(target);
         } else if (act === 'delete') {
-          if (ship) this.activePlayers.remove(ship);
+          if (ship) this.activeVessels.remove(ship);
         } else if (act === 'targetPrimary' || act === 'targetSecondary') {
           this.runTargetLock(act, ship);
         } else {
@@ -590,8 +590,8 @@ export class MapContextActions {
     'base': {
       itemsFor: (target) => {
         const base = this.entities.findBaseVessel(target.id);
-        const activeShip = this.activePlayers.current;
-        const isControlled = base !== null && this.activePlayers.current === base;
+        const activeShip = this.activeVessels.current;
+        const isControlled = base !== null && this.activeVessels.current === base;
         const subLabel = base
           ? `基地 / 所持金: ${base.baseState!.money.toLocaleString()} Cr / 格納艦艇: ${base.baseState!.dockedVessels.length}隻`
           : '基地';
@@ -626,11 +626,11 @@ export class MapContextActions {
       },
       run: (act, target) => {
         const base = this.entities.findBaseVessel(target.id);
-        const activeShip = this.activePlayers.current;
+        const activeShip = this.activeVessels.current;
         if (act === 'activate') {
-          if (base) this.activePlayers.set(base);
+          if (base) this.activeVessels.set(base);
         } else if (act === 'deactivate') {
-          if (base && this.activePlayers.current === base) this.activePlayers.setOrNull(null);
+          if (base && this.activeVessels.current === base) this.activeVessels.setOrNull(null);
         } else if (act === 'dock') {
           if (activeShip && base) this.docking?.dockTo(activeShip, base);
         } else if (act === 'undock') {
@@ -641,7 +641,7 @@ export class MapContextActions {
           if (activeShip && base) this.docking?.openTransfer(activeShip, base);
         } else if (act === 'delete') {
           if (base) {
-            if (this.activePlayers.current === base) this.activePlayers.setOrNull(null);
+            if (this.activeVessels.current === base) this.activeVessels.setOrNull(null);
             this.docking?.clearActiveBaseIf(base);
             base.alive = false;
           }
@@ -817,7 +817,7 @@ export class MapContextActions {
     if (!ship) return [];
     return [
       {
-        key: 'operated', label: '操作対象か', value: ship === this.activePlayers.current ? 'はい' : 'いいえ', collapsible: true,
+        key: 'operated', label: '操作対象か', value: ship === this.activeVessels.current ? 'はい' : 'いいえ', collapsible: true,
       },
       { key: 'follow', label: '計画実行', value: planExecutionLabel(ship.planExecution), collapsible: true },
       { key: 'hp', label: '装甲', value: `${Math.floor(ship.hp)} / ${ship.maxHp}` },
@@ -856,7 +856,7 @@ export class MapContextActions {
   private baseRows(target: MapPickable, attractors: readonly Attractor[], player: Vessel | null): PropertyRow[] {
     const base = this.entities.findBaseVessel(target.id);
     if (!base) return [];
-    const isControlled = this.activePlayers.current === base;
+    const isControlled = this.activeVessels.current === base;
     const rows: PropertyRow[] = [
       { key: 'operated', label: '操作対象か', value: isControlled ? 'はい' : 'いいえ', collapsible: true },
       { key: 'money', label: '所持金', value: `${base.baseState!.money.toLocaleString()} Cr` },

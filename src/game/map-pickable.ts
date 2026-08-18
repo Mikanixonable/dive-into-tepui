@@ -25,7 +25,7 @@ export interface MapPickable {
   // 一覧での表示順の優先度。小さいほど先に出る。同値なら distance 順。
   readonly priority?: number;
   readonly inFocusedSystem?: boolean;
-  // このノード/オブジェクトが属するエンティティ名 (例: "Vessel-1", "Vessel-1")
+  // このノード/オブジェクトが属するエンティティ名 (例: "vessel-1", "base-1")
   readonly ownerName?: string;
   // 表示上のラベル衝突で隠された対象は、ダブルクリックのフォーカス候補からも外す。
   // 他種別では未指定(true扱い)にする。

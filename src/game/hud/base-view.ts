@@ -407,11 +407,11 @@ export class BaseView {
     titleGroup.className = 'dock-title-group';
     const kicker = document.createElement('span');
     kicker.className = 'dock-kicker';
-    kicker.textContent = 'Vessel operations';
+    kicker.textContent = 'Base operations';
     const title = document.createElement('h1');
     title.id = 'base-view-title';
     title.className = 'dock-title';
-    title.textContent = 'Vessel';
+    title.textContent = 'Base';
     const subtitle = document.createElement('span');
     subtitle.className = 'dock-subtitle';
     subtitle.textContent = '艦の整備、補給、調達';
@@ -566,7 +566,7 @@ export class BaseView {
     frag.appendChild(this.buildSectionHeader(
       '格納艦艇',
       '発進する艦を選択するか、整備画面で搭載部品を確認します。',
-      `${ships.length} / ${C.BASE_MAX_VESSELS} 隻`,
+      `${ships.length} / ${base.dockCapacity} 隻`,
     ));
     if (ships.length === 0) {
       const empty = document.createElement('div');
@@ -628,14 +628,14 @@ export class BaseView {
 
   // 新造(既定パーツ一式の艦を1隻、格納艦へ加える)行。
   private buildNewVesselHeader(base: Vessel): HTMLElement {
-    const isFull = base.baseState!.dockedVessels.length >= C.BASE_MAX_VESSELS;
+    const isFull = base.baseState!.dockedVessels.length >= base.dockCapacity;
     const canAfford = !isFull && (this.freeProcurement || base.baseState!.money >= NEW_VESSEL_COST);
     const row = document.createElement('div');
     row.className = 'dock-parts-header';
     const label = document.createElement('span');
     label.className = 'dock-ship-label';
     label.textContent = isFull
-      ? `基地のドックが満杯です (最大 ${C.BASE_MAX_VESSELS} 隻)`
+      ? `基地のドックが満杯です (最大 ${base.dockCapacity} 隻)`
       : '既定構成の艦艇を新造して格納庫へ追加します。';
     row.appendChild(label);
     const btn = new Button(

@@ -585,13 +585,11 @@ export const PLAYER_BULLET_DAMAGE = 1.25; // 自機が被弾(自弾・プラズ�
 export const ENEMY_BULLET_DAMAGE = 1; // 既定の機関砲が 1 発で与えるダメージ [HP]。武器部品の damage の初期値
 
 // --- 剛体接触による装甲ダメージ(Vessel.collideWith が Δv = impulse/mass に適用) ---
-// 艦同士(Vessel 1000kg ⇔ Vessel 10000kg、反発係数 e=0.4)の接触で、Vessel 側が受ける Δv が
-// 旧来の接触速度(法線相対速度 |vn|)しきい値と同じ場面で立つよう逆算した値。
-// Δv_self = impulse/mass_self = (1+e)·(mOther/(mSelf+mOther))·|vn| なので、
-// 換算係数 (1+e)·mEnemy/(mPlayer+mEnemy) = 1.4·10000/11000 ≒ 1.2727 を旧しきい値へ掛けている。
-// 質量が10倍の Vessel は同じ接触で受ける Δv が約1/10に留まるため、ラミングでの被害は Vessel 側が
-// 相対的に軽くなる — これは Δv 化が意図する「重いほど衝撃を受けにくい」という物理そのものであり、
-// 意図した挙動変化として扱う。
+// 自機(1000kg)と敵機(10000kg、反発係数 e=0.4)が接触したとき、自機が受ける Δv が接触速度
+// (法線相対速度 |vn|)のしきい値と同じ場面で立つよう逆算した値。
+// Δv_self = impulse/mass_self = (1+e)·(m_other/(m_self+m_other))·|vn| なので、
+// 換算係数 (1+e)·m_enemy/(m_player+m_enemy) = 1.4·10000/11000 ≒ 1.2727 を |vn| のしきい値へ掛ける。
+// 質量が10倍の敵機は同じ接触で受ける Δv が約1/10に留まり、ラミングでの被害が相対的に軽くなる。
 export const COLLISION_DAMAGE_MIN_DV = 700 / 11; // ≈ 63.6 m/s
 export const COLLISION_DAMAGE_FULL_DV = 7000 / 11; // ≈ 636.4 m/s
 export const PLASMA_BULLET_SPEED = MUZZLE_SPEED * 2 / 3; // MUZZLE_SPEED の 2/3

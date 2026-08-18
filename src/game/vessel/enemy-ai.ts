@@ -38,23 +38,23 @@ function sunGlareSpreadScale(pos: Vec3, aimDir: Vec3, sunDir: Vec3): number {
 
 export class EnemyAi {
   // 実行時状態(遅延初期化)。未設定 = まだその状態に入っていない
-  lastFireSim?: number; // 最後に発砲判定した時刻。初回は発砲タイミングをずらすため遅延初期化
-  burstLeft?: number; // バースト射撃の残弾
-  burstDelay?: number; // 次のバースト弾までの残り時間
+  public lastFireSim?: number; // 最後に発砲判定した時刻。初回は発砲タイミングをずらすため遅延初期化
+  public burstLeft?: number; // バースト射撃の残弾
+  public burstDelay?: number; // 次のバースト弾までの残り時間
   private lastBehaviorSim?: number;
-  // false の間はこの機体が射撃を行わない。移動・AI の他の判定には影響しない。
-  fireEnabled = true;
+  // 射撃の可否。false の間、behave は弾を撃たない。
+  public fireEnabled = true;
 
-  constructor(
+  public constructor(
     private readonly owner: Vessel,
     private readonly worldSfx: WorldSfx,
     private readonly scene?: THREE.Scene,
   ) {}
 
   // 行動関数(同一集団の同時攻撃数カウント・弾追加は entities を使う)。
-  behave(simTime: number, target: Vessel, entities: EntityManager, simSpeed: SimSpeedManager, ephemeris: Ephemeris): void {
-    // 射撃間隔はsimulation timeで統一する。wall dtを混ぜると×4時だけバースト間隔が
-    // 4倍に引き伸ばされ、同じゲーム内時間でもwarp段によって弾数が変わっていた。
+  public behave(simTime: number, target: Vessel, entities: EntityManager, simSpeed: SimSpeedManager, ephemeris: Ephemeris): void {
+    // 射撃間隔は simulation time で計る。wall dt で計ると、同じゲーム内時間あたりの弾数が
+    // 時間加速の段によって変わってしまう。
     const behaviorDt = this.lastBehaviorSim === undefined ? 0 : Math.max(0, simTime - this.lastBehaviorSim);
     this.lastBehaviorSim = simTime;
     if (!simSpeed.canShipAct) return;

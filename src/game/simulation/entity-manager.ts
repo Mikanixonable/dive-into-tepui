@@ -274,8 +274,8 @@ export class EntityManager {
     return this.cachedAttractors;
   }
 
-  // 全エンティティの寿命判定を行い、死亡したものを破棄・除去する。自機だけは各所の参照掃除と
-  // 次艦への引き継ぎが要るため、除去は ActiveVesselController.reclaimDead が担う。
+  // 全エンティティの寿命判定を行い、弾・薬莢・破片・弾薬・小惑星のうち死亡したものを
+  // 破棄・除去する。
   cleanup(dt: number, simTime: number, activeStage: Stage, playerPos: Vec3, attractors: readonly Attractor[]): void {
     for (const e of this.all()) e.checkLoss(dt, simTime, activeStage, playerPos, attractors);
     this.prune(this.bullets);
@@ -396,9 +396,8 @@ export class EntityManager {
     }
   }
 
-  // 自機以外のメッシュを displayTime 時点の状態に同期する。自機はエフェクト・ベルト・
-  // 軌道線まで持つので Vessel.syncPlayer が担当する。弾本体・弾ハロー・プラズマ弾・薬莢・
-  // 破片(fragment)の変換は各エンティティの renderObject に同期された後、InstancedPool へ push する。
+  // 機体を除くエンティティのメッシュを displayTime 時点の状態へ同期する。弾本体・弾ハロー・
+  // プラズマ弾・薬莢・破片は、同期した renderObject を InstancedPool へ積んで描画をまとめる。
   sync(fo: FloatingOrigin, displayTime: number): void {
     for (const e of this.otherEntities()) e.sync(fo, displayTime);
 

@@ -44,7 +44,7 @@ export type StageDeps = [
   markerManager: MarkerManager,
   ephemeris: Ephemeris,
   simulator: Simulator,
-  activePlayers: ActiveVesselController,
+  activeVessels: ActiveVesselController,
 ];
 
 // ステージクラスの静的側。起動時の設定はここから読む。
@@ -125,7 +125,7 @@ export abstract class Stage {
   protected readonly _markerManager: MarkerManager;
   protected readonly _ephemeris: Ephemeris;
   protected readonly _simulator: Simulator;
-  protected readonly _activePlayers: ActiveVesselController;
+  protected readonly _activeVessels: ActiveVesselController;
 
   private _phase: GamePhase;
   get phase(): GamePhase { return this._phase; }
@@ -143,7 +143,7 @@ export abstract class Stage {
   // 補給タイマー未経過から始まり begin() が初期配置を行う。固有の内訳を持つ具象ステージは
   // 自分のコンストラクタで super(saved, ...deps) を呼んでから自分の分を組み立て、末尾で begin() を呼ぶ。
   constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
-    const [hud, worldSfx, uiSfx, scene, entities, unlockManager, fx, markerManager, ephemeris, simulator, activePlayers] = deps;
+    const [hud, worldSfx, uiSfx, scene, entities, unlockManager, fx, markerManager, ephemeris, simulator, activeVessels] = deps;
     this._hud = hud;
     this._worldSfx = worldSfx;
     this._uiSfx = uiSfx;
@@ -154,7 +154,7 @@ export abstract class Stage {
     this._markerManager = markerManager;
     this._ephemeris = ephemeris;
     this._simulator = simulator;
-    this._activePlayers = activePlayers;
+    this._activeVessels = activeVessels;
     this.scoreCounter = new ScoreCounter(saved?.scoreCounter);
     this._phase = saved?.phase ?? 'playing';
     this.restored = saved !== undefined;
@@ -201,7 +201,7 @@ export abstract class Stage {
   protected addOwnShip(init: CrewedShipInit = {}): Vessel {
     const ship = new Vessel({ crewedShip: init }, this.vesselDeps);
     this._entities.addVessel(ship);
-    this._activePlayers.claimIfNone(ship);
+    this._activeVessels.claimIfNone(ship);
     return ship;
   }
 

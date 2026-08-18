@@ -57,7 +57,7 @@ export class ViewManager {
     private readonly cameraSystem: CameraSystem,
     private readonly displayWindow: DisplayWindowManager,
     private readonly mapActions: MapContextActions,
-    private readonly activePlayers: ActiveVesselController,
+    private readonly activeVessels: ActiveVesselController,
     private readonly touchControls: TouchControls | null,
     requestedView?: WorldViewId,
   ) {
@@ -159,12 +159,12 @@ export class ViewManager {
     if (availableBases.length === 1) {
       const base = availableBases[0]!;
       if (!(this.current === 'dock' && this.docking?.activeBase === base)) {
-        items.push({ id: `dock:${base.id}`, label: `Vessel (${base.name})`, viewId: 'dock', base });
+        items.push({ id: `dock:${base.id}`, label: `Base (${base.name})`, viewId: 'dock', base });
       }
     } else if (availableBases.length > 1) {
       for (const base of availableBases) {
         if (this.current === 'dock' && this.docking?.activeBase === base) continue;
-        items.push({ id: `dock:${base.id}`, label: `Vessel: ${base.name}`, viewId: 'dock', base });
+        items.push({ id: `dock:${base.id}`, label: `Base: ${base.name}`, viewId: 'dock', base });
       }
     }
 
@@ -184,7 +184,7 @@ export class ViewManager {
   private canEnter(view: ViewId): boolean {
     if (view === 'dock') return this.docking?.canEnterDock() ?? false;
     if (view === 'combat') {
-      return this.activePlayers.current !== null
+      return this.activeVessels.current !== null
         || (this.controlledBaseProvider?.() ?? null) !== null
         || (this.docking?.getAvailableBases().length ?? 0) > 0;
     }

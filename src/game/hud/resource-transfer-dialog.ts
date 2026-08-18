@@ -165,8 +165,8 @@ export class ResourceTransferDialog {
       bRcsFuel = bRcsTanks.reduce((sum, t) => sum + t.fuel, 0);
       bRcsMaxFuel = bRcsTanks.reduce((sum, t) => sum + t.maxFuel, 0);
     } else if (bBase) {
-      bPowerJ = C.POWER_CAPACITY * 10; // Unlimited / large base power supply
-      bMags = 999; // Vessel has ample supply
+      bPowerJ = C.POWER_CAPACITY * 10; // 基地電源は実質無限
+      bMags = 999; // 基地の補給庫は尽きない
       bRcsFuel = 10000;
       bRcsMaxFuel = 10000;
     }
@@ -259,7 +259,7 @@ export class ResourceTransferDialog {
           <!-- パーツ・物資 (Inventory / Parts) -->
           ${isBBase ? `
           <div class="rt-section">
-            <div class="rt-section-head">🧰 基地予備パーツ・物資 (Vessel Inventory)</div>
+            <div class="rt-section-head">🧰 基地予備パーツ・物資 (Base Inventory)</div>
             <div class="rt-grid">
               <div class="rt-card">
                 <div class="rt-card-title">${a.name} の構成パーツ</div>

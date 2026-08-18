@@ -38,11 +38,11 @@ export class Stage1 extends Stage {
     const player = this.addOwnShip();
     const base = player.state;
     // 各種軌道パターンの敵を配置する
-    this.addHostile(generatePhasedEnemy('HOSTILE-α', base, 1400, 2, 0xff4a3d, C.COLOR_ENEMY_ORBIT_LINE, this.vesselDeps), entities);
-    this.addHostile(generateCoellipticEnemy('HOSTILE-β', base, -2800, 2500, 2, 0xff7a2d, C.COLOR_ENEMY_ORBIT_LINE, this.vesselDeps), entities);
-    this.addHostile(generateCrossingEnemy('HOSTILE-γ', base, 2200, 2, 0xe0409f, C.COLOR_ENEMY_ORBIT_LINE, this.vesselDeps), entities);
-    this.addHostile(generateEllipticEnemy('HOSTILE-δ', base, 5000, 3, 0xbf3dff, C.COLOR_ENEMY_ORBIT_LINE, this.vesselDeps), entities);
-    this.addHostile(generatePhasedEnemy('HOSTILE-ε', base, 60000, 3, 0xff2d6b, C.COLOR_ENEMY_ORBIT_LINE, this.vesselDeps), entities);
+    this.addHostile(generatePhasedEnemy('HOSTILE-α', base, 1400, 0xff4a3d, C.COLOR_ENEMY_ORBIT_LINE, this.vesselDeps), entities);
+    this.addHostile(generateCoellipticEnemy('HOSTILE-β', base, -2800, 2500, 0xff7a2d, C.COLOR_ENEMY_ORBIT_LINE, this.vesselDeps), entities);
+    this.addHostile(generateCrossingEnemy('HOSTILE-γ', base, 2200, 0xe0409f, C.COLOR_ENEMY_ORBIT_LINE, this.vesselDeps), entities);
+    this.addHostile(generateEllipticEnemy('HOSTILE-δ', base, 5000, 0xbf3dff, C.COLOR_ENEMY_ORBIT_LINE, this.vesselDeps), entities);
+    this.addHostile(generatePhasedEnemy('HOSTILE-ε', base, 60000, 0xff2d6b, C.COLOR_ENEMY_ORBIT_LINE, this.vesselDeps), entities);
   }
   // 1フレーム分、敵の行動と補給ロジスティクスを進める。
   update(dt: number, player: Vessel | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {

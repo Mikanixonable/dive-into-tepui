@@ -7,7 +7,7 @@ import packageJson from '../../../package.json';
 const GAME_TITLE = 'Dive into Tepui';
 const GAME_VERSION = `v${packageJson.version}`;
 
-const VIEW_LABELS: Record<ViewId, string> = { combat: 'Combat', map: 'Map', dock: 'Vessel' };
+const VIEW_LABELS: Record<ViewId, string> = { combat: 'Combat', map: 'Map', dock: 'Base' };
 
 // 語ごとの先頭だけ大文字化する。selectLabel が 'CREATIVE' / 'stage 1' のように
 // 大小文字混じりで来るので、表示用に体裁だけ揃える。
