@@ -64,6 +64,10 @@ export class Docking {
     this.baseView.onClose = () => this.viewManager.leaveDock();
     this.baseView.onLaunchVessel = (ship, base) => this.launch(ship, base);
     this.baseView.onProduceVessel = (base, blueprint) => this.produceVessel(base, blueprint);
+    this.baseView.onWorkbenchRemove = (base, vessel, partId) => this.removeDockedPart(base, vessel, partId);
+    this.baseView.onWorkbenchDrop = () => {
+      this.hud.hint('部品を接続口へ移動してスナップしてから確定してください');
+    };
     this.viewManager.setDocking(this);
 
     this.transferDialog = new ResourceTransferDialog(this.hud.layers.view, this.hud.overlayManager);
@@ -251,6 +255,22 @@ export class Docking {
       if (this.activeVessels.current === null) this.viewManager.setView('map');
     }
     this.hud.hint(`${ship.name} を基地のドック ${slotIndex + 1} に収納しました`);
+  }
+
+  private removeDockedPart(base: Vessel, vessel: Vessel, partId: string): void {
+    if (!vessel.assembly) return;
+    const removed = vessel.parts.find((part) => part.id === partId);
+    if (!removed) return;
+    const placements = vessel.assembly.placements.filter((placement) => placement.part.id !== partId);
+    if (placements.length === vessel.assembly.placements.length) return;
+    const result = this.commitDockedAssembly(base, vessel.id, { tree: vessel.assembly.tree, placements });
+    if (!result.ok) {
+      this.hud.hint(`取り外せません: ${result.reason}`);
+      return;
+    }
+    base.baseState!.inventory.push(removed);
+    this.baseView.openWorkbench(base, result.vessel);
+    this.hud.hint('部品を基地倉庫へ移しました');
   }
 
   // 設計から実機を1機作り、基地のドックへ置く。ドックの収容数を超える生産は、完成した時点では

@@ -458,6 +458,12 @@ export class BaseView {
     this.focusEntry();
   }
 
+  public openWorkbench(base: Vessel, vessel: Vessel): void {
+    this.open(base, vessel);
+    this.currentTab = 'workbench';
+    this.refresh();
+  }
+
   public close(): void {
     this.el.style.display = 'none';
     this._visible = false;
