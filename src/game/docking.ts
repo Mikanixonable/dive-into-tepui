@@ -7,16 +7,10 @@ import { BaseView } from './hud/base-view';
 import { ResourceTransferDialog } from './hud/resource-transfer-dialog';
 import { Vessel, type VesselDeps } from './vessel/vessel';
 import { hasBaseModule } from './vessel/capabilities';
-import type { VesselBlueprint } from './vessel/blueprint';
 import { createBlueprint } from './vessel/blueprint';
 import type { VesselAssembly } from './vessel/assembly';
 import type { PartPlacement } from './vessel/assembly';
 import { validateBlueprint } from './vessel/blueprint-validation';
-import { baseFacilities, basePowerAvailable } from './vessel/base-module';
-import { BlueprintLibrary } from './vessel/blueprint-library';
-import { LocalStorageBlueprintStore } from './vessel/blueprint-store';
-import { producibility } from './economy/producibility';
-import { consumeProductionResources, productionBlueprintOf } from './vessel/production';
 import type { GameEntity } from './game-entity/game-entity';
 import type { AnyPart } from './game-entity/parts';
 import type { EntityManager } from './simulation/entity-manager';
@@ -27,7 +21,6 @@ import type { WorldSfx } from '../audio/sfx/world-sfx';
 import type { EffectsSystem } from './vfx/effects-system';
 import type { MarkerManager } from './marker/marker-manager';
 import type { ActiveVesselController } from './active-vessel-controller';
-import { generateRandomName } from './random-name';
 
 interface WorkbenchCheckpoint {
   readonly base: Vessel;
@@ -40,18 +33,14 @@ export class Docking {
   readonly transferDialog: ResourceTransferDialog;
   // 選択中/ドックビューの対象基地。設定されている間だけドックビューへ遷移できる。
   private _activeBase: Vessel | null = null;
-  // 新造艦艇の連番。基地をまたいで一意な id/表示名を割り振るだけの用途。
-  private nextBuiltVesselNo = 0;
 
   // 船と船、船と基地の物理ドッキングペア (shipId -> targetEntity)
   private readonly dockedPairs = new Map<string, GameEntity>();
 
   get activeBase(): Vessel | null { return this._activeBase; }
 
-  // 機体の組み立てに要る資源。基地での生産がこれを使う。
+  // 作業台でドック中の船を再構築するための依存関係。
   private readonly vesselDeps: VesselDeps;
-  // 生産にかけられる設計の保管庫。
-  private readonly blueprints: BlueprintLibrary;
   private readonly workbenchRaycaster = new THREE.Raycaster();
   private workbenchCheckpoint: WorkbenchCheckpoint | null = null;
   private workbenchDirty = false;
@@ -70,11 +59,9 @@ export class Docking {
     private readonly viewManager: ViewManager,
     private readonly activeVessels: ActiveVesselController,
   ) {
-    this.blueprints = new BlueprintLibrary(new LocalStorageBlueprintStore());
-    this.baseView = new BaseView(this.hud.layers.view, this.blueprints);
+    this.baseView = new BaseView(this.hud.layers.view);
     this.baseView.onClose = () => this.viewManager.leaveDock();
     this.baseView.onLaunchVessel = (ship, base) => this.launch(ship, base);
-    this.baseView.onProduceVessel = (base, blueprint) => this.produceVessel(base, blueprint);
     this.baseView.onWorkbenchRemove = (base, vessel, partId) => this.removeDockedPart(base, vessel, partId);
     this.baseView.onWorkbenchDrop = (base, vessel, partId, fromInventory) => {
       if (fromInventory) this.installDockedPart(base, vessel, partId);
@@ -423,48 +410,6 @@ export class Docking {
       }
       object = object.parent;
     }
-  }
-
-  // 設計から実機を1機作り、基地のドックへ置く。ドックの収容数を超える生産は、完成した時点では
-  // なく開始時点で拒否する。資源が足りなければ在庫は一切減らない。
-  private produceVessel(base: Vessel, blueprint: VesselBlueprint): void {
-    if (this.workbenchDirty) {
-      this.hud.hint('作業台の変更を先に確定または取消してください');
-      return;
-    }
-    if (base.baseState!.dockedVessels.length >= base.dockCapacity) {
-      this.hud.hint(`基地のドックが満杯です (最大 ${base.dockCapacity} 隻)`);
-      return;
-    }
-    const request = productionBlueprintOf(blueprint);
-    const missing = producibility(
-      request, base.baseState!.resources, baseFacilities(base), basePowerAvailable(base),
-    );
-    if (missing.length > 0) {
-      this.hud.hint(`${blueprint.name} を生産できません (不足 ${missing.length} 件)`);
-      return;
-    }
-    if (!consumeProductionResources(request, base.baseState!.resources)) {
-      this.hud.hint(`${blueprint.name} の資源を確保できませんでした`);
-      return;
-    }
-    const slotIndex = base.getAvailableSlotIndex() ?? 0;
-    const no = ++this.nextBuiltVesselNo;
-    const id = `${base.id}-built-${no}`;
-    const shipName = generateRandomName('player');
-    const ship = new Vessel(
-      { blueprintShip: { blueprint, name: shipName, state: base.state, id } }, this.vesselDeps);
-    base.baseState!.dockedVessels.push({
-      id: ship.id,
-      name: ship.name,
-      hp: ship.hp,
-      maxHp: ship.maxHp,
-      parts: ship.parts,
-      vessel: ship,
-      slotIndex,
-    });
-    base.attachDockedVesselMesh(ship, slotIndex);
-    this.hud.hint(`${ship.name} を生産しました (ドック ${slotIndex + 1})`);
   }
 
   private launch(ship: Vessel, base: Vessel): void {
