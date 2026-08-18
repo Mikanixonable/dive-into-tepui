@@ -6,8 +6,7 @@ import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, sub, scale, dot, len } from '../../physics/vec3';
 import { SpatialGrid } from '../../physics/spatial-grid';
 import { GameEntity } from '../game-entity/game-entity';
-import { Base } from '../game-entity/base';
-import type { Player } from '../player/player';
+import { Vessel } from '../vessel/vessel';
 import { CollisionResponse, resolveSphereCollision } from '../../physics/collision-response';
 import type { Attractor } from '../../physics/attractor';
 import type { Stage } from '../stages/stage';
@@ -64,7 +63,8 @@ function contactTime(a: GameEntity, toi: number): number {
 function computeEntityResponse(
   a: GameEntity, b: GameEntity, working: ReadonlyMap<GameEntity, KinematicState>, warpLevel = 1,
 ): CollisionResponse | null {
-  const base = a instanceof Base ? a : (b instanceof Base ? b : null);
+  // 接触形状を持つ機体(基地モジュールを積んだもの)だけが、球ではなく自前の形状で判定される。
+  const base = a instanceof Vessel && a.collisionGeom ? a : (b instanceof Vessel && b.collisionGeom ? b : null);
   if (base) {
     const other = a === base ? b : a;
     const isA = a === base;
@@ -191,20 +191,20 @@ export class ContactPhysics {
   resolveBelt(
     dt: number,
     simTime: number,
-    player: Player,
+    player: Vessel,
     entities: GameEntity[],
     attractors: readonly Attractor[],
     activeStage: Stage,
   ): void {
     if (!player.alive || dt <= 1e-6) return;
     this.beltParticipantScratch.length = 0;
-    for (const section of player.belt.collisionSections(dt, player.state.r, player.state.v, player.att)) {
+    for (const section of player.belt!.collisionSections(dt, player.state.r, player.state.v, player.att)) {
       if (isFiniteParticipant(section)) this.beltParticipantScratch.push(section);
     }
     this.collectParticipants(entities, this.otherScratch);
     this.collectAttractors(attractors, this.bodyScratch);
     this.resolveInOrder(this.beltParticipantScratch, this.otherScratch, this.bodyScratch, simTime, activeStage);
-    player.belt.applyCollisionSections(dt, player.state.r, player.state.v, player.att);
+    player.belt!.applyCollisionSections(dt, player.state.r, player.state.v, player.att);
   }
 
   private collectParticipants(source: readonly GameEntity[], out: GameEntity[]): void {

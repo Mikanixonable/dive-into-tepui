@@ -5,7 +5,7 @@ import { KEY_MAPPING as K } from '../input/key-mapping';
 import { generateCluster } from './spawner/enemy-spawner';
 import { ScoreAttackTimer } from './stage-utils/score-attack-timer';
 import type { ScoreCounter } from './stage-utils/score-counter';
-import type { Player } from '../player/player';
+import type { Vessel } from '../vessel/vessel';
 import type { EntityManager } from '../simulation/entity-manager';
 import { SimSpeedManager } from '../sim-speed-manager';
 import type { Stage0SaveData, StageSaveData } from '../save-data';
@@ -44,18 +44,18 @@ export class Stage0 extends Stage {
 
   // 弾薬ゼロの自機を置き、初期補給と敵クラスタを配置する。
   protected init(entities: EntityManager): void {
-    const player = this.addPlayer({ ammo: { mags: 0, rounds: 0 } });
+    const player = this.addOwnShip({ ammo: { mags: 0, rounds: 0 } });
     for (let i = 0; i < C.STAGE0_LOGISTICS_INITIAL_AMMO; i++) {
       this.logistics.spawnForPlayer(player, C.STAGE0_LOGISTICS_MIN_DIST, C.STAGE0_LOGISTICS_MAX_DIST);
     }
-    const enemies = generateCluster(player.state, this._hud, this._worldSfx, this._fx, this._scene);
-    for (const enemy of enemies) this.addEnemy(enemy, entities);
+    const enemies = generateCluster(player.state, this.vesselDeps);
+    for (const enemy of enemies) this.addHostile(enemy, entities);
   }
   // 敵の行動・補給・制限時間を1フレーム分進める。
-  update(dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
+  update(dt: number, player: Vessel | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
     if (!player) return;
 
-    this.behaveAllEnemies(dt, player, entities, simTime, simSpeed);
+    this.behaveAllHostiles(dt, player, entities, simTime, simSpeed);
 
     this.logistics.updateLogistics(simTime, player, simSpeed);
 

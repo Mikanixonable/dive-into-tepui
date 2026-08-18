@@ -9,7 +9,7 @@ import { kinematicState, orbitAxes } from '../../../physics/kinematic-state';
 import { Hud } from '../../hud/hud';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { UiSfx } from '../../../audio/sfx/ui-sfx';
-import { Player } from '../../player/player';
+import { Vessel } from '../../vessel/vessel';
 import { MarkerManager } from '../../marker/marker-manager';
 import type { EntityManager } from '../../simulation/entity-manager';
 import type { SimSpeedManager } from '../../sim-speed-manager';
@@ -37,7 +37,7 @@ export class Logistics {
 
   // 自機の軌道上、minDist〜maxDist 先の位相に補給を1個投入する。
   spawnForPlayer(
-    player: Player,
+    player: Vessel,
     minDist = C.LOGISTICS_MIN_DIST,
     maxDist = C.LOGISTICS_MAX_DIST,
   ): void {
@@ -72,7 +72,7 @@ export class Logistics {
   // 近傍の補給を回収し、遠方のものをデスポーンし、残弾が少なければ定期的に新規投入する。
   // 回収とデスポーンは投入の可否によらず常に走る(既に軌道上にある補給の始末は別の話)。
   updateLogistics(
-    simTime: number, player: Player, simSpeed: SimSpeedManager, respawnOnDespawn = false,
+    simTime: number, player: Vessel, simSpeed: SimSpeedManager, respawnOnDespawn = false,
   ): void {
     this.absorbNearbyAmmoPickups(player);
     const canResupply = this.resupplyEnabled && simSpeed.canResupplyAmmo;
@@ -100,7 +100,7 @@ export class Logistics {
   }
 
   // 回収半径内の生存中補給を吸収し、ベルトへ弾を追加する。
-  private absorbNearbyAmmoPickups(player: Player): void {
+  private absorbNearbyAmmoPickups(player: Vessel): void {
     for (const ammoPickup of this.entities.ammoPickups) {
       if (!ammoPickup.alive) continue;
       if (
@@ -115,7 +115,7 @@ export class Logistics {
   }
 
   // デスポーン距離を超えた生存中補給を消し、respawnOnDespawn が真なら同数を再投入する。
-  private despawnFarAmmoPickups(player: Player, respawnOnDespawn: boolean): void {
+  private despawnFarAmmoPickups(player: Vessel, respawnOnDespawn: boolean): void {
     let respawn = 0;
     // デスポーン距離を超えた分を消し、再投入すべき数を数える
     for (const ammoPickup of this.entities.ammoPickups) {

@@ -1,12 +1,12 @@
 // マニューバノードを実際に姿勢制御・エンジン噴射で実行する状態機械(Slew→Armed→Burn→Trim)。
 // 噴射方向は点火時点の速度差から慣性系(ECI)固定で決め、燃焼中は姿勢を追随させない。
-// Player が1隻に1つ所有し、'powered' の間だけ ship.torque/ship.thrust へ書く。
+// Vessel が1隻に1つ所有し、'powered' の間だけ ship.torque/ship.thrust へ書く。
 //
-// Player/Hud/SimSpeedManager そのものではなく、ここで使う分だけを切り出した構造的な型
-// (PlanExecutorShip/PlanExecutorHud/PlanExecutorSimSpeed)を受け取る — Player は THREE を
+// Vessel/Hud/SimSpeedManager そのものではなく、ここで使う分だけを切り出した構造的な型
+// (PlanExecutorShip/PlanExecutorHud/PlanExecutorSimSpeed)を受け取る — Vessel は THREE を
 // 大量に引き込むクラスで、これをそのまま型として使うと plan-executor.ts が THREE/DOM 抜きで
 // コンパイルできなくなり、tests/physics での状態機械テストが成立しない
-// (plan.ts の DisplayDurationSource と同じ理由)。実際の呼び出し側は Player 自身を渡すだけで
+// (plan.ts の DisplayDurationSource と同じ理由)。実際の呼び出し側は Vessel 自身を渡すだけで
 // 構造的に一致する。
 import { KinematicState } from '../../physics/kinematic-state';
 import { Attitude, attitudeAlignError, attitudeAlignTorque } from '../../physics/attitude';

@@ -59,7 +59,7 @@ export class ThermalSystem {
 
   // 対気速度から動圧と外殻温度を更新する。加熱はよどみ点熱流束の
   // Sutton–Graves 近似 q̇ = k·√(ρ/Rn)·v³、冷却はステファン・ボルツマン放射。
-  updateThermal(dtSub: number, r: Vec3, v: Vec3, ship: import('../game-entity/ship').Ship): void {
+  updateThermal(dtSub: number, r: Vec3, v: Vec3, ship: import('../vessel/vessel').Vessel): void {
     // 大気密度・対気速度から動圧を求める
     const rho = atmosphericDensity(len(r) - R_EARTH);
     const vr = airspeed(r, v);

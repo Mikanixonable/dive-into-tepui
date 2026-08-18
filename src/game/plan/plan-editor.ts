@@ -23,8 +23,8 @@ import { PlanPanel } from './plan-panel';
 import { DisplayDurationSource, Plan, PlanData } from './plan';
 import { PlanDisplay } from './plan-display';
 import { SimSpeedManager } from '../sim-speed-manager';
-import type { Controllable } from '../game-entity/controllable';
-import type { ActivePlayerController } from '../active-player-controller';
+import type { Vessel } from '../vessel/vessel';
+import type { ActiveVesselController } from '../active-vessel-controller';
 import type { FrameControls } from '../hud/frame-controls';
 import { focusPoint } from '../camera/focus-target';
 import { Attractor, orbitalElementsOf, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
@@ -46,8 +46,8 @@ export class PlanEditor {
   // 実行済みとして列の前方から取り除かれた場合も、同じ同一性判定で追随できる。
   private selectedNode: KinematicState | null = null;
 
-  // 直前の update() で操作対象だった艦/基地。切替の検出だけに使う(正本は ActivePlayerController)。
-  private lastSeenShip: Controllable | null = null;
+  // 直前の update() で操作対象だった艦/基地。切替の検出だけに使う(正本は ActiveVesselController)。
+  private lastSeenShip: Vessel | null = null;
 
   // 選択中ノードの現在の index。列に無ければ null。
   get selectedNodeIdx(): number | null {
@@ -62,12 +62,12 @@ export class PlanEditor {
   }
 
   // 操作対象（自機船または基地）。ノードの起点として状態が要るときだけ引く。
-  private get ship(): Controllable | null {
-    return this.activePlayers.currentControllable;
+  private get ship(): Vessel | null {
+    return this.activePlayers.current;
   }
 
   // 操作対象自身の計画。操作対象を切り替えると編集対象もその計画へ切り替わる。
-  get plan(): Plan | null { return this.activePlayers.currentControllable?.plan ?? null; }
+  get plan(): Plan | null { return this.activePlayers.current?.plan ?? null; }
 
   readonly planDisplay: PlanDisplay;
   private readonly gizmo3d: PlanGizmo3D;
@@ -103,7 +103,7 @@ export class PlanEditor {
     private readonly attractors: FutureAttractors,
     scene: THREE.Scene,
     private readonly markerManager: MarkerManager,
-    private readonly activePlayers: ActivePlayerController,
+    private readonly activePlayers: ActiveVesselController,
     private readonly displayDuration: DisplayDurationSource,
     private readonly frameControls: FrameControls,
   ) {
@@ -649,7 +649,7 @@ export class PlanEditor {
   }
 
   // 現在のノード列と選択中ノードから、計画パネルへ渡す表示値を組み立てて反映する。
-  private syncPanel(ship: Controllable, simTime: number): void {
+  private syncPanel(ship: Vessel, simTime: number): void {
     const plan = ship.plan;
     const arriving = this.planDisplay.path.arrivalStates();
     const nodes = plan.nodes.map((n, i) => ({

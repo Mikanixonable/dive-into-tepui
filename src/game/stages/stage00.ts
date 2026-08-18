@@ -3,7 +3,7 @@ import * as C from '../const';
 import { Stage, type StageDeps } from './stage';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { EntityManager } from '../simulation/entity-manager';
-import type { Player } from '../player/player';
+import type { Vessel } from '../vessel/vessel';
 import { SimSpeedManager } from '../sim-speed-manager';
 import { WaveAttack } from './stage-utils/wave-attack';
 import type { Stage00SaveData, StageSaveData } from '../save-data';
@@ -20,9 +20,7 @@ export class Stage00 extends Stage {
   // 収める都合(具象ごとの拡張型では構築シグネチャが揃わない)。
   constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
-    this.waveAttack = new WaveAttack(
-      this._hud, this._worldSfx, this._fx, this._scene, this._ephemeris, saved as Stage00SaveData | undefined,
-    );
+    this.waveAttack = new WaveAttack(this.vesselDeps, this._ephemeris, saved as Stage00SaveData | undefined);
     this.begin();
   }
 
@@ -38,21 +36,21 @@ export class Stage00 extends Stage {
 
   // 自機・弾薬ピックアップ・初期の敵ウェーブを配置する。
   protected init(entities: EntityManager): void {
-    const player = this.addPlayer();
+    const player = this.addOwnShip();
     for (let i = 0; i < C.MAX_ACTIVE_AMMO_PICKUPS; i++) {
       this.logistics.spawnForPlayer(player, C.STAGE00_LOGISTICS_MIN_DIST, C.STAGE00_LOGISTICS_MAX_DIST);
     }
     // 初期状態でもランダムに敵を配置する
-    this.waveAttack.spawnWave(player, (enemy) => this.addEnemy(enemy, entities), 'random');
+    this.waveAttack.spawnWave(player, (enemy) => this.addHostile(enemy, entities), 'random');
   }
 
   // 敵の行動・補給・波状攻撃の更新を行う。
-  update(dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
+  update(dt: number, player: Vessel | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
     if (!player) return;
 
-    this.behaveAllEnemies(dt, player, entities, simTime, simSpeed);
+    this.behaveAllHostiles(dt, player, entities, simTime, simSpeed);
     this.logistics.updateLogistics(simTime, player, simSpeed, true);
-    this.waveAttack.update(dt, player, entities.enemies, simTime, this, (enemy) => this.addEnemy(enemy, entities));
+    this.waveAttack.update(dt, player, entities.hostileVessels(), simTime, this, (enemy) => this.addHostile(enemy, entities));
   }
 
   checkWin(): boolean { return false; }

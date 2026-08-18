@@ -10,7 +10,7 @@ import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
 import { buildBarrelMesh, buildCasingMesh, buildMagazineFrame, DEBRIS_FRAGMENT_VARIANT_COUNT } from '../../render/ships';
 import { GameEntity } from './game-entity';
-import { Player } from '../player/player';
+import { Vessel } from '../vessel/vessel';
 import { Bullet } from './bullet';
 
 // DebrisPiece の見た目・振る舞いの種別。
@@ -86,13 +86,13 @@ export class DebrisPiece extends GameEntity {
   get kind(): DebrisKind['kind'] { return this.debrisKind.kind; }
 
   // 弾が当たったらガスパフを噴いて消える(弾自身の消滅は Bullet.collideWith が書く)。
-  // 薬莢が艦(操作対象に限らず Player 全般)に触れたときは、からんと音を鳴らす。
+  // 薬莢が艦(操作対象に限らず Vessel 全般)に触れたときは、からんと音を鳴らす。
   collideWith(other: GameEntity | Attractor, contact: Contact): void {
     if (other instanceof Bullet) {
       this._fx.spawnGasPuff(kinematicState(contact.selfState.t, contact.point, contact.selfState.v));
       return;
     }
-    if (this.debrisKind.kind === 'casing' && other instanceof Player) this._worldSfx.clank();
+    if (this.debrisKind.kind === 'casing' && other instanceof Vessel) this._worldSfx.clank();
   }
 
   // 薬莢の寿命切れ絶対時刻を返す。薬莢以外、またはすでに過ぎていれば null。

@@ -1,8 +1,8 @@
 // マヌーバ噴射プルーム: 推力方向の逆側に置く発光ビルボード 2 枚(コア+アウター)+ エンジン音。
-// 手動操作(PlayerThrottle)・自動実行(PlanExecutor)のどちらが立てた thrust でも同じに見える
+// 手動操作(VesselThrottle)・自動実行(PlanExecutor)のどちらが立てた thrust でも同じに見える
 // よう、GameEntity 自身が持つ this.thrust(今フレームの推力ベクトルそのもの)を直接読む —
-// PlayerThrottle 固有の状態(thrustVizDir/throttleIdx)には依存しない(RcsEffects が
-// PlayerThrottle 経由ではなく ship.torque を直接読むのと同じ理由・同じ形)。
+// VesselThrottle 固有の状態(thrustVizDir/throttleIdx)には依存しない(RcsEffects が
+// VesselThrottle 経由ではなく ship.torque を直接読むのと同じ理由・同じ形)。
 import * as THREE from 'three/webgpu';
 import { Vec3, addScaled, len, scale } from '../../physics/vec3';
 import { Billboard } from '../../render/billboard';

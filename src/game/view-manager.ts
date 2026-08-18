@@ -9,10 +9,10 @@ import { PlanEditor } from './plan/plan-editor';
 import { DisplayWindowManager } from './display-window-manager';
 import { MapContextActions } from './map-context-actions';
 import type { Docking } from './docking';
-import type { ActiveControllableController } from './active-controllable-controller';
+import type { ActiveVesselController } from './active-vessel-controller';
 import { setPanelCollapsedView } from './hud/panel-shell';
 import type { OverlayHandle } from './hud/overlay-manager';
-import type { Base } from './game-entity/base';
+import type { Vessel } from './vessel/vessel';
 
 export type ViewId = 'combat' | 'map' | 'dock';
 
@@ -20,7 +20,7 @@ export interface ViewMenuItem {
   readonly id: string;
   readonly label: string;
   readonly viewId: ViewId;
-  readonly base?: Base;
+  readonly base?: Vessel;
 }
 
 // 3D 世界を描くビュー。ドックはこのどちらかに重なる形で開き、閉じると元へ戻る。
@@ -34,7 +34,7 @@ export class ViewManager {
   private worldView: WorldViewId;
   private isDockOpen = false;
   private docking: Docking | null = null;
-  private controlledBaseProvider: (() => Base | null) | null = null;
+  private controlledBaseProvider: (() => Vessel | null) | null = null;
 
   // ドックの開閉の正本はこのクラス(isDockOpen)自身であり続ける — OverlayManager へは
   // 「開いた/閉じた」を通知するだけの一方向で、この adapter は leaveDock() を呼び戻すのみ。
@@ -57,7 +57,7 @@ export class ViewManager {
     private readonly cameraSystem: CameraSystem,
     private readonly displayWindow: DisplayWindowManager,
     private readonly mapActions: MapContextActions,
-    private readonly activePlayers: ActiveControllableController,
+    private readonly activePlayers: ActiveVesselController,
     private readonly touchControls: TouchControls | null,
     requestedView?: WorldViewId,
   ) {
@@ -72,7 +72,7 @@ export class ViewManager {
     this.docking = docking;
   }
 
-  setControlledBaseProvider(provider: () => Base | null): void {
+  setControlledBaseProvider(provider: () => Vessel | null): void {
     this.controlledBaseProvider = provider;
   }
 
@@ -159,12 +159,12 @@ export class ViewManager {
     if (availableBases.length === 1) {
       const base = availableBases[0]!;
       if (!(this.current === 'dock' && this.docking?.activeBase === base)) {
-        items.push({ id: `dock:${base.id}`, label: `Base (${base.name})`, viewId: 'dock', base });
+        items.push({ id: `dock:${base.id}`, label: `Vessel (${base.name})`, viewId: 'dock', base });
       }
     } else if (availableBases.length > 1) {
       for (const base of availableBases) {
         if (this.current === 'dock' && this.docking?.activeBase === base) continue;
-        items.push({ id: `dock:${base.id}`, label: `Base: ${base.name}`, viewId: 'dock', base });
+        items.push({ id: `dock:${base.id}`, label: `Vessel: ${base.name}`, viewId: 'dock', base });
       }
     }
 

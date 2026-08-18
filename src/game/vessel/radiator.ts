@@ -15,7 +15,7 @@ import { GameEntity } from '../game-entity/game-entity';
 import type { Attractor } from '../../physics/attractor';
 import type { Contact } from '../simulation/contact';
 import type { Stage } from '../stages/stage';
-import type { Player } from './player';
+import type { Vessel } from './vessel';
 import type { RadiatorSaveData } from '../save-data';
 
 export type RadiatorSide = 'up' | 'down';
@@ -49,7 +49,7 @@ function foldLocalPosition(side: RadiatorSide, fold: number, even: number, odd: 
 // ベルトと違い Verlet 解法は要らず、毎フレーム RadiatorSystem.collisionFolds が置き直すだけでよい。
 export class RadiatorFold extends GameEntity {
   // 位置は毎フレーム collisionFolds が置き直すので、ここでは原点で仮生成する。
-  constructor(readonly side: RadiatorSide, readonly foldIndex: number, private readonly owner: Player) {
+  constructor(readonly side: RadiatorSide, readonly foldIndex: number, private readonly owner: Vessel) {
     super(kinematicState(0, v3(), v3()), new THREE.Object3D());
     this.mass = 5;
     this.radius = RADIATOR_SEGMENT_LENGTH / 2;
@@ -84,7 +84,7 @@ export class RadiatorSystem {
 
   // renderObject の上下それぞれのヒンジ Group から、折り目 Group を
   // RADIATOR_FOLD_COUNT 個解決して保持する。owner は接触代理が帰結を委ねる先の艦。
-  public constructor(renderObject: THREE.Object3D, private readonly owner: Player, saved?: RadiatorSaveData) {
+  public constructor(renderObject: THREE.Object3D, private readonly owner: Vessel, saved?: RadiatorSaveData) {
     const collect = (side: RadiatorSide, baseName: string): THREE.Object3D[] => {
       const namePrefix = baseName + (side === 'up' ? 'Up' : 'Down');
       const found = Array.from({ length: C.RADIATOR_FOLD_COUNT }, (_, i) =>
