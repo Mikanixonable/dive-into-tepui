@@ -61,7 +61,7 @@ export class AssemblyRenderObject {
   public readonly object: THREE.Group;
   private readonly visuals = new Map<string, AssemblyPartVisual>();
 
-  public constructor(private readonly assembly: VesselAssembly) {
+  public constructor(assembly: VesselAssembly) {
     this.object = buildHullMesh(assembly);
     for (const [index, placement] of assembly.placements.entries()) {
       const ref = partVisualRefOf(placement, index);

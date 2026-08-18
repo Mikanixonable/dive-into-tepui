@@ -81,6 +81,29 @@ function placeFitting(part: AnyPart, frame: MountFrame, scale: number): THREE.Ob
   return holder;
 }
 
+// 内装部品は外皮の内側に隠れるが、基地のドック・倉庫・タンクなど作業台で扱う部品は
+// 選択対象として位置を示す必要がある。実寸の内部モデルが無い部品は、エッジ中心の
+// 半透明ブロックで表現し、確定後の物理・質量計算は既存の PartPlacement を正本にする。
+function placeInternalMarker(part: AnyPart, assembly: VesselAssembly): THREE.Object3D | null {
+  if (part.type === 'hull' || part.type === 'armor') return null;
+  const edgeId = assembly.placements.find((placement) => placement.part.id === part.id)?.kind === 'internal'
+    ? (assembly.placements.find((placement) => placement.part.id === part.id) as Extract<typeof assembly.placements[number], { kind: 'internal' }>).edgeIds[0]
+    : undefined;
+  if (!edgeId) return null;
+  const edge = assembly.tree.edges.find((candidate) => candidate.id === edgeId);
+  if (!edge) return null;
+  const frame = mountFrame(assembly.tree, { kind: 'surface', edgeId, along: edge.length / 2, around: 0 });
+  const size = Math.max(0.25, Math.min(2.5, Math.sqrt(Math.max(0.1, part.weight)) * 0.04));
+  const color = part.type === 'dock' ? 0xff6a00 : 0x687482;
+  const object = new THREE.Mesh(
+    new THREE.BoxGeometry(size, size, size),
+    new THREE.MeshStandardMaterial({ color, metalness: 0.35, roughness: 0.65, transparent: true, opacity: 0.72 }),
+  );
+  applyFrame(object, frame);
+  object.userData['internalPartMarker'] = true;
+  return object;
+}
+
 export function buildHullMesh(assembly: VesselAssembly, lod: HullLod = 'near'): THREE.Group {
   const group = new THREE.Group();
 
@@ -99,8 +122,15 @@ export function buildHullMesh(assembly: VesselAssembly, lod: HullLod = 'near'): 
     radiator: new PanelSides(), solar_panel: new PanelSides(),
   };
   for (const [placementIndex, placement] of assembly.placements.entries()) {
-    if (placement.kind !== 'external') continue;
     const visualRef = partVisualRefOf(placement, placementIndex);
+    if (placement.kind === 'internal') {
+      const marker = placeInternalMarker(placement.part, assembly);
+      if (marker) {
+        marker.userData['partVisualRef'] = visualRef;
+        group.add(marker);
+      }
+      continue;
+    }
     const frame = mountFrame(assembly.tree, placement.mount);
     const part = placement.part;
     if (part.type === 'radiator' || part.type === 'solar_panel') {
