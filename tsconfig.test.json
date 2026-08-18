@@ -32,6 +32,14 @@
     "src/game/celestial/point-field.ts",
     "src/physics/section-moments.ts",
     "src/physics/hull-loft.ts",
-    "tests/physics/**/*.ts"
+    "src/game/economy/resource.ts",
+    "src/game/economy/resource-ledger.ts",
+    "src/game/economy/propellant-compatibility.ts",
+    "src/game/economy/actuator-materials.ts",
+    "src/game/economy/facility.ts",
+    "src/game/economy/deposit.ts",
+    "src/game/economy/producibility.ts",
+    "tests/physics/**/*.ts",
+    "tests/unit/**/*.ts"
   ]
 }
