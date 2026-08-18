@@ -92,13 +92,17 @@ export function buildHullMesh(assembly: VesselAssembly, lod: HullLod = 'near'): 
   group.add(skin);
 
   const scale = hullScale(assembly);
-  const sides = new PanelSides();
+  // 左右は種別ごとに数える。放熱板とパドルは別々の蛇腹なので、片方が使った側をもう片方が避ける
+  // 必要は無い。
+  const sides: Record<'radiator' | 'solar_panel', PanelSides> = {
+    radiator: new PanelSides(), solar_panel: new PanelSides(),
+  };
   for (const placement of assembly.placements) {
     if (placement.kind !== 'external') continue;
     const frame = mountFrame(assembly.tree, placement.mount);
     const part = placement.part;
     if (part.type === 'radiator' || part.type === 'solar_panel') {
-      group.add(placePanel(part, frame, sides));
+      group.add(placePanel(part, frame, sides[part.type]));
       continue;
     }
     const fitting = placeFitting(part, frame, scale);
