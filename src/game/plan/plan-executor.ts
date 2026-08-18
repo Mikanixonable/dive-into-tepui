@@ -55,6 +55,9 @@ export class PlanExecutor {
   // update() が求めた、燃料消費込みの現在の点火出力 [m/s^2]。点火の瞬間(applyIgnitionAndCutoff)は
   // 次の update() まで燃料消費を反映できないため、点火直後だけ燃料無制限の値で仮置きする。
   private pendingAccel = 0;
+  // 圏外にいる間に点火の機会を逃したか。圏内へ戻ったとき、通過してしまったノードを
+  // 実行せずに捨てるかどうかの判断に使う(§13-6)。
+  private missedWhileDark = false;
 
   constructor(private readonly hud: PlanExecutorHud) {}
 
@@ -63,7 +66,13 @@ export class PlanExecutor {
   // ぶんに比例する物理量なので、刻み幅はシミュレーション時間 simDt で受け取る。
   // 燃焼中の ship.thrust は毎フレーム書き直す。点火・遮断の瞬間はイベント境界後の
   // 残りサブステップへ反映するため、applyIgnitionAndCutoff からも書き込む。
-  update(ship: PlanExecutorShip, simDt: number, simTime: number, simSpeed: PlanExecutorSimSpeed): void {
+  // commandLinked は「この機体へ指令が届いているか」。有人機は常に真であり、無人機は
+  // 通信圏の内側にいるときだけ真になる。偽の間は新たな点火を行わないが、実行中の燃焼だけは
+  // 機上の時計で完遂する — 噴射シーケンスは観測も判断も要らないため。
+  update(
+    ship: PlanExecutorShip, simDt: number, simTime: number, simSpeed: PlanExecutorSimSpeed,
+    commandLinked: boolean,
+  ): void {
     // 噴射できないワープ倍率では姿勢整列トルクも含めて一切の指令を出さない。燃焼中に
     // ゲートが閉じた場合も保留ではなく中断する — 凍結した噴射方向は「点火から遮断までの
     // 短時間なら慣性系で固定してよい」という近似であって、噴射しないまま時間加速で長く
@@ -83,9 +92,32 @@ export class PlanExecutor {
       this.targetNode = node;
     }
 
+    const burning = this.phase === 'burn' || this.phase === 'trim';
+    if (!commandLinked) {
+      // 圏外。燃焼中ならやり切り、そうでなければ姿勢指令だけ畳んで漂流する。ノードは消えない。
+      if (burning) {
+        this.updateBurnOutput(ship, node, simDt);
+        return;
+      }
+      if (node.t <= simTime) this.missedWhileDark = true;
+      ship.torque = v3();
+      return;
+    }
+    // 圏内へ戻った。圏外にいる間に実行時刻を過ぎたノードは、点火時刻の決定にその時点の
+    // 軌道を見る判断が要るため実行できない。残りのノードから再開する。
+    if (this.missedWhileDark) {
+      this.missedWhileDark = false;
+      if (node.t <= simTime) {
+        const dropped = ship.plan.consumeNodesUpTo(simTime, ship.state);
+        this.clearState(ship);
+        this.hud.hint(`通信圏外で通過したノード ${dropped} 件を破棄`);
+        return;
+      }
+    }
+
     // 燃焼中は姿勢を追随させず(点火時に確定した向きを保持するだけ)、出力段の見直しと
     // 推力の書き直しだけを行う。
-    if (this.phase === 'burn' || this.phase === 'trim') {
+    if (burning) {
       this.updateBurnOutput(ship, node, simDt);
       return;
     }
@@ -156,7 +188,9 @@ export class PlanExecutor {
   // Simulator の substep 境界(Stage.applySimulationEvents)ごとに呼ぶ。armed→burn の点火と、
   // 射影が0を切った時点の遮断を simTime ちょうどで行う。update() と同じ node/phase の前提を
   // 使うので、ここで初めて armed に入ることはない(その判定は update() 側の担当)。
-  applyIgnitionAndCutoff(ship: PlanExecutorShip, simTime: number, simSpeed: PlanExecutorSimSpeed): void {
+  applyIgnitionAndCutoff(
+    ship: PlanExecutorShip, simTime: number, simSpeed: PlanExecutorSimSpeed, commandLinked: boolean,
+  ): void {
     if (!ship.alive) {
       this.stopIfActive(ship);
       return;
@@ -164,6 +198,9 @@ export class PlanExecutor {
     if (ship.planExecution !== 'powered') return;
     const node = ship.plan.firstNode();
     if (!node || node !== this.targetNode) return;
+
+    // 圏外では新たな点火を行わない。既に燃焼中なら下へ抜けて遮断まで進む。
+    if (!commandLinked && this.phase !== 'burn' && this.phase !== 'trim') return;
 
     // armed: 点火予定時刻に達していれば、そのときの速度差方向をECI固定の噴射方向として点火する。
     if (this.phase === 'armed') {
@@ -205,12 +242,15 @@ export class PlanExecutor {
   // ゲートが閉じている間は着火も遮断も実際には起きないので null(実行されない時刻を返して
   // Simulator に無駄な精密ステップを刻ませない)。現在の速度差・出力から毎回引き直すので、
   // 燃焼が進むほど遮断予定は正確に収束する。
-  nextEventTime(ship: PlanExecutorShip, simTime: number, simSpeed: PlanExecutorSimSpeed): number | null {
+  nextEventTime(
+    ship: PlanExecutorShip, simTime: number, simSpeed: PlanExecutorSimSpeed, commandLinked: boolean,
+  ): number | null {
     if (ship.planExecution !== 'powered' || !simSpeed.canShipAct) return null;
     const node = ship.plan.firstNode();
     if (!node || node !== this.targetNode) return null;
 
     if (this.phase === 'armed') {
+      if (!commandLinked) return null;
       const dvMag = len(sub(node.v, ship.state.v));
       const t = ignitionTimeFor(node.t, dvMag, maxAccelOf(ship.totalThrust, ship.mass));
       return t >= simTime ? t : null;

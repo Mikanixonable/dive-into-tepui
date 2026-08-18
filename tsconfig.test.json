@@ -49,6 +49,8 @@
     "src/game/vessel/vessel-assemblies.ts",
     "src/game/vessel/heat-shield.ts",
     "src/game/vessel/capabilities.ts",
+    "src/game/comms/coverage.ts",
+    "src/game/comms/comm-stations.ts",
     "src/game/vessel/vessel-parts.ts",
     "src/game/vessel/part-inventory.ts",
     "src/game/vessel/blueprint.ts",

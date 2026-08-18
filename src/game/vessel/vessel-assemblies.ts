@@ -11,15 +11,24 @@ import type { AnyPart, ExteriorPartType, PartType } from '../game-entity/parts';
 import type { PartPlacement, VesselAssembly } from './assembly';
 import type { EdgeKind, PortRef, TreeEdge, TreeNode, VesselTree } from './tree';
 import { portFrame } from './tree';
-import { baseParts, crewedParts, hostileParts } from './vessel-parts';
+import { baseParts, crewedParts, hostileParts, tuneActuators } from './vessel-parts';
 import type { DerivedMassProperties } from './mass-properties';
 import { deriveMassProperties } from './mass-properties';
+import { principalMoments } from '../../physics/inertia-tensor';
 
 // 既定の有人艦の質量特性。ショップのカタログや弾道係数の見積もりが「既定艦と同じ桁」を書くために
 // 読む。形状は起動中に変わらないので1度だけ導いて使い回す。
 let crewedDerived: DerivedMassProperties | null = null;
 export function crewedMassProperties(): DerivedMassProperties {
   return (crewedDerived ??= deriveMassProperties(crewedAssembly(C.PLAYER_MAX_HP)));
+}
+
+// 主機・並進RCS・フライホイールの性能を、この形状から導いた質量特性へ合わせる(§10-4)。
+// 組み立ての最後に必ず通すので、外へ出る VesselAssembly は常に調整済みの推力を持つ。
+function tuneAssemblyActuators(assembly: VesselAssembly): void {
+  const derived = deriveMassProperties(assembly);
+  const parts = assembly.placements.map((placement) => placement.part);
+  tuneActuators(parts, derived.loadedMass, principalMoments(derived.inertia).z);
 }
 
 // 外装として機体の外側に取り付ける搭載要素の種別。これ以外は内容積に収める。
@@ -129,16 +138,22 @@ export function crewedAssembly(maxHp: number): VesselAssembly {
     if (part.type === 'engine') {
       return { kind: 'external', part, mount: { kind: 'port', nodeId: 'tail', port: AXIAL_FORE } };
     }
-    if (part.type === 'weapon' || part.type === 'heat_shield') {
+    if (part.type === 'heat_shield') {
       // 熱シールドは機首の口に付く。守る向きは口の外向き = 機首方向であり、機首を進行方向へ
       // 向けているあいだだけ熱防御が効く(§11-3)。
       return { kind: 'external', part, mount: { kind: 'port', nodeId: 'nose', port: AXIAL_FORE } };
+    }
+    if (part.type === 'weapon') {
+      // 砲は機首側の外皮に付く。機首の口は熱シールドが塞いでいるので、そこには置けない。
+      return { kind: 'external', part, mount: { kind: 'surface', edgeId: 'fore', along: 0.5, around: -Math.PI / 2 } };
     }
     // RCS スラスタと通信機は外皮の表面に付く。重心から離すほど大きなトルクが得られる(§8-3)。
     const along = part.type === 'rcs_thruster' ? 1 : 0.5;
     return { kind: 'external', part, mount: { kind: 'surface', edgeId: 'fore', along, around: Math.PI / 2 } };
   });
-  return { tree, placements };
+  const assembly = { tree, placements };
+  tuneAssemblyActuators(assembly);
+  return assembly;
 }
 
 // 内装要素を収めるエッジ。与圧区画は機首側、推進剤と機器は後方に置く。
@@ -176,7 +191,9 @@ export function orbitalBaseAssembly(maxHp: number): VesselAssembly {
     }
     return { kind: 'external', part, mount: { kind: 'truss', edgeId: 'truss-l', along: 30, around: 0 } };
   });
-  return { tree, placements };
+  const assembly = { tree, placements };
+  tuneAssemblyActuators(assembly);
+  return assembly;
 }
 
 // ---------------------------------------------------------------------------
@@ -201,5 +218,7 @@ export function hostileAssembly(maxHp: number): VesselAssembly {
     }
     return { kind: 'external', part, mount: { kind: 'port', nodeId: 'nose', port: AXIAL_FORE } };
   });
-  return { tree, placements };
+  const assembly = { tree, placements };
+  tuneAssemblyActuators(assembly);
+  return assembly;
 }
