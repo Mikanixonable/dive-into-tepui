@@ -5,6 +5,7 @@
 import { Hud } from './hud/hud';
 import { Vessel, planExecutionLabel, type PlanExecutionMode } from './vessel/vessel';
 import { vesselMapKind } from './map-pickable';
+import { hasBaseModule } from './vessel/capabilities';
 import { fmtAmmoStatus, fmtDist, fmtEnergy, fmtSpeed, fmtTime } from './hud/utils';
 import { orbitInfo, relativeInfo } from './hud/orbit-info';
 import { ContextMenu, MenuItem } from './hud/context-menu';
@@ -72,12 +73,6 @@ export class MapContextActions {
   setDocking(docking: Docking): void { this.docking = docking; }
   private docking: Docking | null = null;
 
-  setControlledBaseHandler(handler: (base: Vessel | null) => void, getControlledBase: () => Vessel | null): void {
-    this.controlBaseHandler = handler;
-    this.getControlledBase = getControlledBase;
-  }
-  private controlBaseHandler: ((base: Vessel | null) => void) | null = null;
-  private getControlledBase: (() => Vessel | null) | null = null;
 
   // 候補集合(pickables)と、メニュー項目の実行先を参照として受け取る。
   constructor(
@@ -522,7 +517,7 @@ export class MapContextActions {
           : [];
 
         const dockItems: MenuItem<MenuAction>[] = [];
-        if (activeShip && ship && !isActive && this.docking) {
+        if (activeShip && !hasBaseModule(activeShip) && ship && !isActive && this.docking) {
           const isDocked = this.docking.getDockedTarget(activeShip) === ship;
           if (isDocked) {
             dockItems.push(MenuCommon.transferResources(), MenuCommon.undock());
@@ -596,13 +591,13 @@ export class MapContextActions {
       itemsFor: (target) => {
         const base = this.entities.findBaseVessel(target.id);
         const activeShip = this.activePlayers.current;
-        const isControlled = base && this.getControlledBase ? this.getControlledBase() === base : false;
+        const isControlled = base !== null && this.activePlayers.current === base;
         const subLabel = base
           ? `基地 / 所持金: ${base.baseState!.money.toLocaleString()} Cr / 格納艦艇: ${base.baseState!.dockedVessels.length}隻`
           : '基地';
 
         const dockItems: MenuItem<MenuAction>[] = [];
-        if (activeShip && base && this.docking) {
+        if (activeShip && !hasBaseModule(activeShip) && base && this.docking) {
           const isDocked = this.docking.getDockedTarget(activeShip) === base;
           if (isDocked) {
             dockItems.push(MenuCommon.transferResources(), MenuCommon.storeInBase(), MenuCommon.undock());
@@ -636,10 +631,6 @@ export class MapContextActions {
           if (base) this.activePlayers.set(base);
         } else if (act === 'deactivate') {
           if (base && this.activePlayers.current === base) this.activePlayers.setOrNull(null);
-        } else if (act === 'activateBase') {
-          if (base && this.controlBaseHandler) this.controlBaseHandler(base);
-        } else if (act === 'deactivateBase') {
-          if (this.controlBaseHandler) this.controlBaseHandler(null);
         } else if (act === 'dock') {
           if (activeShip && base) this.docking?.dockTo(activeShip, base);
         } else if (act === 'undock') {
@@ -650,7 +641,7 @@ export class MapContextActions {
           if (activeShip && base) this.docking?.openTransfer(activeShip, base);
         } else if (act === 'delete') {
           if (base) {
-            if (this.getControlledBase?.() === base) this.controlBaseHandler?.(null);
+            if (this.activePlayers.current === base) this.activePlayers.setOrNull(null);
             this.docking?.clearActiveBaseIf(base);
             base.alive = false;
           }
