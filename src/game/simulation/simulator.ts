@@ -71,7 +71,7 @@ export class Simulator {
     // 相互作用を起こさない。これらだけを最後に一度まとめて積分し、高warpのS倍走査を避ける。
     const passiveWarpLod = !resolveCollision && simDt > C.SUBSTEP_MAX_DT;
     while (this.simTime < targetTime - 1e-9) {
-      const maxStep = this.adaptiveMaxStep();
+      const maxStep = this.adaptiveMaxStep(simDt);
       const eventTime = this.nextEventTime(activeStage, passiveWarpLod);
       const subDt = simulationStepDuration(this.simTime, targetTime, maxStep, eventTime);
       // 浮動小数点の丸めでゼロ刻みになったイベントは現在時刻で消費して前進を保証する。
@@ -135,8 +135,10 @@ export class Simulator {
     this.lastSimDt = simDt;
   }
 
-  // 生存する艦の高度から今フレームのサブステップ上限 [s] を求める。
-  private adaptiveMaxStep(): number {
+  // 生存する艦の高度と、このフレームの時間送り simDt から、今フレームのサブステップ上限 [s]
+  // を求める。simDt 由来の下駄は通常時の上限へ掛ける — 返り値へ掛けると再突入中の 1s 上限まで
+  // 押し上げてしまい、再突入優先が壊れる。
+  private adaptiveMaxStep(simDt: number): number {
     this.adaptiveStatesScratch.length = 0;
     // 加熱・動圧の積分結果が存続を左右し、その帰結をプレイヤーが観測するのは艦だけ。
     // 他の種別は大気圏に入れば失われるだけで、いつどれだけの精度で失われるかはプレイの結果を変えない。
@@ -149,7 +151,7 @@ export class Simulator {
     return adaptiveSimulationMaxStep(
       this.adaptiveStatesScratch,
       R_EARTH + C.REENTRY_SUBSTEP_ALT,
-      C.SUBSTEP_MAX_DT,
+      Math.max(C.SUBSTEP_MAX_DT, simDt / C.SUBSTEP_MAX_COUNT),
       C.REENTRY_SUBSTEP_MAX_DT,
     );
   }

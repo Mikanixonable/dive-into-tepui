@@ -24,8 +24,8 @@ function elementsOf(ephemeris: Ephemeris, s: KinematicState): Elements {
   const center = strongestAttractor(s.r, ephemeris.gravityAttractorsAt(s.t));
   const el = orbitalElementsOf(s, center);
   if (el === null) return { a: NaN, peAlt: NaN, apAlt: NaN, incDeg: NaN };
-  const { periapsisAlt, apoapsisAlt } = apsisAltitudes(el);
-  return { a: el.a, peAlt: periapsisAlt, apAlt: apoapsisAlt, incDeg: (el.inc * 180) / Math.PI };
+  const { pe, ap } = apsisAltitudes(el);
+  return { a: el.a, peAlt: pe, apAlt: ap, incDeg: el.incDeg };
 }
 
 type OrbitCase = { label: string; state0: KinematicState; period: number };
