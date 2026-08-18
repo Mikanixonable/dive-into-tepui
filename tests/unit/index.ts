@@ -25,6 +25,7 @@ import { register as registerModulePick } from './module-pick.test';
 import { register as registerAdvancedVessel } from './advanced-vessel.test';
 import { register as registerDockingCluster } from './docking-cluster.test';
 import { register as registerAssemblyEditor } from './assembly-editor.test';
+import { register as registerBaseSave } from './base-save.test';
 
 registerResource();
 registerProducibility();
@@ -44,6 +45,7 @@ registerModulePick();
 registerAdvancedVessel();
 registerDockingCluster();
 registerAssemblyEditor();
+registerBaseSave();
 registerHullMesh();
 registerMassProperties();
 registerAttitudeControl();

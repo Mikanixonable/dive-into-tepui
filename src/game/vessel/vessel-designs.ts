@@ -4,7 +4,7 @@ import * as C from '../const';
 import { v3 } from '../../physics/vec3';
 import { buildEnemyShip, buildStage0EnemyShip } from '../../render/ships';
 import { AssemblyRenderObject } from './assembly-render-object';
-import type { AnyPart } from '../game-entity/parts';
+import { partFromSaveData, type AnyPart, type BaseModulePart, type PartType } from '../game-entity/parts';
 import { hostileParts, tuneActuators } from './vessel-parts';
 import type { EnemyKind } from './enemy-ai';
 import { inertiaForEnemyKind } from './enemy-ai';
@@ -16,6 +16,7 @@ import { len } from '../../physics/vec3';
 import { crewedAssembly, orbitalBaseAssembly } from './vessel-assemblies';
 import type { MassProperties } from './mass-properties';
 import { deriveMassProperties, massPropertiesFrom, massPropertiesOf } from './mass-properties';
+import { isAssemblySaveData } from '../save-data';
 
 export type VesselFaction = 'ally' | 'enemy';
 
@@ -70,9 +71,62 @@ export function crewedShipDesign(): VesselDesign {
   };
 }
 
+// 保存 JSON の部品を runtime の Part へ戻す際に許可する判別子。未知の部品種別を createPart へ渡すと
+// 既定値表を引けず、壊れた設計がその後の質量・描画計算で例外になるため、ここで拒否する。
+const SAVED_PART_TYPES: ReadonlySet<PartType> = new Set([
+  'hull', 'armor', 'weapon', 'engine', 'rcs_thruster', 'solar_panel', 'radiator',
+  'combat_shield', 'heat_shield', 'communication', 'robot_arm', 'docking_port', 'container_coupling',
+  'oxidizer_tank', 'reductant_tank', 'pressurant_tank', 'rcs_tank', 'water_tank',
+  'battery', 'fuel_cell', 'rtg', 'cockpit', 'autopilot', 'magazine', 'ammunition',
+  'plumbing', 'payload_bay', 'flywheel', 'magnetorquer', 'base_module', 'farm', 'life_support', 'dock',
+]);
+
+function validDockPort(value: unknown): value is { localPos: { x: number; y: number; z: number }; localNormal: { x: number; y: number; z: number } } {
+  if (typeof value !== 'object' || value === null) return false;
+  const port = value as { localPos?: unknown; localNormal?: unknown };
+  const isVec3 = (v: unknown): boolean => {
+    if (typeof v !== 'object' || v === null) return false;
+    const vec = v as { x?: unknown; y?: unknown; z?: unknown };
+    return typeof vec.x === 'number' && Number.isFinite(vec.x)
+      && typeof vec.y === 'number' && Number.isFinite(vec.y)
+      && typeof vec.z === 'number' && Number.isFinite(vec.z);
+  };
+  return isVec3(port.localPos) && isVec3(port.localNormal);
+}
+
+// 基地保存の assembly を、部品 id を保った runtime assembly へ変換する。失敗時は null を返し、呼び出し
+// 側が既定基地へ戻せるようにする。Three.js の参照はここでも生成せず、入力は純粋な値だけである。
+export function baseAssemblyFromSaveData(value: unknown): VesselAssembly | null {
+  if (!isAssemblySaveData(value) || value.tree.nodes.length === 0) return null;
+  const partIds = new Set<string>();
+  try {
+    const placements = value.placements.map((placement) => {
+      if (!SAVED_PART_TYPES.has(placement.part.type)) throw new Error(`unknown part type ${placement.part.type}`);
+      if (partIds.has(placement.part.id)) throw new Error(`duplicate part id ${placement.part.id}`);
+      partIds.add(placement.part.id);
+      const part = partFromSaveData(placement.part);
+      if (placement.kind === 'external') return { ...placement, part };
+      return { ...placement, part };
+    });
+
+    const baseModules = placements
+      .map((placement) => placement.part)
+      .filter((part): part is BaseModulePart => part.type === 'base_module' && part.hp > 0);
+    if (baseModules.length === 0) return null;
+    for (const module of baseModules) {
+      if (!Number.isInteger(module.capacity) || module.capacity < 0
+        || !Array.isArray(module.dockSlots) || !validDockPort(module.hatch)
+        || module.dockSlots.some((slot) => !validDockPort(slot))) return null;
+    }
+    return { tree: value.tree, placements };
+  } catch {
+    return null;
+  }
+}
+
 // 軌道基地。基地モジュールと管制室を積む。砲も熱収支も持たない。
-export function orbitalBaseDesign(): VesselDesign {
-  const assembly = orbitalBaseAssembly(C.BASE_MAX_HP);
+export function orbitalBaseDesign(customAssembly?: VesselAssembly): VesselDesign {
+  const assembly = customAssembly ?? orbitalBaseAssembly(C.BASE_MAX_HP);
   return {
     faction: 'ally',
     // Bases use the same assembly-driven renderer as ships.  Their fixed legacy
@@ -81,7 +135,8 @@ export function orbitalBaseDesign(): VesselDesign {
     renderObject: new AssemblyRenderObject(assembly).object,
     assembly,
     ...derivedFrom(assembly),
-    radius: 330,
+    // 既存の基地衝突 LOD が持つ外接半径を下限にし、カスタム形状が大きくなった場合だけ拡張する。
+    radius: Math.max(330, hullRadiusOf(assembly)),
     hpRegenRate: 0,
     reentryAltMargin: C.PLAYER_MIN_ALT,
     gunnery: false,
