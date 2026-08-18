@@ -474,3 +474,22 @@ export function sectionMoments(section: CrossSection): SectionMoments {
 export function placeSectionPrimitives(section: CrossSection): readonly PlacedSectionPrimitive[] {
   return placePrimitives(section);
 }
+
+// 複合断面の寸法をすべて factor 倍した断面。貼り合わせる辺の長さは同じ比で変わるため、複合体の
+// 木構造はそのまま保たれる。断面の座標原点を中心とする相似変形なので、原点から等距離にない輪郭では
+// 内側への一定量のオフセットとはずれる。
+export function scaleCrossSection(section: CrossSection, factor: number): CrossSection {
+  if (!(factor > 0)) throw new Error(`cross section scale must be positive, got ${factor}`);
+  return {
+    primitives: section.primitives.map((primitive) => ({
+      ...primitive,
+      shape: scaleShape(primitive.shape, factor),
+    })),
+  };
+}
+
+function scaleShape(shape: PrimitiveShape, factor: number): PrimitiveShape {
+  return shape.kind === 'ellipse'
+    ? { ...shape, majorRadius: shape.majorRadius * factor, minorRadius: shape.minorRadius * factor }
+    : { ...shape, radius: shape.radius * factor };
+}

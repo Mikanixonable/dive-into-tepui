@@ -42,17 +42,23 @@ export function hasBaseModule(vessel: CapabilityVessel): boolean {
 
 // 主機を持つ。
 export function hasEngine(vessel: CapabilityVessel): boolean {
-  return hasWorkingPart(vessel, 'thruster');
+  return hasWorkingPart(vessel, 'engine');
 }
 
 // 健全な通信モジュールのうち最も遠くまで届く到達距離 [m]。1つも無ければ 0。
-function communicationRange(vessel: CapabilityVessel): number {
+export function communicationRange(vessel: CapabilityVessel): number {
   let range = 0;
   for (const p of vessel.parts) {
     if (p.type !== 'communication' || p.hp <= 0) continue;
     range = Math.max(range, (p as CommunicationPart).range);
   }
   return range;
+}
+
+// 通信網の起点になる機体か。通信基地は基地モジュールと大型の通信設備の組であり(§13-3)、
+// それ自身を示す搭載要素は無い。
+export function isCommStation(vessel: CapabilityVessel): boolean {
+  return hasBaseModule(vessel) && communicationRange(vessel) > 0;
 }
 
 // 無人での計画実行は、装置と通信圏の両方を要する。同じ機体でも場所によって可否が変わる。

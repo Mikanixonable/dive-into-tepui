@@ -2,6 +2,7 @@
 import type * as THREE from 'three/webgpu';
 import { Stage, type ObjectAuthoring, type StageDeps } from './stage';
 import { Vessel } from '../vessel/vessel';
+import { isOperable } from '../vessel/capabilities';
 import { EntityIdAllocator } from '../game-entity/entity-id';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { SimSpeedManager } from '../sim-speed-manager';
@@ -324,7 +325,9 @@ export class CreativeStage extends Stage {
     this.issues = form ? this.computeFieldIssues(form) : [];
     this.simSpeed = simSpeed;
     const simDt = dt * simSpeed.simSpeed;
-    for (const ship of this._entities.ownShips()) ship.planExecutor.update(ship, simDt, simTime, simSpeed);
+    for (const ship of this._entities.ownShips()) {
+      ship.planExecutor.update(ship, simDt, simTime, simSpeed, this.commandLinked(ship));
+    }
   }
 
   // 'instant' の艦はノード時刻ちょうど、'powered' の艦は点火予定時刻を Simulator の既知
@@ -334,7 +337,7 @@ export class CreativeStage extends Stage {
     for (const ship of this._entities.ownShips()) {
       const t = ship.planExecution === 'instant' ? ship.plan.firstNode()?.t
         : ship.planExecution === 'powered' && this.simSpeed
-          ? (ship.planExecutor.nextEventTime(ship, simTime, this.simSpeed) ?? undefined)
+          ? (ship.planExecutor.nextEventTime(ship, simTime, this.simSpeed, this.commandLinked(ship)) ?? undefined)
         : undefined;
       if (t !== undefined && t >= simTime && (next === null || t < next)) next = t;
     }
@@ -359,9 +362,14 @@ export class CreativeStage extends Stage {
         ship.plan.consumeNodesUpTo(simTime, reached);
         ship.state = reached;
       } else if (ship.planExecution === 'powered' && this.simSpeed) {
-        ship.planExecutor.applyIgnitionAndCutoff(ship, simTime, this.simSpeed);
+        ship.planExecutor.applyIgnitionAndCutoff(ship, simTime, this.simSpeed, this.commandLinked(ship));
       }
     }
+  }
+
+  // この機体へ指令が届いているか。有人機は人が判断するので圏外でも届いた扱いになる。
+  private commandLinked(ship: Vessel): boolean {
+    return isOperable(ship, this._commNetwork);
   }
 
   checkWin(): boolean {

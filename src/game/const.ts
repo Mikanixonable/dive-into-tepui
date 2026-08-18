@@ -19,9 +19,6 @@ export const BASE_THRUST = 4e8;        // 基地の総推力 [N]（1e6 kg で 40
 export const BASE_TORQUE = 1.4e8;      // 基地のトルク [N·m]（慣性 1e8 で 1.4 rad/s² — 船の角加速度と同等）
 export const BASE_FUEL_RATE = 0.5;     // 基地の燃料消費レート
 export const BASE_MAX_FUEL = 50000;    // 基地の最大燃料
-export const BASE_INERTIA_X = 1e8;     // 基地の慣性モーメント（ほぼ対称の大質量構造物）
-export const BASE_INERTIA_Y = 1e8;
-export const BASE_INERTIA_Z = 1.2e8;   // 長軸方向はやや大きい
 export const BASE_MAX_HP = 1e6;        // 基地の総HP。質量に見合う構造体として、砲撃で崩れる量ではない
 
 
@@ -42,13 +39,12 @@ export const DEBRIS_REENTRY_ALT = 95e3; // 弾・薬莢・破片の消滅高度 
 export const ALT_WARN_THRESHOLDS = [120e3, 100e3, 80e3];
 
 // --- 大気抵抗(弾道係数の逆数 Cd·A/m [m^2/kg]) ---
-export const SHIP_BCINV = 3.3e-3; // 機体: Cd≈2.2, A≈12m², m≈8t
+// 形状を持つ機体の値はここに無い。姿勢によって変わるので、投影面積と質量から毎回導く(§11-2)。
 export const BULLET_BCINV = 2e-4; // 弾丸: 高弾道係数でほとんど減速しない
 export const SMALL_DEBRIS_BCINV = 8e-3; // 薬莢・破片
 
 // --- 太陽輻射圧(輻射圧係数 × 断面積質量比 C_R·A/m [m^2/kg]) ---
 // 大気抵抗が消える高軌道・ラグランジュ点領域では、これが唯一残る非重力摂動になる。
-export const SHIP_SRP_COEFF = 1.56e-2; // 機体: C_R≈1.3, A≈12m², m=PLAYER_MASS
 export const SMALL_DEBRIS_SRP_COEFF = 4.7e-3; // 薬莢・破片・弾薬
 
 // --- 空力加熱・構造限界(自機のみ) ---
@@ -62,7 +58,17 @@ export const HEAT_CAPACITY = 3.4e5; // 外殻の熱容量 [J/K]
 export const ENV_TEMP = 255; // 放射平衡の環境温度 [K]
 export const HULL_START_TEMP = 273; // 初期機体温度 [K]
 export const MAX_HULL_TEMP = 1300; // 超過で熱防御飽和 → 機体喪失 [K]
-export const MAX_DYN_PRESSURE = 35e3; // 超過で空力破壊 [Pa]
+export const MAX_DYN_PRESSURE = 35e3; // 超過で空力破壊 [Pa]。熱シールドを持たない機体の値。
+// 熱シールドが完全に遮蔽しているとみなす立体角 [sr]。半球(2π)を全遮蔽と取る。
+export const HEAT_SHIELD_FULL_SOLID_ANGLE = 2 * Math.PI;
+// 完全に遮蔽された流れに対する、外殻温度と動圧の閾値の倍率。
+export const HEAT_SHIELD_TEMP_MULT = 2.5;
+export const HEAT_SHIELD_DYN_PRESSURE_MULT = 3.0;
+// 既定の有人艦が積む熱シールド。機首側の 1.2 sr(半頂角 約36°)を守る。アブレータは
+// 遮蔽した入熱 1 MJ あたり 1 g 減り、30 kg で 3e10 J ぶんもつ。
+export const CREWED_HEAT_SHIELD_SOLID_ANGLE = 1.2;
+export const CREWED_ABLATOR_MASS = 30;
+export const CREWED_ABLATION_PER_HEAT = 1e-9;
 export const HULL_TEMP_FLOOR = 120; // 放射冷却で下がりきる機体温度の下限 [K]
 
 // --- 再突入の燃焼エフェクト ---
@@ -82,6 +88,8 @@ export const SOLAR_CONSTANT = 1361; // 地球軌道の太陽定数 [W/m^2]
 // 船体への直撃(PLAYER_BULLET_DAMAGE)より軽い。損耗はドックで修理するまで戻らない。
 export const RADIATOR_BULLET_DAMAGE = 0.25;
 export const RADIATOR_CONTACT_DEPLOY = 0.15; // これ以上展開していると被弾対象になる展開度
+// 有効放熱面積 [m^2](左右2枚合計)。放熱板要素の面積と効率の積がこの値になる。
+export const RADIATOR_COOLING_AREA = 50;
 export const RADIATOR_EFFICIENCY_MULT = 1; // 放熱面積(RADIATOR_PANEL_AREA)に掛ける性能係数
 
 // --- 被弾による発熱 ---
@@ -91,6 +99,12 @@ export const BULLET_IMPACT_HEAT = 3.0e5; // 自機が被弾1発あたりに受�
 export const SOLAR_PANEL_AREA = 7.2; // 発電面積 [m^2](左右2枚合計)
 export const SOLAR_PANEL_EFFICIENCY = 0.25; // 太陽光→電力の変換効率
 export const POWER_CAPACITY = 1.5e6; // 蓄電容量 [J]
+// 既定の有人艦の定常消費電力の合計 [W]。通信・フライホイール・生命維持のぶん。
+export const CREWED_POWER_DRAW = 490;
+// 既定の有人艦の廃熱 [W]。消費電力の合計に、生命維持装置が別に出す熱を足したもの。
+export const CREWED_WASTE_HEAT = 590;
+// 既定の有人艦の RCS 推進剤搭載量 [kg]。
+export const CREWED_RCS_FUEL_CAPACITY = 1000;
 
 // --- 高度低下警告(EMA平滑化) ---
 export const ALT_EMA_TIME_CONST = 3; // 高度・降下率EMAの時定数 [s]
@@ -108,26 +122,20 @@ export const SHADOW_MIN_AMBIENT = 0.35; // 影の中に残す環境光の割合
 // 方向キーが押されている間だけ選択中の段の加速度がその方向へ出る。4段目は3段目の4倍。
 export const THROTTLE_LEVELS = [5.0, 20.0, 100.0, 400.0];//エンジン出力、スロットル
 export const THROTTLE_LABELS = ['弱', '中', '強', '最強'] as const;
-// 自機の質量 [kg]。既定パーツのスラスター推力はこの質量で THROTTLE_LEVELS の最大値の
-// 加速度になるよう決めてあるので、両者を別々に動かすと表示と実挙動がずれる。
-export const PLAYER_MASS = 1000;
 export const THROTTLE_DEFAULT_IDX = 1;
 // 並進方向キーをこの秒数以内に連打すると、押しっぱなし相当にラッチ/解除する [s]
 export const THRUST_LATCH_DOUBLE_TAP_SEC = 0.3;
 
-export const MAX_ANG_ACCEL = 1.4; // 姿勢制御の角加速度 [rad/s^2]
+// 姿勢制御が出す角加速度 [rad/s^2]。フライホイールの最大トルクは、機体の慣性テンソルの最大主
+// 慣性モーメントにこの値を掛けて決まる(§10-4) — 機体の大小によらず手触りが一定になる。
+export const MAX_ANG_ACCEL = 1.4;
 export const RCS_DAMP_RATE = 3.5; // RCS 回転制動の減衰係数 [1/s]
-
-// 自機の主慣性モーメント(相対値、3軸とも異なる非対称形にしてジャニベコフ効果を起こす)
-export const PLAYER_INERTIA_PITCH = 1.0; // ピッチ軸(X)。3軸中の中間値 = 不安定軸
-export const PLAYER_INERTIA_YAW = 1.6; // ヨー軸(Y)
-export const PLAYER_INERTIA_ROLL = 0.5; // ロール軸(Z、機体前後)。細長い形状に見合って最小
 
 // 手動回転RCSの出力ランプ: 押し始めは MIN、RAMP_TIME 秒かけて (MIN + RAMP) まで増加する
 export const RCS_MANUAL_OUTPUT_MIN = 0.3;
 export const RCS_MANUAL_OUTPUT_RAMP = 1.0;
 export const RCS_MANUAL_RAMP_TIME = 3.0; // [s]
-export const RCS_PUFF_TORQUE_EPS = 0.15; // RCSパフを表示する実トルクしきい値 [rad/s^2](inertia=1前提)
+export const RCS_PUFF_TORQUE_EPS = 0.15; // RCSパフを表示する角加速度のしきい値 [rad/s^2]
 
 // 微調整モード([V]キーでトグル、射撃中は自動でON)で角加速度に掛ける倍率
 export const FINE_ATTITUDE_SCALE = 0.5;

@@ -15,9 +15,10 @@ import { kinematicState, KinematicState } from '../../src/physics/kinematic-stat
 import { v3 } from '../../src/physics/vec3';
 import { stepDynamics } from '../../src/physics/dynamics';
 import { keplerPeriod } from '../../src/physics/elements';
+import { ballisticCoeffInv } from '../../src/physics/aerodynamics';
+import { crewedMassProperties } from '../../src/game/vessel/vessel-assemblies';
 import {
   MU_EARTH, R_EARTH,
-  SHIP_BCINV,
   INITIAL_ALT, INITIAL_INC_DEG,
   GRAVITY_ALWAYS_COUNT, GRAVITY_NEGLIGIBLE_ACCEL,
   SUBSTEP_MAX_DT,
@@ -30,7 +31,7 @@ import {
 } from '../../src/game/const';
 
 export {
-  MU_EARTH, R_EARTH, SHIP_BCINV, INITIAL_ALT, INITIAL_INC_DEG,
+  MU_EARTH, R_EARTH, INITIAL_ALT, INITIAL_INC_DEG,
   GRAVITY_ALWAYS_COUNT, GRAVITY_NEGLIGIBLE_ACCEL, SUBSTEP_MAX_DT,
   ARC_STEPS_PER_REV, ARC_MIN_STEP_DT, ARC_MAX_STEPS,
   TRAJECTORY_SAMPLES_PER_REV, ARC_MAX_SAMPLES,
@@ -47,6 +48,10 @@ export const DIVERGENCE_TOLERANCE_MAX_ORBIT_RATIO = 0.02;
 
 // player/player.ts の Player.makeInitialState() と同一の式(高度 INITIAL_ALT・傾斜角
 // INITIAL_INC_DEG の円軌道、機首プログレード配置の初期状態)。
+// 既定の有人艦の弾道係数の逆数 [m²/kg]。姿勢によらない平均の投影面積から採る。
+export const PERF_SHIP_BCINV = ballisticCoeffInv(
+  crewedMassProperties().principalAreas, crewedMassProperties().loadedMass, v3());
+
 export function initialLeoState(): KinematicState {
   const r0 = R_EARTH + INITIAL_ALT;
   const vCirc = Math.sqrt(MU_EARTH / r0);
@@ -118,7 +123,7 @@ export function predictedAttractorsAtNoEntities(ephemeris: Ephemeris, t: number)
 export function stepDynamicsAt(ephemeris: Ephemeris, state: KinematicState, dt: number): KinematicState {
   const tMid = state.t + dt / 2;
   const attractors = ephemeris.gravityAttractorsAt(tMid);
-  return stepDynamics(state, dt, attractors, SHIP_BCINV, 0, null);
+  return stepDynamics(state, dt, attractors, PERF_SHIP_BCINV, 0, null);
 }
 
 // 刻み幅 dt 固定で state から targetT まで積分する。端数(remaining < dt)は最後の1ステップを

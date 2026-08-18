@@ -13,7 +13,7 @@ import { KinematicState, kinematicState } from '../../src/physics/kinematic-stat
 import { add, cross, lenSq, scale, v3, Vec3 } from '../../src/physics/vec3';
 import { MU_MOON, R_MOON } from '../../src/physics/solar-system';
 import {
-  MU_EARTH, R_EARTH, SHIP_BCINV, PREDICT_RESET_DIST,
+  MU_EARTH, R_EARTH, PERF_SHIP_BCINV, PREDICT_RESET_DIST,
   buildEphemeris, initialLeoState, stepDynamicsAt, posError,
 } from './common';
 
@@ -36,7 +36,7 @@ type ArcRun = { states: KinematicState[]; times: number[]; steps: number; maxBod
 function runArc(
   ephemeris: Ephemeris, state0: KinematicState, span: number, checkpoints: readonly number[],
 ): ArcRun {
-  const arc = new PredictedArc(state0, registryProvider(ephemeris), SHIP_BCINV, 0, true);
+  const arc = new PredictedArc(state0, registryProvider(ephemeris), PERF_SHIP_BCINV, 0, true);
   arc.requiredEnd = state0.t + span;
   arc.retainFrom = state0.t;
   const times: number[] = [];

@@ -3,6 +3,7 @@ import { Attitude, randomQuat } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { randSym } from '../../physics/random';
 import { add, randVec, v3, Vec3 } from '../../physics/vec3';
+import { diagonalInertia } from '../../physics/inertia-tensor';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { DebrisKind, DebrisPiece } from '../game-entity/debris-piece';
@@ -123,7 +124,7 @@ export class EffectsSystem {
       const att = {
         q: randomQuat(),
         w: v3(randSym(0.25), (1.4 + Math.random() * 1.2) * (Math.random() < 0.5 ? -1 : 1), randSym(0.25)),
-        inertia: v3(1, 2.05, 3.0), // 中間軸 = y: ここに主回転を与えると周期的に反転する
+        inertia: diagonalInertia(v3(1, 2.05, 3.0)), // 中間軸 = y: ここに主回転を与えると周期的に反転する
       };
       this.spawnFragment(state, att, accent, size);
     }

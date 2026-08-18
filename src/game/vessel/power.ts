@@ -52,8 +52,7 @@ export class PowerSystem {
     // 裏面(法線が太陽と反対を向く)では発電しないため負値を0に切り詰める
     const cosIncidence = Math.max(0, dot(normal, sunDir));
     // 展開度 deployMult を掛けて、収納時は発電しないようにする
-    const basePower = ship.totalPowerGeneration > 0 ? ship.totalPowerGeneration : C.SOLAR_CONSTANT * C.SOLAR_PANEL_EFFICIENCY * C.SOLAR_PANEL_AREA;
-    const power = basePower * cosIncidence * sunlit * deployMult;
+    const power = ship.totalPowerGeneration * cosIncidence * sunlit * deployMult;
     this.charge = Math.min(C.POWER_CAPACITY, this.charge + power * dt);
   }
 

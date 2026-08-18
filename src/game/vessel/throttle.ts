@@ -1,6 +1,7 @@
 // プレイヤーの並進スロットル・姿勢制御(RCS)・プログレードホールド。
 import { Attitude, attitudeAlignTorque, qRotate } from '../../physics/attitude';
-import { Vec3, add, norm, scale, v3 } from '../../physics/vec3';
+import { Vec3, norm, scale, v3 } from '../../physics/vec3';
+import { inertiaTimes, principalMoments } from '../../physics/inertia-tensor';
 import * as C from '../const';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K, KeyBinding } from '../input/key-mapping';
@@ -210,8 +211,10 @@ export class VesselThrottle {
       C.RCS_MANUAL_OUTPUT_RAMP *
       (Math.min(C.RCS_MANUAL_RAMP_TIME, this.rotationHoldTime) / C.RCS_MANUAL_RAMP_TIME);
       
-    const baseAngAccel = ship.totalTorque > 0
-      ? ship.totalTorque / Math.max(inertia.x, inertia.y, inertia.z)
+    // 総トルクを最大の主慣性モーメントで割る。どの軸へ回すときも同じ角加速度が出せる値になる。
+    const maxMoment = principalMoments(inertia).z;
+    const baseAngAccel = ship.totalTorque > 0 && maxMoment > 0
+      ? ship.totalTorque / maxMoment
       : C.MAX_ANG_ACCEL;
 
     const angScale = fineAttitude ? C.FINE_ATTITUDE_SCALE : 1;
@@ -225,24 +228,20 @@ export class VesselThrottle {
       maxAngAccel *= actualRatio;
     }
     
-    const manualTorque = v3(
-      inX * maxAngAccel * inertia.x,
-      inY * maxAngAccel * inertia.y,
-      inZ * maxAngAccel * inertia.z,
-    );
-
-    // 無入力かつホールド中なら自動整列トルクを加える(機首をプログレード v、上方向を r へ)
+    // ホールド中の無入力なら整列トルクだけを返す。整列則は自前の微分ゲインで減衰を持つので、
+    // RCS 制動を重ねると過減衰になり、機首がプログレードへ寄るまでが遅くなる。
     if (this.progradeHold && inX === 0 && inY === 0 && inZ === 0) {
-      return add(manualTorque, attitudeAlignTorque(v, r, att, C.PROGRADE_HOLD_KP, C.PROGRADE_HOLD_KD));
+      return attitudeAlignTorque(v, r, att, C.PROGRADE_HOLD_KP, C.PROGRADE_HOLD_KD);
     }
-    // 無入力の軸だけRCS制動を掛ける
-    if (this.rcsDamp) {
-      return v3(
-        manualTorque.x - (inX === 0 ? C.RCS_DAMP_RATE * inertia.x * att.w.x : 0),
-        manualTorque.y - (inY === 0 ? C.RCS_DAMP_RATE * inertia.y * att.w.y : 0),
-        manualTorque.z - (inZ === 0 ? C.RCS_DAMP_RATE * inertia.z * att.w.z : 0),
-      );
-    }
-    return manualTorque;
+
+    // 指令はまず角加速度として組み、最後に慣性テンソルを掛けてトルクへ直す。慣性乗積を持つ機体
+    // でも、押した軸に対して出る角加速度は指令どおりになる。
+    const damp = (input: number, w: number): number =>
+      this.rcsDamp && input === 0 ? -C.RCS_DAMP_RATE * w : 0;
+    return inertiaTimes(inertia, v3(
+      inX * maxAngAccel + damp(inX, att.w.x),
+      inY * maxAngAccel + damp(inY, att.w.y),
+      inZ * maxAngAccel + damp(inZ, att.w.z),
+    ));
   }
 }

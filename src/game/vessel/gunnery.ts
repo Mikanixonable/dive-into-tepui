@@ -5,6 +5,7 @@ import { kinematicState } from '../../physics/kinematic-state';
 import { R_EARTH_EQ } from '../../physics/solar-system';
 import { randSym } from '../../physics/random';
 import { add, addScaled, dot, lenSq, norm, randPerp, randVec, scale, v3, Vec3 } from '../../physics/vec3';
+import { diagonalInertia } from '../../physics/inertia-tensor';
 import type { Ephemeris } from '../../physics/ephemeris';
 import * as C from '../const';
 import { Input } from '../input/input';
@@ -302,7 +303,7 @@ export class Gunnery {
       {
         q: randomQuat(),
         w: v3(randSym(6.0), randSym(6.0), randSym(6.0)),
-        inertia: v3(0.85, 0.3, 1.15), // 円筒: 長軸(y)が最小。x/z も非対称にしジャニベコフ効果を起こす
+        inertia: diagonalInertia(v3(0.85, 0.3, 1.15)), // 円筒: 長軸(y)が最小。x/z も非対称にしジャニベコフ効果を起こす
       },
       ship.state.t,
     );
@@ -326,7 +327,7 @@ export class Gunnery {
       {
         q: { x: ship.att.q.x, y: ship.att.q.y, z: ship.att.q.z, w: ship.att.q.w },
         w: v3(randSym(2), randSym(2), randSym(2)),
-        inertia: v3(1, 0.2, 1), // 円柱
+        inertia: diagonalInertia(v3(1, 0.2, 1)), // 円柱
       },
     );
   }
@@ -346,7 +347,7 @@ export class Gunnery {
       {
         q: { x: ship.att.q.x, y: ship.att.q.y, z: ship.att.q.z, w: ship.att.q.w },
         w: v3(randSym(0.2), randSym(0.2), randSym(0.2)),
-        inertia: v3(1, 1.2, 1.4),
+        inertia: diagonalInertia(v3(1, 1.2, 1.4)),
       },
     );
   }

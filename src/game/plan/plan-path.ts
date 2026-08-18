@@ -22,6 +22,7 @@ import type { Vessel } from '../vessel/vessel';
 import { clipSamplesTo, stateAt, withinEnd } from './arc-range';
 import { goldenSectionMin } from '../../physics/optimize';
 import * as C from '../const';
+import { ballisticCoeffInv, radiationPressureCoeff } from '../../physics/aerodynamics';
 
 const SEGMENT_COLORS = [0xffb36b, 0xff8a26, 0xff6a00];
 const arcColor = (i: number): number => SEGMENT_COLORS[Math.min(i, SEGMENT_COLORS.length - 1)]!;
@@ -123,6 +124,10 @@ export class PlanPath {
     this.unbakeTransform = ephemeris.frameTransformAt(frame, currentTime, attractors);
     this.lastRebuiltArcs = 0;
     // 起点→node…→末尾区間に分解する
+    const areas = ship?.massProperties.principalAreas ?? null;
+    const shipMass = ship?.mass ?? 0;
+    const planBcInv = areas ? ballisticCoeffInv(areas, shipMass, v3()) : 0;
+    const planSrpCoeff = areas ? radiationPressureCoeff(areas, shipMass) : 0;
     const segments = buildSegments(planData, ephemeris, this.displayDuration);
     this._plannedEnd = segments[segments.length - 1]!.end;
     for (let i = 0; i < segments.length; i++) {
@@ -139,11 +144,12 @@ export class PlanPath {
       const prev = this.sources[i];
       let arc = prev?.owned ? prev.arc : null;
       if (!arc || !arc.represents(seg.state0, seg.end, attractorProvider.revision)) {
-        // 惑星への周回計画のみが対象なので、自機自身の弾道係数(SHIP_BCINV/SHIP_SRP_COEFF)で
-        // 積分する。外挿の尾は持たない(keplerTail=false) — 尾の上にノードを置くと、
-        // 実際に積分し直した次のノードと繋がらなくなるため。
+        // 惑星への周回計画のみが対象なので、自機自身の弾道係数で積分する。計画は何周にもわたり、
+        // そのあいだの姿勢は決まらないので、投影面積は向きを平均した値を採る(§11-2)。外挿の尾は
+        // 持たない(keplerTail=false) — 尾の上にノードを置くと、実際に積分し直した次のノードと
+        // 繋がらなくなるため。
         arc = new PredictedArc(
-          seg.state0, attractorProvider, C.SHIP_BCINV, C.SHIP_SRP_COEFF, /* keplerTail */ false,
+          seg.state0, attractorProvider, planBcInv, planSrpCoeff, /* keplerTail */ false,
         );
         this.lastRebuiltArcs++;
       }

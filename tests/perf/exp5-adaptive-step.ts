@@ -21,7 +21,7 @@ import { stepDynamics } from '../../src/physics/dynamics';
 import {
   buildEphemeris, initialLeoState, posError,
   ARC_MIN_STEP_DT, ARC_STEPS_PER_REV, ARC_MAX_STEPS,
-  R_EARTH, SHIP_BCINV,
+  R_EARTH, PERF_SHIP_BCINV,
 } from './common';
 
 // 全 regime へ共通に与えるホライズン [s]。ゲームでは表示期間が全個体へ一律に配られるので、
@@ -70,7 +70,7 @@ function integrate(ephemeris: Ephemeris, state0: KinematicState, dt: number, hor
   while (end - s.t > 1e-9) {
     const step = Math.min(dt, end - s.t);
     const attractors = ephemeris.gravityAttractorsAt(s.t + step / 2);
-    s = stepDynamics(s, step, attractors, SHIP_BCINV, 0, null);
+    s = stepDynamics(s, step, attractors, PERF_SHIP_BCINV, 0, null);
   }
   return s;
 }
@@ -207,7 +207,7 @@ function partD(ephemeris: Ephemeris, regimes: readonly Regime[]): void {
       ));
       const mid = ephemeris.gravityAttractorsAt(a.t + dt / 2);
       resolveA++;
-      a = stepDynamics(a, dt, mid, SHIP_BCINV, 0, null);
+      a = stepDynamics(a, dt, mid, PERF_SHIP_BCINV, 0, null);
       stepsA++;
     }
 
@@ -229,7 +229,7 @@ function partD(ephemeris: Ephemeris, regimes: readonly Regime[]): void {
       maxRatio = Math.max(maxRatio, Math.max(dt / fresh, fresh / dt));
       const mid = ephemeris.gravityAttractorsAt(b.t + dt / 2);
       resolveB++;
-      b = stepDynamics(b, dt, mid, SHIP_BCINV, 0, null);
+      b = stepDynamics(b, dt, mid, PERF_SHIP_BCINV, 0, null);
       sizing = mid;
     }
 
