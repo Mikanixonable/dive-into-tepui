@@ -5,7 +5,9 @@ import * as C from '../../src/game/const';
 import type { AnyPart, PartType } from '../../src/game/game-entity/parts';
 import { createPart, partFromSaveData } from '../../src/game/game-entity/parts';
 import { PartInventory } from '../../src/game/vessel/part-inventory';
-import { baseParts, crewedParts, hostileParts } from '../../src/game/vessel/vessel-parts';
+import { baseParts, crewedParts, hostileParts, tuneActuators } from '../../src/game/vessel/vessel-parts';
+import { crewedMassProperties } from '../../src/game/vessel/vessel-assemblies';
+import { principalMoments } from '../../src/physics/inertia-tensor';
 import { test } from '../physics/harness';
 
 // §6-1 が挙げる搭載要素。外装11種・内装20種に、主要構造と装甲を加えたもの。
@@ -20,8 +22,13 @@ const REQUIRED_PART_TYPES: readonly PartType[] = [
 
 const CREWED_MAX_HP = C.PLAYER_MAX_HP;
 
+// 質量特性に合わせて性能を整えた既定の有人艦。素の crewedParts は主機とフライホイールの性能を
+// 持たず、形状から導いた質量と慣性を tuneActuators が与えて初めて決まる(§10-4)。
 function crewedInventory(): PartInventory {
-  return new PartInventory(crewedParts(CREWED_MAX_HP));
+  const derived = crewedMassProperties();
+  const parts = crewedParts(CREWED_MAX_HP);
+  tuneActuators(parts, derived.loadedMass, principalMoments(derived.inertia).z);
+  return new PartInventory(parts);
 }
 
 export function register(): void {
@@ -35,17 +42,20 @@ export function register(): void {
     }
   });
 
-  test('既定の有人艦の総推力が PLAYER_MASS × 最大スロットルと一致する', () => {
+  test('既定の有人艦の総推力が、導出した質量 × 最大スロットルと一致する', () => {
     const inv = crewedInventory();
     const maxThrottle = C.THROTTLE_LEVELS[C.THROTTLE_LEVELS.length - 1]!;
-    assert.equal(inv.totalThrust, C.PLAYER_MASS * maxThrottle);
+    assert.equal(inv.totalThrust, crewedMassProperties().loadedMass * maxThrottle);
     // 並進 RCS の推力は主機に数えない。
     assert.ok(inv.totalRcsThrust > 0);
   });
 
-  test('既定の有人艦の総トルクが MAX_ANG_ACCEL × 最大慣性と一致する', () => {
-    const inertia = Math.max(C.PLAYER_INERTIA_PITCH, C.PLAYER_INERTIA_YAW, C.PLAYER_INERTIA_ROLL);
-    assert.equal(crewedInventory().totalTorque, C.MAX_ANG_ACCEL * inertia);
+  test('既定の有人艦の総トルクが MAX_ANG_ACCEL × 最大主慣性モーメントと一致する', () => {
+    // 手触りの保存: 慣性が形状由来の値になっても、出せる角加速度は MAX_ANG_ACCEL のままである。
+    const maxMoment = principalMoments(crewedMassProperties().inertia).z;
+    const inv = crewedInventory();
+    assert.equal(inv.totalTorque, C.MAX_ANG_ACCEL * maxMoment);
+    assert.ok(Math.abs(inv.totalTorque / maxMoment - C.MAX_ANG_ACCEL) < 1e-12);
   });
 
   test('既定の有人艦の推進剤容量・蓄電容量が const.ts の定数と一致する', () => {

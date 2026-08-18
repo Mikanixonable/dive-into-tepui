@@ -2,6 +2,7 @@
 // `npm run test:unit` から tsconfig.test.json でコンパイル後、これを node 実行する。
 import { runAll } from '../physics/harness';
 import { register as registerCapabilities } from './capabilities.test';
+import { register as registerHeatShield } from './heat-shield.test';
 import { register as registerMassProperties } from './mass-properties.test';
 import { register as registerProducibility } from './producibility.test';
 import { register as registerResource } from './resource.test';
@@ -14,6 +15,7 @@ registerResourceClosure();
 registerCapabilities();
 registerVesselParts();
 registerMassProperties();
+registerHeatShield();
 
 runAll().catch((error) => {
   console.error(error);

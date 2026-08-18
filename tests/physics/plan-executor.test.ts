@@ -8,13 +8,14 @@ import { Plan } from '../../src/game/plan/plan';
 import { Attitude, qFromForwardUp } from '../../src/physics/attitude';
 import { kinematicState, orbitAxes } from '../../src/physics/kinematic-state';
 import { Vec3, add, v3 } from '../../src/physics/vec3';
+import { diagonalInertia } from '../../src/physics/inertia-tensor';
 
 // 円軌道もどきの状態(r=(1e7,0,0), v=(0,7000,0))を起点に、燃料無制限・全開加速度100m/s^2の
 // フェイク艦を作る。
 function makeShip(): PlanExecutorShip {
   return {
     state: kinematicState(0, v3(1e7, 0, 0), v3(0, 7000, 0)),
-    att: { q: { x: 0, y: 0, z: 0, w: 1 }, w: v3(), inertia: v3(1, 1, 1) },
+    att: { q: { x: 0, y: 0, z: 0, w: 1 }, w: v3(), inertia: diagonalInertia(v3(1, 1, 1)) },
     alive: true,
     planExecution: 'powered',
     plan: new Plan(),

@@ -5,10 +5,11 @@ import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { ATT_MAX_DYNAMIC_STEPS, Attitude, attitudeAlignError, attitudeAlignTorque, qFromAxisAngle, stepAttitude } from '../../src/physics/attitude';
 import { v3 } from '../../src/physics/vec3';
+import type { InertiaTensor } from '../../src/physics/inertia-tensor';
+import { diagonalInertia, inertiaTimes, rotationalEnergy } from '../../src/physics/inertia-tensor';
 
 function kineticEnergy(att: Attitude): number {
-  const { inertia: I, w } = att;
-  return 0.5 * (I.x * w.x * w.x + I.y * w.y * w.y + I.z * w.z * w.z);
+  return rotationalEnergy(att.inertia, att.w);
 }
 
 function quatNorm(att: Attitude): number {
@@ -25,7 +26,7 @@ export function register(): void {
     const initial: Attitude = {
       q: { x: 0, y: 0, z: 0, w: 1 },
       w: v3(0.2, 2, -0.3),
-      inertia: v3(1, 2.05, 3),
+      inertia: diagonalInertia(v3(1, 2.05, 3)),
     };
     const whole = stepAttitude(initial, v3(), 0.4);
     let split = initial;
@@ -45,7 +46,7 @@ export function register(): void {
     let att: Attitude = {
       q: { x: 0, y: 0, z: 0, w: 1 },
       w: v3(0.05, 3.0, 0.05), // 中間軸(y)周りにわずかな擾乱を加えた不安定回転
-      inertia: v3(1, 2, 3), // 非対称主慣性モーメント
+      inertia: diagonalInertia(v3(1, 2, 3)), // 非対称主慣性モーメント
     };
     const e0 = kineticEnergy(att);
     const dt = 0.05;
@@ -63,7 +64,7 @@ export function register(): void {
     let att: Attitude = {
       q: { x: 0, y: 0, z: 0, w: 1 },
       w: v3(0.2, 1.5, -0.3),
-      inertia: v3(1, 2, 3),
+      inertia: diagonalInertia(v3(1, 2, 3)),
     };
     const dt = 0.05;
     for (let i = 0; i < 20000; i++) {
@@ -76,7 +77,7 @@ export function register(): void {
     let att: Attitude = {
       q: { x: 0, y: 0, z: 0, w: 1 },
       w: v3(0, 0, 0),
-      inertia: v3(1, 1, 1), // 対称(球対称)にして単純化
+      inertia: diagonalInertia(v3(1, 1, 1)), // 対称(球対称)にして単純化
     };
     for (let i = 0; i < 100; i++) {
       att = stepAttitude(att, v3(0, 0, 1), 0.05);
@@ -92,7 +93,7 @@ export function register(): void {
     const att0: Attitude = {
       q: { x: 0, y: 0, z: 0, w: 1 },
       w: v3(0, 1, 0), // Y軸まわり 1 rad/s
-      inertia: v3(1, 1, 1),
+      inertia: diagonalInertia(v3(1, 1, 1)),
     };
     const dt = 0.1;
     const att = stepAttitude(att0, v3(0, 0, 0), dt);
@@ -105,7 +106,7 @@ export function register(): void {
     const att0: Attitude = {
       q: { x: 0, y: 0, z: 0, w: 1 },
       w: v3(0, 0, 1),
-      inertia: v3(1, 1, 1),
+      inertia: diagonalInertia(v3(1, 1, 1)),
     };
     const actual = stepAttitude(att0, v3(), 1);
     const expected = qFromAxisAngle(v3(0, 0, 1), 1);
@@ -114,6 +115,42 @@ export function register(): void {
       + actual.q.z * expected.z + actual.q.w * expected.w,
     );
     assert.ok(alignment > 1 - 1e-10, `1s requested but attitude advanced only partially: alignment=${alignment}`);
+  });
+
+  test('attitude: 慣性乗積を持つ剛体でも無トルクの回転運動エネルギーが保存される', () => {
+    // 機体座標系が慣性主軸系と一致しない剛体。射影を主軸系の式のままにすると、ここで保存が崩れる。
+    const inertia: InertiaTensor = { ixx: 1, iyy: 2, izz: 3, ixy: 0.4, ixz: -0.3, iyz: 0.25 };
+    let att: Attitude = { q: { x: 0, y: 0, z: 0, w: 1 }, w: v3(0.05, 3.0, 0.05), inertia };
+    const e0 = kineticEnergy(att);
+    for (let i = 0; i < 20000; i++) att = stepAttitude(att, v3(), 0.05);
+    assert.ok(Math.abs(kineticEnergy(att) - e0) / e0 < 1e-9, `energy drift: ${kineticEnergy(att)} vs ${e0}`);
+    assert.ok(Math.abs(quatNorm(att) - 1) < 1e-9, `quat norm: ${quatNorm(att)}`);
+  });
+
+  test('attitude: 慣性乗積を持つ剛体は、対角成分だけの剛体と違う運動をする', () => {
+    const w0 = v3(0.4, 1.2, -0.2);
+    const diagonal: InertiaTensor = { ixx: 1, iyy: 2, izz: 3, ixy: 0, ixz: 0, iyz: 0 };
+    const skewed: InertiaTensor = { ...diagonal, ixy: 0.5, iyz: -0.4 };
+    let a: Attitude = { q: { x: 0, y: 0, z: 0, w: 1 }, w: w0, inertia: diagonal };
+    let b: Attitude = { q: { x: 0, y: 0, z: 0, w: 1 }, w: w0, inertia: skewed };
+    for (let i = 0; i < 200; i++) {
+      a = stepAttitude(a, v3(), 0.02);
+      b = stepAttitude(b, v3(), 0.02);
+    }
+    const dw = Math.abs(a.w.x - b.w.x) + Math.abs(a.w.y - b.w.y) + Math.abs(a.w.z - b.w.z);
+    assert.ok(dw > 1e-2, `angular velocity should diverge: ${dw}`);
+  });
+
+  test('attitude: 慣性乗積を持つ剛体でも、指令した向きへ角加速度が出る', () => {
+    // トルクを慣性テンソルに掛けて組むので、押した軸に対して出る角加速度は指令どおりになる。
+    const inertia: InertiaTensor = { ixx: 4, iyy: 6, izz: 11, ixy: 1.2, ixz: -0.7, iyz: 0.4 };
+    const att: Attitude = { q: { x: 0, y: 0, z: 0, w: 1 }, w: v3(), inertia };
+    const command = v3(0, 0, 1.4);
+    const torque = inertiaTimes(inertia, command);
+    const dt = 1e-3;
+    const next = stepAttitude(att, torque, dt);
+    assert.ok(Math.abs(next.w.z / dt - 1.4) < 1e-6, `wz rate: ${next.w.z / dt}`);
+    assert.ok(Math.abs(next.w.x) < 1e-9 && Math.abs(next.w.y) < 1e-9);
   });
 
   test('attitudeAlignError: zero at the target attitude', () => {
@@ -132,7 +169,7 @@ export function register(): void {
   });
 
   test('attitudeAlignTorque: PD control drives attitude to the target under integration', () => {
-    let att: Attitude = { q: { x: 0, y: 0, z: 0, w: 1 }, w: v3(), inertia: v3(1, 1, 1) };
+    let att: Attitude = { q: { x: 0, y: 0, z: 0, w: 1 }, w: v3(), inertia: diagonalInertia(v3(1, 1, 1)) };
     const desiredFwd = v3(0, 0, -1); // 初期姿勢(fwd=+Z相当)から180°反対
     const desiredUp = v3(0, 1, 0);
     const dt = 0.02;

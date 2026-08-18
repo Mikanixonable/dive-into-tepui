@@ -47,6 +47,7 @@
     "src/game/vessel/internal-volume.ts",
     "src/game/vessel/mass-properties.ts",
     "src/game/vessel/vessel-assemblies.ts",
+    "src/game/vessel/heat-shield.ts",
     "src/game/vessel/capabilities.ts",
     "src/game/vessel/vessel-parts.ts",
     "src/game/vessel/part-inventory.ts",
