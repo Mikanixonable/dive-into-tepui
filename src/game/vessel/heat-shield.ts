@@ -1,7 +1,6 @@
 // 熱シールドが与える熱防御(§11-3)。加熱率と動圧の閾値は搭載した熱シールドから決まり、
 // 遮蔽する立体角の内側から流れが来ているあいだだけ効く — 向きを外せば守られない。
 import { Vec3, dot, norm } from '../../physics/vec3';
-import type { HeatShieldPart } from '../game-entity/parts';
 import * as C from '../const';
 import type { PartPlacement } from './assembly';
 import type { VesselTree } from './tree';
@@ -42,7 +41,7 @@ export function heatShielding(
   let shielded = 0;
   for (const placement of placements) {
     if (placement.kind !== 'external' || placement.part.type !== 'heat_shield') continue;
-    const shield = placement.part as HeatShieldPart;
+    const shield = placement.part;
     if (shield.hp <= 0 || shield.ablatorMass <= 0 || shield.solidAngle <= 0) continue;
     // 取り付け口の外向きが、そのシールドが守る向きである。
     const facing = mountFrame(tree, placement.mount).z;
@@ -64,7 +63,7 @@ export function ablate(placements: readonly PartPlacement[], shieldedHeat: numbe
   if (!(shieldedHeat > 0)) return;
   for (const placement of placements) {
     if (placement.kind !== 'external' || placement.part.type !== 'heat_shield') continue;
-    const shield = placement.part as HeatShieldPart;
+    const shield = placement.part;
     if (shield.ablatorMass <= 0) continue;
     shield.ablatorMass = Math.max(0, shield.ablatorMass - shieldedHeat * shield.ablationPerHeat);
   }

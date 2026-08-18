@@ -78,12 +78,10 @@ export class GameEntity {
   equatorNodes: EquatorNodeMarkerPair | null = null;
   // 自身の位置を指すマーカー。null = 出さない。
   marker: EntityMarker | null = null;
-  // 弾道係数の逆数 Cd·A/m(既定 0 = 抵抗なし)。
   // 弾道係数の逆数 Cd·A/m [m²/kg] と輻射圧係数 C_R·A/m [m²/kg]。姿勢によって変わりうるので
   // フィールドではなくアクセサで答える(§11-2)。
   protected get bcInv(): number { return 0; }
   protected get srpCoeff(): number { return 0; }
-  // 過去列の保持時間 [s]。既定 0 = 記録しない。
   // 種別ごとの過去列の保持時間 [s]。0 は履歴を持たない。
   protected readonly baseHistoryDuration: number = 0;
   private requestedHistoryDuration = 0;

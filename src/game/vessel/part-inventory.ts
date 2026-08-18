@@ -170,8 +170,7 @@ export class PartInventory {
     this.updateOverallHp();
   }
 
-  // 姿勢トルク [N·m]。フライホイールの最大トルクの合計。要求方向ごとの実際の最大値を
-  // アクチュエータ配置から解くのは姿勢制御系の分離(§14-2)が入ってからで、いまは合計を答える。
+  // 姿勢トルク [N·m]。健全なフライホイールの最大トルクの合計を、向きによらない1つの値として答える。
   public get totalTorque(): number {
     let total = 0;
     for (const p of this.flywheelRefs) if (p.hp > 0) total += p.maxTorque;
@@ -291,8 +290,7 @@ export class PartInventory {
     return total;
   }
 
-  // 推進剤の種別ごとのタンク容積の合計 [m^3]。密度を掛けて質量にするのは推進剤の
-  // 物性表(§15-1)が入ってからで、ここでは容積までを答える。
+  // その推進剤を収める健全なタンクの容積の合計 [m³]。
   public propellantVolume(propellant: PropellantId): number {
     let total = 0;
     for (const p of this.parts) {

@@ -35,7 +35,7 @@ export class CommNetwork implements CoverageQuery {
 
   // simTime のこのフレームの値と、中継点になりうる機体・遮蔽天体を受け取って網を組み直す。
   // 更新間隔に満たなければ前回の結果をそのまま保つ。
-  update(
+  public update(
     simTime: number,
     ephemeris: Ephemeris,
     vessels: readonly CommVessel[],
@@ -55,10 +55,10 @@ export class CommNetwork implements CoverageQuery {
     this._active = activeRelays(relays, attractors);
   }
 
-  get relays(): readonly CommRelay[] { return this._relays; }
-  get active(): readonly CommRelay[] { return this._active; }
+  public get relays(): readonly CommRelay[] { return this._relays; }
+  public get active(): readonly CommRelay[] { return this._active; }
 
-  inCoverage(pos: Vec3, moduleRange: number): boolean {
+  public inCoverage(pos: Vec3, moduleRange: number): boolean {
     return isInCommRange(pos, this._active, moduleRange, this.attractors);
   }
 }

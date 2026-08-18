@@ -134,7 +134,9 @@ export const ATT_MAX_DYNAMIC_STEPS = 12;
 
 // オイラーの運動方程式: I ω̇ = τ − ω × (I ω)。慣性主軸系に限らない一般の対称テンソルに対して
 // 成り立つ形なので、逆テンソル invI を1度だけ求めておけば各段の評価は行列ベクトル積2回で済む。
-function eulerRates(I: InertiaTensor, invI: InertiaTensor, w: Vec3, tq: Vec3): Vec3 {
+// invI が null(特異な慣性テンソル)なら角加速度が定義できないので、ω を変えない。
+function eulerRates(I: InertiaTensor, invI: InertiaTensor | null, w: Vec3, tq: Vec3): Vec3 {
+  if (!invI) return v3();
   return inertiaTimes(invI, sub(tq, cross(w, inertiaTimes(I, w))));
 }
 
@@ -145,8 +147,6 @@ function eulerRates(I: InertiaTensor, invI: InertiaTensor, w: Vec3, tq: Vec3): V
 export function stepAttitude(att: Attitude, torque: Vec3, dt: number): Attitude {
   const I = att.inertia;
   const invI = invertInertia(I);
-  // 慣性テンソルが特異な剛体には角加速度が定義できない。姿勢をそのまま返す。
-  if (!invI) return att;
   const torqueFree =
     torque.x === 0 && torque.y === 0 && torque.z === 0;
   let w = att.w;
