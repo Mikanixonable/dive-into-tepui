@@ -7,7 +7,7 @@ import { Attractor } from '../../src/physics/attractor';
 import { stepDynamics } from '../../src/physics/dynamics';
 import {
   buildEphemeris, initialLeoState, classifyAttractors, attractorsNear,
-  predictedAttractorsAtNoEntities, SHIP_BCINV, ARC_STEP_BUDGET,
+  predictedAttractorsAtNoEntities, PERF_SHIP_BCINV, ARC_STEP_BUDGET,
 } from './common';
 
 // 毎回異なる t を作る(リングキャッシュに当たらないようにする)。無理数っぽい定数を掛けて
@@ -63,7 +63,7 @@ export function run(): void {
   const fixedAttractors = ephemeris.gravityAttractorsAt(0);
   let sAcc = s0;
   const msStep = bench('stepDynamics(64 attractors, fixed)', 20000, () => {
-    sAcc = stepDynamics(sAcc, 1, fixedAttractors, SHIP_BCINV, 0, null);
+    sAcc = stepDynamics(sAcc, 1, fixedAttractors, PERF_SHIP_BCINV, 0, null);
   });
   void sAcc;
 
@@ -87,7 +87,7 @@ export function run(): void {
     const g2 = predictedAttractorsAtNoEntities(ephemeris, t + 10);
     const c2 = classifyAttractors(g2);
     const near2 = attractorsNear(s0.r, c2);
-    stepDynamics(s0, 20, near2, SHIP_BCINV, 0, null);
+    stepDynamics(s0, 20, near2, PERF_SHIP_BCINV, 0, null);
   });
 
   console.log('\n## 内訳との比較\n');
