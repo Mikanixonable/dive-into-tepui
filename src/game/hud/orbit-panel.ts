@@ -8,7 +8,7 @@ import { Attractor } from '../../physics/attractor';
 import type { Game } from '../game';
 
 import { getApsisLabelSpec } from './orbit-labels';
-import { Player } from '../player/player';
+import { Vessel } from '../vessel/vessel';
 
 const SYNC_INTERVAL_MS = 100;
 
@@ -18,7 +18,7 @@ export class OrbitPanel {
   constructor(private readonly els: Map<string, HTMLElement>) {}
 
   sync(game: Game, attractors: readonly Attractor[]): void {
-    const entity = game.activeControllableEntity;
+    const entity = game.followedVessel;
     const el = document.getElementById('hud-orbit');
     if (!entity) {
       el?.classList.add('hidden');
@@ -33,7 +33,7 @@ export class OrbitPanel {
     const oi = orbitInfo(entity, attractors);
     const apSpec = getApsisLabelSpec('ap', oi.centerId);
     const peSpec = getApsisLabelSpec('pe', oi.centerId);
-    const thermal = entity instanceof Player ? entity.thermal : null;
+    const thermal = entity instanceof Vessel ? entity.thermal : null;
     this.setText('center', oi.centerName);
     this.setText('alt', fmtDist(oi.alt));
     this.els.get('alt')?.classList.toggle('warn-hot', thermal?.altDescendWarned ?? false);

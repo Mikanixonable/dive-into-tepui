@@ -20,7 +20,7 @@ import { DisplayDurationSource, PlanData } from './plan';
 import { PlanPath } from './plan-path';
 import type { DisplayWindow } from '../display-window-manager';
 import type { FutureAttractorProvider } from '../simulation/arc-bodies';
-import type { Controllable } from '../game-entity/controllable';
+import type { Vessel } from '../vessel/vessel';
 
 // 近地点・遠地点アイコン。右クリックの被選択物であると同時に、表示するラベルを持つ。
 interface ApsisIcon extends MapPickable {
@@ -85,7 +85,7 @@ export class PlanDisplay {
   // 起点が null のときは何も求めない — 出さない計画の位置は持たない。ship はノードの無い
   // 唯一の区間を PlanPath が操作対象の予測列として答えるために渡す。
   update(
-    planData: PlanData | null, displayWindow: DisplayWindow, attractorProvider: FutureAttractorProvider, ship: Controllable | null,
+    planData: PlanData | null, displayWindow: DisplayWindow, attractorProvider: FutureAttractorProvider, ship: Vessel | null,
   ): void {
     if (planData === null) {
       this.ghost = null;

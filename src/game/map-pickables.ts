@@ -11,7 +11,7 @@ import { Ephemeris } from '../physics/ephemeris';
 import { NavTarget } from './nav-target';
 import { CameraSystem } from './camera/camera-system';
 import { PlanEditor } from './plan/plan-editor';
-import type { ActivePlayerController } from './active-player-controller';
+import type { ActiveVesselController } from './active-vessel-controller';
 import { len, sub } from '../physics/vec3';
 import { strongestAttractor } from '../physics/attractor';
 import { isOccluded } from '../physics/occlusion';
@@ -63,7 +63,7 @@ export class MapPickables {
 
   // 候補の供給元を参照として受け取る。
   constructor(
-    private readonly activePlayers: ActivePlayerController,
+    private readonly activeVessels: ActiveVesselController,
     private readonly entities: EntityManager,
     private readonly ephemeris: Ephemeris,
     private readonly navTarget: NavTarget,
@@ -100,7 +100,7 @@ export class MapPickables {
       displayTime, focusId, this.cameraSystem.bodyClassToggles,
       this.cameraSystem.activeCameraPos, visibilityPolicy,
     );
-    this.navTarget.update(this.activePlayers.current, this.entities, this.ephemeris, displayWindow);
+    this.navTarget.update(this.activeVessels.current, this.entities, this.ephemeris, displayWindow);
 
     // 船の位置は表示時刻の displayState — 機体メッシュや敵マーカーと同じ未来ゴースト位置に揃える。
     this.candidateItems.length = 0;
@@ -109,8 +109,8 @@ export class MapPickables {
     for (const item of this.cameraSystem.focusMarkers.bodyPickables(displayTime, visibilityPolicy)) {
       this.appendPickable(item);
     }
-    for (const ship of this.entities.players) {
-      const vPlayer = visibilityPolicy.entity('player', ship === this.activePlayers.current);
+    for (const ship of this.entities.ownShips()) {
+      const vPlayer = visibilityPolicy.entity('player', ship === this.activeVessels.current);
       if (!vPlayer.pickable) continue;
       const pos = ship.displayState(displayTime)?.r;
       if (pos) {
@@ -120,12 +120,12 @@ export class MapPickables {
         this.addCandidate(
           ship.id, ship.name, pos, 'player',
           `HP ${Math.round(ship.hp)}/${Math.round(ship.maxHp)} · PE ${pe}`,
-          ship === this.activePlayers.current ? -100 : 0,
+          ship === this.activeVessels.current ? -100 : 0,
           undefined, vPlayer.label,
         );
       }
     }
-    for (const enemy of this.entities.enemies) {
+    for (const enemy of this.entities.hostileVessels()) {
       const vShip = visibilityPolicy.entity('ship');
       if (!enemy.alive || !vShip.pickable) continue;
       const pos = enemy.displayState(displayTime)?.r;
@@ -137,12 +137,12 @@ export class MapPickables {
       const pos = ammoPickup.displayState(displayTime)?.r;
       if (pos) this.addCandidate(ammoPickup.id, ammoPickup.name, pos, 'ammo', undefined, undefined, undefined, vAmmo.label);
     }
-    for (const base of this.entities.bases) {
+    for (const base of this.entities.baseVessels()) {
       const vBase = visibilityPolicy.entity('base');
       if (!base.alive || !vBase.pickable) continue;
       const pos = base.displayState(displayTime)?.r;
       if (pos) this.addCandidate(
-        base.id, base.name, pos, 'base', `格納 ${base.baseState.dockedVessels.length} 艇`,
+        base.id, base.name, pos, 'base', `格納 ${base.baseState!.dockedVessels.length} 艇`,
         undefined, undefined, vBase.label,
       );
     }
@@ -153,11 +153,11 @@ export class MapPickables {
     }
 
     // 自艦からの距離は一覧の実用順と補助情報にだけ使う。軌道予測はここで増やさない。
-    const viewer = this.activePlayers.current?.state;
+    const viewer = this.activeVessels.current?.state;
     if (viewer) for (const item of this.candidateItems) {
       const d = len(sub(item.pos, viewer.r));
       // 相対速度は対の速度を持つ敵艦にだけ意味がある。
-      const status = item.kind === 'ship' ? `${d < 2e5 ? '接近' : '距離'} ${fmtDist(d)} · ${fmtSpeed(len(sub(this.entities.findEnemy(item.id)?.state.v ?? viewer.v, viewer.v)))}` : item.kind === 'ammo' ? `${fmtDist(d)}${d <= C.AMMO_PICKUP_RADIUS ? ' · 回収可能' : ''}` : item.kind === 'base' ? `${fmtDist(d)} · ドック候補` : item.kind === 'body' ? `${fmtDist(d)} · ${celestialBodyName(strongestAttractor(item.pos, displayAttractors).id)}` : item.detail;
+      const status = item.kind === 'ship' ? `${d < 2e5 ? '接近' : '距離'} ${fmtDist(d)} · ${fmtSpeed(len(sub(this.entities.findHostile(item.id)?.state.v ?? viewer.v, viewer.v)))}` : item.kind === 'ammo' ? `${fmtDist(d)}${d <= C.AMMO_PICKUP_RADIUS ? ' · 回収可能' : ''}` : item.kind === 'base' ? `${fmtDist(d)} · ドック候補` : item.kind === 'body' ? `${fmtDist(d)} · ${celestialBodyName(strongestAttractor(item.pos, displayAttractors).id)}` : item.detail;
       item.detail = status;
       item.distance = d;
       // 所属系は天体以外にしか意味を持たない(天体は系そのものを表す行として常に一覧へ出す)。

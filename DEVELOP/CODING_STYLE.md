@@ -38,7 +38,7 @@
   状態を所有するクラスのメソッドに変更を閉じる。
 
 ```ts
-class Player {
+class Vessel {
   private _hp = 100;
 
   public get hp(): number {

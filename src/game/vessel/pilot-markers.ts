@@ -16,16 +16,17 @@ import { isOccluded } from '../../physics/occlusion';
 import type { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 
-import type { Ship } from '../game-entity/ship';
+import type { Vessel } from './vessel';
+import { headingHpMarkerSvg, notchedHpMarkerSvg } from './hp-marker-svg';
 
 // 戦闘ビュー専用のマーカー(広範囲視点ではまとめて隠す)。
 const COMBAT_KEYS = ['pro', 'retro', 'nrm', 'anm', 'radout', 'radin', 'bore'] as const;
 
-export class PlayerMarkers {
+export class PilotMarkers {
   constructor(
     private readonly markerManager: MarkerManager,
     private readonly id: string,
-    private readonly owner?: Ship,
+    private readonly owner?: Vessel,
   ) { }
 
   // currentState: 現在の自機状態(方向マーカー・ボアサイト用)。
@@ -73,7 +74,7 @@ export class PlayerMarkers {
           const shipOccluded = isOccluded(cameraPos, displayState.r, attractors);
           if (fadedOpacity > 0 && !shipOccluded) {
             const rotationDeg = this.markerManager.headingRotationDeg(displayState.r, displayState.v, project, scaleFn, attractors, frame, displayTime, ephemeris);
-            const sym = visibility?.icon === false ? '' : (overviewMode && this.owner ? this.owner.headingHpMarkerSvg() : (this.owner ? this.owner.hpMarkerSvg() : ENTITY_GLYPH.ship));
+            const sym = visibility?.icon === false ? '' : (this.owner ? (overviewMode ? headingHpMarkerSvg(this.owner.hp, this.owner.maxHp, this.owner.name, false) : notchedHpMarkerSvg(this.owner.hp, this.owner.maxHp)) : ENTITY_GLYPH.ship);
             const symMarkup = overviewMode && !!this.owner;
             this.markerManager.setPosition(
               selfKey, 'mk-self', sym, displayState.r, project,

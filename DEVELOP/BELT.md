@@ -8,25 +8,25 @@
 
 | ファイル | 責務 |
 | --- | --- |
-| `src/game/player/belt-physics.ts` (`BeltPhysics`) | Vec3/Quat だけの算術。節点位置 `beltPos` / 前フレーム位置 `beltPrevPos` / ねじれ角 `beltTwist` / 根本アンカー `anchor` を持つ |
-| `src/game/player/belt.ts` (`Belt`) | リンクメッシュ(`THREE.Group` × `BELT_MAX_VISIBLE`)の所有、給弾進み `feed` と可視リンク数 `visibleCount` の導出、物理結果からの姿勢導出とメッシュ反映 |
+| `src/game/vessel/belt-physics.ts` (`BeltPhysics`) | Vec3/Quat だけの算術。節点位置 `beltPos` / 前フレーム位置 `beltPrevPos` / ねじれ角 `beltTwist` / 根本アンカー `anchor` を持つ |
+| `src/game/vessel/belt.ts` (`Belt`) | リンクメッシュ(`THREE.Group` × `BELT_MAX_VISIBLE`)の所有、給弾進み `feed` と可視リンク数 `visibleCount` の導出、物理結果からの姿勢導出とメッシュ反映 |
 | `src/render/ships.ts` | `buildMagazineMesh()`(4×8=32 発が見えるケージ。原点は平たい直方体 X 4.0 × Y 1.0 × Z 3.0 の中心)、`MAG_BELT_PITCH = MAG_WIDTH + 0.18`、給弾口の位置 `MAG_BELT_ANCHOR_X` |
-| `src/game/player/belt-physics.ts` (`BeltSection`) | 剛体接触用プロキシ。`mass = 5`, `radius = 0.8`, `collides = true` |
+| `src/game/vessel/belt-physics.ts` (`BeltSection`) | 剛体接触用プロキシ。`mass = 5`, `radius = 0.8`, `collides = true` |
 
-`Belt` は `Player` が所有(`player.ts:66` で `new Belt(this.renderObject)`)。リンク群は
-`player.renderObject` の子なので、機体の位置・姿勢は THREE の親子関係で自動的に付いてくる。
+`Belt` は `Vessel` が所有(`vessel/vessel.ts` の `new Belt(this.renderObject, this)`)。リンク群は
+`vessel.renderObject` の子なので、機体の位置・姿勢は THREE の親子関係で自動的に付いてくる。
 物理はすべて**機体座標系**(機体原点基準)で解かれる。
 
 ## 毎フレームの流れ
 
-- update フェーズ: `Player.updatePlayerControls` → `Belt.update(dt, mags, rounds, att, thrustAccelVec)`
-  (`player.ts:133`)
+- update フェーズ: `Vessel.updateControls` → `Belt.update(dt, mags, rounds, att, thrustAccelVec)`
+  (`vessel/vessel.ts`)
 - update フェーズ: `ContactPhysics.resolveBelt` → `belt.collisionSections(...)` で
   ワールド ECI のプロキシを渡し、解決後 `belt.applyCollisionSections(...)` で書き戻す
   (`contact.ts` の `resolveBelt`)。実 dt(非ワープ)で1フレーム1回だけ、
   `simSpeedManager.canResolvePhysicalCollisions` が真のときのみ。substep ごとに解決される他の
   剛体接触(弾・薬莢・放熱板など)とはここだけ異なるタイミングで走る。
-- sync フェーズ: `Player.syncPlayer` → `Belt.sync(alive)`(`player.ts:271`)
+- sync フェーズ: `Vessel.syncVessel` → `Belt.sync()`(`vessel/vessel.ts`)
 
 ## 可視リンク数と給弾(`Belt.update`)
 
@@ -53,7 +53,7 @@
 a = -a_thrust - α×r - ω×(ω×r) - 2ω×v
 ```
 
-(並進慣性・オイラー力・遠心力・コリオリ力)。`a_thrust` は `Player` から渡される
+(並進慣性・オイラー力・遠心力・コリオリ力)。`a_thrust` は `Vessel` から渡される
 ワールド系推力加速度を `qRotate(qInvert(att.q), ...)` で機体系へ回したもの。
 `α` は `att.w` の前フレーム差分(`prevShipW`)から推定。
 **推力も回転もなければベルトは真っ直ぐ垂れたまま動かない**(環境揺らぎの演出は無い)。
@@ -149,7 +149,7 @@ q     = bendQ * qFromAxisAngle(+X, beltTwist[i])
 - `belt-physics.ts` の `(newLast)` のような**無意味な括弧**がいくつか残っている
   (基底データは不変なので代入自体は正しい)。
 - `ships.ts:48-49` のコメントが「`MAG_BELT_PITCH` は game.ts が使う」と書いているが、
-  実際の参照は `player/belt.ts` と `player/belt-physics.ts`。
+  実際の参照は `vessel/belt.ts` と `vessel/belt-physics.ts`。
 - `resetIfFolded` の O(n²) は n = 18 なので毎フレーム 136 ペアと軽微。毎フレーム2回走る。
 - 継手の折れ角上限は前リンク基準の相対値なので**角度は継手ごとに累積**し、機体 +X 軸から見た
   折れ角に上限は無い(実測で 90° 超えまで曲がる)。カールすると遠側のマガジンがスクリーン上で

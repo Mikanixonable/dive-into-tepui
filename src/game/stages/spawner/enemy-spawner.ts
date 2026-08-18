@@ -1,31 +1,24 @@
-// 訓練クラスタ(stage0)の敵集団の配置・分散を計算し、直接 Enemy を生成する。
+// 訓練クラスタ(stage0)の敵集団の配置・分散を計算し、直接 Vessel を生成する。
 // (EntityManager への登録は呼び出し側の Stage0 が Stage.addEnemy 経由で行う)。
-import * as THREE from 'three/webgpu';
 import { KinematicState, kinematicState, orbitAxes } from '../../../physics/kinematic-state';
 import { randSym } from '../../../physics/random';
 import { add, len, norm, scale } from '../../../physics/vec3';
 import * as C from '../../const';
-import { Hud } from '../../hud/hud';
-import { WorldSfx } from '../../../audio/sfx/world-sfx';
-import type { EffectsSystem } from '../../vfx/effects-system';
-import { Enemy } from '../../game-entity/enemy';
+import { Vessel, type VesselDeps } from '../../vessel/vessel';
 import { generateDriftingEnemy } from './enemy-generator';
 
 // 色分けされたグループ(既定 5 グループ×各10機)を base 周囲5km以内に配置して直接生成する(訓練クラスタ)。
 // groupCount/perGroup でグループ数・1グループあたりの機数を変更できる。
 export function generateCluster(
   base: KinematicState,
-  hud: Hud,
-  worldSfx: WorldSfx,
-  fx: EffectsSystem,
-  scene: THREE.Scene,
+  deps: VesselDeps,
   groupCount: number = C.COLOR_STAGE0_GROUP_ACCENTS.length,
   perGroup: number = C.STAGE0_PER_GROUP,
-): Enemy[] {
+): Vessel[] {
   const { pro, nrm } = orbitAxes(base);
   const rHat = norm(base.r);
   const safeRange = C.STAGE0_MAX_RANGE * C.STAGE0_SAFE_RANGE_FACTOR; // マージンを残して確実に5km以内に収める
-  const enemies: Enemy[] = [];
+  const enemies: Vessel[] = [];
 
   // グループごとの中心位置を、進行方向-法線平面の円周上に配置する。
   for (let gi = 0; gi < groupCount; gi++) {
@@ -49,7 +42,7 @@ export function generateCluster(
       if (offLen > safeRange) off = scale(off, safeRange / offLen);
 
       const state: KinematicState = kinematicState(base.t, add(base.r, off), base.v);
-      enemies.push(generateDriftingEnemy(`${label}-${i + 1}`, state, C.STAGE0_ENEMY_HP, accent, C.COLOR_ENEMY_ORBIT_LINE, hud, worldSfx, fx, scene));
+      enemies.push(generateDriftingEnemy(`${label}-${i + 1}`, state, accent, C.COLOR_ENEMY_ORBIT_LINE, deps));
     }
   }
   return enemies;

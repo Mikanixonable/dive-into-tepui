@@ -1,14 +1,10 @@
+import * as THREE from 'three/webgpu';
 // 波状攻撃: 弾薬確保待ち(waiting_for_ammo)→ 遅延後の初回湧き(spawning_enemies)→
 // 交戦圏内数に応じた周期湧き(active_combat)の3フェーズを進めるフェーズ機械と、
 // ウェーブ1回分の隻数・編成・接近軌道の生成。
-import * as THREE from 'three/webgpu';
 import * as C from '../../const';
-import { Enemy } from '../../game-entity/enemy';
-import { Player } from '../../player/player';
+import { Vessel, type VesselDeps } from '../../vessel/vessel';
 import type { Stage } from '../stage';
-import type { Hud } from '../../hud/hud';
-import type { WorldSfx } from '../../../audio/sfx/world-sfx';
-import type { EffectsSystem } from '../../vfx/effects-system';
 import type { Ephemeris } from '../../../physics/ephemeris';
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
 import { apsisAltitudes } from '../../../physics/elements';
@@ -33,10 +29,7 @@ export class WaveAttack {
 
   // saved があればその状態(フェーズ・タイマー・ウェーブ数)から始める。
   constructor(
-    private readonly hud: Hud,
-    private readonly worldSfx: WorldSfx,
-    private readonly fx: EffectsSystem,
-    private readonly scene: THREE.Scene,
+    private readonly deps: VesselDeps,
     private readonly ephemeris: Ephemeris,
     saved?: WaveAttackSaveData,
   ) {
@@ -46,16 +39,16 @@ export class WaveAttack {
   }
 
   // ウェーブ番号を進め、敵を生成して addEnemy 経由でエンティティ管理に登録する。
-  spawnWave(player: Player, addEnemy: (enemy: Enemy) => void, forcedPattern?: 'linear' | 'random'): void {
+  spawnWave(player: Vessel, addEnemy: (enemy: Vessel) => void, forcedPattern?: 'linear' | 'random'): void {
     const wave = ++this._waveCount;
-    const enemies = generateWave(player.state, wave, this.ephemeris, this.hud, this.worldSfx, this.fx, this.scene, forcedPattern);
+    const enemies = generateWave(player.state, wave, this.ephemeris, this.deps, forcedPattern);
     for (const enemy of enemies) addEnemy(enemy);
   }
 
   // フェーズ機械を1フレーム分進める。
   update(
-    dt: number, player: Player, enemies: readonly Enemy[], simTime: number,
-    activeStage: Stage, addEnemy: (enemy: Enemy) => void,
+    dt: number, player: Vessel, enemies: readonly Vessel[], simTime: number,
+    activeStage: Stage, addEnemy: (enemy: Vessel) => void,
   ): void {
     if (this.waveState === 'waiting_for_ammo') return this.updateWaitingForAmmoPhase(player);
     if (this.waveState === 'spawning_enemies') return this.updateSpawningEnemiesPhase(dt, player, addEnemy);
@@ -63,15 +56,15 @@ export class WaveAttack {
   }
 
   // 自機が弾薬を確保するまで待ち、確保でき次第 spawning_enemies フェーズへ進める。
-  private updateWaitingForAmmoPhase(player: Player): void {
+  private updateWaitingForAmmoPhase(player: Vessel): void {
     if (player.magsLeft <= 0 && player.roundsInMag <= 0) return;
     this.waveState = 'spawning_enemies';
     this.spawnTimer = C.STAGE00_SPAWN_DELAY;
-    this.hud.toast('弾薬を確保した。敵部隊が接近中...', 3000);
+    this.deps.hud.toast('弾薬を確保した。敵部隊が接近中...', 3000);
   }
 
   // 遅延タイマーが尽きたら最初のウェーブを湧かせ、active_combat フェーズへ進める。
-  private updateSpawningEnemiesPhase(dt: number, player: Player, addEnemy: (enemy: Enemy) => void): void {
+  private updateSpawningEnemiesPhase(dt: number, player: Vessel, addEnemy: (enemy: Vessel) => void): void {
     this.spawnTimer -= dt;
     if (this.spawnTimer > 0) return;
     this.spawnWave(player, addEnemy);
@@ -81,8 +74,8 @@ export class WaveAttack {
 
   // 交戦圏外の敵を消し、同時展開数の上限内でタイマーに従い次のウェーブを湧かせる。
   private updateActiveCombatPhase(
-    dt: number, player: Player, enemies: readonly Enemy[], simTime: number,
-    activeStage: Stage, addEnemy: (enemy: Enemy) => void,
+    dt: number, player: Vessel, enemies: readonly Vessel[], simTime: number,
+    activeStage: Stage, addEnemy: (enemy: Vessel) => void,
   ): void {
     despawnOutOfRangeEnemies(enemies, player, C.STAGE00_MAX_RANGE, simTime, activeStage);
     const activeGroups = countActiveWaveGroups(enemies);
@@ -96,7 +89,7 @@ export class WaveAttack {
     if (this.spawnTimer > 0) return;
     this.spawnWave(player, addEnemy);
     this.spawnTimer = C.STAGE00_SPAWN_INTERVAL;
-    this.hud.toast(`波状攻撃 第${this._waveCount}波 接近中！`, 3000);
+    this.deps.hud.toast(`波状攻撃 第${this._waveCount}波 接近中！`, 3000);
   }
 
   serialize(): WaveAttackSaveData {
@@ -105,7 +98,7 @@ export class WaveAttack {
 }
 
 // 自機から maxRange より離れた敵を交戦圏外として消す。
-function despawnOutOfRangeEnemies(enemies: readonly Enemy[], player: Player, maxRange: number, simTime: number, activeStage: Stage): void {
+function despawnOutOfRangeEnemies(enemies: readonly Vessel[], player: Vessel, maxRange: number, simTime: number, activeStage: Stage): void {
   for (const enemy of enemies) {
     if (!enemy.alive) continue;
     if (len(sub(enemy.state.r, player.state.r)) <= maxRange) continue;
@@ -114,7 +107,7 @@ function despawnOutOfRangeEnemies(enemies: readonly Enemy[], player: Player, max
 }
 
 // 生存中のウェーブ(waveId)がいくつ同時に交戦中かを数える。
-function countActiveWaveGroups(enemies: readonly Enemy[]): number {
+function countActiveWaveGroups(enemies: readonly Vessel[]): number {
   const activeWaves = new Set<number>();
   for (const enemy of enemies) {
     if (enemy.alive && enemy.waveId !== undefined) activeWaves.add(enemy.waveId);
@@ -254,7 +247,7 @@ function waveShipPosition(pattern: 'linear' | 'random', i: number, shipCount: nu
 }
 
 // ウェーブ番号に応じた隻数・編成・接近軌道を決め、敵艦の配列を生成する。
-export function generateWave(player: KinematicState, waveNumber: number, ephemeris: Ephemeris, hud: Hud, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene, forcedPattern?: 'linear' | 'random'): Enemy[] {
+export function generateWave(player: KinematicState, waveNumber: number, ephemeris: Ephemeris, deps: VesselDeps, forcedPattern?: 'linear' | 'random'): Vessel[] {
   const calculatedCount = C.STAGE00_WAVE_BASE_SHIPS + Math.floor((waveNumber - 1) * C.STAGE00_WAVE_SHIPS_PER_WAVE);
   const shipCount = Math.min(calculatedCount, C.STAGE00_WAVE_MAX_SHIPS);
   const centerR = pickWaveCenter(player, waveNumber);
@@ -265,12 +258,12 @@ export function generateWave(player: KinematicState, waveNumber: number, ephemer
   const pattern = forcedPattern || (Math.random() < 0.5 ? 'linear' : 'random');
 
   // 隻数分、位置と識別カラーを割り当てて敵艦を生成する
-  const enemies: Enemy[] = [];
+  const enemies: Vessel[] = [];
   for (let i = 0; i < shipCount; i++) {
     const accent = subGroups[i % subGroups.length]!;
     const position = waveShipPosition(pattern, i, shipCount, centerR, approachDir);
     const state: KinematicState = kinematicState(player.t, position, centerV);
-    enemies.push(generateApproachingEnemy(`W${waveNumber}-${i + 1}`, state, C.STAGE0_ENEMY_HP, accent, accent, typeIndex, waveNumber, hud, worldSfx, fx, scene));
+    enemies.push(generateApproachingEnemy(`W${waveNumber}-${i + 1}`, state, accent, accent, typeIndex, waveNumber, deps));
   }
   return enemies;
 }

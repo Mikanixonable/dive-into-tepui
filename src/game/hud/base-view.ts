@@ -1,7 +1,6 @@
 // ドックビュー: 基地に接岸した際に開くフルスクリーンUI。
 // 格納されている船の一覧、部品の確認・修理・換装、ショップを提供する。
-import type { Base, DockedVesselEntry } from '../game-entity/base';
-import type { Player } from '../player/player';
+import type { Vessel, DockedVesselEntry } from '../vessel/vessel';
 import type { AnyPart, Part, PartType, RcsTankPart } from '../game-entity/parts';
 import { createPart } from '../game-entity/parts';
 import * as C from '../const';
@@ -334,6 +333,9 @@ const PART_TYPE_LABELS: Readonly<Record<PartType, string>> = {
   radiator: '放熱器',
   solar_panel: '太陽電池',
   weapon: '武装',
+  base_module: '基地モジュール',
+  communication: '通信モジュール',
+  autopilot: '自動操縦装置',
 };
 
 function formatPartMeta(part: Part): string {
@@ -369,16 +371,16 @@ export class BaseView {
   private readonly moneyLabel: HTMLElement;
   private readonly bodyEl: HTMLElement;
   private _visible = false;
-  private currentBase: Base | null = null;
-  private currentVessel: Player | null = null;
+  private currentBase: Vessel | null = null;
+  private currentVessel: Vessel | null = null;
   private currentTab: DockTab = 'ships';
   private freeProcurement = false;
   private previouslyFocused: HTMLElement | null = null;
 
   // 外部コールバック
-  public onLaunchVessel: ((ship: Player, base: Base) => void) | null = null;
+  public onLaunchVessel: ((ship: Vessel, base: Vessel) => void) | null = null;
   // 「新造」ボタン。実際の艦の生成は Docking 側が行う(BaseView は UI のみ)。
-  public onBuildVessel: ((base: Base) => void) | null = null;
+  public onBuildVessel: ((base: Vessel) => void) | null = null;
   public onClose: (() => void) | null = null;
 
   public get visible(): boolean { return this._visible; }
@@ -456,14 +458,14 @@ export class BaseView {
   }
 
   // ドックビューを開く
-  public open(base: Base, inspectShip: Player | null, freeProcurement: boolean): void {
+  public open(base: Vessel, inspectShip: Vessel | null, freeProcurement: boolean): void {
     if (!this._visible) {
       this.previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     }
     this.currentBase = base;
     this.freeProcurement = freeProcurement;
     // inspectShip が基地に格納されていれば選択状態にする
-    if (inspectShip && base.baseState.dockedVessels.some((s) => s.id === inspectShip.id)) {
+    if (inspectShip && base.baseState!.dockedVessels.some((s) => s.id === inspectShip.id)) {
       this.currentVessel = inspectShip;
     } else {
       this.currentVessel = null;
@@ -520,7 +522,7 @@ export class BaseView {
 
     this.moneyLabel.textContent = this.freeProcurement
       ? `${this.currentBase.name} · 調達コストなし`
-      : `${this.currentBase.name} · ${this.currentBase.baseState.money.toLocaleString()} Cr 利用可能`;
+      : `${this.currentBase.name} · ${this.currentBase.baseState!.money.toLocaleString()} Cr 利用可能`;
     this.tabBar.setSelected(this.currentTab);
     this.bodyEl.setAttribute('aria-labelledby', `dock-tab-${this.currentTab}`);
 
@@ -560,11 +562,11 @@ export class BaseView {
     const base = this.currentBase!;
     const frag = document.createElement('section');
     frag.className = 'dock-section';
-    const ships = base.baseState.dockedVessels;
+    const ships = base.baseState!.dockedVessels;
     frag.appendChild(this.buildSectionHeader(
       '格納艦艇',
       '発進する艦を選択するか、整備画面で搭載部品を確認します。',
-      `${ships.length} / ${C.BASE_MAX_VESSELS} 隻`,
+      `${ships.length} / ${base.dockCapacity} 隻`,
     ));
     if (ships.length === 0) {
       const empty = document.createElement('div');
@@ -597,7 +599,7 @@ export class BaseView {
     select.setAttribute('aria-pressed', String(selected));
     select.setAttribute('aria-label', `${s.name || `艦 ${i + 1}`}を選択`);
     select.addEventListener('click', () => {
-      this.currentVessel = s.player;
+      this.currentVessel = s.vessel;
       this.refresh();
     });
 
@@ -625,15 +627,15 @@ export class BaseView {
   }
 
   // 新造(既定パーツ一式の艦を1隻、格納艦へ加える)行。
-  private buildNewVesselHeader(base: Base): HTMLElement {
-    const isFull = base.baseState.dockedVessels.length >= C.BASE_MAX_VESSELS;
-    const canAfford = !isFull && (this.freeProcurement || base.baseState.money >= NEW_VESSEL_COST);
+  private buildNewVesselHeader(base: Vessel): HTMLElement {
+    const isFull = base.baseState!.dockedVessels.length >= base.dockCapacity;
+    const canAfford = !isFull && (this.freeProcurement || base.baseState!.money >= NEW_VESSEL_COST);
     const row = document.createElement('div');
     row.className = 'dock-parts-header';
     const label = document.createElement('span');
     label.className = 'dock-ship-label';
     label.textContent = isFull
-      ? `基地のドックが満杯です (最大 ${C.BASE_MAX_VESSELS} 隻)`
+      ? `基地のドックが満杯です (最大 ${base.dockCapacity} 隻)`
       : '既定構成の艦艇を新造して格納庫へ追加します。';
     row.appendChild(label);
     const btn = new Button(
@@ -655,8 +657,8 @@ export class BaseView {
     const base = this.currentBase!;
     // 選択艦がなければ最初の艦を表示。倉庫は基地の持ち物なので、格納艦が居なくても出す。
     const ship = this.currentVessel ?? null;
-    const shipData = (ship ? base.baseState.dockedVessels.find((s) => s.id === ship.id) : undefined)
-      ?? base.baseState.dockedVessels[0]
+    const shipData = (ship ? base.baseState!.dockedVessels.find((s) => s.id === ship.id) : undefined)
+      ?? base.baseState!.dockedVessels[0]
       ?? null;
 
     const frag = document.createElement('section');
@@ -664,7 +666,7 @@ export class BaseView {
     frag.appendChild(this.buildSectionHeader(
       '部品と倉庫',
       '選択艦を修理・補給し、同じ種類の倉庫部品へ換装できます。',
-      `${base.baseState.inventory.length} 点を保管`,
+      `${base.baseState!.inventory.length} 点を保管`,
     ));
     if (shipData) frag.appendChild(this.buildRepairAllHeader(base, shipData));
 
@@ -705,9 +707,9 @@ export class BaseView {
   }
 
   // 艦の全部品をまとめて修理するボタンの行。
-  private buildRepairAllHeader(base: Base, shipData: DockedVesselEntry): HTMLElement {
+  private buildRepairAllHeader(base: Vessel, shipData: DockedVesselEntry): HTMLElement {
     const totalRepairCost = shipData.parts.reduce((sum, p) => sum + (p.maxHp - p.hp) * REPAIR_COST_PER_HP, 0);
-    const enabled = totalRepairCost > 0 && (this.freeProcurement || base.baseState.money >= totalRepairCost);
+    const enabled = totalRepairCost > 0 && (this.freeProcurement || base.baseState!.money >= totalRepairCost);
     const row = document.createElement('div');
     row.className = 'dock-parts-header dock-focus-panel';
     const label = document.createElement('span');
@@ -731,10 +733,10 @@ export class BaseView {
   }
 
   // 搭載部品1件の行を作る。同じ type の在庫があれば換装欄を、rcs_tank なら補給ボタンを添える。
-  private buildInstalledPartRow(base: Base, shipData: DockedVesselEntry, p: Part, i: number): HTMLElement {
+  private buildInstalledPartRow(base: Vessel, shipData: DockedVesselEntry, p: Part, i: number): HTMLElement {
     const hpPct = Math.max(0, Math.min(100, (p.hp / p.maxHp) * 100));
     const repairCost = (p.maxHp - p.hp) * REPAIR_COST_PER_HP;
-    const canRepair = repairCost > 0 && (this.freeProcurement || base.baseState.money >= repairCost);
+    const canRepair = repairCost > 0 && (this.freeProcurement || base.baseState!.money >= repairCost);
 
     const row = document.createElement('div');
     row.className = 'dock-part-row';
@@ -784,7 +786,7 @@ export class BaseView {
     main.appendChild(actions);
     row.appendChild(main);
 
-    const candidates = base.baseState.inventory.filter((inv) => inv.type === p.type);
+    const candidates = base.baseState!.inventory.filter((inv) => inv.type === p.type);
     if (candidates.length > 0) row.appendChild(this.buildSwapRow(shipData.id, i, candidates));
     return row;
   }
@@ -812,8 +814,8 @@ export class BaseView {
   }
 
   // 倉庫にある在庫部品の一覧。売却と、rcs_tank ならその場での補給を提供する。
-  private buildWarehouseList(base: Base): HTMLElement {
-    const inventory = base.baseState.inventory;
+  private buildWarehouseList(base: Vessel): HTMLElement {
+    const inventory = base.baseState!.inventory;
     if (inventory.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'dock-empty';
@@ -863,9 +865,9 @@ export class BaseView {
   }
 
   // rcs_tank 用の補給ボタンを作る。
-  private buildRefuelButton(base: Base, tank: RcsTankPart, onClick: () => void): HTMLElement {
+  private buildRefuelButton(base: Vessel, tank: RcsTankPart, onClick: () => void): HTMLElement {
     const cost = refuelCost(tank);
-    const canRefuel = cost > 0 && (this.freeProcurement || base.baseState.money >= cost);
+    const canRefuel = cost > 0 && (this.freeProcurement || base.baseState!.money >= cost);
     const btn = new Button(
       cost > 0
         ? `燃料補給 · ${this.freeProcurement ? 'コストなし' : `${cost.toLocaleString()} Cr`}`
@@ -881,7 +883,7 @@ export class BaseView {
   // ─── ショップタブ ───────────────────────────────────────
   private buildShopTab(): HTMLElement {
     const base = this.currentBase!;
-    const money = base.baseState.money;
+    const money = base.baseState!.money;
 
     const frag = document.createElement('section');
     frag.className = 'dock-section';
@@ -939,11 +941,11 @@ export class BaseView {
   private handleLaunch(idx: number): void {
     const base = this.currentBase;
     if (!base) return;
-    const shipData = base.baseState.dockedVessels[idx];
+    const shipData = base.baseState!.dockedVessels[idx];
     if (!shipData) return;
-    this.onLaunchVessel?.(shipData.player, base);
-    base.baseState.dockedVessels.splice(idx, 1);
-    if (this.currentVessel === shipData.player) this.currentVessel = null;
+    this.onLaunchVessel?.(shipData.vessel, base);
+    base.baseState!.dockedVessels.splice(idx, 1);
+    if (this.currentVessel === shipData.vessel) this.currentVessel = null;
     this.refresh();
   }
 
@@ -951,16 +953,16 @@ export class BaseView {
   private handleBuildVessel(): void {
     const base = this.currentBase;
     if (!base) return;
-    if (!this.freeProcurement && base.baseState.money < NEW_VESSEL_COST) return;
-    if (!this.freeProcurement) base.baseState.money -= NEW_VESSEL_COST;
+    if (!this.freeProcurement && base.baseState!.money < NEW_VESSEL_COST) return;
+    if (!this.freeProcurement) base.baseState!.money -= NEW_VESSEL_COST;
     this.onBuildVessel?.(base);
     this.refresh();
   }
 
   private handleInspect(idx: number): void {
-    const shipData = this.currentBase?.baseState.dockedVessels[idx];
+    const shipData = this.currentBase?.baseState!.dockedVessels[idx];
     if (!shipData) return;
-    this.currentVessel = shipData.player;
+    this.currentVessel = shipData.vessel;
     this.currentTab = 'parts';
     this.refresh();
   }
@@ -968,15 +970,15 @@ export class BaseView {
   private handleRepairPart(shipId: string, partIdx: number): void {
     const base = this.currentBase;
     if (!base) return;
-    const shipData = base.baseState.dockedVessels.find((s) => s.id === shipId);
+    const shipData = base.baseState!.dockedVessels.find((s) => s.id === shipId);
     if (!shipData) return;
 
     const part: Part | undefined = shipData.parts[partIdx];
     if (!part) return;
     const cost = (part.maxHp - part.hp) * REPAIR_COST_PER_HP;
-    if (!this.freeProcurement && base.baseState.money < cost) return;
+    if (!this.freeProcurement && base.baseState!.money < cost) return;
 
-    if (!this.freeProcurement) base.baseState.money -= cost;
+    if (!this.freeProcurement) base.baseState!.money -= cost;
     part.hp = part.maxHp;
     this.syncDockedSnapshot(shipData);
     this.refresh();
@@ -985,14 +987,14 @@ export class BaseView {
   private handleRepairAll(shipId: string): void {
     const base = this.currentBase;
     if (!base) return;
-    const shipData = base.baseState.dockedVessels.find((s) => s.id === shipId);
+    const shipData = base.baseState!.dockedVessels.find((s) => s.id === shipId);
     if (!shipData) return;
 
     const parts = shipData.parts;
     const totalCost = parts.reduce((sum, p) => sum + (p.maxHp - p.hp) * REPAIR_COST_PER_HP, 0);
-    if (!this.freeProcurement && base.baseState.money < totalCost) return;
+    if (!this.freeProcurement && base.baseState!.money < totalCost) return;
 
-    if (!this.freeProcurement) base.baseState.money -= totalCost;
+    if (!this.freeProcurement) base.baseState!.money -= totalCost;
     parts.forEach((p) => { p.hp = p.maxHp; });
     this.syncDockedSnapshot(shipData);
     this.refresh();
@@ -1001,9 +1003,9 @@ export class BaseView {
   // 格納中は shipData.parts が艦本体の parts 配列と同一参照なので、修理は艦へ直接反映される。
   // hp/maxHp の集計スナップショットだけは別に持っているので、艦一覧タブの表示用にここで揃える。
   private syncDockedSnapshot(shipData: DockedVesselEntry): void {
-    shipData.player.refreshFromParts();
-    shipData.hp = shipData.player.hp;
-    shipData.maxHp = shipData.player.maxHp;
+    shipData.vessel.refreshFromParts();
+    shipData.hp = shipData.vessel.hp;
+    shipData.maxHp = shipData.vessel.maxHp;
   }
 
   // 搭載部品を、選択中の倉庫在庫(同じ type)と入れ替える。外した部品は倉庫へ戻す。
@@ -1011,16 +1013,16 @@ export class BaseView {
   private handleSwapPart(shipId: string, partIdx: number, invId: string): void {
     const base = this.currentBase;
     if (!base) return;
-    const shipData = base.baseState.dockedVessels.find((s) => s.id === shipId);
+    const shipData = base.baseState!.dockedVessels.find((s) => s.id === shipId);
     const installed = shipData?.parts[partIdx];
     if (!shipData || !installed) return;
 
-    const invIdx = base.baseState.inventory.findIndex((p) => p.id === invId);
-    const incoming = base.baseState.inventory[invIdx];
+    const invIdx = base.baseState!.inventory.findIndex((p) => p.id === invId);
+    const incoming = base.baseState!.inventory[invIdx];
     if (!incoming || incoming.type !== installed.type) return;
 
     shipData.parts.splice(partIdx, 1, incoming);
-    base.baseState.inventory.splice(invIdx, 1, installed as AnyPart);
+    base.baseState!.inventory.splice(invIdx, 1, installed as AnyPart);
 
     this.syncDockedSnapshot(shipData);
     this.refresh();
@@ -1029,7 +1031,7 @@ export class BaseView {
   private handleRefuelInstalled(shipId: string, partIdx: number): void {
     const base = this.currentBase;
     if (!base) return;
-    const shipData = base.baseState.dockedVessels.find((s) => s.id === shipId);
+    const shipData = base.baseState!.dockedVessels.find((s) => s.id === shipId);
     const part = shipData?.parts[partIdx];
     if (!part || part.type !== 'rcs_tank') return;
     this.refuelTank(base, part as RcsTankPart);
@@ -1039,29 +1041,29 @@ export class BaseView {
   private handleRefuelInventory(invId: string): void {
     const base = this.currentBase;
     if (!base) return;
-    const part = base.baseState.inventory.find((p) => p.id === invId);
+    const part = base.baseState!.inventory.find((p) => p.id === invId);
     if (!part || part.type !== 'rcs_tank') return;
     this.refuelTank(base, part);
     this.refresh();
   }
 
-  private refuelTank(base: Base, tank: RcsTankPart): void {
+  private refuelTank(base: Vessel, tank: RcsTankPart): void {
     const cost = refuelCost(tank);
     if (cost <= 0) return;
-    if (!this.freeProcurement && base.baseState.money < cost) return;
-    if (!this.freeProcurement) base.baseState.money -= cost;
+    if (!this.freeProcurement && base.baseState!.money < cost) return;
+    if (!this.freeProcurement) base.baseState!.money -= cost;
     tank.fuel = tank.maxFuel;
   }
 
   private handleSellPart(invId: string): void {
     const base = this.currentBase;
     if (!base) return;
-    const idx = base.baseState.inventory.findIndex((p) => p.id === invId);
-    const part = base.baseState.inventory[idx];
+    const idx = base.baseState!.inventory.findIndex((p) => p.id === invId);
+    const part = base.baseState!.inventory[idx];
     if (idx < 0 || !part) return;
 
-    base.baseState.money += sellPrice(part);
-    base.baseState.inventory.splice(idx, 1);
+    base.baseState!.money += sellPrice(part);
+    base.baseState!.inventory.splice(idx, 1);
     this.refresh();
   }
 
@@ -1070,7 +1072,7 @@ export class BaseView {
     if (!base) return;
     const entry = SHOP_CATALOG[catalogIdx];
     if (!entry) return;
-    if (!this.freeProcurement && base.baseState.money < entry.price) return;
+    if (!this.freeProcurement && base.baseState!.money < entry.price) return;
 
     const part = createPart(entry.type, {
       name: entry.name,
@@ -1080,8 +1082,8 @@ export class BaseView {
       ...entry.props,
     } as Partial<AnyPart>);
 
-    if (!this.freeProcurement) base.baseState.money -= entry.price;
-    base.baseState.inventory.push(part);
+    if (!this.freeProcurement) base.baseState!.money -= entry.price;
+    base.baseState!.inventory.push(part);
     this.refresh();
   }
 

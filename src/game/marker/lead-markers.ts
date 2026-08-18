@@ -1,13 +1,13 @@
 // LEAD(見越し)マーカー: 自機の弾がその敵に命中する未来位置を示す。自機と敵の双方の
-// 状態に依存するため、Enemy にも Targeter にも属さない独立責務として切り出してある。
+// 状態に依存するため、Vessel にも Targeter にも属さない独立責務として切り出してある。
 import * as C from '../const';
 import { leadPoint } from '../../physics/intercept';
 import type { ProjectFn } from '../camera/camera-system';
 import type { MarkerManager } from './marker-manager';
 import type { CombatTarget } from '../targeter';
-import { Player } from '../player/player';
+import type { Vessel } from '../vessel/vessel';
 
-const markerKey = (target: CombatTarget): string => target instanceof Player ? `lead-p-${target.id}` : `lead-e-${target.name}`;
+const markerKey = (target: CombatTarget): string => `lead-${target.markerKey}`;
 
 export class LeadMarkers {
   private shownKeys: readonly string[] = [];
@@ -16,7 +16,7 @@ export class LeadMarkers {
 
   // 射撃できない状況(マップモード・自機喪失)では表示せず、保持していたロック履歴も捨てる。
   sync(
-    player: Player,
+    player: Vessel,
     targetsArray: readonly CombatTarget[],
     target: CombatTarget | null,
     secondaryTarget: CombatTarget | null,

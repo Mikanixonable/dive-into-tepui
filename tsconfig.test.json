@@ -26,8 +26,22 @@
     "src/game/plan/plan-executor.ts",
     "src/game/hud/layout.ts",
     "src/physics/sphere-contact.ts",
+    "src/physics/gravity-gradient.ts",
+    "src/physics/geomagnetic.ts",
     "src/game/creative/placement-validation.ts",
     "src/game/celestial/point-field.ts",
-    "tests/physics/**/*.ts"
+    "src/physics/section-moments.ts",
+    "src/physics/hull-loft.ts",
+    "src/game/economy/resource.ts",
+    "src/game/economy/resource-ledger.ts",
+    "src/game/economy/propellant-compatibility.ts",
+    "src/game/economy/actuator-materials.ts",
+    "src/game/economy/facility.ts",
+    "src/game/economy/deposit.ts",
+    "src/game/economy/producibility.ts",
+    "src/game/vessel/capabilities.ts",
+    "src/game/vessel/vessel-parts.ts",
+    "tests/physics/**/*.ts",
+    "tests/unit/**/*.ts"
   ]
 }
