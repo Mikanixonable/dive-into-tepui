@@ -7,7 +7,7 @@ import { kinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, cross, dot, v3 } from '../../physics/vec3';
 import {
   RADIATOR_DEPLOY_TILT,
-  RADIATOR_HINGE,
+  RADIATOR_OBJECT_NAMES,
   RADIATOR_SEGMENT_LENGTH,
 } from '../../render/ships';
 import * as C from '../const';
@@ -34,11 +34,12 @@ function yRotatedOffset(theta: number, x: number): Vec3 {
   return v3(x * Math.cos(theta), 0, -x * Math.sin(theta));
 }
 
-// side の fold 番目の折りの中心位置(機体座標系)。RADIATOR_HINGE から蛇腹を辿り、
-// 各折りの根本から半セグメント先(export-models.mjs の panel.position と同じ位置)を返す。
-function foldLocalPosition(side: RadiatorSide, fold: number, even: number, odd: number): Vec3 {
+// side の fold 番目の折りの中心位置(機体座標系)。ヒンジ位置 hinge から蛇腹を辿り、
+// 各折りの根本から半セグメント先(蛇腹メッシュの放熱面と同じ位置)を返す。ヒンジ位置は
+// メッシュから読むので、設計が放熱板を置いた場所と接触代理の位置は必ず一致する。
+function foldLocalPosition(hinge: Vec3, side: RadiatorSide, fold: number, even: number, odd: number): Vec3 {
   const sign = sideSign(side);
-  let origin = v3(sign * RADIATOR_HINGE.x, RADIATOR_HINGE.y, RADIATOR_HINGE.z);
+  let origin = hinge;
   for (let i = 0; i < fold; i++) {
     origin = add(origin, yRotatedOffset(i % 2 === 0 ? even : odd, sign * RADIATOR_SEGMENT_LENGTH));
   }
@@ -79,6 +80,8 @@ export class RadiatorSystem {
   // side ごとの損耗率(0=無傷, 1=全損)。放熱板パーツの残 HP から update() で受け取る。
   private wear: Record<RadiatorSide, number> = { up: 0, down: 0 };
   private readonly folds: Record<RadiatorSide, THREE.Object3D[]>;
+  // side ごとのヒンジの取り付け位置(機体座標系)。蛇腹メッシュから読む。
+  private readonly hinges: Record<RadiatorSide, Vec3>;
   // side ごとの接触代理。折り数まで遅延生成し、以後は使い回す。
   private readonly foldProxies: Record<RadiatorSide, RadiatorFold[]> = { up: [], down: [] };
 
@@ -93,6 +96,12 @@ export class RadiatorSystem {
       return found as THREE.Object3D[];
     };
     this.folds = { up: collect('up', 'radiator'), down: collect('down', 'radiator') };
+    const hingeOf = (side: RadiatorSide): Vec3 => {
+      const hinge = renderObject.getObjectByName(RADIATOR_OBJECT_NAMES[side]);
+      if (!hinge) throw new Error(`radiator hinge "${RADIATOR_OBJECT_NAMES[side]}" not found in ship model`);
+      return v3(hinge.position.x, hinge.position.y, hinge.position.z);
+    };
+    this.hinges = { up: hingeOf('up'), down: hingeOf('down') };
     if (saved) {
       for (const side of ['up', 'down'] as const) {
         this.panels[side].deployTarget = saved[side].deployTarget;
@@ -197,7 +206,7 @@ export class RadiatorSystem {
       // 各折りの機体座標系オフセットを、艦の位置・姿勢・角速度(回転による接線速度込み)で
       // world 座標へ変換する。
       for (const fold of proxies) {
-        const bodyOffset = foldLocalPosition(side, fold.foldIndex, even, odd);
+        const bodyOffset = foldLocalPosition(this.hinges[side], side, fold.foldIndex, even, odd);
         const worldPos = add(shipR, qRotate(att.q, bodyOffset));
         const worldVel = add(shipV, qRotate(att.q, cross(att.w, bodyOffset)));
         fold.state = kinematicState(t, worldPos, worldVel);
