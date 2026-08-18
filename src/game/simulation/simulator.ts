@@ -4,7 +4,7 @@ import type { KinematicState } from '../../physics/kinematic-state';
 import * as C from '../const';
 import { attractorsAt, attractorsNearInto, classifyAttractors } from './attractors';
 import { EntityManager } from './entity-manager';
-import { Player } from '../player/player';
+import { Vessel } from '../vessel/vessel';
 import { Bullet } from '../game-entity/bullet';
 import { DebrisPiece } from '../game-entity/debris-piece';
 import type { GameEntity } from '../game-entity/game-entity';
@@ -57,7 +57,7 @@ export class Simulator {
   advance(
     dt: number,
     simDt: number,
-    player: Player | null,
+    player: Vessel | null,
     activeStage: Stage,
     simSpeed: SimSpeedManager,
     nanWatchdog: NanWatchdog,
@@ -96,17 +96,17 @@ export class Simulator {
       this.sections.exit(SECTION.attitude);
       nanWatchdog.checkPlayer('simulator.advance(姿勢積分)', player, this.simTime, dt, subDt);
       const surfaceBodies = this.surfaceBodies(resolveCollision, sources);
-      for (const p of this.entities.players) {
-        p.stepEnvironment(subDt, this.ephemeris, this.simTime, surfaceBodies);
+      for (const v of this.entities.vessels) {
+        v.stepEnvironment(subDt, this.ephemeris, this.simTime, surfaceBodies);
       }
       if (resolveCollision) {
         // 放熱板の折りは EntityManager に登録された実体ではなく、艦の姿勢から毎 substep
         // 置き直す接触代理なので、参加者リストへこの場で合流させる。
         this.contactEntitiesScratch.length = 0;
         this.contactEntitiesScratch.push(...this.entities.all());
-        for (const p of this.entities.players) {
-          if (!p.alive) continue;
-          this.contactEntitiesScratch.push(...p.collisionFolds(this.simTime));
+        for (const v of this.entities.vessels) {
+          if (!v.alive) continue;
+          this.contactEntitiesScratch.push(...v.collisionFolds(this.simTime));
         }
         this.sections.enter(SECTION.contact);
         this.contactPhysics.resolveSubstep(
@@ -140,13 +140,10 @@ export class Simulator {
   // 押し上げてしまい、再突入優先が壊れる。
   private adaptiveMaxStep(simDt: number): number {
     this.adaptiveStatesScratch.length = 0;
-    // 加熱・動圧の積分結果が存続を左右し、その帰結をプレイヤーが観測するのは艦だけ。
+    // 加熱・動圧の積分結果が存続を左右し、その帰結をプレイヤーが観測するのは機体だけ。
     // 他の種別は大気圏に入れば失われるだけで、いつどれだけの精度で失われるかはプレイの結果を変えない。
-    for (const p of this.entities.players) {
-      if (p.alive) this.adaptiveStatesScratch.push(p.state);
-    }
-    for (const e of this.entities.enemies) {
-      if (e.alive) this.adaptiveStatesScratch.push(e.state);
+    for (const v of this.entities.vessels) {
+      if (v.alive) this.adaptiveStatesScratch.push(v.state);
     }
     return adaptiveSimulationMaxStep(
       this.adaptiveStatesScratch,
@@ -223,10 +220,7 @@ export class Simulator {
 
   // 軌道積分と同じ刻み幅 simDt で全エンティティの姿勢を進める。
   private stepAttitudes(simDt: number, passiveWarpLod: boolean): void {
-    for (const p of this.entities.players) p.att = stepAttitude(p.att, p.torque, simDt);
-
-    for (const e of this.entities.enemies) if (e.alive) e.att = stepAttitude(e.att, e.torque, simDt);
-    for (const base of this.entities.bases) if (base.alive) base.att = stepAttitude(base.att, base.torque, simDt);
+    for (const v of this.entities.vessels) if (v.alive) v.att = stepAttitude(v.att, v.torque, simDt);
     if (!passiveWarpLod) {
       for (const cs of this.entities.casings) cs.att = stepAttitude(cs.att, cs.torque, simDt);
       for (const d of this.entities.debris) d.att = stepAttitude(d.att, d.torque, simDt);

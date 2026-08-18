@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { GameEntity } from './game-entity';
+import { Vessel } from '../vessel/vessel';
 import { KinematicState } from '../../physics/kinematic-state';
 import { Attractor } from '../../physics/attractor';
 import { containingBody } from '../../physics/sphere-contact';
@@ -10,8 +11,6 @@ import type { Contact } from '../simulation/contact';
 import { Vec3, lenSq, sub } from '../../physics/vec3';
 import * as C from '../const';
 import { buildBulletMesh, buildPlasmaMesh } from '../../render/ships';
-import { Enemy } from './enemy';
-import { Player } from '../player/player';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
 
 
@@ -53,16 +52,16 @@ export class Bullet extends GameEntity {
         this.collides = true;
     }
 
-    // 弾同士は接触しない。敵弾は Enemy と接触しない(敵は同士討ちしない)。自陣営の艦とは
+    // 弾同士は接触しない。敵弾は Vessel と接触しない(敵は同士討ちしない)。自陣営の艦とは
     // 発射後 SELF_CONTACT_GRACE の間だけ接触しない — 敵は同士討ちしないが自機は猶予を過ぎた
     // 自弾に当たる、という非対称は意図的(規則2・3は対称ではない)。艦に取り付いた実体
     // (ベルトの節点・放熱板の折り)は attachedTo を辿って艦本体と同じ扱いにする。
     contactsWith(other: GameEntity | Attractor, simTime: number): boolean {
         if (other instanceof Bullet) return false;
         const ship = other instanceof GameEntity ? other.attachedTo ?? other : other;
-        if (this.shooter === 'enemy' && ship instanceof Enemy) return false;
-        const ownShip = (this.shooter === 'player' && ship instanceof Player)
-            || (this.shooter === 'enemy' && ship instanceof Enemy);
+        if (this.shooter === 'enemy' && ship instanceof Vessel && ship.faction === 'enemy') return false;
+        const ownShip = (this.shooter === 'player' && ship instanceof Vessel)
+            || (this.shooter === 'enemy' && ship instanceof Vessel);
         if (ownShip && simTime - this.bornSim <= C.SELF_CONTACT_GRACE) return false;
         return true;
     }

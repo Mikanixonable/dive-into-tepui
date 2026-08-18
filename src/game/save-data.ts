@@ -1,5 +1,5 @@
 import { AnyPart } from './game-entity/parts';
-import { EnemyKind } from './game-entity/enemy';
+import { EnemyKind } from './vessel/enemy-ai';
 import { AttractorId } from '../physics/attractor';
 import type { GamePhase } from './stages/stage';
 import type { WaveAttackSaveData } from './stages/stage-utils/wave-attack';
@@ -104,8 +104,8 @@ export interface BaseSaveData {
   fuel?: number;
   // 倉庫在庫部品。旧セーブには無いため任意。
   inventory?: AnyPart[];
-  // 格納中の艦は entities.players に含まれないため、艦本体(軌道状態・parts・弾薬・計画)を
-  // まるごとここへ保存する。復元時に Player を作り直し、DockedVesselEntry.player を張り直す。
+  // 格納中の艦は entities.ownShips() に含まれないため、艦本体(軌道状態・parts・弾薬・計画)を
+  // まるごとここへ保存する。復元時に Vessel を作り直し、DockedVesselEntry.player を張り直す。
   dockedVessels: PlayerSaveData[];
   dockedShips?: PlayerSaveData[];
   throttle?: ThrottleSaveData;

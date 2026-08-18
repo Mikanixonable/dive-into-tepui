@@ -3,7 +3,7 @@
 import { addScaled, norm, v3 } from '../../physics/vec3';
 import { qRotate } from '../../physics/attitude';
 import * as C from '../const';
-import { Player } from '../player/player';
+import { Vessel } from '../vessel/vessel';
 import { Viewpoint } from '../../physics/projection';
 
 export class GunsightCamera {
@@ -16,7 +16,7 @@ export class GunsightCamera {
   };
 
   // 機体姿勢のみから視点を求め、viewpoint へ書き戻す。
-  update(player: Player): void {
+  update(player: Vessel): void {
     const boreFwd = qRotate(player.att.q, v3(0, 0, 1));
     const boreUp = qRotate(player.att.q, v3(0, 1, 0));
     const center = player.state.r;

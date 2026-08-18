@@ -4,13 +4,12 @@ import { FloatingOrigin } from './floating-origin';
 import { v3 } from '../physics/vec3';
 import type { PerfCounts } from '../perf-meter';
 import { FrameSections, SECTION } from '../frame-sections';
-import { Player } from './player/player';
-import { Base } from './game-entity/base';
+import { Vessel } from './vessel/vessel';
 import type { GameEntity } from './game-entity/game-entity';
 import { CameraSystem } from './camera/camera-system';
 import { Stage, StageClass } from './stages/stage';
 import { MarkerManager } from './marker/marker-manager';
-import { ActiveControllableController } from './active-controllable-controller';
+import { ActiveVesselController } from './active-vessel-controller';
 import { UnlockManager } from './unlock-manager';
 import { Targeter } from './targeter';
 import { PlanEditor } from './plan/plan-editor';
@@ -60,11 +59,11 @@ export class Game {
   get ephemeris(): Ephemeris { return this._ephemeris; }
   readonly cameraSystem: CameraSystem;
   // 操作対象艦(0..n 隻のうちどれを操作するか)の切替を持つ。
-  readonly activePlayers: ActiveControllableController;
-  get player(): Player | null { return this.activePlayers.current; }
-  get controlledBase(): Base | null { return this.activePlayers.controlledBase; }
+  readonly activePlayers: ActiveVesselController;
+  get player(): Vessel | null { return this.activePlayers.current; }
+  // 追従カメラが見る対象。操作対象が居なければ生存中の基地を代わりに見る。
   get activeControllableEntity(): GameEntity | null {
-    return this.controlledBase ?? this.player ?? this.entities.bases.find((b) => b.alive) ?? null;
+    return this.player ?? this.entities.baseVessels().find((b) => b.alive) ?? null;
   }
   readonly simSpeedManager: SimSpeedManager;
 
@@ -155,7 +154,7 @@ export class Game {
     this.navTarget = new NavTarget(this._hud, this.markerManager);
     this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
     this._environment = new EnvironmentScene(this._scene, this.ephemeris, graphics, pipeline.sunLight, earthSpinPhase0);
-    this.activePlayers = new ActiveControllableController(
+    this.activePlayers = new ActiveVesselController(
       initialSave?.activePlayerId, this.entities, this.cameraSystem, this.targeter, this.navTarget, this._worldSfx, this._hud,
     );
     this.editor = new PlanEditor(
@@ -217,16 +216,8 @@ export class Game {
       this.activePlayers, this.activeStage,
     );
     this.mapActions.setDocking(this.docking);
-    this.mapActions.setControlledBaseHandler(
-      (b) => this.setControlledBase(b),
-      () => this.controlledBase,
-    );
-    this.viewManager.setControlledBaseProvider(() => this.controlledBase);
+    this.viewManager.setControlledBaseProvider(() => this.player);
     this.viewBadge = new ViewBadge(this._hud.layers.notify, this._hud.layers.notify, this.viewManager, this._hud.overlayManager);
-  }
-
-  setControlledBase(base: Base | null): void {
-    this.activePlayers.setBase(base);
   }
 
   // ------------------------------------------------------------------ lifecycle
@@ -336,12 +327,8 @@ export class Game {
     this.entities.requestHistoryDuration(this.displayWindowManager.current.pastDuration);
     this.sections.enter(SECTION.player);
     this.nanWatchdog.checkPlayer('frameStart', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
-    const playerInput = this.controlledBase !== null ? null : this.input;
-    this.entities.updatePlayers(
-      this.player, playerInput, this.simSpeedManager, dt, this.activeStage, this.ephemeris,
-    );
-    this.entities.updateBases(
-      this.controlledBase, this.input, this.simSpeedManager, dt,
+    this.entities.updateVessels(
+      this.player, this.input, this.simSpeedManager, dt, this.activeStage, this.ephemeris,
     );
     this.nanWatchdog.checkPlayer(
       'player.updatePlayerControls',
@@ -474,11 +461,8 @@ export class Game {
       this.markerManager,
     );
 
-    this.entities.syncPlayers(
+    this.entities.syncVessels(
       player, fo, this.cameraSystem, displayTime, this.ephemeris, displayAttractors, visibilityPolicy, displayWindow,
-    );
-    this.entities.syncBases(
-      this.controlledBase, fo, this.cameraSystem, displayTime, visibilityPolicy,
     );
     this.entities.sync(fo, displayTime);
     this.entities.applyVisibility(visibilityPolicy, player);

@@ -10,8 +10,7 @@ import { fmtAmmoStatus } from './utils';
 import type { Game } from '../game';
 import type { Input } from '../input/input';
 import type { KeyBinding } from '../input/key-mapping';
-import { Player } from '../player/player';
-import { Base } from '../game-entity/base';
+import { Vessel } from '../vessel/vessel';
 
 const SYNC_INTERVAL_MS = 100;
 
@@ -96,7 +95,7 @@ export class VesselPanel {
     if (now < this.nextSyncAt) return;
     this.nextSyncAt = now + SYNC_INTERVAL_MS;
 
-    const throttleObj = target instanceof Player ? target : (target instanceof Base ? target : null);
+    const throttleObj = target instanceof Vessel ? target : null;
     if (!throttleObj) return;
 
     this.syncState('rcs', throttleObj.throttle.rcsDamp, 'near');
@@ -105,22 +104,15 @@ export class VesselPanel {
       `${C.THROTTLE_LABELS[throttleObj.throttle.throttleIdx]} (${C.THROTTLE_LEVELS[throttleObj.throttle.throttleIdx]!.toFixed(1)} m/s²)`,
     );
     this.throttleControl?.setSelected(throttleObj.throttle.throttleIdx);
-    const fineAtt = target instanceof Player ? target.fineAttitude : false;
+    const fineAtt = throttleObj.fineAttitude;
     this.syncState('fine', fineAtt, 'near');
     const cameraFollowsAttitude = game.cameraSystem.combatCamera.camFollowAttitude;
     this.syncState('camfollow', cameraFollowsAttitude, 'signal');
     this.followButton?.setOn(cameraFollowsAttitude);
     this.syncState('prohold', throttleObj.throttle.progradeHold, 'near');
 
-    let currentFuel = 0;
-    let maxFuel = 0;
-    if (target instanceof Player) {
-      currentFuel = target.totalFuel;
-      maxFuel = target.totalMaxFuel;
-    } else if (target instanceof Base) {
-      currentFuel = target.fuel;
-      maxFuel = target.maxFuel;
-    }
+    const currentFuel = throttleObj.totalFuel;
+    const maxFuel = throttleObj.totalMaxFuel;
 
     const clampedFuel = Math.max(0, Math.min(maxFuel, currentFuel));
     const fuelPercent = maxFuel > 0 ? (clampedFuel / maxFuel) * 100 : 0;
@@ -141,12 +133,13 @@ export class VesselPanel {
 
     const ammo = this.els.get('ammo');
     if (ammo) {
-      if (target instanceof Player) {
-        ammo.textContent = fmtAmmoStatus(target.roundsInMag, target.magsLeft, target.reloadTimer);
-        ammo.classList.toggle('warn-hot', target.reloadTimer > 0 || target.magsLeft < 4);
-      } else if (target instanceof Base) {
-        ammo.textContent = `Fuel: ${Math.round(target.fuel)} / ${target.maxFuel}`;
-        ammo.classList.toggle('warn-hot', target.fuel < target.maxFuel * 0.2);
+      // 砲を積まない機体(軌道基地など)は、弾薬の代わりに推進剤の残量を出す。
+      if (throttleObj.fire) {
+        ammo.textContent = fmtAmmoStatus(throttleObj.roundsInMag, throttleObj.magsLeft, throttleObj.reloadTimer);
+        ammo.classList.toggle('warn-hot', throttleObj.reloadTimer > 0 || throttleObj.magsLeft < 4);
+      } else {
+        ammo.textContent = `Fuel: ${Math.round(currentFuel)} / ${Math.round(maxFuel)}`;
+        ammo.classList.toggle('warn-hot', maxFuel > 0 && currentFuel < maxFuel * 0.2);
       }
     }
   }

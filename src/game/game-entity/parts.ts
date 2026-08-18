@@ -1,4 +1,8 @@
-export type PartType = 'hull' | 'cockpit' | 'armor' | 'thruster' | 'rcs_tank' | 'radiator' | 'solar_panel' | 'weapon';
+import { Vec3 } from '../../physics/vec3';
+
+export type PartType =
+  | 'hull' | 'cockpit' | 'armor' | 'thruster' | 'rcs_tank' | 'radiator' | 'solar_panel' | 'weapon'
+  | 'base_module' | 'communication' | 'autopilot';
 
 export interface Part {
   readonly id: string;
@@ -54,7 +58,43 @@ export interface WeaponPart extends Part {
   muzzleVelocity: number; // m/s
 }
 
-export type AnyPart = HullPart | CockpitPart | ArmorPart | ThrusterPart | RcsTankPart | RadiatorPart | SolarPanelPart | WeaponPart;
+// 機体を受け入れる口。ハッチとスロットの位置・法線、受け入れ条件の閾値を持つ。
+// ドッキングポートによる結合はまだ無く、格納の判定は距離と相対速度だけで決まる。
+export interface DockPort {
+  readonly localPos: Vec3;
+  readonly localNormal: Vec3;
+}
+
+export interface BaseModulePart extends Part {
+  readonly type: 'base_module';
+  // 中央ハッチ。機体が正面から近づく1つ目の口。
+  readonly hatch: DockPort;
+  // ドックスロット。格納した機体を並べる場所でもある。
+  readonly dockSlots: readonly DockPort[];
+  // 格納できる機体数。
+  readonly capacity: number;
+  // 受け入れの閾値。距離 [m] と、口の法線に対する向きの内積の下限。
+  readonly hatchCaptureDist: number;
+  readonly hatchCaptureAlignment: number;
+  readonly slotCaptureDist: number;
+  readonly slotCaptureAlignment: number;
+  // 相対速度の上限 [m/s]。
+  readonly captureRelSpeed: number;
+}
+
+export interface CommunicationPart extends Part {
+  readonly type: 'communication';
+  // 通信圏の判定へ渡す到達距離 [m]。
+  readonly range: number;
+}
+
+export interface AutopilotPart extends Part {
+  readonly type: 'autopilot';
+}
+
+export type AnyPart =
+  | HullPart | CockpitPart | ArmorPart | ThrusterPart | RcsTankPart | RadiatorPart | SolarPanelPart | WeaponPart
+  | BaseModulePart | CommunicationPart | AutopilotPart;
 
 type ExtractPart<TType extends PartType> = Extract<AnyPart, { type: TType }>;
 
@@ -86,5 +126,8 @@ export function partFromSaveData(data: AnyPart): AnyPart {
     case 'radiator': return createPart('radiator', data);
     case 'solar_panel': return createPart('solar_panel', data);
     case 'weapon': return createPart('weapon', data);
+    case 'base_module': return createPart('base_module', data);
+    case 'communication': return createPart('communication', data);
+    case 'autopilot': return createPart('autopilot', data);
   }
 }
