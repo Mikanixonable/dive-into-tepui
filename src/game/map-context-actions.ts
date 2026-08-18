@@ -554,7 +554,7 @@ export class MapContextActions {
         } else if (act === 'planExecCycle') {
           if (ship) {
             const next = PLAN_EXECUTION_MODES[(PLAN_EXECUTION_MODES.indexOf(ship.planExecution) + 1) % PLAN_EXECUTION_MODES.length]!;
-            ship.planExecution = next;
+            ship.setPlanExecution(next);
           }
         } else if (act === 'duplicate') {
           this.runDuplicate(target);
@@ -593,7 +593,7 @@ export class MapContextActions {
         const activeShip = this.activeVessels.current;
         const isControlled = base !== null && this.activeVessels.current === base;
         const subLabel = base
-          ? `基地 / 所持金: ${base.baseState!.money.toLocaleString()} Cr / 格納艦艇: ${base.baseState!.dockedVessels.length}隻`
+          ? `基地 / 格納艦艇: ${base.baseState!.dockedVessels.length}隻`
           : '基地';
 
         const dockItems: MenuItem<MenuAction>[] = [];
@@ -749,7 +749,7 @@ export class MapContextActions {
     return undefined;
   }
 
-  // タイトル・サブタイトルは到達まで T+… や所持金など、操作項目は操作対象か・追従状態・
+  // タイトル・サブタイトルは到達まで T+… など、操作項目は操作対象か・追従状態・
   // 航法ターゲットかなど、どちらも可変な状態に依存するため itemsFor を毎フレーム呼び直す
   // 必要があるが、呼び出しは1回にまとめる(header 項目からタイトル/サブタイトルを抜き出し、
   // 残りを操作項目とする)。
@@ -859,7 +859,6 @@ export class MapContextActions {
     const isControlled = this.activeVessels.current === base;
     const rows: PropertyRow[] = [
       { key: 'operated', label: '操作対象か', value: isControlled ? 'はい' : 'いいえ', collapsible: true },
-      { key: 'money', label: '所持金', value: `${base.baseState!.money.toLocaleString()} Cr` },
       { key: 'vessels', label: '格納艦艇数', value: `${base.baseState!.dockedVessels.length}` },
     ];
     if (player) rows.push({ key: 'dist', label: '距離', value: fmtDist(len(sub(base.state.r, player.state.r))) });

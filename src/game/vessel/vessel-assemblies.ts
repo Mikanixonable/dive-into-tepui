@@ -9,7 +9,7 @@ import { Vec3, add, scale, v3 } from '../../physics/vec3';
 import type { CrossSection } from '../../physics/section-moments';
 import type { AnyPart, ExteriorPartType, PartType } from '../game-entity/parts';
 import type { PartPlacement, VesselAssembly } from './assembly';
-import type { EdgeKind, PortRef, TreeEdge, TreeNode, VesselTree } from './tree';
+import type { EdgeKind, MountPoint, PortRef, TreeEdge, TreeNode, VesselTree } from './tree';
 import { portFrame } from './tree';
 import { baseParts, crewedParts, hostileParts, tuneActuators } from './vessel-parts';
 import type { DerivedMassProperties } from './mass-properties';
@@ -53,6 +53,23 @@ const AXIAL_AFT: PortRef = { kind: 'axial', sign: -1 };
 function lateral(faceIndex: number): PortRef {
   return { kind: 'lateral', primitiveId: 'p0', faceIndex };
 }
+
+// 既定の有人艦の RCS スラスタの取付位置。ノズルはいずれも外向きに噴くので、機体が受ける力は
+// 取付面の内向きになる。船体の前後2ステーションに4方位ずつ置くと、対向する2基の推力が
+// 打ち消し合ってピッチとヨーのトルクだけが残る。ロールは左右のトラス上の4基が担う — 重心から
+// x 方向へ離れた位置で y 方向へ噴くと、左右で力が打ち消し合ってロールのトルクだけが残る。
+const CREWED_RCS_MOUNTS: readonly MountPoint[] = [
+  // 方位は 45° ずらして置く — 砲と通信機が真横(±π/2)を占めているため。
+  ...[0, 1, 2, 3].map((q): MountPoint => (
+    { kind: 'surface', edgeId: 'fore', along: 0.3, around: Math.PI / 4 + (q * Math.PI) / 2 })),
+  ...[0, 1, 2, 3].map((q): MountPoint => (
+    { kind: 'surface', edgeId: 'aft', along: 1.2, around: Math.PI / 4 + (q * Math.PI) / 2 })),
+  // 放熱板(along 1)と太陽電池パドル(along 2)を避け、根元と先端へ1基ずつ置く。
+  ...['truss-l', 'truss-r'].flatMap((edgeId): MountPoint[] => [
+    { kind: 'truss', edgeId, along: 0.5, around: Math.PI / 2 },
+    { kind: 'truss', edgeId, along: 2.5, around: -Math.PI / 2 },
+  ]),
+];
 
 // ツリーを組み立てながら、子ノードの位置を親の接続口から導く器。
 class TreeBuilder {
@@ -127,6 +144,7 @@ export function crewedAssembly(maxHp: number): VesselAssembly {
   const tree = builder.tree();
   const parts = crewedParts(maxHp);
   let trussSide = 0;
+  let rcsIndex = 0;
   const placements = place(parts, (part) => {
     if (!isExterior(part)) return { kind: 'internal', part, edgeIds: internalEdgesFor(part.type) };
     if (part.type === 'radiator' || part.type === 'solar_panel') {
@@ -147,9 +165,11 @@ export function crewedAssembly(maxHp: number): VesselAssembly {
       // 砲は機首側の外皮に付く。機首の口は熱シールドが塞いでいるので、そこには置けない。
       return { kind: 'external', part, mount: { kind: 'surface', edgeId: 'fore', along: 0.5, around: -Math.PI / 2 } };
     }
-    // RCS スラスタと通信機は外皮の表面に付く。重心から離すほど大きなトルクが得られる(§8-3)。
-    const along = part.type === 'rcs_thruster' ? 1 : 0.5;
-    return { kind: 'external', part, mount: { kind: 'surface', edgeId: 'fore', along, around: Math.PI / 2 } };
+    if (part.type === 'rcs_thruster') {
+      return { kind: 'external', part, mount: CREWED_RCS_MOUNTS[rcsIndex++ % CREWED_RCS_MOUNTS.length]! };
+    }
+    // 通信機は外皮の表面に付く。
+    return { kind: 'external', part, mount: { kind: 'surface', edgeId: 'fore', along: 0.5, around: Math.PI / 2 } };
   });
   const assembly = { tree, placements };
   tuneAssemblyActuators(assembly);

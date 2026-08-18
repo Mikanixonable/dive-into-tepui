@@ -2,12 +2,17 @@
 import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { v3 } from '../../physics/vec3';
-import { buildBaseModel, buildEnemyShip, buildPlayerShip, buildStage0EnemyShip } from '../../render/ships';
+import { buildBaseModel, buildEnemyShip, buildStage0EnemyShip } from '../../render/ships';
+import { buildHullMesh } from './hull-mesh';
 import type { AnyPart } from '../game-entity/parts';
-import { hostileParts } from './vessel-parts';
+import { hostileParts, tuneActuators } from './vessel-parts';
 import type { EnemyKind } from './enemy-ai';
 import { inertiaForEnemyKind } from './enemy-ai';
+import { principalMoments } from '../../physics/inertia-tensor';
 import type { VesselAssembly } from './assembly';
+import { assemblyOf, type VesselBlueprint } from './blueprint';
+import { circumradius } from './tree';
+import { len } from '../../physics/vec3';
 import { crewedAssembly, orbitalBaseAssembly } from './vessel-assemblies';
 import type { MassProperties } from './mass-properties';
 import { deriveMassProperties, massPropertiesFrom, massPropertiesOf } from './mass-properties';
@@ -52,7 +57,7 @@ export function crewedShipDesign(): VesselDesign {
   const assembly = crewedAssembly(C.PLAYER_MAX_HP);
   return {
     faction: 'ally',
-    renderObject: buildPlayerShip(),
+    renderObject: buildHullMesh(assembly),
     assembly,
     ...derivedFrom(assembly),
     radius: C.PLAYER_HULL_RADIUS,
@@ -83,6 +88,35 @@ export function orbitalBaseDesign(): VesselDesign {
   };
 }
 
+// 形状ツリーの外接半径 [m]。各ノードが自分の断面の外接円ぶんの広がりを持つ。
+function hullRadiusOf(assembly: VesselAssembly): number {
+  let radius = 0;
+  for (const node of assembly.tree.nodes) {
+    radius = Math.max(radius, len(node.pos) + circumradius(node.section));
+  }
+  return radius;
+}
+
+// 保存された設計から組む機体。積んでいる搭載要素が、そのまま積む系を決める。
+export function blueprintDesign(bp: VesselBlueprint): VesselDesign {
+  const assembly = assemblyOf(bp);
+  const parts = assembly.placements.map((placement) => placement.part);
+  return {
+    faction: 'ally',
+    renderObject: buildHullMesh(assembly),
+    assembly,
+    parts,
+    massProperties: massPropertiesFrom(deriveMassProperties(assembly)),
+    radius: hullRadiusOf(assembly),
+    hpRegenRate: C.HP_REGEN_RATE,
+    reentryAltMargin: C.PLAYER_MIN_ALT,
+    gunnery: parts.some((part) => part.type === 'weapon'),
+    lifeSupport: parts.some((part) => part.type === 'radiator'),
+    maneuverEffectScale: 1,
+    directionMarkers: parts.some((part) => part.type === 'cockpit'),
+  };
+}
+
 // 敵対勢力の機体。見た目のスケールが大きいので、当たり半径はメッシュの外接球から取る。
 export function hostileShipDesign(enemyKind: EnemyKind, accent: string | number): VesselDesign {
   const renderObject = enemyKind.kind === 'stage0'
@@ -90,12 +124,17 @@ export function hostileShipDesign(enemyKind: EnemyKind, accent: string | number)
     : buildEnemyShip(accent);
   renderObject.scale.setScalar(C.ENEMY_SCALE);
   const bounds = new THREE.Box3().setFromObject(renderObject);
+  // 形状ツリーを持たない設計でも、アクチュエータの性能は質量特性から導く。形状から導く経路と
+  // 揃えないと、フライホイールの最大トルクが単位の合わない定数のまま残る。
+  const massProperties = massPropertiesOf(10000, inertiaForEnemyKind(enemyKind), v3(15, 15, 15));
+  const parts = hostileParts(C.ENEMY_MAX_HP);
+  tuneActuators(parts, massProperties.mass, principalMoments(massProperties.inertia).z);
   return {
     faction: 'enemy',
     renderObject,
     assembly: null,
-    parts: hostileParts(C.ENEMY_MAX_HP),
-    massProperties: massPropertiesOf(10000, inertiaForEnemyKind(enemyKind), v3(15, 15, 15)),
+    parts,
+    massProperties,
     radius: bounds.getBoundingSphere(new THREE.Sphere()).radius,
     hpRegenRate: 0,
     reentryAltMargin: C.REENTRY_ALT,

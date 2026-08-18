@@ -62,7 +62,6 @@ function metaFromSaveData(data: GameSaveData): SnapshotMeta {
     hpRatio: 0,
     maxHp: 0,
     magazines: 0,
-    money: data.bases.reduce((sum, b) => sum + b.money, 0),
     playerCount: data.players.length,
     enemyAliveCount: data.enemies.filter((e) => e.alive).length,
     phase: data.stage.phase,

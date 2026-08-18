@@ -99,10 +99,10 @@ export const BULLET_IMPACT_HEAT = 3.0e5; // 自機が被弾1発あたりに受�
 export const SOLAR_PANEL_AREA = 7.2; // 発電面積 [m^2](左右2枚合計)
 export const SOLAR_PANEL_EFFICIENCY = 0.25; // 太陽光→電力の変換効率
 export const POWER_CAPACITY = 1.5e6; // 蓄電容量 [J]
-// 既定の有人艦の定常消費電力の合計 [W]。通信・フライホイール・生命維持のぶん。
-export const CREWED_POWER_DRAW = 490;
+// 既定の有人艦の定常消費電力の合計 [W]。通信・フライホイール・磁気トルカ・生命維持のぶん。
+export const CREWED_POWER_DRAW = 493.5;
 // 既定の有人艦の廃熱 [W]。消費電力の合計に、生命維持装置が別に出す熱を足したもの。
-export const CREWED_WASTE_HEAT = 590;
+export const CREWED_WASTE_HEAT = 593.5;
 // 既定の有人艦の RCS 推進剤搭載量 [kg]。
 export const CREWED_RCS_FUEL_CAPACITY = 1000;
 
@@ -129,6 +129,10 @@ export const THRUST_LATCH_DOUBLE_TAP_SEC = 0.3;
 // 姿勢制御が出す角加速度 [rad/s^2]。フライホイールの最大トルクは、機体の慣性テンソルの最大主
 // 慣性モーメントにこの値を掛けて決まる(§10-4) — 機体の大小によらず手触りが一定になる。
 export const MAX_ANG_ACCEL = 1.4;
+// 既定の有人艦が積む磁気トルカの最大磁気モーメント [A·m^2](§5-15 の中等級)。低軌道の地磁気
+// 3.0e-5 T のもとで 1.2e-2 N·m にしかならず、機体を向け変えることはできない — フライホイールが
+// 溜めた角運動量を、時間をかけて外へ捨てるためだけの装置である。
+export const MAGNETORQUER_MOMENT = 400;
 export const RCS_DAMP_RATE = 3.5; // RCS 回転制動の減衰係数 [1/s]
 
 // 手動回転RCSの出力ランプ: 押し始めは MIN、RAMP_TIME 秒かけて (MIN + RAMP) まで増加する
