@@ -121,7 +121,9 @@ main.ts
 │       │                                       コメントと CLAUDE.md にある)
 │       │   ├── BlueprintLibrary               ... 生産にかけられる設計の保管庫(private blueprints)。永続化は
 │       │   │                                   LocalStorageBlueprintStore(鍵 tepui.blueprints)。BaseView へ参照で渡す
-│       │   ├── BaseView                       ... DOM は Hud.layers.view 配下。格納艦/部品/生産/ショップタブのフルスクリーン UI。
+│       │   ├── BaseView                       ... DOM は Hud.layers.view 配下。格納艦/部品/生産タブのフルスクリーン UI。
+│       │   │                                   通貨は存在しない — 修理は失われた耐久ぶんの資材、補給は積んでいる推進剤、
+│       │   │                                   換装は無償で、いずれも shortfall/canAfford/spend を通る。
 │       │   │                                   生産タブは設計ごとの生産可能性(不足の資源・設備・電力)と基地の在庫を出し、
 │       │   │                                   onProduceVessel(base, blueprint) で Docking.produceVessel を呼ぶ。
 │       │   │                                   デバッグ用の資源加算(資源 id + 質量 → base.baseState.resources)も同じタブが持つ
@@ -240,7 +242,7 @@ main.ts
 │       │   │   ├── ReentryEffects → Billboard ×2   ... 状態なし。強度は毎フレーム qdyn から導く
 │       │   │   ├── EnemyAi                ... 敵対勢力の機体だけが持つ行動則(バースト射撃の抽選と見越し射撃)。他は null
 │       │   │   ├── BaseState              ... 基地モジュールを積んだ機体だけが持つ在庫と収容
-│       │   │   │                              (money/inventory/dockedVessels/resources)。他は null
+│       │   │   │                              (inventory/dockedVessels/resources)。他は null
 │       │   │   │   └── ResourceLedger      ... 資源 id ごとの質量[kg]の帳簿(readonly resources)。生産がここから引く。
 │       │   │   │                              資源の帳簿を持つ実体はこれだけである
 │       │   │   ├── BaseCollisionGeometry  ... 基地モジュールを積んだ機体だけが持つ多段階(LOD0/1/2)の衝突形状(collisionGeom)。

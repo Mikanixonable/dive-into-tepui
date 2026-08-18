@@ -88,7 +88,7 @@ export interface PlayerSaveData extends EntitySaveData {
   fineAttitude?: boolean;
 }
 
-// 基地は艦(EntitySaveData)と持ち物が根本的に異なる(所持金・在庫・収容艦)ため、
+// 基地は艦(EntitySaveData)と持ち物が根本的に異なる(在庫・収容艦)ため、
 // kind で分岐する EntitySaveData の派生ではなく独立した型にする。
 export interface BaseSaveData {
   id: string;
@@ -99,7 +99,6 @@ export interface BaseSaveData {
   // 姿勢と角速度。旧セーブには無いため任意。
   q?: QuatSaveData;
   w?: Vec3SaveData;
-  money: number;
   // 基地の燃料。旧セーブには無いため任意。
   fuel?: number;
   // 倉庫在庫部品。旧セーブには無いため任意。
@@ -182,7 +181,6 @@ export interface SnapshotMeta {
   hpRatio: number;
   maxHp: number;
   magazines: number;
-  money: number;
   playerCount: number;
   enemyAliveCount: number;
   phase: GamePhase;

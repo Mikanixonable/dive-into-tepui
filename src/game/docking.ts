@@ -8,7 +8,7 @@ import { ResourceTransferDialog } from './hud/resource-transfer-dialog';
 import { Vessel, type VesselDeps } from './vessel/vessel';
 import { hasBaseModule } from './vessel/capabilities';
 import type { VesselBlueprint } from './vessel/blueprint';
-import { baseFacilities } from './vessel/base-module';
+import { baseFacilities, basePowerAvailable } from './vessel/base-module';
 import { BlueprintLibrary } from './vessel/blueprint-library';
 import { LocalStorageBlueprintStore } from './vessel/blueprint-store';
 import { producibility } from './economy/producibility';
@@ -22,7 +22,6 @@ import type { WorldSfx } from '../audio/sfx/world-sfx';
 import type { EffectsSystem } from './vfx/effects-system';
 import type { MarkerManager } from './marker/marker-manager';
 import type { ActiveVesselController } from './active-vessel-controller';
-import type { Stage } from './stages/stage';
 import { generateRandomName } from './random-name';
 
 export class Docking {
@@ -56,7 +55,6 @@ export class Docking {
     private readonly cameraSystem: CameraSystem,
     private readonly viewManager: ViewManager,
     private readonly activeVessels: ActiveVesselController,
-    private readonly activeStage: Stage,
   ) {
     this.blueprints = new BlueprintLibrary(new LocalStorageBlueprintStore());
     this.baseView = new BaseView(this.hud.layers.view, this.blueprints);
@@ -159,7 +157,7 @@ export class Docking {
       this._activeBase = available[0]!;
     }
     this.pauseGame();
-    this.baseView.open(this._activeBase, this.activeVessels.current, this.activeStage.freeProcurement);
+    this.baseView.open(this._activeBase, this.activeVessels.current);
   }
 
   leaveDock(): void {
@@ -230,7 +228,7 @@ export class Docking {
     }
     const request = productionBlueprintOf(blueprint);
     const missing = producibility(
-      request, base.baseState!.resources, baseFacilities(base), base.totalPowerGeneration,
+      request, base.baseState!.resources, baseFacilities(base), basePowerAvailable(base),
     );
     if (missing.length > 0) {
       this.hud.hint(`${blueprint.name} を生産できません (不足 ${missing.length} 件)`);

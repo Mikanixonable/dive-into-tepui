@@ -37,7 +37,6 @@ export class CreativeStage extends Stage {
   static readonly selectSub = '軌道上に艦艇を自由に配置して眺める';
   static readonly selectGroup = 'クリエイティブモード';
   static readonly selectKeys: string[] = [];
-  readonly freeProcurement = true;
   readonly executesPlans = true;
   readonly authoring: ObjectAuthoring = this;
 
