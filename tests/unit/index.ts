@@ -18,6 +18,8 @@ import { register as registerDockingCapture } from './docking-capture.test';
 import { register as registerStages } from './stages.test';
 import { register as registerPayload } from './payload.test';
 import { register as registerModulePick } from './module-pick.test';
+import { register as registerAdvancedVessel } from './advanced-vessel.test';
+import { register as registerDockingCluster } from './docking-cluster.test';
 
 registerResource();
 registerProducibility();
@@ -30,6 +32,8 @@ registerDockingCapture();
 registerStages();
 registerPayload();
 registerModulePick();
+registerAdvancedVessel();
+registerDockingCluster();
 registerHullMesh();
 registerMassProperties();
 registerAttitudeControl();
