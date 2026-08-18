@@ -168,9 +168,10 @@ export function register(): void {
 
   test('blueprint: 外表面の RCS が他の外装要素と干渉すると指摘される', () => {
     const bp = baseBlueprint();
-    // 既定の設計では RCS が along=1、通信機が along=0.5 にある。両方を同じ位置に寄せる。
+    // 既定の設計では外表面の要素が along と around で散らばっている。すべて同じ位置へ寄せる。
     const placements = bp.placements.map((p) => (
-      p.kind === 'external' && p.mount.kind === 'surface' ? { ...p, mount: { ...p.mount, along: 1 } } : p));
+      p.kind === 'external' && p.mount.kind === 'surface'
+        ? { ...p, mount: { ...p.mount, along: 1, around: 0 } } : p));
     assertIssue(validateBlueprint(withPlacements(bp, placements)), 'error', 'RCS スラスタが');
   });
 

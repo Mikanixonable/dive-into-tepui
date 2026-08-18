@@ -7,6 +7,9 @@ import { MU_EARTH, R_EARTH, earthAltitudeOf } from '../../physics/solar-system';
 import { Vec3, len, scale, sub, v3 } from '../../physics/vec3';
 import { Attractor, reachedBody } from '../../physics/attractor';
 import type { InertiaTensor } from '../../physics/inertia-tensor';
+import type { ActuatorSet } from '../../physics/attitude-control';
+import { AttitudeControlSystem } from './attitude-control-system';
+import { actuatorSetOf } from './actuator-set';
 import { airspeed, burnUpBody } from '../../physics/atmosphere';
 import { ballisticCoeffInv, radiationPressureCoeff } from '../../physics/aerodynamics';
 import { buildVesselWireframe } from '../../render/vessel-wireframe';
@@ -279,7 +282,14 @@ export class Vessel extends GameEntity {
   public readonly plan = new Plan();
   public readonly planExecutor: PlanExecutor;
   // 軌道計画の自動実行モード。'powered' の間に手動の並進・回転入力があれば 'off' へ戻る。
-  public planExecution: PlanExecutionMode = 'off';
+  // 書き換えは setPlanExecution だけが行う — 通知を伴う状態変更の所有者を1つに定める(T-7)。
+  private _planExecution: PlanExecutionMode = 'off';
+  // 姿勢制御系。手動操作も自動操縦も、この機体のトルクを直接書かずここへ要求を出す。
+  public readonly attitudeControl = new AttitudeControlSystem();
+  // アクチュエータ集合は形状と搭載要素から導く。要素が壊れると顔ぶれが変わるので、HP が
+  // 動いたときだけ組み直す。
+  private actuators: ActuatorSet | null = null;
+  private actuatorsHp = -1;
   private _fineAttitude = false;
 
   // 個体色・集団識別。敵対勢力の機体だけが持つ。
@@ -293,6 +303,34 @@ export class Vessel extends GameEntity {
   public get orbitLineColor(): string | number | null { return this._orbitLineColor; }
   public get enemyKind(): EnemyKind | null { return this._enemyKind; }
   public get fineAttitude(): boolean { return this._fineAttitude; }
+  public get planExecution(): PlanExecutionMode { return this._planExecution; }
+
+  // 軌道計画の自動実行モードを切り替える唯一の入口。reason があれば通知する。
+  public setPlanExecution(mode: PlanExecutionMode, reason?: string): void {
+    if (this._planExecution === mode) return;
+    this._planExecution = mode;
+    if (reason) this.hud.hint(reason);
+  }
+
+  // 姿勢トルクを要求する。手動操作・自動操縦のどちらもこの口を通る。
+  public requestTorque(torque: Vec3): void {
+    this.attitudeControl.requestTorque(torque);
+  }
+
+  // この機体のアクチュエータ集合。搭載要素が壊れて顔ぶれが変わったときだけ組み直す。
+  public actuatorSet(): ActuatorSet {
+    if (!this.actuators || this.actuatorsHp !== this.hp) {
+      this.actuators = actuatorSetOf(this.assembly, this.parts, this.massProperties.centerOfMass);
+      this.actuatorsHp = this.hp;
+    }
+    return this.actuators;
+  }
+
+  // 要求を1刻みぶんアクチュエータへ配分し、機体が実際に受けるトルクを確定する。
+  // 姿勢積分の直前に、シミュレーション時間の刻みで呼ぶ。
+  public resolveAttitudeControl(simDt: number): void {
+    this.torque = this.attitudeControl.resolve(this.actuatorSet(), this.state.r, this.att, simDt);
+  }
 
   private readonly hpRegenRate: number;
   private readonly reentryAltMargin: number;
@@ -385,7 +423,7 @@ export class Vessel extends GameEntity {
   // 有人艦の保存形から、自動実行モード・姿勢微調整・搭載要素・計画を戻す。
   private restoreShip(saved: PlayerSaveData, hud: Hud): void {
     // planExecution を持たず followPlan: boolean で保存された形も受ける(true→'instant')。
-    this.planExecution = saved.planExecution ?? (saved.followPlan ? 'instant' : 'off');
+    this._planExecution = saved.planExecution ?? (saved.followPlan ? 'instant' : 'off');
     this._fineAttitude = saved.fineAttitude ?? false;
     this.inventory.replaceAll(saved.parts.map(partFromSaveData));
     this.restorePlan(saved.plan, hud);
@@ -597,10 +635,10 @@ export class Vessel extends GameEntity {
     input.takeKeys((code) => this.handleEdgePress(code));
     // 発砲中は姿勢微調整と同じ操作精度になる
     const fine = this._fineAttitude || this.isFiring;
-    this.torque = this.throttle.updateTorque(
+    this.attitudeControl.requestTorque(this.throttle.updateTorque(
       this.att, this.state.r, this.state.v, input, fine, dt, simDt, this,
       () => this.hud.hint('進行方向ホールド解除(手動操作)'),
-    );
+    ));
     this.fire?.updateFireState(dt, input, activeStage, entities, ephemeris);
     this.throttle.updateThrustLatches(input);
     this.thrust = this.throttle.updateThrustState(input, this.att, simDt, this);
@@ -609,10 +647,9 @@ export class Vessel extends GameEntity {
 
     // 手動並進・手動回転は 'powered' 自動実行を中断する(進行方向ホールドが手動回転で
     // 解除されるのと同じ作法)。
-    if (this.planExecution === 'powered'
+    if (this._planExecution === 'powered'
       && (this.thrust !== null || this.throttle.hasManualRotationInput(input))) {
-      this.planExecution = 'off';
-      this.hud.hint('軌道計画の自動実行を中断(手動操作)');
+      this.setPlanExecution('off', '軌道計画の自動実行を中断(手動操作)');
     }
   }
 
@@ -646,6 +683,7 @@ export class Vessel extends GameEntity {
   public clearTransientCommands(): void {
     this.thrust = null;
     this.torque = v3();
+    this.attitudeControl.clearRequest();
     this.throttle.clearTransientState();
     this.fire?.stopFiring();
   }
@@ -868,7 +906,9 @@ export class Vessel extends GameEntity {
     const effectVisible = displayState !== null && mapEntityVisible;
     const maxAccel = this.mass > 0 ? this.totalThrust / this.mass : 0;
     this.thrustEffects?.sync(fo, effectState.r, this.thrust, maxAccel, effectVisible, isActive, camera, this.maneuverEffectScale);
-    this.rcsEffects?.sync(fo, effectState.r, this.torque, this.att, effectVisible, camera, isActive, this.maneuverEffectScale);
+    this.rcsEffects?.sync(
+      fo, effectState.r, this.attitudeControl.allocation, this.actuatorSet(), this.torque, this.att,
+      effectVisible, camera, isActive, this.maneuverEffectScale);
     this.reentryEffects?.sync(fo, effectState.r, effectState.v, this.thermal?.qdyn ?? 0, effectVisible, camera);
     this.belt?.sync();
     this.radiator?.sync();
@@ -950,7 +990,7 @@ export class Vessel extends GameEntity {
       power: this.power!.serialize(),
       throttle: this.throttle.serialize(),
       parts: this.parts.map((p) => ({ ...p })) as AnyPart[],
-      planExecution: this.planExecution,
+      planExecution: this._planExecution,
       fineAttitude: this._fineAttitude,
       plan: this.serializePlan(),
     };
