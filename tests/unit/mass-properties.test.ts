@@ -76,13 +76,14 @@ export function register(): void {
     const derived = deriveMassProperties(crewedAssembly(C.PLAYER_MAX_HP));
     const { principalAreas, loadedMass } = derived;
     for (const area of [principalAreas.x, principalAreas.y, principalAreas.z]) assert.ok(area > 0);
-    // 左右のトラスが x 軸方向に張り出すので、その向きから見た面積が最も小さい。
-    assert.ok(principalAreas.x < principalAreas.y);
-    assert.ok(principalAreas.y < principalAreas.z);
-    // 機首を進行方向へ向けた姿勢と、横腹を向けた姿勢とで弾道係数が変わる(§11-2)。
+    // 船体が z 軸に沿って細長いので、機首方向から見た面積が最も小さい。左右のトラスは
+    // x 軸方向へ張り出すぶん y 方向から見た面積を増やすので、y 方向が最も大きい。
+    assert.ok(principalAreas.z < principalAreas.x, `z ${principalAreas.z} < x ${principalAreas.x}`);
+    assert.ok(principalAreas.x < principalAreas.y, `x ${principalAreas.x} < y ${principalAreas.y}`);
+    // 機首を進行方向へ向けたとき弾道係数が最小になる(§11-2)。
     const nose = ballisticCoeffInv(principalAreas, loadedMass, v3(0, 0, 1));
     const side = ballisticCoeffInv(principalAreas, loadedMass, v3(1, 0, 0));
-    assert.ok(side < nose, `side ${side} < nose ${nose}`);
+    assert.ok(nose < side, `nose ${nose} < side ${side}`);
     // 向きを平均した値は3軸の値の間に収まる。
     const mean = ballisticCoeffInv(principalAreas, loadedMass, v3());
     assert.ok(mean > nose && mean > side);
@@ -328,7 +329,7 @@ export function register(): void {
     const derived = deriveMassProperties(crewedAssembly(C.PLAYER_MAX_HP));
     const pinned: Record<string, number> = {
       dryMass: 1060.83, ixx: 1837.84, iyy: 2880.63, izz: 1541.36, iyz: 46.5864,
-      areaX: 10.4565, areaY: 12.4565, areaZ: 15.2622, comY: -0.0230480, comZ: 0.0245860,
+      areaX: 10.2065, areaY: 12.4565, areaZ: 6.75407, comY: -0.0230480, comZ: 0.0245860,
     };
     const actual: Record<string, number> = {
       dryMass: derived.dryMass,
