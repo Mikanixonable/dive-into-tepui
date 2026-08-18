@@ -43,7 +43,7 @@ import { KEY_MAPPING as K } from './input/key-mapping';
 import { Docking } from './docking';
 import { ViewBadge } from './hud/view-badge';
 import { FrameControls } from './hud/frame-controls';
-import { CombatHudController, MapHudController } from './hud/view-hud-controller';
+import { OperationsHudController, MapHudController } from './hud/view-hud-controller';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -101,7 +101,7 @@ export class Game {
   private readonly docking: Docking;
   private readonly viewBadge: ViewBadge;
   readonly frameControls: FrameControls;
-  private readonly combatHud: CombatHudController;
+  private readonly operationsHud: OperationsHudController;
   private readonly mapHud: MapHudController;
   // 計測区間の境界を打つ先。集計と保持はこのオブジェクトが持つ。
   private readonly sections: FrameSections;
@@ -181,7 +181,7 @@ export class Game {
       else this.markerManager.hide('longpress');
     };
     this._hud.vesselPanel.setInput(this.input);
-    this.combatHud = new CombatHudController(this._hud);
+    this.operationsHud = new OperationsHudController(this._hud);
     this.mapHud = new MapHudController(this._hud);
 
     this.simulator = new Simulator(this.entities, this.ephemeris, sections, initialSave?.simTime ?? 0);
@@ -516,7 +516,7 @@ export class Game {
     this.activeStage.sync(player, fo, this.cameraSystem, displayTime, visibilityPolicy);
 
     if (this.viewManager.isMapView) this.mapHud.sync(this);
-    else this.combatHud.sync(this, attractors);
+    else this.operationsHud.sync(this, attractors);
     this._hud.tick();
 
     this.guide.sync(player, simTime, this.editor.editMode, project, this.editor.planDisplay.path);
