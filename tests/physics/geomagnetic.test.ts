@@ -54,6 +54,13 @@ export function register(): void {
     assert.ok(offRadial > 0.05, `the field over the geographic pole should tilt off the radial: ${offRadial} rad`);
   });
 
+  test('geomagnetic: the torque of a known moment and field points the way m x B does', () => {
+    // +Z のモーメントを +X の磁場に置くと、m × B は +Y を向く。外積の順序と符号はここで決まる。
+    const tq = magneticTorque(v3(0, 0, 1), v3(1, 0, 0));
+    assert.ok(Math.abs(tq.x) < 1e-15 && Math.abs(tq.z) < 1e-15, `torque should lie along +Y: ${tq.x}, ${tq.z}`);
+    assert.ok(Math.abs(tq.y - 1) < 1e-15, `torque should be +1 about Y: ${tq.y}`);
+  });
+
   test('geomagnetic: the magnetic torque is perpendicular to the field', () => {
     const b = geomagneticField(v3(4e6, 5e6, -1e6));
     const tq = magneticTorque(v3(60, -20, 35), b);

@@ -1,18 +1,22 @@
-// 2つの断面を軸方向に線形につないだ立体(ロフト)の体積・重心・慣性テンソル・表面積・投影面積を、
-// 数値近似に頼らず求める純関数群。両端の輪郭を同じ点数でサンプリングして一対一に対応づけると、
-// 途中の断面の生モーメントは軸方向位置の4次以下の多項式になり、軸方向の積分が厳密に書ける。
+// 2つの断面を軸方向に線形につないだ立体(ロフト)の体積・重心・慣性テンソル・側面積・投影面積を求める
+// 純関数群。両端の輪郭を同じ点数でサンプリングして一対一に対応づけると、途中の断面の生モーメントは
+// 軸方向位置の4次以下の多項式になり、軸方向の積分が厳密に書ける。輪郭は多角形断面なら断面そのものだが、
+// 円・楕円断面では LOFT_SAMPLE_COUNT 点の折れ線で、幾何量はその折れ線に対する厳密値になる。
 // 局所座標は、x/y が断面の座標系、z が軸方向で、断面 A が z=0、断面 B が z=length にある。
 import {
   CrossSection,
-  PORT_WIDTH_RATIO,
   PlacedSectionPrimitive,
   PolygonMoments,
   Vec2,
   placeSectionPrimitives,
   polygonArea,
+  portHalfAngle,
   polygonMomentsAboutOrigin,
 } from './section-moments';
 import { Vec3, cross, dot, len, norm, sub, v3 } from './vec3';
+import type { InertiaTensor } from './inertia-tensor';
+
+export type { InertiaTensor };
 
 // 輪郭のサンプリング点数。3・4・5・6・8 のいずれでも割り切れるため、辺数の異なる断面同士でも
 // 頂点が一対一に対応する。
@@ -23,17 +27,6 @@ const CURVE_REFINEMENT = 16;
 
 // 輪郭の連なりを追うときに、2点が同じ位置だとみなす相対許容差。
 const JUNCTION_TOLERANCE_RATIO = 1e-6;
-
-// 重心まわりの慣性テンソル [kg·m²]。ixy/ixz/iyz はテンソルの非対角成分そのもの(−∫xy dm など)で、
-// 行列は [[ixx, ixy, ixz], [ixy, iyy, iyz], [ixz, iyz, izz]] になる。
-export interface InertiaTensor {
-  readonly ixx: number;
-  readonly iyy: number;
-  readonly izz: number;
-  readonly ixy: number;
-  readonly ixz: number;
-  readonly iyz: number;
-}
 
 // ロフトの端。輪郭を直接渡すと、面積0の輪郭(頂点をすべて1点に潰したもの)で錐の頂点を表せる。
 export type LoftEnd = CrossSection | readonly Vec2[];
@@ -48,9 +41,6 @@ function isOutline(end: LoftEnd): end is readonly Vec2[] {
 
 // 複合断面の外周を sampleCount 点に弧長で等分してサンプリングし、反時計回りに返す。角度ではなく
 // 弧長で等分するのは、円に側面の口を設けた断面が円弧と直線の混じった輪郭になるため。
-//
-// 置き場がこのモジュールなのは、点数・弧長等分・頂点の対応づけがいずれも「2つの断面をつなぐため」の
-// 決めごとだからである。断面自身の面積と断面二次モーメントは輪郭を経由せずに求まる。
 export function sectionOutline(section: CrossSection, sampleCount: number = LOFT_SAMPLE_COUNT): readonly Vec2[] {
   if (!Number.isInteger(sampleCount) || sampleCount < 3) {
     throw new Error(`outline needs at least 3 sample points, got ${sampleCount}`);
@@ -88,7 +78,7 @@ function curveBoundary(root: PlacedSectionPrimitive): readonly Vec2[] {
   if (shape.kind !== 'circle') throw new Error(`shape "${shape.kind}" has faces and needs a polygonal outline`);
 
   // 残る円弧だけを並べれば、弓形を切り落とした弦は隣り合う円弧の端点を結ぶ辺として自動的に閉じる。
-  const halfAngle = Math.asin(PORT_WIDTH_RATIO / 2);
+  const halfAngle = portHalfAngle();
   const points: Vec2[] = [];
   for (let k = 0; k < shape.branchCount; k++) {
     const from = phase + (2 * Math.PI * k) / shape.branchCount + halfAngle;
@@ -251,6 +241,8 @@ interface LoftOutlines {
   readonly b: readonly Vec2[];
 }
 
+// 両端の輪郭を、同じ添字の頂点が対応するように揃える。端 A の並びを基準とし、端 B だけを巡回させる。
+// 点数の違う輪郭同士には例外を投げる。
 function loftOutlines(endA: LoftEnd, endB: LoftEnd): LoftOutlines {
   const a = isOutline(endA) ? endA : sectionOutline(endA);
   const b = isOutline(endB) ? endB : sectionOutline(endB);
@@ -288,7 +280,9 @@ interface LoftMoments {
   readonly vyz: number;
 }
 
+// 対応づけ済みの両端の輪郭が張る立体の、局所座標原点まわりの体積モーメント。
 function loftMoments(outlines: LoftOutlines, length: number): LoftMoments {
+  // 中間断面の生モーメントを、軸方向の割合 s の積分点ごとに重み付きで足し上げる。
   let volume = 0;
   let vx = 0;
   let vy = 0;
@@ -314,6 +308,7 @@ function loftMoments(outlines: LoftOutlines, length: number): LoftMoments {
     vxz += w * s * m.mx;
     vyz += w * s * m.my;
   }
+  // 積分変数を s から z へ戻す。無次元の s が1つ掛かるごとに length が1つ付く。
   const h2 = length * length;
   return {
     volume: volume * length,
@@ -382,7 +377,7 @@ function triangleNormal(p0: Vec3, p1: Vec3, p2: Vec3): Vec3 {
 
 // 対応する頂点同士を結んだ側面の帯の面積 [m²]。帯は一般に平面ではないため、四角形を2つの三角形に
 // 割って足す。
-export function loftSurfaceArea(sectionA: LoftEnd, sectionB: LoftEnd, length: number): number {
+export function loftLateralArea(sectionA: LoftEnd, sectionB: LoftEnd, length: number): number {
   const outlines = loftOutlines(sectionA, sectionB);
   const n = outlines.a.length;
   let total = 0;

@@ -16,7 +16,7 @@ import {
   loftCentroid,
   loftInertia,
   loftProjectedArea,
-  loftSurfaceArea,
+  loftLateralArea,
   loftVolume,
   sectionOutline,
 } from '../../src/physics/hull-loft';
@@ -269,12 +269,12 @@ export function register(): void {
     const radius = 1.3;
     const length = 2.9;
     const circle = circleOutline(radius);
-    const lateral = loftSurfaceArea(circle, circle, length);
+    const lateral = loftLateralArea(circle, circle, length);
     close(lateral, 2 * Math.PI * radius * length, 1e-3 * lateral, '円柱の側面積');
 
     const square = sectionOutline(squareSection(1.0));
     const perimeter = outlinePerimeter(square);
-    close(loftSurfaceArea(square, square, length), perimeter * length, 1e-9 * perimeter * length, '角柱の側面積');
+    close(loftLateralArea(square, square, length), perimeter * length, 1e-9 * perimeter * length, '角柱の側面積');
   });
 
   test('hull-loft: 投影面積が円柱の軸方向と横方向の解析値と一致する', () => {
@@ -339,7 +339,7 @@ export function register(): void {
     const area = outlineArea(square);
     close(loftVolume(squareSection(1.0), turned, length), area * length, 1e-9 * area * length, 'ねじれない角柱の体積');
     close(
-      loftSurfaceArea(squareSection(1.0), turned, length),
+      loftLateralArea(squareSection(1.0), turned, length),
       perimeter * length,
       1e-9 * perimeter * length,
       'ねじれない角柱の側面積',
