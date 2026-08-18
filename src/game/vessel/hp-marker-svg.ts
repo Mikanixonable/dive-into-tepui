@@ -60,7 +60,7 @@ export function headingHpMarkerSvg(hp: number, maxHp: number, name: string, holl
 // 基地モジュールを積んだ機体のマーカー図形。
 export function baseMarkerSvg(): string {
   const pts = "12,2.5 19.43,6.08 21.26,14.11 16.12,20.56 7.88,20.56 2.74,14.11 4.57,6.08";
-  return `<svg viewBox="0 0 24 24" width="24" height="24" aria-label="Vessel">` +
+  return `<svg viewBox="0 0 24 24" width="24" height="24" aria-label="基地">` +
     `<polygon points="${pts}" fill="none" stroke="currentColor" stroke-width="1.8"/>` +
     `</svg>`;
 }

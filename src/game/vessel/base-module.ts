@@ -11,7 +11,7 @@ export function createDefaultBaseModule(maxHp: number): BaseModulePart {
   const up = v3(0, 1, 0);
   const slot = (x: number, z: number): DockPort => ({ localPos: v3(x, 21.0, z), localNormal: up });
   return createPart('base_module', {
-    name: 'Vessel Module',
+    name: 'Base Module',
     maxHp,
     hp: maxHp,
     hatch: { localPos: v3(0, 21.0, 0), localNormal: up },
