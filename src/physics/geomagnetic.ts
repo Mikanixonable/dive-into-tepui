@@ -11,8 +11,9 @@ export const GEOMAGNETIC_TILT = (11.0 * Math.PI) / 180;
 // 赤道上・地表における磁束密度 [T]。双極子モーメント 7.94e22 A·m^2 を μ0/4π·m/R^3 に入れた値。
 export const GEOMAGNETIC_EQUATOR_FIELD = 3.07e-5;
 
-// 地磁気北極の方向(ECI 単位ベクトル)。双極子軸は本来地球とともに自転するが、
-// TODO: geomagneticField が時刻を取らないため、傾きの方位を春分点側へ固定している。
+// 地磁気北極の方向(ECI 単位ベクトル)。自転軸から GEOMAGNETIC_TILT だけ春分点側へ倒した
+// 向きに置く。方位を ECI に固定するのは、双極子軸の自転を地表の経度と結びつけずに扱う
+// ためであり、軌道1周(90分)の間の磁場の変化は機体の公転が支配的でこの固定に影響されない。
 export const GEOMAGNETIC_POLE: Vec3 = qRotate(qFromAxisAngle(v3(0, 0, 1), -GEOMAGNETIC_TILT), ECI_POLE);
 
 // ECI 位置 r における磁束密度ベクトル(ECI [T])。地心では向きが定まらないため v3() を返す。
