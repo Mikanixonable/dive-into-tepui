@@ -29,7 +29,7 @@ export function createDefaultBaseModule(maxHp: number): BaseModulePart {
 // 既定パーツへの HP 配分比。合計 1 になるよう保つ(機体の maxHp をこの比で割り振る)。
 // 放熱板・太陽電池パドルは機体の左右2枚ぶんなので、パーツも side ごとに1枚ずつ持つ。
 const CREWED_HP_RATIO = {
-  hull: 0.32, cockpit: 0.08, engine: 0.07, rcsThruster: 0.03, flywheel: 0.03, rcsTank: 0.07,
+  hull: 0.30, cockpit: 0.08, heatShield: 0.02, engine: 0.07, rcsThruster: 0.03, flywheel: 0.03, rcsTank: 0.07,
   radiator: 0.05, solarPanel: 0.03, weapon: 0.07, magazine: 0.02, ammunition: 0.02,
   battery: 0.03, communication: 0.02, lifeSupport: 0.03, armor: 0.05,
 } as const;
@@ -42,7 +42,7 @@ const HOSTILE_HP_RATIO = {
 // 既定パーツの質量 [kg]。主要構造は外皮そのものであり、その質量は形状と肉厚から導かれるので
 // (§10-3)、hull 要素自身は質量を持たない。
 const CREWED_WEIGHT = {
-  hull: 0, cockpit: 115, engine: 80, rcsThruster: 8, flywheel: 25, rcsTank: 30,
+  hull: 0, cockpit: 115, heatShield: 60, engine: 80, rcsThruster: 8, flywheel: 25, rcsTank: 30,
   radiator: 18, solarPanel: 12, weapon: 50, magazine: 20, ammunition: 30,
   battery: 40, communication: 15, lifeSupport: 65, armor: 50,
 } as const;
@@ -54,6 +54,18 @@ const HOSTILE_WEIGHT = {
 const BASE_WEIGHT = {
   baseModule: 1.362e6, cockpit: 6e5, engine: 3e4, flywheel: 2e4, rcsTank: 5e5,
 } as const;
+
+// 質量特性から、主機・並進RCS・フライホイールの性能を決める(§10-4)。加速度と角加速度が機体の
+// 大小によらず一定になるので、形状を変えても操作の手触りが保たれる。慣性テンソルは形状から導いた
+// 値であり、これに MAX_ANG_ACCEL を掛けたものが要求トルクになる。
+export function tuneActuators(parts: readonly AnyPart[], mass: number, maxMoment: number): void {
+  const maxThrottle = C.THROTTLE_LEVELS[C.THROTTLE_LEVELS.length - 1]!;
+  for (const part of parts) {
+    if (part.type === 'engine') part.thrust = mass * maxThrottle;
+    else if (part.type === 'rcs_thruster') part.thrust = mass * C.THROTTLE_LEVELS[0]!;
+    else if (part.type === 'flywheel') part.maxTorque = C.MAX_ANG_ACCEL * maxMoment;
+  }
+}
 
 // 既定の有人艦が積む要素の消費電力 [W]。合計が C.CREWED_POWER_DRAW と一致する。
 const CREWED_DRAW = { communication: 30, flywheel: 60, lifeSupport: 400 } as const;
@@ -73,18 +85,16 @@ export function crewedParts(maxHp: number): AnyPart[] {
     mk('engine', R.engine, {
       weight: CREWED_WEIGHT.engine, name: 'Main Engine', cycle: 'pressure_fed', propellant: 'nitrogen-tetroxide',
       // 既定パーツだけを積んだ機体が、全開で THROTTLE_LEVELS の最大値の加速度になる推力。
-      thrust: C.PLAYER_MASS * C.THROTTLE_LEVELS[C.THROTTLE_LEVELS.length - 1]!,
-      specificImpulse: 320, length: 1.4, gimbalRange: 6, gimbalRate: 10,
+      thrust: 0, specificImpulse: 320, length: 1.4, gimbalRange: 6, gimbalRate: 10,
       throttleMin: 0.4, throttleMax: 1, fuelConsumptionRate: 1,
     }),
     mk('rcs_thruster', R.rcsThruster, {
       weight: CREWED_WEIGHT.rcsThruster, name: 'Translation RCS', propellant: 'hydrazine',
-      thrust: C.PLAYER_MASS * C.THROTTLE_LEVELS[0]!, specificImpulse: 230,
+      thrust: 0, specificImpulse: 230,
     }),
     mk('flywheel', R.flywheel, {
       weight: CREWED_WEIGHT.flywheel, name: 'Reaction Wheel',
-      maxTorque: C.MAX_ANG_ACCEL * Math.max(C.PLAYER_INERTIA_PITCH, C.PLAYER_INERTIA_YAW, C.PLAYER_INERTIA_ROLL),
-      maxAngularMomentum: 400, powerDraw: CREWED_DRAW.flywheel,
+      maxTorque: 0, maxAngularMomentum: 400, powerDraw: CREWED_DRAW.flywheel,
     }),
     mk('rcs_tank', R.rcsTank, {
       weight: CREWED_WEIGHT.rcsTank, name: 'Main RCS Tank', propellant: 'hydrazine', volume: 1.0, material: 'aluminium',
@@ -120,6 +130,11 @@ export function crewedParts(maxHp: number): AnyPart[] {
     mk('life_support', R.lifeSupport, {
       weight: CREWED_WEIGHT.lifeSupport, name: 'Life Support', crewCapacity: 2, powerDraw: CREWED_DRAW.lifeSupport,
       consumableRate: 1e-5, extraWasteHeat: LIFE_SUPPORT_EXTRA_HEAT,
+    }),
+    mk('heat_shield', R.heatShield, {
+      weight: CREWED_WEIGHT.heatShield, name: 'Ablative Heat Shield',
+      solidAngle: C.CREWED_HEAT_SHIELD_SOLID_ANGLE, ablatorMass: C.CREWED_ABLATOR_MASS,
+      ablationPerHeat: C.CREWED_ABLATION_PER_HEAT,
     }),
     mk('armor', R.armor, { name: 'Light Armor', damageReduction: 0.2, weight: CREWED_WEIGHT.armor }),
   ];

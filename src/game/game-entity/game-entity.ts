@@ -24,6 +24,7 @@ import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';
 import type { EntityMarker } from '../marker/entity-marker';
 import type { MarkerManager } from '../marker/marker-manager';
 import { GRAVITATIONAL_CONSTANT } from '../../physics/solar-system';
+import { diagonalInertia } from '../../physics/inertia-tensor';
 
 // 乖離許容量の上限。その場の局所軌道の長半径に対する割合 [無次元]。
 const DIVERGENCE_TOLERANCE_MAX_ORBIT_RATIO = 0.02;
@@ -31,7 +32,7 @@ const DIVERGENCE_TOLERANCE_MAX_ORBIT_RATIO = 0.02;
 const identityAttitude = (): Attitude => ({
   q: { x: 0, y: 0, z: 0, w: 1 },
   w: v3(),
-  inertia: v3(1, 1, 1),
+  inertia: diagonalInertia(v3(1, 1, 1)),
 });
 
 // 軌道上を運動するゲーム内エンティティの基底。表示ルート・HP・生死・姿勢・AI といったゲーム側の
@@ -78,8 +79,10 @@ export class GameEntity {
   // 自身の位置を指すマーカー。null = 出さない。
   marker: EntityMarker | null = null;
   // 弾道係数の逆数 Cd·A/m(既定 0 = 抵抗なし)。
-  protected readonly bcInv: number = 0;
-  protected readonly srpCoeff: number = 0;
+  // 弾道係数の逆数 Cd·A/m [m²/kg] と輻射圧係数 C_R·A/m [m²/kg]。姿勢によって変わりうるので
+  // フィールドではなくアクセサで答える(§11-2)。
+  protected get bcInv(): number { return 0; }
+  protected get srpCoeff(): number { return 0; }
   // 過去列の保持時間 [s]。既定 0 = 記録しない。
   // 種別ごとの過去列の保持時間 [s]。0 は履歴を持たない。
   protected readonly baseHistoryDuration: number = 0;

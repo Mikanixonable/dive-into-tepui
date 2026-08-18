@@ -4,6 +4,8 @@ import type { Vessel, DockedVesselEntry } from '../vessel/vessel';
 import type { AnyPart, Part, PartType, RcsTankPart } from '../game-entity/parts';
 import { createPart } from '../game-entity/parts';
 import * as C from '../const';
+import { principalMoments } from '../../physics/inertia-tensor';
+import { crewedMassProperties } from '../vessel/vessel-assemblies';
 import { Button, CloseButton, Meter, TabBar } from './widgets';
 import { MQ_COMPACT, MQ_SHORT } from './breakpoints';
 
@@ -269,10 +271,11 @@ export interface PartCatalogEntry {
 
 // 既定パーツ(vessel/vessel-parts.ts の crewedParts)と同じ単位・同じ桁で書く。
 // 桁がずれると、換装した瞬間に推力や耐久が別物になる。既定艦の値は
-// 重量 100 / 推力 PLAYER_MASS×最大スロットル / 放熱面積 25 / 受光面積 SOLAR_PANEL_AREA÷2 /
-// 発射レート 1÷FIRE_INTERVAL。
-const DEFAULT_TORQUE = C.MAX_ANG_ACCEL * Math.max(C.PLAYER_INERTIA_PITCH, C.PLAYER_INERTIA_YAW, C.PLAYER_INERTIA_ROLL);
-const DEFAULT_THRUST = C.PLAYER_MASS * C.THROTTLE_LEVELS[C.THROTTLE_LEVELS.length - 1]!;
+// 重量 100 / 推力 既定艦の質量×最大スロットル / 放熱面積 25 / 受光面積 SOLAR_PANEL_AREA÷2 /
+// 発射レート 1÷FIRE_INTERVAL。推力とトルクは既定艦の形状から導いた質量特性に合わせる — 換装しても
+// 加速度と角加速度の桁が変わらない。
+const DEFAULT_TORQUE = C.MAX_ANG_ACCEL * principalMoments(crewedMassProperties().inertia).z;
+const DEFAULT_THRUST = crewedMassProperties().loadedMass * C.THROTTLE_LEVELS[C.THROTTLE_LEVELS.length - 1]!;
 const SHOP_CATALOG: readonly PartCatalogEntry[] = [
   { type: 'hull', name: 'Standard Hull', price: 5000, weight: 80, maxHp: 300, props: {} },
   { type: 'hull', name: 'Reinforced Hull', price: 12000, weight: 180, maxHp: 600, props: {} },
@@ -290,6 +293,8 @@ const SHOP_CATALOG: readonly PartCatalogEntry[] = [
   { type: 'solar_panel', name: 'Solar Array', price: 2500, weight: 100, maxHp: 30, props: { area: C.SOLAR_PANEL_AREA / 2, efficiency: C.SOLAR_PANEL_EFFICIENCY } },
   { type: 'solar_panel', name: 'High-Efficiency Solar', price: 6000, weight: 130, maxHp: 30, props: { area: C.SOLAR_PANEL_AREA / 2, efficiency: C.SOLAR_PANEL_EFFICIENCY * 1.4 } },
   { type: 'weapon', name: 'Gatling Gun', price: 5000, weight: 100, maxHp: 80, props: { weaponType: 'gatling', fireRate: 1 / C.FIRE_INTERVAL, damage: C.ENEMY_BULLET_DAMAGE, muzzleVelocity: C.MUZZLE_SPEED, feedRate: 1 / C.FIRE_INTERVAL } },
+  { type: 'heat_shield', name: 'Ablative Heat Shield', price: 4000, weight: 60, maxHp: 60, props: { solidAngle: C.CREWED_HEAT_SHIELD_SOLID_ANGLE, ablatorMass: C.CREWED_ABLATOR_MASS, ablationPerHeat: C.CREWED_ABLATION_PER_HEAT } },
+  { type: 'heat_shield', name: 'Wide Heat Shield', price: 11000, weight: 150, maxHp: 60, props: { solidAngle: 3.2, ablatorMass: C.CREWED_ABLATOR_MASS * 2.5, ablationPerHeat: C.CREWED_ABLATION_PER_HEAT } },
   { type: 'weapon', name: 'Heavy Cannon', price: 15000, weight: 220, maxHp: 120, props: { weaponType: 'cannon', fireRate: 4, damage: C.ENEMY_BULLET_DAMAGE * 5, muzzleVelocity: C.MUZZLE_SPEED * 1.5, feedRate: 4 } },
 ];
 

@@ -128,3 +128,44 @@ function matrixOf(inertia: InertiaTensor): readonly (readonly number[])[] {
 function component(vector: Vec3, index: number): number {
   return index === 0 ? vector.x : index === 1 ? vector.y : vector.z;
 }
+
+// 主慣性モーメント3つを並べた、慣性乗積のない慣性テンソル。形状を持たない個体(破片・薬莢・弾)の
+// 姿勢を、機体座標系が慣性主軸系に一致しているものとして扱うための入口。
+export function diagonalInertia(moments: Vec3): InertiaTensor {
+  return { ixx: moments.x, iyy: moments.y, izz: moments.z, ixy: 0, ixz: 0, iyz: 0 };
+}
+
+// 慣性テンソルとベクトルの積 I·w。角運動量 Iω やジャイロ項の評価に使う。
+export function inertiaTimes(inertia: InertiaTensor, w: Vec3): Vec3 {
+  const { ixx, iyy, izz, ixy, ixz, iyz } = inertia;
+  return v3(
+    ixx * w.x + ixy * w.y + ixz * w.z,
+    ixy * w.x + iyy * w.y + iyz * w.z,
+    ixz * w.x + iyz * w.y + izz * w.z,
+  );
+}
+
+// 慣性テンソルの逆テンソル。余因子行列を行列式で割って求める。特異(質量のない剛体、あるいは
+// 1点に集中した質量)なら null を返す。
+export function invertInertia(inertia: InertiaTensor): InertiaTensor | null {
+  const { ixx, iyy, izz, ixy, ixz, iyz } = inertia;
+  const cxx = iyy * izz - iyz * iyz;
+  const cxy = ixz * iyz - ixy * izz;
+  const cxz = ixy * iyz - ixz * iyy;
+  const det = ixx * cxx + ixy * cxy + ixz * cxz;
+  if (!isFinite(det) || Math.abs(det) < 1e-30) return null;
+  const inv = 1 / det;
+  return {
+    ixx: cxx * inv,
+    iyy: (ixx * izz - ixz * ixz) * inv,
+    izz: (ixx * iyy - ixy * ixy) * inv,
+    ixy: cxy * inv,
+    ixz: cxz * inv,
+    iyz: (ixy * ixz - ixx * iyz) * inv,
+  };
+}
+
+// 回転運動エネルギー T = ½·ωᵀIω。
+export function rotationalEnergy(inertia: InertiaTensor, w: Vec3): number {
+  return 0.5 * dot(w, inertiaTimes(inertia, w));
+}

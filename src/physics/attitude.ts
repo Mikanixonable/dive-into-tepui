@@ -1,7 +1,9 @@
 // 剛体姿勢力学: クォータニオン + 機体座標系角速度をオイラーの運動方程式で積分。
-// 非対称な慣性主軸を与えると中間軸まわりの回転が不安定化し、
+// 非対称な慣性を与えると中間軸まわりの回転が不安定化し、
 // ジャニベコフ効果(デブリの周期的な反転)が自然に現れる。
-import { Vec3, add, addScaled, cross, dot, len, lenSq, norm, scale, v3 } from './vec3';
+import { Vec3, add, addScaled, cross, dot, len, lenSq, norm, scale, sub, v3 } from './vec3';
+import type { InertiaTensor } from './inertia-tensor';
+import { inertiaTimes, invertInertia, rotationalEnergy } from './inertia-tensor';
 
 // Vec3 と同じく不変。姿勢を進めるときは新しい Quat / Attitude を作って差し替える。
 export interface Quat {
@@ -14,7 +16,9 @@ export interface Quat {
 export interface Attitude {
   readonly q: Quat; // 機体座標系 → ワールドの回転
   readonly w: Vec3; // 機体座標系での角速度 [rad/s]
-  readonly inertia: Vec3; // 主慣性モーメント(対角、相対値でよい)
+  // 重心まわりの慣性テンソル [kg·m²]。機体座標系は慣性主軸系である必要がなく、慣性乗積を持って
+  // よい — 形状から導いた機体はふつう持つ。
+  readonly inertia: InertiaTensor;
 }
 
 // クォータニオンの積 a ⊗ b を返す。
@@ -128,18 +132,10 @@ const ATT_MAX_SUB_DT = 0.04; // 姿勢積分の最大刻み [s]
 // 全区間をRK4、高warpだけ最大0.48sの剛体力学＋残時間coastになる。
 export const ATT_MAX_DYNAMIC_STEPS = 12;
 
-// オイラーの運動方程式(主軸系): I ω̇ = (I ω) × ω + τ
-function eulerRates(I: Vec3, w: Vec3, tq: Vec3): Vec3 {
-  return v3(
-    (tq.x + (I.y - I.z) * w.y * w.z) / I.x,
-    (tq.y + (I.z - I.x) * w.z * w.x) / I.y,
-    (tq.z + (I.x - I.y) * w.x * w.y) / I.z,
-  );
-}
-
-// 主慣性モーメント I と角速度 w から回転運動エネルギーを求める。
-function kineticEnergy(I: Vec3, w: Vec3): number {
-  return 0.5 * (I.x * w.x * w.x + I.y * w.y * w.y + I.z * w.z * w.z);
+// オイラーの運動方程式: I ω̇ = τ − ω × (I ω)。慣性主軸系に限らない一般の対称テンソルに対して
+// 成り立つ形なので、逆テンソル invI を1度だけ求めておけば各段の評価は行列ベクトル積2回で済む。
+function eulerRates(I: InertiaTensor, invI: InertiaTensor, w: Vec3, tq: Vec3): Vec3 {
+  return inertiaTimes(invI, sub(tq, cross(w, inertiaTimes(I, w))));
 }
 
 // トルク(機体座標系)を与えて姿勢を dt 進めた新しい Attitude を返す(att は書き換えない)。
@@ -148,6 +144,9 @@ function kineticEnergy(I: Vec3, w: Vec3): number {
 // 長時間タンブリングしても |ω| が有界に留まるようにする。
 export function stepAttitude(att: Attitude, torque: Vec3, dt: number): Attitude {
   const I = att.inertia;
+  const invI = invertInertia(I);
+  // 慣性テンソルが特異な剛体には角加速度が定義できない。姿勢をそのまま返す。
+  if (!invI) return att;
   const torqueFree =
     torque.x === 0 && torque.y === 0 && torque.z === 0;
   let w = att.w;
@@ -162,11 +161,11 @@ export function stepAttitude(att: Attitude, torque: Vec3, dt: number): Attitude 
     remaining -= h;
     dynamicSteps++;
 
-    const e0 = kineticEnergy(I, w);
-    const k1 = eulerRates(I, w, torque);
-    const k2 = eulerRates(I, addScaled(w, k1, h / 2), torque);
-    const k3 = eulerRates(I, addScaled(w, k2, h / 2), torque);
-    const k4 = eulerRates(I, addScaled(w, k3, h), torque);
+    const e0 = rotationalEnergy(I, w);
+    const k1 = eulerRates(I, invI, w, torque);
+    const k2 = eulerRates(I, invI, addScaled(w, k1, h / 2), torque);
+    const k3 = eulerRates(I, invI, addScaled(w, k2, h / 2), torque);
+    const k4 = eulerRates(I, invI, addScaled(w, k3, h), torque);
 
     const wOld = w;
     w = v3(
@@ -177,7 +176,7 @@ export function stepAttitude(att: Attitude, torque: Vec3, dt: number): Attitude 
 
     // エネルギー射影(トルクなしの剛体は T = ½ωᵀIω が厳密に保存される)
     if (torqueFree && e0 > 1e-12) {
-      const e1 = kineticEnergy(I, w);
+      const e1 = rotationalEnergy(I, w);
       if (e1 > 1e-12) w = scale(w, Math.sqrt(e0 / e1));
     }
 
@@ -227,10 +226,11 @@ export function attitudeAlignTorque(
   const err = attitudeAlignError(desiredFwd, desiredUp, att.q);
   if (!err) return v3();
   const { angle, axisBody } = err;
-  const I = att.inertia;
-  return v3(
-    (kp * angle * axisBody.x - kd * att.w.x) * I.x,
-    (kp * angle * axisBody.y - kd * att.w.y) * I.y,
-    (kp * angle * axisBody.z - kd * att.w.z) * I.z,
-  );
+  // 角加速度の指令を慣性テンソルに掛けてトルクへ直す。慣性乗積があるとトルクの向きは指令の向きと
+  // 一致しないが、生じる角加速度のほうは指令どおりになる。
+  return inertiaTimes(att.inertia, v3(
+    kp * angle * axisBody.x - kd * att.w.x,
+    kp * angle * axisBody.y - kd * att.w.y,
+    kp * angle * axisBody.z - kd * att.w.z,
+  ));
 }

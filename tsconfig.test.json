@@ -40,6 +40,7 @@
     "src/game/economy/deposit.ts",
     "src/game/economy/producibility.ts",
     "src/physics/inertia-tensor.ts",
+    "src/physics/aerodynamics.ts",
     "src/game/vessel/tree.ts",
     "src/game/vessel/assembly.ts",
     "src/game/vessel/hull-structure.ts",

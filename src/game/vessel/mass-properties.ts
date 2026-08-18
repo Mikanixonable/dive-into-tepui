@@ -2,7 +2,7 @@
 import { Vec3, add, dot, scale, sub, v3 } from '../../physics/vec3';
 import type { InertiaTensor } from '../../physics/inertia-tensor';
 import {
-  ZERO_INERTIA, addInertia, rotateInertia, scaleInertia, translateInertia,
+  ZERO_INERTIA, addInertia, diagonalInertia, rotateInertia, scaleInertia, translateInertia,
 } from '../../physics/inertia-tensor';
 import { loftCenterOfMass, loftInertia, loftProjectedArea, loftVolume } from '../../physics/hull-loft';
 import { scaleCrossSection, sectionMoments } from '../../physics/section-moments';
@@ -23,13 +23,25 @@ export interface MassProperties {
   readonly mass: number;
   // 機体座標系での重心位置 [m]。
   readonly centerOfMass: Vec3;
-  // 機体座標系の主慣性モーメント [kg·m^2]。3軸が非対称なら中間軸不安定性が現れる。
-  readonly inertia: Vec3;
+  // 重心まわりの慣性テンソル [kg·m²]。3軸が非対称なら中間軸不安定性が現れる。
+  readonly inertia: InertiaTensor;
+  // 機体座標系の主軸3方向から見た投影面積 [m²]。抗力と輻射圧の断面積がここから決まる(§11-2)。
+  readonly principalAreas: Vec3;
 }
 
-// 質量と主慣性モーメントから、重心を原点に置いた質量特性を組む。
-export function massPropertiesOf(mass: number, inertia: Vec3): MassProperties {
-  return { mass, centerOfMass: v3(), inertia };
+// 主慣性モーメントと投影面積を直接与えて、重心を原点に置いた質量特性を組む(§5-3)。
+export function massPropertiesOf(mass: number, moments: Vec3, principalAreas: Vec3): MassProperties {
+  return { mass, centerOfMass: v3(), inertia: diagonalInertia(moments), principalAreas };
+}
+
+// 形状から導いた値を、機体が持つ質量特性に直す。積んでいる推進剤も込みの総質量を採る。
+export function massPropertiesFrom(derived: DerivedMassProperties): MassProperties {
+  return {
+    mass: derived.loadedMass,
+    centerOfMass: derived.centerOfMass,
+    inertia: derived.inertia,
+    principalAreas: derived.principalAreas,
+  };
 }
 
 // 形状から導いた質量特性(§10-4)。慣性テンソルは重心まわりで、慣性乗積を含む。

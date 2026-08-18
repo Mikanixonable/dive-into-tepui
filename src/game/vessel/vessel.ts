@@ -1,12 +1,16 @@
 // 軌道上を飛ぶ物体は、艦艇も軌道基地も敵艦も、すべてこの1クラスである。何ができるかは
 // 積んでいる搭載要素から決まる。
 import * as THREE from 'three/webgpu';
-import { Attitude, qFromForwardUp } from '../../physics/attitude';
+import { Attitude, qFromForwardUp, qInvert, qRotate } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { MU_EARTH, R_EARTH, earthAltitudeOf } from '../../physics/solar-system';
 import { Vec3, len, sub, v3 } from '../../physics/vec3';
 import { Attractor, reachedBody } from '../../physics/attractor';
-import { burnUpBody } from '../../physics/atmosphere';
+import type { InertiaTensor } from '../../physics/inertia-tensor';
+import { airspeed, burnUpBody } from '../../physics/atmosphere';
+import { ballisticCoeffInv, radiationPressureCoeff } from '../../physics/aerodynamics';
+import type { HeatShielding } from './heat-shield';
+import { UNSHIELDED, ablate, heatShielding } from './heat-shield';
 import { BaseCollisionGeometry, RayHit, SphereHit } from '../../physics/base-collision';
 import { Ephemeris } from '../../physics/ephemeris';
 import { sunlitFactor } from '../../physics/shadow';
@@ -125,7 +129,7 @@ function initialShipState(): KinematicState {
 }
 
 // state の速度方向を機首、位置方向を上として姿勢を組む。
-function progradeAttitude(state: KinematicState, inertia: Vec3): Attitude {
+function progradeAttitude(state: KinematicState, inertia: InertiaTensor): Attitude {
   return { q: qFromForwardUp(state.v, state.r) ?? { x: 0, y: 0, z: 0, w: 1 }, w: v3(), inertia };
 }
 
@@ -198,15 +202,37 @@ function resolveIdentity(init: VesselInit, design: VesselDesign): VesselIdentity
 export class Vessel extends GameEntity {
   // 所属勢力。表示種別と、喪失をどう記録するかがここから決まる。
   public readonly faction: VesselFaction;
-  // ツリーと、その上に配置された搭載要素。形状からの導出はまだ通っていない。
-  public readonly assembly: VesselAssembly | null = null;
-  // 乾燥質量・重心・慣性テンソル。assembly から導くか、直接与えられる。
+  // ツリーと、その上に配置された搭載要素。質量特性を直接与えられた機体(§5-3)では null。
+  public readonly assembly: VesselAssembly | null;
+  // 質量・重心・慣性テンソル・投影面積。assembly から導くか、直接与えられる。
   public readonly massProperties: MassProperties;
   // 搭載要素。HP と性能の唯一の源。
   private readonly inventory: PartInventory;
 
-  protected readonly bcInv = C.SHIP_BCINV;
-  protected readonly srpCoeff = C.SHIP_SRP_COEFF;
+  // 抗力の断面積は、対気速度の向きから見た投影面積で決まる(§11-2)。細長い機体を横に向ければ
+  // 抗力が数倍になり、進行方向へ向ければ最小になる。
+  protected override get bcInv(): number {
+    const { r, v } = this.state;
+    const relative = qRotate(qInvert(this.att.q), airspeed(r, v));
+    return ballisticCoeffInv(this.massProperties.principalAreas, this.mass, relative);
+  }
+
+  protected override get srpCoeff(): number {
+    return radiationPressureCoeff(this.massProperties.principalAreas, this.mass);
+  }
+
+  // 対気速度の向きから見た、いま効いている熱防御(§11-3)。形状を持たない機体は素の閾値を持つ。
+  public heatShielding(): HeatShielding {
+    if (!this.assembly) return UNSHIELDED;
+    const { r, v } = this.state;
+    return heatShielding(
+      this.assembly.tree, this.assembly.placements, qRotate(qInvert(this.att.q), airspeed(r, v)));
+  }
+
+  // 熱シールドが遮蔽した入熱 [J] のぶんアブレータを削る。尽きれば熱防御は失われる。
+  public ablateHeatShields(shieldedHeat: number): void {
+    if (this.assembly) ablate(this.assembly.placements, shieldedHeat);
+  }
   protected readonly baseHistoryDuration = C.SHIP_HISTORY_DURATION;
   protected readonly predictedForGhost = true;
 
@@ -267,6 +293,7 @@ export class Vessel extends GameEntity {
     super(identity.state, design.renderObject, deps.scene, identity.att, identity.id);
     this.name = identity.name;
     this.faction = design.faction;
+    this.assembly = design.assembly;
     this.massProperties = design.massProperties;
     this.mass = design.massProperties.mass;
     this.radius = design.radius;
