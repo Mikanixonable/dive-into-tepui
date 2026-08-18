@@ -131,15 +131,10 @@ export function register(): void {
     assert.deepEqual(producibility(bp, ledgerOf([['aluminium', 40]]), [], 1e9), []);
   });
 
-  test('producibility: ヒドラジンは白金族を要求する', () => {
+  test('producibility: ヒドラジンのタンクは殻の金属だけを要求する', () => {
+    // 触媒床の白金族はスラスタの建造費が持つので、タンクの側は殻の材料だけを問う。
     const bp = blueprint({ tanks: [{ propellantId: 'hydrazine', shellMass: 10 }] });
-    const withoutCatalyst = ledgerOf([['aluminium', 10]]);
-    assert.ok(idsOf(producibility(bp, withoutCatalyst, [], 1e9), 'resource').includes('platinum-group'));
-    const withCatalyst = ledgerOf([
-      ['aluminium', 10],
-      ['platinum-group', 1],
-    ]);
-    assert.deepEqual(producibility(bp, withCatalyst, [], 1e9), []);
+    assert.deepEqual(producibility(bp, ledgerOf([['aluminium', 10]]), [], 1e9), []);
   });
 
   test('producibility: anyOf の枠は選択肢のうち1つだけ在庫にあれば満たされる', () => {

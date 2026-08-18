@@ -56,14 +56,16 @@ import type { BaseSaveData, EnemySaveData, PlanSaveData, PlayerSaveData } from '
 import type { VesselAssembly } from './assembly';
 import type { MassProperties } from './mass-properties';
 import { hasBaseModule } from './capabilities';
+import { ResourceLedger } from '../economy/resource-ledger';
 import { BaseState, DockedVesselEntry, portWorldPos, portWorldNormal } from './base-module';
 import { EnemyAi, type EnemyKind } from './enemy-ai';
 import { PartInventory } from './part-inventory';
 import { baseMarkerSvg, headingHpMarkerSvg, notchedHpMarkerSvg } from './hp-marker-svg';
 import {
-  crewedShipDesign, hostileShipDesign, orbitalBaseDesign,
+  blueprintDesign, crewedShipDesign, hostileShipDesign, orbitalBaseDesign,
   type VesselDesign, type VesselFaction,
 } from './vessel-designs';
+import type { VesselBlueprint } from './blueprint';
 
 export type { PlanExecutionMode };
 
@@ -82,6 +84,14 @@ export interface CrewedShipInit {
   readonly state?: KinematicState;
   readonly id?: string;
   readonly ammo?: AmmoLoad;
+}
+
+// 保存された設計から組む機体の新規配置。
+export interface BlueprintShipInit {
+  readonly blueprint: VesselBlueprint;
+  readonly name?: string;
+  readonly state: KinematicState;
+  readonly id?: string;
 }
 
 export interface OrbitalBaseInit {
@@ -105,6 +115,7 @@ export interface HostileShipInit {
 // どの既定の設計で組むか。saved* から始まるものはスナップショットの復元。
 export type VesselInit =
   | { readonly crewedShip: CrewedShipInit }
+  | { readonly blueprintShip: BlueprintShipInit }
   | { readonly orbitalBase: OrbitalBaseInit }
   | { readonly hostileShip: HostileShipInit }
   | { readonly savedShip: PlayerSaveData; readonly simTime: number }
@@ -135,6 +146,7 @@ function progradeAttitude(state: KinematicState, inertia: InertiaTensor): Attitu
 
 // init が指す既定の設計を返す。
 function resolveDesign(init: VesselInit): VesselDesign {
+  if ('blueprintShip' in init) return blueprintDesign(init.blueprintShip.blueprint);
   if ('crewedShip' in init || 'savedShip' in init) return crewedShipDesign();
   if ('orbitalBase' in init || 'savedBase' in init) return orbitalBaseDesign();
   if ('hostileShip' in init) return hostileShipDesign(init.hostileShip.enemyKind, init.hostileShip.accent);
@@ -191,6 +203,10 @@ function resolveIdentity(init: VesselInit, design: VesselDesign): VesselIdentity
   if ('hostileShip' in init) {
     const { name, state, att, id } = init.hostileShip;
     return { name, state, att: { ...att, inertia }, id };
+  }
+  if ('blueprintShip' in init) {
+    const { blueprint, name, state, id } = init.blueprintShip;
+    return { name: name ?? blueprint.name, state, att: progradeAttitude(state, inertia), id };
   }
   const d = init.savedHostile;
   return {
@@ -338,7 +354,7 @@ export class Vessel extends GameEntity {
     // 基地モジュールを積んだ機体だけが在庫と収容を持ち、常設の軌道構造物として
     // 赤道交点マーカーを出す。
     if (hasBaseModule(this)) {
-      this.baseState = { money: 100000, inventory: [], dockedVessels: [] };
+      this.baseState = { money: 100000, inventory: [], dockedVessels: [], resources: new ResourceLedger() };
       this.collisionGeom = new BaseCollisionGeometry();
       this.equatorNodes = new EquatorNodeMarkerPair(this, deps.markerManager);
     }
