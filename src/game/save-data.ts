@@ -3,6 +3,7 @@ import { EnemyKind } from './vessel/enemy-ai';
 import { AttractorId } from '../physics/attractor';
 import type { GamePhase } from './stages/stage';
 import type { WaveAttackSaveData } from './stages/stage-utils/wave-attack';
+import type { VesselAssembly } from './vessel/assembly';
 
 export interface Vec3SaveData {
   x: number;
@@ -79,6 +80,8 @@ export interface PlayerSaveData extends EntitySaveData {
   power: PowerSaveData;
   throttle: ThrottleSaveData;
   parts: AnyPart[];
+  // 第10版のドック編集で確定した形状・取付位置。旧セーブには無く、既定有人艦へ互換復元する。
+  assembly?: VesselAssembly;
   plan: PlanSaveData | null;
   // 旧セーブデータには無いフィールドなので任意。無ければ followPlan から移行する。
   planExecution?: 'off' | 'instant' | 'powered';
