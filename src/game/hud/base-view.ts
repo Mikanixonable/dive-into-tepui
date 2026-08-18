@@ -2,17 +2,18 @@
 // 格納されている船の一覧、部品の確認・修理・換装、ショップを提供する。
 import type { Vessel, DockedVesselEntry } from '../vessel/vessel';
 import type { AnyPart, Part, PartType, RcsTankPart } from '../game-entity/parts';
-import { createPart } from '../game-entity/parts';
-import * as C from '../const';
-import { principalMoments } from '../../physics/inertia-tensor';
-import { crewedMassProperties } from '../vessel/vessel-assemblies';
 import { Button, CloseButton, Meter, TabBar, ValueInput } from './widgets';
 import type { VesselBlueprint } from '../vessel/blueprint';
 import type { BlueprintLibrary } from '../vessel/blueprint-library';
-import { crewedShipBlueprint } from '../vessel/default-blueprints';
-import { baseFacilities } from '../vessel/base-module';
+import { buildPartFrom, crewedShipBlueprint, producibleParts } from '../vessel/default-blueprints';
+import { baseFacilities, basePowerAvailable } from '../vessel/base-module';
 import { producibility, type Requirement } from '../economy/producibility';
-import { productionBlueprintOf, productionTimeOf, DEFAULT_PRODUCTION_TIME_FACTOR } from '../vessel/production';
+import {
+  consumeProductionResources, partProductionBlueprintOf, productionBlueprintOf,
+  productionResourceDemand, productionTimeOf, refuelBlueprintOf, repairAllBlueprintOf,
+  repairBlueprintOf, DEFAULT_PRODUCTION_TIME_FACTOR,
+} from '../vessel/production';
+import type { ProducibilityBlueprint } from '../economy/producibility';
 import { FACILITIES, type FacilityId } from '../economy/facility';
 import { RESOURCES, type ResourceId } from '../economy/resource';
 import { MQ_COMPACT, MQ_SHORT } from './breakpoints';
@@ -182,19 +183,6 @@ const STYLE = `
   padding: 13px; border-radius: var(--radius-window); background: var(--surface-1);
 }
 #base-view .dock-col-title { margin: 0; color: var(--title); font-size: var(--font-m); font-weight: 600; }
-/* Shop tab */
-#base-view .dock-shop-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
-#base-view .dock-shop-item {
-  display: flex; align-items: center; gap: var(--space-5); min-width: 0; padding: 11px 13px;
-  border-radius: var(--radius-panel); background: var(--surface-1);
-}
-#base-view .dock-shop-info { flex: 1; display: flex; flex-direction: column; gap: var(--space-1); }
-#base-view .dock-shop-name { color: var(--title); font-size: var(--font-l); font-weight: 500; }
-#base-view .dock-shop-type { color: var(--muted); font-size: var(--font-xs); }
-#base-view .dock-shop-props { color: var(--body); font-size: var(--font-s); line-height: 1.45; }
-#base-view .dock-shop-stats { color: var(--muted); font-size: var(--font-xs); font-variant-numeric: tabular-nums; }
-#base-view .dock-shop-actions { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); }
-#base-view .dock-shop-price { color: var(--title); font-size: var(--font-m); font-variant-numeric: tabular-nums; }
 /* ドック内の操作は Borderless。主要操作、サービス完了系、補助操作の三段に分ける。 */
 #base-view span.dock-btn {
   padding: 7px 10px; border: 0; border-radius: var(--radius-control);
@@ -236,15 +224,13 @@ const STYLE = `
   #base-view .dock-ship-actions .dock-btn { justify-content: center; text-align: center; }
   #base-view .dock-parts-header { align-items: flex-start; flex-direction: column; }
   #base-view .dock-parts-header .dock-btn { align-self: stretch; text-align: center; }
-  #base-view .dock-parts-columns, #base-view .dock-shop-list { grid-template-columns: 1fr; }
+  #base-view .dock-parts-columns { grid-template-columns: 1fr; }
   #base-view .dock-parts-col { padding: 11px; }
   #base-view .dock-part-row-main { grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-4); }
   #base-view .dock-part-row-main:not(.dock-warehouse-row-main) .dock-part-hp-meter { grid-column: 1 / -1; grid-row: 2; }
   #base-view .dock-warehouse-row-main .dock-part-actions { grid-column: 1 / -1; justify-content: flex-end; }
   #base-view .dock-part-swap-row { align-items: stretch; flex-wrap: wrap; }
   #base-view .dock-part-swap-select { flex-basis: calc(100% - 80px); }
-  #base-view .dock-shop-item { align-items: stretch; flex-direction: column; }
-  #base-view .dock-shop-actions { align-items: center; flex-direction: row; justify-content: space-between; }
 }
 
 @media ${MQ_SHORT} {
@@ -266,76 +252,12 @@ function ensureStyle(): void {
   document.head.appendChild(style);
 }
 
-// ショップで購入可能な部品カタログ
-export interface PartCatalogEntry {
-  readonly type: PartType;
-  readonly name: string;
-  readonly price: number;
-  readonly weight: number;
-  readonly maxHp: number;
-  // 部品ごとの追加プロパティ (thruster の thrust など)
-  readonly props: Record<string, number | string>;
-}
-
-// 既定パーツ(vessel/vessel-parts.ts の crewedParts)と同じ単位・同じ桁で書く。
-// 桁がずれると、換装した瞬間に推力や耐久が別物になる。既定艦の値は
-// 重量 100 / 推力 既定艦の質量×最大スロットル / 放熱面積 25 / 受光面積 SOLAR_PANEL_AREA÷2 /
-// 発射レート 1÷FIRE_INTERVAL。推力とトルクは既定艦の形状から導いた質量特性に合わせる — 換装しても
-// 加速度と角加速度の桁が変わらない。
-const DEFAULT_TORQUE = C.MAX_ANG_ACCEL * principalMoments(crewedMassProperties().inertia).z;
-const DEFAULT_THRUST = crewedMassProperties().loadedMass * C.THROTTLE_LEVELS[C.THROTTLE_LEVELS.length - 1]!;
-const SHOP_CATALOG: readonly PartCatalogEntry[] = [
-  { type: 'hull', name: 'Standard Hull', price: 5000, weight: 80, maxHp: 300, props: {} },
-  { type: 'hull', name: 'Reinforced Hull', price: 12000, weight: 180, maxHp: 600, props: {} },
-  { type: 'cockpit', name: 'Basic Cockpit', price: 3000, weight: 100, maxHp: 100, props: {} },
-  { type: 'armor', name: 'Light Armor', price: 2000, weight: 100, maxHp: 100, props: { damageReduction: 0.2 } },
-  { type: 'armor', name: 'Heavy Armor', price: 8000, weight: 260, maxHp: 250, props: { damageReduction: 0.4 } },
-  { type: 'engine', name: 'Standard Engine', price: 4000, weight: 100, maxHp: 80, props: { thrust: DEFAULT_THRUST, specificImpulse: 320, fuelConsumptionRate: 1 } },
-  { type: 'engine', name: 'High-Thrust Engine', price: 10000, weight: 220, maxHp: 80, props: { thrust: DEFAULT_THRUST * 2.5, specificImpulse: 300, fuelConsumptionRate: 2.5 } },
-  { type: 'flywheel', name: 'Reaction Wheel', price: 4000, weight: 100, maxHp: 80, props: { maxTorque: DEFAULT_TORQUE, maxAngularMomentum: 400, powerDraw: 60 } },
-  { type: 'flywheel', name: 'Large Reaction Wheel', price: 10000, weight: 220, maxHp: 80, props: { maxTorque: DEFAULT_TORQUE * 2, maxAngularMomentum: 900, powerDraw: 140 } },
-  { type: 'rcs_tank', name: 'Small RCS Tank', price: 1500, weight: 60, maxHp: 50, props: { maxFuel: 600, fuel: 600 } },
-  { type: 'rcs_tank', name: 'Large RCS Tank', price: 4000, weight: 210, maxHp: 110, props: { maxFuel: 2200, fuel: 2200 } },
-  { type: 'radiator', name: 'Heat Radiator', price: 3000, weight: 100, maxHp: 50, props: { area: C.RADIATOR_COOLING_AREA / 2, efficiency: C.RADIATOR_EFFICIENCY_MULT } },
-  { type: 'radiator', name: 'Advanced Radiator', price: 7000, weight: 160, maxHp: 60, props: { area: C.RADIATOR_COOLING_AREA, efficiency: C.RADIATOR_EFFICIENCY_MULT } },
-  { type: 'solar_panel', name: 'Solar Array', price: 2500, weight: 100, maxHp: 30, props: { area: C.SOLAR_PANEL_AREA / 2, efficiency: C.SOLAR_PANEL_EFFICIENCY } },
-  { type: 'solar_panel', name: 'High-Efficiency Solar', price: 6000, weight: 130, maxHp: 30, props: { area: C.SOLAR_PANEL_AREA / 2, efficiency: C.SOLAR_PANEL_EFFICIENCY * 1.4 } },
-  { type: 'weapon', name: 'Gatling Gun', price: 5000, weight: 100, maxHp: 80, props: { weaponType: 'gatling', fireRate: 1 / C.FIRE_INTERVAL, damage: C.ENEMY_BULLET_DAMAGE, muzzleVelocity: C.MUZZLE_SPEED, feedRate: 1 / C.FIRE_INTERVAL } },
-  { type: 'heat_shield', name: 'Ablative Heat Shield', price: 4000, weight: 60, maxHp: 60, props: { solidAngle: C.CREWED_HEAT_SHIELD_SOLID_ANGLE, ablatorMass: C.CREWED_ABLATOR_MASS, ablationPerHeat: C.CREWED_ABLATION_PER_HEAT } },
-  { type: 'heat_shield', name: 'Wide Heat Shield', price: 11000, weight: 150, maxHp: 60, props: { solidAngle: 3.2, ablatorMass: C.CREWED_ABLATOR_MASS * 2.5, ablationPerHeat: C.CREWED_ABLATION_PER_HEAT } },
-  { type: 'weapon', name: 'Heavy Cannon', price: 15000, weight: 220, maxHp: 120, props: { weaponType: 'cannon', fireRate: 4, damage: C.ENEMY_BULLET_DAMAGE * 5, muzzleVelocity: C.MUZZLE_SPEED * 1.5, feedRate: 4 } },
-];
-
-// 修理コスト: 1HPあたりのクレジット
-const REPAIR_COST_PER_HP = 10;
-// 倉庫の部品を売却したときの掛け率。無限増殖を防ぐため購入価格を下回らせる。
-const PART_SELL_RATE = 0.5;
-// カタログに一致しない部品(艦に最初から積まれていたものなど)の売却基準額。maxHpに比例させる。
-const PART_FALLBACK_VALUE_PER_MAXHP = 20;
-// RCSタンクへの燃料補給コスト: 1kgあたりのクレジット
-const RCS_REFUEL_PRICE_PER_KG = 2;
-// 部品の売却基準額を見積もる。ショップカタログに type/name が一致する項目があればその価格を、
-// なければ maxHp から概算した価格を使う(艦に最初から積まれていた部品など由来不明なもの向け)。
-function estimatePartValue(part: AnyPart): number {
-  const catalogEntry = SHOP_CATALOG.find((e) => e.type === part.type && e.name === part.name);
-  return catalogEntry ? catalogEntry.price : part.maxHp * PART_FALLBACK_VALUE_PER_MAXHP;
-}
-
-function sellPrice(part: AnyPart): number {
-  return Math.round(estimatePartValue(part) * PART_SELL_RATE);
-}
-
-function refuelCost(tank: RcsTankPart): number {
-  return Math.max(0, Math.round((tank.maxFuel - tank.fuel) * RCS_REFUEL_PRICE_PER_KG));
-}
-
-export type DockTab = 'ships' | 'parts' | 'production' | 'shop';
+export type DockTab = 'ships' | 'parts' | 'production';
 
 const TAB_ITEMS: readonly (readonly [DockTab, string])[] = [
   ['ships', '格納艦艇'],
   ['parts', '部品'],
   ['production', '生産'],
-  ['shop', 'ショップ'],
 ];
 
 // 資源1件の表示名と量。
@@ -417,36 +339,10 @@ function formatPartMeta(part: Part): string {
   return `${PART_TYPE_LABELS[part.type]} · 燃料 ${Math.round(tank.fuel).toLocaleString()} / ${Math.round(tank.maxFuel).toLocaleString()} kg`;
 }
 
-function formatCatalogProperty(name: string, value: number | string): string {
-  switch (name) {
-    case 'damageReduction': return `被害軽減 ${typeof value === 'number' ? Math.round(value * 100) : value} %`;
-    case 'torque': return `トルク ${Number(value).toLocaleString()} N·m`;
-    case 'thrust': return `推力 ${Number(value).toLocaleString()} N`;
-    case 'fuelConsumptionRate': return `燃料消費 ${value} kg/s`;
-    case 'maxFuel': return `燃料容量 ${Number(value).toLocaleString()} kg`;
-    case 'fuel': return `初期燃料 ${Number(value).toLocaleString()} kg`;
-    case 'area': return `面積 ${Number(value).toLocaleString()} m²`;
-    case 'efficiency': return `効率 ${Math.round(Number(value) * 100)} %`;
-    case 'specificImpulse': return `比推力 ${value} s`;
-    case 'maxTorque': return `トルク ${Number(value).toLocaleString()} N·m`;
-    case 'maxAngularMomentum': return `蓄積角運動量 ${Number(value).toLocaleString()} N·m·s`;
-    case 'powerDraw': return `消費電力 ${Number(value).toLocaleString()} W`;
-    case 'feedRate': return `給弾要求 ${value} 発/s`;
-    case 'weaponType': {
-      const weaponTypeLabel = value === 'gatling' ? 'ガトリング' : value === 'cannon' ? 'キャノン' : value;
-      return `武器形式 ${weaponTypeLabel}`;
-    }
-    case 'fireRate': return `発射速度 ${value} 発/s`;
-    case 'damage': return `威力 ${value}`;
-    case 'muzzleVelocity': return `初速 ${Number(value).toLocaleString()} m/s`;
-    default: return `${name} ${value}`;
-  }
-}
-
 export class BaseView {
   private readonly el: HTMLElement;
   private readonly tabBar: TabBar<DockTab>;
-  private readonly moneyLabel: HTMLElement;
+  private readonly statusLabel: HTMLElement;
   private readonly blueprints: BlueprintLibrary;
   // デバッグ用の資源加算が、直前に何をどれだけ足したかの控え。
   private lastGrantText = '';
@@ -457,7 +353,6 @@ export class BaseView {
   private currentBase: Vessel | null = null;
   private currentVessel: Vessel | null = null;
   private currentTab: DockTab = 'ships';
-  private freeProcurement = false;
   private previouslyFocused: HTMLElement | null = null;
 
   // 外部コールバック
@@ -525,9 +420,9 @@ export class BaseView {
     statusBar.className = 'dock-status-bar';
     statusBar.setAttribute('role', 'status');
     statusBar.setAttribute('aria-live', 'polite');
-    this.moneyLabel = document.createElement('span');
-    this.moneyLabel.textContent = '利用可能クレジット ---';
-    statusBar.appendChild(this.moneyLabel);
+    this.statusLabel = document.createElement('span');
+    this.statusLabel.textContent = '基地 ---';
+    statusBar.appendChild(this.statusLabel);
     panel.appendChild(statusBar);
 
     this.bodyEl = document.createElement('main');
@@ -542,12 +437,11 @@ export class BaseView {
   }
 
   // ドックビューを開く
-  public open(base: Vessel, inspectShip: Vessel | null, freeProcurement: boolean): void {
+  public open(base: Vessel, inspectShip: Vessel | null): void {
     if (!this._visible) {
       this.previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     }
     this.currentBase = base;
-    this.freeProcurement = freeProcurement;
     // inspectShip が基地に格納されていれば選択状態にする
     if (inspectShip && base.baseState!.dockedVessels.some((s) => s.id === inspectShip.id)) {
       this.currentVessel = inspectShip;
@@ -604,9 +498,8 @@ export class BaseView {
   private refresh(): void {
     if (!this.currentBase) return;
 
-    this.moneyLabel.textContent = this.freeProcurement
-      ? `${this.currentBase.name} · 調達コストなし`
-      : `${this.currentBase.name} · ${this.currentBase.baseState!.money.toLocaleString()} Cr 利用可能`;
+    this.statusLabel.textContent =
+      `${this.currentBase.name} · 在庫 ${this.currentBase.baseState!.resources.storedIds.length} 種`;
     this.tabBar.setSelected(this.currentTab);
     this.bodyEl.setAttribute('aria-labelledby', `dock-tab-${this.currentTab}`);
 
@@ -615,7 +508,6 @@ export class BaseView {
       case 'ships': this.bodyEl.appendChild(this.buildVesselsTab()); break;
       case 'parts': this.bodyEl.appendChild(this.buildPartsTab()); break;
       case 'production': this.bodyEl.appendChild(this.buildProductionTab()); break;
-      case 'shop': this.bodyEl.appendChild(this.buildShopTab()); break;
     }
     // 操作した行を再構築してフォーカス要素がDOMから外れた場合も、背面HUDへ落とさない。
     if (this._visible && !this.el.contains(document.activeElement)) this.focusEntry();
@@ -768,8 +660,9 @@ export class BaseView {
 
   // 艦の全部品をまとめて修理するボタンの行。
   private buildRepairAllHeader(base: Vessel, shipData: DockedVesselEntry): HTMLElement {
-    const totalRepairCost = shipData.parts.reduce((sum, p) => sum + (p.maxHp - p.hp) * REPAIR_COST_PER_HP, 0);
-    const enabled = totalRepairCost > 0 && (this.freeProcurement || base.baseState!.money >= totalRepairCost);
+    const damaged = (shipData.parts as AnyPart[]).filter((p) => p.hp < p.maxHp);
+    const request = repairAllBlueprintOf(damaged);
+    const enabled = damaged.length > 0 && this.canAfford(base, request);
     const row = document.createElement('div');
     row.className = 'dock-parts-header dock-focus-panel';
     const label = document.createElement('span');
@@ -780,13 +673,11 @@ export class BaseView {
     label.appendChild(shipName);
     row.appendChild(label);
     const btn = new Button(
-      totalRepairCost > 0
-        ? `全部品を修理 · ${this.freeProcurement ? 'コストなし' : `${totalRepairCost.toLocaleString()} Cr`}`
-        : '全部品は正常',
+      damaged.length > 0 ? `全部品を修理 · ${this.formatCost(request)}` : '全部品は正常',
       () => this.handleRepairAll(shipData.id),
     );
     btn.element.classList.add('dock-btn', 'dock-btn-service');
-    btn.element.classList.toggle('dock-btn-complete', totalRepairCost <= 0);
+    btn.element.classList.toggle('dock-btn-complete', damaged.length === 0);
     btn.setEnabled(enabled);
     row.appendChild(btn.element);
     return row;
@@ -795,8 +686,9 @@ export class BaseView {
   // 搭載部品1件の行を作る。同じ type の在庫があれば換装欄を、rcs_tank なら補給ボタンを添える。
   private buildInstalledPartRow(base: Vessel, shipData: DockedVesselEntry, p: Part, i: number): HTMLElement {
     const hpPct = Math.max(0, Math.min(100, (p.hp / p.maxHp) * 100));
-    const repairCost = (p.maxHp - p.hp) * REPAIR_COST_PER_HP;
-    const canRepair = repairCost > 0 && (this.freeProcurement || base.baseState!.money >= repairCost);
+    const repairRequest = repairBlueprintOf(p as AnyPart);
+    const damaged = p.hp < p.maxHp;
+    const canRepair = damaged && this.canAfford(base, repairRequest);
 
     const row = document.createElement('div');
     row.className = 'dock-part-row';
@@ -831,13 +723,11 @@ export class BaseView {
     const actions = document.createElement('div');
     actions.className = 'dock-part-actions';
     const repairBtn = new Button(
-      repairCost > 0
-        ? `修理 · ${this.freeProcurement ? 'コストなし' : `${repairCost.toLocaleString()} Cr`}`
-        : '正常',
+      damaged ? `修理 · ${this.formatCost(repairRequest)}` : '正常',
       () => this.handleRepairPart(shipData.id, i),
     );
     repairBtn.element.classList.add('dock-btn', 'dock-btn-service');
-    repairBtn.element.classList.toggle('dock-btn-complete', repairCost <= 0);
+    repairBtn.element.classList.toggle('dock-btn-complete', !damaged);
     repairBtn.setEnabled(canRepair);
     actions.appendChild(repairBtn.element);
     if (p.type === 'rcs_tank') {
@@ -879,7 +769,7 @@ export class BaseView {
     if (inventory.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'dock-empty';
-      empty.textContent = '倉庫は空です。ショップで購入するか、艦から部品を外すと入ります。';
+      empty.textContent = '倉庫は空です。生産タブで部品を作るか、艦から部品を外すと入ります。';
       return empty;
     }
     const list = document.createElement('div');
@@ -913,10 +803,6 @@ export class BaseView {
       if (p.type === 'rcs_tank') {
         actions.appendChild(this.buildRefuelButton(base, p as RcsTankPart, () => this.handleRefuelInventory(p.id)));
       }
-      const price = sellPrice(p);
-      const sellBtn = new Button(`売却 · ${price.toLocaleString()} Cr`, () => this.handleSellPart(p.id));
-      sellBtn.element.classList.add('dock-btn', 'dock-btn-quiet');
-      actions.appendChild(sellBtn.element);
       main.appendChild(actions);
       row.appendChild(main);
       list.appendChild(row);
@@ -926,78 +812,20 @@ export class BaseView {
 
   // rcs_tank 用の補給ボタンを作る。
   private buildRefuelButton(base: Vessel, tank: RcsTankPart, onClick: () => void): HTMLElement {
-    const cost = refuelCost(tank);
-    const canRefuel = cost > 0 && (this.freeProcurement || base.baseState!.money >= cost);
+    const missing = Math.max(0, tank.maxFuel - tank.fuel);
+    const request = refuelBlueprintOf(tank.propellant, missing);
+    const canRefuel = missing > 0 && this.canAfford(base, request);
     const btn = new Button(
-      cost > 0
-        ? `燃料補給 · ${this.freeProcurement ? 'コストなし' : `${cost.toLocaleString()} Cr`}`
-        : '燃料は満タン',
+      missing > 0 ? `燃料補給 · ${this.formatCost(request)}` : '燃料は満タン',
       onClick,
     );
     btn.element.classList.add('dock-btn', 'dock-btn-service');
-    btn.element.classList.toggle('dock-btn-complete', cost <= 0);
+    btn.element.classList.toggle('dock-btn-complete', missing <= 0);
     btn.setEnabled(canRefuel);
     return btn.element;
   }
 
   // ─── ショップタブ ───────────────────────────────────────
-  private buildShopTab(): HTMLElement {
-    const base = this.currentBase!;
-    const money = base.baseState!.money;
-
-    const frag = document.createElement('section');
-    frag.className = 'dock-section';
-    frag.appendChild(this.buildSectionHeader(
-      'ショップ',
-      '購入した部品はこの基地の倉庫へ直接搬入されます。',
-      `${SHOP_CATALOG.length} 品目`,
-    ));
-
-    const list = document.createElement('div');
-    list.className = 'dock-shop-list';
-    list.setAttribute('role', 'list');
-    SHOP_CATALOG.forEach((entry, i) => {
-      const canBuy = this.freeProcurement || money >= entry.price;
-      const props = Object.entries(entry.props).map(([name, value]) => formatCatalogProperty(name, value)).join(' · ');
-
-      const item = document.createElement('article');
-      item.className = 'dock-shop-item';
-      item.setAttribute('role', 'listitem');
-      const info = document.createElement('div');
-      info.className = 'dock-shop-info';
-      const name = document.createElement('span');
-      name.className = 'dock-shop-name';
-      name.textContent = entry.name;
-      const type = document.createElement('span');
-      type.className = 'dock-shop-type';
-      type.textContent = PART_TYPE_LABELS[entry.type];
-      const propsEl = document.createElement('span');
-      propsEl.className = 'dock-shop-props';
-      propsEl.textContent = props || '標準規格';
-      const stats = document.createElement('span');
-      stats.className = 'dock-shop-stats';
-      stats.textContent = `重量 ${entry.weight.toLocaleString()} kg · 耐久 ${entry.maxHp.toLocaleString()}`;
-      info.append(name, type, propsEl, stats);
-      item.appendChild(info);
-
-      const actions = document.createElement('div');
-      actions.className = 'dock-shop-actions';
-      const price = document.createElement('span');
-      price.className = 'dock-shop-price';
-      price.textContent = this.freeProcurement ? 'コストなし' : `${entry.price.toLocaleString()} Cr`;
-      actions.appendChild(price);
-      const buyBtn = new Button('購入して倉庫へ', () => this.handleBuy(i));
-      buyBtn.element.classList.add('dock-btn', 'dock-btn-primary');
-      buyBtn.setEnabled(canBuy);
-      actions.appendChild(buyBtn.element);
-      item.appendChild(actions);
-      list.appendChild(item);
-    });
-    frag.appendChild(list);
-    return frag;
-  }
-
-  // ─── ハンドラ ────────────────────────────────────────────
   private handleLaunch(idx: number): void {
     const base = this.currentBase;
     if (!base) return;
@@ -1009,7 +837,28 @@ export class BaseView {
     this.refresh();
   }
 
-  // 新造費用を払い、実際の艦の生成(Docking 側)を要求する。
+  // 何が足りないか。空配列なら要求を満たしている。
+  private shortfall(base: Vessel, request: ProducibilityBlueprint): readonly Requirement[] {
+    return producibility(request, base.baseState!.resources, baseFacilities(base), basePowerAvailable(base));
+  }
+
+  private canAfford(base: Vessel, request: ProducibilityBlueprint): boolean {
+    return this.shortfall(base, request).length === 0;
+  }
+
+  // 資源を引く。足りなければ何も引かずに false を返す。
+  private spend(base: Vessel, request: ProducibilityBlueprint): boolean {
+    if (!this.canAfford(base, request)) return false;
+    return consumeProductionResources(request, base.baseState!.resources);
+  }
+
+  // 要求のうち資源だけを「アルミ 12.0 kg・電子機器 3.0 kg」の形に畳む。ボタンの但し書き用。
+  private formatCost(request: ProducibilityBlueprint): string {
+    const demand = productionResourceDemand(request, this.currentBase!.baseState!.resources);
+    const parts = [...demand].map(([id, mass]) => formatResourceAmount(id, mass));
+    return parts.length === 0 ? '資源なし' : parts.join('・');
+  }
+
   // ─── 生産タブ ───────────────────────────────────────────
   // 設計ごとに、生産できるかどうかと足りないものを並べる。在庫と、デバッグ用の資源加算を添える。
   private buildProductionTab(): HTMLElement {
@@ -1020,6 +869,7 @@ export class BaseView {
     frag.appendChild(this.buildSectionHeader(
       '生産', '設計を指定し、資源と設備と電力を消費して実機を得ます。', `${designs.length} 設計`));
     for (const bp of designs) frag.appendChild(this.buildProductionRow(base, bp));
+    frag.appendChild(this.buildPartProductionSection(base));
     frag.appendChild(this.buildInventorySection(base));
     frag.appendChild(this.buildGrantSection(base));
     return frag;
@@ -1032,8 +882,7 @@ export class BaseView {
 
   private buildProductionRow(base: Vessel, bp: VesselBlueprint): HTMLElement {
     const state = base.baseState!;
-    const missing = producibility(
-      productionBlueprintOf(bp), state.resources, baseFacilities(base), base.totalPowerGeneration);
+    const missing = this.shortfall(base, productionBlueprintOf(bp));
     const isFull = state.dockedVessels.length >= base.dockCapacity;
     const seconds = productionTimeOf(bp, DEFAULT_PRODUCTION_TIME_FACTOR);
 
@@ -1054,7 +903,11 @@ export class BaseView {
 
     const actions = document.createElement('div');
     actions.className = 'dock-part-actions';
-    const btn = new Button(isFull ? 'ドック満杯' : '生産', () => this.onProduceVessel?.(base, bp));
+    // 生産は在庫と格納庫の両方を動かすので、押した後の表示はこの場で組み直す。
+    const btn = new Button(isFull ? 'ドック満杯' : '生産', () => {
+      this.onProduceVessel?.(base, bp);
+      this.refresh();
+    });
     btn.element.classList.add('dock-btn', 'dock-btn-primary');
     btn.setEnabled(!isFull && missing.length === 0);
     actions.appendChild(btn.element);
@@ -1069,6 +922,54 @@ export class BaseView {
       row.appendChild(line);
     }
     return row;
+  }
+
+  // 搭載要素を1つだけ作って倉庫へ入れる。見本は既定の設計が実際に積んでいる要素そのものなので、
+  // 換装しても推力や耐久の桁が既定艦とずれない。
+  private buildPartProductionSection(base: Vessel): HTMLElement {
+    const samples = producibleParts();
+    const frag = document.createElement('section');
+    frag.className = 'dock-section';
+    frag.appendChild(this.buildSectionHeader(
+      '部品の生産', '搭載要素を1つ作り、この基地の倉庫へ入れます。', `${samples.length} 種`));
+    const list = document.createElement('div');
+    list.className = 'dock-part-list';
+    for (const sample of samples) {
+      const request = partProductionBlueprintOf(sample);
+      const row = document.createElement('div');
+      row.className = 'dock-part-row';
+      const main = document.createElement('div');
+      main.className = 'dock-part-row-main';
+      const info = document.createElement('div');
+      info.className = 'dock-part-info';
+      const name = document.createElement('span');
+      name.className = 'dock-part-name';
+      name.textContent = sample.name;
+      const meta = document.createElement('span');
+      meta.className = 'dock-part-type';
+      meta.textContent = `${formatPartMeta(sample)} · ${this.formatCost(request)}`;
+      info.append(name, meta);
+      main.appendChild(info);
+      const actions = document.createElement('div');
+      actions.className = 'dock-part-actions';
+      const btn = new Button('生産して倉庫へ', () => this.handleProducePart(sample));
+      btn.element.classList.add('dock-btn', 'dock-btn-primary');
+      btn.setEnabled(this.canAfford(base, request));
+      actions.appendChild(btn.element);
+      main.appendChild(actions);
+      row.appendChild(main);
+      list.appendChild(row);
+    }
+    frag.appendChild(list);
+    return frag;
+  }
+
+  private handleProducePart(sample: AnyPart): void {
+    const base = this.currentBase;
+    if (!base) return;
+    if (!this.spend(base, partProductionBlueprintOf(sample))) return;
+    base.baseState!.inventory.push(buildPartFrom(sample));
+    this.refresh();
   }
 
   private buildInventorySection(base: Vessel): HTMLElement {
@@ -1148,11 +1049,8 @@ export class BaseView {
     if (!shipData) return;
 
     const part: Part | undefined = shipData.parts[partIdx];
-    if (!part) return;
-    const cost = (part.maxHp - part.hp) * REPAIR_COST_PER_HP;
-    if (!this.freeProcurement && base.baseState!.money < cost) return;
-
-    if (!this.freeProcurement) base.baseState!.money -= cost;
+    if (!part || part.hp >= part.maxHp) return;
+    if (!this.spend(base, repairBlueprintOf(part as AnyPart))) return;
     part.hp = part.maxHp;
     this.syncDockedSnapshot(shipData);
     this.refresh();
@@ -1165,10 +1063,9 @@ export class BaseView {
     if (!shipData) return;
 
     const parts = shipData.parts;
-    const totalCost = parts.reduce((sum, p) => sum + (p.maxHp - p.hp) * REPAIR_COST_PER_HP, 0);
-    if (!this.freeProcurement && base.baseState!.money < totalCost) return;
-
-    if (!this.freeProcurement) base.baseState!.money -= totalCost;
+    const damaged = (parts as AnyPart[]).filter((p) => p.hp < p.maxHp);
+    if (damaged.length === 0) return;
+    if (!this.spend(base, repairAllBlueprintOf(damaged))) return;
     parts.forEach((p) => { p.hp = p.maxHp; });
     this.syncDockedSnapshot(shipData);
     this.refresh();
@@ -1222,43 +1119,10 @@ export class BaseView {
   }
 
   private refuelTank(base: Vessel, tank: RcsTankPart): void {
-    const cost = refuelCost(tank);
-    if (cost <= 0) return;
-    if (!this.freeProcurement && base.baseState!.money < cost) return;
-    if (!this.freeProcurement) base.baseState!.money -= cost;
+    const missing = Math.max(0, tank.maxFuel - tank.fuel);
+    if (missing <= 0) return;
+    if (!this.spend(base, refuelBlueprintOf(tank.propellant, missing))) return;
     tank.fuel = tank.maxFuel;
-  }
-
-  private handleSellPart(invId: string): void {
-    const base = this.currentBase;
-    if (!base) return;
-    const idx = base.baseState!.inventory.findIndex((p) => p.id === invId);
-    const part = base.baseState!.inventory[idx];
-    if (idx < 0 || !part) return;
-
-    base.baseState!.money += sellPrice(part);
-    base.baseState!.inventory.splice(idx, 1);
-    this.refresh();
-  }
-
-  private handleBuy(catalogIdx: number): void {
-    const base = this.currentBase;
-    if (!base) return;
-    const entry = SHOP_CATALOG[catalogIdx];
-    if (!entry) return;
-    if (!this.freeProcurement && base.baseState!.money < entry.price) return;
-
-    const part = createPart(entry.type, {
-      name: entry.name,
-      weight: entry.weight,
-      maxHp: entry.maxHp,
-      hp: entry.maxHp,
-      ...entry.props,
-    } as Partial<AnyPart>);
-
-    if (!this.freeProcurement) base.baseState!.money -= entry.price;
-    base.baseState!.inventory.push(part);
-    this.refresh();
   }
 
   public dispose(): void {

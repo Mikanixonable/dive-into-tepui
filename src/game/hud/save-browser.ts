@@ -450,7 +450,7 @@ export class SaveBrowser implements OverlayHandle {
 
     const row3 = document.createElement('div');
     row3.className = 'sb-snap-row';
-    row3.textContent = `艦 ${num(s.playerCount)} / 敵残 ${num(s.enemyAliveCount)} / 所持金 ${num(s.money).toLocaleString()} Cr`;
+    row3.textContent = `艦 ${num(s.playerCount)} / 敵残 ${num(s.enemyAliveCount)}`;
     card.appendChild(row3);
 
     const actions = document.createElement('div');

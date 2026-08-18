@@ -354,7 +354,7 @@ export class Vessel extends GameEntity {
     // 基地モジュールを積んだ機体だけが在庫と収容を持ち、常設の軌道構造物として
     // 赤道交点マーカーを出す。
     if (hasBaseModule(this)) {
-      this.baseState = { money: 100000, inventory: [], dockedVessels: [], resources: new ResourceLedger() };
+      this.baseState = { inventory: [], dockedVessels: [], resources: new ResourceLedger() };
       this.collisionGeom = new BaseCollisionGeometry();
       this.equatorNodes = new EquatorNodeMarkerPair(this, deps.markerManager);
     }
@@ -398,11 +398,10 @@ export class Vessel extends GameEntity {
     if (!this.alive) this.renderObject.visible = false;
   }
 
-  // 基地の保存形から、所持金・在庫・燃料・収容中の機体を戻す。収容機は保存形から組み直し、
+  // 基地の保存形から、在庫・燃料・収容中の機体を戻す。収容機は保存形から組み直し、
   // スロットへ取り付けたうえで一覧へ加える。
   private restoreBase(saved: BaseSaveData, simTime: number, deps: VesselDeps): void {
     const state = this.baseState!;
-    state.money = saved.money;
     state.inventory = (saved.inventory ?? []).map(partFromSaveData);
     if (saved.fuel !== undefined) {
       this.inventory.consumeFuel(this.inventory.totalFuel);
@@ -978,7 +977,6 @@ export class Vessel extends GameEntity {
       v: { ...this.state.v },
       q: { ...this.att.q },
       w: { ...this.att.w },
-      money: state.money,
       fuel: this.totalFuel,
       inventory: state.inventory.map((p) => ({ ...p })),
       dockedVessels: state.dockedVessels.map((entry) => entry.vessel.serializeAsShip()),

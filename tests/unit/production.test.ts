@@ -10,7 +10,8 @@ import { createPart, type PartType } from '../../src/game/game-entity/parts';
 import { crewedShipBlueprint } from '../../src/game/vessel/default-blueprints';
 import {
   ASSEMBLY_FACILITY, DEFAULT_PRODUCTION_TIME_FACTOR, consumeProductionResources,
-  productionBlueprintOf, productionResourceDemand, productionTimeOf,
+  partProductionBlueprintOf, productionBlueprintOf, productionResourceDemand, productionTimeOf,
+  refuelBlueprintOf, repairBlueprintOf,
 } from '../../src/game/vessel/production';
 import { structuralMasses } from '../../src/game/vessel/mass-properties';
 import { assemblyOf } from '../../src/game/vessel/blueprint';
@@ -141,6 +142,44 @@ export function register(): void {
     const before = [...demand.keys()].map((id) => ledger.amountOf(id));
     assert.equal(consumeProductionResources(request, ledger), false);
     assert.deepEqual([...demand.keys()].map((id) => ledger.amountOf(id)), before);
+  });
+
+  test('production: 搭載要素を1つだけ作る要求は、その要素の建造費そのものになる', () => {
+    const engine = createPart('engine', { weight: 80, propellant: 'nitrogen-tetroxide', thrust: 5000 });
+    const request = partProductionBlueprintOf(engine);
+    assert.equal(request.parts.length, 1);
+    assert.deepEqual(request.parts[0]!.buildCost, partBuildCost(engine));
+    // 推進剤を積まない要素はタンクの枠を持たない。
+    assert.deepEqual(request.tanks, []);
+    // 推進剤タンクは殻を tanks の枠へ回す。
+    const tank = createPart('rcs_tank', { weight: 30, propellant: 'hydrazine' });
+    const tankRequest = partProductionBlueprintOf(tank);
+    assert.equal(tankRequest.tanks.length, 1);
+    assert.ok(Math.abs(tankRequest.tanks[0]!.shellMass - 30 * TANK_SHELL_FRACTION) < 1e-9);
+  });
+
+  test('production: 修理は失われた耐久の割合ぶんの資材を要し、無傷なら 0 になる', () => {
+    const intact = createPart('battery', { weight: 100, maxHp: 100, hp: 100 });
+    const total = (bp: ReturnType<typeof repairBlueprintOf>): number =>
+      bp.parts[0]!.buildCost.reduce((sum, c) => sum + c.mass, 0);
+    assert.equal(total(repairBlueprintOf(intact)), 0);
+
+    const half = createPart('battery', { weight: 100, maxHp: 100, hp: 50 });
+    assert.ok(Math.abs(total(repairBlueprintOf(half)) - 50) < 1e-9);
+
+    // 殻は残っているので、タンクを直しても殻は課金しない。
+    const tank = createPart('rcs_tank', { weight: 30, propellant: 'hydrazine', maxHp: 100, hp: 0 });
+    assert.deepEqual(repairBlueprintOf(tank).tanks, []);
+  });
+
+  test('production: 補給は積んでいる推進剤そのものを質量ぶん引く', () => {
+    const request = refuelBlueprintOf('hydrazine', 250);
+    assert.deepEqual(request.parts[0]!.buildCost, [{ resourceId: 'hydrazine', mass: 250 }]);
+    // 液体酸素は在庫の上では酸素である。
+    assert.deepEqual(refuelBlueprintOf('liquid-oxygen', 10).parts[0]!.buildCost,
+      [{ resourceId: 'oxygen', mass: 10 }]);
+    // 補給は設備を要さない。
+    assert.deepEqual(request.requiresFacility, []);
   });
 
   test('production: 生産時間係数 0 で即時完成する', () => {
