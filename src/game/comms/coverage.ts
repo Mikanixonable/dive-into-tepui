@@ -4,7 +4,7 @@
 // 判定なので、単体テストから直接引けることを保つ。
 import { isOccluded } from '../../physics/occlusion';
 import type { KinematicState } from '../../physics/kinematic-state';
-import { len, sub, Vec3 } from '../../physics/vec3';
+import { dot, len, sub, Vec3 } from '../../physics/vec3';
 
 // 見通しを遮りうる天体。physics/attractor.ts の Attractor がそのまま満たす。
 export interface CommOccluder {
@@ -19,6 +19,19 @@ export interface CommRelay {
   readonly isGround: boolean; // 通信基地か(網の起点になる)
 }
 
+// 天体の表面に立つ端点から相手を見上げられるか。表面上の点はレイと球の交差判定では自分の乗る
+// 天体に遮られないので、その天体については地平線より上にあるかどうかで見通しを決める(§13-4)。
+const SURFACE_MARGIN = 1; // m
+
+function aboveHorizon(from: Vec3, to: Vec3, attractors: readonly CommOccluder[]): boolean {
+  for (const body of attractors) {
+    const up = sub(from, body.state.r);
+    if (len(up) > body.radius + SURFACE_MARGIN) continue;
+    if (dot(up, sub(to, from)) < 0) return false;
+  }
+  return true;
+}
+
 // 2点が直接繋がるか。到達距離は両側の小さいほうで決まる — 強力な中継点の傍にいても、
 // 積んでいる通信モジュールが小型なら届く距離はその等級までである(§13-2 の単純化)。
 function linked(
@@ -27,6 +40,7 @@ function linked(
   const reach = Math.min(aRange, bRange);
   if (!(reach > 0)) return false;
   if (len(sub(b, a)) > reach) return false;
+  if (!aboveHorizon(a, b, attractors) || !aboveHorizon(b, a, attractors)) return false;
   return !isOccluded(a, b, attractors);
 }
 

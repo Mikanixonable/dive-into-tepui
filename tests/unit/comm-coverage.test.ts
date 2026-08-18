@@ -149,8 +149,6 @@ export function registerInitialCoverage(): void {
   test('初期の通信圏では地球低軌道が距離で圏外になり、月の傍は圏内になる', () => {
     const t = 0;
     const { active, attractors, coverage, ephemeris } = initialNetwork(t);
-    // 月の裏側は §13-4 では圏外とされているが、NRHO 基地が月の外側(地球-月 L2)にあるため
-    // 実際には覆われる — 実物の近直線ハロー軌道が裏側を覆うのと同じ理由で、ここは検査しない。
     const large = COMM_MODULE_SPECS.large.range;
 
     // 地球低軌道。地球-月間の距離があるため、大型モジュールを積んでいても届かない。
@@ -169,6 +167,30 @@ export function registerInitialCoverage(): void {
     } as Vec3;
     assert.equal(isInCommRange(justAbove, active, COMM_MODULE_SPECS.small.range, attractors), true);
 
+  });
+
+  test('月面基地だけでは月の裏側が圏外になり、NRHO 基地がそこを覆う', () => {
+    const t = 0;
+    const ephemeris = new Ephemeris();
+    const attractors = ephemeris.attractorsAt(t);
+    const stations = initialCommStations(ephemeris, t);
+    const moonBase = stations.find((r) => r.id.includes('moon'))!;
+    const moon = ephemeris.attractorAt('moon', t);
+
+    // 月面基地の対蹠点の 100 km 上空。基地は月面に立っているので、自分の乗る月に遮られる。
+    const down = sub(moon.state.r, moonBase.pos);
+    const outward = (moon.radius + 1e5) / len(down);
+    const farSide = {
+      x: moon.state.r.x + down.x * outward,
+      y: moon.state.r.y + down.y * outward,
+      z: moon.state.r.z + down.z * outward,
+    } as Vec3;
+
+    const large = COMM_MODULE_SPECS.large.range;
+    const moonOnly = activeRelays([moonBase], attractors);
+    assert.equal(isInCommRange(farSide, moonOnly, large, attractors), false);
+    // 月の外側(地球-月 L2)に居る NRHO 基地からは見通せる。
+    assert.equal(isInCommRange(farSide, activeRelays([...stations], attractors), large, attractors), true);
   });
 
   test('圏外の無人機は自動操縦できず、有人機は圏外でも操作できる', () => {
