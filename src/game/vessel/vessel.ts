@@ -71,7 +71,7 @@ import {
   blueprintDesign, crewedShipDesign, hostileShipDesign, orbitalBaseDesign,
   type VesselDesign, type VesselFaction,
 } from './vessel-designs';
-import type { VesselBlueprint } from './blueprint';
+import { createBlueprint, type VesselBlueprint } from './blueprint';
 
 export type { PlanExecutionMode };
 
@@ -153,7 +153,16 @@ function progradeAttitude(state: KinematicState, inertia: InertiaTensor): Attitu
 // init が指す既定の設計を返す。
 function resolveDesign(init: VesselInit): VesselDesign {
   if ('blueprintShip' in init) return blueprintDesign(init.blueprintShip.blueprint);
-  if ('crewedShip' in init || 'savedShip' in init) return crewedShipDesign();
+  if ('crewedShip' in init) return crewedShipDesign();
+  if ('savedShip' in init) {
+    if (!init.savedShip.assembly) return crewedShipDesign();
+    const saved = init.savedShip;
+    const assembly = saved.assembly!;
+    return blueprintDesign(createBlueprint({
+      id: `${saved.id}-saved`, name: saved.name ?? saved.id,
+      tree: assembly.tree, placements: assembly.placements, now: 0,
+    }));
+  }
   if ('orbitalBase' in init || 'savedBase' in init) return orbitalBaseDesign();
   if ('hostileShip' in init) return hostileShipDesign(init.hostileShip.enemyKind, init.hostileShip.accent);
   return hostileShipDesign(init.savedHostile.enemyKind, init.savedHostile.accent);
@@ -225,7 +234,7 @@ export class Vessel extends GameEntity {
   // 所属勢力。表示種別と、喪失をどう記録するかがここから決まる。
   public readonly faction: VesselFaction;
   // ツリーと、その上に配置された搭載要素。質量特性を直接与えられた機体(§5-3)では null。
-  public readonly assembly: VesselAssembly | null;
+  public assembly: VesselAssembly | null;
   // 質量・重心・慣性テンソル・投影面積。assembly から導くか、直接与えられる。
   public readonly massProperties: MassProperties;
   // 狭域の接触形状。ツリーのエッジ1本につき1つで、形状を持たない機体では空になり外接球のままになる。
@@ -441,7 +450,18 @@ export class Vessel extends GameEntity {
     // planExecution を持たず followPlan: boolean で保存された形も受ける(true→'instant')。
     this._planExecution = saved.planExecution ?? (saved.followPlan ? 'instant' : 'off');
     this._fineAttitude = saved.fineAttitude ?? false;
-    this.inventory.replaceAll(saved.parts.map(partFromSaveData));
+    const restoredParts = saved.parts.map(partFromSaveData);
+    this.inventory.replaceAll(restoredParts);
+    if (saved.assembly && this.assembly) {
+      const byId = new Map(restoredParts.map((part) => [part.id, part]));
+      this.assembly = {
+        tree: saved.assembly.tree,
+        placements: saved.assembly.placements.map((placement) => ({
+          ...placement,
+          part: byId.get(placement.part.id) ?? placement.part,
+        })),
+      };
+    }
     this.restorePlan(saved.plan, hud);
   }
 
@@ -1005,6 +1025,10 @@ export class Vessel extends GameEntity {
       power: this.power!.serialize(),
       throttle: this.throttle.serialize(),
       parts: this.parts.map((p) => ({ ...p })) as AnyPart[],
+      assembly: this.assembly ? {
+        tree: this.assembly.tree,
+        placements: this.assembly.placements.map((placement) => ({ ...placement })),
+      } : undefined,
       planExecution: this._planExecution,
       fineAttitude: this._fineAttitude,
       plan: this.serializePlan(),
