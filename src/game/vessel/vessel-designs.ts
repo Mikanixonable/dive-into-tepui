@@ -1,5 +1,4 @@
-// 既定の設計。機体が積む部品・船体メッシュ・質量特性を1箇所で束ねる。搭載要素の一覧そのものは
-// これから置き換わっていくので、ここは「どの設計が何を積むか」だけを述べる。
+// 既定の設計。機体が積む部品・船体メッシュ・質量特性・能力の有無を、設計ごとに1箇所へ束ねる。
 import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { v3 } from '../../physics/vec3';
@@ -41,6 +40,11 @@ export interface VesselDesign {
 const CREWED_HP_RATIO = {
   hull: 0.40, cockpit: 0.10, thruster: 0.08, rcsTank: 0.08,
   radiator: 0.05, solarPanel: 0.03, weapon: 0.08, armor: 0.10,
+} as const;
+
+// 無人の敵対機の HP 配分比。船体・主機・タンク・武装・装甲へ配る。合計 1 になるよう保つ。
+const HOSTILE_HP_RATIO = {
+  hull: 0.45, thruster: 0.12, rcsTank: 0.08, weapon: 0.15, armor: 0.20,
 } as const;
 
 // maxHp を CREWED_HP_RATIO で割り振った、有人機の既定の搭載要素一式。
@@ -117,6 +121,28 @@ export function orbitalBaseDesign(): VesselDesign {
   };
 }
 
+// maxHp を HOSTILE_HP_RATIO で割り振った、無人の敵対機の搭載要素一式。
+function hostileParts(maxHp: number): AnyPart[] {
+  const R = HOSTILE_HP_RATIO;
+  const share = (ratio: number): number => Math.max(1, Math.round(maxHp * ratio));
+  const mk = <T extends PartType>(type: T, ratio: number, props: object): AnyPart =>
+    createPart(type, { maxHp: share(ratio), hp: share(ratio), ...props } as never);
+  return [
+    mk('hull', R.hull, { name: 'Hostile Hull' }),
+    mk('thruster', R.thruster, {
+      name: 'Hostile Thruster',
+      torque: C.MAX_ANG_ACCEL, thrust: 0, fuelConsumptionRate: 1,
+    }),
+    mk('rcs_tank', R.rcsTank, { name: 'Hostile Tank', maxFuel: 1000, fuel: 1000 }),
+    mk('weapon', R.weapon, {
+      name: 'Plasma Cannon', weaponType: 'cannon',
+      fireRate: 1 / C.ENEMY_FIRE_INTERVAL, damage: C.PLAYER_BULLET_DAMAGE,
+      muzzleVelocity: C.PLASMA_BULLET_SPEED,
+    }),
+    mk('armor', R.armor, { name: 'Hostile Armor', damageReduction: 0.2 }),
+  ];
+}
+
 // 敵対勢力の機体。見た目のスケールが大きいので、当たり半径はメッシュの外接球から取る。
 export function hostileShipDesign(enemyKind: EnemyKind, accent: string | number): VesselDesign {
   const renderObject = enemyKind.kind === 'stage0'
@@ -127,7 +153,7 @@ export function hostileShipDesign(enemyKind: EnemyKind, accent: string | number)
   return {
     faction: 'enemy',
     renderObject,
-    parts: crewedParts(C.ENEMY_MAX_HP),
+    parts: hostileParts(C.ENEMY_MAX_HP),
     massProperties: massPropertiesOf(10000, inertiaForEnemyKind(enemyKind)),
     radius: bounds.getBoundingSphere(new THREE.Sphere()).radius,
     hpRegenRate: 0,

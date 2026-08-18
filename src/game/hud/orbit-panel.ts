@@ -18,7 +18,7 @@ export class OrbitPanel {
   constructor(private readonly els: Map<string, HTMLElement>) {}
 
   sync(game: Game, attractors: readonly Attractor[]): void {
-    const entity = game.activeControllableEntity;
+    const entity = game.followedVessel;
     const el = document.getElementById('hud-orbit');
     if (!entity) {
       el?.classList.add('hidden');

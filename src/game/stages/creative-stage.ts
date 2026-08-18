@@ -222,7 +222,7 @@ export class CreativeStage extends Stage {
         this._hud.hint(`${ship.name} を配置`);
       } else if (form.objectType === 'enemy') {
         const finalName = name.trim() || generateRandomName('enemy');
-        const enemy = generateDriftingEnemy(finalName, state, C.ENEMY_MAX_HP, '#ff6a00', '#ff6a00', this.vesselDeps);
+        const enemy = generateDriftingEnemy(finalName, state, '#ff6a00', '#ff6a00', this.vesselDeps);
         this._entities.addVessel(enemy);
         this._hud.hint(`${enemy.name} を配置`);
       } else if (form.objectType === 'ammo') {

@@ -57,7 +57,7 @@ export class ViewManager {
     private readonly cameraSystem: CameraSystem,
     private readonly displayWindow: DisplayWindowManager,
     private readonly mapActions: MapContextActions,
-    private readonly activePlayers: ActiveVesselController,
+    private readonly activeVessels: ActiveVesselController,
     private readonly touchControls: TouchControls | null,
     requestedView?: WorldViewId,
   ) {
@@ -184,7 +184,7 @@ export class ViewManager {
   private canEnter(view: ViewId): boolean {
     if (view === 'dock') return this.docking?.canEnterDock() ?? false;
     if (view === 'combat') {
-      return this.activePlayers.current !== null
+      return this.activeVessels.current !== null
         || (this.controlledBaseProvider?.() ?? null) !== null
         || (this.docking?.getAvailableBases().length ?? 0) > 0;
     }
