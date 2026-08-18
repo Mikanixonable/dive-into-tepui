@@ -552,6 +552,18 @@ export class BaseView {
       section.appendChild(empty);
       return section;
     }
+    const filter = document.createElement('input');
+    filter.type = 'search';
+    filter.className = 'dock-part-swap-select';
+    filter.placeholder = '部品を検索 (名前 / 種別 / partRef)';
+    filter.setAttribute('aria-label', '作業台の部品を検索');
+    filter.addEventListener('input', () => {
+      const query = filter.value.trim().toLocaleLowerCase();
+      for (const row of Array.from(section.querySelectorAll<HTMLElement>('[data-workbench-part]'))) {
+        row.hidden = query.length > 0 && !(row.dataset.searchText ?? '').includes(query);
+      }
+    });
+    section.appendChild(filter);
     const stage = document.createElement('div');
     stage.className = 'dock-workbench-stage';
     stage.textContent = '3D作業領域 · 接続口 / 外表面 / トラス取付点へスナップ';
@@ -602,8 +614,10 @@ export class BaseView {
     row.type = 'button';
     row.draggable = true;
     row.className = 'dock-part-row';
+    row.dataset.workbenchPart = 'true';
     row.dataset.partId = part.id;
     row.dataset.fromInventory = String(fromInventory);
+    row.dataset.searchText = `${part.name} ${part.type} ${part.id}`.toLocaleLowerCase();
     row.textContent = `${part.name} · ${PART_TYPE_LABELS[part.type]} · ${Math.round(part.weight)} kg · HP ${Math.round(part.hp)}/${Math.round(part.maxHp)}`;
     row.addEventListener('dragstart', (event) => {
       event.dataTransfer?.setData('application/x-tepui-part', `${part.id}:${fromInventory ? 'inventory' : 'mounted'}`);
