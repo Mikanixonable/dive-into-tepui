@@ -25,6 +25,8 @@ export class DockWorkbenchSession {
   private targets: WorkbenchTarget[];
   private inventory: AnyPart[];
   private readonly validator: WorkbenchValidator;
+  private readonly past: WorkbenchSnapshot[] = [];
+  private readonly future: WorkbenchSnapshot[] = [];
 
   public constructor(snapshot: WorkbenchSnapshot, validator: WorkbenchValidator) {
     this.original = cloneSnapshot(snapshot);
@@ -39,25 +41,53 @@ export class DockWorkbenchSession {
   }
   public originalSnapshot(): WorkbenchSnapshot { return cloneSnapshot(this.original); }
   public validate(): WorkbenchValidation { return this.validator(this.snapshot()); }
+  public get canUndo(): boolean { return this.past.length > 0; }
+  public get canRedo(): boolean { return this.future.length > 0; }
+
+  public undo(): boolean {
+    const previous = this.past.pop();
+    if (!previous) return false;
+    this.future.push(this.snapshot());
+    this.restore(previous);
+    return true;
+  }
+
+  public redo(): boolean {
+    const next = this.future.pop();
+    if (!next) return false;
+    this.past.push(this.snapshot());
+    this.restore(next);
+    return true;
+  }
 
   public replaceTarget(id: string, assembly: VesselAssembly): void {
+    this.past.push(this.snapshot());
+    this.future.length = 0;
+    this.replaceTargetInternal(id, assembly);
+  }
+
+  private replaceTargetInternal(id: string, assembly: VesselAssembly): void {
     const index = this.targets.findIndex((target) => target.id === id);
     if (index < 0) throw new Error(`unknown workbench target: ${id}`);
     this.targets[index] = { id, assembly };
   }
 
   public removePlacement(targetId: string, partId: string): AnyPart {
+    this.past.push(this.snapshot());
+    this.future.length = 0;
     const target = this.target(targetId);
     const placements = [...target.assembly.placements];
     const index = placements.findIndex((placement) => placement.part.id === partId);
     if (index < 0) throw new Error(`unknown placement: ${partId}`);
     const [removed] = placements.splice(index, 1);
-    this.replaceTarget(targetId, { tree: target.assembly.tree, placements });
+    this.replaceTargetInternal(targetId, { tree: target.assembly.tree, placements });
     this.inventory.push(removed!.part);
     return removed!.part;
   }
 
   public installPlacement(targetId: string, placement: PartPlacement, inventoryPartId?: string): void {
+    this.past.push(this.snapshot());
+    this.future.length = 0;
     const target = this.target(targetId);
     if (inventoryPartId !== undefined) {
       const index = this.inventory.findIndex((part) => part.id === inventoryPartId);
@@ -65,7 +95,7 @@ export class DockWorkbenchSession {
       if (this.inventory[index]!.id !== placement.part.id) throw new Error('placement part mismatch');
       this.inventory.splice(index, 1);
     }
-    this.replaceTarget(targetId, {
+    this.replaceTargetInternal(targetId, {
       tree: target.assembly.tree,
       placements: [...target.assembly.placements, placement],
     });
@@ -76,8 +106,10 @@ export class DockWorkbenchSession {
     const sourcePlacements = source.assembly.placements.filter((candidate) => candidate.part.id !== partId);
     if (sourcePlacements.length === source.assembly.placements.length) throw new Error(`unknown placement: ${partId}`);
     const destination = this.target(toTargetId);
-    this.replaceTarget(fromTargetId, { tree: source.assembly.tree, placements: sourcePlacements });
-    this.replaceTarget(toTargetId, {
+    this.past.push(this.snapshot());
+    this.future.length = 0;
+    this.replaceTargetInternal(fromTargetId, { tree: source.assembly.tree, placements: sourcePlacements });
+    this.replaceTargetInternal(toTargetId, {
       tree: destination.assembly.tree,
       placements: [...destination.assembly.placements, placement],
     });
@@ -86,6 +118,13 @@ export class DockWorkbenchSession {
   public discardChanges(): void {
     this.targets = cloneTargets(this.original.targets);
     this.inventory = [...this.original.inventory];
+    this.past.length = 0;
+    this.future.length = 0;
+  }
+
+  private restore(snapshot: WorkbenchSnapshot): void {
+    this.targets = cloneTargets(snapshot.targets);
+    this.inventory = [...snapshot.inventory];
   }
 
   private target(id: string): WorkbenchTarget {
