@@ -252,12 +252,13 @@ function ensureStyle(): void {
   document.head.appendChild(style);
 }
 
-export type DockTab = 'ships' | 'parts' | 'production';
+export type DockTab = 'ships' | 'parts' | 'production' | 'workbench';
 
 const TAB_ITEMS: readonly (readonly [DockTab, string])[] = [
   ['ships', '格納艦艇'],
   ['parts', '部品'],
   ['production', '生産'],
+  ['workbench', '3D作業台'],
 ];
 
 // 資源1件の表示名と量。
@@ -360,6 +361,8 @@ export class BaseView {
   // 「生産」ボタン。実際の艦の生成は Docking 側が行う(BaseView は UI のみ)。
   public onProduceVessel: ((base: Vessel, blueprint: VesselBlueprint) => void) | null = null;
   public onClose: (() => void) | null = null;
+  public onWorkbenchDrop: ((base: Vessel, vessel: Vessel, partId: string, fromInventory: boolean) => void) | null = null;
+  public onWorkbenchRemove: ((base: Vessel, vessel: Vessel, partId: string) => void) | null = null;
 
   public get visible(): boolean { return this._visible; }
   public get element(): HTMLElement { return this.el; }
@@ -508,9 +511,90 @@ export class BaseView {
       case 'ships': this.bodyEl.appendChild(this.buildVesselsTab()); break;
       case 'parts': this.bodyEl.appendChild(this.buildPartsTab()); break;
       case 'production': this.bodyEl.appendChild(this.buildProductionTab()); break;
+      case 'workbench': this.bodyEl.appendChild(this.buildWorkbenchTab()); break;
     }
     // 操作した行を再構築してフォーカス要素がDOMから外れた場合も、背面HUDへ落とさない。
     if (this._visible && !this.el.contains(document.activeElement)) this.focusEntry();
+  }
+
+  private buildWorkbenchTab(): HTMLElement {
+    const base = this.currentBase!;
+    const vessel = this.currentVessel ?? base.baseState!.dockedVessels[0]?.vessel ?? null;
+    const section = document.createElement('section');
+    section.className = 'dock-section';
+    section.appendChild(this.buildSectionHeader(
+      'ドック3D作業台',
+      '部品をドラッグして作業台へ移し、クリックすると実機・仮構成共通のプロパティーを表示します。',
+      vessel ? `${vessel.parts.length} 搭載 / ${base.baseState!.inventory.length} 倉庫` : '対象なし',
+    ));
+    if (!vessel) {
+      const empty = document.createElement('div');
+      empty.className = 'dock-empty';
+      empty.textContent = '作業台へ置く格納艦を選択してください。';
+      section.appendChild(empty);
+      return section;
+    }
+    const stage = document.createElement('div');
+    stage.className = 'dock-workbench-stage';
+    stage.textContent = '3D作業領域 · 接続口 / 外表面 / トラス取付点へスナップ';
+    stage.addEventListener('dragover', (event) => event.preventDefault());
+    stage.addEventListener('drop', (event) => {
+      event.preventDefault();
+      const partId = event.dataTransfer?.getData('text/plain');
+      if (partId) this.onWorkbenchDrop?.(base, vessel, partId, true);
+    });
+    section.appendChild(stage);
+
+    const columns = document.createElement('div');
+    columns.className = 'dock-parts-columns';
+    const mounted = document.createElement('div');
+    mounted.className = 'dock-parts-col';
+    const mountedTitle = document.createElement('h3');
+    mountedTitle.className = 'dock-col-title';
+    mountedTitle.textContent = '仮構成 / 搭載';
+    mounted.appendChild(mountedTitle);
+    for (const part of vessel.parts) {
+      const row = this.buildWorkbenchPartRow(part, false);
+      row.addEventListener('dblclick', () => this.onWorkbenchRemove?.(base, vessel, part.id));
+      mounted.appendChild(row);
+    }
+    const inventory = document.createElement('div');
+    inventory.className = 'dock-parts-col';
+    const inventoryTitle = document.createElement('h3');
+    inventoryTitle.className = 'dock-col-title';
+    inventoryTitle.textContent = '倉庫 / 分解部品';
+    inventory.appendChild(inventoryTitle);
+    for (const part of base.baseState!.inventory) inventory.appendChild(this.buildWorkbenchPartRow(part, true));
+    columns.append(mounted, inventory);
+    section.appendChild(columns);
+    const hint = document.createElement('p');
+    hint.className = 'dock-section-description';
+    hint.textContent = '部品をダブルクリックすると取り外し候補になります。赤い候補は接続検証に失敗しています。';
+    section.appendChild(hint);
+    return section;
+  }
+
+  private buildWorkbenchPartRow(part: Part, fromInventory: boolean): HTMLElement {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.draggable = true;
+    row.className = 'dock-part-row';
+    row.dataset.partId = part.id;
+    row.dataset.fromInventory = String(fromInventory);
+    row.textContent = `${part.name} · ${PART_TYPE_LABELS[part.type]} · ${Math.round(part.weight)} kg · HP ${Math.round(part.hp)}/${Math.round(part.maxHp)}`;
+    row.addEventListener('dragstart', (event) => event.dataTransfer?.setData('text/plain', part.id));
+    row.addEventListener('click', () => this.showPartProperties(part));
+    return row;
+  }
+
+  private showPartProperties(part: Part): void {
+    const existing = this.el.querySelector<HTMLElement>('.dock-part-property-window');
+    existing?.remove();
+    const window = document.createElement('aside');
+    window.className = 'dock-part-property-window';
+    window.setAttribute('role', 'dialog');
+    window.innerHTML = `<strong>${part.name}</strong><br>${PART_TYPE_LABELS[part.type]}<br>partRef: ${part.id}<br>質量: ${part.weight} kg<br>HP: ${part.hp} / ${part.maxHp}`;
+    this.el.appendChild(window);
   }
 
   private buildSectionHeader(titleText: string, descriptionText: string, countText: string): HTMLElement {
