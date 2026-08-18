@@ -274,9 +274,9 @@ export class Vessel extends GameEntity {
   // ツリーと、その上に配置された搭載要素。質量特性を直接与えられた機体(§5-3)では null。
   public assembly: VesselAssembly | null;
   // 質量・重心・慣性テンソル・投影面積。assembly から導くか、直接与えられる。
-  public readonly massProperties: MassProperties;
+  public massProperties: MassProperties;
   // 狭域の接触形状。ツリーのエッジ1本につき1つで、形状を持たない機体では空になり外接球のままになる。
-  public readonly collisionCapsules: readonly HullCapsule[];
+  public collisionCapsules: readonly HullCapsule[];
   // 搭載要素。HP と性能の唯一の源。
   private readonly inventory: PartInventory;
 
@@ -334,7 +334,7 @@ export class Vessel extends GameEntity {
   public readonly ai: EnemyAi | null = null;
   // 基地モジュールが与える在庫と収容。モジュールを積まない機体では null。
   public readonly baseState: BaseState | null = null;
-  public readonly collisionGeom: BaseCollisionGeometry | null = null;
+  public collisionGeom: BaseCollisionGeometry | null = null;
 
   private readonly thrustEffects: ThrustEffects | null = null;
   private readonly rcsEffects: RcsEffects | null = null;
@@ -464,7 +464,7 @@ export class Vessel extends GameEntity {
     // 赤道交点マーカーを出す。
     if (hasBaseModule(this)) {
       this.baseState = { inventory: [], dockedVessels: [], resources: new ResourceLedger() };
-      this.collisionGeom = new BaseCollisionGeometry();
+      this.collisionGeom = new BaseCollisionGeometry(design.assembly ?? undefined);
       this.equatorNodes = new EquatorNodeMarkerPair(this, deps.markerManager);
     }
 
@@ -574,6 +574,39 @@ export class Vessel extends GameEntity {
   public refreshFromParts(): void { this.inventory.refresh(); }
   public applyDamageToParts(amount: number, part?: Part): void { this.inventory.applyDamage(amount, part); }
   public selfRepair(amount: number): void { this.inventory.selfRepair(amount); }
+
+  /**
+   * Apply an edited assembly to a live base while keeping its identity and operational state.
+   * The workbench calls this only after base-specific validation has succeeded.
+   */
+  public replaceAssembly(assembly: VesselAssembly): { ok: true } | { ok: false; reason: string } {
+    if (!this.baseState) return { ok: false, reason: '基地ではありません' };
+    try {
+      const design = orbitalBaseDesign(assembly);
+      const dockedObjects = new Set(this.baseState.dockedVessels.map((entry) => entry.vessel.renderObject));
+      const oldChildren = [...this.renderObject.children].filter((child) => !dockedObjects.has(child));
+      for (const child of oldChildren) {
+        this.renderObject.remove(child);
+        disposeVesselObject(child);
+      }
+      for (const child of [...design.renderObject.children]) this.renderObject.add(child);
+      const capsules = deriveCapsules(assembly.tree);
+      this.renderObject.add(buildVesselWireframe(assembly.tree, capsules));
+
+      this.assembly = assembly;
+      this.collisionCapsules = capsules;
+      this.collisionGeom = new BaseCollisionGeometry(assembly);
+      this.massProperties = design.massProperties;
+      this.mass = design.massProperties.mass;
+      this.radius = design.radius;
+      this.att = { ...this.att, inertia: design.massProperties.inertia };
+      this.inventory.replaceAll(design.parts);
+      for (const entry of this.baseState.dockedVessels) this.attachDockedVesselMesh(entry.vessel, entry.slotIndex);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, reason: error instanceof Error ? error.message : String(error) };
+    }
+  }
 
   // 自身が受けた速度変化 dv = impulse/mass に応じたダメージをパーツへ適用し、
   // ダメージが発生したかを返す。part を指定すると割り振り先をそのパーツに固定する。
@@ -1121,6 +1154,16 @@ export class Vessel extends GameEntity {
       nodes: nodes.map((n) => ({ t: n.t, r: { ...n.r }, v: { ...n.v } })),
     };
   }
+}
+
+function disposeVesselObject(object: THREE.Object3D): void {
+  object.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    mesh.geometry?.dispose();
+    const material = mesh.material;
+    if (Array.isArray(material)) material.forEach((item) => item.dispose());
+    else material?.dispose();
+  });
 }
 
 export type { DockedVesselEntry, BaseState };
