@@ -13,7 +13,7 @@ import { KEY_MAPPING as K } from './game/input/key-mapping';
 export type PerfCounts = {
   players: number; enemies: number; bullets: number; casings: number;
   debris: number; ammoPickups: number; asteroids: number; bases: number;
-  predicted: number; predictComplete: number; predictDiscarded: number; predictorSteps: number;
+  predicted: number; predictComplete: number; predictorSteps: number;
   arcBodies: number; arcRevisits: number; arcLead: number | null;
   mapMode: boolean; mapItems: number; mapLabels: number; displayDurationSec: number;
   simSubsteps: number; simIntegrated: number; simFollowed: number; gravitySources: number;
@@ -34,7 +34,6 @@ const RATE_COUNTS: readonly { key: string; label: string; group: string; read: (
   { key: 'plan-steps', label: '積分step', group: '計画軌道', read: (c) => c.planSteps },
   { key: 'pred-tracked', label: 'tracked', group: '予測', read: (c) => c.predicted },
   { key: 'pred-complete', label: 'complete', group: '予測', read: (c) => c.predictComplete },
-  { key: 'pred-discard', label: 'discard', group: '予測', read: (c) => c.predictDiscarded },
   { key: 'pred-steps', label: 'steps', group: '予測', read: (c) => c.predictorSteps },
   { key: 'arc-bodies', label: '解決天体', group: '予測', read: (c) => c.arcBodies },
   { key: 'arc-revisits', label: '期限訪問', group: '予測', read: (c) => c.arcRevisits },

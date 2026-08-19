@@ -212,8 +212,6 @@ export class Player extends Ship {
 
     this.throttle.updateThrustLatches(input);
     this.thrust = this.throttle.updateThrustState(input, this.att, simDt, this);
-    // 噴射中は毎フレーム破棄する — 次の Predictor がその時点の実状態を種に作り直す。
-    if (this.thrust !== null) this.invalidatePrediction();
 
     // 操作対象艦での手動並進・手動回転は 'powered' 自動実行を中断する(進行方向ホールドが
     // 手動回転で解除されるのと同じ作法)。

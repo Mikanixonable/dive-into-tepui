@@ -14,6 +14,12 @@ export function simulationStepDuration(
   return Math.max(0, end - simTime);
 }
 
+// 時間送り simDt を分割するサブステップ幅の上限 [s]。上限が固定値 maxDt だけだとサブステップ数が
+// ワープ倍率に正比例するので、maxCount を超える分割になるときは刻みの側を伸ばす。
+export function simulationMaxStep(simDt: number, maxDt: number, maxCount: number): number {
+  return Math.max(maxDt, simDt / maxCount);
+}
+
 // 再突入域の境界を越えない最大刻み。境界ちょうどは必ずreentryMaxStep側に含める。
 export function adaptiveSimulationMaxStep(
   states: readonly KinematicState[],
