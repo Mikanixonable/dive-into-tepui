@@ -28,7 +28,9 @@ export class Simulator {
   lastSubsteps = 0;
   lastGravitySourceCount = 0;
   // 今フレームに走った軌道積分(GameEntity.stepActual)の呼び出し回数。
-  lastOrbitSteps = 0;
+  lastIntegratedSteps = 0;
+  // 今フレームに予測列から消費した(積分を省いた)延べ数。
+  lastFollowedSteps = 0;
   // エンティティ側の最小イベント時刻の控えと、それを求めたときの LOD・顔ぶれの世代。
   private cachedEventTime: number | null = null;
   private cachedEventValid = false;
@@ -65,7 +67,8 @@ export class Simulator {
     const resolveCollision = simSpeed.canResolvePhysicalCollisions;
     this.lastSubsteps = 0;
     this.lastGravitySourceCount = 0;
-    this.lastOrbitSteps = 0;
+    this.lastIntegratedSteps = 0;
+    this.lastFollowedSteps = 0;
     const targetTime = this.simTime + simDt;
     // ×4を超えるワープでは射撃・剛体衝突が無効なので、弾と薬莢/破片は途中のsubstepで
     // 相互作用を起こさない。これらだけを最後に一度まとめて積分し、高warpのS倍走査を避ける。
@@ -217,7 +220,7 @@ export class Simulator {
       // 引力を持たないエンティティは重力源一覧に載り得ないので、除外の走査ごと省く。
       const selfId = e.mu !== 0 ? e.id : undefined;
       e.stepActual(dt, attractorsNearInto(e.state.r, classified, this.nearbyAttractorsScratch, selfId));
-      this.lastOrbitSteps++;
+      this.lastIntegratedSteps++;
     }
   }
 
@@ -250,7 +253,7 @@ export class Simulator {
       const elapsed = this.simTime - e.state.t;
       if (elapsed <= 1e-9) return;
       e.stepActual(elapsed, attractors);
-      this.lastOrbitSteps++;
+      this.lastIntegratedSteps++;
       e.att = stepAttitude(e.att, e.torque, elapsed);
     };
     for (const bullet of this.entities.bullets) step(bullet);
@@ -259,10 +262,11 @@ export class Simulator {
   }
 
   // 負荷確認ウィンドウが読む、直近フレームの積分規模。
-  perfCounts(): Pick<PerfCounts, 'simSubsteps' | 'orbitSteps' | 'gravitySources'> {
+  perfCounts(): Pick<PerfCounts, 'simSubsteps' | 'simIntegrated' | 'simFollowed' | 'gravitySources'> {
     return {
       simSubsteps: this.lastSubsteps,
-      orbitSteps: this.lastOrbitSteps,
+      simIntegrated: this.lastIntegratedSteps,
+      simFollowed: this.lastFollowedSteps,
       gravitySources: this.lastGravitySourceCount,
     };
   }
