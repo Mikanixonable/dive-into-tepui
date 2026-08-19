@@ -14,9 +14,9 @@ export type PerfCounts = {
   players: number; enemies: number; bullets: number; casings: number;
   debris: number; ammoPickups: number; asteroids: number; bases: number;
   predicted: number; predictComplete: number; predictDiscarded: number; predictorSteps: number;
-  arcBodies: number; arcRevisits: number;
+  arcBodies: number; arcRevisits: number; arcLead: number | null;
   mapMode: boolean; mapItems: number; mapLabels: number; displayDurationSec: number;
-  simSubsteps: number; orbitSteps: number; gravitySources: number;
+  simSubsteps: number; simIntegrated: number; simFollowed: number; gravitySources: number;
   planArcs: number; planSteps: number;
   attractorsCacheHits: number; attractorsCacheMisses: number;
   timeCacheHits: number; timeCacheMisses: number;
@@ -39,7 +39,8 @@ const RATE_COUNTS: readonly { key: string; label: string; group: string; read: (
   { key: 'arc-bodies', label: '解決天体', group: '予測', read: (c) => c.arcBodies },
   { key: 'arc-revisits', label: '期限訪問', group: '予測', read: (c) => c.arcRevisits },
   { key: 'sim-substeps', label: 'substeps', group: 'シミュレーション', read: (c) => c.simSubsteps },
-  { key: 'sim-orbit', label: '軌道積分', group: 'シミュレーション', read: (c) => c.orbitSteps },
+  { key: 'sim-integrated', label: '積分', group: 'シミュレーション', read: (c) => c.simIntegrated },
+  { key: 'sim-followed', label: '予測消費', group: 'シミュレーション', read: (c) => c.simFollowed },
   { key: 'sim-sources', label: '重力源', group: 'シミュレーション', read: (c) => c.gravitySources },
 ];
 
@@ -282,6 +283,7 @@ export class PerfMeter {
       this.countRow('draw-tris', 'triangles', '描画', this.triangleStats, frames),
 
       ...RATE_COUNTS.map((r, i) => this.countRow(r.key, r.label, r.group, this.rateStats[i]!, frames)),
+      { key: 'arc-lead', label: '先端余裕', group: '予測', value: c.arcLead === null ? '—' : `${c.arcLead.toFixed(0)}s` },
 
       { key: 'eph-attr', label: 'attractorsAt', value: `hit ${attrHits} / miss ${attrMisses}`, group: '暦キャッシュ' },
       { key: 'eph-all', label: '全リング', value: `hit ${timeHits} / miss ${timeMisses}`, group: '暦キャッシュ' },
