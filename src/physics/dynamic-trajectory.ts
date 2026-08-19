@@ -42,10 +42,7 @@ export class DynamicTrajectory {
 
   // 全天体重力 + 2次重力場 + 大気抵抗 + 太陽輻射圧 + 推力で 1 ステップ RK4 積分する
   // (dynamics.ts の stepDynamics)。attractors はそのステップぶん呼び出し側が確定させた
-  // 重力源一覧。先端は常に samples の最新要素で、1つ手前の保持サンプルから sampleInterval
-  // 秒以上離れているときだけ次の先端に置き換わらず追加保持される(解像度を落とす箇所は
-  // ここ)。保持窓は keepDuration。keepDuration = 0 なら常に前の先端を捨てて置き換えるだけ
-  // (デブリ・薬莢のコストをゼロに保つ)。
+  // 重力源一覧。sampleInterval・keepDuration は先端を積むときの保持方針(advanceTip)。
   // extrapolationCenter は extrapolatedAt が使う中心天体(省略時 null)。
   step(
     dt: number,
@@ -57,8 +54,22 @@ export class DynamicTrajectory {
     keepDuration: number,
     extrapolationCenter: Attractor | null = null,
   ): void {
+    const next = stepDynamics(this.state, dt, attractors, bcInv, srpCoeff, thrust);
+    this.advanceTip(next, sampleInterval, keepDuration);
+    this._extrapolationCenter = extrapolationCenter;
+  }
+
+  // 積分せず、外から与えられた状態を先端にする。保持方針・prevState の更新は step と同じ。
+  follow(state: KinematicState, sampleInterval: number, keepDuration: number): void {
+    this.advanceTip(state, sampleInterval, keepDuration);
+  }
+
+  // 先端を next にする。いまの先端は、1つ手前の保持サンプルから sampleInterval 秒以上
+  // 離れていれば保持サンプルとして残り、そうでなければ捨てて置き換わる(解像度を落とす箇所は
+  // ここ)。保持窓は keepDuration で、0 なら常に置き換えるだけ(デブリ・薬莢のコストを
+  // ゼロに保つ)。prevState はいまの先端へ進む。
+  private advanceTip(next: KinematicState, sampleInterval: number, keepDuration: number): void {
     const prev = this.state;
-    const next = stepDynamics(prev, dt, attractors, bcInv, srpCoeff, thrust);
     if (keepDuration > 0 && (this._samples.size < 2 || this._samples.newestGap >= sampleInterval)) {
       this._samples.cleanup(keepDuration, 2);
     } else {
@@ -66,7 +77,6 @@ export class DynamicTrajectory {
     }
     this._samples.push(next);
     this._prevState = prev;
-    this._extrapolationCenter = extrapolationCenter;
     this._samplesCache = null;
   }
 
@@ -80,7 +90,7 @@ export class DynamicTrajectory {
     this._samplesCache = null;
   }
 
-  // 保持区間全体を古い順に並べた1本の列。step/reset を挟まない限り同じ配列参照を返す
+  // 保持区間全体を古い順に並べた1本の列。先端が動かない限り同じ配列参照を返す
   // (TrajectoryLine.syncGeometry の再 bake 抑制が参照同一性で判定するため)。
   samplesOldestFirst(): readonly KinematicState[] {
     if (this._samplesCache === null) this._samplesCache = this._samples.toArrayOldestFirst();
