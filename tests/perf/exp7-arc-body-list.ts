@@ -6,7 +6,7 @@
 //
 // 合否は窓の絞り込み自身が約束している精度から立てる: 落とした天体の加速度は
 // GRAVITY_NEGLIGIBLE_ACCEL 未満なので、経過時間 T のあいだに積み上がる位置差は高々
-// GRAVITY_NEGLIGIBLE_ACCEL * T² / 2。乖離判定が見るのは弧の起点側の時刻なので、遠端の差
+// GRAVITY_NEGLIGIBLE_ACCEL * T² / 2。実シミュレーションが状態を引くのは弧の起点側なので、遠端の差
 // ではなく各チェックポイントをその経過時間なりの許容と突き合わせる。
 import { PredictedArc } from '../../src/game/simulation/predicted-arc';
 import { ArcBodies, type FutureAttractorProvider } from '../../src/game/simulation/arc-bodies';
@@ -198,8 +198,8 @@ export function run(): void {
     );
   }
 
-  // 起点側の差(乖離判定が実際に見る量)を、1周ぶんの短い span で確かめる。
-  console.log('\n## 乖離判定が見る近端の差(LEO 1周)\n');
+  // 起点側の差(実シミュレーションが実際に引く範囲)を、1周ぶんの短い span で確かめる。
+  console.log('\n## 実シミュレーションが引く近端の差(LEO 1周)\n');
   const leoRev = 2 * Math.PI * Math.sqrt(((R_EARTH + 420e3) ** 3) / MU_EARTH);
   const near = circularCase('LEO 420km', R_EARTH + 420e3, 97, leoRev);
   const cps = [0.25, 0.5, 0.75, 1].map((f) => near.state0.t + leoRev * f);
