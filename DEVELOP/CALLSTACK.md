@@ -103,24 +103,25 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
     - path.update() // 起点(plan.anchorOr が返す — 凍結済みならそれ、無ければ渡された自機の現在状態)とノード列を区間へ分解。表示座標系と un-bake 時刻もここで確定。buildSegments は末尾区間の起点時刻の天体窓を1回だけ引き、区間長(segmentDurationFrom)を決める
       - [区間ごと・ノード0件かつ末尾区間かつ操作対象(艦または基地)あり] arc = ship.predictedArc; arc?.apsides?.dropBefore(state0.t) // 操作対象の弧をそのまま borrow(owned: false)。積分は Predictor が伸ばす。ship.predictedArc がまだ無いフレームは何も答えない
       - [それ以外の区間] arc?.represents(state0, end, sourceRevision) // 既存の owned な弧が今フレームの区間をそのまま表せるか(あれば)。sourceRevision の不一致・積分済みサンプル間隔の粗さ・state0 の参照不一致のいずれかで false
-        - [false、または対応する弧がまだ無い] new PredictedArc(state0, provider, SHIP_BCINV, SHIP_SRP_COEFF, keplerTail=false) // 空の弧を作るだけ(同期積分はしない) — 伸ばすのは後段の predictor.update
+        - [false、または対応する弧がまだ無い] new PredictedArc(state0, provider, SHIP_BCINV, SHIP_SRP_COEFF, keplerTail=false, consumable=false) // 空の弧を作るだけ(同期積分はしない) — 伸ばすのは後段の predictor.update
         - arc.requiredEnd = end; arc.retainFrom = state0.t // 再利用・新規のどちらでも毎フレーム書き直す
     - ghostAt(displayTime) // 折れ線が displayTime に届かなければ null
     - apsisIconsOf() // path.finalSegment() の periapsis/apoapsis(末尾の弧がこれまでに見つけた値)と apsisCenter(検出時と同じ基準天体)を読み、その天体の位置だけを ephemeris.positionOf(center.id, 極値の時刻) で引き直して距離を出す。両方あるとき (遠地点距離-近地点距離)/(遠地点距離+近地点距離) < APSIS_MIN_ECC なら空、片方のみ(双曲線等)ならそのまま出す
     - player.equatorNodes.update(displayWindow.frame, displayWindow.displayTime, ephemeris, finalSegment.state0, finalSegment.samples) // 操作艦の EqAN/EqDN。代表軌道は計画の最終区間なので、交点は解析楕円ではなく積分折れ線の上に載る
   - sections.exit(SECTION.plan)
   - sections.enter(SECTION.predict)
-  - predictor.update(simulator.simTime, player, displayWindow.duration, !displayWindowManager.forceCurrent, editor.growableArcs()) // advanceSimulation の外、無条件(ポーズ中・決着後も呼ぶ — simTime が止まっている間は乖離が起きないので、予測は伸び切ったところで止まるだけ)。horizon = displayWindow.duration。第4引数は canDisplayFuture(表示時刻が現在より先へ動けるか)で、未来ゴーストが伸長理由として成り立つかを決める。growableArcs() は displayedPlan が無ければ空(表示していない計画の弧は伸ばさない)、あれば path.growableArcs()(owned な区間の弧を時刻順に)
-    - discardPredictionIfDiverged(simTime, attractors) // entities.all() のうち predictsFuture=true の対象全てへ、ビューによらず毎フレーム。attractors は simTime ぶんを1回だけ classifyAttractors し、対象ごとに attractorsNearInto でその位置の近傍へ絞ったもの(advanceBudget とは別のスクラッチ配列)
-      - invalidatePrediction() // predicted.at(simTime) が実位置から許容量を超えて乖離、または区間外のときのみ。許容量は PREDICT_RESET_DIST を下限に、保持サンプルの間引きが粗いぶんの補間誤差まで広げる
+  - predictor.update(simulator.simTime, simulator.lastSimDt, player, displayWindow.duration, !displayWindowManager.forceCurrent, editor.growableArcs()) // advanceSimulation の外、無条件(ポーズ中・決着後も呼ぶ — simTime が止まっている間はサブステップも進まないので、消費も期限切れの張り直しも起きず、予測は伸び切ったところで止まるだけ)。horizon = displayWindow.duration。simDt は下記 maxStep 算出にだけ使う。第5引数は canDisplayFuture(表示時刻が現在より先へ動けるか)で、未来ゴーストが伸長理由として成り立つかを決める。growableArcs() は displayedPlan が無ければ空(表示していない計画の弧は伸ばさない)、あれば path.growableArcs()(owned な区間の弧を時刻順に)
+    - maxStep = simulationMaxStep(simDt, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT) // Simulator.advance の adaptiveMaxStep と同じ関数(time-step.ts)。1回だけ組んで、この後 consumable な弧すべてへ書き込む
+    - [entities.all() のうち predictsFuture=true な各個体、tracked のカウントと同じ走査で] [!consumesPrediction(=mu≠0) かつ既存の弧があり、!arc.needsGrowth(伸び切っている)かつ simTime − arc.state0.t > ARC_REANCHOR_INTERVAL] invalidatePrediction() // 消費されない弧(重力源 entity 自身の予測)だけを、伸び切ったものに限って期限切れで張り直し、実体との開きを戻す。伸長中の弧は対象にしない
     - targets = entities.all().filter(e => e.hasFutureReader(canDisplayFuture)) // 伸長対象は、その個体の未来を読む消費者がいるものだけ(重力源・計画衝突体・canDisplayFuture なときのゴースト・予測線を持つもの のいずれか)。forceCurrent の戦闘ビューではゴーストが理由として立たず、操作艦にも予測線が付かない(解析楕円で描かれる)ので、通常ステージでは集合が空になる
     - interactiveShip = player !== null && player.hasFutureReader(canDisplayFuture) ? player : null // 優先枠に載せる操作艦。読む消費者がいなければ null で、優先枠ごと飛ばす
     - interactiveBudget = (targets に interactiveShip 以外がいる) ? floor(ARC_STEP_BUDGET × ARC_INTERACTIVE_RATIO) : ARC_STEP_BUDGET // 操作艦の弧 → 計画の弧(時刻順)が共有する上限枠。他に伸ばす対象が無ければ全額。1フレーム予算はビューによらず ARC_STEP_BUDGET 一本
-    - [interactiveShip !== null] advanceBudget(interactiveShip, interactiveBudget, ...) // ensurePredictedArc(futureAttractors) で弧を得て(無ければ消費 0)、requiredEnd = simTime + horizon / retainFrom = simTime を書いてから grow(arc, interactiveBudget) を呼ぶ
-      - interactiveShip.ensurePredictedArc(futureAttractors) // predictsFuture=false なら null。無ければ actual.state を起点に新規生成(mu≠0 なら自身の id を excludeId として渡す)
-      - grow(arc, budgetSteps) // while (consumed < budgetSteps && arc.step()) consumed++
-    - [interactiveBudget が残る限り、editor.growableArcs() の各弧を時刻順に] grow(arc, interactiveBudget) // requiredEnd/retainFrom は path.update が書き込み済みなので、そのまま伸ばすだけ。伸び切った弧は消費0で次の弧へ使い残しを回す — 近い区間から先に伸び切るので、線は自機側から外へ育って見える
-      - arc.step() // !needsGrowth(打ち切り済み、または先端が requiredEnd に到達済み)なら即 false。中心窓は最初の1歩だけ先端時刻で bodies.resolve(tip.t, tip, 0)(ArcBodies、below)して解決し、以後は前歩の中点窓(carriedSources)を持ち越して rawCenter(刻み幅・重力源用 — 自身の除外は ArcBodies が候補からあらかじめ落とすので済み)/analyticCenter(外挿・アプシス中心用、解析天体だけの窓から解決)を求める。刻み幅は軌道項(keplerPeriod/ARC_STEPS_PER_REV)・粗化項(span/ARC_MAX_STEPS)・接近項(動径接近率×ARC_APPROACH_SAFETY、中心窓の衝突体を走査)の最も厳しい値を ARC_MIN_STEP_DT で下限にした値。積分の重力源は中点時刻で bodies.resolve(tip.t + dt/2, tip, dt) が返す窓(mid)の gravity をそのまま使う(分類・近傍絞り込みは経由しない)
+    - [interactiveShip !== null] advanceBudget(interactiveShip, interactiveBudget, ...) // ensurePredictedArc(futureAttractors) で弧を得て(無ければ消費 0)、requiredEnd = simTime + horizon / retainFrom = simTime − ARC_RETAIN_MARGIN / simulationMaxStep = maxStep を書いてから grow(arc, interactiveBudget) を呼ぶ
+      - interactiveShip.ensurePredictedArc(futureAttractors) // predictsFuture=false なら null。無ければ actual.state を起点に、consumable = 自身の consumesPrediction を渡して新規生成(mu≠0 なら自身の id を excludeId としても渡す)
+      - grow(arc, budgetSteps) // while (consumed < budgetSteps && arc.step()) consumed++。この弧は consumable(=mu===0 の自機の弧)なので刻み幅は下記 arc.step() の [consumable] 分岐(min(接近項, simulationMaxStep))を通る
+    - [interactiveBudget が残る限り、editor.growableArcs() の各弧を時刻順に] grow(arc, interactiveBudget) // requiredEnd/retainFrom は path.update が書き込み済みなので、そのまま伸ばすだけ。この弧は consumable=false(計画区間)固定。伸び切った弧は消費0で次の弧へ使い残しを回す — 近い区間から先に伸び切るので、線は自機側から外へ育って見える
+      - arc.step() // !needsGrowth(打ち切り済み、または先端が requiredEnd に到達済み)なら即 false。中心窓は最初の1歩だけ先端時刻で bodies.resolve(tip.t, tip, 0)(ArcBodies、below)して解決し、以後は前歩の中点窓(carriedSources)を持ち越して rawCenter(刻み幅・重力源用 — 自身の除外は ArcBodies が候補からあらかじめ落とすので済み)/analyticCenter(外挿・アプシス中心用、解析天体だけの窓から解決)を求める。刻み幅は [consumable] min(接近項(動径接近率×ARC_APPROACH_SAFETY、中心窓の衝突体を走査)、simulationMaxStep) / [!consumable] 軌道項(keplerPeriod/ARC_STEPS_PER_REV)・粗化項(span/ARC_MAX_STEPS)・接近項の最も厳しい値を ARC_MIN_STEP_DT で下限にした値。積分の重力源は中点時刻で bodies.resolve(tip.t + dt/2, tip, dt) が返す窓(mid)の gravity をそのまま使う(分類・近傍絞り込みは経由しない)
+        - sampleInterval = [consumable] tip.t − retainFrom が ARC_FINE_STEPS×dt 以内なら 0(毎歩保持)、それ以遠は trajectorySampleInterval(period, 0) / [!consumable] trajectorySampleInterval(period, span) // 表示期間(span)由来の項は consumable な弧では使わない
         - trajectory.step(dt, mid.gravity, bcInv, srpCoeff, null, sampleInterval, span, keplerTail ? analyticCenter : null) // 有限でなければ truncated を立てて終了。有限なら ApsisTrack.observe(prev, next) → reachedBody(prev, next, mid.collision)/burnUpBody で表面到達・焼失を判定し(collision は mu=0 天体と predictedAsPlanCollider entity を含む、自身は bodies が候補からあらかじめ除いてある)、mid を carriedSources として持ち越す。計画区間の own な弧は keplerTail=false なので extrapolationCenter は常に null
     - advanceBudget(entity, ...) // 残り予算(interactive の使い残し込み)を targets 上のカーソル位置から1周ぶん配る(interactiveShip は優先枠で処理済みなのでここでは飛ばす)。1体の取り分は max(ARC_MIN_ITEM_STEPS, floor(残額 / 残り訪問数)) を残額で頭打ちにした値で、使い残しは次の個体へ回る。targets には未来を読まれない個体が入らないので、残り訪問数はその個体数ぶん小さい。ensurePredictedArc が null、または arc.step() が最初から false(needsGrowth=false)の個体は、消費 0 で次へ即進む
   - sections.exit(SECTION.predict)
@@ -241,7 +242,7 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
     // 弾も薬莢もデブリも天体も同じ ContactPhysics を通る一本の経路。resolveCollision は advance の内部で
     // simSpeed.canResolvePhysicalCollisions から求める(呼び出し側からは渡さない)
     - [サブステップごと] ×ceil(simDt / maxStep) // 分割数は simDt と刻み上限のみで決まる(実 fps に依存しない)。上限は SUBSTEP_MAX_COUNT 個で、超える時間送りでは刻み幅の側が伸びる
-      - adaptiveMaxStep(simDt) → adaptiveSimulationMaxStep(生存する艦の state, R_EARTH + REENTRY_SUBSTEP_ALT, max(SUBSTEP_MAX_DT, simDt / SUBSTEP_MAX_COUNT), REENTRY_SUBSTEP_MAX_DT)
+      - adaptiveMaxStep(simDt) → adaptiveSimulationMaxStep(生存する艦の state, R_EARTH + REENTRY_SUBSTEP_ALT, simulationMaxStep(simDt, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT), REENTRY_SUBSTEP_MAX_DT) // simulationMaxStep(time-step.ts)は Predictor.update の maxStep 算出と同じ関数
         // 走査対象は entities.players と entities.enemies のみ。いずれかが再突入高度以下、または現在の降下率でその境界へ到達しうるとき、そのフレームの刻み上限が REENTRY_SUBSTEP_MAX_DT へ落ちる
       - nextEventTime(activeStage, passiveWarpLod) // activeStage.nextSimulationEventTime(simTime) と、エンティティ側の最小イベント時刻のうち早いものへ subDt を切り詰める
         // ステージ側は毎 substep 引き直す(艦の現在の Δv と加速度から毎回決まる生きた値のため)。エンティティ側(entityEventTime)は固定の絶対時刻なので控えを使い回し、simTime がその時刻へ到達したとき・entities.collectionRevision が変わったとき・passiveWarpLod が切り替わったときだけ全生存エンティティを走査し直す
@@ -250,8 +251,10 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
       - attractorsAt(ephemeris, entities, simTime + dt/2) // サブステップ中点で1回だけ: ephemeris.attractorsAt(t) の mu!==0 部分(gravityBodiesAt)+ entities.attractors()(mu!==0 の生存中 GameEntity)を合流。この窓を substep へ渡し、剛体接触を解決しないワープ帯では表面到達判定にも使い回す
       - substep(subDt, sources, passiveWarpLod)
         - classifyAttractors(sources) // 同じく1回だけ: μ の重い順 GRAVITY_ALWAYS_COUNT 本を always へ、残りを SpatialGrid へ分類。しきい値 μ(alwaysThresholdMu)もセル一辺(gridCellSize = √(最重グリッド天体 μ / GRAVITY_NEGLIGIBLE_ACCEL))もこの一覧から毎回導く
-        - entity.stepActual(dt, attractorsNearInto(entity.state.r, classified, scratch, entity.id)) → actual.step() → stepDynamics()(保持サンプル列への記録)
-          // 自機(全隻)・敵・弾・薬莢・デブリ・補給・基地・小惑星それぞれ、個体ごと。alive のみ実行。attractorsNearInto は always + 自身の位置の27近傍グリッドから自分自身の id を除いたもの。それらの重力 + J2 + 大気抵抗(bcInv)+ 自身の thrust
+        - near = attractorsNearInto(entity.state.r, classified, scratch, entity.id) // always + 自身の位置の27近傍グリッドから自分自身の id を除いたもの
+          // 自機(全隻)・敵・弾・薬莢・デブリ・補給・基地・小惑星それぞれ、個体ごと。alive のみ実行
+        - [consumesPrediction(=mu===0) かつ followPredicted(t=simTime+dt, near) が true] actual.follow(predicted.at(t), historySampleInterval, historyDuration) // 予測列が既にこの時刻を持っていれば、それを先端にして積分を省く
+        - [それ以外(mu≠0、または予測が t にまだ届いていない)] entity.stepActual(dt, near) → actual.step() → stepDynamics()(保持サンプル列への記録)。それらの重力 + J2 + 大気抵抗(bcInv)+ 自身の thrust。[consumesPrediction] 積分後に invalidatePrediction()(この弧はもう現実を表さない)
       - nanWatchdog.checkPlayer('simulator.advance(軌道積分)')
       - stepAttitudes(subDt) → stepAttitude() → entity.att へ代入 // 自機・敵・薬莢・デブリ・補給すべて同じ subDt で一律に積分する
       - nanWatchdog.checkPlayer('simulator.advance(姿勢積分)')
@@ -553,10 +556,10 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
   線は数フレームかけて予算ぶんずつ伸びる。マップモード中でも大半のフレームは `represents` が真で
   `requiredEnd`/`retainFrom` の書き換えと `line.syncTransform()`(O(1) の剛体変換)だけで済む。
 - **過去 state の記録・prevState の更新は `physics/dynamic-trajectory.ts` の `DynamicTrajectory`(`GameEntity.actual`)の
-  `step`/`reset` が行う**ので、この木には独立ノードとして現れない。`entity.stepActual()` /
-  `contactPhysics.resolveSubstep()`/`resolveBelt()` の解決結果書き戻し / 反動など、state へ代入する
-  すべての経路が記録契機になる(前者は `actual.step` 経由、後者は `actual.reset`
-  経由)。`game/simulation/contact.ts` の掃引接触判定と `targeter.updateBoardMarks()` が読む
+  `step`/`follow`/`reset` が行う**ので、この木には独立ノードとして現れない。`entity.stepActual()`(積分)/
+  `entity.followPredicted()`(予測列から先端を引く、below)/ `contactPhysics.resolveSubstep()`/`resolveBelt()` の
+  解決結果書き戻し / 反動など、state へ代入するすべての経路が記録契機になる(前2者は保持方針を共有する
+  `actual.step`/`actual.follow` 経由、後者は `actual.reset` 経由)。`game/simulation/contact.ts` の掃引接触判定と `targeter.updateBoardMarks()` が読む
   「直前サブステップ位置」(`entity.prevState.r`)は先端を含む保持サンプル列とは別フィールドなので、
   `historyDuration = 0` の弾でも常に供給される。
 - **`TouchControls` は per-frame の update を持たない**。DOM の pointer イベントから

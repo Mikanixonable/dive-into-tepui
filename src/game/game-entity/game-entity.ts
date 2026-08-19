@@ -1,13 +1,13 @@
 // ゲーム内エンティティの定義。位置・速度は ECI 座標系 [m, m/s]。
 import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../physics/kinematic-state';
-import { OrbitalElements, keplerPeriod } from '../../physics/elements';
+import { OrbitalElements } from '../../physics/elements';
 import { Attitude } from '../../physics/attitude';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { Attractor, BodyImpact, Degree2Gravity, orbitalElementsOf, localOrbitPeriod, reachedBody, strongestAttractor } from '../../physics/attractor';
 import { burnUpBody } from '../../physics/atmosphere';
 import { ApsisTrack } from '../../physics/trajectory-features';
-import { Vec3, len, sub, v3 } from '../../physics/vec3';
+import { Vec3, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import { OrbitLine } from '../orbit-line';
 import { TrajectoryLine } from '../trajectory-line';
@@ -25,9 +25,6 @@ import type { EntityMarker } from '../marker/entity-marker';
 import type { MarkerManager } from '../marker/marker-manager';
 import { GRAVITATIONAL_CONSTANT } from '../../physics/solar-system';
 
-// 乖離許容量の上限。その場の局所軌道の長半径に対する割合 [無次元]。
-const DIVERGENCE_TOLERANCE_MAX_ORBIT_RATIO = 0.02;
-
 const identityAttitude = (): Attitude => ({
   q: { x: 0, y: 0, z: 0, w: 1 },
   w: v3(),
@@ -40,8 +37,9 @@ export class GameEntity {
   readonly actual: DynamicTrajectory;
 
   get state(): KinematicState { return this.actual.state; }
-  // 不連続な差し替え専用の口(剛体接触・反動など)。
-  set state(s: KinematicState) { this.actual.reset(s); }
+  // 不連続な差し替え専用の口(剛体接触・反動など)。差し替え前の軌道を表す弧はもう
+  // 現実を表さないので、この場で無効化する。
+  set state(s: KinematicState) { this.actual.reset(s); this.invalidatePrediction(); }
   get prevState(): KinematicState { return this.actual.prevState; }
 
   private static readonly idAllocator = new EntityIdAllocator('entity-');
@@ -68,7 +66,15 @@ export class GameEntity {
   // RK4 の段の時刻への位置外挿(attractorPositionAt)は一次に落ちる — 実体の重力は解析天体に
   // 比べて桁違いに小さく、その二次項の寄与は無視できる。
   accel: Vec3 = v3();
-  thrust: Vec3 | null = null;
+  private _thrust: Vec3 | null = null;
+  // 自身が出している ECI 加速度 [m/s²]。null = 噴射していない。噴射している間の弧は現実を
+  // 表さないので、非 null を書いた時点で無効化する — 実シミュレーションはそこから積分へ落ち、
+  // 次の Predictor がその時点の実状態を種に弧を作り直す。
+  get thrust(): Vec3 | null { return this._thrust; }
+  set thrust(t: Vec3 | null) {
+    this._thrust = t;
+    if (t !== null) this.invalidatePrediction();
+  }
   // 機体座標系トルク。既定ゼロ = 自由回転。
   torque: Vec3 = v3();
   // 自身の軌道楕円を描く線。null = 持たない。
@@ -120,6 +126,10 @@ export class GameEntity {
   get predictsFuture(): boolean {
     return this.hasFutureReader(true);
   }
+
+  // 実シミュレーションが自分の状態を予測列から引いてよい種別か。重力を及ぼす実体は
+  // 共有の重力窓で対称に積分される必要があるので、常に実シミュレーションが積分する。
+  get consumesPrediction(): boolean { return this.mu === 0; }
   protected readonly scene?: THREE.Scene;
 
   // 未来の予測列を保持する統一積分弧(game/simulation/predicted-arc.ts の PredictedArc)。
@@ -273,16 +283,22 @@ export class GameEntity {
     return trajectorySampleInterval(localOrbitPeriod(state.r, attractors), keepDuration);
   }
 
+  // 実状態の履歴へ積む間引き間隔 [s]。履歴を持たない種別は 0。
+  private historySampleInterval(attractors: readonly Attractor[]): number {
+    return this.historyDuration > 0
+      ? this.sampleInterval(attractors, this.state, this.historyDuration) : 0;
+  }
+
   // 重力源 + J2 + 大気抵抗 + 自身の推力で 1 ステップ積分する。attractors はこのステップの
   // 重力源一覧 — 呼び出し側(Simulator)が全エンティティで同じ瞬間の同じ配列を使い回す。
-  // historyDuration が 0(弾・薬莢・破片)の間は間引き間隔を使わないので sampleInterval を
-  // 評価しない。
   stepActual(dt: number, attractors: readonly Attractor[]): void {
     if (!this.alive) return;
-    const interval = this.historyDuration > 0
-      ? this.sampleInterval(attractors, this.state, this.historyDuration)
-      : 0;
-    this.actual.step(dt, attractors, this.bcInv, this.srpCoeff, this.thrust, interval, this.historyDuration);
+    this.actual.step(
+      dt, attractors, this.bcInv, this.srpCoeff, this.thrust,
+      this.historySampleInterval(attractors), this.historyDuration,
+    );
+    // 積分した弧はもう現実を表さない。ある時間帯の状態を決める積分を常に1本に保つ。
+    if (this.consumesPrediction) this.invalidatePrediction();
   }
 
   // シミュレーションを正確に区切る必要がある次の絶対時刻。寿命など、既知の時刻で
@@ -301,47 +317,19 @@ export class GameEntity {
     if (!this.predictsFuture) return null;
     this._predictedArc ??= new PredictedArc(
       this.actual.state, sources, this.bcInv, this.srpCoeff, /* keplerTail */ true,
-      this.mu !== 0 ? this.id : undefined,
+      /* consumable */ this.consumesPrediction, this.mu !== 0 ? this.id : undefined,
     );
     return this._predictedArc;
   }
 
-  // 実状態との位置ずれが許容量を超えていたら予測列を破棄する。破棄したら true。
-  // attractors は simTime の重力源一覧。
-  discardPredictionIfDiverged(simTime: number, attractors: readonly Attractor[]): boolean {
-    const predicted = this.predicted;
-    if (predicted === null) return false;
-    const predictedState = predicted.at(simTime);
-    if (predictedState !== null
-      && len(sub(predictedState.r, this.state.r)) <= this.divergenceTolerance(attractors)) {
-      return false;
-    }
-    this.invalidatePrediction();
+  // 予測列が時刻 t を持っていれば、その状態を先端にして true。持っていなければ何もせず false
+  // (呼び出し側は積分へ落とす)。attractors は履歴の間引き間隔を出すための重力源一覧。
+  followPredicted(t: number, attractors: readonly Attractor[]): boolean {
+    if (!this.alive) return false;
+    const s = this._predictedArc?.trajectory.at(t) ?? null;
+    if (s === null) return false;
+    this.actual.follow(s, this.historySampleInterval(attractors), this.historyDuration);
     return true;
-  }
-
-  // 乖離判定の許容量 [m]。間引きが粗い列では at() の補間そのものが誤差を持つので、その誤差
-  // (間引き間隔の4乗に比例)まで許容量を広げる — 広げないと、実状態と一致している列を
-  // 毎フレーム破棄して予測が永久に完成しなくなる。粗さは列自身が記録している値から取る:
-  // 現在の表示期間から導くと、表示期間を短く切り替えた瞬間に、粗い間隔で積まれた既存の列に
-  // 対して閾値だけが縮み、正しい列を破棄し続けることになる。
-  // coarsening^4 は粗い列で発散するので、その場の局所軌道の長半径に対する一定割合で頭打ちに
-  // する — 距離を基準にすると、惑星間で最強重力源が恒星になった途端に上限が実質無くなる。
-  // 下限の PREDICT_RESET_DIST は、小さな天体のすぐ近くで割合の上限自体が補間誤差を下回り、
-  // 頭打ちが逆に永久破棄を招くのを防ぐ。
-  private divergenceTolerance(attractors: readonly Attractor[]): number {
-    const center = strongestAttractor(this.state.r, attractors);
-    const period = keplerPeriod(len(sub(this.state.r, center.state.r)), center.mu);
-    const span = isFinite(period) && period > 0 ? period : C.SHIP_HISTORY_DURATION;
-    const interval = this.predicted?.sampleInterval ?? 0;
-    const coarsening = Math.max(1, interval / (span / C.TRAJECTORY_SAMPLES_PER_REV));
-    const raw = C.PREDICT_SAMPLE_ERROR * coarsening ** 4;
-    // 局所軌道周期に対応する長半径(ケプラー第三法則)。中心天体の μ が取れなければ
-    // 中心からの距離で代用する。
-    const orbitScale = center.mu > 0 && isFinite(span)
-      ? (center.mu * (span / (2 * Math.PI)) ** 2) ** (1 / 3)
-      : len(sub(this.state.r, center.state.r));
-    return Math.max(C.PREDICT_RESET_DIST, Math.min(raw, orbitScale * DIVERGENCE_TOLERANCE_MAX_ORBIT_RATIO));
   }
 
   // 表示時刻 t の状態。予測を持たない/予測期間を超えた時刻は null。ephemeris を渡すと、
