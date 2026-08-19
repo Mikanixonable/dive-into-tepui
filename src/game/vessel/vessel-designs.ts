@@ -159,12 +159,14 @@ function hullRadiusOf(assembly: VesselAssembly): number {
 export function blueprintDesign(bp: VesselBlueprint): VesselDesign {
   const assembly = assemblyOf(bp);
   const parts = assembly.placements.map((placement) => placement.part);
+  const massProperties = massPropertiesFrom(deriveMassProperties(assembly));
+  tuneActuators(parts, massProperties.mass, principalMoments(massProperties.inertia).z);
   return {
     faction: 'ally',
     renderObject: new AssemblyRenderObject(assembly).object,
     assembly,
     parts,
-    massProperties: massPropertiesFrom(deriveMassProperties(assembly)),
+    massProperties,
     radius: hullRadiusOf(assembly),
     hpRegenRate: C.HP_REGEN_RATE,
     reentryAltMargin: C.PLAYER_MIN_ALT,
