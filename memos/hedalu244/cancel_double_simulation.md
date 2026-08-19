@@ -70,6 +70,15 @@ interactive 枠 = `ARC_STEP_BUDGET × ARC_INTERACTIVE_RATIO` = 150歩/フレー�
 **ワープに比例して刻みを粗くしてくれる**ので、「予測の刻み下限をワープ倍率へ連動させる」対策は
 規則を揃えるだけで自動的に手に入る。専用の下限定数は要らない。
 
+## 1-4. 現象の実測(ヘッドレス、stage1)
+
+高ワープ(×131072)+ 28日表示では、追跡中の6個体に対し `predictDiscarded` が毎集計窓 5〜6、
+`predictComplete` は 0 — **予測列が一度も完成しない**。1周回表示へ戻すと `predictComplete` は 1 へ上がる。
+1-1 / 1-2 の「表示期間を伸ばすと刻みも間引きも粗くなり、乖離判定を必ず跨ぐ」がそのまま出ている。
+
+フレーム時間の内訳はヘッドレス(ソフトウェア描画)では環境律速で、frame 2.7〜9.0s / fps 0 と実機の値にならない。
+予算の判断材料は ms ではなく `arcLead`(操作艦の予測先端 − simTime [s])を使う。
+
 ---
 
 # 第2章 変更後の契約
@@ -201,13 +210,6 @@ if (arc !== null && !arc.needsGrowth && simTime - arc.state0.t > C.ARC_REANCHOR_
 
 # 第4章 実装計画
 
-## 段0. 計測の足場(先に入れる)
-- `PerfCounts` に `simFollowed`(消費したサブステップ×個体の延べ数)・`simIntegrated`(積分した方)・
-  `arcLead`(操作艦の `tip - simTime` [s])を足し、`perf-meter.ts` の `RATE_COUNTS` と行表へ追加。
-  `arcLead` は水準値なのでレート集計に入れない。
-- 現象の再現手順を確定させる: 高ワープ + 長い表示期間で `predictDiscarded` が毎フレーム立つことを確認する。
-- 変更前の `update内訳` の `予測` / `積分` の ms を記録する(段2の予算判断の材料)。
-
 ## 段1. 消費経路の導入(本体)
 
 **`physics/dynamic-trajectory.ts`**
@@ -231,7 +233,7 @@ if (arc !== null && !arc.needsGrowth && simTime - arc.state0.t > C.ARC_REANCHOR_
   「`e.consumesPrediction && e.followPredicted(t)` が真なら次へ、
   でなければ `e.stepActual(...)` の後、`e.consumesPrediction` なら `e.invalidatePrediction()`」へ変える。
   `t` はそのサブステップの終端時刻。
-- 消費/積分の延べ数を段0のカウンタへ積む。
+- 消費/積分の延べ数を `lastFollowedSteps` / `lastIntegratedSteps` へ積む。
 
 **`game/simulation/predicted-arc.ts`**
 - コンストラクタに `consumable: boolean` を足す(消費管理の実体の弧は true、
@@ -265,8 +267,8 @@ if (arc !== null && !arc.needsGrowth && simTime - arc.state0.t > C.ARC_REANCHOR_
   基準を残したまま放置しない。
 
 ## 段2. 定数の再調整
-- `ARC_STEP_BUDGET` 300 → 600 を候補に、段0の実測と `arcLead` を見て決める。
-  刻みが 40s → 20s になり歩数が倍必要になる一方、実シミュレーション側の `orbitSteps` は
+- `ARC_STEP_BUDGET` 300 → 600 を候補に、`arcLead` を見て決める。
+  刻みが 40s → 20s になり歩数が倍必要になる一方、実シミュレーション側の `simIntegrated` は
   消費したぶん減るので、正味の増分は測ってから決める。
 - `ARC_FINE_STEPS` は 512 を初期値にする(×1 で 512×20s = 2.8 実時間ぶん、
   最高ワープで 512×34.1s = 8フレームぶん)。高ワープでは接触も射撃も無いので、
@@ -320,8 +322,8 @@ if (arc !== null && !arc.needsGrowth && simTime - arc.state0.t > C.ARC_REANCHOR_
   - 3-5 の確認: 同じ位置・同じ時刻で `ArcBodies.resolve().gravity` と
     `attractorsNearInto(classifyAttractors(...))` が与える加速度の差が `GRAVITY_NEGLIGIBLE_ACCEL` 以下。
 - 実行時(`/verify`):
-  - 高ワープ + 28日表示で自艦の予測線が跳ねないこと(段0 で記録した変更前の `predictDiscarded` の
-    立ち方と見比べる。カウンタ自体は段1で無くなる)。
+  - 高ワープ + 28日表示で自艦の予測線が跳ねないこと(1-4 の変更前の値と見比べる。
+    `predictDiscarded` 自体は段1で無くなるので、`predictComplete` が立つことで見る)。
   - `Asteroid` を置いた状態で、その予測線が実体から目に見えて離れないこと(3-4 の措置の確認)。
   - 表示期間を 1周回 ⇄ 28日 で切り替えても自艦の高度・速度の読みが跳ねないこと(3-2 の回帰)。
   - ×1 で射撃・接触が従来どおり当たること。

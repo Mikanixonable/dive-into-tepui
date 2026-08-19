@@ -25,6 +25,8 @@ export class Predictor {
   lastPlanSteps = 0; // 計画の弧で消費した積分ステップ数
   lastBodies = 0; // 弧が解決した天体の延べ数
   lastRevisits = 0; // そのうち期限到来で訪問したものの数
+  // 操作艦の予測先端が simTime よりどれだけ先か [s]。弧が無ければ null。
+  lastArcLead: number | null = null;
 
   constructor(
     private readonly entities: EntityManager,
@@ -99,6 +101,9 @@ export class Predictor {
       visited++;
     }
     this.cursor = targets.length > 0 ? (this.cursor + visited) % targets.length : 0;
+
+    this.lastArcLead = player !== null && player.predicted !== null
+      ? player.predicted.state.t - simTime : null;
   }
 
   // budgetSteps を上限に予測列を1歩ずつ伸ばし、消費した歩数を実体側の集計へ積んで返す。
@@ -131,7 +136,7 @@ export class Predictor {
   // 積分step数 — 区間の再生成数(planArcs)は plan/plan-editor.ts が答える。
   perfCounts(): Pick<PerfCounts,
   'predicted' | 'predictComplete' | 'predictDiscarded' | 'predictorSteps' | 'planSteps'
-  | 'arcBodies' | 'arcRevisits'> {
+  | 'arcBodies' | 'arcRevisits' | 'arcLead'> {
     return {
       predicted: this.tracked,
       predictComplete: this.finished,
@@ -140,6 +145,7 @@ export class Predictor {
       planSteps: this.lastPlanSteps,
       arcBodies: this.lastBodies,
       arcRevisits: this.lastRevisits,
+      arcLead: this.lastArcLead,
     };
   }
 }
