@@ -14,7 +14,6 @@ import { Vec3 } from '../../src/physics/vec3';
 import { kinematicState, KinematicState } from '../../src/physics/kinematic-state';
 import { v3 } from '../../src/physics/vec3';
 import { stepDynamics } from '../../src/physics/dynamics';
-import { keplerPeriod } from '../../src/physics/elements';
 import {
   MU_EARTH, R_EARTH,
   SHIP_BCINV,
@@ -23,7 +22,6 @@ import {
   SUBSTEP_MAX_DT,
   ARC_STEPS_PER_REV, ARC_MIN_STEP_DT, ARC_MAX_STEPS,
   TRAJECTORY_SAMPLES_PER_REV, ARC_MAX_SAMPLES,
-  PREDICT_RESET_DIST, PREDICT_SAMPLE_ERROR,
   ARC_STEP_BUDGET, ARC_INTERACTIVE_RATIO,
   ARC_MIN_ITEM_STEPS,
   MAX_PHYS_SIM_SPEED, SIM_SPEED_LEVELS,
@@ -34,16 +32,10 @@ export {
   GRAVITY_ALWAYS_COUNT, GRAVITY_NEGLIGIBLE_ACCEL, SUBSTEP_MAX_DT,
   ARC_STEPS_PER_REV, ARC_MIN_STEP_DT, ARC_MAX_STEPS,
   TRAJECTORY_SAMPLES_PER_REV, ARC_MAX_SAMPLES,
-  PREDICT_RESET_DIST, PREDICT_SAMPLE_ERROR,
   ARC_STEP_BUDGET, ARC_INTERACTIVE_RATIO,
   ARC_MIN_ITEM_STEPS,
   MAX_PHYS_SIM_SPEED, SIM_SPEED_LEVELS,
 };
-
-// game-entity.ts の divergenceTolerance() 内のモジュール private 定数。同ファイルを import
-// すると three/webgpu へ連鎖するため、値だけをここへ複製する(2026-08 時点の src/game/game-entity/
-// game-entity.ts 27行目: `const DIVERGENCE_TOLERANCE_MAX_ORBIT_RATIO = 0.02;`)。
-export const DIVERGENCE_TOLERANCE_MAX_ORBIT_RATIO = 0.02;
 
 // player/player.ts の Player.makeInitialState() と同一の式(高度 INITIAL_ALT・傾斜角
 // INITIAL_INC_DEG の円軌道、機首プログレード配置の初期状態)。
@@ -153,85 +145,6 @@ export function integrateToCheckpoints(
     out.set(t, s);
   }
   return out;
-}
-
-// dtA 固定で積分した軌道と dtB 固定で積分した軌道を同じ初期状態(simTime=0)から並走させ、
-// sampleStepSec ごとに位置差 [m] を記録する。差が tolerance を初めて超えた時刻(=乖離判定が
-// 予測列を破棄するとみなせる時刻)を探す。maxDurationSec まで超えなければ crossed=false。
-export type CrossingResult = {
-  readonly crossed: boolean;
-  readonly tCross: number | null;
-  readonly samples: readonly { readonly t: number; readonly diff: number }[];
-};
-
-export function findCrossing(
-  ephemeris: Ephemeris,
-  dtA: number,
-  dtB: number,
-  tolerance: number,
-  maxDurationSec: number,
-  sampleStepSec: number,
-): CrossingResult {
-  const s0 = initialLeoState();
-  let a = s0;
-  let b = s0;
-  let t = 0;
-  const samples: { t: number; diff: number }[] = [];
-  while (t < maxDurationSec - 1e-9) {
-    const nextT = Math.min(t + sampleStepSec, maxDurationSec);
-    a = integrateFixedDt(ephemeris, a, dtA, nextT);
-    b = integrateFixedDt(ephemeris, b, dtB, nextT);
-    const diff = posError(a, b);
-    samples.push({ t: nextT, diff });
-    if (diff > tolerance) return { crossed: true, tCross: nextT, samples };
-    t = nextT;
-  }
-  return { crossed: false, tCross: null, samples };
-}
-
-// samples の末尾2点からべき乗則 diff = k*t^p を当てはめ、diff が tolerance に達する時刻を外挿する。
-// 実測(crossed=true)ではなく外挿であることを呼び出し側が明示する前提の補助関数。
-export function extrapolateCrossing(
-  samples: readonly { readonly t: number; readonly diff: number }[],
-  tolerance: number,
-): number | null {
-  if (samples.length < 2) return null;
-  const p2 = samples[samples.length - 1]!;
-  const p1 = samples[samples.length - 2]!;
-  if (p1.diff <= 0 || p2.diff <= 0 || p2.t <= p1.t || p2.diff <= p1.diff) return null;
-  const p = Math.log(p2.diff / p1.diff) / Math.log(p2.t / p1.t);
-  if (!Number.isFinite(p) || p <= 0) return null;
-  return p2.t * Math.pow(tolerance / p2.diff, 1 / p);
-}
-
-// game-entity.ts の private divergenceTolerance() と同じ式(2026-08 時点)。center への距離
-// distToCenter・その mu・表示期間 horizon から許容量 [m] を計算する。
-// raw = PREDICT_SAMPLE_ERROR * coarsening^4, tolerance = max(PREDICT_RESET_DIST,
-// min(raw, orbitScale * DIVERGENCE_TOLERANCE_MAX_ORBIT_RATIO))。
-export type DivergenceToleranceResult = {
-  readonly period: number;
-  readonly interval: number;
-  readonly coarsening: number;
-  readonly raw: number;
-  readonly orbitScale: number;
-  readonly tolerance: number;
-};
-
-export function divergenceToleranceFormula(
-  distToCenter: number,
-  mu: number,
-  horizon: number,
-): DivergenceToleranceResult {
-  const period = keplerPeriod(distToCenter, mu);
-  const span = Number.isFinite(period) && period > 0 ? period : NaN;
-  const interval = Math.max(span / TRAJECTORY_SAMPLES_PER_REV, horizon / ARC_MAX_SAMPLES);
-  const coarsening = Math.max(1, interval / (span / TRAJECTORY_SAMPLES_PER_REV));
-  const raw = PREDICT_SAMPLE_ERROR * coarsening ** 4;
-  const orbitScale = mu > 0 && Number.isFinite(span)
-    ? Math.pow(mu * (span / (2 * Math.PI)) ** 2, 1 / 3)
-    : distToCenter;
-  const tolerance = Math.max(PREDICT_RESET_DIST, Math.min(raw, orbitScale * DIVERGENCE_TOLERANCE_MAX_ORBIT_RATIO));
-  return { period, interval, coarsening, raw, orbitScale, tolerance };
 }
 
 // 位置 r [m] の誤差ノルム。

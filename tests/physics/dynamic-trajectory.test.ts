@@ -9,6 +9,7 @@ import { extrapolatedRelativeState } from '../../src/physics/kepler-extrapolatio
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH, SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { DynamicTrajectory } from '../../src/physics/dynamic-trajectory';
+import { stepDynamics } from '../../src/physics/dynamics';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
 import { add, len, sub, v3 } from '../../src/physics/vec3';
 
@@ -199,6 +200,46 @@ export function register(): void {
     const e = new DynamicTrajectory(circularState());
     e.step(10, bodiesAt(e.state.t + 5), 0, 0, null, 10, 1e6); // 中心天体なし
     assert.equal(e.extrapolatedAt(e.state.t + 100, e.state), e.at(e.state.t + 100));
+  });
+
+  test('dynamic-trajectory: follow は step と同じ保持方針でサンプルを積む', () => {
+    const stepped = new DynamicTrajectory(circularState());
+    const followed = new DynamicTrajectory(circularState());
+    const dt = 5;
+    const sampleInterval = 23; // dt では割り切れない値にして端数の丸まり方を確認する
+    const keepDuration = 1000;
+    for (let i = 0; i < 100; i++) {
+      stepped.step(dt, bodiesAt(stepped.state.t + dt / 2), 0, 0, null, sampleInterval, keepDuration);
+      const next = stepDynamics(followed.state, dt, bodiesAt(followed.state.t + dt / 2), 0, 0, null);
+      followed.follow(next, sampleInterval, keepDuration);
+    }
+    const steppedSamples = stepped.samplesOldestFirst();
+    const followedSamples = followed.samplesOldestFirst();
+    assert.equal(followedSamples.length, steppedSamples.length);
+    for (let i = 0; i < steppedSamples.length; i++) {
+      assert.equal(followedSamples[i]!.t, steppedSamples[i]!.t);
+    }
+  });
+
+  test('dynamic-trajectory: follow は prevState を直前の先端へ進める', () => {
+    const e = new DynamicTrajectory(circularState());
+    e.step(10, bodiesAt(e.state.t + 5), 0, 0, null, 1000, 0);
+    const tipBeforeFollow = e.state;
+    const next = kinematicState(e.state.t + 10, v3(1, 0, 0), v3(0, 1, 0));
+    e.follow(next, 1000, 0);
+    assert.equal(e.prevState, tipBeforeFollow);
+    assert.equal(e.state, next);
+  });
+
+  test('dynamic-trajectory: follow は samplesOldestFirst のメモを無効化する', () => {
+    const e = new DynamicTrajectory(circularState());
+    e.step(10, bodiesAt(e.state.t + 5), 0, 0, null, 10, 1e6);
+    const before = e.samplesOldestFirst();
+    const next = kinematicState(e.state.t + 10, v3(1, 0, 0), v3(0, 1, 0));
+    e.follow(next, 10, 1e6);
+    const after = e.samplesOldestFirst();
+    assert.notEqual(after, before, 'follow はメモを無効化するはず');
+    assert.equal(after[after.length - 1], next);
   });
 
   test('dynamic-trajectory: extrapolatedAt は先端より先を二体軌道として外挿し、中心天体の位置・速度を足し戻す', () => {

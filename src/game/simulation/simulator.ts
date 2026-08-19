@@ -14,7 +14,7 @@ import type { Stage } from '../stages/stage';
 import { ContactPhysics } from './contact';
 import { R_EARTH } from '../../physics/solar-system';
 import { v3 } from '../../physics/vec3';
-import { adaptiveSimulationMaxStep, simulationStepDuration } from './time-step';
+import { adaptiveSimulationMaxStep, simulationMaxStep, simulationStepDuration } from './time-step';
 import type { NanWatchdog } from '../nan-watchdog';
 import type { SimSpeedManager } from '../sim-speed-manager';
 import { FrameSections, SECTION } from '../../frame-sections';
@@ -154,7 +154,7 @@ export class Simulator {
     return adaptiveSimulationMaxStep(
       this.adaptiveStatesScratch,
       R_EARTH + C.REENTRY_SUBSTEP_ALT,
-      Math.max(C.SUBSTEP_MAX_DT, simDt / C.SUBSTEP_MAX_COUNT),
+      simulationMaxStep(simDt, C.SUBSTEP_MAX_DT, C.SUBSTEP_MAX_COUNT),
       C.REENTRY_SUBSTEP_MAX_DT,
     );
   }
@@ -209,17 +209,26 @@ export class Simulator {
   // 自身の位置の27近傍グリッドを自分自身を除いて引き直すだけで、分類そのものはこのステップで1回 —
   // 除外は各自の取り出し結果にしか効かないので、A から見た B・B から見た A はどちらも
   // このステップで組んだ同じ classified から引いたままで、対称性は崩れない。
+  // consumesPrediction な個体は、予測列がこのサブステップ終端の時刻を既に持っていればそれを
+  // 先端にして積分を省く(followPredicted)。持っていなければ積分する — ある時間帯の状態を
+  // 決める積分は常にちょうど1本のまま。
   private substep(
     dt: number,
     sources: readonly Attractor[],
     passiveWarpLod: boolean,
   ): void {
     const classified = classifyAttractors(sources);
+    const t = this.simTime + dt;
     for (const e of this.entities.all()) {
       if (passiveWarpLod && this.isPassiveWarpEntity(e)) continue;
       // 引力を持たないエンティティは重力源一覧に載り得ないので、除外の走査ごと省く。
       const selfId = e.mu !== 0 ? e.id : undefined;
-      e.stepActual(dt, attractorsNearInto(e.state.r, classified, this.nearbyAttractorsScratch, selfId));
+      const near = attractorsNearInto(e.state.r, classified, this.nearbyAttractorsScratch, selfId);
+      if (e.consumesPrediction && e.followPredicted(t, near)) {
+        this.lastFollowedSteps++;
+        continue;
+      }
+      e.stepActual(dt, near);
       this.lastIntegratedSteps++;
     }
   }

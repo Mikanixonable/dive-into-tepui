@@ -37,19 +37,24 @@ export class PredictedArc {
   // 所有者が毎フレーム書く。積分先端が到達すべき絶対時刻と、保持窓の左端。
   requiredEnd: number;
   retainFrom: number;
+  // 実シミュレーションのサブステップ幅の上限 [s]。消費される弧はこれに刻みを揃える。
+  simulationMaxStep = C.SUBSTEP_MAX_DT;
   // 生成時の sources.revision。represents が完全一致を要求する。
   readonly sourceRevision: number;
 
   // state0 を起点に先端を構築する。requiredEnd/retainFrom は state0.t で初期化され、
   // 所有者が書き換えるまで needsGrowth は偽のまま。keplerTail は先端の先を二体ケプラー外挿で
   // 継ぐか — 実体の予測列は継ぐ(true)、計画の区間は継がない(false: 外挿の暫定値の上に
-  // 次のノードを置くと、実際に積分し直した結果と繋がらなくなるため)。
+  // 次のノードを置くと、実際に積分し直した結果と繋がらなくなるため)。consumable は
+  // 実シミュレーションがこの弧から状態を引くか — 引く弧は刻みと間引きを実シミュレーション側に
+  // 合わせ、表示期間由来の項を使わない。
   constructor(
     readonly state0: KinematicState,
     sources: FutureAttractorProvider,
     private readonly bcInv: number,
     private readonly srpCoeff: number,
     private readonly keplerTail: boolean,
+    private readonly consumable: boolean,
     // 重力源・衝突体から自分自身を除く id(mu≠0 の重力源 entity のときだけ渡す)。
     excludeId?: AttractorId,
   ) {
@@ -102,7 +107,12 @@ export class PredictedArc {
     // その場の軌道周期が刻み幅とサンプル間隔の両方の基準になる。
     const period = keplerPeriod(len(sub(tip.r, rawCenter.state.r)), rawCenter.mu);
     const dt = this.stepDt(tip, span, period, held.collision);
-    const sampleInterval = trajectorySampleInterval(period, span);
+    // 消費される弧の間引きは表示期間(span)由来の項を使わない — 使うと PREDICT パネルの
+    // 選択が実体の状態を変えてしまう。消費前線の近く(ARC_FINE_STEPS 歩ぶん)は毎歩保持し、
+    // それより遠くは周期基準の間引きへ落とす。
+    const sampleInterval = this.consumable
+      ? (tip.t - this.retainFrom <= C.ARC_FINE_STEPS * dt ? 0 : trajectorySampleInterval(period, 0))
+      : trajectorySampleInterval(period, span);
 
     // RK4 の各ステップにはその中点時刻の重力源を渡す。実シミュレーションも各サブステップの
     // 中点で重力源を解決しており、弧だけ過去の天体位置を据え置かないようにする。
@@ -127,17 +137,18 @@ export class PredictedArc {
     return true;
   }
 
-  // 刻み幅。軌道項(周期基準)・粗化項(span を ARC_MAX_STEPS 等分)・接近項(動径接近率基準)の
-  // うち最も厳しいものを、下限 ARC_MIN_STEP_DT で頭打ちにする。接近項が相対速さでなく動径
-  // 接近率であることが要 — 円軌道では相対速さが軌道速度そのものになり、接近していなくても
-  // 常に効いて粗化項を不当に上書きしてしまう。下限自体は接近項の幾何級数的な潰れ(Zeno)を
-  // 断つためのもので、これがあるおかげで衝突コースは必ず有限歩で表面を跨ぎ、掃引判定
-  // (reachedBody)が交差点を補間で求められる。
+  // 刻み幅。消費される弧は、実シミュレーションのサブステップ幅の上限(simulationMaxStep、
+  // 所有者が毎フレーム書く)と接近項の小さい方をそのまま使う — ある時間帯の状態を決める
+  // 積分と同じ刻みで積むことが目的なので、周期・粗化項・下限は使わない。消費されない弧は
+  // 従来どおり、軌道項(周期基準)・粗化項(span を ARC_MAX_STEPS 等分)・接近項(動径接近率
+  // 基準)のうち最も厳しいものを、下限 ARC_MIN_STEP_DT で頭打ちにする。接近項が相対速さで
+  // なく動径接近率であることが要 — 円軌道では相対速さが軌道速度そのものになり、接近して
+  // いなくても常に効いて粗化項を不当に上書きしてしまう。下限自体は接近項の幾何級数的な
+  // 潰れ(Zeno)を断つためのもので、これがあるおかげで衝突コースは必ず有限歩で表面を跨ぎ、
+  // 掃引判定(reachedBody)が交差点を補間で求められる。
   private stepDt(
     tip: KinematicState, span: number, period: number, collisionBodies: readonly Attractor[],
   ): number {
-    const naturalDt = period / C.ARC_STEPS_PER_REV;
-    const coarseFloor = span / C.ARC_MAX_STEPS;
     let approachDt = Infinity;
     // 動径接近率が正(接近中)の天体だけを対象に、表面までの残距離ぶんの猶予を見る。
     for (const body of collisionBodies) {
@@ -149,6 +160,9 @@ export class PredictedArc {
       if (closingRate <= 1e-9) continue;
       approachDt = Math.min(approachDt, (clearance / closingRate) * C.ARC_APPROACH_SAFETY);
     }
+    if (this.consumable) return Math.min(approachDt, this.simulationMaxStep);
+    const naturalDt = period / C.ARC_STEPS_PER_REV;
+    const coarseFloor = span / C.ARC_MAX_STEPS;
     return Math.max(C.ARC_MIN_STEP_DT, Math.min(span, approachDt, Math.max(naturalDt, coarseFloor)));
   }
 

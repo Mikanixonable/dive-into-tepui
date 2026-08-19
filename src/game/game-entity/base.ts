@@ -261,7 +261,6 @@ export class Base extends GameEntity implements Controllable {
     );
     this.throttle.updateThrustLatches(input);
     this.thrust = this.throttle.updateThrustState(input, this.att, simDt, this);
-    if (this.thrust !== null) this.invalidatePrediction();
   }
 
   clearTransientCommands(): void {

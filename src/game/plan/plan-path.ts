@@ -144,6 +144,7 @@ export class PlanPath {
         // 実際に積分し直した次のノードと繋がらなくなるため。
         arc = new PredictedArc(
           seg.state0, attractorProvider, C.SHIP_BCINV, C.SHIP_SRP_COEFF, /* keplerTail */ false,
+          /* consumable */ false,
         );
         this.lastRebuiltArcs++;
       }

@@ -184,7 +184,7 @@ export class Game {
     this.mapHud = new MapHudController(this._hud);
 
     this.simulator = new Simulator(this.entities, this.ephemeris, sections, initialSave?.simTime ?? 0);
-    this.predictor = new Predictor(this.entities, this.ephemeris, this.futureAttractors);
+    this.predictor = new Predictor(this.entities, this.futureAttractors);
 
     this.activeStage = new stageClass(
       initialSave?.stage, this._hud, this._worldSfx, this._uiSfx, this._scene, this.entities, this.unlockManager,
@@ -294,11 +294,11 @@ export class Game {
     this.sections.enter(SECTION.plan);
     this.editor.update(displayWindow);
     this.sections.exit(SECTION.plan);
-    // ポーズ中・決着後も無条件に呼ぶ: simTime が止まっている間は乖離が起きないので、
-    // 予測は伸び切ったところで止まるだけで害はない。
+    // ポーズ中・決着後も無条件に呼ぶ: simTime が止まっている間はサブステップも進まず、
+    // 消費も期限切れの張り直しも起きないので、予測は伸び切ったところで止まるだけで害はない。
     this.sections.enter(SECTION.predict);
     this.predictor.update(
-      this.simulator.simTime, this.player, displayWindow.duration,
+      this.simulator.simTime, this.simulator.lastSimDt, this.player, displayWindow.duration,
       canDisplayFuture, this.editor.growableArcs(),
     );
     this.sections.exit(SECTION.predict);
