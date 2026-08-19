@@ -14,8 +14,10 @@ import {
   refuelBlueprintOf, repairAllBlueprintOf, repairBlueprintOf,
 } from '../vessel/production';
 import type { ProducibilityBlueprint } from '../economy/producibility';
-import { RESOURCES, type ResourceId } from '../economy/resource';
+import { RESOURCES, RESOURCE_IDS, type ResourceId } from '../economy/resource';
 import { MQ_COMPACT, MQ_SHORT } from './breakpoints';
+import { ObjectPicker, type ObjectPickerGroup } from './object-picker';
+import type { OverlayManager } from './overlay-manager';
 
 const STYLE = `
 /* 戦闘・マップと対等な全画面ビュー。情報面は Solid を基調にし、
@@ -263,6 +265,10 @@ const STYLE = `
 }
 `;
 
+const RESOURCE_GRANT_GROUPS: readonly ObjectPickerGroup<ResourceId>[] = [
+  { label: '', items: RESOURCE_IDS.map((id) => [id, `${RESOURCES[id].name} (${id})`] as const) },
+];
+
 let styleInjected = false;
 // ドックビューのスタイルシートを document.head へ一度だけ挿入する。
 function ensureStyle(): void {
@@ -358,8 +364,9 @@ export class BaseView {
   private readonly statusLabel: HTMLElement;
   // デバッグ用の資源加算が、直前に何をどれだけ足したかの控え。
   private lastGrantText = '';
-  private grantResourceId = '';
+  private grantResourceId: ResourceId | null = null;
   private grantMass = 0;
+  private readonly grantResourcePicker: ObjectPicker<ResourceId>;
   private readonly bodyEl: HTMLElement;
   private _visible = false;
   private currentBase: Vessel | null = null;
@@ -392,7 +399,7 @@ export class BaseView {
   public get visible(): boolean { return this._visible; }
   public get element(): HTMLElement { return this.el; }
 
-  public constructor(root: HTMLElement) {
+  public constructor(root: HTMLElement, overlayManager: OverlayManager) {
     ensureStyle();
     this.el = document.createElement('div');
     this.el.id = 'base-view';
@@ -402,6 +409,13 @@ export class BaseView {
     this.el.setAttribute('aria-modal', 'true');
     this.el.setAttribute('aria-labelledby', 'base-view-title');
     this.el.addEventListener('keydown', (event) => this.trapFocus(event));
+
+    // popup レイヤは view レイヤより奥にあるので、このビュー自身を親にしてポップアップを最前面へ出す。
+    this.grantResourcePicker = new ObjectPicker<ResourceId>(this.el, '資源 id', (id) => {
+      this.grantResourceId = id;
+      this.grantResourcePicker.setSelected(id);
+    }, overlayManager);
+    this.grantResourcePicker.setGroups(RESOURCE_GRANT_GROUPS);
 
     const panel = document.createElement('div');
     panel.className = 'dock-panel';
@@ -1257,16 +1271,14 @@ export class BaseView {
     const frag = document.createElement('section');
     frag.className = 'dock-section';
     frag.appendChild(this.buildSectionHeader(
-      '資源の加算(デバッグ)', '資源 id と質量を指定して、この基地の在庫へ加算します。', ''));
+      '資源の加算(デバッグ)', '資源を選び、質量を指定して、この基地の在庫へ加算します。', ''));
     const row = document.createElement('div');
     row.className = 'dock-parts-header';
-    const idInput = new ValueInput(
-      { type: 'text', placeholder: '資源 id' }, (value) => { this.grantResourceId = value.trim(); });
     const massInput = new ValueInput(
       { type: 'number', min: 0, placeholder: 'kg' }, (value) => { this.grantMass = Number(value); });
     const btn = new Button('加算', () => this.handleGrantResource(base));
     btn.element.classList.add('dock-btn', 'dock-btn-primary');
-    row.append(idInput.element, massInput.element, btn.element);
+    row.append(this.grantResourcePicker.element, massInput.element, btn.element);
     frag.appendChild(row);
     const result = document.createElement('div');
     result.className = 'dock-part-type';
@@ -1278,12 +1290,12 @@ export class BaseView {
   private handleGrantResource(base: Vessel): void {
     const id = this.grantResourceId;
     const mass = this.grantMass;
-    if (!(id in RESOURCES) || !Number.isFinite(mass) || mass <= 0) {
-      this.lastGrantText = `加算できません: ${id} ${mass}`;
+    if (id === null || !Number.isFinite(mass) || mass <= 0) {
+      this.lastGrantText = `加算できません: ${id ?? '(未選択)'} ${mass}`;
       this.refresh();
       return;
     }
-    base.baseState!.resources.add(id as ResourceId, mass);
+    base.baseState!.resources.add(id, mass);
     this.lastGrantText = `加算しました: ${formatResourceAmount(id, mass)}`;
     this.refresh();
   }
@@ -1380,6 +1392,7 @@ export class BaseView {
   }
 
   public dispose(): void {
+    this.grantResourcePicker.dispose();
     this.el.remove();
   }
 }

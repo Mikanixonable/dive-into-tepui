@@ -86,7 +86,7 @@ export class Docking {
     private readonly viewManager: ViewManager,
     private readonly activeVessels: ActiveVesselController,
   ) {
-    this.baseView = new BaseView(this.hud.layers.view);
+    this.baseView = new BaseView(this.hud.layers.view, this.hud.overlayManager);
     this.baseView.onClose = () => this.viewManager.leaveDock();
     this.baseView.onLaunchVessel = (ship, base) => this.launch(ship, base);
     this.baseView.onWorkbenchRemove = (base, targetId, partId) => this.removeWorkbenchPart(base, targetId, partId);
