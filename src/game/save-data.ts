@@ -37,6 +37,8 @@ export const BASE_SAVE_FORMAT_VERSION = 1;
 export interface DockBindingSaveData {
   readonly vesselId: string;
   readonly slotIndex: number;
+  /** Stable assembly-derived port id. slotIndex remains for old saves and recovery. */
+  readonly dockId?: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -177,16 +179,20 @@ export function resolveDockSlotIndices(
   bindings: readonly DockBindingSaveData[] | undefined,
   vessels: readonly { readonly id: string }[],
   capacity: number,
+  portIndexById?: ReadonlyMap<string, number>,
 ): readonly number[] {
   const slotCount = Number.isInteger(capacity) && capacity > 0 ? capacity : 0;
   const byVesselId = new Map<string, number>();
   const candidates: readonly unknown[] = Array.isArray(bindings) ? bindings : [];
   for (const value of candidates) {
     if (!isRecord(value) || typeof value.vesselId !== 'string') continue;
+    const dockId = typeof value.dockId === 'string' ? value.dockId : undefined;
+    const stableSlot = dockId === undefined ? undefined : portIndexById?.get(dockId);
     const slotIndex = value.slotIndex;
-    if (typeof slotIndex !== 'number' || !Number.isInteger(slotIndex)) continue;
-    if (slotIndex < 0 || slotIndex >= slotCount) continue;
-    byVesselId.set(value.vesselId, slotIndex);
+    const resolved = stableSlot ?? slotIndex;
+    if (typeof resolved !== 'number' || !Number.isInteger(resolved)) continue;
+    if (resolved < 0 || resolved >= slotCount) continue;
+    byVesselId.set(value.vesselId, resolved);
   }
 
   const occupied = new Set<number>();

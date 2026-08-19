@@ -85,10 +85,10 @@ function dockPartPorts(assembly: VesselAssembly, placement: PartPlacement & { re
   const capacity = safeCapacity(placement.part.capacity);
   if (anchors.length === 0 || capacity === 0) return [];
 
-  const perAnchor = anchors.map((_anchor, index) => {
-    const left = capacity - index;
-    return Math.ceil(left / (anchors.length - index));
-  });
+  // ポート配置は index % anchors.length のラウンドロビンなので、各アンカーの本数も
+  // そのとおりに(余りを先頭のアンカーへ1つずつ)割り振る。
+  const perAnchor = anchors.map((_anchor, index) =>
+    Math.floor(capacity / anchors.length) + (index < capacity % anchors.length ? 1 : 0));
   const used = anchors.map(() => 0);
   const ports: DerivedBaseDockPort[] = [];
   for (let i = 0; i < capacity; i++) {

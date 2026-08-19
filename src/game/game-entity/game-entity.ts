@@ -65,6 +65,10 @@ export class GameEntity {
   // 自身が及ぼす二次重力項(J2/C22 等)。null = 質点として扱う
   degree2: Degree2Gravity | null = null;
   isStar = false;
+  // 自身が受けている ECI 加速度 [m/s²]。重力を持つ実体はこれを更新しないので常に 0 のままで、
+  // RK4 の段の時刻への位置外挿(attractorPositionAt)は一次に落ちる — 実体の重力は解析天体に
+  // 比べて桁違いに小さく、その二次項の寄与は無視できる。
+  accel: Vec3 = v3();
   thrust: Vec3 | null = null;
   // 機体座標系トルク。既定ゼロ = 自由回転。
   torque: Vec3 = v3();

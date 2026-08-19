@@ -5,7 +5,6 @@ import { add, norm, Vec3 } from '../../physics/vec3';
 import type { AnyPart, DockPort, Part } from '../game-entity/parts';
 import { FACILITIES, INITIAL_FACILITY_IDS, type FacilityId } from '../economy/facility';
 import { ResourceLedger } from '../economy/resource-ledger';
-import type { Vessel } from './vessel';
 export {
   baseAssemblyCollisionRadius, deriveBaseDockingPorts,
   type BaseDockingPorts, type DerivedBaseDockPort,
@@ -13,21 +12,24 @@ export {
 
 // 収容中の機体のエントリ。parts は収容機の parts と同一参照(修理は機体へ直接反映される)。
 // hp/maxHp は一覧タブ表示用の集計値で、修理のたびに書き戻す。
-export interface DockedVesselEntry {
+// V は実際には Vessel だが、この型を Vessel(DOM/Three.js)から切り離して
+// DOM/Three.js を持たないテストからでも読めるようにするため、ここでは Vessel を import しない。
+// 具体化(V = Vessel)は vessel.ts の再エクスポートが行う。
+export interface DockedVesselEntry<V = unknown> {
   readonly id: string;
   readonly name: string;
   hp: number;
   maxHp: number;
   readonly parts: Part[];
-  readonly vessel: Vessel;
+  readonly vessel: V;
   slotIndex: number;
 }
 
 // 基地モジュールを積んだ機体が抱える在庫と収容。資源の帳簿を持つのは基地モジュールを積んだ
 // 機体だけであり、生産はその帳簿から引く。
-export interface BaseState {
+export interface BaseState<V = unknown> {
   inventory: AnyPart[];
-  dockedVessels: DockedVesselEntry[];
+  dockedVessels: DockedVesselEntry<V>[];
   readonly resources: ResourceLedger;
 }
 

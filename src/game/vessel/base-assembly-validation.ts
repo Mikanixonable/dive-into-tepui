@@ -1,6 +1,7 @@
 import type { BaseModulePart } from '../game-entity/parts';
 import type { VesselAssembly } from './assembly';
 import { validateAssembly } from './assembly-editor';
+import { deriveBaseDockingPorts } from './base-module';
 
 /**
  * Base-only invariants.  General tree/section/reference checks stay in the shared
@@ -20,8 +21,9 @@ export function validateBaseAssembly(
   if (modules.length !== 1) issues.push('基地には稼働中の base_module がちょうど1つ必要です');
   const module = modules[0];
   if (!module) return issues;
-  if (module.dockSlots.length < occupiedDockCount) {
-    issues.push(`ドック容量 ${module.dockSlots.length} が収容中の船 ${occupiedDockCount} 隻を下回っています`);
+  const availablePorts = deriveBaseDockingPorts(assembly, module).slots;
+  if (availablePorts.length < occupiedDockCount) {
+    issues.push(`ドック容量 ${availablePorts.length} が収容中の船 ${occupiedDockCount} 隻を下回っています`);
   }
   if (module.capacity < occupiedDockCount) {
     issues.push(`基地モジュール容量 ${module.capacity} が収容中の船 ${occupiedDockCount} 隻を下回っています`);

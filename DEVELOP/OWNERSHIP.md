@@ -372,11 +372,14 @@ main.ts
   基底の `EntityIdAllocator` が自動採番)・`radius`(物理半径、既定 0)・`collides`(剛体接触参加可否、
   既定 false)・`mass`(剛体接触の換算質量、既定 1)・`attachedTo`(自分が取り付いている艦。独立した
   実体なら既定 `null` — `BeltSection`/`RadiatorFold` が構築時に自身の owner を設定する唯一の書き手で、
-  以後書き換えない)・`mu`(重力定数 GM、既定 0)・`degree2`(2次重力場、既定 null)・`isStar`(既定 false)
+  以後書き換えない)・`mu`(重力定数 GM、既定 0)・`degree2`(2次重力場、既定 null)・`isStar`(既定 false)・
+  `accel`(自身が受けている ECI 加速度、既定 0)
   を自身のフィールドとして持つ — 変換なしで `physics/attractor.ts` の `Attractor` と同じ形になり、
   `EntityManager.attractors()` は `mu !== 0` かつ生存中の個体をフィルタするだけで済む。`degree2`/
   `isStar` は(`id`/`radius`/`collides`/`mu` と違い)`readonly` ではない派生クラス可変フィールドで、
-  派生クラスが構築時に自分で組み立てる余地を残す。`GameEntity.setGravitatingMass(mass)` は質量から
+  派生クラスが構築時に自分で組み立てる余地を残す。`accel` には書き手がおらず、重力を持つ実体は
+  0 のままである — RK4 の段の時刻への位置外挿(`attractorPositionAt`)がその実体ぶんだけ一次に
+  とどまるが、解析天体に比べて桁違いに小さい寄与なので二次項は要らない。`GameEntity.setGravitatingMass(mass)` は質量から
   `mass`(剛体接触の換算質量)と `mu = GRAVITATIONAL_CONSTANT・mass` を同時に定める唯一の入口。
   `Asteroid` はこれを使って `mu` を、コンストラクタ引数の `radius` をそのまま `radius`/`collides=true`
   へ固定し、任意の `j2`/`c22` が非零なら自身の `att.q` から `degree2`(pole/tesseral)を構築時に
