@@ -1,8 +1,8 @@
 // THREE で折れ線(曲線)を描く機構だけを担う。頂点をどこに置くかは t∈[0,1] を評価する
 // sample 関数から画面上のサジッタ・折れ角を見て自前で決める(適応分割) — 呼び出し側は
-// 「t を渡すと曲線上の点が返る」関数だけを渡せばよく、それが楕円かエルミート補間かは
-// 知らない。座標変換前の値も座標型(Vec3/KinematicState/…)も知らず、受け取るのは
-// THREE.Vector3/THREE.Camera と数値だけ。
+// 「t を渡すと曲線上の点が返る」関数(と、細部の位置を知っているならその t の列)だけを
+// 渡せばよく、それが楕円かエルミート補間かは知らない。座標変換前の値も座標型
+// (Vec3/KinematicState/…)も知らず、受け取るのは THREE.Vector3/THREE.Camera と数値だけ。
 import * as THREE from 'three/webgpu';
 import { metersPerPixelFromTanHalfFov, MIN_DEPTH } from '../physics/projection';
 import type { LineStyle } from './line-style';
@@ -26,6 +26,12 @@ export type SetCurveOptions = {
   readonly revision: unknown;
   // 画面上のサジッタ目標を実距離に換算するための、現在の描画カメラ。
   readonly camera: THREE.Camera;
+  // 適応分割を始める前に必ず頂点を置く t の列(昇順、両端の 0 と 1 を含む)。曲線の細部が
+  // どこにあるかを知っているのは呼び出し側だけなので、知っているならここで渡す — 適応分割は
+  // 弦の中点しか見ないため、1区間に何周ぶんも入るような曲線では中点がたまたま曲線上に乗り、
+  // 分割済みと誤判定して区間まるごとが直線に化ける。2点未満なら t の等分割へフォールバックする。
+  // 焼き直すかどうかは revision だけで決まるので、この列を変えたなら revision も変えること。
+  readonly initialTs?: readonly number[];
 };
 
 // 弦に対する曲線の膨らみ(サジッタ)の目標値 [px]。画面上のサジッタをこの値以下に抑える
@@ -37,9 +43,15 @@ const MAX_EDGE_SAG_PX = 0.5;
 // (画面上のサジッタが縮まないぶん実距離の許容量が際限なく伸びる)ため、その歯止めとして残す。
 const MAX_EDGE_TURN = (5 * Math.PI) / 180;
 
-// 初期分割数。閉曲線を1区間のまま評価すると t=0/1 が同一点で弦が縮退するため、最低限これだけ
-// 分けてから適応分割に入る。開曲線でも同じ数から始めて構わない(以後の分割で細部は拾われる)。
+// 既定の初期分割数。閉曲線を1区間のまま評価すると t=0/1 が同一点で弦が縮退するため、最低限
+// これだけ分けてから適応分割に入る。曲線の細部の位置を知っている呼び出し側は、代わりに
+// SetCurveOptions.initialTs でその位置を直接渡す。
 const INITIAL_SEGMENTS = 8;
+
+// initialTs を省略したときの初期頂点列(t を INITIAL_SEGMENTS 等分したもの)。
+const DEFAULT_INITIAL_TS: readonly number[] = Array.from(
+  { length: INITIAL_SEGMENTS + 1 }, (_, i) => i / INITIAL_SEGMENTS,
+);
 
 // 適応分割の再帰深さの上限。頂点予算(maxVertices)よりずっと余裕を持たせた安全弁で、
 // 通常は予算の方が先に効く。
@@ -228,12 +240,14 @@ export class Curve {
 
   // 焼き直し判定と pivot の追従判定に使う代表スケール(m/px)。sample(0) 1点だけを見ると、
   // その点が視点面をまたぐ曲線で値が乱高下し、SCALE_REBAKE_RATIO を毎フレーム跨いでしまう。
-  // 分割の粗さを決めるのは曲線上で最もカメラに寄っている点なので、初期分割と同じ
-  // INITIAL_SEGMENTS+1 点の中の最小値を代表値とする。cacheCameraFrame を先に呼んでおくこと。
-  private representativeScale(sample: CurveSampler): number {
+  // 分割の粗さを決めるのは曲線上で最もカメラに寄っている点なので、初期頂点列 ts から等間隔に
+  // 抜いた INITIAL_SEGMENTS+1 点の中の最小値を代表値とする(この判定は毎フレーム走るので、
+  // ts がいくら長くても見る点数は増やさない)。cacheCameraFrame を先に呼んでおくこと。
+  private representativeScale(sample: CurveSampler, ts: readonly number[]): number {
     let minScale = Infinity;
+    const last = ts.length - 1;
     for (let i = 0; i <= INITIAL_SEGMENTS; i++) {
-      sample(i / INITIAL_SEGMENTS, this.scratchA);
+      sample(ts[Math.round((i * last) / INITIAL_SEGMENTS)]!, this.scratchA);
       const s = this.scaleAtLocal(this.scratchA.x, this.scratchA.y, this.scratchA.z);
       if (s < minScale) minScale = s;
     }
@@ -298,20 +312,25 @@ export class Curve {
     }
   }
 
-  // 頂点予算を INITIAL_SEGMENTS 個の初期区間へ均等割りしてから各区間を適応分割する。分割は
+  // 初期頂点列 ts の各区間へ頂点予算を均等割りしてから、区間ごとに適応分割する。分割は
   // 深さ優先で、積めなかった頂点は落ちるだけなので、割り当てずに進めると先頭側の区間が予算を
   // 使い切って以降の区間が1頂点も積めない。均等割りにすることで、予算が尽きても曲線全体が
-  // 一様に粗くなるだけになる(使い残しは残り区間数で割り直されるぶん後続へ回る)。
-  private rebake(sample: CurveSampler): void {
+  // 一様に粗くなるだけになる(使い残しは残り区間数で割り直されるぶん後続へ回る)。ts 自体が
+  // 予算より多いときも同じ理由で間引いて使う — 先頭から順に積んで打ち切ると、曲線の後半が
+  // まるごと描かれなくなってしまう。
+  private rebake(sample: CurveSampler, ts: readonly number[]): void {
     this.bakedCount = 0;
-    sample(0, this.scratchA);
+    const last = ts.length - 1;
+    const stride = Math.max(1, Math.ceil(last / Math.max(1, this.maxVertices - 1)));
+    const segmentCount = Math.ceil(last / stride);
+    sample(ts[0]!, this.scratchA);
     this.pushBaked(this.scratchA.x, this.scratchA.y, this.scratchA.z);
-    let t0 = 0, x0 = this.scratchA.x, y0 = this.scratchA.y, z0 = this.scratchA.z;
-    for (let i = 1; i <= INITIAL_SEGMENTS; i++) {
-      const remainingSegments = INITIAL_SEGMENTS - i + 1;
+    let t0 = ts[0]!, x0 = this.scratchA.x, y0 = this.scratchA.y, z0 = this.scratchA.z;
+    for (let i = 1; i <= segmentCount; i++) {
+      const remainingSegments = segmentCount - i + 1;
       this.segmentBakedLimit = this.bakedCount
         + Math.floor((this.maxVertices - this.bakedCount) / remainingSegments);
-      const t1 = i / INITIAL_SEGMENTS;
+      const t1 = ts[Math.min(last, i * stride)]!;
       sample(t1, this.scratchB);
       this.subdivide(t0, x0, y0, z0, t1, this.scratchB.x, this.scratchB.y, this.scratchB.z, 0, sample);
       t0 = t1; x0 = this.scratchB.x; y0 = this.scratchB.y; z0 = this.scratchB.z;
@@ -321,9 +340,10 @@ export class Curve {
   // 曲線を(必要なら)焼き直し、GPU バッファへ反映する。revision・画面スケール・カメラ視線
   // 方向のいずれも前回と実質同じであれば焼き直しも GPU への再アップロードも省く。
   setCurve(sample: CurveSampler, opts: SetCurveOptions): void {
-    const { revision, camera } = opts;
+    const { revision, camera, initialTs } = opts;
+    const ts = initialTs && initialTs.length >= 2 ? initialTs : DEFAULT_INITIAL_TS;
     this.cacheCameraFrame(camera);
-    const scaleNow = this.representativeScale(sample);
+    const scaleNow = this.representativeScale(sample, ts);
     const scaleChanged = this.bakedScale === null
       || scaleNow / this.bakedScale > SCALE_REBAKE_RATIO || this.bakedScale / scaleNow > SCALE_REBAKE_RATIO;
     const camDirChanged = this.camFwd.dot(this.bakedCamFwd) < CAM_DIR_REBAKE_COS;
@@ -331,7 +351,7 @@ export class Curve {
     const rebaked = revisionChanged || scaleChanged || camDirChanged;
 
     if (rebaked) {
-      this.rebake(sample);
+      this.rebake(sample, ts);
       this.hasBaked = true;
       this.lastRevision = revision;
       this.bakedScale = scaleNow;
