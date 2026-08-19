@@ -9,7 +9,7 @@ import { kinematicState, KinematicState } from '../../src/physics/kinematic-stat
 import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
 import { len, sub, v3 } from '../../src/physics/vec3';
 
-const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), degree2: null, isStar: false };
+const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, isStar: false };
 
 // a/e/inc/raan/argp のケプラー軌道を、真近点角を等間隔に刻んで(粗く)サンプリングする。
 // 開始位相をわずかにずらすのは、近地点(nu=0)ぴったりが列の端に来ると走査が端点を
