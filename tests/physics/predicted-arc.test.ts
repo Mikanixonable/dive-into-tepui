@@ -61,6 +61,24 @@ export function register(): void {
     }
   });
 
+  test('predicted-arc: consumable な弧は再突入域で実シミュレーションと同じ 1s 刻みへ落ちる', () => {
+    // 大気の密度は 1 スケールハイトで桁が変わるので、降下中は実シミュレーションと同じ細分化が要る。
+    const r0 = R_EARTH + 150e3; // REENTRY_SUBSTEP_ALT(200km)より下
+    const state0 = kinematicState(0, v3(r0, 0, 0), v3(0, Math.sqrt(MU_EARTH / r0), 0));
+    const arc = new PredictedArc(state0, earthOnlyProvider(), 0, 0, /* keplerTail */ true, /* consumable */ true);
+    arc.requiredEnd = state0.t + 86400;
+    arc.retainFrom = state0.t;
+    arc.simulationMaxStep = 20;
+
+    let prevT = state0.t;
+    for (let i = 0; i < 50; i++) {
+      assert.ok(arc.step(), `step ${i} should grow`);
+      const dt = arc.trajectory.state.t - prevT;
+      assert.ok(Math.abs(dt - 1) < 1e-6, `step ${i}: 再突入域では刻みは 1s のはず, got ${dt}`);
+      prevT = arc.trajectory.state.t;
+    }
+  });
+
   test('predicted-arc: consumable な弧の刻みは simulationMaxStep の値をそのまま反映する', () => {
     const state0 = circularState();
     const arc = new PredictedArc(state0, earthOnlyProvider(), 0, 0, /* keplerTail */ true, /* consumable */ true);
