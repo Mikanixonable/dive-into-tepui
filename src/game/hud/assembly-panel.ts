@@ -13,7 +13,7 @@ import type { AnyPart, PartType } from '../game-entity/parts';
 import type { SectionPrimitivePatch } from '../vessel/assembly-editor';
 import { AssemblyDragController } from '../vessel/assembly-drag-controller';
 import type { AssemblySelection } from '../docking';
-import type { DockWorkbenchController } from '../vessel/dock-workbench-controller';
+import type { DockWorkbenchController, DragSource } from '../vessel/dock-workbench-controller';
 import type { DockWorkbenchSession, WorkbenchTarget, WorkbenchTargetKind } from '../vessel/dock-workbench';
 import {
   MEMBER_DEFAULT_LENGTH, MEMBER_DEFAULT_RADIUS, MEMBER_DEFAULT_SEPARATION_IMPULSE,
@@ -598,12 +598,11 @@ export class AssemblyPanel {
     this.win?.reclamp();
   }
 
-  // 倉庫の部品ボタンから、現在の編集対象へ向けたドラッグを開始する。倉庫からの新規部品
-  // なので sourceInventory は常に true — 装着済み部品を3Dハルから直接掴むドラッグは
-  // このパネルの外(別モジュール)の経路。
+  // 倉庫の部品ボタンから、現在の編集対象へ向けたドラッグを開始する。
   private beginDrag(part: AnyPart): void {
     if (this.currentTargetId === null) return;
-    this.dragController.beginDrag(this.workbench, part, this.currentTargetId, true);
+    const source: DragSource = { kind: 'inventory' };
+    this.dragController.beginDrag(this.workbench, part, source);
   }
 
   // 構造材(外皮エッジ・トラス・分離機構)の棚 —— 種別・長さ・断面(半径)を選んでから掴む。
