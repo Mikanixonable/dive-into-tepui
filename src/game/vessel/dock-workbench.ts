@@ -330,7 +330,9 @@ export class DockWorkbenchSession {
       kind: target.kind,
       valid: blocking.length === 0,
       blocking,
-      issues: custom.issues,
+      // 構造が壊れていれば設計の検証もそこで打ち切られ、同じ指摘を返す。拒む理由として既に
+      // 挙げたものを、指摘としてもう一度並べない。
+      issues: custom.issues.filter((issue) => !blocking.includes(issue.message)),
     };
   }
 
