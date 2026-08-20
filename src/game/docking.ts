@@ -61,6 +61,8 @@ interface DraftEntry {
   readonly id: string;
   name: string;
   render: AssemblyRenderObject;
+  // render を組んだときの構成。セッション側が別の値を持っていれば組み直す合図になる。
+  renderedAssembly: VesselAssembly;
   readonly slotIndex: number;
 }
 
@@ -482,6 +484,7 @@ export class Docking {
   syncAssembly(fo: FloatingOrigin): void {
     this.syncBaseWindows();
     if (this.assembly) {
+      this.syncDraftRenders(this.assembly.base);
       this.assembly.panel.sync(this.assembly.session, this.assembly.selection);
       this.revealTargetStructure(this.targetById(this.assembly.base, this.assembly.targetId)?.vessel ?? null);
     }
@@ -556,10 +559,45 @@ export class Docking {
   }
 
   // 下書きの実体を、建造したときに入るドック枠へ置く。建造前と建造後で置かれ方が変わらない。
+  // 構成が動いていれば組み直すので、下書きだけは編集の結果がその場で見える。
   private syncDraftRenders(base: Vessel): void {
-    for (const draft of this.assembly?.drafts.values() ?? []) {
+    const entry = this.assembly;
+    if (!entry) return;
+    this.reconcileDrafts(entry);
+    for (const draft of entry.drafts.values()) {
+      const assembly = entry.session.getTarget(draft.id).assembly;
+      if (assembly !== draft.renderedAssembly) {
+        draft.render.object.removeFromParent();
+        draft.render.dispose();
+        draft.render = new AssemblyRenderObject(assembly);
+        draft.renderedAssembly = assembly;
+      }
       draft.render.object.userData['workbenchDraft'] = true;
       base.placeAtDockSlot(draft.render.object, draft.slotIndex);
+    }
+  }
+
+  // 表示の写しをセッションの対象一覧へ合わせる。下書きの作成と削除は取り消せるので、写しの側だけ
+  // 取り残されることがある。枠が空いていない下書きは置き場所が無いので、対象ごと落とす。
+  private reconcileDrafts(entry: AssemblySession): void {
+    const targets = entry.session.targetsSnapshot();
+    const draftIds = new Set(targets.filter((t) => t.kind === 'new-vessel-draft').map((t) => t.id));
+    for (const id of [...entry.drafts.keys()]) {
+      if (!draftIds.has(id)) this.disposeDraft(entry, id);
+    }
+    for (const id of draftIds) {
+      if (entry.drafts.has(id)) continue;
+      const slotIndex = this.freeSlotIndex(entry.base);
+      const assembly = entry.session.getTarget(id).assembly;
+      if (slotIndex === null) {
+        entry.session.removeTarget(id);
+        this.reportEditFailure('空きドックが無いため下書きを戻せません');
+        continue;
+      }
+      entry.drafts.set(id, {
+        id, name: `新規船下書き ${entry.drafts.size + 1}`, render: new AssemblyRenderObject(assembly),
+        renderedAssembly: assembly, slotIndex,
+      });
     }
   }
 
@@ -702,7 +740,8 @@ export class Docking {
     const id = `draft:${base.id}:${++this.draftSequence}`;
     const assembly = crewedAssembly(C.PLAYER_MAX_HP);
     const draft: DraftEntry = {
-      id, name: `新規船下書き ${this.draftSequence}`, render: new AssemblyRenderObject(assembly), slotIndex,
+      id, name: `新規船下書き ${this.draftSequence}`, render: new AssemblyRenderObject(assembly),
+      renderedAssembly: assembly, slotIndex,
     };
     entry.session.createNewVesselDraft(id, assembly);
     entry.drafts.set(id, draft);
