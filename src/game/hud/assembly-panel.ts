@@ -111,6 +111,7 @@ export class AssemblyPanel {
   private redoBtn: Button | null = null;
   private newDraftBtn: Button | null = null;
   private buildDraftBtn: Button | null = null;
+  private removeDraftBtn: Button | null = null;
   private removeSelectionBtn: Button | null = null;
   private selectionEl: HTMLSpanElement | null = null;
   private sectionEditorEl: HTMLDivElement | null = null;
@@ -157,6 +158,8 @@ export class AssemblyPanel {
   public onCreateDraft: (() => void) | null = null;
   // 指定の下書きを実艦として建造し、基地のドックへ格納する。
   public onBuildDraft: ((targetId: string) => void) | null = null;
+  // 指定の下書きを捨てる。実機には何も作られていないので確認は求めない。
+  public onRemoveDraft: ((targetId: string) => void) | null = null;
   // 指定の下書きを建造したときの費用と、いま賄えるか。下書きでない対象・基地が
   // 無ければ null — buildDraftBtn を隠す判定にも使う。
   public draftBuildStatus: ((targetId: string) => { readonly costText: string; readonly affordable: boolean } | null) | null = null;
@@ -202,6 +205,7 @@ export class AssemblyPanel {
     this.redoBtn = null;
     this.newDraftBtn = null;
     this.buildDraftBtn = null;
+    this.removeDraftBtn = null;
     this.removeSelectionBtn = null;
     this.selectionEl = null;
     this.sectionEditorEl = null;
@@ -249,7 +253,10 @@ export class AssemblyPanel {
     this.buildDraftBtn = new Button('建造して格納', () => {
       if (this.currentTargetId !== null) this.onBuildDraft?.(this.currentTargetId);
     });
-    draftActionsEl.append(this.newDraftBtn.element, this.buildDraftBtn.element);
+    this.removeDraftBtn = new Button('下書きを削除', () => {
+      if (this.currentTargetId !== null) this.onRemoveDraft?.(this.currentTargetId);
+    });
+    draftActionsEl.append(this.newDraftBtn.element, this.buildDraftBtn.element, this.removeDraftBtn.element);
     body.appendChild(draftActionsEl);
 
     const selectionRow = document.createElement('div');
@@ -329,6 +336,7 @@ export class AssemblyPanel {
     const current = targets.find((t) => t.id === this.currentTargetId);
     const isDraft = current?.kind === 'new-vessel-draft';
     this.buildDraftBtn.element.hidden = !isDraft;
+    if (this.removeDraftBtn) this.removeDraftBtn.element.hidden = !isDraft;
     if (!isDraft || this.currentTargetId === null) {
       this.lastBuildStatusKey = '';
       return;
