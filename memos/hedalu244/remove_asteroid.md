@@ -122,36 +122,6 @@
 
 ## 手順
 
-### Step 5 — 弧の作り直しを命じる責務の置き場所を決める(要判断)
-
-**このステップは Step 4 まで終えた時点で判断する。着手前に決め打ちしない。**
-
-Step 3 の後、`FutureAttractorProvider.revision` は計画の世代値をそのまま代入するだけになり、
-`candidateRevision` は定数 0 を返すだけの getter になっている。この時点で `FutureAttractors` に
-残る責務は「天体暦を弧の引ける形へ見せる」ことだけで、計画の世代値を持つ理由が無い。
-
-**`candidateRevision` の定数 getter はこのステップで必ず始末する** — 候補の顔ぶれが実行中
-変わらないので、`ArcBodies` は候補を構築時に1度だけ組めばよく、世代値を問う理由がない。
-
-選択肢は2つ。
-
-- **A: `revision` を `FutureAttractorProvider` から外す。** 弧を作り直すかどうかは
-  `plan-path.ts` が計画の世代値を直接見て決める。`PredictedArc.represents` から
-  `sourceRevision` 引数が消え、`ArcBodies` は候補を構築時に1度だけ組む。
-  `FutureAttractors` は天体暦のアダプタだけになり、`Ephemeris` 自身が
-  `FutureAttractorProvider` を満たせるなら module ごと消える。
-- **B: 現状の形を維持する。** `FutureAttractors` が計画の世代値を預かり続ける。
-
-**A を採るときの確認事項**: `PredictedArc.represents` は起点状態の同一参照でも判定している。
-計画のノードを編集したとき、区間の起点状態が新しいオブジェクトに差し替わるかどうかを
-`plan-path.ts` 側で確かめる。**差し替わるなら世代値は冗長だが、艦の実状態を起点にする先頭区間は
-毎フレーム同じ参照を返しうるので、そこだけ別の判定が要る可能性がある。**
-
-**完了条件**: A・B のどちらを採るかを決め、採った側を実装し終える。B を採る場合は、
-`FutureAttractors` が計画の世代値を持つ理由をコメントに書く。
-
----
-
 ### Step 6 — 残骸を一掃する
 
 **この計画は引き算しかしない。引き算の失敗は「動かない」ではなく「動くが、消したはずのものの

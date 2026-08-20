@@ -25,8 +25,6 @@ function earthOnlyProvider(): FutureAttractorProvider {
     state: kinematicState(t, v3(), v3()), accel: v3(), degree2: null, isStar: false,
   });
   return {
-    revision: 0,
-    candidateRevision: 0,
     candidates: () => [{ id: 'earth', mu: MU_EARTH, radius: R_EARTH }],
     bodyAt: (_id, t) => earthAt(t),
   };
