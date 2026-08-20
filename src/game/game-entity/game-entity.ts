@@ -4,7 +4,7 @@ import { KinematicState } from '../../physics/kinematic-state';
 import { OrbitalElements } from '../../physics/elements';
 import { Attitude } from '../../physics/attitude';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
-import { Attractor, BodyImpact, Degree2Gravity, orbitalElementsOf, localOrbitPeriod, reachedBody, strongestAttractor } from '../../physics/attractor';
+import { Attractor, BodyImpact, orbitalElementsOf, localOrbitPeriod, reachedBody, strongestAttractor } from '../../physics/attractor';
 import { burnUpBody } from '../../physics/atmosphere';
 import { ApsisTrack } from '../../physics/trajectory-features';
 import { Vec3, v3 } from '../../physics/vec3';
@@ -23,7 +23,6 @@ import { EntityIdAllocator } from './entity-id';
 import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';
 import type { EntityMarker } from '../marker/entity-marker';
 import type { MarkerManager } from '../marker/marker-manager';
-import { GRAVITATIONAL_CONSTANT } from '../../physics/solar-system';
 
 const identityAttitude = (): Attitude => ({
   q: { x: 0, y: 0, z: 0, w: 1 },
@@ -57,15 +56,6 @@ export class GameEntity {
   // 特定の艦に取り付いた実体(ベルトの節点・放熱板の折りなど)であれば、その艦自身。
   // 独立した実体なら既定 null。
   attachedTo: GameEntity | null = null;
-  // 重力定数 GM [m^3/s^2]。0 = 重力を及ぼさない
-  mu = 0;
-  // 自身が及ぼす二次重力項(J2/C22 等)。null = 質点として扱う
-  degree2: Degree2Gravity | null = null;
-  isStar = false;
-  // 自身が受けている ECI 加速度 [m/s²]。重力を持つ実体はこれを更新しないので常に 0 のままで、
-  // RK4 の段の時刻への位置外挿(attractorPositionAt)は一次に落ちる — 実体の重力は解析天体に
-  // 比べて桁違いに小さく、その二次項の寄与は無視できる。
-  accel: Vec3 = v3();
   private _thrust: Vec3 | null = null;
   // 自身が出している ECI 加速度 [m/s²]。null = 噴射していない。噴射している間の弧は現実を
   // 表さないので、非 null を書いた時点で無効化する — 実シミュレーションはそこから積分へ落ち、
@@ -104,22 +94,13 @@ export class GameEntity {
   // 未来の状態を引かれる理由。読み手も成り立つ条件も理由ごとに違うので、1つの真偽値へ
   // 畳まずに別々に持つ。予測する長さは表示期間に追従するため、ここで決まるのは可否だけ。
 
-  // 未来位置を重力源として引かれるか。引力を持つなら、予測と計画の積分が未来時刻の
-  // この個体を必要とする。
-  get predictedAsGravitySource(): boolean {
-    return this.mu !== 0;
-  }
-  // 未来位置を計画軌道の衝突体として引かれるか。剛体接触への参加(collides)とは別の判断
-  // で、こちらは「数分から数日先まで伸びる線が相手にするだけの寿命を持つか」を言う。
-  readonly predictedAsPlanCollider: boolean = false;
   // 表示時刻(未来ゴースト)の位置でメッシュとマーカーを描く種別か。
   protected readonly predictedForGhost: boolean = false;
 
   // この個体の未来を読む消費者がいるか。ゴーストだけは表示時刻が未来へ動けるかに依るので、
   // 動けるかどうかを引数で受け取る。
   hasFutureReader(canDisplayFuture: boolean): boolean {
-    return this.predictedAsGravitySource || this.predictedAsPlanCollider
-      || (this.predictedForGhost && canDisplayFuture) || this.predictedLine !== null;
+    return (this.predictedForGhost && canDisplayFuture) || this.predictedLine !== null;
   }
 
   // 予測列を持ちうる種別か。上の理由のどれか1つでも立ちうれば持つ。
@@ -127,9 +108,6 @@ export class GameEntity {
     return this.hasFutureReader(true);
   }
 
-  // 実シミュレーションが自分の状態を予測列から引いてよい種別か。重力を及ぼす実体は
-  // 共有の重力窓で対称に積分される必要があるので、常に実シミュレーションが積分する。
-  get consumesPrediction(): boolean { return this.mu === 0; }
   protected readonly scene?: THREE.Scene;
 
   // 未来の予測列を保持する統一積分弧(game/simulation/predicted-arc.ts の PredictedArc)。
@@ -164,13 +142,6 @@ export class GameEntity {
     this.renderObject = renderObject;
     this.scene = scene;
     if (addToScene) this.scene?.add(this.renderObject);
-  }
-
-  // 質量から剛体接触の換算質量と重力定数 μ を同時に定める。別々に書くと引力の強さと
-  // 衝突の重さが食い違う。
-  protected setGravitatingMass(mass: number): void {
-    this.mass = mass;
-    this.mu = GRAVITATIONAL_CONSTANT * mass;
   }
 
   // center を中心とする接触軌道要素。中心は呼び出し側が選ぶ(例: strongestAttractor)。
@@ -298,7 +269,7 @@ export class GameEntity {
       this.historySampleInterval(attractors), this.historyDuration,
     );
     // 積分した弧はもう現実を表さない。ある時間帯の状態を決める積分を常に1本に保つ。
-    if (this.consumesPrediction) this.invalidatePrediction();
+    this.invalidatePrediction();
   }
 
   // シミュレーションを正確に区切る必要がある次の絶対時刻。寿命など、既知の時刻で
@@ -317,7 +288,7 @@ export class GameEntity {
     if (!this.predictsFuture) return null;
     this._predictedArc ??= new PredictedArc(
       this.actual.state, sources, this.bcInv, this.srpCoeff, /* keplerTail */ true,
-      /* consumable */ this.consumesPrediction, this.mu !== 0 ? this.id : undefined,
+      /* consumable */ true,
     );
     return this._predictedArc;
   }
