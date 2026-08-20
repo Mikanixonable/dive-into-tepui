@@ -56,8 +56,8 @@ function relativeError(actual: number, expected: number): number {
 export function register(): void {
   test('既定の3設計のツリーが正しく、乾燥質量が設計の狙いどおりになる', () => {
     const cases = [
-      { name: 'crewed', assembly: crewedAssembly(C.PLAYER_MAX_HP), mass: 1153 },
-      { name: 'base', assembly: orbitalBaseAssembly(C.BASE_MAX_HP), mass: 3e6 },
+      { name: 'crewed', assembly: crewedAssembly(C.PLAYER_MAX_HP), mass: 7920 },
+      { name: 'base', assembly: orbitalBaseAssembly(C.BASE_MAX_HP), mass: 1.2018e7 },
       { name: 'hostile', assembly: hostileAssembly(C.ENEMY_MAX_HP), mass: 10000 },
     ];
     for (const { name, assembly, mass } of cases) {
@@ -399,8 +399,8 @@ export function register(): void {
     // 全長 4.5 m の剛体として当然の大きさである。
     const derived = deriveMassProperties(crewedAssembly(C.PLAYER_MAX_HP));
     const pinned: Record<string, number> = {
-      dryMass: 1153.33, ixx: 2109.53, iyy: 3427.30, izz: 1860.82, iyz: 58.4158,
-      areaX: 10.2065, areaY: 12.4565, areaZ: 65.7643, comY: -0.0288296, comZ: -0.00686575,
+      dryMass: 7920.29, ixx: 8338.50, iyy: 9655.45, izz: 7730.61, iyz: 99.3956,
+      areaX: 10.2065, areaY: 12.4565, areaZ: 65.7643, comY: -0.00419808, comZ: -1.23934,
     };
     const actual: Record<string, number> = {
       dryMass: derived.dryMass,

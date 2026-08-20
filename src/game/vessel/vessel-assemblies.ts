@@ -170,7 +170,9 @@ export function crewedAssembly(maxHp: number): VesselAssembly {
 function internalEdgesFor(type: PartType): readonly string[] {
   if (type === 'hull' || type === 'armor') return ['fore', 'mid', 'aft'];
   if (type === 'cockpit' || type === 'life_support') return ['fore', 'mid'];
-  if (type === 'rcs_tank') return ['aft'];
+  if (type === 'rcs_tank' || type === 'reductant_tank' || type === 'plumbing' || type === 'pressurant_tank') {
+    return ['aft'];
+  }
   return ['mid'];
 }
 
@@ -193,7 +195,9 @@ export function orbitalBaseAssembly(maxHp: number): VesselAssembly {
   const placements = place(baseParts(maxHp), (part) => {
     if (!isExterior(part)) {
       const spread = part.type === 'hull' || part.type === 'armor';
-      const edgeIds = spread ? ['fore', 'nose', 'aft'] : part.type === 'rcs_tank' ? ['aft'] : ['fore'];
+      const inAft = part.type === 'rcs_tank' || part.type === 'reductant_tank' ||
+        part.type === 'plumbing' || part.type === 'pressurant_tank';
+      const edgeIds = spread ? ['fore', 'nose', 'aft'] : inAft ? ['aft'] : ['fore'];
       return { kind: 'internal', part, edgeIds };
     }
     if (part.type === 'engine') {
