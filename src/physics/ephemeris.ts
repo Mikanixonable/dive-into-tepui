@@ -20,7 +20,7 @@ import { planetAngles } from './planet-orbit';
 import { satelliteState } from './satellite-orbit';
 import { bodyDef, CelestialBodyDef, CelestialRegistry, primaryOf, SOLAR_SYSTEM, starOf } from './solar-system';
 import { KinematicState, kinematicState } from './kinematic-state';
-import { Vec3, add, addScaled, cross, len, norm, scale, sub, v3 } from './vec3';
+import { Vec3, add, addScaled, cross, len, lenSq, norm, scale, sub, v3 } from './vec3';
 
 // 天体の自転軸(単位ベクトル、ECI)と、その軸まわりの自転位相 [rad]。
 export type BodyOrientation = { readonly axis: Vec3; readonly spinAngle: number };
@@ -56,6 +56,13 @@ function keplerOrbitOf(def: OrbitingDef): KeplerOrbit {
 function rotatingFrameCenterOf(registry: CelestialRegistry, id: AttractorId): AttractorId {
   const def = bodyDef(registry, id);
   return def.kind === 'satellite' ? def.planet : id;
+}
+
+// 主天体まわりの二体相対加速度 -mu·d/|d|³。d は主天体からの相対位置、mu は両者の mu の和。
+function twoBodyAccel(d: Vec3, mu: number): Vec3 {
+  const d2 = lenSq(d);
+  if (d2 < 1) return v3();
+  return scale(d, -mu / (d2 * Math.sqrt(d2)));
 }
 
 // 時刻キャッシュの保持段数。1フレームには t と t + dt/2 の交互参照、対象ごとの先端時刻、
@@ -308,6 +315,37 @@ export class Ephemeris {
     }
   }
 
+  // 天体 id の日心加速度。helioStateOf と同じ分岐に立つが、解析式の厳密な二階微分ではなく
+  // 主天体まわりの二体近似 — 用途は RK4 の各段の時刻へ位置を外挿する2次補正項なので、この
+  // 近似の誤差(太陽の潮汐項を落とすぶん、月で0.5%程度)は結果に効かない。高精度パック経路
+  // (precise)でも位置・速度はパック由来だが、加速度はこの解析近似を使う。
+  private helioAccelOf(id: AttractorId, t: number): Vec3 {
+    const def = bodyDef(this.registry, id);
+    switch (def.kind) {
+      // 恒星は日心座標系の原点そのものなので静止している。
+      case 'star':
+        return v3();
+      case 'planet': {
+        const starMu = this.starId === null ? 0 : bodyDef(this.registry, this.starId).mu;
+        return twoBodyAccel(this.planetHelioState(def, t).r, starMu + def.mu);
+      }
+      // 衛星の日心加速度は、惑星本体の日心加速度に惑星まわりの二体加速度を足す。
+      case 'satellite': {
+        const planetDef = bodyDef(this.registry, def.planet) as PlanetDef;
+        return add(
+          this.helioAccelOf(def.planet, t),
+          twoBodyAccel(this.satelliteRelState(def, t).r, planetDef.mu + def.mu),
+        );
+      }
+    }
+  }
+
+  // 指定時刻の ECI 加速度。ECI 原点(地球)自身が自由落下する非慣性系なので、id の日心加速度から
+  // 原点の日心加速度を差し引く。originId 自身は同じ計算を2回引くので厳密に v3() になる。
+  private eciAccelOf(id: AttractorId, t: number): Vec3 {
+    return sub(this.helioAccelOf(id, t), this.helioAccelOf(this.originId, t));
+  }
+
   // 指定時刻の ECI(originId 中心)位置・速度。日心状態から originId の日心状態を引く一箇所だけで
   // 座標変換する。originId 自身は同じ計算を2回引くので厳密に 0 になる。
   stateOf(id: AttractorId, t: number): KinematicState {
@@ -541,7 +579,7 @@ export class Ephemeris {
   attractorAt(id: AttractorId, t: number): Attractor {
     const def = bodyDef(this.registry, id);
     return {
-      id, mu: def.mu, radius: def.radius, state: this.stateOf(id, t),
+      id, mu: def.mu, radius: def.radius, state: this.stateOf(id, t), accel: this.eciAccelOf(id, t),
       degree2: this.degree2At(def, t), isStar: def.kind === 'star',
     };
   }

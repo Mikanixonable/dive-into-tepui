@@ -58,21 +58,21 @@ export function register(): void {
 
   test('containingBody: 半径内の点はその球を返す', () => {
     const earth: Attractor = {
-      id: 'earth', mu: 1, radius: 6.371e6, state: kinematicState(0, v3(), v3()), degree2: null, isStar: false,
+      id: 'earth', mu: 1, radius: 6.371e6, state: kinematicState(0, v3(), v3()), accel: v3(), degree2: null, isStar: false,
     };
     assert.equal(containingBody(v3(6.371e6 - 1, 0, 0), [earth], 0), earth);
   });
 
   test('containingBody: 半径外の点は null', () => {
     const earth: Attractor = {
-      id: 'earth', mu: 1, radius: 6.371e6, state: kinematicState(0, v3(), v3()), degree2: null, isStar: false,
+      id: 'earth', mu: 1, radius: 6.371e6, state: kinematicState(0, v3(), v3()), accel: v3(), degree2: null, isStar: false,
     };
     assert.equal(containingBody(v3(6.371e6 + 1, 0, 0), [earth], 0), null);
   });
 
   test('containingBody: margin ぶん半径の外側まで内側とみなす', () => {
     const earth: Attractor = {
-      id: 'earth', mu: 1, radius: 6.371e6, state: kinematicState(0, v3(), v3()), degree2: null, isStar: false,
+      id: 'earth', mu: 1, radius: 6.371e6, state: kinematicState(0, v3(), v3()), accel: v3(), degree2: null, isStar: false,
     };
     assert.equal(containingBody(v3(6.371e6 + 500, 0, 0), [earth], 1000), earth);
     assert.equal(containingBody(v3(6.371e6 + 1500, 0, 0), [earth], 1000), null);
@@ -94,10 +94,10 @@ export function register(): void {
 
   test('containingBody: 複数の球から最初に触れているものを返す', () => {
     const near: Attractor = {
-      id: 'near', mu: 1, radius: 1000, state: kinematicState(0, v3(), v3()), degree2: null, isStar: false,
+      id: 'near', mu: 1, radius: 1000, state: kinematicState(0, v3(), v3()), accel: v3(), degree2: null, isStar: false,
     };
     const far: Attractor = {
-      id: 'far', mu: 1, radius: 1000, state: kinematicState(0, v3(1e6, 0, 0), v3()), degree2: null, isStar: false,
+      id: 'far', mu: 1, radius: 1000, state: kinematicState(0, v3(1e6, 0, 0), v3()), accel: v3(), degree2: null, isStar: false,
     };
     assert.equal(containingBody(v3(1e6, 0, 0), [near, far], 0), far);
     assert.equal(containingBody(v3(5e5, 0, 0), [near, far], 0), null);
