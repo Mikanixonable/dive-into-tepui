@@ -439,7 +439,8 @@ export class Docking {
     entry: AssemblySession, point: PointerPoint, viewport: { readonly width: number; readonly height: number },
   ): void {
     if (this.dragController.dragging) {
-      this.dragController.release(entry.targetId);
+      const refused = this.dragController.release(entry.targetId);
+      if (refused) this.hud.hint(refused);
       return;
     }
     const root = this.targetRenderRoot(entry);
