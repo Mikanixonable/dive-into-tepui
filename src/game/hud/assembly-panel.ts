@@ -10,6 +10,7 @@
 // #hud の子として window レイヤへ置くため、`#hud, #hud *` の margin/padding
 // リセットに勝てるよう全セレクタを `#hud` で始める。
 import type { AnyPart, PartType } from '../game-entity/parts';
+import { isExterior } from '../game-entity/parts';
 import type { SectionPrimitivePatch } from '../vessel/assembly-editor';
 import { AssemblyDragController } from '../vessel/assembly-drag-controller';
 import type { AssemblySelection } from '../docking';
@@ -575,15 +576,20 @@ export class AssemblyPanel {
     this.shelfEl.innerHTML = '';
     this.partButtons.clear();
 
+    // 取り付けられるのは外装要素だけ(内装要素は内容積へ配分するもので、掴んで
+    // 3D空間へ置く経路を持たない)。棚には掴める部品だけを並べる。
     const byType = new Map<PartType, AnyPart[]>();
     for (const part of inventory) {
+      if (!isExterior(part)) continue;
       const list = byType.get(part.type);
       if (list) list.push(part); else byType.set(part.type, [part]);
     }
     if (byType.size === 0) {
       const empty = document.createElement('div');
       empty.className = 'asm-panel-empty';
-      empty.textContent = '倉庫に部品がありません。';
+      empty.textContent = inventory.length === 0
+        ? '倉庫に部品がありません。'
+        : '倉庫に外装要素がありません。';
       this.shelfEl.appendChild(empty);
     }
     for (const [type, parts] of byType) {
