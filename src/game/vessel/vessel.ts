@@ -13,6 +13,7 @@ import { actuatorSetOf } from './actuator-set';
 import { airspeed, burnUpBody } from '../../physics/atmosphere';
 import { ballisticCoeffInv, radiationPressureCoeff } from '../../physics/aerodynamics';
 import { buildVesselWireframe } from '../../render/vessel-wireframe';
+import type { GraphicsSettings } from '../../render/graphics-settings';
 import type { HullCapsule } from './collision-shape';
 import { deriveCapsules } from './collision-shape';
 import type { HeatShielding } from './heat-shield';
@@ -148,6 +149,7 @@ export interface VesselDeps {
   readonly scene: THREE.Scene;
   readonly fx: EffectsSystem;
   readonly markerManager: MarkerManager;
+  readonly graphics: GraphicsSettings;
 }
 
 // 高度 INITIAL_ALT、傾斜角 INITIAL_INC_DEG の円軌道状態を返す。
@@ -408,6 +410,10 @@ export class Vessel extends GameEntity {
   private readonly worldSfx: WorldSfx;
   private readonly fx: EffectsSystem;
   private readonly vesselScene: THREE.Scene;
+  private readonly graphics: GraphicsSettings;
+  // 設計ツリー・当たり判定カプセルのデバッグ用ワイヤーフレーム。表示可否は毎フレーム
+  // graphics.current.wireframe から合わせる — 設計を持たない機体では null のまま。
+  private wireframe: THREE.Object3D | null = null;
   private disposed = false;
 
   // 設計と識別を init から解決し、その設計が積むものだけを組み立てる。
@@ -420,8 +426,11 @@ export class Vessel extends GameEntity {
     this.faction = design.faction;
     this.assembly = design.assembly;
     this.collisionCapsules = design.assembly ? deriveCapsules(design.assembly.tree) : [];
+    this.graphics = deps.graphics;
     if (design.assembly) {
-      this.renderObject.add(buildVesselWireframe(design.assembly.tree, this.collisionCapsules));
+      this.wireframe = buildVesselWireframe(design.assembly.tree, this.collisionCapsules);
+      this.wireframe.visible = this.graphics.current.wireframe;
+      this.renderObject.add(this.wireframe);
     }
     this.massProperties = design.massProperties;
     this.mass = design.massProperties.mass;
@@ -605,6 +614,7 @@ export class Vessel extends GameEntity {
       const capsules = deriveCapsules(assembly.tree);
       const collisionGeom = new BaseCollisionGeometry(assembly);
       const wireframe = buildVesselWireframe(assembly.tree, capsules);
+      wireframe.visible = this.graphics.current.wireframe;
       const dockedObjects = new Set(this.baseState.dockedVessels.map((entry) => entry.vessel.renderObject));
       const oldChildren = [...this.renderObject.children].filter((child) =>
         !dockedObjects.has(child) && child.userData['workbenchDraft'] !== true);
@@ -614,6 +624,7 @@ export class Vessel extends GameEntity {
       }
       for (const child of [...design.renderObject.children]) this.renderObject.add(child);
       this.renderObject.add(wireframe);
+      this.wireframe = wireframe;
 
       this.assembly = assembly;
       this.collisionCapsules = capsules;
@@ -1044,6 +1055,7 @@ export class Vessel extends GameEntity {
     const mapEntityVisible = !camera.overviewMode || visibility === null || visibility.category;
     const hiddenByGunsight = isActive && camera.zoomActive && this.directionMarkers;
     this.renderObject.visible = displayState !== null && mapEntityVisible && !hiddenByGunsight;
+    if (this.wireframe) this.wireframe.visible = this.graphics.current.wireframe;
     if (displayState !== null) {
       this.renderObject.position.copy(fo.RtoThreeV3(displayState.r));
       this.renderObject.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);

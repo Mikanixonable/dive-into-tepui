@@ -59,24 +59,21 @@ handlePointerInput 参照)。ステージが決着した(`activeStage.isPlaying`
   - sections.enter(SECTION.input)
   - input.update() // pending キュー(キー/クリック/マウス)を今フレーム分に確定し、次フレーム用にクリア。takeHeld の確保集合もここでクリアする
   - handleInput(dt) // 担当モジュールへ先着順に配る。処理した側が input からそのキーを消費する。ポーズ判定より前に置く(Esc・ヘルプ等はポーズ中・決着後も効かせる)
-    - [input.takeKey(K.pauseMenu)] hud.overlayManager.closeTopmostOnEscape() // 開いている登録済みオーバーレイ(ドック/一覧/ヘルプ/一時ウィンドウ/ポップアップ)のうち最前面かつ closeOnEscape なもの1枚を閉じる。閉じるものが無ければ pauseMenu.toggle(true)
+    - [input.takeKey(K.pauseMenu)] hud.overlayManager.closeTopmostOnEscape() // 開いている登録済みオーバーレイ(一覧/ヘルプ/基地操作・組立ウィンドウ/一時ウィンドウ/ポップアップ)のうち最前面かつ closeOnEscape なもの1枚を閉じる。閉じるものが無ければ pauseMenu.toggle(true)
     - input.takeKeys(code => hud.overlayManager.dispatchShortcut(code)) // 今フレームの未消費キーを1つずつ試す。テキスト入力へフォーカス中なら即 false。最前面から順に handle.handleShortcut?.(code) を呼び、true を返した1枚で打ち切る(ContextMenu/PropertyWindow/ObjectPlacerPanel のみ実装 — クリップ中の PropertyWindow は常に false を返して1つ下へ通す)
     - hud.handleInput() // K.help → helpPanel.handleInput() → toggle()
     - simSpeedManager.handleInput()
       - shift(-1|+1) // K.warpSlower / K.warpFaster。倍率をヒントで伝える。操作できない倍率へ上げたときはその旨も併記する
         - cancelAutoWarp() // 常に(手動シフトは自動ワープを解除する)
         - uiSfx.warp() + hud.hint() // 上限/下限を超えない場合のみ
-    - viewManager.handleInput(input) // ビュー遷移はすべて setView() を通る。[isDockOpen] 何もせず return([M] も消費しない)。[!K.toggleMapMode を取れた] 何もしない
-      - [current==='map'] !canEnter('combat')(= activeVessels.current !== null が false)なら hud.hint('操作できる艦がいません') して return(この時点で [M] キー自体は既に消費済み)
+    - viewManager.handleInput(input) // ビュー遷移はすべて setView() を通る。[!K.toggleMapMode を取れた] 何もしない
+      - [current==='map'] !canEnter('combat')(= 操作艦も操作対象の基地も生存中の基地も無い)なら hud.hint('操作できる艦または基地がいません') して return(この時点で [M] キー自体は既に消費済み)
       - setView(current==='map' ? 'combat' : 'map')
-        - [出るビューが dock] docking.leaveDock() → dockView.close() + game.resume()
-        - [3D 側ビューが map→他] editor.onMapClosed() / editor.closeMenu() / mapActions.close()
+        - [map→他] editor.onMapClosed() / editor.closeMenu() / mapActions.close()
           - onMapClosed: hidePanel / hideGizmo / plan.removeNode(末尾の Δv 微小ノードを間引く) / selectedNodeIdx=null
           - mapActions.close(): menu.close() / 開いている全プロパティウィンドウを closeWindow()(クリップ済みも含め全て)
-        - [3D 側ビューが 他→map] editor.selectedNodeIdx = null
-        - [入るビューが dock] docking.enterDock() → game.pause() + dockView.open(activeBase, game.player, activeStage.freeProcurement)
-        - syncDockOverlay(wasDockOpen) // isDockOpen が今回変化したフレームだけ hud.overlayManager.open('dock-view', ...)/.close('dock-view')
-        - applyChrome() // map-mode/dock-mode クラス・navball 配置・touchControls・
+        - [他→map] editor.selectedNodeIdx = null
+        - applyChrome() // hud.setWorldView / panel-shell の収納状態・touchControls・
                         // cameraSystem.overviewMode・editor.editMode・displayWindow.forceCurrent を一斉に揃える
         - hud.hint()
     - editor.handleInput(input, dt)
@@ -149,6 +146,9 @@ handlePointerInput 参照)。ステージが決着した(`activeStage.isPlaying`
   - sections.exit(SECTION.mapPick)
   - sections.enter(SECTION.pointer)
   - handlePointerInput()
+  - docking.updateAssembly(input) // 組立セッションが無いか、部品を掴んでいなければ即 return。カメラ行列がこのフレームの値になった後でなければ、掴んでいる部品の落とし先が1フレーム古いカメラ基準で決まる
+    - input.pointerPosition() // カーソルの現在位置。掴みは HUD のボタンから始まるので、canvas 上の移動しか見ない frameMouse では位置が止まる
+    - dragController.update(activeCamera, activeCameraPos, pointer, viewport, dragTarget) // カーソルの光線 → 対象船体ローカル → capsule で広域絞り込み → nearestMountCandidate → addPlacement/movePlacement で可否判定 → workbench.updateCandidate()。THREE には触れず、ゴーストの位置・姿勢・色は保持するだけ(描くのは sync)
   - sections.exit(SECTION.pointer)
   - entityLines.update(player, targeter.aliveTarget, targeter.aliveSecondaryTarget, cameraSystem.overviewMode, displayWindow, mapPickables.visibilityPolicy) // 表示可否・ターゲット・操作艦・ビューがこのフレームの確定値になった後に判断する。艦・敵・基地それぞれへ線の出し入れとスタイルだけを決める(形状と変換は sync フェーズの entityLines.sync が担う)。ターゲット用スタイルは theme.ts の currentThemePalette() から毎フレーム組む(第一=palette.accent、第二=palette.secondary、不透明度は TARGET_LINE_OPACITY=0.9、renderOrder は LINE_RENDER_ORDER.target/.secondaryTarget) — 静的な LINE_STYLE 表には置けない(テーマ追従が要るため)
     - [entities.ownShips() ごと] asTarget = 第一・第二ターゲットのどちらかに該当すればそのスタイル、なければ null。visible = visibilityPolicy?.entity('player', isActive).orbit ?? true。showLines = (ship===player || overviewMode) && visible && asTarget === null。ownEllipse = showLines && !overviewMode(= 戦闘ビューの操作艦)
@@ -305,7 +305,7 @@ handlePointerInput 参照)。ステージが決着した(`activeStage.isPlaying`
   - activeVessels.reclaimDead() // 喪失した機体を配列・操作対象から回収する。全ステージ共通で毎フレーム無条件に呼ぶ(艦艇・軌道基地・敵艦のいずれも同じ経路で速やかに取り除く)
     - entities.vessels のうち !alive な機体ごと → activeVessels.remove(lost) → navTarget.clearIfTargeting(lost.id) / targeter.clearIfTargeting(lost) / mapCamera.clearFocusIf(lost.id) / entities.removeVessel(lost)
     - 掃引で操作対象そのものを失った場合だけ reclaimAfterLoss() → 生存艦が居れば activeVessels.set(次の艦)、居なければ setOrNull(null)(worldSfx.setRcs(false)。カメラの追従対象は毎フレーム引数で渡り直すだけなのでここでは何もしない。ビューはここでは切り替えない)。元から操作対象が居ない状態(手動解除・未配置)では何もしない
-  - docking.checkProximity() // 内部で viewManager.current==='dock' なら即 return。それ以外は docking.updateDockedPhysics() を呼ぶだけで、収容の判定はしない(基地への収容は storeInBase を呼ぶ操作から起きる)
+  - docking.checkProximity() // docking.updateDockedPhysics() を呼ぶだけで、収容の判定はしない(基地への収容は storeInBase を呼ぶ操作から起きる)
   - sections.enter(SECTION.effects)
   - effects.update(dt, simulator.simTime) → flashEffectManager.updateFlashEffects() // フラッシュの寿命と、各エフェクトの時刻から simTime までの移流。playing/player を問わず常に進める(決着直後の爆発を止めないため)
   - sections.exit(SECTION.effects)
@@ -324,7 +324,7 @@ handlePointerInput 参照)。ステージが決着した(`activeStage.isPlaying`
 の後に呼ぶ(このフレームのカメラ行列で投影してからでないと画面上の対象をピックできない)。
 各受け手は自分の出番(マップ視点/編集モード/操作艦の有無)かどうかを自分で見て自決するので、ここで
 決めるのは呼ぶ順序だけ。決着状態は見ず、ポーズ中、または入力をゲートするオーバーレイ(セーブ
-ブラウザ・ドック等)が開いている間は配らない(背景の誤操作を防ぐ)。
+ブラウザ・設定・資源移送ダイアログ等)が開いている間は配らない(背景の誤操作を防ぐ)。
 
 - handlePointerInput()
   - [isPaused || hud.overlayManager.isInputGated()] 即 return
@@ -348,8 +348,10 @@ handlePointerInput 参照)。ステージが決着した(`activeStage.isPlaying`
           - 以後 editor.plan は activeVessels.current.plan を返す(開いたままのノードメニューは次の editor.update() が畳む)
         - act='planExecCycle' → entities.findOwnShip(target.id) → ship.planExecution = nextPlanExecution(ship.planExecution) // 'player' のみ。OFF→瞬間移動→自動操縦→OFF
         - act='delete' → entities.findOwnShip(target.id) → entities.removeVessel(vessel) → dispose() // 'player' のみ。操作対象の機体にはこの項目自体がメニューに出ない(MapContextActions.itemsFor)
+        - act='openBaseOperations' → docking.openBaseOperations(base) // 'base' のみ。基地ごとに1枚の BaseOperationsWindow を開く(既に開いていれば位置を移して最前面化)。ビューは切り替えない
+        - act='openAssembly' → docking.startAssembly(base) // 'base' のみ。DockWorkbenchSession + DockWorkbenchController + AssemblyPanel を組み、pauseGame() する。以後この基地のセッションは commitAssembly()/cancelAssembly() のどちらかで終わる
     - mapActions.handleLeftClick(input) // [!cameraSystem.overviewMode] 即 return。自機/基地マーカーへの左クリックを選択として消費する。外れれば消費せず editor.handleMapPointer() のノード配置/選択解除に読み進む
-      - selectPickable() // 'player' → activeVessels.set() / 'base' → docking.selectBase()(遷移はしない)
+      - selectPickable() // 'player' → mapActions.openPropertyWindow() / 'base' → docking.selectBase() + hud.hint()(どちらもビューも操作対象も変えない)
     - mapActions.handleDoubleClick(input) // [!cameraSystem.overviewMode] 即 return。pickables 全種別への最寄りダブルクリックで mapCamera.setFocus()
     - editor.handleMapPointer(input) // [!editMode || 艦なし] 即 return。右クリック → 左クリックの順に受ける
       - handleNodeRightClick() // 右クリックごと。ノードをヒットしたぶんだけ消費する
@@ -474,6 +476,10 @@ handlePointerInput 参照)。ステージが決着した(`activeStage.isPlaying`
     - [操作艦あり かつ editMode] syncGizmo(艦.plan) → nodeGizmo.sync() // ノードハンドル + 選択中ノードの Δv アーム6個
       // ↑ planDisplay.sync の後で呼ぶ: ノードの画面座標は path の今フレームの表示文脈を通す
     - [操作艦あり かつ editMode] syncPanel(艦, simTime) // ノード一覧・選択中ノードの Δv と噴射後要素を組み立て、panel.sync(nodes, selEl, localDv, ...) → PlanPanel.sync() で軌道計画パネルの HTML へ反映(HoldButton ×6 は PlanPanel.dvButtons、updateEditing がここ経由で読む)
+  - docking.syncAssembly(fo) // 基地操作ウィンドウと組立の描画側。セッションが無くても呼んでよい(各段が自分で早期 return する)
+    - syncBaseWindows() // 実体が消えた基地のウィンドウを閉じて台帳から外す。開いているウィンドウごと
+    - assembly.panel.sync(assembly.session) // 対象タブ・Undo/Redo の可否・検証エラー・部品棚。対象列/在庫/エラーの各キーが前フレームと変わったときだけ DOM を組み直す
+    - dragController.sync(fo) // update が決めた位置(fo.RtoThreeV3)・取り付け先の基底・可否の色をゴーストへ押し込むだけ。掴んでいなければ何もしない
   - entityLines.sync(displayWindow, fo, cameraSystem.activeCamera, displayAttractors, ephemeris) // 計画折れ線と同じ座標系(displayWindow.frame)で bake する。出す/消すは update フェーズの entityLines.update が決めきっているので、ここでは全個体へ一律に形状と変換だけを合わせる
     - [entities.ownShips() ごと] predictedTo = ship.predictionTruncated ? null : simTime + duration
     - [entities.ownShips() ごと] ship.syncTrajectoryLines(frame, simTime, displayTime, pastDuration, predictedTo, ephemeris, fo, camera, displayAttractors) // 描くかは線を持っているかがそのまま答えなので、ここでは判定しない
@@ -511,7 +517,6 @@ handlePointerInput 参照)。ステージが決着した(`activeStage.isPlaying`
 ## game.render()
 
 - game.render()
-  - [viewManager.current === 'dock'] 何も描かずに return // ドックは 3D を持たない全画面ビュー
   - pipeline.render(scene, cameraSystem.activeCamera)
     - gbuffer.render(scene, camera, width, height) // Gバッファパス。camera.layers を一時的に LIT_OPAQUE_LAYER だけへ絞り、呼び出し後に元のマスクへ戻す
       - gpu.beginPass(GPU_PASS.gbuffer)

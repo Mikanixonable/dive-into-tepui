@@ -38,6 +38,7 @@ import type { WorldSfx } from '../audio/sfx/world-sfx';
 import type { EffectsSystem } from './vfx/effects-system';
 import type { MarkerManager } from './marker/marker-manager';
 import type { ActiveVesselController } from './active-vessel-controller';
+import type { GraphicsSettings } from '../render/graphics-settings';
 
 // 下書きの実体を基地の前方どれだけ離して浮かべるか [m]。基地本体と重ならない距離。
 const DRAFT_OFFSET_BASE = 360;
@@ -73,6 +74,9 @@ interface AssemblySession {
   readonly session: DockWorkbenchSession;
   readonly workbench: DockWorkbenchController;
   readonly panel: AssemblyPanel;
+  // セッション開始時点の基地倉庫にあった部品 id。確定時、下書きへ新たに現れた部品のうち
+  // ここに載っているものは倉庫から取り付けた(=生産時に課金済みの)ものだと分かる。
+  readonly originalInventoryIds: ReadonlySet<string>;
   targetId: string;
 }
 
@@ -105,6 +109,7 @@ export class Docking {
     scene: THREE.Scene,
     effects: EffectsSystem,
     markerManager: MarkerManager,
+    graphics: GraphicsSettings,
     private readonly entities: EntityManager,
     private readonly mapActions: MapContextActions,
     private readonly cameraSystem: CameraSystem,
@@ -113,7 +118,7 @@ export class Docking {
   ) {
     this.viewManager.setDocking(this);
     this.transferDialog = new ResourceTransferDialog(this.hud.layers.view, this.hud.overlayManager);
-    this.vesselDeps = { hud, worldSfx, scene, fx: effects, markerManager };
+    this.vesselDeps = { hud, worldSfx, scene, fx: effects, markerManager, graphics };
     this.dragController = new AssemblyDragController(scene);
   }
 
@@ -258,7 +263,8 @@ export class Docking {
       this.hud.layers.window, this.hud.overlayManager, this.dragController, workbench,
     );
     const initial = targets.find((target) => target.id === preferredTargetId) ?? targets[0]!;
-    const entry: AssemblySession = { base, session, workbench, panel, targetId: initial.id };
+    const originalInventoryIds = new Set((base.baseState?.inventory ?? []).map((part) => part.id));
+    const entry: AssemblySession = { base, session, workbench, panel, originalInventoryIds, targetId: initial.id };
     this.assembly = entry;
 
     panel.onTargetSelect = (targetId) => { entry.targetId = targetId; };
@@ -283,6 +289,14 @@ export class Docking {
       return;
     }
     for (const target of snapshot.targets) {
+      // 下書きへ倉庫から取り付けられた部品は、建造時の二重課金を避けるため先に控えておく
+      // (applyTargetAssembly は下書きの assembly を丸ごと差し替えるので、その前に見る)。
+      const draft = this.drafts.get(target.id);
+      if (draft) {
+        for (const placement of target.assembly.placements) {
+          if (entry.originalInventoryIds.has(placement.part.id)) draft.ownedPartIds.add(placement.part.id);
+        }
+      }
       if (!this.applyTargetAssembly(entry.base, target.id, target.assembly)) {
         this.hud.hint('構成を適用できないため、確定を中止しました');
         return;

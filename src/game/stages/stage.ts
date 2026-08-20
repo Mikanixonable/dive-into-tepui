@@ -27,6 +27,7 @@ import type { AttractorId } from '../../physics/attractor';
 import { loadAbsoluteEphemeris } from '../../physics/ephemeris-catalog';
 import { profileAt } from '../../physics/ephemeris-profile';
 import { SIM_EPOCH_ET, SIM_EPOCH_JD_TDB } from '../sim-epoch';
+import type { GraphicsSettings } from '../../render/graphics-settings';
 
 export type StageId = '00' | '0' | '1' | '2' | 'creative' | 'debug' | 'debug-alt-system' | 'debug-load';
 
@@ -47,6 +48,7 @@ export type StageDeps = [
   simulator: Simulator,
   activeVessels: ActiveVesselController,
   commNetwork: CommNetwork,
+  graphics: GraphicsSettings,
 ];
 
 // ステージクラスの静的側。起動時の設定はここから読む。
@@ -129,6 +131,7 @@ export abstract class Stage {
   protected readonly _activeVessels: ActiveVesselController;
   // このステージが動かす無人機へ指令が届くかを問い合わせる通信網。
   protected readonly _commNetwork: CommNetwork;
+  protected readonly _graphics: GraphicsSettings;
 
   private _phase: GamePhase;
   get phase(): GamePhase { return this._phase; }
@@ -147,7 +150,7 @@ export abstract class Stage {
   // 自分のコンストラクタで super(saved, ...deps) を呼んでから自分の分を組み立て、末尾で begin() を呼ぶ。
   constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
     const [hud, worldSfx, uiSfx, scene, entities, unlockManager, fx, markerManager, ephemeris, simulator,
-      activeVessels, commNetwork] = deps;
+      activeVessels, commNetwork, graphics] = deps;
     this._hud = hud;
     this._worldSfx = worldSfx;
     this._uiSfx = uiSfx;
@@ -160,6 +163,7 @@ export abstract class Stage {
     this._simulator = simulator;
     this._activeVessels = activeVessels;
     this._commNetwork = commNetwork;
+    this._graphics = graphics;
     this.scoreCounter = new ScoreCounter(saved?.scoreCounter);
     this._phase = saved?.phase ?? 'playing';
     this.restored = saved !== undefined;
@@ -198,7 +202,10 @@ export abstract class Stage {
 
   // 機体の組み立てに要る資源一式。ステージが機体を置くときに使う。
   protected get vesselDeps(): VesselDeps {
-    return { hud: this._hud, worldSfx: this._worldSfx, scene: this._scene, fx: this._fx, markerManager: this._markerManager };
+    return {
+      hud: this._hud, worldSfx: this._worldSfx, scene: this._scene, fx: this._fx,
+      markerManager: this._markerManager, graphics: this._graphics,
+    };
   }
 
   // 有人艦を1機置き、操作対象が居なければそれを操作対象にする。機数は0..n機が一般形で、

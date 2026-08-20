@@ -1,10 +1,19 @@
 import type { Bgm } from '../../audio/bgm/bgm';
 import { BGM_TRACKS } from '../../audio/bgm/tracks/tracks';
+import type { GraphicsSettings } from '../../render/graphics-settings';
+import type { DebugTargetHost } from '../../render/pipeline/debug-target';
+import { ACTIVE_THEME_ID, applyThemePalette, getThemePalette, THEME_PRESETS } from '../theme';
+import { GraphicsPanel } from './graphics-panel';
 import type { OverlayHandle, OverlayManager } from './overlay-manager';
-import { Button, CloseButton, Slider } from './widgets';
+import { Button, CloseButton, Slider, TabBar } from './widgets';
+
+type SettingsTab = 'music' | 'graphics';
+
+const TAB_ITEMS: readonly (readonly [SettingsTab, string])[] = [['music', '音楽'], ['graphics', '描画']];
 
 // タイトル画面とゲーム中の両方から開く、システム設定の共通ビュー。
 // 3D の ViewManager とは独立した DOM ビューなので、閉じると開く前のワールドビューへ戻る。
+// debugTargetHost は「描画」タブの GraphicsPanel がデバッグ表示の選択を書き込む先(RenderPipeline)。
 export class SettingsView implements OverlayHandle {
   private readonly panel: HTMLElement;
   private readonly overlayManager: OverlayManager;
@@ -13,10 +22,15 @@ export class SettingsView implements OverlayHandle {
   private activeTrack: number | null = null;
   private readonly stopButton: Button;
   private readonly trackButtons: Button[] = [];
+  // タブごとの中身。表示面の切り替えは .hidden の付け外しだけで行う。
+  private readonly faces: ReadonlyMap<SettingsTab, HTMLElement>;
+  private readonly tabs: TabBar<SettingsTab>;
 
   onOpenChange: ((open: boolean) => void) | null = null;
 
-  constructor(root: HTMLElement, overlayManager: OverlayManager, bgm: Bgm) {
+  constructor(
+    root: HTMLElement, overlayManager: OverlayManager, bgm: Bgm, graphics: GraphicsSettings, debugTargetHost: DebugTargetHost,
+  ) {
     this.overlayManager = overlayManager;
     this.bgm = bgm;
 
@@ -39,10 +53,65 @@ export class SettingsView implements OverlayHandle {
     header.appendChild(eyebrow);
     this.panel.appendChild(header);
 
+    this.tabs = new TabBar<SettingsTab>(TAB_ITEMS, (tab) => this.showTab(tab));
+    this.panel.appendChild(this.tabs.element);
+
+    const musicFace = document.createElement('div');
+    const graphicsFace = document.createElement('div');
+    this.faces = new Map([['music', musicFace], ['graphics', graphicsFace]]);
+    for (const face of this.faces.values()) this.panel.appendChild(face);
+
+    const themeRow = document.createElement('div');
+    themeRow.className = 'sv-row sv-theme-row';
+    const themeLabel = document.createElement('span');
+    themeLabel.className = 'sv-label';
+    themeLabel.textContent = '配色';
+    themeRow.appendChild(themeLabel);
+    const themePreview = document.createElement('span');
+    themePreview.className = 'sv-theme-preview';
+    themePreview.setAttribute('aria-hidden', 'true');
+    const updateThemePreview = (id: string): void => {
+      const palette = getThemePalette(id);
+      if (!palette) return;
+      themePreview.replaceChildren();
+      for (const color of [palette.accent, palette.accentNear, palette.secondary]) {
+        const swatch = document.createElement('span');
+        swatch.className = 'sv-theme-swatch';
+        swatch.style.backgroundColor = color;
+        themePreview.appendChild(swatch);
+      }
+    };
+    const themeSelect = document.createElement('select');
+    themeSelect.className = 'w-input sv-theme-select';
+    themeSelect.setAttribute('aria-label', '配色プリセット');
+    for (const palette of THEME_PRESETS) {
+      const option = document.createElement('option');
+      option.value = palette.id;
+      option.textContent = `● ${palette.name}`;
+      option.style.color = palette.accent;
+      option.title = palette.description;
+      themeSelect.appendChild(option);
+    }
+    themeSelect.value = ACTIVE_THEME_ID;
+    updateThemePreview(themeSelect.value);
+    themeSelect.addEventListener('change', () => {
+      if (!applyThemePalette(themeSelect.value)) {
+        themeSelect.value = ACTIVE_THEME_ID;
+        return;
+      }
+      updateThemePreview(themeSelect.value);
+    });
+    themeRow.appendChild(themePreview);
+    themeRow.appendChild(themeSelect);
+    graphicsFace.appendChild(themeRow);
+
+    const graphicsPanel = new GraphicsPanel(graphics, debugTargetHost);
+    graphicsFace.appendChild(graphicsPanel.element);
+
     const description = document.createElement('p');
     description.className = 'sv-description';
     description.textContent = 'ゲームの音量を調整し、航行中に流れるBGMを試聴できます。';
-    this.panel.appendChild(description);
+    musicFace.appendChild(description);
 
     const bgmSection = document.createElement('section');
     bgmSection.className = 'sv-section';
@@ -103,7 +172,7 @@ export class SettingsView implements OverlayHandle {
     });
     trackActions.appendChild(this.stopButton.element);
     bgmSection.appendChild(trackActions);
-    this.panel.appendChild(bgmSection);
+    musicFace.appendChild(bgmSection);
 
     const footer = document.createElement('div');
     footer.className = 'sv-footer';
@@ -113,6 +182,13 @@ export class SettingsView implements OverlayHandle {
 
     root.appendChild(this.panel);
     this.stopButton.setEnabled(false);
+    this.showTab('music');
+  }
+
+  // 表示面を切り替える。タブの点灯も合わせる。
+  private showTab(tab: SettingsTab): void {
+    for (const [name, face] of this.faces) face.classList.toggle('hidden', name !== tab);
+    this.tabs.setSelected(tab);
   }
 
   contains(target: Node): boolean {
