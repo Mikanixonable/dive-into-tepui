@@ -8,7 +8,7 @@ import { v3 } from '../../src/physics/vec3';
 
 const ZERO = v3(0, 0, 0);
 const EARTH: Attractor = {
-  id: 'earth', mu: 1, radius: 6.371e6, state: kinematicState(0, ZERO, ZERO), accel: ZERO, degree2: null, isStar: false,
+  id: 'earth', mu: 1, radius: 6.371e6, state: kinematicState(0, ZERO, ZERO), accel: ZERO, degree2: null, atmosphere: null, isStar: false,
 };
 
 export function register(): void {

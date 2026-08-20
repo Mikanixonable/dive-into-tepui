@@ -14,7 +14,7 @@
 // 並べ、どちらで揃うかを見る。最後に「同じ総ステップ数(=同じコスト)を配ったとき、
 // 定数刻みと周期比例刻みのどちらが誤差が小さいか」を直接比べる。
 import { Ephemeris } from '../../src/physics/ephemeris';
-import { Attractor, localOrbitPeriod, strongestAttractor } from '../../src/physics/attractor';
+import { Attractor, localOrbitPeriod, nearestAtmosphereBody, strongestAttractor } from '../../src/physics/attractor';
 import { kinematicState, KinematicState } from '../../src/physics/kinematic-state';
 import { v3, sub, len, cross, norm, scale, add } from '../../src/physics/vec3';
 import { stepDynamics } from '../../src/physics/dynamics';
@@ -69,8 +69,12 @@ function integrate(ephemeris: Ephemeris, state0: KinematicState, dt: number, hor
   let s = state0;
   while (end - s.t > 1e-9) {
     const step = Math.min(dt, end - s.t);
-    const attractors = ephemeris.gravityAttractorsAt(s.t + step / 2);
-    s = stepDynamics(s, step, attractors, SHIP_BCINV, 0, null);
+    const tMid = s.t + step / 2;
+    const attractors = ephemeris.gravityAttractorsAt(tMid);
+    s = stepDynamics(
+      s, step, attractors, nearestAtmosphereBody(s.r, ephemeris.atmosphereAttractorsAt(tMid)),
+      SHIP_BCINV, 0, null,
+    );
   }
   return s;
 }
@@ -207,7 +211,10 @@ function partD(ephemeris: Ephemeris, regimes: readonly Regime[]): void {
       ));
       const mid = ephemeris.gravityAttractorsAt(a.t + dt / 2);
       resolveA++;
-      a = stepDynamics(a, dt, mid, SHIP_BCINV, 0, null);
+      a = stepDynamics(
+        a, dt, mid, nearestAtmosphereBody(a.r, ephemeris.atmosphereAttractorsAt(a.t + dt / 2)),
+        SHIP_BCINV, 0, null,
+      );
       stepsA++;
     }
 
@@ -229,7 +236,10 @@ function partD(ephemeris: Ephemeris, regimes: readonly Regime[]): void {
       maxRatio = Math.max(maxRatio, Math.max(dt / fresh, fresh / dt));
       const mid = ephemeris.gravityAttractorsAt(b.t + dt / 2);
       resolveB++;
-      b = stepDynamics(b, dt, mid, SHIP_BCINV, 0, null);
+      b = stepDynamics(
+        b, dt, mid, nearestAtmosphereBody(b.r, ephemeris.atmosphereAttractorsAt(b.t + dt / 2)),
+        SHIP_BCINV, 0, null,
+      );
       sizing = mid;
     }
 

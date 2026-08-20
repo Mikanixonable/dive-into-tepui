@@ -262,10 +262,11 @@ export class GameEntity {
 
   // 重力源 + J2 + 大気抵抗 + 自身の推力で 1 ステップ積分する。attractors はこのステップの
   // 重力源一覧 — 呼び出し側(Simulator)が全エンティティで同じ瞬間の同じ配列を使い回す。
-  stepActual(dt: number, attractors: readonly Attractor[]): void {
+  // atmosphereBody は抗力を及ぼすただ1体の大気天体(null なら抗力なし)。
+  stepActual(dt: number, attractors: readonly Attractor[], atmosphereBody: Attractor | null): void {
     if (!this.alive) return;
     this.actual.step(
-      dt, attractors, this.bcInv, this.srpCoeff, this.thrust,
+      dt, attractors, atmosphereBody, this.bcInv, this.srpCoeff, this.thrust,
       this.historySampleInterval(attractors), this.historyDuration,
     );
     // 積分した弧はもう現実を表さない。ある時間帯の状態を決める積分を常に1本に保つ。

@@ -11,12 +11,12 @@ const ZERO = v3(0, 0, 0);
 
 // 試験用の Attractor を組む。質点(degree2 なし)・非恒星・半径0で、重力の寄与だけを見る。
 function makeAttractor(id: string, mu: number, state: KinematicState): Attractor {
-  return { id, mu, radius: 0, state, accel: ZERO, degree2: null, isStar: false };
+  return { id, mu, radius: 0, state, accel: ZERO, degree2: null, atmosphere: null, isStar: false };
 }
 
 // 単一の attractor だけを重力源として1ステップ進める(自由伝播: 抵抗・輻射圧・推力なし)。
 function stepFree(state: KinematicState, dt: number, attractors: readonly Attractor[]): KinematicState {
-  return stepDynamics(state, dt, attractors, 0, 0, null);
+  return stepDynamics(state, dt, attractors, null, 0, 0, null);
 }
 
 // dt ぶんのステップの間、相手の attractor 位置をステップ開始時点で固定する近似は
