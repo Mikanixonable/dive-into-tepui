@@ -3,6 +3,7 @@ import type { AssemblyEditorOptions, AssemblyEditResult, SectionEdit } from './a
 import { editSection, removeEdge, removeNode } from './assembly-editor';
 import {
   DockWorkbenchSession,
+  type RemovePlacementResult,
   type WorkbenchTargetKind,
   type WorkbenchValidation,
 } from './dock-workbench';
@@ -83,10 +84,12 @@ export class DockWorkbenchController {
     return this.session.validate();
   }
 
-  public remove(targetId: string, partRef: string): AnyPart {
-    const removed = this.session.removePlacement(targetId, partRef);
+  // 検証に落ちれば session.removePlacement 自身が巻き戻す(この場合 part は装着されたまま)。
+  // 選択は掴みが終わったことの通知なので、成否によらず解除する。
+  public remove(targetId: string, partRef: string): RemovePlacementResult {
+    const result = this.session.removePlacement(targetId, partRef);
     if (this.selectedPartRef === partRef) this.selectedPartRef = null;
-    return removed;
+    return result;
   }
 
   public applyAssemblyEdit(targetId: string, result: AssemblyEditResult, label?: string): WorkbenchValidation {

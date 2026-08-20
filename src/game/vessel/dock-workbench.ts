@@ -41,6 +41,13 @@ export interface WorkbenchValidation {
   readonly targets?: readonly WorkbenchTargetValidation[];
 }
 
+// removePlacement の返り値。validation.valid が false のときは巻き戻し済みで、
+// part はまだ対象に装着されたままである。
+export interface RemovePlacementResult {
+  readonly part: AnyPart;
+  readonly validation: WorkbenchValidation;
+}
+
 export type WorkbenchValidator = (snapshot: WorkbenchSnapshot) => WorkbenchValidation;
 export type WorkbenchTargetValidator = (
   target: WorkbenchTarget,
@@ -216,18 +223,28 @@ export class DockWorkbenchSession {
     return validation;
   }
 
-  public removePlacement(targetId: string, partId: string): AnyPart {
+  // 対象から部品を外して倉庫へ戻す。applyAssemblyEdit と同じく、外した結果が全体検証
+  // (基地の base_module 必須等の対象別検証を含む)に落ちれば元の状態へ巻き戻し、
+  // 検証結果を呼び出し側へ返す —— 拒まれたのに部品だけ倉庫へ移ってしまう状態を作らない。
+  public removePlacement(targetId: string, partId: string): RemovePlacementResult {
     const target = this.target(targetId);
     const placement = target.assembly.placements.find((candidate) => candidate.part.id === partId);
     if (!placement) throw new Error(`unknown placement: ${partId}`);
-    this.mutate('部品を取り外す', () => {
-      this.replaceTargetInternal(targetId, {
-        tree: target.assembly.tree,
-        placements: target.assembly.placements.filter((candidate) => candidate.part.id !== partId),
-      });
-      this.inventory.push(clonePart(placement.part));
+    const removedPart = clonePart(placement.part);
+    const before = this.snapshot();
+    this.replaceTargetInternal(targetId, {
+      tree: target.assembly.tree,
+      placements: target.assembly.placements.filter((candidate) => candidate.part.id !== partId),
     });
-    return clonePart(placement.part);
+    this.inventory.push(clonePart(placement.part));
+    const validation = this.validate();
+    if (!validation.valid) {
+      this.restore(before);
+      return { part: removedPart, validation };
+    }
+    const after = this.snapshot();
+    this.record('部品を取り外す', before, after);
+    return { part: removedPart, validation };
   }
 
   public installPlacement(targetId: string, placement: PartPlacement, inventoryPartId?: string): void {
