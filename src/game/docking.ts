@@ -285,7 +285,6 @@ export class Docking {
       this.hud.hint('この基地には組み立てられる対象がありません');
       return;
     }
-    const dockedCount = base.baseState?.dockedVessels.length ?? 0;
     const session = new DockWorkbenchSession(
       {
         targets: targets.map((target) => ({
@@ -296,7 +295,8 @@ export class Docking {
         inventory: [...(base.baseState?.inventory ?? [])],
       },
       () => ({ valid: true, errors: [] }),
-      { targetValidator: (target) => targetValidation(target, dockedCount) },
+      // 収容艦数は build-draft 等で開いている間にも動くので、都度 base から読み直す。
+      { targetValidator: (target) => targetValidation(target, base.baseState?.dockedVessels.length ?? 0) },
     );
     // 部品棚ウィンドウは作業台1つに結びつくので、セッションと同じ寿命で作る。
     const workbench = new DockWorkbenchController(session);
@@ -328,6 +328,7 @@ export class Docking {
     panel.onCreateDraft = () => this.createDraft(base);
     panel.onBuildDraft = (targetId) => this.buildDraft(base, targetId);
     panel.onRemoveDraft = (targetId) => this.removeDraft(targetId);
+    panel.onRemoveSelection = () => this.removeSelection();
     panel.draftBuildStatus = (targetId) => this.draftBuildStatus(base, targetId);
     panel.open(session, session.getTarget(initial.id), DEFAULT_WINDOW_X, DEFAULT_WINDOW_Y);
     this.frameAssemblyCamera(entry);
@@ -461,6 +462,19 @@ export class Docking {
     entry.selection = null;
     const source: DragSource = { kind: 'target', targetId: entry.targetId, targetKind: entry.session.targetKind(entry.targetId) };
     this.dragController.beginDrag(entry.workbench, placement.part, source);
+  }
+
+  // 選択中のノード・エッジを削除する。成功すれば選択も外す。拒否理由は文字列で返すだけで、
+  // それを画面へどう出すかは呼び出し側(AssemblyPanel)の責務。
+  removeSelection(): string | null {
+    const entry = this.assembly;
+    if (!entry || entry.selection === null) return null;
+    const { selection, targetId } = entry;
+    const validation = selection.kind === 'node'
+      ? entry.workbench.removeNode(targetId, selection.nodeId)
+      : entry.workbench.removeEdge(targetId, selection.edgeId);
+    if (validation.valid) entry.selection = null;
+    return validation.valid ? null : (validation.errors[0] ?? '削除できません');
   }
 
   // 対象タブが指す表示の写しの描画木。ピック(拾い上げ)とゴースト吸着(dragTarget)は
