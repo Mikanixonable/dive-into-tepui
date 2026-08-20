@@ -63,9 +63,10 @@ export function register(): void {
 
   test('predicted-arc: consumable な弧は再突入域で実シミュレーションと同じ 1s 刻みへ落ちる', () => {
     // 大気の密度は 1 スケールハイトで桁が変わるので、降下中は実シミュレーションと同じ細分化が要る。
+    // 再突入域は大気を持つ天体の基準楕円体から測るので、大気を載せた地球でなければ成立しない。
     const r0 = R_EARTH + 150e3; // REENTRY_SUBSTEP_ALT(200km)より下
     const state0 = kinematicState(0, v3(r0, 0, 0), v3(0, Math.sqrt(MU_EARTH / r0), 0));
-    const arc = new PredictedArc(state0, earthOnlyProvider(), 0, 0, /* keplerTail */ true, /* consumable */ true);
+    const arc = new PredictedArc(state0, earthOnlyProvider(true), 0, 0, /* keplerTail */ true, /* consumable */ true);
     arc.requiredEnd = state0.t + 86400;
     arc.retainFrom = state0.t;
     arc.simulationMaxStep = 20;
@@ -140,6 +141,24 @@ export function register(): void {
     const shortTimes = tipTimes(shortArc, steps);
     const longTimes = tipTimes(longArc, steps);
     assert.notDeepEqual(shortTimes, longTimes, 'consumable でない弧は requiredEnd で刻みが変わるはず');
+  });
+
+  test('predicted-arc: 大気を持たない天体の低空では、再突入域の細分化が起きない', () => {
+    // 細分化の理由は大気の密度勾配なので、大気の無いところに再突入域は無い。
+    const r0 = R_EARTH + 150e3;
+    const state0 = kinematicState(0, v3(r0, 0, 0), v3(0, Math.sqrt(MU_EARTH / r0), 0));
+    const arc = new PredictedArc(state0, earthOnlyProvider(), 0, 0, /* keplerTail */ true, /* consumable */ true);
+    arc.requiredEnd = state0.t + 86400;
+    arc.retainFrom = state0.t;
+    arc.simulationMaxStep = 20;
+
+    let prevT = state0.t;
+    for (let i = 0; i < 20; i++) {
+      assert.ok(arc.step(), `step ${i} should grow`);
+      const dt = arc.trajectory.state.t - prevT;
+      assert.ok(Math.abs(dt - 20) < 1e-6, `step ${i}: 大気が無ければ刻みは simulationMaxStep のはず, got ${dt}`);
+      prevT = arc.trajectory.state.t;
+    }
   });
 
   test('predicted-arc: 弧は大気で打ち切られず、固体表面へ到達したときにだけ打ち切られる', () => {
