@@ -23,8 +23,9 @@ import type { PartVisualRef } from './vessel/part-visual';
 import { DockWorkbenchSession, type WorkbenchTarget } from './vessel/dock-workbench';
 import { DockWorkbenchController } from './vessel/dock-workbench-controller';
 import { crewedAssembly } from './vessel/vessel-assemblies';
-import { productionBlueprintOf, consumeProductionResources } from './vessel/production';
-import { producibility } from './economy/producibility';
+import { productionBlueprintOf, productionResourceDemand, consumeProductionResources } from './vessel/production';
+import { producibility, type ProducibilityBlueprint } from './economy/producibility';
+import { formatResourceAmount } from './hud/inventory-labels';
 import { baseFacilities, basePowerAvailable, deriveBaseDockingPorts } from './vessel/base-module';
 import { validateBaseAssembly } from './vessel/base-assembly-validation';
 import { deriveCapsules } from './vessel/collision-shape';
@@ -146,7 +147,7 @@ export class Docking {
     scene: THREE.Scene,
     effects: EffectsSystem,
     markerManager: MarkerManager,
-    graphics: GraphicsSettings,
+    private readonly graphics: GraphicsSettings,
     private readonly entities: EntityManager,
     private readonly mapActions: MapContextActions,
     private readonly cameraSystem: CameraSystem,
@@ -155,7 +156,7 @@ export class Docking {
   ) {
     this.viewManager.setDocking(this);
     this.transferDialog = new ResourceTransferDialog(this.hud.layers.view, this.hud.overlayManager);
-    this.vesselDeps = { hud, worldSfx, scene, fx: effects, markerManager, graphics };
+    this.vesselDeps = { hud, worldSfx, scene, fx: effects, markerManager, graphics: this.graphics };
     this.dragController = new AssemblyDragController(scene);
   }
 
@@ -303,7 +304,8 @@ export class Docking {
     const originalInventoryIds = new Set((base.baseState?.inventory ?? []).map((part) => part.id));
     const savedChaseDist = this.cameraSystem.combatCamera.chaseCamera.dist;
     const entry: AssemblySession = {
-      base, session, workbench, panel, originalInventoryIds, targetId: initial.id, selection: null, savedChaseDist,
+      base, session, workbench, panel, originalInventoryIds, targetId: initial.id, selection: null,
+      savedChaseDist,
     };
     this.assembly = entry;
 
@@ -316,6 +318,9 @@ export class Docking {
     panel.onRedo = () => { workbench.redo(); };
     panel.onConfirm = () => this.commitAssembly();
     panel.onCancel = () => this.cancelAssembly();
+    panel.onCreateDraft = () => this.createDraft(base);
+    panel.onBuildDraft = (targetId) => this.buildDraft(base, targetId);
+    panel.draftBuildStatus = (targetId) => this.draftBuildStatus(base, targetId);
     panel.open(session, session.getTarget(initial.id), DEFAULT_WINDOW_X, DEFAULT_WINDOW_Y);
     this.frameAssemblyCamera(entry);
     this.pauseGame();
@@ -469,10 +474,16 @@ export class Docking {
     this.heldOriginal = null;
   }
 
-  // update が決めた位置・姿勢・色を、掴んでいる部品のゴーストへ押し込む。
+  // update が決めた位置・姿勢・色を、掴んでいる部品のゴーストへ押し込む。編集中の対象は
+  // 構造を見せる —— ノードとエッジはワイヤーフレームにしか描かれておらず、既定では消えている
+  // のに、レイキャストは見えていなくても拾ってしまうため。EntityManager.syncVessels の後に
+  // 呼ばれるので、この1フレームぶんの上書きが効き、セッションを抜ければ自然に戻る。
   syncAssembly(fo: FloatingOrigin): void {
     this.syncBaseWindows();
-    this.assembly?.panel.sync(this.assembly.session, this.assembly.selection);
+    if (this.assembly) {
+      this.assembly.panel.sync(this.assembly.session, this.assembly.selection);
+      this.targetById(this.assembly.base, this.assembly.targetId)?.vessel?.revealStructure();
+    }
     this.dragController.sync(fo);
   }
 
@@ -700,11 +711,7 @@ export class Docking {
     const slotIndex = base.getAvailableSlotIndex();
     if (slotIndex === null) return this.reportEditFailure('空きドックがありません');
     const blueprint = createBlueprint({ id: `${draft.id}-blueprint`, name: draft.name, tree: draft.assembly.tree, placements: draft.assembly.placements, now: Date.now() });
-    // 倉庫から引いた(=生産時にすでに課金済みの)部品は建造費から除く。二重課金を避けるための
-    // 課金専用の設計で、実際に組み立てる vessel は draft.assembly をそのまま使う。
-    const chargedPlacements = draft.assembly.placements.filter((placement) => !draft.ownedPartIds.has(placement.part.id));
-    const chargeBlueprint = createBlueprint({ id: `${draft.id}-charge`, name: draft.name, tree: draft.assembly.tree, placements: chargedPlacements, now: Date.now() });
-    const production = productionBlueprintOf(chargeBlueprint);
+    const production = this.draftBuildRequest(draft);
     const requirements = producibility(production, base.baseState.resources, baseFacilities(base), basePowerAvailable(base));
     if (requirements.length > 0) {
       this.hud.hint(`建造資源・設備が不足しています: ${requirements.map((item) => item.id).join(', ')}`); return;
@@ -717,6 +724,30 @@ export class Docking {
     base.attachDockedVesselMesh(vessel, slotIndex);
     draft.render.object.removeFromParent(); draft.render.dispose(); this.drafts.delete(targetId);
     this.hud.hint(`${vessel.name} をドック ${slotIndex + 1} に格納しました`);
+  }
+
+  // 倉庫から引いた(=生産時にすでに課金済みの)部品は建造費から除く。二重課金を避けるための
+  // 課金専用の設計で、実際に組み立てる vessel は draft.assembly をそのまま使う。
+  private draftBuildRequest(draft: DraftEntry): ProducibilityBlueprint {
+    const chargedPlacements = draft.assembly.placements.filter((placement) => !draft.ownedPartIds.has(placement.part.id));
+    const chargeBlueprint = createBlueprint({
+      id: `${draft.id}-charge`, name: draft.name, tree: draft.assembly.tree, placements: chargedPlacements, now: Date.now(),
+    });
+    return productionBlueprintOf(chargeBlueprint);
+  }
+
+  // 「建造して格納」ボタンの但し書き。base-operations-window.ts の生産タブと同じ形で、
+  // producibility の不足を資源だけの文言へ畳んで賄えるかと一緒に返す。対象が下書きでなければ
+  // (基地が消える等) null。
+  private draftBuildStatus(base: Vessel, targetId: string): { readonly costText: string; readonly affordable: boolean } | null {
+    const draft = this.drafts.get(targetId);
+    if (!draft || !base.baseState) return null;
+    const request = this.draftBuildRequest(draft);
+    const ledger = base.baseState.resources;
+    const demand = productionResourceDemand(request, ledger);
+    const costText = [...demand].map(([id, mass]) => formatResourceAmount(id, mass)).join('・') || '資源なし';
+    const affordable = producibility(request, ledger, baseFacilities(base), basePowerAvailable(base)).length === 0;
+    return { costText, affordable };
   }
 
   // 格納艦をドックから切り離して発進させ、操作対象にする。
