@@ -87,7 +87,7 @@ function findViolations(posix, src) {
 
   if (/(^|\/)src\/physics\//.test(posix)) {
     for (const [re, msg] of PHYSICS_FORBIDDEN) {
-      if (re.test(src)) out.push(`${msg}(physics/ の純度)`);
+      if (re.test(src)) out.push(`${msg}(CODING-RULE 1.3 フォルダの境界)`);
     }
   }
 
@@ -103,12 +103,12 @@ function findViolations(posix, src) {
 
   for (const { name, body } of methodBodies(src, 'sync\\w*')) {
     for (const [re, msg] of SYNC_FORBIDDEN) {
-      if (re.test(body)) out.push(`${name}(): ${msg}(CODING-RULE 1.7 フレーム処理の位相)`);
+      if (re.test(body)) out.push(`${name}(): ${msg}(CODING-RULE 1.9 フレーム処理の位相)`);
     }
   }
   for (const { name, body } of methodBodies(src, 'update\\w*|behave')) {
     for (const [re, msg] of UPDATE_FORBIDDEN) {
-      if (re.test(body)) out.push(`${name}(): ${msg}(CODING-RULE 1.7 フレーム処理の位相)`);
+      if (re.test(body)) out.push(`${name}(): ${msg}(CODING-RULE 1.9 フレーム処理の位相)`);
     }
   }
 
