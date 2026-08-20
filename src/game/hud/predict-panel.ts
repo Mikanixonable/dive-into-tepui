@@ -123,7 +123,7 @@ function customPillLabel(sec: number): string {
     if (sec >= unitSec && sec % unitSec === 0) return `${sec / unitSec}${unit[1]}`;
   }
   if (sec % 60 === 0) return `${sec / 60}分`;
-  return `${sec}秒`;
+  return `${Math.round(sec)}秒`;
 }
 
 // フォーカス移動による commit() の割り込みを避けつつ押せる小ボタン(✓/✕ など)。
