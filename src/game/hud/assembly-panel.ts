@@ -10,7 +10,7 @@
 // #hud の子として window レイヤへ置くため、`#hud, #hud *` の margin/padding
 // リセットに勝てるよう全セレクタを `#hud` で始める。
 import type { AnyPart, PartType } from '../game-entity/parts';
-import { editSection, removeEdge, removeNode, type SectionPrimitivePatch } from '../vessel/assembly-editor';
+import type { SectionPrimitivePatch } from '../vessel/assembly-editor';
 import { AssemblyDragController } from '../vessel/assembly-drag-controller';
 import type { AssemblySelection } from '../docking';
 import type { DockWorkbenchController } from '../vessel/dock-workbench-controller';
@@ -45,6 +45,7 @@ const STYLE = `
 #hud .asm-panel-filter .w-input { width: 100%; box-sizing: border-box; }
 #hud .asm-panel-errors { display: flex; flex-direction: column; gap: var(--space-1); padding: 0 var(--space-3); }
 #hud .asm-panel-error-row { color: var(--danger); font-size: var(--font-s); }
+#hud .asm-panel-issue-row { color: var(--text-muted); font-size: var(--font-s); }
 #hud .asm-panel-shelf { display: flex; flex-direction: column; gap: var(--space-2); padding: 0 var(--space-3); max-height: 360px; overflow-y: auto; }
 #hud .asm-panel-group-title { color: var(--text); opacity: 0.7; font-size: var(--font-s); padding-top: var(--space-2); }
 #hud .asm-panel-group-rows { display: flex; flex-direction: column; gap: var(--space-1); }
@@ -361,18 +362,27 @@ export class AssemblyPanel {
     if (this.currentTargetId !== null) this.targetTabs?.setSelected(this.currentTargetId);
   }
 
+  // 編集を拒んでいる理由と、設計としての指摘を分けて出す。前者は直さなければ先へ進めないもの、
+  // 後者はこのまま組めるが飛べないもので、利用者にとって別の意味を持つ。
   private syncErrors(session: DockWorkbenchSession): void {
     if (!this.errorsEl || this.currentTargetId === null) return;
-    const errors = session.validateTarget(this.currentTargetId).errors;
-    const key = errors.join('|');
+    const validation = session.validateTarget(this.currentTargetId);
+    const rows: readonly { readonly className: string; readonly text: string }[] = [
+      ...validation.blocking.map((text) => ({ className: 'asm-panel-error-row', text })),
+      ...validation.issues.map((issue) => ({
+        className: issue.severity === 'error' ? 'asm-panel-error-row' : 'asm-panel-issue-row',
+        text: issue.severity === 'error' ? issue.message : `注意: ${issue.message}`,
+      })),
+    ];
+    const key = rows.map((row) => `${row.className}:${row.text}`).join('|');
     if (key === this.lastErrorsKey) return;
     this.lastErrorsKey = key;
     this.errorsEl.innerHTML = '';
-    for (const error of errors) {
-      const row = document.createElement('div');
-      row.className = 'asm-panel-error-row';
-      row.textContent = error;
-      this.errorsEl.appendChild(row);
+    for (const row of rows) {
+      const el = document.createElement('div');
+      el.className = row.className;
+      el.textContent = row.text;
+      this.errorsEl.appendChild(el);
     }
     this.win?.reclamp();
   }
@@ -520,10 +530,9 @@ export class AssemblyPanel {
     const selection = this.currentSelection;
     if (!this.lastSession || this.currentTargetId === null || selection === null) return;
     const targetId = this.currentTargetId;
-    const assembly = this.lastSession.getTarget(targetId).assembly;
-    const result = selection.kind === 'node' ? removeNode(assembly, selection.nodeId) : removeEdge(assembly, selection.edgeId);
-    const label = selection.kind === 'node' ? 'ノードを削除' : 'エッジを削除';
-    const validation = this.workbench.applyAssemblyEdit(targetId, result, label);
+    const validation = selection.kind === 'node'
+      ? this.workbench.removeNode(targetId, selection.nodeId)
+      : this.workbench.removeEdge(targetId, selection.edgeId);
     this.setEditStatus(validation.valid ? null : (validation.errors[0] ?? '削除できません'));
   }
 
@@ -532,9 +541,9 @@ export class AssemblyPanel {
   private applyPrimitiveEdit(nodeId: string, primitiveId: string, patch: SectionPrimitivePatch, label: string): void {
     if (!this.lastSession || this.currentTargetId === null) return;
     const targetId = this.currentTargetId;
-    const assembly = this.lastSession.getTarget(targetId).assembly;
-    const result = editSection(assembly, { kind: 'update-primitive', nodeId, primitiveId, patch });
-    const validation = this.workbench.applyAssemblyEdit(targetId, result, label);
+    const validation = this.workbench.editSection(
+      targetId, { kind: 'update-primitive', nodeId, primitiveId, patch }, label,
+    );
     this.setEditStatus(validation.valid ? null : (validation.errors[0] ?? '断面を編集できません'));
   }
 

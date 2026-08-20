@@ -16,18 +16,21 @@ import { Vessel, type VesselDeps } from './vessel/vessel';
 import { hasBaseModule } from './vessel/capabilities';
 import { createBlueprint } from './vessel/blueprint';
 import type { VesselAssembly } from './vessel/assembly';
-import { validateBlueprint } from './vessel/blueprint-validation';
+import { validateAssembly } from './vessel/assembly-editor';
+import type { BlueprintIssue } from './vessel/blueprint-validation';
 import { AssemblyRenderObject } from './vessel/assembly-render-object';
 import { AssemblyDragController, type AssemblyDragTarget, type AssemblyPick } from './vessel/assembly-drag-controller';
 import type { PartVisualRef } from './vessel/part-visual';
-import { DockWorkbenchSession, type WorkbenchTarget } from './vessel/dock-workbench';
+import {
+  DockWorkbenchSession, type TargetIssues, type WorkbenchTarget, type WorkbenchTargetKind,
+} from './vessel/dock-workbench';
 import { DockWorkbenchController } from './vessel/dock-workbench-controller';
 import { crewedAssembly } from './vessel/vessel-assemblies';
 import { productionBlueprintOf, productionResourceDemand, consumeProductionResources } from './vessel/production';
 import { producibility, type ProducibilityBlueprint } from './economy/producibility';
 import { formatResourceAmount } from './hud/inventory-labels';
 import { baseFacilities, basePowerAvailable, deriveBaseDockingPorts } from './vessel/base-module';
-import { validateBaseAssembly } from './vessel/base-assembly-validation';
+import { BASE_BLUEPRINT_LIMITS, baseInvariants, validateBaseAssembly } from './vessel/base-assembly-validation';
 import { deriveCapsules } from './vessel/collision-shape';
 import { circumradius, type VesselTree } from './vessel/tree';
 import { add as addVec, type Vec3 } from '../physics/vec3';
@@ -592,9 +595,6 @@ export class Docking {
       id: `${previous.id}-dock-edit`, name: previous.name, tree: assembly.tree,
       placements: assembly.placements, now: Date.now(),
     });
-    const issue = validateBlueprint(blueprint).find((candidate) => candidate.severity === 'error');
-    if (issue) return { ok: false, reason: issue.message };
-
     const replacement = new Vessel({
       blueprintShip: { blueprint, state: previous.state, name: previous.name, id: previous.id },
     }, this.vesselDeps);
@@ -670,8 +670,6 @@ export class Docking {
   private applyTargetAssembly(base: Vessel, targetId: string, assembly: VesselAssembly): boolean {
     const target = this.targetById(base, targetId);
     if (!target) return false;
-    const error = assemblyError(assembly, target.name);
-    if (error) { this.reportEditFailure(error); return false; }
     if (target.kind === 'base') {
       const result = this.commitBaseAssembly(base, assembly);
       if (!result.ok) { this.reportEditFailure(result.reason); return false; }
@@ -823,26 +821,31 @@ export class Docking {
 }
 
 // 対象1つが構成として成り立つか。基地には基地固有の条件も課す。
+// 編集と確定を拒む理由は、実機の一貫性が壊れるものだけに絞る。設計として飛べるかどうかは
+// 指摘として返し、拒まない —— 飛べない船を組めること自体は利用者の選択である。
 function targetValidation(
   target: WorkbenchTarget,
   dockedCount: number,
-): { valid: boolean; errors: readonly string[] } {
-  const errors: string[] = [];
-  if (target.kind === 'base') errors.push(...validateBaseAssembly(target.assembly, dockedCount));
-  const error = assemblyError(target.assembly, target.id);
-  if (error) errors.push(error);
-  return { valid: errors.length === 0, errors };
+): TargetIssues {
+  const blocking = target.kind === 'base' ? [...baseInvariants(target.assembly, dockedCount)] : [];
+  return { blocking, issues: designIssues(target.assembly, target.id, target.kind) };
 }
 
-// 構成が設計として成り立つかを確かめ、最初のエラーを返す。成り立つなら null。
-function assemblyError(assembly: VesselAssembly, name: string): string | null {
+// 構成を設計として検査する。対象の種別ごとに上限が違うので、そこだけを分ける。
+function designIssues(
+  assembly: VesselAssembly,
+  name: string,
+  kind: WorkbenchTargetKind | undefined,
+): readonly BlueprintIssue[] {
+  const limits = kind === 'base' ? BASE_BLUEPRINT_LIMITS : undefined;
   try {
-    const blueprint = createBlueprint({
-      id: `dock-preview-${name}`, name, tree: assembly.tree, placements: assembly.placements, now: 0,
-    });
-    return validateBlueprint(blueprint).find((issue) => issue.severity === 'error')?.message ?? null;
+    return validateAssembly(assembly, { blueprintId: `dock-preview-${name}`, blueprintName: name, limits });
   } catch (error) {
-    return `構成の検証に失敗しました: ${error instanceof Error ? error.message : String(error)}`;
+    return [{
+      severity: 'error',
+      targetId: name,
+      message: `構成の検証に失敗しました: ${error instanceof Error ? error.message : String(error)}`,
+    }];
   }
 }
 

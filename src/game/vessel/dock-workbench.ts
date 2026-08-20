@@ -1,6 +1,7 @@
 import type { AnyPart } from '../game-entity/parts';
 import type { AssemblyEditResult } from './assembly-editor';
 import { validateAssembly } from './assembly-editor';
+import type { BlueprintIssue } from './blueprint-validation';
 import type { PartPlacement, VesselAssembly } from './assembly';
 
 /** The objects which can share one workbench transaction. */
@@ -18,11 +19,20 @@ export interface WorkbenchSnapshot {
   readonly inventory: readonly AnyPart[];
 }
 
-export interface WorkbenchTargetValidation {
+// 1つの対象について、編集を拒む理由と、設計としての指摘を分けて持つ。この2つを1つの真偽値へ
+// 潰すと、飛べない設計を組むこと自体が禁じられてしまう —— 飛べないのは利用者の選択であって、
+// 世界の一貫性が壊れるのとは別の問題である。
+export interface TargetIssues {
+  /** 適用すると実機の一貫性が壊れるもの。これだけが編集と確定を拒む。 */
+  readonly blocking: readonly string[];
+  /** 設計として飛べるかどうかの指摘。拒まず、表示だけする。 */
+  readonly issues: readonly BlueprintIssue[];
+}
+
+export interface WorkbenchTargetValidation extends TargetIssues {
   readonly targetId: string;
   readonly kind: WorkbenchTargetKind;
   readonly valid: boolean;
-  readonly errors: readonly string[];
 }
 
 export interface WorkbenchValidation {
@@ -35,7 +45,7 @@ export type WorkbenchValidator = (snapshot: WorkbenchSnapshot) => WorkbenchValid
 export type WorkbenchTargetValidator = (
   target: WorkbenchTarget,
   snapshot: WorkbenchSnapshot,
-) => WorkbenchValidation;
+) => TargetIssues;
 
 export interface DockWorkbenchOptions {
   /** Adds base/draft-specific checks to the common assembly checks. */
@@ -100,8 +110,6 @@ export class DockWorkbenchSession {
     return cloneSnapshot(this.snapshot());
   }
 
-  /** Alias for callers whose domain language calls the operation a build snapshot. */
-  public snapshotForBuild(): WorkbenchSnapshot { return this.snapshotBeforeBuild(); }
 
   public validate(): WorkbenchValidation {
     const current = this.snapshot();
@@ -109,7 +117,7 @@ export class DockWorkbenchSession {
     const targets = this.targets.map((target) => this.validateTargetInternal(target, current));
     const errors = [
       ...global.errors,
-      ...targets.flatMap((target) => target.errors.map((error) => `${target.targetId}: ${error}`)),
+      ...targets.flatMap((target) => target.blocking.map((message) => `${target.targetId}: ${message}`)),
     ];
     return {
       valid: global.valid && targets.every((target) => target.valid),
@@ -197,15 +205,6 @@ export class DockWorkbenchSession {
     return validation;
   }
 
-  /** Descriptive alias for adapters that receive an editor command result. */
-  public applyEditResult(
-    targetId: string,
-    result: AssemblyEditResult,
-    label = 'アセンブリを編集',
-  ): WorkbenchValidation {
-    return this.applyAssemblyEdit(targetId, result, label);
-  }
-
   public removePlacement(targetId: string, partId: string): AnyPart {
     const target = this.target(targetId);
     const placement = target.assembly.placements.find((candidate) => candidate.part.id === partId);
@@ -286,10 +285,6 @@ export class DockWorkbenchSession {
     return clonePart(removed!);
   }
 
-  public movePlacementToInventory(targetId: string, partId: string): AnyPart {
-    return this.removePlacement(targetId, partId);
-  }
-
   public addTarget(target: WorkbenchTarget, label = '作業対象を追加'): WorkbenchTarget {
     const normalized = normalizeTarget(target);
     if (this.targets.some((candidate) => candidate.id === normalized.id)) {
@@ -322,16 +317,20 @@ export class DockWorkbenchSession {
     this.future.length = 0;
   }
 
+  // 構造として組み上がるかは対象の種別によらず拒む理由になる。設計としての出来は呼び出し側の
+  // 検証器が判断し、拒む理由には数えない。
   private validateTargetInternal(target: StoredTarget, snapshot: WorkbenchSnapshot): WorkbenchTargetValidation {
-    const structuralErrors = validateAssembly(target.assembly, { validateBlueprint: false })
+    const structural = validateAssembly(target.assembly, { validateBlueprint: false })
       .filter((issue) => issue.severity === 'error')
       .map((issue) => issue.message);
-    const custom = this.targetValidator?.(target, snapshot) ?? { valid: true, errors: [] };
+    const custom = this.targetValidator?.(target, snapshot) ?? { blocking: [], issues: [] };
+    const blocking = [...structural, ...custom.blocking.filter((message) => !structural.includes(message))];
     return {
       targetId: target.id,
       kind: target.kind,
-      valid: structuralErrors.length === 0 && custom.valid,
-      errors: [...structuralErrors, ...custom.errors],
+      valid: blocking.length === 0,
+      blocking,
+      issues: custom.issues,
     };
   }
 

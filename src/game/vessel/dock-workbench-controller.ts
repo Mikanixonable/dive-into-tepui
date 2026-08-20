@@ -1,5 +1,6 @@
 import type { AnyPart } from '../game-entity/parts';
-import type { AssemblyEditResult } from './assembly-editor';
+import type { AssemblyEditorOptions, AssemblyEditResult, SectionEdit } from './assembly-editor';
+import { editSection, removeEdge, removeNode } from './assembly-editor';
 import {
   DockWorkbenchSession,
   type WorkbenchTargetKind,
@@ -7,6 +8,8 @@ import {
 } from './dock-workbench';
 import type { PartPlacement, VesselAssembly } from './assembly';
 import type { Vec3 } from '../../physics/vec3';
+
+const PARTIAL_DESIGN: AssemblyEditorOptions = { validateBlueprint: false };
 
 // 取り付けの可否は assembly-editor が下す。ここで持つのは「通ったか」と、通らなかったときの
 // 人間可読な理由(AssemblyEditError.message、日本語)だけである。
@@ -89,6 +92,25 @@ export class DockWorkbenchController {
 
   public applyAssemblyEdit(targetId: string, result: AssemblyEditResult, label?: string): WorkbenchValidation {
     return this.session.applyAssemblyEdit(targetId, result, label);
+  }
+
+  // 編集中の構成は定義上、完成した設計ではない。セッションを通る編集はすべてここを経由させ、
+  // 呼び出しごとに部分設計であることを言い直さずに済むようにする。完成設計としての検査は
+  // 確定の1点だけで課す。
+  public removeNode(targetId: string, nodeId: string): WorkbenchValidation {
+    return this.applyAssemblyEdit(targetId, removeNode(this.assemblyOf(targetId), nodeId, PARTIAL_DESIGN), 'ノードを削除');
+  }
+
+  public removeEdge(targetId: string, edgeId: string): WorkbenchValidation {
+    return this.applyAssemblyEdit(targetId, removeEdge(this.assemblyOf(targetId), edgeId, PARTIAL_DESIGN), 'エッジを削除');
+  }
+
+  public editSection(targetId: string, edit: SectionEdit, label: string): WorkbenchValidation {
+    return this.applyAssemblyEdit(targetId, editSection(this.assemblyOf(targetId), edit, PARTIAL_DESIGN), label);
+  }
+
+  private assemblyOf(targetId: string): VesselAssembly {
+    return this.session.getTarget(targetId).assembly;
   }
 
   public createNewVesselDraft(id: string, assembly: VesselAssembly): void {
