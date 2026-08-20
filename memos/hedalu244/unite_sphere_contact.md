@@ -9,6 +9,9 @@
 - 着手時点で、天体接触の判定は `ContactPhysics` / `checkLoss` 系 / `PredictedArc.checkSurfaceReach`
   の3箇所に分かれたままでよい。**この計画は判定を呼ぶ箇所を減らさない** — 呼ばれる先の実装を
   1つにし、点で代用している1箇所(`Bullet.checkLoss`)を掃引へ揃えるだけ。
+- **掃引の入口は `sphere-contact.ts` の `sweptSphereContact` へ集約済み。** `reachedBody` は
+  幾何を持たず、`resolveSphereCollision` と同じ入口を呼ぶ。近似の選択は、速度を渡すか渡さないかで
+  呼び出し側が握ったままになっている(第二段階でここを判定器の内側へ移す)。
 
 ## この計画は2段階に分かれ、間に別の作業が入る
 
@@ -32,16 +35,11 @@
 |---|---|---|
 | 経路の近似 | 端点を結ぶ**線分** | 端点の速度を接線に取る**三次エルミート** |
 | 解き方 | 2次方程式の閉形式 | 相対位置を3次ベジエへ変換 → 制御点凸包の箱判定 → 左右再帰細分(深さ32)→ 24 反復の二分法 |
-| 返り値 | `{ toi, normal }` | `toi` のみ |
 | 開始時の重なり | null(呼び出し側の離散 solver へ委譲) | null(同上) |
-| 呼ぶ側 | `collision-response.ts` の `resolveSphereCollision`(= `ContactPhysics` の全経路) | `attractor.ts` の `reachedBody`(= `checkLoss` 系と `PredictedArc.checkSurfaceReach`) |
 
-**同じ「移動する球どうしがこの区間で触れたか」を、別の近似で2回書いている。**
-しかも呼び出し口が揃っていない — 片方は法線を返し、片方は返さない。片方は1ペアを解き、
-片方は天体一覧を回して最小 TOI を選ぶところまでを1つの関数(`reachedBody`)でやっている。
-
-さらに `reachedBody` は幾何(`sweptHermiteSphereToi`)と探索(天体一覧の走査)と
-フォールバック(`containingBody` による点判定)を1つの関数に抱えている。
+**同じ「移動する球どうしがこの区間で触れたか」を、別の近似で解いている。** 呼び出し口が
+揃っていないと、どちらの近似で解かれたかが呼び出し元ごとに固定され、精度と費用の釣り合いを
+判定器が握れない。
 
 そのうえ `Bullet.checkLoss` は、同じ問いを**区間の終端1点**(`containingBody`)で代用している。
 掃引を省いた近似なので、**同じ問いに対する解き方が3つある**ことになる。
@@ -53,14 +51,15 @@
 
 ### 2-1. `sphere-contact.ts` の export と、その直接の呼び出し元
 
-| export | 直接呼ぶ場所 | ほかに呼ぶ場所 |
-|---|---|---|
-| `sweptSphereToi` | `collision-response.ts` の `resolveSphereCollision` | 無し |
-| `sweptHermiteSphereToi` | `attractor.ts` の `reachedBody` | 無し |
-| `containingBody` | `attractor.ts` の `reachedBody`(掃引が空振りしたときのフォールバック) | `game-entity/bullet.ts` の `Bullet.checkLoss` |
+| export | 直接呼ぶ場所 |
+|---|---|
+| `sweptSphereContact` | `collision-response.ts` の `resolveSphereCollision`(速度を渡さない = 線形)、`attractor.ts` の `reachedBody`(速度を渡す = エルミート) |
+| `sweptSphereToi` | `sweptSphereContact` の線形分岐。ほかは既存テストだけ |
+| `sweptHermiteSphereToi` | 既存テストだけ |
+| `containingBody` | `attractor.ts` の `reachedBody`(掃引が空振りしたときのフォールバック)、`game-entity/bullet.ts` の `Bullet.checkLoss` |
 
-**掃引の幾何を呼ぶ口は `resolveSphereCollision` と `reachedBody` の2つしかない。** どちらも
-その先を1本しか呼ばないので、1章が言う「2つの実装」は、この2つの内側の話に閉じている。
+**掃引の幾何を呼ぶ口は `sweptSphereContact` 1つだけ。** 点で代用している口が
+`Bullet.checkLoss` に1つ残っている。
 
 ### 2-2. 呼び出し経路
 
@@ -69,27 +68,27 @@ Simulator.advance ── substep ループ(毎フレーム)
 ├─ ContactPhysics.resolveSubstep …… simSpeed ≤ ×4 のときだけ(canResolvePhysicalCollisions)
 │  └─ collectCandidates
 │     ├─ 個体 × 個体(空間グリッド 27 近傍で絞る) → computeEntityResponse
-│     │    └─ resolveSphereCollision → sweptSphereToi ……………………… 線形
+│     │    └─ resolveSphereCollision → sweptSphereContact(速度なし)… 線形
 │     └─ 参加個体 × 天体(総当たり)              → computeAttractorResponse
-│          └─ resolveSphereCollision → sweptSphereToi ……………………… 線形
+│          └─ resolveSphereCollision → sweptSphereContact(速度なし)… 線形
 ├─ EntityManager.cleanup …… 毎 substep、全生存個体(自機を含む)
 │  └─ GameEntity.checkLoss(種別ごとに上書き)
-│     ├─ 基底 / DebrisPiece → reachedBody(prevState, state, 窓, 0) … エルミート
-│     ├─ Player            → reachedBody(prevState, state, 窓, 0) … エルミート
-│     ├─ Bullet            → containingBody(state.r, 窓, 0) ……………… 点判定
+│     ├─ 基底 / DebrisPiece → reachedBody → sweptSphereContact(速度あり)… エルミート
+│     ├─ Player            → reachedBody → sweptSphereContact(速度あり)… エルミート
+│     ├─ Bullet            → containingBody(state.r, 窓, 0) ………………………… 点判定
 │     └─ Enemy             → 天体の判定を持たない
 └─ ContactPhysics.resolveBelt …… simSpeed ≤ ×4 かつ自機生存のとき、フレームに1回
-   └─ ベルト節点 × 天体 → computeAttractorResponse → sweptSphereToi … 線形
+   └─ ベルト節点 × 天体 → computeAttractorResponse → …(上と同じ)… 線形
 
 Predictor.update ── 予算内で弧を1歩ずつ伸ばす(毎フレーム)
 │                   実体の弧も計画(PlanPath)の弧も同じ grow を通る
 └─ PredictedArc.step
-   └─ checkSurfaceReach
-      └─ reachedBody(歩の始点, 歩の終点, 窓, 0) ………………………………… エルミート
+   └─ checkSurfaceReach → reachedBody → sweptSphereContact(速度あり)… エルミート
 ```
 
-`resolveSphereCollision` は掃引が空振りしたときだけ区間終端の重なり押し戻しへ落ち、
-`reachedBody` は掃引が空振りしたときだけ `containingBody` の点判定へ落ちる。
+`reachedBody` は判定器を天体一覧に対して回して最小 TOI を選ぶだけで、幾何を持たない。
+どちらの経路も、掃引が空振りしたときだけ離散判定へ落ちる — `resolveSphereCollision` は
+区間終端の重なり押し戻しへ、`reachedBody` は `containingBody` の点判定へ。
 **フォールバックの形が2経路で違う**のはここ(8章のリスク表の2行目が指しているもの)。
 
 ### 2-3. 判定の相手にする天体の窓
@@ -123,9 +122,8 @@ Predictor.update ── 予算内で弧を1歩ずつ伸ばす(毎フレーム)
 
 ### 2-5. この計画への含意
 
-- 掃引を呼ぶ口が2つ(`resolveSphereCollision` / `reachedBody`)、点で代用している口が1つ
-  (`Bullet.checkLoss`)。**第一段階が触るのはこの3つと `sphere-contact.ts` の計4ファイルで
-  閉じる**(5章の表と一致する)。
+- 掃引を呼ぶ口は `sweptSphereContact` 1つに集約済み。点で代用している口が `Bullet.checkLoss`
+  に1つ残っており、**第一段階の残りはそこだけ**(5章の表と一致する)。
 - **`Bullet.checkLoss` の `containingBody` は射程内。** 問うている問いは他の3経路と同じ
   「移動する2球体がこの区間で触れたか」であり、区間の終端1点で代用しているだけ。**線形掃引へ
   変えてから同列に扱う** — 点判定のまま残すと、判定器を1つにしたあとも「この経路だけ別の
@@ -178,40 +176,31 @@ Predictor.update ── 予算内で弧を1歩ずつ伸ばす(毎フレーム)
 
 | ファイル | 変更内容 |
 |---|---|
-| `src/physics/sphere-contact.ts` | **判定器の入口を1つ作る。** 半径と移動前後の状態を受け取り、接触の有無・接触時刻(区間内の割合)・法線を返す。線形とエルミートの両方を内部に持ち、**暫定的に判定モードの引数で選ばせる**。`sweptSphereToi` / `sweptHermiteSphereToi` は内部実装として残る(export をやめてよいかはテストの参照しだい)。`containingBody` は `reachedBody` のフォールバック専用として残る |
-| `src/physics/attractor.ts` | `reachedBody` を、判定器を天体一覧に対して回して最小 TOI を返すだけのラッパにする。**幾何をこの関数から完全に抜く。** 判定モードを引数に取り、既定はエルミート(現状と同じ)。返す状態は `hermiteInterpolate` のまま — 判定の次数と、報告する位置の精度は別の問題 |
-| `src/physics/collision-response.ts` | `resolveSphereCollision` を新しい入口へ通す。呼ぶモードは線形(現状と同じ) |
 | `src/game/game-entity/bullet.ts` | `Bullet.checkLoss` の `containingBody` を `reachedBody`(線形モード)へ差し替える。**この計画で唯一挙動が変わる箇所。** 至近通過音を消滅判定より先に評価する順序は保つ |
-| `tests/physics/sphere-contact.test.ts` | **書き換えない。** `sweptHermiteSphereToi` / `sweptSphereToi` を名指ししている件があるので、そのために内部実装の export を残す |
-| `DEVELOP/SPEC/ORBIT.md`「天体表面への到達判定」 | **書き換えない。** 「1ステップの区間全体を曲線として掃引する」「両端の状態だけを個別にチェックするのではない」という記述は既に判定器がどの近似で解くかに依らない書き方になっており、弾の変更はこの記述へ**近づく**方向(2-5)|
+| `src/physics/attractor.ts` | `reachedBody` に判定モードの引数を足す。既定はエルミート(現状と同じ)で、弾だけ線形を渡す |
+| `tests/physics/` | **書き換えない。** 弾を覆うテストは無いので、既存 31 件は弾の変更に影響されない |
+| `DEVELOP/SPEC/ORBIT.md`「天体表面への到達判定」 | **書き換えない。** 「両端の状態だけを個別にチェックするのではない」という記述へ**近づく**方向の変更なので(2-5)|
 
 **触らないもの**: broad phase(空間グリッド・`ArcBodies` の成員判定)は判定器の外に置いたままにする。
 
 ## 6. 手順(第一段階、着手順)
 
-1. `sphere-contact.ts` に判定器の入口を1つ作る。判定モードを引数に取り、線形なら
-   `sweptSphereToi` の閉形式へ、エルミートならベジエ細分へ分岐する。**返り値の形を揃える**
-   (どちらも `{ toi, normal }`)— エルミート側は接触時刻の相対位置から法線を出す。
-2. `reachedBody` を新しい入口へ通し、幾何を抜く。判定モードを引数に取り、既定はエルミート。
-3. `resolveSphereCollision` を新しい入口へ通す。呼ぶモードは線形。
-4. ここまでで `typecheck` + `test:physics`。**同じ相手に同じモードで呼ばれるので挙動は不変。**
-   既存テストがそのまま通ることが合格条件。**ここで一度 commit する** — 挙動が変わる次の手順と
-   分けておかないと、回帰が出たときにどちらが原因か切り分けられない。
-5. `Bullet.checkLoss` の `containingBody` を `reachedBody`(線形モード)へ差し替える。
-   **ここで挙動が変わる**(弾が天体をすり抜けなくなる)ので、実行時確認を挟んでから commit する。
+1. `reachedBody` に判定モードの引数を足し(既定はエルミート)、`Bullet.checkLoss` の
+   `containingBody` を線形モードの `reachedBody` へ差し替える。**ここで挙動が変わる**
+   (弾が天体をすり抜けなくなる)ので、実行時確認を挟んでから commit する。
    **着手の前提**: `unite_predict_simulation_v2.md` 2-1-3(×4 超で `cleanup` が見る区間の
-   遅れと重複)が決着していること。手順1〜4 とは独立に後から実施してよい。
+   遅れと重複)が決着していること。
 
 ## 7. 見積り(第一段階)
 
-- 変更ファイル 4(`sphere-contact.ts` / `attractor.ts` / `collision-response.ts` / `bullet.ts`)。
-- 入口の統合 +15、`reachedBody` から幾何が消えて −20、エルミート側の法線の算出 +6、
-  弾の差し替え ±0。→ **正味 ≈ +1 行。**
-- **削除するものは無い。** `sweptHermiteSphereToi` の中身は判定器のエルミートモードとして残り、
-  `containingBody` は `reachedBody` のフォールバックとして残る。
-- 費用は**弾の経路だけ増える。** 1体あたり点判定(約 10 演算)→ 線形掃引の棄却経路
-  (約 21 演算、10-5)でおよそ2倍。弾は個体数が最も多い(`MAX_BULLETS` 400)ので、増分が
-  効くとすればここ。それ以外の経路は同じ相手に同じ解法を呼ぶので不変。
+**入口の集約は実施済み。** 実測は `sphere-contact.ts` 190 → 227 行(+37)、`attractor.ts`
+179 → 183 行(+4)、`collision-response.ts` ±0。当初の見積り(正味 +1 行)から外れたのは、
+`reachedBody` の幾何が最初から関数呼び出し1行だったため — 抜いても縮まなかった。増えたぶんは
+入口・速度の受け渡し型・法線の算出・エルミートを接触時刻だけで呼ぶ入口(既存テスト用)。
+第二段階で判定モードの引数と後者の入口が消え、20 行ほど戻る。
+
+残りは弾の差し替えで、`bullet.ts` ±0 行・`attractor.ts` +2 行ほど。費用は**弾の経路だけ**
+点判定(1体あたり約 10 演算)から線形掃引の棄却経路(約 21 演算、10-5)へ倍増する。
 
 ## 8. リスクと落とし穴(第一段階)
 
@@ -221,7 +210,7 @@ Predictor.update ── 予算内で弧を1歩ずつ伸ばす(毎フレーム)
 | **開始時点で既に重なっている**ときの扱いが2実装で微妙に違う | `sweptSphereToi` は `c > 0` を最初に見て null、`sweptHermiteSphereToi` は凸包の箱判定の**後**に開始距離を見て null。統合時にどちらかへ寄せると、片方の呼び出し側のフォールバック経路が変わる | `collision-response.ts` の重なり押し戻しフォールバックと、`reachedBody` の `containingBody` フォールバック。**両方の早期 return の順序をモードごとに保つ** |
 | 非有限入力のガードが `!(x > 0)` の否定形で書かれていることを知らずに `x <= 0` へ書き換える | NaN がどの比較でも false になる性質が失われ、**非有限な入力が判定を通り抜けて NaN が伝播する** | `sphere-contact.ts` と `collision-response.ts` のコメントが明示している。`tests/physics/sphere-contact.test.ts` の非有限 3 件と `collision-response.test.ts` の非有限 4 件が押さえている |
 | 「1箇所は挙動を変える計画なのだから」とテストを1件でも書き換える | 弾**以外**の挙動も変えたことに気づかないまま次の段へ進む | 弾を覆うテストは `tests/` に無いので、**既存 31 件は弾の変更に影響されない。** 書き換えたくなったら、それは意図しない挙動変化の証拠として扱う |
-| 弾の差し替えを、`cleanup` の走り方を確かめずに入れる | ×4 超では弾がフレーム末尾にまとめて1歩進むので、`cleanup` が見る区間はそのフレーム全体を張ったまま次フレームへ持ち越される。判定の遅れと重複が乗る | **手順5 に入る前に `unite_predict_simulation_v2.md` 2-1-3 の議論を決着させる。** `reachedBody` の `containingBody` フォールバック(生成直後の区間長ゼロを拾う)を残したまま渡すこと |
+| 弾の差し替えを、`cleanup` の走り方を確かめずに入れる | ×4 超では弾がフレーム末尾にまとめて1歩進むので、`cleanup` が見る区間はそのフレーム全体を張ったまま次フレームへ持ち越される。判定の遅れと重複が乗る | **手順1 に入る前に `unite_predict_simulation_v2.md` 2-1-3 の議論を決着させる。** `reachedBody` の `containingBody` フォールバック(生成直後の区間長ゼロを拾う)を残したまま渡すこと |
 | 弾の判定を掃引へ上げたぶんの費用を見ない | `MAX_BULLETS` 400 × 天体窓 × substep 数に約2倍が掛かる(7章) | `?stage=debug-load` で弾を大量に出した状態のフレーム時間。増分が見えるなら、それは天体側の broad phase が無いこと(`unite_predict_simulation_v2.md` 2-6)の問題であって、解法の選択の問題ではない |
 
 ---
@@ -340,7 +329,7 @@ Predictor.update ── 予算内で弧を1歩ずつ伸ばす(毎フレーム)
 - `npm run test:physics` — 毎段階(`src/physics/` を直接触る)。
 - **第一段階の合格条件は「既存のテストが1件も書き換わらずに通ること」。** 挙動を変えるのは弾の
   地表到達だけで、そこはテストが覆っていない。
-- 第一段階の実行時確認(ヘッドレス、手順5 のあと):
+- 第一段階の実行時確認(ヘッドレス、弾の差し替えのあと):
   - 弾を天体表面へ向けて撃ち、×1 と ×4 超の両方で消えること。
   - 弾が天体の近傍を通過するだけの軌道で、誤って消えないこと。
 - 第二段階の実行時確認(ヘッドレス):
