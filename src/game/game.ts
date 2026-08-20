@@ -135,7 +135,7 @@ export class Game {
 
     this.markerManager = new MarkerManager(this._hud.layers.marker, this._hud.svgOverlay);
 
-    this.entities = new EntityManager(this._scene, this._hud, this._worldSfx, this.markerManager, initialSave);
+    this.entities = new EntityManager(this._scene, this._hud, this._worldSfx, this.markerManager, graphics, initialSave);
     this.futureAttractors = new FutureAttractors(this.ephemeris, this.entities);
     this.entityLines = new EntityLineManager(this.entities);
     this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, this.ephemeris, this.entities);
@@ -191,7 +191,7 @@ export class Game {
     this.activeStage = new stageClass(
       initialSave?.stage, this._hud, this._worldSfx, this._uiSfx, this._scene, this.entities, this.unlockManager,
       this.entities.effects, this.markerManager, this.ephemeris, this.simulator, this.activeVessels,
-      this.commNetwork,
+      this.commNetwork, graphics,
     );
     this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
     // activeStage(authoring/executesPlans を読む)を要るので、その直後に生成する。
@@ -215,7 +215,7 @@ export class Game {
     this.nanWatchdog = new NanWatchdog(this._hud);
     this.docking = new Docking(
       () => this.pause(), () => this.resume(),
-      this._hud, this._worldSfx, this._scene, this.entities.effects, this.markerManager,
+      this._hud, this._worldSfx, this._scene, this.entities.effects, this.markerManager, graphics,
       this.entities, this.mapActions, this.cameraSystem, this.viewManager,
       this.activeVessels,
     );

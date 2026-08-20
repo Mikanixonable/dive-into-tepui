@@ -2,22 +2,12 @@ import { KEY_MAPPING as K } from '../input/key-mapping';
 import {
   ACTIVE_THEME_ID, applyThemePalette, getThemePalette, SPACE_4, SPACE_6, THEME_PRESETS,
 } from '../theme';
-import type { GraphicsSettings } from '../../render/graphics-settings';
-import type { DebugTargetHost } from '../../render/pipeline/debug-target';
-import { GraphicsPanel } from './graphics-panel';
 import type { OverlayHandle, OverlayManager } from './overlay-manager';
-import { Button, CloseButton, Slider, TabBar } from './widgets';
-
-type PauseTab = 'general' | 'graphics';
-
-const TAB_ITEMS: readonly (readonly [PauseTab, string])[] = [['general', '一般'], ['graphics', '描画']];
+import { Button, CloseButton, Slider } from './widgets';
 
 export class PauseMenu implements OverlayHandle {
   private readonly panel: HTMLElement;
   private _isOpen = false;
-  // タブごとの中身。表示面の切り替えは .hidden の付け外しだけで行う。
-  private readonly faces: ReadonlyMap<PauseTab, HTMLElement>;
-  private readonly tabs: TabBar<PauseTab>;
 
   onPauseMenuOpenChange: ((open: boolean) => void) | null = null;
   onQuitToTitle: (() => void) | null = null;
@@ -33,12 +23,9 @@ export class PauseMenu implements OverlayHandle {
   // (0 かどうか)から読めるので別に持たない。
   private lastVol = 1;
 
-  // 一般・描画の2面をタブで束ねたパネル DOM を組み立て、BGM・スナップショット・負荷表示・
-  // タイトルへ戻るのイベントを配線する。debugTargetHost は描画面の GraphicsPanel が
-  // デバッグ表示の選択を書き込む先(RenderPipeline)。
-  constructor(
-    root: HTMLElement, overlayManager: OverlayManager, graphics: GraphicsSettings, debugTargetHost: DebugTargetHost,
-  ) {
+  // パネル DOM を組み立て、BGM・スナップショット・負荷表示・タイトルへ戻るのイベントを配線する。
+  // 描画設定は設定ビュー(SettingsView)の「描画」タブが持つ。
+  constructor(root: HTMLElement, overlayManager: OverlayManager) {
     this.overlayManager = overlayManager;
     this.panel = document.createElement('div');
     this.panel.id = 'hud-pause-menu';
@@ -47,13 +34,8 @@ export class PauseMenu implements OverlayHandle {
     heading.textContent = '一時停止 / 設定';
     this.panel.appendChild(heading);
 
-    this.tabs = new TabBar<PauseTab>(TAB_ITEMS, (tab) => this.showTab(tab));
-    this.panel.appendChild(this.tabs.element);
-
     const general = document.createElement('div');
-    const graphicsPanel = new GraphicsPanel(graphics, debugTargetHost);
-    this.faces = new Map([['general', general], ['graphics', graphicsPanel.element]]);
-    for (const face of this.faces.values()) this.panel.appendChild(face);
+    this.panel.appendChild(general);
 
     const bgmRow = document.createElement('div');
     bgmRow.className = 'pm-row';
@@ -153,13 +135,6 @@ export class PauseMenu implements OverlayHandle {
     this.panel.appendChild(closeRow);
 
     root.appendChild(this.panel);
-    this.showTab('general');
-  }
-
-  // 表示面を切り替える。タブの点灯も合わせる。
-  private showTab(tab: PauseTab): void {
-    for (const [name, face] of this.faces) face.classList.toggle('hidden', name !== tab);
-    this.tabs.setSelected(tab);
   }
 
   // ミュート/復帰を切り替える。復帰は直前の音量へ戻す。

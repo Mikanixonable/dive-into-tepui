@@ -27,6 +27,7 @@ import type { Hud } from '../hud/hud';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
+import type { GraphicsSettings } from '../../render/graphics-settings';
 import type { PerfCounts } from '../../perf-meter';
 
 export class EntityManager {
@@ -58,6 +59,7 @@ export class EntityManager {
     hud: Hud,
     worldSfx: WorldSfx,
     markerManager: MarkerManager,
+    private readonly graphics: GraphicsSettings,
     saved?: GameSaveData,
   ) {
     const bulletBody = bulletBodyResources();
@@ -80,7 +82,7 @@ export class EntityManager {
     save: GameSaveData, hud: Hud, worldSfx: WorldSfx, scene: THREE.Scene, markerManager: MarkerManager,
   ): void {
     const simTime = save.simTime;
-    const deps: VesselDeps = { hud, worldSfx, scene, fx: this.effects, markerManager };
+    const deps: VesselDeps = { hud, worldSfx, scene, fx: this.effects, markerManager, graphics: this.graphics };
     for (const data of save.players) this.addVessel(new Vessel({ savedShip: data, simTime }, deps));
     for (const data of save.enemies) this.addVessel(new Vessel({ savedHostile: data, simTime }, deps));
     for (const data of save.ammoPickups) {

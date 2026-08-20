@@ -28,25 +28,27 @@ export type GraphicsSettingsData = {
   readonly atmosphere: boolean;
   // マルチサンプリング。レンダラ生成時にしか渡せないので、変更は次回起動から効く。
   readonly antialias: boolean;
+  // 艦の設計ツリー・当たり判定カプセルを線で示すデバッグ用ワイヤーフレーム。
+  readonly wireframe: boolean;
 };
 
 // 真偽で持つ項目。オフにするとその要素が絵から消える。
-export type GraphicsToggleKey = 'pointField' | 'rings' | 'aurora' | 'atmosphere' | 'antialias';
+export type GraphicsToggleKey = 'pointField' | 'rings' | 'aurora' | 'atmosphere' | 'antialias' | 'wireframe';
 
 export type QualityPreset = 'low' | 'medium' | 'high';
 
 export const QUALITY_PRESETS: Readonly<Record<QualityPreset, GraphicsSettingsData>> = {
   low: {
     resolutionScale: 0.5, lodBias: LOD_BIAS.low,
-    pointField: false, rings: false, aurora: false, atmosphere: false, antialias: false,
+    pointField: false, rings: false, aurora: false, atmosphere: false, antialias: false, wireframe: false,
   },
   medium: {
     resolutionScale: 0.75, lodBias: LOD_BIAS.normal,
-    pointField: true, rings: true, aurora: false, atmosphere: true, antialias: true,
+    pointField: true, rings: true, aurora: false, atmosphere: true, antialias: true, wireframe: false,
   },
   high: {
     resolutionScale: 1, lodBias: LOD_BIAS.high,
-    pointField: true, rings: true, aurora: true, atmosphere: true, antialias: true,
+    pointField: true, rings: true, aurora: true, atmosphere: true, antialias: true, wireframe: false,
   },
 };
 
@@ -67,6 +69,7 @@ function loadStored(): GraphicsSettingsData {
       aurora: saved.aurora ?? DEFAULTS.aurora,
       atmosphere: saved.atmosphere ?? DEFAULTS.atmosphere,
       antialias: saved.antialias ?? DEFAULTS.antialias,
+      wireframe: saved.wireframe ?? DEFAULTS.wireframe,
     };
   } catch {
     return DEFAULTS;

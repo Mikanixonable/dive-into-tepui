@@ -34,6 +34,7 @@ import type { WorldSfx } from '../audio/sfx/world-sfx';
 import type { EffectsSystem } from './vfx/effects-system';
 import type { MarkerManager } from './marker/marker-manager';
 import type { ActiveVesselController } from './active-vessel-controller';
+import type { GraphicsSettings } from '../render/graphics-settings';
 
 interface DraftEntry {
   readonly id: string;
@@ -80,6 +81,7 @@ export class Docking {
     scene: THREE.Scene,
     effects: EffectsSystem,
     markerManager: MarkerManager,
+    graphics: GraphicsSettings,
     private readonly entities: EntityManager,
     private readonly mapActions: MapContextActions,
     private readonly cameraSystem: CameraSystem,
@@ -123,7 +125,7 @@ export class Docking {
     this.viewManager.setDocking(this);
 
     this.transferDialog = new ResourceTransferDialog(this.hud.layers.view, this.hud.overlayManager);
-    this.vesselDeps = { hud, worldSfx, scene, fx: effects, markerManager };
+    this.vesselDeps = { hud, worldSfx, scene, fx: effects, markerManager, graphics };
   }
 
   // 生存中の全基地を返す。
