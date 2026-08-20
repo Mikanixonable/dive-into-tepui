@@ -30,6 +30,18 @@ import { SIM_EPOCH_ET, SIM_EPOCH_JD_TDB } from '../sim-epoch';
 
 export type StageId = '00' | '0' | '1' | '2' | 'creative' | 'debug' | 'debug-alt-system' | 'debug-load';
 
+// 敵が失われた理由。'killed' 以外は自然損耗で、撃破数ではなく喪失数へ数える。
+// 焼失(大気)と衝突(固体表面)は別の現象なので分けて持つ。
+export type EnemyDeathCause = 'killed' | 'burnup' | 'collision' | 'despawn';
+
+// 自然損耗の理由ごとのヒント文。Record にすることで、cause を足したときに文言の
+// 追加漏れが型検査で落ちる(三項演算子では黙って既定の文言に落ちていた)。
+const ENEMY_LOSS_HINT: Record<Exclude<EnemyDeathCause, 'killed'>, string> = {
+  burnup: '大気圏で焼失',
+  collision: '天体へ衝突',
+  despawn: '交戦圏を離脱',
+};
+
 const BRIEFING_TOAST_MS = 12000;
 
 // 全ステージ共通の生成引数(セーブデータを除く)。具象ステージは自分のコンストラクタで
@@ -243,13 +255,13 @@ export abstract class Stage {
   }
 
   // 原因によらず勝利判定を通す: 再突入・離脱でも残存数 0 なら決着させる。
-  recordEnemyDeath(enemy: Enemy, simTime: number, cause: 'killed' | 'reentry' | 'despawn' = 'killed'): void {
+  recordEnemyDeath(enemy: Enemy, simTime: number, cause: EnemyDeathCause = 'killed'): void {
     if (cause === 'killed') {
       this.scoreCounter.recordKill();
       this._hud.hint(`${enemy.name} 撃破`);
     } else {
       this.scoreCounter.recordEnemyLoss();
-      this._hud.hint(`${enemy.name} ${cause === 'reentry' ? '再突入により喪失' : '交戦圏を離脱'}`);
+      this._hud.hint(`${enemy.name} ${ENEMY_LOSS_HINT[cause]}`);
     }
 
     // isPlaying ガード: 敗北後に残存敵が再突入で消えても勝利判定が上書きしないよう。
