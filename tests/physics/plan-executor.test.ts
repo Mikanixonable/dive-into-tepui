@@ -25,10 +25,10 @@ function makeShip(): FakeShip {
     plan: new Plan(),
     mass: 1000,
     totalThrust: 100_000, // accel = 100 m/s^2
-    totalFuelConsumptionRate: 0,
     torque: v3(),
     thrust: null,
-    consumeFuel: () => 1,
+    engineFuelConsumptionRates: () => new Map(),
+    consumeFuelByRates: () => 1,
     setPlanExecution(this: FakeShip, mode) { (this as { planExecution: typeof mode }).planExecution = mode; },
     requestTorque(this: FakeShip, torque) { this.torque = torque; },
   };

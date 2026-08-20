@@ -3,10 +3,11 @@
 import * as C from '../const';
 import type {
   AnyPart, ArmorPart, BatteryPart, CockpitPart, EnginePart, FlywheelPart, FuelCellPart, Part, PartType,
-  RadiatorPart, RcsTankPart, RcsThrusterPart, RtgPart, SolarPanelPart, WeaponPart,
+  PropellantTankPart, RadiatorPart, RcsThrusterPart, RtgPart, SolarPanelPart, WeaponPart,
 } from '../game-entity/parts';
 import { extraWasteHeatOf, powerDrawOf } from '../game-entity/parts';
 import type { PropellantId } from '../economy/propellant-compatibility';
+import { propellantTankCapacity } from '../economy/propellant-compatibility';
 import { STANDARD_GRAVITY } from '../../physics/tsiolkovsky';
 
 // 自然回復の対象外にする部品種別。外装パネルは機上で直せず、基地ドックの修理を要する。
@@ -25,7 +26,7 @@ export class PartInventory {
   private readonly batteryRefs: BatteryPart[] = [];
   private readonly fuelCellRefs: FuelCellPart[] = [];
   private readonly rtgRefs: RtgPart[] = [];
-  private readonly rcsTankRefs: RcsTankPart[] = [];
+  private readonly propellantTankRefs: PropellantTankPart[] = [];
   private readonly radiatorRefs: [RadiatorPart | undefined, RadiatorPart | undefined] = [undefined, undefined];
   private readonly solarPanelRefs: [SolarPanelPart | undefined, SolarPanelPart | undefined] = [undefined, undefined];
   private readonly weaponRefs: WeaponPart[] = [];
@@ -59,7 +60,7 @@ export class PartInventory {
     this.batteryRefs.length = 0;
     this.fuelCellRefs.length = 0;
     this.rtgRefs.length = 0;
-    this.rcsTankRefs.length = 0;
+    this.propellantTankRefs.length = 0;
     this.weaponRefs.length = 0;
     this.armorRefs.length = 0;
     let radiatorIndex = 0;
@@ -82,7 +83,8 @@ export class PartInventory {
         case 'battery': this.batteryRefs.push(part); break;
         case 'fuel_cell': this.fuelCellRefs.push(part); break;
         case 'rtg': this.rtgRefs.push(part); break;
-        case 'rcs_tank': this.rcsTankRefs.push(part); break;
+        case 'oxidizer_tank': case 'reductant_tank': case 'rcs_tank':
+          this.propellantTankRefs.push(part); break;
         case 'radiator':
           if (radiatorIndex < this.radiatorRefs.length) this.radiatorRefs[radiatorIndex] = part;
           radiatorIndex++;
@@ -208,25 +210,80 @@ export class PartInventory {
     return total;
   }
 
-  public get totalFuel(): number {
+  // 主機の質量流量 [kg/s] を、推進剤ごとに集計する。複数の主機が別々の推進剤を積んでいてもよい。
+  public engineFuelConsumptionRates(): ReadonlyMap<PropellantId, number> {
+    const rates = new Map<PropellantId, number>();
+    for (const p of this.engineRefs) {
+      if (p.hp <= 0) continue;
+      rates.set(p.propellant, (rates.get(p.propellant) ?? 0) + p.fuelConsumptionRate);
+    }
+    return rates;
+  }
+
+  // 並進 RCS スラスタの質量流量 [kg/s] を、推進剤ごとに集計する。
+  public rcsFuelConsumptionRates(): ReadonlyMap<PropellantId, number> {
+    const rates = new Map<PropellantId, number>();
+    for (const p of this.rcsThrusterRefs) {
+      if (p.hp <= 0 || p.specificImpulse <= 0) continue;
+      rates.set(p.propellant, (rates.get(p.propellant) ?? 0) + p.thrust / (p.specificImpulse * STANDARD_GRAVITY));
+    }
+    return rates;
+  }
+
+  // rates の推進剤それぞれを rate × scale だけ消費し、実際に消費できた割合の最小値を返す
+  // (いずれか1つの推進剤が尽きれば、その割合で出力全体を絞る)。
+  public consumeFuelByRates(rates: ReadonlyMap<PropellantId, number>, scale: number): number {
+    let minRatio = 1.0;
+    for (const [propellant, rate] of rates) {
+      const ratio = this.consumeFuel(propellant, rate * scale);
+      if (ratio < minRatio) minRatio = ratio;
+    }
+    return minRatio;
+  }
+
+  // その推進剤を積んだ健全なタンクの現在量の合計 [kg]。
+  public fuelOf(propellant: PropellantId): number {
     let total = 0;
-    for (const p of this.rcsTankRefs) if (p.hp > 0) total += p.fuel;
+    for (const p of this.propellantTankRefs) if (p.hp > 0 && p.propellant === propellant) total += p.fuel;
     return total;
   }
 
-  public get totalMaxFuel(): number {
+  // その推進剤を積んだ健全なタンクの容量の合計 [kg]。容量はタンクの volume と推進剤の密度から出る。
+  public maxFuelOf(propellant: PropellantId): number {
     let total = 0;
-    for (const p of this.rcsTankRefs) if (p.hp > 0) total += p.maxFuel;
+    for (const p of this.propellantTankRefs) {
+      if (p.hp > 0 && p.propellant === propellant) total += propellantTankCapacity(propellant, p.volume);
+    }
     return total;
   }
 
-  // 燃料を消費し、実際に消費できた割合(0.0〜1.0)を返す。
-  public consumeFuel(amount: number): number {
+  // 積んでいる健全な推進剤タンクを、推進剤ごとに現在量・容量の対へ集計する。HUD の
+  // 燃料表示など、機体の推進剤は1種類とは限らない前提で読む側がこれを使う。
+  public propellantSummary(): readonly { readonly propellant: PropellantId; readonly fuel: number; readonly capacity: number }[] {
+    const order: PropellantId[] = [];
+    const fuel = new Map<PropellantId, number>();
+    const capacity = new Map<PropellantId, number>();
+    for (const p of this.propellantTankRefs) {
+      if (p.hp <= 0) continue;
+      if (!fuel.has(p.propellant)) {
+        order.push(p.propellant);
+        fuel.set(p.propellant, 0);
+        capacity.set(p.propellant, 0);
+      }
+      fuel.set(p.propellant, fuel.get(p.propellant)! + p.fuel);
+      capacity.set(p.propellant, capacity.get(p.propellant)! + propellantTankCapacity(p.propellant, p.volume));
+    }
+    return order.map((propellant) => ({ propellant, fuel: fuel.get(propellant)!, capacity: capacity.get(propellant)! }));
+  }
+
+  // propellant を amount [kg] 消費し、実際に消費できた割合(0.0〜1.0)を返す。
+  // どの推進剤を燃やすかは呼び出し側(噴射する部品)が知っていることで、タンクの側の問題ではない。
+  public consumeFuel(propellant: PropellantId, amount: number): number {
     if (amount <= 0) return 1.0;
     let remaining = amount;
     let consumed = 0;
-    for (const tank of this.rcsTankRefs) {
-      if (tank.hp <= 0) continue;
+    for (const tank of this.propellantTankRefs) {
+      if (tank.hp <= 0 || tank.propellant !== propellant) continue;
       if (tank.fuel > 0) {
         const fromTank = Math.min(tank.fuel, remaining);
         tank.fuel -= fromTank;
@@ -238,12 +295,13 @@ export class PartInventory {
     return consumed / amount;
   }
 
-  // タンクへ燃料を戻す。満タンを超える分は入らない。
-  public refuel(amount: number): void {
+  // propellant を積んだタンクへ amount [kg] 戻す。満タンを超える分は入らない。
+  public refuel(propellant: PropellantId, amount: number): void {
     let remaining = amount;
-    for (const tank of this.rcsTankRefs) {
+    for (const tank of this.propellantTankRefs) {
       if (remaining <= 0) break;
-      const room = Math.max(0, tank.maxFuel - tank.fuel);
+      if (tank.propellant !== propellant) continue;
+      const room = Math.max(0, propellantTankCapacity(propellant, tank.volume) - tank.fuel);
       const filled = Math.min(room, remaining);
       tank.fuel += filled;
       remaining -= filled;

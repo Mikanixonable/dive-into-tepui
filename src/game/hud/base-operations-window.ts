@@ -6,6 +6,7 @@
 // リセットに勝てるよう全セレクタを `#hud` で始める。
 import type { Vessel, DockedVesselEntry } from '../vessel/vessel';
 import type { AnyPart, Part, RcsTankPart } from '../game-entity/parts';
+import { propellantTankCapacity } from '../economy/propellant-compatibility';
 import { Button, Meter, TabBar, ValueInput } from './widgets';
 import { buildPartFrom, producibleParts } from '../vessel/default-blueprints';
 import { baseFacilities, basePowerAvailable } from '../vessel/base-module';
@@ -521,7 +522,7 @@ export class BaseOperationsWindow {
 
   // rcs_tank 用の補給ボタンを作る。
   private buildRefuelButton(base: Vessel, tank: RcsTankPart, onClick: () => void): HTMLElement {
-    const missing = Math.max(0, tank.maxFuel - tank.fuel);
+    const missing = Math.max(0, propellantTankCapacity(tank.propellant, tank.volume) - tank.fuel);
     const request = refuelBlueprintOf(tank.propellant, missing);
     const btn = new Button(missing > 0 ? `燃料補給 · ${this.formatCost(request)}` : '燃料は満タン', onClick);
     btn.element.classList.add('bow-btn');
@@ -766,9 +767,10 @@ export class BaseOperationsWindow {
   }
 
   private refuelTank(base: Vessel, tank: RcsTankPart): void {
-    const missing = Math.max(0, tank.maxFuel - tank.fuel);
+    const capacity = propellantTankCapacity(tank.propellant, tank.volume);
+    const missing = Math.max(0, capacity - tank.fuel);
     if (missing <= 0) return;
     if (!this.spend(base, refuelBlueprintOf(tank.propellant, missing))) return;
-    tank.fuel = tank.maxFuel;
+    tank.fuel = capacity;
   }
 }

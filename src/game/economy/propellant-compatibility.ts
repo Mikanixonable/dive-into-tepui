@@ -1,5 +1,5 @@
 // 推進剤ごとの材料適合性。タンクに使える金属と、推進系が別に要求する資源を持つ。
-import { ResourceId } from './resource';
+import { RESOURCES, ResourceId } from './resource';
 
 export interface TankMaterialRequirement {
   readonly propellantId: string;
@@ -74,3 +74,14 @@ export const PROPELLANT_RESOURCE: Readonly<Record<PropellantId, ResourceId>> = {
 };
 
 export const PROPELLANT_IDS = Object.keys(TANK_MATERIALS) as readonly PropellantId[];
+
+// その推進剤の密度 [kg/m^3]。
+export function propellantDensity(propellant: PropellantId): number {
+  return RESOURCES[PROPELLANT_RESOURCE[propellant]].density;
+}
+
+// volume [m^3] のタンクにその推進剤を満載したときの質量 [kg]。タンクの容量はこの値であって、
+// 部品が別に宣言するものではない。
+export function propellantTankCapacity(propellant: PropellantId, volume: number): number {
+  return volume * propellantDensity(propellant);
+}

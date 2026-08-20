@@ -159,9 +159,8 @@ export class VesselThrottle {
     const presetScale = C.THROTTLE_LEVELS[this.throttleIdx]! / C.THROTTLE_LEVELS[C.THROTTLE_LEVELS.length - 1]!;
     let thrustAccel = maxAccel * presetScale;
 
-    // 燃料残量に応じて実際の加速度を絞る
-    const consumption = ship.totalRcsFuelConsumptionRate * presetScale * simDt;
-    const actualRatio = ship.consumeFuel(consumption);
+    // 燃料残量に応じて実際の加速度を絞る。並進 RCS スラスタが燃やす推進剤を消費する。
+    const actualRatio = ship.consumeFuelByRates(ship.rcsFuelConsumptionRates(), presetScale * simDt);
     thrustAccel *= actualRatio;
     
     if (thrustAccel <= 0) return null;
@@ -220,11 +219,12 @@ export class VesselThrottle {
     const angScale = fineAttitude ? C.FINE_ATTITUDE_SCALE : 1;
     let maxAngAccel = baseAngAccel * angScale * rcsOutputFactor;
 
-    // 燃料残量に応じて実際の角加速度を絞る
+    // 燃料残量に応じて実際の角加速度を絞る。姿勢制御は並進 RCS スラスタが出すトルクなので、
+    // 燃やす推進剤も同じ rcs_thruster のもの。
     const rotateIntensity = Math.max(Math.abs(inX), Math.abs(inY), Math.abs(inZ));
     if (rotateIntensity > 0) {
-      const consumption = ship.totalFuelConsumptionRate * rotateIntensity * rcsOutputFactor * angScale * simDt;
-      const actualRatio = ship.consumeFuel(consumption);
+      const scale = rotateIntensity * rcsOutputFactor * angScale * simDt;
+      const actualRatio = ship.consumeFuelByRates(ship.rcsFuelConsumptionRates(), scale);
       maxAngAccel *= actualRatio;
     }
     

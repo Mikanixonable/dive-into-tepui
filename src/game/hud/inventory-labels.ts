@@ -1,7 +1,12 @@
 // 基地が抱える在庫 — 搭載要素と資源 — の日本語表示名。数値の整形もここに揃え、
 // 同じ部品・同じ資源がどの画面でも同じ文字列で読めるようにする。
-import type { Part, PartType, RcsTankPart } from '../game-entity/parts';
+import type { Part, PartType, PropellantTankPart } from '../game-entity/parts';
 import { RESOURCES, type ResourceId } from '../economy/resource';
+import { propellantTankCapacity } from '../economy/propellant-compatibility';
+
+function isPropellantTank(part: Part): part is PropellantTankPart {
+  return part.type === 'oxidizer_tank' || part.type === 'reductant_tank' || part.type === 'rcs_tank';
+}
 
 export const PART_TYPE_LABELS: Readonly<Record<PartType, string>> = {
   hull: '船体',
@@ -41,9 +46,9 @@ export const PART_TYPE_LABELS: Readonly<Record<PartType, string>> = {
 
 // 部品1件の副題。RCS タンクだけは残量が種別と同じくらい効くので併記する。
 export function formatPartMeta(part: Part): string {
-  if (part.type !== 'rcs_tank') return PART_TYPE_LABELS[part.type];
-  const tank = part as RcsTankPart;
-  return `${PART_TYPE_LABELS[part.type]} · 燃料 ${Math.round(tank.fuel).toLocaleString()} / ${Math.round(tank.maxFuel).toLocaleString()} kg`;
+  if (!isPropellantTank(part)) return PART_TYPE_LABELS[part.type];
+  const capacity = propellantTankCapacity(part.propellant, part.volume);
+  return `${PART_TYPE_LABELS[part.type]} · 燃料 ${Math.round(part.fuel).toLocaleString()} / ${Math.round(capacity).toLocaleString()} kg`;
 }
 
 // 資源1件の表示名と量。1kg 未満は桁を増やして 0.0 kg に潰れないようにする。
