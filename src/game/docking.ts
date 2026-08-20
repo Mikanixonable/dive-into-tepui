@@ -413,7 +413,7 @@ export class Docking {
       this.handleAssemblyClick(entry, point, viewport);
       return true;
     });
-    if (!this.dragController.draggingPart) return;
+    if (!this.dragController.dragging) return;
     this.dragController.update(
       this.cameraSystem.activeCamera,
       this.cameraSystem.activeCameraPos,
@@ -427,7 +427,7 @@ export class Docking {
   private handleAssemblyClick(
     entry: AssemblySession, point: PointerPoint, viewport: { readonly width: number; readonly height: number },
   ): void {
-    if (this.dragController.draggingPart) {
+    if (this.dragController.dragging) {
       this.dragController.release(entry.targetId);
       this.restoreHeldOriginal();
       return;

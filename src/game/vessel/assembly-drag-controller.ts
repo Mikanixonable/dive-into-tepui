@@ -116,8 +116,7 @@ export class AssemblyDragController {
 
   public constructor(private readonly scene: THREE.Scene) {}
 
-  public get draggingPart(): AnyPart | null { return this.held?.kind === 'part' ? this.held.part : null; }
-  public get draggingMember(): MemberSpec | null { return this.held?.kind === 'member' ? this.held.member : null; }
+  // 部品でも部材でも、いま何かを掴んでいるか。掴んでいる間はクリックが離す操作になる。
   public get dragging(): boolean { return this.held !== null; }
 
   // 部品を掴む。workbench はこの掴みを記録する作業台、sourceTargetId は部品を外した機体
