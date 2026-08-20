@@ -23,6 +23,17 @@ export type StructuralPartType = 'hull' | 'armor';
 
 export type PartType = StructuralPartType | ExteriorPartType | InteriorPartType;
 
+// 外装として機体の外側に取り付ける搭載要素の種別。これ以外は内容積に収める。
+const EXTERIOR_TYPES: ReadonlySet<PartType> = new Set<ExteriorPartType>([
+  'weapon', 'engine', 'rcs_thruster', 'solar_panel', 'radiator',
+  'combat_shield', 'heat_shield', 'communication', 'robot_arm',
+  'docking_port', 'container_coupling',
+]);
+
+export function isExterior(part: { readonly type: PartType }): boolean {
+  return EXTERIOR_TYPES.has(part.type);
+}
+
 export interface Part {
   readonly id: string;
   readonly type: PartType;
