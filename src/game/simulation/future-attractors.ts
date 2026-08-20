@@ -6,6 +6,7 @@ import type { FutureAttractorProvider, FutureBodyCandidate } from './arc-bodies'
 export class FutureAttractors implements FutureAttractorProvider {
   private readonly candidateList: readonly FutureBodyCandidate[];
 
+  // レジストリの全天体から候補一覧を組み、以後はその同じ一覧を返す。
   constructor(private readonly ephemeris: Ephemeris) {
     this.candidateList = Object.values(ephemeris.registry).map(
       (def) => ({ id: def.id, mu: def.mu, radius: def.radius }));

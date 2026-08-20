@@ -74,14 +74,14 @@ export class PredictedArc {
   get needsGrowth(): boolean { return !this._truncated && this._trajectory.state.t < this.requiredEnd; }
   get decimation(): number { return this._decimation; }
 
-  // この弧が (state0, end) を持つ区間をそのまま表せるか(= 作り直さずに使い回せるか)。
-  // 積分済みの間引き下限が、要求区間(end で決まる)の
-  // 求める下限の ARC_MAX_SAMPLE_COARSENING 倍を超えて粗ければ、区間を狭めるだけでは折れ線の
-  // クリック候補が飛び飛びの点になってしまうので表せないと答える。比べるのは間引き下限どうしで、
-  // 実際のサンプル間隔ではない — 間隔は刻み幅(ARC_STEPS_PER_REV)でも決まり、そちらは作り直しても
-  // 同じ値になるので、間隔を下限と比べると縮めようのない粗さを理由に毎フレーム作り直すことになる。
-  // 起点は state0 が同一参照かどうかで判定する — 計画のノードは不変オブジェクトで、編集は
-  // 必ず別オブジェクトへの差し替えになるので、参照が同じなら積分の入力も同じ。
+  // この弧が (state0, end) を持つ区間をそのまま表せるか(= 作り直さずに使い回せるか)。起点は
+  // 同一参照で判定する — 計画のノードは不変オブジェクトで、編集は必ず別オブジェクトへの
+  // 差し替えになるので、参照が同じなら積分の入力も同じ。
+  // 積分済みの間引き下限が、要求区間(end で決まる)の求める下限の ARC_MAX_SAMPLE_COARSENING
+  // 倍を超えて粗ければ、区間を狭めるだけでは折れ線のクリック候補が飛び飛びの点になってしまう
+  // ので表せないと答える。比べるのは間引き下限どうしで、実際のサンプル間隔ではない — 間隔は
+  // 刻み幅(ARC_STEPS_PER_REV)でも決まり、そちらは作り直しても同じ値になるので、間隔を下限と
+  // 比べると縮めようのない粗さを理由に毎フレーム作り直すことになる。
   represents(state0: KinematicState, end: number): boolean {
     const sampleInterval = (end - this.state0.t) / C.ARC_MAX_SAMPLES;
     if (this._decimation > sampleInterval * C.ARC_MAX_SAMPLE_COARSENING) return false;

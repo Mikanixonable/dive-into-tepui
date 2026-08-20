@@ -74,6 +74,7 @@ export class ArcBodies {
   lastResolved = 0;
   lastRevisited = 0;
 
+  // 候補の顔ぶれを構築時に確定させ、以後は1体ぶんの状態だけを sources へ問う。
   constructor(private readonly sources: FutureAttractorProvider) {
     const candidates = sources.candidates();
     const pinnedId = heaviestGravityId(candidates);

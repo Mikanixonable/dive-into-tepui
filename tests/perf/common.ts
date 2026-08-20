@@ -91,14 +91,6 @@ export function attractorsNear(pos: Vec3, classified: ClassifiedAttractors): rea
   return nearby.length === 0 ? classified.always : [...classified.always, ...nearby];
 }
 
-// game/simulation/attractors.ts の predictedAttractorsAt(ephemeris, entities, t) の簡略版。
-// 本実験では動的な重力天体(生存中の GameEntity)を一切置かないので、
-// mergeAttractors(gravityBodiesAt(ephemeris, t), entities.attractors()) は
-// entities.attractors() が常に空配列 → gravityBodiesAt(ephemeris, t) 自体と等価になる。
-export function predictedAttractorsAtNoEntities(ephemeris: Ephemeris, t: number): readonly Attractor[] {
-  return ephemeris.gravityAttractorsAt(t);
-}
-
 // 実験1・2・4で共有する積分の足回り。公平のため常に ephemeris.gravityAttractorsAt(t)
 // (mu!==0 の全64天体)を重力源として使い、game/simulation/attractors.ts の
 // classifyAttractors によるグリッド近傍への絞り込みは適用しない(絞り込み自体のコストは

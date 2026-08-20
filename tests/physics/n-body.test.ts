@@ -113,15 +113,15 @@ export function register(): void {
     assert.ok(drift / scaleMag < 1e-3, `三体の全運動量が保存される(緩め許容): drift=${drift}`);
   });
 
-  test('n-body: 地球+小惑星で艦を積分すると、小惑星の質量→0の極限で小惑星なしの結果に収束する', () => {
+  test('n-body: 地球+小天体で艦を積分すると、小天体の質量→0の極限で小天体なしの結果に収束する', () => {
     const earth = makeAttractor('earth', MU_EARTH, kinematicState(0, ZERO, ZERO));
     const shipR0 = v3(R_EARTH + 420e3, 0, 0);
     const shipV0 = v3(0, Math.sqrt(MU_EARTH / (R_EARTH + 420e3)), 0);
     const ship0 = kinematicState(0, shipR0, shipV0);
-    const asteroidPos = kinematicState(0, v3(R_EARTH + 420e3 + 2e4, 5e3, 0), ZERO);
+    const smallBodyPos = kinematicState(0, v3(R_EARTH + 420e3 + 2e4, 5e3, 0), ZERO);
 
-    const integrate = (muAsteroid: number): KinematicState => {
-      const attractors = muAsteroid === 0 ? [earth] : [earth, makeAttractor('asteroid', muAsteroid, asteroidPos)];
+    const integrate = (muSmallBody: number): KinematicState => {
+      const attractors = muSmallBody === 0 ? [earth] : [earth, makeAttractor('small-body', muSmallBody, smallBodyPos)];
       let s = ship0;
       const dt = 1;
       for (let i = 0; i < 200; i++) s = stepFree(s, dt, attractors);
@@ -134,8 +134,8 @@ export function register(): void {
 
     const diffSmall = len(sub(small.r, baseline.r));
     const diffSmaller = len(sub(smaller.r, baseline.r));
-    assert.ok(diffSmall > 0, '有限質量の小惑星はベースラインと異なる軌道を作る');
-    // 摂動は小惑星の質量にほぼ線形に比例するので、質量を1/100にすれば差も概ね1/100になる。
+    assert.ok(diffSmall > 0, '有限質量の小天体はベースラインと異なる軌道を作る');
+    // 摂動は小天体の質量にほぼ線形に比例するので、質量を1/100にすれば差も概ね1/100になる。
     assert.ok(diffSmaller < diffSmall / 10,
       `質量→0の極限でベースラインへ収束する: diffSmall=${diffSmall}, diffSmaller=${diffSmaller}`);
   });
