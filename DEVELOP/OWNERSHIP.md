@@ -135,20 +135,30 @@ main.ts
 │       │   │                                   1箇所に集約したキューを消費して呼ぶ(pickAt/release/drop)
 │       │   ├── AssemblySession?            ... 進行中の組立(private assembly、高々1つ)。基地・DockWorkbenchSession・
 │       │   │   │                               DockWorkbenchController・AssemblyPanel・編集中の targetId・3D で拾った
-│       │   │   │                               選択(selection)・下書きの表示の写し(drafts)・開始時のチェイスカメラ距離
-│       │   │   │                               (savedChaseDist)を1つの値として持つ。
+│       │   │   │                               選択(selection)・全対象の表示の写し(renders)・下書きの名前とドック枠
+│       │   │   │                               (drafts)・開始時のチェイスカメラ距離(savedChaseDist)を1つの値として持つ。
 │       │   │   │                               startAssembly が組み、commitAssembly/cancelAssembly が endAssembly 経由で捨てる
 │       │   │   ├── DockWorkbenchSession    ... 対象(基地本体・格納艦・下書き)ごとの編集中の VesselAssembly と倉庫、
 │       │   │   │                               Undo/Redo 履歴の正本。実機へ届くのは commitAssembly の瞬間だけ
 │       │   │   ├── DockWorkbenchController ... 上のセッションに対するドラッグ状態機械(掴んでいる部品・出所・スナップ候補)
-│       │   │   └── AssemblyPanel           ... DOM は Hud.layers.window 配下。部品棚ウィンドウ + 選択行 + 断面編集 +
-│       │   │                                   部材棚 + 下書き作成/建造ボタン。部品棚のボタン押下と、3D で部品を拾い上げた
-│       │   │                                   Docking.applyPick の両方が AssemblyDragController.beginDrag を呼ぶ
-│       │   │   └── DraftEntry ×n           ... 新規船の下書き(AssemblySession.drafts)。構成そのものは DockWorkbenchSession の
-│       │   │                                   対象として在るので、ここが持つのは AssemblyRenderObject と、建造すれば入る
-│       │   │                                   ドック枠(slotIndex)だけ。実体は基地の renderObject の子としてその枠に置かれる。
-│       │   │                                   createDraft が枠を押さえて作り、buildDraft が実艦にし、removeDraft が捨てる。
-│       │   │                                   セッションが終われば endAssembly が全部捨てる
+│       │   │   ├── AssemblyPanel           ... DOM は Hud.layers.window 配下。部品棚ウィンドウ + 選択行 + 断面編集 +
+│       │   │   │                               部材棚 + 下書き作成/建造ボタン。部品棚のボタン押下と、3D で部品を拾い上げた
+│       │   │   │                               Docking.applyPick の両方が AssemblyDragController.beginDrag を呼ぶ
+│       │   │   ├── TargetRenderEntry ×n    ... 対象1つにつき1つの表示の写し(AssemblySession.renders、targetId をキーにした
+│       │   │   │                               Map)。基地本体・格納艦・下書きのいずれも同じ形で持つ — セッションが開いて
+│       │   │   │                               いる間、実艦のメッシュはすべて隠れ、この写しが代わりに立つ。実体は
+│       │   │   │                               vessel/assembly-render-object.ts の AssemblyRenderObject で、外皮メッシュに
+│       │   │   │                               加えて自前のワイヤーフレーム(ノード/エッジのピック用、既定で非表示)を持つ。
+│       │   │   │                               基地の renderObject の子として、基地本体は恒等姿勢、格納艦・下書きは
+│       │   │   │                               placeAtDockSlot で実物と同じドック口へ置かれ、userData['workbenchDraft'] の
+│       │   │   │                               印を持つ(Vessel.replaceAssembly の子の組み直しから除外されるための印)。
+│       │   │   │                               syncTargetRenders(毎フレーム)が対象一覧との差分から組み直し・処分を決める。
+│       │   │   │                               対象が消えた・組み直しで置き換わった写しは retiredRenders 経由で処分される
+│       │   │   └── DraftEntry ×n           ... 新規船の下書き(AssemblySession.drafts)。構成そのものは DockWorkbenchSession
+│       │   │                                   の対象として在り、表示の写しは上の renders が持つので、ここが持つのは名前と、
+│       │   │                                   建造すれば入るドック枠(slotIndex)だけ。createDraft が枠を押さえて作り、
+│       │   │                                   buildDraft が実艦にし、removeDraft が捨てる。セッションが終われば
+│       │   │                                   endAssembly が全部捨てる
 │       │   └── ResourceTransferDialog      ... DOM は Hud.layers.view 配下。ドッキング中の2機の間で資源を移す
 │       │                                       ダイアログ(readonly transferDialog)。openTransfer() が開く
 │       ├── ViewManager                    ... 現在のワールドビュー(combat/map)の正本。遷移は setView() ひとつに集約。
@@ -582,7 +592,7 @@ main.ts
 | 選択中の基地 | `Docking`(private `_activeBase`) | 基地の左クリック(`selectPickable`)と、`openBaseOperations`/`startAssembly` の入口で設定する。基地操作ウィンドウ・組立セッションの既定の対象になるだけで、ビューには影響しない |
 | 開いている基地操作ウィンドウの集合 | `Docking`(private `baseWindows: Map<string, BaseOperationsWindow>`) | キーは基地 id。`openBaseOperations` が新規/移動を判断し、`syncBaseWindows`(毎フレーム)が実体の消えた基地のぶんを、`clearActiveBaseIf` が削除された基地のぶんを閉じる。「非クリップは高々1枚」の排他は `Hud.overlayManager` が `'base-operations-temp'` グループで持つ |
 | 進行中の組立セッション | `Docking`(private `assembly: AssemblySession \| null`) | 高々1つ。基地・`DockWorkbenchSession`・`DockWorkbenchController`・`AssemblyPanel`・編集中の `targetId`・3D で拾ったノード/エッジの選択(`selection: AssemblySelection`)・開始時のチェイスカメラ距離(`savedChaseDist`、`endAssembly` が復元する)を1つの値として持ち、`startAssembly` が組んで `commitAssembly`/`cancelAssembly` が `endAssembly` 経由で捨てる。開いている間は `pauseGame()` 相当で時間が止まる(編集の反映先はセッションだけで、実機は確定の瞬間にしか触られない)。`assemblyInProgress` は `launch` が拒否に使う。開始と対象タブの切替のたびに `frameAssemblyCamera` が `CameraSystem._chaseCameraOverride` を編集中の対象へ差し替える(下記参照) |
-| 掴んでいるもの(部品または部材)とゴーストの姿勢・可否 | `AssemblyDragController`(private `held: {kind:'part', part} \| {kind:'member', member} \| null`/`ghost`/`pose`/`pendingMemberEdit`) | `Docking` が1つだけ持つ(セッションより長生きする)。`beginDrag` は `AssemblyPanel` の部品棚ボタンから、または `Docking.applyPick` が3Dで拾った既存部品から(`sourceInventory: false`)呼ばれる。`beginMemberDrag` は部材棚の「部材を掴む」から呼ばれ、`DockWorkbenchController` の `DragState` は経由しない(部材は在庫を持たない使い捨てなので)。`update`(フレームの update フェーズ、`Docking.updateAssembly` が `dragging` の間だけ呼ぶ)が姿勢と可否を決め、`sync` はそれをゴーストへ書くだけ。掴んでいる間の「離した」は `document` を購読せず、`Docking.updateAssembly` が `input.takeClicks` で集約した1つのキューの消費(`release`/`drop`)として届く。3D で拾い上げた部品の実機メッシュは `Docking`(private `heldOriginal: {root, partId} \| null`)が掴んでいる間だけ隠し、掴みが終わるとき(結果を問わず)必ず戻す |
+| 掴んでいるもの(部品または部材)とゴーストの姿勢・可否 | `AssemblyDragController`(private `held: {kind:'part', part, source} \| {kind:'member', member} \| null`/`ghost`/`pose`/`pendingMemberEdit`) | `Docking` が1つだけ持つ(セッションより長生きする)。`beginDrag` は `AssemblyPanel` の部品棚ボタンから、または `Docking.applyPick` が3Dで拾った既存部品から(`sourceInventory: false`)呼ばれ、掴み元の `DragSource` を `held` にも持つ。`beginMemberDrag` は部材棚の「部材を掴む」から呼ばれ、`DockWorkbenchController` の `DragState` は経由しない(部材は在庫を持たない使い捨てなので)。`update`(フレームの update フェーズ、`Docking.updateAssembly` が `dragging` の間だけ呼ぶ)が姿勢と可否を決め、`sync` はそれをゴーストへ書くだけ。掴んでいる間の「離した」は `document` を購読せず、`Docking.updateAssembly` が `input.takeClicks` で集約した1つのキューの消費(`release`/`drop`)として届く。3D で対象上から拾い上げた部品を隠す先は `Docking` ではなく掴んだ対象自身の `TargetRenderEntry.render`(`AssemblyRenderObject.setHiddenPart`)— `Docking.syncHeldPart` が `heldTargetPart`(この `held`/`source` から引く公開 getter)を毎フレーム読んで押し込むので、掴んでいた分を戻す帳簿は要らない |
 | マップモード表示 | `CameraSystem.overviewMode` | 描画・視点側の分岐はこれを見る。`CameraSystem.zoomActive` は `!overviewMode && combatCamera.zoomActive` を返すだけの派生 getter(状態は持たない) |
 | 開いているプロパティウィンドウの集合 | `MapContextActions`(`windows: Map<string, WindowEntry>`) | キーは `` `${kind}:${id}` ``。`openPropertyWindow` が新規/移動を判断し、`closeWindow`/`forgetWindow` が畳む。個々の `PropertyWindow` インスタンス自身はクリップ状態(`clipped`)とドラッグ位置だけを持ち、開閉のポリシー(いつ閉じるか)は持たない。「非クリップは高々1枚」という排他自体はこのクラスの状態ではなく `Hud.overlayManager` が `PROPERTY_WINDOW_TEMP_GROUP`(`exclusiveGroup`)経由で持つ(上記参照共有の表) |
 | ターゲット・的通過マーク | `Targeter`(`target`) | `Targeter.setPrimaryTarget`(`MapContextActions`が開くプロパティウィンドウの`targetPrimary`項目、または`[T]`キーの`handleTargetSelectKey`)でのみ変わる。自動選定・自動再選択はない |

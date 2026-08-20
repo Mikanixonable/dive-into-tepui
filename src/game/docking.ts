@@ -20,7 +20,6 @@ import { validateAssembly } from './vessel/assembly-editor';
 import type { BlueprintIssue } from './vessel/blueprint-validation';
 import { AssemblyRenderObject } from './vessel/assembly-render-object';
 import { AssemblyDragController, type AssemblyDragTarget, type AssemblyPick } from './vessel/assembly-drag-controller';
-import type { PartVisualRef } from './vessel/part-visual';
 import {
   DockWorkbenchSession, type TargetIssues, type WorkbenchTarget, type WorkbenchTargetKind,
 } from './vessel/dock-workbench';
@@ -56,15 +55,19 @@ const DEFAULT_WINDOW_Y = 120;
 const BASE_WINDOW_TEMP_GROUP = 'base-operations-temp';
 
 // 下書きの構成そのものはセッションが持つ。ここが持つのは、セッションの外にしか置けないもの
-// —— 表示の写しと、建造したときに入るドック枠 —— だけである。render は sync が組むので、
-// 決まった直後の1フレームだけ null になる。
+// —— 名前と、建造したときに入るドック枠 —— だけである。
 interface DraftEntry {
   readonly id: string;
   name: string;
+  readonly slotIndex: number;
+}
+
+// 対象1つぶんの表示の写し。基地本体・格納艦・下書きのいずれも同じ形で持つ。render は
+// syncTargetRenders が組むので、対象が現れた直後の1フレームだけ null になる。
+interface TargetRenderEntry {
   render: AssemblyRenderObject | null;
   // render を組んだときの構成。セッション側が別の値を持っていれば組み直す合図になる。
   renderedAssembly: VesselAssembly | null;
-  readonly slotIndex: number;
 }
 
 // 組立の対象1つ。基地本体・ドック中の艦・新規船下書きを同じ形で扱う。
@@ -93,8 +96,11 @@ interface AssemblySession {
   // ここに載っているものは倉庫から取り付けた(=生産時に課金済みの)ものだと分かる。
   readonly originalInventoryIds: ReadonlySet<string>;
   readonly drafts: Map<string, DraftEntry>;
-  // 対象が消えた下書きの表示。捨てるのは THREE を触る sync の仕事なので、ここへ預けて渡す。
-  readonly retiredDraftRenders: AssemblyRenderObject[];
+  // 対象1つにつき1つの表示の写し。基地本体・格納艦・下書きを問わず、対象である間は持つ。
+  readonly renders: Map<string, TargetRenderEntry>;
+  // 対象が消えた・組み直しで置き換わった写し。捨てるのは THREE を触る sync の仕事なので、
+  // ここへ預けて渡す。
+  readonly retiredRenders: AssemblyRenderObject[];
   targetId: string;
   selection: AssemblySelection;
   // セッション開始時点のチェイスカメラの距離。セッション終了時にここへ戻す。
@@ -114,13 +120,6 @@ function assemblyExtentRadius(tree: VesselTree): number {
   return radius;
 }
 
-// partVisualRef を持つオブジェクトを描画木から探し、可視/不可視を切り替える。
-function setPartMeshVisible(root: THREE.Object3D, partId: string, visible: boolean): void {
-  root.traverse((child) => {
-    if ((child.userData['partVisualRef'] as PartVisualRef | undefined)?.partId === partId) child.visible = visible;
-  });
-}
-
 export class Docking {
   readonly transferDialog: ResourceTransferDialog;
   // 選択中の基地。基地操作ウィンドウ・組立の既定の対象になる。
@@ -138,12 +137,8 @@ export class Docking {
   private readonly baseWindows = new Map<string, BaseOperationsWindow>();
   private readonly dragController: AssemblyDragController;
   private assembly: AssemblySession | null = null;
-  // 3D から掴み上げた部品の、実機側に残る元のメッシュ。掴んでいる間だけここへ載せて隠し、
-  // 掴みが終わるとき(結果を問わず)必ず元へ戻す。
-  private heldOriginal: { readonly root: THREE.Object3D; readonly partId: string } | null = null;
-  // 直前の sync が実際に隠したメッシュと、構造を露出した機体。押し込みを取り消す先を持つ。
-  private shownHeldOriginal: { readonly root: THREE.Object3D; readonly partId: string } | null = null;
-  private revealedStructure: Vessel | null = null;
+  // 構造(ノード・エッジ)を露出している対象の写し。選ばれているタブが変わるたびに移す。
+  private revealedStructure: AssemblyRenderObject | null = null;
 
   // 基地に関わる各所有者への参照を受け取る。ポーズだけは Game の状態なので、必要な2つの
   // 操作を関数として受ける。
@@ -313,14 +308,14 @@ export class Docking {
     const savedChaseDist = this.cameraSystem.combatCamera.chaseCamera.dist;
     const entry: AssemblySession = {
       base, session, workbench, panel, originalInventoryIds, targetId: initial.id, selection: null,
-      drafts: new Map<string, DraftEntry>(), retiredDraftRenders: [], savedChaseDist,
+      drafts: new Map<string, DraftEntry>(), renders: new Map<string, TargetRenderEntry>(),
+      retiredRenders: [], savedChaseDist,
     };
     this.assembly = entry;
 
     panel.onTargetSelect = (targetId) => {
       // 掴んだまま別の対象へ移ると落とす先と掴み元が食い違うので、切り替えで掴みを捨てる。
       this.dragController.cancelDrag();
-      this.heldOriginal = null;
       entry.targetId = targetId;
       entry.selection = null;
       this.frameAssemblyCamera(entry);
@@ -386,18 +381,19 @@ export class Docking {
     this.endAssembly();
   }
 
-  // 開いていたセッションの持ち物(ドラッグ中の部品・部品棚ウィンドウ)を手放し、
-  // チェイスカメラを寄せる前の距離・追従先へ戻し、時間を再開する。
+  // 開いていたセッションの持ち物(表示の写し・ドラッグ中の部品・部品棚ウィンドウ)を手放し、
+  // 隠していた実艦のメッシュを戻し、チェイスカメラを寄せる前の距離・追従先へ戻して時間を再開する。
   private endAssembly(): void {
     const entry = this.assembly;
     if (!entry) return;
     this.assembly = null;
-    // 下書きはセッションの持ち物なので、セッションと一緒に消える。
-    for (const targetId of [...entry.drafts.keys()]) this.disposeDraft(entry, targetId);
+    for (const targetId of [...entry.renders.keys()]) this.disposeTargetRender(entry, targetId);
+    for (const retired of entry.retiredRenders.splice(0)) {
+      retired.object.removeFromParent();
+      retired.dispose();
+    }
+    this.restoreEditedRealMeshes(entry.base);
     this.dragController.cancelDrag();
-    // 掴んだままセッションが終わっても、隠したメッシュと露出した構造を残さない。
-    this.heldOriginal = null;
-    this.syncHeldOriginal();
     this.revealTargetStructure(null);
     entry.panel.onCancel = null;
     entry.panel.close();
@@ -438,24 +434,23 @@ export class Docking {
     );
   }
 
-  // 1クリックぶんの処理。掴んでいれば離し、掴んでいなければ現在の対象の描画木を拾う。
+  // 1クリックぶんの処理。掴んでいれば離し、掴んでいなければ現在の対象の写しを拾う。
   private handleAssemblyClick(
     entry: AssemblySession, point: PointerPoint, viewport: { readonly width: number; readonly height: number },
   ): void {
     if (this.dragController.dragging) {
       this.dragController.release(entry.targetId);
-      this.heldOriginal = null;
       return;
     }
     const root = this.targetRenderRoot(entry);
     if (!root) return;
     const pick = this.dragController.pickAt(this.cameraSystem.activeCamera, point, viewport, root);
-    this.applyPick(entry, pick, root);
+    this.applyPick(entry, pick);
   }
 
   // 拾った先が部品ならその場から掴み上げ、ノード・エッジならセッションの選択にする。
   // 何も拾わなければ選択を外す。
-  private applyPick(entry: AssemblySession, pick: AssemblyPick, root: THREE.Object3D): void {
+  private applyPick(entry: AssemblySession, pick: AssemblyPick): void {
     if (pick.kind === 'none') { entry.selection = null; return; }
     if (pick.kind !== 'part') { entry.selection = pick; return; }
     const placement = entry.session.getTarget(entry.targetId).assembly.placements
@@ -464,24 +459,13 @@ export class Docking {
     entry.selection = null;
     const source: DragSource = { kind: 'target', targetId: entry.targetId, targetKind: entry.session.targetKind(entry.targetId) };
     this.dragController.beginDrag(entry.workbench, placement.part, source);
-    this.hideHeldOriginal(root, pick.partId);
   }
 
-  // 対象タブが指す機体の描画木そのもの —— 基地・格納艦は Vessel.renderObject、下書きは
-  // AssemblyRenderObject.object。ピック(拾い上げ)とゴースト吸着(dragTarget)は同じ木を指す。
+  // 対象タブが指す表示の写しの描画木。ピック(拾い上げ)とゴースト吸着(dragTarget)は
+  // 同じ木を指す。
   private targetRenderRoot(entry: AssemblySession): THREE.Object3D | null {
-    const view = this.targetById(entry.base, entry.targetId);
-    if (!view) return null;
-    if (view.vessel) return view.vessel.renderObject;
-    return entry.drafts.get(entry.targetId)?.render?.object ?? null;
+    return entry.renders.get(entry.targetId)?.render?.object ?? null;
   }
-
-  // 3D から掴み上げた部品は、掴んでいる間だけ実機側の元のメッシュを隠す —— カーソルに
-  // 追従するゴーストと二重に見えないため。
-  private hideHeldOriginal(root: THREE.Object3D, partId: string): void {
-    this.heldOriginal = { root, partId };
-  }
-
 
 
   // update が決めた位置・姿勢・色を、掴んでいる部品のゴーストへ押し込む。編集中の対象は
@@ -489,33 +473,33 @@ export class Docking {
   syncAssembly(fo: FloatingOrigin): void {
     this.syncBaseWindows();
     if (this.assembly) {
-      this.syncDraftRenders(this.assembly.base);
+      this.syncTargetRenders(this.assembly.base);
+      this.hideEditedRealMeshes(this.assembly.base);
+      this.syncHeldPart(this.assembly);
       this.assembly.panel.sync(this.assembly.session, this.assembly.selection);
-      this.revealTargetStructure(this.targetById(this.assembly.base, this.assembly.targetId)?.vessel ?? null);
+      this.revealTargetStructure(this.assembly.renders.get(this.assembly.targetId)?.render ?? null);
     }
-    this.syncHeldOriginal();
     this.dragController.sync(fo);
   }
 
-  // 編集中の対象の構造を見せる —— ノードとエッジはワイヤーフレームにしか描かれておらず、既定では
-  // 消えているのに、レイキャストは見えていなくても拾ってしまうため。EntityManager.syncVessels の
-  // 後に呼ばれるのでこの上書きが効く。露出をやめた機体は設定どおりの表示へ明示的に戻す ——
-  // 基地へ格納された艦は vessels から外れて syncVessel が走らなくなるため、放っておくと戻らない。
-  private revealTargetStructure(vessel: Vessel | null): void {
-    if (this.revealedStructure && this.revealedStructure !== vessel) {
-      this.revealedStructure.setStructureVisible(this.graphics.current.wireframe);
+  // 編集中の対象の構造を見せる —— ノードとエッジは写しのワイヤーフレームにしか描かれておらず、
+  // 既定では消えているのに、レイキャストは見えていなくても拾ってしまうため。露出をやめた写しは
+  // 明示的に戻す。
+  private revealTargetStructure(render: AssemblyRenderObject | null): void {
+    if (this.revealedStructure && this.revealedStructure !== render) {
+      this.revealedStructure.setStructureVisible(false);
     }
-    this.revealedStructure = vessel;
-    vessel?.setStructureVisible(true);
+    this.revealedStructure = render;
+    render?.setStructureVisible(true);
   }
 
-  // 掴んでいる部品の実機側のメッシュを隠し、掴みが終わっていれば戻す。
-  private syncHeldOriginal(): void {
-    if (this.shownHeldOriginal && this.shownHeldOriginal !== this.heldOriginal) {
-      setPartMeshVisible(this.shownHeldOriginal.root, this.shownHeldOriginal.partId, true);
+  // 対象上から掴み上げている部品を写し側で隠す。「いま何を掴んでいるか」から毎フレーム
+  // 引き直すので、前回隠した分を戻す帳簿は要らない。
+  private syncHeldPart(entry: AssemblySession): void {
+    const held = this.dragController.heldTargetPart;
+    for (const [targetId, target] of entry.renders) {
+      target.render?.setHiddenPart(held && held.targetId === targetId ? held.partId : null);
     }
-    this.shownHeldOriginal = this.heldOriginal;
-    if (this.heldOriginal) setPartMeshVisible(this.heldOriginal.root, this.heldOriginal.partId, false);
   }
 
   // 編集中の対象を、セッション上の構成と実機の慣性系での置かれ方の組として返す。
@@ -563,32 +547,95 @@ export class Docking {
     return this.assemblyTargets(base).find((target) => target.id === targetId) ?? null;
   }
 
-  // 下書きの実体を、建造したときに入るドック枠へ置く。建造前と建造後で置かれ方が変わらない。
-  // 構成が動いていれば組み直すので、下書きだけは編集の結果がその場で見える。
-  private syncDraftRenders(base: Vessel): void {
+  // 全対象(基地本体・格納艦・下書き)の表示の写しを、実物と同じ場所へ置く。構成が動いていれば
+  // 組み直すので、編集の結果がその場で見える。
+  private syncTargetRenders(base: Vessel): void {
     const entry = this.assembly;
     if (!entry) return;
-    for (const retired of entry.retiredDraftRenders.splice(0)) {
+    for (const retired of entry.retiredRenders.splice(0)) {
       retired.object.removeFromParent();
       retired.dispose();
     }
-    for (const draft of entry.drafts.values()) {
-      const assembly = entry.session.getTarget(draft.id).assembly;
-      if (draft.render && assembly !== draft.renderedAssembly) {
-        entry.retiredDraftRenders.push(draft.render);
-        draft.render = null;
+    const targets = this.assemblyTargets(base);
+    const liveIds = new Set(targets.map((view) => view.id));
+    for (const id of [...entry.renders.keys()]) {
+      if (!liveIds.has(id)) this.disposeTargetRender(entry, id);
+    }
+    for (const view of targets) {
+      const assembly = entry.session.getTarget(view.id).assembly;
+      let target = entry.renders.get(view.id);
+      if (!target) {
+        target = { render: null, renderedAssembly: null };
+        entry.renders.set(view.id, target);
       }
-      if (!draft.render) {
-        draft.render = new AssemblyRenderObject(assembly);
-        draft.renderedAssembly = assembly;
+      if (target.render && assembly !== target.renderedAssembly) {
+        entry.retiredRenders.push(target.render);
+        target.render = null;
       }
-      draft.render.object.userData['workbenchDraft'] = true;
-      base.placeAtDockSlot(draft.render.object, draft.slotIndex);
+      if (!target.render) {
+        target.render = new AssemblyRenderObject(assembly);
+        target.renderedAssembly = assembly;
+      }
+      this.placeTargetRender(base, entry, view, target.render.object);
     }
   }
 
-  // 表示の写しをセッションの対象一覧へ合わせる。下書きの作成と削除は取り消せるので、写しの側だけ
-  // 取り残されることがある。枠が空いていない下書きは置き場所が無いので、対象ごと落とす。
+  // 表示の写しを1つ、実物と同じ場所へ据える。基地本体は自身の原点(恒等姿勢)へ、格納艦・
+  // 下書きはドック口へ —— attachDockedVesselMesh/placeAtDockSlot と同じ経路なので、置かれ方が
+  // 実物と食い違わない。基地の子として置くので、確定時の Vessel.replaceAssembly が自分の外殻
+  // と取り違えないよう workbenchDraft の印を付ける。
+  private placeTargetRender(base: Vessel, entry: AssemblySession, view: AssemblyTargetView, object: THREE.Object3D): void {
+    object.userData['workbenchDraft'] = true;
+    if (view.kind === 'base') {
+      object.position.set(0, 0, 0);
+      object.quaternion.set(0, 0, 0, 1);
+      if (object.parent !== base.renderObject) base.renderObject.add(object);
+      return;
+    }
+    const slotIndex = view.kind === 'draft'
+      ? entry.drafts.get(view.id)?.slotIndex
+      : base.baseState?.dockedVessels.find((docked) => docked.vessel === view.vessel)?.slotIndex;
+    if (slotIndex === undefined) return;
+    base.placeAtDockSlot(object, slotIndex);
+  }
+
+  // 対象の写しを1つ手放す。実物へは何もしない —— セッションが持つのは表示の写しだけである。
+  private disposeTargetRender(entry: AssemblySession, targetId: string): void {
+    const target = entry.renders.get(targetId);
+    entry.renders.delete(targetId);
+    if (target?.render) entry.retiredRenders.push(target.render);
+  }
+
+  // 基地の直下の子から、収容艦(どの種別問わず)と表示の写し(workbenchDraft の印)を除いた
+  // 残り —— 基地自身の外殻(外皮メッシュ・ワイヤーフレーム)。
+  private baseOwnHullChildren(base: Vessel): THREE.Object3D[] {
+    const dockedObjects = new Set((base.baseState?.dockedVessels ?? []).map((docked) => docked.vessel.renderObject));
+    return base.renderObject.children.filter((child) =>
+      !dockedObjects.has(child) && child.userData['workbenchDraft'] !== true);
+  }
+
+  // 編集中の対象(基地本体・格納艦)の実艦のメッシュを隠す。写しがその場に立つ。収容艦は
+  // entities.vessels から外れて syncVessel が二度と走らないため一度隠せば済むが、収容艦の
+  // 顔ぶれや写しの組み直しは毎フレーム動きうるので、基地の外殻はここで毎フレーム引き直す。
+  private hideEditedRealMeshes(base: Vessel): void {
+    for (const view of this.assemblyTargets(base)) {
+      if (view.kind === 'base') {
+        for (const child of this.baseOwnHullChildren(base)) child.visible = false;
+      } else if (view.kind === 'vessel' && view.vessel) {
+        view.vessel.renderObject.visible = false;
+      }
+    }
+  }
+
+  // セッション終了時、隠していた実艦のメッシュをすべて表示へ戻す。収容艦は entities.vessels の
+  // 外にあって syncVessel が走らないので、ここで明示的に戻す必要がある。
+  private restoreEditedRealMeshes(base: Vessel): void {
+    for (const child of this.baseOwnHullChildren(base)) child.visible = true;
+    for (const docked of base.baseState?.dockedVessels ?? []) docked.vessel.renderObject.visible = true;
+  }
+
+  // 表示の写しをセッションの対象一覧へ合わせる。下書きの作成と削除は取り消せるので、下書きの
+  // 側だけ取り残されることがある。枠が空いていない下書きは置き場所が無いので、対象ごと落とす。
   private reconcileDrafts(entry: AssemblySession): void {
     const targets = entry.session.targetsSnapshot();
     const draftIds = new Set(targets.filter((t) => t.kind === 'new-vessel-draft').map((t) => t.id));
@@ -603,9 +650,7 @@ export class Docking {
         this.reportEditFailure('空きドックが無いため下書きを戻せません');
         continue;
       }
-      entry.drafts.set(id, {
-        id, name: `新規船下書き ${entry.drafts.size + 1}`, render: null, renderedAssembly: null, slotIndex,
-      });
+      entry.drafts.set(id, { id, name: `新規船下書き ${entry.drafts.size + 1}`, slotIndex });
     }
   }
 
@@ -747,9 +792,7 @@ export class Docking {
     if (slotIndex === null) return this.reportEditFailure('空きドックがありません');
     const id = `draft:${base.id}:${++this.draftSequence}`;
     const assembly = crewedAssembly(C.PLAYER_MAX_HP);
-    const draft: DraftEntry = {
-      id, name: `新規船下書き ${this.draftSequence}`, render: null, renderedAssembly: null, slotIndex,
-    };
+    const draft: DraftEntry = { id, name: `新規船下書き ${this.draftSequence}`, slotIndex };
     entry.session.createNewVesselDraft(id, assembly);
     entry.drafts.set(id, draft);
     this.hud.hint(`${draft.name} をドック ${slotIndex + 1} に置きました。編集してから建造してください`);
@@ -774,10 +817,9 @@ export class Docking {
     this.hud.hint(`${draft.name} を削除しました`);
   }
 
+  // 下書きの写しはこの時点で処分せず、次の syncTargetRenders が対象一覧から漏れたことを見て
+  // 処分する —— 表示の写しの寿命はどの対象でも syncTargetRenders 1箇所が決める。
   private disposeDraft(entry: AssemblySession, targetId: string): void {
-    const draft = entry.drafts.get(targetId);
-    if (!draft) return;
-    if (draft.render) entry.retiredDraftRenders.push(draft.render);
     entry.drafts.delete(targetId);
   }
 
