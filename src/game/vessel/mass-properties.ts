@@ -8,6 +8,7 @@ import { loftCenterOfMass, loftInertia, loftProjectedArea, loftVolume } from '..
 import { scaleCrossSection, sectionMoments } from '../../physics/section-moments';
 import type { CrossSection } from '../../physics/section-moments';
 import type { AnyPart } from '../game-entity/parts';
+import { isPropellantTankPart } from '../game-entity/parts';
 import type { PartPlacement, VesselAssembly } from './assembly';
 import type { MountFrame, TreeEdge, VesselTree } from './tree';
 import { circumradius, edgeFrame, inradius, mountFrame, nodeById } from './tree';
@@ -211,7 +212,7 @@ function edgeMaterial(edge: TreeEdge, internals: readonly InternalPlacement[]): 
   for (const placement of internals) {
     if (!placement.edgeIds.includes(edge.id)) continue;
     const { part } = placement;
-    if (part.type === 'oxidizer_tank' || part.type === 'reductant_tank' || part.type === 'rcs_tank') {
+    if (isPropellantTankPart(part)) {
       const material = STRUCTURAL_MATERIALS[part.material as StructuralMaterialId];
       if (material) return material;
     }

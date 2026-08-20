@@ -11,6 +11,7 @@ import { PROPELLANT_RESOURCE, type PropellantId } from '../economy/propellant-co
 import type { ResourceId } from '../economy/resource';
 import { ResourceLedger } from '../economy/resource-ledger';
 import type { AnyPart } from '../game-entity/parts';
+import { isPropellantTankPart } from '../game-entity/parts';
 import { assemblyOf, type VesselBlueprint } from './blueprint';
 import { structuralMasses } from './mass-properties';
 
@@ -24,7 +25,7 @@ export const DEFAULT_PRODUCTION_TIME_FACTOR = 0;
 
 // 殻の材料を推進剤が決める搭載要素。加圧ガスタンクは推進剤を積まないので含まない。
 export function propellantTankOf(part: AnyPart): BlueprintTank | null {
-  if (part.type !== 'oxidizer_tank' && part.type !== 'reductant_tank' && part.type !== 'rcs_tank') return null;
+  if (!isPropellantTankPart(part)) return null;
   return { propellantId: part.propellant, shellMass: part.weight * TANK_SHELL_FRACTION };
 }
 
