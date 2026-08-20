@@ -17,7 +17,7 @@ import { Ephemeris } from './ephemeris';
 import { OrbitingId } from './attractor';
 import { bodyDef, primaryOf } from './solar-system';
 import { KinematicState, kinematicState } from './kinematic-state';
-import { Vec3, add, cross, len, scale, sub } from './vec3';
+import { Vec3, add, cross, len, scale, sub, v3 } from './vec3';
 
 export type CollinearPoint = 'L1' | 'L2';
 
@@ -145,10 +145,21 @@ function centerManifoldState(
   return kinematicState(t, rEci, vEci);
 }
 
-// Richardson (1980) 三次近似の振幅拘束 l1·Ax² + l2·Az² + Δ = 0 における (l1, l2, Δ)。
-// いずれも gamma で正規化した無次元量で、この拘束が成り立つとき面内・面外の振動数が
-// 一致してハロー軌道になる。
-function haloConstraint(frame: CollinearFrame, point: CollinearPoint): { l1: number; l2: number; delta: number } {
+// Richardson (1980) 三次近似の振幅拘束 l1·Ax² + l2·Az² + Δ = 0 における係数および 2次摂動係数。
+export interface HaloCoefficients {
+  a21: number;
+  a22: number;
+  a23: number;
+  a24: number;
+  b21: number;
+  b22: number;
+  d21: number;
+  l1: number;
+  l2: number;
+  delta: number;
+}
+
+export function haloCoefficients(frame: CollinearFrame, point: CollinearPoint): HaloCoefficients {
   const { mu, gamma, lambda } = frame;
   const c2 = cn(point, mu, gamma, 2);
   const c3 = cn(point, mu, gamma, 3);
@@ -176,7 +187,55 @@ function haloConstraint(frame: CollinearFrame, point: CollinearPoint): { l1: num
   const a1 = -1.5 * c3 * (2 * a21 + a23 + 5 * d21) - 0.375 * c4 * (12 - k * k);
   const a2 = 1.5 * c3 * (a24 - 2 * a22) + 1.125 * c4;
 
-  return { l1: a1 + 2 * l2sq * s1, l2: a2 + 2 * l2sq * s2, delta: l2sq - c2 };
+  return {
+    a21, a22, a23, a24, b21, b22, d21,
+    l1: a1 + 2 * l2sq * s1,
+    l2: a2 + 2 * l2sq * s2,
+    delta: l2sq - c2,
+  };
+}
+
+function haloConstraint(frame: CollinearFrame, point: CollinearPoint): { l1: number; l2: number; delta: number } {
+  return haloCoefficients(frame, point);
+}
+
+// Richardson (1980) 2次精度での共線ラグランジュ点まわりの 3D 位置オフセット [m] (ECI 座標系成分)。
+// ax, az はメートル単位の振幅 (az の正負は北側 (+az) / 南側 (-az) ファミリーに対応)。
+// phase は 0 から 2π までの位相角。
+export function haloLocalPosition(
+  frame: CollinearFrame,
+  point: CollinearPoint,
+  ax: number,
+  az: number,
+  phase: number,
+): Vec3 {
+  const coeffs = haloCoefficients(frame, point);
+  const rLocal = frame.r * frame.gamma;
+  const axN = ax / rLocal;
+  const absAz = Math.abs(az);
+  const azN = absAz / rLocal;
+  const deltaM = az >= 0 ? 1 : -1;
+
+  const cos1 = Math.cos(phase);
+  const sin1 = Math.sin(phase);
+  const cos2 = Math.cos(2 * phase);
+  const sin2 = Math.sin(2 * phase);
+
+  // Richardson (1980) 2次展開による無次元局所座標 (x: 主天体→副天体軸, y: 公転方向, z: 北極方向)
+  const xN = coeffs.a21 * axN * axN + coeffs.a22 * azN * azN - axN * cos1 + (coeffs.a23 * axN * axN - coeffs.a24 * azN * azN) * cos2;
+  const yN = frame.kappa * axN * sin1 + (coeffs.b21 * axN * axN - coeffs.b22 * azN * azN) * sin2;
+  const zN = deltaM * (azN * cos1 + coeffs.d21 * axN * azN * (cos2 - 3));
+
+  const x = xN * rLocal;
+  const y = yN * rLocal;
+  const z = zN * rLocal;
+
+  // ECI 軸上の相対オフセットベクトル
+  return v3(
+    x * frame.xHat.x + y * frame.yHat.x + z * frame.zHat.x,
+    x * frame.xHat.y + y * frame.yHat.y + z * frame.zHat.y,
+    x * frame.xHat.z + y * frame.yHat.z + z * frame.zHat.z,
+  );
 }
 
 // 指定したラグランジュ点(副天体 secondary の L1/L2)まわりのリサジュー軌道初期状態。
