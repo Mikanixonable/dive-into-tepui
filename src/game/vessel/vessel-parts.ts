@@ -107,8 +107,12 @@ export function tuneActuators(parts: readonly AnyPart[], mass: number, maxMoment
     if (part.type === 'engine') {
       part.thrust = mass * maxThrottle;
       // 独立に宣言するのは推力と比推力だけとし、消費率はロケット方程式の質量流量
-      // (推力 / (比推力・重力加速度))として導く。
-      part.fuelConsumptionRate = part.thrust / (part.specificImpulse * STANDARD_GRAVITY);
+      // (推力 / (比推力・重力加速度))として導く。比推力が 0 以下なら消費率を 0 のまま
+      // 残す(rcsFuelConsumptionRates が specificImpulse <= 0 のスラスタを弾くのと同じ扱い)
+      // — 0 除算で Infinity/NaN になり、タンクを1フレームで空にしたうえ推力ゼロという
+      // 壊れ方をするのを避ける。
+      part.fuelConsumptionRate =
+        part.specificImpulse > 0 ? part.thrust / (part.specificImpulse * STANDARD_GRAVITY) : 0;
     } else if (part.type === 'rcs_thruster') part.thrust = mass * C.THROTTLE_LEVELS[0]!;
     else if (part.type === 'flywheel') part.maxTorque = C.MAX_ANG_ACCEL * maxMoment;
     // 触媒床は燃焼室の中にあり、その質量は推力に比例する。推力をここで決める以上、
