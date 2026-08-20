@@ -222,23 +222,7 @@ export const MAX_CASINGS = 260;
 export const MAX_DEBRIS = 600;
 export const MAX_FLASHES = 128; // 同時に存在しうるフラッシュ(発砲・命中・撃破・ガス)の上限。超過分は描画されない
 
-// --- 小惑星(Asteroid、試験配置用) ---
-// 岩石密度(~1900kg/m^3)で半径 ASTEROID_TEST_RADIUS の球とおおよそ整合する質量。
-export const ASTEROID_TEST_MASS = 1e15; // [kg]
-export const ASTEROID_TEST_RADIUS = 5000; // [m]
-export const MAX_ASTEROIDS = 400;
-
 // --- 高負荷デバッグステージ(stage-debug-load.ts)---
-// 小惑星は直径 1km 級で、質量は岩石密度 ~1900kg/m³ と整合する。
-export const DEBUG_LOAD_ASTEROID_MASS = 1e12; // [kg]
-export const DEBUG_LOAD_ASTEROID_RADIUS = 500; // [m]
-export const DEBUG_LOAD_ASTEROID_COUNT = 300;
-// メインベルト(2.1〜3.3 AU)に直径 1km 以上の小惑星が約190万個ある数密度 [1/m^3]。
-// 平均間隔にすると約 3×10^6 km で、この規模の岩塊が互いの重力を及ぼし合う密度ではない。
-export const DEBUG_LOAD_ASTEROID_DENSITY = 3e-29;
-// 上の数密度で DEBUG_LOAD_ASTEROID_COUNT 体が収まる球の半径 [m]。
-export const DEBUG_LOAD_ASTEROID_MAX_DIST =
-  Math.cbrt((3 * DEBUG_LOAD_ASTEROID_COUNT) / (4 * Math.PI * DEBUG_LOAD_ASTEROID_DENSITY));
 // 破片は衛星の破壊直後の雲を想定し、自機の周囲に留める。
 export const DEBUG_LOAD_DEBRIS_COUNT = 500;
 export const DEBUG_LOAD_DEBRIS_MAX_DIST = 250000; // [m]

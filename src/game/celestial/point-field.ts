@@ -3,7 +3,6 @@
 // 載せない。THREE 非依存に保ってあり、生成の決定性と分布は tests/physics で検査する。
 // 各群は PointFieldDef 1つのデータで駆動する — 群を増やすには POINT_FIELD_DEFS に要素を足すだけ
 // でよく、生成コード自体に群固有の分岐を増やさない。
-// game-entity/asteroid.ts の Asteroid(重力を及ぼし積分される個別の GameEntity)とは別物。
 import { Q_ECLY_TO_ECI } from '../../physics/ecliptic';
 import { positionFromOrbitalElements, trueAnomalyFromMean } from '../../physics/elements';
 import { EPOCH_T_OFFSET } from '../../physics/ephemeris';

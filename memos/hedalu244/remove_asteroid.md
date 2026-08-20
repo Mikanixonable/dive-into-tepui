@@ -122,23 +122,6 @@
 
 ## 手順
 
-### Step 1 — Asteroid 型と生成側を削除する
-
-`asteroid.ts`・`buildAsteroidMesh`・小惑星関連の定数・2つのデバッグステージの配置・
-`EntityManager` の `asteroids` 配列・`perf-meter` のカウンタ・点群側の対比コメントを削除する。
-
-高負荷デバッグステージは**破片のみのステージとして存続させる。** ラベル・`selectSub`・
-`briefingHtml`・冒頭コメントから「小惑星」「万有引力計算の高負荷」を落とし、
-**多数のエンティティを積分する負荷を再現するステージ**として書き直す。破片の数
-(`DEBUG_LOAD_DEBRIS_COUNT` = 500)は変えない。
-
-このステップの後も `GameEntity.mu` 等の配線は残るが、**`mu ≠ 0` の個体を作る手段が
-1つも無くなる。**
-
-**完了条件**: 達成目標 1 を満たす。`npm run typecheck` が通る。
-
----
-
 ### Step 2 — GameEntity から重力源の属性を落とす
 
 `mu` / `degree2` / `isStar` / `accel` / `setGravitatingMass` / `predictedAsGravitySource` /
