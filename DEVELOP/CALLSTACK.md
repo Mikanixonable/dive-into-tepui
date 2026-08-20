@@ -479,7 +479,7 @@ handlePointerInput 参照)。ステージが決着した(`activeStage.isPlaying`
     - [操作艦あり かつ editMode] syncPanel(艦, simTime) // ノード一覧・選択中ノードの Δv と噴射後要素を組み立て、panel.sync(nodes, selEl, localDv, ...) → PlanPanel.sync() で軌道計画パネルの HTML へ反映(HoldButton ×6 は PlanPanel.dvButtons、updateEditing がここ経由で読む)
   - docking.syncAssembly(fo) // 基地操作ウィンドウと組立の描画側。セッションが無くても呼んでよい(各段が自分で早期 return する)
     - syncBaseWindows() // 実体が消えた基地のウィンドウを閉じて台帳から外す。開いているウィンドウごと
-    - [セッションあり] assembly.panel.sync(assembly.session, assembly.selection) // 対象タブ・Undo/Redo の可否・確定/取消・下書き作成/建造・選択行・断面編集・検証エラー・部品棚・部材棚。対象列/在庫/選択/エラーの各キーが前フレームと変わったときだけ DOM を組み直す
+    - [セッションあり] assembly.panel.sync(assembly.session, assembly.selection) // 対象タブ・Undo/Redo の可否・確定/取消・下書き作成/建造/削除・選択行・断面編集・検証(拒んでいる理由と設計の指摘を分けて出す)・部品棚・部材棚。対象列/在庫/選択/エラーの各キーが前フレームと変わったときだけ DOM を組み直す
     - [セッションあり] revealTargetStructure(targetById(assembly.base, assembly.targetId)?.vessel ?? null) // 編集中の対象がノード・エッジを持つ Vessel(基地本体・格納艦)なら setStructureVisible(true) でワイヤーフレームを可視にする — EntityManager.syncVessels がこの前の位置で graphics.current.wireframe から可視性を引き直しているので、この上書きが同フレームの残り(3D ピック等)に効く。露出をやめた機体は graphics.current.wireframe へ明示的に戻す(基地へ格納された艦は vessels から外れて syncVessel が走らないため、放置すると戻らない)
     - syncHeldOriginal() // 掴んでいる部品の実機側メッシュを setPartMeshVisible(false) で隠し、掴みが終わっていれば戻す。update が決めた heldOriginal を見た目へ押し込むだけ
     - dragController.sync(fo) // update が決めた位置(fo.RtoThreeV3)・取り付け先の基底・可否の色をゴーストへ押し込むだけ。掴んでいなければ何もしない

@@ -16,21 +16,24 @@ import { Vessel, type VesselDeps } from './vessel/vessel';
 import { hasBaseModule } from './vessel/capabilities';
 import { createBlueprint } from './vessel/blueprint';
 import type { VesselAssembly } from './vessel/assembly';
-import { validateBlueprint } from './vessel/blueprint-validation';
+import { validateAssembly } from './vessel/assembly-editor';
+import type { BlueprintIssue } from './vessel/blueprint-validation';
 import { AssemblyRenderObject } from './vessel/assembly-render-object';
 import { AssemblyDragController, type AssemblyDragTarget, type AssemblyPick } from './vessel/assembly-drag-controller';
 import type { PartVisualRef } from './vessel/part-visual';
-import { DockWorkbenchSession, type WorkbenchTarget } from './vessel/dock-workbench';
-import { DockWorkbenchController } from './vessel/dock-workbench-controller';
+import {
+  DockWorkbenchSession, type TargetIssues, type WorkbenchTarget, type WorkbenchTargetKind,
+} from './vessel/dock-workbench';
+import { DockWorkbenchController, type DragSource } from './vessel/dock-workbench-controller';
 import { crewedAssembly } from './vessel/vessel-assemblies';
 import { productionBlueprintOf, productionResourceDemand, consumeProductionResources } from './vessel/production';
 import { producibility, type ProducibilityBlueprint } from './economy/producibility';
 import { formatResourceAmount } from './hud/inventory-labels';
 import { baseFacilities, basePowerAvailable, deriveBaseDockingPorts } from './vessel/base-module';
-import { validateBaseAssembly } from './vessel/base-assembly-validation';
+import { BASE_BLUEPRINT_LIMITS, baseInvariants, validateBaseAssembly } from './vessel/base-assembly-validation';
 import { deriveCapsules } from './vessel/collision-shape';
 import { circumradius, type VesselTree } from './vessel/tree';
-import { add as addVec, type Vec3 } from '../physics/vec3';
+import type { Vec3 } from '../physics/vec3';
 import type { FloatingOrigin } from './floating-origin';
 import type { GameEntity } from './game-entity/game-entity';
 import type { Input, PointerPoint } from './input/input';
@@ -45,10 +48,6 @@ import type { MarkerManager } from './marker/marker-manager';
 import type { ActiveVesselController } from './active-vessel-controller';
 import type { GraphicsSettings } from '../render/graphics-settings';
 
-// 下書きの実体を基地の前方どれだけ離して浮かべるか [m]。基地本体と重ならない距離。
-const DRAFT_OFFSET_BASE = 360;
-const DRAFT_OFFSET_STEP = 30;
-
 // 基地操作ウィンドウを座標指定なしで開くときの左上角 [px]。
 const DEFAULT_WINDOW_X = 120;
 const DEFAULT_WINDOW_Y = 120;
@@ -56,12 +55,18 @@ const DEFAULT_WINDOW_Y = 120;
 // クリップされていない基地操作ウィンドウを同時に高々1枚に保つための排他グループ名。
 const BASE_WINDOW_TEMP_GROUP = 'base-operations-temp';
 
+// 下書きの構成そのものはセッションが持つ。ここが持つのは、セッションの外にしか置けないもの
+// —— 表示の写しと、建造したときに入るドック枠 —— だけである。
+// 下書きの構成そのものはセッションが持つ。ここが持つのは、セッションの外にしか置けないもの
+// —— 表示の写しと、建造したときに入るドック枠 —— だけである。render は sync が組むので、
+// 決まった直後の1フレームだけ null になる。
 interface DraftEntry {
   readonly id: string;
   name: string;
-  assembly: VesselAssembly;
-  render: AssemblyRenderObject;
-  readonly ownedPartIds: Set<string>;
+  render: AssemblyRenderObject | null;
+  // render を組んだときの構成。セッション側が別の値を持っていれば組み直す合図になる。
+  renderedAssembly: VesselAssembly | null;
+  readonly slotIndex: number;
 }
 
 // 組立の対象1つ。基地本体・ドック中の艦・新規船下書きを同じ形で扱う。
@@ -89,6 +94,9 @@ interface AssemblySession {
   // セッション開始時点の基地倉庫にあった部品 id。確定時、下書きへ新たに現れた部品のうち
   // ここに載っているものは倉庫から取り付けた(=生産時に課金済みの)ものだと分かる。
   readonly originalInventoryIds: ReadonlySet<string>;
+  readonly drafts: Map<string, DraftEntry>;
+  // 対象が消えた下書きの表示。捨てるのは THREE を触る sync の仕事なので、ここへ預けて渡す。
+  readonly retiredDraftRenders: AssemblyRenderObject[];
   targetId: string;
   selection: AssemblySelection;
   // セッション開始時点のチェイスカメラの距離。セッション終了時にここへ戻す。
@@ -127,7 +135,6 @@ export class Docking {
 
   // 作業台で艦を組み直すための依存関係。
   private readonly vesselDeps: VesselDeps;
-  private readonly drafts = new Map<string, DraftEntry>();
   private draftSequence = 0;
   // 基地 id ごとの操作ウィンドウ。1つの基地に2枚開かない。
   private readonly baseWindows = new Map<string, BaseOperationsWindow>();
@@ -308,7 +315,7 @@ export class Docking {
     const savedChaseDist = this.cameraSystem.combatCamera.chaseCamera.dist;
     const entry: AssemblySession = {
       base, session, workbench, panel, originalInventoryIds, targetId: initial.id, selection: null,
-      savedChaseDist,
+      drafts: new Map<string, DraftEntry>(), retiredDraftRenders: [], savedChaseDist,
     };
     this.assembly = entry;
 
@@ -326,6 +333,7 @@ export class Docking {
     panel.onCancel = () => this.cancelAssembly();
     panel.onCreateDraft = () => this.createDraft(base);
     panel.onBuildDraft = (targetId) => this.buildDraft(base, targetId);
+    panel.onRemoveDraft = (targetId) => this.removeDraft(targetId);
     panel.draftBuildStatus = (targetId) => this.draftBuildStatus(base, targetId);
     panel.open(session, session.getTarget(initial.id), DEFAULT_WINDOW_X, DEFAULT_WINDOW_Y);
     this.frameAssemblyCamera(entry);
@@ -361,14 +369,6 @@ export class Docking {
       return;
     }
     for (const target of snapshot.targets) {
-      // 下書きへ倉庫から取り付けられた部品は、建造時の二重課金を避けるため先に控えておく
-      // (applyTargetAssembly は下書きの assembly を丸ごと差し替えるので、その前に見る)。
-      const draft = this.drafts.get(target.id);
-      if (draft) {
-        for (const placement of target.assembly.placements) {
-          if (entry.originalInventoryIds.has(placement.part.id)) draft.ownedPartIds.add(placement.part.id);
-        }
-      }
       if (!this.applyTargetAssembly(entry.base, target.id, target.assembly)) {
         this.hud.hint('構成を適用できないため、確定を中止しました');
         return;
@@ -394,6 +394,8 @@ export class Docking {
     const entry = this.assembly;
     if (!entry) return;
     this.assembly = null;
+    // 下書きはセッションの持ち物なので、セッションと一緒に消える。
+    for (const targetId of [...entry.drafts.keys()]) this.disposeDraft(entry, targetId);
     this.dragController.cancelDrag();
     // 掴んだままセッションが終わっても、隠したメッシュと露出した構造を残さない。
     this.heldOriginal = null;
@@ -426,6 +428,8 @@ export class Docking {
       }
       return true;
     });
+    // 表示の写しの顔ぶれを決めるのは論理側の判断なので、sync ではなくここで済ませる。
+    this.reconcileDrafts(entry);
     if (!this.dragController.dragging) return;
     this.dragController.update(
       this.cameraSystem.activeCamera,
@@ -451,8 +455,8 @@ export class Docking {
     this.applyPick(entry, pick, root);
   }
 
-  // 拾った先が部品ならその場から掴み上げ(sourceInventory: false)、ノード・エッジなら
-  // セッションの選択にする。何も拾わなければ選択を外す。
+  // 拾った先が部品ならその場から掴み上げ、ノード・エッジならセッションの選択にする。
+  // 何も拾わなければ選択を外す。
   private applyPick(entry: AssemblySession, pick: AssemblyPick, root: THREE.Object3D): void {
     if (pick.kind === 'none') { entry.selection = null; return; }
     if (pick.kind !== 'part') { entry.selection = pick; return; }
@@ -460,7 +464,8 @@ export class Docking {
       .find((candidate) => candidate.part.id === pick.partId);
     if (!placement) return;
     entry.selection = null;
-    this.dragController.beginDrag(entry.workbench, placement.part, entry.targetId, false);
+    const source: DragSource = { kind: 'target', targetId: entry.targetId, targetKind: entry.session.targetKind(entry.targetId) };
+    this.dragController.beginDrag(entry.workbench, placement.part, source);
     this.hideHeldOriginal(root, pick.partId);
   }
 
@@ -470,7 +475,7 @@ export class Docking {
     const view = this.targetById(entry.base, entry.targetId);
     if (!view) return null;
     if (view.vessel) return view.vessel.renderObject;
-    return this.drafts.get(entry.targetId)?.render.object ?? null;
+    return entry.drafts.get(entry.targetId)?.render?.object ?? null;
   }
 
   // 3D から掴み上げた部品は、掴んでいる間だけ実機側の元のメッシュを隠す —— カーソルに
@@ -486,6 +491,7 @@ export class Docking {
   syncAssembly(fo: FloatingOrigin): void {
     this.syncBaseWindows();
     if (this.assembly) {
+      this.syncDraftRenders(this.assembly.base);
       this.assembly.panel.sync(this.assembly.session, this.assembly.selection);
       this.revealTargetStructure(this.targetById(this.assembly.base, this.assembly.targetId)?.vessel ?? null);
     }
@@ -529,26 +535,16 @@ export class Docking {
   // 置かれているので、いずれも基地の位置と姿勢から求まる。
   private targetPose(base: Vessel, view: AssemblyTargetView): { position: Vec3; attitude: Quat } | null {
     if (view.kind === 'base') return { position: base.state.r, attitude: base.att.q };
-    if (view.kind === 'draft') {
-      const offset = this.draftOffset(view.id);
-      if (offset === null) return null;
-      return { position: addVec(base.state.r, qRotate(base.att.q, v3(0, 0, offset))), attitude: base.att.q };
-    }
-    const entry = base.baseState?.dockedVessels.find((docked) => docked.vessel === view.vessel);
-    if (!entry) return null;
+    const slotIndex = view.kind === 'draft'
+      ? this.assembly?.drafts.get(view.id)?.slotIndex
+      : base.baseState?.dockedVessels.find((docked) => docked.vessel === view.vessel)?.slotIndex;
+    if (slotIndex === undefined) return null;
     // メッシュは口の法線へ +Z を向けて置かれているので、姿勢も同じ回転で組む。
-    const localNormal = qRotate(qInvert(base.att.q), base.getSlotWorldNormal(entry.slotIndex));
+    const localNormal = qRotate(qInvert(base.att.q), base.getSlotWorldNormal(slotIndex));
     return {
-      position: base.getSlotWorldPos(entry.slotIndex),
+      position: base.getSlotWorldPos(slotIndex),
       attitude: qMul(base.att.q, qFromUnitVectors(v3(0, 0, 1), localNormal)),
     };
-  }
-
-  // 下書きを基地の前方どれだけ離して置くか。並び順がそのまま距離になる。
-  private draftOffset(draftId: string): number | null {
-    const ids = [...this.drafts.keys()];
-    const index = ids.indexOf(draftId);
-    return index < 0 ? null : DRAFT_OFFSET_BASE + index * DRAFT_OFFSET_STEP;
   }
 
   // 組立の対象一覧。基地本体・ドック中の艦・下書きを並べる。
@@ -558,8 +554,9 @@ export class Docking {
     for (const entry of base.baseState?.dockedVessels ?? []) {
       if (entry.vessel.assembly) targets.push({ id: `vessel:${entry.id}`, kind: 'vessel', name: entry.name, vessel: entry.vessel, assembly: entry.vessel.assembly });
     }
-    for (const draft of this.drafts.values()) {
-      targets.push({ id: draft.id, kind: 'draft', name: draft.name, vessel: null, assembly: draft.assembly });
+    const entry = this.assembly;
+    for (const draft of entry?.drafts.values() ?? []) {
+      targets.push({ id: draft.id, kind: 'draft', name: draft.name, vessel: null, assembly: entry!.session.getTarget(draft.id).assembly });
     }
     return targets;
   }
@@ -568,13 +565,49 @@ export class Docking {
     return this.assemblyTargets(base).find((target) => target.id === targetId) ?? null;
   }
 
-  // 下書きの実体を基地の子として並べ、見える位置へ置く。
+  // 下書きの実体を、建造したときに入るドック枠へ置く。建造前と建造後で置かれ方が変わらない。
+  // 構成が動いていれば組み直すので、下書きだけは編集の結果がその場で見える。
   private syncDraftRenders(base: Vessel): void {
-    for (const draft of this.drafts.values()) {
+    const entry = this.assembly;
+    if (!entry) return;
+    for (const retired of entry.retiredDraftRenders.splice(0)) {
+      retired.object.removeFromParent();
+      retired.dispose();
+    }
+    for (const draft of entry.drafts.values()) {
+      const assembly = entry.session.getTarget(draft.id).assembly;
+      if (draft.render && assembly !== draft.renderedAssembly) {
+        entry.retiredDraftRenders.push(draft.render);
+        draft.render = null;
+      }
+      if (!draft.render) {
+        draft.render = new AssemblyRenderObject(assembly);
+        draft.renderedAssembly = assembly;
+      }
       draft.render.object.userData['workbenchDraft'] = true;
-      if (draft.render.object.parent !== base.renderObject) base.renderObject.add(draft.render.object);
-      draft.render.object.position.set(0, 0, this.draftOffset(draft.id) ?? DRAFT_OFFSET_BASE);
-      draft.render.object.visible = true;
+      base.placeAtDockSlot(draft.render.object, draft.slotIndex);
+    }
+  }
+
+  // 表示の写しをセッションの対象一覧へ合わせる。下書きの作成と削除は取り消せるので、写しの側だけ
+  // 取り残されることがある。枠が空いていない下書きは置き場所が無いので、対象ごと落とす。
+  private reconcileDrafts(entry: AssemblySession): void {
+    const targets = entry.session.targetsSnapshot();
+    const draftIds = new Set(targets.filter((t) => t.kind === 'new-vessel-draft').map((t) => t.id));
+    for (const id of [...entry.drafts.keys()]) {
+      if (!draftIds.has(id)) this.disposeDraft(entry, id);
+    }
+    for (const id of draftIds) {
+      if (entry.drafts.has(id)) continue;
+      const slotIndex = this.freeSlotIndex(entry.base);
+      if (slotIndex === null) {
+        entry.session.removeTarget(id);
+        this.reportEditFailure('空きドックが無いため下書きを戻せません');
+        continue;
+      }
+      entry.drafts.set(id, {
+        id, name: `新規船下書き ${entry.drafts.size + 1}`, render: null, renderedAssembly: null, slotIndex,
+      });
     }
   }
 
@@ -592,9 +625,6 @@ export class Docking {
       id: `${previous.id}-dock-edit`, name: previous.name, tree: assembly.tree,
       placements: assembly.placements, now: Date.now(),
     });
-    const issue = validateBlueprint(blueprint).find((candidate) => candidate.severity === 'error');
-    if (issue) return { ok: false, reason: issue.message };
-
     const replacement = new Vessel({
       blueprintShip: { blueprint, state: previous.state, name: previous.name, id: previous.id },
     }, this.vesselDeps);
@@ -670,8 +700,6 @@ export class Docking {
   private applyTargetAssembly(base: Vessel, targetId: string, assembly: VesselAssembly): boolean {
     const target = this.targetById(base, targetId);
     if (!target) return false;
-    const error = assemblyError(assembly, target.name);
-    if (error) { this.reportEditFailure(error); return false; }
     if (target.kind === 'base') {
       const result = this.commitBaseAssembly(base, assembly);
       if (!result.ok) { this.reportEditFailure(result.reason); return false; }
@@ -682,14 +710,8 @@ export class Docking {
       if (!result.ok) { this.reportEditFailure(result.reason); return false; }
       return true;
     }
-    const draft = this.drafts.get(targetId);
-    if (!draft) return false;
-    draft.render.object.removeFromParent();
-    draft.render.dispose();
-    draft.assembly = assembly;
-    draft.render = new AssemblyRenderObject(assembly);
-    this.syncDraftRenders(base);
-    return true;
+    // 下書きの構成はセッションが持っているので、ここで書き戻すものは無い。
+    return this.assembly?.drafts.has(targetId) ?? false;
   }
 
   // 基地本体の構成を差し替える。基地モジュールの同一性と、艦が入っているドックの口が
@@ -718,27 +740,59 @@ export class Docking {
     return { ok: true, base };
   }
 
-  // 既定の有人艦の形から新規船の下書きを作り、組立の対象へ加える。
+  // 既定の有人艦の形から新規船の下書きを作り、組立の対象へ加える。建造すれば入る枠をこの時点で
+  // 押さえる —— 建造の瞬間まで待って断るより、作れないものを作らせない方がよい。
   createDraft(base: Vessel): void {
+    const entry = this.assembly;
+    if (!entry) return;
+    const slotIndex = this.freeSlotIndex(base);
+    if (slotIndex === null) return this.reportEditFailure('空きドックがありません');
     const id = `draft:${base.id}:${++this.draftSequence}`;
     const assembly = crewedAssembly(C.PLAYER_MAX_HP);
-    const render = new AssemblyRenderObject(assembly);
-    const draft: DraftEntry = { id, name: `新規船下書き ${this.draftSequence}`, assembly, render, ownedPartIds: new Set() };
-    this.drafts.set(id, draft);
-    this.syncDraftRenders(base);
-    // 進行中のセッションは開始時の対象一覧を持っているので、後から生えた下書きは明示的に足す。
-    this.assembly?.session.createNewVesselDraft(id, assembly);
-    this.hud.hint(`${draft.name} を作成しました。組立ウィンドウで編集してから建造を確定してください`);
+    const draft: DraftEntry = {
+      id, name: `新規船下書き ${this.draftSequence}`, render: null, renderedAssembly: null, slotIndex,
+    };
+    entry.session.createNewVesselDraft(id, assembly);
+    entry.drafts.set(id, draft);
+    this.hud.hint(`${draft.name} をドック ${slotIndex + 1} に置きました。編集してから建造してください`);
   }
 
-  // 下書きを実艦として建造し、基地のドックへ格納する。資源は建造の時点で引く。
+  // 収容中の艦にも、他の下書きが押さえた枠にも使われていない枠。満杯なら null。
+  private freeSlotIndex(base: Vessel): number | null {
+    const reserved = new Set([...(this.assembly?.drafts.values() ?? [])].map((draft) => draft.slotIndex));
+    for (const docked of base.baseState?.dockedVessels ?? []) reserved.add(docked.slotIndex);
+    for (let i = 0; i < base.dockCapacity; i++) if (!reserved.has(i)) return i;
+    return null;
+  }
+
+  // 下書きを捨てる。実機には何も作られていないので、押さえた枠を返すだけで済む。
+  removeDraft(targetId: string): void {
+    const entry = this.assembly;
+    const draft = entry?.drafts.get(targetId);
+    if (!entry || !draft) return;
+    entry.session.removeTarget(targetId);
+    this.disposeDraft(entry, targetId);
+    if (entry.targetId === targetId) entry.targetId = entry.session.snapshot().targets[0]?.id ?? targetId;
+    this.hud.hint(`${draft.name} を削除しました`);
+  }
+
+  private disposeDraft(entry: AssemblySession, targetId: string): void {
+    const draft = entry.drafts.get(targetId);
+    if (!draft) return;
+    if (draft.render) entry.retiredDraftRenders.push(draft.render);
+    entry.drafts.delete(targetId);
+  }
+
+  // 下書きを実艦として建造し、押さえてあった枠へ格納する。資源は建造の時点で引く。
   buildDraft(base: Vessel, targetId: string): void {
-    const draft = this.drafts.get(targetId);
-    if (!draft || !base.baseState) return;
-    const slotIndex = base.getAvailableSlotIndex();
-    if (slotIndex === null) return this.reportEditFailure('空きドックがありません');
-    const blueprint = createBlueprint({ id: `${draft.id}-blueprint`, name: draft.name, tree: draft.assembly.tree, placements: draft.assembly.placements, now: Date.now() });
-    const production = this.draftBuildRequest(draft);
+    const entry = this.assembly;
+    const draft = entry?.drafts.get(targetId);
+    if (!entry || !draft || !base.baseState) return;
+    const assembly = entry.session.getTarget(targetId).assembly;
+    const blueprint = createBlueprint({
+      id: `${draft.id}-blueprint`, name: draft.name, tree: assembly.tree, placements: assembly.placements, now: Date.now(),
+    });
+    const production = this.draftBuildRequest(entry, draft, assembly);
     const requirements = producibility(production, base.baseState.resources, baseFacilities(base), basePowerAvailable(base));
     if (requirements.length > 0) {
       this.hud.hint(`建造資源・設備が不足しています: ${requirements.map((item) => item.id).join(', ')}`); return;
@@ -747,18 +801,37 @@ export class Docking {
     const vessel = new Vessel({ blueprintShip: {
       blueprint, state: kinematicState(base.state.t, base.state.r, base.state.v), name: draft.name, id: `${draft.id}-built`,
     } }, this.vesselDeps);
-    base.baseState.dockedVessels.push({ id: vessel.id, name: vessel.name, hp: vessel.hp, maxHp: vessel.maxHp, parts: vessel.parts, vessel, slotIndex });
-    base.attachDockedVesselMesh(vessel, slotIndex);
-    draft.render.object.removeFromParent(); draft.render.dispose(); this.drafts.delete(targetId);
-    this.hud.hint(`${vessel.name} をドック ${slotIndex + 1} に格納しました`);
+    base.baseState.dockedVessels.push({
+      id: vessel.id, name: vessel.name, hp: vessel.hp, maxHp: vessel.maxHp, parts: vessel.parts, vessel, slotIndex: draft.slotIndex,
+    });
+    base.attachDockedVesselMesh(vessel, draft.slotIndex);
+    this.consumeMountedInventory(entry, base, assembly);
+    entry.session.removeTarget(targetId);
+    this.disposeDraft(entry, targetId);
+    if (entry.targetId === targetId) entry.targetId = entry.session.snapshot().targets[0]?.id ?? targetId;
+    this.hud.hint(`${vessel.name} をドック ${draft.slotIndex + 1} に格納しました`);
   }
 
-  // 倉庫から引いた(=生産時にすでに課金済みの)部品は建造費から除く。二重課金を避けるための
-  // 課金専用の設計で、実際に組み立てる vessel は draft.assembly をそのまま使う。
-  private draftBuildRequest(draft: DraftEntry): ProducibilityBlueprint {
-    const chargedPlacements = draft.assembly.placements.filter((placement) => !draft.ownedPartIds.has(placement.part.id));
+  // 建造した艦に載っている、倉庫から取り付けた部品を基地の在庫から実際に取り除く。確定まで待つと、
+  // 建造してから取消したときに同じ部品が実機と在庫の両方に残る。
+  private consumeMountedInventory(entry: AssemblySession, base: Vessel, assembly: VesselAssembly): void {
+    const inventory = base.baseState?.inventory;
+    if (!inventory) return;
+    for (const placement of assembly.placements) {
+      if (!entry.originalInventoryIds.has(placement.part.id)) continue;
+      const index = inventory.findIndex((part) => part.id === placement.part.id);
+      if (index >= 0) inventory.splice(index, 1);
+    }
+  }
+
+  // 倉庫から引いた(=生産時にすでに課金済みの)部品は建造費から除く。課金専用の設計で、
+  // 実際に組み立てる vessel はセッションの構成をそのまま使う。
+  private draftBuildRequest(
+    entry: AssemblySession, draft: DraftEntry, assembly: VesselAssembly,
+  ): ProducibilityBlueprint {
+    const chargedPlacements = assembly.placements.filter((placement) => !entry.originalInventoryIds.has(placement.part.id));
     const chargeBlueprint = createBlueprint({
-      id: `${draft.id}-charge`, name: draft.name, tree: draft.assembly.tree, placements: chargedPlacements, now: Date.now(),
+      id: `${draft.id}-charge`, name: draft.name, tree: assembly.tree, placements: chargedPlacements, now: Date.now(),
     });
     return productionBlueprintOf(chargeBlueprint);
   }
@@ -767,9 +840,10 @@ export class Docking {
   // producibility の不足を資源だけの文言へ畳んで賄えるかと一緒に返す。対象が下書きでなければ
   // (基地が消える等) null。
   private draftBuildStatus(base: Vessel, targetId: string): { readonly costText: string; readonly affordable: boolean } | null {
-    const draft = this.drafts.get(targetId);
-    if (!draft || !base.baseState) return null;
-    const request = this.draftBuildRequest(draft);
+    const entry = this.assembly;
+    const draft = entry?.drafts.get(targetId);
+    if (!entry || !draft || !base.baseState) return null;
+    const request = this.draftBuildRequest(entry, draft, entry.session.getTarget(targetId).assembly);
     const ledger = base.baseState.resources;
     const demand = productionResourceDemand(request, ledger);
     const costText = [...demand].map(([id, mass]) => formatResourceAmount(id, mass)).join('・') || '資源なし';
@@ -823,26 +897,31 @@ export class Docking {
 }
 
 // 対象1つが構成として成り立つか。基地には基地固有の条件も課す。
+// 編集と確定を拒む理由は、実機の一貫性が壊れるものだけに絞る。設計として飛べるかどうかは
+// 指摘として返し、拒まない —— 飛べない船を組めること自体は利用者の選択である。
 function targetValidation(
   target: WorkbenchTarget,
   dockedCount: number,
-): { valid: boolean; errors: readonly string[] } {
-  const errors: string[] = [];
-  if (target.kind === 'base') errors.push(...validateBaseAssembly(target.assembly, dockedCount));
-  const error = assemblyError(target.assembly, target.id);
-  if (error) errors.push(error);
-  return { valid: errors.length === 0, errors };
+): TargetIssues {
+  const blocking = target.kind === 'base' ? [...baseInvariants(target.assembly, dockedCount)] : [];
+  return { blocking, issues: designIssues(target.assembly, target.id, target.kind) };
 }
 
-// 構成が設計として成り立つかを確かめ、最初のエラーを返す。成り立つなら null。
-function assemblyError(assembly: VesselAssembly, name: string): string | null {
+// 構成を設計として検査する。対象の種別ごとに上限が違うので、そこだけを分ける。
+function designIssues(
+  assembly: VesselAssembly,
+  name: string,
+  kind: WorkbenchTargetKind | undefined,
+): readonly BlueprintIssue[] {
+  const limits = kind === 'base' ? BASE_BLUEPRINT_LIMITS : undefined;
   try {
-    const blueprint = createBlueprint({
-      id: `dock-preview-${name}`, name, tree: assembly.tree, placements: assembly.placements, now: 0,
-    });
-    return validateBlueprint(blueprint).find((issue) => issue.severity === 'error')?.message ?? null;
+    return validateAssembly(assembly, { blueprintId: `dock-preview-${name}`, blueprintName: name, limits });
   } catch (error) {
-    return `構成の検証に失敗しました: ${error instanceof Error ? error.message : String(error)}`;
+    return [{
+      severity: 'error',
+      targetId: name,
+      message: `構成の検証に失敗しました: ${error instanceof Error ? error.message : String(error)}`,
+    }];
   }
 }
 

@@ -1,5 +1,6 @@
 import type { AnyPart } from '../game-entity/parts';
-import type { AssemblyEditResult } from './assembly-editor';
+import type { AssemblyEditorOptions, AssemblyEditResult, SectionEdit } from './assembly-editor';
+import { editSection, removeEdge, removeNode } from './assembly-editor';
 import {
   DockWorkbenchSession,
   type WorkbenchTargetKind,
@@ -7,6 +8,8 @@ import {
 } from './dock-workbench';
 import type { PartPlacement, VesselAssembly } from './assembly';
 import type { Vec3 } from '../../physics/vec3';
+
+const PARTIAL_DESIGN: AssemblyEditorOptions = { validateBlueprint: false };
 
 // 取り付けの可否は assembly-editor が下す。ここで持つのは「通ったか」と、通らなかったときの
 // 人間可読な理由(AssemblyEditError.message、日本語)だけである。
@@ -24,11 +27,16 @@ export interface SnapCandidate {
   readonly targetKind?: WorkbenchTargetKind;
 }
 
+// 掴んだ部品がどこから来たか ―― 倉庫からか、既にどこかの作業対象に装着されていたか。
+// この2つは互いに排他な選言であり、片方の値が定まればもう片方は無意味になるので、
+// 独立したフィールド3つではなく1つの判別共用体として持つ。
+export type DragSource =
+  | { readonly kind: 'inventory' }
+  | { readonly kind: 'target'; readonly targetId: string; readonly targetKind: WorkbenchTargetKind };
+
 export interface DragState {
   readonly part: AnyPart;
-  readonly sourceTargetId: string | null;
-  readonly sourceTargetKind: WorkbenchTargetKind | null;
-  readonly sourceInventory: boolean;
+  readonly source: DragSource;
   readonly candidate: SnapCandidate | null;
 }
 
@@ -43,14 +51,8 @@ export class DockWorkbenchController {
   public get dragging(): DragState | null { return this.drag; }
   public selectPart(partRef: string | null): void { this.selectedPartRef = partRef; }
 
-  public beginDrag(part: AnyPart, sourceTargetId: string | null, sourceInventory: boolean): void {
-    this.drag = {
-      part,
-      sourceTargetId,
-      sourceTargetKind: sourceTargetId === null ? null : this.session.targetKind(sourceTargetId),
-      sourceInventory,
-      candidate: null,
-    };
+  public beginDrag(part: AnyPart, source: DragSource): void {
+    this.drag = { part, source, candidate: null };
     this.selectedPartRef = part.id;
   }
 
@@ -72,10 +74,10 @@ export class DockWorkbenchController {
         targets: [this.session.validateTarget(targetId)],
       };
     }
-    if (drag.sourceTargetId && !drag.sourceInventory) {
-      this.session.movePlacement(drag.sourceTargetId, targetId, drag.part.id, candidate.placement);
+    if (drag.source.kind === 'target') {
+      this.session.movePlacement(drag.source.targetId, targetId, drag.part.id, candidate.placement);
     } else {
-      this.session.installPlacement(targetId, candidate.placement, drag.sourceInventory ? drag.part.id : undefined);
+      this.session.installPlacement(targetId, candidate.placement, drag.part.id);
     }
     this.drag = null;
     return this.session.validate();
@@ -89,6 +91,25 @@ export class DockWorkbenchController {
 
   public applyAssemblyEdit(targetId: string, result: AssemblyEditResult, label?: string): WorkbenchValidation {
     return this.session.applyAssemblyEdit(targetId, result, label);
+  }
+
+  // 編集中の構成は定義上、完成した設計ではない。セッションを通る編集はすべてここを経由させ、
+  // 呼び出しごとに部分設計であることを言い直さずに済むようにする。完成設計としての検査は
+  // 確定の1点だけで課す。
+  public removeNode(targetId: string, nodeId: string): WorkbenchValidation {
+    return this.applyAssemblyEdit(targetId, removeNode(this.assemblyOf(targetId), nodeId, PARTIAL_DESIGN), 'ノードを削除');
+  }
+
+  public removeEdge(targetId: string, edgeId: string): WorkbenchValidation {
+    return this.applyAssemblyEdit(targetId, removeEdge(this.assemblyOf(targetId), edgeId, PARTIAL_DESIGN), 'エッジを削除');
+  }
+
+  public editSection(targetId: string, edit: SectionEdit, label: string): WorkbenchValidation {
+    return this.applyAssemblyEdit(targetId, editSection(this.assemblyOf(targetId), edit, PARTIAL_DESIGN), label);
+  }
+
+  private assemblyOf(targetId: string): VesselAssembly {
+    return this.session.getTarget(targetId).assembly;
   }
 
   public createNewVesselDraft(id: string, assembly: VesselAssembly): void {

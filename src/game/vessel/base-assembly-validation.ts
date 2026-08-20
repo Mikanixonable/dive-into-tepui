@@ -1,19 +1,24 @@
 import type { BaseModulePart } from '../game-entity/parts';
 import type { VesselAssembly } from './assembly';
 import { validateAssembly } from './assembly-editor';
+import type { BlueprintLimits } from './blueprint-validation';
+import { DEFAULT_BLUEPRINT_LIMITS } from './blueprint-validation';
 import { deriveBaseDockingPorts } from './base-module';
 
-/**
- * Base-only invariants.  General tree/section/reference checks stay in the shared
- * assembly editor so the workbench cannot accidentally give bases a weaker model.
- */
-export function validateBaseAssembly(
+// 基地は艦より一桁重く一回り大きいので、艦の寸法・質量の上限では元から収まらない。
+export const BASE_BLUEPRINT_LIMITS: BlueprintLimits = {
+  ...DEFAULT_BLUEPRINT_LIMITS,
+  maxMass: 1e7,
+  maxDimension: 400,
+};
+
+// 基地であることそのものが要求する不変条件。破れば収容中の艦が居場所を失うので、編集も確定も
+// これで拒む。構造として組み上がるかは呼び出し側が別に見る。
+export function baseInvariants(
   assembly: VesselAssembly,
   occupiedDockCount = 0,
 ): readonly string[] {
-  const issues = validateAssembly(assembly, { validateBlueprint: false })
-    .filter((issue) => issue.severity === 'error')
-    .map((issue) => issue.message);
+  const issues: string[] = [];
   const modules = assembly.placements
     .map((placement) => placement.part)
     .filter((part): part is BaseModulePart => part.type === 'base_module' && part.hp > 0);
@@ -37,4 +42,16 @@ export function validateBaseAssembly(
 function finitePort(port: { localPos: { x: number; y: number; z: number }; localNormal: { x: number; y: number; z: number } }): boolean {
   return [port.localPos.x, port.localPos.y, port.localPos.z,
     port.localNormal.x, port.localNormal.y, port.localNormal.z].every(Number.isFinite);
+}
+
+// 構造として組み上がるかと、基地固有の不変条件を合わせて見る。作業台を通さずに基地の構成を
+// 差し替える経路が使う。
+export function validateBaseAssembly(
+  assembly: VesselAssembly,
+  occupiedDockCount = 0,
+): readonly string[] {
+  const structural = validateAssembly(assembly, { validateBlueprint: false })
+    .filter((issue) => issue.severity === 'error')
+    .map((issue) => issue.message);
+  return [...structural, ...baseInvariants(assembly, occupiedDockCount)];
 }

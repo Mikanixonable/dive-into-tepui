@@ -135,7 +135,8 @@ main.ts
 │       │   │                                   1箇所に集約したキューを消費して呼ぶ(pickAt/release/drop)
 │       │   ├── AssemblySession?            ... 進行中の組立(private assembly、高々1つ)。基地・DockWorkbenchSession・
 │       │   │   │                               DockWorkbenchController・AssemblyPanel・編集中の targetId・3D で拾った
-│       │   │   │                               選択(selection)・開始時のチェイスカメラ距離(savedChaseDist)を1つの値として持つ。
+│       │   │   │                               選択(selection)・下書きの表示の写し(drafts)・開始時のチェイスカメラ距離
+│       │   │   │                               (savedChaseDist)を1つの値として持つ。
 │       │   │   │                               startAssembly が組み、commitAssembly/cancelAssembly が endAssembly 経由で捨てる
 │       │   │   ├── DockWorkbenchSession    ... 対象(基地本体・格納艦・下書き)ごとの編集中の VesselAssembly と倉庫、
 │       │   │   │                               Undo/Redo 履歴の正本。実機へ届くのは commitAssembly の瞬間だけ
@@ -143,9 +144,11 @@ main.ts
 │       │   │   └── AssemblyPanel           ... DOM は Hud.layers.window 配下。部品棚ウィンドウ + 選択行 + 断面編集 +
 │       │   │                                   部材棚 + 下書き作成/建造ボタン。部品棚のボタン押下と、3D で部品を拾い上げた
 │       │   │                                   Docking.applyPick の両方が AssemblyDragController.beginDrag を呼ぶ
-│       │   ├── DraftEntry ×n               ... 新規船の下書き(private drafts)。VesselAssembly と AssemblyRenderObject を持ち、
-│       │   │                                   実体は基地の renderObject の子として浮かぶ。createDraft が作り buildDraft が
-│       │   │                                   実艦にして消す(AssemblyPanel の新規船下書き/建造して格納ボタンから呼ばれる)
+│       │   │   └── DraftEntry ×n           ... 新規船の下書き(AssemblySession.drafts)。構成そのものは DockWorkbenchSession の
+│       │   │                                   対象として在るので、ここが持つのは AssemblyRenderObject と、建造すれば入る
+│       │   │                                   ドック枠(slotIndex)だけ。実体は基地の renderObject の子としてその枠に置かれる。
+│       │   │                                   createDraft が枠を押さえて作り、buildDraft が実艦にし、removeDraft が捨てる。
+│       │   │                                   セッションが終われば endAssembly が全部捨てる
 │       │   └── ResourceTransferDialog      ... DOM は Hud.layers.view 配下。ドッキング中の2機の間で資源を移す
 │       │                                       ダイアログ(readonly transferDialog)。openTransfer() が開く
 │       ├── ViewManager                    ... 現在のワールドビュー(combat/map)の正本。遷移は setView() ひとつに集約。
