@@ -6,12 +6,18 @@ import {
   type WorkbenchValidation,
 } from './dock-workbench';
 import type { PartPlacement, VesselAssembly } from './assembly';
-import type { MateFailure, MateVerdict } from './assembly-mode';
 import type { Vec3 } from '../../physics/vec3';
+
+// 取り付けの可否は assembly-editor が下す。ここで持つのは「通ったか」と、通らなかったときの
+// 人間可読な理由(AssemblyEditError.message、日本語)だけである。
+export interface MateOutcome {
+  readonly accepted: boolean;
+  readonly reason: string | null;
+}
 
 export interface SnapCandidate {
   readonly placement: PartPlacement;
-  readonly verdict: MateVerdict;
+  readonly verdict: MateOutcome;
   readonly targetLabel: string;
   readonly position: Vec3;
   /** Retained with the preview so a base/draft preview cannot be applied to another kind. */
@@ -103,12 +109,4 @@ export class DockWorkbenchController {
   }
 
   public snapshotBeforeBuild() { return this.session.snapshotBeforeBuild(); }
-
-  public failureText(failure: MateFailure): string {
-    const labels: Record<MateFailure, string> = {
-      occupied: '接続先が使用中', 'section-fit': '断面が合わない', phase: '位相が合わない',
-      length: '長さが合わない', 'work-area': '作業範囲外',
-    };
-    return labels[failure];
-  }
 }
