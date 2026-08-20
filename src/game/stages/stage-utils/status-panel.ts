@@ -39,6 +39,7 @@ export class StatusPanel {
   private readonly leftText: HTMLElement;
   private readonly leftWidgets: HTMLElement;
   private readonly centerCol: HTMLElement;
+  private readonly radiatorsCol: HTMLElement;
   private lastLeftHtml = '';
   private player: Vessel | null = null;
 
@@ -63,6 +64,7 @@ export class StatusPanel {
     this.leftText = this.panel.querySelector<HTMLElement>('.k-text')!;
     this.leftWidgets = this.panel.querySelector<HTMLElement>('.k-widgets')!;
     this.centerCol = this.panel.querySelector<HTMLElement>('.t')!;
+    this.radiatorsCol = this.panel.querySelector<HTMLElement>('.radiators')!;
     root.appendChild(this.panel);
 
     this.hpMeter = this.buildMeterRow('装甲');
@@ -71,14 +73,13 @@ export class StatusPanel {
     this.tempMeter = this.buildMeterRow('温度');
     this.powerMeter = this.buildMeterRow('電力');
 
-    const radiatorsCol = this.panel.querySelector<HTMLElement>('.radiators')!;
     this.solarButtons = {
-      up: this.buildButton(radiatorsCol, () => this.player?.power?.toggle('up')),
-      down: this.buildButton(radiatorsCol, () => this.player?.power?.toggle('down')),
+      up: this.buildButton(this.radiatorsCol, () => this.player?.power?.toggle('up')),
+      down: this.buildButton(this.radiatorsCol, () => this.player?.power?.toggle('down')),
     };
     this.radiatorButtons = {
-      up: this.buildButton(radiatorsCol, () => this.player?.radiator?.toggle('up')),
-      down: this.buildButton(radiatorsCol, () => this.player?.radiator?.toggle('down')),
+      up: this.buildButton(this.radiatorsCol, () => this.player?.radiator?.toggle('up')),
+      down: this.buildButton(this.radiatorsCol, () => this.player?.radiator?.toggle('down')),
     };
   }
 
@@ -187,14 +188,20 @@ export class StatusPanel {
 
     this.centerCol.classList.toggle('warn', low);
 
-    // 太陽電池パドル・放熱板を積まない機体(軌道基地など)では、開閉ボタンは全損表示のまま動かない。
     const power = player.power;
-    this.syncButton(this.solarButtons.up, power?.deployOf('up') ?? 0, 0, 'パドル', SOLAR_UI.up);
-    this.syncButton(this.solarButtons.down, power?.deployOf('down') ?? 0, 0, 'パドル', SOLAR_UI.down);
-
     const radiator = player.radiator;
-    this.syncButton(this.radiatorButtons.up, radiator?.deployOf('up') ?? 0, radiator?.wearOf('up') ?? 1, '放熱板', RADIATOR_UI.up);
-    this.syncButton(this.radiatorButtons.down, radiator?.deployOf('down') ?? 0, radiator?.wearOf('down') ?? 1, '放熱板', RADIATOR_UI.down);
+    const hasRadiatorControls = power !== null || radiator !== null;
+    this.radiatorsCol.classList.toggle('hidden', !hasRadiatorControls);
+    if (hasRadiatorControls) {
+      this.syncButton(this.solarButtons.up, power?.deployOf('up') ?? 0, 0, 'パドル', SOLAR_UI.up);
+      this.syncButton(this.solarButtons.down, power?.deployOf('down') ?? 0, 0, 'パドル', SOLAR_UI.down);
+      // 自由設計では放熱板を1枚しか積めないこともある — その側のボタンは表示しない。
+      for (const side of ['up', 'down'] as const) {
+        this.radiatorButtons[side].button.element.classList.toggle('hidden', !(radiator?.hasSide(side) ?? false));
+      }
+      this.syncButton(this.radiatorButtons.up, radiator?.deployOf('up') ?? 0, radiator?.wearOf('up') ?? 1, '放熱板', RADIATOR_UI.up);
+      this.syncButton(this.radiatorButtons.down, radiator?.deployOf('down') ?? 0, radiator?.wearOf('down') ?? 1, '放熱板', RADIATOR_UI.down);
+    }
 
     const leftHtml = message ? `<div>${message}</div><div>撃墜 ${kills}</div>` : `<div>撃墜 ${kills}</div>`;
     if (this.lastLeftHtml !== leftHtml) {
