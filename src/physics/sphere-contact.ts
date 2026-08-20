@@ -8,8 +8,33 @@ export interface SphereContact {
   readonly normal: Vec3; // aからbへ向く接触法線
 }
 
-// 2球の中心がそれぞれ start→end を線形移動するとみなし、最初に表面が触れる時刻を返す。
-// 開始時点で既にoverlapしている場合は離散overlap solverへ委譲するため null。
+// 区間の端点での両球の速度と、区間長 dt [s]。sweptSphereContact へ渡せば端点の速度を接線に取る
+// 三次エルミートで、渡さなければ端点を結ぶ線分で解く。
+export interface SweptVelocities {
+  readonly aStart: Vec3;
+  readonly aEnd: Vec3;
+  readonly bStart: Vec3;
+  readonly bEnd: Vec3;
+  readonly dt: number;
+}
+
+// 半径和 radiusSum の2球が、それぞれ start→end へ移動する間に最初に表面が触れる時刻(区間内の
+// 割合)と、その瞬間の a→b 向きの法線。触れなければ null。開始時点で既に重なっている場合も
+// null を返す — 掃引では扱えないので、呼び出し側の離散 solver へ委譲する。
+export function sweptSphereContact(
+  aStart: Vec3,
+  aEnd: Vec3,
+  bStart: Vec3,
+  bEnd: Vec3,
+  radiusSum: number,
+  velocities: SweptVelocities | null,
+): SphereContact | null {
+  return velocities === null
+    ? sweptSphereToi(aStart, aEnd, bStart, bEnd, radiusSum)
+    : hermiteSphereContact(aStart, aEnd, bStart, bEnd, radiusSum, velocities);
+}
+
+// sweptSphereContact の線形モードの実体。2球の中心がそれぞれ start→end を線形移動するとみなす。
 export function sweptSphereToi(
   aStart: Vec3,
   aEnd: Vec3,
@@ -36,74 +61,64 @@ export function sweptSphereToi(
   const toi = (-bb - Math.sqrt(discriminant)) / (2 * aa);
   if (!(toi >= 0 && toi <= 1)) return null;
   // 接触時刻における相対位置がそのまま接触法線の向きになる。
-  const nx0 = px + dx * toi;
-  const ny0 = py + dy * toi;
-  const nz0 = pz + dz * toi;
-  const nLen = Math.sqrt(nx0 * nx0 + ny0 * ny0 + nz0 * nz0);
-  if (!(nLen > 1e-12)) return null;
-  return { toi, normal: v3(nx0 / nLen, ny0 / nLen, nz0 / nLen) };
+  return normalized(toi, v3(px + dx * toi, py + dy * toi, pz + dz * toi));
 }
 
-// prev→next の Hermite 軌道と、start→end の線形移動球が最初に接触する割合を返す。
+// sweptSphereContact のエルミートモードの実体。
 // 区間端点の符号だけを見ると、端点の両方が表面外でも途中だけ球を通過する軌道を落とす。
-// ここでは相対位置を3次Bezierへ変換し、Bezier制御点の凸包が球と交わり得る区間だけを
+// ここでは相対位置(b − a)を3次Bezierへ変換し、Bezier制御点の凸包が球と交わり得る区間だけを
 // 左から再帰的に調べる。制御点の軸平行箱が球から離れていれば、その区間には交差がない。
 // したがって、単なる固定サンプル列より細い通過も拾いつつ、曲線上の clearance の符号反転を
 // 固定反復で詰められる。
-export function sweptHermiteSphereToi(
-  prev: KinematicState,
-  next: KinematicState,
-  bodyStart: Vec3,
-  bodyEnd: Vec3,
-  radius: number,
-): number | null {
-  const dt = next.t - prev.t;
-  if (!(dt > 0) || !Number.isFinite(dt) || !Number.isFinite(radius) || !(radius > 0)) return null;
-  // 相対位置のBezier制御点を、まずスカラー座標として求める。
-  const bvx = (bodyEnd.x - bodyStart.x) / dt;
-  const bvy = (bodyEnd.y - bodyStart.y) / dt;
-  const bvz = (bodyEnd.z - bodyStart.z) / dt;
-  const rsx = prev.r.x - bodyStart.x;
-  const rsy = prev.r.y - bodyStart.y;
-  const rsz = prev.r.z - bodyStart.z;
-  const rex = next.r.x - bodyEnd.x;
-  const rey = next.r.y - bodyEnd.y;
-  const rez = next.r.z - bodyEnd.z;
-  if (!Number.isFinite(rsx) || !Number.isFinite(rsy) || !Number.isFinite(rsz)
-    || !Number.isFinite(rex) || !Number.isFinite(rey) || !Number.isFinite(rez)
-    || !Number.isFinite(bvx) || !Number.isFinite(bvy) || !Number.isFinite(bvz)) return null;
-
+function hermiteSphereContact(
+  aStart: Vec3,
+  aEnd: Vec3,
+  bStart: Vec3,
+  bEnd: Vec3,
+  radiusSum: number,
+  vel: SweptVelocities,
+): SphereContact | null {
+  const dt = vel.dt;
+  if (!(dt > 0) || !Number.isFinite(dt) || !Number.isFinite(radiusSum) || !(radiusSum > 0)) return null;
+  // 制御点はまずスカラー座標として求める。遠すぎて棄却される相手が大半なので、凸包の箱で
+  // 落ちるところまでは Vec3 を1つも作らない。
+  const sx = bStart.x - aStart.x;
+  const sy = bStart.y - aStart.y;
+  const sz = bStart.z - aStart.z;
+  const ex = bEnd.x - aEnd.x;
+  const ey = bEnd.y - aEnd.y;
+  const ez = bEnd.z - aEnd.z;
   // Hermite の接線は u 微分へ変換するため dt を掛ける。
-  const t0x = (prev.v.x - bvx) * dt;
-  const t0y = (prev.v.y - bvy) * dt;
-  const t0z = (prev.v.z - bvz) * dt;
-  const t1x = (next.v.x - bvx) * dt;
-  const t1y = (next.v.y - bvy) * dt;
-  const t1z = (next.v.z - bvz) * dt;
-  const c1x = rsx + t0x / 3;
-  const c1y = rsy + t0y / 3;
-  const c1z = rsz + t0z / 3;
-  const c2x = rex - t1x / 3;
-  const c2y = rey - t1y / 3;
-  const c2z = rez - t1z / 3;
+  const t0x = (vel.bStart.x - vel.aStart.x) * dt;
+  const t0y = (vel.bStart.y - vel.aStart.y) * dt;
+  const t0z = (vel.bStart.z - vel.aStart.z) * dt;
+  const t1x = (vel.bEnd.x - vel.aEnd.x) * dt;
+  const t1y = (vel.bEnd.y - vel.aEnd.y) * dt;
+  const t1z = (vel.bEnd.z - vel.aEnd.z) * dt;
+  if (!Number.isFinite(sx) || !Number.isFinite(sy) || !Number.isFinite(sz)
+    || !Number.isFinite(ex) || !Number.isFinite(ey) || !Number.isFinite(ez)
+    || !Number.isFinite(t0x) || !Number.isFinite(t0y) || !Number.isFinite(t0z)
+    || !Number.isFinite(t1x) || !Number.isFinite(t1y) || !Number.isFinite(t1z)) return null;
+  const c1x = sx + t0x / 3;
+  const c1y = sy + t0y / 3;
+  const c1z = sz + t0z / 3;
+  const c2x = ex - t1x / 3;
+  const c2y = ey - t1y / 3;
+  const c2z = ez - t1z / 3;
 
   // 全区間の凸包が球から離れていれば交差はない。
-  const boxDistanceSq = axisDistanceSq(rsx, c1x, c2x, rex)
-    + axisDistanceSq(rsy, c1y, c2y, rey)
-    + axisDistanceSq(rsz, c1z, c2z, rez);
-  if (boxDistanceSq > radius * radius) return null;
-
+  const boxDistanceSq = axisDistanceSq(sx, c1x, c2x, ex)
+    + axisDistanceSq(sy, c1y, c2y, ey)
+    + axisDistanceSq(sz, c1z, c2z, ez);
+  if (boxDistanceSq > radiusSum * radiusSum) return null;
   // 開始時点の重なりは sweptSphereToi と同じく、呼び出し側の離散 solver に委譲する。
-  if (Math.sqrt(rsx * rsx + rsy * rsy + rsz * rsz) <= radius) return null;
+  if (Math.sqrt(sx * sx + sy * sy + sz * sz) <= radiusSum) return null;
 
   const controls: readonly Vec3[] = [
-    v3(rsx, rsy, rsz),
-    v3(c1x, c1y, c1z),
-    v3(c2x, c2y, c2z),
-    v3(rex, rey, rez),
+    v3(sx, sy, sz), v3(c1x, c1y, c1z), v3(c2x, c2y, c2z), v3(ex, ey, ez),
   ];
 
-  const clearanceAt = (u: number): number => len(cubicPoint(controls, u)) - radius;
+  const clearanceAt = (u: number): number => len(cubicPoint(controls, u)) - radiusSum;
   const MAX_DEPTH = 32;
   const MIN_INTERVAL = 1e-7;
   const ROOT_ITERATIONS = 24;
@@ -118,11 +133,9 @@ export function sweptHermiteSphereToi(
   };
 
   const search = (segment: readonly Vec3[], u0: number, u1: number, depth: number): number | null => {
-    if (distanceSqToControlBox(segment) > radius * radius) return null;
-    const c0 = len(segment[0]!) - radius;
-    if (c0 <= 0) return u0;
-    const c1 = len(segment[3]!) - radius;
-    if (c1 <= 0) return refine(u0, u1);
+    if (distanceSqToControlBox(segment) > radiusSum * radiusSum) return null;
+    if (len(segment[0]!) - radiusSum <= 0) return u0;
+    if (len(segment[3]!) - radiusSum <= 0) return refine(u0, u1);
     if (depth >= MAX_DEPTH || u1 - u0 <= MIN_INTERVAL) return null;
 
     const [left, right] = splitCubic(segment);
@@ -130,7 +143,33 @@ export function sweptHermiteSphereToi(
       ?? search(right, (u0 + u1) / 2, u1, depth + 1);
   };
 
-  return search(controls, 0, 1, 0);
+  const toi = search(controls, 0, 1, 0);
+  return toi === null ? null : normalized(toi, cubicPoint(controls, toi));
+}
+
+// エルミートモードを、区間の両端の状態と相手球の移動区間から呼び、接触時刻だけを返す入口。
+// 相手球の速度は移動区間から導く(区間を等速で渡るものとみなす)。
+export function sweptHermiteSphereToi(
+  prev: KinematicState,
+  next: KinematicState,
+  bodyStart: Vec3,
+  bodyEnd: Vec3,
+  radius: number,
+): number | null {
+  const dt = next.t - prev.t;
+  const bodyVel = v3(
+    (bodyEnd.x - bodyStart.x) / dt, (bodyEnd.y - bodyStart.y) / dt, (bodyEnd.z - bodyStart.z) / dt);
+  return hermiteSphereContact(prev.r, next.r, bodyStart, bodyEnd, radius, {
+    aStart: prev.v, aEnd: next.v, bStart: bodyVel, bEnd: bodyVel, dt,
+  })?.toi ?? null;
+}
+
+// 接触時刻とそのときの相対位置から SphereContact を組む。相対位置が潰れていれば向きを
+// 決められないので null(線形・エルミートで同じ扱いにする)。
+function normalized(toi: number, relative: Vec3): SphereContact | null {
+  const d = len(relative);
+  if (!(d > 1e-12)) return null;
+  return { toi, normal: v3(relative.x / d, relative.y / d, relative.z / d) };
 }
 
 function cubicPoint(control: readonly Vec3[], u: number): Vec3 {
