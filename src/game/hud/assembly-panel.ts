@@ -118,7 +118,7 @@ export class AssemblyPanel {
   private selectionEl: HTMLSpanElement | null = null;
   private sectionEditorEl: HTMLDivElement | null = null;
   private editStatusEl: HTMLDivElement | null = null;
-  private filterInput: ValueInput | null = null;
+  private filterEl: HTMLInputElement | null = null;
   private errorsEl: HTMLDivElement | null = null;
   private mountedRowsEl: HTMLDivElement | null = null;
   private shelfEl: HTMLDivElement | null = null;
@@ -222,7 +222,7 @@ export class AssemblyPanel {
     this.selectionEl = null;
     this.sectionEditorEl = null;
     this.editStatusEl = null;
-    this.filterInput = null;
+    this.filterEl = null;
     this.errorsEl = null;
     this.mountedRowsEl = null;
     this.shelfEl = null;
@@ -295,12 +295,8 @@ export class AssemblyPanel {
 
     const filterEl = document.createElement('div');
     filterEl.className = 'asm-panel-filter';
-    this.filterInput = new ValueInput(
-      { type: 'search', placeholder: '部品を検索 (名前 / 種別 / partRef)', escapeBehavior: 'clear' },
-      (text) => this.applyFilter(text),
-      () => this.applyFilter(''),
-    );
-    filterEl.appendChild(this.filterInput.element);
+    this.filterEl = this.buildFilterInput();
+    filterEl.appendChild(this.filterEl);
     body.appendChild(filterEl);
 
     this.errorsEl = document.createElement('div');
@@ -322,8 +318,28 @@ export class AssemblyPanel {
     body.appendChild(this.shelfEl);
   }
 
-  // 検索欄の確定値を反映し、一致しない部品ボタン(棚・搭載済み一覧の両方)だけを隠す。
-  // 一覧の組み直しはしない。
+  // 部品検索欄。絞り込みは表示の hidden 切替だけで一覧の中身を変えないので、確定を待たず
+  // 打鍵ごとに反映してよい — ValueInput の確定契約はここでは要らない(SPEC/UI-DESIGN.md §3)。
+  private buildFilterInput(): HTMLInputElement {
+    const input = document.createElement('input');
+    input.type = 'search';
+    input.className = 'w-input';
+    input.placeholder = '部品を検索 (名前 / 種別 / partRef)';
+    input.addEventListener('input', () => this.applyFilter(input.value));
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        input.value = '';
+        this.applyFilter('');
+        input.blur();
+      }
+    });
+    return input;
+  }
+
+  // 検索欄の値を反映し、一致しない部品ボタン(棚・搭載済み一覧の両方)だけを隠す。
+  // 一覧の組み直しはしない。何度呼んでも hidden の再設定だけなので冪等。
   private applyFilter(query: string): void {
     this.filterQuery = query.trim().toLocaleLowerCase();
     for (const entry of this.partButtons.values()) {
@@ -383,12 +399,10 @@ export class AssemblyPanel {
     if (!this.undoBtn || !this.redoBtn) return;
     this.undoBtn.setEnabled(session.canUndo);
     this.redoBtn.setEnabled(session.canRedo);
-    const undoHistory = session.undoHistory;
-    const redoHistory = session.redoHistory;
-    const undoLabel = undoHistory[undoHistory.length - 1]?.label;
-    const redoLabel = redoHistory[redoHistory.length - 1]?.label;
-    this.undoBtn.setLabel(undoLabel === undefined ? '元に戻す' : `元に戻す · ${undoLabel}`);
-    this.redoBtn.setLabel(redoLabel === undefined ? 'やり直す' : `やり直す · ${redoLabel}`);
+    const undoLabel = session.nextUndoLabel;
+    const redoLabel = session.nextRedoLabel;
+    this.undoBtn.setLabel(undoLabel === null ? '元に戻す' : `元に戻す · ${undoLabel}`);
+    this.redoBtn.setLabel(redoLabel === null ? 'やり直す' : `やり直す · ${redoLabel}`);
   }
 
   // 3D で拾ったノード・エッジの選択を1行で示し、今すぐ削除できるかどうかで
@@ -636,7 +650,7 @@ export class AssemblyPanel {
       this.mountedButtons.set(part.id, { btn, part });
       this.mountedRowsEl.appendChild(btn.element);
     }
-    this.applyFilter(this.filterInput?.element.value ?? this.filterQuery);
+    this.applyFilter(this.filterEl?.value ?? this.filterQuery);
     this.win?.reclamp();
   }
 
@@ -690,7 +704,7 @@ export class AssemblyPanel {
       group.append(title, rows);
       this.shelfEl.appendChild(group);
     }
-    this.applyFilter(this.filterInput?.element.value ?? this.filterQuery);
+    this.applyFilter(this.filterEl?.value ?? this.filterQuery);
     this.win?.reclamp();
   }
 
