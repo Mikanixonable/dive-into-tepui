@@ -207,6 +207,9 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
   const target = new PanelShell(rightRail, 'hud-target', 'Target');
   configureCombatPanel(target);
   target.setHidden(true);
+  const targetClearSlot = document.createElement('span');
+  targetClearSlot.dataset.id = 'tgt-clear-slot';
+  target.titleEl.parentElement?.appendChild(targetClearSlot);
   target.body.innerHTML = `
     <div data-id="tgtbody">
       <div class="target-identity">
