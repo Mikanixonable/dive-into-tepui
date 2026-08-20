@@ -1,9 +1,10 @@
 import * as assert from 'node:assert/strict';
 import { removePlacement } from '../../src/game/vessel/assembly-editor';
+import { baseInvariants } from '../../src/game/vessel/base-assembly-validation';
 import { DockWorkbenchSession, type WorkbenchSnapshot } from '../../src/game/vessel/dock-workbench';
 import { DockWorkbenchController } from '../../src/game/vessel/dock-workbench-controller';
 import { createPart } from '../../src/game/game-entity/parts';
-import { crewedAssembly } from '../../src/game/vessel/vessel-assemblies';
+import { crewedAssembly, orbitalBaseAssembly } from '../../src/game/vessel/vessel-assemblies';
 import { v3 } from '../../src/physics/vec3';
 import { test } from '../physics/harness';
 
@@ -134,5 +135,50 @@ export function register(): void {
     controller.createNewVesselDraft('draft-a', assembly);
     controller.cancel();
     assert.equal(session.snapshot().targets.some((target) => target.id === 'draft-a'), false);
+  });
+
+  test('getTarget returns the same reference across calls while the target is unedited', () => {
+    const assembly = crewedAssembly(1000);
+    const session = new DockWorkbenchSession({
+      targets: [{ id: 'ship-a', kind: 'docked-vessel', assembly }], inventory: [],
+    }, () => ({ valid: true, errors: [] }));
+    const first = session.getTarget('ship-a');
+    const second = session.getTarget('ship-a');
+    assert.equal(first.assembly, second.assembly);
+  });
+
+  test('removePlacement rejects and rolls back removing a base\'s only base_module', () => {
+    const assembly = orbitalBaseAssembly(1e6);
+    const module = assembly.placements.find((p) => p.part.type === 'base_module')!.part;
+    const session = new DockWorkbenchSession({
+      targets: [{ id: 'base', kind: 'base', assembly }], inventory: [],
+    }, () => ({ valid: true, errors: [] }), {
+      targetValidator: (target) => target.kind === 'base'
+        ? { blocking: [...baseInvariants(target.assembly)], issues: [] }
+        : { blocking: [], issues: [] },
+    });
+    const before = session.snapshot();
+
+    const result = session.removePlacement('base', module.id);
+
+    assert.equal(result.validation.valid, false);
+    assert.deepEqual(session.snapshot(), before);
+    assert.equal(session.canUndo, false);
+    assert.equal(
+      session.getTarget('base').assembly.placements.some((p) => p.part.id === module.id),
+      true,
+    );
+  });
+
+  test('targetSnapshotForBuild does not share part objects with the session', () => {
+    const assembly = crewedAssembly(1000);
+    const part = assembly.placements[0]!.part;
+    const session = new DockWorkbenchSession({
+      targets: [{ id: 'ship-a', kind: 'docked-vessel', assembly }], inventory: [],
+    }, () => ({ valid: true, errors: [] }));
+    const built = session.targetSnapshotForBuild('ship-a');
+    const builtPart = built.assembly.placements.find((p) => p.part.id === part.id)!.part;
+    const sessionPart = session.getTarget('ship-a').assembly.placements.find((p) => p.part.id === part.id)!.part;
+    assert.notEqual(builtPart, sessionPart);
   });
 }

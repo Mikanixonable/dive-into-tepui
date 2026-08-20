@@ -88,8 +88,10 @@ export type AssemblyPick =
 
 // 掴んでいるものの判別共用体。部品は DockWorkbenchController の DragState(移動元・在庫還元)を
 // 経由するが、部材は移動元を持たない使い捨ての仕様なので、その追跡もここだけで完結する。
+// 部品は掴み元(DragSource)も併せて持つ —— 対象上に残る鏡像側の同じ部品を隠すため、
+// heldTargetPart がここから引く。
 type Held =
-  | { readonly kind: 'part'; readonly part: AnyPart }
+  | { readonly kind: 'part'; readonly part: AnyPart; readonly source: DragSource }
   | { readonly kind: 'member'; readonly member: MemberSpec };
 
 // 部材ドラッグの直近の update が組んだ編集。drop はこれを再計算せず、そのまま適用する。
@@ -128,11 +130,18 @@ export class AssemblyDragController {
   ): void {
     this.cancelDrag();
     this.workbench = workbench;
-    this.held = { kind: 'part', part };
+    this.held = { kind: 'part', part, source };
     this.pose = null;
     workbench.beginDrag(part, source);
     this.ghost = buildPartGhost(part);
     if (this.ghost) this.scene.add(this.ghost);
+  }
+
+  // いま対象上から掴み上げている部品がどれか。棚から掴んでいる、部材を掴んでいる、または
+  // 何も掴んでいなければ null —— 対象の鏡像から探して隠す相手が無いことを言う。
+  public get heldTargetPart(): { readonly targetId: string; readonly partId: string } | null {
+    if (!this.held || this.held.kind !== 'part' || this.held.source.kind !== 'target') return null;
+    return { targetId: this.held.source.targetId, partId: this.held.part.id };
   }
 
   // 部材(構造材)を掴む。棚での構成そのものが仕様なので、移動元や在庫還元の概念を持たない ――
@@ -298,24 +307,30 @@ export class AssemblyDragController {
   // そこへ取り付ける。部品で見つけていなければ ―― 機体から掴み上げた部品は workbench.remove で
   // 在庫へ戻し、棚から掴んだ部品はそもそも在庫から出ていないのでそのまま掴みを捨てる。部材は
   // 在庫を経由しないので、見つからなければ捨てるだけでよい。掴んでいなければ何もしない。
-  public release(targetId: string): void {
+  // 在庫へ戻すことが検証に拒まれたときだけ、その理由を返す(部品は装着されたまま残る)。
+  public release(targetId: string): string | null {
     const workbench = this.workbench;
-    if (!workbench || !this.held) return;
+    if (!workbench || !this.held) return null;
     if (this.held.kind === 'member') {
       if (this.pendingMemberEdit?.result.accepted) this.drop(targetId);
       else this.cancelDrag();
-      return;
+      return null;
     }
     const drag = workbench.dragging;
     if (drag?.candidate?.verdict.accepted) {
       this.drop(targetId);
-      return;
+      return null;
     }
     // 機体から掴み上げた部品(棚からではない)だけ、離した場所が空振りなら在庫へ戻す。
     if (drag && drag.source.kind === 'target') {
-      workbench.remove(drag.source.targetId, drag.part.id);
+      const validation = workbench.remove(drag.source.targetId, drag.part.id).validation;
+      if (!validation.valid) {
+        this.cancelDrag();
+        return validation.errors[0] ?? '取り外せません';
+      }
     }
     this.cancelDrag();
+    return null;
   }
 
   // 取り付けを試みずに掴みを捨てる。掴んでいなければ何もしない。

@@ -2,6 +2,9 @@ import * as THREE from 'three/webgpu';
 import type { PartPlacement, VesselAssembly } from './assembly';
 import { buildHullMesh } from './hull-mesh';
 import { partVisualRefOf, type PartVisualRef } from './part-visual';
+import { deriveCapsules } from './collision-shape';
+import { buildVesselWireframe } from '../../render/vessel-wireframe';
+import { disposeOwnedResources } from '../../render/owned-resources';
 
 export interface PartVisualContext {
   readonly partRef: string;
@@ -45,13 +48,7 @@ class AssemblyPartVisual implements PartVisual {
   }
 
   dispose(): void {
-    this.object.traverse((child) => {
-      const mesh = child as THREE.Mesh;
-      mesh.geometry?.dispose();
-      const material = mesh.material;
-      if (Array.isArray(material)) material.forEach((m) => m.dispose());
-      else material?.dispose();
-    });
+    disposeOwnedResources(this.object);
     this.object.removeFromParent();
   }
 }
@@ -59,6 +56,7 @@ class AssemblyPartVisual implements PartVisual {
 /** Owns the render tree for one assembly and exposes stable part-level visuals. */
 export class AssemblyRenderObject {
   public readonly object: THREE.Group;
+  private readonly wireframe: THREE.Object3D;
   private readonly visuals = new Map<string, AssemblyPartVisual>();
 
   public constructor(assembly: VesselAssembly) {
@@ -69,6 +67,11 @@ export class AssemblyRenderObject {
       if (!object.parent) this.object.add(object);
       this.visuals.set(ref.partId, new AssemblyPartVisual(ref.partId, object));
     }
+    // ノード・エッジの拾い上げ用ワイヤーフレーム。外皮メッシュ自体は拾えないので、選択・
+    // 掴み上げの対象は常にこちらが持つ。既定では隠れている。
+    this.wireframe = buildVesselWireframe(assembly.tree, deriveCapsules(assembly.tree));
+    this.wireframe.visible = false;
+    this.object.add(this.wireframe);
   }
 
   public visual(partRef: string): PartVisual | null { return this.visuals.get(partRef) ?? null; }
@@ -77,9 +80,23 @@ export class AssemblyRenderObject {
     for (const context of contexts) this.visuals.get(context.partRef)?.update(context);
   }
 
+  // ノード・エッジの表示可否。組立対象として選ばれている間だけ拾えるようにする。
+  public setStructureVisible(visible: boolean): void { this.wireframe.visible = visible; }
+
+  // partRef の部品だけを隠し、他は表示に戻す。null なら全て表示に戻す —— 掴み上げ中の部品を
+  // カーソル追従のゴーストと二重に見せないためのもので、毎フレーム「いま何を掴んでいるか」から
+  // 引き直すので、前回隠した分を戻す帳簿は要らない。
+  public setHiddenPart(partRef: string | null): void {
+    for (const visual of this.visuals.values()) visual.object.visible = visual.partRef !== partRef;
+  }
+
+  // 部品ビジュアルを個別に解放してから外す。残る外皮メッシュとワイヤーフレーム(それぞれ
+  // hull-mesh.ts / render/vessel-wireframe.ts が ownsGeometry/ownsMaterial を立てて作る)は
+  // disposeOwnedResources が1回の走査で拾う。
   public dispose(): void {
     for (const visual of this.visuals.values()) visual.dispose();
     this.visuals.clear();
+    disposeOwnedResources(this.object);
   }
 
   private findPartObject(ref: PartVisualRef): THREE.Object3D | null {

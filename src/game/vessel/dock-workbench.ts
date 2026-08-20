@@ -41,6 +41,13 @@ export interface WorkbenchValidation {
   readonly targets?: readonly WorkbenchTargetValidation[];
 }
 
+// removePlacement の返り値。validation.valid が false のときは巻き戻し済みで、
+// part はまだ対象に装着されたままである。
+export interface RemovePlacementResult {
+  readonly part: AnyPart;
+  readonly validation: WorkbenchValidation;
+}
+
 export type WorkbenchValidator = (snapshot: WorkbenchSnapshot) => WorkbenchValidation;
 export type WorkbenchTargetValidator = (
   target: WorkbenchTarget,
@@ -107,7 +114,7 @@ export class DockWorkbenchSession {
     if (!validation.valid) {
       throw new Error(`作業台の構成を確定できません: ${validation.errors.join('、')}`);
     }
-    return cloneSnapshot(this.snapshot());
+    return this.snapshot();
   }
 
 
@@ -145,12 +152,23 @@ export class DockWorkbenchSession {
     return this.target(targetId).kind;
   }
 
+  // 骨格(木・断面・配置)は不変なので複製しない。呼び出し側の参照比較(鏡像を組み直すか等)が
+  // 編集の有無どおりに効くのは、この参照が編集の無いフレームでは変わらないことに依る。
   public getTarget(targetId: string): WorkbenchTarget {
-    return cloneTarget(this.target(targetId));
+    return this.target(targetId);
   }
 
+  // 配列は複製する(要素そのものは共有する) —— this.targets は編集のたびに push や添字代入で
+  // その場を書き換えるので、配列を渡したままだと後の編集がこの返り値にも現れてしまう。要素は
+  // 編集のたびに新しいオブジェクトへ差し替わる(参照は不変)ので、要素の複製までは要らない。
   public targetsSnapshot(): readonly WorkbenchTarget[] {
-    return cloneTargets(this.targets);
+    return [...this.targets];
+  }
+
+  // 実艦へ渡す対象の複製。搭載要素は可変(hp が変化する)なので、セッション側と同じオブジェクトを
+  // 実艦へ渡すと、確定を取消しても実艦側で起きた変化が残ってしまう。
+  public targetSnapshotForBuild(targetId: string): WorkbenchTarget {
+    return cloneTarget(this.target(targetId));
   }
 
   public inventorySnapshot(): readonly AnyPart[] {
@@ -205,18 +223,28 @@ export class DockWorkbenchSession {
     return validation;
   }
 
-  public removePlacement(targetId: string, partId: string): AnyPart {
+  // 対象から部品を外して倉庫へ戻す。applyAssemblyEdit と同じく、外した結果が全体検証
+  // (基地の base_module 必須等の対象別検証を含む)に落ちれば元の状態へ巻き戻し、
+  // 検証結果を呼び出し側へ返す —— 拒まれたのに部品だけ倉庫へ移ってしまう状態を作らない。
+  public removePlacement(targetId: string, partId: string): RemovePlacementResult {
     const target = this.target(targetId);
     const placement = target.assembly.placements.find((candidate) => candidate.part.id === partId);
     if (!placement) throw new Error(`unknown placement: ${partId}`);
-    this.mutate('部品を取り外す', () => {
-      this.replaceTargetInternal(targetId, {
-        tree: target.assembly.tree,
-        placements: target.assembly.placements.filter((candidate) => candidate.part.id !== partId),
-      });
-      this.inventory.push(clonePart(placement.part));
+    const removedPart = clonePart(placement.part);
+    const before = this.snapshot();
+    this.replaceTargetInternal(targetId, {
+      tree: target.assembly.tree,
+      placements: target.assembly.placements.filter((candidate) => candidate.part.id !== partId),
     });
-    return clonePart(placement.part);
+    this.inventory.push(clonePart(placement.part));
+    const validation = this.validate();
+    if (!validation.valid) {
+      this.restore(before);
+      return { part: removedPart, validation };
+    }
+    const after = this.snapshot();
+    this.record('部品を取り外す', before, after);
+    return { part: removedPart, validation };
   }
 
   public installPlacement(targetId: string, placement: PartPlacement, inventoryPartId?: string): void {
