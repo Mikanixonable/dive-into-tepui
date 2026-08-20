@@ -45,6 +45,12 @@ export type BodyClassToggles = {
   readonly ammoIcon: boolean; readonly ammoLabel: boolean; readonly ammoOrbit: boolean;
   readonly baseVisible: boolean;
   readonly baseIcon: boolean; readonly baseLabel: boolean; readonly baseOrbit: boolean;
+  readonly geoOrbit: boolean;
+  readonly haloOrbit: boolean;
+  readonly haloL1North: boolean;
+  readonly haloL1South: boolean;
+  readonly haloL2North: boolean;
+  readonly haloL2South: boolean;
 };
 
 // 軌道線(Orbit)は面積を食う——全登録天体ぶん描くと内側太陽系がその天体の軌道線で埋まる
@@ -73,6 +79,12 @@ export const DEFAULT_BODY_CLASS_TOGGLES: BodyClassToggles = {
   ammoIcon: true, ammoLabel: true, ammoOrbit: true,
   baseVisible: true,
   baseIcon: true, baseLabel: true, baseOrbit: true,
+  geoOrbit: true,
+  haloOrbit: true,
+  haloL1North: true,
+  haloL1South: true,
+  haloL2North: true,
+  haloL2South: true,
 };
 
 // カテゴリー名のトグル。恒星は表示の基準点なのでカテゴリー操作の対象外。
