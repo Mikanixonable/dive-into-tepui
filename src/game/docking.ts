@@ -56,8 +56,6 @@ const DEFAULT_WINDOW_Y = 120;
 const BASE_WINDOW_TEMP_GROUP = 'base-operations-temp';
 
 // 下書きの構成そのものはセッションが持つ。ここが持つのは、セッションの外にしか置けないもの
-// —— 表示の写しと、建造したときに入るドック枠 —— だけである。
-// 下書きの構成そのものはセッションが持つ。ここが持つのは、セッションの外にしか置けないもの
 // —— 表示の写しと、建造したときに入るドック枠 —— だけである。render は sync が組むので、
 // 決まった直後の1フレームだけ null になる。
 interface DraftEntry {
