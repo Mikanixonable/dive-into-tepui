@@ -21,8 +21,8 @@ import { isOccluded } from '../physics/occlusion';
 
 export type CombatTarget = Vessel | Vessel | Vessel;
 
-// マーカー上での対象の役割。第一/第二ターゲットは色と字形が変わる。
-export type MarkerRole = 'none' | 'primary' | 'secondary';
+// マーカー上での対象の役割。ターゲットは色と字形が変わる。
+export type MarkerRole = 'none' | 'primary';
 
 export class Targeter {
   // syncTargetMarkers が毎フレーム組み直す作業用配列。
@@ -31,9 +31,6 @@ export class Targeter {
 
   // 唯一の真実。右クリックのプロパティウィンドウでのみ変わり、自動選定・自動再選択は行わない。
   target: CombatTarget | null = null;
-  secondaryTarget: CombatTarget | null = null;
-  private targetSelectAt = -Infinity;
-  private targetSelectIndex = -1;
 
   // ターゲット標的面(自機の方を向いた仮想の的)の通過点(ターゲット相対オフセットで
   // 保持し、的に貼り付いて見せる)。updateBoardMarks が寿命を持ち、syncBoardMarkers が描く。
@@ -43,39 +40,28 @@ export class Targeter {
     private readonly _hud: Hud, private readonly markerManager: MarkerManager,
   ) {}
 
-  // 生存判定込みの現在の第一ターゲット。撃破後は target を保持したままにせず、ここで
+  // 生存判定込みの現在のターゲット。撃破後は target を保持したままにせず、ここで
   // 死亡個体を隠す(描画・軌道線更新など「生きているターゲットだけを見たい」箇所が使う)。
   get aliveTarget(): CombatTarget | null {
     return this.target && this.target.alive ? this.target : null;
   }
 
-  // 生存判定込みの現在の第二ターゲット。表示専用の扱いは aliveTarget と同じ。
-  get aliveSecondaryTarget(): CombatTarget | null {
-    return this.secondaryTarget && this.secondaryTarget.alive ? this.secondaryTarget : null;
-  }
-
-  // アクティブ艦の切替時などに、選定済みのターゲットをまとめて解除する。
+  // アクティブ艦の切替時などに、選定済みのターゲットを解除する。
   clearTargets(): void {
     this.target = null;
-    this.secondaryTarget = null;
-    this.targetSelectAt = -Infinity;
-    this.targetSelectIndex = -1;
   }
 
   // 取り除かれた対象への参照を落とす。選定していなければ何もしない。
   clearIfTargeting(entity: CombatTarget): void {
     if (this.target === entity) this.target = null;
-    if (this.secondaryTarget === entity) this.secondaryTarget = null;
   }
 
-  // Tキーで照準中心に近い敵を選ぶ。連打(2秒以内)では第二ターゲット候補を順送りする。
-  // オート選定は行わない — 右クリックでの設定/解除は MapContextActions が開くプロパティウィンドウの
-  // 項目(targetPrimary/targetSecondary)から setPrimaryTarget/setSecondaryTarget を呼ぶ。
+  // Tキーで照準中心に最も近い敵を選ぶ。オート選定は行わない — 右クリックでの設定/解除は
+  // MapContextActions が開くプロパティウィンドウの項目(targetPrimary)から setPrimaryTarget を呼ぶ。
   // ビューはここでは持たないので毎フレーム引数で受け取り、マップ視点では何もしない。
   handleTargetSelectKey(input: Input, targets: CombatTarget[], project: ProjectFn, overviewMode: boolean): void {
     if (overviewMode) return;
     if (!input.takeKey(K.targetSelect)) return;
-    const now = performance.now() / 1000;
     const candidates = targets
       .filter((e) => e.alive)
       .map((target) => {
@@ -86,21 +72,8 @@ export class Targeter {
       })
       .filter((x) => x.front)
       .sort((a, b) => a.d2 - b.d2);
-    const primary = this.aliveTarget;
-    if (!primary) {
-      const next = candidates[0]?.target ?? null;
-      this.setPrimaryTarget(next);
-      this.targetSelectIndex = -1;
-      this.targetSelectAt = now;
-      return;
-    }
-    // 第一ターゲットが既にあるので、以降の連打は候補を順送りして第二ターゲットへ回す
-    const secondaryCandidates = candidates.filter((x) => x.target !== primary);
-    if (now - this.targetSelectAt > 2) this.targetSelectIndex = -1;
-    this.targetSelectIndex = (this.targetSelectIndex + 1) % Math.max(1, secondaryCandidates.length);
-    const next = secondaryCandidates[this.targetSelectIndex]?.target ?? null;
-    if (next) this.setSecondaryTarget(next);
-    this.targetSelectAt = now;
+    const next = candidates[0]?.target ?? null;
+    this.setPrimaryTarget(next);
   }
 
   // マップ表示中だけ、戦闘ターゲットの赤道交点マーカーを求め直す(戦闘ビューでは誰も読まない)。
@@ -152,7 +125,7 @@ export class Targeter {
     this.syncTargetDirMarkers(player, overviewMode, project);
   }
 
-  // 全戦闘対象のマーカー集合(第一/第二ターゲットの役割を含む)と LEAD マーカーを同期する。
+  // 全戦闘対象のマーカー集合(ターゲットの役割を含む)と LEAD マーカーを同期する。
   // 位置は機体メッシュと同じ displayState — 揃えないと「機体は未来位置、マーカーは現在位置」に割れる。
   // 予測地平の先を指していて displayState を返せない対象と、可視性判定で選択不可の対象は出さない。
   syncTargetMarkers(
@@ -173,8 +146,7 @@ export class Targeter {
       if (!ds) continue;
       const visibility = visibilityPolicy?.entity(vesselMapKind(tgt), tgt === player);
       if (visibility && !visibility.pickable) continue;
-      const role: MarkerRole =
-        tgt === this.aliveTarget ? 'primary' : tgt === this.aliveSecondaryTarget ? 'secondary' : 'none';
+      const role: MarkerRole = tgt === this.aliveTarget ? 'primary' : 'none';
       const item = tgt.markerItem(role, viewerPos, ds.r, ds.v, overviewMode);
       const mapOccluded = overviewMode && isOccluded(cameraSystem.activeCameraPos, ds.r, attractors);
       const mapOpacity = mapOccluded
@@ -199,7 +171,7 @@ export class Targeter {
     this.markerManager.combatMarkers.sync(this.markerItemScratch, project, overviewMode, screenScale, celestialLabels, attractors);
     if (player) {
       this.markerManager.leadMarkers.sync(
-        player, this.aliveScratch, this.aliveTarget, this.aliveSecondaryTarget, simTime, overviewMode, project);
+        player, this.aliveScratch, this.aliveTarget, simTime, overviewMode, project);
     }
   }
 
@@ -219,7 +191,7 @@ export class Targeter {
   }
 
   // ターゲット/その反対方向を指す方向マーカー(戦闘ビューのみ)。自機の軌道基準方向マーカー
-  // (player-markers.ts)と同じ扱いで、自機位置を原点に置く。第一ターゲットのみ。
+  // (player-markers.ts)と同じ扱いで、自機位置を原点に置く。
   private syncTargetDirMarkers(player: Vessel | null, overviewMode: boolean, project: ProjectFn): void {
     const tgt = this.aliveTarget;
     if (overviewMode || !tgt || !player) {
@@ -240,17 +212,9 @@ export class Targeter {
     return picked?.target ?? null;
   }
 
-  // 第一ターゲットを設定する。同じ個体が第二ターゲットなら外す(両方兼務を禁止)。
+  // ターゲットを設定する。
   setPrimaryTarget(t: CombatTarget | null): void {
-    if (t && this.secondaryTarget === t) this.secondaryTarget = null;
     this.target = t;
     this._hud.hint(t ? `ターゲット固定: ${t.name}` : 'ターゲット固定解除');
-  }
-
-  // 第二ターゲットを設定する。同じ個体が第一ターゲットなら外す(両方兼務を禁止)。
-  setSecondaryTarget(t: CombatTarget | null): void {
-    if (t && this.target === t) this.target = null;
-    this.secondaryTarget = t;
-    this._hud.hint(t ? `第二ターゲット固定: ${t.name}` : '第二ターゲット固定解除');
   }
 }

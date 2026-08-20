@@ -58,7 +58,7 @@ HUD の見た目・配置・操作(色/寸法トークン、ウィジェット�
 
 - **`game/theme.ts`** — UI のデザイントークンの唯一の定義元。他モジュールを import しない。
   持っているもの:
-  - 色: `ACCENT`/`ACCENT_SOFT`/`ACCENT_SECONDARY`(第二ターゲット識別用シアン)/`DANGER`/
+  - 色: `ACCENT`/`ACCENT_SOFT`/`ACCENT_SECONDARY`/`DANGER`/
     `DANGER_FILL`、面と縁のグレー段(`BG`/`SURFACE_WEAK`/`SURFACE`/`SURFACE_OPAQUE`/`EDGE`)、
     文字色4段(`TEXT_STRONG`/`TEXT`/`TEXT_MUTED`/`TEXT_DIM`)、アクセントの薄膜4段
     (`ACCENT_FILL_WEAK`→`ACCENT_FILL_STRONG`)と縁2段(`ACCENT_EDGE_SOFT`/`ACCENT_EDGE`)、

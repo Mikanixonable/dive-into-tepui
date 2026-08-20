@@ -241,9 +241,6 @@ export const COMBAT_VIEW_STYLE = `
 #hud .hud-combat-root.active #hud-enemies .contact-row.near {
   color: var(--accent-near, var(--accent-soft));
 }
-#hud .hud-combat-root.active #hud-enemies .contact-row.secondary {
-  color: var(--accent-secondary);
-}
 #hud .hud-combat-root.active #hud-enemies .contact-empty {
   padding: 4px 0;
   color: var(--text-dim);

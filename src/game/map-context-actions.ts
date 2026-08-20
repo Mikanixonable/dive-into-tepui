@@ -432,8 +432,8 @@ export class MapContextActions {
           if (enemy) enemy.alive = false;
         } else if (act === 'duplicate') {
           this.runDuplicate(target);
-        } else if (act === 'targetPrimary' || act === 'targetSecondary') {
-          this.runTargetLock(act, this.entities.findHostile(target.id));
+        } else if (act === 'targetPrimary') {
+          this.runTargetLock(this.entities.findHostile(target.id));
         } else {
           this.runBodyShip(act, target);
         }
@@ -560,8 +560,8 @@ export class MapContextActions {
           this.runDuplicate(target);
         } else if (act === 'delete') {
           if (ship) this.activeVessels.remove(ship);
-        } else if (act === 'targetPrimary' || act === 'targetSecondary') {
-          this.runTargetLock(act, ship);
+        } else if (act === 'targetPrimary') {
+          this.runTargetLock(ship);
         } else {
           this.runBodyShip(act, target);
         }
@@ -680,23 +680,19 @@ export class MapContextActions {
     return this.activeStage.authoring ? [MenuCommon.duplicate()] : [];
   }
 
-  // ターゲット固定/第二ターゲット固定の項目。戦闘ターゲットとして戦える対象(生存中の
-  // 敵・自艦)にだけ出し、マップビューでは出さない(視界占有を抑える — §7-2)。
+  // ターゲット固定の項目。戦闘ターゲットとして戦える対象(生存中の敵・自艦)にだけ出し、
+  // マップビューでは出さない(視界占有を抑える — §7-2)。
   private combatTargetLockItems(entity: CombatTarget | null | undefined): readonly MenuItem<MenuAction>[] {
     if (this.cameraSystem.overviewMode || !entity || !entity.alive) return [];
     const targeter = this.targeter;
-    return [
-      MenuCommon.targetPrimary(targeter.target === entity),
-      MenuCommon.targetSecondary(targeter.secondaryTarget === entity),
-    ];
+    return [MenuCommon.targetPrimary(targeter.target === entity)];
   }
 
-  // ターゲット固定/第二ターゲット固定を、押した時点の設定と比べてトグルする。
-  private runTargetLock(act: 'targetPrimary' | 'targetSecondary', entity: CombatTarget | null | undefined): void {
+  // ターゲット固定を、押した時点の設定と比べてトグルする。
+  private runTargetLock(entity: CombatTarget | null | undefined): void {
     if (!entity) return;
     const targeter = this.targeter;
-    if (act === 'targetPrimary') targeter.setPrimaryTarget(targeter.target === entity ? null : entity);
-    else targeter.setSecondaryTarget(targeter.secondaryTarget === entity ? null : entity);
+    targeter.setPrimaryTarget(targeter.target === entity ? null : entity);
   }
 
   // 対象の現在状態を軌道要素へ逆算し、その値をプリセットして艦艇配置パネルを開く。

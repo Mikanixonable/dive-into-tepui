@@ -4,7 +4,6 @@ export type MenuAction =
   | 'focus'
   | 'navTarget'
   | 'targetPrimary'
-  | 'targetSecondary'
   | 'warp'
   | 'addNode'
   | 'activate'
@@ -39,10 +38,6 @@ export const MenuCommon = {
   targetPrimary: (isTarget: boolean): MenuItem<MenuAction> => ({
     label: isTarget ? 'ターゲット解除' : 'ターゲットに設定',
     act: 'targetPrimary',
-  }),
-  targetSecondary: (isTarget: boolean): MenuItem<MenuAction> => ({
-    label: isTarget ? '第二ターゲット解除' : '第二ターゲットに設定',
-    act: 'targetSecondary',
   }),
   dock: (): MenuItem<MenuAction> => ({ label: 'ドッキング', act: 'dock' }),
   undock: (): MenuItem<MenuAction> => ({ label: 'ドッキング解除', act: 'undock' }),
