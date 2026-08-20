@@ -12,6 +12,7 @@ import { TANK_MATERIALS } from '../economy/propellant-compatibility';
 import type { PartType } from '../game-entity/parts';
 import type { PartPlacement } from './assembly';
 import type { MountPoint, PortRef, TreeEdge, TreeNode, VesselTree } from './tree';
+import { portOwners } from './port-occupancy';
 import {
   DIMENSION_UNIT, circumradius, edgeById, mountFrame, nodeBasis, nodeById, portFrame, portKey,
   validateTree,
@@ -177,25 +178,17 @@ function checkConnected(tree: VesselTree, issues: BlueprintIssue[]): void {
 // 1つの接続口に、エッジと外装要素が同時に割り当てられていないこと。エッジ同士の重複は
 // validateTree が見るので、ここではエッジと外装要素、および外装要素同士を見る。
 function checkPortExclusivity(bp: VesselBlueprint, issues: BlueprintIssue[]): void {
-  const takenByEdge = new Map<string, string>();
-  for (const edge of bp.tree.edges) {
-    takenByEdge.set(portKey(edge.a, edge.portA), edge.id);
-    takenByEdge.set(portKey(edge.b, edge.portB), edge.id);
-  }
-  const takenByPart = new Map<string, string>();
   for (const placement of externals(bp)) {
     if (placement.mount.kind !== 'port') continue;
     const key = portKey(placement.mount.nodeId, placement.mount.port);
-    const edgeId = takenByEdge.get(key);
-    if (edgeId !== undefined) {
+    const owner = portOwners(bp, undefined, placement.part.id).get(key);
+    if (owner === undefined) continue;
+    if (owner.kind === 'edge') {
       issues.push(issue('error', placement.part.id,
-        `接続口 ${key} はエッジ "${edgeId}" が使っているので、外装要素を取り付けられません`));
+        `接続口 ${key} はエッジ "${owner.id}" が使っているので、外装要素を取り付けられません`));
+    } else {
+      issues.push(issue('error', placement.part.id, `接続口 ${key} は "${owner.id}" が既に使っています`));
     }
-    const other = takenByPart.get(key);
-    if (other !== undefined) {
-      issues.push(issue('error', placement.part.id, `接続口 ${key} は "${other}" が既に使っています`));
-    }
-    takenByPart.set(key, placement.part.id);
   }
 }
 

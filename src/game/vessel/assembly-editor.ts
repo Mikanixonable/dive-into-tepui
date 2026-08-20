@@ -10,6 +10,7 @@ import {
   edgeById, mountFrame, nodeById, portFrame, portKey,
   validateTree,
 } from './tree';
+import { occupiedPorts, portOwners } from './port-occupancy';
 import type { CrossSection, SectionPrimitive } from '../../physics/section-moments';
 import { placeSectionPrimitives } from '../../physics/section-moments';
 import { len, sub } from '../../physics/vec3';
@@ -290,15 +291,6 @@ export function reconnectEdge(
   }
 }
 
-/** Alias matching the workbench terminology for reconnecting an edge. */
-export function moveEdge(
-  assembly: VesselAssembly,
-  input: ReconnectEdgeInput,
-  options: AssemblyEditorOptions = {},
-): AssemblyEditResult {
-  return reconnectEdge(assembly, input, options);
-}
-
 /** Remove an edge only when no placement would become dangling. */
 export function removeEdge(
   assembly: VesselAssembly,
@@ -530,20 +522,6 @@ function isValidEdgeKind(kind: EdgeKind): boolean {
   return Number.isFinite(kind.separationImpulse) && kind.separationImpulse >= 0;
 }
 
-// エッジまたは外装部品が既に使っている接続口の鍵の集合。
-export function occupiedPorts(assembly: VesselAssembly, ignoredEdgeId?: string): ReadonlySet<string> {
-  const occupied = new Set<string>();
-  for (const edge of assembly.tree.edges) {
-    if (edge.id === ignoredEdgeId) continue;
-    occupied.add(portKey(edge.a, edge.portA));
-    occupied.add(portKey(edge.b, edge.portB));
-  }
-  for (const placement of assembly.placements) {
-    if (placement.kind !== 'external' || placement.mount.kind !== 'port') continue;
-    occupied.add(portKey(placement.mount.nodeId, placement.mount.port));
-  }
-  return occupied;
-}
 
 function validateMount(
   assembly: VesselAssembly,
@@ -554,16 +532,10 @@ function validateMount(
     if (mount.kind === 'port') {
       nodeById(assembly.tree, mount.nodeId);
       portFrame(nodeById(assembly.tree, mount.nodeId), mount.port);
-      const owned = assembly.tree.edges.some((edge) =>
-        (edge.a === mount.nodeId && portKey(edge.a, edge.portA) === portKey(mount.nodeId, mount.port)) ||
-        (edge.b === mount.nodeId && portKey(edge.b, edge.portB) === portKey(mount.nodeId, mount.port)));
-      if (owned) return editError('occupied-port', placementId, `接続口 ${portKey(mount.nodeId, mount.port)} はエッジが使っています`);
-      for (const placement of assembly.placements) {
-        if (placement.part.id === placementId || placement.kind !== 'external' || placement.mount.kind !== 'port') continue;
-        if (portKey(placement.mount.nodeId, placement.mount.port) === portKey(mount.nodeId, mount.port)) {
-          return editError('occupied-port', placementId, `接続口 ${portKey(mount.nodeId, mount.port)} は部品が使っています`);
-        }
-      }
+      const key = portKey(mount.nodeId, mount.port);
+      const owner = portOwners(assembly, undefined, placementId).get(key);
+      if (owner?.kind === 'edge') return editError('occupied-port', placementId, `接続口 ${key} はエッジが使っています`);
+      if (owner?.kind === 'part') return editError('occupied-port', placementId, `接続口 ${key} は部品が使っています`);
       return null;
     }
     const edge = edgeById(assembly.tree, mount.edgeId);
