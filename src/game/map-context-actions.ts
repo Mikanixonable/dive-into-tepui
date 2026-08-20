@@ -5,7 +5,7 @@
 import { Hud } from './hud/hud';
 import { Vessel, planExecutionLabel, type PlanExecutionMode } from './vessel/vessel';
 import { vesselMapKind } from './map-pickable';
-import { hasBaseModule } from './vessel/capabilities';
+import { hasBaseModule, isCargo } from './vessel/capabilities';
 import { fmtAmmoStatus, fmtDist, fmtEnergy, fmtSpeed, fmtTime } from './hud/utils';
 import { orbitInfo, relativeInfo } from './hud/orbit-info';
 import { ContextMenu, MenuItem } from './hud/context-menu';
@@ -814,12 +814,14 @@ export class MapContextActions {
     ];
   }
 
-  // 名前は既にウィンドウのタイトルにあるので行には含めない。装甲・電力・弾薬を主要行とし、
-  // それ以外(操作対象か・計画追従)は詳細トグル、軌道要素は「軌道」グループの下に畳む。
+  // 名前は既にウィンドウのタイトルにあるので行には含めない。種別(貨物か宇宙船か)・装甲・
+  // 電力・弾薬を主要行とし、それ以外(操作対象か・計画追従)は詳細トグル、軌道要素は
+  // 「軌道」グループの下に畳む。
   private playerRows(target: MapPickable, attractors: readonly Attractor[]): PropertyRow[] {
     const ship = this.entities.findOwnShip(target.id);
     if (!ship) return [];
     return [
+      { key: 'kind', label: '種別', value: isCargo(ship) ? '貨物' : '宇宙船' },
       {
         key: 'operated', label: '操作対象か', value: ship === this.activeVessels.current ? 'はい' : 'いいえ', collapsible: true,
       },
@@ -834,6 +836,7 @@ export class MapContextActions {
 
   // 自艦がいなければ距離・接近速度・相対速度・相対傾斜角の行はそもそも出さない。
   // 装甲・距離・接近速度を主要行とし、相対速度は詳細トグル、軌道要素・相対傾斜角は「軌道」グループの下に畳む。
+  // 貨物か宇宙船かは「自分が操作できるか」を問う分類なので、敵対勢力の機体では出さない。
   private shipRows(target: MapPickable, attractors: readonly Attractor[], player: Vessel | null): PropertyRow[] {
     const enemy = this.entities.findHostile(target.id);
     if (!enemy) return [];
@@ -856,12 +859,15 @@ export class MapContextActions {
     return rows;
   }
 
-  // 自艦がいなければ距離の行は出さない。軌道要素は「軌道」グループの下に畳む。
+  // 自艦がいなければ距離の行は出さない。コア部品(コックピットまたは自動操縦装置)を
+  // 欠く基地は貨物として扱われ、操作対象にできない — 種別の行はそれを見せる。
+  // 軌道要素は「軌道」グループの下に畳む。
   private baseRows(target: MapPickable, attractors: readonly Attractor[], player: Vessel | null): PropertyRow[] {
     const base = this.entities.findBaseVessel(target.id);
     if (!base) return [];
     const isControlled = this.activeVessels.current === base;
     const rows: PropertyRow[] = [
+      { key: 'kind', label: '種別', value: isCargo(base) ? '貨物' : '基地' },
       { key: 'operated', label: '操作対象か', value: isControlled ? 'はい' : 'いいえ', collapsible: true },
       { key: 'vessels', label: '格納艦艇数', value: `${base.baseState!.dockedVessels.length}` },
     ];

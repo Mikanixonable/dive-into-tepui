@@ -18,7 +18,8 @@ import { createBlueprint } from './vessel/blueprint';
 import type { VesselAssembly } from './vessel/assembly';
 import { validateBlueprint } from './vessel/blueprint-validation';
 import { AssemblyRenderObject } from './vessel/assembly-render-object';
-import { AssemblyDragController, type AssemblyDragTarget } from './vessel/assembly-drag-controller';
+import { AssemblyDragController, type AssemblyDragTarget, type AssemblyPick } from './vessel/assembly-drag-controller';
+import type { PartVisualRef } from './vessel/part-visual';
 import { DockWorkbenchSession, type WorkbenchTarget } from './vessel/dock-workbench';
 import { DockWorkbenchController } from './vessel/dock-workbench-controller';
 import { crewedAssembly } from './vessel/vessel-assemblies';
@@ -31,7 +32,7 @@ import { circumradius, type VesselTree } from './vessel/tree';
 import { add as addVec, type Vec3 } from '../physics/vec3';
 import type { FloatingOrigin } from './floating-origin';
 import type { GameEntity } from './game-entity/game-entity';
-import type { Input } from './input/input';
+import type { Input, PointerPoint } from './input/input';
 import type { EntityManager } from './simulation/entity-manager';
 import type { MapContextActions } from './map-context-actions';
 import type { CameraSystem } from './camera/camera-system';
@@ -71,6 +72,13 @@ interface AssemblyTargetView {
   readonly assembly: VesselAssembly;
 }
 
+// 3D で拾ったノード・エッジの選択。A4 の断面編集面はここを読む。部品を拾うと選択ではなく
+// 掴み上げになるので、この型に part は無い。
+export type AssemblySelection =
+  | { readonly kind: 'node'; readonly nodeId: string }
+  | { readonly kind: 'edge'; readonly edgeId: string }
+  | null;
+
 // 進行中の組立セッション。基地1つにつき高々1つ開ける。
 interface AssemblySession {
   readonly base: Vessel;
@@ -81,6 +89,7 @@ interface AssemblySession {
   // ここに載っているものは倉庫から取り付けた(=生産時に課金済みの)ものだと分かる。
   readonly originalInventoryIds: ReadonlySet<string>;
   targetId: string;
+  selection: AssemblySelection;
   // セッション開始時点のチェイスカメラの距離。セッション終了時にここへ戻す。
   readonly savedChaseDist: number;
 }
@@ -96,6 +105,13 @@ function assemblyExtentRadius(tree: VesselTree): number {
     radius = Math.max(radius, len(node.pos) + circumradius(node.section));
   }
   return radius;
+}
+
+// partVisualRef を持つオブジェクトを描画木から探し、可視/不可視を切り替える。
+function setPartMeshVisible(root: THREE.Object3D, partId: string, visible: boolean): void {
+  root.traverse((child) => {
+    if ((child.userData['partVisualRef'] as PartVisualRef | undefined)?.partId === partId) child.visible = visible;
+  });
 }
 
 export class Docking {
@@ -116,6 +132,9 @@ export class Docking {
   private readonly baseWindows = new Map<string, BaseOperationsWindow>();
   private readonly dragController: AssemblyDragController;
   private assembly: AssemblySession | null = null;
+  // 3D から掴み上げた部品の、実機側に残る元のメッシュ。掴んでいる間だけここへ載せて隠し、
+  // 掴みが終わるとき(結果を問わず)必ず元へ戻す。
+  private heldOriginal: { readonly root: THREE.Object3D; readonly partId: string } | null = null;
 
   // 基地に関わる各所有者への参照を受け取る。ポーズだけは Game の状態なので、必要な2つの
   // 操作を関数として受ける。
@@ -284,11 +303,15 @@ export class Docking {
     const originalInventoryIds = new Set((base.baseState?.inventory ?? []).map((part) => part.id));
     const savedChaseDist = this.cameraSystem.combatCamera.chaseCamera.dist;
     const entry: AssemblySession = {
-      base, session, workbench, panel, originalInventoryIds, targetId: initial.id, savedChaseDist,
+      base, session, workbench, panel, originalInventoryIds, targetId: initial.id, selection: null, savedChaseDist,
     };
     this.assembly = entry;
 
-    panel.onTargetSelect = (targetId) => { entry.targetId = targetId; this.frameAssemblyCamera(entry); };
+    panel.onTargetSelect = (targetId) => {
+      entry.targetId = targetId;
+      entry.selection = null;
+      this.frameAssemblyCamera(entry);
+    };
     panel.onUndo = () => { workbench.undo(); };
     panel.onRedo = () => { workbench.redo(); };
     panel.onConfirm = () => this.commitAssembly();
@@ -361,6 +384,8 @@ export class Docking {
     if (!entry) return;
     this.assembly = null;
     this.dragController.cancelDrag();
+    // 掴んだままセッションが終わっても、隠した元のメッシュを残さない。
+    this.restoreHeldOriginal();
     entry.panel.onCancel = null;
     entry.panel.close();
     this.cameraSystem.setChaseCameraOverride(null);
@@ -368,25 +393,86 @@ export class Docking {
     this.resumeGame();
   }
 
-  // カーソルの位置から、掴んでいる部品の落とし先と描き方を決める。
-  // カメラ行列がこのフレームの値になった後(cameraSystem.update の後)に呼ぶ。
+  // 3D クリック(input.takeClicks)をここ1箇所へ集約する。掴んでいなければクリックは
+  // 拾い上げ(部品なら掴み、ノード・エッジなら選択)、掴んでいればクリックは離す操作になる ——
+  // 同じキューを1箇所で消費するので「離した瞬間に置いて、同じ離しで拾い直す」取り違えが
+  // 構造的に起きない。セッション中は Game.handlePointerInput が何も読まないので、掴んでいない
+  // クリックも含めて毎回消費してよい。カーソルの位置から取り付け位置とゴーストの描き方を
+  // 決めるのもここ —— カメラ行列がこのフレームの値になった後(cameraSystem.update の後)に呼ぶ。
   updateAssembly(input: Input): void {
     const entry = this.assembly;
-    if (!entry || !this.dragController.draggingPart) return;
-    const pointer = input.pointerPosition();
+    if (!entry) return;
+    const viewport = { width: window.innerWidth, height: window.innerHeight };
+    // 誰も他に読まないキューなので、拾えなかったクリックも含めて常に消費してよい。
+    input.takeClicks((point) => {
+      this.handleAssemblyClick(entry, point, viewport);
+      return true;
+    });
+    if (!this.dragController.draggingPart) return;
     this.dragController.update(
       this.cameraSystem.activeCamera,
       this.cameraSystem.activeCameraPos,
-      pointer,
-      { width: window.innerWidth, height: window.innerHeight },
+      input.pointerPosition(),
+      viewport,
       this.dragTarget(entry),
     );
+  }
+
+  // 1クリックぶんの処理。掴んでいれば離し、掴んでいなければ現在の対象の描画木を拾う。
+  private handleAssemblyClick(
+    entry: AssemblySession, point: PointerPoint, viewport: { readonly width: number; readonly height: number },
+  ): void {
+    if (this.dragController.draggingPart) {
+      this.dragController.release(entry.targetId);
+      this.restoreHeldOriginal();
+      return;
+    }
+    const root = this.targetRenderRoot(entry);
+    if (!root) return;
+    const pick = this.dragController.pickAt(this.cameraSystem.activeCamera, point, viewport, root);
+    this.applyPick(entry, pick, root);
+  }
+
+  // 拾った先が部品ならその場から掴み上げ(sourceInventory: false)、ノード・エッジなら
+  // セッションの選択にする。何も拾わなければ選択を外す。
+  private applyPick(entry: AssemblySession, pick: AssemblyPick, root: THREE.Object3D): void {
+    if (pick.kind === 'none') { entry.selection = null; return; }
+    if (pick.kind !== 'part') { entry.selection = pick; return; }
+    const placement = entry.session.getTarget(entry.targetId).assembly.placements
+      .find((candidate) => candidate.part.id === pick.partId);
+    if (!placement) return;
+    entry.selection = null;
+    this.dragController.beginDrag(entry.workbench, placement.part, entry.targetId, false);
+    this.hideHeldOriginal(root, pick.partId);
+  }
+
+  // 対象タブが指す機体の描画木そのもの —— 基地・格納艦は Vessel.renderObject、下書きは
+  // AssemblyRenderObject.object。ピック(拾い上げ)とゴースト吸着(dragTarget)は同じ木を指す。
+  private targetRenderRoot(entry: AssemblySession): THREE.Object3D | null {
+    const view = this.targetById(entry.base, entry.targetId);
+    if (!view) return null;
+    if (view.vessel) return view.vessel.renderObject;
+    return this.drafts.get(entry.targetId)?.render.object ?? null;
+  }
+
+  // 3D から掴み上げた部品は、掴んでいる間だけ実機側の元のメッシュを隠す —— カーソルに
+  // 追従するゴーストと二重に見えないため。
+  private hideHeldOriginal(root: THREE.Object3D, partId: string): void {
+    this.heldOriginal = { root, partId };
+    setPartMeshVisible(root, partId, false);
+  }
+
+  // hideHeldOriginal で隠した元のメッシュを元へ戻す。何も隠していなければ何もしない。
+  private restoreHeldOriginal(): void {
+    if (!this.heldOriginal) return;
+    setPartMeshVisible(this.heldOriginal.root, this.heldOriginal.partId, true);
+    this.heldOriginal = null;
   }
 
   // update が決めた位置・姿勢・色を、掴んでいる部品のゴーストへ押し込む。
   syncAssembly(fo: FloatingOrigin): void {
     this.syncBaseWindows();
-    this.assembly?.panel.sync(this.assembly.session);
+    this.assembly?.panel.sync(this.assembly.session, this.assembly.selection);
     this.dragController.sync(fo);
   }
 
