@@ -5,7 +5,7 @@
 import { Hud } from './hud/hud';
 import { Vessel, planExecutionLabel, type PlanExecutionMode } from './vessel/vessel';
 import { vesselMapKind } from './map-pickable';
-import { hasBaseModule } from './vessel/capabilities';
+import { hasBaseModule, isCargo } from './vessel/capabilities';
 import { fmtAmmoStatus, fmtDist, fmtEnergy, fmtSpeed, fmtTime } from './hud/utils';
 import { orbitInfo, relativeInfo } from './hud/orbit-info';
 import { ContextMenu, MenuItem } from './hud/context-menu';
@@ -814,12 +814,14 @@ export class MapContextActions {
     ];
   }
 
-  // 名前は既にウィンドウのタイトルにあるので行には含めない。装甲・電力・弾薬を主要行とし、
-  // それ以外(操作対象か・計画追従)は詳細トグル、軌道要素は「軌道」グループの下に畳む。
+  // 名前は既にウィンドウのタイトルにあるので行には含めない。種別(貨物か宇宙船か)・装甲・
+  // 電力・弾薬を主要行とし、それ以外(操作対象か・計画追従)は詳細トグル、軌道要素は
+  // 「軌道」グループの下に畳む。
   private playerRows(target: MapPickable, attractors: readonly Attractor[]): PropertyRow[] {
     const ship = this.entities.findOwnShip(target.id);
     if (!ship) return [];
     return [
+      { key: 'kind', label: '種別', value: isCargo(ship) ? '貨物' : '宇宙船' },
       {
         key: 'operated', label: '操作対象か', value: ship === this.activeVessels.current ? 'はい' : 'いいえ', collapsible: true,
       },
@@ -838,7 +840,10 @@ export class MapContextActions {
     const enemy = this.entities.findHostile(target.id);
     if (!enemy) return [];
     const rel = player ? relativeInfo(player, enemy, attractors) : null;
-    const rows: PropertyRow[] = [{ key: 'hp', label: '装甲', value: `${Math.floor(enemy.hp)} / ${enemy.maxHp}` }];
+    const rows: PropertyRow[] = [
+      { key: 'kind', label: '種別', value: isCargo(enemy) ? '貨物' : '宇宙船' },
+      { key: 'hp', label: '装甲', value: `${Math.floor(enemy.hp)} / ${enemy.maxHp}` },
+    ];
     if (rel) {
       rows.push(
         { key: 'dist', label: '距離', value: fmtDist(rel.dist) },
