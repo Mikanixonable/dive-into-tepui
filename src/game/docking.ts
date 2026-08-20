@@ -24,7 +24,7 @@ import type { PartVisualRef } from './vessel/part-visual';
 import {
   DockWorkbenchSession, type TargetIssues, type WorkbenchTarget, type WorkbenchTargetKind,
 } from './vessel/dock-workbench';
-import { DockWorkbenchController } from './vessel/dock-workbench-controller';
+import { DockWorkbenchController, type DragSource } from './vessel/dock-workbench-controller';
 import { crewedAssembly } from './vessel/vessel-assemblies';
 import { productionBlueprintOf, productionResourceDemand, consumeProductionResources } from './vessel/production';
 import { producibility, type ProducibilityBlueprint } from './economy/producibility';
@@ -454,8 +454,8 @@ export class Docking {
     this.applyPick(entry, pick, root);
   }
 
-  // 拾った先が部品ならその場から掴み上げ(sourceInventory: false)、ノード・エッジなら
-  // セッションの選択にする。何も拾わなければ選択を外す。
+  // 拾った先が部品ならその場から掴み上げ、ノード・エッジならセッションの選択にする。
+  // 何も拾わなければ選択を外す。
   private applyPick(entry: AssemblySession, pick: AssemblyPick, root: THREE.Object3D): void {
     if (pick.kind === 'none') { entry.selection = null; return; }
     if (pick.kind !== 'part') { entry.selection = pick; return; }
@@ -463,7 +463,8 @@ export class Docking {
       .find((candidate) => candidate.part.id === pick.partId);
     if (!placement) return;
     entry.selection = null;
-    this.dragController.beginDrag(entry.workbench, placement.part, entry.targetId, false);
+    const source: DragSource = { kind: 'target', targetId: entry.targetId, targetKind: entry.session.targetKind(entry.targetId) };
+    this.dragController.beginDrag(entry.workbench, placement.part, source);
     this.hideHeldOriginal(root, pick.partId);
   }
 
