@@ -5,7 +5,7 @@ import { FrameTransform, toFrameState } from './frame';
 import { KinematicState, hermiteInterpolate, kinematicState } from './kinematic-state';
 import { OrbitalElements, orbitalElementsFromState, keplerPeriod } from './elements';
 import { SweptMode, containingBody, sweptSphereContact } from './sphere-contact';
-import { Vec3, lenSq, len, sub, v3 } from './vec3';
+import { Vec3, addScaled, lenSq, len, sub, v3 } from './vec3';
 
 // 天体の識別子。具体的なレジストリ(solar-system.ts の SOLAR_SYSTEM など)が実行時に
 // 差し替え可能なので、ここでは閉じた union にできない — 網羅性の強制は各レジストリの
@@ -55,6 +55,14 @@ export function attractorPositionAt(a: Attractor, t: number): Vec3 {
     a.state.r.y + a.state.v.y * s + 0.5 * a.accel.y * s * s,
     a.state.r.z + a.state.v.z * s + 0.5 * a.accel.z * s * s,
   );
+}
+
+// 同じ外挿で、時刻 t での位置と速度を揃えて返す。位置だけで足りる場所では
+// attractorPositionAt を使う — こちらは Vec3 を2つ余分に作る。
+export function attractorStateAt(a: Attractor, t: number): KinematicState {
+  const s = t - a.state.t;
+  if (s === 0) return a.state;
+  return kinematicState(t, attractorPositionAt(a, t), addScaled(a.state.v, a.accel, s));
 }
 
 // 天体 attractor が位置 r の運動方程式へ寄与する加速度 μ[(r_b − r)/|r_b − r|³ − r_b/|r_b|³]。
