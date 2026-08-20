@@ -9,6 +9,7 @@ import { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { ThermalSaveData } from '../save-data';
 import type { HeatShielding } from './heat-shield';
 import { UNSHIELDED } from './heat-shield';
+import type { Vessel } from './vessel';
 
 // checkThermalLimits の戻り値: 限界超過の種別。null なら超過なし。
 // heat-aero: 空力加熱による飽和。heat-internal: 射撃発熱など大気のない状況での飽和。
@@ -63,7 +64,7 @@ export class ThermalSystem {
 
   // 対気速度から動圧と外殻温度を更新する。加熱はよどみ点熱流束の
   // Sutton–Graves 近似 q̇ = k·√(ρ/Rn)·v³、冷却はステファン・ボルツマン放射。
-  updateThermal(dtSub: number, r: Vec3, v: Vec3, ship: import('../vessel/vessel').Vessel): void {
+  updateThermal(dtSub: number, r: Vec3, v: Vec3, ship: Vessel): void {
     // 大気密度・対気速度から動圧を求める
     const rho = atmosphericDensity(len(r) - R_EARTH);
     const vr = airspeed(r, v);

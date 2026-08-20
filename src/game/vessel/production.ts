@@ -4,9 +4,9 @@
 import { partBuildCost, TANK_SHELL_FRACTION } from '../economy/build-cost';
 import type { FacilityId } from '../economy/facility';
 import type {
-  BlueprintPart, BlueprintResourceAmount, BlueprintTank, ProducibilityBlueprint, Requirement,
+  BlueprintPart, BlueprintResourceAmount, BlueprintTank, ProducibilityBlueprint,
 } from '../economy/producibility';
-import { chooseTankMaterial, producibility } from '../economy/producibility';
+import { chooseTankMaterial } from '../economy/producibility';
 import { PROPELLANT_RESOURCE, type PropellantId } from '../economy/propellant-compatibility';
 import type { ResourceId } from '../economy/resource';
 import { ResourceLedger } from '../economy/resource-ledger';
@@ -24,7 +24,7 @@ export const ASSEMBLY_FACILITY: FacilityId = 'assembly-dock';
 export const DEFAULT_PRODUCTION_TIME_FACTOR = 0;
 
 // 殻の材料を推進剤が決める搭載要素。加圧ガスタンクは推進剤を積まないので含まない。
-export function propellantTankOf(part: AnyPart): BlueprintTank | null {
+function propellantTankOf(part: AnyPart): BlueprintTank | null {
   if (!isPropellantTankPart(part)) return null;
   return { propellantId: part.propellant, shellMass: part.weight * TANK_SHELL_FRACTION };
 }
@@ -115,16 +115,6 @@ export function productionResourceDemand(
     if (material !== null) add(material, tank.shellMass);
   }
   return demand;
-}
-
-// 設計を生産できるかどうか。空配列なら生産できる。
-export function productionRequirements(
-  bp: VesselBlueprint,
-  ledger: ResourceLedger,
-  facilities: readonly FacilityId[],
-  powerAvailable: number,
-): readonly Requirement[] {
-  return producibility(productionBlueprintOf(bp), ledger, facilities, powerAvailable);
 }
 
 // 在庫から生産ぶんを引く。1つでも足りなければ**何も減らさず** false を返す — 途中まで引いた

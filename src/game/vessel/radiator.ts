@@ -17,8 +17,9 @@ import type { Contact } from '../simulation/contact';
 import type { Stage } from '../stages/stage';
 import type { Vessel } from './vessel';
 import type { RadiatorSaveData } from '../save-data';
+import { DeployablePanel, findFoldMeshes, foldThetas as panelFoldThetas, foldTilt, stepDeploy, type PanelSide } from './deployable-panel';
 
-export type RadiatorSide = 'up' | 'down';
+export type RadiatorSide = PanelSide;
 
 // 収納時(deploy=0)の折り角。展開軸から ±90° で交互に折ると、隣り合う折り目の
 // 方向ベクトルが完全に打ち消し合い、4折りが同一の 2.3×2.3 の正方形へ重なる。
@@ -70,13 +71,8 @@ export class RadiatorFold extends GameEntity {
   }
 }
 
-class Panel {
-  deployTarget: 0 | 1 = 0;
-  deploy = 0;
-}
-
 export class RadiatorSystem {
-  private readonly panels: Record<RadiatorSide, Panel> = { up: new Panel(), down: new Panel() };
+  private readonly panels: Record<RadiatorSide, DeployablePanel> = { up: new DeployablePanel(0), down: new DeployablePanel(0) };
   // side ごとの損耗率(0=無傷, 1=全損)。放熱板パーツの残 HP から update() で受け取る。
   private wear: Record<RadiatorSide, number> = { up: 0, down: 0 };
   // 実際にメッシュが見つかった side だけ値を持つ。自由設計では放熱板が1枚だけのこともあり、
@@ -98,11 +94,10 @@ export class RadiatorSystem {
       const hinge = renderObject.getObjectByName(RADIATOR_OBJECT_NAMES[side]);
       if (!hinge) continue;
       const namePrefix = 'radiator' + (side === 'up' ? 'Up' : 'Down');
-      const found = Array.from({ length: C.RADIATOR_FOLD_COUNT }, (_, i) =>
-        renderObject.getObjectByName(`${namePrefix}Fold${i}`));
-      if (found.some((f) => !f)) continue;
+      const found = findFoldMeshes(renderObject, namePrefix, C.RADIATOR_FOLD_COUNT);
+      if (!found) continue;
       this.hinges[side] = v3(hinge.position.x, hinge.position.y, hinge.position.z);
-      this.folds[side] = found as THREE.Object3D[];
+      this.folds[side] = found;
       const ref = hinge.userData['partVisualRef'] as { partId?: string } | undefined;
       if (ref?.partId) this.partIds[side] = ref.partId;
     }
@@ -135,28 +130,13 @@ export class RadiatorSystem {
   // wear は放熱板パーツの残 HP 由来の損耗率で、修理はドックでしか行えない。
   update(dt: number, wear: Record<RadiatorSide, number>): void {
     this.wear = wear;
-    const step = dt / C.RADIATOR_DEPLOY_TIME;
-    for (const side of ['up', 'down'] as const) {
-      const p = this.panels[side];
-      if (p.deploy < p.deployTarget) p.deploy = Math.min(p.deployTarget, p.deploy + step);
-      else if (p.deploy > p.deployTarget) p.deploy = Math.max(p.deployTarget, p.deploy - step);
-    }
-  }
-
-  // 展開度から折り角(展開軸からの傾き)を返す。deploy=0 で STOW_TILT、deploy=1 で
-  // RADIATOR_DEPLOY_TILT へ線形補間する。
-  private tilt(deploy: number): number {
-    return STOW_TILT + (RADIATOR_DEPLOY_TILT - STOW_TILT) * deploy;
+    for (const side of ['up', 'down'] as const) stepDeploy(this.panels[side], dt, C.RADIATOR_DEPLOY_TIME);
   }
 
   // 偶数折り目/奇数折り目それぞれの、ヒンジ基準での累積回転角。sync がメッシュへ書く
-  // 相対回転と solarLoad が法線計算に使う絶対角を同一の psi から導く共有点。
-  // 展開方向(モデル側の折り目オフセット)は side ごとに符号が付くので、回転角自体は
-  // side に依らず ±psi で揃えられる。
+  // 相対回転と solarLoad が法線計算に使う絶対角を同一の tilt から導く共有点。
   private foldThetas(side: RadiatorSide): { even: number; odd: number } {
-    const sign = sideSign(side);
-    const psi = this.tilt(this.panels[side].deploy);
-    return { even: sign * psi, odd: -sign * psi };
+    return panelFoldThetas(side, foldTilt(this.panels[side].deploy, STOW_TILT, RADIATOR_DEPLOY_TILT));
   }
 
   // 各折り目 Group の rotation.y(親からの相対回転)を展開角へ同期し、全損したパネルの

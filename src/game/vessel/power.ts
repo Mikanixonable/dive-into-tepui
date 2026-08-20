@@ -3,18 +3,21 @@ import { Attitude, qRotate } from '../../physics/attitude';
 import { Vec3, dot, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import type { PowerSaveData } from '../save-data';
+import { SOLAR_OBJECT_NAMES } from '../../render/ships';
+import { DeployablePanel, findFoldMeshes, foldThetas, foldTilt, stepDeploy, type PanelSide } from './deployable-panel';
+import type { Vessel } from './vessel';
 
-export type SolarSide = 'up' | 'down';
+export type SolarSide = PanelSide;
 
-class Panel {
-  deployTarget: 0 | 1 = 1; // 展開状態で開始
-  deploy = 1;
-}
+// 完全に平らな全開時の折り角(0)。太陽電池パドルはラジエーターと違い、展開しきったときに
+// 蛇腹の折り目が残らない。
+const SOLAR_DEPLOY_TILT = 0;
+const STOW_TILT = Math.PI / 2;
 
 export class PowerSystem {
   private charge = C.POWER_CAPACITY * 0.75; // 蓄電量 [J]、0..POWER_CAPACITY
 
-  private readonly panels: Record<SolarSide, Panel> = { up: new Panel(), down: new Panel() };
+  private readonly panels: Record<SolarSide, DeployablePanel> = { up: new DeployablePanel(1), down: new DeployablePanel(1) };
   // 実際にメッシュが見つかった side だけ値を持つ。自由設計では太陽電池パドルが1枚だけの
   // こともあり、その場合は反対側が丸ごと欠損する。
   private readonly solarFolds: Partial<Record<SolarSide, THREE.Object3D[]>> = {};
@@ -23,11 +26,10 @@ export class PowerSystem {
   // (太陽電池パドルを1枚しか積んでいない設計)は欠損のまま進む。
   public constructor(renderObject: THREE.Object3D, saved?: PowerSaveData) {
     for (const side of ['up', 'down'] as const) {
-      const namePrefix = 'solar' + (side === 'up' ? 'Up' : 'Down');
-      const found = Array.from({ length: 6 }, (_, i) =>
-        renderObject.getObjectByName(`${namePrefix}Fold${i}`));
-      if (found.some((f) => !f)) continue;
-      this.solarFolds[side] = found as THREE.Object3D[];
+      const namePrefix = SOLAR_OBJECT_NAMES[side];
+      const found = findFoldMeshes(renderObject, namePrefix, C.RADIATOR_FOLD_COUNT);
+      if (!found) continue;
+      this.solarFolds[side] = found;
     }
     if (saved) this.charge = saved.charge;
   }
@@ -45,14 +47,8 @@ export class PowerSystem {
   }
 
   // 毎フレーム呼ぶ。sunlit は sunlitFactor(0..1)、sunDir は太陽方向の単位ベクトル(world)。
-  update(dt: number, sunlit: number, sunDir: Vec3, att: Attitude, ship: import('../vessel/vessel').Vessel): void {
-    // 展開度の更新
-    const step = dt / C.RADIATOR_DEPLOY_TIME; // 同じ速度を使用
-    for (const side of ['up', 'down'] as const) {
-      const p = this.panels[side];
-      if (p.deploy < p.deployTarget) p.deploy = Math.min(p.deployTarget, p.deploy + step);
-      else if (p.deploy > p.deployTarget) p.deploy = Math.max(p.deployTarget, p.deploy - step);
-    }
+  update(dt: number, sunlit: number, sunDir: Vec3, att: Attitude, ship: Vessel): void {
+    for (const side of ['up', 'down'] as const) stepDeploy(this.panels[side], dt, C.SOLAR_PANEL_DEPLOY_TIME);
 
     // メッシュの無い side は分子・分母から外す — 反対側1枚だけの機体なら、その1枚の展開度が
     // そのまま deployMult になる。
@@ -70,15 +66,8 @@ export class PowerSystem {
   }
 
   sync(): void {
-    const STOW_TILT = Math.PI / 2;
     for (const side of ['up', 'down'] as const) {
-      const deploy = this.panels[side].deploy;
-      // deploy=0 で STOW_TILT、deploy=1 で 0 (完全に平ら)
-      const psi = STOW_TILT * (1 - deploy);
-      const sign = side === 'up' ? 1 : -1;
-      const even = sign * psi;
-      const odd = -sign * psi;
-
+      const { even, odd } = foldThetas(side, foldTilt(this.panels[side].deploy, STOW_TILT, SOLAR_DEPLOY_TILT));
       const folds = this.solarFolds[side];
       if (!folds) continue;
       for (let i = 0; i < folds.length; i++) {
@@ -109,7 +98,7 @@ export class PowerSystem {
     this.setChargeJ(this.charge + delta);
     return this.charge - prev;
   }
-  
+
   deployOf(side: SolarSide): number { return this.panels[side].deploy; }
 
   serialize(): PowerSaveData {
