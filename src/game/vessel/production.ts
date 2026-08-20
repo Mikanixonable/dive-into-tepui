@@ -13,6 +13,7 @@ import { ResourceLedger } from '../economy/resource-ledger';
 import type { AnyPart } from '../game-entity/parts';
 import { isPropellantTankPart } from '../game-entity/parts';
 import { assemblyOf, type VesselBlueprint } from './blueprint';
+import { baseFacilities, basePowerAvailable, type BaseFacilityHost, type BaseState } from './base-module';
 import { structuralMasses } from './mass-properties';
 
 // 機体そのものの組み立てに要る設備。搭載要素ごとの前提は、その要素が要求する資源を作る設備の
@@ -125,6 +126,16 @@ export function productionRequirements(
   powerAvailable: number,
 ): readonly Requirement[] {
   return producibility(productionBlueprintOf(bp), ledger, facilities, powerAvailable);
+}
+
+// 基地モジュールを積んだ機体の在庫・設備・電力で、要求を賄えるかだけを判定する。
+export function affordableProductionRequest(
+  base: BaseFacilityHost & { readonly baseState: BaseState | null },
+  request: ProducibilityBlueprint,
+): boolean {
+  return producibility(
+    request, base.baseState!.resources, baseFacilities(base), basePowerAvailable(base),
+  ).length === 0;
 }
 
 // 在庫から生産ぶんを引く。1つでも足りなければ**何も減らさず** false を返す — 途中まで引いた
