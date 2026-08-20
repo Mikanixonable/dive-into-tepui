@@ -74,7 +74,6 @@ export class PlanEditor {
 
   // 直近の update() が組んだ計画区間列の終端時刻(表示窓でクリップしない)。一度も
   // update していなければ NaN。
-  private get lastPlanEnd(): number { return this.planDisplay.path.plannedEnd; }
 
   private _editMode = false;
   get editMode(): boolean { return this._editMode; }
@@ -713,10 +712,7 @@ export class PlanEditor {
       this.closeMenu();
     }
     this.simTime = displayWindow.simTime;
-    const excludedIds = ship === null ? [] : [ship.id];
-    // revision は前フレームの終端(lastPlanEnd)を基準に畳み込む — 今フレームの終端は
-    // このあとの planDisplay.update が決めるので、渡す時点ではまだ確定していない。
-    this.attractors.resolve(excludedIds, this.plan?.revision ?? 0, this.lastPlanEnd);
+    this.attractors.resolve(this.plan?.revision ?? 0);
     this.planDisplay.update(this.displayedPlan, displayWindow, this.attractors, ship);
     this.updateEquatorNodes(displayWindow);
   }

@@ -122,45 +122,6 @@
 
 ## 手順
 
-### Step 2 — GameEntity から重力源の属性を落とす
-
-`mu` / `degree2` / `isStar` / `accel` / `setGravitatingMass` / `predictedAsGravitySource` /
-`consumesPrediction` を削除し、それを読んでいた側を畳む。
-
-- `EntityManager.attractors()` と `cachedAttractors` を削除する。
-- `attractors.ts` の `mergeAttractors` を削除し、`attractorsAt` を天体暦への委譲だけにする。
-  `attractorsNearInto` から `excludeId` と詰め直しの走査を落とす。
-- `display-window-manager.ts` の `attractorsAt` は `Ephemeris` の戻り値をそのまま返す。
-  **`Ephemeris` の配列はキャッシュの共有参照なので、読み取り専用である旨をこの場に書く。**
-- `Simulator.substep` から `selfId` と `consumesPrediction` の分岐を落とし、全個体が
-  「予測列がその時刻を持てば従い、無ければ積分する」だけになるようにする。
-  `surfaceBodies` のコメントから、動的重力源が相手に加わるという記述を削除する。
-- `Predictor` から消費されない弧の再アンカー分岐を落とし、`ARC_REANCHOR_INTERVAL` を削除する。
-  冒頭コメントの二重性の説明から「引き合う小惑星どうし」を落とす。`Simulator` 冒頭の
-  同じ記述も落とす。
-- `PredictedArc` / `ArcBodies` の `excludeId` と、`heaviestGravityId` の除外引数を削除する。
-
-**完了条件**: 達成目標 2・3・4 を満たす。`npm run typecheck` が通る。
-
----
-
-### Step 3 — 予測の衝突相手から GameEntity を外す
-
-`predictedAsPlanCollider` を削除し、`FutureAttractors` から動的個体の経路を落とす。
-
-- `hasFutureReader` は「未来ゴーストとして描くか」と「予測線を持つか」の2つだけになる。
-- `FutureAttractors` の候補は天体暦のレジストリからのみ組む。`bodyAt` は
-  `Ephemeris.attractorAt` への委譲になり、**`null` を返さなくなる。**
-- 予測の届き具合を畳み込む世代値の仕組み(`predictionCoverage` と 32bit 畳み込み)を削除する。
-  残る入力は計画の編集だけなので、`resolve` は計画の世代値だけを受け取る。
-  `planEnd` と `excludedEntityIds` の引数、`plan-editor.ts` の `excludedIds` も削除する。
-- `ArcBodies.resolve` の `body === null` の枝を削除する。
-
-**完了条件**: 達成目標 6 を満たす。`npm run typecheck` が通る。計画のノードを編集したときに
-折れ線が引き直されることを実機で確認する(達成目標 10)。
-
----
-
 ### Step 4 — 候補が解析天体だけになったことを弧へ通す
 
 `FutureBodyCandidate` から `analytic` と `collision` を削除する。天体暦の天体はすべて位置を
@@ -181,9 +142,12 @@ PREDICT パネルの予測線が、地球圏・月圏・惑星間のいずれで
 
 **このステップは Step 4 まで終えた時点で判断する。着手前に決め打ちしない。**
 
-Step 3 の後、`FutureAttractorProvider.revision` は計画の世代値をそのまま通すだけになり、
-`candidateRevision` は最初の1回以降変化しなくなる。この時点で `FutureAttractors` に残る責務は
-「天体暦を弧の引ける形へ見せる」ことだけで、計画の世代値を持つ理由が無い。
+Step 3 の後、`FutureAttractorProvider.revision` は計画の世代値をそのまま代入するだけになり、
+`candidateRevision` は定数 0 を返すだけの getter になっている。この時点で `FutureAttractors` に
+残る責務は「天体暦を弧の引ける形へ見せる」ことだけで、計画の世代値を持つ理由が無い。
+
+**`candidateRevision` の定数 getter はこのステップで必ず始末する** — 候補の顔ぶれが実行中
+変わらないので、`ArcBodies` は候補を構築時に1度だけ組めばよく、世代値を問う理由がない。
 
 選択肢は2つ。
 

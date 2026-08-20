@@ -1,30 +1,9 @@
-// このステップぶんの重力源一覧 = 解析天体(Ephemeris の全天体窓) + 重力を持つ生存中の
-// GameEntity。呼び出し側が「いつの瞬間か」を決めて1回だけ呼び、同じ配列をそのステップの
-// 全エンティティに使い回す — 重力天体どうしの相互作用を処理順に依存させないため。
-import type { Ephemeris } from '../../physics/ephemeris';
-import type { Attractor, AttractorId } from '../../physics/attractor';
+// 重力源一覧を、位置に依らず常に加算する天体と空間グリッドに載せる天体へ分類し、ある位置から
+// 効きうる天体だけを取り出す。分類1回を多数の問い合わせ位置で使い回すことが成立条件。
+import type { Attractor } from '../../physics/attractor';
 import { SpatialGrid } from '../../physics/spatial-grid';
 import { Vec3 } from '../../physics/vec3';
 import { GRAVITY_ALWAYS_COUNT, GRAVITY_NEGLIGIBLE_ACCEL } from '../const';
-import type { EntityManager } from './entity-manager';
-
-// Ephemeris のリングキャッシュは呼び出し側で破壊してはいけない共有参照を返すので、合流は
-// 常に新しい配列への展開で行う。dynamic が空なら bodies をそのまま返す。
-export function mergeAttractors(bodies: readonly Attractor[], dynamic: readonly Attractor[]): readonly Attractor[] {
-  return dynamic.length === 0 ? bodies : [...bodies, ...dynamic];
-}
-
-// 時刻 t の解析天体のうち重力を及ぼすもの。重力源かどうかは解析天体・GameEntity の別なく
-// mu !== 0 の一本で決まる — 表示だけの天体は寄与が恒等的にゼロなので加算の候補に載せない
-// (遮蔽・表面接触・中心天体の解決は別の問いで、そちらは Ephemeris の窓をそのまま使う)。
-function gravityBodiesAt(ephemeris: Ephemeris, t: number): readonly Attractor[] {
-  return ephemeris.gravityAttractorsAt(t);
-}
-
-// 時刻 t におけるこのステップぶんの重力源一覧。
-export function attractorsAt(ephemeris: Ephemeris, entities: EntityManager, t: number): readonly Attractor[] {
-  return mergeAttractors(gravityBodiesAt(ephemeris, t), entities.attractors());
-}
 
 // 重力源一覧を、常に含める天体(always)と空間グリッドに載せる天体(grid)へ分けたもの。
 export type ClassifiedAttractors = {
@@ -83,26 +62,13 @@ export function classifyAttractors(attractors: readonly Attractor[]): Classified
 
 // 位置 pos から見た重力源一覧 = 常に含める天体 + pos の27近傍グリッドに載っている天体を、
 // out へ書き込む。out は呼び出し側が所有し、この呼び出しの完了後に保持してはいけない。
-// excludeId を渡すと、その id の天体をまるごと一覧から除く — pos を持つ本人が重力源
-// (Asteroid など)のとき、自分自身を引く項ができるのを防ぐ。まるごと落とすので
-// ECI 原点補正項(attractorAccel の第2項、問い合わせ位置に依存しない)も一緒に失うが、
-// GameEntity が取りうる質量では無視できる大きさ(1e12 kg の小惑星が2 AUにあるとき
-// 7e-25 m/s² 程度)にとどまる。
 export function attractorsNearInto(
   pos: Vec3,
   classified: ClassifiedAttractors,
   out: Attractor[],
-  excludeId?: AttractorId,
 ): Attractor[] {
   out.length = 0;
   for (const a of classified.always) out.push(a);
   classified.grid.appendNeighborsInto(pos, out);
-  if (excludeId === undefined) return out;
-  // excludeId に一致する要素を、確保を増やさずその場で詰め直して落とす。
-  let w = 0;
-  for (const a of out) {
-    if (a.id !== excludeId) out[w++] = a;
-  }
-  out.length = w;
   return out;
 }
