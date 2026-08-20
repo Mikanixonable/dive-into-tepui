@@ -11,7 +11,7 @@ import { PerturbationTerm, SatelliteOrbit, satelliteOrbit } from './satellite-or
 import { Vec3, len, v3 } from './vec3';
 
 // 万有引力定数 [m^3/(kg・s^2)]。MU_* は測定された GM を直接持つ値なのでこれで割り直さないこと —
-// 質量から GM を導く側(Asteroid など)だけがこれを使う。
+// GM が測定されておらず質量から導く天体だけがこれを使う。
 export const GRAVITATIONAL_CONSTANT = 6.6743e-11;
 
 export const MU_SUN = 1.32712440018e20; // [m^3/s^2]
@@ -1222,7 +1222,7 @@ export const SOLAR_SYSTEM = {
   },
   // ハウメアの衛星2個。基準面は黄道面 — JPL 系列(木星・土星・天王星・冥王星の各衛星)より
   // 精度・基準面の一貫性が低い二次引用(一次は各々 Ratzka et al. 2007 / Wikipedia 経由)。
-  // 質量 [kg] から GRAVITATIONAL_CONSTANT で GM を導く(Asteroid エンティティと同じ手法)。
+  // 質量 [kg] から GRAVITATIONAL_CONSTANT で GM を導く。
   // 歳差周期は2体とも未公開(=0)。
   hiiaka: {
     kind: 'satellite',
