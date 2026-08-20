@@ -28,7 +28,7 @@ const BODY_CLASS_ROWS: readonly BodyClassRow[] = [
   { label: '衛星', categoryKey: 'satelliteVisible', iconKey: 'satelliteIcon', labelKey: 'satelliteLabel', orbitKey: 'satelliteOrbit' },
   { label: '準惑星', categoryKey: 'dwarfVisible', iconKey: 'dwarfIcon', labelKey: 'dwarfLabel', orbitKey: 'dwarfOrbit' },
   { label: '小天体', categoryKey: 'smallBodyVisible', iconKey: 'smallBodyIcon', labelKey: 'smallBodyLabel', orbitKey: 'smallBodyOrbit' },
-  { label: 'ラグランジュ点', categoryKey: 'lagrangeVisible', iconKey: 'lagrangeIcon', labelKey: 'lagrangeLabel', orbitKey: null },
+  { label: 'ラグランジュ点', categoryKey: 'lagrangeVisible', iconKey: 'lagrangeIcon', labelKey: 'lagrangeLabel', orbitKey: 'lagrangeOrbit' },
 ];
 // このパネル自身の折りたたみトグルの見た目。
 const VIEW_OPTIONS_COLLAPSE_LABELS: CollapseToggleLabels = {

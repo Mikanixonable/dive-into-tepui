@@ -79,7 +79,8 @@ export class MapVisibilityPolicy {
       const category = this.toggles.lagrangeVisible;
       const icon = category && this.toggles.lagrangeIcon;
       const label = category && this.toggles.lagrangeLabel;
-      return { category, icon, label, orbit: false, pickable: category && (icon || label) };
+      const orbit = category && this.toggles.lagrangeOrbit;
+      return { category, icon, label, orbit, pickable: category && (icon || label) };
     }
     if (this.registry[id] === undefined) return noVisibility();
 
