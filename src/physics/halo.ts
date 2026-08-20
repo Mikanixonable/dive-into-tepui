@@ -85,7 +85,9 @@ export function collinearFrame(secondary: OrbitingId, point: CollinearPoint, t: 
   const lambda = Math.sqrt(lambda2);
   const omegaZ = Math.sqrt(c2);
   // 面内運動 x=Ax cos(λτ+φ), y=κAx sin(λτ+φ) を線形化方程式へ代入して得る振幅比。
-  const kappa = (2 * lambda) / (c2 - 1 - lambda2);
+  // Richardson (1980) / Fortran-Astrodynamics-Toolkit の定義 k = 2λ/(λ²+1-c₂) > 0 に合わせる。
+  // 分母を (c₂-1-λ²) にすると符号が逆転し y 方向が鏡像になるため注意。
+  const kappa = (2 * lambda) / (lambda2 + 1 - c2);
 
   return { origin, xHat, yHat, zHat, omega, r, gamma, mu, lambda, omegaZ, kappa };
 }
@@ -145,7 +147,7 @@ function centerManifoldState(
   return kinematicState(t, rEci, vEci);
 }
 
-// Richardson (1980) 三次近似の振幅拘束 l1·Ax² + l2·Az² + Δ = 0 における係数および 2次摂動係数。
+// Richardson (1980) 三次近似の振幅拘束 l1·Ax² + l2·Az² + Δ = 0 における係数、2次摂動係数、および3次摂動係数。
 export interface HaloCoefficients {
   a21: number;
   a22: number;
@@ -154,6 +156,13 @@ export interface HaloCoefficients {
   b21: number;
   b22: number;
   d21: number;
+  // 3次摂動係数 (cos(3τ)/sin(3τ) 項)
+  a31: number;
+  a32: number;
+  b31: number;
+  b32: number;
+  d31: number;
+  d32: number;
   l1: number;
   l2: number;
   delta: number;
@@ -165,11 +174,15 @@ export function haloCoefficients(frame: CollinearFrame, point: CollinearPoint): 
   const c3 = cn(point, mu, gamma, 3);
   const c4 = cn(point, mu, gamma, 4);
   const l2sq = lambda * lambda;
-  // kappa と符号だけが違う Richardson の振幅比。以降の係数はこの k で書かれている。
-  const k = (l2sq + 1 + 2 * c2) / (2 * lambda);
+  // Richardson (1980) の振幅比 k = 2λ/(λ²+1-c₂) > 0。frame.kappa と同じ値。
+  // 以降の係数はすべてこの k で書かれている(Fortran-Astrodynamics-Toolkit 参照)。
+  const k = (l2sq + 1 + 2 * c2) / (2 * lambda); // = 2λ/(λ²+1-c₂) (characteristic eqn より等値)
 
-  const d1 = (3 * l2sq / k) * (k * (6 * l2sq - 1) - 2 * lambda);
+  // d1, d2: 2次・3次係数の分母に現れるスカラー
+  const d1 = (3 * l2sq / k) * (k * (6 * l2sq - 1) - 2 * lambda); // 16λ⁴+4λ²(c₂-2)-2c₂²+c₂+1 と等値
+  const d2 = 81 * l2sq * l2sq + 9 * l2sq * (c2 - 2) - 2 * c2 * c2 + c2 + 1;
 
+  // 2次摂動係数
   const a21 = 3 * c3 * (k * k - 2) / (4 * (1 + 2 * c2));
   const a22 = 3 * c3 / (4 * (1 + 2 * c2));
   const a23 = -(3 * c3 * lambda / (4 * k * d1)) * (3 * k ** 3 * lambda - 6 * k * (k - lambda) + 4);
@@ -178,7 +191,8 @@ export function haloCoefficients(frame: CollinearFrame, point: CollinearPoint): 
   const b22 = 3 * c3 * lambda / d1;
   const d21 = -c3 / (2 * l2sq);
 
-  const den = 2 * lambda * (lambda * (1 + k * k) - 2 * k);
+  // 振幅拘束係数
+  const den = 2 * lambda * (lambda * (1 + k * k) - 2 * k); // = d3 in Fortran
   const s1 = (1.5 * c3 * (2 * a21 * (k * k - 2) - a23 * (k * k + 2) - 2 * k * b21)
     - 0.375 * c4 * (3 * k ** 4 - 8 * k * k + 8)) / den;
   const s2 = (1.5 * c3 * (2 * a22 * (k * k - 2) + a24 * (k * k + 2) + 2 * k * b22 + 5 * d21)
@@ -187,8 +201,24 @@ export function haloCoefficients(frame: CollinearFrame, point: CollinearPoint): 
   const a1 = -1.5 * c3 * (2 * a21 + a23 + 5 * d21) - 0.375 * c4 * (12 - k * k);
   const a2 = 1.5 * c3 * (a24 - 2 * a22) + 1.125 * c4;
 
+  // 3次摂動係数 (Richardson 1980 方程式 19a–19f、Fortran-Astrodynamics-Toolkit 参照)
+  const k2 = k * k;
+  const lam2c2 = 9 * l2sq + 1 - c2;
+  const lam2c2p = 9 * l2sq + 1 + 2 * c2;
+  const a31 = -9 * lambda * (c3 * (k * a23 - b21) + k * c4 * (1 + k2 / 4)) / d2
+    + lam2c2 * (3 * c3 * (2 * a23 - k * b21) + c4 * (2 + 3 * k2)) / (2 * d2);
+  const a32 = -9 * lambda * (4 * c3 * (k * a24 - b22) + k * c4) / (4 * d2)
+    - 3 * lam2c2 * (c3 * (k * b22 + d21 - 2 * a24) - c4) / (2 * d2);
+  const b31 = (3 * lambda * (3 * c3 * (k * b21 - 2 * a23) - c4 * (2 + 3 * k2))
+    + lam2c2p * (12 * c3 * (k * a23 - b21) + 3 * k * c4 * (4 + k2)) / 8) / d2;
+  const b32 = (3 * lambda * (3 * c3 * (k * b22 + d21 - 2 * a24) - 3 * c4)
+    + lam2c2p * (12 * c3 * (k * a24 - b22) + 3 * c4 * k) / 8) / d2;
+  const d31 = 3 * (4 * c3 * a24 + c4) / (64 * l2sq);
+  const d32 = 3 * (4 * c3 * (a23 - d21) + c4 * (4 + k2)) / (64 * l2sq);
+
   return {
     a21, a22, a23, a24, b21, b22, d21,
+    a31, a32, b31, b32, d31, d32,
     l1: a1 + 2 * l2sq * s1,
     l2: a2 + 2 * l2sq * s2,
     delta: l2sq - c2,
@@ -199,9 +229,10 @@ function haloConstraint(frame: CollinearFrame, point: CollinearPoint): { l1: num
   return haloCoefficients(frame, point);
 }
 
-// Richardson (1980) 2次精度での共線ラグランジュ点まわりの 3D 位置オフセット [m] (ECI 座標系成分)。
+// Richardson (1980) 3次精度での共線ラグランジュ点まわりの 3D 位置オフセット [m] (ECI 座標系成分)。
 // ax, az はメートル単位の振幅 (az の正負は北側 (+az) / 南側 (-az) ファミリーに対応)。
-// phase は 0 から 2π までの位相角。
+// phase は 0 から 2π までの位相角 τ₁。
+// 参照: Fortran-Astrodynamics-Toolkit / halo_orbit_module.f90 方程式 20a–20c。
 export function haloLocalPosition(
   frame: CollinearFrame,
   point: CollinearPoint,
@@ -220,11 +251,29 @@ export function haloLocalPosition(
   const sin1 = Math.sin(phase);
   const cos2 = Math.cos(2 * phase);
   const sin2 = Math.sin(2 * phase);
+  const cos3 = Math.cos(3 * phase);
+  const sin3 = Math.sin(3 * phase);
 
-  // Richardson (1980) 2次展開による無次元局所座標 (x: 主天体→副天体軸, y: 公転方向, z: 北極方向)
-  const xN = coeffs.a21 * axN * axN + coeffs.a22 * azN * azN - axN * cos1 + (coeffs.a23 * axN * axN - coeffs.a24 * azN * azN) * cos2;
-  const yN = frame.kappa * axN * sin1 + (coeffs.b21 * axN * axN - coeffs.b22 * azN * azN) * sin2;
-  const zN = deltaM * (azN * cos1 + coeffs.d21 * axN * azN * (cos2 - 3));
+  const axN2 = axN * axN;
+  const axN3 = axN2 * axN;
+  const azN2 = azN * azN;
+  const azN3 = azN2 * azN;
+
+  // Richardson (1980) 3次展開による無次元局所座標
+  // (x: 主天体→副天体軸, y: 公転方向 [kappa>0 を保証], z: 北極方向)
+  // frame.kappa = 2λ/(λ²+1-c₂) > 0 (Fortran の k と同値、2次コードでの符号ミスを修正済み)
+  const xN = coeffs.a21 * axN2 + coeffs.a22 * azN2
+    - axN * cos1
+    + (coeffs.a23 * axN2 - coeffs.a24 * azN2) * cos2
+    + (coeffs.a31 * axN3 - coeffs.a32 * axN * azN2) * cos3;
+  const yN = frame.kappa * axN * sin1
+    + (coeffs.b21 * axN2 - coeffs.b22 * azN2) * sin2
+    + (coeffs.b31 * axN3 - coeffs.b32 * axN * azN2) * sin3;
+  const zN = deltaM * (
+    azN * cos1
+    + coeffs.d21 * axN * azN * (cos2 - 3)
+    + (coeffs.d32 * azN * axN2 - coeffs.d31 * azN3) * cos3
+  );
 
   const x = xN * rLocal;
   const y = yN * rLocal;
