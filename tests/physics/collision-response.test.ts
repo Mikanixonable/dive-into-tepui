@@ -1,12 +1,13 @@
 import * as assert from 'node:assert/strict';
 import { resolveSphereCollision } from '../../src/physics/collision-response';
 import { dot, lenSq, sub, v3, Vec3 } from '../../src/physics/vec3';
+import { kinematicState } from '../../src/physics/kinematic-state';
 import { test } from './harness';
 
 function overlapPair(vA: Vec3, vB: Vec3, invMassA: number, invMassB: number, restitution: number) {
   return resolveSphereCollision(
-    { r: v3(-0.6, 0, 0), v: vA, radius: 1, invMass: invMassA },
-    { r: v3(0.6, 0, 0), v: vB, radius: 1, invMass: invMassB },
+    { state: kinematicState(0, v3(-0.6, 0, 0), vA), radius: 1, invMass: invMassA },
+    { state: kinematicState(0, v3(0.6, 0, 0), vB), radius: 1, invMass: invMassB },
     restitution,
   );
 }
@@ -78,8 +79,8 @@ export function register(): void {
   // 反発の要否判定(vn)だけが壊れて非nullのまま返る — その場合も相手側(vB)は無傷。
   test('collision-response: 片側が非有限な位置なら null', () => {
     const res = resolveSphereCollision(
-      { r: v3(NaN, 0, 0), v: v3(1, 0, 0), radius: 1, invMass: 1 },
-      { r: v3(0.6, 0, 0), v: v3(-1, 0, 0), radius: 1, invMass: 1 },
+      { state: kinematicState(0, v3(NaN, 0, 0), v3(1, 0, 0)), radius: 1, invMass: 1 },
+      { state: kinematicState(0, v3(0.6, 0, 0), v3(-1, 0, 0)), radius: 1, invMass: 1 },
       0.5,
     );
     assert.equal(res, null);
@@ -87,8 +88,8 @@ export function register(): void {
 
   test('collision-response: 片側が非有限な速度は相手側の速度を書き換えない', () => {
     const res = resolveSphereCollision(
-      { r: v3(-0.6, 0, 0), v: v3(NaN, 0, 0), radius: 1, invMass: 1 },
-      { r: v3(0.6, 0, 0), v: v3(-1, 0, 0), radius: 1, invMass: 1 },
+      { state: kinematicState(0, v3(-0.6, 0, 0), v3(NaN, 0, 0)), radius: 1, invMass: 1 },
+      { state: kinematicState(0, v3(0.6, 0, 0), v3(-1, 0, 0)), radius: 1, invMass: 1 },
       0.5,
     )!;
     assert.ok(res !== null);
@@ -97,8 +98,8 @@ export function register(): void {
 
   test('collision-response: 片側が非有限な半径なら null', () => {
     const res = resolveSphereCollision(
-      { r: v3(-0.6, 0, 0), v: v3(1, 0, 0), radius: NaN, invMass: 1 },
-      { r: v3(0.6, 0, 0), v: v3(-1, 0, 0), radius: 1, invMass: 1 },
+      { state: kinematicState(0, v3(-0.6, 0, 0), v3(1, 0, 0)), radius: NaN, invMass: 1 },
+      { state: kinematicState(0, v3(0.6, 0, 0), v3(-1, 0, 0)), radius: 1, invMass: 1 },
       0.5,
     );
     assert.equal(res, null);
@@ -106,8 +107,8 @@ export function register(): void {
 
   test('collision-response: 片側が非有限な逆質量なら null', () => {
     const res = resolveSphereCollision(
-      { r: v3(-0.6, 0, 0), v: v3(1, 0, 0), radius: 1, invMass: NaN },
-      { r: v3(0.6, 0, 0), v: v3(-1, 0, 0), radius: 1, invMass: 1 },
+      { state: kinematicState(0, v3(-0.6, 0, 0), v3(1, 0, 0)), radius: 1, invMass: NaN },
+      { state: kinematicState(0, v3(0.6, 0, 0), v3(-1, 0, 0)), radius: 1, invMass: 1 },
       0.5,
     );
     assert.equal(res, null);
@@ -119,8 +120,8 @@ export function register(): void {
   // 相手側へは伝播しないことを固定する。
   test('collision-response: 質量0(逆質量Infinity)は相手側の値を書き換えない', () => {
     const res = resolveSphereCollision(
-      { r: v3(-0.6, 0, 0), v: v3(1, 0, 0), radius: 1, invMass: Infinity },
-      { r: v3(0.6, 0, 0), v: v3(-1, 0, 0), radius: 1, invMass: 1 },
+      { state: kinematicState(0, v3(-0.6, 0, 0), v3(1, 0, 0)), radius: 1, invMass: Infinity },
+      { state: kinematicState(0, v3(0.6, 0, 0), v3(-1, 0, 0)), radius: 1, invMass: 1 },
       0.5,
     )!;
     assert.ok(res !== null);
