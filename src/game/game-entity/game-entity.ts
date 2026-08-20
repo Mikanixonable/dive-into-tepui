@@ -80,6 +80,9 @@ export class GameEntity {
   // 弾道係数の逆数 Cd·A/m(既定 0 = 抵抗なし)。
   protected readonly bcInv: number = 0;
   protected readonly srpCoeff: number = 0;
+  // 焼失せずに耐えられる大気密度の上限 [kg/m^3]。熱シミュレーションを持たない種別が
+  // 加熱と動圧をまとめて代理する粗い近似(const.ts)。既定は破片・薬莢・弾・基地・弾薬の値。
+  protected readonly burnUpDensity: number = C.DEBRIS_BURNUP_DENSITY;
   // 過去列の保持時間 [s]。既定 0 = 記録しない。
   // 種別ごとの過去列の保持時間 [s]。0 は履歴を持たない。
   protected readonly baseHistoryDuration: number = 0;
@@ -120,7 +123,7 @@ export class GameEntity {
   get predictedApsides(): ApsisTrack | null { return this._predictedArc?.apsides ?? null; }
   // 弧の積分中に最初に天体表面へ達した状態とその天体。到達しなければ null。
   get predictedImpact(): BodyImpact | null { return this._predictedArc?.impact ?? null; }
-  // 積分中に再突入高度を割った/非有限値が出て打ち切られたか。打ち切られた弧はそれ以上
+  // 積分中に天体表面へ到達した/非有限値が出て打ち切られたか。打ち切られた弧はそれ以上
   // 伸びない(新しい弧を作るまで恒久的)。
   get predictionTruncated(): boolean { return this._predictedArc?.truncated ?? false; }
 
@@ -333,7 +336,7 @@ export class GameEntity {
   checkLoss(_dt: number, _simTime: number, _activeStage: Stage, _playerPos: Vec3, attractors: readonly Attractor[]): void {
     if (!this.alive) return;
     if (reachedBody(this.actual.prevState, this.state, attractors, 0) !== null
-      || burnUpBody(this.state.r, attractors, C.DEBRIS_REENTRY_ALT) !== null) this.alive = false;
+      || burnUpBody(this.state.r, attractors, this.burnUpDensity) !== null) this.alive = false;
   }
 
   // 自分がこの相手と接触しうるか。既定 true。両側が true を返したときだけ接触する。

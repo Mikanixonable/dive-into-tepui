@@ -67,19 +67,21 @@ export function dragAccel(rRel: Vec3, vRel: Vec3, bcInv: number, atm: Atmosphere
   return v3(vrx * k, vry * k, vrz * k);
 }
 
-// 位置 r が、大気を持つ天体の表面から margin 以内まで沈み込んでいれば、その天体。
+// 位置 r で、大気の密度が maxDensity を上回っている天体。焼失は「濃い空気の中にいる」という
+// 連続量による状態なので、表面からの距離ではなく密度そのもので判定する — 同じ高度でも天体が
+// 違えば密度が違い、同じ密度でも高度が違う。maxDensity はその主体が耐えられる密度の上限。
 export function burnUpBody<T extends {
-  readonly radius: number;
   readonly state: KinematicState;
   readonly atmosphere: Atmosphere | null;
 }>(
   r: Vec3,
   bodies: readonly T[],
-  margin: number,
+  maxDensity: number,
 ): T | null {
   for (const body of bodies) {
     if (body.atmosphere === null) continue;
-    if (len(sub(r, body.state.r)) < body.radius + margin) return body;
+    const rRel = sub(r, body.state.r);
+    if (atmosphericDensity(ellipsoidAltitude(rRel, body.atmosphere), body.atmosphere) > maxDensity) return body;
   }
   return null;
 }

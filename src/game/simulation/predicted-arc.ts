@@ -1,13 +1,16 @@
 // 凍結した起点状態(state0)から要求終端(requiredEnd)へ向けて、step() を呼ぶたびに RK4 で
-// 1歩だけ伸びる積分弧。刻み幅の決定・重力源/衝突体の窓解決・表面到達と焼失の判定・
+// 1歩だけ伸びる積分弧。刻み幅の決定・重力源/衝突体の窓解決・表面到達の判定・
 // 近地点/遠地点の蓄積を1歩の中で行う。作り直し(無効化)は持ち主がインスタンスを
 // 差し替えることで行う。
+//
+// **弧は大気による焼失を判定しない。** 姿勢も熱の蓄積状態も運ばないので、実体がどこで
+// 失われるかを原理的に当てられない。当てられない量を近似で埋めると、その近似の値を実体側と
+// 揃え続ける保守が発生する。弧が答えるのは「この自由落下の経路が固体表面へ到達するか」だけ。
 import { KinematicState } from '../../physics/kinematic-state';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { Attractor, BodyImpact, nearestAtmosphereBody, reachedBody, strongestAttractor } from '../../physics/attractor';
 import { keplerPeriod } from '../../physics/elements';
 import { ApsisTrack } from '../../physics/trajectory-features';
-import { burnUpBody } from '../../physics/atmosphere';
 import { dot, len, sub } from '../../physics/vec3';
 import { ArcBodies, type ArcBodyWindow, type FutureAttractorProvider } from './arc-bodies';
 import { adaptiveSimulationMaxStep } from './time-step';
@@ -126,7 +129,7 @@ export class PredictedArc {
     }
 
     (this._apsides ??= new ApsisTrack(center)).observe(tip, this._trajectory.state);
-    this.checkImpact(tip, mid.collision);
+    this.checkSurfaceReach(tip, mid.collision);
 
     this.carriedSources = mid;
     return true;
@@ -167,13 +170,11 @@ export class PredictedArc {
     return Math.max(C.ARC_MIN_STEP_DT, Math.min(span, approachDt, Math.max(naturalDt, coarseFloor)));
   }
 
-  // 表面到達・焼失の判定。掃引が交差点を見つければそれを、そうでなく大気で焼失していれば
-  // その状態を到達点として記録し、どちらかが立てば打ち切る。
-  private checkImpact(prev: KinematicState, collision: readonly Attractor[]): void {
+  // 固体表面への到達の判定。掃引が交差点を見つければその状態を到達点として記録し、打ち切る。
+  private checkSurfaceReach(prev: KinematicState, collision: readonly Attractor[]): void {
     const reached = reachedBody(prev, this._trajectory.state, collision, 0);
-    const burnedUpAt = reached === null ? burnUpBody(this._trajectory.state.r, collision, C.REENTRY_ALT) : null;
-    if (reached !== null) this._impact = reached;
-    else if (burnedUpAt !== null) this._impact = { body: burnedUpAt, state: this._trajectory.state };
-    if (reached !== null || burnedUpAt !== null) this._truncated = true;
+    if (reached === null) return;
+    this._impact = reached;
+    this._truncated = true;
   }
 }

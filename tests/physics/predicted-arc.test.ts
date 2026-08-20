@@ -7,8 +7,8 @@ import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { Attractor } from '../../src/physics/attractor';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
-import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
-import { v3 } from '../../src/physics/vec3';
+import { EARTH_ATMOSPHERE, MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
+import { len, v3 } from '../../src/physics/vec3';
 import { PredictedArc } from '../../src/game/simulation/predicted-arc';
 import type { FutureAttractorProvider } from '../../src/game/simulation/arc-bodies';
 
@@ -19,10 +19,12 @@ function circularState(t = 0): KinematicState {
 }
 
 // 地球1体だけを引く provider。地球は ECI 原点に静止させる(dynamic-trajectory.test.ts の EARTH と同じ)。
-function earthOnlyProvider(): FutureAttractorProvider {
+// withAtmosphere を立てると、既定レジストリと同じ大気を載せた地球になる。
+function earthOnlyProvider(withAtmosphere = false): FutureAttractorProvider {
+  const atmosphere = withAtmosphere ? { ...EARTH_ATMOSPHERE, pole: v3(0, 1, 0) } : null;
   const earthAt = (t: number): Attractor => ({
     id: 'earth', mu: MU_EARTH, radius: R_EARTH,
-    state: kinematicState(t, v3(), v3()), accel: v3(), degree2: null, atmosphere: null, isStar: false,
+    state: kinematicState(t, v3(), v3()), accel: v3(), degree2: null, atmosphere, isStar: false,
   });
   return {
     candidates: () => [{ id: 'earth', mu: MU_EARTH, radius: R_EARTH }],
@@ -138,6 +140,31 @@ export function register(): void {
     const shortTimes = tipTimes(shortArc, steps);
     const longTimes = tipTimes(longArc, steps);
     assert.notDeepEqual(shortTimes, longTimes, 'consumable でない弧は requiredEnd で刻みが変わるはず');
+  });
+
+  test('predicted-arc: 弧は大気で打ち切られず、固体表面へ到達したときにだけ打ち切られる', () => {
+    // 大気を持つ地球へ、近地点が地表下になる衝突コースで落とす。弧は熱の蓄積状態を運ばないので
+    // 焼失を判定できず、判定しない — 途中の大気の濃さに関わらず表面まで伸びる。
+    const r0 = R_EARTH + 300e3;
+    const state0 = kinematicState(0, v3(r0, 0, 0), v3(0, 1500, 0)); // 円速度を大きく割る = 落ちる
+    const arc = new PredictedArc(
+      state0, earthOnlyProvider(true), 3.3e-3, 0, /* keplerTail */ true, /* consumable */ true);
+    arc.requiredEnd = state0.t + 86400;
+    arc.retainFrom = state0.t;
+    arc.simulationMaxStep = 20;
+
+    // 80km(旧・弧の打ち切り高度)を割っても伸び続けることを確かめるため、そこを跨いで進める。
+    let crossedOldReentryAlt = false;
+    for (let i = 0; i < 20000 && !arc.truncated; i++) {
+      arc.step();
+      if (len(arc.trajectory.state.r) - R_EARTH < 80e3) crossedOldReentryAlt = true;
+    }
+    assert.ok(crossedOldReentryAlt, '前提: この軌道は旧・打ち切り高度 80km を割る');
+    assert.ok(arc.truncated, '表面へ到達したのだから最後は打ち切られる');
+    assert.ok(arc.impact !== null, '打ち切りの理由は表面到達で、到達した天体と状態が残る');
+    // 到達点は表面そのもの。大気で打ち切っていれば 80km 上空で止まっていた。
+    const impactAlt = len(arc.impact!.state.r) - R_EARTH;
+    assert.ok(Math.abs(impactAlt) < 1e3, `到達点は地表のはず, got ${impactAlt / 1e3} km`);
   });
 
   test('predicted-arc: 区間を表せるかは起点で決まり、起点を差し替えると表せなくなる', () => {

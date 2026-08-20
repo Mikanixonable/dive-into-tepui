@@ -89,7 +89,7 @@ export class Bullet extends GameEntity {
         }
         // 至近通過音は消滅判定より先に評価する — 同じ substep で寿命が尽きる弾でも通過音は鳴らす。
         if (containingBody(this.state.r, attractors, 0) !== null
-          || burnUpBody(this.state.r, attractors, C.DEBRIS_REENTRY_ALT) !== null) { this.alive = false; return; }
+          || burnUpBody(this.state.r, attractors, this.burnUpDensity) !== null) { this.alive = false; return; }
         if (lenSq(sub(this.state.r, playerPos)) > C.BULLET_MAX_DIST * C.BULLET_MAX_DIST) { this.alive = false; return; }
         if (simTime - this.bornSim >= this.lifetime) this.alive = false;
     }
