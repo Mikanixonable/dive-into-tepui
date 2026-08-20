@@ -2,14 +2,16 @@
 // 頂点はラグランジュ点(CollinearFrame.origin)相対座標として保持し、フローティングオリジンの
 //Object3D 平行移動(setTransform)でラグランジュ点の ECI 位置へ置く。
 import * as THREE from 'three/webgpu';
-import { CollinearFrame, CollinearPoint, collinearFrame, haloAmplitudeX, haloLocalPosition } from '../physics/halo';
+import { CollinearFrame, CollinearPoint, collinearFrame, haloAmplitudeX, haloOrbitOffsetsFor } from '../physics/halo';
 import type { Ephemeris } from '../physics/ephemeris';
 import type { OrbitingId } from '../physics/attractor';
+import { Vec3 } from '../physics/vec3';
 import { FloatingOrigin } from './floating-origin';
 import { Curve, CurveSampler } from '../render/curve';
 import { LineStyle } from '../render/line-style';
 
 const MAX_VERTICES = 1024;
+const BAKE_SAMPLES = 256;
 const TOL_AX_REL = 1e-3;
 const TOL_PLANE = Math.cos((0.15 * Math.PI) / 180);
 
@@ -21,6 +23,7 @@ export class HaloOrbitLine {
   private snapAz = 0;
   private snapAx = 0;
   private revision: object = {};
+  private bakedOffsets: Vec3[] = [];
 
   constructor(style: LineStyle) {
     this.curve = new Curve({ style, maxVertices: MAX_VERTICES });
@@ -43,17 +46,18 @@ export class HaloOrbitLine {
     this.curve.setRenderOrder(renderOrder);
   }
 
-  // 位相 phase = t * 2π に対する Richardson 2次精度(ハロー軌道 3D 曲線)のローカル ECI オフセット。
+  // t∈[0,1](軌道1周)を、regen 時に焼き込んだ数値修正済み軌道のサンプル列から線形補間する。
   private readonly sampler: CurveSampler = (t, out) => {
-    const frame = this.snapFrame;
-    if (!frame) return;
-    const phase = t * Math.PI * 2;
-    const point = this.snapPoint;
-    const ax = this.snapAx;
-    const az = this.snapAz;
-
-    const pos = haloLocalPosition(frame, point, ax, az, phase);
-    out.set(pos.x, pos.y, pos.z);
+    const pts = this.bakedOffsets;
+    const n = pts.length;
+    if (n === 0) return;
+    const f = (((t % 1) + 1) % 1) * n;
+    const i0 = Math.floor(f) % n;
+    const i1 = (i0 + 1) % n;
+    const frac = f - Math.floor(f);
+    const a = pts[i0] as Vec3;
+    const b = pts[i1] as Vec3;
+    out.set(a.x + (b.x - a.x) * frac, a.y + (b.y - a.y) * frac, a.z + (b.z - a.z) * frac);
   };
 
   sync(
@@ -89,8 +93,13 @@ export class HaloOrbitLine {
       this.snapPoint = point;
       this.snapAz = az;
       this.snapAx = ax;
+      this.bakedOffsets = haloOrbitOffsetsFor(frame, point, az, BAKE_SAMPLES);
     }
 
+    if (this.bakedOffsets.length === 0) {
+      this.curve.setVisible(false);
+      return;
+    }
     this.curve.setCurve(this.sampler, { revision: this.revision, camera });
     this.curve.setVisible(true);
   }

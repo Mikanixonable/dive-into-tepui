@@ -15,7 +15,7 @@ import type { CrossSection, SectionPrimitive } from '../../physics/section-momen
 import { placeSectionPrimitives } from '../../physics/section-moments';
 import { len, sub } from '../../physics/vec3';
 import type { Vec3 } from '../../physics/vec3';
-import type { EdgeKind, MountPoint, PortRef, TreeEdge, TreeNode, VesselTree } from './tree';
+import type { EdgeKind, MountPoint, TreeEdge, TreeNode, VesselTree } from './tree';
 
 const QUANTIZATION_TOLERANCE = 1e-9;
 
@@ -67,22 +67,6 @@ export interface AddNodeInput {
   readonly node: TreeNode;
   /** When present, this edge must connect the new node to an existing node. */
   readonly edge?: EdgeDraft;
-}
-
-export interface MoveNodeInput {
-  readonly nodeId: string;
-  readonly pos?: Vec3;
-  readonly axis?: Vec3;
-  readonly phaseAngle?: number;
-}
-
-export interface ReconnectEdgeInput {
-  readonly edgeId: string;
-  readonly a?: string;
-  readonly b?: string;
-  readonly portA?: PortRef;
-  readonly portB?: PortRef;
-  readonly kind?: EdgeKind;
 }
 
 export type SectionPrimitivePatch = Partial<Pick<SectionPrimitive, 'shape' | 'phaseAngle' | 'attachment'>>;
@@ -166,48 +150,6 @@ export function addNode(
   }
 }
 
-/** Move or reorient a node and recalculate every edge length from its ports. */
-export function moveNode(
-  assembly: VesselAssembly,
-  input: MoveNodeInput,
-  options: AssemblyEditorOptions = {},
-): AssemblyEditResult {
-  const index = assembly.tree.nodes.findIndex((node) => node.id === input.nodeId);
-  if (index < 0) return rejected(assembly, editError('unknown-node', input.nodeId, `unknown node "${input.nodeId}"`));
-  if (input.pos === undefined && input.axis === undefined && input.phaseAngle === undefined) {
-    return rejected(assembly, editError('invalid-input', input.nodeId, 'ノードの変更内容がありません'));
-  }
-  if (input.pos !== undefined && !isFiniteVec3(input.pos)) {
-    return rejected(assembly, editError('invalid-input', input.nodeId, 'ノード位置が有限値ではありません'));
-  }
-  if (input.axis !== undefined && !isFiniteVec3(input.axis)) {
-    return rejected(assembly, editError('invalid-input', input.nodeId, 'ノード軸が有限値ではありません'));
-  }
-  if (input.phaseAngle !== undefined && !Number.isFinite(input.phaseAngle)) {
-    return rejected(assembly, editError('invalid-input', input.nodeId, 'ノード位相が有限値ではありません'));
-  }
-
-  const previous = assembly.tree.nodes[index]!;
-  const node: TreeNode = {
-    ...previous,
-    ...(input.pos === undefined ? {} : { pos: input.pos }),
-    ...(input.axis === undefined ? {} : { axis: input.axis }),
-    ...(input.phaseAngle === undefined ? {} : { phaseAngle: input.phaseAngle }),
-  };
-  const nodes = [...assembly.tree.nodes];
-  nodes[index] = node;
-  try {
-    const tree = recomputeEdgeLengths(treeWithEdges(nodes, assembly.tree.edges));
-    return commit(assembly, { tree, placements: assembly.placements }, options, {
-      nodeIds: [input.nodeId],
-      edgeIds: assembly.tree.edges.filter((edge) => edge.a === input.nodeId || edge.b === input.nodeId).map((edge) => edge.id),
-      placementIds: externalPlacementsAtNode(assembly, input.nodeId),
-    });
-  } catch (error) {
-    return rejected(assembly, editError('invalid-edge', input.nodeId, errorMessage(error)));
-  }
-}
-
 /** Remove an unreferenced node. Connected edges and mounted parts must be removed first. */
 export function removeNode(
   assembly: VesselAssembly,
@@ -236,59 +178,6 @@ export function removeNode(
   return commit(assembly, { tree, placements: assembly.placements }, options, {
     nodeIds: [nodeId], edgeIds: [], placementIds: [],
   });
-}
-
-/** Add an edge; its supplied length is ignored and replaced with port-to-port distance. */
-export function addEdge(
-  assembly: VesselAssembly,
-  input: EdgeDraft,
-  options: AssemblyEditorOptions = {},
-): AssemblyEditResult {
-  const error = validateNewEdge(assembly, input, undefined, assembly.tree.nodes);
-  if (error) return rejected(assembly, error);
-  const edge: TreeEdge = { ...input, length: 0 };
-  try {
-    const tree = recomputeEdgeLengths(treeWithEdges(assembly.tree.nodes, [...assembly.tree.edges, edge]));
-    return commit(assembly, { tree, placements: assembly.placements }, options, {
-      nodeIds: [edge.a, edge.b], edgeIds: [edge.id], placementIds: [],
-    });
-  } catch (caught) {
-    return rejected(assembly, editError('invalid-edge', edge.id, errorMessage(caught)));
-  }
-}
-
-/** Reconnect an existing edge to other nodes or ports without changing its id. */
-export function reconnectEdge(
-  assembly: VesselAssembly,
-  input: ReconnectEdgeInput,
-  options: AssemblyEditorOptions = {},
-): AssemblyEditResult {
-  const index = assembly.tree.edges.findIndex((edge) => edge.id === input.edgeId);
-  if (index < 0) return rejected(assembly, editError('unknown-edge', input.edgeId, `unknown edge "${input.edgeId}"`));
-  const previous = assembly.tree.edges[index]!;
-  const edge: TreeEdge = {
-    ...previous,
-    ...(input.a === undefined ? {} : { a: input.a }),
-    ...(input.b === undefined ? {} : { b: input.b }),
-    ...(input.portA === undefined ? {} : { portA: input.portA }),
-    ...(input.portB === undefined ? {} : { portB: input.portB }),
-    ...(input.kind === undefined ? {} : { kind: input.kind }),
-    length: 0,
-  };
-  const otherEdges = assembly.tree.edges.filter((_edge, edgeIndex) => edgeIndex !== index);
-  const error = validateNewEdge({ tree: treeWithEdges(assembly.tree.nodes, otherEdges), placements: assembly.placements }, edge,
-    undefined, assembly.tree.nodes, input.edgeId);
-  if (error) return rejected(assembly, error);
-  try {
-    const edges = [...otherEdges, edge];
-    const tree = recomputeEdgeLengths(treeWithEdges(assembly.tree.nodes, edges));
-    return commit(assembly, { tree, placements: assembly.placements }, options, {
-      nodeIds: [edge.a, edge.b, previous.a, previous.b], edgeIds: [edge.id],
-      placementIds: placementsAtEdge(assembly, edge.id),
-    });
-  } catch (caught) {
-    return rejected(assembly, editError('invalid-edge', edge.id, errorMessage(caught)));
-  }
 }
 
 /** Remove an edge only when no placement would become dangling. */

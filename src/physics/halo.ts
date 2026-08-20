@@ -6,18 +6,27 @@
 // 面内・面外の運動は Richardson (1980) の記法に従う。線形解では面内振動数 λ と面外振動数
 // ωz=√c2 が一致しないため、一次の範囲でハロー軌道(閉じた三次元ループ)は存在しない。
 // ハロー軌道は三次の振幅拘束 l1·Ax² + l2·Az² + Δ = 0 が成り立つときに両振動数が一致して
-// 現れるので、haloState は面外振幅 Az からこの拘束で面内振幅 Ax を決め、そのうえで線形解を
-// 面内振動数で駆動する。lissajousState は拘束を課さず、面内・面外を独立な振幅・振動数で
+// 現れるので、haloAmplitudeX は面外振幅 Az からこの拘束で面内振幅 Ax を決める。
+// lissajousState はこの拘束を課さず線形解のみで、面内・面外を独立な振幅・振動数で
 // 振動させる(一般に非共鳴なので準周期のリサジュー図形になる)。
 //
-// 位置・速度そのものは一次の線形解であり、三次の級数展開までは含まない。またゲームの積分器は
-// 地球中心二体 + J2 + 抗力 + 日月三体であって制限三体問題そのものではないため、ここで返した
-// 状態を実際にゲーム内で積分すると軌道はドリフトする。
+// haloState/haloOrbitOffsetsFor は cr3bp.ts の数値修正法(differential correction)で
+// Richardson 3次解を種に真に周期的な軌道を求め、それを継続法(continuation)で目標振幅まで
+// 連続的に追跡する。Richardson の級数展開は小〜中振幅でしか妥当ではなく、NRHO 級の大振幅
+// (L2 ハロー族が垂直リアプノフ軌道へ分岐する近傍)では発散するため、この数値修正が
+// 大振幅での正確さの根拠になる。haloState は修正が収束しない場合のみ線形1次解
+// (lissajousState と同じ centerManifoldState)にフォールバックする。haloOrbitOffsetsFor
+// (マップ上のハロー軌道参照ライン用)は解析的な近似解へフォールバックせず、収束しなければ
+// 空を返す。
+//
+// いずれの経路も CR3BP そのものの解であり、ゲームの積分器(地球中心二体 + J2 + 抗力 +
+// 日月三体)とは運動方程式が異なるため、実際にゲーム内で積分すると軌道はドリフトする。
 import { Ephemeris } from './ephemeris';
 import { OrbitingId } from './attractor';
 import { bodyDef, primaryOf } from './solar-system';
 import { KinematicState, kinematicState } from './kinematic-state';
-import { Vec3, add, cross, len, scale, sub, v3 } from './vec3';
+import { Vec3, add, cross, len, scale, sub } from './vec3';
+import { CorrectedHalo, continueHaloOrbit, correctHaloOrbit, propagateHaloState, sampleHaloOrbitPositions } from './cr3bp';
 
 export type CollinearPoint = 'L1' | 'L2';
 
@@ -156,13 +165,6 @@ export interface HaloCoefficients {
   b21: number;
   b22: number;
   d21: number;
-  // 3次摂動係数 (cos(3τ)/sin(3τ) 項)
-  a31: number;
-  a32: number;
-  b31: number;
-  b32: number;
-  d31: number;
-  d32: number;
   l1: number;
   l2: number;
   delta: number;
@@ -178,9 +180,8 @@ export function haloCoefficients(frame: CollinearFrame, point: CollinearPoint): 
   // 以降の係数はすべてこの k で書かれている(Fortran-Astrodynamics-Toolkit 参照)。
   const k = (l2sq + 1 + 2 * c2) / (2 * lambda); // = 2λ/(λ²+1-c₂) (characteristic eqn より等値)
 
-  // d1, d2: 2次・3次係数の分母に現れるスカラー
+  // d1: 2次係数の分母に現れるスカラー
   const d1 = (3 * l2sq / k) * (k * (6 * l2sq - 1) - 2 * lambda); // 16λ⁴+4λ²(c₂-2)-2c₂²+c₂+1 と等値
-  const d2 = 81 * l2sq * l2sq + 9 * l2sq * (c2 - 2) - 2 * c2 * c2 + c2 + 1;
 
   // 2次摂動係数
   const a21 = 3 * c3 * (k * k - 2) / (4 * (1 + 2 * c2));
@@ -201,24 +202,8 @@ export function haloCoefficients(frame: CollinearFrame, point: CollinearPoint): 
   const a1 = -1.5 * c3 * (2 * a21 + a23 + 5 * d21) - 0.375 * c4 * (12 - k * k);
   const a2 = 1.5 * c3 * (a24 - 2 * a22) + 1.125 * c4;
 
-  // 3次摂動係数 (Richardson 1980 方程式 19a–19f、Fortran-Astrodynamics-Toolkit 参照)
-  const k2 = k * k;
-  const lam2c2 = 9 * l2sq + 1 - c2;
-  const lam2c2p = 9 * l2sq + 1 + 2 * c2;
-  const a31 = -9 * lambda * (c3 * (k * a23 - b21) + k * c4 * (1 + k2 / 4)) / d2
-    + lam2c2 * (3 * c3 * (2 * a23 - k * b21) + c4 * (2 + 3 * k2)) / (2 * d2);
-  const a32 = -9 * lambda * (4 * c3 * (k * a24 - b22) + k * c4) / (4 * d2)
-    - 3 * lam2c2 * (c3 * (k * b22 + d21 - 2 * a24) - c4) / (2 * d2);
-  const b31 = (3 * lambda * (3 * c3 * (k * b21 - 2 * a23) - c4 * (2 + 3 * k2))
-    + lam2c2p * (12 * c3 * (k * a23 - b21) + 3 * k * c4 * (4 + k2)) / 8) / d2;
-  const b32 = (3 * lambda * (3 * c3 * (k * b22 + d21 - 2 * a24) - 3 * c4)
-    + lam2c2p * (12 * c3 * (k * a24 - b22) + 3 * c4 * k) / 8) / d2;
-  const d31 = 3 * (4 * c3 * a24 + c4) / (64 * l2sq);
-  const d32 = 3 * (4 * c3 * (a23 - d21) + c4 * (4 + k2)) / (64 * l2sq);
-
   return {
     a21, a22, a23, a24, b21, b22, d21,
-    a31, a32, b31, b32, d31, d32,
     l1: a1 + 2 * l2sq * s1,
     l2: a2 + 2 * l2sq * s2,
     delta: l2sq - c2,
@@ -227,64 +212,6 @@ export function haloCoefficients(frame: CollinearFrame, point: CollinearPoint): 
 
 function haloConstraint(frame: CollinearFrame, point: CollinearPoint): { l1: number; l2: number; delta: number } {
   return haloCoefficients(frame, point);
-}
-
-// Richardson (1980) 3次精度での共線ラグランジュ点まわりの 3D 位置オフセット [m] (ECI 座標系成分)。
-// ax, az はメートル単位の振幅 (az の正負は北側 (+az) / 南側 (-az) ファミリーに対応)。
-// phase は 0 から 2π までの位相角 τ₁。
-// 参照: Fortran-Astrodynamics-Toolkit / halo_orbit_module.f90 方程式 20a–20c。
-export function haloLocalPosition(
-  frame: CollinearFrame,
-  point: CollinearPoint,
-  ax: number,
-  az: number,
-  phase: number,
-): Vec3 {
-  const coeffs = haloCoefficients(frame, point);
-  const rLocal = frame.r * frame.gamma;
-  const axN = ax / rLocal;
-  const absAz = Math.abs(az);
-  const azN = absAz / rLocal;
-  const deltaM = az >= 0 ? 1 : -1;
-
-  const cos1 = Math.cos(phase);
-  const sin1 = Math.sin(phase);
-  const cos2 = Math.cos(2 * phase);
-  const sin2 = Math.sin(2 * phase);
-  const cos3 = Math.cos(3 * phase);
-  const sin3 = Math.sin(3 * phase);
-
-  const axN2 = axN * axN;
-  const axN3 = axN2 * axN;
-  const azN2 = azN * azN;
-  const azN3 = azN2 * azN;
-
-  // Richardson (1980) 3次展開による無次元局所座標
-  // (x: 主天体→副天体軸, y: 公転方向 [kappa>0 を保証], z: 北極方向)
-  // frame.kappa = 2λ/(λ²+1-c₂) > 0 (Fortran の k と同値、2次コードでの符号ミスを修正済み)
-  const xN = coeffs.a21 * axN2 + coeffs.a22 * azN2
-    - axN * cos1
-    + (coeffs.a23 * axN2 - coeffs.a24 * azN2) * cos2
-    + (coeffs.a31 * axN3 - coeffs.a32 * axN * azN2) * cos3;
-  const yN = frame.kappa * axN * sin1
-    + (coeffs.b21 * axN2 - coeffs.b22 * azN2) * sin2
-    + (coeffs.b31 * axN3 - coeffs.b32 * axN * azN2) * sin3;
-  const zN = deltaM * (
-    azN * cos1
-    + coeffs.d21 * axN * azN * (cos2 - 3)
-    + (coeffs.d32 * azN * axN2 - coeffs.d31 * azN3) * cos3
-  );
-
-  const x = xN * rLocal;
-  const y = yN * rLocal;
-  const z = zN * rLocal;
-
-  // ECI 軸上の相対オフセットベクトル
-  return v3(
-    x * frame.xHat.x + y * frame.yHat.x + z * frame.zHat.x,
-    x * frame.xHat.y + y * frame.yHat.y + z * frame.zHat.y,
-    x * frame.xHat.z + y * frame.yHat.z + z * frame.zHat.z,
-  );
 }
 
 // 指定したラグランジュ点(副天体 secondary の L1/L2)まわりのリサジュー軌道初期状態。
@@ -301,6 +228,10 @@ export function lissajousState(t: number, ephemeris: Ephemeris, params: Lissajou
 // 振幅拘束で決まる(az=0 でも面内振幅は下限値を取り、そこから単調に増える)。
 export function haloState(t: number, ephemeris: Ephemeris, params: HaloParams): KinematicState {
   const frame = collinearFrame(params.secondary, params.point, t, ephemeris);
+  const halo = correctedHaloOrbit(frame, params.point, params.az);
+  if (halo) return haloOrbitState(t, halo, params.phase ?? 0);
+
+  // 数値修正が収束しない極端な振幅などでは、線形1次解へフォールバックする。
   const ax = haloAmplitudeX(frame, params.point, params.az);
   // 拘束が成り立つ = 面内・面外の振動数が一致するので、面外も面内振動数 λ で駆動する。
   // 面外位相を π/2 ずらして面内の x と直交させ、閉じた三次元ループにする。
@@ -314,4 +245,78 @@ export function haloAmplitudeX(frame: CollinearFrame, point: CollinearPoint, az:
   // 無次元化は gamma 基準(Richardson の局所座標)なので、その単位で解いてから [m] へ戻す。
   const azN = az / (frame.r * frame.gamma);
   return Math.sqrt(-(delta + l2 * azN * azN) / l1) * frame.r * frame.gamma;
+}
+
+// L点のバリセントリック x 座標(CR3BP 無次元、原点=系の重心、+x=主天体→副天体、
+// 距離の単位は主天体・副天体間距離 r)。cn() の分母・符号が L1/L2 で異なるのと同じ幾何。
+function collinearPointX(point: CollinearPoint, mu: number, gamma: number): number {
+  return point === 'L1' ? 1 - mu - gamma : 1 - mu + gamma;
+}
+
+// CollinearFrame 上で数値修正済みの真の周期軌道(CR3BP 無次元座標)。frame/point/mu/xl は
+// haloOrbitState/haloOrbitOffsets が ECI へ戻すのに要る。
+export interface HaloOrbit {
+  readonly frame: CollinearFrame;
+  readonly point: CollinearPoint;
+  readonly mu: number;
+  readonly xl: number;
+  readonly orbit: CorrectedHalo;
+}
+
+// 継続法の1ステップあたり z0 の最大変化(無次元)。小さいほど NRHO 級の大振幅まで安定して
+// 追跡できるが、その分ステップ数(=積分回数)が増える。
+const HALO_CONTINUATION_STEP_Z0 = 0.005;
+
+// ハロー族は面内リアプノフ軌道(Az=0)から分岐するので、まずその平面軌道(Richardson 線形解を
+// 種に数値修正した真の周期軌道)を種にし、そこから継続法で Az まで面外振幅を伸ばして
+// 真に周期的な軌道(ハロー/NRHO)を数値修正で求める。収束しなければ null(呼び出し側は
+// 解析解にフォールバックする)。
+export function correctedHaloOrbit(frame: CollinearFrame, point: CollinearPoint, az: number): HaloOrbit | null {
+  const xl = collinearPointX(point, frame.mu, frame.gamma);
+  const rDim = frame.r;
+  const planarAx = haloAmplitudeX(frame, point, 0);
+  if (!Number.isFinite(planarAx) || planarAx <= 0) return null;
+
+  // x=+Ax·cos(τ) の位相規約(centerManifoldState と同じ)での面内固有ベクトルの比は -kappa
+  // (kappa 自体は haloLocalPosition の x=-Ax·cos(τ) 規約に合わせて定義されているため符号が要る)。
+  const planarSeed = { x0: xl + planarAx / rDim, z0: 0, vy0: (-frame.kappa * frame.lambda * planarAx) / rDim };
+  const planarOrbit = correctHaloOrbit(frame.mu, planarSeed, Math.PI / frame.lambda);
+  if (!planarOrbit) return null;
+
+  const targetZ0 = az / rDim;
+  const corrected = continueHaloOrbit(frame.mu, planarOrbit, planarOrbit.halfPeriod, targetZ0, HALO_CONTINUATION_STEP_Z0);
+  if (!corrected) return null;
+  return { frame, point, mu: frame.mu, xl, orbit: corrected };
+}
+
+// CR3BP 無次元の回転系相対位置(バリセントリック x を含む)を、frame が定める ECI 軸へ戻す。
+function offsetToEci(frame: CollinearFrame, xl: number, x: number, y: number, z: number): Vec3 {
+  const r = frame.r;
+  return add(add(scale(frame.xHat, (x - xl) * r), scale(frame.yHat, y * r)), scale(frame.zHat, z * r));
+}
+
+// 修正済み軌道上の位相(0..2π、軌道1周ぶんの無次元角)における ECI 状態。
+export function haloOrbitState(t: number, halo: HaloOrbit, phase: number): KinematicState {
+  const { frame, xl, mu, orbit } = halo;
+  const s = propagateHaloState(mu, orbit, phase);
+  const [x, y, z, vx, vy, vz] = [s[0] ?? 0, s[1] ?? 0, s[2] ?? 0, s[3] ?? 0, s[4] ?? 0, s[5] ?? 0];
+  const n = len(frame.omega);
+  const relPos = offsetToEci(frame, xl, x, y, z);
+  const relVel = offsetToEci(frame, 0, vx * n, vy * n, vz * n);
+  const rEci = add(frame.origin, relPos);
+  const vEci = add(relVel, cross(frame.omega, rEci));
+  return kinematicState(t, rEci, vEci);
+}
+
+// 修正済み軌道を1周期ぶん count 点、L点原点からの ECI 相対オフセットとしてサンプリングする。
+export function haloOrbitOffsets(halo: HaloOrbit, count: number): Vec3[] {
+  const raw = sampleHaloOrbitPositions(halo.mu, halo.orbit, count);
+  return raw.map((p) => offsetToEci(halo.frame, halo.xl, p.x, p.y, p.z));
+}
+
+// ハロー軌道表示ライン用: 数値修正済みの軌道を count 点サンプリングして返す
+// (L点原点からの ECI 相対オフセット)。収束しなければ空を返す。
+export function haloOrbitOffsetsFor(frame: CollinearFrame, point: CollinearPoint, az: number, count: number): Vec3[] {
+  const halo = correctedHaloOrbit(frame, point, az);
+  return halo ? haloOrbitOffsets(halo, count) : [];
 }
