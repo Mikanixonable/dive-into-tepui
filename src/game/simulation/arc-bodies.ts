@@ -14,11 +14,8 @@ export type FutureBodyCandidate = {
   readonly radius: number; // 表面半径 [m]
 };
 
-// 弧が天体を引く相手。revision は答える内容が変わったことを呼び出し側の再積分キャッシュへ、
-// candidateRevision は候補の顔ぶれが変わったことを弧の保持する一覧へ伝える。
+// 弧が天体を引く相手。候補の顔ぶれは弧を作った時点で確定する。
 export type FutureAttractorProvider = {
-  readonly revision: number;
-  readonly candidateRevision: number;
   readonly candidates: () => readonly FutureBodyCandidate[];
   // 候補1体の時刻 t での状態。
   readonly bodyAt: (id: AttractorId, t: number) => Attractor;
@@ -71,19 +68,28 @@ function heaviestGravityId(candidates: readonly FutureBodyCandidate[]): Attracto
 }
 
 export class ArcBodies {
-  private watches: Watch[] = [];
-  private knownCandidateRevision = -1;
+  // 候補1体につき1つ。顔ぶれは弧の一生を通じて同じなので、構築時に組んで持ち続ける。
+  private readonly watches: readonly Watch[];
   // 直近の resolve で解決した天体の数と、そのうち期限到来で訪問したものの数。
   lastResolved = 0;
   lastRevisited = 0;
 
-  constructor(private readonly sources: FutureAttractorProvider) {}
+  constructor(private readonly sources: FutureAttractorProvider) {
+    const candidates = sources.candidates();
+    const pinnedId = heaviestGravityId(candidates);
+    this.watches = candidates.map((candidate) => ({
+      candidate,
+      gravityReach: Math.sqrt(2 * candidate.mu / C.GRAVITY_NEGLIGIBLE_ACCEL),
+      pinned: candidate.id === pinnedId,
+      member: false,
+      nextVisitT: -Infinity,
+    }));
+  }
 
   // 時刻 t に弧が読む天体一式。from は判定の基準にする弧の先端状態、stepDt はこの解決のあとに
   // 踏む刻み幅 [s](まだ決まっていない最初の解決では 0 でよい)。返る配列はこの呼び出しごとに
   // 新しく、呼び出し側が次の解決まで保持してよい。
   resolve(t: number, from: KinematicState, stepDt: number): ArcBodyWindow {
-    this.syncCandidates();
     // 次の歩で表面へ届きうる天体が一覧の外に残らないよう、刻み幅の数歩ぶん先まで入れておく。
     const lead = Math.max(stepDt, C.ARC_MIN_STEP_DT) * C.ARC_BODY_LEAD_STEPS;
     const gravity: Attractor[] = [];
@@ -103,28 +109,6 @@ export class ArcBodies {
       collision.push(body);
     }
     return { gravity, collision };
-  }
-
-  // 候補の顔ぶれが変わっていれば一覧を組み直す。生き残った候補の成員状態は引き継ぎ、新しい
-  // 候補はすぐ訪問する。
-  private syncCandidates(): void {
-    if (this.knownCandidateRevision === this.sources.candidateRevision) return;
-    this.knownCandidateRevision = this.sources.candidateRevision;
-    const candidates = this.sources.candidates();
-    const pinnedId = heaviestGravityId(candidates);
-    // 引き継ぎ元を id で引けるようにしてから、候補の順に組み直す。
-    const previous = new Map(this.watches.map((w) => [w.candidate.id, w]));
-    this.watches = [];
-    for (const candidate of candidates) {
-      const held = previous.get(candidate.id);
-      this.watches.push({
-        candidate,
-        gravityReach: Math.sqrt(2 * candidate.mu / C.GRAVITY_NEGLIGIBLE_ACCEL),
-        pinned: candidate.id === pinnedId,
-        member: held?.member ?? false,
-        nextVisitT: held?.nextVisitT ?? -Infinity,
-      });
-    }
   }
 }
 

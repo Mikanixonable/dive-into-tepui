@@ -41,8 +41,6 @@ export class PredictedArc {
   retainFrom: number;
   // 実シミュレーションのサブステップ幅の上限 [s]。消費される弧はこれに刻みを揃える。
   simulationMaxStep = C.SUBSTEP_MAX_DT;
-  // 生成時の sources.revision。represents が完全一致を要求する。
-  readonly sourceRevision: number;
 
   // state0 を起点に先端を構築する。requiredEnd/retainFrom は state0.t で初期化され、
   // 所有者が書き換えるまで needsGrowth は偽のまま。keplerTail は先端の先を二体ケプラー外挿で
@@ -61,7 +59,6 @@ export class PredictedArc {
     this._trajectory = new DynamicTrajectory(state0);
     this.requiredEnd = state0.t;
     this.retainFrom = state0.t;
-    this.sourceRevision = sources.revision;
     this.bodies = new ArcBodies(sources);
   }
 
@@ -78,14 +75,14 @@ export class PredictedArc {
   get decimation(): number { return this._decimation; }
 
   // この弧が (state0, end) を持つ区間をそのまま表せるか(= 作り直さずに使い回せるか)。
-  // sourceRevision は完全一致を要求する。積分済みの間引き下限が、要求区間(end で決まる)の
+  // 積分済みの間引き下限が、要求区間(end で決まる)の
   // 求める下限の ARC_MAX_SAMPLE_COARSENING 倍を超えて粗ければ、区間を狭めるだけでは折れ線の
   // クリック候補が飛び飛びの点になってしまうので表せないと答える。比べるのは間引き下限どうしで、
   // 実際のサンプル間隔ではない — 間隔は刻み幅(ARC_STEPS_PER_REV)でも決まり、そちらは作り直しても
   // 同じ値になるので、間隔を下限と比べると縮めようのない粗さを理由に毎フレーム作り直すことになる。
-  // 起点は state0 が同一参照かどうかで判定する。
-  represents(state0: KinematicState, end: number, sourceRevision: number): boolean {
-    if (sourceRevision !== this.sourceRevision) return false;
+  // 起点は state0 が同一参照かどうかで判定する — 計画のノードは不変オブジェクトで、編集は
+  // 必ず別オブジェクトへの差し替えになるので、参照が同じなら積分の入力も同じ。
+  represents(state0: KinematicState, end: number): boolean {
     const sampleInterval = (end - this.state0.t) / C.ARC_MAX_SAMPLES;
     if (this._decimation > sampleInterval * C.ARC_MAX_SAMPLE_COARSENING) return false;
     return state0 === this.state0;
