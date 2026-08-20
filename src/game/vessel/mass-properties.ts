@@ -235,8 +235,9 @@ function partPressure(part: AnyPart): number {
     case 'oxidizer_tank':
     case 'reductant_tank':
       return part.requiredPressure * 1e6;
-    case 'pressurant_tank':
-      return part.maxPressure * 1e6;
+    // 加圧ガスタンクは区画に据え付けられた独立の圧力容器であり、殻の質量は自分の weight に
+    // 含まれる(build-cost.ts の tank-shell)。区画の壁がその耐圧を受け持つわけではないので、
+    // 区画自体の内圧には数えない。
     case 'cockpit':
       return CABIN_PRESSURE;
     default:

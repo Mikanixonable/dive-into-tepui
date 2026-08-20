@@ -222,7 +222,7 @@ export function register(): void {
     const moved = (mount: object): readonly PartPlacement[] => bp.placements.map((p) => (
       p.part.type === 'engine' ? { ...p, mount } as PartPlacement : p));
     assertIssue(
-      validateBlueprint(withPlacements(bp, moved({ kind: 'surface', edgeId: 'aft', along: 0.2, around: 0 }))),
+      validateBlueprint(withPlacements(bp, moved({ kind: 'surface', edgeId: 'aft', along: 0.04, around: 0 }))),
       'warning', '推力軸が重心から');
     // トラスの先端まで離すと許容を超え、警告ではなく誤りになる。
     assertIssue(
