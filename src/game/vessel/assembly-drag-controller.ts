@@ -137,10 +137,7 @@ export class AssemblyDragController {
     this.pose = { position: basis.origin, basis, verdict: result.accepted ? 'valid' : 'invalid' };
     const candidate: SnapCandidate = {
       placement,
-      verdict: {
-        accepted: result.accepted,
-        failures: result.accepted ? [] : [result.errors.some((error) => error.code === 'occupied-port') ? 'occupied' : 'work-area'],
-      },
+      verdict: { accepted: result.accepted, reason: result.accepted ? null : result.errors[0]?.message ?? null },
       targetLabel: target.targetId,
       position: basis.origin,
       targetKind: this.workbench.validateTarget(target.targetId).kind,
