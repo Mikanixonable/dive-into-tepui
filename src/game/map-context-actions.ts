@@ -616,7 +616,8 @@ export class MapContextActions {
           { type: 'header', label: base?.name ?? target.name, subLabel },
           ...controlItem,
           ...dockItems,
-          { label: '基地ビューを開く', act: 'openDock' },
+          { label: '基地の操作を開く', act: 'openBaseOperations' },
+          { label: '組み立てる', act: 'openAssembly' },
           MenuCommon.focus(),
           ...this.navTargetItems(target, 0),
           ...this.duplicateItems(),
@@ -645,8 +646,11 @@ export class MapContextActions {
             this.docking?.clearActiveBaseIf(base);
             base.alive = false;
           }
-        } else if (act === 'openDock') {
-          if (base) this.docking?.activate(base);
+        } else if (act === 'openBaseOperations') {
+          if (base) this.docking?.openBaseOperations(base);
+          else this.hud.hint('基地が見つかりません');
+        } else if (act === 'openAssembly') {
+          if (base) this.docking?.startAssembly(base);
           else this.hud.hint('基地が見つかりません');
         } else if (act === 'duplicate') {
           this.runDuplicate(target);

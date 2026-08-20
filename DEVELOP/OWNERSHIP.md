@@ -29,7 +29,7 @@ main.ts
 ├── Hud                  ... initHud() でタイトル(ステージ選択)画面より前に生成、Game へ参照を渡す。
 │   │                       root 直下の重なり順は layers: OverlayLayers(overlay-layer.ts、marker/panel/window/popup/gate/view/notify/system の
 │   │                       8層、この順に z-index 10〜17。gate は入力ゲートの遮蔽幕(#hud-overlay-shield)専用で、
-│   │                       ゲート対象(marker/panel/window/popup)より上・ゲートを開き得るモーダル(view の BaseView、
+│   │                       ゲート対象(marker/panel/window/popup)より上・ゲートを開き得るモーダル(view の資源移送ダイアログ、
 │   │                       system のヘルプ・一時停止・セーブブラウザ)より下に置く)が正本 — z-index を持つのは overlay-layer.ts だけで、他の全 DOM 所有者は
 │   │                       自分がどの層の子になるかを選ぶだけ。層内の前後は DOM 順、最前面化は bringToFront() のみ
 │   ├── OverlayManager   ... 全オーバーレイ(モーダル/ポップアップ/ウィンドウ)の論理的な重なり順・ESC 配送先・
@@ -114,22 +114,38 @@ main.ts
 │       │   └── PlanPanel(panel)            ... 計画パネル(hud/plan-panel.ts)の DOM 一式(ノード一覧・Δv 手入力フォーム)
 │       │       └── HoldButton ×6               ... Δv 6方向の長押しボタン(dvButtons、PlanEditor.updateEditing がこれ経由で読む)
 │       ├── PlanGuide                       ... 直近ノードの接近/達成通知済みフラグ(ノード自体への参照)を持つ
-│       ├── Docking                        ... 基地への収容・発進(EntityManager/CameraSystem/ActiveVesselController/
+│       ├── Docking                        ... 基地への収容・発進、基地操作ウィンドウ、艦体の組立セッション
+│       │                                       (EntityManager/CameraSystem/ActiveVesselController/
 │       │                                       ViewManager にまたがる横断)。Game への参照は持たず、ポーズだけは
 │       │                                       pauseGame/resumeGame の2クロージャで受け取る(「クロージャ注入を避け
 │       │                                       参照を渡す」規則への暫定的な例外。理由は docking.ts のコンストラクタ
-│       │                                       コメントと CLAUDE.md にある)
-│       │   ├── BlueprintLibrary               ... 生産にかけられる設計の保管庫(private blueprints)。永続化は
-│       │   │                                   LocalStorageBlueprintStore(鍵 tepui.blueprints)。BaseView へ参照で渡す
-│       │   ├── BaseView                       ... DOM は Hud.layers.view 配下。格納艦/部品/生産タブのフルスクリーン UI。
-│       │   │                                   通貨は存在しない — 修理は失われた耐久ぶんの資材、補給は積んでいる推進剤、
-│       │   │                                   換装は無償で、いずれも shortfall/canAfford/spend を通る。
-│       │   │                                   生産タブは設計ごとの生産可能性(不足の資源・設備・電力)と基地の在庫を出し、
-│       │   │                                   onProduceVessel(base, blueprint) で Docking.produceVessel を呼ぶ。
-│       │   │                                   デバッグ用の資源加算(資源 id + 質量 → base.baseState.resources)も同じタブが持つ
-│       │   └── ResourceTransferDialog        ... DOM は Hud.layers.view 配下。ドッキング中の2機の間で資源を移す
+│       │                                       コメントと CLAUDE.md にある)。ビューは切り替えない — 基地操作も組立も
+│       │                                       ワールドビューの上に重なるウィンドウとして開く
+│       │   ├── BaseOperationsWindow ×n     ... DOM は Hud.layers.window 配下。基地 id をキーにした
+│       │   │                                   Map<string, BaseOperationsWindow>(private baseWindows)で、1つの基地に
+│       │   │                                   2枚は開かない。格納艦艇/部品/生産の3面。通貨は存在しない — 修理は失われた
+│       │   │                                   耐久ぶんの資材、補給は積んでいる推進剤、換装は無償で、いずれも
+│       │   │                                   shortfall/canAfford/spend を通る。デバッグ用の資源加算(資源 id + 質量 →
+│       │   │                                   base.baseState.resources)も生産タブが持つ。非クリップは高々1枚
+│       │   │                                   (排他グループ 'base-operations-temp' を DraggableWindow が宣言する)
+│       │   ├── AssemblyDragController      ... コンストラクタで scene から new する(1つだけ、セッションより長生きする)。
+│       │   │                                   掴んでいる部品・そのゴーストメッシュ・update が決めた姿勢と可否の正本。
+│       │   │                                   掴んでいる間だけ document の pointerup/pointercancel を購読する
+│       │   │                                   (「離すまで続く」操作は毎フレームの入力キューに現れないため)
+│       │   ├── AssemblySession?            ... 進行中の組立(private assembly、高々1つ)。基地・DockWorkbenchSession・
+│       │   │   │                               DockWorkbenchController・AssemblyPanel・編集中の targetId を1つの値として持つ。
+│       │   │   │                               startAssembly が組み、commitAssembly/cancelAssembly が endAssembly 経由で捨てる
+│       │   │   ├── DockWorkbenchSession    ... 対象(基地本体・格納艦・下書き)ごとの編集中の VesselAssembly と倉庫、
+│       │   │   │                               Undo/Redo 履歴の正本。実機へ届くのは commitAssembly の瞬間だけ
+│       │   │   ├── DockWorkbenchController ... 上のセッションに対するドラッグ状態機械(掴んでいる部品・出所・スナップ候補)
+│       │   │   └── AssemblyPanel           ... DOM は Hud.layers.window 配下。部品棚ウィンドウ。ボタン押下が
+│       │   │                                   AssemblyDragController.beginDrag を呼ぶ唯一の経路
+│       │   ├── DraftEntry ×n               ... 新規船の下書き(private drafts)。VesselAssembly と AssemblyRenderObject を持ち、
+│       │   │                                   実体は基地の renderObject の子として浮かぶ。createDraft が作り buildDraft が
+│       │   │                                   実艦にして消す(どちらもまだ UI の入口を持たない)
+│       │   └── ResourceTransferDialog      ... DOM は Hud.layers.view 配下。ドッキング中の2機の間で資源を移す
 │       │                                       ダイアログ(readonly transferDialog)。openTransfer() が開く
-│       ├── ViewManager                    ... 現在のビュー(combat/map/dock)の正本。遷移は setView() ひとつに集約。
+│       ├── ViewManager                    ... 現在のワールドビュー(combat/map)の正本。遷移は setView() ひとつに集約。
 │       │                                       ActiveVesselController・TouchControls | null はいずれもコンストラクタ引数
 │       │                                       (ViewManager より先に生成される)。docking への参照は ViewManager より後に
 │       │                                       生成されるため setDocking() で構築後に注入される(private フィールドとして
@@ -148,7 +164,7 @@ main.ts
 │       │                                       super() の後に走るため)。ステージが自機を置くのは protected addOwnShip(init?) で、
 │       │                                       new Vessel → entities.addVessel → activeVessels.claimIfNone をまとめて行う
 │       │                                       (初期弾薬は CrewedShipInit.ammo として艦の構築引数に載る)。ステージ以外では
-│       │                                       Docking.produceVessel が要求を集計し在庫を消費して new Vessel し
+│       │                                       Docking.buildDraft が下書きの要求を集計し在庫を消費して new Vessel し
 │       │                                       (entities へは足さず基地の dockedVessels へ入る)、
 │       │                                       Docking.launch が発進時に entities.addVessel + activeVessels.set する — 新造艦が
 │       │                                       その場で操作対象を奪わないよう claimIfNone は通らない。EntityManager の
@@ -161,7 +177,7 @@ main.ts
 │       │                                       ではなく main.ts(Stage の構築より前に済ませ、完成した
 │       │                                       Ephemeris を Game のコンストラクタへ渡す)。
 │       │                                       隻数の静的宣言は無い — 何隻をどこへ置くかは init の中身。
-│       │                                       freeProcurement/executesPlans は
+│       │                                       executesPlans は
 │       │                                       インスタンス側の既定 false なフラグ、authoring は既定 null の ObjectAuthoring
 │       │                                       (配置・複製の口)。CreativeStage だけが両方を有効にし、authoring は自身を返す。
 │       │                                       _activeVessels は StageDeps の一つとして引数で受け取り(protected _activeVessels)、
@@ -473,7 +489,7 @@ main.ts
 | `Hud` | main.ts | Game(コンストラクタ引数で受け取り)経由でほぼ全サブシステム |
 | `WorldSfx` / `UiSfx` | main.ts | Game 経由で、各消費側は実際に鳴らす側だけをコンストラクタ引数で受け取る(世界内の音は `WorldSfx`、操作・通知音は `UiSfx`、`Logistics` だけが両方)。`WorldSfx` は `Launcher`(コンストラクタ引数。`new Game(...)` と、`update` が決着の瞬間に呼ぶ `setThrust(false)` の両方に使う)へも直接渡る |
 | `AudioEngine` / `Bgm` | main.ts | `AudioEngine` は `Bgm`/`WorldSfx`/`UiSfx`(それぞれコンストラクタ引数)だけが持つ。`Bgm` は `SettingsView`(音量・試聴)・`Launcher`(周回の開始で `resume()`、決着で `stop()`)へ渡り、`PauseMenu` の音量スライダと `game.input.onUserGesture`(unlock + ensureStarted)は Launcher が周回ごとに配線する。Game 自身はどちらへの参照も持たない |
-| `Hud.overlayManager`(`OverlayManager`) | `Hud`(`buildHudDom` が構築) | 全オーバーレイ所有クラス(`ContextMenu`/`ObjectPicker`/`PropertyWindow`/`PauseMenu`/`SaveBrowser`/`ObjectPlacerPanel`/`HelpPanel`、および `ResultScreen`・`ViewManager.dockOverlayHandle`)がコンストラクタ引数または `hud.overlayManager` 経由で受け取り、`open`/`close`/`reconfigure` を自分自身に対して呼ぶ。台帳(重なり順・排他グループ)の正本はこのクラスだけが持つ |
+| `Hud.overlayManager`(`OverlayManager`) | `Hud`(`buildHudDom` が構築) | 全オーバーレイ所有クラス(`ContextMenu`/`ObjectPicker`/`PropertyWindow`/`PauseMenu`/`SaveBrowser`/`ObjectPlacerPanel`/`HelpPanel`、および `ResultScreen`・`DraggableWindow`(そこから組む全ウィンドウの代理として登録する))がコンストラクタ引数または `hud.overlayManager` 経由で受け取り、`open`/`close`/`reconfigure` を自分自身に対して呼ぶ。台帳(重なり順・排他グループ)の正本はこのクラスだけが持つ |
 | `PauseMenu` | main.ts | Game(`Game.handleInput` が `hud.overlayManager.closeTopmostOnEscape()` で閉じ切れなかったときだけ `toggle(true)` を呼ぶ。開閉の一時停止反映は main.ts 側の配線)・MapContextActions(空域右クリックの「設定メニューを開く」項目)・`Launcher`(コンストラクタ引数、`new Game(...)` に渡すだけ)。コンストラクタは `RenderPipeline` を `DebugTargetHost` として受け取り、そのまま `GraphicsPanel` へ転送するだけで自身は保持しない |
 | `MarkerManager` | Game | マーカーを出す全モジュール(PilotMarkers・Targeter・NavTarget・Logistics・FocusMarkers・PlanGuide・PlanDisplay)。`combatMarkers`/`leadMarkers` は参照共有ではなく MarkerManager 自身の子(§1 参照) |
 | `Ephemeris` | `Launcher`(モジュール private な `initEphemeris` が `Stage.createEphemeris` 経由で `Game` の構築より前に完成させる) | Game(コンストラクタ引数)経由で EnvironmentScene・Simulator・MapCamera・FocusMarkers・NavTarget・PlanEditor(→PlanDisplay)・FutureAttractors・DisplayWindowManager(コンストラクタ引数) |
@@ -544,7 +560,7 @@ main.ts
 | Δv アーム/ボタンのホールド継続時間・ラッチ状態 | `PlanEditor.dvHoldTime` / `NodeGizmo.latch` | 6方向ぶんの経過秒数(ホールドレートのランプに使う)と、ドラッグがラッチへ入った軸/超過量。加算そのものは `PlanEditor.applyDv` に一本化 |
 | NaN 検出済みフラグ | `NanWatchdog`(Game 所有) | 一度検出したら以後の検査を止める |
 | マニューバ計画(ノード列・アンカー) | `Plan` | 所有は各 `Vessel`(艦ごとに1個。`PlanEditor.plan` は活艦のものを転送する getter)。起点とノード列は **`{ anchor, nodes } \| null` という1つの値**で持ち、`null` ⟺ ノードが1件も無い — 片方だけを更新できる形にしていない。ノードが1件も無い計画の起点は自機の現在状態そのものなので `Plan` 自身は持たず、借りる先を渡す `anchorOr(fallback)` が起点を読む唯一の口(`displayData(shipState)`/`addNode`/`nodeTimeRange` はいずれもこれを通る)。呼び出し側に `?? ship.state` を書かせないため、起点は `KinematicState | null` として外へ出さない — `PlanEditor.displayedPlan` は `plan.displayData(ship.state)` を毎フレーム解決し(`PlanData.anchor` は常に非 null)、`nodeTimeRange(idx, from, …)` も常に範囲を返す。凍結の有無そのものを答えるのは保存経路の `frozenData(): PlanData | null` だけで、その `null` は「保存すべき計画が無い」を意味する。ノード・起点とも 1 個の `KinematicState`(実行時刻 = `t`、Δv は導出値)。ノード列は `addNode` が挿入位置より後ろを破棄してから push するため常に実行時刻順。`addNode(postState, from)` はノードがまだ1件も無いときだけ `from` を起点として凍結し(既に凍結済みなら使わない)、`(凍結済みの起点 ?? from).t` 以前の状態は受け付けず `-1` を返す。`consumeNodesUpTo(t, actualState)` は実行時刻が `t` 以前のノードをまとめて取り除き、取り除いた件数を返すとともに、**残るノードがあるときだけ** `anchor` を `actualState`(実際に到達した状態)へ差し替える — 1件も残らなければ起点ごと捨てる。呼ぶのは `PlanGuide.update`・`PlanExecutor.finish`・`CreativeStage.applySimulationEvents` の3か所だけで、動力飛行の残差を消さずに以降の計画へ残すのが `actualState` を使う目的。編集世代 `revision`(private `_revision` + public getter)を増やすのは実際に変えた呼び出しだけ(`addNode`/`removeNode`/`replaceNode`/`consumeNodesUpTo`/`clear`。`applyNodeDv` は委譲先の `replaceNode` でのみ)。`_revision` は `{anchor, nodes}` の外に持ち、空↔非空をまたいでも単調増加する(キャッシュ鍵として衝突させないため)。ノードが1件も無いあいだ起点が自機を追うことは編集ではないので増やさない — その唯一の区間は `plan-path.ts` の `PlanPath.update` が毎フレーム自機の `PredictedArc` を借用(`owned: false`)として答えるだけで、`represents` による区間再利用判定自体を経由しない |
-| 機体の設計(ブループリント) | `BlueprintLibrary`(private `byId`) | 保存・読み込み・複製・削除・改名・取り込みはすべてこのクラスに閉じる。永続化そのものは `BlueprintStore`(既定は `LocalStorageBlueprintStore`、鍵は `tepui.blueprints`)が持ち、既存のセーブ(`tepui.saveIndex`/`tepui.snapshot.*`)とは鍵が分かれている。`VesselBlueprint` は不変値で、改名も複製も新しい値を返す(元を書き換えない)。`feedNetwork` が保持するのは手動で敷いた区間だけで、自動敷設ぶんは保存せず設計から毎回導出する |
+| 機体の設計(ブループリント) | `BlueprintLibrary`(private `byId`) | いまこのクラスを new する経路は無い(生産にかけられるのは `default-blueprints.ts` の組み込み設計と、組立セッションが組み立てた構成)。保存・読み込み・複製・削除・改名・取り込みはすべてこのクラスに閉じる。永続化そのものは `BlueprintStore`(既定は `LocalStorageBlueprintStore`、鍵は `tepui.blueprints`)が持ち、既存のセーブ(`tepui.saveIndex`/`tepui.snapshot.*`)とは鍵が分かれている。`VesselBlueprint` は不変値で、改名も複製も新しい値を返す(元を書き換えない)。`feedNetwork` が保持するのは手動で敷いた区間だけで、自動敷設ぶんは保存せず設計から毎回導出する |
 | 操作対象(アクティブ)機体 | `ActiveVesselController`(private `_current`) | 艦艇でも軌道基地でも同じ1つの参照。`Game.player` はこれへ転送するだけの getter。初期値は構築時に自分で解決する(構築引数の `activePlayerId` → `entities.ownShips()` の id 一致 → 先頭 → null)。以後の書き換えは `set(vessel)`/`setOrNull(vessel \| null)`/`remove(vessel)`/`reclaimDead()` の4つに閉じる。カメラ参照・ターゲット解除の副作用もすべてここに閉じる(下記「たまたま同時に切り替わる」節参照)。`remove` はマップの削除メニューなど明示的な取り除きから、`reclaimDead` は `Game.advanceSimulation` が全ステージ共通で毎フレーム無条件に呼ぶ(喪失した自機を他のエンティティと同じく速やかに回収する) |
 | 軌道計画の実行モード | `Vessel.planExecution`(型 `PlanExecutionMode` = `'off' \| 'instant' \| 'powered'` は `plan/plan-executor.ts` が定義し `vessel/vessel.ts` は re-export するだけ) | 全ての機体が持つ(既定 `'off'`)。`'instant'` は `CreativeStage.applySimulationEvents` がノード時刻ちょうどで `state` をノードの絶対状態へ置き換え、`'powered'` は `PlanExecutor` が姿勢制御・噴射で実行する。操作対象艦での手動並進(`this.thrust !== null`)・手動回転(`throttle.hasManualRotationInput`)は `Vessel.updateControls` が `'powered'` を `'off'` へ落とす |
 | PlanExecutor の状態機械(`phase`/`targetNode`/`burnDirWorld`/`burnUpWorld`/`pendingAccel`) | `PlanExecutor`(艦ごとの) | 艦の `planExecution`/ノード/生死/ゲートから毎フレーム `update` が導出。`targetNode` はノードの**参照**を持ち、`node.t` ではなく `node !== targetNode` で差し替わりを検出する(`Plan.applyNodeDv`/`replaceNode` は同じ `t` のまま新しいオブジェクトへ差し替えるため)。噴射ゲート(`simSpeed.canShipAct`)は保持せず、`update`/`applyIgnitionAndCutoff`/`nextEventTime` が各自引数で受け取る。`ship.torque`/`ship.thrust`/`ship.plan` は `PlanExecutor` が唯一書き換える(`'powered'` の間のみ)が、書き込みは `update`(毎フレーム、`Vessel.updateControls` の後)と `applyIgnitionAndCutoff`(simTime イベント境界ごと)の両方から起きる — 前者は「操作艦で `updateControls` が毎フレーム上書きする `thrust` を、その後で確実に正しい値へ戻す」役、後者は「点火・遮断の瞬間を simTime ちょうどに固定する」役で、互いの代わりにはならない |
@@ -555,8 +571,11 @@ main.ts
 | 予測到達割合(`predictionRatio`)・直近 `sync()` で受け取った表示期間(`lastDuration`) | `DisplayWindowManager` | いずれも private な導出値。`predictionRatio` は `sync(player)` が呼ばれるたび private `predictionCoverageRatio(player)` が自機の `predicted.state.t` と `current`(simTime, duration)から自分で求め直す(外部からの書き込みはない)。`lastDuration` は直近の `resolve()` 呼び出しが確定させた表示期間を憶えておくだけの値で、ジャンプ入力(DOM イベント、フレーム外)が `sliderT` を逆算する際にだけ参照される |
 | マップ視点(注視点相対オフセット・パン・上方向)・座標系(cameraFrame)・フォーカス(FocusTarget)・Viewpoint | `MapCamera` | `viewpoint: Viewpoint` は `CombatCameraSystem` と同じ形。`CameraSystem` はこの `viewpoint` を読むだけで自分では持たない。フォーカスは `camera/focus-target.ts` の `FocusTarget`(`{kind:'object', id}` または `{kind:'point', frame, point}`)で、`{kind:'object'}` が指す実位置は `MapCamera` が持たず、`update` の引数(`MapPickables.refresh()`)から毎フレーム引き直す。書き換えは `setFocusTarget`/`setCameraRotation` のみ、いずれも `FrameControls` の「カメラ(視点)」区画の中心/回転ゾーン(`cameraCenterZone`/`cameraRotationZone`)から呼ばれる |
 | 戦闘視点(Viewpoint: position/lookTarget/up/fovDeg/aspect)・照準ズーム中か(zoomActive) | `CombatCameraSystem` | rot(クオータニオン)/dist・姿勢追従フラグ(camFollowAttitude)は内部の `ChaseCamera` が持つが、追従対象そのものは保持せず、`CameraSystem.update` から渡る `player` を毎フレーム `chaseCamera.update`/`toggleFollowAttitude` の引数として転送するだけ。`[G]`(`K.followAttitudeToggle`)を読んで `chaseCamera.toggleFollowAttitude(player)` を呼ぶのもこのクラス自身の `update`(`CameraSystem` は読まない)。zoomActive はこのクラス自身の `update` が `Input` から読んで保持する |
-| 現在のビュー(combat/map/dock) | `ViewManager`(private `worldView`/`isDockOpen`) | 遷移は基本的に `setView()` のみ(影響先 `CameraSystem.overviewMode` / `PlanEditor.editMode` / `DisplayWindowManager.forceCurrent` / タッチUI を一斉に切り替える)だが、`leaveDock()` だけは例外で、ドックを閉じて背後のビューへ戻るだけの操作を `setView()` を経由せず `isDockOpen` を直接倒して行う(`worldView` は動かさないので `canEnter` チェックも不要)。`worldView` が背後の 3D 側ビュー、`isDockOpen` がドックの開閉を持ち、`current` はこの2つから導出する。`isDockOpen` は `ViewManager` が正本のままで、`hud.overlayManager` へは `syncDockOverlay`(`setView`/`leaveDock` いずれからも呼ばれる)が開閉を通知するだけの一方向 — `OverlayManager.closeTopmostOnEscape()` が `'dock-view'` を閉じるときは `private dockOverlayHandle`(`close` が `this.leaveDock()` を呼ぶだけの adapter)を経由して戻ってくる |
-| ドックビューの対象基地 | `Docking`(private `_activeBase`) | 基地の右クリックメニューで設定。これが空でない間だけ `ViewManager.selectableViews()` に `'dock'` が並ぶ |
+| 現在のビュー(combat/map) | `ViewManager`(private `worldView`) | 遷移は `setView()` のみ(影響先 `Hud.setWorldView` / `CameraSystem.setMapMode` / `PlanEditor.setMapMode` / `DisplayWindowManager.forceCurrent` / タッチUI / `panel-shell` の収納状態を一斉に揃える)。`current` は `worldView` そのもので、他に開いているもの(基地操作・組立・プロパティウィンドウ)はビューではなくオーバーレイなので、その開閉はここへ入ってこない。`ViewId` は保存互換のためだけに `'dock'` を型に残す — `setView('dock')` は即 return し、`canEnter('dock')` は false なので、保存された `'dock'` はコンストラクタの `canEnter` 解決で `'map'` に落ちる |
+| 選択中の基地 | `Docking`(private `_activeBase`) | 基地の左クリック(`selectPickable`)と、`openBaseOperations`/`startAssembly` の入口で設定する。基地操作ウィンドウ・組立セッションの既定の対象になるだけで、ビューには影響しない |
+| 開いている基地操作ウィンドウの集合 | `Docking`(private `baseWindows: Map<string, BaseOperationsWindow>`) | キーは基地 id。`openBaseOperations` が新規/移動を判断し、`syncBaseWindows`(毎フレーム)が実体の消えた基地のぶんを、`clearActiveBaseIf` が削除された基地のぶんを閉じる。「非クリップは高々1枚」の排他は `Hud.overlayManager` が `'base-operations-temp'` グループで持つ |
+| 進行中の組立セッション | `Docking`(private `assembly: AssemblySession \| null`) | 高々1つ。基地・`DockWorkbenchSession`・`DockWorkbenchController`・`AssemblyPanel`・編集中の `targetId` を1つの値として持ち、`startAssembly` が組んで `commitAssembly`/`cancelAssembly` が `endAssembly` 経由で捨てる。開いている間は `pauseGame()` 相当で時間が止まる(編集の反映先はセッションだけで、実機は確定の瞬間にしか触られない)。`assemblyInProgress` は `launch` が拒否に使う |
+| 掴んでいる部品とゴーストの姿勢・可否 | `AssemblyDragController`(private `part`/`ghost`/`pose`/`lastTargetId`) | `Docking` が1つだけ持つ(セッションより長生きする)。`beginDrag` は `AssemblyPanel` の部品ボタンからのみ。`update`(フレームの update フェーズ)が姿勢と可否を決め、`sync` はそれをゴーストへ書くだけ。掴んでいる間の「離した」は毎フレームの入力キューに現れないので、`document` の pointerup/pointercancel を掴んでいる間だけ購読する |
 | マップモード表示 | `CameraSystem.overviewMode` | 描画・視点側の分岐はこれを見る。`CameraSystem.zoomActive` は `!overviewMode && combatCamera.zoomActive` を返すだけの派生 getter(状態は持たない) |
 | 開いているプロパティウィンドウの集合 | `MapContextActions`(`windows: Map<string, WindowEntry>`) | キーは `` `${kind}:${id}` ``。`openPropertyWindow` が新規/移動を判断し、`closeWindow`/`forgetWindow` が畳む。個々の `PropertyWindow` インスタンス自身はクリップ状態(`clipped`)とドラッグ位置だけを持ち、開閉のポリシー(いつ閉じるか)は持たない。「非クリップは高々1枚」という排他自体はこのクラスの状態ではなく `Hud.overlayManager` が `PROPERTY_WINDOW_TEMP_GROUP`(`exclusiveGroup`)経由で持つ(上記参照共有の表) |
 | 第一・第二ターゲット・的通過マーク | `Targeter`(`target`/`secondaryTarget`) | `Targeter.setPrimaryTarget`/`setSecondaryTarget`(`MapContextActions`が開くプロパティウィンドウの`targetPrimary`/`targetSecondary`項目、または`[T]`キーの`handleTargetSelectKey`)でのみ変わる。自動選定・自動再選択はない |
@@ -580,6 +599,7 @@ main.ts
 | `registry`/`originId`/`epochOffsetSec` | `Ephemeris`(コンストラクタ引数、以後不変) | どのステージも既定値(`SOLAR_SYSTEM`/`'earth'`/`EPOCH_T_OFFSET`)で構築されるが、`StageDebugAltSystem` だけは自身の `createEphemeris` override が別のレジストリ・原点・オフセット0 で直接 `new Ephemeris(...)` する。構築するのは `main.ts`(`stageClass.createEphemeris(phaseOffsets)` 経由)で、`Game` 自身はこの3引数を選ばない。`starId`/`inertialFrame`/`frames`(登録天体ぶんの `ReferenceFrame` 一覧)もこの3引数からコンストラクタが1回だけ導出する正本(いずれも下記 `frameCache` を経由して作る) |
 | `frameCache`(`Map<AttractorId, Map<OrbitingId \| null, ReferenceFrame>>`) | `Ephemeris`(`frameOf` 経由) | `(center, rotatingWith)` の対ごとに `ReferenceFrame` を1個だけ持つ、実行時に伸びる正本。レジストリ登録の有無を問わない(生存中の重力天体を中心にする回転系にも同じ契約で応じる)。`inertialFrame`/`frames`/`frameFor` はすべてこのキャッシュを経由して作られた値を返すので、同じ対に対して異なる参照が生まれない(`trajectory-line.ts` の `frame === lastFrame` 参照同一性契約を満たすためのもの) |
 | 入力スナップショット(押下キー・クリック・マウス移動量) | `Input` | フレーム確定は `update()` の1回だけ。エッジは `takeKey`/`takeKeys`/`takeClicks`/`takeRightClicks` で**先着順に消費**され、処理した側より後ろのモジュールには届かない |
+| カーソルの現在位置 | `Input`(private `lastPointer`) | どのフレームにも属さない連続量なので、エッジのキューではなく最新値を1つだけ持つ。書くのは `document` に capture で張った `pointermove` リスナ1本だけ(canvas ではなく document — 部品ドラッグは HUD のボタンから始まるため)、読むのは `pointerPosition()` 経由の `Docking.updateAssembly` のみ。このリスナも `dispose()` が外す13本に含まれる |
 | 敵 AI の実行時状態(最終発砲時刻・バースト残数) | `EnemyAi`(敵対勢力の機体だけが持つ) | |
 | LEAD マーカーの表示履歴(戦闘対象ごとの最終ロック時刻) | `MarkerManager.leadMarkers` | 表示専用の状態なので Vessel/Vessel には置かない。毎フレーム生存中の戦闘対象(敵 + 自機以外の生存中の全自機)ぶんだけ作り直す。呼ぶのは `Targeter.syncTargetMarkers` |
 | EqAN/EqDN アイコン(位置・通過時刻) | 各 `GameEntity.equatorNodes`(`EquatorNodeMarkerPair.icons`) | 出す対象を選ぶ側(`PlanEditor`/`Targeter`/`EntityManager.updateBaseEquatorNodes`/`NavTarget`)がそれぞれ `update` を呼んで求め直す。`sync` は置いたあとに捨てるので、そのフレームに update されなかったペアは自動的に隠れる |

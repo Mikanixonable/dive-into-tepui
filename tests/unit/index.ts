@@ -27,6 +27,7 @@ import { register as registerDockingCluster } from './docking-cluster.test';
 import { register as registerAssemblyEditor } from './assembly-editor.test';
 import { register as registerBaseSave } from './base-save.test';
 import { register as registerBaseGeometry } from './base-geometry.test';
+import { register as registerMountCandidates } from './mount-candidates.test';
 
 registerResource();
 registerProducibility();
@@ -48,6 +49,7 @@ registerDockingCluster();
 registerAssemblyEditor();
 registerBaseSave();
 registerBaseGeometry();
+registerMountCandidates();
 registerHullMesh();
 registerMassProperties();
 registerAttitudeControl();
