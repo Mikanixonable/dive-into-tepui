@@ -9,7 +9,7 @@ import { GameEntity } from '../game-entity/game-entity';
 import { Base } from '../game-entity/base';
 import type { Player } from '../player/player';
 import { CollisionResponse, resolveSphereCollision } from '../../physics/collision-response';
-import type { Attractor } from '../../physics/attractor';
+import { Attractor, attractorStateAt } from '../../physics/attractor';
 import type { Stage } from '../stages/stage';
 
 // 1回の接触を、受け手から見た形で記述する。self/other は受け手ごとに入れ替えて組み直す
@@ -119,8 +119,8 @@ function computeEntityResponse(
   );
 }
 
-// 天体はこの関数の呼び出し区間の間ほぼ静止しているとみなす(軌道運動は1 substep で
-// たかだか数十m)ので、掃引の区間始点には現在の状態をそのまま使う。
+// 天体の状態は、この個体の区間の両端の時刻へ外挿してから渡す — 天体一式はサブステップの
+// 中点で1回組まれるので、そのままでは区間の両端と別の瞬間の値になる。
 function computeAttractorResponse(
   e: GameEntity, body: Attractor, working: ReadonlyMap<GameEntity, KinematicState>,
 ): CollisionResponse | null {
@@ -128,10 +128,10 @@ function computeAttractorResponse(
   const sweptValid = e.prevState.t < e.state.t;
   return resolveSphereCollision(
     { state: eWork, radius: e.radius, invMass: 1 / e.mass },
-    { state: body.state, radius: body.radius, invMass: 0 },
+    { state: attractorStateAt(body, eWork.t), radius: body.radius, invMass: 0 },
     RESTITUTION,
     sweptValid ? e.prevState : undefined,
-    sweptValid ? body.state : undefined,
+    sweptValid ? attractorStateAt(body, e.prevState.t) : undefined,
   );
 }
 

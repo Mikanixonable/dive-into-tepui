@@ -157,11 +157,6 @@ export function attractorStateAt(a: Attractor, t: number): KinematicState;
 
 各ステップは単独で commit できる。毎ステップ `npm run typecheck` と `npm run test:physics`。
 
-### Step 4: 天体を動かす
-
-`reachedBody` と `computeAttractorResponse` を `attractorStateAt` へ差し替え、`AT_REST` を削除。
-達成目標 6 の3件目をここで足す。**完了条件**: 達成目標 4・5 と、新規1件。
-
 ### Step 5: 判定器の戻り値を差し替える
 
 `SurfaceCrossing` / `SweptSphereContact` を入れ、線形・三次の両方に内→外の解と
@@ -191,24 +186,27 @@ export function attractorStateAt(a: Attractor, t: number): KinematicState;
 
 **正味 +30 行。**
 
-### 費用(Step 4 が乗せるぶん)
+### 費用(天体を動かすぶん) — 実測済み
 
-`attractorStateAt` 1回 = 位置 12 演算 + 速度 6 演算 ≒ **20 演算**、および `KinematicState` 1つと
-`Vec3` 2つのアロケーション。1ペアあたり2回呼ぶので **40 演算 + 6 オブジェクト**。
+65 体の天体窓に対して `reachedBody` を回し、どの天体にも当たらない周回中の1歩(実地で
+圧倒的多数を占める棄却経路)を Node で 20 万回。天体を凍らせた版と同じ入力で比べた値。
 
-判定回数は「個体数 × 天体窓 × substep 数」。最高ワープ(`SUBSTEP_MAX_COUNT` = 64)で
-`gravityAttractorsAt` の 65 体、`MAX_BULLETS` = 400 の弾だけを数えても
+| モード | 凍結 | 外挿 | 増分 |
+|---|---|---|---|
+| `cubic` | 148.8 ns/ペア | **259.5 ns/ペア** | +110.7 ns(**+74%**) |
+| `linear` | 32.4 ns/ペア | **165.7 ns/ペア** | +133.3 ns(**+411%**) |
 
-```
-400 × 65 × 64 = 1.66M ペア / frame
-→ 1.66M × 6 = 10M オブジェクト / frame
-```
+**1ペアあたりの絶対値は、解法の差(線形 32.4 ns 対 三次 148.8 ns)より外挿のほうが重い。**
+外挿は `KinematicState` 1つと `Vec3` 2つを天体ごとに2回作るので、線形側では判定そのものより
+アロケーションのほうが高くつく形になっている。
 
-16.7ms の予算に対して明らかに過大。**この数は判定器の解法でも外挿の有無でもなく、
-天体窓を総当たりしていること(65〜101 体)に比例している。** 削るなら天体側の broad phase で
-候補を数体に絞るのが筋で、外挿を捨てて凍結へ戻すのは最後の手段。
+フレーム費用は「個体数 × 天体窓 × substep 数 × 上の値」。天体窓が 65〜101 体の総当たりなので、
+例えば ×1(1 substep、101 体)に生存 50 体なら 5,050 ペア = **1.3 ms/frame**(凍結なら 0.75 ms)。
+最高ワープ(64 substep)では substep 数ぶん丸ごと掛かる。
 
-**Step 4 の直後にこの数を実測し、記録する。** 実測せずに凍結へ戻さない。
+**削るなら天体側の broad phase で候補を数体に絞るのが筋。** ペア数が2桁落ちれば外挿の増分も
+同じだけ落ちるので、そちらが先。外挿を捨てて凍結へ戻すのは、broad phase を入れてもなお
+足りないときの最後の手段。
 
 ---
 
