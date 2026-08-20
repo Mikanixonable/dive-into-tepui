@@ -2,6 +2,7 @@ import type { Bgm } from '../../audio/bgm/bgm';
 import { BGM_TRACKS } from '../../audio/bgm/tracks/tracks';
 import type { GraphicsSettings } from '../../render/graphics-settings';
 import type { DebugTargetHost } from '../../render/pipeline/debug-target';
+import { ACTIVE_THEME_ID, applyThemePalette, getThemePalette, THEME_PRESETS } from '../theme';
 import { GraphicsPanel } from './graphics-panel';
 import type { OverlayHandle, OverlayManager } from './overlay-manager';
 import { Button, CloseButton, Slider, TabBar } from './widgets';
@@ -56,9 +57,56 @@ export class SettingsView implements OverlayHandle {
     this.panel.appendChild(this.tabs.element);
 
     const musicFace = document.createElement('div');
-    const graphicsPanel = new GraphicsPanel(graphics, debugTargetHost);
-    this.faces = new Map([['music', musicFace], ['graphics', graphicsPanel.element]]);
+    const graphicsFace = document.createElement('div');
+    this.faces = new Map([['music', musicFace], ['graphics', graphicsFace]]);
     for (const face of this.faces.values()) this.panel.appendChild(face);
+
+    const themeRow = document.createElement('div');
+    themeRow.className = 'sv-row sv-theme-row';
+    const themeLabel = document.createElement('span');
+    themeLabel.className = 'sv-label';
+    themeLabel.textContent = '配色';
+    themeRow.appendChild(themeLabel);
+    const themePreview = document.createElement('span');
+    themePreview.className = 'sv-theme-preview';
+    themePreview.setAttribute('aria-hidden', 'true');
+    const updateThemePreview = (id: string): void => {
+      const palette = getThemePalette(id);
+      if (!palette) return;
+      themePreview.replaceChildren();
+      for (const color of [palette.accent, palette.accentNear, palette.secondary]) {
+        const swatch = document.createElement('span');
+        swatch.className = 'sv-theme-swatch';
+        swatch.style.backgroundColor = color;
+        themePreview.appendChild(swatch);
+      }
+    };
+    const themeSelect = document.createElement('select');
+    themeSelect.className = 'w-input sv-theme-select';
+    themeSelect.setAttribute('aria-label', '配色プリセット');
+    for (const palette of THEME_PRESETS) {
+      const option = document.createElement('option');
+      option.value = palette.id;
+      option.textContent = `● ${palette.name}`;
+      option.style.color = palette.accent;
+      option.title = palette.description;
+      themeSelect.appendChild(option);
+    }
+    themeSelect.value = ACTIVE_THEME_ID;
+    updateThemePreview(themeSelect.value);
+    themeSelect.addEventListener('change', () => {
+      if (!applyThemePalette(themeSelect.value)) {
+        themeSelect.value = ACTIVE_THEME_ID;
+        return;
+      }
+      updateThemePreview(themeSelect.value);
+    });
+    themeRow.appendChild(themePreview);
+    themeRow.appendChild(themeSelect);
+    graphicsFace.appendChild(themeRow);
+
+    const graphicsPanel = new GraphicsPanel(graphics, debugTargetHost);
+    graphicsFace.appendChild(graphicsPanel.element);
 
     const description = document.createElement('p');
     description.className = 'sv-description';
