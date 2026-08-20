@@ -27,8 +27,6 @@ function registryProvider(ephemeris: Ephemeris): FutureAttractorProvider {
     id: def.id, mu: def.mu, radius: def.radius,
   }));
   return {
-    revision: 0,
-    candidateRevision: 0,
     candidates: () => candidates,
     bodyAt: (id, t) => ephemeris.attractorAt(id, t),
   };
