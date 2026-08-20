@@ -1,81 +1,84 @@
-// 区分指数大気密度モデル(Vallado, "Fundamentals of Astrodynamics and
-// Applications" の CIRA-72 / U.S. Standard Atmosphere 準拠テーブル)と、
-// その大気による対気速度・抗力加速度・高度マージンによる焼失判定。
-// THREE/DOM 非依存の純粋関数。
+// 天体ごとの大気(基準楕円体・共回転・区分指数の密度モデル)と、その大気による高度・
+// 対気速度・抗力加速度・焼失判定。固有名詞を持たず、大気の中身はすべて呼び出し側が渡す
+// Atmosphere に載っている。THREE/DOM 非依存の純粋関数。
 import { KinematicState } from './kinematic-state';
-import { R_EARTH, SIDEREAL_DAY } from './solar-system';
-import { Vec3, len, sub, v3 } from './vec3';
+import { Vec3, cross, dot, len, scale, sub, v3 } from './vec3';
 
-// [基準高度 h0 [km], 基準密度 ρ0 [kg/m^3], スケールハイト H [km]]
-const TABLE: readonly [number, number, number][] = [
-  [0, 1.225, 7.249],
-  [25, 3.899e-2, 6.349],
-  [30, 1.774e-2, 6.682],
-  [40, 3.972e-3, 7.554],
-  [50, 1.057e-3, 8.382],
-  [60, 3.206e-4, 7.714],
-  [70, 8.77e-5, 6.549],
-  [80, 1.905e-5, 5.799],
-  [90, 3.396e-6, 5.382],
-  [100, 5.297e-7, 5.877],
-  [110, 9.661e-8, 7.263],
-  [120, 2.438e-8, 9.473],
-  [130, 8.484e-9, 12.636],
-  [140, 3.845e-9, 16.149],
-  [150, 2.07e-9, 22.523],
-  [180, 5.464e-10, 29.74],
-  [200, 2.789e-10, 37.105],
-  [250, 7.248e-11, 45.546],
-  [300, 2.418e-11, 53.628],
-  [350, 9.518e-12, 53.298],
-  [400, 3.725e-12, 58.515],
-  [450, 1.585e-12, 60.828],
-  [500, 6.967e-13, 63.822],
-  [600, 1.454e-13, 71.835],
-  [700, 3.614e-14, 88.667],
-  [800, 1.17e-14, 124.64],
-  [900, 5.245e-15, 181.05],
-  [1000, 3.019e-15, 268.0],
-];
+// 区分指数モデルの1層: [基準高度 h0 [m], 基準密度 ρ0 [kg/m^3], スケールハイト H [m]]。
+// 基準高度の昇順に並べる。密度は H = R*T/(M·g) が層ごとに桁で違う(地球で 5.4〜268 km)
+// ため単一の指数では表せず、層に区切って初めて成り立つ。
+export type AtmosphereLayer = readonly [number, number, number];
 
-// 高度 alt [m] における大気密度 [kg/m^3]。1000 km 超も最終区間で外挿する。
-export function atmosphericDensity(alt: number): number {
-  const hKm = Math.max(0, alt / 1000);
-  let row = TABLE[0]!;
-  for (let i = TABLE.length - 1; i >= 0; i--) {
-    if (hKm >= TABLE[i]![0]) {
-      row = TABLE[i]!;
+// 天体の大気の静的な記述。基準楕円体は「平均海面」であり、衝突判定の外接球
+// (Attractor.radius)とは別の理由で選ばれた別の量なので、別の宣言として持つ。
+export type AtmosphereDef = {
+  readonly equatorRadius: number; // 基準楕円体の赤道半径 [m]
+  readonly polarRadius: number; // 基準楕円体の極半径 [m]
+  readonly spinRate: number; // 自転角速度 [rad/s](大気は天体と共回転する)
+  readonly layers: readonly AtmosphereLayer[];
+};
+
+// 実行時の大気。静的な記述に、時刻ごとに解決した自転軸を足したもの
+// (Degree2GravityDef → Degree2Gravity と同じ二段構え)。
+export type Atmosphere = AtmosphereDef & {
+  readonly pole: Vec3; // 自転軸(単位ベクトル、ECI)
+};
+
+// 天体中心からの相対位置 rRel の、基準楕円体からの高度 [m]。地心緯度 φ における楕円体の
+// 地心半径 R(φ) = a·b/√(a²sin²φ + b²cos²φ) を引く — 真の測地高度との差は法線と動径の
+// ずれが2次で効くため高度 100 km で 1 m 未満に収まる。平均半径の真球で測ると、同じ真の
+// 高度でも緯度によって高度が ±7〜−14 km ずれ、密度が赤道と極で 45 倍振れる。
+export function ellipsoidAltitude(rRel: Vec3, atm: Atmosphere): number {
+  const d = len(rRel);
+  if (d < 1) return -atm.polarRadius;
+  const sinPhi = dot(rRel, atm.pole) / d;
+  const sin2 = sinPhi * sinPhi;
+  const a2 = atm.equatorRadius * atm.equatorRadius;
+  const b2 = atm.polarRadius * atm.polarRadius;
+  return d - (atm.equatorRadius * atm.polarRadius) / Math.sqrt(a2 * sin2 + b2 * (1 - sin2));
+}
+
+// 高度 alt [m] における大気密度 [kg/m^3]。最上層より上も、その層の指数でそのまま外挿する。
+export function atmosphericDensity(alt: number, atm: Atmosphere): number {
+  const h = Math.max(0, alt);
+  let row = atm.layers[0]!;
+  for (let i = atm.layers.length - 1; i >= 0; i--) {
+    if (h >= atm.layers[i]![0]) {
+      row = atm.layers[i]!;
       break;
     }
   }
-  return row[1] * Math.exp(-(hKm - row[0]) / row[2]);
+  return row[1] * Math.exp(-(h - row[0]) / row[2]);
 }
 
-export const EARTH_OMEGA = (2 * Math.PI) / SIDEREAL_DAY; // 地球自転角速度 [rad/s](Y軸=北極まわり)
-
-// 地球と共回転する大気に対する対気速度: v - ω×r, ω = (0, ω, 0)
-export function airspeed(r: Vec3, v: Vec3): Vec3 {
-  return v3(v.x - EARTH_OMEGA * r.z, v.y, v.z + EARTH_OMEGA * r.x);
+// 共回転する大気に対する対気速度 v_rel − ω×r_rel。rRel/vRel は天体中心からの相対位置・速度。
+export function airspeed(rRel: Vec3, vRel: Vec3, atm: Atmosphere): Vec3 {
+  return sub(vRel, scale(cross(atm.pole, rRel), atm.spinRate));
 }
 
-// 大気抵抗の加速度。bcInv は弾道係数の逆数 Cd·A/m(0 なら抵抗なし = ゼロベクトル)。
-export function dragAccel(r: Vec3, v: Vec3, bcInv: number): Vec3 {
-  const rho = bcInv > 0 ? atmosphericDensity(len(r) - R_EARTH) : 0;
+// 大気抵抗の加速度。rRel/vRel はその大気を持つ天体の中心からの相対位置・速度、bcInv は
+// 弾道係数の逆数 Cd·A/m(0 なら抵抗なし = ゼロベクトル)。
+export function dragAccel(rRel: Vec3, vRel: Vec3, bcInv: number, atm: Atmosphere): Vec3 {
+  if (bcInv <= 0) return v3();
+  const rho = atmosphericDensity(ellipsoidAltitude(rRel, atm), atm);
   if (rho < 1e-15) return v3();
-  const { x: vrx, y: vry, z: vrz } = airspeed(r, v);
+  const { x: vrx, y: vry, z: vrz } = airspeed(rRel, vRel, atm);
   const k = -0.5 * rho * Math.sqrt(vrx * vrx + vry * vry + vrz * vrz) * bcInv;
   return v3(vrx * k, vry * k, vrz * k);
 }
 
-// 位置 r が、大気を持つ天体の表面から margin 以内まで沈み込んでいれば、その天体。このモデルが
-// 表す大気は地球のものだけなので、判定対象も地球に限る。
-export function burnUpBody<T extends { readonly id: string; readonly radius: number; readonly state: KinematicState }>(
+// 位置 r が、大気を持つ天体の表面から margin 以内まで沈み込んでいれば、その天体。
+export function burnUpBody<T extends {
+  readonly radius: number;
+  readonly state: KinematicState;
+  readonly atmosphere: Atmosphere | null;
+}>(
   r: Vec3,
   bodies: readonly T[],
   margin: number,
 ): T | null {
   for (const body of bodies) {
-    if (body.id !== 'earth') continue;
+    if (body.atmosphere === null) continue;
     if (len(sub(r, body.state.r)) < body.radius + margin) return body;
   }
   return null;

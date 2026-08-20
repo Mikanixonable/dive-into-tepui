@@ -4,7 +4,7 @@
 // 差し替えることで行う。
 import { KinematicState } from '../../physics/kinematic-state';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
-import { Attractor, BodyImpact, reachedBody, strongestAttractor } from '../../physics/attractor';
+import { Attractor, BodyImpact, nearestAtmosphereBody, reachedBody, strongestAttractor } from '../../physics/attractor';
 import { keplerPeriod } from '../../physics/elements';
 import { ApsisTrack } from '../../physics/trajectory-features';
 import { burnUpBody } from '../../physics/atmosphere';
@@ -113,8 +113,8 @@ export class PredictedArc {
     // 中点で重力源を解決しており、弧だけ過去の天体位置を据え置かないようにする。
     const mid = this.bodies.resolve(tip.t + dt / 2, tip, dt);
     this._trajectory.step(
-      dt, mid.gravity, this.bcInv, this.srpCoeff, null, sampleInterval, span,
-      this.keplerTail ? center : null,
+      dt, mid.gravity, nearestAtmosphereBody(tip.r, mid.collision), this.bcInv, this.srpCoeff, null,
+      sampleInterval, span, this.keplerTail ? center : null,
     );
 
     const { r, v } = this._trajectory.state;

@@ -21,7 +21,7 @@ import { Player } from '../player/player';
 import { Bullet } from '../game-entity/bullet';
 import { DebrisPiece } from '../game-entity/debris-piece';
 import type { GameEntity } from '../game-entity/game-entity';
-import type { Attractor } from '../../physics/attractor';
+import { nearestAtmosphereBody, type Attractor } from '../../physics/attractor';
 import { Ephemeris } from '../../physics/ephemeris';
 import type { Stage } from '../stages/stage';
 import { ContactPhysics } from './contact';
@@ -102,7 +102,8 @@ export class Simulator {
       // 重力源はこのサブステップの中点で1回だけ組み、全エンティティで使い回す。
       const sources = this.ephemeris.gravityAttractorsAt(this.simTime + subDt / 2);
       this.lastGravitySourceCount = sources.length;
-      this.substep(subDt, sources, passiveWarpLod);
+      this.substep(
+        subDt, sources, this.ephemeris.atmosphereAttractorsAt(this.simTime + subDt / 2), passiveWarpLod);
       this.simTime += subDt;
       this.sections.exit(SECTION.orbit);
       this.lastSubsteps++;
@@ -135,7 +136,12 @@ export class Simulator {
       this.entities.cleanup(subDt, this.simTime, activeStage, player?.state.r ?? v3(), surfaceBodies);
     }
 
-    if (passiveWarpLod) this.stepPassiveWarpEntities(this.ephemeris.gravityAttractorsAt(this.simTime));
+    if (passiveWarpLod) {
+      this.stepPassiveWarpEntities(
+        this.ephemeris.gravityAttractorsAt(this.simTime),
+        this.ephemeris.atmosphereAttractorsAt(this.simTime),
+      );
+    }
 
     // ベルトは実dtで解く艦にくっついた局所シミュレーションなので、substepループの外で
     // フレームに1回だけ解決する。
@@ -215,13 +221,15 @@ export class Simulator {
     return resolveCollision ? this.ephemeris.attractorsAt(this.simTime) : gravityBodies;
   }
 
-  // 全エンティティを、渡された重力源 sources に対して dt だけ積分する。sources は呼び出し側が
-  // このステップの中点で1回だけ組んだものを全エンティティで共有し、分類もここで1回だけ行う。
+  // 全エンティティを、渡された重力源 sources に対して dt だけ積分する。sources と
+  // atmosphereSources は呼び出し側がこのステップの中点で1回だけ組んだものを全エンティティで
+  // 共有し、重力源の分類もここで1回だけ行う。抗力を掛ける大気は個体ごとに最も近い1体を選ぶ。
   // 予測列がこのサブステップ終端の時刻を持っていればそれを先端にして積分を省く — ある時間帯の
   // 状態を決める積分を常にちょうど1本に保つ。
   private substep(
     dt: number,
     sources: readonly Attractor[],
+    atmosphereSources: readonly Attractor[],
     passiveWarpLod: boolean,
   ): void {
     const classified = classifyAttractors(sources);
@@ -233,7 +241,7 @@ export class Simulator {
         this.lastFollowedSteps++;
         continue;
       }
-      e.stepActual(dt, near);
+      e.stepActual(dt, near, nearestAtmosphereBody(e.state.r, atmosphereSources));
       this.lastIntegratedSteps++;
     }
   }
@@ -261,12 +269,14 @@ export class Simulator {
 
   // 途中のsubstepを飛ばした弾・破片を、最終時刻まで一度だけ進める。高warp中は弾道命中・
   // 剛体接触を無効にしているため、途中の掃引判定を失ってもゲームプレイ上の相互作用はない。
-  private stepPassiveWarpEntities(attractors: readonly Attractor[]): void {
+  private stepPassiveWarpEntities(
+    attractors: readonly Attractor[], atmosphereSources: readonly Attractor[],
+  ): void {
     const step = (e: GameEntity): void => {
       if (!e.alive) return;
       const elapsed = this.simTime - e.state.t;
       if (elapsed <= 1e-9) return;
-      e.stepActual(elapsed, attractors);
+      e.stepActual(elapsed, attractors, nearestAtmosphereBody(e.state.r, atmosphereSources));
       this.lastIntegratedSteps++;
       e.att = stepAttitude(e.att, e.torque, elapsed);
     };

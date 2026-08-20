@@ -42,11 +42,13 @@ export class DynamicTrajectory {
 
   // 全天体重力 + 2次重力場 + 大気抵抗 + 太陽輻射圧 + 推力で 1 ステップ RK4 積分する
   // (dynamics.ts の stepDynamics)。attractors はそのステップぶん呼び出し側が確定させた
-  // 重力源一覧。sampleInterval・keepDuration は先端を積むときの保持方針(advanceTip)。
+  // 重力源一覧、atmosphereBody は抗力を及ぼすただ1体の大気天体(null なら抗力なし)。
+  // sampleInterval・keepDuration は先端を積むときの保持方針(advanceTip)。
   // extrapolationCenter は extrapolatedAt が使う中心天体(省略時 null)。
   step(
     dt: number,
     attractors: readonly Attractor[],
+    atmosphereBody: Attractor | null,
     bcInv: number,
     srpCoeff: number,
     thrust: Vec3 | null,
@@ -54,7 +56,7 @@ export class DynamicTrajectory {
     keepDuration: number,
     extrapolationCenter: Attractor | null = null,
   ): void {
-    const next = stepDynamics(this.state, dt, attractors, bcInv, srpCoeff, thrust);
+    const next = stepDynamics(this.state, dt, attractors, atmosphereBody, bcInv, srpCoeff, thrust);
     this.advanceTip(next, sampleInterval, keepDuration);
     this._extrapolationCenter = extrapolationCenter;
   }

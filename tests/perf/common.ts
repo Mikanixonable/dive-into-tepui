@@ -8,7 +8,7 @@
 // GRAVITY_ALWAYS_COUNT・GRAVITY_NEGLIGIBLE_ACCEL は src/game/const.ts から素の値を import する
 // (const.ts 自体は ../physics/solar-system しか import しておらず、DOM/three 非依存でコンパイルできる)。
 import { Ephemeris } from '../../src/physics/ephemeris';
-import { Attractor } from '../../src/physics/attractor';
+import { Attractor, nearestAtmosphereBody } from '../../src/physics/attractor';
 import { SpatialGrid } from '../../src/physics/spatial-grid';
 import { Vec3 } from '../../src/physics/vec3';
 import { kinematicState, KinematicState } from '../../src/physics/kinematic-state';
@@ -102,7 +102,10 @@ export function attractorsNear(pos: Vec3, classified: ClassifiedAttractors): rea
 export function stepDynamicsAt(ephemeris: Ephemeris, state: KinematicState, dt: number): KinematicState {
   const tMid = state.t + dt / 2;
   const attractors = ephemeris.gravityAttractorsAt(tMid);
-  return stepDynamics(state, dt, attractors, SHIP_BCINV, 0, null);
+  return stepDynamics(
+    state, dt, attractors, nearestAtmosphereBody(state.r, ephemeris.atmosphereAttractorsAt(tMid)),
+    SHIP_BCINV, 0, null,
+  );
 }
 
 // 刻み幅 dt 固定で state から targetT まで積分する。端数(remaining < dt)は最後の1ステップを

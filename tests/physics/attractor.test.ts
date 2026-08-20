@@ -18,7 +18,7 @@ import { MU_MOON, MU_SUN, R_MOON, R_SUN } from '../../src/physics/solar-system';
 import { add, addScaled, len, norm, sub, v3 } from '../../src/physics/vec3';
 
 const ZERO = v3(0, 0, 0);
-const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, ZERO, ZERO), accel: ZERO, degree2: null, isStar: false };
+const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, ZERO, ZERO), accel: ZERO, degree2: null, atmosphere: null, isStar: false };
 
 export function register(): void {
   test('attractor: attractorAccel は原点天体(地球)では素の中心重力になる', () => {
@@ -33,7 +33,7 @@ export function register(): void {
     const r = v3(R_EARTH + 420e3, 0, 0);
     // moon がクエリ位置と同じ座標(距離ゼロ)にある人工の配置。飛ばされず加算されると
     // μ/0³ で発散する。
-    const coincidentMoon: Attractor = { id: 'moon', mu: MU_MOON, radius: R_MOON, state: kinematicState(0, r, ZERO), accel: ZERO, degree2: null, isStar: false };
+    const coincidentMoon: Attractor = { id: 'moon', mu: MU_MOON, radius: R_MOON, state: kinematicState(0, r, ZERO), accel: ZERO, degree2: null, atmosphere: null, isStar: false };
     const a = attractorAccel(r, coincidentMoon, coincidentMoon.state.t);
     assert.ok(Number.isFinite(a.x) && Number.isFinite(a.y) && Number.isFinite(a.z), `finite: ${JSON.stringify(a)}`);
     // 直接引力の項だけが落ちて、原点補正項(月が地球を引く分)は残る。
@@ -104,7 +104,7 @@ export function register(): void {
     // 月中心の円軌道。mu を渡し忘れて地球の mu で計算すると半周期の飛行時間が
     // sqrt(MU_EARTH/MU_MOON) ~= 9 倍ずれる。
     const moon: Attractor = {
-      id: 'moon', mu: MU_MOON, radius: R_MOON, accel: ZERO, degree2: null, isStar: false,
+      id: 'moon', mu: MU_MOON, radius: R_MOON, accel: ZERO, degree2: null, atmosphere: null, isStar: false,
       state: kinematicState(0, v3(3.844e8, 0, 0), v3(0, 0, 1023)),
     };
     const a = R_MOON + 100e3;
@@ -145,7 +145,7 @@ export function register(): void {
   // 高ワープでは1ステップが最大20秒 = 軌道速度で約156km になり、点判定では小天体を丸ごと
   // 素通りする。掃引判定がその貫通を捉えることがこの関数の存在理由。
   test('reachedBody: 1ステップで小天体を貫通する経路を捉える(点判定は見逃す)', () => {
-    const rock: Attractor = { id: 'rock', mu: 0, radius: 500, state: kinematicState(0, ZERO, ZERO), accel: ZERO, degree2: null, isStar: false };
+    const rock: Attractor = { id: 'rock', mu: 0, radius: 500, state: kinematicState(0, ZERO, ZERO), accel: ZERO, degree2: null, atmosphere: null, isStar: false };
     const vel = v3(7800, 0, 0);
     const prev = kinematicState(0, v3(-78e3, 0, 0), vel);
     const next = kinematicState(20, v3(78e3, 0, 0), vel);
@@ -157,7 +157,7 @@ export function register(): void {
 
   // 到達点は ✕ マーカーの位置になるので、天体の表面上でなければならない。
   test('reachedBody: 掃引で捉えた到達点は区間の途中の、天体表面上の状態', () => {
-    const rock: Attractor = { id: 'rock', mu: 0, radius: 500, state: kinematicState(0, ZERO, ZERO), accel: ZERO, degree2: null, isStar: false };
+    const rock: Attractor = { id: 'rock', mu: 0, radius: 500, state: kinematicState(0, ZERO, ZERO), accel: ZERO, degree2: null, atmosphere: null, isStar: false };
     const vel = v3(7800, 0, 0);
     const prev = kinematicState(0, v3(-78e3, 0, 0), vel);
     const next = kinematicState(20, v3(78e3, 0, 0), vel);
@@ -172,7 +172,7 @@ export function register(): void {
   });
 
   test('reachedBody: 表面に触れない近傍通過は検出しない', () => {
-    const rock: Attractor = { id: 'rock', mu: 0, radius: 500, state: kinematicState(0, v3(0, 600, 0), ZERO), accel: ZERO, degree2: null, isStar: false };
+    const rock: Attractor = { id: 'rock', mu: 0, radius: 500, state: kinematicState(0, v3(0, 600, 0), ZERO), accel: ZERO, degree2: null, atmosphere: null, isStar: false };
     const vel = v3(7800, 0, 0);
     const prev = kinematicState(0, v3(-78e3, 0, 0), vel);
     const next = kinematicState(20, v3(78e3, 0, 0), vel);
@@ -202,7 +202,7 @@ export function register(): void {
   });
 
   test('reachedBody: 非有限な入力は到達なしとして扱う', () => {
-    const rock: Attractor = { id: 'rock', mu: 0, radius: 500, state: kinematicState(0, ZERO, ZERO), accel: ZERO, degree2: null, isStar: false };
+    const rock: Attractor = { id: 'rock', mu: 0, radius: 500, state: kinematicState(0, ZERO, ZERO), accel: ZERO, degree2: null, atmosphere: null, isStar: false };
     const vel = v3(7800, 0, 0);
     const nanPrev = kinematicState(0, v3(NaN, 0, 0), vel);
     const next = kinematicState(20, v3(78e3, 0, 0), vel);

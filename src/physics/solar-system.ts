@@ -1,5 +1,6 @@
 // 天体の静的事実の表: 恒星/惑星/衛星の判別 union(CelestialBodyDef)と、太陽系の各天体の
 // 重力定数・半径・軌道モデル(SOLAR_SYSTEM)。宣言順が Ephemeris が返す重力源配列の順になる。
+import { AtmosphereDef } from './atmosphere';
 import { Quat } from './attitude';
 import { AttractorId } from './attractor';
 import { equatorBasisToEci } from './body-orientation';
@@ -8,7 +9,7 @@ import { keplerPeriod } from './elements';
 import { JULIAN_CENTURY } from './kepler-orbit';
 import { AU, PlanetOrbit, planetOrbit } from './planet-orbit';
 import { PerturbationTerm, SatelliteOrbit, satelliteOrbit } from './satellite-orbit';
-import { Vec3, len, v3 } from './vec3';
+import { Vec3, v3 } from './vec3';
 
 // 万有引力定数 [m^3/(kg・s^2)]。MU_* は測定された GM を直接持つ値なのでこれで割り直さないこと —
 // GM が測定されておらず質量から導く天体だけがこれを使う。
@@ -28,11 +29,6 @@ export const MU_MARS = 4.282837e13;
 export const MU_JUPITER = 1.26686534e17;
 export const MU_SATURN = 3.7931187e16;
 export const MU_NEPTUNE = 6.836529e15;
-
-// 位置ベクトルから地球海抜高度を返す。
-export function earthAltitudeOf(r: Vec3): number {
-  return len(r) - R_EARTH;
-}
 
 // 2次の重力場係数(いずれも非正規化)。正規化係数を収録した外部データで更新する際は換算が要る。
 export const J2_EARTH = 1.08262668e-3;
@@ -82,6 +78,46 @@ export type PoleModel =
       readonly w0Deg: number;
       readonly wRateDegPerDay: number;
     };
+
+// 地球の大気。基準楕円体は海面の回転楕円体(WGS84)で、衝突球の半径(radius)や 2 次重力場の
+// 基準半径(refRadius)とは別の理由で選ばれた別の量なので、値が一致していても別に宣言する。
+// 層テーブルは Vallado, "Fundamentals of Astrodynamics and Applications" の CIRA-72 /
+// U.S. Standard Atmosphere 準拠(高度 0〜1000 km を 28 区間)。
+export const EARTH_ATMOSPHERE: AtmosphereDef = {
+  equatorRadius: 6.378137e6,
+  polarRadius: 6.356752e6,
+  spinRate: (2 * Math.PI) / SIDEREAL_DAY,
+  layers: [
+    [0, 1.225, 7.249e3],
+    [25e3, 3.899e-2, 6.349e3],
+    [30e3, 1.774e-2, 6.682e3],
+    [40e3, 3.972e-3, 7.554e3],
+    [50e3, 1.057e-3, 8.382e3],
+    [60e3, 3.206e-4, 7.714e3],
+    [70e3, 8.77e-5, 6.549e3],
+    [80e3, 1.905e-5, 5.799e3],
+    [90e3, 3.396e-6, 5.382e3],
+    [100e3, 5.297e-7, 5.877e3],
+    [110e3, 9.661e-8, 7.263e3],
+    [120e3, 2.438e-8, 9.473e3],
+    [130e3, 8.484e-9, 12.636e3],
+    [140e3, 3.845e-9, 16.149e3],
+    [150e3, 2.07e-9, 22.523e3],
+    [180e3, 5.464e-10, 29.74e3],
+    [200e3, 2.789e-10, 37.105e3],
+    [250e3, 7.248e-11, 45.546e3],
+    [300e3, 2.418e-11, 53.628e3],
+    [350e3, 9.518e-12, 53.298e3],
+    [400e3, 3.725e-12, 58.515e3],
+    [450e3, 1.585e-12, 60.828e3],
+    [500e3, 6.967e-13, 63.822e3],
+    [600e3, 1.454e-13, 71.835e3],
+    [700e3, 3.614e-14, 88.667e3],
+    [800e3, 1.17e-14, 124.64e3],
+    [900e3, 5.245e-15, 181.05e3],
+    [1000e3, 3.019e-15, 268.0e3],
+  ],
+};
 
 // 2次の重力場の静的な記述。時刻ごとの自転軸・長軸の実ベクトルは ephemeris.ts が組む。
 export type Degree2GravityDef = {
@@ -136,6 +172,7 @@ export type CelestialBodyDef =
       readonly pole?: PoleModel; // 省略時は自転軸を持たない
       readonly degree2?: Degree2GravityDef; // 省略時は質点として扱う
       readonly shape?: ShapeDef; // 省略時は radius による真球
+      readonly atmosphere?: AtmosphereDef; // 省略時は大気を持たない(抗力・焼失ともに起きない)
     } & LagrangeLabelFlag & RingSystemFlag)
   | ({
       readonly kind: 'satellite';
@@ -147,6 +184,7 @@ export type CelestialBodyDef =
       readonly pole?: PoleModel;
       readonly degree2?: Degree2GravityDef;
       readonly shape?: ShapeDef;
+      readonly atmosphere?: AtmosphereDef;
     } & LagrangeLabelFlag & RingSystemFlag);
 
 // ShapeDef をメッシュのローカル半軸 (x,y,z) へ変換する。ECI は Y が極軸だが、この変換は
@@ -496,6 +534,7 @@ export const SOLAR_SYSTEM = {
     pole: { kind: 'eciPole' },
     // 赤道断面の楕円性 C22 は J2 の約 1/690 しかないため軸対称として扱う。
     degree2: { j2: J2_EARTH, c22: 0, refRadius: R_EARTH_EQ },
+    atmosphere: EARTH_ATMOSPHERE,
   },
   moon: {
     kind: 'satellite',

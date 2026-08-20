@@ -34,7 +34,8 @@ function buildGeoElements(registry: CelestialRegistry): OrbitalElements | null {
   const earth = bodyDef(registry, 'earth');
   const earthAttractor: Attractor = {
     id: 'earth', mu: earth.mu, radius: earth.radius,
-    state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, isStar: false,
+    state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null,
+    isStar: false,
   };
   return {
     a: earth.radius + 35786e3, e: 1e-6, p: earth.radius + 35786e3, incDeg: 0, period: 86164,
@@ -382,7 +383,7 @@ export class EnvironmentScene {
     const centerDef = bodyDef(registry, centerId);
     const center: Attractor = {
       id: centerId, mu: centerDef.mu, radius: centerDef.radius, state: this.ephemeris.stateOf(centerId, simTime),
-      accel: v3(), degree2: null, isStar: centerDef.kind === 'star',
+      accel: v3(), degree2: null, atmosphere: null, isStar: centerDef.kind === 'star',
     };
     return orbitalElementsOf(this.ephemeris.stateOf(id, simTime), center);
   }

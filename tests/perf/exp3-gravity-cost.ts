@@ -3,7 +3,7 @@
 // classifyAttractors/attractorsNear の単体コストと、Predictor.advanceBudget が1ステップに
 // 払う分(classifyAttractors(gravityAttractorsAt(...)) を2回)を測る。
 import { Ephemeris } from '../../src/physics/ephemeris';
-import { Attractor } from '../../src/physics/attractor';
+import { Attractor, nearestAtmosphereBody } from '../../src/physics/attractor';
 import { stepDynamics } from '../../src/physics/dynamics';
 import {
   buildEphemeris, initialLeoState, classifyAttractors, attractorsNear,
@@ -61,9 +61,10 @@ export function run(): void {
 
   console.log('\n## stepDynamics 単体(64天体固定・LEO初期状態)\n');
   const fixedAttractors = ephemeris.gravityAttractorsAt(0);
+  const fixedAtmosphere = nearestAtmosphereBody(s0.r, ephemeris.atmosphereAttractorsAt(0));
   let sAcc = s0;
   const msStep = bench('stepDynamics(64 attractors, fixed)', 20000, () => {
-    sAcc = stepDynamics(sAcc, 1, fixedAttractors, SHIP_BCINV, 0, null);
+    sAcc = stepDynamics(sAcc, 1, fixedAttractors, fixedAtmosphere, SHIP_BCINV, 0, null);
   });
   void sAcc;
 
@@ -86,7 +87,10 @@ export function run(): void {
     const g2 = ephemeris.gravityAttractorsAt(t + 10);
     const c2 = classifyAttractors(g2);
     const near2 = attractorsNear(s0.r, c2);
-    stepDynamics(s0, 20, near2, SHIP_BCINV, 0, null);
+    stepDynamics(
+      s0, 20, near2, nearestAtmosphereBody(s0.r, ephemeris.atmosphereAttractorsAt(t + 10)),
+      SHIP_BCINV, 0, null,
+    );
   });
 
   console.log('\n## 内訳との比較\n');

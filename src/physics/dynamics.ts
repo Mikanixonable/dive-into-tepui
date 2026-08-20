@@ -6,7 +6,7 @@ import { KinematicState, kinematicState } from './kinematic-state';
 import { dragAccel } from './atmosphere';
 import { sunlitFactor } from './shadow';
 import { srpAccel } from './srp';
-import { Vec3, add, cross, dot, v3 } from './vec3';
+import { Vec3, add, cross, dot, sub, v3 } from './vec3';
 
 // 状態(位置・速度)から加速度を返すコールバック。RK4 の各中間段(k1〜k4)ごとに、その段が
 // 実際に評価されるべき絶対時刻 t とともに呼ばれる。RK4 が4次精度を持つのは非自励系
@@ -107,12 +107,14 @@ export function stepRK4(s: KinematicState, dt: number, accel: AccelFn): Kinemati
 // から評価する — 距離の3乗で効く重力はステップ幅ぶんの天体の移動が精度を左右するため。
 // 日照率(sunlitFactor)と輻射圧の太陽方向は attractor.state.t のまま据え置く: 遮蔽の幾何と
 // 1AU 先の太陽方向はステップ内での天体の移動にほとんど左右されず、外挿する意味が無い。
-// 大気抵抗は r/v だけの自励項なので時刻を持たない。
+// 大気抵抗は atmosphereBody ただ1体から掛かる(複数の大気の寄与を足し合わせることは物理的に
+// ありえないので、どの天体の大気かは呼び出し側が選んで渡す)。天体一覧は走らない。
 function totalAccel(
   t: number,
   r: Vec3,
   v: Vec3,
   attractors: readonly Attractor[],
+  atmosphereBody: Attractor | null,
   bcInv: number,
   srpCoeff: number,
 ): Vec3 {
@@ -132,24 +134,31 @@ function totalAccel(
       ax += srp.x; ay += srp.y; az += srp.z;
     }
   }
-  const drag = dragAccel(r, v, bcInv);
+  if (atmosphereBody === null || atmosphereBody.atmosphere === null) return v3(ax, ay, az);
+  // 抗力はその天体の中心を基準に測る。天体位置は重力項と同じくこの段の時刻へ外挿する。
+  const b = attractorPositionAt(atmosphereBody, t);
+  const drag = dragAccel(
+    v3(r.x - b.x, r.y - b.y, r.z - b.z), sub(v, atmosphereBody.state.v), bcInv, atmosphereBody.atmosphere,
+  );
   return v3(ax + drag.x, ay + drag.y, az + drag.z);
 }
 
 // 全天体重力 + 2次重力場 + 大気抵抗 + 太陽輻射圧 + 推力の RK4 1ステップ。attractors はこの
 // ステップぶん呼び出し側が確定させた重力源一覧(Ephemeris.attractorsAt)であり、日照率の
-// 遮蔽天体判定にも同じ一覧を使う。bcInv/srpCoeff/thrust は種別ごとに異なるため引数で受け取り、
-// モジュール内に既定値を持たない。
+// 遮蔽天体判定にも同じ一覧を使う。atmosphereBody は抗力を及ぼす**ただ1体**の大気天体
+// (attractor.ts の nearestAtmosphereBody)で、null なら抗力は恒等的にゼロ。
+// bcInv/srpCoeff/thrust は種別ごとに異なるため引数で受け取り、モジュール内に既定値を持たない。
 export function stepDynamics(
   state: KinematicState,
   dt: number,
   attractors: readonly Attractor[],
+  atmosphereBody: Attractor | null,
   bcInv: number,
   srpCoeff: number,
   thrust: Vec3 | null,
 ): KinematicState {
   return stepRK4(state, dt, (t, rx, ry, rz, vx, vy, vz) => {
-    const a = totalAccel(t, v3(rx, ry, rz), v3(vx, vy, vz), attractors, bcInv, srpCoeff);
+    const a = totalAccel(t, v3(rx, ry, rz), v3(vx, vy, vz), attractors, atmosphereBody, bcInv, srpCoeff);
     return thrust ? add(a, thrust) : a;
   });
 }
