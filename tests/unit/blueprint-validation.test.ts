@@ -222,7 +222,7 @@ export function register(): void {
     const moved = (mount: object): readonly PartPlacement[] => bp.placements.map((p) => (
       p.part.type === 'engine' ? { ...p, mount } as PartPlacement : p));
     assertIssue(
-      validateBlueprint(withPlacements(bp, moved({ kind: 'surface', edgeId: 'mid', along: 0.5, around: 0 }))),
+      validateBlueprint(withPlacements(bp, moved({ kind: 'surface', edgeId: 'aft', along: 0.2, around: 0 }))),
       'warning', '推力軸が重心から');
     // トラスの先端まで離すと許容を超え、警告ではなく誤りになる。
     assertIssue(
@@ -243,11 +243,13 @@ export function register(): void {
   });
 
   test('blueprint: タンクからエンジンまで配管が繋がっていないと指摘される', () => {
-    const bp = baseBlueprint();
-    const tank = part('oxidizer_tank', {
-      name: 'NTO Tank', weight: 50, propellant: 'nitrogen-tetroxide', volume: 0.01, material: 'aluminium',
+    // 既定の主タンク・配管('aft')を外し、自前のタンク・配管だけで繋がりを確かめる。
+    const bp = without(baseBlueprint(), 'reductant_tank', 'plumbing');
+    const tank = part('reductant_tank', {
+      name: 'Hydrazine Tank', weight: 50, propellant: 'hydrazine', volume: 0.01, material: 'aluminium',
+      fuel: 0, insulationGrade: 1, requiredPressure: 0,
     });
-    const pipe = part('plumbing', { name: 'Feed Line', weight: 5, propellant: 'nitrogen-tetroxide', bore: 0.02, maxFlowRate: 5 });
+    const pipe = part('plumbing', { name: 'Feed Line', weight: 5, propellant: 'hydrazine', bore: 0.02, maxFlowRate: 5 });
     // タンクは 'fore'、配管は 'fore' だけ。主機は 'tail' にあり、'aft' を通らないので届かない。
     const disconnected = withPlacements(bp, [...bp.placements,
       { kind: 'internal', part: tank, edgeIds: ['fore'] },
@@ -255,7 +257,7 @@ export function register(): void {
     ]);
     assertIssue(validateBlueprint(disconnected), 'error', '配管が繋がっていません');
     // 'mid' と 'aft' にも配管を敷けば繋がる。
-    const pipe2 = part('plumbing', { name: 'Feed Line 2', weight: 5, propellant: 'nitrogen-tetroxide', bore: 0.02, maxFlowRate: 5 });
+    const pipe2 = part('plumbing', { name: 'Feed Line 2', weight: 5, propellant: 'hydrazine', bore: 0.02, maxFlowRate: 5 });
     const connected = withPlacements(bp, [...bp.placements,
       { kind: 'internal', part: tank, edgeIds: ['fore'] },
       { kind: 'internal', part: pipe2, edgeIds: ['fore', 'mid', 'aft'] },

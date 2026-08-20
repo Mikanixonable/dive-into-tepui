@@ -22,8 +22,11 @@ export const ASSEMBLY_CAMERA_DISTANCE_MARGIN = 2.5;
 // --- 基地操縦 ---
 export const BASE_THRUST = 4e8;        // 基地の総推力 [N]（1e6 kg で 400 m/s² — 船の全開加速度と同等）
 export const BASE_TORQUE = 1.4e8;      // 基地のトルク [N·m]（慣性 1e8 で 1.4 rad/s² — 船の角加速度と同等）
-export const BASE_FUEL_RATE = 0.5;     // 基地の燃料消費レート
 export const BASE_MAX_FUEL = 50000;    // 基地の最大燃料
+// 基地の主タンクの容積 [m^3]。RCS タンク(BASE_MAX_FUEL 相当)と釣り合う桁に留め、
+// 空き容積(桁違いに大きい)いっぱいには取らない(第12版 主推進系の搭載計画 R3)。
+export const BASE_MAIN_TANK_VOLUME = 50;
+export const BASE_PRESSURANT_TANK_VOLUME = 5;
 export const BASE_MAX_HP = 1e6;        // 基地の総HP。質量に見合う構造体として、砲撃で崩れる量ではない
 
 
@@ -110,6 +113,11 @@ export const CREWED_POWER_DRAW = 493.5;
 export const CREWED_WASTE_HEAT = 593.5;
 // 既定の有人艦の RCS タンクの容積 [m^3]。満載 1000kg 相当になる値(1000 / ヒドラジンの密度)。
 export const CREWED_RCS_TANK_VOLUME = 1000 / propellantDensity('hydrazine');
+// 既定の有人艦の主タンクの容積 [m^3]。主機と RCS を合わせた総 Δv が約 2,500 m/s になるよう、
+// aft エッジの空き容積(約 4.2 m^3)を残して逆算した値(第12版 主推進系の搭載計画 R3)。
+export const CREWED_MAIN_TANK_VOLUME = 3.9;
+// 既定の有人艦の加圧ガスタンクの容積 [m^3]。ヒドラジンは自己加圧しないため要る(§17-2)。
+export const CREWED_PRESSURANT_TANK_VOLUME = 0.08;
 
 // --- 高度低下警告(EMA平滑化) ---
 export const ALT_EMA_TIME_CONST = 3; // 高度・降下率EMAの時定数 [s]

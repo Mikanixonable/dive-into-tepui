@@ -29,6 +29,7 @@ import { register as registerAssemblyEditor } from './assembly-editor.test';
 import { register as registerBaseSave } from './base-save.test';
 import { register as registerBaseGeometry } from './base-geometry.test';
 import { register as registerMountCandidates } from './mount-candidates.test';
+import { register as registerDefaultVesselDesigns } from './default-vessel-designs.test';
 
 registerResource();
 registerProducibility();
@@ -52,6 +53,7 @@ registerAssemblyEditor();
 registerBaseSave();
 registerBaseGeometry();
 registerMountCandidates();
+registerDefaultVesselDesigns();
 registerHullMesh();
 registerMassProperties();
 registerAttitudeControl();
