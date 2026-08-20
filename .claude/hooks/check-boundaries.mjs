@@ -1,6 +1,6 @@
-// PostToolUse フック: /refactor-fixed の横断的な境界のうち、機械的に検出できる違反を
+// PostToolUse フック: 横断的な責務境界のうち、機械的に検出できる違反を
 // 編集直後に指摘する。判定するのは以下の4つだけで、基準そのものは
-// .claude/skills/refactor-fixed/SKILL.md が正本。
+// DEVELOP/CODING-RULE.md が正本。
 //
 //   1. game.ts / main.ts に配線と呼び出し順以外のものが入った
 //   2. sync が update を呼ぶ / 論理値を書き換える
@@ -87,7 +87,7 @@ function findViolations(posix, src) {
 
   if (/(^|\/)src\/physics\//.test(posix)) {
     for (const [re, msg] of PHYSICS_FORBIDDEN) {
-      if (re.test(src)) out.push(`${msg}(/refactor-fixed 4)`);
+      if (re.test(src)) out.push(`${msg}(physics/ の純度)`);
     }
   }
 
@@ -96,19 +96,19 @@ function findViolations(posix, src) {
     if (extra.length > 0) {
       out.push(
         `Game/main にオーケストレーション以外のメンバーがある: ${extra.join(', ')}` +
-        '(/refactor-fixed 1 — どちらかの所有者へ寄せるか、その横断を責務とするモジュールを立てる)',
+        '(CODING-RULE 1.2 — どちらかの所有者へ寄せるか、その横断を責務とするモジュールを立てる)',
       );
     }
   }
 
   for (const { name, body } of methodBodies(src, 'sync\\w*')) {
     for (const [re, msg] of SYNC_FORBIDDEN) {
-      if (re.test(body)) out.push(`${name}(): ${msg}(/refactor-fixed 2)`);
+      if (re.test(body)) out.push(`${name}(): ${msg}(CODING-RULE 1.7 フレーム処理の位相)`);
     }
   }
   for (const { name, body } of methodBodies(src, 'update\\w*|behave')) {
     for (const [re, msg] of UPDATE_FORBIDDEN) {
-      if (re.test(body)) out.push(`${name}(): ${msg}(/refactor-fixed 2)`);
+      if (re.test(body)) out.push(`${name}(): ${msg}(CODING-RULE 1.7 フレーム処理の位相)`);
     }
   }
 
@@ -148,7 +148,7 @@ process.stdin.on('end', async () => {
         additionalContext:
           `【責務境界の違反を検出】${posix}\n` +
           violations.map((v) => `- ${v}`).join('\n') +
-          '\n.claude/skills/refactor-fixed/SKILL.md の該当節を読み、コードを直せ。' +
+          '\nDEVELOP/CODING-RULE.md の該当節を読み、コードを直せ。' +
           'ルールに例外を足して正当化しない。誤検出だと判断した場合はその理由を述べること。',
       },
     }),
