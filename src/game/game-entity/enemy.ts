@@ -4,7 +4,7 @@ import * as C from '../const';
 import { Ship } from './ship';
 import { Attractor } from '../../physics/attractor';
 import { burnUpBody } from '../../physics/atmosphere';
-import type { GameEntity } from './game-entity';
+import { GameEntity } from './game-entity';
 import type { Contact } from '../simulation/contact';
 import { Attitude } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
@@ -226,7 +226,8 @@ export class Enemy extends Ship {
     }
 
     this.alive = false;
-    activeStage.recordEnemyDeath(this, simTime, 'killed');
+    // 天体の固体表面への接触は自然損耗、他の実体との接触は交戦の結果。
+    activeStage.recordEnemyDeath(this, simTime, other instanceof GameEntity ? 'killed' : 'collision');
     this.destroyEffect();
   }
 
@@ -243,7 +244,7 @@ export class Enemy extends Ship {
     if (burnUpBody(this.state.r, attractors, this.burnUpDensity) === null) return;
     this.alive = false;
     this.destroyEffect();
-    activeStage.recordEnemyDeath(this, simTime, 'reentry');
+    activeStage.recordEnemyDeath(this, simTime, 'burnup');
   }
 
   // 行動関数(同一集団の同時攻撃数カウント・弾追加は entities を使う)。
