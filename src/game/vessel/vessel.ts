@@ -57,6 +57,7 @@ import { ThrustEffects } from '../vessel/thrust-effects';
 import { RcsEffects } from '../vessel/rcs-effects';
 import { ReentryEffects } from '../vessel/reentry-effects';
 import { PilotMarkers } from '../vessel/pilot-markers';
+import { EntityMarker } from '../marker/entity-marker';
 import { Plan } from '../plan/plan';
 import { PlanExecutor, type PlanExecutionMode } from '../plan/plan-executor';
 import {
@@ -489,6 +490,7 @@ export class Vessel extends GameEntity {
         this.collisionGeom = new BaseCollisionGeometry();
       }
       this.equatorNodes = new EquatorNodeMarkerPair(this, deps.markerManager);
+      this.marker = new EntityMarker(this, deps.markerManager, 'mk-base', ENTITY_GLYPH.ship, true);
     }
 
     // 敵対勢力の機体だけが持つ個体色と集団識別。
