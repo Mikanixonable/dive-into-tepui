@@ -25,9 +25,9 @@ import {
 } from './vessel/dock-workbench';
 import { DockWorkbenchController, type DragSource } from './vessel/dock-workbench-controller';
 import { crewedAssembly } from './vessel/vessel-assemblies';
-import { productionBlueprintOf, productionResourceDemand, consumeProductionResources } from './vessel/production';
+import { productionBlueprintOf, consumeProductionResources } from './vessel/production';
 import { producibility, type ProducibilityBlueprint } from './economy/producibility';
-import { formatResourceAmount } from './hud/inventory-labels';
+import { productionCostSummary, type ProductionCostSummary } from './hud/inventory-labels';
 import { baseFacilities, basePowerAvailable, deriveBaseDockingPorts } from './vessel/base-module';
 import { BASE_BLUEPRINT_LIMITS, baseInvariants, validateBaseAssembly } from './vessel/base-assembly-validation';
 import { deriveCapsules } from './vessel/collision-shape';
@@ -893,19 +893,13 @@ export class Docking {
     return productionBlueprintOf(chargeBlueprint);
   }
 
-  // 「建造して格納」ボタンの但し書き。base-operations-window.ts の生産タブと同じ形で、
-  // producibility の不足を資源だけの文言へ畳んで賄えるかと一緒に返す。対象が下書きでなければ
-  // (基地が消える等) null。
-  private draftBuildStatus(base: Vessel, targetId: string): { readonly costText: string; readonly affordable: boolean } | null {
+  // 「建造して格納」ボタンの但し書き。対象が下書きでなければ(基地が消える等) null。
+  private draftBuildStatus(base: Vessel, targetId: string): ProductionCostSummary | null {
     const entry = this.assembly;
     const draft = entry?.drafts.get(targetId);
     if (!entry || !draft || !base.baseState) return null;
     const request = this.draftBuildRequest(entry, draft, entry.session.getTarget(targetId).assembly);
-    const ledger = base.baseState.resources;
-    const demand = productionResourceDemand(request, ledger);
-    const costText = [...demand].map(([id, mass]) => formatResourceAmount(id, mass)).join('・') || '資源なし';
-    const affordable = producibility(request, ledger, baseFacilities(base), basePowerAvailable(base)).length === 0;
-    return { costText, affordable };
+    return productionCostSummary(base, request);
   }
 
   // 格納艦をドックから切り離して発進させ、操作対象にする。
