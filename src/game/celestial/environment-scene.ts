@@ -49,7 +49,7 @@ function buildGeoElements(registry: CelestialRegistry): OrbitalElements | null {
 const SATELLITE_REFERENCE_LINE_COLOR = 0xaab3c0;
 const PLANET_REFERENCE_LINE_COLOR = 0xffffff;
 const HALO_REFERENCE_LINE_COLOR = 0x8b93a0;
-const HALO_SAMPLES_PER_FAMILY = 10;
+const HALO_SAMPLES_PER_FAMILY = 20;
 
 interface HaloFamilySet {
   l1North: HaloOrbitLine[];
@@ -262,8 +262,8 @@ export class EnvironmentScene {
   ): void {
     if (!overviewMode) {
       this.geoLine.sync(null, fo, camera);
-      this.syncHaloFamilySet(this.moonHaloFamilies, 'moon', 0, false, false, 0, simTime, fo, camera);
-      this.syncHaloFamilySet(this.earthHaloFamilies, 'earth', 0, false, false, 0, simTime, fo, camera);
+      this.syncHaloFamilySet(this.moonHaloFamilies, 'moon', 0, 0, false, false, false, false, 0, simTime, fo, camera);
+      this.syncHaloFamilySet(this.earthHaloFamilies, 'earth', 0, 0, false, false, false, false, 0, simTime, fo, camera);
       for (const [id] of this.referenceLines) this.removeReferenceLine(id);
       return;
     }
@@ -273,7 +273,7 @@ export class EnvironmentScene {
       focusId,
       nearbyIds,
     );
-    if ('earth' in this.ephemeris.registry && visibilityPolicy.body('earth').orbit) {
+    if ('earth' in this.ephemeris.registry && toggles.geoOrbit) {
       this.geoLine.sync(this.geoElements, fo, camera);
       const earthPos = this.ephemeris.positionOf('earth', simTime);
       const distToEarth = len(sub(earthPos, cameraPos));
@@ -287,17 +287,33 @@ export class EnvironmentScene {
     if (this.moonHaloFamilies) {
       const visL1 = visibilityPolicy.body('moon-l1');
       const visL2 = visibilityPolicy.body('moon-l2');
+      const masterHalo = toggles.haloOrbit;
       const distToMoon = len(sub(this.ephemeris.positionOf('moon', simTime), cameraPos));
       const opacity = this.referenceLineOpacityAt('moon', distToMoon);
-      this.syncHaloFamilySet(this.moonHaloFamilies, 'moon', 10000e3, visL1.orbit, visL2.orbit, opacity, simTime, fo, camera);
+      this.syncHaloFamilySet(
+        this.moonHaloFamilies, 'moon', 1000e3, 70000e3,
+        masterHalo && toggles.haloL1North && visL1.orbit,
+        masterHalo && toggles.haloL1South && visL1.orbit,
+        masterHalo && toggles.haloL2North && visL2.orbit,
+        masterHalo && toggles.haloL2South && visL2.orbit,
+        opacity, simTime, fo, camera,
+      );
     }
 
     if (this.earthHaloFamilies) {
       const visL1 = visibilityPolicy.body('earth-l1');
       const visL2 = visibilityPolicy.body('earth-l2');
+      const masterHalo = toggles.haloOrbit;
       const distToEarth = len(sub(this.ephemeris.positionOf('earth', simTime), cameraPos));
       const opacity = this.referenceLineOpacityAt('earth', distToEarth);
-      this.syncHaloFamilySet(this.earthHaloFamilies, 'earth', 300000e3, visL1.orbit, visL2.orbit, opacity, simTime, fo, camera);
+      this.syncHaloFamilySet(
+        this.earthHaloFamilies, 'earth', 15000e3, 1000000e3,
+        masterHalo && toggles.haloL1North && visL1.orbit,
+        masterHalo && toggles.haloL1South && visL1.orbit,
+        masterHalo && toggles.haloL2North && visL2.orbit,
+        masterHalo && toggles.haloL2South && visL2.orbit,
+        opacity, simTime, fo, camera,
+      );
     }
     for (const id of this.referenceIds) {
       if (!visibilityPolicy.body(id).orbit) {
@@ -323,7 +339,8 @@ export class EnvironmentScene {
   ): void {
     const keys = ['geolabel-0', 'geolabel-1', 'geolabel-2', 'geolabel-3'];
     const earthVis = visibilityPolicy && 'earth' in this.ephemeris.registry ? visibilityPolicy.body('earth') : null;
-    if (!markerManager || !overviewMode || !this.geoElements || !('earth' in this.ephemeris.registry) || !earthVis || !earthVis.orbit || !earthVis.label) {
+    const geoOn = cameraSystem.bodyClassToggles.geoOrbit;
+    if (!markerManager || !overviewMode || !this.geoElements || !('earth' in this.ephemeris.registry) || !earthVis || !geoOn || !earthVis.label) {
       if (markerManager) {
         for (const key of keys) markerManager.hide(key);
       }
@@ -489,6 +506,7 @@ export class EnvironmentScene {
     lines: HaloOrbitLine[],
     secondary: OrbitingId,
     point: CollinearPoint,
+    minAz: number,
     maxAz: number,
     isVisible: boolean,
     baseOpacity: number,
@@ -503,10 +521,12 @@ export class EnvironmentScene {
         line.sync(secondary, point, 0, simTime, this.ephemeris, fo, camera);
         continue;
       }
-      const fraction = (i + 1) / n;
-      const az = maxAz * fraction;
+      const u = n > 1 ? i / (n - 1) : 1;
+      const fraction = u ** 1.6; // 水平に近い小振幅から極に近いNRHO大振幅までを滑らかに網羅
+      const absAz = minAz + (Math.abs(maxAz) - minAz) * fraction;
+      const az = maxAz >= 0 ? absAz : -absAz;
       line.sync(secondary, point, az, simTime, this.ephemeris, fo, camera);
-      const opacityFactor = 0.3 + 0.7 * fraction;
+      const opacityFactor = 0.25 + 0.75 * Math.sin(((i + 1) / n) * Math.PI * 0.5);
       line.setOpacity(baseOpacity * opacityFactor);
     }
   }
@@ -514,19 +534,22 @@ export class EnvironmentScene {
   private syncHaloFamilySet(
     set: HaloFamilySet | null,
     secondary: OrbitingId,
+    minAz: number,
     maxAz: number,
-    visL1Orbit: boolean,
-    visL2Orbit: boolean,
+    visL1North: boolean,
+    visL1South: boolean,
+    visL2North: boolean,
+    visL2South: boolean,
     baseOpacity: number,
     simTime: number,
     fo: FloatingOrigin,
     camera: THREE.Camera,
   ): void {
     if (!set) return;
-    this.syncFamily(set.l1North, secondary, 'L1', +maxAz, visL1Orbit, baseOpacity, simTime, fo, camera);
-    this.syncFamily(set.l1South, secondary, 'L1', -maxAz, visL1Orbit, baseOpacity, simTime, fo, camera);
-    this.syncFamily(set.l2North, secondary, 'L2', +maxAz, visL2Orbit, baseOpacity, simTime, fo, camera);
-    this.syncFamily(set.l2South, secondary, 'L2', -maxAz, visL2Orbit, baseOpacity, simTime, fo, camera);
+    this.syncFamily(set.l1North, secondary, 'L1', minAz, +maxAz, visL1North, baseOpacity, simTime, fo, camera);
+    this.syncFamily(set.l1South, secondary, 'L1', minAz, -maxAz, visL1South, baseOpacity, simTime, fo, camera);
+    this.syncFamily(set.l2North, secondary, 'L2', minAz, +maxAz, visL2North, baseOpacity, simTime, fo, camera);
+    this.syncFamily(set.l2South, secondary, 'L2', minAz, -maxAz, visL2South, baseOpacity, simTime, fo, camera);
   }
 
   private disposeHaloFamilySet(set: HaloFamilySet | null): void {
