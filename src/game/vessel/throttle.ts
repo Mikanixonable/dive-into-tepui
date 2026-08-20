@@ -223,8 +223,8 @@ export class VesselThrottle {
     // 燃やす推進剤も同じ rcs_thruster のもの。
     const rotateIntensity = Math.max(Math.abs(inX), Math.abs(inY), Math.abs(inZ));
     if (rotateIntensity > 0) {
-      const scale = rotateIntensity * rcsOutputFactor * angScale * simDt;
-      const actualRatio = ship.consumeFuelByRates(ship.rcsFuelConsumptionRates(), scale);
+      const intensityScale = rotateIntensity * rcsOutputFactor * angScale * simDt;
+      const actualRatio = ship.consumeFuelByRates(ship.rcsFuelConsumptionRates(), intensityScale);
       maxAngAccel *= actualRatio;
     }
     
