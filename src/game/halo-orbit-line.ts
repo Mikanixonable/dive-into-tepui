@@ -2,7 +2,7 @@
 // 頂点はラグランジュ点(CollinearFrame.origin)相対座標として保持し、フローティングオリジンの
 //Object3D 平行移動(setTransform)でラグランジュ点の ECI 位置へ置く。
 import * as THREE from 'three/webgpu';
-import { CollinearFrame, CollinearPoint, collinearFrame, haloAmplitudeX } from '../physics/halo';
+import { CollinearFrame, CollinearPoint, collinearFrame, haloAmplitudeX, haloLocalPosition } from '../physics/halo';
 import type { Ephemeris } from '../physics/ephemeris';
 import type { OrbitingId } from '../physics/attractor';
 import { FloatingOrigin } from './floating-origin';
@@ -43,25 +43,17 @@ export class HaloOrbitLine {
     this.curve.setRenderOrder(renderOrder);
   }
 
-  // 位相 phase = t * 2π に対する Richardson 1次元近傍(ハロー軌道)のローカル ECI オフセット。
+  // 位相 phase = t * 2π に対する Richardson 2次精度(ハロー軌道 3D 曲線)のローカル ECI オフセット。
   private readonly sampler: CurveSampler = (t, out) => {
     const frame = this.snapFrame;
     if (!frame) return;
     const phase = t * Math.PI * 2;
+    const point = this.snapPoint;
     const ax = this.snapAx;
     const az = this.snapAz;
 
-    // L点局所座標系(Richardson 座標系)における位置
-    const x = -ax * Math.cos(phase);
-    const y = frame.kappa * ax * Math.sin(phase);
-    const z = az * Math.cos(phase);
-
-    // ECI 軸上の相対オフセットベクトル
-    const rx = x * frame.xHat.x + y * frame.yHat.x + z * frame.zHat.x;
-    const ry = x * frame.xHat.y + y * frame.yHat.y + z * frame.zHat.y;
-    const rz = x * frame.xHat.z + y * frame.yHat.z + z * frame.zHat.z;
-
-    out.set(rx, ry, rz);
+    const pos = haloLocalPosition(frame, point, ax, az, phase);
+    out.set(pos.x, pos.y, pos.z);
   };
 
   sync(
