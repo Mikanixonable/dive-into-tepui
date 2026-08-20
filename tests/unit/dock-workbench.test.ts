@@ -5,6 +5,7 @@ import { DockWorkbenchSession, type WorkbenchSnapshot } from '../../src/game/ves
 import { DockWorkbenchController } from '../../src/game/vessel/dock-workbench-controller';
 import { createPart } from '../../src/game/game-entity/parts';
 import { crewedAssembly } from '../../src/game/vessel/vessel-assemblies';
+import { v3 } from '../../src/physics/vec3';
 import { test } from '../physics/harness';
 
 export function register(): void {
@@ -124,7 +125,7 @@ export function register(): void {
         mount: { kind: 'surface', edgeId: edge.id, along: 0, around: 0 },
       },
       verdict: mateVerdict({ occupied: false, widthFits: true, phaseFits: true, lengthFits: true, withinWorkArea: true }),
-      targetLabel: '基地', position: { x: 0, y: 0, z: 0 }, targetKind: 'base',
+      targetLabel: '基地', position: v3(0, 0, 0), targetKind: 'base',
     });
     assert.equal(controller.dragging!.sourceTargetKind, null);
     assert.equal(controller.drop('base').valid, true);
