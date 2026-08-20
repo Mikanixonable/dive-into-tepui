@@ -6,30 +6,18 @@
 import * as THREE from 'three/webgpu';
 import { markLitOpaque } from '../../render/pipeline/lit-layer';
 import { buildLoftGeometry } from '../../render/hull/loft-mesh';
-import type { FittingShape, PanelSide } from '../../render/hull/part-meshes';
+import type { PanelSide } from '../../render/hull/part-meshes';
 import { buildFitting, buildRadiatorPanel, buildSolarPanel } from '../../render/hull/part-meshes';
-import type { AnyPart, PartType } from '../game-entity/parts';
+import type { AnyPart } from '../game-entity/parts';
 import type { VesselAssembly } from './assembly';
 import { partVisualRefOf } from './part-visual';
+import { FITTINGS } from './part-fittings';
 import type { HullLod } from './hull-shape';
 import { hullShapeOf } from './hull-shape';
 import { circumradius, mountFrame } from './tree';
 import type { MountFrame } from './tree';
 
 const HULL_COLOR = 0xb9c1cb;
-
-// 外装要素の造形と、機体の代表寸法に対する大きさの比。ここに無い種別は外に出ない。
-const FITTINGS: Partial<Record<PartType, { readonly shape: FittingShape; readonly ratio: number }>> = {
-  engine: { shape: 'nozzle', ratio: 1.1 },
-  weapon: { shape: 'barrel', ratio: 1.0 },
-  rcs_thruster: { shape: 'thruster', ratio: 0.24 },
-  communication: { shape: 'dish', ratio: 0.3 },
-  heat_shield: { shape: 'shield', ratio: 0.7 },
-  robot_arm: { shape: 'block', ratio: 0.4 },
-  docking_port: { shape: 'block', ratio: 0.5 },
-  container_coupling: { shape: 'block', ratio: 0.4 },
-  combat_shield: { shape: 'block', ratio: 0.8 },
-};
 
 // 機体の代表寸法 [m]。搭載要素の造形の大きさを、機体の大小に合わせるために使う。
 function hullScale(assembly: VesselAssembly): number {

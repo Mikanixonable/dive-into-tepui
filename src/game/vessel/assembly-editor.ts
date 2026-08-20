@@ -390,6 +390,26 @@ export function editSection(
   }
 }
 
+/** Add a part that the assembly does not carry yet, at a validated MountPoint for an external one. */
+export function addPlacement(
+  assembly: VesselAssembly,
+  placement: PartPlacement,
+  options: AssemblyEditorOptions = {},
+): AssemblyEditResult {
+  const placementId = placement.part.id;
+  if (assembly.placements.some((candidate) => candidate.part.id === placementId)) {
+    return rejected(assembly, editError('duplicate-id', placementId, `部品 id "${placementId}" は既に配置されています`));
+  }
+  if (placement.kind === 'external') {
+    const mountError = validateMount(assembly, placement.mount, placementId);
+    if (mountError) return rejected(assembly, mountError);
+  }
+  const impact: AssemblyEditImpact = placement.kind === 'external'
+    ? { nodeIds: mountNodeIds(placement.mount), edgeIds: mountEdgeIds(placement.mount), placementIds: [placementId] }
+    : { nodeIds: [], edgeIds: [...placement.edgeIds], placementIds: [placementId] };
+  return commit(assembly, { tree: assembly.tree, placements: [...assembly.placements, placement] }, options, impact);
+}
+
 /** Move an external part to a validated port, hull surface, or truss MountPoint. */
 export function movePlacement(
   assembly: VesselAssembly,

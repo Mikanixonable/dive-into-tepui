@@ -7,12 +7,13 @@ import {
 } from './dock-workbench';
 import type { PartPlacement, VesselAssembly } from './assembly';
 import type { MateFailure, MateVerdict } from './assembly-mode';
+import type { Vec3 } from '../../physics/vec3';
 
 export interface SnapCandidate {
   readonly placement: PartPlacement;
   readonly verdict: MateVerdict;
   readonly targetLabel: string;
-  readonly position: { readonly x: number; readonly y: number; readonly z: number };
+  readonly position: Vec3;
   /** Retained with the preview so a base/draft preview cannot be applied to another kind. */
   readonly targetKind?: WorkbenchTargetKind;
 }

@@ -644,6 +644,11 @@ export const COLOR_PLAYER_ORBIT_LINE = '#bfc9d4'; // 自機の軌道線(予測�
 export const COLOR_ENEMY_PLASMA = '#ff3333'; // 蛍光色の赤
 export const COLOR_SHIP_DARK_HULL = '#2e3340';
 export const COLOR_STAGE0_GROUP_ACCENTS = ['#ff4a3d', '#3dc6ff', '#3dff8f', '#ffe23d', '#bf3dff'];
+// 組立中に掴んでいる部品の色。取り付け先の3状態(付けられる/その位置には付けられない/
+// 取り付け先が範囲内に無い)をそのまま表す。
+export const COLOR_ASSEMBLY_GHOST_VALID = '#6fe3a0';
+export const COLOR_ASSEMBLY_GHOST_INVALID = '#ff5a4a';
+export const COLOR_ASSEMBLY_GHOST_FAR = '#8b93a0';
 
 // 軌道まわりの線の描画順。値が大きいほど後に描かれ、重なったときに手前へ来る。
 // 描画順は線どうしの相対関係でしか意味を持たない(同値だと透明描画の前後が不定になる)ので、
