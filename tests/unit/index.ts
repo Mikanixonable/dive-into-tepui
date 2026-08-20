@@ -28,6 +28,7 @@ import { register as registerDockingCluster } from './docking-cluster.test';
 import { register as registerAssemblyEditor } from './assembly-editor.test';
 import { register as registerBaseSave } from './base-save.test';
 import { register as registerBaseGeometry } from './base-geometry.test';
+import { register as registerBaseAssemblyValidation } from './base-assembly-validation.test';
 import { register as registerMountCandidates } from './mount-candidates.test';
 import { register as registerDefaultVesselDesigns } from './default-vessel-designs.test';
 
@@ -52,6 +53,7 @@ registerDockingCluster();
 registerAssemblyEditor();
 registerBaseSave();
 registerBaseGeometry();
+registerBaseAssemblyValidation();
 registerMountCandidates();
 registerDefaultVesselDesigns();
 registerHullMesh();

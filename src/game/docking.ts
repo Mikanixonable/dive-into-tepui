@@ -29,7 +29,10 @@ import { productionBlueprintOf, consumeProductionResources } from './vessel/prod
 import { producibility, type ProducibilityBlueprint } from './economy/producibility';
 import { productionCostSummary, type ProductionCostSummary } from './hud/inventory-labels';
 import { baseFacilities, basePowerAvailable, deriveBaseDockingPorts } from './vessel/base-module';
-import { BASE_BLUEPRINT_LIMITS, baseInvariants, validateBaseAssembly } from './vessel/base-assembly-validation';
+import {
+  BASE_BLUEPRINT_LIMITS, baseInvariants, validateBaseAssembly, type BaseModuleContinuity,
+} from './vessel/base-assembly-validation';
+import type { BaseModulePart, DockPort } from './game-entity/parts';
 import { deriveCapsules } from './vessel/collision-shape';
 import { circumradius, type VesselTree } from './vessel/tree';
 import type { Vec3 } from '../physics/vec3';
@@ -295,8 +298,13 @@ export class Docking {
         inventory: [...(base.baseState?.inventory ?? [])],
       },
       () => ({ valid: true, errors: [] }),
-      // 収容艦数は build-draft 等で開いている間にも動くので、都度 base から読み直す。
-      { targetValidator: (target) => targetValidation(target, base.baseState?.dockedVessels.length ?? 0) },
+      // 収容艦数・基地モジュールの継続性は build-draft 等で開いている間にも動くので、
+      // 都度 base から読み直す。
+      {
+        targetValidator: (target) => targetValidation(
+          target, base.baseState?.dockedVessels.length ?? 0, this.baseModuleContinuity(base),
+        ),
+      },
     );
     // 部品棚ウィンドウは作業台1つに結びつくので、セッションと同じ寿命で作る。
     const workbench = new DockWorkbenchController(session);
@@ -351,8 +359,9 @@ export class Docking {
     this.cameraSystem.combatCamera.chaseCamera.dist = Math.max(CHASE_DIST_MIN, Math.min(CHASE_DIST_MAX, dist));
   }
 
-  // セッションの内容を実機へ書き戻す。1つでも対象の検証が通らなければ何も適用しない —
-  // 検証を通った対象だけ書き戻すと、基地と格納艦の構成が食い違ったまま残りうる。
+  // セッションの内容を実機へ書き戻す。全対象について適用できるかを副作用なしで先に判定し、
+  // 全て通ったあとで初めて書き込む — 検証と書き込みを1対象ずつ交互に行うと、途中の対象で
+  // 拒否されたときに基地と格納艦の構成が食い違ったまま残ってしまう。
   private commitAssembly(): void {
     const entry = this.assembly;
     if (!entry) return;
@@ -363,11 +372,17 @@ export class Docking {
       this.hud.hint(error instanceof Error ? error.message : String(error));
       return;
     }
+    // 1段目: 副作用なしで全対象の適用可否を確かめる。
     for (const target of snapshot.targets) {
-      if (!this.applyTargetAssembly(entry.base, target.id, target.assembly)) {
-        this.hud.hint('構成を適用できないため、確定を中止しました');
+      const reason = this.checkTargetApplicable(entry.base, target.id, target.assembly);
+      if (reason) {
+        this.reportEditFailure(reason);
         return;
       }
+    }
+    // 2段目: すべて通ったので、ここで初めて書き込む。
+    for (const target of snapshot.targets) {
+      this.applyTargetAssembly(entry.base, target.id, target.assembly);
     }
     const inventory = entry.base.baseState?.inventory;
     if (inventory) inventory.splice(0, inventory.length, ...snapshot.inventory);
@@ -675,6 +690,20 @@ export class Docking {
    * the workbench. The old vessel is kept untouched until validation succeeds.
    */
   commitDockedAssembly(base: Vessel, vesselId: string, assembly: VesselAssembly): { ok: true; vessel: Vessel } | { ok: false; reason: string } {
+    const reason = this.checkDockedAssemblyApplicable(base, vesselId);
+    if (reason) return { ok: false, reason };
+    return this.writeDockedAssembly(base, vesselId, assembly);
+  }
+
+  // 対象艦がドックにいるか、副作用なしで判定する。
+  private checkDockedAssemblyApplicable(base: Vessel, vesselId: string): string | null {
+    if (!base.baseState) return '基地ではありません';
+    const index = base.baseState.dockedVessels.findIndex((entry) => entry.id === vesselId);
+    return index < 0 ? '対象艦がドックにありません' : null;
+  }
+
+  // checkDockedAssemblyApplicable を通った前提で、ドック中の1隻を検証済みの構成へ差し替える。
+  private writeDockedAssembly(base: Vessel, vesselId: string, assembly: VesselAssembly): { ok: true; vessel: Vessel } | { ok: false; reason: string } {
     const state = base.baseState;
     if (!state) return { ok: false, reason: '基地ではありません' };
     const index = state.dockedVessels.findIndex((entry) => entry.id === vesselId);
@@ -687,6 +716,7 @@ export class Docking {
     const replacement = new Vessel({
       blueprintShip: { blueprint, state: previous.state, name: previous.name, id: previous.id },
     }, this.vesselDeps);
+    // 差し替えが成り立ってから、初めて旧艦のメッシュ・格納枠を新艦へ引き継ぐ。
     const slotIndex = state.dockedVessels[index]!.slotIndex;
     base.detachDockedVesselMesh(previous);
     state.dockedVessels.splice(index, 1, {
@@ -755,48 +785,68 @@ export class Docking {
     this.hud.hint(`作業台の変更を適用できません: ${message}`);
   }
 
-  // 検証済みの構成を対象の実機(または下書き)へ書き戻す。適用できたかを返す。
-  private applyTargetAssembly(base: Vessel, targetId: string, assembly: VesselAssembly): boolean {
+  // snapshot.targets のすべてが checkTargetApplicable を通ったあとに呼ぶ前提で、対象1つの構成を
+  // 実機(または下書き)へ書き戻す。それでも失敗するのは Vessel 側の構築処理自体が例外を
+  // 投げた稀なケースだけであり、その旨を知らせるにとどめる(ここまでに書き戻した他の対象を
+  // 元に戻す手段は無い)。
+  private applyTargetAssembly(base: Vessel, targetId: string, assembly: VesselAssembly): void {
     const target = this.targetById(base, targetId);
-    if (!target) return false;
+    if (!target) return;
     if (target.kind === 'base') {
-      const result = this.commitBaseAssembly(base, assembly);
-      if (!result.ok) { this.reportEditFailure(result.reason); return false; }
-      return true;
+      const result = this.writeBaseAssembly(base, assembly);
+      if (!result.ok) this.reportEditFailure(result.reason);
+      return;
     }
     if (target.kind === 'vessel' && target.vessel) {
-      const result = this.commitDockedAssembly(base, target.vessel.id, assembly);
-      if (!result.ok) { this.reportEditFailure(result.reason); return false; }
-      return true;
+      const result = this.writeDockedAssembly(base, target.vessel.id, assembly);
+      if (!result.ok) this.reportEditFailure(result.reason);
     }
     // 下書きの構成はセッションが持っているので、ここで書き戻すものは無い。
-    return this.assembly?.drafts.has(targetId) ?? false;
   }
 
-  // 基地本体の構成を差し替える。基地モジュールの同一性と、艦が入っているドックの口が
-  // 動いていないことを先に確かめる。
-  private commitBaseAssembly(base: Vessel, assembly: VesselAssembly): { ok: true; base: Vessel } | { ok: false; reason: string } {
-    if (!base.baseState) return { ok: false, reason: '基地ではありません' };
-    const validation = validateBaseAssembly(assembly, base.baseState.dockedVessels.length);
-    if (validation.length > 0) return { ok: false, reason: validation[0]! };
-    const oldModule = base.parts.find((part) => part.type === 'base_module' && part.hp > 0);
-    const newModule = assembly.placements.map((placement) => placement.part)
-      .find((part) => part.type === 'base_module' && part.hp > 0);
-    if (!oldModule || !newModule || oldModule.type !== 'base_module' || newModule.type !== 'base_module') {
-      return { ok: false, reason: '基地モジュールを維持してください' };
-    }
-    if (oldModule.id !== newModule.id) return { ok: false, reason: '基地モジュールのIDは変更できません' };
-    const oldPorts = deriveBaseDockingPorts(base.assembly, oldModule).slots;
-    const newPorts = deriveBaseDockingPorts(assembly, newModule).slots;
-    for (const entry of base.baseState.dockedVessels) {
-      if (!sameDockPort(oldPorts[entry.slotIndex], newPorts[entry.slotIndex])) {
-        return { ok: false, reason: `ドック ${entry.slotIndex + 1} は船が収容中のため変更できません` };
-      }
-    }
+  // 対象1つが実機へ適用できるかを、副作用なしで判定する。基地本体は構造としての成立可否に加え、
+  // 基地モジュールの同一性と、艦が入っているドックの口が動いていないかも見る。
+  private checkTargetApplicable(base: Vessel, targetId: string, assembly: VesselAssembly): string | null {
+    const target = this.targetById(base, targetId);
+    if (!target) return '対象が見つかりません';
+    if (target.kind === 'base') return this.checkBaseAssemblyApplicable(base, assembly);
+    if (target.kind === 'vessel' && target.vessel) return this.checkDockedAssemblyApplicable(base, target.vessel.id);
+    return this.assembly?.drafts.has(targetId) ? null : '対象が見つかりません';
+  }
+
+  // 基地本体の構成として成り立つか(構造・base_module 個数・継続性)を副作用なしで判定する。
+  private checkBaseAssemblyApplicable(base: Vessel, assembly: VesselAssembly): string | null {
+    if (!base.baseState) return '基地ではありません';
+    const validation = validateBaseAssembly(
+      assembly, base.baseState.dockedVessels.length, this.baseModuleContinuity(base),
+    );
+    return validation.length > 0 ? validation[0]! : null;
+  }
+
+  // checkBaseAssemblyApplicable を通った前提で、基地本体の構成を書き戻す。
+  private writeBaseAssembly(base: Vessel, assembly: VesselAssembly): { ok: true; base: Vessel } | { ok: false; reason: string } {
     const applied = base.replaceAssembly(assembly);
     if (!applied.ok) return applied;
     this._activeBase = base;
     return { ok: true, base };
+  }
+
+  // 差し替え後も維持されなければならない基地の性質を、基地の現在の実機状態から都度導く —
+  // セッション中に収容艦が出入りしても追従できるよう、セッション開始時の値を焼き込まない。
+  private baseModuleContinuity(base: Vessel): BaseModuleContinuity | null {
+    if (!base.baseState || !base.assembly) return null;
+    const oldModule = base.parts.find(
+      (part): part is BaseModulePart => part.type === 'base_module' && part.hp > 0,
+    );
+    if (!oldModule) return null;
+    // 収容中の艦がいるスロットの口だけを覚える —— 空きスロットは動かしてよい。
+    const oldPorts = deriveBaseDockingPorts(base.assembly, oldModule).slots;
+    const occupiedPorts = new Map<number, DockPort>();
+    for (const docked of base.baseState.dockedVessels) {
+      const port = oldPorts[docked.slotIndex];
+      if (port) occupiedPorts.set(docked.slotIndex, port);
+    }
+    return { moduleId: oldModule.id, occupiedPorts };
   }
 
   // 既定の有人艦の形から新規船の下書きを作り、組立の対象へ加える。建造すれば入る枠をこの時点で
@@ -953,8 +1003,9 @@ export class Docking {
 function targetValidation(
   target: WorkbenchTarget,
   dockedCount: number,
+  continuity: BaseModuleContinuity | null,
 ): TargetIssues {
-  const blocking = target.kind === 'base' ? [...baseInvariants(target.assembly, dockedCount)] : [];
+  const blocking = target.kind === 'base' ? [...baseInvariants(target.assembly, dockedCount, continuity)] : [];
   return { blocking, issues: designIssues(target.assembly, target.id, target.kind) };
 }
 
@@ -974,18 +1025,4 @@ function designIssues(
       message: `構成の検証に失敗しました: ${error instanceof Error ? error.message : String(error)}`,
     }];
   }
-}
-
-// 2つのドックの口が同じ位置・同じ法線を向いているか。
-function sameDockPort(
-  a: { readonly localPos: { x: number; y: number; z: number }; readonly localNormal: { x: number; y: number; z: number } } | undefined,
-  b: { readonly localPos: { x: number; y: number; z: number }; readonly localNormal: { x: number; y: number; z: number } } | undefined,
-): boolean {
-  if (!a || !b) return false;
-  return Math.abs(a.localPos.x - b.localPos.x) < 1e-9
-    && Math.abs(a.localPos.y - b.localPos.y) < 1e-9
-    && Math.abs(a.localPos.z - b.localPos.z) < 1e-9
-    && Math.abs(a.localNormal.x - b.localNormal.x) < 1e-9
-    && Math.abs(a.localNormal.y - b.localNormal.y) < 1e-9
-    && Math.abs(a.localNormal.z - b.localNormal.z) < 1e-9;
 }
