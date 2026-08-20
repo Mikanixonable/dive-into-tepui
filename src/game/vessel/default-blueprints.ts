@@ -2,7 +2,22 @@
 // できる設計はこれだけである。保管庫の設計と同じ形なので、生産の経路はどちらも区別しない。
 import * as C from '../const';
 import { createPart, type AnyPart } from '../game-entity/parts';
+import { createBlueprint, type VesselBlueprint } from './blueprint';
 import { crewedAssembly, orbitalBaseAssembly } from './vessel-assemblies';
+
+export const CREWED_BLUEPRINT_ID = 'builtin-crewed-ship';
+
+// 既定の有人艦の設計。形状ツリーと搭載要素の配置は既定の設計そのものを読む。
+export function crewedShipBlueprint(now: number): VesselBlueprint {
+  const assembly = crewedAssembly(C.PLAYER_MAX_HP);
+  return createBlueprint({
+    id: CREWED_BLUEPRINT_ID,
+    name: '有人艦(既定)',
+    tree: assembly.tree,
+    placements: assembly.placements,
+    now,
+  });
+}
 
 // 単体で生産できる搭載要素の見本。**この一覧は既定の設計が実際に積んでいる要素そのものであり、
 // 別に仕様の表を持たない** — 2つ目の表を置くと、そちらの推力や耐久が既定艦と桁でずれても
