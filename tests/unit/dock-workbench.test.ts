@@ -135,4 +135,26 @@ export function register(): void {
     controller.cancel();
     assert.equal(session.snapshot().targets.some((target) => target.id === 'draft-a'), false);
   });
+
+  test('getTarget returns the same reference across calls while the target is unedited', () => {
+    const assembly = crewedAssembly(1000);
+    const session = new DockWorkbenchSession({
+      targets: [{ id: 'ship-a', kind: 'docked-vessel', assembly }], inventory: [],
+    }, () => ({ valid: true, errors: [] }));
+    const first = session.getTarget('ship-a');
+    const second = session.getTarget('ship-a');
+    assert.equal(first.assembly, second.assembly);
+  });
+
+  test('targetSnapshotForBuild does not share part objects with the session', () => {
+    const assembly = crewedAssembly(1000);
+    const part = assembly.placements[0]!.part;
+    const session = new DockWorkbenchSession({
+      targets: [{ id: 'ship-a', kind: 'docked-vessel', assembly }], inventory: [],
+    }, () => ({ valid: true, errors: [] }));
+    const built = session.targetSnapshotForBuild('ship-a');
+    const builtPart = built.assembly.placements.find((p) => p.part.id === part.id)!.part;
+    const sessionPart = session.getTarget('ship-a').assembly.placements.find((p) => p.part.id === part.id)!.part;
+    assert.notEqual(builtPart, sessionPart);
+  });
 }

@@ -786,7 +786,8 @@ export class Docking {
     const entry = this.assembly;
     const draft = entry?.drafts.get(targetId);
     if (!entry || !draft || !base.baseState) return;
-    const assembly = entry.session.getTarget(targetId).assembly;
+    // 実艦へ渡す部品は可変(hp が変化する)なので、セッション側と共有しないよう複製する。
+    const assembly = entry.session.targetSnapshotForBuild(targetId).assembly;
     const blueprint = createBlueprint({
       id: `${draft.id}-blueprint`, name: draft.name, tree: assembly.tree, placements: assembly.placements, now: Date.now(),
     });

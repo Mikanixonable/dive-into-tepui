@@ -107,7 +107,7 @@ export class DockWorkbenchSession {
     if (!validation.valid) {
       throw new Error(`作業台の構成を確定できません: ${validation.errors.join('、')}`);
     }
-    return cloneSnapshot(this.snapshot());
+    return this.snapshot();
   }
 
 
@@ -145,12 +145,23 @@ export class DockWorkbenchSession {
     return this.target(targetId).kind;
   }
 
+  // 骨格(木・断面・配置)は不変なので複製しない。呼び出し側の参照比較(鏡像を組み直すか等)が
+  // 編集の有無どおりに効くのは、この参照が編集の無いフレームでは変わらないことに依る。
   public getTarget(targetId: string): WorkbenchTarget {
-    return cloneTarget(this.target(targetId));
+    return this.target(targetId);
   }
 
+  // 配列は複製する(要素そのものは共有する) —— this.targets は編集のたびに push や添字代入で
+  // その場を書き換えるので、配列を渡したままだと後の編集がこの返り値にも現れてしまう。要素は
+  // 編集のたびに新しいオブジェクトへ差し替わる(参照は不変)ので、要素の複製までは要らない。
   public targetsSnapshot(): readonly WorkbenchTarget[] {
-    return cloneTargets(this.targets);
+    return [...this.targets];
+  }
+
+  // 実艦へ渡す対象の複製。搭載要素は可変(hp が変化する)なので、セッション側と同じオブジェクトを
+  // 実艦へ渡すと、確定を取消しても実艦側で起きた変化が残ってしまう。
+  public targetSnapshotForBuild(targetId: string): WorkbenchTarget {
+    return cloneTarget(this.target(targetId));
   }
 
   public inventorySnapshot(): readonly AnyPart[] {
