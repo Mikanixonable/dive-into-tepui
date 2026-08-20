@@ -1,13 +1,20 @@
-// 掴んだ搭載要素を実寸のメッシュのままカーソルで運び、機体の取り付け位置へ吸い寄せて離す操作。
-// カーソルの光線を船体ローカル座標へ移し、最寄りの取り付け位置を求め、そこへ置いたときに設計が
-// 成り立つかを assembly-editor に問う。取り付けの可否をこのモジュールが判定することはない。
+// 掴んだもの(部品または部材)を実寸のメッシュのままカーソルで運び、機体の取り付け位置へ吸い寄せて
+// 離す操作。カーソルの光線を船体ローカル座標へ移し、最寄りの取り付け位置を求め、そこへ置いたときに
+// 設計が成り立つかを assembly-editor に問う。取り付けの可否をこのモジュールが判定することはない。
 //
-// 掴んでいる間の状態は DockWorkbenchController が持つ。ここが持つのは、ゴーストをどこにどの色で
-// 描くかという表示側の値だけである。
+// 部品は既存の取り付け位置(ポート・エッジ表面)へ置かれ、確定は DockWorkbenchController.drop を
+// 通る。部材(構造材)は空きポートへだけ吸い寄せられ、遠端に新しいノードとエッジが生える編集を
+// member.ts が組み、確定は workbench.applyAssemblyEdit を直に呼ぶ ―― DockWorkbenchController の
+// 掴み状態(DragState)は部品専用のままで、部材の掴みはそこを経由しない。
+//
+// 掴んでいる間の部品側の状態は DockWorkbenchController が持つ。ここが持つのは、掴んでいるものと、
+// ゴーストをどこにどの色で描くかという表示側の値だけである。
 import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { markLitOpaque } from '../../render/pipeline/lit-layer';
 import { buildFitting, buildRadiatorPanel, buildSolarPanel } from '../../render/hull/part-meshes';
+import { hullShapeOf } from './hull-shape';
+import { buildLoftGeometry } from '../../render/hull/loft-mesh';
 import type { AnyPart } from '../game-entity/parts';
 import type { FloatingOrigin } from '../floating-origin';
 import type { Quat } from '../../physics/attitude';
@@ -17,9 +24,12 @@ import type { Vec3 } from '../../physics/vec3';
 import { add, addScaled, len, norm, scale, sub, v3 } from '../../physics/vec3';
 import { isCoarsePointer } from '../input/pointer-precision';
 import type { VesselAssembly } from './assembly';
+import type { AssemblyEditResult } from './assembly-editor';
 import { addPlacement, movePlacement } from './assembly-editor';
 import { deriveCapsules } from './collision-shape';
 import { FITTINGS } from './part-fittings';
+import type { MemberSpec } from './member';
+import { MEMBER_KIND_LABELS, memberAdditionAt, memberGhostTree } from './member';
 import type { DockWorkbenchController, SnapCandidate } from './dock-workbench-controller';
 import type { WorkbenchValidation } from './dock-workbench';
 import type { MountCandidate } from './mount-candidates';
@@ -46,7 +56,7 @@ const EDGE_PICK_THRESHOLD_COARSE = 0.4;
 
 const GHOST_OPACITY = 0.65;
 
-/** 掴んだ部品を落とせる機体1つと、その船体ローカル座標系の慣性系(ECI)での置かれ方。 */
+/** 掴んだものを落とせる機体1つと、その船体ローカル座標系の慣性系(ECI)での置かれ方。 */
 export interface AssemblyDragTarget {
   readonly targetId: string;
   readonly assembly: VesselAssembly;
@@ -56,7 +66,7 @@ export interface AssemblyDragTarget {
 
 export type GhostVerdict = 'valid' | 'invalid' | 'far';
 
-/** ゴーストを描くのに要る値。update が決め、sync だけが読む。 */
+/** ゴーストを描くのに要る値。update が決め、sync だけが読む。部品・部材のどちらでも形は同じ。 */
 interface GhostPose {
   readonly position: Vec3; // 慣性系(ECI)
   readonly basis: MountFrame | null; // 慣性系での姿勢。取り付け先が無ければ null
@@ -76,24 +86,39 @@ export type AssemblyPick =
   | { readonly kind: 'edge'; readonly edgeId: string }
   | { readonly kind: 'none' };
 
+// 掴んでいるものの判別共用体。部品は DockWorkbenchController の DragState(移動元・在庫還元)を
+// 経由するが、部材は移動元を持たない使い捨ての仕様なので、その追跡もここだけで完結する。
+type Held =
+  | { readonly kind: 'part'; readonly part: AnyPart }
+  | { readonly kind: 'member'; readonly member: MemberSpec };
+
+// 部材ドラッグの直近の update が組んだ編集。drop はこれを再計算せず、そのまま適用する。
+interface PendingMemberEdit {
+  readonly result: AssemblyEditResult;
+  readonly label: string;
+}
+
 // 光線の向きを解くための一時オブジェクト。毎フレームの割り当てを避ける。
 const rayScratch = new THREE.Vector3();
 const basisScratch = new THREE.Matrix4();
 const axisScratch = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()] as const;
 const pickNdc = new THREE.Vector2();
 
-// 部品をカーソルで運び、取り付け位置へ吸い寄せ、離して取り付けるまでを繋ぐ。
+// 部品・部材をカーソルで運び、取り付け位置へ吸い寄せ、離して取り付けるまでを繋ぐ。
 // 1フレームは update(判定) → sync(描画)の順で呼ぶ。
 export class AssemblyDragController {
   private workbench: DockWorkbenchController | null = null;
-  private part: AnyPart | null = null;
+  private held: Held | null = null;
+  private pendingMemberEdit: PendingMemberEdit | null = null;
   private ghost: THREE.Object3D | null = null;
   private pose: GhostPose | null = null;
   private readonly raycaster = new THREE.Raycaster();
 
   public constructor(private readonly scene: THREE.Scene) {}
 
-  public get draggingPart(): AnyPart | null { return this.part; }
+  public get draggingPart(): AnyPart | null { return this.held?.kind === 'part' ? this.held.part : null; }
+  public get draggingMember(): MemberSpec | null { return this.held?.kind === 'member' ? this.held.member : null; }
+  public get dragging(): boolean { return this.held !== null; }
 
   // 部品を掴む。workbench はこの掴みを記録する作業台、sourceTargetId は部品を外した機体
   // (倉庫から掴んだなら null)。
@@ -105,11 +130,23 @@ export class AssemblyDragController {
   ): void {
     this.cancelDrag();
     this.workbench = workbench;
-    this.part = part;
+    this.held = { kind: 'part', part };
     this.pose = null;
     workbench.beginDrag(part, sourceTargetId, sourceInventory);
-    this.ghost = buildGhost(part);
+    this.ghost = buildPartGhost(part);
     if (this.ghost) this.scene.add(this.ghost);
+  }
+
+  // 部材(構造材)を掴む。棚での構成そのものが仕様なので、移動元や在庫還元の概念を持たない ――
+  // 離した先が見つからなければ何も生えず、部材はただ捨てられる。
+  public beginMemberDrag(workbench: DockWorkbenchController, member: MemberSpec): void {
+    this.cancelDrag();
+    this.workbench = workbench;
+    this.held = { kind: 'member', member };
+    this.pose = null;
+    this.pendingMemberEdit = null;
+    this.ghost = buildMemberGhost(member);
+    this.scene.add(this.ghost);
   }
 
   // カーソルの指す先にある部品・ノード・エッジを1つ拾う。root は現在の対象の描画木
@@ -151,23 +188,31 @@ export class AssemblyDragController {
     viewport: { readonly width: number; readonly height: number },
     target: AssemblyDragTarget | null,
   ): void {
-    if (!this.part || !this.workbench) return;
+    if (!this.held || !this.workbench) return;
     const direction = rayDirection(camera, pointerScreen, viewport);
+    if (this.held.kind === 'member') {
+      this.updateMemberDrag(this.held.member, cameraPos, direction, target);
+      return;
+    }
+    this.updatePartDrag(this.held.part, cameraPos, direction, target);
+  }
 
+  // 既存の取り付け位置(軸ポート・エッジ表面)へ吸い寄せ、そこへ置いたときの成否まで決める。
+  private updatePartDrag(part: AnyPart, cameraPos: Vec3, direction: Vec3, target: AssemblyDragTarget | null): void {
     const mount = target === null ? null : this.resolveMount(target, cameraPos, direction);
     if (!mount || !target) {
       this.pose = { position: addScaled(cameraPos, direction, FLOAT_DISTANCE), basis: null, verdict: 'far' };
-      this.workbench.updateCandidate(null);
+      this.workbench!.updateCandidate(null);
       return;
     }
 
-    const placement = { kind: 'external', part: this.part, mount: mount.mount } as const;
+    const placement = { kind: 'external', part, mount: mount.mount } as const;
     // 掴んでいる途中の設計は部分的であり、完成した設計の検査を通すことはできない。ここで問うのは
     // 「この取り付け位置が構造として成り立つか」だけである。
     const options = { validateBlueprint: false } as const;
-    const held = target.assembly.placements.some((candidate) => candidate.part.id === this.part!.id);
+    const held = target.assembly.placements.some((candidate) => candidate.part.id === part.id);
     const result = held
-      ? movePlacement(target.assembly, { placementId: this.part.id, mount: mount.mount }, options)
+      ? movePlacement(target.assembly, { placementId: part.id, mount: mount.mount }, options)
       : addPlacement(target.assembly, placement, options);
 
     const basis = worldFrame(mount.frame, target);
@@ -177,9 +222,24 @@ export class AssemblyDragController {
       verdict: { accepted: result.accepted, reason: result.accepted ? null : result.errors[0]?.message ?? null },
       targetLabel: target.targetId,
       position: basis.origin,
-      targetKind: this.workbench.validateTarget(target.targetId).kind,
+      targetKind: this.workbench!.validateTarget(target.targetId).kind,
     };
-    this.workbench.updateCandidate(candidate);
+    this.workbench!.updateCandidate(candidate);
+  }
+
+  // 空きポート(軸・側面とも)だけを狙い、見つかれば member.length ぶん先に生える遠端ノードの
+  // 編集を組んで保持する。drop はこれを再計算せずそのまま適用する。
+  private updateMemberDrag(member: MemberSpec, cameraPos: Vec3, direction: Vec3, target: AssemblyDragTarget | null): void {
+    const mount = target === null ? null : this.resolvePortMount(target, cameraPos, direction);
+    if (!mount || !target || mount.mount.kind !== 'port') {
+      this.pose = { position: addScaled(cameraPos, direction, FLOAT_DISTANCE), basis: null, verdict: 'far' };
+      this.pendingMemberEdit = null;
+      return;
+    }
+    const result = memberAdditionAt(target.assembly, mount.mount.nodeId, mount.mount.port, mount.frame, member);
+    const basis = worldFrame(mount.frame, target);
+    this.pose = { position: basis.origin, basis, verdict: result.accepted ? 'valid' : 'invalid' };
+    this.pendingMemberEdit = { result, label: `${MEMBER_KIND_LABELS[member.kind]}を追加` };
   }
 
   // update が決めた位置・姿勢・色をゴーストへ押し込む。
@@ -205,24 +265,50 @@ export class AssemblyDragController {
     paintGhost(ghost, GHOST_COLORS[pose.verdict]);
   }
 
-  // 掴んでいた部品を targetId の機体へ取り付けて掴みを終える。直前の update が成立する取り付け位置を
-  // 見つけていなければ何も取り付けずに終わり、部品は掴む前の持ち主のもとに残る。
-  // 返り値は取り付け後の作業台の検証結果。
+  // 掴んでいたものを targetId の機体へ確定して掴みを終える。部品は DockWorkbenchController.drop
+  // (在庫・移動元の付け替えを含む)を、部材は直前の update が組んだ編集を workbench.applyAssemblyEdit
+  // へそのまま渡す ―― 部材は DockWorkbenchController の DragState を一度も経由しない。
+  // 直前の update が成立する取り付け位置を見つけていなければ何も変えずに終わる。
+  // 返り値は確定後の作業台の検証結果。
   public drop(targetId: string): WorkbenchValidation {
     const workbench = this.workbench;
-    if (!workbench) throw new Error('assembly drag is not in progress');
+    if (!workbench || !this.held) throw new Error('assembly drag is not in progress');
+    if (this.held.kind === 'member') {
+      const validation = this.applyPendingMemberEdit(workbench, targetId);
+      this.endDrag();
+      return validation;
+    }
     const validation = workbench.drop(targetId);
     this.endDrag();
     return validation;
   }
 
+  // 保持している編集を適用するか、無ければ「取り付け位置が無い」検証結果を作って返す。
+  private applyPendingMemberEdit(workbench: DockWorkbenchController, targetId: string): WorkbenchValidation {
+    const pending = this.pendingMemberEdit;
+    if (!pending || !pending.result.accepted) {
+      return {
+        valid: false,
+        errors: pending ? pending.result.errors.map((error) => error.message) : ['取り付け位置が見つかりません'],
+        targets: [workbench.validateTarget(targetId)],
+      };
+    }
+    return workbench.applyAssemblyEdit(targetId, pending.result, pending.label);
+  }
+
   // クリックで掴みを終える。直前の update が成立する取り付け位置を見つけていれば drop と同じく
-  // そこへ取り付ける。見つけていなければ ―― 機体から掴み上げた部品(sourceInventory: false)は
+  // そこへ取り付ける。部品で見つけていなければ ―― 機体から掴み上げた部品(sourceInventory: false)は
   // workbench.remove で在庫へ戻し、棚から掴んだ部品はそもそも在庫から出ていないのでそのまま
-  // 掴みを捨てる。掴んでいなければ何もしない。
+  // 掴みを捨てる。部材は在庫を経由しないので、見つからなければ捨てるだけでよい。掴んでいなければ
+  // 何もしない。
   public release(targetId: string): void {
     const workbench = this.workbench;
-    if (!workbench) return;
+    if (!workbench || !this.held) return;
+    if (this.held.kind === 'member') {
+      if (this.pendingMemberEdit?.result.accepted) this.drop(targetId);
+      else this.cancelDrag();
+      return;
+    }
     const drag = workbench.dragging;
     if (drag?.candidate?.verdict.accepted) {
       this.drop(targetId);
@@ -244,14 +330,24 @@ export class AssemblyDragController {
 
   public dispose(): void { this.cancelDrag(); }
 
-  // 光線に最も近いカプセルの上で光線が指す点を求め、そこから最寄りの取り付け位置を返す。
-  // カプセルは広域の絞り込みであり、機体の近くを指していないフレームでノードとエッジを
-  // 総当たりする費用を省く。
-  private resolveMount(
-    target: AssemblyDragTarget,
-    cameraPos: Vec3,
-    direction: Vec3,
-  ): MountCandidate | null {
+  // 光線に最も近いカプセルの上で光線が指す点を求め、そこから最寄りの取り付け位置(部品向け:
+  // 軸ポート・エッジ表面)を返す。カプセルは広域の絞り込みであり、機体の近くを指していない
+  // フレームでノードとエッジを総当たりする費用を省く。
+  private resolveMount(target: AssemblyDragTarget, cameraPos: Vec3, direction: Vec3): MountCandidate | null {
+    const probe = this.probeMountPoint(target, cameraPos, direction);
+    return probe && nearestMountCandidate(target.assembly, probe, SNAP_DISTANCE);
+  }
+
+  // 同じ広域絞り込みから、部材向けに空きポート(軸・側面とも)だけを候補にする。部材はエッジの
+  // 表面ではなく必ず PortRef を持つ口へ生えるので、surface/truss 候補は探さない。
+  private resolvePortMount(target: AssemblyDragTarget, cameraPos: Vec3, direction: Vec3): MountCandidate | null {
+    const probe = this.probeMountPoint(target, cameraPos, direction);
+    return probe && nearestMountCandidate(target.assembly, probe, SNAP_DISTANCE, (m) => m.kind === 'port', ['axial', 'lateral']);
+  }
+
+  // 光線に最も近いカプセル上で、光線が指す点を返す。カプセル(広域の絞り込み)から
+  // BROAD_PHASE_MARGIN 以上離れていれば機体の近くを指していないとみなし null。
+  private probeMountPoint(target: AssemblyDragTarget, cameraPos: Vec3, direction: Vec3): Vec3 | null {
     const inverse = qInvert(target.attitude);
     const origin = qRotate(inverse, sub(cameraPos, target.position));
     const localDirection = qRotate(inverse, direction);
@@ -268,9 +364,7 @@ export class AssemblyDragController {
       bestGap = gap;
       probe = onRay;
     }
-    if (!probe) return null;
-
-    return nearestMountCandidate(target.assembly, probe, SNAP_DISTANCE);
+    return probe;
   }
 
   // 掴みが終わった後に残るもの(ゴースト・掴んでいた値)をすべて手放す。
@@ -281,7 +375,8 @@ export class AssemblyDragController {
       this.ghost = null;
     }
     this.workbench = null;
-    this.part = null;
+    this.held = null;
+    this.pendingMemberEdit = null;
     this.pose = null;
   }
 }
@@ -324,14 +419,14 @@ function worldFrame(frame: MountFrame, target: AssemblyDragTarget): MountFrame {
 }
 
 // 掴んでいる部品の見た目。機体が決まる前に作るので、大きさは部品自身と基準寸法から取る。
-function buildGhost(part: AnyPart): THREE.Object3D | null {
-  const object = buildGhostShape(part);
+function buildPartGhost(part: AnyPart): THREE.Object3D | null {
+  const object = buildPartGhostShape(part);
   if (object) markLitOpaque(object);
   return object;
 }
 
 // 部品の種別ごとの造形。外に出ない種別なら null。
-function buildGhostShape(part: AnyPart): THREE.Object3D | null {
+function buildPartGhostShape(part: AnyPart): THREE.Object3D | null {
   if (part.type === 'radiator') return buildRadiatorPanel('up');
   if (part.type === 'solar_panel') return buildSolarPanel('up');
   const fitting = FITTINGS[part.type];
@@ -340,6 +435,18 @@ function buildGhostShape(part: AnyPart): THREE.Object3D | null {
   const holder = new THREE.Group();
   holder.add(buildFitting(fitting.shape, size));
   return holder;
+}
+
+// 掴んでいる部材の見た目。member.ts の使い捨てツリーを、本物の外皮と同じ経路
+// (hullShapeOf → buildLoftGeometry)へ通すので、生える辺と別のメッシュ生成器を持たない。
+function buildMemberGhost(member: MemberSpec): THREE.Object3D {
+  const geometry = buildLoftGeometry(hullShapeOf(memberGhostTree(member)));
+  const material = new THREE.MeshStandardMaterial();
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.userData['ownsGeometry'] = true;
+  mesh.userData['ownsMaterial'] = true;
+  markLitOpaque(mesh);
+  return mesh;
 }
 
 // ゴースト全体を1色の半透明に染める。材質は掴むたびに作られるので、書き換えても他の描画に及ばない。
