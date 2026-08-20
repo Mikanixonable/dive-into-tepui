@@ -40,7 +40,7 @@ export interface VesselPose {
   readonly att: { readonly q: Quat };
 }
 
-interface BaseFacilityHost extends VesselPose {
+export interface BaseFacilityHost extends VesselPose {
   readonly parts: readonly AnyPart[];
 }
 

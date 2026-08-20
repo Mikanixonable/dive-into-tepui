@@ -5,10 +5,10 @@
 // 部分適用を作らない。
 import type { AnyPart, Part, PropellantTankPart } from '../game-entity/parts';
 import { propellantTankCapacity } from '../economy/propellant-compatibility';
-import { affordableProductionRequest } from '../hud/inventory-labels';
 import type { DockedVesselEntry, Vessel } from './vessel';
 import {
-  consumeProductionResources, partProductionBlueprintOf, refuelBlueprintOf, repairAllBlueprintOf, repairBlueprintOf,
+  affordableProductionRequest, consumeProductionResources, partProductionBlueprintOf, refuelBlueprintOf,
+  repairAllBlueprintOf, repairBlueprintOf,
 } from './production';
 import { buildPartFrom } from './default-blueprints';
 

@@ -1,8 +1,8 @@
 // 基地操作ウィンドウ: 1つの基地について、格納艦艇の一覧と発進、搭載部品の修理・補給・換装、
 // 部品の生産と在庫を扱う。`draggable-window.ts` のドラッグ・📌クリップ・✕・OverlayManager 登録を
-// 土台に、TabBar で3つの面を切り替える。生産可否の判定・費用文言は `hud/inventory-labels.ts` が、
-// 修理・補給・換装・生産の実行(資源を引いて hp/燃料/在庫を書き換える)は
-// `vessel/base-inventory-ops.ts` が持ち、このクラスはそれらを呼んで結果を描くだけ。
+// 土台に、TabBar で3つの面を切り替える。生産可否の判定は `vessel/production.ts`、費用文言は
+// `hud/inventory-labels.ts` が持ち、修理・補給・換装・生産の実行(資源を引いて hp/燃料/在庫を
+// 書き換える)は `vessel/base-inventory-ops.ts` が持つ — このクラスはそれらを呼んで結果を描くだけ。
 // #hud の子として window レイヤへ置くため、`#hud, #hud *` の margin/padding
 // リセットに勝てるよう全セレクタを `#hud` で始める。
 import type { Vessel, DockedVesselEntry } from '../vessel/vessel';
@@ -12,13 +12,14 @@ import { propellantTankCapacity, TANK_MATERIALS } from '../economy/propellant-co
 import { Button, Meter, TabBar, ValueInput } from './widgets';
 import { producibleParts } from '../vessel/default-blueprints';
 import {
-  partProductionBlueprintOf, refuelBlueprintOf, repairAllBlueprintOf, repairBlueprintOf,
+  affordableProductionRequest, partProductionBlueprintOf, refuelBlueprintOf, repairAllBlueprintOf,
+  repairBlueprintOf,
 } from '../vessel/production';
 import {
   producePart, refuelPropellantTank, repairAllParts, repairPart, swapInstalledPart,
 } from '../vessel/base-inventory-ops';
 import { RESOURCES, RESOURCE_IDS, type ResourceId } from '../economy/resource';
-import { affordableProductionRequest, formatPartMeta, formatResourceAmount, productionCostSummary } from './inventory-labels';
+import { formatPartMeta, formatResourceAmount, productionCostSummary } from './inventory-labels';
 import { DraggableWindow } from './draggable-window';
 import { ObjectPicker, type ObjectPickerGroup } from './object-picker';
 import type { OverlayManager } from './overlay-manager';
