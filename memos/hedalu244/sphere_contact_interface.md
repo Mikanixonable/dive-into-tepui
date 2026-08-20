@@ -157,12 +157,6 @@ export function attractorStateAt(a: Attractor, t: number): KinematicState;
 
 各ステップは単独で commit できる。毎ステップ `npm run typecheck` と `npm run test:physics`。
 
-### Step 3: `attractorStateAt` を新設する
-
-`attractor.ts` に足し、`tests/physics/attractor.test.ts` へ回帰を1件足す(等加速度で動く天体を
-与え、`state.t` から前後へ外挿した位置・速度が閉じた式と一致する)。まだ誰も呼ばない。
-**完了条件**: 新しい1件が通る。
-
 ### Step 4: 天体を動かす
 
 `reachedBody` と `computeAttractorResponse` を `attractorStateAt` へ差し替え、`AT_REST` を削除。

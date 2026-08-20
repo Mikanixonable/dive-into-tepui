@@ -4,6 +4,7 @@ import { test } from './harness';
 import {
   Attractor,
   attractorAccel,
+  attractorStateAt,
   orbitalElementsOf,
   localOrbitPeriod,
   reachedBody,
@@ -21,6 +22,21 @@ const ZERO = v3(0, 0, 0);
 const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, ZERO, ZERO), accel: ZERO, degree2: null, atmosphere: null, isStar: false };
 
 export function register(): void {
+  // 天体の外挿は state.t の前後どちらへも効く必要がある — 掃引はサブステップの中点で
+  // 組んだ天体を、区間の始点(過去)と終点(未来)の両方へ動かす。
+  test('attractorStateAt: state.t の前後へ等加速度で外挿する', () => {
+    const body: Attractor = {
+      id: 'body', mu: 0, radius: 1, accel: v3(0, 3, 0), degree2: null, atmosphere: null, isStar: false,
+      state: kinematicState(100, v3(1000, 0, 0), v3(0, 20, 0)),
+    };
+    for (const s of [-30, 0, 45]) {
+      const got = attractorStateAt(body, 100 + s);
+      assert.equal(got.t, 100 + s);
+      assert.deepEqual(got.r, v3(1000, 20 * s + 1.5 * s * s, 0));
+      assert.deepEqual(got.v, v3(0, 20 + 3 * s, 0));
+    }
+  });
+
   test('attractor: attractorAccel は原点天体(地球)では素の中心重力になる', () => {
     const r = v3(R_EARTH + 420e3, 0, 0);
     const a = attractorAccel(r, EARTH, EARTH.state.t);
