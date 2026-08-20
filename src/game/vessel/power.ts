@@ -15,23 +15,31 @@ export class PowerSystem {
   private charge = C.POWER_CAPACITY * 0.75; // 蓄電量 [J]、0..POWER_CAPACITY
 
   private readonly panels: Record<SolarSide, Panel> = { up: new Panel(), down: new Panel() };
-  private readonly solarFolds: Record<SolarSide, THREE.Object3D[]>;
+  // 実際にメッシュが見つかった side だけ値を持つ。自由設計では太陽電池パドルが1枚だけの
+  // こともあり、その場合は反対側が丸ごと欠損する。
+  private readonly solarFolds: Partial<Record<SolarSide, THREE.Object3D[]>> = {};
 
-  // renderObject から左右の太陽電池パネルの蛇腹メッシュを名前で探す。見つからなければ例外を投げる。
+  // renderObject から左右の太陽電池パネルの蛇腹メッシュを名前で探す。メッシュが見つからない側
+  // (太陽電池パドルを1枚しか積んでいない設計)は欠損のまま進む。
   public constructor(renderObject: THREE.Object3D, saved?: PowerSaveData) {
-    const collect = (side: SolarSide): THREE.Object3D[] => {
+    for (const side of ['up', 'down'] as const) {
       const namePrefix = 'solar' + (side === 'up' ? 'Up' : 'Down');
       const found = Array.from({ length: 6 }, (_, i) =>
         renderObject.getObjectByName(`${namePrefix}Fold${i}`));
-      if (found.some((f) => !f)) throw new Error(`solar fold objects not found in ship model`);
-      return found as THREE.Object3D[];
-    };
-    this.solarFolds = { up: collect('up'), down: collect('down') };
+      if (found.some((f) => !f)) continue;
+      this.solarFolds[side] = found as THREE.Object3D[];
+    }
     if (saved) this.charge = saved.charge;
   }
 
-  // side のパネルの展開/収納目標を反転する。
+  // side に実際のメッシュ(=太陽電池パドルのパーツ)があるか。
+  hasSide(side: SolarSide): boolean {
+    return side in this.solarFolds;
+  }
+
+  // side のパネルの展開/収納目標を反転する。メッシュが無い side は何もしない。
   toggle(side: SolarSide): void {
+    if (!this.hasSide(side)) return;
     const p = this.panels[side];
     p.deployTarget = p.deployTarget === 0 ? 1 : 0;
   }
@@ -46,7 +54,12 @@ export class PowerSystem {
       else if (p.deploy > p.deployTarget) p.deploy = Math.max(p.deployTarget, p.deploy - step);
     }
 
-    const deployMult = (this.panels.up.deploy + this.panels.down.deploy) / 2;
+    // メッシュの無い side は分子・分母から外す — 反対側1枚だけの機体なら、その1枚の展開度が
+    // そのまま deployMult になる。
+    const present = (['up', 'down'] as const).filter((side) => this.hasSide(side));
+    const deployMult = present.length > 0
+      ? present.reduce((sum, side) => sum + this.panels[side].deploy, 0) / present.length
+      : 0;
 
     const normal = qRotate(att.q, v3(0, 1, 0));
     // 裏面(法線が太陽と反対を向く)では発電しないため負値を0に切り詰める
@@ -67,6 +80,7 @@ export class PowerSystem {
       const odd = -sign * psi;
 
       const folds = this.solarFolds[side];
+      if (!folds) continue;
       for (let i = 0; i < folds.length; i++) {
         const fold = folds[i];
         if (!fold) continue;
