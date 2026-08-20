@@ -1,9 +1,15 @@
 // 基地が抱える在庫 — 搭載要素と資源 — の日本語表示名。数値の整形もここに揃え、
-// 同じ部品・同じ資源がどの画面でも同じ文字列で読めるようにする。
+// 同じ部品・同じ資源がどの画面でも同じ文字列で読めるようにする。建造・修理・補給・生産が
+// 「賄えるか」を問う箇所はすべて productionCostSummary/affordableProductionRequest を通し、
+// 費用表示と可否判定が別基準になることを防ぐ。
 import type { Part, PartType } from '../game-entity/parts';
 import { isPropellantTankPart } from '../game-entity/parts';
 import { RESOURCES, type ResourceId } from '../economy/resource';
 import { propellantTankCapacity } from '../economy/propellant-compatibility';
+import { producibility, type ProducibilityBlueprint } from '../economy/producibility';
+import { productionResourceDemand } from '../vessel/production';
+import { baseFacilities, basePowerAvailable } from '../vessel/base-module';
+import type { Vessel } from '../vessel/vessel';
 
 export const PART_TYPE_LABELS: Readonly<Record<PartType, string>> = {
   hull: '船体',
@@ -53,4 +59,26 @@ export function formatResourceAmount(id: string, mass: number): string {
   const def = RESOURCES[id as ResourceId];
   const name = def === undefined ? id : def.name;
   return `${name} ${mass < 1 ? mass.toFixed(3) : mass.toFixed(1)} kg`;
+}
+
+export interface ProductionCostSummary {
+  readonly costText: string;
+  readonly affordable: boolean;
+}
+
+// 要求を賄えるかと、資源だけを畳んだ費用文言をまとめて返す。両者は同じ producibility 判定・
+// 同じ資源帳簿を読むので、片方だけ古い基準で判定することがない。
+export function productionCostSummary(base: Vessel, request: ProducibilityBlueprint): ProductionCostSummary {
+  const ledger = base.baseState!.resources;
+  const demand = productionResourceDemand(request, ledger);
+  const costText = [...demand].map(([id, mass]) => formatResourceAmount(id, mass)).join('・') || '資源なし';
+  const affordable = producibility(request, ledger, baseFacilities(base), basePowerAvailable(base)).length === 0;
+  return { costText, affordable };
+}
+
+// 要求を賄えるかだけを判定する。費用文言の内訳計算(productionResourceDemand)を伴わない分、
+// ボタンの有効/無効判定のように可否だけを繰り返し問う箇所に向く。
+export function affordableProductionRequest(base: Vessel, request: ProducibilityBlueprint): boolean {
+  const ledger = base.baseState!.resources;
+  return producibility(request, ledger, baseFacilities(base), basePowerAvailable(base)).length === 0;
 }

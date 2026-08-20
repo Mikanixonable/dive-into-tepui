@@ -1,7 +1,8 @@
 // 基地操作ウィンドウ: 1つの基地について、格納艦艇の一覧と発進、搭載部品の修理・補給・換装、
 // 部品の生産と在庫を扱う。`draggable-window.ts` のドラッグ・📌クリップ・✕・OverlayManager 登録を
-// 土台に、TabBar で3つの面を切り替える。資源の増減・生産可否の判定は economy/ と vessel/ が持ち、
-// このクラスはそれらを呼んで結果を描くだけ。
+// 土台に、TabBar で3つの面を切り替える。生産可否の判定・費用文言は `hud/inventory-labels.ts` が、
+// 修理・補給・換装・生産の実行(資源を引いて hp/燃料/在庫を書き換える)は
+// `vessel/base-inventory-ops.ts` が持ち、このクラスはそれらを呼んで結果を描くだけ。
 // #hud の子として window レイヤへ置くため、`#hud, #hud *` の margin/padding
 // リセットに勝てるよう全セレクタを `#hud` で始める。
 import type { Vessel, DockedVesselEntry } from '../vessel/vessel';
@@ -9,15 +10,15 @@ import type { AnyPart, Part, PropellantTankPart } from '../game-entity/parts';
 import { isPropellantTankPart } from '../game-entity/parts';
 import { propellantTankCapacity, TANK_MATERIALS } from '../economy/propellant-compatibility';
 import { Button, Meter, TabBar, ValueInput } from './widgets';
-import { buildPartFrom, producibleParts } from '../vessel/default-blueprints';
-import { baseFacilities, basePowerAvailable } from '../vessel/base-module';
-import { producibility, type ProducibilityBlueprint, type Requirement } from '../economy/producibility';
+import { producibleParts } from '../vessel/default-blueprints';
 import {
-  consumeProductionResources, partProductionBlueprintOf, productionResourceDemand,
-  refuelBlueprintOf, repairAllBlueprintOf, repairBlueprintOf,
+  partProductionBlueprintOf, refuelBlueprintOf, repairAllBlueprintOf, repairBlueprintOf,
 } from '../vessel/production';
+import {
+  producePart, refuelPropellantTank, repairAllParts, repairPart, swapInstalledPart,
+} from '../vessel/base-inventory-ops';
 import { RESOURCES, RESOURCE_IDS, type ResourceId } from '../economy/resource';
-import { formatPartMeta, formatResourceAmount } from './inventory-labels';
+import { affordableProductionRequest, formatPartMeta, formatResourceAmount, productionCostSummary } from './inventory-labels';
 import { DraggableWindow } from './draggable-window';
 import { ObjectPicker, type ObjectPickerGroup } from './object-picker';
 import type { OverlayManager } from './overlay-manager';
@@ -392,12 +393,12 @@ export class BaseOperationsWindow {
     const row = document.createElement('div');
     row.className = 'bow-actions';
     const btn = new Button(
-      damaged.length > 0 ? `全部品を修理 · ${this.formatCost(request)}` : '全部品は正常',
+      damaged.length > 0 ? `全部品を修理 · ${productionCostSummary(base, request).costText}` : '全部品は正常',
       () => this.handleRepairAll(shipData.id),
     );
     btn.element.classList.add('bow-btn');
     btn.element.classList.toggle('bow-btn-complete', damaged.length === 0);
-    btn.setEnabled(damaged.length > 0 && this.canAfford(base, request));
+    btn.setEnabled(damaged.length > 0 && affordableProductionRequest(base, request));
     row.appendChild(btn.element);
     return row;
   }
@@ -440,12 +441,12 @@ export class BaseOperationsWindow {
     const actions = document.createElement('div');
     actions.className = 'bow-actions';
     const repairBtn = new Button(
-      damaged ? `修理 · ${this.formatCost(repairRequest)}` : '正常',
+      damaged ? `修理 · ${productionCostSummary(base, repairRequest).costText}` : '正常',
       () => this.handleRepairPart(shipData.id, index),
     );
     repairBtn.element.classList.add('bow-btn');
     repairBtn.element.classList.toggle('bow-btn-complete', !damaged);
-    repairBtn.setEnabled(damaged && this.canAfford(base, repairRequest));
+    repairBtn.setEnabled(damaged && affordableProductionRequest(base, repairRequest));
     actions.appendChild(repairBtn.element);
     if (isPropellantTankPart(part)) {
       actions.appendChild(this.buildRefuelButton(
@@ -527,10 +528,10 @@ export class BaseOperationsWindow {
     const request = refuelBlueprintOf(tank.propellant, missing);
     const propellantName = TANK_MATERIALS[tank.propellant].name;
     const btn = new Button(
-      missing > 0 ? `${propellantName}補給 · ${this.formatCost(request)}` : `${propellantName}は満タン`, onClick);
+      missing > 0 ? `${propellantName}補給 · ${productionCostSummary(base, request).costText}` : `${propellantName}は満タン`, onClick);
     btn.element.classList.add('bow-btn');
     btn.element.classList.toggle('bow-btn-complete', missing <= 0);
-    btn.setEnabled(missing > 0 && this.canAfford(base, request));
+    btn.setEnabled(missing > 0 && affordableProductionRequest(base, request));
     return btn.element;
   }
 
@@ -567,7 +568,7 @@ export class BaseOperationsWindow {
       name.textContent = sample.name;
       const meta = document.createElement('span');
       meta.className = 'bow-row-meta';
-      meta.textContent = `${formatPartMeta(sample)} · ${this.formatCost(request)}`;
+      meta.textContent = `${formatPartMeta(sample)} · ${productionCostSummary(base, request).costText}`;
       info.append(name, meta);
       main.appendChild(info);
       row.appendChild(main);
@@ -575,7 +576,7 @@ export class BaseOperationsWindow {
       actions.className = 'bow-actions';
       const btn = new Button('生産して倉庫へ', () => this.handleProducePart(sample));
       btn.element.classList.add('bow-btn', 'bow-btn-primary');
-      btn.setEnabled(this.canAfford(base, request));
+      btn.setEnabled(affordableProductionRequest(base, request));
       actions.appendChild(btn.element);
       row.appendChild(actions);
       list.appendChild(row);
@@ -633,30 +634,6 @@ export class BaseOperationsWindow {
     return frag;
   }
 
-  // ─── 資源の勘定 ───────────────────────────────────────────
-  // 何が足りないか。空配列なら要求を満たしている。
-  private shortfall(base: Vessel, request: ProducibilityBlueprint): readonly Requirement[] {
-    return producibility(request, base.baseState!.resources, baseFacilities(base), basePowerAvailable(base));
-  }
-
-  // 要求を資源だけで満たせるか。
-  private canAfford(base: Vessel, request: ProducibilityBlueprint): boolean {
-    return this.shortfall(base, request).length === 0;
-  }
-
-  // 資源を引く。足りなければ何も引かずに false を返す。
-  private spend(base: Vessel, request: ProducibilityBlueprint): boolean {
-    if (!this.canAfford(base, request)) return false;
-    return consumeProductionResources(request, base.baseState!.resources);
-  }
-
-  // 要求のうち資源だけを「アルミ 12.0 kg・電子機器 3.0 kg」の形に畳む。ボタンの但し書き用。
-  private formatCost(request: ProducibilityBlueprint): string {
-    const demand = productionResourceDemand(request, this.currentBase!.baseState!.resources);
-    const parts = [...demand].map(([id, mass]) => formatResourceAmount(id, mass));
-    return parts.length === 0 ? '資源なし' : parts.join('・');
-  }
-
   // ─── 操作 ───────────────────────────────────────────────
   private handleLaunch(index: number): void {
     const base = this.currentBase;
@@ -680,8 +657,7 @@ export class BaseOperationsWindow {
   private handleProducePart(sample: AnyPart): void {
     const base = this.currentBase;
     if (!base) return;
-    if (!this.spend(base, partProductionBlueprintOf(sample))) return;
-    base.baseState!.inventory.push(buildPartFrom(sample));
+    if (!producePart(base, sample)) return;
     this.refresh();
   }
 
@@ -702,12 +678,9 @@ export class BaseOperationsWindow {
     const base = this.currentBase;
     if (!base) return;
     const shipData = base.baseState!.dockedVessels.find((s) => s.id === shipId);
-    if (!shipData) return;
-    const part: Part | undefined = shipData.parts[partIdx];
-    if (!part || part.hp >= part.maxHp) return;
-    if (!this.spend(base, repairBlueprintOf(part as AnyPart))) return;
-    part.hp = part.maxHp;
-    this.syncDockedSnapshot(shipData);
+    const part: Part | undefined = shipData?.parts[partIdx];
+    if (!shipData || !part) return;
+    if (!repairPart(base, shipData, part)) return;
     this.refresh();
   }
 
@@ -716,37 +689,17 @@ export class BaseOperationsWindow {
     if (!base) return;
     const shipData = base.baseState!.dockedVessels.find((s) => s.id === shipId);
     if (!shipData) return;
-    const parts = shipData.parts;
-    const damaged = (parts as AnyPart[]).filter((p) => p.hp < p.maxHp);
-    if (damaged.length === 0) return;
-    if (!this.spend(base, repairAllBlueprintOf(damaged))) return;
-    parts.forEach((p) => { p.hp = p.maxHp; });
-    this.syncDockedSnapshot(shipData);
+    if (!repairAllParts(base, shipData)) return;
     this.refresh();
   }
 
-  // 格納中は shipData.parts が艦本体の parts 配列と同一参照なので、修理は艦へ直接反映される。
-  // hp/maxHp の集計スナップショットだけは別に持っているので、艦一覧の表示用にここで揃える。
-  private syncDockedSnapshot(shipData: DockedVesselEntry): void {
-    shipData.vessel.refreshFromParts();
-    shipData.hp = shipData.vessel.hp;
-    shipData.maxHp = shipData.vessel.maxHp;
-  }
-
   // 搭載部品を、選択中の倉庫在庫(同じ type)と入れ替える。外した部品は倉庫へ戻す。
-  // shipData.parts は艦の parts と同一参照なので、splice による差し替えは性能集計へ即反映される。
   private handleSwapPart(shipId: string, partIdx: number, invId: string): void {
     const base = this.currentBase;
     if (!base) return;
     const shipData = base.baseState!.dockedVessels.find((s) => s.id === shipId);
-    const installed = shipData?.parts[partIdx];
-    if (!shipData || !installed) return;
-    const invIdx = base.baseState!.inventory.findIndex((p) => p.id === invId);
-    const incoming = base.baseState!.inventory[invIdx];
-    if (!incoming || incoming.type !== installed.type) return;
-    shipData.parts.splice(partIdx, 1, incoming);
-    base.baseState!.inventory.splice(invIdx, 1, installed as AnyPart);
-    this.syncDockedSnapshot(shipData);
+    if (!shipData) return;
+    if (!swapInstalledPart(base, shipData, partIdx, invId)) return;
     this.refresh();
   }
 
@@ -756,7 +709,7 @@ export class BaseOperationsWindow {
     const shipData = base.baseState!.dockedVessels.find((s) => s.id === shipId);
     const part = shipData?.parts[partIdx];
     if (!part || !isPropellantTankPart(part)) return;
-    this.refuelTank(base, part);
+    if (!refuelPropellantTank(base, part)) return;
     this.refresh();
   }
 
@@ -765,15 +718,7 @@ export class BaseOperationsWindow {
     if (!base) return;
     const part = base.baseState!.inventory.find((p) => p.id === invId);
     if (!part || !isPropellantTankPart(part)) return;
-    this.refuelTank(base, part);
+    if (!refuelPropellantTank(base, part)) return;
     this.refresh();
-  }
-
-  private refuelTank(base: Vessel, tank: PropellantTankPart): void {
-    const capacity = propellantTankCapacity(tank.propellant, tank.volume);
-    const missing = Math.max(0, capacity - tank.fuel);
-    if (missing <= 0) return;
-    if (!this.spend(base, refuelBlueprintOf(tank.propellant, missing))) return;
-    tank.fuel = capacity;
   }
 }
