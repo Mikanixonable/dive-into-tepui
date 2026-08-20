@@ -155,21 +155,7 @@ export function attractorStateAt(a: Attractor, t: number): KinematicState;
 
 ## 4. 手順(着手順)
 
-各ステップは単独で commit できる。毎ステップ `npm run typecheck` と `npm run test:physics`。
-
-### Step 5: 判定器の戻り値を差し替える
-
-`SurfaceCrossing` / `SweptSphereContact` を入れ、線形・三次の両方に内→外の解と
-「箱ごと内側」の棄却を足す。`collision-response.ts` は `crossing` を読むだけに直す。
-`reachedBody` は暫定で `crossing` だけを読み、`containingBody` のフォールバックを残したまま
-通す。達成目標 6 の1件目・2件目をここで足す。**完了条件**: 新規2件と既存が通る。
-
-### Step 6: `containingBody` を外して消す
-
-`reachedBody` を `startsInside` を読む形へ直し、`containingBody` とそのテストを削除する。
-**完了条件**: 達成目標 1・2。
-
----
+**全ステップ実施済み。**
 
 ## 5. 見積り
 
