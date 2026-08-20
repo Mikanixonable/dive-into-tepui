@@ -146,9 +146,10 @@ handlePointerInput 参照)。ステージが決着した(`activeStage.isPlaying`
   - sections.exit(SECTION.mapPick)
   - sections.enter(SECTION.pointer)
   - handlePointerInput()
-  - docking.updateAssembly(input) // 組立セッションが無いか、部品を掴んでいなければ即 return。カメラ行列がこのフレームの値になった後でなければ、掴んでいる部品の落とし先が1フレーム古いカメラ基準で決まる
-    - input.pointerPosition() // カーソルの現在位置。掴みは HUD のボタンから始まるので、canvas 上の移動しか見ない frameMouse では位置が止まる
-    - dragController.update(activeCamera, activeCameraPos, pointer, viewport, dragTarget) // カーソルの光線 → 対象船体ローカル → capsule で広域絞り込み → nearestMountCandidate → addPlacement/movePlacement で可否判定 → workbench.updateCandidate()。THREE には触れず、ゴーストの位置・姿勢・色は保持するだけ(描くのは sync)
+  - docking.updateAssembly(input) // 組立セッションが無ければ即 return。カメラ行列がこのフレームの値になった後でなければ、掴んでいる部品の落とし先が1フレーム古いカメラ基準で決まる
+    - input.takeClicks(handleAssemblyClick) // セッションが開いている間は誰も他に読まないキューなので、拾えなかったクリックも含め毎フレーム無条件に消費する。1クリック = 掴んでいれば dragController.release(targetId)(+ 隠していた実機メッシュを戻す)、掴んでいなければ dragController.pickAt(現在の対象の描画木) → 部品なら beginDrag(sourceInventory: false) で掴み直す、ノード/エッジなら selection へ、何も拾わなければ selection を null に
+    - [dragController.dragging のときだけ] input.pointerPosition() // カーソルの現在位置。掴みは HUD のボタンから始まるので、canvas 上の移動しか見ない frameMouse では位置が止まる
+    - [dragController.dragging のときだけ] dragController.update(activeCamera, activeCameraPos, pointer, viewport, dragTarget) // カーソルの光線 → 対象船体ローカル → capsule で広域絞り込み → 部品なら nearestMountCandidate → addPlacement/movePlacement、部材なら空きポート限定の nearestMountCandidate → memberAdditionAt で可否判定 → workbench.updateCandidate() または pendingMemberEdit。THREE には触れず、ゴーストの位置・姿勢・色は保持するだけ(描くのは sync)
   - sections.exit(SECTION.pointer)
   - entityLines.update(player, targeter.aliveTarget, targeter.aliveSecondaryTarget, cameraSystem.overviewMode, displayWindow, mapPickables.visibilityPolicy) // 表示可否・ターゲット・操作艦・ビューがこのフレームの確定値になった後に判断する。艦・敵・基地それぞれへ線の出し入れとスタイルだけを決める(形状と変換は sync フェーズの entityLines.sync が担う)。ターゲット用スタイルは theme.ts の currentThemePalette() から毎フレーム組む(第一=palette.accent、第二=palette.secondary、不透明度は TARGET_LINE_OPACITY=0.9、renderOrder は LINE_RENDER_ORDER.target/.secondaryTarget) — 静的な LINE_STYLE 表には置けない(テーマ追従が要るため)
     - [entities.ownShips() ごと] asTarget = 第一・第二ターゲットのどちらかに該当すればそのスタイル、なければ null。visible = visibilityPolicy?.entity('player', isActive).orbit ?? true。showLines = (ship===player || overviewMode) && visible && asTarget === null。ownEllipse = showLines && !overviewMode(= 戦闘ビューの操作艦)
@@ -478,7 +479,8 @@ handlePointerInput 参照)。ステージが決着した(`activeStage.isPlaying`
     - [操作艦あり かつ editMode] syncPanel(艦, simTime) // ノード一覧・選択中ノードの Δv と噴射後要素を組み立て、panel.sync(nodes, selEl, localDv, ...) → PlanPanel.sync() で軌道計画パネルの HTML へ反映(HoldButton ×6 は PlanPanel.dvButtons、updateEditing がここ経由で読む)
   - docking.syncAssembly(fo) // 基地操作ウィンドウと組立の描画側。セッションが無くても呼んでよい(各段が自分で早期 return する)
     - syncBaseWindows() // 実体が消えた基地のウィンドウを閉じて台帳から外す。開いているウィンドウごと
-    - assembly.panel.sync(assembly.session) // 対象タブ・Undo/Redo の可否・検証エラー・部品棚。対象列/在庫/エラーの各キーが前フレームと変わったときだけ DOM を組み直す
+    - [セッションあり] assembly.panel.sync(assembly.session, assembly.selection) // 対象タブ・Undo/Redo の可否・確定/取消・下書き作成/建造・選択行・断面編集・検証エラー・部品棚・部材棚。対象列/在庫/選択/エラーの各キーが前フレームと変わったときだけ DOM を組み直す
+    - [セッションあり] targetById(assembly.base, assembly.targetId)?.vessel?.revealStructure() // 編集中の対象がノード・エッジを持つ Vessel(基地本体・格納艦)なら、この1フレームだけワイヤーフレームを可視にする — EntityManager.syncVessels がこの前の位置で graphics.current.wireframe から可視性を引き直しているので、この上書きは同フレームの残り(3D ピック等)に効き、呼ぶのをやめれば次のフレームで自然に元へ戻る
     - dragController.sync(fo) // update が決めた位置(fo.RtoThreeV3)・取り付け先の基底・可否の色をゴーストへ押し込むだけ。掴んでいなければ何もしない
   - entityLines.sync(displayWindow, fo, cameraSystem.activeCamera, displayAttractors, ephemeris) // 計画折れ線と同じ座標系(displayWindow.frame)で bake する。出す/消すは update フェーズの entityLines.update が決めきっているので、ここでは全個体へ一律に形状と変換だけを合わせる
     - [entities.ownShips() ごと] predictedTo = ship.predictionTruncated ? null : simTime + duration

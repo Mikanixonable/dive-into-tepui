@@ -7,7 +7,7 @@
 // ノードの位置を一意に解くことはできないためである。
 
 import { Vec3, cross, dot, len, norm, scale, sub, v3, add, rotateAxis } from '../../physics/vec3';
-import type { CrossSection, Vec2 } from '../../physics/section-moments';
+import type { CrossSection, PlacedSectionPrimitive, Vec2 } from '../../physics/section-moments';
 import { placeSectionPrimitives } from '../../physics/section-moments';
 import { sectionOutline } from '../../physics/hull-loft';
 
@@ -129,6 +129,14 @@ interface SectionPort {
   readonly along: Vec2;
 }
 
+// 原始図形1つが持つ側面の口の数。輪郭を持つ図形は辺の数ぶん、円と楕円は §7-2 の等分方向ぶん。
+// 側面ポートを列挙する側もこれを読む — 数え方が2箇所にあると、列挙はできるのに
+// portFrame が解決できない口が生まれる。
+export function lateralFaceCount(primitive: PlacedSectionPrimitive): number {
+  if (primitive.vertices) return primitive.vertices.length;
+  return primitive.shape.kind === 'circle' ? primitive.shape.branchCount : 2;
+}
+
 function lateralSectionPort(section: CrossSection, primitiveId: string, faceIndex: number): SectionPort {
   const primitive = placeSectionPrimitives(section).find((p) => p.id === primitiveId);
   if (!primitive) throw new Error(`unknown primitive "${primitiveId}"`);
@@ -138,7 +146,7 @@ function lateralSectionPort(section: CrossSection, primitiveId: string, faceInde
     if (shape.kind !== 'circle' && shape.kind !== 'ellipse') {
       throw new Error(`primitive "${primitiveId}" has no outline`);
     }
-    const count = shape.kind === 'circle' ? shape.branchCount : 2;
+    const count = lateralFaceCount(primitive);
     if (faceIndex < 0 || faceIndex >= count) {
       throw new Error(`primitive "${primitiveId}" has no face ${faceIndex}`);
     }

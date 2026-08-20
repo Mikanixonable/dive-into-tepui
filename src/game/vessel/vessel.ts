@@ -1041,6 +1041,13 @@ export class Vessel extends GameEntity {
     return this.faction === 'enemy' ? `enemy-${this.name}` : `player-${this.id}`;
   }
 
+  // 設計ツリーのワイヤーフレームを、このフレームだけ表示する。syncVessel より後に呼ぶこと —
+  // syncVessel が毎フレーム graphics.current.wireframe から表示可否を引き直すので、後から
+  // 立てたぶんは次のフレームで自然に元へ戻り、呼ぶのをやめるだけで解除になる。
+  public revealStructure(): void {
+    if (this.wireframe) this.wireframe.visible = true;
+  }
+
   // メッシュ・エフェクト・ベルト・マーカーを displayTime の状態へ同期する。
   // isActive はこの機体が操作対象かどうか。操作対象だけがガンサイト時に隠れ、方位マーカーを出す。
   public syncVessel(
