@@ -143,6 +143,17 @@ export class DockWorkbenchSession {
     return this.future.map(cloneCommand);
   }
 
+  // undo()/redo() が次に取り消す/やり直す操作のラベル。undoHistory/redoHistory は履歴全体を
+  // 複製して返すので、ラベル1つだけを毎フレーム読む UI(assembly-panel.ts のボタン文言)向けに
+  // 複製を伴わない経路を分けて持つ。
+  public get nextUndoLabel(): string | null {
+    return this.past.at(-1)?.label ?? null;
+  }
+
+  public get nextRedoLabel(): string | null {
+    return this.future.at(-1)?.label ?? null;
+  }
+
   public targetKind(targetId: string): WorkbenchTargetKind {
     return this.target(targetId).kind;
   }
