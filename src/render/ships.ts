@@ -55,6 +55,14 @@ export function radiatorFoldName(side: 'up' | 'down', fold: number): string {
   return `${RADIATOR_OBJECT_NAMES[side]}Fold${fold}`;
 }
 
+// 太陽電池パドルのヒンジ Group 名(機体座標系)。getObjectByName() で引く。
+export const SOLAR_OBJECT_NAMES = { up: 'solarUp', down: 'solarDown' } as const;
+
+// 太陽電池パドル折り目 Group 名(ヒンジ Group の子孫として入れ子)。
+export function solarFoldName(side: 'up' | 'down', fold: number): string {
+  return `${SOLAR_OBJECT_NAMES[side]}Fold${fold}`;
+}
+
 
 // マガジン寸法(機体座標系)。ベルト連結間隔(MAG_BELT_PITCH)は game.ts が
 // マガジンリンクの並びを計算するのに使う。純粋な数値なので JSON 化はしない。

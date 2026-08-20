@@ -10,7 +10,7 @@ import { EMPTY_FEED_NETWORK } from './feed-network';
 export const BLUEPRINT_VERSION = 1;
 
 // 書き出したファイルの識別子。無関係な JSON を「設計ファイルではない」と言い分けるためにある。
-export const BLUEPRINT_FILE_FORMAT = 'tepui-blueprint';
+const BLUEPRINT_FILE_FORMAT = 'tepui-blueprint';
 
 // ファイル形式そのものの版。設計データの版とは別に上がる。
 export const BLUEPRINT_FILE_VERSION = 1;
@@ -41,7 +41,7 @@ export function assemblyOf(bp: VesselBlueprint): VesselAssembly {
   return { tree: bp.tree, placements: bp.placements };
 }
 
-export const DEFAULT_PAINT: PaintScheme = {
+const DEFAULT_PAINT: PaintScheme = {
   primaryColor: '#d8dce2',
   secondaryColor: '#3a4048',
   accentColor: '#ff6a00',

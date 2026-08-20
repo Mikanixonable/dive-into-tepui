@@ -106,6 +106,7 @@ export const BULLET_IMPACT_HEAT = 3.0e5; // 自機が被弾1発あたりに受�
 // --- 太陽電池による発電 ---
 export const SOLAR_PANEL_AREA = 7.2; // 発電面積 [m^2](左右2枚合計)
 export const SOLAR_PANEL_EFFICIENCY = 0.25; // 太陽光→電力の変換効率
+export const SOLAR_PANEL_DEPLOY_TIME = 3.0; // 収納⇔全開にかかる時間 [s]
 export const POWER_CAPACITY = 1.5e6; // 蓄電容量 [J]
 // 既定の有人艦の定常消費電力の合計 [W]。通信・フライホイール・磁気トルカ・生命維持のぶん。
 export const CREWED_POWER_DRAW = 493.5;

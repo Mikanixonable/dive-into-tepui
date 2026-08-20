@@ -4,7 +4,7 @@
 // radiator.ts / power.ts が getObjectByName で引くものであり、毎フレームの rotation.y だけで
 // 蛇腹の伸縮を表せるようにするための構造である。
 import * as THREE from 'three/webgpu';
-import { RADIATOR_SEGMENT_LENGTH, radiatorFoldName } from '../ships';
+import { RADIATOR_SEGMENT_LENGTH, radiatorFoldName, solarFoldName } from '../ships';
 
 export type PanelSide = 'up' | 'down';
 
@@ -86,7 +86,7 @@ export function buildSolarPanel(side: PanelSide): THREE.Group {
   const frameMat = standard(0x7a838f, 0.68, 0.33);
   return foldChain(
     `solar${side === 'up' ? 'Up' : 'Down'}`,
-    (i) => `solar${side === 'up' ? 'Up' : 'Down'}Fold${i}`,
+    (i) => solarFoldName(side, i),
     SOLAR_FOLD_COUNT,
     SOLAR_SEGMENT_LENGTH,
     sign,
