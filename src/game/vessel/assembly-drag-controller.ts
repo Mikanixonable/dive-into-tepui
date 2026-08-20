@@ -30,7 +30,7 @@ import { deriveCapsules } from './collision-shape';
 import { FITTINGS } from './part-fittings';
 import type { MemberSpec } from './member';
 import { MEMBER_KIND_LABELS, memberAdditionAt, memberGhostTree } from './member';
-import type { DockWorkbenchController, SnapCandidate } from './dock-workbench-controller';
+import type { DockWorkbenchController, DragSource, SnapCandidate } from './dock-workbench-controller';
 import type { WorkbenchValidation } from './dock-workbench';
 import type { MountCandidate } from './mount-candidates';
 import { nearestMountCandidate } from './mount-candidates';
@@ -119,19 +119,18 @@ export class AssemblyDragController {
   // 部品でも部材でも、いま何かを掴んでいるか。掴んでいる間はクリックが離す操作になる。
   public get dragging(): boolean { return this.held !== null; }
 
-  // 部品を掴む。workbench はこの掴みを記録する作業台、sourceTargetId は部品を外した機体
-  // (倉庫から掴んだなら null)。
+  // 部品を掴む。workbench はこの掴みを記録する作業台、source は部品がどこから来たか
+  // (倉庫か、既に装着されていた機体か)。
   public beginDrag(
     workbench: DockWorkbenchController,
     part: AnyPart,
-    sourceTargetId: string | null,
-    sourceInventory: boolean,
+    source: DragSource,
   ): void {
     this.cancelDrag();
     this.workbench = workbench;
     this.held = { kind: 'part', part };
     this.pose = null;
-    workbench.beginDrag(part, sourceTargetId, sourceInventory);
+    workbench.beginDrag(part, source);
     this.ghost = buildPartGhost(part);
     if (this.ghost) this.scene.add(this.ghost);
   }
@@ -296,10 +295,9 @@ export class AssemblyDragController {
   }
 
   // クリックで掴みを終える。直前の update が成立する取り付け位置を見つけていれば drop と同じく
-  // そこへ取り付ける。部品で見つけていなければ ―― 機体から掴み上げた部品(sourceInventory: false)は
-  // workbench.remove で在庫へ戻し、棚から掴んだ部品はそもそも在庫から出ていないのでそのまま
-  // 掴みを捨てる。部材は在庫を経由しないので、見つからなければ捨てるだけでよい。掴んでいなければ
-  // 何もしない。
+  // そこへ取り付ける。部品で見つけていなければ ―― 機体から掴み上げた部品は workbench.remove で
+  // 在庫へ戻し、棚から掴んだ部品はそもそも在庫から出ていないのでそのまま掴みを捨てる。部材は
+  // 在庫を経由しないので、見つからなければ捨てるだけでよい。掴んでいなければ何もしない。
   public release(targetId: string): void {
     const workbench = this.workbench;
     if (!workbench || !this.held) return;
@@ -314,8 +312,8 @@ export class AssemblyDragController {
       return;
     }
     // 機体から掴み上げた部品(棚からではない)だけ、離した場所が空振りなら在庫へ戻す。
-    if (drag && drag.sourceTargetId !== null && !drag.sourceInventory) {
-      workbench.remove(drag.sourceTargetId, drag.part.id);
+    if (drag && drag.source.kind === 'target') {
+      workbench.remove(drag.source.targetId, drag.part.id);
     }
     this.cancelDrag();
   }
