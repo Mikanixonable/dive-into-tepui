@@ -335,7 +335,7 @@ export class GameEntity {
   // 時刻の重力源一覧(表面到達判定に使う)。
   checkLoss(_dt: number, _simTime: number, _activeStage: Stage, _playerPos: Vec3, attractors: readonly Attractor[]): void {
     if (!this.alive) return;
-    if (reachedBody(this.actual.prevState, this.state, attractors, 0) !== null
+    if (reachedBody(this.actual.prevState, this.state, attractors) !== null
       || burnUpBody(this.state.r, attractors, this.burnUpDensity) !== null) this.alive = false;
   }
 

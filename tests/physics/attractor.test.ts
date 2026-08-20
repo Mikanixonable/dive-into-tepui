@@ -150,9 +150,9 @@ export function register(): void {
     const prev = kinematicState(0, v3(-78e3, 0, 0), vel);
     const next = kinematicState(20, v3(78e3, 0, 0), vel);
 
-    assert.equal(containingBody(prev.r, [rock], 0), null);
-    assert.equal(containingBody(next.r, [rock], 0), null);
-    assert.equal(reachedBody(prev, next, [rock], 0)?.body, rock);
+    assert.equal(containingBody(prev.r, [rock]), null);
+    assert.equal(containingBody(next.r, [rock]), null);
+    assert.equal(reachedBody(prev, next, [rock])?.body, rock);
   });
 
   // 到達点は ✕ マーカーの位置になるので、天体の表面上でなければならない。
@@ -162,7 +162,7 @@ export function register(): void {
     const prev = kinematicState(0, v3(-78e3, 0, 0), vel);
     const next = kinematicState(20, v3(78e3, 0, 0), vel);
 
-    const impact = reachedBody(prev, next, [rock], 0);
+    const impact = reachedBody(prev, next, [rock]);
     assert.ok(impact, 'impact should be detected');
     assert.ok(impact!.state.t > prev.t && impact!.state.t < next.t, `impact time ${impact!.state.t} should fall inside the step`);
     // 掃引は最初の接触を返すので、進行方向の手前側(x < 0)の表面に載る。
@@ -176,7 +176,7 @@ export function register(): void {
     const vel = v3(7800, 0, 0);
     const prev = kinematicState(0, v3(-78e3, 0, 0), vel);
     const next = kinematicState(20, v3(78e3, 0, 0), vel);
-    assert.equal(reachedBody(prev, next, [rock], 0), null);
+    assert.equal(reachedBody(prev, next, [rock]), null);
   });
 
   // 掃引が空振りする(区間の始点で既に沈んでいる)ので離散判定へ落ち、到達点は始点そのものになる。
@@ -184,21 +184,15 @@ export function register(): void {
     const vel = v3(0, 0, 0);
     const inside = kinematicState(0, v3(R_EARTH - 1e3, 0, 0), vel);
     const later = kinematicState(20, v3(R_EARTH - 2e3, 0, 0), vel);
-    assert.equal(reachedBody(inside, later, [EARTH], 0)?.body, EARTH);
-    assert.equal(reachedBody(inside, later, [EARTH], 0)?.state, inside);
+    assert.equal(reachedBody(inside, later, [EARTH])?.body, EARTH);
+    assert.equal(reachedBody(inside, later, [EARTH])?.state, inside);
   });
 
   test('reachedBody: 区間の無い(prev === next)入力は点判定になる', () => {
     const outside = kinematicState(0, v3(R_EARTH + 420e3, 0, 0), ZERO);
-    assert.equal(reachedBody(outside, outside, [EARTH], 0), null);
+    assert.equal(reachedBody(outside, outside, [EARTH]), null);
     const inside = kinematicState(0, v3(R_EARTH - 1, 0, 0), ZERO);
-    assert.equal(reachedBody(inside, inside, [EARTH], 0)?.body, EARTH);
-  });
-
-  test('reachedBody: margin ぶん表面の外側までを到達とみなす', () => {
-    const s = kinematicState(0, v3(R_EARTH + 500, 0, 0), ZERO);
-    assert.equal(reachedBody(s, s, [EARTH], 0), null);
-    assert.equal(reachedBody(s, s, [EARTH], 1000)?.body, EARTH);
+    assert.equal(reachedBody(inside, inside, [EARTH])?.body, EARTH);
   });
 
   test('reachedBody: 非有限な入力は到達なしとして扱う', () => {
@@ -206,8 +200,8 @@ export function register(): void {
     const vel = v3(7800, 0, 0);
     const nanPrev = kinematicState(0, v3(NaN, 0, 0), vel);
     const next = kinematicState(20, v3(78e3, 0, 0), vel);
-    assert.equal(reachedBody(nanPrev, next, [rock], 0), null);
+    assert.equal(reachedBody(nanPrev, next, [rock]), null);
     const prev = kinematicState(0, v3(-78e3, 0, 0), vel);
-    assert.equal(reachedBody(prev, kinematicState(20, v3(NaN, 0, 0), vel), [rock], 0), null);
+    assert.equal(reachedBody(prev, kinematicState(20, v3(NaN, 0, 0), vel), [rock]), null);
   });
 }
