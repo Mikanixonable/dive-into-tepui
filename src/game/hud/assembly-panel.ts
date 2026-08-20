@@ -1,10 +1,11 @@
 // 組立UI: 作業台セッションが持つ倉庫の部品を対象ごとにボタンで並べ、クリックで
 // AssemblyDragController のドラッグを開始させ、3D で拾ったノード・エッジの選択を1行で示す
 // 常設 HUD ウィンドウ。ドラッグ・選択の追跡・スナップ判定はこのクラスの外
-// (assembly-drag-controller.ts / docking.ts)の責務で、ここはそれを表示へ映すところまでを持つ。
-// 選択したノード・エッジの削除と、選択したノードの既存プリミティブの断面編集は、
-// session/workbench を直に持っているのでここで組み立てて applyAssemblyEdit へ渡す —
-// 新規船下書きの作成・建造(base の在庫・資源を扱う)だけは Docking 側の callback に委ねる。
+// (assembly-drag-controller.ts / assembly-session-controller.ts)の責務で、ここはそれを
+// 表示へ映すところまでを持つ。選択したノード・エッジの削除と、選択したノードの既存
+// プリミティブの断面編集は、session/workbench を直に持っているのでここで組み立てて
+// applyAssemblyEdit へ渡す —— 新規船下書きの作成・建造(base の在庫・資源を扱う)だけは
+// AssemblySessionController 側の callback に委ねる。
 // 1セッションにつき1インスタンスを持ち回して sync() で毎フレーム(または状態が変わる
 // たびに)差分更新する — predict-panel.ts の PredictPanel と同じ、常設パネルの流儀。
 // #hud の子として window レイヤへ置くため、`#hud, #hud *` の margin/padding
@@ -14,7 +15,7 @@ import { isExterior } from '../game-entity/parts';
 import type { PartPlacement } from '../vessel/assembly';
 import { removeEdge, removeNode, type SectionPrimitivePatch } from '../vessel/assembly-editor';
 import { AssemblyDragController } from '../vessel/assembly-drag-controller';
-import type { AssemblySelection } from '../docking';
+import type { AssemblySelection } from '../assembly-session-controller';
 import type { DockWorkbenchController, DragSource } from '../vessel/dock-workbench-controller';
 import type { DockWorkbenchSession, WorkbenchTarget, WorkbenchTargetKind } from '../vessel/dock-workbench';
 import {
