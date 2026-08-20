@@ -12,6 +12,7 @@ import type { TickLabelMode } from './hud/calendar-ticks';
 import { Attractor, strongestAttractor } from '../physics/attractor';
 import { ReferenceFrame } from '../physics/frame';
 import { mergeAttractors } from './simulation/attractors';
+import { SIM_EPOCH_SEC } from './hud/utils';
 import type { Ephemeris } from '../physics/ephemeris';
 import type { EntityManager } from './simulation/entity-manager';
 import type { GameEntity } from './game-entity/game-entity';
@@ -61,6 +62,7 @@ export class DisplayWindowManager {
   private customDurationSec = C.DISPLAY_DUR_DAY;
   private customPastDurationSec = C.DISPLAY_DUR_DAY;
   private _tickLabelMode: TickLabelMode = 'absolute';
+  private _showTicks = true;
   private _frame: ReferenceFrame;
 
   private readonly panel: PredictPanel;
@@ -103,6 +105,9 @@ export class DisplayWindowManager {
     this.panel.onTickLabelModeChange = (mode) => {
       this.tickLabelMode = mode;
     };
+    this.panel.onShowTicksChange = (show) => {
+      this.showTicks = show;
+    };
     this.panel.onSliderChange = (t) => {
       this.sliderT = t;
     };
@@ -135,6 +140,16 @@ export class DisplayWindowManager {
     this._tickLabelMode = value;
   }
 
+  // 目盛り行を描くかどうか。
+  get showTicks(): boolean {
+    return this._showTicks;
+  }
+
+  set showTicks(value: boolean) {
+    if (this._showTicks === value) return;
+    this._showTicks = value;
+  }
+
   // 未来表示を禁止するフラグ。true にすると未来ゴーストスライダーの位置も原点へ戻す。
   get forceCurrent(): boolean {
     return this._forceCurrent;
@@ -156,21 +171,23 @@ export class DisplayWindowManager {
   // このクラス自身は軌道周期を持たない。referencePeriod が有限な正数でなければ
   // APERIODIC_ARC_DURATION にフォールバックする。
   durationSec(referencePeriod: number): number {
-    if (this.durationKey === 'orbit') {
-      return isFinite(referencePeriod) && referencePeriod > 0 ? referencePeriod : C.APERIODIC_ARC_DURATION;
-    }
-    if (this.durationKey === 'custom') return this.customDurationSec;
-    return FIXED_DURATION_SEC[this.durationKey];
+    return DisplayWindowManager.resolveDurationSec(this.durationKey, this.customDurationSec, referencePeriod);
   }
 
   // 過去方向に遡って描く期間の秒数。durationSec と同じ参照周期の解釈を使い、'none' は 0。
   pastDurationSec(referencePeriod: number): number {
     if (this.pastDurationKey === 'none') return 0;
-    if (this.pastDurationKey === 'orbit') {
+    return DisplayWindowManager.resolveDurationSec(this.pastDurationKey, this.customPastDurationSec, referencePeriod);
+  }
+
+  // durationSec/pastDurationSec が共有する解釈: 'orbit' は referencePeriod(無ければ
+  // APERIODIC_ARC_DURATION)、'custom' は呼び出し側が持つ秒数、それ以外は固定プリセット。
+  private static resolveDurationSec(key: DisplayDurationKey, customSec: number, referencePeriod: number): number {
+    if (key === 'orbit') {
       return isFinite(referencePeriod) && referencePeriod > 0 ? referencePeriod : C.APERIODIC_ARC_DURATION;
     }
-    if (this.pastDurationKey === 'custom') return this.customPastDurationSec;
-    return FIXED_DURATION_SEC[this.pastDurationKey];
+    if (key === 'custom') return customSec;
+    return FIXED_DURATION_SEC[key];
   }
 
   // このフレームの表示窓を確定させて返す。表示窓の各値は現在の時刻・操作艦・設定から
@@ -213,12 +230,15 @@ export class DisplayWindowManager {
       customPastDurationSec: this.customPastDurationSec,
       pastDuration: this._current.pastDuration,
       tickLabelMode: this._tickLabelMode,
+      showTicks: this._showTicks,
       duration: this._current.duration,
       displayTime: this._current.displayTime,
       sliderSteps: this.sliderSteps(),
       sliderT: this.sliderT,
       predictionRatio: this.predictionCoverageRatio(player),
-      ticks: buildTicks(this._current.duration, TICK_MAX_COUNT),
+      ticks: this._showTicks
+        ? buildTicks(SIM_EPOCH_SEC + this._current.simTime, this._current.duration, TICK_MAX_COUNT, this._tickLabelMode)
+        : [],
     });
   }
 
