@@ -15,7 +15,7 @@ import { circumradius } from './tree';
 import { len } from '../../physics/vec3';
 import { crewedAssembly, orbitalBaseAssembly } from './vessel-assemblies';
 import type { MassProperties } from './mass-properties';
-import { deriveMassProperties, massPropertiesFrom, massPropertiesOf } from './mass-properties';
+import { deriveMassProperties, massPropertiesFrom, massPropertiesOf, propellantStoreOf } from './mass-properties';
 import { isAssemblySaveData } from '../save-data';
 
 export type VesselFaction = 'ally' | 'enemy';
@@ -49,7 +49,7 @@ export interface VesselDesign {
 function derivedFrom(assembly: VesselAssembly): { parts: AnyPart[]; massProperties: MassProperties } {
   return {
     parts: assembly.placements.map((placement) => placement.part),
-    massProperties: massPropertiesFrom(deriveMassProperties(assembly)),
+    massProperties: massPropertiesFrom(deriveMassProperties(assembly, propellantStoreOf(assembly))),
   };
 }
 
@@ -159,7 +159,7 @@ function hullRadiusOf(assembly: VesselAssembly): number {
 export function blueprintDesign(bp: VesselBlueprint): VesselDesign {
   const assembly = assemblyOf(bp);
   const parts = assembly.placements.map((placement) => placement.part);
-  const massProperties = massPropertiesFrom(deriveMassProperties(assembly));
+  const massProperties = massPropertiesFrom(deriveMassProperties(assembly, propellantStoreOf(assembly)));
   tuneActuators(parts, massProperties.mass, principalMoments(massProperties.inertia).z);
   return {
     faction: 'ally',
