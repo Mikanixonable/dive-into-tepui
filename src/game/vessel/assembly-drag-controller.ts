@@ -88,8 +88,10 @@ export type AssemblyPick =
 
 // 掴んでいるものの判別共用体。部品は DockWorkbenchController の DragState(移動元・在庫還元)を
 // 経由するが、部材は移動元を持たない使い捨ての仕様なので、その追跡もここだけで完結する。
+// 部品は掴み元(DragSource)も併せて持つ —— 対象上に残る鏡像側の同じ部品を隠すため、
+// heldTargetPart がここから引く。
 type Held =
-  | { readonly kind: 'part'; readonly part: AnyPart }
+  | { readonly kind: 'part'; readonly part: AnyPart; readonly source: DragSource }
   | { readonly kind: 'member'; readonly member: MemberSpec };
 
 // 部材ドラッグの直近の update が組んだ編集。drop はこれを再計算せず、そのまま適用する。
@@ -128,11 +130,18 @@ export class AssemblyDragController {
   ): void {
     this.cancelDrag();
     this.workbench = workbench;
-    this.held = { kind: 'part', part };
+    this.held = { kind: 'part', part, source };
     this.pose = null;
     workbench.beginDrag(part, source);
     this.ghost = buildPartGhost(part);
     if (this.ghost) this.scene.add(this.ghost);
+  }
+
+  // いま対象上から掴み上げている部品がどれか。棚から掴んでいる、部材を掴んでいる、または
+  // 何も掴んでいなければ null —— 対象の鏡像から探して隠す相手が無いことを言う。
+  public get heldTargetPart(): { readonly targetId: string; readonly partId: string } | null {
+    if (!this.held || this.held.kind !== 'part' || this.held.source.kind !== 'target') return null;
+    return { targetId: this.held.source.targetId, partId: this.held.part.id };
   }
 
   // 部材(構造材)を掴む。棚での構成そのものが仕様なので、移動元や在庫還元の概念を持たない ――

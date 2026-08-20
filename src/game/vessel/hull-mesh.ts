@@ -97,6 +97,8 @@ function placeInternalMarker(part: AnyPart, assembly: VesselAssembly): THREE.Obj
   );
   applyFrame(object, frame);
   object.userData['internalPartMarker'] = true;
+  object.userData['ownsGeometry'] = true;
+  object.userData['ownsMaterial'] = true;
   return object;
 }
 
