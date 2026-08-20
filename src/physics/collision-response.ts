@@ -38,9 +38,12 @@ export function resolveSphereCollision(
   // 弾く — `x <= 0` と書くと NaN に対する真偽が反転して非有限入力が通り抜ける。
   if (!(invM > 0)) return null;
 
-  const swept = prevA !== undefined && prevB !== undefined
+  // 掃引で解決できるのは区間の途中で触れ合う場合だけ。始点で既に重なっていれば、掃引が
+  // 返すのは離れていく瞬間なので、押し戻しへ回す。
+  const contact = prevA !== undefined && prevB !== undefined
     ? sweptSphereContact(prevA, a.state, prevB, b.state, minD, 'linear')
     : null;
+  const swept = contact !== null && !contact.startsInside ? contact.crossing : null;
 
   let normal: Vec3;
   let rA: Vec3, rB: Vec3;

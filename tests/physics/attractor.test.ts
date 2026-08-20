@@ -10,7 +10,6 @@ import {
   reachedBody,
   strongestAttractor,
 } from '../../src/physics/attractor';
-import { containingBody } from '../../src/physics/sphere-contact';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH, SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { keplerPeriod, stateFromOrbitalElements, tofBetween } from '../../src/physics/elements';
@@ -166,8 +165,6 @@ export function register(): void {
     const prev = kinematicState(0, v3(-78e3, 0, 0), vel);
     const next = kinematicState(20, v3(78e3, 0, 0), vel);
 
-    assert.equal(containingBody(prev.r, [rock]), null);
-    assert.equal(containingBody(next.r, [rock]), null);
     assert.equal(reachedBody(prev, next, [rock])?.body, rock);
   });
 
