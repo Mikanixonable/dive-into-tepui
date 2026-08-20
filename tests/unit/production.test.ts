@@ -10,11 +10,12 @@ import { createPart, type PartType } from '../../src/game/game-entity/parts';
 import { crewedShipBlueprint } from '../../src/game/vessel/default-blueprints';
 import {
   ASSEMBLY_FACILITY, DEFAULT_PRODUCTION_TIME_FACTOR, consumeProductionResources,
-  partProductionBlueprintOf, productionBlueprintOf, productionResourceDemand, productionTimeOf,
-  refuelBlueprintOf, repairBlueprintOf,
+  memberProductionBlueprintOf, partProductionBlueprintOf, productionBlueprintOf,
+  productionResourceDemand, productionTimeOf, refuelBlueprintOf, repairBlueprintOf,
 } from '../../src/game/vessel/production';
 import { structuralMasses } from '../../src/game/vessel/mass-properties';
 import { assemblyOf } from '../../src/game/vessel/blueprint';
+import { MEMBER_DEFAULT_RADIUS, MEMBER_DEFAULT_SEPARATION_IMPULSE, type MemberSpec } from '../../src/game/vessel/member';
 import { test } from '../physics/harness';
 
 // 殻の材料を推進剤が決める搭載要素。この3種だけは建造費の表が殻を持たない。
@@ -189,5 +190,48 @@ export function register(): void {
     // 係数を上げれば搭載要素の合計質量に比例した時間になる。
     const mass = bp.placements.reduce((sum, p) => sum + p.part.weight, 0);
     assert.ok(Math.abs(productionTimeOf(bp, 2) - mass * 2) < 1e-9);
+  });
+
+  test('production: 部材1本の建造費は、その形状ぶんの構造材質量に一致する', () => {
+    const hull: MemberSpec = { kind: 'hull', length: 4, radius: MEMBER_DEFAULT_RADIUS, separationImpulse: 0 };
+    const request = memberProductionBlueprintOf(hull);
+    assert.deepEqual(request.requiresFacility, [ASSEMBLY_FACILITY]);
+    assert.equal(request.parts.length, 0);
+    assert.equal(request.tanks.length, 0);
+    const hullCost = request.structure.find((item) => item.resourceId === 'hull-panel')?.mass ?? 0;
+    assert.ok(hullCost > 0);
+
+    // トラス・分離機構は同じ資源(truss-member)へ合算される。
+    const truss: MemberSpec = { kind: 'truss', length: 4, radius: MEMBER_DEFAULT_RADIUS, separationImpulse: 0 };
+    const decoupler: MemberSpec = {
+      kind: 'decoupler', length: 4, radius: MEMBER_DEFAULT_RADIUS, separationImpulse: MEMBER_DEFAULT_SEPARATION_IMPULSE,
+    };
+    for (const member of [truss, decoupler]) {
+      const req = memberProductionBlueprintOf(member);
+      assert.equal(req.structure.find((item) => item.resourceId === 'hull-panel'), undefined);
+      assert.ok((req.structure.find((item) => item.resourceId === 'truss-member')?.mass ?? 0) > 0);
+    }
+
+    // 長くすれば質量も費用も増える。
+    const longerHull: MemberSpec = { ...hull, length: 8 };
+    const longerCost = memberProductionBlueprintOf(longerHull).structure
+      .find((item) => item.resourceId === 'hull-panel')?.mass ?? 0;
+    assert.ok(longerCost > hullCost);
+  });
+
+  test('production: 部材の建造費は在庫を消費し、足りなければ何も減らさず拒否する', () => {
+    const hull: MemberSpec = { kind: 'hull', length: 4, radius: MEMBER_DEFAULT_RADIUS, separationImpulse: 0 };
+    const request = memberProductionBlueprintOf(hull);
+    const cost = request.structure.find((item) => item.resourceId === 'hull-panel')!.mass;
+
+    const short = new ResourceLedger();
+    short.add('hull-panel', cost - 1);
+    assert.equal(consumeProductionResources(request, short), false);
+    assert.equal(short.amountOf('hull-panel'), cost - 1);
+
+    const enough = new ResourceLedger();
+    enough.add('hull-panel', cost);
+    assert.equal(consumeProductionResources(request, enough), true);
+    assert.equal(enough.amountOf('hull-panel'), 0);
   });
 }

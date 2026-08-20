@@ -14,12 +14,17 @@ import { Vessel, type VesselDeps } from './vessel/vessel';
 import { createBlueprint } from './vessel/blueprint';
 import type { VesselAssembly } from './vessel/assembly';
 import { AssemblyRenderObject } from './vessel/assembly-render-object';
-import { AssemblyDragController, type AssemblyDragTarget, type AssemblyPick } from './vessel/assembly-drag-controller';
+import {
+  AssemblyDragController, type AssemblyDragTarget, type AssemblyPick, type MemberCostHook,
+} from './vessel/assembly-drag-controller';
+import type { MemberSpec } from './vessel/member';
 import { DockWorkbenchSession } from './vessel/dock-workbench';
 import { targetValidation } from './vessel/dock-workbench-validation';
 import { DockWorkbenchController, type DragSource } from './vessel/dock-workbench-controller';
 import { crewedAssembly } from './vessel/vessel-assemblies';
-import { productionBlueprintOf, consumeProductionResources } from './vessel/production';
+import {
+  productionBlueprintOf, consumeProductionResources, memberProductionBlueprintOf, affordableProductionRequest,
+} from './vessel/production';
 import { producibility, type ProducibilityBlueprint } from './economy/producibility';
 import { productionCostSummary, type ProductionCostSummary } from './hud/inventory-labels';
 import { baseFacilities, basePowerAvailable, deriveBaseDockingPorts } from './vessel/base-module';
@@ -109,6 +114,13 @@ export class AssemblySessionController {
   // 構造(ノード・エッジ)を露出している対象の写し。選ばれているタブが変わるたびに移す。
   private revealedStructure: AssemblyRenderObject | null = null;
 
+  // 部材を生やす瞬間の資源判定・消費。開いている基地を都度 this.assembly から読むので、
+  // セッションの開閉に関わらず1つで足りる。
+  private readonly memberCost: MemberCostHook = {
+    refusalFor: (member) => this.memberCostRefusal(member),
+    charge: (member) => this.chargeMember(member),
+  };
+
   // pauseGame/resumeGame は組立セッションの間だけ時間と物理を止めるための、Game の状態への
   // 唯一の窓口 —— このクラスの外に持ち出す理由がここにしか無いので、クロージャ2つとして
   // 受ける(CLAUDE.md の「`*Ctx` 禁止」の例外として明記された、このクラスに限る暫定形)。
@@ -123,7 +135,29 @@ export class AssemblySessionController {
     // 通知。組立中に別の基地を選び直していても、確定した基地へ選択を戻す。
     private readonly onBaseAssemblyWritten: (base: Vessel) => void,
   ) {
-    this.dragController = new AssemblyDragController(scene);
+    this.dragController = new AssemblyDragController(scene, this.memberCost);
+  }
+
+  // 開いている基地の在庫で部材1本ぶんの構造材が賄えるか。賄えなければ拒否理由を返す。
+  private memberCostRefusal(member: MemberSpec): string | null {
+    const base = this.assembly?.base;
+    if (!base?.baseState) return '基地の在庫を確認できません';
+    return affordableProductionRequest(base, memberProductionBlueprintOf(member)) ? null : '構造材の資源が不足しています';
+  }
+
+  // 部材1本ぶんの構造材を基地の在庫から引く。memberCostRefusal が null を返した直後にしか
+  // 呼ばれないので、消費は必ず成功する。
+  private chargeMember(member: MemberSpec): void {
+    const base = this.assembly?.base;
+    if (!base?.baseState) return;
+    consumeProductionResources(memberProductionBlueprintOf(member), base.baseState.resources);
+  }
+
+  // 部材棚の表示用: いまの入力値で部材を1本生やす費用と、賄えるか。
+  private memberCostStatus(member: MemberSpec): ProductionCostSummary | null {
+    const base = this.assembly?.base;
+    if (!base?.baseState) return null;
+    return productionCostSummary(base, memberProductionBlueprintOf(member));
   }
 
   // 組立セッションが進行中か。発進・生産など、構成が固まっている前提の操作の門になる。
@@ -190,6 +224,7 @@ export class AssemblySessionController {
     panel.onRemoveDraft = (targetId) => this.removeDraft(targetId);
     panel.onRemoveSelection = () => this.removeSelection();
     panel.draftBuildStatus = (targetId) => this.draftBuildStatus(base, targetId);
+    panel.memberCostStatus = (member) => this.memberCostStatus(member);
     panel.open(session, session.getTarget(initial.id), DEFAULT_WINDOW_X, DEFAULT_WINDOW_Y);
     this.frameAssemblyCamera(entry);
     this.pauseGame();

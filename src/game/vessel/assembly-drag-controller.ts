@@ -100,6 +100,13 @@ interface PendingMemberEdit {
   readonly label: string;
 }
 
+// 部材を生やすのに要る資源の判定と消費。掴んだ部材を実際に取り付ける瞬間だけが charge を
+// 呼ぶ ―― refusalFor が null を返した直後にしか呼ばれないので、消費は必ず成功する。
+export interface MemberCostHook {
+  readonly refusalFor: (member: MemberSpec) => string | null;
+  readonly charge: (member: MemberSpec) => void;
+}
+
 // 光線の向きを解くための一時オブジェクト。毎フレームの割り当てを避ける。
 const rayScratch = new THREE.Vector3();
 const basisScratch = new THREE.Matrix4();
@@ -116,7 +123,10 @@ export class AssemblyDragController {
   private pose: GhostPose | null = null;
   private readonly raycaster = new THREE.Raycaster();
 
-  public constructor(private readonly scene: THREE.Scene) {}
+  public constructor(
+    private readonly scene: THREE.Scene,
+    private readonly memberCost?: MemberCostHook,
+  ) {}
 
   // 部品でも部材でも、いま何かを掴んでいるか。掴んでいる間はクリックが離す操作になる。
   public get dragging(): boolean { return this.held !== null; }
@@ -302,7 +312,18 @@ export class AssemblyDragController {
         targets: [workbench.validateTarget(targetId)],
       };
     }
-    return workbench.applyAssemblyEdit(targetId, pending.result, pending.label);
+    // 資源が足りなければ木を触る前に拒否する。消費は applyAssemblyEdit が通ってから
+    // ―― 検証に落ちて巻き戻る編集から資源だけ引かれることはない。
+    const member = this.held?.kind === 'member' ? this.held.member : null;
+    if (member && this.memberCost) {
+      const refusal = this.memberCost.refusalFor(member);
+      if (refusal !== null) {
+        return { valid: false, errors: [refusal], targets: [workbench.validateTarget(targetId)] };
+      }
+    }
+    const validation = workbench.applyAssemblyEdit(targetId, pending.result, pending.label);
+    if (validation.valid && member && this.memberCost) this.memberCost.charge(member);
+    return validation;
   }
 
   // クリックで掴みを終える。直前の update が成立する取り付け位置を見つけていれば drop と同じく

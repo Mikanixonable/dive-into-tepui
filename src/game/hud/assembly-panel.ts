@@ -136,6 +136,7 @@ export class AssemblyPanel {
   private memberLength = MEMBER_DEFAULT_LENGTH;
   private memberRadius = MEMBER_DEFAULT_RADIUS;
   private memberSeparationImpulse = MEMBER_DEFAULT_SEPARATION_IMPULSE;
+  private lastMemberCostKey = '';
 
   private currentTargetId: string | null = null;
   private filterQuery = '';
@@ -172,6 +173,9 @@ export class AssemblyPanel {
   // 指定の下書きを建造したときの費用と、いま賄えるか。下書きでない対象・基地が
   // 無ければ null — buildDraftBtn を隠す判定にも使う。
   public draftBuildStatus: ((targetId: string) => { readonly costText: string; readonly affordable: boolean } | null) | null = null;
+  // 棚の入力欄が示す部材を1本生やす費用と、いま賄えるか。基地が無ければ null —
+  // memberGrabBtn の費用表示・押下可否の判定に使う。
+  public memberCostStatus: ((member: MemberSpec) => { readonly costText: string; readonly affordable: boolean } | null) | null = null;
   // 選択中のノード・エッジを削除する。選択のクリアは Docking 側の責務なので、成否だけを
   // 拒否理由の文字列(成功なら null)で受け取る。
   public onRemoveSelection: (() => string | null) | null = null;
@@ -203,6 +207,7 @@ export class AssemblyPanel {
     this.lastErrorsKey = '';
     this.lastSelectionKey = '';
     this.lastBuildStatusKey = '';
+    this.lastMemberCostKey = '';
     this.lastSectionEditorKey = '';
     this.win.bringToFront();
     this.sync(session, null);
@@ -370,7 +375,24 @@ export class AssemblyPanel {
     this.syncMounted(session);
     this.syncShelf(session.inventorySnapshot());
     this.syncErrors(session);
-    this.memberGrabBtn?.setEnabled(!this.dragController.dragging);
+    this.syncMemberCost();
+  }
+
+  // 部材棚の入力欄が示す部材の費用を「部材を掴む」の文言に畳む(buildDraftBtn と同じ形)。
+  private syncMemberCost(): void {
+    if (!this.memberGrabBtn) return;
+    // ドラッグ中は費用に関わらず押せない。
+    if (this.dragController.dragging) {
+      this.memberGrabBtn.setEnabled(false);
+      return;
+    }
+    const status = this.memberCostStatus?.(this.currentMemberSpec()) ?? null;
+    const key = status === null ? 'none' : `${status.costText}:${status.affordable}`;
+    if (key !== this.lastMemberCostKey) {
+      this.lastMemberCostKey = key;
+      this.memberGrabBtn.setLabel(status === null ? '部材を掴む' : `部材を掴む · ${status.costText}`);
+    }
+    this.memberGrabBtn.setEnabled(status?.affordable ?? false);
   }
 
   // 現在の対象が下書きのときだけ「建造して格納」を出し、費用と賄えるかをラベルへ畳む
@@ -769,14 +791,18 @@ export class AssemblyPanel {
     if (this.memberImpulseRow) this.memberImpulseRow.hidden = this.memberKind !== 'decoupler';
   }
 
-  // 棚の入力欄の現在値から MemberSpec を組み、部材のドラッグを開始する。
-  private beginMemberDrag(): void {
-    const member: MemberSpec = {
+  // 棚の入力欄の現在値から MemberSpec を組む。費用表示とドラッグ開始が同じ値を読む。
+  private currentMemberSpec(): MemberSpec {
+    return {
       kind: this.memberKind,
       length: this.memberLength,
       radius: this.memberRadius,
       separationImpulse: this.memberSeparationImpulse,
     };
-    this.dragController.beginMemberDrag(this.workbench, member);
+  }
+
+  // 棚の入力欄が示す部材のドラッグを開始する。
+  private beginMemberDrag(): void {
+    this.dragController.beginMemberDrag(this.workbench, this.currentMemberSpec());
   }
 }
