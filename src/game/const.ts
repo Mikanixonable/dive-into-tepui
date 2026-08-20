@@ -113,9 +113,10 @@ export const CREWED_POWER_DRAW = 493.5;
 export const CREWED_WASTE_HEAT = 593.5;
 // 既定の有人艦の RCS タンクの容積 [m^3]。満載 1000kg 相当になる値(1000 / ヒドラジンの密度)。
 export const CREWED_RCS_TANK_VOLUME = 1000 / propellantDensity('hydrazine');
-// 既定の有人艦の主タンクの容積 [m^3]。主機と RCS を合わせた総 Δv が約 2,500 m/s になるよう、
-// aft エッジの空き容積(約 4.2 m^3)を残して逆算した値(第12版 主推進系の搭載計画 R3)。
-export const CREWED_MAIN_TANK_VOLUME = 3.9;
+// 既定の有人艦の主タンクの容積 [m^3]。主機と RCS を合わせた総 Δv が約 2,500 m/s になるよう
+// 逆算した値(第12版 主推進系の搭載計画 R3)。aft エッジの空き容積(約 4.2 m^3)のうち
+// 使うのは約 2.7 m^3 だけで、残りはプレイヤーが自分で部品を積むための余地として空けてある。
+export const CREWED_MAIN_TANK_VOLUME = 2.47;
 // 既定の有人艦の加圧ガスタンクの容積 [m^3]。ヒドラジンは自己加圧しないため要る(§17-2)。
 export const CREWED_PRESSURANT_TANK_VOLUME = 0.08;
 

@@ -56,8 +56,8 @@ function relativeError(actual: number, expected: number): number {
 export function register(): void {
   test('既定の3設計のツリーが正しく、乾燥質量が設計の狙いどおりになる', () => {
     const cases = [
-      { name: 'crewed', assembly: crewedAssembly(C.PLAYER_MAX_HP), mass: 7920 },
-      { name: 'base', assembly: orbitalBaseAssembly(C.BASE_MAX_HP), mass: 1.2018e7 },
+      { name: 'crewed', assembly: crewedAssembly(C.PLAYER_MAX_HP), mass: 1735 },
+      { name: 'base', assembly: orbitalBaseAssembly(C.BASE_MAX_HP), mass: 4.2322e6 },
       { name: 'hostile', assembly: hostileAssembly(C.ENEMY_MAX_HP), mass: 10000 },
     ];
     for (const { name, assembly, mass } of cases) {
@@ -239,15 +239,20 @@ export function register(): void {
       nodes: [node('a', v3(0, 0, 0), square(1.5)), node('b', v3(0, 0, length), square(1.5))],
       edges: [hullEdge('e', 'a', 'b', length)],
     };
-    const withTank = (maxPressure: number): number => deriveMassProperties({
+    // 推進剤タンク(区画と一体の圧力容器)の要求与圧がそのまま区画の内圧になる。加圧ガス
+    // タンク自身は区画に据え付けられた独立の容器で、区画の壁の耐圧には数えない
+    // (mass-properties.ts の partPressure を参照)。
+    const withTank = (requiredPressure: number): number => deriveMassProperties({
       tree,
       placements: [{
         kind: 'internal',
-        part: createPart('pressurant_tank', { name: 'gas', volume: 1, maxPressure }),
+        part: createPart('reductant_tank', {
+          name: 'tank', propellant: 'hydrazine', volume: 1, material: 'aluminium', fuel: 0,
+          insulationGrade: 1, requiredPressure,
+        }),
         edgeIds: ['e'],
       }],
     }).dryMass;
-    // 加圧ガスタンクの耐圧 [MPa] がそのまま区画の内圧になる。
     assert.ok(withTank(30) > withTank(1) * 2, `${withTank(30)} vs ${withTank(1)}`);
     // 内圧が座屈の下限に埋もれる程度なら、肉厚は変わらない。
     assert.ok(relativeError(withTank(0.1), withTank(0.2)) < 1e-12);
@@ -399,8 +404,8 @@ export function register(): void {
     // 全長 4.5 m の剛体として当然の大きさである。
     const derived = deriveMassProperties(crewedAssembly(C.PLAYER_MAX_HP));
     const pinned: Record<string, number> = {
-      dryMass: 7920.29, ixx: 8338.50, iyy: 9655.45, izz: 7730.61, iyz: 99.3956,
-      areaX: 10.2065, areaY: 12.4565, areaZ: 65.7643, comY: -0.00419808, comZ: -1.23934,
+      dryMass: 1734.60, ixx: 3300.998, iyy: 4618.449, izz: 2441.718, iyz: 74.4888,
+      areaX: 10.2065, areaY: 12.4565, areaZ: 65.7643, comY: -0.0191687, comZ: -0.490265,
     };
     const actual: Record<string, number> = {
       dryMass: derived.dryMass,
