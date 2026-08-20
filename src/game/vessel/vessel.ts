@@ -57,7 +57,6 @@ import { ThrustEffects } from '../vessel/thrust-effects';
 import { RcsEffects } from '../vessel/rcs-effects';
 import { ReentryEffects } from '../vessel/reentry-effects';
 import { PilotMarkers } from '../vessel/pilot-markers';
-import { EntityMarker } from '../marker/entity-marker';
 import { Plan } from '../plan/plan';
 import { PlanExecutor, type PlanExecutionMode } from '../plan/plan-executor';
 import {
@@ -81,7 +80,7 @@ import {
 } from './base-module';
 import { EnemyAi, type EnemyKind } from './enemy-ai';
 import { PartInventory } from './part-inventory';
-import { baseMarkerSvg, headingHpMarkerSvg, notchedHpMarkerSvg } from './hp-marker-svg';
+import { vesselMarkerSvg } from './hp-marker-svg';
 import {
   baseAssemblyFromSaveData, blueprintDesign, crewedShipDesign, hostileShipDesign, orbitalBaseDesign,
   type VesselDesign, type VesselFaction,
@@ -468,7 +467,8 @@ export class Vessel extends GameEntity {
       this.thrustEffects = new ThrustEffects(deps.scene, deps.worldSfx);
       this.rcsEffects = new RcsEffects(deps.scene, deps.worldSfx);
     }
-    if (design.directionMarkers) {
+    // 操縦(方向マーカー・ボアサイト)を持たない機体でも、操作対象になれば自機位置マーカーは要る。
+    if (design.directionMarkers || hasBaseModule(this)) {
       this.markers = new PilotMarkers(deps.markerManager, this.id, this);
     }
     if (design.faction === 'enemy') {
@@ -490,7 +490,6 @@ export class Vessel extends GameEntity {
         this.collisionGeom = new BaseCollisionGeometry();
       }
       this.equatorNodes = new EquatorNodeMarkerPair(this, deps.markerManager);
-      this.marker = new EntityMarker(this, deps.markerManager, 'mk-base', ENTITY_GLYPH.ship, true);
     }
 
     // 敵対勢力の機体だけが持つ個体色と集団識別。
@@ -1100,9 +1099,7 @@ export class Vessel extends GameEntity {
       : role === 'secondary' ? C.MARKER_PRIORITY.SECONDARY_TARGET : ownPriority;
     // 図形と着色。基地は専用図形、機体はマップでは進行方向つき、戦闘ビューでは HP 刻み。
     const color = isEnemy ? C.COLOR_MARKER_ENEMY : C.COLOR_MARKER_ALLY;
-    const sym = this.baseState
-      ? baseMarkerSvg()
-      : overviewMode ? headingHpMarkerSvg(this.hp, this.maxHp, this.name, isEnemy) : notchedHpMarkerSvg(this.hp, this.maxHp);
+    const sym = vesselMarkerSvg(!!this.baseState, this.hp, this.maxHp, this.name, overviewMode, isEnemy);
     const ownClass = this.baseState ? 'mk-base' : 'mk-enemy';
     return {
       key: this.markerKey,
