@@ -4,6 +4,7 @@ import { v3 } from '../../physics/vec3';
 import type { AnyPart, BaseModulePart, CommunicationPart, DockPort, PartType } from '../game-entity/parts';
 import { createPart } from '../game-entity/parts';
 import { catalystMassFor, needsCatalystBed } from '../economy/build-cost';
+import { propellantDensity, propellantTankCapacity } from '../economy/propellant-compatibility';
 
 // 通信モジュールの等級。到達距離 [m] と質量 [kg] を等級ごとに固定する。到達距離は
 // 機体側と中継点側の小さいほうで決まるので、積んだ等級がそのまま届く距離になる。
@@ -148,8 +149,9 @@ export function crewedParts(maxHp: number): AnyPart[] {
       maxMagneticMoment: C.MAGNETORQUER_MOMENT, powerDraw: CREWED_DRAW.magnetorquer,
     }),
     mk('rcs_tank', R.rcsTank, {
-      weight: CREWED_WEIGHT.rcsTank, name: 'Main RCS Tank', propellant: 'hydrazine', volume: 1.0, material: 'aluminium',
-      maxFuel: C.CREWED_RCS_FUEL_CAPACITY, fuel: C.CREWED_RCS_FUEL_CAPACITY,
+      weight: CREWED_WEIGHT.rcsTank, name: 'Main RCS Tank', propellant: 'hydrazine',
+      volume: C.CREWED_RCS_TANK_VOLUME, material: 'aluminium',
+      fuel: propellantTankCapacity('hydrazine', C.CREWED_RCS_TANK_VOLUME),
     }),
     mk('radiator', R.radiator, {
       weight: CREWED_WEIGHT.radiator, name: 'Heat Radiator L',
@@ -207,8 +209,8 @@ export function hostileParts(maxHp: number): AnyPart[] {
       weight: HOSTILE_WEIGHT.flywheel, name: 'Hostile Reaction Wheel', maxTorque: 0, maxAngularMomentum: 400, powerDraw: 0,
     }),
     mk('rcs_tank', R.rcsTank, {
-      weight: HOSTILE_WEIGHT.rcsTank, name: 'Hostile Tank', propellant: 'hydrazine', volume: 1.0, material: 'aluminium',
-      maxFuel: 1000, fuel: 1000,
+      weight: HOSTILE_WEIGHT.rcsTank, name: 'Hostile Tank', propellant: 'hydrazine',
+      volume: 1000 / propellantDensity('hydrazine'), material: 'aluminium', fuel: 1000,
     }),
     mk('weapon', R.weapon, {
       weight: HOSTILE_WEIGHT.weapon, name: 'Plasma Cannon', weaponType: 'cannon',
@@ -238,8 +240,8 @@ export function baseParts(maxHp: number): AnyPart[] {
     }),
     createPart('rcs_tank', {
       name: 'Station Tank', maxHp: 1, hp: 1, weight: BASE_WEIGHT.rcsTank,
-      propellant: 'hydrazine', volume: 40, material: 'aluminium',
-      maxFuel: C.BASE_MAX_FUEL, fuel: C.BASE_MAX_FUEL,
+      propellant: 'hydrazine', volume: C.BASE_MAX_FUEL / propellantDensity('hydrazine'), material: 'aluminium',
+      fuel: C.BASE_MAX_FUEL,
     }),
     createCommStation(),
   ];

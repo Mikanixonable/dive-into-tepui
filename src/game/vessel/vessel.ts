@@ -73,6 +73,7 @@ import type { VesselAssembly } from './assembly';
 import type { MassProperties } from './mass-properties';
 import { hasBaseModule } from './capabilities';
 import { ResourceLedger } from '../economy/resource-ledger';
+import type { PropellantId } from '../economy/propellant-compatibility';
 import {
   BaseState as RawBaseState, baseAssemblyCollisionRadius, deriveBaseDockingPorts,
   DockedVesselEntry as RawDockedVesselEntry,
@@ -548,8 +549,8 @@ export class Vessel extends GameEntity {
     const state = this.baseState!;
     state.inventory = (saved.inventory ?? []).map(partFromSaveData);
     if (saved.fuel !== undefined) {
-      this.inventory.consumeFuel(this.inventory.totalFuel);
-      this.inventory.refuel(saved.fuel);
+      this.inventory.consumeFuel('hydrazine', this.inventory.fuelOf('hydrazine'));
+      this.inventory.refuel('hydrazine', saved.fuel);
     }
     const savedVessels = saved.dockedVessels ?? saved.dockedShips ?? [];
     const portIndexById = new Map<string, number>();
@@ -588,10 +589,6 @@ export class Vessel extends GameEntity {
   public get totalTorque(): number { return this.inventory.totalTorque; }
   public get totalThrust(): number { return this.inventory.totalThrust; }
   public get totalRcsThrust(): number { return this.inventory.totalRcsThrust; }
-  public get totalFuelConsumptionRate(): number { return this.inventory.totalFuelConsumptionRate; }
-  public get totalRcsFuelConsumptionRate(): number { return this.inventory.totalRcsFuelConsumptionRate; }
-  public get totalFuel(): number { return this.inventory.totalFuel; }
-  public get totalMaxFuel(): number { return this.inventory.totalMaxFuel; }
   public get totalCoolingRate(): number { return this.inventory.totalCoolingRate; }
   public get totalPowerGeneration(): number { return this.inventory.totalPowerGeneration; }
   public get totalFireRate(): number { return this.inventory.totalFireRate; }
@@ -599,8 +596,24 @@ export class Vessel extends GameEntity {
   public get averageMuzzleVelocity(): number { return this.inventory.averageMuzzleVelocity; }
   public get solarParts(): readonly (Part | undefined)[] { return this.inventory.solarParts; }
 
-  public consumeFuel(amount: number): number { return this.inventory.consumeFuel(amount); }
-  public refuel(amount: number): void { this.inventory.refuel(amount); }
+  public fuelOf(propellant: PropellantId): number { return this.inventory.fuelOf(propellant); }
+  public maxFuelOf(propellant: PropellantId): number { return this.inventory.maxFuelOf(propellant); }
+  public propellantSummary(): ReturnType<PartInventory['propellantSummary']> {
+    return this.inventory.propellantSummary();
+  }
+  public consumeFuel(propellant: PropellantId, amount: number): number {
+    return this.inventory.consumeFuel(propellant, amount);
+  }
+  public refuel(propellant: PropellantId, amount: number): void { this.inventory.refuel(propellant, amount); }
+  public engineFuelConsumptionRates(): ReadonlyMap<PropellantId, number> {
+    return this.inventory.engineFuelConsumptionRates();
+  }
+  public rcsFuelConsumptionRates(): ReadonlyMap<PropellantId, number> {
+    return this.inventory.rcsFuelConsumptionRates();
+  }
+  public consumeFuelByRates(rates: ReadonlyMap<PropellantId, number>, scale: number): number {
+    return this.inventory.consumeFuelByRates(rates, scale);
+  }
   public refreshFromParts(): void { this.inventory.refresh(); }
   public applyDamageToParts(amount: number, part?: Part): void { this.inventory.applyDamage(amount, part); }
   public selfRepair(amount: number): void { this.inventory.selfRepair(amount); }
@@ -1208,7 +1221,7 @@ export class Vessel extends GameEntity {
       v: { ...this.state.v },
       q: { ...this.att.q },
       w: { ...this.att.w },
-      fuel: this.totalFuel,
+      fuel: this.fuelOf('hydrazine'),
       formatVersion: BASE_SAVE_FORMAT_VERSION,
       assembly: this.assembly ? serializeAssembly(this.assembly) : undefined,
       inventory: state.inventory.map((p) => ({ ...p })),

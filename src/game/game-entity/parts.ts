@@ -160,11 +160,13 @@ export interface ContainerCouplingPart extends Part {
 
 // --- 内装要素 ---
 
-// 推進剤タンクの共通部。酸化剤・還元剤・RCS はいずれもこの形を持つ。
+// 推進剤タンクの共通部。酸化剤・還元剤・RCS はいずれもこの形を持つ。容量は宣言せず、
+// volume と推進剤の密度(propellant-compatibility.ts の propellantTankCapacity)から導出する。
 interface PropellantTankFields {
   readonly propellant: PropellantId;
   volume: number; // 容積 [m^3]
   material: ResourceId; // タンク材
+  fuel: number; // 現在量 [kg]
 }
 
 export interface OxidizerTankPart extends Part, PropellantTankFields {
@@ -188,13 +190,12 @@ export interface PressurantTankPart extends Part {
   gas: PressurantGas;
 }
 
-// RCS 推進剤タンク。容積と密度から容量を出すのは推進剤の物性表(§15-1)が入ってからで、
-// 現状は積んでいる質量 [kg] を残量の正本として持つ。
 export interface RcsTankPart extends Part, PropellantTankFields {
   readonly type: 'rcs_tank';
-  maxFuel: number; // kg
-  fuel: number; // kg
 }
+
+// 推進剤タンク3種のいずれか。PartInventory の集計・消費はこの3種をまとめて扱う。
+export type PropellantTankPart = OxidizerTankPart | ReductantTankPart | RcsTankPart;
 
 export interface WaterTankPart extends Part {
   readonly type: 'water_tank';
@@ -365,13 +366,13 @@ const PART_DEFAULTS: { readonly [K in PartType]: Omit<ExtractPart<K>, 'id' | 'ty
   docking_port: { portClass: 'standard', transferRate: 0 },
   container_coupling: { containerClass: 'standard' },
   oxidizer_tank: {
-    propellant: 'liquid-oxygen', volume: 0, material: 'aluminium', insulationGrade: 1, requiredPressure: 0.3,
+    propellant: 'liquid-oxygen', volume: 0, material: 'aluminium', fuel: 0, insulationGrade: 1, requiredPressure: 0.3,
   },
   reductant_tank: {
-    propellant: 'liquid-methane', volume: 0, material: 'aluminium', insulationGrade: 1, requiredPressure: 0.3,
+    propellant: 'liquid-methane', volume: 0, material: 'aluminium', fuel: 0, insulationGrade: 1, requiredPressure: 0.3,
   },
   pressurant_tank: { volume: 0, maxPressure: 30, gas: 'nitrogen' },
-  rcs_tank: { propellant: 'hydrazine', volume: 0, material: 'aluminium', maxFuel: 0, fuel: 0 },
+  rcs_tank: { propellant: 'hydrazine', volume: 0, material: 'aluminium', fuel: 0 },
   water_tank: { volume: 0, shieldingThickness: 0 },
   battery: { capacity: 0, maxOutput: 0 },
   fuel_cell: { ratedOutput: 0, efficiency: 0.6, hydrogenRate: 0, oxygenRate: 0, regenerative: false },

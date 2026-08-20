@@ -1,5 +1,6 @@
 // ゲームバランス・チューニング定数
 import type { LineStyle } from '../render/line-style';
+import { propellantDensity } from './economy/propellant-compatibility';
 export { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../physics/solar-system';
 
 // 軌道上へ配置できる自機の上限隻数。
@@ -107,8 +108,8 @@ export const POWER_CAPACITY = 1.5e6; // 蓄電容量 [J]
 export const CREWED_POWER_DRAW = 493.5;
 // 既定の有人艦の廃熱 [W]。消費電力の合計に、生命維持装置が別に出す熱を足したもの。
 export const CREWED_WASTE_HEAT = 593.5;
-// 既定の有人艦の RCS 推進剤搭載量 [kg]。
-export const CREWED_RCS_FUEL_CAPACITY = 1000;
+// 既定の有人艦の RCS タンクの容積 [m^3]。満載 1000kg 相当になる値(1000 / ヒドラジンの密度)。
+export const CREWED_RCS_TANK_VOLUME = 1000 / propellantDensity('hydrazine');
 
 // --- 高度低下警告(EMA平滑化) ---
 export const ALT_EMA_TIME_CONST = 3; // 高度・降下率EMAの時定数 [s]

@@ -10,8 +10,12 @@ import { fmtAmmoStatus } from './utils';
 import type { Game } from '../game';
 import type { Input } from '../input/input';
 import type { KeyBinding } from '../input/key-mapping';
+import { TANK_MATERIALS, type PropellantId } from '../economy/propellant-compatibility';
 
 const SYNC_INTERVAL_MS = 100;
+
+type PropellantFuelSummary =
+  readonly { readonly propellant: PropellantId; readonly fuel: number; readonly capacity: number }[];
 
 const THROTTLE_KEYS: readonly KeyBinding[] = [K.throttleLow, K.throttleMid, K.throttleHigh, K.throttleMax];
 
@@ -107,25 +111,8 @@ export class VesselPanel {
     this.followButton?.setOn(cameraFollowsAttitude);
     this.syncState('prohold', target.throttle.progradeHold, 'near');
 
-    const currentFuel = target.totalFuel;
-    const maxFuel = target.totalMaxFuel;
-
-    const clampedFuel = Math.max(0, Math.min(maxFuel, currentFuel));
-    const fuelPercent = maxFuel > 0 ? (clampedFuel / maxFuel) * 100 : 0;
-    const fuelValueText = `${Math.round(clampedFuel)} / ${Math.round(maxFuel)}`;
-
-    const fuelMeter = this.els.get('rcs-fuel-meter');
-    if (fuelMeter) {
-      fuelMeter.classList.toggle('critical', maxFuel > 0 && clampedFuel < maxFuel * 0.2);
-      fuelMeter.setAttribute('aria-valuemax', String(maxFuel));
-      fuelMeter.setAttribute('aria-valuenow', String(clampedFuel));
-      fuelMeter.setAttribute('aria-valuetext', fuelValueText);
-    }
-    const fuelFill = this.els.get('rcs-fuel-fill');
-    if (fuelFill) {
-      fuelFill.style.width = `${fuelPercent.toFixed(1)}%`;
-    }
-    this.setText('rcs-fuel-value', fuelValueText);
+    const summary = target.propellantSummary();
+    this.syncFuelRows(summary);
 
     const ammo = this.els.get('ammo');
     if (ammo) {
@@ -134,8 +121,10 @@ export class VesselPanel {
         ammo.textContent = fmtAmmoStatus(target.roundsInMag, target.magsLeft, target.reloadTimer);
         ammo.classList.toggle('warn-hot', target.reloadTimer > 0 || target.magsLeft < 4);
       } else {
-        ammo.textContent = `Fuel: ${Math.round(currentFuel)} / ${Math.round(maxFuel)}`;
-        ammo.classList.toggle('warn-hot', maxFuel > 0 && currentFuel < maxFuel * 0.2);
+        const totalFuel = summary.reduce((s, p) => s + p.fuel, 0);
+        const totalCapacity = summary.reduce((s, p) => s + p.capacity, 0);
+        ammo.textContent = `Fuel: ${Math.round(totalFuel)} / ${Math.round(totalCapacity)}`;
+        ammo.classList.toggle('warn-hot', totalCapacity > 0 && totalFuel < totalCapacity * 0.2);
       }
     }
   }
@@ -144,6 +133,32 @@ export class VesselPanel {
   private setText(id: string, text: string): void {
     const element = this.els.get(id);
     if (element && element.textContent !== text) element.textContent = text;
+  }
+
+  // 積んでいる推進剤ごとに1行/1本の燃料メーターを描く。行は要素にリスナーを持たないので、
+  // 他のパネルと違い毎回 innerHTML をまるごと書き直してよい。
+  private syncFuelRows(summary: PropellantFuelSummary): void {
+    const container = this.els.get('fuel-rows');
+    if (!container) return;
+    container.innerHTML = summary.map(({ propellant, fuel, capacity }) => {
+      const clamped = Math.max(0, Math.min(capacity, fuel));
+      const percent = capacity > 0 ? (clamped / capacity) * 100 : 0;
+      const valueText = `${Math.round(clamped)} / ${Math.round(capacity)}`;
+      const critical = capacity > 0 && clamped < capacity * 0.2;
+      const name = TANK_MATERIALS[propellant].name;
+      return `
+        <div class="row metric">
+          <dt class="k">${name}</dt>
+          <dd class="v rcs-fuel-readout">
+            <span class="rcs-fuel-meter${critical ? ' critical' : ''}" role="progressbar"
+              aria-label="${name}" aria-valuemin="0" aria-valuemax="${capacity}"
+              aria-valuenow="${clamped}" aria-valuetext="${valueText}">
+              <span class="rcs-fuel-fill" style="width:${percent.toFixed(1)}%"></span>
+            </span>
+            <output class="rcs-fuel-value">${valueText}</output>
+          </dd>
+        </div>`;
+    }).join('');
   }
 
   // 機体モードの状態語と色ロールを同期する。

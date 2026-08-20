@@ -5,6 +5,7 @@ import * as C from '../../src/game/const';
 import type { AnyPart, PartType } from '../../src/game/game-entity/parts';
 import { createPart, partFromSaveData } from '../../src/game/game-entity/parts';
 import { PartInventory } from '../../src/game/vessel/part-inventory';
+import { propellantTankCapacity } from '../../src/game/economy/propellant-compatibility';
 import { baseParts, crewedParts, hostileParts, tuneActuators } from '../../src/game/vessel/vessel-parts';
 import { crewedMassProperties } from '../../src/game/vessel/vessel-assemblies';
 import { principalMoments } from '../../src/physics/inertia-tensor';
@@ -60,8 +61,9 @@ export function register(): void {
 
   test('既定の有人艦の推進剤容量・蓄電容量が const.ts の定数と一致する', () => {
     const inv = crewedInventory();
-    assert.equal(inv.totalMaxFuel, C.CREWED_RCS_FUEL_CAPACITY);
-    assert.equal(inv.totalFuel, C.CREWED_RCS_FUEL_CAPACITY);
+    const expectedCapacity = propellantTankCapacity('hydrazine', C.CREWED_RCS_TANK_VOLUME);
+    assert.equal(inv.maxFuelOf('hydrazine'), expectedCapacity);
+    assert.equal(inv.fuelOf('hydrazine'), expectedCapacity);
     assert.equal(inv.totalEnergyStorage, C.POWER_CAPACITY);
     assert.ok(inv.propellantVolume('hydrazine') > 0);
     assert.equal(inv.propellantVolume('liquid-hydrogen'), 0);
@@ -146,6 +148,6 @@ export function register(): void {
     const inv = new PartInventory(baseParts(C.BASE_MAX_HP));
     assert.equal(inv.totalThrust, C.BASE_THRUST);
     assert.equal(inv.totalTorque, C.BASE_TORQUE);
-    assert.equal(inv.totalMaxFuel, C.BASE_MAX_FUEL);
+    assert.equal(inv.maxFuelOf('hydrazine'), C.BASE_MAX_FUEL);
   });
 }
