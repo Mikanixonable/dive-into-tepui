@@ -209,9 +209,9 @@ main.ts
 │       │   ├── OrbitLine (geoLine)         ... 静止軌道の参照線(天体ではない特例、個別フィールドのまま)
 │       │   ├── referenceLines: ReadonlyMap<OrbitingId, OrbitLine> ... SOLAR_SYSTEM の公転天体ぶん自動生成(衛星=旧月線色、惑星=白)。天体の登録追加だけで線が増える
 │       │   └── CelestialGrid              ... 赤道面/黄道面それぞれの基準円・緯経線グリッド・両極マーカー
-│       ├── Targeter                       ... ContextMenu を持たない(施策5 §7-2)。第一/第二ターゲットの設定・解除は
-│       │                                       MapContextActions が開くプロパティウィンドウの targetPrimary/targetSecondary
-│       │                                       項目から setPrimaryTarget()/setSecondaryTarget() を呼ぶ形に一本化。
+│       ├── Targeter                       ... ContextMenu を持たない(施策5 §7-2)。ターゲットの設定・解除は
+│       │                                       MapContextActions が開くプロパティウィンドウの targetPrimary
+│       │                                       項目から setPrimaryTarget() を呼ぶ形に一本化。
 │       │                                       軌道線は own しない — ターゲットのハイライト線はターゲットにされた
 │       │                                       エンティティ自身の OrbitLine を EntityLineManager がターゲット用スタイルで
 │       │                                       出す(下記 EntityLineManager 参照)
@@ -275,7 +275,7 @@ main.ts
 │       │   │   ├── PilotMarkers          ... 方向マーカー・ボアサイト・マップ上の自機位置(操作対象の機体だけが sync する)
 │       │   │   ├── TrajectoryLine         ... 自機予測軌道線。EntityLineManager.update が showPredictedLine/hidePredictedLine で出し入れし、EntityLineManager.sync が毎フレーム ship.syncTrajectoryLines(...) で形状と変換を合わせる
 │       │   │   ├── TrajectoryLine         ... 自機過去軌跡線(actualLine)。同じ EntityLineManager.update/sync が showActualLine/hideActualLine で出し入れし、syncTrajectoryLines が actual の [simTime - pastDuration, simTime] を描く
-│       │   │   ├── OrbitLine              ... 解析楕円。EntityLineManager が showOrbitLine(style)/hideOrbitLine で出し入れする。持つのは第一/第二ターゲットにされている間(ターゲット用スタイル、ビューを問わず出て predictedLine/actualLine は隠れる)と、戦闘ビューの操作艦(LINE_STYLE.playerOrbit、このとき predictedLine の代わりになる)
+│       │   │   ├── OrbitLine              ... 解析楕円。EntityLineManager が showOrbitLine(style)/hideOrbitLine で出し入れする。持つのはターゲットにされている間(ターゲット用スタイル、ビューを問わず出て predictedLine/actualLine は隠れる)と、戦闘ビューの操作艦(LINE_STYLE.playerOrbit、このとき predictedLine の代わりになる)
 │       │   │   ├── Plan                   ... この艦自身のマニューバ計画(正本)。ノード列 + アンカー
 │       │   │   └── PlanExecutor           ... この艦自身の計画実行状態機械(正本)。CreativeStage が艦ごとに呼ぶだけで保持しない
 │       │   ├── Bullet[]                    ... 各々コンストラクタで WorldSfx への参照を持つ(至近通過音を自分の checkLoss から鳴らすため)。
@@ -585,7 +585,7 @@ main.ts
 | 掴んでいるもの(部品または部材)とゴーストの姿勢・可否 | `AssemblyDragController`(private `held: {kind:'part', part} \| {kind:'member', member} \| null`/`ghost`/`pose`/`pendingMemberEdit`) | `Docking` が1つだけ持つ(セッションより長生きする)。`beginDrag` は `AssemblyPanel` の部品棚ボタンから、または `Docking.applyPick` が3Dで拾った既存部品から(`sourceInventory: false`)呼ばれる。`beginMemberDrag` は部材棚の「部材を掴む」から呼ばれ、`DockWorkbenchController` の `DragState` は経由しない(部材は在庫を持たない使い捨てなので)。`update`(フレームの update フェーズ、`Docking.updateAssembly` が `dragging` の間だけ呼ぶ)が姿勢と可否を決め、`sync` はそれをゴーストへ書くだけ。掴んでいる間の「離した」は `document` を購読せず、`Docking.updateAssembly` が `input.takeClicks` で集約した1つのキューの消費(`release`/`drop`)として届く。3D で拾い上げた部品の実機メッシュは `Docking`(private `heldOriginal: {root, partId} \| null`)が掴んでいる間だけ隠し、掴みが終わるとき(結果を問わず)必ず戻す |
 | マップモード表示 | `CameraSystem.overviewMode` | 描画・視点側の分岐はこれを見る。`CameraSystem.zoomActive` は `!overviewMode && combatCamera.zoomActive` を返すだけの派生 getter(状態は持たない) |
 | 開いているプロパティウィンドウの集合 | `MapContextActions`(`windows: Map<string, WindowEntry>`) | キーは `` `${kind}:${id}` ``。`openPropertyWindow` が新規/移動を判断し、`closeWindow`/`forgetWindow` が畳む。個々の `PropertyWindow` インスタンス自身はクリップ状態(`clipped`)とドラッグ位置だけを持ち、開閉のポリシー(いつ閉じるか)は持たない。「非クリップは高々1枚」という排他自体はこのクラスの状態ではなく `Hud.overlayManager` が `PROPERTY_WINDOW_TEMP_GROUP`(`exclusiveGroup`)経由で持つ(上記参照共有の表) |
-| 第一・第二ターゲット・的通過マーク | `Targeter`(`target`/`secondaryTarget`) | `Targeter.setPrimaryTarget`/`setSecondaryTarget`(`MapContextActions`が開くプロパティウィンドウの`targetPrimary`/`targetSecondary`項目、または`[T]`キーの`handleTargetSelectKey`)でのみ変わる。自動選定・自動再選択はない |
+| ターゲット・的通過マーク | `Targeter`(`target`) | `Targeter.setPrimaryTarget`(`MapContextActions`が開くプロパティウィンドウの`targetPrimary`項目、または`[T]`キーの`handleTargetSelectKey`)でのみ変わる。自動選定・自動再選択はない |
 | 航法ターゲット(id)・相対 AN/DN | `NavTarget` | `update()` が自機軌道要素 + `Ephemeris` から毎フレーム再算出する導出値だが、対象の id 自体(`toggleTarget` で変わる)は正本 |
 | 勝敗フェーズ | `Stage`(private `_phase`) | 変更は Stage 自身のみ。外部は `phase`/`isPlaying` を読む |
 | 決着した周回の結果画面の内容(`StageResult` = `{win, title, detailHtml}`) | `Stage`(private `_result`) | `protected decide(phase, result)` が `_phase` と同時に書き込む唯一の入口(`onWin`/`recordPlayerLost`/各ステージの独自の決着経路が呼ぶ)。外部は `result` getter で読む。表示するのは `Launcher.update` — `Stage` 自身は結果画面を出さない。`StageResult` はセーブに含まれない(`serialize()` が保存するのは `phase` のみ)ので、決着済み `phase` を持つ復元セーブでは `Launcher` 側の `fallbackResult(phase)` が見出しだけの内容へ差し替える |

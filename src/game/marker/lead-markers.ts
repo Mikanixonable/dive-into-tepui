@@ -19,7 +19,6 @@ export class LeadMarkers {
     player: Vessel,
     targetsArray: readonly CombatTarget[],
     target: CombatTarget | null,
-    secondaryTarget: CombatTarget | null,
     _simTime: number,
     overviewMode: boolean,
     project: ProjectFn,
@@ -29,12 +28,11 @@ export class LeadMarkers {
       return;
     }
 
-    // 現在の主/第二ターゲットだけリード点を求める。ターゲットから外れた
+    // 現在のターゲットだけリード点を求める。ターゲットから外れた
     // 敵はこのフレームの retire で直ちにマーカーを除去する。
     const shownKeys: string[] = [];
     const targets: CombatTarget[] = [];
     if (target && targetsArray.includes(target)) targets.push(target);
-    if (secondaryTarget && secondaryTarget !== target && targetsArray.includes(secondaryTarget)) targets.push(secondaryTarget);
     for (const tgt of targets) {
       const lead = leadPoint(tgt.state, player.state, player.averageMuzzleVelocity, C.LEAD_MAX_TIME);
       if (lead === null) continue;

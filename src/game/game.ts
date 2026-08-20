@@ -323,7 +323,7 @@ export class Game {
 
     // 表示可否・ターゲット・操作艦・ビューがこのフレームの確定値になった後に判断する。
     this.entityLines.update(
-      this.player, this.targeter.aliveTarget, this.targeter.aliveSecondaryTarget,
+      this.player, this.targeter.aliveTarget,
       overviewMode, displayWindow, this.mapPickables.visibilityPolicy,
     );
   }

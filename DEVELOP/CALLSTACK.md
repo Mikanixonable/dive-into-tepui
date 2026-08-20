@@ -151,8 +151,8 @@ handlePointerInput 参照)。ステージが決着した(`activeStage.isPlaying`
     - [dragController.dragging のときだけ] input.pointerPosition() // カーソルの現在位置。掴みは HUD のボタンから始まるので、canvas 上の移動しか見ない frameMouse では位置が止まる
     - [dragController.dragging のときだけ] dragController.update(activeCamera, activeCameraPos, pointer, viewport, dragTarget) // カーソルの光線 → 対象船体ローカル → capsule で広域絞り込み → 部品なら nearestMountCandidate → addPlacement/movePlacement、部材なら空きポート限定の nearestMountCandidate → memberAdditionAt で可否判定 → workbench.updateCandidate() または pendingMemberEdit。THREE には触れず、ゴーストの位置・姿勢・色は保持するだけ(描くのは sync)
   - sections.exit(SECTION.pointer)
-  - entityLines.update(player, targeter.aliveTarget, targeter.aliveSecondaryTarget, cameraSystem.overviewMode, displayWindow, mapPickables.visibilityPolicy) // 表示可否・ターゲット・操作艦・ビューがこのフレームの確定値になった後に判断する。艦・敵・基地それぞれへ線の出し入れとスタイルだけを決める(形状と変換は sync フェーズの entityLines.sync が担う)。ターゲット用スタイルは theme.ts の currentThemePalette() から毎フレーム組む(第一=palette.accent、第二=palette.secondary、不透明度は TARGET_LINE_OPACITY=0.9、renderOrder は LINE_RENDER_ORDER.target/.secondaryTarget) — 静的な LINE_STYLE 表には置けない(テーマ追従が要るため)
-    - [entities.ownShips() ごと] asTarget = 第一・第二ターゲットのどちらかに該当すればそのスタイル、なければ null。visible = visibilityPolicy?.entity('player', isActive).orbit ?? true。showLines = (ship===player || overviewMode) && visible && asTarget === null。ownEllipse = showLines && !overviewMode(= 戦闘ビューの操作艦)
+  - entityLines.update(player, targeter.aliveTarget, cameraSystem.overviewMode, displayWindow, mapPickables.visibilityPolicy) // 表示可否・ターゲット・操作艦・ビューがこのフレームの確定値になった後に判断する。艦・敵・基地それぞれへ線の出し入れとスタイルだけを決める(形状と変換は sync フェーズの entityLines.sync が担う)。ターゲット用スタイルは theme.ts の currentThemePalette() から毎フレーム組む(palette.accent、不透明度は TARGET_LINE_OPACITY=0.9、renderOrder は LINE_RENDER_ORDER.target) — 静的な LINE_STYLE 表には置けない(テーマ追従が要るため)
+    - [entities.ownShips() ごと] asTarget = ターゲットに該当すればそのスタイル、なければ null。visible = visibilityPolicy?.entity('player', isActive).orbit ?? true。showLines = (ship===player || overviewMode) && visible && asTarget === null。ownEllipse = showLines && !overviewMode(= 戦闘ビューの操作艦)
       - 軌道楕円: asTarget !== null かつ visible なら showOrbitLine(asTarget) — ビューを問わず出す。そうでなく ownEllipse なら showOrbitLine(LINE_STYLE.playerOrbit) — 戦闘ビューの操作艦は積分予測線ではなく解析楕円で軌道を描く。どちらでもなければ hideOrbitLine()
       - 予測線: showLines && !ownEllipse なら showPredictedLine(LINE_STYLE.playerPredicted)、そうでなければ hidePredictedLine()(= マップビューでのみ出る)
       - 過去線: showLines かつ pastDuration>0 なら showActualLine(LINE_STYLE.playerActual)、そうでなければ hideActualLine()(ownEllipse とは無関係で、ビューによらず同じ規則)
@@ -370,10 +370,10 @@ handlePointerInput 参照)。ステージが決着した(`activeStage.isPlaying`
       - pickNearest(entities.baseVessels()) → baseMenu.open() // 当たった場合のみ。航法ターゲット設定/解除メニュー(ContextMenu のまま)
     - mapActions.handleCombatRightClick(input, combatTargets, project, simTime, overviewMode) // [overviewMode] 即 return。マップの handleRightClick の戦闘ビュー版(同じ対象は常に同じ窓)
       - targeter.pickTargetAt(click, combatTargets, project) // TARGET_LOCK_PICK_PX_SQ 以内の画面最近傍
-        - [当たり] combatTargetPickable(target) → mapActions.openPropertyWindow() // kind='player'/'ship' へ変換して同じプロパティウィンドウ経路。itemsFor に combatTargetLockItems(targetPrimary/targetSecondary、overviewMode では出さない)が乗る
-          - targetPrimary/targetSecondary 選択 → runTargetLock() → targeter.setPrimaryTarget()/setSecondaryTarget()
+        - [当たり] combatTargetPickable(target) → mapActions.openPropertyWindow() // kind='player'/'ship' へ変換して同じプロパティウィンドウ経路。itemsFor に combatTargetLockItems(targetPrimary、overviewMode では出さない)が乗る
+          - targetPrimary 選択 → runTargetLock() → targeter.setPrimaryTarget()
         - [外れ] mapActions.openEmptySpaceMenu() // マップの空域メニューと同じ実装(ContextMenu<MapPickable>)
-      // 自動選定・自動再選択はない。target/secondaryTarget はこのメニューか [T] キーでのみ変わる
+      // 自動選定・自動再選択はない。target はこのメニューか [T] キーでのみ変わる
 
 ---
 
@@ -441,7 +441,7 @@ handlePointerInput 参照)。ステージが決着した(`activeStage.isPlaying`
       - [overviewMode] headingDeg(item.pos, item.vel) → rotationDeg // 対象ごと。円軌道での進行方向を示す
       - markerManager.set() + markerManager.setBearing() // 対象ごと。overviewMode 以外で画面外なら画面端の方位マーカー▲へ
       - retire() // 前フレームに出したキーのうち集合から消えたものを remove(対象ごとに増えるキーなので DOM ごと捨てる)
-    - [player] markerManager.leadMarkers.sync(player, combatTargets, aliveTarget, aliveSecondaryTarget, simTime, overviewMode, project) // 第一/第二ターゲットの LEAD マーカー。overviewMode なら全 remove して return
+    - [player] markerManager.leadMarkers.sync(player, combatTargets, aliveTarget, simTime, overviewMode, project) // ターゲットの LEAD マーカー。overviewMode なら全 remove して return
       - leadPoint(tgt.state, player.state, player.averageMuzzleVelocity, LEAD_MAX_TIME) → markerManager.setPosition('lead-<markerKey>') // 解のある対象ごと。解が無ければその対象は出さない
       - retire(shownKeys) // 今フレームに出さなかったキーは remove(対象ごとに増えるキーなので DOM ごと捨てる)
   - cameraSystem.focusMarkers.syncSubLabels(markerManager.combatMarkers, ephemeris.registry, displayAttractors, overviewMode, project, activeCameraPos) // 内部で !overviewMode なら即 return。ズームアウトで個別マーカーが消えた艦・敵・基地を、所属親天体ラベルの下のサブテキスト行としてまとめて描く(500万 km 未満は最大3行の一覧、それ以上はアイコンと数だけの1行)
@@ -492,7 +492,7 @@ handlePointerInput 参照)。ステージが決着した(`activeStage.isPlaying`
       - actualLine.syncGeometry(actual, simTime - pastDuration, simTime, frame, ...) // 過去線は actual の保持列。下限が保持窓より古ければ TrajectoryLine 側が保持区間の先頭へクランプする。actual は extrapolationCenter を持たないので外挿は起きない
       - actualLine.syncTransform()
       - actualLine.sync(camera)
-    - [entities.ownShips() ごと] ship.syncOrbitLine(fo, camera, displayAttractors, ship.thrust !== null, frame, displayTime, ephemeris) // orbitLine を持つのは第一/第二ターゲットにされている艦と、戦闘ビューの操作艦。中心天体は strongestAttractor(ship.state.r, attractors)。線を持たなければ何もしない。force には噴射中かを渡す — OrbitLine は要素が閾値を超えるまで焼き直さないので、噴射中は渡さないと楕円が追従しない
+    - [entities.ownShips() ごと] ship.syncOrbitLine(fo, camera, displayAttractors, ship.thrust !== null, frame, displayTime, ephemeris) // orbitLine を持つのはターゲットにされている艦と、戦闘ビューの操作艦。中心天体は strongestAttractor(ship.state.r, attractors)。線を持たなければ何もしない。force には噴射中かを渡す — OrbitLine は要素が閾値を超えるまで焼き直さないので、噴射中は渡さないと楕円が追従しない
     - [entities.hostileVessels() ごと] enemy.syncOrbitLine(fo, camera, displayAttractors, enemy.thrust !== null, frame, displayTime, ephemeris) // 中心天体は strongestAttractor(enemy.state.r, attractors)。線を持たなければ何もしない
     - [entities.baseVessels() ごと] base.syncOrbitLine(fo, camera, displayAttractors, base.thrust !== null, frame, displayTime, ephemeris) // 同上
   - [player] touchControls?.syncModeButtons(rcsDamp, fineAttitude, progradeHold, (key) => throttle.isThrustLatched(key)) // タッチデバイスのみ。制動/微動/ホールドの点灯と、並進6ボタンのラッチ点灯

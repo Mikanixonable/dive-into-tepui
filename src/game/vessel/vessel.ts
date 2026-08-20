@@ -1125,9 +1125,7 @@ export class Vessel extends GameEntity {
     const ownPriority = this.baseState
       ? C.MARKER_PRIORITY.BASE - dist / 1e9
       : isEnemy ? C.MARKER_PRIORITY.ENEMY - dist / 1e9 : C.MARKER_PRIORITY.PLAYER;
-    const priority = role === 'primary'
-      ? C.MARKER_PRIORITY.PRIMARY_TARGET
-      : role === 'secondary' ? C.MARKER_PRIORITY.SECONDARY_TARGET : ownPriority;
+    const priority = role === 'primary' ? C.MARKER_PRIORITY.PRIMARY_TARGET : ownPriority;
     // 図形と着色。基地は専用図形、機体はマップでは進行方向つき、戦闘ビューでは HP 刻み。
     const color = isEnemy ? C.COLOR_MARKER_ENEMY : C.COLOR_MARKER_ALLY;
     const sym = vesselMarkerSvg(!!this.baseState, this.hp, this.maxHp, this.name, overviewMode, isEnemy);
