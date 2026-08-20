@@ -65,6 +65,17 @@ export interface DerivedMassProperties {
 // 搭載要素の id から、それが収める推進剤の質量 [kg] を引く表。
 export type PropellantStore = ReadonlyMap<string, number>;
 
+// アセンブリが積んでいる推進剤タンクの現在量から PropellantStore を組む。
+export function propellantStoreOf(assembly: VesselAssembly): PropellantStore {
+  const store = new Map<string, number>();
+  for (const placement of assembly.placements) {
+    if (placement.kind === 'internal' && isPropellantTankPart(placement.part)) {
+      store.set(placement.part.id, placement.part.fuel);
+    }
+  }
+  return store;
+}
+
 // 剛体を部分に分けて足し上げる累積器。慣性テンソルは船体ローカル座標の原点まわりで持ち、重心へ移すのは
 // 最後に1回だけ行う — 各部分の重心まわりで足そうとすると、部分ごとに違う点まわりの値を混ぜてしまう。
 interface Accumulator {

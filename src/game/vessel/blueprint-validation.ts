@@ -21,7 +21,7 @@ import {
 import {
   axiallyContiguous, edgeInternalVolume, effectiveVolumeFactor, grossOccupiedVolume,
 } from './internal-volume';
-import { deriveMassProperties } from './mass-properties';
+import { deriveMassProperties, propellantStoreOf } from './mass-properties';
 import type { VesselBlueprint } from './blueprint';
 import { assemblyOf } from './blueprint';
 import { PartInventory } from './part-inventory';
@@ -567,7 +567,8 @@ function checkThrustAxis(bp: VesselBlueprint, issues: BlueprintIssue[]): void {
   }
   if (arms.length === 0 || !(len(force) > 0)) return;
 
-  const com = deriveMassProperties(assemblyOf(bp)).centerOfMass;
+  const assembly = assemblyOf(bp);
+  const com = deriveMassProperties(assembly, propellantStoreOf(assembly)).centerOfMass;
   for (const arm of arms) moment = add(moment, cross(sub(arm.origin, com), arm.force));
   const offset = len(moment) / len(force);
   const limit = THRUST_OFFSET_ERROR_RATIO * overallDimension(bp.tree);
@@ -646,8 +647,9 @@ function actuatorSetExcluding(
 // 要素を1つ欠いたアクチュエータ一式で有限・非負のトルクが出せるかを問う形で答える(§6.2)。
 function checkAttitudeControlAuthority(bp: VesselBlueprint, issues: BlueprintIssue[]): void {
   const parts = bp.placements.map((p) => p.part);
-  const centerOfMass = deriveMassProperties(assemblyOf(bp)).centerOfMass;
-  const actuators = actuatorSetOf(assemblyOf(bp), parts, centerOfMass);
+  const assembly = assemblyOf(bp);
+  const centerOfMass = deriveMassProperties(assembly, propellantStoreOf(assembly)).centerOfMass;
+  const actuators = actuatorSetOf(assembly, parts, centerOfMass);
   if (!hasFullControlAuthority(actuators)) {
     issues.push(issue('error', WHOLE_VESSEL, '姿勢制御ができない軸があります'));
     return;
@@ -680,7 +682,8 @@ function checkLimits(
       `最大寸法 ${dimension.toFixed(1)} m が上限 ${limits.maxDimension} m を超えています`));
   }
   if (!volumeResolved) return;
-  const mass = deriveMassProperties(assemblyOf(bp)).loadedMass;
+  const assembly = assemblyOf(bp);
+  const mass = deriveMassProperties(assembly, propellantStoreOf(assembly)).loadedMass;
   if (mass > limits.maxMass) {
     issues.push(issue('error', WHOLE_VESSEL,
       `総質量 ${mass.toFixed(0)} kg が上限 ${limits.maxMass} kg を超えています`));

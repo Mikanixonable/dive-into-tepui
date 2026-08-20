@@ -8,7 +8,7 @@ import { principalMoments } from '../../src/physics/inertia-tensor';
 import { allocateControl, wrenchOf } from '../../src/physics/attitude-control';
 import type { ThrusterSpec } from '../../src/physics/attitude-control';
 import { crewedAssembly } from '../../src/game/vessel/vessel-assemblies';
-import { deriveMassProperties } from '../../src/game/vessel/mass-properties';
+import { deriveMassProperties, propellantStoreOf } from '../../src/game/vessel/mass-properties';
 import { actuatorSetOf } from '../../src/game/vessel/actuator-set';
 import { test } from '../physics/harness';
 
@@ -62,7 +62,7 @@ export function register(): void {
   test('手触りの保存: 既定の有人艦は RCS だけで MAX_ANG_ACCEL を出せる', () => {
     // フライホイールが飽和して RCS へ全量が落ちても、押した軸に出る角加速度は変わらない。
     const assembly = crewedAssembly(C.PLAYER_MAX_HP);
-    const derived = deriveMassProperties(assembly);
+    const derived = deriveMassProperties(assembly, propellantStoreOf(assembly));
     const parts = assembly.placements.map((placement) => placement.part);
     const set = actuatorSetOf(assembly, parts, derived.centerOfMass);
     const needed = C.MAX_ANG_ACCEL * principalMoments(derived.inertia).z;
@@ -81,7 +81,7 @@ export function register(): void {
 
   test('手触りの保存: 既定の有人艦はフライホイール単独でも MAX_ANG_ACCEL を出せる', () => {
     const assembly = crewedAssembly(C.PLAYER_MAX_HP);
-    const derived = deriveMassProperties(assembly);
+    const derived = deriveMassProperties(assembly, propellantStoreOf(assembly));
     const parts = assembly.placements.map((placement) => placement.part);
     const set = actuatorSetOf(assembly, parts, derived.centerOfMass);
     const needed = C.MAX_ANG_ACCEL * principalMoments(derived.inertia).z;
