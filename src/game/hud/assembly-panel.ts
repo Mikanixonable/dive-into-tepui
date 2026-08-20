@@ -11,6 +11,7 @@
 // リセットに勝てるよう全セレクタを `#hud` で始める。
 import type { AnyPart, PartType } from '../game-entity/parts';
 import { isExterior } from '../game-entity/parts';
+import type { PartPlacement } from '../vessel/assembly';
 import type { SectionPrimitivePatch } from '../vessel/assembly-editor';
 import { AssemblyDragController } from '../vessel/assembly-drag-controller';
 import type { AssemblySelection } from '../docking';
@@ -22,7 +23,7 @@ import {
 } from '../vessel/member';
 import { DIMENSION_UNIT, MIN_EDGE_LENGTH } from '../vessel/tree';
 import { DraggableWindow } from './draggable-window';
-import { PART_TYPE_LABELS } from './inventory-labels';
+import { formatPartMeta, PART_TYPE_LABELS } from './inventory-labels';
 import type { OverlayManager } from './overlay-manager';
 import type { PrimitiveShape, SectionPrimitive } from '../../physics/section-moments';
 import { Button, SegmentedControl, TabBar, ToggleSwitch, ValueInput } from './widgets';
@@ -119,8 +120,12 @@ export class AssemblyPanel {
   private editStatusEl: HTMLDivElement | null = null;
   private filterInput: ValueInput | null = null;
   private errorsEl: HTMLDivElement | null = null;
+  private mountedRowsEl: HTMLDivElement | null = null;
   private shelfEl: HTMLDivElement | null = null;
   private readonly partButtons = new Map<string, { readonly btn: Button; readonly part: AnyPart }>();
+  // 検索欄は棚と搭載済み一覧の両方に効く。押すと掴む/押すと外すで意味が違うボタンなので、
+  // Map は分けて持つ。
+  private readonly mountedButtons = new Map<string, { readonly btn: Button; readonly part: AnyPart }>();
 
   private memberImpulseRow: HTMLElement | null = null;
   private memberGrabBtn: Button | null = null;
@@ -135,6 +140,9 @@ export class AssemblyPanel {
   private filterQuery = '';
   private lastTargetsKey = '';
   private lastInventoryKey = '';
+  // 対象 id と搭載中の外装要素 id 列。対象間の移動(movePlacement)は倉庫の中身を動かさない
+  // ので、lastInventoryKey とは別に持つ。
+  private lastMountedKey = '';
   private lastErrorsKey = '';
   private lastSelectionKey = '';
   private lastBuildStatusKey = '';
@@ -188,6 +196,7 @@ export class AssemblyPanel {
     }
     this.lastTargetsKey = '';
     this.lastInventoryKey = '';
+    this.lastMountedKey = '';
     this.lastErrorsKey = '';
     this.lastSelectionKey = '';
     this.lastBuildStatusKey = '';
@@ -213,15 +222,17 @@ export class AssemblyPanel {
     this.editStatusEl = null;
     this.filterInput = null;
     this.errorsEl = null;
+    this.mountedRowsEl = null;
     this.shelfEl = null;
     this.partButtons.clear();
+    this.mountedButtons.clear();
     this.currentTargetId = null;
     this.lastSession = null;
     this.currentSelection = null;
   }
 
   // 対象タブ・Undo/Redo・下書き操作・選択(削除)・断面編集・検索欄・確定/取消ボタン・
-  // 検証エラー欄・部品棚を1回だけ組み立てる。
+  // 検証エラー欄・搭載済み一覧・部品棚を1回だけ組み立てる。
   private buildBody(body: HTMLDivElement): void {
     body.classList.add('asm-panel-body');
 
@@ -232,6 +243,7 @@ export class AssemblyPanel {
       this.targetTabs?.setSelected(targetId);
       this.lastErrorsKey = '';
       this.lastBuildStatusKey = '';
+      this.lastMountedKey = '';
       this.selectedPrimitiveId = null;
       this.lastSectionEditorKey = '';
       this.onTargetSelect?.(targetId);
@@ -294,15 +306,29 @@ export class AssemblyPanel {
     this.errorsEl.className = 'asm-panel-errors';
     body.appendChild(this.errorsEl);
 
+    const mountedEl = document.createElement('div');
+    mountedEl.className = 'asm-panel-shelf';
+    const mountedTitle = document.createElement('div');
+    mountedTitle.className = 'asm-panel-group-title';
+    mountedTitle.textContent = '搭載済み';
+    this.mountedRowsEl = document.createElement('div');
+    this.mountedRowsEl.className = 'asm-panel-group-rows';
+    mountedEl.append(mountedTitle, this.mountedRowsEl);
+    body.appendChild(mountedEl);
+
     this.shelfEl = document.createElement('div');
     this.shelfEl.className = 'asm-panel-shelf';
     body.appendChild(this.shelfEl);
   }
 
-  // 検索欄の確定値を反映し、一致しない部品ボタンだけを隠す。棚の組み直しはしない。
+  // 検索欄の確定値を反映し、一致しない部品ボタン(棚・搭載済み一覧の両方)だけを隠す。
+  // 一覧の組み直しはしない。
   private applyFilter(query: string): void {
     this.filterQuery = query.trim().toLocaleLowerCase();
     for (const entry of this.partButtons.values()) {
+      entry.btn.element.hidden = this.filterQuery.length > 0 && !partSearchText(entry.part).includes(this.filterQuery);
+    }
+    for (const entry of this.mountedButtons.values()) {
       entry.btn.element.hidden = this.filterQuery.length > 0 && !partSearchText(entry.part).includes(this.filterQuery);
     }
     this.win?.reclamp();
@@ -325,6 +351,7 @@ export class AssemblyPanel {
     this.syncDraftActions(targets);
     this.syncSelection(selection);
     this.syncSectionEditor(session, selection);
+    this.syncMounted(session);
     this.syncShelf(session.inventorySnapshot());
     this.syncErrors(session);
     this.memberGrabBtn?.setEnabled(!this.dragController.dragging);
@@ -562,16 +589,50 @@ export class AssemblyPanel {
     this.editStatusEl.hidden = message === null;
   }
 
+  // 対象へ現在搭載されている外装要素の一覧。クリックすると workbench.remove で倉庫へ戻す ——
+  // 棚が「押すと掴む」なのに対しこちらは「押すと外す」。対象または搭載中の部品 id 列が
+  // 変わったときだけ組み直す(移動先の変更で在庫は動かないので lastInventoryKey とは別に見る)。
+  private syncMounted(session: DockWorkbenchSession): void {
+    if (!this.mountedRowsEl || this.currentTargetId === null) return;
+    const targetId = this.currentTargetId;
+    const placements = session.getTarget(targetId).assembly.placements
+      .filter((placement): placement is Extract<PartPlacement, { kind: 'external' }> => placement.kind === 'external');
+    const key = `${targetId}:${placements.map((placement) => placement.part.id).join('|')}`;
+    if (key === this.lastMountedKey) return;
+    this.lastMountedKey = key;
+    this.mountedRowsEl.innerHTML = '';
+    this.mountedButtons.clear();
+    if (placements.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'asm-panel-empty';
+      empty.textContent = '搭載されている部品がありません。';
+      this.mountedRowsEl.appendChild(empty);
+    }
+    for (const placement of placements) {
+      const part = placement.part;
+      const btn = new Button(`${part.name} · ${formatPartMeta(part)}`, () => this.removeMounted(targetId, part));
+      btn.element.classList.add('asm-panel-part-row');
+      this.mountedButtons.set(part.id, { btn, part });
+      this.mountedRowsEl.appendChild(btn.element);
+    }
+    this.applyFilter(this.filterInput?.element.value ?? this.filterQuery);
+    this.win?.reclamp();
+  }
+
+  // 搭載済み一覧の1行から、対象を外して倉庫へ戻す。基地の base_module 必須等の検証に落ちれば
+  // workbench.remove 自身が巻き戻す(部品は装着されたまま)ので、理由だけ表示する。
+  private removeMounted(targetId: string, part: AnyPart): void {
+    const result = this.workbench.remove(targetId, part.id);
+    this.setEditStatus(result.validation.valid ? null : (result.validation.errors[0] ?? '取り外せません'));
+  }
+
   // 倉庫の中身(部品 id 集合)が変わったときだけ棚を種別ごとに組み直す。値そのものが
   // 変わらない再描画(選択対象の切り替え等)ではボタンを作り直さない — 押しかけの
   // クリックを取りこぼさないため。
   private syncShelf(inventory: readonly AnyPart[]): void {
     if (!this.shelfEl) return;
     const key = inventory.map((p) => p.id).join('|');
-    if (key === this.lastInventoryKey) {
-      this.applyFilter(this.filterInput?.element.value ?? this.filterQuery);
-      return;
-    }
+    if (key === this.lastInventoryKey) return;
     this.lastInventoryKey = key;
     this.shelfEl.innerHTML = '';
     this.partButtons.clear();
