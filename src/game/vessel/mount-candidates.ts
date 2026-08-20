@@ -9,9 +9,8 @@
 import type { VesselAssembly } from './assembly';
 import { occupiedPorts } from './assembly-editor';
 import type { MountFrame, MountPoint, PortRef, TreeEdge, TreeNode, VesselTree } from './tree';
-import { edgeFrame, mountFrame, portFrame, portKey } from './tree';
+import { edgeFrame, lateralFaceCount, mountFrame, portFrame, portKey } from './tree';
 import { placeSectionPrimitives } from '../../physics/section-moments';
-import type { PlacedSectionPrimitive } from '../../physics/section-moments';
 import type { Vec3 } from '../../physics/vec3';
 import { dot, len, sub } from '../../physics/vec3';
 
@@ -56,13 +55,6 @@ export function nearestMountCandidate(
     consider(surfaceCandidate(assembly.tree, edge, localPoint));
   }
   return best;
-}
-
-// 原始図形1つが持つ側面ポートの数。円は分岐数ぶん、楕円は2、多角形は頂点数ぶん
-// (tree.ts の portFrame が同じ規則で個々の口を解決する)。
-function lateralFaceCount(primitive: PlacedSectionPrimitive): number {
-  if (primitive.vertices) return primitive.vertices.length;
-  return primitive.shape.kind === 'circle' ? primitive.shape.branchCount : 2;
 }
 
 function portCandidate(
