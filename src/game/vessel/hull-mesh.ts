@@ -37,13 +37,17 @@ function applyFrame(object: THREE.Object3D, frame: MountFrame): void {
 }
 
 // 展開する板(放熱板・太陽電池パドル)の左右。蛇腹は自分のローカル +X/-X へ伸びるので、
-// 機体の左右のどちら側に付いたかで側を決める。同じ側が埋まっていれば反対側へ回す。
+// 機体の左右のどちら側に付いたかで側を決める。同じ側が埋まっていれば反対側へ回し、両側とも
+// 埋まっていれば null を返す(3枚目以降は置き場が無い — 積める上限は blueprint-validation.ts が
+// 別に絞る)。
 class PanelSides {
   private readonly used = new Set<PanelSide>();
 
-  public take(x: number): PanelSide {
+  public take(x: number): PanelSide | null {
     const preferred: PanelSide = x >= 0 ? 'up' : 'down';
-    const side = this.used.has(preferred) ? (preferred === 'up' ? 'down' : 'up') : preferred;
+    const opposite: PanelSide = preferred === 'up' ? 'down' : 'up';
+    const side = this.used.has(preferred) ? opposite : preferred;
+    if (this.used.has(side)) return null;
     this.used.add(side);
     return side;
   }
@@ -51,8 +55,10 @@ class PanelSides {
 
 // 展開する板は、蛇腹の伸縮軸(ローカル X)と放熱面の法線を radiator.ts / power.ts が船体座標系の
 // ままで扱う。取り付け位置の姿勢を採ると伸縮軸がトラスの進行方向へ倒れるので、位置だけを採る。
-function placePanel(part: AnyPart, frame: MountFrame, sides: PanelSides): THREE.Object3D {
+// 置き場が無ければ何も作らない。
+function placePanel(part: AnyPart, frame: MountFrame, sides: PanelSides): THREE.Object3D | null {
   const side = sides.take(frame.origin.x);
+  if (side === null) return null;
   const panel = part.type === 'radiator' ? buildRadiatorPanel(side) : buildSolarPanel(side);
   panel.position.set(frame.origin.x, frame.origin.y, frame.origin.z);
   return panel;
@@ -125,8 +131,10 @@ export function buildHullMesh(assembly: VesselAssembly, lod: HullLod = 'near'): 
     const part = placement.part;
     if (part.type === 'radiator' || part.type === 'solar_panel') {
       const panel = placePanel(part, frame, sides[part.type]);
-      panel.userData['partVisualRef'] = visualRef;
-      group.add(panel);
+      if (panel) {
+        panel.userData['partVisualRef'] = visualRef;
+        group.add(panel);
+      }
       continue;
     }
     const fitting = placeFitting(part, frame, scale);

@@ -250,12 +250,6 @@ export class PartInventory {
     }
   }
 
-  // 機体左右2枚の放熱板・太陽電池パドルに対応するパーツ。並び順が side に対応し、
-  // 先頭が 'up'(左)、次が 'down'(右)。枚数が足りなければ undefined になる。
-  public get radiatorParts(): readonly (RadiatorPart | undefined)[] {
-    return this.radiatorRefs;
-  }
-
   public get solarParts(): readonly (SolarPanelPart | undefined)[] {
     return this.solarPanelRefs;
   }
