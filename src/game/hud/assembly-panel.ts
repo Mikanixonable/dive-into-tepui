@@ -15,6 +15,11 @@ import { AssemblyDragController } from '../vessel/assembly-drag-controller';
 import type { AssemblySelection } from '../docking';
 import type { DockWorkbenchController } from '../vessel/dock-workbench-controller';
 import type { DockWorkbenchSession, WorkbenchTarget, WorkbenchTargetKind } from '../vessel/dock-workbench';
+import {
+  MEMBER_DEFAULT_LENGTH, MEMBER_DEFAULT_RADIUS, MEMBER_DEFAULT_SEPARATION_IMPULSE,
+  MEMBER_KIND_LABELS, quantizeMemberLength, type MemberKind, type MemberSpec,
+} from '../vessel/member';
+import { DIMENSION_UNIT, MIN_EDGE_LENGTH } from '../vessel/tree';
 import { DraggableWindow } from './draggable-window';
 import { PART_TYPE_LABELS } from './inventory-labels';
 import type { OverlayManager } from './overlay-manager';
@@ -34,6 +39,8 @@ const STYLE = `
 #hud .asm-panel-primitive-label { color: var(--text); opacity: 0.7; font-size: var(--font-s); }
 #hud .asm-panel-shape-fields { display: flex; flex-direction: column; gap: var(--space-1); }
 #hud .asm-panel-edit-status { color: var(--danger); font-size: var(--font-s); padding: 0 var(--space-3); }
+#hud .asm-panel-member { display: flex; flex-direction: column; gap: var(--space-2); padding: 0 var(--space-3) var(--space-2); border-top: 1px solid var(--edge); padding-top: var(--space-2); }
+#hud .asm-panel-member-fields { display: flex; flex-direction: column; gap: var(--space-1); }
 #hud .asm-panel-filter { padding: 0 var(--space-3); }
 #hud .asm-panel-filter .w-input { width: 100%; box-sizing: border-box; }
 #hud .asm-panel-errors { display: flex; flex-direction: column; gap: var(--space-1); padding: 0 var(--space-3); }
@@ -111,6 +118,15 @@ export class AssemblyPanel {
   private errorsEl: HTMLDivElement | null = null;
   private shelfEl: HTMLDivElement | null = null;
   private readonly partButtons = new Map<string, { readonly btn: Button; readonly part: AnyPart }>();
+
+  private memberImpulseRow: HTMLElement | null = null;
+  private memberGrabBtn: Button | null = null;
+  // 部材棚の入力欄そのものの現在値。session/選択から導く他の欄と違い、これは棚の操作でしか
+  // 動かないプレイヤーの入力なので、confirm/選択の切り替わりをまたいで保持する。
+  private memberKind: MemberKind = 'hull';
+  private memberLength = MEMBER_DEFAULT_LENGTH;
+  private memberRadius = MEMBER_DEFAULT_RADIUS;
+  private memberSeparationImpulse = MEMBER_DEFAULT_SEPARATION_IMPULSE;
 
   private currentTargetId: string | null = null;
   private filterQuery = '';
@@ -253,6 +269,8 @@ export class AssemblyPanel {
     this.editStatusEl.hidden = true;
     body.appendChild(this.editStatusEl);
 
+    body.appendChild(this.buildMemberShelf());
+
     const filterEl = document.createElement('div');
     filterEl.className = 'asm-panel-filter';
     this.filterInput = new ValueInput(
@@ -300,6 +318,7 @@ export class AssemblyPanel {
     this.syncSectionEditor(session, selection);
     this.syncShelf(session.inventorySnapshot());
     this.syncErrors(session);
+    this.memberGrabBtn?.setEnabled(!this.dragController.dragging);
   }
 
   // 現在の対象が下書きのときだけ「建造して格納」を出し、費用と賄えるかをラベルへ畳む
@@ -576,5 +595,69 @@ export class AssemblyPanel {
   private beginDrag(part: AnyPart): void {
     if (this.currentTargetId === null) return;
     this.dragController.beginDrag(this.workbench, part, this.currentTargetId, true);
+  }
+
+  // 構造材(外皮エッジ・トラス・分離機構)の棚 —— 種別・長さ・断面(半径)を選んでから掴む。
+  // 部品と違い在庫に実体を持たないので、押した瞬間の入力欄の値からその場で MemberSpec を組む。
+  private buildMemberShelf(): HTMLElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'asm-panel-member';
+
+    const kindPicker = new SegmentedControl<MemberKind>(
+      '構造材',
+      (Object.keys(MEMBER_KIND_LABELS) as MemberKind[]).map((kind) => [kind, MEMBER_KIND_LABELS[kind]] as const),
+      (kind) => { this.memberKind = kind; this.syncMemberImpulseVisibility(); },
+    );
+    kindPicker.setSelected(this.memberKind);
+    wrap.appendChild(kindPicker.element);
+
+    const fields = document.createElement('div');
+    fields.className = 'asm-panel-member-fields';
+
+    const lengthInput = new ValueInput(
+      { type: 'number', min: MIN_EDGE_LENGTH, step: DIMENSION_UNIT, placeholder: `長さ m (${DIMENSION_UNIT}m刻み)` },
+      (v) => { this.memberLength = quantizeMemberLength(Number(v)); lengthInput.setValue(String(this.memberLength)); },
+    );
+    lengthInput.setValue(String(this.memberLength));
+    fields.appendChild(lengthInput.element);
+
+    const radiusInput = new ValueInput(
+      { type: 'number', min: 0.05, step: 0.05, placeholder: '断面外接半径 m' },
+      (v) => { this.memberRadius = Number(v); },
+    );
+    radiusInput.setValue(String(this.memberRadius));
+    fields.appendChild(radiusInput.element);
+
+    this.memberImpulseRow = document.createElement('div');
+    const impulseInput = new ValueInput(
+      { type: 'number', min: 0, step: 10, placeholder: '分離時撃力 N·s' },
+      (v) => { this.memberSeparationImpulse = Math.max(0, Number(v)); },
+    );
+    impulseInput.setValue(String(this.memberSeparationImpulse));
+    this.memberImpulseRow.appendChild(impulseInput.element);
+    fields.appendChild(this.memberImpulseRow);
+    wrap.appendChild(fields);
+    this.syncMemberImpulseVisibility();
+
+    this.memberGrabBtn = new Button('部材を掴む', () => this.beginMemberDrag());
+    wrap.appendChild(this.memberGrabBtn.element);
+
+    return wrap;
+  }
+
+  // 分離時撃力の欄は decoupler を選んでいるときだけ出す。
+  private syncMemberImpulseVisibility(): void {
+    if (this.memberImpulseRow) this.memberImpulseRow.hidden = this.memberKind !== 'decoupler';
+  }
+
+  // 棚の入力欄の現在値から MemberSpec を組み、部材のドラッグを開始する。
+  private beginMemberDrag(): void {
+    const member: MemberSpec = {
+      kind: this.memberKind,
+      length: this.memberLength,
+      radius: this.memberRadius,
+      separationImpulse: this.memberSeparationImpulse,
+    };
+    this.dragController.beginMemberDrag(this.workbench, member);
   }
 }
