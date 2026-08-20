@@ -136,7 +136,7 @@ export class PlanPath {
       }
       const prev = this.sources[i];
       let arc = prev?.owned ? prev.arc : null;
-      if (!arc || !arc.represents(seg.state0, seg.end, attractorProvider.revision)) {
+      if (!arc || !arc.represents(seg.state0, seg.end)) {
         // 惑星への周回計画のみが対象なので、自機自身の弾道係数(SHIP_BCINV/SHIP_SRP_COEFF)で
         // 積分する。外挿の尾は持たない(keplerTail=false) — 尾の上にノードを置くと、
         // 実際に積分し直した次のノードと繋がらなくなるため。
