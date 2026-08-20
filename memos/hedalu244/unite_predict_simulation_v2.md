@@ -8,13 +8,13 @@
 着手時点で次が成立している。
 
 - **`Asteroid` 型(`GameEntity` の派生クラス)は廃止済みで、存在しない。** 本文書では扱わない。
-  結果として**重力を及ぼす `GameEntity` は存在しない**(全個体の `mu` が 0)。
-  `mu ≠ 0` の個体を前提にした経路がコードにどこまで残っているかは、着手時に確認する。
+  重力を及ぼす `GameEntity` は存在せず、`GameEntity` は `mu` を持たない。それを前提にした経路
+  (弧の候補に個体を混ぜる `predictedAsPlanCollider` など)も既に掃かれている。
 - **大気は天体ごとのパラメータになっている。** 焼失(連続量の状態判定)と衝突(離散事象の
   掃引判定)は既に別の判定・別のパラメータ・別の死因として分かれている。剛体接触・地表到達の
   余裕は全天体で 0。**本文書は焼失に触れない** — 扱うのは衝突側の呼び出し経路だけ。
-- **`PredictedArc` は焼失を判定しない。** 弧の打ち切りは地表到達だけで起きる。したがって
-  本文書で「弧が接触で打ち切る」と言うとき、それは弧の**唯一の**打ち切り条件を指す。
+- **`PredictedArc` は焼失を判定しない。** 弧の打ち切りは、非有限値の検出を除けば地表到達だけで
+  起きる。したがって本文書で「弧が接触で打ち切る」と言うとき、それは弧の**唯一の**打ち切り条件を指す。
 - **2球体の接触判定器は1つに集約されている。** `reachedBody` は判定器を天体一覧に対して回す
   だけのラッパで、幾何を持たない。**本文書は判定器の中身に触れない** — 扱うのは
   「どこから何回呼ぶか」だけ。
@@ -69,8 +69,8 @@ A→B と B→A を別々の瞬間に組んだ構造から引くと、対称で�
 | 判定する場所 | 走るワープ帯 | 対象 | 反応 |
 |---|---|---|---|
 | `ContactPhysics.computeAttractorResponse` | **×4 以下のみ** | `collides` を立てた個体 × 天体 | `collideWith(body, contact)` — **既に多態** |
-| `GameEntity.checkLoss` 系 | 常時 | 全生存個体 × 天体 | `alive = false` + 種別ごとの演出・ステージ記録 |
-| `PredictedArc.checkImpact` | 常時(弧の伸長時) | 弧 × 衝突窓の天体 | `_impact` + `_truncated` |
+| `GameEntity.checkLoss` 系 | 常時 | 全生存個体 × 天体(種別ごとに掃引 / 点 / 無しがばらつく — 2-1-2、2-1-3) | `alive = false` + 種別ごとの演出・ステージ記録 |
+| `PredictedArc.checkSurfaceReach` | 常時(弧の伸長時) | 弧 × 衝突窓の天体 | `_impact` + `_truncated` |
 
 **`ContactPhysics` は既に天体を `invMass: 0` の接触相手として扱っており、反応の多態も
 `collideWith` で成立している。** つまり求める形の半分は既に存在していて、`checkLoss` の
@@ -90,7 +90,7 @@ A→B と B→A を別々の瞬間に組んだ構造から引くと、対称で�
 
 ### 2-1-2. 帰結: `Enemy` が×4超で天体をすり抜ける
 
-`enemy.ts:239` の `checkLoss` は焼失しか見ておらず、固体表面は `ContactPhysics` 任せに
+`Enemy.checkLoss` は焼失しか見ておらず、固体表面は `ContactPhysics` 任せに
 なっている(コメントもそう明言している)。しかし `ContactPhysics` は
 `canResolvePhysicalCollisions`(×4 以下)でしか走らない。
 
@@ -103,11 +103,26 @@ A→B と B→A を別々の瞬間に組んだ構造から引くと、対称で�
 弾は最も速い個体なので、点判定はすり抜けを許す(1 substep で `BULLET_SPEED × dt` 進む一方、
 判定は終端の1点だけ)。
 
-ただし `Bullet` は既に `collides = true` で `ContactPhysics` の天体接触に載っており、×4 以下では
-`collideWith` が消している。**ゲートを分割すれば、`Bullet.checkLoss` の天体判定はまるごと不要になる**
-(距離と寿命だけが残る)。つまりこれは「点判定を掃引へ差し替える」ではなく「点判定を削除する」で
-片づく。`containingBody` 関数そのものは `reachedBody` 内のフォールバック(区間長ゼロ・開始時点で
-内側)で使われているので残る。
+**この点判定は `unite_sphere_contact.md` の第一段階で線形掃引へ差し替わる**(判定器を1つに
+したあと、この経路だけ別の解き方で残さないため)。本文書が扱うのはその先である。`Bullet` は既に
+`collides = true` で `ContactPhysics` の天体接触に載っており、×4 以下では `collideWith` が
+消している。**ゲートを分割すれば、`Bullet.checkLoss` の天体判定はまるごと不要になる**
+(距離と寿命だけが残る)。`containingBody` 関数そのものは `reachedBody` 内のフォールバック
+(区間長ゼロ・開始時点で内側)で使われているので残る。
+
+**`cleanup` の走り方との噛み合わせ**(2-7 の帰結)。×4 超で `passiveWarpLod` に落ちた弾は、
+フレーム末尾の `stepPassiveWarpEntities` で1フレームぶんをまとめて1歩進む。したがって
+`prevState → state` はそのフレーム全体(最大 simDt ≒ 2185 s)を張る。
+
+- **点判定は終端の1点しか見ないので、この帯の弾は事実上すり抜ける。** 2-1-2 の `Enemy` と
+  同じ穴が、別の理由(判定の粗さ)で開いている。
+- 掃引へ差し替えれば、その長い区間を跨ぐ表面到達を拾える。ただし判定が効くのは**次のフレームの
+  `cleanup`** なので1フレーム遅れ、しかも**同じ区間を次フレームの substep 数だけ繰り返し
+  判定する**(2-7 の無駄がそのまま乗る)。
+- 区間長がゼロになるのは生成直後(`prevState === state`)だけで、そこは `reachedBody` の
+  `containingBody` フォールバックが拾う。
+
+ゲートを分割して `ContactPhysics` へ寄せれば、遅れも重複判定もまとめて消える。
 
 ## 2-2. 反応の多態が揃っていない
 
@@ -137,22 +152,27 @@ A→B と B→A を別々の瞬間に組んだ構造から引くと、対称で�
 
 ## 2-3. 刻みの規則 — 再突入細分化の引数が2箇所
 
-関数(`adaptiveSimulationMaxStep`)は共有しているが、**境界半径と細分化の刻みという2つの定数を
-両方の呼び出しが綴っている**。
+関数(`adaptiveSimulationMaxStep`)は共有しており、**境界を大気天体の基準楕円体からの高度で測る
+形へは既に直っている**(細分化が要る理由は大気の密度が 1 スケールハイトで桁を変えることなので、
+大気の無いところに再突入域は無い)。残っているのは、**境界高度と細分化の刻みという2つの定数、
+および大気天体の窓を、両方の呼び出しが別々に綴っている**こと。
 
 ```
 Simulator.adaptiveMaxStep:
-  adaptiveSimulationMaxStep(生存艦の状態列, R_EARTH + REENTRY_SUBSTEP_ALT,
+  adaptiveSimulationMaxStep(生存する艦・敵の状態列,
+                            ephemeris.atmosphereAttractorsAt(simTime), REENTRY_SUBSTEP_ALT,
                             simulationMaxStep(simDt, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT),
                             REENTRY_SUBSTEP_MAX_DT)
 PredictedArc.stepDt(consumable):
-  adaptiveSimulationMaxStep([tip], R_EARTH + REENTRY_SUBSTEP_ALT,
+  adaptiveSimulationMaxStep([tip], collisionBodies, REENTRY_SUBSTEP_ALT,
                             this.simulationMaxStep, REENTRY_SUBSTEP_MAX_DT)
 ```
 
-対象集合が違う(生存艦全部 / 弧の先端だけ)のは 1-1 由来の正当な差。第3の細分化帯を足すときに
-片方だけ直せてしまう点だけが問題。**なお `R_EARTH` を基準にしている点も別途の問題**
-(細分化の境界が地球中心からの距離で決まっており、他の天体への降下では効かない)。
+対象集合が違う(生存する艦・敵 / 弧の先端だけ)のは 1-1 由来の正当な差。窓の渡し方が違うのも
+実害は無い — `nearestAtmosphereBody` が `atmosphere === null` を落とすので、弧が衝突窓を
+そのまま渡しても同じ1体に落ち着く(差が出るのは大気天体が弧の成員から外れているときだけで、
+そのときは弧がその天体から十分遠い)。**第3の細分化帯を足すときに片方だけ直せてしまう点だけが
+問題。**
 
 ## 2-4. 「表面を持つ天体」の窓の定義が3通り
 
@@ -160,7 +180,7 @@ PredictedArc.stepDt(consumable):
 |---|---|---|
 | `Simulator.surfaceBodies`(×4 以下) | `ephemeris.attractorsAt(simTime)` = 登録天体の全数 | **101** |
 | `Simulator.surfaceBodies`(×4 超) | そのサブステップ中点の重力窓 = `mu ≠ 0` の登録天体 | **65** |
-| `ArcBodies` の `collision` | 登録天体の全数 + 生存する `predictedAsPlanCollider` 個体 | **101** + 動的 |
+| `ArcBodies` の `collision` | 登録天体のうち、その歩で成員になっているもの(候補は `FutureAttractors` = レジストリの全天体。**個体は候補に入らない**) | **≤ 101** |
 
 (101 は `SOLAR_SYSTEM` の登録数。うち `mu: 0` が 36 体なので重力源は 65 体。)
 
@@ -203,7 +223,7 @@ PredictedArc.stepDt(consumable):
 ## 2-8. 既に共通化されているもの(目標にする形)
 
 - `DynamicTrajectory.step` — RK4 の呼び出し。両者がここを通る。**モデルケース。**
-- `trajectorySampleInterval` — 保持列の間引き間隔の式。`GameEntity.sampleInterval` と
+- `trajectorySampleInterval` — 保持列の間引き間隔の式。`GameEntity.historySampleInterval` と
   `PredictedArc.step` が同じ関数を呼び、`keepDuration` の与え方だけが呼び出し側にある。
 - `simulationMaxStep` — 刻み上限の式。
 
@@ -219,11 +239,12 @@ PredictedArc.stepDt(consumable):
 
 ## 2-10. 依存関係で確認が要るもの
 
-- **`GameEntity.predictedImpact`(`game-entity.ts:144`)に読み手が無い。** `src/` にも `tests/` にも
-  参照が無く、計画側の ✕ アイコンは `PlanPath` が弧の `impact` を直接読んでいる(`plan-path.ts:426`)。
-  **削除できるはず** — 着手時に再確認する。
+- **`GameEntity.predictedImpact` に読み手が無い。** `src/` にも `tests/` にも参照が無く、計画側の
+  ✕ アイコンは `PlanPath.impactOf` が弧の `impact` を直接読んでいる。**削除できる。**
 - **`src/game/nan-watchdog.ts` の冒頭コメント**が「`checkLoss` の大気突入・天体表面接触判定は
-  どちらも NaN で false になる」と述べている。地表到達が接触経路へ移ると記述が古くなる。
+  どちらも NaN で false になる」と述べている。性質そのものは今も成り立つ(焼失は密度の比較、
+  地表到達は掃引で、どちらも NaN で false)が、「大気突入」はもう高度ではなく密度の判定なので
+  文言が古い。地表到達が接触経路へ移ったら両方まとめて書き直す。
 - `Simulator.surfaceBodies` は `stepEnvironment`(恒星の取り出しと日照率の遮蔽体)にも渡っている。
   **窓の定義を変えると熱・電力側の入力も変わる** — 表面判定だけの話ではない。
 
@@ -332,10 +353,7 @@ PredictedArc.stepDt(consumable):
 5. **重力絞り込みの差の上限**(2-5)。**測る前に式を動かさない。** 不一致が出た場合の是正方向は、
    `attractors.ts` の「セル一辺 = 最も重い grid 天体基準」を天体ごとの到達距離へ変える側
    (`arc-bodies.ts` の √2 係数は直達項と ECI 原点補正項の和から導かれているので動かさない)。
-6. **`R_EARTH` を基準にした再突入細分化の境界**(2-3)を天体ごとにするか。細分化が要る理由は
-   大気の密度が 1 スケールハイトで桁が変わることなので、**大気を持つ天体の基準面から測るのが正しい**。
-   ただしこれを直すと刻みの規則が変わり、挙動が変わる。この計画に含めるかを決める。
-7. **相対速度ゼロで天体の内側に湧いた個体**(2-2 の穴)の実害があるか。現状の `checkLoss` は
+6. **相対速度ゼロで天体の内側に湧いた個体**(2-2 の穴)の実害があるか。現状の `checkLoss` は
    拾っているので、地表到達を接触経路へ移すと失われる。実害があるなら `containingBody` による
    最終手段の判定を接触側へ置く。
 
@@ -350,7 +368,7 @@ PredictedArc.stepDt(consumable):
 2. **喪失理由がワープ倍率に依らない。** ×1 と ×131072 で自機を再突入させ、同じ文言が出る。
 3. **×4 超でも敵・破片・弾が天体をすり抜けない**(2-1-2)。
 4. `collides` が個体どうしの接触だけを支配し、天体接触は全生存個体が参加する。
-5. 再突入細分化の境界半径と刻みを綴っている箇所が `src/` に1箇所(2-3)。
+5. 再突入細分化の境界高度と刻みを綴っている箇所が `src/` に1箇所(2-3)。
 6. 「表面を持つ天体の窓」の定義が `src/` に1箇所(2-4)。
 7. `ArcBodies` の重力窓と `classifyAttractors` → `attractorsNearInto` の重力窓の差が
    `GRAVITY_NEGLIGIBLE_ACCEL` 以下(2-5)。
@@ -369,12 +387,13 @@ PredictedArc.stepDt(consumable):
 1. **7-1 の掃引回数と実コストを測る。** 高ワープ + 破片が多い状況(`?stage=debug-load`)で、
    `checkLoss` に費やす時間を測る。`FrameSections` に区間を足さず、`tests/perf/` に単体の計測を置く。
    **この数字が段3 以降の優先順位を決める。**
-2. 第4章の 3・4・7 を、コードを読んで決着させる。
+2. 第4章の 3・4・6 を、コードを読んで決着させる。
 
 ## 段1. 刻みの規則を1関数へ(挙動不変)
 
-1. `time-step.ts` に `reentryAwareMaxStep(states, normalMaxStep)` を足す(境界半径と細分化刻みを
-   関数の内側へ)。
+1. `time-step.ts` に `reentryAwareMaxStep(states, atmosphereBodies, normalMaxStep)` を足す
+   (境界高度と細分化刻みの2定数を関数の内側へ)。**大気天体の窓は呼び出し側に残す** — 実シミュ
+   レーションは天体暦を、弧は `ArcBodies` を持っており、出どころを1本にできない(2-8 の形)。
 2. `Simulator.adaptiveMaxStep` と `PredictedArc.stepDt` の呼び出しを置き換える。
 3. `typecheck` + `test:physics`。**挙動不変**なので `tests/physics/predicted-arc.test.ts` の既存件が
    そのまま通ることが合格条件。commit する。
@@ -416,9 +435,9 @@ production の変更なし、テスト1件のみ。**測る前に式を動かさ
 
 ## 段6. 依存関係の整理
 
-1. `GameEntity.predictedImpact` に読み手が無いことを再確認して削除する(2-10)。
-2. `nan-watchdog.ts` の冒頭コメントを、地表到達が接触経路へ移ったことに合わせる(2-10)。
-3. `mu ≠ 0` の `GameEntity` を前提にした経路がどこまで残っているかを確認し、畳めるものを畳む。
+1. `GameEntity.predictedImpact` を削除する(2-10)。
+2. `nan-watchdog.ts` の冒頭コメントを、焼失が密度の判定になり地表到達が接触経路へ移ったことに
+   合わせる(2-10)。
 
 ## 段7. 文書更新
 
@@ -476,7 +495,7 @@ production の変更なし、テスト1件のみ。**測る前に式を動かさ
 | 天体接触を全生存個体へ広げたのに **`CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP` の上限を見直さない** | 1 substep で 8 件までしか解決されず、残りが次の substep へ持ち越される。**天体の内側に1 substep 留まる個体**が出る。高ワープではそれが数十秒 | 破片が大量に再突入する場面。第4章の 4 で決着させる |
 | `RadiatorFold` / `BeltSection` に基底の既定(`alive = false`)がそのまま当たる | 艦に取り付いた接触代理が独立に消える。**艦の放熱板やベルトが天体接触で勝手に壊れる**か、消えた代理が次フレームに再生成されて振動する | 艦を天体表面へ近づけたとき。第4章の 3 で決着させる |
 | `Simulator.surfaceBodies` の窓を変えたとき、**`stepEnvironment` への影響を見落とす** | 恒星の取り出しと日照率の遮蔽体が変わり、**熱・電力・放熱板の挙動が黙って変わる** | 高ワープでの外殻温度とバッテリー残量。段4 の完了条件に熱・電力の不変を入れる |
-| `checkLoss` から地表到達を消したとき、**相対速度ゼロで天体の内側に湧いた個体**が通知されない | その個体が天体の中に留まり続ける。`impulse === 0` なので `collideWith` が呼ばれない | 第4章の 7 で実害を確認する。実害があるなら `containingBody` による最終手段を接触側へ置く |
+| `checkLoss` から地表到達を消したとき、**相対速度ゼロで天体の内側に湧いた個体**が通知されない | その個体が天体の中に留まり続ける。`impulse === 0` なので `collideWith` が呼ばれない | 第4章の 6 で実害を確認する。実害があるなら `containingBody` による最終手段を接触側へ置く |
 | broad phase の乖離の項を**安全側でなく**取る | 接触するはずのペアを絞り込みで落とす。**すり抜けが復活し、しかも判定器のテストでは絶対に見えない** | 絞り込みは常に通す方向へ倒す。判定器の答えを変えないことが broad phase の条件 |
 | 段2 を「挙動不変」と思い込んで確認を飛ばす | `DebrisPiece` / `AmmoPickup` / `Base` が×4 以下で**接触経路から先に消えるようになる**。結果は同じだが、消える瞬間の状態(演出の位置)が変わりうる | ×4 以下で破片を天体へ落として演出を目視する |
 | `PredictedArc` の打ち切りだけが残り、**実体が接触経路で生き延びる**(低速接触) | 弧は表面で止まるのに実体は跳ねて動き続ける。**予測線と実体が乖離する** | これは 3-4 の意図した仕様。乖離が見えることを承知のうえで、実行時確認で「予測線が接触点で止まる」ことだけを見る |
