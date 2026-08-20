@@ -26,6 +26,8 @@ import { productionBlueprintOf, consumeProductionResources } from './vessel/prod
 import { producibility } from './economy/producibility';
 import { baseFacilities, basePowerAvailable, deriveBaseDockingPorts } from './vessel/base-module';
 import { validateBaseAssembly } from './vessel/base-assembly-validation';
+import { deriveCapsules } from './vessel/collision-shape';
+import { circumradius, type VesselTree } from './vessel/tree';
 import { add as addVec, type Vec3 } from '../physics/vec3';
 import type { FloatingOrigin } from './floating-origin';
 import type { GameEntity } from './game-entity/game-entity';
@@ -33,6 +35,7 @@ import type { Input } from './input/input';
 import type { EntityManager } from './simulation/entity-manager';
 import type { MapContextActions } from './map-context-actions';
 import type { CameraSystem } from './camera/camera-system';
+import { CHASE_DIST_MIN, CHASE_DIST_MAX } from './camera/chase-camera';
 import type { ViewManager } from './view-manager';
 import type { WorldSfx } from '../audio/sfx/world-sfx';
 import type { EffectsSystem } from './vfx/effects-system';
@@ -78,6 +81,21 @@ interface AssemblySession {
   // ここに載っているものは倉庫から取り付けた(=生産時に課金済みの)ものだと分かる。
   readonly originalInventoryIds: ReadonlySet<string>;
   targetId: string;
+  // セッション開始時点のチェイスカメラの距離。セッション終了時にここへ戻す。
+  readonly savedChaseDist: number;
+}
+
+// ツリーの外接半径 [m] — 船体ローカル原点からの最遠点までの距離。deriveCapsules は分離機構の
+// 辺を飛ばすので、カプセルの両端に加えてノード自身の外接円も見る。
+function assemblyExtentRadius(tree: VesselTree): number {
+  let radius = 0;
+  for (const capsule of deriveCapsules(tree)) {
+    radius = Math.max(radius, len(capsule.a) + capsule.radius, len(capsule.b) + capsule.radius);
+  }
+  for (const node of tree.nodes) {
+    radius = Math.max(radius, len(node.pos) + circumradius(node.section));
+  }
+  return radius;
 }
 
 export class Docking {
@@ -264,16 +282,36 @@ export class Docking {
     );
     const initial = targets.find((target) => target.id === preferredTargetId) ?? targets[0]!;
     const originalInventoryIds = new Set((base.baseState?.inventory ?? []).map((part) => part.id));
-    const entry: AssemblySession = { base, session, workbench, panel, originalInventoryIds, targetId: initial.id };
+    const savedChaseDist = this.cameraSystem.combatCamera.chaseCamera.dist;
+    const entry: AssemblySession = {
+      base, session, workbench, panel, originalInventoryIds, targetId: initial.id, savedChaseDist,
+    };
     this.assembly = entry;
 
-    panel.onTargetSelect = (targetId) => { entry.targetId = targetId; };
+    panel.onTargetSelect = (targetId) => { entry.targetId = targetId; this.frameAssemblyCamera(entry); };
     panel.onUndo = () => { workbench.undo(); };
     panel.onRedo = () => { workbench.redo(); };
     panel.onConfirm = () => this.commitAssembly();
     panel.onCancel = () => this.cancelAssembly();
     panel.open(session, session.getTarget(initial.id), DEFAULT_WINDOW_X, DEFAULT_WINDOW_Y);
+    this.frameAssemblyCamera(entry);
     this.pauseGame();
+  }
+
+  // 選択中の対象へチェイスカメラを寄せる。対象の外接半径 × ASSEMBLY_CAMERA_DISTANCE_MARGIN を
+  // 距離に、targetPose の位置・姿勢を追従先にする。慣性系での置かれ方が定まらない対象
+  // (draftOffset が解けない下書きなど)では何もしない — 前回のカメラ状態のまま据え置く。
+  // 追従先は毎フレーム引き直さず、ここで採った一点を渡す — セッション中は時間が止まっていて
+  // 対象が動かないことに依っている。
+  private frameAssemblyCamera(entry: AssemblySession): void {
+    const view = this.targetById(entry.base, entry.targetId);
+    if (!view) return;
+    const pose = this.targetPose(entry.base, view);
+    if (!pose) return;
+    this.cameraSystem.setChaseCameraOverride(pose);
+    const extent = assemblyExtentRadius(view.assembly.tree);
+    const dist = extent * C.ASSEMBLY_CAMERA_DISTANCE_MARGIN;
+    this.cameraSystem.combatCamera.chaseCamera.dist = Math.max(CHASE_DIST_MIN, Math.min(CHASE_DIST_MAX, dist));
   }
 
   // セッションの内容を実機へ書き戻す。1つでも対象の検証が通らなければ何も適用しない —
@@ -316,7 +354,8 @@ export class Docking {
     this.endAssembly();
   }
 
-  // 開いていたセッションの持ち物(ドラッグ中の部品・部品棚ウィンドウ)を手放し、時間を再開する。
+  // 開いていたセッションの持ち物(ドラッグ中の部品・部品棚ウィンドウ)を手放し、
+  // チェイスカメラを寄せる前の距離・追従先へ戻し、時間を再開する。
   private endAssembly(): void {
     const entry = this.assembly;
     if (!entry) return;
@@ -324,6 +363,8 @@ export class Docking {
     this.dragController.cancelDrag();
     entry.panel.onCancel = null;
     entry.panel.close();
+    this.cameraSystem.setChaseCameraOverride(null);
+    this.cameraSystem.combatCamera.chaseCamera.dist = entry.savedChaseDist;
     this.resumeGame();
   }
 
