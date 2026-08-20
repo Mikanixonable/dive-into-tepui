@@ -78,7 +78,7 @@ export class HaloOrbitLine {
     let ax: number;
     try {
       frame = collinearFrame(secondary, point, displayTime, ephemeris);
-      ax = haloAmplitudeX(frame, point, az);
+      ax = haloAmplitudeX(frame, point, Math.abs(az));
       if (isNaN(ax) || ax <= 0) {
         this.curve.setVisible(false);
         return;
