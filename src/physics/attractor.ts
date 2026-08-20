@@ -4,7 +4,7 @@ import { Quat } from './attitude';
 import { FrameTransform, toFrameState } from './frame';
 import { KinematicState, hermiteInterpolate, kinematicState } from './kinematic-state';
 import { OrbitalElements, orbitalElementsFromState, keplerPeriod } from './elements';
-import { containingBody, sweptHermiteSphereToi } from './sphere-contact';
+import { SweptVelocities, containingBody, sweptSphereContact } from './sphere-contact';
 import { Vec3, lenSq, len, sub, v3 } from './vec3';
 
 // 天体の識別子。具体的なレジストリ(solar-system.ts の SOLAR_SYSTEM など)が実行時に
@@ -150,15 +150,19 @@ export function reachedBody(
   bodies: readonly Attractor[],
   margin: number,
 ): BodyImpact | null {
+  // 1ステップの間に天体自身が動く距離は、その半径に対しても軌道速度で進む距離に対しても
+  // 十分小さいので、どの天体も区間を通して静止しているものとして掃引する。
+  const sweep: SweptVelocities = {
+    aStart: prev.v, aEnd: next.v, bStart: v3(), bEnd: v3(), dt: next.t - prev.t,
+  };
   let earliest: Attractor | null = null;
   let earliestToi = Infinity;
   for (const body of bodies) {
-    // 1ステップの間に天体自身が動く距離は、その半径に対しても軌道速度で進む距離に対しても
-    // 十分小さいので、区間を通して静止しているものとして掃引する。
-    const toi = sweptHermiteSphereToi(prev, next, body.state.r, body.state.r, body.radius + margin);
-    if (toi !== null && toi < earliestToi) {
+    const contact = sweptSphereContact(
+      prev.r, next.r, body.state.r, body.state.r, body.radius + margin, sweep);
+    if (contact !== null && contact.toi < earliestToi) {
       earliest = body;
-      earliestToi = toi;
+      earliestToi = contact.toi;
     }
   }
   if (earliest !== null) {

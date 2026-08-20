@@ -1,9 +1,9 @@
-// 2球の剛体接触の解決。掃引TOI(sphere-contact.ts の sweptSphereToi)を一次手段とし、
+// 2球の剛体接触の解決。掃引TOI(sphere-contact.ts の sweptSphereContact)を一次手段とし、
 // 区間終端の重なり押し戻しは異常時(掃引で検出できない開始時点からの重なり等)の
 // フォールバックとしてだけ使う。逆質量(0 = 無限質量)・半径・反発係数だけを引数に取る
 // 純関数で、どちらの側が艦・弾・天体かには関与しない。
 import { Vec3, add, dot, scale, sub } from './vec3';
-import { sweptSphereToi } from './sphere-contact';
+import { sweptSphereContact } from './sphere-contact';
 
 export interface CollisionResponse {
   readonly rA: Vec3; readonly rB: Vec3; // 補正後の位置
@@ -39,7 +39,7 @@ export function resolveSphereCollision(
   if (!(invM > 0)) return null;
 
   const swept = prevRA !== undefined && prevRB !== undefined
-    ? sweptSphereToi(prevRA, a.r, prevRB, b.r, minD)
+    ? sweptSphereContact(prevRA, a.r, prevRB, b.r, minD, null)
     : null;
 
   let normal: Vec3;
