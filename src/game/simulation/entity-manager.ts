@@ -6,7 +6,6 @@ import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { GameEntity } from '../game-entity/game-entity';
 import { AmmoPickup } from '../game-entity/ammo-pickup';
-import { Asteroid } from '../game-entity/asteroid';
 import { DebrisPiece } from '../game-entity/debris-piece';
 import { Enemy } from '../game-entity/enemy';
 import { Bullet } from '../game-entity/bullet';
@@ -35,7 +34,6 @@ export class EntityManager {
   readonly casings: DebrisPiece[] = [];
   readonly debris: DebrisPiece[] = [];
   public readonly ammoPickups: AmmoPickup[] = [];
-  readonly asteroids: Asteroid[] = [];
   // 自機。操作対象(Game.player)もこの配列の1隻で、積分・衝突・寿命判定・予測では
   // 他の艦と対等に扱う。ステージモードでは1隻だけが入る。
   readonly players: Player[] = [];
@@ -197,11 +195,6 @@ export class EntityManager {
     this.invalidateCaches();
   }
 
-  // 小惑星を登録する。上限を超えた分は古いものから破棄する。
-  addAsteroid(asteroid: Asteroid): void {
-    this.addCapped(this.asteroids, asteroid, C.MAX_ASTEROIDS);
-  }
-
   // 基地を登録する。
   addBase(base: Base): void {
     this.bases.push(base);
@@ -231,7 +224,6 @@ export class EntityManager {
       ...this.enemies,
       ...this.bullets,
       ...this.ammoPickups,
-      ...this.asteroids,
       ...this.casings,
       ...this.debris,
       ...this.bases,
@@ -273,7 +265,6 @@ export class EntityManager {
     this.prune(this.casings);
     this.prune(this.debris);
     this.prune(this.ammoPickups);
-    this.prune(this.asteroids);
     this.prune(this.bases);
   }
 
@@ -458,7 +449,6 @@ export class EntityManager {
     this.disposeAll(this.casings);
     this.disposeAll(this.debris);
     this.disposeAll(this.ammoPickups);
-    this.disposeAll(this.asteroids);
     this.disposeAll(this.bases);
 
     this.bulletBodyPool.dispose();
@@ -478,7 +468,7 @@ export class EntityManager {
   }
 
   // 負荷確認ウィンドウが読む、保持配列ごとの現在の個体数。
-  perfCounts(): Pick<PerfCounts, 'players' | 'enemies' | 'bullets' | 'casings' | 'debris' | 'ammoPickups' | 'asteroids' | 'bases'> {
+  perfCounts(): Pick<PerfCounts, 'players' | 'enemies' | 'bullets' | 'casings' | 'debris' | 'ammoPickups' | 'bases'> {
     return {
       players: this.players.length,
       enemies: this.enemies.length,
@@ -486,7 +476,6 @@ export class EntityManager {
       casings: this.casings.length,
       debris: this.debris.length,
       ammoPickups: this.ammoPickups.length,
-      asteroids: this.asteroids.length,
       bases: this.bases.length,
     };
   }
