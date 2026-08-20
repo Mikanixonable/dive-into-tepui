@@ -197,6 +197,18 @@ export interface RcsTankPart extends Part, PropellantTankFields {
 // 推進剤タンク3種のいずれか。PartInventory の集計・消費はこの3種をまとめて扱う。
 export type PropellantTankPart = OxidizerTankPart | ReductantTankPart | RcsTankPart;
 
+export function isPropellantTankPart(part: Part): part is PropellantTankPart {
+  return part.type === 'oxidizer_tank' || part.type === 'reductant_tank' || part.type === 'rcs_tank';
+}
+
+// 主機(酸化剤・還元剤)のタンクか。RCS タンクは主機の供給源ではないので除く —
+// isPropellantTankPart とは問いが違う別の述語であり、書き忘れではない。
+export function isMainPropellantTank(
+  part: Part,
+): part is OxidizerTankPart | ReductantTankPart {
+  return part.type === 'oxidizer_tank' || part.type === 'reductant_tank';
+}
+
 export interface WaterTankPart extends Part {
   readonly type: 'water_tank';
   volume: number; // 容積 [m^3]

@@ -6,6 +6,7 @@
 import { Vec3, add, scale, v3 } from '../../physics/vec3';
 import { loftCenterOfMass, loftVolume } from '../../physics/hull-loft';
 import type { AnyPart, InteriorPartType, StructuralPartType } from '../game-entity/parts';
+import { isMainPropellantTank } from '../game-entity/parts';
 import type { VesselTree, TreeEdge } from './tree';
 import { edgeById, edgeFrame, nodeById, portOf } from './tree';
 
@@ -46,9 +47,10 @@ const EFFECTIVE_VOLUME_FACTOR: Readonly<Record<InteriorPartType | StructuralPart
 const CRYOGENIC_VOLUME_FACTOR = 0.85;
 
 // 内装要素の実効容積の係数。占める容積をこの値で割ったものが、要する内容積になる。
+// 極低温側の差し替えは主機タンク(酸化剤・還元剤)だけが対象 — RCS タンクは
+// EFFECTIVE_VOLUME_FACTOR の表からそのまま引く別扱いなので、isMainPropellantTank を使う。
 export function effectiveVolumeFactor(part: AnyPart): number {
-  if ((part.type === 'oxidizer_tank' || part.type === 'reductant_tank') &&
-    CRYOGENIC_PROPELLANTS.has(part.propellant)) {
+  if (isMainPropellantTank(part) && CRYOGENIC_PROPELLANTS.has(part.propellant)) {
     return CRYOGENIC_VOLUME_FACTOR;
   }
   const factor = EFFECTIVE_VOLUME_FACTOR[part.type as InteriorPartType | StructuralPartType];

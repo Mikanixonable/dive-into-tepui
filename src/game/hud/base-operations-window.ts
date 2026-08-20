@@ -5,8 +5,9 @@
 // #hud の子として window レイヤへ置くため、`#hud, #hud *` の margin/padding
 // リセットに勝てるよう全セレクタを `#hud` で始める。
 import type { Vessel, DockedVesselEntry } from '../vessel/vessel';
-import type { AnyPart, Part, RcsTankPart } from '../game-entity/parts';
-import { propellantTankCapacity } from '../economy/propellant-compatibility';
+import type { AnyPart, Part, PropellantTankPart } from '../game-entity/parts';
+import { isPropellantTankPart } from '../game-entity/parts';
+import { propellantTankCapacity, TANK_MATERIALS } from '../economy/propellant-compatibility';
 import { Button, Meter, TabBar, ValueInput } from './widgets';
 import { buildPartFrom, producibleParts } from '../vessel/default-blueprints';
 import { baseFacilities, basePowerAvailable } from '../vessel/base-module';
@@ -401,7 +402,7 @@ export class BaseOperationsWindow {
     return row;
   }
 
-  // 搭載部品1件の行。同じ type の在庫があれば換装欄を、rcs_tank なら補給ボタンを添える。
+  // 搭載部品1件の行。同じ type の在庫があれば換装欄を、推進剤タンクなら補給ボタンを添える。
   private buildInstalledPartRow(base: Vessel, shipData: DockedVesselEntry, part: Part, index: number): HTMLElement {
     const hpRatio = part.maxHp > 0 ? Math.max(0, Math.min(1, part.hp / part.maxHp)) : 0;
     const repairRequest = repairBlueprintOf(part as AnyPart);
@@ -446,9 +447,9 @@ export class BaseOperationsWindow {
     repairBtn.element.classList.toggle('bow-btn-complete', !damaged);
     repairBtn.setEnabled(damaged && this.canAfford(base, repairRequest));
     actions.appendChild(repairBtn.element);
-    if (part.type === 'rcs_tank') {
+    if (isPropellantTankPart(part)) {
       actions.appendChild(this.buildRefuelButton(
-        base, part as RcsTankPart, () => this.handleRefuelInstalled(shipData.id, index)));
+        base, part, () => this.handleRefuelInstalled(shipData.id, index)));
     }
     row.appendChild(actions);
 
@@ -480,7 +481,7 @@ export class BaseOperationsWindow {
     return row;
   }
 
-  // 倉庫にある在庫部品の一覧。rcs_tank ならその場での補給を提供する。
+  // 倉庫にある在庫部品の一覧。推進剤タンクならその場での補給を提供する。
   private buildWarehouseList(base: Vessel): HTMLElement {
     const inventory = base.baseState!.inventory;
     if (inventory.length === 0) {
@@ -509,7 +510,7 @@ export class BaseOperationsWindow {
       info.append(name, meta);
       main.appendChild(info);
       row.appendChild(main);
-      if (part.type === 'rcs_tank') {
+      if (isPropellantTankPart(part)) {
         const actions = document.createElement('div');
         actions.className = 'bow-actions';
         actions.appendChild(this.buildRefuelButton(base, part, () => this.handleRefuelInventory(part.id)));
@@ -520,11 +521,13 @@ export class BaseOperationsWindow {
     return list;
   }
 
-  // rcs_tank 用の補給ボタンを作る。
-  private buildRefuelButton(base: Vessel, tank: RcsTankPart, onClick: () => void): HTMLElement {
+  // 推進剤タンク用の補給ボタンを作る。ラベルにどの推進剤かを添える。
+  private buildRefuelButton(base: Vessel, tank: PropellantTankPart, onClick: () => void): HTMLElement {
     const missing = Math.max(0, propellantTankCapacity(tank.propellant, tank.volume) - tank.fuel);
     const request = refuelBlueprintOf(tank.propellant, missing);
-    const btn = new Button(missing > 0 ? `燃料補給 · ${this.formatCost(request)}` : '燃料は満タン', onClick);
+    const propellantName = TANK_MATERIALS[tank.propellant].name;
+    const btn = new Button(
+      missing > 0 ? `${propellantName}補給 · ${this.formatCost(request)}` : `${propellantName}は満タン`, onClick);
     btn.element.classList.add('bow-btn');
     btn.element.classList.toggle('bow-btn-complete', missing <= 0);
     btn.setEnabled(missing > 0 && this.canAfford(base, request));
@@ -752,8 +755,8 @@ export class BaseOperationsWindow {
     if (!base) return;
     const shipData = base.baseState!.dockedVessels.find((s) => s.id === shipId);
     const part = shipData?.parts[partIdx];
-    if (!part || part.type !== 'rcs_tank') return;
-    this.refuelTank(base, part as RcsTankPart);
+    if (!part || !isPropellantTankPart(part)) return;
+    this.refuelTank(base, part);
     this.refresh();
   }
 
@@ -761,12 +764,12 @@ export class BaseOperationsWindow {
     const base = this.currentBase;
     if (!base) return;
     const part = base.baseState!.inventory.find((p) => p.id === invId);
-    if (!part || part.type !== 'rcs_tank') return;
+    if (!part || !isPropellantTankPart(part)) return;
     this.refuelTank(base, part);
     this.refresh();
   }
 
-  private refuelTank(base: Vessel, tank: RcsTankPart): void {
+  private refuelTank(base: Vessel, tank: PropellantTankPart): void {
     const capacity = propellantTankCapacity(tank.propellant, tank.volume);
     const missing = Math.max(0, capacity - tank.fuel);
     if (missing <= 0) return;

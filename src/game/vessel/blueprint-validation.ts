@@ -10,6 +10,7 @@ import { PORT_WIDTH_RATIO, placeSectionPrimitives, portHalfAngle } from '../../p
 import { sectionOutline } from '../../physics/hull-loft';
 import { TANK_MATERIALS } from '../economy/propellant-compatibility';
 import type { PartType } from '../game-entity/parts';
+import { isMainPropellantTank, isPropellantTankPart } from '../game-entity/parts';
 import type { PartPlacement } from './assembly';
 import type { MountPoint, PortRef, TreeEdge, TreeNode, VesselTree } from './tree';
 import { portOwners } from './port-occupancy';
@@ -412,7 +413,7 @@ function checkInternalVolume(bp: VesselBlueprint, issues: BlueprintIssue[]): voi
 function checkTankMaterials(bp: VesselBlueprint, issues: BlueprintIssue[]): void {
   for (const placement of bp.placements) {
     const part = placement.part;
-    if (part.type !== 'oxidizer_tank' && part.type !== 'reductant_tank' && part.type !== 'rcs_tank') continue;
+    if (!isPropellantTankPart(part)) continue;
     const compat = TANK_MATERIALS[part.propellant];
     if (compat === undefined) {
       issues.push(issue('error', part.id, `推進剤 "${part.propellant}" は登録されていません`));
@@ -474,8 +475,7 @@ function checkFeedContinuity(bp: VesselBlueprint, issues: BlueprintIssue[]): voi
     const engineNodes = new Set(mountNodes(bp.tree, placement.mount).map((id) => reachable.get(id)));
     const fed = internals(bp).some((tank) => {
       const tankPart = tank.part;
-      const isSource = (tankPart.type === 'oxidizer_tank' || tankPart.type === 'reductant_tank') &&
-        tankPart.propellant === part.propellant;
+      const isSource = isMainPropellantTank(tankPart) && tankPart.propellant === part.propellant;
       if (!isSource) return false;
       return tank.edgeIds.some((edgeId) => {
         const edge = bp.tree.edges.find((e) => e.id === edgeId);
