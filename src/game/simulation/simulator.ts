@@ -25,7 +25,6 @@ import { nearestAtmosphereBody, type Attractor } from '../../physics/attractor';
 import { Ephemeris } from '../../physics/ephemeris';
 import type { Stage } from '../stages/stage';
 import { ContactPhysics } from './contact';
-import { R_EARTH } from '../../physics/solar-system';
 import { v3 } from '../../physics/vec3';
 import { adaptiveSimulationMaxStep, simulationMaxStep, simulationStepDuration } from './time-step';
 import type { NanWatchdog } from '../nan-watchdog';
@@ -172,7 +171,8 @@ export class Simulator {
     }
     return adaptiveSimulationMaxStep(
       this.adaptiveStatesScratch,
-      R_EARTH + C.REENTRY_SUBSTEP_ALT,
+      this.ephemeris.atmosphereAttractorsAt(this.simTime),
+      C.REENTRY_SUBSTEP_ALT,
       simulationMaxStep(simDt, C.SUBSTEP_MAX_DT, C.SUBSTEP_MAX_COUNT),
       C.REENTRY_SUBSTEP_MAX_DT,
     );
