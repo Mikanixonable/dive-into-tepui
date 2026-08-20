@@ -35,14 +35,14 @@ const COMM_STATION_WEIGHT = 5000;
 
 // 通信基地の通信設備を1つ作る。通信基地は基地モジュールと大型の通信設備の組であり(§13-3)、
 // 設備そのものは他の機体が積むものと同じ通信モジュールである。
-export function createCommStation(): CommunicationPart {
+function createCommStation(): CommunicationPart {
   return createPart('communication', {
     name: 'Comm Station', weight: COMM_STATION_WEIGHT, range: COMM_STATION_RANGE, maxHp: 1, hp: 1,
   });
 }
 
 // 既定の基地モジュール。中腹のドッキングパレット上部に中央ハッチ、その四隅にスロットを持つ。
-export function createDefaultBaseModule(maxHp: number): BaseModulePart {
+function createDefaultBaseModule(maxHp: number): BaseModulePart {
   const up = v3(0, 1, 0);
   const slot = (x: number, z: number): DockPort => ({ localPos: v3(x, 21.0, z), localNormal: up });
   return createPart('base_module', {
@@ -131,7 +131,7 @@ const LIFE_SUPPORT_EXTRA_HEAT = 100;
 // 既定の有人艦が積む RCS スラスタの数。船体の前後2ステーションに4方位ずつ、左右のトラスに
 // 2基ずつで、3軸の両向きのトルクを、対向するスラスタの推力が打ち消し合う形で出せる最小の組で
 // ある(配置は vessel-assemblies.ts の CREWED_RCS_MOUNTS)。
-export const CREWED_RCS_THRUSTER_COUNT = 12;
+const CREWED_RCS_THRUSTER_COUNT = 12;
 
 // maxHp を CREWED_HP_RATIO で割り振った、有人機の既定の搭載要素一式。
 export function crewedParts(maxHp: number): AnyPart[] {

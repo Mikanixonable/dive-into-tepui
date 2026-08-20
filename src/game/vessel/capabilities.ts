@@ -31,7 +31,7 @@ export function hasCommunication(vessel: CapabilityVessel): boolean {
 }
 
 // 自動操縦装置を持つ。
-export function hasAutopilotUnit(vessel: CapabilityVessel): boolean {
+function hasAutopilotUnit(vessel: CapabilityVessel): boolean {
   return hasWorkingPart(vessel, 'autopilot');
 }
 

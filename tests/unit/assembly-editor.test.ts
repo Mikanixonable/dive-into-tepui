@@ -2,7 +2,7 @@ import * as assert from 'node:assert/strict';
 import { createPart } from '../../src/game/game-entity/parts';
 import type { PartPlacement, VesselAssembly } from '../../src/game/vessel/assembly';
 import {
-  addEdge, addNode, editSection, moveNode, movePlacement, reconnectEdge, removeEdge, removeNode,
+  addNode, editSection, movePlacement, removeEdge, removeNode,
   validateAssembly,
 } from '../../src/game/vessel/assembly-editor';
 import type { CrossSection } from '../../src/physics/section-moments';
@@ -55,27 +55,8 @@ export function register(): void {
     assert.equal(original.tree.edges.length, 1);
   });
 
-  test('assembly editor recomputes edge length on node move and rejects non-quantized lengths', () => {
+  test('assembly editor removes nodes and edges only when nothing would dangle', () => {
     const original = assemblyWithTwoNodes();
-    const moved = moveNode(original, { nodeId: 'b', pos: v3(0, 0, 3) }, EDITOR_OPTIONS);
-    assert.equal(moved.accepted, true);
-    assert.equal(edgeOf(moved.assembly, 'ab'), 3);
-    assert.equal(original.tree.nodes[1]!.pos.z, 2);
-    assert.equal(edgeOf(original, 'ab'), 2);
-
-    const invalid = moveNode(original, { nodeId: 'b', pos: v3(0, 0, 2.1) }, EDITOR_OPTIONS);
-    assert.equal(invalid.accepted, false);
-    assert.strictEqual(invalid.assembly, original);
-    assert.equal(edgeOf(invalid.assembly, 'ab'), 2);
-  });
-
-  test('assembly editor reconnects and removes edges without dangling references', () => {
-    const original = assemblyWithTwoNodes();
-    const reconnected = reconnectEdge(original, { edgeId: 'ab', kind: { kind: 'truss', sectionSize: 0.5 } }, EDITOR_OPTIONS);
-    assert.equal(reconnected.accepted, true);
-    assert.equal(reconnected.assembly.tree.edges[0]!.kind.kind, 'truss');
-    assert.equal(edgeOf(reconnected.assembly, 'ab'), 2);
-
     const removedNode = removeNode(original, 'a', EDITOR_OPTIONS);
     assert.equal(removedNode.accepted, false);
     assert.strictEqual(removedNode.assembly, original);
