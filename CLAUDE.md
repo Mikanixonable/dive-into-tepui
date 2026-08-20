@@ -6,9 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **命名とTypeScriptの書き方は `DEVELOP/CODING_STYLE.md` が一次情報。** 新しいコードと変更範囲を
   同文書へ揃える。既存コードに残る違反を踏襲しない。
-- **全体像はコードではなく文書から掴む。** 「どこで何が起きているか」「誰が状態を持つか」「いつ走るか」
-  は `DEVELOP/OWNERSHIP.md` / `DEVELOP/CALLSTACK.md` / `DEVELOP/SPEC.md` / この CLAUDE.md が一次情報。
-  当たりを付けてから必要なファイルだけを読む。手順は `.claude/skills/overview/SKILL.md`(`/overview`)。
+- **全体像を掴むときは、まず当たりを付けてから必要なファイルだけを読む。** 手順は
+  `.claude/skills/overview/SKILL.md`(`/overview`)。保持関係や呼び出し順を知りたいときは
+  `/ownership` / `/callstack` でコードから調べる(文書としては保存しない)。
 - **検証は変更箇所に対応させる。** 既定は `npm run typecheck` のみで、これは常に走らせる。
   `npm run test:physics` は `src/physics/` を触ったときだけ。ヘッドレス実行検証(`/verify`)は
   ユーザーが実行時の動作確認を明示的に求めたときだけ。変更と無関係な検証に時間を使わない。
@@ -45,30 +45,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   分岐、有効/無効の切り替え、件数や強度のパラメータ化、毎フレーム走る仕掛け、状態(カウンタ・フラグ・
   「一度だけ」の保守)、失敗時のフォールバック。値は定数を直書きし、呼び出しは1箇所から1回にする。
   「デバッグしやすいように気を利かせる」判断そのものが要求の逸脱にあたる。
-
-## 設計文書 — 更新は義務
-
-**`src/` を変更したら、同じ変更セットの中で下記の文書も更新する。**「あとでまとめて」は禁止。
-判定手順と全面再生成用のプロンプトは `.claude/skills/develop-docs/SKILL.md`(`/develop-docs`)にある。
-`src/**/*.ts` を編集すると PostToolUse フック(`.claude/hooks/remind-after-src-edit.mjs`)が
-コメント方針の自己点検と文書の同期判定を促す。
-
-- **この CLAUDE.md**(下記 Architecture / Controls) — モジュールの責務と「なぜそうなっているか」の解説。
-  ファイルの新設・削除・移動・改名、責務の移動、キー割り当てや操作系の変更、定数の意味が変わる変更で
-  更新する。**古い記述を残すより消す方がよい。**
-- `DEVELOP/CALLSTACK.md` — per-frame 呼び出し依存木(update / sync / render)。**呼び出し順と実行条件の
-  一次情報。** 毎フレーム走る関数の追加・削除・改名・順序変更・条件変更で更新する。
-- `DEVELOP/OWNERSHIP.md` — インスタンス保持木と状態の正本(source of truth)。クラスの new 位置・
-  フィールドの所有・参照共有・キャッシュが動いたら更新する。
-- `DEVELOP/SPEC.md` — 「どう振舞うべきか」の仕様。プレイヤーから見える挙動・数値が変わったら更新する。
-- `DEVELOP/DESIGN-RULES.md` — UI/デザインの規約(トークン・ウィジェット・オーバーレイの開閉規則・
-  置き場4種・タッチ対応)。`theme.ts`/`hud/widgets/`/`hud/overlay-manager.ts` を含む HUD 側の
-  構成が変わったら更新する。
-
-役割の切り分け: この CLAUDE.md は**散文の解説**(責務と理由)、DEVELOP/ の各文書は**機械的な事実**
-(順序と所有)。両者が食い違ったら **DEVELOP/ を正とし、CLAUDE.md を直す。**
-リファクタリングのやることリストは `memos/hedalu244/refactoring_todo.md`、論点ごとの todo は
-同フォルダの各 `*_todo.md` を参照する(こちらも CLAUDE.md より新しい)。
 
 ## Current state
 
