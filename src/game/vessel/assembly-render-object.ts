@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import type { PartPlacement, VesselAssembly } from './assembly';
 import { buildHullMesh } from './hull-mesh';
 import { partVisualRefOf, type PartVisualRef } from './part-visual';
+import { disposeOwnedResources } from '../../render/owned-resources';
 
 export interface PartVisualContext {
   readonly partRef: string;
@@ -77,9 +78,12 @@ export class AssemblyRenderObject {
     for (const context of contexts) this.visuals.get(context.partRef)?.update(context);
   }
 
+  // 部品ビジュアルを個別に解放してから外す。残る外皮メッシュ(hull-mesh.ts が
+  // ownsGeometry/ownsMaterial を立てて作る)は disposeOwnedResources が拾う。
   public dispose(): void {
     for (const visual of this.visuals.values()) visual.dispose();
     this.visuals.clear();
+    disposeOwnedResources(this.object);
   }
 
   private findPartObject(ref: PartVisualRef): THREE.Object3D | null {
