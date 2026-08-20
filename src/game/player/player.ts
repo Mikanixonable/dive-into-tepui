@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { Attitude, qFromForwardUp } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
-import { MU_EARTH, R_EARTH, earthAltitudeOf } from '../../physics/solar-system';
+import { MU_EARTH, R_EARTH } from '../../physics/solar-system';
 import { Vec3, v3, len, sub } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
@@ -15,7 +15,7 @@ import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { buildPlayerShip } from '../../render/ships';
-import { Attractor, reachedBody } from '../../physics/attractor';
+import { Attractor, nearestAtmosphereBody, reachedBody } from '../../physics/attractor';
 import { burnUpBody } from '../../physics/atmosphere';
 import type { CameraSystem } from '../camera/camera-system';
 import { focusTargetId } from '../camera/focus-target';
@@ -243,7 +243,8 @@ export class Player extends Ship {
       this.radiator.solarLoad(sunlit, sunDir, this.att, this.totalCoolingRate),
     );
     this.power.update(dt, sunlit, sunDir, this.att, this);
-    this.thermal.updateThermal(dt, this.state.r, this.state.v, this);
+    this.thermal.updateThermal(
+      dt, this.state.r, this.state.v, nearestAtmosphereBody(this.state.r, bodies), this);
   }
 
   // 操作できない間、次のフレームへ持ち越してはならない連続指令を畳む。
@@ -371,7 +372,8 @@ export class Player extends Ship {
   // 熱防御の飽和・空力破壊・大気突入高度・天体の地表到達の判定(自然死)。
   checkLoss(dt: number, _simTime: number, activeStage: Stage, _playerPos: Vec3, attractors: readonly Attractor[]): void {
     if (!this.alive) return;
-    const limit = this.thermal.updateAltitudeAlarm(dt, earthAltitudeOf(this.state.r));
+    const limit = this.thermal.updateAltitudeAlarm(
+      dt, this.state.r, nearestAtmosphereBody(this.state.r, attractors));
 
     // 熱・動圧・大気突入・地表到達のいずれかを喪失理由として判定する
     let reason: string | null = null;

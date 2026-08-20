@@ -1,4 +1,5 @@
 // 重力を及ぼすもの。位置・速度は ECI(地球は原点に静止)。THREE/DOM 非依存の純関数群。
+import { Atmosphere } from './atmosphere';
 import { Quat } from './attitude';
 import { FrameTransform, toFrameState } from './frame';
 import { KinematicState, hermiteInterpolate, kinematicState } from './kinematic-state';
@@ -39,6 +40,7 @@ export type Attractor = {
   readonly accel: Vec3; // この天体自身が受けている ECI 加速度 [m/s²]。state(t, r, v)と合わせて
   // 天体の短時間の局所軌道を表し、RK4 の各段の時刻へ位置を外挿する(attractorPositionAt)ために持つ
   readonly degree2: Degree2Gravity | null; // null なら質点として扱う
+  readonly atmosphere: Atmosphere | null; // null なら大気を持たない(抗力・焼失ともに起きない)
   readonly isStar: boolean; // 太陽輻射圧の輻射源として加算するか
 };
 
@@ -100,6 +102,20 @@ export function strongestAttractor(r: Vec3, attractors: readonly Attractor[]): A
     if (best === null || magSq > bestMagSq) { best = attractor; bestMagSq = magSq; }
   }
   return best!;
+}
+
+// 位置 r へ大気の抗力を及ぼす天体。大気を持つ天体のうち最も近いものを選ぶ — 密度は高度に対して
+// 指数的に減るので、最も近い天体が桁違いに支配する。複数の大気の寄与を足し合わせることは
+// 物理的にありえないので、抗力を掛ける相手はここで1体に決まる。候補が無ければ null。
+export function nearestAtmosphereBody(r: Vec3, bodies: readonly Attractor[]): Attractor | null {
+  let best: Attractor | null = null;
+  let bestDistSq = Infinity;
+  for (const body of bodies) {
+    if (body.atmosphere === null) continue;
+    const distSq = lenSq(sub(r, body.state.r));
+    if (distSq < bestDistSq) { best = body; bestDistSq = distSq; }
+  }
+  return best;
 }
 
 // 位置 r における軌道運動の時間スケール [s]。最も強く引く天体を中心とする円軌道の周期。
