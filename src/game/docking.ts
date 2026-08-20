@@ -57,12 +57,15 @@ const BASE_WINDOW_TEMP_GROUP = 'base-operations-temp';
 
 // 下書きの構成そのものはセッションが持つ。ここが持つのは、セッションの外にしか置けないもの
 // —— 表示の写しと、建造したときに入るドック枠 —— だけである。
+// 下書きの構成そのものはセッションが持つ。ここが持つのは、セッションの外にしか置けないもの
+// —— 表示の写しと、建造したときに入るドック枠 —— だけである。render は sync が組むので、
+// 決まった直後の1フレームだけ null になる。
 interface DraftEntry {
   readonly id: string;
   name: string;
-  render: AssemblyRenderObject;
+  render: AssemblyRenderObject | null;
   // render を組んだときの構成。セッション側が別の値を持っていれば組み直す合図になる。
-  renderedAssembly: VesselAssembly;
+  renderedAssembly: VesselAssembly | null;
   readonly slotIndex: number;
 }
 
@@ -92,6 +95,8 @@ interface AssemblySession {
   // ここに載っているものは倉庫から取り付けた(=生産時に課金済みの)ものだと分かる。
   readonly originalInventoryIds: ReadonlySet<string>;
   readonly drafts: Map<string, DraftEntry>;
+  // 対象が消えた下書きの表示。捨てるのは THREE を触る sync の仕事なので、ここへ預けて渡す。
+  readonly retiredDraftRenders: AssemblyRenderObject[];
   targetId: string;
   selection: AssemblySelection;
   // セッション開始時点のチェイスカメラの距離。セッション終了時にここへ戻す。
@@ -310,7 +315,7 @@ export class Docking {
     const savedChaseDist = this.cameraSystem.combatCamera.chaseCamera.dist;
     const entry: AssemblySession = {
       base, session, workbench, panel, originalInventoryIds, targetId: initial.id, selection: null,
-      drafts: new Map<string, DraftEntry>(), savedChaseDist,
+      drafts: new Map<string, DraftEntry>(), retiredDraftRenders: [], savedChaseDist,
     };
     this.assembly = entry;
 
@@ -423,6 +428,8 @@ export class Docking {
       }
       return true;
     });
+    // 表示の写しの顔ぶれを決めるのは論理側の判断なので、sync ではなくここで済ませる。
+    this.reconcileDrafts(entry);
     if (!this.dragController.dragging) return;
     this.dragController.update(
       this.cameraSystem.activeCamera,
@@ -468,7 +475,7 @@ export class Docking {
     const view = this.targetById(entry.base, entry.targetId);
     if (!view) return null;
     if (view.vessel) return view.vessel.renderObject;
-    return entry.drafts.get(entry.targetId)?.render.object ?? null;
+    return entry.drafts.get(entry.targetId)?.render?.object ?? null;
   }
 
   // 3D から掴み上げた部品は、掴んでいる間だけ実機側の元のメッシュを隠す —— カーソルに
@@ -563,12 +570,17 @@ export class Docking {
   private syncDraftRenders(base: Vessel): void {
     const entry = this.assembly;
     if (!entry) return;
-    this.reconcileDrafts(entry);
+    for (const retired of entry.retiredDraftRenders.splice(0)) {
+      retired.object.removeFromParent();
+      retired.dispose();
+    }
     for (const draft of entry.drafts.values()) {
       const assembly = entry.session.getTarget(draft.id).assembly;
-      if (assembly !== draft.renderedAssembly) {
-        draft.render.object.removeFromParent();
-        draft.render.dispose();
+      if (draft.render && assembly !== draft.renderedAssembly) {
+        entry.retiredDraftRenders.push(draft.render);
+        draft.render = null;
+      }
+      if (!draft.render) {
         draft.render = new AssemblyRenderObject(assembly);
         draft.renderedAssembly = assembly;
       }
@@ -588,15 +600,13 @@ export class Docking {
     for (const id of draftIds) {
       if (entry.drafts.has(id)) continue;
       const slotIndex = this.freeSlotIndex(entry.base);
-      const assembly = entry.session.getTarget(id).assembly;
       if (slotIndex === null) {
         entry.session.removeTarget(id);
         this.reportEditFailure('空きドックが無いため下書きを戻せません');
         continue;
       }
       entry.drafts.set(id, {
-        id, name: `新規船下書き ${entry.drafts.size + 1}`, render: new AssemblyRenderObject(assembly),
-        renderedAssembly: assembly, slotIndex,
+        id, name: `新規船下書き ${entry.drafts.size + 1}`, render: null, renderedAssembly: null, slotIndex,
       });
     }
   }
@@ -740,12 +750,10 @@ export class Docking {
     const id = `draft:${base.id}:${++this.draftSequence}`;
     const assembly = crewedAssembly(C.PLAYER_MAX_HP);
     const draft: DraftEntry = {
-      id, name: `新規船下書き ${this.draftSequence}`, render: new AssemblyRenderObject(assembly),
-      renderedAssembly: assembly, slotIndex,
+      id, name: `新規船下書き ${this.draftSequence}`, render: null, renderedAssembly: null, slotIndex,
     };
     entry.session.createNewVesselDraft(id, assembly);
     entry.drafts.set(id, draft);
-    this.syncDraftRenders(base);
     this.hud.hint(`${draft.name} をドック ${slotIndex + 1} に置きました。編集してから建造してください`);
   }
 
@@ -771,8 +779,7 @@ export class Docking {
   private disposeDraft(entry: AssemblySession, targetId: string): void {
     const draft = entry.drafts.get(targetId);
     if (!draft) return;
-    draft.render.object.removeFromParent();
-    draft.render.dispose();
+    if (draft.render) entry.retiredDraftRenders.push(draft.render);
     entry.drafts.delete(targetId);
   }
 
