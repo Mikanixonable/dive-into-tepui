@@ -195,6 +195,28 @@ export function register(): void {
     assert.equal(reachedBody(prev, next, [rock]), null);
   });
 
+  // 天体が1ステップの間に動くことでだけ成立する接触。天体を静止させて掃引すると取りこぼす。
+  test('reachedBody: 天体自身が区間の間に動いて当たる経路を捉える', () => {
+    const shared = { mu: 0, radius: 500, accel: ZERO, degree2: null, atmosphere: null, isStar: false };
+    const moving: Attractor = { ...shared, id: 'moving', state: kinematicState(0, v3(0, -10e3, 0), v3(0, 1000, 0)) };
+    const still: Attractor = { ...shared, id: 'still', state: kinematicState(0, v3(0, -10e3, 0), ZERO) };
+    const prev = kinematicState(0, ZERO, ZERO);
+    const next = kinematicState(20, ZERO, ZERO);
+
+    assert.equal(reachedBody(prev, next, [still]), null);
+    const impact = reachedBody(prev, next, [moving]);
+    assert.equal(impact?.body, moving);
+    assert.ok(impact!.state.t > prev.t && impact!.state.t < next.t, `到達時刻 ${impact!.state.t}`);
+  });
+
+  test('reachedBody: 動いている天体の表面に触れない通過は検出しない', () => {
+    const moving: Attractor = {
+      id: 'moving', mu: 0, radius: 500, accel: ZERO, degree2: null, atmosphere: null, isStar: false,
+      state: kinematicState(0, v3(600, -10e3, 0), v3(0, 1000, 0)),
+    };
+    assert.equal(reachedBody(kinematicState(0, ZERO, ZERO), kinematicState(20, ZERO, ZERO), [moving]), null);
+  });
+
   // 掃引が空振りする(区間の始点で既に沈んでいる)ので離散判定へ落ち、到達点は始点そのものになる。
   test('reachedBody: 開始時点で既に内部にいる場合もその天体を返す', () => {
     const vel = v3(0, 0, 0);

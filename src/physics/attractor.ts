@@ -148,9 +148,6 @@ export interface BodyImpact {
   readonly state: KinematicState;
 }
 
-// 掃引の間だけ天体を静止させるための速度。Vec3 は不変なので使い回してよい。
-const AT_REST = v3();
-
 // prev→next の1ステップの間に表面へ到達した天体と、到達した瞬間の状態。
 // 到達が無ければ null。複数に到達していれば最も早いものを、掃引が求めた到達割合(toi)から
 // hermiteInterpolate で組んだ状態とともに返す。掃引が空振りした(開始時点で既に沈んでいる、
@@ -164,12 +161,9 @@ export function reachedBody(
   let earliest: Attractor | null = null;
   let earliestToi = Infinity;
   for (const body of bodies) {
-    // 1ステップの間に天体自身が動く距離は、その半径に対しても軌道速度で進む距離に対しても
-    // 十分小さいので、どの天体も区間を通して静止しているものとして掃引する。
     const contact = sweptSphereContact(
       prev, next,
-      kinematicState(prev.t, body.state.r, AT_REST),
-      kinematicState(next.t, body.state.r, AT_REST),
+      attractorStateAt(body, prev.t), attractorStateAt(body, next.t),
       body.radius, mode);
     if (contact !== null && contact.toi < earliestToi) {
       earliest = body;
