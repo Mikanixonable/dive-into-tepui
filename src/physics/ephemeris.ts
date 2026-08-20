@@ -6,6 +6,7 @@
 // ときだけで、ミス時は常に再計算するため、どの順に呼んでも返る値は変わらない(呼び出し順に
 // 依存する隠れた制約を作らない)。
 // THREE/DOM 非依存の純関数群 + 状態(初期位相とメモ)を持つサンプラクラス。
+import { Atmosphere } from './atmosphere';
 import { Quat, qFromForwardUp, qRotate } from './attitude';
 import { AbsoluteEphemeris, OriginCenteredEphemeris } from './absolute-ephemeris';
 import { Attractor, AttractorId, Degree2Gravity, OrbitingId } from './attractor';
@@ -124,11 +125,14 @@ export class Ephemeris {
   private readonly satelliteRelCache = new Map<AttractorId, TimeRing<KinematicState>>();
   private readonly allAttractorsCache = new TimeRing<readonly Attractor[]>();
   private readonly gravityAttractorsCache = new TimeRing<readonly Attractor[]>();
+  private readonly atmosphereAttractorsCache = new TimeRing<readonly Attractor[]>();
 
   // registry の全天体 id、および attractorsAt が返す配列の順序(宣言順)。
   private readonly ids: readonly AttractorId[];
   // mu が 0 でない天体の id(宣言順)。mu は時刻に依らないので構築時に確定する。
   private readonly gravityIds: readonly AttractorId[];
+  // 大気を持つ天体の id(宣言順)。大気の有無は時刻に依らないので構築時に確定する。
+  private readonly atmosphereIds: readonly AttractorId[];
   // registry の主星。0個なら null(輻射源・影の計算がそもそも無意味になる — sunDirAt/dynamics.ts の
   // 呼び出し側はその前提で無害なフォールバックを扱う)。
   readonly starId: AttractorId | null;
@@ -154,6 +158,10 @@ export class Ephemeris {
     this.phaseOffsets = phaseOffsets;
     this.ids = Object.keys(registry);
     this.gravityIds = this.ids.filter((id) => bodyDef(registry, id).mu !== 0);
+    this.atmosphereIds = this.ids.filter((id) => {
+      const def = bodyDef(registry, id);
+      return def.kind !== 'star' && def.atmosphere !== undefined;
+    });
     this.starId = starOf(registry);
     this.inertialFrame = this.frameOf(originId, null);
     this.frames = [
@@ -180,8 +188,10 @@ export class Ephemeris {
 
   // 保持する全時刻キャッシュを合算したヒット/ミス累計。
   get timeCacheStats(): TimeCacheStats {
-    let hits = this.allAttractorsCache.hits + this.gravityAttractorsCache.hits;
-    let misses = this.allAttractorsCache.misses + this.gravityAttractorsCache.misses;
+    let hits = this.allAttractorsCache.hits + this.gravityAttractorsCache.hits
+      + this.atmosphereAttractorsCache.hits;
+    let misses = this.allAttractorsCache.misses + this.gravityAttractorsCache.misses
+      + this.atmosphereAttractorsCache.misses;
     for (const ring of this.planetHelioCache.values()) {
       hits += ring.hits;
       misses += ring.misses;
@@ -558,6 +568,15 @@ export class Ephemeris {
     return { j2: model.j2, refRadius: model.refRadius, pole: orientation.axis, tesseral };
   }
 
+  // 天体の大気を時刻 t の自転軸込みで解決する。大気を持たない天体は null。大気は自転軸を
+  // 共回転の軸として要求するので、姿勢を持たない天体は大気を持てない。
+  private atmosphereAt(def: CelestialBodyDef, t: number): Atmosphere | null {
+    if (def.kind === 'star' || def.atmosphere === undefined) return null;
+    const orientation = this.orientationOf(def, t);
+    if (orientation === null) return null;
+    return { ...def.atmosphere, pole: orientation.axis };
+  }
+
   // 指定時刻の全登録天体(registry の宣言順)。origin は原点に静止。遮蔽判定・表面接触・
   // 中心天体解決・積分刻み・基準天体解決が読む窓。
   // 同一 t には同一の配列参照が返るので、**呼び出し側はこの配列と要素を書き換えてはならない。**
@@ -575,12 +594,21 @@ export class Ephemeris {
     return this.gravityAttractorsCache.put(t, this.gravityIds.map((id) => this.attractorAt(id, t)));
   }
 
+  // 指定時刻の大気を持つ天体(registry の宣言順)。抗力を掛ける1体を選ぶ側が引く窓で、
+  // 既定レジストリでは要素数 1。
+  // 同一 t には同一の配列参照が返るので、**呼び出し側はこの配列と要素を書き換えてはならない。**
+  atmosphereAttractorsAt(t: number): readonly Attractor[] {
+    const cached = this.atmosphereAttractorsCache.get(t);
+    if (cached !== undefined) return cached;
+    return this.atmosphereAttractorsCache.put(t, this.atmosphereIds.map((id) => this.attractorAt(id, t)));
+  }
+
   // 1天体ぶんの時刻 t での重力源表現。返る値は不変。
   attractorAt(id: AttractorId, t: number): Attractor {
     const def = bodyDef(this.registry, id);
     return {
       id, mu: def.mu, radius: def.radius, state: this.stateOf(id, t), accel: this.eciAccelOf(id, t),
-      degree2: this.degree2At(def, t), isStar: def.kind === 'star',
+      degree2: this.degree2At(def, t), atmosphere: this.atmosphereAt(def, t), isStar: def.kind === 'star',
     };
   }
 }

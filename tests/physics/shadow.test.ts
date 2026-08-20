@@ -10,11 +10,11 @@ import { len, sub, v3 } from '../../src/physics/vec3';
 const AU = 1.495978707e11;
 
 function star(x: number): Attractor {
-  return { id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState(0, v3(x, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, isStar: true };
+  return { id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState(0, v3(x, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, isStar: true };
 }
 
 function body(id: string, mu: number, radius: number, x: number): Attractor {
-  return { id, mu, radius, state: kinematicState(0, v3(x, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, isStar: false };
+  return { id, mu, radius, state: kinematicState(0, v3(x, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, isStar: false };
 }
 
 export function register(): void {

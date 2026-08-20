@@ -22,7 +22,7 @@ function circularState(t = 0): KinematicState {
 function earthOnlyProvider(): FutureAttractorProvider {
   const earthAt = (t: number): Attractor => ({
     id: 'earth', mu: MU_EARTH, radius: R_EARTH,
-    state: kinematicState(t, v3(), v3()), accel: v3(), degree2: null, isStar: false,
+    state: kinematicState(t, v3(), v3()), accel: v3(), degree2: null, atmosphere: null, isStar: false,
   });
   return {
     candidates: () => [{ id: 'earth', mu: MU_EARTH, radius: R_EARTH }],
