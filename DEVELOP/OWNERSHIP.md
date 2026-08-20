@@ -254,11 +254,11 @@ main.ts
 │       │   │   │   └── BeltPhysics
 │       │   │   │       └── BeltSection[]  ... 剛体接触用プロキシ
 │       │   │   ├── ThermalSystem          ... 熱・電力の収支を持つ設計だけが持つ。他は null
-│       │   │   ├── RadiatorSystem         ... 放熱板2枚の展開度・損耗度。ヒンジ Group と折り目は Vessel.renderObject 配下を名前で参照し、接触代理の位置もヒンジ Group の位置から測る
+│       │   │   ├── RadiatorSystem         ... 放熱板(最大2枚、自由設計では1枚のみもある)の展開度・損耗度。ヒンジ Group と折り目は Vessel.renderObject 配下を名前で参照し(メッシュが無い側は folds/hinges/partIds から欠落する)、接触代理の位置もヒンジ Group の位置から測る
 │       │   │   │   └── foldProxies (Record<side, RadiatorFold[]>) ... 側ごとの剛体接触用プロキシ。折り数まで
 │       │   │   │       遅延生成し以後使い回す。collisionFolds() が毎 substep 位置を置き直すだけで、
 │       │   │   │       Verlet 等の独立した力学は持たない(艦の姿勢+展開度から一意に決まる剛体の取り付け)
-│       │   │   ├── PowerSystem            ... 太陽電池の蓄電量。パネル法線は機体固定 (0,1,0)、可動部なし
+│       │   │   ├── PowerSystem            ... 太陽電池の蓄電量(最大2枚、1枚のみの設計も可)。パネル法線は機体固定 (0,1,0)
 │       │   │   ├── ThrustEffects → Billboard ×2
 │       │   │   ├── AttitudeControlSystem  ... フライホイールの蓄積角運動量・アンローディング中かどうか・直近の配分(正本)。
 │       │   │   │                              手動操作も自動操縦もここへ要求を出し、Simulator.stepAttitudes が刻みごとに解く
