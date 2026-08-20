@@ -19,6 +19,7 @@ import { formatPartMeta, formatResourceAmount } from './inventory-labels';
 import { DraggableWindow } from './draggable-window';
 import { ObjectPicker, type ObjectPickerGroup } from './object-picker';
 import type { OverlayManager } from './overlay-manager';
+import { hasCorePart } from '../vessel/capabilities';
 
 const STYLE = `
 /* プロパティウィンドウより中身が広いので、この窓だけ横幅の上限を上げる。 */
@@ -333,8 +334,10 @@ export class BaseOperationsWindow {
 
     const actions = document.createElement('div');
     actions.className = 'bow-actions';
-    const launchBtn = new Button('発進', () => this.handleLaunch(index));
+    const canOperate = hasCorePart(entry.vessel);
+    const launchBtn = new Button(canOperate ? '発進' : '発進(操作系なし)', () => this.handleLaunch(index));
     launchBtn.element.classList.add('bow-btn', 'bow-btn-primary');
+    launchBtn.setEnabled(canOperate);
     const inspectBtn = new Button('部品を見る', () => this.handleInspect(index));
     inspectBtn.element.classList.add('bow-btn', 'bow-btn-quiet');
     actions.append(launchBtn.element, inspectBtn.element);
@@ -657,7 +660,6 @@ export class BaseOperationsWindow {
     const shipData = base.baseState!.dockedVessels[index];
     if (!shipData) return;
     this.onLaunchVessel?.(shipData.vessel, base);
-    base.baseState!.dockedVessels.splice(index, 1);
     if (this.currentVessel === shipData.vessel) this.currentVessel = null;
     this.refresh();
   }

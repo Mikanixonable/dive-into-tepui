@@ -78,12 +78,12 @@ export function register(): void {
       targets: [{ id: 'base', kind: 'base', assembly }], inventory: [],
     }, () => ({ valid: true, errors: [] }), {
       targetValidator: (target) => target.kind === 'base'
-        ? { valid: false, errors: ['基地には専用の検証が必要です'] }
-        : { valid: true, errors: [] },
+        ? { blocking: ['基地には専用の検証が必要です'], issues: [] }
+        : { blocking: [], issues: [] },
     });
     const before = session.snapshot();
     const edit = removePlacement(assembly, assembly.placements[0]!.part.id, { validateBlueprint: false });
-    const validation = session.applyEditResult('base', edit);
+    const validation = session.applyAssemblyEdit('base', edit);
     assert.equal(validation.valid, false);
     assert.deepEqual(session.snapshot(), before);
     assert.equal(session.canUndo, false);
@@ -117,7 +117,7 @@ export function register(): void {
       targets: [{ id: 'base', kind: 'base', assembly }], inventory: [antenna],
     }, () => ({ valid: true, errors: [] }));
     const controller = new DockWorkbenchController(session);
-    controller.beginDrag(antenna, null, true);
+    controller.beginDrag(antenna, { kind: 'inventory' });
     controller.updateCandidate({
       placement: {
         kind: 'external', part: antenna,
@@ -126,7 +126,7 @@ export function register(): void {
       verdict: { accepted: true, reason: null },
       targetLabel: '基地', position: v3(0, 0, 0), targetKind: 'base',
     });
-    assert.equal(controller.dragging!.sourceTargetKind, null);
+    assert.equal(controller.dragging!.source.kind, 'inventory');
     assert.equal(controller.drop('base').valid, true);
     assert.equal(session.inventorySnapshot().length, 0);
     assert.equal(controller.undo(), true);

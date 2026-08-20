@@ -7,7 +7,7 @@
 // 候補に含めたい呼び出し側(部材ドラッグ)は portKinds へ 'lateral' を足して渡す。
 
 import type { VesselAssembly } from './assembly';
-import { occupiedPorts } from './assembly-editor';
+import { occupiedPorts } from './port-occupancy';
 import type { MountFrame, MountPoint, PortRef, TreeEdge, TreeNode, VesselTree } from './tree';
 import { edgeFrame, lateralFaceCount, mountFrame, portFrame, portKey } from './tree';
 import { placeSectionPrimitives } from '../../physics/section-moments';
