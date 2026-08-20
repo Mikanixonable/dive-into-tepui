@@ -48,9 +48,7 @@ export class DockWorkbenchController {
 
   public constructor(private readonly session: DockWorkbenchSession) {}
 
-  public get selected(): string | null { return this.selectedPartRef; }
   public get dragging(): DragState | null { return this.drag; }
-  public selectPart(partRef: string | null): void { this.selectedPartRef = partRef; }
 
   public beginDrag(part: AnyPart, source: DragSource): void {
     this.drag = { part, source, candidate: null };
