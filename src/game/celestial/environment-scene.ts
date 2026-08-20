@@ -253,26 +253,27 @@ export class EnvironmentScene {
     return new THREE.Vector3(normal.x, normal.y, normal.z).normalize();
   }
 
-  // 広範囲視点のときだけ参照軌道線を表示する(戦闘ビューでは非表示)。cameraPos はフェード
-  // 距離を測る基準(カメラの真の ECI 位置)。
+  // 惑星・準惑星などの参照軌道線は広範囲視点のときだけ表示する(戦闘ビューでは非表示)。
+  // ハロー軌道参照ラインだけは視点によらず常に同期する。cameraPos はフェード距離を測る
+  // 基準(カメラの真の ECI 位置)。
   private syncReferenceLines(
     simTime: number, fo: FloatingOrigin, overviewMode: boolean, focusId: AttractorId | undefined,
     toggles: BodyClassToggles, sharedVisibilityPolicy: MapVisibilityPolicy | null,
     nearbyIds: readonly AttractorId[], camera: THREE.Camera, cameraPos: Vec3,
   ): void {
-    if (!overviewMode) {
-      this.geoLine.sync(null, fo, camera);
-      this.syncHaloFamilySet(this.moonHaloFamilies, 'moon', 0, 0, false, false, false, false, 0, simTime, fo, camera);
-      this.syncHaloFamilySet(this.earthHaloFamilies, 'earth', 0, 0, false, false, false, false, 0, simTime, fo, camera);
-      for (const [id] of this.referenceLines) this.removeReferenceLine(id);
-      return;
-    }
     const visibilityPolicy = sharedVisibilityPolicy ?? new MapVisibilityPolicy(
       this.ephemeris.registry,
       toggles,
       focusId,
       nearbyIds,
     );
+    this.syncHaloLines(visibilityPolicy, toggles, simTime, fo, camera, cameraPos);
+
+    if (!overviewMode) {
+      this.geoLine.sync(null, fo, camera);
+      for (const [id] of this.referenceLines) this.removeReferenceLine(id);
+      return;
+    }
     if ('earth' in this.ephemeris.registry && toggles.geoOrbit) {
       this.geoLine.sync(this.geoElements, fo, camera);
       const earthPos = this.ephemeris.positionOf('earth', simTime);
@@ -284,6 +285,23 @@ export class EnvironmentScene {
       this.geoLine.sync(null, fo, camera);
     }
 
+    for (const id of this.referenceIds) {
+      if (!visibilityPolicy.body(id).orbit) {
+        this.removeReferenceLine(id);
+        continue;
+      }
+      const line = this.ensureReferenceLine(id);
+      const el = this.orbitElementsFor(id, simTime);
+      line.sync(el, fo, camera);
+      const dist = len(sub(this.ephemeris.stateOf(id, simTime).r, cameraPos));
+      line.setOpacity(this.referenceLineOpacityAt(id, dist));
+    }
+  }
+
+  private syncHaloLines(
+    visibilityPolicy: MapVisibilityPolicy, toggles: BodyClassToggles,
+    simTime: number, fo: FloatingOrigin, camera: THREE.Camera, cameraPos: Vec3,
+  ): void {
     if (this.moonHaloFamilies) {
       const visL1 = visibilityPolicy.body('moon-l1');
       const visL2 = visibilityPolicy.body('moon-l2');
@@ -314,17 +332,6 @@ export class EnvironmentScene {
         masterHalo && toggles.haloL2South && visL2.orbit,
         opacity, simTime, fo, camera,
       );
-    }
-    for (const id of this.referenceIds) {
-      if (!visibilityPolicy.body(id).orbit) {
-        this.removeReferenceLine(id);
-        continue;
-      }
-      const line = this.ensureReferenceLine(id);
-      const el = this.orbitElementsFor(id, simTime);
-      line.sync(el, fo, camera);
-      const dist = len(sub(this.ephemeris.stateOf(id, simTime).r, cameraPos));
-      line.setOpacity(this.referenceLineOpacityAt(id, dist));
     }
   }
 
