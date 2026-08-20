@@ -3,6 +3,7 @@ import { Vessel } from '../vessel/vessel';
 import { hasBaseModule } from '../vessel/capabilities';
 import type { GameEntity } from '../game-entity/game-entity';
 import type { RcsTankPart } from '../game-entity/parts';
+import { propellantTankCapacity } from '../economy/propellant-compatibility';
 import * as C from '../const';
 import type { OverlayManager } from './overlay-manager';
 import { fmtEnergy } from './utils';
@@ -80,6 +81,11 @@ const STYLE = `
 }
 `;
 
+// RCS タンクの容量 [kg]。volume と推進剤の密度から出る。
+function rcsTankCapacity(tank: RcsTankPart): number {
+  return propellantTankCapacity(tank.propellant, tank.volume);
+}
+
 export class ResourceTransferDialog {
   private readonly rootEl: HTMLElement;
   private isOpen = false;
@@ -150,7 +156,7 @@ export class ResourceTransferDialog {
     const aMags = a.fire!.mags;
     const aRcsTanks = a.parts.filter((p): p is RcsTankPart => p.type === 'rcs_tank');
     const aRcsFuel = aRcsTanks.reduce((sum, t) => sum + t.fuel, 0);
-    const aRcsMaxFuel = aRcsTanks.reduce((sum, t) => sum + t.maxFuel, 0);
+    const aRcsMaxFuel = aRcsTanks.reduce((sum, t) => sum + rcsTankCapacity(t), 0);
 
     // B metrics
     let bPowerJ = 0;
@@ -163,7 +169,7 @@ export class ResourceTransferDialog {
       bMags = bShip.fire!.mags;
       const bRcsTanks = bShip.parts.filter((p): p is RcsTankPart => p.type === 'rcs_tank');
       bRcsFuel = bRcsTanks.reduce((sum, t) => sum + t.fuel, 0);
-      bRcsMaxFuel = bRcsTanks.reduce((sum, t) => sum + t.maxFuel, 0);
+      bRcsMaxFuel = bRcsTanks.reduce((sum, t) => sum + rcsTankCapacity(t), 0);
     } else if (bBase) {
       bPowerJ = C.POWER_CAPACITY * 10; // 基地電源は実質無限
       bMags = 999; // 基地の補給庫は尽きない
@@ -412,7 +418,7 @@ export class ResourceTransferDialog {
 
   private refillRcsFuel(ship: Vessel): void {
     const tanks = ship.parts.filter((p): p is RcsTankPart => p.type === 'rcs_tank');
-    for (const t of tanks) t.fuel = t.maxFuel;
+    for (const t of tanks) t.fuel = rcsTankCapacity(t);
   }
 
   private transferRcsFuel(from: Vessel, to: Vessel | null, amountKg: number): void {
@@ -435,7 +441,7 @@ export class ResourceTransferDialog {
       const toTanks = to.parts.filter((p): p is RcsTankPart => p.type === 'rcs_tank');
       let leftToAdd = toTransfer;
       for (const t of toTanks) {
-        const space = t.maxFuel - t.fuel;
+        const space = rcsTankCapacity(t) - t.fuel;
         const add = Math.min(space, leftToAdd);
         t.fuel += add;
         leftToAdd -= add;
@@ -448,11 +454,11 @@ export class ResourceTransferDialog {
     const tanksA = shipA.parts.filter((p): p is RcsTankPart => p.type === 'rcs_tank');
     const tanksB = shipB.parts.filter((p): p is RcsTankPart => p.type === 'rcs_tank');
     const totalFuel = tanksA.reduce((s, t) => s + t.fuel, 0) + tanksB.reduce((s, t) => s + t.fuel, 0);
-    const totalMax = tanksA.reduce((s, t) => s + t.maxFuel, 0) + tanksB.reduce((s, t) => s + t.maxFuel, 0);
+    const totalMax = tanksA.reduce((s, t) => s + rcsTankCapacity(t), 0) + tanksB.reduce((s, t) => s + rcsTankCapacity(t), 0);
     if (totalMax <= 0) return;
 
     const ratio = totalFuel / totalMax;
-    for (const t of tanksA) t.fuel = t.maxFuel * ratio;
-    for (const t of tanksB) t.fuel = t.maxFuel * ratio;
+    for (const t of tanksA) t.fuel = rcsTankCapacity(t) * ratio;
+    for (const t of tanksB) t.fuel = rcsTankCapacity(t) * ratio;
   }
 }

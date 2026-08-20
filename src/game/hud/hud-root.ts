@@ -159,16 +159,7 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
   configureCombatPanel(status);
   status.body.innerHTML = `
     <dl class="metric-list">
-      <div class="row metric">
-        <dt class="k">RCS燃料</dt>
-        <dd class="v rcs-fuel-readout">
-          <span class="rcs-fuel-meter" data-id="rcs-fuel-meter" role="progressbar"
-            aria-label="RCS燃料" aria-valuemin="0">
-            <span class="rcs-fuel-fill" data-id="rcs-fuel-fill"></span>
-          </span>
-          <output class="rcs-fuel-value" data-id="rcs-fuel-value">—</output>
-        </dd>
-      </div>
+      <div class="fuel-rows" data-id="fuel-rows"></div>
       <div class="row metric">
         <dt class="k">RCS制動 <kbd>${K.rcsDampToggle.label}</kbd></dt>
         <dd class="v"><output data-id="rcs">—</output></dd>

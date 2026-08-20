@@ -13,6 +13,7 @@ import { Attitude, attitudeAlignError, attitudeAlignTorque } from '../../physics
 import { Vec3, len, scale, sub, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import type { Plan } from './plan';
+import type { PropellantId } from '../economy/propellant-compatibility';
 import { burnCutoffProjection, burnDurationFor, burnUpReference, ignitionTimeFor, maxAccelOf, turnTimeFor } from './plan-executor-math';
 
 // 'off': ノードを消化しない。'instant': ノード時刻ちょうどで絶対状態へ乗り移る(瞬間移動)。
@@ -28,10 +29,10 @@ export interface PlanExecutorShip {
   readonly plan: Plan;
   readonly mass: number;
   readonly totalThrust: number;
-  readonly totalFuelConsumptionRate: number;
   requestTorque(torque: Vec3): void;
   thrust: Vec3 | null;
-  consumeFuel(amount: number): number;
+  engineFuelConsumptionRates(): ReadonlyMap<PropellantId, number>;
+  consumeFuelByRates(rates: ReadonlyMap<PropellantId, number>, scale: number): number;
 }
 
 export interface PlanExecutorHud {
@@ -175,7 +176,7 @@ export class PlanExecutor {
     const level = this.phase === 'trim' ? C.THROTTLE_LEVELS[0]! : maxLevel;
     const presetScale = level / maxLevel;
     const maxAccel = maxAccelOf(ship.totalThrust, ship.mass);
-    const ratio = ship.consumeFuel(ship.totalFuelConsumptionRate * presetScale * simDt);
+    const ratio = ship.consumeFuelByRates(ship.engineFuelConsumptionRates(), presetScale * simDt);
     this.pendingAccel = maxAccel * presetScale * ratio;
     if (this.pendingAccel <= 0) {
       ship.setPlanExecution('off');
