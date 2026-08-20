@@ -17,7 +17,7 @@ import type { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 
 import type { Vessel } from './vessel';
-import { headingHpMarkerSvg, notchedHpMarkerSvg } from './hp-marker-svg';
+import { vesselMarkerSvg } from './hp-marker-svg';
 
 // 戦闘ビュー専用のマーカー(広範囲視点ではまとめて隠す)。
 const COMBAT_KEYS = ['pro', 'retro', 'nrm', 'anm', 'radout', 'radin', 'bore'] as const;
@@ -74,7 +74,11 @@ export class PilotMarkers {
           const shipOccluded = isOccluded(cameraPos, displayState.r, attractors);
           if (fadedOpacity > 0 && !shipOccluded) {
             const rotationDeg = this.markerManager.headingRotationDeg(displayState.r, displayState.v, project, scaleFn, attractors, frame, displayTime, ephemeris);
-            const sym = visibility?.icon === false ? '' : (this.owner ? (overviewMode ? headingHpMarkerSvg(this.owner.hp, this.owner.maxHp, this.owner.name, false) : notchedHpMarkerSvg(this.owner.hp, this.owner.maxHp)) : ENTITY_GLYPH.ship);
+            const sym = visibility?.icon === false
+              ? ''
+              : this.owner
+                ? vesselMarkerSvg(!!this.owner.baseState, this.owner.hp, this.owner.maxHp, this.owner.name, overviewMode, false)
+                : ENTITY_GLYPH.ship;
             const symMarkup = overviewMode && !!this.owner;
             this.markerManager.setPosition(
               selfKey, 'mk-self', sym, displayState.r, project,
@@ -94,8 +98,9 @@ export class PilotMarkers {
       return;
     }
     this.markerManager.hide(selfKey);
-    
-    if (isActive) {
+
+    // 姿勢基準の方向マーカー・ボアサイトは操縦を行う機体だけの概念。基地はここまで来ない。
+    if (isActive && !this.owner?.baseState) {
       this.syncOrbitAxes(currentState, project);
       this.syncBoresight(currentState, att, project, rounds, beltLinks, muzzleSpeed);
     }
