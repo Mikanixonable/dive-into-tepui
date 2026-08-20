@@ -14,20 +14,23 @@ import type { EdgeKind, MountPoint, PortRef, TreeEdge, TreeNode, VesselTree } fr
 import { portFrame } from './tree';
 import { baseParts, crewedParts, hostileParts, tuneActuators } from './vessel-parts';
 import type { DerivedMassProperties } from './mass-properties';
-import { deriveMassProperties } from './mass-properties';
+import { deriveMassProperties, propellantStoreOf } from './mass-properties';
 import { principalMoments } from '../../physics/inertia-tensor';
 
 // 既定の有人艦の質量特性。ショップのカタログや弾道係数の見積もりが「既定艦と同じ桁」を書くために
 // 読む。形状は起動中に変わらないので1度だけ導いて使い回す。
 let crewedDerived: DerivedMassProperties | null = null;
 export function crewedMassProperties(): DerivedMassProperties {
-  return (crewedDerived ??= deriveMassProperties(crewedAssembly(C.PLAYER_MAX_HP)));
+  return (crewedDerived ??= (() => {
+    const assembly = crewedAssembly(C.PLAYER_MAX_HP);
+    return deriveMassProperties(assembly, propellantStoreOf(assembly));
+  })());
 }
 
 // 主機・並進RCS・フライホイールの性能を、この形状から導いた質量特性へ合わせる(§10-4)。
 // 組み立ての最後に必ず通すので、外へ出る VesselAssembly は常に調整済みの推力を持つ。
 function tuneAssemblyActuators(assembly: VesselAssembly): void {
-  const derived = deriveMassProperties(assembly);
+  const derived = deriveMassProperties(assembly, propellantStoreOf(assembly));
   const parts = assembly.placements.map((placement) => placement.part);
   tuneActuators(parts, derived.loadedMass, principalMoments(derived.inertia).z);
 }
