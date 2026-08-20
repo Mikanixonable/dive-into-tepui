@@ -49,29 +49,7 @@
 
 ---
 
-## 2. 仕様の更新(先に行う)
-
-天体を動かすことは「どう振舞うべきか」の変更なので、`DEVELOP/SPEC/ORBIT.md` を先に直す。
-
-**「天体表面への到達判定」節、1つめの箇条書きの直後へ次を挿入する。**
-
-```
-- 掃引は、判定される物体と相手の天体の**両方**の1ステップぶんの運動を含めて
-  行う。天体の側だけを静止させた判定はしない。
-```
-
-**「剛体接触」節、1つめの箇条書きの直後へ次を挿入する。**
-
-```
-- 天体との接触も、天体自身の1ステップぶんの運動を含めて掃引する。
-```
-
-`margin` については SPEC は既に「全天体で 0」と書いているので、**変更しない。** 引数の削除は
-仕様に追従する側の変更である。
-
----
-
-## 3. 変更が必要な箇所
+## 2. 変更が必要な箇所
 
 ### `src/physics/sphere-contact.ts`
 
@@ -106,7 +84,7 @@ export interface SweptSphereContact {
   「lo 側が始点と同符号・hi 側が反対符号」へ一般化する。
 - `radiusSum > 0` を線形側にも先頭で課す。交差の瞬間の相対距離は必ず `radiusSum` なので、
   これを課せば法線が潰れることはなくなり、`normalized` の null 分岐が要らなくなる。
-- `containingBody` を削除する。
+- `containingBody` を削除する(`margin` は削除済み)。
 
 ### `src/physics/attractor.ts`
 
@@ -118,9 +96,9 @@ export interface SweptSphereContact {
 export function attractorStateAt(a: Attractor, t: number): KinematicState;
 ```
 
-- `reachedBody`: `margin` 引数を削除。`containingBody` の2つのフォールバックを削除し、
-  判定器の戻り値だけで到達を決める。天体の区間端は `attractorStateAt(body, prev.t)` /
-  `attractorStateAt(body, next.t)`。`AT_REST` を削除。
+- `reachedBody`: `containingBody` の2つのフォールバックを削除し、判定器の戻り値だけで到達を
+  決める。天体の区間端は `attractorStateAt(body, prev.t)` / `attractorStateAt(body, next.t)`。
+  `AT_REST` を削除。
 - 到達の選び方は、いまの3分岐と同じ優先順を保つ。
 
 | 判定器の戻り値 | 到達状態 | 優先 |
@@ -141,25 +119,16 @@ export function attractorStateAt(a: Attractor, t: number): KinematicState;
   `attractorStateAt(body, eWork.t)` / `attractorStateAt(body, e.prevState.t)` にする。
   位置だけ凍って速度が実速度、という食い違いが消える。
 
-### `reachedBody` の呼び出し4箇所(`margin` の `0` を落とす)
-
-- `src/game/game-entity/bullet.ts:90`(`'linear'` が第4引数へ繰り上がる)
-- `src/game/game-entity/game-entity.ts:338`
-- `src/game/player/player.ts:383`
-- `src/game/simulation/predicted-arc.ts:174`
-
 ### テスト
 
 - `tests/physics/sphere-contact.test.ts` — ヘルパの戻り値型を追随させる。`containingBody` の
-  4件は API ごと消えるので削除し、代わりに判定器の戻り値を押さえる件を足す(4-6)。
+  3件は API ごと消えるので削除し、代わりに判定器の戻り値を押さえる件を足す(3-6)。
 - `tests/physics/attractor.test.ts` — `containingBody` の import と 153〜154 行を削除。
-  `reachedBody: margin ぶん表面の外側までを到達とみなす` の1件は引数ごと消えるので削除。
-  他の `reachedBody` 呼び出しから `0` を落とす。
 - `tests/physics/collision-response.test.ts` — 変更なし(掃引の始点を渡していない)。
 
 ---
 
-## 4. 達成目標
+## 3. 達成目標
 
 **実施後、次を1つずつ当てる。**
 
@@ -179,24 +148,14 @@ export function attractorStateAt(a: Attractor, t: number): KinematicState;
      当たる配置で `reachedBody` が到達を返す。
 7. **既存の挙動テストのうち、書き換わってよいのは次だけ。** これ以外が落ちたら、意図しない
    挙動変化を入れている。
-   - `containingBody` を名指しする 4 + 2 件(API 削除)
-   - `reachedBody: margin ぶん表面の外側までを到達とみなす`(引数削除)
+   - `containingBody` を名指しする 3 + 2 件(API 削除)
    - 引数の並びが変わるだけの呼び出し(assertion は変えない)
 
 ---
 
-## 5. 手順(着手順)
+## 4. 手順(着手順)
 
 各ステップは単独で commit できる。毎ステップ `npm run typecheck` と `npm run test:physics`。
-
-### Step 1: `margin` を落とす
-
-`reachedBody` と `containingBody` から `margin` を削除し、4つの呼び出しと該当テスト1件を直す。
-**完了条件**: 達成目標 3。
-
-### Step 2: SPEC/ORBIT.md を直す
-
-2章の2つの挿入を入れる。**完了条件**: SPEC に天体側の運動が書かれている。
 
 ### Step 3: `attractorStateAt` を新設する
 
@@ -223,7 +182,7 @@ export function attractorStateAt(a: Attractor, t: number): KinematicState;
 
 ---
 
-## 6. 見積り
+## 5. 見積り
 
 ### 行数
 
@@ -259,7 +218,7 @@ export function attractorStateAt(a: Attractor, t: number): KinematicState;
 
 ---
 
-## 7. リスクと落とし穴
+## 6. リスクと落とし穴
 
 | リスク | 影響 | それが露見する場所 |
 |---|---|---|
@@ -274,7 +233,7 @@ export function attractorStateAt(a: Attractor, t: number): KinematicState;
 
 ---
 
-## 8. 検証
+## 7. 検証
 
 - `npm run typecheck` — 毎ステップ。
 - `npm run test:physics` — 毎ステップ(`src/physics/` を直接触る)。
