@@ -79,29 +79,33 @@ export class RadiatorSystem {
   private readonly panels: Record<RadiatorSide, Panel> = { up: new Panel(), down: new Panel() };
   // side ごとの損耗率(0=無傷, 1=全損)。放熱板パーツの残 HP から update() で受け取る。
   private wear: Record<RadiatorSide, number> = { up: 0, down: 0 };
-  private readonly folds: Record<RadiatorSide, THREE.Object3D[]>;
+  // 実際にメッシュが見つかった side だけ値を持つ。自由設計では放熱板が1枚だけのこともあり、
+  // その場合は反対側が丸ごと欠損する — この3つは常に同じ side 集合を持つ。
+  private readonly folds: Partial<Record<RadiatorSide, THREE.Object3D[]>> = {};
   // side ごとのヒンジの取り付け位置(機体座標系)。蛇腹メッシュから読む。
-  private readonly hinges: Record<RadiatorSide, Vec3>;
+  private readonly hinges: Partial<Record<RadiatorSide, Vec3>> = {};
+  // side ごとに対応する放熱板パーツの id。hull-mesh.ts がメッシュへ刻んだ partVisualRef から読む
+  // ので、どちらの搭載要素がどちらの側に置かれたかを、側の割り当てロジックを再実装せず知れる。
+  private readonly partIds: Partial<Record<RadiatorSide, string>> = {};
   // side ごとの接触代理。折り数まで遅延生成し、以後は使い回す。
   private readonly foldProxies: Record<RadiatorSide, RadiatorFold[]> = { up: [], down: [] };
 
   // renderObject の上下それぞれのヒンジ Group から、折り目 Group を
-  // RADIATOR_FOLD_COUNT 個解決して保持する。owner は接触代理が帰結を委ねる先の艦。
+  // RADIATOR_FOLD_COUNT 個解決して保持する。メッシュが見つからない側(放熱板を1枚しか
+  // 積んでいない設計)は欠損のまま進む。owner は接触代理が帰結を委ねる先の艦。
   public constructor(renderObject: THREE.Object3D, private readonly owner: Vessel, saved?: RadiatorSaveData) {
-    const collect = (side: RadiatorSide, baseName: string): THREE.Object3D[] => {
-      const namePrefix = baseName + (side === 'up' ? 'Up' : 'Down');
+    for (const side of ['up', 'down'] as const) {
+      const hinge = renderObject.getObjectByName(RADIATOR_OBJECT_NAMES[side]);
+      if (!hinge) continue;
+      const namePrefix = 'radiator' + (side === 'up' ? 'Up' : 'Down');
       const found = Array.from({ length: C.RADIATOR_FOLD_COUNT }, (_, i) =>
         renderObject.getObjectByName(`${namePrefix}Fold${i}`));
-      if (found.some((f) => !f)) throw new Error(`${baseName} fold objects not found in ship model`);
-      return found as THREE.Object3D[];
-    };
-    this.folds = { up: collect('up', 'radiator'), down: collect('down', 'radiator') };
-    const hingeOf = (side: RadiatorSide): Vec3 => {
-      const hinge = renderObject.getObjectByName(RADIATOR_OBJECT_NAMES[side]);
-      if (!hinge) throw new Error(`radiator hinge "${RADIATOR_OBJECT_NAMES[side]}" not found in ship model`);
-      return v3(hinge.position.x, hinge.position.y, hinge.position.z);
-    };
-    this.hinges = { up: hingeOf('up'), down: hingeOf('down') };
+      if (found.some((f) => !f)) continue;
+      this.hinges[side] = v3(hinge.position.x, hinge.position.y, hinge.position.z);
+      this.folds[side] = found as THREE.Object3D[];
+      const ref = hinge.userData['partVisualRef'] as { partId?: string } | undefined;
+      if (ref?.partId) this.partIds[side] = ref.partId;
+    }
     if (saved) {
       for (const side of ['up', 'down'] as const) {
         this.panels[side].deployTarget = saved[side].deployTarget;
@@ -110,8 +114,19 @@ export class RadiatorSystem {
     }
   }
 
-  // side の展開/収納を切り替える。
+  // side に実際のメッシュ(=放熱板パーツ)があるか。
+  hasSide(side: RadiatorSide): boolean {
+    return side in this.hinges;
+  }
+
+  // side に対応する放熱板パーツの id。メッシュが無い side では undefined。
+  partIdOf(side: RadiatorSide): string | undefined {
+    return this.partIds[side];
+  }
+
+  // side の展開/収納を切り替える。メッシュが無い side は何もしない。
   toggle(side: RadiatorSide): void {
+    if (!this.hasSide(side)) return;
     const p = this.panels[side];
     p.deployTarget = p.deployTarget === 0 ? 1 : 0;
   }
@@ -145,11 +160,12 @@ export class RadiatorSystem {
   }
 
   // 各折り目 Group の rotation.y(親からの相対回転)を展開角へ同期し、全損したパネルの
-  // 蛇腹を非表示にする。
+  // 蛇腹を非表示にする。メッシュが無い side は何も無いので飛ばす。
   sync(): void {
     for (const side of ['up', 'down'] as const) {
-      const { even, odd } = this.foldThetas(side);
       const folds = this.folds[side];
+      if (!folds) continue;
+      const { even, odd } = this.foldThetas(side);
       const broken = this.wear[side] >= 1;
       for (let i = 0; i < folds.length; i++) {
         const fold = folds[i];
@@ -163,10 +179,17 @@ export class RadiatorSystem {
     }
   }
 
-  // side の有効な放熱面積 [m^2]。展開度と損耗度で目減りする。
+  // 実際にメッシュがある side の数。1枚しか積んでいない機体では、その1枚が
+  // totalCoolingRate の全量を担う。
+  private activeSideCount(): number {
+    return (['up', 'down'] as const).filter((side) => this.hasSide(side)).length;
+  }
+
+  // side の有効な放熱面積 [m^2]。展開度と損耗度で目減りする。メッシュの無い side は 0。
   private panelArea(side: RadiatorSide, totalCoolingRate: number): number {
-    if (this.wear[side] >= 1) return 0;
-    return (totalCoolingRate / 2) * this.panels[side].deploy;
+    const count = this.activeSideCount();
+    if (!this.hasSide(side) || this.wear[side] >= 1 || count === 0) return 0;
+    return (totalCoolingRate / count) * this.panels[side].deploy;
   }
 
   // 放熱に使える面積 [m^2]。
@@ -199,14 +222,15 @@ export class RadiatorSystem {
   collisionFolds(shipR: Vec3, shipV: Vec3, att: Attitude, t: number): RadiatorFold[] {
     const result: RadiatorFold[] = [];
     for (const side of ['up', 'down'] as const) {
-      if (this.panels[side].deploy < C.RADIATOR_CONTACT_DEPLOY || this.wear[side] >= 1) continue;
+      const hinge = this.hinges[side];
+      if (!hinge || this.panels[side].deploy < C.RADIATOR_CONTACT_DEPLOY || this.wear[side] >= 1) continue;
       const proxies = this.foldProxies[side];
       while (proxies.length < C.RADIATOR_FOLD_COUNT) proxies.push(new RadiatorFold(side, proxies.length, this.owner));
       const { even, odd } = this.foldThetas(side);
       // 各折りの機体座標系オフセットを、艦の位置・姿勢・角速度(回転による接線速度込み)で
       // world 座標へ変換する。
       for (const fold of proxies) {
-        const bodyOffset = foldLocalPosition(this.hinges[side], side, fold.foldIndex, even, odd);
+        const bodyOffset = foldLocalPosition(hinge, side, fold.foldIndex, even, odd);
         const worldPos = add(shipR, qRotate(att.q, bodyOffset));
         const worldVel = add(shipV, qRotate(att.q, cross(att.w, bodyOffset)));
         fold.state = kinematicState(t, worldPos, worldVel);
@@ -217,8 +241,10 @@ export class RadiatorSystem {
   }
 
   // side の蛇腹の先端付近の world 座標を shipR 基準の Vec3 で返す。sync() 後の状態を前提にする。
+  // メッシュの無い side は shipR をそのまま返す。
   tipWorldPosition(side: RadiatorSide, shipR: Vec3, _att: Attitude): Vec3 {
-    const fold = this.folds[side][this.folds[side].length - 1];
+    const folds = this.folds[side];
+    const fold = folds?.[folds.length - 1];
     if (!fold) return shipR;
     fold.updateWorldMatrix(true, false);
     const worldPos = new THREE.Vector3();
@@ -229,12 +255,15 @@ export class RadiatorSystem {
   // HUD 表示用。
   deployOf(side: RadiatorSide): number { return this.panels[side].deploy; }
 
-  // 両面をならした展開度 0..1。壊れた面は畳んだのと同じく張り出しを持たない。面積は左右で
-  // 等分されているので、投影面積を減らす割合はこの平均そのものになる。
+  // 実在する面をならした展開度 0..1。壊れた面は畳んだのと同じく張り出しを持たない — 面積は
+  // 実在する面で等分されているので、投影面積を減らす割合はこの平均そのものになる。メッシュの
+  // 無い面は分母からも外す(1枚構成の機体で、その1枚が全開のとき 0.5 になってしまうのを防ぐ)。
   deployedFraction(): number {
-    const sides: readonly RadiatorSide[] = ['up', 'down'];
-    return sides.reduce(
-      (sum, side) => sum + (this.wear[side] >= 1 ? 0 : this.panels[side].deploy), 0) / sides.length;
+    const present = (['up', 'down'] as const).filter((side) => this.hasSide(side));
+    if (present.length === 0) return 0;
+    return present.reduce(
+      (sum, side) => sum + (this.wear[side] < 1 ? this.panels[side].deploy : 0), 0)
+      / present.length;
   }
   wearOf(side: RadiatorSide): number { return this.wear[side]; }
 

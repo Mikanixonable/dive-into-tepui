@@ -88,6 +88,7 @@ export function validateBlueprint(
 
   checkConnected(tree, issues);
   checkPortExclusivity(bp, issues);
+  checkRadiatorCount(bp, issues);
   checkLateralPortFit(tree, issues);
   checkAdjacentPortInterference(bp, issues);
   checkTrussCrowding(bp, issues);
@@ -189,6 +190,20 @@ function checkPortExclusivity(bp: VesselBlueprint, issues: BlueprintIssue[]): vo
     } else {
       issues.push(issue('error', placement.part.id, `接続口 ${key} は "${owner.id}" が既に使っています`));
     }
+  }
+}
+
+// 放熱板は機体の左右2枚しか置き場が無い(hull-mesh.ts の PanelSides)。
+const MAX_RADIATOR_COUNT = 2;
+
+// 放熱板の搭載数が MAX_RADIATOR_COUNT 以内であること。超える枚数は、メッシュ・接触代理・HUD の
+// どれもが片側に重複してしまう。
+function checkRadiatorCount(bp: VesselBlueprint, issues: BlueprintIssue[]): void {
+  const radiators = externals(bp).filter((p) => p.part.type === 'radiator');
+  if (radiators.length <= MAX_RADIATOR_COUNT) return;
+  for (const placement of radiators) {
+    issues.push(issue('error', placement.part.id,
+      `放熱板は最大 ${MAX_RADIATOR_COUNT} 枚までです(${radiators.length} 枚積んでいます)`));
   }
 }
 

@@ -597,7 +597,6 @@ export class Vessel extends GameEntity {
   public get totalFireRate(): number { return this.inventory.totalFireRate; }
   public get weaponDamage(): number { return this.inventory.weaponDamage; }
   public get averageMuzzleVelocity(): number { return this.inventory.averageMuzzleVelocity; }
-  public get radiatorParts(): readonly (Part | undefined)[] { return this.inventory.radiatorParts; }
   public get solarParts(): readonly (Part | undefined)[] { return this.inventory.solarParts; }
 
   public consumeFuel(amount: number): number { return this.inventory.consumeFuel(amount); }
@@ -884,12 +883,18 @@ export class Vessel extends GameEntity {
     }
   }
 
+  // side に対応する放熱板パーツ。RadiatorSystem がメッシュから読んだ partId で引くので、
+  // 積んだ順ではなく実際にその側へ置かれたパーツを指す。
+  private radiatorPartAt(side: RadiatorSide): Part | undefined {
+    const partId = this.radiator?.partIdOf(side);
+    return partId ? this.parts.find((p) => p.id === partId) : undefined;
+  }
+
   // 放熱板パーツの残 HP から side ごとの損耗率を組む。パーツが欠けている側は全損扱い。
   private radiatorWear(): Record<RadiatorSide, number> {
-    const [up, down] = this.radiatorParts;
     const wearOf = (part: Part | undefined): number =>
       part && part.maxHp > 0 ? 1 - part.hp / part.maxHp : 1;
-    return { up: wearOf(up), down: wearOf(down) };
+    return { up: wearOf(this.radiatorPartAt('up')), down: wearOf(this.radiatorPartAt('down')) };
   }
 
   // ------------------------------------------------------------ 損傷と喪失
@@ -913,7 +918,7 @@ export class Vessel extends GameEntity {
       this.applyDamageToParts(bullet.damage);
     } else {
       this.thermal?.addImpactHeat();
-      const damagedPart = side === null ? undefined : this.radiatorParts[side === 'up' ? 0 : 1];
+      const damagedPart = side === null ? undefined : this.radiatorPartAt(side);
       this.applyDamageToParts(side === null ? bullet.damage : C.RADIATOR_BULLET_DAMAGE, damagedPart);
       if (side !== null && damagedPart && damagedPart.hp <= 0) this.radiatorBreakEffect(side);
     }
@@ -958,7 +963,7 @@ export class Vessel extends GameEntity {
       this.attackedByBullet(other, contact.point, simTime, activeStage, side);
       return;
     }
-    const damagedPart = this.radiatorParts[side === 'up' ? 0 : 1];
+    const damagedPart = this.radiatorPartAt(side);
     if (!this.applyCollisionDamage(contact.impulse / this.mass, damagedPart)) return;
     if (damagedPart && damagedPart.hp <= 0) this.radiatorBreakEffect(side);
     if (this.hp > 0) {
