@@ -65,11 +65,14 @@ export function createDefaultBaseModule(maxHp: number): BaseModulePart {
 
 // 既定パーツへの HP 配分比。合計 1 になるよう保つ(機体の maxHp をこの比で割り振る)。
 // 放熱板・太陽電池パドルは機体の左右2枚ぶんなので、パーツも side ごとに1枚ずつ持つ。
+// 新設した推進系3種(reductantTank/plumbing/pressurantTank、計 0.04)の枠は、既存の全要素へ
+// 一様に 0.96 を掛けて捻出する——特定の要素だけを削ると、その要素だけ既定艦での頑丈さが
+// 変わってしまう(戦闘バランスの変更は今回の要件ではない)。
 const CREWED_HP_RATIO = {
-  hull: 0.28, cockpit: 0.08, heatShield: 0.02, engine: 0.07, rcsThruster: 0.03, flywheel: 0.03,
-  magnetorquer: 0.01, rcsTank: 0.07, reductantTank: 0.02, plumbing: 0.01, pressurantTank: 0.01,
-  radiator: 0.05, solarPanel: 0.03, weapon: 0.05, magazine: 0.02, ammunition: 0.02,
-  battery: 0.03, communication: 0.02, lifeSupport: 0.03, armor: 0.05,
+  hull: 0.288, cockpit: 0.0768, heatShield: 0.0192, engine: 0.0672, rcsThruster: 0.0288, flywheel: 0.0288,
+  magnetorquer: 0.0096, rcsTank: 0.0672, reductantTank: 0.02, plumbing: 0.01, pressurantTank: 0.01,
+  radiator: 0.048, solarPanel: 0.0288, weapon: 0.0672, magazine: 0.0192, ammunition: 0.0192,
+  battery: 0.0288, communication: 0.0192, lifeSupport: 0.0288, armor: 0.048,
 } as const;
 
 // 無人の敵対機の HP 配分比。船体・主機・姿勢制御・タンク・武装・装甲へ配る。合計 1 になるよう保つ。
