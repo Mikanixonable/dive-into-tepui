@@ -139,4 +139,17 @@ export function register(): void {
     const longTimes = tipTimes(longArc, steps);
     assert.notDeepEqual(shortTimes, longTimes, 'consumable でない弧は requiredEnd で刻みが変わるはず');
   });
+
+  test('predicted-arc: 区間を表せるかは起点で決まり、起点を差し替えると表せなくなる', () => {
+    const state0 = circularState();
+    const end = state0.t + 3600;
+    const arc = new PredictedArc(state0, earthOnlyProvider(), 0, 0, /* keplerTail */ false, /* consumable */ false);
+    arc.requiredEnd = end;
+    arc.retainFrom = state0.t;
+    tipTimes(arc, 5);
+
+    assert.ok(arc.represents(state0, end), '同じ起点なら弧を使い回せる(毎フレーム作り直さない)');
+    const edited = kinematicState(state0.t, state0.r, v3(state0.v.x, state0.v.y + 10, state0.v.z));
+    assert.ok(!arc.represents(edited, end), '起点を差し替えたら弧を作り直す(計画のノードを編集したとき)');
+  });
 }
