@@ -71,6 +71,8 @@ export type EnemyInit =
   | { readonly saved: EnemySaveData; readonly simTime: number };
 
 export class Enemy extends Ship {
+  // 敵は熱シミュレーションを持たないので、基底の破片相当より濃い大気まで耐える。
+  protected readonly burnUpDensity = C.ENEMY_BURNUP_DENSITY;
   accent: string | number; // マーカー色・集団識別。全敵が保持する
   waveId?: number; // stage00 のウェーブ敵のみ。生存ウェーブ集計に使う
   readonly orbitLineColor: string | number;
@@ -235,10 +237,10 @@ export class Enemy extends Ship {
     activeStage.recordEnemyDeath(this, simTime, 'despawn');
   }
 
-  // 大気突入による自然死。固体表面への接触は collideWith が扱う。
+  // 大気での焼失による自然死。固体表面への接触は collideWith が扱う。
   checkLoss(_dt: number, simTime: number, activeStage: Stage, _playerPos: Vec3, attractors: readonly Attractor[]): void {
     if (!this.alive) return;
-    if (burnUpBody(this.state.r, attractors, C.REENTRY_ALT) === null) return;
+    if (burnUpBody(this.state.r, attractors, this.burnUpDensity) === null) return;
     this.alive = false;
     this.destroyEffect();
     activeStage.recordEnemyDeath(this, simTime, 'reentry');
