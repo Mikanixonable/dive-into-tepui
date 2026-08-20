@@ -166,11 +166,18 @@ export function crewedAssembly(maxHp: number): VesselAssembly {
   return assembly;
 }
 
+// 推進剤区画(aft)へ置く種別。既定設計の配置の都合であって種別そのものの性質ではないので
+// parts.ts へは出さず、このファイルに閉じる。crewedAssembly/orbitalBaseAssembly の両方が
+// これ1つを通ることで、艦と基地の置き場所が黙って食い違うことを防ぐ。
+function belongsInPropellantBay(type: PartType): boolean {
+  return type === 'rcs_tank' || type === 'reductant_tank' || type === 'plumbing' || type === 'pressurant_tank';
+}
+
 // 内装要素を収めるエッジ。与圧区画は機首側、推進剤と機器は後方に置く。
 function internalEdgesFor(type: PartType): readonly string[] {
   if (type === 'hull' || type === 'armor') return ['fore', 'mid', 'aft'];
   if (type === 'cockpit' || type === 'life_support') return ['fore', 'mid'];
-  if (type === 'rcs_tank') return ['aft'];
+  if (belongsInPropellantBay(type)) return ['aft'];
   return ['mid'];
 }
 
@@ -193,7 +200,7 @@ export function orbitalBaseAssembly(maxHp: number): VesselAssembly {
   const placements = place(baseParts(maxHp), (part) => {
     if (!isExterior(part)) {
       const spread = part.type === 'hull' || part.type === 'armor';
-      const edgeIds = spread ? ['fore', 'nose', 'aft'] : part.type === 'rcs_tank' ? ['aft'] : ['fore'];
+      const edgeIds = spread ? ['fore', 'nose', 'aft'] : belongsInPropellantBay(part.type) ? ['aft'] : ['fore'];
       return { kind: 'internal', part, edgeIds };
     }
     if (part.type === 'engine') {

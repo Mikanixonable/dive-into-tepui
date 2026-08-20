@@ -61,7 +61,9 @@ export function register(): void {
 
   test('既定の有人艦の推進剤容量・蓄電容量が const.ts の定数と一致する', () => {
     const inv = crewedInventory();
-    const expectedCapacity = propellantTankCapacity('hydrazine', C.CREWED_RCS_TANK_VOLUME);
+    // 主機と RCS が同じヒドラジンを共有するので、容量は RCS タンクと主タンクの合計になる。
+    const expectedCapacity = propellantTankCapacity('hydrazine', C.CREWED_RCS_TANK_VOLUME) +
+      propellantTankCapacity('hydrazine', C.CREWED_MAIN_TANK_VOLUME);
     assert.equal(inv.maxFuelOf('hydrazine'), expectedCapacity);
     assert.equal(inv.fuelOf('hydrazine'), expectedCapacity);
     assert.equal(inv.totalEnergyStorage, C.POWER_CAPACITY);
@@ -148,6 +150,8 @@ export function register(): void {
     const inv = new PartInventory(baseParts(C.BASE_MAX_HP));
     assert.equal(inv.totalThrust, C.BASE_THRUST);
     assert.equal(inv.totalTorque, C.BASE_TORQUE);
-    assert.equal(inv.maxFuelOf('hydrazine'), C.BASE_MAX_FUEL);
+    // RCS タンクと主タンクが同じヒドラジンを共有するので、容量は両者の合計になる。
+    assert.equal(inv.maxFuelOf('hydrazine'),
+      C.BASE_MAX_FUEL + propellantTankCapacity('hydrazine', C.BASE_MAIN_TANK_VOLUME));
   });
 }

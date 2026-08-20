@@ -5,6 +5,7 @@ import type { AnyPart, BaseModulePart, CommunicationPart, DockPort, PartType } f
 import { createPart } from '../game-entity/parts';
 import { catalystMassFor, needsCatalystBed } from '../economy/build-cost';
 import { propellantDensity, propellantTankCapacity } from '../economy/propellant-compatibility';
+import { STANDARD_GRAVITY } from '../../physics/tsiolkovsky';
 
 // 通信モジュールの等級。到達距離 [m] と質量 [kg] を等級ごとに固定する。到達距離は
 // 機体側と中継点側の小さいほうで決まるので、積んだ等級がそのまま届く距離になる。
@@ -64,11 +65,14 @@ export function createDefaultBaseModule(maxHp: number): BaseModulePart {
 
 // 既定パーツへの HP 配分比。合計 1 になるよう保つ(機体の maxHp をこの比で割り振る)。
 // 放熱板・太陽電池パドルは機体の左右2枚ぶんなので、パーツも side ごとに1枚ずつ持つ。
+// 新設した推進系3種(reductantTank/plumbing/pressurantTank、計 0.04)の枠は、既存の全要素へ
+// 一様に 0.96 を掛けて捻出する——特定の要素だけを削ると、その要素だけ既定艦での頑丈さが
+// 変わってしまう(戦闘バランスの変更は今回の要件ではない)。
 const CREWED_HP_RATIO = {
-  hull: 0.30, cockpit: 0.08, heatShield: 0.02, engine: 0.07, rcsThruster: 0.03, flywheel: 0.03,
-  magnetorquer: 0.01, rcsTank: 0.07,
-  radiator: 0.05, solarPanel: 0.03, weapon: 0.07, magazine: 0.02, ammunition: 0.02,
-  battery: 0.03, communication: 0.02, lifeSupport: 0.03, armor: 0.05,
+  hull: 0.288, cockpit: 0.0768, heatShield: 0.0192, engine: 0.0672, rcsThruster: 0.0288, flywheel: 0.0288,
+  magnetorquer: 0.0096, rcsTank: 0.0672, reductantTank: 0.02, plumbing: 0.01, pressurantTank: 0.01,
+  radiator: 0.048, solarPanel: 0.0288, weapon: 0.0672, magazine: 0.0192, ammunition: 0.0192,
+  battery: 0.0288, communication: 0.0192, lifeSupport: 0.0288, armor: 0.048,
 } as const;
 
 // 無人の敵対機の HP 配分比。船体・主機・姿勢制御・タンク・武装・装甲へ配る。合計 1 になるよう保つ。
@@ -80,6 +84,7 @@ const HOSTILE_HP_RATIO = {
 // (§10-3)、hull 要素自身は質量を持たない。
 const CREWED_WEIGHT = {
   hull: 0, cockpit: 115, heatShield: 60, engine: 80, rcsThruster: 8, flywheel: 25, magnetorquer: 4.5, rcsTank: 30,
+  reductantTank: 45, plumbing: 5, pressurantTank: 10,
   radiator: 18, solarPanel: 12, weapon: 50, magazine: 20, ammunition: 30,
   battery: 40, communication: 15, lifeSupport: 65, armor: 50,
 } as const;
@@ -90,6 +95,7 @@ const HOSTILE_WEIGHT = {
 
 const BASE_WEIGHT = {
   baseModule: 1.362e6, cockpit: 6e5, engine: 3e4, flywheel: 2e4, rcsTank: 5e5,
+  reductantTank: 5e5, plumbing: 500, pressurantTank: 5e4,
 } as const;
 
 // 質量特性から、主機・並進RCS・フライホイールの性能を決める(§10-4)。加速度と角加速度が機体の
@@ -98,8 +104,12 @@ const BASE_WEIGHT = {
 export function tuneActuators(parts: readonly AnyPart[], mass: number, maxMoment: number): void {
   const maxThrottle = C.THROTTLE_LEVELS[C.THROTTLE_LEVELS.length - 1]!;
   for (const part of parts) {
-    if (part.type === 'engine') part.thrust = mass * maxThrottle;
-    else if (part.type === 'rcs_thruster') part.thrust = mass * C.THROTTLE_LEVELS[0]!;
+    if (part.type === 'engine') {
+      part.thrust = mass * maxThrottle;
+      // 独立に宣言するのは推力と比推力だけとし、消費率はロケット方程式の質量流量
+      // (推力 / (比推力・重力加速度))として導く。
+      part.fuelConsumptionRate = part.thrust / (part.specificImpulse * STANDARD_GRAVITY);
+    } else if (part.type === 'rcs_thruster') part.thrust = mass * C.THROTTLE_LEVELS[0]!;
     else if (part.type === 'flywheel') part.maxTorque = C.MAX_ANG_ACCEL * maxMoment;
     // 触媒床は燃焼室の中にあり、その質量は推力に比例する。推力をここで決める以上、
     // 触媒床の質量も同じ場所で決まる。
@@ -130,10 +140,25 @@ export function crewedParts(maxHp: number): AnyPart[] {
     mk('hull', R.hull, { name: 'Basic Hull', weight: W.hull }),
     mk('cockpit', R.cockpit, { name: 'Cockpit', crewCapacity: 2, pressurizedVolume: 8, weight: W.cockpit }),
     mk('engine', R.engine, {
-      weight: CREWED_WEIGHT.engine, name: 'Main Engine', cycle: 'pressure_fed', propellant: 'nitrogen-tetroxide',
+      weight: CREWED_WEIGHT.engine, name: 'Main Engine', cycle: 'pressure_fed', propellant: 'hydrazine',
       // 既定パーツだけを積んだ機体が、全開で THROTTLE_LEVELS の最大値の加速度になる推力。
-      thrust: 0, specificImpulse: 320, length: 1.4, gimbalRange: 6, gimbalRate: 10,
-      throttleMin: 0.4, throttleMax: 1, fuelConsumptionRate: 1,
+      // 単推進剤ヒドラジンの比推力(rcs_thruster と同じ水準)。消費率は tuneActuators が導く。
+      thrust: 0, specificImpulse: 230, length: 1.4, gimbalRange: 6, gimbalRate: 10,
+      throttleMin: 0.4, throttleMax: 1,
+    }),
+    mk('reductant_tank', R.reductantTank, {
+      weight: CREWED_WEIGHT.reductantTank, name: 'Main Propellant Tank', propellant: 'hydrazine',
+      volume: C.CREWED_MAIN_TANK_VOLUME, material: 'aluminium',
+      fuel: propellantTankCapacity('hydrazine', C.CREWED_MAIN_TANK_VOLUME),
+      insulationGrade: 1, requiredPressure: 2.4,
+    }),
+    mk('plumbing', R.plumbing, {
+      weight: CREWED_WEIGHT.plumbing, name: 'Main Feed Line', propellant: 'hydrazine',
+      bore: 0.025, maxFlowRate: 250,
+    }),
+    mk('pressurant_tank', R.pressurantTank, {
+      weight: CREWED_WEIGHT.pressurantTank, name: 'Helium Pressurant Tank',
+      volume: C.CREWED_PRESSURANT_TANK_VOLUME, maxPressure: 30, gas: 'helium',
     }),
     ...Array.from({ length: CREWED_RCS_THRUSTER_COUNT }, (_unused, i) =>
       mk('rcs_thruster', R.rcsThruster / CREWED_RCS_THRUSTER_COUNT, {
@@ -202,8 +227,8 @@ export function hostileParts(maxHp: number): AnyPart[] {
   return [
     mk('hull', R.hull, { name: 'Hostile Hull', weight: HOSTILE_WEIGHT.hull }),
     mk('engine', R.engine, {
-      weight: HOSTILE_WEIGHT.engine, name: 'Hostile Engine', cycle: 'pressure_fed', propellant: 'nitrogen-tetroxide',
-      thrust: 0, specificImpulse: 300, fuelConsumptionRate: 1,
+      weight: HOSTILE_WEIGHT.engine, name: 'Hostile Engine', cycle: 'pressure_fed', propellant: 'hydrazine',
+      thrust: 0, specificImpulse: 230,
     }),
     mk('flywheel', R.flywheel, {
       weight: HOSTILE_WEIGHT.flywheel, name: 'Hostile Reaction Wheel', maxTorque: 0, maxAngularMomentum: 400, powerDraw: 0,
@@ -231,8 +256,8 @@ export function baseParts(maxHp: number): AnyPart[] {
     }),
     createPart('engine', {
       name: 'Station Keeping Engine', maxHp: 1, hp: 1, weight: BASE_WEIGHT.engine,
-      cycle: 'pressure_fed', propellant: 'nitrogen-tetroxide',
-      thrust: C.BASE_THRUST, specificImpulse: 300, fuelConsumptionRate: C.BASE_FUEL_RATE,
+      cycle: 'pressure_fed', propellant: 'hydrazine',
+      thrust: C.BASE_THRUST, specificImpulse: 230,
     }),
     createPart('flywheel', {
       name: 'Station Reaction Wheel', maxHp: 1, hp: 1, weight: BASE_WEIGHT.flywheel,
@@ -242,6 +267,20 @@ export function baseParts(maxHp: number): AnyPart[] {
       name: 'Station Tank', maxHp: 1, hp: 1, weight: BASE_WEIGHT.rcsTank,
       propellant: 'hydrazine', volume: C.BASE_MAX_FUEL / propellantDensity('hydrazine'), material: 'aluminium',
       fuel: C.BASE_MAX_FUEL,
+    }),
+    createPart('reductant_tank', {
+      name: 'Station Propellant Tank', maxHp: 1, hp: 1, weight: BASE_WEIGHT.reductantTank,
+      propellant: 'hydrazine', volume: C.BASE_MAIN_TANK_VOLUME, material: 'aluminium',
+      fuel: propellantTankCapacity('hydrazine', C.BASE_MAIN_TANK_VOLUME),
+      insulationGrade: 1, requiredPressure: 2.4,
+    }),
+    createPart('plumbing', {
+      name: 'Station Feed Line', maxHp: 1, hp: 1, weight: BASE_WEIGHT.plumbing,
+      propellant: 'hydrazine', bore: 0.15, maxFlowRate: 5000,
+    }),
+    createPart('pressurant_tank', {
+      name: 'Station Pressurant Tank', maxHp: 1, hp: 1, weight: BASE_WEIGHT.pressurantTank,
+      volume: C.BASE_PRESSURANT_TANK_VOLUME, maxPressure: 30, gas: 'helium',
     }),
     createCommStation(),
   ];
