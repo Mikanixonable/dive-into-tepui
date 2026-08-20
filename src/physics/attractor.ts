@@ -140,6 +140,9 @@ export interface BodyImpact {
   readonly state: KinematicState;
 }
 
+// 掃引の近似。'hermite' は端点の速度を接線に取る三次曲線、'linear' は端点を結ぶ線分。
+export type ReachSolver = 'hermite' | 'linear';
+
 // prev→next の1ステップの間に、半径 + margin の表面へ到達した天体と、到達した瞬間の状態。
 // 到達が無ければ null。複数に到達していれば最も早いものを、掃引が求めた到達割合(toi)から
 // hermiteInterpolate で組んだ状態とともに返す。掃引が空振りした(開始時点で既に沈んでいる、
@@ -149,10 +152,11 @@ export function reachedBody(
   next: KinematicState,
   bodies: readonly Attractor[],
   margin: number,
+  solver: ReachSolver = 'hermite',
 ): BodyImpact | null {
   // 1ステップの間に天体自身が動く距離は、その半径に対しても軌道速度で進む距離に対しても
   // 十分小さいので、どの天体も区間を通して静止しているものとして掃引する。
-  const sweep: SweptVelocities = {
+  const sweep: SweptVelocities | null = solver === 'linear' ? null : {
     aStart: prev.v, aEnd: next.v, bStart: v3(), bEnd: v3(), dt: next.t - prev.t,
   };
   let earliest: Attractor | null = null;
