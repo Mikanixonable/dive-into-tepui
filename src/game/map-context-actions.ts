@@ -836,14 +836,12 @@ export class MapContextActions {
 
   // 自艦がいなければ距離・接近速度・相対速度・相対傾斜角の行はそもそも出さない。
   // 装甲・距離・接近速度を主要行とし、相対速度は詳細トグル、軌道要素・相対傾斜角は「軌道」グループの下に畳む。
+  // 貨物か宇宙船かは「自分が操作できるか」を問う分類なので、敵対勢力の機体では出さない。
   private shipRows(target: MapPickable, attractors: readonly Attractor[], player: Vessel | null): PropertyRow[] {
     const enemy = this.entities.findHostile(target.id);
     if (!enemy) return [];
     const rel = player ? relativeInfo(player, enemy, attractors) : null;
-    const rows: PropertyRow[] = [
-      { key: 'kind', label: '種別', value: isCargo(enemy) ? '貨物' : '宇宙船' },
-      { key: 'hp', label: '装甲', value: `${Math.floor(enemy.hp)} / ${enemy.maxHp}` },
-    ];
+    const rows: PropertyRow[] = [{ key: 'hp', label: '装甲', value: `${Math.floor(enemy.hp)} / ${enemy.maxHp}` }];
     if (rel) {
       rows.push(
         { key: 'dist', label: '距離', value: fmtDist(rel.dist) },
@@ -861,12 +859,15 @@ export class MapContextActions {
     return rows;
   }
 
-  // 自艦がいなければ距離の行は出さない。軌道要素は「軌道」グループの下に畳む。
+  // 自艦がいなければ距離の行は出さない。コア部品(コックピットまたは自動操縦装置)を
+  // 欠く基地は貨物として扱われ、操作対象にできない — 種別の行はそれを見せる。
+  // 軌道要素は「軌道」グループの下に畳む。
   private baseRows(target: MapPickable, attractors: readonly Attractor[], player: Vessel | null): PropertyRow[] {
     const base = this.entities.findBaseVessel(target.id);
     if (!base) return [];
     const isControlled = this.activeVessels.current === base;
     const rows: PropertyRow[] = [
+      { key: 'kind', label: '種別', value: isCargo(base) ? '貨物' : '基地' },
       { key: 'operated', label: '操作対象か', value: isControlled ? 'はい' : 'いいえ', collapsible: true },
       { key: 'vessels', label: '格納艦艇数', value: `${base.baseState!.dockedVessels.length}` },
     ];
