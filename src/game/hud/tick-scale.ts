@@ -1,5 +1,6 @@
-// 表示時間軸の目盛り間隔を、期間の長さに応じて決める。
+// 表示時間軸の目盛りを、tickLabelMode に応じて相対/絶対のどちらかで組み立てる。
 import { fmtDuration } from './utils';
+import { calendarBoundaries, tickLabel, type TickLabelMode } from './calendar-ticks';
 
 // 目盛り間隔の候補ラダー [秒]、小さい順。
 const TICK_INTERVALS_SEC = [
@@ -32,11 +33,22 @@ export function chooseTickInterval(durationSec: number, maxTicks: number): numbe
   return interval;
 }
 
-// [0, durationSec] を chooseTickInterval が選ぶ間隔の倍数で刻んだ目盛り列を返す。
-// durationSec ちょうどが間隔の倍数でない場合、その端には目盛りを置かない。
-export function buildTicks(durationSec: number, maxTicks: number): readonly DisplayTick[] {
+// [0, durationSec] の目盛り列を返す。'relative' は chooseTickInterval が選ぶ間隔の倍数で
+// T+ 表記、'absolute' は calendarBoundaries が返す暦境界で UTC 表記になる。
+export function buildTicks(
+  fromUnix: number,
+  durationSec: number,
+  maxTicks: number,
+  mode: TickLabelMode,
+): readonly DisplayTick[] {
   // 非有限値では加算のループが終わらないので、目盛りを置かずに返す。
   if (!isFinite(durationSec) || durationSec <= 0) return [];
+  if (mode === 'absolute') {
+    return calendarBoundaries(fromUnix, fromUnix + durationSec, maxTicks, maxTicks).map((b) => ({
+      t: (b.unix - fromUnix) / durationSec,
+      label: tickLabel(b.unix, b.rank, 'absolute', fromUnix),
+    }));
+  }
   const interval = chooseTickInterval(durationSec, maxTicks);
   const ticks: DisplayTick[] = [];
   for (let elapsed = 0; elapsed <= durationSec; elapsed += interval) {
