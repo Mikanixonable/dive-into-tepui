@@ -55,3 +55,37 @@
 - `hud/draggable-window.ts` の抽出により、`hud/property-window.ts` は `DraggableWindow` を
   合成するだけの薄いクラスになった。今後 `hud/base-operations-window.ts`(フェーズC)も同じ
   `DraggableWindow` を土台にする。
+- **フェーズBのスコープを縮小**: `DockWorkbenchController`/`DockWorkbenchSession` を読んだところ、
+  部品の取り付け(`installPlacement`/`movePlacement`)は既にドラッグ状態機械として完成しているが、
+  外皮/トラス/分離機構を部材としてドラッグして接合する経路(計画 §5.5)は `assembly-mode.ts` の
+  `mateVerdict`(断面適合・位相・長さ・作業範囲の判定)を要し、現状これを呼び出す3D側の実装が
+  何も無い、まとまった別作業になる。今回のフェーズBは**部品(既存の搭載要素)のドラッグ取り付け・
+  移動・取り外しのみ**を実装し、部材(外皮/トラス/分離機構)のドラッグ生成と断面の数値編集
+  (計画 §5.5/§5.6)はフェーズEとして後日に回す。ユーザーが明示的に求めた「ボタンを押すと
+  3Dモデルが現れ、ドラッグして接合する」という核となる操作は部品で実現される。
+- **`DockWorkbenchController.SnapCandidate.position`** は現状 `{x,y,z}` の裸オブジェクトだが、
+  このセッションで初めて実配線するにあたり `physics/vec3.ts` の `Vec3` へ揃える(このプロジェクトの
+  座標値は必ず `Vec3` を使う、という不変条件に合わせるため)。
+- **フェーズB・C完了**(2026-08-20)。`assembly-drag-controller.ts`/`assembly-panel.ts`/
+  `base-operations-window.ts` を、互いに新規ファイルのみを触る3並列作業として実装した(共有ファイル
+  — `docking.ts`/`base-view.ts`/`map-context-actions.ts`/`view-manager.ts` — への配線・削除は
+  次の統合フェーズでまとめて行う。並列作業どうしが同じファイルを取り合って壊さないための分離)。
+  - `assembly-editor.ts` に新規 `export function addPlacement(assembly, placement, options)` を
+    追加した。既存の `movePlacement` は**既に配置済みの部品の取り付け位置を変える**ための関数で、
+    倉庫から新しい部品を初めて取り付ける経路が assembly-editor.ts に一つも無かった
+    (現行 `docking.ts` の `installWorkbenchPart` は検証を経ずに `placements` へ直接足していた)。
+    `addPlacement` は `movePlacement`/`removePlacement` と同じ形(`validateMount` で検証してから
+    `commit`)で、この抜けを埋める。
+  - `hud/inventory-labels.ts` を新設し、`base-view.ts` にモジュール内で持っていた
+    `PART_TYPE_LABELS`/`formatPartMeta`/`formatResourceAmount` をここへ出した。
+    `base-operations-window.ts`(既存ロジック側)と `assembly-panel.ts`(新規ドラッグ側)の
+    両方が同じ表示ロジックを要したため。`base-view.ts` 自身は次の統合フェーズで削除されるので、
+    そちらに残る同名の重複はそのフェーズで一緒に消える。
+  - 部材(外皮/トラス/分離機構)のドラッグ生成、断面の数値編集は引き続き未着手(フェーズE、
+    上に既に記載した縮小方針のとおり)。
+  - `hull-mesh.ts` にモジュール内であった外装部品ごとの造形テーブル(`FITTINGS`)を
+    `assembly-drag-controller.ts` がやむを得ず複製していたのを、この場でレビューの一環として
+    `vessel/part-fittings.ts`(新設)へ引き上げ、両者がそこから読むよう直した。**`render/`側
+    (`part-meshes.ts`)へは置かない** — `PartType` は `game/game-entity/parts.ts` のもので、
+    `render/` が `game/` の型を読むのはこのプロジェクトの render/game 境界規則に反するため、
+    `game/vessel/` 側の共有モジュールとした。
