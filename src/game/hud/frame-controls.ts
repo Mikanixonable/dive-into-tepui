@@ -26,11 +26,19 @@ export class FrameControls {
     private readonly mapCamera: MapCamera,
     private readonly displayWindow: DisplayWindowManager,
     overlayManager: OverlayManager,
+    savedFollowCamera?: boolean,
   ) {
     this.cameraPanel = new CameraFramePanel(panelRoot, popupRoot, ephemeris, mapCamera, overlayManager);
-    this.trajectoryPanel = new TrajectoryFramePanel(panelRoot, popupRoot, ephemeris, displayWindow, overlayManager);
+    this.trajectoryPanel = new TrajectoryFramePanel(
+      panelRoot, popupRoot, ephemeris, displayWindow, overlayManager, savedFollowCamera,
+    );
 
     this.cameraPanel.onSelectCenter = (id) => this.selectCameraCenter(id);
+  }
+
+  // 計画折れ線の描画基準をカメラフォーカスへ追随させる設定。セーブ対象。
+  get followCamera(): boolean {
+    return this.trajectoryPanel.followCamera;
   }
 
   // カメラの基準天体を選び直す。解除は、いま見ている位置を恒星中心の慣性系へ焼き込んだ

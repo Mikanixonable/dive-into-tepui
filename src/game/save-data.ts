@@ -480,6 +480,12 @@ export interface CameraSaveData {
   overview: MapCameraSaveData;
 }
 
+// 計画折れ線・予測軌道線の描画基準(DisplayWindowManager.frame)と、カメラ追随設定。
+export interface DisplayWindowSaveData {
+  frame: { center: string; rotatingWith: string | null };
+  followCamera: boolean;
+}
+
 export interface GameSaveData {
   version: number;
   stageId: string;
@@ -497,4 +503,6 @@ export interface GameSaveData {
   stage: StageSaveData;
   // 旧セーブデータには無いフィールドなので任意。無ければ視点は既定のまま始まる。
   camera?: CameraSaveData;
+  // 旧セーブデータには無い。無ければ描画基準は地球中心慣性系・カメラ追随 ON のまま始まる。
+  displayWindow?: DisplayWindowSaveData;
 }

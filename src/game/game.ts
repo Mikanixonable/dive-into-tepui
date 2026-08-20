@@ -69,7 +69,7 @@ export class Game {
 
   private readonly editor: PlanEditor;
   // このフレームの表示座標系・表示時刻窓と、表示側の重力源窓。update で確定させ sync でも読む。
-  private readonly displayWindowManager: DisplayWindowManager;
+  readonly displayWindowManager: DisplayWindowManager;
   private readonly guide: PlanGuide;
   readonly viewManager: ViewManager;
   private readonly mapPickables: MapPickables;
@@ -138,7 +138,9 @@ export class Game {
     this.entities = new EntityManager(this._scene, this._hud, this._worldSfx, this.markerManager, graphics, initialSave);
     this.futureAttractors = new FutureAttractors(this.ephemeris, this.entities);
     this.entityLines = new EntityLineManager(this.entities);
-    this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, this.ephemeris, this.entities);
+    this.displayWindowManager = new DisplayWindowManager(
+      this._hud.mapRoot, this.ephemeris, this.entities, initialSave?.displayWindow,
+    );
 
     this.cameraSystem = new CameraSystem(
       this._hud,
@@ -149,7 +151,7 @@ export class Game {
     this.simSpeedManager = new SimSpeedManager(this._hud, this._uiSfx);
     this.frameControls = new FrameControls(
       this._hud.mapRoot, this._hud.layers.popup, this.ephemeris, this.cameraSystem.mapCamera,
-      this.displayWindowManager, this._hud.overlayManager,
+      this.displayWindowManager, this._hud.overlayManager, initialSave?.displayWindow?.followCamera,
     );
 
     this.targeter = new Targeter(this._hud, this.markerManager);
