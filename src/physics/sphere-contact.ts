@@ -1,19 +1,26 @@
-// 球どうしの接触の幾何(掃引接触の時刻・法線、点が球の内側にあるかの判定)。
+// 球どうしの接触の幾何(掃引区間で2球の表面がどう交わったか)。
 // 重力源かどうか・天体かどうかには関与しない純粋な幾何。
 import { KinematicState } from './kinematic-state';
-import { Vec3, add, len, scale, sub, v3 } from './vec3';
+import { Vec3, add, len, scale, v3 } from './vec3';
 
-export interface SphereContact {
-  readonly toi: number; // frame区間内の衝突割合 0..1
-  readonly normal: Vec3; // aからbへ向く接触法線
+// 区間内で表面を跨いだ瞬間。
+export interface SurfaceCrossing {
+  readonly toi: number; // 区間内の割合 0..1
+  readonly normal: Vec3; // a から b へ向く接触法線
+}
+
+// 掃引区間で2球の表面がどう交わったか。跨ぎの向きは startsInside で決まる — false なら
+// 外から内へ、true なら内から外へ。crossing が null なら、区間を通して始点と同じ側に留まる。
+export interface SweptSphereContact {
+  readonly startsInside: boolean;
+  readonly crossing: SurfaceCrossing | null;
 }
 
 // 掃引経路の近似。'linear' は端点を結ぶ線分、'cubic' は端点の速度を接線に取る三次曲線。
 export type SweptMode = 'linear' | 'cubic';
 
-// 半径和 radiusSum の2球が、それぞれ start→end の区間を渡る間に最初に表面が触れる時刻(区間内の
-// 割合)と、その瞬間の a→b 向きの法線。触れなければ null。開始時点で既に重なっている場合も
-// null を返す — 掃引では扱えないので、呼び出し側の離散 solver へ委譲する。
+// 半径和 radiusSum の2球が、それぞれ start→end の区間を渡る間に最初に表面を跨ぐ瞬間と、
+// 区間の始点で重なっていたか。入力が非有限で判定できないときだけ null を返す。
 // 区間は両球で共通で、その長さは aStart→aEnd の時刻差から取る。
 export function sweptSphereContact(
   aStart: KinematicState,
@@ -22,7 +29,7 @@ export function sweptSphereContact(
   bEnd: KinematicState,
   radiusSum: number,
   mode: SweptMode,
-): SphereContact | null {
+): SweptSphereContact | null {
   return mode === 'linear'
     ? linearSphereContact(aStart, aEnd, bStart, bEnd, radiusSum)
     : cubicSphereContact(aStart, aEnd, bStart, bEnd, radiusSum);
@@ -35,33 +42,40 @@ function linearSphereContact(
   bStart: KinematicState,
   bEnd: KinematicState,
   radiusSum: number,
-): SphereContact | null {
-  // 相対位置 p(t) = p0 + d·t (t∈[0,1]) が半径和 radiusSum の球に触れる最小の t を解く2次方程式。
-  // 各早期returnは `!(x > 0)` 系の否定形で書く — NaN はどの比較でも false になるので、
-  // 非有限な入力はこの形のときだけ自動的に null へ落ちる(`x <= 0` に書き換えると通り抜ける)。
+): SweptSphereContact | null {
+  // 相対位置 p(t) = p0 + d·t (t∈[0,1]) が半径和 radiusSum の球を跨ぐ t を解く2次方程式。
   const px = bStart.r.x - aStart.r.x;
   const py = bStart.r.y - aStart.r.y;
   const pz = bStart.r.z - aStart.r.z;
   const dx = (bEnd.r.x - bStart.r.x) - (aEnd.r.x - aStart.r.x);
   const dy = (bEnd.r.y - bStart.r.y) - (aEnd.r.y - aStart.r.y);
   const dz = (bEnd.r.z - bStart.r.z) - (aEnd.r.z - aStart.r.z);
-  const c = px * px + py * py + pz * pz - radiusSum * radiusSum;
-  if (!(c > 0)) return null;
+  const startDistSq = px * px + py * py + pz * pz;
   const aa = dx * dx + dy * dy + dz * dz;
-  if (!(aa > 1e-18)) return null;
+  // 非有限な入力をここで落とす。判定は `!(x >= 0)` の否定形で書く — NaN はどの比較でも
+  // false になるので、この形のときだけ自動的に null へ落ちる(`x < 0` では通り抜ける)。
+  if (!(radiusSum > 0) || !(startDistSq >= 0) || !(aa >= 0)) return null;
+
+  const c = startDistSq - radiusSum * radiusSum;
+  const startsInside = c <= 0;
+  if (!(aa > 1e-18)) return { startsInside, crossing: null };
   const bb = 2 * (px * dx + py * dy + pz * dz);
   const discriminant = bb * bb - 4 * aa * c;
-  if (!(discriminant >= 0)) return null;
-  const toi = (-bb - Math.sqrt(discriminant)) / (2 * aa);
-  if (!(toi >= 0 && toi <= 1)) return null;
-  // 接触時刻における相対位置がそのまま接触法線の向きになる。
-  return normalized(toi, v3(px + dx * toi, py + dy * toi, pz + dz * toi));
+  if (!(discriminant >= 0)) return { startsInside, crossing: null };
+  // 始点が外なら最初に触れる小さい方の根、内なら抜け出る大きい方の根。
+  const root = Math.sqrt(discriminant);
+  const toi = ((startsInside ? root : -root) - bb) / (2 * aa);
+  if (!(toi >= 0 && toi <= 1)) return { startsInside, crossing: null };
+  return {
+    startsInside,
+    crossing: crossingAt(toi, v3(px + dx * toi, py + dy * toi, pz + dz * toi)),
+  };
 }
 
 // 三次モードの実体。
-// 区間端点の符号だけを見ると、端点の両方が表面外でも途中だけ球を通過する軌道を落とす。
-// ここでは相対位置(b − a)を3次Bezierへ変換し、Bezier制御点の凸包が球と交わり得る区間だけを
-// 左から再帰的に調べる。制御点の軸平行箱が球から離れていれば、その区間には交差がない。
+// 区間端点の側だけを見ると、端点の両方が同じ側でも途中だけ反対側へ出る軌道を落とす。
+// ここでは相対位置(b − a)を3次Bezierへ変換し、Bezier制御点の凸包が表面を跨ぎ得る区間だけを
+// 左から再帰的に調べる。制御点の軸平行箱が丸ごと始点と同じ側にあれば、その区間に跨ぎはない。
 // したがって、単なる固定サンプル列より細い通過も拾いつつ、曲線上の clearance の符号反転を
 // 固定反復で詰められる。
 function cubicSphereContact(
@@ -70,9 +84,9 @@ function cubicSphereContact(
   bStart: KinematicState,
   bEnd: KinematicState,
   radiusSum: number,
-): SphereContact | null {
+): SweptSphereContact | null {
   const dt = aEnd.t - aStart.t;
-  if (!(dt > 0) || !Number.isFinite(dt) || !Number.isFinite(radiusSum) || !(radiusSum > 0)) return null;
+  if (!Number.isFinite(dt) || !Number.isFinite(radiusSum) || !(radiusSum > 0)) return null;
   // 制御点はまずスカラー座標として求める。遠すぎて棄却される相手が大半なので、凸包の箱で
   // 落ちるところまでは Vec3 を1つも作らない。
   const sx = bStart.r.x - aStart.r.x;
@@ -92,43 +106,54 @@ function cubicSphereContact(
     || !Number.isFinite(ex) || !Number.isFinite(ey) || !Number.isFinite(ez)
     || !Number.isFinite(t0x) || !Number.isFinite(t0y) || !Number.isFinite(t0z)
     || !Number.isFinite(t1x) || !Number.isFinite(t1y) || !Number.isFinite(t1z)) return null;
+
+  const radiusSq = radiusSum * radiusSum;
+  const startsInside = sx * sx + sy * sy + sz * sz <= radiusSq;
+  // 区間が無ければ曲線が定まらないが、始点の内外は答えられる。
+  if (!(dt > 0)) return { startsInside, crossing: null };
+
   const c1x = sx + t0x / 3;
   const c1y = sy + t0y / 3;
   const c1z = sz + t0z / 3;
   const c2x = ex - t1x / 3;
   const c2y = ey - t1y / 3;
   const c2z = ez - t1z / 3;
-
-  // 全区間の凸包が球から離れていれば交差はない。
-  const boxDistanceSq = axisDistanceSq(sx, c1x, c2x, ex)
-    + axisDistanceSq(sy, c1y, c2y, ey)
-    + axisDistanceSq(sz, c1z, c2z, ez);
-  if (boxDistanceSq > radiusSum * radiusSum) return null;
-  // 開始時点の重なりは線形モードと同じく、呼び出し側の離散 solver に委譲する。
-  if (Math.sqrt(sx * sx + sy * sy + sz * sz) <= radiusSum) return null;
+  const wholeBoxOnStartSide = startsInside
+    ? axisMaxDistanceSq(sx, c1x, c2x, ex)
+      + axisMaxDistanceSq(sy, c1y, c2y, ey)
+      + axisMaxDistanceSq(sz, c1z, c2z, ez) < radiusSq
+    : axisDistanceSq(sx, c1x, c2x, ex)
+      + axisDistanceSq(sy, c1y, c2y, ey)
+      + axisDistanceSq(sz, c1z, c2z, ez) > radiusSq;
+  if (wholeBoxOnStartSide) return { startsInside, crossing: null };
 
   const controls: readonly Vec3[] = [
     v3(sx, sy, sz), v3(c1x, c1y, c1z), v3(c2x, c2y, c2z), v3(ex, ey, ez),
   ];
 
-  const clearanceAt = (u: number): number => len(cubicPoint(controls, u)) - radiusSum;
+  // 始点と同じ側で正、反対側で負になる符号付きクリアランス。跨ぎはこの符号の反転として探す。
+  const sign = startsInside ? -1 : 1;
+  const clearanceAt = (p: Vec3): number => (len(p) - radiusSum) * sign;
   const MAX_DEPTH = 32;
   const MIN_INTERVAL = 1e-7;
   const ROOT_ITERATIONS = 24;
 
   const refine = (lo: number, hi: number): number => {
-    // lo は表面外、hi は表面上(または内部)という不変条件。
+    // lo は始点と同じ側、hi は表面上(または反対側)という不変条件。
     for (let i = 0; i < ROOT_ITERATIONS; i++) {
       const mid = (lo + hi) / 2;
-      if (clearanceAt(mid) > 0) lo = mid; else hi = mid;
+      if (clearanceAt(cubicPoint(controls, mid)) > 0) lo = mid; else hi = mid;
     }
     return (lo + hi) / 2;
   };
 
   const search = (segment: readonly Vec3[], u0: number, u1: number, depth: number): number | null => {
-    if (distanceSqToControlBox(segment) > radiusSum * radiusSum) return null;
-    if (len(segment[0]!) - radiusSum <= 0) return u0;
-    if (len(segment[3]!) - radiusSum <= 0) return refine(u0, u1);
+    const boxOnStartSide = startsInside
+      ? maxDistanceSqToControlBox(segment) < radiusSq
+      : distanceSqToControlBox(segment) > radiusSq;
+    if (boxOnStartSide) return null;
+    if (clearanceAt(segment[0]!) <= 0) return u0;
+    if (clearanceAt(segment[3]!) <= 0) return refine(u0, u1);
     if (depth >= MAX_DEPTH || u1 - u0 <= MIN_INTERVAL) return null;
 
     const [left, right] = splitCubic(segment);
@@ -137,14 +162,16 @@ function cubicSphereContact(
   };
 
   const toi = search(controls, 0, 1, 0);
-  return toi === null ? null : normalized(toi, cubicPoint(controls, toi));
+  return {
+    startsInside,
+    crossing: toi === null ? null : crossingAt(toi, cubicPoint(controls, toi)),
+  };
 }
 
-// 接触時刻とそのときの相対位置から SphereContact を組む。相対位置が潰れていれば向きを
-// 決められないので null(線形・三次で同じ扱いにする)。
-function normalized(toi: number, relative: Vec3): SphereContact | null {
+// 跨いだ時刻とそのときの相対位置から SurfaceCrossing を組む。跨ぎの瞬間の相対距離は
+// 半径和(正)に一致するので、向きは常に定まる。
+function crossingAt(toi: number, relative: Vec3): SurfaceCrossing {
   const d = len(relative);
-  if (!(d > 1e-12)) return null;
   return { toi, normal: v3(relative.x / d, relative.y / d, relative.z / d) };
 }
 
@@ -183,6 +210,13 @@ function axisDistanceSq(a: number, b: number, c: number, d: number): number {
   return distance * distance;
 }
 
+// 制御点4つが1軸上に張る区間のうち、原点から最も遠い点までの距離の2乗。
+function axisMaxDistanceSq(a: number, b: number, c: number, d: number): number {
+  const distance = Math.max(
+    Math.max(Math.abs(a), Math.abs(b)), Math.max(Math.abs(c), Math.abs(d)));
+  return distance * distance;
+}
+
 // Bezier の凸包を囲う軸平行箱と原点の最短距離の2乗。
 function distanceSqToControlBox(control: readonly Vec3[]): number {
   return axisDistanceSq(control[0]!.x, control[1]!.x, control[2]!.x, control[3]!.x)
@@ -190,13 +224,10 @@ function distanceSqToControlBox(control: readonly Vec3[]): number {
     + axisDistanceSq(control[0]!.z, control[1]!.z, control[2]!.z, control[3]!.z);
 }
 
-// point が bodies のいずれかの球の内側にあれば、その球を返す。無ければ null。
-export function containingBody<T extends { readonly radius: number; readonly state: KinematicState }>(
-  point: Vec3,
-  bodies: readonly T[],
-): T | null {
-  for (const body of bodies) {
-    if (len(sub(point, body.state.r)) < body.radius) return body;
-  }
-  return null;
+// Bezier の凸包を囲う軸平行箱と原点の最長距離の2乗。
+function maxDistanceSqToControlBox(control: readonly Vec3[]): number {
+  return axisMaxDistanceSq(control[0]!.x, control[1]!.x, control[2]!.x, control[3]!.x)
+    + axisMaxDistanceSq(control[0]!.y, control[1]!.y, control[2]!.y, control[3]!.y)
+    + axisMaxDistanceSq(control[0]!.z, control[1]!.z, control[2]!.z, control[3]!.z);
 }
+
