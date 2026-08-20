@@ -14,7 +14,7 @@ import { add, len, sub, v3 } from '../../src/physics/vec3';
 
 const EPH = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0 }); // 初期位相を固定して決定的にする
 const bodiesAt = (t: number) => EPH.attractorsAt(t); // step() が要求する重力源をステップ中点で引く
-const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(), v3()), degree2: null, isStar: false };
+const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(), v3()), accel: v3(), degree2: null, isStar: false };
 
 function circularState(t = 0): KinematicState {
   const r0 = R_EARTH + 420e3;
