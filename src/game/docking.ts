@@ -315,7 +315,8 @@ export class Docking {
 
     panel.onTargetSelect = (targetId) => {
       // 掴んだまま別の対象へ移ると落とす先と掴み元が食い違うので、切り替えで掴みを捨てる。
-      this.dragController.cancelDrag();
+      // 部材は在庫という戻り先が無く消えてしまうので、そのときだけ知らせる。
+      if (this.dragController.cancelDrag()) this.hud.hint('対象を切り替えたため、掴んでいた部材を破棄しました');
       entry.targetId = targetId;
       entry.selection = null;
       this.frameAssemblyCamera(entry);
