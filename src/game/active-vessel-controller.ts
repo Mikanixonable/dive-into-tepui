@@ -1,7 +1,7 @@
 // 操作対象(0..n 機の機体のうちどれを操作するか)の切替・削除と、それに伴う各所有者への伝播
 // (ターゲッター・航法ターゲット・SFX、および remove() でのカメラのフォーカス解除)を1箇所へ集める。
 import type { Vessel } from './vessel/vessel';
-import { hasBaseModule, hasCorePart } from './vessel/capabilities';
+import { hasBaseModule, hasCorePart, isCargo } from './vessel/capabilities';
 import type { EntityManager } from './simulation/entity-manager';
 import type { CameraSystem } from './camera/camera-system';
 import type { Targeter } from './targeter';
@@ -30,7 +30,7 @@ export class ActiveVesselController {
   get current(): Vessel | null { return this._current; }
   // 操作対象(追従カメラ・計画編集の対象)を差し替える。基地でも艦艇でも扱いは同じ。
   set(vessel: Vessel): void {
-    if (!hasCorePart(vessel)) {
+    if (isCargo(vessel)) {
       this.hud?.hint(`「${vessel.name}」は貨物です。コア部品を取り付けるまで操作できません`);
       return;
     }
