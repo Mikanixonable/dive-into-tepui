@@ -307,24 +307,30 @@ export class AssemblyDragController {
   // そこへ取り付ける。部品で見つけていなければ ―― 機体から掴み上げた部品は workbench.remove で
   // 在庫へ戻し、棚から掴んだ部品はそもそも在庫から出ていないのでそのまま掴みを捨てる。部材は
   // 在庫を経由しないので、見つからなければ捨てるだけでよい。掴んでいなければ何もしない。
-  public release(targetId: string): void {
+  // 在庫へ戻すことが検証に拒まれたときだけ、その理由を返す(部品は装着されたまま残る)。
+  public release(targetId: string): string | null {
     const workbench = this.workbench;
-    if (!workbench || !this.held) return;
+    if (!workbench || !this.held) return null;
     if (this.held.kind === 'member') {
       if (this.pendingMemberEdit?.result.accepted) this.drop(targetId);
       else this.cancelDrag();
-      return;
+      return null;
     }
     const drag = workbench.dragging;
     if (drag?.candidate?.verdict.accepted) {
       this.drop(targetId);
-      return;
+      return null;
     }
     // 機体から掴み上げた部品(棚からではない)だけ、離した場所が空振りなら在庫へ戻す。
     if (drag && drag.source.kind === 'target') {
-      workbench.remove(drag.source.targetId, drag.part.id);
+      const validation = workbench.remove(drag.source.targetId, drag.part.id).validation;
+      if (!validation.valid) {
+        this.cancelDrag();
+        return validation.errors[0] ?? '取り外せません';
+      }
     }
     this.cancelDrag();
+    return null;
   }
 
   // 取り付けを試みずに掴みを捨てる。掴んでいなければ何もしない。
