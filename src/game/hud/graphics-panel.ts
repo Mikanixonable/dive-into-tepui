@@ -56,6 +56,7 @@ export class GraphicsPanel {
       [this.addToggle('オーロラ', 'aurora'), 'aurora'],
       [this.addToggle('大気', 'atmosphere'), 'atmosphere'],
       [this.addToggle('アンチエイリアス(次回起動から)', 'antialias'), 'antialias'],
+      [this.addToggle('艦のワイヤーフレーム', 'wireframe'), 'wireframe'],
     ];
 
     this.debugTarget = new SegmentedControl('デバッグ表示', DEBUG_TARGETS, (id) => {
