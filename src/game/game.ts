@@ -388,8 +388,11 @@ export class Game {
   // 自分で見るので、ここで決めるのは順序だけ。このフレームの cameraSystem.update が終わって
   // 初めて投影がこのフレームの値になるので、update の末尾に置く。ポーズ中、または入力を
   // ゲートするオーバーレイ(セーブブラウザ・基地画面等)が開いている間は配らない(背景の誤操作を防ぐ)。
+  // 組立セッション中も配らない — クリックは Docking.updateAssembly が1箇所で消費する。ポーズは
+  // 真偽値なので、セーブブラウザや設定を閉じた resume でセッション中に解けうる。
   private handlePointerInput(): void {
-    if (this._isPaused || this._hud.overlayManager.isInputGated()) return;
+    if (this._isPaused || this.docking.assemblyInProgress) return;
+    if (this._hud.overlayManager.isInputGated()) return;
     const simTime = this.simulator.simTime;
     if (this.viewManager.isMapView) {
       this.handleMapPointerInput(simTime);
