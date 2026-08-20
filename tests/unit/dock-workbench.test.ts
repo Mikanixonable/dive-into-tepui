@@ -1,6 +1,5 @@
 import * as assert from 'node:assert/strict';
 import { removePlacement } from '../../src/game/vessel/assembly-editor';
-import { mateVerdict } from '../../src/game/vessel/assembly-mode';
 import { DockWorkbenchSession, type WorkbenchSnapshot } from '../../src/game/vessel/dock-workbench';
 import { DockWorkbenchController } from '../../src/game/vessel/dock-workbench-controller';
 import { createPart } from '../../src/game/game-entity/parts';
@@ -124,7 +123,7 @@ export function register(): void {
         kind: 'external', part: antenna,
         mount: { kind: 'surface', edgeId: edge.id, along: 0, around: 0 },
       },
-      verdict: mateVerdict({ occupied: false, widthFits: true, phaseFits: true, lengthFits: true, withinWorkArea: true }),
+      verdict: { accepted: true, reason: null },
       targetLabel: '基地', position: v3(0, 0, 0), targetKind: 'base',
     });
     assert.equal(controller.dragging!.sourceTargetKind, null);
