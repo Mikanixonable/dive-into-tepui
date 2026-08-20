@@ -14,7 +14,6 @@ import { ApsisTrack } from '../../physics/trajectory-features';
 import { dot, len, sub } from '../../physics/vec3';
 import { ArcBodies, type ArcBodyWindow, type FutureAttractorProvider } from './arc-bodies';
 import { adaptiveSimulationMaxStep } from './time-step';
-import { R_EARTH } from '../../physics/solar-system';
 import * as C from '../const';
 
 // keepDuration ぶんを保持する列へ積む最小間隔 [s]。軌道周期 period を TRAJECTORY_SAMPLES_PER_REV
@@ -162,7 +161,7 @@ export class PredictedArc {
     }
     if (this.consumable) {
       const maxStep = adaptiveSimulationMaxStep(
-        [tip], R_EARTH + C.REENTRY_SUBSTEP_ALT, this.simulationMaxStep, C.REENTRY_SUBSTEP_MAX_DT);
+        [tip], collisionBodies, C.REENTRY_SUBSTEP_ALT, this.simulationMaxStep, C.REENTRY_SUBSTEP_MAX_DT);
       return Math.min(approachDt, maxStep);
     }
     const naturalDt = period / C.ARC_STEPS_PER_REV;
