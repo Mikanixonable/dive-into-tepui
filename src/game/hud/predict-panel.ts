@@ -113,15 +113,17 @@ class DurationValueInput {
 }
 
 // 任意期間のピルに出す秒数の表記。固定プリセットのピル(1日/7日/28日)と並ぶので、
-// 単位は UNITS と同じ和字にし、割り切れる中で最も大きい単位を選ぶ。
+// 単位は UNITS と同じ和字にし、割り切れる中で最も大きい単位を選ぶ。割り切れる単位が
+// 無ければ分・秒まで落として正確な値を出す(丸めて精度を落とさない)。
 function customPillLabel(sec: number): string {
-  for (let i = UNITS.length - 1; i > 0; i--) {
+  for (let i = UNITS.length - 1; i >= 0; i--) {
     const unit = UNITS[i];
     if (unit === undefined) continue;
     const unitSec = UNIT_SEC[unit[0]];
     if (sec >= unitSec && sec % unitSec === 0) return `${sec / unitSec}${unit[1]}`;
   }
-  return `${Math.round(sec / UNIT_SEC.hour)}時`;
+  if (sec % 60 === 0) return `${sec / 60}分`;
+  return `${sec}秒`;
 }
 
 // フォーカス移動による commit() の割り込みを避けつつ押せる小ボタン(✓/✕ など)。
@@ -130,9 +132,33 @@ function inlineIconButton(label: string, title: string, onClick: () => void): HT
   btn.className = 'predict-edit-btn';
   btn.textContent = label;
   btn.title = title;
+  btn.setAttribute('aria-label', title);
   btn.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); });
   btn.addEventListener('click', () => onClick());
   return btn;
+}
+
+// 表示用の要素と編集用の要素を排他に切り替える(常にどちらか一方だけが hidden でない)。
+class EditSlot {
+  private editingFlag = false;
+
+  public constructor(private readonly displayEl: HTMLElement, private readonly editEl: HTMLElement) {}
+
+  public get editing(): boolean {
+    return this.editingFlag;
+  }
+
+  public open(): void {
+    this.editingFlag = true;
+    this.displayEl.classList.add('hidden');
+    this.editEl.classList.remove('hidden');
+  }
+
+  public close(): void {
+    this.editingFlag = false;
+    this.editEl.classList.add('hidden');
+    this.displayEl.classList.remove('hidden');
+  }
 }
 
 // 「見出し + 固定期間ピル列 + 任意…ピル」の1行。任意…を押すとピル列を数値入力フォームへ
@@ -145,7 +171,7 @@ class DurationPillRow<K extends string, Kd extends string> {
   private readonly customPillBtn: Button;
   private readonly editEl: HTMLElement;
   private readonly input: DurationValueInput;
-  private editing = false;
+  private readonly editSlot: EditSlot;
   private currentSec = C.DISPLAY_DUR_DAY;
 
   public constructor(
@@ -183,13 +209,14 @@ class DurationPillRow<K extends string, Kd extends string> {
     this.editEl.appendChild(inlineIconButton('✓', '確定', () => this.input.commit()));
     this.editEl.appendChild(inlineIconButton('✕', 'キャンセル', () => this.input.cancel()));
     this.element.appendChild(this.editEl);
+    this.editSlot = new EditSlot(this.pillsEl, this.editEl);
   }
 
   // 選択中のキーと、任意…ピルに出す秒数を反映する。currentSec は任意…を開いたときの初期値。
   // 編集中の行はユーザー入力を壊さないよう書き換えない。
   public render(key: Kd, customDurationSec: number, currentSec: number): void {
     this.currentSec = currentSec;
-    if (this.editing) return;
+    if (this.editSlot.editing) return;
     for (const [k, btn] of this.buttons) btn.setOn(k === (key as string));
     this.customPillBtn.setOn(key === 'custom');
     const label = key === 'custom' ? `${customPillLabel(customDurationSec)} ✎` : '任意…';
@@ -198,17 +225,13 @@ class DurationPillRow<K extends string, Kd extends string> {
 
   // ピル列を数値入力フォームへ差し替え、直近に受け取った秒数を初期値として入れる。
   private openEdit(): void {
-    this.editing = true;
-    this.pillsEl.classList.add('hidden');
-    this.editEl.classList.remove('hidden');
+    this.editSlot.open();
     this.input.openWithSec(Math.max(C.DISPLAY_DURATION_MIN, this.currentSec), C.DISPLAY_DURATION_MIN, C.DISPLAY_DURATION_MAX);
   }
 
   // 数値入力フォームを閉じ、ピル列へ戻す。
   private closeEdit(): void {
-    this.editing = false;
-    this.editEl.classList.add('hidden');
-    this.pillsEl.classList.remove('hidden');
+    this.editSlot.close();
   }
 }
 
@@ -220,6 +243,7 @@ export interface PredictPanelState {
   readonly customPastDurationSec: number;
   readonly pastDuration: number;
   readonly tickLabelMode: TickLabelMode;
+  readonly showTicks: boolean;
   readonly duration: number;
   readonly displayTime: number;
   readonly sliderSteps: number;
@@ -234,6 +258,7 @@ export class PredictPanel {
   public onPastDurationSelect: ((key: FixedPastDurationKey) => void) | null = null;
   public onPastCustomDurationConfirm: ((sec: number) => void) | null = null;
   public onTickLabelModeChange: ((mode: TickLabelMode) => void) | null = null;
+  public onShowTicksChange: ((show: boolean) => void) | null = null;
   public onSliderChange: ((t: number) => void) | null = null;
   public onResetToNow: (() => void) | null = null;
   public onJumpToTime: ((sec: number) => void) | null = null;
@@ -243,16 +268,17 @@ export class PredictPanel {
   private readonly pastDurationRow: DurationPillRow<FixedPastDurationKey, DisplayPastDurationKey>;
   private readonly pastToggleBtn: Button;
   private readonly tickLabelModeSwitch: ToggleSwitch;
+  private readonly showTicksSwitch: ToggleSwitch;
   private readonly slider: Slider;
   private readonly absoluteLabel: HTMLElement;
   private readonly elapsedLabel: HTMLElement;
   private readonly jumpEditEl: HTMLElement;
   private readonly jumpInput: DurationValueInput;
+  private readonly jumpEditSlot: EditSlot;
   private readonly ticks: HTMLElement;
   private readonly wrap: HTMLElement;
   private readonly unsubscribeCollapsedView: () => void;
 
-  private editingJump = false;
   private sliderSteps = 1000;
   private currentDuration = C.APERIODIC_ARC_DURATION;
   private lastTrackRatio = 1;
@@ -295,6 +321,13 @@ export class PredictPanel {
     );
     this.tickLabelModeSwitch.element.classList.add('predict-tick-mode');
 
+    // 目盛り行自体の表示可否。
+    this.showTicksSwitch = new ToggleSwitch(
+      '目盛りを表示',
+      (on) => this.onShowTicksChange?.(on),
+    );
+    this.showTicksSwitch.element.classList.add('predict-tick-visibility');
+
     // 行2: 現在に戻すボタン + スクラバー + T+読み値(クリックで直接ジャンプ入力に変わる)。
     const row2 = document.createElement('div');
     row2.className = 'predict-row2';
@@ -311,6 +344,7 @@ export class PredictPanel {
       (value) => this.onSliderChange?.(value / this.sliderSteps),
     );
     this.slider.element.title = 'ドラッグ、またはトラックをクリックして未来位置を選ぶ';
+    this.slider.element.setAttribute('aria-label', '未来位置');
     sliderWrap.appendChild(this.slider.element);
     row2.appendChild(sliderWrap);
 
@@ -334,6 +368,8 @@ export class PredictPanel {
     this.jumpEditEl.className = 'predict-value-input hidden';
     this.jumpEditEl.appendChild(this.jumpInput.element);
     row2.appendChild(this.jumpEditEl);
+    this.jumpEditSlot = new EditSlot(this.elapsedLabel, this.jumpEditEl);
+    row2.appendChild(this.showTicksSwitch.element);
     row2.appendChild(this.tickLabelModeSwitch.element);
     this.panel.appendChild(row2);
 
@@ -366,9 +402,11 @@ export class PredictPanel {
     this.durationRow.render(state.durationKey, state.customDurationSec, state.duration);
     this.pastDurationRow.render(state.pastDurationKey, state.customPastDurationSec, state.pastDuration);
     this.tickLabelModeSwitch.setOn(state.tickLabelMode === 'relative');
+    this.showTicksSwitch.setOn(state.showTicks);
+    this.ticks.classList.toggle('hidden', !state.showTicks);
     this.renderSlider(state.sliderSteps, state.sliderT, state.predictionRatio);
     this.renderAbsoluteLabel(state.displayTime);
-    if (!this.editingJump) this.renderElapsedLabel(state.sliderT * state.duration);
+    if (!this.jumpEditSlot.editing) this.renderElapsedLabel(state.sliderT * state.duration);
     this.renderTicks(state.ticks);
   }
 
@@ -392,7 +430,9 @@ export class PredictPanel {
   private applyPastRowCollapsed(collapsed: boolean): void {
     this.pastDurationRow.element.classList.toggle('collapsed', collapsed);
     this.pastToggleBtn.setLabel(collapsed ? '過去 ▸' : '過去 ▾');
-    this.pastToggleBtn.element.title = collapsed ? '過去表示を開く' : '過去表示を畳む';
+    const title = collapsed ? '過去表示を開く' : '過去表示を畳む';
+    this.pastToggleBtn.element.title = title;
+    this.pastToggleBtn.element.setAttribute('aria-label', title);
   }
 
   // スライダーの段階数・つまみ位置・未予測区間の表示を反映する。
@@ -426,24 +466,17 @@ export class PredictPanel {
 
   // T+ 読み値を数値入力フォームへ差し替える。
   private openJumpEdit(): void {
-    this.editingJump = true;
-    this.elapsedLabel.classList.add('hidden');
-    this.jumpEditEl.classList.remove('hidden');
+    this.jumpEditSlot.open();
     this.jumpInput.openWithSec(this.currentDuration * (this.slider.getValue() / this.sliderSteps), 0, this.currentDuration);
   }
 
   // 数値入力フォームを閉じ、T+ 読み値を出す。
   private closeJumpEdit(): void {
-    this.editingJump = false;
-    this.jumpEditEl.classList.add('hidden');
-    this.elapsedLabel.classList.remove('hidden');
+    this.jumpEditSlot.close();
   }
 
-  // 各目盛りをスライダー全域上の位置 t(0..1)に配置する。端に近い目盛りは画面外へはみ出さないよう
-  // 寄せ方を変える(:first-child/:last-child ではなく t の値そのものから決める — 最終目盛りが
-  // 常に 100% 位置とは限らないため)。
-  // 各目盛りをスライダー全域上の位置 t(0..1)へ置く。t は期間の等分ではなく、最後の目盛りが
-  // 右端に来るとも限らないので、端からはみ出さないための寄せ方も t の値そのものから決める。
+  // 各目盛りをスライダー全域上の位置 t(0..1)へ置く。端に近い目盛りの寄せ方も t の値そのものから
+  // 決める(:first-child/:last-child ではない — 最終目盛りが常に右端とは限らないため)。
   private renderTicks(ticks: readonly DisplayTick[]): void {
     if (this.ticks.childElementCount !== ticks.length) {
       this.ticks.innerHTML = '';
