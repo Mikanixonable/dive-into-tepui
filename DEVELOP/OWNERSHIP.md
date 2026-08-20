@@ -129,20 +129,23 @@ main.ts
 │       │   │                                   base.baseState.resources)も生産タブが持つ。非クリップは高々1枚
 │       │   │                                   (排他グループ 'base-operations-temp' を DraggableWindow が宣言する)
 │       │   ├── AssemblyDragController      ... コンストラクタで scene から new する(1つだけ、セッションより長生きする)。
-│       │   │                                   掴んでいる部品・そのゴーストメッシュ・update が決めた姿勢と可否の正本。
-│       │   │                                   掴んでいる間だけ document の pointerup/pointercancel を購読する
-│       │   │                                   (「離すまで続く」操作は毎フレームの入力キューに現れないため)
+│       │   │                                   掴んでいるもの(部品または部材)・そのゴーストメッシュ・update が決めた
+│       │   │                                   姿勢と可否・部材ぶんの pendingMemberEdit の正本。document の購読は無い —
+│       │   │                                   拾い上げ・離しはどちらも Docking.updateAssembly が input.takeClicks で
+│       │   │                                   1箇所に集約したキューを消費して呼ぶ(pickAt/release/drop)
 │       │   ├── AssemblySession?            ... 進行中の組立(private assembly、高々1つ)。基地・DockWorkbenchSession・
-│       │   │   │                               DockWorkbenchController・AssemblyPanel・編集中の targetId を1つの値として持つ。
+│       │   │   │                               DockWorkbenchController・AssemblyPanel・編集中の targetId・3D で拾った
+│       │   │   │                               選択(selection)・開始時のチェイスカメラ距離(savedChaseDist)を1つの値として持つ。
 │       │   │   │                               startAssembly が組み、commitAssembly/cancelAssembly が endAssembly 経由で捨てる
 │       │   │   ├── DockWorkbenchSession    ... 対象(基地本体・格納艦・下書き)ごとの編集中の VesselAssembly と倉庫、
 │       │   │   │                               Undo/Redo 履歴の正本。実機へ届くのは commitAssembly の瞬間だけ
 │       │   │   ├── DockWorkbenchController ... 上のセッションに対するドラッグ状態機械(掴んでいる部品・出所・スナップ候補)
-│       │   │   └── AssemblyPanel           ... DOM は Hud.layers.window 配下。部品棚ウィンドウ。ボタン押下が
-│       │   │                                   AssemblyDragController.beginDrag を呼ぶ唯一の経路
+│       │   │   └── AssemblyPanel           ... DOM は Hud.layers.window 配下。部品棚ウィンドウ + 選択行 + 断面編集 +
+│       │   │                                   部材棚 + 下書き作成/建造ボタン。部品棚のボタン押下と、3D で部品を拾い上げた
+│       │   │                                   Docking.applyPick の両方が AssemblyDragController.beginDrag を呼ぶ
 │       │   ├── DraftEntry ×n               ... 新規船の下書き(private drafts)。VesselAssembly と AssemblyRenderObject を持ち、
 │       │   │                                   実体は基地の renderObject の子として浮かぶ。createDraft が作り buildDraft が
-│       │   │                                   実艦にして消す(どちらもまだ UI の入口を持たない)
+│       │   │                                   実艦にして消す(AssemblyPanel の新規船下書き/建造して格納ボタンから呼ばれる)
 │       │   └── ResourceTransferDialog      ... DOM は Hud.layers.view 配下。ドッキング中の2機の間で資源を移す
 │       │                                       ダイアログ(readonly transferDialog)。openTransfer() が開く
 │       ├── ViewManager                    ... 現在のワールドビュー(combat/map)の正本。遷移は setView() ひとつに集約。
@@ -570,12 +573,13 @@ main.ts
 | 未来表示(計画折れ線・予測軌道線・交点マーカー)を描く座標系(`frame`) | `DisplayWindowManager` | `MapCamera.cameraFrame`(視点固定座標系)とは別の正本。get/set アクセサ(`frame`)で公開。書き換えは `FrameControls` の「軌道計画(描画基準)」区画の中心/回転ゾーン(`planCenterZone`/`planRotationZone`)のみ、いずれも `Ephemeris.frameOf(center, rotatingWith)` 経由。同区画の「カメラの基準に追随」トグル(`followCamera`、既定 on)が on の間は `setFocus` によるカメラ側フォーカス移動もここへ連動する |
 | 予測到達割合(`predictionRatio`)・直近 `sync()` で受け取った表示期間(`lastDuration`) | `DisplayWindowManager` | いずれも private な導出値。`predictionRatio` は `sync(player)` が呼ばれるたび private `predictionCoverageRatio(player)` が自機の `predicted.state.t` と `current`(simTime, duration)から自分で求め直す(外部からの書き込みはない)。`lastDuration` は直近の `resolve()` 呼び出しが確定させた表示期間を憶えておくだけの値で、ジャンプ入力(DOM イベント、フレーム外)が `sliderT` を逆算する際にだけ参照される |
 | マップ視点(注視点相対オフセット・パン・上方向)・座標系(cameraFrame)・フォーカス(FocusTarget)・Viewpoint | `MapCamera` | `viewpoint: Viewpoint` は `CombatCameraSystem` と同じ形。`CameraSystem` はこの `viewpoint` を読むだけで自分では持たない。フォーカスは `camera/focus-target.ts` の `FocusTarget`(`{kind:'object', id}` または `{kind:'point', frame, point}`)で、`{kind:'object'}` が指す実位置は `MapCamera` が持たず、`update` の引数(`MapPickables.refresh()`)から毎フレーム引き直す。書き換えは `setFocusTarget`/`setCameraRotation` のみ、いずれも `FrameControls` の「カメラ(視点)」区画の中心/回転ゾーン(`cameraCenterZone`/`cameraRotationZone`)から呼ばれる |
-| 戦闘視点(Viewpoint: position/lookTarget/up/fovDeg/aspect)・照準ズーム中か(zoomActive) | `CombatCameraSystem` | rot(クオータニオン)/dist・姿勢追従フラグ(camFollowAttitude)は内部の `ChaseCamera` が持つが、追従対象そのものは保持せず、`CameraSystem.update` から渡る `player` を毎フレーム `chaseCamera.update`/`toggleFollowAttitude` の引数として転送するだけ。`[G]`(`K.followAttitudeToggle`)を読んで `chaseCamera.toggleFollowAttitude(player)` を呼ぶのもこのクラス自身の `update`(`CameraSystem` は読まない)。zoomActive はこのクラス自身の `update` が `Input` から読んで保持する |
+| 戦闘視点(Viewpoint: position/lookTarget/up/fovDeg/aspect)・照準ズーム中か(zoomActive) | `CombatCameraSystem` | rot(クオータニオン)/dist・姿勢追従フラグ(camFollowAttitude)は内部の `ChaseCamera` が持つが、追従対象そのものは保持せず、`CameraSystem.update` から渡る `player`(`ChaseCameraTarget` へ写した位置・姿勢)を毎フレーム `chaseCamera.update`/`toggleFollowAttitude` の引数として転送するだけ。`update` の末尾引数 `chaseTarget` が非 null なら `player` の代わりにそちらを追い、照準ズームも無効になる(下記 `CameraSystem._chaseCameraOverride` 参照)。`[G]`(`K.followAttitudeToggle`)を読んで `chaseCamera.toggleFollowAttitude(resolvedTarget)` を呼ぶのもこのクラス自身の `update`(`CameraSystem` は読まない)。zoomActive はこのクラス自身の `update` が `Input` から読んで保持する |
+| チェイスカメラの追従先の上書き(`ChaseCameraTarget \| null`) | `CameraSystem`(private `_chaseCameraOverride`) | `setChaseCameraOverride` の1メソッドでしか書けない、意味を知らない中継値 — `CameraSystem` 自身は誰が何のために設定したかを知らない。書き手は `Docking` だけで、組立セッションが開いている間は編集中の対象の位置・姿勢へ、閉じると `null` へ戻す。`CameraSystem.update` が `combatCamera.update` の末尾引数としてそのまま渡すだけで、`overviewMode`(マップ視点)には影響しない |
 | 現在のビュー(combat/map) | `ViewManager`(private `worldView`) | 遷移は `setView()` のみ(影響先 `Hud.setWorldView` / `CameraSystem.setMapMode` / `PlanEditor.setMapMode` / `DisplayWindowManager.forceCurrent` / タッチUI / `panel-shell` の収納状態を一斉に揃える)。`current` は `worldView` そのもので、他に開いているもの(基地操作・組立・プロパティウィンドウ)はビューではなくオーバーレイなので、その開閉はここへ入ってこない。`ViewId` は保存互換のためだけに `'dock'` を型に残す — `setView('dock')` は即 return し、`canEnter('dock')` は false なので、保存された `'dock'` はコンストラクタの `canEnter` 解決で `'map'` に落ちる |
 | 選択中の基地 | `Docking`(private `_activeBase`) | 基地の左クリック(`selectPickable`)と、`openBaseOperations`/`startAssembly` の入口で設定する。基地操作ウィンドウ・組立セッションの既定の対象になるだけで、ビューには影響しない |
 | 開いている基地操作ウィンドウの集合 | `Docking`(private `baseWindows: Map<string, BaseOperationsWindow>`) | キーは基地 id。`openBaseOperations` が新規/移動を判断し、`syncBaseWindows`(毎フレーム)が実体の消えた基地のぶんを、`clearActiveBaseIf` が削除された基地のぶんを閉じる。「非クリップは高々1枚」の排他は `Hud.overlayManager` が `'base-operations-temp'` グループで持つ |
-| 進行中の組立セッション | `Docking`(private `assembly: AssemblySession \| null`) | 高々1つ。基地・`DockWorkbenchSession`・`DockWorkbenchController`・`AssemblyPanel`・編集中の `targetId` を1つの値として持ち、`startAssembly` が組んで `commitAssembly`/`cancelAssembly` が `endAssembly` 経由で捨てる。開いている間は `pauseGame()` 相当で時間が止まる(編集の反映先はセッションだけで、実機は確定の瞬間にしか触られない)。`assemblyInProgress` は `launch` が拒否に使う |
-| 掴んでいる部品とゴーストの姿勢・可否 | `AssemblyDragController`(private `part`/`ghost`/`pose`/`lastTargetId`) | `Docking` が1つだけ持つ(セッションより長生きする)。`beginDrag` は `AssemblyPanel` の部品ボタンからのみ。`update`(フレームの update フェーズ)が姿勢と可否を決め、`sync` はそれをゴーストへ書くだけ。掴んでいる間の「離した」は毎フレームの入力キューに現れないので、`document` の pointerup/pointercancel を掴んでいる間だけ購読する |
+| 進行中の組立セッション | `Docking`(private `assembly: AssemblySession \| null`) | 高々1つ。基地・`DockWorkbenchSession`・`DockWorkbenchController`・`AssemblyPanel`・編集中の `targetId`・3D で拾ったノード/エッジの選択(`selection: AssemblySelection`)・開始時のチェイスカメラ距離(`savedChaseDist`、`endAssembly` が復元する)を1つの値として持ち、`startAssembly` が組んで `commitAssembly`/`cancelAssembly` が `endAssembly` 経由で捨てる。開いている間は `pauseGame()` 相当で時間が止まる(編集の反映先はセッションだけで、実機は確定の瞬間にしか触られない)。`assemblyInProgress` は `launch` が拒否に使う。開始と対象タブの切替のたびに `frameAssemblyCamera` が `CameraSystem._chaseCameraOverride` を編集中の対象へ差し替える(下記参照) |
+| 掴んでいるもの(部品または部材)とゴーストの姿勢・可否 | `AssemblyDragController`(private `held: {kind:'part', part} \| {kind:'member', member} \| null`/`ghost`/`pose`/`pendingMemberEdit`) | `Docking` が1つだけ持つ(セッションより長生きする)。`beginDrag` は `AssemblyPanel` の部品棚ボタンから、または `Docking.applyPick` が3Dで拾った既存部品から(`sourceInventory: false`)呼ばれる。`beginMemberDrag` は部材棚の「部材を掴む」から呼ばれ、`DockWorkbenchController` の `DragState` は経由しない(部材は在庫を持たない使い捨てなので)。`update`(フレームの update フェーズ、`Docking.updateAssembly` が `dragging` の間だけ呼ぶ)が姿勢と可否を決め、`sync` はそれをゴーストへ書くだけ。掴んでいる間の「離した」は `document` を購読せず、`Docking.updateAssembly` が `input.takeClicks` で集約した1つのキューの消費(`release`/`drop`)として届く。3D で拾い上げた部品の実機メッシュは `Docking`(private `heldOriginal: {root, partId} \| null`)が掴んでいる間だけ隠し、掴みが終わるとき(結果を問わず)必ず戻す |
 | マップモード表示 | `CameraSystem.overviewMode` | 描画・視点側の分岐はこれを見る。`CameraSystem.zoomActive` は `!overviewMode && combatCamera.zoomActive` を返すだけの派生 getter(状態は持たない) |
 | 開いているプロパティウィンドウの集合 | `MapContextActions`(`windows: Map<string, WindowEntry>`) | キーは `` `${kind}:${id}` ``。`openPropertyWindow` が新規/移動を判断し、`closeWindow`/`forgetWindow` が畳む。個々の `PropertyWindow` インスタンス自身はクリップ状態(`clipped`)とドラッグ位置だけを持ち、開閉のポリシー(いつ閉じるか)は持たない。「非クリップは高々1枚」という排他自体はこのクラスの状態ではなく `Hud.overlayManager` が `PROPERTY_WINDOW_TEMP_GROUP`(`exclusiveGroup`)経由で持つ(上記参照共有の表) |
 | 第一・第二ターゲット・的通過マーク | `Targeter`(`target`/`secondaryTarget`) | `Targeter.setPrimaryTarget`/`setSecondaryTarget`(`MapContextActions`が開くプロパティウィンドウの`targetPrimary`/`targetSecondary`項目、または`[T]`キーの`handleTargetSelectKey`)でのみ変わる。自動選定・自動再選択はない |

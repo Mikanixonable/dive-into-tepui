@@ -1,11 +1,16 @@
 // 船体ローカル座標上の1点から、部品や構造材を取り付けられる最寄りの MountPoint を逆算する。
-// ノードの空き軸方向(ポート)と hull/truss エッジの外表面(along/around の連続パラメータ)の
-// 両方を候補にし、閾値内で最も近い1件を返す。
+// ノードの空きポート(軸方向・側面)と hull/truss エッジの外表面(along/around の連続パラメータ)の
+// 3つを候補にし、閾値内で最も近い1件を返す。
+//
+// 列挙するポートの種類は portKinds が選ぶ。既定は 'axial' のみ ―― 引数を渡さない既存の呼び出し
+// (部品ドラッグ)がこれまでと同じ候補集合・同じ答えを返し続けるための既定値であり、側面ポートも
+// 候補に含めたい呼び出し側(部材ドラッグ)は portKinds へ 'lateral' を足して渡す。
 
 import type { VesselAssembly } from './assembly';
 import { occupiedPorts } from './assembly-editor';
 import type { MountFrame, MountPoint, PortRef, TreeEdge, TreeNode, VesselTree } from './tree';
-import { edgeFrame, mountFrame, portFrame, portKey } from './tree';
+import { edgeFrame, lateralFaceCount, mountFrame, portFrame, portKey } from './tree';
+import { placeSectionPrimitives } from '../../physics/section-moments';
 import type { Vec3 } from '../../physics/vec3';
 import { dot, len, sub } from '../../physics/vec3';
 
@@ -15,6 +20,8 @@ export interface MountCandidate {
   readonly distance: number; // localPoint から frame.origin までの距離 [m]
 }
 
+const DEFAULT_PORT_KINDS: readonly PortRef['kind'][] = ['axial'];
+
 // localPoint に最も近い取り付け位置を、ノードの空きポートとエッジ表面の両方から探して返す。
 // maxDistance を超える候補と、filter が false を返す候補は除く。該当する候補がなければ null。
 export function nearestMountCandidate(
@@ -22,6 +29,7 @@ export function nearestMountCandidate(
   localPoint: Vec3,
   maxDistance: number,
   filter?: (mount: MountPoint) => boolean,
+  portKinds: readonly PortRef['kind'][] = DEFAULT_PORT_KINDS,
 ): MountCandidate | null {
   let best: MountCandidate | null = null;
   const consider = (candidate: MountCandidate | null): void => {
@@ -31,8 +39,17 @@ export function nearestMountCandidate(
   };
   const occupied = occupiedPorts(assembly);
   for (const node of assembly.tree.nodes) {
-    consider(portCandidate(node, { kind: 'axial', sign: 1 }, occupied, localPoint));
-    consider(portCandidate(node, { kind: 'axial', sign: -1 }, occupied, localPoint));
+    if (portKinds.includes('axial')) {
+      consider(portCandidate(node, { kind: 'axial', sign: 1 }, occupied, localPoint));
+      consider(portCandidate(node, { kind: 'axial', sign: -1 }, occupied, localPoint));
+    }
+    if (portKinds.includes('lateral')) {
+      for (const primitive of placeSectionPrimitives(node.section)) {
+        for (let faceIndex = 0; faceIndex < lateralFaceCount(primitive); faceIndex++) {
+          consider(portCandidate(node, { kind: 'lateral', primitiveId: primitive.id, faceIndex }, occupied, localPoint));
+        }
+      }
+    }
   }
   for (const edge of assembly.tree.edges) {
     consider(surfaceCandidate(assembly.tree, edge, localPoint));

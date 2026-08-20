@@ -3,6 +3,7 @@
 // 生産に要る資源と設備が揃っているかは producibility が別に答える。
 
 import { cross, dot, len, norm, scale, sub, v3, add } from '../../physics/vec3';
+import * as C from '../const';
 import type { Vec3 } from '../../physics/vec3';
 import type { Vec2 } from '../../physics/section-moments';
 import { PORT_WIDTH_RATIO, placeSectionPrimitives, portHalfAngle } from '../../physics/section-moments';
@@ -21,6 +22,11 @@ import {
 import { deriveMassProperties } from './mass-properties';
 import type { VesselBlueprint } from './blueprint';
 import { assemblyOf } from './blueprint';
+import { PartInventory } from './part-inventory';
+import type { ActuatorSet } from '../../physics/attitude-control';
+import { allocateControl } from '../../physics/attitude-control';
+import { actuatorSetOf } from './actuator-set';
+import type { AnyPart } from '../game-entity/parts';
 
 export interface BlueprintIssue {
   readonly severity: 'error' | 'warning';
@@ -96,6 +102,9 @@ export function validateBlueprint(
   checkStages(bp, issues);
   checkHeatShields(bp, issues);
   if (volumeResolved) checkThrustAxis(bp, issues);
+  checkPowerBudget(bp, issues);
+  checkThermalBudget(bp, issues);
+  if (volumeResolved) checkAttitudeControlAuthority(bp, issues);
   checkLimits(bp, limits, volumeResolved, issues);
   return issues;
 }
@@ -559,6 +568,90 @@ function checkThrustAxis(bp: VesselBlueprint, issues: BlueprintIssue[]): void {
       `推力軸が重心から ${offset.toFixed(3)} m 外れていて、許容 ${limit.toFixed(3)} m を超えています`));
   } else if (offset > limit / 2) {
     issues.push(issue('warning', WHOLE_VESSEL, `推力軸が重心から ${offset.toFixed(3)} m 外れています`));
+  }
+}
+
+// 発電が消費電力を賄っていること。下回っても即座に飛べなくなるわけではなく蓄電池を
+// 食いつぶしながら運用できるので、構造上の不正(error)ではなく警告にとどめる。
+function checkPowerBudget(bp: VesselBlueprint, issues: BlueprintIssue[]): void {
+  const inventory = new PartInventory(bp.placements.map((p) => p.part));
+  const draw = inventory.totalPowerDraw;
+  const generation = inventory.totalPowerGeneration;
+  if (draw <= generation) return;
+  issues.push(issue('warning', WHOLE_VESSEL,
+    `消費電力 ${draw.toFixed(0)} W が発電量 ${generation.toFixed(0)} W を上回っています`));
+}
+
+// 廃熱を、外殻温度の上限(§11-3 の MAX_HULL_TEMP)で放熱しきれること。thermal.ts の
+// ステファン・ボルツマン放射と同じ式・同じ定数を、その温度1点だけで評価する — そこで既に
+// 賄えないなら、大気加熱が一切無くても平衡温度が上限を超えてしまう設計である。下回っても
+// 即座に破壊されるわけではなく蓄熱で猶予があるので警告にとどめる。
+function checkThermalBudget(bp: VesselBlueprint, issues: BlueprintIssue[]): void {
+  const inventory = new PartInventory(bp.placements.map((p) => p.part));
+  const waste = inventory.totalWasteHeat;
+  if (!(waste > 0)) return;
+  const area = C.RAD_AREA + inventory.totalCoolingRate;
+  const radiated = C.HULL_EMISS * C.STEFAN_BOLTZMANN * area *
+    (C.MAX_HULL_TEMP ** 4 - C.ENV_TEMP ** 4);
+  if (waste <= radiated) return;
+  issues.push(issue('warning', WHOLE_VESSEL,
+    `廃熱 ${waste.toFixed(0)} W が、外殻温度の上限での放熱能力 ${radiated.toFixed(0)} W を上回っています`));
+}
+
+// 判定用の要求トルクの大きさ。有限で非負の応答が出るかだけを見るので値そのものに意味は無い。
+const CONTROL_TEST_TORQUE = 1; // N・m
+// 数値誤差で 0 と紛れない程度の閾値。
+const CONTROL_AUTHORITY_EPS = 1e-9;
+const BODY_AXES: readonly Vec3[] = [v3(1, 0, 0), v3(0, 1, 0), v3(0, 0, 1)];
+
+// actuators が機体3軸それぞれへトルクを出せるか。磁場は設計時には定まらないので磁気トルカの
+// 寄与を除外し(field を零ベクトルにすれば allocateControl 自身がそう扱う)、フライホイールと
+// RCS スラスタだけで判定する — attitude-control.ts 自身、磁気トルカの出力を桁で小さい
+// アンローディング専用として扱っており、姿勢制御の可否をそれに頼らせないのと同じ前提である。
+function hasFullControlAuthority(actuators: ActuatorSet): boolean {
+  for (const axis of BODY_AXES) {
+    const request = { torque: scale(axis, CONTROL_TEST_TORQUE), force: v3() };
+    const allocation = allocateControl(request, actuators, v3(), v3(), 0, false);
+    if (!(dot(allocation.torque, axis) > CONTROL_AUTHORITY_EPS)) return false;
+  }
+  return true;
+}
+
+// excludedPartId を積んでいないものとしたアクチュエータ一式。actuatorSetOf 自身は「壊れた
+// (hp<=0)要素を除く」判定しか持たないので、ここでは配置と搭載要素の一覧から丸ごと外して渡す。
+function actuatorSetExcluding(
+  tree: VesselTree,
+  placements: readonly PartPlacement[],
+  parts: readonly AnyPart[],
+  centerOfMass: Vec3,
+  excludedPartId: string,
+): ActuatorSet {
+  return actuatorSetOf(
+    { tree, placements: placements.filter((p) => p.part.id !== excludedPartId) },
+    parts.filter((p) => p.id !== excludedPartId),
+    centerOfMass,
+  );
+}
+
+// 姿勢制御が3軸とも出せること(error)と、フライホイール1基・RCSスラスタ1基のどれを失っても
+// なお3軸とも出せること(warning)。後者は attitude-control.ts の配分そのものを使い、
+// 要素を1つ欠いたアクチュエータ一式で有限・非負のトルクが出せるかを問う形で答える(§6.2)。
+function checkAttitudeControlAuthority(bp: VesselBlueprint, issues: BlueprintIssue[]): void {
+  const parts = bp.placements.map((p) => p.part);
+  const centerOfMass = deriveMassProperties(assemblyOf(bp)).centerOfMass;
+  const actuators = actuatorSetOf(assemblyOf(bp), parts, centerOfMass);
+  if (!hasFullControlAuthority(actuators)) {
+    issues.push(issue('error', WHOLE_VESSEL, '姿勢制御ができない軸があります'));
+    return;
+  }
+
+  const redundancyTargets = bp.placements.filter((p) =>
+    p.part.type === 'flywheel' || (p.kind === 'external' && p.part.type === 'rcs_thruster'));
+  for (const placement of redundancyTargets) {
+    const reduced = actuatorSetExcluding(bp.tree, bp.placements, parts, centerOfMass, placement.part.id);
+    if (hasFullControlAuthority(reduced)) continue;
+    issues.push(issue('warning', placement.part.id,
+      `"${placement.part.id}" を失うと、いずれかの軸で姿勢制御ができなくなります`));
   }
 }
 
