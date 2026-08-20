@@ -1,13 +1,14 @@
 // 組立UI: 作業台セッションが持つ倉庫の部品を対象ごとにボタンで並べ、クリックで
-// AssemblyDragController のドラッグを開始させる常設 HUD ウィンドウ。ドラッグそのものの
-// 追跡・スナップ判定はこのクラスの外(assembly-drag-controller.ts)の責務で、ここは
-// 「どの部品がクリックされたか」を beginDrag へ渡すところまでを持つ。
+// AssemblyDragController のドラッグを開始させ、3D で拾ったノード・エッジの選択を1行で示す
+// 常設 HUD ウィンドウ。ドラッグ・選択の追跡・スナップ判定はこのクラスの外
+// (assembly-drag-controller.ts / docking.ts)の責務で、ここはそれを表示へ映すところまでを持つ。
 // 1セッションにつき1インスタンスを持ち回して sync() で毎フレーム(または状態が変わる
 // たびに)差分更新する — predict-panel.ts の PredictPanel と同じ、常設パネルの流儀。
 // #hud の子として window レイヤへ置くため、`#hud, #hud *` の margin/padding
 // リセットに勝てるよう全セレクタを `#hud` で始める。
 import type { AnyPart, PartType } from '../game-entity/parts';
 import { AssemblyDragController } from '../vessel/assembly-drag-controller';
+import type { AssemblySelection } from '../docking';
 import type { DockWorkbenchController } from '../vessel/dock-workbench-controller';
 import type { DockWorkbenchSession, WorkbenchTarget, WorkbenchTargetKind } from '../vessel/dock-workbench';
 import { DraggableWindow } from './draggable-window';
@@ -20,6 +21,7 @@ const STYLE = `
 #hud .asm-panel-targets { padding: 0 var(--space-3); }
 #hud .asm-panel-actions { display: flex; gap: var(--space-2); padding: 0 var(--space-3); }
 #hud .asm-panel-actions .w-btn { flex: 1; text-align: center; }
+#hud .asm-panel-selection { padding: 0 var(--space-3); color: var(--text); opacity: 0.85; font-size: var(--font-s); }
 #hud .asm-panel-filter { padding: 0 var(--space-3); }
 #hud .asm-panel-filter .w-input { width: 100%; box-sizing: border-box; }
 #hud .asm-panel-errors { display: flex; flex-direction: column; gap: var(--space-1); padding: 0 var(--space-3); }
@@ -63,6 +65,7 @@ export class AssemblyPanel {
   private undoBtn: Button | null = null;
   private redoBtn: Button | null = null;
   private filterInput: ValueInput | null = null;
+  private selectionEl: HTMLDivElement | null = null;
   private errorsEl: HTMLDivElement | null = null;
   private shelfEl: HTMLDivElement | null = null;
   private readonly partButtons = new Map<string, { readonly btn: Button; readonly part: AnyPart }>();
@@ -72,6 +75,7 @@ export class AssemblyPanel {
   private lastTargetsKey = '';
   private lastInventoryKey = '';
   private lastErrorsKey = '';
+  private lastSelectionKey = '';
 
   // セッションが編集対象を切り替えたことを通知する。呼び出し側はこれを見て
   // (ドッキングビュー側の3Dプレビュー等)対象の表示を追従させる。
@@ -104,8 +108,9 @@ export class AssemblyPanel {
     this.lastTargetsKey = '';
     this.lastInventoryKey = '';
     this.lastErrorsKey = '';
+    this.lastSelectionKey = '';
     this.win.bringToFront();
-    this.sync(session);
+    this.sync(session, null);
   }
 
   // 開いているウィンドウを閉じる。以後 sync() は何もしない。
@@ -117,6 +122,7 @@ export class AssemblyPanel {
     this.undoBtn = null;
     this.redoBtn = null;
     this.filterInput = null;
+    this.selectionEl = null;
     this.errorsEl = null;
     this.shelfEl = null;
     this.partButtons.clear();
@@ -147,6 +153,10 @@ export class AssemblyPanel {
     actionsEl.append(this.undoBtn.element, this.redoBtn.element, confirmBtn.element, cancelBtn.element);
     body.appendChild(actionsEl);
 
+    this.selectionEl = document.createElement('div');
+    this.selectionEl.className = 'asm-panel-selection';
+    body.appendChild(this.selectionEl);
+
     const filterEl = document.createElement('div');
     filterEl.className = 'asm-panel-filter';
     this.filterInput = new ValueInput(
@@ -175,10 +185,10 @@ export class AssemblyPanel {
     this.win?.reclamp();
   }
 
-  // 毎フレーム(または状態が変わったとみなせるたび)に session の内容を読み直して
+  // 毎フレーム(または状態が変わったとみなせるたび)に session の内容と3D選択を読み直して
   // ウィンドウへ反映する。開いていなければ何もしない — 呼び出し側は open/close の
   // タイミングを気にせず常に呼んでよい。
-  public sync(session: DockWorkbenchSession | null): void {
+  public sync(session: DockWorkbenchSession | null, selection: AssemblySelection): void {
     if (!this.win || !session) return;
     const targets = session.targetsSnapshot();
     if (this.currentTargetId === null || !targets.some((t) => t.id === this.currentTargetId)) {
@@ -187,8 +197,20 @@ export class AssemblyPanel {
     this.syncTargets(targets);
     this.undoBtn?.setEnabled(session.canUndo);
     this.redoBtn?.setEnabled(session.canRedo);
+    this.syncSelection(selection);
     this.syncShelf(session.inventorySnapshot());
     this.syncErrors(session);
+  }
+
+  // 3D で拾ったノード・エッジの選択を1行で示す。A4 の断面編集面はこの下に置く。
+  private syncSelection(selection: AssemblySelection): void {
+    if (!this.selectionEl) return;
+    const key = selection === null ? '' : `${selection.kind}:${selection.kind === 'node' ? selection.nodeId : selection.edgeId}`;
+    if (key === this.lastSelectionKey) return;
+    this.lastSelectionKey = key;
+    this.selectionEl.textContent = selection === null ? '選択: なし'
+      : selection.kind === 'node' ? `選択: ノード ${selection.nodeId}`
+      : `選択: エッジ ${selection.edgeId}`;
   }
 
   private syncTargets(targets: readonly WorkbenchTarget[]): void {
