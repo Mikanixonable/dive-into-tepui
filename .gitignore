@@ -4,5 +4,6 @@ tests/dist/
 tests/perf/dist/
 docs/
 .DS_Store
-.claude/
+.claude/worktrees/
+.claude/settings.local.json
 .bgm-lab/
