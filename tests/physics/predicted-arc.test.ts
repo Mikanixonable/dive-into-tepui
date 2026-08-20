@@ -27,8 +27,8 @@ function earthOnlyProvider(): FutureAttractorProvider {
   return {
     revision: 0,
     candidateRevision: 0,
-    candidates: () => [{ id: 'earth', mu: MU_EARTH, radius: R_EARTH, analytic: true, collision: true }],
-    bodyAt: (id, t) => (id === 'earth' ? earthAt(t) : null),
+    candidates: () => [{ id: 'earth', mu: MU_EARTH, radius: R_EARTH }],
+    bodyAt: (_id, t) => earthAt(t),
   };
 }
 
@@ -124,7 +124,7 @@ export function register(): void {
     }
   });
 
-  test('predicted-arc: consumable でない弧(計画の区間・mu≠0 の実体)は requiredEnd に依存したまま', () => {
+  test('predicted-arc: consumable でない弧(計画の区間)は requiredEnd に依存したまま', () => {
     const state0 = circularState();
     const retainFrom = state0.t;
 

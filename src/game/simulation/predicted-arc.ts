@@ -100,12 +100,10 @@ export class PredictedArc {
 
     // 中心窓は最初の1歩だけ先端時刻で解決し、以後は前歩の中点で解決した窓を持ち越す。
     const held = this.carriedSources ?? this.bodies.resolve(tip.t, tip, 0);
-    const rawCenter = strongestAttractor(tip.r, held.gravity);
-    // 外挿・近地点/遠地点の中心は解析天体に限る(動的重力源は天体暦で位置を引けない)。
-    const analyticCenter = strongestAttractor(tip.r, held.analyticGravity);
+    const center = strongestAttractor(tip.r, held.gravity);
 
     // その場の軌道周期が刻み幅とサンプル間隔の両方の基準になる。
-    const period = keplerPeriod(len(sub(tip.r, rawCenter.state.r)), rawCenter.mu);
+    const period = keplerPeriod(len(sub(tip.r, center.state.r)), center.mu);
     const dt = this.stepDt(tip, span, period, held.collision);
     // 消費される弧の間引きは表示期間(span)由来の項を使わない — 使うと PREDICT パネルの
     // 選択が実体の状態を変えてしまう。消費前線の近く(ARC_FINE_STEPS 歩ぶん)は毎歩保持し、
@@ -119,7 +117,7 @@ export class PredictedArc {
     const mid = this.bodies.resolve(tip.t + dt / 2, tip, dt);
     this._trajectory.step(
       dt, mid.gravity, this.bcInv, this.srpCoeff, null, sampleInterval, span,
-      this.keplerTail ? analyticCenter : null,
+      this.keplerTail ? center : null,
     );
 
     const { r, v } = this._trajectory.state;
@@ -130,7 +128,7 @@ export class PredictedArc {
       return true;
     }
 
-    (this._apsides ??= new ApsisTrack(analyticCenter)).observe(tip, this._trajectory.state);
+    (this._apsides ??= new ApsisTrack(center)).observe(tip, this._trajectory.state);
     this.checkImpact(tip, mid.collision);
 
     this.carriedSources = mid;

@@ -122,22 +122,6 @@
 
 ## 手順
 
-### Step 4 — 候補が解析天体だけになったことを弧へ通す
-
-`FutureBodyCandidate` から `analytic` と `collision` を削除する。天体暦の天体はすべて位置を
-解析的に引けて、すべて表面到達の相手になるので、どちらも恒真になる。
-
-- `ArcBodyWindow` から `analyticGravity` を削除する。残る `gravity` は
-  `mu ≠ 0` の解析天体だけなので、これがそのまま外挿・近地点/遠地点の中心を選ぶ母集団になる。
-- `PredictedArc.step` の `rawCenter` と `analyticCenter` を1つに統合する。
-- `heaviestGravityId` から `analytic` の判定を落とす。
-- `slackTime` の `collision` による分岐を落とす。
-
-**完了条件**: 達成目標 5 を満たす。`npm run typecheck` と `npm run test:physics` が通る。
-PREDICT パネルの予測線が、地球圏・月圏・惑星間のいずれでも従来どおり描かれる。
-
----
-
 ### Step 5 — 弧の作り直しを命じる責務の置き場所を決める(要判断)
 
 **このステップは Step 4 まで終えた時点で判断する。着手前に決め打ちしない。**
