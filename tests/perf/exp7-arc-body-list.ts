@@ -21,10 +21,10 @@ import {
   classifyAttractors, attractorsNear,
 } from './common';
 
-// 解析天体だけを候補に持つ provider(動的個体を置かないので候補は registry そのもの)。
+// registry の全天体を候補に持つ provider。
 function registryProvider(ephemeris: Ephemeris): FutureAttractorProvider {
   const candidates = Object.values(ephemeris.registry).map((def) => ({
-    id: def.id, mu: def.mu, radius: def.radius, analytic: true, collision: true,
+    id: def.id, mu: def.mu, radius: def.radius,
   }));
   return {
     revision: 0,

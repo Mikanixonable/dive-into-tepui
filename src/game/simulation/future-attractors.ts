@@ -7,13 +7,12 @@ import type { FutureAttractorProvider, FutureBodyCandidate } from './arc-bodies'
 
 export class FutureAttractors implements FutureAttractorProvider {
   private revisionValue = 0;
-  // 天体暦のレジストリから組んだ候補一覧。解析天体は重力を持たない表示天体も含めて
-  // 全数が表面到達の相手になる。
+  // 天体暦のレジストリから組んだ候補一覧。
   private readonly candidateList: readonly FutureBodyCandidate[];
 
   constructor(private readonly ephemeris: Ephemeris) {
     this.candidateList = Object.values(ephemeris.registry).map(
-      (def) => ({ id: def.id, mu: def.mu, radius: def.radius, analytic: true, collision: true }));
+      (def) => ({ id: def.id, mu: def.mu, radius: def.radius }));
   }
 
   get revision(): number { return this.revisionValue; }
