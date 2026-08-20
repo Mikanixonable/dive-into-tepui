@@ -382,22 +382,19 @@ export class EntityManager {
     for (const e of this.all()) e.equatorNodes?.sync(project, overviewMode, cameraPos);
   }
 
-  // 弾薬・基地の位置マーカーを displayTime の位置へ置く。ラベルの距離は viewerPos 基準で、
-  // 艦が1隻も無い間は距離を添えない。
+  // 弾薬の位置マーカーを displayTime の位置へ置く。艦・基地の位置マーカーは
+  // 各 Vessel が syncVessel の中で PilotMarkers を通して持つ。
   syncMarkers(
     cameraSystem: CameraSystem, displayTime: number, viewerPos: Vec3 | null,
-    attractors: readonly Attractor[], visibilityPolicy: MapVisibilityPolicy | null, activeVessel: Vessel | null,
+    attractors: readonly Attractor[], visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     const project = cameraSystem.activeCameraProjection;
     const scale = cameraSystem.activeCameraScale;
     const overviewMode = cameraSystem.overviewMode;
-    const visibilityOf = (kind: 'ammo' | 'base', isActivePlayer = false): MapVisibility | null =>
-      (overviewMode ? visibilityPolicy?.entity(kind, isActivePlayer) ?? null : null);
+    const visibilityOf = (kind: 'ammo'): MapVisibility | null =>
+      (overviewMode ? visibilityPolicy?.entity(kind) ?? null : null);
     for (const ammoPickup of this.ammoPickups) {
       ammoPickup.marker?.sync(project, scale, displayTime, overviewMode, cameraSystem.activeCameraPos, viewerPos, attractors, visibilityOf('ammo'));
-    }
-    for (const base of this.baseVessels()) {
-      base.marker?.sync(project, scale, displayTime, overviewMode, cameraSystem.activeCameraPos, viewerPos, attractors, visibilityOf('base', base === activeVessel));
     }
   }
 

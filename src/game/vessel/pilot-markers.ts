@@ -17,7 +17,7 @@ import type { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 
 import type { Vessel } from './vessel';
-import { headingHpMarkerSvg, notchedHpMarkerSvg } from './hp-marker-svg';
+import { vesselMarkerSvg } from './hp-marker-svg';
 
 // 戦闘ビュー専用のマーカー(広範囲視点ではまとめて隠す)。
 const COMBAT_KEYS = ['pro', 'retro', 'nrm', 'anm', 'radout', 'radin', 'bore'] as const;
@@ -46,9 +46,11 @@ export class PilotMarkers {
       if (isActive) {
         for (const key of COMBAT_KEYS) this.markerManager.hide(`${key}-${this.id}`);
       }
-      if (displayState && (!registry || isPositionInFocusedSystem(registry, focusId, displayState.r, attractors))
+      // getCombatTargets が操作対象を候補から除外する分を、この自機マーカーで補う —
+      // 非操作対象は combatMarkers 側の markerItem() が描くので、ここでは出さない。
+      if (isActive && displayState
+        && (!registry || isPositionInFocusedSystem(registry, focusId, displayState.r, attractors))
         && (!visibility || visibility.pickable)) {
-        const color = isActive ? 'var(--accent)' : undefined;
         const nearestPlanet = registry === undefined ? undefined : findNearestPlanet(displayState.r, registry, attractors);
         const nearPlanet = nearestPlanet !== undefined
           && nearestPlanet !== null && nearestPlanet.distance <= C.MAP_PLANET_SHIP_LABEL_END;
@@ -62,7 +64,7 @@ export class PilotMarkers {
           if (visibility?.label !== false && !planetOccluded) {
             this.markerManager.setPosition(
               nearbyLabelKey, 'mk-planet-nearby-label', '', nearestPlanet.attractor.state.r, project,
-              `${ENTITY_GLYPH.ship}${name}`, 1, color,
+              `${ENTITY_GLYPH.ship}${name}`, 1, 'var(--accent)',
             );
           } else if (visibility?.label !== false) {
             this.markerManager.fadeOut(nearbyLabelKey);
@@ -74,11 +76,15 @@ export class PilotMarkers {
           const shipOccluded = isOccluded(cameraPos, displayState.r, attractors);
           if (fadedOpacity > 0 && !shipOccluded) {
             const rotationDeg = this.markerManager.headingRotationDeg(displayState.r, displayState.v, project, scaleFn, attractors, frame, displayTime, ephemeris);
-            const sym = visibility?.icon === false ? '' : (this.owner ? (overviewMode ? headingHpMarkerSvg(this.owner.hp, this.owner.maxHp, this.owner.name, false) : notchedHpMarkerSvg(this.owner.hp, this.owner.maxHp)) : ENTITY_GLYPH.ship);
+            const sym = visibility?.icon === false
+              ? ''
+              : this.owner
+                ? vesselMarkerSvg(!!this.owner.baseState, this.owner.hp, this.owner.maxHp, this.owner.name, overviewMode, false)
+                : ENTITY_GLYPH.ship;
             const symMarkup = overviewMode && !!this.owner;
             this.markerManager.setPosition(
               selfKey, 'mk-self', sym, displayState.r, project,
-              isActive && visibility?.label !== false ? name : '', fadedOpacity, color, rotationDeg,
+              visibility?.label !== false ? name : '', fadedOpacity, 'var(--accent)', rotationDeg,
               symMarkup,
             );
           } else if (fadedOpacity > 0 && shipOccluded) {
@@ -94,8 +100,9 @@ export class PilotMarkers {
       return;
     }
     this.markerManager.hide(selfKey);
-    
-    if (isActive) {
+
+    // 姿勢基準の方向マーカー・ボアサイトは操縦を行う機体だけの概念。基地はここまで来ない。
+    if (isActive && !this.owner?.baseState) {
       this.syncOrbitAxes(currentState, project);
       this.syncBoresight(currentState, att, project, rounds, beltLinks, muzzleSpeed);
     }

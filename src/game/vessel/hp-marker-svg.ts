@@ -64,3 +64,12 @@ export function baseMarkerSvg(): string {
     `<polygon points="${pts}" fill="none" stroke="currentColor" stroke-width="1.8"/>` +
     `</svg>`;
 }
+
+// 機体1つぶんのマーカー図形を種別・表示モードから決める。基地モジュールを積んでいれば
+// 常に七角形、それ以外はマップビューなら進行方向対応、戦闘ビューなら切り欠き HP 表現。
+export function vesselMarkerSvg(
+  isBase: boolean, hp: number, maxHp: number, name: string, overviewMode: boolean, hollow: boolean,
+): string {
+  if (isBase) return baseMarkerSvg();
+  return overviewMode ? headingHpMarkerSvg(hp, maxHp, name, hollow) : notchedHpMarkerSvg(hp, maxHp);
+}
