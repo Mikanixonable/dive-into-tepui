@@ -57,9 +57,14 @@ export class EntityLineManager {
       else enemy.hideOrbitLine();
     }
     for (const base of this.entities.baseVessels()) {
-      const show = overviewMode && (visibilityPolicy?.entity('base').orbit ?? false);
+      const isActive = base === activePlayer;
+      const show = overviewMode && (visibilityPolicy?.entity('base', isActive).orbit ?? false);
       if (show) base.showOrbitLine(C.LINE_STYLE.baseOrbit);
       else base.hideOrbitLine();
+      if (isActive && overviewMode) base.showPredictedLine(C.LINE_STYLE.playerPredicted);
+      else base.hidePredictedLine();
+      if (isActive && overviewMode && pastDuration > 0) base.showActualLine(C.LINE_STYLE.playerActual);
+      else base.hideActualLine();
     }
   }
 
@@ -81,6 +86,9 @@ export class EntityLineManager {
       enemy.syncOrbitLine(fo, camera, attractors, enemy.thrust !== null, frame, displayTime, ephemeris);
     }
     for (const base of this.entities.baseVessels()) {
+      const predictedTo = base.predictionTruncated ? null : simTime + duration;
+      base.syncTrajectoryLines(
+        frame, simTime, displayTime, pastDuration, predictedTo, ephemeris, fo, camera, attractors);
       base.syncOrbitLine(fo, camera, attractors, base.thrust !== null, frame, displayTime, ephemeris);
     }
   }
