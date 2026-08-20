@@ -586,7 +586,9 @@ export class Vessel extends GameEntity {
   public get maxHp(): number { return this.inventory.maxHp; }
   public get totalTorque(): number { return this.inventory.totalTorque; }
   public get totalThrust(): number { return this.inventory.totalThrust; }
+  public get totalRcsThrust(): number { return this.inventory.totalRcsThrust; }
   public get totalFuelConsumptionRate(): number { return this.inventory.totalFuelConsumptionRate; }
+  public get totalRcsFuelConsumptionRate(): number { return this.inventory.totalRcsFuelConsumptionRate; }
   public get totalFuel(): number { return this.inventory.totalFuel; }
   public get totalMaxFuel(): number { return this.inventory.totalMaxFuel; }
   public get totalCoolingRate(): number { return this.inventory.totalCoolingRate; }

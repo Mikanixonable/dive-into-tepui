@@ -7,6 +7,7 @@ import type {
 } from '../game-entity/parts';
 import { extraWasteHeatOf, powerDrawOf } from '../game-entity/parts';
 import type { PropellantId } from '../economy/propellant-compatibility';
+import { STANDARD_GRAVITY } from '../../physics/tsiolkovsky';
 
 // 自然回復の対象外にする部品種別。外装パネルは機上で直せず、基地ドックの修理を要する。
 const SELF_REPAIR_EXCLUDED: readonly PartType[] = ['radiator', 'solar_panel'];
@@ -194,6 +195,16 @@ export class PartInventory {
   public get totalFuelConsumptionRate(): number {
     let total = 0;
     for (const p of this.engineRefs) if (p.hp > 0) total += p.fuelConsumptionRate;
+    return total;
+  }
+
+  // 並進 RCS の質量流量の合計 [kg/s]。RcsThrusterPart は推力と比推力しか持たないため、
+  // mdot = F / (Isp・g0) から導く。
+  public get totalRcsFuelConsumptionRate(): number {
+    let total = 0;
+    for (const p of this.rcsThrusterRefs) {
+      if (p.hp > 0 && p.specificImpulse > 0) total += p.thrust / (p.specificImpulse * STANDARD_GRAVITY);
+    }
     return total;
   }
 
