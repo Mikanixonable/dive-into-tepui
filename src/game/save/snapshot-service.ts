@@ -90,6 +90,7 @@ function buildSaveData(game: Game): GameSaveData {
     bases: game.entities.baseVessels().map((v) => v.serializeAsBase()),
     stage: game.activeStage.serialize(),
     camera: { view: game.viewManager.serializeView(), ...game.cameraSystem.serialize() },
+    displayWindow: { ...game.displayWindowManager.serialize(), followCamera: game.frameControls.followCamera },
   };
 }
 

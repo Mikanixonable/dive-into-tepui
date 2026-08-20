@@ -17,7 +17,7 @@ export class TrajectoryFramePanel {
   private readonly followToggle: ToggleSwitch;
   private readonly orbitSummary: HTMLElement;
 
-  public followCamera = true;
+  public followCamera: boolean;
 
   public constructor(
     panelRoot: HTMLElement,
@@ -25,7 +25,9 @@ export class TrajectoryFramePanel {
     ephemeris: Ephemeris,
     private readonly displayWindow: DisplayWindowManager,
     overlayManager: OverlayManager,
+    savedFollowCamera = true,
   ) {
+    this.followCamera = savedFollowCamera;
     this.shell = new PanelShell(hudRail(panelRoot, 'left'), 'hud-trajectory-frame', '軌道フレーム');
     this.shell.el.classList.add('hidden', 'hud-frame-controls');
     this.shell.el.addEventListener('pointerdown', (e) => e.stopPropagation());

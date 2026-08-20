@@ -15,6 +15,7 @@ import { mergeAttractors } from './simulation/attractors';
 import type { Ephemeris } from '../physics/ephemeris';
 import type { EntityManager } from './simulation/entity-manager';
 import type { GameEntity } from './game-entity/game-entity';
+import type { DisplayWindowSaveData } from './save-data';
 
 export type DisplayDurationKey = 'orbit' | 'day' | 'week' | 'month' | 'custom';
 
@@ -67,12 +68,14 @@ export class DisplayWindowManager {
   private _current: DisplayWindow;
 
   // 操作パネルを構築し、期間選択・スライダー・任意期間入力・T+ジャンプ入力の反映先を自身にする。
+  // saved があれば描画基準の座標系をそこから復元する(無ければ地球中心慣性系)。
   constructor(
     hudRoot: HTMLElement,
     private readonly ephemeris: Ephemeris,
     private readonly entities: EntityManager,
+    saved?: DisplayWindowSaveData,
   ) {
-    this._frame = ephemeris.inertialFrame;
+    this._frame = saved ? ephemeris.frameOf(saved.frame.center, saved.frame.rotatingWith) : ephemeris.inertialFrame;
     this._current = {
       frame: this._frame, simTime: 0, referencePeriod: NaN,
       duration: C.APERIODIC_ARC_DURATION, pastDuration: 0, displayTime: 0,
@@ -238,6 +241,11 @@ export class DisplayWindowManager {
   private sliderSteps(): number {
     const raw = Math.round(this._current.duration / SLIDER_TARGET_STEP_SEC);
     return Math.max(SLIDER_MIN_STEPS, Math.min(SLIDER_MAX_STEPS, raw));
+  }
+
+  // 描画基準の座標系をセーブ形式で返す。followCamera は TrajectoryFramePanel 側の状態なので含まない。
+  serialize(): Pick<DisplayWindowSaveData, 'frame'> {
+    return { frame: { center: this._frame.center, rotatingWith: this._frame.rotatingWith } };
   }
 
   // 操作パネルの DOM を片付ける。
