@@ -67,6 +67,8 @@ export class Input {
   private frameMiddleClicks: PointerPoint[] = [];
   private frameRightClicks: PointerPoint[] = [];
   private frameMouse: MouseDelta = ZERO_MOUSE_DELTA;
+  // カーソルの現在位置(クライアント座標)。
+  private lastPointer: PointerPoint = { x: 0, y: 0 };
   private dragging = false;
   private panDragging = false;
   private rightActive = false;
@@ -166,7 +168,16 @@ export class Input {
     // マウスのダブルクリック連打判定(タイミング・移動量とも)はブラウザの標準実装に委ねる。
     // タッチ由来のクリックは自前で合成する(registerTap)ため、二重に積まないよう除外する。
     this.target.addEventListener('dblclick', this.handleDblClick);
+    // カーソルの現在位置だけは document 全体で追う。canvas 上の移動しか見ないと、HUD の
+    // ボタンから始めて画面上を運ぶ操作(組立の部品ドラッグ)で位置が止まる。
+    document.addEventListener('pointermove', this.handlePointerTrack, true);
   }
+
+  // カーソルの現在位置を控える。どのフレームにも属さない連続量なので、エッジのキューではなく
+  // 最新値を1つだけ持つ。
+  private readonly handlePointerTrack = (e: PointerEvent): void => {
+    this.lastPointer = { x: e.clientX, y: e.clientY };
+  };
 
   private readonly handleContextMenu = (e: Event): void => e.preventDefault();
 
@@ -527,7 +538,12 @@ export class Input {
     return this.frameMouse;
   }
 
-  // window/document/canvas(target)に張った12個のリスナーを外し、releaseAll() で
+  // カーソルの現在位置(クライアント座標)。まだ一度も動いていなければ原点。
+  pointerPosition(): PointerPoint {
+    return this.lastPointer;
+  }
+
+  // window/document/canvas(target)に張った13個のリスナーを外し、releaseAll() で
   // 押下中・ドラッグ中の状態も畳む。target は GameScene 所有で Input 自身より長生きするため、
   // ここで確実に外さないと次に構築する Input へも同じイベントが二重に配送され続ける。
   dispose(): void {
@@ -537,6 +553,7 @@ export class Input {
     window.removeEventListener('blur', this.handleBlur);
     window.removeEventListener('pagehide', this.handlePageHide);
     document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+    document.removeEventListener('pointermove', this.handlePointerTrack, true);
     // canvas(target)に張った7個。
     this.target.removeEventListener('contextmenu', this.handleContextMenu);
     this.target.removeEventListener('pointerdown', this.handlePointerDown);

@@ -314,6 +314,9 @@ export class Game {
     this.sections.exit(SECTION.mapPick);
     this.sections.enter(SECTION.pointer);
     this.handlePointerInput();
+    // カメラ行列がこのフレームの値になった後でなければ、掴んでいる部品の落とし先が1フレーム
+    // 古いカメラ基準で決まる。
+    this.docking.updateAssembly(this.input);
     this.sections.exit(SECTION.pointer);
 
     // 表示可否・ターゲット・操作艦・ビューがこのフレームの確定値になった後に判断する。
@@ -503,6 +506,7 @@ export class Game {
     // 最新値を表示し続ける必要がある。MapContextActions 側で窓が無ければ即時 return する。
     this.mapActions.sync(simTime, attractors, player);
     this.editor.sync(this.cameraSystem, simTime, fo);
+    this.docking.syncAssembly(fo);
 
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
     this.entityLines.sync(displayWindow, fo, this.cameraSystem.activeCamera, displayAttractors, this.ephemeris);

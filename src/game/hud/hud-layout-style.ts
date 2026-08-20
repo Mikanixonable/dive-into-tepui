@@ -81,11 +81,9 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 }
 #hud .rail-toggle:hover { color: var(--accent-near); background: var(--surface-3); }
 #hud .rail-toggle:focus-visible { outline: 2px solid var(--accent-near); outline-offset: 2px; }
-#hud .rail-toggle { display: none; position: absolute; top: 8px; z-index: 20; }
-#hud:not(.base-mode) .rail-toggle { display: block; }
+#hud .rail-toggle { display: block; position: absolute; top: 8px; z-index: 20; }
 #hud .hud-world-root .rail-toggle-left { left: 8px; }
 #hud .hud-world-root .rail-toggle-right { right: 8px; }
-#hud:not(.base-mode) .hud-rail.collapsed { width: 0; }
-#hud:not(.base-mode) .hud-rail.collapsed > .panel { display: none !important; }
-#hud.base-mode .rail-toggle { display: none; }
+#hud .hud-rail.collapsed { width: 0; }
+#hud .hud-rail.collapsed > .panel { display: none !important; }
 `;

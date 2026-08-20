@@ -1,31 +1,35 @@
+// 基地まわりの3つの関心事: 艦と基地・艦どうしの物理ドッキング、基地操作ウィンドウの開閉、
+// そして艦体の組立セッション(部品をドラッグして取り付ける作業とその確定)。
+//
+// 組立は作業台セッション(DockWorkbenchSession)の上で行い、実機(Vessel/基地)へ書き戻すのは
+// 「確定」を押した瞬間だけである。取消でセッションを捨てれば実機は一度も触られていない。
 import * as THREE from 'three/webgpu';
 import * as C from './const';
 import { v3, len, sub } from '../physics/vec3';
 import { kinematicState } from '../physics/kinematic-state';
+import { qFromUnitVectors, qInvert, qMul, qRotate, type Quat } from '../physics/attitude';
 import { Hud } from './hud/hud';
-import { BaseView, type WorkbenchSelectionInfo, type WorkbenchTargetView } from './hud/base-view';
+import { AssemblyPanel } from './hud/assembly-panel';
+import { BaseOperationsWindow } from './hud/base-operations-window';
 import { ResourceTransferDialog } from './hud/resource-transfer-dialog';
 import { Vessel, type VesselDeps } from './vessel/vessel';
 import { hasBaseModule } from './vessel/capabilities';
 import { createBlueprint } from './vessel/blueprint';
 import type { VesselAssembly } from './vessel/assembly';
-import type { PartPlacement } from './vessel/assembly';
 import { validateBlueprint } from './vessel/blueprint-validation';
-import {
-  addEdge, addNode, editSection, moveNode, removeEdge, removeNode, removePlacement,
-  movePlacement,
-  type EdgeDraft,
-} from './vessel/assembly-editor';
 import { AssemblyRenderObject } from './vessel/assembly-render-object';
+import { AssemblyDragController, type AssemblyDragTarget } from './vessel/assembly-drag-controller';
+import { DockWorkbenchSession, type WorkbenchTarget } from './vessel/dock-workbench';
+import { DockWorkbenchController } from './vessel/dock-workbench-controller';
 import { crewedAssembly } from './vessel/vessel-assemblies';
 import { productionBlueprintOf, consumeProductionResources } from './vessel/production';
 import { producibility } from './economy/producibility';
 import { baseFacilities, basePowerAvailable, deriveBaseDockingPorts } from './vessel/base-module';
 import { validateBaseAssembly } from './vessel/base-assembly-validation';
-import type { MountPoint, PortRef, TreeNode } from './vessel/tree';
-import { add as addVec, scale as scaleVec } from '../physics/vec3';
+import { add as addVec, type Vec3 } from '../physics/vec3';
+import type { FloatingOrigin } from './floating-origin';
 import type { GameEntity } from './game-entity/game-entity';
-import type { AnyPart } from './game-entity/parts';
+import type { Input } from './input/input';
 import type { EntityManager } from './simulation/entity-manager';
 import type { MapContextActions } from './map-context-actions';
 import type { CameraSystem } from './camera/camera-system';
@@ -35,6 +39,17 @@ import type { EffectsSystem } from './vfx/effects-system';
 import type { MarkerManager } from './marker/marker-manager';
 import type { ActiveVesselController } from './active-vessel-controller';
 
+// 下書きの実体を基地の前方どれだけ離して浮かべるか [m]。基地本体と重ならない距離。
+const DRAFT_OFFSET_BASE = 360;
+const DRAFT_OFFSET_STEP = 30;
+
+// 基地操作ウィンドウを座標指定なしで開くときの左上角 [px]。
+const DEFAULT_WINDOW_X = 120;
+const DEFAULT_WINDOW_Y = 120;
+
+// クリップされていない基地操作ウィンドウを同時に高々1枚に保つための排他グループ名。
+const BASE_WINDOW_TEMP_GROUP = 'base-operations-temp';
+
 interface DraftEntry {
   readonly id: string;
   name: string;
@@ -43,18 +58,27 @@ interface DraftEntry {
   readonly ownedPartIds: Set<string>;
 }
 
-interface WorkbenchCheckpoint {
-  base: Vessel;
-  readonly baseAssembly: VesselAssembly;
-  readonly inventory: readonly AnyPart[];
-  readonly targets: readonly { readonly id: string; readonly assembly: VesselAssembly }[];
-  readonly drafts: readonly { readonly id: string; readonly name: string; readonly assembly: VesselAssembly; readonly ownedPartIds: readonly string[] }[];
+// 組立の対象1つ。基地本体・ドック中の艦・新規船下書きを同じ形で扱う。
+interface AssemblyTargetView {
+  readonly id: string;
+  readonly kind: 'base' | 'vessel' | 'draft';
+  readonly name: string;
+  readonly vessel: Vessel | null;
+  readonly assembly: VesselAssembly;
+}
+
+// 進行中の組立セッション。基地1つにつき高々1つ開ける。
+interface AssemblySession {
+  readonly base: Vessel;
+  readonly session: DockWorkbenchSession;
+  readonly workbench: DockWorkbenchController;
+  readonly panel: AssemblyPanel;
+  targetId: string;
 }
 
 export class Docking {
-  readonly baseView: BaseView;
   readonly transferDialog: ResourceTransferDialog;
-  // 選択中/ドックビューの対象基地。設定されている間だけドックビューへ遷移できる。
+  // 選択中の基地。基地操作ウィンドウ・組立の既定の対象になる。
   private _activeBase: Vessel | null = null;
 
   // 船と船、船と基地の物理ドッキングペア (shipId -> targetEntity)
@@ -62,16 +86,17 @@ export class Docking {
 
   get activeBase(): Vessel | null { return this._activeBase; }
 
-  // 作業台でドック中の船を再構築するための依存関係。
+  // 作業台で艦を組み直すための依存関係。
   private readonly vesselDeps: VesselDeps;
-  private readonly workbenchRaycaster = new THREE.Raycaster();
-  private workbenchCheckpoint: WorkbenchCheckpoint | null = null;
-  private workbenchDirty = false;
   private readonly drafts = new Map<string, DraftEntry>();
-  private selectedWorkbenchTargetId: string | null = null;
-  private readonly selectedMounts = new Map<string, MountPoint>();
   private draftSequence = 0;
+  // 基地 id ごとの操作ウィンドウ。1つの基地に2枚開かない。
+  private readonly baseWindows = new Map<string, BaseOperationsWindow>();
+  private readonly dragController: AssemblyDragController;
+  private assembly: AssemblySession | null = null;
 
+  // 基地に関わる各所有者への参照を受け取る。ポーズだけは Game の状態なので、必要な2つの
+  // 操作を関数として受ける。
   constructor(
     private readonly pauseGame: () => void,
     private readonly resumeGame: () => void,
@@ -86,44 +111,10 @@ export class Docking {
     private readonly viewManager: ViewManager,
     private readonly activeVessels: ActiveVesselController,
   ) {
-    this.baseView = new BaseView(this.hud.layers.view, this.hud.overlayManager);
-    this.baseView.onClose = () => this.viewManager.leaveDock();
-    this.baseView.onLaunchVessel = (ship, base) => this.launch(ship, base);
-    this.baseView.onWorkbenchRemove = (base, targetId, partId) => this.removeWorkbenchPart(base, targetId, partId);
-    this.baseView.onWorkbenchDrop = (base, targetId, partId, fromInventory) => {
-      if (fromInventory) this.installWorkbenchPart(base, targetId, partId);
-      else this.moveWorkbenchPart(base, targetId, partId);
-    };
-    this.baseView.onWorkbenchPointer = (_base, targetId, clientX, clientY) => {
-      this.pickWorkbenchObject(targetId, clientX, clientY);
-    };
-    this.baseView.onWorkbenchSelectTarget = (_base, targetId) => {
-      this.selectedWorkbenchTargetId = targetId;
-    };
-    this.baseView.onWorkbenchNodeEdit = (base, targetId, nodeId, x, y, z) => this.editWorkbenchNode(base, targetId, nodeId, x, y, z);
-    this.baseView.onWorkbenchPrimitiveEdit = (base, targetId, nodeId, primitiveId, patch) => this.editWorkbenchPrimitive(base, targetId, nodeId, primitiveId, patch);
-    this.baseView.onWorkbenchRemoveNode = (base, targetId, nodeId) => this.editWorkbenchNodeRemoval(base, targetId, nodeId);
-    this.baseView.onWorkbenchRemoveEdge = (base, targetId, edgeId) => this.editWorkbenchEdgeRemoval(base, targetId, edgeId);
-    this.baseView.onWorkbenchAddNode = (base, targetId, parentNodeId) => this.addWorkbenchNode(base, targetId, parentNodeId);
-    this.baseView.onWorkbenchAddEdge = (base, targetId, nodeId) => this.addWorkbenchEdge(base, targetId, nodeId);
-    this.baseView.onWorkbenchCreateDraft = (base) => this.createDraft(base);
-    this.baseView.onWorkbenchBuildDraft = (base, targetId) => this.buildDraft(base, targetId);
-    this.baseView.onWorkbenchCommit = () => this.commitWorkbench();
-    this.baseView.onWorkbenchCancel = () => {
-      const base = this.workbenchCheckpoint?.base ?? this._activeBase;
-      this.cancelWorkbench();
-      if (base?.alive) {
-        this.startWorkbench(base);
-        this.openWorkbenchView(base, this.selectedWorkbenchTargetId ?? undefined);
-      }
-    };
-    this.baseView.onWorkbenchTransfer = (base, fromTargetId, toTargetId, partId) => {
-      this.transferWorkbenchPart(base, fromTargetId, toTargetId, partId);
-    };
     this.viewManager.setDocking(this);
-
     this.transferDialog = new ResourceTransferDialog(this.hud.layers.view, this.hud.overlayManager);
     this.vesselDeps = { hud, worldSfx, scene, fx: effects, markerManager };
+    this.dragController = new AssemblyDragController(scene);
   }
 
   // 生存中の全基地を返す。
@@ -188,26 +179,231 @@ export class Docking {
     this._activeBase = base;
   }
 
-  // 基地を選択し、ドックビューへ遷移する
-  activate(base: Vessel): void {
-    const isSameBase = this._activeBase === base;
+  // ------------------------------------------------------------ 基地操作ウィンドウ
+
+  // 基地の操作ウィンドウ(格納艦艇・部品・生産)を開く。既に開いていれば指定位置へ動かして
+  // 最前面へ出す。接岸の有無は問わない — 他の対象のプロパティウィンドウと同じく、基地が
+  // 在れば常に開ける。
+  openBaseOperations(base: Vessel, clientX = DEFAULT_WINDOW_X, clientY = DEFAULT_WINDOW_Y): void {
     this.selectBase(base);
-    if (this.viewManager.current === 'dock') {
-      if (!isSameBase) this.enterDock();
-    } else {
-      this.viewManager.setView('dock');
+    const existing = this.baseWindows.get(base.id);
+    if (existing) {
+      existing.open(base, clientX, clientY);
+      return;
+    }
+    const win = new BaseOperationsWindow(
+      this.hud.layers.window, this.hud.layers.popup, this.hud.overlayManager, BASE_WINDOW_TEMP_GROUP,
+    );
+    win.onLaunchVessel = (ship, from) => this.launch(ship, from);
+    win.onClose = () => { this.baseWindows.delete(base.id); };
+    this.baseWindows.set(base.id, win);
+    win.open(base, clientX, clientY);
+  }
+
+  // 消えた基地のウィンドウを閉じる。毎フレームの sync から呼ぶ。
+  private syncBaseWindows(): void {
+    for (const [id, win] of [...this.baseWindows.entries()]) {
+      const base = this.entities.findBaseVessel(id);
+      if (base && base.alive) continue;
+      this.baseWindows.delete(id);
+      win.dispose();
     }
   }
 
-  canEnterDock(): boolean {
-    return this.getAvailableBases().length > 0;
+  // 基地が世界から消えるときに、それを指していた選択とウィンドウを畳む。
+  clearActiveBaseIf(base: Vessel): void {
+    if (this.assembly?.base === base) this.cancelAssembly();
+    const win = this.baseWindows.get(base.id);
+    if (win) {
+      this.baseWindows.delete(base.id);
+      win.dispose();
+    }
+    if (this._activeBase !== base) return;
+    this._activeBase = null;
+  }
+
+  // ------------------------------------------------------------ 組立セッション
+
+  // 組立セッションが進行中か。発進・生産など、構成が固まっている前提の操作の門になる。
+  get assemblyInProgress(): boolean { return this.assembly !== null; }
+
+  // 基地とその格納艦・下書きを対象にした組立セッションを開き、部品棚ウィンドウを出す。
+  // 既にこの基地のセッションが開いていれば何もしない。編集はセッション上だけで進み、
+  // 実機へ届くのは確定を押したときだけなので、ここで一時停止して物理と時間加速を止める。
+  startAssembly(base: Vessel, preferredTargetId?: string): void {
+    if (this.assembly?.base === base) return;
+    this.cancelAssembly();
+    this.selectBase(base);
+    const targets = this.assemblyTargets(base);
+    if (targets.length === 0) {
+      this.hud.hint('この基地には組み立てられる対象がありません');
+      return;
+    }
+    const dockedCount = base.baseState?.dockedVessels.length ?? 0;
+    const session = new DockWorkbenchSession(
+      {
+        targets: targets.map((target) => ({
+          id: target.id,
+          kind: target.kind === 'base' ? 'base' : target.kind === 'draft' ? 'new-vessel-draft' : 'docked-vessel',
+          assembly: target.assembly,
+        })),
+        inventory: [...(base.baseState?.inventory ?? [])],
+      },
+      () => ({ valid: true, errors: [] }),
+      { targetValidator: (target) => targetValidation(target, dockedCount) },
+    );
+    // 部品棚ウィンドウは作業台1つに結びつくので、セッションと同じ寿命で作る。
+    const workbench = new DockWorkbenchController(session);
+    const panel = new AssemblyPanel(
+      this.hud.layers.window, this.hud.overlayManager, this.dragController, workbench,
+    );
+    const initial = targets.find((target) => target.id === preferredTargetId) ?? targets[0]!;
+    const entry: AssemblySession = { base, session, workbench, panel, targetId: initial.id };
+    this.assembly = entry;
+
+    panel.onTargetSelect = (targetId) => { entry.targetId = targetId; };
+    panel.onUndo = () => { workbench.undo(); };
+    panel.onRedo = () => { workbench.redo(); };
+    panel.onConfirm = () => this.commitAssembly();
+    panel.onCancel = () => this.cancelAssembly();
+    panel.open(session, session.getTarget(initial.id), DEFAULT_WINDOW_X, DEFAULT_WINDOW_Y);
+    this.pauseGame();
+  }
+
+  // セッションの内容を実機へ書き戻す。1つでも対象の検証が通らなければ何も適用しない —
+  // 検証を通った対象だけ書き戻すと、基地と格納艦の構成が食い違ったまま残りうる。
+  private commitAssembly(): void {
+    const entry = this.assembly;
+    if (!entry) return;
+    let snapshot;
+    try {
+      snapshot = entry.session.snapshotBeforeBuild();
+    } catch (error) {
+      this.hud.hint(error instanceof Error ? error.message : String(error));
+      return;
+    }
+    for (const target of snapshot.targets) {
+      if (!this.applyTargetAssembly(entry.base, target.id, target.assembly)) {
+        this.hud.hint('構成を適用できないため、確定を中止しました');
+        return;
+      }
+    }
+    const inventory = entry.base.baseState?.inventory;
+    if (inventory) inventory.splice(0, inventory.length, ...snapshot.inventory);
+    this.endAssembly();
+    this.hud.hint('艦体の構成を確定しました');
+  }
+
+  // セッションの編集を捨てて閉じる。実機は一度も触られていないので戻す作業は要らない。
+  cancelAssembly(): void {
+    const entry = this.assembly;
+    if (!entry) return;
+    entry.workbench.cancel();
+    this.endAssembly();
+  }
+
+  // 開いていたセッションの持ち物(ドラッグ中の部品・部品棚ウィンドウ)を手放し、時間を再開する。
+  private endAssembly(): void {
+    const entry = this.assembly;
+    if (!entry) return;
+    this.assembly = null;
+    this.dragController.cancelDrag();
+    entry.panel.onCancel = null;
+    entry.panel.close();
+    this.resumeGame();
+  }
+
+  // カーソルの位置から、掴んでいる部品の落とし先と描き方を決める。
+  // カメラ行列がこのフレームの値になった後(cameraSystem.update の後)に呼ぶ。
+  updateAssembly(input: Input): void {
+    const entry = this.assembly;
+    if (!entry || !this.dragController.draggingPart) return;
+    const pointer = input.pointerPosition();
+    this.dragController.update(
+      this.cameraSystem.activeCamera,
+      this.cameraSystem.activeCameraPos,
+      pointer,
+      { width: window.innerWidth, height: window.innerHeight },
+      this.dragTarget(entry),
+    );
+  }
+
+  // update が決めた位置・姿勢・色を、掴んでいる部品のゴーストへ押し込む。
+  syncAssembly(fo: FloatingOrigin): void {
+    this.syncBaseWindows();
+    this.assembly?.panel.sync(this.assembly.session);
+    this.dragController.sync(fo);
+  }
+
+  // 編集中の対象を、セッション上の構成と実機の慣性系での置かれ方の組として返す。
+  // 慣性系での置かれ方が決まらない対象では null(掴んだ部品はどこへも吸い寄せられない)。
+  private dragTarget(entry: AssemblySession): AssemblyDragTarget | null {
+    const view = this.assemblyTargets(entry.base).find((target) => target.id === entry.targetId);
+    if (!view) return null;
+    const assembly = entry.session.getTarget(entry.targetId).assembly;
+    const pose = this.targetPose(entry.base, view);
+    if (!pose) return null;
+    return { targetId: entry.targetId, assembly, position: pose.position, attitude: pose.attitude };
+  }
+
+  // 対象の実体が慣性系のどこにどの姿勢で在るか。格納艦はドックの口へ、下書きは基地の前方へ
+  // 置かれているので、いずれも基地の位置と姿勢から求まる。
+  private targetPose(base: Vessel, view: AssemblyTargetView): { position: Vec3; attitude: Quat } | null {
+    if (view.kind === 'base') return { position: base.state.r, attitude: base.att.q };
+    if (view.kind === 'draft') {
+      const offset = this.draftOffset(view.id);
+      if (offset === null) return null;
+      return { position: addVec(base.state.r, qRotate(base.att.q, v3(0, 0, offset))), attitude: base.att.q };
+    }
+    const entry = base.baseState?.dockedVessels.find((docked) => docked.vessel === view.vessel);
+    if (!entry) return null;
+    // メッシュは口の法線へ +Z を向けて置かれているので、姿勢も同じ回転で組む。
+    const localNormal = qRotate(qInvert(base.att.q), base.getSlotWorldNormal(entry.slotIndex));
+    return {
+      position: base.getSlotWorldPos(entry.slotIndex),
+      attitude: qMul(base.att.q, qFromUnitVectors(v3(0, 0, 1), localNormal)),
+    };
+  }
+
+  // 下書きを基地の前方どれだけ離して置くか。並び順がそのまま距離になる。
+  private draftOffset(draftId: string): number | null {
+    const ids = [...this.drafts.keys()];
+    const index = ids.indexOf(draftId);
+    return index < 0 ? null : DRAFT_OFFSET_BASE + index * DRAFT_OFFSET_STEP;
+  }
+
+  // 組立の対象一覧。基地本体・ドック中の艦・下書きを並べる。
+  private assemblyTargets(base: Vessel): readonly AssemblyTargetView[] {
+    const targets: AssemblyTargetView[] = [];
+    if (base.assembly) targets.push({ id: `base:${base.id}`, kind: 'base', name: base.name, vessel: base, assembly: base.assembly });
+    for (const entry of base.baseState?.dockedVessels ?? []) {
+      if (entry.vessel.assembly) targets.push({ id: `vessel:${entry.id}`, kind: 'vessel', name: entry.name, vessel: entry.vessel, assembly: entry.vessel.assembly });
+    }
+    for (const draft of this.drafts.values()) {
+      targets.push({ id: draft.id, kind: 'draft', name: draft.name, vessel: null, assembly: draft.assembly });
+    }
+    return targets;
+  }
+
+  private targetById(base: Vessel, targetId: string): AssemblyTargetView | null {
+    return this.assemblyTargets(base).find((target) => target.id === targetId) ?? null;
+  }
+
+  // 下書きの実体を基地の子として並べ、見える位置へ置く。
+  private syncDraftRenders(base: Vessel): void {
+    for (const draft of this.drafts.values()) {
+      draft.render.object.userData['workbenchDraft'] = true;
+      if (draft.render.object.parent !== base.renderObject) base.renderObject.add(draft.render.object);
+      draft.render.object.position.set(0, 0, this.draftOffset(draft.id) ?? DRAFT_OFFSET_BASE);
+      draft.render.object.visible = true;
+    }
   }
 
   /**
    * Atomically replaces one docked vessel with the validated assembly produced by
    * the workbench. The old vessel is kept untouched until validation succeeds.
    */
-  commitDockedAssembly(base: Vessel, vesselId: string, assembly: VesselAssembly, track = true): { ok: true; vessel: Vessel } | { ok: false; reason: string } {
+  commitDockedAssembly(base: Vessel, vesselId: string, assembly: VesselAssembly): { ok: true; vessel: Vessel } | { ok: false; reason: string } {
     const state = base.baseState;
     if (!state) return { ok: false, reason: '基地ではありません' };
     const index = state.dockedVessels.findIndex((entry) => entry.id === vesselId);
@@ -231,130 +427,7 @@ export class Docking {
     });
     base.attachDockedVesselMesh(replacement, slotIndex);
     previous.dispose();
-    if (track) this.workbenchDirty = true;
     return { ok: true, vessel: replacement };
-  }
-
-  clearActiveBaseIf(base: Vessel): void {
-    if (this._activeBase !== base) return;
-    this._activeBase = null;
-    this.viewManager.leaveDock();
-  }
-
-  enterDock(): void {
-    if (!this._activeBase || !this._activeBase.alive) {
-      const available = this.getAvailableBases();
-      if (available.length === 0) return;
-      this._activeBase = available[0]!;
-    }
-    this.pauseGame();
-    this.startWorkbench(this._activeBase);
-    this.openWorkbenchView(this._activeBase, this.activeVessels.current ? `vessel:${this.activeVessels.current.id}` : undefined);
-  }
-
-  leaveDock(): void {
-    this.cancelWorkbench();
-    this.baseView.close();
-    this.resumeGame();
-  }
-
-  private startWorkbench(base: Vessel): void {
-    if (this.workbenchCheckpoint?.base === base) return;
-    this.cancelWorkbench();
-    this.syncDraftRenders(base);
-    this.workbenchCheckpoint = {
-      base,
-      baseAssembly: base.assembly!,
-      inventory: [...(base.baseState?.inventory ?? [])],
-      targets: (base.baseState?.dockedVessels ?? []).flatMap((entry) =>
-        entry.vessel.assembly ? [{ id: entry.id, assembly: entry.vessel.assembly }] : []),
-      drafts: [...this.drafts.values()].map((draft) => ({
-        id: draft.id, name: draft.name, assembly: draft.assembly, ownedPartIds: [...draft.ownedPartIds],
-      })),
-    };
-    this.workbenchDirty = false;
-  }
-
-  private openWorkbenchView(base: Vessel, selectedId?: string): void {
-    const targets = this.workbenchTargets(base);
-    const preferred = selectedId && targets.some((target) => target.id === selectedId) ? selectedId : targets[0]?.id;
-    this.selectedWorkbenchTargetId = preferred ?? null;
-    this.baseView.openWorkbench(base, targets, preferred);
-  }
-
-  private workbenchTargets(base: Vessel): readonly WorkbenchTargetView[] {
-    const targets: WorkbenchTargetView[] = [];
-    if (base.assembly) targets.push({ id: `base:${base.id}`, kind: 'base', name: base.name, vessel: base, assembly: base.assembly });
-    for (const entry of base.baseState?.dockedVessels ?? []) {
-      if (entry.vessel.assembly) targets.push({ id: `vessel:${entry.id}`, kind: 'vessel', name: entry.name, vessel: entry.vessel, assembly: entry.vessel.assembly });
-    }
-    for (const draft of this.drafts.values()) {
-      targets.push({ id: draft.id, kind: 'draft', name: draft.name, vessel: null, assembly: draft.assembly });
-    }
-    return targets;
-  }
-
-  private syncDraftRenders(base: Vessel): void {
-    for (const draft of this.drafts.values()) {
-      draft.render.object.userData['workbenchDraft'] = true;
-      if (draft.render.object.parent !== base.renderObject) base.renderObject.add(draft.render.object);
-      draft.render.object.position.set(0, 0, 360 + this.draftSequence * 30);
-      draft.render.object.visible = true;
-    }
-  }
-
-  private commitWorkbench(): void {
-    const base = this._activeBase;
-    this.workbenchCheckpoint = null;
-    this.workbenchDirty = false;
-    if (base?.alive) {
-      this.startWorkbench(base);
-      this.openWorkbenchView(base, this.selectedWorkbenchTargetId ?? undefined);
-    }
-    this.hud.hint('ドックの変更を確定しました');
-  }
-
-  private cancelWorkbench(): void {
-    const checkpoint = this.workbenchCheckpoint;
-    if (!checkpoint) return;
-    if (this.workbenchDirty && checkpoint.base.baseState) {
-      const currentBase = checkpoint.base;
-      if (currentBase.assembly && checkpoint.baseAssembly) {
-        const restored = this.commitBaseAssembly(currentBase, checkpoint.baseAssembly, false);
-        if (!restored.ok) this.hud.hint(`基地の変更を戻せません: ${restored.reason}`);
-      }
-      for (const target of checkpoint.targets) {
-        const current = checkpoint.base.baseState?.dockedVessels.find((entry) => entry.id === target.id);
-        if (!current) continue;
-        const result = this.commitDockedAssembly(checkpoint.base, target.id, target.assembly, false);
-        if (!result.ok) this.hud.hint(`変更を戻せません: ${result.reason}`);
-      }
-      checkpoint.base.baseState.inventory.splice(0, checkpoint.base.baseState.inventory.length, ...checkpoint.inventory);
-      for (const id of [...this.drafts.keys()]) {
-        if (checkpoint.drafts.some((draft) => draft.id === id)) continue;
-        const draft = this.drafts.get(id);
-        draft?.render.object.removeFromParent();
-        draft?.render.dispose();
-        this.drafts.delete(id);
-      }
-      for (const saved of checkpoint.drafts) {
-        const current = this.drafts.get(saved.id);
-        if (!current) {
-          const render = new AssemblyRenderObject(saved.assembly);
-          this.drafts.set(saved.id, { id: saved.id, name: saved.name, assembly: saved.assembly, render, ownedPartIds: new Set(saved.ownedPartIds) });
-        } else {
-          current.render.object.removeFromParent();
-          current.render.dispose();
-          current.assembly = saved.assembly;
-          current.name = saved.name;
-          current.render = new AssemblyRenderObject(saved.assembly);
-          current.ownedPartIds.clear(); saved.ownedPartIds.forEach((id) => current.ownedPartIds.add(id));
-        }
-      }
-      this.syncDraftRenders(checkpoint.base);
-    }
-    this.workbenchCheckpoint = null;
-    this.workbenchDirty = false;
   }
 
   // ドッキング中の運動状態を同期 (毎フレーム call)
@@ -372,7 +445,6 @@ export class Docking {
 
   // 近接判定。自動収容は行わず、死んだペアの掃除と状況維持を行う。
   checkProximity(): void {
-    if (this.viewManager.current === 'dock') return;
     this.updateDockedPhysics();
   }
 
@@ -411,211 +483,11 @@ export class Docking {
     this.hud.hint(`${ship.name} を基地のドック ${slotIndex + 1} に収納しました`);
   }
 
-  private removeWorkbenchPart(base: Vessel, targetId: string, partId: string): void {
-    const target = this.targetById(base, targetId);
-    if (!target) return;
-    const placement = target.assembly.placements.find((candidate) => candidate.part.id === partId);
-    if (!placement) return;
-    if (target.kind === 'base' && placement.part.type === 'base_module') {
-      this.hud.hint('基地モジュールは基地本体から取り外せません');
-      return;
-    }
-    const result = removePlacement(target.assembly, partId, { blueprintId: `workbench-${targetId}`, blueprintName: target.name });
-    if (!result.accepted) return this.reportEditFailure(result.errors[0]?.message ?? '部品を取り外せません');
-    const applied = this.applyTargetAssembly(base, targetId, result.assembly);
-    if (!applied) return;
-    const inventoryOwner = this._activeBase ?? base;
-    let returnedToInventory = true;
-    if (target.kind === 'draft') {
-      const draft = this.drafts.get(targetId);
-      returnedToInventory = draft?.ownedPartIds.delete(partId) ?? false;
-      if (returnedToInventory) inventoryOwner.baseState!.inventory.push(placement.part);
-    } else {
-      inventoryOwner.baseState!.inventory.push(placement.part);
-    }
-    this.hud.hint(returnedToInventory
-      ? `${placement.part.name} を基地倉庫へ移しました`
-      : `${placement.part.name} を下書きから取り外しました`);
-  }
-
-  private transferWorkbenchPart(base: Vessel, fromTargetId: string, toTargetId: string, partId: string): void {
-    const from = this.targetById(base, fromTargetId);
-    const to = this.targetById(base, toTargetId);
-    if (!from || !to || from.kind === 'base' || to.kind === 'base' || from === to) return;
-    const sourcePlacement = from.assembly.placements.find((placement) => placement.part.id === partId);
-    if (!sourcePlacement) return;
-    const sourceAssembly = { tree: from.assembly.tree, placements: from.assembly.placements.filter((p) => p.part.id !== partId) };
-    const destinationAssembly = { tree: to.assembly.tree, placements: [...to.assembly.placements, sourcePlacement] };
-    if (assemblyError(sourceAssembly, from.name) || assemblyError(destinationAssembly, to.name)) {
-      this.hud.hint('移送前後の構成が検証を通りません'); return;
-    }
-    const destinationResult = this.applyTargetAssembly(base, toTargetId, destinationAssembly);
-    if (!destinationResult) return;
-    const sourceResult = this.applyTargetAssembly(base, fromTargetId, sourceAssembly);
-    if (!sourceResult) {
-      // 送り先はすでに適用済み。同じ部品が両方の構成に残ることのないよう、
-      // 検証を通っていた元の構成へ戻す。
-      this.applyTargetAssembly(base, toTargetId, to.assembly);
-      this.hud.hint('移送元を更新できないため、移送を取り消しました'); return;
-    }
-    this.hud.hint(`${sourcePlacement.part.name} を移送しました`);
-  }
-
-  private installWorkbenchPart(base: Vessel, targetId: string, partId: string): void {
-    if (!base.baseState) return;
-    const target = this.targetById(base, targetId);
-    const inventoryIndex = base.baseState.inventory.findIndex((part) => part.id === partId);
-    if (!target || inventoryIndex < 0) return;
-    const part = base.baseState.inventory[inventoryIndex]!;
-    const placement = defaultDockPlacement(target.assembly, part, this.selectedMounts.get(targetId));
-    if (!placement) return this.reportEditFailure('この部品を置けるMountPointがありません');
-    const next = { tree: target.assembly.tree, placements: [...target.assembly.placements, placement] };
-    if (!this.applyTargetAssembly(base, targetId, next)) return;
-    const inventoryOwner = this._activeBase ?? base;
-    inventoryOwner.baseState!.inventory.splice(inventoryIndex, 1);
-    if (target.kind === 'draft') this.drafts.get(targetId)?.ownedPartIds.add(part.id);
-    this.hud.hint(`${part.name} を ${target.name} へ取り付けました`);
-  }
-
-  private moveWorkbenchPart(base: Vessel, targetId: string, partId: string): void {
-    const target = this.targetById(base, targetId);
-    const mount = this.selectedMounts.get(targetId);
-    if (!target || !mount) return this.reportEditFailure('先に3D上の接続口または外表面を選択してください');
-    const result = movePlacement(target.assembly, { placementId: partId, mount }, editorOptions(target.name));
-    if (!result.accepted) return this.reportEditFailure(result.errors[0]?.message ?? '部品を移動できません');
-    this.applyTargetAssembly(base, targetId, result.assembly);
-  }
-
-  private pickWorkbenchObject(targetId: string, clientX: number, clientY: number): void {
-    const base = this._activeBase;
-    const target = base ? this.targetById(base, targetId) : null;
-    if (!base || !target) return;
-    const width = Math.max(1, document.documentElement.clientWidth);
-    const height = Math.max(1, document.documentElement.clientHeight);
-    this.workbenchRaycaster.setFromCamera(
-      new THREE.Vector2((clientX / width) * 2 - 1, -(clientY / height) * 2 + 1),
-      this.cameraSystem.activeCamera,
-    );
-    const objectRoot = target.vessel?.renderObject ?? this.drafts.get(targetId)?.render.object;
-    if (!objectRoot) return;
-    objectRoot.updateMatrixWorld(true);
-    const hit = this.workbenchRaycaster.intersectObjects(objectRoot.children, true)[0];
-    let object: THREE.Object3D | null = hit?.object ?? null;
-    while (object) {
-      const partRef = object.userData['partVisualRef']?.partId as string | undefined;
-      if (partRef) {
-        const placement = target.assembly.placements.find((candidate) => candidate.part.id === partRef);
-        if (!placement) { object = object.parent; continue; }
-        const part = placement?.part;
-        const info: WorkbenchSelectionInfo = {
-          kind: 'part', id: partRef, label: part?.name ?? partRef,
-          detail: part ? `${part.type} · ${Math.round(part.weight)} kg · HP ${Math.round(part.hp)}/${Math.round(part.maxHp)}` : partRef,
-          part, placement, mount: placement?.kind === 'external' ? placement.mount : undefined,
-        };
-        if (info.mount) this.selectedMounts.set(targetId, info.mount);
-        this.baseView.showWorkbenchSelection(info);
-        this.hud.hint(`選択: ${info.label}`);
-        return;
-      }
-      const edgeId = object.userData['assemblyEdgeId'] as string | undefined;
-      if (edgeId) {
-        const edge = target.assembly.tree.edges.find((candidate) => candidate.id === edgeId);
-        const mount = edge ? (edgeMount(edge) ?? undefined) : undefined;
-        if (mount) this.selectedMounts.set(targetId, mount);
-        this.baseView.showWorkbenchSelection({
-          kind: 'edge', id: edgeId, label: `エッジ ${edgeId}`, detail: `${object.userData['edgeKind'] ?? 'hull'} · ${edge?.length.toFixed(1) ?? '?'} m`, mount,
-        });
-        this.hud.hint(`エッジ ${edgeId}`);
-        return;
-      }
-      const nodeId = object.userData['assemblyNodeId'] as string | undefined;
-      if (nodeId) {
-        const node = target.assembly.tree.nodes.find((candidate) => candidate.id === nodeId);
-        const port = freePort(target.assembly, nodeId);
-        if (port) this.selectedMounts.set(targetId, { kind: 'port', nodeId, port });
-        this.baseView.showWorkbenchSelection({ kind: 'node', id: nodeId, label: `ノード ${nodeId}`, detail: node ? `位置 ${node.pos.x.toFixed(1)}, ${node.pos.y.toFixed(1)}, ${node.pos.z.toFixed(1)}` : '', node });
-        this.hud.hint(`ノード ${nodeId}`);
-        return;
-      }
-      object = object.parent;
-    }
-    if (hit) {
-      this.baseView.showWorkbenchSelection({ kind: 'skin', id: 'skin', label: '外皮', detail: '外皮メッシュ' });
-      this.hud.hint('外皮を選択しました');
-    }
-  }
-
-  private targetById(base: Vessel, targetId: string): WorkbenchTargetView | null {
-    return this.workbenchTargets(base).find((target) => target.id === targetId) ?? null;
-  }
-
   private reportEditFailure(message: string): void {
     this.hud.hint(`作業台の変更を適用できません: ${message}`);
   }
 
-  private applyEditorResult(base: Vessel, targetId: string, result: { accepted: boolean; assembly: VesselAssembly; errors: readonly { message: string }[] }): void {
-    if (!result.accepted) return this.reportEditFailure(result.errors[0]?.message ?? '構成が不正です');
-    this.applyTargetAssembly(base, targetId, result.assembly);
-  }
-
-  private editWorkbenchNode(base: Vessel, targetId: string, nodeId: string, x: number, y: number, z: number): void {
-    const target = this.targetById(base, targetId);
-    if (!target) return;
-    this.applyEditorResult(base, targetId, moveNode(target.assembly, { nodeId, pos: v3(x, y, z) }, editorOptions(target.name)));
-  }
-
-  private editWorkbenchPrimitive(base: Vessel, targetId: string, nodeId: string, primitiveId: string, patch: Record<string, unknown>): void {
-    const target = this.targetById(base, targetId);
-    if (!target) return;
-    this.applyEditorResult(base, targetId, editSection(target.assembly, {
-      kind: 'update-primitive', nodeId, primitiveId, patch: patch as never,
-    }, editorOptions(target.name)));
-  }
-
-  private editWorkbenchNodeRemoval(base: Vessel, targetId: string, nodeId: string): void {
-    const target = this.targetById(base, targetId);
-    if (!target) return;
-    this.applyEditorResult(base, targetId, removeNode(target.assembly, nodeId, editorOptions(target.name)));
-  }
-
-  private editWorkbenchEdgeRemoval(base: Vessel, targetId: string, edgeId: string): void {
-    const target = this.targetById(base, targetId);
-    if (!target) return;
-    this.applyEditorResult(base, targetId, removeEdge(target.assembly, edgeId, editorOptions(target.name)));
-  }
-
-  private addWorkbenchNode(base: Vessel, targetId: string, parentNodeId: string): void {
-    const target = this.targetById(base, targetId);
-    const parent = target?.assembly.tree.nodes.find((node) => node.id === parentNodeId);
-    if (!target || !parent) return;
-    const port = freePort(target.assembly, parent.id);
-    if (!port) return this.reportEditFailure('選択ノードに空き接続口がありません');
-    const id = uniqueId(target.assembly.tree.nodes.map((node) => node.id), `${parent.id}-child`);
-    const node: TreeNode = {
-      id, pos: addVec(parent.pos, scaleVec(parent.axis, 5)), axis: parent.axis,
-      phaseAngle: parent.phaseAngle, section: parent.section,
-    };
-    const edge: EdgeDraft = {
-      id: uniqueId(target.assembly.tree.edges.map((candidate) => candidate.id), `${parent.id}-${id}`),
-      a: parent.id, b: id, portA: port, portB: { kind: 'axial', sign: -1 }, kind: { kind: 'hull' },
-    };
-    this.applyEditorResult(base, targetId, addNode(target.assembly, { node, edge }, editorOptions(target.name)));
-  }
-
-  private addWorkbenchEdge(base: Vessel, targetId: string, nodeId: string): void {
-    const target = this.targetById(base, targetId);
-    if (!target) return;
-    const other = target.assembly.tree.nodes.find((node) => node.id !== nodeId && freePort(target.assembly, node.id) !== null);
-    const portA = freePort(target.assembly, nodeId);
-    const portB = other ? freePort(target.assembly, other.id) : null;
-    if (!other || !portA || !portB) return this.reportEditFailure('エッジを接続できる空き接続口がありません');
-    const edge: EdgeDraft = {
-      id: uniqueId(target.assembly.tree.edges.map((candidate) => candidate.id), 'custom-edge'),
-      a: nodeId, b: other.id, portA, portB, kind: { kind: 'hull' },
-    };
-    this.applyEditorResult(base, targetId, addEdge(target.assembly, edge, editorOptions(target.name)));
-  }
-
+  // 検証済みの構成を対象の実機(または下書き)へ書き戻す。適用できたかを返す。
   private applyTargetAssembly(base: Vessel, targetId: string, assembly: VesselAssembly): boolean {
     const target = this.targetById(base, targetId);
     if (!target) return false;
@@ -624,15 +496,11 @@ export class Docking {
     if (target.kind === 'base') {
       const result = this.commitBaseAssembly(base, assembly);
       if (!result.ok) { this.reportEditFailure(result.reason); return false; }
-      this.selectedWorkbenchTargetId = `base:${result.base.id}`;
-      this.openWorkbenchView(result.base, this.selectedWorkbenchTargetId);
       return true;
     }
     if (target.kind === 'vessel' && target.vessel) {
       const result = this.commitDockedAssembly(base, target.vessel.id, assembly);
       if (!result.ok) { this.reportEditFailure(result.reason); return false; }
-      this.selectedWorkbenchTargetId = targetId;
-      this.openWorkbenchView(base, targetId);
       return true;
     }
     const draft = this.drafts.get(targetId);
@@ -642,13 +510,12 @@ export class Docking {
     draft.assembly = assembly;
     draft.render = new AssemblyRenderObject(assembly);
     this.syncDraftRenders(base);
-    this.workbenchDirty = true;
-    this.selectedWorkbenchTargetId = targetId;
-    this.openWorkbenchView(base, targetId);
     return true;
   }
 
-  private commitBaseAssembly(base: Vessel, assembly: VesselAssembly, track = true): { ok: true; base: Vessel } | { ok: false; reason: string } {
+  // 基地本体の構成を差し替える。基地モジュールの同一性と、艦が入っているドックの口が
+  // 動いていないことを先に確かめる。
+  private commitBaseAssembly(base: Vessel, assembly: VesselAssembly): { ok: true; base: Vessel } | { ok: false; reason: string } {
     if (!base.baseState) return { ok: false, reason: '基地ではありません' };
     const validation = validateBaseAssembly(assembly, base.baseState.dockedVessels.length);
     if (validation.length > 0) return { ok: false, reason: validation[0]! };
@@ -669,24 +536,24 @@ export class Docking {
     const applied = base.replaceAssembly(assembly);
     if (!applied.ok) return applied;
     this._activeBase = base;
-    if (track) this.workbenchDirty = true;
     return { ok: true, base };
   }
 
-  private createDraft(base: Vessel): void {
+  // 既定の有人艦の形から新規船の下書きを作り、組立の対象へ加える。
+  createDraft(base: Vessel): void {
     const id = `draft:${base.id}:${++this.draftSequence}`;
     const assembly = crewedAssembly(C.PLAYER_MAX_HP);
     const render = new AssemblyRenderObject(assembly);
     const draft: DraftEntry = { id, name: `新規船下書き ${this.draftSequence}`, assembly, render, ownedPartIds: new Set() };
     this.drafts.set(id, draft);
     this.syncDraftRenders(base);
-    this.workbenchDirty = true;
-    this.selectedWorkbenchTargetId = id;
-    this.openWorkbenchView(base, id);
-    this.hud.hint(`${draft.name} を作成しました。作業台で編集してから建造を確定してください`);
+    // 進行中のセッションは開始時の対象一覧を持っているので、後から生えた下書きは明示的に足す。
+    this.assembly?.session.createNewVesselDraft(id, assembly);
+    this.hud.hint(`${draft.name} を作成しました。組立ウィンドウで編集してから建造を確定してください`);
   }
 
-  private buildDraft(base: Vessel, targetId: string): void {
+  // 下書きを実艦として建造し、基地のドックへ格納する。資源は建造の時点で引く。
+  buildDraft(base: Vessel, targetId: string): void {
     const draft = this.drafts.get(targetId);
     if (!draft || !base.baseState) return;
     const slotIndex = base.getAvailableSlotIndex();
@@ -708,15 +575,13 @@ export class Docking {
     base.baseState.dockedVessels.push({ id: vessel.id, name: vessel.name, hp: vessel.hp, maxHp: vessel.maxHp, parts: vessel.parts, vessel, slotIndex });
     base.attachDockedVesselMesh(vessel, slotIndex);
     draft.render.object.removeFromParent(); draft.render.dispose(); this.drafts.delete(targetId);
-    this.workbenchDirty = true;
-    this.selectedWorkbenchTargetId = `vessel:${vessel.id}`;
-    this.openWorkbenchView(base, this.selectedWorkbenchTargetId);
     this.hud.hint(`${vessel.name} をドック ${slotIndex + 1} に格納しました`);
   }
 
+  // 格納艦をドックから切り離して発進させ、操作対象にする。
   private launch(ship: Vessel, base: Vessel): void {
-    if (this.workbenchDirty) {
-      this.hud.hint('作業台の変更を先に確定または取消してください');
+    if (this.assembly) {
+      this.hud.hint('組立中の構成を先に確定または取消してください');
       return;
     }
     const idx = base.baseState!.dockedVessels.findIndex((s) => s.vessel === ship || s.id === ship.id);
@@ -749,68 +614,28 @@ export class Docking {
     this.hud.hint(`${ship.name} がドック ${slotIndex + 1} から切り離され発進しました`);
   }
 
-  // 基地ビューの DOM を片付ける。
+  // 開いているウィンドウ・進行中のセッション・掴んだままの部品を片付ける。
   dispose(): void {
-    this.baseView.dispose();
+    this.cancelAssembly();
+    this.dragController.dispose();
+    for (const win of this.baseWindows.values()) win.dispose();
+    this.baseWindows.clear();
   }
 }
 
-const EXTERNAL_PART_TYPES = new Set([
-  'weapon', 'engine', 'rcs_thruster', 'solar_panel', 'radiator', 'combat_shield',
-  'heat_shield', 'communication', 'robot_arm', 'docking_port', 'container_coupling',
-]);
-
-function editorOptions(name: string): { readonly blueprintId: string; readonly blueprintName: string } {
-  return { blueprintId: `workbench-${name}`, blueprintName: name };
+// 対象1つが構成として成り立つか。基地には基地固有の条件も課す。
+function targetValidation(
+  target: WorkbenchTarget,
+  dockedCount: number,
+): { valid: boolean; errors: readonly string[] } {
+  const errors: string[] = [];
+  if (target.kind === 'base') errors.push(...validateBaseAssembly(target.assembly, dockedCount));
+  const error = assemblyError(target.assembly, target.id);
+  if (error) errors.push(error);
+  return { valid: errors.length === 0, errors };
 }
 
-function uniqueId(existing: readonly string[], prefix: string): string {
-  const used = new Set(existing);
-  if (!used.has(prefix)) return prefix;
-  for (let i = 2; ; i++) {
-    const candidate = `${prefix}-${i}`;
-    if (!used.has(candidate)) return candidate;
-  }
-}
-
-function portKey(nodeId: string, port: PortRef): string {
-  return port.kind === 'axial'
-    ? `${nodeId}:axial:${port.sign}`
-    : `${nodeId}:lateral:${port.primitiveId}:${port.faceIndex}`;
-}
-
-function freePort(assembly: VesselAssembly, nodeId: string): PortRef | null {
-  const occupied = new Set<string>();
-  for (const edge of assembly.tree.edges) {
-    if (edge.a === nodeId) occupied.add(portKey(nodeId, edge.portA));
-    if (edge.b === nodeId) occupied.add(portKey(nodeId, edge.portB));
-  }
-  for (const placement of assembly.placements) {
-    if (placement.kind !== 'external' || placement.mount.kind !== 'port') continue;
-    if (placement.mount.nodeId === nodeId) occupied.add(portKey(nodeId, placement.mount.port));
-  }
-  for (const port of [{ kind: 'axial', sign: 1 }, { kind: 'axial', sign: -1 }] as const) {
-    if (!occupied.has(portKey(nodeId, port))) return port;
-  }
-  const node = assembly.tree.nodes.find((candidate) => candidate.id === nodeId);
-  for (const primitive of node?.section.primitives ?? []) {
-    const faceCount = primitive.shape.kind === 'circle' ? primitive.shape.branchCount
-      : primitive.shape.kind === 'polygon' || primitive.shape.kind === 'notched' ? primitive.shape.sides : 2;
-    for (let faceIndex = 0; faceIndex < faceCount; faceIndex++) {
-      const port: PortRef = { kind: 'lateral', primitiveId: primitive.id, faceIndex };
-      if (!occupied.has(portKey(nodeId, port))) return port;
-    }
-  }
-  return null;
-}
-
-function edgeMount(edge: VesselAssembly['tree']['edges'][number]): MountPoint | null {
-  if (edge.kind.kind === 'truss') return { kind: 'truss', edgeId: edge.id, along: edge.length / 2, around: 0 };
-  if (edge.kind.kind === 'hull') return { kind: 'surface', edgeId: edge.id, along: edge.length / 2, around: 0 };
-  const port = edge.portA;
-  return port.kind === 'axial' ? { kind: 'port', nodeId: edge.a, port } : null;
-}
-
+// 構成が設計として成り立つかを確かめ、最初のエラーを返す。成り立つなら null。
 function assemblyError(assembly: VesselAssembly, name: string): string | null {
   try {
     const blueprint = createBlueprint({
@@ -822,18 +647,7 @@ function assemblyError(assembly: VesselAssembly, name: string): string | null {
   }
 }
 
-function defaultDockPlacement(assembly: VesselAssembly, part: AnyPart, selectedMount?: MountPoint): PartPlacement | null {
-  const edge = assembly.tree.edges.find((candidate) => candidate.kind.kind === 'hull') ?? assembly.tree.edges[0];
-  if (!edge) return null;
-  if (selectedMount && EXTERNAL_PART_TYPES.has(part.type)) return { kind: 'external', part, mount: selectedMount };
-  if (!EXTERNAL_PART_TYPES.has(part.type)) return { kind: 'internal', part, edgeIds: [edge.id] };
-  if (part.type === 'engine' && edge.portA.kind === 'axial') {
-    return { kind: 'external', part, mount: { kind: 'port', nodeId: edge.a, port: edge.portA } };
-  }
-  if (edge.kind.kind !== 'hull') return null;
-  return { kind: 'external', part, mount: { kind: 'surface', edgeId: edge.id, along: edge.length / 2, around: 0 } };
-}
-
+// 2つのドックの口が同じ位置・同じ法線を向いているか。
 function sameDockPort(
   a: { readonly localPos: { x: number; y: number; z: number }; readonly localNormal: { x: number; y: number; z: number } } | undefined,
   b: { readonly localPos: { x: number; y: number; z: number }; readonly localNormal: { x: number; y: number; z: number } } | undefined,
