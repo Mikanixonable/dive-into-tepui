@@ -1,9 +1,9 @@
-// ドッキング中の船同士・船と基地の間で電力・物資(弾薬・RCS燃料・パーツ)を融通するダイアログ。
+// ドッキング中の船同士・船と基地の間で電力・物資(弾薬・推進剤・パーツ)を融通するダイアログ。
 import { Vessel } from '../vessel/vessel';
 import { hasBaseModule } from '../vessel/capabilities';
 import type { GameEntity } from '../game-entity/game-entity';
-import type { RcsTankPart } from '../game-entity/parts';
-import { propellantTankCapacity } from '../economy/propellant-compatibility';
+import { isPropellantTankPart, type PropellantTankPart } from '../game-entity/parts';
+import { propellantTankCapacity, TANK_MATERIALS, type PropellantId } from '../economy/propellant-compatibility';
 import * as C from '../const';
 import type { OverlayManager } from './overlay-manager';
 import { fmtEnergy } from './utils';
@@ -81,8 +81,8 @@ const STYLE = `
 }
 `;
 
-// RCS タンクの容量 [kg]。volume と推進剤の密度から出る。
-function rcsTankCapacity(tank: RcsTankPart): number {
+// 推進剤タンクの容量 [kg]。volume と推進剤の密度から出る。
+function tankCapacity(tank: PropellantTankPart): number {
   return propellantTankCapacity(tank.propellant, tank.volume);
 }
 
@@ -154,28 +154,67 @@ export class ResourceTransferDialog {
     // A metrics
     const aPowerJ = a.power!.chargeJ;
     const aMags = a.fire!.mags;
-    const aRcsTanks = a.parts.filter((p): p is RcsTankPart => p.type === 'rcs_tank');
-    const aRcsFuel = aRcsTanks.reduce((sum, t) => sum + t.fuel, 0);
-    const aRcsMaxFuel = aRcsTanks.reduce((sum, t) => sum + rcsTankCapacity(t), 0);
 
     // B metrics
     let bPowerJ = 0;
     let bMags = 0;
-    let bRcsFuel = 0;
-    let bRcsMaxFuel = 0;
 
     if (bShip) {
       bPowerJ = bShip.power!.chargeJ;
       bMags = bShip.fire!.mags;
-      const bRcsTanks = bShip.parts.filter((p): p is RcsTankPart => p.type === 'rcs_tank');
-      bRcsFuel = bRcsTanks.reduce((sum, t) => sum + t.fuel, 0);
-      bRcsMaxFuel = bRcsTanks.reduce((sum, t) => sum + rcsTankCapacity(t), 0);
     } else if (bBase) {
       bPowerJ = C.POWER_CAPACITY * 10; // 基地電源は実質無限
       bMags = 999; // 基地の補給庫は尽きない
-      bRcsFuel = 10000;
-      bRcsMaxFuel = 10000;
     }
+
+    // 推進剤(酸化剤・還元剤・RCS)は種類ごとに独立した1区画にする — 種類の違う
+    // 推進剤どうしを移送・均等化してはいけないので、以降の集計もすべて種類ごとに行う。
+    const aTanks = a.parts.filter(isPropellantTankPart);
+    const bTanks = bShip ? bShip.parts.filter(isPropellantTankPart) : [];
+    const propellants: PropellantId[] = [];
+    for (const t of [...aTanks, ...bTanks]) {
+      if (!propellants.includes(t.propellant)) propellants.push(t.propellant);
+    }
+
+    const fuelSectionsHtml = propellants.map((propellant) => {
+      const name = TANK_MATERIALS[propellant].name;
+      const aTanksP = aTanks.filter((t) => t.propellant === propellant);
+      const aFuel = aTanksP.reduce((sum, t) => sum + t.fuel, 0);
+      const aMaxFuel = aTanksP.reduce((sum, t) => sum + tankCapacity(t), 0);
+      let bFuel = 0;
+      let bMaxFuel = 0;
+      if (bShip) {
+        const bTanksP = bTanks.filter((t) => t.propellant === propellant);
+        bFuel = bTanksP.reduce((sum, t) => sum + t.fuel, 0);
+        bMaxFuel = bTanksP.reduce((sum, t) => sum + tankCapacity(t), 0);
+      } else if (bBase) {
+        bFuel = 10000;
+        bMaxFuel = 10000;
+      }
+      return `
+          <div class="rt-section">
+            <div class="rt-section-head">🚀 ${name} (Fuel)</div>
+            <div class="rt-grid">
+              <div class="rt-card">
+                <div class="rt-card-title">${a.name}</div>
+                <div class="rt-metric"><span>${name}:</span> <span class="rt-metric-val">${aFuel.toFixed(0)} / ${aMaxFuel.toFixed(0)} kg</span></div>
+              </div>
+              <div class="rt-actions">
+                <div class="rt-btn-group">
+                  <button class="w-btn rt-btn-f-to-b" data-propellant="${propellant}" ${aFuel <= 0 ? 'disabled' : ''}>10kg →</button>
+                  <button class="w-btn rt-btn-f-to-a" data-propellant="${propellant}" ${!isBBase && bFuel <= 0 ? 'disabled' : ''}>← 10kg</button>
+                </div>
+                <div class="rt-btn-group">
+                  <button class="w-btn rt-btn-f-bal" data-propellant="${propellant}" ${isBBase ? '' : 'title="両艦の燃料比率を揃えます"'}>満タン補給 / 均等</button>
+                </div>
+              </div>
+              <div class="rt-card">
+                <div class="rt-card-title">${bName}</div>
+                <div class="rt-metric"><span>${name}:</span> <span class="rt-metric-val">${isBBase ? '基地タンク' : `${bFuel.toFixed(0)} / ${bMaxFuel.toFixed(0)} kg`}</span></div>
+              </div>
+            </div>
+          </div>`;
+    }).join('');
 
     this.rootEl.innerHTML = `
       <div class="rt-panel">
@@ -238,29 +277,8 @@ export class ResourceTransferDialog {
             </div>
           </div>
 
-          <!-- RCS 燃料 (RCS Fuel) -->
-          <div class="rt-section">
-            <div class="rt-section-head">🚀 RCS 燃料 (Fuel)</div>
-            <div class="rt-grid">
-              <div class="rt-card">
-                <div class="rt-card-title">${a.name}</div>
-                <div class="rt-metric"><span>RCS 燃料:</span> <span class="rt-metric-val">${aRcsFuel.toFixed(0)} / ${aRcsMaxFuel.toFixed(0)} kg</span></div>
-              </div>
-              <div class="rt-actions">
-                <div class="rt-btn-group">
-                  <button class="w-btn rt-btn-f-to-b" ${aRcsFuel <= 0 ? 'disabled' : ''}>10kg →</button>
-                  <button class="w-btn rt-btn-f-to-a" ${!isBBase && bRcsFuel <= 0 ? 'disabled' : ''}>← 10kg</button>
-                </div>
-                <div class="rt-btn-group">
-                  <button class="w-btn rt-btn-f-bal" ${isBBase ? '' : 'title="両艦の燃料比率を揃えます"'}>満タン補給 / 均等</button>
-                </div>
-              </div>
-              <div class="rt-card">
-                <div class="rt-card-title">${bName}</div>
-                <div class="rt-metric"><span>RCS 燃料:</span> <span class="rt-metric-val">${isBBase ? '基地タンク' : `${bRcsFuel.toFixed(0)} / ${bRcsMaxFuel.toFixed(0)} kg`}</span></div>
-              </div>
-            </div>
-          </div>
+          <!-- 推進剤 (Propellant Fuel)、種類ごとに1区画 -->
+          ${fuelSectionsHtml}
 
           <!-- パーツ・物資 (Inventory / Parts) -->
           ${isBBase ? `
@@ -389,41 +407,52 @@ export class ResourceTransferDialog {
       this.render();
     });
 
-    // Fuel transfer A -> B
-    root.querySelector('.rt-btn-f-to-b')?.addEventListener('click', () => {
-      this.transferRcsFuel(a, bShip, 10);
-      this.render();
+    // Fuel transfer A -> B(推進剤の種類ごとに独立したボタン)
+    root.querySelectorAll<HTMLButtonElement>('.rt-btn-f-to-b').forEach((btn) => {
+      const propellant = btn.dataset.propellant as PropellantId;
+      btn.addEventListener('click', () => {
+        this.transferFuel(a, bShip, propellant, 10);
+        this.render();
+      });
     });
 
     // Fuel transfer B -> A
-    root.querySelector('.rt-btn-f-to-a')?.addEventListener('click', () => {
-      if (bBase) {
-        this.refillRcsFuel(a);
-      } else if (bShip) {
-        this.transferRcsFuel(bShip, a, 10);
-      }
-      this.render();
+    root.querySelectorAll<HTMLButtonElement>('.rt-btn-f-to-a').forEach((btn) => {
+      const propellant = btn.dataset.propellant as PropellantId;
+      btn.addEventListener('click', () => {
+        if (bBase) {
+          this.refillFuel(a, propellant);
+        } else if (bShip) {
+          this.transferFuel(bShip, a, propellant, 10);
+        }
+        this.render();
+      });
     });
 
     // Fuel balance / refill
-    root.querySelector('.rt-btn-f-bal')?.addEventListener('click', () => {
-      if (bBase) {
-        this.refillRcsFuel(a);
-      } else if (bShip) {
-        this.balanceRcsFuel(a, bShip);
-      }
-      this.render();
+    root.querySelectorAll<HTMLButtonElement>('.rt-btn-f-bal').forEach((btn) => {
+      const propellant = btn.dataset.propellant as PropellantId;
+      btn.addEventListener('click', () => {
+        if (bBase) {
+          this.refillFuel(a, propellant);
+        } else if (bShip) {
+          this.balanceFuel(a, bShip, propellant);
+        }
+        this.render();
+      });
     });
   }
 
-  private refillRcsFuel(ship: Vessel): void {
-    const tanks = ship.parts.filter((p): p is RcsTankPart => p.type === 'rcs_tank');
-    for (const t of tanks) t.fuel = rcsTankCapacity(t);
+  // ship が積む propellant のタンクを満タンにする。
+  private refillFuel(ship: Vessel, propellant: PropellantId): void {
+    const tanks = ship.parts.filter(isPropellantTankPart).filter((t) => t.propellant === propellant);
+    for (const t of tanks) t.fuel = tankCapacity(t);
   }
 
-  private transferRcsFuel(from: Vessel, to: Vessel | null, amountKg: number): void {
-    const fromTanks = from.parts.filter((p): p is RcsTankPart => p.type === 'rcs_tank');
-    let available = fromTanks.reduce((s, t) => s + t.fuel, 0);
+  // from から to(未指定なら宇宙へ排出)へ、同じ propellant のぶんだけ amountKg 移す。
+  private transferFuel(from: Vessel, to: Vessel | null, propellant: PropellantId, amountKg: number): void {
+    const fromTanks = from.parts.filter(isPropellantTankPart).filter((t) => t.propellant === propellant);
+    const available = fromTanks.reduce((s, t) => s + t.fuel, 0);
     const toTransfer = Math.min(amountKg, available);
     if (toTransfer <= 0) return;
 
@@ -438,10 +467,10 @@ export class ResourceTransferDialog {
 
     // Add to `to` if present
     if (to) {
-      const toTanks = to.parts.filter((p): p is RcsTankPart => p.type === 'rcs_tank');
+      const toTanks = to.parts.filter(isPropellantTankPart).filter((t) => t.propellant === propellant);
       let leftToAdd = toTransfer;
       for (const t of toTanks) {
-        const space = rcsTankCapacity(t) - t.fuel;
+        const space = tankCapacity(t) - t.fuel;
         const add = Math.min(space, leftToAdd);
         t.fuel += add;
         leftToAdd -= add;
@@ -450,15 +479,16 @@ export class ResourceTransferDialog {
     }
   }
 
-  private balanceRcsFuel(shipA: Vessel, shipB: Vessel): void {
-    const tanksA = shipA.parts.filter((p): p is RcsTankPart => p.type === 'rcs_tank');
-    const tanksB = shipB.parts.filter((p): p is RcsTankPart => p.type === 'rcs_tank');
+  // shipA/shipB が積む同じ propellant のタンクを、両艦合計の充填率が揃うよう均す。
+  private balanceFuel(shipA: Vessel, shipB: Vessel, propellant: PropellantId): void {
+    const tanksA = shipA.parts.filter(isPropellantTankPart).filter((t) => t.propellant === propellant);
+    const tanksB = shipB.parts.filter(isPropellantTankPart).filter((t) => t.propellant === propellant);
     const totalFuel = tanksA.reduce((s, t) => s + t.fuel, 0) + tanksB.reduce((s, t) => s + t.fuel, 0);
-    const totalMax = tanksA.reduce((s, t) => s + rcsTankCapacity(t), 0) + tanksB.reduce((s, t) => s + rcsTankCapacity(t), 0);
+    const totalMax = tanksA.reduce((s, t) => s + tankCapacity(t), 0) + tanksB.reduce((s, t) => s + tankCapacity(t), 0);
     if (totalMax <= 0) return;
 
     const ratio = totalFuel / totalMax;
-    for (const t of tanksA) t.fuel = rcsTankCapacity(t) * ratio;
-    for (const t of tanksB) t.fuel = rcsTankCapacity(t) * ratio;
+    for (const t of tanksA) t.fuel = tankCapacity(t) * ratio;
+    for (const t of tanksB) t.fuel = tankCapacity(t) * ratio;
   }
 }

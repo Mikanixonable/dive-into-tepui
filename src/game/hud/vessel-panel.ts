@@ -149,13 +149,13 @@ export class VesselPanel {
       return `
         <div class="row metric">
           <dt class="k">${name}</dt>
-          <dd class="v rcs-fuel-readout">
-            <span class="rcs-fuel-meter${critical ? ' critical' : ''}" role="progressbar"
+          <dd class="v fuel-readout">
+            <span class="fuel-meter${critical ? ' critical' : ''}" role="progressbar"
               aria-label="${name}" aria-valuemin="0" aria-valuemax="${capacity}"
               aria-valuenow="${clamped}" aria-valuetext="${valueText}">
-              <span class="rcs-fuel-fill" style="width:${percent.toFixed(1)}%"></span>
+              <span class="fuel-fill" style="width:${percent.toFixed(1)}%"></span>
             </span>
-            <output class="rcs-fuel-value">${valueText}</output>
+            <output class="fuel-value">${valueText}</output>
           </dd>
         </div>`;
     }).join('');
