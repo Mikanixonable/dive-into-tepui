@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { Hud } from '../hud/hud';
 import { CombatCameraSystem } from './combat-camera-system';
+import { ChaseCameraTarget } from './chase-camera';
 import { MapCamera } from './map-camera';
 import { ViewOptionsPanel } from '../hud/view-options-panel';
 import { FocusMarkers } from './focus-markers';
@@ -129,6 +130,14 @@ export class CameraSystem {
 
   setMapMode(open: boolean): void { this._overviewMode = open; }
 
+  // 戦闘視点カメラ(ChaseCamera)が操作対象艦の代わりに追う対象。null なら通常どおり操作対象艦を
+  // 追う。組立セッションなど、見たい対象が操作対象艦と一致しない期間だけ Docking が設定/解除する
+  // — このクラスは Docking を知らず、渡された姿勢を素通しするだけ。
+  private _chaseCameraOverride: ChaseCameraTarget | null = null;
+  setChaseCameraOverride(target: ChaseCameraTarget | null): void {
+    this._chaseCameraOverride = target;
+  }
+
   private readonly chaseResetBtn: HTMLElement | null;
 
   // 追従リセットボタン押下で、現在のビューに応じたカメラをリセットする。
@@ -231,7 +240,7 @@ export class CameraSystem {
       this.mapCamera.update(mouse, keyYaw, keyPitch, dt, displayTime, mapPickables, attractors);
     }
     else {
-      this.combatCamera.update(mouse, keyYaw, keyPitch, dt, player, input);
+      this.combatCamera.update(mouse, keyYaw, keyPitch, dt, player, input, this._chaseCameraOverride);
     }
   }
 
