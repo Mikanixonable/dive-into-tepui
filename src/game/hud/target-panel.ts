@@ -4,6 +4,7 @@
 // 整理し、同じ値を二重の書式で表示しない）。
 import { fmtDist, fmtSpeed } from './utils';
 import { relativeInfo } from './orbit-info';
+import { CloseButton } from './widgets';
 import type { Attractor } from '../../physics/attractor';
 import type { Game } from '../game';
 
@@ -20,10 +21,15 @@ interface TargetPanelData {
 
 export class TargetPanel {
   private nextSyncAt = 0;
+  private game: Game | null = null;
 
-  public constructor(private readonly els: ReadonlyMap<string, HTMLElement>) {}
+  public constructor(private readonly els: ReadonlyMap<string, HTMLElement>) {
+    const slot = this.els.get('tgt-clear-slot');
+    if (slot) slot.appendChild(new CloseButton(() => this.game?.targeter.setPrimaryTarget(null)).element);
+  }
 
   public sync(game: Game, attractors: readonly Attractor[]): void {
+    this.game = game;
     const player = game.player;
     const target = player ? game.targeter.aliveTarget : null;
     // 表示/非表示はターゲット固定の有無に直結するので、更新間隔とは別に毎フレーム反映する。
