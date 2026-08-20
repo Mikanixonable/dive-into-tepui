@@ -107,11 +107,12 @@ export class MapVisibilityPolicy {
   private computeEntity(kind: MapEntityKind, isActivePlayer: boolean): MapVisibility {
     const keys = ENTITY_KEYS[kind];
     const categoryToggle = this.toggles[keys.category];
-    // 操作対象の自艦は、カテゴリを閉じても現在位置を失わないように残す。ただし
-    // ラベル/軌道線は個別トグルに従うので、例外が表示設定を無効化しない。
-    const category = categoryToggle || (kind === 'player' && isActivePlayer);
+    // 操作対象の艦(自艦・基地とも)は、カテゴリを閉じても現在位置を失わないように残す。
+    // ただしラベル/軌道線は個別トグルに従うので、例外が表示設定を無効化しない。
+    const isOperatedVessel = (kind === 'player' || kind === 'base') && isActivePlayer;
+    const category = categoryToggle || isOperatedVessel;
     if (!category) return noVisibility();
-    const icon = kind === 'player' && isActivePlayer ? true : Boolean(this.toggles[keys.icon]);
+    const icon = isOperatedVessel ? true : Boolean(this.toggles[keys.icon]);
     const label = Boolean(this.toggles[keys.label]);
     const orbit = Boolean(this.toggles[keys.orbit]) && category;
     return { category, icon, label, orbit, pickable: icon || label };

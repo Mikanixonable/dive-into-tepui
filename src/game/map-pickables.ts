@@ -138,7 +138,7 @@ export class MapPickables {
       if (pos) this.addCandidate(ammoPickup.id, ammoPickup.name, pos, 'ammo', undefined, undefined, undefined, vAmmo.label);
     }
     for (const base of this.entities.baseVessels()) {
-      const vBase = visibilityPolicy.entity('base');
+      const vBase = visibilityPolicy.entity('base', base === this.activeVessels.current);
       if (!base.alive || !vBase.pickable) continue;
       const pos = base.displayState(displayTime)?.r;
       if (pos) this.addCandidate(
