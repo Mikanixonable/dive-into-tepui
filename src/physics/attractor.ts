@@ -4,7 +4,7 @@ import { Quat } from './attitude';
 import { FrameTransform, toFrameState } from './frame';
 import { KinematicState, hermiteInterpolate, kinematicState } from './kinematic-state';
 import { OrbitalElements, orbitalElementsFromState, keplerPeriod } from './elements';
-import { SweptMode, containingBody, sweptSphereContact } from './sphere-contact';
+import { SweptMode, sweptSphereContact } from './sphere-contact';
 import { Vec3, addScaled, lenSq, len, sub, v3 } from './vec3';
 
 // 天体の識別子。具体的なレジストリ(solar-system.ts の SOLAR_SYSTEM など)が実行時に
@@ -148,35 +148,36 @@ export interface BodyImpact {
   readonly state: KinematicState;
 }
 
-// prev→next の1ステップの間に表面へ到達した天体と、到達した瞬間の状態。
-// 到達が無ければ null。複数に到達していれば最も早いものを、掃引が求めた到達割合(toi)から
-// hermiteInterpolate で組んだ状態とともに返す。掃引が空振りした(開始時点で既に沈んでいる、
-// または区間が無い)場合は離散判定へ委譲し、prev/next いずれかそのものを到達状態として返す。
+// prev→next の1ステップの間に表面へ到達した天体と、到達した瞬間の状態。到達が無ければ null。
+// 区間の途中で表面を跨いだ天体が複数あれば最も早いものを、掃引が求めた到達割合(toi)から
+// hermiteInterpolate で組んだ状態とともに返す。跨ぎが1つも無く、始点で既に沈んでいる天体が
+// あれば、その天体と prev そのものを返す。
 export function reachedBody(
   prev: KinematicState,
   next: KinematicState,
   bodies: readonly Attractor[],
   mode: SweptMode = 'cubic',
 ): BodyImpact | null {
-  let earliest: Attractor | null = null;
+  let entered: Attractor | null = null;
   let earliestToi = Infinity;
+  let alreadyInside: Attractor | null = null;
   for (const body of bodies) {
     const contact = sweptSphereContact(
       prev, next,
       attractorStateAt(body, prev.t), attractorStateAt(body, next.t),
       body.radius, mode);
-    if (contact !== null && contact.toi < earliestToi) {
-      earliest = body;
-      earliestToi = contact.toi;
+    if (contact === null) continue;
+    if (contact.startsInside) {
+      alreadyInside ??= body;
+    } else if (contact.crossing !== null && contact.crossing.toi < earliestToi) {
+      entered = body;
+      earliestToi = contact.crossing.toi;
     }
   }
-  if (earliest !== null) {
-    return { body: earliest, state: hermiteInterpolate(prev, next, prev.t + (next.t - prev.t) * earliestToi) };
+  if (entered !== null) {
+    return { body: entered, state: hermiteInterpolate(prev, next, prev.t + (next.t - prev.t) * earliestToi) };
   }
-  const containingPrev = containingBody(prev.r, bodies);
-  if (containingPrev !== null) return { body: containingPrev, state: prev };
-  const containingNext = containingBody(next.r, bodies);
-  if (containingNext !== null) return { body: containingNext, state: next };
+  if (alreadyInside !== null) return { body: alreadyInside, state: prev };
   return null;
 }
 
