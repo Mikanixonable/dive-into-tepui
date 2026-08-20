@@ -83,6 +83,25 @@
     そちらに残る同名の重複はそのフェーズで一緒に消える。
   - 部材(外皮/トラス/分離機構)のドラッグ生成、断面の数値編集は引き続き未着手(フェーズE、
     上に既に記載した縮小方針のとおり)。
+- **統合フェーズ(`docking.ts`の書き換え・`base-view.ts`削除・`view-manager.ts`の`'dock'`廃止・
+  `map-context-actions.ts`/`input.ts`の配線)完了**(2026-08-20)。レビューで見つけて直したもの:
+  - `SnapCandidate.position` を `Vec3` へ変えた際、既存の `tests/unit/dock-workbench.test.ts` が
+    裸オブジェクトを渡していたままで `npm run typecheck` は通っても `npm run test:unit` が
+    落ちていた(`typecheck` は `tests/` 配下をコンパイルしない別コマンドのため気付かれなかった)。
+    `v3(0, 0, 0)` へ直して解消。**今後この種の変更をレビューするときは `typecheck` だけでなく
+    `test:unit` も必ず走らせる。**
+  - `view-manager.ts` が `hud.root.classList.toggle('base-mode', ...)` を呼ばなくなった一方、
+    `hud/combat-view-style.ts`/`hud/hud-layout-style.ts` に `.base-mode` を前提にした CSS
+    セレクタ(`#hud:not(.base-mode) ...` 等、80箇所以上)が残っていた。機能的には
+    「常に真」になるだけで誤動作はしないが、死んだ分岐なので `.base-mode` への参照を
+    両ファイルから除去した。
+  - `Docking.commitAssembly()` は対象を順に `applyTargetAssembly` していくが、事前の
+    `session.snapshotBeforeBuild()`(`session.validate()`)と `commitBaseAssembly` 内の
+    ドック口占有チェック(`sameDockPort`)は同じ強さの検証ではない — セッション側の
+    `targetValidator` はドック口の占有までは見ていない。**現状は `assemblyTargets` が常に
+    基地本体を先頭に置くため、基地の適用が最初に失敗する経路しかなく、途中まで適用されて
+    残りが失敗する分岐は実際には起きない**が、対象の並び順を変える変更をするときは
+    この前提が崩れないか確かめること。
   - `hull-mesh.ts` にモジュール内であった外装部品ごとの造形テーブル(`FITTINGS`)を
     `assembly-drag-controller.ts` がやむを得ず複製していたのを、この場でレビューの一環として
     `vessel/part-fittings.ts`(新設)へ引き上げ、両者がそこから読むよう直した。**`render/`側

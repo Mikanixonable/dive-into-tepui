@@ -1,6 +1,6 @@
 // セーブデータブラウザ: 複数のセーブデータ(スロット)とそのスナップショット履歴を
 // 一覧・切替・クリップ・書き出し/取り込みするフルスクリーン UI。
-// BaseView と同じく一発モーダルで、操作のたびに DOM を組み直す(毎フレーム sync は無い)。
+// 一発モーダルで、操作のたびに DOM を組み直す(毎フレーム sync は無い)。
 import type { Game } from '../game';
 import { SaveSlots, AUTO_SNAPSHOT_LIMIT, PINNED_SNAPSHOT_LIMIT } from '../save/save-slots';
 import { SnapshotService } from '../save/snapshot-service';
