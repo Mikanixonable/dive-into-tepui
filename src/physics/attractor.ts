@@ -4,7 +4,7 @@ import { Quat } from './attitude';
 import { FrameTransform, toFrameState } from './frame';
 import { KinematicState, hermiteInterpolate, kinematicState } from './kinematic-state';
 import { OrbitalElements, orbitalElementsFromState, keplerPeriod } from './elements';
-import { SweptVelocities, containingBody, sweptSphereContact } from './sphere-contact';
+import { SweptMode, containingBody, sweptSphereContact } from './sphere-contact';
 import { Vec3, lenSq, len, sub, v3 } from './vec3';
 
 // 天体の識別子。具体的なレジストリ(solar-system.ts の SOLAR_SYSTEM など)が実行時に
@@ -140,10 +140,10 @@ export interface BodyImpact {
   readonly state: KinematicState;
 }
 
-// 掃引の近似。'hermite' は端点の速度を接線に取る三次曲線、'linear' は端点を結ぶ線分。
-export type ReachSolver = 'hermite' | 'linear';
+// 掃引の間だけ天体を静止させるための速度。Vec3 は不変なので使い回してよい。
+const AT_REST = v3();
 
-// prev→next の1ステップの間に、半径 + margin の表面へ到達した天体と、到達した瞬間の状態。
+// prev→next の1ステップの間に表面へ到達した天体と、到達した瞬間の状態。
 // 到達が無ければ null。複数に到達していれば最も早いものを、掃引が求めた到達割合(toi)から
 // hermiteInterpolate で組んだ状態とともに返す。掃引が空振りした(開始時点で既に沈んでいる、
 // または区間が無い)場合は離散判定へ委譲し、prev/next いずれかそのものを到達状態として返す。
@@ -151,19 +151,18 @@ export function reachedBody(
   prev: KinematicState,
   next: KinematicState,
   bodies: readonly Attractor[],
-  margin: number,
-  solver: ReachSolver = 'hermite',
+  mode: SweptMode = 'cubic',
 ): BodyImpact | null {
-  // 1ステップの間に天体自身が動く距離は、その半径に対しても軌道速度で進む距離に対しても
-  // 十分小さいので、どの天体も区間を通して静止しているものとして掃引する。
-  const sweep: SweptVelocities | null = solver === 'linear' ? null : {
-    aStart: prev.v, aEnd: next.v, bStart: v3(), bEnd: v3(), dt: next.t - prev.t,
-  };
   let earliest: Attractor | null = null;
   let earliestToi = Infinity;
   for (const body of bodies) {
+    // 1ステップの間に天体自身が動く距離は、その半径に対しても軌道速度で進む距離に対しても
+    // 十分小さいので、どの天体も区間を通して静止しているものとして掃引する。
     const contact = sweptSphereContact(
-      prev.r, next.r, body.state.r, body.state.r, body.radius + margin, sweep);
+      prev, next,
+      kinematicState(prev.t, body.state.r, AT_REST),
+      kinematicState(next.t, body.state.r, AT_REST),
+      body.radius, mode);
     if (contact !== null && contact.toi < earliestToi) {
       earliest = body;
       earliestToi = contact.toi;
@@ -172,9 +171,9 @@ export function reachedBody(
   if (earliest !== null) {
     return { body: earliest, state: hermiteInterpolate(prev, next, prev.t + (next.t - prev.t) * earliestToi) };
   }
-  const containingPrev = containingBody(prev.r, bodies, margin);
+  const containingPrev = containingBody(prev.r, bodies);
   if (containingPrev !== null) return { body: containingPrev, state: prev };
-  const containingNext = containingBody(next.r, bodies, margin);
+  const containingNext = containingBody(next.r, bodies);
   if (containingNext !== null) return { body: containingNext, state: next };
   return null;
 }

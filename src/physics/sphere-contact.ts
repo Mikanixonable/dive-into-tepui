@@ -8,49 +8,43 @@ export interface SphereContact {
   readonly normal: Vec3; // aからbへ向く接触法線
 }
 
-// 区間の端点での両球の速度と、区間長 dt [s]。sweptSphereContact へ渡せば端点の速度を接線に取る
-// 三次エルミートで、渡さなければ端点を結ぶ線分で解く。
-export interface SweptVelocities {
-  readonly aStart: Vec3;
-  readonly aEnd: Vec3;
-  readonly bStart: Vec3;
-  readonly bEnd: Vec3;
-  readonly dt: number;
-}
+// 掃引経路の近似。'linear' は端点を結ぶ線分、'cubic' は端点の速度を接線に取る三次曲線。
+export type SweptMode = 'linear' | 'cubic';
 
-// 半径和 radiusSum の2球が、それぞれ start→end へ移動する間に最初に表面が触れる時刻(区間内の
+// 半径和 radiusSum の2球が、それぞれ start→end の区間を渡る間に最初に表面が触れる時刻(区間内の
 // 割合)と、その瞬間の a→b 向きの法線。触れなければ null。開始時点で既に重なっている場合も
 // null を返す — 掃引では扱えないので、呼び出し側の離散 solver へ委譲する。
+// 区間は両球で共通で、その長さは aStart→aEnd の時刻差から取る。
 export function sweptSphereContact(
-  aStart: Vec3,
-  aEnd: Vec3,
-  bStart: Vec3,
-  bEnd: Vec3,
+  aStart: KinematicState,
+  aEnd: KinematicState,
+  bStart: KinematicState,
+  bEnd: KinematicState,
   radiusSum: number,
-  velocities: SweptVelocities | null,
+  mode: SweptMode,
 ): SphereContact | null {
-  return velocities === null
-    ? sweptSphereToi(aStart, aEnd, bStart, bEnd, radiusSum)
-    : hermiteSphereContact(aStart, aEnd, bStart, bEnd, radiusSum, velocities);
+  return mode === 'linear'
+    ? linearSphereContact(aStart, aEnd, bStart, bEnd, radiusSum)
+    : cubicSphereContact(aStart, aEnd, bStart, bEnd, radiusSum);
 }
 
-// sweptSphereContact の線形モードの実体。2球の中心がそれぞれ start→end を線形移動するとみなす。
-export function sweptSphereToi(
-  aStart: Vec3,
-  aEnd: Vec3,
-  bStart: Vec3,
-  bEnd: Vec3,
+// 線形モードの実体。2球の中心がそれぞれ start→end を線形移動するとみなし、速度は読まない。
+function linearSphereContact(
+  aStart: KinematicState,
+  aEnd: KinematicState,
+  bStart: KinematicState,
+  bEnd: KinematicState,
   radiusSum: number,
 ): SphereContact | null {
   // 相対位置 p(t) = p0 + d·t (t∈[0,1]) が半径和 radiusSum の球に触れる最小の t を解く2次方程式。
   // 各早期returnは `!(x > 0)` 系の否定形で書く — NaN はどの比較でも false になるので、
   // 非有限な入力はこの形のときだけ自動的に null へ落ちる(`x <= 0` に書き換えると通り抜ける)。
-  const px = bStart.x - aStart.x;
-  const py = bStart.y - aStart.y;
-  const pz = bStart.z - aStart.z;
-  const dx = (bEnd.x - bStart.x) - (aEnd.x - aStart.x);
-  const dy = (bEnd.y - bStart.y) - (aEnd.y - aStart.y);
-  const dz = (bEnd.z - bStart.z) - (aEnd.z - aStart.z);
+  const px = bStart.r.x - aStart.r.x;
+  const py = bStart.r.y - aStart.r.y;
+  const pz = bStart.r.z - aStart.r.z;
+  const dx = (bEnd.r.x - bStart.r.x) - (aEnd.r.x - aStart.r.x);
+  const dy = (bEnd.r.y - bStart.r.y) - (aEnd.r.y - aStart.r.y);
+  const dz = (bEnd.r.z - bStart.r.z) - (aEnd.r.z - aStart.r.z);
   const c = px * px + py * py + pz * pz - radiusSum * radiusSum;
   if (!(c > 0)) return null;
   const aa = dx * dx + dy * dy + dz * dz;
@@ -64,37 +58,36 @@ export function sweptSphereToi(
   return normalized(toi, v3(px + dx * toi, py + dy * toi, pz + dz * toi));
 }
 
-// sweptSphereContact のエルミートモードの実体。
+// 三次モードの実体。
 // 区間端点の符号だけを見ると、端点の両方が表面外でも途中だけ球を通過する軌道を落とす。
 // ここでは相対位置(b − a)を3次Bezierへ変換し、Bezier制御点の凸包が球と交わり得る区間だけを
 // 左から再帰的に調べる。制御点の軸平行箱が球から離れていれば、その区間には交差がない。
 // したがって、単なる固定サンプル列より細い通過も拾いつつ、曲線上の clearance の符号反転を
 // 固定反復で詰められる。
-function hermiteSphereContact(
-  aStart: Vec3,
-  aEnd: Vec3,
-  bStart: Vec3,
-  bEnd: Vec3,
+function cubicSphereContact(
+  aStart: KinematicState,
+  aEnd: KinematicState,
+  bStart: KinematicState,
+  bEnd: KinematicState,
   radiusSum: number,
-  vel: SweptVelocities,
 ): SphereContact | null {
-  const dt = vel.dt;
+  const dt = aEnd.t - aStart.t;
   if (!(dt > 0) || !Number.isFinite(dt) || !Number.isFinite(radiusSum) || !(radiusSum > 0)) return null;
   // 制御点はまずスカラー座標として求める。遠すぎて棄却される相手が大半なので、凸包の箱で
   // 落ちるところまでは Vec3 を1つも作らない。
-  const sx = bStart.x - aStart.x;
-  const sy = bStart.y - aStart.y;
-  const sz = bStart.z - aStart.z;
-  const ex = bEnd.x - aEnd.x;
-  const ey = bEnd.y - aEnd.y;
-  const ez = bEnd.z - aEnd.z;
+  const sx = bStart.r.x - aStart.r.x;
+  const sy = bStart.r.y - aStart.r.y;
+  const sz = bStart.r.z - aStart.r.z;
+  const ex = bEnd.r.x - aEnd.r.x;
+  const ey = bEnd.r.y - aEnd.r.y;
+  const ez = bEnd.r.z - aEnd.r.z;
   // Hermite の接線は u 微分へ変換するため dt を掛ける。
-  const t0x = (vel.bStart.x - vel.aStart.x) * dt;
-  const t0y = (vel.bStart.y - vel.aStart.y) * dt;
-  const t0z = (vel.bStart.z - vel.aStart.z) * dt;
-  const t1x = (vel.bEnd.x - vel.aEnd.x) * dt;
-  const t1y = (vel.bEnd.y - vel.aEnd.y) * dt;
-  const t1z = (vel.bEnd.z - vel.aEnd.z) * dt;
+  const t0x = (bStart.v.x - aStart.v.x) * dt;
+  const t0y = (bStart.v.y - aStart.v.y) * dt;
+  const t0z = (bStart.v.z - aStart.v.z) * dt;
+  const t1x = (bEnd.v.x - aEnd.v.x) * dt;
+  const t1y = (bEnd.v.y - aEnd.v.y) * dt;
+  const t1z = (bEnd.v.z - aEnd.v.z) * dt;
   if (!Number.isFinite(sx) || !Number.isFinite(sy) || !Number.isFinite(sz)
     || !Number.isFinite(ex) || !Number.isFinite(ey) || !Number.isFinite(ez)
     || !Number.isFinite(t0x) || !Number.isFinite(t0y) || !Number.isFinite(t0z)
@@ -111,7 +104,7 @@ function hermiteSphereContact(
     + axisDistanceSq(sy, c1y, c2y, ey)
     + axisDistanceSq(sz, c1z, c2z, ez);
   if (boxDistanceSq > radiusSum * radiusSum) return null;
-  // 開始時点の重なりは sweptSphereToi と同じく、呼び出し側の離散 solver に委譲する。
+  // 開始時点の重なりは線形モードと同じく、呼び出し側の離散 solver に委譲する。
   if (Math.sqrt(sx * sx + sy * sy + sz * sz) <= radiusSum) return null;
 
   const controls: readonly Vec3[] = [
@@ -147,25 +140,8 @@ function hermiteSphereContact(
   return toi === null ? null : normalized(toi, cubicPoint(controls, toi));
 }
 
-// エルミートモードを、区間の両端の状態と相手球の移動区間から呼び、接触時刻だけを返す入口。
-// 相手球の速度は移動区間から導く(区間を等速で渡るものとみなす)。
-export function sweptHermiteSphereToi(
-  prev: KinematicState,
-  next: KinematicState,
-  bodyStart: Vec3,
-  bodyEnd: Vec3,
-  radius: number,
-): number | null {
-  const dt = next.t - prev.t;
-  const bodyVel = v3(
-    (bodyEnd.x - bodyStart.x) / dt, (bodyEnd.y - bodyStart.y) / dt, (bodyEnd.z - bodyStart.z) / dt);
-  return hermiteSphereContact(prev.r, next.r, bodyStart, bodyEnd, radius, {
-    aStart: prev.v, aEnd: next.v, bStart: bodyVel, bEnd: bodyVel, dt,
-  })?.toi ?? null;
-}
-
 // 接触時刻とそのときの相対位置から SphereContact を組む。相対位置が潰れていれば向きを
-// 決められないので null(線形・エルミートで同じ扱いにする)。
+// 決められないので null(線形・三次で同じ扱いにする)。
 function normalized(toi: number, relative: Vec3): SphereContact | null {
   const d = len(relative);
   if (!(d > 1e-12)) return null;
@@ -214,14 +190,13 @@ function distanceSqToControlBox(control: readonly Vec3[]): number {
     + axisDistanceSq(control[0]!.z, control[1]!.z, control[2]!.z, control[3]!.z);
 }
 
-// point が bodies のいずれかの半径 + margin の球の内側にあれば、その球を返す。無ければ null。
+// point が bodies のいずれかの球の内側にあれば、その球を返す。無ければ null。
 export function containingBody<T extends { readonly radius: number; readonly state: KinematicState }>(
   point: Vec3,
   bodies: readonly T[],
-  margin: number,
 ): T | null {
   for (const body of bodies) {
-    if (len(sub(point, body.state.r)) < body.radius + margin) return body;
+    if (len(sub(point, body.state.r)) < body.radius) return body;
   }
   return null;
 }

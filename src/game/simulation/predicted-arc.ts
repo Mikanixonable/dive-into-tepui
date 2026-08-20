@@ -171,7 +171,7 @@ export class PredictedArc {
 
   // 固体表面への到達の判定。掃引が交差点を見つければその状態を到達点として記録し、打ち切る。
   private checkSurfaceReach(prev: KinematicState, collision: readonly Attractor[]): void {
-    const reached = reachedBody(prev, this._trajectory.state, collision, 0);
+    const reached = reachedBody(prev, this._trajectory.state, collision);
     if (reached === null) return;
     this._impact = reached;
     this._truncated = true;

@@ -111,27 +111,27 @@ function computeEntityResponse(
   const sweptValid = a.prevState.t < a.state.t && b.prevState.t < b.state.t
     && Math.abs(a.prevState.t - b.prevState.t) <= 1e-6 && Math.abs(a.state.t - b.state.t) <= 1e-6;
   return resolveSphereCollision(
-    { r: aWork.r, v: aWork.v, radius: a.radius, invMass: 1 / a.mass },
-    { r: bWork.r, v: bWork.v, radius: b.radius, invMass: 1 / b.mass },
+    { state: aWork, radius: a.radius, invMass: 1 / a.mass },
+    { state: bWork, radius: b.radius, invMass: 1 / b.mass },
     RESTITUTION,
-    sweptValid ? a.prevState.r : undefined,
-    sweptValid ? b.prevState.r : undefined,
+    sweptValid ? a.prevState : undefined,
+    sweptValid ? b.prevState : undefined,
   );
 }
 
 // 天体はこの関数の呼び出し区間の間ほぼ静止しているとみなす(軌道運動は1 substep で
-// たかだか数十m)ので、掃引の直前位置には現在位置をそのまま使う。
+// たかだか数十m)ので、掃引の区間始点には現在の状態をそのまま使う。
 function computeAttractorResponse(
   e: GameEntity, body: Attractor, working: ReadonlyMap<GameEntity, KinematicState>,
 ): CollisionResponse | null {
   const eWork = working.get(e)!;
   const sweptValid = e.prevState.t < e.state.t;
   return resolveSphereCollision(
-    { r: eWork.r, v: eWork.v, radius: e.radius, invMass: 1 / e.mass },
-    { r: body.state.r, v: body.state.v, radius: body.radius, invMass: 0 },
+    { state: eWork, radius: e.radius, invMass: 1 / e.mass },
+    { state: body.state, radius: body.radius, invMass: 0 },
     RESTITUTION,
-    sweptValid ? e.prevState.r : undefined,
-    sweptValid ? body.state.r : undefined,
+    sweptValid ? e.prevState : undefined,
+    sweptValid ? body.state : undefined,
   );
 }
 
