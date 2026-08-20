@@ -1,13 +1,13 @@
 // 実験3: 1ステップあたりの重力源解決コスト。
 // Ephemeris(解析モデル)を毎回異なる時刻 t で呼び、gravityAttractorsAt/attractorsAt/
 // classifyAttractors/attractorsNear の単体コストと、Predictor.advanceBudget が1ステップに
-// 払う分(classifyAttractors(predictedAttractorsAt(...)) を2回)を測る。
+// 払う分(classifyAttractors(gravityAttractorsAt(...)) を2回)を測る。
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { Attractor } from '../../src/physics/attractor';
 import { stepDynamics } from '../../src/physics/dynamics';
 import {
   buildEphemeris, initialLeoState, classifyAttractors, attractorsNear,
-  predictedAttractorsAtNoEntities, SHIP_BCINV, ARC_STEP_BUDGET,
+  SHIP_BCINV, ARC_STEP_BUDGET,
 } from './common';
 
 // 毎回異なる t を作る(リングキャッシュに当たらないようにする)。無理数っぽい定数を掛けて
@@ -69,29 +69,28 @@ export function run(): void {
 
   console.log('\n## Predictor.advanceBudget が1ステップに払う分(src/game/simulation/predictor.ts:80-103)\n');
   console.log('advanceBudget の1反復は: ');
-  console.log('  (1) classifyAttractors(predictedAttractorsAt(ephemeris, entities, tipState.t))  … dt サイジング用');
-  console.log('  (2) attractorsNearInto(tipState.r, currentClassified, scratch)                    … 同上、局所周期を出すため');
-  console.log('  (3) classifyAttractors(predictedAttractorsAt(ephemeris, entities, tipState.t+dt/2)) … 実ステップ用');
-  console.log('  (4) attractorsNearInto(tipState.r, stepClassified, scratch)                        … 同上');
-  console.log('  (5) e.stepPredicted(...) の中の stepDynamics 1回');
-  console.log('を毎ステップ行う(entities.attractors() は本実験では常に空なので predictedAttractorsAt は');
-  console.log('gravityAttractorsAt と等価 — common.ts の predictedAttractorsAtNoEntities)。\n');
+  console.log('  (1) classifyAttractors(gravityAttractorsAt(ephemeris, tipState.t))  … dt サイジング用');
+  console.log('  (2) attractorsNearInto(tipState.r, currentClassified, scratch)      … 同上、局所周期を出すため');
+  console.log('  (3) classifyAttractors(gravityAttractorsAt(ephemeris, tipState.t+dt/2)) … 実ステップ用');
+  console.log('  (4) attractorsNearInto(tipState.r, stepClassified, scratch)         … 同上');
+  console.log('  (5) 弧の1歩の中の stepDynamics 1回');
+  console.log('を毎ステップ行う。\n');
 
   let tip = s0.t;
   const msPredictorStep = bench('advanceBudget 1反復相当(1+2+3+4+5)', N, (i) => {
     const t = tip + i * 37.0; // 毎回時刻をずらす(実際に予測が進むのと同じく毎回異なる t になる)
-    const g1 = predictedAttractorsAtNoEntities(ephemeris, t);
+    const g1 = ephemeris.gravityAttractorsAt(t);
     const c1 = classifyAttractors(g1);
     const near1 = attractorsNear(s0.r, c1);
     void near1;
-    const g2 = predictedAttractorsAtNoEntities(ephemeris, t + 10);
+    const g2 = ephemeris.gravityAttractorsAt(t + 10);
     const c2 = classifyAttractors(g2);
     const near2 = attractorsNear(s0.r, c2);
     stepDynamics(s0, 20, near2, SHIP_BCINV, 0, null);
   });
 
   console.log('\n## 内訳との比較\n');
-  console.log(`  classifyAttractors(predictedAttractorsAt(...)) を2回 ≈ 2 × (${msGravity.toFixed(3)}(gravityAttractorsAt) + ${msClassify.toFixed(3)}(classify)) = ${(2 * (msGravity + msClassify)).toFixed(3)} ms/step`);
+  console.log(`  classifyAttractors(gravityAttractorsAt(...)) を2回 ≈ 2 × (${msGravity.toFixed(3)}(gravityAttractorsAt) + ${msClassify.toFixed(3)}(classify)) = ${(2 * (msGravity + msClassify)).toFixed(3)} ms/step`);
   console.log(`  attractorsNear を2回 ≈ 2 × ${msNear.toFixed(4)} ms/step`);
   console.log(`  stepDynamics 1回 ≈ ${msStep.toFixed(4)} ms/step`);
   console.log(`  advanceBudget 1反復(実測) = ${msPredictorStep.toFixed(3)} ms/step`);
