@@ -136,6 +136,9 @@ export class Docking {
   // 3D から掴み上げた部品の、実機側に残る元のメッシュ。掴んでいる間だけここへ載せて隠し、
   // 掴みが終わるとき(結果を問わず)必ず元へ戻す。
   private heldOriginal: { readonly root: THREE.Object3D; readonly partId: string } | null = null;
+  // 直前の sync が実際に隠したメッシュと、構造を露出した機体。押し込みを取り消す先を持つ。
+  private shownHeldOriginal: { readonly root: THREE.Object3D; readonly partId: string } | null = null;
+  private revealedStructure: Vessel | null = null;
 
   // 基地に関わる各所有者への参照を受け取る。ポーズだけは Game の状態なので、必要な2つの
   // 操作を関数として受ける。
@@ -310,6 +313,9 @@ export class Docking {
     this.assembly = entry;
 
     panel.onTargetSelect = (targetId) => {
+      // 掴んだまま別の対象へ移ると落とす先と掴み元が食い違うので、切り替えで掴みを捨てる。
+      this.dragController.cancelDrag();
+      this.heldOriginal = null;
       entry.targetId = targetId;
       entry.selection = null;
       this.frameAssemblyCamera(entry);
@@ -389,8 +395,10 @@ export class Docking {
     if (!entry) return;
     this.assembly = null;
     this.dragController.cancelDrag();
-    // 掴んだままセッションが終わっても、隠した元のメッシュを残さない。
-    this.restoreHeldOriginal();
+    // 掴んだままセッションが終わっても、隠したメッシュと露出した構造を残さない。
+    this.heldOriginal = null;
+    this.syncHeldOriginal();
+    this.revealTargetStructure(null);
     entry.panel.onCancel = null;
     entry.panel.close();
     this.cameraSystem.setChaseCameraOverride(null);
@@ -408,9 +416,14 @@ export class Docking {
     const entry = this.assembly;
     if (!entry) return;
     const viewport = { width: window.innerWidth, height: window.innerHeight };
-    // 誰も他に読まないキューなので、拾えなかったクリックも含めて常に消費してよい。
+    // このフレームで扱うのは1クリックだけ —— 掴みと離しの間には必ず update を1回挟む必要が
+    // あり(挟まないと吸着候補が未確定のまま離したことになる)、同じフレームの2つ目以降は捨てる。
+    let handled = false;
     input.takeClicks((point) => {
-      this.handleAssemblyClick(entry, point, viewport);
+      if (!handled) {
+        handled = true;
+        this.handleAssemblyClick(entry, point, viewport);
+      }
       return true;
     });
     if (!this.dragController.dragging) return;
@@ -429,7 +442,7 @@ export class Docking {
   ): void {
     if (this.dragController.dragging) {
       this.dragController.release(entry.targetId);
-      this.restoreHeldOriginal();
+      this.heldOriginal = null;
       return;
     }
     const root = this.targetRenderRoot(entry);
@@ -464,27 +477,41 @@ export class Docking {
   // 追従するゴーストと二重に見えないため。
   private hideHeldOriginal(root: THREE.Object3D, partId: string): void {
     this.heldOriginal = { root, partId };
-    setPartMeshVisible(root, partId, false);
   }
 
-  // hideHeldOriginal で隠した元のメッシュを元へ戻す。何も隠していなければ何もしない。
-  private restoreHeldOriginal(): void {
-    if (!this.heldOriginal) return;
-    setPartMeshVisible(this.heldOriginal.root, this.heldOriginal.partId, true);
-    this.heldOriginal = null;
-  }
+
 
   // update が決めた位置・姿勢・色を、掴んでいる部品のゴーストへ押し込む。編集中の対象は
-  // 構造を見せる —— ノードとエッジはワイヤーフレームにしか描かれておらず、既定では消えている
-  // のに、レイキャストは見えていなくても拾ってしまうため。EntityManager.syncVessels の後に
-  // 呼ばれるので、この1フレームぶんの上書きが効き、セッションを抜ければ自然に戻る。
+  // update が決めた論理状態(編集中の対象・掴んでいる部品)を見た目へ押し込む。
   syncAssembly(fo: FloatingOrigin): void {
     this.syncBaseWindows();
     if (this.assembly) {
       this.assembly.panel.sync(this.assembly.session, this.assembly.selection);
-      this.targetById(this.assembly.base, this.assembly.targetId)?.vessel?.revealStructure();
+      this.revealTargetStructure(this.targetById(this.assembly.base, this.assembly.targetId)?.vessel ?? null);
     }
+    this.syncHeldOriginal();
     this.dragController.sync(fo);
+  }
+
+  // 編集中の対象の構造を見せる —— ノードとエッジはワイヤーフレームにしか描かれておらず、既定では
+  // 消えているのに、レイキャストは見えていなくても拾ってしまうため。EntityManager.syncVessels の
+  // 後に呼ばれるのでこの上書きが効く。露出をやめた機体は設定どおりの表示へ明示的に戻す ——
+  // 基地へ格納された艦は vessels から外れて syncVessel が走らなくなるため、放っておくと戻らない。
+  private revealTargetStructure(vessel: Vessel | null): void {
+    if (this.revealedStructure && this.revealedStructure !== vessel) {
+      this.revealedStructure.setStructureVisible(this.graphics.current.wireframe);
+    }
+    this.revealedStructure = vessel;
+    vessel?.setStructureVisible(true);
+  }
+
+  // 掴んでいる部品の実機側のメッシュを隠し、掴みが終わっていれば戻す。
+  private syncHeldOriginal(): void {
+    if (this.shownHeldOriginal && this.shownHeldOriginal !== this.heldOriginal) {
+      setPartMeshVisible(this.shownHeldOriginal.root, this.shownHeldOriginal.partId, true);
+    }
+    this.shownHeldOriginal = this.heldOriginal;
+    if (this.heldOriginal) setPartMeshVisible(this.heldOriginal.root, this.heldOriginal.partId, false);
   }
 
   // 編集中の対象を、セッション上の構成と実機の慣性系での置かれ方の組として返す。

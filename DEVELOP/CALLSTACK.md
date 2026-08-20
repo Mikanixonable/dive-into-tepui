@@ -480,7 +480,8 @@ handlePointerInput 参照)。ステージが決着した(`activeStage.isPlaying`
   - docking.syncAssembly(fo) // 基地操作ウィンドウと組立の描画側。セッションが無くても呼んでよい(各段が自分で早期 return する)
     - syncBaseWindows() // 実体が消えた基地のウィンドウを閉じて台帳から外す。開いているウィンドウごと
     - [セッションあり] assembly.panel.sync(assembly.session, assembly.selection) // 対象タブ・Undo/Redo の可否・確定/取消・下書き作成/建造・選択行・断面編集・検証エラー・部品棚・部材棚。対象列/在庫/選択/エラーの各キーが前フレームと変わったときだけ DOM を組み直す
-    - [セッションあり] targetById(assembly.base, assembly.targetId)?.vessel?.revealStructure() // 編集中の対象がノード・エッジを持つ Vessel(基地本体・格納艦)なら、この1フレームだけワイヤーフレームを可視にする — EntityManager.syncVessels がこの前の位置で graphics.current.wireframe から可視性を引き直しているので、この上書きは同フレームの残り(3D ピック等)に効き、呼ぶのをやめれば次のフレームで自然に元へ戻る
+    - [セッションあり] revealTargetStructure(targetById(assembly.base, assembly.targetId)?.vessel ?? null) // 編集中の対象がノード・エッジを持つ Vessel(基地本体・格納艦)なら setStructureVisible(true) でワイヤーフレームを可視にする — EntityManager.syncVessels がこの前の位置で graphics.current.wireframe から可視性を引き直しているので、この上書きが同フレームの残り(3D ピック等)に効く。露出をやめた機体は graphics.current.wireframe へ明示的に戻す(基地へ格納された艦は vessels から外れて syncVessel が走らないため、放置すると戻らない)
+    - syncHeldOriginal() // 掴んでいる部品の実機側メッシュを setPartMeshVisible(false) で隠し、掴みが終わっていれば戻す。update が決めた heldOriginal を見た目へ押し込むだけ
     - dragController.sync(fo) // update が決めた位置(fo.RtoThreeV3)・取り付け先の基底・可否の色をゴーストへ押し込むだけ。掴んでいなければ何もしない
   - entityLines.sync(displayWindow, fo, cameraSystem.activeCamera, displayAttractors, ephemeris) // 計画折れ線と同じ座標系(displayWindow.frame)で bake する。出す/消すは update フェーズの entityLines.update が決めきっているので、ここでは全個体へ一律に形状と変換だけを合わせる
     - [entities.ownShips() ごと] predictedTo = ship.predictionTruncated ? null : simTime + duration
