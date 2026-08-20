@@ -143,7 +143,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-predict .predict-pills { display: inline-flex; gap: var(--space-3); flex-wrap: wrap; align-items: center; }
 #hud-predict .predict-past.collapsed { display: none; }
 #hud-predict span.predict-past-toggle { margin-left: auto; padding: 0 var(--space-2); font-size: var(--font-xxs); color: var(--text-dim); }
-#hud-predict .predict-tick-mode { margin-left: auto; }
+#hud-predict .predict-tick-visibility { margin-left: auto; }
 /* span. まで指定して .w-btn 側の display/padding より確実に勝たせる
    (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
 #hud-predict span.predict-reset {
