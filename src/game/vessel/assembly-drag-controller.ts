@@ -15,6 +15,7 @@ import { qInvert, qRotate } from '../../physics/attitude';
 import { closestPointsOnSegments } from '../../physics/capsule-contact';
 import type { Vec3 } from '../../physics/vec3';
 import { add, addScaled, len, norm, scale, sub, v3 } from '../../physics/vec3';
+import { isCoarsePointer } from '../input/pointer-precision';
 import type { VesselAssembly } from './assembly';
 import { addPlacement, movePlacement } from './assembly-editor';
 import { deriveCapsules } from './collision-shape';
@@ -23,6 +24,7 @@ import type { DockWorkbenchController, SnapCandidate } from './dock-workbench-co
 import type { WorkbenchValidation } from './dock-workbench';
 import type { MountCandidate } from './mount-candidates';
 import { nearestMountCandidate } from './mount-candidates';
+import type { PartVisualRef } from './part-visual';
 import type { MountFrame } from './tree';
 
 // カーソルの光線を線分として扱う長さ [m]。機体の差し渡しより十分に長い。
@@ -35,6 +37,12 @@ const BROAD_PHASE_MARGIN = 3;
 const FLOAT_DISTANCE = 12;
 // 掴んでいる部品の代表寸法を決めるときの機体側の基準寸法 [m]。
 const REFERENCE_HULL_SCALE = 1.5;
+
+// エッジは太さの無いレイキャストなので、実寸での許容幅を明示する [m]。coarse ポインタ
+// (タッチ)ではさらに広げる —— input/pointer-precision.ts の pickRadiusSq は画面投影後の
+// 距離判定を対象にしており、ここはワールド座標系での実際の隙間なのでそのままは使えない。
+const EDGE_PICK_THRESHOLD_FINE = 0.12;
+const EDGE_PICK_THRESHOLD_COARSE = 0.4;
 
 const GHOST_OPACITY = 0.65;
 
@@ -61,10 +69,18 @@ const GHOST_COLORS: Record<GhostVerdict, string> = {
   far: C.COLOR_ASSEMBLY_GHOST_FAR,
 };
 
+/** レイの先で拾ったもの。部品は掴み上げの対象、ノード・エッジは選択の対象になる。 */
+export type AssemblyPick =
+  | { readonly kind: 'part'; readonly partId: string }
+  | { readonly kind: 'node'; readonly nodeId: string }
+  | { readonly kind: 'edge'; readonly edgeId: string }
+  | { readonly kind: 'none' };
+
 // 光線の向きを解くための一時オブジェクト。毎フレームの割り当てを避ける。
 const rayScratch = new THREE.Vector3();
 const basisScratch = new THREE.Matrix4();
 const axisScratch = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()] as const;
+const pickNdc = new THREE.Vector2();
 
 // 部品をカーソルで運び、取り付け位置へ吸い寄せ、離して取り付けるまでを繋ぐ。
 // 1フレームは update(判定) → sync(描画)の順で呼ぶ。
@@ -73,16 +89,14 @@ export class AssemblyDragController {
   private part: AnyPart | null = null;
   private ghost: THREE.Object3D | null = null;
   private pose: GhostPose | null = null;
-  private lastTargetId: string | null = null;
-  private readonly releaseListener = (): void => { this.releaseAtLastTarget(); };
+  private readonly raycaster = new THREE.Raycaster();
 
   public constructor(private readonly scene: THREE.Scene) {}
 
   public get draggingPart(): AnyPart | null { return this.part; }
 
   // 部品を掴む。workbench はこの掴みを記録する作業台、sourceTargetId は部品を外した機体
-  // (倉庫から掴んだなら null)。掴んでいる間の離し操作を拾うため、ここで pointerup を購読する
-  // — 「離すまで続く」操作には毎フレームの入力キューに現れる縁が無い。
+  // (倉庫から掴んだなら null)。
   public beginDrag(
     workbench: DockWorkbenchController,
     part: AnyPart,
@@ -93,12 +107,36 @@ export class AssemblyDragController {
     this.workbench = workbench;
     this.part = part;
     this.pose = null;
-    this.lastTargetId = null;
     workbench.beginDrag(part, sourceTargetId, sourceInventory);
     this.ghost = buildGhost(part);
     if (this.ghost) this.scene.add(this.ghost);
-    document.addEventListener('pointerup', this.releaseListener);
-    document.addEventListener('pointercancel', this.releaseListener);
+  }
+
+  // カーソルの指す先にある部品・ノード・エッジを1つ拾う。root は現在の対象の描画木
+  // (Vessel.renderObject か AssemblyRenderObject.object)— hull-mesh.ts が部品へ
+  // userData['partVisualRef'] を、render/vessel-wireframe.ts がノード・エッジへ
+  // userData['assemblyNodeId']/['assemblyEdgeId'] を自身かその祖先へ既に書いているので、
+  // レイに当たった最も近いオブジェクトから root まで祖先を辿って読む。ワイヤーフレームの
+  // 表示切り替えはレイキャストには効かない(THREE.Raycaster は visible を見ない)ので、
+  // 組立表示トグルの状態に関わらず拾える。
+  public pickAt(
+    camera: THREE.Camera,
+    pointerScreen: { readonly x: number; readonly y: number },
+    viewport: { readonly width: number; readonly height: number },
+    root: THREE.Object3D,
+  ): AssemblyPick {
+    const ndcX = (pointerScreen.x / Math.max(1, viewport.width)) * 2 - 1;
+    const ndcY = -((pointerScreen.y / Math.max(1, viewport.height)) * 2 - 1);
+    this.raycaster.params.Line = {
+      threshold: isCoarsePointer() ? EDGE_PICK_THRESHOLD_COARSE : EDGE_PICK_THRESHOLD_FINE,
+    };
+    this.raycaster.setFromCamera(pickNdc.set(ndcX, ndcY), camera);
+    // 手前から順に見て、最初に目印が見つかった当たりを採る。
+    for (const hit of this.raycaster.intersectObject(root, true)) {
+      const found = pickFromObject(hit.object, root);
+      if (found) return found;
+    }
+    return { kind: 'none' };
   }
 
   // カーソルの指す先から取り付け位置を求め、そこへ置いたときの成否まで決める。
@@ -115,7 +153,6 @@ export class AssemblyDragController {
   ): void {
     if (!this.part || !this.workbench) return;
     const direction = rayDirection(camera, pointerScreen, viewport);
-    this.lastTargetId = target?.targetId ?? null;
 
     const mount = target === null ? null : this.resolveMount(target, cameraPos, direction);
     if (!mount || !target) {
@@ -179,6 +216,25 @@ export class AssemblyDragController {
     return validation;
   }
 
+  // クリックで掴みを終える。直前の update が成立する取り付け位置を見つけていれば drop と同じく
+  // そこへ取り付ける。見つけていなければ ―― 機体から掴み上げた部品(sourceInventory: false)は
+  // workbench.remove で在庫へ戻し、棚から掴んだ部品はそもそも在庫から出ていないのでそのまま
+  // 掴みを捨てる。掴んでいなければ何もしない。
+  public release(targetId: string): void {
+    const workbench = this.workbench;
+    if (!workbench) return;
+    const drag = workbench.dragging;
+    if (drag?.candidate?.verdict.accepted) {
+      this.drop(targetId);
+      return;
+    }
+    // 機体から掴み上げた部品(棚からではない)だけ、離した場所が空振りなら在庫へ戻す。
+    if (drag && drag.sourceTargetId !== null && !drag.sourceInventory) {
+      workbench.remove(drag.sourceTargetId, drag.part.id);
+    }
+    this.cancelDrag();
+  }
+
   // 取り付けを試みずに掴みを捨てる。掴んでいなければ何もしない。
   public cancelDrag(): void {
     if (!this.workbench) return;
@@ -217,20 +273,8 @@ export class AssemblyDragController {
     return nearestMountCandidate(target.assembly, probe, SNAP_DISTANCE);
   }
 
-  // 直前の update が見ていた機体へ落とす。見ていなければ掴みを捨てる。
-  private releaseAtLastTarget(): void {
-    if (!this.workbench) return;
-    if (this.lastTargetId === null) {
-      this.cancelDrag();
-      return;
-    }
-    this.drop(this.lastTargetId);
-  }
-
-  // 掴みが終わった後に残るもの(購読・ゴースト・掴んでいた値)をすべて手放す。
+  // 掴みが終わった後に残るもの(ゴースト・掴んでいた値)をすべて手放す。
   private endDrag(): void {
-    document.removeEventListener('pointerup', this.releaseListener);
-    document.removeEventListener('pointercancel', this.releaseListener);
     if (this.ghost) {
       this.scene.remove(this.ghost);
       disposeGhost(this.ghost);
@@ -239,8 +283,22 @@ export class AssemblyDragController {
     this.workbench = null;
     this.part = null;
     this.pose = null;
-    this.lastTargetId = null;
   }
+}
+
+// 当たったオブジェクトから root までの祖先を辿り、3つの目印(部品・ノード・エッジ)の
+// どれかを持つ最初のものを返す。どれも持たないまま root まで達したら null(=この当たりは
+// 諦めて、次に近い当たりへ移る)。
+function pickFromObject(hit: THREE.Object3D, root: THREE.Object3D): AssemblyPick | null {
+  for (let node: THREE.Object3D | null = hit; node; node = node === root ? null : node.parent) {
+    const partRef = node.userData['partVisualRef'] as PartVisualRef | undefined;
+    if (partRef) return { kind: 'part', partId: partRef.partId };
+    const nodeId = node.userData['assemblyNodeId'] as string | undefined;
+    if (nodeId !== undefined) return { kind: 'node', nodeId };
+    const edgeId = node.userData['assemblyEdgeId'] as string | undefined;
+    if (edgeId !== undefined) return { kind: 'edge', edgeId };
+  }
+  return null;
 }
 
 // 画面座標の指す向きを慣性系の単位ベクトルとして返す。
