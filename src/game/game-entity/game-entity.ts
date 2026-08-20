@@ -12,6 +12,7 @@ import { FloatingOrigin } from '../floating-origin';
 import { OrbitLine } from '../orbit-line';
 import { TrajectoryLine } from '../trajectory-line';
 import { LineStyle } from '../../render/line-style';
+import { disposeOwnedResources } from '../../render/owned-resources';
 import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { PredictedArc, trajectorySampleInterval } from '../simulation/predicted-arc';
@@ -404,16 +405,6 @@ export class GameEntity {
     this.hideOrbitLine();
     this.hidePredictedLine();
     this.hideActualLine();
-    this.renderObject.traverse((child) => {
-      const mesh = child as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      if (mesh.userData.ownsGeometry && mesh.geometry) {
-        mesh.geometry.dispose();
-      }
-      if (mesh.userData.ownsMaterial && mesh.material) {
-        if (Array.isArray(mesh.material)) mesh.material.forEach((m) => m.dispose());
-        else mesh.material.dispose();
-      }
-    });
+    disposeOwnedResources(this.renderObject);
   }
 }
