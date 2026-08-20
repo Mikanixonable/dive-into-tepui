@@ -4,8 +4,8 @@
 // 由来する。統一はできない。
 //  1. 同時性。こちらは生存する全個体(破片まで含めて多数)を、同じ1つの瞬間で同時に進める。
 //     同時だからこそ、重力源の絞り込みをサブステップに1つだけ組んで全個体で使い回せる
-//     (classifyAttractors → attractorsNearInto)し、個体どうしの相互作用 — 剛体接触と、
-//     引き合う小惑星どうし — を解ける。どちらも両者が同じ瞬間にいて初めて意味を持つ。
+//     (classifyAttractors → attractorsNearInto)し、個体どうしの剛体接触も解ける —
+//     接触は両者が同じ瞬間にいて初めて意味を持つ。
 //  2. 刻みの決まり方。こちらは毎フレーム simTime + simDt へ必ず到達しなければならないので、
 //     刻みはそのフレームの時間送りから決まる。予測は追い越されない範囲で先へ伸びればよいので、
 //     1フレームの歩数を予算で切って足りなければ遅れる。
@@ -15,7 +15,7 @@
 import { stepAttitude } from '../../physics/attitude';
 import type { KinematicState } from '../../physics/kinematic-state';
 import * as C from '../const';
-import { attractorsAt, attractorsNearInto, classifyAttractors } from './attractors';
+import { attractorsNearInto, classifyAttractors } from './attractors';
 import { EntityManager } from './entity-manager';
 import { Player } from '../player/player';
 import { Bullet } from '../game-entity/bullet';
@@ -93,14 +93,14 @@ export class Simulator {
       // 浮動小数点の丸めでゼロ刻みになったイベントは現在時刻で消費して前進を保証する。
       if (subDt <= 1e-9) {
         activeStage.applySimulationEvents(this.simTime);
-        const surfaceBodies = this.surfaceBodies(resolveCollision, attractorsAt(this.ephemeris, this.entities, this.simTime));
+        const surfaceBodies = this.surfaceBodies(resolveCollision, this.ephemeris.gravityAttractorsAt(this.simTime));
         this.entities.cleanup(0, this.simTime, activeStage, player?.state.r ?? v3(), surfaceBodies);
         continue;
       }
 
       this.sections.enter(SECTION.orbit);
       // 重力源はこのサブステップの中点で1回だけ組み、全エンティティで使い回す。
-      const sources = attractorsAt(this.ephemeris, this.entities, this.simTime + subDt / 2);
+      const sources = this.ephemeris.gravityAttractorsAt(this.simTime + subDt / 2);
       this.lastGravitySourceCount = sources.length;
       this.substep(subDt, sources, passiveWarpLod);
       this.simTime += subDt;
@@ -135,7 +135,7 @@ export class Simulator {
       this.entities.cleanup(subDt, this.simTime, activeStage, player?.state.r ?? v3(), surfaceBodies);
     }
 
-    if (passiveWarpLod) this.stepPassiveWarpEntities(attractorsAt(this.ephemeris, this.entities, this.simTime));
+    if (passiveWarpLod) this.stepPassiveWarpEntities(this.ephemeris.gravityAttractorsAt(this.simTime));
 
     // ベルトは実dtで解く艦にくっついた局所シミュレーションなので、substepループの外で
     // フレームに1回だけ解決する。
@@ -209,22 +209,19 @@ export class Simulator {
   }
 
   // このサブステップで表面を持つ相手として扱う天体。剛体接触を解決するワープ帯では、接触解決の
-  // ために組む終点の全天体窓(mu=0 の表示天体も相手になる)をそのまま使い、解決しないワープ帯
-  // では消費者が表面到達判定だけなので、積分のために組んだ中点の重力窓 gravityBodies を使い回す。
-  // 後者では mu=0 の表示天体36体への再突入判定を失い、代わりに動的重力源(小惑星)が相手に加わる。
+  // ために組む終点の全天体窓(重力を持たない表示天体も相手になる)をそのまま使い、解決しない
+  // ワープ帯では消費者が表面到達判定だけなので、積分のために組んだ中点の重力窓を使い回す。
+  // 後者では重力を持たない表示天体への再突入判定を失う。
   private surfaceBodies(resolveCollision: boolean, gravityBodies: readonly Attractor[]): readonly Attractor[] {
     return resolveCollision ? this.ephemeris.attractorsAt(this.simTime) : gravityBodies;
   }
 
   // 全エンティティを、渡された重力源 sources に対して dt だけ積分する。sources は呼び出し側が
-  // このステップの中点で1回だけ組んだもので、全エンティティがそれを共有する — 各自が積分後の
-  // 新しい位置を読みに行くと、本来対称であるべき相互作用に処理順依存の誤差が入る。各エンティティは
-  // 自身の位置の27近傍グリッドを自分自身を除いて引き直すだけで、分類そのものはこのステップで1回 —
-  // 除外は各自の取り出し結果にしか効かないので、A から見た B・B から見た A はどちらも
-  // このステップで組んだ同じ classified から引いたままで、対称性は崩れない。
-  // consumesPrediction な個体は、予測列がこのサブステップ終端の時刻を既に持っていればそれを
-  // 先端にして積分を省く(followPredicted)。持っていなければ積分する — ある時間帯の状態を
-  // 決める積分は常にちょうど1本のまま。
+  // このステップの中点で1回だけ組んだもので、全エンティティがそれを共有する。分類もこの
+  // ステップで1回で、各エンティティは自身の位置の27近傍グリッドを引き直すだけ。
+  // 予測列がこのサブステップ終端の時刻を既に持っていればそれを先端にして積分を省く
+  // (followPredicted)。持っていなければ積分する — ある時間帯の状態を決める積分は常に
+  // ちょうど1本のまま。
   private substep(
     dt: number,
     sources: readonly Attractor[],
@@ -234,10 +231,8 @@ export class Simulator {
     const t = this.simTime + dt;
     for (const e of this.entities.all()) {
       if (passiveWarpLod && this.isPassiveWarpEntity(e)) continue;
-      // 引力を持たないエンティティは重力源一覧に載り得ないので、除外の走査ごと省く。
-      const selfId = e.mu !== 0 ? e.id : undefined;
-      const near = attractorsNearInto(e.state.r, classified, this.nearbyAttractorsScratch, selfId);
-      if (e.consumesPrediction && e.followPredicted(t, near)) {
+      const near = attractorsNearInto(e.state.r, classified, this.nearbyAttractorsScratch);
+      if (e.followPredicted(t, near)) {
         this.lastFollowedSteps++;
         continue;
       }

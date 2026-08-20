@@ -24,8 +24,8 @@ export type FutureAttractorProvider = {
   readonly revision: number;
   readonly candidateRevision: number;
   readonly candidates: () => readonly FutureBodyCandidate[];
-  // 候補1体の時刻 t での状態。動的個体がその時刻を答えられなければ null。
-  readonly bodyAt: (id: AttractorId, t: number) => Attractor | null;
+  // 候補1体の時刻 t での状態。
+  readonly bodyAt: (id: AttractorId, t: number) => Attractor;
 };
 
 // 弧の1歩が読む天体一式。
@@ -66,14 +66,11 @@ function slackTime(w: Watch, body: Attractor, from: KinematicState): number {
 }
 
 // 最も重い解析天体の id。引力を持つ解析天体が候補に無ければ null。
-function heaviestGravityId(
-  candidates: readonly FutureBodyCandidate[],
-  excludeId: AttractorId | undefined,
-): AttractorId | null {
+function heaviestGravityId(candidates: readonly FutureBodyCandidate[]): AttractorId | null {
   let id: AttractorId | null = null;
   let mu = 0;
   for (const c of candidates) {
-    if (!c.analytic || c.id === excludeId || c.mu <= mu) continue;
+    if (!c.analytic || c.mu <= mu) continue;
     id = c.id;
     mu = c.mu;
   }
@@ -87,12 +84,7 @@ export class ArcBodies {
   lastResolved = 0;
   lastRevisited = 0;
 
-  // excludeId を渡すと、その天体を候補から外す — 弧の主が重力源(小惑星)のとき、自分自身を
-  // 引力の相手にも表面到達の相手にもしない。
-  constructor(
-    private readonly sources: FutureAttractorProvider,
-    private readonly excludeId?: AttractorId,
-  ) {}
+  constructor(private readonly sources: FutureAttractorProvider) {}
 
   // 時刻 t に弧が読む天体一式。from は判定の基準にする弧の先端状態、stepDt はこの解決のあとに
   // 踏む刻み幅 [s](まだ決まっていない最初の解決では 0 でよい)。返る配列はこの呼び出しごとに
@@ -110,12 +102,6 @@ export class ArcBodies {
       if (!w.member && w.nextVisitT > t) continue;
       if (!w.member) this.lastRevisited++;
       const body = this.sources.bodyAt(w.candidate.id, t);
-      // その時刻を答えられなくなった動的個体は、次に訪問するまで一覧から外す。
-      if (body === null) {
-        w.member = false;
-        w.nextVisitT = t + lead;
-        continue;
-      }
       this.lastResolved++;
       const slack = slackTime(w, body, from);
       w.member = w.pinned || slack <= lead;
@@ -136,12 +122,11 @@ export class ArcBodies {
     if (this.knownCandidateRevision === this.sources.candidateRevision) return;
     this.knownCandidateRevision = this.sources.candidateRevision;
     const candidates = this.sources.candidates();
-    const pinnedId = heaviestGravityId(candidates, this.excludeId);
+    const pinnedId = heaviestGravityId(candidates);
     // 引き継ぎ元を id で引けるようにしてから、候補の順に組み直す。
     const previous = new Map(this.watches.map((w) => [w.candidate.id, w]));
     this.watches = [];
     for (const candidate of candidates) {
-      if (candidate.id === this.excludeId) continue;
       const held = previous.get(candidate.id);
       this.watches.push({
         candidate,

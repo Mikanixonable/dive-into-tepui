@@ -1,15 +1,12 @@
 // GameEntity.predicted と、計画軌道の各区間の弧を、共有のフレーム予算内で伸ばす。1歩ぶんの
 // 積分(刻み幅・窓解決・到達判定)は game/simulation/predicted-arc.ts の PredictedArc へ持ち、
 // ここは予算の配分だけを持つ。伸長対象は「その個体の未来を読む消費者がいるか」
-// (GameEntity.hasFutureReader)で決まる。消費されない弧(GameEntity.consumesPrediction が
-// 偽 = mu ≠ 0 の個体)は状態を決めず線としてだけ読まれるので、伸び切ったものを期限切れで
-// 作り直し、実体との開きを戻す。
+// (GameEntity.hasFutureReader)で決まる。
 //
 // 実シミュレーション(game/simulation/simulator.ts の Simulator)との役割の違いは2点で、
 // 二重性はこの2点に由来する。統一はできない。
 //  1. 同時性。こちらは選ばれた少数の弧を1本ずつ、それぞれ別の先端時刻で伸ばす。共通の瞬間が
-//     無いので、絞り込みは弧ごと(ArcBodies)にしか組めず、弧どうしの相互作用 — 剛体接触と、
-//     引き合う小惑星どうし — はどちらも解けない。だから重力を持つ個体の弧は状態を決めない。
+//     無いので、絞り込みは弧ごと(ArcBodies)にしか組めず、弧どうしの剛体接触は解けない。
 //  2. 刻みの決まり方。こちらは simTime を追い越されない範囲で先へ伸びればよいので、1フレームの
 //     歩数を予算で切り、足りなければ遅れる — 追い越された弧は読まれなくなり、その個体は
 //     実シミュレーションの積分へ落ちるだけで壊れない。
@@ -61,13 +58,6 @@ export class Predictor {
     const maxStep = simulationMaxStep(simDt, C.SUBSTEP_MAX_DT, C.SUBSTEP_MAX_COUNT);
     for (const e of this.entities.all()) {
       if (!e.predictsFuture) continue;
-      // 消費されない弧は伸び切ったものを期限で張り直して実体との開きを戻す。伸長中の弧は
-      // 対象にしない — 予算不足の弧を振り出しへ戻さないため。
-      const arc = e.predictedArc;
-      if (!e.consumesPrediction && arc !== null && !arc.needsGrowth
-        && simTime - arc.state0.t > C.ARC_REANCHOR_INTERVAL) {
-        e.invalidatePrediction();
-      }
       this.tracked++;
       const reachedHorizon = e.predicted !== null && e.predicted.state.t >= simTime + horizon;
       if (reachedHorizon || e.predictionTruncated) this.finished++;

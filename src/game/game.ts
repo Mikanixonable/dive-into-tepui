@@ -135,9 +135,9 @@ export class Game {
     this.markerManager = new MarkerManager(this._hud.layers.marker, this._hud.svgOverlay);
 
     this.entities = new EntityManager(this._scene, this._hud, this._worldSfx, this.markerManager, initialSave);
-    this.futureAttractors = new FutureAttractors(this.ephemeris, this.entities);
+    this.futureAttractors = new FutureAttractors(this.ephemeris);
     this.entityLines = new EntityLineManager(this.entities);
-    this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, this.ephemeris, this.entities);
+    this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, this.ephemeris);
 
     this.cameraSystem = new CameraSystem(
       this._hud,
@@ -309,7 +309,7 @@ export class Game {
     this.sections.enter(SECTION.camera);
     this.cameraSystem.update(
       activeControllable, displayWindow.displayTime, this.input, dt, this.mapPickables.pickables,
-      this.displayWindowManager.attractorsAt(displayWindow.displayTime),
+      this.ephemeris.attractorsAt(displayWindow.displayTime),
     );
     this.sections.exit(SECTION.camera);
     // カメラ更新の後に置く: 候補集合と表示可否はカメラ位置から出るので、先に組むと
@@ -450,13 +450,11 @@ export class Game {
 
     // 表示時刻 = 未来ゴーストのスライダーぶん先取りした simTime。
     const { displayTime, simTime } = displayWindow;
-    // 表示側は重力を持つ生存中の GameEntity(小惑星)も中心天体解決・遮蔽判定へ合流させる —
-    // EntityManager.cleanup へ渡す表面到達判定用の配列(解析天体のみ)とは別物。
     // 現在時刻の配列は「いまの状態」を数値で読ませる HUD・プロパティ行が使い、表示時刻の配列は
     // 画面に描く幾何(軌道線・折れ線・天体位置)が使う — 天体メッシュは displayTime に置かれるので、
     // 楕円の中心天体位置や折れ線の un-bake を simTime で取ると同一画面上でずれる。
-    const attractors = this.displayWindowManager.attractorsAt(simTime);
-    const displayAttractors = this.displayWindowManager.attractorsAt(displayTime);
+    const attractors = this.ephemeris.attractorsAt(simTime);
+    const displayAttractors = this.ephemeris.attractorsAt(displayTime);
 
     // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列を読む。
     this.cameraSystem.sync(fo);

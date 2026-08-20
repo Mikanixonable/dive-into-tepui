@@ -4,7 +4,7 @@
 // 差し替えることで行う。
 import { KinematicState } from '../../physics/kinematic-state';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
-import { Attractor, AttractorId, BodyImpact, reachedBody, strongestAttractor } from '../../physics/attractor';
+import { Attractor, BodyImpact, reachedBody, strongestAttractor } from '../../physics/attractor';
 import { keplerPeriod } from '../../physics/elements';
 import { ApsisTrack } from '../../physics/trajectory-features';
 import { burnUpBody } from '../../physics/atmosphere';
@@ -57,14 +57,12 @@ export class PredictedArc {
     private readonly srpCoeff: number,
     private readonly keplerTail: boolean,
     private readonly consumable: boolean,
-    // 重力源・衝突体から自分自身を除く id(mu≠0 の重力源 entity のときだけ渡す)。
-    excludeId?: AttractorId,
   ) {
     this._trajectory = new DynamicTrajectory(state0);
     this.requiredEnd = state0.t;
     this.retainFrom = state0.t;
     this.sourceRevision = sources.revision;
-    this.bodies = new ArcBodies(sources, excludeId);
+    this.bodies = new ArcBodies(sources);
   }
 
   // 直近の1歩が解決した天体の数と、そのうち期限到来で訪問したものの数。

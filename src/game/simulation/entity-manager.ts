@@ -95,12 +95,11 @@ export class EntityManager {
   }
 
   // all()/otherEntities() はSimulatorの各substepから何度も呼ばれる。配列の内容が変わった
-  // ときだけ結合し、Predictor→attractors の入れ子呼び出しでも同じ安定配列を返す。
+  // ときだけ結合し、以降は同じ安定配列を返す。
   private _collectionRevision = 0;
   private cachedRevision = -1;
   private readonly cachedOtherEntities: GameEntity[] = [];
   private readonly cachedAllEntities: GameEntity[] = [];
-  private readonly cachedAttractors: GameEntity[] = [];
   // Targeter/Game は取得した配列を読み取り専用として扱う(filter/sort等で破壊しない)ため、
   // collectionRevision が変わるまで敵・自機の結合結果も再利用する。
   private combatTargetsRevision = -1;
@@ -230,10 +229,6 @@ export class EntityManager {
     );
     this.cachedAllEntities.length = 0;
     this.cachedAllEntities.push(...this.cachedOtherEntities, ...this.players);
-    this.cachedAttractors.length = 0;
-    for (const e of this.cachedAllEntities) {
-      if (e.alive && e.mu !== 0) this.cachedAttractors.push(e);
-    }
     this.cachedRevision = this._collectionRevision;
   }
 
@@ -247,13 +242,6 @@ export class EntityManager {
   all(): GameEntity[] {
     this.rebuildCachesIfNeeded();
     return this.cachedAllEntities;
-  }
-
-  // 重力を持つ(mu !== 0 かつ生存中の)エンティティを返す。GameEntity は id/radius/mu/degree2/
-  // isStar/state/accel を直接持つので Attractor を満たす。
-  attractors(): readonly GameEntity[] {
-    this.rebuildCachesIfNeeded();
-    return this.cachedAttractors;
   }
 
   // 全エンティティの寿命判定を行い、死亡したものを破棄・除去する。自機だけは各所の参照掃除と
