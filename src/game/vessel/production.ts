@@ -6,14 +6,16 @@ import type { FacilityId } from '../economy/facility';
 import type {
   BlueprintPart, BlueprintResourceAmount, BlueprintTank, ProducibilityBlueprint,
 } from '../economy/producibility';
-import { chooseTankMaterial } from '../economy/producibility';
+import { chooseTankMaterial, producibility } from '../economy/producibility';
 import { PROPELLANT_RESOURCE, type PropellantId } from '../economy/propellant-compatibility';
 import type { ResourceId } from '../economy/resource';
 import { ResourceLedger } from '../economy/resource-ledger';
 import type { AnyPart } from '../game-entity/parts';
 import { isPropellantTankPart } from '../game-entity/parts';
 import { assemblyOf, type VesselBlueprint } from './blueprint';
-import { structuralMasses } from './mass-properties';
+import { baseFacilities, basePowerAvailable, type BaseFacilityHost, type BaseState } from './base-module';
+import { structuralMasses, type StructuralMasses } from './mass-properties';
+import { memberGhostTree, type MemberSpec } from './member';
 
 // 機体そのものの組み立てに要る設備。搭載要素ごとの前提は、その要素が要求する資源を作る設備の
 // 側(FACILITIES)が持つので、設計が直に名指すのはこれ1つである。
@@ -40,13 +42,25 @@ export function productionBlueprintOf(bp: VesselBlueprint): ProducibilityBluepri
     const tank = propellantTankOf(part);
     if (tank !== null) tanks.push(tank);
   }
-  const structural = structuralMasses(assemblyOf(bp));
+  const structure = structuralResourceAmounts(structuralMasses(assemblyOf(bp)));
+  return { parts, tanks, structure, requiresFacility: [ASSEMBLY_FACILITY] };
+}
+
+// 外皮・トラス・分離機構の質量を、資源枠(hull-panel/truss-member)へ割り振る。分離機構は
+// 外皮と同じ板金であり独自の資源を持たないので、トラスへ合算する。
+function structuralResourceAmounts(structural: StructuralMasses): BlueprintResourceAmount[] {
   const structure: BlueprintResourceAmount[] = [];
   if (structural.hull > 0) structure.push({ resourceId: 'hull-panel', mass: structural.hull });
-  // 分離機構は外皮と同じ板金であり、独自の資源を持たない。
   const trussMass = structural.truss + structural.decoupler;
   if (trussMass > 0) structure.push({ resourceId: 'truss-member', mass: trussMass });
-  return { parts, tanks, structure, requiresFacility: [ASSEMBLY_FACILITY] };
+  return structure;
+}
+
+// 部材棚の部材1本を生やすのに要る資源。生えた直後のエッジは内装を持たないため、機体へ
+// 実際に取り付けたときの費用と、この孤立した1エッジぶんの費用は一致する。
+export function memberProductionBlueprintOf(member: MemberSpec): ProducibilityBlueprint {
+  const structural = structuralMasses({ tree: memberGhostTree(member), placements: [] });
+  return { parts: [], tanks: [], structure: structuralResourceAmounts(structural), requiresFacility: [ASSEMBLY_FACILITY] };
 }
 
 // 搭載要素を1つだけ作る。機体まるごとと同じ判定を通すため、その要素だけを積んだ設計として組む。
@@ -115,6 +129,16 @@ export function productionResourceDemand(
     if (material !== null) add(material, tank.shellMass);
   }
   return demand;
+}
+
+// 基地モジュールを積んだ機体の在庫・設備・電力で、要求を賄えるかだけを判定する。
+export function affordableProductionRequest(
+  base: BaseFacilityHost & { readonly baseState: BaseState | null },
+  request: ProducibilityBlueprint,
+): boolean {
+  return producibility(
+    request, base.baseState!.resources, baseFacilities(base), basePowerAvailable(base),
+  ).length === 0;
 }
 
 // 在庫から生産ぶんを引く。1つでも足りなければ**何も減らさず** false を返す — 途中まで引いた

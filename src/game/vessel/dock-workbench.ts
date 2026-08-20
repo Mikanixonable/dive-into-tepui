@@ -1,7 +1,7 @@
 import type { AnyPart } from '../game-entity/parts';
 import type { AssemblyEditResult } from './assembly-editor';
 import { validateAssembly } from './assembly-editor';
-import type { BlueprintIssue } from './blueprint-validation';
+import { WHOLE_VESSEL, type BlueprintIssue } from './blueprint-validation';
 import type { PartPlacement, VesselAssembly } from './assembly';
 
 /** The objects which can share one workbench transaction. */
@@ -96,17 +96,12 @@ export class DockWorkbenchSession {
     this.targetValidator = options.targetValidator;
   }
 
-  public get dirty(): boolean { return !sameSnapshot(this.original, this.snapshot()); }
-
   public snapshot(): WorkbenchSnapshot {
     return {
       targets: cloneTargets(this.targets),
       inventory: this.inventory.map(clonePart),
     };
   }
-
-  /** State to restore when the transaction is cancelled. */
-  public originalSnapshot(): WorkbenchSnapshot { return cloneSnapshot(this.original); }
 
   /** State handed to the build/apply layer after all target checks pass. */
   public snapshotBeforeBuild(): WorkbenchSnapshot {
@@ -140,12 +135,14 @@ export class DockWorkbenchSession {
   public get canUndo(): boolean { return this.past.length > 0; }
   public get canRedo(): boolean { return this.future.length > 0; }
 
-  public get undoHistory(): readonly WorkbenchCommand[] {
-    return this.past.map(cloneCommand);
+  // undo()/redo() が次に取り消す/やり直す操作のラベル。assembly-panel.ts のボタン文言が
+  // 毎フレーム読む。
+  public get nextUndoLabel(): string | null {
+    return this.past.at(-1)?.label ?? null;
   }
 
-  public get redoHistory(): readonly WorkbenchCommand[] {
-    return this.future.map(cloneCommand);
+  public get nextRedoLabel(): string | null {
+    return this.future.at(-1)?.label ?? null;
   }
 
   public targetKind(targetId: string): WorkbenchTargetKind {
@@ -189,12 +186,6 @@ export class DockWorkbenchSession {
     this.past.push(cloneCommand(command));
     this.restore(command.after);
     return true;
-  }
-
-  public replaceTarget(targetId: string, assembly: VesselAssembly, label = 'アセンブリを置換'): void {
-    this.mutate(label, () => {
-      this.replaceTargetInternal(targetId, assembly);
-    });
   }
 
   /** Apply any accepted result from assembly-editor (node, edge, section, or placement). */
@@ -294,25 +285,6 @@ export class DockWorkbenchSession {
     });
   }
 
-  /** Explicit inventory API for non-drag UI controls. */
-  public addInventoryPart(part: AnyPart): void {
-    if (this.inventory.some((candidate) => candidate.id === part.id)
-      || this.targets.some((target) => target.assembly.placements.some((placement) => placement.part.id === part.id))) {
-      throw new Error(`part is already owned by the workbench: ${part.id}`);
-    }
-    this.mutate('部品を倉庫へ追加', () => this.inventory.push(clonePart(part)));
-  }
-
-  public removeInventoryPart(partId: string): AnyPart {
-    const index = this.inventory.findIndex((part) => part.id === partId);
-    if (index < 0) throw new Error(`unknown inventory part: ${partId}`);
-    let removed: AnyPart | undefined;
-    this.mutate('倉庫から部品を取り出す', () => {
-      removed = this.inventory.splice(index, 1)[0];
-    });
-    return clonePart(removed!);
-  }
-
   public addTarget(target: WorkbenchTarget, label = '作業対象を追加'): WorkbenchTarget {
     const normalized = normalizeTarget(target);
     if (this.targets.some((candidate) => candidate.id === normalized.id)) {
@@ -348,19 +320,23 @@ export class DockWorkbenchSession {
   // 構造として組み上がるかは対象の種別によらず拒む理由になる。設計としての出来は呼び出し側の
   // 検証器が判断し、拒む理由には数えない。
   private validateTargetInternal(target: StoredTarget, snapshot: WorkbenchSnapshot): WorkbenchTargetValidation {
-    const structural = validateAssembly(target.assembly, { validateBlueprint: false })
-      .filter((issue) => issue.severity === 'error')
-      .map((issue) => issue.message);
+    const structuralIssues = validateAssembly(target.assembly, { validateBlueprint: false })
+      .filter((issue) => issue.severity === 'error');
+    const structural = structuralIssues.map((issue) => issue.message);
     const custom = this.targetValidator?.(target, snapshot) ?? { blocking: [], issues: [] };
     const blocking = [...structural, ...custom.blocking.filter((message) => !structural.includes(message))];
+    // 拒む理由として既に挙げたものを、指摘としてもう一度並べない。文言だけでなく部位の id も
+    // 揃えて突き合わせる —— 異なる部位が同じ文言の指摘を出すことがあるため。
+    const blockingKeys = new Set<string>([
+      ...structuralIssues.map((issue) => issueKey(issue.targetId, issue.message)),
+      ...custom.blocking.map((message) => issueKey(WHOLE_VESSEL, message)),
+    ]);
     return {
       targetId: target.id,
       kind: target.kind,
       valid: blocking.length === 0,
       blocking,
-      // 構造が壊れていれば設計の検証もそこで打ち切られ、同じ指摘を返す。拒む理由として既に
-      // 挙げたものを、指摘としてもう一度並べない。
-      issues: custom.issues.filter((issue) => !blocking.includes(issue.message)),
+      issues: custom.issues.filter((issue) => !blockingKeys.has(issueKey(issue.targetId, issue.message))),
     };
   }
 
@@ -394,6 +370,11 @@ export class DockWorkbenchSession {
     if (!target) throw new Error(`unknown workbench target: ${id}`);
     return target;
   }
+}
+
+// 部位の id と文言をあわせた指摘の同一性キー。
+function issueKey(targetId: string, message: string): string {
+  return `${targetId} ${message}`;
 }
 
 function normalizeSnapshot(snapshot: WorkbenchSnapshot): WorkbenchSnapshot {

@@ -35,7 +35,7 @@ import type { WorkbenchValidation } from './dock-workbench';
 import type { MountCandidate } from './mount-candidates';
 import { nearestMountCandidate } from './mount-candidates';
 import type { PartVisualRef } from './part-visual';
-import type { MountFrame } from './tree';
+import type { MountFrame, MountPoint, PortRef } from './tree';
 
 // カーソルの光線を線分として扱う長さ [m]。機体の差し渡しより十分に長い。
 const RAY_LENGTH = 1000;
@@ -100,6 +100,13 @@ interface PendingMemberEdit {
   readonly label: string;
 }
 
+// 部材を生やすのに要る資源の判定と消費。掴んだ部材を実際に取り付ける瞬間だけが charge を
+// 呼ぶ ―― refusalFor が null を返した直後にしか呼ばれないので、消費は必ず成功する。
+export interface MemberCostHook {
+  readonly refusalFor: (member: MemberSpec) => string | null;
+  readonly charge: (member: MemberSpec) => void;
+}
+
 // 光線の向きを解くための一時オブジェクト。毎フレームの割り当てを避ける。
 const rayScratch = new THREE.Vector3();
 const basisScratch = new THREE.Matrix4();
@@ -116,7 +123,10 @@ export class AssemblyDragController {
   private pose: GhostPose | null = null;
   private readonly raycaster = new THREE.Raycaster();
 
-  public constructor(private readonly scene: THREE.Scene) {}
+  public constructor(
+    private readonly scene: THREE.Scene,
+    private readonly memberCost?: MemberCostHook,
+  ) {}
 
   // 部品でも部材でも、いま何かを掴んでいるか。掴んでいる間はクリックが離す操作になる。
   public get dragging(): boolean { return this.held !== null; }
@@ -206,7 +216,7 @@ export class AssemblyDragController {
 
   // 既存の取り付け位置(軸ポート・エッジ表面)へ吸い寄せ、そこへ置いたときの成否まで決める。
   private updatePartDrag(part: AnyPart, cameraPos: Vec3, direction: Vec3, target: AssemblyDragTarget | null): void {
-    const mount = target === null ? null : this.resolveMount(target, cameraPos, direction);
+    const mount = target === null ? null : this.resolveMountCandidate(target, cameraPos, direction);
     if (!mount || !target) {
       this.pose = { position: addScaled(cameraPos, direction, FLOAT_DISTANCE), basis: null, verdict: 'far' };
       this.workbench!.updateCandidate(null);
@@ -237,7 +247,9 @@ export class AssemblyDragController {
   // 空きポート(軸・側面とも)だけを狙い、見つかれば member.length ぶん先に生える遠端ノードの
   // 編集を組んで保持する。drop はこれを再計算せずそのまま適用する。
   private updateMemberDrag(member: MemberSpec, cameraPos: Vec3, direction: Vec3, target: AssemblyDragTarget | null): void {
-    const mount = target === null ? null : this.resolvePortMount(target, cameraPos, direction);
+    const mount = target === null
+      ? null
+      : this.resolveMountCandidate(target, cameraPos, direction, (m) => m.kind === 'port', ['axial', 'lateral']);
     if (!mount || !target || mount.mount.kind !== 'port') {
       this.pose = { position: addScaled(cameraPos, direction, FLOAT_DISTANCE), basis: null, verdict: 'far' };
       this.pendingMemberEdit = null;
@@ -300,21 +312,36 @@ export class AssemblyDragController {
         targets: [workbench.validateTarget(targetId)],
       };
     }
-    return workbench.applyAssemblyEdit(targetId, pending.result, pending.label);
+    // 資源が足りなければ木を触る前に拒否する。消費は applyAssemblyEdit が通ってから
+    // ―― 検証に落ちて巻き戻る編集から資源だけ引かれることはない。
+    const member = this.held?.kind === 'member' ? this.held.member : null;
+    if (member && this.memberCost) {
+      const refusal = this.memberCost.refusalFor(member);
+      if (refusal !== null) {
+        return { valid: false, errors: [refusal], targets: [workbench.validateTarget(targetId)] };
+      }
+    }
+    const validation = workbench.applyAssemblyEdit(targetId, pending.result, pending.label);
+    if (validation.valid && member && this.memberCost) this.memberCost.charge(member);
+    return validation;
   }
 
   // クリックで掴みを終える。直前の update が成立する取り付け位置を見つけていれば drop と同じく
   // そこへ取り付ける。部品で見つけていなければ ―― 機体から掴み上げた部品は workbench.remove で
   // 在庫へ戻し、棚から掴んだ部品はそもそも在庫から出ていないのでそのまま掴みを捨てる。部材は
-  // 在庫を経由しないので、見つからなければ捨てるだけでよい。掴んでいなければ何もしない。
-  // 在庫へ戻すことが検証に拒まれたときだけ、その理由を返す(部品は装着されたまま残る)。
+  // 在庫という戻り先を持たないので、見つからなければ掴んでいた部材そのものが失われる ―― 呼び出し側
+  // が知らせられるよう、その旨のヒント文を返す。掴んでいなければ何もしない。
+  // 在庫へ戻すことが検証に拒まれたときも、その理由を返す(部品は装着されたまま残る)。
   public release(targetId: string): string | null {
     const workbench = this.workbench;
     if (!workbench || !this.held) return null;
     if (this.held.kind === 'member') {
-      if (this.pendingMemberEdit?.result.accepted) this.drop(targetId);
-      else this.cancelDrag();
-      return null;
+      if (this.pendingMemberEdit?.result.accepted) {
+        this.drop(targetId);
+        return null;
+      }
+      this.cancelDrag();
+      return '取り付け位置が見つからないため、部材を破棄しました';
     }
     const drag = workbench.dragging;
     if (drag?.candidate?.verdict.accepted) {
@@ -333,28 +360,32 @@ export class AssemblyDragController {
     return null;
   }
 
-  // 取り付けを試みずに掴みを捨てる。掴んでいなければ何もしない。
-  public cancelDrag(): void {
-    if (!this.workbench) return;
+  // 取り付けを試みずに掴みを捨てる。掴んでいなければ何もしない。戻り値は、捨てたのが部材で
+  // あったか ―― 部材には在庫という戻り先が無いので、呼び出し側がこれを見て通知するかを決める。
+  public cancelDrag(): boolean {
+    if (!this.workbench) return false;
+    const discardedMember = this.held?.kind === 'member';
     this.workbench.updateCandidate(null);
     this.endDrag();
+    return discardedMember;
   }
 
   public dispose(): void { this.cancelDrag(); }
 
-  // 光線に最も近いカプセルの上で光線が指す点を求め、そこから最寄りの取り付け位置(部品向け:
-  // 軸ポート・エッジ表面)を返す。カプセルは広域の絞り込みであり、機体の近くを指していない
-  // フレームでノードとエッジを総当たりする費用を省く。
-  private resolveMount(target: AssemblyDragTarget, cameraPos: Vec3, direction: Vec3): MountCandidate | null {
+  // 光線に最も近いカプセルの上で光線が指す点を求め、そこから最寄りの取り付け位置を返す。
+  // カプセルは広域の絞り込みであり、機体の近くを指していないフレームでノードとエッジを
+  // 総当たりする費用を省く。filter/portKinds は nearestMountCandidate へそのまま渡し、
+  // 部品(既定 = 軸ポート・エッジ表面)と部材(空きポートの軸・側面のみ)の絞り込みの差を
+  // 呼び出し側が指定する。
+  private resolveMountCandidate(
+    target: AssemblyDragTarget,
+    cameraPos: Vec3,
+    direction: Vec3,
+    filter?: (mount: MountPoint) => boolean,
+    portKinds?: readonly PortRef['kind'][],
+  ): MountCandidate | null {
     const probe = this.probeMountPoint(target, cameraPos, direction);
-    return probe && nearestMountCandidate(target.assembly, probe, SNAP_DISTANCE);
-  }
-
-  // 同じ広域絞り込みから、部材向けに空きポート(軸・側面とも)だけを候補にする。部材はエッジの
-  // 表面ではなく必ず PortRef を持つ口へ生えるので、surface/truss 候補は探さない。
-  private resolvePortMount(target: AssemblyDragTarget, cameraPos: Vec3, direction: Vec3): MountCandidate | null {
-    const probe = this.probeMountPoint(target, cameraPos, direction);
-    return probe && nearestMountCandidate(target.assembly, probe, SNAP_DISTANCE, (m) => m.kind === 'port', ['axial', 'lateral']);
+    return probe && nearestMountCandidate(target.assembly, probe, SNAP_DISTANCE, filter, portKinds);
   }
 
   // 光線に最も近いカプセル上で、光線が指す点を返す。カプセル(広域の絞り込み)から

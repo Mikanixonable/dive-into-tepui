@@ -1,10 +1,11 @@
 // 組立UI: 作業台セッションが持つ倉庫の部品を対象ごとにボタンで並べ、クリックで
 // AssemblyDragController のドラッグを開始させ、3D で拾ったノード・エッジの選択を1行で示す
 // 常設 HUD ウィンドウ。ドラッグ・選択の追跡・スナップ判定はこのクラスの外
-// (assembly-drag-controller.ts / docking.ts)の責務で、ここはそれを表示へ映すところまでを持つ。
-// 選択したノード・エッジの削除と、選択したノードの既存プリミティブの断面編集は、
-// session/workbench を直に持っているのでここで組み立てて applyAssemblyEdit へ渡す —
-// 新規船下書きの作成・建造(base の在庫・資源を扱う)だけは Docking 側の callback に委ねる。
+// (assembly-drag-controller.ts / assembly-session-controller.ts)の責務で、ここはそれを
+// 表示へ映すところまでを持つ。選択したノード・エッジの削除と、選択したノードの既存
+// プリミティブの断面編集は、session/workbench を直に持っているのでここで組み立てて
+// applyAssemblyEdit へ渡す —— 新規船下書きの作成・建造(base の在庫・資源を扱う)だけは
+// AssemblySessionController 側の callback に委ねる。
 // 1セッションにつき1インスタンスを持ち回して sync() で毎フレーム(または状態が変わる
 // たびに)差分更新する — predict-panel.ts の PredictPanel と同じ、常設パネルの流儀。
 // #hud の子として window レイヤへ置くため、`#hud, #hud *` の margin/padding
@@ -12,9 +13,9 @@
 import type { AnyPart, PartType } from '../game-entity/parts';
 import { isExterior } from '../game-entity/parts';
 import type { PartPlacement } from '../vessel/assembly';
-import type { SectionPrimitivePatch } from '../vessel/assembly-editor';
+import { removeEdge, removeNode, type SectionPrimitivePatch } from '../vessel/assembly-editor';
 import { AssemblyDragController } from '../vessel/assembly-drag-controller';
-import type { AssemblySelection } from '../docking';
+import type { AssemblySelection } from '../assembly-session-controller';
 import type { DockWorkbenchController, DragSource } from '../vessel/dock-workbench-controller';
 import type { DockWorkbenchSession, WorkbenchTarget, WorkbenchTargetKind } from '../vessel/dock-workbench';
 import {
@@ -118,7 +119,7 @@ export class AssemblyPanel {
   private selectionEl: HTMLSpanElement | null = null;
   private sectionEditorEl: HTMLDivElement | null = null;
   private editStatusEl: HTMLDivElement | null = null;
-  private filterInput: ValueInput | null = null;
+  private filterEl: HTMLInputElement | null = null;
   private errorsEl: HTMLDivElement | null = null;
   private mountedRowsEl: HTMLDivElement | null = null;
   private shelfEl: HTMLDivElement | null = null;
@@ -135,6 +136,7 @@ export class AssemblyPanel {
   private memberLength = MEMBER_DEFAULT_LENGTH;
   private memberRadius = MEMBER_DEFAULT_RADIUS;
   private memberSeparationImpulse = MEMBER_DEFAULT_SEPARATION_IMPULSE;
+  private lastMemberCostKey = '';
 
   private currentTargetId: string | null = null;
   private filterQuery = '';
@@ -150,11 +152,10 @@ export class AssemblyPanel {
   // 断面編集面がノード上のどのプリミティブを編集対象にしているか。ノードやプリミティブの
   // 顔ぶれが変わって候補から外れたら、rebuildSectionEditor が先頭へ落とし直す。
   private selectedPrimitiveId: string | null = null;
-  // 3D クリックの結果を持ち回らない代わりに、直近の sync() が受け取った session/selection を
-  // 保持する — Button の onClick は sync() の外(次のクリックが起きたそのフレーム)で走るので、
+  // 3D クリックの結果を持ち回らない代わりに、直近の sync() が受け取った session を保持する
+  // —— Button の onClick は sync() の外(次のクリックが起きたそのフレーム)で走るので、
   // 編集を組み立てるにはここで持っておく必要がある。
   private lastSession: DockWorkbenchSession | null = null;
-  private currentSelection: AssemblySelection = null;
 
   // セッションが編集対象を切り替えたことを通知する。呼び出し側はこれを見て
   // (ドッキングビュー側の3Dプレビュー等)対象の表示を追従させる。
@@ -172,6 +173,12 @@ export class AssemblyPanel {
   // 指定の下書きを建造したときの費用と、いま賄えるか。下書きでない対象・基地が
   // 無ければ null — buildDraftBtn を隠す判定にも使う。
   public draftBuildStatus: ((targetId: string) => { readonly costText: string; readonly affordable: boolean } | null) | null = null;
+  // 棚の入力欄が示す部材を1本生やす費用と、いま賄えるか。基地が無ければ null —
+  // memberGrabBtn の費用表示・押下可否の判定に使う。
+  public memberCostStatus: ((member: MemberSpec) => { readonly costText: string; readonly affordable: boolean } | null) | null = null;
+  // 選択中のノード・エッジを削除する。選択のクリアは Docking 側の責務なので、成否だけを
+  // 拒否理由の文字列(成功なら null)で受け取る。
+  public onRemoveSelection: (() => string | null) | null = null;
 
   // workbench は AssemblyDragController.beginDrag が要る DockWorkbenchController — 読み取り専用の
   // 表示に使う DockWorkbenchSession とは別物で、open/sync の session 引数とは別に持ち回す。
@@ -200,6 +207,7 @@ export class AssemblyPanel {
     this.lastErrorsKey = '';
     this.lastSelectionKey = '';
     this.lastBuildStatusKey = '';
+    this.lastMemberCostKey = '';
     this.lastSectionEditorKey = '';
     this.win.bringToFront();
     this.sync(session, null);
@@ -220,7 +228,7 @@ export class AssemblyPanel {
     this.selectionEl = null;
     this.sectionEditorEl = null;
     this.editStatusEl = null;
-    this.filterInput = null;
+    this.filterEl = null;
     this.errorsEl = null;
     this.mountedRowsEl = null;
     this.shelfEl = null;
@@ -228,7 +236,6 @@ export class AssemblyPanel {
     this.mountedButtons.clear();
     this.currentTargetId = null;
     this.lastSession = null;
-    this.currentSelection = null;
   }
 
   // 対象タブ・Undo/Redo・下書き操作・選択(削除)・断面編集・検索欄・確定/取消ボタン・
@@ -276,7 +283,7 @@ export class AssemblyPanel {
     selectionRow.className = 'asm-panel-selection-row';
     this.selectionEl = document.createElement('span');
     this.selectionEl.className = 'asm-panel-selection';
-    this.removeSelectionBtn = new Button('選択を削除', () => this.removeSelection());
+    this.removeSelectionBtn = new Button('選択を削除', () => this.setEditStatus(this.onRemoveSelection?.() ?? null));
     this.removeSelectionBtn.setEnabled(false);
     selectionRow.append(this.selectionEl, this.removeSelectionBtn.element);
     body.appendChild(selectionRow);
@@ -294,12 +301,8 @@ export class AssemblyPanel {
 
     const filterEl = document.createElement('div');
     filterEl.className = 'asm-panel-filter';
-    this.filterInput = new ValueInput(
-      { type: 'search', placeholder: '部品を検索 (名前 / 種別 / partRef)', escapeBehavior: 'clear' },
-      (text) => this.applyFilter(text),
-      () => this.applyFilter(''),
-    );
-    filterEl.appendChild(this.filterInput.element);
+    this.filterEl = this.buildFilterInput();
+    filterEl.appendChild(this.filterEl);
     body.appendChild(filterEl);
 
     this.errorsEl = document.createElement('div');
@@ -321,8 +324,28 @@ export class AssemblyPanel {
     body.appendChild(this.shelfEl);
   }
 
-  // 検索欄の確定値を反映し、一致しない部品ボタン(棚・搭載済み一覧の両方)だけを隠す。
-  // 一覧の組み直しはしない。
+  // 部品検索欄。絞り込みは表示の hidden 切替だけで一覧の中身を変えないので、確定を待たず
+  // 打鍵ごとに反映してよい — ValueInput の確定契約はここでは要らない(SPEC/UI-DESIGN.md §3)。
+  private buildFilterInput(): HTMLInputElement {
+    const input = document.createElement('input');
+    input.type = 'search';
+    input.className = 'w-input';
+    input.placeholder = '部品を検索 (名前 / 種別 / partRef)';
+    input.addEventListener('input', () => this.applyFilter(input.value));
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        input.value = '';
+        this.applyFilter('');
+        input.blur();
+      }
+    });
+    return input;
+  }
+
+  // 検索欄の値を反映し、一致しない部品ボタン(棚・搭載済み一覧の両方)だけを隠す。
+  // 一覧の組み直しはしない。何度呼んでも hidden の再設定だけなので冪等。
   private applyFilter(query: string): void {
     this.filterQuery = query.trim().toLocaleLowerCase();
     for (const entry of this.partButtons.values()) {
@@ -340,21 +363,36 @@ export class AssemblyPanel {
   public sync(session: DockWorkbenchSession | null, selection: AssemblySelection): void {
     if (!this.win || !session) return;
     this.lastSession = session;
-    this.currentSelection = selection;
     const targets = session.targetsSnapshot();
     if (this.currentTargetId === null || !targets.some((t) => t.id === this.currentTargetId)) {
       this.currentTargetId = targets[0]?.id ?? null;
     }
     this.syncTargets(targets);
-    this.undoBtn?.setEnabled(session.canUndo);
-    this.redoBtn?.setEnabled(session.canRedo);
+    this.syncUndoRedo(session);
     this.syncDraftActions(targets);
-    this.syncSelection(selection);
+    this.syncSelection(session, selection);
     this.syncSectionEditor(session, selection);
     this.syncMounted(session);
     this.syncShelf(session.inventorySnapshot());
     this.syncErrors(session);
-    this.memberGrabBtn?.setEnabled(!this.dragController.dragging);
+    this.syncMemberCost();
+  }
+
+  // 部材棚の入力欄が示す部材の費用を「部材を掴む」の文言に畳む(buildDraftBtn と同じ形)。
+  private syncMemberCost(): void {
+    if (!this.memberGrabBtn) return;
+    // ドラッグ中は費用に関わらず押せない。
+    if (this.dragController.dragging) {
+      this.memberGrabBtn.setEnabled(false);
+      return;
+    }
+    const status = this.memberCostStatus?.(this.currentMemberSpec()) ?? null;
+    const key = status === null ? 'none' : `${status.costText}:${status.affordable}`;
+    if (key !== this.lastMemberCostKey) {
+      this.lastMemberCostKey = key;
+      this.memberGrabBtn.setLabel(status === null ? '部材を掴む' : `部材を掴む · ${status.costText}`);
+    }
+    this.memberGrabBtn.setEnabled(status?.affordable ?? false);
   }
 
   // 現在の対象が下書きのときだけ「建造して格納」を出し、費用と賄えるかをラベルへ畳む
@@ -377,16 +415,48 @@ export class AssemblyPanel {
     this.buildDraftBtn.setEnabled(status?.affordable ?? false);
   }
 
-  // 3D で拾ったノード・エッジの選択を1行で示す。
-  private syncSelection(selection: AssemblySelection): void {
+  // 元に戻す/やり直すボタンに、次に戻る/やり直される編集のラベルを乗せる
+  // (buildDraftBtn の費用表示と同じ、値をボタン自身の文言に畳む形)。この系列は
+  // セッション全体で1本(対象タブをまたいでも1本)なので、現在のタブに関わらず同じ文言になる。
+  private syncUndoRedo(session: DockWorkbenchSession): void {
+    if (!this.undoBtn || !this.redoBtn) return;
+    this.undoBtn.setEnabled(session.canUndo);
+    this.redoBtn.setEnabled(session.canRedo);
+    const undoLabel = session.nextUndoLabel;
+    const redoLabel = session.nextRedoLabel;
+    this.undoBtn.setLabel(undoLabel === null ? '元に戻す' : `元に戻す · ${undoLabel}`);
+    this.redoBtn.setLabel(redoLabel === null ? 'やり直す' : `やり直す · ${redoLabel}`);
+  }
+
+  // 3D で拾ったノード・エッジの選択を1行で示し、今すぐ削除できるかどうかで
+  // removeSelectionBtn の有効/無効・文言・拒否理由を決める。ノード削除もエッジ削除も
+  // 「参照が残っていれば拒否」する純関数(assembly-editor の removeNode/removeEdge)なので、
+  // ここで validateBlueprint: false のまま試すだけなら実際の削除も選択の変化も起きない。
+  private syncSelection(session: DockWorkbenchSession, selection: AssemblySelection): void {
     if (!this.selectionEl) return;
-    this.removeSelectionBtn?.setEnabled(selection !== null);
-    const key = selection === null ? '' : `${selection.kind}:${selection.kind === 'node' ? selection.nodeId : selection.edgeId}`;
+    const rejection = this.currentTargetId === null || selection === null
+      ? null : this.removalRejectionReason(session, this.currentTargetId, selection);
+    this.removeSelectionBtn?.setEnabled(selection !== null && rejection === null);
+    this.removeSelectionBtn?.setLabel(
+      selection === null ? '選択を削除' : selection.kind === 'node' ? 'ノードを削除' : 'エッジを削除',
+    );
+    const key = selection === null ? '' : `${selection.kind}:${selection.kind === 'node' ? selection.nodeId : selection.edgeId}:${rejection ?? ''}`;
     if (key === this.lastSelectionKey) return;
     this.lastSelectionKey = key;
     this.selectionEl.textContent = selection === null ? '選択: なし'
-      : selection.kind === 'node' ? `選択: ノード ${selection.nodeId}`
-      : `選択: エッジ ${selection.edgeId}`;
+      : selection.kind === 'node' ? `選択: ノード ${selection.nodeId}${rejection === null ? '' : ` — ${rejection}`}`
+      : `選択: エッジ ${selection.edgeId}${rejection === null ? '' : ` — ${rejection}`}`;
+  }
+
+  // 選択中のノード/エッジをこの場で削除できない理由(削除できるなら null)。
+  private removalRejectionReason(
+    session: DockWorkbenchSession, targetId: string, selection: NonNullable<AssemblySelection>,
+  ): string | null {
+    const assembly = session.getTarget(targetId).assembly;
+    const result = selection.kind === 'node'
+      ? removeNode(assembly, selection.nodeId, { validateBlueprint: false })
+      : removeEdge(assembly, selection.edgeId, { validateBlueprint: false });
+    return result.accepted ? null : (result.errors[0]?.message ?? '削除できません');
   }
 
   private syncTargets(targets: readonly WorkbenchTarget[]): void {
@@ -560,18 +630,6 @@ export class AssemblyPanel {
     }
   }
 
-  // 選択中ノード・エッジを削除する。参照が残っている等で拒否されたら editStatusEl へ理由を出す
-  // (session.validateTarget が映すのは対象全体の構造検証で、この操作自体の成否とは別物)。
-  private removeSelection(): void {
-    const selection = this.currentSelection;
-    if (!this.lastSession || this.currentTargetId === null || selection === null) return;
-    const targetId = this.currentTargetId;
-    const validation = selection.kind === 'node'
-      ? this.workbench.removeNode(targetId, selection.nodeId)
-      : this.workbench.removeEdge(targetId, selection.edgeId);
-    this.setEditStatus(validation.valid ? null : (validation.errors[0] ?? '削除できません'));
-  }
-
   // 選択中ノードの既存プリミティブへパッチを適用する。1回の確定が1回の applyAssemblyEdit
   // 呼び出しになり、そのまま1つの取り消し可能なコマンドになる。
   private applyPrimitiveEdit(nodeId: string, primitiveId: string, patch: SectionPrimitivePatch, label: string): void {
@@ -615,7 +673,7 @@ export class AssemblyPanel {
       this.mountedButtons.set(part.id, { btn, part });
       this.mountedRowsEl.appendChild(btn.element);
     }
-    this.applyFilter(this.filterInput?.element.value ?? this.filterQuery);
+    this.applyFilter(this.filterEl?.value ?? this.filterQuery);
     this.win?.reclamp();
   }
 
@@ -669,7 +727,7 @@ export class AssemblyPanel {
       group.append(title, rows);
       this.shelfEl.appendChild(group);
     }
-    this.applyFilter(this.filterInput?.element.value ?? this.filterQuery);
+    this.applyFilter(this.filterEl?.value ?? this.filterQuery);
     this.win?.reclamp();
   }
 
@@ -733,14 +791,18 @@ export class AssemblyPanel {
     if (this.memberImpulseRow) this.memberImpulseRow.hidden = this.memberKind !== 'decoupler';
   }
 
-  // 棚の入力欄の現在値から MemberSpec を組み、部材のドラッグを開始する。
-  private beginMemberDrag(): void {
-    const member: MemberSpec = {
+  // 棚の入力欄の現在値から MemberSpec を組む。費用表示とドラッグ開始が同じ値を読む。
+  private currentMemberSpec(): MemberSpec {
+    return {
       kind: this.memberKind,
       length: this.memberLength,
       radius: this.memberRadius,
       separationImpulse: this.memberSeparationImpulse,
     };
-    this.dragController.beginMemberDrag(this.workbench, member);
+  }
+
+  // 棚の入力欄が示す部材のドラッグを開始する。
+  private beginMemberDrag(): void {
+    this.dragController.beginMemberDrag(this.workbench, this.currentMemberSpec());
   }
 }

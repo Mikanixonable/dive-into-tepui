@@ -1,9 +1,13 @@
 // 基地が抱える在庫 — 搭載要素と資源 — の日本語表示名。数値の整形もここに揃え、
-// 同じ部品・同じ資源がどの画面でも同じ文字列で読めるようにする。
+// 同じ部品・同じ資源がどの画面でも同じ文字列で読めるようにする。建造・修理・補給・生産の
+// 費用表示は productionCostSummary を通し、可否判定を賄い額の内訳計算と別基準にしない。
 import type { Part, PartType } from '../game-entity/parts';
 import { isPropellantTankPart } from '../game-entity/parts';
 import { RESOURCES, type ResourceId } from '../economy/resource';
 import { propellantTankCapacity } from '../economy/propellant-compatibility';
+import type { ProducibilityBlueprint } from '../economy/producibility';
+import { affordableProductionRequest, productionResourceDemand } from '../vessel/production';
+import type { Vessel } from '../vessel/vessel';
 
 export const PART_TYPE_LABELS: Readonly<Record<PartType, string>> = {
   hull: '船体',
@@ -53,4 +57,17 @@ export function formatResourceAmount(id: string, mass: number): string {
   const def = RESOURCES[id as ResourceId];
   const name = def === undefined ? id : def.name;
   return `${name} ${mass < 1 ? mass.toFixed(3) : mass.toFixed(1)} kg`;
+}
+
+export interface ProductionCostSummary {
+  readonly costText: string;
+  readonly affordable: boolean;
+}
+
+// 要求を賄えるかと、資源だけを畳んだ費用文言をまとめて返す。両者は同じ producibility 判定・
+// 同じ資源帳簿を読むので、片方だけ古い基準で判定することがない。
+export function productionCostSummary(base: Vessel, request: ProducibilityBlueprint): ProductionCostSummary {
+  const demand = productionResourceDemand(request, base.baseState!.resources);
+  const costText = [...demand].map(([id, mass]) => formatResourceAmount(id, mass)).join('・') || '資源なし';
+  return { costText, affordable: affordableProductionRequest(base, request) };
 }
