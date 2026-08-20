@@ -68,10 +68,40 @@ export function register(): void {
     const validation = session.applyAssemblyEdit('ship-a', edit, '外装部品を編集');
     assert.equal(validation.valid, true);
     assert.equal(session.snapshot().targets[0]!.assembly.placements.some((p) => p.part.id === removable.id), false);
-    assert.equal(session.undoHistory.at(-1)!.label, '外装部品を編集');
+    assert.equal(session.nextUndoLabel, '外装部品を編集');
     assert.equal(session.undo(), true);
     assert.equal(session.snapshot().targets[0]!.assembly.placements.some((p) => p.part.id === removable.id), true);
     assert.equal(session.redo(), true);
+  });
+
+  test('nextUndoLabel/nextRedoLabel track each recorded operation through undo/redo', () => {
+    const assembly = crewedAssembly(1000);
+    const [first, second] = assembly.placements.map((placement) => placement.part);
+    const session = new DockWorkbenchSession({
+      targets: [{ id: 'ship-a', kind: 'docked-vessel', assembly }], inventory: [],
+    }, () => ({ valid: true, errors: [] }));
+    assert.equal(session.nextUndoLabel, null);
+    assert.equal(session.nextRedoLabel, null);
+
+    const editFirst = removePlacement(assembly, first!.id, { validateBlueprint: false });
+    assert.equal(session.applyAssemblyEdit('ship-a', editFirst, '第一の部品を外す').valid, true);
+    assert.equal(session.nextUndoLabel, '第一の部品を外す');
+    assert.equal(session.nextRedoLabel, null);
+
+    session.removePlacement('ship-a', second!.id);
+    assert.equal(session.nextUndoLabel, '部品を取り外す');
+
+    assert.equal(session.undo(), true);
+    assert.equal(session.nextUndoLabel, '第一の部品を外す');
+    assert.equal(session.nextRedoLabel, '部品を取り外す');
+
+    assert.equal(session.undo(), true);
+    assert.equal(session.nextUndoLabel, null);
+    assert.equal(session.nextRedoLabel, '第一の部品を外す');
+
+    assert.equal(session.redo(), true);
+    assert.equal(session.nextUndoLabel, '第一の部品を外す');
+    assert.equal(session.nextRedoLabel, '部品を取り外す');
   });
 
   test('target validators can reject a base edit without losing the previous snapshot', () => {
