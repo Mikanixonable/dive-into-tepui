@@ -36,17 +36,33 @@ export type Attractor = {
   readonly radius: number; // 表面半径 [m]。形状(solar-system.ts の ShapeDef)を持つ天体では
   // その外接球の半径 — 衝突・高度判定を楕円体化しない当面の間、極方向で安全側に倒す選択
   readonly state: KinematicState; // ECI 位置・速度(同一時刻。地球は原点に静止)
+  readonly accel: Vec3; // この天体自身が受けている ECI 加速度 [m/s²]。state(t, r, v)と合わせて
+  // 天体の短時間の局所軌道を表し、RK4 の各段の時刻へ位置を外挿する(attractorPositionAt)ために持つ
   readonly degree2: Degree2Gravity | null; // null なら質点として扱う
   readonly isStar: boolean; // 太陽輻射圧の輻射源として加算するか
 };
+
+// attractor 自身の state.t と accel から、時刻 t での位置を弾道外挿する。天体は実質的に
+// 弾道運動しており、1ステップぶんの時間幅では3次以上の項が無視できるので2次で足りる。
+// この外挿の唯一の定義箇所 — 他所で同じ式を書かないこと。
+export function attractorPositionAt(a: Attractor, t: number): Vec3 {
+  const s = t - a.state.t;
+  if (s === 0) return a.state.r;
+  return v3(
+    a.state.r.x + a.state.v.x * s + 0.5 * a.accel.x * s * s,
+    a.state.r.y + a.state.v.y * s + 0.5 * a.accel.y * s * s,
+    a.state.r.z + a.state.v.z * s + 0.5 * a.accel.z * s * s,
+  );
+}
 
 // 天体 attractor が位置 r の運動方程式へ寄与する加速度 μ[(r_b − r)/|r_b − r|³ − r_b/|r_b|³]。
 // ECI は原点(地球)自身が他の天体に引かれて加速する非慣性系なので、直接引力(第1項)から
 // 「原点が attractor から受ける引力」(第2項)を差し引く。attractor が原点天体自身のときは
 // 第2項が距離ゼロで消え、直接引力そのものになる。距離ゼロの項は発散を避けて寄与ゼロとして扱う。
+// 天体位置は attractor が自分の state.t から t へ外挿したもの(attractorPositionAt)を使う。
 // 毎ステップ全エンティティぶん走る経路なので、中間の Vec3 を作らずスカラで畳む。
-export function attractorAccel(r: Vec3, attractor: Attractor): Vec3 {
-  const b = attractor.state.r;
+export function attractorAccel(r: Vec3, attractor: Attractor, t: number): Vec3 {
+  const b = attractorPositionAt(attractor, t);
   let ax = 0, ay = 0, az = 0;
 
   // 直接引力 μ(r_b − r)/|r_b − r|³。
@@ -85,7 +101,8 @@ export function strongestAttractor(
   for (let i = 0; i < attractors.length; i++) {
     const attractor = attractors[i]!;
     if (attractor.id === excludeId) continue;
-    const magSq = lenSq(attractorAccel(r, attractor));
+    // どの天体が最強かは窓自身の時刻で比べれば足りるので、各天体を自分の state.t で評価する。
+    const magSq = lenSq(attractorAccel(r, attractor, attractor.state.t));
     if (best === null || magSq > bestMagSq) { best = attractor; bestMagSq = magSq; }
   }
   return best!;
