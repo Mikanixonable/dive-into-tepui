@@ -13,7 +13,7 @@ import { Hud } from '../hud/hud';
 import { Vessel } from '../vessel/vessel';
 import type { GameEntity } from '../game-entity/game-entity';
 import { Viewpoint } from '../../physics/projection';
-import { ChaseCamera } from './chase-camera';
+import { ChaseCamera, ChaseCameraTarget } from './chase-camera';
 import { GunsightCamera } from './gunsight-camera';
 import { ChaseCameraSaveData } from '../save-data';
 
@@ -23,6 +23,11 @@ import { ChaseCameraSaveData } from '../save-data';
 function lerpViewpointFov(current: Viewpoint, target: Viewpoint, dt: number): Viewpoint {
   const k = 1 - Math.exp(-C.ZOOM_LERP_RATE * dt);
   return { ...target, fovDeg: current.fovDeg + (target.fovDeg - current.fovDeg) * k };
+}
+
+// player の状態/姿勢を ChaseCamera の狭いインターフェースへ写す。
+function chaseCameraTargetOf(player: GameEntity | null): ChaseCameraTarget | null {
+  return player ? { position: player.state.r, attitude: player.att.q } : null;
 }
 
 export class CombatCameraSystem {
@@ -70,13 +75,19 @@ export class CombatCameraSystem {
 
   // ズーム状態を入力から求め、現在のモード(通常/ズーム)に応じて ChaseCamera/GunsightCamera の
   // どちらかを駆動して目標 Viewpoint を求め、fovDeg だけをそこへ指数的に近づけて viewpoint とする。
-  update(mouse: MouseDelta, keyYaw: number, keyPitch: number, dt: number, player: GameEntity | null, input: Input): void {
-    if (input.takeKey(K.followAttitudeToggle)) this.chaseCamera.toggleFollowAttitude(player);
+  // chaseTarget を渡すと ChaseCamera は player の代わりにそちらを追う(組立セッション中など、
+  // 見たい対象が操作対象艦と一致しないとき) — その間は照準ズームも意味を持たないので無効にする。
+  update(
+    mouse: MouseDelta, keyYaw: number, keyPitch: number, dt: number, player: GameEntity | null,
+    input: Input, chaseTarget: ChaseCameraTarget | null = null,
+  ): void {
+    const resolvedTarget = chaseTarget ?? chaseCameraTargetOf(player);
+    if (input.takeKey(K.followAttitudeToggle)) this.chaseCamera.toggleFollowAttitude(resolvedTarget);
     this.zoomActive = input.down(K.gunsightZoom);
     // 操作対象艦がいなければ照準先が無いので、ズーム要求は無視して追跡視点のままにする。
-    const useGunsight = player instanceof Vessel && player.fire !== null && this.zoomActive;
+    const useGunsight = chaseTarget === null && player instanceof Vessel && player.fire !== null && this.zoomActive;
     if (useGunsight) this.gunsightCamera.update(player);
-    else this.chaseCamera.update(mouse, keyYaw, keyPitch, dt, player);
+    else this.chaseCamera.update(mouse, keyYaw, keyPitch, dt, resolvedTarget);
     const target = useGunsight ? this.gunsightCamera.viewpoint : this.chaseCamera.viewpoint;
     this.viewpoint = lerpViewpointFov(this.viewpoint, target, dt);
   }
