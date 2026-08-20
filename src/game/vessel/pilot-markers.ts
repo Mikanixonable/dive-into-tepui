@@ -46,9 +46,11 @@ export class PilotMarkers {
       if (isActive) {
         for (const key of COMBAT_KEYS) this.markerManager.hide(`${key}-${this.id}`);
       }
-      if (displayState && (!registry || isPositionInFocusedSystem(registry, focusId, displayState.r, attractors))
+      // getCombatTargets が操作対象を候補から除外する分を、この自機マーカーで補う —
+      // 非操作対象は combatMarkers 側の markerItem() が描くので、ここでは出さない。
+      if (isActive && displayState
+        && (!registry || isPositionInFocusedSystem(registry, focusId, displayState.r, attractors))
         && (!visibility || visibility.pickable)) {
-        const color = isActive ? 'var(--accent)' : undefined;
         const nearestPlanet = registry === undefined ? undefined : findNearestPlanet(displayState.r, registry, attractors);
         const nearPlanet = nearestPlanet !== undefined
           && nearestPlanet !== null && nearestPlanet.distance <= C.MAP_PLANET_SHIP_LABEL_END;
@@ -62,7 +64,7 @@ export class PilotMarkers {
           if (visibility?.label !== false && !planetOccluded) {
             this.markerManager.setPosition(
               nearbyLabelKey, 'mk-planet-nearby-label', '', nearestPlanet.attractor.state.r, project,
-              `${ENTITY_GLYPH.ship}${name}`, 1, color,
+              `${ENTITY_GLYPH.ship}${name}`, 1, 'var(--accent)',
             );
           } else if (visibility?.label !== false) {
             this.markerManager.fadeOut(nearbyLabelKey);
@@ -82,7 +84,7 @@ export class PilotMarkers {
             const symMarkup = overviewMode && !!this.owner;
             this.markerManager.setPosition(
               selfKey, 'mk-self', sym, displayState.r, project,
-              isActive && visibility?.label !== false ? name : '', fadedOpacity, color, rotationDeg,
+              visibility?.label !== false ? name : '', fadedOpacity, 'var(--accent)', rotationDeg,
               symMarkup,
             );
           } else if (fadedOpacity > 0 && shipOccluded) {
