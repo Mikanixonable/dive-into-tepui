@@ -741,9 +741,14 @@ export class Vessel extends GameEntity {
 
   // 収容した機体のメッシュを、指定スロットへ取り付けて表示する。
   public attachDockedVesselMesh(vessel: Vessel, slotIndex: number): void {
+    this.placeAtDockSlot(vessel.renderObject, slotIndex);
+  }
+
+  // 任意のメッシュをドック口へ据える。口の法線へ +Z を向け、基地の子にする。収容艦も、まだ
+  // 実機になっていない下書きも、置かれ方が食い違わないようにここを共有する。
+  public placeAtDockSlot(obj: THREE.Object3D, slotIndex: number): void {
     const port = this.slotPort(slotIndex);
     if (!port) return;
-    const obj = vessel.renderObject;
     obj.visible = true;
     obj.position.set(port.localPos.x, port.localPos.y, port.localPos.z);
     const dir = new THREE.Vector3(port.localNormal.x, port.localNormal.y, port.localNormal.z);

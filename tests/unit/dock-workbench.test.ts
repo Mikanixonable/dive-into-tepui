@@ -78,12 +78,12 @@ export function register(): void {
       targets: [{ id: 'base', kind: 'base', assembly }], inventory: [],
     }, () => ({ valid: true, errors: [] }), {
       targetValidator: (target) => target.kind === 'base'
-        ? { valid: false, errors: ['基地には専用の検証が必要です'] }
-        : { valid: true, errors: [] },
+        ? { blocking: ['基地には専用の検証が必要です'], issues: [] }
+        : { blocking: [], issues: [] },
     });
     const before = session.snapshot();
     const edit = removePlacement(assembly, assembly.placements[0]!.part.id, { validateBlueprint: false });
-    const validation = session.applyEditResult('base', edit);
+    const validation = session.applyAssemblyEdit('base', edit);
     assert.equal(validation.valid, false);
     assert.deepEqual(session.snapshot(), before);
     assert.equal(session.canUndo, false);
