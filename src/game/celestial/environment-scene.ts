@@ -10,6 +10,8 @@ import { add, len, scale, sub, v3, Vec3 } from '../../physics/vec3';
 import { isOccluded } from '../../physics/occlusion';
 import type { MarkerManager } from '../marker/marker-manager';
 import { OrbitLine } from '../orbit-line';
+import { HaloOrbitLine } from '../halo-orbit-line';
+import { CollinearPoint, collinearFrame, haloAmplitudeX } from '../../physics/halo';
 import { createStars, Stars, STAR_SHELL_RADIUS } from '../../render/stars';
 import { CelestialGrid, CelestialGridVisibility } from '../../render/celestial-grid';
 import { SpatialGrid } from '../../render/spatial-grid';
@@ -46,6 +48,7 @@ function buildGeoElements(registry: CelestialRegistry): OrbitalElements | null {
 // 同じ種別の天体はすべて同じ色で引く。
 const SATELLITE_REFERENCE_LINE_COLOR = 0xaab3c0;
 const PLANET_REFERENCE_LINE_COLOR = 0xffffff;
+const HALO_REFERENCE_LINE_COLOR = 0x8b93a0;
 
 // 恒星光の色。THREE.DirectionalLight と render/pipeline/sun-light.ts の SunLight の両方が
 // この同じ値を受け取る — 世界パスとライティングパスで別々の色にならないようにするため。
@@ -77,6 +80,15 @@ export class EnvironmentScene {
   // 地球が現在のレジストリに無ければ null(sync は非表示のまま何もしない)。
   readonly geoLine = new OrbitLine({ color: 0x8b93a0, opacity: 0.2, renderOrder: C.LINE_RENDER_ORDER.reference });
   private readonly geoElements: OrbitalElements | null;
+
+  // 地球月系・太陽地球系 L1, L2 の参照ハロー軌道線。
+  readonly haloLines: {
+    moonL1?: HaloOrbitLine;
+    moonL2?: HaloOrbitLine;
+    earthL1?: HaloOrbitLine;
+    earthL2?: HaloOrbitLine;
+  };
+
   // 公転天体1体につき1本、registry から自動生成する参照軌道線(衛星は親惑星中心、
   // 惑星は太陽中心)。マップモード専用で、天体暦の状態から作られる表示なのでここが所有する。
   private readonly referenceIds: readonly OrbitingId[];
@@ -98,6 +110,24 @@ export class EnvironmentScene {
     scene.add(this.geoLine.line);
     this.geoElements = buildGeoElements(registry);
     this.referenceIds = referenceLineIds(registry);
+
+    this.haloLines = {};
+    if ('moon' in registry && ephemeris.hasUsableCollinearPoints('moon', C.LAGRANGE_MIN_CLEARANCE_RATIO)) {
+      const line1 = new HaloOrbitLine({ color: HALO_REFERENCE_LINE_COLOR, opacity: 0.2, renderOrder: C.LINE_RENDER_ORDER.reference });
+      const line2 = new HaloOrbitLine({ color: HALO_REFERENCE_LINE_COLOR, opacity: 0.2, renderOrder: C.LINE_RENDER_ORDER.reference });
+      this.haloLines.moonL1 = line1;
+      this.haloLines.moonL2 = line2;
+      scene.add(line1.line);
+      scene.add(line2.line);
+    }
+    if ('earth' in registry && ephemeris.hasUsableCollinearPoints('earth', C.LAGRANGE_MIN_CLEARANCE_RATIO)) {
+      const line1 = new HaloOrbitLine({ color: HALO_REFERENCE_LINE_COLOR, opacity: 0.2, renderOrder: C.LINE_RENDER_ORDER.reference });
+      const line2 = new HaloOrbitLine({ color: HALO_REFERENCE_LINE_COLOR, opacity: 0.2, renderOrder: C.LINE_RENDER_ORDER.reference });
+      this.haloLines.earthL1 = line1;
+      this.haloLines.earthL2 = line2;
+      scene.add(line1.line);
+      scene.add(line2.line);
+    }
 
     // 参照線はマップで表示される天体だけが必要とする。全カタログぶんを起動時に
     // GPUへ確保すると、非表示設定でも頂点バッファとオブジェクトが残り続ける。
@@ -200,7 +230,8 @@ export class EnvironmentScene {
       displayTime, floatingOrigin, cameraSystem.overviewMode,
       focusTargetId(cameraSystem.mapCamera.focus), cameraSystem.bodyClassToggles,
       visibilityPolicy, nearbyIds, cameraSystem.activeCamera, cameraSystem.activeCameraPos);
-    this.syncGeoLabels(displayTime, cameraSystem.overviewMode, cameraSystem, markerManager, this.ephemeris.attractorsAt(displayTime));
+    this.syncGeoLabels(displayTime, cameraSystem.overviewMode, cameraSystem, markerManager, this.ephemeris.attractorsAt(displayTime), visibilityPolicy);
+    this.syncHaloLabels(displayTime, cameraSystem.overviewMode, cameraSystem, markerManager, this.ephemeris.attractorsAt(displayTime), visibilityPolicy);
     this.celestialGrid.sync(
       gridVisibility, cameraSystem.activeCamera,
       cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
@@ -238,6 +269,10 @@ export class EnvironmentScene {
   ): void {
     if (!overviewMode) {
       this.geoLine.sync(null, fo, camera);
+      this.haloLines.moonL1?.sync('moon', 'L1', 0, simTime, this.ephemeris, fo, camera);
+      this.haloLines.moonL2?.sync('moon', 'L2', 0, simTime, this.ephemeris, fo, camera);
+      this.haloLines.earthL1?.sync('earth', 'L1', 0, simTime, this.ephemeris, fo, camera);
+      this.haloLines.earthL2?.sync('earth', 'L2', 0, simTime, this.ephemeris, fo, camera);
       for (const [id] of this.referenceLines) this.removeReferenceLine(id);
       return;
     }
@@ -247,13 +282,57 @@ export class EnvironmentScene {
       focusId,
       nearbyIds,
     );
-    this.geoLine.sync(this.geoElements, fo, camera);
-    if ('earth' in this.ephemeris.registry) {
+    if ('earth' in this.ephemeris.registry && visibilityPolicy.body('earth').orbit) {
+      this.geoLine.sync(this.geoElements, fo, camera);
       const earthPos = this.ephemeris.positionOf('earth', simTime);
       const distToEarth = len(sub(earthPos, cameraPos));
       // 静止軌道リングは 240,000km で薄れ始め 720,000km で消える。
       const geoFade = 1.0 - Math.min(1, Math.max(0, (distToEarth - 2.4e8) / 4.8e8));
       this.geoLine.setOpacity(0.55 * geoFade);
+    } else {
+      this.geoLine.sync(null, fo, camera);
+    }
+
+    if (this.haloLines.moonL1 && this.haloLines.moonL2) {
+      const visL1 = visibilityPolicy.body('moon-l1');
+      const visL2 = visibilityPolicy.body('moon-l2');
+      const distToMoon = len(sub(this.ephemeris.positionOf('moon', simTime), cameraPos));
+      const opacity = this.referenceLineOpacityAt('moon', distToMoon);
+
+      if (visL1.orbit) {
+        this.haloLines.moonL1.sync('moon', 'L1', C.HALO_AZ_MOON_KM * 1e3, simTime, this.ephemeris, fo, camera);
+        this.haloLines.moonL1.setOpacity(opacity);
+      } else {
+        this.haloLines.moonL1.sync('moon', 'L1', 0, simTime, this.ephemeris, fo, camera);
+      }
+
+      if (visL2.orbit) {
+        this.haloLines.moonL2.sync('moon', 'L2', C.HALO_AZ_MOON_KM * 1e3, simTime, this.ephemeris, fo, camera);
+        this.haloLines.moonL2.setOpacity(opacity);
+      } else {
+        this.haloLines.moonL2.sync('moon', 'L2', 0, simTime, this.ephemeris, fo, camera);
+      }
+    }
+
+    if (this.haloLines.earthL1 && this.haloLines.earthL2) {
+      const visL1 = visibilityPolicy.body('earth-l1');
+      const visL2 = visibilityPolicy.body('earth-l2');
+      const distToEarth = len(sub(this.ephemeris.positionOf('earth', simTime), cameraPos));
+      const opacity = this.referenceLineOpacityAt('earth', distToEarth);
+
+      if (visL1.orbit) {
+        this.haloLines.earthL1.sync('earth', 'L1', C.HALO_AZ_EARTH_KM * 1e3, simTime, this.ephemeris, fo, camera);
+        this.haloLines.earthL1.setOpacity(opacity);
+      } else {
+        this.haloLines.earthL1.sync('earth', 'L1', 0, simTime, this.ephemeris, fo, camera);
+      }
+
+      if (visL2.orbit) {
+        this.haloLines.earthL2.sync('earth', 'L2', C.HALO_AZ_EARTH_KM * 1e3, simTime, this.ephemeris, fo, camera);
+        this.haloLines.earthL2.setOpacity(opacity);
+      } else {
+        this.haloLines.earthL2.sync('earth', 'L2', 0, simTime, this.ephemeris, fo, camera);
+      }
     }
     for (const id of this.referenceIds) {
       if (!visibilityPolicy.body(id).orbit) {
@@ -275,9 +354,11 @@ export class EnvironmentScene {
     cameraSystem: CameraSystem,
     markerManager: MarkerManager | null,
     attractors: readonly Attractor[],
+    visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     const keys = ['geolabel-0', 'geolabel-1', 'geolabel-2', 'geolabel-3'];
-    if (!markerManager || !overviewMode || !this.geoElements || !('earth' in this.ephemeris.registry)) {
+    const earthVis = visibilityPolicy && 'earth' in this.ephemeris.registry ? visibilityPolicy.body('earth') : null;
+    if (!markerManager || !overviewMode || !this.geoElements || !('earth' in this.ephemeris.registry) || !earthVis || !earthVis.orbit || !earthVis.label) {
       if (markerManager) {
         for (const key of keys) markerManager.hide(key);
       }
@@ -326,6 +407,96 @@ export class EnvironmentScene {
         p0.front,
         '',
         labelOpacity,
+        undefined,
+        undefined,
+        false,
+        true,
+        C.MARKER_PRIORITY.ORBITAL_NODE,
+      );
+    }
+  }
+
+  // ハロー軌道頂点近傍の HUD テキストラベルを描画する。
+  private syncHaloLabels(
+    displayTime: number,
+    overviewMode: boolean,
+    cameraSystem: CameraSystem,
+    markerManager: MarkerManager | null,
+    attractors: readonly Attractor[],
+    visibilityPolicy: MapVisibilityPolicy | null,
+  ): void {
+    const targets: Array<{
+      key: string;
+      secondary: OrbitingId;
+      point: CollinearPoint;
+      az: number;
+      label: string;
+    }> = [];
+
+    if ('moon' in this.ephemeris.registry && this.ephemeris.hasUsableCollinearPoints('moon', C.LAGRANGE_MIN_CLEARANCE_RATIO)) {
+      targets.push(
+        { key: 'halolabel-moon-l1', secondary: 'moon', point: 'L1', az: C.HALO_AZ_MOON_KM * 1e3, label: 'EM-L1 Halo' },
+        { key: 'halolabel-moon-l2', secondary: 'moon', point: 'L2', az: C.HALO_AZ_MOON_KM * 1e3, label: 'EM-L2 Halo' },
+      );
+    }
+    if ('earth' in this.ephemeris.registry && this.ephemeris.hasUsableCollinearPoints('earth', C.LAGRANGE_MIN_CLEARANCE_RATIO)) {
+      targets.push(
+        { key: 'halolabel-earth-l1', secondary: 'earth', point: 'L1', az: C.HALO_AZ_EARTH_KM * 1e3, label: 'SE-L1 Halo' },
+        { key: 'halolabel-earth-l2', secondary: 'earth', point: 'L2', az: C.HALO_AZ_EARTH_KM * 1e3, label: 'SE-L2 Halo' },
+      );
+    }
+
+    if (!markerManager || !overviewMode || !visibilityPolicy || targets.length === 0) {
+      if (markerManager) {
+        for (const t of targets) markerManager.hide(t.key);
+      }
+      return;
+    }
+
+    const cameraPos = cameraSystem.activeCameraPos;
+    const project = cameraSystem.activeCameraProjection;
+
+    for (const t of targets) {
+      const lagrangeId = `${t.secondary}-${t.point.toLowerCase()}` as AttractorId;
+      const vis = visibilityPolicy.body(lagrangeId);
+      if (!vis.orbit || !vis.label) {
+        markerManager.hide(t.key);
+        continue;
+      }
+
+      let frame;
+      let ax;
+      try {
+        frame = collinearFrame(t.secondary, t.point, displayTime, this.ephemeris);
+        ax = haloAmplitudeX(frame, t.point, t.az);
+      } catch {
+        markerManager.hide(t.key);
+        continue;
+      }
+
+      const distToSecondary = len(sub(this.ephemeris.positionOf(t.secondary, displayTime), cameraPos));
+      const opacity = this.referenceLineOpacityAt(t.secondary, distToSecondary) * 1.5;
+      if (opacity <= 0.02) {
+        markerManager.hide(t.key);
+        continue;
+      }
+
+      const apexPos = add(frame.origin, add(scale(frame.xHat, -ax), scale(frame.zHat, t.az)));
+      const p0 = project(apexPos);
+      if (!p0.front || isOccluded(cameraPos, apexPos, attractors)) {
+        markerManager.hide(t.key);
+        continue;
+      }
+
+      markerManager.set(
+        t.key,
+        'mk-geolabel',
+        t.label,
+        p0.x,
+        p0.y,
+        p0.front,
+        '',
+        Math.min(0.9, opacity),
         undefined,
         undefined,
         false,
@@ -392,6 +563,14 @@ export class EnvironmentScene {
     // 静止軌道参照リングと公転天体ぶんの参照軌道線。
     this.geoLine.line.removeFromParent();
     this.geoLine.dispose();
+    this.haloLines.moonL1?.line.removeFromParent();
+    this.haloLines.moonL1?.dispose();
+    this.haloLines.moonL2?.line.removeFromParent();
+    this.haloLines.moonL2?.dispose();
+    this.haloLines.earthL1?.line.removeFromParent();
+    this.haloLines.earthL1?.dispose();
+    this.haloLines.earthL2?.line.removeFromParent();
+    this.haloLines.earthL2?.dispose();
     for (const id of [...this.referenceLines.keys()]) this.removeReferenceLine(id);
     // 環境光・平行光。
     this.ambient.removeFromParent();

@@ -36,6 +36,7 @@ export type BodyClassToggles = {
   readonly lagrangeVisible: boolean;
   readonly lagrangeIcon: boolean;
   readonly lagrangeLabel: boolean;
+  readonly lagrangeOrbit: boolean;
   readonly playerVisible: boolean;
   readonly playerIcon: boolean; readonly playerLabel: boolean; readonly playerOrbit: boolean;
   readonly shipVisible: boolean;
@@ -63,7 +64,7 @@ export const DEFAULT_BODY_CLASS_TOGGLES: BodyClassToggles = {
   smallBodyVisible: true,
   smallBodyOrbit: false, smallBodyIcon: true, smallBodyLabel: true,
   lagrangeVisible: true,
-  lagrangeIcon: true, lagrangeLabel: true,
+  lagrangeIcon: true, lagrangeLabel: true, lagrangeOrbit: true,
   playerVisible: true,
   playerIcon: true, playerLabel: true, playerOrbit: true,
   shipVisible: true,
