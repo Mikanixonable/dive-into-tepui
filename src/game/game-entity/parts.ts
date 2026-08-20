@@ -4,12 +4,6 @@ import { Vec3 } from '../../physics/vec3';
 import type { PropellantId } from '../economy/propellant-compatibility';
 import type { ResourceId } from '../economy/resource';
 
-// 機体の外側に露出する外装要素。
-export type ExteriorPartType =
-  | 'weapon' | 'engine' | 'rcs_thruster' | 'solar_panel' | 'radiator'
-  | 'combat_shield' | 'heat_shield' | 'communication' | 'robot_arm'
-  | 'docking_port' | 'container_coupling';
-
 // 機体の内容積を占める内装要素。
 export type InteriorPartType =
   | 'oxidizer_tank' | 'reductant_tank' | 'pressurant_tank' | 'rcs_tank' | 'water_tank'
@@ -22,6 +16,22 @@ export type InteriorPartType =
 export type StructuralPartType = 'hull' | 'armor';
 
 export type PartType = StructuralPartType | ExteriorPartType | InteriorPartType;
+
+// 機体の外側に露出し、外装として取り付ける搭載要素の種別。これ以外は内容積に収める。
+// 種別の列挙をここ1箇所へ集め、union はそこから導く —— 種別を足す場所を1つにする。
+const EXTERIOR_TYPE_LIST = [
+  'weapon', 'engine', 'rcs_thruster', 'solar_panel', 'radiator',
+  'combat_shield', 'heat_shield', 'communication', 'robot_arm',
+  'docking_port', 'container_coupling',
+] as const;
+
+export type ExteriorPartType = typeof EXTERIOR_TYPE_LIST[number];
+
+const EXTERIOR_TYPES: ReadonlySet<PartType> = new Set<PartType>(EXTERIOR_TYPE_LIST);
+
+export function isExterior(part: { readonly type: PartType }): boolean {
+  return EXTERIOR_TYPES.has(part.type);
+}
 
 export interface Part {
   readonly id: string;

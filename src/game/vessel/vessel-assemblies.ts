@@ -7,7 +7,8 @@
 import * as C from '../const';
 import { Vec3, add, scale, v3 } from '../../physics/vec3';
 import type { CrossSection } from '../../physics/section-moments';
-import type { AnyPart, ExteriorPartType, PartType } from '../game-entity/parts';
+import type { AnyPart, PartType } from '../game-entity/parts';
+import { isExterior } from '../game-entity/parts';
 import type { PartPlacement, VesselAssembly } from './assembly';
 import type { EdgeKind, MountPoint, PortRef, TreeEdge, TreeNode, VesselTree } from './tree';
 import { portFrame } from './tree';
@@ -30,13 +31,6 @@ function tuneAssemblyActuators(assembly: VesselAssembly): void {
   const parts = assembly.placements.map((placement) => placement.part);
   tuneActuators(parts, derived.loadedMass, principalMoments(derived.inertia).z);
 }
-
-// 外装として機体の外側に取り付ける搭載要素の種別。これ以外は内容積に収める。
-const EXTERIOR_TYPES: ReadonlySet<PartType> = new Set<ExteriorPartType>([
-  'weapon', 'engine', 'rcs_thruster', 'solar_panel', 'radiator',
-  'combat_shield', 'heat_shield', 'communication', 'robot_arm',
-  'docking_port', 'container_coupling',
-]);
 
 // 断面を組み立てる小さな入口。既定の設計はいずれも単一の基本断面で足りる。
 function polygon(sides: 3 | 4 | 5 | 6 | 8, radius: number, phaseAngle = 0): CrossSection {
@@ -117,10 +111,6 @@ function place(
   mountOf: (part: AnyPart, index: number) => PartPlacement,
 ): readonly PartPlacement[] {
   return parts.map(mountOf);
-}
-
-function isExterior(part: AnyPart): boolean {
-  return EXTERIOR_TYPES.has(part.type);
 }
 
 // ---------------------------------------------------------------------------
