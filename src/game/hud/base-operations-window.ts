@@ -6,6 +6,7 @@
 // リセットに勝てるよう全セレクタを `#hud` で始める。
 import type { Vessel, DockedVesselEntry } from '../vessel/vessel';
 import type { AnyPart, Part, PropellantTankPart } from '../game-entity/parts';
+import { isPropellantTankPart } from '../game-entity/parts';
 import { propellantTankCapacity, TANK_MATERIALS } from '../economy/propellant-compatibility';
 import { Button, Meter, TabBar, ValueInput } from './widgets';
 import { buildPartFrom, producibleParts } from '../vessel/default-blueprints';
@@ -21,12 +22,6 @@ import { DraggableWindow } from './draggable-window';
 import { ObjectPicker, type ObjectPickerGroup } from './object-picker';
 import type { OverlayManager } from './overlay-manager';
 import { hasCorePart } from '../vessel/capabilities';
-
-// 推進剤タンク3種(oxidizer_tank/reductant_tank/rcs_tank)の判定を一箇所に集約する。
-// この3種は搭載場所が違うだけで、補給という操作に対しては同じものとして扱う。
-function isPropellantTankPart(part: Part): part is PropellantTankPart {
-  return part.type === 'oxidizer_tank' || part.type === 'reductant_tank' || part.type === 'rcs_tank';
-}
 
 const STYLE = `
 /* プロパティウィンドウより中身が広いので、この窓だけ横幅の上限を上げる。 */

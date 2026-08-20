@@ -5,7 +5,7 @@ import type {
   AnyPart, ArmorPart, BatteryPart, CockpitPart, EnginePart, FlywheelPart, FuelCellPart, Part, PartType,
   PropellantTankPart, RadiatorPart, RcsThrusterPart, RtgPart, SolarPanelPart, WeaponPart,
 } from '../game-entity/parts';
-import { extraWasteHeatOf, powerDrawOf } from '../game-entity/parts';
+import { extraWasteHeatOf, isPropellantTankPart, powerDrawOf } from '../game-entity/parts';
 import type { PropellantId } from '../economy/propellant-compatibility';
 import { propellantTankCapacity } from '../economy/propellant-compatibility';
 import { STANDARD_GRAVITY } from '../../physics/tsiolkovsky';
@@ -342,7 +342,7 @@ export class PartInventory {
     let total = 0;
     for (const p of this.parts) {
       if (p.hp <= 0) continue;
-      if (p.type !== 'oxidizer_tank' && p.type !== 'reductant_tank' && p.type !== 'rcs_tank') continue;
+      if (!isPropellantTankPart(p)) continue;
       if (p.propellant !== propellant) continue;
       total += p.volume;
     }
