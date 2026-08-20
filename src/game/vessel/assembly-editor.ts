@@ -510,7 +510,8 @@ function isValidEdgeKind(kind: EdgeKind): boolean {
   return Number.isFinite(kind.separationImpulse) && kind.separationImpulse >= 0;
 }
 
-function occupiedPorts(assembly: VesselAssembly, ignoredEdgeId?: string): ReadonlySet<string> {
+// エッジまたは外装部品が既に使っている接続口の鍵の集合。
+export function occupiedPorts(assembly: VesselAssembly, ignoredEdgeId?: string): ReadonlySet<string> {
   const occupied = new Set<string>();
   for (const edge of assembly.tree.edges) {
     if (edge.id === ignoredEdgeId) continue;

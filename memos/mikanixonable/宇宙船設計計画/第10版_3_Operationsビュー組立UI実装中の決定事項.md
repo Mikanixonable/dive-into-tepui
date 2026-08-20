@@ -45,4 +45,13 @@
 
 ## 実装中に判明した計画外の変更点
 
-(実装を進める中で追記する)
+- **フェーズA完了**(2026-08-20)。
+- `mount-candidates.ts` の `nearestMountCandidate` は、計画 §6.2 の下書きが引数に取っていた
+  `VesselTree` ではなく `VesselAssembly` を取る。ノードの空き軸ポートを判定するには
+  `assembly-editor.ts` の `occupiedPorts`(エッジだけでなく外装部品の配置も占有源に数える)が要り、
+  それには `assembly.placements` が要るため、木だけでは判定できない。
+- 上記に伴い、`assembly-editor.ts` のモジュール内関数だった `occupiedPorts` を `export` した
+  (占有判定の唯一の実装を再利用するため、`mount-candidates.ts` からも呼べるようにする必要があった)。
+- `hud/draggable-window.ts` の抽出により、`hud/property-window.ts` は `DraggableWindow` を
+  合成するだけの薄いクラスになった。今後 `hud/base-operations-window.ts`(フェーズC)も同じ
+  `DraggableWindow` を土台にする。
