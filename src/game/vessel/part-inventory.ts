@@ -194,22 +194,6 @@ export class PartInventory {
     return total;
   }
 
-  public get totalFuelConsumptionRate(): number {
-    let total = 0;
-    for (const p of this.engineRefs) if (p.hp > 0) total += p.fuelConsumptionRate;
-    return total;
-  }
-
-  // 並進 RCS の質量流量の合計 [kg/s]。RcsThrusterPart は推力と比推力しか持たないため、
-  // mdot = F / (Isp・g0) から導く。
-  public get totalRcsFuelConsumptionRate(): number {
-    let total = 0;
-    for (const p of this.rcsThrusterRefs) {
-      if (p.hp > 0 && p.specificImpulse > 0) total += p.thrust / (p.specificImpulse * STANDARD_GRAVITY);
-    }
-    return total;
-  }
-
   // 主機の質量流量 [kg/s] を、推進剤ごとに集計する。複数の主機が別々の推進剤を積んでいてもよい。
   public engineFuelConsumptionRates(): ReadonlyMap<PropellantId, number> {
     const rates = new Map<PropellantId, number>();
