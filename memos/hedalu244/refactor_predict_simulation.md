@@ -504,18 +504,19 @@ export function isAttractor(target: ContactTarget): target is Attractor {
 
 ## 5-3. 検証の穴
 
-### C-1. 絞り込みの正しさを守るテストが `npm run ci` を通らない(**推す**)
+### C-1. 絞り込みの正しさを守るテスト(**結果**)
 
-v3 第13章がリスク表の筆頭に置いたのは「絞り込みの乖離の項を安全側でなく取る →
-すり抜けが復活し、しかも**判定器のテストでは絶対に見えない**(判定器が呼ばれないので)」。
+`tests/physics/surface-candidates.test.ts` を置いた。3件とも `npm run ci` を通る。
 
-いまその条件を守っているのは `tests/perf/exp12-attractor-contact.ts`(負例 29,678 件 +
-正例 40 件で総当たりと突き合わせる)だけで、**`tests/perf/` は `npm run ci` に入っていない。**
+| 件 | 何を固定するか |
+|---|---|
+| 無作為な配置 | 3,200 件(到達 304 件 / 未到達 2,896 件)で、絞り込んだ窓と総当たりの窓で `reachedBody` の答えが一致する。半数は始点と終点がほぼ重なる往復にしてある — 弦の長さでは覆えない膨らみを持つ配置を必ず含めるため |
+| 弦から離れる曲線 | 弦は表面から 650m 離れたまま素通りするのに曲線は潜り込む配置で、その天体を落とさない |
+| 触れようのない天体 | 遠方の7体が1段目で落ち、`SurfaceCandidates.count` が 1 になる(全部通す実装では上2件が通ってしまうので、実際に落としていることも見る) |
 
-→ 提案: `SurfaceCandidates` が総当たりと同じ答えを返すことを、少数の配置で
-`tests/physics/` へ移す。`gravity-window-agreement.test.ts` が `src/game/simulation/` を
-`tests/physics` から叩く前例を作っているので置ける。`SurfaceCandidates.count` の唯一の
-読み手が exp12 であることも、そこで解消する。
+**変異検査で効くことを確かめてある**: `chordDeviationBound` を 0 に潰すと上2件が落ちる。
+
+`SurfaceCandidates.count` の読み手が exp12 だけだった件も、3件目が読むことで解消した。
 
 ### C-2. 天体接触の解決そのものに回帰テストが無い
 
