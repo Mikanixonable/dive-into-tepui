@@ -587,15 +587,15 @@ union に名前を付けた意味が出ていない。
 | いま | 変更後 |
 |---|---|
 | `contactsWith(other: GameEntity \| Attractor, simTime): boolean` | `contactsWith(other: GameEntity, simTime): boolean`(個体どうし専用)。天体側は問い合わせを**やめる** |
-| `collideWith(other: GameEntity \| Attractor, contact, stage): void` | `collideWith(other: GameEntity, contact, stage): void` と `collideWithBody(body: Attractor, contact, stage): void` の2つ |
-| `collideAtRadiator(side, other: GameEntity \| Attractor, …)` | 同じく2つへ割る(2-4 の `Player.collideWith` 重複と同じ割り方になる) |
+| `collideWith(other: GameEntity \| Attractor, contact, stage): void` | `collideWithEntity(other: GameEntity, contact, stage): void` と `collideWithCelestialBody(body: CelestialBody, contact, stage): void` の2つ。**無標の `collideWith` は残さない** — 片方だけ無標だと、どちらの相手を指すのかが名前から決まらない |
+| `collideAtRadiator(side, other: GameEntity \| Attractor, …)` | 同じく `collideAtRadiatorWithEntity` / `collideAtRadiatorWithCelestialBody` の2つへ割る(2-4 の `Player.collideWith` 重複と同じ割り方になる) |
 | `lossReason(other)` の `isAttractor` 分岐 | 2つの呼び出し側がそれぞれの文言を直接渡す |
 | `contactDamageSpeed(other: ContactTarget, contact)` | 天体側は `closingSpeed(contact)`(`ATTRACTOR_DAMAGE_WEIGHT` は 1 なので重み自体が消える)、個体側は `closingSpeed(contact) * other.contactDamageWeight` |
 | `contact-target.ts`(`ContactTarget` / `isAttractor`) | 削除 |
 
 `Enemy` と `Player` は「ダメージを当てる → HP が残れば音とパフ → 尽きたら喪失を記録」という
 尾を2つの口で共有することになるので、**その尾を private メソッドへ括り出す**(喪失の文言と
-撃破の記録種別だけを引数に取る)。括り出したあとの `collideWith` / `collideWithBody` は
+撃破の記録種別だけを引数に取る)。括り出したあとの `collideWithEntity` / `collideWithCelestialBody` は
 それぞれ4〜5行になる。
 
 ### 天体側で `contactsWith` を呼ばなくなることの意味
@@ -605,7 +605,7 @@ union に名前を付けた意味が出ていない。
 「生存している物体はすべて参加し、物体どうしの接触判定を持つかどうかにも依らない」と
 既に書いてあり、**個体の側が天体を拒める余地はそもそも仕様に無い**。仕様の変更は不要。
 
-## 6-2. 目的(その2)— `Attractor` という名前をやめる
+## 6-2. 目的(その2)— `Attractor` という名前をやめ、`CelestialBody` にする
 
 `Asteroid` が消えたことで、`Attractor` は**解析天体のある瞬間のスナップショット**と1対1に
 対応するようになった。ところが:
@@ -613,23 +613,39 @@ union に名前を付けた意味が出ていない。
 - **名前が「重力源」を主張しているのに、`mu = 0` を容認している。** 既定レジストリ 101 体の
   うち **36 体が `mu = 0`** で、`attractorsAt` はそれを全部返す。表面接触・遮蔽・中心天体の
   解決・積分刻みの決定は、どれも重力とは無関係にこの窓を読む。
-- **`CODING-RULE 2.2`「`body` / `ship` / `attractor`」が既にこう決めている** —
-  「`body` は天体の意味に残す」「**重力源としての値は `attractor`**」。
+- **`CODING-RULE 2.2` は「重力源としての値は `attractor`」と決めている。**
   つまり現状の `Attractor` 型と `attractorsAt` は、リポジトリ自身の命名規則に違反している。
 
 **改名する。ただし全部ではない** — 重力の文脈で `attractor` を名乗っているものは正しいので
 残す。
 
+### 改名先は `CelestialBody` — 無標の `body` にはしない
+
+`CODING-RULE 2.2` は元は「`body` は天体の意味に残す」と書いていた。これは `Asteroid` 廃止前に
+「無標の `body` を機体座標系に取られると苦しい」という文脈で決めた暫定であって、積極的な推奨では
+なかった。**いまの語彙では、無標の `body` は天体・機体・剛体のどれにも読める。** 今後 `rigidBody`
+が要るようになれば衝突もする。よって**単体の `body` を接辞にせず、`CelestialBody` を原則とする**
+— `CelestialBodyId` / `celestialBodiesAt` / `celestialBodyAt`。狭いスコープのローカル変数だけは
+無標の `body` でよい。この決定は `CODING-RULE 2.2` 側へ反映済み。
+
 | 改名する | しない(重力の文脈で正しい) |
 |---|---|
 | 型 `Attractor` → `CelestialBody` | `attractorAccel` |
-| `AttractorId` → `BodyId`(`OrbitingId` はそのまま) | `strongestAttractor` |
-| `Ephemeris.attractorsAt` → `bodiesAt` | `gravityAttractorsAt` |
-| `Ephemeris.attractorAt` → `bodyAt` | `classifyAttractors` / `attractorsNearInto` / `ClassifiedAttractors` |
-| `attractorStateAt` / `attractorPositionAt` → `bodyStateAt` / `bodyPositionAt` | `GRAVITY_ALWAYS_COUNT` / `GRAVITY_NEGLIGIBLE_ACCEL` |
-| `frameOfAttractor` → `frameOfBody` | `FutureAttractorProvider` / `FutureAttractors`(弧が引く天体一式なので `FutureBodies` へ改名する方が一貫するが、判断は実施時) |
-| `atmosphereAttractorsAt` → `atmosphereBodiesAt` | |
-| creative の `ReferenceAttractor` → `ReferenceBody` | |
+| `AttractorId` → `CelestialBodyId`(`OrbitingId` はそのまま) | `strongestAttractor` |
+| `Ephemeris.attractorsAt` → `celestialBodiesAt` | `gravityAttractorsAt` |
+| `Ephemeris.attractorAt` → `celestialBodyAt` | `classifyAttractors` / `attractorsNearInto` / `ClassifiedAttractors` |
+| `attractorStateAt` / `attractorPositionAt` → `celestialBodyStateAt` / `celestialBodyPositionAt` | `GRAVITY_ALWAYS_COUNT` / `GRAVITY_NEGLIGIBLE_ACCEL` |
+| `frameOfAttractor` → `frameOfCelestialBody` | |
+| `atmosphereAttractorsAt` → `atmosphereCelestialBodiesAt` | |
+| creative の `ReferenceAttractor` → `ReferenceCelestialBody` | |
+| `FutureAttractorProvider` / `FutureAttractors` → `FutureCelestialBodyProvider` / `FutureCelestialBodies` | |
+| `FutureAttractorProvider.bodyAt` → `celestialBodyAt` | |
+
+**既にある無標の `body` のうち、この章で直すのは `FutureAttractorProvider.bodyAt` だけ** —
+`Ephemeris.celestialBodyAt` へそのまま委譲する同じ呼び出しなので、名前が割れると「類義語の混雑」
+そのものになる。`ArcBodies` / `ArcBodyWindow` / `FutureBodyCandidate` / `bodyDef` /
+`BodyClass` / `body-visibility.ts` も無標の `body` を接辞にしているが、`Attractor` の改名とは
+別の面なので**この章では触らない**(別途片付ける)。
 
 **セーブデータの形式は変わらない** — 直列化されるキーは `centerBodyId` と `phaseOffsets` で、
 `AttractorId` は型としてしか現れない。
@@ -659,12 +675,12 @@ union に名前を付けた意味が出ていない。
 |---|---|
 | `src/game/game-entity/contact-target.ts` | 削除 |
 | `src/game/game-entity/contact-damage.ts` | 天体用と個体用へ割る。`ATTRACTOR_DAMAGE_WEIGHT` は消える |
-| `src/game/game-entity/game-entity.ts` | `contactsWith` の引数を `GameEntity` へ。`collideWith` を割り、既定の `collideWithBody` が `alive = false` |
-| `src/game/game-entity/bullet.ts` | `contactsWith` の `other instanceof GameEntity` 分岐が要らなくなる。`collideWithBody` も `alive = false` |
-| `src/game/game-entity/debris-piece.ts` / `enemy.ts` | `collideWith` / `collideWithBody` へ。`Enemy` は撃破記録の種別が口ごとに固定される(`isAttractor` の分岐が消える) |
-| `src/game/player/player.ts` | `collideWith` / `collideWithBody` / `collideAtRadiator` / `collideAtRadiatorWithBody` の4つ。共通の尾を private へ。`lossReason` 関数は消え、文言が口ごとの直書きになる |
-| `src/game/player/radiator.ts` / `belt-physics.ts` | `contactsWith` の引数型。`RadiatorFold` は `collideWithBody` も owner へ委ねる |
-| `src/game/simulation/surface-contact-physics.ts` | `contactsWith` の呼び出しを削除、`collideWith` → `collideWithBody` |
+| `src/game/game-entity/game-entity.ts` | `contactsWith` の引数を `GameEntity` へ。`collideWith` を `collideWithEntity` / `collideWithCelestialBody` へ割り、既定の `collideWithCelestialBody` が `alive = false` |
+| `src/game/game-entity/bullet.ts` | `contactsWith` の `other instanceof GameEntity` 分岐が要らなくなる。`collideWithCelestialBody` も `alive = false` |
+| `src/game/game-entity/debris-piece.ts` / `enemy.ts` | `collideWithEntity` / `collideWithCelestialBody` へ。`Enemy` は撃破記録の種別が口ごとに固定される(`isAttractor` の分岐が消える) |
+| `src/game/player/player.ts` | `collideWithEntity` / `collideWithCelestialBody` / `collideAtRadiatorWithEntity` / `collideAtRadiatorWithCelestialBody` の4つ。共通の尾を private へ。`lossReason` 関数は消え、文言が口ごとの直書きになる |
+| `src/game/player/radiator.ts` / `belt-physics.ts` | `contactsWith` の引数型。`RadiatorFold` は `collideWithCelestialBody` も owner へ委ねる |
+| `src/game/simulation/surface-contact-physics.ts` | `contactsWith` の呼び出しを削除、`collideWith` → `collideWithCelestialBody` |
 | `src/game/simulation/entity-contact-physics.ts` | 変更なし(型が狭まるだけ) |
 
 **6-2(改名)**: `Attractor` の綴りは `src/` `tests/` `tools/` に **797 箇所 / 119 ファイル**。
@@ -678,19 +694,20 @@ union に名前を付けた意味が出ていない。
 4. 型 `Attractor` の綴りが 0 件で、`CelestialBody` になっている。`attractor` を名乗って
    残るのは重力の計算(`attractorAccel` / `strongestAttractor` / `gravityAttractorsAt` /
    `classifyAttractors` / `attractorsNearInto`)だけである。
-5. `DEVELOP/CODING-RULE.md` 2.2 の「`body` / `ship` / `attractor`」節が、改名後の実態と
-   一致している(規則の側は既に正しいので、変えるのは**コードだけ**。規則を弱めない)。
-6. `npm run typecheck` と `npm run test:physics` が通る。
-7. セーブの読み込みが壊れていない(既存スロットのロード)。
+5. 改名で新しく作った識別子に、無標の `body` を接辞に持つものが1つも無い。
+6. `DEVELOP/CODING-RULE.md` 2.2 の「`celestialBody` / `ship` / `attractor`」節が、改名後の
+   実態と一致している(規則の側は先に直してあるので、変えるのは**コードだけ**。規則を弱めない)。
+7. `npm run typecheck` と `npm run test:physics` が通る。
+8. セーブの読み込みが壊れていない(既存スロットのロード)。
 
 ## 6-6. 手順
 
 | # | ステップ | 完了条件 |
 |---|---|---|
 | 1 | `contactDamageSpeed` を天体用と個体用へ割る | `test:physics` 通過 |
-| 2 | `GameEntity` / `Bullet` / `DebrisPiece` / `Enemy` の `collideWith` を割る | 同上 |
-| 3 | `Player` の尾を private へ括り出し、`collideWith` / `collideAtRadiator` を各2つへ割る | 同上 |
-| 4 | `SurfaceContactPhysics.resolveOne` を `collideWithBody` へ繋ぎ替え、`contactsWith` の呼び出しを削除 | 同上。天体接触の挙動が変わっていない(exp12 の到達件数) |
+| 2 | `GameEntity` / `Bullet` / `DebrisPiece` / `Enemy` の `collideWith` を `collideWithEntity` / `collideWithCelestialBody` へ割る | 同上 |
+| 3 | `Player` の尾を private へ括り出し、`collideWith` / `collideAtRadiator` を各2つへ割る(`…WithEntity` / `…WithCelestialBody`) | 同上 |
+| 4 | `SurfaceContactPhysics.resolveOne` を `collideWithCelestialBody` へ繋ぎ替え、`contactsWith` の呼び出しを削除 | 同上。天体接触の挙動が変わっていない(exp12 の到達件数) |
 | 5 | `contactsWith` の引数型を `GameEntity` へ狭め、`contact-target.ts` を削除 | 綴りが 0 件 |
 | 6 | 型と関数の改名(6-2 の表)を機械的に適用 | `typecheck` 通過。`git diff --stat` が識別子だけの差分 |
 | 7 | セーブスロットのロードを1回通す | 例外なくロードできる |
@@ -715,8 +732,9 @@ union に名前を付けた意味が出ていない。
 | 天体側の `contactsWith` を消したことで、将来「この個体は天体をすり抜ける」を書けなくなる | 仕様上そういう個体は無い(`SPEC/ORBIT.md`「生存している物体はすべて参加し」)が、**必要になったら口を戻すことになる** | 仕様が変わったとき。いま余地として残すと、恒真の問い合わせが毎 substep 走り続ける |
 | `Player` の尾を括り出すときに、放熱板側だけにある破壊エフェクトを落とす | 放熱板が壊れても演出が出ない。**静かに消える** | 括り出す尾に破壊エフェクトを含めず、`collideAtRadiator` 側に残す。2-4 の重複が「11 行 × 2」であることの内訳がこれ |
 | `Enemy` の撃破記録の種別(`'collision'` / `'killed'`)を口ごとに固定するとき、逆に付ける | ステージのスコアと撃破ログが入れ替わる。**型では捕まらない** | 天体 → `'collision'`、個体 → `'killed'`。`isAttractor(other) ? 'collision' : 'killed'` の対応をそのまま移す |
-| 改名で `attractor` を名乗るべきものまで `body` にする | 重力の文脈が `body` に薄まり、`CODING-RULE 2.2` を今度は逆向きに破る | 6-2 の右列(改名しないもの)を、置換の前に grep で確定させてから走らせる |
-| `AttractorId` → `BodyId` がセーブの型注釈に触れる | 型名だけが変わり形式は同じなので実害は無いが、`SAVE_VERSION` を上げたくなる誘惑が出る | **上げない。** 直列化されるキーも値も変わらない |
+| 改名で `attractor` を名乗るべきものまで `CelestialBody` にする | 重力の文脈が薄まり、`CODING-RULE 2.2` を今度は逆向きに破る | 6-2 の右列(改名しないもの)を、置換の前に grep で確定させてから走らせる |
+| 置換で `Attractor` → `Body` の短い綴りを作ってしまう | 無標の `body` が増え、`CODING-RULE 2.2` の新しい規則を破ったまま残る | 置換後に `BodyId` / `bodiesAt` / `bodyAt` / `bodyStateAt` / `bodyPositionAt` / `frameOfBody` を grep して、新設が 0 件であることを確認する |
+| `AttractorId` → `CelestialBodyId` がセーブの型注釈に触れる | 型名だけが変わり形式は同じなので実害は無いが、`SAVE_VERSION` を上げたくなる誘惑が出る | **上げない。** 直列化されるキーも値も変わらない |
 
 ---
 
