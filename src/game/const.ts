@@ -582,16 +582,11 @@ export const HP_REGEN_RATE = 1; // HP自動回復速度 [HP/s]
 export const PLAYER_BULLET_DAMAGE = 1.25; // 自機が被弾(自弾・プラズマ弾とも)した際のダメージ [HP]
 export const ENEMY_BULLET_DAMAGE = 1; // 既定の機関砲が 1 発で与えるダメージ [HP]。武器部品の damage の初期値
 
-// --- 剛体接触による装甲ダメージ(Ship.collideWith が Δv = impulse/mass に適用) ---
-// 艦同士(Player 1000kg ⇔ Enemy 10000kg、反発係数 e=0.4)の接触で、Player 側が受ける Δv が
-// 旧来の接触速度(法線相対速度 |vn|)しきい値と同じ場面で立つよう逆算した値。
-// Δv_self = impulse/mass_self = (1+e)·(mOther/(mSelf+mOther))·|vn| なので、
-// 換算係数 (1+e)·mEnemy/(mPlayer+mEnemy) = 1.4·10000/11000 ≒ 1.2727 を旧しきい値へ掛けている。
-// 質量が10倍の Enemy は同じ接触で受ける Δv が約1/10に留まるため、ラミングでの被害は Enemy 側が
-// 相対的に軽くなる — これは Δv 化が意図する「重いほど衝撃を受けにくい」という物理そのものであり、
-// 意図した挙動変化として扱う。
-export const COLLISION_DAMAGE_MIN_DV = 700 / 11; // ≈ 63.6 m/s
-export const COLLISION_DAMAGE_FULL_DV = 7000 / 11; // ≈ 636.4 m/s
+// --- 剛体接触による装甲ダメージ ---
+// 接触の瞬間の接近速度(法線方向の相対速度)のしきい値 [m/s]。これ未満なら無傷、これ以上で
+// パーツの最大 HP 分、間は線形。
+export const COLLISION_DAMAGE_MIN_CLOSING_SPEED = 50;
+export const COLLISION_DAMAGE_FULL_CLOSING_SPEED = 500;
 export const PLASMA_BULLET_SPEED = MUZZLE_SPEED * 2 / 3; // MUZZLE_SPEED の 2/3
 export const PLASMA_LIFETIME = 300; // プラズマ弾の寿命 [sim s]
 export const ENEMY_FIRE_INTERVAL = 1.0; // 敵の射撃間隔 [s]

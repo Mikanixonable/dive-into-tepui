@@ -6,6 +6,8 @@ import { Attractor } from '../../physics/attractor';
 import { burnUpBody } from '../../physics/atmosphere';
 import { GameEntity } from './game-entity';
 import type { Contact } from '../simulation/contact';
+import { isAttractor } from '../simulation/contact-target';
+import { contactDamageSpeed } from './contact-damage';
 import { Attitude } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { R_EARTH_EQ } from '../../physics/solar-system';
@@ -206,8 +208,8 @@ export class Enemy extends Ship {
     this.destroyEffect();
   }
 
-  // 弾は武装のダメージを、それ以外は接触の速度変化 Δv = impulse/mass を根拠にする
-  // (前者はゲームバランス、後者は物理量で、統合すると前者の根拠が消える)。
+  // 弾は武装のダメージを、それ以外は接触の接近速度と相手の種別を根拠にする
+  // (どちらもゲームバランスの量で、物理の質量からは導かない)。
   collideWith(other: GameEntity | Attractor, contact: Contact, activeStage: Stage): void {
     if (!this.alive) return;
     const simTime = contact.selfState.t;
@@ -217,8 +219,8 @@ export class Enemy extends Ship {
       return;
     }
 
-    // 弾以外(天体・他艦・デブリ等)との接触は Δv ベースの物理ダメージとして扱う。
-    if (!this.applyCollisionDamage(contact.impulse / this.mass)) return;
+    // 弾以外(天体・他艦・デブリ等)との接触は、接近速度と相手の種別からダメージを出す。
+    if (!this.applyCollisionDamage(contactDamageSpeed(other, contact))) return;
     if (this.hp > 0) {
       this._worldSfx.clank();
       this._fx.spawnGasPuff(this.state);
@@ -227,7 +229,7 @@ export class Enemy extends Ship {
 
     this.alive = false;
     // 天体の固体表面への接触は自然損耗、他の実体との接触は交戦の結果。
-    activeStage.recordEnemyDeath(this, simTime, other instanceof GameEntity ? 'killed' : 'collision');
+    activeStage.recordEnemyDeath(this, simTime, isAttractor(other) ? 'collision' : 'killed');
     this.destroyEffect();
   }
 
