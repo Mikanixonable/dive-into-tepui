@@ -4,7 +4,8 @@
 // 機構を共有しない。
 import * as C from '../const';
 import { Attractor, attractorStateAt } from '../../physics/attractor';
-import { FixedContactResponse, resolveFixedSphereCollision } from '../../physics/collision-response';
+import { distributeFixedContact } from '../../physics/collision-response';
+import { firstSurfaceContact } from '../../physics/surface-contact';
 import { kinematicState } from '../../physics/kinematic-state';
 import { add, sameVec, scale } from '../../physics/vec3';
 import { GameEntity } from '../game-entity/game-entity';
@@ -18,19 +19,6 @@ function isFiniteAttractor(a: Attractor): boolean {
   return Number.isFinite(r.x) && Number.isFinite(r.y) && Number.isFinite(r.z)
     && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z)
     && Number.isFinite(a.radius);
-}
-
-// 天体の状態は、この個体の区間の両端の時刻へ外挿してから渡す — 天体一式はサブステップの
-// 中点で1回組まれるので、そのままでは区間の両端と別の瞬間の値になる。
-function computeResponse(e: GameEntity, body: Attractor): FixedContactResponse | null {
-  const sweptValid = e.prevState.t < e.state.t;
-  return resolveFixedSphereCollision(
-    { state: e.state, radius: e.radius },
-    { state: attractorStateAt(body, e.state.t), radius: body.radius },
-    C.CONTACT_RESTITUTION,
-    sweptValid ? e.prevState : undefined,
-    sweptValid ? attractorStateAt(body, e.prevState.t) : undefined,
-  );
 }
 
 export class SurfaceContactPhysics {
@@ -57,32 +45,39 @@ export class SurfaceContactPhysics {
 
   // 個体1つが区間内で最も早く触れる天体を1体だけ解き、反発を当ててから collideWith を呼ぶ。
   private resolveOne(e: GameEntity, simTime: number, activeStage: Stage): void {
-    let earliest: FixedContactResponse | null = null;
-    let hitBody: Attractor | null = null;
-    for (const body of this.candidates.into(e, this.nearbyScratch)) {
-      if (!e.contactsWith(body, simTime)) continue;
-      const response = computeResponse(e, body);
-      if (response === null) continue;
-      if (earliest === null || response.toi < earliest.toi) {
-        earliest = response;
-        hitBody = body;
-      }
-    }
-    if (earliest === null || hitBody === null) return;
+    const candidates = this.acceptedCandidates(e, simTime);
+    const hit = firstSurfaceContact(e.prevState, e.state, e.radius, candidates);
+    if (hit === null) return;
+
+    // 天体の状態は個体の区間終端の時刻へ外挿してから渡す — 天体一式はサブステップの中点で
+    // 1回組まれるので、そのままでは区間の終端と別の瞬間の値になる。
+    const response = distributeFixedContact(
+      { state: e.state, radius: e.radius },
+      { state: attractorStateAt(hit.body, e.state.t), radius: hit.body.radius },
+      C.CONTACT_RESTITUTION, hit.geometry);
 
     const before = e.state;
     // 位置も速度も動いていなければ書き戻さない — 書き戻しは予測弧を捨てる。
-    if (!sameVec(before.r, earliest.r) || !sameVec(before.v, earliest.v)) {
-      e.state = kinematicState(before.t, earliest.r, earliest.v);
+    if (!sameVec(before.r, response.r) || !sameVec(before.v, response.v)) {
+      e.state = kinematicState(before.t, response.r, response.v);
     }
-    if (!earliest.bounced) return;
-    e.collideWith(hitBody, {
-      t: contactTime(e, earliest.toi),
-      point: add(earliest.r, scale(earliest.normal, e.radius)),
-      normal: earliest.normal,
+    if (!response.bounced) return;
+    e.collideWith(hit.body, {
+      t: contactTime(e, response.toi),
+      point: add(response.r, scale(response.normal, e.radius)),
+      normal: response.normal,
       selfState: before,
-      otherState: hitBody.state,
+      otherState: hit.body.state,
     }, activeStage);
+  }
+
+  // 絞り込みを通り、かつ個体自身が接触を受け入れる天体だけ。
+  private acceptedCandidates(e: GameEntity, simTime: number): readonly Attractor[] {
+    const near = this.candidates.into(e, this.nearbyScratch);
+    let w = 0;
+    for (const body of near) if (e.contactsWith(body, simTime)) near[w++] = body;
+    near.length = w;
+    return near;
   }
 
   // 天体との接触に参加するのは、独立した実体すべて。艦に取り付いた接触代理(ベルトの節点・
