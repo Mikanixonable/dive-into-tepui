@@ -131,17 +131,12 @@ export function resolveSphereCollision(
   return geometry === null ? null : distributeSphereContact(a, b, restitution, geometry);
 }
 
-// 不動な相手との接触を解決する。相手は状態を書き換えられないので、動く側が補正を全部
-// 受け持つ — どちらの側の質量も要らない。触れていなければ null。
-export function resolveFixedSphereCollision(
-  moving: Sphere,
-  fixed: Sphere,
-  restitution: number,
-  prevMoving?: KinematicState,
-  prevFixed?: KinematicState,
-): FixedContactResponse | null {
-  const geometry = sphereContactGeometry(moving, fixed, prevMoving, prevFixed);
-  if (geometry === null) return null;
+// 幾何が定まった接触を、不動な相手に対して動く側だけへ当てる。相手は状態を書き換えられない
+// ので、動く側が補正を全部受け持つ — どちらの側の質量も要らない。既に幾何が手元にあるなら、
+// 掃引を掛け直さずにこれを呼ぶ。
+export function distributeFixedContact(
+  moving: Sphere, fixed: Sphere, restitution: number, geometry: ContactGeometry,
+): FixedContactResponse {
   const { normal, toi } = geometry;
 
   const r = geometry.separation !== undefined
@@ -155,4 +150,16 @@ export function resolveFixedSphereCollision(
     v: addScaled(moving.state.v, normal, (1 + restitution) * vn),
     normal, bounced: true, toi,
   };
+}
+
+// 不動な相手との接触を解決する。触れていなければ null。
+export function resolveFixedSphereCollision(
+  moving: Sphere,
+  fixed: Sphere,
+  restitution: number,
+  prevMoving?: KinematicState,
+  prevFixed?: KinematicState,
+): FixedContactResponse | null {
+  const geometry = sphereContactGeometry(moving, fixed, prevMoving, prevFixed);
+  return geometry === null ? null : distributeFixedContact(moving, fixed, restitution, geometry);
 }

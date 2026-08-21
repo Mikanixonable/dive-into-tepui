@@ -449,23 +449,22 @@ reachedBody は tests/physics/attractor.test.ts(9件)・tests/physics/surface-ca
 「個体の半径 + 天体の半径」になる。弧の打ち切りと実体の反発は、その1本が返した
 「どの天体に、区間内のどこで」を別々に解釈するだけになる。
 
-## 5-2. 先に SPEC を更新する
+## 5-2. 前提 — SPEC は更新済み(`cc168a43`)
 
-`DEVELOP/SPEC/ORBIT.md`「天体表面への到達判定」の
+`DEVELOP/SPEC/ORBIT.md`「天体表面への到達判定」は、いまこうなっている:
 
 > **触れ合ったとみなす距離は、天体の表面半径に判定される物体自身の半径を足したものである。**
-> ただし予測軌道の線は大きさを持たない点として扱うので、天体の表面半径だけで判定する。
+> 予測軌道の判定も同じで、その軌道を辿る物体の半径を足す。
 
-から、2文目(「ただし〜」)を削除する。1文目だけが残る。
-
-これが**着手の最初のステップ**で、これ単体で1 commit にする。
+計画では2文目を削除するだけのつもりだったが、削除だけだと「予測軌道の線」が
+「判定される物体」に当たるかどうかが読み取れない(線は物体ではない)。例外を消すのではなく、
+予測軌道にも同じ規則が及ぶと肯定形で書く形にした。
 
 ## 5-3. 変更が必要な箇所
 
 | ファイル | 何をするか |
 |---|---|
-| `DEVELOP/SPEC/ORBIT.md` | 上記1文の削除 |
-| `src/physics/collision-response.ts` | `resolveFixedSphereCollision` を、`sphereContactGeometry` と新設 `distributeFixedContact(moving, fixed, restitution, geometry)` へ割る。`resolveSphereCollision` = `sphereContactGeometry` + `distributeSphereContact` と同じ形になる。割った後の `resolveFixedSphereCollision` は src/ から呼ばれなくなるので削除する |
+| `src/physics/collision-response.ts` | `distributeFixedContact` は切り出し済み(`resolveSphereCollision` = `sphereContactGeometry` + `distributeSphereContact` と同じ形になった)。残るのは、src/ から呼ばれなくなった `resolveFixedSphereCollision` の削除 |
 | `src/physics/attractor.ts` | `reachedBody` を削除し、`firstSurfaceContact(prev, next, radius, bodies)` を新設。窓を回して `sphereContactGeometry` を掛け、最小 `toi` の `{ body, geometry }` を返す。`prev.t < next.t` が成り立たない区間で掃引を諦める判断もここへ入れる(いまは呼び出し側2箇所に散っている)。`BodyImpact` はここから消す |
 | `src/game/simulation/predicted-arc.ts` | `BodyImpact` の定義をここへ移す(弧が打ち切られた到達点は弧の語彙)。`checkSurfaceReach` は `firstSurfaceContact` を呼び、`geometry.toi` で `hermiteInterpolate` して `_impact` を組む。コンストラクタに `radius` を足す |
 | `src/game/simulation/surface-contact-physics.ts` | `computeResponse` と `resolveOne` のループを、`firstSurfaceContact` + `distributeFixedContact` の2呼び出しへ置き換える |
@@ -502,8 +501,6 @@ reachedBody は tests/physics/attractor.test.ts(9件)・tests/physics/surface-ca
 
 | # | ステップ | 完了条件 |
 |---|---|---|
-| 1 | `SPEC/ORBIT.md` から「ただし予測軌道の線は〜」を削除 | 本文に半径和の例外が無い |
-| 2 | `collision-response.ts` に `distributeFixedContact` を切り出し、`resolveFixedSphereCollision` をその合成として書き直す(まだ削除しない) | `test:physics` 通過。既存の呼び出しは無変更 |
 | 3 | `attractor.ts` に `firstSurfaceContact` を足す(`reachedBody` はまだ残す) | 新関数の単体テストが通る |
 | 4 | `SurfaceContactPhysics.resolveOne` を `firstSurfaceContact` + `distributeFixedContact` へ | `test:physics` 通過。掃引の呼び出し回数が 5,661 回/フレームのまま(exp12) |
 | 5 | `PredictedArc` に `radius` を足し、`checkSurfaceReach` を `firstSurfaceContact` へ。`BodyImpact` を `predicted-arc.ts` へ移す。呼び出し側(`game-entity.ts` / `plan-path.ts`)とテストを追随 | `typecheck` `test:physics` 通過 |
