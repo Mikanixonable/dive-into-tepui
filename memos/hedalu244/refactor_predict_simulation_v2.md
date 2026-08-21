@@ -465,7 +465,8 @@ reachedBody は tests/physics/attractor.test.ts(9件)・tests/physics/surface-ca
 | ファイル | 何をするか |
 |---|---|
 | `src/physics/collision-response.ts` | `distributeFixedContact` は切り出し済み(`resolveSphereCollision` = `sphereContactGeometry` + `distributeSphereContact` と同じ形になった)。残るのは、src/ から呼ばれなくなった `resolveFixedSphereCollision` の削除 |
-| `src/physics/attractor.ts` | `reachedBody` を削除し、`firstSurfaceContact(prev, next, radius, bodies)` を新設。窓を回して `sphereContactGeometry` を掛け、最小 `toi` の `{ body, geometry }` を返す。`prev.t < next.t` が成り立たない区間で掃引を諦める判断もここへ入れる(いまは呼び出し側2箇所に散っている)。`BodyImpact` はここから消す |
+| `src/physics/surface-contact.ts` | 新設済み。`firstSurfaceContact(prev, next, radius, bodies)` が窓を回して `sphereContactGeometry` を掛け、最小 `toi` の `{ body, geometry }` を返す。区間を持たない入力で掃引を諦める判断もここに入った(呼び出し側2箇所から集約) |
+| `src/physics/attractor.ts` | `reachedBody` と `BodyImpact` を削除する。**`attractor.ts` は重力のモジュールなので、そもそも接触に答えてはならない** — `CODING-RULE 1.3`「接触判定は重力の関心事ではない/重力のモジュールは何が何を引くかにだけ答え、何が何に触れたかには一切答えない」。`reachedBody` がここに居たこと自体が規約違反で、統合先を同じ場所に作ると違反を引き継ぐ |
 | `src/game/simulation/predicted-arc.ts` | `BodyImpact` の定義をここへ移す(弧が打ち切られた到達点は弧の語彙)。`checkSurfaceReach` は `firstSurfaceContact` を呼び、`geometry.toi` で `hermiteInterpolate` して `_impact` を組む。コンストラクタに `radius` を足す |
 | `src/game/simulation/surface-contact-physics.ts` | `computeResponse` と `resolveOne` のループを、`firstSurfaceContact` + `distributeFixedContact` の2呼び出しへ置き換える |
 | `src/game/game-entity/game-entity.ts` | `ensurePredictedArc` が `this.radius` を弧へ渡す |
@@ -485,6 +486,8 @@ reachedBody は tests/physics/attractor.test.ts(9件)・tests/physics/surface-ca
 
 1. 「窓を回して最小 TOI の1体を選ぶ」ループが `src/` に**1本だけ**である
    (`firstSurfaceContact` の中だけ)。
+1b. **`attractor.ts` が接触に答えていない** — 掃引にも接触の幾何にも依存せず、
+   `sphere-contact` / `collision-response` を import していない(`CODING-RULE 1.3`)。
 2. `reachedBody` の綴りが `src/` `tests/` `tools/` に **0 件**。
 3. 弧と実体の半径和が同じ式である — `firstSurfaceContact` の引数 `radius` に
    `GameEntity.radius` と `PredictedArc` の `radius` が入り、両者に別々の分岐が無い。
@@ -501,7 +504,6 @@ reachedBody は tests/physics/attractor.test.ts(9件)・tests/physics/surface-ca
 
 | # | ステップ | 完了条件 |
 |---|---|---|
-| 3 | `attractor.ts` に `firstSurfaceContact` を足す(`reachedBody` はまだ残す) | 新関数の単体テストが通る |
 | 4 | `SurfaceContactPhysics.resolveOne` を `firstSurfaceContact` + `distributeFixedContact` へ | `test:physics` 通過。掃引の呼び出し回数が 5,661 回/フレームのまま(exp12) |
 | 5 | `PredictedArc` に `radius` を足し、`checkSurfaceReach` を `firstSurfaceContact` へ。`BodyImpact` を `predicted-arc.ts` へ移す。呼び出し側(`game-entity.ts` / `plan-path.ts`)とテストを追随 | `typecheck` `test:physics` 通過 |
 | 6 | `reachedBody` と `resolveFixedSphereCollision` を削除し、残った参照(テスト・exp12)を移す | 綴りが 0 件。`test:physics` 通過 |
