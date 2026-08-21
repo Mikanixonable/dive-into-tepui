@@ -61,10 +61,12 @@ export function run(): void {
 
   console.log('\n## stepDynamics 単体(64天体固定・LEO初期状態)\n');
   const fixedAttractors = ephemeris.gravityAttractorsAt(0);
+  const fixedOccluders = ephemeris.attractorsAt(0);
   const fixedAtmosphere = nearestAtmosphereBody(s0.r, ephemeris.atmosphereAttractorsAt(0));
   let sAcc = s0;
   const msStep = bench('stepDynamics(64 attractors, fixed)', 20000, () => {
-    sAcc = stepDynamics(sAcc, 1, fixedAttractors, fixedAtmosphere, SHIP_BCINV, 0, null);
+    sAcc = stepDynamics(
+      sAcc, 1, fixedAttractors, fixedOccluders, fixedAtmosphere, SHIP_BCINV, 0, null);
   });
   void sAcc;
 
@@ -87,7 +89,8 @@ export function run(): void {
     const c2 = classifyAttractors(g2);
     const near2 = attractorsNearInto(s0.r, c2, nearScratch);
     stepDynamics(
-      s0, 20, near2, nearestAtmosphereBody(s0.r, ephemeris.atmosphereAttractorsAt(t + 10)),
+      s0, 20, near2, ephemeris.attractorsAt(t + 10),
+      nearestAtmosphereBody(s0.r, ephemeris.atmosphereAttractorsAt(t + 10)),
       SHIP_BCINV, 0, null,
     );
   });

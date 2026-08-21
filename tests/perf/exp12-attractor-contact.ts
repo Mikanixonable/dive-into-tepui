@@ -137,10 +137,12 @@ function integrateFrame(ephemeris: Ephemeris, initial: readonly Body[], windows:
   for (let k = 0; k < SUBSTEPS; k++) {
     const tMid = initial[0]!.state.t + (k + 0.5) * MAX_STEP;
     const classified = classifyAttractors(ephemeris.gravityAttractorsAt(tMid));
+    const occluders = ephemeris.attractorsAt(tMid);
     const air = ephemeris.atmosphereAttractorsAt(tMid);
     const t0 = performance.now();
     const stepped = alive.map((b) => stepDynamics(
-      b.state, MAX_STEP, attractorsNearInto(b.state.r, classified, scratch), nearestAtmosphereBody(b.state.r, air),
+      b.state, MAX_STEP, attractorsNearInto(b.state.r, classified, scratch), occluders,
+      nearestAtmosphereBody(b.state.r, air),
       C.SMALL_DEBRIS_BCINV, C.SMALL_DEBRIS_SRP_COEFF, null));
     stepMs += performance.now() - t0;
     steps += alive.length;
@@ -293,9 +295,10 @@ export function run(): void {
   // 重力窓をそのまま渡す。
   const debris = initial.slice(1);
   const sources = ephemeris.gravityAttractorsAt(t0 + SIM_DT);
+  const occluders = ephemeris.attractorsAt(t0 + SIM_DT);
   const air = ephemeris.atmosphereAttractorsAt(t0 + SIM_DT);
   const lodStep = (b: Body): KinematicState => stepDynamics(
-    b.state, SIM_DT, sources, nearestAtmosphereBody(b.state.r, air),
+    b.state, SIM_DT, sources, occluders, nearestAtmosphereBody(b.state.r, air),
     C.SMALL_DEBRIS_BCINV, C.SMALL_DEBRIS_SRP_COEFF, null);
   const lodMs = fastest(() => {
     const t = performance.now();
