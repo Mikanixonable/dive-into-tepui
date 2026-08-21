@@ -1,15 +1,13 @@
 // 実験10: 掃引接触判定(physics/sphere-contact)の解法別コスト。
 // 弦・二次・三次を、棄却経路(箱で落ちる相手)と求根経路(表面を跨ぐ相手)に分けて測る。
 // 配置は二体問題の RK4 から作り、実シミュレーション側の刻みガードは通さない。
-import { SweptMode, sweptSphereContact } from '../../src/physics/sphere-contact';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { R_EARTH_EQ } from '../../src/physics/solar-system';
 import { add, v3 } from '../../src/physics/vec3';
 import {
-  EARTH, Sweep, againstBody, circular, companion, freeFall, still, sweepOf,
+  EARTH, SOLVERS, Solver, Sweep, againstBody, circular, companion, freeFall, solve, still, sweepOf,
 } from './sphere-contact-sweeps';
 
-const MODES: readonly SweptMode[] = ['linear', 'quadratic', 'cubic'];
 const STEP_DT = 20;
 
 function sweeps(): readonly Sweep[] {
@@ -30,12 +28,11 @@ function sweeps(): readonly Sweep[] {
 }
 
 // 同じ区間を n 回解いて1回あたりの ns を返す。半径和を毎回わずかに動かして呼び出しを畳ませない。
-function bench(sweep: Sweep, mode: SweptMode, n: number): number {
+function bench(sweep: Sweep, solver: Solver, n: number): number {
   let sink = 0;
   const t0 = performance.now();
   for (let i = 0; i < n; i++) {
-    const contact = sweptSphereContact(
-      sweep.aStart, sweep.aEnd, sweep.bStart, sweep.bEnd, sweep.radiusSum * (1 + i * 1e-13), mode);
+    const contact = solve(sweep, solver, sweep.radiusSum * (1 + i * 1e-13));
     sink += contact === null ? 0 : contact.crossing === null ? 1 : contact.crossing.toi;
   }
   const ms = performance.now() - t0;
@@ -48,8 +45,8 @@ function reportAnswers(list: readonly Sweep[]): void {
   console.log('配置 | 弦 | 二次 | 三次');
   console.log('--- | --- | --- | ---');
   for (const s of list) {
-    const cells = MODES.map((mode) => {
-      const c = sweptSphereContact(s.aStart, s.aEnd, s.bStart, s.bEnd, s.radiusSum, mode);
+    const cells = SOLVERS.map((solver) => {
+      const c = solve(s, solver, s.radiusSum);
       if (c === null) return 'null';
       if (c.crossing === null) return c.startsInside ? '内側のまま' : '跨ぎなし';
       return `toi=${c.crossing.toi.toFixed(6)}`;
@@ -70,8 +67,8 @@ export function run(): void {
   console.log('--- | --- | --- | --- | --- | --- | ---');
   const n = 2e6;
   for (const s of list) {
-    for (const mode of MODES) bench(s, mode, 1e5); // ウォームアップ
-    const [lin, quad, cub] = MODES.map((mode) => bench(s, mode, n));
+    for (const solver of SOLVERS) bench(s, solver, 1e5); // ウォームアップ
+    const [lin, quad, cub] = SOLVERS.map((solver) => bench(s, solver, n));
     console.log(`${s.label} | ${lin!.toFixed(1)} | ${quad!.toFixed(1)} | ${cub!.toFixed(1)}`
       + ` | ${(quad! / lin!).toFixed(2)}× | ${(cub! / lin!).toFixed(2)}× | ${(cub! / quad!).toFixed(2)}×`);
   }
