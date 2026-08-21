@@ -13,7 +13,8 @@ export interface Contact {
   readonly otherState: KinematicState; // 接触直前(反応前)の相手
 }
 
-// 接触の瞬間に両者が近づいていた速さ [m/s]。離反していれば 0。
+// 接触の瞬間に両者が近づいていた速さ [m/s]。離反していれば 0。normal は self → other 向きな
+// ので、近づいている状態とは相対速度の法線成分が正であることを指す。
 export function closingSpeed(contact: Contact): number {
-  return Math.max(0, -dot(sub(contact.selfState.v, contact.otherState.v), contact.normal));
+  return Math.max(0, dot(sub(contact.selfState.v, contact.otherState.v), contact.normal));
 }

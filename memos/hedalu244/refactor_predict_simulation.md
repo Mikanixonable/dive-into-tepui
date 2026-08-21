@@ -538,21 +538,30 @@ export function isAttractor(target: ContactTarget): target is Attractor {
 コンパイルする実行形態**を用意するか、`collideWith` の契約から `Stage` と `GameEntity` を
 外すかのどちらかが要る。どちらもこの節の範囲を超える。
 
-**見つけた仕様違反 — 剛体接触のダメージが常に 0 になる。**
+**見つけた仕様違反 — 剛体接触のダメージが常に 0 になっていた(修正済み)。**
 `closingSpeed`(`game-entity/contact.ts`)は
-`max(0, -dot(selfState.v - otherState.v, normal))` を返す。`normal` は self → other 向きで、
+`max(0, -dot(selfState.v - otherState.v, normal))` を返していた。`normal` は self → other 向きで、
 接近している状態とは `(v_self - v_other)·n > 0` のことなので、**接近しているときに 0 を返し、
-離反しているときに正を返す**(自身のコメント「離反していれば 0」と逆)。
+離反しているときに正を返していた**(自身のコメント「離反していれば 0」と逆)。
 `collideWith` は反発が起きたときにしか呼ばれない = 必ず接近している瞬間なので、
-`contactDamageSpeed` は常に 0、`Ship.applyCollisionDamage` は
-`COLLISION_DAMAGE_MIN_CLOSING_SPEED = 50` を割って必ず `false` を返す。
+`contactDamageSpeed` は常に 0 で、`Ship.applyCollisionDamage` は
+`COLLISION_DAMAGE_MIN_CLOSING_SPEED = 50` を割って必ず `false` を返していた。
+`SPEC/COMBAT.md`「剛体接触によるダメージ」に真正面から反する状態で、`contactDamageWeight`・
+`ATTRACTOR_DAMAGE_WEIGHT`・`COLLISION_DAMAGE_*` と Player / Enemy の接触ダメージ経路が
+まるごと死んでいた。**符号を正して、いずれも生きている。**
 
-- 実測: 静止した球へ 10 m/s で正面衝突させ、`resolveSphereCollision` が `bounced = true` を
-  返した状態で、両当事者の視点の `closingSpeed` がともに 0。
-- `SPEC/COMBAT.md`「剛体接触によるダメージ」に真正面から反する。**つまり `contactDamageWeight`・
-  `ATTRACTOR_DAMAGE_WEIGHT`・`COLLISION_DAMAGE_*` と、Player / Enemy の接触ダメージ経路は
-  まるごと死んでいる。** 第2章が「達成済み」と判定した目標 13 も、実際には成立していない。
-- 直し方は符号1つだが、**ゲームの手触りが変わる変更**なので、この節では直していない。
+**この節が置けなかったテストのうち、法線の向きの取り決めだけは置けた。**
+`game-entity/contact.ts` は `kinematic-state` と `vec3` しか import しないので、`GameEntity` の
+推移閉包に触れずに `tests/physics/` から叩ける。`tests/physics/contact.test.ts` に4件:
+
+- `closingSpeed` が接触法線方向の相対速度であること・離反していれば 0 であること
+- `resolveSphereCollision` が `bounced` を立てた反発から解決器と同じ形で記述を組むと、
+  両当事者の見る接近速度が正で一致すること(物体どうし)
+- `resolveFixedSphereCollision` でも同じこと(天体表面)
+
+後半2件が要点で、**法線の向きの取り決めは記述を組む側(`simulation/`)と法線を決める側
+(`physics/collision-response.ts`)に跨がっており、片方だけを読んでも符号は確かめられない。**
+符号を元へ戻すと4件とも落ちることを確かめてある。
 
 ### C-3. 実行時確認(**結果: 1回通した。2項目は実施、3項目は駆動できず**)
 
