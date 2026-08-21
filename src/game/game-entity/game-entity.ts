@@ -19,7 +19,7 @@ import type { FutureAttractorProvider } from '../simulation/arc-bodies';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
 import type { Contact } from '../simulation/contact';
-import { isAttractor } from '../simulation/contact-target';
+import { isAttractor } from './contact-target';
 import { EntityIdAllocator } from './entity-id';
 import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';
 import type { EntityMarker } from '../marker/entity-marker';

@@ -397,13 +397,6 @@ sphere-contact.ts  sweptSphereContact(aStart, aEnd, bStart, bEnd, radiusSum)
 `collideAtRadiator` の署名は `GameEntity | Attractor` を直書きしている(12 箇所)。
 **union に名前を付けた意味が出ていない。** 置換だけで済む。
 
-### A-3. `contact-target.ts` の置き場所
-
-`src/game/simulation/` にあるが、`simulation/` の中に読み手が 0 件。読み手は
-`game-entity/`(3)と `player/`(1)。接触の**相手の種別**は個体側の語彙なので、
-`game-entity/` へ移すのが素直に見える。`Contact` 型自体も `simulation/contact.ts` から
-`game-entity/` 側が import しているので、そちらと合わせて考える論点。
-
 ### A-4. `contact.ts` が 426 行で、独立した2つの機構を抱えている(**推す**)
 
 v3 4-4 が明らかにしたとおり、**天体接触と個体どうしの接触は共有するものが無い** —
