@@ -92,7 +92,7 @@ export class Simulator {
       // 浮動小数点の丸めでゼロ刻みになったイベントは現在時刻で消費して前進を保証する。
       if (subDt <= 1e-9) {
         activeStage.applySimulationEvents(this.simTime);
-        const surfaceBodies = this.surfaceBodies(resolveCollision, this.ephemeris.gravityAttractorsAt(this.simTime));
+        const surfaceBodies = this.surfaceBodies();
         this.entities.cleanup(0, this.simTime, activeStage, player?.state.r ?? v3(), surfaceBodies);
         continue;
       }
@@ -111,7 +111,7 @@ export class Simulator {
       this.stepAttitudes(subDt, passiveWarpLod);
       this.sections.exit(SECTION.attitude);
       nanWatchdog.checkPlayer('simulator.advance(姿勢積分)', player, this.simTime, dt, subDt);
-      const surfaceBodies = this.surfaceBodies(resolveCollision, sources);
+      const surfaceBodies = this.surfaceBodies();
       for (const p of this.entities.players) {
         p.stepEnvironment(subDt, this.ephemeris, this.simTime, surfaceBodies);
       }
@@ -146,7 +146,7 @@ export class Simulator {
       // まとめ積分の区間もフレーム全体を張る1つの区間なので、天体との接触をそこにも掛ける。
       this.sections.enter(SECTION.contact);
       this.contactPhysics.resolveSurfaceContacts(
-        this.simTime, this.entities.all(), this.surfaceBodies(resolveCollision, sources), activeStage);
+        this.simTime, this.entities.all(), this.surfaceBodies(), activeStage);
       this.sections.exit(SECTION.contact);
     }
 
@@ -220,11 +220,10 @@ export class Simulator {
     return next;
   }
 
-  // このサブステップで表面を持つ相手として扱う天体。剛体接触を解決するワープ帯では接触解決の
-  // ために組む終点の全天体窓をそのまま使い、解決しないワープ帯では消費者が表面到達判定だけ
-  // なので、積分のために組んだ中点の重力窓を使い回す — 後者は重力を持たない表示天体を落とす。
-  private surfaceBodies(resolveCollision: boolean, gravityBodies: readonly Attractor[]): readonly Attractor[] {
-    return resolveCollision ? this.ephemeris.attractorsAt(this.simTime) : gravityBodies;
+  // このサブステップで表面を持つ相手として扱う天体。表面を持つかは重力を及ぼすかとは
+  // 無関係なので、登録天体の全数を返す。
+  private surfaceBodies(): readonly Attractor[] {
+    return this.ephemeris.attractorsAt(this.simTime);
   }
 
   // 全エンティティを、渡された重力源 sources に対して dt だけ積分する。sources と
