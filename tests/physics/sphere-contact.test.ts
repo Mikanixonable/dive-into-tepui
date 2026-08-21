@@ -1,36 +1,39 @@
 import * as assert from 'node:assert/strict';
-import { SweptMode, SweptSphereContact, sweptSphereContact } from '../../src/physics/sphere-contact';
+import { SweptSphereContact, sweptSphereContact } from '../../src/physics/sphere-contact';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { Vec3, scale, sub, v3 } from '../../src/physics/vec3';
 import { test } from './harness';
 
-// 区間 [0, 1] を等速で渡る2球の掃引。位置だけを与え、速度は変位から取る(等速なので三次
-// モードでも同じ線分になる)。
+// 曲線ソルバーは細分と二分で跨ぎ時刻を詰めるので、閉形式のような厳密値にはならない。実測で 1e-8 級。
+const TOI_TOLERANCE = 1e-7;
+
+// 区間 [0, 1] を等速で渡る2球の掃引。位置だけを与え、速度は変位から取る — 等速なので
+// 曲線は弦に一致し、線分で解いたときと同じ答えになる。
 function swept(
-  a0: Vec3, a1: Vec3, b0: Vec3, b1: Vec3, radiusSum: number, mode: SweptMode = 'linear',
+  a0: Vec3, a1: Vec3, b0: Vec3, b1: Vec3, radiusSum: number,
 ): SweptSphereContact | null {
   const av = sub(a1, a0), bv = sub(b1, b0);
   return sweptSphereContact(
     kinematicState(0, a0, av), kinematicState(1, a1, av),
     kinematicState(0, b0, bv), kinematicState(1, b1, bv),
-    radiusSum, mode);
+    radiusSum);
 }
 
-// 相手球が区間を等速で渡るとみなした三次掃引。a 側は端点の速度をそのまま接線に取るので、
+// 相手球が区間を等速で渡るとみなした掃引。a 側は端点の速度をそのまま接線に取るので、
 // 弦とは違う曲線になる。
-function sweptCubic(
+function sweptCurved(
   prev: KinematicState, next: KinematicState, b0: Vec3, b1: Vec3, radiusSum: number,
 ): SweptSphereContact | null {
   const bv = scale(sub(b1, b0), 1 / (next.t - prev.t));
   return sweptSphereContact(
-    prev, next, kinematicState(prev.t, b0, bv), kinematicState(next.t, b1, bv), radiusSum, 'cubic');
+    prev, next, kinematicState(prev.t, b0, bv), kinematicState(next.t, b1, bv), radiusSum);
 }
 
 export function register(): void {
   test('swept sphere: catches a complete pass-through in one frame', () => {
     const hit = swept(v3(), v3(), v3(-10, 0, 0), v3(10, 0, 0), 2)?.crossing;
     assert.ok(hit);
-    assert.ok(Math.abs(hit.toi - 0.4) < 1e-12);
+    assert.ok(Math.abs(hit.toi - 0.4) < TOI_TOLERANCE);
     assert.deepEqual(hit.normal, v3(-1, 0, 0));
   });
 
@@ -38,7 +41,7 @@ export function register(): void {
     assert.equal(swept(v3(), v3(), v3(-10, 0, 0), v3(-3, 0, 0), 2)?.crossing, null);
     const hit = swept(v3(), v3(), v3(-3, 0, 0), v3(4, 0, 0), 2)?.crossing;
     assert.ok(hit);
-    assert.ok(Math.abs(hit.toi - 1 / 7) < 1e-12);
+    assert.ok(Math.abs(hit.toi - 1 / 7) < TOI_TOLERANCE);
   });
 
   test('swept sphere: 表面に触れない近傍通過は跨ぎなし', () => {
@@ -51,32 +54,28 @@ export function register(): void {
   // 始点で既に重なっている区間では、跨ぎは内から外へ向かう。呼び出し側はその向きを
   // startsInside から読む。
   test('swept sphere: 始点が内側なら抜け出る瞬間を返す', () => {
-    for (const mode of ['linear', 'cubic'] as const) {
-      const out = swept(v3(), v3(), v3(0.5, 0, 0), v3(5, 0, 0), 2, mode);
-      assert.ok(out, mode);
-      assert.equal(out.startsInside, true, mode);
-      assert.ok(out.crossing, mode);
-      assert.ok(Math.abs(out.crossing!.toi - 1 / 3) < 1e-6, `${mode}: 脱出 TOI ${out.crossing!.toi}`);
-      // 跨ぎの瞬間の相対距離は半径和に一致する。
-      const distance = 0.5 + 4.5 * out.crossing!.toi;
-      assert.ok(Math.abs(distance - 2) < 1e-5, `${mode}: 跨ぎ位置の距離 ${distance}`);
-      assert.deepEqual(out.crossing!.normal, v3(1, 0, 0), mode);
-    }
+    const out = swept(v3(), v3(), v3(0.5, 0, 0), v3(5, 0, 0), 2);
+    assert.ok(out);
+    assert.equal(out.startsInside, true);
+    assert.ok(out.crossing);
+    assert.ok(Math.abs(out.crossing!.toi - 1 / 3) < 1e-6, `脱出 TOI ${out.crossing!.toi}`);
+    // 跨ぎの瞬間の相対距離は半径和に一致する。
+    const distance = 0.5 + 4.5 * out.crossing!.toi;
+    assert.ok(Math.abs(distance - 2) < 1e-5, `跨ぎ位置の距離 ${distance}`);
+    assert.deepEqual(out.crossing!.normal, v3(1, 0, 0));
   });
 
   test('swept sphere: 両端とも内側なら跨ぎなしで内側から始まったと返す', () => {
-    for (const mode of ['linear', 'cubic'] as const) {
-      const stay = swept(v3(), v3(), v3(0.5, 0, 0), v3(1, 0, 0), 2, mode);
-      assert.ok(stay, mode);
-      assert.equal(stay.startsInside, true, mode);
-      assert.equal(stay.crossing, null, mode);
-    }
+    const stay = swept(v3(), v3(), v3(0.5, 0, 0), v3(1, 0, 0), 2);
+    assert.ok(stay);
+    assert.equal(stay.startsInside, true);
+    assert.equal(stay.crossing, null);
   });
 
   test('Hermite swept sphere: detects a moving-body pass when both endpoints are outside', () => {
     const prev = kinematicState(0, v3(-10, 0, 0), v3(20, 0, 0));
     const next = kinematicState(1, v3(10, 0, 0), v3(20, 0, 0));
-    const toi = sweptCubic(prev, next, v3(0, -10, 0), v3(0, 10, 0), 2)?.crossing?.toi;
+    const toi = sweptCurved(prev, next, v3(0, -10, 0), v3(0, 10, 0), 2)?.crossing?.toi;
     assert.ok(toi !== undefined);
     const expected = 0.5 - Math.sqrt(2) / 20;
     assert.ok(Math.abs(toi - expected) < 1e-6, `unexpected moving-body TOI: ${toi}`);
@@ -86,7 +85,7 @@ export function register(): void {
   test('Hermite swept sphere: 始点で重なっている区間は曲線の上で脱出を解く', () => {
     const prev = kinematicState(0, v3(1, 0, 0), v3(1, 0, 0));
     const next = kinematicState(1, v3(3, 0, 0), v3(1, 0, 0));
-    const contact = sweptCubic(prev, next, v3(), v3(), 2);
+    const contact = sweptCurved(prev, next, v3(), v3(), 2);
     assert.ok(contact);
     assert.equal(contact.startsInside, true);
     assert.ok(contact.crossing);
@@ -99,14 +98,14 @@ export function register(): void {
     const prev = kinematicState(0, v3(-1000, 900, 0), v3(3000, -5400, 0));
     const next = kinematicState(1, v3(1000, 900, 0), v3(3000, 5400, 0));
     assert.equal(swept(v3(), v3(), v3(-1000, 900, 0), v3(1000, 900, 0), 700)?.crossing, null);
-    const toi = sweptCubic(prev, next, v3(), v3(), 700)?.crossing?.toi;
+    const toi = sweptCurved(prev, next, v3(), v3(), 700)?.crossing?.toi;
     assert.ok(toi !== undefined && toi > 0 && toi < 1, `unexpected bulge TOI: ${toi}`);
   });
 
   test('Hermite swept sphere: 制御点の箱ごと球から離れた天体は跨ぎなし', () => {
     const prev = kinematicState(0, v3(-10, 0, 0), v3(20, 0, 0));
     const next = kinematicState(1, v3(10, 0, 0), v3(20, 0, 0));
-    assert.equal(sweptCubic(prev, next, v3(1e9, 0, 0), v3(1e9, 0, 0), 1000)?.crossing, null);
+    assert.equal(sweptCurved(prev, next, v3(1e9, 0, 0), v3(1e9, 0, 0), 1000)?.crossing, null);
   });
 
   // 非有限な入力(始点・終点の位置・半径和)はどれも null へ落ちることを固定する —
