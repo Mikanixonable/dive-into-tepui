@@ -4,7 +4,7 @@ import { KinematicState } from '../../physics/kinematic-state';
 import { OrbitalElements } from '../../physics/elements';
 import { Attitude } from '../../physics/attitude';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
-import { Attractor, BodyImpact, orbitalElementsOf, localOrbitPeriod, reachedBody, strongestAttractor } from '../../physics/attractor';
+import { Attractor, BodyImpact, orbitalElementsOf, localOrbitPeriod, strongestAttractor } from '../../physics/attractor';
 import { burnUpBody } from '../../physics/atmosphere';
 import { ApsisTrack } from '../../physics/trajectory-features';
 import { Vec3, v3 } from '../../physics/vec3';
@@ -342,8 +342,7 @@ export class GameEntity {
   // 時刻の重力源一覧(表面到達判定に使う)。
   checkLoss(_dt: number, _simTime: number, _activeStage: Stage, _playerPos: Vec3, attractors: readonly Attractor[]): void {
     if (!this.alive) return;
-    if (reachedBody(this.actual.prevState, this.state, attractors) !== null
-      || burnUpBody(this.state.r, attractors, this.burnUpDensity) !== null) this.alive = false;
+    if (burnUpBody(this.state.r, attractors, this.burnUpDensity) !== null) this.alive = false;
   }
 
   // 自分がこの相手と接触しうるか。既定 true。両側が true を返したときだけ接触する。

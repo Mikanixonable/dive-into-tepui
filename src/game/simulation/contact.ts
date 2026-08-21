@@ -58,14 +58,9 @@ function isFiniteAttractor(a: Attractor): boolean {
 // 当事者の状態が変われば非 null になりうる。resolved を立てた候補は以後選ばれない。
 interface Candidate {
   a: GameEntity;
-  b: GameEntity | Attractor;
-  response: CollisionResponse | FixedContactResponse | null;
+  b: GameEntity;
+  response: CollisionResponse | null;
   resolved: boolean;
-}
-
-// 候補の解決結果のうち、a 側の補正後の位置と速度。相手が天体なら結果は a の側しか持たない。
-function impactOfA(response: CollisionResponse | FixedContactResponse): { readonly r: Vec3; readonly v: Vec3 } {
-  return 'rA' in response ? { r: response.rA, v: response.vA } : { r: response.r, v: response.v };
 }
 
 // 位置と速度がどちらも動いていない当事者は、working も changed も触らない。書き戻しは
@@ -139,14 +134,11 @@ function computeEntityResponse(
 
 // 天体の状態は、この個体の区間の両端の時刻へ外挿してから渡す — 天体一式はサブステップの
 // 中点で1回組まれるので、そのままでは区間の両端と別の瞬間の値になる。
-function computeAttractorResponse(
-  e: GameEntity, body: Attractor, working: ReadonlyMap<GameEntity, KinematicState>,
-): FixedContactResponse | null {
-  const eWork = working.get(e)!;
+function computeAttractorResponse(e: GameEntity, body: Attractor): FixedContactResponse | null {
   const sweptValid = e.prevState.t < e.state.t;
   return resolveFixedSphereCollision(
-    { state: eWork, radius: e.radius },
-    { state: attractorStateAt(body, eWork.t), radius: body.radius },
+    { state: e.state, radius: e.radius },
+    { state: attractorStateAt(body, e.state.t), radius: body.radius },
     RESTITUTION,
     sweptValid ? e.prevState : undefined,
     sweptValid ? attractorStateAt(body, e.prevState.t) : undefined,
@@ -193,17 +185,57 @@ export class ContactPhysics {
   private readonly surfaceCandidates = new SurfaceCandidates();
   private readonly surfaceScratch: Attractor[] = [];
 
-  // 1 substep ぶんの接触解決。ワープゲート(canResolvePhysicalCollisions)は呼び出し側
-  // (Simulator.advance)が判断してから呼ぶ。
-  resolveSubstep(
+  // 1 substep ぶんの物体どうしの接触解決。ワープゲート(canResolvePhysicalCollisions)は
+  // 呼び出し側(Simulator.advance)が判断してから呼ぶ。
+  resolveSubstep(simTime: number, entities: GameEntity[], activeStage: Stage): void {
+    this.collectParticipants(entities, this.participantScratch);
+    this.resolveInOrder(this.participantScratch, [], simTime, activeStage);
+  }
+
+  // 1 substep ぶんの天体との接触。時間加速倍率にも collides にも依らず、独立した実体すべてが
+  // 参加する。天体は状態を書き換えられないので個体ごとに独立に解け、解決の順序も件数の
+  // 上限も要らない。
+  resolveSurfaceContacts(
     simTime: number,
-    entities: GameEntity[],
+    entities: readonly GameEntity[],
     attractors: readonly Attractor[],
     activeStage: Stage,
   ): void {
-    this.collectParticipants(entities, this.participantScratch);
+    this.collectSurfaceParticipants(entities, this.participantScratch);
+    if (this.participantScratch.length === 0) return;
     this.collectAttractors(attractors, this.bodyScratch);
-    this.resolveInOrder(this.participantScratch, [], this.bodyScratch, simTime, activeStage);
+    this.surfaceCandidates.reset(this.participantScratch, this.bodyScratch);
+    for (const e of this.participantScratch) this.resolveSurfaceContact(e, simTime, activeStage);
+  }
+
+  // 個体1つが区間内で最も早く触れる天体を1体だけ解き、反発を当ててから collideWith を呼ぶ。
+  private resolveSurfaceContact(e: GameEntity, simTime: number, activeStage: Stage): void {
+    let earliest: FixedContactResponse | null = null;
+    let hitBody: Attractor | null = null;
+    for (const body of this.surfaceCandidates.into(e, this.surfaceScratch)) {
+      if (!e.contactsWith(body, simTime)) continue;
+      const response = computeAttractorResponse(e, body);
+      if (response === null) continue;
+      if (earliest === null || response.toi < earliest.toi) {
+        earliest = response;
+        hitBody = body;
+      }
+    }
+    if (earliest === null || hitBody === null) return;
+
+    const before = e.state;
+    // 位置も速度も動いていなければ書き戻さない — 書き戻しは予測弧を捨てる。
+    if (!sameVec(before.r, earliest.r) || !sameVec(before.v, earliest.v)) {
+      e.state = kinematicState(before.t, earliest.r, earliest.v);
+    }
+    if (!earliest.bounced) return;
+    e.collideWith(hitBody, {
+      t: contactTime(e, earliest.toi),
+      point: add(earliest.r, scale(earliest.normal, e.radius)),
+      normal: earliest.normal,
+      selfState: before,
+      otherState: hitBody.state,
+    }, activeStage);
   }
 
   // ベルトは実dtで解く艦にくっついた局所シミュレーションなので、substepループの外で
@@ -213,7 +245,6 @@ export class ContactPhysics {
     simTime: number,
     player: Player,
     entities: GameEntity[],
-    attractors: readonly Attractor[],
     activeStage: Stage,
   ): void {
     if (!player.alive || dt <= 1e-6) return;
@@ -222,8 +253,7 @@ export class ContactPhysics {
       if (isFiniteParticipant(section)) this.beltParticipantScratch.push(section);
     }
     this.collectParticipants(entities, this.otherScratch);
-    this.collectAttractors(attractors, this.bodyScratch);
-    this.resolveInOrder(this.beltParticipantScratch, this.otherScratch, this.bodyScratch, simTime, activeStage);
+    this.resolveInOrder(this.beltParticipantScratch, this.otherScratch, simTime, activeStage);
     player.belt.applyCollisionSections(dt, player.state.r, player.state.v, player.att);
   }
 
@@ -234,6 +264,15 @@ export class ContactPhysics {
     }
   }
 
+  // 天体との接触に参加するのは、独立した実体すべて。艦に取り付いた接触代理(ベルトの節点・
+  // 放熱板の折り)は艦本体が代表するので参加しない。
+  private collectSurfaceParticipants(source: readonly GameEntity[], out: GameEntity[]): void {
+    out.length = 0;
+    for (const entity of source) {
+      if (entity.alive && entity.attachedTo === null && isFiniteParticipant(entity)) out.push(entity);
+    }
+  }
+
   private collectAttractors(source: readonly Attractor[], out: Attractor[]): void {
     out.length = 0;
     for (const attractor of source) {
@@ -241,15 +280,13 @@ export class ContactPhysics {
     }
   }
 
-  // attackers 同士・attackers×others・attackers×bodies の接触候補を1回だけ列挙し、TOI が
-  // 最小のものから1件ずつ解決する。上限回数を超えた分は次回の呼び出し(次の substep /
-  // 次のフレーム)へ持ち越す。
+  // attackers 同士・attackers×others の接触候補を1回だけ列挙し、TOI が最小のものから1件ずつ
+  // 解決する。上限回数を超えた分は次回の呼び出し(次の substep / 次のフレーム)へ持ち越す。
   // GameEntity.state への書き戻しは全解決が終わってから一括で行う — ループの途中で書き戻すと
   // state セッタ自身が prevState を書き換えてしまい、以降の反復が区間の始点を失う。
   private resolveInOrder(
     attackers: readonly GameEntity[],
     others: readonly GameEntity[],
-    bodies: readonly Attractor[],
     simTime: number,
     activeStage: Stage,
   ): void {
@@ -275,7 +312,7 @@ export class ContactPhysics {
     grid.reset(cellSize);
     for (let k = 0; k < all.length; k++) grid.insert(k, working.get(all[k]!)!.r);
 
-    const count = this.collectCandidates(all, attackerSet, attackers, bodies, simTime, working, grid);
+    const count = this.collectCandidates(all, attackerSet, simTime, working, grid);
     // 直前の解決で状態が変わった当事者。これを含まない候補の response は引き直しても同じ値に
     // なるので、含む候補だけを引き直す。
     let dirtyA: GameEntity | null = null;
@@ -286,7 +323,7 @@ export class ContactPhysics {
       this.applyCandidate(best, working, changed, activeStage);
       best.resolved = true;
       dirtyA = best.a;
-      dirtyB = best.b instanceof GameEntity ? best.b : null;
+      dirtyB = best.b;
     }
     for (const e of changed) e.state = working.get(e)!;
     working.clear();
@@ -297,14 +334,12 @@ export class ContactPhysics {
     this.candidateScratch.length = count;
   }
 
-  // grid の27近傍から、少なくとも一方が attackerSet に属するペアと attackers×bodies のペアを
-  // 集め、contactsWith を通ったものだけを候補列へ詰め直して件数を返す。接触しない組み合わせも
-  // response=null の候補として残す — 当事者の状態が変われば接触しうるため。
+  // grid の27近傍から、少なくとも一方が attackerSet に属するペアを集め、contactsWith を
+  // 通ったものだけを候補列へ詰め直して件数を返す。接触しない組み合わせも response=null の
+  // 候補として残す — 当事者の状態が変われば接触しうるため。
   private collectCandidates(
     all: readonly GameEntity[],
     attackerSet: ReadonlySet<GameEntity>,
-    attackers: readonly GameEntity[],
-    bodies: readonly Attractor[],
     simTime: number,
     working: ReadonlyMap<GameEntity, KinematicState>,
     grid: SpatialGrid<number>,
@@ -323,21 +358,12 @@ export class ContactPhysics {
       }
     }
 
-    // 天体は総当たりせず、この区間で誰かが触れうるものへ絞ってから個体ごとに引く。
-    this.surfaceCandidates.reset(attackers, bodies);
-    for (const a of attackers) {
-      for (const body of this.surfaceCandidates.into(a, this.surfaceScratch)) {
-        if (!a.contactsWith(body, simTime)) continue;
-        this.pushCandidate(count++, a, body, computeAttractorResponse(a, body, working));
-      }
-    }
     return count;
   }
 
   // 候補列の index 番目を書き直す。既にあるスロットはオブジェクトごと使い回す。
   private pushCandidate(
-    index: number, a: GameEntity, b: GameEntity | Attractor,
-    response: CollisionResponse | FixedContactResponse | null,
+    index: number, a: GameEntity, b: GameEntity, response: CollisionResponse | null,
   ): void {
     const slot = this.candidateScratch[index];
     if (slot === undefined) this.candidateScratch.push({ a, b, response, resolved: false });
@@ -363,9 +389,7 @@ export class ContactPhysics {
       if (candidate.resolved) continue;
       const { a, b } = candidate;
       if (a === dirtyA || a === dirtyB || b === dirtyA || b === dirtyB) {
-        candidate.response = b instanceof GameEntity
-          ? computeEntityResponse(a, b, working)
-          : computeAttractorResponse(a, b, working);
+        candidate.response = computeEntityResponse(a, b, working);
       }
       const response = candidate.response;
       if (response !== null && (best === null || response.toi < best.response!.toi)) best = candidate;
@@ -385,28 +409,18 @@ export class ContactPhysics {
     const { a, b } = candidate;
     const response = candidate.response!;
     const aBefore = working.get(a)!;
-    const aAfter = impactOfA(response);
-    replaceIfMoved(a, aBefore, aAfter, working, changed);
+    const bBefore = working.get(b)!;
+    replaceIfMoved(a, aBefore, { r: response.rA, v: response.vA }, working, changed);
+    replaceIfMoved(b, bBefore, { r: response.rB, v: response.vB }, working, changed);
+    if (!response.bounced) return;
 
-    const point = add(aAfter.r, scale(response.normal, a.radius));
+    const point = add(response.rA, scale(response.normal, a.radius));
     const t = contactTime(a, response.toi);
-
-    if (b instanceof GameEntity && 'rB' in response) {
-      // 天体側(else 節)は不動なので working への書き戻し対象に含めない。
-      const bBefore = working.get(b)!;
-      replaceIfMoved(b, bBefore, { r: response.rB, v: response.vB }, working, changed);
-      if (!response.bounced) return;
-      a.collideWith(b, {
-        t, point, normal: response.normal, selfState: aBefore, otherState: bBefore,
-      }, activeStage);
-      b.collideWith(a, {
-        t, point, normal: scale(response.normal, -1), selfState: bBefore, otherState: aBefore,
-      }, activeStage);
-    } else {
-      if (!response.bounced) return;
-      a.collideWith(b, {
-        t, point, normal: response.normal, selfState: aBefore, otherState: (b as Attractor).state,
-      }, activeStage);
-    }
+    a.collideWith(b, {
+      t, point, normal: response.normal, selfState: aBefore, otherState: bBefore,
+    }, activeStage);
+    b.collideWith(a, {
+      t, point, normal: scale(response.normal, -1), selfState: bBefore, otherState: aBefore,
+    }, activeStage);
   }
 }
