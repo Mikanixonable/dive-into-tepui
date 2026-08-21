@@ -6,9 +6,10 @@
 // **弧は大気による焼失を判定しない。** 姿勢も熱の蓄積状態も運ばないので、実体がどこで
 // 失われるかを原理的に当てられない。当てられない量を近似で埋めると、その近似の値を実体側と
 // 揃え続ける保守が発生する。弧が答えるのは「この自由落下の経路が固体表面へ到達するか」だけ。
-import { KinematicState } from '../../physics/kinematic-state';
+import { KinematicState, hermiteInterpolate } from '../../physics/kinematic-state';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
-import { Attractor, BodyImpact, nearestAtmosphereBody, reachedBody, strongestAttractor } from '../../physics/attractor';
+import { Attractor, nearestAtmosphereBody, strongestAttractor } from '../../physics/attractor';
+import { firstSurfaceContact } from '../../physics/surface-contact';
 import { keplerPeriod } from '../../physics/elements';
 import { ApsisTrack } from '../../physics/trajectory-features';
 import { dot, len, sub } from '../../physics/vec3';
@@ -22,6 +23,12 @@ import * as C from '../const';
 export function trajectorySampleInterval(period: number, keepDuration: number): number {
   const span = isFinite(period) && period > 0 ? period : C.SHIP_HISTORY_DURATION;
   return Math.max(span / C.TRAJECTORY_SAMPLES_PER_REV, keepDuration / C.ARC_MAX_SAMPLES);
+}
+
+// 弧が打ち切られた、天体表面への到達。到達した瞬間の状態は経路を補間して求める。
+export interface BodyImpact {
+  readonly body: Attractor;
+  readonly state: KinematicState;
 }
 
 export class PredictedArc {
@@ -45,7 +52,8 @@ export class PredictedArc {
   simulationMaxStep = C.SUBSTEP_MAX_DT;
 
   // state0 を起点に先端を構築する。requiredEnd/retainFrom は state0.t で初期化され、
-  // 所有者が書き換えるまで needsGrowth は偽のまま。keplerTail は先端の先を二体ケプラー外挿で
+  // 所有者が書き換えるまで needsGrowth は偽のまま。radius はこの弧が表す物体の接触半径で、
+  // 表面到達の判定に天体の半径と足して使う。keplerTail は先端の先を二体ケプラー外挿で
   // 継ぐか — 実体の予測列は継ぐ(true)、計画の区間は継がない(false: 外挿の暫定値の上に
   // 次のノードを置くと、実際に積分し直した結果と繋がらなくなるため)。consumable は
   // 実シミュレーションがこの弧から状態を引くか — 引く弧は刻みと間引きを実シミュレーション側に
@@ -53,6 +61,7 @@ export class PredictedArc {
   constructor(
     readonly state0: KinematicState,
     sources: FutureAttractorProvider,
+    private readonly radius: number,
     private readonly bcInv: number,
     private readonly srpCoeff: number,
     private readonly keplerTail: boolean,
@@ -147,7 +156,7 @@ export class PredictedArc {
   // なく動径接近率であることが要 — 円軌道では相対速さが軌道速度そのものになり、接近して
   // いなくても常に効いて粗化項を不当に上書きしてしまう。下限自体は接近項の幾何級数的な
   // 潰れ(Zeno)を断つためのもので、これがあるおかげで衝突コースは必ず有限歩で表面を跨ぎ、
-  // 掃引判定(reachedBody)が交差点を補間で求められる。
+  // 掃引判定が交差点を補間で求められる。
   private stepDt(
     tip: KinematicState, span: number, period: number, collisionBodies: readonly Attractor[],
   ): number {
@@ -171,11 +180,16 @@ export class PredictedArc {
     return Math.max(C.ARC_MIN_STEP_DT, Math.min(span, approachDt, Math.max(naturalDt, coarseFloor)));
   }
 
-  // 固体表面への到達の判定。掃引が交差点を見つければその状態を到達点として記録し、打ち切る。
+  // 固体表面への到達の判定。触れた天体があれば、その接触時刻へ経路を補間した状態を到達点
+  // として記録し、打ち切る。
   private checkSurfaceReach(prev: KinematicState, collision: readonly Attractor[]): void {
-    const reached = reachedBody(prev, this._trajectory.state, collision);
-    if (reached === null) return;
-    this._impact = reached;
+    const next = this._trajectory.state;
+    const hit = firstSurfaceContact(prev, next, this.radius, collision);
+    if (hit === null) return;
+    this._impact = {
+      body: hit.body,
+      state: hermiteInterpolate(prev, next, prev.t + (next.t - prev.t) * hit.geometry.toi),
+    };
     this._truncated = true;
   }
 }

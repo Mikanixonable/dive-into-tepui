@@ -45,7 +45,7 @@ function runArc(
   ephemeris: Ephemeris, state0: KinematicState, span: number, checkpoints: readonly number[],
 ): ArcRun {
   const arc = new PredictedArc(
-    state0, registryProvider(ephemeris), SHIP_BCINV, 0,
+    state0, registryProvider(ephemeris), /* radius */ 0, SHIP_BCINV, 0,
     /* keplerTail */ true, /* consumable */ false,
   );
   arc.requiredEnd = state0.t + span;
