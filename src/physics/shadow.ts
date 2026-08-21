@@ -4,7 +4,7 @@
 // 金環(遮蔽円盤が太陽円盤に内包)・半影(部分的に重なる)・完全日照(重なり無し)が場合分け
 // 無しに1つの閉じた式から出る。
 import { Attractor } from './attractor';
-import { Vec3, dot, len, scale, sub } from './vec3';
+import { Vec3 } from './vec3';
 
 // 2円(半径 r1, r2、中心距離 d、すべて同じ角度単位)の交差面積。
 function circleOverlapArea(r1: number, r2: number, d: number): number {
@@ -19,18 +19,32 @@ function circleOverlapArea(r1: number, r2: number, d: number): number {
   );
 }
 
-// r から見た太陽円盤のうち occluder に遮られていない面積比(0..1)。
-function occludedFraction(r: Vec3, sunDir: Vec3, sunDist: number, sunAngRadius: number, occluder: Attractor): number {
+// r から見た太陽円盤のうち occluder に遮られていない面積比(0..1)。sunDir は太陽方向の単位
+// ベクトルを成分で、sinSunAng は sin(sunAngRadius)。毎ステップ全エンティティぶん、遮蔽体の
+// 数だけ走る経路なので、中間の Vec3 を作らずスカラで畳む。
+function occludedFraction(
+  r: Vec3,
+  sunDirX: number, sunDirY: number, sunDirZ: number,
+  sunDist: number, sinSunAng: number, sunAngRadius: number,
+  occluder: Attractor,
+): number {
   if (occluder.isStar || occluder.radius <= 0) return 1; // 恒星自身・半径0の天体は遮蔽器にしない
-  const toOccluder = sub(occluder.state.r, r);
-  const along = dot(toOccluder, sunDir);
+  const b = occluder.state.r;
+  const dx = b.x - r.x, dy = b.y - r.y, dz = b.z - r.z;
+  const along = dx * sunDirX + dy * sunDirY + dz * sunDirZ;
   if (along <= 0 || along >= sunDist) return 1; // 艦より太陽から遠い側/背後にある天体は遮蔽しない
-  const occluderDist = len(toOccluder);
-  if (occluderDist <= occluder.radius) return 0; // 天体の内側なら太陽は見えない
+  const distSq = dx * dx + dy * dy + dz * dz;
+  const dist = Math.sqrt(distSq);
+  if (dist <= occluder.radius) return 0; // 天体の内側なら太陽は見えない
+  // 太陽線からの垂直距離が両円盤の視半径の和を超えていれば、重なりようがない。sin は
+  // [0, π/2] で劣加法的(sin(a+b) ≤ sin a + sin b)なので、sin で測ったまま比べれば
+  // 逆三角関数を通さずに安全側で落とせる — along > 0 なので離角は π/2 未満。
+  const reach = sinSunAng * dist + occluder.radius;
+  if (distSq - along * along > reach * reach) return 1;
   // LEO のように天体のすぐ近くでは R/d が 1 に近づくので、視半径は asin を取る
   // (小角近似のままだと地球の影の境界が数十度ずれる)。
-  const occAngRadius = Math.asin(occluder.radius / occluderDist);
-  const sep = Math.acos(Math.min(1, Math.max(-1, dot(sunDir, scale(toOccluder, 1 / occluderDist)))));
+  const occAngRadius = Math.asin(occluder.radius / dist);
+  const sep = Math.acos(Math.min(1, Math.max(-1, along / dist)));
   const overlap = circleOverlapArea(sunAngRadius, occAngRadius, sep);
   return 1 - overlap / (Math.PI * sunAngRadius * sunAngRadius);
 }
@@ -39,15 +53,19 @@ function occludedFraction(r: Vec3, sunDir: Vec3, sunDist: number, sunAngRadius: 
 // 複数天体による遮蔽は各々の減光率の積で合成する — 2天体が同時に太陽面へ重なって
 // 掩蔽し合う状況は現実的に起きないため、重なり領域を厳密に扱うより素直な近似とした。
 export function sunlitFactor(r: Vec3, star: Attractor, attractors: readonly Attractor[]): number {
-  const toStar = sub(star.state.r, r);
-  const sunDist = len(toStar);
+  const s = star.state.r;
+  const tx = s.x - r.x, ty = s.y - r.y, tz = s.z - r.z;
+  const sunDist = Math.sqrt(tx * tx + ty * ty + tz * tz);
   if (sunDist < 1) return 1; // 位置が恒星に一致(退化)
-  const sunDir = scale(toStar, 1 / sunDist);
-  const sunAngRadius = Math.asin(Math.min(1, star.radius / sunDist));
+  const inv = 1 / sunDist;
+  const sinSunAng = Math.min(1, star.radius / sunDist);
+  const sunAngRadius = Math.asin(sinSunAng);
 
   let lit = 1;
   for (const occluder of attractors) {
-    lit *= occludedFraction(r, sunDir, sunDist, sunAngRadius, occluder);
+    lit *= occludedFraction(
+      r, tx * inv, ty * inv, tz * inv, sunDist, sinSunAng, sunAngRadius, occluder);
+    if (lit === 0) return 0; // 本影に入った時点で、以降の遮蔽体を見ても答えは変わらない
   }
   return Math.min(1, Math.max(0, lit));
 }

@@ -94,7 +94,12 @@ export class Simulator {
       // 重力源はこのサブステップの中点で1回だけ組み、全エンティティで使い回す。
       const sources = this.ephemeris.gravityAttractorsAt(this.simTime + subDt / 2);
       this.lastGravitySourceCount = sources.length;
-      this.substep(subDt, sources, this.ephemeris.atmosphereAttractorsAt(this.simTime + subDt / 2));
+      // 遮蔽体はサブステップ開始時刻の窓を使う。遮蔽の幾何はステップ内の天体の移動にほとんど
+      // 左右されないので中点で組み直す意味が無く、前のサブステップの終端で組んだ窓と同じ
+      // 時刻なのでそのまま使い回せる。
+      this.substep(
+        subDt, sources, this.surfaceBodies(),
+        this.ephemeris.atmosphereAttractorsAt(this.simTime + subDt / 2));
       this.simTime += subDt;
       this.sections.exit(SECTION.orbit);
       this.lastSubsteps++;
@@ -211,14 +216,17 @@ export class Simulator {
     return this.ephemeris.atmosphereAttractorsAt(this.simTime);
   }
 
-  // 全エンティティを、渡された重力源 sources に対して dt だけ積分する。sources と
-  // atmosphereSources は呼び出し側がこのステップの中点で1回だけ組んだものを全エンティティで
-  // 共有し、重力源の分類もここで1回だけ行う。抗力を掛ける大気は個体ごとに最も近い1体を選ぶ。
+  // 全エンティティを、渡された重力源 sources に対して dt だけ積分する。sources・occluders・
+  // atmosphereSources は呼び出し側がこのステップで1回だけ組んだものを全エンティティで共有し、
+  // 重力源の分類もここで1回だけ行う。遮蔽体は登録天体の全数をそのまま渡す — 太陽を隠せるかは
+  // 半径と位置の幾何で決まり、重力を及ぼすかとは無関係なので絞り込まない。
+  // 抗力を掛ける大気は個体ごとに最も近い1体を選ぶ。
   // 予測列がこのサブステップ終端の時刻を持っていればそれを先端にして積分を省く — ある時間帯の
   // 状態を決める積分を常にちょうど1本に保つ。
   private substep(
     dt: number,
     sources: readonly Attractor[],
+    occluders: readonly Attractor[],
     atmosphereSources: readonly Attractor[],
   ): void {
     const classified = classifyAttractors(sources);
@@ -229,7 +237,7 @@ export class Simulator {
         this.lastFollowedSteps++;
         continue;
       }
-      e.stepActual(dt, near, nearestAtmosphereBody(e.state.r, atmosphereSources));
+      e.stepActual(dt, near, occluders, nearestAtmosphereBody(e.state.r, atmosphereSources));
       this.lastIntegratedSteps++;
     }
   }

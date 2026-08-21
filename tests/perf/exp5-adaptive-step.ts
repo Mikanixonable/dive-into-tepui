@@ -72,7 +72,8 @@ function integrate(ephemeris: Ephemeris, state0: KinematicState, dt: number, hor
     const tMid = s.t + step / 2;
     const attractors = ephemeris.gravityAttractorsAt(tMid);
     s = stepDynamics(
-      s, step, attractors, nearestAtmosphereBody(s.r, ephemeris.atmosphereAttractorsAt(tMid)),
+      s, step, attractors, ephemeris.attractorsAt(tMid),
+      nearestAtmosphereBody(s.r, ephemeris.atmosphereAttractorsAt(tMid)),
       SHIP_BCINV, 0, null,
     );
   }
@@ -212,7 +213,8 @@ function partD(ephemeris: Ephemeris, regimes: readonly Regime[]): void {
       const mid = ephemeris.gravityAttractorsAt(a.t + dt / 2);
       resolveA++;
       a = stepDynamics(
-        a, dt, mid, nearestAtmosphereBody(a.r, ephemeris.atmosphereAttractorsAt(a.t + dt / 2)),
+        a, dt, mid, ephemeris.attractorsAt(a.t + dt / 2),
+        nearestAtmosphereBody(a.r, ephemeris.atmosphereAttractorsAt(a.t + dt / 2)),
         SHIP_BCINV, 0, null,
       );
       stepsA++;
@@ -237,7 +239,8 @@ function partD(ephemeris: Ephemeris, regimes: readonly Regime[]): void {
       const mid = ephemeris.gravityAttractorsAt(b.t + dt / 2);
       resolveB++;
       b = stepDynamics(
-        b, dt, mid, nearestAtmosphereBody(b.r, ephemeris.atmosphereAttractorsAt(b.t + dt / 2)),
+        b, dt, mid, ephemeris.attractorsAt(b.t + dt / 2),
+        nearestAtmosphereBody(b.r, ephemeris.atmosphereAttractorsAt(b.t + dt / 2)),
         SHIP_BCINV, 0, null,
       );
       sizing = mid;

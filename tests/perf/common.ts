@@ -50,7 +50,8 @@ export function stepDynamicsAt(ephemeris: Ephemeris, state: KinematicState, dt: 
   const tMid = state.t + dt / 2;
   const attractors = ephemeris.gravityAttractorsAt(tMid);
   return stepDynamics(
-    state, dt, attractors, nearestAtmosphereBody(state.r, ephemeris.atmosphereAttractorsAt(tMid)),
+    state, dt, attractors, ephemeris.attractorsAt(tMid),
+    nearestAtmosphereBody(state.r, ephemeris.atmosphereAttractorsAt(tMid)),
     SHIP_BCINV, 0, null,
   );
 }
