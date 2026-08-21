@@ -115,6 +115,12 @@ export class Simulator {
       for (const p of this.entities.players) {
         p.stepEnvironment(subDt, this.ephemeris, this.simTime, surfaceBodies);
       }
+      // 天体との接触は倍率にも種別にも依らず、物体どうしの接触より先に解く。
+      this.sections.enter(SECTION.contact);
+      this.contactPhysics.resolveSurfaceContacts(
+        this.simTime, this.entities.all(), surfaceBodies, activeStage);
+      this.sections.exit(SECTION.contact);
+      nanWatchdog.checkPlayer('simulator.advance(天体接触)', player, this.simTime, dt, subDt);
       if (resolveCollision) {
         // 放熱板の折りは EntityManager に登録された実体ではなく、艦の姿勢から毎 substep
         // 置き直す接触代理なので、参加者リストへこの場で合流させる。
@@ -125,8 +131,7 @@ export class Simulator {
           this.contactEntitiesScratch.push(...p.collisionFolds(this.simTime));
         }
         this.sections.enter(SECTION.contact);
-        this.contactPhysics.resolveSubstep(
-          this.simTime, this.contactEntitiesScratch, surfaceBodies, activeStage);
+        this.contactPhysics.resolveSubstep(this.simTime, this.contactEntitiesScratch, activeStage);
         this.sections.exit(SECTION.contact);
         nanWatchdog.checkPlayer('simulator.advance(接触)', player, this.simTime, dt, subDt);
       }
@@ -136,10 +141,13 @@ export class Simulator {
     }
 
     if (passiveWarpLod) {
-      this.stepPassiveWarpEntities(
-        this.ephemeris.gravityAttractorsAt(this.simTime),
-        this.ephemeris.atmosphereAttractorsAt(this.simTime),
-      );
+      const sources = this.ephemeris.gravityAttractorsAt(this.simTime);
+      this.stepPassiveWarpEntities(sources, this.ephemeris.atmosphereAttractorsAt(this.simTime));
+      // まとめ積分の区間もフレーム全体を張る1つの区間なので、天体との接触をそこにも掛ける。
+      this.sections.enter(SECTION.contact);
+      this.contactPhysics.resolveSurfaceContacts(
+        this.simTime, this.entities.all(), this.surfaceBodies(resolveCollision, sources), activeStage);
+      this.sections.exit(SECTION.contact);
     }
 
     // ベルトは実dtで解く艦にくっついた局所シミュレーションなので、substepループの外で
@@ -147,7 +155,7 @@ export class Simulator {
     if (resolveCollision && player) {
       this.sections.enter(SECTION.contact);
       this.contactPhysics.resolveBelt(
-        dt, this.simTime, player, this.entities.all(), this.ephemeris.attractorsAt(this.simTime), activeStage,
+        dt, this.simTime, player, this.entities.all(), activeStage,
       );
       this.sections.exit(SECTION.contact);
       nanWatchdog.checkPlayer('simulator.advance(ベルト)', player, this.simTime, dt, this.lastSimDt);
