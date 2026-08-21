@@ -337,7 +337,6 @@ export const MARKER_PRIORITY = {
   LAGRANGE: 2000,
   PRIMARY_TARGET: 900,
   IMPACT: 850,
-  SECONDARY_TARGET: 800,
   BASE: 700,
   PLAYER: 600,
   ENEMY: 500,
@@ -641,12 +640,11 @@ export const COLOR_STAGE0_GROUP_ACCENTS = ['#ff4a3d', '#3dc6ff', '#3dff8f', '#ff
 // 描画順は線どうしの相対関係でしか意味を持たない(同値だと透明描画の前後が不定になる)ので、
 // 各線が自分の値を単独で決めず、この表で一括して割り当てる。
 export const LINE_RENDER_ORDER = {
-  reference: 0,        // 天体の参照軌道線
-  shipOrbit: 1,        // 自機・敵・拠点の解析楕円
-  secondaryTarget: 2,  // 第二ターゲットの軌道線
-  target: 3,           // 主ターゲットの軌道線
-  plan: 4,             // 計画軌道(破線)
-  predicted: 5,        // 積分予測線。解析楕円の代替なので、両方出る境界フレームでは必ずこちらを手前に置く
+  reference: 0,  // 天体の参照軌道線
+  shipOrbit: 1,  // 自機・敵・拠点の解析楕円
+  target: 2,     // ターゲットの軌道線
+  plan: 3,       // 計画軌道(破線)
+  predicted: 4,  // 積分予測線。解析楕円の代替なので、両方出る境界フレームでは必ずこちらを手前に置く
 } as const;
 
 // 役割ごとの軌道線の見た目(色・不透明度・描画順)を一括して決める表。
