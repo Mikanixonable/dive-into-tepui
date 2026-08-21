@@ -88,9 +88,11 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-object-list .erow:hover { color: var(--text); }
 #hud-object-list .erow.tgt { color: var(--accent); }
 #hud-object-list .erow.on { outline: 1px solid var(--edge); color: var(--text); }
+#hud-object-list .erow.cluster { opacity: .55; }
 #hud-object-list .object-list-toggle { width: 10px; text-align: center; flex: none; }
 #hud-object-list .object-list-children { padding-left: var(--space-5); }
 #hud-object-list .object-list-children.collapsed { display: none !important; }
+#hud-object-list .object-list-empty { padding: var(--space-6); text-align: center; color: var(--text-dim); }
 
 #hud-plan { min-width: 0; width: 100%; max-width: 300px; overflow-wrap: anywhere; }
 #hud .w-group { margin-bottom: var(--space-3); }
