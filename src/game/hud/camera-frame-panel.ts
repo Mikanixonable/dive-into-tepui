@@ -5,22 +5,16 @@ import { CameraReferencePlane, CameraReferenceView, MapCamera } from '../camera/
 import { focusTargetId } from '../camera/focus-target';
 import { AnchorZone } from './anchor-zone';
 import { RotationZone } from './rotation-zone';
-import { Button, Pulldown, Slider, ToggleSwitch, ValueInput } from './widgets';
+import { Button, Pulldown, type PulldownColumn, Slider, ToggleSwitch, ValueInput } from './widgets';
 import { celestialBodyName } from './frame-labels';
 import { hudRail } from './hud-root';
 import type { MapPickable } from '../map-pickable';
 import type { OverlayManager } from './overlay-manager';
 
-const PLANE_ITEMS: readonly (readonly [CameraReferencePlane, string])[] = [
-  ['ecliptic', '黄道面'],
-  ['equator', '赤道面'],
-  ['moonOrbit', '月軌道面'],
-];
-
-const VIEW_ITEMS: readonly (readonly [CameraReferenceView, string])[] = [
-  ['above', '真上'],
-  ['side', '真横'],
-];
+const ANGLE_COLUMNS = [
+  { items: [['ecliptic', '黄道面'], ['equator', '赤道面'], ['moonOrbit', '月軌道面']] },
+  { items: [['above', '真上'], ['side', '真横']] },
+] as const satisfies readonly [PulldownColumn<CameraReferencePlane>, PulldownColumn<CameraReferenceView>];
 
 function buildPanel(root: HTMLElement, id: string, titleText: string): HTMLElement {
   const panel = document.createElement('div');
@@ -43,8 +37,7 @@ export class CameraFramePanel {
   private readonly fovSlider: Slider;
   private readonly fovInput: ValueInput;
   private readonly fovResetButton: Button;
-  private readonly planeControl: Pulldown<CameraReferencePlane>;
-  private readonly viewControl: Pulldown<CameraReferenceView>;
+  private readonly angleControl: Pulldown<typeof ANGLE_COLUMNS>;
   private readonly cameraSummary: HTMLElement;
 
   public onSelectCenter: ((id: string | null) => void) | null = null;
@@ -106,13 +99,13 @@ export class CameraFramePanel {
     fovGroup.appendChild(this.fovResetButton.element);
     this.panel.appendChild(fovGroup);
 
-    this.planeControl = new Pulldown<CameraReferencePlane>('角度', PLANE_ITEMS, 'セット', (plane) => mapCamera.setReferencePlane(plane));
-    this.planeControl.element.classList.add('camera-angle-group');
-    this.panel.appendChild(this.planeControl.element);
-
-    this.viewControl = new Pulldown<CameraReferenceView>('視点', VIEW_ITEMS, 'セット', (view) => mapCamera.setReferenceView(view));
-    this.viewControl.element.classList.add('camera-angle-group');
-    this.panel.appendChild(this.viewControl.element);
+    // 面を確定させてから視点をジャンプさせる——真上/真横は現在の基準面からの相対視点のため。
+    this.angleControl = new Pulldown('角度', ANGLE_COLUMNS, 'セット', ([plane, view]) => {
+      mapCamera.setReferencePlane(plane);
+      mapCamera.setReferenceView(view);
+    });
+    this.angleControl.element.classList.add('camera-angle-group');
+    this.panel.appendChild(this.angleControl.element);
 
     this.cameraSummary = document.createElement('div');
     this.cameraSummary.className = 'frame-summary';
@@ -150,7 +143,7 @@ export class CameraFramePanel {
     if (document.activeElement !== this.fovInput.element) {
       this.fovInput.setValue(this.mapCamera.fov.toFixed(0));
     }
-    this.planeControl.setSelected(this.mapCamera.referencePlane);
+    this.angleControl.setSelected(0, this.mapCamera.referencePlane);
     this.cameraSummary.textContent = this.cameraSummaryText();
   }
 
