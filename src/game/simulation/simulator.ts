@@ -153,18 +153,13 @@ export class Simulator {
     this.lastSimDt = simDt;
   }
 
-  // 生存する艦の高度と、このフレームの時間送り simDt から、今フレームのサブステップ上限 [s]
-  // を求める。simDt 由来の下駄は通常時の上限へ掛ける — 返り値へ掛けると再突入中の 1s 上限まで
-  // 押し上げてしまい、再突入優先が壊れる。
+  // 喪失の精度がプレイに効く個体の高度と、このフレームの時間送り simDt から、今フレームの
+  // サブステップ上限 [s] を求める。simDt 由来の下駄は通常時の上限へ掛ける — 返り値へ掛けると
+  // 再突入中の 1s 上限まで押し上げてしまい、再突入優先が壊れる。
   private adaptiveMaxStep(simDt: number): number {
     this.adaptiveStatesScratch.length = 0;
-    // 加熱・動圧の積分結果が存続を左右し、その帰結をプレイヤーが観測するのは艦だけ。
-    // 他の種別は大気圏に入れば失われるだけで、いつどれだけの精度で失われるかはプレイの結果を変えない。
-    for (const p of this.entities.players) {
-      if (p.alive) this.adaptiveStatesScratch.push(p.state);
-    }
-    for (const e of this.entities.enemies) {
-      if (e.alive) this.adaptiveStatesScratch.push(e.state);
+    for (const e of this.entities.all()) {
+      if (e.alive && e.lossPrecisionMatters) this.adaptiveStatesScratch.push(e.state);
     }
     return reentryAwareMaxStep(
       this.adaptiveStatesScratch,

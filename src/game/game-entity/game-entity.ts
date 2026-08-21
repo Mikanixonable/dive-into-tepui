@@ -56,6 +56,9 @@ export class GameEntity {
   mass = 1; // 剛体接触の換算質量
   radius = 0; // 物理的な半径 [m]。0 = 点。CelestialBody.radius と同じ量
   collides = false; // 物体どうしの剛体接触(EntityContactPhysics)に参加するか
+  // 大気の中で失われる時刻と条件の精度が、プレイの結果を変えるか。false の個体は大気圏に
+  // 入れば失われるだけで、いつどれだけの精度で失われるかは結果を変えない。
+  lossPrecisionMatters = false;
   // 自分に触れた相手が受けるダメージへ掛かる重み。0 なら触れても相手を傷つけない。
   contactDamageWeight = 1;
 
