@@ -89,6 +89,7 @@ export class SurfaceContactPhysics {
     }
   }
 
+  // 判定できる天体だけを out へ写す。out は呼び出し側が所有する。
   private collectAttractors(source: readonly Attractor[], out: Attractor[]): void {
     out.length = 0;
     for (const attractor of source) {

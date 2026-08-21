@@ -139,6 +139,8 @@ export function distributeFixedContact(
 ): FixedContactResponse {
   const { normal, toi } = geometry;
 
+  // 掃引で解けたなら中心間を半径和ちょうどへ揃え、区間終端の重なりを見つけただけなら
+  // めり込みぶんを離す — 後者は跨いだ瞬間が分からないので、揃える先が無い。
   const r = geometry.separation !== undefined
     ? sub(fixed.state.r, scale(normal, geometry.separation))
     : addScaled(moving.state.r, normal, -geometry.pushOut);
