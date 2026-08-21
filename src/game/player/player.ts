@@ -3,6 +3,7 @@ import { Attitude, qFromForwardUp } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { MU_EARTH, R_EARTH, earthAltitudeOf } from '../../physics/solar-system';
 import { Vec3, v3, len, sub } from '../../physics/vec3';
+import { fmtMarkerDist } from '../hud/utils';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { Ship } from '../game-entity/ship';
@@ -492,7 +493,7 @@ export class Player extends Ship {
       vel,
       priority,
       name: this.name,
-      detail: '',
+      detail: overviewMode ? '' : fmtMarkerDist(dist),
       bearingColor: C.COLOR_MARKER_ALLY,
       bearingSym: DIRECTION_GLYPH.allyBearing,
       bearingClass: 'mk-dir mk-ally-dir',
