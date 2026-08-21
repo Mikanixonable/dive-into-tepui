@@ -41,7 +41,7 @@ export function resolveSphereCollision(
   // 掃引で解決できるのは区間の途中で触れ合う場合だけ。始点で既に重なっていれば、掃引が
   // 返すのは離れていく瞬間なので、押し戻しへ回す。
   const contact = prevA !== undefined && prevB !== undefined
-    ? sweptSphereContact(prevA, a.state, prevB, b.state, minD, 'linear')
+    ? sweptSphereContact(prevA, a.state, prevB, b.state, minD)
     : null;
   const swept = contact !== null && !contact.startsInside ? contact.crossing : null;
 

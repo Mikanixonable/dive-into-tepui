@@ -4,7 +4,7 @@ import { Quat } from './attitude';
 import { FrameTransform, toFrameState } from './frame';
 import { KinematicState, hermiteInterpolate, kinematicState } from './kinematic-state';
 import { OrbitalElements, orbitalElementsFromState, keplerPeriod } from './elements';
-import { SweptMode, sweptSphereContact } from './sphere-contact';
+import { sweptSphereContact } from './sphere-contact';
 import { Vec3, addScaled, lenSq, len, sub, v3 } from './vec3';
 
 // 天体の識別子。具体的なレジストリ(solar-system.ts の SOLAR_SYSTEM など)が実行時に
@@ -156,7 +156,6 @@ export function reachedBody(
   prev: KinematicState,
   next: KinematicState,
   bodies: readonly Attractor[],
-  mode: SweptMode = 'cubic',
 ): BodyImpact | null {
   let entered: Attractor | null = null;
   let earliestToi = Infinity;
@@ -165,7 +164,7 @@ export function reachedBody(
     const contact = sweptSphereContact(
       prev, next,
       attractorStateAt(body, prev.t), attractorStateAt(body, next.t),
-      body.radius, mode);
+      body.radius);
     if (contact === null) continue;
     if (contact.startsInside) {
       alreadyInside ??= body;

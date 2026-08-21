@@ -3,6 +3,9 @@
 // 真値は同じ運動を N 分割で積んだ経路から取り、粗い1歩の端点にはその積分の端点をそのまま使う
 // — 測りたいのは端点を結ぶ近似の誤差であって、粗い RK4 の積分誤差ではない。
 import { Attractor } from '../../src/physics/attractor';
+import {
+  SweptSphereContact, curveSphereContact, linearSphereContact,
+} from '../../src/physics/sphere-contact';
 import { stepDynamics } from '../../src/physics/dynamics';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { Atmosphere } from '../../src/physics/atmosphere';
@@ -54,6 +57,20 @@ export interface Sweep {
   readonly bEnd: KinematicState;
   readonly radiusSum: number;
   readonly trueMin: number;
+}
+
+// 測る対象の3つの解法。production は sweptSphereContact(= 三次)しか通らないが、
+// 次数を落とす調整の余地を測るために、ここでは実体を直接叩く。
+export type Solver = '弦' | '二次' | '三次';
+
+export const SOLVERS: readonly Solver[] = ['弦', '二次', '三次'];
+
+export function solve(
+  s: Sweep, solver: Solver, radiusSum: number,
+): SweptSphereContact | null {
+  return solver === '弦'
+    ? linearSphereContact(s.aStart, s.aEnd, s.bStart, s.bEnd, radiusSum)
+    : curveSphereContact(s.aStart, s.aEnd, s.bStart, s.bEnd, radiusSum, solver === '二次' ? 2 : 3);
 }
 
 const TRUE_STEPS = 4000;

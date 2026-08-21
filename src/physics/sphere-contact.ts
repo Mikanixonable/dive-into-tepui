@@ -1,5 +1,12 @@
 // 球どうしの接触の幾何(掃引区間で2球の表面がどう交わったか)。
 // 重力源かどうか・天体かどうかには関与しない純粋な幾何。
+//
+// 経路は常に三次曲線で解く。曲線の事前棄却は弦の 2〜3 倍で済み、遠い相手はそこで落ちるので、
+// 次数を落として稼げる分は小さい。
+// **linearSphereContact・curveSphereContact の二次・sweptSagitta は src/ のどこからも呼ばれて
+// いないが、消してはならない。** 呼び出し回数を減らしてもなお費用が問題として残ったときに、
+// 精度を落として費用を下げるための余地である。どこまで落としてよいかの実測は
+// memos/hedalu244/unite_sphere_contact.md にあり、tests/perf/exp10・exp11 が再現する。
 import { KinematicState } from './kinematic-state';
 import { Vec3, add, len, scale, v3 } from './vec3';
 
@@ -16,28 +23,37 @@ export interface SweptSphereContact {
   readonly crossing: SurfaceCrossing | null;
 }
 
-// 掃引経路の近似。'linear' は端点を結ぶ線分、'quadratic' と 'cubic' は端点の速度を接線に取る
-// 二次曲線・三次曲線。二次は三次を次数下げしたもので、u = 0, ½, 1 の3点で三次と一致する。
-export type SweptMode = 'linear' | 'quadratic' | 'cubic';
-
 // 半径和 radiusSum の2球が、それぞれ start→end の区間を渡る間に最初に表面を跨ぐ瞬間と、
 // 区間の始点で重なっていたか。入力が非有限で判定できないときだけ null を返す。
 // 区間は両球で共通で、その長さは aStart→aEnd の時刻差から取る。
+// 現状はたらいまわし関数だが、精度を落とすチューニングが必要なときはここで分岐するので消してはならない。
 export function sweptSphereContact(
   aStart: KinematicState,
   aEnd: KinematicState,
   bStart: KinematicState,
   bEnd: KinematicState,
   radiusSum: number,
-  mode: SweptMode,
 ): SweptSphereContact | null {
-  return mode === 'linear'
-    ? linearSphereContact(aStart, aEnd, bStart, bEnd, radiusSum)
-    : curveSphereContact(aStart, aEnd, bStart, bEnd, radiusSum, mode === 'quadratic' ? 2 : 3);
+  return curveSphereContact(aStart, aEnd, bStart, bEnd, radiusSum, 3);
 }
 
-// 線形モードの実体。2球の中心がそれぞれ start→end を線形移動するとみなし、速度は読まない。
-function linearSphereContact(
+// 弦と三次曲線の中点のずれ [m]。弦で解いたときの誤差とほぼ同じ大きさになるので、線分で
+// 足りるかの見積りに使う。
+export function sweptSagitta(
+  aStart: KinematicState,
+  aEnd: KinematicState,
+  bStart: KinematicState,
+  bEnd: KinematicState,
+): number {
+  const dt = aEnd.t - aStart.t;
+  const dx = (bStart.v.x - aStart.v.x) - (bEnd.v.x - aEnd.v.x);
+  const dy = (bStart.v.y - aStart.v.y) - (bEnd.v.y - aEnd.v.y);
+  const dz = (bStart.v.z - aStart.v.z) - (bEnd.v.z - aEnd.v.z);
+  return Math.sqrt(dx * dx + dy * dy + dz * dz) * dt / 8;
+}
+
+// 線分で解く実体。2球の中心がそれぞれ start→end を線形移動するとみなし、速度は読まない。
+export function linearSphereContact(
   aStart: KinematicState,
   aEnd: KinematicState,
   bStart: KinematicState,
@@ -73,13 +89,13 @@ function linearSphereContact(
   };
 }
 
-// 曲線モードの実体。degree で二次・三次を選ぶ。
+// 曲線で解く実体。degree で二次・三次を選ぶ。
 // 区間端点の側だけを見ると、端点の両方が同じ側でも途中だけ反対側へ出る軌道を落とす。
 // ここでは相対位置(b − a)をBezierへ変換し、Bezier制御点の凸包が表面を跨ぎ得る区間だけを
 // 左から再帰的に調べる。制御点の軸平行箱が丸ごと始点と同じ側にあれば、その区間に跨ぎはない。
 // したがって、単なる固定サンプル列より細い通過も拾いつつ、曲線上の clearance の符号反転を
 // 固定反復で詰められる。
-function curveSphereContact(
+export function curveSphereContact(
   aStart: KinematicState,
   aEnd: KinematicState,
   bStart: KinematicState,
