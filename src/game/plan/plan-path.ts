@@ -6,7 +6,7 @@
 // 画面判定も同じ表示変換を通すため描画とずれない。
 import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../physics/kinematic-state';
-import { Attractor, BodyImpact } from '../../physics/attractor';
+import { Attractor } from '../../physics/attractor';
 import { Vec3, v3 } from '../../physics/vec3';
 import { FrameTransform, ReferenceFrame, toFrameDir, toFramePoint, toInertialDir, toInertialPoint } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -16,7 +16,7 @@ import { FloatingOrigin } from '../floating-origin';
 import { TrajectoryLine } from '../trajectory-line';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { DisplayDurationSource, PlanData, TimeRange, segmentDurationFrom } from './plan';
-import { PredictedArc } from '../simulation/predicted-arc';
+import { BodyImpact, PredictedArc } from '../simulation/predicted-arc';
 import type { FutureAttractorProvider } from '../simulation/arc-bodies';
 import type { Controllable } from '../game-entity/controllable';
 import { clipSamplesTo, stateAt, withinEnd } from './arc-range';
@@ -137,12 +137,12 @@ export class PlanPath {
       const prev = this.sources[i];
       let arc = prev?.owned ? prev.arc : null;
       if (!arc || !arc.represents(seg.state0, seg.end)) {
-        // 惑星への周回計画のみが対象なので、自機自身の弾道係数(SHIP_BCINV/SHIP_SRP_COEFF)で
-        // 積分する。外挿の尾は持たない(keplerTail=false) — 尾の上にノードを置くと、
-        // 実際に積分し直した次のノードと繋がらなくなるため。
+        // 惑星への周回計画のみが対象なので、自機自身の諸元(PLAYER_HULL_RADIUS/SHIP_BCINV/
+        // SHIP_SRP_COEFF)で積分する。外挿の尾は持たない(keplerTail=false) — 尾の上にノードを
+        // 置くと、実際に積分し直した次のノードと繋がらなくなるため。
         arc = new PredictedArc(
-          seg.state0, attractorProvider, C.SHIP_BCINV, C.SHIP_SRP_COEFF, /* keplerTail */ false,
-          /* consumable */ false,
+          seg.state0, attractorProvider, C.PLAYER_HULL_RADIUS, C.SHIP_BCINV, C.SHIP_SRP_COEFF,
+          /* keplerTail */ false, /* consumable */ false,
         );
         this.lastRebuiltArcs++;
       }

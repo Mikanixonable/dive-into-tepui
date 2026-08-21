@@ -305,7 +305,7 @@ export class GameEntity {
   ensurePredictedArc(sources: FutureAttractorProvider): PredictedArc | null {
     if (!this.predictsFuture) return null;
     this._predictedArc ??= new PredictedArc(
-      this.actual.state, sources, this.bcInv, this.srpCoeff, /* keplerTail */ true,
+      this.actual.state, sources, this.radius, this.bcInv, this.srpCoeff, /* keplerTail */ true,
       /* consumable */ true,
     );
     return this._predictedArc;
