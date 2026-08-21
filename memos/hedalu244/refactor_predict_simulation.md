@@ -518,13 +518,41 @@ export function isAttractor(target: ContactTarget): target is Attractor {
 
 `SurfaceCandidates.count` の読み手が exp12 だけだった件も、3件目が読むことで解消した。
 
-### C-2. 天体接触の解決そのものに回帰テストが無い
+### C-2. 天体接触の解決そのものの回帰テスト(**結果: 置けなかった。ただし仕様違反を1件見つけた**)
 
-`collision-response.test.ts` は `resolveFixedSphereCollision` を叩くが、
-`ContactPhysics.resolveSurfaceContacts`(参加者の集め方・最小 TOI の選び方・
-書き戻しのガード・`collideWith` の呼び分け)と `contactDamageSpeed`(重み)は
-テストが無い。**目標 13(重みを 1.0 へ書き換えるだけでデブリが凶器に戻る)と
-目標 14(触れられた側の予測が捨てられない)は、どちらもテストで固定できる形をしている。**
+**置けなかった理由 — テストの実行形態からこの層へ届かない。**
+`tests/physics/` は `tsconfig.test.json`(`lib: ["ES2022"]`、`module: CommonJS`、
+`moduleResolution: node`)でコンパイルして node で走らせる。`SurfaceContactPhysics` は
+`GameEntity` と `Stage` を型として参照するだけだが、tsc はその2つのファイルとその推移閉包を
+プログラムへ引き込む — つまり `render/` `hud/` `audio/` まで到達する。
+
+- `lib` に `DOM`/`WebWorker` を足すと、今度は `three/tsl` が `moduleResolution: node` で解決
+  できず、`render/celestial-surface.ts` に本物の型エラーが出る(本体は `bundler` 解決)。
+  テストのビルド時間も 8.3s → 16.9s へ倍増した。
+- 型だけを構造的に受け取る形へ寄せても解けない。参加者の契約には `ContactTarget`
+  (= `GameEntity | Attractor`)と `Stage` が現れるので、どちらを辿っても同じ推移閉包に戻る。
+- 実行時は問題ない(`GameEntity` の import は型専用なので JS からは消えるし、`three` は
+  `geometry.test.ts` が示すとおり node で読める)。**詰まっているのはコンパイルの側だけ。**
+
+→ ここへテストを置くには、node で走る CommonJS のテストとは別に **bundler 解決でゲーム層を
+コンパイルする実行形態**を用意するか、`collideWith` の契約から `Stage` と `GameEntity` を
+外すかのどちらかが要る。どちらもこの節の範囲を超える。
+
+**見つけた仕様違反 — 剛体接触のダメージが常に 0 になる。**
+`closingSpeed`(`game-entity/contact.ts`)は
+`max(0, -dot(selfState.v - otherState.v, normal))` を返す。`normal` は self → other 向きで、
+接近している状態とは `(v_self - v_other)·n > 0` のことなので、**接近しているときに 0 を返し、
+離反しているときに正を返す**(自身のコメント「離反していれば 0」と逆)。
+`collideWith` は反発が起きたときにしか呼ばれない = 必ず接近している瞬間なので、
+`contactDamageSpeed` は常に 0、`Ship.applyCollisionDamage` は
+`COLLISION_DAMAGE_MIN_CLOSING_SPEED = 50` を割って必ず `false` を返す。
+
+- 実測: 静止した球へ 10 m/s で正面衝突させ、`resolveSphereCollision` が `bounced = true` を
+  返した状態で、両当事者の視点の `closingSpeed` がともに 0。
+- `SPEC/COMBAT.md`「剛体接触によるダメージ」に真正面から反する。**つまり `contactDamageWeight`・
+  `ATTRACTOR_DAMAGE_WEIGHT`・`COLLISION_DAMAGE_*` と、Player / Enemy の接触ダメージ経路は
+  まるごと死んでいる。** 第2章が「達成済み」と判定した目標 13 も、実際には成立していない。
+- 直し方は符号1つだが、**ゲームの手触りが変わる変更**なので、この節では直していない。
 
 ### C-3. 実行時確認の記録が残っていない項目
 
