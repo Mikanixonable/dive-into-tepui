@@ -27,7 +27,7 @@ import { hasCorePart } from '../vessel/capabilities';
 
 const STYLE = `
 /* プロパティウィンドウより中身が広いので、この窓だけ横幅の上限を上げる。 */
-#hud .dw-window:has(> .bow-body) { max-width: 420px; width: min(420px, 92vw); }
+#hud .dw-window:has(> .bow-body) { max-width: 840px; width: min(840px, 92vw); }
 #hud .bow-body { display: flex; flex-direction: column; min-height: 0; }
 #hud .bow-tabs { padding: 0 var(--space-4) var(--space-3); }
 #hud .bow-tabs .w-btn { flex: 1 0 auto; }
@@ -98,12 +98,13 @@ function ensureStyle(): void {
   document.head.appendChild(style);
 }
 
-export type BaseOperationsTab = 'ships' | 'parts' | 'production';
+export type BaseOperationsTab = 'ships' | 'parts' | 'production' | 'resources';
 
 const TAB_ITEMS: readonly (readonly [BaseOperationsTab, string])[] = [
   ['ships', '格納艦艇'],
   ['parts', '部品'],
   ['production', '生産'],
+  ['resources', '資源'],
 ];
 
 const RESOURCE_GRANT_GROUPS: readonly ObjectPickerGroup<ResourceId>[] = [
@@ -251,6 +252,7 @@ export class BaseOperationsWindow {
       case 'ships': content.appendChild(this.buildShipsSection(base)); break;
       case 'parts': content.appendChild(this.buildPartsSection(base)); break;
       case 'production': content.appendChild(this.buildProductionSection(base)); break;
+      case 'resources': content.appendChild(this.buildResourcesSection(base)); break;
     }
     this.win.reclamp();
   }
@@ -538,9 +540,13 @@ export class BaseOperationsWindow {
 
   // ─── 生産タブ ───────────────────────────────────────────
   private buildProductionSection(base: Vessel): HTMLElement {
+    return this.buildPartProductionSection(base);
+  }
+
+  // ─── 資源タブ ───────────────────────────────────────────
+  private buildResourcesSection(base: Vessel): HTMLElement {
     const frag = document.createElement('section');
     frag.className = 'bow-section';
-    frag.appendChild(this.buildPartProductionSection(base));
     frag.appendChild(this.buildInventorySection(base));
     frag.appendChild(this.buildGrantSection(base));
     return frag;
