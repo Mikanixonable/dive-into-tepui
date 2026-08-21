@@ -25,7 +25,6 @@ import { ContactPhysics } from './contact';
 import { v3 } from '../../physics/vec3';
 import { reentryAwareMaxStep, simulationMaxStep, simulationStepDuration } from './time-step';
 import type { NanWatchdog } from '../nan-watchdog';
-import type { SimSpeedManager } from '../sim-speed-manager';
 import { FrameSections, SECTION } from '../../frame-sections';
 import type { PerfCounts } from '../../perf-meter';
 
@@ -61,7 +60,8 @@ export class Simulator {
   private readonly nearbyAttractorsScratch: Parameters<typeof attractorsNearInto>[2] = [];
 
   // dt 分のシミュレーションを進める。simDt をサブステップに分割して積分し、剛体接触(弾命中含む)・姿勢積分を行う。
-  // 剛体接触を解決してよいワープ倍率かどうかは、渡された simSpeed にここで問う。
+  // 物体どうしの接触を解決してよいかは呼び出し側が決めて canResolveEntityContacts で渡す
+  // (天体との接触は倍率に依らず常に解く)。
   // nanWatchdog は軌道積分・姿勢積分・剛体接触・ベルトの各境界ごとに自機を検査する
   // (checkPlayer は軽量なので substep ごとに呼んでよい)。
   advance(
@@ -69,10 +69,9 @@ export class Simulator {
     simDt: number,
     player: Player | null,
     activeStage: Stage,
-    simSpeed: SimSpeedManager,
+    canResolveEntityContacts: boolean,
     nanWatchdog: NanWatchdog,
   ): void {
-    const resolveCollision = simSpeed.canResolvePhysicalCollisions;
     this.lastSubsteps = 0;
     this.lastGravitySourceCount = 0;
     this.lastIntegratedSteps = 0;
@@ -113,7 +112,7 @@ export class Simulator {
         this.simTime, this.entities.all(), surfaceBodies, activeStage);
       this.sections.exit(SECTION.contact);
       nanWatchdog.checkPlayer('simulator.advance(天体接触)', player, this.simTime, dt, subDt);
-      if (resolveCollision) {
+      if (canResolveEntityContacts) {
         // 放熱板の折りは EntityManager に登録された実体ではなく、艦の姿勢から毎 substep
         // 置き直す接触代理なので、参加者リストへこの場で合流させる。
         this.contactEntitiesScratch.length = 0;
@@ -136,7 +135,7 @@ export class Simulator {
 
     // ベルトは実dtで解く艦にくっついた局所シミュレーションなので、substepループの外で
     // フレームに1回だけ解決する。
-    if (resolveCollision && player) {
+    if (canResolveEntityContacts && player) {
       this.sections.enter(SECTION.contact);
       this.contactPhysics.resolveBelt(
         dt, this.simTime, player, this.entities.all(), activeStage,
