@@ -101,10 +101,6 @@ export class MapContextActions {
       if (handler) handler.run(act, target);
     };
     this.objectListPanel = new ObjectListPanel(hud.mapRoot, ephemeris.registry);
-    this.objectListPanel.onSelect = (id) => {
-      const target = this.pickables.pickables.find((i) => i.id === id);
-      if (target) this.objectListPanel.select(id);
-    };
     this.objectListPanel.onFocus = (id) => {
       this.frameControls.setFocus({ kind: 'object', id });
       this.hud.hint(`${this.pickables.pickables.find((i) => i.id === id)?.name ?? id} にフォーカス`);
