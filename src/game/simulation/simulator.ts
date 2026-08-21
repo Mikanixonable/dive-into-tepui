@@ -233,18 +233,11 @@ export class Simulator {
     }
   }
 
-  // 軌道積分と同じ刻み幅 simDt で全エンティティの姿勢を進める。
+  // 軌道積分と同じ刻み幅 simDt で、姿勢を持つ生存エンティティの姿勢を進める。
   private stepAttitudes(simDt: number): void {
-    for (const p of this.entities.players) p.att = stepAttitude(p.att, p.torque, simDt);
-
-    for (const e of this.entities.enemies) if (e.alive) e.att = stepAttitude(e.att, e.torque, simDt);
-    for (const base of this.entities.bases) if (base.alive) base.att = stepAttitude(base.att, base.torque, simDt);
-    for (const cs of this.entities.casings) cs.att = stepAttitude(cs.att, cs.torque, simDt);
-    for (const d of this.entities.debris) d.att = stepAttitude(d.att, d.torque, simDt);
-    for (const ammoPickup of this.entities.ammoPickups) {
-      if (ammoPickup.alive) {
-        ammoPickup.att = stepAttitude(ammoPickup.att, ammoPickup.torque, simDt);
-      }
+    for (const e of this.entities.all()) {
+      if (!e.alive || !e.hasAttitude) continue;
+      e.att = stepAttitude(e.att, e.torque, simDt);
     }
   }
 
