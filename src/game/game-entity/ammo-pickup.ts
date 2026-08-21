@@ -37,7 +37,7 @@ export class AmmoPickup extends GameEntity {
       : { state: init.state, att: init.att, id: init.id };
     super(state, buildAmmoPickup(), scene, att, idAllocator.next(id));
     this.name = '弾薬';
-    this.mass = 50;
+    this.mass = 0; // 試験粒子。回収しに近づいた艦を押さない
     this.radius = C.AMMO_PHYS_RADIUS;
     this.collides = true;
     this.contactDamageWeight = 0;
