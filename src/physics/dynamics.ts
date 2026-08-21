@@ -107,13 +107,16 @@ export function stepRK4(s: KinematicState, dt: number, accel: AccelFn): Kinemati
 // から評価する — 距離の3乗で効く重力はステップ幅ぶんの天体の移動が精度を左右するため。
 // 日照率(sunlitFactor)と輻射圧の太陽方向は attractor.state.t のまま据え置く: 遮蔽の幾何と
 // 1AU 先の太陽方向はステップ内での天体の移動にほとんど左右されず、外挿する意味が無い。
-// 大気抵抗は atmosphereBody ただ1体から掛かる(複数の大気の寄与を足し合わせることは物理的に
-// ありえないので、どの天体の大気かは呼び出し側が選んで渡す)。天体一覧は走らない。
+// 遮蔽体 occluders は attractors とは別の窓で受け取る — 太陽を隠せるかは半径と位置の幾何で
+// 決まり、重力を及ぼすかとは無関係だから。大気抵抗は atmosphereBody ただ1体から掛かる
+// (複数の大気の寄与を足し合わせることは物理的にありえないので、どの天体の大気かは呼び出し側が
+// 選んで渡す)。天体一覧は走らない。
 function totalAccel(
   t: number,
   r: Vec3,
   v: Vec3,
   attractors: readonly Attractor[],
+  occluders: readonly Attractor[],
   atmosphereBody: Attractor | null,
   bcInv: number,
   srpCoeff: number,
@@ -130,7 +133,7 @@ function totalAccel(
     }
     // 恒星ぶんの輻射圧をすべて加算する(恒星0個なら寄与0)。
     if (attractor.isStar && srpCoeff !== 0) {
-      const srp = srpAccel(r, attractor, srpCoeff, sunlitFactor(r, attractor, attractors));
+      const srp = srpAccel(r, attractor, srpCoeff, sunlitFactor(r, attractor, occluders));
       ax += srp.x; ay += srp.y; az += srp.z;
     }
   }
@@ -144,21 +147,24 @@ function totalAccel(
 }
 
 // 全天体重力 + 2次重力場 + 大気抵抗 + 太陽輻射圧 + 推力の RK4 1ステップ。attractors はこの
-// ステップぶん呼び出し側が確定させた重力源一覧(Ephemeris.attractorsAt)であり、日照率の
-// 遮蔽天体判定にも同じ一覧を使う。atmosphereBody は抗力を及ぼす**ただ1体**の大気天体
+// ステップぶん呼び出し側が確定させた重力源一覧、occluders は同じく確定させた遮蔽体一覧
+// (日照率だけに使う。重力の絞り込みとは別の関心事なので別の引数で受け取る)。
+// atmosphereBody は抗力を及ぼす**ただ1体**の大気天体
 // (attractor.ts の nearestAtmosphereBody)で、null なら抗力は恒等的にゼロ。
 // bcInv/srpCoeff/thrust は種別ごとに異なるため引数で受け取り、モジュール内に既定値を持たない。
 export function stepDynamics(
   state: KinematicState,
   dt: number,
   attractors: readonly Attractor[],
+  occluders: readonly Attractor[],
   atmosphereBody: Attractor | null,
   bcInv: number,
   srpCoeff: number,
   thrust: Vec3 | null,
 ): KinematicState {
   return stepRK4(state, dt, (t, rx, ry, rz, vx, vy, vz) => {
-    const a = totalAccel(t, v3(rx, ry, rz), v3(vx, vy, vz), attractors, atmosphereBody, bcInv, srpCoeff);
+    const a = totalAccel(
+      t, v3(rx, ry, rz), v3(vx, vy, vz), attractors, occluders, atmosphereBody, bcInv, srpCoeff);
     return thrust ? add(a, thrust) : a;
   });
 }
