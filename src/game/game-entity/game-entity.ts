@@ -4,7 +4,7 @@ import { KinematicState } from '../../physics/kinematic-state';
 import { OrbitalElements } from '../../physics/elements';
 import { Attitude } from '../../physics/attitude';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
-import { Attractor, BodyImpact, orbitalElementsOf, localOrbitPeriod, strongestAttractor } from '../../physics/attractor';
+import { Attractor, orbitalElementsOf, localOrbitPeriod, strongestAttractor } from '../../physics/attractor';
 import { burnUpBody } from '../../physics/atmosphere';
 import { ApsisTrack } from '../../physics/trajectory-features';
 import { Vec3, v3 } from '../../physics/vec3';
@@ -128,8 +128,6 @@ export class GameEntity {
   get predicted(): DynamicTrajectory | null { return this._predictedArc?.trajectory ?? null; }
   // 弧の積分中に見つかった近地点・遠地点。中心天体は弧を作った時点で最も強く引く解析天体に固定する。
   get predictedApsides(): ApsisTrack | null { return this._predictedArc?.apsides ?? null; }
-  // 弧の積分中に最初に天体表面へ達した状態とその天体。到達しなければ null。
-  get predictedImpact(): BodyImpact | null { return this._predictedArc?.impact ?? null; }
   // 積分中に天体表面へ到達した/非有限値が出て打ち切られたか。打ち切られた弧はそれ以上
   // 伸びない(新しい弧を作るまで恒久的)。
   get predictionTruncated(): boolean { return this._predictedArc?.truncated ?? false; }
