@@ -211,8 +211,6 @@ export const RELOAD_TIME = 1.0; // 手動/自動リロード(バレル交換)の
 export const MAGS_PER_BARREL = 3; // バレル交換までに消費できるマガジン数
 export const BELT_MAX_VISIBLE = 18; // ベルト描画の最大リンク数
 export const EJECTED_MAG_PHYS_RADIUS = 1.4; // 排出された空マガジンの物理接触用の半径 [m]
-export const BARREL_MASS = 20; // バレルの物理接触用の質量(実質量ではなくゲーム内衝突用の値)
-export const MAGAZINE_FRAME_MASS = 20; // 空マガジンの物理接触用の質量(同上)
 
 // マガジンチェーン(ベルト)の可動域: 各つなぎ目で許容する最大折れ角。ロール・ピッチ・ヨーを
 // それぞれ独立に制限する。いずれも隣接リンク間の相対角度 [deg]。
@@ -222,7 +220,6 @@ export const MAG_CHAIN_MAX_YAW_DEG = 15;   // ヨー上限(左右方向の折れ
 export const MAG_CHAIN_ROLL_GAIN = 0.6; // 機体のロール角速度→ねじれ目標角への変換係数
 export const MAG_CHAIN_ROLL_RATE = 3.5; // ねじれ角が目標へ追従する速さ [1/s]
 export const CASING_LIFETIME = 1800; // 薬莢寿命 [sim s]
-export const CASING_MASS = 1; // 薬莢の物理接触用の質量(実物同様に軽い)
 export const MAX_BULLETS = 400;
 export const MAX_CASINGS = 260;
 export const MAX_DEBRIS = 600;

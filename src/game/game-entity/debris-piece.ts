@@ -76,12 +76,8 @@ export class DebrisPiece extends GameEntity {
       this.fragmentVariant = -1;
       this.fragmentColor = null;
     }
-    switch (debrisKind.kind) {
-      case 'barrel': this.mass = C.BARREL_MASS; break;
-      case 'magazineFrame': this.mass = C.MAGAZINE_FRAME_MASS; break;
-      case 'casing': this.mass = C.CASING_MASS; break;
-      case 'fragment': this.mass = 0; break;
-    }
+    // 全種別が試験粒子。触れた相手の速度を変えないので、相手の予測弧も捨てられない。
+    this.mass = 0;
   }
 
   get kind(): DebrisKind['kind'] { return this.debrisKind.kind; }
