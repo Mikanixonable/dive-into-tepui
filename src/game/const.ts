@@ -325,6 +325,9 @@ export const MARKER_DIR_DIST = 5e4; // 方向マーカーを投影する仮想�
 export const MARKER_CLUSTER_PX = 40; // これより画面上で近いマーカー同士は1つの代表にまとめる [px]
 // 天体ラベルからこれより画面上で近いラグランジュ点ラベルは、天体ラベルを優先して隠す [px]
 export const FOCUS_LABEL_PRIORITY_PX = 40;
+// 画面上で近接する2ラベルのカメラからの距離比がこれ以上なら、優先度に関わらず遠い側を隠す
+// (奥の天体ラベルが手前のラグランジュ点ラベルを消してしまう逆転を防ぐ)
+export const FOCUS_LABEL_DEPTH_GUARD_RATIO = 3;
 
 // マーカーラベル優先度 (数値が大きいものが優先。天体 > 船・エンティティ)
 export const MARKER_PRIORITY = {
