@@ -1,6 +1,6 @@
 // 太陽輻射圧によるキャノンボールモデルの加速度。物体を反射率一定の球とみなし、姿勢によらず
 // 太陽 - 物体を結ぶ直線方向にのみ力が働くとする。THREE/DOM 非依存の純関数。
-import { Attractor } from './attractor';
+import { CelestialBody } from './celestial-body';
 import { Vec3, v3 } from './vec3';
 
 export const SOLAR_PRESSURE_1AU = 4.56e-6; // 1天文単位における太陽輻射圧 [N/m^2]
@@ -10,7 +10,7 @@ export const ASTRONOMICAL_UNIT = 1.495978707e11; // [m]
 
 // 位置 r の物体が太陽から受ける輻射圧加速度。srpCoeff は輻射圧係数と断面積質量比の積
 // C_R·A/m [m^2/kg] で、0 なら寄与ゼロ。sunlit は日照率 0..1(本影で 0)。
-export function srpAccel(r: Vec3, sun: Attractor, srpCoeff: number, sunlit: number): Vec3 {
+export function srpAccel(r: Vec3, sun: CelestialBody, srpCoeff: number, sunlit: number): Vec3 {
   if (srpCoeff === 0 || sunlit === 0) return v3();
   const s = sun.state.r;
   const dx = r.x - s.x;

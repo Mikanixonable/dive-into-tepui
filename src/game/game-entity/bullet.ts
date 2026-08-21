@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { GameEntity } from './game-entity';
 import { KinematicState } from '../../physics/kinematic-state';
-import { Attractor } from '../../physics/attractor';
+import { CelestialBody } from '../../physics/celestial-body';
 import { burnUpBody } from '../../physics/atmosphere';
 import { FloatingOrigin } from '../floating-origin';
 import type { Stage } from '../stages/stage';
@@ -83,7 +83,7 @@ export class Bullet extends GameEntity {
     // 判定もここで行う(substep ごとの位置だけを見る、意図的に雑な最接近判定)。
     checkLoss(
         _dt: number, simTime: number, _activeStage: Stage, playerPos: Vec3,
-        atmosphereBodies: readonly Attractor[],
+        atmosphereBodies: readonly CelestialBody[],
     ): void {
         if (!this.alive) return;
         if (this.shooter === 'enemy' && !this.passedClose

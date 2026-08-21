@@ -1,5 +1,5 @@
 import { add, addScaled, dot, lenSq, norm, scale, sub, v3, Vec3 } from '../physics/vec3';
-import { Attractor } from '../physics/attractor';
+import { CelestialBody } from '../physics/celestial-body';
 import * as C from './const';
 import { Enemy } from './game-entity/enemy';
 import { Base } from './game-entity/base';
@@ -159,7 +159,7 @@ export class Targeter {
   syncTargetMarkers(
     player: Player | null, targets: readonly CombatTarget[], displayTime: number, simTime: number,
     cameraSystem: CameraSystem, visibilityPolicy: MapVisibilityPolicy | null,
-    registry: Ephemeris['registry'], attractors: readonly Attractor[],
+    registry: Ephemeris['registry'], celestialBodies: readonly CelestialBody[],
   ): void {
     const overviewMode = cameraSystem.overviewMode;
     const project = cameraSystem.activeCameraProjection;
@@ -177,11 +177,11 @@ export class Targeter {
       const role: MarkerRole =
         tgt === this.aliveTarget ? 'primary' : tgt === this.aliveSecondaryTarget ? 'secondary' : 'none';
       const item = tgt.markerItem(role, viewerPos, ds.r, ds.v, overviewMode);
-      const mapOccluded = overviewMode && isOccluded(cameraSystem.activeCameraPos, ds.r, attractors);
+      const mapOccluded = overviewMode && isOccluded(cameraSystem.activeCameraPos, ds.r, celestialBodies);
       const mapOpacity = mapOccluded
         ? 0
         : tgt instanceof Enemy && overviewMode
-          ? mapPlanetFadeOpacity(nearestPlanetDistance(ds.r, registry, attractors))
+          ? mapPlanetFadeOpacity(nearestPlanetDistance(ds.r, registry, celestialBodies))
           : 1;
       this.markerItemScratch.push(visibility ? {
         ...item,
@@ -197,7 +197,7 @@ export class Targeter {
       });
     }
     const celestialLabels = overviewMode ? cameraSystem.focusMarkers.activeLabels : [];
-    this.markerManager.combatMarkers.sync(this.markerItemScratch, project, overviewMode, screenScale, celestialLabels, attractors);
+    this.markerManager.combatMarkers.sync(this.markerItemScratch, project, overviewMode, screenScale, celestialLabels, celestialBodies);
     if (player) {
       this.markerManager.leadMarkers.sync(
         player, this.aliveScratch, this.aliveTarget, this.aliveSecondaryTarget, simTime, overviewMode, project);

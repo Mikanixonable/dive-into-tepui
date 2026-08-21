@@ -1,7 +1,7 @@
 // シミュレーション刻みの純粋な決定規則。既知イベントを越えず、大気の底の近くでは刻みを縮める。
 
 import { ellipsoidAltitude } from '../../physics/atmosphere';
-import { Attractor, nearestAtmosphereBody } from '../../physics/attractor';
+import { CelestialBody, nearestAtmosphereBody } from '../../physics/celestial-body';
 import { KinematicState } from '../../physics/kinematic-state';
 import { dot, len, sub } from '../../physics/vec3';
 import * as C from '../const';
@@ -30,7 +30,7 @@ export function simulationMaxStep(simDt: number, maxDt: number, maxCount: number
 // 各状態はそれぞれにとって最も近い大気天体を相手にする(呼び出し側は窓をそのまま渡す)。
 export function reentryAwareMaxStep(
   states: readonly KinematicState[],
-  atmosphereBodies: readonly Attractor[],
+  atmosphereBodies: readonly CelestialBody[],
   normalMaxStep: number,
 ): number {
   let maxStep = normalMaxStep;

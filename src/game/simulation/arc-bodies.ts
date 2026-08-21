@@ -2,29 +2,29 @@
 // 解決する代わりに、いま効きうる天体だけを成員として保持する。成員は解決するついでに抜ける
 // 条件を見る。成員でない候補は「最短でもこの時刻までは効き得ない」期限を持ち、その時刻が
 // 来たときだけ解決して入る条件を見る。
-import type { Attractor, AttractorId } from '../../physics/attractor';
+import type { CelestialBody, CelestialBodyId } from '../../physics/celestial-body';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { len, sub } from '../../physics/vec3';
 import * as C from '../const';
 
 // 積分が引きうる天体1体ぶんの、時刻に依らない素性。
 export type FutureBodyCandidate = {
-  readonly id: AttractorId;
+  readonly id: CelestialBodyId;
   readonly mu: number; // 重力定数 GM [m^3/s^2]。0 なら重力源にならない
   readonly radius: number; // 表面半径 [m]
 };
 
 // 弧が天体を引く相手。候補の顔ぶれは弧を作った時点で確定する。
-export type FutureAttractorProvider = {
+export type FutureCelestialBodyProvider = {
   readonly candidates: () => readonly FutureBodyCandidate[];
   // 候補1体の時刻 t での状態。
-  readonly bodyAt: (id: AttractorId, t: number) => Attractor;
+  readonly celestialBodyAt: (id: CelestialBodyId, t: number) => CelestialBody;
 };
 
 // 弧の1歩が読む天体一式。gravity は引力を持つ天体、collision は表面到達の相手。
 export type ArcBodyWindow = {
-  readonly gravity: readonly Attractor[];
-  readonly collision: readonly Attractor[];
+  readonly gravity: readonly CelestialBody[];
+  readonly collision: readonly CelestialBody[];
 };
 
 // 候補1体ぶんの成員判定の状態。
@@ -41,7 +41,7 @@ type Watch = {
 
 // 候補の状態が「効き始める」までの猶予 [s]。重力(寄与が無視できなくなる距離まで)と表面到達
 // (半径まで)のうち早いほうを、保守的に見積もった接近速度で割る。
-function slackTime(w: Watch, body: Attractor, from: KinematicState): number {
+function slackTime(w: Watch, body: CelestialBody, from: KinematicState): number {
   const dist = len(sub(body.state.r, from.r));
   // 原点補正項は問い合わせ位置に依らず天体の原点距離だけで決まるので、近いほうの距離で見る。
   const gravitySlack = w.candidate.mu === 0
@@ -56,8 +56,8 @@ function slackTime(w: Watch, body: Attractor, from: KinematicState): number {
 }
 
 // 最も重い天体の id。引力を持つ天体が候補に無ければ null。
-function heaviestGravityId(candidates: readonly FutureBodyCandidate[]): AttractorId | null {
-  let id: AttractorId | null = null;
+function heaviestGravityId(candidates: readonly FutureBodyCandidate[]): CelestialBodyId | null {
+  let id: CelestialBodyId | null = null;
   let mu = 0;
   for (const c of candidates) {
     if (c.mu <= mu) continue;
@@ -75,7 +75,7 @@ export class ArcBodies {
   lastRevisited = 0;
 
   // 候補の顔ぶれを構築時に確定させ、以後は1体ぶんの状態だけを sources へ問う。
-  constructor(private readonly sources: FutureAttractorProvider) {
+  constructor(private readonly sources: FutureCelestialBodyProvider) {
     const candidates = sources.candidates();
     const pinnedId = heaviestGravityId(candidates);
     this.watches = candidates.map((candidate) => ({
@@ -93,14 +93,14 @@ export class ArcBodies {
   resolve(t: number, from: KinematicState, stepDt: number): ArcBodyWindow {
     // 次の歩で表面へ届きうる天体が一覧の外に残らないよう、刻み幅の数歩ぶん先まで入れておく。
     const lead = Math.max(stepDt, C.ARC_MIN_STEP_DT) * C.ARC_BODY_LEAD_STEPS;
-    const gravity: Attractor[] = [];
-    const collision: Attractor[] = [];
+    const gravity: CelestialBody[] = [];
+    const collision: CelestialBody[] = [];
     this.lastResolved = 0;
     this.lastRevisited = 0;
     for (const w of this.watches) {
       if (!w.member && w.nextVisitT > t) continue;
       if (!w.member) this.lastRevisited++;
-      const body = this.sources.bodyAt(w.candidate.id, t);
+      const body = this.sources.celestialBodyAt(w.candidate.id, t);
       this.lastResolved++;
       const slack = slackTime(w, body, from);
       w.member = w.pinned || slack <= lead;
