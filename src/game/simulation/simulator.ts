@@ -123,7 +123,8 @@ export class Simulator {
           this.contactEntitiesScratch.push(...p.collisionFolds(this.simTime));
         }
         this.sections.enter(SECTION.contact);
-        this.contactPhysics.resolveSubstep(this.simTime, this.contactEntitiesScratch, activeStage);
+        this.contactPhysics.resolveEntityContacts(
+          this.simTime, this.contactEntitiesScratch, activeStage);
         this.sections.exit(SECTION.contact);
         nanWatchdog.checkPlayer('simulator.advance(接触)', player, this.simTime, dt, subDt);
       }
