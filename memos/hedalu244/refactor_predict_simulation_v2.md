@@ -25,12 +25,15 @@
 
 依存があるので、この順に着手する。
 
-| 順 | 章 | 何をするか | その位置に置く理由 |
+| 順 | 章 | 何をするか | 状態 |
 |---|---|---|---|
-| 1 | 第5章(論点1) | 表面到達の判定を1本にする | 最優先。第8章が変える押し戻しの帰結は、この判定を通って弧へ出る |
-| 2 | 第8章(論点4) | 天体の内側の重力を有限にする | 第5章が作る「半径和で判定する弧」の上で挙動を確かめたい |
-| 3 | 第6章(論点2) | 天体と個体で接触の口を分け、型を改名する | 第5章が `resolveOne` の中身を組み替えるので、後に置いて衝突を避ける |
-| 4 | 第7章(論点3) | 2つの実測を通し、結果に応じて仕様と実装を直す | 実測の結論が出るまで SPEC の掃除ができない |
+| 1 | 第5章(論点1) | 表面到達の判定を1本にする | **実施済み** |
+| 2 | 第6章(論点2) | 天体と個体で接触の口を分け、型を改名する | **実施済み**(`94e9d248` / `06cd8928`) |
+| 3 | 第8章(論点4) | 天体の内側の重力を有限にする | 未着手。第5章が作った「半径和で判定する弧」の上で挙動を確かめる |
+| 4 | 第7章(論点3) | 2つの実測を通し、結果に応じて仕様と実装を直す | 未着手。実測の結論が出るまで SPEC の掃除ができない |
+
+第6章を第8章より先に実施したのは、ユーザーが第6章の命名を先に確定させたため。第8章は
+`attractorAccel` の内側だけを変えるので、第6章の改名とは干渉しない。
 
 **第7章の SPEC 掃除(7-3)は、7-1 と 7-2 の実測が終わるまで着手しない** — 「性能のために
 判定を抜く」「性能のために刻みを変える」記述を消してよいかどうかが、実測の結論そのものだから。
@@ -667,26 +670,26 @@ union に名前を付けた意味が出ていない。
 だけになる。**「同じ概念に二つの名前がある」のではなく、「同じ天体の、時刻を持たない記述と
 持つ記述」であって、両方が要る。** 直すべきなのは名前だけである。
 
-## 6-4. 変更が必要な箇所
+## 6-4. 実施時に決めたこと
 
-**6-1(口を分ける)**
+- **`Player.collideAtRadiatorWithCelestialBody` は作らなかった。** 接触代理(`RadiatorFold`)は
+  `attachedTo` を持つので `collectParticipants` を通らず、天体接触に参加しない
+  (`SPEC/ORBIT.md`「艦に取り付いた局所の接触代理は参加しない」)。口を分けたことで
+  「経路が無い」ことが型に出たので、書けば到達しないコードになる。
+- **`Player` の共通の尾(`damagedByContact`)は破壊エフェクトを含む。** 落とし穴の表は
+  「尾に含めず `collideAtRadiator` 側に残す」としていたが、エフェクトは
+  `applyCollisionDamage` と HP 判定の**間**にあるので、外へ出すと呼び出し順が変わる。
+  代わりに `side` を尾の引数に取り、`side !== null` のときだけ出す形にした。
+- `resolveSurfaceContacts` から `simTime` 引数を外した(`contactsWith` の呼び出しが消えて
+  使わなくなった)。
+- **改名先の `CelestialBody` は、見た目側の `CelestialBody`(`src/game/celestial/`)と
+  衝突した。** 同ディレクトリの `RingView` / `PointFieldView` に倣い、見た目側を
+  `CelestialView` / `Earth`・`Sphere`・`Point`・`SunView` へ寄せ、レジストリ項の
+  `CelestialView` は `CelestialViewDef`、`CELESTIAL_BODIES` は `CELESTIAL_VIEWS` にした。
+- `src/physics/attractor.ts` → `celestial-body.ts`。`src/game/simulation/attractors.ts` は
+  重力源の分類そのものなので**名前を変えていない**。
 
-| ファイル | 何をするか |
-|---|---|
-| `src/game/game-entity/contact-target.ts` | 削除 |
-| `src/game/game-entity/contact-damage.ts` | 天体用と個体用へ割る。`ATTRACTOR_DAMAGE_WEIGHT` は消える |
-| `src/game/game-entity/game-entity.ts` | `contactsWith` の引数を `GameEntity` へ。`collideWith` を `collideWithEntity` / `collideWithCelestialBody` へ割り、既定の `collideWithCelestialBody` が `alive = false` |
-| `src/game/game-entity/bullet.ts` | `contactsWith` の `other instanceof GameEntity` 分岐が要らなくなる。`collideWithCelestialBody` も `alive = false` |
-| `src/game/game-entity/debris-piece.ts` / `enemy.ts` | `collideWithEntity` / `collideWithCelestialBody` へ。`Enemy` は撃破記録の種別が口ごとに固定される(`isAttractor` の分岐が消える) |
-| `src/game/player/player.ts` | `collideWithEntity` / `collideWithCelestialBody` / `collideAtRadiatorWithEntity` / `collideAtRadiatorWithCelestialBody` の4つ。共通の尾を private へ。`lossReason` 関数は消え、文言が口ごとの直書きになる |
-| `src/game/player/radiator.ts` / `belt-physics.ts` | `contactsWith` の引数型。`RadiatorFold` は `collideWithCelestialBody` も owner へ委ねる |
-| `src/game/simulation/surface-contact-physics.ts` | `contactsWith` の呼び出しを削除、`collideWith` → `collideWithCelestialBody` |
-| `src/game/simulation/entity-contact-physics.ts` | 変更なし(型が狭まるだけ) |
-
-**6-2(改名)**: `Attractor` の綴りは `src/` `tests/` `tools/` に **797 箇所 / 119 ファイル**。
-上の表の対応で機械的に置換し、`typecheck` で取りこぼしを拾う。
-
-## 6-5. 達成目標
+## 6-5. 達成目標 — 8 件中 7 件を当てた
 
 1. `ContactTarget` と `isAttractor` の綴りが `src/` に **0 件**。
 2. `GameEntity | Attractor` / `Attractor | GameEntity` の綴りが **0 件**。
@@ -700,43 +703,33 @@ union に名前を付けた意味が出ていない。
 7. `npm run typecheck` と `npm run test:physics` が通る。
 8. セーブの読み込みが壊れていない(既存スロットのロード)。
 
-## 6-6. 手順
+1〜7 は当てた(1〜5 は grep が 0 件、7 は `typecheck` と `test:physics` 472/472、
+加えて `npm run build` が通ることで webpack 側の解決も確かめた)。
 
-**6-1(口を分ける)は実施済み(`94e9d248`)。** 実施時に決めたこと:
+**8 だけ残っている。** この環境ではブラウザを駆動できない(9-3)ので、静的にしか
+確かめていない — `SAVE_VERSION` は変わらず、`save-data.ts` の差分は型注釈2行だけ、
+直列化されるキーも値も変わらない。**実機でスロットを1回ロードすること。**
 
-- ステップ 1〜5 は型の整合が同時にしか取れないので、1 commit にまとめた(計画の
-  「1〜5 と 6 は別 commit」はそのまま守っている)。
-- **`Player.collideAtRadiatorWithCelestialBody` は作らなかった。** 接触代理
-  (`RadiatorFold`)は `attachedTo` を持つので `collectParticipants` を通らず、天体接触に
-  参加しない。口を分けたことで「経路が無い」ことが型に出たので、書けば到達しないコードになる。
-- `resolveSurfaceContacts` から `simTime` 引数を外した(`contactsWith` の呼び出しが消えて
-  使わなくなった)。
+## 6-6. 実測
 
-| # | ステップ | 完了条件 |
+- **6-1**: 13 ファイル、+92 / −105 行(`contact-target.ts` の削除を含む)。
+- **6-2**: 130 ファイル、+1039 / −1038 行。うち9ファイルはファイル名の変更。
+- **費用への影響**: 0(判定の削除も改名も、実行時の分岐を増やさない)。
+
+## 6-7. リスクと落とし穴 — 当てた結果
+
+| リスク | 影響 | 当てた結果 |
 |---|---|---|
-| 6 | 型と関数の改名(6-2 の表)を機械的に適用 | `typecheck` 通過。`git diff --stat` が識別子だけの差分 |
-| 7 | セーブスロットのロードを1回通す | 例外なくロードできる |
+| 天体側の `contactsWith` を消したことで、将来「この個体は天体をすり抜ける」を書けなくなる | 仕様上そういう個体は無い(`SPEC/ORBIT.md`「生存している物体はすべて参加し」)が、**必要になったら口を戻すことになる** | **踏んでいない。** 仕様は変わっていない。露見するのは仕様が変わったときで、そのとき口を戻す |
+| `Player` の尾を括り出すときに、放熱板側だけにある破壊エフェクトを落とす | 放熱板が壊れても演出が出ない。**静かに消える** | **踏んでいない。** `radiatorBreakEffect` は `damagedByContact` の中に残っており、`applyCollisionDamage` と HP 判定の間という元の位置も保っている(6-4) |
+| `Enemy` の撃破記録の種別(`'collision'` / `'killed'`)を口ごとに固定するとき、逆に付ける | ステージのスコアと撃破ログが入れ替わる。**型では捕まらない** | **踏んでいない。** `collideWithCelestialBody` → `'collision'`、`collideWithEntity` → `'killed'` |
+| 改名で `attractor` を名乗るべきものまで `CelestialBody` にする | 重力の文脈が薄まり、`CODING-RULE 2.2` を今度は逆向きに破る | **踏んでいない。** `attractorAccel` 23 / `strongestAttractor` 75 / `gravityAttractorsAt` 52 / `classifyAttractors` 23 / `attractorsNearInto` 23 が改名前と同数で残っている |
+| 置換で `Attractor` → `Body` の短い綴りを作ってしまう | 無標の `body` が増え、`CODING-RULE 2.2` の新しい規則を破ったまま残る | **踏んでいない。** `BodyId` / `bodiesAt` / `bodyAt` / `bodyStateAt` / `bodyPositionAt` / `frameOfBody` はいずれも 0 件 |
+| `AttractorId` → `CelestialBodyId` がセーブの型注釈に触れる | 型名だけが変わり形式は同じなので実害は無いが、`SAVE_VERSION` を上げたくなる誘惑が出る | **踏んでいない。** `SAVE_VERSION` は差分に無い |
 
-## 6-7. 見積り
-
-- **6-1**: 9 ファイル、実質の書き換えは 100 行程度。`Player` の尾の括り出しが
-  11 行 × 4 → 11 行 + 4〜5 行 × 4 で、正味 20 行ほど減る。
-- **6-2**: 797 箇所の機械的置換。`sed` で通し、`typecheck` を1回通せば終わる。
-  **`npm run export-assets` を走らせないこと** — アセットの識別子が振り直されて
-  差分が膨らむ。
-- **費用への影響**: 0。`isAttractor`(`'mu' in`)の呼び出しは接触1件あたり1回で、
-  接触自体が稀なので消しても測れる差にならない。改名は実行時に影響しない。
-
-## 6-8. リスクと落とし穴
-
-| リスク | 影響 | それが露見する場所 |
-|---|---|---|
-| 天体側の `contactsWith` を消したことで、将来「この個体は天体をすり抜ける」を書けなくなる | 仕様上そういう個体は無い(`SPEC/ORBIT.md`「生存している物体はすべて参加し」)が、**必要になったら口を戻すことになる** | 仕様が変わったとき。いま余地として残すと、恒真の問い合わせが毎 substep 走り続ける |
-| `Player` の尾を括り出すときに、放熱板側だけにある破壊エフェクトを落とす | 放熱板が壊れても演出が出ない。**静かに消える** | 括り出す尾に破壊エフェクトを含めず、`collideAtRadiator` 側に残す。2-4 の重複が「11 行 × 2」であることの内訳がこれ |
-| `Enemy` の撃破記録の種別(`'collision'` / `'killed'`)を口ごとに固定するとき、逆に付ける | ステージのスコアと撃破ログが入れ替わる。**型では捕まらない** | 天体 → `'collision'`、個体 → `'killed'`。`isAttractor(other) ? 'collision' : 'killed'` の対応をそのまま移す |
-| 改名で `attractor` を名乗るべきものまで `CelestialBody` にする | 重力の文脈が薄まり、`CODING-RULE 2.2` を今度は逆向きに破る | 6-2 の右列(改名しないもの)を、置換の前に grep で確定させてから走らせる |
-| 置換で `Attractor` → `Body` の短い綴りを作ってしまう | 無標の `body` が増え、`CODING-RULE 2.2` の新しい規則を破ったまま残る | 置換後に `BodyId` / `bodiesAt` / `bodyAt` / `bodyStateAt` / `bodyPositionAt` / `frameOfBody` を grep して、新設が 0 件であることを確認する |
-| `AttractorId` → `CelestialBodyId` がセーブの型注釈に触れる | 型名だけが変わり形式は同じなので実害は無いが、`SAVE_VERSION` を上げたくなる誘惑が出る | **上げない。** 直列化されるキーも値も変わらない |
+**この章で片付けなかった無標の `body`**(`Attractor` の改名とは別の面):
+`ArcBodies` / `ArcBodyWindow` / `FutureBodyCandidate`、`bodyDef`、`BodyClass` /
+`BodyClassToggles`、`body-visibility.ts`、セーブのキー `centerBodyId`(形式なので変えられない)。
 
 ---
 
@@ -1069,7 +1062,7 @@ union に名前を付けた意味が出ていない。
   同じ関数が既に平方根と除算を2組ずつ持っているので相対的には小さいはずだが、
   **これは見積りであって実測ではない** — 変更前後で `tests/perf/exp3-gravity-cost.ts` を
   走らせ、`stepDynamics` の1歩あたり時間が動かないことを確かめる。動くようなら
-  `radius * radius` を `Attractor` のフィールドとして持たせる(`Ephemeris.attractorAt` が
+  `radius * radius` を `CelestialBody` のフィールドとして持たせる(`Ephemeris.celestialBodyAt` が
   組むときに1回だけ掛ける)。
 - **答えの変化**: 天体の外側では**ビット単位で同じ**(分岐の条件が `d² ≥ 1` から
   `d² ≥ R²` へ変わるだけで、外側では同じ枝を通り同じ式を評価する)。
@@ -1107,9 +1100,9 @@ union に名前を付けた意味が出ていない。
   とおり node で読める)。**詰まっているのはコンパイルの側だけ。**
 
 **届くには2択**: node で走る CommonJS のテストとは別に **bundler 解決でゲーム層をコンパイル
-する実行形態**を用意するか、`collideWith` の契約から `Stage` と `GameEntity` を外すか。
-**第6章が `collideWith` を割るので、そのとき契約の形をもう一度見ること** — ただし `Stage`
-(撃破の記録先)は外せる見込みが薄い。
+する実行形態**を用意するか、`collideWithEntity` / `collideWithCelestialBody` の契約から
+`Stage` と `GameEntity` を外すか。第6章で口を割ったときに契約の形も見たが、`Stage`
+(撃破の記録先)はどちらの口からも外せなかった。
 
 いま置けているのは、推移閉包に触れない層だけ:
 `tests/physics/contact.test.ts` の4件(法線の向きの取り決め — 記述を組む側と法線を決める側に
