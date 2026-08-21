@@ -5,8 +5,8 @@
 //   近似の誤差 = 近似曲線の最接近距離 − 真の最接近距離
 //   実装の許容 = R*(判定器) − 近似曲線の最接近距離   ← 細分の打ち切りで拾えなかった分
 import { Ephemeris } from '../../src/physics/ephemeris';
-import { SweptMode, sweptSphereContact } from '../../src/physics/sphere-contact';
-import { Vec3, add, cross, len, norm, scale, sub, v3 } from '../../src/physics/vec3';
+import { SweptMode } from '../../src/physics/sphere-contact';
+import { Vec3, add, cross, norm, scale, v3 } from '../../src/physics/vec3';
 import * as C from '../../src/game/const';
 import { SHIP_BCINV, buildEphemeris } from './common';
 import { KinematicState } from '../../src/physics/kinematic-state';
@@ -14,80 +14,11 @@ import {
   Advance, EARTH, EARTH_AIR, MOON, SMALL, Sweep, againstBody, beforePerigee, circular, circularPeriod,
   companion, freeFall, sweepOf, withDrag, withThrust,
 } from './sphere-contact-sweeps';
+import { flipRadius, minDistanceOf, sagitta } from './sphere-contact-reference';
 
 const MODES: readonly SweptMode[] = ['linear', 'quadratic', 'cubic'];
-const SAMPLES = 200001;
 // 船の全開加速度 [m/s^2](BASE_THRUST のコメントが基準にしている値)。
 const SHIP_ACCEL = 400;
-
-// 判定器と同じ制御点で曲線を張り、原点との最接近距離を密なサンプリングで出す。
-// 判定器の実装とは独立に持つ — 判定器がその最接近距離をどこで拾うかを測っているため。
-function controlPoints(s: Sweep, mode: SweptMode): readonly Vec3[] {
-  const dt = s.aEnd.t - s.aStart.t;
-  const p0 = sub(s.bStart.r, s.aStart.r);
-  const p1 = sub(s.bEnd.r, s.aEnd.r);
-  const t0 = scale(sub(s.bStart.v, s.aStart.v), dt);
-  const t1 = scale(sub(s.bEnd.v, s.aEnd.v), dt);
-  if (mode === 'linear') return [p0, p1];
-  if (mode === 'quadratic') {
-    return [p0, v3(
-      (p0.x + p1.x) / 2 + (t0.x - t1.x) / 4,
-      (p0.y + p1.y) / 2 + (t0.y - t1.y) / 4,
-      (p0.z + p1.z) / 2 + (t0.z - t1.z) / 4), p1];
-  }
-  return [p0,
-    v3(p0.x + t0.x / 3, p0.y + t0.y / 3, p0.z + t0.z / 3),
-    v3(p1.x - t1.x / 3, p1.y - t1.y / 3, p1.z - t1.z / 3), p1];
-}
-
-function bezierAt(control: readonly Vec3[], u: number): Vec3 {
-  let level = control;
-  while (level.length > 1) {
-    const next: Vec3[] = [];
-    for (let i = 0; i + 1 < level.length; i++) {
-      const a = level[i]!, b = level[i + 1]!;
-      next.push(v3(a.x + (b.x - a.x) * u, a.y + (b.y - a.y) * u, a.z + (b.z - a.z) * u));
-    }
-    level = next;
-  }
-  return level[0]!;
-}
-
-function minDistanceOf(s: Sweep, mode: SweptMode): number {
-  const control = controlPoints(s, mode);
-  let best = Infinity;
-  let bu = 0;
-  for (let i = 0; i < SAMPLES; i++) {
-    const u = i / (SAMPLES - 1);
-    const d = len(bezierAt(control, u));
-    if (d < best) { best = d; bu = u; }
-  }
-  let lo = Math.max(0, bu - 1 / (SAMPLES - 1));
-  let hi = Math.min(1, bu + 1 / (SAMPLES - 1));
-  for (let k = 0; k < 120; k++) {
-    const m1 = lo + (hi - lo) / 3;
-    const m2 = hi - (hi - lo) / 3;
-    if (len(bezierAt(control, m1)) < len(bezierAt(control, m2))) hi = m2; else lo = m1;
-  }
-  return Math.min(best, len(bezierAt(control, (lo + hi) / 2)));
-}
-
-function crosses(s: Sweep, mode: SweptMode, radiusSum: number): boolean {
-  const c = sweptSphereContact(s.aStart, s.aEnd, s.bStart, s.bEnd, radiusSum, mode);
-  return c !== null && !c.startsInside && c.crossing !== null;
-}
-
-// 判定が「跨ぎなし」から「跨ぐ」へ反転する半径和。始点で重なる手前までを上限に取る。
-function flipRadius(s: Sweep, mode: SweptMode): number | null {
-  let hi = Math.min(len(sub(s.bStart.r, s.aStart.r)), len(sub(s.bEnd.r, s.aEnd.r))) * (1 - 1e-13);
-  if (!crosses(s, mode, hi)) return null;
-  let lo = 0;
-  for (let k = 0; k < 100; k++) {
-    const mid = (lo + hi) / 2;
-    if (crosses(s, mode, mid)) hi = mid; else lo = mid;
-  }
-  return (lo + hi) / 2;
-}
 
 function fmt(m: number): string {
   const a = Math.abs(m);
@@ -160,12 +91,6 @@ function entityPairs(): readonly Sweep[] {
   list.push(passingBy('抵抗差(高度 200 km)h=20 s', low, 20, outward, 500,
     withDrag(EARTH_AIR, SHIP_BCINV), freeFall(EARTH_AIR)));
   return list;
-}
-
-// 分岐基準 s = |v0 − v1|·h/8(弦と曲線の中点のずれ)。入力から直接出せる量。
-function sagitta(s: Sweep): number {
-  const dt = s.aEnd.t - s.aStart.t;
-  return len(sub(sub(s.bStart.v, s.aStart.v), sub(s.bEnd.v, s.aEnd.v))) * dt / 8;
 }
 
 // s が弦の誤差をどれだけ言い当てるか。1 を下回ると過小評価で、閾値としては危険側になる。
@@ -262,7 +187,7 @@ export function run(): void {
 
   console.log('\n## 現状の刻みで出得る 歩/周回\n');
   stepsPerRevolution(buildEphemeris());
-  console.log(`\n(最接近距離の参照は制御点から張った曲線の ${SAMPLES} 点サンプリング + 黄金分割。`
+  console.log('\n(最接近距離の参照は sphere-contact-reference.ts。'
     + ' 真値は同じ運動を 4000 分割で積んだ経路の最小距離。)');
 }
 
