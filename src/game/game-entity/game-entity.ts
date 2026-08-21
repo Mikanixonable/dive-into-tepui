@@ -56,6 +56,10 @@ export class GameEntity {
   collides = false; // 剛体接触(ContactPhysics)に参加するか
   // 自分に触れた相手が受けるダメージへ掛かる重み。0 なら触れても相手を傷つけない。
   contactDamageWeight = 1;
+
+  // 剛体接触で反作用を受け持つ質量 [kg]。0 なら相手に力を及ぼさず自分だけが跳ね返り、
+  // 無限大なら押されない。
+  get contactMass(): number { return this.mass; }
   // 特定の艦に取り付いた実体(ベルトの節点・放熱板の折りなど)であれば、その艦自身。
   // 独立した実体なら既定 null。
   attachedTo: GameEntity | null = null;
