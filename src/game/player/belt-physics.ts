@@ -6,7 +6,6 @@ import { Vec3, add, addScaled, cross, len, norm, scale, sub, v3 } from '../../ph
 import { MAG_BELT_ANCHOR_X, MAG_BELT_PITCH } from '../../render/ships';
 import * as C from '../const';
 import { GameEntity } from '../game-entity/game-entity';
-import type { Attractor } from '../../physics/attractor';
 
 // ベルトが機体座標系でたわみなく伸びる基準方向。
 export const X_AXIS: Vec3 = v3(1, 0, 0);
@@ -29,9 +28,9 @@ export class BeltSection extends GameEntity {
   }
 
   // 吊り元の艦、およびそれに取り付いた他の実体(ベルトの他節点・放熱板の折り)とは接触しない。
-  contactsWith(other: GameEntity | Attractor): boolean {
+  contactsWith(other: GameEntity): boolean {
     if (other === this.owner) return false;
-    return !(other instanceof GameEntity && other.attachedTo === this.owner);
+    return other.attachedTo !== this.owner;
   }
 }
 
