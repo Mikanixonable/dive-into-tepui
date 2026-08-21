@@ -241,9 +241,12 @@ export class Enemy extends Ship {
   }
 
   // 大気での焼失による自然死。固体表面への接触は collideWith が扱う。
-  checkLoss(_dt: number, simTime: number, activeStage: Stage, _playerPos: Vec3, attractors: readonly Attractor[]): void {
+  checkLoss(
+    _dt: number, simTime: number, activeStage: Stage, _playerPos: Vec3,
+    atmosphereBodies: readonly Attractor[],
+  ): void {
     if (!this.alive) return;
-    if (burnUpBody(this.state.r, attractors, this.burnUpDensity) === null) return;
+    if (burnUpBody(this.state.r, atmosphereBodies, this.burnUpDensity) === null) return;
     this.alive = false;
     this.destroyEffect();
     activeStage.recordEnemyDeath(this, simTime, 'burnup');
