@@ -34,6 +34,11 @@ export function addScaled(a: Vec3, b: Vec3, s: number): Vec3 {
   return { x: a.x + b.x * s, y: a.y + b.y * s, z: a.z + b.z * s } as Vec3;
 }
 
+// 成分がすべて厳密に一致するか。近似ではなく「値が動いたか」を見るための判定。
+export function sameVec(a: Vec3, b: Vec3): boolean {
+  return a.x === b.x && a.y === b.y && a.z === b.z;
+}
+
 // 内積
 export function dot(a: Vec3, b: Vec3): number {
   return a.x * b.x + a.y * b.y + a.z * b.z;
