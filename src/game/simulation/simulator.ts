@@ -17,8 +17,6 @@ import * as C from '../const';
 import { attractorsNearInto, classifyAttractors } from './attractors';
 import { EntityManager } from './entity-manager';
 import { Player } from '../player/player';
-import { Bullet } from '../game-entity/bullet';
-import { DebrisPiece } from '../game-entity/debris-piece';
 import type { GameEntity } from '../game-entity/game-entity';
 import { nearestAtmosphereBody, type Attractor } from '../../physics/attractor';
 import { Ephemeris } from '../../physics/ephemeris';
@@ -42,10 +40,9 @@ export class Simulator {
   lastIntegratedSteps = 0;
   // 今フレームに予測列から消費した(積分を省いた)延べ数。
   lastFollowedSteps = 0;
-  // エンティティ側の最小イベント時刻の控えと、それを求めたときの LOD・顔ぶれの世代。
+  // エンティティ側の最小イベント時刻の控えと、それを求めたときの顔ぶれの世代。
   private cachedEventTime: number | null = null;
   private cachedEventValid = false;
-  private cachedEventLod = false;
   private cachedEventRevision = -1;
   private readonly adaptiveStatesScratch: KinematicState[] = [];
   private readonly contactEntitiesScratch: GameEntity[] = [];
@@ -81,12 +78,9 @@ export class Simulator {
     this.lastIntegratedSteps = 0;
     this.lastFollowedSteps = 0;
     const targetTime = this.simTime + simDt;
-    // ×4を超えるワープでは射撃・剛体衝突が無効なので、弾と薬莢/破片は途中のsubstepで
-    // 相互作用を起こさない。これらだけを最後に一度まとめて積分し、高warpのS倍走査を避ける。
-    const passiveWarpLod = !resolveCollision && simDt > C.SUBSTEP_MAX_DT;
     while (this.simTime < targetTime - 1e-9) {
       const maxStep = this.adaptiveMaxStep(simDt);
-      const eventTime = this.nextEventTime(activeStage, passiveWarpLod);
+      const eventTime = this.nextEventTime(activeStage);
       const subDt = simulationStepDuration(this.simTime, targetTime, maxStep, eventTime);
       // 浮動小数点の丸めでゼロ刻みになったイベントは現在時刻で消費して前進を保証する。
       if (subDt <= 1e-9) {
@@ -100,14 +94,13 @@ export class Simulator {
       // 重力源はこのサブステップの中点で1回だけ組み、全エンティティで使い回す。
       const sources = this.ephemeris.gravityAttractorsAt(this.simTime + subDt / 2);
       this.lastGravitySourceCount = sources.length;
-      this.substep(
-        subDt, sources, this.ephemeris.atmosphereAttractorsAt(this.simTime + subDt / 2), passiveWarpLod);
+      this.substep(subDt, sources, this.ephemeris.atmosphereAttractorsAt(this.simTime + subDt / 2));
       this.simTime += subDt;
       this.sections.exit(SECTION.orbit);
       this.lastSubsteps++;
       nanWatchdog.checkPlayer('simulator.advance(軌道積分)', player, this.simTime, dt, subDt);
       this.sections.enter(SECTION.attitude);
-      this.stepAttitudes(subDt, passiveWarpLod);
+      this.stepAttitudes(subDt);
       this.sections.exit(SECTION.attitude);
       nanWatchdog.checkPlayer('simulator.advance(姿勢積分)', player, this.simTime, dt, subDt);
       const surfaceBodies = this.surfaceBodies();
@@ -137,16 +130,6 @@ export class Simulator {
       activeStage.applySimulationEvents(this.simTime);
       // 期限切れ弾が同じsubstepの接触解決へ進まないよう、既知境界の直後に回収する。
       this.entities.cleanup(subDt, this.simTime, activeStage, player?.state.r ?? v3(), surfaceBodies);
-    }
-
-    if (passiveWarpLod) {
-      const sources = this.ephemeris.gravityAttractorsAt(this.simTime);
-      this.stepPassiveWarpEntities(sources, this.ephemeris.atmosphereAttractorsAt(this.simTime));
-      // まとめ積分の区間もフレーム全体を張る1つの区間なので、天体との接触をそこにも掛ける。
-      this.sections.enter(SECTION.contact);
-      this.contactPhysics.resolveSurfaceContacts(
-        this.simTime, this.entities.all(), this.surfaceBodies(), activeStage);
-      this.sections.exit(SECTION.contact);
     }
 
     // ベルトは実dtで解く艦にくっついた局所シミュレーションなので、substepループの外で
@@ -185,9 +168,9 @@ export class Simulator {
 
   // ステージと生存エンティティが持つ次イベント時刻のうち最も早いものを返す。無ければ null。
   // ステージ側の時刻は艦の現在の Δv と加速度から毎回決まる生きた値なので毎回引き直す。
-  private nextEventTime(activeStage: Stage, passiveWarpLod: boolean): number | null {
+  private nextEventTime(activeStage: Stage): number | null {
     const stage = activeStage.nextSimulationEventTime(this.simTime);
-    const entity = this.entityEventTime(passiveWarpLod);
+    const entity = this.entityEventTime();
     if (stage === null) return entity;
     if (entity === null) return stage;
     return Math.min(stage, entity);
@@ -196,10 +179,9 @@ export class Simulator {
   // 生存エンティティが持つ次イベント時刻のうち最も早いもの。無ければ null。エンティティ側の
   // 締切は固定の絶対時刻なので、保持した時刻を simTime が越えたときと、エンティティの顔ぶれの
   // 世代が変わったときにだけ全走査で引き直す。
-  private entityEventTime(passiveWarpLod: boolean): number | null {
+  private entityEventTime(): number | null {
     const revision = this.entities.collectionRevision;
     const stale = !this.cachedEventValid
-      || this.cachedEventLod !== passiveWarpLod
       || this.cachedEventRevision !== revision
       || (this.cachedEventTime !== null && this.cachedEventTime <= this.simTime);
     if (!stale) return this.cachedEventTime;
@@ -207,14 +189,11 @@ export class Simulator {
     let next: number | null = null;
     for (const e of this.entities.all()) {
       if (!e.alive) continue;
-      // まとめ積分に回る個体の締切で substep を切っても、その境界で解決される相互作用がない。
-      if (passiveWarpLod && this.isPassiveWarpEntity(e)) continue;
       const t = e.nextSimulationEventTime(this.simTime);
       if (t !== null && (next === null || t < next)) next = t;
     }
     this.cachedEventTime = next;
     this.cachedEventValid = true;
-    this.cachedEventLod = passiveWarpLod;
     this.cachedEventRevision = revision;
     return next;
   }
@@ -234,12 +213,10 @@ export class Simulator {
     dt: number,
     sources: readonly Attractor[],
     atmosphereSources: readonly Attractor[],
-    passiveWarpLod: boolean,
   ): void {
     const classified = classifyAttractors(sources);
     const t = this.simTime + dt;
     for (const e of this.entities.all()) {
-      if (passiveWarpLod && this.isPassiveWarpEntity(e)) continue;
       const near = attractorsNearInto(e.state.r, classified, this.nearbyAttractorsScratch);
       if (e.followPredicted(t, near)) {
         this.lastFollowedSteps++;
@@ -251,42 +228,18 @@ export class Simulator {
   }
 
   // 軌道積分と同じ刻み幅 simDt で全エンティティの姿勢を進める。
-  private stepAttitudes(simDt: number, passiveWarpLod: boolean): void {
+  private stepAttitudes(simDt: number): void {
     for (const p of this.entities.players) p.att = stepAttitude(p.att, p.torque, simDt);
 
     for (const e of this.entities.enemies) if (e.alive) e.att = stepAttitude(e.att, e.torque, simDt);
     for (const base of this.entities.bases) if (base.alive) base.att = stepAttitude(base.att, base.torque, simDt);
-    if (!passiveWarpLod) {
-      for (const cs of this.entities.casings) cs.att = stepAttitude(cs.att, cs.torque, simDt);
-      for (const d of this.entities.debris) d.att = stepAttitude(d.att, d.torque, simDt);
-    }
+    for (const cs of this.entities.casings) cs.att = stepAttitude(cs.att, cs.torque, simDt);
+    for (const d of this.entities.debris) d.att = stepAttitude(d.att, d.torque, simDt);
     for (const ammoPickup of this.entities.ammoPickups) {
       if (ammoPickup.alive) {
         ammoPickup.att = stepAttitude(ammoPickup.att, ammoPickup.torque, simDt);
       }
     }
-  }
-
-  private isPassiveWarpEntity(e: GameEntity): boolean {
-    return e instanceof Bullet || e instanceof DebrisPiece;
-  }
-
-  // 途中のsubstepを飛ばした弾・破片を、最終時刻まで一度だけ進める。高warp中は弾道命中・
-  // 剛体接触を無効にしているため、途中の掃引判定を失ってもゲームプレイ上の相互作用はない。
-  private stepPassiveWarpEntities(
-    attractors: readonly Attractor[], atmosphereSources: readonly Attractor[],
-  ): void {
-    const step = (e: GameEntity): void => {
-      if (!e.alive) return;
-      const elapsed = this.simTime - e.state.t;
-      if (elapsed <= 1e-9) return;
-      e.stepActual(elapsed, attractors, nearestAtmosphereBody(e.state.r, atmosphereSources));
-      this.lastIntegratedSteps++;
-      e.att = stepAttitude(e.att, e.torque, elapsed);
-    };
-    for (const bullet of this.entities.bullets) step(bullet);
-    for (const casing of this.entities.casings) step(casing);
-    for (const debris of this.entities.debris) step(debris);
   }
 
   // 負荷確認ウィンドウが読む、直近フレームの積分規模。
