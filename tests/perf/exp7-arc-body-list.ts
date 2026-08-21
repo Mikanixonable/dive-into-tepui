@@ -9,10 +9,10 @@
 // GRAVITY_NEGLIGIBLE_ACCEL * T² / 2。実シミュレーションが状態を引くのは弧の起点側なので、遠端の差
 // ではなく各チェックポイントをその経過時間なりの許容と突き合わせる。
 import { PredictedArc } from '../../src/game/simulation/predicted-arc';
-import { ArcBodies, type FutureAttractorProvider } from '../../src/game/simulation/arc-bodies';
+import { ArcBodies, type FutureCelestialBodyProvider } from '../../src/game/simulation/arc-bodies';
 import { attractorsNearInto, classifyAttractors } from '../../src/game/simulation/attractors';
 import { Ephemeris } from '../../src/physics/ephemeris';
-import { Attractor, attractorAccel } from '../../src/physics/attractor';
+import { CelestialBody, attractorAccel } from '../../src/physics/celestial-body';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { add, cross, len, lenSq, scale, sub, v3, Vec3 } from '../../src/physics/vec3';
 import { MU_MOON, R_MOON } from '../../src/physics/solar-system';
@@ -22,13 +22,13 @@ import {
 } from './common';
 
 // registry の全天体を候補に持つ provider。
-function registryProvider(ephemeris: Ephemeris): FutureAttractorProvider {
+function registryProvider(ephemeris: Ephemeris): FutureCelestialBodyProvider {
   const candidates = Object.values(ephemeris.registry).map((def) => ({
     id: def.id, mu: def.mu, radius: def.radius,
   }));
   return {
     candidates: () => candidates,
-    bodyAt: (id, t) => ephemeris.attractorAt(id, t),
+    celestialBodyAt: (id, t) => ephemeris.celestialBodyAt(id, t),
   };
 }
 
@@ -86,10 +86,10 @@ function runReference(
   return states;
 }
 
-// pos, t における attractors の加速度の合成。
-function sumAccel(pos: Vec3, t: number, attractors: readonly Attractor[]): Vec3 {
+// pos, t における celestialBodies の加速度の合成。
+function sumAccel(pos: Vec3, t: number, celestialBodies: readonly CelestialBody[]): Vec3 {
   let acc = v3(0, 0, 0);
-  for (const a of attractors) acc = add(acc, attractorAccel(pos, a, t));
+  for (const a of celestialBodies) acc = add(acc, attractorAccel(pos, a, t));
   return acc;
 }
 
@@ -106,7 +106,7 @@ function accelWindowDiff(ephemeris: Ephemeris, state: KinematicState): number {
   const accelArc = sumAccel(state.r, state.t, arcWindow.gravity);
 
   const all = ephemeris.gravityAttractorsAt(state.t);
-  const simNear: Attractor[] = [];
+  const simNear: CelestialBody[] = [];
   attractorsNearInto(state.r, classifyAttractors(all), simNear);
   const accelSim = sumAccel(state.r, state.t, simNear);
 

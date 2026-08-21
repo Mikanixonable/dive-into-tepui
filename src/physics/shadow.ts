@@ -3,7 +3,7 @@
 // r から見た太陽円盤と遮蔽天体円盤の重なり面積比で減光率を出す — 本影(重なり=太陽円盤全体)・
 // 金環(遮蔽円盤が太陽円盤に内包)・半影(部分的に重なる)・完全日照(重なり無し)が場合分け
 // 無しに1つの閉じた式から出る。
-import { Attractor } from './attractor';
+import { CelestialBody } from './celestial-body';
 import { Vec3 } from './vec3';
 
 // 2円(半径 r1, r2、中心距離 d、すべて同じ角度単位)の交差面積。
@@ -26,7 +26,7 @@ function occludedFraction(
   r: Vec3,
   sunDirX: number, sunDirY: number, sunDirZ: number,
   sunDist: number, sinSunAng: number, sunAngRadius: number,
-  occluder: Attractor,
+  occluder: CelestialBody,
 ): number {
   if (occluder.isStar || occluder.radius <= 0) return 1; // 恒星自身・半径0の天体は遮蔽器にしない
   const b = occluder.state.r;
@@ -49,10 +49,10 @@ function occludedFraction(
   return 1 - overlap / (Math.PI * sunAngRadius * sunAngRadius);
 }
 
-// 位置 r における日照率 0..1。attractors は遮蔽しうる全天体(恒星自身は無視する)。
+// 位置 r における日照率 0..1。celestialBodies は遮蔽しうる全天体(恒星自身は無視する)。
 // 複数天体による遮蔽は各々の減光率の積で合成する — 2天体が同時に太陽面へ重なって
 // 掩蔽し合う状況は現実的に起きないため、重なり領域を厳密に扱うより素直な近似とした。
-export function sunlitFactor(r: Vec3, star: Attractor, attractors: readonly Attractor[]): number {
+export function sunlitFactor(r: Vec3, star: CelestialBody, celestialBodies: readonly CelestialBody[]): number {
   const s = star.state.r;
   const tx = s.x - r.x, ty = s.y - r.y, tz = s.z - r.z;
   const sunDist = Math.sqrt(tx * tx + ty * ty + tz * tz);
@@ -62,7 +62,7 @@ export function sunlitFactor(r: Vec3, star: Attractor, attractors: readonly Attr
   const sunAngRadius = Math.asin(sinSunAng);
 
   let lit = 1;
-  for (const occluder of attractors) {
+  for (const occluder of celestialBodies) {
     lit *= occludedFraction(
       r, tx * inv, ty * inv, tz * inv, sunDist, sinSunAng, sunAngRadius, occluder);
     if (lit === 0) return 0; // 本影に入った時点で、以降の遮蔽体を見ても答えは変わらない

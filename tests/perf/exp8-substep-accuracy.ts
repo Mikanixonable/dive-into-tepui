@@ -4,7 +4,7 @@
 // K ごとの刻み幅で1日ぶん積分し、細かい基準積分との差を「軌道要素の動き」として読む —
 // マップで見えるのは形なので、位置の誤差そのものより長半径・近地点高度・傾斜角のずれが判断材料。
 import { Ephemeris } from '../../src/physics/ephemeris';
-import { orbitalElementsOf, strongestAttractor } from '../../src/physics/attractor';
+import { orbitalElementsOf, strongestAttractor } from '../../src/physics/celestial-body';
 import { apsisAltitudes } from '../../src/physics/elements';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { v3 } from '../../src/physics/vec3';

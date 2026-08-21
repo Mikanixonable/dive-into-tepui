@@ -2,7 +2,7 @@
 // (⬢ plannedPlayer マーカー)。
 import * as THREE from 'three/webgpu';
 import { Vec3, len, sub } from '../../physics/vec3';
-import { Attractor, strongestAttractor } from '../../physics/attractor';
+import { CelestialBody, strongestAttractor } from '../../physics/celestial-body';
 import { isOccluded } from '../../physics/occlusion';
 import { Projected } from '../../physics/projection';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -19,7 +19,7 @@ import * as C from '../const';
 import { DisplayDurationSource, PlanData } from './plan';
 import { PlanPath } from './plan-path';
 import type { DisplayWindow } from '../display-window-manager';
-import type { FutureAttractorProvider } from '../simulation/arc-bodies';
+import type { FutureCelestialBodyProvider } from '../simulation/arc-bodies';
 import type { Controllable } from '../game-entity/controllable';
 
 // 近地点・遠地点アイコン。右クリックの被選択物であると同時に、表示するラベルを持つ。
@@ -68,8 +68,8 @@ export class PlanDisplay {
   private tickIcons: readonly PlanTickIcon[] = [];
   private lastTickKeys: readonly string[] = [];
   private ghost: { readonly pos: Vec3; readonly label: string } | null = null;
-  // update が求めた時点の Attractor[]。sync でのマップビュー遮蔽判定に使う。
-  private attractors: readonly Attractor[] = [];
+  // update が求めた時点の CelestialBody[]。sync でのマップビュー遮蔽判定に使う。
+  private celestialBodies: readonly CelestialBody[] = [];
 
   // 計画折れ線(PlanPath)を構築する。
   constructor(
@@ -85,7 +85,7 @@ export class PlanDisplay {
   // 起点が null のときは何も求めない — 出さない計画の位置は持たない。ship はノードの無い
   // 唯一の区間を PlanPath が操作対象の予測列として答えるために渡す。
   update(
-    planData: PlanData | null, displayWindow: DisplayWindow, attractorProvider: FutureAttractorProvider, ship: Controllable | null,
+    planData: PlanData | null, displayWindow: DisplayWindow, celestialBodyProvider: FutureCelestialBodyProvider, ship: Controllable | null,
   ): void {
     if (planData === null) {
       this.ghost = null;
@@ -95,9 +95,9 @@ export class PlanDisplay {
       return;
     }
     const { simTime, displayTime } = displayWindow;
-    this.attractors = this.ephemeris.attractorsAt(displayTime);
+    this.celestialBodies = this.ephemeris.celestialBodiesAt(displayTime);
     this.path.update(
-      planData, ship, this.ephemeris, displayWindow.frame, simTime, this.attractors, attractorProvider,
+      planData, ship, this.ephemeris, displayWindow.frame, simTime, this.celestialBodies, celestialBodyProvider,
       displayWindow.duration,
     );
     this.ghost = this.ghostAt(displayTime, simTime);
@@ -169,7 +169,7 @@ export class PlanDisplay {
       this.markerManager.hide('plannedPlayer');
       return;
     }
-    if (overviewMode && isOccluded(cameraPos, this.ghost.pos, this.attractors)) {
+    if (overviewMode && isOccluded(cameraPos, this.ghost.pos, this.celestialBodies)) {
       this.markerManager.fadeOut('plannedPlayer');
       return;
     }
@@ -183,7 +183,7 @@ export class PlanDisplay {
   // 高度はその位置で最も強く引く天体の表面からの高さ。
   private plannedPlayerLabel(displayTime: number, simTime: number, r: Vec3): string {
     const tRel = displayTime - simTime;
-    const center = strongestAttractor(r, this.attractors);
+    const center = strongestAttractor(r, this.celestialBodies);
     const alt = len(sub(r, center.state.r)) - center.radius;
     if (tRel <= 0) return `計画位置 高度 ${fmtMarkerDist(alt, 0)}`;
     const h = Math.floor(tRel / 3600);
@@ -207,13 +207,13 @@ export class PlanDisplay {
     // 極値の時刻で引き直す — 距離を測る基準が検出時と食い違わないようにするため。
     const center = final.apsisCenter;
     let peDist = 0;
-    let peCenter: Attractor | null = null;
+    let peCenter: CelestialBody | null = null;
     if (pe && center) {
       peCenter = center;
       peDist = len(sub(pe.r, this.ephemeris.positionOf(center.id, pe.t)));
     }
     let apDist = 0;
-    let apCenter: Attractor | null = null;
+    let apCenter: CelestialBody | null = null;
     if (ap && center) {
       apCenter = center;
       apDist = len(sub(ap.r, this.ephemeris.positionOf(center.id, ap.t)));
@@ -288,7 +288,7 @@ export class PlanDisplay {
       const icon = this.apsisIcons.find((m) => m.id === key);
       if (!icon) {
         this.markerManager.hide(key);
-      } else if (overviewMode && isOccluded(cameraPos, icon.pos, this.attractors)) {
+      } else if (overviewMode && isOccluded(cameraPos, icon.pos, this.celestialBodies)) {
         this.markerManager.fadeOut(key);
       } else {
         this.markerManager.setPosition(key, 'mk-apsis', ORBIT_POINT_GLYPH.apsis, icon.pos, project, icon.label);
@@ -302,7 +302,7 @@ export class PlanDisplay {
       const icon = this.impactIcons.find((m) => m.key === key);
       if (!icon) {
         this.markerManager.hide(key);
-      } else if (overviewMode && isOccluded(cameraPos, icon.pos, this.attractors)) {
+      } else if (overviewMode && isOccluded(cameraPos, icon.pos, this.celestialBodies)) {
         this.markerManager.fadeOut(key);
       } else {
         this.markerManager.setPosition(key, 'mk-impact', ORBIT_POINT_GLYPH.impact, icon.pos, project, icon.label);
@@ -325,7 +325,7 @@ export class PlanDisplay {
     for (const rank of ranksDesc) {
       for (let i = 0; i < n; i++) {
         if (icons[i]!.rank !== rank || !projected[i]!.front
-          || (overviewMode && isOccluded(cameraPos, icons[i]!.pos, this.attractors))) continue;
+          || (overviewMode && isOccluded(cameraPos, icons[i]!.pos, this.celestialBodies))) continue;
         if (this.isFarFromShown(projected, shown, i, minPxSq)) shown[i] = true;
       }
     }
@@ -342,7 +342,7 @@ export class PlanDisplay {
 
     for (let i = 0; i < n; i++) {
       const icon = icons[i]!;
-      const occluded = overviewMode && isOccluded(cameraPos, icon.pos, this.attractors);
+      const occluded = overviewMode && isOccluded(cameraPos, icon.pos, this.celestialBodies);
       if (!shown[i] || occluded) {
         if (occluded) this.markerManager.fadeOut(icon.key);
         else this.markerManager.hide(icon.key);

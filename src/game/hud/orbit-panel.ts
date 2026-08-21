@@ -4,7 +4,7 @@
 import * as C from '../const';
 import { fmtDist, fmtSpeed, fmtTime } from './utils';
 import { orbitInfo } from './orbit-info';
-import { Attractor } from '../../physics/attractor';
+import { CelestialBody } from '../../physics/celestial-body';
 import type { Game } from '../game';
 
 import { getApsisLabelSpec } from './orbit-labels';
@@ -17,7 +17,7 @@ export class OrbitPanel {
 
   constructor(private readonly els: Map<string, HTMLElement>) {}
 
-  sync(game: Game, attractors: readonly Attractor[]): void {
+  sync(game: Game, celestialBodies: readonly CelestialBody[]): void {
     const entity = game.activeControllableEntity;
     const el = document.getElementById('hud-orbit');
     if (!entity) {
@@ -30,7 +30,7 @@ export class OrbitPanel {
     if (now < this.nextSyncAt) return;
     this.nextSyncAt = now + SYNC_INTERVAL_MS;
 
-    const oi = orbitInfo(entity, attractors);
+    const oi = orbitInfo(entity, celestialBodies);
     const apSpec = getApsisLabelSpec('ap', oi.centerId);
     const peSpec = getApsisLabelSpec('pe', oi.centerId);
     const thermal = entity instanceof Player ? entity.thermal : null;

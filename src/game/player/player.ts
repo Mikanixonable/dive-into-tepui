@@ -16,7 +16,7 @@ import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { buildPlayerShip } from '../../render/ships';
-import { Attractor, nearestAtmosphereBody } from '../../physics/attractor';
+import { CelestialBody, nearestAtmosphereBody } from '../../physics/celestial-body';
 import type { CameraSystem } from '../camera/camera-system';
 import { focusTargetId } from '../camera/focus-target';
 import type { MapVisibility } from '../celestial/map-visibility';
@@ -232,7 +232,7 @@ export class Player extends Ship {
   // 軌道・姿勢と同じsimulation clockで受動環境系を進める。Game.behaveのwall dtから
   // 分離し、各substep終端の位置・姿勢・太陽方向を使うことでwarp依存を防ぐ。
   // bodies はこの substep の天体窓で、恒星の取り出しと日照率の遮蔽体に使う。
-  stepEnvironment(dt: number, ephemeris: Ephemeris, simTime: number, bodies: readonly Attractor[]): void {
+  stepEnvironment(dt: number, ephemeris: Ephemeris, simTime: number, bodies: readonly CelestialBody[]): void {
     if (!this.alive) return;
     this.radiator.update(dt, this.radiatorWear());
     const sunDir = ephemeris.sunDirFrom(this.state.r, simTime);
@@ -330,7 +330,7 @@ export class Player extends Ship {
   }
 
   // 天体の固体表面への接触。相手の種別による重みが無いので接近速度がそのまま根拠になる。
-  collideWithCelestialBody(_body: Attractor, contact: Contact, activeStage: Stage): void {
+  collideWithCelestialBody(_body: CelestialBody, contact: Contact, activeStage: Stage): void {
     if (!this.alive) return;
     this.damagedByContact(closingSpeed(contact), null, '天体の地表へ到達し機体は失われた', activeStage);
   }
@@ -377,7 +377,7 @@ export class Player extends Ship {
   // 粗い高度・密度の近似を重ねる理由がない。
   checkLoss(
     dt: number, _simTime: number, activeStage: Stage, _playerPos: Vec3,
-    atmosphereBodies: readonly Attractor[],
+    atmosphereBodies: readonly CelestialBody[],
   ): void {
     if (!this.alive) return;
     const limit = this.thermal.updateAltitudeAlarm(
@@ -443,7 +443,7 @@ export class Player extends Ship {
     displayTime: number,
     isActive: boolean,
     ephemeris: Ephemeris,
-    attractors: readonly Attractor[],
+    celestialBodies: readonly CelestialBody[],
     visibility: MapVisibility | null = null,
     displayWindow?: DisplayWindow,
   ): void {
@@ -469,7 +469,7 @@ export class Player extends Ship {
     this.radiator.sync();
     this.power.sync();
     // マーカー。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
-    this.markers.sync(this.state, displayState, this.att, camera.overviewMode, isActive, camera.activeCameraPos, camera.activeCameraProjection, camera.activeCameraScale, this.name, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.mapCamera.focus), ephemeris.registry, attractors, visibility, displayWindow?.frame, displayTime, ephemeris);
+    this.markers.sync(this.state, displayState, this.att, camera.overviewMode, isActive, camera.activeCameraPos, camera.activeCameraProjection, camera.activeCameraScale, this.name, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.mapCamera.focus), ephemeris.registry, celestialBodies, visibility, displayWindow?.frame, displayTime, ephemeris);
   }
 
   // 艦は任意のタイミングで削除されうるので、Player が所有する線・ビルボード・HUD も一度だけ解放する。
