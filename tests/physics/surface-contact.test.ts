@@ -108,6 +108,20 @@ export function register(): void {
       firstSurfaceContact(prev, kinematicState(20, v3(NaN, 0, 0), vel), 0, [rock]), null);
   });
 
+  // 触れ合ったとみなす距離は天体の表面半径に判定される物体自身の半径を足したもの
+  // (SPEC/ORBIT.md「天体表面への到達判定」)。実体も予測弧も同じこの関数を通るので、
+  // 半径を無視する実装へ戻すと、実体が触れる配置で弧だけが素通りする状態が復活する。
+  test('firstSurfaceContact: 半径和で判定する — 天体半径だけでは掠める経路を捉える', () => {
+    const rock = body('rock');
+    const vel = v3(7800, 0, 0);
+    // 最接近は天体中心から 503 m。天体半径 500 m だけでは触れず、半径 10 m の物体なら触れる。
+    const prev = kinematicState(0, v3(-78e3, 503, 0), vel);
+    const next = kinematicState(20, v3(78e3, 503, 0), vel);
+
+    assert.equal(firstSurfaceContact(prev, next, 0, [rock]), null, '大きさを持たない点は掠める');
+    assert.equal(firstSurfaceContact(prev, next, 10, [rock])?.body, rock, '半径 10 m なら触れる');
+  });
+
   // 窓に何体入っていても解決されるのは1件で、それは区間内で最も早く触れる相手でなければ
   // ならない — 後ろの天体を先に返すと、貫いた手前の天体が無かったことになる。
   test('firstSurfaceContact: 複数が触れうるときは最も早い1体を選ぶ', () => {
