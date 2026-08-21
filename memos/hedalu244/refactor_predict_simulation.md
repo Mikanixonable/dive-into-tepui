@@ -390,20 +390,6 @@ sphere-contact.ts  sweptSphereContact(aStart, aEnd, bStart, bEnd, radiusSum)
 
 ## 5-1. 責務が抜かれた残骸・たらい回し・命名
 
-### A-1. `checkLoss` が受け取る窓が、表面窓のまま(**推す**)
-
-`EntityManager.cleanup` は `surfaceBodies`(登録天体の全数 101)を `checkLoss` へ渡すが、
-**実体側の読み手は全員それを大気窓としてしか使っていない** — `burnUpBody` は
-`atmosphere === null` を捨て、`Player` は `nearestAtmosphereBody` を通す。
-
-- 表面到達が接触経路へ移った時点で、この引数の意味は「表面を持つ天体」から「大気を持つ
-  天体」へ変わった。**引数の名前(`attractors`)にも渡し方にもその変化が現れていない。**
-- 既定レジストリでは 101 体のうち 100 体が毎回捨てられる。生存個体 × substep 64 ぶん
-  払っている(`Ephemeris.atmosphereAttractorsAt` は既に 1 体の窓を返せる)。
-- 直し方: `Simulator.advance` が `cleanup` へ渡す窓を `atmosphereAttractorsAt` に変え、
-  引数名を `atmosphereBodies` にする。**焼失の判定に表面の窓は要らない**という 1-3 の
-  分離が、そこで初めて型に現れる。
-
 ### A-2. `ContactTarget` が宣言だけで、生の union が 12 箇所(**推す**)
 
 `contact-target.ts` は `ContactTarget = GameEntity | Attractor` を定義しているが、

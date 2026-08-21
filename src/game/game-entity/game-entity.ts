@@ -336,11 +336,14 @@ export class GameEntity {
     this.renderObject.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
   }
 
-  // playerPos は「自機からの距離」で消える種別(弾)のために一律で渡す。attractors はその
-  // 時刻の重力源一覧(表面到達判定に使う)。
-  checkLoss(_dt: number, _simTime: number, _activeStage: Stage, _playerPos: Vec3, attractors: readonly Attractor[]): void {
+  // 大気による焼失の判定。固体表面への接触は collideWith が扱う。playerPos は「自機からの
+  // 距離」で消える種別(弾)のために一律で渡す。atmosphereBodies はその時刻の大気天体一覧。
+  checkLoss(
+    _dt: number, _simTime: number, _activeStage: Stage, _playerPos: Vec3,
+    atmosphereBodies: readonly Attractor[],
+  ): void {
     if (!this.alive) return;
-    if (burnUpBody(this.state.r, attractors, this.burnUpDensity) !== null) this.alive = false;
+    if (burnUpBody(this.state.r, atmosphereBodies, this.burnUpDensity) !== null) this.alive = false;
   }
 
   // 自分がこの相手と接触しうるか。既定 true。両側が true を返したときだけ接触する。

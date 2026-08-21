@@ -79,7 +79,10 @@ export class Bullet extends GameEntity {
 
     // 消滅条件は「自機から離れすぎた」が主で、寿命は保険。敵弾が自機の至近を通過した瞬間の
     // 判定もここで行う(substep ごとの位置だけを見る、意図的に雑な最接近判定)。
-    checkLoss(_dt: number, simTime: number, _activeStage: Stage, playerPos: Vec3, attractors: readonly Attractor[]): void {
+    checkLoss(
+        _dt: number, simTime: number, _activeStage: Stage, playerPos: Vec3,
+        atmosphereBodies: readonly Attractor[],
+    ): void {
         if (!this.alive) return;
         if (this.shooter === 'enemy' && !this.passedClose
           && lenSq(sub(this.state.r, playerPos)) < C.BULLET_CLOSE_PASS_DIST * C.BULLET_CLOSE_PASS_DIST) {
@@ -87,7 +90,7 @@ export class Bullet extends GameEntity {
             if (this.type === 'plasma') this._worldSfx.magneticInterference();
         }
         // 至近通過音は消滅判定より先に評価する — 同じ substep で寿命が尽きる弾でも通過音は鳴らす。
-        if (burnUpBody(this.state.r, attractors, this.burnUpDensity) !== null) { this.alive = false; return; }
+        if (burnUpBody(this.state.r, atmosphereBodies, this.burnUpDensity) !== null) { this.alive = false; return; }
         if (lenSq(sub(this.state.r, playerPos)) > C.BULLET_MAX_DIST * C.BULLET_MAX_DIST) { this.alive = false; return; }
         if (simTime - this.bornSim >= this.lifetime) this.alive = false;
     }
