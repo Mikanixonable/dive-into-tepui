@@ -10,6 +10,7 @@
 // ではなく各チェックポイントをその経過時間なりの許容と突き合わせる。
 import { PredictedArc } from '../../src/game/simulation/predicted-arc';
 import { ArcBodies, type FutureAttractorProvider } from '../../src/game/simulation/arc-bodies';
+import { attractorsNearInto, classifyAttractors } from '../../src/game/simulation/attractors';
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { Attractor, attractorAccel } from '../../src/physics/attractor';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
@@ -18,7 +19,6 @@ import { MU_MOON, R_MOON } from '../../src/physics/solar-system';
 import {
   MU_EARTH, R_EARTH, SHIP_BCINV, GRAVITY_NEGLIGIBLE_ACCEL,
   buildEphemeris, initialLeoState, stepDynamicsAt, posError,
-  classifyAttractors, attractorsNear,
 } from './common';
 
 // registry の全天体を候補に持つ provider。
@@ -94,7 +94,7 @@ function sumAccel(pos: Vec3, t: number, attractors: readonly Attractor[]): Vec3 
 }
 
 // 同じ位置・時刻で (a) ArcBodies が絞る一覧 と (b) 実シミュレーション相当(27近傍グリッド、
-// classifyAttractors/attractorsNear)の一覧 の加速度差 [m/s²]。弧が「予測」から
+// classifyAttractors/attractorsNearInto)の一覧 の加速度差 [m/s²]。弧が「予測」から
 // 「実シミュレーションに消費される」側へ切り替わっても加速度が飛ばないことの確認 —
 // 差が GRAVITY_NEGLIGIBLE_ACCEL を超えなければ、どちらの窓で評価しても運動方程式は
 // 同じとみなせる。ArcBodies は毎回新規に作る — 初回の resolve は全候補を訪問するので
@@ -106,7 +106,8 @@ function accelWindowDiff(ephemeris: Ephemeris, state: KinematicState): number {
   const accelArc = sumAccel(state.r, state.t, arcWindow.gravity);
 
   const all = ephemeris.gravityAttractorsAt(state.t);
-  const simNear = attractorsNear(state.r, classifyAttractors(all));
+  const simNear: Attractor[] = [];
+  attractorsNearInto(state.r, classifyAttractors(all), simNear);
   const accelSim = sumAccel(state.r, state.t, simNear);
 
   return len(sub(accelArc, accelSim));
