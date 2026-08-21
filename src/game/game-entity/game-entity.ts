@@ -19,7 +19,6 @@ import type { FutureAttractorProvider } from '../simulation/arc-bodies';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
 import type { Contact } from './contact';
-import { isAttractor } from './contact-target';
 import { EntityIdAllocator } from './entity-id';
 import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';
 import type { EntityMarker } from '../marker/entity-marker';
@@ -345,8 +344,9 @@ export class GameEntity {
     this.renderObject.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
   }
 
-  // 大気による焼失の判定。固体表面への接触は collideWith が扱う。playerPos は「自機からの
-  // 距離」で消える種別(弾)のために一律で渡す。atmosphereBodies はその時刻の大気天体一覧。
+  // 大気による焼失の判定。固体表面への接触は collideWithCelestialBody が扱う。playerPos は
+  // 「自機からの距離」で消える種別(弾)のために一律で渡す。atmosphereBodies はその時刻の
+  // 大気天体一覧。
   checkLoss(
     _dt: number, _simTime: number, _activeStage: Stage, _playerPos: Vec3,
     atmosphereBodies: readonly Attractor[],
@@ -356,14 +356,18 @@ export class GameEntity {
   }
 
   // 自分がこの相手と接触しうるか。既定 true。両側が true を返したときだけ接触する。
-  contactsWith(_other: GameEntity | Attractor, _simTime: number): boolean {
+  contactsWith(_other: GameEntity, _simTime: number): boolean {
     return true;
   }
 
-  // この接触で自分に何が起きるかを記述する。相手に何が起きるかは書かない(相手の
-  // collideWith が書く)。既定は、相手が天体であれば失われる。
-  collideWith(other: GameEntity | Attractor, _contact: Contact, _activeStage: Stage): void {
-    if (isAttractor(other)) this.alive = false;
+  // 個体どうしの接触で自分に何が起きるかを記述する。相手に何が起きるかは書かない(相手の
+  // collideWithEntity が書く)。既定は何も起きない。
+  collideWithEntity(_other: GameEntity, _contact: Contact, _activeStage: Stage): void {
+  }
+
+  // 天体の固体表面へ触れたときに自分に何が起きるか。既定は失われる。
+  collideWithCelestialBody(_body: Attractor, _contact: Contact, _activeStage: Stage): void {
+    this.alive = false;
   }
 
   // 赤道交点マーカーを用意して返す。出す必要が生じた側が呼ぶ。
