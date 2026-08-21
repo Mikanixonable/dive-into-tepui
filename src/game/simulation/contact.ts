@@ -187,7 +187,7 @@ export class ContactPhysics {
 
   // 1 substep ぶんの物体どうしの接触解決。ワープゲート(canResolvePhysicalCollisions)は
   // 呼び出し側(Simulator.advance)が判断してから呼ぶ。
-  resolveSubstep(simTime: number, entities: GameEntity[], activeStage: Stage): void {
+  resolveEntityContacts(simTime: number, entities: GameEntity[], activeStage: Stage): void {
     this.collectParticipants(entities, this.participantScratch);
     this.resolveInOrder(this.participantScratch, [], simTime, activeStage);
   }
