@@ -9,8 +9,7 @@ import { Ship } from '../game-entity/ship';
 import { Bullet } from '../game-entity/bullet';
 import type { GameEntity } from '../game-entity/game-entity';
 import type { EntityManager } from '../simulation/entity-manager';
-import type { Contact } from '../game-entity/contact';
-import { isAttractor } from '../game-entity/contact-target';
+import { closingSpeed, type Contact } from '../game-entity/contact';
 import { contactDamageSpeed } from '../game-entity/contact-damage';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
@@ -319,7 +318,7 @@ export class Player extends Ship {
 
   // 弾は武装のダメージを、それ以外は接触の接近速度と相手の種別を根拠にする
   // (どちらもゲームバランスの量で、物理の質量からは導かない)。
-  collideWith(other: GameEntity | Attractor, contact: Contact, activeStage: Stage): void {
+  collideWithEntity(other: GameEntity, contact: Contact, activeStage: Stage): void {
     if (!this.alive) return;
 
     if (other instanceof Bullet) {
@@ -327,22 +326,18 @@ export class Player extends Ship {
       return;
     }
 
-    // 弾以外との接触は、接近速度と相手の種別から出したダメージを無作為なパーツへ振り分ける。
-    if (!this.applyCollisionDamage(contactDamageSpeed(other, contact))) return;
-    if (this.hp > 0) {
-      this._worldSfx.clank();
-      this._fx.spawnGasPuff(this.state);
-      return;
-    }
+    this.damagedByContact(contactDamageSpeed(other, contact), null, '高速接触により機体を喪失した', activeStage);
+  }
 
-    this.alive = false;
-    activeStage.recordPlayerLost(lossReason(other));
-    this.destroyEffect();
+  // 天体の固体表面への接触。相手の種別による重みが無いので接近速度がそのまま根拠になる。
+  collideWithCelestialBody(_body: Attractor, contact: Contact, activeStage: Stage): void {
+    if (!this.alive) return;
+    this.damagedByContact(closingSpeed(contact), null, '天体の地表へ到達し機体は失われた', activeStage);
   }
 
   // 放熱板の接触代理(RadiatorFold)からの帰結。ダメージの割り振り先が side のパーツに
-  // 固定される点だけが collideWith(機体本体)との違い。
-  collideAtRadiator(side: RadiatorSide, other: GameEntity | Attractor, contact: Contact, activeStage: Stage): void {
+  // 固定される点だけが collideWithEntity(機体本体)との違い。
+  collideAtRadiatorWithEntity(side: RadiatorSide, other: GameEntity, contact: Contact, activeStage: Stage): void {
     if (!this.alive) return;
 
     if (other instanceof Bullet) {
@@ -350,10 +345,17 @@ export class Player extends Ship {
       return;
     }
 
-    // 弾以外との接触は、collideWith と異なり side の放熱板パーツへ固定して振り分ける。
-    const damagedPart = this.radiatorParts[side === 'up' ? 0 : 1];
-    if (!this.applyCollisionDamage(contactDamageSpeed(other, contact), damagedPart)) return;
-    if (damagedPart && damagedPart.hp <= 0) this.radiatorBreakEffect(side);
+    this.damagedByContact(contactDamageSpeed(other, contact), side, '高速接触により機体を喪失した', activeStage);
+  }
+
+  // 接触によるダメージ・致死判定。side を指定するとその放熱板パーツへ、無指定なら無作為な
+  // パーツへダメージが入る。
+  private damagedByContact(
+    damageSpeed: number, side: RadiatorSide | null, lossReason: string, activeStage: Stage,
+  ): void {
+    const damagedPart = side === null ? undefined : this.radiatorParts[side === 'up' ? 0 : 1];
+    if (!this.applyCollisionDamage(damageSpeed, damagedPart)) return;
+    if (side !== null && damagedPart && damagedPart.hp <= 0) this.radiatorBreakEffect(side);
     if (this.hp > 0) {
       this._worldSfx.clank();
       this._fx.spawnGasPuff(this.state);
@@ -361,7 +363,7 @@ export class Player extends Ship {
     }
 
     this.alive = false;
-    activeStage.recordPlayerLost(lossReason(other));
+    activeStage.recordPlayerLost(lossReason);
     this.destroyEffect();
   }
 
@@ -547,9 +549,4 @@ export class Player extends Ship {
       nodes: nodes.map((n) => ({ t: n.t, r: { ...n.r }, v: { ...n.v } })),
     };
   }
-}
-
-// 高速接触で艦を失ったときの理由。何に触れて失われたかで決まり、時間加速倍率には依らない。
-function lossReason(other: GameEntity | Attractor): string {
-  return isAttractor(other) ? '天体の地表へ到達し機体は失われた' : '高速接触により機体を喪失した';
 }

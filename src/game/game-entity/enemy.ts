@@ -5,8 +5,7 @@ import { Ship } from './ship';
 import { Attractor } from '../../physics/attractor';
 import { burnUpBody } from '../../physics/atmosphere';
 import { GameEntity } from './game-entity';
-import type { Contact } from './contact';
-import { isAttractor } from './contact-target';
+import { closingSpeed, type Contact } from './contact';
 import { contactDamageSpeed } from './contact-damage';
 import { Attitude } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
@@ -21,7 +20,7 @@ import type { Ephemeris } from '../../physics/ephemeris';
 import { EffectsSystem } from '../vfx/effects-system';
 import { Player } from '../player/player';
 import { Bullet } from './bullet';
-import type { Stage } from '../stages/stage';
+import type { EnemyDeathCause, Stage } from '../stages/stage';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { EntityManager } from '../simulation/entity-manager';
@@ -210,7 +209,7 @@ export class Enemy extends Ship {
 
   // 弾は武装のダメージを、それ以外は接触の接近速度と相手の種別を根拠にする
   // (どちらもゲームバランスの量で、物理の質量からは導かない)。
-  collideWith(other: GameEntity | Attractor, contact: Contact, activeStage: Stage): void {
+  collideWithEntity(other: GameEntity, contact: Contact, activeStage: Stage): void {
     if (!this.alive) return;
     const simTime = contact.selfState.t;
 
@@ -219,8 +218,22 @@ export class Enemy extends Ship {
       return;
     }
 
-    // 弾以外(天体・他艦・デブリ等)との接触は、接近速度と相手の種別からダメージを出す。
-    if (!this.applyCollisionDamage(contactDamageSpeed(other, contact))) return;
+    // 他の実体との接触で沈めば、交戦の結果として記録する。
+    this.damagedByContact(contactDamageSpeed(other, contact), simTime, 'killed', activeStage);
+  }
+
+  // 天体の固体表面への接触。相手の種別による重みが無いので接近速度がそのまま根拠になり、
+  // 沈めば自然損耗として記録する。
+  collideWithCelestialBody(_body: Attractor, contact: Contact, activeStage: Stage): void {
+    if (!this.alive) return;
+    this.damagedByContact(closingSpeed(contact), contact.selfState.t, 'collision', activeStage);
+  }
+
+  // 接触ダメージを当て、HP が残れば音とパフ、尽きたら cause の撃破として記録する。
+  private damagedByContact(
+    damageSpeed: number, simTime: number, cause: EnemyDeathCause, activeStage: Stage,
+  ): void {
+    if (!this.applyCollisionDamage(damageSpeed)) return;
     if (this.hp > 0) {
       this._worldSfx.clank();
       this._fx.spawnGasPuff(this.state);
@@ -228,8 +241,7 @@ export class Enemy extends Ship {
     }
 
     this.alive = false;
-    // 天体の固体表面への接触は自然損耗、他の実体との接触は交戦の結果。
-    activeStage.recordEnemyDeath(this, simTime, isAttractor(other) ? 'collision' : 'killed');
+    activeStage.recordEnemyDeath(this, simTime, cause);
     this.destroyEffect();
   }
 
@@ -240,7 +252,7 @@ export class Enemy extends Ship {
     activeStage.recordEnemyDeath(this, simTime, 'despawn');
   }
 
-  // 大気での焼失による自然死。固体表面への接触は collideWith が扱う。
+  // 大気での焼失による自然死。固体表面への接触は collideWithCelestialBody が扱う。
   checkLoss(
     _dt: number, simTime: number, activeStage: Stage, _playerPos: Vec3,
     atmosphereBodies: readonly Attractor[],

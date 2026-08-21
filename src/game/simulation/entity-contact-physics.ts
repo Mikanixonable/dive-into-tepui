@@ -1,7 +1,8 @@
 // 物体どうしの剛体接触の列挙・解決。collides を立てた GameEntity どうしを参加者とし、反発が
-// 起きた当事者へ collideWith を呼ぶ。ダメージ・音・エフェクトはそれぞれの GameEntity 自身の
-// 責務。1 substep 内の接触は TOI(接触時刻)昇順で解決する — 参加者は互いの状態を書き換える
-// ので、天体との接触(surface-contact-physics.ts)と違って作業マップと解決回数の上限が要る。
+// 起きた当事者へ collideWithEntity を呼ぶ。ダメージ・音・エフェクトはそれぞれの GameEntity
+// 自身の責務。1 substep 内の接触は TOI(接触時刻)昇順で解決する — 参加者は互いの状態を
+// 書き換えるので、天体との接触(surface-contact-physics.ts)と違って作業マップと解決回数の
+// 上限が要る。
 import * as C from '../const';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, scale, sameVec } from '../../physics/vec3';
@@ -225,8 +226,8 @@ export class EntityContactPhysics {
   }
 
   // 候補を1件解決する: working 上の状態を補正後の値へ差し替え、反発が起きたときだけ両者へ
-  // collideWith を順不同で呼ぶ(接触時点の値は working から取った Contact に持たせてあるので、
-  // 呼び出し順に結果は依存しない)。
+  // collideWithEntity を順不同で呼ぶ(接触時点の値は working から取った Contact に持たせて
+  // あるので、呼び出し順に結果は依存しない)。
   private applyCandidate(
     candidate: Candidate,
     working: Map<GameEntity, KinematicState>,
@@ -243,10 +244,10 @@ export class EntityContactPhysics {
 
     const point = add(response.rA, scale(response.normal, a.radius));
     const t = contactTime(a, response.toi);
-    a.collideWith(b, {
+    a.collideWithEntity(b, {
       t, point, normal: response.normal, selfState: aBefore, otherState: bBefore,
     }, activeStage);
-    b.collideWith(a, {
+    b.collideWithEntity(a, {
       t, point, normal: scale(response.normal, -1), selfState: bBefore, otherState: aBefore,
     }, activeStage);
   }

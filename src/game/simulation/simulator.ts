@@ -115,7 +115,7 @@ export class Simulator {
       // 天体との接触は倍率にも種別にも依らず、物体どうしの接触より先に解く。
       this.sections.enter(SECTION.contact);
       this.surfaceContactPhysics.resolveSurfaceContacts(
-        this.simTime, this.entities.all(), surfaceBodies, activeStage);
+        this.entities.all(), surfaceBodies, activeStage);
       this.sections.exit(SECTION.contact);
       nanWatchdog.checkPlayer('simulator.advance(天体接触)', player, this.simTime, dt, subDt);
       if (canResolveEntityContacts) {
