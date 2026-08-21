@@ -5,7 +5,7 @@
 // 触られていない。
 import * as THREE from 'three/webgpu';
 import * as C from './const';
-import { v3, len } from '../physics/vec3';
+import { v3 } from '../physics/vec3';
 import { kinematicState } from '../physics/kinematic-state';
 import { qFromUnitVectors, qInvert, qMul, qRotate, type Quat } from '../physics/attitude';
 import { Hud } from './hud/hud';
@@ -30,13 +30,10 @@ import { productionCostSummary, type ProductionCostSummary } from './hud/invento
 import { baseFacilities, basePowerAvailable, deriveBaseDockingPorts } from './vessel/base-module';
 import { validateBaseAssembly, type BaseModuleContinuity } from './vessel/base-assembly-validation';
 import type { BaseModulePart, DockPort } from './game-entity/parts';
-import { deriveCapsules } from './vessel/collision-shape';
-import { circumradius, type VesselTree } from './vessel/tree';
 import type { Vec3 } from '../physics/vec3';
 import type { FloatingOrigin } from './floating-origin';
 import type { Input, PointerPoint } from './input/input';
 import type { CameraSystem } from './camera/camera-system';
-import { CHASE_DIST_MIN, CHASE_DIST_MAX } from './camera/chase-camera';
 
 const DEFAULT_WINDOW_X = 120;
 const DEFAULT_WINDOW_Y = 120;
@@ -90,21 +87,6 @@ interface AssemblySession {
   readonly retiredRenders: AssemblyRenderObject[];
   targetId: string;
   selection: AssemblySelection;
-  // セッション開始時点のチェイスカメラの距離。セッション終了時にここへ戻す。
-  readonly savedChaseDist: number;
-}
-
-// ツリーの外接半径 [m] — 船体ローカル原点からの最遠点までの距離。deriveCapsules は分離機構の
-// 辺を飛ばすので、カプセルの両端に加えてノード自身の外接円も見る。
-function assemblyExtentRadius(tree: VesselTree): number {
-  let radius = 0;
-  for (const capsule of deriveCapsules(tree)) {
-    radius = Math.max(radius, len(capsule.a) + capsule.radius, len(capsule.b) + capsule.radius);
-  }
-  for (const node of tree.nodes) {
-    radius = Math.max(radius, len(node.pos) + circumradius(node.section));
-  }
-  return radius;
 }
 
 export class AssemblySessionController {
@@ -199,11 +181,10 @@ export class AssemblySessionController {
     );
     const initial = targets.find((target) => target.id === preferredTargetId) ?? targets[0]!;
     const originalInventoryIds = new Set((base.baseState?.inventory ?? []).map((part) => part.id));
-    const savedChaseDist = this.cameraSystem.combatCamera.chaseCamera.dist;
     const entry: AssemblySession = {
       base, session, workbench, panel, originalInventoryIds, targetId: initial.id, selection: null,
       drafts: new Map<string, DraftEntry>(), renders: new Map<string, TargetRenderEntry>(),
-      retiredRenders: [], savedChaseDist,
+      retiredRenders: [],
     };
     this.assembly = entry;
 
@@ -243,20 +224,16 @@ export class AssemblySessionController {
     this.endAssembly();
   }
 
-  // 選択中の対象へチェイスカメラを寄せる。対象の外接半径 × ASSEMBLY_CAMERA_DISTANCE_MARGIN を
-  // 距離に、targetPose の位置・姿勢を追従先にする。慣性系での置かれ方が定まらない対象
-  // (draftOffset が解けない下書きなど)では何もしない — 前回のカメラ状態のまま据え置く。
-  // 追従先は毎フレーム引き直さず、ここで採った一点を渡す — セッション中は時間が止まっていて
-  // 対象が動かないことに依っている。
+  // 選択中の対象へチェイスカメラの追従先を寄せる。targetPose の位置・姿勢を追従先にする。
+  // 慣性系での置かれ方が定まらない対象(draftOffset が解けない下書きなど)では何もしない —
+  // 前回のカメラ状態のまま据え置く。追従先は毎フレーム引き直さず、ここで採った一点を渡す —
+  // セッション中は時間が止まっていて対象が動かないことに依っている。
   private frameAssemblyCamera(entry: AssemblySession): void {
     const view = this.targetById(entry.base, entry.targetId);
     if (!view) return;
     const pose = this.targetPose(entry.base, view);
     if (!pose) return;
     this.cameraSystem.setChaseCameraOverride(pose);
-    const extent = assemblyExtentRadius(view.assembly.tree);
-    const dist = extent * C.ASSEMBLY_CAMERA_DISTANCE_MARGIN;
-    this.cameraSystem.combatCamera.chaseCamera.dist = Math.max(CHASE_DIST_MIN, Math.min(CHASE_DIST_MAX, dist));
   }
 
   // セッションの内容を実機へ書き戻す。全対象について適用できるかを副作用なしで先に判定し、
@@ -307,7 +284,6 @@ export class AssemblySessionController {
     entry.panel.onCancel = null;
     entry.panel.close();
     this.cameraSystem.setChaseCameraOverride(null);
-    this.cameraSystem.combatCamera.chaseCamera.dist = entry.savedChaseDist;
     this.resumeGame();
   }
 

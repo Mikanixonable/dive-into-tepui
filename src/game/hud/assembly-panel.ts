@@ -34,6 +34,7 @@ const STYLE = `
 #hud .asm-panel-targets { padding: 0 var(--space-3); }
 #hud .asm-panel-actions { display: flex; gap: var(--space-2); padding: 0 var(--space-3); }
 #hud .asm-panel-actions .w-btn { flex: 1; text-align: center; }
+#hud .asm-panel-actions .w-btn.asm-panel-icon-btn { flex: none; min-width: 32px; padding-left: var(--space-3); padding-right: var(--space-3); }
 #hud .asm-panel-draft-actions { display: flex; gap: var(--space-2); padding: 0 var(--space-3); }
 #hud .asm-panel-draft-actions .w-btn { flex: 1; text-align: center; }
 #hud .asm-panel-selection-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: 0 var(--space-3); }
@@ -112,6 +113,9 @@ export class AssemblyPanel {
   private targetTabs: TabBar<string> | null = null;
   private undoBtn: Button | null = null;
   private redoBtn: Button | null = null;
+  private confirmBtn: Button | null = null;
+  private cancelBtn: Button | null = null;
+  private lastHasHistory: boolean | null = null;
   private newDraftBtn: Button | null = null;
   private buildDraftBtn: Button | null = null;
   private removeDraftBtn: Button | null = null;
@@ -197,7 +201,9 @@ export class AssemblyPanel {
     this.currentTargetId = target.id;
     this.selectedPrimitiveId = null;
     if (!this.win) {
-      this.win = new DraggableWindow(this.root, clientX, clientY, { title: '組立' }, this.overlayManager, 'assembly-panel');
+      this.win = new DraggableWindow(
+        this.root, clientX, clientY, { title: '組立', startClipped: true }, this.overlayManager, 'assembly-panel',
+      );
       this.win.onClose = () => { this.close(); this.onCancel?.(); };
       this.buildBody(this.win.body);
     }
@@ -209,6 +215,7 @@ export class AssemblyPanel {
     this.lastBuildStatusKey = '';
     this.lastMemberCostKey = '';
     this.lastSectionEditorKey = '';
+    this.lastHasHistory = null;
     this.win.bringToFront();
     this.sync(session, null);
   }
@@ -221,6 +228,8 @@ export class AssemblyPanel {
     this.targetTabs = null;
     this.undoBtn = null;
     this.redoBtn = null;
+    this.confirmBtn = null;
+    this.cancelBtn = null;
     this.newDraftBtn = null;
     this.buildDraftBtn = null;
     this.removeDraftBtn = null;
@@ -260,11 +269,15 @@ export class AssemblyPanel {
 
     const actionsEl = document.createElement('div');
     actionsEl.className = 'asm-panel-actions';
-    this.undoBtn = new Button('元に戻す', () => this.onUndo?.());
-    this.redoBtn = new Button('やり直す', () => this.onRedo?.());
-    const confirmBtn = new Button('確定', () => this.onConfirm?.());
-    const cancelBtn = new Button('取消', () => this.onCancel?.());
-    actionsEl.append(this.undoBtn.element, this.redoBtn.element, confirmBtn.element, cancelBtn.element);
+    this.undoBtn = new Button('↺', () => this.onUndo?.());
+    this.undoBtn.element.classList.add('asm-panel-icon-btn');
+    this.undoBtn.element.setAttribute('aria-label', '元に戻す');
+    this.redoBtn = new Button('↻', () => this.onRedo?.());
+    this.redoBtn.element.classList.add('asm-panel-icon-btn');
+    this.redoBtn.element.setAttribute('aria-label', 'やり直す');
+    this.confirmBtn = new Button('確定', () => this.onConfirm?.());
+    this.cancelBtn = new Button('取消', () => this.onCancel?.());
+    actionsEl.append(this.undoBtn.element, this.redoBtn.element, this.confirmBtn.element, this.cancelBtn.element);
     body.appendChild(actionsEl);
 
     const draftActionsEl = document.createElement('div');
@@ -415,17 +428,28 @@ export class AssemblyPanel {
     this.buildDraftBtn.setEnabled(status?.affordable ?? false);
   }
 
-  // 元に戻す/やり直すボタンに、次に戻る/やり直される編集のラベルを乗せる
-  // (buildDraftBtn の費用表示と同じ、値をボタン自身の文言に畳む形)。この系列は
-  // セッション全体で1本(対象タブをまたいでも1本)なので、現在のタブに関わらず同じ文言になる。
+  // 元に戻す/やり直す/確定/取消は、セッションに編集履歴が無い(一度も編集していない、または
+  // 全て元に戻した)間は隠す —— 何も変えていない状態で確定・取消を選ばせない。表示中は、
+  // 元に戻す/やり直すアイコンボタンに次に戻る/やり直される編集のラベルをツールチップで乗せる。
+  // この系列はセッション全体で1本(対象タブをまたいでも1本)なので、現在のタブに関わらず
+  // 同じ文言・表示状態になる。
   private syncUndoRedo(session: DockWorkbenchSession): void {
-    if (!this.undoBtn || !this.redoBtn) return;
+    if (!this.undoBtn || !this.redoBtn || !this.confirmBtn || !this.cancelBtn) return;
+    const hasHistory = session.canUndo || session.canRedo;
+    if (hasHistory !== this.lastHasHistory) {
+      this.lastHasHistory = hasHistory;
+      this.undoBtn.element.hidden = !hasHistory;
+      this.redoBtn.element.hidden = !hasHistory;
+      this.confirmBtn.element.hidden = !hasHistory;
+      this.cancelBtn.element.hidden = !hasHistory;
+      this.win?.reclamp();
+    }
     this.undoBtn.setEnabled(session.canUndo);
     this.redoBtn.setEnabled(session.canRedo);
     const undoLabel = session.nextUndoLabel;
     const redoLabel = session.nextRedoLabel;
-    this.undoBtn.setLabel(undoLabel === null ? '元に戻す' : `元に戻す · ${undoLabel}`);
-    this.redoBtn.setLabel(redoLabel === null ? 'やり直す' : `やり直す · ${redoLabel}`);
+    this.undoBtn.element.title = undoLabel === null ? '元に戻す' : `元に戻す · ${undoLabel}`;
+    this.redoBtn.element.title = redoLabel === null ? 'やり直す' : `やり直す · ${redoLabel}`;
   }
 
   // 3D で拾ったノード・エッジの選択を1行で示し、今すぐ削除できるかどうかで
@@ -747,7 +771,7 @@ export class AssemblyPanel {
     const kindPicker = new SegmentedControl<MemberKind>(
       '構造材',
       (Object.keys(MEMBER_KIND_LABELS) as MemberKind[]).map((kind) => [kind, MEMBER_KIND_LABELS[kind]] as const),
-      (kind) => { this.memberKind = kind; this.syncMemberImpulseVisibility(); },
+      (kind) => { this.memberKind = kind; kindPicker.setSelected(kind); this.syncMemberImpulseVisibility(); },
     );
     kindPicker.setSelected(this.memberKind);
     wrap.appendChild(kindPicker.element);
