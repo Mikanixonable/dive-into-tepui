@@ -2,7 +2,7 @@
 // ?stage=debug-load 相当(自機1 + 破片500)を最高ワープの1フレームぶん、実ゲームと同じく失われた
 // 個体を毎 substep 除去しながら積分し、掃引の回数と費用・絞り込み後の候補数と削減比・破片の RK4
 // 費用・接触グリッドの候補ペア数を測る。絞り込みは game/simulation/surface-candidates の実装。
-import { Attractor, nearestAtmosphereBody } from '../../src/physics/attractor';
+import { CelestialBody, nearestAtmosphereBody } from '../../src/physics/celestial-body';
 import { firstSurfaceContact } from '../../src/physics/surface-contact';
 import { burnUpBody } from '../../src/physics/atmosphere';
 import { randomQuat } from '../../src/physics/attitude';
@@ -36,7 +36,7 @@ interface Body {
 type Interval = readonly SurfaceParticipant[];
 
 // substep ごとに表面到達判定が突き合わせる天体窓。
-type SurfaceWindows = readonly (readonly Attractor[])[];
+type SurfaceWindows = readonly (readonly CelestialBody[])[];
 
 // 桁区切り付きの整数表記。回数が6桁を超えるので目で読めるようにする。
 const num = (x: number): string => x.toLocaleString('en-US');
@@ -87,7 +87,7 @@ const MOON_IMPACT_MAX_ALT = 200e3; // 月面からの初期高度の上限 [m]�
 // 月へ自由落下する MOON_IMPACT_COUNT 体。月と同じ速度で置くので月の重力だけで表面へ落ち、大気を
 // 持たない相手なので焼失で先に消えることがない — 照合に正例を踏ませるための配置で、費用は測らない。
 function moonImpactStates(ephemeris: Ephemeris, t0: number): readonly Body[] {
-  const moon = ephemeris.attractorAt('moon', t0);
+  const moon = ephemeris.celestialBodyAt('moon', t0);
   const rand = mulberry32(C.DEBUG_LOAD_RNG_SEED);
   const bodies: Body[] = [];
   for (let i = 1; i <= MOON_IMPACT_COUNT; i++) {
@@ -100,11 +100,11 @@ function moonImpactStates(ephemeris: Ephemeris, t0: number): readonly Body[] {
 
 // 剛体接触を解決する帯は区間終点の全天体窓、解決しない帯は積分に使った中点の重力窓を読む。
 function surfaceWindows(ephemeris: Ephemeris, t0: number, select: 'all' | 'gravity'): SurfaceWindows {
-  const windows: (readonly Attractor[])[] = [];
+  const windows: (readonly CelestialBody[])[] = [];
   for (let k = 0; k < SUBSTEPS; k++) {
     const t = t0 + k * MAX_STEP;
     windows.push(select === 'all'
-      ? ephemeris.attractorsAt(t + MAX_STEP)
+      ? ephemeris.celestialBodiesAt(t + MAX_STEP)
       : ephemeris.gravityAttractorsAt(t + MAX_STEP / 2));
   }
   return windows;
@@ -127,7 +127,7 @@ interface Frame {
 // 境界球を桁で膨らませて絞り込みの測定を壊す。
 function integrateFrame(ephemeris: Ephemeris, initial: readonly Body[], windows: SurfaceWindows): Frame {
   const timeline: Interval[] = [];
-  const scratch: Attractor[] = [];
+  const scratch: CelestialBody[] = [];
   let alive: readonly Body[] = initial;
   let stepMs = 0;
   let steps = 0;
@@ -138,8 +138,8 @@ function integrateFrame(ephemeris: Ephemeris, initial: readonly Body[], windows:
   for (let k = 0; k < SUBSTEPS; k++) {
     const tMid = initial[0]!.state.t + (k + 0.5) * MAX_STEP;
     const classified = classifyAttractors(ephemeris.gravityAttractorsAt(tMid));
-    const occluders = ephemeris.attractorsAt(tMid);
-    const air = ephemeris.atmosphereAttractorsAt(tMid);
+    const occluders = ephemeris.celestialBodiesAt(tMid);
+    const air = ephemeris.atmosphereCelestialBodiesAt(tMid);
     const t0 = performance.now();
     const stepped = alive.map((b) => stepDynamics(
       b.state, MAX_STEP, attractorsNearInto(b.state.r, classified, scratch), occluders,
@@ -187,7 +187,7 @@ interface Narrowed {
 // SurfaceCandidates を1フレームぶん通し、段ごとの所要 [ms] と通過数を返す。
 function narrow(timeline: readonly Interval[], windows: SurfaceWindows): Narrowed {
   const candidates = new SurfaceCandidates();
-  const out: Attractor[] = [];
+  const out: CelestialBody[] = [];
   let stage1Ms = 0;
   let stage2Ms = 0;
   let stage1Total = 0;
@@ -211,7 +211,7 @@ function narrow(timeline: readonly Interval[], windows: SurfaceWindows): Narrowe
 // 計時とは別の走査にする — 照合が呼ぶ総当たりの掃引を narrow の計測区間へ混ぜないため。
 function mismatches(timeline: readonly Interval[], windows: SurfaceWindows): number {
   const candidates = new SurfaceCandidates();
-  const out: Attractor[] = [];
+  const out: CelestialBody[] = [];
   let count = 0;
   for (let k = 0; k < SUBSTEPS; k++) {
     const interval = timeline[k]!;
@@ -289,15 +289,15 @@ export function run(): void {
   ]);
 
   console.log('\n## (1)(2) 掃引の費用と、2段の絞り込みで残る候補');
-  reportWindow('attractorsAt(×4 以下の窓)', frame, surfaceWindows(ephemeris, t0, 'all'));
+  reportWindow('celestialBodiesAt(×4 以下の窓)', frame, surfaceWindows(ephemeris, t0, 'all'));
   reportWindow('gravityAttractorsAt(×4 超の窓)', frame, gravity);
 
   // 比較対象として、フレーム全体を1歩でまたいだ場合の費用も測る。絞り込みを通さない
   // 重力窓をそのまま渡す。
   const debris = initial.slice(1);
   const sources = ephemeris.gravityAttractorsAt(t0 + SIM_DT);
-  const occluders = ephemeris.attractorsAt(t0 + SIM_DT);
-  const air = ephemeris.atmosphereAttractorsAt(t0 + SIM_DT);
+  const occluders = ephemeris.celestialBodiesAt(t0 + SIM_DT);
+  const air = ephemeris.atmosphereCelestialBodiesAt(t0 + SIM_DT);
   const lodStep = (b: Body): KinematicState => stepDynamics(
     b.state, SIM_DT, sources, occluders, nearestAtmosphereBody(b.state.r, air),
     C.SMALL_DEBRIS_BCINV, C.SMALL_DEBRIS_SRP_COEFF, null);
@@ -346,7 +346,7 @@ export function run(): void {
     `個体数 ${initial.length}(自機1 + 破片 ${C.DEBUG_LOAD_DEBRIS_COUNT})、ワープ ×${WARP}、dt = 1/60 s、`
       + `simDt = ${SIM_DT.toFixed(1)} s、測定はウォームアップ後 ${REPEATS} 回の最小値`,
     `maxStep = max(SUBSTEP_MAX_DT=${C.SUBSTEP_MAX_DT}, simDt/SUBSTEP_MAX_COUNT=${C.SUBSTEP_MAX_COUNT})`
-      + ` = ${MAX_STEP.toFixed(3)} s → substep 数 ${SUBSTEPS}。天体窓は attractorsAt ${ephemeris.attractorsAt(t0).length}`
+      + ` = ${MAX_STEP.toFixed(3)} s → substep 数 ${SUBSTEPS}。天体窓は celestialBodiesAt ${ephemeris.celestialBodiesAt(t0).length}`
       + ` 体 / gravityAttractorsAt ${ephemeris.gravityAttractorsAt(t0).length} 体`,
     `破片の配置: mulberry32(${C.DEBUG_LOAD_RNG_SEED})、距離 [${C.DEBUG_LOAD_PLACEMENT_MIN_DIST}, `
       + `${C.DEBUG_LOAD_DEBRIS_MAX_DIST}] m の球殻一様、速度は自機と同じ。(4) の区間は substep 0 で、`

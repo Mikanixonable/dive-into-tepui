@@ -1,7 +1,7 @@
 // 古典軌道要素(OrbitalElements)の定義と、状態ベクトル⇄要素の変換・要素上のケプラー幾何。
 // 軌道要素は「どの天体を中心に取ったか」まで含めて初めて意味が定まるため、OrbitalElements 自身が
-// 中心天体(Attractor)を保持する。THREE/DOM 非依存の純粋関数群。
-import type { Attractor } from './attractor';
+// 中心天体(CelestialBody)を保持する。THREE/DOM 非依存の純粋関数群。
+import type { CelestialBody } from './celestial-body';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, addScaled, cross, dot, len, norm, rotateAxis, scale, sub, v3 } from './vec3';
 import { getApsisLabelSpec } from '../game/hud/orbit-labels';
@@ -15,7 +15,7 @@ export interface OrbitalElements {
   pHat: Vec3; // 近地点方向(軌道面内)
   qHat: Vec3; // pHat と直交する軌道面内方向
   hHat: Vec3; // 軌道面法線
-  center: Attractor; // 中心天体。楕円をどの天体位置へ描画すべきかもこれで決まる。
+  center: CelestialBody; // 中心天体。楕円をどの天体位置へ描画すべきかもこれで決まる。
 }
 
 // 長半径 a の楕円軌道の公転周期 [s]。動径をそのまま渡せば、その高度を回る円軌道の周期
@@ -32,9 +32,9 @@ export function semiMajorFromPeriod(period: number, mu: number): number {
 
 // 中心天体相対の状態から古典軌道要素を求める。rel は center 相対(center 自身の位置・速度を
 // 差し引いた後)の状態ベクトルでなければならない — 絶対 ECI 座標をそのまま渡すと、center が
-// 原点(地球)でない限り誤った要素になる。絶対 ECI からの呼び出しは attractor.ts の
+// 原点(地球)でない限り誤った要素になる。絶対 ECI からの呼び出しは celestial-body.ts の
 // orbitalElementsOf に一本化する。半径・角運動量が縮退している場合は null。
-export function orbitalElementsFromState(rel: KinematicState, center: Attractor): OrbitalElements | null {
+export function orbitalElementsFromState(rel: KinematicState, center: CelestialBody): OrbitalElements | null {
   const r = rel.r;
   const v = rel.v;
   const mu = center.mu;

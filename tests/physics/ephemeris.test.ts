@@ -229,28 +229,28 @@ export function register(): void {
     }
   });
 
-  test('ephemeris: attractorsAt は SOLAR_SYSTEM の宣言順で、地球は静止・半径は赤道半径 R_EARTH_EQ', () => {
-    const attractors = eph.attractorsAt(1234);
-    assert.deepEqual(attractors.map((b) => b.id), ['earth', 'moon', 'mercury', 'venus', 'mars', 'phobos', 'deimos', 'jupiter', 'metis', 'adrastea', 'amalthea', 'thebe', 'io', 'europa', 'ganymede', 'callisto', 'himalia', 'elara', 'ananke', 'carme', 'pasiphae', 'sinope', 'saturn', 'pan', 'daphnis', 'prometheus', 'pandora', 'epimetheus', 'janus', 'mimas', 'enceladus', 'tethys', 'dione', 'rhea', 'titan', 'hyperion', 'iapetus', 'phoebe', 'uranus', 'puck', 'miranda', 'ariel', 'umbriel', 'titania', 'oberon', 'neptune', 'triton', 'nereid', 'ceres', 'vesta', 'pallas', 'pluto', 'charon', 'styx', 'nix', 'kerberos', 'hydra', 'haumea', 'hiiaka', 'namaka', 'makemake', 'eris', 'dysnomia', 'halley', 'encke', 'sedna', 'quaoar', 'weywot', 'chariklo', 'hygiea', 'eros', 'ryugu', 'bennu', 'churyumov', 'orcus', 'vanth', 'gonggong', 'salacia', 'varuna', 'ixion', 'arrokoth', 'chiron', 'interamnia', 'europa52', 'davida', 'juno', 'psyche', 'eunomia', 'sylvia', 'itokawa', 'apophis', 'didymos', 'dimorphos', 'tempel1', 'wild2', 'hartley2', 'cruithne', 'kamooalewa', 'tk7', 'eureka', 'sun']);
-    assert.equal(attractors[0]!.radius, R_EARTH_EQ);
+  test('ephemeris: celestialBodiesAt は SOLAR_SYSTEM の宣言順で、地球は静止・半径は赤道半径 R_EARTH_EQ', () => {
+    const celestialBodies = eph.celestialBodiesAt(1234);
+    assert.deepEqual(celestialBodies.map((b) => b.id), ['earth', 'moon', 'mercury', 'venus', 'mars', 'phobos', 'deimos', 'jupiter', 'metis', 'adrastea', 'amalthea', 'thebe', 'io', 'europa', 'ganymede', 'callisto', 'himalia', 'elara', 'ananke', 'carme', 'pasiphae', 'sinope', 'saturn', 'pan', 'daphnis', 'prometheus', 'pandora', 'epimetheus', 'janus', 'mimas', 'enceladus', 'tethys', 'dione', 'rhea', 'titan', 'hyperion', 'iapetus', 'phoebe', 'uranus', 'puck', 'miranda', 'ariel', 'umbriel', 'titania', 'oberon', 'neptune', 'triton', 'nereid', 'ceres', 'vesta', 'pallas', 'pluto', 'charon', 'styx', 'nix', 'kerberos', 'hydra', 'haumea', 'hiiaka', 'namaka', 'makemake', 'eris', 'dysnomia', 'halley', 'encke', 'sedna', 'quaoar', 'weywot', 'chariklo', 'hygiea', 'eros', 'ryugu', 'bennu', 'churyumov', 'orcus', 'vanth', 'gonggong', 'salacia', 'varuna', 'ixion', 'arrokoth', 'chiron', 'interamnia', 'europa52', 'davida', 'juno', 'psyche', 'eunomia', 'sylvia', 'itokawa', 'apophis', 'didymos', 'dimorphos', 'tempel1', 'wild2', 'hartley2', 'cruithne', 'kamooalewa', 'tk7', 'eureka', 'sun']);
+    assert.equal(celestialBodies[0]!.radius, R_EARTH_EQ);
   });
 
-  test('ephemeris: 同一 t の attractorsAt は同一配列参照を返す', () => {
+  test('ephemeris: 同一 t の celestialBodiesAt は同一配列参照を返す', () => {
     const e = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 0.4 });
-    assert.equal(e.attractorsAt(1234), e.attractorsAt(1234));
+    assert.equal(e.celestialBodiesAt(1234), e.celestialBodiesAt(1234));
   });
 
   test('ephemeris: gravityAttractorsAt は mu が 0 でない天体だけを宣言順で返す', () => {
     const gravity = eph.gravityAttractorsAt(1234);
     assert.ok(gravity.every((b) => b.mu !== 0));
-    const expected = eph.attractorsAt(1234).filter((b) => b.mu !== 0).map((b) => b.id);
+    const expected = eph.celestialBodiesAt(1234).filter((b) => b.mu !== 0).map((b) => b.id);
     assert.deepEqual(gravity.map((b) => b.id), expected);
-    assert.ok(gravity.length > 0 && gravity.length < eph.attractorsAt(1234).length);
+    assert.ok(gravity.length > 0 && gravity.length < eph.celestialBodiesAt(1234).length);
   });
 
-  test('ephemeris: gravityAttractorsAt の要素は同一 t の attractorsAt と厳密に一致する', () => {
+  test('ephemeris: gravityAttractorsAt の要素は同一 t の celestialBodiesAt と厳密に一致する', () => {
     const t = 4321;
-    const all = new Map(eph.attractorsAt(t).map((b) => [b.id, b]));
+    const all = new Map(eph.celestialBodiesAt(t).map((b) => [b.id, b]));
     for (const g of eph.gravityAttractorsAt(t)) {
       const a = all.get(g.id)!;
       assert.deepEqual(g.state.r, a.state.r);
@@ -264,28 +264,28 @@ export function register(): void {
   test('ephemeris: 同一 t の gravityAttractorsAt は同一配列参照を返す', () => {
     const e = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 0.4 });
     assert.equal(e.gravityAttractorsAt(1234), e.gravityAttractorsAt(1234));
-    assert.notEqual(e.gravityAttractorsAt(1234), e.attractorsAt(1234));
+    assert.notEqual(e.gravityAttractorsAt(1234), e.celestialBodiesAt(1234));
   });
 
   test('ephemeris: 異なる t では再計算され、値が変わる', () => {
     const e = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 0.4 });
-    const a = e.attractorsAt(0);
-    const b = e.attractorsAt(1e5);
+    const a = e.celestialBodiesAt(0);
+    const b = e.celestialBodiesAt(1e5);
     assert.notEqual(a, b);
     const moonA = a.find((x) => x.id === 'moon')!.state.r;
     const moonB = b.find((x) => x.id === 'moon')!.state.r;
     assert.ok(len(sub(moonA, moonB)) > 1e6, `月が動いていない: ${len(sub(moonA, moonB))}`);
     // 直近 t を巡回で保持するので、古い t を引き直しても同じ値が返る。
-    assert.deepEqual(e.attractorsAt(0), a);
+    assert.deepEqual(e.celestialBodiesAt(0), a);
   });
 
   test('ephemeris: 位相オフセットが違えば同じ時刻でも別の位置になる', () => {
     const a = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 0.4 });
     const b = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 2.1 });
-    const moonA = a.attractorsAt(1234).find((x) => x.id === 'moon')!.state.r;
-    const moonB = b.attractorsAt(1234).find((x) => x.id === 'moon')!.state.r;
+    const moonA = a.celestialBodiesAt(1234).find((x) => x.id === 'moon')!.state.r;
+    const moonB = b.celestialBodiesAt(1234).find((x) => x.id === 'moon')!.state.r;
     assert.ok(len(sub(moonA, moonB)) > 1e6, `位相オフセットが反映されていない: ${len(sub(moonA, moonB))}`);
-    // attractorsAt の時刻キャッシュを経由しても positionOf と同じ値を返す。
+    // celestialBodiesAt の時刻キャッシュを経由しても positionOf と同じ値を返す。
     assert.deepEqual(moonB, b.positionOf('moon', 1234));
   });
 

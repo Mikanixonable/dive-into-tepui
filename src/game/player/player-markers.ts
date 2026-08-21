@@ -6,7 +6,7 @@ import { scale, v3, type Vec3 } from '../../physics/vec3';
 import type { ProjectFn, ScaleFn } from '../camera/camera-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import { DIRECTION_GLYPH, ENTITY_GLYPH } from '../marker/marker-glyphs';
-import type { Attractor } from '../../physics/attractor';
+import type { CelestialBody } from '../../physics/celestial-body';
 import type { CelestialRegistry } from '../../physics/solar-system';
 import * as C from '../const';
 import { isPositionInFocusedSystem } from '../celestial/body-visibility';
@@ -35,7 +35,7 @@ export class PlayerMarkers {
     currentState: KinematicState, displayState: KinematicState | null, att: Attitude,
     overviewMode: boolean, isActive: boolean, cameraPos: Vec3, project: ProjectFn, scaleFn: ScaleFn,
     name: string, rounds = 0, _reloadTimer = 0, beltLinks = 0, muzzleSpeed = 0, focusId?: string,
-    registry?: CelestialRegistry, attractors: readonly Attractor[] = [], visibility: MapVisibility | null = null,
+    registry?: CelestialRegistry, celestialBodies: readonly CelestialBody[] = [], visibility: MapVisibility | null = null,
     frame?: ReferenceFrame, displayTime?: number, ephemeris?: Ephemeris,
   ): void {
     const selfKey = `self-${this.id}`;
@@ -45,10 +45,10 @@ export class PlayerMarkers {
       if (isActive) {
         for (const key of COMBAT_KEYS) this.markerManager.hide(`${key}-${this.id}`);
       }
-      if (displayState && (!registry || isPositionInFocusedSystem(registry, focusId, displayState.r, attractors))
+      if (displayState && (!registry || isPositionInFocusedSystem(registry, focusId, displayState.r, celestialBodies))
         && (!visibility || visibility.pickable)) {
         const color = isActive ? 'var(--accent)' : undefined;
-        const nearestPlanet = registry === undefined ? undefined : findNearestPlanet(displayState.r, registry, attractors);
+        const nearestPlanet = registry === undefined ? undefined : findNearestPlanet(displayState.r, registry, celestialBodies);
         const nearPlanet = nearestPlanet !== undefined
           && nearestPlanet !== null && nearestPlanet.distance <= C.MAP_PLANET_SHIP_LABEL_END;
         const fadedOpacity = nearPlanet
@@ -57,10 +57,10 @@ export class PlayerMarkers {
           : 1;
         if (nearestPlanet !== undefined && nearestPlanet !== null && nearestPlanet.distance > C.MAP_PLANET_SHIP_LABEL_END) {
           this.markerManager.hide(selfKey);
-          const planetOccluded = isOccluded(cameraPos, nearestPlanet.attractor.state.r, attractors);
+          const planetOccluded = isOccluded(cameraPos, nearestPlanet.celestialBody.state.r, celestialBodies);
           if (visibility?.label !== false && !planetOccluded) {
             this.markerManager.setPosition(
-              nearbyLabelKey, 'mk-planet-nearby-label', '', nearestPlanet.attractor.state.r, project,
+              nearbyLabelKey, 'mk-planet-nearby-label', '', nearestPlanet.celestialBody.state.r, project,
               `${ENTITY_GLYPH.ship}${name}`, 1, color,
             );
           } else if (visibility?.label !== false) {
@@ -70,9 +70,9 @@ export class PlayerMarkers {
           }
         } else {
           this.markerManager.hide(nearbyLabelKey);
-          const shipOccluded = isOccluded(cameraPos, displayState.r, attractors);
+          const shipOccluded = isOccluded(cameraPos, displayState.r, celestialBodies);
           if (fadedOpacity > 0 && !shipOccluded) {
-            const rotationDeg = this.markerManager.headingRotationDeg(displayState.r, displayState.v, project, scaleFn, attractors, frame, displayTime, ephemeris);
+            const rotationDeg = this.markerManager.headingRotationDeg(displayState.r, displayState.v, project, scaleFn, celestialBodies, frame, displayTime, ephemeris);
             const sym = visibility?.icon === false ? '' : (overviewMode && this.owner ? this.owner.headingHpMarkerSvg() : (this.owner ? this.owner.hpMarkerSvg() : ENTITY_GLYPH.ship));
             const symMarkup = overviewMode && !!this.owner;
             this.markerManager.setPosition(

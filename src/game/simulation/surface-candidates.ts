@@ -2,13 +2,13 @@
 // その短い一覧へ安価な距離判定を掛ける。**絞り込みは判定器の答えを変えない** — 触れうる相手を
 // 1つも落とさないことだけが正しさの条件で、通す数が多いぶんには構わない。除外の根拠は距離と
 // 区間変位という物理量だけで、種別や時間加速倍率は見ない。
-import { Attractor, attractorStateAt } from '../../physics/attractor';
+import { CelestialBody, celestialBodyStateAt } from '../../physics/celestial-body';
 import { KinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, len, scale, sub, v3 } from '../../physics/vec3';
 
 // 区間の始点位置と、そこから表面が区間内に届きうる距離。
 type BodyReach = {
-  readonly body: Attractor;
+  readonly body: CelestialBody;
   readonly r0: Vec3;
   readonly reach: number;
 };
@@ -43,7 +43,7 @@ export class SurfaceCandidates {
 
   // 区間を共有する参加者全員に対し、この区間で誰かが触れうる天体を選び直す。参加者の区間が
   // 少しずつずれていても落とさないよう、天体の変位は全参加者の区間の合併で見る。
-  reset(participants: readonly SurfaceParticipant[], bodies: readonly Attractor[]): void {
+  reset(participants: readonly SurfaceParticipant[], bodies: readonly CelestialBody[]): void {
     this.reachable.length = 0;
     if (participants.length === 0) return;
 
@@ -62,8 +62,8 @@ export class SurfaceCandidates {
     if (!(tStart <= tEnd)) return;
 
     for (const body of bodies) {
-      const start = attractorStateAt(body, tStart);
-      const reach = body.radius + intervalReach(start, attractorStateAt(body, tEnd));
+      const start = celestialBodyStateAt(body, tStart);
+      const reach = body.radius + intervalReach(start, celestialBodyStateAt(body, tEnd));
       if (len(sub(center, start.r)) <= margin + reach) {
         this.reachable.push({ body, r0: start.r, reach });
       }
@@ -71,7 +71,7 @@ export class SurfaceCandidates {
   }
 
   // 参加者1つが区間内に触れうる天体だけを out へ書く。out は呼び出し側が所有する。
-  into(participant: SurfaceParticipant, out: Attractor[]): Attractor[] {
+  into(participant: SurfaceParticipant, out: CelestialBody[]): CelestialBody[] {
     out.length = 0;
     const { prevState } = participant;
     const reach = participant.radius + intervalReach(prevState, participant.state);

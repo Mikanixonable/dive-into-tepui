@@ -1,7 +1,7 @@
 // エンティティ配列の保持・追加・上限管理・寿命回収・描画同期。
 import * as THREE from 'three/webgpu';
 import { Vec3 } from '../../physics/vec3';
-import { Attractor } from '../../physics/attractor';
+import { CelestialBody } from '../../physics/celestial-body';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { GameEntity } from '../game-entity/game-entity';
@@ -248,7 +248,7 @@ export class EntityManager {
   // 次艦への引き継ぎが要るため、除去は ActivePlayerController.reclaimDead が担う。
   cleanup(
     dt: number, simTime: number, activeStage: Stage, playerPos: Vec3,
-    atmosphereBodies: readonly Attractor[],
+    atmosphereBodies: readonly CelestialBody[],
   ): void {
     for (const e of this.all()) e.checkLoss(dt, simTime, activeStage, playerPos, atmosphereBodies);
     this.prune(this.enemies);
@@ -327,12 +327,12 @@ export class EntityManager {
   // ものなので、どれが操作対象かを各艦へ渡す。
   syncPlayers(
     activePlayer: Player | null, fo: FloatingOrigin, cameraSystem: CameraSystem,
-    displayTime: number, ephemeris: Ephemeris, attractors: readonly Attractor[],
+    displayTime: number, ephemeris: Ephemeris, celestialBodies: readonly CelestialBody[],
     visibilityPolicy: MapVisibilityPolicy | null, displayWindow?: DisplayWindow,
   ): void {
     for (const ship of this.players) {
       ship.syncPlayer(
-        fo, cameraSystem, displayTime, ship === activePlayer, ephemeris, attractors,
+        fo, cameraSystem, displayTime, ship === activePlayer, ephemeris, celestialBodies,
         visibilityPolicy?.entity('player', ship === activePlayer) ?? null, displayWindow,
       );
     }
@@ -385,7 +385,7 @@ export class EntityManager {
   // 艦が1隻も無い間は距離を添えない。
   syncMarkers(
     cameraSystem: CameraSystem, displayTime: number, viewerPos: Vec3 | null,
-    attractors: readonly Attractor[], visibilityPolicy: MapVisibilityPolicy | null,
+    celestialBodies: readonly CelestialBody[], visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     const project = cameraSystem.activeCameraProjection;
     const scale = cameraSystem.activeCameraScale;
@@ -393,7 +393,7 @@ export class EntityManager {
     const visibilityOf = (kind: 'ammo' | 'base'): MapVisibility | null =>
       (overviewMode ? visibilityPolicy?.entity(kind) ?? null : null);
     for (const ammoPickup of this.ammoPickups) {
-      ammoPickup.marker?.sync(project, scale, displayTime, overviewMode, cameraSystem.activeCameraPos, viewerPos, attractors, visibilityOf('ammo'));
+      ammoPickup.marker?.sync(project, scale, displayTime, overviewMode, cameraSystem.activeCameraPos, viewerPos, celestialBodies, visibilityOf('ammo'));
     }
   }
 

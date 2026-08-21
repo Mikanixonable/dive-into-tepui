@@ -2,20 +2,20 @@
 // (掃引の幾何そのものは sphere-contact.test.ts、反発の分配は collision-response.test.ts)。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import { Attractor } from '../../src/physics/attractor';
+import { CelestialBody } from '../../src/physics/celestial-body';
 import { firstSurfaceContact } from '../../src/physics/surface-contact';
 import { hermiteInterpolate, kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
 import { len, sub, v3 } from '../../src/physics/vec3';
 
 const ZERO = v3(0, 0, 0);
-const EARTH: Attractor = {
+const EARTH: CelestialBody = {
   id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, ZERO, ZERO),
   accel: ZERO, degree2: null, atmosphere: null, isStar: false,
 };
 
 // 位置・速度・半径だけを持つ天体。重力も大気も表面判定には効かない。
-function body(id: string, r = ZERO, v = ZERO, radius = 500): Attractor {
+function body(id: string, r = ZERO, v = ZERO, radius = 500): CelestialBody {
   return {
     id, mu: 0, radius, state: kinematicState(0, r, v),
     accel: ZERO, degree2: null, atmosphere: null, isStar: false,

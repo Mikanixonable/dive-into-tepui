@@ -126,8 +126,8 @@ test('creative placement: lissajous flags both amplitudes at once when both are 
 });
 
 test('creative placement: base rejects an earth/jupiter elements reference on the referenceBody field', () => {
-  assert.deepEqual(fields(validateBaseReferenceFields('base', 'elements', 'earth')), ['referenceAttractor']);
-  assert.deepEqual(fields(validateBaseReferenceFields('base', 'elements', 'jupiter')), ['referenceAttractor']);
+  assert.deepEqual(fields(validateBaseReferenceFields('base', 'elements', 'earth')), ['referenceCelestialBody']);
+  assert.deepEqual(fields(validateBaseReferenceFields('base', 'elements', 'jupiter')), ['referenceCelestialBody']);
 });
 test('creative placement: base accepts a moon-elements reference and any libration reference', () => {
   assert.deepEqual(validateBaseReferenceFields('base', 'elements', 'moon'), []);

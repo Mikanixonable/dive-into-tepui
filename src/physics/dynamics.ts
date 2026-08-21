@@ -1,7 +1,7 @@
 // 与えられた加速度による RK4 積分の器(ケプラーの二体問題の解析式込み)、天体の2次重力場に
 // よる摂動、および一質点にかかる全加速度(重力 + 2次重力場 + 大気抵抗 + 推力)の合成の
 // 唯一の定義箇所。THREE/DOM 非依存の純関数。
-import { Attractor, Degree2Gravity, attractorAccel, attractorPositionAt } from './attractor';
+import { CelestialBody, Degree2Gravity, attractorAccel, celestialBodyPositionAt } from './celestial-body';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { dragAccel } from './atmosphere';
 import { sunlitFactor } from './shadow';
@@ -101,9 +101,9 @@ export function stepRK4(s: KinematicState, dt: number, accel: AccelFn): Kinemati
 }
 
 // 全天体からの重力(Σ attractorAccel — ECI が非慣性系であることの補正込み)と、2次重力場を
-// 持つ天体ぶんのその摂動、大気抵抗、太陽輻射圧。天体の同定は Attractor が自分で持つ degree2 に
+// 持つ天体ぶんのその摂動、大気抵抗、太陽輻射圧。天体の同定は CelestialBody が自分で持つ degree2 に
 // 委ねるので、ここに固有名の分岐は現れない。t は accel を評価すべき絶対時刻(RK4 の各段の
-// 時刻)で、重力項(質点・2次重力場とも)は attractorPositionAt で天体位置をその時刻へ外挿して
+// 時刻)で、重力項(質点・2次重力場とも)は celestialBodyPositionAt で天体位置をその時刻へ外挿して
 // から評価する — 距離の3乗で効く重力はステップ幅ぶんの天体の移動が精度を左右するため。
 // 日照率(sunlitFactor)と輻射圧の太陽方向は attractor.state.t のまま据え置く: 遮蔽の幾何と
 // 1AU 先の太陽方向はステップ内での天体の移動にほとんど左右されず、外挿する意味が無い。
@@ -115,9 +115,9 @@ function totalAccel(
   t: number,
   r: Vec3,
   v: Vec3,
-  attractors: readonly Attractor[],
-  occluders: readonly Attractor[],
-  atmosphereBody: Attractor | null,
+  attractors: readonly CelestialBody[],
+  occluders: readonly CelestialBody[],
+  atmosphereBody: CelestialBody | null,
   bcInv: number,
   srpCoeff: number,
 ): Vec3 {
@@ -127,7 +127,7 @@ function totalAccel(
     ax += g.x; ay += g.y; az += g.z;
     // 2次重力場は天体中心からの相対位置で評価する(質点重力と違い ECI 原点基準では組めない)。
     if (attractor.degree2 !== null) {
-      const b = attractorPositionAt(attractor, t);
+      const b = celestialBodyPositionAt(attractor, t);
       const d2 = degree2Accel(v3(r.x - b.x, r.y - b.y, r.z - b.z), attractor.mu, attractor.degree2);
       ax += d2.x; ay += d2.y; az += d2.z;
     }
@@ -139,7 +139,7 @@ function totalAccel(
   }
   if (atmosphereBody === null || atmosphereBody.atmosphere === null) return v3(ax, ay, az);
   // 抗力はその天体の中心を基準に測る。天体位置は重力項と同じくこの段の時刻へ外挿する。
-  const b = attractorPositionAt(atmosphereBody, t);
+  const b = celestialBodyPositionAt(atmosphereBody, t);
   const drag = dragAccel(
     v3(r.x - b.x, r.y - b.y, r.z - b.z), sub(v, atmosphereBody.state.v), bcInv, atmosphereBody.atmosphere,
   );
@@ -150,14 +150,14 @@ function totalAccel(
 // ステップぶん呼び出し側が確定させた重力源一覧、occluders は同じく確定させた遮蔽体一覧
 // (日照率だけに使う。重力の絞り込みとは別の関心事なので別の引数で受け取る)。
 // atmosphereBody は抗力を及ぼす**ただ1体**の大気天体
-// (attractor.ts の nearestAtmosphereBody)で、null なら抗力は恒等的にゼロ。
+// (celestial-body.ts の nearestAtmosphereBody)で、null なら抗力は恒等的にゼロ。
 // bcInv/srpCoeff/thrust は種別ごとに異なるため引数で受け取り、モジュール内に既定値を持たない。
 export function stepDynamics(
   state: KinematicState,
   dt: number,
-  attractors: readonly Attractor[],
-  occluders: readonly Attractor[],
-  atmosphereBody: Attractor | null,
+  attractors: readonly CelestialBody[],
+  occluders: readonly CelestialBody[],
+  atmosphereBody: CelestialBody | null,
   bcInv: number,
   srpCoeff: number,
   thrust: Vec3 | null,

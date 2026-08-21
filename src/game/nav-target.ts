@@ -3,7 +3,7 @@
 // とは独立に、月・ラグランジュ点なども対象にできる。
 import { Vec3, v3 } from '../physics/vec3';
 import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from '../physics/elements';
-import { Attractor, OrbitingId, frameOfAttractor, strongestAttractor } from '../physics/attractor';
+import { CelestialBody, OrbitingId, frameOfCelestialBody, strongestAttractor } from '../physics/celestial-body';
 import { frameKinematicState, toFrameState, toInertialState, unbakeToDisplayPoint } from '../physics/frame';
 import { bodyDef } from '../physics/solar-system';
 import type { Ephemeris } from '../physics/ephemeris';
@@ -39,8 +39,8 @@ export class NavTarget {
   // AN/DN 通過の絶対時刻 [s]。自機軌道要素の現在真近点角からの飛行時間を加えて求める。
   private anTime: number | null = null;
   private dnTime: number | null = null;
-  // update が求めた時点の Attractor[]。sync でのマップビュー遮蔽判定に使う。
-  private attractors: readonly Attractor[] = [];
+  // update が求めた時点の CelestialBody[]。sync でのマップビュー遮蔽判定に使う。
+  private celestialBodies: readonly CelestialBody[] = [];
   private readonly pickableCache: MapPickable[] = [];
 
   constructor(private readonly _hud: Hud, private readonly markerManager: MarkerManager) {
@@ -80,7 +80,7 @@ export class NavTarget {
 
   // 自機軌道要素と対象の軌道面法線から相対 AN/DN の位置・通過時刻を求め直す。
   // 対象の軌道面が定まらない(地球・太陽自身など)場合や自機軌道要素が無い場合は両方 null にする。
-  // positionOnOrbit は中心天体基準の相対位置を返すので、frameOfAttractor + toInertialState で
+  // positionOnOrbit は中心天体基準の相対位置を返すので、frameOfCelestialBody + toInertialState で
   // 絶対 ECI 位置へ直す — 地球周回では中心が原点に一致するため偶然一致するが、月周回では
   // 直さないと月までの距離ぶんずれる。位置は通過時刻で bake し、displayWindow の表示時刻で
   // un-bake して描画座標系へ移す。
@@ -90,14 +90,14 @@ export class NavTarget {
     const { simTime, displayTime, frame } = displayWindow;
     this.anPos = this.dnPos = this.anTime = this.dnTime = null;
     this.ownerName = player?.name ?? null;
-    this.attractors = ephemeris.attractorsAt(displayTime);
+    this.celestialBodies = ephemeris.celestialBodiesAt(displayTime);
     if (!this.targetId) return;
     // 航法ターゲット自身の赤道交点は、自機の軌道要素が求まるかどうかとは無関係に出す。
     const target = this.resolveEntity(this.targetId, entities);
     target?.ensureEquatorNodes(this.markerManager).update(frame, displayTime, ephemeris);
     if (!player) return;
-    const stateAttractors = ephemeris.attractorsAt(simTime);
-    const playerCenter = strongestAttractor(player.state.r, stateAttractors);
+    const stateCelestialBodies = ephemeris.celestialBodiesAt(simTime);
+    const playerCenter = strongestAttractor(player.state.r, stateCelestialBodies);
     const playerEl = player.orbitalElementsAround(playerCenter);
     if (!playerEl) return;
 
@@ -107,15 +107,15 @@ export class NavTarget {
     const nodes = nodeAnomalies(playerEl, targetHat);
     if (!nodes) return;
 
-    const tf = frameOfAttractor(playerCenter);
+    const tf = frameOfCelestialBody(playerCenter);
     const nu0 = trueAnomalyAt(playerEl, toFrameState(tf, player.state).r);
     const anT = simTime + tofBetween(playerEl, nu0, nodes.asc);
     const dnT = simTime + tofBetween(playerEl, nu0, nodes.desc);
     const anEci = toInertialState(tf, anT, frameKinematicState(positionOnOrbit(playerEl, nodes.asc), v3(0, 0, 0))).r;
     const dnEci = toInertialState(tf, dnT, frameKinematicState(positionOnOrbit(playerEl, nodes.desc), v3(0, 0, 0))).r;
-    const unbakeTf = ephemeris.frameTransformAt(frame, displayTime, this.attractors);
+    const unbakeTf = ephemeris.frameTransformAt(frame, displayTime, this.celestialBodies);
     const toDisplay = (r: Vec3, t: number): Vec3 =>
-      unbakeToDisplayPoint(unbakeTf, ephemeris.frameTransformAt(frame, t, this.attractors), r);
+      unbakeToDisplayPoint(unbakeTf, ephemeris.frameTransformAt(frame, t, this.celestialBodies), r);
     this.anPos = toDisplay(anEci, anT);
     this.dnPos = toDisplay(dnEci, dnT);
     this.anTime = anT;
@@ -172,7 +172,7 @@ export class NavTarget {
     }
     const entity = this.resolveEntity(id, entities);
     if (!entity) return null;
-    const center = strongestAttractor(entity.state.r, ephemeris.attractorsAt(t));
+    const center = strongestAttractor(entity.state.r, ephemeris.celestialBodiesAt(t));
     return entity.orbitalElementsAround(center)?.hHat ?? null;
   }
 
@@ -200,8 +200,8 @@ export class NavTarget {
     const overviewMode = cameraSystem.overviewMode;
     const cameraPos = cameraSystem.activeCameraPos;
     if (!this.anPos) this.markerManager.hide('nav-an');
-    else this.markerManager.setNodePosition('nav-an', 'mk-node', ORBIT_POINT_GLYPH.ascendingNode, this.anPos, project, cameraPos, this.attractors, overviewMode, 'AN');
+    else this.markerManager.setNodePosition('nav-an', 'mk-node', ORBIT_POINT_GLYPH.ascendingNode, this.anPos, project, cameraPos, this.celestialBodies, overviewMode, 'AN');
     if (!this.dnPos) this.markerManager.hide('nav-dn');
-    else this.markerManager.setNodePosition('nav-dn', 'mk-node', ORBIT_POINT_GLYPH.descendingNode, this.dnPos, project, cameraPos, this.attractors, overviewMode, 'DN');
+    else this.markerManager.setNodePosition('nav-dn', 'mk-node', ORBIT_POINT_GLYPH.descendingNode, this.dnPos, project, cameraPos, this.celestialBodies, overviewMode, 'DN');
   }
 }
