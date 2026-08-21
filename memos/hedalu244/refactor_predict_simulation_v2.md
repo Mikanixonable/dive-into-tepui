@@ -702,18 +702,20 @@ union に名前を付けた意味が出ていない。
 
 ## 6-6. 手順
 
+**6-1(口を分ける)は実施済み(`94e9d248`)。** 実施時に決めたこと:
+
+- ステップ 1〜5 は型の整合が同時にしか取れないので、1 commit にまとめた(計画の
+  「1〜5 と 6 は別 commit」はそのまま守っている)。
+- **`Player.collideAtRadiatorWithCelestialBody` は作らなかった。** 接触代理
+  (`RadiatorFold`)は `attachedTo` を持つので `collectParticipants` を通らず、天体接触に
+  参加しない。口を分けたことで「経路が無い」ことが型に出たので、書けば到達しないコードになる。
+- `resolveSurfaceContacts` から `simTime` 引数を外した(`contactsWith` の呼び出しが消えて
+  使わなくなった)。
+
 | # | ステップ | 完了条件 |
 |---|---|---|
-| 1 | `contactDamageSpeed` を天体用と個体用へ割る | `test:physics` 通過 |
-| 2 | `GameEntity` / `Bullet` / `DebrisPiece` / `Enemy` の `collideWith` を `collideWithEntity` / `collideWithCelestialBody` へ割る | 同上 |
-| 3 | `Player` の尾を private へ括り出し、`collideWith` / `collideAtRadiator` を各2つへ割る(`…WithEntity` / `…WithCelestialBody`) | 同上 |
-| 4 | `SurfaceContactPhysics.resolveOne` を `collideWithCelestialBody` へ繋ぎ替え、`contactsWith` の呼び出しを削除 | 同上。天体接触の挙動が変わっていない(exp12 の到達件数) |
-| 5 | `contactsWith` の引数型を `GameEntity` へ狭め、`contact-target.ts` を削除 | 綴りが 0 件 |
 | 6 | 型と関数の改名(6-2 の表)を機械的に適用 | `typecheck` 通過。`git diff --stat` が識別子だけの差分 |
 | 7 | セーブスロットのロードを1回通す | 例外なくロードできる |
-
-**ステップ 1〜5 と 6 は別 commit にする** — 6 は 119 ファイルに触るので、混ぜると
-1〜5 のレビューができなくなる。
 
 ## 6-7. 見積り
 
