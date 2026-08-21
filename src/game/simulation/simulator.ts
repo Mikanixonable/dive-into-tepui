@@ -21,7 +21,8 @@ import type { GameEntity } from '../game-entity/game-entity';
 import { nearestAtmosphereBody, type Attractor } from '../../physics/attractor';
 import { Ephemeris } from '../../physics/ephemeris';
 import type { Stage } from '../stages/stage';
-import { ContactPhysics } from './contact';
+import { EntityContactPhysics } from './entity-contact-physics';
+import { SurfaceContactPhysics } from './surface-contact-physics';
 import { v3 } from '../../physics/vec3';
 import { reentryAwareMaxStep, simulationMaxStep, simulationStepDuration } from './time-step';
 import type { NanWatchdog } from '../nan-watchdog';
@@ -29,7 +30,8 @@ import { FrameSections, SECTION } from '../../frame-sections';
 import type { PerfCounts } from '../../perf-meter';
 
 export class Simulator {
-  readonly contactPhysics: ContactPhysics;
+  private readonly surfaceContactPhysics = new SurfaceContactPhysics();
+  private readonly entityContactPhysics = new EntityContactPhysics();
 
   simTime: number;
   lastSimDt = 0;
@@ -53,7 +55,6 @@ export class Simulator {
     private readonly sections: FrameSections,
     initialSimTime = 0,
   ) {
-    this.contactPhysics = new ContactPhysics();
     this.simTime = initialSimTime;
   }
 
@@ -108,7 +109,7 @@ export class Simulator {
       }
       // 天体との接触は倍率にも種別にも依らず、物体どうしの接触より先に解く。
       this.sections.enter(SECTION.contact);
-      this.contactPhysics.resolveSurfaceContacts(
+      this.surfaceContactPhysics.resolveSurfaceContacts(
         this.simTime, this.entities.all(), surfaceBodies, activeStage);
       this.sections.exit(SECTION.contact);
       nanWatchdog.checkPlayer('simulator.advance(天体接触)', player, this.simTime, dt, subDt);
@@ -122,7 +123,7 @@ export class Simulator {
           this.contactEntitiesScratch.push(...p.collisionFolds(this.simTime));
         }
         this.sections.enter(SECTION.contact);
-        this.contactPhysics.resolveEntityContacts(
+        this.entityContactPhysics.resolveEntityContacts(
           this.simTime, this.contactEntitiesScratch, activeStage);
         this.sections.exit(SECTION.contact);
         nanWatchdog.checkPlayer('simulator.advance(接触)', player, this.simTime, dt, subDt);
@@ -137,7 +138,7 @@ export class Simulator {
     // フレームに1回だけ解決する。
     if (canResolveEntityContacts && player) {
       this.sections.enter(SECTION.contact);
-      this.contactPhysics.resolveBelt(
+      this.entityContactPhysics.resolveBelt(
         dt, this.simTime, player, this.entities.all(), activeStage,
       );
       this.sections.exit(SECTION.contact);

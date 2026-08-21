@@ -397,20 +397,32 @@ sphere-contact.ts  sweptSphereContact(aStart, aEnd, bStart, bEnd, radiusSum)
 `collideAtRadiator` の署名は `GameEntity | Attractor` を直書きしている(12 箇所)。
 **union に名前を付けた意味が出ていない。** 置換だけで済む。
 
-### A-4. `contact.ts` が 426 行で、独立した2つの機構を抱えている(**推す**)
+### A-4. `contact.ts` の分割(**実施済み**)
 
-v3 4-4 が明らかにしたとおり、**天体接触と個体どうしの接触は共有するものが無い** —
-前者は個体ごとの素朴なループ、後者は作業マップ・TOI 昇順の大域ループ・解決回数の上限を
-持つ。いま同じファイル・同じクラスに同居していて、`CODING-RULE` の 200 行基準を超えている。
+**クラスごと割った。** 426 行の `simulation/contact.ts` と `ContactPhysics` は消え、
+ファイル名と export するクラス名が一致する形になった。
 
-- 共有しているのは `Contact` / `RESTITUTION` / `closingSpeed` / `isFiniteParticipant` /
-  `contactTime` / `sameVec` の6つだけ。
-- 分けるなら `surface-contact.ts`(約 90 行)と `contact.ts`(約 250 行)。ただし
-  `ContactPhysics` が3つの入口(`resolveSurfaceContacts` / `resolveSubstep` /
-  `resolveBelt`)を1クラスで持っていることの是非が先。**クラスを割るのか、ファイルだけ
-  割るのかは決めていない。**
-- 副次: `participantScratch` を `resolveSurfaceContacts` と `resolveSubstep` が共有して
-  いる(呼び出しが逐次なので現状は安全だが、依存が暗黙)。
+| 置き場所 | 中身 | 行数 |
+|---|---|---|
+| `game-entity/contact.ts` | `Contact`(接触1件の記述)と `closingSpeed` | 19 |
+| `game-entity/contact-target.ts` | `ContactTarget` / `isAttractor`(A-3 で移動済み) | 11 |
+| `simulation/contact-participant.ts` | `isFiniteParticipant` / `contactTime` — 両方の解決器が同じ規則で読まねばならない、参加者の区間 | 22 |
+| `simulation/surface-contact-physics.ts` | `SurfaceContactPhysics` — 天体表面との接触 | 103 |
+| `simulation/entity-contact-physics.ts` | `EntityContactPhysics` — 物体どうしの接触(substep とベルト) | 253 |
+| `simulation/entity-contact-response.ts` | `entityContactResponse` — 接触ペア1組の反発の計算 | 56 |
+
+**共有していた6つの行き先**: `Contact` と `closingSpeed` は受け手側の語彙なので
+`game-entity/` へ。`RESTITUTION` は `C.CONTACT_RESTITUTION`(ゲームの調整値なので
+`game/const.ts`)へ。`sameVec` は `physics/vec3.ts` へ(値が動いたかを見る一致判定は
+ベクトルの語彙)。`isFiniteParticipant` と `contactTime` は共有モジュールへ。
+
+**副次の解消**: `participantScratch` の暗黙の共有は、クラスが分かれた時点で消えた。
+また `Base` への依存は `entity-contact-response.ts` に閉じ、解決器の側は当たり形状の
+種別を見なくなった。
+
+**残った逸脱**: `entity-contact-physics.ts` は 253 行で 200 行基準を超えている。中身は
+「候補の列挙 → TOI 昇順の解決 → 一括の書き戻し」という1本の手順で、これ以上割ると
+作業集合(`working` / `changed` / グリッド)を跨いで渡すだけになるため、割っていない。
 
 ### A-7. `Simulator.stepAttitudes` の種別ごとの列挙(**実施済み**)
 

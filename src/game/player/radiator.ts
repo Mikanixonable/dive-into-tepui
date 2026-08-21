@@ -13,7 +13,7 @@ import {
 import * as C from '../const';
 import { GameEntity } from '../game-entity/game-entity';
 import type { Attractor } from '../../physics/attractor';
-import type { Contact } from '../simulation/contact';
+import type { Contact } from '../game-entity/contact';
 import type { Stage } from '../stages/stage';
 import type { Player } from './player';
 import type { RadiatorSaveData } from '../save-data';

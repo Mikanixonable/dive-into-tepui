@@ -9,7 +9,7 @@ import { Ship } from '../game-entity/ship';
 import { Bullet } from '../game-entity/bullet';
 import type { GameEntity } from '../game-entity/game-entity';
 import type { EntityManager } from '../simulation/entity-manager';
-import type { Contact } from '../simulation/contact';
+import type { Contact } from '../game-entity/contact';
 import { isAttractor } from '../game-entity/contact-target';
 import { contactDamageSpeed } from '../game-entity/contact-damage';
 import { Input } from '../input/input';

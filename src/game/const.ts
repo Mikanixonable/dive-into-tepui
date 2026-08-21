@@ -289,7 +289,9 @@ export const SUBSTEP_MAX_COUNT = 64;
 export const REENTRY_SUBSTEP_ALT = 200e3; // 大気圏近傍で細分化を開始する高度 [m]
 export const REENTRY_SUBSTEP_MAX_DT = 1; // 大気圏近傍の最大積分刻み [s]
 
-// --- 接触判定(game/simulation/contact.ts) ---
+// --- 接触判定(game/simulation/ の接触解決) ---
+// 剛体接触の反発係数。天体の表面でも物体どうしでも同じ値を使う。
+export const CONTACT_RESTITUTION = 0.4;
 // 1 substep あたりに解決する接触の上限。TOI(接触時刻)昇順で解決し、これを超えた分は
 // 次の substep へ持ち越す(次回呼び出し時に空間グリッドから改めて列挙し直されるので、
 // 明示的な繰越処理は不要)。

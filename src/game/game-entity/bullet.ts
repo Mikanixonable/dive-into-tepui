@@ -5,7 +5,7 @@ import { Attractor } from '../../physics/attractor';
 import { burnUpBody } from '../../physics/atmosphere';
 import { FloatingOrigin } from '../floating-origin';
 import type { Stage } from '../stages/stage';
-import type { Contact } from '../simulation/contact';
+import type { Contact } from './contact';
 import { Vec3, lenSq, sub } from '../../physics/vec3';
 import * as C from '../const';
 import { buildBulletMesh, buildPlasmaMesh } from '../../render/ships';

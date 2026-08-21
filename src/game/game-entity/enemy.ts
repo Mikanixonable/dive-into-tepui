@@ -5,7 +5,7 @@ import { Ship } from './ship';
 import { Attractor } from '../../physics/attractor';
 import { burnUpBody } from '../../physics/atmosphere';
 import { GameEntity } from './game-entity';
-import type { Contact } from '../simulation/contact';
+import type { Contact } from './contact';
 import { isAttractor } from './contact-target';
 import { contactDamageSpeed } from './contact-damage';
 import { Attitude } from '../../physics/attitude';
