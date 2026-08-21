@@ -8,7 +8,7 @@ import { Atmosphere, atmosphericDensity, dragAccel, ellipsoidAltitude } from '..
 import { EARTH_ATMOSPHERE } from '../../src/physics/solar-system';
 import { len, v3 } from '../../src/physics/vec3';
 
-// ECI の極軸を自転軸とする地球の大気(Ephemeris.attractorAt が組むのと同じ形)。
+// ECI の極軸を自転軸とする地球の大気(Ephemeris.celestialBodyAt が組むのと同じ形)。
 const EARTH: Atmosphere = { ...EARTH_ATMOSPHERE, pole: v3(0, 1, 0) };
 
 const TABLE_ALTS_KM = [
@@ -94,7 +94,7 @@ export function register(): void {
   });
 
   test('atmosphere: a body without an atmosphere produces no drag at all', () => {
-    // 大気を持たない天体は Attractor.atmosphere が null になり、dragAccel まで到達しない。
+    // 大気を持たない天体は CelestialBody.atmosphere が null になり、dragAccel まで到達しない。
     // ここではその手前の性質 — 大気があっても bcInv が 0 なら抗力はゼロ — と、
     // 大気があり bcInv が正なら実際に抗力が立つことの両方を固定する。
     const rLow = v3(EARTH_ATMOSPHERE.equatorRadius + 100e3, 0, 0);

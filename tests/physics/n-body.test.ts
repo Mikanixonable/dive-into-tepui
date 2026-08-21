@@ -1,7 +1,7 @@
 // 相互重力(小惑星どうし)の回帰テスト。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import { Attractor, AttractorId } from '../../src/physics/attractor';
+import { CelestialBody, CelestialBodyId } from '../../src/physics/celestial-body';
 import { stepDynamics } from '../../src/physics/dynamics';
 import { kinematicState, KinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
@@ -9,13 +9,13 @@ import { Vec3, add, len, scale, sub, v3 } from '../../src/physics/vec3';
 
 const ZERO = v3(0, 0, 0);
 
-// 試験用の Attractor を組む。質点(degree2 なし)・非恒星・半径0で、重力の寄与だけを見る。
-function makeAttractor(id: string, mu: number, state: KinematicState): Attractor {
+// 試験用の CelestialBody を組む。質点(degree2 なし)・非恒星・半径0で、重力の寄与だけを見る。
+function makeCelestialBody(id: string, mu: number, state: KinematicState): CelestialBody {
   return { id, mu, radius: 0, state, accel: ZERO, degree2: null, atmosphere: null, isStar: false };
 }
 
 // 単一の attractor だけを重力源として1ステップ進める(自由伝播: 抵抗・輻射圧・推力なし)。
-function stepFree(state: KinematicState, dt: number, attractors: readonly Attractor[]): KinematicState {
+function stepFree(state: KinematicState, dt: number, attractors: readonly CelestialBody[]): KinematicState {
   return stepDynamics(state, dt, attractors, attractors, null, 0, 0, null);
 }
 
@@ -45,10 +45,10 @@ export function register(): void {
     const steps = 4000;
     const dt = period / steps;
     for (let i = 0; i < steps; i++) {
-      const attractorFromB = makeAttractor('b', mu, atMidpoint(b, dt));
-      const attractorFromA = makeAttractor('a', mu, atMidpoint(a, dt));
-      const nextA = stepFree(a, dt, [attractorFromB]);
-      const nextB = stepFree(b, dt, [attractorFromA]);
+      const celestialBodyFromB = makeCelestialBody('b', mu, atMidpoint(b, dt));
+      const celestialBodyFromA = makeCelestialBody('a', mu, atMidpoint(a, dt));
+      const nextA = stepFree(a, dt, [celestialBodyFromB]);
+      const nextB = stepFree(b, dt, [celestialBodyFromA]);
       a = nextA;
       b = nextB;
     }
@@ -71,10 +71,10 @@ export function register(): void {
     const momentum0 = add(scale(a.v, mu), scale(b.v, mu));
     const dt = (2 * Math.PI) / omega / 500;
     for (let i = 0; i < 500; i++) {
-      const attractorFromB = makeAttractor('b', mu, b);
-      const attractorFromA = makeAttractor('a', mu, a);
-      const nextA = stepFree(a, dt, [attractorFromB]);
-      const nextB = stepFree(b, dt, [attractorFromA]);
+      const celestialBodyFromB = makeCelestialBody('b', mu, b);
+      const celestialBodyFromA = makeCelestialBody('a', mu, a);
+      const nextA = stepFree(a, dt, [celestialBodyFromB]);
+      const nextB = stepFree(b, dt, [celestialBodyFromA]);
       a = nextA;
       b = nextB;
     }
@@ -99,9 +99,9 @@ export function register(): void {
 
     const dt = 1;
     for (let i = 0; i < 300; i++) {
-      const attractorA = makeAttractor('a', muA, a);
-      const attractorB = makeAttractor('b', muB, b);
-      const attractorC = makeAttractor('c', muC, c);
+      const attractorA = makeCelestialBody('a', muA, a);
+      const attractorB = makeCelestialBody('b', muB, b);
+      const attractorC = makeCelestialBody('c', muC, c);
       const nextA = stepFree(a, dt, [attractorB, attractorC]);
       const nextB = stepFree(b, dt, [attractorA, attractorC]);
       const nextC = stepFree(c, dt, [attractorA, attractorB]);
@@ -114,14 +114,14 @@ export function register(): void {
   });
 
   test('n-body: 地球+小天体で艦を積分すると、小天体の質量→0の極限で小天体なしの結果に収束する', () => {
-    const earth = makeAttractor('earth', MU_EARTH, kinematicState(0, ZERO, ZERO));
+    const earth = makeCelestialBody('earth', MU_EARTH, kinematicState(0, ZERO, ZERO));
     const shipR0 = v3(R_EARTH + 420e3, 0, 0);
     const shipV0 = v3(0, Math.sqrt(MU_EARTH / (R_EARTH + 420e3)), 0);
     const ship0 = kinematicState(0, shipR0, shipV0);
     const smallBodyPos = kinematicState(0, v3(R_EARTH + 420e3 + 2e4, 5e3, 0), ZERO);
 
     const integrate = (muSmallBody: number): KinematicState => {
-      const attractors = muSmallBody === 0 ? [earth] : [earth, makeAttractor('small-body', muSmallBody, smallBodyPos)];
+      const attractors = muSmallBody === 0 ? [earth] : [earth, makeCelestialBody('small-body', muSmallBody, smallBodyPos)];
       let s = ship0;
       const dt = 1;
       for (let i = 0; i < 200; i++) s = stepFree(s, dt, attractors);

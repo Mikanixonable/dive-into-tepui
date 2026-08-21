@@ -1,6 +1,6 @@
 // マップモードのフォーカス対象(天体・ラグランジュ点)ラベルの算出と HUD マーカーへの反映。
 import { Vec3, v3, sub, len } from '../../physics/vec3';
-import { Attractor, AttractorId, OrbitingId, strongestAttractor } from '../../physics/attractor';
+import { CelestialBody, CelestialBodyId, OrbitingId, strongestAttractor } from '../../physics/celestial-body';
 import { CelestialRegistry, primaryOf } from '../../physics/solar-system';
 import { ProjectFn } from './camera-system';
 import { MarkerManager } from '../marker/marker-manager';
@@ -84,7 +84,7 @@ const LABEL_PRIORITY: Record<'star' | 'planet' | 'dwarf' | 'satellite' | 'smallB
 export class FocusMarkers {
   // 天体本体1つにつき1ラベル、ラグランジュ点が力学的に意味を持つ天体にはさらに L1〜L5 の
   // うち成立する点ぶんのラベルが並ぶ(表示名は「中心天体名-自分の名 Ln」)。
-  private readonly registryIds: readonly AttractorId[];
+  private readonly registryIds: readonly CelestialBodyId[];
   // ラグランジュ点ラベルを持つ天体と、そのうち成立する点の番号。
   private readonly lagrangeSources: readonly { readonly id: OrbitingId; readonly points: readonly (1 | 2 | 3 | 4 | 5)[] }[];
   // トグル・フォーカスに関わらない全登録天体+全ラグランジュ点ラベルの全集合(id/isLagrange 目的)。
@@ -94,7 +94,7 @@ export class FocusMarkers {
   // 直前のフレームに表示していたラベル id(集合から外れたものを隠すため)。
   private prevShownIds: readonly string[] = [];
 
-  private attractors: readonly Attractor[] = [];
+  private celestialBodies: readonly CelestialBody[] = [];
   private readonly labelsById = new Map<string, FocusLabel>();
   private readonly bodyPickableRecords = new Map<string, MutableMapPickable>();
   private readonly cachedBodyPickables: MutableMapPickable[] = [];
@@ -138,9 +138,9 @@ export class FocusMarkers {
     // レジストリは実行時に差し替えられるので、親子関係が循環していても停止し、同じ天体を
     // 二度並べないよう追加済みを覚えておく。
     const labels: FocusLabel[] = [];
-    const added = new Set<AttractorId>();
+    const added = new Set<CelestialBodyId>();
     const pointsOf = new Map(this.lagrangeSources.map((s) => [s.id, s.points]));
-    const appendBody = (id: AttractorId, depth: number): void => {
+    const appendBody = (id: CelestialBodyId, depth: number): void => {
       if (added.has(id)) return;
       added.add(id);
       labels.push({
@@ -190,7 +190,7 @@ export class FocusMarkers {
     // update を通らずに直接呼ばれる場合も既存の時刻仕様を保つ。通常の MapPickables 経路は
     // update が先に同じ policy で座標を作るため、下記の再計算分岐には入らない。
     const ephemeris = this.ephemeris;
-    const posOf = new Map(ephemeris.attractorsAt(t).map((a) => [a.id, a.state.r]));
+    const posOf = new Map(ephemeris.celestialBodiesAt(t).map((a) => [a.id, a.state.r]));
     const drawn = new Map(this.allLabels.map((lbl) => [lbl.id, lbl.pickable]));
     this.cachedBodyPickables.length = 0;
     for (const id of this.registryIds) {
@@ -234,16 +234,16 @@ export class FocusMarkers {
   // 表示時刻 t の各ラベル座標を求め直す。表示対象の外にある天体は座標計算ごと飛ばす —
   // 登録天体が増えるほど lagrangeAt(1天体あたり positionOf 2回 + 回転系1回)が効くため。
   update(
-    t: number, focusId: AttractorId | undefined, toggles: BodyClassToggles, cameraPos: Vec3,
+    t: number, focusId: CelestialBodyId | undefined, toggles: BodyClassToggles, cameraPos: Vec3,
     sharedVisibilityPolicy?: MapVisibilityPolicy,
   ): void {
     const ephemeris = this.ephemeris;
-    const attractors = ephemeris.attractorsAt(t);
+    const celestialBodies = ephemeris.celestialBodiesAt(t);
     // フォーカスを解除しても、カメラが実際にいる惑星系の衛星は消さない。カメラ位置の
     // 「近さ」を固定距離で判定せず、既存の重力系判定を使うことで、地球/月や木星/衛星の
     // 境界を同じ規則で扱える。
     const nearby = sharedVisibilityPolicy === undefined
-      ? systemMembersAt(ephemeris.registry, cameraPos, attractors)
+      ? systemMembersAt(ephemeris.registry, cameraPos, celestialBodies)
       : [];
     // まず表示対象を決め、その中だけ座標を引く。表示の判断は marker/map-picker/参照線と
     // 同じ MapVisibilityPolicy を使い、個別実装の解釈ずれをなくす。
@@ -289,7 +289,7 @@ export class FocusMarkers {
       shown.push(lbl);
     }
     this.shownLabels = shown;
-    this.attractors = attractors;
+    this.celestialBodies = celestialBodies;
     this.cachedBodyPickablesTime = t;
     this.cachedBodyPickablesPolicy = visibilityPolicy;
   }
@@ -304,7 +304,7 @@ export class FocusMarkers {
     const projected = this.projectedScratch;
     projected.length = 0;
     for (const lbl of this.shownLabels) {
-      const opacity = occlusionOpacity(cameraPos, lbl.pos, this.attractors);
+      const opacity = occlusionOpacity(cameraPos, lbl.pos, this.celestialBodies);
       const occluded = opacity <= 0;
       const p = project(lbl.pos);
       frame.set(lbl.id, { occluded, opacity, x: p.x, y: p.y, front: p.front });
@@ -426,7 +426,7 @@ export class FocusMarkers {
   syncSubLabels(
     groupedMarkers: GroupedMarkers,
     registry: CelestialRegistry,
-    attractors: readonly Attractor[],
+    celestialBodies: readonly CelestialBody[],
     overviewMode: boolean,
     project: ProjectFn,
     cameraPos: Vec3,
@@ -441,7 +441,7 @@ export class FocusMarkers {
     const itemsByTargetBody = new Map<string, { prefix: string; item: GroupedMarkerItem }[]>();
 
     for (const item of hiddenItems) {
-      const center = strongestAttractor(item.pos, attractors);
+      const center = strongestAttractor(item.pos, celestialBodies);
       const centerLbl = this.labelsById.get(center.id);
       const distToCenter = centerLbl ? len(sub(centerLbl.pos, cameraPos)) : Infinity;
       const isStage2 = distToCenter >= DIST_STAGE2_THRESHOLD;
@@ -468,7 +468,7 @@ export class FocusMarkers {
           const primaryId = primaryOf(registry, center.id as OrbitingId);
           if (primaryId && this.bodyPickableRecords.get(primaryId)?.pickable) {
             targetId = primaryId;
-            prefix = `${celestialBodyName(center.id as AttractorId)}: `;
+            prefix = `${celestialBodyName(center.id as CelestialBodyId)}: `;
           }
         }
       }

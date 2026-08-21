@@ -3,7 +3,7 @@
 // 同じ位置・同じ時刻で一致することを、重力と表面判定の両方について固定する。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import { attractorAccel } from '../../src/physics/attractor';
+import { attractorAccel } from '../../src/physics/celestial-body';
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, MU_MOON, MU_SUN, R_EARTH, R_MOON } from '../../src/physics/solar-system';
@@ -15,9 +15,9 @@ import {
 } from '../../src/game/const';
 import { ArcBodies } from '../../src/game/simulation/arc-bodies';
 import { attractorsNearInto, classifyAttractors } from '../../src/game/simulation/attractors';
-import { FutureAttractors } from '../../src/game/simulation/future-attractors';
+import { FutureCelestialBodies } from '../../src/game/simulation/future-celestial-bodies';
 import { SurfaceCandidates, type SurfaceParticipant } from '../../src/game/simulation/surface-candidates';
-import type { Attractor, AttractorId } from '../../src/physics/attractor';
+import type { CelestialBody, CelestialBodyId } from '../../src/physics/celestial-body';
 import type { KinematicState } from '../../src/physics/kinematic-state';
 import type { Vec3 } from '../../src/physics/vec3';
 
@@ -85,12 +85,12 @@ const SITES: readonly Site[] = [
 
 // 天体一式が位置 r へ及ぼす ECI 加速度の和。素の引力ではなく、運動方程式に実際に現れる寄与で
 // 比べるために attractorAccel を使う。
-function gravitySum(bodies: readonly Attractor[], r: Vec3, t: number): Vec3 {
+function gravitySum(bodies: readonly CelestialBody[], r: Vec3, t: number): Vec3 {
   return bodies.reduce((sum, body) => add(sum, attractorAccel(r, body, t)), v3());
 }
 
 // bodies にあって others に無い天体を、その1体ぶんの寄与の大きさとともに並べた文字列。
-function onlyIn(bodies: readonly Attractor[], others: readonly Attractor[], r: Vec3, t: number): string {
+function onlyIn(bodies: readonly CelestialBody[], others: readonly CelestialBody[], r: Vec3, t: number): string {
   const known = new Set(others.map((b) => b.id));
   const missing = bodies.filter((b) => !known.has(b.id))
     .map((b) => `${b.id}(${len(attractorAccel(r, b, t)).toExponential(2)})`);
@@ -110,11 +110,11 @@ function substepInterval(from: KinematicState, dt: number): SurfaceParticipant {
 
 // 表面判定の相手を比べる場所。円軌道では1サブステップの間にどの表面へも届かないので、
 // 絞り込みが実際に何かを通す「接触が差し迫った場所」でなければ比べる意味がない。
-type SurfaceSite = { readonly name: string; readonly bodyId: AttractorId };
+type SurfaceSite = { readonly name: string; readonly bodyId: CelestialBodyId };
 
 // レジストリで最初に見つかる、重力を及ぼさないが半径を持つ天体。表面判定が重力の有無に
 // 依らないことは、この種の天体でしか見えない。
-function firstMasslessBodyId(): AttractorId {
+function firstMasslessBodyId(): CelestialBodyId {
   const def = Object.values(EPHEMERIS.registry).find((b) => b.mu === 0 && b.radius > 0);
   assert.ok(def !== undefined, '既定レジストリに mu=0 の天体が無い');
   return def!.id;
@@ -127,8 +127,8 @@ const SURFACE_SITES: readonly SurfaceSite[] = [
 ];
 
 // bodyId の表面から 1km 上空を、表面へ向かって降りていく状態。向きは任意でよいので +X に取る。
-function descentState(bodyId: AttractorId, t: number): KinematicState {
-  const body = EPHEMERIS.attractorAt(bodyId, t);
+function descentState(bodyId: CelestialBodyId, t: number): KinematicState {
+  const body = EPHEMERIS.celestialBodyAt(bodyId, t);
   const up = v3(1, 0, 0);
   return kinematicState(
     t,
@@ -138,7 +138,7 @@ function descentState(bodyId: AttractorId, t: number): KinematicState {
 }
 
 export function register(): void {
-  const arcSources = new FutureAttractors(EPHEMERIS);
+  const arcSources = new FutureCelestialBodies(EPHEMERIS);
   for (const site of SITES) {
     test(`gravity-window: ${site.name}で弧と実シミュレーションの重力和は GRAVITY_NEGLIGIBLE_ACCEL 以内で一致する`, () => {
       for (const t of SAMPLE_TIMES) {
@@ -163,7 +163,7 @@ export function register(): void {
         const from = descentState(site.bodyId, t);
         const participant = substepInterval(from, SUBSTEP_MAX_DT);
         const candidates = new SurfaceCandidates();
-        candidates.reset([participant], EPHEMERIS.attractorsAt(t));
+        candidates.reset([participant], EPHEMERIS.celestialBodiesAt(t));
         const sim = candidates.into(participant, []);
         // 何も通らない場所で比べても意味がないので、絞り込みが実際に通していることを先に見る。
         assert.ok(sim.length > 0, `${site.name} t=${t}: 実シミュレーション側が1体も通していない`);

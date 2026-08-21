@@ -8,12 +8,12 @@
 // 揃え続ける保守が発生する。弧が答えるのは「この自由落下の経路が固体表面へ到達するか」だけ。
 import { KinematicState, hermiteInterpolate } from '../../physics/kinematic-state';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
-import { Attractor, nearestAtmosphereBody, strongestAttractor } from '../../physics/attractor';
+import { CelestialBody, nearestAtmosphereBody, strongestAttractor } from '../../physics/celestial-body';
 import { firstSurfaceContact } from '../../physics/surface-contact';
 import { keplerPeriod } from '../../physics/elements';
 import { ApsisTrack } from '../../physics/trajectory-features';
 import { dot, len, sub } from '../../physics/vec3';
-import { ArcBodies, type ArcBodyWindow, type FutureAttractorProvider } from './arc-bodies';
+import { ArcBodies, type ArcBodyWindow, type FutureCelestialBodyProvider } from './arc-bodies';
 import { reentryAwareMaxStep } from './time-step';
 import * as C from '../const';
 
@@ -27,7 +27,7 @@ export function trajectorySampleInterval(period: number, keepDuration: number): 
 
 // 弧が打ち切られた、天体表面への到達。到達した瞬間の状態は経路を補間して求める。
 export interface BodyImpact {
-  readonly body: Attractor;
+  readonly body: CelestialBody;
   readonly state: KinematicState;
 }
 
@@ -60,7 +60,7 @@ export class PredictedArc {
   // 合わせ、表示期間由来の項を使わない。
   constructor(
     readonly state0: KinematicState,
-    sources: FutureAttractorProvider,
+    sources: FutureCelestialBodyProvider,
     private readonly radius: number,
     private readonly bcInv: number,
     private readonly srpCoeff: number,
@@ -158,7 +158,7 @@ export class PredictedArc {
   // 潰れ(Zeno)を断つためのもので、これがあるおかげで衝突コースは必ず有限歩で表面を跨ぎ、
   // 掃引判定が交差点を補間で求められる。
   private stepDt(
-    tip: KinematicState, span: number, period: number, collisionBodies: readonly Attractor[],
+    tip: KinematicState, span: number, period: number, collisionBodies: readonly CelestialBody[],
   ): number {
     let approachDt = Infinity;
     // 動径接近率が正(接近中)の天体だけを対象に、表面までの残距離ぶんの猶予を見る。
@@ -182,7 +182,7 @@ export class PredictedArc {
 
   // 固体表面への到達の判定。触れた天体があれば、その接触時刻へ経路を補間した状態を到達点
   // として記録し、打ち切る。
-  private checkSurfaceReach(prev: KinematicState, collision: readonly Attractor[]): void {
+  private checkSurfaceReach(prev: KinematicState, collision: readonly CelestialBody[]): void {
     const next = this._trajectory.state;
     const hit = firstSurfaceContact(prev, next, this.radius, collision);
     if (hit === null) return;

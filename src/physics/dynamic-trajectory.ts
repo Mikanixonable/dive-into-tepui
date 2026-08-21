@@ -5,7 +5,7 @@
 // ため、過去方向の履歴にも未来方向の予測列にも同じ実装をそのまま使える。
 import { KinematicState, kinematicState } from './kinematic-state';
 import { StateQueue } from './state-queue';
-import { Attractor } from './attractor';
+import { CelestialBody } from './celestial-body';
 import { extrapolatedRelativeState } from './kepler-extrapolation';
 import { Vec3, add } from './vec3';
 import { stepDynamics } from './dynamics';
@@ -24,7 +24,7 @@ export class DynamicTrajectory {
   private _samplesCache: readonly KinematicState[] | null = null;
   // 直近の step で渡された、先端位置で最も強く引く解析天体。extrapolatedAt が二体軌道の
   // 中心に使う。
-  private _extrapolationCenter: Attractor | null = null;
+  private _extrapolationCenter: CelestialBody | null = null;
 
   // state・prevState をともに初期状態で始める。
   constructor(state: KinematicState) {
@@ -34,7 +34,7 @@ export class DynamicTrajectory {
 
   get state(): KinematicState { return this._samples.newest!; }
   get prevState(): KinematicState { return this._prevState; }
-  get extrapolationCenter(): Attractor | null { return this._extrapolationCenter; }
+  get extrapolationCenter(): CelestialBody | null { return this._extrapolationCenter; }
   // 列の最も古い端での間引き間隔 [s]。列がどれだけ粗いかは列自身の属性であり、積んだ後に
   // 呼び出し側の設定が変わっても、既に積んだサンプルの粗さは変わらない。保持窓が飽和した
   // 列では、この端が最も古い保持サンプルとその1つ新しい側を挟む補間区間にあたる。
@@ -48,15 +48,15 @@ export class DynamicTrajectory {
   // extrapolationCenter は extrapolatedAt が使う中心天体(省略時 null)。
   step(
     dt: number,
-    attractors: readonly Attractor[],
-    occluders: readonly Attractor[],
-    atmosphereBody: Attractor | null,
+    attractors: readonly CelestialBody[],
+    occluders: readonly CelestialBody[],
+    atmosphereBody: CelestialBody | null,
     bcInv: number,
     srpCoeff: number,
     thrust: Vec3 | null,
     sampleInterval: number,
     keepDuration: number,
-    extrapolationCenter: Attractor | null = null,
+    extrapolationCenter: CelestialBody | null = null,
   ): void {
     const next = stepDynamics(
       this.state, dt, attractors, occluders, atmosphereBody, bcInv, srpCoeff, thrust);

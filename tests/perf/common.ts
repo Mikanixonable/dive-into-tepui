@@ -1,7 +1,7 @@
 // tests/perf/ 配下の各実験が共有する土台。ゲーム本体と同じ調整値の再 export、LEO の初期状態と
 // Ephemeris の生成、刻み幅固定の積分、結果の比較と整形を持つ。
 import { Ephemeris } from '../../src/physics/ephemeris';
-import { nearestAtmosphereBody } from '../../src/physics/attractor';
+import { nearestAtmosphereBody } from '../../src/physics/celestial-body';
 import { kinematicState, KinematicState } from '../../src/physics/kinematic-state';
 import { v3 } from '../../src/physics/vec3';
 import { stepDynamics } from '../../src/physics/dynamics';
@@ -45,13 +45,13 @@ export function buildEphemeris(): Ephemeris {
 
 // 1ステップぶん、ステップ中点の時刻で重力源を解決してから stepDynamics を呼ぶ。重力源は窓を
 // そのまま渡す — 刻み幅の比較に絞り込みの有無が混ざらないようにする。
-// Simulator.substep がサブステップ中点で attractorsAt を評価するのと同じ方針。
+// Simulator.substep がサブステップ中点で celestialBodiesAt を評価するのと同じ方針。
 export function stepDynamicsAt(ephemeris: Ephemeris, state: KinematicState, dt: number): KinematicState {
   const tMid = state.t + dt / 2;
-  const attractors = ephemeris.gravityAttractorsAt(tMid);
+  const celestialBodies = ephemeris.gravityAttractorsAt(tMid);
   return stepDynamics(
-    state, dt, attractors, ephemeris.attractorsAt(tMid),
-    nearestAtmosphereBody(state.r, ephemeris.atmosphereAttractorsAt(tMid)),
+    state, dt, celestialBodies, ephemeris.celestialBodiesAt(tMid),
+    nearestAtmosphereBody(state.r, ephemeris.atmosphereCelestialBodiesAt(tMid)),
     SHIP_BCINV, 0, null,
   );
 }

@@ -10,7 +10,7 @@ import { Vec3, cross, dot, len, scale, sub, v3 } from './vec3';
 export type AtmosphereLayer = readonly [number, number, number];
 
 // 天体の大気の静的な記述。基準楕円体は「平均海面」であり、衝突判定の外接球
-// (Attractor.radius)とは別の理由で選ばれた別の量なので、別の宣言として持つ。
+// (CelestialBody.radius)とは別の理由で選ばれた別の量なので、別の宣言として持つ。
 export type AtmosphereDef = {
   readonly equatorRadius: number; // 基準楕円体の赤道半径 [m]
   readonly polarRadius: number; // 基準楕円体の極半径 [m]

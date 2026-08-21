@@ -1,5 +1,5 @@
 // 軌道上の特徴点(赤道交点 EqAN/EqDN、相対交点 AN/DN など)の計算を行う純粋物理計算層。
-import { Attractor, frameOfAttractor, orbitalElementsOf } from './attractor';
+import { CelestialBody, frameOfCelestialBody, orbitalElementsOf } from './celestial-body';
 import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from './elements';
 import { frameKinematicState, toFrameState, toInertialState } from './frame';
 import { KinematicState } from './kinematic-state';
@@ -19,7 +19,7 @@ export interface OrbitCrossingsResult {
 // 軌道状態またはサンプル点列から赤道交点(EqAN / EqDN)を求める純粋関数
 export function solveEquatorCrossings(
   state: KinematicState,
-  center: Attractor,
+  center: CelestialBody,
   eqNormal: Vec3,
   samples: readonly KinematicState[] | null = null,
 ): OrbitCrossingsResult | null {
@@ -32,7 +32,7 @@ export function solveEquatorCrossings(
   const nodes = el && nodeAnomalies(el, eqNormal);
   if (!el || !nodes) return null;
 
-  const tf = frameOfAttractor(center);
+  const tf = frameOfCelestialBody(center);
   const relative = toFrameState(tf, state);
   const nodeState = (nu: number): KinematicState => {
     const dt = tofBetween(el, trueAnomalyAt(el, relative.r), nu);

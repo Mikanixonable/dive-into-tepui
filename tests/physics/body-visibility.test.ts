@@ -205,7 +205,7 @@ export function register(): void {
 
   test('visibility: フォーカス解除後もカメラ近傍の惑星系の衛星は見える', () => {
     const e = new Ephemeris();
-    const nearby = systemMembersAt(SOLAR_SYSTEM, v3(), e.attractorsAt(0));
+    const nearby = systemMembersAt(SOLAR_SYSTEM, v3(), e.celestialBodiesAt(0));
     const visible = visibleBodyIds(SOLAR_SYSTEM, undefined, SATELLITES_OFF, nearby);
     assert.ok(nearby.includes('earth'));
     assert.ok(nearby.includes('moon'));
@@ -217,63 +217,63 @@ export function register(): void {
 
   test('visibility: フォーカス天体の系に属する位置だけを player 表示対象にする', () => {
     const e = new Ephemeris();
-    const attractors = e.attractorsAt(0);
+    const celestialBodies = e.celestialBodiesAt(0);
     const moon = e.positionOf('moon', 0);
     const saturn = e.positionOf('saturn', 0);
     // 地球周回と、その子である月周回は地球フォーカスで表示する。一方で土星近傍は除く。
-    assert.ok(isPositionInFocusedSystem(SOLAR_SYSTEM, 'earth', v3(7e6, 0, 0), attractors));
-    assert.ok(isPositionInFocusedSystem(SOLAR_SYSTEM, 'earth', addScaled(moon, v3(1, 0, 0), 1e6), attractors));
-    assert.ok(!isPositionInFocusedSystem(SOLAR_SYSTEM, 'earth', addScaled(saturn, v3(1, 0, 0), 1e8), attractors));
+    assert.ok(isPositionInFocusedSystem(SOLAR_SYSTEM, 'earth', v3(7e6, 0, 0), celestialBodies));
+    assert.ok(isPositionInFocusedSystem(SOLAR_SYSTEM, 'earth', addScaled(moon, v3(1, 0, 0), 1e6), celestialBodies));
+    assert.ok(!isPositionInFocusedSystem(SOLAR_SYSTEM, 'earth', addScaled(saturn, v3(1, 0, 0), 1e8), celestialBodies));
     // 天体以外のフォーカスは系を特定できないため、表示を絞らない。
-    assert.ok(isPositionInFocusedSystem(SOLAR_SYSTEM, 'player-1', addScaled(saturn, v3(1, 0, 0), 1e8), attractors));
+    assert.ok(isPositionInFocusedSystem(SOLAR_SYSTEM, 'player-1', addScaled(saturn, v3(1, 0, 0), 1e8), celestialBodies));
   });
 
   test('visibility: 衛星フォーカスでも同じ惑星系の player は表示対象にする', () => {
     const e = new Ephemeris();
-    const attractors = e.attractorsAt(0);
+    const celestialBodies = e.celestialBodiesAt(0);
     const saturn = e.positionOf('saturn', 0);
     const titan = e.positionOf('titan', 0);
     const jupiter = e.positionOf('jupiter', 0);
 
     // タイタンをフォーカスしても、親惑星の土星周回にいる player は消さない。
-    assert.ok(isPositionInFocusedSystem(SOLAR_SYSTEM, 'titan', addScaled(saturn, v3(1, 0, 0), 1e8), attractors));
+    assert.ok(isPositionInFocusedSystem(SOLAR_SYSTEM, 'titan', addScaled(saturn, v3(1, 0, 0), 1e8), celestialBodies));
     // タイタン自身の周回も同じ土星系として扱う。
-    assert.ok(isPositionInFocusedSystem(SOLAR_SYSTEM, 'titan', addScaled(titan, v3(1, 0, 0), 1e6), attractors));
+    assert.ok(isPositionInFocusedSystem(SOLAR_SYSTEM, 'titan', addScaled(titan, v3(1, 0, 0), 1e6), celestialBodies));
     // 木星系の player は土星系の衛星フォーカスでは表示しない。
-    assert.ok(!isPositionInFocusedSystem(SOLAR_SYSTEM, 'titan', addScaled(jupiter, v3(1, 0, 0), 1e8), attractors));
+    assert.ok(!isPositionInFocusedSystem(SOLAR_SYSTEM, 'titan', addScaled(jupiter, v3(1, 0, 0), 1e8), celestialBodies));
   });
 
   test('systemChainAt: 月の近くでは月→地球→太陽の系列になる', () => {
     const e = new Ephemeris();
-    const attractors = e.attractorsAt(0);
+    const celestialBodies = e.celestialBodiesAt(0);
     const moon = e.positionOf('moon', 0);
     // 月の中心そのものは attractorAccel の直接項が距離ゼロで消えるため、月面付近の
     // 1点(中心から1000km)を使う。
     const nearMoon = addScaled(moon, v3(1, 0, 0), 1e6);
-    assert.deepEqual(systemChainAt(SOLAR_SYSTEM, nearMoon, attractors), ['moon', 'earth', 'sun']);
+    assert.deepEqual(systemChainAt(SOLAR_SYSTEM, nearMoon, celestialBodies), ['moon', 'earth', 'sun']);
   });
 
   test('systemChainAt: 地球の近くでは地球→太陽の系列になる', () => {
     const e = new Ephemeris();
-    const attractors = e.attractorsAt(0);
-    assert.deepEqual(systemChainAt(SOLAR_SYSTEM, v3(), attractors), ['earth', 'sun']);
+    const celestialBodies = e.celestialBodiesAt(0);
+    assert.deepEqual(systemChainAt(SOLAR_SYSTEM, v3(), celestialBodies), ['earth', 'sun']);
   });
 
   test('systemChainAt: 太陽の近くでは太陽単独になる', () => {
     const e = new Ephemeris();
-    const attractors = e.attractorsAt(0);
+    const celestialBodies = e.celestialBodiesAt(0);
     const sun = e.positionOf('sun', 0);
-    assert.deepEqual(systemChainAt(SOLAR_SYSTEM, sun, attractors), ['sun']);
+    assert.deepEqual(systemChainAt(SOLAR_SYSTEM, sun, celestialBodies), ['sun']);
   });
 
-  test('systemChainAt: attractors が空なら空配列', () => {
+  test('systemChainAt: celestialBodies が空なら空配列', () => {
     assert.deepEqual(systemChainAt(SOLAR_SYSTEM, v3(), []), []);
   });
 
   test('systemMembersAt: 地球近傍では月が含まれ、太陽の子(恒星の子)は含まれない', () => {
     const e = new Ephemeris();
-    const attractors = e.attractorsAt(0);
-    const members = systemMembersAt(SOLAR_SYSTEM, v3(), attractors);
+    const celestialBodies = e.celestialBodiesAt(0);
+    const members = systemMembersAt(SOLAR_SYSTEM, v3(), celestialBodies);
     assert.ok(members.includes('earth'));
     assert.ok(members.includes('moon'), '地球の子である月が足されるべき');
     assert.ok(members.includes('sun'));
@@ -284,10 +284,10 @@ export function register(): void {
 
   test('systemMembersAt: 月近傍では地球と月が含まれ、月自身は重複しない', () => {
     const e = new Ephemeris();
-    const attractors = e.attractorsAt(0);
+    const celestialBodies = e.celestialBodiesAt(0);
     const moon = e.positionOf('moon', 0);
     const nearMoon = addScaled(moon, v3(1, 0, 0), 1e6);
-    const members = systemMembersAt(SOLAR_SYSTEM, nearMoon, attractors);
+    const members = systemMembersAt(SOLAR_SYSTEM, nearMoon, celestialBodies);
     assert.ok(members.includes('moon'));
     assert.ok(members.includes('earth'), '月の親である地球が足されるべき');
     assert.ok(members.includes('sun'));

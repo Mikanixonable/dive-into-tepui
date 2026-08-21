@@ -112,7 +112,7 @@ function radiusSumRange(ephemeris: Ephemeris): void {
     ['自機', C.PLAYER_HULL_RADIUS], ['敵', C.ENEMY_RADIUS],
   ];
   const maxSum = Math.max(...entities.map(([, r]) => r)) * 2;
-  const bodies = [...ephemeris.attractorsAt(0)].sort((a, b) => a.radius - b.radius);
+  const bodies = [...ephemeris.celestialBodiesAt(0)].sort((a, b) => a.radius - b.radius);
   console.log(`個体の半径: ${entities.map(([n, r]) => `${n} ${r} m`).join('、')}`);
   console.log(`→ 個体どうしの半径和は最大 ${maxSum.toFixed(0)} m\n`);
   const overlap = bodies.filter((b) => b.radius < maxSum);
@@ -130,7 +130,7 @@ function stepsPerRevolution(ephemeris: Ephemeris): void {
   ];
   let worst = Infinity;
   let worstId = '';
-  for (const b of ephemeris.attractorsAt(0)) {
+  for (const b of ephemeris.celestialBodiesAt(0)) {
     if (!(b.mu > 0) || !(b.radius > 0)) continue;
     const period = 2 * Math.PI * Math.sqrt(b.radius ** 3 / b.mu);
     if (period < worst) { worst = period; worstId = b.id; }
