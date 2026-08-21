@@ -262,7 +262,7 @@ export class ViewOptionsPanel {
       }
     }
 
-    // 参照線・定型軌道 (静止軌道およびハロー軌道 L1/L2 北側・南側ファミリー) のトグル
+    // 参照線・定型軌道 (静止軌道) のトグル
     const { section: refSection, unsubscribe: refUnsub } = appendSectionHeading(
       body, 'view-options-section-ref-lines', '参照線・定型軌道',
       [{ glyph: '⌒', label: '軌道線' }], false,
@@ -285,33 +285,6 @@ export class ViewOptionsPanel {
     geoRow.appendChild(geoBtns);
     bodyClassButtons.push(['geoOrbit', geoBtn]);
     refSection.appendChild(geoRow);
-
-    // ハロー軌道行 (L1北/L1南/L2北/L2南)
-    const haloRow = document.createElement('div');
-    haloRow.className = 'body-class-row';
-    const haloTitle = document.createElement('span');
-    haloTitle.className = 'body-class-title';
-    haloTitle.textContent = 'ハロー軌道';
-    haloRow.appendChild(haloTitle);
-
-    const haloBtns = document.createElement('div');
-    haloBtns.className = 'body-class-btns';
-
-    const haloItems: readonly [keyof BodyClassToggles, string, string][] = [
-      ['haloL1North', 'L1北', 'L1 北側ハロー軌道'],
-      ['haloL1South', 'L1南', 'L1 南側ハロー軌道'],
-      ['haloL2North', 'L2北', 'L2 北側ハロー軌道'],
-      ['haloL2South', 'L2南', 'L2 南側ハロー軌道'],
-    ];
-
-    for (const [key, btnText, titleText] of haloItems) {
-      const btn = this.toggleButton(btnText, titleText, key, this.bodyClassCurrent, (k, on) => this.onBodyClassToggle?.(k, on));
-      btn.element.classList.add('body-class-icon-btn');
-      haloBtns.appendChild(btn.element);
-      bodyClassButtons.push([key, btn]);
-    }
-    haloRow.appendChild(haloBtns);
-    refSection.appendChild(haloRow);
 
     this.bodyClassButtons = bodyClassButtons;
     this.bodyClassCategoryButtons = bodyClassCategories;
