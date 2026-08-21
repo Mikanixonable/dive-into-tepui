@@ -6,7 +6,7 @@ import { Attractor } from '../../physics/attractor';
 import { burnUpBody } from '../../physics/atmosphere';
 import { GameEntity } from './game-entity';
 import type { Contact } from '../simulation/contact';
-import { isAttractor } from '../simulation/contact-target';
+import { isAttractor } from './contact-target';
 import { contactDamageSpeed } from './contact-damage';
 import { Attitude } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';

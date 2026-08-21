@@ -1,7 +1,7 @@
 // 剛体接触が装甲へ与えるダメージの根拠となる量。物理の接近速度に、相手の種別ごとの重みを掛ける。
 // 重みはゲームバランスの調整値であり、物理の質量からは導かない。
 import { closingSpeed, type Contact } from '../simulation/contact';
-import { isAttractor, type ContactTarget } from '../simulation/contact-target';
+import { isAttractor, type ContactTarget } from './contact-target';
 
 // 天体の表面を相手にしたときの重み。
 const ATTRACTOR_DAMAGE_WEIGHT = 1;
