@@ -181,7 +181,7 @@
 
 | 項目 | いまの状態 |
 |---|---|
-| 掃引をほぼ直線の区間で弦へ落とす分岐 | **保留のまま。** 判断材料(分岐基準の妥当性・過小評価 2.3×・半径和の母集団)は `unite_sphere_contact.md` 5章・8章に、実測は `tests/perf/exp10` `exp11` にある。`linearSphereContact` / 二次 / `sweptSagitta` はそのための余地として残してある(5-1 A-9) |
+| 掃引をほぼ直線の区間で弦へ落とす分岐 | **保留のまま。`SPEC/ORBIT.md`「未確定の案」に記載済み。** 判断材料(分岐基準の妥当性・過小評価 2.3×・半径和の母集団)は `unite_sphere_contact.md` 5章・8章に、実測は `tests/perf/exp10` `exp11` にある。`linearSphereContact` / 二次 / `sweptSagitta` はそのための余地として残してある |
 | `base-collision.ts` のワープ倍率 LOD | **到達不能のまま据え置き**(v3 で明示的にそう決めた)。基地の仕様が固まるまで触らない |
 | 相対速度ゼロで天体の内側に湧いた個体 | **塞いでいない。** 着陸(接地したまま留まる状態)を実装するときに同じ穴をまとめて塞ぐ |
 | 静止接触の安定化 | `SPEC/ORBIT.md`「未確定の案」に記載済み |
@@ -442,20 +442,6 @@ sphere-contact.ts  sweptSphereContact(aStart, aEnd, bStart, bEnd, radiusSum)
 `Simulator` の中で種別のコレクションを名指しする形で書かれている。`GameEntity` 側の
 属性(「この個体の喪失の精度がプレイに効くか」)にすると、Simulator から種別が消える。
 
-### A-9. `sweptSphereContact` が `curveSphereContact(..., 3)` へのたらい回し(**判断が要る**)
-
-`CODING-RULE` の「責務のない、たらい回しをするだけの薄すぎるラッパー」に形は当たる。
-残す理由はモジュール冒頭に書かれている(精度を落とす分岐を入れるならここ)。
-
-- **残す**なら、いまの形が正しい — 呼び出し元が3箇所あり、分岐を入れる場所が1つに
-  決まっていることに価値がある。
-- **消す**なら、`curveSphereContact` の `degree` 引数が呼び出し元へ漏れる。これは
-  `unite_sphere_contact.md` が消した `SweptMode` の再来なので、消すべきではない。
-- → **残す方に理があるが、「たらい回しだが消してはならない」という但し書きが必要な形
-  そのものが、`degree` を引数に持つ `curveSphereContact` の設計に由来する。**
-  内側を二次用・三次用に割って共通部分を private にすれば、`sweptSphereContact` は
-  「三次を選ぶ」という責務を持つ関数になり、但し書きが要らなくなる。
-
 ### A-10. `base-collision.ts` の LOD 分岐(**据え置きを確認するだけ**)
 
 `warpLevel` は `Base.raycast` / `Base.testSphereCollision` の既定引数 `1` としてしか渡らず、
@@ -587,14 +573,12 @@ export function isAttractor(target: ContactTarget): target is Attractor {
 
 ## 5-4. 未決事項の置き場所
 
-**掃引を弦へ落とす分岐の保留が、`SPEC/ORBIT.md`「未確定の案」に無い。**
-判断材料は `unite_sphere_contact.md` 8章と `sphere-contact.ts` 冒頭のコメントにあるが、
-`CLAUDE.md` の運用(今後も使う可能性があるものは SPEC の「未確定の案」へ記録する)に
-従うなら、**メモではなく ORBIT.md に置くべき**項目に見える。メモは消える前提の文書で、
-実際この一連の作業でも計画は消してきた。
+**掃引を弦へ落とす分岐は、`SPEC/ORBIT.md`「未確定の案」へ移した。** 判断材料
+(分岐基準の妥当性・過小評価 2.3×・半径和の母集団)は `unite_sphere_contact.md` 5章・8章に
+残り、`sphere-contact.ts` の「消してはならない」は ORBIT.md を存在理由として参照する。
 
 同じ理由で、5-2 B-3(遮蔽体の窓)と 5-1 A-10(基地の LOD)も、決めないなら
-「未確定の案」へ移す候補。
+「未確定の案」へ移す候補。メモは消える前提の文書で、実際この一連の作業でも計画は消してきた。
 
 ## 5-5. 性能について — いまの姿勢の確認
 

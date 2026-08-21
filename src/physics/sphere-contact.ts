@@ -3,10 +3,9 @@
 //
 // 経路は常に三次曲線で解く。曲線の事前棄却は弦の 2〜3 倍で済み、遠い相手はそこで落ちるので、
 // 次数を落として稼げる分は小さい。
-// **linearSphereContact・curveSphereContact の二次・sweptSagitta は src/ のどこからも呼ばれて
-// いないが、消してはならない。** 呼び出し回数を減らしてもなお費用が問題として残ったときに、
-// 精度を落として費用を下げるための余地である。どこまで落としてよいかの実測は
-// memos/hedalu244/unite_sphere_contact.md にあり、tests/perf/exp10・exp11 が再現する。
+// **linearSphereContact・curveSphereContact の二次・sweptSagitta は消してはならない。**
+// SPEC/ORBIT.md「未確定の案」の「掃引の近似を区間ごとに粗くする分岐」を入れるための余地で、
+// どこまで粗くしてよいかは tests/perf/exp10・exp11 が測る。
 import { KinematicState } from './kinematic-state';
 import { Vec3, add, len, scale, v3 } from './vec3';
 
@@ -26,7 +25,8 @@ export interface SweptSphereContact {
 // 半径和 radiusSum の2球が、それぞれ start→end の区間を渡る間に最初に表面を跨ぐ瞬間と、
 // 区間の始点で重なっていたか。入力が非有限で判定できないときだけ null を返す。
 // 区間は両球で共通で、その長さは aStart→aEnd の時刻差から取る。
-// 現状はたらいまわし関数だが、精度を落とすチューニングが必要なときはここで分岐するので消してはならない。
+// 解法を選ばない窓口 — SPEC/ORBIT.md「未確定の案」の区間ごとの分岐を入れるなら、その唯一の
+// 分岐点がここになるので、三次への1行のたらい回しに見えても消してはならない。
 export function sweptSphereContact(
   aStart: KinematicState,
   aEnd: KinematicState,
