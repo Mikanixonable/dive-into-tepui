@@ -412,12 +412,6 @@ v3 4-4 が明らかにしたとおり、**天体接触と個体どうしの接�
 - 副次: `participantScratch` を `resolveSurfaceContacts` と `resolveSubstep` が共有して
   いる(呼び出しが逐次なので現状は安全だが、依存が暗黙)。
 
-### A-5. `ContactPhysics.resolveSubstep` の名が区別にならない
-
-天体接触も毎 substep 走るようになったので、「substep ぶんの解決」は両方に当てはまる。
-中身は物体どうしの接触なので `resolveEntityContacts` のような名前が対になる
-(`resolveSurfaceContacts` と揃う)。
-
 ### A-6. `Simulator.advance` が `SimSpeedManager` を丸ごと受けている
 
 読んでいるのは `canResolvePhysicalCollisions` 1つだけ。**「Simulator と時間加速度の密結合の
