@@ -366,7 +366,8 @@ kamooalewa 34 m、dimorphos 75.5 m、apophis 170 m、tk7 189.5 m、bennu 252.35 
 
 ### 段2. 精度を測る — 半径和の二分探索で「判定が覆る境界」を出す — **実施済み**
 
-`tests/perf/exp11-sphere-contact-accuracy.ts`。配置は `sphere-contact-sweeps.ts` が組む
+`tests/perf/exp11-sphere-contact-accuracy.ts`。配置は `sphere-contact-sweeps.ts` が組み、
+近似曲線の最接近距離と反転点は `sphere-contact-reference.ts` が判定器と独立に出す
 (LEO 円軌道、空気抵抗つき LEO、近点跨ぎ e=0.1/0.9 × frac=0.5/0.1、月周回、小天体周回、
 個体どうし4種)。刻みは 3〜140 歩/周回、個体どうしは h = 1/60 / 1 / 20 s。外側のガードは通さない。
 
