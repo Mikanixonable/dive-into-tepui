@@ -51,7 +51,7 @@ import { register as registerSaveEphemerisContext } from './save-ephemeris-conte
 import { register as registerGeometry } from './geometry.test';
 import { register as registerOptimize } from './optimize.test';
 import { register as registerPredictedArc } from './predicted-arc.test';
-import { register as registerGravityWindowAgreement } from './gravity-window-agreement.test';
+import { register as registerWindowAgreement } from './window-agreement.test';
 import './creative-placement-validation.test';
 
 registerVec3();
@@ -104,7 +104,7 @@ registerSaveEphemerisContext();
 registerGeometry();
 registerOptimize();
 registerPredictedArc();
-registerGravityWindowAgreement();
+registerWindowAgreement();
 
 runAll().catch((error) => {
   console.error(error);
