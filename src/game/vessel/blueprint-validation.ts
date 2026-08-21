@@ -58,11 +58,6 @@ export const DEFAULT_BLUEPRINT_LIMITS: BlueprintLimits = {
 // 補いきれず制御不能になる(§21-9)。半分を超えた時点で警告に出す。
 const THRUST_OFFSET_ERROR_RATIO = 0.05;
 
-// 自己加圧できる推進剤。極低温の推進剤は自身の蒸発でタンク圧を保てるので、加圧ガスを要さない。
-const SELF_PRESSURIZING_PROPELLANTS: ReadonlySet<string> = new Set([
-  'liquid-hydrogen', 'liquid-oxygen', 'liquid-methane', 'silane',
-]);
-
 // 熱シールドが同時に覆えるとみなす向きの開き [rad]。これを超えて散らばる向きを覆う姿勢は取れない。
 const HEAT_SHIELD_SPREAD = Math.PI / 2;
 
@@ -494,7 +489,7 @@ function checkPressurant(bp: VesselBlueprint, issues: BlueprintIssue[]): void {
   for (const placement of bp.placements) {
     const part = placement.part;
     if (part.type !== 'engine' || part.cycle !== 'pressure_fed') continue;
-    if (pressurant || SELF_PRESSURIZING_PROPELLANTS.has(part.propellant)) continue;
+    if (pressurant) continue;
     issues.push(issue('error', part.id, '加圧式のエンジンですが、加圧ガスタンクも自己加圧の条件もありません'));
   }
 }

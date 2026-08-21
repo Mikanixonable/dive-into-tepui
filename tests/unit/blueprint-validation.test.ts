@@ -246,7 +246,7 @@ export function register(): void {
     // 既定の主タンク・配管('aft')を外し、自前のタンク・配管だけで繋がりを確かめる。
     const bp = without(baseBlueprint(), 'reductant_tank', 'plumbing');
     const tank = part('reductant_tank', {
-      name: 'Hydrazine Tank', weight: 50, propellant: 'hydrazine', volume: 0.01, material: 'aluminium',
+      name: 'Hydrazine Tank', weight: 50, propellant: 'hydrazine', volume: 0.01, material: 'structural-metal',
       fuel: 0, insulationGrade: 1, requiredPressure: 0,
     });
     const pipe = part('plumbing', { name: 'Feed Line', weight: 5, propellant: 'hydrazine', bore: 0.02, maxFlowRate: 5 });
@@ -266,15 +266,10 @@ export function register(): void {
       messages(validateBlueprint(connected)));
   });
 
-  test('blueprint: 加圧式エンジンに加圧ガスも自己加圧も無いと指摘される', () => {
-    // 既定の主機は加圧式・四酸化二窒素で、自己加圧できない。加圧ガスタンクを外すと成り立たなくなる。
+  test('blueprint: 加圧式エンジンに加圧ガスが無いと指摘される', () => {
+    // 既定の主機は加圧式・ヒドラジンで、自己加圧できない。加圧ガスタンクを外すと成り立たなくなる。
     const stripped = without(baseBlueprint(), 'pressurant_tank');
     assertIssue(validateBlueprint(stripped), 'error', '加圧ガスタンクも自己加圧の条件もありません');
-    // 極低温の推進剤へ替えれば、加圧ガスが無くても自己加圧で足りる。
-    const cryogenic = withPlacements(stripped, stripped.placements.map((p) => (
-      p.part.type === 'engine' ? { ...p, part: { ...p.part, propellant: 'liquid-methane' } } as PartPlacement : p)));
-    assert.ok(!validateBlueprint(cryogenic).some((i) => i.message.includes('自己加圧')),
-      messages(validateBlueprint(cryogenic)));
   });
 
   test('blueprint: 武器と弾薬庫が別の段にあると指摘される', () => {
@@ -428,7 +423,7 @@ export function register(): void {
     // 設計が持つのは手動で敷いた区間だけであり、既定では空である。
     assert.deepEqual(bp.feedNetwork.routes, []);
     const route = {
-      id: 'r0', propellant: 'nitrogen-tetroxide' as const, edgeIds: ['fore', 'mid'], manual: true as const,
+      id: 'r0', propellant: 'hydrazine' as const, edgeIds: ['fore', 'mid'], manual: true as const,
     };
     library.save({ ...bp, feedNetwork: { routes: [route] } });
     assert.deepEqual(new BlueprintLibrary(store).get(bp.id)!.feedNetwork.routes, [route]);

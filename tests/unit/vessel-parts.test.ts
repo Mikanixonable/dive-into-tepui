@@ -68,7 +68,6 @@ export function register(): void {
     assert.equal(inv.fuelOf('hydrazine'), expectedCapacity);
     assert.equal(inv.totalEnergyStorage, C.POWER_CAPACITY);
     assert.ok(inv.propellantVolume('hydrazine') > 0);
-    assert.equal(inv.propellantVolume('liquid-hydrogen'), 0);
   });
 
   test('既定の有人艦の総発電・放熱能力がパドルと放熱板の面積から出る', () => {

@@ -152,7 +152,7 @@ export function crewedParts(maxHp: number): AnyPart[] {
     }),
     mk('reductant_tank', R.reductantTank, {
       weight: CREWED_WEIGHT.reductantTank, name: 'Main Propellant Tank', propellant: 'hydrazine',
-      volume: C.CREWED_MAIN_TANK_VOLUME, material: 'aluminium',
+      volume: C.CREWED_MAIN_TANK_VOLUME, material: 'structural-metal',
       fuel: propellantTankCapacity('hydrazine', C.CREWED_MAIN_TANK_VOLUME),
       insulationGrade: 1, requiredPressure: 2.4,
     }),
@@ -179,7 +179,7 @@ export function crewedParts(maxHp: number): AnyPart[] {
     }),
     mk('rcs_tank', R.rcsTank, {
       weight: CREWED_WEIGHT.rcsTank, name: 'Main RCS Tank', propellant: 'hydrazine',
-      volume: C.CREWED_RCS_TANK_VOLUME, material: 'aluminium',
+      volume: C.CREWED_RCS_TANK_VOLUME, material: 'structural-metal',
       fuel: propellantTankCapacity('hydrazine', C.CREWED_RCS_TANK_VOLUME),
     }),
     mk('radiator', R.radiator, {
@@ -239,7 +239,7 @@ export function hostileParts(maxHp: number): AnyPart[] {
     }),
     mk('rcs_tank', R.rcsTank, {
       weight: HOSTILE_WEIGHT.rcsTank, name: 'Hostile Tank', propellant: 'hydrazine',
-      volume: 1000 / propellantDensity('hydrazine'), material: 'aluminium', fuel: 1000,
+      volume: 1000 / propellantDensity('hydrazine'), material: 'structural-metal', fuel: 1000,
     }),
     mk('weapon', R.weapon, {
       weight: HOSTILE_WEIGHT.weapon, name: 'Plasma Cannon', weaponType: 'cannon',
@@ -269,12 +269,12 @@ export function baseParts(maxHp: number): AnyPart[] {
     }),
     createPart('rcs_tank', {
       name: 'Station Tank', maxHp: 1, hp: 1, weight: BASE_WEIGHT.rcsTank,
-      propellant: 'hydrazine', volume: C.BASE_MAX_FUEL / propellantDensity('hydrazine'), material: 'aluminium',
+      propellant: 'hydrazine', volume: C.BASE_MAX_FUEL / propellantDensity('hydrazine'), material: 'structural-metal',
       fuel: C.BASE_MAX_FUEL,
     }),
     createPart('reductant_tank', {
       name: 'Station Propellant Tank', maxHp: 1, hp: 1, weight: BASE_WEIGHT.reductantTank,
-      propellant: 'hydrazine', volume: C.BASE_MAIN_TANK_VOLUME, material: 'aluminium',
+      propellant: 'hydrazine', volume: C.BASE_MAIN_TANK_VOLUME, material: 'structural-metal',
       fuel: propellantTankCapacity('hydrazine', C.BASE_MAIN_TANK_VOLUME),
       insulationGrade: 1, requiredPressure: 2.4,
     }),
