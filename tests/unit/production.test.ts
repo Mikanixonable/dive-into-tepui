@@ -64,9 +64,9 @@ export function register(): void {
     const catalyst = partBuildCost(mono).find((c) => c.resourceId === 'catalyst-bed');
     assert.ok(catalyst !== undefined && catalyst.mass > 0);
 
-    // 二液推進剤は自己着火性であり触媒を要さない。
-    const bipropellant = createPart('engine', { weight: 80, propellant: 'nitrogen-tetroxide', thrust: 5000 });
-    assert.equal(partBuildCost(bipropellant).find((c) => c.resourceId === 'catalyst-bed'), undefined);
+    // catalystMass を持たないエンジンは触媒を要さない。
+    const noCatalyst = createPart('engine', { weight: 80, propellant: 'hydrazine', thrust: 5000, catalystMass: 0 });
+    assert.equal(partBuildCost(noCatalyst).find((c) => c.resourceId === 'catalyst-bed'), undefined);
   });
 
   test('production: 要求の集計が搭載要素と外皮の構造材の和になる', () => {
@@ -97,9 +97,9 @@ export function register(): void {
     const request = productionBlueprintOf(crewedShipBlueprint(0));
     assert.ok(request.tanks.length > 0, '既定の有人艦は RCS 推進剤タンクを積む');
     for (const tank of request.tanks) assert.ok(tank.shellMass > 0);
-    // ヒドラジンはアルミを許す。アルミだけの在庫でも殻は賄える。
+    // ヒドラジンは構造金属を許す。構造金属だけの在庫でも殻は賄える。
     const demand = productionResourceDemand(request, new ResourceLedger());
-    assert.ok((demand.get('aluminium') ?? 0) > 0);
+    assert.ok((demand.get('structural-metal') ?? 0) > 0);
   });
 
   test('production: 資源が足りなければ生産は拒否され、足せば通る', () => {
@@ -146,7 +146,7 @@ export function register(): void {
   });
 
   test('production: 搭載要素を1つだけ作る要求は、その要素の建造費そのものになる', () => {
-    const engine = createPart('engine', { weight: 80, propellant: 'nitrogen-tetroxide', thrust: 5000 });
+    const engine = createPart('engine', { weight: 80, propellant: 'hydrazine', thrust: 5000, catalystMass: 0 });
     const request = partProductionBlueprintOf(engine);
     assert.equal(request.parts.length, 1);
     assert.deepEqual(request.parts[0]!.buildCost, partBuildCost(engine));
@@ -176,9 +176,6 @@ export function register(): void {
   test('production: 補給は積んでいる推進剤そのものを質量ぶん引く', () => {
     const request = refuelBlueprintOf('hydrazine', 250);
     assert.deepEqual(request.parts[0]!.buildCost, [{ resourceId: 'hydrazine', mass: 250 }]);
-    // 液体酸素は在庫の上では酸素である。
-    assert.deepEqual(refuelBlueprintOf('liquid-oxygen', 10).parts[0]!.buildCost,
-      [{ resourceId: 'oxygen', mass: 10 }]);
     // 補給は設備を要さない。
     assert.deepEqual(request.requiresFacility, []);
   });

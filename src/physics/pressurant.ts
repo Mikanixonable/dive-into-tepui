@@ -7,12 +7,6 @@ export function pressurantMassFor(propellantVolume: number, tankPressureMpa: num
   return tankPressureMpa * 1e6 * propellantVolume * MOLAR_MASS[gas] / (GAS_CONSTANT * temperatureK);
 }
 
-export function autogenousBoiloffRate(propellantId: string, tankPressureMpa: number, flowRate: number): number {
-  if (tankPressureMpa < 0 || flowRate < 0) throw new RangeError('invalid boiloff inputs');
-  const cryogenic = propellantId === 'liquid-hydrogen' || propellantId === 'liquid-oxygen' || propellantId === 'liquid-methane';
-  return cryogenic ? flowRate * Math.min(0.2, 0.01 + tankPressureMpa * 0.002) : 0;
-}
-
 export function remainingBurnTime(pressurantMass: number, flowRate: number, tankPressureMpa: number, gas: PressurantGasType, propellantVolume = 1, temperatureK = 293.15): number {
   if (pressurantMass < 0 || flowRate < 0) throw new RangeError('invalid remaining-time inputs');
   if (flowRate === 0) return Infinity;

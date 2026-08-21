@@ -247,7 +247,7 @@ export function register(): void {
       placements: [{
         kind: 'internal',
         part: createPart('reductant_tank', {
-          name: 'tank', propellant: 'hydrazine', volume: 1, material: 'aluminium', fuel: 0,
+          name: 'tank', propellant: 'hydrazine', volume: 1, material: 'structural-metal', fuel: 0,
           insulationGrade: 1, requiredPressure,
         }),
         edgeIds: ['e'],
@@ -359,15 +359,15 @@ export function register(): void {
       ],
       edges: [hullEdge('a', 'a', 'b', length), hullEdge('b', 'b', 'c', length)],
     };
-    const oxidizer = createPart('oxidizer_tank', { name: 'lox', propellant: 'liquid-oxygen', volume: 3 });
+    const oxidizer = createPart('oxidizer_tank', { name: 'ox', propellant: 'hydrazine', volume: 3 });
     const rcs = createPart('rcs_tank', { name: 'rcs', propellant: 'hydrazine', volume: 2 });
     const allocations = allocateInternalVolume(tree, [
       { part: oxidizer, edgeIds: ['a', 'b'] }, // 軸方向に連なる2本をまたぐ1つのタンク(§8-4)
       { part: rcs, edgeIds: ['b'] },
     ]);
     assert.equal(allocations.reduce((sum, a) => sum + a.occupiedVolume, 0), 5);
-    // 極低温タンクは 0.85、常温貯蔵タンクは 0.95 の実効容積の係数を持つ(§12)。
-    assert.ok(relativeError(allocations[0]!.grossVolume, 3 / 0.85) < 1e-12);
+    // 主機タンク・RCS タンクとも 0.95 の実効容積の係数を持つ(§12)。
+    assert.ok(relativeError(allocations[0]!.grossVolume, 3 / 0.95) < 1e-12);
     assert.ok(relativeError(allocations[1]!.grossVolume, 2 / 0.95) < 1e-12);
     // 2本にまたがるタンクの重心は、両エッジの内容積の重心の間に来る。
     assert.ok(Math.abs(allocations[0]!.centroid.z - length) < 1e-9, `${allocations[0]!.centroid.z}`);

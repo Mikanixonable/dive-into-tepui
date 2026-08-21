@@ -363,7 +363,7 @@ const PART_DEFAULTS: { readonly [K in PartType]: Omit<ExtractPart<K>, 'id' | 'ty
   armor: { damageReduction: 0 },
   weapon: { weaponType: 'gatling', fireRate: 1, damage: 1, muzzleVelocity: 1000, feedRate: 1 },
   engine: {
-    cycle: 'pressure_fed', propellant: 'nitrogen-tetroxide', thrust: 0, specificImpulse: 300,
+    cycle: 'pressure_fed', propellant: 'hydrazine', thrust: 0, specificImpulse: 300,
     length: 1, gimbalRange: 0, gimbalRate: 0, throttleMin: 0.4, throttleMax: 1,
     restarts: -1, ignitionPropellantLoss: 0, maxContinuousBurn: Infinity, fuelConsumptionRate: 0,
     catalystMass: 0,
@@ -378,13 +378,13 @@ const PART_DEFAULTS: { readonly [K in PartType]: Omit<ExtractPart<K>, 'id' | 'ty
   docking_port: { portClass: 'standard', transferRate: 0 },
   container_coupling: { containerClass: 'standard' },
   oxidizer_tank: {
-    propellant: 'liquid-oxygen', volume: 0, material: 'aluminium', fuel: 0, insulationGrade: 1, requiredPressure: 0.3,
+    propellant: 'hydrazine', volume: 0, material: 'structural-metal', fuel: 0, insulationGrade: 1, requiredPressure: 0.3,
   },
   reductant_tank: {
-    propellant: 'liquid-methane', volume: 0, material: 'aluminium', fuel: 0, insulationGrade: 1, requiredPressure: 0.3,
+    propellant: 'hydrazine', volume: 0, material: 'structural-metal', fuel: 0, insulationGrade: 1, requiredPressure: 0.3,
   },
   pressurant_tank: { volume: 0, maxPressure: 30, gas: 'nitrogen' },
-  rcs_tank: { propellant: 'hydrazine', volume: 0, material: 'aluminium', fuel: 0 },
+  rcs_tank: { propellant: 'hydrazine', volume: 0, material: 'structural-metal', fuel: 0 },
   water_tank: { volume: 0, shieldingThickness: 0 },
   battery: { capacity: 0, maxOutput: 0 },
   fuel_cell: { ratedOutput: 0, efficiency: 0.6, hydrogenRate: 0, oxygenRate: 0, regenerative: false },

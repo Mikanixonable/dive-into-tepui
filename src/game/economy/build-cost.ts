@@ -41,9 +41,9 @@ export const PART_BUILD_MATERIALS: Readonly<Record<PartType, readonly BuildMater
     { resourceId: 'machinery', fraction: 0.6 }, { resourceId: 'titanium', fraction: 0.3 },
     { resourceId: 'electronics', fraction: 0.1 },
   ],
-  solar_panel: [{ resourceId: 'solar-panel', fraction: 0.8 }, { resourceId: 'aluminium', fraction: 0.2 }],
+  solar_panel: [{ resourceId: 'solar-panel', fraction: 0.8 }, { resourceId: 'structural-metal', fraction: 0.2 }],
   radiator: [
-    { resourceId: 'aluminium', fraction: 0.6 }, { resourceId: 'carbon-composite', fraction: 0.2 },
+    { resourceId: 'structural-metal', fraction: 0.6 }, { resourceId: 'carbon-composite', fraction: 0.2 },
     { resourceId: 'machinery', fraction: 0.2 },
   ],
   combat_shield: [
@@ -53,18 +53,18 @@ export const PART_BUILD_MATERIALS: Readonly<Record<PartType, readonly BuildMater
   // アブレータは消耗して減る樹脂層であり、その背後の耐熱構造が繊維層である。
   heat_shield: [{ resourceId: 'carbon-composite', fraction: 0.5 }, { resourceId: 'abs-resin', fraction: 0.5 }],
   communication: [
-    { resourceId: 'electronics', fraction: 0.5 }, { resourceId: 'aluminium', fraction: 0.3 },
-    { resourceId: 'copper', fraction: 0.2 },
+    { resourceId: 'electronics', fraction: 0.5 }, { resourceId: 'structural-metal', fraction: 0.3 },
+    { resourceId: 'precision-metal', fraction: 0.2 },
   ],
   robot_arm: [
     { resourceId: 'machinery', fraction: 0.6 }, { resourceId: 'carbon-composite', fraction: 0.2 },
     { resourceId: 'electronics', fraction: 0.2 },
   ],
   docking_port: [
-    { resourceId: 'machinery', fraction: 0.5 }, { resourceId: 'aluminium', fraction: 0.4 },
+    { resourceId: 'machinery', fraction: 0.5 }, { resourceId: 'structural-metal', fraction: 0.4 },
     { resourceId: 'electronics', fraction: 0.1 },
   ],
-  container_coupling: [{ resourceId: 'aluminium', fraction: 0.7 }, { resourceId: 'machinery', fraction: 0.3 }],
+  container_coupling: [{ resourceId: 'structural-metal', fraction: 0.7 }, { resourceId: 'machinery', fraction: 0.3 }],
 
   // 推進剤タンクは殻が質量の TANK_SHELL_FRACTION を占め、残りが弁と配管の金具である。
   // **殻はこの表に載らない** — どの金属で作れるかは積む推進剤が決める(§17-2)ため、
@@ -79,20 +79,19 @@ export const PART_BUILD_MATERIALS: Readonly<Record<PartType, readonly BuildMater
   ],
   water_tank: [{ resourceId: 'water-tank', fraction: 1 }],
   battery: [
-    { resourceId: 'electronics', fraction: 0.4 }, { resourceId: 'copper', fraction: 0.3 },
-    { resourceId: 'nickel', fraction: 0.3 },
+    { resourceId: 'electronics', fraction: 0.4 }, { resourceId: 'precision-metal', fraction: 0.6 },
   ],
   fuel_cell: [{ resourceId: 'fuel-cell', fraction: 1 }],
   rtg: [{ resourceId: 'radioisotope-battery', fraction: 1 }],
   cockpit: [
-    { resourceId: 'hull-panel', fraction: 0.5 }, { resourceId: 'aluminium', fraction: 0.3 },
+    { resourceId: 'hull-panel', fraction: 0.5 }, { resourceId: 'structural-metal', fraction: 0.3 },
     { resourceId: 'electronics', fraction: 0.2 },
   ],
   autopilot: [{ resourceId: 'electronics', fraction: 1 }],
-  magazine: [{ resourceId: 'machinery', fraction: 0.6 }, { resourceId: 'aluminium', fraction: 0.4 }],
+  magazine: [{ resourceId: 'machinery', fraction: 0.6 }, { resourceId: 'structural-metal', fraction: 0.4 }],
   ammunition: [{ resourceId: 'ammunition', fraction: 1 }],
   plumbing: [{ resourceId: 'machinery', fraction: 0.5 }, { resourceId: 'titanium', fraction: 0.5 }],
-  payload_bay: [{ resourceId: 'hull-panel', fraction: 0.6 }, { resourceId: 'aluminium', fraction: 0.4 }],
+  payload_bay: [{ resourceId: 'hull-panel', fraction: 0.6 }, { resourceId: 'structural-metal', fraction: 0.4 }],
   flywheel: [{ resourceId: 'flywheel-motor', fraction: 0.8 }, { resourceId: 'machinery', fraction: 0.2 }],
   magnetorquer: [{ resourceId: 'magnetorquer-coil', fraction: 0.9 }, { resourceId: 'electronics', fraction: 0.1 }],
   base_module: [

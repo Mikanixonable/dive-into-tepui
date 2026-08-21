@@ -6,18 +6,11 @@
 import { Vec3, add, scale, v3 } from '../../physics/vec3';
 import { loftCenterOfMass, loftVolume } from '../../physics/hull-loft';
 import type { AnyPart, InteriorPartType, StructuralPartType } from '../game-entity/parts';
-import { isMainPropellantTank } from '../game-entity/parts';
 import type { VesselTree, TreeEdge } from './tree';
 import { edgeById, edgeFrame, nodeById, portOf } from './tree';
 
-// 極低温で貯蔵する推進剤。断熱材のぶん実効容積が減る。
-const CRYOGENIC_PROPELLANTS: ReadonlySet<string> = new Set([
-  'liquid-hydrogen', 'liquid-oxygen', 'liquid-methane', 'silane',
-]);
-
-// 内装要素の種別ごとの実効容積の係数(§12)。推進剤タンクは貯蔵温度で変わるため、ここでは常温側の値を
-// 置き、effectiveVolumeFactor が極低温の推進剤を見て差し替える。主要構造と装甲は外皮に付くもので
-// 容積を占めないため、係数は 1 に置いて容積の取り合いから外れる。
+// 内装要素の種別ごとの実効容積の係数(§12)。主要構造と装甲は外皮に付くもので容積を占めないため、
+// 係数は 1 に置いて容積の取り合いから外れる。
 const EFFECTIVE_VOLUME_FACTOR: Readonly<Record<InteriorPartType | StructuralPartType, number>> = {
   hull: 1,
   armor: 1,
@@ -43,16 +36,8 @@ const EFFECTIVE_VOLUME_FACTOR: Readonly<Record<InteriorPartType | StructuralPart
   plumbing: 1,
 };
 
-// 極低温タンクの実効容積の係数。
-const CRYOGENIC_VOLUME_FACTOR = 0.85;
-
 // 内装要素の実効容積の係数。占める容積をこの値で割ったものが、要する内容積になる。
-// 極低温側の差し替えは主機タンク(酸化剤・還元剤)だけが対象 — RCS タンクは
-// EFFECTIVE_VOLUME_FACTOR の表からそのまま引く別扱いなので、isMainPropellantTank を使う。
 export function effectiveVolumeFactor(part: AnyPart): number {
-  if (isMainPropellantTank(part) && CRYOGENIC_PROPELLANTS.has(part.propellant)) {
-    return CRYOGENIC_VOLUME_FACTOR;
-  }
   const factor = EFFECTIVE_VOLUME_FACTOR[part.type as InteriorPartType | StructuralPartType];
   if (factor === undefined) throw new Error(`part type "${part.type}" does not occupy internal volume`);
   return factor;
