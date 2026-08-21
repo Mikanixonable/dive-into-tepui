@@ -5,7 +5,7 @@ import type { CelestialRegistry } from '../../physics/solar-system';
 import {
   alwaysFullyVisibleIds,
   bodyClassVisible,
-  bodyIconLabel,
+  bodyNameVisible,
   type BodyClassToggles,
 } from './body-visibility';
 import { bodyClassOf } from './body-class';
@@ -23,14 +23,13 @@ export type MapVisibility = {
 
 const ENTITY_KEYS: Record<MapEntityKind, {
   readonly category: keyof BodyClassToggles;
-  readonly icon: keyof BodyClassToggles;
-  readonly label: keyof BodyClassToggles;
+  readonly name: keyof BodyClassToggles;
   readonly orbit: keyof BodyClassToggles;
 }> = {
-  player: { category: 'playerVisible', icon: 'playerIcon', label: 'playerLabel', orbit: 'playerOrbit' },
-  ship: { category: 'shipVisible', icon: 'shipIcon', label: 'shipLabel', orbit: 'shipOrbit' },
-  ammo: { category: 'ammoVisible', icon: 'ammoIcon', label: 'ammoLabel', orbit: 'ammoOrbit' },
-  base: { category: 'baseVisible', icon: 'baseIcon', label: 'baseLabel', orbit: 'baseOrbit' },
+  player: { category: 'playerVisible', name: 'playerName', orbit: 'playerOrbit' },
+  ship: { category: 'shipVisible', name: 'shipName', orbit: 'shipOrbit' },
+  ammo: { category: 'ammoVisible', name: 'ammoName', orbit: 'ammoOrbit' },
+  base: { category: 'baseVisible', name: 'baseName', orbit: 'baseOrbit' },
 };
 
 function focusSystemOf(registry: CelestialRegistry, focusId: AttractorId | undefined): AttractorId | null {
@@ -77,9 +76,8 @@ export class MapVisibilityPolicy {
   private computeBody(id: AttractorId): MapVisibility {
     if (/-l[1-5]$/.test(id)) {
       const category = this.toggles.lagrangeVisible;
-      const icon = category && this.toggles.lagrangeIcon;
-      const label = category && this.toggles.lagrangeLabel;
-      return { category, icon, label, orbit: false, pickable: category && (icon || label) };
+      const shown = category && this.toggles.lagrangeName;
+      return { category, icon: shown, label: shown, orbit: false, pickable: shown };
     }
     if (this.registry[id] === undefined) return noVisibility();
 
@@ -87,11 +85,9 @@ export class MapVisibilityPolicy {
     const category = bodyClassVisible(cls, this.toggles);
     if (!category) return noVisibility();
     const forced = this.alwaysVisible.has(id);
-    const classDisplay = bodyIconLabel(this.registry, this.toggles, id);
-    const icon = forced || classDisplay.icon;
-    const label = forced || classDisplay.label;
+    const shown = forced || bodyNameVisible(this.registry, this.toggles, id);
     const orbit = this.orbitForBody(id, cls);
-    return { category, icon, label, orbit, pickable: icon || label };
+    return { category, icon: shown, label: shown, orbit, pickable: shown };
   }
 
   entity(kind: MapEntityKind, isActivePlayer = false): MapVisibility {
@@ -108,11 +104,12 @@ export class MapVisibilityPolicy {
     const keys = ENTITY_KEYS[kind];
     const categoryToggle = this.toggles[keys.category];
     // 操作対象の自艦は、カテゴリを閉じても現在位置を失わないように残す。ただし
-    // ラベル/軌道線は個別トグルに従うので、例外が表示設定を無効化しない。
+    // 艦名/軌道線は名前トグルに従うので、例外が表示設定を無効化しない。
     const category = categoryToggle || (kind === 'player' && isActivePlayer);
     if (!category) return noVisibility();
-    const icon = kind === 'player' && isActivePlayer ? true : Boolean(this.toggles[keys.icon]);
-    const label = Boolean(this.toggles[keys.label]);
+    const nameToggle = Boolean(this.toggles[keys.name]);
+    const icon = kind === 'player' && isActivePlayer ? true : nameToggle;
+    const label = nameToggle;
     const orbit = Boolean(this.toggles[keys.orbit]) && category;
     return { category, icon, label, orbit, pickable: icon || label };
   }

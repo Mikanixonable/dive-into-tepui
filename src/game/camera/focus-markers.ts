@@ -261,7 +261,7 @@ export class FocusMarkers {
       displayMap[id] = { icon: visibility.icon, label: visibility.label };
       this.cacheBodyPickable(id, celestialBodyName(id), pos, true);
     }
-    if (toggles.lagrangeVisible && (toggles.lagrangeIcon || toggles.lagrangeLabel)) {
+    if (toggles.lagrangeVisible && toggles.lagrangeName) {
       for (const { id, points } of this.lagrangeSources) {
         if (!visibilityPolicy.body(id).category) continue;
         const l = ephemeris.lagrangeAt(id, t);
