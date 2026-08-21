@@ -5,7 +5,7 @@ import { Attractor } from '../../physics/attractor';
 import { Vec3 } from '../../physics/vec3';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
-import type { Contact } from '../simulation/contact';
+import type { Contact } from './contact';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
 import { buildBarrelMesh, buildCasingMesh, buildMagazineFrame, DEBRIS_FRAGMENT_VARIANT_COUNT } from '../../render/ships';
