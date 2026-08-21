@@ -7,6 +7,7 @@
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { SweptMode, sweptSphereContact } from '../../src/physics/sphere-contact';
 import { Vec3, add, cross, len, norm, scale, sub, v3 } from '../../src/physics/vec3';
+import * as C from '../../src/game/const';
 import { SHIP_BCINV, buildEphemeris } from './common';
 import { KinematicState } from '../../src/physics/kinematic-state';
 import {
@@ -161,6 +162,41 @@ function entityPairs(): readonly Sweep[] {
   return list;
 }
 
+// 分岐基準 s = |v0 − v1|·h/8(弦と曲線の中点のずれ)。入力から直接出せる量。
+function sagitta(s: Sweep): number {
+  const dt = s.aEnd.t - s.aStart.t;
+  return len(sub(sub(s.bStart.v, s.aStart.v), sub(s.bEnd.v, s.aEnd.v))) * dt / 8;
+}
+
+// s が弦の誤差をどれだけ言い当てるか。1 を下回ると過小評価で、閾値としては危険側になる。
+function reportCriterion(list: readonly Sweep[]): void {
+  console.log('配置 | s = |Δv|h/8 | 弦の実誤差 | s / |弦の実誤差|');
+  console.log('--- | --- | --- | ---');
+  for (const sw of list) {
+    const s = sagitta(sw);
+    const err = minDistanceOf(sw, 'linear') - sw.trueMin;
+    const ratio = Math.abs(err) > 1e-9 ? (s / Math.abs(err)).toFixed(3) : '—';
+    console.log(`${sw.label} | ${fmt(s)} | ${fmt(err)} | ${ratio}`);
+  }
+}
+
+// 半径和で相手の素性を見分けられるかを、両方の母集団の実際の範囲で確かめる。
+function radiusSumRange(ephemeris: Ephemeris): void {
+  const entities: readonly (readonly [string, number])[] = [
+    ['弾', C.BULLET_RADIUS], ['補給', C.AMMO_PHYS_RADIUS], ['空マガジン', C.EJECTED_MAG_PHYS_RADIUS],
+    ['自機', C.PLAYER_HULL_RADIUS], ['敵', C.ENEMY_RADIUS],
+  ];
+  const maxSum = Math.max(...entities.map(([, r]) => r)) * 2;
+  const bodies = [...ephemeris.attractorsAt(0)].sort((a, b) => a.radius - b.radius);
+  console.log(`個体の半径: ${entities.map(([n, r]) => `${n} ${r} m`).join('、')}`);
+  console.log(`→ 個体どうしの半径和は最大 ${maxSum.toFixed(0)} m\n`);
+  const overlap = bodies.filter((b) => b.radius < maxSum);
+  console.log(`天体の半径: 最小 ${bodies[0]!.radius} m(${bodies[0]!.id})`
+    + ` / 最大 ${bodies[bodies.length - 1]!.radius.toExponential(2)} m`);
+  console.log(`→ 半径が ${maxSum} m を下回る天体が ${overlap.length} 体ある: `
+    + `${overlap.map((b) => `${b.id} ${b.radius} m`).join('、')}`);
+}
+
 // 現状の刻み規則で、表面すれすれの円軌道が1周あたり何歩になるか。
 function stepsPerRevolution(ephemeris: Ephemeris): void {
   const steps: readonly (readonly [string, number])[] = [
@@ -209,6 +245,20 @@ export function run(): void {
 
   console.log('\n## 個体どうし(刻み 20 s、半径和 20 m)\n');
   report(entityPairs());
+
+  console.log('\n## 分岐基準 s = |Δv|·h/8 の妥当性\n');
+  reportCriterion([
+    ...[140, 20, 6, 3].map((n) => leoAt(n, false)),
+    perigeeAt(0.9, 0.5, 140), perigeeAt(0.9, 0.1, 20),
+    againstBody('月 140 歩/周回', MOON, circular(MOON, 100e3),
+      circularPeriod(MOON, MOON.radius + 100e3) / 140, freeFall(MOON)),
+    againstBody('小天体(半径 50 km)140 歩/周回', SMALL, circular(SMALL, 10e3),
+      circularPeriod(SMALL, SMALL.radius + 10e3) / 140, freeFall(SMALL)),
+    ...entityPairs(),
+  ]);
+
+  console.log('\n## 半径和で相手の素性を見分けられるか\n');
+  radiusSumRange(buildEphemeris());
 
   console.log('\n## 現状の刻みで出得る 歩/周回\n');
   stepsPerRevolution(buildEphemeris());
