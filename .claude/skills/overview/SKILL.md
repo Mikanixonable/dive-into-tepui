@@ -16,6 +16,7 @@ description: 実装の全体像・影響範囲を掴む手順。「どこで何�
 | 何と名付け、どう書くのか | `DEVELOP/CODING-RULE.md` |
 | 誰がその状態を持っていて、誰が書き換えるのか / どこで `new` されるのか | `/ownership`(コードから調べる) |
 | いつ・どの順で・どんな条件で走るのか(per-frame) | `/callstack`(コードから調べる) |
+| 誰がその関数を呼んでいるのか / 消したら何が壊れるのか | `/inv-callstack`(コードから調べる) |
 | これから直すことになっている問題・進行中の検討 | `memos/hedalu244/`、`memos/mikanixonable/` |
 | 設計の方向性・未実装の構想 | `memos/mikanixonable/dev.md` |
 
