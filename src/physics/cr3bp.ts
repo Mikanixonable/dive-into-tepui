@@ -7,8 +7,6 @@
 // 単位は CR3BP の標準無次元系: 長さは主天体・副天体間距離 r、時間は回転角速度の逆数 1/n。
 // 原点は共通重心、+x は主天体→副天体方向、+z は公転面法線(回転軸)。質量比 mu = 副天体質量 /
 // (主天体質量+副天体質量) で、主天体は x=-mu、副天体は x=1-mu に位置する。
-import { Vec3, v3 } from './vec3';
-
 // noUncheckedIndexedAccess 下で readonly number[] を固定長配列として読むための補助。
 function at(a: readonly number[], i: number): number {
   return a[i] as number;
@@ -244,30 +242,6 @@ export function continueHaloOrbit(
     current = correctHaloOrbit(mu, { x0: current.x0, z0, vy0: current.vy0 }, current.halfPeriod);
   }
   return current;
-}
-
-// 修正済み軌道を1周期ぶん、時間等間隔で count 点サンプリングし、回転系での位置(バリセントリック
-// x を含む生の CR3BP 座標)を返す。ハロー軌道の表示用ライン(halo-orbit-line.ts)が使う。
-export function sampleHaloOrbitPositions(mu: number, orbit: CorrectedHalo, count: number): Vec3[] {
-  const period = orbit.halfPeriod * 2;
-  const stepDt = period / (count * 4);
-  const points: Vec3[] = [];
-  let y: readonly number[] = [orbit.x0, 0, orbit.z0, 0, orbit.vy0, 0];
-  let t = 0;
-  let sampled = 0;
-  points.push(v3(at(y, 0), at(y, 1), at(y, 2)));
-  sampled++;
-  let nextSampleT = (period * sampled) / count;
-  while (sampled < count) {
-    y = rk4Step((s) => cr3bpDerivative(mu, s), y, stepDt);
-    t += stepDt;
-    while (sampled < count && t >= nextSampleT - 1e-12) {
-      points.push(v3(at(y, 0), at(y, 1), at(y, 2)));
-      sampled++;
-      nextSampleT = (period * sampled) / count;
-    }
-  }
-  return points;
 }
 
 // 修正済み軌道を t=0(y=0 面通過、x0,z0,vy0)から位相 phase(0..2π、周期にわたる無次元角)ぶん

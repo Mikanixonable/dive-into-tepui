@@ -10,14 +10,12 @@
 // lissajousState はこの拘束を課さず線形解のみで、面内・面外を独立な振幅・振動数で
 // 振動させる(一般に非共鳴なので準周期のリサジュー図形になる)。
 //
-// haloState/haloOrbitOffsetsFor は cr3bp.ts の数値修正法(differential correction)で
-// Richardson 3次解を種に真に周期的な軌道を求め、それを継続法(continuation)で目標振幅まで
-// 連続的に追跡する。Richardson の級数展開は小〜中振幅でしか妥当ではなく、NRHO 級の大振幅
-// (L2 ハロー族が垂直リアプノフ軌道へ分岐する近傍)では発散するため、この数値修正が
-// 大振幅での正確さの根拠になる。haloState は修正が収束しない場合のみ線形1次解
-// (lissajousState と同じ centerManifoldState)にフォールバックする。haloOrbitOffsetsFor
-// (マップ上のハロー軌道参照ライン用)は解析的な近似解へフォールバックせず、収束しなければ
-// 空を返す。
+// haloState は cr3bp.ts の数値修正法(differential correction)で Richardson 3次解を種に
+// 真に周期的な軌道を求め、それを継続法(continuation)で目標振幅まで連続的に追跡する。
+// Richardson の級数展開は小〜中振幅でしか妥当ではなく、NRHO 級の大振幅(L2 ハロー族が
+// 垂直リアプノフ軌道へ分岐する近傍)では発散するため、この数値修正が大振幅での正確さの
+// 根拠になる。haloState は修正が収束しない場合のみ線形1次解(lissajousState と同じ
+// centerManifoldState)にフォールバックする。
 //
 // いずれの経路も CR3BP そのものの解であり、ゲームの積分器(地球中心二体 + J2 + 抗力 +
 // 日月三体)とは運動方程式が異なるため、実際にゲーム内で積分すると軌道はドリフトする。
@@ -26,7 +24,7 @@ import { OrbitingId } from './attractor';
 import { bodyDef, primaryOf } from './solar-system';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, add, cross, len, scale, sub } from './vec3';
-import { CorrectedHalo, continueHaloOrbit, correctHaloOrbit, propagateHaloState, sampleHaloOrbitPositions } from './cr3bp';
+import { CorrectedHalo, continueHaloOrbit, correctHaloOrbit, propagateHaloState } from './cr3bp';
 
 export type CollinearPoint = 'L1' | 'L2';
 
@@ -308,15 +306,3 @@ export function haloOrbitState(t: number, halo: HaloOrbit, phase: number): Kinem
   return kinematicState(t, rEci, vEci);
 }
 
-// 修正済み軌道を1周期ぶん count 点、L点原点からの ECI 相対オフセットとしてサンプリングする。
-export function haloOrbitOffsets(halo: HaloOrbit, count: number): Vec3[] {
-  const raw = sampleHaloOrbitPositions(halo.mu, halo.orbit, count);
-  return raw.map((p) => offsetToEci(halo.frame, halo.xl, p.x, p.y, p.z));
-}
-
-// ハロー軌道表示ライン用: 数値修正済みの軌道を count 点サンプリングして返す
-// (L点原点からの ECI 相対オフセット)。収束しなければ空を返す。
-export function haloOrbitOffsetsFor(frame: CollinearFrame, point: CollinearPoint, az: number, count: number): Vec3[] {
-  const halo = correctedHaloOrbit(frame, point, az);
-  return halo ? haloOrbitOffsets(halo, count) : [];
-}
