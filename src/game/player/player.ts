@@ -107,6 +107,7 @@ export class Player extends Ship {
     this.playerScene = _scene;
     this.mass = C.PLAYER_MASS;
     this.collides = true;
+    this.lossPrecisionMatters = true;
 
     const saved = 'saved' in init ? init.saved : undefined;
     this.throttle = new PlayerThrottle(_hud, saved?.throttle);
