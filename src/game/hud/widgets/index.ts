@@ -2,6 +2,7 @@
 export { Button } from './button';
 export { ToggleSwitch } from './toggle-switch';
 export { SegmentedControl } from './segmented-control';
+export { Pulldown } from './pulldown';
 export { HoldButton } from './hold-button';
 export { CloseButton } from './close-button';
 export { ValueInput, type ValueInputOptions, type ValueInputType, type EscapeBehavior } from './value-input';

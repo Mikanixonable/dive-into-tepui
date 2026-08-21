@@ -1,15 +1,26 @@
 // マップモードの「カメラ」パネル。カメラの注視対象・回転系・平行/透視投影・画角・基準面設定を担当する。
 import type { Ephemeris } from '../../physics/ephemeris';
 import * as C from '../const';
-import { CameraReferencePlane, MapCamera } from '../camera/map-camera';
+import { CameraReferencePlane, CameraReferenceView, MapCamera } from '../camera/map-camera';
 import { focusTargetId } from '../camera/focus-target';
 import { AnchorZone } from './anchor-zone';
 import { RotationZone } from './rotation-zone';
-import { Button, SegmentedControl, Slider, ToggleSwitch, ValueInput } from './widgets';
+import { Button, Pulldown, Slider, ToggleSwitch, ValueInput } from './widgets';
 import { celestialBodyName } from './frame-labels';
 import { hudRail } from './hud-root';
 import type { MapPickable } from '../map-pickable';
 import type { OverlayManager } from './overlay-manager';
+
+// 「角度」プルダウンの選択肢。基準面(持続する状態)と視点ジャンプ(1回きりの操作)を
+// 同じ選択肢として並べる——反映は選ばれた値の型で振り分ける。
+type AngleOption = CameraReferencePlane | CameraReferenceView;
+const ANGLE_ITEMS: readonly (readonly [AngleOption, string])[] = [
+  ['ecliptic', '黄道面'],
+  ['equator', '赤道面'],
+  ['moonOrbit', '月軌道面'],
+  ['above', '真上'],
+  ['side', '真横'],
+];
 
 function buildPanel(root: HTMLElement, id: string, titleText: string): HTMLElement {
   const panel = document.createElement('div');
@@ -32,9 +43,7 @@ export class CameraFramePanel {
   private readonly fovSlider: Slider;
   private readonly fovInput: ValueInput;
   private readonly fovResetButton: Button;
-  private readonly referencePlaneControl: SegmentedControl<CameraReferencePlane>;
-  private readonly aboveButton: Button;
-  private readonly sideButton: Button;
+  private readonly angleControl: Pulldown<AngleOption>;
   private readonly cameraSummary: HTMLElement;
 
   public onSelectCenter: ((id: string | null) => void) | null = null;
@@ -48,12 +57,12 @@ export class CameraFramePanel {
   ) {
     this.panel = buildPanel(panelRoot, 'hud-camera-controls', 'カメラ');
 
-    this.cameraCenterZone = new AnchorZone(popupRoot, '基準にする天体', ephemeris, '固定を解除', overlayManager);
+    this.cameraCenterZone = new AnchorZone(popupRoot, '基準天体', ephemeris, '固定を解除', overlayManager);
     this.cameraCenterZone.element.classList.add('hud-frame-scroll-zone', 'hud-frame-origin-zone');
     this.cameraCenterZone.onSelect = (id) => this.onSelectCenter?.(id);
     this.panel.appendChild(this.cameraCenterZone.element);
 
-    this.cameraRotationZone = new RotationZone('視点を一緒に回す', ephemeris);
+    this.cameraRotationZone = new RotationZone('回転フレーム', ephemeris);
     this.cameraRotationZone.element.classList.add('hud-frame-scroll-zone', 'hud-frame-rotation-zone');
     this.cameraRotationZone.onSelect = (rotatingWith) => mapCamera.setCameraRotation(rotatingWith);
     this.panel.appendChild(this.cameraRotationZone.element);
@@ -91,25 +100,17 @@ export class CameraFramePanel {
     fovUnit.className = 'camera-control-unit';
     fovUnit.textContent = '°';
     fovGroup.appendChild(fovUnit);
-    this.panel.appendChild(fovGroup);
-    this.fovResetButton = new Button('画角リセット', () => mapCamera.resetFov());
-    this.fovResetButton.element.classList.add('camera-fov-reset');
+    this.fovResetButton = new Button('リセット', () => mapCamera.resetFov());
     this.fovResetButton.element.title = '画角をデフォルトに戻す';
-    this.panel.appendChild(this.fovResetButton.element);
+    fovGroup.appendChild(this.fovResetButton.element);
+    this.panel.appendChild(fovGroup);
 
-    this.referencePlaneControl = new SegmentedControl<CameraReferencePlane>('視点の基準面', [
-      ['ecliptic', '黄道面'],
-      ['equator', '赤道面'],
-      ['moonOrbit', '月軌道面'],
-    ], (plane) => mapCamera.setReferencePlane(plane));
-    this.panel.appendChild(this.referencePlaneControl.element);
-
-    const referenceViewGroup = document.createElement('div');
-    referenceViewGroup.className = 'camera-reference-view-buttons';
-    this.aboveButton = new Button('真上', () => mapCamera.setReferenceView('above'));
-    this.sideButton = new Button('真横', () => mapCamera.setReferenceView('side'));
-    referenceViewGroup.append(this.aboveButton.element, this.sideButton.element);
-    this.panel.appendChild(referenceViewGroup);
+    this.angleControl = new Pulldown<AngleOption>('角度', ANGLE_ITEMS, 'セット', (value) => {
+      if (value === 'above' || value === 'side') mapCamera.setReferenceView(value);
+      else mapCamera.setReferencePlane(value);
+    });
+    this.angleControl.element.classList.add('camera-angle-group');
+    this.panel.appendChild(this.angleControl.element);
 
     this.cameraSummary = document.createElement('div');
     this.cameraSummary.className = 'frame-summary';
@@ -147,7 +148,7 @@ export class CameraFramePanel {
     if (document.activeElement !== this.fovInput.element) {
       this.fovInput.setValue(this.mapCamera.fov.toFixed(0));
     }
-    this.referencePlaneControl.setSelected(this.mapCamera.referencePlane);
+    this.angleControl.setSelected(this.mapCamera.referencePlane);
     this.cameraSummary.textContent = this.cameraSummaryText();
   }
 
