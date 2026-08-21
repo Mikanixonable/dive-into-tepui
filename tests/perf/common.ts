@@ -1,16 +1,7 @@
-// tests/perf/ 配下の各実験が共有するヘルパ。src/ は一切変更しない — ここは新規ファイルのみ。
-//
-// game/simulation/attractors.ts の classifyAttractors/attractorsNear は EntityManager/GameEntity を
-// import type で参照しているだけだが、tsc は import type でも型解決のためにモジュール全体を
-// コンパイル対象へ引き込む。entity-manager.ts は three/webgpu・DOM 型に依存するため、
-// tsconfig.test.json 相当(DOM/three 抜き)ではコンパイルできない(実際に試して確認した)。
-// そのため classifyAttractors/attractorsNear のロジックをここへ複製する。
-// GRAVITY_ALWAYS_COUNT・GRAVITY_NEGLIGIBLE_ACCEL は src/game/const.ts から素の値を import する
-// (const.ts 自体は ../physics/solar-system しか import しておらず、DOM/three 非依存でコンパイルできる)。
+// tests/perf/ 配下の各実験が共有する土台。ゲーム本体と同じ調整値の再 export、LEO の初期状態と
+// Ephemeris の生成、刻み幅固定の積分、結果の比較と整形を持つ。
 import { Ephemeris } from '../../src/physics/ephemeris';
-import { Attractor, nearestAtmosphereBody } from '../../src/physics/attractor';
-import { SpatialGrid } from '../../src/physics/spatial-grid';
-import { Vec3 } from '../../src/physics/vec3';
+import { nearestAtmosphereBody } from '../../src/physics/attractor';
 import { kinematicState, KinematicState } from '../../src/physics/kinematic-state';
 import { v3 } from '../../src/physics/vec3';
 import { stepDynamics } from '../../src/physics/dynamics';
@@ -18,7 +9,7 @@ import {
   MU_EARTH, R_EARTH,
   SHIP_BCINV,
   INITIAL_ALT, INITIAL_INC_DEG,
-  GRAVITY_ALWAYS_COUNT, GRAVITY_NEGLIGIBLE_ACCEL,
+  GRAVITY_NEGLIGIBLE_ACCEL,
   SUBSTEP_MAX_DT,
   ARC_STEPS_PER_REV, ARC_MIN_STEP_DT, ARC_MAX_STEPS,
   TRAJECTORY_SAMPLES_PER_REV, ARC_MAX_SAMPLES,
@@ -29,7 +20,7 @@ import {
 
 export {
   MU_EARTH, R_EARTH, SHIP_BCINV, INITIAL_ALT, INITIAL_INC_DEG,
-  GRAVITY_ALWAYS_COUNT, GRAVITY_NEGLIGIBLE_ACCEL, SUBSTEP_MAX_DT,
+  GRAVITY_NEGLIGIBLE_ACCEL, SUBSTEP_MAX_DT,
   ARC_STEPS_PER_REV, ARC_MIN_STEP_DT, ARC_MAX_STEPS,
   TRAJECTORY_SAMPLES_PER_REV, ARC_MAX_SAMPLES,
   ARC_STEP_BUDGET, ARC_INTERACTIVE_RATIO,
@@ -52,52 +43,8 @@ export function buildEphemeris(): Ephemeris {
   return new Ephemeris();
 }
 
-// --- game/simulation/attractors.ts の classifyAttractors/attractorsNear の複製 ---
-// ロジックは原本のコピー。GRAVITY_ALWAYS_COUNT/GRAVITY_NEGLIGIBLE_ACCEL は上で import した
-// const.ts の値をそのまま使うので、定数の意味はゲーム本体と一致する。
-
-export type ClassifiedAttractors = {
-  readonly always: readonly Attractor[];
-  readonly grid: SpatialGrid<Attractor>;
-};
-
-function alwaysThresholdMu(attractors: readonly Attractor[]): number {
-  if (attractors.length <= GRAVITY_ALWAYS_COUNT) return 0;
-  const mus = attractors.map((a) => a.mu).sort((x, y) => y - x);
-  return mus[GRAVITY_ALWAYS_COUNT - 1] ?? 0;
-}
-
-function gridCellSize(gridded: readonly Attractor[]): number {
-  let heaviestMu = 0;
-  for (const a of gridded) heaviestMu = Math.max(heaviestMu, a.mu);
-  return heaviestMu > 0 ? Math.sqrt(heaviestMu / GRAVITY_NEGLIGIBLE_ACCEL) : 1;
-}
-
-export function classifyAttractors(attractors: readonly Attractor[]): ClassifiedAttractors {
-  const thresholdMu = alwaysThresholdMu(attractors);
-  const always: Attractor[] = [];
-  const gridded: Attractor[] = [];
-  for (const a of attractors) {
-    if (a.mu >= thresholdMu) always.push(a);
-    else gridded.push(a);
-  }
-  const grid = new SpatialGrid<Attractor>(gridCellSize(gridded));
-  for (const a of gridded) grid.insert(a, a.state.r);
-  return { always, grid };
-}
-
-export function attractorsNear(pos: Vec3, classified: ClassifiedAttractors): readonly Attractor[] {
-  const nearby = classified.grid.neighbors(pos);
-  return nearby.length === 0 ? classified.always : [...classified.always, ...nearby];
-}
-
-// 実験1・2・4で共有する積分の足回り。公平のため常に ephemeris.gravityAttractorsAt(t)
-// (mu!==0 の全64天体)を重力源として使い、game/simulation/attractors.ts の
-// classifyAttractors によるグリッド近傍への絞り込みは適用しない(絞り込み自体のコストは
-// 実験3で単独測定する — 絞り込みは dt の違いに関わらず全ケースへ一様に効くので、
-// dt 比較の結論には影響しない)。
-
-// 1ステップぶん、ステップ中点の時刻で重力源を解決してから stepDynamics を呼ぶ。
+// 1ステップぶん、ステップ中点の時刻で重力源を解決してから stepDynamics を呼ぶ。重力源は窓を
+// そのまま渡す — 刻み幅の比較に絞り込みの有無が混ざらないようにする。
 // Simulator.substep がサブステップ中点で attractorsAt を評価するのと同じ方針。
 export function stepDynamicsAt(ephemeris: Ephemeris, state: KinematicState, dt: number): KinematicState {
   const tMid = state.t + dt / 2;

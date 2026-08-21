@@ -1,14 +1,12 @@
 // 実験3: 1ステップあたりの重力源解決コスト。
 // Ephemeris(解析モデル)を毎回異なる時刻 t で呼び、gravityAttractorsAt/attractorsAt/
-// classifyAttractors/attractorsNear の単体コストと、Predictor.advanceBudget が1ステップに
+// classifyAttractors/attractorsNearInto の単体コストと、Predictor.advanceBudget が1ステップに
 // 払う分(classifyAttractors(gravityAttractorsAt(...)) を2回)を測る。
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { Attractor, nearestAtmosphereBody } from '../../src/physics/attractor';
 import { stepDynamics } from '../../src/physics/dynamics';
-import {
-  buildEphemeris, initialLeoState, classifyAttractors, attractorsNear,
-  SHIP_BCINV, ARC_STEP_BUDGET,
-} from './common';
+import { attractorsNearInto, classifyAttractors } from '../../src/game/simulation/attractors';
+import { buildEphemeris, initialLeoState, SHIP_BCINV, ARC_STEP_BUDGET } from './common';
 
 // 毎回異なる t を作る(リングキャッシュに当たらないようにする)。無理数っぽい定数を掛けて
 // 単純な等間隔サンプリングにしない。
@@ -43,8 +41,8 @@ export function run(): void {
   });
   console.log(`  (gravityAttractorsAt が返す天体数=${bodyCountGravity}, attractorsAt が返す天体数=${bodyCountAll})`);
 
-  console.log('\n## classifyAttractors / attractorsNear 単体\n');
-  // classify/attractorsNear のコストだけを見るため、入力配列は先に作っておく。
+  console.log('\n## classifyAttractors / attractorsNearInto 単体\n');
+  // classify/attractorsNearInto のコストだけを見るため、入力配列は先に作っておく。
   const prefetched: Attractor[][] = [];
   for (let i = 0; i < N; i++) prefetched.push(ephemeris.gravityAttractorsAt(uniqueT(i, 2.11)).slice());
   let alwaysLen = 0, griddedNearLen = 0;
@@ -53,11 +51,13 @@ export function run(): void {
     alwaysLen = c.always.length;
   });
   const classified = classifyAttractors(prefetched[0]!);
-  const msNear = bench('attractorsNear(pos, classified)', N, () => {
-    const near = attractorsNear(s0.r, classified);
-    griddedNearLen = near.length;
+  // Simulator と同じく、書き込み先の配列を1本使い回して測る。
+  const nearScratch: Attractor[] = [];
+  const msNear = bench('attractorsNearInto(pos, classified, out)', N, () => {
+    attractorsNearInto(s0.r, classified, nearScratch);
+    griddedNearLen = nearScratch.length;
   });
-  console.log(`  (always側の天体数=${alwaysLen}, attractorsNear が返す総数=${griddedNearLen}, 全天体数64との比較)`);
+  console.log(`  (always側の天体数=${alwaysLen}, attractorsNearInto が書き込む総数=${griddedNearLen}, 全天体数64との比較)`);
 
   console.log('\n## stepDynamics 単体(64天体固定・LEO初期状態)\n');
   const fixedAttractors = ephemeris.gravityAttractorsAt(0);
@@ -82,11 +82,10 @@ export function run(): void {
     const t = tip + i * 37.0; // 毎回時刻をずらす(実際に予測が進むのと同じく毎回異なる t になる)
     const g1 = ephemeris.gravityAttractorsAt(t);
     const c1 = classifyAttractors(g1);
-    const near1 = attractorsNear(s0.r, c1);
-    void near1;
+    attractorsNearInto(s0.r, c1, nearScratch);
     const g2 = ephemeris.gravityAttractorsAt(t + 10);
     const c2 = classifyAttractors(g2);
-    const near2 = attractorsNear(s0.r, c2);
+    const near2 = attractorsNearInto(s0.r, c2, nearScratch);
     stepDynamics(
       s0, 20, near2, nearestAtmosphereBody(s0.r, ephemeris.atmosphereAttractorsAt(t + 10)),
       SHIP_BCINV, 0, null,
@@ -95,7 +94,7 @@ export function run(): void {
 
   console.log('\n## 内訳との比較\n');
   console.log(`  classifyAttractors(gravityAttractorsAt(...)) を2回 ≈ 2 × (${msGravity.toFixed(3)}(gravityAttractorsAt) + ${msClassify.toFixed(3)}(classify)) = ${(2 * (msGravity + msClassify)).toFixed(3)} ms/step`);
-  console.log(`  attractorsNear を2回 ≈ 2 × ${msNear.toFixed(4)} ms/step`);
+  console.log(`  attractorsNearInto を2回 ≈ 2 × ${msNear.toFixed(4)} ms/step`);
   console.log(`  stepDynamics 1回 ≈ ${msStep.toFixed(4)} ms/step`);
   console.log(`  advanceBudget 1反復(実測) = ${msPredictorStep.toFixed(3)} ms/step`);
 
