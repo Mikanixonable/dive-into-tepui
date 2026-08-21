@@ -1,8 +1,20 @@
 import * as assert from 'node:assert/strict';
-import { resolveFixedSphereCollision, resolveSphereCollision } from '../../src/physics/collision-response';
+import {
+  FixedContactResponse, Sphere,
+  distributeFixedContact, resolveSphereCollision, sphereContactGeometry,
+} from '../../src/physics/collision-response';
 import { dot, len, lenSq, sub, v3, Vec3 } from '../../src/physics/vec3';
-import { kinematicState } from '../../src/physics/kinematic-state';
+import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { test } from './harness';
+
+// 天体との接触を、幾何を出す段と当てる段を繋いで解く — 表面接触の解決器が同じ順で呼ぶ。
+function fixedContact(
+  moving: Sphere, fixed: Sphere, restitution: number,
+  prevMoving?: KinematicState, prevFixed?: KinematicState,
+): FixedContactResponse | null {
+  const geometry = sphereContactGeometry(moving, fixed, prevMoving, prevFixed);
+  return geometry === null ? null : distributeFixedContact(moving, fixed, restitution, geometry);
+}
 
 // 渡されたベクトルの全成分が有限であること。質量の両極(0 と無限大)で NaN/Infinity が
 // 位置・速度へ漏れないことを見るために使う。
@@ -148,7 +160,7 @@ export function register(): void {
   });
 
   test('collision-response: 質量0の球が天体へ接触しても非有限値を出さない', () => {
-    const res = resolveFixedSphereCollision(
+    const res = fixedContact(
       { state: kinematicState(0, v3(-0.6, 0, 0), v3(1, 0, 0)), radius: 1 },
       { state: kinematicState(0, v3(0.6, 0, 0), v3()), radius: 1 },
       0.5,
@@ -161,7 +173,7 @@ export function register(): void {
   });
 
   test('collision-response: 天体との接触は中心間を半径和ちょうどへ揃える', () => {
-    const res = resolveFixedSphereCollision(
+    const res = fixedContact(
       { state: kinematicState(0, v3(-0.6, 0, 0), v3(1, 0, 0)), radius: 1 },
       { state: kinematicState(0, v3(0.6, 0, 0), v3()), radius: 1 },
       0.5,

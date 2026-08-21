@@ -1,8 +1,9 @@
-// 実験12: 天体表面到達判定(attractor.reachedBody)の総当たり費用と、絞り込みで残る候補。
+// 実験12: 天体表面到達判定(surface-contact.firstSurfaceContact)の総当たり費用と、絞り込みで残る候補。
 // ?stage=debug-load 相当(自機1 + 破片500)を最高ワープの1フレームぶん、実ゲームと同じく失われた
 // 個体を毎 substep 除去しながら積分し、掃引の回数と費用・絞り込み後の候補数と削減比・破片の RK4
 // 費用・接触グリッドの候補ペア数を測る。絞り込みは game/simulation/surface-candidates の実装。
-import { Attractor, nearestAtmosphereBody, reachedBody } from '../../src/physics/attractor';
+import { Attractor, nearestAtmosphereBody } from '../../src/physics/attractor';
+import { firstSurfaceContact } from '../../src/physics/surface-contact';
 import { burnUpBody } from '../../src/physics/atmosphere';
 import { randomQuat } from '../../src/physics/attitude';
 import { stepDynamics } from '../../src/physics/dynamics';
@@ -153,7 +154,7 @@ function integrateFrame(ephemeris: Ephemeris, initial: readonly Body[], windows:
       const radius = len(p.state.r);
       maxRadius = Math.max(maxRadius, radius);
       if (radius > DIVERGED_RADIUS) diverged++;
-      if (reachedBody(p.prevState, p.state, windows[k]!) !== null) reached++;
+      if (firstSurfaceContact(p.prevState, p.state, p.radius, windows[k]!) !== null) reached++;
       else if (burnUpBody(p.state.r, windows[k]!, C.DEBRIS_BURNUP_DENSITY) !== null) burnedUp++;
       else survivors.push({ state: p.state, radius: p.radius });
     }
@@ -165,11 +166,11 @@ function integrateFrame(ephemeris: Ephemeris, initial: readonly Body[], windows:
 // 判定の呼び出しを畳ませないための集計先。値そのものは読まない。
 let sink = 0;
 
-// 全生存個体 × 全天体 × 全 substep の reachedBody を1フレームぶん通した所要 [ms]。
+// 全生存個体 × 全天体 × 全 substep の firstSurfaceContact を1フレームぶん通した所要 [ms]。
 function bruteForce(timeline: readonly Interval[], windows: SurfaceWindows): number {
   const t0 = performance.now();
   for (let k = 0; k < SUBSTEPS; k++) {
-    for (const p of timeline[k]!) sink += reachedBody(p.prevState, p.state, windows[k]!) === null ? 0 : 1;
+    for (const p of timeline[k]!) sink += firstSurfaceContact(p.prevState, p.state, p.radius, windows[k]!) === null ? 0 : 1;
   }
   return performance.now() - t0;
 }
@@ -216,8 +217,8 @@ function mismatches(timeline: readonly Interval[], windows: SurfaceWindows): num
     const interval = timeline[k]!;
     candidates.reset(interval, windows[k]!);
     for (const p of interval) {
-      const full = reachedBody(p.prevState, p.state, windows[k]!);
-      const only = reachedBody(p.prevState, p.state, candidates.into(p, out));
+      const full = firstSurfaceContact(p.prevState, p.state, p.radius, windows[k]!);
+      const only = firstSurfaceContact(p.prevState, p.state, p.radius, candidates.into(p, out));
       if ((full?.body.id ?? null) !== (only?.body.id ?? null)) count++;
     }
   }

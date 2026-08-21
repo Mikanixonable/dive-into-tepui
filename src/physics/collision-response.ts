@@ -151,15 +151,3 @@ export function distributeFixedContact(
     normal, bounced: true, toi,
   };
 }
-
-// 不動な相手との接触を解決する。触れていなければ null。
-export function resolveFixedSphereCollision(
-  moving: Sphere,
-  fixed: Sphere,
-  restitution: number,
-  prevMoving?: KinematicState,
-  prevFixed?: KinematicState,
-): FixedContactResponse | null {
-  const geometry = sphereContactGeometry(moving, fixed, prevMoving, prevFixed);
-  return geometry === null ? null : distributeFixedContact(moving, fixed, restitution, geometry);
-}

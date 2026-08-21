@@ -2,10 +2,11 @@
 // **絞り込みは判定器の答えを変えてはならない** — 触れうる相手を1つも落とさないことだけが
 // 正しさの条件で、これを破ると判定器そのものが呼ばれなくなる。つまり sphere-contact.test.ts の
 // ような判定器のテストでは絶対に見えない。総当たり(窓をそのまま渡す)と絞り込んだ窓とで
-// reachedBody の答えが一致することを、ここで固定する。
+// firstSurfaceContact の答えが一致することを、ここで固定する。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import { Attractor, reachedBody } from '../../src/physics/attractor';
+import { Attractor } from '../../src/physics/attractor';
+import { firstSurfaceContact } from '../../src/physics/surface-contact';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { mulberry32, randSym } from '../../src/physics/random';
 import { Vec3, v3 } from '../../src/physics/vec3';
@@ -39,7 +40,7 @@ function participant(r0: Vec3, v0: Vec3, a: Vec3, dt: number, radius: number): S
   };
 }
 
-// 絞り込んだ窓と総当たりとで reachedBody の答えを突き合わせ、到達した件数を返す。
+// 絞り込んだ窓と総当たりとで firstSurfaceContact の答えを突き合わせ、到達した件数を返す。
 function assertAgreement(
   label: string, participants: readonly SurfaceParticipant[], bodies: readonly Attractor[],
 ): number {
@@ -49,8 +50,8 @@ function assertAgreement(
   let reached = 0;
   for (let i = 0; i < participants.length; i++) {
     const p = participants[i]!;
-    const full = reachedBody(p.prevState, p.state, bodies);
-    const narrowed = reachedBody(p.prevState, p.state, candidates.into(p, out));
+    const full = firstSurfaceContact(p.prevState, p.state, p.radius, bodies);
+    const narrowed = firstSurfaceContact(p.prevState, p.state, p.radius, candidates.into(p, out));
     assert.equal(
       narrowed?.body.id ?? null, full?.body.id ?? null,
       `${label} 参加者 ${i}: 総当たり ${full?.body.id ?? 'なし'} に対し`
@@ -106,7 +107,7 @@ export function register(): void {
       radius: 0,
     };
     // 前提が崩れていればこのテストは何も試験していないので、両方を明示的に確かめる。
-    assert.ok(reachedBody(p.prevState, p.state, [target]) !== null, '前提: 曲線は表面を跨ぐ');
+    assert.ok(firstSurfaceContact(p.prevState, p.state, p.radius, [target]) !== null, '前提: 曲線は表面を跨ぐ');
     const chordDistance = 650; // 弦は y=650 の直線で、半径 150 の球には触れない
     assert.ok(chordDistance > target.radius, '前提: 弦は表面に触れない');
 
