@@ -18,7 +18,7 @@ import { PredictedArc, trajectorySampleInterval } from '../simulation/predicted-
 import type { FutureAttractorProvider } from '../simulation/arc-bodies';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
-import type { Contact } from '../simulation/contact';
+import type { Contact } from './contact';
 import { isAttractor } from './contact-target';
 import { EntityIdAllocator } from './entity-id';
 import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';
@@ -56,7 +56,7 @@ export class GameEntity {
   alive = true;
   mass = 1; // 剛体接触の換算質量
   radius = 0; // 物理的な半径 [m]。0 = 点。Attractor.radius と同じ量
-  collides = false; // 剛体接触(ContactPhysics)に参加するか
+  collides = false; // 物体どうしの剛体接触(EntityContactPhysics)に参加するか
   // 自分に触れた相手が受けるダメージへ掛かる重み。0 なら触れても相手を傷つけない。
   contactDamageWeight = 1;
 
