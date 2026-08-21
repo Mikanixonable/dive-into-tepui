@@ -45,7 +45,7 @@ function tipTimes(arc: PredictedArc, steps: number): number[] {
 export function register(): void {
   test('predicted-arc: consumable な弧の刻みは simulationMaxStep を超えず、接近していない円軌道ではちょうど simulationMaxStep になる', () => {
     const state0 = circularState();
-    const arc = new PredictedArc(state0, earthOnlyProvider(), 0, 0, /* keplerTail */ true, /* consumable */ true);
+    const arc = new PredictedArc(state0, earthOnlyProvider(), /* radius */ 0, 0, 0, /* keplerTail */ true, /* consumable */ true);
     arc.requiredEnd = state0.t + 86400; // 1日ぶん先まで伸びてよいことにする(十分大きい)
     arc.retainFrom = state0.t;
     arc.simulationMaxStep = 20;
@@ -66,7 +66,7 @@ export function register(): void {
     // 再突入域は大気を持つ天体の基準楕円体から測るので、大気を載せた地球でなければ成立しない。
     const r0 = R_EARTH + 150e3; // REENTRY_SUBSTEP_ALT(200km)より下
     const state0 = kinematicState(0, v3(r0, 0, 0), v3(0, Math.sqrt(MU_EARTH / r0), 0));
-    const arc = new PredictedArc(state0, earthOnlyProvider(true), 0, 0, /* keplerTail */ true, /* consumable */ true);
+    const arc = new PredictedArc(state0, earthOnlyProvider(true), /* radius */ 0, 0, 0, /* keplerTail */ true, /* consumable */ true);
     arc.requiredEnd = state0.t + 86400;
     arc.retainFrom = state0.t;
     arc.simulationMaxStep = 20;
@@ -82,7 +82,7 @@ export function register(): void {
 
   test('predicted-arc: consumable な弧の刻みは simulationMaxStep の値をそのまま反映する', () => {
     const state0 = circularState();
-    const arc = new PredictedArc(state0, earthOnlyProvider(), 0, 0, /* keplerTail */ true, /* consumable */ true);
+    const arc = new PredictedArc(state0, earthOnlyProvider(), /* radius */ 0, 0, 0, /* keplerTail */ true, /* consumable */ true);
     arc.requiredEnd = state0.t + 86400;
     arc.retainFrom = state0.t;
     arc.simulationMaxStep = 34.1;
@@ -101,12 +101,12 @@ export function register(): void {
     const state0 = circularState();
     const retainFrom = state0.t;
 
-    const shortArc = new PredictedArc(state0, earthOnlyProvider(), 0, 0, /* keplerTail */ true, /* consumable */ true);
+    const shortArc = new PredictedArc(state0, earthOnlyProvider(), /* radius */ 0, 0, 0, /* keplerTail */ true, /* consumable */ true);
     shortArc.requiredEnd = state0.t + 86400; // 1日
     shortArc.retainFrom = retainFrom;
     shortArc.simulationMaxStep = 20;
 
-    const longArc = new PredictedArc(state0, earthOnlyProvider(), 0, 0, /* keplerTail */ true, /* consumable */ true);
+    const longArc = new PredictedArc(state0, earthOnlyProvider(), /* radius */ 0, 0, 0, /* keplerTail */ true, /* consumable */ true);
     longArc.requiredEnd = state0.t + 86400 * 28; // 28日
     longArc.retainFrom = retainFrom;
     longArc.simulationMaxStep = 20;
@@ -129,11 +129,11 @@ export function register(): void {
     const state0 = circularState();
     const retainFrom = state0.t;
 
-    const shortArc = new PredictedArc(state0, earthOnlyProvider(), 0, 0, /* keplerTail */ true, /* consumable */ false);
+    const shortArc = new PredictedArc(state0, earthOnlyProvider(), /* radius */ 0, 0, 0, /* keplerTail */ true, /* consumable */ false);
     shortArc.requiredEnd = state0.t + 86400; // 1日
     shortArc.retainFrom = retainFrom;
 
-    const longArc = new PredictedArc(state0, earthOnlyProvider(), 0, 0, /* keplerTail */ true, /* consumable */ false);
+    const longArc = new PredictedArc(state0, earthOnlyProvider(), /* radius */ 0, 0, 0, /* keplerTail */ true, /* consumable */ false);
     longArc.requiredEnd = state0.t + 86400 * 28; // 28日
     longArc.retainFrom = retainFrom;
 
@@ -147,7 +147,7 @@ export function register(): void {
     // 細分化の理由は大気の密度勾配なので、大気の無いところに再突入域は無い。
     const r0 = R_EARTH + 150e3;
     const state0 = kinematicState(0, v3(r0, 0, 0), v3(0, Math.sqrt(MU_EARTH / r0), 0));
-    const arc = new PredictedArc(state0, earthOnlyProvider(), 0, 0, /* keplerTail */ true, /* consumable */ true);
+    const arc = new PredictedArc(state0, earthOnlyProvider(), /* radius */ 0, 0, 0, /* keplerTail */ true, /* consumable */ true);
     arc.requiredEnd = state0.t + 86400;
     arc.retainFrom = state0.t;
     arc.simulationMaxStep = 20;
@@ -167,7 +167,7 @@ export function register(): void {
     const r0 = R_EARTH + 300e3;
     const state0 = kinematicState(0, v3(r0, 0, 0), v3(0, 1500, 0)); // 円速度を大きく割る = 落ちる
     const arc = new PredictedArc(
-      state0, earthOnlyProvider(true), 3.3e-3, 0, /* keplerTail */ true, /* consumable */ true);
+      state0, earthOnlyProvider(true), /* radius */ 0, 3.3e-3, 0, /* keplerTail */ true, /* consumable */ true);
     arc.requiredEnd = state0.t + 86400;
     arc.retainFrom = state0.t;
     arc.simulationMaxStep = 20;
@@ -189,7 +189,7 @@ export function register(): void {
   test('predicted-arc: 区間を表せるかは起点で決まり、起点を差し替えると表せなくなる', () => {
     const state0 = circularState();
     const end = state0.t + 3600;
-    const arc = new PredictedArc(state0, earthOnlyProvider(), 0, 0, /* keplerTail */ false, /* consumable */ false);
+    const arc = new PredictedArc(state0, earthOnlyProvider(), /* radius */ 0, 0, 0, /* keplerTail */ false, /* consumable */ false);
     arc.requiredEnd = end;
     arc.retainFrom = state0.t;
     tipTimes(arc, 5);
