@@ -11,13 +11,13 @@ import { hudRail } from './hud-root';
 import type { MapPickable } from '../map-pickable';
 import type { OverlayManager } from './overlay-manager';
 
-// 「角度」プルダウンの選択肢。基準面(持続する状態)と視点ジャンプ(1回きりの操作)を
-// 同じ選択肢として並べる——反映は選ばれた値の型で振り分ける。
-type AngleOption = CameraReferencePlane | CameraReferenceView;
-const ANGLE_ITEMS: readonly (readonly [AngleOption, string])[] = [
+const PLANE_ITEMS: readonly (readonly [CameraReferencePlane, string])[] = [
   ['ecliptic', '黄道面'],
   ['equator', '赤道面'],
   ['moonOrbit', '月軌道面'],
+];
+
+const VIEW_ITEMS: readonly (readonly [CameraReferenceView, string])[] = [
   ['above', '真上'],
   ['side', '真横'],
 ];
@@ -43,7 +43,8 @@ export class CameraFramePanel {
   private readonly fovSlider: Slider;
   private readonly fovInput: ValueInput;
   private readonly fovResetButton: Button;
-  private readonly angleControl: Pulldown<AngleOption>;
+  private readonly planeControl: Pulldown<CameraReferencePlane>;
+  private readonly viewControl: Pulldown<CameraReferenceView>;
   private readonly cameraSummary: HTMLElement;
 
   public onSelectCenter: ((id: string | null) => void) | null = null;
@@ -105,12 +106,13 @@ export class CameraFramePanel {
     fovGroup.appendChild(this.fovResetButton.element);
     this.panel.appendChild(fovGroup);
 
-    this.angleControl = new Pulldown<AngleOption>('角度', ANGLE_ITEMS, 'セット', (value) => {
-      if (value === 'above' || value === 'side') mapCamera.setReferenceView(value);
-      else mapCamera.setReferencePlane(value);
-    });
-    this.angleControl.element.classList.add('camera-angle-group');
-    this.panel.appendChild(this.angleControl.element);
+    this.planeControl = new Pulldown<CameraReferencePlane>('角度', PLANE_ITEMS, 'セット', (plane) => mapCamera.setReferencePlane(plane));
+    this.planeControl.element.classList.add('camera-angle-group');
+    this.panel.appendChild(this.planeControl.element);
+
+    this.viewControl = new Pulldown<CameraReferenceView>('視点', VIEW_ITEMS, 'セット', (view) => mapCamera.setReferenceView(view));
+    this.viewControl.element.classList.add('camera-angle-group');
+    this.panel.appendChild(this.viewControl.element);
 
     this.cameraSummary = document.createElement('div');
     this.cameraSummary.className = 'frame-summary';
@@ -148,7 +150,7 @@ export class CameraFramePanel {
     if (document.activeElement !== this.fovInput.element) {
       this.fovInput.setValue(this.mapCamera.fov.toFixed(0));
     }
-    this.angleControl.setSelected(this.mapCamera.referencePlane);
+    this.planeControl.setSelected(this.mapCamera.referencePlane);
     this.cameraSummary.textContent = this.cameraSummaryText();
   }
 
