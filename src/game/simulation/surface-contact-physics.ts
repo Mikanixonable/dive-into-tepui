@@ -1,7 +1,7 @@
 // 天体の表面との剛体接触。個体1つにつき、区間内で最も早く触れる天体を1体だけ解いて反発を
-// 当て、当事者へ collideWith を呼ぶ。天体は状態を書き換えられないので個体ごとに独立に解け、
-// 解決の順序も件数の上限も要らない — 物体どうしの接触(entity-contact-physics.ts)とは
-// 機構を共有しない。
+// 当て、当事者へ collideWithCelestialBody を呼ぶ。天体は状態を書き換えられないので個体ごとに
+// 独立に解け、解決の順序も件数の上限も要らない — 物体どうしの接触
+// (entity-contact-physics.ts)とは機構を共有しない。
 import * as C from '../const';
 import { Attractor, attractorStateAt } from '../../physics/attractor';
 import { distributeFixedContact } from '../../physics/collision-response';
@@ -31,7 +31,6 @@ export class SurfaceContactPhysics {
   // 1 substep ぶんの天体との接触。時間加速倍率にも collides にも依らず、独立した実体すべてが
   // 参加する。
   resolveSurfaceContacts(
-    simTime: number,
     entities: readonly GameEntity[],
     attractors: readonly Attractor[],
     activeStage: Stage,
@@ -40,12 +39,13 @@ export class SurfaceContactPhysics {
     if (this.participantScratch.length === 0) return;
     this.collectAttractors(attractors, this.bodyScratch);
     this.candidates.reset(this.participantScratch, this.bodyScratch);
-    for (const e of this.participantScratch) this.resolveOne(e, simTime, activeStage);
+    for (const e of this.participantScratch) this.resolveOne(e, activeStage);
   }
 
-  // 個体1つが区間内で最も早く触れる天体を1体だけ解き、反発を当ててから collideWith を呼ぶ。
-  private resolveOne(e: GameEntity, simTime: number, activeStage: Stage): void {
-    const candidates = this.acceptedCandidates(e, simTime);
+  // 個体1つが区間内で最も早く触れる天体を1体だけ解き、反発を当ててから
+  // collideWithCelestialBody を呼ぶ。
+  private resolveOne(e: GameEntity, activeStage: Stage): void {
+    const candidates = this.candidates.into(e, this.nearbyScratch);
     const hit = firstSurfaceContact(e.prevState, e.state, e.radius, candidates);
     if (hit === null) return;
 
@@ -62,22 +62,13 @@ export class SurfaceContactPhysics {
       e.state = kinematicState(before.t, response.r, response.v);
     }
     if (!response.bounced) return;
-    e.collideWith(hit.body, {
+    e.collideWithCelestialBody(hit.body, {
       t: contactTime(e, response.toi),
       point: add(response.r, scale(response.normal, e.radius)),
       normal: response.normal,
       selfState: before,
       otherState: hit.body.state,
     }, activeStage);
-  }
-
-  // 絞り込みを通り、かつ個体自身が接触を受け入れる天体だけ。
-  private acceptedCandidates(e: GameEntity, simTime: number): readonly Attractor[] {
-    const near = this.candidates.into(e, this.nearbyScratch);
-    let w = 0;
-    for (const body of near) if (e.contactsWith(body, simTime)) near[w++] = body;
-    near.length = w;
-    return near;
   }
 
   // 天体との接触に参加するのは、独立した実体すべて。艦に取り付いた接触代理(ベルトの節点・
