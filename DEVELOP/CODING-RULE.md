@@ -338,7 +338,7 @@ branded type だけがそれを表せる。
 - TypeScript のファイル名とディレクトリ名は `kebab-case`。
 - 固定値として共有するモジュール定数と static 定数は `UPPER_SNAKE_CASE`。単に `const` で宣言した
   ローカル変数は `camelCase`。
-- 略語は `camelCase` / `PascalCase` の中では一つの単語として扱う(`bodyId`、`toEci`、`jdTdb`)。
+- 略語は `camelCase` / `PascalCase` の中では一つの単語として扱う(`celestialBodyId`、`toEci`、`jdTdb`)。
   `UPPER_SNAKE_CASE` では略語も大文字にする(`SIM_EPOCH_JD_TDB`)。
 - JavaScript、Web API、ライブラリが定めた表記(`URLSearchParams`、`getUTCDate`、`WebGPU`)は
   変更しない。
@@ -384,13 +384,17 @@ branded type だけがそれを表せる。
 語形は **`orbit` に統一**し、`orbital*` を新設しない(例外は定訳を採る `OrbitalElements` の1語)。
 計画した経路は `path`、積分した軌跡は `trajectory` — 概念が違うので共存させる。
 
-### `body` / `ship` / `attractor`
+### `celestialBody` / `ship` / `attractor`
 
-天文シミュレーションで無標の `body` が機体座標系に奪われるのは苦しいので、機体の側を有標にする。
+無標の `body` は多義的すぎる — 天体・機体・剛体のどれにも読めて、名前だけではどれを指すか
+決まらない。無標のまま一つの意味へ割り当てるのではなく、**意味に応じた形容詞を付けて有標にする。**
 
-- **`body` は天体の意味に残す。**
-- **機体に固定した座標系は `ship` で有標にする。** 剛体一般(デブリ・薬莢)の固定座標系に名前が
-  要るようになったら、`ship` は使えないので別途決める。
+- **単体の `body` を接辞にしない。** 天体は `celestialBody`、剛体一般が要るようになったら
+  `rigidBody`。指すものがその場で一意に決まる狭いスコープ(ローカル変数・短いコールバック)に
+  限って、無標の `body` でよい。
+- **天体は `celestialBody`。** `CelestialBody` / `CelestialBodyId` / `celestialBodiesAt` /
+  `celestialBodyAt`。
+- **機体は `ship`。** 機体に固定した座標系も `ship` で表す。
 - **重力源としての値は `attractor`。** ただし楕円の中心として渡すものは `center`。
 
 ---
