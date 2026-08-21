@@ -1,6 +1,5 @@
-// 赤道面・黄道面の目安グリッド(緯線・経線)と両極。頂点は ECI に固定した単位球面上の点
-// (星殻と同じ半径)で、自機中心に追従する固定半径殻として描く。面(緯度0°)・極(両極)・
-// グリッド(それ以外の緯線)は、すべて同じ十字マーカーで表す。
+// 赤道面・黄道面の目安グリッド(緯線・経線)と両極マーカー。頂点は ECI に固定した
+// 単位球面上の点(星殻と同じ半径)で、自機中心に追従する固定半径殻として描く。
 import * as THREE from 'three/webgpu';
 import { Q_ECL_TO_ECI } from '../physics/ecliptic';
 import { STAR_SHELL_RADIUS } from './stars';
@@ -49,6 +48,8 @@ const ECLIPTIC_BASIS: PlaneBasis = {
 const GRID_LAT_STEP_DEG = 15; // 交点の緯度間隔
 const GRID_LON_STEP_DEG = 15; // 交点の経度間隔
 const GRID_LABEL_STEP_DEG = 30; // 座標ラベルは間隔を空けて表示
+const CIRCLE_SEGMENTS = 64; // 円1本あたりの分割数
+const POLE_MARKER_HALF_LEN = STAR_SHELL_RADIUS * 0.04; // 極マーカーの殻面からの突き出し長さ
 
 function planePoint(basis: PlaneBasis, radius: number, latRad: number, lonRad: number): THREE.Vector3 {
   const c = radius * Math.cos(latRad);
@@ -62,14 +63,24 @@ function planePoint(basis: PlaneBasis, radius: number, latRad: number, lonRad: n
   );
 }
 
-// 経緯線・面・両極の交点マーカーは、目盛りの数だけ THREE.LineSegments の頂点対として
-// 1つのバッファへ詰め、1グループ=1描画にまとめる。常にカメラを中心とする殻として置く
-// (sync が position をカメラ位置へ毎フレーム合わせる)ため、外接球によるフラスタム判定は
-// 常に「視界内」を返し意味を持たない。
+function makeLine(color: number, opacity: number): THREE.Line {
+  const geo = new THREE.BufferGeometry();
+  const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
+  const line = new THREE.Line(geo, mat);
+  // 常にカメラを中心とする殻として置く(sync が position をカメラ位置へ毎フレーム合わせる)ため、
+  // 外接球によるフラスタム判定は常に「視界内」を返し意味を持たない。
+  line.frustumCulled = false;
+  line.renderOrder = 0;
+  return line;
+}
+
+// 経緯線の交点マーカー・両極マーカーは、目盛りの数だけ THREE.LineSegments の
+// 頂点対として1つのバッファへ詰め、1グループ=1描画にまとめる。
 function makeLineSegments(color: number, opacity: number): THREE.LineSegments {
   const geo = new THREE.BufferGeometry();
   const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
   const line = new THREE.LineSegments(geo, mat);
+  // makeLine と同じ理由(常にカメラ中心の殻)。
   line.frustumCulled = false;
   line.renderOrder = 0;
   return line;
@@ -113,8 +124,8 @@ function intersectionCrossPoints(basis: PlaneBasis, radius: number, latRad: numb
   ];
 }
 
-// 極点(緯度±90°)の十字。経度が縮退するため、intersectionCrossPoints の東西腕(経度方向)は
-// 使えず、直交する2本の子午線方向(e1・e2)をそのまま腕にする。
+// 極点(緯度±90°)の交点十字。経度が縮退するため intersectionCrossPoints の東西腕
+// (経度方向)は使えず、直交する2本の子午線方向(e1・e2)をそのまま腕にする。
 function poleCrossPoints(basis: PlaneBasis, radius: number, sign: 1 | -1): THREE.Vector3[] {
   const p = new THREE.Vector3(basis.pole.x, basis.pole.y, basis.pole.z).multiplyScalar(radius * sign);
   const eps = radius * 0.012;
@@ -126,11 +137,12 @@ function poleCrossPoints(basis: PlaneBasis, radius: number, sign: 1 | -1): THREE
   ];
 }
 
-// 面 1 枚ぶんの表示物: 緯度0°(plane)・両極(pole)・それ以外の緯線(grid)の交点十字。
-// 3 種とも独立した可視トグルを持つため束ねずに別オブジェクトとして保持し、
-// それぞれ内部の全セグメントを1つの LineSegments に詰めてトグル1つあたり描画1回で済ませる。
+// 面 1 枚ぶんの表示物: 基準円(plane)・緯線経線の交点網(grid)・両極マーカー(pole)。
+// 3 種とも独立した可視トグルを持つため束ねずに別オブジェクトとして保持するが、
+// grid/pole はそれぞれ内部の全セグメントを1つの LineSegments に詰め、
+// トグル1つあたり描画1回で済むようにする。
 class GridPlane {
-  readonly planeLine: THREE.LineSegments;
+  readonly planeLine: THREE.Line;
   readonly gridLine: THREE.LineSegments;
   readonly poleLine: THREE.LineSegments;
   private readonly labelLayer: HTMLDivElement;
@@ -147,13 +159,12 @@ class GridPlane {
     this.labelLayer.className = 'celestial-grid-labels';
     Object.assign(this.labelLayer.style, { position: 'fixed', inset: '0', pointerEvents: 'none', zIndex: '8' });
     document.body.appendChild(this.labelLayer);
-
-    const planePoints: THREE.Vector3[] = [];
-    for (let lon = 0; lon < 360; lon += GRID_LON_STEP_DEG) {
-      planePoints.push(...intersectionCrossPoints(basis, STAR_SHELL_RADIUS, 0, (lon * Math.PI) / 180));
-    }
-    this.planeLine = makeLineSegments(color, 0.35);
-    setLinePoints(this.planeLine, planePoints);
+    this.planeLine = makeLine(color, 0.35);
+    setLinePoints(this.planeLine, (() => {
+      const pts: THREE.Vector3[] = [];
+      for (let i = 0; i <= CIRCLE_SEGMENTS; i++) pts.push(planePoint(basis, STAR_SHELL_RADIUS, 0, (i / CIRCLE_SEGMENTS) * Math.PI * 2));
+      return pts;
+    })());
     scene.add(this.planeLine);
 
     // 交点ごとの東西・南北の線分(setLinePoints が組む頂点対)を1本の
@@ -161,18 +172,24 @@ class GridPlane {
     // 接続され「4」のように見えるため、頂点対を独立したセグメントとして保つ。
     const gridPoints: THREE.Vector3[] = [];
     for (let lat = -75; lat <= 75; lat += GRID_LAT_STEP_DEG) {
-      if (lat === 0) continue;
       for (let lon = 0; lon < 360; lon += GRID_LON_STEP_DEG) {
         gridPoints.push(...intersectionCrossPoints(basis, STAR_SHELL_RADIUS, (lat * Math.PI) / 180, (lon * Math.PI) / 180));
       }
     }
+    for (const sign of [1, -1] as const) gridPoints.push(...poleCrossPoints(basis, STAR_SHELL_RADIUS, sign));
     this.gridLine = makeLineSegments(color, 0.3);
     setLinePoints(this.gridLine, gridPoints);
     scene.add(this.gridLine);
 
     const polePoints: THREE.Vector3[] = [];
-    for (const sign of [1, -1] as const) {
-      polePoints.push(...poleCrossPoints(basis, STAR_SHELL_RADIUS, sign));
+    for (const sign of [1, -1]) {
+      const tip = new THREE.Vector3(basis.pole.x * STAR_SHELL_RADIUS * sign, basis.pole.y * STAR_SHELL_RADIUS * sign, basis.pole.z * STAR_SHELL_RADIUS * sign);
+      const base = new THREE.Vector3(
+        tip.x - basis.pole.x * POLE_MARKER_HALF_LEN * sign,
+        tip.y - basis.pole.y * POLE_MARKER_HALF_LEN * sign,
+        tip.z - basis.pole.z * POLE_MARKER_HALF_LEN * sign,
+      );
+      polePoints.push(base, tip);
     }
     this.poleLine = makeLineSegments(color, 0.7);
     setLinePoints(this.poleLine, polePoints);
