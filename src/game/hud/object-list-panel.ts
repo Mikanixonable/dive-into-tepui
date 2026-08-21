@@ -106,10 +106,9 @@ interface RowNode {
 }
 
 // マップビュー右部に常設の軌道オブジェクト一覧ウィンドウ。種別ごとの区画にタブ見出しで
-// 開閉し、行クリックで onSelect に id を渡す。天体区画は衛星・ラグランジュ点を親の下の
+// 開閉し、行クリックで選択状態をトグルする。天体区画は衛星・ラグランジュ点を親の下の
 // トグル子メニューへ格納する(衛星自身のラグランジュ点はさらにその衛星の子メニューへ)。
 export class ObjectListPanel {
-  public onSelect: ((id: string) => void) | null = null;
   public onFocus: ((id: string) => void) | null = null;
   public onNavTarget: ((id: string) => void) | null = null;
   public onSelectRight: ((id: string, clientX: number, clientY: number) => void) | null = null;
@@ -130,6 +129,7 @@ export class ObjectListPanel {
   private readonly matchedScratch: MapPickable[] = [];
   private readonly displayIdsScratch: string[] = [];
   private readonly idsInSectionScratch = new Set<string>();
+  private readonly clusterParentSeenScratch = new Set<string>();
   private readonly focusAncestorsScratch = new Set<string>();
   private readonly matchAncestorsScratch = new Set<string>();
   private readonly seenScratch = new Set<string>();
@@ -147,6 +147,7 @@ export class ObjectListPanel {
   private prevSort: ObjectListSort | null = null;
   private prevFilter: ObjectListFilter | null | undefined = undefined;
   private readonly breadcrumb: HTMLElement;
+  private readonly emptyState: HTMLElement;
   private readonly unsubscribeCollapsedView: () => void;
 
   public constructor(root: HTMLElement, registry: CelestialRegistry) {
@@ -237,6 +238,11 @@ export class ObjectListPanel {
       this.applyExpanded(section);
     }
 
+    this.emptyState = document.createElement('div');
+    this.emptyState.className = 'object-list-empty hidden';
+    this.emptyState.textContent = '該当するオブジェクトがありません';
+    body.appendChild(this.emptyState);
+
     hudRail(root, 'right').appendChild(this.panel);
     this.setVisible(false);
   }
@@ -246,6 +252,11 @@ export class ObjectListPanel {
   }
 
   public select(id: string | null): void { this.selectedId = id; }
+
+  // 行クリック用。同じ行を再度クリックしたときは選択を解除する。
+  private toggleSelect(id: string): void {
+    this.selectedId = this.selectedId === id ? null : id;
+  }
 
   // パネルを取り除き、折りたたみ状態変化の購読を解く。
   public dispose(): void {
@@ -309,6 +320,7 @@ export class ObjectListPanel {
       }
     }
 
+    let totalMatched = 0;
     for (const { kind, label } of SECTIONS) {
       const section = this.sections.get(kind)!;
       // 距離順では距離が動くだけで正しい並びが変わりうるので、保持している順序が
@@ -321,6 +333,7 @@ export class ObjectListPanel {
         this.applyExpanded(section);
       }
       this.syncHeader(section, kind, label);
+      totalMatched += section.order.ids.length;
 
       const seen = this.seenScratch;
       seen.clear();
@@ -330,6 +343,7 @@ export class ObjectListPanel {
       }
       this.pruneRows(section.rows, seen);
     }
+    this.emptyState.classList.toggle('hidden', !(filteringActive && totalMatched === 0));
     if (this.selectedId !== null && !items.some((i) => i.id === this.selectedId && this.matches(i))) this.selectedId = null;
   }
 
@@ -435,7 +449,7 @@ export class ObjectListPanel {
   // ids の各要素の親(未登場なら)を補った並びを返す — 親自身はフィルタを通っていなくても、
   // 親子ツリーにそのままクラスタ見出しとして乗せる。
   private withClusterParents(ids: readonly string[], parentOf: ReadonlyMap<string, string>): string[] {
-    const seenIds = this.idsInSectionScratch;
+    const seenIds = this.clusterParentSeenScratch;
     seenIds.clear();
     for (const id of ids) seenIds.add(id);
     const result = this.displayIdsScratch;
@@ -482,6 +496,8 @@ export class ObjectListPanel {
     node.row.classList.toggle('tgt', item.id === focusId);
     node.row.classList.toggle('related-orbit', item.id === focusId);
     node.row.classList.toggle('on', item.id === this.selectedId);
+    // 衛星フィルタで添えたクラスタ見出し(親惑星自身はフィルタを通っていない)を淡色化する。
+    node.row.classList.toggle('cluster', !this.matches(item));
     node.row.setAttribute('aria-pressed', String(item.id === this.selectedId));
     node.row.setAttribute('aria-label', [item.name, detailText].filter(Boolean).join('、'));
 
@@ -537,10 +553,10 @@ export class ObjectListPanel {
     row.setAttribute('role', 'button');
     row.setAttribute('aria-keyshortcuts', 'Enter Space F T');
     row.title = 'Enter / Space: 選択 · F: フォーカス · T: ナビ対象';
-    row.addEventListener('click', () => this.onSelect?.(id));
+    row.addEventListener('click', () => this.toggleSelect(id));
     row.addEventListener('dblclick', () => this.onFocus?.(id));
     row.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.onSelect?.(id); }
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.toggleSelect(id); }
       if (e.key.toLowerCase() === 'f') { e.preventDefault(); this.onFocus?.(id); }
       if (e.key.toLowerCase() === 't') { e.preventDefault(); this.onNavTarget?.(id); }
     });
