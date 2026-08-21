@@ -40,6 +40,7 @@ export class AmmoPickup extends GameEntity {
     this.mass = 50;
     this.radius = C.AMMO_PHYS_RADIUS;
     this.collides = true;
+    this.contactDamageWeight = 0;
     this.marker = new EntityMarker(this, markerManager, 'mk-ammo', ENTITY_GLYPH.ammo, false);
   }
 

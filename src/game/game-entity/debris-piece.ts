@@ -67,6 +67,7 @@ export class DebrisPiece extends GameEntity {
     );
     this.radius = radius ?? 0;
     this.collides = debrisKind.kind !== 'fragment';
+    this.contactDamageWeight = 0;
     if (debrisKind.kind === 'fragment') {
       this.fragmentVariant = Math.floor(Math.random() * DEBRIS_FRAGMENT_VARIANT_COUNT);
       const dark = Math.random() < 0.30;
@@ -87,12 +88,13 @@ export class DebrisPiece extends GameEntity {
 
   // 弾が当たったらガスパフを噴いて消える(弾自身の消滅は Bullet.collideWith が書く)。
   // 薬莢が艦(操作対象に限らず Player 全般)に触れたときは、からんと音を鳴らす。
-  collideWith(other: GameEntity | Attractor, contact: Contact): void {
+  collideWith(other: GameEntity | Attractor, contact: Contact, activeStage: Stage): void {
     if (other instanceof Bullet) {
       this._fx.spawnGasPuff(kinematicState(contact.selfState.t, contact.point, contact.selfState.v));
       return;
     }
     if (this.debrisKind.kind === 'casing' && other instanceof Player) this._worldSfx.clank();
+    super.collideWith(other, contact, activeStage);
   }
 
   // 薬莢の寿命切れ絶対時刻を返す。薬莢以外、またはすでに過ぎていれば null。
