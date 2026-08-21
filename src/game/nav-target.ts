@@ -2,8 +2,10 @@
 // 降交点)の算出・マーカー表示・被選択物としての公開。Targeter の戦闘ターゲット(Enemy 専用)
 // とは独立に、月・ラグランジュ点なども対象にできる。
 import { Vec3, v3 } from '../physics/vec3';
+import { KinematicState } from '../physics/kinematic-state';
 import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from '../physics/elements';
 import { Attractor, OrbitingId, frameOfAttractor, strongestAttractor } from '../physics/attractor';
+import type { LagrangePoints } from '../physics/lagrange';
 import { frameKinematicState, toFrameState, toInertialState, unbakeToDisplayPoint } from '../physics/frame';
 import { bodyDef } from '../physics/solar-system';
 import type { Ephemeris } from '../physics/ephemeris';
@@ -149,6 +151,31 @@ export class NavTarget {
       ]);
       return true;
     });
+  }
+
+  // 現在の航法ターゲットの位置・速度。天体は Attractor.state、ラグランジュ点は
+  // ephemeris.lagrangeStateAt、船・基地は entity.state から得る。天体以外は重力中心ではない
+  // ため hasMass=false を返す。ターゲット未設定・解決不能なら null。
+  resolveState(
+    entities: EntityManager, ephemeris: Ephemeris, attractors: readonly Attractor[], t: number,
+  ): { id: string; state: KinematicState; hasMass: boolean; attractor: Attractor | null } | null {
+    const id = this.targetId;
+    if (id === null) return null;
+    const registry = ephemeris.registry;
+    if (id in registry && bodyDef(registry, id).kind !== 'star') {
+      const attractor = attractors.find((a) => a.id === id);
+      if (attractor) return { id, state: attractor.state, hasMass: true, attractor };
+    }
+    const match = /^(.+)-l([1-5])$/.exec(id);
+    if (match) {
+      const secondary = match[1]!;
+      if (secondary in registry && bodyDef(registry, secondary).kind !== 'star') {
+        const point = `L${match[2]}` as keyof LagrangePoints;
+        return { id, state: ephemeris.lagrangeStateAt(secondary as OrbitingId, point, t), hasMass: false, attractor: null };
+      }
+    }
+    const entity = this.resolveEntity(id, entities);
+    return entity ? { id, state: entity.state, hasMass: false, attractor: null } : null;
   }
 
   // id が航法ターゲットになれる(軌道面が定まる)かどうか。
