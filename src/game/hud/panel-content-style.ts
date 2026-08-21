@@ -207,7 +207,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-shipplacer .slider-field .slider-col { flex: 1 1 60px; min-width: 60px; }
 #hud-shipplacer .slider-field input[type="range"] { width: 100%; pointer-events: auto; accent-color: var(--accent); }
 #hud-shipplacer .slider-field .slider-ticks { display: flex; justify-content: space-between; margin-top: var(--space-1); }
-#hud-shipplacer .slider-field .slider-ticks span { flex: 0 1 auto; min-width: 0; font-size: var(--font-xxs); color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#hud-shipplacer .slider-field .slider-ticks span { flex: 0 1 auto; min-width: 0; font-size: calc(var(--font-xxs) * 0.82); color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #hud-shipplacer .slider-field .slider-ticks span:first-child { text-align: left; }
 #hud-shipplacer .slider-field .slider-ticks span:last-child { text-align: right; }
 #hud-shipplacer input[type="text"] { flex: 1; width: auto; }
