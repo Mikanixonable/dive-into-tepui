@@ -25,6 +25,11 @@ export interface Contact {
 
 const RESTITUTION = 0.4;
 
+// 接触の瞬間に両者が近づいていた速さ [m/s]。離反していれば 0。
+export function closingSpeed(contact: Contact): number {
+  return Math.max(0, -dot(sub(contact.selfState.v, contact.otherState.v), contact.normal));
+}
+
 // 区間の両端の位置・速度と半径・質量がすべて有限で、質量が正であるか。1つでも欠けた
 // エンティティを空間グリッドへ入れる前に落とす — 非有限座標はセル添字を壊し、区間変位は
 // セル一辺の算出を通じて全参加者へ伝播する。

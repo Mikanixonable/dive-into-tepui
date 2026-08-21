@@ -19,6 +19,7 @@ import type { FutureAttractorProvider } from '../simulation/arc-bodies';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
 import type { Contact } from '../simulation/contact';
+import { isAttractor } from '../simulation/contact-target';
 import { EntityIdAllocator } from './entity-id';
 import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';
 import type { EntityMarker } from '../marker/entity-marker';
@@ -53,6 +54,8 @@ export class GameEntity {
   mass = 1; // 剛体接触の換算質量
   radius = 0; // 物理的な半径 [m]。0 = 点。Attractor.radius と同じ量
   collides = false; // 剛体接触(ContactPhysics)に参加するか
+  // 自分に触れた相手が受けるダメージへ掛かる重み。0 なら触れても相手を傷つけない。
+  contactDamageWeight = 1;
   // 特定の艦に取り付いた実体(ベルトの節点・放熱板の折りなど)であれば、その艦自身。
   // 独立した実体なら既定 null。
   attachedTo: GameEntity | null = null;
@@ -345,8 +348,10 @@ export class GameEntity {
   }
 
   // この接触で自分に何が起きるかを記述する。相手に何が起きるかは書かない(相手の
-  // collideWith が書く)。既定は何もしない。
-  collideWith(_other: GameEntity | Attractor, _contact: Contact, _activeStage: Stage): void {}
+  // collideWith が書く)。既定は、相手が天体であれば失われる。
+  collideWith(other: GameEntity | Attractor, _contact: Contact, _activeStage: Stage): void {
+    if (isAttractor(other)) this.alive = false;
+  }
 
   // 赤道交点マーカーを用意して返す。出す必要が生じた側が呼ぶ。
   ensureEquatorNodes(markerManager: MarkerManager): EquatorNodeMarkerPair {
