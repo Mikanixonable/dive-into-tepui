@@ -498,7 +498,7 @@ export class MapContextActions {
     },
     'eqnode': {
       itemsFor: (target, simTime) => {
-        const isAn = target.id.endsWith('-eqan');
+        const isAn = target.id.startsWith('eqan-');
         const spec = isAn ? ORBIT_ELEMENT_LABELS.eqAn : ORBIT_ELEMENT_LABELS.eqDn;
         const centerName = celestialBodyName(strongestAttractor(target.pos, this.ephemeris.attractorsAt(simTime)).id);
         const label = `${centerName}${spec.nameJa}`;
