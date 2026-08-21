@@ -15,10 +15,6 @@ export const HATCH_DOCK_MIN_ALIGNMENT = 0.5;  // ハッチ正面コーンの最�
 export const SLOT_DOCK_MAX_DIST = 50;         // 各ドックスロット前での最大ドッキング距離 [m]
 export const SLOT_DOCK_MIN_ALIGNMENT = 0.5;   // スロット正面コーンの最小内積 (cos 60° = 0.5)
 
-// 組立セッション中、対象の外接半径に掛けてカメラ距離を決める倍率。BASE_FOV=55°では
-// 半径ちょうどが画角に収まる係数が 1/sin(27.5°)≈2.17 なので、周囲に見た目の余白が残る値にする。
-export const ASSEMBLY_CAMERA_DISTANCE_MARGIN = 2.5;
-
 // --- 基地操縦 ---
 export const BASE_THRUST = 4e8;        // 基地の総推力 [N]（1e6 kg で 400 m/s² — 船の全開加速度と同等）
 export const BASE_TORQUE = 1.4e8;      // 基地のトルク [N·m]（慣性 1e8 で 1.4 rad/s² — 船の角加速度と同等）

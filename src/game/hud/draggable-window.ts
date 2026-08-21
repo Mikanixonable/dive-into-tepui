@@ -70,6 +70,9 @@ export interface DraggableWindowOptions {
   // 指定すると、タイトル横に改名ボタンが現れる。呼び出し側は確定した新しい名前を
   // 実体へ書き戻すところまでを行う — このクラスは編集 UI の開閉のみを持つ。
   readonly onRename?: (name: string) => void;
+  // true で開いた直後から📌クリップ済みにする(一時ウィンドウの排他枠から外れ、
+  // 外側クリック/ESC で閉じなくなる)。省略時は既定どおり未クリップで開く。
+  readonly startClipped?: boolean;
 }
 
 export class DraggableWindow implements OverlayHandle {
@@ -152,6 +155,10 @@ export class DraggableWindow implements OverlayHandle {
     this.clipBtn.element.classList.add('dw-btn');
     this.clipBtn.element.title = 'クリップ';
     this.clipBtn.element.setAttribute('aria-label', 'クリップ');
+    if (options.startClipped) {
+      this._clipped = true;
+      this.clipBtn.element.classList.add('clipped');
+    }
 
     // ✕ は他の3窓(格納庫/セーブブラウザ/設定)と同じ見た目に統一する。
     const closeBtn = new CloseButton(() => this.close());
