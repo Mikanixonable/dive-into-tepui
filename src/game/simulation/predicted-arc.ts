@@ -13,7 +13,7 @@ import { keplerPeriod } from '../../physics/elements';
 import { ApsisTrack } from '../../physics/trajectory-features';
 import { dot, len, sub } from '../../physics/vec3';
 import { ArcBodies, type ArcBodyWindow, type FutureAttractorProvider } from './arc-bodies';
-import { adaptiveSimulationMaxStep } from './time-step';
+import { reentryAwareMaxStep } from './time-step';
 import * as C from '../const';
 
 // keepDuration ぶんを保持する列へ積む最小間隔 [s]。軌道周期 period を TRAJECTORY_SAMPLES_PER_REV
@@ -136,7 +136,7 @@ export class PredictedArc {
 
   // 刻み幅。消費される弧は実シミュレーションの刻み規則をそのまま採る — ある時間帯の状態を
   // 決める積分が同じ刻みで積まれるのが目的なので、所有者が毎フレーム書く simulationMaxStep を
-  // 実シミュレーションと同じ再突入域の細分化(adaptiveSimulationMaxStep)へ通した値と、接近項の
+  // 実シミュレーションと同じ再突入域の細分化(reentryAwareMaxStep)へ通した値と、接近項の
   // 小さい方を使う。周期・粗化項・下限は使わない。細分化が要るのは、大気の密度が 1 スケール
   // ハイト(約 7km)で桁が変わるためで、降下中に刻みを縮めないと抵抗の積分がその変化を跨ぐ。
   // 消費されない弧は、軌道項(周期基準)・粗化項(span を ARC_MAX_STEPS 等分)・接近項(動径
@@ -160,8 +160,7 @@ export class PredictedArc {
       approachDt = Math.min(approachDt, (clearance / closingRate) * C.ARC_APPROACH_SAFETY);
     }
     if (this.consumable) {
-      const maxStep = adaptiveSimulationMaxStep(
-        [tip], collisionBodies, C.REENTRY_SUBSTEP_ALT, this.simulationMaxStep, C.REENTRY_SUBSTEP_MAX_DT);
+      const maxStep = reentryAwareMaxStep([tip], collisionBodies, this.simulationMaxStep);
       return Math.min(approachDt, maxStep);
     }
     const naturalDt = period / C.ARC_STEPS_PER_REV;

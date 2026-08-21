@@ -4,6 +4,7 @@ import { ellipsoidAltitude } from '../../physics/atmosphere';
 import { Attractor, nearestAtmosphereBody } from '../../physics/attractor';
 import { KinematicState } from '../../physics/kinematic-state';
 import { dot, len, sub } from '../../physics/vec3';
+import * as C from '../const';
 
 // targetTime・maxStep・nextEventTime のいずれよりも先へ進まない、今回のサブステップ幅 [s] を返す。
 export function simulationStepDuration(
@@ -23,17 +24,14 @@ export function simulationMaxStep(simDt: number, maxDt: number, maxCount: number
   return Math.max(maxDt, simDt / maxCount);
 }
 
-// 再突入域(大気を持つ天体の基準楕円体から reentryAlt 以内)の境界を越えない最大刻み。
-// 境界ちょうどは必ず reentryMaxStep 側に含める。細分化が要るのは大気の密度が 1 スケールハイトで
-// 桁を変えるからなので、**大気の無いところに再突入域は無い** — atmosphereBodies が空、または
-// どの状態も大気を持つ天体の近くにいなければ normalMaxStep がそのまま返る。
+// 再突入域(大気を持つ天体の基準楕円体から REENTRY_SUBSTEP_ALT 以内)の境界を越えない最大刻み。
+// 境界ちょうどは必ず細分化された側に含める。細分化が要るのは大気の密度が 1 スケールハイトで
+// 桁を変えるからなので、大気を持つ天体が近くに無ければ normalMaxStep がそのまま返る。
 // 各状態はそれぞれにとって最も近い大気天体を相手にする(呼び出し側は窓をそのまま渡す)。
-export function adaptiveSimulationMaxStep(
+export function reentryAwareMaxStep(
   states: readonly KinematicState[],
   atmosphereBodies: readonly Attractor[],
-  reentryAlt: number,
   normalMaxStep: number,
-  reentryMaxStep: number,
 ): number {
   let maxStep = normalMaxStep;
   for (const { r, v } of states) {
@@ -41,14 +39,14 @@ export function adaptiveSimulationMaxStep(
     if (body === null || body.atmosphere === null) continue;
     const rRel = sub(r, body.state.r);
     const alt = ellipsoidAltitude(rRel, body.atmosphere);
-    if (alt <= reentryAlt) return reentryMaxStep;
+    if (alt <= C.REENTRY_SUBSTEP_ALT) return C.REENTRY_SUBSTEP_MAX_DT;
     // 境界までの猶予は動径接近率で見積もる。基準楕円体の半径も緯度とともに動くが、その速さは
     // 高々 16 m/s で降下速度に対して十分小さい(この見積りは刻みを縮める上限にしか使わない)。
     const descentRate = -dot(rRel, sub(v, body.state.v)) / len(rRel);
     if (descentRate <= 0) continue;
-    const untilBoundary = (alt - reentryAlt) / descentRate;
+    const untilBoundary = (alt - C.REENTRY_SUBSTEP_ALT) / descentRate;
     if (untilBoundary > 1e-9) maxStep = Math.min(maxStep, untilBoundary);
-    else return reentryMaxStep;
+    else return C.REENTRY_SUBSTEP_MAX_DT;
   }
   return maxStep;
 }
