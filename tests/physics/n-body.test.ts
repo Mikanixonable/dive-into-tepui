@@ -16,7 +16,7 @@ function makeAttractor(id: string, mu: number, state: KinematicState): Attractor
 
 // 単一の attractor だけを重力源として1ステップ進める(自由伝播: 抵抗・輻射圧・推力なし)。
 function stepFree(state: KinematicState, dt: number, attractors: readonly Attractor[]): KinematicState {
-  return stepDynamics(state, dt, attractors, null, 0, 0, null);
+  return stepDynamics(state, dt, attractors, attractors, null, 0, 0, null);
 }
 
 // dt ぶんのステップの間、相手の attractor 位置をステップ開始時点で固定する近似は
