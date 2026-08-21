@@ -12,8 +12,8 @@ import type { MapPickable } from '../map-pickable';
 import type { OverlayManager } from './overlay-manager';
 
 const ANGLE_COLUMNS = [
-  { items: [['ecliptic', '黄道面'], ['equator', '赤道面'], ['moonOrbit', '月軌道面']] },
-  { items: [['above', '真上'], ['side', '真横']] },
+  { description: '面', items: [['ecliptic', '黄道面'], ['equator', '赤道面'], ['moonOrbit', '月軌道面']] },
+  { description: '視点', items: [['above', '真上'], ['side', '真横']] },
 ] as const satisfies readonly [PulldownColumn<CameraReferencePlane>, PulldownColumn<CameraReferenceView>];
 
 function buildPanel(root: HTMLElement, id: string, titleText: string): HTMLElement {
