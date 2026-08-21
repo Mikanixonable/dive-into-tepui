@@ -119,6 +119,7 @@ export class Enemy extends Ship {
     this.waveId = waveId;
     this.mass = 10000;
     this.collides = true;
+    this.lossPrecisionMatters = true;
     this.renderObject.scale.setScalar(C.ENEMY_SCALE);
     // 描画メッシュの実スケール後バウンディング球を、弾丸・物理接触の両判定に共有する。
     const visualBounds = new THREE.Box3().setFromObject(this.renderObject);
