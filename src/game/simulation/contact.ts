@@ -1,6 +1,6 @@
-// 剛体球どうしの接触の列挙・解決。collides を立てた GameEntity と、逆質量0(無限質量)の
-// 天体を参加者とし、双方へ collideWith を呼ぶ — ダメージ・音・エフェクトはここでは一切扱わない
-// (それぞれの GameEntity 自身の責務)。1 substep 内の接触は TOI(接触時刻)昇順で解決する。
+// 剛体接触の列挙・解決。collides を立てた GameEntity どうしと、GameEntity × 解析天体を
+// 参加者とし、反発が起きた当事者へ collideWith を呼ぶ。ダメージ・音・エフェクトは
+// それぞれの GameEntity 自身の責務。1 substep 内の接触は TOI(接触時刻)昇順で解決する。
 import * as C from '../const';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, sub, scale, dot, len } from '../../physics/vec3';
@@ -8,7 +8,10 @@ import { SpatialGrid } from '../../physics/spatial-grid';
 import { GameEntity } from '../game-entity/game-entity';
 import { Base } from '../game-entity/base';
 import type { Player } from '../player/player';
-import { CollisionResponse, resolveSphereCollision } from '../../physics/collision-response';
+import {
+  CollisionResponse, ContactGeometry, FixedContactResponse,
+  distributeSphereContact, resolveFixedSphereCollision, resolveSphereCollision,
+} from '../../physics/collision-response';
 import { Attractor, attractorStateAt } from '../../physics/attractor';
 import type { Stage } from '../stages/stage';
 
@@ -20,7 +23,6 @@ export interface Contact {
   readonly normal: Vec3; // self → other 向きの単位法線
   readonly selfState: KinematicState; // 接触直前(反応前)の自分
   readonly otherState: KinematicState; // 接触直前(反応前)の相手
-  readonly impulse: number; // 剛体解決で生じた力積の大きさ [N·s]。離反中なら 0
 }
 
 const RESTITUTION = 0.4;
@@ -30,16 +32,17 @@ export function closingSpeed(contact: Contact): number {
   return Math.max(0, -dot(sub(contact.selfState.v, contact.otherState.v), contact.normal));
 }
 
-// 区間の両端の位置・速度と半径・質量がすべて有限で、質量が正であるか。1つでも欠けた
+// 区間の両端の位置・速度と半径が有限で、接触用の質量が負でないか。1つでも欠けた
 // エンティティを空間グリッドへ入れる前に落とす — 非有限座標はセル添字を壊し、区間変位は
-// セル一辺の算出を通じて全参加者へ伝播する。
+// セル一辺の算出を通じて全参加者へ伝播する。質量は 0(試験粒子)と無限大(不動)を通し、
+// NaN だけを落とす — `contactMass < 0` と書くと NaN が通り抜ける。
 function isFiniteParticipant(e: GameEntity): boolean {
   const { r, v } = e.state;
   const p = e.prevState.r;
   return Number.isFinite(r.x) && Number.isFinite(r.y) && Number.isFinite(r.z)
     && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z)
     && Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z)
-    && Number.isFinite(e.radius) && Number.isFinite(e.mass) && e.mass > 0;
+    && Number.isFinite(e.radius) && e.contactMass >= 0;
 }
 
 // 位置・速度・半径が有限か。
@@ -55,8 +58,31 @@ function isFiniteAttractor(a: Attractor): boolean {
 interface Candidate {
   a: GameEntity;
   b: GameEntity | Attractor;
-  response: CollisionResponse | null;
+  response: CollisionResponse | FixedContactResponse | null;
   resolved: boolean;
+}
+
+// 候補の解決結果のうち、a 側の補正後の位置と速度。相手が天体なら結果は a の側しか持たない。
+function impactOfA(response: CollisionResponse | FixedContactResponse): { readonly r: Vec3; readonly v: Vec3 } {
+  return 'rA' in response ? { r: response.rA, v: response.vA } : { r: response.r, v: response.v };
+}
+
+// 位置と速度がどちらも動いていない当事者は、working も changed も触らない。書き戻しは
+// 予測弧を捨てるので、質量 0 の相手に触れられただけの艦がそれで作り直しになるのを防ぐ。
+function replaceIfMoved(
+  e: GameEntity,
+  before: KinematicState,
+  after: { readonly r: Vec3; readonly v: Vec3 },
+  working: Map<GameEntity, KinematicState>,
+  changed: Set<GameEntity>,
+): void {
+  if (sameVec(before.r, after.r) && sameVec(before.v, after.v)) return;
+  working.set(e, kinematicState(e.state.t, after.r, after.v));
+  changed.add(e);
+}
+
+function sameVec(a: Vec3, b: Vec3): boolean {
+  return a.x === b.x && a.y === b.y && a.z === b.z;
 }
 
 // TOI(response.toi、prevState→state 区間内の割合)を接触時刻へ変換する。重なりフォールバック
@@ -65,60 +91,46 @@ function contactTime(a: GameEntity, toi: number): number {
   return a.prevState.t + (a.state.t - a.prevState.t) * toi;
 }
 
+// 基地の当たり形状は球ではないので、幾何だけを基地自身へ問い、受け持ちの分配は球どうしと
+// 共有する。触れていなければ null。
+function baseContactGeometry(
+  base: Base, other: GameEntity, baseWork: KinematicState, otherWork: KinematicState, baseIsA: boolean,
+): ContactGeometry | null {
+  if (len(sub(otherWork.r, baseWork.r)) > base.radius + other.radius) return null;
+  const hit = base.testSphereCollision(otherWork.r, other.radius);
+  if (!hit) return null;
+  // hit.normal は基地から相手へ向くので、a → b の向きへ揃える。
+  return {
+    normal: baseIsA ? hit.normal : scale(hit.normal, -1),
+    toi: 1,
+    pushOut: hit.depth,
+  };
+}
+
 // working 上の現在位置どうしの剛体接触を解決する。
 function computeEntityResponse(
-  a: GameEntity, b: GameEntity, working: ReadonlyMap<GameEntity, KinematicState>, warpLevel = 1,
+  a: GameEntity, b: GameEntity, working: ReadonlyMap<GameEntity, KinematicState>,
 ): CollisionResponse | null {
+  const aWork = working.get(a)!, bWork = working.get(b)!;
+  const bodyA = { state: aWork, radius: a.radius, invMass: 1 / a.contactMass };
+  const bodyB = { state: bWork, radius: b.radius, invMass: 1 / b.contactMass };
+  if (!(bodyA.invMass + bodyB.invMass > 0)) return null;
+
   const base = a instanceof Base ? a : (b instanceof Base ? b : null);
   if (base) {
     const other = a === base ? b : a;
-    const isA = a === base;
-    const baseWork = working.get(base)!;
-    const otherWork = working.get(other)!;
-
-    const dist = len(sub(otherWork.r, baseWork.r));
-    if (dist > base.radius + other.radius) return null;
-
-    const hit = base.testSphereCollision(otherWork.r, other.radius, warpLevel);
-    if (!hit) return null;
-
-    const normal = isA ? hit.normal : scale(hit.normal, -1);
-    const relV = sub(otherWork.v, baseWork.v);
-    const vn = dot(relV, hit.normal);
-
-    const invM = 1 / other.mass;
-    let impulse = 0;
-    let newOtherV = otherWork.v;
-
-    if (vn < 0) {
-      impulse = -(1 + RESTITUTION) * vn / invM;
-      const impulseVec = scale(hit.normal, impulse);
-      newOtherV = add(otherWork.v, scale(impulseVec, invM));
-    }
-
-    const pushOut = scale(hit.normal, hit.depth);
-    const newOtherR = add(otherWork.r, pushOut);
-
-    return {
-      rA: isA ? baseWork.r : newOtherR,
-      rB: isA ? newOtherR : baseWork.r,
-      vA: isA ? baseWork.v : newOtherV,
-      vB: isA ? newOtherV : baseWork.v,
-      normal,
-      impulse,
-      toi: 1,
-    };
+    const baseIsA = a === base;
+    const geometry = baseContactGeometry(
+      base, other, working.get(base)!, working.get(other)!, baseIsA);
+    return geometry === null ? null : distributeSphereContact(bodyA, bodyB, RESTITUTION, geometry);
   }
 
-  const aWork = working.get(a)!, bWork = working.get(b)!;
   // 両者の prevState→state が同じ区間(時刻がほぼ一致)を成すときだけ掃引TOIを試す —
   // ずれていれば異なる瞬間の直前位置を結ぶ線分になり、掃引の意味を失う。
   const sweptValid = a.prevState.t < a.state.t && b.prevState.t < b.state.t
     && Math.abs(a.prevState.t - b.prevState.t) <= 1e-6 && Math.abs(a.state.t - b.state.t) <= 1e-6;
   return resolveSphereCollision(
-    { state: aWork, radius: a.radius, invMass: 1 / a.mass },
-    { state: bWork, radius: b.radius, invMass: 1 / b.mass },
-    RESTITUTION,
+    bodyA, bodyB, RESTITUTION,
     sweptValid ? a.prevState : undefined,
     sweptValid ? b.prevState : undefined,
   );
@@ -128,12 +140,12 @@ function computeEntityResponse(
 // 中点で1回組まれるので、そのままでは区間の両端と別の瞬間の値になる。
 function computeAttractorResponse(
   e: GameEntity, body: Attractor, working: ReadonlyMap<GameEntity, KinematicState>,
-): CollisionResponse | null {
+): FixedContactResponse | null {
   const eWork = working.get(e)!;
   const sweptValid = e.prevState.t < e.state.t;
-  return resolveSphereCollision(
-    { state: eWork, radius: e.radius, invMass: 1 / e.mass },
-    { state: attractorStateAt(body, eWork.t), radius: body.radius, invMass: 0 },
+  return resolveFixedSphereCollision(
+    { state: eWork, radius: e.radius },
+    { state: attractorStateAt(body, eWork.t), radius: body.radius },
     RESTITUTION,
     sweptValid ? e.prevState : undefined,
     sweptValid ? attractorStateAt(body, e.prevState.t) : undefined,
@@ -319,7 +331,8 @@ export class ContactPhysics {
 
   // 候補列の index 番目を書き直す。既にあるスロットはオブジェクトごと使い回す。
   private pushCandidate(
-    index: number, a: GameEntity, b: GameEntity | Attractor, response: CollisionResponse | null,
+    index: number, a: GameEntity, b: GameEntity | Attractor,
+    response: CollisionResponse | FixedContactResponse | null,
   ): void {
     const slot = this.candidateScratch[index];
     if (slot === undefined) this.candidateScratch.push({ a, b, response, resolved: false });
@@ -367,28 +380,27 @@ export class ContactPhysics {
     const { a, b } = candidate;
     const response = candidate.response!;
     const aBefore = working.get(a)!;
-    working.set(a, kinematicState(a.state.t, response.rA, response.vA));
-    changed.add(a);
+    const aAfter = impactOfA(response);
+    replaceIfMoved(a, aBefore, aAfter, working, changed);
 
-    const point = add(response.rA, scale(response.normal, a.radius));
+    const point = add(aAfter.r, scale(response.normal, a.radius));
     const t = contactTime(a, response.toi);
 
-    if (b instanceof GameEntity) {
+    if (b instanceof GameEntity && 'rB' in response) {
       // 天体側(else 節)は不動なので working への書き戻し対象に含めない。
       const bBefore = working.get(b)!;
-      working.set(b, kinematicState(b.state.t, response.rB, response.vB));
-      changed.add(b);
-      if (response.impulse === 0) return;
+      replaceIfMoved(b, bBefore, { r: response.rB, v: response.vB }, working, changed);
+      if (!response.bounced) return;
       a.collideWith(b, {
-        t, point, normal: response.normal, selfState: aBefore, otherState: bBefore, impulse: response.impulse,
+        t, point, normal: response.normal, selfState: aBefore, otherState: bBefore,
       }, activeStage);
       b.collideWith(a, {
-        t, point, normal: scale(response.normal, -1), selfState: bBefore, otherState: aBefore, impulse: response.impulse,
+        t, point, normal: scale(response.normal, -1), selfState: bBefore, otherState: aBefore,
       }, activeStage);
     } else {
-      if (response.impulse === 0) return;
+      if (!response.bounced) return;
       a.collideWith(b, {
-        t, point, normal: response.normal, selfState: aBefore, otherState: b.state, impulse: response.impulse,
+        t, point, normal: response.normal, selfState: aBefore, otherState: (b as Attractor).state,
       }, activeStage);
     }
   }
