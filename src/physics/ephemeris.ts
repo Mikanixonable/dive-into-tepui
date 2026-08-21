@@ -420,6 +420,18 @@ export class Ephemeris {
     return lagrangePoints(mu, (x, y) => add(primaryPos, qRotate(q, v3(R * x, R * y, 0))));
   }
 
+  // ラグランジュ点1点の ECI 状態(位置・速度)。回転系の角速度 omega(orbitFrameRotationAt)と
+  // 主天体の速度から v = v_primary + omega × (r − r_primary) として合成する(5点とも同じ
+  // 剛体回転系に乗っているため omega は共通)。
+  lagrangeStateAt(secondary: OrbitingId, point: keyof LagrangePoints, t: number): KinematicState {
+    const primary = primaryOf(this.registry, secondary);
+    if (primary === null) throw new Error(`lagrangeStateAt: ${secondary} に主星が無いレジストリではラグランジュ点は定義できない`);
+    const primaryState = this.stateOf(primary, t);
+    const r = this.lagrangeAt(secondary, t)[point];
+    const { omega } = this.orbitFrameRotationAt(secondary, t);
+    return kinematicState(t, r, add(primaryState.v, cross(omega, sub(r, primaryState.r))));
+  }
+
   // secondary の主天体に対する質量比 mu = m2/(m1+m2)。主星が無ければ null。
   private massRatioOf(secondary: OrbitingId): number | null {
     const primary = primaryOf(this.registry, secondary);

@@ -32,6 +32,7 @@ import { ThrustEffects } from './thrust-effects';
 import { RcsEffects } from './rcs-effects';
 import { ReentryEffects } from './reentry-effects';
 import { PlayerMarkers } from './player-markers';
+import type { OrbitReference } from '../orbit-reference';
 import type { MarkerManager } from '../marker/marker-manager';
 import { RadiatorSide, RadiatorSystem } from './radiator';
 import { PowerSystem } from './power';
@@ -441,6 +442,7 @@ export class Player extends Ship {
     attractors: readonly Attractor[],
     visibility: MapVisibility | null = null,
     displayWindow?: DisplayWindow,
+    orbitRef?: OrbitReference,
   ): void {
     // メッシュ本体の位置・姿勢
     const displayState = this.displayState(displayTime);
@@ -464,7 +466,7 @@ export class Player extends Ship {
     this.radiator.sync();
     this.power.sync();
     // マーカー。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
-    this.markers.sync(this.state, displayState, this.att, camera.overviewMode, isActive, camera.activeCameraPos, camera.activeCameraProjection, camera.activeCameraScale, this.name, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.mapCamera.focus), ephemeris.registry, attractors, visibility, displayWindow?.frame, displayTime, ephemeris);
+    this.markers.sync(this.state, displayState, this.att, camera.overviewMode, isActive, camera.activeCameraPos, camera.activeCameraProjection, camera.activeCameraScale, this.name, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.mapCamera.focus), ephemeris.registry, attractors, visibility, displayWindow?.frame, displayTime, ephemeris, orbitRef);
   }
 
   // 艦は任意のタイミングで削除されうるので、Player が所有する線・ビルボード・HUD も一度だけ解放する。

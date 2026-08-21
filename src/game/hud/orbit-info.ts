@@ -1,12 +1,14 @@
-// 軌道エンティティの基準天体・軌道要素・相対情報の導出。DOM に依存しない純粋関数。
-import { Attractor, AttractorId, strongestAttractor } from '../../physics/attractor';
+// 軌道エンティティの基準・軌道要素・相対情報の導出。DOM に依存しない純粋関数。
+import { Attractor, strongestAttractor } from '../../physics/attractor';
 import { apsisAltitudes } from '../../physics/elements';
+import { kinematicState } from '../../physics/kinematic-state';
 import { dot, len, sub } from '../../physics/vec3';
 import type { GameEntity } from '../game-entity/game-entity';
+import type { OrbitReference } from '../orbit-reference';
 import { celestialBodyName } from './frame-labels';
 
 export interface OrbitInfo {
-  centerId: AttractorId;
+  centerId: string;
   centerName: string;
   alt: number;
   spd: number;
@@ -16,18 +18,19 @@ export interface OrbitInfo {
   period: number;
 }
 
-// エンティティの現在状態から基準天体(strongestAttractor)・高度・速度・遠地点・近地点・
-// 傾斜角・周期を導出する。要素が求まらない状態(双曲線軌道等)では ap/pe/inc/period を NaN にする。
-export function orbitInfo(entity: GameEntity, attractors: readonly Attractor[]): OrbitInfo {
-  const center = strongestAttractor(entity.state.r, attractors);
-  const el = entity.orbitalElementsAround(center);
-  // apsis 高度は center の半径基準。
+// エンティティの現在状態から、reference が示す基準に対する高度・相対速度・遠地点・近地点・
+// 傾斜角・周期を導出する。速度は reference 自身の速度を差し引いた相対速度。reference が重力
+// 中心でない(attractor=null)場合、および要素が求まらない状態(双曲線軌道等)では
+// ap/pe/inc/period を NaN にする。
+export function orbitInfo(entity: GameEntity, reference: OrbitReference): OrbitInfo {
+  const rel = kinematicState(entity.state.t, sub(entity.state.r, reference.state.r), sub(entity.state.v, reference.state.v));
+  const el = reference.attractor ? entity.orbitalElementsAround(reference.attractor) : null;
   const apsis = el ? apsisAltitudes(el) : null;
   return {
-    centerId: center.id,
-    centerName: celestialBodyName(center.id),
-    alt: len(sub(entity.state.r, center.state.r)) - center.radius,
-    spd: len(entity.state.v),
+    centerId: reference.id,
+    centerName: celestialBodyName(reference.id),
+    alt: len(rel.r) - (reference.attractor?.radius ?? 0),
+    spd: len(rel.v),
     apAlt: apsis ? apsis.ap : NaN,
     peAlt: apsis ? apsis.pe : NaN,
     incDeg: el ? el.incDeg : NaN,

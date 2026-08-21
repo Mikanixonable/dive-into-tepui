@@ -36,6 +36,7 @@ import type { Ephemeris } from '../physics/ephemeris';
 import { ViewManager } from './view-manager';
 import { NanWatchdog } from './nan-watchdog';
 import { NavTarget } from './nav-target';
+import { OrbitReferenceSelector } from './orbit-reference';
 import { MapPickables } from './map-pickables';
 import { MapContextActions } from './map-context-actions';
 import { Navball } from './navball/navball';
@@ -91,6 +92,7 @@ export class Game {
 
   readonly targeter: Targeter;
   readonly navTarget: NavTarget;
+  readonly orbitReference = new OrbitReferenceSelector();
   readonly entities: EntityManager;
   private readonly futureAttractors: FutureAttractors;
   private readonly entityLines: EntityLineManager;
@@ -474,8 +476,11 @@ export class Game {
       this.markerManager,
     );
 
+    const orbitRef = player
+      ? this.orbitReference.resolve(player.state.r, attractors, this.navTarget, this.entities, this.ephemeris, player.state.t)
+      : undefined;
     this.entities.syncPlayers(
-      player, fo, this.cameraSystem, displayTime, this.ephemeris, displayAttractors, visibilityPolicy, displayWindow,
+      player, fo, this.cameraSystem, displayTime, this.ephemeris, displayAttractors, visibilityPolicy, displayWindow, orbitRef,
     );
     this.entities.syncBases(
       this.controlledBase, fo, this.cameraSystem, displayTime, visibilityPolicy,

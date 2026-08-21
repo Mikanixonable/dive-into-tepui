@@ -6,6 +6,7 @@ import { Hud } from './hud/hud';
 import { Base } from './game-entity/base';
 import { fmtAmmoStatus, fmtDist, fmtEnergy, fmtSpeed, fmtTime } from './hud/utils';
 import { orbitInfo, relativeInfo } from './hud/orbit-info';
+import { autoOrbitReference } from './orbit-reference';
 import { ContextMenu, MenuItem } from './hud/context-menu';
 import { PropertyRow, PropertyWindow, PropertyWindowContent, PropertyWindowItem } from './hud/property-window';
 import { MenuAction, MenuCommon } from './hud/menu-actions';
@@ -802,7 +803,7 @@ export class MapContextActions {
   // 基準天体・高度・速度・AP/PE/INC/PRD の軌道要素一式。軌道上の実体種別間で共通化する。
   // 「軌道」グループにまとめ、ウィンドウ先頭の折り畳みセクションへ描かれる。
   private orbitRows(entity: GameEntity, attractors: readonly Attractor[]): PropertyRow[] {
-    const oi = orbitInfo(entity, attractors);
+    const oi = orbitInfo(entity, autoOrbitReference(entity.state.r, attractors));
     const apSpec = getApsisLabelSpec('ap', oi.centerId);
     const peSpec = getApsisLabelSpec('pe', oi.centerId);
     const group = '軌道';
