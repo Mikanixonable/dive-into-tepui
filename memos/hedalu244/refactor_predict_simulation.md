@@ -412,12 +412,6 @@ v3 4-4 が明らかにしたとおり、**天体接触と個体どうしの接�
 - 副次: `participantScratch` を `resolveSurfaceContacts` と `resolveSubstep` が共有して
   いる(呼び出しが逐次なので現状は安全だが、依存が暗黙)。
 
-### A-6. `Simulator.advance` が `SimSpeedManager` を丸ごと受けている
-
-読んでいるのは `canResolvePhysicalCollisions` 1つだけ。**「Simulator と時間加速度の密結合の
-解消」の最後の一歩**として、真偽値を受け取る形にすると、Simulator から `SimSpeedManager`
-への依存そのものが消える。倍率を見る条件を後から生やす余地も同時に消える。
-
 ### A-7. `Simulator.stepAttitudes` の種別ごとの列挙と、`alive` 検査の不揃い
 
 `players`(検査なし)/ `enemies`(あり)/ `bases`(あり)/ `casings`(なし)/

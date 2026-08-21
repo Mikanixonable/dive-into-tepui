@@ -360,7 +360,9 @@ export class Game {
 
     const simDt = dt * this.simSpeedManager.simSpeed;
     this.sections.enter(SECTION.integrate);
-    this.simulator.advance(dt, simDt, this.player, this.activeStage, this.simSpeedManager, this.nanWatchdog);
+    this.simulator.advance(
+      dt, simDt, this.player, this.activeStage,
+      this.simSpeedManager.canResolvePhysicalCollisions, this.nanWatchdog);
     this.sections.exit(SECTION.integrate);
     this.docking.updateDockedPhysics();
     // 積分後の状態でこのフレームの表示窓を確定させ、以降の消費者へ共有する。

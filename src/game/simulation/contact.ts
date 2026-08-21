@@ -185,8 +185,8 @@ export class ContactPhysics {
   private readonly surfaceCandidates = new SurfaceCandidates();
   private readonly surfaceScratch: Attractor[] = [];
 
-  // 1 substep ぶんの物体どうしの接触解決。ワープゲート(canResolvePhysicalCollisions)は
-  // 呼び出し側(Simulator.advance)が判断してから呼ぶ。
+  // 1 substep ぶんの物体どうしの接触解決。ワープ倍率によるゲートは呼び出し側の判断で、
+  // ここには倍率を見る条件を持たない。
   resolveEntityContacts(simTime: number, entities: GameEntity[], activeStage: Stage): void {
     this.collectParticipants(entities, this.participantScratch);
     this.resolveInOrder(this.participantScratch, [], simTime, activeStage);
