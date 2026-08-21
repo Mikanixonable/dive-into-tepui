@@ -10,7 +10,7 @@ import { Bullet } from '../game-entity/bullet';
 import type { GameEntity } from '../game-entity/game-entity';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { Contact } from '../simulation/contact';
-import { isAttractor } from '../simulation/contact-target';
+import { isAttractor } from '../game-entity/contact-target';
 import { contactDamageSpeed } from '../game-entity/contact-damage';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
