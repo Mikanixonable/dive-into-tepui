@@ -1,6 +1,6 @@
 // 天体とゲーム内 entity に共通するマップ表示ポリシー。
 // category/icon/label/orbit/pickable を各描画・選択系で個別に解釈しないための正本。
-import type { AttractorId } from '../../physics/attractor';
+import type { CelestialBodyId } from '../../physics/celestial-body';
 import type { CelestialRegistry } from '../../physics/solar-system';
 import {
   alwaysFullyVisibleIds,
@@ -33,7 +33,7 @@ const ENTITY_KEYS: Record<MapEntityKind, {
   base: { category: 'baseVisible', icon: 'baseIcon', label: 'baseLabel', orbit: 'baseOrbit' },
 };
 
-function focusSystemOf(registry: CelestialRegistry, focusId: AttractorId | undefined): AttractorId | null {
+function focusSystemOf(registry: CelestialRegistry, focusId: CelestialBodyId | undefined): CelestialBodyId | null {
   if (focusId === undefined) return null;
   const bodyId = focusId.replace(/-l[1-5]$/, '');
   if (!(bodyId in registry)) return null;
@@ -47,25 +47,25 @@ function noVisibility(): MapVisibility {
 }
 
 export class MapVisibilityPolicy {
-  private readonly alwaysVisible: ReadonlySet<AttractorId>;
-  private readonly nearby: ReadonlySet<AttractorId>;
+  private readonly alwaysVisible: ReadonlySet<CelestialBodyId>;
+  private readonly nearby: ReadonlySet<CelestialBodyId>;
   // policy の入力(toggles/focus/nearby)はインスタンス生成後に変わらない。判定結果を
   // id/kind ごとに保持し、同じフレームで body()/entity() を何度呼んでもオブジェクトと
   // 条件分岐を作り直さない。呼び出し側がトグルを変える場合は新しい policy を作る。
-  private readonly bodyResults = new Map<AttractorId, MapVisibility>();
+  private readonly bodyResults = new Map<CelestialBodyId, MapVisibility>();
   private readonly entityResults = new Map<string, MapVisibility>();
 
   constructor(
     private readonly registry: CelestialRegistry,
     private readonly toggles: BodyClassToggles,
-    private readonly focusId?: AttractorId,
-    nearbyIds: Iterable<AttractorId> = [],
+    private readonly focusId?: CelestialBodyId,
+    nearbyIds: Iterable<CelestialBodyId> = [],
   ) {
     this.alwaysVisible = alwaysFullyVisibleIds(registry, focusId, nearbyIds, toggles);
     this.nearby = new Set(nearbyIds);
   }
 
-  body(id: AttractorId): MapVisibility {
+  body(id: CelestialBodyId): MapVisibility {
     const cached = this.bodyResults.get(id);
     if (cached !== undefined) return cached;
 
@@ -74,7 +74,7 @@ export class MapVisibilityPolicy {
     return result;
   }
 
-  private computeBody(id: AttractorId): MapVisibility {
+  private computeBody(id: CelestialBodyId): MapVisibility {
     if (/-l[1-5]$/.test(id)) {
       const category = this.toggles.lagrangeVisible;
       const icon = category && this.toggles.lagrangeIcon;
@@ -117,7 +117,7 @@ export class MapVisibilityPolicy {
     return { category, icon, label, orbit, pickable: icon || label };
   }
 
-  private orbitForBody(id: AttractorId, cls: ReturnType<typeof bodyClassOf>): boolean {
+  private orbitForBody(id: CelestialBodyId, cls: ReturnType<typeof bodyClassOf>): boolean {
     switch (cls) {
       case 'planet': return this.toggles.planetOrbit;
       case 'dwarf': return this.toggles.dwarfOrbit;

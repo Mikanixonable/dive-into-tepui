@@ -27,9 +27,9 @@ import type { Controllable } from '../game-entity/controllable';
 import type { ActivePlayerController } from '../active-player-controller';
 import type { FrameControls } from '../hud/frame-controls';
 import { focusPoint } from '../camera/focus-target';
-import { Attractor, orbitalElementsOf, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
+import { CelestialBody, orbitalElementsOf, frameOfCelestialBody, strongestAttractor } from '../../physics/celestial-body';
 import { toFrameState } from '../../physics/frame';
-import type { FutureAttractors } from '../simulation/future-attractors';
+import type { FutureCelestialBodies } from '../simulation/future-celestial-bodies';
 import type { PredictedArc } from '../simulation/predicted-arc';
 import type { DisplayWindow } from '../display-window-manager';
 import type { PerfCounts } from '../../perf-meter';
@@ -99,7 +99,7 @@ export class PlanEditor {
     private readonly simSpeedManager: SimSpeedManager,
     private readonly ephemeris: Ephemeris,
     // 計画の積分が時刻ごとに引く重力源・衝突体。
-    private readonly attractors: FutureAttractors,
+    private readonly celestialBodies: FutureCelestialBodies,
     scene: THREE.Scene,
     private readonly markerManager: MarkerManager,
     private readonly activePlayers: ActivePlayerController,
@@ -547,14 +547,14 @@ export class PlanEditor {
 
   // center 相対状態。orbitAxes が KinematicState を要求するので、座標系相対の r/v を
   // state の時刻のまま KinematicState へ包み直す。
-  private relativeToBody(state: KinematicState, center: Attractor): KinematicState {
-    const rel = toFrameState(frameOfAttractor(center), state);
+  private relativeToBody(state: KinematicState, center: CelestialBody): KinematicState {
+    const rel = toFrameState(frameOfCelestialBody(center), state);
     return kinematicState(state.t, rel.r, rel.v);
   }
 
   // 軌道要素とΔv方向を解釈するための中心天体相対状態。中心はその位置で最も強く引く天体。
   private bodyState(state: KinematicState): KinematicState {
-    return this.relativeToBody(state, strongestAttractor(state.r, this.ephemeris.attractorsAt(state.t)));
+    return this.relativeToBody(state, strongestAttractor(state.r, this.ephemeris.celestialBodiesAt(state.t)));
   }
 
   // 表示上限までのノードハンドルと、選択中ノードがあれば Δv アームの仕様を組み立ててギズモへ渡す。
@@ -662,7 +662,7 @@ export class PlanEditor {
     let nodeSecondsFromNow: number | null = null;
     // 高度・大気圏警告の基準は、選択中ノード(無ければ計画の起点)で最も強く引く天体。
     const centerState = (this.selectedNodeIdx !== null ? plan.nodes[this.selectedNodeIdx] : null) ?? plan.anchorOr(ship.state);
-    const center = strongestAttractor(centerState.r, this.ephemeris.attractorsAt(centerState.t));
+    const center = strongestAttractor(centerState.r, this.ephemeris.celestialBodiesAt(centerState.t));
     if (this.selectedNodeIdx !== null) {
       const node = plan.nodes[this.selectedNodeIdx];
       const arr = arriving[this.selectedNodeIdx];
@@ -712,7 +712,7 @@ export class PlanEditor {
       this.closeMenu();
     }
     this.simTime = displayWindow.simTime;
-    this.planDisplay.update(this.displayedPlan, displayWindow, this.attractors, ship);
+    this.planDisplay.update(this.displayedPlan, displayWindow, this.celestialBodies, ship);
     this.updateEquatorNodes(displayWindow);
   }
 

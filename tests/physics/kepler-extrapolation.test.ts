@@ -2,7 +2,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { extrapolatedRelativeState, extrapolatedRelativeStates } from '../../src/physics/kepler-extrapolation';
-import { Attractor } from '../../src/physics/attractor';
+import { CelestialBody } from '../../src/physics/celestial-body';
 import { stepDynamics } from '../../src/physics/dynamics';
 import { keplerPeriod, stateFromOrbitalElements } from '../../src/physics/elements';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
@@ -10,7 +10,7 @@ import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
 import { len, sub, v3 } from '../../src/physics/vec3';
 
 const ZERO = v3(0, 0, 0);
-const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, ZERO, ZERO), accel: ZERO, degree2: null, atmosphere: null, isStar: false };
+const EARTH: CelestialBody = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, ZERO, ZERO), accel: ZERO, degree2: null, atmosphere: null, isStar: false };
 
 // tip から t までを stepDynamics(bcInv=0, srpCoeff=0, thrust=null) で密に積分した基準値。
 // EARTH は原点に静止しているので、返り値はそのまま中心天体相対 = 絶対 ECI になる。
@@ -148,7 +148,7 @@ export function register(): void {
     assert.equal(extrapolatedRelativeState(parabolic, EARTH, 1000), null);
     assert.deepEqual(extrapolatedRelativeStates(parabolic, EARTH, 1000, 5), []);
 
-    const noMu: Attractor = { ...EARTH, mu: 0 };
+    const noMu: CelestialBody = { ...EARTH, mu: 0 };
     const circular = kinematicState(0, v3(r0, 0, 0), v3(0, 7000, 0));
     assert.equal(extrapolatedRelativeState(circular, noMu, 1000), null);
     assert.deepEqual(extrapolatedRelativeStates(circular, noMu, 1000, 5), []);

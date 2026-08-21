@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { Ship } from './ship';
-import { Attractor } from '../../physics/attractor';
+import { CelestialBody } from '../../physics/celestial-body';
 import { burnUpBody } from '../../physics/atmosphere';
 import { GameEntity } from './game-entity';
 import { closingSpeed, type Contact } from './contact';
@@ -224,7 +224,7 @@ export class Enemy extends Ship {
 
   // 天体の固体表面への接触。相手の種別による重みが無いので接近速度がそのまま根拠になり、
   // 沈めば自然損耗として記録する。
-  collideWithCelestialBody(_body: Attractor, contact: Contact, activeStage: Stage): void {
+  collideWithCelestialBody(_body: CelestialBody, contact: Contact, activeStage: Stage): void {
     if (!this.alive) return;
     this.damagedByContact(closingSpeed(contact), contact.selfState.t, 'collision', activeStage);
   }
@@ -255,7 +255,7 @@ export class Enemy extends Ship {
   // 大気での焼失による自然死。固体表面への接触は collideWithCelestialBody が扱う。
   checkLoss(
     _dt: number, simTime: number, activeStage: Stage, _playerPos: Vec3,
-    atmosphereBodies: readonly Attractor[],
+    atmosphereBodies: readonly CelestialBody[],
   ): void {
     if (!this.alive) return;
     if (burnUpBody(this.state.r, atmosphereBodies, this.burnUpDensity) === null) return;

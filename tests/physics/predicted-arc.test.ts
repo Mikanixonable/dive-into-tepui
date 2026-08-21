@@ -5,12 +5,12 @@
 // 「requiredEnd が誰にも効かなくなった」ことの確認になっていないようにする。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import { Attractor } from '../../src/physics/attractor';
+import { CelestialBody } from '../../src/physics/celestial-body';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { EARTH_ATMOSPHERE, MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
 import { len, v3 } from '../../src/physics/vec3';
 import { PredictedArc } from '../../src/game/simulation/predicted-arc';
-import type { FutureAttractorProvider } from '../../src/game/simulation/arc-bodies';
+import type { FutureCelestialBodyProvider } from '../../src/game/simulation/arc-bodies';
 
 function circularState(t = 0): KinematicState {
   const r0 = R_EARTH + 420e3;
@@ -20,15 +20,15 @@ function circularState(t = 0): KinematicState {
 
 // 地球1体だけを引く provider。地球は ECI 原点に静止させる(dynamic-trajectory.test.ts の EARTH と同じ)。
 // withAtmosphere を立てると、既定レジストリと同じ大気を載せた地球になる。
-function earthOnlyProvider(withAtmosphere = false): FutureAttractorProvider {
+function earthOnlyProvider(withAtmosphere = false): FutureCelestialBodyProvider {
   const atmosphere = withAtmosphere ? { ...EARTH_ATMOSPHERE, pole: v3(0, 1, 0) } : null;
-  const earthAt = (t: number): Attractor => ({
+  const earthAt = (t: number): CelestialBody => ({
     id: 'earth', mu: MU_EARTH, radius: R_EARTH,
     state: kinematicState(t, v3(), v3()), accel: v3(), degree2: null, atmosphere, isStar: false,
   });
   return {
     candidates: () => [{ id: 'earth', mu: MU_EARTH, radius: R_EARTH }],
-    bodyAt: (_id, t) => earthAt(t),
+    celestialBodyAt: (_id, t) => earthAt(t),
   };
 }
 

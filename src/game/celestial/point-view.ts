@@ -1,13 +1,13 @@
-// 戦闘ビューで肉眼の「明るい星」程度にしか見えない惑星の見た目。SphereBody の視距離圧縮
+// 戦闘ビューで肉眼の「明るい星」程度にしか見えない惑星の見た目。SphereView の視距離圧縮
 // (visDist 方式)は視直径がピクセル未満になり意味がないため、戦闘ビューでは星シェルと同じ
-// カメラ追従シェル上の輝点スプライトに切り替える。マップビューは SphereBody と同じ
+// カメラ追従シェル上の輝点スプライトに切り替える。マップビューは SphereView と同じ
 // 実位置・実半径の球体 — 実体表示と輝点表示は別モデルの丸ごと差し替えであり、
-// SphereBody 側に視点モード分岐を足す形は取らない。球メッシュ自体は SphereBody と同じく
+// SphereView 側に視点モード分岐を足す形は取らない。球メッシュ自体は SphereView と同じく
 // screen-lod.ts の分割段ラダーに乗り、見かけ直径が閾値未満なら(マップビューでは輝点も
 // 出さず)実体を隠す。
 import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
-import { OrbitingId } from '../../physics/attractor';
+import { OrbitingId } from '../../physics/celestial-body';
 import { Vec3, len, scale as scaleVec, sub } from '../../physics/vec3';
 import { RingSystemDef, ShapeDef, shapeAxes } from '../../physics/solar-system';
 import { CameraSystem } from '../camera/camera-system';
@@ -17,7 +17,7 @@ import { STAR_SHELL_RADIUS } from '../../render/stars';
 import { Billboard } from '../../render/billboard';
 import { CelestialSurface } from '../../render/celestial-surface';
 import { apparentSizePx, showsPhysicalSphere, sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from '../../render/screen-lod';
-import { CelestialBody } from './celestial-body';
+import { CelestialView } from './celestial-view';
 import type { GraphicsSettings } from '../../render/graphics-settings';
 import { RingView } from './ring-view';
 
@@ -39,7 +39,7 @@ const POINT_OPACITY: Record<PointBrightness, number> = {
 const tmpPos = new THREE.Vector3();
 const POINT_BODY_VIS_DIST = 5e7;
 
-export class PointBody extends CelestialBody {
+export class PointView extends CelestialView {
   readonly id: OrbitingId;
   private readonly surfaces: ReadonlyMap<SphereLodLevel, CelestialSurface>;
   private readonly group = new THREE.Group();
@@ -133,7 +133,7 @@ export class PointBody extends CelestialBody {
     const rings = graphics.current.rings ? this.rings : undefined;
     if (this.ring !== undefined) this.ring.group.visible = rings !== undefined;
     if (cameraSystem.overviewMode) {
-      // 広範囲視点は SphereBody と同じ実スケール。
+      // 広範囲視点は SphereView と同じ実スケール。
       this.group.position.copy(fo.RtoThreeV3(pos));
       this.group.scale.copy(this.axes);
       this.billboard.hide();
@@ -158,7 +158,7 @@ export class PointBody extends CelestialBody {
       }
       return;
     }
-    // 戦闘視点でも見かけ直径が閾値以上なら SphereBody と同じ圧縮実体を描く。
+    // 戦闘視点でも見かけ直径が閾値以上なら SphereView と同じ圧縮実体を描く。
     const rel = sub(pos, cameraSystem.activeCameraPos);
     const trueDistance = Math.max(1, len(rel));
     const cam = cameraSystem.activeCamera;

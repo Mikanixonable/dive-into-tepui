@@ -8,7 +8,7 @@ import * as C from './const';
 import { PredictPanel } from './hud/predict-panel';
 import { buildTicks } from './hud/tick-scale';
 import type { TickLabelMode } from './hud/calendar-ticks';
-import { strongestAttractor } from '../physics/attractor';
+import { strongestAttractor } from '../physics/celestial-body';
 import { ReferenceFrame } from '../physics/frame';
 import type { Ephemeris } from '../physics/ephemeris';
 import type { GameEntity } from './game-entity/game-entity';
@@ -209,7 +209,7 @@ export class DisplayWindowManager {
   // durationSec 側のフォールバックに委ねる。
   private currentOrbitPeriod(player: GameEntity | null, simTime: number): number {
     if (!player) return NaN;
-    const center = strongestAttractor(player.state.r, this.ephemeris.attractorsAt(simTime));
+    const center = strongestAttractor(player.state.r, this.ephemeris.celestialBodiesAt(simTime));
     return player.orbitalElementsAround(center)?.period ?? NaN;
   }
 

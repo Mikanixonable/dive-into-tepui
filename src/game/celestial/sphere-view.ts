@@ -6,7 +6,7 @@
 // 選んだ1段だけを visible にする。見かけ直径が閾値未満なら球自体を描かない。
 import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
-import { OrbitingId } from '../../physics/attractor';
+import { OrbitingId } from '../../physics/celestial-body';
 import { len, scale, sub } from '../../physics/vec3';
 import { RingSystemDef, ShapeDef, shapeAxes } from '../../physics/solar-system';
 import { CameraSystem } from '../camera/camera-system';
@@ -14,11 +14,11 @@ import { FloatingOrigin } from '../floating-origin';
 import { spinOrientation } from '../../physics/body-orientation';
 import { apparentSizePx, showsPhysicalSphere, sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from '../../render/screen-lod';
 import { CelestialSurface } from '../../render/celestial-surface';
-import { CelestialBody } from './celestial-body';
+import { CelestialView } from './celestial-view';
 import type { GraphicsSettings } from '../../render/graphics-settings';
 import { RingView } from './ring-view';
 
-export class SphereBody extends CelestialBody {
+export class SphereView extends CelestialView {
   readonly id: OrbitingId;
   private readonly surfaces: ReadonlyMap<SphereLodLevel, CelestialSurface>;
   private readonly group = new THREE.Group();

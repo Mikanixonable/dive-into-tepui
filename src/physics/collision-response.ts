@@ -16,7 +16,7 @@ export interface Sphere {
 }
 
 // 接触の反作用を受ける球。
-export interface SphereBody extends Sphere {
+export interface SphereView extends Sphere {
   readonly invMass: number; // 0 = 無限質量(動かない)、Infinity = 質量 0(試験粒子)
 }
 
@@ -84,7 +84,7 @@ function shareOfA(invA: number, invB: number): number {
 // 幾何が定まった接触を、逆質量の比で両側へ分ける。球ではない形状を持つ相手は、自前で求めた
 // 法線とめり込みを ContactGeometry に組んでこれを呼ぶ。
 export function distributeSphereContact(
-  a: SphereBody, b: SphereBody, restitution: number, geometry: ContactGeometry,
+  a: SphereView, b: SphereView, restitution: number, geometry: ContactGeometry,
 ): CollisionResponse {
   const { normal, toi } = geometry;
   const wa = shareOfA(a.invMass, b.invMass);
@@ -117,8 +117,8 @@ export function distributeSphereContact(
 
 // 双方が動く2球の接触を解決する。触れていなければ null。
 export function resolveSphereCollision(
-  a: SphereBody,
-  b: SphereBody,
+  a: SphereView,
+  b: SphereView,
   restitution: number,
   prevA?: KinematicState,
   prevB?: KinematicState,

@@ -1,6 +1,6 @@
 // 1つのオブジェクトの軌道が中心天体の赤道面を横切る2点(EqAN/EqDN)の算出と、△▽ マーカー
 // としての表示・被選択物としての公開。
-import { Attractor, strongestAttractor } from '../../physics/attractor';
+import { CelestialBody, strongestAttractor } from '../../physics/celestial-body';
 import { ReferenceFrame, unbakeToDisplayPoint } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import type { KinematicState } from '../../physics/kinematic-state';
@@ -20,8 +20,8 @@ interface EqNodeIcon extends MapPickable {
 
 export class EquatorNodeMarkerPair {
   private icons: readonly EqNodeIcon[] = [];
-  // update が求めた時点の Attractor[]。sync でのマップビュー遮蔽判定に使う。
-  private attractors: readonly Attractor[] = [];
+  // update が求めた時点の CelestialBody[]。sync でのマップビュー遮蔽判定に使う。
+  private celestialBodies: readonly CelestialBody[] = [];
 
   private readonly anKey: string;
   private readonly dnKey: string;
@@ -37,18 +37,18 @@ export class EquatorNodeMarkerPair {
     state: KinematicState = this.owner.state, samples: readonly KinematicState[] | null = null,
   ): void {
     this.icons = [];
-    this.attractors = ephemeris.attractorsAt(displayTime);
-    const center = strongestAttractor(state.r, ephemeris.attractorsAt(state.t));
+    this.celestialBodies = ephemeris.celestialBodiesAt(displayTime);
+    const center = strongestAttractor(state.r, ephemeris.celestialBodiesAt(state.t));
     const eqNormal = center.degree2?.pole;
     if (!eqNormal) return;
 
-    const unbakeTf = ephemeris.frameTransformAt(frame, displayTime, this.attractors);
+    const unbakeTf = ephemeris.frameTransformAt(frame, displayTime, this.celestialBodies);
     const crossings = solveEquatorCrossings(state, center, eqNormal, samples);
     if (!crossings) return;
 
     const centerName = celestialBodyName(center.id);
     const toDisplay = (r: Vec3, t: number): Vec3 =>
-      unbakeToDisplayPoint(unbakeTf, ephemeris.frameTransformAt(frame, t, this.attractors), r);
+      unbakeToDisplayPoint(unbakeTf, ephemeris.frameTransformAt(frame, t, this.celestialBodies), r);
 
     this.icons = [
       {
@@ -77,7 +77,7 @@ export class EquatorNodeMarkerPair {
         this.markerManager.hide(icon.id);
       } else {
         this.markerManager.setNodePosition(
-          icon.id, 'mk-node', glyph, icon.pos, project, cameraPos, this.attractors, true, icon.label,
+          icon.id, 'mk-node', glyph, icon.pos, project, cameraPos, this.celestialBodies, true, icon.label,
         );
       }
     }

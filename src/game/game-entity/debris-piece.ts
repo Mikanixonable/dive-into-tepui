@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { Attitude } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
-import { Attractor } from '../../physics/attractor';
+import { CelestialBody } from '../../physics/celestial-body';
 import { Vec3 } from '../../physics/vec3';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
@@ -102,7 +102,7 @@ export class DebrisPiece extends GameEntity {
   // 再突入判定に加え、薬莢は寿命超過でも alive を落とす。
   checkLoss(
     dt: number, simTime: number, activeStage: Stage, playerPos: Vec3,
-    atmosphereBodies: readonly Attractor[],
+    atmosphereBodies: readonly CelestialBody[],
   ): void {
     super.checkLoss(dt, simTime, activeStage, playerPos, atmosphereBodies);
     if (!this.alive) return;

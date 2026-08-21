@@ -5,7 +5,7 @@
 // firstSurfaceContact の答えが一致することを、ここで固定する。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import { Attractor } from '../../src/physics/attractor';
+import { CelestialBody } from '../../src/physics/celestial-body';
 import { firstSurfaceContact } from '../../src/physics/surface-contact';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { mulberry32, randSym } from '../../src/physics/random';
@@ -15,7 +15,7 @@ import {
 } from '../../src/game/simulation/surface-candidates';
 
 // 位置・速度・半径だけを持つ天体。重力も大気も表面判定には効かない。
-function body(id: string, r: Vec3, v: Vec3, radius: number): Attractor {
+function body(id: string, r: Vec3, v: Vec3, radius: number): CelestialBody {
   return {
     id, mu: 0, radius, state: kinematicState(0, r, v), accel: v3(),
     degree2: null, atmosphere: null, isStar: false,
@@ -42,11 +42,11 @@ function participant(r0: Vec3, v0: Vec3, a: Vec3, dt: number, radius: number): S
 
 // 絞り込んだ窓と総当たりとで firstSurfaceContact の答えを突き合わせ、到達した件数を返す。
 function assertAgreement(
-  label: string, participants: readonly SurfaceParticipant[], bodies: readonly Attractor[],
+  label: string, participants: readonly SurfaceParticipant[], bodies: readonly CelestialBody[],
 ): number {
   const candidates = new SurfaceCandidates();
   candidates.reset(participants, bodies);
-  const out: Attractor[] = [];
+  const out: CelestialBody[] = [];
   let reached = 0;
   for (let i = 0; i < participants.length; i++) {
     const p = participants[i]!;
@@ -69,7 +69,7 @@ export function register(): void {
     let reached = 0;
     let placements = 0;
     for (let trial = 0; trial < 200; trial++) {
-      const bodies: Attractor[] = [];
+      const bodies: CelestialBody[] = [];
       for (let i = 0; i < 8; i++) {
         bodies.push(body(
           `b${i}`,
@@ -120,7 +120,7 @@ export function register(): void {
     // 落とさないことだけでなく、実際に落としていることも見る — 全部通す実装でも
     // 「答えが一致する」ほうのテストは通ってしまう。
     const near = body('near', v3(0, 500, 0), v3(), 100);
-    const far: Attractor[] = [];
+    const far: CelestialBody[] = [];
     for (let i = 0; i < 7; i++) far.push(body(`far${i}`, v3(1e9 * (i + 1), 0, 0), v3(), 100));
     const p = participant(v3(), v3(0, 400, 0), v3(), 1, 1);
 

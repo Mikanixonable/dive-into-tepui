@@ -3,7 +3,7 @@
 // 独立に解け、解決の順序も件数の上限も要らない — 物体どうしの接触
 // (entity-contact-physics.ts)とは機構を共有しない。
 import * as C from '../const';
-import { Attractor, attractorStateAt } from '../../physics/attractor';
+import { CelestialBody, celestialBodyStateAt } from '../../physics/celestial-body';
 import { distributeFixedContact } from '../../physics/collision-response';
 import { firstSurfaceContact } from '../../physics/surface-contact';
 import { kinematicState } from '../../physics/kinematic-state';
@@ -14,7 +14,7 @@ import { contactTime, isFiniteParticipant } from './contact-participant';
 import { SurfaceCandidates } from './surface-candidates';
 
 // 位置・速度・半径が有限か。
-function isFiniteAttractor(a: Attractor): boolean {
+function isFiniteCelestialBody(a: CelestialBody): boolean {
   const { r, v } = a.state;
   return Number.isFinite(r.x) && Number.isFinite(r.y) && Number.isFinite(r.z)
     && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z)
@@ -24,20 +24,20 @@ function isFiniteAttractor(a: Attractor): boolean {
 export class SurfaceContactPhysics {
   // 解決は Simulator の substep ごとに同期的に完了するため、作業配列を使い回せる。
   private readonly participantScratch: GameEntity[] = [];
-  private readonly bodyScratch: Attractor[] = [];
+  private readonly bodyScratch: CelestialBody[] = [];
   private readonly candidates = new SurfaceCandidates();
-  private readonly nearbyScratch: Attractor[] = [];
+  private readonly nearbyScratch: CelestialBody[] = [];
 
   // 1 substep ぶんの天体との接触。時間加速倍率にも collides にも依らず、独立した実体すべてが
   // 参加する。
   resolveSurfaceContacts(
     entities: readonly GameEntity[],
-    attractors: readonly Attractor[],
+    celestialBodies: readonly CelestialBody[],
     activeStage: Stage,
   ): void {
     this.collectParticipants(entities, this.participantScratch);
     if (this.participantScratch.length === 0) return;
-    this.collectAttractors(attractors, this.bodyScratch);
+    this.collectCelestialBodies(celestialBodies, this.bodyScratch);
     this.candidates.reset(this.participantScratch, this.bodyScratch);
     for (const e of this.participantScratch) this.resolveOne(e, activeStage);
   }
@@ -53,7 +53,7 @@ export class SurfaceContactPhysics {
     // 1回組まれるので、そのままでは区間の終端と別の瞬間の値になる。
     const response = distributeFixedContact(
       { state: e.state, radius: e.radius },
-      { state: attractorStateAt(hit.body, e.state.t), radius: hit.body.radius },
+      { state: celestialBodyStateAt(hit.body, e.state.t), radius: hit.body.radius },
       C.CONTACT_RESTITUTION, hit.geometry);
 
     const before = e.state;
@@ -81,10 +81,10 @@ export class SurfaceContactPhysics {
   }
 
   // 判定できる天体だけを out へ写す。out は呼び出し側が所有する。
-  private collectAttractors(source: readonly Attractor[], out: Attractor[]): void {
+  private collectCelestialBodies(source: readonly CelestialBody[], out: CelestialBody[]): void {
     out.length = 0;
-    for (const attractor of source) {
-      if (isFiniteAttractor(attractor)) out.push(attractor);
+    for (const celestialBody of source) {
+      if (isFiniteCelestialBody(celestialBody)) out.push(celestialBody);
     }
   }
 }

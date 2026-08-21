@@ -13,7 +13,7 @@ import { CameraSystem } from './camera/camera-system';
 import { PlanEditor } from './plan/plan-editor';
 import type { ActivePlayerController } from './active-player-controller';
 import { len, sub } from '../physics/vec3';
-import { strongestAttractor } from '../physics/attractor';
+import { strongestAttractor } from '../physics/celestial-body';
 import { isOccluded } from '../physics/occlusion';
 import { apsisAltitudes } from '../physics/elements';
 import { isPositionInFocusedSystem, systemMembersAt } from './celestial/body-visibility';
@@ -87,13 +87,13 @@ export class MapPickables {
     const focusId = focusTargetId(this.cameraSystem.mapCamera.focus);
     // 候補の位置は表示時刻のものなので、遮蔽・系の判定もその時刻の天体位置で行う。
     // 現在時刻の配列は「いまの自艦の軌道」を読む項目だけが使う。
-    const attractors = this.ephemeris.attractorsAt(simTime);
-    const displayAttractors = this.ephemeris.attractorsAt(displayTime);
+    const celestialBodies = this.ephemeris.celestialBodiesAt(simTime);
+    const displayCelestialBodies = this.ephemeris.celestialBodiesAt(displayTime);
     const visibilityPolicy = new MapVisibilityPolicy(
       this.ephemeris.registry,
       this.cameraSystem.bodyClassToggles,
       focusId,
-      systemMembersAt(this.ephemeris.registry, this.cameraSystem.activeCameraPos, displayAttractors),
+      systemMembersAt(this.ephemeris.registry, this.cameraSystem.activeCameraPos, displayCelestialBodies),
     );
     this._visibilityPolicy = visibilityPolicy;
     this.cameraSystem.focusMarkers.update(
@@ -114,7 +114,7 @@ export class MapPickables {
       if (!vPlayer.pickable) continue;
       const pos = ship.displayState(displayTime)?.r;
       if (pos) {
-        const center = strongestAttractor(ship.state.r, attractors);
+        const center = strongestAttractor(ship.state.r, celestialBodies);
         const el = ship.orbitalElementsAround(center);
         const pe = el ? fmtDist(apsisAltitudes(el).pe) : '—';
         this.addCandidate(
@@ -157,14 +157,14 @@ export class MapPickables {
     if (viewer) for (const item of this.candidateItems) {
       const d = len(sub(item.pos, viewer.r));
       // 相対速度は対の速度を持つ敵艦にだけ意味がある。
-      const status = item.kind === 'ship' ? `${d < 2e5 ? '接近' : '距離'} ${fmtDist(d)} · ${fmtSpeed(len(sub(this.entities.findEnemy(item.id)?.state.v ?? viewer.v, viewer.v)))}` : item.kind === 'ammo' ? `${fmtDist(d)}${d <= C.AMMO_PICKUP_RADIUS ? ' · 回収可能' : ''}` : item.kind === 'base' ? `${fmtDist(d)} · ドック候補` : item.kind === 'body' ? `${fmtDist(d)} · ${celestialBodyName(strongestAttractor(item.pos, displayAttractors).id)}` : item.detail;
+      const status = item.kind === 'ship' ? `${d < 2e5 ? '接近' : '距離'} ${fmtDist(d)} · ${fmtSpeed(len(sub(this.entities.findEnemy(item.id)?.state.v ?? viewer.v, viewer.v)))}` : item.kind === 'ammo' ? `${fmtDist(d)}${d <= C.AMMO_PICKUP_RADIUS ? ' · 回収可能' : ''}` : item.kind === 'base' ? `${fmtDist(d)} · ドック候補` : item.kind === 'body' ? `${fmtDist(d)} · ${celestialBodyName(strongestAttractor(item.pos, displayCelestialBodies).id)}` : item.detail;
       item.detail = status;
       item.distance = d;
       // 所属系は天体以外にしか意味を持たない(天体は系そのものを表す行として常に一覧へ出す)。
       // 判定は最強天体から親を辿るぶん高価なので、読まれない天体候補では省く。
       item.inFocusedSystem = item.kind === 'body'
         ? undefined
-        : isPositionInFocusedSystem(this.ephemeris.registry, focusId, item.pos, displayAttractors);
+        : isPositionInFocusedSystem(this.ephemeris.registry, focusId, item.pos, displayCelestialBodies);
     }
 
     // マップビューでは player だけ、フォーカス天体の系に所属するかで候補を絞る。表示側と
@@ -175,10 +175,10 @@ export class MapPickables {
     // ピック対象から除く。
     for (const item of this.candidateItems) {
       const included = item.kind === 'player'
-        ? item.inFocusedSystem ?? isPositionInFocusedSystem(this.ephemeris.registry, focusId, item.pos, displayAttractors)
+        ? item.inFocusedSystem ?? isPositionInFocusedSystem(this.ephemeris.registry, focusId, item.pos, displayCelestialBodies)
         : item.kind === 'body'
           ? true
-          : !isOccluded(this.cameraSystem.activeCameraPos, item.pos, displayAttractors);
+          : !isOccluded(this.cameraSystem.activeCameraPos, item.pos, displayCelestialBodies);
       if (included) this.visibleItems.push(item);
     }
     this.items = this.visibleItems;

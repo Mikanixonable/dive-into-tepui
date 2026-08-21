@@ -1,5 +1,5 @@
 // 自機の熱収支(空力加熱・射撃発熱・放射冷却)と動圧・高度低下の監視。
-import type { Attractor } from '../../physics/attractor';
+import type { CelestialBody } from '../../physics/celestial-body';
 import { airspeed, atmosphericDensity, ellipsoidAltitude } from '../../physics/atmosphere';
 import { Vec3, len, sub } from '../../physics/vec3';
 import * as C from '../const';
@@ -13,14 +13,14 @@ export type ThermalLimit = 'heat-aero' | 'heat-internal' | 'dynpressure' | null;
 
 // 大気天体 body の基準楕円体から測った位置 r の高度 [m]。相手がいなければ Infinity —
 // 高度は「その大気の底からどれだけ離れているか」を表す量なので、大気が無ければ無限に遠い。
-function atmosphereAltitude(r: Vec3, body: Attractor | null): number {
+function atmosphereAltitude(r: Vec3, body: CelestialBody | null): number {
   if (body === null || body.atmosphere === null) return Infinity;
   return ellipsoidAltitude(sub(r, body.state.r), body.atmosphere);
 }
 
 // 位置 r・速度 v の機体が浴びている大気の密度 [kg/m^3] と対気速さ [m/s]。大気が無ければ
 // どちらもゼロ。密度も対気速度もその天体の中心を基準に測る。
-function airflow(r: Vec3, v: Vec3, body: Attractor | null): { readonly rho: number; readonly speed: number } {
+function airflow(r: Vec3, v: Vec3, body: CelestialBody | null): { readonly rho: number; readonly speed: number } {
   if (body === null || body.atmosphere === null) return { rho: 0, speed: 0 };
   const rRel = sub(r, body.state.r);
   return {
@@ -78,7 +78,7 @@ export class ThermalSystem {
   // Sutton–Graves 近似 q̇ = k·√(ρ/Rn)·v³、冷却はステファン・ボルツマン放射。
   // atmosphereBody は機体が浴びるただ1体の大気天体(null なら真空)。
   updateThermal(
-    dtSub: number, r: Vec3, v: Vec3, atmosphereBody: Attractor | null,
+    dtSub: number, r: Vec3, v: Vec3, atmosphereBody: CelestialBody | null,
     ship: import('../game-entity/ship').Ship,
   ): void {
     // 大気密度・対気速度から動圧を求める
@@ -128,7 +128,7 @@ export class ThermalSystem {
   // 高度低下(降下)の検知と警告。離心率による短周期の高度振動で誤反応しないよう
   // 高度・変化率とも指数移動平均で平滑化する(時定数 約3秒)。高度は atmosphereBody の
   // 基準楕円体から測る — 大気天体がいなければ「大気の底」が無いので降下警報は出ない。
-  updateAltitudeAlarm(dt: number, r: Vec3, atmosphereBody: Attractor | null): ThermalLimit {
+  updateAltitudeAlarm(dt: number, r: Vec3, atmosphereBody: CelestialBody | null): ThermalLimit {
     const alt = atmosphereAltitude(r, atmosphereBody);
     if (isFinite(alt)) this.updateAltitudeEma(dt, alt);
     return this.checkThermalLimits();

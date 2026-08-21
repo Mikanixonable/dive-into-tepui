@@ -21,7 +21,7 @@
 import * as THREE from 'three/webgpu';
 import { KinematicState, kinematicState } from '../physics/kinematic-state';
 import { ReferenceFrame, toFrameState } from '../physics/frame';
-import { Attractor } from '../physics/attractor';
+import { CelestialBody } from '../physics/celestial-body';
 import type { Ephemeris } from '../physics/ephemeris';
 import { DynamicTrajectory } from '../physics/dynamic-trajectory';
 import { extrapolatedRelativeStates } from '../physics/kepler-extrapolation';
@@ -52,7 +52,7 @@ function extrapolationTargetInterval(baseInterval: number, span: number): number
 // なので、各サンプル自身の時刻における center の ECI 状態を足し戻す。離心率が高すぎる・
 // 双曲線などで外挿できない場合は空配列。
 function extrapolatedTailStates(
-  tip: KinematicState, center: Attractor, to: number, baseInterval: number, ephemeris: Ephemeris,
+  tip: KinematicState, center: CelestialBody, to: number, baseInterval: number, ephemeris: Ephemeris,
 ): KinematicState[] {
   const span = to - tip.t;
   const target = extrapolationTargetInterval(baseInterval, span);
@@ -120,7 +120,7 @@ export class TrajectoryLine {
   // だけで見た目には出ない。
   syncGeometry(
     trajectory: DynamicTrajectory | null, from: number | null, to: number | null, frame: ReferenceFrame,
-    ephemeris: Ephemeris, attractors: readonly Attractor[],
+    ephemeris: Ephemeris, celestialBodies: readonly CelestialBody[],
   ): void {
     const samples = trajectory?.samplesOldestFirst() ?? NO_SAMPLES;
     const tip = samples.length > 0 ? samples[samples.length - 1]! : null;
@@ -144,7 +144,7 @@ export class TrajectoryLine {
       // 座標系の原点・姿勢はサンプルごとの時刻で評価する(回転系は時刻で向きが変わるため)。
       const queue = new StateQueue(Math.max(1, combined.length));
       for (const s of combined) {
-        const rel = toFrameState(ephemeris.frameTransformAt(frame, s.t, attractors), s);
+        const rel = toFrameState(ephemeris.frameTransformAt(frame, s.t, celestialBodies), s);
         queue.push(kinematicState(s.t, rel.r, rel.v));
       }
       this.baked = queue;
@@ -195,9 +195,9 @@ export class TrajectoryLine {
   // currentTime = 描画時刻(通常 simTime)。
   syncTransform(
     frame: ReferenceFrame, currentTime: number, ephemeris: Ephemeris, fo: FloatingOrigin,
-    attractors: readonly Attractor[],
+    celestialBodies: readonly CelestialBody[],
   ): void {
-    const tf = ephemeris.frameTransformAt(frame, currentTime, attractors);
+    const tf = ephemeris.frameTransformAt(frame, currentTime, celestialBodies);
     this.unbakeQuat.set(tf.q.x, tf.q.y, tf.q.z, tf.q.w);
     this.curve.setTransform(fo.RtoThreeV3(tf.origin), this.unbakeQuat);
   }

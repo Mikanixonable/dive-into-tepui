@@ -18,7 +18,7 @@ import { attractorsNearInto, classifyAttractors } from './attractors';
 import { EntityManager } from './entity-manager';
 import { Player } from '../player/player';
 import type { GameEntity } from '../game-entity/game-entity';
-import { nearestAtmosphereBody, type Attractor } from '../../physics/attractor';
+import { nearestAtmosphereBody, type CelestialBody } from '../../physics/celestial-body';
 import { Ephemeris } from '../../physics/ephemeris';
 import type { Stage } from '../stages/stage';
 import { EntityContactPhysics } from './entity-contact-physics';
@@ -99,7 +99,7 @@ export class Simulator {
       // 時刻なのでそのまま使い回せる。
       this.substep(
         subDt, sources, this.surfaceBodies(),
-        this.ephemeris.atmosphereAttractorsAt(this.simTime + subDt / 2));
+        this.ephemeris.atmosphereCelestialBodiesAt(this.simTime + subDt / 2));
       this.simTime += subDt;
       this.sections.exit(SECTION.orbit);
       this.lastSubsteps++;
@@ -168,7 +168,7 @@ export class Simulator {
     }
     return reentryAwareMaxStep(
       this.adaptiveStatesScratch,
-      this.ephemeris.atmosphereAttractorsAt(this.simTime),
+      this.ephemeris.atmosphereCelestialBodiesAt(this.simTime),
       simulationMaxStep(simDt, C.SUBSTEP_MAX_DT, C.SUBSTEP_MAX_COUNT),
     );
   }
@@ -207,13 +207,13 @@ export class Simulator {
 
   // このサブステップで表面を持つ相手として扱う天体。表面を持つかは重力を及ぼすかとは
   // 無関係なので、登録天体の全数を返す。
-  private surfaceBodies(): readonly Attractor[] {
-    return this.ephemeris.attractorsAt(this.simTime);
+  private surfaceBodies(): readonly CelestialBody[] {
+    return this.ephemeris.celestialBodiesAt(this.simTime);
   }
 
   // このサブステップで大気を持つ相手として扱う天体。焼失の判定に表面の窓は要らない。
-  private atmosphereBodies(): readonly Attractor[] {
-    return this.ephemeris.atmosphereAttractorsAt(this.simTime);
+  private atmosphereBodies(): readonly CelestialBody[] {
+    return this.ephemeris.atmosphereCelestialBodiesAt(this.simTime);
   }
 
   // 全エンティティを、渡された重力源 sources に対して dt だけ積分する。sources・occluders・
@@ -225,9 +225,9 @@ export class Simulator {
   // 状態を決める積分を常にちょうど1本に保つ。
   private substep(
     dt: number,
-    sources: readonly Attractor[],
-    occluders: readonly Attractor[],
-    atmosphereSources: readonly Attractor[],
+    sources: readonly CelestialBody[],
+    occluders: readonly CelestialBody[],
+    atmosphereSources: readonly CelestialBody[],
   ): void {
     const classified = classifyAttractors(sources);
     const t = this.simTime + dt;

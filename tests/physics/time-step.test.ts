@@ -3,7 +3,7 @@ import { reentryAwareMaxStep, simulationStepDuration } from '../../src/game/simu
 import { test } from './harness';
 import { v3 } from '../../src/physics/vec3';
 import { kinematicState } from '../../src/physics/kinematic-state';
-import { Attractor } from '../../src/physics/attractor';
+import { CelestialBody } from '../../src/physics/celestial-body';
 import { Atmosphere } from '../../src/physics/atmosphere';
 import { REENTRY_SUBSTEP_ALT, REENTRY_SUBSTEP_MAX_DT } from '../../src/game/const';
 
@@ -14,7 +14,7 @@ const UNIT_ATMOSPHERE: Atmosphere = {
 };
 
 // center を中心に静止した、大気を持つ/持たない天体。
-function body(atmosphere: Atmosphere | null, center = v3()): Attractor {
+function body(atmosphere: Atmosphere | null, center = v3()): CelestialBody {
   return {
     id: 'b', mu: 1, radius: 1000, state: kinematicState(0, center, v3()), accel: v3(),
     degree2: null, atmosphere, isStar: false,

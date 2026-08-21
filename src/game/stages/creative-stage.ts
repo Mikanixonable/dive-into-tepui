@@ -8,7 +8,7 @@ import type { SimSpeedManager } from '../sim-speed-manager';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { OrbitalElements, semiMajorFromPeriod, stateFromOrbitalElements } from '../../physics/elements';
-import { Attractor, orbitalElementsOf } from '../../physics/attractor';
+import { CelestialBody, orbitalElementsOf } from '../../physics/celestial-body';
 import { haloState, lissajousState } from '../../physics/halo';
 import type { FloatingOrigin } from '../floating-origin';
 import { Vec3, add } from '../../physics/vec3';
@@ -22,7 +22,7 @@ import { generateDriftingEnemy } from './spawner/enemy-generator';
 import { WaveAttack } from './stage-utils/wave-attack';
 import { generateRandomName } from '../random-name';
 import * as C from '../const';
-import { ElementsForm, LagrangeForm, ObjectType, ReferenceAttractor, ObjectPlacerForm, ObjectPlacerPanel } from '../creative/object-placer-panel';
+import { ElementsForm, LagrangeForm, ObjectType, ReferenceCelestialBody, ObjectPlacerForm, ObjectPlacerPanel } from '../creative/object-placer-panel';
 import { validateEllipticPlacementFields, validateBaseReferenceFields, validateLagrangePlacementFields, PlacementFieldIssue } from '../creative/placement-validation';
 import { elementsFormFromState } from '../creative/duplicate-form';
 import { OrbitLine } from '../orbit-line';
@@ -114,7 +114,7 @@ export class CreativeStage extends Stage {
     super.sync(player, fo, cameraSystem, displayTime, visibilityPolicy);
     this.syncPreview(
       fo, cameraSystem.activeCameraProjection, cameraSystem.activeCamera,
-      cameraSystem.overviewMode, cameraSystem.activeCameraPos, this._ephemeris.attractorsAt(displayTime),
+      cameraSystem.overviewMode, cameraSystem.activeCameraPos, this._ephemeris.celestialBodiesAt(displayTime),
     );
     this.placerPanel.setIssues(this.issues);
     this.creativeOptionsPanel.classList.toggle('hidden', !cameraSystem.overviewMode);
@@ -123,7 +123,7 @@ export class CreativeStage extends Stage {
   // オブジェクト配置モーダルを開く (MapContextActions から呼ばれる)。focusId はマップの現在フォーカスで、
   // 基準天体になれる ID なら基準天体の初期選択に使う。
   openObjectPlacer(focusId?: string): void {
-    this.placerPanel.open(focusId !== undefined ? { kind: 'body', attractor: focusId as ReferenceAttractor } : undefined);
+    this.placerPanel.open(focusId !== undefined ? { kind: 'body', celestialBody: focusId as ReferenceCelestialBody } : undefined);
   }
 
   // 右クリックメニューの「複製」(MapContextActions から呼ばれる)。state を軌道要素へ逆算でき、
@@ -132,9 +132,9 @@ export class CreativeStage extends Stage {
   // 基地なのに基準天体が月でない(地球が支配的な複製元など)ときは、値だけを引き継ぐと
   // 制約に反した軌道が黙って配置できてしまうので、種類だけを引き継いで通常の新規配置として開く。
   openObjectPlacerForDuplicate(objectType: ObjectType, state: KinematicState): void {
-    const attractors = this._ephemeris.attractorsAt(this._simulator.simTime);
-    const form = elementsFormFromState(state, attractors, this._ephemeris.originId);
-    if (form && validateBaseReferenceFields(objectType, 'elements', form.attractor).length === 0) {
+    const celestialBodies = this._ephemeris.celestialBodiesAt(this._simulator.simTime);
+    const form = elementsFormFromState(state, celestialBodies, this._ephemeris.originId);
+    if (form && validateBaseReferenceFields(objectType, 'elements', form.celestialBody).length === 0) {
       this.placerPanel.open({ kind: 'form', objectType, form });
       return;
     }
@@ -149,7 +149,7 @@ export class CreativeStage extends Stage {
     try {
       const state = this.buildInitialState(form);
       // 楕円はフォームが選んだ基準天体中心で描く。
-      const elements = orbitalElementsOf(state, this.referenceAttractor(form));
+      const elements = orbitalElementsOf(state, this.referenceCelestialBody(form));
       return elements ? { elements, pos: state.r } : null;
     } catch {
       return null;
@@ -160,10 +160,10 @@ export class CreativeStage extends Stage {
   // 同じ検証呼び出しを共有し、両者が食い違うことを防ぐ。
   private computeFieldIssues(form: ObjectPlacerForm): PlacementFieldIssue[] {
     const issues = [...validateBaseReferenceFields(
-      form.objectType, form.placementMode, form.placementMode === 'elements' ? form.attractor : undefined,
+      form.objectType, form.placementMode, form.placementMode === 'elements' ? form.celestialBody : undefined,
     )];
     if (form.placementMode === 'elements') {
-      const center = this.referenceAttractor(form);
+      const center = this.referenceCelestialBody(form);
       const common = {
         centerRadius: center.radius, mu: center.mu, centerId: center.id,
         incDeg: form.incDeg, raanDeg: form.raanDeg, argpDeg: form.argpDeg, nuDeg: form.nuDeg,
@@ -187,7 +187,7 @@ export class CreativeStage extends Stage {
   // 配置プレビューの軌道線と ▷ マーカーを update が求めた値へ同期する。
   private syncPreview(
     fo: FloatingOrigin, project: ProjectFn, camera: THREE.Camera,
-    overviewMode: boolean, cameraPos: Vec3, attractors: readonly Attractor[],
+    overviewMode: boolean, cameraPos: Vec3, celestialBodies: readonly CelestialBody[],
   ): void {
     if (!this.preview) {
       this.previewOrbitLine.sync(null, fo, camera);
@@ -195,7 +195,7 @@ export class CreativeStage extends Stage {
       return;
     }
     this.previewOrbitLine.sync(this.preview.elements, fo, camera, true);
-    if (overviewMode && isOccluded(cameraPos, this.preview.pos, attractors)) {
+    if (overviewMode && isOccluded(cameraPos, this.preview.pos, celestialBodies)) {
       this._markerManager.hide('creative-preview');
       return;
     }
@@ -265,15 +265,15 @@ export class CreativeStage extends Stage {
 
   // フォームの基準天体(地球 or 月)を、その時刻の重力源として引く。μ・半径・ECI 化に
   // 要る情報がすべてここから出る。
-  private referenceAttractor(form: ElementsForm): Attractor {
-    return this._ephemeris.attractorsAt(this._simulator.simTime).find((b) => b.id === form.attractor)!;
+  private referenceCelestialBody(form: ElementsForm): CelestialBody {
+    return this._ephemeris.celestialBodiesAt(this._simulator.simTime).find((b) => b.id === form.celestialBody)!;
   }
 
   // フォームが選んだサイズ/形の組から長半径・離心率を導出し、要素→状態変換
   // (stateFromOrbitalElements)で基準天体中心の相対状態を組んでから、基準天体自身の位置・速度を
   // 足して ECI 化する(地球基準では位置・速度とも厳密に 0 なので、実質そのまま返る)。
   private buildElementsState(form: ElementsForm): KinematicState {
-    const center = this.referenceAttractor(form);
+    const center = this.referenceCelestialBody(form);
     let a: number;
     let e: number;
     if (form.sizeMode === 'apsides') {

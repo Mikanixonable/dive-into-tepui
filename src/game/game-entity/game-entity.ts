@@ -4,7 +4,7 @@ import { KinematicState } from '../../physics/kinematic-state';
 import { OrbitalElements } from '../../physics/elements';
 import { Attitude } from '../../physics/attitude';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
-import { Attractor, orbitalElementsOf, localOrbitPeriod, strongestAttractor } from '../../physics/attractor';
+import { CelestialBody, orbitalElementsOf, localOrbitPeriod, strongestAttractor } from '../../physics/celestial-body';
 import { burnUpBody } from '../../physics/atmosphere';
 import { ApsisTrack } from '../../physics/trajectory-features';
 import { Vec3, v3 } from '../../physics/vec3';
@@ -15,7 +15,7 @@ import { LineStyle } from '../../render/line-style';
 import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { PredictedArc, trajectorySampleInterval } from '../simulation/predicted-arc';
-import type { FutureAttractorProvider } from '../simulation/arc-bodies';
+import type { FutureCelestialBodyProvider } from '../simulation/arc-bodies';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
 import type { Contact } from './contact';
@@ -54,7 +54,7 @@ export class GameEntity {
   public readonly renderObject: THREE.Object3D;
   alive = true;
   mass = 1; // 剛体接触の換算質量
-  radius = 0; // 物理的な半径 [m]。0 = 点。Attractor.radius と同じ量
+  radius = 0; // 物理的な半径 [m]。0 = 点。CelestialBody.radius と同じ量
   collides = false; // 物体どうしの剛体接触(EntityContactPhysics)に参加するか
   // 自分に触れた相手が受けるダメージへ掛かる重み。0 なら触れても相手を傷つけない。
   contactDamageWeight = 1;
@@ -155,7 +155,7 @@ export class GameEntity {
   }
 
   // center を中心とする接触軌道要素。中心は呼び出し側が選ぶ(例: strongestAttractor)。
-  orbitalElementsAround(center: Attractor): OrbitalElements | null {
+  orbitalElementsAround(center: CelestialBody): OrbitalElements | null {
     return orbitalElementsOf(this.state, center);
   }
 
@@ -181,13 +181,13 @@ export class GameEntity {
   // orbitLine を現在位置で最も強く引く天体まわりの軌道楕円に合わせる。線を持たなければ何もしない。
   // frame / displayTime / ephemeris を渡すと、その座標系・時刻で楕円を描く。
   syncOrbitLine(
-    fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[], force = false,
+    fo: FloatingOrigin, camera: THREE.Camera, celestialBodies: readonly CelestialBody[], force = false,
     frame?: ReferenceFrame, displayTime?: number, ephemeris?: Ephemeris,
   ): void {
     if (this.orbitLine === null) return;
-    const center = strongestAttractor(this.state.r, attractors);
+    const center = strongestAttractor(this.state.r, celestialBodies);
     this.orbitLine.sync(
-      this.orbitalElementsAround(center), fo, camera, force, frame, displayTime, ephemeris, attractors,
+      this.orbitalElementsAround(center), fo, camera, force, frame, displayTime, ephemeris, celestialBodies,
     );
   }
 
@@ -235,18 +235,18 @@ export class GameEntity {
   // simTime は描く区間の境目、displayTime は座標系から慣性系へ戻す時刻。
   syncTrajectoryLines(
     frame: ReferenceFrame, simTime: number, displayTime: number, pastDuration: number, predictedTo: number | null,
-    ephemeris: Ephemeris, fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
+    ephemeris: Ephemeris, fo: FloatingOrigin, camera: THREE.Camera, celestialBodies: readonly CelestialBody[],
   ): void {
     if (this.predictedLine !== null) {
-      this.predictedLine.syncGeometry(this.predicted, simTime, predictedTo, frame, ephemeris, attractors);
-      this.predictedLine.syncTransform(frame, displayTime, ephemeris, fo, attractors);
+      this.predictedLine.syncGeometry(this.predicted, simTime, predictedTo, frame, ephemeris, celestialBodies);
+      this.predictedLine.syncTransform(frame, displayTime, ephemeris, fo, celestialBodies);
       this.predictedLine.sync(camera);
     }
     if (this.actualLine !== null) {
       this.actualLine.syncGeometry(
-        this.actual, simTime - pastDuration, simTime, frame, ephemeris, attractors,
+        this.actual, simTime - pastDuration, simTime, frame, ephemeris, celestialBodies,
       );
-      this.actualLine.syncTransform(frame, displayTime, ephemeris, fo, attractors);
+      this.actualLine.syncTransform(frame, displayTime, ephemeris, fo, celestialBodies);
       this.actualLine.sync(camera);
     }
   }
@@ -260,30 +260,30 @@ export class GameEntity {
 
   // 保持窓が keepDuration の列へ積む最小間隔 [s]。その場で最も強く引く天体を中心とする
   // 軌道周期を等分し、窓が長いときは保持サンプル数の上限側で頭打ちにする。
-  protected sampleInterval(attractors: readonly Attractor[], state: KinematicState, keepDuration: number): number {
-    return trajectorySampleInterval(localOrbitPeriod(state.r, attractors), keepDuration);
+  protected sampleInterval(celestialBodies: readonly CelestialBody[], state: KinematicState, keepDuration: number): number {
+    return trajectorySampleInterval(localOrbitPeriod(state.r, celestialBodies), keepDuration);
   }
 
   // 実状態の履歴へ積む間引き間隔 [s]。履歴を持たない種別は 0。
-  private historySampleInterval(attractors: readonly Attractor[]): number {
+  private historySampleInterval(celestialBodies: readonly CelestialBody[]): number {
     return this.historyDuration > 0
-      ? this.sampleInterval(attractors, this.state, this.historyDuration) : 0;
+      ? this.sampleInterval(celestialBodies, this.state, this.historyDuration) : 0;
   }
 
-  // 重力源 + J2 + 大気抵抗 + 自身の推力で 1 ステップ積分する。attractors はこのステップの
+  // 重力源 + J2 + 大気抵抗 + 自身の推力で 1 ステップ積分する。celestialBodies はこのステップの
   // 重力源一覧、occluders は日照率の遮蔽体一覧 — どちらも呼び出し側(Simulator)が全
   // エンティティで同じ瞬間の同じ配列を使い回す。atmosphereBody は抗力を及ぼすただ1体の
   // 大気天体(null なら抗力なし)。
   stepActual(
     dt: number,
-    attractors: readonly Attractor[],
-    occluders: readonly Attractor[],
-    atmosphereBody: Attractor | null,
+    celestialBodies: readonly CelestialBody[],
+    occluders: readonly CelestialBody[],
+    atmosphereBody: CelestialBody | null,
   ): void {
     if (!this.alive) return;
     this.actual.step(
-      dt, attractors, occluders, atmosphereBody, this.bcInv, this.srpCoeff, this.thrust,
-      this.historySampleInterval(attractors), this.historyDuration,
+      dt, celestialBodies, occluders, atmosphereBody, this.bcInv, this.srpCoeff, this.thrust,
+      this.historySampleInterval(celestialBodies), this.historyDuration,
     );
     // 積分した弧はもう現実を表さない。ある時間帯の状態を決める積分を常に1本に保つ。
     this.invalidatePrediction();
@@ -301,7 +301,7 @@ export class GameEntity {
   }
 
   // 未来の予測列を保持する弧を返す(無ければ現在状態を起点に作る)。予測しない種別は null。
-  ensurePredictedArc(sources: FutureAttractorProvider): PredictedArc | null {
+  ensurePredictedArc(sources: FutureCelestialBodyProvider): PredictedArc | null {
     if (!this.predictsFuture) return null;
     this._predictedArc ??= new PredictedArc(
       this.actual.state, sources, this.radius, this.bcInv, this.srpCoeff, /* keplerTail */ true,
@@ -311,12 +311,12 @@ export class GameEntity {
   }
 
   // 予測列が時刻 t を持っていれば、その状態を先端にして true。持っていなければ何もせず false
-  // (呼び出し側は積分へ落とす)。attractors は履歴の間引き間隔を出すための重力源一覧。
-  followPredicted(t: number, attractors: readonly Attractor[]): boolean {
+  // (呼び出し側は積分へ落とす)。celestialBodies は履歴の間引き間隔を出すための重力源一覧。
+  followPredicted(t: number, celestialBodies: readonly CelestialBody[]): boolean {
     if (!this.alive) return false;
     const s = this._predictedArc?.trajectory.at(t) ?? null;
     if (s === null) return false;
-    this.actual.follow(s, this.historySampleInterval(attractors), this.historyDuration);
+    this.actual.follow(s, this.historySampleInterval(celestialBodies), this.historyDuration);
     return true;
   }
 
@@ -349,7 +349,7 @@ export class GameEntity {
   // 大気天体一覧。
   checkLoss(
     _dt: number, _simTime: number, _activeStage: Stage, _playerPos: Vec3,
-    atmosphereBodies: readonly Attractor[],
+    atmosphereBodies: readonly CelestialBody[],
   ): void {
     if (!this.alive) return;
     if (burnUpBody(this.state.r, atmosphereBodies, this.burnUpDensity) !== null) this.alive = false;
@@ -366,7 +366,7 @@ export class GameEntity {
   }
 
   // 天体の固体表面へ触れたときに自分に何が起きるか。既定は失われる。
-  collideWithCelestialBody(_body: Attractor, _contact: Contact, _activeStage: Stage): void {
+  collideWithCelestialBody(_body: CelestialBody, _contact: Contact, _activeStage: Stage): void {
     this.alive = false;
   }
 

@@ -4,7 +4,7 @@ import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
 import { SOLAR_SYSTEM } from '../../src/physics/solar-system';
-import { AttractorId } from '../../src/physics/attractor';
+import { CelestialBodyId } from '../../src/physics/celestial-body';
 import { ReferenceFrame, toFramePoint, toFrameState, toInertialPoint, toInertialState } from '../../src/physics/frame';
 import { qRotate } from '../../src/physics/attitude';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
@@ -19,7 +19,7 @@ function closeState(a: KinematicState, b: KinematicState, tol = 1e-6): boolean {
   return close(a.r, b.r, tol) && close(a.v, b.v, tol);
 }
 
-function findFrame(frames: readonly ReferenceFrame[], center: AttractorId, rotatingWith: AttractorId | null): ReferenceFrame {
+function findFrame(frames: readonly ReferenceFrame[], center: CelestialBodyId, rotatingWith: CelestialBodyId | null): ReferenceFrame {
   const f = frames.find((f) => f.center === center && f.rotatingWith === rotatingWith);
   if (!f) throw new Error(`frame not found: ${center}/${rotatingWith}`);
   return f;

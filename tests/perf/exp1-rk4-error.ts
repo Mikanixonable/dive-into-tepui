@@ -5,7 +5,7 @@
 // なぜ乖離しうるのかを、フレーム分割の端数(Simulator.advance の ceil(simDt/20))から
 // 生じる実際の per-substep dt を計算して検証する。
 import { Ephemeris } from '../../src/physics/ephemeris';
-import { localOrbitPeriod } from '../../src/physics/attractor';
+import { localOrbitPeriod } from '../../src/physics/celestial-body';
 import {
   buildEphemeris, initialLeoState, integrateFixedDt, integrateToCheckpoints,
   posError, SUBSTEP_MAX_DT, SIM_SPEED_LEVELS,
@@ -65,8 +65,8 @@ function partB(ephemeris: Ephemeris): void {
   const checks = [0, 60, 300, 600, 1800, 5580, 11160, 86400];
   for (const t of checks) {
     s = integrateFixedDt(ephemeris, s, 20, t);
-    const attractors = ephemeris.gravityAttractorsAt(s.t);
-    const period = localOrbitPeriod(s.r, attractors);
+    const celestialBodies = ephemeris.gravityAttractorsAt(s.t);
+    const period = localOrbitPeriod(s.r, celestialBodies);
     const horizon = period; // 'orbit' プリセット既定値
     const remaining = horizon;
     const dt = Math.min(remaining, Math.max(ARC_MIN_STEP_DT, period / ARC_STEPS_PER_REV, horizon / ARC_MAX_STEPS));

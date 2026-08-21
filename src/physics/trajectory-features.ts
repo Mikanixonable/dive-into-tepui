@@ -3,7 +3,7 @@
 // 積分結果と一致させたい特徴点はここで求める。赤道交点(findEquatorCrossings)はサンプル列
 // (折れ線)を走査して求め、アプシス(apsisCrossing/ApsisTrack)は積分の1ステップごとに動径速度の
 // 符号反転を直接見て求める — どちらも同じ黄金分割探索/二分法の補間機構を使う。
-import { Attractor } from './attractor';
+import { CelestialBody } from './celestial-body';
 import { hermiteInterpolate, KinematicState } from './kinematic-state';
 import { goldenSectionMin } from './optimize';
 import { dot, len, sub, Vec3 } from './vec3';
@@ -13,7 +13,7 @@ import { dot, len, sub, Vec3 } from './vec3';
 const REFINE_ITERATIONS = 20;
 
 // 中心天体からの距離。
-function distFromCenter(center: Attractor, s: KinematicState): number {
+function distFromCenter(center: CelestialBody, s: KinematicState): number {
   return len(sub(s.r, center.state.r));
 }
 
@@ -24,7 +24,7 @@ function atParam(a: KinematicState, b: KinematicState, u: number): KinematicStat
 
 // [a, b] 区間内の中心天体距離の極大/極小を黄金分割探索で追い込む。
 function refineExtremum(
-  center: Attractor, a: KinematicState, b: KinematicState, findMax: boolean,
+  center: CelestialBody, a: KinematicState, b: KinematicState, findMax: boolean,
 ): KinematicState {
   const sign = findMax ? -1 : 1;
   const u = goldenSectionMin(0, 1, (u) => sign * distFromCenter(center, atParam(a, b, u)), REFINE_ITERATIONS);
@@ -42,7 +42,7 @@ export interface ApsisCrossing {
 // 反転していれば、その瞬間がアプシス。減速→増速(負→正)が近地点、増速→減速
 // (正→負)が遠地点で、どちらでもなければ null。中心天体自身も動いている場合が
 // あるので、位置だけでなく速度も中心天体の値を差し引いた相対量で判定する。
-export function apsisCrossing(center: Attractor, prev: KinematicState, next: KinematicState): ApsisCrossing | null {
+export function apsisCrossing(center: CelestialBody, prev: KinematicState, next: KinematicState): ApsisCrossing | null {
   const radialVel = (s: KinematicState): number =>
     dot(sub(s.r, center.state.r), sub(s.v, center.state.v));
   const vPrev = radialVel(prev);
@@ -70,10 +70,10 @@ export class ApsisTrack {
   private readonly periapsides: KinematicState[] = [];
   private readonly apoapsides: KinematicState[] = [];
 
-  public constructor(private readonly _center: Attractor) {}
+  public constructor(private readonly _center: CelestialBody) {}
 
   // 極値の検出に使っている中心天体。
-  public get center(): Attractor {
+  public get center(): CelestialBody {
     return this._center;
   }
 
@@ -104,7 +104,7 @@ export class ApsisTrack {
 // [a, b] 区間内で、中心天体の赤道面(pole に垂直な面)を横切る点を、符号反転する
 // 隣接サンプル対から二分法で追い込む。asc(昇交点、負→正)/desc(降交点、正→負)。
 function findCrossing(
-  samples: readonly KinematicState[], center: Attractor, pole: Vec3, ascending: boolean,
+  samples: readonly KinematicState[], center: CelestialBody, pole: Vec3, ascending: boolean,
 ): KinematicState | null {
   // pole 方向の符号(赤道面のどちら側にいるか)。
   const sideOf = (s: KinematicState): number => {
@@ -137,7 +137,7 @@ export interface EquatorCrossings {
 
 // 昇交点・降交点をそれぞれ独立に探して返す。
 export function findEquatorCrossings(
-  samples: readonly KinematicState[], center: Attractor, pole: Vec3,
+  samples: readonly KinematicState[], center: CelestialBody, pole: Vec3,
 ): EquatorCrossings {
   return {
     ascending: findCrossing(samples, center, pole, true),
