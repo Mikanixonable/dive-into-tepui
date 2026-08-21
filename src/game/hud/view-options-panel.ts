@@ -256,7 +256,7 @@ export class ViewOptionsPanel {
     starsRow.appendChild(this.starsButton.element);
     body.appendChild(starsRow);
 
-    appendSectionHeading(body, '空間グリッド', SPATIAL_GRID_COLUMNS);
+    appendSectionHeading(body, '軌道面グリッド', SPATIAL_GRID_COLUMNS);
     for (const [key, label, description] of SPATIAL_GRID_ROWS) {
       const row = document.createElement('div');
       row.className = 'body-class-row grid-class-row';
