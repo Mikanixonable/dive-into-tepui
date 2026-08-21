@@ -16,8 +16,9 @@ export interface SweptSphereContact {
   readonly crossing: SurfaceCrossing | null;
 }
 
-// 掃引経路の近似。'linear' は端点を結ぶ線分、'cubic' は端点の速度を接線に取る三次曲線。
-export type SweptMode = 'linear' | 'cubic';
+// 掃引経路の近似。'linear' は端点を結ぶ線分、'quadratic' と 'cubic' は端点の速度を接線に取る
+// 二次曲線・三次曲線。二次は三次を次数下げしたもので、u = 0, ½, 1 の3点で三次と一致する。
+export type SweptMode = 'linear' | 'quadratic' | 'cubic';
 
 // 半径和 radiusSum の2球が、それぞれ start→end の区間を渡る間に最初に表面を跨ぐ瞬間と、
 // 区間の始点で重なっていたか。入力が非有限で判定できないときだけ null を返す。
@@ -32,7 +33,7 @@ export function sweptSphereContact(
 ): SweptSphereContact | null {
   return mode === 'linear'
     ? linearSphereContact(aStart, aEnd, bStart, bEnd, radiusSum)
-    : cubicSphereContact(aStart, aEnd, bStart, bEnd, radiusSum);
+    : curveSphereContact(aStart, aEnd, bStart, bEnd, radiusSum, mode === 'quadratic' ? 2 : 3);
 }
 
 // 線形モードの実体。2球の中心がそれぞれ start→end を線形移動するとみなし、速度は読まない。
@@ -72,18 +73,19 @@ function linearSphereContact(
   };
 }
 
-// 三次モードの実体。
+// 曲線モードの実体。degree で二次・三次を選ぶ。
 // 区間端点の側だけを見ると、端点の両方が同じ側でも途中だけ反対側へ出る軌道を落とす。
-// ここでは相対位置(b − a)を3次Bezierへ変換し、Bezier制御点の凸包が表面を跨ぎ得る区間だけを
+// ここでは相対位置(b − a)をBezierへ変換し、Bezier制御点の凸包が表面を跨ぎ得る区間だけを
 // 左から再帰的に調べる。制御点の軸平行箱が丸ごと始点と同じ側にあれば、その区間に跨ぎはない。
 // したがって、単なる固定サンプル列より細い通過も拾いつつ、曲線上の clearance の符号反転を
 // 固定反復で詰められる。
-function cubicSphereContact(
+function curveSphereContact(
   aStart: KinematicState,
   aEnd: KinematicState,
   bStart: KinematicState,
   bEnd: KinematicState,
   radiusSum: number,
+  degree: 2 | 3,
 ): SweptSphereContact | null {
   const dt = aEnd.t - aStart.t;
   if (!Number.isFinite(dt) || !Number.isFinite(radiusSum) || !(radiusSum > 0)) return null;
@@ -112,12 +114,14 @@ function cubicSphereContact(
   // 区間が無ければ曲線が定まらないが、始点の内外は答えられる。
   if (!(dt > 0)) return { startsInside, crossing: null };
 
-  const c1x = sx + t0x / 3;
-  const c1y = sy + t0y / 3;
-  const c1z = sz + t0z / 3;
-  const c2x = ex - t1x / 3;
-  const c2y = ey - t1y / 3;
-  const c2z = ez - t1z / 3;
+  // 中間制御点。二次は1つしか持たないので、箱の min/max を変えないよう同じ点を2度数える。
+  const quadratic = degree === 2;
+  const c1x = quadratic ? (sx + ex) / 2 + (t0x - t1x) / 4 : sx + t0x / 3;
+  const c1y = quadratic ? (sy + ey) / 2 + (t0y - t1y) / 4 : sy + t0y / 3;
+  const c1z = quadratic ? (sz + ez) / 2 + (t0z - t1z) / 4 : sz + t0z / 3;
+  const c2x = quadratic ? c1x : ex - t1x / 3;
+  const c2y = quadratic ? c1y : ey - t1y / 3;
+  const c2z = quadratic ? c1z : ez - t1z / 3;
   const wholeBoxOnStartSide = startsInside
     ? axisMaxDistanceSq(sx, c1x, c2x, ex)
       + axisMaxDistanceSq(sy, c1y, c2y, ey)
@@ -127,9 +131,9 @@ function cubicSphereContact(
       + axisDistanceSq(sz, c1z, c2z, ez) > radiusSq;
   if (wholeBoxOnStartSide) return { startsInside, crossing: null };
 
-  const controls: readonly Vec3[] = [
-    v3(sx, sy, sz), v3(c1x, c1y, c1z), v3(c2x, c2y, c2z), v3(ex, ey, ez),
-  ];
+  const controls: readonly Vec3[] = quadratic
+    ? [v3(sx, sy, sz), v3(c1x, c1y, c1z), v3(ex, ey, ez)]
+    : [v3(sx, sy, sz), v3(c1x, c1y, c1z), v3(c2x, c2y, c2z), v3(ex, ey, ez)];
 
   // 始点と同じ側で正、反対側で負になる符号付きクリアランス。跨ぎはこの符号の反転として探す。
   const sign = startsInside ? -1 : 1;
@@ -142,7 +146,7 @@ function cubicSphereContact(
     // lo は始点と同じ側、hi は表面上(または反対側)という不変条件。
     for (let i = 0; i < ROOT_ITERATIONS; i++) {
       const mid = (lo + hi) / 2;
-      if (clearanceAt(cubicPoint(controls, mid)) > 0) lo = mid; else hi = mid;
+      if (clearanceAt(bezierPoint(controls, mid)) > 0) lo = mid; else hi = mid;
     }
     return (lo + hi) / 2;
   };
@@ -153,10 +157,10 @@ function cubicSphereContact(
       : distanceSqToControlBox(segment) > radiusSq;
     if (boxOnStartSide) return null;
     if (clearanceAt(segment[0]!) <= 0) return u0;
-    if (clearanceAt(segment[3]!) <= 0) return refine(u0, u1);
+    if (clearanceAt(segment[segment.length - 1]!) <= 0) return refine(u0, u1);
     if (depth >= MAX_DEPTH || u1 - u0 <= MIN_INTERVAL) return null;
 
-    const [left, right] = splitCubic(segment);
+    const [left, right] = splitBezier(segment);
     return search(left, u0, (u0 + u1) / 2, depth + 1)
       ?? search(right, (u0 + u1) / 2, u1, depth + 1);
   };
@@ -164,7 +168,7 @@ function cubicSphereContact(
   const toi = search(controls, 0, 1, 0);
   return {
     startsInside,
-    crossing: toi === null ? null : crossingAt(toi, cubicPoint(controls, toi)),
+    crossing: toi === null ? null : crossingAt(toi, bezierPoint(controls, toi)),
   };
 }
 
@@ -175,8 +179,19 @@ function crossingAt(toi: number, relative: Vec3): SurfaceCrossing {
   return { toi, normal: v3(relative.x / d, relative.y / d, relative.z / d) };
 }
 
-function cubicPoint(control: readonly Vec3[], u: number): Vec3 {
+// 次数は制御点の数で決まる。
+function bezierPoint(control: readonly Vec3[], u: number): Vec3 {
   const v = 1 - u;
+  if (control.length === 3) {
+    const w0 = v * v;
+    const w1 = 2 * v * u;
+    const w2 = u * u;
+    return v3(
+      control[0]!.x * w0 + control[1]!.x * w1 + control[2]!.x * w2,
+      control[0]!.y * w0 + control[1]!.y * w1 + control[2]!.y * w2,
+      control[0]!.z * w0 + control[1]!.z * w1 + control[2]!.z * w2,
+    );
+  }
   const w0 = v * v * v;
   const w1 = 3 * v * v * u;
   const w2 = 3 * v * u * u;
@@ -188,12 +203,19 @@ function cubicPoint(control: readonly Vec3[], u: number): Vec3 {
   );
 }
 
-function splitCubic(control: readonly Vec3[]): readonly [readonly Vec3[], readonly Vec3[]] {
+// 曲線を u = ½ で2本へ分ける。次数は制御点の数で決まる。
+function splitBezier(control: readonly Vec3[]): readonly [readonly Vec3[], readonly Vec3[]] {
   const p0 = control[0]!;
   const p1 = control[1]!;
+  const p01 = scale(add(p0, p1), 0.5);
+  if (control.length === 3) {
+    const p2 = control[2]!;
+    const p12 = scale(add(p1, p2), 0.5);
+    const p012 = scale(add(p01, p12), 0.5);
+    return [[p0, p01, p012], [p012, p12, p2]];
+  }
   const p2 = control[2]!;
   const p3 = control[3]!;
-  const p01 = scale(add(p0, p1), 0.5);
   const p12 = scale(add(p1, p2), 0.5);
   const p23 = scale(add(p2, p3), 0.5);
   const p012 = scale(add(p01, p12), 0.5);
@@ -217,17 +239,19 @@ function axisMaxDistanceSq(a: number, b: number, c: number, d: number): number {
   return distance * distance;
 }
 
-// Bezier の凸包を囲う軸平行箱と原点の最短距離の2乗。
+// Bezier の凸包を囲う軸平行箱と原点の最短距離の2乗。制御点が3つなら末尾を2度数える。
 function distanceSqToControlBox(control: readonly Vec3[]): number {
-  return axisDistanceSq(control[0]!.x, control[1]!.x, control[2]!.x, control[3]!.x)
-    + axisDistanceSq(control[0]!.y, control[1]!.y, control[2]!.y, control[3]!.y)
-    + axisDistanceSq(control[0]!.z, control[1]!.z, control[2]!.z, control[3]!.z);
+  const last = control[control.length - 1]!;
+  return axisDistanceSq(control[0]!.x, control[1]!.x, control[2]!.x, last.x)
+    + axisDistanceSq(control[0]!.y, control[1]!.y, control[2]!.y, last.y)
+    + axisDistanceSq(control[0]!.z, control[1]!.z, control[2]!.z, last.z);
 }
 
-// Bezier の凸包を囲う軸平行箱と原点の最長距離の2乗。
+// Bezier の凸包を囲う軸平行箱と原点の最長距離の2乗。制御点が3つなら末尾を2度数える。
 function maxDistanceSqToControlBox(control: readonly Vec3[]): number {
-  return axisMaxDistanceSq(control[0]!.x, control[1]!.x, control[2]!.x, control[3]!.x)
-    + axisMaxDistanceSq(control[0]!.y, control[1]!.y, control[2]!.y, control[3]!.y)
-    + axisMaxDistanceSq(control[0]!.z, control[1]!.z, control[2]!.z, control[3]!.z);
+  const last = control[control.length - 1]!;
+  return axisMaxDistanceSq(control[0]!.x, control[1]!.x, control[2]!.x, last.x)
+    + axisMaxDistanceSq(control[0]!.y, control[1]!.y, control[2]!.y, last.y)
+    + axisMaxDistanceSq(control[0]!.z, control[1]!.z, control[2]!.z, last.z);
 }
 
