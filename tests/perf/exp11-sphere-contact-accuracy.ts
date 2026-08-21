@@ -5,18 +5,18 @@
 //   近似の誤差 = 近似曲線の最接近距離 − 真の最接近距離
 //   実装の許容 = R*(判定器) − 近似曲線の最接近距離   ← 細分の打ち切りで拾えなかった分
 import { Ephemeris } from '../../src/physics/ephemeris';
-import { SweptMode } from '../../src/physics/sphere-contact';
 import { Vec3, add, cross, norm, scale, v3 } from '../../src/physics/vec3';
 import * as C from '../../src/game/const';
 import { SHIP_BCINV, buildEphemeris } from './common';
 import { KinematicState } from '../../src/physics/kinematic-state';
 import {
-  Advance, EARTH, EARTH_AIR, MOON, SMALL, Sweep, againstBody, beforePerigee, circular, circularPeriod,
-  companion, freeFall, sweepOf, withDrag, withThrust,
+  Advance, EARTH, EARTH_AIR, MOON, SMALL, SOLVERS, Sweep, againstBody, beforePerigee, circular,
+  circularPeriod, companion, freeFall, sweepOf, withDrag, withThrust,
 } from './sphere-contact-sweeps';
-import { flipRadius, minDistanceOf, sagitta } from './sphere-contact-reference';
+import { flipRadius, minDistanceOf } from './sphere-contact-reference';
+// 分岐基準そのもの。判定器が公開している式を、実誤差との対応を測るのに使う。
+import { sweptSagitta } from '../../src/physics/sphere-contact';
 
-const MODES: readonly SweptMode[] = ['linear', 'quadratic', 'cubic'];
 // 船の全開加速度 [m/s^2](BASE_THRUST のコメントが基準にしている値)。
 const SHIP_ACCEL = 400;
 
@@ -32,13 +32,13 @@ function report(list: readonly Sweep[]): void {
   console.log('配置 | 近似 | 近似の誤差 | 実装の許容 | 合計(R* − 真値)');
   console.log('--- | --- | --- | --- | ---');
   for (const s of list) {
-    for (const mode of MODES) {
-      const approx = minDistanceOf(s, mode);
-      const flip = flipRadius(s, mode);
+    for (const solver of SOLVERS) {
+      const approx = minDistanceOf(s, solver);
+      const flip = flipRadius(s, solver);
       const cells = flip === null
         ? `${fmt(approx - s.trueMin)} | 測定不能 | 測定不能`
         : `${fmt(approx - s.trueMin)} | ${fmt(flip - approx)} | ${fmt(flip - s.trueMin)}`;
-      console.log(`${s.label} | ${mode} | ${cells}`);
+      console.log(`${s.label} | ${solver} | ${cells}`);
     }
   }
 }
@@ -98,8 +98,8 @@ function reportCriterion(list: readonly Sweep[]): void {
   console.log('配置 | s = |Δv|h/8 | 弦の実誤差 | s / |弦の実誤差|');
   console.log('--- | --- | --- | ---');
   for (const sw of list) {
-    const s = sagitta(sw);
-    const err = minDistanceOf(sw, 'linear') - sw.trueMin;
+    const s = sweptSagitta(sw.aStart, sw.aEnd, sw.bStart, sw.bEnd);
+    const err = minDistanceOf(sw, '弦') - sw.trueMin;
     const ratio = Math.abs(err) > 1e-9 ? (s / Math.abs(err)).toFixed(3) : '—';
     console.log(`${sw.label} | ${fmt(s)} | ${fmt(err)} | ${ratio}`);
   }
