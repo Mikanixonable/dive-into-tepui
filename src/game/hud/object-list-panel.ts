@@ -325,7 +325,8 @@ export class ObjectListPanel {
       const section = this.sections.get(kind)!;
       // 距離順では距離が動くだけで正しい並びが変わりうるので、保持している順序が
       // 今フレームの値でも整列条件を満たすかを確かめ、崩れた時だけ組み直す。
-      if (inputsChanged || !this.orderStillSorted(section.order.ids)) this.rebuildOrder(kind, section.order, items, parentOf);
+      const reordered = inputsChanged || !this.orderStillSorted(section.order.ids);
+      if (reordered) this.rebuildOrder(kind, section.order, items, parentOf);
       // 一致行を持つ区画自体が畳まれていれば、絞り込みの変化に合わせて開く。
       if (filteringActive && filterChanged && section.order.ids.length > 0 && !section.expanded) {
         if (section.savedExpanded === null) section.savedExpanded = section.expanded;
@@ -339,7 +340,7 @@ export class ObjectListPanel {
       seen.clear();
       for (const id of section.order.rootIds) {
         seen.add(id);
-        this.syncRow(section.rows, id, section.order.childIds, focusId, section.body, focusAncestors, matchAncestors);
+        this.syncRow(section.rows, id, section.order.childIds, focusId, section.body, focusAncestors, matchAncestors, reordered);
       }
       this.pruneRows(section.rows, seen);
     }
@@ -472,18 +473,22 @@ export class ObjectListPanel {
   }
 
   // id に対応する RowNode を(無ければ生成して)最新化し、続けてその子を再帰的に同期する。
-  // id が今フレームの候補に無ければ何もしない。
+  // id が今フレームの候補に無ければ何もしない。reorder は呼び出し元の区画の並びがこのフレームで
+  // 組み直されたか — 真なら既存行も並び順どおりの位置へ移す。
   private syncRow(
     rows: Map<string, RowNode>, id: string,
     childrenOf: ReadonlyMap<string, string[]>, focusId: string | undefined, container: HTMLElement,
-    focusAncestors: ReadonlySet<string>, matchAncestors: ReadonlySet<string>,
+    focusAncestors: ReadonlySet<string>, matchAncestors: ReadonlySet<string>, reorder: boolean,
   ): void {
     const item = this.itemsByIdScratch.get(id);
     if (!item) return;
     let node = rows.get(item.id);
+    const isNew = !node;
     if (!node) {
       node = this.createRowNode(item.id);
       rows.set(item.id, node);
+    }
+    if (isNew || reorder) {
       container.appendChild(node.row);
       container.appendChild(node.childrenContainer);
     }
@@ -513,7 +518,7 @@ export class ObjectListPanel {
     const seen = new Set<string>();
     for (const childId of children) {
       seen.add(childId);
-      this.syncRow(node.children, childId, childrenOf, focusId, node.childrenContainer, focusAncestors, matchAncestors);
+      this.syncRow(node.children, childId, childrenOf, focusId, node.childrenContainer, focusAncestors, matchAncestors, reorder);
     }
     this.pruneRows(node.children, seen);
   }
