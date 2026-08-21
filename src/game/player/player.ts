@@ -373,10 +373,13 @@ export class Player extends Ship {
   // 熱防御の飽和・熱機能不全・空力破壊・天体の地表到達の判定(自然死)。大気による焼失は
   // 熱・動圧の物理モデルだけが判定する — 自機は外殻温度と動圧を積分しているので、それより
   // 粗い高度・密度の近似を重ねる理由がない。
-  checkLoss(dt: number, _simTime: number, activeStage: Stage, _playerPos: Vec3, attractors: readonly Attractor[]): void {
+  checkLoss(
+    dt: number, _simTime: number, activeStage: Stage, _playerPos: Vec3,
+    atmosphereBodies: readonly Attractor[],
+  ): void {
     if (!this.alive) return;
     const limit = this.thermal.updateAltitudeAlarm(
-      dt, this.state.r, nearestAtmosphereBody(this.state.r, attractors));
+      dt, this.state.r, nearestAtmosphereBody(this.state.r, atmosphereBodies));
 
     let reason: string | null = null;
     if (limit === 'heat-aero') reason = '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した';

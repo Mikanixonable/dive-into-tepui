@@ -246,8 +246,11 @@ export class EntityManager {
 
   // 全エンティティの寿命判定を行い、死亡したものを破棄・除去する。自機だけは各所の参照掃除と
   // 次艦への引き継ぎが要るため、除去は ActivePlayerController.reclaimDead が担う。
-  cleanup(dt: number, simTime: number, activeStage: Stage, playerPos: Vec3, attractors: readonly Attractor[]): void {
-    for (const e of this.all()) e.checkLoss(dt, simTime, activeStage, playerPos, attractors);
+  cleanup(
+    dt: number, simTime: number, activeStage: Stage, playerPos: Vec3,
+    atmosphereBodies: readonly Attractor[],
+  ): void {
+    for (const e of this.all()) e.checkLoss(dt, simTime, activeStage, playerPos, atmosphereBodies);
     this.prune(this.enemies);
     this.prune(this.bullets);
     this.prune(this.casings);
