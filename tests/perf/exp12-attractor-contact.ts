@@ -1,8 +1,8 @@
-// 実験12: 天体表面到達判定(attractor.reachedBody)の総当たり費用と、2段の絞り込みで残る候補。
+// 実験12: 天体表面到達判定(attractor.reachedBody)の総当たり費用と、絞り込みで残る候補。
 // ?stage=debug-load 相当(自機1 + 破片500)を最高ワープの1フレームぶん、実ゲームと同じく失われた
 // 個体を毎 substep 除去しながら積分し、掃引の回数と費用・絞り込み後の候補数と削減比・破片の RK4
-// 費用・接触グリッドの候補ペア数を測る。絞り込みは試作でこの実験の中だけに閉じる。
-import { Attractor, attractorStateAt, nearestAtmosphereBody, reachedBody } from '../../src/physics/attractor';
+// 費用・接触グリッドの候補ペア数を測る。絞り込みは game/simulation/surface-candidates の実装。
+import { Attractor, nearestAtmosphereBody, reachedBody } from '../../src/physics/attractor';
 import { burnUpBody } from '../../src/physics/atmosphere';
 import { randomQuat } from '../../src/physics/attitude';
 import { stepDynamics } from '../../src/physics/dynamics';
@@ -13,6 +13,7 @@ import { SpatialGrid } from '../../src/physics/spatial-grid';
 import { Vec3, add, len, scale, sub, v3 } from '../../src/physics/vec3';
 import * as C from '../../src/game/const';
 import { attractorsNearInto, classifyAttractors } from '../../src/game/simulation/attractors';
+import { SurfaceCandidates, SurfaceParticipant } from '../../src/game/simulation/surface-candidates';
 import { simulationMaxStep } from '../../src/game/simulation/time-step';
 import { buildEphemeris, initialLeoState } from './common';
 
@@ -24,11 +25,14 @@ const SUBSTEPS = Math.round(SIM_DT / MAX_STEP);
 const REPEATS = 3; // 各測定の反復数。GC とスケジューリングは上振れにしか出ないので最小値を採る
 const DIVERGED_RADIUS = 10 * len(initialLeoState().r); // 積分の静かな破綻を検出する地心距離 [m]
 
-// substep 1つぶんの区間。prev[i] と next[i] は同じ個体で、除去のぶん substep ごとに短くなる。
-interface Interval {
-  readonly prev: readonly KinematicState[];
-  readonly next: readonly KinematicState[];
+// 積分の対象。区間の両端が揃うと SurfaceParticipant になる。
+interface Body {
+  readonly state: KinematicState;
+  readonly radius: number;
 }
+
+// substep 1つぶんの区間。除去のぶん substep ごとに短くなる。
+type Interval = readonly SurfaceParticipant[];
 
 // substep ごとに表面到達判定が突き合わせる天体窓。
 type SurfaceWindows = readonly (readonly Attractor[])[];
@@ -61,19 +65,19 @@ function shellOffset(rand: () => number, dist: number): Vec3 {
 
 // 自機1体 + 破片 DEBUG_LOAD_DEBRIS_COUNT 体の初期状態。オフセットは stage-debug-load.ts の
 // randomOffset と同一の式。破片の速度は自機と同じで、サイズと姿勢は測る対象に効かないが、
-// 乱数列を原本と同じ順で消費して配置を一致させる。
-function debugLoadStates(): readonly KinematicState[] {
+// 乱数列を原本と同じ順で消費して配置を一致させる。破片の接触半径は原本どおり 0 m。
+function debugLoadStates(): readonly Body[] {
   const player = initialLeoState();
   const rand = mulberry32(C.DEBUG_LOAD_RNG_SEED);
-  const states: KinematicState[] = [player];
+  const bodies: Body[] = [{ state: player, radius: C.PLAYER_HULL_RADIUS }];
   const min3 = C.DEBUG_LOAD_PLACEMENT_MIN_DIST ** 3;
   for (let i = 0; i < C.DEBUG_LOAD_DEBRIS_COUNT; i++) {
     const dist = Math.cbrt(min3 + rand() * (C.DEBUG_LOAD_DEBRIS_MAX_DIST ** 3 - min3));
-    states.push(kinematicState(player.t, add(player.r, shellOffset(rand, dist)), player.v));
+    bodies.push({ state: kinematicState(player.t, add(player.r, shellOffset(rand, dist)), player.v), radius: 0 });
     rand();
     randomQuat(rand);
   }
-  return states;
+  return bodies;
 }
 
 const MOON_IMPACT_COUNT = 40; // 正例の照合に使う個体数
@@ -81,15 +85,16 @@ const MOON_IMPACT_MAX_ALT = 200e3; // 月面からの初期高度の上限 [m]�
 
 // 月へ自由落下する MOON_IMPACT_COUNT 体。月と同じ速度で置くので月の重力だけで表面へ落ち、大気を
 // 持たない相手なので焼失で先に消えることがない — 照合に正例を踏ませるための配置で、費用は測らない。
-function moonImpactStates(ephemeris: Ephemeris, t0: number): readonly KinematicState[] {
+function moonImpactStates(ephemeris: Ephemeris, t0: number): readonly Body[] {
   const moon = ephemeris.attractorAt('moon', t0);
   const rand = mulberry32(C.DEBUG_LOAD_RNG_SEED);
-  const states: KinematicState[] = [];
+  const bodies: Body[] = [];
   for (let i = 1; i <= MOON_IMPACT_COUNT; i++) {
     const alt = (MOON_IMPACT_MAX_ALT * i) / MOON_IMPACT_COUNT;
-    states.push(kinematicState(t0, add(moon.state.r, shellOffset(rand, moon.radius + alt)), moon.state.v));
+    const offset = shellOffset(rand, moon.radius + alt);
+    bodies.push({ state: kinematicState(t0, add(moon.state.r, offset), moon.state.v), radius: 0 });
   }
-  return states;
+  return bodies;
 }
 
 // 剛体接触を解決する帯は区間終点の全天体窓、解決しない帯は積分に使った中点の重力窓を読む。
@@ -119,10 +124,10 @@ interface Frame {
 // または大気での焼失)で以後の積分から外す。判定は総当たりで行う — 絞り込みを使うと測定対象その
 // ものが絞り込みに依存する。焼失を落とすと、大気の底を掠めた個体が1歩ぶんの巨大な抗力で弾かれ、
 // 境界球を桁で膨らませて絞り込みの測定を壊す。
-function integrateFrame(ephemeris: Ephemeris, initial: readonly KinematicState[], windows: SurfaceWindows): Frame {
+function integrateFrame(ephemeris: Ephemeris, initial: readonly Body[], windows: SurfaceWindows): Frame {
   const timeline: Interval[] = [];
   const scratch: Attractor[] = [];
-  let alive: readonly KinematicState[] = initial;
+  let alive: readonly Body[] = initial;
   let stepMs = 0;
   let steps = 0;
   let maxRadius = 0;
@@ -130,24 +135,25 @@ function integrateFrame(ephemeris: Ephemeris, initial: readonly KinematicState[]
   let reached = 0;
   let burnedUp = 0;
   for (let k = 0; k < SUBSTEPS; k++) {
-    const tMid = initial[0]!.t + (k + 0.5) * MAX_STEP;
+    const tMid = initial[0]!.state.t + (k + 0.5) * MAX_STEP;
     const classified = classifyAttractors(ephemeris.gravityAttractorsAt(tMid));
     const air = ephemeris.atmosphereAttractorsAt(tMid);
     const t0 = performance.now();
-    const next = alive.map((s) => stepDynamics(
-      s, MAX_STEP, attractorsNearInto(s.r, classified, scratch), nearestAtmosphereBody(s.r, air),
+    const stepped = alive.map((b) => stepDynamics(
+      b.state, MAX_STEP, attractorsNearInto(b.state.r, classified, scratch), nearestAtmosphereBody(b.state.r, air),
       C.SMALL_DEBRIS_BCINV, C.SMALL_DEBRIS_SRP_COEFF, null));
     stepMs += performance.now() - t0;
     steps += alive.length;
-    timeline.push({ prev: alive, next });
-    const survivors: KinematicState[] = [];
-    for (let i = 0; i < next.length; i++) {
-      const radius = len(next[i]!.r);
+    const interval = alive.map((b, i) => ({ prevState: b.state, state: stepped[i]!, radius: b.radius }));
+    timeline.push(interval);
+    const survivors: Body[] = [];
+    for (const p of interval) {
+      const radius = len(p.state.r);
       maxRadius = Math.max(maxRadius, radius);
       if (radius > DIVERGED_RADIUS) diverged++;
-      if (reachedBody(alive[i]!, next[i]!, windows[k]!) !== null) reached++;
-      else if (burnUpBody(next[i]!.r, windows[k]!, C.DEBRIS_BURNUP_DENSITY) !== null) burnedUp++;
-      else survivors.push(next[i]!);
+      if (reachedBody(p.prevState, p.state, windows[k]!) !== null) reached++;
+      else if (burnUpBody(p.state.r, windows[k]!, C.DEBRIS_BURNUP_DENSITY) !== null) burnedUp++;
+      else survivors.push({ state: p.state, radius: p.radius });
     }
     alive = survivors;
   }
@@ -161,60 +167,9 @@ let sink = 0;
 function bruteForce(timeline: readonly Interval[], windows: SurfaceWindows): number {
   const t0 = performance.now();
   for (let k = 0; k < SUBSTEPS; k++) {
-    const { prev, next } = timeline[k]!;
-    for (let i = 0; i < prev.length; i++) sink += reachedBody(prev[i]!, next[i]!, windows[k]!) === null ? 0 : 1;
+    for (const p of timeline[k]!) sink += reachedBody(p.prevState, p.state, windows[k]!) === null ? 0 : 1;
   }
   return performance.now() - t0;
-}
-
-// 三次曲線が弦から離れうる上限 [m]。Bezier 制御点と弦上の対応点のずれの最大値で押さえる
-// (sphere-contact.ts の sweptSagitta は同じずれを曲線の中点で測った値で、上限ではない)。
-function chordDeviationBound(start: KinematicState, end: KinematicState): number {
-  const dt = end.t - start.t;
-  const chord = sub(end.r, start.r);
-  return Math.max(len(sub(scale(start.v, dt), chord)), len(sub(chord, scale(end.v, dt)))) / 3;
-}
-
-// 区間の始点位置と、そこから表面が区間内に届きうる距離(表面半径 + 弦の変位 + 弦からの乖離)。
-interface Reach {
-  readonly body: Attractor;
-  readonly r0: Vec3;
-  readonly margin: number;
-}
-
-// 1段目(substep に1回): 個体ごとの区間到達量を reaches へ、参加者全体の境界球をその到達量だけ
-// 膨らませて重なった天体を near へ書く。どちらも呼び出し側が所有する作業配列。
-function stage1(prev: readonly KinematicState[], next: readonly KinematicState[],
-  bodies: readonly Attractor[], reaches: number[], near: Reach[]): void {
-  reaches.length = 0;
-  near.length = 0;
-  if (prev.length === 0) return; // 全個体が失われた substep
-  let sum = v3();
-  for (let i = 0; i < prev.length; i++) {
-    reaches.push(len(sub(next[i]!.r, prev[i]!.r)) + chordDeviationBound(prev[i]!, next[i]!));
-    sum = add(sum, prev[i]!.r);
-  }
-  const center = scale(sum, 1 / prev.length);
-  let margin = 0;
-  for (let i = 0; i < prev.length; i++) margin = Math.max(margin, len(sub(prev[i]!.r, center)) + reaches[i]!);
-  for (const body of bodies) {
-    const start = attractorStateAt(body, prev[0]!.t);
-    const end = attractorStateAt(body, next[0]!.t);
-    const bodyMargin = body.radius + len(sub(end.r, start.r)) + chordDeviationBound(start, end);
-    if (len(sub(center, start.r)) <= margin + bodyMargin) near.push({ body, r0: start.r, margin: bodyMargin });
-  }
-}
-
-// 2段目(個体ごと): 1段目を通った天体のうち、この個体1体の区間到達量で届くものだけを out へ残す。
-function stage2(prev: KinematicState, reach: number, near: readonly Reach[], out: Attractor[]): void {
-  out.length = 0;
-  for (const n of near) {
-    const dx = prev.r.x - n.r0.x;
-    const dy = prev.r.y - n.r0.y;
-    const dz = prev.r.z - n.r0.z;
-    const limit = reach + n.margin;
-    if (dx * dx + dy * dy + dz * dz <= limit * limit) out.push(n.body);
-  }
 }
 
 // 1フレームぶんの絞り込みの費用と通過数。
@@ -226,29 +181,25 @@ interface Narrowed {
   readonly stage2Total: number; // 2段目を通った延べ候補数(全 substep × 全個体)
 }
 
-// 1フレームぶんの絞り込みを通し、段ごとの所要 [ms] と通過数を返す。
+// SurfaceCandidates を1フレームぶん通し、段ごとの所要 [ms] と通過数を返す。
 function narrow(timeline: readonly Interval[], windows: SurfaceWindows): Narrowed {
-  const near: Reach[] = [];
-  const candidates: Attractor[] = [];
-  const reaches: number[] = [];
+  const candidates = new SurfaceCandidates();
+  const out: Attractor[] = [];
   let stage1Ms = 0;
   let stage2Ms = 0;
   let stage1Total = 0;
   let stage1Max = 0;
   let stage2Total = 0;
   for (let k = 0; k < SUBSTEPS; k++) {
-    const { prev, next } = timeline[k]!;
+    const interval = timeline[k]!;
     const t0 = performance.now();
-    stage1(prev, next, windows[k]!, reaches, near);
+    candidates.reset(interval, windows[k]!);
     const t1 = performance.now();
-    for (let i = 0; i < prev.length; i++) {
-      stage2(prev[i]!, reaches[i]!, near, candidates);
-      stage2Total += candidates.length;
-    }
+    for (const p of interval) stage2Total += candidates.into(p, out).length;
     stage2Ms += performance.now() - t1;
     stage1Ms += t1 - t0;
-    stage1Total += near.length;
-    stage1Max = Math.max(stage1Max, near.length);
+    stage1Total += candidates.count;
+    stage1Max = Math.max(stage1Max, candidates.count);
   }
   return { stage1Ms, stage2Ms, stage1Total, stage1Max, stage2Total };
 }
@@ -256,17 +207,15 @@ function narrow(timeline: readonly Interval[], windows: SurfaceWindows): Narrowe
 // 総当たりと絞り込みが同じ到達を返すか。食い違った件数を返す(0 でなければ絞り込みが誤り)。
 // 計時とは別の走査にする — 照合が呼ぶ総当たりの掃引を narrow の計測区間へ混ぜないため。
 function mismatches(timeline: readonly Interval[], windows: SurfaceWindows): number {
-  const near: Reach[] = [];
-  const candidates: Attractor[] = [];
-  const reaches: number[] = [];
+  const candidates = new SurfaceCandidates();
+  const out: Attractor[] = [];
   let count = 0;
   for (let k = 0; k < SUBSTEPS; k++) {
-    const { prev, next } = timeline[k]!;
-    stage1(prev, next, windows[k]!, reaches, near);
-    for (let i = 0; i < prev.length; i++) {
-      stage2(prev[i]!, reaches[i]!, near, candidates);
-      const full = reachedBody(prev[i]!, next[i]!, windows[k]!);
-      const only = reachedBody(prev[i]!, next[i]!, candidates);
+    const interval = timeline[k]!;
+    candidates.reset(interval, windows[k]!);
+    for (const p of interval) {
+      const full = reachedBody(p.prevState, p.state, windows[k]!);
+      const only = reachedBody(p.prevState, p.state, candidates.into(p, out));
       if ((full?.body.id ?? null) !== (only?.body.id ?? null)) count++;
     }
   }
@@ -276,24 +225,22 @@ function mismatches(timeline: readonly Interval[], windows: SurfaceWindows): num
 // 個体どうしの接触グリッドのセル一辺 [m] と、その27近傍から集まる候補ペア数(j > i の重複除去
 // 込み)。一辺は contact.ts の contactCellSize の式の複製 — 原本は GameEntity 経由で three/DOM を
 // 引き込むため、tests/perf の tsconfig ではコンパイルできない。
-function contactGrid(radii: readonly number[],
-  interval: Interval): { readonly cellSize: number; readonly pairs: number } {
-  const displacements = interval.prev.map((p, i) => sub(interval.next[i]!.r, p.r));
+function contactGrid(interval: Interval): { readonly cellSize: number; readonly pairs: number } {
+  const displacements = interval.map((p) => sub(p.state.r, p.prevState.r));
   let sum = v3();
   for (const d of displacements) sum = add(sum, d);
   const mean = scale(sum, 1 / displacements.length);
   let maxReach = 0;
   for (let i = 0; i < displacements.length; i++) {
-    maxReach = Math.max(maxReach, radii[i]! + len(sub(displacements[i]!, mean)));
+    maxReach = Math.max(maxReach, interval[i]!.radius + len(sub(displacements[i]!, mean)));
   }
   const cellSize = 2 * maxReach || C.CONTACT_GRID_CELL_SIZE_FLOOR;
   const grid = new SpatialGrid<number>(cellSize);
-  const states = interval.next;
-  for (let i = 0; i < states.length; i++) grid.insert(i, states[i]!.r);
+  for (let i = 0; i < interval.length; i++) grid.insert(i, interval[i]!.state.r);
   const neighbors: number[] = [];
   let pairs = 0;
-  for (let i = 0; i < states.length; i++) {
-    for (const j of grid.neighborsInto(states[i]!.r, neighbors)) if (j > i) pairs++;
+  for (let i = 0; i < interval.length; i++) {
+    for (const j of grid.neighborsInto(interval[i]!.state.r, neighbors)) if (j > i) pairs++;
   }
   return { cellSize, pairs };
 }
@@ -309,9 +256,11 @@ function reportWindow(label: string, frame: Frame, windows: SurfaceWindows): voi
   const bad = mismatches(frame.timeline, windows);
   console.log(`\n### ${label}\n`);
   table([
-    ['総当たり', `${bodies} 体 × ${num(sweeps)} 回/フレーム、${bruteMs.toFixed(1)} ms(掃引1回 ${nsPerSweep.toFixed(1)} ns)`],
+    ['総当たり',
+      `${bodies} 体 × ${num(sweeps)} 回/フレーム、${bruteMs.toFixed(1)} ms(掃引1回 ${nsPerSweep.toFixed(1)} ns)`],
     ['1段目を通った天体', `平均 ${(n.stage1Total / SUBSTEPS).toFixed(2)} 体/substep、最大 ${n.stage1Max} 体`],
-    ['2段目を通った候補', `${num(n.stage2Total)} 回/フレーム(削減比 ${(sweeps / Math.max(1, n.stage2Total)).toFixed(0)}×)`],
+    ['2段目を通った候補',
+      `${num(n.stage2Total)} 回/フレーム(削減比 ${(sweeps / Math.max(1, n.stage2Total)).toFixed(0)}×)`],
     ['絞り込みの費用 [ms/フレーム]', `1段目 ${n.stage1Ms.toFixed(2)} + 2段目 ${n.stage2Ms.toFixed(2)}`
       + ` + 残った掃引 ${(narrowedMs - n.stage1Ms - n.stage2Ms).toFixed(2)} = ${narrowedMs.toFixed(2)}`
       + `(総当たりの ${(narrowedMs / bruteMs * 100).toFixed(1)} %)`],
@@ -323,7 +272,7 @@ export function run(): void {
   console.log('# 実験12: 天体表面到達判定の総当たり費用と2段の絞り込み\n');
   const ephemeris = buildEphemeris();
   const initial = debugLoadStates();
-  const t0 = initial[0]!.t;
+  const t0 = initial[0]!.state.t;
   // 最高ワープ帯は剛体接触を解決しないので、除去に使う窓は重力窓(実ゲームの surfaceBodies と同じ)。
   const gravity = surfaceWindows(ephemeris, t0, 'gravity');
   const frame = fastest(() => integrateFrame(ephemeris, initial, gravity), (f) => f.stepMs);
@@ -332,8 +281,8 @@ export function run(): void {
   table([
     ['除去した個体', `表面到達 ${frame.reached} 体 + 大気で焼失 ${frame.burnedUp} 体 / ${initial.length} 体`],
     ['積分中の地心距離の最大', `${frame.maxRadius.toExponential(3)} m(初期半径の `
-      + `${(frame.maxRadius / len(initial[0]!.r)).toFixed(2)} 倍)。10倍を超えた個体 × substep は ${frame.diverged} 件`
-      + `${frame.diverged === 0 ? '(発散なし)' : '(発散あり — 以降の数字は無効)'}`],
+      + `${(frame.maxRadius / len(initial[0]!.state.r)).toFixed(2)} 倍)。10倍を超えた個体 × substep は `
+      + `${frame.diverged} 件${frame.diverged === 0 ? '(発散なし)' : '(発散あり — 以降の数字は無効)'}`],
   ]);
 
   console.log('\n## (1)(2) 掃引の費用と、2段の絞り込みで残る候補');
@@ -344,8 +293,9 @@ export function run(): void {
   const debris = initial.slice(1);
   const sources = ephemeris.gravityAttractorsAt(t0 + SIM_DT);
   const air = ephemeris.atmosphereAttractorsAt(t0 + SIM_DT);
-  const lodStep = (s: KinematicState): KinematicState => stepDynamics(
-    s, SIM_DT, sources, nearestAtmosphereBody(s.r, air), C.SMALL_DEBRIS_BCINV, C.SMALL_DEBRIS_SRP_COEFF, null);
+  const lodStep = (b: Body): KinematicState => stepDynamics(
+    b.state, SIM_DT, sources, nearestAtmosphereBody(b.state.r, air),
+    C.SMALL_DEBRIS_BCINV, C.SMALL_DEBRIS_SRP_COEFF, null);
   const lodMs = fastest(() => {
     const t = performance.now();
     debris.map(lodStep);
@@ -363,8 +313,7 @@ export function run(): void {
   ]);
 
   console.log('\n## (4) 個体どうしの接触グリッド\n');
-  const radii = initial.map((_, i) => (i === 0 ? C.PLAYER_HULL_RADIUS : 0));
-  const grid = contactGrid(radii, frame.timeline[0]!);
+  const grid = contactGrid(frame.timeline[0]!);
   table([
     ['contactCellSize が返すセル一辺 [m]', grid.cellSize.toFixed(1)],
     [`27近傍の候補ペア数(${initial.length} 体)`, num(grid.pairs)],

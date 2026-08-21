@@ -13,6 +13,7 @@ import {
   distributeSphereContact, resolveFixedSphereCollision, resolveSphereCollision,
 } from '../../physics/collision-response';
 import { Attractor, attractorStateAt } from '../../physics/attractor';
+import { SurfaceCandidates } from './surface-candidates';
 import type { Stage } from '../stages/stage';
 
 // 1回の接触を、受け手から見た形で記述する。self/other は受け手ごとに入れ替えて組み直す
@@ -189,6 +190,8 @@ export class ContactPhysics {
   private readonly neighborScratch: number[] = [];
   private readonly gridScratch = new SpatialGrid<number>(1);
   private readonly candidateScratch: Candidate[] = [];
+  private readonly surfaceCandidates = new SurfaceCandidates();
+  private readonly surfaceScratch: Attractor[] = [];
 
   // 1 substep ぶんの接触解決。ワープゲート(canResolvePhysicalCollisions)は呼び出し側
   // (Simulator.advance)が判断してから呼ぶ。
@@ -320,8 +323,10 @@ export class ContactPhysics {
       }
     }
 
+    // 天体は総当たりせず、この区間で誰かが触れうるものへ絞ってから個体ごとに引く。
+    this.surfaceCandidates.reset(attackers, bodies);
     for (const a of attackers) {
-      for (const body of bodies) {
+      for (const body of this.surfaceCandidates.into(a, this.surfaceScratch)) {
         if (!a.contactsWith(body, simTime)) continue;
         this.pushCandidate(count++, a, body, computeAttractorResponse(a, body, working));
       }
