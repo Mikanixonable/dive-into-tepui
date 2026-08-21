@@ -101,8 +101,11 @@ export class DebrisPiece extends GameEntity {
   }
 
   // 再突入判定に加え、薬莢は寿命超過でも alive を落とす。
-  checkLoss(dt: number, simTime: number, activeStage: Stage, playerPos: Vec3, attractors: readonly Attractor[]): void {
-    super.checkLoss(dt, simTime, activeStage, playerPos, attractors);
+  checkLoss(
+    dt: number, simTime: number, activeStage: Stage, playerPos: Vec3,
+    atmosphereBodies: readonly Attractor[],
+  ): void {
+    super.checkLoss(dt, simTime, activeStage, playerPos, atmosphereBodies);
     if (!this.alive) return;
     // 薬莢のみ、寿命(CASING_LIFETIME)による消滅がある(他のデブリは大気突入のみ)。
     if (this.debrisKind.kind === 'casing' && simTime - this.debrisKind.bornSim >= C.CASING_LIFETIME) {

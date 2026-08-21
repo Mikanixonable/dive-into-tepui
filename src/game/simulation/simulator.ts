@@ -85,8 +85,8 @@ export class Simulator {
       // 浮動小数点の丸めでゼロ刻みになったイベントは現在時刻で消費して前進を保証する。
       if (subDt <= 1e-9) {
         activeStage.applySimulationEvents(this.simTime);
-        const surfaceBodies = this.surfaceBodies();
-        this.entities.cleanup(0, this.simTime, activeStage, player?.state.r ?? v3(), surfaceBodies);
+        this.entities.cleanup(
+          0, this.simTime, activeStage, player?.state.r ?? v3(), this.atmosphereBodies());
         continue;
       }
 
@@ -129,7 +129,8 @@ export class Simulator {
       }
       activeStage.applySimulationEvents(this.simTime);
       // 期限切れ弾が同じsubstepの接触解決へ進まないよう、既知境界の直後に回収する。
-      this.entities.cleanup(subDt, this.simTime, activeStage, player?.state.r ?? v3(), surfaceBodies);
+      this.entities.cleanup(
+        subDt, this.simTime, activeStage, player?.state.r ?? v3(), this.atmosphereBodies());
     }
 
     // ベルトは実dtで解く艦にくっついた局所シミュレーションなので、substepループの外で
@@ -202,6 +203,11 @@ export class Simulator {
   // 無関係なので、登録天体の全数を返す。
   private surfaceBodies(): readonly Attractor[] {
     return this.ephemeris.attractorsAt(this.simTime);
+  }
+
+  // このサブステップで大気を持つ相手として扱う天体。焼失の判定に表面の窓は要らない。
+  private atmosphereBodies(): readonly Attractor[] {
+    return this.ephemeris.atmosphereAttractorsAt(this.simTime);
   }
 
   // 全エンティティを、渡された重力源 sources に対して dt だけ積分する。sources と
