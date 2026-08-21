@@ -289,7 +289,8 @@ export function run(): void {
   reportWindow('attractorsAt(×4 以下の窓)', frame, surfaceWindows(ephemeris, t0, 'all'));
   reportWindow('gravityAttractorsAt(×4 超の窓)', frame, gravity);
 
-  // passiveWarpLod は絞り込みを通さない重力窓のまま、経過ぶんを1歩で渡る。
+  // 比較対象として、フレーム全体を1歩でまたいだ場合の費用も測る。絞り込みを通さない
+  // 重力窓をそのまま渡す。
   const debris = initial.slice(1);
   const sources = ephemeris.gravityAttractorsAt(t0 + SIM_DT);
   const air = ephemeris.atmosphereAttractorsAt(t0 + SIM_DT);
@@ -308,7 +309,7 @@ export function run(): void {
       `${frame.stepMs.toFixed(1)}(${num(frame.steps)} 歩、1歩 ${usPerStep.toFixed(2)} µs)`],
     [`破片 ${debris.length} 体 × ${SUBSTEPS} substep 相当 [ms/フレーム]`,
       `${(usPerStep * debris.length * SUBSTEPS / 1e3).toFixed(1)}`],
-    [`passiveWarpLod(破片 ${debris.length} 体 × 1歩) [ms/フレーム]`,
+    [`フレームに1歩だけ(破片 ${debris.length} 体 × 1歩) [ms/フレーム]`,
       `${lodMs.toFixed(2)}(1歩 ${((lodMs / debris.length) * 1e3).toFixed(2)} µs)`],
   ]);
 
