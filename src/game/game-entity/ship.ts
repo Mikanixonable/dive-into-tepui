@@ -233,8 +233,8 @@ export abstract class Ship extends GameEntity {
   public hpMarkerSvg(): string {
     const segments = Math.max(3, Math.round(this.maxHp / 3) * 3);
     const lit = Math.max(0, Math.min(segments, Math.round((this.hp / this.maxHp) * segments)));
-    // 正三角形のシルエット(12,1.5 -> 17.5,21 -> 6.5,21)。
-    const points: [number, number][] = [[12, 1.5], [17.5, 21], [6.5, 21]];
+    // 正三角形のシルエット(辺長18、外接円中心は(12,12))。
+    const points: [number, number][] = [[12, 3], [21, 18.588], [3, 18.588]];
     const lines: string[] = [];
     const emit = (i: number, j: number, k: number, a: number, b: number): void => {
       if (b <= a) return;
@@ -245,14 +245,16 @@ export abstract class Ship extends GameEntity {
     };
     for (let i = 0; i < 3; i++) {
       const k = segments / 3;
-      // 頂点は連続させ、各辺の中央だけを切り欠く。
+      const notch = 0.09;
+      const notchStart = 0.5 - notch / 2;
+      const notchEnd = 0.5 + notch / 2;
+      // 頂点は連続させ、各辺の中央だけを切り欠く(境界がちょうど0.5に重なる分割数でも欠ける)。
       for (let j = 0; j < k; j++) {
         const a = j / k;
         const b = (j + 1) / k;
-        const notch = 0.09;
-        if (a < 0.5 && b > 0.5) {
-          emit(i, j, k, a, 0.5 - notch / 2);
-          emit(i, j, k, 0.5 + notch / 2, b);
+        if (a < notchEnd && b > notchStart) {
+          if (a < notchStart) emit(i, j, k, a, notchStart);
+          if (b > notchEnd) emit(i, j, k, notchEnd, b);
         } else {
           emit(i, j, k, a, b);
         }
