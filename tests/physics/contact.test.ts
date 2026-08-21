@@ -10,7 +10,7 @@ import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { closingSpeed, type Contact } from '../../src/game/game-entity/contact';
 import {
-  resolveFixedSphereCollision, resolveSphereCollision,
+  distributeFixedContact, resolveSphereCollision, sphereContactGeometry,
 } from '../../src/physics/collision-response';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { Vec3, scale, v3 } from '../../src/physics/vec3';
@@ -63,7 +63,8 @@ export function register(): void {
     // 表面接触の法線は「動く側 → 相手」で、受け手はいつも動く側。
     const moving = { state: kinematicState(0, v3(0, 0, 0), v3(8, 0, 0)), radius: 1 };
     const fixed = { state: kinematicState(0, v3(1.5, 0, 0), v3()), radius: 1 };
-    const response = resolveFixedSphereCollision(moving, fixed, 0.4);
+    const geometry = sphereContactGeometry(moving, fixed);
+    const response = geometry === null ? null : distributeFixedContact(moving, fixed, 0.4, geometry);
     assert.ok(response !== null && response.bounced, '前提: 表面へ突っ込めば反発が起きる');
     assert.equal(closingSpeed(received(moving.state, fixed.state, response.normal)), 8);
   });
