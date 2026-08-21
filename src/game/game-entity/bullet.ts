@@ -27,6 +27,8 @@ export type BulletType = 'normal' | 'plasma';
 // geometry/material はビルダーが弾種ごとに共有するため、traverse による個別 dispose は行わない。
 export class Bullet extends GameEntity {
     protected readonly bcInv = C.BULLET_BCINV;
+    // 弾は姿勢を持たず、速度方向を向く(sync)。
+    readonly hasAttitude = false;
 
     readonly bornSim: number; // 発射時刻。初期 state のエポックそのもの
     readonly shooter: Shooter;

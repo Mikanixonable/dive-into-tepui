@@ -49,6 +49,9 @@ export class GameEntity {
   // マーカー・一覧・ウィンドウに出す表示名。既定は id で、名前を持つ種別がコンストラクタで上書きする。
   name: string;
   att: Attitude;
+  // 姿勢を積分する種別か。false の個体は att を進めず、向きを別の規則で決める
+  // (弾は速度方向を向く)。
+  readonly hasAttitude: boolean = true;
   public readonly renderObject: THREE.Object3D;
   alive = true;
   mass = 1; // 剛体接触の換算質量

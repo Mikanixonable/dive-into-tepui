@@ -412,13 +412,16 @@ v3 4-4 が明らかにしたとおり、**天体接触と個体どうしの接�
 - 副次: `participantScratch` を `resolveSurfaceContacts` と `resolveSubstep` が共有して
   いる(呼び出しが逐次なので現状は安全だが、依存が暗黙)。
 
-### A-7. `Simulator.stepAttitudes` の種別ごとの列挙と、`alive` 検査の不揃い
+### A-7. `Simulator.stepAttitudes` の種別ごとの列挙(**実施済み**)
 
-`players`(検査なし)/ `enemies`(あり)/ `bases`(あり)/ `casings`(なし)/
-`debris`(なし)/ `ammoPickups`(あり)を種別ごとに回している。`f68be2c3` で LOD の
-飛ばしが消えた後も、**種別の列挙と検査の不揃いだけが残った。** 姿勢を持つかどうかは
-個体の属性なので、`entities.all()` を回して個体側に問う形にできるはず(弾は姿勢を
-持たない = 現状もこの列挙に入っていない)。
+`GameEntity` に `hasAttitude`(既定 `true`、`Bullet` だけが `false`)を置き、
+`stepAttitudes` は `entities.all()` を1本回して `alive && hasAttitude` で弾くだけに
+なった。6種別の列挙と `alive` 検査の不揃いは消え、`Simulator` から姿勢についての
+種別の名指しが無くなった。
+
+**挙動が変わった点が1つある**: 死んだ自機の姿勢が積分されなくなった(以前は
+`players` だけ `alive` 検査が無かった)。他の種別に揃えた結果であり、
+`ActivePlayerController.reclaimDead` が回収するまでの間だけ効く。
 
 ### A-8. `Simulator.adaptiveMaxStep` が `players` / `enemies` を名指ししている
 
