@@ -24,6 +24,8 @@ export function firstSurfaceContact(
 ): SurfaceContact | null {
   const swept = prev.t < next.t;
   let earliest: SurfaceContact | null = null;
+  // 跨いだのか、区間の終端で重なっているだけなのかは幾何の側が決める。ここはどちらの場合も
+  // 同じ toi で比べて1体に絞るだけで、区別は幾何を受け取った呼び出し側が付ける。
   for (const body of bodies) {
     const geometry = sphereContactGeometry(
       { state: next, radius },
