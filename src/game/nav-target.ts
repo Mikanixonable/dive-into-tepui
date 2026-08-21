@@ -60,6 +60,13 @@ export class NavTarget {
     return this.targetName;
   }
 
+  // Targeter がターゲット(艦)を設定/解除するたびに呼ぶ。艦を対象にする限り、ターゲットと
+  // 航法ターゲットは常に同一の対象を指す(ヒントは Targeter 側だけが出す)。
+  setShipTarget(id: string | null, name: string | null): void {
+    this.targetId = id;
+    this.targetName = name;
+  }
+
   // id と現在の設定が同じなら解除、そうでなければ id を航法ターゲットにする。
   toggleTarget(id: string, name: string): void {
     if (this.targetId === id) {

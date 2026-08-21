@@ -425,10 +425,9 @@ export class MapContextActions {
       run: (act, target) => this.runBodyShip(act, target),
     },
     'ship': {
-      itemsFor: (target, simTime) => [
+      itemsFor: (target) => [
         ...this.combatTargetLockItems(this.entities.findEnemy(target.id)),
         MenuCommon.focus(),
-        ...this.navTargetItems(target, simTime),
         ...this.duplicateItems(),
         { label: '削除', act: 'delete' },
         MenuCommon.cancel(),
@@ -439,8 +438,8 @@ export class MapContextActions {
           if (enemy) enemy.alive = false;
         } else if (act === 'duplicate') {
           this.runDuplicate(target);
-        } else if (act === 'targetPrimary' || act === 'targetSecondary') {
-          this.runTargetLock(act, this.entities.findEnemy(target.id));
+        } else if (act === 'target') {
+          this.runTargetLock(this.entities.findEnemy(target.id));
         } else {
           this.runBodyShip(act, target);
         }
@@ -510,7 +509,7 @@ export class MapContextActions {
       run: (act, target) => this.runApsisRelnode(act, target),
     },
     'player': {
-      itemsFor: (target, simTime) => {
+      itemsFor: (target) => {
         const ship = this.entities.findPlayer(target.id);
         const activeShip = this.activePlayers.current;
         const isActive = ship === activeShip;
@@ -539,7 +538,6 @@ export class MapContextActions {
           ...planExec,
           ...activate,
           MenuCommon.focus(),
-          ...this.navTargetItems(target, simTime),
           ...this.duplicateItems(),
           ...remove,
           MenuCommon.cancel(),
@@ -567,8 +565,8 @@ export class MapContextActions {
           this.runDuplicate(target);
         } else if (act === 'delete') {
           if (ship) this.activePlayers.remove(ship);
-        } else if (act === 'targetPrimary' || act === 'targetSecondary') {
-          this.runTargetLock(act, ship);
+        } else if (act === 'target') {
+          this.runTargetLock(ship);
         } else {
           this.runBodyShip(act, target);
         }
@@ -687,23 +685,18 @@ export class MapContextActions {
     return this.activeStage.authoring ? [MenuCommon.duplicate()] : [];
   }
 
-  // ターゲット固定/第二ターゲット固定の項目。戦闘ターゲットとして戦える対象(生存中の
-  // 敵・自艦)にだけ出し、マップビューでは出さない(視界占有を抑える — §7-2)。
+  // ターゲット固定の項目。戦闘ターゲットとして戦える対象(生存中の敵・自艦)にだけ出し、
+  // マップビューでは出さない(視界占有を抑える — §7-2)。
   private combatTargetLockItems(entity: CombatTarget | null | undefined): readonly MenuItem<MenuAction>[] {
     if (this.cameraSystem.overviewMode || !entity || !entity.alive) return [];
-    const targeter = this.targeter;
-    return [
-      MenuCommon.targetPrimary(targeter.target === entity),
-      MenuCommon.targetSecondary(targeter.secondaryTarget === entity),
-    ];
+    return [MenuCommon.target(this.targeter.target === entity)];
   }
 
-  // ターゲット固定/第二ターゲット固定を、押した時点の設定と比べてトグルする。
-  private runTargetLock(act: 'targetPrimary' | 'targetSecondary', entity: CombatTarget | null | undefined): void {
+  // ターゲット固定を、押した時点の設定と比べてトグルする。
+  private runTargetLock(entity: CombatTarget | null | undefined): void {
     if (!entity) return;
     const targeter = this.targeter;
-    if (act === 'targetPrimary') targeter.setPrimaryTarget(targeter.target === entity ? null : entity);
-    else targeter.setSecondaryTarget(targeter.secondaryTarget === entity ? null : entity);
+    targeter.setTarget(targeter.target === entity ? null : entity);
   }
 
   // 対象の現在状態を軌道要素へ逆算し、その値をプリセットして艦艇配置パネルを開く。
