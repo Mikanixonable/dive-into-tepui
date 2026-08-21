@@ -2,9 +2,8 @@
 import { Atmosphere } from './atmosphere';
 import { Quat } from './attitude';
 import { FrameTransform, toFrameState } from './frame';
-import { KinematicState, hermiteInterpolate, kinematicState } from './kinematic-state';
+import { KinematicState, kinematicState } from './kinematic-state';
 import { OrbitalElements, orbitalElementsFromState, keplerPeriod } from './elements';
-import { sweptSphereContact } from './sphere-contact';
 import { Vec3, addScaled, lenSq, len, sub, v3 } from './vec3';
 
 // 天体の識別子。具体的なレジストリ(solar-system.ts の SOLAR_SYSTEM など)が実行時に
@@ -140,44 +139,6 @@ const IDENTITY_QUAT: Quat = { x: 0, y: 0, z: 0, w: 1 };
 // Attractor のスナップショットからその場で組む。
 export function frameOfAttractor(center: Attractor): FrameTransform {
   return { origin: center.state.r, originVel: center.state.v, q: IDENTITY_QUAT, omega: v3() };
-}
-
-// 天体表面へ到達した瞬間の状態と、その相手の天体。
-export interface BodyImpact {
-  readonly body: Attractor;
-  readonly state: KinematicState;
-}
-
-// prev→next の1ステップの間に表面へ到達した天体と、到達した瞬間の状態。到達が無ければ null。
-// 区間の途中で表面を跨いだ天体が複数あれば最も早いものを、掃引が求めた到達割合(toi)から
-// hermiteInterpolate で組んだ状態とともに返す。跨ぎが1つも無く、始点で既に沈んでいる天体が
-// あれば、その天体と prev そのものを返す。
-export function reachedBody(
-  prev: KinematicState,
-  next: KinematicState,
-  bodies: readonly Attractor[],
-): BodyImpact | null {
-  let entered: Attractor | null = null;
-  let earliestToi = Infinity;
-  let alreadyInside: Attractor | null = null;
-  for (const body of bodies) {
-    const contact = sweptSphereContact(
-      prev, next,
-      attractorStateAt(body, prev.t), attractorStateAt(body, next.t),
-      body.radius);
-    if (contact === null) continue;
-    if (contact.startsInside) {
-      alreadyInside ??= body;
-    } else if (contact.crossing !== null && contact.crossing.toi < earliestToi) {
-      entered = body;
-      earliestToi = contact.crossing.toi;
-    }
-  }
-  if (entered !== null) {
-    return { body: entered, state: hermiteInterpolate(prev, next, prev.t + (next.t - prev.t) * earliestToi) };
-  }
-  if (alreadyInside !== null) return { body: alreadyInside, state: prev };
-  return null;
 }
 
 // 天体 center を中心とする接触軌道要素。中心の選び方には関与しない — 呼び出し側が
