@@ -10,13 +10,13 @@ import { occlusionOpacity } from '../../physics/occlusion';
 import { BodyClassToggles, systemMembersAt } from '../celestial/body-visibility';
 import { bodyClassOf } from '../celestial/body-class';
 import { MapVisibilityPolicy } from '../celestial/map-visibility';
-import { FOCUS_LABEL_PRIORITY_PX, LAGRANGE_MIN_CLEARANCE_RATIO, MARKER_PRIORITY } from '../const';
+import { FOCUS_LABEL_DEPTH_GUARD_RATIO, FOCUS_LABEL_PRIORITY_PX, LAGRANGE_MIN_CLEARANCE_RATIO, MARKER_PRIORITY } from '../const';
 import type { MapPickable } from '../map-pickable';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 import type { GroupedMarkers, GroupedMarkerItem } from '../marker/grouped-markers';
 
 type MutableMapPickable = { -readonly [K in keyof MapPickable]: MapPickable[K] };
-type ProjectedFocusLabel = { label: FocusLabel; x: number; y: number };
+type ProjectedFocusLabel = { label: FocusLabel; x: number; y: number; dist: number };
 type FocusProjection = { occluded: boolean; opacity: number; x: number; y: number; front: boolean };
 
 export interface ActiveCelestialLabel {
@@ -295,7 +295,8 @@ export class FocusMarkers {
   }
 
   // update が求めた座標へラベルのマーカーを置く。天体に遮られているラベルは隠し、
-  // 画面上で近接するラベルは優先度の低い方を隠す。
+  // 画面上で近接するラベルは、カメラからの距離が著しく離れていれば遠い方、
+  // 同程度の距離なら優先度の低い方を隠す。
   syncLabels(project: ProjectFn, cameraPos: Vec3): void {
     const frame = this.frameScratch;
     frame.clear();
@@ -308,7 +309,9 @@ export class FocusMarkers {
       const occluded = opacity <= 0;
       const p = project(lbl.pos);
       frame.set(lbl.id, { occluded, opacity, x: p.x, y: p.y, front: p.front });
-      if (!occluded && p.front && lbl.showLabel) projected.push({ label: lbl, x: p.x, y: p.y });
+      if (!occluded && p.front && lbl.showLabel) {
+        projected.push({ label: lbl, x: p.x, y: p.y, dist: len(sub(lbl.pos, cameraPos)) });
+      }
     }
 
     const hiddenByPriority = this.hiddenByPriorityScratch;
@@ -336,7 +339,11 @@ export class FocusMarkers {
           if (cell === undefined) continue;
           for (const other of cell) {
             if (Math.hypot(current.x - other.x, current.y - other.y) >= FOCUS_LABEL_PRIORITY_PX) continue;
-            if (current.label.labelPriority > other.label.labelPriority) {
+            if (current.dist > other.dist * FOCUS_LABEL_DEPTH_GUARD_RATIO) {
+              hiddenByPriority.add(current.label.id);
+            } else if (other.dist > current.dist * FOCUS_LABEL_DEPTH_GUARD_RATIO) {
+              hiddenByPriority.add(other.label.id);
+            } else if (current.label.labelPriority > other.label.labelPriority) {
               hiddenByPriority.add(other.label.id);
             } else if (other.label.labelPriority > current.label.labelPriority) {
               hiddenByPriority.add(current.label.id);
