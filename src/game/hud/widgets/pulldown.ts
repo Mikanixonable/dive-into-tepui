@@ -41,7 +41,9 @@ export class Pulldown<T> {
   }
 
   // ドロップダウンの選択位置だけを変える(反映ボタンを押すまで onApply は呼ばれない)。
+  // 操作中(フォーカス中)は外部状態への同期で選び直しを上書きしない。
   setSelected(value: T): void {
+    if (document.activeElement === this.select) return;
     const index = this.items.findIndex(([v]) => v === value);
     if (index >= 0) this.select.selectedIndex = index;
   }
