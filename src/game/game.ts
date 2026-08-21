@@ -153,8 +153,8 @@ export class Game {
       this.displayWindowManager, this._hud.overlayManager,
     );
 
-    this.targeter = new Targeter(this._hud, this.markerManager);
     this.navTarget = new NavTarget(this._hud, this.markerManager);
+    this.targeter = new Targeter(this._hud, this.markerManager, this.navTarget);
     this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
     this._environment = new EnvironmentScene(this._scene, this.ephemeris, graphics, pipeline.sunLight, earthSpinPhase0);
     this.activePlayers = new ActiveControllableController(
@@ -325,7 +325,7 @@ export class Game {
 
     // 表示可否・ターゲット・操作艦・ビューがこのフレームの確定値になった後に判断する。
     this.entityLines.update(
-      this.player, this.targeter.aliveTarget, this.targeter.aliveSecondaryTarget,
+      this.player, this.targeter.aliveTarget,
       overviewMode, displayWindow, this.mapPickables.visibilityPolicy,
     );
   }

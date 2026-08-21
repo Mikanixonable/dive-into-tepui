@@ -140,18 +140,14 @@ export class Enemy extends Ship {
 
 
 
-  // pos/vel は機体メッシュと同じ表示時刻の状態(displayState 経由)を使う。role が第一/第二
-  // ターゲットのどちらでもなければ通常の敵マーカーになる。overviewMode では進行方向へ回る
-  // ヘッダーアイコンを、戦闘ビューでは従来の切り欠き三角形を使う。
-  markerItem(role: 'none' | 'primary' | 'secondary', viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): GroupedMarkerItem {
+  // pos/vel は機体メッシュと同じ表示時刻の状態(displayState 経由)を使う。role がターゲットで
+  // なければ通常の敵マーカーになる。overviewMode では進行方向へ回るヘッダーアイコンを、
+  // 戦闘ビューでは従来の切り欠き三角形を使う。
+  markerItem(role: 'none' | 'primary', viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): GroupedMarkerItem {
     // 距離は優先度(近いほど高)とラベル表示の両方に使う
     const dist = len(sub(pos, viewerPos));
-    // 代表選出の優先度: 第一ターゲット > 第二ターゲット > 距離が近い順 (天体 > 船・エンティティ)
-    const priority = role === 'primary'
-      ? C.MARKER_PRIORITY.PRIMARY_TARGET
-      : role === 'secondary'
-        ? C.MARKER_PRIORITY.SECONDARY_TARGET
-        : C.MARKER_PRIORITY.ENEMY - dist / 1e9;
+    // 代表選出の優先度: ターゲット > 距離が近い順 (天体 > 船・エンティティ)
+    const priority = role === 'primary' ? C.MARKER_PRIORITY.PRIMARY_TARGET : C.MARKER_PRIORITY.ENEMY - dist / 1e9;
     return {
       key: `enemy-${this.name}`,
       cls: role === 'primary' ? 'mk-target' : 'mk-enemy',
