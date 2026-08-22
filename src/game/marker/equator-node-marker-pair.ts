@@ -43,7 +43,7 @@ export class EquatorNodeMarkerPair {
     if (!eqNormal) return;
 
     const unbakeTf = ephemeris.frameTransformAt(frame, displayTime, this.celestialBodies);
-    const crossings = solveEquatorCrossings(state, center, eqNormal, samples);
+    const crossings = solveEquatorCrossings(state, center, eqNormal, samples, (t) => ephemeris.positionOf(center.id, t));
     if (!crossings) return;
 
     const centerName = celestialBodyName(center.id);

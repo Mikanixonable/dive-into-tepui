@@ -11,67 +11,62 @@ import { Vec3 } from '../../physics/vec3';
 import { BodyClass, bodyClassOf } from './body-class';
 
 // クラスごとの表示トグル。恒星は常に見えるのでトグルを持たない(太陽系の基準点であり、
-// 消えると現在地が読めなくなる)。Icon(マーカーの点)と Label(名前)は別トグル——「位置だけ
-// 知りたい(ラベルは煩雑)」「名前だけ確認したい(点は見飽きた)」がそれぞれ独立に成り立つため。
-// Orbit(軌道線)はさらに別軸で、planet/dwarf/smallBody だけが持つ。satellite は衛星の参照軌道線が
-// フォーカス中の系かどうかで別途決まる(environment-scene.ts の MapVisibilityPolicy)ので Orbit
-// トグルを持たない。lagrange は天体ではなく軌道概念も無いので Icon/Label の2軸のみ。
+// 消えると現在地が読めなくなる)。Name(マーカーの点+ラベル)は1つのトグルで、位置の点と名前を
+// 同時にON/OFFする。Orbit(軌道線)はさらに別軸で、planet/dwarf/smallBody だけが持つ。satellite
+// は衛星の参照軌道線がフォーカス中の系かどうかで別途決まる(environment-scene.ts の
+// MapVisibilityPolicy)ので Orbit トグルを持たない。lagrange は天体ではなく軌道概念も無いので
+// Name の1軸のみ。
 export type BodyClassToggles = {
   readonly planetVisible: boolean;
   readonly planetOrbit: boolean;
-  readonly planetIcon: boolean;
-  readonly planetLabel: boolean;
+  readonly planetName: boolean;
   readonly dwarfVisible: boolean;
   readonly dwarfOrbit: boolean;
-  readonly dwarfIcon: boolean;
-  readonly dwarfLabel: boolean;
+  readonly dwarfName: boolean;
   readonly satelliteVisible: boolean;
-  readonly satelliteIcon: boolean;
-  readonly satelliteLabel: boolean;
+  readonly satelliteName: boolean;
   readonly satelliteOrbit: boolean;
   readonly smallBodyVisible: boolean;
   readonly smallBodyOrbit: boolean;
-  readonly smallBodyIcon: boolean;
-  readonly smallBodyLabel: boolean;
+  readonly smallBodyName: boolean;
   readonly lagrangeVisible: boolean;
-  readonly lagrangeIcon: boolean;
-  readonly lagrangeLabel: boolean;
+  readonly lagrangeName: boolean;
   readonly playerVisible: boolean;
-  readonly playerIcon: boolean; readonly playerLabel: boolean; readonly playerOrbit: boolean;
+  readonly playerName: boolean; readonly playerOrbit: boolean;
   readonly shipVisible: boolean;
-  readonly shipIcon: boolean; readonly shipLabel: boolean; readonly shipOrbit: boolean;
+  readonly shipName: boolean; readonly shipOrbit: boolean;
   readonly ammoVisible: boolean;
-  readonly ammoIcon: boolean; readonly ammoLabel: boolean; readonly ammoOrbit: boolean;
+  readonly ammoName: boolean; readonly ammoOrbit: boolean;
   readonly baseVisible: boolean;
-  readonly baseIcon: boolean; readonly baseLabel: boolean; readonly baseOrbit: boolean;
+  readonly baseName: boolean; readonly baseOrbit: boolean;
 };
 
 // 軌道線(Orbit)は面積を食う——全登録天体ぶん描くと内側太陽系がその天体の軌道線で埋まる
 // ため、数の多いクラス(dwarf・smallBody・satellite)は既定 off にする。planet だけは数が
-// 少なく太陽系の骨格をなすので軌道線まで既定 on。一方 Icon/Label は focus-markers.ts の
-// 混雑抑制(画面上で近すぎるラベルを間引く)が効くので溢れる心配が無く、planet と同様
-// dwarf・smallBody・satellite も既定 on にする。lagrange は FocusMarkers の構築時点で
-// 力学的に意味を持つ点(Ephemeris の hasUsableCollinearPoints / hasStableTriangularPoints)
-// だけに絞り込み済みで同じ懸念が当たらないため、既定 on にする。
+// 少なく太陽系の骨格をなすので軌道線まで既定 on。一方 Name は focus-markers.ts の混雑抑制
+// (画面上で近すぎるラベルを間引く)が効くので溢れる心配が無く、planet と同様 dwarf・
+// smallBody・satellite も既定 on にする。lagrange は FocusMarkers の構築時点で力学的に
+// 意味を持つ点(Ephemeris の hasUsableCollinearPoints / hasStableTriangularPoints)だけに
+// 絞り込み済みで同じ懸念が当たらないため、既定 on にする。
 export const DEFAULT_BODY_CLASS_TOGGLES: BodyClassToggles = {
   planetVisible: true,
-  planetOrbit: true, planetIcon: true, planetLabel: true,
+  planetOrbit: true, planetName: true,
   dwarfVisible: true,
-  dwarfOrbit: false, dwarfIcon: true, dwarfLabel: true,
+  dwarfOrbit: false, dwarfName: true,
   satelliteVisible: true,
-  satelliteIcon: true, satelliteLabel: true, satelliteOrbit: false,
+  satelliteName: true, satelliteOrbit: true,
   smallBodyVisible: true,
-  smallBodyOrbit: false, smallBodyIcon: true, smallBodyLabel: true,
+  smallBodyOrbit: false, smallBodyName: true,
   lagrangeVisible: true,
-  lagrangeIcon: true, lagrangeLabel: true,
+  lagrangeName: true,
   playerVisible: true,
-  playerIcon: true, playerLabel: true, playerOrbit: true,
+  playerName: true, playerOrbit: true,
   shipVisible: true,
-  shipIcon: true, shipLabel: true, shipOrbit: true,
+  shipName: true, shipOrbit: true,
   ammoVisible: true,
-  ammoIcon: true, ammoLabel: true, ammoOrbit: true,
+  ammoName: true, ammoOrbit: false,
   baseVisible: true,
-  baseIcon: true, baseLabel: true, baseOrbit: true,
+  baseName: true, baseOrbit: true,
 };
 
 // カテゴリー名のトグル。恒星は表示の基準点なのでカテゴリー操作の対象外。
@@ -85,16 +80,16 @@ export function bodyClassVisible(cls: BodyClass, toggles: BodyClassToggles): boo
   }
 }
 
-// トグルで足されるクラス(planet/dwarf/satellite/smallBody)の Icon/Label を、そのクラスの
-// トグル値から読む。恒星・focus 近傍の常時表示はここを経由しない(呼び出し側の判断)。
-function classIconLabel(cls: BodyClass, toggles: BodyClassToggles): { icon: boolean; label: boolean } {
-  if (!bodyClassVisible(cls, toggles)) return { icon: false, label: false };
+// トグルで足されるクラス(planet/dwarf/satellite/smallBody)の Name を、そのクラスのトグル値
+// から読む。恒星・focus 近傍の常時表示はここを経由しない(呼び出し側の判断)。
+function classNameVisible(cls: BodyClass, toggles: BodyClassToggles): boolean {
+  if (!bodyClassVisible(cls, toggles)) return false;
   switch (cls) {
-    case 'planet': return { icon: toggles.planetIcon, label: toggles.planetLabel };
-    case 'dwarf': return { icon: toggles.dwarfIcon, label: toggles.dwarfLabel };
-    case 'satellite': return { icon: toggles.satelliteIcon, label: toggles.satelliteLabel };
-    case 'smallBody': return { icon: toggles.smallBodyIcon, label: toggles.smallBodyLabel };
-    default: return { icon: false, label: false };
+    case 'planet': return toggles.planetName;
+    case 'dwarf': return toggles.dwarfName;
+    case 'satellite': return toggles.satelliteName;
+    case 'smallBody': return toggles.smallBodyName;
+    default: return false;
   }
 }
 
@@ -155,7 +150,7 @@ function ancestorsOf(registry: CelestialRegistry, focusId: CelestialBodyId): Cel
 }
 
 // 恒星、フォーカス中の天体の親・兄弟・子、およびカメラが現在属する系の天体——トグルの
-// 状態に関わらず Icon/Label が両方見える id の集合。「距離が近いもの」をズーム距離で判定
+// 状態に関わらず名前が見える id の集合。「距離が近いもの」をズーム距離で判定
 // すると操作の途中で行が明滅するので、カメラ位置から求めた重力系のメンバーで代用する。
 // focusId が undefined でも、nearbyIds に渡された近傍系は残す。
 export function alwaysFullyVisibleIds(
@@ -184,7 +179,7 @@ export function alwaysFullyVisibleIds(
   }
   // 兄弟は「惑星系の中の兄弟」に限る。恒星の子はすべて互いに兄弟なので、そこまで含めると
   // 惑星にフォーカスしただけで全太陽周回天体が出てしまう(惑星どうしの表示は planetOrbit/
-  // planetIcon/planetLabel トグルが別途受け持つ)。
+  // planetName トグルが別途受け持つ)。
   const focusParent = registry[focusId] === undefined ? null : primaryOf(registry, focusId);
   const siblingsMatter = focusParent !== null && registry[focusParent]?.kind !== 'star';
   for (const id of sameSystemIds(registry, focusId)) {
@@ -197,12 +192,12 @@ export function alwaysFullyVisibleIds(
   return ids;
 }
 
-// 天体 id 1つの Icon/Label 表示可否。alwaysFullyVisibleIds に含まれる天体は呼び出し側で
-// 個別に true/true とすること(この関数はクラストグルだけを読む)。
-export function bodyIconLabel(
+// 天体 id 1つの Name 表示可否。alwaysFullyVisibleIds に含まれる天体は呼び出し側で個別に
+// true とすること(この関数はクラストグルだけを読む)。
+export function bodyNameVisible(
   registry: CelestialRegistry, toggles: BodyClassToggles, id: CelestialBodyId,
-): { icon: boolean; label: boolean } {
-  return classIconLabel(bodyClassOf(registry, id), toggles);
+): boolean {
+  return classNameVisible(bodyClassOf(registry, id), toggles);
 }
 
 // cameraPos で最も強く重力を及ぼす天体から主星まで遡った id の列(その天体自身を含む)。

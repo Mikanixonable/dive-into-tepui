@@ -139,7 +139,7 @@ export class PredictedArc {
       return true;
     }
 
-    (this._apsides ??= new ApsisTrack(center)).observe(tip, this._trajectory.state);
+    (this._apsides ??= new ApsisTrack()).observe(center, tip, this._trajectory.state);
     this.checkSurfaceReach(tip, mid.collision);
 
     this.carriedSources = mid;
