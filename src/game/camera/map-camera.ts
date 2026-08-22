@@ -5,14 +5,14 @@ import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { MouseDelta } from '../input/input';
 import { metersPerPixelAtDepth, ProjectionMode, Viewpoint } from '../../physics/projection';
-import { FrameAnchorSource, ReferenceFrame, FrameDir, FrameRotationSource, frameDir, framePoint, frameRoleOf, toFrameDir, toInertialDir, toInertialPoint } from '../../physics/frame';
+import { FrameAnchorSource, ReferenceFrame, FrameDir, FrameRotationSource, frameDir, framePoint, toFrameDir, toInertialDir } from '../../physics/frame';
 import { bodyAnchorSource, strongestAttractor } from '../../physics/celestial-body';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Quat, qFromAxisAngle, qFromForwardUp, qMul, qNormalize, qRotate } from '../../physics/attitude';
 import { ECI_POLE, ECL_POLE_ECI, ECL_VERNAL } from '../../physics/ecliptic';
 import { MapPickable } from '../map-pickable';
 import { bodyDef } from '../../physics/solar-system';
-import { FocusTarget } from './focus-target';
+import { FocusTarget, resolveFocusTarget } from './focus-target';
 import { FrameRotationSourceSaveData, MapCameraSaveData } from '../save-data';
 
 // セーブデータの rotatingWith を FrameRotationSource へ変換する。旧セーブは公転対象の id を
@@ -393,43 +393,17 @@ export class MapCamera {
   // 候補が一時的に欠けたフレームでは直前の注視点を保ち、連続して消えた対象は ECI 原点へ戻す。
   // point は座標系が回っていれば ECI 座標が動くため、毎フレーム焼き直す。
   private resolveFocus(candidates: readonly MapPickable[], displayTime: number, frameAnchors: FrameAnchorSource): Vec3 {
-    const focus = this._focus;
-    if (focus.kind === 'point') {
-      const tf = this.ephemeris.frameTransformAt(focus.frame, displayTime, frameAnchors);
-      this.lastResolvedFocus = toInertialPoint(tf, focus.point);
-      return this.lastResolvedFocus;
-    }
-    if (focus.id === this.ephemeris.originId) {
-      this.missingFocusFrames = 0;
-      this.lastResolvedFocus = v3();
-      return this.lastResolvedFocus;
-    }
-    if (focus.id in this.ephemeris.registry) {
-      this.missingFocusFrames = 0;
-      this.lastResolvedFocus = this.ephemeris.positionOf(focus.id, displayTime);
-      return this.lastResolvedFocus;
-    }
-    // 役割トークンは特定の対象を名指ししないぶん被選択物の一覧に並ぶことがなく、解決役へ直接問う。
-    if (frameRoleOf(focus.id) !== null) {
-      const state = frameAnchors.stateOf(focus.id, displayTime);
-      if (state !== null) {
-        this.missingFocusFrames = 0;
-        this.lastResolvedFocus = state.r;
-        return state.r;
-      }
-    }
-    const candidate = candidates.find((c) => c.id === focus.id);
-    if (candidate) {
-      this.missingFocusFrames = 0;
-      this.lastResolvedFocus = candidate.pos;
-      return candidate.pos;
-    }
-    this.missingFocusFrames++;
-    if (this.missingFocusFrames >= 2) {
+    const result = resolveFocusTarget(this._focus, candidates, displayTime, frameAnchors, this.ephemeris, {
+      missingFocusFrames: this.missingFocusFrames,
+      lastResolvedFocus: this.lastResolvedFocus,
+    });
+    this.missingFocusFrames = result.missingFocusFrames;
+    this.lastResolvedFocus = result.lastResolvedFocus;
+    if (result.fallToOrigin) {
       this.setFocusTarget({ kind: 'object', id: this.ephemeris.originId });
       return v3();
     }
-    return this.lastResolvedFocus;
+    return result.pos;
   }
 
   // 現在視点を固定している座標系を返す。
