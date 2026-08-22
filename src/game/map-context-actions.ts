@@ -30,7 +30,7 @@ import { PlanEditor } from './plan/plan-editor';
 import { SimSpeedManager } from './sim-speed-manager';
 import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from './hud/orbit/orbit-labels';
 import type { Docking } from './docking';
-import type { ActivePlayerController } from './active-player-controller';
+import type { ActivePlayerController } from './active-controllable-controller';
 import type { FrameControls } from './hud/frame/frame-controls';
 import type { Stage } from './stages/stage';
 import { Player, planExecutionLabel, type PlanExecutionMode } from './player/player';

@@ -23,7 +23,7 @@ import { DisplayDurationSource, Plan, PlanData } from './plan';
 import { PlanDisplay } from './plan-display';
 import { SimSpeedManager } from '../sim-speed-manager';
 import type { Controllable } from '../game-entity/controllable';
-import type { ActivePlayerController } from '../active-player-controller';
+import type { ActivePlayerController } from '../active-controllable-controller';
 import type { FrameControls } from '../hud/frame/frame-controls';
 import { focusPoint } from '../camera/focus-target';
 import { CelestialBody, bodyAnchorSource, orbitalElementsOf, frameOfCelestialBody, strongestAttractor } from '../../physics/celestial-body';

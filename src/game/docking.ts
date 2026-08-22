@@ -15,7 +15,7 @@ import type { ViewManager } from './view-manager';
 import type { WorldSfx } from '../audio/sfx/world-sfx';
 import type { EffectsSystem } from './vfx/effects-system';
 import type { MarkerManager } from './marker/marker-manager';
-import type { ActivePlayerController } from './active-player-controller';
+import type { ActivePlayerController } from './active-controllable-controller';
 import type { Stage } from './stages/stage';
 import { generateRandomName } from './random-name';
 
