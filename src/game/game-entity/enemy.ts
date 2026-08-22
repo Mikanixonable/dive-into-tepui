@@ -3,7 +3,7 @@ import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { Ship } from './ship';
 import { CelestialBody } from '../../physics/celestial-body';
-import { burnUpBody } from '../../physics/atmosphere';
+
 import { GameEntity } from './game-entity';
 import { closingSpeed, type Contact } from './contact';
 import { contactDamageSpeed } from './contact-damage';
@@ -73,8 +73,8 @@ export type EnemyInit =
   | { readonly saved: EnemySaveData; readonly simTime: number };
 
 export class Enemy extends Ship {
-  // 敵は熱シミュレーションを持たないので、基底の破片相当より濃い大気まで耐える。
-  protected readonly burnUpDensity = C.ENEMY_BURNUP_DENSITY;
+  // 敵機は熱防御を持たないので、自機より低い温度で構造が保たなくなる。
+  protected readonly maxTemperature = C.ENEMY_MAX_TEMP;
   accent: string | number; // マーカー色・集団識別。全敵が保持する
   waveId?: number; // stage00 のウェーブ敵のみ。生存ウェーブ集計に使う
   readonly orbitLineColor: string | number;
@@ -251,15 +251,10 @@ export class Enemy extends Ship {
   }
 
   // 大気での焼失による自然死。固体表面への接触は collideWithCelestialBody が扱う。
-  checkLoss(
-    _dt: number, simTime: number, activeStage: Stage, _playerPos: Vec3,
-    atmosphereBodies: readonly CelestialBody[],
-  ): void {
-    if (!this.alive) return;
-    if (burnUpBody(this.state.r, atmosphereBodies, this.burnUpDensity) === null) return;
+  protected override burnUp(activeStage: Stage): void {
     this.alive = false;
     this.destroyEffect();
-    activeStage.recordEnemyDeath(this, simTime, 'burnup');
+    activeStage.recordEnemyDeath(this, this.state.t, 'burnup');
   }
 
   // 行動関数(同一集団の同時攻撃数カウント・弾追加は entities を使う)。
