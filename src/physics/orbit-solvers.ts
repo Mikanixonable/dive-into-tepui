@@ -34,7 +34,7 @@ export function solveEquatorCrossings(
     let asc: KinematicState | null = null;
     let desc: KinematicState | null = null;
     for (const samples of paths) {
-      const { ascending, descending } = findEquatorCrossings(samples, center, eqNormal);
+      const { ascending, descending } = findEquatorCrossings(samples, centerPositionAt, eqNormal);
       asc ??= ascending;
       desc ??= descending;
       if (asc && desc) break;

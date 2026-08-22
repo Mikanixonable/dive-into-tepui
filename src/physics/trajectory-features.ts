@@ -105,12 +105,14 @@ export class ApsisTrack {
 
 // [a, b] 区間内で、中心天体の赤道面(pole に垂直な面)を横切る点を、符号反転する
 // 隣接サンプル対から二分法で追い込む。asc(昇交点、負→正)/desc(降交点、正→負)。
+// 中心天体位置は centerPositionAt(t) でサンプルごとの時刻から引く — 月のように区間の間に
+// 中心天体自身が動く場合、固定した1点を使うと区間後半ほど基準がずれて交点を見失うため。
 function findCrossing(
-  samples: readonly KinematicState[], center: CelestialBody, pole: Vec3, ascending: boolean,
+  samples: readonly KinematicState[], centerPositionAt: (t: number) => Vec3, pole: Vec3, ascending: boolean,
 ): KinematicState | null {
   // pole 方向の符号(赤道面のどちら側にいるか)。
   const sideOf = (s: KinematicState): number => {
-    const rel = sub(s.r, center.state.r);
+    const rel = sub(s.r, centerPositionAt(s.t));
     return rel.x * pole.x + rel.y * pole.y + rel.z * pole.z;
   };
   for (let i = 0; i < samples.length - 1; i++) {
@@ -139,10 +141,10 @@ export interface EquatorCrossings {
 
 // 昇交点・降交点をそれぞれ独立に探して返す。
 export function findEquatorCrossings(
-  samples: readonly KinematicState[], center: CelestialBody, pole: Vec3,
+  samples: readonly KinematicState[], centerPositionAt: (t: number) => Vec3, pole: Vec3,
 ): EquatorCrossings {
   return {
-    ascending: findCrossing(samples, center, pole, true),
-    descending: findCrossing(samples, center, pole, false),
+    ascending: findCrossing(samples, centerPositionAt, pole, true),
+    descending: findCrossing(samples, centerPositionAt, pole, false),
   };
 }
