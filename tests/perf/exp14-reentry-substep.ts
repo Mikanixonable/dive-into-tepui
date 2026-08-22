@@ -21,7 +21,7 @@ import { Ephemeris } from '../../src/physics/ephemeris';
 import { KinematicState, hermiteInterpolate, kinematicState } from '../../src/physics/kinematic-state';
 import { len, sub, v3 } from '../../src/physics/vec3';
 import * as C from '../../src/game/const';
-import { reentryAwareMaxStep, simulationMaxStep } from '../../src/game/simulation/time-step';
+import { simulationMaxStep } from '../../src/game/simulation/time-step';
 import { MU_EARTH, R_EARTH, SHIP_BCINV, buildEphemeris } from './common';
 
 const FRAME_DT = 1 / 60; // 60 fps を想定した実フレーム時間 [s]
@@ -78,10 +78,9 @@ class Hull {
   }
 }
 
-// 刻みの決め方。'reentry' がいまの実装、'fixed' が細分化を廃した場合、'inner' は熱と動圧だけを
-// 内側で細分する案(位置と速度は粗い刻みのまま進める)。
+// 刻みの決め方。'fixed' は刻み固定、'inner' は熱と動圧だけを内側で細分する案(位置と速度は
+// 粗い刻みのまま進める)。
 type Scheme =
-  | { readonly kind: 'reentry'; readonly normalStep: number }
   | { readonly kind: 'fixed'; readonly step: number }
   | { readonly kind: 'inner'; readonly step: number };
 
@@ -105,11 +104,7 @@ function descend(ephemeris: Ephemeris, scheme: Scheme): Result {
   while (state.t < end) {
     const air = ephemeris.atmosphereCelestialBodiesAt(state.t);
     const body = nearestAtmosphereBody(state.r, air);
-    const dt = Math.min(
-      scheme.kind === 'reentry'
-        ? reentryAwareMaxStep([state], air, scheme.normalStep)
-        : scheme.step,
-      end - state.t);
+    const dt = Math.min(scheme.step, end - state.t);
     const tMid = state.t + dt / 2;
     const next = stepDynamics(
       state, dt, ephemeris.gravityAttractorsAt(tMid), ephemeris.celestialBodiesAt(tMid),
@@ -165,9 +160,8 @@ export function run(): void {
     + `${DURATION} s 追う。限界は外殻温度 ${C.MAX_HULL_TEMP} K・動圧 ${C.MAX_DYN_PRESSURE / 1e3} kPa。\n`);
   const ephemeris = buildEphemeris();
   const schemes: readonly (readonly [string, Scheme])[] = [
-    ['刻み 0.25 s 固定(基準 — 細分化ありが収束しているかの確認)', { kind: 'fixed', step: 0.25 }],
-    [`細分化あり(${C.REENTRY_SUBSTEP_MAX_DT} s、いまの実装)`,
-      { kind: 'reentry', normalStep: WARP_STEP }],
+    ['刻み 0.25 s 固定(基準 — 複製した熱の式が収束しているかの確認)', { kind: 'fixed', step: 0.25 }],
+    ['刻み 1 s', { kind: 'fixed', step: 1 }],
     ['細分化なし・刻み 5 s', { kind: 'fixed', step: 5 }],
     ['細分化なし・刻み 10 s', { kind: 'fixed', step: 10 }],
     ['細分化なし・刻み 20 s(幅の上限)', { kind: 'fixed', step: C.SUBSTEP_MAX_DT }],
