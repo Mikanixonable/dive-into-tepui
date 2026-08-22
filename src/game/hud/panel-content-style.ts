@@ -198,6 +198,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-creative-options { width: 100%; pointer-events: auto; }
 /* 物体配置パネル(クリエイティブモード限定): MANEUVER PLAN の下、右上に縦積みする。 */
 #hud-shipplacer { width: 100%; pointer-events: auto; max-height: 70vh; max-height: 70dvh; overflow-y: auto; }
+#hud-object-placer .w-close { border-radius: 50%; }
 #hud-shipplacer .shipplacer-btn-row { display: flex; gap: var(--space-4); margin-top: var(--space-5); }
 #hud-shipplacer .slider-field { margin-bottom: var(--space-4); }
 #hud-shipplacer .slider-field .w-group { flex-wrap: nowrap; margin-bottom: 0; }
