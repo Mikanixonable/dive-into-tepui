@@ -51,7 +51,7 @@ const HEADER_SUMMARY: Partial<Record<MapPickKind, { readonly needle: string; rea
 
 const EMPTY_IDS: readonly string[] = [];
 
-type PhysicalObjectListFilter = 'system' | 'lagrange' | Exclude<BodyClass, 'star'>;
+type PhysicalObjectListFilter = 'artifact' | 'enemy' | 'lagrange' | Exclude<BodyClass, 'star'>;
 
 const FILTERS: readonly (readonly [PhysicalObjectListFilter, string])[] = [
   ['planet', '惑星'],
@@ -59,7 +59,8 @@ const FILTERS: readonly (readonly [PhysicalObjectListFilter, string])[] = [
   ['dwarf', '準惑星'],
   ['smallBody', '小天体'],
   ['lagrange', 'ラグランジュ点'],
-  ['system', '天体以外'],
+  ['artifact', '人工物'],
+  ['enemy', '敵'],
 ];
 
 // このパネル自身の折りたたみトグルの見た目。
@@ -477,7 +478,10 @@ export class PhysicalObjectListPanel {
   private matches(item: MapPickable): boolean {
     if (this.query && !`${item.name} ${item.detail ?? ''}`.toLocaleLowerCase().includes(this.query)) return false;
     if (this.filter === null) return true;
-    if (this.filter === 'system') return item.kind !== 'body' && item.inFocusedSystem !== false;
+    if (this.filter === 'artifact') {
+      return (item.kind === 'player' || item.kind === 'ammo' || item.kind === 'base') && item.inFocusedSystem !== false;
+    }
+    if (this.filter === 'enemy') return item.kind === 'ship' && item.inFocusedSystem !== false;
     if (this.filter === 'lagrange') return item.kind === 'body' && LAGRANGE_ID.test(item.id);
     return item.kind === 'body' && !LAGRANGE_ID.test(item.id) && bodyClassOf(this.registry, item.id) === this.filter;
   }
