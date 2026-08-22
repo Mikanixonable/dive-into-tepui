@@ -16,7 +16,7 @@ function planetOrbitOf(id: string): PlanetOrbit {
 const SMALL_BODY_IDS: readonly string[] = [
   'sedna', 'quaoar', 'chariklo', 'hygiea', 'eros', 'ryugu', 'bennu', 'churyumov',
   'orcus', 'gonggong', 'salacia', 'varuna', 'ixion', 'arrokoth', 'chiron', 'interamnia',
-  'europa52', 'davida', 'juno', 'psyche', 'eunomia', 'sylvia', 'itokawa', 'apophis',
+  'europa52', 'davida', 'juno', 'psyche', 'eunomia', 'sylvia', 'apophis',
   'didymos', 'tempel1', 'wild2', 'hartley2', 'cruithne', 'kamooalewa', 'tk7', 'eureka',
 ];
 

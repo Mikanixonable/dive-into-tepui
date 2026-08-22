@@ -1821,27 +1821,6 @@ export const SOLAR_SYSTEM = {
       aRatePerCenturyAu: 0,
     }),
   },
-  itokawa: {
-    kind: 'planet',
-    id: 'itokawa',
-    mu: 0,
-    radius: 267.5, // 三軸の最長半軸(外接球)
-    shape: { kind: 'triaxial', a: 267.5, b: 147.0, c: 104.5 },
-    orbit: planetOrbit({
-      a: 1.324052 * AU,
-      e: 0.280178,
-      incDeg: 1.620941,
-      raanDeg: 69.0745,
-      lonPeriDeg: 231.9154,
-      l0Deg: 402.5693,
-      lRateDegPerCentury: lRateFromSemiMajorAxis(1.324052 * AU),
-      raanRateDegPerCentury: 0,
-      incRateDegPerCentury: 0,
-      lonPeriRateDegPerCentury: 0,
-      eRatePerCentury: 0,
-      aRatePerCenturyAu: 0,
-    }),
-  },
   apophis: {
     kind: 'planet',
     id: 'apophis',
@@ -1882,17 +1861,6 @@ export const SOLAR_SYSTEM = {
       eRatePerCentury: 0,
       aRatePerCenturyAu: 0,
     }),
-  },
-  // ディディモスの衛星ディモルフォス(DART 衝突前の値)。基準面は黄道面(出典・扱いは
-  // ハウメアの衛星と同じ)。i=169.3° は黄道基準の値で、順行(親の赤道面基準では逆向きに
-  // 見える)と混同しないこと — equatorBasis を渡していないのはその整合を保つため。
-  dimorphos: {
-    kind: 'satellite',
-    id: 'dimorphos',
-    mu: GRAVITATIONAL_CONSTANT * 5.0e9,
-    radius: 75.5,
-    planet: 'didymos',
-    orbit: jplSatelliteOrbit({ a: 1206, e: 0, incDeg: 169.3, periodDays: 0.4967, nodePeriodYears: 0, apsisPeriodYears: 0 }),
   },
   tempel1: {
     kind: 'planet',
