@@ -88,6 +88,7 @@ export class PlanDisplay {
     planData: PlanData | null, displayWindow: DisplayWindow, celestialBodyProvider: FutureCelestialBodyProvider, ship: Controllable | null,
   ): void {
     if (planData === null) {
+      this.path.clear();
       this.ghost = null;
       this.apsisIcons = [];
       this.impactIcons = [];
