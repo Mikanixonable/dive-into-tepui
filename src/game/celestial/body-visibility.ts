@@ -6,7 +6,7 @@
 // 距離のような連続量で判定すると操作の途中で行が明滅する)。systemChainAt だけはカメラ位置
 // という連続量から系の呼び名を導く — 表示を絞る判定ではなく、いまいる場所の説明であるため。
 import { Attractor, AttractorId, attractorAccel, strongestAttractor } from '../../physics/attractor';
-import { CelestialRegistry, primaryOf } from '../../physics/solar-system';
+import { CelestialRegistry, bodyDef, primaryOf } from '../../physics/solar-system';
 import { Vec3, lenSq } from '../../physics/vec3';
 import { BodyClass, bodyClassOf } from './body-class';
 
@@ -126,7 +126,10 @@ export function isPositionInFocusedSystem(
 
   const focusDef = registry[focusId];
   const systemFocusId = focusDef.kind === 'satellite' ? primaryOf(registry, focusId) : focusId;
-  let current: AttractorId | null = strongestAttractor(position, attractors).id;
+  const initial = strongestAttractor(position, attractors).id;
+  // 太陽を直接周回中でどの惑星系にも属さない対象は、どの惑星がフォーカスされていても常に含める。
+  if (bodyDef(registry, initial).kind === 'star') return true;
+  let current: AttractorId | null = initial;
   // 壊れた親子定義でも停止するよう、レジストリ数を上限にする。
   for (let i = 0; current !== null && i <= Object.keys(registry).length; i++) {
     if (current === systemFocusId) return true;
