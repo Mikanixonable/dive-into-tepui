@@ -1,5 +1,6 @@
 // マップモードの「軌道フレーム」パネル。計画折れ線・予測軌道線の描画基準(中心天体・回転系)とカメラ追随設定を担当する。
 import type { Ephemeris } from '../../physics/ephemeris';
+import type { FrameRotationSource } from '../../physics/frame';
 import { AnchorZone } from './anchor-zone';
 import { RotationZone } from './rotation-zone';
 import { ToggleSwitch } from './widgets';
@@ -68,7 +69,10 @@ export class TrajectoryFramePanel {
   private orbitSummaryText(): string {
     const planCenter = celestialBodyName(this.displayWindow.frame.center);
     const planRot = this.displayWindow.frame.rotatingWith;
-    const rotText = (id: string | null): string => (id === null ? '慣性系' : `${celestialBodyName(id)}回転系`);
+    const rotText = (source: FrameRotationSource | null): string => {
+      if (source === null) return '慣性系';
+      return source.kind === 'spin' ? `${celestialBodyName(source.id)}自転系` : `${celestialBodyName(source.id)}回転系`;
+    };
     return `基準: ${planCenter}・${rotText(planRot)}`;
   }
 
