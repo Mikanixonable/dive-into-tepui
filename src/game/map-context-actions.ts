@@ -32,6 +32,7 @@ import type { FrameControls } from './hud/frame-controls';
 import type { Stage } from './stages/stage';
 import { Player, planExecutionLabel, type PlanExecutionMode } from './player/player';
 import type { GameEntity } from './game-entity/game-entity';
+import type { Targeter } from './targeter';
 import { add, cross, len, norm, scale, sub, v3 } from '../physics/vec3';
 import { metersPerPixel } from '../physics/projection';
 import type { ObjectType } from './creative/object-placer-panel';
@@ -93,6 +94,7 @@ export class MapContextActions {
     private readonly activePlayers: ActivePlayerController,
     private readonly frameControls: FrameControls,
     private readonly activeStage: Stage,
+    private readonly targeter: Targeter,
   ) {
     this.menu = new ContextMenu<MapPickable, MenuAction>(hud.layers.popup, hud.overlayManager);
     this.menu.onSelect = (act, target) => {
@@ -118,6 +120,10 @@ export class MapContextActions {
     this.hud.enemiesPanel.onSelectRight = (id, clientX, clientY) => {
       const enemy = this.entities.enemies.find((e) => e.id === id);
       if (enemy) this.openPropertyWindow(clientX, clientY, this.entityToPickable(enemy), this.pickables.lastSimTime);
+    };
+    this.hud.targetPanel.onSelectRight = (clientX, clientY) => {
+      const target = this.targeter.aliveTarget;
+      if (target) this.openPropertyWindow(clientX, clientY, this.entityToPickable(target), this.pickables.lastSimTime);
     };
   }
 
