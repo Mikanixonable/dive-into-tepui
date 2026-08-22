@@ -192,7 +192,7 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
       <div class="row metric"><dt class="k">弾薬</dt><dd class="v"><output data-id="ammo">—</output></dd></div>
     </dl>
     <div class="status-throttle-touch" data-id="status-throttle-touch"></div>
-    <div class="status-actions" data-id="status-actions" role="group" aria-label="機体の主要操作"></div>`;
+    <div class="panel-actions" data-id="status-actions" role="group" aria-label="機体の主要操作"></div>`;
 
   const orbit = new PanelShell(leftRail, 'hud-orbit', 'Orbit', isCompactViewport());
   configureCombatPanel(orbit);
@@ -212,7 +212,8 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
       <div class="row metric">
         <dt class="k">機体温度</dt><dd class="v"><output data-id="temp">—</output></dd>
       </div>
-    </dl>`;
+    </dl>
+    <div class="panel-actions" data-id="orbit-actions" role="group" aria-label="軌道の操作"></div>`;
 
   const target = new PanelShell(rightRail, 'hud-target', 'Target');
   configureCombatPanel(target);
