@@ -427,7 +427,6 @@ export const PLAN_EXECUTOR_ARM_ANGLE_DEG = 2.0; // 姿勢誤差がこれを切�
 export const PLAN_EXECUTOR_TRIM_DV = 5.0; // 残り射影がこれを下回ったら最低出力段へ落とす [m/s]
 
 // --- 未来表示の時刻(display-window-manager.ts のスライダー) ---
-export const DISPLAY_DUR_90MIN = 90 * 60; // 90分
 export const DISPLAY_DUR_DAY = 86400; // 1日
 export const DISPLAY_DUR_WEEK = 7 * 86400; // 7日
 export const DISPLAY_DUR_MONTH = 28 * 86400; // 28日
