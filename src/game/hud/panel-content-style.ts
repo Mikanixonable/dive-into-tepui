@@ -165,11 +165,6 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 /* 単位の SegmentedControl は見出しを持たないので、共通規則の見出し幅を出さない。 */
 #hud-predict .predict-value-input .seg-title { display: none; }
 #hud-predict .predict-value-input input[type="number"] { width: 56px; }
-#hud-predict .predict-edit-btn {
-  pointer-events: auto; cursor: pointer; padding: var(--space-1) var(--space-3); font-size: var(--font-s);
-  border: 1px solid var(--edge); border-radius: var(--radius-m); background: var(--surface); color: var(--text-dim);
-}
-#hud-predict .predict-edit-btn:hover { border-color: var(--accent); color: var(--accent); }
 #hud-predict .slider-ticks { position: relative; height: 11px; margin-top: var(--space-1); }
 #hud-predict .slider-ticks span {
   position: absolute;
