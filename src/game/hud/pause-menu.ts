@@ -43,9 +43,14 @@ export class PauseMenu implements OverlayHandle {
     this.panel = document.createElement('div');
     this.panel.id = 'hud-pause-menu';
     this.panel.className = 'panel';
+    const header = document.createElement('div');
+    header.className = 'pm-header';
     const heading = document.createElement('h3');
     heading.textContent = '一時停止 / 設定';
-    this.panel.appendChild(heading);
+    header.appendChild(heading);
+    const closeBtn = new CloseButton(() => this.toggle(false));
+    header.appendChild(closeBtn.element);
+    this.panel.appendChild(header);
 
     this.tabs = new TabBar<PauseTab>(TAB_ITEMS, (tab) => this.showTab(tab));
     this.panel.appendChild(this.tabs.element);
@@ -145,12 +150,6 @@ export class PauseMenu implements OverlayHandle {
     const quitBtn = new Button('ゲームを中断してタイトル画面に戻る', () => this.onQuitToTitle?.());
     quitBtn.element.classList.add('pm-quit');
     general.appendChild(quitBtn.element);
-
-    const closeRow = document.createElement('div');
-    closeRow.className = 'pm-close-row';
-    const closeBtn = new CloseButton(() => this.toggle(false));
-    closeRow.appendChild(closeBtn.element);
-    this.panel.appendChild(closeRow);
 
     root.appendChild(this.panel);
     this.showTab('general');
