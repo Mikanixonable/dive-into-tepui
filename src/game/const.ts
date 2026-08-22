@@ -62,7 +62,6 @@ export const NOSE_RADIUS = 0.6; // 機首曲率半径 [m]
 export const HEAT_ABSORB_AREA = 0.9; // よどみ点熱流束を受ける実効面積 [m^2]
 export const RAD_AREA = 70; // ハル自体の放射冷却面積 [m^2]
 export const HULL_EMISS = 0.85; // 放射率
-export const STEFAN_BOLTZMANN = 5.670374419e-8; // [W/m^2/K^4]
 export const HEAT_CAPACITY = 3.4e5; // 外殻の熱容量 [J/K]
 export const ENV_TEMP = 255; // 放射平衡の環境温度 [K]
 export const HULL_START_TEMP = 273; // 初期機体温度 [K]

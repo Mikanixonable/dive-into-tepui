@@ -26,6 +26,7 @@ import {
   Atmosphere, airspeed, atmosphericDensity, atmosphericScaleHeight, dragAccel, ellipsoidAltitude,
 } from '../../src/physics/atmosphere';
 import { degree2Accel, stepDynamics } from '../../src/physics/dynamics';
+import { STEFAN_BOLTZMANN } from '../../src/physics/thermal';
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { Vec3, add, dot, len, sub, v3 } from '../../src/physics/vec3';
@@ -64,7 +65,7 @@ function airflow(s: KinematicState, body: CelestialBody):
 // 外殻温度の一次(矩形)積分。updateThermal の複製。
 function absorbHeat(temp: number, rho: number, speed: number, dt: number): number {
   const qdot = C.SG_CONST * Math.sqrt(rho / C.NOSE_RADIUS) * speed * speed * speed;
-  const cool = C.HULL_EMISS * C.STEFAN_BOLTZMANN * C.RAD_AREA
+  const cool = C.HULL_EMISS * STEFAN_BOLTZMANN * C.RAD_AREA
     * (Math.pow(C.ENV_TEMP, 4) - Math.pow(temp, 4));
   return Math.max(
     C.HULL_TEMP_FLOOR,
