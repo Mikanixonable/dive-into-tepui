@@ -8,7 +8,7 @@ import type { Ephemeris } from '../../physics/ephemeris';
 import { celestialBodyName } from '../hud/frame-labels';
 import { occlusionOpacity } from '../../physics/occlusion';
 import { BodyClassToggles, NearbySystemTracker } from '../celestial/body-visibility';
-import { bodyClassOf } from '../celestial/body-class';
+import { bodyClassOf, BodyClass } from '../celestial/body-class';
 import { MapVisibilityPolicy } from '../celestial/map-visibility';
 import {
   FOCUS_ICON_DEPTH_GUARD_EXIT_RATIO, FOCUS_ICON_DEPTH_GUARD_RATIO, FOCUS_ICON_PRIORITY_PX,
@@ -16,7 +16,7 @@ import {
   LAGRANGE_MIN_CLEARANCE_RATIO, MARKER_PRIORITY,
 } from '../const';
 import type { MapPickable } from '../map-pickable';
-import { ENTITY_GLYPH } from '../marker/marker-glyphs';
+import { ENTITY_GLYPH, bodyEntityGlyph } from '../marker/marker-glyphs';
 import type { GroupedMarkers, GroupedMarkerItem } from '../marker/grouped-markers';
 
 type MutableMapPickable = { -readonly [K in keyof MapPickable]: MapPickable[K] };
@@ -42,6 +42,8 @@ export interface FocusLabel {
   pos: Vec3;
   kind: 'body';
   isLagrange: boolean;
+  // アイコン形状の選択に使う(ラグランジュ点では未使用)。
+  bodyClass: BodyClass;
   // 天体の表示分類に基づくラベル優先度。数値が大きいほど優先して残す。
   readonly labelPriority: number;
   // 主星を 0 とする階層の深さ。一覧をこの順・この字下げで並べると親子関係がそのまま出る。
@@ -231,16 +233,17 @@ export class FocusMarkers {
     const appendBody = (id: CelestialBodyId, depth: number): void => {
       if (added.has(id)) return;
       added.add(id);
+      const cls = bodyClassOf(registry, id);
       labels.push({
         id, name: celestialBodyName(id), markerLabel: celestialBodyName(id),
-        pos: v3(0, 0, 0), kind: 'body', isLagrange: false,
-        labelPriority: LABEL_PRIORITY[bodyClassOf(registry, id)], depth,
+        pos: v3(0, 0, 0), kind: 'body', isLagrange: false, bodyClass: cls,
+        labelPriority: LABEL_PRIORITY[cls], depth,
         showIcon: false, showLabel: false, pickable: true,
       });
       for (const n of pointsOf.get(id) ?? []) {
         labels.push({
           id: `${id}-l${n}`, name: lagrangeName(id, n), markerLabel: lagrangeMarkerLabel(id, n), pos: v3(0, 0, 0),
-          kind: 'body', isLagrange: true, labelPriority: LABEL_PRIORITY.lagrange, depth: depth + 1,
+          kind: 'body', isLagrange: true, bodyClass: cls, labelPriority: LABEL_PRIORITY.lagrange, depth: depth + 1,
           showIcon: false, showLabel: false, pickable: true,
         });
       }
@@ -448,7 +451,7 @@ export class FocusMarkers {
       }
       this.markerManager.setPosition(
         lbl.id, lbl.isLagrange ? 'mk-poi mk-lagrange' : 'mk-poi',
-        isIconVisible ? (lbl.isLagrange ? ENTITY_GLYPH.lagrange : ENTITY_GLYPH.body) : '',
+        isIconVisible ? (lbl.isLagrange ? ENTITY_GLYPH.lagrange : bodyEntityGlyph(lbl.bodyClass)) : '',
         lbl.pos, project,
         isLabelVisible ? lbl.markerLabel : '',
         markerOpacity, undefined, undefined, false, false, lbl.labelPriority,
@@ -586,7 +589,7 @@ export class FocusMarkers {
       if (proj && proj.front && !proj.occluded) {
         this.markerManager.setPosition(
           lbl.id, lbl.isLagrange ? 'mk-poi mk-lagrange' : 'mk-poi',
-          lbl.showIcon ? (lbl.isLagrange ? ENTITY_GLYPH.lagrange : ENTITY_GLYPH.body) : '',
+          lbl.showIcon ? (lbl.isLagrange ? ENTITY_GLYPH.lagrange : bodyEntityGlyph(lbl.bodyClass)) : '',
           lbl.pos, project,
           fullLabelText,
           proj.opacity, undefined, undefined, false, false, lbl.labelPriority,
