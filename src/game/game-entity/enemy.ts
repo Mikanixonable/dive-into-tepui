@@ -74,6 +74,8 @@ export type EnemyInit =
 export class Enemy extends Ship {
   // 敵は熱シミュレーションを持たないので、基底の破片相当より濃い大気まで耐える。
   protected readonly burnUpDensity = C.ENEMY_BURNUP_DENSITY;
+  // 敵機は熱防御を持たないので、自機より低い温度で構造が保たなくなる。
+  protected readonly maxTemperature = C.ENEMY_MAX_TEMP;
   accent: string | number; // マーカー色・集団識別。全敵が保持する
   waveId?: number; // stage00 のウェーブ敵のみ。生存ウェーブ集計に使う
   readonly orbitLineColor: string | number;

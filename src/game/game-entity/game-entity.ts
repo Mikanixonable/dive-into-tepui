@@ -5,9 +5,12 @@ import { OrbitalElements } from '../../physics/elements';
 import { Attitude, stepAttitude } from '../../physics/attitude';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { CelestialBody, orbitalElementsOf, localOrbitPeriod, strongestAttractor } from '../../physics/celestial-body';
-import { burnUpBody } from '../../physics/atmosphere';
+import { airflow, burnUpBody } from '../../physics/atmosphere';
+import {
+  aeroHeating, radiativeCooling, sphereNoseRadius, stepTemperature,
+} from '../../physics/thermal';
 import { ApsisTrack } from '../../physics/trajectory-features';
-import { Vec3, v3 } from '../../physics/vec3';
+import { Vec3, sub, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import { OrbitLine } from '../orbit-line';
 import { TrajectoryLine } from '../trajectory-line';
@@ -97,6 +100,22 @@ export class GameEntity {
   // 焼失せずに耐えられる大気密度の上限 [kg/m^3]。熱シミュレーションを持たない種別が
   // 加熱と動圧をまとめて代理する粗い近似(const.ts)。既定は破片・薬莢・弾・基地・弾薬の値。
   protected readonly burnUpDensity: number = C.DEBRIS_BURNUP_DENSITY;
+
+  // --- 熱(physics/thermal.ts の比量モデル) ---
+  // 現在の温度 [K]。
+  temperature = C.ENV_TEMP;
+  // 比熱 [J/(kg·K)]。**0 = 熱を蓄えない種別**で、温度は動かない。
+  protected readonly specificHeat: number = 0;
+  // 材質の密度 [kg/m^3]。よどみ点の曲率半径を bcInv から戻すのに使う。
+  protected readonly bulkDensity: number = C.SMALL_DEBRIS_BULK_DENSITY;
+  // 輻射面積の比 [m^2/kg]。
+  protected readonly radiatingAreaPerMass: number = 0;
+  // 輻射率。
+  protected readonly emissivity: number = C.HULL_EMISS;
+  // これを超えると焼失する温度 [K]。既定 Infinity = 熱では失われない。
+  protected readonly maxTemperature: number = Infinity;
+  // 刻みに依らない投入熱 [J/kg]。次の熱計算で一度だけ温度へ変換する。
+  private pendingSpecificHeat = 0;
   // 過去列の保持時間 [s]。既定 0 = 記録しない。
   // 種別ごとの過去列の保持時間 [s]。0 は履歴を持たない。
   protected readonly baseHistoryDuration: number = 0;
@@ -302,8 +321,38 @@ export class GameEntity {
       this.invalidatePrediction();
     }
     if (this.hasAttitude) this.att = stepAttitude(this.att, this.torque, dt);
+    this.stepThermal(dt, atmosphereBody);
     this.stepEnvironment(dt, ephemeris, this.state.t, occluders);
     return integrated;
+  }
+
+  // 刻みに依らない投入熱 [J/kg] を次の熱計算へ持ち越す。射撃や被弾のように、サブステップの
+  // 分割数で回数が変わってはならない熱がここを通る。
+  absorbHeat(specificJoules: number): void {
+    this.pendingSpecificHeat += specificJoules;
+  }
+
+  // 空力加熱と放射冷却で温度を1区間ぶん進める。atmosphereBody は自分が浴びるただ1体の大気
+  // 天体(null なら真空)。比熱を持たない種別は温度も持たないので何もしない。
+  private stepThermal(dt: number, atmosphereBody: CelestialBody | null): void {
+    if (this.specificHeat <= 0) return;
+    const atm = atmosphereBody?.atmosphere ?? null;
+    let heating = 0;
+    if (atm !== null && this.bcInv > 0) {
+      const { density, speed } = airflow(
+        sub(this.state.r, atmosphereBody!.state.r),
+        sub(this.state.v, atmosphereBody!.state.v), atm);
+      heating = aeroHeating(
+        density, speed, this.bcInv, C.SG_CONST,
+        sphereNoseRadius(this.bcInv, C.DRAG_COEFFICIENT, this.bulkDensity),
+        (C.STAGNATION_AREA_FRACTION * this.bcInv) / C.DRAG_COEFFICIENT);
+    }
+    const cooling = radiativeCooling(
+      this.temperature, C.ENV_TEMP, this.emissivity, this.radiatingAreaPerMass,
+      this.specificHeat, dt);
+    this.temperature = stepTemperature(this.temperature, heating - cooling, this.specificHeat, dt)
+      + this.pendingSpecificHeat / this.specificHeat;
+    this.pendingSpecificHeat = 0;
   }
 
   // 同じ区間ぶん、位置と姿勢から決まる受動的な環境(熱・電力など)を進める。既定では持たない。
