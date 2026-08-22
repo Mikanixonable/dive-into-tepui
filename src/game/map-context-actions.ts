@@ -619,6 +619,7 @@ export class MapContextActions {
 
         return [
           { type: 'header', label: base?.name ?? target.name, subLabel },
+          ...this.combatTargetLockItems(base),
           ...controlItem,
           ...dockItems,
           { label: '基地ビューを開く', act: 'openDock' },
@@ -632,7 +633,9 @@ export class MapContextActions {
       run: (act, target) => {
         const base = this.entities.findBase(target.id);
         const activeShip = this.activePlayers.current;
-        if (act === 'activate') {
+        if (act === 'target') {
+          this.runTargetLock(base);
+        } else if (act === 'activate') {
           if (base) this.activePlayers.setBase(base);
         } else if (act === 'deactivate') {
           if (base && this.activePlayers.controlledBase === base) this.activePlayers.setBase(null);
