@@ -383,8 +383,6 @@ export class Game {
       this.simSpeedManager.canResolvePhysicalCollisions, this.nanWatchdog);
     this.sections.exit(SECTION.integrate);
     this.docking.updateDockedPhysics();
-    // 積分後の状態でこのフレームの表示窓を確定させ、以降の消費者へ共有する。
-    this.displayWindowManager.resolve(this.simulator.simTime, this.activeControllableEntity);
     // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全エンティティを見る。
     this.nanWatchdog.checkAll('simulator.advance', this.player, this.entities, this.simulator.simTime, dt, simDt);
 
@@ -460,8 +458,9 @@ export class Game {
   sync(): void {
     const activeControllable = this.activeControllableEntity;
     const player = this.player;
-    // 積分が終わった状態でこのフレームの表示窓を確定させ、sync 全体で共有する。
-    const displayWindow = this.displayWindowManager.resolve(this.simulator.simTime, activeControllable);
+    // update() と sync() は同一の animate() 呼び出し内で同期的に実行されるため、
+    // update() の304行目で確定した表示窓がこの時点でも変わらず読める。
+    const displayWindow = this.displayWindowManager.current;
     this.viewBadge.sync(this.activeStage.stageClass.selectLabel);
     // 原点(位置)はアクティブカメラの ECI 位置 — cameraSystem.update() は update フェーズの
     // 毎フレーム呼ばれるので、この sync の時点で activeCameraPos は確定済み。
