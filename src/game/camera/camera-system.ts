@@ -158,7 +158,9 @@ export class CameraSystem {
     this.viewOptionsPanel.onBodyClassToggle = (key, on) => {
       this._bodyClassToggles = applyBodyClassToggle(this._bodyClassToggles, key, on);
       saveBodyClassToggles(this._bodyClassToggles);
+      this.viewOptionsPanel.setBodyClassToggles(this._bodyClassToggles);
     };
+    this.viewOptionsPanel.setBodyClassToggles(this._bodyClassToggles);
 
     this.chaseResetBtn = _hud.root.querySelector('#hud-chase-reset') as HTMLElement | null;
     this.chaseResetBtn?.addEventListener('pointerdown', this.handleChaseReset);
@@ -241,7 +243,6 @@ export class CameraSystem {
     syncCameraToViewpoint(active.camera, active.viewpoint, active.near, active.far, fo);
     // 広範囲視点のときだけ操作パネルとフォーカスラベルを表示する
     this.viewOptionsPanel.setVisible(this.overviewMode);
-    this.viewOptionsPanel.setBodyClassToggles(this._bodyClassToggles);
 
     if (this.overviewMode) {
       this.focusMarkers.syncLabels(this.activeCameraProjection, this.activeCameraPos);
