@@ -22,7 +22,7 @@ export type AmmoPickupInit =
 
 // 軌道上の補給(接近すると取り込んでベルトを延長できる)
 export class AmmoPickup extends GameEntity {
-  protected readonly bcInv = C.SMALL_DEBRIS_BCINV;
+  override readonly bcInv = C.SMALL_DEBRIS_BCINV;
   protected readonly srpCoeff = C.SMALL_DEBRIS_SRP_COEFF;
   protected readonly predictedForGhost = true;
 
