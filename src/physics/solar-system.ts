@@ -1343,7 +1343,7 @@ export const SOLAR_SYSTEM = {
   // 黄道座標・J2000 の a/e/i/Ω(om)/ω(w)/M(ma) から、raanDeg=Ω・lonPeriDeg=Ω+ω・
   // l0Deg=Ω+ω+M として求めた(360を超えて構わない)。lRateDegPerCentury は
   // lRateFromSemiMajorAxis(a) がケプラー第3法則から導く。SBDB の元期は天体ごとに異なり、
-  // churyumov(JD2457305.5)・tempel1(JD2457470.5)・wild2(JD2458808.5)・
+  // tempel1(JD2457470.5)・wild2(JD2458808.5)・
   // hartley2(JD2457152.5)・bennu(JD2455562.5)だけが上記と別の元期を持つ — この実装は
   // どの元期も simTime=0 に対応させるので、同一の実在時刻の空を再現しているわけではない。
   // GM は SBDB(なければ 0 = 質量未測定)、直径は SBDB または各天体の観測文献。
@@ -1498,26 +1498,6 @@ export const SOLAR_SYSTEM = {
       lonPeriDeg: 68.283927,
       l0Deg: 169.987879,
       lRateDegPerCentury: lRateFromSemiMajorAxis(1.126391 * AU),
-      raanRateDegPerCentury: 0,
-      incRateDegPerCentury: 0,
-      lonPeriRateDegPerCentury: 0,
-      eRatePerCentury: 0,
-      aRatePerCenturyAu: 0,
-    }),
-  },
-  churyumov: {
-    kind: 'planet',
-    id: 'churyumov',
-    mu: 662.2,
-    radius: 1700.0,
-    orbit: planetOrbit({
-      a: 3.4622495 * AU,
-      e: 0.6409081,
-      incDeg: 7.0402949,
-      raanDeg: 50.1355738,
-      lonPeriDeg: 62.9338235,
-      l0Deg: 71.7937509,
-      lRateDegPerCentury: lRateFromSemiMajorAxis(3.4622495 * AU),
       raanRateDegPerCentury: 0,
       incRateDegPerCentury: 0,
       lonPeriRateDegPerCentury: 0,

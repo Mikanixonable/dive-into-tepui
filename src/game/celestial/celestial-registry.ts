@@ -167,7 +167,6 @@ export const CELESTIAL_BODIES: Record<SolarSystemId, CelestialView> = {
   eros: solidPlanetEntry('eros', 'エロス', 0x9c8f74),
   ryugu: solidPlanetEntry('ryugu', 'リュウグウ', 0x585048),
   bennu: solidPlanetEntry('bennu', 'ベンヌ', 0x686058),
-  churyumov: solidPlanetEntry('churyumov', 'チュリュモフ・ゲラシメンコ彗星', 0x666666),
   orcus: solidPlanetEntry('orcus', 'オルクス', 0x9a9aa0),
   vanth: satelliteEntry('vanth', 'ヴァンス', 0x8a8078),
   gonggong: solidPlanetEntry('gonggong', 'ゴンゴン', 0xa87860),
