@@ -6,6 +6,7 @@ import {
   attractorAccel,
   celestialBodyStateAt,
   orbitalElementsOf,
+  orbitingAttractorOf,
   localOrbitPeriod,
   strongestAttractor,
 } from '../../src/physics/celestial-body';
@@ -154,5 +155,16 @@ export function register(): void {
     assert.equal(byId('moon').mu, MU_MOON);
     assert.equal(byId('sun').mu, MU_SUN);
     assert.equal(byId('sun').radius, R_SUN);
+  });
+
+  // 参照フレームの「役割の公転」を選択肢に出すかどうかがこの判定に乗っている。周回して
+  // いない対象の公転は定義できないので、選択肢そのものを出さないための入口。
+  test('orbitingAttractorOf: 楕円軌道なら主天体、脱出速度以上なら null', () => {
+    const bodies = new Ephemeris().celestialBodiesAt(0).filter((b) => b.id === 'earth');
+    const r = v3(7e6, 0, 0);
+    const vCirc = Math.sqrt(MU_EARTH / 7e6);
+    assert.equal(orbitingAttractorOf(kinematicState(0, r, v3(0, vCirc, 0)), bodies)?.id, 'earth');
+    // 脱出速度の 1.2 倍は双曲線軌道(e >= 1)。
+    assert.equal(orbitingAttractorOf(kinematicState(0, r, v3(0, vCirc * Math.SQRT2 * 1.2, 0)), bodies), null);
   });
 }
