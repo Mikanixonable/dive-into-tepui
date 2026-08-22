@@ -120,13 +120,13 @@ export class ViewOptionsPanel {
   public onGridToggle: ((key: keyof CelestialGridVisibility, on: boolean) => void) | null = null;
 
   private readonly bodyClassButtons: readonly (readonly [keyof BodyClassToggles, Button])[];
-  private readonly bodyClassCategoryButtons: readonly (readonly [keyof BodyClassToggles, Button, HTMLElement, readonly Button[]])[];
+  private readonly bodyClassCategoryButtons: readonly (readonly [keyof BodyClassToggles, Button, HTMLElement])[];
   // 各トグルの現在値の鏡映し。正本は setBodyClassToggles/setGridVisibility が毎フレーム受け取る
   // 値側にあり、ここはクリック時に反転元として読むためだけに保つ。
   private readonly bodyClassCurrent = new Map<keyof BodyClassToggles, boolean>();
 
   private readonly gridButtons: readonly (readonly [keyof CelestialGridVisibility, Button])[];
-  private readonly gridCategoryButtons: readonly (readonly [keyof CelestialGridVisibility, Button, HTMLElement, readonly Button[]])[];
+  private readonly gridCategoryButtons: readonly (readonly [keyof CelestialGridVisibility, Button, HTMLElement])[];
   private readonly starsButton: Button;
   private readonly gridCurrent = new Map<keyof CelestialGridVisibility, boolean>();
 
@@ -163,7 +163,7 @@ export class ViewOptionsPanel {
     // 恒星・惑星と、フォーカス中の系の親子は常に出るので、ここで足すのは「その外まで見たい」
     // という明示の意思表示にあたる。
     const bodyClassButtons: (readonly [keyof BodyClassToggles, Button])[] = [];
-    const bodyClassCategories: (readonly [keyof BodyClassToggles, Button, HTMLElement, readonly Button[]])[] = [];
+    const bodyClassCategories: (readonly [keyof BodyClassToggles, Button, HTMLElement])[] = [];
     const rowGroups: readonly { readonly title: string; readonly rows: readonly BodyClassRow[] }[] = [
       { title: '天体', rows: BODY_CLASS_ROWS },
       { title: '機体と設備', rows: ENTITY_ROWS },
@@ -186,7 +186,6 @@ export class ViewOptionsPanel {
         const btnsEl = document.createElement('div');
         btnsEl.className = 'body-class-btns';
         rowEl.appendChild(btnsEl);
-        const individualButtons: Button[] = [];
 
         const name = this.toggleButton(
           'Aa',
@@ -196,7 +195,6 @@ export class ViewOptionsPanel {
           (key, on) => this.onBodyClassToggle?.(key, on),
         );
         name.element.classList.add('body-class-icon-btn');
-        individualButtons.push(name);
         btnsEl.appendChild(name.element);
         bodyClassButtons.push([row.nameKey, name]);
 
@@ -210,13 +208,12 @@ export class ViewOptionsPanel {
             (key, on) => this.onBodyClassToggle?.(key, on),
           );
           orbit.element.classList.add('body-class-icon-btn');
-          individualButtons.push(orbit);
           btnsEl.appendChild(orbit.element);
           bodyClassButtons.push([orbitKey, orbit]);
         }
 
         body.appendChild(rowEl);
-        bodyClassCategories.push([row.categoryKey, category, rowEl, individualButtons]);
+        bodyClassCategories.push([row.categoryKey, category, rowEl]);
       }
     }
     this.bodyClassButtons = bodyClassButtons;
@@ -224,7 +221,7 @@ export class ViewOptionsPanel {
 
     // 天球(参照面:黄道・赤道、環境:星空)。天体クラスと同じ行の形(見出し+トグル列)を流用する。
     const gridButtons: (readonly [keyof CelestialGridVisibility, Button])[] = [];
-    const gridCategories: (readonly [keyof CelestialGridVisibility, Button, HTMLElement, readonly Button[]])[] = [];
+    const gridCategories: (readonly [keyof CelestialGridVisibility, Button, HTMLElement])[] = [];
     appendSectionHeading(body, '天球', GRID_COLUMNS);
     for (const group of GRID_TOGGLE_GROUPS) {
       const rowEl = document.createElement('div');
@@ -236,16 +233,14 @@ export class ViewOptionsPanel {
       const btnsEl = document.createElement('div');
       btnsEl.className = 'body-class-btns';
       rowEl.appendChild(btnsEl);
-      const individualButtons: Button[] = [];
       for (const [key, glyph, itemTitle] of group.items) {
         const button = this.toggleButton(glyph, itemTitle, key, this.gridCurrent, (key, on) => this.onGridToggle?.(key, on));
         button.element.classList.add('body-class-icon-btn');
         btnsEl.appendChild(button.element);
         gridButtons.push([key, button]);
-        individualButtons.push(button);
       }
       body.appendChild(rowEl);
-      gridCategories.push([group.categoryKey, category, rowEl, individualButtons]);
+      gridCategories.push([group.categoryKey, category, rowEl]);
     }
     this.gridButtons = gridButtons;
     this.gridCategoryButtons = gridCategories;
@@ -311,12 +306,11 @@ export class ViewOptionsPanel {
       this.bodyClassCurrent.set(key, on);
       btn.setOn(on);
     }
-    for (const [key, category, row, buttons] of this.bodyClassCategoryButtons) {
+    for (const [key, category, row] of this.bodyClassCategoryButtons) {
       const enabled = Boolean(toggles[key]);
       this.bodyClassCurrent.set(key, enabled);
       category.setOn(enabled);
       row.classList.toggle('category-off', !enabled);
-      for (const btn of buttons) btn.setEnabled(enabled);
     }
   }
 
@@ -329,12 +323,11 @@ export class ViewOptionsPanel {
       this.gridCurrent.set(key, on);
       btn.setOn(on);
     }
-    for (const [key, category, row, buttons] of this.gridCategoryButtons) {
+    for (const [key, category, row] of this.gridCategoryButtons) {
       const enabled = Boolean(visibility[key]);
       this.gridCurrent.set(key, enabled);
       category.setOn(enabled);
       row.classList.toggle('category-off', !enabled);
-      for (const btn of buttons) btn.setEnabled(enabled);
     }
   }
 }

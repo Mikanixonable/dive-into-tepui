@@ -4,7 +4,7 @@ import { CombatCameraSystem } from './combat-camera-system';
 import { MapCamera } from './map-camera';
 import { ViewOptionsPanel } from '../hud/view-options-panel';
 import { FocusMarkers } from './focus-markers';
-import { BodyClassToggles, DEFAULT_BODY_CLASS_TOGGLES } from '../celestial/body-visibility';
+import { applyBodyClassToggle, BodyClassToggles, DEFAULT_BODY_CLASS_TOGGLES, normalizeBodyClassToggles } from '../celestial/body-visibility';
 import { MapPickable } from '../map-pickable';
 import { MarkerManager } from '../marker/marker-manager';
 import { Input } from '../input/input';
@@ -26,7 +26,7 @@ function loadBodyClassToggles(): BodyClassToggles {
     if (!raw) return DEFAULT_BODY_CLASS_TOGGLES;
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== 'object' || parsed === null) return DEFAULT_BODY_CLASS_TOGGLES;
-    return { ...DEFAULT_BODY_CLASS_TOGGLES, ...parsed };
+    return normalizeBodyClassToggles({ ...DEFAULT_BODY_CLASS_TOGGLES, ...parsed });
   } catch {
     return DEFAULT_BODY_CLASS_TOGGLES;
   }
@@ -156,7 +156,7 @@ export class CameraSystem {
     // 表示パネルと天体クラス側操作のコールバック
     this.viewOptionsPanel = new ViewOptionsPanel(_hud.mapRoot);
     this.viewOptionsPanel.onBodyClassToggle = (key, on) => {
-      this._bodyClassToggles = { ...this._bodyClassToggles, [key]: on };
+      this._bodyClassToggles = applyBodyClassToggle(this._bodyClassToggles, key, on);
       saveBodyClassToggles(this._bodyClassToggles);
     };
 

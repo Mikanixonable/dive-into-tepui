@@ -12,10 +12,9 @@ import { BodyClass, bodyClassOf } from './body-class';
 
 // クラスごとの表示トグル。恒星は常に見えるのでトグルを持たない(太陽系の基準点であり、
 // 消えると現在地が読めなくなる)。Name(マーカーの点+ラベル)は1つのトグルで、位置の点と名前を
-// 同時にON/OFFする。Orbit(軌道線)はさらに別軸で、planet/dwarf/smallBody だけが持つ。satellite
-// は衛星の参照軌道線がフォーカス中の系かどうかで別途決まる(environment-scene.ts の
-// MapVisibilityPolicy)ので Orbit トグルを持たない。lagrange は天体ではなく軌道概念も無いので
-// Name の1軸のみ。
+// 同時にON/OFFする。Orbit(軌道線)はさらに別軸で、lagrange 以外の全クラスが持つ。satellite の
+// Orbit はこのトグルに加えて、フォーカス中の系かどうかという条件もANDで効く(map-visibility.ts の
+// MapVisibilityPolicy)。lagrange は天体ではなく軌道概念も無いので Name の1軸のみ。
 export type BodyClassToggles = {
   readonly planetVisible: boolean;
   readonly planetOrbit: boolean;
@@ -68,6 +67,56 @@ export const DEFAULT_BODY_CLASS_TOGGLES: BodyClassToggles = {
   baseVisible: true,
   baseName: true, baseOrbit: true,
 };
+
+// 各クラスの「クラス全体」トグルと、その配下にある子トグル(ラベル・軌道線)の対応。
+// 表示パネルのボタン構成もこの表を正本として組み立て、UI 側で別の対応関係を持たない。
+// 子トグルは1つでもONならクラス全体を自動でONにし、全てOFFになれば自動でOFFにする
+// (applyBodyClassToggle/normalizeBodyClassToggles)。lagrange は軌道という概念自体が
+// 無いため children はラベルのみ。
+interface BodyClassCategory {
+  readonly category: keyof BodyClassToggles;
+  readonly children: readonly (keyof BodyClassToggles)[];
+}
+
+const BODY_CLASS_CATEGORIES: readonly BodyClassCategory[] = [
+  { category: 'planetVisible', children: ['planetName', 'planetOrbit'] },
+  { category: 'dwarfVisible', children: ['dwarfName', 'dwarfOrbit'] },
+  { category: 'satelliteVisible', children: ['satelliteName', 'satelliteOrbit'] },
+  { category: 'smallBodyVisible', children: ['smallBodyName', 'smallBodyOrbit'] },
+  { category: 'lagrangeVisible', children: ['lagrangeName'] },
+  { category: 'playerVisible', children: ['playerName', 'playerOrbit'] },
+  { category: 'shipVisible', children: ['shipName', 'shipOrbit'] },
+  { category: 'ammoVisible', children: ['ammoName', 'ammoOrbit'] },
+  { category: 'baseVisible', children: ['baseName', 'baseOrbit'] },
+];
+
+// クリックされたキー1つの反映。子キーなら該当クラスのクラス全体トグルを子の状態から
+// 再計算し、クラス全体キーそのものなら子を全て同じ値へ揃える(表示パネルの唯一の更新口)。
+export function applyBodyClassToggle(
+  current: BodyClassToggles, key: keyof BodyClassToggles, on: boolean,
+): BodyClassToggles {
+  const asCategory = BODY_CLASS_CATEGORIES.find((c) => c.category === key);
+  if (asCategory !== undefined) {
+    const next = { ...current, [key]: on };
+    for (const child of asCategory.children) next[child] = on;
+    return next;
+  }
+  const owner = BODY_CLASS_CATEGORIES.find((c) => c.children.includes(key));
+  if (owner === undefined) return { ...current, [key]: on };
+  const next = { ...current, [key]: on };
+  next[owner.category] = owner.children.some((child) => next[child]);
+  return next;
+}
+
+// 保存データ・既定値を読み込んだ直後に、クラス全体トグルを子の状態から一括で計算し直す。
+// 過去バージョンの保存データや将来の手書き編集で親子が食い違っていても、ここを通せば正す。
+export function normalizeBodyClassToggles(toggles: BodyClassToggles): BodyClassToggles {
+  const next = { ...toggles };
+  for (const { category, children } of BODY_CLASS_CATEGORIES) {
+    next[category] = children.some((child) => next[child]);
+  }
+  return next;
+}
 
 // カテゴリー名のトグル。恒星は表示の基準点なのでカテゴリー操作の対象外。
 export function bodyClassVisible(cls: BodyClass, toggles: BodyClassToggles): boolean {

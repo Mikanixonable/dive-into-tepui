@@ -20,6 +20,47 @@ export interface CelestialGridVisibility {
   readonly moonEquatorScaleGrid: boolean;
 }
 
+// 黄道・赤道それぞれのカテゴリトグルと、配下の面・極・グリッドの対応。表示パネルのボタン構成も
+// この表を正本として組み立てる。子は1つでもONならカテゴリを自動でONにし、全てOFFになれば
+// 自動でOFFにする(applyGridToggle/normalizeGridVisibility)。stars・縮尺グリッド系はどの
+// カテゴリにも属さない独立トグルなのでここには含まれない。
+interface GridCategory {
+  readonly category: keyof CelestialGridVisibility;
+  readonly children: readonly (keyof CelestialGridVisibility)[];
+}
+
+const GRID_CATEGORIES: readonly GridCategory[] = [
+  { category: 'ecliptic', children: ['eclipticPlane', 'eclipticPole', 'eclipticGrid'] },
+  { category: 'equator', children: ['equatorPlane', 'equatorPole', 'equatorGrid'] },
+];
+
+// クリックされたキー1つの反映。子キーならカテゴリを子の状態から再計算し、カテゴリキー
+// そのものなら子を全て同じ値へ揃える(表示パネルの唯一の更新口)。
+export function applyGridToggle(
+  current: CelestialGridVisibility, key: keyof CelestialGridVisibility, on: boolean,
+): CelestialGridVisibility {
+  const asCategory = GRID_CATEGORIES.find((c) => c.category === key);
+  if (asCategory !== undefined) {
+    const next = { ...current, [key]: on };
+    for (const child of asCategory.children) next[child] = on;
+    return next;
+  }
+  const owner = GRID_CATEGORIES.find((c) => c.children.includes(key));
+  if (owner === undefined) return { ...current, [key]: on };
+  const next = { ...current, [key]: on };
+  next[owner.category] = owner.children.some((child) => next[child]);
+  return next;
+}
+
+// 保存データ・既定値を読み込んだ直後に、カテゴリトグルを子の状態から一括で計算し直す。
+export function normalizeGridVisibility(visibility: CelestialGridVisibility): CelestialGridVisibility {
+  const next = { ...visibility };
+  for (const { category, children } of GRID_CATEGORIES) {
+    next[category] = children.some((child) => next[child]);
+  }
+  return next;
+}
+
 // 面を張る直交基底。e1/e2 が面内、pole が法線(北極方向)。
 interface PlaneBasis {
   readonly e1: THREE.Vector3;
