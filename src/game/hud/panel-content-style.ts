@@ -110,7 +110,6 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
    (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
 #hud span.body-class-icon-btn { min-width: 20px; padding: var(--space-2) var(--space-3); text-align: center; font-size: var(--font-m); }
 #hud .body-class-row.category-off .body-class-icon-btn.on { border-color: var(--edge); color: var(--text-dim); font-weight: 700; opacity: .65; }
-#hud .body-class-row.category-off .body-class-icon-btn.disabled { opacity: .35; }
 /* 太陽系パネルの左列は navball ウィンドウの右に置き、重なりを避ける。 */
 #hud-view-options { width: 100%; pointer-events: auto; }
 #hud-view-options .view-options-title { display: flex; align-items: center; gap: var(--space-2); }
