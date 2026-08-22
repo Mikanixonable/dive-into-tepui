@@ -4,7 +4,7 @@
 // 費用・接触グリッドの候補ペア数を測る。絞り込みは game/simulation/surface-candidates の実装。
 import { CelestialBody, nearestAtmosphereBody } from '../../src/physics/celestial-body';
 import { firstSurfaceContact } from '../../src/physics/surface-contact';
-import { burnUpBody } from '../../src/physics/atmosphere';
+import { dragTakesFullAirspeed } from '../../src/game/simulation/time-step';
 import { randomQuat } from '../../src/physics/attitude';
 import { stepDynamics } from '../../src/physics/dynamics';
 import { Ephemeris } from '../../src/physics/ephemeris';
@@ -116,7 +116,7 @@ interface Frame {
   readonly stepMs: number; // stepDynamics だけの累計 [ms](除去の判定を含まない)
   readonly steps: number; // stepDynamics の呼び出し回数
   readonly reached: number; // 表面へ到達して除去した個体数
-  readonly burnedUp: number; // 大気で焼失して除去した個体数
+  readonly burnedUp: number; // 抗力を積めなくなって除去した個体数
   readonly maxRadius: number; // 積分中に現れた地心距離の最大 [m]
   readonly diverged: number; // DIVERGED_RADIUS を超えた個体 × substep
 }
@@ -155,7 +155,7 @@ function integrateFrame(ephemeris: Ephemeris, initial: readonly Body[], windows:
       maxRadius = Math.max(maxRadius, radius);
       if (radius > DIVERGED_RADIUS) diverged++;
       if (firstSurfaceContact(p.prevState, p.state, p.radius, windows[k]!) !== null) reached++;
-      else if (burnUpBody(p.state.r, windows[k]!, C.DEBRIS_BURNUP_DENSITY) !== null) burnedUp++;
+      else if (dragTakesFullAirspeed(p.state, C.SMALL_DEBRIS_BCINV, air, MAX_STEP)) burnedUp++;
       else survivors.push({ state: p.state, radius: p.radius });
     }
     alive = survivors;
@@ -184,6 +184,20 @@ interface Narrowed {
   readonly stage2Total: number; // 2段目を通った延べ候補数(全 substep × 全個体)
 }
 
+// 参加者全員の区間を覆う範囲で絞り込みを組み直す。1サブステップぶんの2段をまとめて通す。
+function resetForInterval(
+  candidates: SurfaceCandidates, interval: Interval, bodies: readonly CelestialBody[],
+): void {
+  let tStart = Infinity;
+  let tEnd = -Infinity;
+  for (const p of interval) {
+    tStart = Math.min(tStart, p.prevState.t);
+    tEnd = Math.max(tEnd, p.state.t);
+  }
+  candidates.resetSpan(bodies, tStart, tEnd);
+  candidates.narrow(interval);
+}
+
 // SurfaceCandidates を1フレームぶん通し、段ごとの所要 [ms] と通過数を返す。
 function narrow(timeline: readonly Interval[], windows: SurfaceWindows): Narrowed {
   const candidates = new SurfaceCandidates();
@@ -196,7 +210,7 @@ function narrow(timeline: readonly Interval[], windows: SurfaceWindows): Narrowe
   for (let k = 0; k < SUBSTEPS; k++) {
     const interval = timeline[k]!;
     const t0 = performance.now();
-    candidates.reset(interval, windows[k]!);
+    resetForInterval(candidates, interval, windows[k]!);
     const t1 = performance.now();
     for (const p of interval) stage2Total += candidates.into(p, out).length;
     stage2Ms += performance.now() - t1;
@@ -215,7 +229,7 @@ function mismatches(timeline: readonly Interval[], windows: SurfaceWindows): num
   let count = 0;
   for (let k = 0; k < SUBSTEPS; k++) {
     const interval = timeline[k]!;
-    candidates.reset(interval, windows[k]!);
+    resetForInterval(candidates, interval, windows[k]!);
     for (const p of interval) {
       const full = firstSurfaceContact(p.prevState, p.state, p.radius, windows[k]!);
       const only = firstSurfaceContact(p.prevState, p.state, p.radius, candidates.into(p, out));
@@ -282,7 +296,7 @@ export function run(): void {
 
   console.log('## (0) 積分の健全性\n');
   table([
-    ['除去した個体', `表面到達 ${frame.reached} 体 + 大気で焼失 ${frame.burnedUp} 体 / ${initial.length} 体`],
+    ['除去した個体', `表面到達 ${frame.reached} 体 + 抗力超過 ${frame.burnedUp} 体 / ${initial.length} 体`],
     ['積分中の地心距離の最大', `${frame.maxRadius.toExponential(3)} m(初期半径の `
       + `${(frame.maxRadius / len(initial[0]!.state.r)).toFixed(2)} 倍)。10倍を超えた個体 × substep は `
       + `${frame.diverged} 件${frame.diverged === 0 ? '(発散なし)' : '(発散あり — 以降の数字は無効)'}`],
@@ -334,7 +348,7 @@ export function run(): void {
   table([
     ['配置', `月面から ${MOON_IMPACT_MAX_ALT / 1e3} km 以下に ${MOON_IMPACT_COUNT} 体、月と同速度で自由落下`],
     ['総当たりが返した表面到達', `${moonFrame.reached} 件`
-      + `${moonFrame.reached === 0 ? '(正例が踏めていない — 配置の失敗)' : ''}、大気で焼失 ${moonFrame.burnedUp} 体`],
+      + `${moonFrame.reached === 0 ? '(正例が踏めていない — 配置の失敗)' : ''}、抗力超過 ${moonFrame.burnedUp} 体`],
     ['1段目を通った天体',
       `平均 ${(moonNarrow.stage1Total / SUBSTEPS).toFixed(2)} 体/substep、最大 ${moonNarrow.stage1Max} 体`],
     ['2段目を通った候補', `${num(moonNarrow.stage2Total)} 回/フレーム`],
