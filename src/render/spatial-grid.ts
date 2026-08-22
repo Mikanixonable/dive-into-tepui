@@ -25,7 +25,8 @@ function planeBasisFromPole(poleInput: THREE.Vector3): PlaneBasis {
   const e1 = reference.sub(pole.clone().multiplyScalar(reference.dot(pole)));
   if (e1.lengthSq() < 1e-8) e1.set(0, 0, 1).sub(pole.clone().multiplyScalar(pole.z));
   e1.normalize();
-  const e2 = e1.clone().cross(pole).normalize();
+  // e1×e2=pole の右手系にする(makeBasis→setFromRotationMatrix は回転行列しか四元数化できない)。
+  const e2 = pole.clone().cross(e1).normalize();
   return { e1, e2, pole };
 }
 

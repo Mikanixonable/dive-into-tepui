@@ -26,11 +26,11 @@ function visibleBodyIds(
   return set;
 }
 
-// 衛星クラスの Icon/Label を畳んだトグル。フォーカス由来・カメラ近傍由来の追加規則は、
+// 衛星クラスの Name を畳んだトグル。フォーカス由来・カメラ近傍由来の追加規則は、
 // クラストグル自身が既にその天体を足している間は観測できないので、その規則を固定する
 // テストはこちらを使う。
 const SATELLITES_OFF: BodyClassToggles = {
-  ...DEFAULT_BODY_CLASS_TOGGLES, satelliteIcon: false, satelliteLabel: false,
+  ...DEFAULT_BODY_CLASS_TOGGLES, satelliteName: false,
 };
 
 // 登録天体の主天体に対する質量比。
@@ -86,7 +86,7 @@ export function register(): void {
     for (const id of ['sun', 'mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune']) {
       assert.ok(visible.has(id), `${id} は常に見えるべき`);
     }
-    // Icon/Label はラベルの混雑抑制が効くので、軌道線と違って全クラス既定で立つ。
+    // Name はラベルの混雑抑制が効くので、軌道線と違って全クラス既定で立つ。
     for (const id of ['halley', 'encke', 'vesta', 'io', 'titan', 'triton']) {
       assert.ok(visible.has(id), `${id} は既定で見えるべき`);
     }
@@ -102,15 +102,15 @@ export function register(): void {
     const hidden = new MapVisibilityPolicy(SOLAR_SYSTEM, {
       ...DEFAULT_BODY_CLASS_TOGGLES,
       shipVisible: false,
-      ammoIcon: false,
-      ammoLabel: true,
+      ammoName: false,
+      ammoOrbit: true,
       baseOrbit: false,
     });
     assert.deepEqual(hidden.entity('ship'), {
       category: false, icon: false, label: false, orbit: false, pickable: false,
     });
     assert.deepEqual(hidden.entity('ammo'), {
-      category: true, icon: false, label: true, orbit: true, pickable: true,
+      category: true, icon: false, label: false, orbit: true, pickable: false,
     });
     assert.equal(hidden.entity('base').orbit, false);
   });
@@ -119,8 +119,7 @@ export function register(): void {
     const policy = new MapVisibilityPolicy(SOLAR_SYSTEM, {
       ...DEFAULT_BODY_CLASS_TOGGLES,
       playerVisible: false,
-      playerIcon: false,
-      playerLabel: false,
+      playerName: false,
     });
     assert.deepEqual(policy.entity('player', true), {
       category: true, icon: true, label: false, orbit: true, pickable: true,
@@ -149,7 +148,7 @@ export function register(): void {
   });
 
   test('visibility: クラストグルを立てるとそのクラスが全数見える', () => {
-    const visible = visibleBodyIds(SOLAR_SYSTEM, 'earth', { ...SATELLITES_OFF, satelliteLabel: true });
+    const visible = visibleBodyIds(SOLAR_SYSTEM, 'earth', { ...SATELLITES_OFF, satelliteName: true });
     for (const id of ['moon', 'io', 'titan', 'triton', 'phobos']) {
       assert.ok(visible.has(id), `${id} が見えるべき`);
     }
@@ -194,7 +193,7 @@ export function register(): void {
   });
 
   test('visibility: focusId が undefined でも恒星・惑星とトグルで足したクラスは見える', () => {
-    const visible = visibleBodyIds(SOLAR_SYSTEM, undefined, { ...SATELLITES_OFF, satelliteLabel: true });
+    const visible = visibleBodyIds(SOLAR_SYSTEM, undefined, { ...SATELLITES_OFF, satelliteName: true });
     assert.ok(visible.has('earth'));
     assert.ok(visible.has('sun'));
     assert.ok(visible.has('moon'), 'トグルで足したクラスは無条件で見える');

@@ -3,6 +3,7 @@ import { Attitude, qFromForwardUp } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../physics/solar-system';
 import { Vec3, v3, len, sub } from '../../physics/vec3';
+import { fmtMarkerDist } from '../hud/utils';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { Ship } from '../game-entity/ship';
@@ -32,6 +33,7 @@ import { ThrustEffects } from './thrust-effects';
 import { RcsEffects } from './rcs-effects';
 import { ReentryEffects } from './reentry-effects';
 import { PlayerMarkers } from './player-markers';
+import type { OrbitReference } from '../orbit-reference';
 import type { MarkerManager } from '../marker/marker-manager';
 import { RadiatorSide, RadiatorSystem } from './radiator';
 import { PowerSystem } from './power';
@@ -445,6 +447,7 @@ export class Player extends Ship {
     celestialBodies: readonly CelestialBody[],
     visibility: MapVisibility | null = null,
     displayWindow?: DisplayWindow,
+    orbitRef?: OrbitReference,
   ): void {
     // メッシュ本体の位置・姿勢
     const displayState = this.displayState(displayTime);
@@ -468,24 +471,20 @@ export class Player extends Ship {
     this.radiator.sync();
     this.power.sync();
     // マーカー。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
-    this.markers.sync(this.state, displayState, this.att, camera.overviewMode, isActive, camera.activeCameraPos, camera.activeCameraProjection, camera.activeCameraScale, this.name, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.mapCamera.focus), ephemeris.registry, celestialBodies, visibility, displayWindow?.frame, displayTime, ephemeris);
+    this.markers.sync(this.state, displayState, this.att, camera.overviewMode, isActive, camera.activeCameraPos, camera.activeCameraProjection, camera.activeCameraScale, this.name, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.mapCamera.focus), ephemeris.registry, celestialBodies, visibility, displayWindow?.frame, displayTime, ephemeris, orbitRef);
   }
 
   // 艦は任意のタイミングで削除されうるので、Player が所有する線・ビルボード・HUD も一度だけ解放する。
   private disposed: boolean = false;
 
   // ターゲットとして指定された際などのマーカー。Enemy の markerItem と互換性を持たせる。
-  markerItem(role: 'none' | 'primary' | 'secondary', viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): {
+  markerItem(role: 'none' | 'primary', viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): {
     key: string; cls: string; sym: string; pos: Vec3; vel: Vec3; priority: number;
     name: string; detail: string; bearingColor: string; bearingSym: string; bearingClass: string;
     bearingVisible: boolean; color: string; symMarkup: boolean;
   } {
     const dist = len(sub(pos, viewerPos));
-    const priority = role === 'primary'
-      ? C.MARKER_PRIORITY.PRIMARY_TARGET
-      : role === 'secondary'
-        ? C.MARKER_PRIORITY.SECONDARY_TARGET
-        : C.MARKER_PRIORITY.PLAYER;
+    const priority = role === 'primary' ? C.MARKER_PRIORITY.PRIMARY_TARGET : C.MARKER_PRIORITY.PLAYER;
     return {
       key: `player-${this.id}`,
       cls: role === 'primary' ? 'mk-target' : 'mk-enemy', // player も味方ターゲットとして mk-enemy に準じる
@@ -494,7 +493,7 @@ export class Player extends Ship {
       vel,
       priority,
       name: this.name,
-      detail: '',
+      detail: overviewMode ? '' : fmtMarkerDist(dist),
       bearingColor: C.COLOR_MARKER_ALLY,
       bearingSym: DIRECTION_GLYPH.allyBearing,
       bearingClass: 'mk-dir mk-ally-dir',

@@ -228,31 +228,33 @@ export abstract class Ship extends GameEntity {
     this.hp = hp;
   }
 
-  // 逆三角形を辺中央の切り欠きで分割し、残HPに応じて発光するSVGを生成する。
+  // 正三角形を辺中央の切り欠きで分割し、残HPに応じて発光するSVGを生成する。
   // 分割数は3の倍数へ丸めるため、将来HPが12/18になっても多重リングへ拡張しやすい。
   public hpMarkerSvg(): string {
     const segments = Math.max(3, Math.round(this.maxHp / 3) * 3);
     const lit = Math.max(0, Math.min(segments, Math.round((this.hp / this.maxHp) * segments)));
-    // 後部がV字にへこんだ鋭角矢尻シルエット(3/5角度: 12,1.5 -> 17.5,21 -> 12,16.5 -> 6.5,21)。
-    const points: [number, number][] = [[12, 1.5], [17.5, 21], [12, 16.5], [6.5, 21]];
+    // 正三角形のシルエット(辺長18、外接円中心は(12,12))。
+    const points: [number, number][] = [[12, 3], [21, 18.588], [3, 18.588]];
     const lines: string[] = [];
     const emit = (i: number, j: number, k: number, a: number, b: number): void => {
       if (b <= a) return;
       const [x1, y1] = points[i]!;
-      const [x2, y2] = points[(i + 1) % 4]!;
+      const [x2, y2] = points[(i + 1) % 3]!;
       const color = (i * k + j) < lit ? 'currentColor' : C.COLOR_MARKER_HP_EMPTY;
       lines.push(`<line x1="${x1 + (x2 - x1) * a}" y1="${y1 + (y2 - y1) * a}" x2="${x1 + (x2 - x1) * b}" y2="${y1 + (y2 - y1) * b}" stroke="${color}" stroke-width="1.5" stroke-linecap="butt"/>`);
     };
-    for (let i = 0; i < 4; i++) {
-      const k = segments / 4;
-      // 頂点は連続させ、各辺の中央だけを切り欠く。
+    for (let i = 0; i < 3; i++) {
+      const k = segments / 3;
+      const notch = 0.09;
+      const notchStart = 0.5 - notch / 2;
+      const notchEnd = 0.5 + notch / 2;
+      // 頂点は連続させ、各辺の中央だけを切り欠く(境界がちょうど0.5に重なる分割数でも欠ける)。
       for (let j = 0; j < k; j++) {
         const a = j / k;
         const b = (j + 1) / k;
-        const notch = 0.09;
-        if (a < 0.5 && b > 0.5) {
-          emit(i, j, k, a, 0.5 - notch / 2);
-          emit(i, j, k, 0.5 + notch / 2, b);
+        if (a < notchEnd && b > notchStart) {
+          if (a < notchStart) emit(i, j, k, a, notchStart);
+          if (b > notchEnd) emit(i, j, k, notchEnd, b);
         } else {
           emit(i, j, k, a, b);
         }
