@@ -20,6 +20,9 @@ import type { Stage } from './stages/stage';
 import { generateRandomName } from './random-name';
 
 export class Docking {
+  // アクティブな基地が変わるたびに通知する — 物体一覧パネルのハイライトを追随させる用途。
+  onSelect: ((id: string | null) => void) | null = null;
+
   readonly baseView: BaseView;
   readonly transferDialog: ResourceTransferDialog;
   // 選択中/ドックビューの対象基地。設定されている間だけドックビューへ遷移できる。
@@ -140,7 +143,12 @@ export class Docking {
 
   // 基地を選択状態にする
   selectBase(base: Base): void {
+    this.setActiveBase(base);
+  }
+
+  private setActiveBase(base: Base | null): void {
     this._activeBase = base;
+    this.onSelect?.(base?.id ?? null);
   }
 
   // 基地を選択し、ドックビューへ遷移する
@@ -160,7 +168,7 @@ export class Docking {
 
   clearActiveBaseIf(base: Base): void {
     if (this._activeBase !== base) return;
-    this._activeBase = null;
+    this.setActiveBase(null);
     this.viewManager.leaveDock();
   }
 
@@ -168,10 +176,11 @@ export class Docking {
     if (!this._activeBase || !this._activeBase.alive) {
       const available = this.getAvailableBases();
       if (available.length === 0) return;
-      this._activeBase = available[0]!;
+      this.setActiveBase(available[0]!);
     }
+    const base = this._activeBase!;
     this.pauseGame();
-    this.baseView.open(this._activeBase, this.activePlayers.current, this.activeStage.freeProcurement);
+    this.baseView.open(base, this.activePlayers.current, this.activeStage.freeProcurement);
   }
 
   leaveDock(): void {
