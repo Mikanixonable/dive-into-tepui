@@ -246,9 +246,11 @@ export class EntityContactPhysics {
     const t = contactTime(a, response.toi);
     a.collideWithEntity(b, {
       t, point, normal: response.normal, selfState: aBefore, otherState: bBefore,
+      specificEnergyLoss: response.specificEnergyLossA,
     }, activeStage);
     b.collideWithEntity(a, {
       t, point, normal: scale(response.normal, -1), selfState: bBefore, otherState: aBefore,
+      specificEnergyLoss: response.specificEnergyLossB,
     }, activeStage);
   }
 }
