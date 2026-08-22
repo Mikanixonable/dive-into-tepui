@@ -163,13 +163,18 @@ export class Simulator {
     this.sharedIntervalScratch.length = 0;
     for (const e of this.entities.all()) {
       if (!e.alive) continue;
+      // 抗力をもう積めない個体は、進める前に失う — 積んでも正確な軌道は得られない。
+      if (e.outpacedByDrag(dt, this.bodies.atmosphere)) {
+        e.alive = false;
+        continue;
+      }
       const near = this.bodies.attractorsNear(e.state.r);
       const atmosphereBody = this.bodies.atmosphereBodyNear(e.state.r);
       const divisions = e.substepDivisions(dt, this.bodies.atmosphere);
       const step = dt / divisions;
       for (let i = 0; i < divisions && e.alive; i++) {
         const integrated = e.stepSimulation(
-          step, near, this.bodies.surface, atmosphereBody, this.ephemeris);
+          step, near, this.bodies.surface, atmosphereBody, this.ephemeris, activeStage);
         if (integrated) this.lastIntegratedSteps++;
         else this.lastFollowedSteps++;
         if (divisions > 1) this.surfaceContactPhysics.resolveOne(e, activeStage);
