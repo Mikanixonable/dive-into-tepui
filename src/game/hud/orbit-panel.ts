@@ -7,7 +7,7 @@ import { orbitInfo } from './orbit-info';
 import { CelestialBody } from '../../physics/celestial-body';
 import type { Game } from '../game';
 import type { OrbitReferenceMode } from '../orbit-reference';
-import { SegmentedControl } from './widgets/segmented-control';
+import { Button, SegmentedControl } from './widgets';
 
 import { getApsisLabelSpec } from './orbit-labels';
 import { Player } from '../player/player';
@@ -24,12 +24,28 @@ const REFERENCE_ITEMS: readonly (readonly [OrbitReferenceMode, string])[] = [
 export class OrbitPanel {
   private nextSyncAt = 0;
   private readonly referenceControl: SegmentedControl<OrbitReferenceMode>;
+  // 軌道分析パネルの開閉は Hud が持つため、ここでは押されたことだけを伝える。ボタン構築時には
+  // まだ配線されていないので、VesselPanel.setInput と同じ late injection にする。
+  private openAnalysis: (() => void) | null = null;
 
   constructor(private readonly els: Map<string, HTMLElement>) {
     this.referenceControl = new SegmentedControl('基準', REFERENCE_ITEMS, (mode) => {
       this.game?.orbitReference.setMode(mode);
     });
     this.els.get('reference-row')?.appendChild(this.referenceControl.element);
+    this.buildActionButtons();
+  }
+
+  // Hud から軌道分析パネルの開閉ハンドラを受け取る。
+  setOpenAnalysisHandler(handler: () => void): void {
+    this.openAnalysis = handler;
+  }
+
+  private buildActionButtons(): void {
+    const container = this.els.get('orbit-actions');
+    if (!container) return;
+    const button = new Button('軌道分析', () => this.openAnalysis?.());
+    container.appendChild(button.element);
   }
 
   private game: Game | null = null;
