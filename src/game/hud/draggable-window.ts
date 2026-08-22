@@ -58,8 +58,8 @@ const STYLE = `
 }
 #hud .dg-window-btn:hover { background: var(--surface-3); color: var(--accent-near); }
 #hud .dg-window-btn.clipped { background: var(--accent-fill); color: var(--accent); }
-#hud .dg-window.tgt { background: color-mix(in srgb, var(--accent-secondary) 16%, var(--glass-focus)); }
-#hud .dg-window.on { background: color-mix(in srgb, var(--accent) 16%, var(--glass-focus)); }
+#hud .dg-window.tgt { background: color-mix(in srgb, var(--accent) 16%, var(--glass-focus)); }
+#hud .dg-window.on { background: color-mix(in srgb, var(--accent-secondary) 16%, var(--glass-focus)); }
 `;
 
 let styleInjected = false;
