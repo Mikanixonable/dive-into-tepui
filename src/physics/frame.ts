@@ -25,8 +25,8 @@ export type ReferenceFrame = {
   readonly rotatingWith: FrameRotationSource | null;
 };
 
-// 参照フレームの基準・回転対象を役割で指す予約 id。天体 id は小文字 ASCII と '-'/':' しか
-// 使わないので、'@' で始まる id が天体と衝突することはない。
+// 参照フレームの基準・回転対象を、特定の対象を名指しせず役割で指すためのもの。予約 id では
+// '@' を頭に付ける — 天体・機体の id は小文字 ASCII と '-'/':' だけで組まれる。
 export type FrameRole = 'activeShip' | 'navTarget';
 
 // 参照フレームの基準(原点)に置けるもの。登録天体・生存中の重力天体・機体の id か、役割トークン。
@@ -37,23 +37,20 @@ export type FrameRotationSource =
   | { readonly kind: 'revolution'; readonly id: FrameAnchorId }  // 主天体まわりの公転
   | { readonly kind: 'spin'; readonly id: CelestialBodyId };     // 自転(天体のみ)
 
-// 役割トークンの全種。UI の選択肢生成と frameRoleOf の検証がここを唯一の出所にする。
+// 役割トークンの全種。役割を列挙するときの唯一の出所。
 export const FRAME_ROLES: readonly FrameRole[] = ['activeShip', 'navTarget'];
 
-// id が役割トークンかどうかを判定し、そうであれば役割を取り出す。天体 id なら null。
-// '@' で始まっていても未知の役割なら null を返す — セーブデータなど外から来た文字列を
-// 無検証で FrameRole として扱うと、解決できない役割が静かに座標系へ入り込む。
+// id が指す役割。天体・機体の id と、'@' で始まっていても FRAME_ROLES に無いものは null
+// — 検証を挟まないと、解決できない役割が外から来た文字列のまま座標系へ入り込む。
 export function frameRoleOf(id: FrameAnchorId): FrameRole | null {
   const role = id.startsWith('@') ? id.slice(1) : null;
   return role !== null && FRAME_ROLES.includes(role as FrameRole) ? role as FrameRole : null;
 }
 
-// frameTransformAt が FrameAnchorId(天体レジストリに無いもの)の位置・主天体を引くための
-// 解決役。実装は game/frame-anchors.ts に置く(生存中のエンティティ・役割トークンの解決には
-// Ephemeris が知らない Game 側の状態が要るため)。
+// 天体レジストリに載らない FrameAnchorId の位置・主天体を引く解決役。座標系の変換は
+// これ越しにしか未登録の基準へ触れない。
 export interface FrameAnchorSource {
-  // このフレームの登録重力天体一覧。strongestAttractor/occlusion など、frameTransformAt 以外の
-  // 用途で celestialBodies 配列そのものが要る呼び出し元もここから読み、二重に持ち回らない。
+  // このフレームの重力天体一覧。
   readonly bodies: readonly CelestialBody[];
   // 登録天体でない基準(生存中の重力天体・機体・役割トークン)の ECI 状態。解決できなければ null。
   stateOf(id: FrameAnchorId, t: number): KinematicState | null;

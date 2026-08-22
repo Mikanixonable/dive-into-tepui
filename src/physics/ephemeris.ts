@@ -555,13 +555,9 @@ export class Ephemeris {
     return this.orientationOf(bodyDef(this.registry, id), t);
   }
 
-  // 天体 id の自転に固定した回転基準系(ẑ = 自転軸、x̂ = 本初子午線方向)。公転回転系
-  // (orbitFrameRotationAt)が ẑ に軌道面法線を置くのと同じ軸の割り当てになる。自転モデルを
-  // 持たない天体では null。
-  //
-  // 逆行自転する天体(金星・天王星)でも ẑ は IAU の「北極」のままで、逆行は omega の符号として
-  // 現れる — 本初子午線(x̂)が IAU の極を基準に定義されている以上、ẑ だけを自転角運動量の向きへ
-  // 反転すると x̂ との対応が壊れる。地表を静止させるという座標系の役割はどちらでも果たされる。
+  // 天体 id の自転に固定した回転基準系(ẑ = 自転軸、x̂ = 本初子午線方向)。自転モデルを持たない
+  // 天体では null。逆行自転する天体でも ẑ は IAU の「北極」のままで、逆行は omega の符号に現れる
+  // (DEVELOP/SPEC/CELESTIAL.md 8節)— x̂ が IAU の極を基準に定義されているため。
   spinRotationAt(id: CelestialBodyId, t: number): FrameRotation | null {
     const def = bodyDef(this.registry, id);
     const orientation = this.orientationOf(def, t);
