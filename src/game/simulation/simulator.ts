@@ -174,7 +174,7 @@ export class Simulator {
       const step = dt / divisions;
       for (let i = 0; i < divisions && e.alive; i++) {
         const integrated = e.stepSimulation(
-          step, near, this.bodies.surface, atmosphereBody, this.ephemeris, activeStage);
+          step, near, this.bodies.surface, atmosphereBody, this.bodies.star, activeStage);
         if (integrated) this.lastIntegratedSteps++;
         else this.lastFollowedSteps++;
         if (divisions > 1) this.surfaceContactPhysics.resolveOne(e, activeStage);

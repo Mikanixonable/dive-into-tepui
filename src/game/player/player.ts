@@ -17,7 +17,7 @@ import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { buildPlayerShip } from '../../render/ships';
-import { CelestialBody, nearestAtmosphereBody } from '../../physics/celestial-body';
+import { CelestialBody } from '../../physics/celestial-body';
 import type { CameraSystem } from '../camera/camera-system';
 import { focusTargetId } from '../camera/focus-target';
 import type { MapVisibility } from '../celestial/map-visibility';
@@ -39,7 +39,6 @@ import type { MarkerManager } from '../marker/marker-manager';
 import { RadiatorSide, RadiatorSystem } from './radiator';
 import { PowerSystem } from './power';
 import { Ephemeris } from '../../physics/ephemeris';
-import { sunlitFactor } from '../../physics/shadow';
 import { Plan } from '../plan/plan';
 import { PlanExecutor, type PlanExecutionMode } from '../plan/plan-executor';
 import type { PlayerSaveData, PlanSaveData } from '../save-data';
@@ -236,19 +235,13 @@ export class Player extends Ship {
     this.hpRegen(dt);
   }
 
-  // bodies はこの区間の天体窓で、恒星の取り出しと日照率の遮蔽体に使う。
-  protected override stepEnvironment(dt: number, ephemeris: Ephemeris, simTime: number, bodies: readonly CelestialBody[]): void {
+  protected override stepEnvironment(
+    dt: number, atmosphereBody: CelestialBody | null, sunlit: number, sunDir: Vec3,
+  ): void {
     if (!this.alive) return;
-    const atmosphereBody = nearestAtmosphereBody(this.state.r, bodies);
     this.radiator.update(dt, this.radiatorWear());
     this.aero.update(this.state.r, this.state.v, atmosphereBody);
     this.altitudeAlarm.update(dt, this.state.r, atmosphereBody);
-    const sunDir = ephemeris.sunDirFrom(this.state.r, simTime);
-    const star = bodies.find((a) => a.id === ephemeris.starId);
-    const sunlit = star ? sunlitFactor(this.state.r, star, bodies) : 1;
-    // 放熱板が浴びる太陽光は、次の熱計算で温度へ変わる投入熱として渡す。
-    this.absorbHeat(
-      (this.radiator.solarLoad(sunlit, sunDir, this.att, this.totalCoolingRate) * dt) / C.PLAYER_MASS);
     this.power.update(dt, sunlit, sunDir, this.att, this);
   }
 
@@ -256,6 +249,12 @@ export class Player extends Ship {
   protected override get radiatingAreaPerMass(): number {
     return C.SHIP_RADIATING_AREA_PER_MASS
       + this.radiator.radiatingArea(this.totalCoolingRate) / C.PLAYER_MASS;
+  }
+
+  // 艦体の断面積に、展開した放熱板の日照面を上乗せする。
+  protected override solarAbsorbAreaPerMass(sunDir: Vec3): number {
+    return super.solarAbsorbAreaPerMass(sunDir)
+      + this.radiator.solarAbsorbArea(sunDir, this.att, this.totalCoolingRate) / C.PLAYER_MASS;
   }
 
   // 操作できない間、次のフレームへ持ち越してはならない連続指令を畳む。

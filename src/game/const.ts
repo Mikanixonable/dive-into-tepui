@@ -54,6 +54,8 @@ export const SMALL_DEBRIS_SRP_COEFF = 4.7e-3; // 薬莢・破片・弾薬
 export const DRAG_COEFFICIENT = 2.2;
 // 断面積のうち、よどみ点の加熱を実際に受ける割合。
 export const STAGNATION_AREA_FRACTION = 0.6;
+// 1天文単位における太陽定数 [W/m^2]。距離の2乗に反比例して弱まる。
+export const SOLAR_CONSTANT = 1361;
 
 // 艦(自機・敵機)。材質密度は宇宙機の実効密度で、曲率半径 0.6 m を与える値。
 export const SHIP_BULK_DENSITY = 833; // [kg/m^3]
@@ -96,7 +98,6 @@ export const GUN_HEAT_PER_ROUND = 5.5e5; // 1発あたりの投入熱量 [J]
 export const RADIATOR_FOLD_COUNT = 6; // 蛇腹の折り数(1枚あたり)
 export const RADIATOR_DEPLOY_TIME = 3.0; // 収納⇔全開にかかる時間 [s]
 export const RADIATOR_SOLAR_ABSORB = 0.15; // 日照面の太陽光吸収率
-export const SOLAR_CONSTANT = 1361; // 地球軌道の太陽定数 [W/m^2]
 // 展開中の放熱板に当たった1発が放熱板パーツへ与えるダメージ [HP]。薄く大きい構造物なので
 // 船体への直撃(PLAYER_BULLET_DAMAGE)より軽い。損耗はドックで修理するまで戻らない。
 export const RADIATOR_BULLET_DAMAGE = 0.25;

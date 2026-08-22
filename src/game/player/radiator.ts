@@ -125,7 +125,7 @@ export class RadiatorSystem {
   }
 
   // 偶数折り目/奇数折り目それぞれの、ヒンジ基準での累積回転角。sync がメッシュへ書く
-  // 相対回転と solarLoad が法線計算に使う絶対角を同一の psi から導く共有点。
+  // 相対回転と solarAbsorbArea が法線計算に使う絶対角を同一の psi から導く共有点。
   // 展開方向(モデル側の折り目オフセット)は side ごとに符号が付くので、回転角自体は
   // side に依らず ±psi で揃えられる。
   private foldThetas(side: RadiatorSide): { even: number; odd: number } {
@@ -172,16 +172,16 @@ export class RadiatorSystem {
     return qRotate(att.q, shipNormal);
   }
 
-  // 日照面が受け取る太陽入射 [W]。sunlit は sunlitFactor の戻り値(0..1)、
-  // sunDir は太陽方向の単位ベクトル(world)。蛇腹は偶数/奇数折りで法線が異なるため、
-  // 面積を半分ずつ割り当てて2方向ぶんを合算する。
-  solarLoad(sunlit: number, sunDir: Vec3, att: Attitude, totalCoolingRate: number): number {
+  // 日照面が太陽光を受ける実効面積 [m^2](日照面の吸収率を織り込む)。sunDir は太陽方向の
+  // 単位ベクトル(world)。蛇腹は偶数/奇数折りで法線が異なるため、面積を半分ずつ割り当てて
+  // 2方向ぶんを合算する。
+  solarAbsorbArea(sunDir: Vec3, att: Attitude, totalCoolingRate: number): number {
     return (['up', 'down'] as const).reduce((sum, side) => {
       const halfArea = this.panelArea(side, totalCoolingRate) / 2;
       const { even, odd } = this.foldThetas(side);
       const cosEven = Math.abs(dot(this.worldNormal(even, att), sunDir));
       const cosOdd = Math.abs(dot(this.worldNormal(odd, att), sunDir));
-      return sum + C.SOLAR_CONSTANT * C.RADIATOR_SOLAR_ABSORB * halfArea * (cosEven + cosOdd) * sunlit;
+      return sum + C.RADIATOR_SOLAR_ABSORB * halfArea * (cosEven + cosOdd);
     }, 0);
   }
 

@@ -1,17 +1,28 @@
 // 熱収支の純関数(physics/thermal.ts)の回帰テスト。
 // **物体へ入る熱がその区間に散逸した力学エネルギーを超えないこと**が中心で、これを破ると
 // 軌道上の物体が理由なく熱を持つ。刻みに対する頑健さ(放熱が環境温度を通り越さないこと)も
-// ここで固定する — 通り越すと T⁴ が段どうしで増幅し、1歩で発散する。
+// ここで固定する — 通り越すと T⁴ が段どうしで増幅し、1歩で発散する。太陽光の受熱については、
+// 日照だけで軌道上の物体が焼失しないことを固定する。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import {
-  STEFAN_BOLTZMANN, aeroHeating, dragDissipation, radiativeCooling, sphereNoseRadius,
-  stepTemperature,
+  STEFAN_BOLTZMANN, aeroHeating, dragDissipation, radiativeCooling, solarHeating,
+  sphereNoseRadius, stepTemperature,
 } from '../../src/physics/thermal';
+import { ASTRONOMICAL_UNIT } from '../../src/physics/srp';
 
 const ENV_TEMP = 255;
 const SG_CONST = 1.7415e-4; // 地球大気の Sutton–Graves 定数 [kg^0.5/m]
 const SHIP_BCINV = 3.3e-3;
+const SMALL_DEBRIS_BCINV = 8e-3;
+const DRAG_COEFFICIENT = 2.2;
+const SOLAR_CONSTANT = 1361; // 1天文単位での太陽定数 [W/m^2]
+const HULL_EMISS = 0.85;
+
+// 灰色体とみなした物体が太陽光を受ける実効面積の比 [m^2/kg](game/const.ts と同じ導き方)。
+function solarAbsorbAreaPerMass(bcInv: number): number {
+  return (HULL_EMISS * bcInv) / DRAG_COEFFICIENT;
+}
 
 // 加熱と放熱が釣り合う温度 [K] を、上の枝から二分で求める。
 function equilibrium(
@@ -102,6 +113,38 @@ export function register(): void {
         assert.ok(next >= ENV_TEMP - 1e-9, `dt=${dt} c=${specificHeat}: ${next} K まで落ちた`);
         assert.ok(next <= 3000 + 1e-9, `dt=${dt} c=${specificHeat}: 冷えずに上がった`);
       }
+    }
+  });
+
+  test('thermal: 太陽光の受熱は1天文単位で太陽定数そのもので、距離の2乗に反比例する', () => {
+    const area = solarAbsorbAreaPerMass(SHIP_BCINV);
+    const at1AU = solarHeating(SOLAR_CONSTANT, ASTRONOMICAL_UNIT, 1, area);
+    assert.ok(Math.abs(at1AU - SOLAR_CONSTANT * area) < 1e-12, `1AU で ${at1AU} W/kg`);
+    for (const ratio of [0.5, 2, 5.2, 30]) {
+      const far = solarHeating(SOLAR_CONSTANT, ratio * ASTRONOMICAL_UNIT, 1, area);
+      assert.ok(Math.abs(far - at1AU / (ratio * ratio)) < 1e-12 * at1AU, `${ratio} AU で ${far} W/kg`);
+    }
+  });
+
+  test('thermal: 太陽光の受熱は日照率に比例し、本影では入らない', () => {
+    const area = solarAbsorbAreaPerMass(SMALL_DEBRIS_BCINV);
+    const full = solarHeating(SOLAR_CONSTANT, ASTRONOMICAL_UNIT, 1, area);
+    assert.ok(Math.abs(solarHeating(SOLAR_CONSTANT, ASTRONOMICAL_UNIT, 0.25, area) - full / 4) < 1e-12 * full);
+    assert.equal(solarHeating(SOLAR_CONSTANT, ASTRONOMICAL_UNIT, 0, area), 0, '本影では入らない');
+  });
+
+  // 日照だけで焼ける物体があると、軌道に置いただけの破片や敵機が戦闘前に勝手に消える。
+  test('thermal: 地球軌道の日照だけでは、破片も艦も限界温度に届かない', () => {
+    const cases = [
+      { name: '破片', bcInv: SMALL_DEBRIS_BCINV, radiatingAreaPerMass: 0.01455, maxTemp: 933 },
+      { name: '艦', bcInv: SHIP_BCINV, radiatingAreaPerMass: 0.07, maxTemp: 500 },
+    ];
+    for (const c of cases) {
+      const heating = solarHeating(
+        SOLAR_CONSTANT, ASTRONOMICAL_UNIT, 1, solarAbsorbAreaPerMass(c.bcInv));
+      const t = equilibrium(heating, HULL_EMISS, c.radiatingAreaPerMass);
+      assert.ok(t < c.maxTemp, `${c.name}: 日照の平衡 ${t.toFixed(0)} K が限界 ${c.maxTemp} K に達する`);
+      assert.ok(t > ENV_TEMP, `${c.name}: 日照で環境温度より暖まらない`);
     }
   });
 
