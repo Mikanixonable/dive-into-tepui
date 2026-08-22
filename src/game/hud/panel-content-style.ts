@@ -41,9 +41,10 @@ export const PANEL_CONTENT_STYLE = `
   font-size: var(--font-xxs);
   text-align: right;
 }
-/* R/F/G/T の代替操作ボタン(タッチ・マウスどちらでも常設)。 */
-#hud-vessel-status .status-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
-#hud-vessel-status .status-actions .w-btn { font-size: var(--font-xxs); padding: var(--space-2) var(--space-3); }
+/* 常設パネルの操作ボタン列(艦ステータスの R/F/G/T 代替、軌道情報の分析パネル起動、
+   いずれもタッチ・マウスどちらでも常設)。 */
+.combat-panel .panel-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
+.combat-panel .panel-actions .w-btn { font-size: var(--font-xxs); padding: var(--space-2) var(--space-3); }
 /* スロットル 1-4 の SegmentedControl。§7-1 の決定によりタッチ UI が出ている間だけ表示する —
    表示条件はタッチパッドの出し入れ(touch.ts の setPointerKind が付ける body.touch-ui-active)と
    同じものに載せ、ここで別の判定を作らない。 */

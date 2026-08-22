@@ -531,7 +531,7 @@ export class Game {
     }
     this.activeStage.sync(player, fo, this.cameraSystem, displayTime, visibilityPolicy);
 
-    if (this.viewManager.isMapView) this.mapHud.sync(this);
+    if (this.viewManager.isMapView) this.mapHud.sync(this, celestialBodies);
     else this.combatHud.sync(this, celestialBodies);
     this._hud.tick();
 
