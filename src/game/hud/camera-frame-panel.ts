@@ -1,13 +1,13 @@
 // マップモードの「カメラ」パネル。カメラの注視対象・回転系・平行/透視投影・画角・基準面設定を担当する。
 import type { Ephemeris } from '../../physics/ephemeris';
-import type { FrameRotationSource } from '../../physics/frame';
+import { FrameRole, frameRoleOf } from '../../physics/frame';
 import * as C from '../const';
 import { CameraReferencePlane, CameraReferenceView, MapCamera } from '../camera/map-camera';
 import { focusTargetId } from '../camera/focus-target';
 import { AnchorZone } from './anchor-zone';
 import { RotationZone } from './rotation-zone';
 import { Button, Pulldown, type PulldownColumn, Slider, ToggleSwitch, ValueInput } from './widgets';
-import { celestialBodyName } from './frame-labels';
+import { celestialBodyName, frameRoleName, rotationSourceLabel } from './frame-labels';
 import { hudRail } from './hud-root';
 import type { MapPickable } from '../map-pickable';
 import type { OverlayManager } from './overlay-manager';
@@ -115,25 +115,25 @@ export class CameraFramePanel {
 
   private cameraSummaryText(): string {
     const camId = focusTargetId(this.mapCamera.focus);
-    const camCenter = camId === undefined ? '固定なし' : celestialBodyName(camId);
+    const camRole = camId === undefined ? null : frameRoleOf(camId);
+    const camCenter = camId === undefined ? '固定なし' : camRole !== null ? frameRoleName(camRole) : celestialBodyName(camId);
     const camRot = this.mapCamera.cameraFrame.rotatingWith;
-    const rotText = (source: FrameRotationSource | null): string => {
-      if (source === null) return '慣性系';
-      return source.kind === 'spin' ? `${celestialBodyName(source.id)}自転系` : `${celestialBodyName(source.id)}回転系`;
-    };
     const modeText = this.mapCamera.cameraRotationMode === 'euler' ? 'オイラー' : 'クォータニオン';
     const projectionText = this.mapCamera.projection === 'orthographic' ? '平行' : '透視';
-    return `基準: ${camCenter}・${rotText(camRot)} / ${modeText}・${projectionText}・画角 ${this.mapCamera.fov.toFixed(0)}°`;
+    return `基準: ${camCenter}・${rotationSourceLabel(camRot)} / ${modeText}・${projectionText}・画角 ${this.mapCamera.fov.toFixed(0)}°`;
   }
 
-  public sync(pickables: readonly MapPickable[], members: readonly string[], isVisible: boolean): void {
+  public sync(
+    pickables: readonly MapPickable[], members: readonly string[], displayTime: number,
+    validRoles: readonly FrameRole[], isVisible: boolean,
+  ): void {
     this.panel.classList.toggle('hidden', !isVisible);
     if (!isVisible) return;
 
     this.cameraCenterZone.setItems(pickables);
     this.cameraCenterZone.setNearby(members, pickables);
     this.cameraCenterZone.setSelected(focusTargetId(this.mapCamera.focus) ?? null);
-    this.cameraRotationZone.setNearby(members);
+    this.cameraRotationZone.setNearby(members, displayTime, validRoles);
     this.cameraRotationZone.setSelected(this.mapCamera.cameraFrame.rotatingWith);
     this.cameraRotationModeToggle.setOn(this.mapCamera.cameraRotationMode === 'quaternion');
     const isOrthographic = this.mapCamera.projection === 'orthographic';

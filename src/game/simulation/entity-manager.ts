@@ -331,11 +331,12 @@ export class EntityManager {
     activePlayer: Player | null, fo: FloatingOrigin, cameraSystem: CameraSystem,
     displayTime: number, ephemeris: Ephemeris, celestialBodies: readonly CelestialBody[],
     visibilityPolicy: MapVisibilityPolicy | null, displayWindow?: DisplayWindow, orbitRef?: OrbitReference,
+    frameAnchors?: FrameAnchorSource,
   ): void {
     for (const ship of this.players) {
       ship.syncPlayer(
         fo, cameraSystem, displayTime, ship === activePlayer, ephemeris, celestialBodies,
-        visibilityPolicy?.entity('player', ship === activePlayer) ?? null, displayWindow, orbitRef,
+        visibilityPolicy?.entity('player', ship === activePlayer) ?? null, displayWindow, orbitRef, frameAnchors,
       );
     }
   }
