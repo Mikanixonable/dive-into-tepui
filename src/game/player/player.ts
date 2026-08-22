@@ -107,7 +107,7 @@ export class Player extends Ship {
     this.playerScene = _scene;
     this.mass = C.PLAYER_MASS;
     this.collides = true;
-    this.lossPrecisionMatters = true;
+    this.doPreciseReentry = true;
 
     const saved = 'saved' in init ? init.saved : undefined;
     this.throttle = new PlayerThrottle(_hud, saved?.throttle);
@@ -230,10 +230,8 @@ export class Player extends Ship {
     this.hpRegen(dt);
   }
 
-  // 軌道・姿勢と同じsimulation clockで受動環境系を進める。Game.behaveのwall dtから
-  // 分離し、各substep終端の位置・姿勢・太陽方向を使うことでwarp依存を防ぐ。
-  // bodies はこの substep の天体窓で、恒星の取り出しと日照率の遮蔽体に使う。
-  stepEnvironment(dt: number, ephemeris: Ephemeris, simTime: number, bodies: readonly CelestialBody[]): void {
+  // bodies はこの区間の天体窓で、恒星の取り出しと日照率の遮蔽体に使う。
+  override stepEnvironment(dt: number, ephemeris: Ephemeris, simTime: number, bodies: readonly CelestialBody[]): void {
     if (!this.alive) return;
     this.radiator.update(dt, this.radiatorWear());
     const sunDir = ephemeris.sunDirFrom(this.state.r, simTime);
