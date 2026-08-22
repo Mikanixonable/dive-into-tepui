@@ -429,22 +429,6 @@ export function debrisFragmentResources(): { geometries: readonly THREE.BufferGe
   return { geometries: debrisFragmentGeometries, material: debrisFragmentMaterial! };
 }
 
-// 不定形の岩塊メッシュ(小惑星用)。二十面体を軸ごとに独立した比率でランダムに歪ませ、
-// 人工物のディテールを持たない塊状の見た目にする。radius は歪ませる前の平均半径 [m]。
-export function buildAsteroidMesh(radius: number): THREE.Mesh {
-  const geo = new THREE.IcosahedronGeometry(radius, 1);
-  displaceVertices(geo, (x, y, z) => [
-    x * (0.7 + Math.random() * 0.6),
-    y * (0.7 + Math.random() * 0.6),
-    z * (0.7 + Math.random() * 0.6),
-  ]);
-  const mat = new THREE.MeshStandardMaterial({ color: 0x8a8378, flatShading: true, roughness: 0.9, metalness: 0.05 });
-  const mesh = withDispose(new THREE.Mesh(geo, mat));
-  // このメッシュは cloneIndependent を経由しないので、自分で G バッファ対象へ加える。
-  markLitOpaque(mesh);
-  return mesh;
-}
-
 
 // リロード時に放出される砲身（バレル）メッシュ
 // 砲身本体 + 後端フランジ + 放熱フィン + マズルブレーキ + 赤熱グロー + ガスポート

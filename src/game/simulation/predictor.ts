@@ -1,60 +1,63 @@
 // GameEntity.predicted と、計画軌道の各区間の弧を、共有のフレーム予算内で伸ばす。1歩ぶんの
 // 積分(刻み幅・窓解決・到達判定)は game/simulation/predicted-arc.ts の PredictedArc へ持ち、
 // ここは予算の配分だけを持つ。伸長対象は「その個体の未来を読む消費者がいるか」
-// (GameEntity.hasFutureReader)で決まり、乖離判定は消費者の有無によらず毎フレーム
-// 予測しうる全エンティティへ行う。
+// (GameEntity.hasFutureReader)で決まる。
+//
+// 実シミュレーション(game/simulation/simulator.ts の Simulator)との役割の違いは2点で、
+// 二重性はこの2点に由来する。統一はできない。
+//  1. 同時性。こちらは選ばれた少数の弧を1本ずつ、それぞれ別の先端時刻で伸ばす。共通の瞬間が
+//     無いので、絞り込みは弧ごと(ArcBodies)にしか組めず、弧どうしの剛体接触は解けない。
+//  2. 刻みの決まり方。こちらは simTime を追い越されない範囲で先へ伸びればよいので、1フレームの
+//     歩数を予算で切り、足りなければ遅れる — 追い越された弧は読まれなくなり、その個体は
+//     実シミュレーションの積分へ落ちるだけで壊れない。
+// **この2点に起因しない部分は、両者で同じ答えでなければならない** — 個体1つと解析天体の
+// 関係(どの天体が引くか・表面へ到達したか・大気で焼失したか・刻みをどこまで広げてよいか)。
 import * as C from '../const';
 import { EntityManager } from './entity-manager';
 import { GameEntity } from '../game-entity/game-entity';
 import { Player } from '../player/player';
-import { Ephemeris } from '../../physics/ephemeris';
-import type { Attractor } from '../../physics/attractor';
-import { attractorsNearInto, classifyAttractors } from './attractors';
-import type { FutureAttractors } from './future-attractors';
+import { simulationMaxStep } from './time-step';
+import type { FutureCelestialBodies } from './future-celestial-bodies';
 import { PredictedArc } from './predicted-arc';
 import type { PerfCounts } from '../../perf-meter';
 
 export class Predictor {
   private cursor = 0;
-  private readonly divergenceAttractorsScratch: Attractor[] = [];
 
   tracked = 0; // 予測対象の個体数
   finished = 0; // 先端がホライズンに達した/打ち切られた個体数
-  discarded = 0; // 乖離判定で破棄した個体数
   lastSteps = 0; // 実体側で消費した積分ステップ数
   lastPlanSteps = 0; // 計画の弧で消費した積分ステップ数
   lastBodies = 0; // 弧が解決した天体の延べ数
   lastRevisits = 0; // そのうち期限到来で訪問したものの数
+  // 操作艦の予測先端が simTime よりどれだけ先か [s]。弧が無ければ null。
+  lastArcLead: number | null = null;
 
   constructor(
     private readonly entities: EntityManager,
-    private readonly ephemeris: Ephemeris,
-    private readonly futureAttractors: FutureAttractors,
+    private readonly futureCelestialBodies: FutureCelestialBodies,
   ) {}
 
-  // Game.update の本流から無条件に(ポーズ中・決着後も)呼ぶ。horizon は simTime から先に
-  // 予測する長さ [s]。canDisplayFuture は表示時刻が現在より先へ動けるかで、未来ゴーストが
-  // 伸長理由として成り立つかを決める。planArcs は plan/plan-path.ts の PlanPath が owned で
-  // 持つ弧を時刻順に渡したもの(PlanEditor.growableArcs 経由) — requiredEnd/retainFrom は
-  // 渡す前に書き込み済みなので、ここでは step() を呼ぶだけでよい。
+  // Game.update の本流から無条件に(ポーズ中・決着後も)呼ぶ。simDt はこのフレームの時間送り
+  // (Simulator.lastSimDt)で、消費される弧の刻み上限を実シミュレーションと揃えるのに使う。
+  // horizon は simTime から先に予測する長さ [s]。canDisplayFuture は表示時刻が現在より先へ
+  // 動けるかで、未来ゴーストが伸長理由として成り立つかを決める。planArcs は
+  // plan/plan-path.ts の PlanPath が owned で持つ弧を時刻順に渡したもの
+  // (PlanEditor.growableArcs 経由) — requiredEnd/retainFrom は渡す前に書き込み済みなので、
+  // ここでは step() を呼ぶだけでよい。
   update(
-    simTime: number, player: Player | null, horizon: number, canDisplayFuture: boolean,
+    simTime: number, simDt: number, player: Player | null, horizon: number, canDisplayFuture: boolean,
     planArcs: readonly PredictedArc[],
   ): void {
-    // 乖離判定は消費者の有無によらず毎フレーム行う。伸長を止めている個体を放置すると
-    // 古い予測列が凍結されたまま FutureAttractors に読まれ続けるため。
     this.tracked = 0;
     this.finished = 0;
-    this.discarded = 0;
     this.lastSteps = 0;
     this.lastPlanSteps = 0;
     this.lastBodies = 0;
     this.lastRevisits = 0;
-    const classified = classifyAttractors(this.ephemeris.gravityAttractorsAt(simTime));
+    const maxStep = simulationMaxStep(simDt, C.SUBSTEP_MAX_DT, C.SUBSTEP_MAX_COUNT);
     for (const e of this.entities.all()) {
       if (!e.predictsFuture) continue;
-      const attractors = attractorsNearInto(e.state.r, classified, this.divergenceAttractorsScratch);
-      if (e.discardPredictionIfDiverged(simTime, attractors)) this.discarded++;
       this.tracked++;
       const reachedHorizon = e.predicted !== null && e.predicted.state.t >= simTime + horizon;
       if (reachedHorizon || e.predictionTruncated) this.finished++;
@@ -74,7 +77,7 @@ export class Predictor {
       ? Math.floor(C.ARC_STEP_BUDGET * C.ARC_INTERACTIVE_RATIO) : C.ARC_STEP_BUDGET;
     let budget = C.ARC_STEP_BUDGET;
     if (interactiveShip) {
-      const consumed = this.advanceBudget(interactiveShip, interactiveBudget, simTime, horizon);
+      const consumed = this.advanceBudget(interactiveShip, interactiveBudget, simTime, horizon, maxStep);
       budget -= consumed;
       interactiveBudget -= consumed;
     }
@@ -87,28 +90,34 @@ export class Predictor {
     }
 
     // 1体あたりの取り分は残額(interactive の使い残し込み)を残り訪問数で均等割りする。1体が
-    // 丸ごと消費すると、後続の個体が ARC_MIN_ITEM_STEPS に届かないまま次フレームの乖離判定で
-    // 破棄され、作り直しを繰り返す。
+    // 丸ごと消費すると、後続の個体が ARC_MIN_ITEM_STEPS に届かないまま実シミュレーションに
+    // 消費されず積分へ落ちて弧が捨てられ、作り直しを繰り返す。
     let visited = 0;
     while (budget > 0 && visited < targets.length) {
       const e = targets[(this.cursor + visited) % targets.length]!;
       if (e !== interactiveShip) {
         const share = Math.max(C.ARC_MIN_ITEM_STEPS, Math.floor(budget / (targets.length - visited)));
-        budget -= this.advanceBudget(e, Math.min(budget, share), simTime, horizon);
+        budget -= this.advanceBudget(e, Math.min(budget, share), simTime, horizon, maxStep);
       }
       visited++;
     }
     this.cursor = targets.length > 0 ? (this.cursor + visited) % targets.length : 0;
+
+    this.lastArcLead = player !== null && player.predicted !== null
+      ? player.predicted.state.t - simTime : null;
   }
 
   // budgetSteps を上限に予測列を1歩ずつ伸ばし、消費した歩数を実体側の集計へ積んで返す。
-  // 要求終端・保持窓の左端を弧へ書いてから grow を呼ぶだけで、刻み幅・窓解決・到達判定は
-  // 弧(PredictedArc)の責務。
-  private advanceBudget(e: GameEntity, budgetSteps: number, simTime: number, horizon: number): number {
-    const arc = e.ensurePredictedArc(this.futureAttractors);
+  // 要求終端・保持窓の左端・実シミュレーションの刻み上限を弧へ書いてから grow を呼ぶだけで、
+  // 刻み幅・窓解決・到達判定は弧(PredictedArc)の責務。
+  private advanceBudget(
+    e: GameEntity, budgetSteps: number, simTime: number, horizon: number, maxStep: number,
+  ): number {
+    const arc = e.ensurePredictedArc(this.futureCelestialBodies);
     if (arc === null) return 0;
     arc.requiredEnd = simTime + horizon;
-    arc.retainFrom = simTime;
+    arc.retainFrom = simTime - C.ARC_RETAIN_MARGIN;
+    arc.simulationMaxStep = maxStep;
     const consumed = this.grow(arc, budgetSteps);
     this.lastSteps += consumed;
     return consumed;
@@ -130,16 +139,16 @@ export class Predictor {
   // 負荷確認ウィンドウが読む、直近フレームの予測伸長の集計値。planSteps は計画の弧ぶんの
   // 積分step数 — 区間の再生成数(planArcs)は plan/plan-editor.ts が答える。
   perfCounts(): Pick<PerfCounts,
-  'predicted' | 'predictComplete' | 'predictDiscarded' | 'predictorSteps' | 'planSteps'
-  | 'arcBodies' | 'arcRevisits'> {
+  'predicted' | 'predictComplete' | 'predictorSteps' | 'planSteps'
+  | 'arcBodies' | 'arcRevisits' | 'arcLead'> {
     return {
       predicted: this.tracked,
       predictComplete: this.finished,
-      predictDiscarded: this.discarded,
       predictorSteps: this.lastSteps,
       planSteps: this.lastPlanSteps,
       arcBodies: this.lastBodies,
       arcRevisits: this.lastRevisits,
+      arcLead: this.lastArcLead,
     };
   }
 }

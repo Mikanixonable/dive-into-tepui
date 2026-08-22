@@ -12,7 +12,7 @@ import type { EffectsSystem } from '../../vfx/effects-system';
 import type { Ephemeris } from '../../../physics/ephemeris';
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
 import { apsisAltitudes } from '../../../physics/elements';
-import { orbitalElementsOf, strongestAttractor } from '../../../physics/attractor';
+import { orbitalElementsOf, strongestAttractor } from '../../../physics/celestial-body';
 import { Vec3, add, addScaled, len, norm, randPerp, scale, sub, v3 } from '../../../physics/vec3';
 import { generateApproachingEnemy } from '../spawner/enemy-generator';
 
@@ -167,7 +167,7 @@ function makeFlybyVelocity(player: KinematicState, centerR: Vec3, wave: number):
 // 近地点高度が REENTRY_ALT + STAGE00_MIN_PERIGEE_MARGIN を下回らないよう Δv の大きさを二分探索で縮める。
 function limitFlybyDv(playerV: Vec3, centerR: Vec3, centerV: Vec3, t: number, ephemeris: Ephemeris): Vec3 {
   const minPeAlt = C.REENTRY_ALT + C.STAGE00_MIN_PERIGEE_MARGIN;
-  const center = strongestAttractor(centerR, ephemeris.attractorsAt(t));
+  const center = strongestAttractor(centerR, ephemeris.celestialBodiesAt(t));
   // 与えた速度での近地点高度が最低ラインを満たすか判定する。
   const safe = (v: Vec3): boolean => {
     const el = orbitalElementsOf(kinematicState(t, centerR, v), center);

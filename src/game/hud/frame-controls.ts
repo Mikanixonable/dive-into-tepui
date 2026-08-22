@@ -1,7 +1,7 @@
 // マップモードの「カメラ」「軌道フレーム」パネル オーケストレーター。
 // マップカメラの視点 (CameraFramePanel) と未来表示の描画基準 (TrajectoryFramePanel) を所有し、
 // カメラフォーカス変更時の軌道フレーム自動追随などの連動を疎結合に調停する。
-import { Attractor } from '../../physics/attractor';
+import { CelestialBody } from '../../physics/celestial-body';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Vec3 } from '../../physics/vec3';
 import { systemMembersAt } from '../celestial/body-visibility';
@@ -58,11 +58,11 @@ export class FrameControls {
 
   // パネルの表示と選択肢・選択表示を、他モジュールの状態へ合わせる。
   public sync(
-    pickables: readonly MapPickable[], cameraPos: Vec3, attractors: readonly Attractor[],
+    pickables: readonly MapPickable[], cameraPos: Vec3, celestialBodies: readonly CelestialBody[],
     simTime: number, visible: boolean,
   ): void {
     this.lastTime = simTime;
-    const members = visible ? systemMembersAt(this.ephemeris.registry, cameraPos, attractors) : [];
+    const members = visible ? systemMembersAt(this.ephemeris.registry, cameraPos, celestialBodies) : [];
 
     this.cameraPanel.sync(pickables, members, visible);
     this.trajectoryPanel.sync(pickables, members, visible);

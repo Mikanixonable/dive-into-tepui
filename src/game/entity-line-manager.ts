@@ -1,7 +1,7 @@
 // どのエンティティに、どんな見た目の軌道線・予測線・過去線を出すかを決める。
 // update が出す/消す/スタイルを決め、sync は既に出ている線の形状と変換を合わせる。
 import * as THREE from 'three/webgpu';
-import { Attractor } from '../physics/attractor';
+import { CelestialBody } from '../physics/celestial-body';
 import { Ephemeris } from '../physics/ephemeris';
 import type { LineStyle } from '../render/line-style';
 import * as C from './const';
@@ -65,21 +65,21 @@ export class EntityLineManager {
   // ここでは全個体へ一律に呼ぶ。
   sync(
     displayWindow: DisplayWindow, fo: FloatingOrigin, camera: THREE.Camera,
-    attractors: readonly Attractor[], ephemeris: Ephemeris,
+    celestialBodies: readonly CelestialBody[], ephemeris: Ephemeris,
   ): void {
     const { frame, simTime, displayTime, duration, pastDuration } = displayWindow;
     for (const ship of this.entities.players) {
       const predictedTo = ship.predictionTruncated ? null : simTime + duration;
       ship.syncTrajectoryLines(
-        frame, simTime, displayTime, pastDuration, predictedTo, ephemeris, fo, camera, attractors);
+        frame, simTime, displayTime, pastDuration, predictedTo, ephemeris, fo, camera, celestialBodies);
       // 噴射中は軌道要素が動き続けるので、閾値を待たずに焼き直す。
-      ship.syncOrbitLine(fo, camera, attractors, ship.thrust !== null, frame, displayTime, ephemeris);
+      ship.syncOrbitLine(fo, camera, celestialBodies, ship.thrust !== null, frame, displayTime, ephemeris);
     }
     for (const enemy of this.entities.enemies) {
-      enemy.syncOrbitLine(fo, camera, attractors, enemy.thrust !== null, frame, displayTime, ephemeris);
+      enemy.syncOrbitLine(fo, camera, celestialBodies, enemy.thrust !== null, frame, displayTime, ephemeris);
     }
     for (const base of this.entities.bases) {
-      base.syncOrbitLine(fo, camera, attractors, base.thrust !== null, frame, displayTime, ephemeris);
+      base.syncOrbitLine(fo, camera, celestialBodies, base.thrust !== null, frame, displayTime, ephemeris);
     }
   }
 }

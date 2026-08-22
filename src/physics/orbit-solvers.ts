@@ -1,5 +1,5 @@
 // 軌道上の特徴点(赤道交点 EqAN/EqDN、相対交点 AN/DN など)の計算を行う純粋物理計算層。
-import { Attractor, attractorPositionAt, frameOfAttractor, orbitalElementsOf } from './attractor';
+import { CelestialBody, celestialBodyPositionAt, frameOfCelestialBody, orbitalElementsOf } from './celestial-body';
 import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from './elements';
 import { toFrameState } from './frame';
 import { KinematicState } from './kinematic-state';
@@ -18,15 +18,15 @@ export interface OrbitCrossingsResult {
 
 // 軌道状態またはサンプル点列から赤道交点(EqAN / EqDN)を求める純粋関数。ノード通過時刻 t
 // における中心天体の ECI 位置は、呼び出し側が精密な天体暦を持っていれば centerPositionAt で
-// それを渡すこと — 既定の attractorPositionAt は center.state 起点の弾道外挿でしかなく、
+// それを渡すこと — 既定の celestialBodyPositionAt は center.state 起点の弾道外挿でしかなく、
 // 月のように数時間〜数日先まで公転するものには不十分(表示側が精密暦で un-bake すると、
 // この弾道外挿との差がそのまま交点位置のズレになる)。
 export function solveEquatorCrossings(
   state: KinematicState,
-  center: Attractor,
+  center: CelestialBody,
   eqNormal: Vec3,
   samples: readonly KinematicState[] | null = null,
-  centerPositionAt: (t: number) => Vec3 = (t) => attractorPositionAt(center, t),
+  centerPositionAt: (t: number) => Vec3 = (t) => celestialBodyPositionAt(center, t),
 ): OrbitCrossingsResult | null {
   if (samples) {
     const { ascending, descending } = findEquatorCrossings(samples, center, eqNormal);
@@ -37,7 +37,7 @@ export function solveEquatorCrossings(
   const nodes = el && nodeAnomalies(el, eqNormal);
   if (!el || !nodes) return null;
 
-  const relative = toFrameState(frameOfAttractor(center), state);
+  const relative = toFrameState(frameOfCelestialBody(center), state);
   const nodeState = (nu: number): OrbitNodeState => {
     const dt = tofBetween(el, trueAnomalyAt(el, relative.r), nu);
     const t = state.t + (isFinite(dt) ? dt : 0);

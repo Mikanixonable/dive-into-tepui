@@ -15,6 +15,6 @@ export function focusTargetId(target: FocusTarget): string | undefined {
 
 // ECI 位置 pos(時刻 t)を frame に焼き込んだ固定点フォーカスを組む。
 export function focusPoint(ephemeris: Ephemeris, frame: ReferenceFrame, pos: Vec3, t: number): FocusTarget {
-  const tf = ephemeris.frameTransformAt(frame, t, ephemeris.attractorsAt(t));
+  const tf = ephemeris.frameTransformAt(frame, t, ephemeris.celestialBodiesAt(t));
   return { kind: 'point', frame, point: toFramePoint(tf, pos) };
 }

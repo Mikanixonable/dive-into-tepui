@@ -11,7 +11,7 @@ import type { ProjectFn, ScaleFn } from '../camera/camera-system';
 import type { ActiveCelestialLabel } from '../camera/focus-markers';
 import type { MarkerManager } from './marker-manager';
 import { DIRECTION_GLYPH } from './marker-glyphs';
-import type { Attractor } from '../../physics/attractor';
+import type { CelestialBody } from '../../physics/celestial-body';
 import type { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 
@@ -74,7 +74,7 @@ export class GroupedMarkers {
     overviewMode: boolean,
     scale: ScaleFn,
     celestialLabels: readonly ActiveCelestialLabel[] = [],
-    attractors: readonly Attractor[] = [],
+    celestialBodies: readonly CelestialBody[] = [],
     frame?: ReferenceFrame,
     displayTime?: number,
     ephemeris?: Ephemeris,
@@ -98,7 +98,7 @@ export class GroupedMarkers {
       }
       const label = m.labeled ? this.label(m.item, m.count, m.groupMembers) : '';
       const rotationDeg = overviewMode
-        ? this.markerManager.headingRotationDeg(m.item.pos, m.item.vel, project, scale, attractors, frame, displayTime, ephemeris)
+        ? this.markerManager.headingRotationDeg(m.item.pos, m.item.vel, project, scale, celestialBodies, frame, displayTime, ephemeris)
         : undefined;
       this.markerManager.set(
         m.item.key, m.item.cls, m.item.sym, m.p.x, m.p.y, m.p.front, label, opacity, m.item.color,

@@ -14,7 +14,7 @@
 // 並べ、どちらで揃うかを見る。最後に「同じ総ステップ数(=同じコスト)を配ったとき、
 // 定数刻みと周期比例刻みのどちらが誤差が小さいか」を直接比べる。
 import { Ephemeris } from '../../src/physics/ephemeris';
-import { Attractor, localOrbitPeriod, strongestAttractor } from '../../src/physics/attractor';
+import { CelestialBody, localOrbitPeriod, nearestAtmosphereBody, strongestAttractor } from '../../src/physics/celestial-body';
 import { kinematicState, KinematicState } from '../../src/physics/kinematic-state';
 import { v3, sub, len, cross, norm, scale, add } from '../../src/physics/vec3';
 import { stepDynamics } from '../../src/physics/dynamics';
@@ -40,7 +40,7 @@ type Regime = {
 };
 
 // 中心天体 center のまわりの円軌道。dist は中心からの距離 [m]。
-function circularAround(center: Attractor, dist: number): KinematicState {
+function circularAround(center: CelestialBody, dist: number): KinematicState {
   const radial = v3(dist, 0, 0);
   const speed = Math.sqrt(center.mu / dist);
   const tangent = scale(norm(cross(v3(0, 1, 0), radial)), speed);
@@ -69,17 +69,22 @@ function integrate(ephemeris: Ephemeris, state0: KinematicState, dt: number, hor
   let s = state0;
   while (end - s.t > 1e-9) {
     const step = Math.min(dt, end - s.t);
-    const attractors = ephemeris.gravityAttractorsAt(s.t + step / 2);
-    s = stepDynamics(s, step, attractors, SHIP_BCINV, 0, null);
+    const tMid = s.t + step / 2;
+    const celestialBodies = ephemeris.gravityAttractorsAt(tMid);
+    s = stepDynamics(
+      s, step, celestialBodies, ephemeris.celestialBodiesAt(tMid),
+      nearestAtmosphereBody(s.r, ephemeris.atmosphereCelestialBodiesAt(tMid)),
+      SHIP_BCINV, 0, null,
+    );
   }
   return s;
 }
 
 // その regime の「支配天体まわりの周期」と「支配天体からの距離」。誤差の相対化に使う。
 function scaleOf(ephemeris: Ephemeris, state: KinematicState): { period: number; radius: number } {
-  const attractors = ephemeris.gravityAttractorsAt(state.t);
-  const center = strongestAttractor(state.r, attractors);
-  return { period: localOrbitPeriod(state.r, attractors), radius: len(sub(state.r, center.state.r)) };
+  const celestialBodies = ephemeris.gravityAttractorsAt(state.t);
+  const center = strongestAttractor(state.r, celestialBodies);
+  return { period: localOrbitPeriod(state.r, celestialBodies), radius: len(sub(state.r, center.state.r)) };
 }
 
 type Row = {
@@ -207,7 +212,11 @@ function partD(ephemeris: Ephemeris, regimes: readonly Regime[]): void {
       ));
       const mid = ephemeris.gravityAttractorsAt(a.t + dt / 2);
       resolveA++;
-      a = stepDynamics(a, dt, mid, SHIP_BCINV, 0, null);
+      a = stepDynamics(
+        a, dt, mid, ephemeris.celestialBodiesAt(a.t + dt / 2),
+        nearestAtmosphereBody(a.r, ephemeris.atmosphereCelestialBodiesAt(a.t + dt / 2)),
+        SHIP_BCINV, 0, null,
+      );
       stepsA++;
     }
 
@@ -229,7 +238,11 @@ function partD(ephemeris: Ephemeris, regimes: readonly Regime[]): void {
       maxRatio = Math.max(maxRatio, Math.max(dt / fresh, fresh / dt));
       const mid = ephemeris.gravityAttractorsAt(b.t + dt / 2);
       resolveB++;
-      b = stepDynamics(b, dt, mid, SHIP_BCINV, 0, null);
+      b = stepDynamics(
+        b, dt, mid, ephemeris.celestialBodiesAt(b.t + dt / 2),
+        nearestAtmosphereBody(b.r, ephemeris.atmosphereCelestialBodiesAt(b.t + dt / 2)),
+        SHIP_BCINV, 0, null,
+      );
       sizing = mid;
     }
 

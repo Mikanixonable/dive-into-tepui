@@ -1,41 +1,54 @@
 // 実シミュレーションの更新(軌道積分・剛体接触・慣性姿勢積分)。simTime/lastSimDt を保持する。
+//
+// 予測(game/simulation/predictor.ts の Predictor)との役割の違いは2点で、二重性はこの2点に
+// 由来する。統一はできない。
+//  1. 同時性。こちらは生存する全個体(破片まで含めて多数)を、同じ1つの瞬間で同時に進める。
+//     同時だからこそ、重力源と表面を持つ天体の絞り込みをサブステップに1つだけ組んで全個体で
+//     使い回せるし、個体どうしの剛体接触も解ける — 接触は両者が同じ瞬間にいて初めて意味を持つ。
+//  2. 刻みの決まり方。こちらは毎フレーム simTime + simDt へ必ず到達しなければならないので、
+//     刻みはそのフレームの時間送りから決まる。予測は追い越されない範囲で先へ伸びればよいので、
+//     1フレームの歩数を予算で切って足りなければ遅れる。
+// **この2点に起因しない部分は、両者で同じ答えでなければならない** — 個体1つと解析天体の
+// 関係(どの天体が引くか・表面へ到達したか・大気で焼失したか・刻みをどこまで広げてよいか)。
+// 探し方が違うのは同時性から来る正当な差だが、答えが違ってよい理由はない。
 import { stepAttitude } from '../../physics/attitude';
-import type { KinematicState } from '../../physics/kinematic-state';
 import * as C from '../const';
-import { attractorsAt, attractorsNearInto, classifyAttractors } from './attractors';
+import { attractorsNearInto, classifyAttractors } from './attractors';
 import { EntityManager } from './entity-manager';
 import { Player } from '../player/player';
-import { Bullet } from '../game-entity/bullet';
-import { DebrisPiece } from '../game-entity/debris-piece';
 import type { GameEntity } from '../game-entity/game-entity';
-import type { Attractor } from '../../physics/attractor';
+import { nearestAtmosphereBody, type CelestialBody } from '../../physics/celestial-body';
 import { Ephemeris } from '../../physics/ephemeris';
 import type { Stage } from '../stages/stage';
-import { ContactPhysics } from './contact';
-import { R_EARTH } from '../../physics/solar-system';
+import { EntityContactPhysics } from './entity-contact-physics';
+import { SurfaceContactPhysics } from './surface-contact-physics';
 import { v3 } from '../../physics/vec3';
-import { adaptiveSimulationMaxStep, simulationStepDuration } from './time-step';
+import { atmosphericMaxStep, simulationMaxStep, simulationStepDuration } from './time-step';
 import type { NanWatchdog } from '../nan-watchdog';
-import type { SimSpeedManager } from '../sim-speed-manager';
 import { FrameSections, SECTION } from '../../frame-sections';
 import type { PerfCounts } from '../../perf-meter';
 
 export class Simulator {
-  readonly contactPhysics: ContactPhysics;
+  private readonly surfaceContactPhysics = new SurfaceContactPhysics();
+  private readonly entityContactPhysics = new EntityContactPhysics();
 
   simTime: number;
   lastSimDt = 0;
   lastSubsteps = 0;
   lastGravitySourceCount = 0;
   // 今フレームに走った軌道積分(GameEntity.stepActual)の呼び出し回数。
-  lastOrbitSteps = 0;
-  // エンティティ側の最小イベント時刻の控えと、それを求めたときの LOD・顔ぶれの世代。
+  lastIntegratedSteps = 0;
+  // 今フレームに予測列から消費した(積分を省いた)延べ数。
+  lastFollowedSteps = 0;
+  // エンティティ側の最小イベント時刻の控えと、それを求めたときの顔ぶれの世代。
   private cachedEventTime: number | null = null;
   private cachedEventValid = false;
-  private cachedEventLod = false;
   private cachedEventRevision = -1;
-  private readonly adaptiveStatesScratch: KinematicState[] = [];
   private readonly contactEntitiesScratch: GameEntity[] = [];
+  // このサブステップを1歩で進めた個体。環境と天体接触はこの顔ぶれにだけ解く。
+  private readonly coarseEntitiesScratch: GameEntity[] = [];
+  // 内側で細分する個体を1体だけ入れて天体接触へ渡す作業配列。
+  private readonly preciseEntityScratch: GameEntity[] = [];
 
   // entities/ephemeris/sections は参照として保持する。initialSimTime はシミュレーションの開始時刻。
   constructor(
@@ -44,14 +57,14 @@ export class Simulator {
     private readonly sections: FrameSections,
     initialSimTime = 0,
   ) {
-    this.contactPhysics = new ContactPhysics();
     this.simTime = initialSimTime;
   }
 
   private readonly nearbyAttractorsScratch: Parameters<typeof attractorsNearInto>[2] = [];
 
   // dt 分のシミュレーションを進める。simDt をサブステップに分割して積分し、剛体接触(弾命中含む)・姿勢積分を行う。
-  // 剛体接触を解決してよいワープ倍率かどうかは、渡された simSpeed にここで問う。
+  // 物体どうしの接触を解決してよいかは呼び出し側が決めて canResolveEntityContacts で渡す
+  // (天体との接触は倍率に依らず常に解く)。
   // nanWatchdog は軌道積分・姿勢積分・剛体接触・ベルトの各境界ごとに自機を検査する
   // (checkPlayer は軽量なので substep ごとに呼んでよい)。
   advance(
@@ -59,47 +72,60 @@ export class Simulator {
     simDt: number,
     player: Player | null,
     activeStage: Stage,
-    simSpeed: SimSpeedManager,
+    canResolveEntityContacts: boolean,
     nanWatchdog: NanWatchdog,
   ): void {
-    const resolveCollision = simSpeed.canResolvePhysicalCollisions;
     this.lastSubsteps = 0;
     this.lastGravitySourceCount = 0;
-    this.lastOrbitSteps = 0;
+    this.lastIntegratedSteps = 0;
+    this.lastFollowedSteps = 0;
     const targetTime = this.simTime + simDt;
-    // ×4を超えるワープでは射撃・剛体衝突が無効なので、弾と薬莢/破片は途中のsubstepで
-    // 相互作用を起こさない。これらだけを最後に一度まとめて積分し、高warpのS倍走査を避ける。
-    const passiveWarpLod = !resolveCollision && simDt > C.SUBSTEP_MAX_DT;
     while (this.simTime < targetTime - 1e-9) {
-      const maxStep = this.adaptiveMaxStep(simDt);
-      const eventTime = this.nextEventTime(activeStage, passiveWarpLod);
+      const maxStep = simulationMaxStep(simDt, C.SUBSTEP_MAX_DT, C.SUBSTEP_MAX_COUNT);
+      const eventTime = this.nextEventTime(activeStage);
       const subDt = simulationStepDuration(this.simTime, targetTime, maxStep, eventTime);
       // 浮動小数点の丸めでゼロ刻みになったイベントは現在時刻で消費して前進を保証する。
       if (subDt <= 1e-9) {
         activeStage.applySimulationEvents(this.simTime);
-        const surfaceBodies = this.surfaceBodies(resolveCollision, attractorsAt(this.ephemeris, this.entities, this.simTime));
-        this.entities.cleanup(0, this.simTime, activeStage, player?.state.r ?? v3(), surfaceBodies);
+        this.entities.cleanup(
+          0, this.simTime, activeStage, player?.state.r ?? v3(), this.atmosphereBodies());
         continue;
       }
 
       this.sections.enter(SECTION.orbit);
       // 重力源はこのサブステップの中点で1回だけ組み、全エンティティで使い回す。
-      const sources = attractorsAt(this.ephemeris, this.entities, this.simTime + subDt / 2);
+      const sources = this.ephemeris.gravityAttractorsAt(this.simTime + subDt / 2);
       this.lastGravitySourceCount = sources.length;
-      this.substep(subDt, sources, passiveWarpLod);
+      // 遮蔽体・表面ともサブステップ開始時刻の窓を1つだけ組み、日照率にも天体接触にも使う。
+      // 遮蔽の幾何はステップ内の天体の移動にほとんど左右されないので中点で組み直す意味が無く、
+      // 天体接触の側は firstSurfaceContact が celestialBodyStateAt で各個体の時刻へ引き直すので、
+      // 窓がサブステップのどちらの端の時刻でも 2 次外挿の誤差しか変わらない(地球は ECI 原点に
+      // 静止するので厳密に同じ)。細分した個体は区間の途中の時刻に着地するので、開始時刻の窓を
+      // 共有するほうが素直でもある。
+      const surfaceBodies = this.surfaceBodies();
+      this.substep(
+        subDt, sources, surfaceBodies,
+        this.ephemeris.atmosphereCelestialBodiesAt(this.simTime + subDt / 2), activeStage);
       this.simTime += subDt;
       this.sections.exit(SECTION.orbit);
       this.lastSubsteps++;
       nanWatchdog.checkPlayer('simulator.advance(軌道積分)', player, this.simTime, dt, subDt);
       this.sections.enter(SECTION.attitude);
-      this.stepAttitudes(subDt, passiveWarpLod);
+      this.stepAttitudes(subDt);
       this.sections.exit(SECTION.attitude);
       nanWatchdog.checkPlayer('simulator.advance(姿勢積分)', player, this.simTime, dt, subDt);
-      const surfaceBodies = this.surfaceBodies(resolveCollision, sources);
-      for (const p of this.entities.players) {
-        p.stepEnvironment(subDt, this.ephemeris, this.simTime, surfaceBodies);
+      // 細分した個体は熱も天体接触も内側の刻みで解き終えている。ここで解くのは1歩で進んだ側だけ
+      // で、二重に解くと反発が二度当たる。
+      for (const e of this.coarseEntitiesScratch) {
+        e.stepEnvironment(subDt, this.ephemeris, this.simTime, surfaceBodies);
       }
-      if (resolveCollision) {
+      // 天体との接触は倍率にも種別にも依らず、物体どうしの接触より先に解く。
+      this.sections.enter(SECTION.contact);
+      this.surfaceContactPhysics.resolveSurfaceContacts(
+        this.coarseEntitiesScratch, surfaceBodies, activeStage);
+      this.sections.exit(SECTION.contact);
+      nanWatchdog.checkPlayer('simulator.advance(天体接触)', player, this.simTime, dt, subDt);
+      if (canResolveEntityContacts) {
         // 放熱板の折りは EntityManager に登録された実体ではなく、艦の姿勢から毎 substep
         // 置き直す接触代理なので、参加者リストへこの場で合流させる。
         this.contactEntitiesScratch.length = 0;
@@ -109,24 +135,23 @@ export class Simulator {
           this.contactEntitiesScratch.push(...p.collisionFolds(this.simTime));
         }
         this.sections.enter(SECTION.contact);
-        this.contactPhysics.resolveSubstep(
-          this.simTime, this.contactEntitiesScratch, surfaceBodies, activeStage);
+        this.entityContactPhysics.resolveEntityContacts(
+          this.simTime, this.contactEntitiesScratch, activeStage);
         this.sections.exit(SECTION.contact);
         nanWatchdog.checkPlayer('simulator.advance(接触)', player, this.simTime, dt, subDt);
       }
       activeStage.applySimulationEvents(this.simTime);
       // 期限切れ弾が同じsubstepの接触解決へ進まないよう、既知境界の直後に回収する。
-      this.entities.cleanup(subDt, this.simTime, activeStage, player?.state.r ?? v3(), surfaceBodies);
+      this.entities.cleanup(
+        subDt, this.simTime, activeStage, player?.state.r ?? v3(), this.atmosphereBodies());
     }
-
-    if (passiveWarpLod) this.stepPassiveWarpEntities(attractorsAt(this.ephemeris, this.entities, this.simTime));
 
     // ベルトは実dtで解く艦にくっついた局所シミュレーションなので、substepループの外で
     // フレームに1回だけ解決する。
-    if (resolveCollision && player) {
+    if (canResolveEntityContacts && player) {
       this.sections.enter(SECTION.contact);
-      this.contactPhysics.resolveBelt(
-        dt, this.simTime, player, this.entities.all(), this.ephemeris.attractorsAt(this.simTime), activeStage,
+      this.entityContactPhysics.resolveBelt(
+        dt, this.simTime, player, this.entities.all(), activeStage,
       );
       this.sections.exit(SECTION.contact);
       nanWatchdog.checkPlayer('simulator.advance(ベルト)', player, this.simTime, dt, this.lastSimDt);
@@ -135,32 +160,11 @@ export class Simulator {
     this.lastSimDt = simDt;
   }
 
-  // 生存する艦の高度と、このフレームの時間送り simDt から、今フレームのサブステップ上限 [s]
-  // を求める。simDt 由来の下駄は通常時の上限へ掛ける — 返り値へ掛けると再突入中の 1s 上限まで
-  // 押し上げてしまい、再突入優先が壊れる。
-  private adaptiveMaxStep(simDt: number): number {
-    this.adaptiveStatesScratch.length = 0;
-    // 加熱・動圧の積分結果が存続を左右し、その帰結をプレイヤーが観測するのは艦だけ。
-    // 他の種別は大気圏に入れば失われるだけで、いつどれだけの精度で失われるかはプレイの結果を変えない。
-    for (const p of this.entities.players) {
-      if (p.alive) this.adaptiveStatesScratch.push(p.state);
-    }
-    for (const e of this.entities.enemies) {
-      if (e.alive) this.adaptiveStatesScratch.push(e.state);
-    }
-    return adaptiveSimulationMaxStep(
-      this.adaptiveStatesScratch,
-      R_EARTH + C.REENTRY_SUBSTEP_ALT,
-      Math.max(C.SUBSTEP_MAX_DT, simDt / C.SUBSTEP_MAX_COUNT),
-      C.REENTRY_SUBSTEP_MAX_DT,
-    );
-  }
-
   // ステージと生存エンティティが持つ次イベント時刻のうち最も早いものを返す。無ければ null。
   // ステージ側の時刻は艦の現在の Δv と加速度から毎回決まる生きた値なので毎回引き直す。
-  private nextEventTime(activeStage: Stage, passiveWarpLod: boolean): number | null {
+  private nextEventTime(activeStage: Stage): number | null {
     const stage = activeStage.nextSimulationEventTime(this.simTime);
-    const entity = this.entityEventTime(passiveWarpLod);
+    const entity = this.entityEventTime();
     if (stage === null) return entity;
     if (entity === null) return stage;
     return Math.min(stage, entity);
@@ -169,10 +173,9 @@ export class Simulator {
   // 生存エンティティが持つ次イベント時刻のうち最も早いもの。無ければ null。エンティティ側の
   // 締切は固定の絶対時刻なので、保持した時刻を simTime が越えたときと、エンティティの顔ぶれの
   // 世代が変わったときにだけ全走査で引き直す。
-  private entityEventTime(passiveWarpLod: boolean): number | null {
+  private entityEventTime(): number | null {
     const revision = this.entities.collectionRevision;
     const stale = !this.cachedEventValid
-      || this.cachedEventLod !== passiveWarpLod
       || this.cachedEventRevision !== revision
       || (this.cachedEventTime !== null && this.cachedEventTime <= this.simTime);
     if (!stale) return this.cachedEventTime;
@@ -180,89 +183,107 @@ export class Simulator {
     let next: number | null = null;
     for (const e of this.entities.all()) {
       if (!e.alive) continue;
-      // まとめ積分に回る個体の締切で substep を切っても、その境界で解決される相互作用がない。
-      if (passiveWarpLod && this.isPassiveWarpEntity(e)) continue;
       const t = e.nextSimulationEventTime(this.simTime);
       if (t !== null && (next === null || t < next)) next = t;
     }
     this.cachedEventTime = next;
     this.cachedEventValid = true;
-    this.cachedEventLod = passiveWarpLod;
     this.cachedEventRevision = revision;
     return next;
   }
 
-  // このサブステップで表面を持つ相手として扱う天体。剛体接触を解決するワープ帯では、接触解決の
-  // ために組む終点の全天体窓(mu=0 の表示天体も相手になる)をそのまま使い、解決しないワープ帯
-  // では消費者が表面到達判定だけなので、積分のために組んだ中点の重力窓 gravityBodies を使い回す。
-  // 後者では mu=0 の表示天体36体への再突入判定を失い、代わりに動的重力源(小惑星)が相手に加わる。
-  private surfaceBodies(resolveCollision: boolean, gravityBodies: readonly Attractor[]): readonly Attractor[] {
-    return resolveCollision ? this.ephemeris.attractorsAt(this.simTime) : gravityBodies;
+  // このサブステップで表面を持つ相手として扱う天体。表面を持つかは重力を及ぼすかとは
+  // 無関係なので、登録天体の全数を返す。
+  private surfaceBodies(): readonly CelestialBody[] {
+    return this.ephemeris.celestialBodiesAt(this.simTime);
   }
 
-  // 全エンティティを、渡された重力源 sources に対して dt だけ積分する。sources は呼び出し側が
-  // このステップの中点で1回だけ組んだもので、全エンティティがそれを共有する — 各自が積分後の
-  // 新しい位置を読みに行くと、本来対称であるべき相互作用に処理順依存の誤差が入る。各エンティティは
-  // 自身の位置の27近傍グリッドを自分自身を除いて引き直すだけで、分類そのものはこのステップで1回 —
-  // 除外は各自の取り出し結果にしか効かないので、A から見た B・B から見た A はどちらも
-  // このステップで組んだ同じ classified から引いたままで、対称性は崩れない。
+  // このサブステップで大気を持つ相手として扱う天体。焼失の判定に表面の窓は要らない。
+  private atmosphereBodies(): readonly CelestialBody[] {
+    return this.ephemeris.atmosphereCelestialBodiesAt(this.simTime);
+  }
+
+  // 全エンティティを、渡された重力源 sources に対して dt だけ積分する。sources・occluders・
+  // atmosphereSources は呼び出し側がこのステップで1回だけ組んだものを全エンティティで共有し、
+  // 重力源の分類もここで1回だけ行う。遮蔽体は登録天体の全数をそのまま渡す — 太陽を隠せるかは
+  // 半径と位置の幾何で決まり、重力を及ぼすかとは無関係なので絞り込まない。
+  // 抗力を掛ける大気は個体ごとに最も近い1体を選ぶ。
+  // 予測列がこのサブステップ終端の時刻を持っていればそれを先端にして積分を省く — ある時間帯の
+  // 状態を決める積分を常にちょうど1本に保つ。
+  // 濃い大気が dt より短い刻みを要求する個体は、この区間を内側で割って進む(stepPrecise)。
+  // 1歩で進んだ個体は coarseEntitiesScratch へ集める — 呼び出し側はそちらにだけ環境と天体接触を
+  // 解く。
   private substep(
     dt: number,
-    sources: readonly Attractor[],
-    passiveWarpLod: boolean,
+    sources: readonly CelestialBody[],
+    occluders: readonly CelestialBody[],
+    atmosphereSources: readonly CelestialBody[],
+    activeStage: Stage,
   ): void {
     const classified = classifyAttractors(sources);
+    const t = this.simTime + dt;
+    this.coarseEntitiesScratch.length = 0;
     for (const e of this.entities.all()) {
-      if (passiveWarpLod && this.isPassiveWarpEntity(e)) continue;
-      // 引力を持たないエンティティは重力源一覧に載り得ないので、除外の走査ごと省く。
-      const selfId = e.mu !== 0 ? e.id : undefined;
-      e.stepActual(dt, attractorsNearInto(e.state.r, classified, this.nearbyAttractorsScratch, selfId));
-      this.lastOrbitSteps++;
-    }
-  }
-
-  // 軌道積分と同じ刻み幅 simDt で全エンティティの姿勢を進める。
-  private stepAttitudes(simDt: number, passiveWarpLod: boolean): void {
-    for (const p of this.entities.players) p.att = stepAttitude(p.att, p.torque, simDt);
-
-    for (const e of this.entities.enemies) if (e.alive) e.att = stepAttitude(e.att, e.torque, simDt);
-    for (const base of this.entities.bases) if (base.alive) base.att = stepAttitude(base.att, base.torque, simDt);
-    if (!passiveWarpLod) {
-      for (const cs of this.entities.casings) cs.att = stepAttitude(cs.att, cs.torque, simDt);
-      for (const d of this.entities.debris) d.att = stepAttitude(d.att, d.torque, simDt);
-    }
-    for (const ammoPickup of this.entities.ammoPickups) {
-      if (ammoPickup.alive) {
-        ammoPickup.att = stepAttitude(ammoPickup.att, ammoPickup.torque, simDt);
+      const near = attractorsNearInto(e.state.r, classified, this.nearbyAttractorsScratch);
+      if (e.followPredicted(t, near)) {
+        this.lastFollowedSteps++;
+        continue;
       }
+      const atmosphereBody = nearestAtmosphereBody(e.state.r, atmosphereSources);
+      const innerDt = e.doPreciseReentry
+        ? atmosphericMaxStep(e.state, e.bcInv, atmosphereSources)
+        : Infinity;
+      if (innerDt >= dt) {
+        e.stepActual(dt, near, occluders, atmosphereBody);
+        this.lastIntegratedSteps++;
+        this.coarseEntitiesScratch.push(e);
+        continue;
+      }
+      this.stepPrecise(e, dt, innerDt, near, occluders, atmosphereBody, activeStage);
     }
   }
 
-  private isPassiveWarpEntity(e: GameEntity): boolean {
-    return e instanceof Bullet || e instanceof DebrisPiece;
+  // 個体1つを、区間 dt が innerDt 以下になるまで等分して進める。1歩ごとに環境(熱・動圧)と
+  // 天体表面への到達も解く — 状態だけを細かく積んで判定を粗いままにすると、加熱の山を踏み外し、
+  // 地表への到達を跨いで地面の下を積み続ける。天体窓・重力源の分類・近傍の絞り込みはサブステップ
+  // のものをそのまま使う: 天体位置は celestialBodyPositionAt が各段の時刻へ外挿し、絞り込みの
+  // 顔ぶれはサブステップ内で変わらない。
+  private stepPrecise(
+    e: GameEntity,
+    dt: number,
+    innerDt: number,
+    near: readonly CelestialBody[],
+    occluders: readonly CelestialBody[],
+    atmosphereBody: CelestialBody | null,
+    activeStage: Stage,
+  ): void {
+    const count = Math.ceil(dt / innerDt);
+    const step = dt / count;
+    this.preciseEntityScratch.length = 0;
+    this.preciseEntityScratch.push(e);
+    for (let i = 0; i < count && e.alive; i++) {
+      e.stepActual(step, near, occluders, atmosphereBody);
+      this.lastIntegratedSteps++;
+      e.stepEnvironment(step, this.ephemeris, e.state.t, occluders);
+      this.surfaceContactPhysics.resolveSurfaceContacts(
+        this.preciseEntityScratch, occluders, activeStage);
+    }
   }
 
-  // 途中のsubstepを飛ばした弾・破片を、最終時刻まで一度だけ進める。高warp中は弾道命中・
-  // 剛体接触を無効にしているため、途中の掃引判定を失ってもゲームプレイ上の相互作用はない。
-  private stepPassiveWarpEntities(attractors: readonly Attractor[]): void {
-    const step = (e: GameEntity): void => {
-      if (!e.alive) return;
-      const elapsed = this.simTime - e.state.t;
-      if (elapsed <= 1e-9) return;
-      e.stepActual(elapsed, attractors);
-      this.lastOrbitSteps++;
-      e.att = stepAttitude(e.att, e.torque, elapsed);
-    };
-    for (const bullet of this.entities.bullets) step(bullet);
-    for (const casing of this.entities.casings) step(casing);
-    for (const debris of this.entities.debris) step(debris);
+  // 軌道積分と同じ刻み幅 simDt で、姿勢を持つ生存エンティティの姿勢を進める。
+  private stepAttitudes(simDt: number): void {
+    for (const e of this.entities.all()) {
+      if (!e.alive || !e.hasAttitude) continue;
+      e.att = stepAttitude(e.att, e.torque, simDt);
+    }
   }
 
   // 負荷確認ウィンドウが読む、直近フレームの積分規模。
-  perfCounts(): Pick<PerfCounts, 'simSubsteps' | 'orbitSteps' | 'gravitySources'> {
+  perfCounts(): Pick<PerfCounts, 'simSubsteps' | 'simIntegrated' | 'simFollowed' | 'gravitySources'> {
     return {
       simSubsteps: this.lastSubsteps,
-      orbitSteps: this.lastOrbitSteps,
+      simIntegrated: this.lastIntegratedSteps,
+      simFollowed: this.lastFollowedSteps,
       gravitySources: this.lastGravitySourceCount,
     };
   }

@@ -14,7 +14,7 @@
 // 地球中心二体 + J2 + 抗力 + 日月三体であって制限三体問題そのものではないため、ここで返した
 // 状態を実際にゲーム内で積分すると軌道はドリフトする。
 import { Ephemeris } from './ephemeris';
-import { OrbitingId } from './attractor';
+import { OrbitingId } from './celestial-body';
 import { bodyDef, primaryOf } from './solar-system';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, add, cross, len, scale, sub } from './vec3';

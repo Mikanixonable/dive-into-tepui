@@ -1,17 +1,18 @@
 // 天体の静的事実の表: 恒星/惑星/衛星の判別 union(CelestialBodyDef)と、太陽系の各天体の
 // 重力定数・半径・軌道モデル(SOLAR_SYSTEM)。宣言順が Ephemeris が返す重力源配列の順になる。
+import { AtmosphereDef } from './atmosphere';
 import { Quat } from './attitude';
-import { AttractorId } from './attractor';
+import { CelestialBodyId } from './celestial-body';
 import { equatorBasisToEci } from './body-orientation';
 import { raDecToEci } from './ecliptic';
 import { keplerPeriod } from './elements';
 import { JULIAN_CENTURY } from './kepler-orbit';
 import { AU, PlanetOrbit, planetOrbit } from './planet-orbit';
 import { PerturbationTerm, SatelliteOrbit, satelliteOrbit } from './satellite-orbit';
-import { Vec3, len, v3 } from './vec3';
+import { Vec3, v3 } from './vec3';
 
 // 万有引力定数 [m^3/(kg・s^2)]。MU_* は測定された GM を直接持つ値なのでこれで割り直さないこと —
-// 質量から GM を導く側(Asteroid など)だけがこれを使う。
+// GM が測定されておらず質量から導く天体だけがこれを使う。
 export const GRAVITATIONAL_CONSTANT = 6.6743e-11;
 
 export const MU_SUN = 1.32712440018e20; // [m^3/s^2]
@@ -29,11 +30,6 @@ export const MU_JUPITER = 1.26686534e17;
 export const MU_SATURN = 3.7931187e16;
 export const MU_NEPTUNE = 6.836529e15;
 
-// 位置ベクトルから地球海抜高度を返す。
-export function earthAltitudeOf(r: Vec3): number {
-  return len(r) - R_EARTH;
-}
-
 // 2次の重力場係数(いずれも非正規化)。正規化係数を収録した外部データで更新する際は換算が要る。
 export const J2_EARTH = 1.08262668e-3;
 // GRAIL による測定値。基準半径 1738.0 km は月の表面半径 R_MOON とは別の量なので分けて持つ。
@@ -46,8 +42,8 @@ export const MOON_OBLIQUITY = 1.543 * (Math.PI / 180); // [rad]
 // registry の中から恒星を1つ探す。0個なら null。このステップがサポートするのは主星が
 // ちょうど1つ、または0個の星系のみで、複数の恒星が相互に公転しあう連星系は対象外 — 2つ以上
 // 見つかったら例外にする。
-export function starOf(registry: CelestialRegistry): AttractorId | null {
-  let star: AttractorId | null = null;
+export function starOf(registry: CelestialRegistry): CelestialBodyId | null {
+  let star: CelestialBodyId | null = null;
   for (const [id, def] of Object.entries(registry)) {
     if (def.kind !== 'star') continue;
     if (star !== null) throw new Error(`starOf: レジストリに複数の恒星がある(連星系は非対応): ${star}, ${id}`);
@@ -59,7 +55,7 @@ export function starOf(registry: CelestialRegistry): AttractorId | null {
 // 天体を、表示上の「親」— 衛星ならその惑星、惑星ならそのレジストリの恒星 — へ写す。
 // 恒星自身は親を持たないので null(レジストリに恒星が無い場合も同じく null)。
 // null が階層の根であることを呼び出し側が使えるよう、恒星が自分自身を返すことはない。
-export function primaryOf(registry: CelestialRegistry, id: AttractorId): AttractorId | null {
+export function primaryOf(registry: CelestialRegistry, id: CelestialBodyId): CelestialBodyId | null {
   const def = bodyDef(registry, id);
   if (def.kind === 'star') return null;
   return def.kind === 'satellite' ? def.planet : starOf(registry);
@@ -82,6 +78,46 @@ export type PoleModel =
       readonly w0Deg: number;
       readonly wRateDegPerDay: number;
     };
+
+// 地球の大気。基準楕円体は海面の回転楕円体(WGS84)で、衝突球の半径(radius)や 2 次重力場の
+// 基準半径(refRadius)とは別の理由で選ばれた別の量なので、値が一致していても別に宣言する。
+// 層テーブルは Vallado, "Fundamentals of Astrodynamics and Applications" の CIRA-72 /
+// U.S. Standard Atmosphere 準拠(高度 0〜1000 km を 28 区間)。
+export const EARTH_ATMOSPHERE: AtmosphereDef = {
+  equatorRadius: 6.378137e6,
+  polarRadius: 6.356752e6,
+  spinRate: (2 * Math.PI) / SIDEREAL_DAY,
+  layers: [
+    [0, 1.225, 7.249e3],
+    [25e3, 3.899e-2, 6.349e3],
+    [30e3, 1.774e-2, 6.682e3],
+    [40e3, 3.972e-3, 7.554e3],
+    [50e3, 1.057e-3, 8.382e3],
+    [60e3, 3.206e-4, 7.714e3],
+    [70e3, 8.77e-5, 6.549e3],
+    [80e3, 1.905e-5, 5.799e3],
+    [90e3, 3.396e-6, 5.382e3],
+    [100e3, 5.297e-7, 5.877e3],
+    [110e3, 9.661e-8, 7.263e3],
+    [120e3, 2.438e-8, 9.473e3],
+    [130e3, 8.484e-9, 12.636e3],
+    [140e3, 3.845e-9, 16.149e3],
+    [150e3, 2.07e-9, 22.523e3],
+    [180e3, 5.464e-10, 29.74e3],
+    [200e3, 2.789e-10, 37.105e3],
+    [250e3, 7.248e-11, 45.546e3],
+    [300e3, 2.418e-11, 53.628e3],
+    [350e3, 9.518e-12, 53.298e3],
+    [400e3, 3.725e-12, 58.515e3],
+    [450e3, 1.585e-12, 60.828e3],
+    [500e3, 6.967e-13, 63.822e3],
+    [600e3, 1.454e-13, 71.835e3],
+    [700e3, 3.614e-14, 88.667e3],
+    [800e3, 1.17e-14, 124.64e3],
+    [900e3, 5.245e-15, 181.05e3],
+    [1000e3, 3.019e-15, 268.0e3],
+  ],
+};
 
 // 2次の重力場の静的な記述。時刻ごとの自転軸・長軸の実ベクトルは ephemeris.ts が組む。
 export type Degree2GravityDef = {
@@ -126,27 +162,29 @@ export type RingSystemDef = { readonly bands: readonly RingBandDef[] };
 type RingSystemFlag = { readonly rings?: RingSystemDef };
 
 export type CelestialBodyDef =
-  | { readonly kind: 'star'; readonly id: AttractorId; readonly mu: number; readonly radius: number }
+  | { readonly kind: 'star'; readonly id: CelestialBodyId; readonly mu: number; readonly radius: number }
   | ({
       readonly kind: 'planet';
-      readonly id: AttractorId;
+      readonly id: CelestialBodyId;
       readonly mu: number;
       readonly radius: number;
       readonly orbit: PlanetOrbit; // 中心は必ず恒星
       readonly pole?: PoleModel; // 省略時は自転軸を持たない
       readonly degree2?: Degree2GravityDef; // 省略時は質点として扱う
       readonly shape?: ShapeDef; // 省略時は radius による真球
+      readonly atmosphere?: AtmosphereDef; // 省略時は大気を持たない(抗力・焼失ともに起きない)
     } & LagrangeLabelFlag & RingSystemFlag)
   | ({
       readonly kind: 'satellite';
-      readonly id: AttractorId;
+      readonly id: CelestialBodyId;
       readonly mu: number;
       readonly radius: number;
-      readonly planet: AttractorId; // 中心は必ず惑星
+      readonly planet: CelestialBodyId; // 中心は必ず惑星
       readonly orbit: SatelliteOrbit;
       readonly pole?: PoleModel;
       readonly degree2?: Degree2GravityDef;
       readonly shape?: ShapeDef;
+      readonly atmosphere?: AtmosphereDef;
     } & LagrangeLabelFlag & RingSystemFlag);
 
 // ShapeDef をメッシュのローカル半軸 (x,y,z) へ変換する。ECI は Y が極軸だが、この変換は
@@ -162,7 +200,7 @@ export function shapeAxes(radius: number, shape: ShapeDef | undefined): Vec3 {
 
 // 天体レジストリ: id から静的事実(CelestialBodyDef)を引く表。SOLAR_SYSTEM が「現実の太陽系」
 // という名前つきの既定値で、ステージごとに別のレジストリへ差し替えられる。
-export type CelestialRegistry = Readonly<Record<AttractorId, CelestialBodyDef>>;
+export type CelestialRegistry = Readonly<Record<CelestialBodyId, CelestialBodyDef>>;
 
 const D2R = Math.PI / 180;
 
@@ -496,6 +534,7 @@ export const SOLAR_SYSTEM = {
     pole: { kind: 'eciPole' },
     // 赤道断面の楕円性 C22 は J2 の約 1/690 しかないため軸対称として扱う。
     degree2: { j2: J2_EARTH, c22: 0, refRadius: R_EARTH_EQ },
+    atmosphere: EARTH_ATMOSPHERE,
   },
   moon: {
     kind: 'satellite',
@@ -1222,7 +1261,7 @@ export const SOLAR_SYSTEM = {
   },
   // ハウメアの衛星2個。基準面は黄道面 — JPL 系列(木星・土星・天王星・冥王星の各衛星)より
   // 精度・基準面の一貫性が低い二次引用(一次は各々 Ratzka et al. 2007 / Wikipedia 経由)。
-  // 質量 [kg] から GRAVITATIONAL_CONSTANT で GM を導く(Asteroid エンティティと同じ手法)。
+  // 質量 [kg] から GRAVITATIONAL_CONSTANT で GM を導く。
   // 歳差周期は2体とも未公開(=0)。
   hiiaka: {
     kind: 'satellite',
@@ -2039,13 +2078,13 @@ export const SOLAR_SYSTEM = {
 } satisfies CelestialRegistry;
 
 // SOLAR_SYSTEM を satisfies で受けているため、リテラルなキー集合(SolarSystemId)がそのまま
-// 保たれる — CELESTIAL_BODIES(game/celestial/celestial-registry.ts)はこれを Record の
+// 保たれる — CELESTIAL_VIEWS(game/celestial/celestial-registry.ts)はこれを Record の
 // キーに使うことで、天体を1体追加すると表示名の欠落がコンパイルエラーになる。
 export type SolarSystemId = keyof typeof SOLAR_SYSTEM;
 export type SolarSystemOrbitingId = { [K in SolarSystemId]: (typeof SOLAR_SYSTEM)[K]['kind'] extends 'star' ? never : K }[SolarSystemId];
 
 // id を registry から引く。registry に無い id を渡すと例外になる。
-export function bodyDef(registry: CelestialRegistry, id: AttractorId): CelestialBodyDef {
+export function bodyDef(registry: CelestialRegistry, id: CelestialBodyId): CelestialBodyDef {
   const def = registry[id];
   if (def === undefined) throw new Error(`bodyDef: レジストリに登録されていない天体 id: ${id}`);
   return def;

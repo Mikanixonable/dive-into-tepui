@@ -2,10 +2,11 @@
 import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { Ship } from './ship';
-import { Attractor } from '../../physics/attractor';
+import { CelestialBody } from '../../physics/celestial-body';
 import { burnUpBody } from '../../physics/atmosphere';
-import type { GameEntity } from './game-entity';
-import type { Contact } from '../simulation/contact';
+import { GameEntity } from './game-entity';
+import { closingSpeed, type Contact } from './contact';
+import { contactDamageSpeed } from './contact-damage';
 import { Attitude } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { R_EARTH_EQ } from '../../physics/solar-system';
@@ -19,7 +20,7 @@ import type { Ephemeris } from '../../physics/ephemeris';
 import { EffectsSystem } from '../vfx/effects-system';
 import { Player } from '../player/player';
 import { Bullet } from './bullet';
-import type { Stage } from '../stages/stage';
+import type { EnemyDeathCause, Stage } from '../stages/stage';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { EntityManager } from '../simulation/entity-manager';
@@ -71,6 +72,8 @@ export type EnemyInit =
   | { readonly saved: EnemySaveData; readonly simTime: number };
 
 export class Enemy extends Ship {
+  // 敵は熱シミュレーションを持たないので、基底の破片相当より濃い大気まで耐える。
+  protected readonly burnUpDensity = C.ENEMY_BURNUP_DENSITY;
   accent: string | number; // マーカー色・集団識別。全敵が保持する
   waveId?: number; // stage00 のウェーブ敵のみ。生存ウェーブ集計に使う
   readonly orbitLineColor: string | number;
@@ -116,6 +119,7 @@ export class Enemy extends Ship {
     this.waveId = waveId;
     this.mass = 10000;
     this.collides = true;
+    this.doPreciseReentry = true;
     this.renderObject.scale.setScalar(C.ENEMY_SCALE);
     // 描画メッシュの実スケール後バウンディング球を、弾丸・物理接触の両判定に共有する。
     const visualBounds = new THREE.Box3().setFromObject(this.renderObject);
@@ -200,9 +204,9 @@ export class Enemy extends Ship {
     this.destroyEffect();
   }
 
-  // 弾は武装のダメージを、それ以外は接触の速度変化 Δv = impulse/mass を根拠にする
-  // (前者はゲームバランス、後者は物理量で、統合すると前者の根拠が消える)。
-  collideWith(other: GameEntity | Attractor, contact: Contact, activeStage: Stage): void {
+  // 弾は武装のダメージを、それ以外は接触の接近速度と相手の種別を根拠にする
+  // (どちらもゲームバランスの量で、物理の質量からは導かない)。
+  collideWithEntity(other: GameEntity, contact: Contact, activeStage: Stage): void {
     if (!this.alive) return;
     const simTime = contact.selfState.t;
 
@@ -211,8 +215,22 @@ export class Enemy extends Ship {
       return;
     }
 
-    // 弾以外(天体・他艦・デブリ等)との接触は Δv ベースの物理ダメージとして扱う。
-    if (!this.applyCollisionDamage(contact.impulse / this.mass)) return;
+    // 他の実体との接触で沈めば、交戦の結果として記録する。
+    this.damagedByContact(contactDamageSpeed(other, contact), simTime, 'killed', activeStage);
+  }
+
+  // 天体の固体表面への接触。相手の種別による重みが無いので接近速度がそのまま根拠になり、
+  // 沈めば自然損耗として記録する。
+  collideWithCelestialBody(_body: CelestialBody, contact: Contact, activeStage: Stage): void {
+    if (!this.alive) return;
+    this.damagedByContact(closingSpeed(contact), contact.selfState.t, 'collision', activeStage);
+  }
+
+  // 接触ダメージを当て、HP が残れば音とパフ、尽きたら cause の撃破として記録する。
+  private damagedByContact(
+    damageSpeed: number, simTime: number, cause: EnemyDeathCause, activeStage: Stage,
+  ): void {
+    if (!this.applyCollisionDamage(damageSpeed)) return;
     if (this.hp > 0) {
       this._worldSfx.clank();
       this._fx.spawnGasPuff(this.state);
@@ -220,7 +238,7 @@ export class Enemy extends Ship {
     }
 
     this.alive = false;
-    activeStage.recordEnemyDeath(this, simTime, 'killed');
+    activeStage.recordEnemyDeath(this, simTime, cause);
     this.destroyEffect();
   }
 
@@ -231,13 +249,16 @@ export class Enemy extends Ship {
     activeStage.recordEnemyDeath(this, simTime, 'despawn');
   }
 
-  // 大気突入による自然死。固体表面への接触は collideWith が扱う。
-  checkLoss(_dt: number, simTime: number, activeStage: Stage, _playerPos: Vec3, attractors: readonly Attractor[]): void {
+  // 大気での焼失による自然死。固体表面への接触は collideWithCelestialBody が扱う。
+  checkLoss(
+    _dt: number, simTime: number, activeStage: Stage, _playerPos: Vec3,
+    atmosphereBodies: readonly CelestialBody[],
+  ): void {
     if (!this.alive) return;
-    if (burnUpBody(this.state.r, attractors, C.REENTRY_ALT) === null) return;
+    if (burnUpBody(this.state.r, atmosphereBodies, this.burnUpDensity) === null) return;
     this.alive = false;
     this.destroyEffect();
-    activeStage.recordEnemyDeath(this, simTime, 'reentry');
+    activeStage.recordEnemyDeath(this, simTime, 'burnup');
   }
 
   // 行動関数(同一集団の同時攻撃数カウント・弾追加は entities を使う)。

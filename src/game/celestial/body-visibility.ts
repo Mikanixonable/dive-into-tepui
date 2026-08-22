@@ -5,7 +5,7 @@
 // 可視性・選択候補はいずれもフォーカス天体という離散的な状態からの親子関係で決める(ズーム
 // 距離のような連続量で判定すると操作の途中で行が明滅する)。systemChainAt だけはカメラ位置
 // という連続量から系の呼び名を導く — 表示を絞る判定ではなく、いまいる場所の説明であるため。
-import { Attractor, AttractorId, strongestAttractor } from '../../physics/attractor';
+import { CelestialBody, CelestialBodyId, strongestAttractor } from '../../physics/celestial-body';
 import { CelestialRegistry, primaryOf } from '../../physics/solar-system';
 import { Vec3 } from '../../physics/vec3';
 import { BodyClass, bodyClassOf } from './body-class';
@@ -96,10 +96,10 @@ function classNameVisible(cls: BodyClass, toggles: BodyClassToggles): boolean {
 // focusId と同じ系にある天体(自分・親・子・親を共有する兄弟)。UI が「いま見ている系」を
 // 先頭に出すときの判定もこれを使う — 可視性と選択候補の並びで系の切り方が食い違わないように。
 // focusId が undefined(フォーカス中の天体が無い)なら空集合を返す。
-export function sameSystemIds(registry: CelestialRegistry, focusId: AttractorId | undefined): ReadonlySet<AttractorId> {
+export function sameSystemIds(registry: CelestialRegistry, focusId: CelestialBodyId | undefined): ReadonlySet<CelestialBodyId> {
   if (focusId === undefined) return new Set();
   const parent = registry[focusId] === undefined ? null : primaryOf(registry, focusId);
-  const ids = new Set<AttractorId>([focusId]);
+  const ids = new Set<CelestialBodyId>([focusId]);
   if (parent !== null) ids.add(parent);
   for (const id of Object.keys(registry)) {
     const p = primaryOf(registry, id);
@@ -118,15 +118,15 @@ export function sameSystemIds(registry: CelestialRegistry, focusId: AttractorId 
 // 決めないため絞り込まない。これにより、対象艦へフォーカスした瞬間に他艦が消えない。
 export function isPositionInFocusedSystem(
   registry: CelestialRegistry,
-  focusId: AttractorId | undefined,
+  focusId: CelestialBodyId | undefined,
   position: Vec3,
-  attractors: readonly Attractor[],
+  celestialBodies: readonly CelestialBody[],
 ): boolean {
   if (focusId === undefined || registry[focusId] === undefined) return true;
 
   const focusDef = registry[focusId];
   const systemFocusId = focusDef.kind === 'satellite' ? primaryOf(registry, focusId) : focusId;
-  let current: AttractorId | null = strongestAttractor(position, attractors).id;
+  let current: CelestialBodyId | null = strongestAttractor(position, celestialBodies).id;
   // 壊れた親子定義でも停止するよう、レジストリ数を上限にする。
   for (let i = 0; current !== null && i <= Object.keys(registry).length; i++) {
     if (current === systemFocusId) return true;
@@ -137,9 +137,9 @@ export function isPositionInFocusedSystem(
 }
 
 // focus の親を辿って主星まで遡った id の列(focus 自身を含む)。
-function ancestorsOf(registry: CelestialRegistry, focusId: AttractorId): AttractorId[] {
-  const chain: AttractorId[] = [];
-  let cur: AttractorId | null = focusId;
+function ancestorsOf(registry: CelestialRegistry, focusId: CelestialBodyId): CelestialBodyId[] {
+  const chain: CelestialBodyId[] = [];
+  let cur: CelestialBodyId | null = focusId;
   // 循環した registry でも止まるよう、登録数を上限にする。
   for (let i = 0; cur !== null && i <= Object.keys(registry).length; i++) {
     if (chain.includes(cur)) break;
@@ -154,11 +154,11 @@ function ancestorsOf(registry: CelestialRegistry, focusId: AttractorId): Attract
 // すると操作の途中で行が明滅するので、カメラ位置から求めた重力系のメンバーで代用する。
 // focusId が undefined でも、nearbyIds に渡された近傍系は残す。
 export function alwaysFullyVisibleIds(
-  registry: CelestialRegistry, focusId: AttractorId | undefined,
-  nearbyIds: Iterable<AttractorId> = [],
+  registry: CelestialRegistry, focusId: CelestialBodyId | undefined,
+  nearbyIds: Iterable<CelestialBodyId> = [],
   toggles?: BodyClassToggles,
-): ReadonlySet<AttractorId> {
-  const ids = new Set<AttractorId>();
+): ReadonlySet<CelestialBodyId> {
+  const ids = new Set<CelestialBodyId>();
   for (const id of Object.keys(registry)) {
     const cls = bodyClassOf(registry, id);
     if (cls === 'star') ids.add(id);
@@ -195,7 +195,7 @@ export function alwaysFullyVisibleIds(
 // 天体 id 1つの Name 表示可否。alwaysFullyVisibleIds に含まれる天体は呼び出し側で個別に
 // true とすること(この関数はクラストグルだけを読む)。
 export function bodyNameVisible(
-  registry: CelestialRegistry, toggles: BodyClassToggles, id: AttractorId,
+  registry: CelestialRegistry, toggles: BodyClassToggles, id: CelestialBodyId,
 ): boolean {
   return classNameVisible(bodyClassOf(registry, id), toggles);
 }
@@ -203,10 +203,10 @@ export function bodyNameVisible(
 // cameraPos で最も強く重力を及ぼす天体から主星まで遡った id の列(その天体自身を含む)。
 // 最寄り天体が registry に未登録(生存中の重力天体)なら、その id 1つだけを返す。
 export function systemChainAt(
-  registry: CelestialRegistry, cameraPos: Vec3, attractors: readonly Attractor[],
-): readonly AttractorId[] {
-  if (attractors.length === 0) return [];
-  const nearest = strongestAttractor(cameraPos, attractors).id;
+  registry: CelestialRegistry, cameraPos: Vec3, celestialBodies: readonly CelestialBody[],
+): readonly CelestialBodyId[] {
+  if (celestialBodies.length === 0) return [];
+  const nearest = strongestAttractor(cameraPos, celestialBodies).id;
   if (registry[nearest] === undefined) return [nearest];
   return ancestorsOf(registry, nearest);
 }
@@ -215,11 +215,11 @@ export function systemChainAt(
 // 順に並ぶ配列で返す(呼び出し側の選択肢が毎フレーム揺れないよう順序を固定する)。恒星の子は
 // 足さない — 足すと太陽を含む列で全惑星が並んでしまうため。
 export function systemMembersAt(
-  registry: CelestialRegistry, cameraPos: Vec3, attractors: readonly Attractor[],
-): readonly AttractorId[] {
-  const chain = systemChainAt(registry, cameraPos, attractors);
-  const seen = new Set<AttractorId>();
-  const result: AttractorId[] = [];
+  registry: CelestialRegistry, cameraPos: Vec3, celestialBodies: readonly CelestialBody[],
+): readonly CelestialBodyId[] {
+  const chain = systemChainAt(registry, cameraPos, celestialBodies);
+  const seen = new Set<CelestialBodyId>();
+  const result: CelestialBodyId[] = [];
   for (const id of chain) {
     if (!seen.has(id)) {
       seen.add(id);
