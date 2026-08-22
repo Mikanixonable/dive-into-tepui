@@ -74,12 +74,15 @@ export const MAP_VIEW_STYLE = `
   color: var(--title);
 }
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-head .w-group {
-  display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-2);
+  row-gap: var(--space-1);
   padding: var(--space-1) 0;
 }
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-head .w-group-title {
+  flex: 1 0 100%;
   min-width: 0;
   color: var(--muted);
   letter-spacing: 0;
@@ -317,9 +320,6 @@ export const MAP_VIEW_STYLE = `
   #hud .hud-map-root.active {
     --rail-w-left: calc(42vw - 8px);
     --rail-w-right: calc(54vw - 8px);
-  }
-  #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-head .w-group {
-    grid-template-columns: 42px minmax(0, 1fr);
   }
   #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-head .w-group-title,
   #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-detail { font-size: 8px; }

@@ -155,6 +155,11 @@ export class MapPickables {
       if (e.equatorNodes) for (const item of e.equatorNodes.mapPickables()) this.appendPickable(item);
     }
 
+    // 太陽系順の並べ替え基準。恒星の無いレジストリでは undefined のまま(呼び出し側が
+    // 自機距離へ委譲する)。
+    const starPos = this.ephemeris.starId !== null ? this.ephemeris.positionOf(this.ephemeris.starId, displayTime) : null;
+    if (starPos) for (const item of this.candidateItems) item.distanceFromStar = len(sub(item.pos, starPos));
+
     // 自艦からの距離は一覧の実用順と補助情報にだけ使う。軌道予測はここで増やさない。
     const viewer = this.activePlayers.current?.state;
     if (viewer) for (const item of this.candidateItems) {
@@ -218,6 +223,7 @@ export class MapPickables {
     // ように、候補へ追加するたびに全ての派生フィールドを上書きする。
     item.detail = detail;
     item.distance = undefined;
+    item.distanceFromStar = undefined;
     item.priority = priority;
     item.time = time;
     item.inFocusedSystem = undefined;

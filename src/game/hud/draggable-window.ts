@@ -40,13 +40,14 @@ const STYLE = `
 @media ${MQ_COMPACT} {
   #hud .dg-window-header { cursor: default; }
 }
+#hud .dg-window-title { flex: 1; min-width: 0; }
+#hud .dg-window-title-top { display: flex; align-items: center; gap: var(--space-2); }
 #hud .dg-window-title-icon {
   flex: 0 0 var(--font-m); width: var(--font-m); height: var(--font-m);
   color: var(--text); font-size: var(--font-m); line-height: 1; text-align: center;
 }
 #hud .dg-window-title-icon svg { display: block; width: 100%; height: 100%; }
-#hud .dg-window-title { flex: 1; min-width: 0; }
-#hud .dg-window-title-main { color: var(--text); font-weight: bold; overflow-wrap: break-word; }
+#hud .dg-window-title-main { flex: 1; min-width: 0; color: var(--text); font-weight: bold; overflow-wrap: break-word; }
 #hud .dg-window-title-sub { color: var(--text); opacity: 0.7; font-size: var(--font-s); margin-top: var(--space-1); }
 /* 呼び出し側が任意のボタンを差し込める枠。ヘッダの flex 行へ直接子として並んだのと
    同じ見た目にするため、自身は layout に参加しない。 */
@@ -134,22 +135,27 @@ export class DraggableWindow implements OverlayHandle {
 
     const header = document.createElement('div');
     header.className = 'dg-window-header';
+    const title = document.createElement('div');
+    title.className = 'dg-window-title';
+    // アイコンは題名の行だけと横並びにする(サブタイトルを含めた全体で中央寄せすると、
+    // サブタイトルの有無で題名との高さが揃わなくなるため)。
+    const titleMain = document.createElement('div');
+    titleMain.className = 'dg-window-title-top';
     if (options.icon) {
       const iconEl = document.createElement('div');
       iconEl.className = 'dg-window-title-icon';
       iconEl.setAttribute('aria-hidden', 'true');
       iconEl.innerHTML = options.icon;
-      header.appendChild(iconEl);
+      titleMain.appendChild(iconEl);
     }
-    const title = document.createElement('div');
-    title.className = 'dg-window-title';
     this.titleMainEl = document.createElement('div');
     this.titleMainEl.className = 'dg-window-title-main';
     this.titleMainEl.id = `${this.overlayId}-title`;
     this.element.setAttribute('aria-labelledby', this.titleMainEl.id);
+    titleMain.appendChild(this.titleMainEl);
     this.titleSubEl = document.createElement('div');
     this.titleSubEl.className = 'dg-window-title-sub';
-    title.appendChild(this.titleMainEl);
+    title.appendChild(titleMain);
     title.appendChild(this.titleSubEl);
 
     this.headerExtras = document.createElement('div');

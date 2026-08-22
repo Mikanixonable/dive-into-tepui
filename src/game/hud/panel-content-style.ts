@@ -71,6 +71,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-physical-object-list .physical-object-list-search { padding: var(--space-1) var(--space-2); }
 #hud-physical-object-list .physical-object-list-search .w-input { width: 100%; }
 #hud-physical-object-list .physical-object-list-head .w-group { padding: var(--space-1) var(--space-2); }
+#hud-physical-object-list .physical-object-list-head .w-group-title { flex: 1 0 100%; }
 #hud-physical-object-list .physical-object-list-head .w-btn { font-size: var(--font-xxs); }
 #hud-physical-object-list .physical-object-list-collapse {
   margin-left: auto; background: none; border: none; color: var(--text-dim); font: inherit; cursor: pointer; pointer-events: auto;
