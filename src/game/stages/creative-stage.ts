@@ -96,7 +96,7 @@ export class CreativeStage extends Stage {
     const title = document.createElement('h3');
     title.textContent = '設定';
     panel.appendChild(title);
-    const resupplyToggle = new ToggleSwitch('補給の自動投入', (on) => { this.logistics.resupplyEnabled = on; });
+    const resupplyToggle = new ToggleSwitch('弾薬の自動投入', (on) => { this.logistics.resupplyEnabled = on; });
     resupplyToggle.setOn(this.logistics.resupplyEnabled);
     panel.appendChild(resupplyToggle.element);
     const waveAttackToggle = new ToggleSwitch('敵の波状攻撃', (on) => { this.waveAttackEnabled = on; });
