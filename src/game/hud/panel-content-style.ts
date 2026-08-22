@@ -88,14 +88,16 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-object-list .erow:hover { color: var(--text); }
 #hud-object-list .erow.tgt { color: var(--accent); }
 #hud-object-list .erow.on { outline: 1px solid var(--edge); color: var(--text); }
+#hud-object-list .erow.cluster { opacity: .55; }
 #hud-object-list .object-list-toggle { width: 10px; text-align: center; flex: none; }
 #hud-object-list .object-list-children { padding-left: var(--space-5); }
 #hud-object-list .object-list-children.collapsed { display: none !important; }
+#hud-object-list .object-list-empty { padding: var(--space-6); text-align: center; color: var(--text-dim); }
 
 #hud-plan { min-width: 0; width: 100%; max-width: 300px; overflow-wrap: anywhere; }
 #hud .w-group { margin-bottom: var(--space-3); }
 #hud .w-toggle { margin-bottom: var(--space-3); }
-/* body-class-row: カテゴリー見出し + アイコン/ラベル/軌道線トグルの1行(太陽系・表示パネル)。
+/* body-class-row: カテゴリー見出し + 名前/軌道線トグルの1行(太陽系・表示パネル)。
    見出しは幅を固定して縦に揃え、長い名前(ラグランジュ点など)は省略する。 */
 #hud .body-class-row { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); }
 #hud .body-class-row .body-class-title {
@@ -183,20 +185,21 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud .hud-frame-controls .hud-frame-rotation-zone > .w-group-title {
   flex: 0 0 100%; min-width: 0;
 }
+/* タイトルを独立行にし、次の行へスライダー・数値入力・リセットボタンを並べる。 */
 #hud .hud-frame-controls .camera-fov-control {
-  display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3);
+  display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3);
 }
 #hud .hud-frame-controls .camera-control-label {
-  flex: 0 0 42px; color: var(--text-dim); font-size: var(--font-xs); letter-spacing: 1px;
+  flex: 0 0 100%; color: var(--text-dim); font-size: var(--font-xs); letter-spacing: 1px;
 }
 #hud .hud-frame-controls .camera-fov-control .w-slider { flex: 1 1 auto; min-width: 60px; }
 #hud .hud-frame-controls .camera-fov-control .w-slider:disabled,
 #hud .hud-frame-controls .camera-fov-control .w-input:disabled { opacity: .4; cursor: not-allowed; }
 #hud .hud-frame-controls .camera-fov-control .w-input { width: 54px; }
 #hud .hud-frame-controls .camera-control-unit { color: var(--text-dim); font-size: var(--font-xs); }
-#hud .hud-frame-controls .camera-fov-reset { width: 100%; box-sizing: border-box; margin-bottom: var(--space-3); text-align: center; }
-#hud .hud-frame-controls .camera-reference-view-buttons { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); }
-#hud .hud-frame-controls .camera-reference-view-buttons .w-btn { flex: 1 1 0; text-align: center; }
+/* 「角度」プルダウン: 見出しを独立行にし、次の行へ選択欄とセットボタンを並べる。 */
+#hud .hud-frame-controls .camera-angle-group > .w-group-title { flex: 0 0 100%; min-width: 0; }
+#hud .hud-frame-controls .camera-angle-group .w-select { flex: 1 1 auto; min-width: 80px; }
 #hud-creative-options { width: 100%; pointer-events: auto; }
 /* 艦艇配置パネル(クリエイティブモード限定): MANEUVER PLAN の下、右上に縦積みする。 */
 #hud-shipplacer { width: 100%; pointer-events: auto; max-height: 70vh; max-height: 70dvh; overflow-y: auto; }
@@ -206,7 +209,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-shipplacer .slider-field .slider-col { flex: 1 1 60px; min-width: 60px; }
 #hud-shipplacer .slider-field input[type="range"] { width: 100%; pointer-events: auto; accent-color: var(--accent); }
 #hud-shipplacer .slider-field .slider-ticks { display: flex; justify-content: space-between; margin-top: var(--space-1); }
-#hud-shipplacer .slider-field .slider-ticks span { flex: 0 1 auto; min-width: 0; font-size: var(--font-xxs); color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#hud-shipplacer .slider-field .slider-ticks span { flex: 0 1 auto; min-width: 0; font-size: calc(var(--font-xxs) * 0.82); color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #hud-shipplacer .slider-field .slider-ticks span:first-child { text-align: left; }
 #hud-shipplacer .slider-field .slider-ticks span:last-child { text-align: right; }
 #hud-shipplacer input[type="text"] { flex: 1; width: auto; }

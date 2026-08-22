@@ -36,6 +36,7 @@ import type { Ephemeris } from '../physics/ephemeris';
 import { ViewManager } from './view-manager';
 import { NanWatchdog } from './nan-watchdog';
 import { NavTarget } from './nav-target';
+import { OrbitReferenceSelector } from './orbit-reference';
 import { MapPickables } from './map-pickables';
 import { MapContextActions } from './map-context-actions';
 import { Navball } from './navball/navball';
@@ -91,6 +92,7 @@ export class Game {
 
   readonly targeter: Targeter;
   readonly navTarget: NavTarget;
+  readonly orbitReference = new OrbitReferenceSelector();
   readonly entities: EntityManager;
   private readonly futureCelestialBodies: FutureCelestialBodies;
   private readonly entityLines: EntityLineManager;
@@ -151,8 +153,8 @@ export class Game {
       this.displayWindowManager, this._hud.overlayManager,
     );
 
-    this.targeter = new Targeter(this._hud, this.markerManager);
     this.navTarget = new NavTarget(this._hud, this.markerManager);
+    this.targeter = new Targeter(this._hud, this.markerManager, this.navTarget);
     this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
     this._environment = new EnvironmentScene(this._scene, this.ephemeris, graphics, pipeline.sunLight, earthSpinPhase0);
     this.activePlayers = new ActiveControllableController(
@@ -223,6 +225,10 @@ export class Game {
     );
     this.viewManager.setControlledBaseProvider(() => this.controlledBase);
     this.viewBadge = new ViewBadge(this._hud.layers.notify, this._hud.layers.notify, this.viewManager, this._hud.overlayManager);
+
+    // ロード復元時の focus は MapCamera が直接持つだけで frameControls.setFocus() を経由しないため、
+    // ここで明示的に同期しないと軌道表示の基準系がフォーカス天体に追随しない。
+    this.frameControls.setFocus(this.cameraSystem.mapCamera.focus);
   }
 
   setControlledBase(base: Base | null): void {
@@ -323,7 +329,7 @@ export class Game {
 
     // 表示可否・ターゲット・操作艦・ビューがこのフレームの確定値になった後に判断する。
     this.entityLines.update(
-      this.player, this.targeter.aliveTarget, this.targeter.aliveSecondaryTarget,
+      this.player, this.targeter.aliveTarget,
       overviewMode, displayWindow, this.mapPickables.visibilityPolicy,
     );
   }
@@ -474,8 +480,11 @@ export class Game {
       this.markerManager,
     );
 
+    const orbitRef = player
+      ? this.orbitReference.resolve(player.state.r, celestialBodies, this.navTarget, this.entities, this.ephemeris, player.state.t)
+      : undefined;
     this.entities.syncPlayers(
-      player, fo, this.cameraSystem, displayTime, this.ephemeris, displayCelestialBodies, visibilityPolicy, displayWindow,
+      player, fo, this.cameraSystem, displayTime, this.ephemeris, displayCelestialBodies, visibilityPolicy, displayWindow, orbitRef,
     );
     this.entities.syncBases(
       this.controlledBase, fo, this.cameraSystem, displayTime, visibilityPolicy,

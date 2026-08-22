@@ -5,6 +5,8 @@
 import * as THREE from 'three/webgpu';
 import {
   and,
+  cameraFar,
+  cameraNear,
   clamp,
   dot,
   exp,
@@ -15,6 +17,7 @@ import {
   max,
   min,
   normalWorld,
+  positionView,
   positionWorld,
   select,
   sub,
@@ -22,6 +25,7 @@ import {
   uniform,
   uv,
   vec3,
+  viewZToPerspectiveDepth,
 } from 'three/tsl';
 import { RingSystemDef } from '../physics/solar-system';
 import { SPHERE_LOD_LADDER, SphereLodLevel } from './screen-lod';
@@ -56,6 +60,11 @@ type RingShadowBand = {
 
 export class CelestialSurface {
   private readonly sunDirNode = uniform(new THREE.Vector3(1, 0, 0));
+  // 戦闘ビューでは表示位置が視距離圧縮でカメラ寄りへ動くため、そのままでは深度バッファが
+  // 実際の奥行きと食い違い、月など近距離ですれ違う物体との遮蔽関係が崩れる。view space の
+  // z はカメラ原点からの放射スケールなので、真の距離との比 (dist/visDist) を掛け直すだけで
+  // 深度だけを真の位置のものへ戻せる(頂点位置・見かけの大きさは圧縮したまま)。
+  private readonly depthScaleNode = uniform(1);
   // リングを持たない天体では null のままにする。リング付き天体でも、実際に同期される
   // まで遅延して作ることで、非リング天体の shader graph に32帯ぶんの計算を混ぜない。
   private ringShadowBands: readonly RingShadowBand[] | null = null;
@@ -107,6 +116,7 @@ export class CelestialSurface {
     mat.colorNode = albedo.mul(float(NIGHT_AMBIENT).add(
       lambert.mul(1 - NIGHT_AMBIENT).mul(ringTransmission),
     ));
+    mat.depthNode = viewZToPerspectiveDepth(positionView.z.mul(this.depthScaleNode), cameraNear, cameraFar);
     return mat;
   }
 
@@ -144,6 +154,12 @@ export class CelestialSurface {
   // この天体の真の ECI 位置から見た恒星方向(単位ベクトル)を与える。
   setSunDirection(dir: THREE.Vector3): void {
     this.sunDirNode.value.copy(dir);
+  }
+
+  // 表示位置の圧縮率(真の距離 / 表示距離)。圧縮していない(真の位置に真の半径で
+  // 置いている)場合は 1 を渡す。
+  setDepthScale(scale: number): void {
+    this.depthScaleNode.value = scale;
   }
 
   // 環平面と太陽方向の交点を表面シェーダへ渡す。最大32帯まで、複数帯は透過率を乗算する。

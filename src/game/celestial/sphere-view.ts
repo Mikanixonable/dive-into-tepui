@@ -98,6 +98,7 @@ export class SphereView extends CelestialView {
       // 広範囲視点は実スケール: 実 ECI 位置に実半軸で置く。
       this.group.position.copy(fo.RtoThreeV3(pos));
       scaleFactor = this.radius;
+      activeSurface.setDepthScale(1);
     } else {
       const cam = cameraSystem.activeCamera;
       const rel = sub(pos, cameraSystem.activeCameraPos);
@@ -109,6 +110,9 @@ export class SphereView extends CelestialView {
         cam.position.z + dir.z * this.visDist,
       );
       scaleFactor = this.visDist * (this.radius / dist);
+      // 圧縮した見かけの位置のまま深度だけ真の距離へ戻し、近距離ですれ違う艦艇・弾薬との
+      // 遮蔽関係を圧縮前の実際の位置関係と一致させる(celestial-surface.ts 参照)。
+      activeSurface.setDepthScale(dist / this.visDist);
     }
     // 歪んだ天体は3軸それぞれの半軸へ同じ倍率を掛ける — 真の視角を保つ性質は変わらない。
     // 環へ渡すのは倍率のもとになる一様スケール(赤道半径基準)の方で、扁平は乗せない。

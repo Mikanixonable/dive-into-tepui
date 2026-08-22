@@ -313,11 +313,7 @@ export class Base extends GameEntity implements Controllable {
 
   markerItem(role: MarkerRole, viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): GroupedMarkerItem {
     const dist = len(sub(pos, viewerPos));
-    const priority = role === 'primary'
-      ? C.MARKER_PRIORITY.PRIMARY_TARGET
-      : role === 'secondary'
-        ? C.MARKER_PRIORITY.SECONDARY_TARGET
-        : C.MARKER_PRIORITY.BASE - dist / 1e9;
+    const priority = role === 'primary' ? C.MARKER_PRIORITY.PRIMARY_TARGET : C.MARKER_PRIORITY.BASE - dist / 1e9;
     return {
       key: `base-${this.id}`,
       cls: role === 'primary' ? 'mk-target' : 'mk-base',

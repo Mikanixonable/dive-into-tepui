@@ -1,8 +1,9 @@
 // 自機の位置・姿勢だけから決まる HUD マーカー。戦闘ビューでは軌道基準の方向マーカーと
 // 機首ボアサイト、広範囲視点では自機位置マーカーを出す。
 import { Attitude, qRotate } from '../../physics/attitude';
-import { KinematicState, orbitAxes } from '../../physics/kinematic-state';
-import { scale, v3, type Vec3 } from '../../physics/vec3';
+import { KinematicState, kinematicState, orbitAxes } from '../../physics/kinematic-state';
+import { scale, sub, v3, type Vec3 } from '../../physics/vec3';
+import type { OrbitReference } from '../orbit-reference';
 import type { ProjectFn, ScaleFn } from '../camera/camera-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import { DIRECTION_GLYPH, ENTITY_GLYPH } from '../marker/marker-glyphs';
@@ -36,7 +37,7 @@ export class PlayerMarkers {
     overviewMode: boolean, isActive: boolean, cameraPos: Vec3, project: ProjectFn, scaleFn: ScaleFn,
     name: string, rounds = 0, _reloadTimer = 0, beltLinks = 0, muzzleSpeed = 0, focusId?: string,
     registry?: CelestialRegistry, celestialBodies: readonly CelestialBody[] = [], visibility: MapVisibility | null = null,
-    frame?: ReferenceFrame, displayTime?: number, ephemeris?: Ephemeris,
+    frame?: ReferenceFrame, displayTime?: number, ephemeris?: Ephemeris, orbitRef?: OrbitReference,
   ): void {
     const selfKey = `self-${this.id}`;
     const nearbyLabelKey = `${selfKey}-planet-label`;
@@ -95,7 +96,7 @@ export class PlayerMarkers {
     this.markerManager.hide(selfKey);
     
     if (isActive) {
-      this.syncOrbitAxes(currentState, project);
+      this.syncOrbitAxes(currentState, project, orbitRef);
       this.syncBoresight(currentState, att, project, rounds, beltLinks, muzzleSpeed);
     }
   }
@@ -108,9 +109,14 @@ export class PlayerMarkers {
   }
 
   // prograde/retrograde/normal/antinormal/radial in-out の6方向マーカーを配置する。
-  private syncOrbitAxes(state: KinematicState, project: ProjectFn): void {
+  // 方向は orbitRef が指す基準(未指定なら ECI = 地球基準)に対する相対 r/v から求める——
+  // マーカーの設置位置(pr)は常に艦の絶対位置のまま変わらない。
+  private syncOrbitAxes(state: KinematicState, project: ProjectFn, orbitRef?: OrbitReference): void {
     const pr = state.r;
-    const { pro: proDir, nrm: nrmDir, radOut: radDir } = orbitAxes(state);
+    const relState = orbitRef
+      ? kinematicState(state.t, sub(state.r, orbitRef.state.r), sub(state.v, orbitRef.state.v))
+      : state;
+    const { pro: proDir, nrm: nrmDir, radOut: radDir } = orbitAxes(relState);
 
     this.markerManager.setDirection(`pro-${this.id}`, 'mk-pro', DIRECTION_GLYPH.prograde, pr, proDir, project, 'PROGRADE');
     this.markerManager.setDirection(`retro-${this.id}`, 'mk-retro', DIRECTION_GLYPH.retrograde, pr, scale(proDir, -1), project, 'RETROGRADE');

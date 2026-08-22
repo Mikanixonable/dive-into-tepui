@@ -1,6 +1,6 @@
 // 表示パネル(マップモード左レール): 「マップに何を出すか」という1つの問いに答える —
-// 天体クラス別のアイコン/ラベル/軌道線トグルと、天球グリッド(赤道・黄道)のトグルをまとめて持つ。
-import { DIRECTION_GLYPH, ENTITY_GLYPH } from '../marker/marker-glyphs';
+// 天体クラス別のラベル/軌道線トグルと、天球グリッド(赤道・黄道)のトグルをまとめて持つ。
+import { DIRECTION_GLYPH } from '../marker/marker-glyphs';
 import {
   COLLAPSE_COLLAPSED_GLYPH,
   COLLAPSE_EXPANDED_GLYPH,
@@ -18,17 +18,16 @@ import { loadPanelCollapsed, onPanelCollapsedViewChange, savePanelCollapsed } fr
 interface BodyClassRow {
   readonly label: string;
   readonly categoryKey: keyof BodyClassToggles;
-  readonly iconKey: keyof BodyClassToggles;
-  readonly labelKey: keyof BodyClassToggles;
+  readonly nameKey: keyof BodyClassToggles;
   readonly orbitKey: keyof BodyClassToggles | null;
 }
 
 const BODY_CLASS_ROWS: readonly BodyClassRow[] = [
-  { label: '惑星', categoryKey: 'planetVisible', iconKey: 'planetIcon', labelKey: 'planetLabel', orbitKey: 'planetOrbit' },
-  { label: '衛星', categoryKey: 'satelliteVisible', iconKey: 'satelliteIcon', labelKey: 'satelliteLabel', orbitKey: 'satelliteOrbit' },
-  { label: '準惑星', categoryKey: 'dwarfVisible', iconKey: 'dwarfIcon', labelKey: 'dwarfLabel', orbitKey: 'dwarfOrbit' },
-  { label: '小天体', categoryKey: 'smallBodyVisible', iconKey: 'smallBodyIcon', labelKey: 'smallBodyLabel', orbitKey: 'smallBodyOrbit' },
-  { label: 'ラグランジュ点', categoryKey: 'lagrangeVisible', iconKey: 'lagrangeIcon', labelKey: 'lagrangeLabel', orbitKey: null },
+  { label: '惑星', categoryKey: 'planetVisible', nameKey: 'planetName', orbitKey: 'planetOrbit' },
+  { label: '衛星', categoryKey: 'satelliteVisible', nameKey: 'satelliteName', orbitKey: 'satelliteOrbit' },
+  { label: '準惑星', categoryKey: 'dwarfVisible', nameKey: 'dwarfName', orbitKey: 'dwarfOrbit' },
+  { label: '小天体', categoryKey: 'smallBodyVisible', nameKey: 'smallBodyName', orbitKey: 'smallBodyOrbit' },
+  { label: 'ラグランジュ点', categoryKey: 'lagrangeVisible', nameKey: 'lagrangeName', orbitKey: null },
 ];
 // このパネル自身の折りたたみトグルの見た目。
 const VIEW_OPTIONS_COLLAPSE_LABELS: CollapseToggleLabels = {
@@ -39,10 +38,10 @@ const VIEW_OPTIONS_COLLAPSE_LABELS: CollapseToggleLabels = {
 };
 
 const ENTITY_ROWS: readonly BodyClassRow[] = [
-  { label: '自艦', categoryKey: 'playerVisible', iconKey: 'playerIcon', labelKey: 'playerLabel', orbitKey: 'playerOrbit' },
-  { label: '敵', categoryKey: 'shipVisible', iconKey: 'shipIcon', labelKey: 'shipLabel', orbitKey: 'shipOrbit' },
-  { label: '弾薬', categoryKey: 'ammoVisible', iconKey: 'ammoIcon', labelKey: 'ammoLabel', orbitKey: 'ammoOrbit' },
-  { label: '基地', categoryKey: 'baseVisible', iconKey: 'baseIcon', labelKey: 'baseLabel', orbitKey: 'baseOrbit' },
+  { label: '自艦', categoryKey: 'playerVisible', nameKey: 'playerName', orbitKey: 'playerOrbit' },
+  { label: '敵', categoryKey: 'shipVisible', nameKey: 'shipName', orbitKey: 'shipOrbit' },
+  { label: '弾薬', categoryKey: 'ammoVisible', nameKey: 'ammoName', orbitKey: 'ammoOrbit' },
+  { label: '基地', categoryKey: 'baseVisible', nameKey: 'baseName', orbitKey: 'baseOrbit' },
 ];
 
 // 天球グリッドのカテゴリー(黄道・赤道)1行分。各カテゴリーは面・極・グリッドの3トグルを持つ。
@@ -75,8 +74,7 @@ interface ViewOptionColumn {
 }
 
 const OBJECT_COLUMNS: readonly ViewOptionColumn[] = [
-  { glyph: ENTITY_GLYPH.body, label: '記号' },
-  { glyph: 'Aa', label: '名前' },
+  { glyph: 'Aa', label: 'ラベル' },
   { glyph: '⌒', label: '軌道' },
 ];
 
@@ -160,7 +158,7 @@ export class ViewOptionsPanel {
     this.unsubscribeCollapsedView = onPanelCollapsedViewChange(applyCollapsedState);
     collapseToggle.addEventListener('click', () => savePanelCollapsed('hud-view-options', body.classList.contains('collapsed')));
 
-    // マップに出す天体のクラスごとに、アイコン(点)・ラベル(名前)・軌道線を個別に切り替える。
+    // マップに出す天体のクラスごとに、ラベル(位置の点+名前)・軌道線を切り替える。
     // 恒星・惑星と、フォーカス中の系の親子は常に出るので、ここで足すのは「その外まで見たい」
     // という明示の意思表示にあたる。
     const bodyClassButtons: (readonly [keyof BodyClassToggles, Button])[] = [];
@@ -189,29 +187,17 @@ export class ViewOptionsPanel {
         rowEl.appendChild(btnsEl);
         const individualButtons: Button[] = [];
 
-        const icon = this.toggleButton(
-          ENTITY_GLYPH.body,
-          'アイコン',
-          row.iconKey,
-          this.bodyClassCurrent,
-          (key, on) => this.onBodyClassToggle?.(key, on),
-        );
-        icon.element.classList.add('body-class-icon-btn');
-        individualButtons.push(icon);
-        btnsEl.appendChild(icon.element);
-        bodyClassButtons.push([row.iconKey, icon]);
-
-        const label = this.toggleButton(
+        const name = this.toggleButton(
           'Aa',
           'ラベル',
-          row.labelKey,
+          row.nameKey,
           this.bodyClassCurrent,
           (key, on) => this.onBodyClassToggle?.(key, on),
         );
-        label.element.classList.add('body-class-icon-btn');
-        individualButtons.push(label);
-        btnsEl.appendChild(label.element);
-        bodyClassButtons.push([row.labelKey, label]);
+        name.element.classList.add('body-class-icon-btn');
+        individualButtons.push(name);
+        btnsEl.appendChild(name.element);
+        bodyClassButtons.push([row.nameKey, name]);
 
         if (row.orbitKey !== null) {
           const orbitKey = row.orbitKey;
@@ -235,7 +221,7 @@ export class ViewOptionsPanel {
     this.bodyClassButtons = bodyClassButtons;
     this.bodyClassCategoryButtons = bodyClassCategories;
 
-    // 天球(参照面:黄道・赤道、環境:星空)。天体クラスと同じ行の形(見出し+アイコン列)を流用する。
+    // 天球(参照面:黄道・赤道、環境:星空)。天体クラスと同じ行の形(見出し+トグル列)を流用する。
     const gridButtons: (readonly [keyof CelestialGridVisibility, Button])[] = [];
     const gridCategories: (readonly [keyof CelestialGridVisibility, Button, HTMLElement, readonly Button[]])[] = [];
     appendSectionHeading(body, '天球', GRID_COLUMNS);
@@ -270,7 +256,7 @@ export class ViewOptionsPanel {
     starsRow.appendChild(this.starsButton.element);
     body.appendChild(starsRow);
 
-    appendSectionHeading(body, '空間グリッド', SPATIAL_GRID_COLUMNS);
+    appendSectionHeading(body, '軌道面グリッド', SPATIAL_GRID_COLUMNS);
     for (const [key, label, description] of SPATIAL_GRID_ROWS) {
       const row = document.createElement('div');
       row.className = 'body-class-row grid-class-row';

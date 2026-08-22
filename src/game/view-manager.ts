@@ -185,7 +185,7 @@ export class ViewManager {
     if (view === 'dock') return this.docking?.canEnterDock() ?? false;
     if (view === 'combat') {
       return this.activePlayers.current !== null
-        || (this.controlledBaseProvider?.() !== null)
+        || (this.controlledBaseProvider?.() ?? null) !== null
         || (this.docking?.getAvailableBases().length ?? 0) > 0;
     }
     return true;

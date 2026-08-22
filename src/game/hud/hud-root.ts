@@ -197,9 +197,10 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
   const orbit = new PanelShell(leftRail, 'hud-orbit', 'Orbit', isCompactViewport());
   configureCombatPanel(orbit);
   orbit.body.innerHTML = `
+    <div class="row" data-id="reference-row"></div>
     <dl class="metric-list">
       <div class="row metric">
-        <dt class="k">基準天体</dt><dd class="v"><output data-id="center">—</output></dd>
+        <dt class="k">基準</dt><dd class="v"><output data-id="center">—</output></dd>
       </div>
       <div class="row metric"><dt class="k">高度</dt><dd class="v"><output data-id="alt">—</output></dd></div>
       <div class="row metric"><dt class="k">速度</dt><dd class="v"><output data-id="spd">—</output></dd></div>

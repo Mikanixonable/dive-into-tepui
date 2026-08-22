@@ -97,8 +97,8 @@ export function register(): void {
 
   test('trajectory-features: ApsisTrack accumulates periapsis/apoapsis in ascending time order and answers the first', () => {
     const pairs = apsisStepPairs();
-    const track = new ApsisTrack(EARTH);
-    for (const [prev, next] of pairs) track.observe(prev, next);
+    const track = new ApsisTrack();
+    for (const [prev, next] of pairs) track.observe(EARTH, prev, next);
 
     const expectedFirstPeriapsis = apsisCrossing(EARTH, ...pairs[0]!)!.state;
     const expectedFirstApoapsis = apsisCrossing(EARTH, ...pairs[1]!)!.state;
@@ -110,8 +110,8 @@ export function register(): void {
   test('trajectory-features: ApsisTrack.dropBefore drops earlier extrema and promotes the next one to the front', () => {
     const period = keplerPeriod(a, MU_EARTH);
     const pairs = apsisStepPairs();
-    const track = new ApsisTrack(EARTH);
-    for (const [prev, next] of pairs) track.observe(prev, next);
+    const track = new ApsisTrack();
+    for (const [prev, next] of pairs) track.observe(EARTH, prev, next);
 
     const expectedSecondPeriapsis = apsisCrossing(EARTH, ...pairs[2]!)!.state;
     const expectedSecondApoapsis = apsisCrossing(EARTH, ...pairs[3]!)!.state;
@@ -122,12 +122,13 @@ export function register(): void {
   });
 
   test('trajectory-features: ApsisTrack answers null with no observations or no crossings observed', () => {
-    const track = new ApsisTrack(EARTH);
+    const track = new ApsisTrack();
     assert.equal(track.periapsis, null);
     assert.equal(track.apoapsis, null);
 
     // 遠地点手前でまだ遠ざかり続けている脚 — 符号反転がなく極値が見つからない対。
     track.observe(
+      EARTH,
       stateAtMeanAnomaly(a, e, incDeg, raan, argp, Math.PI / 4),
       stateAtMeanAnomaly(a, e, incDeg, raan, argp, Math.PI / 2),
     );

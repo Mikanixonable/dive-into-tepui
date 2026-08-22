@@ -63,7 +63,7 @@ class DurationValueInput {
     }, true);
     // 数値入力欄そのものは ValueInput へ委譲する。レンジへのクランプは commitText で行う —
     // ValueInput 自身は非有限値/空欄しか破棄しない。
-    this.value = new ValueInput({ type: 'number' }, (text) => this.commitText(text), () => this.onCancel());
+    this.value = new ValueInput({ type: 'number', step: 1 }, (text) => this.commitText(text), () => this.onCancel());
     this.element.appendChild(this.value.element);
     // 単位切り替え。単位が変わると min/max の表示値も単位に合わせて引き直す。
     this.unit = new SegmentedControl('', UNITS, (u) => {
@@ -135,17 +135,67 @@ function inlineIconButton(label: string, title: string, onClick: () => void): HT
   return btn;
 }
 
+// 「表示用要素 ⇔ 数値入力(DurationValueInput)」の開閉を1つ受け持つ。open() で表示用要素を
+// 隠して数値入力を出し、確定・取り消しで自動的に close() して表示用要素へ戻す。
+class ToggleValueEdit {
+  private readonly input: DurationValueInput;
+  private editingValue = false;
+
+  public constructor(
+    private readonly displayEl: HTMLElement,
+    private readonly editEl: HTMLElement,
+    defaultUnit: DurationUnit,
+    onCommit: (sec: number) => void,
+  ) {
+    this.input = new DurationValueInput(
+      defaultUnit,
+      (sec) => { onCommit(sec); this.close(); },
+      () => this.close(),
+    );
+  }
+
+  public get editing(): boolean {
+    return this.editingValue;
+  }
+
+  public get inputEl(): HTMLElement {
+    return this.input.element;
+  }
+
+  // 表示用要素を数値入力フォームへ差し替え、指定した秒数を初期値として入れる。
+  public open(sec: number, minSec: number, maxSec: number): void {
+    this.editingValue = true;
+    this.displayEl.classList.add('hidden');
+    this.editEl.classList.remove('hidden');
+    this.input.openWithSec(sec, minSec, maxSec);
+  }
+
+  // 数値入力フォームを閉じ、表示用要素へ戻す。
+  public close(): void {
+    this.editingValue = false;
+    this.editEl.classList.add('hidden');
+    this.displayEl.classList.remove('hidden');
+  }
+
+  public commit(): void {
+    this.input.commit();
+  }
+
+  public cancel(): void {
+    this.input.cancel();
+  }
+}
+
 // 「見出し + 固定期間ピル列 + 任意…ピル」の1行。任意…を押すとピル列を数値入力フォームへ
 // 差し替え、確定・取り消しでピル列へ戻る。K は固定ピルのキー、Kd は選択状態として受け取る
 // キー(固定ピルに加えて 'custom' を含む)。
-class DurationPillRow<K extends string, Kd extends string> {
+class DurationPillRow<K extends string, Kd extends K | 'custom'> {
   public readonly element: HTMLElement;
   private readonly buttons = new Map<K, Button>();
   private readonly pillsEl: HTMLElement;
   private readonly customPillBtn: Button;
   private readonly editEl: HTMLElement;
-  private readonly input: DurationValueInput;
-  private editing = false;
+  private readonly toggle: ToggleValueEdit;
   private currentSec = C.DISPLAY_DUR_DAY;
 
   public constructor(
@@ -172,16 +222,12 @@ class DurationPillRow<K extends string, Kd extends string> {
     this.pillsEl.appendChild(this.customPillBtn.element);
     this.element.appendChild(this.pillsEl);
 
-    this.input = new DurationValueInput(
-      'day',
-      (sec) => { this.onCustomConfirm(sec); this.closeEdit(); },
-      () => this.closeEdit(),
-    );
     this.editEl = document.createElement('span');
     this.editEl.className = 'predict-pills hidden';
-    this.editEl.appendChild(this.input.element);
-    this.editEl.appendChild(inlineIconButton('✓', '確定', () => this.input.commit()));
-    this.editEl.appendChild(inlineIconButton('✕', 'キャンセル', () => this.input.cancel()));
+    this.toggle = new ToggleValueEdit(this.pillsEl, this.editEl, 'day', (sec) => this.onCustomConfirm(sec));
+    this.editEl.appendChild(this.toggle.inputEl);
+    this.editEl.appendChild(inlineIconButton('✓', '確定', () => this.toggle.commit()));
+    this.editEl.appendChild(inlineIconButton('✕', 'キャンセル', () => this.toggle.cancel()));
     this.element.appendChild(this.editEl);
   }
 
@@ -189,8 +235,8 @@ class DurationPillRow<K extends string, Kd extends string> {
   // 編集中の行はユーザー入力を壊さないよう書き換えない。
   public render(key: Kd, customDurationSec: number, currentSec: number): void {
     this.currentSec = currentSec;
-    if (this.editing) return;
-    for (const [k, btn] of this.buttons) btn.setOn(k === (key as string));
+    if (this.toggle.editing) return;
+    for (const [k, btn] of this.buttons) btn.setOn(key === k);
     this.customPillBtn.setOn(key === 'custom');
     const label = key === 'custom' ? `${customPillLabel(customDurationSec)} ✎` : '任意…';
     if (this.customPillBtn.element.textContent !== label) this.customPillBtn.setLabel(label);
@@ -198,17 +244,7 @@ class DurationPillRow<K extends string, Kd extends string> {
 
   // ピル列を数値入力フォームへ差し替え、直近に受け取った秒数を初期値として入れる。
   private openEdit(): void {
-    this.editing = true;
-    this.pillsEl.classList.add('hidden');
-    this.editEl.classList.remove('hidden');
-    this.input.openWithSec(Math.max(C.DISPLAY_DURATION_MIN, this.currentSec), C.DISPLAY_DURATION_MIN, C.DISPLAY_DURATION_MAX);
-  }
-
-  // 数値入力フォームを閉じ、ピル列へ戻す。
-  private closeEdit(): void {
-    this.editing = false;
-    this.editEl.classList.add('hidden');
-    this.pillsEl.classList.remove('hidden');
+    this.toggle.open(Math.max(C.DISPLAY_DURATION_MIN, this.currentSec), C.DISPLAY_DURATION_MIN, C.DISPLAY_DURATION_MAX);
   }
 }
 
@@ -246,12 +282,11 @@ export class PredictPanel {
   private readonly absoluteLabel: HTMLElement;
   private readonly elapsedLabel: HTMLElement;
   private readonly jumpEditEl: HTMLElement;
-  private readonly jumpInput: DurationValueInput;
+  private readonly jumpToggle: ToggleValueEdit;
   private readonly ticks: HTMLElement;
   private readonly wrap: HTMLElement;
   private readonly unsubscribeCollapsedView: () => void;
 
-  private editingJump = false;
   private sliderSteps = 1000;
   private currentDuration = C.APERIODIC_ARC_DURATION;
   private lastTrackRatio = 1;
@@ -318,17 +353,15 @@ export class PredictPanel {
     this.elapsedLabel.className = 'predict-elapsed';
     this.elapsedLabel.title = 'クリックして時刻へジャンプ';
     this.elapsedLabel.addEventListener('pointerdown', (e) => e.stopPropagation());
-    this.elapsedLabel.addEventListener('click', () => this.openJumpEdit());
+    this.elapsedLabel.addEventListener('click', () => this.jumpToggle.open(
+      this.currentDuration * (this.slider.getValue() / this.sliderSteps), 0, this.currentDuration,
+    ));
     row2.appendChild(this.elapsedLabel);
 
-    this.jumpInput = new DurationValueInput(
-      'hour',
-      (sec) => { this.onJumpToTime?.(sec); this.closeJumpEdit(); },
-      () => this.closeJumpEdit(),
-    );
     this.jumpEditEl = document.createElement('span');
     this.jumpEditEl.className = 'predict-value-input hidden';
-    this.jumpEditEl.appendChild(this.jumpInput.element);
+    this.jumpToggle = new ToggleValueEdit(this.elapsedLabel, this.jumpEditEl, 'hour', (sec) => this.onJumpToTime?.(sec));
+    this.jumpEditEl.appendChild(this.jumpToggle.inputEl);
     row2.appendChild(this.jumpEditEl);
     this.panel.appendChild(row2);
 
@@ -363,7 +396,7 @@ export class PredictPanel {
     this.tickLabelModeSwitch.setOn(state.tickLabelMode === 'relative');
     this.renderSlider(state.sliderSteps, state.sliderT, state.predictionRatio);
     this.renderAbsoluteLabel(state.displayTime);
-    if (!this.editingJump) this.renderElapsedLabel(state.sliderT * state.duration);
+    if (!this.jumpToggle.editing) this.renderElapsedLabel(state.sliderT * state.duration);
     this.renderTicks(state.ticks);
   }
 
@@ -406,24 +439,6 @@ export class PredictPanel {
     if (this.elapsedLabel.textContent !== text) this.elapsedLabel.textContent = text;
   }
 
-  // T+ 読み値を数値入力フォームへ差し替える。
-  private openJumpEdit(): void {
-    this.editingJump = true;
-    this.elapsedLabel.classList.add('hidden');
-    this.jumpEditEl.classList.remove('hidden');
-    this.jumpInput.openWithSec(this.currentDuration * (this.slider.getValue() / this.sliderSteps), 0, this.currentDuration);
-  }
-
-  // 数値入力フォームを閉じ、T+ 読み値を出す。
-  private closeJumpEdit(): void {
-    this.editingJump = false;
-    this.jumpEditEl.classList.add('hidden');
-    this.elapsedLabel.classList.remove('hidden');
-  }
-
-  // 各目盛りをスライダー全域上の位置 t(0..1)に配置する。端に近い目盛りは画面外へはみ出さないよう
-  // 寄せ方を変える(:first-child/:last-child ではなく t の値そのものから決める — 最終目盛りが
-  // 常に 100% 位置とは限らないため)。
   // 各目盛りをスライダー全域上の位置 t(0..1)へ置く。t は期間の等分ではなく、最後の目盛りが
   // 右端に来るとも限らないので、端からはみ出さないための寄せ方も t の値そのものから決める。
   private renderTicks(ticks: readonly DisplayTick[]): void {

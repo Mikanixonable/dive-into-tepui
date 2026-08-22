@@ -15,10 +15,12 @@ export class SegmentedControl<T> {
     this.onSelect = onSelect;
     this.element = document.createElement('div');
     this.element.className = 'w-group';
-    const heading = document.createElement('span');
-    heading.className = 'w-group-title';
-    heading.textContent = title;
-    this.element.appendChild(heading);
+    if (title !== '') {
+      const heading = document.createElement('span');
+      heading.className = 'w-group-title';
+      heading.textContent = title;
+      this.element.appendChild(heading);
+    }
     this.setItems(items);
   }
 

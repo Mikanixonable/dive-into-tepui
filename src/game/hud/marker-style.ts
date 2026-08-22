@@ -20,7 +20,7 @@ export const MARKER_STYLE = `
 #hud .mk { z-index: var(--z-mk-base); }
 #hud .mk-node, #hud .mk-mnode, #hud .mk-burn, #hud .mk-poi, #hud .mk-base, #hud .mk-nav, #hud .mk-dir, #hud .mk-bearing-triangle, #hud .mk-boardpass, #hud .mk-lead, #hud .mk-pro, #hud .mk-retro, #hud .mk-nrm, #hud .mk-rad, #hud .mk-tgtdir, #hud .mk-boresight { z-index: var(--z-mk-node); }
 #hud .mk-ammo { z-index: var(--z-mk-ammo); }
-#hud .mk-enemy, #hud .mk-target, #hud .mk-secondary-target { z-index: var(--z-mk-enemy); }
+#hud .mk-enemy, #hud .mk-target { z-index: var(--z-mk-enemy); }
 #hud .mk-self { z-index: var(--z-mk-self); }
 #hud .mk-longpress { z-index: var(--z-mk-longpress); }
 
@@ -60,7 +60,6 @@ export const MARKER_STYLE = `
 }
 
 .mk-target { color: var(--accent); }
-.mk-secondary-target { color: var(--accent-secondary); }
 .mk-enemy { color: var(--text-strong); }
 .mk-lead { color: var(--accent); }
 .mk-pro { color: var(--axis-prograde); }
@@ -104,8 +103,8 @@ export const MARKER_STYLE = `
   width: calc(100% * var(--mk-scale-element)); height: calc(100% * var(--mk-scale-element));
 }
 
-.mk-self .sym, .mk-enemy .sym, .mk-target .sym, .mk-secondary-target .sym { font-size: calc(var(--glyph-base) * var(--mk-scale-vessel)); }
-.mk-self .sym svg, .mk-enemy .sym svg, .mk-target .sym svg, .mk-secondary-target .sym svg {
+.mk-self .sym, .mk-enemy .sym, .mk-target .sym { font-size: calc(var(--glyph-base) * var(--mk-scale-vessel)); }
+.mk-self .sym svg, .mk-enemy .sym svg, .mk-target .sym svg {
   width: calc(100% * var(--mk-scale-vessel)); height: calc(100% * var(--mk-scale-vessel));
 }
 

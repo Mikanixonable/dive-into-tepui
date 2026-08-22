@@ -27,6 +27,7 @@ import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { PerfCounts } from '../../perf-meter';
+import type { OrbitReference } from '../orbit-reference';
 
 export class EntityManager {
   readonly enemies: Enemy[] = [];
@@ -328,12 +329,12 @@ export class EntityManager {
   syncPlayers(
     activePlayer: Player | null, fo: FloatingOrigin, cameraSystem: CameraSystem,
     displayTime: number, ephemeris: Ephemeris, celestialBodies: readonly CelestialBody[],
-    visibilityPolicy: MapVisibilityPolicy | null, displayWindow?: DisplayWindow,
+    visibilityPolicy: MapVisibilityPolicy | null, displayWindow?: DisplayWindow, orbitRef?: OrbitReference,
   ): void {
     for (const ship of this.players) {
       ship.syncPlayer(
         fo, cameraSystem, displayTime, ship === activePlayer, ephemeris, celestialBodies,
-        visibilityPolicy?.entity('player', ship === activePlayer) ?? null, displayWindow,
+        visibilityPolicy?.entity('player', ship === activePlayer) ?? null, displayWindow, orbitRef,
       );
     }
   }
