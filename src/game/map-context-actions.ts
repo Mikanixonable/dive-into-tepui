@@ -14,7 +14,7 @@ import { celestialBodyName } from './hud/frame-labels';
 import { lagrangeParentId } from './hud/object-groups';
 import { MapPickable, pickNearest } from './map-pickable';
 import { focusTargetId } from './camera/focus-target';
-import { ObjectListPanel } from './hud/object-list-panel';
+import { PhysicalObjectListPanel } from './hud/physical-object-list-panel';
 import type { Input } from './input/input';
 import { pickRadiusSq } from './input/pointer-precision';
 import { EntityManager } from './simulation/entity-manager';
@@ -67,7 +67,7 @@ export class MapContextActions {
   // 開いているプロパティウィンドウ。`${kind}:${id}` でオブジェクト1つにつき高々1枚に保つ
   // (一時ウィンドウの排他自体は OverlayManager が持つ — ここは対象との対応づけのみ)。
   private readonly windows = new Map<string, WindowEntry>();
-  private readonly objectListPanel: ObjectListPanel;
+  private readonly physicalObjectListPanel: PhysicalObjectListPanel;
 
   // Docking は MapContextActions より後に生成されるので、生成後に登録する。
   setDocking(docking: Docking): void { this.docking = docking; }
@@ -101,18 +101,18 @@ export class MapContextActions {
       const handler = this.handlers[target.kind];
       if (handler) handler.run(act, target);
     };
-    this.objectListPanel = new ObjectListPanel(hud.mapRoot, ephemeris.registry);
-    this.objectListPanel.onFocus = (id) => {
+    this.physicalObjectListPanel = new PhysicalObjectListPanel(hud.mapRoot, ephemeris.registry);
+    this.physicalObjectListPanel.onFocus = (id) => {
       this.frameControls.setFocus({ kind: 'object', id });
       this.hud.hint(`${this.pickables.pickables.find((i) => i.id === id)?.name ?? id} にフォーカス`);
     };
-    this.objectListPanel.onNavTarget = (id) => {
+    this.physicalObjectListPanel.onNavTarget = (id) => {
       const target = this.pickables.pickables.find((i) => i.id === id);
       if (target && this.navTarget.canTarget(id, this.entities, this.ephemeris, this.pickables.lastSimTime)) {
         this.navTarget.toggleTarget(id, target.name);
       }
     };
-    this.objectListPanel.onSelectRight = (id, clientX, clientY) => {
+    this.physicalObjectListPanel.onSelectRight = (id, clientX, clientY) => {
       const target = this.pickables.pickables.find((i) => i.id === id);
       if (target) this.openPropertyWindow(clientX, clientY, target, this.pickables.lastSimTime);
     };
@@ -224,7 +224,7 @@ export class MapContextActions {
   // 基地も selectBase のみ呼んでドックビューへは遷移しない。取り消せない操作は明示の項目
   // (プロパティウィンドウ)かダブルクリックに限る。
   private selectPickable(target: MapPickable, clientX: number, clientY: number): void {
-    this.objectListPanel.select(target.id);
+    this.physicalObjectListPanel.select(target.id);
     if (target.kind === 'player') {
       this.openPropertyWindow(clientX, clientY, target, this.pickables.lastSimTime);
     } else if (target.kind === 'base') {
@@ -336,13 +336,13 @@ export class MapContextActions {
     return { id: entity.id, name: entity.name, pos: entity.state.r, kind: 'ship' };
   }
 
-  // 軌道オブジェクトウィンドウをマップ視点である間は常設で表示し、開いている全プロパティ
+  // 軌道物体ウィンドウをマップ視点である間は常設で表示し、開いている全プロパティ
   // ウィンドウの値を最新化する。対象そのものが消滅していれば(撃破・回収・削除)閉じる —
   // 未来ゴースト時刻で位置が求まらないだけのフレーム(displayState が null)は候補列
   // (pickables.pickables)から外れるだけで消滅ではないので、生存判定は対象の alive で行う。
   sync(simTime: number, celestialBodies: readonly CelestialBody[], player: Player | null): void {
     const overviewMode = this.cameraSystem.overviewMode;
-    this.objectListPanel.setVisible(overviewMode);
+    this.physicalObjectListPanel.setVisible(overviewMode);
     // マップを離れると ViewManager.closeMap() が開いているウィンドウを閉じる。
     // 戦闘中は候補列を更新せず、ウィンドウもないため、毎フレームの Map 生成と行導出を省く。
     if (!overviewMode && this.windows.size === 0) return;
@@ -356,7 +356,7 @@ export class MapContextActions {
         const parent = l.isLagrange ? lagrangeParentId(l.id) : primaryOf(registry, l.id);
         if (parent !== null) parentOf.set(l.id, parent);
       }
-      this.objectListPanel.sync(items, focusTargetId(this.cameraSystem.mapCamera.focus), parentOf);
+      this.physicalObjectListPanel.sync(items, focusTargetId(this.cameraSystem.mapCamera.focus), parentOf);
     }
 
     const byKey = new Map(items.map((i) => [this.windowKey(i), i]));
@@ -397,7 +397,7 @@ export class MapContextActions {
   dispose(): void {
     this.close();
     this.menu.dispose();
-    this.objectListPanel.dispose();
+    this.physicalObjectListPanel.dispose();
   }
 
   private readonly handlers: Record<MapPickable['kind'], PickHandler> = {
