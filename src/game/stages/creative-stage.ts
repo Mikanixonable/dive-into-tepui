@@ -1,4 +1,4 @@
-// クリエイティブモード: 勝敗判定を発生させず、艦艇配置と軌道計画を自由に試すためのステージ。
+// クリエイティブモード: 勝敗判定を発生させず、物体配置と軌道計画を自由に試すためのステージ。
 import type * as THREE from 'three/webgpu';
 import { Stage, type ObjectAuthoring, type StageDeps } from './stage';
 import type { Player } from '../player/player';
@@ -48,7 +48,7 @@ export class CreativeStage extends Stage {
   // 敵の波状攻撃を発生させるかどうか。既定 OFF — ON の間だけ update が WaveAttack を進める。
   private waveAttackEnabled: boolean;
   private readonly previewOrbitLine: OrbitLine;
-  // 艦艇配置パネルのフォーム値から求めた配置プレビュー。出すものが無ければ null。
+  // 物体配置パネルのフォーム値から求めた配置プレビュー。出すものが無ければ null。
   private preview: { readonly elements: OrbitalElements; readonly pos: Vec3 } | null = null;
   // 現在のフォーム値に対するフィールド単位の検証結果。パネルが閉じている間は空。
   private issues: readonly PlacementFieldIssue[] = [];
@@ -365,7 +365,7 @@ export class CreativeStage extends Stage {
     return this.waveAttackEnabled ? '波状攻撃: ON' : 'クリエイティブ';
   }
 
-  // 配置プレビューの軌道線・設定パネル・艦艇配置パネルを片付けたうえで super.dispose() を呼ぶ。
+  // 配置プレビューの軌道線・設定パネル・物体配置パネルを片付けたうえで super.dispose() を呼ぶ。
   dispose(): void {
     super.dispose();
     this.previewOrbitLine.line.removeFromParent();

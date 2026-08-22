@@ -686,12 +686,12 @@ export class MapContextActions {
     return canTarget ? [MenuCommon.target(false)] : [];
   }
 
-  // 「複製」項目。複製先が艦艇配置パネルなので、それを持つステージだけに出す。
+  // 「複製」項目。複製先が物体配置パネルなので、それを持つステージだけに出す。
   private duplicateItems(): readonly MenuItem<MenuAction>[] {
     return this.activeStage.authoring ? [MenuCommon.duplicate()] : [];
   }
 
-  // 対象の現在状態を軌道要素へ逆算し、その値をプリセットして艦艇配置パネルを開く。
+  // 対象の現在状態を軌道要素へ逆算し、その値をプリセットして物体配置パネルを開く。
   private runDuplicate(target: MapPickable): void {
     const authoring = this.activeStage.authoring;
     if (!authoring) return;

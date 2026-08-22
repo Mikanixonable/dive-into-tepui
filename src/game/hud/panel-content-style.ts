@@ -1,5 +1,5 @@
 // 個々のパネルの中身の CSS: SHIP STATUS/ORBIT/TARGET/CONTACTS の行、軌道物体一覧、
-// 軌道計画、表示設定、表示時刻、カメラ・軌道、艦艇配置、ナビボール、ステージステータス、
+// 軌道計画、表示設定、表示時刻、カメラ・軌道、物体配置、ナビボール、ステージステータス、
 // 設定・ヘルプ・終了画面。骨格(層・レール・シェルフ・バッジ)は skeleton-style.ts が持つ。
 import * as C from '../const';
 import { MQ_COARSE, MQ_COARSE_SHORT, MQ_COMPACT, MQ_MEDIUM_DOWN, MQ_SHORT } from './breakpoints';
@@ -196,7 +196,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud .hud-frame-controls .camera-angle-group > .w-group-title { flex: 0 0 100%; min-width: 0; }
 #hud .hud-frame-controls .camera-angle-group .w-select { flex: 1 1 auto; min-width: 80px; }
 #hud-creative-options { width: 100%; pointer-events: auto; }
-/* 艦艇配置パネル(クリエイティブモード限定): MANEUVER PLAN の下、右上に縦積みする。 */
+/* 物体配置パネル(クリエイティブモード限定): MANEUVER PLAN の下、右上に縦積みする。 */
 #hud-shipplacer { width: 100%; pointer-events: auto; max-height: 70vh; max-height: 70dvh; overflow-y: auto; }
 #hud-shipplacer .shipplacer-btn-row { display: flex; gap: var(--space-4); margin-top: var(--space-5); }
 #hud-shipplacer .slider-field { margin-bottom: var(--space-4); }

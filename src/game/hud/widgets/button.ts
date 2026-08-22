@@ -6,12 +6,26 @@ import { bindActivation, expandHitTarget, stopDragPropagation } from './widget-b
 export class Button {
   readonly element: HTMLElement;
   private enabled = true;
+  private readonly labelEl: HTMLElement | null;
 
   // label はボタンの表示文字列。onClick はクリック(またはキーボード操作)のたびに呼ばれる。
-  constructor(label: string, onClick: () => void) {
+  // icon を渡すと、その SVG/文字マークアップをラベルの前に添える。
+  constructor(label: string, onClick: () => void, icon?: string) {
     this.element = document.createElement('span');
     this.element.className = 'w-btn';
-    this.element.textContent = label;
+    if (icon !== undefined) {
+      const iconEl = document.createElement('span');
+      iconEl.className = 'w-btn-icon';
+      iconEl.setAttribute('aria-hidden', 'true');
+      iconEl.innerHTML = icon;
+      this.element.appendChild(iconEl);
+      this.labelEl = document.createElement('span');
+      this.labelEl.textContent = label;
+      this.element.appendChild(this.labelEl);
+    } else {
+      this.element.textContent = label;
+      this.labelEl = null;
+    }
     this.element.setAttribute('role', 'button');
     this.element.tabIndex = 0;
     stopDragPropagation(this.element);
@@ -28,7 +42,8 @@ export class Button {
   }
 
   setLabel(label: string): void {
-    this.element.textContent = label;
+    if (this.labelEl !== null) this.labelEl.textContent = label;
+    else this.element.textContent = label;
   }
 
   // 点灯表示を設定する。押されるたびに自分で反転はしない — onClick 側が setOn を呼ぶ。

@@ -29,6 +29,10 @@ export const WIDGET_STYLE = `
 .w-btn:focus-visible, .w-close:focus-visible, .w-toggle-track:focus-visible, .w-input:focus-visible {
   outline: 2px solid var(--accent-near); outline-offset: 2px;
 }
+.w-btn-icon {
+  display: inline-block; width: 1em; height: 1em; vertical-align: middle; margin-right: var(--space-2);
+}
+.w-btn-icon svg { display: block; width: 100%; height: 100%; }
 
 /* w-group: 見出し + 排他選択ボタン列(3択以上専用)。 */
 .w-group { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }

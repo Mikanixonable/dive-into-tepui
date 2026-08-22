@@ -1,9 +1,11 @@
-// クリエイティブモードの「艦艇配置」パネル: 軌道要素指定とラグランジュ点(ハロー/リサジュー)
+// クリエイティブモードの「物体配置」パネル: 軌道要素指定とラグランジュ点(ハロー/リサジュー)
 // 指定のどちらかを選び、フォームで値を指定して、確定で1隻分の ShipPlacerForm を通知する。
 // 値から KinematicState を組み立てるのは物理側(stateFromOrbitalElements/haloState/lissajousState)の
 // 仕事なので、ここでは行わない。
 import { Button, SegmentedControl, Slider, ValueInput } from '../hud/widgets';
 import { ObjectPicker, ObjectPickerGroup } from '../hud/object-picker';
+import { ENTITY_GLYPH } from '../marker/marker-glyphs';
+import { baseMarkerSvg, shipMarkerSvg } from '../marker/marker-shapes';
 import type { OverlayHandle, OverlayManager } from '../hud/overlay-manager';
 import { BodyClass, bodyClassOf } from '../celestial/body-class';
 import { sameSystemIds } from '../celestial/body-visibility';
@@ -65,11 +67,12 @@ export type ObjectPlacerPreset =
   | { readonly kind: 'objectType'; readonly objectType: ObjectType }
   | { readonly kind: 'form'; readonly objectType: ObjectType; readonly form: ElementsForm };
 
-const OBJECT_TYPE_ITEMS: readonly (readonly [ObjectType, string])[] = [
-  ['player', '自機'],
-  ['enemy', '敵機'],
-  ['ammo', '弾薬'],
-  ['base', '基地'],
+// アイコンはマップ実マーカーと同じ形状(自機=鏃の塗りつぶし、敵機=鏃の中抜き、基地=正七角形)。
+const OBJECT_TYPE_ITEMS: readonly (readonly [ObjectType, string, string])[] = [
+  ['player', '自機', shipMarkerSvg(true)],
+  ['enemy', '敵機', shipMarkerSvg(false)],
+  ['ammo', '弾薬', ENTITY_GLYPH.ammo],
+  ['base', '基地', baseMarkerSvg()],
 ];
 
 const PLACEMENT_MODE_ITEMS: readonly (readonly [PlacementMode, string])[] = [
@@ -381,7 +384,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
   private lagrangePointValue: CollinearPoint = 'L1';
   private lagrangeOrbitKindValue: LagrangeOrbitKind = 'halo';
 
-  // 艦艇配置パネルの DOM を組み立て、root へ追加する。基準天体・ラグランジュ系の選択肢は
+  // 物体配置パネルの DOM を組み立て、root へ追加する。基準天体・ラグランジュ系の選択肢は
   // ephemeris が実際に持つレジストリから組む。
   private readonly registry: CelestialRegistry;
   // ObjectPicker のポップアップの親。パネル自身の overflow に切られないよう popup レイヤへ置く。
@@ -409,7 +412,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
     this.panel.style.width = 'max-content';
     this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
     const title = document.createElement('h3');
-    title.textContent = '軌道オブジェクト配置';
+    title.textContent = '物体配置';
     this.panel.appendChild(title);
 
     this.objectType = new SegmentedControl('種類', OBJECT_TYPE_ITEMS, (v) => this.selectObjectType(v));
