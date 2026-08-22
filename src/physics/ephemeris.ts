@@ -10,7 +10,7 @@ import { Atmosphere } from './atmosphere';
 import { Quat, qFromForwardUp, qRotate } from './attitude';
 import { AbsoluteEphemeris, OriginCenteredEphemeris } from './absolute-ephemeris';
 import { CelestialBody, CelestialBodyId, Degree2Gravity, OrbitingId } from './celestial-body';
-import { cassiniSpinAxis, meridianDirection, orthogonalizedTo, spinPhaseOf } from './body-orientation';
+import { cassiniSpinAxis, meridianBasisToEci, meridianDirection, orthogonalizedTo, spinPhaseOf } from './body-orientation';
 import { ECI_POLE, ECL_POLE_ECI, raDecToEci } from './ecliptic';
 import { ReferenceFrame, FrameTransform } from './frame';
 import { FrameRotation, KeplerOrbit, keplerOrbitMeanDirection, keplerOrbitNormal, keplerOrbitRotation, keplerOrbitState } from './kepler-orbit';
@@ -19,7 +19,7 @@ import {
 } from './lagrange';
 import { planetAngles } from './planet-orbit';
 import { satelliteState } from './satellite-orbit';
-import { bodyDef, CelestialBodyDef, CelestialRegistry, primaryOf, SOLAR_SYSTEM, starOf } from './solar-system';
+import { bodyDef, CelestialBodyDef, CelestialRegistry, primaryOf, SOLAR_SYSTEM, spinRateOf, starOf } from './solar-system';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, add, addScaled, cross, len, lenSq, norm, scale, sub, v3 } from './vec3';
 
@@ -539,6 +539,21 @@ export class Ephemeris {
   // 位相は body-orientation.ts の基準方向(天体赤道と ECI 赤道の昇交点)から測る。
   poleAt(id: CelestialBodyId, t: number): BodyOrientation | null {
     return this.orientationOf(bodyDef(this.registry, id), t);
+  }
+
+  // 天体 id の自転に固定した回転基準系(ẑ = 自転軸、x̂ = 本初子午線方向)。公転回転系
+  // (orbitFrameRotationAt)が ẑ に軌道面法線を置くのと同じ軸の割り当てになる。自転モデルを
+  // 持たない天体では null。
+  //
+  // 逆行自転する天体(金星・天王星)でも ẑ は IAU の「北極」のままで、逆行は omega の符号として
+  // 現れる — 本初子午線(x̂)が IAU の極を基準に定義されている以上、ẑ だけを自転角運動量の向きへ
+  // 反転すると x̂ との対応が壊れる。地表を静止させるという座標系の役割はどちらでも果たされる。
+  spinRotationAt(id: CelestialBodyId, t: number): FrameRotation | null {
+    const def = bodyDef(this.registry, id);
+    const orientation = this.orientationOf(def, t);
+    const rate = spinRateOf(def);
+    if (orientation === null || rate === null) return null;
+    return { q: meridianBasisToEci(orientation.axis, orientation.spinAngle), omega: scale(orientation.axis, rate) };
   }
 
   // poleAt の本体。分岐は PoleModel の分類だけで、固有名は持たない。

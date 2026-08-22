@@ -2037,3 +2037,15 @@ export function bodyDef(registry: CelestialRegistry, id: CelestialBodyId): Celes
   if (def === undefined) throw new Error(`bodyDef: レジストリに登録されていない天体 id: ${id}`);
   return def;
 }
+
+// pole 定義から自転角速度 [rad/s] を取り出す。自転モデルを持たない天体は null。
+// 符号は自転の向きをそのまま表し、逆行自転する天体(金星・天王星)では負になる。
+// 自転軸自体の歳差は自転角速度の 10⁻⁷ 倍未満なのでここには含めない。
+// 同期回転の衛星('cassini')は本初子午線が公転の平均黄経を追うので、自転角速度は
+// 公転の平均運動(軌道の二体部分の lRate)そのものになる。
+export function spinRateOf(def: CelestialBodyDef): number | null {
+  if (def.kind === 'star' || def.pole === undefined) return null;
+  if (def.pole.kind === 'eciPole') return (2 * Math.PI) / SIDEREAL_DAY;
+  if (def.pole.kind === 'iau') return (def.pole.wRateDegPerDay * Math.PI) / 180 / 86400;
+  return def.kind === 'satellite' ? def.orbit.kepler.lRate : null;
+}

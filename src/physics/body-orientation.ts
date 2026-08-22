@@ -46,6 +46,14 @@ export function equatorBasisToEci(axis: Vec3): Quat {
   return qFromForwardUp(axis, cross(axis, spinPhaseRef(axis)))!;
 }
 
+// 自転軸 axis・自転位相 spinAngle の天体に固定した座標系(z = 自転軸、x = 本初子午線の向き)
+// から ECI への回転。equatorBasisToEci を自転位相ぶん回したものにあたる。参照フレームの
+// 自転回転系がこれを姿勢に使い、公転回転系(z = 軌道面法線)と軸の割り当てが揃う。
+export function meridianBasisToEci(axis: Vec3, spinAngle: number): Quat {
+  // up は自転軸に直交するように組むので、qFromForwardUp の退化条件には当たらない。
+  return qFromForwardUp(axis, cross(axis, meridianDirection(axis, spinAngle)))!;
+}
+
 // 自転軸と自転位相から組む天体の姿勢。モデル座標の +Y が自転軸、+Z が本初子午線を向く。
 export function spinOrientation(axis: Vec3, spinAngle: number): Quat | null {
   return qFromForwardUp(meridianDirection(axis, spinAngle), axis);

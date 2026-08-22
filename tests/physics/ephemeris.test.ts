@@ -9,6 +9,9 @@ import { EPS } from '../../src/physics/ecliptic';
 import { PlanetOrbit } from '../../src/physics/planet-orbit';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
 import { JULIAN_CENTURY, keplerOrbitState } from '../../src/physics/kepler-orbit';
+import { qInvert, qMul, qRotate } from '../../src/physics/attitude';
+import { meridianDirection } from '../../src/physics/body-orientation';
+import { SIDEREAL_DAY } from '../../src/physics/solar-system';
 import { cross, dot, len, norm, scale, sub, v3 } from '../../src/physics/vec3';
 
 const YEAR = 365.25636 * 86400;
@@ -406,6 +409,47 @@ export function register(): void {
     const plutoOrbit = planetOrbit('pluto');
     const q = plutoOrbit.a * (1 - plutoOrbit.e);
     assert.ok(q < planetOrbit('neptune').a, `冥王星近日点: ${q}, 海王星半長径: ${planetOrbit('neptune').a}`);
+  });
+
+  test('ephemeris: spinRotationAt(earth) の姿勢は1恒星日でほぼ元へ戻る', () => {
+    const q0 = eph.spinRotationAt('earth', 0)!.q;
+    const q1 = eph.spinRotationAt('earth', SIDEREAL_DAY)!.q;
+    // q1 * inverse(q0) の回転角(2倍角の余弦を w から取り出す)が 2π の整数倍に近いかを見る。
+    const rel = qMul(q1, qInvert(q0));
+    const angle = 2 * Math.acos(Math.min(1, Math.abs(rel.w)));
+    assert.ok(angle < 1e-6, `1恒星日後の残差角: ${angle}`);
+  });
+
+  test('ephemeris: spinRotationAt(earth) の omega の大きさは 2π/恒星日 に一致する', () => {
+    const { omega } = eph.spinRotationAt('earth', 12345)!;
+    const expected = (2 * Math.PI) / SIDEREAL_DAY;
+    assert.ok(Math.abs(len(omega) - expected) / expected < 1e-6, `|omega|: ${len(omega)} vs ${expected}`);
+  });
+
+  test('ephemeris: spinRotationAt は自転モデルを持たない天体(ceres)で null', () => {
+    assert.equal(eph.spinRotationAt('ceres', 0), null);
+  });
+
+  // 公転回転系(orbitFrameRotationAt)が ẑ に軌道面法線・x̂ に中心天体→天体を置くのに合わせ、
+  // 自転回転系は ẑ に自転軸・x̂ に本初子午線を置く。ここが崩れると、自転系だけ軸の意味が
+  // 変わってしまい、同じパネルで選んだ2つの座標系が別の規約で回る。
+  test('ephemeris: spinRotationAt の基底は ẑ = 自転軸、x̂ = 本初子午線', () => {
+    const t = 98765;
+    const { axis, spinAngle } = eph.poleAt('earth', t)!;
+    const { q } = eph.spinRotationAt('earth', t)!;
+    const zHat = qRotate(q, v3(0, 0, 1));
+    const xHat = qRotate(q, v3(1, 0, 0));
+    const meridian = meridianDirection(axis, spinAngle);
+    assert.ok(len(sub(zHat, axis)) < 1e-9, `ẑ: ${JSON.stringify(zHat)} vs ${JSON.stringify(axis)}`);
+    assert.ok(len(sub(xHat, meridian)) < 1e-9, `x̂: ${JSON.stringify(xHat)} vs ${JSON.stringify(meridian)}`);
+  });
+
+  // 逆行自転は軸を反転せずに角速度の符号で表す — 金星の omega は IAU の北極と逆を向く。
+  test('ephemeris: 逆行自転(金星)の omega は自転軸と逆向き', () => {
+    const t = 4242;
+    const { axis } = eph.poleAt('venus', t)!;
+    const { omega } = eph.spinRotationAt('venus', t)!;
+    assert.ok(dot(omega, axis) < 0, `dot: ${dot(omega, axis)}`);
   });
 }
 
