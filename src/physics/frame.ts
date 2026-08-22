@@ -11,7 +11,7 @@
 //
 // シミュレーション全体は地球中心の慣性系(ECI)で回っている。座標系はあくまで「軌道線など
 // 個々の描画物」の表示用で、シーン全体を差し替えるものではない。
-import { CelestialBodyId } from './celestial-body';
+import { CelestialBody, CelestialBodyId } from './celestial-body';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { add, cross, sub, v3, Vec3 } from './vec3';
 import { Quat, qInvert, qRotate } from './attitude';
@@ -21,7 +21,7 @@ import { Quat, qInvert, qRotate } from './attitude';
 // リテラルで組むと参照同一性が崩れ、trajectory-line.ts の `frame === lastFrame` による
 // キャッシュ判定が毎フレーム外れて描画が無駄に重くなる。
 export type ReferenceFrame = {
-  readonly center: CelestialBodyId;
+  readonly center: FrameAnchorId;
   readonly rotatingWith: FrameRotationSource | null;
 };
 
@@ -46,6 +46,19 @@ export const FRAME_ROLES: readonly FrameRole[] = ['activeShip', 'navTarget'];
 export function frameRoleOf(id: FrameAnchorId): FrameRole | null {
   const role = id.startsWith('@') ? id.slice(1) : null;
   return role !== null && FRAME_ROLES.includes(role as FrameRole) ? role as FrameRole : null;
+}
+
+// frameTransformAt が FrameAnchorId(天体レジストリに無いもの)の位置・主天体を引くための
+// 解決役。実装は game/frame-anchors.ts に置く(生存中のエンティティ・役割トークンの解決には
+// Ephemeris が知らない Game 側の状態が要るため)。
+export interface FrameAnchorSource {
+  // このフレームの登録重力天体一覧。strongestAttractor/occlusion など、frameTransformAt 以外の
+  // 用途で celestialBodies 配列そのものが要る呼び出し元もここから読み、二重に持ち回らない。
+  readonly bodies: readonly CelestialBody[];
+  // 登録天体でない基準(生存中の重力天体・機体・役割トークン)の ECI 状態。解決できなければ null。
+  stateOf(id: FrameAnchorId, t: number): KinematicState | null;
+  // その基準が公転している主天体。公転回転系を組めないなら null。
+  attractorOf(id: FrameAnchorId, t: number): CelestialBodyId | null;
 }
 
 // frameOf のキャッシュキー。同じ選択には必ず同じ文字列を返す(参照同一性の維持に使う)。

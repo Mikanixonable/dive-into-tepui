@@ -14,6 +14,7 @@ import { meridianDirection } from '../../src/physics/body-orientation';
 import { SIDEREAL_DAY } from '../../src/physics/solar-system';
 import { cross, dot, len, norm, scale, sub, v3 } from '../../src/physics/vec3';
 import { toFrameState } from '../../src/physics/frame';
+import { bodyAnchorSource } from '../../src/physics/celestial-body';
 import { kinematicState } from '../../src/physics/kinematic-state';
 
 const YEAR = 365.25636 * 86400;
@@ -455,7 +456,7 @@ export function register(): void {
   // 軌道線では気付けず、速度を通す量(座標系相対速度・計画バーンの Δv)だけが静かにずれる。
   test('ephemeris: 自転回転系では地表に固定した点の座標系相対速度が 0 になる', () => {
     const t = 55555;
-    const tf = eph.frameTransformAt(eph.frameOf('earth', { kind: 'spin', id: 'earth' }), t, []);
+    const tf = eph.frameTransformAt(eph.frameOf('earth', { kind: 'spin', id: 'earth' }), t, bodyAnchorSource([]));
     // 座標系相対で (R, 0, 0) に置いた点を ECI へ戻し、自転とともに動く速度を与える。
     const r = qRotate(tf.q, v3(R_EARTH_EQ, 0, 0));
     const rel = toFrameState(tf, kinematicState(t, r, cross(tf.omega, r)));

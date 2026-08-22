@@ -12,7 +12,7 @@ import { AbsoluteEphemeris, OriginCenteredEphemeris } from './absolute-ephemeris
 import { CelestialBody, CelestialBodyId, Degree2Gravity, OrbitingId } from './celestial-body';
 import { cassiniSpinAxis, meridianBasisToEci, meridianDirection, orthogonalizedTo, spinPhaseOf } from './body-orientation';
 import { ECI_POLE, ECL_POLE_ECI, raDecToEci } from './ecliptic';
-import { FrameRotationSource, ReferenceFrame, FrameTransform, rotationSourceKey } from './frame';
+import { FrameAnchorId, FrameAnchorSource, FrameRotationSource, ReferenceFrame, FrameTransform, rotationSourceKey } from './frame';
 import { FrameRotation, KeplerOrbit, keplerOrbitMeanDirection, keplerOrbitNormal, keplerOrbitRotation, keplerOrbitState } from './kepler-orbit';
 import {
   LagrangePoints, collinearClearanceRatio, hasStableTriangularPoints, lagrangePoints,
@@ -144,7 +144,7 @@ export class Ephemeris {
   // (center, rotationSourceKey(rotatingWith)) の対ごとに ReferenceFrame を1個だけ持つキャッシュ。
   // frameOf/frameFor/inertialFrame/frames はすべてこれを経由するので、同じ対に対して異なる参照が
   // 生まれない(rotatingWith オブジェクト自身もキャッシュ内で1個だけ作って使い回す)。
-  private readonly frameCache = new Map<CelestialBodyId, Map<string, ReferenceFrame>>();
+  private readonly frameCache = new Map<FrameAnchorId, Map<string, ReferenceFrame>>();
 
   // registry/originId/epochOffsetSec を省略すると現実の太陽系・地球原点・既定エポックで動く。
   // starId・inertialFrame・frames は registry から1度だけ導出し、以後は参照を使い回す。
@@ -482,8 +482,9 @@ export class Ephemeris {
 
   // center 中心・rotatingWith の回転(公転か自転)に合わせて回る座標系(rotatingWith が null
   // なら慣性系)。同じ対には常に同じ参照を返す。center/rotatingWith.id は registry に
-  // 登録されていない id(生存中の重力天体)でもよい — frameTransformAt 側がその場合の解決を担う。
-  frameOf(center: CelestialBodyId, rotatingWith: FrameRotationSource | null): ReferenceFrame {
+  // 登録されていない id(生存中の重力天体・機体・役割トークン)でもよい —
+  // frameTransformAt 側がその場合の解決を担う。
+  frameOf(center: FrameAnchorId, rotatingWith: FrameRotationSource | null): ReferenceFrame {
     let byRotation = this.frameCache.get(center);
     if (byRotation === undefined) {
       byRotation = new Map();
@@ -508,11 +509,12 @@ export class Ephemeris {
   // 自転モデルを持たなければ恒等)。'revolution' は、その天体が現在の registry に登録されて
   // いれば解析的な公転回転基準系(orbitFrameRotationAt)を使う — 既定レジストリでの月・地球
   // 回転系など既存の座標系はこの経路のみを通るので挙動は変わらない。登録されていない
-  // (= 生存中の重力天体の)id は、保存された解析軌道を持たないので、celestialBodies から拾った
-  // その瞬間の相対状態(x̂ = center→id、ẑ = 相対角運動量方向)から骨組みの基底を組む — 自由な
-  // 多体系にとってこれが唯一妥当なモデルであり、長期の解析近似ではない。
-  frameTransformAt(frame: ReferenceFrame, t: number, celestialBodies: readonly CelestialBody[]): FrameTransform {
-    const origin = this.frameBodyState(frame.center, t, celestialBodies);
+  // (= 生存中の重力天体・機体・役割トークンの)id は解析軌道を持たないので、source が答える
+  // 主天体との瞬間の相対状態(x̂ = 主天体→id、ẑ = 相対角運動量方向)から骨組みの基底を組む —
+  // 主天体は frame.center とは独立に source.attractorOf(rotatingWith.id, t) が決める
+  // (CELESTIAL.md 8節: 原点をどこに選んでも回転対象自身の主天体まわりの公転になる)。
+  frameTransformAt(frame: ReferenceFrame, t: number, source: FrameAnchorSource): FrameTransform {
+    const origin = this.anchorStateAt(frame.center, t, source);
     const rotatingWith = frame.rotatingWith;
     if (rotatingWith === null) return { origin: origin.r, originVel: origin.v, ...IDENTITY_ROTATION };
     if (rotatingWith.kind === 'spin') {
@@ -524,11 +526,14 @@ export class Ephemeris {
       const { q, omega } = this.orbitFrameRotationAt(rotatingWith.id as OrbitingId, t);
       return { origin: origin.r, originVel: origin.v, q, omega };
     }
-    const body = celestialBodies.find((a) => a.id === rotatingWith.id);
-    if (body === undefined) return { origin: origin.r, originVel: origin.v, ...IDENTITY_ROTATION };
-    const rel = sub(body.state.r, origin.r);
-    const relVel = sub(body.state.v, origin.v);
+    const target = source.stateOf(rotatingWith.id, t);
+    const primaryId = target !== null ? source.attractorOf(rotatingWith.id, t) : null;
+    if (target === null || primaryId === null) return { origin: origin.r, originVel: origin.v, ...IDENTITY_ROTATION };
+    const primary = this.anchorStateAt(primaryId, t, source);
+    const rel = sub(target.r, primary.r);
+    const relVel = sub(target.v, primary.v);
     const h = cross(rel, relVel);
+    if (lenSq(rel) < 1 || lenSq(h) < 1e-9) return { origin: origin.r, originVel: origin.v, ...IDENTITY_ROTATION };
     const xHat = norm(rel);
     const zHat = norm(h);
     const yHat = cross(zHat, xHat);
@@ -537,11 +542,11 @@ export class Ephemeris {
     return { origin: origin.r, originVel: origin.v, q, omega };
   }
 
-  // 座標系の中心天体の状態。registry に登録されていない id は celestialBodies から拾う
-  // (生存中の重力天体を中心に据えた座標系)。どちらでも見つからなければ ECI 原点に落とす。
-  private frameBodyState(id: CelestialBodyId, t: number, celestialBodies: readonly CelestialBody[]): KinematicState {
-    if (id in this.registry) return this.stateOf(id, t);
-    return celestialBodies.find((a) => a.id === id)?.state ?? kinematicState(t, v3(), v3());
+  // FrameAnchorId の時刻 t における状態。registry にあれば暦(stateOf)、無ければ source
+  // (生存中の重力天体・機体・役割トークン)に委ね、どちらでも解決できなければ ECI 原点に落とす。
+  private anchorStateAt(id: FrameAnchorId, t: number, source: FrameAnchorSource): KinematicState {
+    if (id in this.registry) return this.stateOf(id as CelestialBodyId, t);
+    return source.stateOf(id, t) ?? kinematicState(t, v3(), v3());
   }
 
   // 天体の自転軸(単位ベクトル、ECI)と、その軸まわりの自転位相 [rad]。自転軸を持たない天体は null。

@@ -20,7 +20,7 @@
 // 平行移動の順で正しい。
 import * as THREE from 'three/webgpu';
 import { KinematicState, kinematicState } from '../physics/kinematic-state';
-import { ReferenceFrame, toFrameState } from '../physics/frame';
+import { FrameAnchorSource, ReferenceFrame, toFrameState } from '../physics/frame';
 import { CelestialBody } from '../physics/celestial-body';
 import type { Ephemeris } from '../physics/ephemeris';
 import { DynamicTrajectory } from '../physics/dynamic-trajectory';
@@ -120,7 +120,7 @@ export class TrajectoryLine {
   // だけで見た目には出ない。
   syncGeometry(
     trajectory: DynamicTrajectory | null, from: number | null, to: number | null, frame: ReferenceFrame,
-    ephemeris: Ephemeris, celestialBodies: readonly CelestialBody[],
+    ephemeris: Ephemeris, frameAnchors: FrameAnchorSource,
   ): void {
     const samples = trajectory?.samplesOldestFirst() ?? NO_SAMPLES;
     const tip = samples.length > 0 ? samples[samples.length - 1]! : null;
@@ -144,7 +144,7 @@ export class TrajectoryLine {
       // 座標系の原点・姿勢はサンプルごとの時刻で評価する(回転系は時刻で向きが変わるため)。
       const queue = new StateQueue(Math.max(1, combined.length));
       for (const s of combined) {
-        const rel = toFrameState(ephemeris.frameTransformAt(frame, s.t, celestialBodies), s);
+        const rel = toFrameState(ephemeris.frameTransformAt(frame, s.t, frameAnchors), s);
         queue.push(kinematicState(s.t, rel.r, rel.v));
       }
       this.baked = queue;
@@ -195,9 +195,9 @@ export class TrajectoryLine {
   // currentTime = 描画時刻(通常 simTime)。
   syncTransform(
     frame: ReferenceFrame, currentTime: number, ephemeris: Ephemeris, fo: FloatingOrigin,
-    celestialBodies: readonly CelestialBody[],
+    frameAnchors: FrameAnchorSource,
   ): void {
-    const tf = ephemeris.frameTransformAt(frame, currentTime, celestialBodies);
+    const tf = ephemeris.frameTransformAt(frame, currentTime, frameAnchors);
     this.unbakeQuat.set(tf.q.x, tf.q.y, tf.q.z, tf.q.w);
     this.curve.setTransform(fo.RtoThreeV3(tf.origin), this.unbakeQuat);
   }

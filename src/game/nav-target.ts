@@ -6,7 +6,7 @@ import { KinematicState } from '../physics/kinematic-state';
 import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from '../physics/elements';
 import { CelestialBody, OrbitingId, frameOfCelestialBody, strongestAttractor } from '../physics/celestial-body';
 import type { LagrangePoints } from '../physics/lagrange';
-import { toFrameState, unbakeToDisplayPoint } from '../physics/frame';
+import { FrameAnchorSource, toFrameState, unbakeToDisplayPoint } from '../physics/frame';
 import { bodyDef } from '../physics/solar-system';
 import type { Ephemeris } from '../physics/ephemeris';
 import { qRotate } from '../physics/attitude';
@@ -121,15 +121,16 @@ export class NavTarget {
   // 表示時刻で un-bake して描画座標系へ移す。
   update(
     player: Player | null, entities: EntityManager, ephemeris: Ephemeris, displayWindow: DisplayWindow,
+    frameAnchors: FrameAnchorSource,
   ): void {
     const { simTime, displayTime, frame } = displayWindow;
     this.anPos = this.dnPos = this.anTime = this.dnTime = null;
     this.ownerName = player?.name ?? null;
-    this.celestialBodies = ephemeris.celestialBodiesAt(displayTime);
+    this.celestialBodies = frameAnchors.bodies;
     if (!this.targetId) return;
     // 航法ターゲット自身の赤道交点は、自機の軌道要素が求まるかどうかとは無関係に出す。
     const target = this.resolveEntity(this.targetId, entities);
-    target?.ensureEquatorNodes(this.markerManager).update(frame, displayTime, ephemeris);
+    target?.ensureEquatorNodes(this.markerManager).update(frame, displayTime, ephemeris, frameAnchors);
     if (!player) return;
     const stateCelestialBodies = ephemeris.celestialBodiesAt(simTime);
     const playerCenter = strongestAttractor(player.state.r, stateCelestialBodies);
@@ -148,9 +149,9 @@ export class NavTarget {
     const dnT = simTime + tofBetween(playerEl, nu0, nodes.desc);
     const anEci = add(ephemeris.positionOf(playerCenter.id, anT), positionOnOrbit(playerEl, nodes.asc));
     const dnEci = add(ephemeris.positionOf(playerCenter.id, dnT), positionOnOrbit(playerEl, nodes.desc));
-    const unbakeTf = ephemeris.frameTransformAt(frame, displayTime, this.celestialBodies);
+    const unbakeTf = ephemeris.frameTransformAt(frame, displayTime, frameAnchors);
     const toDisplay = (r: Vec3, t: number): Vec3 =>
-      unbakeToDisplayPoint(unbakeTf, ephemeris.frameTransformAt(frame, t, this.celestialBodies), r);
+      unbakeToDisplayPoint(unbakeTf, ephemeris.frameTransformAt(frame, t, frameAnchors), r);
     this.anPos = toDisplay(anEci, anT);
     this.dnPos = toDisplay(dnEci, dnT);
     this.anTime = anT;

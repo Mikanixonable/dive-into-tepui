@@ -9,6 +9,7 @@ import { focusTargetId } from './camera/focus-target';
 import { EntityManager } from './simulation/entity-manager';
 import { Ephemeris } from '../physics/ephemeris';
 import { NavTarget } from './nav-target';
+import type { FrameAnchorSource } from '../physics/frame';
 import { CameraSystem } from './camera/camera-system';
 import { PlanEditor } from './plan/plan-editor';
 import type { ActivePlayerController } from './active-player-controller';
@@ -71,6 +72,7 @@ export class MapPickables {
     private readonly cameraSystem: CameraSystem,
     private readonly editor: PlanEditor,
     private readonly markerManager: MarkerManager,
+    private readonly frameAnchors: FrameAnchorSource,
   ) {}
 
   // マップの天体ラベル(表示のみ)と航法ターゲットの AN/DN を求め直したうえで、このフレームの
@@ -101,7 +103,7 @@ export class MapPickables {
       displayTime, focusId, this.cameraSystem.bodyClassToggles,
       this.cameraSystem.activeCameraPos, visibilityPolicy,
     );
-    this.navTarget.update(this.activePlayers.current, this.entities, this.ephemeris, displayWindow);
+    this.navTarget.update(this.activePlayers.current, this.entities, this.ephemeris, displayWindow, this.frameAnchors);
 
     // 船の位置は表示時刻の displayState — 機体メッシュや敵マーカーと同じ未来ゴースト位置に揃える。
     this.candidateItems.length = 0;

@@ -1,6 +1,6 @@
 // MapCamera の注視対象。天体候補列から毎フレーム引く 'object' と、座標系に焼き込んだ
 // 固定点を表す 'point' の判別共用体。
-import { FramePoint, ReferenceFrame, toFramePoint } from '../../physics/frame';
+import { FrameAnchorSource, FramePoint, ReferenceFrame, toFramePoint } from '../../physics/frame';
 import { Vec3 } from '../../physics/vec3';
 import type { Ephemeris } from '../../physics/ephemeris';
 
@@ -14,7 +14,9 @@ export function focusTargetId(target: FocusTarget): string | undefined {
 }
 
 // ECI 位置 pos(時刻 t)を frame に焼き込んだ固定点フォーカスを組む。
-export function focusPoint(ephemeris: Ephemeris, frame: ReferenceFrame, pos: Vec3, t: number): FocusTarget {
-  const tf = ephemeris.frameTransformAt(frame, t, ephemeris.celestialBodiesAt(t));
+export function focusPoint(
+  ephemeris: Ephemeris, frame: ReferenceFrame, pos: Vec3, t: number, frameAnchors: FrameAnchorSource,
+): FocusTarget {
+  const tf = ephemeris.frameTransformAt(frame, t, frameAnchors);
   return { kind: 'point', frame, point: toFramePoint(tf, pos) };
 }
