@@ -1,6 +1,6 @@
 import { AnyPart } from './game-entity/parts';
 import { EnemyKind } from './game-entity/enemy';
-import { AttractorId } from '../physics/attractor';
+import { CelestialBodyId } from '../physics/celestial-body';
 import type { GamePhase } from './stages/stage';
 import type { WaveAttackSaveData } from './stages/stage-utils/wave-attack';
 
@@ -176,7 +176,7 @@ export interface SnapshotMeta {
   name: string;
   createdAtReal: number;
   simTime: number;
-  centerBodyId: AttractorId;
+  centerBodyId: CelestialBodyId;
   altitude: number;
   speed: number;
   hpRatio: number;
@@ -286,7 +286,7 @@ export interface GameSaveData {
   simTime: number;
   /** 旧スナップショットには無い。存在する場合は現在の暦と一致しなければ復元しない。 */
   ephemerisContext?: EphemerisContext;
-  phaseOffsets: Partial<Record<AttractorId, number>>;
+  phaseOffsets: Partial<Record<CelestialBodyId, number>>;
   /** 旧スナップショットには無い。存在しなければ地球の自転初期位相は復元されない。 */
   earthSpinPhase0?: number;
   players: PlayerSaveData[];

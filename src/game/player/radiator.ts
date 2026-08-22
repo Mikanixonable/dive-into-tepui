@@ -12,8 +12,7 @@ import {
 } from '../../render/ships';
 import * as C from '../const';
 import { GameEntity } from '../game-entity/game-entity';
-import type { Attractor } from '../../physics/attractor';
-import type { Contact } from '../simulation/contact';
+import type { Contact } from '../game-entity/contact';
 import type { Stage } from '../stages/stage';
 import type { Player } from './player';
 import type { RadiatorSaveData } from '../save-data';
@@ -58,14 +57,14 @@ export class RadiatorFold extends GameEntity {
   }
 
   // 吊り元の艦、およびそれに取り付いた他の実体(放熱板の他の折り・ベルトの節点)とは接触しない。
-  contactsWith(other: GameEntity | Attractor): boolean {
+  contactsWith(other: GameEntity): boolean {
     if (other === this.owner) return false;
-    return !(other instanceof GameEntity && other.attachedTo === this.owner);
+    return other.attachedTo !== this.owner;
   }
 
-  // 帰結は owner の collideAtRadiator に委ねる。
-  collideWith(other: GameEntity | Attractor, contact: Contact, activeStage: Stage): void {
-    this.owner.collideAtRadiator(this.side, other, contact, activeStage);
+  // 帰結は owner の collideAtRadiatorWithEntity に委ねる。
+  collideWithEntity(other: GameEntity, contact: Contact, activeStage: Stage): void {
+    this.owner.collideAtRadiatorWithEntity(this.side, other, contact, activeStage);
   }
 }
 

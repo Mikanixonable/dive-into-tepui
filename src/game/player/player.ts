@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { Attitude, qFromForwardUp } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
-import { MU_EARTH, R_EARTH, earthAltitudeOf } from '../../physics/solar-system';
+import { MU_EARTH, R_EARTH } from '../../physics/solar-system';
 import { Vec3, v3, len, sub } from '../../physics/vec3';
 import { fmtMarkerDist } from '../hud/utils';
 import { FloatingOrigin } from '../floating-origin';
@@ -10,14 +10,14 @@ import { Ship } from '../game-entity/ship';
 import { Bullet } from '../game-entity/bullet';
 import type { GameEntity } from '../game-entity/game-entity';
 import type { EntityManager } from '../simulation/entity-manager';
-import type { Contact } from '../simulation/contact';
+import { closingSpeed, type Contact } from '../game-entity/contact';
+import { contactDamageSpeed } from '../game-entity/contact-damage';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { buildPlayerShip } from '../../render/ships';
-import { Attractor, reachedBody } from '../../physics/attractor';
-import { burnUpBody } from '../../physics/atmosphere';
+import { CelestialBody, nearestAtmosphereBody } from '../../physics/celestial-body';
 import type { CameraSystem } from '../camera/camera-system';
 import { focusTargetId } from '../camera/focus-target';
 import type { MapVisibility } from '../celestial/map-visibility';
@@ -109,6 +109,7 @@ export class Player extends Ship {
     this.playerScene = _scene;
     this.mass = C.PLAYER_MASS;
     this.collides = true;
+    this.doPreciseReentry = true;
 
     const saved = 'saved' in init ? init.saved : undefined;
     this.throttle = new PlayerThrottle(_hud, saved?.throttle);
@@ -214,8 +215,6 @@ export class Player extends Ship {
 
     this.throttle.updateThrustLatches(input);
     this.thrust = this.throttle.updateThrustState(input, this.att, simDt, this);
-    // 噴射中は毎フレーム破棄する — 次の Predictor がその時点の実状態を種に作り直す。
-    if (this.thrust !== null) this.invalidatePrediction();
 
     // 操作対象艦での手動並進・手動回転は 'powered' 自動実行を中断する(進行方向ホールドが
     // 手動回転で解除されるのと同じ作法)。
@@ -233,10 +232,8 @@ export class Player extends Ship {
     this.hpRegen(dt);
   }
 
-  // 軌道・姿勢と同じsimulation clockで受動環境系を進める。Game.behaveのwall dtから
-  // 分離し、各substep終端の位置・姿勢・太陽方向を使うことでwarp依存を防ぐ。
-  // bodies はこの substep の天体窓で、恒星の取り出しと日照率の遮蔽体に使う。
-  stepEnvironment(dt: number, ephemeris: Ephemeris, simTime: number, bodies: readonly Attractor[]): void {
+  // bodies はこの区間の天体窓で、恒星の取り出しと日照率の遮蔽体に使う。
+  override stepEnvironment(dt: number, ephemeris: Ephemeris, simTime: number, bodies: readonly CelestialBody[]): void {
     if (!this.alive) return;
     this.radiator.update(dt, this.radiatorWear());
     const sunDir = ephemeris.sunDirFrom(this.state.r, simTime);
@@ -247,7 +244,8 @@ export class Player extends Ship {
       this.radiator.solarLoad(sunlit, sunDir, this.att, this.totalCoolingRate),
     );
     this.power.update(dt, sunlit, sunDir, this.att, this);
-    this.thermal.updateThermal(dt, this.state.r, this.state.v, this);
+    this.thermal.updateThermal(
+      dt, this.state.r, this.state.v, nearestAtmosphereBody(this.state.r, bodies), this);
   }
 
   // 操作できない間、次のフレームへ持ち越してはならない連続指令を畳む。
@@ -319,9 +317,9 @@ export class Player extends Ship {
     this.destroyEffect();
   }
 
-  // 弾は武装のダメージを、それ以外は接触の速度変化 Δv = impulse/mass を根拠にする
-  // (前者はゲームバランス、後者は物理量で、統合すると前者の根拠が消える)。
-  collideWith(other: GameEntity | Attractor, contact: Contact, activeStage: Stage): void {
+  // 弾は武装のダメージを、それ以外は接触の接近速度と相手の種別を根拠にする
+  // (どちらもゲームバランスの量で、物理の質量からは導かない)。
+  collideWithEntity(other: GameEntity, contact: Contact, activeStage: Stage): void {
     if (!this.alive) return;
 
     if (other instanceof Bullet) {
@@ -329,22 +327,18 @@ export class Player extends Ship {
       return;
     }
 
-    // 弾以外との接触は Δv ベースの物理ダメージとして、無作為なパーツへ振り分ける。
-    if (!this.applyCollisionDamage(contact.impulse / this.mass)) return;
-    if (this.hp > 0) {
-      this._worldSfx.clank();
-      this._fx.spawnGasPuff(this.state);
-      return;
-    }
+    this.damagedByContact(contactDamageSpeed(other, contact), null, '高速接触により機体を喪失した', activeStage);
+  }
 
-    this.alive = false;
-    activeStage.recordPlayerLost('高速接触により機体を喪失した');
-    this.destroyEffect();
+  // 天体の固体表面への接触。相手の種別による重みが無いので接近速度がそのまま根拠になる。
+  collideWithCelestialBody(_body: CelestialBody, contact: Contact, activeStage: Stage): void {
+    if (!this.alive) return;
+    this.damagedByContact(closingSpeed(contact), null, '天体の地表へ到達し機体は失われた', activeStage);
   }
 
   // 放熱板の接触代理(RadiatorFold)からの帰結。ダメージの割り振り先が side のパーツに
-  // 固定される点だけが collideWith(機体本体)との違い。
-  collideAtRadiator(side: RadiatorSide, other: GameEntity | Attractor, contact: Contact, activeStage: Stage): void {
+  // 固定される点だけが collideWithEntity(機体本体)との違い。
+  collideAtRadiatorWithEntity(side: RadiatorSide, other: GameEntity, contact: Contact, activeStage: Stage): void {
     if (!this.alive) return;
 
     if (other instanceof Bullet) {
@@ -352,10 +346,17 @@ export class Player extends Ship {
       return;
     }
 
-    // 弾以外との接触は、collideWith と異なり side の放熱板パーツへ固定して振り分ける。
-    const damagedPart = this.radiatorParts[side === 'up' ? 0 : 1];
-    if (!this.applyCollisionDamage(contact.impulse / this.mass, damagedPart)) return;
-    if (damagedPart && damagedPart.hp <= 0) this.radiatorBreakEffect(side);
+    this.damagedByContact(contactDamageSpeed(other, contact), side, '高速接触により機体を喪失した', activeStage);
+  }
+
+  // 接触によるダメージ・致死判定。side を指定するとその放熱板パーツへ、無指定なら無作為な
+  // パーツへダメージが入る。
+  private damagedByContact(
+    damageSpeed: number, side: RadiatorSide | null, lossReason: string, activeStage: Stage,
+  ): void {
+    const damagedPart = side === null ? undefined : this.radiatorParts[side === 'up' ? 0 : 1];
+    if (!this.applyCollisionDamage(damageSpeed, damagedPart)) return;
+    if (side !== null && damagedPart && damagedPart.hp <= 0) this.radiatorBreakEffect(side);
     if (this.hp > 0) {
       this._worldSfx.clank();
       this._fx.spawnGasPuff(this.state);
@@ -363,7 +364,7 @@ export class Player extends Ship {
     }
 
     this.alive = false;
-    activeStage.recordPlayerLost('高速接触により機体を喪失した');
+    activeStage.recordPlayerLost(lossReason);
     this.destroyEffect();
   }
 
@@ -372,18 +373,21 @@ export class Player extends Ship {
     return this.radiator.collisionFolds(this.state.r, this.state.v, this.att, simTime);
   }
 
-  // 熱防御の飽和・空力破壊・大気突入高度・天体の地表到達の判定(自然死)。
-  checkLoss(dt: number, _simTime: number, activeStage: Stage, _playerPos: Vec3, attractors: readonly Attractor[]): void {
+  // 熱防御の飽和・熱機能不全・空力破壊・天体の地表到達の判定(自然死)。大気による焼失は
+  // 熱・動圧の物理モデルだけが判定する — 自機は外殻温度と動圧を積分しているので、それより
+  // 粗い高度・密度の近似を重ねる理由がない。
+  checkLoss(
+    dt: number, _simTime: number, activeStage: Stage, _playerPos: Vec3,
+    atmosphereBodies: readonly CelestialBody[],
+  ): void {
     if (!this.alive) return;
-    const limit = this.thermal.updateAltitudeAlarm(dt, earthAltitudeOf(this.state.r));
+    const limit = this.thermal.updateAltitudeAlarm(
+      dt, this.state.r, nearestAtmosphereBody(this.state.r, atmosphereBodies));
 
-    // 熱・動圧・大気突入・地表到達のいずれかを喪失理由として判定する
     let reason: string | null = null;
     if (limit === 'heat-aero') reason = '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した';
     else if (limit === 'heat-internal') reason = '排熱が追いつかず、機体は熱で機能不全に陥った';
     else if (limit === 'dynpressure') reason = '動圧が構造限界を超え、機体は空力的に分解した';
-    else if (burnUpBody(this.state.r, attractors, C.PLAYER_MIN_ALT) !== null) reason = '大気圏に突入し機体は焼失した';
-    else if (reachedBody(this.actual.prevState, this.state, attractors, C.PLAYER_MIN_ALT) !== null) reason = '天体の地表へ到達し機体は失われた';
     if (reason === null) return;
 
     this.alive = false;
@@ -440,7 +444,7 @@ export class Player extends Ship {
     displayTime: number,
     isActive: boolean,
     ephemeris: Ephemeris,
-    attractors: readonly Attractor[],
+    celestialBodies: readonly CelestialBody[],
     visibility: MapVisibility | null = null,
     displayWindow?: DisplayWindow,
     orbitRef?: OrbitReference,
@@ -467,7 +471,7 @@ export class Player extends Ship {
     this.radiator.sync();
     this.power.sync();
     // マーカー。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
-    this.markers.sync(this.state, displayState, this.att, camera.overviewMode, isActive, camera.activeCameraPos, camera.activeCameraProjection, camera.activeCameraScale, this.name, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.mapCamera.focus), ephemeris.registry, attractors, visibility, displayWindow?.frame, displayTime, ephemeris, orbitRef);
+    this.markers.sync(this.state, displayState, this.att, camera.overviewMode, isActive, camera.activeCameraPos, camera.activeCameraProjection, camera.activeCameraScale, this.name, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.mapCamera.focus), ephemeris.registry, celestialBodies, visibility, displayWindow?.frame, displayTime, ephemeris, orbitRef);
   }
 
   // 艦は任意のタイミングで削除されうるので、Player が所有する線・ビルボード・HUD も一度だけ解放する。

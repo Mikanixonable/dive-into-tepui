@@ -21,7 +21,7 @@
 import * as THREE from 'three/webgpu';
 import { KinematicState, kinematicState } from '../physics/kinematic-state';
 import { ReferenceFrame, toFrameState } from '../physics/frame';
-import { Attractor } from '../physics/attractor';
+import { CelestialBody } from '../physics/celestial-body';
 import type { Ephemeris } from '../physics/ephemeris';
 import { DynamicTrajectory } from '../physics/dynamic-trajectory';
 import { extrapolatedRelativeStates } from '../physics/kepler-extrapolation';
@@ -52,7 +52,7 @@ function extrapolationTargetInterval(baseInterval: number, span: number): number
 // なので、各サンプル自身の時刻における center の ECI 状態を足し戻す。離心率が高すぎる・
 // 双曲線などで外挿できない場合は空配列。
 function extrapolatedTailStates(
-  tip: KinematicState, center: Attractor, to: number, baseInterval: number, ephemeris: Ephemeris,
+  tip: KinematicState, center: CelestialBody, to: number, baseInterval: number, ephemeris: Ephemeris,
 ): KinematicState[] {
   const span = to - tip.t;
   const target = extrapolationTargetInterval(baseInterval, span);
@@ -79,6 +79,11 @@ export class TrajectoryLine {
 
   // bake 済みの frame 相対状態列。sampler はこの列に時刻を渡すだけ。
   private baked = new StateQueue();
+  // bake 済み列の時刻(昇順)。initialTs を組み直すのに使う。
+  private bakedTimes: readonly number[] = [];
+  // Curve の適応分割へ渡す初期頂点の t 列。サンプル自身の位置を必ず頂点にするためのもので、
+  // 中身は buildInitialTs が組む。
+  private initialTs: readonly number[] = [];
   // 描画区間の下限(bake 済み区間の先頭へクランプ済み)。null は下限なし(保持区間全体を描く)。
   private startTime: number | null = null;
   // 描画区間の上限(bake 済み区間の末尾へクランプ済み)。null は上限なし。
@@ -115,7 +120,7 @@ export class TrajectoryLine {
   // だけで見た目には出ない。
   syncGeometry(
     trajectory: DynamicTrajectory | null, from: number | null, to: number | null, frame: ReferenceFrame,
-    ephemeris: Ephemeris, attractors: readonly Attractor[],
+    ephemeris: Ephemeris, celestialBodies: readonly CelestialBody[],
   ): void {
     const samples = trajectory?.samplesOldestFirst() ?? NO_SAMPLES;
     const tip = samples.length > 0 ? samples[samples.length - 1]! : null;
@@ -139,10 +144,11 @@ export class TrajectoryLine {
       // 座標系の原点・姿勢はサンプルごとの時刻で評価する(回転系は時刻で向きが変わるため)。
       const queue = new StateQueue(Math.max(1, combined.length));
       for (const s of combined) {
-        const rel = toFrameState(ephemeris.frameTransformAt(frame, s.t, attractors), s);
+        const rel = toFrameState(ephemeris.frameTransformAt(frame, s.t, celestialBodies), s);
         queue.push(kinematicState(s.t, rel.r, rel.v));
       }
       this.baked = queue;
+      this.bakedTimes = combined.map((s) => s.t);
       this.lastExtrapolatedTo = extrapolating ? to : null;
     }
     this.startTime = this.baked.size > 0 ? Math.max(from ?? -Infinity, this.baked.oldest!.t) : null;
@@ -151,7 +157,25 @@ export class TrajectoryLine {
       this.lastFrom = from;
       this.lastTo = to;
       this.revision = {};
+      this.initialTs = this.buildInitialTs();
     }
+  }
+
+  // 描画区間に入る bake 済みサンプル自身の時刻を t∈[0,1] へ写した、適応分割の初期頂点列
+  // (両端を含む)。Curve は弦の中点しか見ないので、何周ぶんも入りうるこの列を等分割の初期区間
+  // だけに任せると、中点がたまたま曲線に乗った区間が直線のまま残る — どこに細部があるかを
+  // 知っているのは点列を持つこちら側だけなので、その位置をそのまま渡す。
+  private buildInitialTs(): readonly number[] {
+    const start = this.startTime;
+    const end = this.endTime;
+    if (start === null || end === null || end <= start) return [];
+    const ts: number[] = [0];
+    for (const t of this.bakedTimes) {
+      const u = (t - start) / (end - start);
+      if (u > 0 && u < 1) ts.push(u);
+    }
+    ts.push(1);
+    return ts;
   }
 
   // 適応分割を実行し GPU バッファへ反映する。camera = 画面上のサジッタを実距離へ換算するための
@@ -164,16 +188,16 @@ export class TrajectoryLine {
       this.curve.clear();
       return;
     }
-    this.curve.setCurve(this.sampler, { revision: this.revision, camera });
+    this.curve.setCurve(this.sampler, { revision: this.revision, camera, initialTs: this.initialTs });
   }
 
   // 毎フレーム: 剛体 un-bake(回転) + フローティングオリジン補正(平行移動 = 座標系原点)。
   // currentTime = 描画時刻(通常 simTime)。
   syncTransform(
     frame: ReferenceFrame, currentTime: number, ephemeris: Ephemeris, fo: FloatingOrigin,
-    attractors: readonly Attractor[],
+    celestialBodies: readonly CelestialBody[],
   ): void {
-    const tf = ephemeris.frameTransformAt(frame, currentTime, attractors);
+    const tf = ephemeris.frameTransformAt(frame, currentTime, celestialBodies);
     this.unbakeQuat.set(tf.q.x, tf.q.y, tf.q.z, tf.q.w);
     this.curve.setTransform(fo.RtoThreeV3(tf.origin), this.unbakeQuat);
   }

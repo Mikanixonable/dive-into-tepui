@@ -5,7 +5,7 @@
 // ため、過去方向の履歴にも未来方向の予測列にも同じ実装をそのまま使える。
 import { KinematicState, kinematicState } from './kinematic-state';
 import { StateQueue } from './state-queue';
-import { Attractor } from './attractor';
+import { CelestialBody } from './celestial-body';
 import { extrapolatedRelativeState } from './kepler-extrapolation';
 import { Vec3, add } from './vec3';
 import { stepDynamics } from './dynamics';
@@ -24,7 +24,7 @@ export class DynamicTrajectory {
   private _samplesCache: readonly KinematicState[] | null = null;
   // 直近の step で渡された、先端位置で最も強く引く解析天体。extrapolatedAt が二体軌道の
   // 中心に使う。
-  private _extrapolationCenter: Attractor | null = null;
+  private _extrapolationCenter: CelestialBody | null = null;
 
   // state・prevState をともに初期状態で始める。
   constructor(state: KinematicState) {
@@ -34,7 +34,7 @@ export class DynamicTrajectory {
 
   get state(): KinematicState { return this._samples.newest!; }
   get prevState(): KinematicState { return this._prevState; }
-  get extrapolationCenter(): Attractor | null { return this._extrapolationCenter; }
+  get extrapolationCenter(): CelestialBody | null { return this._extrapolationCenter; }
   // 列の最も古い端での間引き間隔 [s]。列がどれだけ粗いかは列自身の属性であり、積んだ後に
   // 呼び出し側の設定が変わっても、既に積んだサンプルの粗さは変わらない。保持窓が飽和した
   // 列では、この端が最も古い保持サンプルとその1つ新しい側を挟む補間区間にあたる。
@@ -42,23 +42,39 @@ export class DynamicTrajectory {
 
   // 全天体重力 + 2次重力場 + 大気抵抗 + 太陽輻射圧 + 推力で 1 ステップ RK4 積分する
   // (dynamics.ts の stepDynamics)。attractors はそのステップぶん呼び出し側が確定させた
-  // 重力源一覧。先端は常に samples の最新要素で、1つ手前の保持サンプルから sampleInterval
-  // 秒以上離れているときだけ次の先端に置き換わらず追加保持される(解像度を落とす箇所は
-  // ここ)。保持窓は keepDuration。keepDuration = 0 なら常に前の先端を捨てて置き換えるだけ
-  // (デブリ・薬莢のコストをゼロに保つ)。
+  // 重力源一覧、occluders は日照率の遮蔽体一覧、atmosphereBody は抗力を及ぼすただ1体の
+  // 大気天体(null なら抗力なし)。
+  // sampleInterval・keepDuration は先端を積むときの保持方針(advanceTip)。
   // extrapolationCenter は extrapolatedAt が使う中心天体(省略時 null)。
   step(
     dt: number,
-    attractors: readonly Attractor[],
+    attractors: readonly CelestialBody[],
+    occluders: readonly CelestialBody[],
+    atmosphereBody: CelestialBody | null,
     bcInv: number,
     srpCoeff: number,
     thrust: Vec3 | null,
     sampleInterval: number,
     keepDuration: number,
-    extrapolationCenter: Attractor | null = null,
+    extrapolationCenter: CelestialBody | null = null,
   ): void {
+    const next = stepDynamics(
+      this.state, dt, attractors, occluders, atmosphereBody, bcInv, srpCoeff, thrust);
+    this.advanceTip(next, sampleInterval, keepDuration);
+    this._extrapolationCenter = extrapolationCenter;
+  }
+
+  // 積分せず、外から与えられた状態を先端にする。保持方針・prevState の更新は step と同じ。
+  follow(state: KinematicState, sampleInterval: number, keepDuration: number): void {
+    this.advanceTip(state, sampleInterval, keepDuration);
+  }
+
+  // 先端を next にする。いまの先端は、1つ手前の保持サンプルから sampleInterval 秒以上
+  // 離れていれば保持サンプルとして残り、そうでなければ捨てて置き換わる(解像度を落とす箇所は
+  // ここ)。保持窓は keepDuration で、0 なら常に置き換えるだけ(デブリ・薬莢のコストを
+  // ゼロに保つ)。prevState はいまの先端へ進む。
+  private advanceTip(next: KinematicState, sampleInterval: number, keepDuration: number): void {
     const prev = this.state;
-    const next = stepDynamics(prev, dt, attractors, bcInv, srpCoeff, thrust);
     if (keepDuration > 0 && (this._samples.size < 2 || this._samples.newestGap >= sampleInterval)) {
       this._samples.cleanup(keepDuration, 2);
     } else {
@@ -66,7 +82,6 @@ export class DynamicTrajectory {
     }
     this._samples.push(next);
     this._prevState = prev;
-    this._extrapolationCenter = extrapolationCenter;
     this._samplesCache = null;
   }
 
@@ -80,7 +95,7 @@ export class DynamicTrajectory {
     this._samplesCache = null;
   }
 
-  // 保持区間全体を古い順に並べた1本の列。step/reset を挟まない限り同じ配列参照を返す
+  // 保持区間全体を古い順に並べた1本の列。先端が動かない限り同じ配列参照を返す
   // (TrajectoryLine.syncGeometry の再 bake 抑制が参照同一性で判定するため)。
   samplesOldestFirst(): readonly KinematicState[] {
     if (this._samplesCache === null) this._samplesCache = this._samples.toArrayOldestFirst();

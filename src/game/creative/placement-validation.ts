@@ -1,13 +1,13 @@
 // Creative のフォーム入力をDOMやTHREEに依存せず検証する小さな境界。
 import { semiMajorFromPeriod } from '../../physics/elements';
-import { AttractorId } from '../../physics/attractor';
+import { CelestialBodyId } from '../../physics/celestial-body';
 import { getApsisLabelSpec } from '../hud/orbit-labels';
 
 // UI 側が「どの入力欄が悪いか」を示すための識別子。
 export type PlacementFieldId =
   | 'periapsisAltitude' | 'apoapsisAltitude' | 'semiMajorAxis' | 'eccentricity' | 'period'
   | 'inclination' | 'raan' | 'argumentOfPeriapsis' | 'trueAnomaly'
-  | 'referenceAttractor' | 'inPlaneAmplitude' | 'outOfPlaneAmplitude';
+  | 'referenceCelestialBody' | 'inPlaneAmplitude' | 'outOfPlaneAmplitude';
 
 export type PlacementFieldIssue = { field: PlacementFieldId; message: string };
 
@@ -90,11 +90,11 @@ export function validateLagrangePlacementFields(input: LagrangePlacementInput): 
 // 基地は敵の射程となる惑星近傍を避け、月基準の軌道要素かラグランジュ点指定でのみ設置できる。
 // 問題がなければ空配列を返す。
 export function validateBaseReferenceFields(
-  objectType: 'player' | 'enemy' | 'ammo' | 'base', placementMode: 'elements' | 'lagrange', attractor?: AttractorId,
+  objectType: 'player' | 'enemy' | 'ammo' | 'base', placementMode: 'elements' | 'lagrange', celestialBody?: CelestialBodyId,
 ): PlacementFieldIssue[] {
   if (objectType !== 'base') return [];
-  if (placementMode === 'elements' && attractor !== 'moon') {
-    return [{ field: 'referenceAttractor', message: '基地は月を基準天体とする軌道要素指定かラグランジュ点指定でのみ配置できます' }];
+  if (placementMode === 'elements' && celestialBody !== 'moon') {
+    return [{ field: 'referenceCelestialBody', message: '基地は月を基準天体とする軌道要素指定かラグランジュ点指定でのみ配置できます' }];
   }
   return [];
 }
