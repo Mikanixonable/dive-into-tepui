@@ -13,6 +13,7 @@ export class SubstepBodies {
   private _gravitySourceCount = 0;
   private _surface: readonly CelestialBody[] = [];
   private _atmosphere: readonly CelestialBody[] = [];
+  private _star: CelestialBody | null = null;
   private readonly nearScratch: CelestialBody[] = [];
 
   // 区間 [simTime, simTime + dt] の窓を組み直す。重力源と大気は区間の中点で解決し、表面と
@@ -25,6 +26,7 @@ export class SubstepBodies {
     this.classified = classifyAttractors(sources);
     this._surface = ephemeris.celestialBodiesAt(simTime);
     this._atmosphere = ephemeris.atmosphereCelestialBodiesAt(mid);
+    this._star = this._surface.find((b) => b.isStar) ?? null;
   }
 
   // 表面を持ち、かつ太陽を隠しうる相手。半径と位置の幾何だけで決まるので、登録天体の全数。
@@ -32,6 +34,9 @@ export class SubstepBodies {
 
   // 大気を持つ天体の全数。抗力を及ぼす1体は個体ごとに選ぶ。
   get atmosphere(): readonly CelestialBody[] { return this._atmosphere; }
+
+  // 日照と受熱の光源になる恒星。無ければ null。
+  get star(): CelestialBody | null { return this._star; }
 
   // この区間の重力源の本数。
   get gravitySourceCount(): number { return this._gravitySourceCount; }
