@@ -2,8 +2,11 @@
 // 弾道係数の逆数 bcInv = Cd·A/m が既に比量なので、抗力による散逸も空力加熱も比量で閉じる。
 // 温度は物体を等温の1点とみなして扱う。THREE/DOM 非依存。
 //
-// **物体へ入る熱は、その区間に散逸した力学エネルギーを超えない。** 加熱の相関式は流れの
+// **大気から入る熱は、その区間に散逸した力学エネルギーを超えない。** 加熱の相関式は流れの
 // 局所量から熱流束を出すだけで収支を知らないので、超えないことは受け取る側で保証する。
+// 太陽光は力学エネルギーの散逸ではないので、この頭打ちは掛からない。
+
+import { ASTRONOMICAL_UNIT } from './srp';
 
 // ステファン・ボルツマン定数 [W/m²/K⁴]。
 export const STEFAN_BOLTZMANN = 5.670374419e-8;
@@ -39,6 +42,20 @@ export function aeroHeating(
   if (!(dissipation > 0) || !(noseRadius > 0)) return 0;
   const flux = sgConst * Math.sqrt(density / noseRadius) * airspeed * airspeed * airspeed;
   return Math.min(flux * absorbAreaPerMass, dissipation);
+}
+
+// 太陽光が物体へ入れる比パワー [W/kg]。flux1AU は1天文単位での照度 [W/m²]、sunDist は太陽まで
+// の距離 [m]、sunlit は日照率 0..1、absorbAreaPerMass はそれを受ける面積の比 [m²/kg](吸収率を
+// 織り込んだ実効値)。
+//
+// **空力加熱と違い、散逸で頭打ちにしない。** 頭打ちは抗力が散らした力学エネルギーとの収支の
+// 話であって、太陽光は力学エネルギーの散逸ではない — 入射そのものが上限になっている。
+export function solarHeating(
+  flux1AU: number, sunDist: number, sunlit: number, absorbAreaPerMass: number,
+): number {
+  if (!(sunDist > 0) || sunlit <= 0) return 0;
+  const scale = ASTRONOMICAL_UNIT / sunDist;
+  return flux1AU * scale * scale * sunlit * absorbAreaPerMass;
 }
 
 // 放射で捨てる比パワー [W/kg]。温度が環境温度 envTemp より高ければ正、低ければ負(暖まる)。
