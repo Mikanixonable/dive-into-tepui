@@ -255,6 +255,7 @@ export class PredictPanel {
   private readonly durationRow: DurationPillRow<FixedDurationKey, DisplayDurationKey>;
   private readonly pastDurationRow: DurationPillRow<FixedPastDurationKey, DisplayPastDurationKey>;
   private readonly tickLabelModeSwitch: ToggleSwitch;
+  private readonly showTicksSwitch: ToggleSwitch;
   private readonly slider: Slider;
   private readonly absoluteLabel: HTMLElement;
   private readonly elapsedLabel: HTMLElement;
@@ -293,7 +294,8 @@ export class PredictPanel {
     this.pastDurationRow.element.classList.add('predict-past');
     this.panel.appendChild(this.pastDurationRow.element);
 
-    // 期間の2行に続けて、目盛りラベルの表記(UTC カレンダー / 現在からの経過時間)を選ぶ。
+    // 期間の2行に続けて、目盛りラベルの表記(UTC カレンダー / 現在からの経過時間)と
+    // 目盛り行そのものの表示有無を選ぶ。
     const modeRow = document.createElement('div');
     modeRow.className = 'predict-row1';
     this.tickLabelModeSwitch = new ToggleSwitch(
@@ -301,6 +303,12 @@ export class PredictPanel {
       (on) => this.onTickLabelModeChange?.(on ? 'relative' : 'absolute'),
     );
     modeRow.appendChild(this.tickLabelModeSwitch.element);
+    this.showTicksSwitch = new ToggleSwitch(
+      '目盛りを表示',
+      (on) => { this.ticks.classList.toggle('hidden', !on); },
+    );
+    this.showTicksSwitch.setOn(true);
+    modeRow.appendChild(this.showTicksSwitch.element);
     this.panel.appendChild(modeRow);
 
     // 行2: 現在に戻すボタン + スクラバー + T+読み値(クリックで直接ジャンプ入力に変わる)。
