@@ -152,7 +152,7 @@
 
 | 目的 | 判定 | 根拠 |
 |---|---|---|
-| **Simulator と Predictor が本質的に違う物理を積んでいる状態の解消** | **達成** | RK4(`stepDynamics`)・掃引の幾何(`sweptSphereContact`)・刻みの規則(`simulationMaxStep` / `reentryAwareMaxStep`)・間引きの式(`trajectorySampleInterval`)を両者が共有。残る差は窓の**探し方**と結末の出力先だけで、どちらも 1-2 の役割の違いに由来する |
+| **Simulator と Predictor が本質的に違う物理を積んでいる状態の解消** | **達成** | RK4(`stepDynamics`)・掃引の幾何(`sweptSphereContact`)・刻みの規則(`simulationMaxStep` / `atmosphericMaxStep`)・間引きの式(`trajectorySampleInterval`)を両者が共有。残る差は窓の**探し方**と結末の出力先だけで、どちらも 1-2 の役割の違いに由来する |
 | **Asteroid の廃止 / GameEntity は接触以外で影響を及ぼさない** | **達成** | `Asteroid` `asteroid` の一致 0 件。`GameEntity` に `mu` が無く、重力窓は `Ephemeris` からしか出ない |
 | **Predict と Simulation で積分する重力場が食い違いうる状況の是正** | **達成(測定済み)** | `window-agreement.test.ts`。実測の最大差 5.87e-9 m/s²(許容量 1e-8 の 0.587 倍)。式は動かしていない |
 | **大気の一般化(地球ハードコードの解消)** | **達成** | `atmosphere.ts` に `earth` / `EARTH` が 0 件。`AtmosphereDef` は基準楕円体・自転・層を自分で持つ |
@@ -160,7 +160,7 @@
 | **着陸機能の基盤** | **達成(基盤のみ)** | `Contact` は `t` / `point` / `normal` / `selfState` / `otherState` を運ぶ。`impulse` を落としたので、材料は撃力へ潰す前の状態と法線だけになった。着陸そのものは未実装(意図どおり)。ただし**いま着地させると刻み幅に比例した接近速度が毎 substep 入る** — `memos/hedalu244/design_landing_simulation.md` |
 | **掃引衝突判定の呼び出し口と実装の一元化** | **達成** | 掃引の幾何は `sphere-contact.ts` 1箇所。入口は `sweptSphereContact` 1つで解法の引数は無い |
 | **Simulator と時間加速度の密結合の解消** | **達成** | `Simulator` は `SimSpeedManager` を知らず、`canResolveEntityContacts` を真偽値で受け取るだけ。倍率ゲートそのものの是非は**第7章 7-2** |
-| **Simulator が内部で種別判断していたのを廃止** | **一部残** | 積分(`substep`)も姿勢(`stepAttitudes`)も `entities.all()` を種別で分けずに回す。残るのは `adaptiveMaxStep` が `players` / `enemies` を名指ししている1箇所だけ — **第7章 7-3** |
+| **Simulator が内部で種別判断していたのを廃止** | **達成** | 積分(`substep`)も姿勢(`stepAttitudes`)も `entities.all()` を種別で分けずに回す。最後まで残っていた `adaptiveMaxStep` の `players` / `enemies` の名指しは、個体の属性 `doPreciseReentry` へ移り、関数自体が消えた(**第7章 7-3**)|
 | **SpatialGrid の利用拡大・計算量削減** | **達成** | 天体側は `SurfaceCandidates` の2段絞り込み(グリッドではなく境界体積 — 天体半径が7桁ちがうため一様グリッドを使わない、と v3 4-3 で決めた)。個体側は従来どおり 27 近傍 |
 | **Simulator と Predict で共通化すべき挙動の外部化** | **達成** | 上記のとおり。**「式は1本、引数は呼び出し側」**の形が保たれている |
 
@@ -197,7 +197,7 @@
 | 12 | 解析天体の質量が現れない | **OK** — `invMass: 0` 0 件 |
 | 13 | 重み 0 が判定から外れていない | **OK** — 参加条件は `contactMass >= 0`。重みが掛かるのは `contactDamageSpeed` の1箇所だけ |
 | 14 | 薬莢・破片が艦の予測を捨てさせない | **OK(構造として)** — 質量 0 + `replaceIfMoved` / 天体側の同等ガード |
-| 15 | 再突入細分化の2定数が1箇所 | **OK** — `reentryAwareMaxStep` の内側だけ。ただし**対象集合の決め方**は第7章 7-3 |
+| 15 | 大気の刻みを決める定数が1箇所 | **OK** — `DRAG_STEP_MAX_SPEED_LOSS` / `DRAG_STEP_MAX_SCALE_HEIGHTS` の2つが `const.ts`、式は `atmosphericMaxStep` の内側だけ。対象集合は個体の `doPreciseReentry`(第7章 7-3)|
 | 16 | 表面を持つ天体の窓の定義が1箇所 | **OK** — `Simulator.surfaceBodies()` |
 | 17 | 重力窓の差が許容量以下 | **OK** — 実測 5.87e-9 |
 | 18 | `Contact` の情報が減っていない | **OK(型として)** — 5フィールドとも健在。`impulse` だけが意図どおり消えた |
@@ -217,7 +217,7 @@
 
 # 第3章 呼び出し経路(`/callstack`)
 
-**`9bc15122` 時点のコードから引いたスナップショットであり、正本ではない。** 食い違ったら
+**`269cc8ba` 時点のコードから引いたスナップショットであり、正本ではない。** 食い違ったら
 コードを信じる。
 
 ## 3-1. 実シミュレーション
@@ -225,51 +225,57 @@
 ```
 Simulator.advance(dt, simDt, player, activeStage, canResolveEntityContacts, nanWatchdog)
                        …… Game.advanceSimulation から毎フレーム1回(ポーズ中・決着後は呼ばない)
-├─〔substep ループ〕                       …… targetTime に届くまで。歩数そのものに上限は無い
-│  ├─ Simulator.adaptiveMaxStep(simDt)
-│  │  ├─ Ephemeris.atmosphereAttractorsAt(simTime)            (大気天体の窓 — 既定 1 体)
-│  │  └─ time-step.ts  reentryAwareMaxStep(生存する艦・敵の状態列, 大気天体,
-│  │        simulationMaxStep(simDt, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT))
-│  │        ← 境界高度と細分化刻みの2定数は関数の内側。**対象集合だけが呼び出し側**(第7章 7-3)
+├─〔substep ループ〕                       …… targetTime に届くまで
+│  ├─ time-step.ts  simulationMaxStep(simDt, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT)
+│  │        ← **大域の上限はこれだけ。**大気は substep を縮めない(第7章 7-3)
 │  ├─ Simulator.nextEventTime(activeStage)
 │  │  ├─ Stage.nextSimulationEventTime
 │  │  └─ Simulator.entityEventTime → GameEntity.nextSimulationEventTime
 │  │        …… 顔ぶれの世代(collectionRevision)が変わったときだけ全走査
 │  ├─ time-step.ts  simulationStepDuration(simTime, targetTime, maxStep, eventTime)
 │  ├─ Ephemeris.gravityAttractorsAt(substep 中点)              (重力窓 — mu≠0 の 65 体)
-│  ├─ Simulator.surfaceBodies() = Ephemeris.attractorsAt(**substep 開始時刻**)
-│  │        ← 遮蔽体として渡す窓。遮蔽の幾何は区間内の天体の移動にほぼ左右されないので
-│  │           中点で組み直さず、前 substep 終端の窓をそのまま使い回す
-│  ├─ Ephemeris.atmosphereAttractorsAt(substep 中点)
-│  ├─ Simulator.substep(subDt, 重力窓, 遮蔽体, 大気窓)
+│  ├─ Simulator.surfaceBodies() = Ephemeris.celestialBodiesAt(**substep 開始時刻**)
+│  │        ← 遮蔽体にも天体接触にも使う**唯一の窓**。登録天体の全数。倍率で切り替えない
+│  ├─ Ephemeris.atmosphereCelestialBodiesAt(substep 中点)       (大気窓 — 既定 1 体)
+│  ├─ Simulator.substep(subDt, 重力窓, 遮蔽体, 大気窓, activeStage)
 │  │  ├─ attractors.ts  classifyAttractors(重力窓)  ← substep に1回だけ組み、全個体で共有
 │  │  └─〔全個体〕                                   …… 種別で分けない
 │  │     ├─ attractors.ts  attractorsNearInto(e.state.r, classified, out)
 │  │     ├─ GameEntity.followPredicted(t, near)  …… 弧が t を持てば積分せず先端を差し替える
-│  │     └─ GameEntity.stepActual(dt, near, 遮蔽体, nearestAtmosphereBody(e.state.r, 大気窓))
-│  │        └─ DynamicTrajectory.step → dynamics.ts  stepDynamics   ← RK4。**弧と共有**
+│  │     ├─〔e.doPreciseReentry のときだけ〕
+│  │     │     time-step.ts  atmosphericMaxStep(e.state, e.bcInv, 大気窓)
+│  │     │        ← 抗力の逆時定数と大気のスケールハイトから決まる、この個体の上限
+│  │     ├─〔上限 ≥ subDt〕GameEntity.stepActual(subDt, near, 遮蔽体, 最寄りの大気天体)
+│  │     │     …… 1歩で進み、coarseEntitiesScratch へ集める
+│  │     └─〔上限 < subDt〕Simulator.stepPrecise(e, subDt, 上限, near, 遮蔽体, …)
+│  │           …… 区間を等分し、**1歩ごとに**次の3つを回す。ephemeris・分類・近傍は
+│  │              外側のものをそのまま使う(天体位置は各段の時刻へ2次外挿される)
+│  │        ├─ GameEntity.stepActual(内側の刻み, …)
+│  │        ├─ GameEntity.stepEnvironment(内側の刻み, ephemeris, e.state.t, 遮蔽体)
+│  │        └─ SurfaceContactPhysics.resolveSurfaceContacts([e], 遮蔽体, stage)
+│  │
+│  │        stepActual → DynamicTrajectory.step → dynamics.ts  stepDynamics  ← RK4。**弧と共有**
 │  ├─ Simulator.stepAttitudes(subDt) → attitude.ts  stepAttitude
 │  │        …… entities.all() を1本回し alive && hasAttitude だけ通す。種別の名指しは無い
-│  ├─ Simulator.surfaceBodies() = Ephemeris.attractorsAt(**substep 終端時刻**)
-│  │        ← 表面接触と自機の環境が読む窓。登録天体の全数 101。**倍率で切り替えない**
-│  ├─〔全 Player〕Player.stepEnvironment(subDt, ephemeris, simTime, surfaceBodies)
-│  │        (熱・電力・放熱板。恒星の取り出し・日照率の遮蔽体・最寄りの大気天体に同じ窓)
+│  ├─〔coarseEntitiesScratch の各個体〕GameEntity.stepEnvironment(subDt, …)
+│  │        ← 既定は何もしない仮想メソッド。Player だけが override する
+│  │           (熱・電力・放熱板。恒星の取り出し・日照率の遮蔽体・最寄りの大気天体に同じ窓)
 │  │  └─ ThermalSystem.updateThermal(dtSub, r, v, 最寄りの大気天体, ship)
-│  │        ← **外殻温度も動圧も、区間終端の1点をサンプルした一次積分**(第7章 7-3 の要点)
-│  ├─ SurfaceContactPhysics.resolveSurfaceContacts(simTime, entities.all(), surfaceBodies, stage)
-│  │        …… 倍率にも種別にも collides にも依らず毎 substep。物体どうしより先に解く
-│  │  ├─ .collectParticipants  ← alive && attachedTo === null && isFiniteParticipant
-│  │  ├─ .collectAttractors    ← 位置・速度・半径が有限
+│  │        ← **外殻温度も動圧も、区間終端の1点をサンプルした一次積分**(第7章 7-3)
+│  ├─ SurfaceContactPhysics.resolveSurfaceContacts(coarseEntitiesScratch, 遮蔽体, stage)
+│  │        …… 倍率にも種別にも collides にも依らず毎 substep。物体どうしより先に解く。
+│  │           **細分した個体は内側で解決済みなので参加しない**(二重に解くと反発が二度当たる)
+│  │  ├─ .collectParticipants     ← alive && attachedTo === null && isFiniteParticipant
+│  │  ├─ .collectCelestialBodies  ← 位置・速度・半径が有限
 │  │  ├─ SurfaceCandidates.reset(参加者, 天体)  ← 1段目。substep に1回。天体数に比例し、
-│  │  │  └─ attractor.ts  attractorStateAt(body, 区間の両端)   個体数には比例しない
+│  │  │  └─ celestial-body.ts  celestialBodyStateAt(body, 区間の両端)  個体数には比例しない
 │  │  └─〔参加者ごと〕SurfaceContactPhysics.resolveOne
 │  │     ├─ SurfaceCandidates.into(e, out)      ← 2段目。実測で平均 1.00 体/substep
-│  │     ├─ GameEntity.contactsWith(body, simTime)
-│  │     │        ← **天体を拒む実装は1つも無い**(第6章 6-1)
-│  │     ├─ surface-contact-physics.ts  computeResponse
-│  │     │  └─ collision-response.ts  resolveFixedSphereCollision  ← 質量を引数に取らない
+│  │     ├─ surface-contact.ts  firstSurfaceContact(e.prevState, e.state, e.radius, candidates)
+│  │     │        ← 第5章で1本になった表面到達。弧(checkSurfaceReach)と**共有**
+│  │     ├─ collision-response.ts  distributeFixedContact  ← 質量を引数に取らない
 │  │     ├─ e.state = …  …… 位置も速度も動いていなければ書き戻さない(書き戻しは弧を捨てる)
-│  │     └─ GameEntity.collideWith(body, contact, stage)  …… bounced のときだけ
+│  │     └─ GameEntity.collideWithCelestialBody(body, contact, stage)
 │  ├─〔canResolveEntityContacts のときだけ〕                     …… ×4 以下(第7章 7-2)
 │  │  ├─ 放熱板の折り(Player.collisionFolds)を参加者リストへ合流
 │  │  └─ EntityContactPhysics.resolveEntityContacts(simTime, 個体+折り, stage)
@@ -315,21 +321,24 @@ Predictor.update(simTime, simDt, player, horizon, canDisplayFuture, planArcs)
    │           状態を差し替えられた個体はここで作り直しになる
    └─ Predictor.grow → PredictedArc.step()          …… 残予算ぶん繰り返す
       ├─ ArcBodies.resolve(tip.t, tip, 0)  …… 最初の1歩だけ。以後は前歩の中点窓を持ち越す
-      │  └─ FutureAttractors.bodyAt → Ephemeris.attractorAt
+      │  └─ FutureCelestialBodyProvider.celestialBodyAt → Ephemeris.celestialBodyAt
       │        ← 成員 + 期限の来た候補だけを引く。**これが弧側の絞り込み**
-      ├─ attractor.ts  strongestAttractor(tip.r, held.gravity) → elements.ts  keplerPeriod
+      ├─ celestial-body.ts  strongestAttractor(tip.r, held.gravity) → elements.ts  keplerPeriod
       ├─ PredictedArc.stepDt(tip, span, period, held.collision)
-      │  └─ time-step.ts  reentryAwareMaxStep([tip], held.collision, this.simulationMaxStep)
-      │                                  …… consumable な弧だけ。**3-1 と同じ関数**
+      │  └─ time-step.ts  atmosphericMaxStep(tip, this.bcInv, held.collision)
+      │        ← **3-1 と同じ関数。**consumable な弧は simulationMaxStep・接近項と併せた最小、
+      │           consumable でない弧は下限 ARC_MIN_STEP_DT の**外側**から掛かる
+      │           (下限は接近項の Zeno を断つためのもので、抗力を積めない幅まで
+      │            刻みを広げる権利は持たない)
       ├─ predicted-arc.ts  trajectorySampleInterval(period, span)
       ├─ ArcBodies.resolve(tip.t + dt/2, tip, dt)     ← この歩の重力窓・衝突窓
       ├─ DynamicTrajectory.step → dynamics.ts  stepDynamics   ← RK4。**実シミュレーションと共有**
       │        (遮蔽体には mid.collision を渡す — 弧が幾何の相手として追っている窓)
       ├─ ApsisTrack.observe(tip, 新しい先端)
       └─ PredictedArc.checkSurfaceReach(tip, mid.collision)
-         └─ attractor.ts  reachedBody(prev, next, mid.collision)
+         └─ surface-contact.ts  firstSurfaceContact(prev, next, this.radius, mid.collision)
                ← **弧の唯一の打ち切り条件**(非有限値の検出を除く)。焼失は判定しない。
-                  半径和は**天体の半径のみ** — ここが第5章の対象
+                  第5章で実シミュレーションと1本になった
 ```
 
 **木に載らない例外:**
@@ -352,36 +361,47 @@ Predictor.update(simTime, simDt, player, horizon, canDisplayFuture, planArcs)
    「重力の窓」ではない — 絞り込んだ重力窓を遮蔽体に流用していた頃の混線は解けている。
 4. **接触は予測を捨てる経路でもある**が、位置も速度も動いていない当事者は書き戻さない
    ガードが両方の経路に入っている。
-5. **外殻温度と動圧は RK4 で積まれていない。** `updateThermal` は substep 終端の1点で
-   密度と対気速度をサンプルし、`dtSub` を掛けて温度へ足す一次積分で、動圧に至っては
-   積分ですらなく終端の点値。**再突入域の刻み細分化が支えているのはここ**(第7章 7-3)。
+5. **外殻温度と動圧は RK4 で積まれていない。** `updateThermal` は区間終端の1点で密度と
+   対気速度をサンプルし、`dtSub` を掛けて温度へ足す一次積分で、動圧に至っては積分ですらなく
+   終端の点値。ただし**細分が支えているのはここではなく RK4 の側**だった(第7章 7-3)。
+6. **刻みの階層が2段になった。** 大域 substep は全個体に共通で、時間送りとイベントだけから
+   決まる。濃い大気が要求する細かい刻みはその内側に閉じ、要求した個体だけが分割される。
+   相互作用(物体どうしの接触・重力窓の組み立て)は大域 substep の境界にしか現れないので、
+   「同じ瞬間の位置関係で計算される」は保たれる。
 
 ---
 
 # 第4章 逆向きの依存(`/inv-callstack`)
 
-**`9bc15122` 時点のスナップショット。** 走査範囲はいずれも `src/` `tests/` `tools/`。
+**`269cc8ba` 時点のスナップショット。** 走査範囲はいずれも `src/` `tests/` `tools/`。
 
 ## 4-1. 重力 RK4 積分
 
 ```
 dynamics.ts  stepDynamics(state, dt, attractors, occluders, atmosphereBody, bcInv, srpCoeff, thrust)
       ← 全天体重力 + 2次重力場 + 大気抵抗 + 太陽輻射圧 + 推力の唯一の合成箇所
-└─ dynamic-trajectory.ts  DynamicTrajectory.step(dt, attractors, occluders, atmosphereBody,
+└─ dynamic-trajectory.ts  DynamicTrajectory.step(dt, celestialBodies, occluders, atmosphereBody,
                               bcInv, srpCoeff, thrust, sampleInterval, keepDuration,
                               extrapolationCenter)
    │     ← 積分そのものは持たず、保持列(間引き・保持窓・prevState)を足すだけ
-   ├─ game-entity.ts  GameEntity.stepActual(dt, attractors, occluders, atmosphereBody)
-   │  └─ simulator.ts  Simulator.substep …… 毎 substep、全生存個体。**種別で分けない**
-   │        (弧が同じ時刻を持っていれば followPredicted が先に効き、ここへ来ない)
+   ├─ game-entity.ts  GameEntity.stepActual(dt, celestialBodies, occluders, atmosphereBody)
+   │  ├─ simulator.ts  Simulator.substep    …… 大域 substep で1歩。**種別で分けない**
+   │  │     (弧が同じ時刻を持っていれば followPredicted が先に効き、ここへ来ない)
+   │  └─ simulator.ts  Simulator.stepPrecise …… doPreciseReentry かつ大気が大域より短い刻みを
+   │        要求した個体だけ、大域 substep の内側で繰り返し呼ぶ
    └─ predicted-arc.ts  PredictedArc.step()
       └─ predictor.ts  Predictor.grow …… 実体の弧も計画の弧も同じ1本を通る
             (実体は ensurePredictedArc 経由、計画は PlanPath が持つ弧を PlanEditor が渡す)
 
-呼び出し元は src/ にこの2本だけ。tests/perf(common・exp3・exp5・exp12・
+呼び出し元は src/ にこの3本だけ。tests/perf(common・exp3・exp5・exp12・exp14・exp15・
 sphere-contact-sweeps)と tests/physics(dynamics・dynamic-trajectory・kepler-extrapolation・
 n-body・window-agreement)は stepDynamics を直接叩くが、production の経路ではない。
 ```
+
+**`stepDynamics` は刻みの妥当性を検査しないが、抗力が対気速度を反転することは許さない。**
+剛い抗力に対して広すぎる刻みを渡せば答えは正確でなくなるが、発散はしない(第7章 7-3)。
+刻みを縛るのは呼び出し側の3本で、そのうち `Simulator.substep` と `PredictedArc.stepDt` が
+`atmosphericMaxStep` を通す。`Simulator.stepPrecise` は既に縛られた刻みを受け取る。
 
 **`totalAccel` が日照率を引く相手は、呼び出し側が渡した `occluders`** である(SRP の遮蔽体)。
 重力窓とは別の引数になったので、絞り込んだ重力窓が遮蔽に化ける経路はもう無い。
@@ -399,19 +419,24 @@ sphere-contact.ts  sweptSphereContact(aStart, aEnd, bStart, bEnd, radiusSum)
 │  │     └─ EntityContactPhysics.collectCandidates / .earliestContact
 │  │        ├─ EntityContactPhysics.resolveEntityContacts …… ×4 以下、毎 substep
 │  │        └─ EntityContactPhysics.resolveBelt …………………… ×4 以下 かつ自機生存、フレームに1回
-│  └─ collision-response.ts  resolveFixedSphereCollision   (個体 × 天体。**質量を取らない**)
-│     └─ surface-contact-physics.ts  computeResponse
-│        └─ SurfaceContactPhysics.resolveOne
-│              …… **倍率にも種別にも依らず毎 substep、全生存個体。**
-│                 SurfaceCandidates を通った天体だけ(実測 平均 1.00 体/substep)
-└─ attractor.ts  reachedBody(prev, next, bodies)
-   │     ← 幾何を持たず、窓を回して最小 TOI の1体を選ぶだけ。半径和は**天体の半径のみ**
-   │        (弧は大きさを持たない点として扱う — SPEC/ORBIT.md「天体表面への到達判定」)
+│  └─ collision-response.ts  distributeFixedContact   (個体 × 天体。**質量を取らない**)
+│     └─ SurfaceContactPhysics.resolveOne
+└─ surface-contact.ts  firstSurfaceContact(prev, next, radius, bodies)
+   │     ← 幾何を持たず、窓を回して最小 TOI の1体を選ぶだけ。**第5章で1本になった**ので、
+   │        半径和は個体 + 天体で、実シミュレーションと弧が同じ答えを返す
+   ├─ SurfaceContactPhysics.resolveOne
+   │  └─ SurfaceContactPhysics.resolveSurfaceContacts
+   │     ├─ simulator.ts  Simulator.advance    …… 大域 substep ごと、coarseEntitiesScratch
+   │     └─ simulator.ts  Simulator.stepPrecise …… 細分した個体の**内側の1歩ごと、その1体だけ**
    └─ predicted-arc.ts  PredictedArc.checkSurfaceReach …… 弧の1歩ごと。ArcBodies の成員だけ
 
-reachedBody は tests/physics/attractor.test.ts(9件)・tests/physics/surface-candidates.test.ts
+firstSurfaceContact は tests/physics/surface-contact.test.ts・surface-candidates.test.ts
 (絞り込みの答えを総当たりと突き合わせる正本)・tests/perf/exp12 からも直接呼ばれる。
 ```
+
+**天体接触の呼び出し元が2つに増えたことが、細分の唯一の構造的な代償である。** 同じ個体を
+両方から解くと反発が二度当たるので、`substep` は1歩で進めた個体だけを
+`coarseEntitiesScratch` へ集め、細分した個体を外側の解決から外している。
 
 図の外:
 
@@ -424,12 +449,18 @@ reachedBody は tests/physics/attractor.test.ts(9件)・tests/physics/surface-ca
   コメントが `SPEC/ORBIT.md`「未確定の案」を存在理由として参照する)。
   tests/perf/exp10・exp11 だけが直接叩く。
 
-## 4-3. この2本から読める、第5章の対象
+## 4-3. この2本から読めること
 
-`sweptSphereContact` の下には**「窓を回して最初に触れる1体を選ぶ」ループが2つ**ぶら下がって
-いる — `reachedBody` と `SurfaceContactPhysics.resolveOne`。問いは同じで、違うのは返すもの
-(補間した到達状態 / 反発の結果)と半径和(天体の半径だけ / 個体 + 天体)だけ。第5章がこれを
-1本にする。
+第5章に着手した時点では、`sweptSphereContact` の下に**「窓を回して最初に触れる1体を選ぶ」
+ループが2つ**ぶら下がっていた — `reachedBody` と `SurfaceContactPhysics.resolveOne`。問いは
+同じで、違うのは返すもの(補間した到達状態 / 反発の結果)と半径和(天体の半径だけ / 個体 +
+天体)だけだった。**第5章がこれを `firstSurfaceContact` の1本にした。**
+
+残っている非対称は刻みの側にある。RK4 も表面到達も実シミュレーションと弧で共有されているが、
+**刻みを縛る責任は呼び出し側3本に分散している** — `Simulator.substep` と
+`PredictedArc.stepDt` がそれぞれ `atmosphericMaxStep` を通し、`Simulator.stepPrecise` は
+縛られた刻みを受け取るだけ。`stepDynamics` 自身は渡された刻みを疑わず、抗力が対気速度を
+反転しないことだけを守る。
 
 ---
 
@@ -750,7 +781,7 @@ SPEC の掃除が先で、実測はそのあとに来る。
 |---|---|---|
 | 1 | 7-1 | SPEC から精度と性能を追い出す |
 | 2 | 7-2 | 物体どうしの接触を ×4 超で解かないことを測る |
-| 3 | 7-3 | 再突入域の刻み細分化を測る |
+| 3 | 7-3 | 大気の中の刻みを測り、細分の置き場所を決める |
 
 **7-1 は実測を待たない。** 実測の結論がどちらへ転んでも SPEC の書きぶりが変わらないからで、
 そこが変わったときに書き換わるのはコードだけである。ゲートを残すと決めても、刻みを細かいまま
@@ -897,88 +928,225 @@ TOI 順の再評価は含まない(接触が実際に起きた件数はそれと
    **これは高ワープの問題ではなく、×1 で既に起きている**(7.1 ms/フレーム)。
    グリッドの一辺を参加者ごとの到達量から決める余地はあるが、この論点の外なので触らない。
 
-## 7-3. 再突入域の刻み細分化(`reentryAwareMaxStep`)
+## 7-3. 大気の中の刻みと、その細分の置き場所
 
-### コードから分かったこと(推論の半分は実測で覆った)
+### 何が問題だったか
 
-**「RK4 は刻み幅に関わらず高精度だから細分化は要らないのでは」という見立ては、
-細分化が支えている量には当てはまらない。**
+刻みを決めていたのは `reentryAwareMaxStep` で、規則は「大気天体の基準楕円体から 200 km 以下なら
+刻み 1 s」という**高度の代理**だった。抵抗の強さそのものを見ていないので、3方向に外れていた。
 
-`ThermalSystem.updateThermal` は substep 終端の1点で大気密度 ρ と対気速さ s をサンプルし、
+1. **高い側では過剰。** 高度 200 km の抗力の逆時定数は 1×10⁻⁹ s⁻¹ で、20 s 刻みでも十分安定
+   なのに 1 s へ落とす。60〜200 km の帯で substep が 20 倍要る。
+2. **低い側では不足。** 1 s でも ρ·s > 1697 kg·m⁻²·s⁻¹ を超えれば破綻する。
+3. **境界で刻みが 0 へ潰れる。** 境界までの猶予をそのまま刻みにしていたので、200 km へ漸近する
+   幾何級数(Zeno)になる。実測で 1×10⁻³ s 未満が4回連続、最小 1.49×10⁻⁸ s。
+   `advance` は `subDt <= 1e-9` しか空回り扱いしないので、**この4歩は接触解決まで実行される。**
 
-- 動圧 `qdyn = 0.5 ρ s²` を**その点値のまま**保持し、
-- よどみ点熱流束 `q̇ = k √(ρ/Rn) s³` に `dtSub` を掛けて外殻温度へ足す
+そして刻みの上書きは**全個体で共有**だったので、艦が高度 200 km を割った瞬間、最高ワープの
+1フレームが 13,107 substep を要求し、破片 500 体もその刻みに付き合わされていた。
 
-という**一次(矩形)積分**を行っている。`checkThermalLimits` はこの `qdyn`(点値)と
-`hullTemp`(一次積分)をしきい値と比べて艦の生死を決める。RK4 で積まれているのは
-位置と速度だけで、**生死を決める量は一次精度である。**
+### 発散の原因 — 大気抵抗ただ1つ、壊れ方は2つ
 
-**生死を決める量が一次精度であること自体は事実**だが、そこから引いた「だから細分化は一次積分の
-ために要る」という推論は実測で覆った(下の「実測した結果」)— 熱と動圧だけなら 10 s 刻みでも
-答えは変わらず、壊れるのは RK4 の側だった。「刻みが 200 s なら近地点通過そのものを1歩で跨ぎ、
-動圧のピークをサンプルしないまま通過しうる」という見立てのほうは当たっていた。
+`tests/perf/exp15-reentry-divergence.ts` の表1・表2(`269cc8ba` 時点)。
 
-### それでも疑わしいこと(実在する)
+**力を1つずつ落とすと、抗力を切ったときだけ完走する。** 刻み 20 s の降下で、全力なら対気速さの
+最大が 9.7×10⁷ km/s へ飛ぶが、`bcInv = 0` にすると 8.00 km/s・最低高度 42.3 km で完走する。
+2次重力場を落としても太陽輻射圧を落としても発散は変わらない。
 
-1. **循環依存。** 刻みが物体の位置を決めるはずなのに、物体の位置(高度)が刻みを決めている。
-2. **費用が暴発する。** `reentryAwareMaxStep` の返り値は `simulationMaxStep`(=
-   `SUBSTEP_MAX_COUNT` の効き)を**上書きする**ので、艦が高度 200 km を割った瞬間、
-   ×131072 の1フレームは `simDt / REENTRY_SUBSTEP_MAX_DT` = **13,107 substep** を要求する。
-   しかも刻みは**全個体で共有**なので、破片 500 体も同じ刻みで積まれる。
-   実測の軌道積分は 0.239 µs/歩(C-3 の観測、187.9 ms ÷ 785,495 歩)なので、
-   **0.239 µs × 501 体 × 13,107 歩 = 1,570 ms/フレーム**。
-   `SPEC/ORBIT.md`「未確定の案」に「高いタイムワープ中に再突入する艦を『待たない』こと」
-   として既に記録がある問題の、数値としての姿がこれである。
-3. **対象集合が `players` / `enemies` の名指しで `Simulator` の中にある**(A-8 の元の指摘)。
-   「この個体の喪失の精度がプレイに効くか」は個体側の属性であって、`Simulator` が
-   コレクションを名指しして決めることではない。
+**(A) 抗力の剛性。** λ = ½·ρ·s·bcInv [1/s] が抗力の逆時定数。陽的 RK4 が y' = −λy に対して
+安定なのは λ·dt ≲ 2.78 まで。刻み 34.13 s では高度 22.8 km で **λ·dt = 4.12** となり、段ごとの
+抗力が 1.7×10² → 3.9×10² → 3.6×10³ → **3.0×10⁷ m/s²** と増幅して1歩で壊れる。抗力が速さの
+2乗に比例するため、正のフィードバックが掛かって振動ではなく暴走になる。
 
-### 実測した結果(`tests/perf/exp14-reentry-substep.ts`、`cb33d590` 時点)
+**(B) 段の外挿が地面を突き抜ける。** RK4 の k3 は `r0 + (v0 + a1·dt/2)·dt/2` で、**重力だけで**
+動径方向に g·dt²/4 沈む。刻み 204.8 s ではこれが 99.6 km になり、
 
-遠地点 413 km / 近地点 55 km の楕円を遠地点から 3,000 s 追い、刻みの決め方だけを変えた。
-限界は外殻温度 1,300 K・動圧 35 kPa。熱と動圧の式は `thermal.ts` の `updateThermal` の複製
-(ラジエーターと投入熱は 0)。
+| 段 | 高度 | \|抗力\| [m/s²] |
+|---|---|---|
+| k1 | 91.5 km | 2.2×10⁻¹ |
+| k2 | 99.8 km | 4.8×10⁻² |
+| k3 | **0.1 km** | 1.0×10⁵ |
+| k4 | **−7.0 km** | **8.9×10¹¹** |
 
-| 刻みの決め方 | 外殻温度の最大 [K] | 動圧の最大 [kPa] | 対気速さの最大 [km/s] | 限界超過 | 最低高度 [km] |
-|---|---|---|---|---|---|
-| 0.25 s 固定(基準) | 762 | 23.5 | 7.94 | — | 地表 |
-| **1 s(いまの実装)** | **762** | **23.5** | **7.94** | — | 地表 |
-| 5 s | 762 | 23.4 | 7.94 | — | 地表 |
-| 10 s | 762 | 23.4 | 7.94 | — | 地表 |
-| 20 s(幅の上限) | 1.9×10⁵ | 81,885 | 9.7×10⁷ | 熱防御飽和 t=2,560 s | 3.9 |
-| 34.13 s(最高ワープ 60 fps) | 2.0×10¹³ | 21,845 | 2.1×10⁵ | 空力破壊 t=2,423 s | 22.8 |
-| 204.8 s(最高ワープ 低 fps) | 512 | 0.1 | 3.1×10¹⁰ | — | 91.5 |
-| 熱だけ内側細分(位置 34.13 s / 熱 1 s) | 5.7×10¹¹ | 21,845 | 2.1×10⁵ | 空力破壊 t=2,423 s | 22.8 |
+この歩の **λ·dt は 0.006** — 剛性は全く問題ない。`atmosphericDensity` が高度を 0 で頭打ちに
+するので海面密度 1.225 kg/m³ が返り、そこへ軌道速度を掛けた抗力が k4 に入る。
 
-### 決めたこと — 細分化は残す。手段も刻みのままにする
+**片方だけでは足りない。** 軌道の族6本で、剛性だけを縛ると **6/6 発散**、沈み込みだけを縛っても
+**6/6 発散**。両方掛けて **0/6** になる。(この 6/6 は後述のガードを入れる前の測定。ガードを
+入れると発散そのものが起きなくなるので、いまの exp15 は「発散したか」ではなく
+「**段の比が 1 を超えたか**」を測っている。)
 
-1. **一次積分と点サンプルの刻み感度は小さい。** 0.25 / 1 / 5 / 10 s のどれで積んでも
-   外殻温度の最大は 762 K、動圧は 23.4〜23.5 kPa で一致する。**「熱の一次積分のために
-   1 s が要る」という見立ては外れていた** — 熱と動圧だけなら 10 s でも同じ答えが出る。
-2. **壊れるのは位置と速度の RK4 のほうだった。** 20 s を超えると対気速さが 9.7×10⁷ km/s へ
-   飛ぶ。大気の底で1歩が広すぎ、RK4 そのものが破綻している。**細分化が支えているのは
-   熱ではなく状態そのもの**で、7-3 の冒頭に書いた「支えているのは一次積分の側だ」という
-   読みは、実測で逆に振れた。
-3. **したがって本命案(熱だけ内側細分)は成立しない。** 34.13 s で積んだ軌道を Hermite で
-   埋めて熱を 1 s 刻みで積んでも、動圧の最大は 34.13 s 固定と**完全に一致する**
-   (21,845 kPa)— 壊れた状態を細かくサンプルしているだけだから。位置と速度を粗いまま
-   進める案は捨てる。
-4. **204.8 s では近地点通過そのものを跨ぐ。** 最低高度が 91.5 km までしか下がらず、艦は
-   加熱も動圧も浴びずに生き残る。「機体を失うかどうかは倍率に依らない」に真っ向から違反する。
-5. 対象集合の名指しは `GameEntity` の属性へ移した(`lossPrecisionMatters` — 大気の中で
-   失われる時刻と条件の精度がプレイの結果を変えるか)。`Simulator` から `players` /
-   `enemies` の名指しが消えた。
+### 発散の条件は「反転」— 段の抗力が、その段の対気速度を1歩で奪い切ること
 
-### 残った問題 — 費用は解けていない
+上の (A) と (B) は、**同じ1つの signature で現れる。** 段 k の抗力が dt のあいだに奪う速度
+|a_drag|·dt を、その段の対気速さ |v_air| と比べた比が 1 を超えると、その段は対気速度を消し切って
+**押し返している。** 抗力は対気速度を減らすだけで反転させられないので、これは物理的にありえない。
+そこから先は抗力が速さの2乗に比例するぶん段どうしが増幅し合い、1歩で暴走する。
 
-細分化の費用(最高ワープで 13,107 substep/フレーム)は、この実測では解決していない。
-`SPEC/ORBIT.md`「未確定の案」の「高いタイムワープ中に再突入する艦を『待たない』こと」は
-**残る。**
+最初に比が 1 を超えた歩を、刻みごとに並べると:
 
-実測は緩和の余地も示している — **10 s まで答えが変わらない**ので、細分化の刻みを 1 s から
-10 s へ緩めれば substep は 13,107 → 1,311 になる。ただし **1フレームの予算には依然として
-収まらない**うえ、破綻する 20 s までの余裕が 2 倍しかない。**軌道が違えば破綻する刻みも動く**
-(この実測は近地点 55 km の1本だけ)。緩和するなら、破綻の境界を軌道の族で測り直してから。
+| 刻み | その歩の高度 | k1 の比(= λ·dt) | 各段の 高度/比 |
+|---|---|---|---|
+| 204.8 s | 91.5 km | **0.006** | k1 91.5km/6.3e-3  k2 99.8km/1.4e-3  **k3 0.1km/2.9e+3**  k4 −7.0km/4.3e+2 |
+| 34.13 s | 42.3 km | 0.649 | k1 42.3km/6.5e-1  k2 36.8km/9.7e-1  **k3 35.7km/1.1e+0**  k4 32.1km/9.7e-1 |
+| 20 s | 22.6 km | 0.879 | k1 22.6km/8.8e-1  k2 20.0km/8.6e-1  **k3 20.2km/1.0e+0**  k4 17.6km/8.1e-1 |
+
+(A) は k1 の比が 1 に近づいて k3 が跨ぐ形、(B) は **k1 の比が 0.006 でも k3 が 2.9×10³ へ跳ぶ**形。
+どちらも「どこかの段が比 1 を超える」ことに変わりはない。
+
+### 決めたこと(0)— 抗力が対気速度を反転できないことを、積分器に守らせる
+
+`dragAccel` が `dt` を受け取り、`a = k·v_air` の係数を **|k| ≤ 1/dt** で頭打ちにする。
+「抗力は対気速度を減らすだけで反転させない」という物理そのもので、式としては1行。
+
+- **刻み規則が効いているところでは一度も発動しない。** 軌道の族6本すべてで、段の比の最大は
+  **0.558〜0.560** — 頭打ちの 1 に届かない。**答えを一切変えない安全網**である。
+- **発動するのは、刻みがその物体の抗力に対して既に広すぎるときだけ。** そこで得られる軌道は
+  正確ではない(刻み 204.8 s 固定なら動圧が 14,803 kPa)。**不正確な答えと発散した答えの
+  どちらを返すかの選択で、後者を選ばない**というだけのこと。`SPEC/ORBIT.md`「数値的な限界」に
+  書いた。
+- **これが破片・薬莢の欠陥を直す。** 高度 200 km から刻み 204.8 s で降ろすと、ガード無しでは
+  200 歩を回しても焼失せず動径 6.25×10⁶ km(地球–月距離の 10 倍)まで飛んでいく。
+  ガードありでは **3 歩で高度 48.7 km において焼失する**(対気速さ 5.30 km/s)。
+  `doPreciseReentry = false` が宣言しているのは「低い精度で失われてよい」ことなので、
+  48.7 km で消えるのは仕様の範囲内である。
+
+### ガードを入れたあと、2つの上限のどちらが効いているか
+
+**訂正が要る。** ガードを入れると「片方だけでは足りない」は成り立たなくなった。
+
+| 上限 | 段の比の最大 | 外殻温度の誤差(6本) |
+|---|---|---|
+| 両方(本体の定数) | 0.558〜0.560 | +0.6 〜 +1.7% |
+| 沈み込みだけ(剛性を外す) | **4.9** | +0.6 〜 +1.7%(両方と同じ) |
+| 剛性だけ(沈み込みを外す) | 16 〜 3.0×10³ | **+83.6 〜 +7,065%** |
+
+**沈み込みの上限だけでも、答えは合う。** ただしその答えは毎歩ガードに助けられている(比の最大
+4.9 = 頭打ちが 5 回ぶん働いている)。**剛性の上限を残すのは、ガードを一度も踏ませないため**で、
+「有界であること」ではなく「積分が妥当であること」を保つ側に倒している。剛性の上限を外して
+得られる歩数の節約は 6〜18%(413/55 で 103 → 84 歩、GTO で 363 → 343 歩)で、その代償に
+見合わない。
+
+### 熱・動圧は RK4 の下流で、逆流しない
+
+`updateThermal` は `state.r` / `state.v` を読んで `hullTemp` と `qdyn` を書くだけで、状態を
+書き戻さない。`Simulator` の中でも軌道積分の**後**に呼ばれる。唯一の間接経路は「熱で艦が死ぬ →
+細分の対象から外れる → 刻みが広がる」で、向きは「壊れた熱が RK4 を壊す」ではなく逆。
+
+**7-3 の冒頭に書いていた「細分が支えているのは熱の一次積分の側だ」という読みは、exp14 で一度
+覆り(熱だけなら 10 s でも同じ答え)、exp15 で原因まで特定された — 支えていたのは RK4 の側で、
+壊していたのは抗力だった。**
+
+### 決めたこと(1)— 刻みを物理量から決める
+
+`reentryAwareMaxStep` を捨て、`atmosphericMaxStep(state, bcInv, atmosphereBodies)` に置き換えた。
+上限は2つで、小さいほうを採る。
+
+```
+剛性  : dt ≤ DRAG_STEP_MAX_SPEED_LOSS / λ          λ = ½·ρ·s·bcInv
+沈み込み: 降下率·dt + ½·g·dt² ≤ N·H を dt について解いた有理化形
+          N = DRAG_STEP_MAX_SCALE_HEIGHTS、H = そのときのスケールハイト
+```
+
+有理化するのは g → 0(遠方・薄い大気)で 0 除算にならないため。しきい値が無いので Zeno も消えた。
+`atmosphericScaleHeight` を `physics/atmosphere.ts` へ足し、層走査を `atmosphericDensity` と
+共通化している。
+
+**定数を縛るのは安定性ではなく精度だった。** 発散しない上限は ratio=N=1.5 あたりにあるが、
+
+| 定数 | 413/55 km | 413/−200 km | GTO 再突入 | 破綻 |
+|---|---|---|---|---|
+| ratio=N=0.5(採用) | +0.6% | +1.7% | **+1.5%** | — |
+| ratio=N=1 | +0.7% | +3.7% | **+7.6%** | — |
+| ratio=N=2 | ★発散 | ★発散 | +6.0% | 2/6 |
+
+(外殻温度の最大の、刻み 0.25 s の基準に対する誤差)
+
+限界 1,300 K に対して +7.6% は艦の生死を変える。ratio=N=2 は近地点 0 km で動圧が
+**35.6 kPa** になり、限界 35 kPa を超えて**艦が誤って空力破壊と判定される。**
+採用値では動圧の誤差は −1.3 〜 +0.0% に収まる。
+
+### 決めたこと(2)— 細分をサブステップの外へ出さない
+
+刻みを正しく縛るだけでは、**目的(高い時間加速で低費用)を達成できない。** 刻みが全個体で共有
+されている限り、艦が要求する細かさに他の 500 体が付き合わされる。
+
+**陰的化(A 安定・L 安定)は解にならない。** 陰的 Euler と陰的中点則を実装して測ると、発散は確かに
+消える(20〜204.8 s のすべてで完走)。しかし精度の壁が **68 s** にあり、陰的中点則の 102.4 s は
+外殻温度 +38% / 動圧 +318%、204.8 s は動圧 8,648 kPa(限界 35 kPa)で艦が誤って破壊される。
+基準軌道から読んだ「1歩で失う対気速度の割合」は 20 s で 0.42、68 s で 0.67、**204.8 s で 0.97** —
+一段法では解けない。費用も、陰的中点則 68 s は自機1体につき 911 回の f 評価 + 125 回の Newton
+(各 6×6 の LU)で、陽的 + 刻み制限の 412 回より**高い**。利得は 100%「他の 500 個体を艦の刻みに
+付き合わせない」ことに由来しており、それは細分を大域から切り離せば直接得られる。
+
+そこで **大域サブステップは据え置き、要求した個体だけがその内側で分割する** 形にした
+(`Simulator.stepPrecise`)。内側の1歩ごとに、積分・熱・天体接触の3つを回す。
+
+- **熱を内側で回さないと**、204.8 s サンプルの外殻温度が 761 K のところ 2,156 K になり、
+  生き延びるはずの艦が焼失と判定される。
+- **天体接触を内側で解かないと**、地表へ達した後も内側ループが積み続け、地面の下
+  (密度は海面値で頭打ち)で状態が壊れる。
+- **同じ個体を外側の天体接触にも渡すと**、反発が二度当たる。`resolveOne` は解決後に `e.state` を
+  接触点へ書き戻すので、同じ区間を再判定すると再び接触が見つかる。1歩で進めた個体だけを
+  `coarseEntitiesScratch` へ集めている。
+
+**内側では ephemeris を一切組み直さない。** これが成立条件で、組み直すと細分の意味が消える
+(内側1歩あたり 543 + 626 + 29 µs、3,671 歩で 4.4 s)。根拠:
+
+- `celestialBodyPositionAt` が `r + v·s + ½·accel·s²` の2次外挿を段ごとに行っており、
+  ±102.4 s まで伸ばしたときの**重力寄与の相対誤差は全 65 体で ≤ 1.1×10⁻⁹**(月 9.3×10⁻¹⁰、
+  最悪はメティスの 1.1×10⁻⁹)。しかも ±102.4 s は新しい負荷ではない — 再突入していない
+  最高ワープでは大域 substep が既に 204.8 s。
+- 重力源の名簿は固定(t=0 / 204.8 / 13107 で同一)。
+- `classifyAttractors` のしきい値もセル一辺も `mu` だけから決まる。
+- `attractorsNearInto` のセル一辺 1.2×10⁷ km に対し、艦は 1 substep で 1,618 km しか動かない
+  (**7,400 分の1**)。さらに27近傍で ±1 セルの余裕がある。
+
+### 費用(実測)
+
+substep ごとの固定費 1,225 µs(`gravityAttractorsAt` 543 + `celestialBodiesAt` 626 +
+`atmosphereCelestialBodiesAt` 26 + `classifyAttractors` 29)。個体ごとは
+`attractorsNearInto` + `nearestAtmosphereBody` で 0.9 µs、`stepDynamics` が自機 18.6 µs
+(SRP の遮蔽走査 65 体を段ごとに含む)・破片 5.1 µs。
+
+最高ワープ・低fps(simDt = 13,107 s)、自機1 + 破片500 の1フレーム:
+
+| 案 | 大域 substep | 合計 |
+|---|---|---|
+| 再突入なし | 64 | 275 ms |
+| 旧規則(200 km 以下 1 s) | 13,108 | **56,241 ms** |
+| 刻み制限だけ(60〜200 km) | 656 | 2,815 ms |
+| 刻み制限だけ(大気の底) | 3,735 | 16,025 ms |
+| 陰的(精度限界 68 s) | 193 | 828 ms |
+| **細分を大域から切り離す(採用)** | **64** | **347 ms** |
+
+exp15 の表4で、高度 300 km から 5 km まで**どこでも大域 substep が 64 歩**であることを確認して
+いる。細分する個体だけが 252〜2,718 歩を要求する。
+
+### `doPreciseReentry` — 対象は個体の属性が決める
+
+旧 `lossPrecisionMatters`(「大気の中で失われる時刻と条件の精度がプレイの結果を変えるか」)を
+改名した。細分の対象を決めているのは「喪失の精度」ではなく「濃い大気の中を抗力が要求する刻みで
+積むか」なので、名前を要求そのものへ寄せた。
+
+**全個体へ広げてはいない。** `atmosphericMaxStep` は `nearestAtmosphereBody` + 層走査(最大 28
+層)+ `exp` + `sqrt` を含み、1個体あたり約 0.3 µs。全個体(約 700 体)で 210 µs/substep、
+655 substep/フレームで **137 ms/フレーム**になり、費用を下げる目的と正面から衝突する。
+
+### 残った問題
+
+**1. 破片・薬莢の軌道は、粗いままである。** 発散して残り続ける欠陥はガードで直ったが、
+`doPreciseReentry = false` の個体は依然として大域サブステップの刻みで積まれる。焼失する高度は
+刻みしだいで下振れする(高度 95 km 相当の密度で消えるはずが、刻み 204.8 s では 48.7 km で
+検出される)。**これは意図した割り切りで**、`doPreciseReentry` が false であることは
+「いつどれだけの精度で失われるかは結果を変えない」という宣言そのものである。
+
+**2. 艦自身の歩数は減っていない。** 最高ワープの1フレームで最悪 2,718 歩を要求し、その分だけ
+フレームが伸びる。`SPEC/ORBIT.md`「未確定の案」の「高いタイムワープ中に再突入する艦を『待たない』
+こと」は**残る** — ただし他の物体を巻き込まなくなったので、問われているのは艦1体の歩数だけになった。
+
+**3. 破綻の境界は6本の軌道でしか測っていない。** 近地点 −200 / 0 / 55 / 60 / 80 km、遠地点
+413 km / 2,000 km / GTO。他の天体の大気(金星・火星・タイタン)では測っていない。
 
 ## 7-4. かかった手間(見積りと実際)
 
@@ -986,10 +1154,19 @@ TOI 順の再評価は含まない(接触が実際に起きた件数はそれと
   表に無かった1件(予測の刻みが再突入細分化に従う、という記述)を掃除中に見つけた。
 - **exp13**(7-2): 327 行。母集団の組み立てが見積りより重かった — `collides = true` の
   個体を種別ごとに半径と質量つきで置き直す必要があり、そこだけで 60 行ある。
-- **exp14**(7-3): 190 行。熱と動圧の複製は 18 行で済んだが、**破綻の境界を挟むために刻みを
-  8 通りへ増やした**(見積りは 4 通り)。
-- **是正の実装**: 本命案(熱だけ内側細分)は実測で捨てたので、入ったのは対象集合の属性化だけ
-  (4 ファイル・7 行)。`Simulator.adaptiveMaxStep` は消えずに残った。
+- **exp14**(7-3 の第1回): 190 行。熱と動圧の複製は 18 行で済んだが、**破綻の境界を挟むために
+  刻みを 8 通りへ増やした**(見積りは 4 通り)。ここで「壊れているのは RK4 の側だ」まで分かった。
+- **exp15**(7-3 の第2回): 210 行。表を4つ持つ。壊れた歩で RK4 の4段を再現する `stageProbe` が
+  35 行、軌道の族6本の較正が 60 行。
+- **捨てた案の実測**: 陰的 Euler と陰的中点則を Newton + 数値ヤコビアン + 6×6 ガウス消去で
+  組んで測った(スクラッチ 110 行、commit していない)。**発散は消えるが精度の壁が 68 s に
+  あり、費用も陽的 + 刻み制限より高い**と分かったので捨てた。組まずに理屈で捨てていたら、
+  「陰的なら 204.8 s で積める」という誤った前提が残っていた。
+- **是正の実装**: 刻み規則の差し替え(`atmosphericScaleHeight` 8 行 + `atmosphericMaxStep`
+  25 行 + 定数2つ)と、細分をサブステップの内側へ閉じる `Simulator` の組み替え(`substep` の
+  分岐と `stepPrecise` で +40 行、`adaptiveMaxStep` −13 行)。呼び出し側は
+  `predicted-arc` 6 行・`game-entity` 系 4 ファイル。テストは `time-step.test.ts` を値の固定
+  から不変条件へ全面差し替え(95 行)。
 
 ## 7-5. リスクと落とし穴 — 当てた結果
 
@@ -1000,6 +1177,10 @@ TOI 順の再評価は含まない(接触が実際に起きた件数はそれと
 | exp13 の母集団を `collides = false` の破片で組む | 候補ペアが 0 件になり、「外しても軽い」という**誤った結論**が出る。exp12 は実際にこの状態で 0 件を出している | **踏んでいない。** 母集団を組み直し、参加者数(294 / 694)と候補ペア数を毎行に出した。0 件の行は無い |
 | exp14 で複製した熱の式が原本とずれる | 刻み感度の結論そのものが無意味になる | **踏んでいない。** 4式をファイル冒頭のコメントへ引用し、定数は `game/const` から import した。0.25 s と 1 s が一致することで、複製の側の収束も確かめている |
 | 7-3 の本命案(熱だけ内側細分)を入れたとき、`qdyn` の点サンプルを直さない | 動圧のピークだけ見逃しが残る | **該当しなくなった。** 本命案そのものを実測で捨てた。exp14 の内側細分は `qdyn` の最大を取っており、それでも 34.13 s 固定と同じ答えしか出ない |
+| 細分した個体を、外側の天体接触にも渡す | 反発が二度当たる。`resolveOne` は解決後に `e.state` を接触点へ書き戻すので、同じ区間を再判定すると再び接触が見つかる | **踏んでいない。** `substep` が1歩で進めた個体だけを `coarseEntitiesScratch` へ集め、外側はその顔ぶれにだけ環境と天体接触を解く |
+| 内側の刻みで熱を回さない | 外殻温度が 761 K のところ 2,156 K になり、**生き延びるはずの艦が焼失と判定される** | **踏んでいない。** `stepPrecise` が内側の1歩ごとに `stepEnvironment` を呼ぶ。exp15 の較正表で基準との差が +0.6〜+1.7% に収まっている |
+| 内側で ephemeris を組み直すのが安全だと思って組み直す | 内側1歩あたり 1,198 µs が乗り、3,671 歩で 4.4 s になって細分の意味が消える | **踏んでいない。** 2次外挿の相対誤差(≤1.1×10⁻⁹)と、名簿・分類・近傍がサブステップ内で変わらないことを先に測ってから引き継いだ |
+| 定数を安定性の境界だけで決める | ratio=N=1 は発散しないが GTO 再突入の外殻温度が +7.6%。限界 1,300 K に対して生死を変える | **踏んでいない。** 較正表に基準(刻み 0.25 s)との比を必ず出し、精度で 0.5 を選んだ |
 | ゲートを外したあと、×131072 で薬莢・破片が艦を押す | `replaceIfMoved` の書き戻しが弧を捨てる経路 | **該当しなくなった。** ゲートは外さない |
 | SPEC から根拠を消しすぎて、次に触る人が同じ議論を再発明する | 「なぜ ×4 なのか」が誰にも分からなくなる | **踏んでいない。** 根拠は memos/ とこの文書に残した。**しかも実測で、SPEC が書いていた根拠は誤りだったと分かった** — 消して正解だった |
 
@@ -1007,8 +1188,11 @@ TOI 順の再評価は含まない(接触が実際に起きた件数はそれと
 
 - **接触グリッドのセル一辺は参加者全体で1つ**なので、半径 180 m の敵機が1体いるだけで
   薬莢の群れの絞り込みが死ぬ(削減比 1.0×)。**×1 で既に起きている**(7-2)。
-- **再突入の刻みが破綻する境界(20 s)は、近地点 55 km の軌道1本でしか測っていない。**
-  細分化を緩めるなら、軌道の族で測り直してから(7-3)。
+- **軌道の族6本(近地点 −200 / 0 / 55 / 60 / 80 km)で測り直した**(7-3、exp15)。他の天体の
+  大気(金星・火星・タイタン)では測っていない。
+- **刻みを縛る責任は呼び出し側3本に分散していて、`doPreciseReentry = false` の個体(破片・
+  薬莢)はどこからも縛られない。** 発散しないことは `dragAccel` の頭打ちが保証するが、
+  焼失する高度は刻みしだいで下振れする(7-3 の「決めたこと(0)」)。
 
 ---
 

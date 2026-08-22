@@ -65,13 +65,19 @@ export function airspeed(rRel: Vec3, vRel: Vec3, atm: Atmosphere): Vec3 {
 }
 
 // 大気抵抗の加速度。rRel/vRel はその大気を持つ天体の中心からの相対位置・速度、bcInv は
-// 弾道係数の逆数 Cd·A/m(0 なら抵抗なし = ゼロベクトル)。
-export function dragAccel(rRel: Vec3, vRel: Vec3, bcInv: number, atm: Atmosphere): Vec3 {
+// 弾道係数の逆数 Cd·A/m(0 なら抵抗なし = ゼロベクトル)。dt はこの加速度が積分される刻み [s]。
+// 抗力は対気速度を減らすだけで反転させることはできないので、dt のあいだに奪う量を対気速度
+// そのもので頭打ちにする。頭打ちに触れるのは刻みが抗力に対して既に広すぎるときだけだが、
+// 外すとそこで陽的な積分が段どうしで増幅し合い、1ステップで発散する。
+export function dragAccel(rRel: Vec3, vRel: Vec3, bcInv: number, atm: Atmosphere, dt: number): Vec3 {
   if (bcInv <= 0) return v3();
   const rho = atmosphericDensity(ellipsoidAltitude(rRel, atm), atm);
   if (rho < 1e-15) return v3();
   const { x: vrx, y: vry, z: vrz } = airspeed(rRel, vRel, atm);
-  const k = -0.5 * rho * Math.sqrt(vrx * vrx + vry * vry + vrz * vrz) * bcInv;
+  // a = k·v_air なので、dt で奪う量が対気速度を超えない条件は |k|·dt ≤ 1。
+  const k = Math.max(
+    -0.5 * rho * Math.sqrt(vrx * vrx + vry * vry + vrz * vrz) * bcInv,
+    dt > 0 ? -1 / dt : -Infinity);
   return v3(vrx * k, vry * k, vrz * k);
 }
 
