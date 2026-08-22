@@ -64,8 +64,8 @@
       本影・金環・半影・完全日照が場合分け無しに 1 本の式から出る
 合成  遮蔽天体ごとの透過率を単純に積算(lit *= occludedFraction)
 コスト  attractors 配列を 1 回線形走査。ループ内は定数回の acos/asin/sqrt
-消費者  熱・電力(player.ts)、SRP(dynamics.ts)、そして描画(environment-scene.ts →
-      SunLight.sunVisibility() として艦全体へ一様に掛かるスカラ)
+消費者  熱(全個体 — game-entity.ts)、電力(power.ts)、SRP(dynamics.ts)、そして描画
+      (environment-scene.ts → SunLight.sunVisibility() として艦全体へ一様に掛かるスカラ)
 ```
 
 **厳密解であり、解像度の限界も深度バイアスもエイリアシングも持たない。**

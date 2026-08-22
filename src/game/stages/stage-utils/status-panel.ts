@@ -160,9 +160,9 @@ export class StatusPanel {
     const low = hp <= maxHp * LOW_HP_RATIO;
     const throttleVal = C.THROTTLE_LEVELS[throttleIdx];
     const throttleText = `${C.THROTTLE_LABELS[throttleIdx]} (${throttleVal!.toFixed(1)} m/s²)`;
-    const temp = Math.round(player.thermal.hullTemp);
+    const temp = Math.round(player.temperature);
     const tempHigh = temp > 0.7 * C.MAX_HULL_TEMP;
-    const qdyn = player.thermal.qdyn;
+    const qdyn = player.aero.qdyn;
     const qdynHigh = qdyn > 0.5 * C.MAX_DYN_PRESSURE;
     const qdynText = qdyn >= 1000 ? `${(qdyn / 1000).toFixed(2)} kPa` : `${qdyn.toFixed(0)} Pa`;
     const chargeJ = player.power.chargeJ;

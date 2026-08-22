@@ -31,10 +31,17 @@ export function simulationMaxStep(simDt: number, maxDt: number, maxCount: number
 //   剛性: 抗力の逆時定数 λ = ½ρ·s·bcInv に対し λ·dt を DRAG_STEP_MAX_SPEED_LOSS で抑える。
 //   沈み込み: 中間段の直線外挿が動径方向へ沈む深さ(降下率·dt + ½g·dt²)を、密度が
 //     e^DRAG_STEP_MAX_SCALE_HEIGHTS 倍を超えない範囲に抑える。
+// 抗力の逆時定数 λ = ½ρ·s·bcInv [1/s]。刻み dt に対する λ·dt が、その1歩で抗力が奪う
+// 対気速度の割合になる。
+function dragRate(rRel: Vec3, vRel: Vec3, bcInv: number, atm: Atmosphere): number {
+  return 0.5 * atmosphericDensity(ellipsoidAltitude(rRel, atm), atm)
+    * len(airspeed(rRel, vRel, atm)) * bcInv;
+}
+
 function dragMaxStep(rRel: Vec3, vRel: Vec3, bcInv: number, mu: number, atm: Atmosphere): number {
   const d = len(rRel);
   const alt = ellipsoidAltitude(rRel, atm);
-  const lambda = 0.5 * atmosphericDensity(alt, atm) * len(airspeed(rRel, vRel, atm)) * bcInv;
+  const lambda = dragRate(rRel, vRel, bcInv, atm);
   const stiff = lambda > 0 ? C.DRAG_STEP_MAX_SPEED_LOSS / lambda : Infinity;
   // 沈み込みの許容深さ [m] と、そこへ達するまでの時間。2次方程式 ½g·dt² + 降下率·dt = depth を
   // 有理化した形で解く — 遠方や薄い大気で g → 0 でも 0 除算にならない。
@@ -56,4 +63,21 @@ export function atmosphericMaxStep(
   if (body === null || body.atmosphere === null) return Infinity;
   return dragMaxStep(
     sub(state.r, body.state.r), sub(state.v, body.state.v), bcInv, body.mu, body.atmosphere);
+}
+
+// 刻み dt のあいだに、抗力がその物体の対気速度を丸ごと奪い切るか。奪い切る幅で積んだ軌道は
+// もはや正確ではない(dragAccel が対気速度で頭打ちにするので発散こそしない)。
+//
+// **見るのは剛性の項だけで、atmosphericMaxStep の合成値ではない。** 中間段の沈み込みの上限は
+// 密度にも bcInv にも依らず、高い倍率では大気から遥かに離れた低軌道でも下回る — それを根拠に
+// すると、大気に触れていない物体まで巻き込んでしまう。
+export function dragTakesFullAirspeed(
+  state: KinematicState, bcInv: number, atmosphereBodies: readonly CelestialBody[], dt: number,
+): boolean {
+  if (bcInv <= 0 || dt <= 0) return false;
+  const body = nearestAtmosphereBody(state.r, atmosphereBodies);
+  if (body === null || body.atmosphere === null) return false;
+  const rate = dragRate(
+    sub(state.r, body.state.r), sub(state.v, body.state.v), bcInv, body.atmosphere);
+  return rate * dt >= 1;
 }

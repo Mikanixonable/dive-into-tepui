@@ -24,6 +24,12 @@ export type AmmoPickupInit =
 export class AmmoPickup extends GameEntity {
   override readonly bcInv = C.SMALL_DEBRIS_BCINV;
   protected readonly srpCoeff = C.SMALL_DEBRIS_SRP_COEFF;
+  protected readonly specificHeat = C.SMALL_DEBRIS_SPECIFIC_HEAT;
+  protected readonly bulkDensity = C.SMALL_DEBRIS_BULK_DENSITY;
+  protected override get radiatingAreaPerMass(): number {
+    return C.SMALL_DEBRIS_RADIATING_AREA_PER_MASS;
+  }
+  protected readonly maxTemperature = C.SMALL_DEBRIS_MAX_TEMP;
   protected readonly predictedForGhost = true;
 
   // 補給メッシュを組み立て、質量と衝突半径を設定する。id 省略時はここで一意に発番する。
