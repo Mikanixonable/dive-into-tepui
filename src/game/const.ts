@@ -647,6 +647,7 @@ export const COLOR_DESTROY_FLASH_1 = '#ffb36b';
 export const COLOR_DESTROY_FLASH_2 = '#fffbe8';
 export const COLOR_PLAYER_DESTROY_FRAG = '#9fd8e8';
 export const COLOR_ENEMY_DESTROY_FRAG = '#ff6a4a';
+export const COLOR_PLAYER_ORBIT_LINE_INACTIVE = '#ffffff'; // マップビューで操作対象でない自艦の軌道線
 export const COLOR_ENEMY_ORBIT_LINE = '#565b63';
 export const COLOR_BASE_ORBIT_LINE = '#4f8f7d'; // 拠点(味方施設)の軌道線。落ち着いた緑がかった色で他線と区別
 export const COLOR_ENEMY_PLASMA = '#ff3333'; // 蛍光色の赤
