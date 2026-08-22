@@ -13,13 +13,15 @@ export class CombatHudController {
     this.hud.orbitPanel.sync(game, celestialBodies);
     this.hud.targetPanel.sync(game, celestialBodies);
     this.hud.enemiesPanel.sync(game);
+    this.hud.syncOrbitAnalysis(game, celestialBodies);
   }
 }
 
 export class MapHudController {
   public constructor(private readonly hud: Hud) {}
 
-  public sync(game: Game): void {
+  public sync(game: Game, celestialBodies: readonly CelestialBody[]): void {
     this.hud.mapScaleBadge.sync(game);
+    this.hud.syncOrbitAnalysis(game, celestialBodies);
   }
 }

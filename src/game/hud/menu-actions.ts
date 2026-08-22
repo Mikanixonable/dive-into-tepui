@@ -2,7 +2,6 @@ import { MenuItem } from './context-menu';
 
 export type MenuAction =
   | 'focus'
-  | 'navTarget'
   | 'target'
   | 'warp'
   | 'addNode'
@@ -31,14 +30,10 @@ export const MenuCommon = {
   addNode: (): MenuItem<MenuAction> => ({ label: 'ここにノードを追加', act: 'addNode', shortcut: 'KeyN' }),
   deleteNode: (): MenuItem<MenuAction> => ({ label: 'ノードを削除', act: 'delete', shortcut: 'Delete' }),
   duplicate: (): MenuItem<MenuAction> => ({ label: '複製', act: 'duplicate' }),
-  navTarget: (isTarget: boolean): MenuItem<MenuAction> => ({
-    label: isTarget ? '航法ターゲット解除' : '航法ターゲットに設定',
-    act: 'navTarget',
-    shortcut: 'KeyT',
-  }),
   target: (isTarget: boolean): MenuItem<MenuAction> => ({
     label: isTarget ? 'ターゲット解除' : 'ターゲットに設定',
     act: 'target',
+    shortcut: 'KeyT',
   }),
   dock: (): MenuItem<MenuAction> => ({ label: 'ドッキング', act: 'dock' }),
   undock: (): MenuItem<MenuAction> => ({ label: 'ドッキング解除', act: 'undock' }),
