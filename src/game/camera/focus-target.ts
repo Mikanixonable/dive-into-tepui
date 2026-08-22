@@ -1,7 +1,7 @@
-// MapCamera の注視対象。天体候補列から毎フレーム引く 'object' と、座標系に焼き込んだ
-// 固定点を表す 'point' の判別共用体。
-import { FrameAnchorSource, FramePoint, ReferenceFrame, toFramePoint } from '../../physics/frame';
-import { Vec3 } from '../../physics/vec3';
+// MapCamera の注視対象と、その解決。対象を id で指す 'object' と、座標系に焼き込んだ固定点を
+// 表す 'point' の判別共用体を持ち、毎フレームそれを ECI 位置へ解決する。
+import { FrameAnchorSource, FramePoint, ReferenceFrame, toFramePoint, toInertialPoint } from '../../physics/frame';
+import { Vec3, v3 } from '../../physics/vec3';
 import type { Ephemeris } from '../../physics/ephemeris';
 
 export type FocusTarget =
@@ -19,4 +19,65 @@ export function focusPoint(
 ): FocusTarget {
   const tf = ephemeris.frameTransformAt(frame, t, frameAnchors);
   return { kind: 'point', frame, point: toFramePoint(tf, pos) };
+}
+
+// 注視点の候補。MapPickable はこの形を構造的に満たすので、呼び出し側はそのまま渡せる。
+// **MapPickable 型そのものを受け取ってはいけない** — map-pickable.ts は camera-system.ts を
+// 型 import しており、それが three/webgpu を引き込む。tsconfig.test.json の include へ
+// map-pickable.ts が入ると型検査が DOM 定義を要求して壊れる。
+export interface FocusCandidate {
+  readonly id: string;
+  readonly pos: Vec3;
+}
+
+export interface FocusResolveState {
+  readonly missingFocusFrames: number;
+  readonly lastResolvedFocus: Vec3;
+}
+
+export interface FocusResolveResult {
+  readonly pos: Vec3;
+  readonly missingFocusFrames: number;
+  readonly lastResolvedFocus: Vec3;
+  // true なら焦点そのものを origin へ差し戻す(2フレーム連続の解決失敗)。
+  readonly fallToOrigin: boolean;
+}
+
+// 注視点を解決する。天体・原点・役割トークン・機体(自艦/敵/基地/弾薬)はその場で直接解決する。
+// candidates は apsis/relnode/eqnode マーカーやラグランジュ点など、frameAnchors にも
+// ephemeris.registry にも実体を持たない対象のためだけのフォールバックとして残る。
+export function resolveFocusTarget(
+  focus: FocusTarget,
+  candidates: readonly FocusCandidate[],
+  displayTime: number,
+  frameAnchors: FrameAnchorSource,
+  ephemeris: Ephemeris,
+  state: FocusResolveState,
+): FocusResolveResult {
+  if (focus.kind === 'point') {
+    const tf = ephemeris.frameTransformAt(focus.frame, displayTime, frameAnchors);
+    const pos = toInertialPoint(tf, focus.point);
+    return { pos, missingFocusFrames: state.missingFocusFrames, lastResolvedFocus: pos, fallToOrigin: false };
+  }
+  if (focus.id === ephemeris.originId) {
+    const pos = v3();
+    return { pos, missingFocusFrames: 0, lastResolvedFocus: pos, fallToOrigin: false };
+  }
+  if (focus.id in ephemeris.registry) {
+    const pos = ephemeris.positionOf(focus.id, displayTime);
+    return { pos, missingFocusFrames: 0, lastResolvedFocus: pos, fallToOrigin: false };
+  }
+  const anchored = frameAnchors.stateOf(focus.id, displayTime);
+  if (anchored !== null) {
+    return { pos: anchored.r, missingFocusFrames: 0, lastResolvedFocus: anchored.r, fallToOrigin: false };
+  }
+  const candidate = candidates.find((c) => c.id === focus.id);
+  if (candidate) {
+    return { pos: candidate.pos, missingFocusFrames: 0, lastResolvedFocus: candidate.pos, fallToOrigin: false };
+  }
+  const missingFocusFrames = state.missingFocusFrames + 1;
+  if (missingFocusFrames >= 2) {
+    return { pos: v3(), missingFocusFrames, lastResolvedFocus: state.lastResolvedFocus, fallToOrigin: true };
+  }
+  return { pos: state.lastResolvedFocus, missingFocusFrames, lastResolvedFocus: state.lastResolvedFocus, fallToOrigin: false };
 }
