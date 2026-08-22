@@ -1,5 +1,6 @@
 // マップモードの「カメラ」パネル。カメラの注視対象・回転系・平行/透視投影・画角・基準面設定を担当する。
 import type { Ephemeris } from '../../physics/ephemeris';
+import type { FrameRotationSource } from '../../physics/frame';
 import * as C from '../const';
 import { CameraReferencePlane, CameraReferenceView, MapCamera } from '../camera/map-camera';
 import { focusTargetId } from '../camera/focus-target';
@@ -116,7 +117,10 @@ export class CameraFramePanel {
     const camId = focusTargetId(this.mapCamera.focus);
     const camCenter = camId === undefined ? '固定なし' : celestialBodyName(camId);
     const camRot = this.mapCamera.cameraFrame.rotatingWith;
-    const rotText = (id: string | null): string => (id === null ? '慣性系' : `${celestialBodyName(id)}回転系`);
+    const rotText = (source: FrameRotationSource | null): string => {
+      if (source === null) return '慣性系';
+      return source.kind === 'spin' ? `${celestialBodyName(source.id)}自転系` : `${celestialBodyName(source.id)}回転系`;
+    };
     const modeText = this.mapCamera.cameraRotationMode === 'euler' ? 'オイラー' : 'クォータニオン';
     const projectionText = this.mapCamera.projection === 'orthographic' ? '平行' : '透視';
     return `基準: ${camCenter}・${rotText(camRot)} / ${modeText}・${projectionText}・画角 ${this.mapCamera.fov.toFixed(0)}°`;

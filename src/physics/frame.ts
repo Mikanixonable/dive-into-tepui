@@ -11,18 +11,18 @@
 //
 // シミュレーション全体は地球中心の慣性系(ECI)で回っている。座標系はあくまで「軌道線など
 // 個々の描画物」の表示用で、シーン全体を差し替えるものではない。
-import { CelestialBodyId, OrbitingId } from './celestial-body';
+import { CelestialBodyId } from './celestial-body';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { add, cross, sub, v3, Vec3 } from './vec3';
 import { Quat, qInvert, qRotate } from './attitude';
 
-// 座標系 = 「どの天体を原点に置くか」×「どの天体の公転に合わせて回すか(null = 回さない)」。
-// 値は必ず Ephemeris.frames/frameFor の要素を参照する — リテラルで組むと参照同一性が崩れ、
-// trajectory-line.ts の `frame === lastFrame` によるキャッシュ判定が毎フレーム外れて描画が
-// 無駄に重くなる。
+// 座標系 = 「どの天体を原点に置くか」×「何の回転(公転か自転)に合わせて回すか
+// (null = 回さない)」。値は必ず Ephemeris.frames/frameFor/frameOf の要素を参照する —
+// リテラルで組むと参照同一性が崩れ、trajectory-line.ts の `frame === lastFrame` による
+// キャッシュ判定が毎フレーム外れて描画が無駄に重くなる。
 export type ReferenceFrame = {
   readonly center: CelestialBodyId;
-  readonly rotatingWith: OrbitingId | null;
+  readonly rotatingWith: FrameRotationSource | null;
 };
 
 // 参照フレームの基準・回転対象を役割で指す予約 id。天体 id は小文字 ASCII と '-'/':' しか
