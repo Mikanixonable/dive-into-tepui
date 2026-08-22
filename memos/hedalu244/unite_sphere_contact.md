@@ -53,7 +53,8 @@ linearSphereContact / curveSphereContact(次数) / sweptSagitta … src/ から�
                                                                  8章の調整のために残してある
 ```
 
-`Enemy.checkLoss` は天体到達を見ない(焼失だけ)。固体表面との接触は `collideWith` が扱う。
+`Enemy` は `checkLoss` を持たない — 焼失は温度が決め、固体表面との接触は
+`collideWithCelestialBody` が扱う。
 `RadiatorFold` / `BeltSection` は `EntityManager` に載らないので `checkLoss` を通らない。
 
 ### 2-2. フォールバック
@@ -247,7 +248,7 @@ r = 6791 km(高度 413 km、衝突球 6378 km)の円軌道を1歩で θ 掃か�
 
 刻みを粗くさせない外側のガードは2つあるが、**どちらも判定器の精度を保証しない。**
 
-- `adaptiveSimulationMaxStep`(`game/simulation/time-step.ts`)は**大気を持つ天体にしか掛からない。**
+- `atmosphericMaxStep`(`game/simulation/time-step.ts`)は**大気を持つ天体にしか掛からない。**
   既定レジストリで `atmosphere` を持つのは 1 体だけで、**残り 100 体には刻みの保護が無い。**
   実シミュレーション側はさらに、自機と敵の位置しか見ていない。
 - `PredictedArc.stepDt` の接近項は**動径接近率**で見るので、**接線方向にかすめる通過には効かない。**
