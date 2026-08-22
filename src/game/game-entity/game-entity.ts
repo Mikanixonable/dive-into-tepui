@@ -5,7 +5,7 @@ import { OrbitalElements } from '../../physics/elements';
 import { Attitude, stepAttitude } from '../../physics/attitude';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { CelestialBody, orbitalElementsOf, localOrbitPeriod, strongestAttractor } from '../../physics/celestial-body';
-import { airflow, burnUpBody } from '../../physics/atmosphere';
+import { airflow } from '../../physics/atmosphere';
 import {
   aeroHeating, radiativeCooling, sphereNoseRadius, stepTemperature,
 } from '../../physics/thermal';
@@ -18,7 +18,7 @@ import { LineStyle } from '../../render/line-style';
 import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { PredictedArc, trajectorySampleInterval } from '../simulation/predicted-arc';
-import { atmosphericMaxStep } from '../simulation/time-step';
+import { atmosphericMaxStep, dragTakesFullAirspeed } from '../simulation/time-step';
 import type { FutureCelestialBodyProvider } from '../simulation/arc-bodies';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
@@ -97,9 +97,6 @@ export class GameEntity {
   // 弾道係数の逆数 Cd·A/m(既定 0 = 抵抗なし)。抗力が要求する刻みを外から引けるよう公開する。
   readonly bcInv: number = 0;
   protected readonly srpCoeff: number = 0;
-  // 焼失せずに耐えられる大気密度の上限 [kg/m^3]。熱シミュレーションを持たない種別が
-  // 加熱と動圧をまとめて代理する粗い近似(const.ts)。既定は破片・薬莢・弾・基地・弾薬の値。
-  protected readonly burnUpDensity: number = C.DEBRIS_BURNUP_DENSITY;
 
   // --- 熱(physics/thermal.ts の比量モデル) ---
   // 現在の温度 [K]。
@@ -297,6 +294,14 @@ export class GameEntity {
     return innerDt >= dt ? 1 : Math.ceil(dt / innerDt);
   }
 
+  // 濃い大気に対して刻みが広すぎて、抗力をもう積めなくなったか。刻みを細かく割って積む種別は
+  // 積めなくなることがないので常に false。true になった個体は、そこから先の軌道が正確では
+  // ないので失われる — 物理ではなく積分器の都合による喪失。
+  outpacedByDrag(dt: number, atmosphereBodies: readonly CelestialBody[]): boolean {
+    return !this.doPreciseReentry
+      && dragTakesFullAirspeed(this.state, this.bcInv, atmosphereBodies, dt);
+  }
+
   // 1区間ぶん自分を進める。呼び出し側は生存を確かめてから呼ぶ。celestialBodies はこの区間の
   // 重力源一覧、occluders は日照率の遮蔽体一覧、atmosphereBody は抗力を及ぼすただ1体の大気
   // 天体(null なら抗力なし)。
@@ -310,6 +315,7 @@ export class GameEntity {
     occluders: readonly CelestialBody[],
     atmosphereBody: CelestialBody | null,
     ephemeris: Ephemeris,
+    activeStage: Stage,
   ): boolean {
     const integrated = !this.followPredicted(this.state.t + dt, celestialBodies);
     if (integrated) {
@@ -321,7 +327,7 @@ export class GameEntity {
       this.invalidatePrediction();
     }
     if (this.hasAttitude) this.att = stepAttitude(this.att, this.torque, dt);
-    this.stepThermal(dt, atmosphereBody);
+    this.stepThermal(dt, atmosphereBody, activeStage);
     this.stepEnvironment(dt, ephemeris, this.state.t, occluders);
     return integrated;
   }
@@ -332,9 +338,20 @@ export class GameEntity {
     this.pendingSpecificHeat += specificJoules;
   }
 
-  // 空力加熱と放射冷却で温度を1区間ぶん進める。atmosphereBody は自分が浴びるただ1体の大気
-  // 天体(null なら真空)。比熱を持たない種別は温度も持たないので何もしない。
-  private stepThermal(dt: number, atmosphereBody: CelestialBody | null): void {
+  // 温度が上限を超えて失われる。死因を記録する種別が override する。
+  protected burnUp(_activeStage: Stage): void {
+    this.alive = false;
+  }
+
+  // 空力加熱と放射冷却で温度を1区間ぶん進め、上限を超えていれば焼失させる。atmosphereBody は
+  // 自分が浴びるただ1体の大気天体(null なら真空)。比熱を持たない種別は温度も持たないので
+  // 何もしない。
+  //
+  // 焼失の判定をここへ置くのは、区間を細かく割って積む個体のためである。放射冷却は高温ほど
+  // 速いので、粗い区間の終わりだけを見ると、加熱の山で上限を越えて戻ってきた個体を取り逃がす。
+  private stepThermal(
+    dt: number, atmosphereBody: CelestialBody | null, activeStage: Stage,
+  ): void {
     if (this.specificHeat <= 0) return;
     const atm = atmosphereBody?.atmosphere ?? null;
     let heating = 0;
@@ -353,6 +370,7 @@ export class GameEntity {
     this.temperature = stepTemperature(this.temperature, heating - cooling, this.specificHeat, dt)
       + this.pendingSpecificHeat / this.specificHeat;
     this.pendingSpecificHeat = 0;
+    if (this.temperature > this.maxTemperature) this.burnUp(activeStage);
   }
 
   // 同じ区間ぶん、位置と姿勢から決まる受動的な環境(熱・電力など)を進める。既定では持たない。
@@ -416,15 +434,13 @@ export class GameEntity {
     this.renderObject.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
   }
 
-  // 大気による焼失の判定。固体表面への接触は collideWithCelestialBody が扱う。playerPos は
-  // 「自機からの距離」で消える種別(弾)のために一律で渡す。atmosphereBodies はその時刻の
-  // 大気天体一覧。
+  // 種別ごとの自然死。大気による焼失は温度が決めるので(stepSimulation)、ここに残るのは
+  // 寿命や距離のような、状態から直接は決まらない事情だけ。playerPos は「自機からの距離」で
+  // 消える種別(弾)のために一律で渡す。atmosphereBodies はその時刻の大気天体一覧。
   checkLoss(
     _dt: number, _simTime: number, _activeStage: Stage, _playerPos: Vec3,
-    atmosphereBodies: readonly CelestialBody[],
+    _atmosphereBodies: readonly CelestialBody[],
   ): void {
-    if (!this.alive) return;
-    if (burnUpBody(this.state.r, atmosphereBodies, this.burnUpDensity) !== null) this.alive = false;
   }
 
   // 自分がこの相手と接触しうるか。既定 true。両側が true を返したときだけ接触する。
