@@ -1,5 +1,5 @@
 import { bodyClassOf } from '../celestial/body-class';
-import { ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-glyphs';
+import { bodyEntityGlyph, ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-glyphs';
 import { baseMarkerSvg, shipMarkerSvg } from '../marker/marker-shapes';
 import {
   COLLAPSE_COLLAPSED_GLYPH,
@@ -79,8 +79,8 @@ const SORTS: readonly (readonly [PhysicalObjectListSort, string])[] = [
 ];
 
 // 色が消えても種別を判別できる、マップ用の小さな形態記号。名称と常に並べて表示する。
-const OBJECT_GLYPHS: Readonly<Record<MapPickKind, string>> = {
-  body: ENTITY_GLYPH.body,
+// body は恒星・衛星・ラグランジュ点で字形が変わるため、この表ではなく bodyGlyph() で選ぶ。
+const OBJECT_GLYPHS: Readonly<Record<Exclude<MapPickKind, 'body'>, string>> = {
   player: ENTITY_GLYPH.ship,
   ship: ENTITY_GLYPH.enemyShip,
   ammo: ENTITY_GLYPH.ammo,
@@ -475,6 +475,12 @@ export class PhysicalObjectListPanel {
     return result;
   }
 
+  // 天体の字形。マップ実マーカーと同じ選び方(ラグランジュ点は専用字形、それ以外は
+  // 恒星/衛星/その他で bodyEntityGlyph())をする。
+  private bodyGlyph(id: string): string {
+    return LAGRANGE_ID.test(id) ? ENTITY_GLYPH.lagrange : bodyEntityGlyph(bodyClassOf(this.registry, id));
+  }
+
   private matches(item: MapPickable): boolean {
     if (this.query && !`${item.name} ${item.detail ?? ''}`.toLocaleLowerCase().includes(this.query)) return false;
     if (this.filter === null) return true;
@@ -513,7 +519,7 @@ export class PhysicalObjectListPanel {
         node.glyph.dataset.svgGlyph = svgGlyph;
       }
     } else {
-      const glyph = OBJECT_GLYPHS[item.kind];
+      const glyph = item.kind === 'body' ? this.bodyGlyph(item.id) : OBJECT_GLYPHS[item.kind];
       if (node.glyph.textContent !== glyph) {
         node.glyph.textContent = glyph;
         delete node.glyph.dataset.svgGlyph;
