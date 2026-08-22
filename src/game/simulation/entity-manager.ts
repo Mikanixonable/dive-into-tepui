@@ -370,7 +370,7 @@ export class EntityManager {
   updateBaseEquatorNodes(overviewMode: boolean, displayWindow: DisplayWindow, ephemeris: Ephemeris): void {
     if (!overviewMode) return;
     for (const base of this.bases) {
-      if (base.alive) base.equatorNodes?.update(displayWindow.frame, displayWindow.displayTime, ephemeris);
+      if (base.alive) base.equatorNodes?.updateOnEllipse(displayWindow.displayTime, ephemeris);
     }
   }
 

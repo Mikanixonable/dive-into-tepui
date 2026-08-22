@@ -83,7 +83,7 @@ export class Targeter {
   updateEquatorNodes(overviewMode: boolean, displayWindow: DisplayWindow, ephemeris: Ephemeris): void {
     if (!overviewMode) return;
     this.aliveTarget?.ensureEquatorNodes(this.markerManager)
-      .update(displayWindow.frame, displayWindow.displayTime, ephemeris);
+      .updateOnEllipse(displayWindow.displayTime, ephemeris);
   }
 
   // ターゲット位置に「自機の方を向いた的(標的面)」があると見なし、発射弾がその面を自機側から
