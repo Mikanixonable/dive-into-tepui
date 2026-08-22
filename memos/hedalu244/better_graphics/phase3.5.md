@@ -93,37 +93,9 @@ GPU の起動オプション依存で不安定である。**この環境はそ�
 
 ## 手順
 
-**手順 2〜3 はこのフェーズの前提となるリファクタリングで、器を作る前に片付ける。**
+**手順 3 はこのフェーズの前提となるリファクタリングで、器を作る前に片付ける。**
 描画設定の受け渡しを、クラス(`GraphicsSettings` — 永続と設定パネルからの書き込み口を持つ)から
 設定値(`GraphicsSettingsData`)へ移す。**絵は変わらない。**
-
-### 手順 2. `scaleApparentSize` を `CelestialView` へ移す
-
-**目的**: 見かけ直径へ詳細度の倍率を掛ける計算が、設定値の保管と永続を持つ `GraphicsSettings`
-の中に埋まっている。呼んでいるのは `CelestialView` の派生 3 種だけで、**LOD 段と球体表示の
-閾値へ渡す見かけ直径をどう作るかは天体ビューの責務である。この時点で挙動は変えない。**
-
-**変更が必要な箇所**
-
-| ファイル | 変更 |
-|---|---|
-| `src/game/celestial/celestial-view.ts` | `protected lodApparentDiameterPx(diameterM, metersPerPixel, graphics)` を足す。中身は `apparentSizePx(diameterM, metersPerPixel) * graphics.current.lodBias`(`apparentSizePx` は `render/screen-lod` から) |
-| `src/game/celestial/earth-view.ts` | `graphics.scaleApparentSize(apparentSizePx(2 * R_EARTH, metersPerPixel))` → `this.lodApparentDiameterPx(2 * R_EARTH, metersPerPixel, graphics)`。`apparentSizePx` の import を落とす |
-| `src/game/celestial/sphere-view.ts` | 同上(`2 * this.outerRadius` と `cameraSystem.activeCameraScale(pos)`)。import も同様 |
-| `src/game/celestial/point-view.ts` | 同上。import も同様 |
-| `src/render/graphics-settings.ts` | `scaleApparentSize` を削除 |
-
-**引数の型はこの手順ではまだ `GraphicsSettings`。** 手順 3 で `GraphicsSettingsData` へ変わる。
-
-**達成条件と検証**
-
-- `GraphicsSettings` から詳細度の計算が消え、設定値の保管・永続・押し出しだけが残る。
-- `npm run typecheck`
-- `grep -rn "scaleApparentSize" src/` → 0 件
-- `grep -rn "apparentSizePx" src/game/` → `celestial-view.ts` だけ
-- `npm run dev` → 設定パネルの詳細度を切り替え、球体/輝点の切り替わる距離が変わること
-
----
 
 ### 手順 3. `game/` の連鎖を毎フレームの `GraphicsSettingsData` 受け渡しへ
 

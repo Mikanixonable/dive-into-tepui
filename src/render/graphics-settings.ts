@@ -84,9 +84,6 @@ export class GraphicsSettings {
 
   get current(): GraphicsSettingsData { return this.data; }
 
-  // 見かけ直径へ詳細度の倍率を掛ける。LOD 段と球体表示の閾値の両方がこの1つの値を通る。
-  scaleApparentSize(apparentSizePx: number): number { return apparentSizePx * this.data.lodBias; }
-
   // 解像度の押し出し先を登録し、現在値を一度反映する。
   bindResolutionTarget(target: ResolutionTarget): void {
     this.resolutionTarget = target;

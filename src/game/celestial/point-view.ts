@@ -16,7 +16,7 @@ import { spinOrientation } from '../../physics/body-orientation';
 import { STAR_SHELL_RADIUS } from '../../render/stars';
 import { Billboard } from '../../render/billboard';
 import { CelestialSurface } from '../../render/celestial-surface';
-import { apparentSizePx, showsPhysicalSphere, sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from '../../render/screen-lod';
+import { showsPhysicalSphere, sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from '../../render/screen-lod';
 import { CelestialView } from './celestial-view';
 import type { GraphicsSettings } from '../../render/graphics-settings';
 import { RingView } from './ring-view';
@@ -111,8 +111,8 @@ export class PointView extends CelestialView {
   ): void {
     if (!this.group.visible && !this.billboard.mesh.visible) return;
     const pos = ephemeris.positionOf(this.id, displayTime);
-    const apparentDiameterPx = graphics.scaleApparentSize(
-      apparentSizePx(2 * this.outerRadius, cameraSystem.activeCameraScale(pos)));
+    const apparentDiameterPx = this.lodApparentDiameterPx(
+      2 * this.outerRadius, cameraSystem.activeCameraScale(pos), graphics);
     if (!showsPhysicalSphere(apparentDiameterPx)) {
       this.hidePhysical();
       if (cameraSystem.overviewMode) {
