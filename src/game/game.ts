@@ -152,6 +152,7 @@ export class Game {
     );
     this.simSpeedManager = new SimSpeedManager(this._hud, this._uiSfx);
     this.navTarget = new NavTarget(this._hud, this.markerManager);
+    this.navTarget.restore(initialSave?.navTarget, this.entities);
     // 参照フレームの基準・回転対象が機体・役割トークンを指すときの解決役。update()/sync() の
     // 先頭で毎フレーム celestialBodies を差し込み、以降のフレーム変換の呼び出しはこれを渡す。
     this.frameAnchors = new FrameAnchors({

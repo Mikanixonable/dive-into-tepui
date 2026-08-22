@@ -92,6 +92,7 @@ function buildSaveData(game: Game): GameSaveData {
     bases: game.entities.bases.map(b => b.serialize()),
     stage: game.activeStage.serialize(),
     camera: { view: game.viewManager.serializeView(), ...game.cameraSystem.serialize() },
+    navTarget: game.navTarget.id !== null ? { id: game.navTarget.id, name: game.navTarget.name! } : null,
   };
 }
 
