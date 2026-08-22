@@ -1,7 +1,6 @@
 // 地球本体の見た目: 位置・自転角・太陽方向・表面アニメーションを表示時刻に同期する。
 import * as THREE from 'three/webgpu';
 import { createEarth, Earth } from '../../render/earth';
-import { apparentSizePx } from '../../render/screen-lod';
 import { Ephemeris } from '../../physics/ephemeris';
 import { R_EARTH, SIDEREAL_DAY } from '../../physics/solar-system';
 import { CameraSystem } from '../camera/camera-system';
@@ -44,7 +43,7 @@ export class EarthView extends CelestialView {
     const metersPerPixel = cameraSystem.activeCameraScale(pos);
     this.earth.setAuroraVisible(graphics.current.aurora);
     this.earth.setAtmosphereVisible(graphics.current.atmosphere);
-    this.earth.syncSurfaceLod(graphics.scaleApparentSize(apparentSizePx(2 * R_EARTH, metersPerPixel)));
+    this.earth.syncSurfaceLod(this.lodApparentDiameterPx(2 * R_EARTH, metersPerPixel, graphics));
     this.earth.tick(displayTime);
   }
 
