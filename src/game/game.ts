@@ -277,7 +277,6 @@ export class Game {
     this.input.dispose();
     this.editor.dispose();
     this._environment.dispose();
-    this.navTarget.dispose();
     this.frameControls.dispose();
     this.cameraSystem.dispose();
     this.displayWindowManager.dispose();

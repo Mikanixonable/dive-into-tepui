@@ -1,6 +1,6 @@
-// マップ上の航法ターゲット(任意の MapPickable)の保持と、自機軌道との相対 AN/DN(昇交点・
-// 降交点)の算出・マーカー表示・被選択物としての公開。Targeter の戦闘ターゲット(Enemy 専用)
-// とは独立に、月・ラグランジュ点なども対象にできる。
+// マップ上のターゲット(任意の MapPickable — 月・ラグランジュ点なども含む)の保持と、
+// 自機軌道との相対 AN/DN(昇交点・降交点)の算出・マーカー表示・被選択物としての公開。
+// ターゲットが敵・自艦・基地(CombatTarget)の場合は、Targeter の射撃・照準補助の基準にもなる。
 import { Vec3, v3, add } from '../physics/vec3';
 import { KinematicState } from '../physics/kinematic-state';
 import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from '../physics/elements';
@@ -18,15 +18,7 @@ import { Hud } from './hud/hud';
 import { MarkerManager } from './marker/marker-manager';
 import { ORBIT_POINT_GLYPH } from './marker/marker-glyphs';
 import { CameraSystem } from './camera/camera-system';
-import type { ProjectFn } from './camera/camera-system';
 import { MapPickable } from './map-pickable';
-import { pickNearest } from './map-pickable';
-import type { Base } from './game-entity/base';
-import type { Input } from './input/input';
-import { pickRadiusSq } from './input/pointer-precision';
-import * as C from './const';
-import { ContextMenu } from './hud/context-menu';
-import { MenuAction, MenuCommon } from './hud/menu-actions';
 
 const Z_HAT: Vec3 = v3(0, 0, 1);
 
@@ -34,7 +26,6 @@ export class NavTarget {
   // ターゲットが変わるたびに通知する — 物体一覧パネルのハイライトを追随させる用途。
   onSelect: ((id: string | null) => void) | null = null;
 
-  private readonly baseMenu: ContextMenu<Base, MenuAction>;
   private targetId: string | null = null;
   private targetName: string | null = null;
   private ownerName: string | null = null;
@@ -48,12 +39,7 @@ export class NavTarget {
   private celestialBodies: readonly CelestialBody[] = [];
   private readonly pickableCache: MapPickable[] = [];
 
-  constructor(private readonly _hud: Hud, private readonly markerManager: MarkerManager) {
-    this.baseMenu = new ContextMenu<Base, MenuAction>(_hud.layers.popup, _hud.overlayManager);
-    this.baseMenu.onSelect = (act, base) => {
-      if (act === 'navTarget') this.toggleTarget(base.id, '基地');
-    };
-  }
+  constructor(private readonly _hud: Hud, private readonly markerManager: MarkerManager) {}
 
   get id(): string | null {
     return this.targetId;
@@ -69,27 +55,21 @@ export class NavTarget {
     this.onSelect?.(id);
   }
 
-  // id と現在の設定が同じなら解除、そうでなければ id を航法ターゲットにする。
+  // id と現在の設定が同じなら解除、そうでなければ id をターゲットにする。
   toggleTarget(id: string, name: string): void {
     if (this.targetId === id) {
       this.setInternal(null, null);
-      this._hud.hint('航法ターゲット解除');
+      this._hud.hint('ターゲット解除');
     } else {
       this.setInternal(id, name);
-      this._hud.hint(`航法ターゲット: ${name}`);
+      this._hud.hint(`ターゲット: ${name}`);
     }
   }
 
-  // Tキーなど、絶対値で戦闘ターゲット(敵・自艦・基地)を設定/解除する経路用。
-  // 戦闘ターゲットは航法ターゲットと状態を共有するため、ここが両者の唯一の書き込み口になる。
+  // Tキーなど、絶対値で敵・自艦・基地をターゲットに設定/解除する経路用。
   setCombatTarget(entity: CombatTarget | null): void {
     this.setInternal(entity?.id ?? null, entity?.name ?? null);
     this._hud.hint(entity ? `ターゲット固定: ${entity.name}` : 'ターゲット固定解除');
-  }
-
-  // 右クリックのプロパティウィンドウの「ターゲット」項目用。現在の設定と同じ対象ならその場で解除する。
-  toggleCombatTarget(entity: CombatTarget): void {
-    this.setCombatTarget(this.targetId === entity.id ? null : entity);
   }
 
   // 対象消滅を伴わない一括解除(操作対象艦の切替など)。ヒントは出さない。
@@ -97,8 +77,8 @@ export class NavTarget {
     this.setInternal(null, null);
   }
 
-  // 現在の航法ターゲットを、生存中の戦闘対象(敵・自艦・基地)として解決する。天体・ラグランジュ点
-  // など戦闘対象になれない航法ターゲットは null。
+  // 現在のターゲットを、生存中の戦闘対象(敵・自艦・基地)として解決する。天体・ラグランジュ点
+  // など戦闘対象になれない対象がターゲットの場合は null。
   resolveCombatTarget(entities: EntityManager): CombatTarget | null {
     if (this.targetId === null) return null;
     const entity = this.resolveEntity(this.targetId, entities);
@@ -128,7 +108,7 @@ export class NavTarget {
     this.ownerName = player?.name ?? null;
     this.celestialBodies = frameAnchors.bodies;
     if (!this.targetId) return;
-    // 航法ターゲット自身の赤道交点は、自機の軌道要素が求まるかどうかとは無関係に出す。
+    // ターゲット自身の赤道交点は、自機の軌道要素が求まるかどうかとは無関係に出す。
     const target = this.resolveEntity(this.targetId, entities);
     target?.ensureEquatorNodes(this.markerManager).update(frame, displayTime, ephemeris, frameAnchors);
     if (!player) return;
@@ -162,32 +142,7 @@ export class NavTarget {
     if (this.targetId === id) this.setInternal(null, null);
   }
 
-  // 基地用コンテキストメニューを片付ける。
-  dispose(): void {
-    this.baseMenu.dispose();
-  }
-
-  // 戦闘ビューの右クリックで基地を航法ターゲットに設定/解除する。基地に当たらなければ
-  // クリックを消費せず、Targeter の敵ターゲット選択へフォールスルーさせる。ビューはここでは
-  // 持たないので毎フレーム引数で受け取り、マップ視点では何もしない。
-  handleCombatBaseClick(entities: EntityManager, input: Input, project: ProjectFn, overviewMode: boolean): void {
-    if (overviewMode) return;
-    input.takeRightClicks((click) => {
-      const pickables = entities.bases.filter((b) => b.alive).map((base) => ({ pos: base.state.r, base }));
-      // pointer:coarse では許容半径を広げる。
-      const picked = pickNearest(
-        pickables, click.x, click.y, project, pickRadiusSq(C.TARGET_LOCK_PICK_PX_SQ, C.TARGET_LOCK_PICK_PX_SQ_COARSE),
-      );
-      if (!picked) return false;
-      this.baseMenu.open(click.x, click.y, picked.base, [
-        MenuCommon.navTarget(this.targetId === picked.base.id),
-        MenuCommon.cancel(),
-      ]);
-      return true;
-    });
-  }
-
-  // 現在の航法ターゲットの位置・速度。天体は CelestialBody.state、ラグランジュ点は
+  // 現在のターゲットの位置・速度。天体は CelestialBody.state、ラグランジュ点は
   // ephemeris.lagrangeStateAt、船・基地は entity.state から得る。天体以外は重力中心ではない
   // ため hasMass=false を返す。ターゲット未設定・解決不能なら null。
   resolveState(
@@ -212,7 +167,7 @@ export class NavTarget {
     return entity ? { id, state: entity.state, hasMass: false, attractor: null } : null;
   }
 
-  // id が航法ターゲットになれる(軌道面が定まる)かどうか。
+  // id がターゲットになれる(軌道面が定まる)かどうか。
   canTarget(id: string, entities: EntityManager, ephemeris: Ephemeris, t: number): boolean {
     return this.resolvePlaneNormal(id, entities, ephemeris, t) !== null;
   }

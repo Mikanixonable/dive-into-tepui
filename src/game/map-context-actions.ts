@@ -26,7 +26,6 @@ import { PlanEditor } from './plan/plan-editor';
 import { SimSpeedManager } from './sim-speed-manager';
 import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from './hud/orbit-labels';
 import type { PauseMenu } from './hud/pause-menu';
-import type { CombatTarget } from './targeter';
 import type { Docking } from './docking';
 import type { ActivePlayerController } from './active-player-controller';
 import type { FrameControls } from './hud/frame-controls';
@@ -418,15 +417,15 @@ export class MapContextActions {
         return [
           { type: 'header', label: target.name, subLabel },
           MenuCommon.focus(),
-          ...this.navTargetItems(target, simTime),
+          ...this.targetItems(target, simTime),
           MenuCommon.cancel(),
         ];
       },
       run: (act, target) => this.runBodyShip(act, target),
     },
     'ship': {
-      itemsFor: (target) => [
-        ...this.combatTargetLockItems(this.entities.findEnemy(target.id)),
+      itemsFor: (target, simTime) => [
+        ...this.targetItems(target, simTime),
         MenuCommon.focus(),
         ...this.duplicateItems(),
         { label: '削除', act: 'delete' },
@@ -438,8 +437,6 @@ export class MapContextActions {
           if (enemy) enemy.alive = false;
         } else if (act === 'duplicate') {
           this.runDuplicate(target);
-        } else if (act === 'target') {
-          this.runTargetLock(this.entities.findEnemy(target.id));
         } else {
           this.runBodyShip(act, target);
         }
@@ -448,7 +445,7 @@ export class MapContextActions {
     'ammo': {
       itemsFor: (target, simTime) => [
         MenuCommon.focus(),
-        ...this.navTargetItems(target, simTime),
+        ...this.targetItems(target, simTime),
         ...this.duplicateItems(),
         { label: '削除', act: 'delete' },
         MenuCommon.cancel(),
@@ -509,7 +506,7 @@ export class MapContextActions {
       run: (act, target) => this.runApsisRelnode(act, target),
     },
     'player': {
-      itemsFor: (target) => {
+      itemsFor: (target, simTime) => {
         const ship = this.entities.findPlayer(target.id);
         const activeShip = this.activePlayers.current;
         const isActive = ship === activeShip;
@@ -533,7 +530,7 @@ export class MapContextActions {
         }
 
         return [
-          ...this.combatTargetLockItems(ship),
+          ...this.targetItems(target, simTime),
           ...dockItems,
           ...planExec,
           ...activate,
@@ -565,8 +562,6 @@ export class MapContextActions {
           this.runDuplicate(target);
         } else if (act === 'delete') {
           if (ship) this.activePlayers.remove(ship);
-        } else if (act === 'target') {
-          this.runTargetLock(ship);
         } else {
           this.runBodyShip(act, target);
         }
@@ -593,7 +588,7 @@ export class MapContextActions {
       },
     },
     'base': {
-      itemsFor: (target) => {
+      itemsFor: (target, simTime) => {
         const base = this.entities.findBase(target.id);
         const activeShip = this.activePlayers.current;
         const isControlled = base && this.getControlledBase ? this.getControlledBase() === base : false;
@@ -619,12 +614,11 @@ export class MapContextActions {
 
         return [
           { type: 'header', label: base?.name ?? target.name, subLabel },
-          ...this.combatTargetLockItems(base),
+          ...this.targetItems(target, simTime),
           ...controlItem,
           ...dockItems,
           { label: '基地ビューを開く', act: 'openDock' },
           MenuCommon.focus(),
-          ...this.navTargetItems(target, 0),
           ...this.duplicateItems(),
           { label: '削除', act: 'delete' },
           MenuCommon.cancel(),
@@ -633,9 +627,7 @@ export class MapContextActions {
       run: (act, target) => {
         const base = this.entities.findBase(target.id);
         const activeShip = this.activePlayers.current;
-        if (act === 'target') {
-          this.runTargetLock(base);
-        } else if (act === 'activate') {
+        if (act === 'activate') {
           if (base) this.activePlayers.setBase(base);
         } else if (act === 'deactivate') {
           if (base && this.activePlayers.controlledBase === base) this.activePlayers.setBase(null);
@@ -675,30 +667,17 @@ export class MapContextActions {
     return handler ? handler.itemsFor(target, simTime) : [];
   }
 
-  // 対象を航法ターゲットにする/解除する項目。軌道面が定まらない対象(地球・太陽自身など)
-  // では選んでも AN/DN が出ないので項目自体を出さない。
-  private navTargetItems(target: MapPickable, simTime: number): readonly MenuItem<MenuAction>[] {
-    if (target.id === this.navTarget.id) return [MenuCommon.navTarget(true)];
+  // ターゲットに設定/解除する項目。軌道面が定まらない対象(地球・太陽自身など)では選んでも
+  // AN/DN が出ないので項目自体を出さない。マップビュー・戦闘ビューどちらでも同じ項目を出す。
+  private targetItems(target: MapPickable, simTime: number): readonly MenuItem<MenuAction>[] {
+    if (target.id === this.navTarget.id) return [MenuCommon.target(true)];
     const canTarget = this.navTarget.canTarget(target.id, this.entities, this.ephemeris, simTime);
-    return canTarget ? [MenuCommon.navTarget(false)] : [];
+    return canTarget ? [MenuCommon.target(false)] : [];
   }
 
   // 「複製」項目。複製先が艦艇配置パネルなので、それを持つステージだけに出す。
   private duplicateItems(): readonly MenuItem<MenuAction>[] {
     return this.activeStage.authoring ? [MenuCommon.duplicate()] : [];
-  }
-
-  // ターゲット固定の項目。戦闘ターゲットとして戦える対象(生存中の敵・自艦)にだけ出し、
-  // マップビューでは出さない(視界占有を抑える — §7-2)。
-  private combatTargetLockItems(entity: CombatTarget | null | undefined): readonly MenuItem<MenuAction>[] {
-    if (this.cameraSystem.overviewMode || !entity || !entity.alive) return [];
-    return [MenuCommon.target(this.navTarget.id === entity.id)];
-  }
-
-  // ターゲット固定を、押した時点の設定と比べてトグルする。
-  private runTargetLock(entity: CombatTarget | null | undefined): void {
-    if (!entity) return;
-    this.navTarget.toggleCombatTarget(entity);
   }
 
   // 対象の現在状態を軌道要素へ逆算し、その値をプリセットして艦艇配置パネルを開く。
@@ -954,7 +933,7 @@ export class MapContextActions {
     if (act === 'focus') {
       this.frameControls.setFocus({ kind: 'object', id: target.id });
       this.hud.hint(`${target.name} にフォーカス`);
-    } else if (act === 'navTarget') {
+    } else if (act === 'target') {
       this.navTarget.toggleTarget(target.id, target.name);
     }
   }
