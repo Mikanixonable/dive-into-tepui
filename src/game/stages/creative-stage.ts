@@ -194,7 +194,7 @@ export class CreativeStage extends Stage {
       this._markerManager.fadeOut('creative-preview');
       return;
     }
-    this.previewOrbitLine.sync(this.preview.elements, fo, camera, true);
+    this.previewOrbitLine.sync(this.preview.elements, fo, camera);
     if (overviewMode && isOccluded(cameraPos, this.preview.pos, celestialBodies)) {
       this._markerManager.hide('creative-preview');
       return;
