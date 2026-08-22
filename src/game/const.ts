@@ -287,7 +287,7 @@ export const DESTROY_FLASH2_DURATION = 0.5; // [s]
 export const DESTROY_FRAG_SIZE_MIN = 1.5; // 撃破デブリの破片サイズ下限。ENEMY_SCALE 倍される
 export const DESTROY_FRAG_SIZE_MAX = 6.0;
 
-export const SIM_SPEED_LEVELS = [1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 131072];
+export const SIM_SPEED_LEVELS = [1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 131072, 524288, 2097152];
 export const MAX_PHYS_SIM_SPEED = 4; // 推進・射撃・衝突解決・敵AIが有効な最大タイムワープ(SimSpeedManager の can* が参照)
 
 export const SUBSTEP_MAX_DT = 20; // 1サブステップの最大秒数 [s](Simulator.advance のサブステップ分割数の算出に使う)
