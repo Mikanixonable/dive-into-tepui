@@ -40,7 +40,11 @@ const STYLE = `
 @media ${MQ_COMPACT} {
   #hud .dg-window-header { cursor: default; }
 }
-#hud .dg-window-title-icon { flex: none; color: var(--text); font-size: var(--glyph-1-3); line-height: 1; margin-top: var(--space-1); }
+#hud .dg-window-title-icon {
+  flex: 0 0 var(--glyph-1-3); width: var(--glyph-1-3); height: var(--glyph-1-3);
+  color: var(--text); font-size: var(--glyph-1-3); line-height: 1; margin-top: var(--space-1);
+}
+#hud .dg-window-title-icon svg { display: block; width: 100%; height: 100%; }
 #hud .dg-window-title { flex: 1; min-width: 0; }
 #hud .dg-window-title-main { color: var(--text); font-weight: bold; overflow-wrap: break-word; }
 #hud .dg-window-title-sub { color: var(--text); opacity: 0.7; font-size: var(--font-s); margin-top: var(--space-1); }
@@ -69,8 +73,9 @@ function ensureStyle(): void {
 export interface DraggableWindowOptions {
   readonly title: string;
   readonly subtitle?: string;
-  // タイトル前に添える対象種別のグリフ。省略すると添えない。開いた後は変わらない前提で、
-  // setHeader の差分更新対象にはしない。
+  // タイトル前に添える対象種別のグリフ。Unicode 文字または SVG マークアップ(信頼できる
+  // 内部生成の文字列のみ)。省略すると添えない。開いた後は変わらない前提で、setHeader の
+  // 差分更新対象にはしない。
   readonly icon?: string;
   // クリップ済みの状態で開く。省略時は false。
   readonly initiallyClipped?: boolean;
@@ -131,7 +136,7 @@ export class DraggableWindow implements OverlayHandle {
       const iconEl = document.createElement('div');
       iconEl.className = 'dg-window-title-icon';
       iconEl.setAttribute('aria-hidden', 'true');
-      iconEl.textContent = options.icon;
+      iconEl.innerHTML = options.icon;
       header.appendChild(iconEl);
     }
     const title = document.createElement('div');
