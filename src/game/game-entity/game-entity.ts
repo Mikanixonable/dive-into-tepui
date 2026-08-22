@@ -7,10 +7,11 @@ import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { CelestialBody, orbitalElementsOf, localOrbitPeriod, strongestAttractor } from '../../physics/celestial-body';
 import { airflow } from '../../physics/atmosphere';
 import {
-  aeroHeating, radiativeCooling, sphereNoseRadius, stepTemperature,
+  aeroHeating, radiativeCooling, solarHeating, sphereNoseRadius, stepTemperature,
 } from '../../physics/thermal';
+import { sunlitFactor } from '../../physics/shadow';
 import { ApsisTrack } from '../../physics/trajectory-features';
-import { Vec3, sub, v3 } from '../../physics/vec3';
+import { Vec3, len, scale, sub, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import { OrbitLine } from '../orbit-line';
 import { TrajectoryLine } from '../trajectory-line';
@@ -109,6 +110,12 @@ export class GameEntity {
   protected get radiatingAreaPerMass(): number { return 0; }
   // 輻射率。
   protected readonly emissivity: number = C.HULL_EMISS;
+  // 太陽光を受ける面積の比 [m^2/kg]。吸収率を織り込んだ実効値で、既定は球とみなした断面積
+  // (bcInv/Cd)に外殻の吸収率(灰色体とみなし輻射率に等しい)を掛けたもの。展開して受光面が
+  // 増える種別は sunDir を見て override する。
+  protected solarAbsorbAreaPerMass(_sunDir: Vec3): number {
+    return (this.emissivity * this.bcInv) / C.DRAG_COEFFICIENT;
+  }
   // これを超えると焼失する温度 [K]。既定 Infinity = 熱では失われない。
   protected readonly maxTemperature: number = Infinity;
   // 刻みに依らない投入熱 [J/kg]。次の熱計算で一度だけ温度へ変換する。
@@ -304,7 +311,7 @@ export class GameEntity {
 
   // 1区間ぶん自分を進める。呼び出し側は生存を確かめてから呼ぶ。celestialBodies はこの区間の
   // 重力源一覧、occluders は日照率の遮蔽体一覧、atmosphereBody は抗力を及ぼすただ1体の大気
-  // 天体(null なら抗力なし)。
+  // 天体(null なら抗力なし)、star は日照と受熱の光源(null なら光源なし)。
   //
   // 位置と速度は、既に伸びている予測が区間の終端を持っていればそれを辿り、無ければ積分する。
   // **どちらを通っても姿勢と受動的な環境は同じ区間ぶん進む** — 位置と速度の決まり方は、その
@@ -314,7 +321,7 @@ export class GameEntity {
     celestialBodies: readonly CelestialBody[],
     occluders: readonly CelestialBody[],
     atmosphereBody: CelestialBody | null,
-    ephemeris: Ephemeris,
+    star: CelestialBody | null,
     activeStage: Stage,
   ): boolean {
     const integrated = !this.followPredicted(this.state.t + dt, celestialBodies);
@@ -327,9 +334,17 @@ export class GameEntity {
       this.invalidatePrediction();
     }
     if (this.hasAttitude) this.att = stepAttitude(this.att, this.torque, dt);
+    // 太陽の幾何は熱収支と受動的な環境の両方が読むので、この区間で1度だけ引いて両方へ渡す。
+    // 日照率は遮蔽体の数だけ走るため、熱を蓄えない種別(弾)には引かせない — 受動的な環境を
+    // 持つ種別はどれも熱を蓄える。
+    const sun = this.specificHeat > 0 ? star : null;
+    const toSun = sun === null ? v3() : sub(sun.state.r, this.state.r);
+    const sunDist = len(toSun);
+    const sunDir = sunDist > 0 ? scale(toSun, 1 / sunDist) : v3();
+    const sunlit = sun === null ? 0 : sunlitFactor(this.state.r, sun, occluders);
     // 環境を先に進める。放熱面の展開のように、熱収支が読む値をここで書き換える種別がある。
-    this.stepEnvironment(dt, ephemeris, this.state.t, occluders);
-    this.stepThermal(dt, atmosphereBody, activeStage);
+    this.stepEnvironment(dt, atmosphereBody, sunlit, sunDir);
+    this.stepThermal(dt, atmosphereBody, sunDist, sunlit, sunDir, activeStage);
     return integrated;
   }
 
@@ -344,23 +359,25 @@ export class GameEntity {
     this.alive = false;
   }
 
-  // 空力加熱と放射冷却で温度を1区間ぶん進め、上限を超えていれば焼失させる。atmosphereBody は
-  // 自分が浴びるただ1体の大気天体(null なら真空)。比熱を持たない種別は温度も持たないので
-  // 何もしない。
+  // 空力加熱・太陽光の受熱と放射冷却で温度を1区間ぶん進め、上限を超えていれば焼失させる。
+  // atmosphereBody は自分が浴びるただ1体の大気天体(null なら真空)、sunDist は太陽までの
+  // 距離、sunlit は日照率、sunDir は太陽方向。比熱を持たない種別は温度も持たないので何もしない。
   //
   // 焼失の判定をここへ置くのは、区間を細かく割って積む個体のためである。放射冷却は高温ほど
   // 速いので、粗い区間の終わりだけを見ると、加熱の山で上限を越えて戻ってきた個体を取り逃がす。
   private stepThermal(
-    dt: number, atmosphereBody: CelestialBody | null, activeStage: Stage,
+    dt: number, atmosphereBody: CelestialBody | null,
+    sunDist: number, sunlit: number, sunDir: Vec3, activeStage: Stage,
   ): void {
     if (this.specificHeat <= 0) return;
     const atm = atmosphereBody?.atmosphere ?? null;
-    let heating = 0;
+    let heating = solarHeating(
+      C.SOLAR_CONSTANT, sunDist, sunlit, this.solarAbsorbAreaPerMass(sunDir));
     if (atm !== null && this.bcInv > 0) {
       const { density, speed } = airflow(
         sub(this.state.r, atmosphereBody!.state.r),
         sub(this.state.v, atmosphereBody!.state.v), atm);
-      heating = aeroHeating(
+      heating += aeroHeating(
         density, speed, this.bcInv, C.SG_CONST,
         sphereNoseRadius(this.bcInv, C.DRAG_COEFFICIENT, this.bulkDensity),
         (C.STAGNATION_AREA_FRACTION * this.bcInv) / C.DRAG_COEFFICIENT);
@@ -374,10 +391,11 @@ export class GameEntity {
     if (this.temperature > this.maxTemperature) this.burnUp(activeStage);
   }
 
-  // 同じ区間ぶん、位置と姿勢から決まる受動的な環境(熱・電力など)を進める。既定では持たない。
-  // bodies はその区間の天体窓。
+  // 同じ区間ぶん、位置と姿勢から決まる受動的な環境(放熱面の展開・電力など)を進める。既定
+  // では持たない。atmosphereBody は自分が浴びるただ1体の大気天体、sunlit は日照率、sunDir は
+  // 太陽方向の単位ベクトル。
   protected stepEnvironment(
-    _dt: number, _ephemeris: Ephemeris, _simTime: number, _bodies: readonly CelestialBody[],
+    _dt: number, _atmosphereBody: CelestialBody | null, _sunlit: number, _sunDir: Vec3,
   ): void {
   }
 
