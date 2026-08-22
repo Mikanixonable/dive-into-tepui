@@ -139,17 +139,17 @@ export const COMBAT_VIEW_STYLE = `
   margin-bottom: 7px;
   padding: 7px 8px;
   border-radius: var(--radius-control, 11px);
-  background: var(--accent-fill-weak);
+  background: color-mix(in srgb, var(--accent-secondary) 8%, transparent);
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-target .target-lock-glyph {
   grid-row: 1 / span 2;
-  color: var(--accent);
+  color: var(--accent-secondary);
   font-size: var(--font-xl);
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-target .target-name {
   min-width: 0;
   overflow: hidden;
-  color: var(--accent);
+  color: var(--accent-secondary);
   font-size: var(--font-l);
   font-weight: 600;
   line-height: 1.2;
@@ -161,7 +161,7 @@ export const COMBAT_VIEW_STYLE = `
   font-size: var(--font-xxs);
   line-height: 1.25;
 }
-#hud:not(.base-mode) .hud-combat-root.active #hud-target .target-primary-value { color: var(--accent); }
+#hud:not(.base-mode) .hud-combat-root.active #hud-target .target-primary-value { color: var(--accent-secondary); }
 #hud:not(.base-mode) .hud-combat-root.active #hud-target .armor-readout {
   display: inline-grid;
   grid-template-columns: minmax(64px, 1fr) auto;
@@ -180,7 +180,7 @@ export const COMBAT_VIEW_STYLE = `
   width: 0;
   height: 100%;
   border-radius: inherit;
-  background: var(--accent);
+  background: var(--accent-secondary);
   transition: width 180ms;
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-target .armor-meter.critical .armor-meter-fill {
