@@ -28,8 +28,11 @@ export class EntityLineManager {
   ): void {
     const { pastDuration } = displayWindow;
     const palette = currentThemePalette();
-    const primaryStyle: LineStyle = { color: palette.accent, opacity: TARGET_LINE_OPACITY, renderOrder: C.LINE_RENDER_ORDER.target };
+    const primaryStyle: LineStyle = { color: palette.secondary, opacity: TARGET_LINE_OPACITY, renderOrder: C.LINE_RENDER_ORDER.target };
     const targetStyleOf = (e: CombatTarget): LineStyle | null => e === primaryTarget ? primaryStyle : null;
+    const playerOrbitStyle: LineStyle = { color: palette.accent, opacity: 0.55, renderOrder: C.LINE_RENDER_ORDER.shipOrbit };
+    const playerPredictedStyle: LineStyle = { color: palette.accent, opacity: 0.55, renderOrder: C.LINE_RENDER_ORDER.predicted };
+    const playerActualStyle: LineStyle = { color: palette.accent, opacity: 0.3, renderOrder: C.LINE_RENDER_ORDER.predicted };
 
     for (const ship of this.entities.players) {
       const isActive = ship === activePlayer;
@@ -39,11 +42,11 @@ export class EntityLineManager {
       // 戦闘ビューの操作艦は、積分した予測線ではなく解析楕円で軌道を描く。
       const ownEllipse = showLines && !overviewMode;
       if (asTarget !== null && visible) ship.showOrbitLine(asTarget);
-      else if (ownEllipse) ship.showOrbitLine(C.LINE_STYLE.playerOrbit);
+      else if (ownEllipse) ship.showOrbitLine(playerOrbitStyle);
       else ship.hideOrbitLine();
-      if (showLines && !ownEllipse) ship.showPredictedLine(C.LINE_STYLE.playerPredicted);
+      if (showLines && !ownEllipse) ship.showPredictedLine(playerPredictedStyle);
       else ship.hidePredictedLine();
-      if (showLines && pastDuration > 0) ship.showActualLine(C.LINE_STYLE.playerActual);
+      if (showLines && pastDuration > 0) ship.showActualLine(playerActualStyle);
       else ship.hideActualLine();
     }
     for (const enemy of this.entities.enemies) {
