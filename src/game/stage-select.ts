@@ -245,8 +245,8 @@ const STYLE = `
   font: 12px ${FONT_SANS}; cursor: pointer;
 }
 #stage-select .ss-settings:hover { color: ${TITLE_INK}; border-color: ${ACCENT}; background: color-mix(in srgb, ${ACCENT} 8%, transparent); }
+#stage-select .hidden { display: none !important; }
 #stage-select .ss-datetime { display: flex; flex-direction: column; gap: 14px; }
-#stage-select .ss-datetime.hidden { display: none; }
 #stage-select .ss-datetime-fields { display: flex; flex-wrap: wrap; gap: 12px; }
 #stage-select .ss-datetime-field {
   display: flex; flex-direction: column; gap: 4px;
@@ -254,7 +254,6 @@ const STYLE = `
 }
 #stage-select .ss-datetime-field .w-input { width: 88px; }
 #stage-select .ss-datetime-error { margin: 0; color: ${SECONDARY_ACCENT}; font-size: 12px; }
-#stage-select .ss-datetime-error.hidden { display: none; }
 #stage-select .ss-datetime-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: auto; }
 @media ${MQ_COMPACT} {
   #stage-select .ss-shell { place-items: center; padding-block: 12px; }
@@ -444,7 +443,7 @@ export function selectStage(
       field.appendChild(span);
       const input = new ValueInput({ type: 'number', step: 1 }, () => validate());
       input.setValue(String(initial));
-      input.element.addEventListener('input', validate);
+      input.element.addEventListener('input', () => validate());
       field.appendChild(input.element);
       fieldsDiv.appendChild(field);
       return input;
@@ -459,6 +458,8 @@ export function selectStage(
       dateTimeDiv.classList.add('hidden');
       listDiv.classList.remove('hidden');
       tabBar.element.classList.remove('hidden');
+      debugLink.classList.remove('hidden');
+      settingsButton.classList.remove('hidden');
     });
     actionsDiv.appendChild(backButton.element);
     actionsDiv.appendChild(startButton.element);
@@ -483,12 +484,16 @@ export function selectStage(
 
     let pendingCreativeStage: StageClass | null = null;
     let dateTimeStepOpen = false;
-    // 一覧・タブを隠して日時入力欄を出す。開いている間は他ステージのショートカットキーを止める。
+    // 一覧・タブ・デバッグリンク・設定ボタンを隠して日時入力欄を出す。ss-window は overflow:hidden
+    // の固定高さなので、隠さないぶんだけ日時入力欄が窓の下端からはみ出して見えなくなる。
+    // 開いている間は他ステージのショートカットキーも止める。
     const openDateTimeStep = (stageClass: StageClass) => {
       pendingCreativeStage = stageClass;
       dateTimeStepOpen = true;
       listDiv.classList.add('hidden');
       tabBar.element.classList.add('hidden');
+      debugLink.classList.add('hidden');
+      settingsButton.classList.add('hidden');
       dateTimeDiv.classList.remove('hidden');
     };
 
