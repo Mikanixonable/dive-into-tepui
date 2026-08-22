@@ -9,7 +9,7 @@ import { createGameScene, GameScene } from './render/scene';
 import { PerfMeter } from './perf-meter';
 import { FrameSections } from './frame-sections';
 import { GpuTimings } from './gpu-timings';
-import { GraphicsSettings } from './render/graphics-settings';
+import { GraphicsSettings, type GraphicsSettingsData } from './render/graphics-settings';
 import { RenderPipeline } from './render/pipeline/render-pipeline';
 import { Hud } from './game/hud/hud';
 import { PauseMenu } from './game/hud/pause-menu';
@@ -31,7 +31,7 @@ import { showLoading, hideLoading } from './loading-overlay';
 import { showFatalError } from './fatal-error';
 
 // ローディング表示下で canvas を作り WebGPU シーンを初期化する
-async function initScene(graphics: GraphicsSettings): Promise<GameScene> {
+async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
   showLoading();
   const canvas = document.createElement('canvas');
   document.body.appendChild(canvas);
@@ -143,9 +143,11 @@ async function main() {
   const slots = initSaveSlots(saveStore);
   const snapshotService = new SnapshotService(saveStore, slots);
   const graphics = new GraphicsSettings();
-  const gs = await initScene(graphics);
+  const gs = await initScene(graphics.current);
+  // 解像度倍率の押し出し先の登録は、設定を持っている側の配線。
+  graphics.bindResolutionTarget(gs);
   const gpu = new GpuTimings(gs.renderer);
-  const pipeline = new RenderPipeline(gs.renderer, graphics, gpu);
+  const pipeline = new RenderPipeline(gs.renderer, graphics.current, gpu);
   const { hud, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView } = initHud(graphics, pipeline);
   const sections = new FrameSections();
 
