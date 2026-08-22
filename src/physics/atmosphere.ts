@@ -38,17 +38,25 @@ export function ellipsoidAltitude(rRel: Vec3, atm: Atmosphere): number {
   return d - (atm.equatorRadius * atm.polarRadius) / Math.sqrt(a2 * sin2 + b2 * (1 - sin2));
 }
 
+// 高度 h [m](地表より下は 0 とみなす)を含む層。最上層より上も最上層を返す。
+function layerAt(h: number, atm: Atmosphere): AtmosphereLayer {
+  for (let i = atm.layers.length - 1; i >= 0; i--) {
+    if (h >= atm.layers[i]![0]) return atm.layers[i]!;
+  }
+  return atm.layers[0]!;
+}
+
 // 高度 alt [m] における大気密度 [kg/m^3]。最上層より上も、その層の指数でそのまま外挿する。
 export function atmosphericDensity(alt: number, atm: Atmosphere): number {
   const h = Math.max(0, alt);
-  let row = atm.layers[0]!;
-  for (let i = atm.layers.length - 1; i >= 0; i--) {
-    if (h >= atm.layers[i]![0]) {
-      row = atm.layers[i]!;
-      break;
-    }
-  }
+  const row = layerAt(h, atm);
   return row[1] * Math.exp(-(h - row[0]) / row[2]);
+}
+
+// 高度 alt [m] における大気のスケールハイト [m]。その高度のまわりで密度が 1/e になる高度差で、
+// atmosphericDensity が返す指数の勾配そのもの。
+export function atmosphericScaleHeight(alt: number, atm: Atmosphere): number {
+  return layerAt(Math.max(0, alt), atm)[2];
 }
 
 // 共回転する大気に対する対気速度 v_rel − ω×r_rel。rRel/vRel は天体中心からの相対位置・速度。

@@ -56,9 +56,10 @@ export class GameEntity {
   mass = 1; // 剛体接触の換算質量
   radius = 0; // 物理的な半径 [m]。0 = 点。CelestialBody.radius と同じ量
   collides = false; // 物体どうしの剛体接触(EntityContactPhysics)に参加するか
-  // 大気の中で失われる時刻と条件の精度が、プレイの結果を変えるか。false の個体は大気圏に
+  // 濃い大気の中を、抗力が要求する細かい刻みで積むか。true の個体はサブステップの内側で
+  // さらに分割され、熱・動圧と天体表面への到達もその刻みで解かれる。false の個体は大気圏に
   // 入れば失われるだけで、いつどれだけの精度で失われるかは結果を変えない。
-  lossPrecisionMatters = false;
+  doPreciseReentry = false;
   // 自分に触れた相手が受けるダメージへ掛かる重み。0 なら触れても相手を傷つけない。
   contactDamageWeight = 1;
 
@@ -89,8 +90,8 @@ export class GameEntity {
   equatorNodes: EquatorNodeMarkerPair | null = null;
   // 自身の位置を指すマーカー。null = 出さない。
   marker: EntityMarker | null = null;
-  // 弾道係数の逆数 Cd·A/m(既定 0 = 抵抗なし)。
-  protected readonly bcInv: number = 0;
+  // 弾道係数の逆数 Cd·A/m(既定 0 = 抵抗なし)。抗力が要求する刻みを外から引けるよう公開する。
+  readonly bcInv: number = 0;
   protected readonly srpCoeff: number = 0;
   // 焼失せずに耐えられる大気密度の上限 [kg/m^3]。熱シミュレーションを持たない種別が
   // 加熱と動圧をまとめて代理する粗い近似(const.ts)。既定は破片・薬莢・弾・基地・弾薬の値。
@@ -290,6 +291,13 @@ export class GameEntity {
     );
     // 積分した弧はもう現実を表さない。ある時間帯の状態を決める積分を常に1本に保つ。
     this.invalidatePrediction();
+  }
+
+  // 直前の stepActual と同じ区間ぶん、位置と姿勢から決まる受動的な環境(熱・電力など)を
+  // 進める。既定では持たない。bodies はその区間の天体窓。
+  stepEnvironment(
+    _dt: number, _ephemeris: Ephemeris, _simTime: number, _bodies: readonly CelestialBody[],
+  ): void {
   }
 
   // シミュレーションを正確に区切る必要がある次の絶対時刻。寿命など、既知の時刻で
