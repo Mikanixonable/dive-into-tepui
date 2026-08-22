@@ -2,7 +2,8 @@
 // (⬢ plannedPlayer マーカー)。
 import * as THREE from 'three/webgpu';
 import { Vec3, len, sub } from '../../physics/vec3';
-import { CelestialBody, bodyAnchorSource, strongestAttractor } from '../../physics/celestial-body';
+import { CelestialBody, strongestAttractor } from '../../physics/celestial-body';
+import type { FrameAnchorSource } from '../../physics/frame';
 import { isOccluded } from '../../physics/occlusion';
 import { Projected } from '../../physics/projection';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -86,6 +87,7 @@ export class PlanDisplay {
   // 唯一の区間を PlanPath が操作対象の予測列として答えるために渡す。
   update(
     planData: PlanData | null, displayWindow: DisplayWindow, celestialBodyProvider: FutureCelestialBodyProvider, ship: Controllable | null,
+    frameAnchors: FrameAnchorSource,
   ): void {
     if (planData === null) {
       this.ghost = null;
@@ -97,7 +99,7 @@ export class PlanDisplay {
     const { simTime, displayTime } = displayWindow;
     this.celestialBodies = this.ephemeris.celestialBodiesAt(displayTime);
     this.path.update(
-      planData, ship, this.ephemeris, displayWindow.frame, simTime, bodyAnchorSource(this.celestialBodies), celestialBodyProvider,
+      planData, ship, this.ephemeris, displayWindow.frame, simTime, frameAnchors, celestialBodyProvider,
       displayWindow.duration,
     );
     this.ghost = this.ghostAt(displayTime, simTime);

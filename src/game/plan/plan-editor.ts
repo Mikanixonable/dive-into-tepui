@@ -712,7 +712,7 @@ export class PlanEditor {
       this.closeMenu();
     }
     this.simTime = displayWindow.simTime;
-    this.planDisplay.update(this.displayedPlan, displayWindow, this.celestialBodies, ship);
+    this.planDisplay.update(this.displayedPlan, displayWindow, this.celestialBodies, ship, frameAnchors);
     this.updateEquatorNodes(displayWindow, frameAnchors);
   }
 
