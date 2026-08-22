@@ -44,29 +44,23 @@ const ENTITY_ROWS: readonly BodyClassRow[] = [
   { label: '基地', categoryKey: 'baseVisible', nameKey: 'baseName', orbitKey: 'baseOrbit' },
 ];
 
-// 天球グリッドのカテゴリー(黄道・赤道)1行分。各カテゴリーは面・極・グリッドの3トグルを持つ。
-interface GridToggleGroup {
-  readonly categoryKey: keyof CelestialGridVisibility;
+// 天球グリッドの1行分。面/極/網/縮尺の4列のうち、月軌道・月赤道は縮尺しか持たないため
+// 該当列は null(セル自体を空にする)。categoryKey が null の行(月軌道・月赤道)は面・極・網の
+// ゲートを持たず、行見出し自身が縮尺トグルを兼ねる(celestial-grid.ts の GRID_CATEGORIES 参照)。
+interface GridRow {
   readonly label: string;
-  readonly items: readonly (readonly [keyof CelestialGridVisibility, string, string])[];
+  readonly categoryKey: keyof CelestialGridVisibility | null;
+  readonly planeKey: keyof CelestialGridVisibility | null;
+  readonly poleKey: keyof CelestialGridVisibility | null;
+  readonly gridKey: keyof CelestialGridVisibility | null;
+  readonly scaleKey: keyof CelestialGridVisibility;
 }
 
-const GRID_TOGGLE_GROUPS: readonly GridToggleGroup[] = [
-  {
-    categoryKey: 'ecliptic', label: '黄道',
-    items: [['eclipticPlane', '⌒', '黄道面'], ['eclipticPole', DIRECTION_GLYPH.axis, '黄道極'], ['eclipticGrid', '⊞', '黄道グリッド']],
-  },
-  {
-    categoryKey: 'equator', label: '赤道',
-    items: [['equatorPlane', '⌒', '赤道面'], ['equatorPole', DIRECTION_GLYPH.axis, '赤道極'], ['equatorGrid', '⊞', '赤道グリッド']],
-  },
-];
-
-const SPATIAL_GRID_ROWS: readonly (readonly [keyof CelestialGridVisibility, string, string])[] = [
-  ['eclipticScaleGrid', '黄道面', '黄道面の縮尺グリッド'],
-  ['equatorScaleGrid', '赤道面', '赤道面の縮尺グリッド'],
-  ['moonOrbitScaleGrid', '月軌道面', '月軌道面の縮尺グリッド'],
-  ['moonEquatorScaleGrid', '月赤道面', '月赤道面の縮尺グリッド'],
+const GRID_ROWS: readonly GridRow[] = [
+  { label: '黄道', categoryKey: 'ecliptic', planeKey: 'eclipticPlane', poleKey: 'eclipticPole', gridKey: 'eclipticGrid', scaleKey: 'eclipticScaleGrid' },
+  { label: '赤道', categoryKey: 'equator', planeKey: 'equatorPlane', poleKey: 'equatorPole', gridKey: 'equatorGrid', scaleKey: 'equatorScaleGrid' },
+  { label: '月軌道', categoryKey: null, planeKey: null, poleKey: null, gridKey: null, scaleKey: 'moonOrbitScaleGrid' },
+  { label: '月赤道', categoryKey: null, planeKey: null, poleKey: null, gridKey: null, scaleKey: 'moonEquatorScaleGrid' },
 ];
 
 interface ViewOptionColumn {
@@ -83,20 +77,28 @@ const GRID_COLUMNS: readonly ViewOptionColumn[] = [
   { glyph: '⌒', label: '面' },
   { glyph: DIRECTION_GLYPH.axis, label: '極' },
   { glyph: '⊞', label: '網' },
-];
-
-const SPATIAL_GRID_COLUMNS: readonly ViewOptionColumn[] = [
   { glyph: '十', label: '縮尺' },
 ];
 
-// トグルのグリフと意味をカラム見出しで常に並記し、色だけに識別を委ねない。
+// 列見出しの凡例を持たない、グループ間の細い区切り(節見出しの凡例はセクション先頭で1回だけ
+// 出せば足りるため、天体/機体と設備のようなサブグループはラベルだけの区切りにする)。
+function appendSectionDivider(parent: HTMLElement, title: string): void {
+  const divider = document.createElement('div');
+  divider.className = 'view-options-section-divider';
+  divider.textContent = title;
+  parent.appendChild(divider);
+}
+
+// トグルのグリフと意味をカラム見出しで常に並記し、色だけに識別を委ねない。extraClass は列数が
+// 異なる見出し(天球の4列)を CSS 側で区別するためのモディファイア。
 function appendSectionHeading(
   parent: HTMLElement,
   title: string,
   columns: readonly ViewOptionColumn[],
+  extraClass?: string,
 ): void {
   const heading = document.createElement('div');
-  heading.className = 'view-options-section-heading';
+  heading.className = extraClass === undefined ? 'view-options-section-heading' : `view-options-section-heading ${extraClass}`;
 
   const label = document.createElement('span');
   label.className = 'view-options-section-title';
@@ -168,8 +170,9 @@ export class ViewOptionsPanel {
       { title: '天体', rows: BODY_CLASS_ROWS },
       { title: '機体と設備', rows: ENTITY_ROWS },
     ];
+    appendSectionHeading(body, '対象', OBJECT_COLUMNS);
     for (const group of rowGroups) {
-      appendSectionHeading(body, group.title, OBJECT_COLUMNS);
+      appendSectionDivider(body, group.title);
       for (const row of group.rows) {
         const rowEl = document.createElement('div');
         rowEl.className = 'body-class-row';
@@ -219,28 +222,40 @@ export class ViewOptionsPanel {
     this.bodyClassButtons = bodyClassButtons;
     this.bodyClassCategoryButtons = bodyClassCategories;
 
-    // 天球(参照面:黄道・赤道、環境:星空)。天体クラスと同じ行の形(見出し+トグル列)を流用する。
+    // 天球(参照面:黄道・赤道・月軌道・月赤道、環境:星空)。天体クラスと同じ行の形
+    // (見出し+トグル列)を流用し、面/極/網/縮尺を1つの表にまとめる。
     const gridButtons: (readonly [keyof CelestialGridVisibility, Button])[] = [];
     const gridCategories: (readonly [keyof CelestialGridVisibility, Button, HTMLElement])[] = [];
-    appendSectionHeading(body, '天球', GRID_COLUMNS);
-    for (const group of GRID_TOGGLE_GROUPS) {
+    appendSectionHeading(body, '天球', GRID_COLUMNS, 'view-options-heading-grid');
+    for (const row of GRID_ROWS) {
       const rowEl = document.createElement('div');
       rowEl.className = 'body-class-row grid-class-row';
-      const category = this.toggleButton(group.label, `${group.label}を表示`, group.categoryKey, this.gridCurrent, (key, on) => this.onGridToggle?.(key, on));
-      category.element.classList.add('body-class-title');
-      rowEl.appendChild(category.element);
+      const titleKey = row.categoryKey ?? row.scaleKey;
+      const title = this.toggleButton(row.label, `${row.label}を表示`, titleKey, this.gridCurrent, (key, on) => this.onGridToggle?.(key, on));
+      title.element.classList.add('body-class-title');
+      rowEl.appendChild(title.element);
+      if (row.categoryKey === null) gridButtons.push([titleKey, title]);
+      else gridCategories.push([row.categoryKey, title, rowEl]);
 
       const btnsEl = document.createElement('div');
       btnsEl.className = 'body-class-btns';
       rowEl.appendChild(btnsEl);
-      for (const [key, glyph, itemTitle] of group.items) {
+      for (const [key, glyph, itemTitle] of [
+        [row.planeKey, '⌒', `${row.label}面`],
+        [row.poleKey, DIRECTION_GLYPH.axis, `${row.label}極`],
+        [row.gridKey, '⊞', `${row.label}グリッド`],
+        [row.scaleKey, '十', `${row.label}の縮尺グリッド`],
+      ] as const) {
+        if (key === null || (row.categoryKey === null && key === row.scaleKey)) {
+          btnsEl.appendChild(document.createElement('span')).className = 'body-class-icon-btn-empty';
+          continue;
+        }
         const button = this.toggleButton(glyph, itemTitle, key, this.gridCurrent, (key, on) => this.onGridToggle?.(key, on));
         button.element.classList.add('body-class-icon-btn');
         btnsEl.appendChild(button.element);
         gridButtons.push([key, button]);
       }
       body.appendChild(rowEl);
-      gridCategories.push([group.categoryKey, category, rowEl]);
     }
     this.gridButtons = gridButtons;
     this.gridCategoryButtons = gridCategories;
@@ -251,23 +266,6 @@ export class ViewOptionsPanel {
     this.starsButton.element.classList.add('body-class-title');
     starsRow.appendChild(this.starsButton.element);
     body.appendChild(starsRow);
-
-    appendSectionHeading(body, '軌道面グリッド', SPATIAL_GRID_COLUMNS);
-    for (const [key, label, description] of SPATIAL_GRID_ROWS) {
-      const row = document.createElement('div');
-      row.className = 'body-class-row grid-class-row';
-      const titleButton = this.toggleButton(label, description, key, this.gridCurrent, (k, on) => this.onGridToggle?.(k, on));
-      titleButton.element.classList.add('body-class-title');
-      row.appendChild(titleButton.element);
-      const buttons = document.createElement('div');
-      buttons.className = 'body-class-btns';
-      const gridButton = this.toggleButton('⊞', description, key, this.gridCurrent, (k, on) => this.onGridToggle?.(k, on));
-      gridButton.element.classList.add('body-class-icon-btn');
-      buttons.appendChild(gridButton.element);
-      row.appendChild(buttons);
-      body.appendChild(row);
-      gridButtons.push([key, titleButton], [key, gridButton]);
-    }
 
     hudRail(root, 'left').appendChild(this.panel);
   }

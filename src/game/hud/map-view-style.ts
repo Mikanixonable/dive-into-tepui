@@ -151,10 +151,21 @@ export const MAP_VIEW_STYLE = `
   font-size: var(--font-xs);
   font-weight: 600;
 }
+/* サブグループ(天体/機体と設備)の区切り。列凡例は持たず、ラベルだけを細く挟む。 */
+#hud .hud-map-root.active #hud-view-options .view-options-section-divider {
+  margin: var(--space-3) 0 var(--space-1);
+  padding-left: var(--space-5);
+  color: var(--muted);
+  font-size: var(--font-xxs);
+  letter-spacing: 1px;
+}
 #hud .hud-map-root.active #hud-view-options .view-options-column-legend {
   display: grid;
-  grid-template-columns: repeat(3, minmax(30px, 1fr));
+  grid-template-columns: repeat(2, minmax(30px, 1fr));
   gap: var(--space-1);
+}
+#hud .hud-map-root.active #hud-view-options .view-options-heading-grid .view-options-column-legend {
+  grid-template-columns: repeat(4, minmax(24px, 1fr));
 }
 #hud .hud-map-root.active #hud-view-options .view-options-column {
   color: var(--muted);
@@ -192,9 +203,14 @@ export const MAP_VIEW_STYLE = `
 }
 #hud .hud-map-root.active #hud-view-options .body-class-row .body-class-btns {
   display: grid;
-  grid-template-columns: repeat(3, minmax(30px, 1fr));
+  grid-template-columns: repeat(2, minmax(30px, 1fr));
   gap: var(--space-1);
 }
+#hud .hud-map-root.active #hud-view-options .body-class-row.grid-class-row .body-class-btns {
+  grid-template-columns: repeat(4, minmax(24px, 1fr));
+}
+/* 面/極/網を持たない行(月軌道・月赤道)の空セル。列位置だけ他行と揃える。 */
+#hud .hud-map-root.active #hud-view-options .body-class-icon-btn-empty { min-width: 0; }
 #hud .hud-map-root.active #hud-view-options span.body-class-icon-btn {
   position: relative;
   min-width: 0;
@@ -309,5 +325,14 @@ export const MAP_VIEW_STYLE = `
   #hud .hud-map-root.active #hud-view-options .body-class-row { grid-template-columns: 68px minmax(0, 1fr); }
   #hud .hud-map-root.active #hud-view-options .view-options-column { overflow: hidden; text-overflow: ellipsis; }
   #hud .hud-map-root.active #hud-predict .predict-row1 { align-items: flex-start; }
+}
+
+/* マウス等の精密ポインタでは44pxタップ最小の制約がないため、表示パネルの行間・余白を詰める
+   (UI-DESIGN.md のタップ最小寸法規則はタッチ環境限定)。 */
+@media (pointer: fine) {
+  #hud .hud-map-root.active #hud-view-options .body-class-row { margin-bottom: 2px; }
+  #hud .hud-map-root.active #hud-view-options .view-options-section-heading { margin: var(--space-4) 0 var(--space-1); }
+  #hud .hud-map-root.active #hud-view-options .view-options-section-divider { margin: var(--space-2) 0 2px; }
+  #hud .hud-map-root.active #hud-view-options span.body-class-icon-btn { padding: 3px var(--space-2); }
 }
 `;
