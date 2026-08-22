@@ -48,7 +48,6 @@ export interface FireSaveData {
 
 export interface ThermalSaveData {
   hullTemp: number;
-  pendingHeat: number;
 }
 
 export interface RadiatorPanelSaveData {

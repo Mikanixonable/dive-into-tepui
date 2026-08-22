@@ -35,14 +35,6 @@ export const HALO_AZ_JUPITER_KM = 4000000;
 
 export const REENTRY_ALT = 80e3; // 敵の軌道の近地点余裕を測る基準高度 [m](wave-attack.ts)
 
-// --- 焼失する大気密度の上限 [kg/m^3] ---
-// 熱シミュレーションを持たない種別は位置と速度しか運ばないので、加熱と動圧の両方を
-// この1つの密度閾値がまとめて代理する。**「加熱だけを見ている」ものではない。**
-// 値は地球の大気テーブルから、それまで使っていた高度を密度へ換算したもの — 大気モデルを
-// 差し替えると相当する高度が変わる。自機は熱・動圧の物理モデルで判定するので閾値を持たない。
-export const ENEMY_BURNUP_DENSITY = 1.905e-5; // 地球で高度 80 km 相当(80 km 層そのもの)
-export const DEBRIS_BURNUP_DENSITY = 1.3412e-6; // 地球で高度 95 km 相当(90 km 層 3.396e-6·exp(-5/5.382))
-
 // 高度低下警告のしきい値(降順)。EMA 高度がこれを下回るたびに一度だけ警告する [m]
 export const ALT_WARN_THRESHOLDS = [120e3, 100e3, 80e3];
 
@@ -56,19 +48,44 @@ export const SMALL_DEBRIS_BCINV = 8e-3; // 薬莢・破片
 export const SHIP_SRP_COEFF = 1.56e-2; // 機体: C_R≈1.3, A≈12m², m=PLAYER_MASS
 export const SMALL_DEBRIS_SRP_COEFF = 4.7e-3; // 薬莢・破片・弾薬
 
-// --- 空力加熱・構造限界(自機のみ) ---
+// --- 熱(physics/thermal.ts の比量モデルへ渡す種別ごとの値) ---
+// 弾道係数 bcInv に織り込まれている抗力係数。よどみ点の曲率半径と断面積の比を bcInv から
+// 戻すのに使う。物体ごとに変えると bcInv の意味が種別で変わってしまうので、1つに固定する。
+export const DRAG_COEFFICIENT = 2.2;
+// 断面積のうち、よどみ点の加熱を実際に受ける割合。
+export const STAGNATION_AREA_FRACTION = 0.6;
+// 1天文単位における太陽定数 [W/m^2]。距離の2乗に反比例して弱まる。
+export const SOLAR_CONSTANT = 1361;
+
+// 艦(自機・敵機)。材質密度は宇宙機の実効密度で、曲率半径 0.6 m を与える値。
+export const SHIP_BULK_DENSITY = 833; // [kg/m^3]
+// PLAYER_MASS と掛けて外殻の熱容量 0.1 MJ/K。射撃・被弾の発熱量はこれを基準に決めてある。
+export const SHIP_SPECIFIC_HEAT = 100; // [J/(kg·K)]
+// 艦体自体の放熱面積 70 m² を PLAYER_MASS で割った値。放熱板の展開ぶんはこれに上乗せする。
+export const SHIP_RADIATING_AREA_PER_MASS = 0.07; // [m^2/kg]
+// 敵機は熱防御を持たないので、艦より低い温度で構造が保たなくなる。降下してくる艦がこの温度に
+// 達するのは、地球の大気では高度 80 km 付近。
+export const ENEMY_MAX_TEMP = 500; // [K]
+
+// 破片・薬莢・弾薬。アルミ合金相当の材質。
+export const SMALL_DEBRIS_BULK_DENSITY = 2700; // [kg/m^3]
+export const SMALL_DEBRIS_SPECIFIC_HEAT = 900; // [J/(kg·K)]
+// 球とみなした断面積比(bcInv/Cd)の 4 倍。
+export const SMALL_DEBRIS_RADIATING_AREA_PER_MASS = 0.01455; // [m^2/kg]
+// アルミ合金の融点。降下してくる破片がこの温度に達するのは、地球の大気では高度 60 km 付近
+// — 平衡温度はもっと高いところで既にこれを超えるが、再突入は速すぎて平衡に達しない。
+export const SMALL_DEBRIS_MAX_TEMP = 933; // [K]
+
+// --- 空力加熱・構造限界 ---
 export const SG_CONST = 1.7415e-4; // Sutton–Graves 定数(地球) [kg^0.5/m]
-export const NOSE_RADIUS = 0.6; // 機首曲率半径 [m]
-export const HEAT_ABSORB_AREA = 0.9; // よどみ点熱流束を受ける実効面積 [m^2]
-export const RAD_AREA = 70; // ハル自体の放射冷却面積 [m^2]
 export const HULL_EMISS = 0.85; // 放射率
-export const STEFAN_BOLTZMANN = 5.670374419e-8; // [W/m^2/K^4]
-export const HEAT_CAPACITY = 3.4e5; // 外殻の熱容量 [J/K]
 export const ENV_TEMP = 255; // 放射平衡の環境温度 [K]
 export const HULL_START_TEMP = 273; // 初期機体温度 [K]
 export const MAX_HULL_TEMP = 1300; // 超過で熱防御飽和 → 機体喪失 [K]
 export const MAX_DYN_PRESSURE = 35e3; // 超過で空力破壊 [Pa]
-export const HULL_TEMP_FLOOR = 120; // 放射冷却で下がりきる機体温度の下限 [K]
+// 加熱の理由を「空力」と「内部」に分ける動圧 [Pa]。地球の大気では高度 133 km 相当で、これを
+// 下回る動圧では空力加熱が放射冷却に対して桁で小さい。
+export const AERO_HEATING_MIN_Q = 1;
 
 // --- 再突入の燃焼エフェクト ---
 export const REENTRY_GLOW_MIN_Q = 200; // 燃焼エフェクトが出始める動圧 [Pa]
@@ -78,16 +95,13 @@ export const REENTRY_GLOW_FULL_Q = 2e4; // 燃焼エフェクトが最大強度�
 export const GUN_HEAT_PER_ROUND = 5.5e5; // 1発あたりの投入熱量 [J]
 
 // --- ラジエーター(上下2枚、個別展開) ---
-export const RADIATOR_PANEL_AREA = 42; // 1枚の放熱面積 [m^2](2.3 × 2.3 m の蛇腹 4 折りの両面ぶん)
 export const RADIATOR_FOLD_COUNT = 6; // 蛇腹の折り数(1枚あたり)
 export const RADIATOR_DEPLOY_TIME = 3.0; // 収納⇔全開にかかる時間 [s]
 export const RADIATOR_SOLAR_ABSORB = 0.15; // 日照面の太陽光吸収率
-export const SOLAR_CONSTANT = 1361; // 地球軌道の太陽定数 [W/m^2]
 // 展開中の放熱板に当たった1発が放熱板パーツへ与えるダメージ [HP]。薄く大きい構造物なので
 // 船体への直撃(PLAYER_BULLET_DAMAGE)より軽い。損耗はドックで修理するまで戻らない。
 export const RADIATOR_BULLET_DAMAGE = 0.25;
 export const RADIATOR_CONTACT_DEPLOY = 0.15; // これ以上展開していると被弾対象になる展開度
-export const RADIATOR_EFFICIENCY_MULT = 1; // 放熱面積(RADIATOR_PANEL_AREA)に掛ける性能係数
 
 // --- 被弾による発熱 ---
 export const BULLET_IMPACT_HEAT = 3.0e5; // 自機が被弾1発あたりに受ける熱量 [J]
