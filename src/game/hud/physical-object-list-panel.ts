@@ -71,9 +71,10 @@ const COLLAPSE_LABELS: CollapseToggleLabels = {
   collapsedTitle: '軌道物体一覧を開く',
 };
 
-type PhysicalObjectListSort = 'distance' | 'name';
+type PhysicalObjectListSort = 'solar' | 'distance' | 'name';
 
 const SORTS: readonly (readonly [PhysicalObjectListSort, string])[] = [
+  ['solar', '太陽系順'],
   ['distance', '近さ'],
   ['name', '名前'],
 ];
@@ -129,7 +130,7 @@ export class PhysicalObjectListPanel {
   private selectedId: string | null = null;
   private query = '';
   private filter: PhysicalObjectListFilter | null = null;
-  private sort: PhysicalObjectListSort = 'distance';
+  private sort: PhysicalObjectListSort = 'solar';
   private lastFocusId: string | undefined = undefined;
   // sync() は毎フレーム呼ばれるが、これらは同期中だけ使う scratch であり、呼び出し元へ
   // 参照を渡さない。Map/Set/配列の器だけを保持して GC を抑える。
@@ -427,7 +428,11 @@ export class PhysicalObjectListPanel {
   // 現在の並び順での a と b の前後関係。負なら a が先。
   private compare(a: MapPickable, b: MapPickable): number {
     if (this.sort === 'name') return a.name.localeCompare(b.name);
-    return (a.priority ?? 0) - (b.priority ?? 0) || (a.distance ?? 0) - (b.distance ?? 0) || a.name.localeCompare(b.name);
+    // 太陽系順は恒星からの距離。恒星の無いレジストリでは distanceFromStar が undefined の
+    // ままなので、自機からの距離(近さ順)へ自然に委譲される。
+    const dist = this.sort === 'solar' ? (a.distanceFromStar ?? a.distance ?? 0) - (b.distanceFromStar ?? b.distance ?? 0)
+      : (a.distance ?? 0) - (b.distance ?? 0);
+    return (a.priority ?? 0) - (b.priority ?? 0) || dist || a.name.localeCompare(b.name);
   }
 
   // kind の区画に出す行を選び直し、表示順・根・親ごとの子を order へ書き直す。
