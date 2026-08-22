@@ -68,7 +68,7 @@ GPU の起動オプション依存で不安定である。**この環境はそ�
 
 ### (3) 描画は 960×540 に固定する
 
-撮影した PNG の大きさを決め打ちにするため。**深度プローブ(手順 8)の判定は無次元の比なので、
+撮影した PNG の大きさを決め打ちにするため。**深度プローブ(手順 10)の判定は無次元の比なので、
 解像度に依らない。**
 
 ---
@@ -82,39 +82,81 @@ GPU の起動オプション依存で不安定である。**この環境はそ�
    鏡面近似(照度バッファに材質の F0 を畳めない)の誤差そのものであり、
    **この環境の最初の測定結果になる。**
 4. **`order` ケースで、5 本の線が `reference` → `predicted` の順に手前へ重なる。**
-5. **`depth-1e4` で、ε=1e-3 が澄み、ε=1e-4 以下が斑になる**(手順 8 の導出表と一致する)。
+5. **`depth-1e4` で、ε=1e-3 が澄み、ε=1e-4 以下が斑になる**(手順 10 の導出表と一致する)。
 6. `far` ケースで、3.8e8 m と 4.5e12 m の球が両方とも画面に出る。
 7. **`src/` の描画結果はこのフェーズで変わらない。**
-8. `npm run typecheck` と `npm run smoke:browser` が通る。
+8. **クラス `GraphicsSettings` を参照するのが設定の供給側 4 ファイルだけになる**
+   (`graphics-settings.ts` の定義・`main.ts`・`hud/settings-view.ts`・`hud/graphics-panel.ts`)。
+9. `npm run typecheck` と `npm run smoke:browser` が通る。
 
 ---
 
 ## 手順
 
-### 手順 1. `RenderPipeline` の依存を `GraphicsSettings` から外す
+**手順 2〜3 はこのフェーズの前提となるリファクタリングで、器を作る前に片付ける。**
+描画設定の受け渡しを、クラス(`GraphicsSettings` — 永続と設定パネルからの書き込み口を持つ)から
+設定値(`GraphicsSettingsData`)へ移す。**絵は変わらない。**
 
-**目的**: テスト環境がゲームの品質設定(localStorage 由来)に引きずられないようにする。
-`RenderPipeline` が `GraphicsSettings` から読んでいるのは `antialias` の 1 箇所だけで、
-設定オブジェクトごと受け取る理由が無い。**挙動は変えない。**
+### 手順 2. `scaleApparentSize` を `CelestialView` へ移す
+
+**目的**: 見かけ直径へ詳細度の倍率を掛ける計算が、設定値の保管と永続を持つ `GraphicsSettings`
+の中に埋まっている。呼んでいるのは `CelestialView` の派生 3 種だけで、**LOD 段と球体表示の
+閾値へ渡す見かけ直径をどう作るかは天体ビューの責務である。この時点で挙動は変えない。**
 
 **変更が必要な箇所**
 
 | ファイル | 変更 |
 |---|---|
-| `src/render/pipeline/render-pipeline.ts` | コンストラクタ第 2 引数を `GraphicsSettings` から `antialias: boolean` へ。`graphics-settings` の import を落とす |
-| `src/main.ts:148` | `new RenderPipeline(gs.renderer, graphics.current.antialias, gpu)` |
+| `src/game/celestial/celestial-view.ts` | `protected lodApparentDiameterPx(diameterM, metersPerPixel, graphics)` を足す。中身は `apparentSizePx(diameterM, metersPerPixel) * graphics.current.lodBias`(`apparentSizePx` は `render/screen-lod` から) |
+| `src/game/celestial/earth-view.ts` | `graphics.scaleApparentSize(apparentSizePx(2 * R_EARTH, metersPerPixel))` → `this.lodApparentDiameterPx(2 * R_EARTH, metersPerPixel, graphics)`。`apparentSizePx` の import を落とす |
+| `src/game/celestial/sphere-view.ts` | 同上(`2 * this.outerRadius` と `cameraSystem.activeCameraScale(pos)`)。import も同様 |
+| `src/game/celestial/point-view.ts` | 同上。import も同様 |
+| `src/render/graphics-settings.ts` | `scaleApparentSize` を削除 |
+
+**引数の型はこの手順ではまだ `GraphicsSettings`。** 手順 3 で `GraphicsSettingsData` へ変わる。
 
 **達成条件と検証**
 
-- `render/pipeline/` から `graphics-settings` への import が 0 件。
-- **この commit の `src/` 差分が引数の型と呼び出しだけ。**
+- `GraphicsSettings` から詳細度の計算が消え、設定値の保管・永続・押し出しだけが残る。
 - `npm run typecheck`
-- `grep -rn "graphics-settings" src/render/pipeline/` → 0 件
-- `git diff --stat src/` → 2 ファイル、数行
+- `grep -rn "scaleApparentSize" src/` → 0 件
+- `grep -rn "apparentSizePx" src/game/` → `celestial-view.ts` だけ
+- `npm run dev` → 設定パネルの詳細度を切り替え、球体/輝点の切り替わる距離が変わること
 
 ---
 
-### 手順 2. 単独ビルドの器を作る
+### 手順 3. `game/` の連鎖を毎フレームの `GraphicsSettingsData` 受け渡しへ
+
+**目的**: 残るクラス参照は `Launcher` → `Game` → `EnvironmentScene` の持ち回りだけになる。
+**保持をやめ、フレームごとに設定値を渡す。** クラスを持つのは設定の供給側(`main.ts` と
+設定パネル)だけにする。**挙動は変えない。**
+
+**構築時に受け取って保持してはいけない。** 環・オーロラ・大気・点群・詳細度は、設定パネルで
+切り替えた次のフレームから効く。`GraphicsSettings.update()` は `data` を丸ごと差し替えるので、
+**構築時のスナップショットを持つと以後の変更が届かない。** いま `EnvironmentScene` が毎フレーム
+`this.graphics.current` を読んでいるのと同じものを、引数で運ぶ。
+
+**変更が必要な箇所**
+
+| ファイル | 変更 |
+|---|---|
+| `src/main.ts` | `startAnimationLoop` へ `graphics` を渡し、`game.update(dt, graphics.current)` / `game.sync(graphics.current)`。`new Launcher(...)` の引数から `graphics` を落とす |
+| `src/launcher.ts` | `graphics` フィールドを削除し、`new Game(...)` の引数からも落とす |
+| `src/game/game.ts` | コンストラクタの `graphics` を削除。`update(dtRaw, graphics)` / `sync(graphics)` で受け、`_environment.update` / `_environment.sync` へ渡す |
+| `src/game/celestial/environment-scene.ts` | `graphics` フィールドを削除。`update(t, overviewMode, graphics)` / `sync(..., graphics)` で受け、`body.sync(...)` へ渡す |
+| `src/game/celestial/celestial-view.ts` | `sync` の `graphics` と手順 2 の下請けを `GraphicsSettingsData` へ |
+| `src/game/celestial/earth-view.ts` / `sphere-view.ts` / `point-view.ts` / `sun-view.ts` | 型を `GraphicsSettingsData` へ。`graphics.current.X` → `graphics.X` |
+
+**達成条件と検証**
+
+- クラス `GraphicsSettings` を参照するのは供給側の 4 ファイルだけ — `render/graphics-settings.ts`(定義)、`main.ts`、`game/hud/settings-view.ts`、`game/hud/graphics-panel.ts`。
+- `npm run typecheck`
+- `grep -rn "GraphicsSettings\b" src/ --include=*.ts` → 上の 4 ファイルだけ
+- `npm run dev` → 設定パネルで環・オーロラ・大気・点群を切り替え、**その場で絵が変わること**
+
+---
+
+### 手順 4. 単独ビルドの器を作る
 
 **目的**: ゲーム本体と別のページとして立ち上がる土台を先に通す。中身はまだ無くてよい —
 **webpack・devServer・HTML の配線が通っていることだけを確かめる。**
@@ -144,7 +186,7 @@ GPU の起動オプション依存で不安定である。**この環境はそ�
 
 ---
 
-### 手順 3. テストシーンの組み立てを書く
+### 手順 5. テストシーンの組み立てを書く
 
 **目的**: 何を描くかを、レンダラーから切り離した純粋な関数の表にする。
 **ケースを増やすのが表への追記だけで済む形**にしておく — Phase 4 が 2 つ足す。
@@ -181,7 +223,7 @@ GPU の起動オプション依存で不安定である。**この環境はそ�
 
 ---
 
-### 手順 4. 2 経路を並べる
+### 手順 6. 2 経路を並べる
 
 **目的**: 同じケースをライトプリパスとフォワードで同時に描き、**目視で見比べられる状態**にする。
 
@@ -189,7 +231,7 @@ GPU の起動オプション依存で不安定である。**この環境はそ�
 
 | ファイル | 変更 |
 |---|---|
-| `tools/render-lab/lab.ts`(新規) | canvas 2 枚それぞれに `WebGPURenderer` と `RenderPipeline` を作り、ケースの物体を 2 つのシーンへ入れる。**違いは 2 点だけ** — 左は艦へ `markLitOpaque()`、ライトを `LIT_OPAQUE_LAYER` にも属させ、`pipeline.sunLight.set(dir, SUN_COLOR, SUN_INTENSITY, AMBIENT_INTENSITY, 1)` を毎フレーム書く。右は `markLitOpaque()` を打ち消してチャンネル 0 へ戻し、ライトもチャンネル 0 のまま |
+| `tools/render-lab/lab.ts`(新規) | canvas 2 枚それぞれに `WebGPURenderer` と `RenderPipeline`(設定は `QUALITY_PRESETS.high` をそのまま渡す — localStorage を読まない)を作り、ケースの物体を 2 つのシーンへ入れる。**違いは 2 点だけ** — 左は艦へ `markLitOpaque()`、ライトを `LIT_OPAQUE_LAYER` にも属させ、`pipeline.sunLight.set(dir, SUN_COLOR, SUN_INTENSITY, AMBIENT_INTENSITY, 1)` を毎フレーム書く。右は `markLitOpaque()` を打ち消してチャンネル 0 へ戻し、ライトもチャンネル 0 のまま |
 | `tools/render-lab/main.ts` | ケース切替のボタン列。押されたら両方のシーンを組み直す |
 
 **`NodeMaterial.setupLighting` はカメラのチャンネルと重なる光源が 1 つも無いと
@@ -208,7 +250,7 @@ GPU の起動オプション依存で不安定である。**この環境はそ�
 
 ---
 
-### 手順 5. 画素の読み出しと差分画像
+### 手順 7. 画素の読み出しと差分画像
 
 **目的**: 目で見た同じ絵を、**提示経路を通さずに PNG として取り出せる**ようにする。
 差分画像は、エージェントが最初に読む 1 枚になる。
@@ -236,13 +278,13 @@ GPU の起動オプション依存で不安定である。**この環境はそ�
 
 ---
 
-### 手順 6. Chrome の起動・配信・CDP を共通化する
+### 手順 8. Chrome の起動・配信・CDP を共通化する
 
-**目的**: 手順 7 で 3 つ目の写しを作らないため。`tools/browser-smoke.mjs` と
+**目的**: 手順 9 で 3 つ目の写しを作らないため。`tools/browser-smoke.mjs` と
 `tools/perf-probe.mjs` に、Chrome の探索・`--headless=new` 一式での起動・静的配信・
 CDP クライアント・セッション生成が**同じものとして 2 つある**(約 180 行)。
 
-**このステップは切り離せる。** 見送るなら手順 7 で 3 つ目の写しを作ることになり、
+**このステップは切り離せる。** 見送るなら手順 9 で 3 つ目の写しを作ることになり、
 その費用は「同じ約 180 行が 3 箇所」— `DEVELOP/CODING-RULE.md` 1.2 の重複禁止に正面から反する。
 
 **変更が必要な箇所**
@@ -262,7 +304,7 @@ CDP クライアント・セッション生成が**同じものとして 2 つ�
 
 ---
 
-### 手順 7. 撮影の駆動を書く
+### 手順 9. 撮影の駆動を書く
 
 **目的**: エージェントがコマンド 1 つで全ケースの PNG を得られるようにする。
 
@@ -270,7 +312,7 @@ CDP クライアント・セッション生成が**同じものとして 2 つ�
 
 | ファイル | 変更 |
 |---|---|
-| `tools/render-lab-shot.mjs`(新規) | `chrome-session.mjs` で Chrome を上げ、`.render-lab/` を配信し、ページを開き、ケースごとに手順 5 の関数を `Runtime.evaluate` で呼び、`.render-lab/shots/` へ書く |
+| `tools/render-lab-shot.mjs`(新規) | `chrome-session.mjs` で Chrome を上げ、`.render-lab/` を配信し、ページを開き、ケースごとに手順 7 の関数を `Runtime.evaluate` で呼び、`.render-lab/shots/` へ書く |
 | `package.json` | `"render-lab:shot": "webpack --config webpack.render-lab.config.js --mode production && node tools/render-lab-shot.mjs"` |
 | `CLAUDE.md` のコマンド表 | `npm run render-lab:shot` の行(用途:描画を画像で確かめるとき) |
 
@@ -292,11 +334,11 @@ CDP クライアント・セッション生成が**同じものとして 2 つ�
 - `npm run render-lab:shot`
 - `ls .render-lab/shots/ | wc -l` → 21
 - `grep -rn "captureScreenshot" tools/` → 0 件
-- 出た PNG を開いて、手順 4・5 で目視したものと同じ絵であること
+- 出た PNG を開いて、手順 6・7 で目視したものと同じ絵であること
 
 ---
 
-### 手順 8. 深度プローブのケースを当てる
+### 手順 10. 深度プローブのケースを当てる
 
 **目的**: **この器が信用できるかを確かめる。** Phase 4 の判断をここへ預ける以上、
 理論値と実測が合わないまま先へ進まない。
@@ -353,9 +395,9 @@ CDP クライアント・セッション生成が**同じものとして 2 つ�
 **純増は約 490 行、うち移動が 190 行なので実質 300 行。**
 `DEVELOP/CODING-RULE.md` の 200 行/モジュール基準に収めるための 3 分割(`main` / `lab` / `cases`)。
 
-**既存への変更**: 7 ファイル。実質は `RenderPipeline` の引数 1 行、`main.ts` 1 行、
-`package.json` 2 行、`.gitignore` 1 行、`CLAUDE.md` 2 行、
-それに `browser-smoke.mjs` / `perf-probe.mjs` の import 差し替え。
+**既存への変更**: 手順 1〜3 の描画設定の受け渡しで 12 ファイル。ほとんどが型と引数の差し替えで、
+実体のある移動は `scaleApparentSize` の 1 つだけ。残りは `package.json` 2 行、`.gitignore` 1 行、
+`CLAUDE.md` 2 行、それに `browser-smoke.mjs` / `perf-probe.mjs` の import 差し替え。
 
 **実行時の費用**: `WebGPURenderer` 2 台。ゲーム本体の実測(戦闘ビュー、1920×1080)が
 G バッファ 0.6ms / ライティング 0.5ms / マテリアル 0.6ms / ワールド 2.6ms / 合成 0.4ms = 4.7ms/枚。
@@ -370,16 +412,18 @@ G バッファ 0.6ms / ライティング 0.5ms / マテリアル 0.6ms / ワー
 
 | リスク | 影響 | 露見する場所 |
 |---|---|---|
-| **撮影ターゲットを sRGB フォーマットで作る** | 合成パスは既に sRGB へ変換済みの値を書く。ターゲットも `-srgb` だと**二重変換**になり、撮った PNG だけが白っぽくなる。「パイプラインが明るすぎる」と誤読する | 手順 5。`RGBAFormat` + `UnsignedByteType` で作っているか |
-| **読み出した画素の上下が逆** | `readRenderTargetPixelsAsync` の行順と `ImageData` の行順が食い違うと上下反転する。左右対称なシーンだと**気付かない** | 手順 5。艦は前後非対称なので `leo` で分かる |
-| **`setOutputRenderTarget` を戻し忘れる** | 以後キャンバスに何も出なくなる。**目視のページだけが真っ黒になり、撮影は通る** | 手順 5。撮影のたびに `null` へ戻す |
-| **`WebGPURenderer` を 2 台作るとデバイスも 2 つになる** | 環境によっては 2 台目の `init()` が失敗し、右の canvas だけ黒いまま無言で残る | 手順 4。**`init()` の失敗を握り潰さず、失敗したらページに文字で出す** |
-| **フォワード側で艦がチャンネル 0 に残っていない** | `buildPlayerShip()` は内部で `markLitOpaque()` を呼ぶ。**呼ばないのではなく、呼ばれたあとに戻す**必要がある | 手順 4。右の canvas に艦が出ない |
-| **`CelestialSurface` の球は `LIT_OPAQUE_LAYER` に載らない** | 球は `MeshBasicNodeMaterial` で自前 Lambert を持つので、**2 経路で同じ絵になるのが正しい。** `diff` の球が光ったら器の不備 | 手順 5。露出か合成の扱いが揃っていない |
-| **`CelestialSurface` は自前の `depthNode` を持っている** | 深度をフラグメントシェーダで書き直しているので、ハードウェア深度と最後の桁が違いうる。プローブの境目が導出値から 1 段ずれる | 手順 8。**ずれても器の失敗ではない** — Phase 4 でこの `depthNode` は消えるので、そのとき再測 |
-| **`far=1e13` のケースが現状の版で破綻する** | 深度デバッグ表示や `viewDistanceFromDepth` が使えなくなりうる | 手順 8。**それが観測結果であって器の失敗ではない** |
-| **球の見かけの大きさをケースごとに揃え損ねる** | 距離 z に対し半径 z/10 の規則を外すと、遠いケースで球が 1px 未満になって斑が見えず、「澄んでいる」と誤読する | 手順 8。`depth-*` の球が同じ大きさに見えるか |
-| **`Curve.setCurve` の `revision` を毎フレーム変える / カメラを渡し忘れる** | 適応分割が毎フレーム焼き直されて線がちらつく、あるいは焼かれず線が出ない。**撮影ではフレームごとに違う絵が撮れる** | 手順 4・7。`leo` / `order` で線が出ない、または撮り直すたびに違う |
-| **共通化が `npm run ci` を壊す** | `browser-smoke.mjs` は `npm run ci` の最後にいる。壊すとリリース検証が止まる | 手順 6。**単独 commit にし、`npm run smoke:browser` を通してから次へ行く** |
-| **撮影を開発ビルドで回す** | クラス名のマングルで陰影が消える種類の不具合を、撮影が見逃す | 手順 7。`render-lab:shot` が本番ビルドを踏んでいるか |
+| **設定値を構築時に受け取って保持する** | 環・オーロラ・大気・点群・詳細度の切り替えが次の起動まで効かなくなる。**絵は出るので気付きにくい** | 手順 3。設定パネルで切り替えて、その場で絵が変わるか |
+| **`bindResolutionTarget` の呼び出しが宙に浮く** | 解像度倍率の設定が起動時に反映されず、常に 1 倍で描く | 手順 1。`main.ts` が `initScene` の直後に呼んでいるか |
+| **撮影ターゲットを sRGB フォーマットで作る** | 合成パスは既に sRGB へ変換済みの値を書く。ターゲットも `-srgb` だと**二重変換**になり、撮った PNG だけが白っぽくなる。「パイプラインが明るすぎる」と誤読する | 手順 7。`RGBAFormat` + `UnsignedByteType` で作っているか |
+| **読み出した画素の上下が逆** | `readRenderTargetPixelsAsync` の行順と `ImageData` の行順が食い違うと上下反転する。左右対称なシーンだと**気付かない** | 手順 7。艦は前後非対称なので `leo` で分かる |
+| **`setOutputRenderTarget` を戻し忘れる** | 以後キャンバスに何も出なくなる。**目視のページだけが真っ黒になり、撮影は通る** | 手順 7。撮影のたびに `null` へ戻す |
+| **`WebGPURenderer` を 2 台作るとデバイスも 2 つになる** | 環境によっては 2 台目の `init()` が失敗し、右の canvas だけ黒いまま無言で残る | 手順 6。**`init()` の失敗を握り潰さず、失敗したらページに文字で出す** |
+| **フォワード側で艦がチャンネル 0 に残っていない** | `buildPlayerShip()` は内部で `markLitOpaque()` を呼ぶ。**呼ばないのではなく、呼ばれたあとに戻す**必要がある | 手順 6。右の canvas に艦が出ない |
+| **`CelestialSurface` の球は `LIT_OPAQUE_LAYER` に載らない** | 球は `MeshBasicNodeMaterial` で自前 Lambert を持つので、**2 経路で同じ絵になるのが正しい。** `diff` の球が光ったら器の不備 | 手順 7。露出か合成の扱いが揃っていない |
+| **`CelestialSurface` は自前の `depthNode` を持っている** | 深度をフラグメントシェーダで書き直しているので、ハードウェア深度と最後の桁が違いうる。プローブの境目が導出値から 1 段ずれる | 手順 10。**ずれても器の失敗ではない** — Phase 4 でこの `depthNode` は消えるので、そのとき再測 |
+| **`far=1e13` のケースが現状の版で破綻する** | 深度デバッグ表示や `viewDistanceFromDepth` が使えなくなりうる | 手順 10。**それが観測結果であって器の失敗ではない** |
+| **球の見かけの大きさをケースごとに揃え損ねる** | 距離 z に対し半径 z/10 の規則を外すと、遠いケースで球が 1px 未満になって斑が見えず、「澄んでいる」と誤読する | 手順 10。`depth-*` の球が同じ大きさに見えるか |
+| **`Curve.setCurve` の `revision` を毎フレーム変える / カメラを渡し忘れる** | 適応分割が毎フレーム焼き直されて線がちらつく、あるいは焼かれず線が出ない。**撮影ではフレームごとに違う絵が撮れる** | 手順 6・9。`leo` / `order` で線が出ない、または撮り直すたびに違う |
+| **共通化が `npm run ci` を壊す** | `browser-smoke.mjs` は `npm run ci` の最後にいる。壊すとリリース検証が止まる | 手順 8。**単独 commit にし、`npm run smoke:browser` を通してから次へ行く** |
+| **撮影を開発ビルドで回す** | クラス名のマングルで陰影が消える種類の不具合を、撮影が見逃す | 手順 9。`render-lab:shot` が本番ビルドを踏んでいるか |
 | **ケースを増やしたくなる** | 「ついでに環も」「オーロラも」と足すと持ち込む依存が増え、器そのものが壊れやすくなる | 全手順。**球・艦・線の 3 種を超えたら、それは別フェーズの要求である**(Phase 4 が足す 2 ケースを除く) |

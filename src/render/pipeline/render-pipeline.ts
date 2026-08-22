@@ -10,7 +10,7 @@ import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { log, screenUV, texture, uniform, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
-import type { GraphicsSettings } from '../graphics-settings';
+import type { GraphicsSettingsData } from '../graphics-settings';
 import type { FloatNode, FloatUniform, Vec4Node } from '../tsl-types';
 import type { DebugTargetHost, DebugTargetId } from './debug-target';
 import { GBufferPass, octDecodeNormal } from './gbuffer';
@@ -62,7 +62,7 @@ export class RenderPipeline implements DebugTargetHost {
   // G バッファパス・ライティングパス・マテリアルパスと、world パスの描画先である HDR
   // オフスクリーンターゲット、それらをキャンバスへ合成する QuadMesh 用のデバッグ表示ごとの
   // マテリアルを構築する。
-  constructor(renderer: WebGPURenderer, graphics: GraphicsSettings, private readonly gpu: GpuTimings) {
+  constructor(renderer: WebGPURenderer, graphics: GraphicsSettingsData, private readonly gpu: GpuTimings) {
     this.renderer = renderer;
     this.gbuffer = new GBufferPass(renderer, gpu);
     this._sunLight = new SunLight();
@@ -72,7 +72,7 @@ export class RenderPipeline implements DebugTargetHost {
     // antialias はレンダラ生成時にしか渡せず(scene.ts 参照)、キャンバスへの直描きは
     // それでマルチサンプルされていた。オフスクリーンの HDR ターゲットは自前で samples を
     // 要求しないと素通りで失われるので、構築時に一度だけ読んで反映する。
-    const samples = graphics.current.antialias ? 4 : 0;
+    const samples = graphics.antialias ? 4 : 0;
     this.target = new THREE.RenderTarget(1, 1, {
       type: THREE.HalfFloatType,
       format: THREE.RGBAFormat,
