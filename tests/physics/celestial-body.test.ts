@@ -10,7 +10,7 @@ import {
   strongestAttractor,
 } from '../../src/physics/celestial-body';
 import { kinematicState } from '../../src/physics/kinematic-state';
-import { MU_EARTH, R_EARTH, SOLAR_SYSTEM } from '../../src/physics/solar-system';
+import { MU_EARTH, R_EARTH, SIDEREAL_DAY, SOLAR_SYSTEM, bodyDef } from '../../src/physics/solar-system';
 import { keplerPeriod, stateFromOrbitalElements, tofBetween } from '../../src/physics/elements';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
 import { MU_MOON, MU_SUN, R_MOON, R_SUN } from '../../src/physics/solar-system';
