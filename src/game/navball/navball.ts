@@ -46,6 +46,7 @@ export class Navball {
     viewOptionsPanel.onGridToggle = (key, on) => {
       this.gridVisibility = applyGridToggle(this.gridVisibility, key, on);
       saveGridVisibility(this.gridVisibility);
+      viewOptionsPanel.setGridVisibility(this.gridVisibility);
     };
     viewOptionsPanel.setGridVisibility(this.gridVisibility);
   }
