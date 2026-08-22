@@ -25,6 +25,12 @@ const FIXED_PAST_DURATIONS: readonly (readonly [FixedPastDurationKey, string])[]
   ...FIXED_DURATIONS,
 ];
 
+// 単位換算後の秒数を入力欄へ表示する文字列に丸める。小数第3位以降を切り捨てて
+// 桁の長い割り切れない値(例: 1時間を「日」単位にした 0.041666...)を防ぐ。
+function fmtInputSec(sec: number): string {
+  return String(Math.round(sec * 100) / 100);
+}
+
 type DurationUnit = 'hour' | 'day' | 'month' | 'year';
 
 const UNIT_SEC: Record<DurationUnit, number> = { hour: 3600, day: 86400, month: 30 * 86400, year: 365 * 86400 };
@@ -72,7 +78,7 @@ class DurationValueInput {
       this.unitValue = u;
       this.unit.setSelected(u);
       this.syncMinMaxAttr();
-      this.value.setValue(String(this.lastSec / UNIT_SEC[u]));
+      this.value.setValue(fmtInputSec(this.lastSec / UNIT_SEC[u]));
     });
     this.unit.setSelected(this.unitValue);
     this.element.appendChild(this.unit.element);
@@ -92,7 +98,7 @@ class DurationValueInput {
     this.minSec = minSec;
     this.maxSec = maxSec;
     this.syncMinMaxAttr();
-    this.value.setValue(String(sec / UNIT_SEC[this.unitValue]));
+    this.value.setValue(fmtInputSec(sec / UNIT_SEC[this.unitValue]));
   }
 
   // ValueInput が確定した生の文字列をレンジへクランプして通知する。
@@ -100,7 +106,7 @@ class DurationValueInput {
     const unitSec = UNIT_SEC[this.unitValue];
     const sec = Math.max(this.minSec, Math.min(this.maxSec, Number(text) * unitSec));
     this.lastSec = sec;
-    this.value.setValue(String(sec / unitSec));
+    this.value.setValue(fmtInputSec(sec / unitSec));
     this.onCommit(sec);
   }
 
