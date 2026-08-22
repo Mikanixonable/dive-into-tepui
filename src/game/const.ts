@@ -57,21 +57,22 @@ export const STAGNATION_AREA_FRACTION = 0.6;
 
 // 艦(自機・敵機)。材質密度は宇宙機の実効密度で、曲率半径 0.6 m を与える値。
 export const SHIP_BULK_DENSITY = 833; // [kg/m^3]
-// PLAYER_MASS と掛けて外殻の熱容量 0.34 MJ/K。射撃・被弾の発熱量はこれを基準に決めてある。
-export const SHIP_SPECIFIC_HEAT = 340; // [J/(kg·K)]
+// PLAYER_MASS と掛けて外殻の熱容量 0.1 MJ/K。射撃・被弾の発熱量はこれを基準に決めてある。
+export const SHIP_SPECIFIC_HEAT = 100; // [J/(kg·K)]
 // 艦体自体の放熱面積 70 m² を PLAYER_MASS で割った値。放熱板の展開ぶんはこれに上乗せする。
 export const SHIP_RADIATING_AREA_PER_MASS = 0.07; // [m^2/kg]
-// 敵機は熱防御を持たないので、艦より低い温度で構造が保たなくなる。地球の大気では放射平衡が
-// これに達するのが高度 80 km 付近。
-export const ENEMY_MAX_TEMP = 700; // [K]
+// 敵機は熱防御を持たないので、艦より低い温度で構造が保たなくなる。降下してくる艦がこの温度に
+// 達するのは、地球の大気では高度 80 km 付近。
+export const ENEMY_MAX_TEMP = 500; // [K]
 
 // 破片・薬莢・弾薬。アルミ合金相当の材質。
 export const SMALL_DEBRIS_BULK_DENSITY = 2700; // [kg/m^3]
 export const SMALL_DEBRIS_SPECIFIC_HEAT = 900; // [J/(kg·K)]
 // 球とみなした断面積比(bcInv/Cd)の 4 倍。
 export const SMALL_DEBRIS_RADIATING_AREA_PER_MASS = 0.01455; // [m^2/kg]
-// 地球の大気では放射平衡がこれに達するのが高度 95 km 付近。
-export const SMALL_DEBRIS_MAX_TEMP = 1200; // [K]
+// アルミ合金の融点。降下してくる破片がこの温度に達するのは、地球の大気では高度 60 km 付近
+// — 平衡温度はもっと高いところで既にこれを超えるが、再突入は速すぎて平衡に達しない。
+export const SMALL_DEBRIS_MAX_TEMP = 933; // [K]
 
 // --- 空力加熱・構造限界 ---
 export const SG_CONST = 1.7415e-4; // Sutton–Graves 定数(地球) [kg^0.5/m]
