@@ -276,6 +276,11 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   position: absolute; bottom: 40px; top: auto; left: 50%; transform: translateX(-50%);
   display: none; min-width: 260px; pointer-events: auto;
 }
+#hud-pause-menu .pm-header {
+  display: flex; justify-content: space-between; align-items: center; gap: var(--space-6);
+}
+#hud-pause-menu .pm-header h3 { margin: 0; }
+#hud-pause-menu .pm-header .w-close { flex: 0 0 auto; border-radius: 50%; }
 #hud-pause-menu .pm-row {
   display: flex; justify-content: space-between; align-items: center; gap: var(--space-6); padding: var(--space-3) 0;
 }
@@ -286,7 +291,6 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 /* span. まで指定して .w-btn 側の padding/font-size より確実に勝たせる
    (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
 #hud-pause-menu span.pm-quit { margin-top: var(--space-5); text-align: center; padding: var(--space-4) var(--space-5); font-size: var(--font-m); }
-#hud-pause-menu .pm-close-row { margin-top: var(--space-5); text-align: center; }
 #hud-pause-menu .w-tabs { margin-bottom: var(--space-4); }
 #hud-pause-menu .gp-body { display: flex; flex-direction: column; gap: var(--space-4); }
 #hud-settings-view {
