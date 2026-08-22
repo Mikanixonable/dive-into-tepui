@@ -223,7 +223,7 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
       <div class="target-identity">
         <span class="target-lock-glyph" aria-hidden="true">⌖</span>
         <strong class="target-name" data-id="tgtname" aria-live="polite">—</strong>
-        <span class="target-role">第一ターゲット</span>
+        <span class="target-role">ターゲット</span>
       </div>
       <dl class="metric-list">
         <div class="row metric">
