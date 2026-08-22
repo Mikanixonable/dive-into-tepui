@@ -1,371 +1,432 @@
-# 大気と熱モデルの整備
-現状、大気が地球限定の実装になっているのと、熱システムがプレイヤー限定の実装になっているのを、一般化する。
+# 熱シミュレーションの一般化 — 全個体を温度で扱う
 
-より大局的な目的はgoal.mdを参考にすること。
-計画はフェーズごとに区切ること。各フェーズ終了時には、typecheckと必要に応じたテストが通るようにフェーズを分割すること。
-実施時には、各フェーズの完了後にコードレビュー、テスト、コミットを行うこと。計画を実施するときには全フェーズを順にすべて行うこと。
-実施後、完了したタスクは文書から削除しbacklog.mdからも削除すること。やらないと決めたタスク、未完了のタスクはbacklog.mdに移すこと。その後、このファイル自体が空になるはずなので削除すること。
+大気の一般化は済んだ(天体ごとのパラメータ・基準楕円体・共回転・密度基準の焼失・抗力由来の
+刻み規則)。**残っているのは熱の側だけ**で、熱はいまも自機 1 隻にしか無い。この文書はその
+残りを扱う。大局的な目的は `goal.md`。
 
-判断に困ったら/refactorと/refactor-fixedを参照すること。
+本文中の数値はすべて `0c5493f9` のコードで実測したもの。**この文書は計画であって仕様ではない。**
+決まったことは `DEVELOP/SPEC/` へ、現状はコードへ書く。
 
-## 0. 前提と優先順位
-
-**判断が競合したら、この順で決める(`/refactor-fixed` §5)。**
-
-1. **物理的正確さ** — `physics/` では最優先。
-2. **実装の適切さ** — 責務分割・疎結合・命名・数式が素直にそのまま書かれていること。
-3. **実行時パフォーマンス** — 重要だが上2つより下。
-4. **変更コスト** — 最も低い。
-
-## 1. 目的
-現状、大気が地球限定の実装になっているのと、熱システムがプレイヤー限定の実装になっているのを、一般化する。
-
-大気の量を表すパラメーターを天体に追加する。（0で無大気を表すようにし、フラグは作らない）
-atmosphere.tsを地球限定のものから一般的なものに拡張。
-空気抵抗や再突入時の加熱について、その星の大気に基づく体系的な判定を行う。
-
-現実的に考えて、複数の星の大気の影響を受けることはない（ある星の大気圏には安定した星が存在できない）から、最も近い天体の大気だけを考慮する近似を行ってよい。
-
-基本的な物体、単純なデブリなどに対しても、簡易的な熱シミュレーションシステムを実装する。
-各GameEntityのプロパティとして、温度、熱容量、輻射率、上限温度のパラメーターを追加する。
-受けた空気抵抗や、衝突などによって失われた力学的エネルギーと熱容量から温度上昇が計算され、雑に定数か線形で近似した黒体放射で放出される。上限温度を超えると破棄。
-既存の万有引力シミュレーション、衝突シミュレーションと極力疎結合になるようにしたいが、そのせいで却って配線が複雑になる場合は統合する（捨てられた力学的エネルギーを記録するための配線を基底に作るなど）
-太陽による加熱は将来へのbacklogに残す（現時点では影判定のコストが大きそうだから）
-これが熱システムの統一基盤になる。
-
-再突入高度の概念を破棄。熱による焼失に一般化する。デブリ類が大気を持たない天体と衝突したとき、衝突による衝撃熱で消失することもあれば、焼失しないこともある。焼失しなくてもバグではない（デブリは寿命や最大数が設定されているので、消えなくても問題はない）
-
-現状プレイヤーだけが持っている熱システムを、この基盤の上に作り直す。プレイヤー特有の事案として、発熱、被弾に応じた温度変化、ラジエーターの展開による輻射率の変化などを実装しなおす。
+実施の作法: フェーズごとに区切り、各フェーズ末で `npm run typecheck`(`src/physics/` を触った
+フェーズは `npm run test:physics` も)が通ること。フェーズ完了ごとにコードレビュー・検証・
+コミット。振舞いを変えるフェーズは、書き始める前に `DEVELOP/SPEC/` を直す(`/modify-feature`)。
+実施済みのフェーズはこの文書から削除し、やらないと決めたものは `backlog.md` へ移す。
 
 ---
 
-## 2. 現況調査(計画立案時点)
+# 第0章 スコープ
 
-計画の前提として確認した事実。実施時にずれていたら現況を正とする。
+**含む**
 
-### 2-1. 大気が地球固有である箇所
+- 全 `GameEntity` が温度を持つこと。熱の入り口(抗力・衝突・太陽・自機固有の発熱)と出口(放射)。
+- **エネルギー収支が閉じること** — 物体へ入る熱が、その区間に実際に散逸した力学的エネルギーを
+  超えないこと。厳密な全系の追跡はしない(大気側・天体側へ逃げた分は追わない)。
+- 密度しきい値による焼失の廃止。焼失を温度一本にすること。
+- 発散対策(粗い刻みで抗力が積めない個体の扱い)を、焼失とは**別の規則**として置き直すこと。
+- 自機の `ThermalSystem` をその基盤の上へ載せ替えること。
 
-- `physics/atmosphere.ts` — 区分指数密度表(Vallado、0〜1000 km の28行)がモジュール private 定数。
-  `dragAccel(r, v, bcInv)` は `len(r) - R_EARTH` で高度を取る(= ECI 原点が地球であることに依存)。
-  `airspeed(r, v)` は `EARTH_OMEGA`(= 2π/`SIDEREAL_DAY`)で Y 軸まわりの共回転のみ。
-  `isBurnedUp(r, bodies, margin)` は **`body.id !== 'earth'` を直接見て弾いている**。
-- `dynamics.ts` の `totalAccel` は、天体ごとのループの**外**で `dragAccel` を1回だけ呼ぶ。
-  重力・J2・SRP が `Attractor` のフィールド駆動で固有名を持たないのに対し、抵抗だけが例外。
-- `Attractor` に渡っているのは `id/mu/radius/state/degree2/isStar` だけ。
-  `CelestialBodyDef` の `shape`/`pole`/`rings` は `Attractor` に載っていない。
-- **高度の基準半径が2系統ある。** `dragAccel`/`thermal.ts` は `R_EARTH`(平均 6371.0 km)、
-  `isBurnedUp` は `Attractor.radius`(= `R_EARTH_EQ` 6378.137 km)。約 7.1 km ずれている。
-- `earthAltitudeOf` の呼び出しは `player.ts:373` の1箇所のみ。同じ式が `thermal.ts:58`、
-  `atmosphere.ts:63`、`stage00.ts:273` にインラインで重複している。
+**含まない**
 
-### 2-2. 再突入高度の定数と使用箇所
-
-`const.ts` の `REENTRY_ALT`(80 km)/`PLAYER_MIN_ALT`(45 km)/`DEBRIS_REENTRY_ALT`(95 km) は
-すべて `isBurnedUp` の margin 引数。加えて:
-
-- `game-entity.ts:184` — **予測軌道の打ち切り**(`stepPredicted`)。
-- `plan-arc.ts:173` — **計画軌道の打ち切り**。
-- `game-entity.ts:211`(基底 `checkLoss`)、`bullet.ts:91`、`enemy.ts:218`、`player.ts:380` — 消滅判定。
-- `stage00.ts:193,272` — 敵配置の近地点マージン(`REENTRY_ALT + 余裕`)。
-- `simulator.ts:90` — `REENTRY_SUBSTEP_ALT`(200 km)による substep 細分化。これは焼失判定ではないが
-  同じく地球固有(`R_EARTH` 基準)。
-
-予測・計画の打ち切りは**熱状態を持たない**ので、温度による焼失にそのまま置き換えられない。別の基準が要る。
-
-### 2-3. 熱システムの現況
-
-`player/thermal.ts` の `ThermalSystem` が単独で全部を持っている:
-
-- 空力加熱 Sutton–Graves `q̇ = SG_CONST·√(ρ/NOSE_RADIUS)·s³`、
-  冷却 `ε·σ·(RAD_AREA + radiatorArea)·(ENV_TEMP⁴ − T⁴)`、
-  熱容量は `ship.mass * 100`(≒比熱 100 J/kg/K。`C.HEAT_CAPACITY` は使われない fallback)。
-- `pendingHeat` [J] に射撃熱(`addGunHeat`)と被弾熱(`addImpactHeat`)を溜め、substep 数に依存しないよう
-  `dtSub` を掛けずに一括投入。
-- `checkThermalLimits()` が `'heat-aero' | 'heat-internal' | 'dynpressure' | null` を返す。
-  `heat-aero`/`heat-internal` の区別は `qdyn >= REENTRY_GLOW_MIN_Q`(= 大気の有無の代理判定)。
-- 動圧 `qdyn`、高度低下警告の EMA も同居。`updateAltitudeAlarm` の末尾が `checkThermalLimits()` を
-  tail-return しており、**判定が警告処理に相乗りしている**。
-- ラジエーターは面積 [m²] と太陽入射 [W] を `setRadiatorLoad` で渡すだけ。ただし面積の実体は
-  `totalCoolingRate`(部品の `coolingRate` の総和、既定 25)をそのまま m² として使っており、
-  `RADIATOR_PANEL_AREA`/`RADIATOR_EFFICIENCY_MULT` は**死んでいる**。
-
-### 2-4. 衝突の力学的エネルギー
-
-`Contact`(`simulation/contact.ts`)が持つのは `t/point/normal/selfState/otherState/impulse` のみ。
-`physics/collision-response.ts` の `CollisionResponse` も `impulse`/`toi` 止まりで、
-**ΔKE はどこでも計算されていない**。反発係数 `RESTITUTION = 0.4` は `contact.ts` 定数。
-現状ダメージは `contact.impulse / mass`(Δv)からのみ導出。
+- 熱による部品破壊・性能低下。温度は「上限を超えたら消失」の二値のまま。
+- 材質・組成のモデル化。Sutton–Graves 定数の天体依存性は `SPEC/ORBIT.md` 未確定の案のまま。
+- 熱伝導・内部の温度分布。物体は等温の1点として扱う。
+- 着陸(`design_landing_simulation.md` の担当)。接地した物体の熱は本計画の範囲外。
 
 ---
 
-## 3. 設計判断
+# 第1章 現況 — 何が済み、何が残っているか
 
-実装前に確定させる点。**判断に迷ったらここに戻る。**
+## 1-1. 済んだこと(前提。もう手を入れない)
 
-### 3-1. 大気データの表現
+- **大気は天体のパラメータ**(`physics/atmosphere.ts` の `AtmosphereDef`/`Atmosphere`)。
+  基準楕円体・自転角速度・区分指数の層を持ち、既定の太陽系では地球だけが持つ。
+- **高度は基準楕円体から測る**(`ellipsoidAltitude`)。`R_EARTH` 基準の重複は残っていない。
+- **抗力は最も近い大気天体ただ1体から**(`nearestAtmosphereBody`)、共回転する大気に対する
+  対気速度で掛かる(`airspeed`)。
+- **焼失は高度ではなく密度で判定する**(`burnUpBody` + 個体ごとの `burnUpDensity`)。
+  `REENTRY_ALT`/`PLAYER_MIN_ALT`/`DEBRIS_REENTRY_ALT` は存在しない。
+  **無大気天体には焼失が無い** — `burnUpBody` は `atmosphere === null` の天体を飛ばすので、
+  月へ好きなだけ近づける。
+- **刻みは抗力から決まる**(`simulation/time-step.ts` の `atmosphericMaxStep`)。剛性の上限
+  (λ·dt ≤ `DRAG_STEP_MAX_SPEED_LOSS`)と沈み込みの上限(中間段が密度を e^N 倍以上またがない)の
+  小さいほう。`doPreciseReentry` の個体だけがサブステップの内側で細分される(`stepPrecise`)。
+- **`dragAccel` は対気速度を反転させない**。1歩で奪う量を対気速度そのもので頭打ちにする。
 
-`CelestialBodyDef` の planet/satellite に `atmosphere?: AtmosphereDef` を追加する
-(`degree2?`/`pole?`/`shape?` と同じ「省略すれば持たない」既存慣習に合わせる。star には付けない)。
+**したがって旧計画の Phase 1・2、および Phase 5 のうち「再突入高度の廃止」は実施済み。**
 
-```ts
-// 基準高度で区切った指数モデルの1層。
-export type AtmosphereLayer = {
-  readonly baseAlt: number;     // 層の下端高度 [m]
-  readonly density: number;     // baseAlt での密度 [kg/m^3]
-  readonly scaleHeight: number; // スケールハイト [m]
-};
-export type AtmosphereDef = {
-  readonly layers: readonly AtmosphereLayer[]; // baseAlt 昇順。空配列 = 無大気
-  readonly spinPeriod: number;                 // 大気の共回転周期 [s]
-};
-```
+## 1-2. 残っている問題
 
-- 「大気の量を表すパラメーター、0で無大気、フラグは作らない」の要求は、
-  `exponentialAtmosphere(surfaceDensity, scaleHeight, spinPeriod)` という
-  **1層を組み立てるヘルパ**で満たす。`surfaceDensity = 0` を渡せば密度は恒等的に 0 になり、
-  `dragAccel` は分岐なしで 0 を返す。無大気の判定用フラグは作らない。
-- 地球だけは既存の28行表をそのまま `layers` に載せる。**単一指数への退行は物理的正確さの後退**
-  なので採らない(優先順位 §0-1)。他の天体は1層で足りる。
-- 密度の正データは `layers` 一本にする。`surfaceDensity` をフィールドとしても持たせる案は、
-  同じ事実が2箇所に分散するので採らない(`/refactor` データ構造)。
+| # | 問題 | 場所 |
+|---|---|---|
+| P1 | 熱シミュレーションが自機 1 隻にしか無い | `player/thermal.ts` |
+| P2 | 焼失が「耐えられる密度の上限」という定数で、熱の物理を持たない | `GameEntity.burnUpDensity` |
+| P3 | 発散しないことが保証されていない(密度しきい値と刻みの安定限界が無関係) | `const.ts` の 2 定数 |
+| P4 | `doPreciseReentry` と熱シミュの有無が相補的でない | `Enemy` が両方を持つ |
+| P5 | **エネルギー収支が閉じていない** — 受熱が散逸を上回りうる | `thermal.ts` の Sutton–Graves |
+| P6 | **予測弧を消費した個体は `stepEnvironment` を飛ばす**(仕様違反) | `simulator.ts:229` |
+| P7 | `mass`・`radius` が熱の物理量として使えない | 破片・薬莢・弾薬 |
+| P8 | 衝突で失われた力学的エネルギーがどこでも計算されていない | `collision-response.ts` |
+| P9 | 自機の熱システムに死んだ定数と相乗りが残っている | `thermal.ts`/`radiator.ts` |
 
-### 3-2. 高度の基準半径
+## 1-3. P3 の実測 — いまは「たまたま」安全である
 
-`Attractor.radius` に一本化する。`R_EARTH`(平均半径)基準の高度計算は
-`atmosphere.ts`/`thermal.ts`/`stage00.ts` から消す。地球について約 7.1 km 高度が下がる方向にずれるが、
-**「接触・高度の基準球は外接球」という既存の確定判断**(`solar-system.ts` の地球エントリのコメント)に
-揃えるほうが、2系統を残すより正しい。`earthAltitudeOf` は削除し、任意天体版
-`altitudeAbove(r, body)` に置き換える。
+`doPreciseReentry` が false の個体は細分されないので、濃い大気では抗力が刻みに対して剛くなる。
+`dragAccel` の頭打ち(λ·dt ≥ 1 で対気速度を消し切る)に触れた歩は、頭打ちが無ければ発散していた歩
+にあたる(`tests/perf/exp15`)。**その境界高度と、現行の密度しきい値の対応高度を並べる。**
 
-### 3-3. どの天体の大気を使うか
+現行の対応高度: `ENEMY_BURNUP_DENSITY` = 80.0 km、`DEBRIS_BURNUP_DENSITY` = 95.0 km(地球・赤道)。
 
-「最も近い天体の大気だけ」を実装する。判定は**中心距離ではなく高度**
-(`len(r - body.state.r) - body.radius`)の最小で選ぶ — 半径が桁違いの天体が混ざるので、
-中心距離で選ぶと巨大な天体が常に勝つ。`atmosphere.ts` に
+境界高度 [km](地球・円軌道。**候補A** = `dt > atmosphericMaxStep`、**候補C** = λ·dt ≥ 1):
 
-```ts
-export function atmosphereAt(r: Vec3, bodies: readonly Attractor[]): { body: Attractor; density: number } | null
-```
+| ワープ / fps | サブステップ dt [s] | 艦 A / C | 破片 A / C | 弾 A / C |
+|---|---|---|---|---|
+| ×1 | 20.00 | 52.6 / 47.4 | 59.6 / 54.1 | 33.5 / 28.6 |
+| ×16384 低fps | 25.60 | 54.5 / 49.3 | 61.6 / 55.9 | 37.1 / 30.4 |
+| ×65536 低fps | 102.40 | **707.1** / 60.0 | **707.1** / 67.4 | **707.1** / 39.6 |
+| ×131072 60fps | 34.13 | **137.1** / 51.4 | **137.1** / 58.2 | **137.1** / 32.5 |
+| ×131072 低fps | 204.80 | **1527.3** / 65.8 | **1527.3** / 72.7 | **1527.3** / 44.2 |
 
-を置き、`dragAccel`・熱・予測打ち切りがすべてこれを通る。**大気を持つ天体が複数あっても
-最も高度の低い1体しか見ない**のは仕様(§1 の近似)。
+読み取れることが2つある。
 
-### 3-4. 共回転
+1. **現行の 80/95 km は、全ワープ段で候補C の境界(28〜73 km)より外にある。** いま発散しないのは
+   地球の大気に合わせて選ばれた数字がたまたま外側にあるからで、他天体の大気では成り立たない。
+2. **候補A(`atmosphericMaxStep` をそのまま使う)は採れない。** 沈み込みの上限は密度にも `bcInv` にも
+   依らず、円軌道で高度 400 km でも 78.3 s、1000 km で 157.1 s しかない。最高ワープ・低 fps
+   (dt = 204.8 s)では**高度 1527 km 以下の全個体が消える** — LEO のデブリが丸ごと消滅する。
 
-`Attractor` に自転を載せる: `spin: { readonly axis: Vec3; readonly rate: number } | null`
-(`rate` [rad/s])。`Ephemeris` が `PoleModel` から解決する
-(`iau` は `wRateDegPerDay`、`cassini` は公転周期、`eciPole` は `SIDEREAL_DAY`)。
-`airspeed` は `v - ω×(r - r_body)` に一般化し、`EARTH_OMEGA` は削除する。
-`spin === null`(自転モデルを持たない天体)の大気は静止扱い。
+沈み込みの上限だけ(密度・`bcInv` に依らない、円軌道):
 
-これは `poleAt` が返す `{axis, spinAngle}` と重複しない — あちらは**位相**、こちらは**角速度**。
-ただし実施時に `poleAt` から角速度も返せるなら、そちらへ寄せて `Attractor.spin` を
-1つの解決経路に統一すること。
+| 高度 | 200 km | 400 km | 1000 km | 10000 km | 36000 km |
+|---|---|---|---|---|---|
+| 上限 | 56.8 s | 78.3 s | 157.1 s | 424.5 s | 1098.7 s |
 
-### 3-5. `GameEntity` の熱プロパティ
+## 1-4. P5 の実測 — いまの受熱はエネルギー保存を破る
 
-要求は「温度、熱容量、輻射率、上限温度」の4つ。うち**熱容量だけは比熱で持つ**:
+Sutton–Graves の受熱は `√ρ·v³`、抗力が散らす力学的パワーは `ρ·v³` に比例するので、**比は 1/√ρ で
+増える**。自機(`SHIP_BCINV` = 3.3e-3、`PLAYER_MASS` = 1000、`HEAT_ABSORB_AREA` = 0.9 m²)で:
 
-```ts
-temperature = C.ENV_TEMP;      // [K]
-specificHeat = 0;              // [J/(kg·K)]  0 なら熱を蓄えない(= 熱計算をしない)
-emissivity = 0;                // [-]
-maxTemperature = Infinity;     // [K]  超えたら消失
-```
+| 高度 [km] | 60 | 80 | 100 | 120 | 150 | 200 | 420 |
+|---|---|---|---|---|---|---|---|
+| 受熱 / 散逸 | 0.004 | 0.016 | 0.087 | 0.480 | **2.16** | **6.51** | **70.9** |
 
-- 熱容量 [J/K] を直に持つと `mass` と重複する(`mass × specificHeat` で出る)。
-  「軽微な計算で求まるものをステートに持たない」に従い比熱側を正データにする。
-- **輻射面積・受熱面積は追加しない。** 既存の `radius` から `4πr²`(輻射)/`πr²`(受熱)で出す。
-  自機の `radius`(2.6 m)からは 85 m² で、現行の `RAD_AREA = 70` と同オーダー。
-- `specificHeat = 0` が「熱を持たない物体」を表す。フラグは作らない(大気と同じ方針)。
-- `maxTemperature = Infinity` が既定なので、**値を設定しない限り焼失しない**。
-  デブリが無大気天体に衝突して焼けないのは仕様どおり(§1)。
+**受熱と散逸が等しくなるのは高度 131.7 km。それより上では、抗力が奪った以上の熱が機体に入っている。**
+絶対量が小さい(420 km で 158 W、放射冷却の 1 % 未満)ので現行のゲーム挙動には現れないが、
+「エネルギー収支を満たす」を要求として立てた以上、これは直す対象になる。
 
-### 3-6. 熱の入力経路
+## 1-5. P6 の実測 — 予測弧を辿る間は熱が積まれない
 
-1. **空力加熱** — `stepActual` の後に1回だけ評価する(RK4 の各段では評価しない)。
-   `physics/` に純関数 `aeroHeatFlux(density, airspeed)` を置き、
-   受熱は `flux × πr² × dt`。素直な `½ρv³` 系の式にする(自機の Sutton–Graves は §3-8)。
-2. **衝突** — `collision-response.ts` が `energyLoss` を返すようにする。
-   反発で失われる運動エネルギーは既存の値だけで閉じた形に出る:
-   `ΔKE = ½·(1−e²)·vn²/invM`(`invM = invMassA + invMassB`、`vn` は法線相対速度)。
-   `Contact` に `energyLoss` を追加し、基底 `collideWith` が自分の分を吸収する。
-   **配分は質量比**(`invMass` の逆比)とする — 根拠の薄い等分よりは物理的。
-3. **推力・射撃・被弾** — 自機固有。§3-8。
-4. **太陽輻射** — backlog 送り(影判定のコスト)。§6。
+`Simulator.substep` は `followPredicted` が成功した個体を `coarseEntitiesScratch` へ入れずに
+`continue` する。そのリストが `stepEnvironment` の対象なので、**予測弧を消費して進んだサブステップ
+では熱・電力・ラジエーターが1つも進まない。** `Ship` は `predictedForGhost = true` なので自機も
+敵もこの経路を通る。
 
-**放熱**は `ε·σ·4πr²·(T_env⁴ − T⁴)`。`T_env` は既存の `C.ENV_TEMP`。
+`dd277492`(大気の刻みを抗力から決め、細分をサブステップの外へ出さない)以前は、
+`entities.players` を無条件に回していたので全サブステップで進んでいた。**細分の導入に伴う
+取りこぼしであり、仕様違反である**(`SPEC/FLIGHT.md`「熱管理」は外殻の熱収支を積分すると定める)。
 
-### 3-7. 再突入高度の廃止と、予測・計画の打ち切り
+天体表面への到達は弧自身が `checkSurfaceReach` で打ち切るので、こちらは取りこぼしていない。
 
-`isBurnedUp` と `REENTRY_ALT`/`PLAYER_MIN_ALT`/`DEBRIS_REENTRY_ALT` は削除する。実体としての焼失は
-`temperature > maxTemperature` 一本になる。
+## 1-6. P7 の実測 — 質量も半径も熱には使えない
 
-ただし**予測軌道(`stepPredicted`)と計画軌道(`PlanArc`)は熱状態を持たない**ので、
-温度では打ち切れない。ここは「表示の打ち切り」であって物理判定ではないから、
-`game/const.ts` に表示側の調整値を置く:
+| 種別 | `mass` | `radius` |
+|---|---|---|
+| 自機 | `PLAYER_MASS` = 1000 | 2.6 m |
+| 敵 | 10000 | メッシュのバウンディング球 |
+| 弾 | 0.1 | 0.02 m |
+| 破片・薬莢 | **0**(試験粒子) | **0 になりうる**(`radius ?? 0`) |
+| 弾薬ピックアップ | **0**(試験粒子) | 1.3 m |
 
-```
-PREDICT_ATMOSPHERE_CUTOFF_DENSITY  // この密度を超えたら以降は描かない [kg/m^3]
-```
-
-密度で切ることで、任意天体に自動で追随する(地球 80 km 相当の密度を初期値にする)。
-`REENTRY_SUBSTEP_ALT` も同様に密度基準へ移す。
-
-`stage00.ts` の近地点マージンは焼失判定ではなく**敵配置の安全高度**なので、
-`REENTRY_ALT` を消した後は `STAGE00_MIN_PERIGEE_ALT` として stage 側の定数に独立させる
-(地球固有の値だが、stage00 自体が地球周回のステージなので問題ない)。
-
-### 3-8. 自機の熱システムの残り
-
-基盤に移した後、`player/thermal.ts` に残るのは**自機固有の事案だけ**:
-
-- 射撃熱・被弾熱 → 基底の `absorbHeat(joules)` を呼ぶだけになる。`pendingHeat` は基底へ移す
-  (substep 非依存の一括投入という性質は保つ)。
-- **Sutton–Graves** — 一般物体の `½ρv³` より正確なので自機では維持する。基底の空力加熱を
-  仮想メソッドにするのではなく、**基底の受熱式に係数を掛ける形**にはしない。
-  `physics/atmosphere.ts` に `suttonGravesFlux(density, speed, noseRadius)` を並べて置き、
-  どちらを使うかは受け手側(`Player` かそれ以外か)が決める。
-  → **実施時に、基底へ仮想メソッドを1つ足すほうが素直ならそちらでよい。判断はコードを見てから。**
-- ラジエーター — 展開に応じて**輻射面積**を増やす。要求文の「輻射率の変化」は、
-  実装上は率(ε)ではなく面積で表現するほうが物理的に正しい(ε は材質の性質で、
-  展開で変わらない)。基底の `4πr²` に加算する形で `Player` が上乗せする。
-  ついでに死んでいる `RADIATOR_PANEL_AREA`/`RADIATOR_EFFICIENCY_MULT` を実際に使う形へ直し、
-  `totalCoolingRate` を面積として扱っている現状を解消する。
-- 動圧 `qdyn` と構造限界(`MAX_DYN_PRESSURE`)は**熱ではない**。`ThermalSystem` から出して
-  自機の空力荷重の責務として分ける。高度低下警告(EMA)も熱ではないので同様に分ける。
-  `updateAltitudeAlarm` が `checkThermalLimits()` を tail-return している現状の相乗りは解消する。
-- `MAX_HULL_TEMP` は `Player.maxTemperature` になる。
-  `'heat-aero'`/`'heat-internal'` の区別(死亡メッセージの出し分け)は、
-  `qdyn` の代理判定をやめ、**その瞬間に大気があるか**(`atmosphereAt` が非 null か)で決める。
+`mass` は「剛体接触の換算質量」と明記されたフィールドで、破片・薬莢・弾薬は相手を押さないために
+0 を入れている。**熱容量を `mass × 比熱` で出すと、これらの熱容量が 0 になる。** 半径も同じで、
+破片は 0 になりうるので `4πr²` から輻射面積を出せない。
 
 ---
 
-## 4. フェーズ分割
+# 第2章 決めたこと — 6 つの設計判断
 
-各フェーズ末で `npm run typecheck` が通ること。`src/physics/` を触るフェーズでは
-`npm run test:physics` も通すこと。各フェーズ完了後にコードレビュー・テスト・コミットを行う。
-`src/` を触ったフェーズは、**同じ変更セットで** CLAUDE.md / `DEVELOP/OWNERSHIP.md` /
-`DEVELOP/CALLSTACK.md` / `DEVELOP/SPEC.md` を更新する(`/develop-docs`)。
+## 2-1. 熱は**比量**で持つ。質量も半径も式に現れない
 
-### Phase 1 — 大気を天体データにする(挙動不変)
+`GameEntity` に持たせるのは次の 5 つ。
 
-`physics/` 内で完結。地球の挙動は数値まで変わらない。
+```
+temperature          [K]           現在温度
+specificHeat         [J/(kg·K)]    比熱。0 = 熱を持たない種別
+radiatingAreaPerMass [m²/kg]       比輻射面積
+emissivity           [-]           輻射率
+maxTemperature       [K]           超えたら失われる。既定 Infinity
+```
 
-- `solar-system.ts` に `AtmosphereLayer`/`AtmosphereDef` と
-  `exponentialAtmosphere(surfaceDensity, scaleHeight, spinPeriod)` を追加。
-  `CelestialBodyDef` の planet/satellite に `atmosphere?` を追加。
-- `atmosphere.ts` の28行表を地球の登録エントリへ移す。
-  `densityAt(alt, atm)` を新設(現 `atmosphericDensity` の一般化)。
-- `Attractor` に `atmosphere: AtmosphereDef | null` を追加し、`Ephemeris.attractorAt` で複写。
-- この時点では `dragAccel`/`thermal.ts` はまだ `R_EARTH` 基準のまま、
-  ただし密度の参照先だけを新データへ差し替える。
+- **`mass` を使わない**理由は 1-6。`specificHeat = 0` が「熱を持たない」を表す(フラグは作らない
+  — 大気の `atmosphere?` と同じ方針)。`maxTemperature = Infinity` が既定なので、値を入れない
+  種別は焼けない。
+- **比量にすると質量が式から完全に消える。** 抗力の散逸は `½ρs³·bcInv` [W/kg]、`bcInv = Cd·A/m` が
+  既に比量だから、温度の式は `dT/dt = η·½ρs³·bcInv / c_p − ε·σ·(A_rad/m)·(T⁴ − T_env⁴) / c_p`
+  で閉じる。太陽の受熱も `srpCoeff = C_R·A/m` と同じ幾何なので比量で書ける。
+- **輻射面積を `radius` から導かない。** 破片の半径は 0 になりうる(1-6)。`radiatingAreaPerMass` は
+  種別ごとの定数として `game/const.ts` に置く。自機は現行の `RAD_AREA / PLAYER_MASS` = 0.0700 m²/kg、
+  小デブリは `bcInv/Cd` の 4 倍で 0.0145 m²/kg が出発点。
 
-**受入**: `atmosphere.test.ts` が変更なしで通る(表が同一だから)。
-無大気天体の `densityAt` が恒等的に 0。`exponentialAtmosphere(0, …)` も同様。
+## 2-2. 受熱はエネルギー収支から決める。**入る熱は散らした熱を超えない**
 
-### Phase 2 — 抵抗と共回転の一般化
+**入り口は 4 つ。すべて「その区間に散逸した力学的エネルギーのうち、この物体へ入った分」として書く。**
 
-- `Attractor.spin` を追加、`Ephemeris` が `PoleModel` から解決。
-- `airspeed(r, v, body)` を `v − ω×(r − r_body)` に一般化。`EARTH_OMEGA` 削除。
-- `atmosphereAt(r, bodies)` を新設(高度最小の大気持ち天体を選ぶ)。
-- `dragAccel(r, v, bcInv, bodies)` を一般化。`dynamics.ts` の `totalAccel` から
-  `attractors` を渡す(既に手元にある)。
-- 高度の基準を `Attractor.radius` に統一。`earthAltitudeOf` を削除し
-  `altitudeAbove(r, body)` に置換。`thermal.ts`/`stage00.ts` のインライン重複も潰す。
-- 登録データに火星・金星・タイタン・木星(および必要なら土星/海王星)の大気を追加。
+1. **抗力** — 散逸(比量) `½ρ·s³·bcInv` [W/kg] のうち割合 η が物体へ入る。**η ≤ 1 を式で保証する。**
+   残りは衝撃波の後ろの大気が持ち去る。
+2. **衝突** — 反発で失われる比エネルギー。`½(1−e²)·v_n²` が両者合わせた散逸(比量)で、
+   **各側がその半分を受け取る**: `q_side = ¼(1−e²)·v_n²·w_side`(`w` は `collision-response.ts` の
+   `shareOfA` がすでに出している逆質量比)。
+   - 質量比で配分すると `q = ½(1−e²)v_n²·w_A·w_B` になり、**不動な天体が相手だと両側とも 0** に
+     なって、デブリが天体へ衝突しても熱が出ない。半分ずつなら試験粒子が `¼(1−e²)v_n²` を受け、
+     天体側の分は追わないまま**合計が実際の散逸を超えない**。
+   - 速度変化から出す案(`½|Δv_n|²`)は採らない — 合計が散逸の `(1+e)/(1−e)` 倍(e = 0.4 で 2.33 倍)に
+     なり、完全弾性(e = 1)でも 0 にならない。
+3. **太陽** — `(1−アルベド)·S·(断面積/質量)·sunlit`。`sunlitFactor` は SRP が**既に払っている**
+   (2-5)。
+4. **自機固有** — 射撃・被弾。既存の `pendingHeat` の性質(サブステップ数に依らない一括投入)を
+   保ったまま基底へ移す。
 
-**受入**: 大気なし天体で抵抗が厳密に 0。地球 LEO の抵抗が Phase 0 と同オーダー
-(基準半径変更ぶんのずれは許容、テストは実測値をピン留めし直す)。
-火星低軌道で有意な抵抗が出る。`airspeed` が自転軸まわりの回転として finite-difference と一致。
+**出口は放射だけ**: `ε·σ·(A_rad/m)·(T⁴ − T_env⁴)`。
 
-### Phase 3 — 衝突の力学的エネルギー損失を配線
+**Sutton–Graves は η ∝ 1/√ρ を意味している**(1-4)。自機で維持するなら、**受熱を散逸で頭打ちに
+する**1行を足せばエネルギー収支は閉じる。一定の η へ寄せるかは 2-6 の問い。
 
-- `collision-response.ts` の `CollisionResponse` に `energyLoss: number` を追加。
-- `contact.ts` の `Contact` に `energyLoss` を追加し、質量比で両者へ配分。
-- `collision-response.test.ts` に追加: `e = 1` で損失 0、`e` を下げると単調増加、
-  `½(1−e²)vn²/invM` と一致、無限質量相手でも有限。
+## 2-3. 焼失は温度一本。密度しきい値は廃止する
 
-**受入**: `test:physics` 通過。ゲーム挙動は不変(まだ誰も `energyLoss` を読まない)。
+`burnUpBody`・`GameEntity.burnUpDensity`・`ENEMY_BURNUP_DENSITY`・`DEBRIS_BURNUP_DENSITY` を
+削除し、`checkLoss` は `temperature > maxTemperature` だけを見る。
+`Enemy.checkLoss` の焼失分岐は死因(`'burnup'`)の記録だけを残して基底へ寄せる。
 
-### Phase 4 — `GameEntity` の熱シミュレーション基盤
+## 2-4. 発散対策は**焼失とは別の規則**として、剛性の上限だけで書く
 
-- `GameEntity` に `temperature`/`specificHeat`/`emissivity`/`maxTemperature` と
-  `absorbHeat(joules)` を追加。
-- `physics/` に `aeroHeatFlux(density, speed)` と放熱の純関数を追加。
-- `stepActual` の後段で1回、空力加熱と放熱を積分。
-- 基底 `collideWith` が `contact.energyLoss` を吸収。
-- 基底 `checkLoss` に `temperature > maxTemperature` の焼失を追加
-  (**この時点では `isBurnedUp` も併存させる**。削除は Phase 5)。
-- デブリ・薬莢・弾・小惑星に既定値を設定。既定は `specificHeat = 0`(熱なし)なので、
-  値を入れたクラスだけが熱を持つ。
+`doPreciseReentry` が false の個体は、**抗力の頭打ちに触れた**(λ·dt ≥ 1)時点で失われる。
 
-**受入**: 熱の純関数のテスト(平衡温度への収束、`specificHeat = 0` で不変、
-`emissivity = 0` で放熱 0)。既存の挙動は `isBurnedUp` 併存により大きくは変わらない。
+- **`atmosphericMaxStep` をそのまま使ってはならない**(1-3 の候補A)。沈み込みの上限は密度にも
+  `bcInv` にも依らないので、高ワープでは LEO のデブリを全滅させる。使うのは剛性の項だけ。
+- これは物理ではなく**積分器の都合**である。仕様としてもそう書く — 「時間加速がその物体の運命を
+  変える」ことを認める代わりに、変わるのは**濃い大気の中にいる物体だけ**、境界は 28〜73 km に
+  収まる(1-3 の候補C 列)、と限定する。
+- **刻みが十分に短いとき(低倍率)は、先に温度で死ぬ。** 実測の平衡温度(2-6 の表)で、η = 0.1 なら
+  自機は 74 km、破片は 84 km 付近で限界に達する — どちらも候補C の境界(47〜60 km)より外側。
+- `doPreciseReentry` は「細分するか」だけを表す属性に戻す。**熱シミュの有無とは相補にしない**
+  (`Enemy` が既に反例: 細分するが熱を持たない)。相補性を要求する理由が無い — 細分の可否は費用の
+  判断、熱の有無は種別の判断である。
 
-### Phase 5 — 再突入高度の概念を廃止
+## 2-5. 太陽輻射による加熱は入れる。**費用は既に払われている**
 
-- `isBurnedUp` を削除。`REENTRY_ALT`/`PLAYER_MIN_ALT`/`DEBRIS_REENTRY_ALT` を削除。
-- `Enemy.checkLoss` の再突入分岐を削除(基底の熱焼失に一本化)。`Bullet` も同様。
-- 予測(`game-entity.ts:184`)と計画(`plan-arc.ts:173`)の打ち切りを
-  `PREDICT_ATMOSPHERE_CUTOFF_DENSITY` へ置換。
-- `REENTRY_SUBSTEP_ALT` を密度基準へ移す。
-- `stage00.ts` の近地点マージンを `STAGE00_MIN_PERIGEE_ALT` として独立。
-- `DEVELOP/SPEC.md` の再突入仕様を書き換え。
+`totalAccel` は SRP のために `sunlitFactor(r, star, occluders)` を **RK4 の 4 段すべてで**、
+`srpCoeff ≠ 0` の全個体について呼んでいる。太陽の受熱に要るのはサブステップあたり **1 回**なので、
+既に払っている費用の **+25 %** で足りる。弾(`srpCoeff = 0`)だけが新規の支払いになる。
 
-**受入**: 「再突入」「REENTRY_ALT」等の全文検索が、演出(`REENTRY_GLOW_*`)と
-`reentry-effects.ts` 以外で 0 件。LEO から高度を下げていったとき、デブリも敵も自機も
-温度上昇の末に消失すること(実機確認)。
+実測: 遮蔽体の窓 101 体で `sunlitFactor` は 942 ns/回。個体 300 なら 1 サブステップあたり 0.283 ms。
+**これは SRP が既に 4 倍払っている額である。**
 
-### Phase 6 — 自機の熱システムを基盤の上に作り直す
+## 2-6. 着手前にユーザーへ問うこと
 
-- 射撃熱・被弾熱を `absorbHeat` 経由に。`pendingHeat` を基底へ移動。
-- ラジエーターを輻射面積の上乗せとして再実装。`RADIATOR_PANEL_AREA`/
-  `RADIATOR_EFFICIENCY_MULT` を実際に使い、`totalCoolingRate` の面積扱いを解消。
-- Sutton–Graves を自機の受熱として維持(§3-8 の判断は実施時に確定)。
-- 動圧・構造限界と高度低下警告を `ThermalSystem` から分離。
-  `updateAltitudeAlarm` の tail-return による相乗りを解消。
-- `MAX_HULL_TEMP` → `Player.maxTemperature`。
-  `'heat-aero'`/`'heat-internal'` の区別を `atmosphereAt` の有無で判定。
-- HUD(`hud/panel.ts`、`stage-status-panel.ts`、`map-picker.ts`)の温度・動圧表示を
-  新しい所有者に合わせる。セーブ(`ThermalSaveData`)も追随。
+**次の 2 つだけは、コードからも仕様からも決まらない。実装に入る前に確認を取る。**
 
-**受入**: 自機の温度挙動が Phase 0 と実用上同等(射撃で上がる、ラジエーター展開で下がる、
+**(a) 自機の受熱を Sutton–Graves のまま残すか、一定の η へ寄せるか。**
+
+Sutton–Graves は「よどみ点の対流加熱」を表す式で、抗力の散逸に対する比が 1/√ρ で変わる(1-4)。
+一定の η は「散らしたエネルギーの一定割合が入る」という、全個体で同じ形の粗い近似。
+
+- **SG を残す(散逸で頭打ちだけ足す)**: 自機の再突入の挙動が変わらない。ただし自機だけ別式になり、
+  「熱の一般化」が半分で止まる。
+- **一定の η へ寄せる**: 全個体が同じ式になる。自機の温度上昇の**高度依存が変わる**ので、
+  `MAX_HULL_TEMP` と η の再較正が要る。
+
+放射平衡温度 [K](地球・円軌道。η は散逸のうち物体へ入る割合):
+
+| 高度 [km] | 自機 η=1 | 自機 η=0.1 | 自機 η=0.01 | 破片 η=1 | 破片 η=0.1 | 破片 η=0.01 |
+|---|---|---|---|---|---|---|
+| 60 | 3664 | 2060 | 1159 | 6771 | 3808 | 2141 |
+| 70 | 2698 | 1517 | 855 | 4985 | 2804 | 1577 |
+| 80 | 1918 | 1079 | 611 | 3544 | 1993 | 1122 |
+| 90 | 1291 | 728 | 423 | 2384 | 1341 | 756 |
+| 100 | 832 | 477 | 308 | 1534 | 864 | 494 |
+| 120 | 374 | 276 | 257 | 655 | 386 | 279 |
+
+**(b) 破片・薬莢・弾が焼けたときの見た目。** いまは密度しきい値を割った瞬間に静かに消える。
+温度で死ぬようになると死ぬ場所が種別ごとに散らばる。再突入エフェクト(`reentry-effects.ts`)を
+自機以外へ広げるか、消えるだけのままにするか。
+
+**η・限界温度・比熱・比輻射面積はすべてゲームの調整値なので `game/const.ts` に置く。**
+`physics/` には純関数だけを置き、調整値を持ち込まない。
+
+---
+
+# 第3章 手順
+
+## Phase 1 — 予測弧を辿った個体にも環境を進める(仕様違反の是正)
+
+**熱の一般化より先に片付ける。** これが直っていないと、全個体へ熱を広げても弧を辿った個体だけが
+冷たいままになる。
+
+- `SPEC/ORBIT.md`「時間刻みとタイムワープ」へ、**予測弧を辿ったサブステップでも受動的な環境
+  (熱・電力)は同じ区間ぶん進む**ことを書く。
+- `Simulator.substep` に、環境を進める対象(1 サブステップぶん前進した全個体 = 弧を辿った側 +
+  1 歩で積んだ側)と、天体接触を解く対象(1 歩で積んだ側だけ)を**別のリストとして**持たせる。
+  弧を辿った個体の表面到達は弧自身が `checkSurfaceReach` で打ち切っているので、二重に解かない。
+
+**受入**: `typecheck`。自機が予測弧を辿っている間も温度・電力が動く(実機)。
+
+## Phase 2 — 衝突で失われた力学的エネルギーを出す
+
+- `physics/collision-response.ts`: `CollisionResponse`/`FixedContactResponse` へ、各側が受け取る
+  **比エネルギー** `¼(1−e²)·v_n²·w`(2-2)を載せる。`shareOfA` の結果をそのまま使う。
+- `game-entity/contact.ts`: `Contact` へ同じ量を載せる(`self` から見た形)。
+- `tests/physics/collision-response.test.ts`: e = 1 で 0、e を下げると単調増加、
+  両側の合計 × 質量が `½(1−e²)v_n²·μ` を**超えない**、無限質量・質量 0 のどちらの極でも有限。
+
+**受入**: `test:physics` 通過。まだ誰も読まないのでゲーム挙動は不変。
+
+## Phase 3 — 熱の純関数を `physics/` に置く
+
+- `physics/thermal.ts` を新設。すべて比量、すべて純関数、調整値を持たない:
+  - 抗力の散逸 [W/kg]。
+  - 物体へ入る熱(散逸と η を受け、`min` で頭打ち)。
+  - 放射冷却 [W/kg]。
+  - Sutton–Graves の熱流束(自機が使う。(a) の答え次第では不要)。
+- `tests/physics/thermal.test.ts`: 平衡温度へ収束する、受熱が散逸を超えない、`c_p = 0` で温度不変、
+  `ε = 0` で放熱 0、`T = T_env` で正味 0。
+
+**受入**: `test:physics` 通過。まだ誰も呼ばない。
+
+## Phase 4 — `GameEntity` に温度を載せ、抗力と衝突の熱を配線する
+
+- `SPEC/ORBIT.md`「大気モデル」の焼失の 3 段(艦 / 熱を持たない種別 / 予測の弧)を、
+  **温度一本 + 積分器の都合による喪失**へ書き換える。`SPEC/COMBAT.md`・`SPEC/GAME.md` の
+  「耐えられる大気密度の上限(高度 80 km 相当)」も同時に直す。
+- `GameEntity` へ 2-1 の 5 フィールドと `absorbHeat(specificJoules)` を足す。
+- 基底の `stepEnvironment` で、抗力の受熱と放射冷却を 1 回積む。
+- 基底の `collideWithEntity`/`collideWithCelestialBody` で `contact` の比エネルギーを吸収する。
+- 基底の `checkLoss` へ `temperature > maxTemperature` を足す。**この段階では `burnUpDensity` も
+  併存させる**(削除は Phase 5)。
+- 種別ごとの値を `game/const.ts` に置く(敵・破片・薬莢・弾・弾薬・基地)。既定は
+  `specificHeat = 0` なので、値を入れた種別だけが熱を持つ。
+
+**受入**: `typecheck`。`burnUpDensity` の併存により既存の挙動は大きく変わらない。
+
+## Phase 5 — 密度しきい値を廃止し、発散対策を置き直す
+
+- `SPEC/ORBIT.md` へ、**細分しない個体は抗力が刻みに対して剛くなった時点で失われる**ことを書く。
+  時間加速が運命を変えることを認める節になるので、限定(濃い大気の中にいる物体だけ、地球で
+  28〜73 km)も同時に書く。
+- `burnUpBody`・`burnUpDensity`・`ENEMY_BURNUP_DENSITY`・`DEBRIS_BURNUP_DENSITY` を削除。
+- 剛性の上限に触れた `doPreciseReentry = false` の個体を失う規則を `simulation/` へ置く。
+  **`atmosphericMaxStep` の合成値ではなく剛性の項だけを見る**(2-4)。剛性の項は
+  `time-step.ts` の `dragMaxStep` の内側にあるので、そこから取り出せる形にする。
+- `Enemy.checkLoss` の焼失分岐を、死因の記録だけ残して基底へ寄せる。`Bullet.checkLoss` も同様。
+- `Simulator.substep` は既に個体ごとに `nearestAtmosphereBody` を出しているのに
+  `atmosphericMaxStep` が内側で引き直している。ここで解消する。
+
+**受入**: `typecheck`。`burnUpDensity`/`BURNUP_DENSITY` の全文検索が 0 件。
+LEO から降下したデブリ・敵・自機が温度で失われる(実機)。最高ワープ・低 fps で高度 400 km の
+デブリが消えない。
+
+## Phase 6 — 自機の熱システムを基盤の上へ載せ替える
+
+- `SPEC/FLIGHT.md`「熱管理」「ラジエーター」を、比熱・比輻射面積・エネルギー収支の言葉へ書き換える。
+- `pendingHeat`/`addGunHeat`/`addImpactHeat` を基底の `absorbHeat` 経由へ。
+- 受熱を 2-6 (a) の答えに従って確定させる。SG を残すなら散逸で頭打ちにする。
+- **ラジエーターを輻射面積の上乗せとして作り直す。** `emissivity` は材質の性質なので変えない。
+  死んでいる `RADIATOR_PANEL_AREA`/`RADIATOR_EFFICIENCY_MULT` を実際に使い、
+  `totalCoolingRate`(部品の `coolingRate` の総和)を m² として扱っている現状を解消する。
+- **動圧・構造限界・高度低下警告を `ThermalSystem` から出す。** これらは熱ではない。
+  `updateAltitudeAlarm` が `checkThermalLimits()` を tail-return している相乗りを解消する。
+- `MAX_HULL_TEMP` → `Player.maxTemperature`。`'heat-aero'`/`'heat-internal'` の区別を、
+  演出のしきい値(`REENTRY_GLOW_MIN_Q`)の流用から **`nearestAtmosphereBody` が非 null か**へ変える。
+- 熱容量の `ship.mass * 100`(比熱 100 J/(kg·K) が式に埋まっている)を `specificHeat` へ出す。
+  死んでいる `C.HEAT_CAPACITY` を削除するか、比熱として復活させるかをここで決める。
+- HUD(`hud/panel.ts`・`stage-status-panel.ts`・`map-picker.ts`)の温度・動圧表示と
+  セーブ(`ThermalSaveData`)を新しい所有者へ追随させる。
+
+**受入**: `typecheck`。自機の温度挙動が現行と実用上同等(射撃で上がる、ラジエーター展開で下がる、
 再突入で焼失する)。セーブ/ロードが往復する。
 
-### Phase 7 — 後片付け
+## Phase 7 — 太陽輻射による加熱
 
-- 完了したタスクをこの文書から削除。`backlog.md` の項目5(`atmosphere.ts`/`shadow.ts` の
-  地球固有性)のうち大気側を削除。
-- やらないと決めたもの・未完了のものを `backlog.md` へ移す(§6)。
+- `SPEC/ORBIT.md`・`SPEC/CELESTIAL.md` の日照率の節へ、受熱もこの日照率を共有すると書き足す。
+- 基底の `stepEnvironment` で `sunlitFactor` を 1 回引き、断面積比と日照率から受熱を足す。
+- 自機の `RadiatorSystem.solarLoad` を、この一般の経路の上へ載せ替える。
+
+**受入**: `typecheck`。日照/日陰で平衡温度が動く。負荷確認ウィンドウの sim 時間が
+Phase 6 比で悪化しない。
+
+## Phase 8 — 後片付け
+
+- `backlog.md` 項目 5(`atmosphere.ts`/`shadow.ts` の地球固有性)から大気側を削除する
+  (`shadow.ts` 側はもう地球固有ではないので、項目そのものを畳めるか確認する)。
+- 2-6 で「やらない」と決まったもの、Phase 中に出て範囲外と判断したものを `backlog.md` へ移す。
 - この文書が空になるので削除する。
 
----
-
-## 5. フェーズ間の依存
+## フェーズ間の依存
 
 ```
-Phase 1 (大気データ)
-   └→ Phase 2 (抵抗・共回転・高度基準)
-          └→ Phase 4 (熱基盤)  ←─ Phase 3 (衝突ΔKE)
-                 └→ Phase 5 (再突入高度の廃止)
-                        └→ Phase 6 (自機の作り直し)
-                               └→ Phase 7
+Phase 1 (弧を辿った個体の環境)  ← 独立。最初に片付ける
+Phase 2 (衝突の散逸)            ← 独立
+Phase 3 (熱の純関数)            ← 独立
+      └→ Phase 4 (GameEntity の温度)  ←─ Phase 2
+              └→ Phase 5 (密度しきい値の廃止・発散対策)
+                      └→ Phase 6 (自機の載せ替え)
+                              └→ Phase 7 (太陽の受熱)
+                                      └→ Phase 8
 ```
 
-Phase 3 は Phase 1/2 と独立なので、順序を入れ替えても、並行して進めてもよい。
+Phase 1・2・3 は互いに独立なので、並行させてよい(`/delegate`)。
 
 ---
 
-## 6. backlog へ送るもの(このタスクではやらない)
+# 第4章 達成目標
 
-- **太陽輻射による加熱** — 影判定のコストが読めない(§1 の明示的な指示)。
-  ただし `shadow.ts` の `sunlitFactor` は既にあり、`RadiatorSystem.solarLoad` が
-  自機については実質これをやっている。一般物体へ広げるときに再検討。
-- **`shadow.ts` の地球固有性** — 大気とは別問題なので `backlog.md` 項目5に残す。
-- **非剛体(大気・ガス惑星・プラズマ弾)の接触モデル** — `backlog.md` 項目14 のまま。
-  ガス惑星の「表面」に触れたときの扱いは、大気モデルが入ると再燃するが、本タスクの範囲外。
-- **熱による部品破壊・性能低下** — 温度は現状「上限を超えたら消失」の二値でしか効かない。
-  部品ごとの耐熱や性能低下は別タスク。
-- **地球の28行表以外の天体の密度表の精度** — 火星・金星等は1層の指数近似で入れる。
-  実測表への差し替えは必要が生じてから。
+1. `burnUpDensity`・`burnUpBody`・`ENEMY_BURNUP_DENSITY`・`DEBRIS_BURNUP_DENSITY` の
+   リポジトリ全文検索が **0 件**。
+2. **生存している全個体が、毎サブステップ温度を更新される** — 予測弧を辿った個体を含む。
+3. **物体へ入る熱が、その区間に散逸した力学的エネルギーを超えない。** 抗力・衝突の両方について
+   テストで固定する。高度 150 km 以上でも受熱/散逸 ≤ 1(1-4 の表がすべて 1 以下になる)。
+4. **熱の式に `mass` と `radius` が一度も現れない。** 破片(`mass = 0`・`radius = 0`)が正しく
+   加熱される。
+5. ×1 で LEO から降下したとき、破片も敵も自機も、**発散ではなく温度で**失われる。
+6. **最高ワープ・低 fps(dt = 204.8 s)で、高度 400 km のデブリが消えない。**(候補A を採ると
+   1527 km 以下が全滅する — 1-3)
+7. 自機の温度挙動が現行と実用上同等: 射撃で上がる、ラジエーター展開で下がる、再突入で焼失する。
+8. `RADIATOR_PANEL_AREA`・`RADIATOR_EFFICIENCY_MULT`・`HEAT_CAPACITY` に、
+   **使われていない定数が 1 つも残っていない**(使うか消すかのどちらか)。
+9. `ThermalSystem` に動圧・高度警告が同居していない。`updateAltitudeAlarm` が判定を
+   tail-return していない。
+10. `npm run typecheck` と `npm run test:physics` が通る。
+
+---
+
+# 第5章 リスクと落とし穴
+
+| リスク | 影響 | 露見する場所 |
+|---|---|---|
+| 発散対策に `atmosphericMaxStep` をそのまま使う | 沈み込みの上限は密度にも `bcInv` にも依らないので、最高ワープで**高度 1527 km 以下の全個体が消える** | 達成目標 6。1-3 の候補A 列 |
+| 「熱を持たせたから発散対策は要らない」と読む | 温度は焼失の**理由**であって、刻みが積めるかとは無関係。細分しない個体は温度が上がる前に積分が壊れうる | 2-4。低倍率でしか試さないと出ない |
+| `doPreciseReentry` を全個体で true にする | 最高ワープの再突入は 1 フレームで数千歩を要求する(`SPEC/ORBIT.md` 未確定の案)。デブリ数百体でこれをやるとフレームが止まる | Phase 5 の実機確認。`?stage=debug-load&perf=1` |
+| 熱容量を `mass × 比熱` で出す | 破片・薬莢・弾薬は `mass = 0` なので熱容量 0 になり、温度が NaN か不変になる | 達成目標 4。1-6 |
+| 輻射面積を `4πr²` で出す | 破片の `radius` は 0 になりうるので放熱 0 = 無限に熱が溜まる | 同上 |
+| Sutton–Graves を頭打ち無しで一般化する | 高度 131.7 km 以上で抗力が奪った以上の熱が入る。全個体へ広げると軌道上のデブリが理由なく熱を持つ | 達成目標 3。1-4 |
+| 衝突の熱を質量比で配分する | 不動な天体が相手だと両側とも 0 になり、デブリが天体へ衝突しても熱が出ない | 2-2。`distributeFixedContact` の経路 |
+| 衝突の熱を `½\|Δv_n\|²` で出す | 合計が実際の散逸の `(1+e)/(1−e)` 倍(e = 0.4 で 2.33 倍)になり、完全弾性でも 0 にならない | Phase 2 のテスト(合計が `½(1−e²)v_n²μ` を超えない) |
+| Phase 1 を後回しにする | 弧を辿った個体だけ冷たいまま残り、「全個体に熱がある」が成り立たない。しかも**低倍率ほど弧が先行する**ので、いちばん普通の遊び方で出る | 達成目標 2。1-5 |
+| `emissivity` をラジエーターで変える | ε は材質の性質で、板を開いても変わらない。変わるのは面積 | 2-2 / Phase 6 |
+| 熱の調整値を `physics/` へ置く | η・限界温度・比熱はゲームバランスであって物理ではない。`physics/` は純関数だけを持つ | 2-6 末。`CODING-RULE.md` |
+| 焼失の死因(`'burnup'`)を基底へ寄せるときに、天体衝突の死因と混ぜる | 焼失と衝突は別の現象として別の文言で通知する、と `SPEC/COMBAT.md` が定めている | Phase 5。敵の撃破ログ |
+| 太陽の受熱で `sunlitFactor` を RK4 の各段から呼ぶ | 4 倍の費用を新規に払うことになる。要るのはサブステップあたり 1 回 | 2-5。Phase 7 の負荷確認 |
+
+---
+
+# 第6章 backlog へ送るもの(この計画ではやらない)
+
+- **熱による部品破壊・性能低下。** 温度は「上限を超えたら消失」の二値のまま。部品ごとの耐熱は別タスク。
+- **熱伝導・内部の温度分布。** 物体は等温の 1 点として扱う。ラジエーターも「面積の上乗せ」であって、
+  板自身の温度は持たない。
+- **Sutton–Graves 定数の天体依存性。** 金星・火星・タイタンの組成で正しい加熱を出すには定数を
+  天体のパラメータへ移す必要がある。`SPEC/ORBIT.md`「未確定の案」に既にある。
+- **地球以外の天体の大気の追加。** 現状は地球だけが `atmosphere` を持つ。火星・金星・タイタン・
+  木星を 1 層の指数近似で足すのは大気側の作業であって、熱の一般化とは独立。
+- **接地した物体の熱。** `design_landing_simulation.md` の 2-3 案A(接地状態)が入ると、
+  接地中は積分しないので熱の進め方も決め直しになる。**着陸が先に入ったら、この計画の Phase 4 は
+  接地中の扱いを足す必要がある。**
+- **非剛体(大気・ガス惑星・プラズマ弾)の接触モデル。** `backlog.md` 項目 14 のまま。
