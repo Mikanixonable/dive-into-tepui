@@ -1,4 +1,4 @@
-// 個々のパネルの中身の CSS: SHIP STATUS/ORBIT/TARGET/CONTACTS の行、軌道オブジェクト一覧、
+// 個々のパネルの中身の CSS: SHIP STATUS/ORBIT/TARGET/CONTACTS の行、軌道物体一覧、
 // 軌道計画、表示設定、表示時刻、カメラ・軌道、艦艇配置、ナビボール、ステージステータス、
 // 設定・ヘルプ・終了画面。骨格(層・レール・シェルフ・バッジ)は skeleton-style.ts が持つ。
 import * as C from '../const';
@@ -64,35 +64,35 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   margin-left: auto;
 }
 
-#hud-object-list { max-height: 544px; max-height: min(544px, 60dvh); overflow-y: auto; }
+#hud-physical-object-list { max-height: 544px; max-height: min(544px, 60dvh); overflow-y: auto; }
 /* パネルの padding 分だけ食い込ませて幅いっぱいに広げ、スクロール中も先頭に張り付かせる */
-#hud-object-list .object-list-head { position: sticky; top: calc(var(--space-4) * -1); margin: calc(var(--space-4) * -1) calc(var(--space-5) * -1) 0; padding: var(--space-4) var(--space-5) 0; background: var(--surface-opaque); z-index: 1; }
-#hud-object-list .object-list-search { padding: var(--space-1) var(--space-2); }
-#hud-object-list .object-list-search .w-input { width: 100%; }
-#hud-object-list .object-list-head .w-group { padding: var(--space-1) var(--space-2); }
-#hud-object-list .object-list-head .w-btn { font-size: var(--font-xxs); }
-#hud-object-list .object-list-collapse {
+#hud-physical-object-list .physical-object-list-head { position: sticky; top: calc(var(--space-4) * -1); margin: calc(var(--space-4) * -1) calc(var(--space-5) * -1) 0; padding: var(--space-4) var(--space-5) 0; background: var(--surface-opaque); z-index: 1; }
+#hud-physical-object-list .physical-object-list-search { padding: var(--space-1) var(--space-2); }
+#hud-physical-object-list .physical-object-list-search .w-input { width: 100%; }
+#hud-physical-object-list .physical-object-list-head .w-group { padding: var(--space-1) var(--space-2); }
+#hud-physical-object-list .physical-object-list-head .w-btn { font-size: var(--font-xxs); }
+#hud-physical-object-list .physical-object-list-collapse {
   margin-left: auto; background: none; border: none; color: var(--text-dim); font: inherit; cursor: pointer; pointer-events: auto;
 }
-#hud-object-list .object-list-title { display: flex; align-items: center; gap: var(--space-2); }
-#hud-object-list .object-list-body.collapsed { display: none !important; }
-#hud-object-list .object-list-breadcrumb { padding: var(--space-1) var(--space-3); font-size: var(--font-xxs); color:var(--text-dim); border-bottom:1px solid var(--edge); }
-#hud-object-list .object-list-section-header {
+#hud-physical-object-list .physical-object-list-title { display: flex; align-items: center; gap: var(--space-2); }
+#hud-physical-object-list .physical-object-list-body.collapsed { display: none !important; }
+#hud-physical-object-list .physical-object-list-breadcrumb { padding: var(--space-1) var(--space-3); font-size: var(--font-xxs); color:var(--text-dim); border-bottom:1px solid var(--edge); }
+#hud-physical-object-list .physical-object-list-section-header {
   display: block; width: 100%; text-align: left; margin: var(--space-2) 0 var(--space-1);
   padding: var(--space-2) var(--space-4); font-size: var(--font-xs); letter-spacing: 1px;
 }
-#hud-object-list .object-list-section-body { padding-left: var(--space-2); }
-#hud-object-list .object-list-section-body.collapsed { display: none !important; }
-#hud-object-list .erow { padding: var(--space-2) var(--space-2); color: var(--text-dim); cursor: pointer; display: flex; align-items: center; gap: var(--space-2); }
-#hud-object-list .object-list-detail { margin-left: auto; font-size: var(--font-xxs); color: var(--text-dim); white-space: nowrap; }
-#hud-object-list .erow:hover { color: var(--text); }
-#hud-object-list .erow.tgt { color: var(--accent); }
-#hud-object-list .erow.on { outline: 1px solid var(--edge); color: var(--text); }
-#hud-object-list .erow.cluster { opacity: .55; }
-#hud-object-list .object-list-toggle { width: 10px; text-align: center; flex: none; }
-#hud-object-list .object-list-children { padding-left: var(--space-5); }
-#hud-object-list .object-list-children.collapsed { display: none !important; }
-#hud-object-list .object-list-empty { padding: var(--space-6); text-align: center; color: var(--text-dim); }
+#hud-physical-object-list .physical-object-list-section-body { padding-left: var(--space-2); }
+#hud-physical-object-list .physical-object-list-section-body.collapsed { display: none !important; }
+#hud-physical-object-list .erow { padding: var(--space-2) var(--space-2); color: var(--text-dim); cursor: pointer; display: flex; align-items: center; gap: var(--space-2); }
+#hud-physical-object-list .physical-object-list-detail { margin-left: auto; font-size: var(--font-xxs); color: var(--text-dim); white-space: nowrap; }
+#hud-physical-object-list .erow:hover { color: var(--text); }
+#hud-physical-object-list .erow.tgt { color: var(--accent); }
+#hud-physical-object-list .erow.on { outline: 1px solid var(--edge); color: var(--text); }
+#hud-physical-object-list .erow.cluster { opacity: .55; }
+#hud-physical-object-list .physical-object-list-toggle { width: 10px; text-align: center; flex: none; }
+#hud-physical-object-list .physical-object-list-children { padding-left: var(--space-5); }
+#hud-physical-object-list .physical-object-list-children.collapsed { display: none !important; }
+#hud-physical-object-list .physical-object-list-empty { padding: var(--space-6); text-align: center; color: var(--text-dim); }
 
 #hud-plan { min-width: 0; width: 100%; max-width: 300px; overflow-wrap: anywhere; }
 #hud .w-group { margin-bottom: var(--space-3); }
