@@ -5,7 +5,7 @@ import { sunlitFactor } from '../../physics/shadow';
 import { kinematicState } from '../../physics/kinematic-state';
 import { CelestialRegistry, SolarSystemId, bodyDef, primaryOf } from '../../physics/solar-system';
 import { OrbitalElements } from '../../physics/elements';
-import { Attractor, AttractorId, OrbitingId, orbitalElementsOf } from '../../physics/attractor';
+import { CelestialBody, CelestialBodyId, OrbitingId, orbitalElementsOf } from '../../physics/celestial-body';
 import { add, len, scale, sub, v3, Vec3 } from '../../physics/vec3';
 import { isOccluded } from '../../physics/occlusion';
 import type { MarkerManager } from '../marker/marker-manager';
@@ -21,9 +21,9 @@ import { PointFieldView } from './point-field-view';
 import type { GraphicsSettings } from '../../render/graphics-settings';
 import { SunLight } from '../../render/pipeline/sun-light';
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
-import { CelestialBody } from './celestial-body';
-import { CELESTIAL_BODIES, fallbackCelestialView } from './celestial-registry';
-import { EarthBody } from './earth-body';
+import { CelestialView } from './celestial-view';
+import { CELESTIAL_VIEWS, fallbackCelestialView } from './celestial-registry';
+import { EarthView } from './earth-view';
 import { BodyClassToggles, systemMembersAt } from './body-visibility';
 import { MapVisibilityPolicy } from './map-visibility';
 
@@ -32,13 +32,14 @@ import { MapVisibilityPolicy } from './map-visibility';
 function buildGeoElements(registry: CelestialRegistry): OrbitalElements | null {
   if (!('earth' in registry)) return null;
   const earth = bodyDef(registry, 'earth');
-  const earthAttractor: Attractor = {
+  const earthCelestialBody: CelestialBody = {
     id: 'earth', mu: earth.mu, radius: earth.radius,
-    state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, isStar: false,
+    state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null,
+    isStar: false,
   };
   return {
     a: earth.radius + 35786e3, e: 1e-6, p: earth.radius + 35786e3, incDeg: 0, period: 86164,
-    hHat: v3(0, 1, 0), pHat: v3(1, 0, 0), qHat: v3(0, 0, -1), center: earthAttractor,
+    hHat: v3(0, 1, 0), pHat: v3(1, 0, 0), qHat: v3(0, 0, -1), center: earthCelestialBody,
   };
 }
 
@@ -68,7 +69,7 @@ export class EnvironmentScene {
   private readonly stars: Stars;
   readonly celestialGrid: CelestialGrid;
   readonly spatialGrid: SpatialGrid;
-  private readonly bodies: readonly CelestialBody[];
+  private readonly bodies: readonly CelestialView[];
   // 小惑星帯・トロヤ群の点群。天体暦から作られるマップ専用の表示なので、マップへ入るまで
   // 生成しない。11,200点の軌道要素・mesh・instance bufferをロード時に確保しないため。
   private pointFieldView: PointFieldView | null = null;
@@ -118,10 +119,10 @@ export class EnvironmentScene {
     this.spatialGrid = new SpatialGrid(scene);
 
     this.bodies = Object.keys(registry).map((id) =>
-      id in CELESTIAL_BODIES ? CELESTIAL_BODIES[id as SolarSystemId].create() : fallbackCelestialView(registry, id));
+      id in CELESTIAL_VIEWS ? CELESTIAL_VIEWS[id as SolarSystemId].create() : fallbackCelestialView(registry, id));
     for (const body of this.bodies) body.build(scene);
 
-    this.bodies.find((b): b is EarthBody => b instanceof EarthBody)?.setSpinPhase0(earthSpinPhase0);
+    this.bodies.find((b): b is EarthView => b instanceof EarthView)?.setSpinPhase0(earthSpinPhase0);
   }
 
   // 表示時刻 t の点群の位置を更新する。
@@ -133,7 +134,7 @@ export class EnvironmentScene {
 
   // 地球の自転初期位相(セーブ用)。地球が現在のレジストリに無ければ undefined。
   earthSpinPhase0(): number | undefined {
-    const earth = this.bodies.find((b): b is EarthBody => b instanceof EarthBody);
+    const earth = this.bodies.find((b): b is EarthView => b instanceof EarthView);
     return earth?.spinPhase0();
   }
 
@@ -156,14 +157,14 @@ export class EnvironmentScene {
     // lit は自機位置の日照率。主星が無いレジストリでは日照そのものが無意味なので計算を飛ばす。
     let lit = 1.0;
     if (playerPos !== null && !cameraSystem.overviewMode && this.ephemeris.starId !== null) {
-      const attractorsNow = this.ephemeris.attractorsAt(displayTime);
-      const star = attractorsNow.find((a) => a.id === this.ephemeris.starId);
-      if (star) lit = sunlitFactor(playerPos, star, attractorsNow);
+      const celestialBodiesNow = this.ephemeris.celestialBodiesAt(displayTime);
+      const star = celestialBodiesNow.find((a) => a.id === this.ephemeris.starId);
+      if (star) lit = sunlitFactor(playerPos, star, celestialBodiesNow);
     }
     // Game.sync が同じカメラ位置・表示時刻で組んだ policy を渡せるようにする。渡されない
     // 既存経路ではここで一度だけ構築し、参照線にも同じインスタンスを渡す。
     const nearbyIds = cameraSystem.overviewMode && sharedVisibilityPolicy === null
-      ? systemMembersAt(this.ephemeris.registry, cameraSystem.activeCameraPos, this.ephemeris.attractorsAt(displayTime))
+      ? systemMembersAt(this.ephemeris.registry, cameraSystem.activeCameraPos, this.ephemeris.celestialBodiesAt(displayTime))
       : [];
     const visibilityPolicy = cameraSystem.overviewMode
       ? sharedVisibilityPolicy ?? new MapVisibilityPolicy(
@@ -200,7 +201,7 @@ export class EnvironmentScene {
       displayTime, floatingOrigin, cameraSystem.overviewMode,
       focusTargetId(cameraSystem.mapCamera.focus), cameraSystem.bodyClassToggles,
       visibilityPolicy, nearbyIds, cameraSystem.activeCamera, cameraSystem.activeCameraPos);
-    this.syncGeoLabels(displayTime, cameraSystem.overviewMode, cameraSystem, markerManager, this.ephemeris.attractorsAt(displayTime));
+    this.syncGeoLabels(displayTime, cameraSystem.overviewMode, cameraSystem, markerManager, this.ephemeris.celestialBodiesAt(displayTime));
     this.celestialGrid.sync(
       gridVisibility, cameraSystem.activeCamera,
       cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
@@ -232,9 +233,9 @@ export class EnvironmentScene {
   // 広範囲視点のときだけ参照軌道線を表示する(戦闘ビューでは非表示)。cameraPos はフェード
   // 距離を測る基準(カメラの真の ECI 位置)。
   private syncReferenceLines(
-    simTime: number, fo: FloatingOrigin, overviewMode: boolean, focusId: AttractorId | undefined,
+    simTime: number, fo: FloatingOrigin, overviewMode: boolean, focusId: CelestialBodyId | undefined,
     toggles: BodyClassToggles, sharedVisibilityPolicy: MapVisibilityPolicy | null,
-    nearbyIds: readonly AttractorId[], camera: THREE.Camera, cameraPos: Vec3,
+    nearbyIds: readonly CelestialBodyId[], camera: THREE.Camera, cameraPos: Vec3,
   ): void {
     if (!overviewMode) {
       this.geoLine.sync(null, fo, camera);
@@ -274,7 +275,7 @@ export class EnvironmentScene {
     overviewMode: boolean,
     cameraSystem: CameraSystem,
     markerManager: MarkerManager | null,
-    attractors: readonly Attractor[],
+    celestialBodies: readonly CelestialBody[],
   ): void {
     const keys = ['geolabel-0', 'geolabel-1', 'geolabel-2', 'geolabel-3'];
     if (!markerManager || !overviewMode || !this.geoElements || !('earth' in this.ephemeris.registry)) {
@@ -312,7 +313,7 @@ export class EnvironmentScene {
       const pos = add(earthPos, add(scale(pHat, rGeo * cosT), scale(qHat, rGeo * sinT)));
 
       const p0 = project(pos);
-      if (!p0.front || isOccluded(cameraPos, pos, attractors)) {
+      if (!p0.front || isOccluded(cameraPos, pos, celestialBodies)) {
         markerManager.hide(key);
         continue;
       }
@@ -374,15 +375,15 @@ export class EnvironmentScene {
   }
 
   // 公転天体の接触軌道要素(表示専用)。衛星は親惑星中心、惑星は主星中心 — 中心天体自身も
-  // ECI 上を動くので、固定 Attractor ではなくその時刻の状態を毎回引いて組む。
+  // ECI 上を動くので、固定 CelestialBody ではなくその時刻の状態を毎回引いて組む。
   private orbitElementsFor(id: OrbitingId, simTime: number): OrbitalElements | null {
     const registry = this.ephemeris.registry;
     const centerId = primaryOf(registry, id);
     if (centerId === null) return null;
     const centerDef = bodyDef(registry, centerId);
-    const center: Attractor = {
+    const center: CelestialBody = {
       id: centerId, mu: centerDef.mu, radius: centerDef.radius, state: this.ephemeris.stateOf(centerId, simTime),
-      accel: v3(), degree2: null, isStar: centerDef.kind === 'star',
+      accel: v3(), degree2: null, atmosphere: null, isStar: centerDef.kind === 'star',
     };
     return orbitalElementsOf(this.ephemeris.stateOf(id, simTime), center);
   }

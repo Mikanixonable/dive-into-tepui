@@ -3,7 +3,7 @@ import {
   BarycentricState,
   MissingEphemerisBodyError,
 } from '../absolute-ephemeris';
-import { AttractorId } from '../attractor';
+import { CelestialBodyId } from '../celestial-body';
 import { ChebyshevEphemeris, InvalidChebyshevPackError } from './evaluator';
 
 export const SECONDS_PER_DAY = 86400;
@@ -50,11 +50,11 @@ export class ChebyshevAbsoluteEphemeris implements AbsoluteEphemeris {
     this.validEndJdTdb = jdTdbFromSecondsSinceEpoch(Math.max(...ends), epochJdTdb);
   }
 
-  hasBody(id: AttractorId): boolean {
+  hasBody(id: CelestialBodyId): boolean {
     return this.evaluator.bodyIds().includes(id);
   }
 
-  barycentricStateOf(id: AttractorId, jdTdb: number): BarycentricState {
+  barycentricStateOf(id: CelestialBodyId, jdTdb: number): BarycentricState {
     if (!this.hasBody(id)) throw new MissingEphemerisBodyError(id);
     const state = this.evaluator.stateAtSeconds(id, secondsSinceEpochFromJdTdb(jdTdb, this.epochJdTdb));
     return { r: state.r, v: state.v };

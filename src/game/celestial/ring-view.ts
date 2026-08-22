@@ -62,7 +62,7 @@ export class RingView {
     return visual;
   }
 
-  // pos/scale/axis は本体メッシュ(SphereBody/PointBody)と揃える。bodyPos/metersPerPixelAt は
+  // pos/scale/axis は本体メッシュ(SphereView/PointView)と揃える。bodyPos/metersPerPixelAt は
   // 帯の被覆率減光専用 — 真の ECI 位置での実距離で判定するので、戦闘視点の視距離圧縮表示でも
   // 見かけの角直径どおりに減光する。sunDirection/cameraPosition は環自身の光学計算用。
   sync(
