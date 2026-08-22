@@ -489,7 +489,9 @@ export class Game {
     // 表示・選択可否はこのフレームの update フェーズで MapPickables が確定させたものを読む
     // (選べる対象と描かれる対象が同じ判定から出るようにする)。
     const visibilityPolicy = this.mapPickables.visibilityPolicy;
-    const combatTargets = this.entities.getCombatTargets(player);
+    // マーカー描画は操作艦自身も他の船と同列に扱うので、ターゲット選定用(自分自身は除外)とは
+    // 別に、除外なしの一覧を使う。
+    const combatTargets = this.entities.getCombatTargets(null);
 
     this._environment.sync(
       player?.state.r ?? null, fo, displayTime,
