@@ -2,7 +2,7 @@
 // 長押しボタン)を組み立て、値を書き込む。何を書き込むかの計算(状態から表示値を導く・
 // 入力値をノードへ反映する)は PlanEditor が持ち、このクラスは表示専用。
 import { OrbitalElements, apsisAltitudes } from '../../physics/elements';
-import { getApsisLabelSpec } from '../hud/orbit-labels';
+import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
 import { Vec3 } from '../../physics/vec3';
 import { AXIS_NORMAL, AXIS_PROGRADE, AXIS_RADIAL } from '../theme';
 import { HoldButton, ValueInput } from '../hud/widgets';

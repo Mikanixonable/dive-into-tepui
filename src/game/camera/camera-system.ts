@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { Hud } from '../hud/hud';
 import { CombatCameraSystem } from './combat-camera-system';
 import { MapCamera } from './map-camera';
-import { ViewOptionsPanel } from '../hud/view-options-panel';
+import { ViewOptionsPanel } from '../hud/panels/view-options-panel';
 import { FocusMarkers } from './focus-markers';
 import { applyBodyClassToggle, BodyClassToggles, DEFAULT_BODY_CLASS_TOGGLES, normalizeBodyClassToggles } from '../celestial/body-visibility';
 import { MapPickable } from '../map-pickable';

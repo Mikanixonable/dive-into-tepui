@@ -4,7 +4,7 @@
 import type { CelestialBody } from './celestial-body';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, addScaled, cross, dot, len, norm, rotateAxis, scale, sub, v3 } from './vec3';
-import { getApsisLabelSpec } from '../game/hud/orbit-labels';
+import { getApsisLabelSpec } from '../game/hud/orbit/orbit-labels';
 
 export interface OrbitalElements {
   a: number; // 軌道長半径 [m] (双曲線では負)
