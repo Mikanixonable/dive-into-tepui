@@ -10,6 +10,8 @@ import { KinematicState, kinematicState } from '../../src/physics/kinematic-stat
 import { EARTH_ATMOSPHERE, MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
 import { len, v3 } from '../../src/physics/vec3';
 import { PredictedArc } from '../../src/game/simulation/predicted-arc';
+import { atmosphericMaxStep } from '../../src/game/simulation/time-step';
+import { SHIP_BCINV } from '../../src/game/const';
 import type { FutureCelestialBodyProvider } from '../../src/game/simulation/arc-bodies';
 
 function circularState(t = 0): KinematicState {
@@ -61,22 +63,29 @@ export function register(): void {
     }
   });
 
-  test('predicted-arc: consumable な弧は再突入域で実シミュレーションと同じ 1s 刻みへ落ちる', () => {
-    // 大気の密度は 1 スケールハイトで桁が変わるので、降下中は実シミュレーションと同じ細分化が要る。
-    // 再突入域は大気を持つ天体の基準楕円体から測るので、大気を載せた地球でなければ成立しない。
-    const r0 = R_EARTH + 150e3; // REENTRY_SUBSTEP_ALT(200km)より下
+  test('predicted-arc: consumable な弧は大気の中で実シミュレーションと同じ上限へ落ちる', () => {
+    // 同じ時間帯の状態を決める積分は1本でなければならないので、弧の刻みは実シミュレーションの
+    // 刻み規則(atmosphericMaxStep)と同じ値へ落ちる。大気を載せた地球でなければ成立しない。
+    const r0 = R_EARTH + 40e3;
     const state0 = kinematicState(0, v3(r0, 0, 0), v3(0, Math.sqrt(MU_EARTH / r0), 0));
-    const arc = new PredictedArc(state0, earthOnlyProvider(true), /* radius */ 0, 0, 0, /* keplerTail */ true, /* consumable */ true);
+    const arc = new PredictedArc(state0, earthOnlyProvider(true), /* radius */ 0, SHIP_BCINV, 0, /* keplerTail */ true, /* consumable */ true);
     arc.requiredEnd = state0.t + 86400;
     arc.retainFrom = state0.t;
     arc.simulationMaxStep = 20;
 
-    let prevT = state0.t;
-    for (let i = 0; i < 50; i++) {
+    const atmosphere = { ...EARTH_ATMOSPHERE, pole: v3(0, 1, 0) };
+    const earth: CelestialBody = {
+      id: 'earth', mu: MU_EARTH, radius: R_EARTH,
+      state: kinematicState(0, v3(), v3()), accel: v3(), degree2: null, atmosphere, isStar: false,
+    };
+    let prev = arc.trajectory.state;
+    for (let i = 0; i < 8; i++) {
+      const expected = Math.min(20, atmosphericMaxStep(prev, SHIP_BCINV, [earth]));
       assert.ok(arc.step(), `step ${i} should grow`);
-      const dt = arc.trajectory.state.t - prevT;
-      assert.ok(Math.abs(dt - 1) < 1e-6, `step ${i}: 再突入域では刻みは 1s のはず, got ${dt}`);
-      prevT = arc.trajectory.state.t;
+      const dt = arc.trajectory.state.t - prev.t;
+      assert.ok(dt < 20, `step ${i}: 大気の中では上限より短いはず, got ${dt}`);
+      assert.ok(Math.abs(dt - expected) < 1e-6, `step ${i}: expected dt=${expected}, got ${dt}`);
+      prev = arc.trajectory.state;
     }
   });
 
