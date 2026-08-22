@@ -11,19 +11,58 @@
 //
 // シミュレーション全体は地球中心の慣性系(ECI)で回っている。座標系はあくまで「軌道線など
 // 個々の描画物」の表示用で、シーン全体を差し替えるものではない。
-import { CelestialBodyId, OrbitingId } from './celestial-body';
+import { CelestialBody, CelestialBodyId } from './celestial-body';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { add, cross, sub, v3, Vec3 } from './vec3';
 import { Quat, qInvert, qRotate } from './attitude';
 
-// 座標系 = 「どの天体を原点に置くか」×「どの天体の公転に合わせて回すか(null = 回さない)」。
-// 値は必ず Ephemeris.frames/frameFor の要素を参照する — リテラルで組むと参照同一性が崩れ、
-// trajectory-line.ts の `frame === lastFrame` によるキャッシュ判定が毎フレーム外れて描画が
-// 無駄に重くなる。
+// 座標系 = 「どの天体を原点に置くか」×「何の回転(公転か自転)に合わせて回すか
+// (null = 回さない)」。値は必ず Ephemeris.frames/frameFor/frameOf の要素を参照する —
+// リテラルで組むと参照同一性が崩れ、trajectory-line.ts の `frame === lastFrame` による
+// キャッシュ判定が毎フレーム外れて描画が無駄に重くなる。
 export type ReferenceFrame = {
-  readonly center: CelestialBodyId;
-  readonly rotatingWith: OrbitingId | null;
+  readonly center: FrameAnchorId;
+  readonly rotatingWith: FrameRotationSource | null;
 };
+
+// 参照フレームの基準・回転対象を、特定の対象を名指しせず役割で指すためのもの。予約 id では
+// '@' を頭に付ける — 天体・機体の id は小文字 ASCII と '-'/':' だけで組まれる。
+export type FrameRole = 'activeShip' | 'navTarget';
+
+// 参照フレームの基準(原点)に置けるもの。登録天体・生存中の重力天体・機体の id か、役割トークン。
+export type FrameAnchorId = CelestialBodyId | `@${FrameRole}`;
+
+// 何の回転に合わせて座標系を回すか。
+export type FrameRotationSource =
+  | { readonly kind: 'revolution'; readonly id: FrameAnchorId }  // 主天体まわりの公転
+  | { readonly kind: 'spin'; readonly id: CelestialBodyId };     // 自転(天体のみ)
+
+// 役割トークンの全種。役割を列挙するときの唯一の出所。
+export const FRAME_ROLES: readonly FrameRole[] = ['activeShip', 'navTarget'];
+
+// id が指す役割。天体・機体の id と、'@' で始まっていても FRAME_ROLES に無いものは null
+// — 検証を挟まないと、解決できない役割が外から来た文字列のまま座標系へ入り込む。
+export function frameRoleOf(id: FrameAnchorId): FrameRole | null {
+  const role = id.startsWith('@') ? id.slice(1) : null;
+  return role !== null && FRAME_ROLES.includes(role as FrameRole) ? role as FrameRole : null;
+}
+
+// 天体レジストリに載らない FrameAnchorId の位置・主天体を引く解決役。座標系の変換は
+// これ越しにしか未登録の基準へ触れない。
+export interface FrameAnchorSource {
+  // このフレームの重力天体一覧。
+  readonly bodies: readonly CelestialBody[];
+  // 登録天体でない基準(生存中の重力天体・機体・役割トークン)の ECI 状態。解決できなければ null。
+  stateOf(id: FrameAnchorId, t: number): KinematicState | null;
+  // その基準が公転している主天体。公転回転系を組めないなら null。
+  attractorOf(id: FrameAnchorId, t: number): CelestialBodyId | null;
+}
+
+// frameOf のキャッシュキー。同じ選択には必ず同じ文字列を返す(参照同一性の維持に使う)。
+export function rotationSourceKey(rotatingWith: FrameRotationSource | null): string {
+  if (rotatingWith === null) return '';
+  return rotatingWith.kind === 'spin' ? `spin:${rotatingWith.id}` : rotatingWith.id;
+}
 
 // Frame の時刻 t における剛体運動。origin/originVel は ECI での原点の位置・速度、
 // q は「座標系相対 → ECI」の姿勢、omega は ECI 成分の角速度。回転軸が時刻とともに向きを

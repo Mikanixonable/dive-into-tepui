@@ -35,7 +35,7 @@ export class SimSpeedManager {
     return Math.max(0, this.autoWarpUntil - simTime);
   }
 
-  // 現在のワープ倍率で自機の行動(推進・射撃・姿勢制御指令・自動操縦バーン)と
+  // 現在のワープ倍率で自機の行動(推進・射撃・姿勢制御指令)と
   // 敵の射撃が成立するかどうか。呼び出し側は simSpeed そのものを受け取って
   // 閾値判定するのではなく、ここを見る。
   get canShipAct(): boolean {

@@ -1,5 +1,5 @@
 // 3D 空間に浮かぶ十字マーカー状の参照グリッド。天球上の経緯線とは異なり、フォーカス位置を
-// 通る固定平面として描く。面の向きだけを黄道面・赤道面・月軌道面から選べる。
+// 通る固定平面として描く。面の向きだけを黄道面・赤道面・月軌道面・月赤道面から選べる。
 import * as THREE from 'three/webgpu';
 import { Q_ECL_TO_ECI } from '../physics/ecliptic';
 import { FloatingOrigin } from '../game/floating-origin';
@@ -197,28 +197,33 @@ export class SpatialGrid {
   private readonly ecliptic: SpatialGridPlane;
   private readonly equator: SpatialGridPlane;
   private readonly moonOrbit: SpatialGridPlane;
+  private readonly moonEquator: SpatialGridPlane;
 
   public constructor(scene: THREE.Scene) {
     this.ecliptic = new SpatialGridPlane(scene, ECLIPTIC_BASIS, 0xc0a878, '黄道面');
     this.equator = new SpatialGridPlane(scene, EQUATOR_BASIS, 0x8b93a0, '赤道面');
     this.moonOrbit = new SpatialGridPlane(scene, ECLIPTIC_BASIS, 0x9b86b8, '月軌道面');
+    this.moonEquator = new SpatialGridPlane(scene, ECLIPTIC_BASIS, 0x86b89b, '月赤道面');
   }
 
   public sync(
-    visible: boolean, ecliptic: boolean, equator: boolean, moonOrbit: boolean,
-    moonOrbitNormal: THREE.Vector3 | undefined, origin: Vec3, floatingOrigin: FloatingOrigin,
-    camera: THREE.Camera, cameraDistance: number,
+    visible: boolean, ecliptic: boolean, equator: boolean, moonOrbit: boolean, moonEquator: boolean,
+    moonOrbitNormal: THREE.Vector3 | undefined, moonSpinAxis: THREE.Vector3 | undefined,
+    origin: Vec3, floatingOrigin: FloatingOrigin, camera: THREE.Camera, cameraDistance: number,
   ): void {
-    const moonBasis = moonOrbitNormal === undefined ? ECLIPTIC_BASIS : planeBasisFromPole(moonOrbitNormal);
+    const moonOrbitBasis = moonOrbitNormal === undefined ? ECLIPTIC_BASIS : planeBasisFromPole(moonOrbitNormal);
+    const moonEquatorBasis = moonSpinAxis === undefined ? ECLIPTIC_BASIS : planeBasisFromPole(moonSpinAxis);
     this.ecliptic.sync(visible && ecliptic, ECLIPTIC_BASIS, origin, floatingOrigin, camera, cameraDistance);
     this.equator.sync(visible && equator, EQUATOR_BASIS, origin, floatingOrigin, camera, cameraDistance);
-    this.moonOrbit.sync(visible && moonOrbit, moonBasis, origin, floatingOrigin, camera, cameraDistance);
+    this.moonOrbit.sync(visible && moonOrbit, moonOrbitBasis, origin, floatingOrigin, camera, cameraDistance);
+    this.moonEquator.sync(visible && moonEquator, moonEquatorBasis, origin, floatingOrigin, camera, cameraDistance);
   }
 
-  // 3面ぶんの SpatialGridPlane を解放する。
+  // 4面ぶんの SpatialGridPlane を解放する。
   dispose(): void {
     this.ecliptic.dispose();
     this.equator.dispose();
     this.moonOrbit.dispose();
+    this.moonEquator.dispose();
   }
 }

@@ -33,6 +33,7 @@ import { RcsEffects } from '../player/rcs-effects';
 import type { CameraSystem } from '../camera/camera-system';
 import type { FloatingOrigin } from '../floating-origin';
 import type { MapVisibility } from '../celestial/map-visibility';
+import { currentThemePalette } from '../theme';
 
 // 基地のドッキングハッチのローカル位置および外向き法線ベクトル (中腹ドッキングパレット上部, 3倍スケール対応)
 export const BASE_HATCH_LOCAL_POS: Vec3 = v3(0, 21.0, 0);
@@ -323,11 +324,11 @@ export class Base extends GameEntity implements Controllable {
       priority,
       name: this.name,
       detail: overviewMode ? '' : fmtMarkerDist(dist),
-      bearingColor: C.COLOR_MARKER_ALLY,
+      bearingColor: role === 'primary' ? currentThemePalette().secondary : C.COLOR_MARKER_ALLY,
       bearingSym: ENTITY_GLYPH.base,
       bearingClass: 'mk-dir mk-ally-dir',
       bearingVisible: false,
-      color: C.COLOR_MARKER_ALLY,
+      color: role === 'primary' ? currentThemePalette().secondary : C.COLOR_MARKER_ALLY,
       symMarkup: true,
     };
   }

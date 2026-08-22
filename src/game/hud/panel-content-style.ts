@@ -1,4 +1,4 @@
-// 個々のパネルの中身の CSS: SHIP STATUS/ORBIT/TARGET/CONTACTS の行、軌道オブジェクト一覧、
+// 個々のパネルの中身の CSS: SHIP STATUS/ORBIT/TARGET/CONTACTS の行、軌道物体一覧、
 // 軌道計画、表示設定、表示時刻、カメラ・軌道、艦艇配置、ナビボール、ステージステータス、
 // 設定・ヘルプ・終了画面。骨格(層・レール・シェルフ・バッジ)は skeleton-style.ts が持つ。
 import * as C from '../const';
@@ -41,9 +41,10 @@ export const PANEL_CONTENT_STYLE = `
   font-size: var(--font-xxs);
   text-align: right;
 }
-/* R/F/G/T の代替操作ボタン(タッチ・マウスどちらでも常設)。 */
-#hud-vessel-status .status-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
-#hud-vessel-status .status-actions .w-btn { font-size: var(--font-xxs); padding: var(--space-2) var(--space-3); }
+/* 常設パネルの操作ボタン列(艦ステータスの R/F/G/T 代替、軌道情報の分析パネル起動、
+   いずれもタッチ・マウスどちらでも常設)。 */
+.combat-panel .panel-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
+.combat-panel .panel-actions .w-btn { font-size: var(--font-xxs); padding: var(--space-2) var(--space-3); }
 /* スロットル 1-4 の SegmentedControl。§7-1 の決定によりタッチ UI が出ている間だけ表示する —
    表示条件はタッチパッドの出し入れ(touch.ts の setPointerKind が付ける body.touch-ui-active)と
    同じものに載せ、ここで別の判定を作らない。 */
@@ -64,35 +65,35 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   margin-left: auto;
 }
 
-#hud-object-list { max-height: 544px; max-height: min(544px, 60dvh); overflow-y: auto; }
+#hud-physical-object-list { max-height: 544px; max-height: min(544px, 60dvh); overflow-y: auto; }
 /* パネルの padding 分だけ食い込ませて幅いっぱいに広げ、スクロール中も先頭に張り付かせる */
-#hud-object-list .object-list-head { position: sticky; top: calc(var(--space-4) * -1); margin: calc(var(--space-4) * -1) calc(var(--space-5) * -1) 0; padding: var(--space-4) var(--space-5) 0; background: var(--surface-opaque); z-index: 1; }
-#hud-object-list .object-list-search { padding: var(--space-1) var(--space-2); }
-#hud-object-list .object-list-search .w-input { width: 100%; }
-#hud-object-list .object-list-head .w-group { padding: var(--space-1) var(--space-2); }
-#hud-object-list .object-list-head .w-btn { font-size: var(--font-xxs); }
-#hud-object-list .object-list-collapse {
+#hud-physical-object-list .physical-object-list-head { position: sticky; top: calc(var(--space-4) * -1); margin: calc(var(--space-4) * -1) calc(var(--space-5) * -1) 0; padding: var(--space-4) var(--space-5) 0; background: var(--surface-opaque); z-index: 1; }
+#hud-physical-object-list .physical-object-list-search { padding: var(--space-1) var(--space-2); }
+#hud-physical-object-list .physical-object-list-search .w-input { width: 100%; }
+#hud-physical-object-list .physical-object-list-head .w-group { padding: var(--space-1) var(--space-2); }
+#hud-physical-object-list .physical-object-list-head .w-btn { font-size: var(--font-xxs); }
+#hud-physical-object-list .physical-object-list-collapse {
   margin-left: auto; background: none; border: none; color: var(--text-dim); font: inherit; cursor: pointer; pointer-events: auto;
 }
-#hud-object-list .object-list-title { display: flex; align-items: center; gap: var(--space-2); }
-#hud-object-list .object-list-body.collapsed { display: none !important; }
-#hud-object-list .object-list-breadcrumb { padding: var(--space-1) var(--space-3); font-size: var(--font-xxs); color:var(--text-dim); border-bottom:1px solid var(--edge); }
-#hud-object-list .object-list-section-header {
+#hud-physical-object-list .physical-object-list-title { display: flex; align-items: center; gap: var(--space-2); }
+#hud-physical-object-list .physical-object-list-body.collapsed { display: none !important; }
+#hud-physical-object-list .physical-object-list-breadcrumb { padding: var(--space-1) var(--space-3); font-size: var(--font-xxs); color:var(--text-dim); border-bottom:1px solid var(--edge); }
+#hud-physical-object-list .physical-object-list-section-header {
   display: block; width: 100%; text-align: left; margin: var(--space-2) 0 var(--space-1);
   padding: var(--space-2) var(--space-4); font-size: var(--font-xs); letter-spacing: 1px;
 }
-#hud-object-list .object-list-section-body { padding-left: var(--space-2); }
-#hud-object-list .object-list-section-body.collapsed { display: none !important; }
-#hud-object-list .erow { padding: var(--space-2) var(--space-2); color: var(--text-dim); cursor: pointer; display: flex; align-items: center; gap: var(--space-2); }
-#hud-object-list .object-list-detail { margin-left: auto; font-size: var(--font-xxs); color: var(--text-dim); white-space: nowrap; }
-#hud-object-list .erow:hover { color: var(--text); }
-#hud-object-list .erow.tgt { color: var(--accent); }
-#hud-object-list .erow.on { outline: 1px solid var(--edge); color: var(--text); }
-#hud-object-list .erow.cluster { opacity: .55; }
-#hud-object-list .object-list-toggle { width: 10px; text-align: center; flex: none; }
-#hud-object-list .object-list-children { padding-left: var(--space-5); }
-#hud-object-list .object-list-children.collapsed { display: none !important; }
-#hud-object-list .object-list-empty { padding: var(--space-6); text-align: center; color: var(--text-dim); }
+#hud-physical-object-list .physical-object-list-section-body { padding-left: var(--space-2); }
+#hud-physical-object-list .physical-object-list-section-body.collapsed { display: none !important; }
+#hud-physical-object-list .erow { padding: var(--space-2) var(--space-2); color: var(--text-dim); cursor: pointer; display: flex; align-items: center; gap: var(--space-2); }
+#hud-physical-object-list .physical-object-list-detail { margin-left: auto; font-size: var(--font-xxs); color: var(--text-dim); white-space: nowrap; }
+#hud-physical-object-list .erow:hover { color: var(--text); }
+#hud-physical-object-list .erow.tgt { color: var(--accent); }
+#hud-physical-object-list .erow.on { outline: 1px solid var(--edge); color: var(--text); }
+#hud-physical-object-list .erow.cluster { opacity: .55; }
+#hud-physical-object-list .physical-object-list-toggle { width: 10px; text-align: center; flex: none; }
+#hud-physical-object-list .physical-object-list-children { padding-left: var(--space-5); }
+#hud-physical-object-list .physical-object-list-children.collapsed { display: none !important; }
+#hud-physical-object-list .physical-object-list-empty { padding: var(--space-6); text-align: center; color: var(--text-dim); }
 
 #hud-plan { min-width: 0; width: 100%; max-width: 300px; overflow-wrap: anywhere; }
 #hud .w-group { margin-bottom: var(--space-3); }
@@ -164,12 +165,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-predict .predict-value-input { display: inline-flex; align-items: center; gap: var(--space-2); margin: 0; }
 /* 単位の SegmentedControl は見出しを持たないので、共通規則の見出し幅を出さない。 */
 #hud-predict .predict-value-input .seg-title { display: none; }
-#hud-predict .predict-value-input input[type="number"] { width: 56px; }
-#hud-predict .predict-edit-btn {
-  pointer-events: auto; cursor: pointer; padding: var(--space-1) var(--space-3); font-size: var(--font-s);
-  border: 1px solid var(--edge); border-radius: var(--radius-m); background: var(--surface); color: var(--text-dim);
-}
-#hud-predict .predict-edit-btn:hover { border-color: var(--accent); color: var(--accent); }
+#hud-predict .predict-value-input input[type="number"] { width: 112px; }
 #hud-predict .slider-ticks { position: relative; height: 11px; margin-top: var(--space-1); }
 #hud-predict .slider-ticks span {
   position: absolute;
@@ -278,22 +274,28 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-stagestatus .radiator-btn.on { border-color: var(--accent); }
 #hud-stagestatus .radiator-btn.on .label { color: var(--accent); }
 #hud-pause-menu {
-  position: absolute; bottom: 40px; top: auto; left: 50%; transform: translateX(-50%);
-  display: none; min-width: 260px; pointer-events: auto;
+  position: fixed; display: none; min-width: 260px; pointer-events: auto;
 }
+#hud-pause-menu .pm-header {
+  display: flex; justify-content: space-between; align-items: center; gap: var(--space-6); cursor: move;
+}
+#hud-pause-menu .pm-header h3 { margin: 0; }
+#hud-pause-menu .pm-header .w-close, #hud-pause-menu .pm-minimize {
+  flex: 0 0 auto; border-radius: 50%;
+}
+#hud-pause-menu .pm-minimize {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; padding: 0; font-size: var(--font-m); border: 1px solid transparent;
+  background: var(--surface-2); color: var(--body); cursor: pointer;
+}
+#hud-pause-menu .pm-minimize:hover { color: var(--accent-near); background: var(--surface-3); }
+#hud-pause-menu .pm-body.hidden { display: none; }
 #hud-pause-menu .pm-row {
   display: flex; justify-content: space-between; align-items: center; gap: var(--space-6); padding: var(--space-3) 0;
 }
-#hud-pause-menu .pm-theme-row { align-items: center; }
-#hud-pause-menu .pm-theme-preview { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 3px; }
-#hud-pause-menu .pm-theme-swatch { width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 0 1px color-mix(in srgb, var(--title) 24%, transparent); }
-#hud-pause-menu .pm-theme-select { flex: 1 1 180px; min-width: 0; color-scheme: var(--theme-tone); }
 /* span. まで指定して .w-btn 側の padding/font-size より確実に勝たせる
    (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
 #hud-pause-menu span.pm-quit { margin-top: var(--space-5); text-align: center; padding: var(--space-4) var(--space-5); font-size: var(--font-m); }
-#hud-pause-menu .pm-close-row { margin-top: var(--space-5); text-align: center; }
-#hud-pause-menu .w-tabs { margin-bottom: var(--space-4); }
-#hud-pause-menu .gp-body { display: flex; flex-direction: column; gap: var(--space-4); }
 #hud-settings-view {
   inset: 0; display: none; overflow-y: auto; pointer-events: auto;
   padding: clamp(24px, 7vh, 72px) max(var(--space-6), 6vw);
@@ -301,17 +303,26 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 }
 #hud-settings-view .sv-header,
 #hud-settings-view .sv-description,
-#hud-settings-view .sv-section,
-#hud-settings-view .sv-footer { width: min(100%, 720px); margin-inline: auto; }
+#hud-settings-view .sv-section { width: min(100%, 720px); margin-inline: auto; }
 #hud-settings-view .sv-header {
-  display: flex; align-items: baseline; gap: var(--space-4);
+  display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4);
   border-bottom: 1px solid var(--edge); padding-bottom: var(--space-4);
 }
+#hud-settings-view .sv-heading-group { display: flex; flex-direction: column; gap: var(--space-2); }
 #hud-settings-view .sv-header h2 { color: var(--title); font-size: var(--font-2xl); letter-spacing: 0.08em; }
+#hud-settings-view .sv-header .w-close { flex: 0 0 auto; border-radius: 50%; }
 #hud-settings-view .sv-eyebrow { color: var(--accent); font-size: var(--font-xxs); letter-spacing: 0.12em; }
 #hud-settings-view .sv-description { margin-top: var(--space-5); color: var(--text-dim); font-size: var(--font-s); }
 #hud-settings-view .sv-section { margin-top: var(--space-7); }
 #hud-settings-view .sv-section h3 { color: var(--accent); font-size: var(--font-m); letter-spacing: 0.08em; }
+#hud-settings-view .sv-theme-row {
+  display: flex; align-items: center; gap: var(--space-4); margin-top: var(--space-4);
+  padding: var(--space-4); background: var(--surface-1); border: 1px solid var(--edge);
+}
+#hud-settings-view .sv-theme-preview { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 3px; }
+#hud-settings-view .sv-theme-swatch { width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 0 1px color-mix(in srgb, var(--title) 24%, transparent); }
+#hud-settings-view .sv-theme-select { flex: 1; min-width: 0; color-scheme: var(--theme-tone); }
+#hud-settings-view .gp-body { display: flex; flex-direction: column; gap: var(--space-4); margin-top: var(--space-4); }
 #hud-settings-view .sv-volume-row {
   display: flex; align-items: center; gap: var(--space-4); margin-top: var(--space-4);
   padding: var(--space-4); background: var(--surface-1); border: 1px solid var(--edge);
@@ -330,7 +341,6 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-settings-view .sv-track-number { color: var(--text-dim); font-size: var(--font-xxs); font-variant-numeric: tabular-nums; }
 #hud-settings-view .sv-preview-button { min-width: 76px; text-align: center; }
 #hud-settings-view .sv-track-actions { margin-top: var(--space-4); text-align: right; }
-#hud-settings-view .sv-footer { margin-top: var(--space-8); text-align: center; }
 
 @media ${MQ_MEDIUM_DOWN} {
   #hud-plan { min-width: 0; max-width: none; }

@@ -80,7 +80,8 @@ export interface PlayerSaveData extends EntitySaveData {
   throttle: ThrottleSaveData;
   parts: AnyPart[];
   plan: PlanSaveData | null;
-  // 旧セーブデータには無いフィールドなので任意。無ければ followPlan から移行する。
+  // 旧セーブデータには無いフィールドなので任意。無ければ followPlan から移行する。'powered' は
+  // 廃止済みモードだが、旧セーブの読み込みのために型として残す。
   planExecution?: 'off' | 'instant' | 'powered';
   // 'planExecution' 導入前のセーブが持っていたフィールド。
   followPlan?: boolean;
@@ -252,17 +253,24 @@ export interface ChaseCameraSaveData {
   followAttitude: boolean;
 }
 
+// FrameRotationSource の保存形。
+export interface FrameRotationSourceSaveData {
+  kind: 'revolution' | 'spin';
+  id: string;
+}
+
 // MapCamera のフォーカス対象(FocusTarget の保存形)。'point' は焼き込み先の座標系
-// (center/rotatingWith)と、その座標系相対の点をそのまま持つ。
+// (center/rotatingWith)と、その座標系相対の点をそのまま持つ。rotatingWith は
+// 旧セーブでは文字列(公転対象の id)または null だったので、読み込み側がその形も受け付ける。
 export type FocusTargetSaveData =
   | { kind: 'object'; id: string }
-  | { kind: 'point'; center: string; rotatingWith: string | null; point: Vec3SaveData };
+  | { kind: 'point'; center: string; rotatingWith: FrameRotationSourceSaveData | string | null; point: Vec3SaveData };
 
 export interface MapCameraSaveData {
   offset: Vec3SaveData;
   pan: Vec3SaveData;
   up: Vec3SaveData;
-  rotatingWith: string | null;
+  rotatingWith: FrameRotationSourceSaveData | string | null;
   focus: FocusTargetSaveData;
   // 旧セーブデータには無い。無ければ既定のオイラー操作。
   rotationMode?: 'quaternion' | 'euler';
@@ -278,6 +286,11 @@ export interface CameraSaveData {
   view: 'combat' | 'map';
   chase: ChaseCameraSaveData;
   overview: MapCameraSaveData;
+}
+
+export interface NavTargetSaveData {
+  id: string;
+  name: string;
 }
 
 export interface GameSaveData {
@@ -297,4 +310,6 @@ export interface GameSaveData {
   stage: StageSaveData;
   // 旧セーブデータには無いフィールドなので任意。無ければ視点は既定のまま始まる。
   camera?: CameraSaveData;
+  // 旧セーブデータには無い。無ければターゲット未選択のまま始まる。
+  navTarget?: NavTargetSaveData | null;
 }
