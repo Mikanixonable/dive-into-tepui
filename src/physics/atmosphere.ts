@@ -1,7 +1,7 @@
 // 天体ごとの大気(基準楕円体・共回転・区分指数の密度モデル)と、その大気による高度・
-// 対気速度・抗力加速度・焼失判定。固有名詞を持たず、大気の中身はすべて呼び出し側が渡す
+// 対気速度・抗力加速度。固有名詞を持たず、大気の中身はすべて呼び出し側が渡す
 // Atmosphere に載っている。THREE/DOM 非依存の純粋関数。
-import { KinematicState } from './kinematic-state';
+
 import { Vec3, cross, dot, len, scale, sub, v3 } from './vec3';
 
 // 区分指数モデルの1層: [基準高度 h0 [m], 基準密度 ρ0 [kg/m^3], スケールハイト H [m]]。
@@ -92,21 +92,3 @@ export function dragAccel(rRel: Vec3, vRel: Vec3, bcInv: number, atm: Atmosphere
   return v3(vrx * k, vry * k, vrz * k);
 }
 
-// 位置 r で、大気の密度が maxDensity を上回っている天体。焼失は「濃い空気の中にいる」という
-// 連続量による状態なので、表面からの距離ではなく密度そのもので判定する — 同じ高度でも天体が
-// 違えば密度が違い、同じ密度でも高度が違う。maxDensity はその主体が耐えられる密度の上限。
-export function burnUpBody<T extends {
-  readonly state: KinematicState;
-  readonly atmosphere: Atmosphere | null;
-}>(
-  r: Vec3,
-  bodies: readonly T[],
-  maxDensity: number,
-): T | null {
-  for (const body of bodies) {
-    if (body.atmosphere === null) continue;
-    const rRel = sub(r, body.state.r);
-    if (atmosphericDensity(ellipsoidAltitude(rRel, body.atmosphere), body.atmosphere) > maxDensity) return body;
-  }
-  return null;
-}
