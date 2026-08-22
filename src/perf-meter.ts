@@ -1,7 +1,7 @@
 // 負荷確認ウィンドウ: フレーム時間の計測・集計と、その表示。
 // 窓が開いている間だけ計測が走る(`on` が計測の可否そのもの)。
 import type { WebGPURenderer } from 'three/webgpu';
-import { PropertyRow, PropertyWindow } from './game/hud/property-window';
+import { PropertyRow, PropertyWindow } from './game/hud/windows/property-window';
 import { fmtDuration } from './game/hud/utils';
 import { FrameSections, SECTION_COUNT, SECTION_LABELS, type SectionId } from './frame-sections';
 import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings, type GpuPassId } from './gpu-timings';

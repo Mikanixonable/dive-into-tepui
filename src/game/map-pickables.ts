@@ -3,7 +3,7 @@
 // プロパティウィンドウ)は map-context-actions.ts の MapContextActions が持つ。
 import * as C from './const';
 import { fmtDist, fmtSpeed } from './hud/utils';
-import { celestialBodyName } from './hud/frame-labels';
+import { celestialBodyName } from './hud/frame/frame-labels';
 import { MapPickable } from './map-pickable';
 import { focusTargetId } from './camera/focus-target';
 import { EntityManager } from './simulation/entity-manager';

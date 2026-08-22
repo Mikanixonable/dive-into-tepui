@@ -1,5 +1,5 @@
 import type { ViewId, ViewManager } from '../view-manager';
-import { ContextMenu, MenuItem } from './context-menu';
+import { ContextMenu, MenuItem } from './windows/context-menu';
 import type { OverlayManager } from './overlay-manager';
 import { Button } from './widgets';
 import packageJson from '../../../package.json';

@@ -1,7 +1,7 @@
 // 表示設定(天球グリッド)の状態を保持し、localStorage へ永続化する。DOM は ViewOptionsPanel
 // (表示パネル)に同居する — グリッドトグルの配線だけをここが担う。
 import { applyGridToggle, CelestialGridVisibility, normalizeGridVisibility } from '../../render/celestial-grid';
-import type { ViewOptionsPanel } from '../hud/view-options-panel';
+import type { ViewOptionsPanel } from '../hud/panels/view-options-panel';
 
 const DEFAULT_GRID_VISIBILITY: CelestialGridVisibility = {
   stars: true,

@@ -2,8 +2,7 @@ import { Game } from './game/game';
 import type { Input } from './game/input/input';
 import { KEY_MAPPING as K } from './game/input/key-mapping';
 import { Hud } from './game/hud/hud';
-import { PauseMenu } from './game/hud/pause-menu';
-import { SaveBrowser } from './game/hud/save-browser';
+import { PauseMenu, SaveBrowser } from './game/hud/windows';
 import { SnapshotService } from './game/save/snapshot-service';
 
 // F5(クリップ)/F9(一覧開閉)の入力を担う。一覧表示中の Esc は OverlayManager の登録経由で

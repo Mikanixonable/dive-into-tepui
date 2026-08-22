@@ -17,7 +17,7 @@ import type { EntityManager } from './simulation/entity-manager';
 import { entityStateAt } from './simulation/entity-state-at';
 import type { CombatTarget } from './targeter';
 import { Hud } from './hud/hud';
-import { TickLabelMode, elementTimeLabel } from './hud/calendar-ticks';
+import { TickLabelMode, elementTimeLabel } from './hud/orbit/calendar-ticks';
 import { MarkerManager } from './marker/marker-manager';
 import { ORBIT_POINT_GLYPH } from './marker/marker-glyphs';
 import { CameraSystem } from './camera/camera-system';

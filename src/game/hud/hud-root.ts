@@ -3,7 +3,7 @@ import { KEY_MAPPING as K } from '../input/key-mapping';
 import { injectThemeVariables } from '../theme';
 import { buildOverlayLayers } from './overlay-layer';
 import { OverlayManager } from './overlay-manager';
-import { HelpPanel } from './help-panel';
+import { HelpPanel } from './windows/help-panel';
 import {
   PanelShell,
   type HudWorldView,
@@ -11,11 +11,11 @@ import {
   onPanelCollapsedViewChange,
   savePanelCollapsed,
 } from './panel-shell';
-import { LAYOUT_TOKENS_STYLE } from './layout-tokens';
-import { SKELETON_STYLE } from './skeleton-style';
-import { PANEL_CONTENT_STYLE } from './panel-content-style';
-import { COMBAT_VIEW_STYLE } from './combat-view-style';
-import { MAP_VIEW_STYLE } from './map-view-style';
+import { LAYOUT_TOKENS_STYLE } from './style/layout-tokens';
+import { SKELETON_STYLE } from './style/skeleton-style';
+import { PANEL_CONTENT_STYLE } from './style/panel-content-style';
+import { COMBAT_VIEW_STYLE } from './style/combat-view-style';
+import { MAP_VIEW_STYLE } from './style/map-view-style';
 import { isCompactViewport } from './breakpoints';
 import { startViewportTracking } from './viewport';
 import {

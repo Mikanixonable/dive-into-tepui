@@ -5,7 +5,7 @@ import { CelestialRegistry, primaryOf } from '../../physics/solar-system';
 import { ProjectFn } from './camera-system';
 import { MarkerManager } from '../marker/marker-manager';
 import type { Ephemeris } from '../../physics/ephemeris';
-import { celestialBodyName } from '../hud/frame-labels';
+import { celestialBodyName } from '../hud/frame/frame-labels';
 import { occlusionOpacity } from '../../physics/occlusion';
 import { BodyClassToggles, NearbySystemTracker } from '../celestial/body-visibility';
 import { bodyClassOf, BodyClass } from '../celestial/body-class';
