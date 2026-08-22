@@ -21,7 +21,7 @@ export abstract class Ship extends GameEntity {
   protected readonly predictedForGhost = true;
   protected readonly specificHeat = C.SHIP_SPECIFIC_HEAT;
   protected readonly bulkDensity = C.SHIP_BULK_DENSITY;
-  protected readonly radiatingAreaPerMass = C.SHIP_RADIATING_AREA_PER_MASS;
+  protected override get radiatingAreaPerMass(): number { return C.SHIP_RADIATING_AREA_PER_MASS; }
 
   hp: number;
   maxHp: number;
@@ -82,8 +82,8 @@ export abstract class Ship extends GameEntity {
         fuelConsumptionRate: 1,
       }),
       mk('rcs_tank', R.rcsTank, { name: 'Main RCS Tank', maxFuel: 1000, fuel: 1000 }),
-      mk('radiator', R.radiator, { name: 'Heat Radiator L', coolingRate: 25 }),
-      mk('radiator', R.radiator, { name: 'Heat Radiator R', coolingRate: 25 }),
+      mk('radiator', R.radiator, { name: 'Heat Radiator L', coolingRate: 42 }),
+      mk('radiator', R.radiator, { name: 'Heat Radiator R', coolingRate: 42 }),
       mk('solar_panel', R.solarPanel, { name: 'Solar Array L', powerGeneration: 50 }),
       mk('solar_panel', R.solarPanel, { name: 'Solar Array R', powerGeneration: 50 }),
       mk('weapon', R.weapon, {
