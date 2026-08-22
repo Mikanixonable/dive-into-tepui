@@ -26,6 +26,7 @@ import { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { SimSpeedManager } from '../sim-speed-manager';
 import type { EnemySaveData } from '../save-data';
+import { currentThemePalette } from '../theme';
 
 // Enemy の見た目の種別。どの build を呼ぶかをコンストラクタ内部で選ぶための判別用。
 export type EnemyKind = { kind: 'drifting' } | { kind: 'stage0'; typeIndex: number };
@@ -161,11 +162,11 @@ export class Enemy extends Ship {
       priority,
       name: this.name,
       detail: overviewMode ? '' : fmtMarkerDist(dist),
-      // 敵本体・距離ラベル・画面外方位マーカーは同じ色で統一する。
-      bearingColor: C.COLOR_MARKER_ENEMY,
+      // 敵本体・距離ラベル・画面外方位マーカーは同じ色で統一する。ターゲット中は第二アクセントカラーで強調する。
+      bearingColor: role === 'primary' ? currentThemePalette().secondary : C.COLOR_MARKER_ENEMY,
       bearingSym: ENTITY_GLYPH.enemyShip,
       bearingClass: 'mk-dir mk-bearing-triangle',
-      color: C.COLOR_MARKER_ENEMY,
+      color: role === 'primary' ? currentThemePalette().secondary : C.COLOR_MARKER_ENEMY,
       symMarkup: true,
     };
   }
