@@ -482,7 +482,8 @@ export class MapContextActions {
     },
     'relnode': {
       itemsFor: (target) => {
-        const spec = target.id === 'nav-an' ? ORBIT_ELEMENT_LABELS.an : ORBIT_ELEMENT_LABELS.dn;
+        const spec = target.id === 'nav-an' ? ORBIT_ELEMENT_LABELS.an
+          : target.id === 'nav-dn' ? ORBIT_ELEMENT_LABELS.dn : ORBIT_ELEMENT_LABELS.ca;
         return [
           { type: 'header', label: spec.nameJa, subLabel: spec.nameEn },
           MenuCommon.warp(),

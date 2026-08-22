@@ -233,6 +233,7 @@ export interface PredictPanelState {
   readonly pastDurationKey: DisplayPastDurationKey;
   readonly pastDuration: number;
   readonly tickLabelMode: TickLabelMode;
+  readonly showElementTimes: boolean;
   readonly duration: number;
   readonly displayTime: number;
   readonly sliderSteps: number;
@@ -247,6 +248,7 @@ export class PredictPanel {
   public onPastDurationSelect: ((key: FixedPastDurationKey) => void) | null = null;
   public onPastCustomDurationConfirm: ((sec: number) => void) | null = null;
   public onTickLabelModeChange: ((mode: TickLabelMode) => void) | null = null;
+  public onShowElementTimesChange: ((show: boolean) => void) | null = null;
   public onSliderChange: ((t: number) => void) | null = null;
   public onResetToNow: (() => void) | null = null;
   public onJumpToTime: ((sec: number) => void) | null = null;
@@ -256,6 +258,7 @@ export class PredictPanel {
   private readonly pastDurationRow: DurationPillRow<FixedPastDurationKey, DisplayPastDurationKey>;
   private readonly tickLabelModeSwitch: ToggleSwitch;
   private readonly showTicksSwitch: ToggleSwitch;
+  private readonly showElementTimesSwitch: ToggleSwitch;
   private readonly slider: Slider;
   private readonly absoluteLabel: HTMLElement;
   private readonly elapsedLabel: HTMLElement;
@@ -309,6 +312,11 @@ export class PredictPanel {
     );
     this.showTicksSwitch.setOn(true);
     modeRow.appendChild(this.showTicksSwitch.element);
+    this.showElementTimesSwitch = new ToggleSwitch(
+      '軌道要素の時刻を表示',
+      (on) => this.onShowElementTimesChange?.(on),
+    );
+    modeRow.appendChild(this.showElementTimesSwitch.element);
     this.panel.appendChild(modeRow);
 
     // 行2: 現在に戻すボタン + スクラバー + T+読み値(クリックで直接ジャンプ入力に変わる)。
@@ -379,6 +387,7 @@ export class PredictPanel {
     this.durationRow.render(state.durationKey, state.duration);
     this.pastDurationRow.render(state.pastDurationKey, state.pastDuration);
     this.tickLabelModeSwitch.setOn(state.tickLabelMode === 'relative');
+    this.showElementTimesSwitch.setOn(state.showElementTimes);
     this.renderSlider(state.sliderSteps, state.sliderT, state.predictionRatio);
     this.renderAbsoluteLabel(state.displayTime);
     if (!this.jumpToggle.editing) this.renderElapsedLabel(state.sliderT * state.duration);

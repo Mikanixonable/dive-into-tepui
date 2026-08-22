@@ -117,11 +117,16 @@ export class GameEntity {
   // でも)開いている間は弧を伸ばし続けたいので、他の理由と同じく独立に持つ。
   analysisPanelReader = false;
 
+  // ナビゲーションターゲットとして選ばれ、相対軌道要素(再接近点など)の計算対象になって
+  // いるか。マップビューでのみ意味を持つが、そこでは canDisplayFuture が既に真なので
+  // 専用のフラグとして独立に持つ。
+  navTargetReader = false;
+
   // この個体の未来を読む消費者がいるか。ゴーストだけは表示時刻が未来へ動けるかに依るので、
   // 動けるかどうかを引数で受け取る。
   hasFutureReader(canDisplayFuture: boolean): boolean {
     return (this.predictedForGhost && canDisplayFuture)
-      || this.predictedLine !== null || this.analysisPanelReader;
+      || this.predictedLine !== null || this.analysisPanelReader || this.navTargetReader;
   }
 
   // 予測列を持ちうる種別か。上の理由のどれか1つでも立ちうれば持つ。

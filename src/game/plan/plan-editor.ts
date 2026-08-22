@@ -722,8 +722,11 @@ export class PlanEditor {
     const ship = this.ship;
     if (!ship) return;
     const segment = this.planDisplay.path.finalSegment();
+    const timeLabel = {
+      mode: displayWindow.tickLabelMode, show: displayWindow.showElementTimes, nowSimTime: displayWindow.simTime,
+    };
     ship.ensureEquatorNodes(this.markerManager).update(
-      displayWindow.frame, displayWindow.displayTime, this.ephemeris, frameAnchors,
+      displayWindow.frame, displayWindow.displayTime, this.ephemeris, frameAnchors, timeLabel,
       segment?.state0, segment?.samples,
     );
   }
