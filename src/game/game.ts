@@ -155,11 +155,11 @@ export class Game {
     );
 
     this.navTarget = new NavTarget(this._hud, this.markerManager);
-    this.targeter = new Targeter(this._hud, this.markerManager, this.navTarget);
+    this.targeter = new Targeter(this.markerManager, this.navTarget, this.entities);
     this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
     this._environment = new EnvironmentScene(this._scene, this.ephemeris, graphics, pipeline.sunLight, earthSpinPhase0);
     this.activePlayers = new ActiveControllableController(
-      initialSave?.activePlayerId, this.entities, this.cameraSystem, this.targeter, this.navTarget, this._worldSfx, this._hud,
+      initialSave?.activePlayerId, this.entities, this.cameraSystem, this.navTarget, this._worldSfx, this._hud,
     );
     this.editor = new PlanEditor(
       this._hud,
@@ -201,7 +201,7 @@ export class Game {
     this.mapActions = new MapContextActions(
       this._hud, this.entities, this.ephemeris, this.navTarget,
       this.cameraSystem, this.editor, this.simSpeedManager, this.pauseMenu, this.mapPickables,
-      this.activePlayers, this.frameControls, this.activeStage, this.targeter,
+      this.activePlayers, this.frameControls, this.activeStage,
     );
 
     // 初期ビューは世界が組み上がった後にしか決まらない — 攻略ステージの自機は Stage の初期配置で

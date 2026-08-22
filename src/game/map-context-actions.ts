@@ -25,7 +25,7 @@ import { PlanEditor } from './plan/plan-editor';
 import { SimSpeedManager } from './sim-speed-manager';
 import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from './hud/orbit-labels';
 import type { PauseMenu } from './hud/pause-menu';
-import { Targeter, type CombatTarget } from './targeter';
+import type { CombatTarget } from './targeter';
 import type { Docking } from './docking';
 import type { ActivePlayerController } from './active-player-controller';
 import type { FrameControls } from './hud/frame-controls';
@@ -94,7 +94,6 @@ export class MapContextActions {
     private readonly activePlayers: ActivePlayerController,
     private readonly frameControls: FrameControls,
     private readonly activeStage: Stage,
-    private readonly targeter: Targeter,
   ) {
     this.menu = new ContextMenu<MapPickable, MenuAction>(hud.layers.popup, hud.overlayManager);
     this.menu.onSelect = (act, target) => {
@@ -692,14 +691,13 @@ export class MapContextActions {
   // マップビューでは出さない(視界占有を抑える — §7-2)。
   private combatTargetLockItems(entity: CombatTarget | null | undefined): readonly MenuItem<MenuAction>[] {
     if (this.cameraSystem.overviewMode || !entity || !entity.alive) return [];
-    return [MenuCommon.target(this.targeter.target === entity)];
+    return [MenuCommon.target(this.navTarget.id === entity.id)];
   }
 
   // ターゲット固定を、押した時点の設定と比べてトグルする。
   private runTargetLock(entity: CombatTarget | null | undefined): void {
     if (!entity) return;
-    const targeter = this.targeter;
-    targeter.setTarget(targeter.target === entity ? null : entity);
+    this.navTarget.toggleCombatTarget(entity);
   }
 
   // 対象の現在状態を軌道要素へ逆算し、その値をプリセットして艦艇配置パネルを開く。

@@ -11,9 +11,9 @@ import { bodyDef } from '../physics/solar-system';
 import type { Ephemeris } from '../physics/ephemeris';
 import { qRotate } from '../physics/attitude';
 import { Player } from './player/player';
-import type { GameEntity } from './game-entity/game-entity';
 import type { DisplayWindow } from './display-window-manager';
 import type { EntityManager } from './simulation/entity-manager';
+import type { CombatTarget } from './targeter';
 import { Hud } from './hud/hud';
 import { MarkerManager } from './marker/marker-manager';
 import { ORBIT_POINT_GLYPH } from './marker/marker-glyphs';
@@ -60,9 +60,7 @@ export class NavTarget {
     return this.targetName;
   }
 
-  // Targeter がターゲット(艦)を設定/解除するたびに呼ぶ。艦を対象にする限り、ターゲットと
-  // 航法ターゲットは常に同一の対象を指す(ヒントは Targeter 側だけが出す)。
-  setShipTarget(id: string | null, name: string | null): void {
+  private setInternal(id: string | null, name: string | null): void {
     this.targetId = id;
     this.targetName = name;
   }
@@ -70,14 +68,37 @@ export class NavTarget {
   // id と現在の設定が同じなら解除、そうでなければ id を航法ターゲットにする。
   toggleTarget(id: string, name: string): void {
     if (this.targetId === id) {
-      this.targetId = null;
-      this.targetName = null;
+      this.setInternal(null, null);
       this._hud.hint('航法ターゲット解除');
     } else {
-      this.targetId = id;
-      this.targetName = name;
+      this.setInternal(id, name);
       this._hud.hint(`航法ターゲット: ${name}`);
     }
+  }
+
+  // Tキーなど、絶対値で戦闘ターゲット(敵・自艦・基地)を設定/解除する経路用。
+  // 戦闘ターゲットは航法ターゲットと状態を共有するため、ここが両者の唯一の書き込み口になる。
+  setCombatTarget(entity: CombatTarget | null): void {
+    this.setInternal(entity?.id ?? null, entity?.name ?? null);
+    this._hud.hint(entity ? `ターゲット固定: ${entity.name}` : 'ターゲット固定解除');
+  }
+
+  // 右クリックのプロパティウィンドウの「ターゲット」項目用。現在の設定と同じ対象ならその場で解除する。
+  toggleCombatTarget(entity: CombatTarget): void {
+    this.setCombatTarget(this.targetId === entity.id ? null : entity);
+  }
+
+  // 対象消滅を伴わない一括解除(操作対象艦の切替など)。ヒントは出さない。
+  clear(): void {
+    this.setInternal(null, null);
+  }
+
+  // 現在の航法ターゲットを、生存中の戦闘対象(敵・自艦・基地)として解決する。天体・ラグランジュ点
+  // など戦闘対象になれない航法ターゲットは null。
+  resolveCombatTarget(entities: EntityManager): CombatTarget | null {
+    if (this.targetId === null) return null;
+    const entity = this.resolveEntity(this.targetId, entities);
+    return entity && entity.alive ? entity : null;
   }
 
   // AN/DN の通過時刻 [s]。id は 'nav-an'/'nav-dn'。未計算・対象外なら null。
@@ -212,7 +233,7 @@ export class NavTarget {
   }
 
   // id を生存中の敵・自機・基地として引く。天体・ラグランジュ点は実体を持たないので null。
-  private resolveEntity(id: string, entities: EntityManager): GameEntity | null {
+  private resolveEntity(id: string, entities: EntityManager): CombatTarget | null {
     const enemy = entities.findEnemy(id);
     return (enemy?.alive ? enemy : null)
       ?? entities.players.find((p) => p.id === id)
