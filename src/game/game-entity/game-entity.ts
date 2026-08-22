@@ -113,10 +113,15 @@ export class GameEntity {
   // 表示時刻(未来ゴースト)の位置でメッシュとマーカーを描く種別か。
   protected readonly predictedForGhost: boolean = false;
 
+  // 軌道分析パネルがこの個体の未来を読んでいるか。戦闘ビューでも(canDisplayFuture が false
+  // でも)開いている間は弧を伸ばし続けたいので、他の理由と同じく独立に持つ。
+  analysisPanelReader = false;
+
   // この個体の未来を読む消費者がいるか。ゴーストだけは表示時刻が未来へ動けるかに依るので、
   // 動けるかどうかを引数で受け取る。
   hasFutureReader(canDisplayFuture: boolean): boolean {
-    return (this.predictedForGhost && canDisplayFuture) || this.predictedLine !== null;
+    return (this.predictedForGhost && canDisplayFuture)
+      || this.predictedLine !== null || this.analysisPanelReader;
   }
 
   // 予測列を持ちうる種別か。上の理由のどれか1つでも立ちうれば持つ。

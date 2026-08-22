@@ -4,9 +4,10 @@
 // OrbitChart へ渡すことだけを持つ。
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { Game } from '../game';
+import type { GameEntity } from '../game-entity/game-entity';
 import { DraggableWindow } from './draggable-window';
 import {
-  ChartAxis, ChartPoint, ChartSpec, OrbitChart, distanceAxis, timeAxis,
+  ChartAxis, ChartMark, ChartPoint, ChartSpec, OrbitChart, distanceAxis, timeAxis,
 } from './orbit-chart';
 import { altitudeSeries, approachSeries, ApproachTargetSource } from './orbit-analysis-data';
 import { MQ_COMPACT } from './breakpoints';
@@ -23,6 +24,9 @@ const MAX_SAMPLES = 300;
 // 接近タブは横軸が距離なので、どこまで先を描くかは横軸のスケールからは決まらない。低軌道の
 // 数周ぶんに相当する 1 日を先まで見る。
 const APPROACH_SAMPLE_SPAN_SEC = 86400;
+// 接近タブは1日ぶんを描くため、高度タブと同じ密度では周回1つあたりの点が粗く、折れ線が
+// 角ばって見える。密度を底上げする倍率。
+const APPROACH_SAMPLE_MULTIPLIER = 4;
 
 const TAB_ITEMS_ALTITUDE_ONLY: readonly (readonly [AnalysisTab, string])[] = [['altitude', '高度']];
 const TAB_ITEMS_BOTH: readonly (readonly [AnalysisTab, string])[] =
@@ -73,6 +77,12 @@ export class OrbitAnalysisWindow {
   private tab: AnalysisTab = 'altitude';
   private approachAvailable = false;
   private nextSyncAt = 0;
+  // 縦軸(高度)の中心 [m]。null なら次の sync で現在高度に固定し直す。
+  private altitudeCenterM: number | null = null;
+  // 戦闘ビューでも未来の弧を伸ばし続けさせるため analysisPanelReader を立てている個体
+  // (操作対象・接近タブのターゲット)。
+  private readerEntity: GameEntity | null = null;
+  private readerTargetEntity: GameEntity | null = null;
   private readonly scales: Record<AnalysisTab, TabScale> = {
     altitude: { ...DEFAULT_SCALES.altitude },
     approach: { ...DEFAULT_SCALES.approach },
@@ -130,8 +140,28 @@ export class OrbitAnalysisWindow {
   }
 
   public dispose(): void {
+    this.setReaderEntity(null);
+    this.setReaderTargetEntity(null);
     this.win.dispose();
     this.chart.dispose();
+  }
+
+  // 旧対象のフラグを降ろし、新対象に立て直す。
+  private static applyReader(prev: GameEntity | null, next: GameEntity | null): GameEntity | null {
+    if (prev === next) return prev;
+    if (prev) prev.analysisPanelReader = false;
+    if (next) next.analysisPanelReader = true;
+    return next;
+  }
+
+  private setReaderEntity(entity: GameEntity | null): void {
+    if (entity === this.readerEntity) return;
+    this.readerEntity = OrbitAnalysisWindow.applyReader(this.readerEntity, entity);
+    this.altitudeCenterM = null;
+  }
+
+  private setReaderTargetEntity(entity: GameEntity | null): void {
+    this.readerTargetEntity = OrbitAnalysisWindow.applyReader(this.readerTargetEntity, entity);
   }
 
   public sync(game: Game, celestialBodies: readonly CelestialBody[]): void {
@@ -140,6 +170,7 @@ export class OrbitAnalysisWindow {
     this.nextSyncAt = now + SYNC_INTERVAL_MS;
 
     const entity = game.activeControllableEntity;
+    this.setReaderEntity(entity);
     if (!entity) {
       this.approachAvailable = false;
       this.tabBar.setItems(TAB_ITEMS_ALTITUDE_ONLY);
@@ -152,10 +183,11 @@ export class OrbitAnalysisWindow {
     );
     const sampleCount = this.sampleCount();
     const approachSource = this.resolveApproachTarget(game, celestialBodies);
+    this.setReaderTargetEntity(approachSource?.kind === 'entity' ? approachSource.entity : null);
     const approach = approachSource
       ? approachSeries(
         entity, approachSource, celestialBodies, game.ephemeris, entity.state.t,
-        APPROACH_SAMPLE_SPAN_SEC, sampleCount,
+        APPROACH_SAMPLE_SPAN_SEC, sampleCount * APPROACH_SAMPLE_MULTIPLIER,
       )
       : null;
     this.approachAvailable = approach !== null;
@@ -176,6 +208,7 @@ export class OrbitAnalysisWindow {
 
   private selectTab(tab: AnalysisTab): void {
     this.tab = tab;
+    if (tab === 'altitude') this.altitudeCenterM = null;
     this.tabBar.setSelected(tab);
     this.relIncRow.classList.toggle('hidden', tab !== 'approach');
     this.refreshScaleInputs();
@@ -236,27 +269,32 @@ export class OrbitAnalysisWindow {
 
   private emptySpec(message: string): ChartSpec {
     const axes = this.axesFor(this.tab, 0);
-    return { points: [], x: axes.x, y: axes.y, mark: null, emptyMessage: message };
+    return { points: [], x: axes.x, y: axes.y, marks: [], emptyMessage: message };
   }
 
   private altitudeSpec(series: ReturnType<typeof altitudeSeries>): ChartSpec {
     if (series === null) {
       const axes = this.axesFor('altitude', 0);
       return {
-        points: [], x: axes.x, y: axes.y, mark: null,
+        points: [], x: axes.x, y: axes.y, marks: [],
         emptyMessage: '基準が重力中心ではないため高度を定義できません',
       };
     }
-    const axes = this.axesFor('altitude', series.currentAlt);
+    if (this.altitudeCenterM === null) this.altitudeCenterM = series.currentAlt;
+    const axes = this.axesFor('altitude', this.altitudeCenterM);
     const points: (ChartPoint | null)[] = series.samples.map((s) => ({ x: s.t, y: s.alt }));
-    return { points, x: axes.x, y: axes.y, mark: points[0] ?? null };
+    const current = points[0];
+    const marks: ChartMark[] = current ? [{ point: current, style: 'current' }] : [];
+    return { points, x: axes.x, y: axes.y, marks };
   }
 
   private approachSpec(series: NonNullable<ReturnType<typeof approachSeries>>): ChartSpec {
     const axes = this.axesFor('approach', 0);
     const points: (ChartPoint | null)[] = series.samples.map((s) => (s ? { x: s.x, y: s.y } : null));
-    const mark = points.find((p): p is ChartPoint => p !== null) ?? null;
-    return { points, x: axes.x, y: axes.y, mark };
+    const current = points.find((p): p is ChartPoint => p !== null) ?? null;
+    const marks: ChartMark[] = [{ point: { x: 0, y: 0 }, style: 'target' }];
+    if (current) marks.push({ point: current, style: 'current' });
+    return { points, x: axes.x, y: axes.y, marks };
   }
 
   // 現在の航法ターゲットを、接近タブの点列計算に渡せる形(艦・基地 or 天体)へ解決する。
