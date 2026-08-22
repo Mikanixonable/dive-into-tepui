@@ -164,7 +164,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-predict .predict-value-input { display: inline-flex; align-items: center; gap: var(--space-2); margin: 0; }
 /* 単位の SegmentedControl は見出しを持たないので、共通規則の見出し幅を出さない。 */
 #hud-predict .predict-value-input .seg-title { display: none; }
-#hud-predict .predict-value-input input[type="number"] { width: 56px; }
+#hud-predict .predict-value-input input[type="number"] { width: 112px; }
 #hud-predict .slider-ticks { position: relative; height: 11px; margin-top: var(--space-1); }
 #hud-predict .slider-ticks span {
   position: absolute;
