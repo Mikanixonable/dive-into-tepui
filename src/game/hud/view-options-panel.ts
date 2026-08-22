@@ -66,6 +66,7 @@ const SPATIAL_GRID_ROWS: readonly (readonly [keyof CelestialGridVisibility, stri
   ['eclipticScaleGrid', '黄道面', '黄道面の縮尺グリッド'],
   ['equatorScaleGrid', '赤道面', '赤道面の縮尺グリッド'],
   ['moonOrbitScaleGrid', '月軌道面', '月軌道面の縮尺グリッド'],
+  ['moonEquatorScaleGrid', '月赤道面', '月赤道面の縮尺グリッド'],
 ];
 
 interface ViewOptionColumn {
