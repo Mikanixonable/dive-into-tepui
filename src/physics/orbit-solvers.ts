@@ -29,7 +29,7 @@ export function solveEquatorCrossings(
   centerPositionAt: (t: number) => Vec3 = (t) => attractorPositionAt(center, t),
 ): OrbitCrossingsResult | null {
   if (samples) {
-    const { ascending, descending } = findEquatorCrossings(samples, center, eqNormal);
+    const { ascending, descending } = findEquatorCrossings(samples, centerPositionAt, eqNormal);
     return ascending && descending ? { asc: ascending, desc: descending } : null;
   }
 
