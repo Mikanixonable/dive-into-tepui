@@ -23,15 +23,13 @@ export class EntityLineManager {
   // 出す/消す/スタイルを決める。判断材料(表示可否・ターゲット・操作艦・ビュー)が
   // このフレームの確定値になった後に呼ぶ。
   update(
-    activePlayer: Player | null, primaryTarget: CombatTarget | null, secondaryTarget: CombatTarget | null,
+    activePlayer: Player | null, primaryTarget: CombatTarget | null,
     overviewMode: boolean, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     const { pastDuration } = displayWindow;
     const palette = currentThemePalette();
     const primaryStyle: LineStyle = { color: palette.accent, opacity: TARGET_LINE_OPACITY, renderOrder: C.LINE_RENDER_ORDER.target };
-    const secondaryStyle: LineStyle = { color: palette.secondary, opacity: TARGET_LINE_OPACITY, renderOrder: C.LINE_RENDER_ORDER.secondaryTarget };
-    const targetStyleOf = (e: CombatTarget): LineStyle | null =>
-      e === primaryTarget ? primaryStyle : e === secondaryTarget ? secondaryStyle : null;
+    const targetStyleOf = (e: CombatTarget): LineStyle | null => e === primaryTarget ? primaryStyle : null;
 
     for (const ship of this.entities.players) {
       const isActive = ship === activePlayer;

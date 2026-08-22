@@ -124,6 +124,19 @@ function intersectionCrossPoints(basis: PlaneBasis, radius: number, latRad: numb
   ];
 }
 
+// 極点(緯度±90°)の交点十字。経度が縮退するため intersectionCrossPoints の東西腕
+// (経度方向)は使えず、直交する2本の子午線方向(e1・e2)をそのまま腕にする。
+function poleCrossPoints(basis: PlaneBasis, radius: number, sign: 1 | -1): THREE.Vector3[] {
+  const p = new THREE.Vector3(basis.pole.x, basis.pole.y, basis.pole.z).multiplyScalar(radius * sign);
+  const eps = radius * 0.012;
+  return [
+    new THREE.Vector3(p.x - basis.e1.x * eps, p.y - basis.e1.y * eps, p.z - basis.e1.z * eps),
+    new THREE.Vector3(p.x + basis.e1.x * eps, p.y + basis.e1.y * eps, p.z + basis.e1.z * eps),
+    new THREE.Vector3(p.x - basis.e2.x * eps, p.y - basis.e2.y * eps, p.z - basis.e2.z * eps),
+    new THREE.Vector3(p.x + basis.e2.x * eps, p.y + basis.e2.y * eps, p.z + basis.e2.z * eps),
+  ];
+}
+
 // 面 1 枚ぶんの表示物: 基準円(plane)・緯線経線の交点網(grid)・両極マーカー(pole)。
 // 3 種とも独立した可視トグルを持つため束ねずに別オブジェクトとして保持するが、
 // grid/pole はそれぞれ内部の全セグメントを1つの LineSegments に詰め、
@@ -159,11 +172,11 @@ class GridPlane {
     // 接続され「4」のように見えるため、頂点対を独立したセグメントとして保つ。
     const gridPoints: THREE.Vector3[] = [];
     for (let lat = -75; lat <= 75; lat += GRID_LAT_STEP_DEG) {
-      if (lat === 0) continue;
       for (let lon = 0; lon < 360; lon += GRID_LON_STEP_DEG) {
         gridPoints.push(...intersectionCrossPoints(basis, STAR_SHELL_RADIUS, (lat * Math.PI) / 180, (lon * Math.PI) / 180));
       }
     }
+    for (const sign of [1, -1] as const) gridPoints.push(...poleCrossPoints(basis, STAR_SHELL_RADIUS, sign));
     this.gridLine = makeLineSegments(color, 0.3);
     setLinePoints(this.gridLine, gridPoints);
     scene.add(this.gridLine);

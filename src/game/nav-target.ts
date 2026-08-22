@@ -1,10 +1,12 @@
 // マップ上の航法ターゲット(任意の MapPickable)の保持と、自機軌道との相対 AN/DN(昇交点・
 // 降交点)の算出・マーカー表示・被選択物としての公開。Targeter の戦闘ターゲット(Enemy 専用)
 // とは独立に、月・ラグランジュ点なども対象にできる。
-import { Vec3, v3 } from '../physics/vec3';
+import { Vec3, v3, add } from '../physics/vec3';
+import { KinematicState } from '../physics/kinematic-state';
 import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from '../physics/elements';
 import { CelestialBody, OrbitingId, frameOfCelestialBody, strongestAttractor } from '../physics/celestial-body';
-import { frameKinematicState, toFrameState, toInertialState, unbakeToDisplayPoint } from '../physics/frame';
+import type { LagrangePoints } from '../physics/lagrange';
+import { toFrameState, unbakeToDisplayPoint } from '../physics/frame';
 import { bodyDef } from '../physics/solar-system';
 import type { Ephemeris } from '../physics/ephemeris';
 import { qRotate } from '../physics/attitude';
@@ -58,6 +60,13 @@ export class NavTarget {
     return this.targetName;
   }
 
+  // Targeter がターゲット(艦)を設定/解除するたびに呼ぶ。艦を対象にする限り、ターゲットと
+  // 航法ターゲットは常に同一の対象を指す(ヒントは Targeter 側だけが出す)。
+  setShipTarget(id: string | null, name: string | null): void {
+    this.targetId = id;
+    this.targetName = name;
+  }
+
   // id と現在の設定が同じなら解除、そうでなければ id を航法ターゲットにする。
   toggleTarget(id: string, name: string): void {
     if (this.targetId === id) {
@@ -80,10 +89,11 @@ export class NavTarget {
 
   // 自機軌道要素と対象の軌道面法線から相対 AN/DN の位置・通過時刻を求め直す。
   // 対象の軌道面が定まらない(地球・太陽自身など)場合や自機軌道要素が無い場合は両方 null にする。
-  // positionOnOrbit は中心天体基準の相対位置を返すので、frameOfCelestialBody + toInertialState で
-  // 絶対 ECI 位置へ直す — 地球周回では中心が原点に一致するため偶然一致するが、月周回では
-  // 直さないと月までの距離ぶんずれる。位置は通過時刻で bake し、displayWindow の表示時刻で
-  // un-bake して描画座標系へ移す。
+  // positionOnOrbit は中心天体基準の相対位置を返すので、ephemeris.positionOf で通過時刻
+  // anT/dnT における中心天体の精密な ECI 位置を求めて足し合わせ、絶対位置に直す — 概算の弾道
+  // 外挿(celestialBodyPositionAt)を使うと、表示側が精密暦で un-bake するのと基準がずれて、
+  // 月周回では通過までの時間ぶん位置がずれる。位置は通過時刻で bake し、displayWindow の
+  // 表示時刻で un-bake して描画座標系へ移す。
   update(
     player: Player | null, entities: EntityManager, ephemeris: Ephemeris, displayWindow: DisplayWindow,
   ): void {
@@ -111,8 +121,8 @@ export class NavTarget {
     const nu0 = trueAnomalyAt(playerEl, toFrameState(tf, player.state).r);
     const anT = simTime + tofBetween(playerEl, nu0, nodes.asc);
     const dnT = simTime + tofBetween(playerEl, nu0, nodes.desc);
-    const anEci = toInertialState(tf, anT, frameKinematicState(positionOnOrbit(playerEl, nodes.asc), v3(0, 0, 0))).r;
-    const dnEci = toInertialState(tf, dnT, frameKinematicState(positionOnOrbit(playerEl, nodes.desc), v3(0, 0, 0))).r;
+    const anEci = add(ephemeris.positionOf(playerCenter.id, anT), positionOnOrbit(playerEl, nodes.asc));
+    const dnEci = add(ephemeris.positionOf(playerCenter.id, dnT), positionOnOrbit(playerEl, nodes.desc));
     const unbakeTf = ephemeris.frameTransformAt(frame, displayTime, this.celestialBodies);
     const toDisplay = (r: Vec3, t: number): Vec3 =>
       unbakeToDisplayPoint(unbakeTf, ephemeris.frameTransformAt(frame, t, this.celestialBodies), r);
@@ -149,6 +159,31 @@ export class NavTarget {
       ]);
       return true;
     });
+  }
+
+  // 現在の航法ターゲットの位置・速度。天体は CelestialBody.state、ラグランジュ点は
+  // ephemeris.lagrangeStateAt、船・基地は entity.state から得る。天体以外は重力中心ではない
+  // ため hasMass=false を返す。ターゲット未設定・解決不能なら null。
+  resolveState(
+    entities: EntityManager, ephemeris: Ephemeris, celestialBodies: readonly CelestialBody[], t: number,
+  ): { id: string; state: KinematicState; hasMass: boolean; attractor: CelestialBody | null } | null {
+    const id = this.targetId;
+    if (id === null) return null;
+    const registry = ephemeris.registry;
+    if (id in registry && bodyDef(registry, id).kind !== 'star') {
+      const attractor = celestialBodies.find((a) => a.id === id);
+      if (attractor) return { id, state: attractor.state, hasMass: true, attractor };
+    }
+    const match = /^(.+)-l([1-5])$/.exec(id);
+    if (match) {
+      const secondary = match[1]!;
+      if (secondary in registry && bodyDef(registry, secondary).kind !== 'star') {
+        const point = `L${match[2]}` as keyof LagrangePoints;
+        return { id, state: ephemeris.lagrangeStateAt(secondary as OrbitingId, point, t), hasMass: false, attractor: null };
+      }
+    }
+    const entity = this.resolveEntity(id, entities);
+    return entity ? { id, state: entity.state, hasMass: false, attractor: null } : null;
   }
 
   // id が航法ターゲットになれる(軌道面が定まる)かどうか。

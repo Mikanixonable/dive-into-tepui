@@ -106,10 +106,9 @@ interface RowNode {
 }
 
 // マップビュー右部に常設の軌道オブジェクト一覧ウィンドウ。種別ごとの区画にタブ見出しで
-// 開閉し、行クリックで onSelect に id を渡す。天体区画は衛星・ラグランジュ点を親の下の
+// 開閉し、行クリックで選択状態をトグルする。天体区画は衛星・ラグランジュ点を親の下の
 // トグル子メニューへ格納する(衛星自身のラグランジュ点はさらにその衛星の子メニューへ)。
 export class ObjectListPanel {
-  public onSelect: ((id: string) => void) | null = null;
   public onFocus: ((id: string) => void) | null = null;
   public onNavTarget: ((id: string) => void) | null = null;
   public onSelectRight: ((id: string, clientX: number, clientY: number) => void) | null = null;
@@ -130,6 +129,7 @@ export class ObjectListPanel {
   private readonly matchedScratch: MapPickable[] = [];
   private readonly displayIdsScratch: string[] = [];
   private readonly idsInSectionScratch = new Set<string>();
+  private readonly clusterParentSeenScratch = new Set<string>();
   private readonly focusAncestorsScratch = new Set<string>();
   private readonly matchAncestorsScratch = new Set<string>();
   private readonly seenScratch = new Set<string>();
@@ -147,6 +147,7 @@ export class ObjectListPanel {
   private prevSort: ObjectListSort | null = null;
   private prevFilter: ObjectListFilter | null | undefined = undefined;
   private readonly breadcrumb: HTMLElement;
+  private readonly emptyState: HTMLElement;
   private readonly unsubscribeCollapsedView: () => void;
 
   public constructor(root: HTMLElement, registry: CelestialRegistry) {
@@ -237,6 +238,11 @@ export class ObjectListPanel {
       this.applyExpanded(section);
     }
 
+    this.emptyState = document.createElement('div');
+    this.emptyState.className = 'object-list-empty hidden';
+    this.emptyState.textContent = '該当するオブジェクトがありません';
+    body.appendChild(this.emptyState);
+
     hudRail(root, 'right').appendChild(this.panel);
     this.setVisible(false);
   }
@@ -246,6 +252,11 @@ export class ObjectListPanel {
   }
 
   public select(id: string | null): void { this.selectedId = id; }
+
+  // 行クリック用。同じ行を再度クリックしたときは選択を解除する。
+  private toggleSelect(id: string): void {
+    this.selectedId = this.selectedId === id ? null : id;
+  }
 
   // パネルを取り除き、折りたたみ状態変化の購読を解く。
   public dispose(): void {
@@ -309,11 +320,13 @@ export class ObjectListPanel {
       }
     }
 
+    let totalMatched = 0;
     for (const { kind, label } of SECTIONS) {
       const section = this.sections.get(kind)!;
       // 距離順では距離が動くだけで正しい並びが変わりうるので、保持している順序が
       // 今フレームの値でも整列条件を満たすかを確かめ、崩れた時だけ組み直す。
-      if (inputsChanged || !this.orderStillSorted(section.order.ids)) this.rebuildOrder(kind, section.order, items, parentOf);
+      const reordered = inputsChanged || !this.orderStillSorted(section.order.ids);
+      if (reordered) this.rebuildOrder(kind, section.order, items, parentOf);
       // 一致行を持つ区画自体が畳まれていれば、絞り込みの変化に合わせて開く。
       if (filteringActive && filterChanged && section.order.ids.length > 0 && !section.expanded) {
         if (section.savedExpanded === null) section.savedExpanded = section.expanded;
@@ -321,15 +334,17 @@ export class ObjectListPanel {
         this.applyExpanded(section);
       }
       this.syncHeader(section, kind, label);
+      totalMatched += section.order.ids.length;
 
       const seen = this.seenScratch;
       seen.clear();
       for (const id of section.order.rootIds) {
         seen.add(id);
-        this.syncRow(section.rows, id, section.order.childIds, focusId, section.body, focusAncestors, matchAncestors);
+        this.syncRow(section.rows, id, section.order.childIds, focusId, section.body, focusAncestors, matchAncestors, reordered);
       }
       this.pruneRows(section.rows, seen);
     }
+    this.emptyState.classList.toggle('hidden', !(filteringActive && totalMatched === 0));
     if (this.selectedId !== null && !items.some((i) => i.id === this.selectedId && this.matches(i))) this.selectedId = null;
   }
 
@@ -435,7 +450,7 @@ export class ObjectListPanel {
   // ids の各要素の親(未登場なら)を補った並びを返す — 親自身はフィルタを通っていなくても、
   // 親子ツリーにそのままクラスタ見出しとして乗せる。
   private withClusterParents(ids: readonly string[], parentOf: ReadonlyMap<string, string>): string[] {
-    const seenIds = this.idsInSectionScratch;
+    const seenIds = this.clusterParentSeenScratch;
     seenIds.clear();
     for (const id of ids) seenIds.add(id);
     const result = this.displayIdsScratch;
@@ -458,18 +473,22 @@ export class ObjectListPanel {
   }
 
   // id に対応する RowNode を(無ければ生成して)最新化し、続けてその子を再帰的に同期する。
-  // id が今フレームの候補に無ければ何もしない。
+  // id が今フレームの候補に無ければ何もしない。reorder は呼び出し元の区画の並びがこのフレームで
+  // 組み直されたか — 真なら既存行も並び順どおりの位置へ移す。
   private syncRow(
     rows: Map<string, RowNode>, id: string,
     childrenOf: ReadonlyMap<string, string[]>, focusId: string | undefined, container: HTMLElement,
-    focusAncestors: ReadonlySet<string>, matchAncestors: ReadonlySet<string>,
+    focusAncestors: ReadonlySet<string>, matchAncestors: ReadonlySet<string>, reorder: boolean,
   ): void {
     const item = this.itemsByIdScratch.get(id);
     if (!item) return;
     let node = rows.get(item.id);
+    const isNew = !node;
     if (!node) {
       node = this.createRowNode(item.id);
       rows.set(item.id, node);
+    }
+    if (isNew || reorder) {
       container.appendChild(node.row);
       container.appendChild(node.childrenContainer);
     }
@@ -482,6 +501,8 @@ export class ObjectListPanel {
     node.row.classList.toggle('tgt', item.id === focusId);
     node.row.classList.toggle('related-orbit', item.id === focusId);
     node.row.classList.toggle('on', item.id === this.selectedId);
+    // 衛星フィルタで添えたクラスタ見出し(親惑星自身はフィルタを通っていない)を淡色化する。
+    node.row.classList.toggle('cluster', !this.matches(item));
     node.row.setAttribute('aria-pressed', String(item.id === this.selectedId));
     node.row.setAttribute('aria-label', [item.name, detailText].filter(Boolean).join('、'));
 
@@ -497,7 +518,7 @@ export class ObjectListPanel {
     const seen = new Set<string>();
     for (const childId of children) {
       seen.add(childId);
-      this.syncRow(node.children, childId, childrenOf, focusId, node.childrenContainer, focusAncestors, matchAncestors);
+      this.syncRow(node.children, childId, childrenOf, focusId, node.childrenContainer, focusAncestors, matchAncestors, reorder);
     }
     this.pruneRows(node.children, seen);
   }
@@ -537,10 +558,10 @@ export class ObjectListPanel {
     row.setAttribute('role', 'button');
     row.setAttribute('aria-keyshortcuts', 'Enter Space F T');
     row.title = 'Enter / Space: 選択 · F: フォーカス · T: ナビ対象';
-    row.addEventListener('click', () => this.onSelect?.(id));
+    row.addEventListener('click', () => this.toggleSelect(id));
     row.addEventListener('dblclick', () => this.onFocus?.(id));
     row.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.onSelect?.(id); }
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.toggleSelect(id); }
       if (e.key.toLowerCase() === 'f') { e.preventDefault(); this.onFocus?.(id); }
       if (e.key.toLowerCase() === 't') { e.preventDefault(); this.onNavTarget?.(id); }
     });

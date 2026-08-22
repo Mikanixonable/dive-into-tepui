@@ -8,7 +8,7 @@ import { MQ_COARSE } from '../breakpoints';
 export const WIDGET_STYLE = `
 /* #hud 自体が pointer-events:none のため、対話要素はここで明示的に有効化する
    (#hud の外では既定で auto だが、明示しても害はない)。 */
-.w-btn, .w-toggle-track, .w-close, .w-input { pointer-events: auto; cursor: pointer; }
+.w-btn, .w-toggle-track, .w-close, .w-input, .w-select { pointer-events: auto; cursor: pointer; }
 .w-btn, .w-toggle, .w-close, .w-tabs, .w-group { user-select: none; }
 .w-input { cursor: text; }
 
@@ -69,6 +69,15 @@ export const WIDGET_STYLE = `
 }
 .w-input:hover { background: var(--surface-3); }
 .w-input:focus { background: var(--surface-3); border-color: var(--accent); }
+
+/* w-select: プルダウンのドロップダウン選択(見出し・反映ボタンは .w-group/.w-btn 側)。 */
+.w-select {
+  box-sizing: border-box; padding: var(--space-2) var(--space-3); font: inherit; font-size: var(--font-s);
+  color: var(--text); background: var(--surface-2); border: 1px solid transparent; border-radius: var(--radius-control);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+.w-select:hover { background: var(--surface-3); }
+.w-select:focus { background: var(--surface-3); border-color: var(--accent); }
 
 /* w-slider: つまみ型の連続値スライダー。トラックの寸法はパネル側の CSS が決める。 */
 .w-slider { pointer-events: auto; accent-color: var(--accent); }
