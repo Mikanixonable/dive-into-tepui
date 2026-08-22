@@ -9,9 +9,8 @@ import { OrbitalElements } from '../physics/elements';
 import { FloatingOrigin } from './floating-origin';
 import { Curve, CurveSampler } from '../render/curve';
 import { LineStyle } from '../render/line-style';
-import { FrameAnchorSource, ReferenceFrame, FrameTransform, toFrameDir } from '../physics/frame';
+import { FrameAnchorSource, ReferenceFrame, FrameTransform } from '../physics/frame';
 import type { Ephemeris } from '../physics/ephemeris';
-import { v3 } from '../physics/vec3';
 
 // Curve の頂点予算。楕円は閉曲線なので初期分割・分割上限のみで足り、固定サンプル数は持たない。
 const MAX_VERTICES = 4096;
@@ -29,7 +28,6 @@ export class OrbitLine {
   // 一切書き換えないことで、osculating 要素の微小なゆらぎによる楕円の振動を防ぐ。
   private snap: OrbitalElements | null = null;
   private snapFrame: ReferenceFrame | null = null;
-  private snapTf: FrameTransform | null = null;
   // Curve へ渡す revision。楕円を作り直すたびに新しいオブジェクトへ差し替える。
   private revision: object = {};
 
@@ -58,9 +56,9 @@ export class OrbitLine {
   }
 
   // 離心近点角 E=t·2π を軌道要素で位置へ写す、閉曲線サンプラ。読むのは snap で、
-  // revision が指す形状と焼かれる形状が常に一致する。頂点は中心天体からのオフセットのみを
-  // 持ち(方向変換 toFrameDir、原点移動なし)、中心天体自身の位置は毎フレーム sync が
-  // setTransform で足すので、ここでは中心天体が動いても古びない。
+  // revision が指す形状と焼かれる形状が常に一致する。頂点は常に中心天体相対・慣性系のまま
+  // 持ち、原点移動と回転フレームへの回転はどちらも sync が setTransform で Object3D 側に
+  // 与えるので、ここでは中心天体が動いても回転フレームが変わっても古びない。
   private readonly sampler: CurveSampler = (t, out) => {
     const el = this.snap;
     if (!el) return;
@@ -71,13 +69,7 @@ export class OrbitLine {
     const rx = el.pHat.x * x + el.qHat.x * y;
     const ry = el.pHat.y * x + el.qHat.y * y;
     const rz = el.pHat.z * x + el.qHat.z * y;
-
-    if (this.snapTf) {
-      const dFrame = toFrameDir(this.snapTf, v3(rx, ry, rz));
-      out.set(dFrame.x, dFrame.y, dFrame.z);
-    } else {
-      out.set(rx, ry, rz);
-    }
+    out.set(rx, ry, rz);
   };
 
   // 毎フレーム呼ぶ。fo = 描画のフローティングオリジン、camera = 画面上のサジッタを実距離へ
@@ -89,7 +81,6 @@ export class OrbitLine {
   ): void {
     if (!el || el.e >= 0.98 || !isFinite(el.a) || el.a <= 0) {
       this.snap = null;
-      this.snapTf = null;
       this.curve.setVisible(false);
       return;
     }
@@ -109,7 +100,6 @@ export class OrbitLine {
       this.revision = {};
       this.snap = el;
       this.snapFrame = frame ?? null;
-      this.snapTf = tf;
     }
 
     this.curve.setCurve(this.sampler, { revision: this.revision, camera });
