@@ -65,7 +65,7 @@ export class OrbitLine {
   sync(el: OrbitalElements | null, fo: FloatingOrigin, camera: THREE.Camera): void {
     this.el = el !== null && el.e < MAX_ECC && isFinite(el.a) && el.a > 0 ? el : null;
     if (this.el === null) {
-      this.curve.setVisible(false);
+      this.curve.clear();
       return;
     }
     this.curve.setTransform(fo.RtoThreeV3(this.el.center.state.r));
