@@ -41,8 +41,8 @@ const STYLE = `
   #hud .dg-window-header { cursor: default; }
 }
 #hud .dg-window-title-icon {
-  flex: 0 0 var(--glyph-1-3); width: var(--glyph-1-3); height: var(--glyph-1-3);
-  color: var(--text); font-size: var(--glyph-1-3); line-height: 1; margin-top: var(--space-1);
+  flex: 0 0 var(--font-m); width: var(--font-m); height: var(--font-m);
+  color: var(--text); font-size: var(--font-m); line-height: 1; text-align: center;
 }
 #hud .dg-window-title-icon svg { display: block; width: 100%; height: 100%; }
 #hud .dg-window-title { flex: 1; min-width: 0; }
@@ -58,6 +58,8 @@ const STYLE = `
 }
 #hud .dg-window-btn:hover { background: var(--surface-3); color: var(--accent-near); }
 #hud .dg-window-btn.clipped { background: var(--accent-fill); color: var(--accent); }
+#hud .dg-window.tgt { background: color-mix(in srgb, var(--accent-secondary) 16%, var(--glass-focus)); }
+#hud .dg-window.on { background: color-mix(in srgb, var(--accent) 16%, var(--glass-focus)); }
 `;
 
 let styleInjected = false;
@@ -225,6 +227,13 @@ export class DraggableWindow implements OverlayHandle {
       this.titleSubEl.style.display = subtitle ? 'block' : 'none';
       this.reclamp();
     }
+  }
+
+  // 対象が現在のターゲット/操作対象であることを示す帯び色。物体一覧パネルの erow.tgt/.on
+  // と同じ字面のクラスを、ウィンドウのルート要素に付け替える。
+  public setBadge(kind: 'tgt' | 'on' | null): void {
+    this.element.classList.toggle('tgt', kind === 'tgt');
+    this.element.classList.toggle('on', kind === 'on');
   }
 
   public get clipped(): boolean {

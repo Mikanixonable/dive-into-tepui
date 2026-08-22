@@ -263,6 +263,10 @@ export class PhysicalObjectListPanel {
 
   public select(id: string | null): void { this.selectedId = id; }
 
+  // プロパティウィンドウが自身の対象の行帯び色(.tgt/.on)を揃えるための問い合わせ。
+  public isTarget(id: string): boolean { return id === this.lastFocusId; }
+  public isSelected(id: string): boolean { return id === this.selectedId; }
+
   // 行クリック用。同じ行を再度クリックしたときは選択を解除する。
   private toggleSelect(id: string): void {
     this.selectedId = this.selectedId === id ? null : id;
