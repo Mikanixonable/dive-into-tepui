@@ -121,8 +121,8 @@ export class ViewOptionsPanel {
 
   private readonly bodyClassButtons: readonly (readonly [keyof BodyClassToggles, Button])[];
   private readonly bodyClassCategoryButtons: readonly (readonly [keyof BodyClassToggles, Button, HTMLElement])[];
-  // 各トグルの現在値の鏡映し。正本は setBodyClassToggles/setGridVisibility が毎フレーム受け取る
-  // 値側にあり、ここはクリック時に反転元として読むためだけに保つ。
+  // 各トグルの現在値の鏡映し。正本は setBodyClassToggles/setGridVisibility が状態変化のたびに
+  // 受け取る値側にあり、ここはクリック時に反転元として読むためだけに保つ。
   private readonly bodyClassCurrent = new Map<keyof BodyClassToggles, boolean>();
 
   private readonly gridButtons: readonly (readonly [keyof CelestialGridVisibility, Button])[];
