@@ -836,7 +836,7 @@ export class MapContextActions {
       },
       { key: 'follow', label: '計画実行', value: planExecutionLabel(ship.planExecution), collapsible: true },
       { key: 'hp', label: '装甲', value: `${Math.floor(ship.hp)} / ${ship.maxHp}` },
-      { key: 'temp', label: '温度', value: `${ship.thermal.hullTemp.toFixed(0)} K` },
+      { key: 'temp', label: '温度', value: `${ship.temperature.toFixed(0)} K` },
       { key: 'power', label: '電力', value: fmtEnergy(ship.power.chargeJ) },
       { key: 'ammo', label: '弾薬', value: fmtAmmoStatus(ship.roundsInMag, ship.magsLeft, ship.reloadTimer) },
       ...this.orbitRows(ship, celestialBodies),

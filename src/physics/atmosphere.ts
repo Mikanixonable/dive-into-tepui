@@ -1,7 +1,7 @@
 // 天体ごとの大気(基準楕円体・共回転・区分指数の密度モデル)と、その大気による高度・
-// 対気速度・抗力加速度・焼失判定。固有名詞を持たず、大気の中身はすべて呼び出し側が渡す
+// 対気速度・抗力加速度。固有名詞を持たず、大気の中身はすべて呼び出し側が渡す
 // Atmosphere に載っている。THREE/DOM 非依存の純粋関数。
-import { KinematicState } from './kinematic-state';
+
 import { Vec3, cross, dot, len, scale, sub, v3 } from './vec3';
 
 // 区分指数モデルの1層: [基準高度 h0 [m], 基準密度 ρ0 [kg/m^3], スケールハイト H [m]]。
@@ -64,6 +64,17 @@ export function airspeed(rRel: Vec3, vRel: Vec3, atm: Atmosphere): Vec3 {
   return sub(vRel, scale(cross(atm.pole, rRel), atm.spinRate));
 }
 
+// その物体が浴びている流れ。rRel/vRel は天体中心からの相対位置・速度。抗力・動圧・空力加熱は
+// どれもこの2つだけから決まる。
+export function airflow(
+  rRel: Vec3, vRel: Vec3, atm: Atmosphere,
+): { readonly density: number; readonly speed: number } {
+  return {
+    density: atmosphericDensity(ellipsoidAltitude(rRel, atm), atm),
+    speed: len(airspeed(rRel, vRel, atm)),
+  };
+}
+
 // 大気抵抗の加速度。rRel/vRel はその大気を持つ天体の中心からの相対位置・速度、bcInv は
 // 弾道係数の逆数 Cd·A/m(0 なら抵抗なし = ゼロベクトル)。dt はこの加速度が積分される刻み [s]。
 // 抗力は対気速度を減らすだけで反転させることはできないので、dt のあいだに奪う量を対気速度
@@ -81,21 +92,3 @@ export function dragAccel(rRel: Vec3, vRel: Vec3, bcInv: number, atm: Atmosphere
   return v3(vrx * k, vry * k, vrz * k);
 }
 
-// 位置 r で、大気の密度が maxDensity を上回っている天体。焼失は「濃い空気の中にいる」という
-// 連続量による状態なので、表面からの距離ではなく密度そのもので判定する — 同じ高度でも天体が
-// 違えば密度が違い、同じ密度でも高度が違う。maxDensity はその主体が耐えられる密度の上限。
-export function burnUpBody<T extends {
-  readonly state: KinematicState;
-  readonly atmosphere: Atmosphere | null;
-}>(
-  r: Vec3,
-  bodies: readonly T[],
-  maxDensity: number,
-): T | null {
-  for (const body of bodies) {
-    if (body.atmosphere === null) continue;
-    const rRel = sub(r, body.state.r);
-    if (atmosphericDensity(ellipsoidAltitude(rRel, body.atmosphere), body.atmosphere) > maxDensity) return body;
-  }
-  return null;
-}
