@@ -2,22 +2,22 @@
 import * as THREE from 'three/webgpu';
 import { createSun, Sun, SUN_DISTANCE, SUN_VISUAL_SIZE } from '../../render/stars';
 import { Ephemeris } from '../../physics/ephemeris';
-import { AttractorId } from '../../physics/attractor';
+import { CelestialBodyId } from '../../physics/celestial-body';
 import { norm, sub } from '../../physics/vec3';
 import { R_SUN } from '../../physics/solar-system';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
-import { CelestialBody } from './celestial-body';
+import { CelestialView } from './celestial-view';
 import type { GraphicsSettings } from '../../render/graphics-settings';
 
 const tmpSunPos = new THREE.Vector3();
 
-export class SunBody extends CelestialBody {
-  readonly id: AttractorId;
+export class SunView extends CelestialView {
+  readonly id: CelestialBodyId;
   private readonly sun: Sun = createSun();
 
   // id は恒星として振る舞う天体の id、radius は広範囲視点での実球体半径 [m]。
-  constructor(id: AttractorId = 'sun', private readonly radius: number = R_SUN) {
+  constructor(id: CelestialBodyId = 'sun', private readonly radius: number = R_SUN) {
     super();
     this.id = id;
   }
@@ -42,7 +42,7 @@ export class SunBody extends CelestialBody {
     const sunPos = ephemeris.positionOf(this.id, displayTime);
     if (cameraSystem.overviewMode) {
       // 広範囲視点は実スケール: 実 ECI 位置に実半径で置き、ビルボードは隠す
-      // (SphereBody の月・木星と同じ扱い)。
+      // (SphereView の月・木星と同じ扱い)。
       this.sun.mesh.position.copy(fo.RtoThreeV3(sunPos));
       this.sun.mesh.scale.setScalar(this.radius);
       this.sun.mesh.visible = true;

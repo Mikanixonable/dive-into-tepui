@@ -22,7 +22,7 @@ export type AmmoPickupInit =
 
 // 軌道上の補給(接近すると取り込んでベルトを延長できる)
 export class AmmoPickup extends GameEntity {
-  protected readonly bcInv = C.SMALL_DEBRIS_BCINV;
+  override readonly bcInv = C.SMALL_DEBRIS_BCINV;
   protected readonly srpCoeff = C.SMALL_DEBRIS_SRP_COEFF;
   protected readonly predictedForGhost = true;
 
@@ -37,9 +37,10 @@ export class AmmoPickup extends GameEntity {
       : { state: init.state, att: init.att, id: init.id };
     super(state, buildAmmoPickup(), scene, att, idAllocator.next(id));
     this.name = '弾薬';
-    this.mass = 50;
+    this.mass = 0; // 試験粒子。回収しに近づいた艦を押さない
     this.radius = C.AMMO_PHYS_RADIUS;
     this.collides = true;
+    this.contactDamageWeight = 0;
     this.marker = new EntityMarker(this, markerManager, 'mk-ammo', ENTITY_GLYPH.ammo, false);
   }
 

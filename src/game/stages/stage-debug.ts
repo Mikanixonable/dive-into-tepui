@@ -7,9 +7,6 @@ import * as C from '../const';
 import type { Player } from '../player/player';
 import type { EntityManager } from '../simulation/entity-manager';
 import { SimSpeedManager } from '../sim-speed-manager';
-import { Asteroid } from '../game-entity/asteroid';
-import { kinematicState } from '../../physics/kinematic-state';
-import { add, v3 } from '../../physics/vec3';
 import type { StageSaveData } from '../save-data';
 
 export class StageDebug extends Stage {
@@ -56,13 +53,6 @@ export class StageDebug extends Stage {
       this.logistics.spawnForPlayer(player, C.STAGE00_LOGISTICS_MIN_DIST, C.STAGE00_LOGISTICS_MAX_DIST);
     });
     this.addStatusPanelWidget(spawnAmmoBtn.element);
-
-    // 重力配線前の Asteroid の目視確認用: 自機付近に3体、離した位置へ配置する。
-    const asteroidOffsets = [v3(2000, 0, 0), v3(0, 2000, 0), v3(0, 0, 2000)];
-    for (const offset of asteroidOffsets) {
-      const state = kinematicState(player.state.t, add(player.state.r, offset), player.state.v);
-      entities.addAsteroid(new Asteroid(state, C.ASTEROID_TEST_MASS, C.ASTEROID_TEST_RADIUS, this._scene));
-    }
   }
 
   // 敵の行動を進め、射撃許可を毎フレーム自ステージの敵全体へ反映する。

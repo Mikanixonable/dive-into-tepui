@@ -5,7 +5,7 @@ import { test } from './harness';
 import { cassiniSpinAxis, meridianDirection, orthogonalizedTo } from '../../src/physics/body-orientation';
 import { ECL_POLE_ECI, raDecToEci } from '../../src/physics/ecliptic';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
-import { AttractorId } from '../../src/physics/attractor';
+import { CelestialBodyId } from '../../src/physics/celestial-body';
 import { bodyDef, MOON_OBLIQUITY, SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { Vec3, cross, dot, len, norm, scale, sub, v3 } from '../../src/physics/vec3';
 
@@ -13,7 +13,7 @@ const MOON_ORBIT_INC = (5.145 * Math.PI) / 180;
 const R2D = 180 / Math.PI;
 
 // 自転軸を持つ天体(地球は ECI の極軸そのもの、月はカッシーニ状態、残りは IAU の一次式)。
-const POLE_BODIES: readonly AttractorId[] = ['earth', 'moon', 'mercury', 'venus', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'];
+const POLE_BODIES: readonly CelestialBodyId[] = ['earth', 'moon', 'mercury', 'venus', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'];
 
 function angleBetween(a: Vec3, b: Vec3): number {
   return Math.acos(Math.min(1, Math.max(-1, dot(norm(a), norm(b)))));
@@ -55,7 +55,7 @@ export function register(): void {
     const nodePeriod = 18.612958 * 365.25 * 86400;
     for (let i = 0; i <= 12; i++) {
       const t = (i / 12) * nodePeriod;
-      const moon = ephemeris.attractorsAt(t).find((b) => b.id === 'moon')!;
+      const moon = ephemeris.celestialBodiesAt(t).find((b) => b.id === 'moon')!;
       const tilt = angleBetween(moon.degree2!.pole, ECL_POLE_ECI) * R2D;
       assert.ok(Math.abs(tilt - 1.543) < 0.01, `lunar obliquity at t=${t}: ${tilt} deg`);
     }
@@ -65,7 +65,7 @@ export function register(): void {
     // 自転軸を軌道面法線で代用していれば、この離角は 0 になる。
     const ephemeris = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0.2 });
     for (const t of [0, 5e7, 2e8]) {
-      const moon = ephemeris.attractorsAt(t).find((b) => b.id === 'moon')!;
+      const moon = ephemeris.celestialBodiesAt(t).find((b) => b.id === 'moon')!;
       const normal = ephemeris.orbitNormalAt('moon', t);
       const sep = angleBetween(moon.degree2!.pole, normal) * R2D;
       assert.ok(Math.abs(sep - 6.688) < 0.02, `spin-axis to orbit-normal separation at t=${t}: ${sep} deg`);
@@ -79,7 +79,7 @@ export function register(): void {
     let maxSep = 0;
     for (let i = 0; i <= 40; i++) {
       const t = (i / 40) * 27.321661 * 86400;
-      const moon = ephemeris.attractorsAt(t).find((b) => b.id === 'moon')!;
+      const moon = ephemeris.celestialBodiesAt(t).find((b) => b.id === 'moon')!;
       const longAxis = moon.degree2!.tesseral!.longAxis;
       assert.ok(Math.abs(dot(longAxis, moon.degree2!.pole)) < 1e-12, 'the long axis should stay perpendicular to the pole');
 
@@ -147,7 +147,7 @@ export function register(): void {
   test('ephemeris: the moon pole agrees with the cassini axis carried by its gravity field', () => {
     const ephemeris = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0.4 });
     for (const t of [0, 5e6, 2e8]) {
-      const gravityPole = ephemeris.attractorsAt(t).find((b) => b.id === 'moon')!.degree2!.pole;
+      const gravityPole = ephemeris.celestialBodiesAt(t).find((b) => b.id === 'moon')!.degree2!.pole;
       assert.ok(len(sub(ephemeris.poleAt('moon', t)!.axis, gravityPole)) < 1e-12, `moon pole disagreement at t=${t}`);
     }
   });

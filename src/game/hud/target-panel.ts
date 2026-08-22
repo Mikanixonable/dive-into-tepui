@@ -4,7 +4,7 @@
 // 整理し、同じ値を二重の書式で表示しない）。
 import { fmtDist, fmtSpeed } from './utils';
 import { relativeInfo } from './orbit-info';
-import type { Attractor } from '../../physics/attractor';
+import type { CelestialBody } from '../../physics/celestial-body';
 import type { Game } from '../game';
 
 const SYNC_INTERVAL_MS = 100;
@@ -23,7 +23,7 @@ export class TargetPanel {
 
   public constructor(private readonly els: ReadonlyMap<string, HTMLElement>) {}
 
-  public sync(game: Game, attractors: readonly Attractor[]): void {
+  public sync(game: Game, celestialBodies: readonly CelestialBody[]): void {
     const player = game.player;
     const target = player ? game.targeter.aliveTarget : null;
     // 表示/非表示はターゲット固定の有無に直結するので、更新間隔とは別に毎フレーム反映する。
@@ -37,7 +37,7 @@ export class TargetPanel {
       this.syncTarget(null);
       return;
     }
-    const relative = relativeInfo(player, target, attractors);
+    const relative = relativeInfo(player, target, celestialBodies);
     this.syncTarget({
       name: target.name,
       distanceM: relative.dist,

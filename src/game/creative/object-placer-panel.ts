@@ -10,16 +10,16 @@ import { sameSystemIds } from '../celestial/body-visibility';
 import { celestialBodyName } from '../hud/frame-labels';
 import { getApsisLabelSpec } from '../hud/orbit-labels';
 import { CollinearPoint } from '../../physics/halo';
-import { AttractorId } from '../../physics/attractor';
+import { CelestialBodyId } from '../../physics/celestial-body';
 import { bodyDef, primaryOf, CelestialRegistry, SOLAR_SYSTEM, MU_EARTH, R_EARTH, SIDEREAL_DAY, J2_EARTH } from '../../physics/solar-system';
-import type { OrbitingId } from '../../physics/attractor';
+import type { OrbitingId } from '../../physics/celestial-body';
 import { semiMajorFromPeriod } from '../../physics/elements';
 import type { PlacementFieldId, PlacementFieldIssue } from './placement-validation';
 import type { Ephemeris } from '../../physics/ephemeris';
 import * as C from '../const';
 
 export type ObjectType = 'player' | 'enemy' | 'ammo' | 'base';
-export type ReferenceAttractor = AttractorId;
+export type ReferenceCelestialBody = CelestialBodyId;
 export type SizeShapeMode = 'apsides' | 'semiMajorEcc' | 'periodEcc';
 export type PlacementMode = 'elements' | 'lagrange';
 export type LagrangeOrbitKind = 'halo' | 'lissajous';
@@ -33,7 +33,7 @@ export type EllipticSizeForm =
 // 軌道要素指定一式: 基準天体・サイズ/形(上記)・向き/位相。
 export type ElementsForm = {
   readonly placementMode: 'elements';
-  readonly attractor: ReferenceAttractor;
+  readonly celestialBody: ReferenceCelestialBody;
   readonly incDeg: number;
   readonly raanDeg: number;
   readonly argpDeg: number;
@@ -61,7 +61,7 @@ export type ObjectPlacerForm = { readonly objectType: ObjectType } & (ElementsFo
 // 'form' は種類を objectType に固定し、軌道要素一式をその値へ書き換える —
 // 軌道要素をそのまま引き継げる複製の経路。
 export type ObjectPlacerPreset =
-  | { readonly kind: 'body'; readonly attractor: ReferenceAttractor }
+  | { readonly kind: 'body'; readonly celestialBody: ReferenceCelestialBody }
   | { readonly kind: 'objectType'; readonly objectType: ObjectType }
   | { readonly kind: 'form'; readonly objectType: ObjectType; readonly form: ElementsForm };
 
@@ -92,8 +92,8 @@ function orbitingIdsOf(registry: CelestialRegistry): readonly OrbitingId[] {
 // 天体の候補をクラス別のまとまりへ組む。先頭は「いま選んでいる系」— 実際に選ばれるのは
 // ほぼ常に同じ系の別天体なので、1クリック目に置く。
 function bodyGroupsOf(
-  registry: CelestialRegistry, items: readonly (readonly [ReferenceAttractor, string])[], selected: ReferenceAttractor,
-): readonly ObjectPickerGroup<ReferenceAttractor>[] {
+  registry: CelestialRegistry, items: readonly (readonly [ReferenceCelestialBody, string])[], selected: ReferenceCelestialBody,
+): readonly ObjectPickerGroup<ReferenceCelestialBody>[] {
   const near0 = sameSystemIds(registry, selected);
   const near = items.filter(([id]) => near0.has(id));
   const byClass = (cls: BodyClass) => items.filter(([id]) => bodyClassOf(registry, id) === cls);
@@ -169,7 +169,7 @@ const MOON_LOW_ALT_KM = 100;
 // 軌道要素指定のサイズ/形プリセット。近地点+遠地点高度(円軌道は両方同値)と、向きを固定する
 // 軌道では傾斜角も併せて埋める。基準天体ごとに桁が違う軌道しか意味を持たないため天体単位で持つ。
 type SizePreset = { readonly label: string; readonly peAltKm: number; readonly apAltKm: number; readonly incDeg?: number };
-const PRESETS_BY_BODY: Partial<Record<ReferenceAttractor, readonly SizePreset[]>> = {
+const PRESETS_BY_BODY: Partial<Record<ReferenceCelestialBody, readonly SizePreset[]>> = {
   earth: [
     { label: '低軌道(LEO)', peAltKm: 400, apAltKm: 400 },
     { label: '静止軌道(GEO)', peAltKm: GEO_ALT_KM, apAltKm: GEO_ALT_KM, incDeg: 0 },
@@ -344,7 +344,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
   private readonly objectType: SegmentedControl<ObjectType>;
   private readonly placementMode: SegmentedControl<PlacementMode>;
   private readonly placementGroups: Record<PlacementMode, HTMLElement>;
-  private readonly attractor: ObjectPicker<ReferenceAttractor>;
+  private readonly celestialBody: ObjectPicker<ReferenceCelestialBody>;
   private readonly sizeMode: SegmentedControl<SizeShapeMode>;
   private readonly sizeGroups: Record<SizeShapeMode, HTMLElement>;
   private readonly nameInput: HTMLInputElement;
@@ -364,10 +364,10 @@ export class ObjectPlacerPanel implements OverlayHandle {
   private readonly libAx: HTMLInputElement;
   private readonly libAz: HTMLInputElement;
   private readonly refreshPresets: () => void;
-  private readonly attractorItems: readonly (readonly [ReferenceAttractor, string])[];
+  private readonly celestialBodyItems: readonly (readonly [ReferenceCelestialBody, string])[];
   // 基地は敵の射程となる惑星近傍を避けるため、軌道要素指定の基準天体は月だけに絞る
   // (地球・木星は選択肢自体を出さない — placement-validation.ts の validateBaseReferenceFields と対にする)。
-  private readonly baseAttractorItems: readonly (readonly [ReferenceAttractor, string])[];
+  private readonly baseCelestialBodyItems: readonly (readonly [ReferenceCelestialBody, string])[];
   private readonly lagrangeSystemItems: readonly (readonly [OrbitingId, string])[];
   private readonly issueList: HTMLElement;
   private issueRows: readonly HTMLElement[] = [];
@@ -375,7 +375,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
 
   private objectTypeValue: ObjectType = 'player';
   private placementModeValue: PlacementMode = 'elements';
-  private attractorValue: ReferenceAttractor = 'earth';
+  private celestialBodyValue: ReferenceCelestialBody = 'earth';
   private sizeModeValue: SizeShapeMode = 'apsides';
   private lagrangeSecondaryValue: OrbitingId = 'moon';
   private lagrangePointValue: CollinearPoint = 'L1';
@@ -395,8 +395,8 @@ export class ObjectPlacerPanel implements OverlayHandle {
     this.registry = ephemeris.registry;
     this.popupRoot = popupRoot;
     const orbitingIds = orbitingIdsOf(ephemeris.registry);
-    this.attractorItems = orbitingIds.map((id) => [id, celestialBodyName(id)] as const);
-    this.baseAttractorItems = this.attractorItems.filter(([id]) => id === 'moon');
+    this.celestialBodyItems = orbitingIds.map((id) => [id, celestialBodyName(id)] as const);
+    this.baseCelestialBodyItems = this.celestialBodyItems.filter(([id]) => id === 'moon');
     this.lagrangeSystemItems = lagrangeSystemItemsOf(ephemeris, orbitingIds);
 
     this.panel = document.createElement('div');
@@ -420,7 +420,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
     this.panel.appendChild(this.placementMode.element);
 
     const elements = this.buildElementsGroup();
-    this.attractor = elements.attractor;
+    this.celestialBody = elements.celestialBody;
     this.sizeMode = elements.sizeMode;
     this.sizeGroups = elements.sizeGroups;
     this.peAlt = elements.peAlt;
@@ -466,7 +466,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
   // 呼び出し側は返った sizeGroups を this.sizeGroups へ代入してから selectSizeMode を呼ぶ必要がある。
   private buildElementsGroup(): {
     element: HTMLElement;
-    attractor: ObjectPicker<ReferenceAttractor>;
+    celestialBody: ObjectPicker<ReferenceCelestialBody>;
     sizeMode: SegmentedControl<SizeShapeMode>;
     sizeGroups: Record<SizeShapeMode, HTMLElement>;
     peAlt: SliderRow;
@@ -482,14 +482,14 @@ export class ObjectPlacerPanel implements OverlayHandle {
     refreshPresets: () => void;
   } {
     const elementsGroup = document.createElement('div');
-    const attractorControl = new ObjectPicker<ReferenceAttractor>(this.popupRoot, '基準天体', (v) => {
-      this.attractorValue = v;
-      attractorControl.setSelected(v);
+    const celestialBodyControl = new ObjectPicker<ReferenceCelestialBody>(this.popupRoot, '基準天体', (v) => {
+      this.celestialBodyValue = v;
+      celestialBodyControl.setSelected(v);
       this.refreshPresets();
     }, this.overlayManager);
-    attractorControl.setGroups(bodyGroupsOf(this.registry, this.attractorItems, this.attractorValue));
-    attractorControl.setSelected(this.attractorValue);
-    elementsGroup.appendChild(attractorControl.element);
+    celestialBodyControl.setGroups(bodyGroupsOf(this.registry, this.celestialBodyItems, this.celestialBodyValue));
+    celestialBodyControl.setSelected(this.celestialBodyValue);
+    elementsGroup.appendChild(celestialBodyControl.element);
 
     const sizeMode = new SegmentedControl('サイズ/形', SIZE_MODE_ITEMS, (v) => this.selectSizeMode(v));
 
@@ -518,8 +518,8 @@ export class ObjectPlacerPanel implements OverlayHandle {
     const presetRow = document.createElement('div');
     presetRow.className = 'w-group preset-row';
     const refreshPresets = (): void => {
-      const peSpec = getApsisLabelSpec('pe', this.attractorValue);
-      const apSpec = getApsisLabelSpec('ap', this.attractorValue);
+      const peSpec = getApsisLabelSpec('pe', this.celestialBodyValue);
+      const apSpec = getApsisLabelSpec('ap', this.celestialBodyValue);
       peAlt.setLabel(`${peSpec.nameJa}高度 [km]`);
       apAlt.setLabel(`${apSpec.nameJa}高度 [km]`);
       sizeMode.setItems([
@@ -528,7 +528,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
         ['periodEcc', '周期+離心率'],
       ]);
       presetRow.innerHTML = '';
-      const presets = PRESETS_BY_BODY[this.attractorValue] ?? [];
+      const presets = PRESETS_BY_BODY[this.celestialBodyValue] ?? [];
       presetRow.classList.toggle('hidden', presets.length === 0);
       if (presets.length === 0) return;
       const heading = document.createElement('span');
@@ -565,7 +565,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
 
     refreshPresets();
 
-    return { element: elementsGroup, attractor: attractorControl, sizeMode, sizeGroups, peAlt, apAlt, semiMajor, eccSemiMajor, period, eccPeriod, inc, raan, argp, nu, refreshPresets };
+    return { element: elementsGroup, celestialBody: celestialBodyControl, sizeMode, sizeGroups, peAlt, apAlt, semiMajor, eccSemiMajor, period, eccPeriod, inc, raan, argp, nu, refreshPresets };
   }
 
   // ラグランジュ点指定(ハロー/リサジュー)の一式を1つの div にまとめて返す。
@@ -639,12 +639,12 @@ export class ObjectPlacerPanel implements OverlayHandle {
     this.objectTypeValue = v;
     this.objectType.setSelected(v);
     if (v === 'base') {
-      if (this.attractorValue !== 'moon') this.attractorValue = 'moon';
-      this.attractor.setGroups([{ label: '', items: this.baseAttractorItems }]);
+      if (this.celestialBodyValue !== 'moon') this.celestialBodyValue = 'moon';
+      this.celestialBody.setGroups([{ label: '', items: this.baseCelestialBodyItems }]);
     } else {
-      this.attractor.setGroups(bodyGroupsOf(this.registry, this.attractorItems, this.attractorValue));
+      this.celestialBody.setGroups(bodyGroupsOf(this.registry, this.celestialBodyItems, this.celestialBodyValue));
     }
-    this.attractor.setSelected(this.attractorValue);
+    this.celestialBody.setSelected(this.celestialBodyValue);
     this.refreshPresets();
   }
 
@@ -712,7 +712,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
     }
     const common = {
       placementMode: 'elements' as const,
-      attractor: this.attractorValue,
+      celestialBody: this.celestialBodyValue,
       incDeg: Number(this.inc.input.value),
       raanDeg: Number(this.raan.input.value),
       argpDeg: Number(this.argp.input.value),
@@ -751,7 +751,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
       case 'raan': return this.raan.element;
       case 'argumentOfPeriapsis': return this.argp.element;
       case 'trueAnomaly': return this.nu.element;
-      case 'referenceAttractor': return this.attractor.element;
+      case 'referenceCelestialBody': return this.celestialBody.element;
       case 'inPlaneAmplitude': return this.libAx.parentElement as HTMLElement;
       case 'outOfPlaneAmplitude': return this.libAz.parentElement as HTMLElement;
     }
@@ -789,10 +789,10 @@ export class ObjectPlacerPanel implements OverlayHandle {
     } else if (preset?.kind === 'objectType') {
       this.selectObjectType(preset.objectType);
     } else if (preset?.kind === 'body') {
-      const allowed = this.objectTypeValue === 'base' ? this.baseAttractorItems : this.attractorItems;
-      if (allowed.some(([id]) => id === preset.attractor)) {
-        this.attractorValue = preset.attractor;
-        this.attractor.setSelected(this.attractorValue);
+      const allowed = this.objectTypeValue === 'base' ? this.baseCelestialBodyItems : this.celestialBodyItems;
+      if (allowed.some(([id]) => id === preset.celestialBody)) {
+        this.celestialBodyValue = preset.celestialBody;
+        this.celestialBody.setSelected(this.celestialBodyValue);
         this.refreshPresets();
       }
     }
@@ -822,7 +822,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
   dispose(): void {
     this.close();
     this.panel.remove();
-    this.attractor.dispose();
+    this.celestialBody.dispose();
     this.lagrangeSecondary.dispose();
   }
 
@@ -842,12 +842,12 @@ export class ObjectPlacerPanel implements OverlayHandle {
     row.rebase?.();
   }
 
-  // 軌道要素一式をフォームへ書き込む。form.attractor は呼び出し側 (open) が現在の種類で選べる
+  // 軌道要素一式をフォームへ書き込む。form.celestialBody は呼び出し側 (open) が現在の種類で選べる
   // 基準天体であることを保証済みの前提で、確認なしにそのまま書き込む。
   private applyElementsForm(form: ElementsForm): void {
     this.selectPlacementMode('elements');
-    this.attractorValue = form.attractor;
-    this.attractor.setSelected(this.attractorValue);
+    this.celestialBodyValue = form.celestialBody;
+    this.celestialBody.setSelected(this.celestialBodyValue);
     this.refreshPresets();
     this.selectSizeMode(form.sizeMode);
 
