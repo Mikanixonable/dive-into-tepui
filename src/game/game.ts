@@ -330,8 +330,11 @@ export class Game {
       this.frameAnchors,
     );
     this.sections.exit(SECTION.camera);
-    // カメラ更新の後に置く: 候補集合と表示可否はカメラ位置から出るので、先に組むと
-    // このフレームの sync が1フレーム古いカメラ位置基準の判定を読むことになる。
+    // カメラ更新の後に置く: mapPickables.refresh が読む近傍系抽出・遮蔽判定・可視マーカー更新は
+    // cameraSystem.activeCameraPos を使うので、先に組むとこのフレームの sync が1フレーム古い
+    // カメラ位置基準の判定を読むことになる。フォーカス解決(候補配列を機体の位置として読むこと)
+    // はこの順序に依存しない — resolveFocusTarget が機体・役割トークンを frameAnchors.stateOf
+    // で直接解決するため、mapPickables.refresh を先に呼んでも遅延は生じない。
     this.sections.enter(SECTION.mapPick);
     this.mapPickables.refresh(displayWindow);
     this.sections.exit(SECTION.mapPick);
@@ -383,8 +386,6 @@ export class Game {
       this.simSpeedManager.canResolvePhysicalCollisions, this.nanWatchdog);
     this.sections.exit(SECTION.integrate);
     this.docking.updateDockedPhysics();
-    // 積分後の状態でこのフレームの表示窓を確定させ、以降の消費者へ共有する。
-    this.displayWindowManager.resolve(this.simulator.simTime, this.activeControllableEntity);
     // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全エンティティを見る。
     this.nanWatchdog.checkAll('simulator.advance', this.player, this.entities, this.simulator.simTime, dt, simDt);
 
@@ -460,8 +461,9 @@ export class Game {
   sync(): void {
     const activeControllable = this.activeControllableEntity;
     const player = this.player;
-    // 積分が終わった状態でこのフレームの表示窓を確定させ、sync 全体で共有する。
-    const displayWindow = this.displayWindowManager.resolve(this.simulator.simTime, activeControllable);
+    // update() と sync() は同一の animate() 呼び出し内で同期的に実行されるため、
+    // update() が確定させた表示窓をそのまま読める。
+    const displayWindow = this.displayWindowManager.current;
     this.viewBadge.sync(this.activeStage.stageClass.selectLabel);
     // 原点(位置)はアクティブカメラの ECI 位置 — cameraSystem.update() は update フェーズの
     // 毎フレーム呼ばれるので、この sync の時点で activeCameraPos は確定済み。
