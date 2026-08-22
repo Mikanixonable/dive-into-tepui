@@ -1,7 +1,7 @@
 // Creative のフォーム入力をDOMやTHREEに依存せず検証する小さな境界。
 import { semiMajorFromPeriod } from '../../physics/elements';
 import { CelestialBodyId } from '../../physics/celestial-body';
-import { getApsisLabelSpec } from '../hud/orbit-labels';
+import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
 
 // UI 側が「どの入力欄が悪いか」を示すための識別子。
 export type PlacementFieldId =

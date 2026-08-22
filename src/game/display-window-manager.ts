@@ -5,9 +5,9 @@
 // ならない — 座標系が消費者ごとに違えば同じ画面に並べた線が比較できず、表示時刻が違えば
 // メッシュとマーカーが別の瞬間を指す。
 import * as C from './const';
-import { PredictPanel } from './hud/predict-panel';
-import { buildTicks } from './hud/tick-scale';
-import type { TickLabelMode } from './hud/calendar-ticks';
+import { PredictPanel } from './hud/panels/predict-panel';
+import { buildTicks } from './hud/orbit/tick-scale';
+import type { TickLabelMode } from './hud/orbit/calendar-ticks';
 import { strongestAttractor } from '../physics/celestial-body';
 import { ReferenceFrame } from '../physics/frame';
 import type { Ephemeris } from '../physics/ephemeris';

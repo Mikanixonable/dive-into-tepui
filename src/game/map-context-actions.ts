@@ -5,20 +5,21 @@
 import { Hud } from './hud/hud';
 import { Base } from './game-entity/base';
 import { fmtAmmoStatus, fmtDist, fmtEnergy, fmtSpeed, fmtTime } from './hud/utils';
-import { orbitInfo, relativeInfo } from './hud/orbit-info';
+import { orbitInfo, relativeInfo } from './hud/orbit/orbit-info';
 import { autoOrbitReference } from './orbit-reference';
-import { ContextMenu, MenuItem } from './hud/context-menu';
-import { PropertyRow, PropertyWindow, PropertyWindowContent, PropertyWindowItem } from './hud/property-window';
+import {
+  ContextMenu, MenuItem, PropertyRow, PropertyWindow, PropertyWindowContent, PropertyWindowItem,
+  MenuAction, MenuCommon, type PauseMenu,
+} from './hud/windows';
 import { TEMP_WINDOW_GROUP } from './hud/overlay-manager';
-import { MenuAction, MenuCommon } from './hud/menu-actions';
-import { celestialBodyName } from './hud/frame-labels';
+import { celestialBodyName } from './hud/frame/frame-labels';
 import { LAGRANGE_ID, lagrangeParentId } from './hud/object-groups';
 import { bodyClassOf } from './celestial/body-class';
 import { ENTITY_GLYPH, ORBIT_POINT_GLYPH, bodyEntityGlyph } from './marker/marker-glyphs';
 import { baseMarkerSvg, shipMarkerSvg } from './marker/marker-shapes';
 import { MapPickable, pickNearest } from './map-pickable';
 import { focusTargetId } from './camera/focus-target';
-import { PhysicalObjectListPanel } from './hud/physical-object-list-panel';
+import { PhysicalObjectListPanel } from './hud/panels/physical-object-list-panel';
 import type { Input } from './input/input';
 import { pickRadiusSq } from './input/pointer-precision';
 import { EntityManager } from './simulation/entity-manager';
@@ -27,11 +28,10 @@ import { NavTarget } from './nav-target';
 import { CameraSystem } from './camera/camera-system';
 import { PlanEditor } from './plan/plan-editor';
 import { SimSpeedManager } from './sim-speed-manager';
-import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from './hud/orbit-labels';
-import type { PauseMenu } from './hud/pause-menu';
+import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from './hud/orbit/orbit-labels';
 import type { Docking } from './docking';
 import type { ActivePlayerController } from './active-player-controller';
-import type { FrameControls } from './hud/frame-controls';
+import type { FrameControls } from './hud/frame/frame-controls';
 import type { Stage } from './stages/stage';
 import { Player, planExecutionLabel, type PlanExecutionMode } from './player/player';
 import type { GameEntity } from './game-entity/game-entity';
