@@ -1,9 +1,10 @@
 // マップモードの「軌道フレーム」パネル。計画折れ線・予測軌道線の描画基準(中心天体・回転系)とカメラ追随設定を担当する。
 import type { Ephemeris } from '../../physics/ephemeris';
+import { FrameRole, frameRoleOf } from '../../physics/frame';
 import { AnchorZone } from './anchor-zone';
 import { RotationZone } from './rotation-zone';
 import { ToggleSwitch } from './widgets';
-import { celestialBodyName } from './frame-labels';
+import { celestialBodyName, frameRoleName, rotationSourceLabel } from './frame-labels';
 import { hudRail } from './hud-root';
 import type { MapPickable } from '../map-pickable';
 import type { DisplayWindowManager } from '../display-window-manager';
@@ -41,7 +42,7 @@ export class TrajectoryFramePanel {
 
     // 描く線は必ずどこかの座標系に焼き込まれるので「どこにも固定しない」状態が無く、
     // 太陽系空間への固定はプルダウンの恒星そのものにあたる。
-    this.planCenterZone = new AnchorZone(popupRoot, '基準天体', ephemeris, null, overlayManager);
+    this.planCenterZone = new AnchorZone(popupRoot, '基準', ephemeris, null, overlayManager);
     this.planCenterZone.element.classList.add('hud-frame-scroll-zone', 'hud-frame-origin-zone');
     this.planCenterZone.onSelect = (id) => {
       if (id === null) return;
@@ -66,20 +67,24 @@ export class TrajectoryFramePanel {
   }
 
   private orbitSummaryText(): string {
-    const planCenter = celestialBodyName(this.displayWindow.frame.center);
+    const centerId = this.displayWindow.frame.center;
+    const centerRole = frameRoleOf(centerId);
+    const planCenter = centerRole !== null ? frameRoleName(centerRole) : celestialBodyName(centerId);
     const planRot = this.displayWindow.frame.rotatingWith;
-    const rotText = (id: string | null): string => (id === null ? '慣性系' : `${celestialBodyName(id)}回転系`);
-    return `基準: ${planCenter}・${rotText(planRot)}`;
+    return `基準: ${planCenter}・${rotationSourceLabel(planRot)}`;
   }
 
-  public sync(pickables: readonly MapPickable[], members: readonly string[], isVisible: boolean): void {
+  public sync(
+    pickables: readonly MapPickable[], members: readonly string[], displayTime: number,
+    validRoles: readonly FrameRole[], isVisible: boolean,
+  ): void {
     this.panel.classList.toggle('hidden', !isVisible);
     if (!isVisible) return;
 
     this.planCenterZone.setItems(pickables);
     this.planCenterZone.setNearby(members, pickables);
     this.planCenterZone.setSelected(this.displayWindow.frame.center);
-    this.planRotationZone.setNearby(members);
+    this.planRotationZone.setNearby(members, displayTime, validRoles);
     this.planRotationZone.setSelected(this.displayWindow.frame.rotatingWith);
 
     this.followToggle.setOn(this.followCamera);

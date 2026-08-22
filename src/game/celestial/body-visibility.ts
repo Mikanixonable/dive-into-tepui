@@ -5,9 +5,9 @@
 // 可視性・選択候補はいずれもフォーカス天体という離散的な状態からの親子関係で決める(ズーム
 // 距離のような連続量で判定すると操作の途中で行が明滅する)。systemChainAt だけはカメラ位置
 // という連続量から系の呼び名を導く — 表示を絞る判定ではなく、いまいる場所の説明であるため。
-import { CelestialBody, CelestialBodyId, strongestAttractor } from '../../physics/celestial-body';
-import { CelestialRegistry, primaryOf } from '../../physics/solar-system';
-import { Vec3 } from '../../physics/vec3';
+import { CelestialBody, CelestialBodyId, attractorAccel, strongestAttractor } from '../../physics/celestial-body';
+import { CelestialRegistry, bodyDef, primaryOf } from '../../physics/solar-system';
+import { Vec3, lenSq } from '../../physics/vec3';
 import { BodyClass, bodyClassOf } from './body-class';
 
 // クラスごとの表示トグル。恒星は常に見えるのでトグルを持たない(太陽系の基準点であり、
@@ -126,7 +126,10 @@ export function isPositionInFocusedSystem(
 
   const focusDef = registry[focusId];
   const systemFocusId = focusDef.kind === 'satellite' ? primaryOf(registry, focusId) : focusId;
-  let current: CelestialBodyId | null = strongestAttractor(position, celestialBodies).id;
+  const initial = strongestAttractor(position, celestialBodies).id;
+  // 太陽を直接周回中でどの惑星系にも属さない対象は、どの惑星がフォーカスされていても常に含める。
+  if (bodyDef(registry, initial).kind === 'star') return true;
+  let current: CelestialBodyId | null = initial;
   // 壊れた親子定義でも停止するよう、レジストリ数を上限にする。
   for (let i = 0; current !== null && i <= Object.keys(registry).length; i++) {
     if (current === systemFocusId) return true;
@@ -207,17 +210,18 @@ export function systemChainAt(
 ): readonly CelestialBodyId[] {
   if (celestialBodies.length === 0) return [];
   const nearest = strongestAttractor(cameraPos, celestialBodies).id;
+  return chainFromNearest(registry, nearest);
+}
+
+function chainFromNearest(registry: CelestialRegistry, nearest: CelestialBodyId): readonly CelestialBodyId[] {
   if (registry[nearest] === undefined) return [nearest];
   return ancestorsOf(registry, nearest);
 }
 
-// systemChainAt の列に、各天体の子(恒星の子は除く)を合わせた集合。近い順・各天体→その子の
-// 順に並ぶ配列で返す(呼び出し側の選択肢が毎フレーム揺れないよう順序を固定する)。恒星の子は
-// 足さない — 足すと太陽を含む列で全惑星が並んでしまうため。
-export function systemMembersAt(
-  registry: CelestialRegistry, cameraPos: Vec3, celestialBodies: readonly CelestialBody[],
-): readonly CelestialBodyId[] {
-  const chain = systemChainAt(registry, cameraPos, celestialBodies);
+// chain の列に、各天体の子(恒星の子は除く)を合わせた集合。近い順・各天体→その子の順に並ぶ
+// 配列で返す(呼び出し側の選択肢が毎フレーム揺れないよう順序を固定する)。恒星の子は足さない
+// — 足すと太陽を含む列で全惑星が並んでしまうため。
+function membersFromChain(registry: CelestialRegistry, chain: readonly CelestialBodyId[]): readonly CelestialBodyId[] {
   const seen = new Set<CelestialBodyId>();
   const result: CelestialBodyId[] = [];
   for (const id of chain) {
@@ -233,4 +237,43 @@ export function systemMembersAt(
     }
   }
   return result;
+}
+
+// systemChainAt の列に、各天体の子(恒星の子は除く)を合わせた集合。
+export function systemMembersAt(
+  registry: CelestialRegistry, cameraPos: Vec3, celestialBodies: readonly CelestialBody[],
+): readonly CelestialBodyId[] {
+  return membersFromChain(registry, systemChainAt(registry, cameraPos, celestialBodies));
+}
+
+// strongestAttractor をそのまま「いまいる系」の判定に使うと、勢力圏が極端に狭い天体(主星から
+// 極端に近い衛星など)ではフレームごとの浮動小数点誤差やカメラの微小な移動だけで最強天体が
+// 入れ替わり、系のラベルが明滅する(MAP.md 4節)。このトラッカーは直前フレームの勝者を
+// STICKY_MARGIN_SQ 倍まで有利に扱い、新しい候補が明確に優勢でない限り系を切り替えない。
+// per-frame で呼ぶ側(FocusMarkers・MapPickables など)がインスタンスを保持して使うこと。
+const STICKY_MARGIN_SQ = 1.2 * 1.2;
+
+export class NearbySystemTracker {
+  private previousId: CelestialBodyId | null = null;
+
+  chainAt(registry: CelestialRegistry, cameraPos: Vec3, celestialBodies: readonly CelestialBody[]): readonly CelestialBodyId[] {
+    if (celestialBodies.length === 0) return [];
+    const nearest = this.pickNearest(cameraPos, celestialBodies);
+    this.previousId = nearest;
+    return chainFromNearest(registry, nearest);
+  }
+
+  membersAt(registry: CelestialRegistry, cameraPos: Vec3, celestialBodies: readonly CelestialBody[]): readonly CelestialBodyId[] {
+    return membersFromChain(registry, this.chainAt(registry, cameraPos, celestialBodies));
+  }
+
+  private pickNearest(cameraPos: Vec3, celestialBodies: readonly CelestialBody[]): CelestialBodyId {
+    const best = strongestAttractor(cameraPos, celestialBodies);
+    if (this.previousId === null || this.previousId === best.id) return best.id;
+    const previous = celestialBodies.find((a) => a.id === this.previousId);
+    if (previous === undefined) return best.id;
+    const bestAccel = lenSq(attractorAccel(cameraPos, best, best.state.t));
+    const prevAccel = lenSq(attractorAccel(cameraPos, previous, previous.state.t));
+    return bestAccel > prevAccel * STICKY_MARGIN_SQ ? best.id : previous.id;
+  }
 }
