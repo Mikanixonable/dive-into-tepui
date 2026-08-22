@@ -25,7 +25,7 @@ import { Predictor } from './simulation/predictor';
 import { Input } from './input/input';
 import { TouchControls } from './input/touch';
 import { Hud } from './hud/hud';
-import { PauseMenu } from './hud/pause-menu';
+import { PauseMenu } from './hud/windows/pause-menu';
 import { WorldSfx } from '../audio/sfx/world-sfx';
 import { UiSfx } from '../audio/sfx/ui-sfx';
 import { GameScene } from '../render/scene';
@@ -45,7 +45,7 @@ import { GameSaveData } from './save-data';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import { Docking } from './docking';
 import { ViewBadge } from './hud/view-badge';
-import { FrameControls } from './hud/frame-controls';
+import { FrameControls } from './hud/frame/frame-controls';
 import { CombatHudController, MapHudController } from './hud/view-hud-controller';
 
 export class Game {
