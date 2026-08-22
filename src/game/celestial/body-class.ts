@@ -85,7 +85,6 @@ const BODY_CLASSES: Record<SolarSystemId, BodyClass> = {
   eros: 'smallBody',
   ryugu: 'smallBody',
   bennu: 'smallBody',
-  churyumov: 'smallBody',
   orcus: 'dwarf',
   vanth: 'satellite',
   gonggong: 'dwarf',
