@@ -1,12 +1,12 @@
 // マップ上の航法ターゲット(任意の MapPickable)の保持と、自機軌道との相対 AN/DN(昇交点・
 // 降交点)の算出・マーカー表示・被選択物としての公開。Targeter の戦闘ターゲット(Enemy 専用)
 // とは独立に、月・ラグランジュ点なども対象にできる。
-import { Vec3, v3 } from '../physics/vec3';
+import { Vec3, v3, add } from '../physics/vec3';
 import { KinematicState } from '../physics/kinematic-state';
 import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from '../physics/elements';
-import { Attractor, OrbitingId, frameOfAttractor, frameOfAttractorAt, strongestAttractor } from '../physics/attractor';
+import { Attractor, OrbitingId, frameOfAttractor, strongestAttractor } from '../physics/attractor';
 import type { LagrangePoints } from '../physics/lagrange';
-import { frameKinematicState, toFrameState, toInertialState, unbakeToDisplayPoint } from '../physics/frame';
+import { toFrameState, unbakeToDisplayPoint } from '../physics/frame';
 import { bodyDef } from '../physics/solar-system';
 import type { Ephemeris } from '../physics/ephemeris';
 import { qRotate } from '../physics/attitude';
@@ -89,10 +89,11 @@ export class NavTarget {
 
   // 自機軌道要素と対象の軌道面法線から相対 AN/DN の位置・通過時刻を求め直す。
   // 対象の軌道面が定まらない(地球・太陽自身など)場合や自機軌道要素が無い場合は両方 null にする。
-  // positionOnOrbit は中心天体基準の相対位置を返すので、frameOfAttractorAt + toInertialState で
-  // 絶対 ECI 位置へ直す — 中心天体の位置を通過時刻 anT/dnT へ外挿してから un-bake しないと、
-  // 月周回では通過までの間に月自身が動いたぶんずれる。位置は通過時刻で bake し、
-  // displayWindow の表示時刻で un-bake して描画座標系へ移す。
+  // positionOnOrbit は中心天体基準の相対位置を返すので、ephemeris.positionOf で通過時刻
+  // anT/dnT における中心天体の精密な ECI 位置を求めて足し合わせ、絶対位置に直す — 概算の弾道
+  // 外挿(attractorPositionAt)を使うと、表示側が精密暦で un-bake するのと基準がずれて、
+  // 月周回では通過までの時間ぶん位置がずれる。位置は通過時刻で bake し、displayWindow の
+  // 表示時刻で un-bake して描画座標系へ移す。
   update(
     player: Player | null, entities: EntityManager, ephemeris: Ephemeris, displayWindow: DisplayWindow,
   ): void {
@@ -120,14 +121,8 @@ export class NavTarget {
     const nu0 = trueAnomalyAt(playerEl, toFrameState(tf, player.state).r);
     const anT = simTime + tofBetween(playerEl, nu0, nodes.asc);
     const dnT = simTime + tofBetween(playerEl, nu0, nodes.desc);
-    const anEci = toInertialState(
-      frameOfAttractorAt(playerCenter, anT), anT,
-      frameKinematicState(positionOnOrbit(playerEl, nodes.asc), v3(0, 0, 0)),
-    ).r;
-    const dnEci = toInertialState(
-      frameOfAttractorAt(playerCenter, dnT), dnT,
-      frameKinematicState(positionOnOrbit(playerEl, nodes.desc), v3(0, 0, 0)),
-    ).r;
+    const anEci = add(ephemeris.positionOf(playerCenter.id, anT), positionOnOrbit(playerEl, nodes.asc));
+    const dnEci = add(ephemeris.positionOf(playerCenter.id, dnT), positionOnOrbit(playerEl, nodes.desc));
     const unbakeTf = ephemeris.frameTransformAt(frame, displayTime, this.attractors);
     const toDisplay = (r: Vec3, t: number): Vec3 =>
       unbakeToDisplayPoint(unbakeTf, ephemeris.frameTransformAt(frame, t, this.attractors), r);
