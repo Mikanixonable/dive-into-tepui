@@ -10,7 +10,6 @@ import { Hud } from '../../hud/hud';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { UiSfx } from '../../../audio/sfx/ui-sfx';
 import { Player } from '../../player/player';
-import { MarkerManager } from '../../marker/marker-manager';
 import type { EntityManager } from '../../simulation/entity-manager';
 import type { SimSpeedManager } from '../../sim-speed-manager';
 import type { LogisticsSaveData } from '../../save-data';
@@ -28,7 +27,6 @@ export class Logistics {
     private readonly _uiSfx: UiSfx,
     private readonly _scene: THREE.Scene,
     private readonly entities: EntityManager,
-    private readonly markerManager: MarkerManager,
     saved?: LogisticsSaveData,
   ) {
     this.resupplyCheckAt = saved?.resupplyCheckAt ?? 0;
@@ -61,7 +59,6 @@ export class Logistics {
         },
       },
       this._scene,
-      this.markerManager,
     );
     // 投入して演出とヒントを出す
     this.entities.addAmmoPickup(ammoPickup);

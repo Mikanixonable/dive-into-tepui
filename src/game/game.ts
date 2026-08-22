@@ -500,22 +500,18 @@ export class Game {
     const orbitRef = player
       ? this.orbitReference.resolve(player.state.r, celestialBodies, this.navTarget, this.entities, this.ephemeris, player.state.t)
       : undefined;
-    this.entities.syncPlayers(
-      player, fo, this.cameraSystem, displayTime, this.ephemeris, displayCelestialBodies, visibilityPolicy, displayWindow, orbitRef,
-      this.frameAnchors,
-    );
+    this.entities.syncPlayers(player, fo, this.cameraSystem, displayTime, visibilityPolicy, orbitRef);
     this.entities.syncBases(
       this.controlledBase, fo, this.cameraSystem, displayTime, visibilityPolicy,
     );
     this.entities.sync(fo, displayTime);
     this.entities.applyVisibility(visibilityPolicy, player);
-    this.entities.syncMarkers(this.cameraSystem, displayTime, player?.state.r ?? null, displayCelestialBodies, visibilityPolicy);
 
     this.entities.effects.sync(fo, this.cameraSystem.activeCamera, this.cameraSystem.zoomActive);
 
     this.targeter.sync(player, this.cameraSystem);
     this.targeter.syncTargetMarkers(
-      player, combatTargets, displayTime, simTime, this.cameraSystem, visibilityPolicy,
+      player, combatTargets, this.entities.ammoPickups, displayTime, simTime, this.cameraSystem, visibilityPolicy,
       this.ephemeris.registry, displayCelestialBodies,
     );
     this.cameraSystem.focusMarkers.syncSubLabels(

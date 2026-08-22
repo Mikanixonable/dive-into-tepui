@@ -182,11 +182,14 @@ export class GroupedMarkers {
   }
 
   // 代表のラベル文字列を組み立てる。
-  //   - 2隻近接の時: 2行でそれぞれの正式名称を表示
+  //   - 2隻近接の時: 2行でそれぞれの正式名称を、各自の色で表示
   //   - 3隻以上近接の時: "xN" の形式とし、正式名称は表示しない
   private label(item: GroupedMarkerItem, count: number, members?: readonly GroupedMarkerItem[]): string {
     if (count === 2 && members && members.length >= 2) {
-      return `${members[0]!.name}\n${members[1]!.name}`;
+      const line = (m: GroupedMarkerItem): string => m.color
+        ? `<span style="color:${m.color}">${m.name}</span>`
+        : m.name;
+      return `${line(members[0]!)}\n${line(members[1]!)}`;
     }
     if (count >= 3) {
       return `x${count}`;

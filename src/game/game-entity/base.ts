@@ -317,7 +317,7 @@ export class Base extends GameEntity implements Controllable {
     const priority = role === 'primary' ? C.MARKER_PRIORITY.PRIMARY_TARGET : C.MARKER_PRIORITY.BASE - dist / 1e9;
     return {
       key: `base-${this.id}`,
-      cls: role === 'primary' ? 'mk-target' : 'mk-base',
+      cls: role === 'primary' ? 'mk-base mk-target' : 'mk-base',
       sym: baseMarkerSvg(),
       pos,
       vel,

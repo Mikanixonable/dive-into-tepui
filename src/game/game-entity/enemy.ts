@@ -155,7 +155,7 @@ export class Enemy extends Ship {
     const priority = role === 'primary' ? C.MARKER_PRIORITY.PRIMARY_TARGET : C.MARKER_PRIORITY.ENEMY - dist / 1e9;
     return {
       key: `enemy-${this.name}`,
-      cls: role === 'primary' ? 'mk-target' : 'mk-enemy',
+      cls: role === 'primary' ? 'mk-enemy mk-target' : 'mk-enemy',
       sym: overviewMode ? this.headingHpMarkerSvg(true) : this.hpMarkerSvg(),
       pos,
       vel,

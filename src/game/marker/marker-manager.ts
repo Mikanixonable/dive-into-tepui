@@ -57,7 +57,7 @@ function defaultPriorityForClass(key: string, cls: string): number {
   if (cls.includes('mk-target')) return C.MARKER_PRIORITY.PRIMARY_TARGET;
   if (cls.includes('mk-impact')) return C.MARKER_PRIORITY.IMPACT;
   if (cls.includes('mk-base')) return C.MARKER_PRIORITY.BASE;
-  if (cls.includes('mk-self')) return C.MARKER_PRIORITY.PLAYER;
+  if (cls.includes('mk-self') || cls.includes('mk-ally')) return C.MARKER_PRIORITY.PLAYER;
   if (cls.includes('mk-enemy')) return C.MARKER_PRIORITY.ENEMY;
   if (cls.includes('mk-ammo')) return C.MARKER_PRIORITY.AMMO;
   if (cls.includes('mk-mnode') || cls.includes('mk-burn')) return C.MARKER_PRIORITY.MANEUVER_NODE;
