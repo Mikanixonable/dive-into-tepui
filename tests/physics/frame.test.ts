@@ -19,9 +19,10 @@ function closeState(a: KinematicState, b: KinematicState, tol = 1e-6): boolean {
   return close(a.r, b.r, tol) && close(a.v, b.v, tol);
 }
 
-function findFrame(frames: readonly ReferenceFrame[], center: CelestialBodyId, rotatingWith: CelestialBodyId | null): ReferenceFrame {
-  const f = frames.find((f) => f.center === center && f.rotatingWith === rotatingWith);
-  if (!f) throw new Error(`frame not found: ${center}/${rotatingWith}`);
+function findFrame(frames: readonly ReferenceFrame[], center: CelestialBodyId, rotatingWithId: CelestialBodyId | null): ReferenceFrame {
+  const f = frames.find((f) => f.center === center
+    && (rotatingWithId === null ? f.rotatingWith === null : f.rotatingWith?.id === rotatingWithId));
+  if (!f) throw new Error(`frame not found: ${center}/${rotatingWithId}`);
   return f;
 }
 

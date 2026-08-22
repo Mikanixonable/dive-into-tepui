@@ -13,6 +13,8 @@ import { qInvert, qMul, qRotate } from '../../src/physics/attitude';
 import { meridianDirection } from '../../src/physics/body-orientation';
 import { SIDEREAL_DAY } from '../../src/physics/solar-system';
 import { cross, dot, len, norm, scale, sub, v3 } from '../../src/physics/vec3';
+import { toFrameState } from '../../src/physics/frame';
+import { kinematicState } from '../../src/physics/kinematic-state';
 
 const YEAR = 365.25636 * 86400;
 const MOON_PERIOD = 27.321661 * 86400;
@@ -34,14 +36,19 @@ export function register(): void {
 
   test('ephemeris: frameOf は同じ対に同じ参照を返し、inertialFrame/frames/frameFor と一致する', () => {
     assert.equal(eph.frameOf('earth', null), eph.frameOf('earth', null));
-    assert.equal(eph.frameOf('earth', 'moon'), eph.frameOf('earth', 'moon'));
+    assert.equal(eph.frameOf('earth', { kind: 'revolution', id: 'moon' }), eph.frameOf('earth', { kind: 'revolution', id: 'moon' }));
     assert.equal(eph.frameOf('earth', null), eph.inertialFrame);
     assert.equal(eph.frameOf('earth', null), eph.frameFor('earth'));
     assert.equal(eph.frameOf('sun', null), eph.frameFor('sun'));
     for (const frame of eph.frames) {
       assert.equal(eph.frameOf(frame.center, frame.rotatingWith), frame);
     }
-    assert.notEqual(eph.frameOf('earth', 'moon'), eph.frameOf('earth', null));
+    assert.notEqual(eph.frameOf('earth', { kind: 'revolution', id: 'moon' }), eph.frameOf('earth', null));
+    // 同じ天体でも自転と公転は別の座標系で、rotatingWith オブジェクトも呼び出しごとに同一参照。
+    const spinEarth = eph.frameOf('earth', { kind: 'spin', id: 'earth' });
+    const revolutionEarth = eph.frameOf('earth', { kind: 'revolution', id: 'earth' });
+    assert.notEqual(spinEarth, revolutionEarth);
+    assert.equal(spinEarth.rotatingWith, eph.frameOf('earth', { kind: 'spin', id: 'earth' }).rotatingWith);
   });
 
   test('ephemeris: 地球は ECI 原点に厳密に静止する', () => {
@@ -442,6 +449,18 @@ export function register(): void {
     const meridian = meridianDirection(axis, spinAngle);
     assert.ok(len(sub(zHat, axis)) < 1e-9, `ẑ: ${JSON.stringify(zHat)} vs ${JSON.stringify(axis)}`);
     assert.ok(len(sub(xHat, meridian)) < 1e-9, `x̂: ${JSON.stringify(xHat)} vs ${JSON.stringify(meridian)}`);
+  });
+
+  // 自転回転系の存在意義そのもの。omega を 0 のまま置くと位置だけは正しく変換されるので
+  // 軌道線では気付けず、速度を通す量(座標系相対速度・計画バーンの Δv)だけが静かにずれる。
+  test('ephemeris: 自転回転系では地表に固定した点の座標系相対速度が 0 になる', () => {
+    const t = 55555;
+    const tf = eph.frameTransformAt(eph.frameOf('earth', { kind: 'spin', id: 'earth' }), t, []);
+    // 座標系相対で (R, 0, 0) に置いた点を ECI へ戻し、自転とともに動く速度を与える。
+    const r = qRotate(tf.q, v3(R_EARTH_EQ, 0, 0));
+    const rel = toFrameState(tf, kinematicState(t, r, cross(tf.omega, r)));
+    assert.ok(len(rel.v) < 1e-6, `|v_rel|: ${len(rel.v)} m/s`);
+    assert.ok(len(sub(rel.r, v3(R_EARTH_EQ, 0, 0))) < 1e-6, `r_rel: ${JSON.stringify(rel.r)}`);
   });
 
   // 逆行自転は軸を反転せずに角速度の符号で表す — 金星の omega は IAU の北極と逆を向く。

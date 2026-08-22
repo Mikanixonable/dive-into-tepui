@@ -5,15 +5,23 @@ import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { MouseDelta } from '../input/input';
 import { metersPerPixelAtDepth, ProjectionMode, Viewpoint } from '../../physics/projection';
-import { ReferenceFrame, FrameDir, frameDir, framePoint, toFrameDir, toInertialDir, toInertialPoint } from '../../physics/frame';
-import { OrbitingId, CelestialBody, strongestAttractor } from '../../physics/celestial-body';
+import { ReferenceFrame, FrameDir, FrameRotationSource, frameDir, framePoint, toFrameDir, toInertialDir, toInertialPoint } from '../../physics/frame';
+import { CelestialBody, strongestAttractor } from '../../physics/celestial-body';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Quat, qFromAxisAngle, qFromForwardUp, qMul, qNormalize, qRotate } from '../../physics/attitude';
 import { ECI_POLE, ECL_POLE_ECI, ECL_VERNAL } from '../../physics/ecliptic';
 import { MapPickable } from '../map-pickable';
 import { bodyDef } from '../../physics/solar-system';
 import { FocusTarget } from './focus-target';
-import { MapCameraSaveData } from '../save-data';
+import { FrameRotationSourceSaveData, MapCameraSaveData } from '../save-data';
+
+// セーブデータの rotatingWith を FrameRotationSource へ変換する。旧セーブは公転対象の id を
+// 文字列(または回さないなら null)でそのまま持っていたので、その形は公転として受ける。
+function rotationSourceFromSaveData(saved: FrameRotationSourceSaveData | string | null): FrameRotationSource | null {
+  if (saved === null) return null;
+  if (typeof saved === 'string') return { kind: 'revolution', id: saved };
+  return { kind: saved.kind, id: saved.id };
+}
 
 const WORLD_UP = v3(0, 1, 0);
 const OVERVIEW_CAMERA_FOV = 50;
@@ -116,7 +124,7 @@ export class MapCamera {
       ? saved.referencePlane : 'equator';
     this.fovDeg = this.clampFov(saved?.fovDeg ?? OVERVIEW_CAMERA_FOV);
     if (saved) {
-      this._cameraFrame = ephemeris.frameOf(ephemeris.originId, saved.rotatingWith);
+      this._cameraFrame = ephemeris.frameOf(ephemeris.originId, rotationSourceFromSaveData(saved.rotatingWith));
       this.offset_r = frameDir(saved.offset.x, saved.offset.y, saved.offset.z);
       this.pan_r = frameDir(saved.pan.x, saved.pan.y, saved.pan.z);
       this.up_r = frameDir(saved.up.x, saved.up.y, saved.up.z);
@@ -124,7 +132,7 @@ export class MapCamera {
         ? { kind: 'object', id: saved.focus.id }
         : {
           kind: 'point',
-          frame: ephemeris.frameOf(saved.focus.center, saved.focus.rotatingWith),
+          frame: ephemeris.frameOf(saved.focus.center, rotationSourceFromSaveData(saved.focus.rotatingWith)),
           point: framePoint(saved.focus.point.x, saved.focus.point.y, saved.focus.point.z),
         };
     } else {
@@ -428,7 +436,7 @@ export class MapCamera {
   // カメラ視点の回転対象を切り替える。中心は常に ephemeris.originId — offset_r/pan_r/up_r は
   // 方向(FrameDir)しか持たず原点移動の影響を受けないので、中心をどれにしても視点は変わらない。
   // 切替の瞬間にカメラ視点(ECI)を跳ばせないよう、現在の座標系から新しい座標系へ変換し直す。
-  setCameraRotation(rotatingWith: OrbitingId | null): void {
+  setCameraRotation(rotatingWith: FrameRotationSource | null): void {
     const frame = this.ephemeris.frameOf(this.ephemeris.originId, rotatingWith);
     const from = this._cameraFrame;
     if (frame === from) return;
