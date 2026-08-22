@@ -7,10 +7,10 @@ import { MarkerManager } from '../marker/marker-manager';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { celestialBodyName } from '../hud/frame-labels';
 import { occlusionOpacity } from '../../physics/occlusion';
-import { BodyClassToggles, systemMembersAt } from '../celestial/body-visibility';
+import { BodyClassToggles, NearbySystemTracker } from '../celestial/body-visibility';
 import { bodyClassOf } from '../celestial/body-class';
 import { MapVisibilityPolicy } from '../celestial/map-visibility';
-import { FOCUS_LABEL_DEPTH_GUARD_RATIO, FOCUS_LABEL_PRIORITY_PX, LAGRANGE_MIN_CLEARANCE_RATIO, MARKER_PRIORITY } from '../const';
+import { FOCUS_LABEL_DEPTH_GUARD_EXIT_RATIO, FOCUS_LABEL_DEPTH_GUARD_RATIO, FOCUS_LABEL_PRIORITY_PX, LAGRANGE_MIN_CLEARANCE_RATIO, MARKER_PRIORITY } from '../const';
 import type { MapPickable } from '../map-pickable';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 import type { GroupedMarkers, GroupedMarkerItem } from '../marker/grouped-markers';
@@ -93,6 +93,7 @@ export class FocusMarkers {
   private shownLabels: readonly FocusLabel[] = [];
   // 直前のフレームに表示していたラベル id(集合から外れたものを隠すため)。
   private prevShownIds: readonly string[] = [];
+  private readonly nearbyTracker = new NearbySystemTracker();
 
   private attractors: readonly Attractor[] = [];
   private readonly labelsById = new Map<string, FocusLabel>();
@@ -102,7 +103,14 @@ export class FocusMarkers {
   private cachedBodyPickablesPolicy: MapVisibilityPolicy | null = null;
   private readonly frameScratch = new Map<string, FocusProjection>();
   private readonly projectedScratch: ProjectedFocusLabel[] = [];
-  private readonly hiddenByPriorityScratch = new Set<string>();
+  // hiddenByPriority の2フレームぶんのバッファ。直前フレームの結果を hiddenByDepthGuardLastFrame
+  // として参照しつつ、当該フレームぶんはもう片方へ書き込む(コピーを避けるための入れ替え)。
+  private readonly hiddenByPriorityScratchA = new Set<string>();
+  private readonly hiddenByPriorityScratchB = new Set<string>();
+  // 直前フレームで depth-guard により隠れていたラベル id。周期が数時間の衛星どうしなど、
+  // 距離比がしきい値付近で揺れる組の明滅を防ぐため、隠すしきい値と再び出すしきい値を分ける
+  // (ヒステリシス)。
+  private hiddenByDepthGuardLastFrame: ReadonlySet<string> = new Set();
   // セル添字 (cx, cy) を x → y の二段の Map で引く。添字をそのまま鍵にするので、
   // 別のセルが同じ鍵を共有することはない。
   private readonly cellsScratch = new Map<number, Map<number, ProjectedFocusLabel[]>>();
@@ -243,7 +251,7 @@ export class FocusMarkers {
     // 「近さ」を固定距離で判定せず、既存の重力系判定を使うことで、地球/月や木星/衛星の
     // 境界を同じ規則で扱える。
     const nearby = sharedVisibilityPolicy === undefined
-      ? systemMembersAt(ephemeris.registry, cameraPos, attractors)
+      ? this.nearbyTracker.membersAt(ephemeris.registry, cameraPos, attractors)
       : [];
     // まず表示対象を決め、その中だけ座標を引く。表示の判断は marker/map-picker/参照線と
     // 同じ MapVisibilityPolicy を使い、個別実装の解釈ずれをなくす。
@@ -314,7 +322,8 @@ export class FocusMarkers {
       }
     }
 
-    const hiddenByPriority = this.hiddenByPriorityScratch;
+    const hiddenByPriority = this.hiddenByDepthGuardLastFrame === this.hiddenByPriorityScratchA
+      ? this.hiddenByPriorityScratchB : this.hiddenByPriorityScratchA;
     hiddenByPriority.clear();
     // 一様グリッドで近傍セルだけを比較する。ラベル数が増えても O(N²) で全画面を走査しない。
     const cellSize = FOCUS_LABEL_PRIORITY_PX;
@@ -339,9 +348,13 @@ export class FocusMarkers {
           if (cell === undefined) continue;
           for (const other of cell) {
             if (Math.hypot(current.x - other.x, current.y - other.y) >= FOCUS_LABEL_PRIORITY_PX) continue;
-            if (current.dist > other.dist * FOCUS_LABEL_DEPTH_GUARD_RATIO) {
+            const currentRatio = this.hiddenByDepthGuardLastFrame.has(current.label.id)
+              ? FOCUS_LABEL_DEPTH_GUARD_EXIT_RATIO : FOCUS_LABEL_DEPTH_GUARD_RATIO;
+            const otherRatio = this.hiddenByDepthGuardLastFrame.has(other.label.id)
+              ? FOCUS_LABEL_DEPTH_GUARD_EXIT_RATIO : FOCUS_LABEL_DEPTH_GUARD_RATIO;
+            if (current.dist > other.dist * currentRatio) {
               hiddenByPriority.add(current.label.id);
-            } else if (other.dist > current.dist * FOCUS_LABEL_DEPTH_GUARD_RATIO) {
+            } else if (other.dist > current.dist * otherRatio) {
               hiddenByPriority.add(other.label.id);
             } else if (current.label.labelPriority > other.label.labelPriority) {
               hiddenByPriority.add(other.label.id);
@@ -417,6 +430,7 @@ export class FocusMarkers {
         markerOpacity, undefined, undefined, false, false, lbl.labelPriority,
       );
     }
+    this.hiddenByDepthGuardLastFrame = hiddenByPriority;
     const nowShown = this.nowShownScratch;
     nowShown.clear();
     for (const id of shownIds) nowShown.add(id);
