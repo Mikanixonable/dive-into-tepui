@@ -22,7 +22,8 @@ export class PauseMenu implements OverlayHandle {
   onPauseMenuOpenChange: ((open: boolean) => void) | null = null;
   onQuitToTitle: (() => void) | null = null;
   onBgmVolumeChange: ((vol: number) => void) | null = null;
-  onOpenSnapshots: (() => void) | null = null;
+  onSave: (() => void) | null = null;
+  onOpenSaveBrowser: (() => void) | null = null;
   onOpenPerfWindow: (() => void) | null = null;
   onOpenSettings: (() => void) | null = null;
 
@@ -33,8 +34,8 @@ export class PauseMenu implements OverlayHandle {
   // (0 かどうか)から読めるので別に持たない。
   private lastVol = 1;
 
-  // 一般・描画の2面をタブで束ねたパネル DOM を組み立て、BGM・スナップショット・負荷表示・
-  // タイトルへ戻るのイベントを配線する。debugTargetHost は描画面の GraphicsPanel が
+  // 一般・描画の2面をタブで束ねたパネル DOM を組み立て、BGM・セーブ・セーブデータの管理・
+  // 負荷表示・タイトルへ戻るのイベントを配線する。debugTargetHost は描画面の GraphicsPanel が
   // デバッグ表示の選択を書き込む先(RenderPipeline)。
   constructor(
     root: HTMLElement, overlayManager: OverlayManager, graphics: GraphicsSettings, debugTargetHost: DebugTargetHost,
@@ -123,13 +124,21 @@ export class PauseMenu implements OverlayHandle {
     themeRow.appendChild(themeSelect);
     this.panel.appendChild(themeRow);
 
-    const snapshotRow = document.createElement('div');
-    snapshotRow.className = 'pm-row';
-    snapshotRow.style.marginTop = SPACE_6;
-    const snapshotBtn = new Button('スナップショット', () => this.onOpenSnapshots?.());
-    snapshotBtn.element.style.flex = '1';
-    snapshotRow.appendChild(snapshotBtn.element);
-    general.appendChild(snapshotRow);
+    const saveRow = document.createElement('div');
+    saveRow.className = 'pm-row';
+    saveRow.style.marginTop = SPACE_6;
+    const saveBtn = new Button('セーブ', () => this.onSave?.());
+    saveBtn.element.style.flex = '1';
+    saveRow.appendChild(saveBtn.element);
+    general.appendChild(saveRow);
+
+    const saveBrowserRow = document.createElement('div');
+    saveBrowserRow.className = 'pm-row';
+    saveBrowserRow.style.marginTop = SPACE_4;
+    const saveBrowserBtn = new Button('セーブデータの管理', () => this.onOpenSaveBrowser?.());
+    saveBrowserBtn.element.style.flex = '1';
+    saveBrowserRow.appendChild(saveBrowserBtn.element);
+    general.appendChild(saveBrowserRow);
 
     const perfRow = document.createElement('div');
     perfRow.className = 'pm-row';
