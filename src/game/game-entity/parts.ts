@@ -38,7 +38,7 @@ export interface RcsTankPart extends Part {
 
 export interface RadiatorPart extends Part {
   readonly type: 'radiator';
-  coolingRate: number; // ThermalSystem 内の任意単位
+  coolingRate: number; // 展開しきった1枚の実効放熱面積 [m^2]
 }
 
 export interface SolarPanelPart extends Part {

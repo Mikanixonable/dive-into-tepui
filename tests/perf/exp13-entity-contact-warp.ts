@@ -7,7 +7,7 @@
 // 母集団は collides=true の個体だけで組む — exp12 が使った debug-load の破片は
 // kind:'fragment' で collides=false なので、個体どうしの接触の参加者にならない。
 // 参加者の半径と質量は原本の値をそのまま置く(下の population のコメントに出どころを書いた)。
-import { burnUpBody } from '../../src/physics/atmosphere';
+import { dragTakesFullAirspeed } from '../../src/game/simulation/time-step';
 import { CelestialBody, nearestAtmosphereBody } from '../../src/physics/celestial-body';
 import { resolveSphereCollision } from '../../src/physics/collision-response';
 import { stepDynamics } from '../../src/physics/dynamics';
@@ -148,12 +148,12 @@ function stepAll(all: readonly Participant[], w: Windows, dt: number): void {
   }
 }
 
-// 表面へ到達した個体と大気で焼失した個体を、実ゲームの cleanup と同じ判定で以後から外す。
+// 表面へ到達した個体と、抗力を積めなくなった個体を、実ゲームと同じ判定で以後から外す。
 // 外さないと、地球の中へ入った弾が中心の近くで発散し、その変位がセル一辺を通じて全参加者へ
 // 伝播して測定そのものを壊す(exp12 が同じ理由で同じ除去を入れている)。
-function survivors(all: readonly Participant[], w: Windows): readonly Participant[] {
+function survivors(all: readonly Participant[], w: Windows, dt: number): readonly Participant[] {
   return all.filter((p) => firstSurfaceContact(p.prev, p.state, p.radius, w.occluders) === null
-    && burnUpBody(p.state.r, w.air, C.DEBRIS_BURNUP_DENSITY) === null);
+    && !dragTakesFullAirspeed(p.state, p.bcInv, w.air, dt));
 }
 
 // 27近傍グリッドのセル一辺 [m]。entity-contact-physics.ts の contactCellSize の式の複製 —
@@ -224,7 +224,7 @@ function frameCost(ephemeris: Ephemeris, kind: 'dense' | 'spread', simDt: number
     const dt = Math.min(maxStep, end - t);
     const w = windowsAt(ephemeris, t + dt / 2);
     stepAll(alive, w, dt);
-    alive = survivors(alive, w);
+    alive = survivors(alive, w, dt);
     const cost = substepCost(alive);
     substeps++;
     maxCellSize = Math.max(maxCellSize, cost.cellSize);
