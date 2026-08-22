@@ -70,7 +70,10 @@ export class MapContextActions {
   private readonly physicalObjectListPanel: PhysicalObjectListPanel;
 
   // Docking は MapContextActions より後に生成されるので、生成後に登録する。
-  setDocking(docking: Docking): void { this.docking = docking; }
+  setDocking(docking: Docking): void {
+    this.docking = docking;
+    docking.onSelect = (id) => this.physicalObjectListPanel.select(id);
+  }
   private docking: Docking | null = null;
 
   setControlledBaseHandler(handler: (base: Base | null) => void, getControlledBase: () => Base | null): void {
@@ -101,6 +104,7 @@ export class MapContextActions {
       if (handler) handler.run(act, target);
     };
     this.physicalObjectListPanel = new PhysicalObjectListPanel(hud.mapRoot, ephemeris.registry);
+    this.navTarget.onSelect = (id) => this.physicalObjectListPanel.select(id);
     this.physicalObjectListPanel.onFocus = (id) => {
       this.frameControls.setFocus({ kind: 'object', id });
       this.hud.hint(`${this.pickables.pickables.find((i) => i.id === id)?.name ?? id} にフォーカス`);
@@ -223,8 +227,8 @@ export class MapContextActions {
   // 基地も selectBase のみ呼んでドックビューへは遷移しない。取り消せない操作は明示の項目
   // (プロパティウィンドウ)かダブルクリックに限る。
   private selectPickable(target: MapPickable, clientX: number, clientY: number): void {
-    this.physicalObjectListPanel.select(target.id);
     if (target.kind === 'player') {
+      this.physicalObjectListPanel.select(target.id);
       this.openPropertyWindow(clientX, clientY, target, this.pickables.lastSimTime);
     } else if (target.kind === 'base') {
       const base = this.entities.findBase(target.id);

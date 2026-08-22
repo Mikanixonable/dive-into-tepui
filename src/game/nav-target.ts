@@ -31,6 +31,9 @@ import { MenuAction, MenuCommon } from './hud/menu-actions';
 const Z_HAT: Vec3 = v3(0, 0, 1);
 
 export class NavTarget {
+  // ターゲットが変わるたびに通知する — 物体一覧パネルのハイライトを追随させる用途。
+  onSelect: ((id: string | null) => void) | null = null;
+
   private readonly baseMenu: ContextMenu<Base, MenuAction>;
   private targetId: string | null = null;
   private targetName: string | null = null;
@@ -63,6 +66,7 @@ export class NavTarget {
   private setInternal(id: string | null, name: string | null): void {
     this.targetId = id;
     this.targetName = name;
+    this.onSelect?.(id);
   }
 
   // id と現在の設定が同じなら解除、そうでなければ id を航法ターゲットにする。
@@ -154,7 +158,7 @@ export class NavTarget {
   }
 
   clearIfTargeting(id: string): void {
-    if (this.targetId === id) this.targetId = null;
+    if (this.targetId === id) this.setInternal(null, null);
   }
 
   // 基地用コンテキストメニューを片付ける。
