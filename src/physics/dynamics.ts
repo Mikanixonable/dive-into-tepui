@@ -1,12 +1,12 @@
 // 与えられた加速度による RK4 積分の器(ケプラーの二体問題の解析式込み)、天体の2次重力場に
 // よる摂動、および一質点にかかる全加速度(重力 + 2次重力場 + 大気抵抗 + 推力)の合成の
 // 唯一の定義箇所。THREE/DOM 非依存の純関数。
-import { Attractor, Degree2Gravity, attractorAccel, attractorPositionAt } from './attractor';
+import { CelestialBody, Degree2Gravity, attractorAccel, celestialBodyPositionAt } from './celestial-body';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { dragAccel } from './atmosphere';
 import { sunlitFactor } from './shadow';
 import { srpAccel } from './srp';
-import { Vec3, add, cross, dot, v3 } from './vec3';
+import { Vec3, add, cross, dot, sub, v3 } from './vec3';
 
 // 状態(位置・速度)から加速度を返すコールバック。RK4 の各中間段(k1〜k4)ごとに、その段が
 // 実際に評価されるべき絶対時刻 t とともに呼ばれる。RK4 が4次精度を持つのは非自励系
@@ -101,20 +101,26 @@ export function stepRK4(s: KinematicState, dt: number, accel: AccelFn): Kinemati
 }
 
 // 全天体からの重力(Σ attractorAccel — ECI が非慣性系であることの補正込み)と、2次重力場を
-// 持つ天体ぶんのその摂動、大気抵抗、太陽輻射圧。天体の同定は Attractor が自分で持つ degree2 に
+// 持つ天体ぶんのその摂動、大気抵抗、太陽輻射圧。天体の同定は CelestialBody が自分で持つ degree2 に
 // 委ねるので、ここに固有名の分岐は現れない。t は accel を評価すべき絶対時刻(RK4 の各段の
-// 時刻)で、重力項(質点・2次重力場とも)は attractorPositionAt で天体位置をその時刻へ外挿して
+// 時刻)で、重力項(質点・2次重力場とも)は celestialBodyPositionAt で天体位置をその時刻へ外挿して
 // から評価する — 距離の3乗で効く重力はステップ幅ぶんの天体の移動が精度を左右するため。
 // 日照率(sunlitFactor)と輻射圧の太陽方向は attractor.state.t のまま据え置く: 遮蔽の幾何と
 // 1AU 先の太陽方向はステップ内での天体の移動にほとんど左右されず、外挿する意味が無い。
-// 大気抵抗は r/v だけの自励項なので時刻を持たない。
+// 遮蔽体 occluders は attractors とは別の窓で受け取る — 太陽を隠せるかは半径と位置の幾何で
+// 決まり、重力を及ぼすかとは無関係だから。大気抵抗は atmosphereBody ただ1体から掛かる
+// (複数の大気の寄与を足し合わせることは物理的にありえないので、どの天体の大気かは呼び出し側が
+// 選んで渡す)。天体一覧は走らない。
 function totalAccel(
   t: number,
   r: Vec3,
   v: Vec3,
-  attractors: readonly Attractor[],
+  attractors: readonly CelestialBody[],
+  occluders: readonly CelestialBody[],
+  atmosphereBody: CelestialBody | null,
   bcInv: number,
   srpCoeff: number,
+  dt: number,
 ): Vec3 {
   let ax = 0, ay = 0, az = 0;
   for (const attractor of attractors) {
@@ -122,34 +128,45 @@ function totalAccel(
     ax += g.x; ay += g.y; az += g.z;
     // 2次重力場は天体中心からの相対位置で評価する(質点重力と違い ECI 原点基準では組めない)。
     if (attractor.degree2 !== null) {
-      const b = attractorPositionAt(attractor, t);
+      const b = celestialBodyPositionAt(attractor, t);
       const d2 = degree2Accel(v3(r.x - b.x, r.y - b.y, r.z - b.z), attractor.mu, attractor.degree2);
       ax += d2.x; ay += d2.y; az += d2.z;
     }
     // 恒星ぶんの輻射圧をすべて加算する(恒星0個なら寄与0)。
     if (attractor.isStar && srpCoeff !== 0) {
-      const srp = srpAccel(r, attractor, srpCoeff, sunlitFactor(r, attractor, attractors));
+      const srp = srpAccel(r, attractor, srpCoeff, sunlitFactor(r, attractor, occluders));
       ax += srp.x; ay += srp.y; az += srp.z;
     }
   }
-  const drag = dragAccel(r, v, bcInv);
+  if (atmosphereBody === null || atmosphereBody.atmosphere === null) return v3(ax, ay, az);
+  // 抗力はその天体の中心を基準に測る。天体位置は重力項と同じくこの段の時刻へ外挿する。
+  const b = celestialBodyPositionAt(atmosphereBody, t);
+  const drag = dragAccel(
+    v3(r.x - b.x, r.y - b.y, r.z - b.z), sub(v, atmosphereBody.state.v), bcInv,
+    atmosphereBody.atmosphere, dt,
+  );
   return v3(ax + drag.x, ay + drag.y, az + drag.z);
 }
 
 // 全天体重力 + 2次重力場 + 大気抵抗 + 太陽輻射圧 + 推力の RK4 1ステップ。attractors はこの
-// ステップぶん呼び出し側が確定させた重力源一覧(Ephemeris.attractorsAt)であり、日照率の
-// 遮蔽天体判定にも同じ一覧を使う。bcInv/srpCoeff/thrust は種別ごとに異なるため引数で受け取り、
-// モジュール内に既定値を持たない。
+// ステップぶん呼び出し側が確定させた重力源一覧、occluders は同じく確定させた遮蔽体一覧
+// (日照率だけに使う。重力の絞り込みとは別の関心事なので別の引数で受け取る)。
+// atmosphereBody は抗力を及ぼす**ただ1体**の大気天体
+// (celestial-body.ts の nearestAtmosphereBody)で、null なら抗力は恒等的にゼロ。
+// bcInv/srpCoeff/thrust は種別ごとに異なるため引数で受け取り、モジュール内に既定値を持たない。
 export function stepDynamics(
   state: KinematicState,
   dt: number,
-  attractors: readonly Attractor[],
+  attractors: readonly CelestialBody[],
+  occluders: readonly CelestialBody[],
+  atmosphereBody: CelestialBody | null,
   bcInv: number,
   srpCoeff: number,
   thrust: Vec3 | null,
 ): KinematicState {
   return stepRK4(state, dt, (t, rx, ry, rz, vx, vy, vz) => {
-    const a = totalAccel(t, v3(rx, ry, rz), v3(vx, vy, vz), attractors, bcInv, srpCoeff);
+    const a = totalAccel(
+      t, v3(rx, ry, rz), v3(vx, vy, vz), attractors, occluders, atmosphereBody, bcInv, srpCoeff, dt);
     return thrust ? add(a, thrust) : a;
   });
 }

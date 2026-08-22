@@ -11,7 +11,7 @@
 //
 // シミュレーション全体は地球中心の慣性系(ECI)で回っている。座標系はあくまで「軌道線など
 // 個々の描画物」の表示用で、シーン全体を差し替えるものではない。
-import { AttractorId, OrbitingId } from './attractor';
+import { CelestialBodyId, OrbitingId } from './celestial-body';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { add, cross, sub, v3, Vec3 } from './vec3';
 import { Quat, qInvert, qRotate } from './attitude';
@@ -21,7 +21,7 @@ import { Quat, qInvert, qRotate } from './attitude';
 // trajectory-line.ts の `frame === lastFrame` によるキャッシュ判定が毎フレーム外れて描画が
 // 無駄に重くなる。
 export type ReferenceFrame = {
-  readonly center: AttractorId;
+  readonly center: CelestialBodyId;
   readonly rotatingWith: OrbitingId | null;
 };
 

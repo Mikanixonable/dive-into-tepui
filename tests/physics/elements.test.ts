@@ -15,13 +15,13 @@ import {
   trueAnomalyAt,
   velocityOnOrbit,
 } from '../../src/physics/elements';
-import { Attractor, orbitalElementsOf } from '../../src/physics/attractor';
+import { CelestialBody, orbitalElementsOf } from '../../src/physics/celestial-body';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
 import { MU_MOON } from '../../src/physics/solar-system';
 import { dot, len, norm, sub, v3 } from '../../src/physics/vec3';
 
-const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, isStar: false };
+const EARTH: CelestialBody = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, isStar: false };
 
 export function register(): void {
   test('elements: stateFromOrbitalElements <-> orbitalElementsFromState round trip (machine precision)', () => {

@@ -2,7 +2,7 @@
 // Δv は導出値。上流ノードを編集すると下流を破棄する。計画軌道の計算・キャッシュは持たない。
 import { kinematicState, KinematicState } from '../../physics/kinematic-state';
 import { Vec3, add } from '../../physics/vec3';
-import { Attractor, orbitalElementsOf, strongestAttractor } from '../../physics/attractor';
+import { CelestialBody, orbitalElementsOf, strongestAttractor } from '../../physics/celestial-body';
 import type { Ephemeris } from '../../physics/ephemeris';
 
 // segmentDurationFrom が要求する表示窓の部分だけを切り出した形。
@@ -12,8 +12,8 @@ export interface DisplayDurationSource {
 
 // 起点状態を最も強く引く天体まわりの解析軌道の公転周期。
 // 有限な周期が求まらなければ(双曲線軌道など)NaN。
-export function orbitPeriodOf(state: KinematicState, attractors: readonly Attractor[]): number {
-  const center = strongestAttractor(state.r, attractors);
+export function orbitPeriodOf(state: KinematicState, celestialBodies: readonly CelestialBody[]): number {
+  const center = strongestAttractor(state.r, celestialBodies);
   return orbitalElementsOf(state, center)?.period ?? NaN;
 }
 
@@ -23,10 +23,10 @@ export function orbitPeriodOf(state: KinematicState, attractors: readonly Attrac
 // 別々に定義すると描画範囲とノード配置可能範囲がずれる。
 export function segmentDurationFrom(
   state0: KinematicState,
-  attractors: readonly Attractor[],
+  celestialBodies: readonly CelestialBody[],
   displayDuration: DisplayDurationSource,
 ): number {
-  return displayDuration.durationSec(orbitPeriodOf(state0, attractors));
+  return displayDuration.durationSec(orbitPeriodOf(state0, celestialBodies));
 }
 
 // ノードを置ける実行時刻の範囲。
@@ -150,8 +150,8 @@ export class Plan {
     idx: number, from: KinematicState, ephemeris: Ephemeris, displayDuration: DisplayDurationSource,
   ): TimeRange {
     const prev = this.data?.nodes[idx - 1] ?? this.anchorOr(from);
-    const attractors = ephemeris.attractorsAt(prev.t);
-    return { min: prev.t, max: prev.t + segmentDurationFrom(prev, attractors, displayDuration) };
+    const celestialBodies = ephemeris.celestialBodiesAt(prev.t);
+    return { min: prev.t, max: prev.t + segmentDurationFrom(prev, celestialBodies, displayDuration) };
   }
 
   // idx 番目のノードを新しい実行後状態へ差し替え、下流ノードを破棄して、置いたノードを返す。

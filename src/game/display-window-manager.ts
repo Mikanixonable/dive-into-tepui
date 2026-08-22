@@ -3,17 +3,14 @@
 // ここでいう window は「どの座標系で(frame)・いつを(displayTime)見るか」を1フレーム分に
 // 束ねたもので、時間の窓だけを指す語ではない。どちらも画面全体で1つに揃っていなければ
 // ならない — 座標系が消費者ごとに違えば同じ画面に並べた線が比較できず、表示時刻が違えば
-// メッシュとマーカーが別の瞬間を指す。表示側が使う重力源一覧(解析天体に重力を持つ
-// エンティティを合流させたもの)も、同じ理由で1フレームに1つへ確定させる。
+// メッシュとマーカーが別の瞬間を指す。
 import * as C from './const';
 import { PredictPanel } from './hud/predict-panel';
 import { buildTicks } from './hud/tick-scale';
 import type { TickLabelMode } from './hud/calendar-ticks';
-import { Attractor, strongestAttractor } from '../physics/attractor';
+import { strongestAttractor } from '../physics/celestial-body';
 import { ReferenceFrame } from '../physics/frame';
-import { mergeAttractors } from './simulation/attractors';
 import type { Ephemeris } from '../physics/ephemeris';
-import type { EntityManager } from './simulation/entity-manager';
 import type { GameEntity } from './game-entity/game-entity';
 
 export type DisplayDurationKey = 'orbit' | 'day' | 'tenDay' | 'month' | 'threeMonth' | 'custom';
@@ -71,7 +68,6 @@ export class DisplayWindowManager {
   constructor(
     hudRoot: HTMLElement,
     private readonly ephemeris: Ephemeris,
-    private readonly entities: EntityManager,
   ) {
     this._frame = ephemeris.inertialFrame;
     this._current = {
@@ -191,16 +187,6 @@ export class DisplayWindowManager {
     return this._current;
   }
 
-  // 表示側の重力源窓: 解析天体に、重力を持つ生存中の GameEntity(小惑星)を合流させたもの。
-  // 返す配列は読み取り専用として扱う。結合は浅い配列の生成だけなので、前回の配列を
-  // 保持せず、呼び出し時点の重力源の顔ぶれを毎回返す。各 GameEntity の state は getter
-  // 経由で現在値を読むため、古い配列を再利用して表示時点を取り違える余地を作らない。
-  attractorsAt(simTime: number): readonly Attractor[] {
-    const bodies = this.ephemeris.attractorsAt(simTime);
-    const dynamic = this.entities.attractors();
-    return mergeAttractors(bodies, dynamic);
-  }
-
   // 毎フレーム呼ぶ。操作パネル(期間・スクラバー・目盛り)の表示/非表示と内容を押し出す。
   sync(player: GameEntity | null): void {
     this.panel.render({
@@ -222,7 +208,7 @@ export class DisplayWindowManager {
   // durationSec 側のフォールバックに委ねる。
   private currentOrbitPeriod(player: GameEntity | null, simTime: number): number {
     if (!player) return NaN;
-    const center = strongestAttractor(player.state.r, this.ephemeris.attractorsAt(simTime));
+    const center = strongestAttractor(player.state.r, this.ephemeris.celestialBodiesAt(simTime));
     return player.orbitalElementsAround(center)?.period ?? NaN;
   }
 
