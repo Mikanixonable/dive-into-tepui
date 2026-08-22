@@ -17,6 +17,7 @@
 import { CelestialBody, nearestAtmosphereBody } from '../../src/physics/celestial-body';
 import { airspeed, atmosphericDensity, ellipsoidAltitude } from '../../src/physics/atmosphere';
 import { stepDynamics } from '../../src/physics/dynamics';
+import { STEFAN_BOLTZMANN } from '../../src/physics/thermal';
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { KinematicState, hermiteInterpolate, kinematicState } from '../../src/physics/kinematic-state';
 import { len, sub, v3 } from '../../src/physics/vec3';
@@ -69,7 +70,7 @@ class Hull {
     const { rho, speed: s } = airflow(state, body);
     this.qdyn = 0.5 * rho * s * s;
     const qdot = C.SG_CONST * Math.sqrt(rho / C.NOSE_RADIUS) * s * s * s;
-    const cool = C.HULL_EMISS * C.STEFAN_BOLTZMANN * C.RAD_AREA
+    const cool = C.HULL_EMISS * STEFAN_BOLTZMANN * C.RAD_AREA
       * (Math.pow(C.ENV_TEMP, 4) - Math.pow(this.temp, 4));
     const heatCapacity = C.PLAYER_MASS * 100; // 比熱 約100 J/kg/K(thermal.ts と同じ)
     this.temp = Math.max(

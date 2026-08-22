@@ -54,6 +54,7 @@ import { register as registerGeometry } from './geometry.test';
 import { register as registerOptimize } from './optimize.test';
 import { register as registerPredictedArc } from './predicted-arc.test';
 import { register as registerSurfaceCandidates } from './surface-candidates.test';
+import { register as registerThermal } from './thermal.test';
 import { register as registerWindowAgreement } from './window-agreement.test';
 import './creative-placement-validation.test';
 
@@ -110,6 +111,7 @@ registerGeometry();
 registerOptimize();
 registerPredictedArc();
 registerSurfaceCandidates();
+registerThermal();
 registerWindowAgreement();
 
 runAll().catch((error) => {

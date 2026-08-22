@@ -1,6 +1,7 @@
 // 自機の熱収支(空力加熱・射撃発熱・放射冷却)と動圧・高度低下の監視。
 import type { CelestialBody } from '../../physics/celestial-body';
 import { airspeed, atmosphericDensity, ellipsoidAltitude } from '../../physics/atmosphere';
+import { STEFAN_BOLTZMANN } from '../../physics/thermal';
 import { Vec3, len, sub } from '../../physics/vec3';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
@@ -88,7 +89,7 @@ export class ThermalSystem {
     const qdot = C.SG_CONST * Math.sqrt(rho / C.NOSE_RADIUS) * s * s * s;
     const cool =
       C.HULL_EMISS *
-      C.STEFAN_BOLTZMANN *
+      STEFAN_BOLTZMANN *
       (C.RAD_AREA + this.radiatorArea) *
       (Math.pow(C.ENV_TEMP, 4) - Math.pow(this.hullTemp, 4));
     // 射撃・被弾の発熱はサブステップ回数・dtSub に依存しない量として貯めてあるので、
