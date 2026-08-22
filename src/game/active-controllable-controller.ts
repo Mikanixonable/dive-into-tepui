@@ -1,11 +1,10 @@
 // 操作対象（自機船 0..n 隻、および基地）の切替・削除と、それに伴う各所有者への伝播
-// (ターゲッター・航法ターゲット・SFX、および remove() でのカメラのフォーカス解除)を1箇所へ集める。
+// (航法ターゲット・SFX、および remove() でのカメラのフォーカス解除)を1箇所へ集める。
 import type { Player } from './player/player';
 import type { Base } from './game-entity/base';
 import type { Controllable } from './game-entity/controllable';
 import type { EntityManager } from './simulation/entity-manager';
 import type { CameraSystem } from './camera/camera-system';
-import type { Targeter } from './targeter';
 import type { NavTarget } from './nav-target';
 import type { WorldSfx } from '../audio/sfx/world-sfx';
 import type { Hud } from './hud/hud';
@@ -20,7 +19,6 @@ export class ActiveControllableController {
     activePlayerId: string | null | undefined,
     private readonly entities: EntityManager,
     private readonly cameraSystem: CameraSystem,
-    private readonly targeter: Targeter,
     private readonly navTarget: NavTarget,
     private readonly worldSfx: WorldSfx,
     private readonly hud?: Hud,
@@ -58,7 +56,7 @@ export class ActiveControllableController {
     if (this._current === ship) return;
     this._current?.clearTransientCommands();
     this._current = ship;
-    this.targeter.clearTargets();
+    this.navTarget.clear();
   }
 
   // 操作対象が居ない間に増えた艦を、そのまま操作対象にする。既に操作中の艦があれば何もしない。
@@ -81,7 +79,6 @@ export class ActiveControllableController {
   remove(ship: Player): void {
     const wasActive = this._current === ship;
     this.navTarget.clearIfTargeting(ship.id);
-    this.targeter.clearIfTargeting(ship);
     this.cameraSystem.mapCamera.clearFocusIf(ship.id);
     if (wasActive) {
       ship.clearTransientCommands();
