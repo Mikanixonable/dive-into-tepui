@@ -142,9 +142,9 @@ export class NavTarget {
     if (this.targetId === id) this.setInternal(null, null);
   }
 
-  // 現在のターゲットの位置・速度。天体は CelestialBody.state、ラグランジュ点は
-  // ephemeris.lagrangeStateAt、船・基地は entity.state から得る。天体以外は重力中心ではない
-  // ため hasMass=false を返す。ターゲット未設定・解決不能なら null。
+  // 現在のターゲットの時刻 t における位置・速度。天体は CelestialBody.state、ラグランジュ点は
+  // ephemeris.lagrangeStateAt、船・基地は entity.displayState(t) から得る。天体以外は重力中心
+  // ではないため hasMass=false を返す。ターゲット未設定・解決不能なら null。
   resolveState(
     entities: EntityManager, ephemeris: Ephemeris, celestialBodies: readonly CelestialBody[], t: number,
   ): { id: string; state: KinematicState; hasMass: boolean; attractor: CelestialBody | null } | null {
@@ -164,7 +164,8 @@ export class NavTarget {
       }
     }
     const entity = this.resolveEntity(id, entities);
-    return entity ? { id, state: entity.state, hasMass: false, attractor: null } : null;
+    if (!entity) return null;
+    return { id, state: entity.displayState(t, ephemeris) ?? entity.state, hasMass: false, attractor: null };
   }
 
   // id がターゲットになれる(軌道面が定まる)かどうか。

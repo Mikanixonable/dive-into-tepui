@@ -3,7 +3,8 @@
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
-import { SOLAR_SYSTEM } from '../../src/physics/solar-system';
+import { SOLAR_SYSTEM, MU_EARTH } from '../../src/physics/solar-system';
+import { FrameAnchors } from '../../src/game/frame-anchors';
 import { CelestialBodyId } from '../../src/physics/celestial-body';
 import { FrameAnchorId, FrameAnchorSource, ReferenceFrame, toFrameDir, toFramePoint, toFrameState, toInertialPoint, toInertialState } from '../../src/physics/frame';
 import { qRotate } from '../../src/physics/attitude';
@@ -240,5 +241,34 @@ export function register(): void {
     const expectedXHatEci = norm(sub(shipState.r, earth.r));
     const xHatInFrame = toFrameDir(tf, expectedXHatEci);
     assert.ok(close(v3(xHatInFrame.x, xHatInFrame.y, xHatInFrame.z), v3(1, 0, 0), 1e-6));
+  });
+
+  // 「操作対象の船」を基準・「操作対象の船の公転」で回す座標系(マップビューの自船予測線が使う)。
+  // AnchorTargets.activeShipState が問い合わせ時刻の状態を返す限り、船自身はこの座標系の
+  // 原点に常に一致するはず — 予測線の各サンプルは異なる未来時刻で問い合わせるため、
+  // 現在の状態を固定で返す実装だと未来のサンプルほど原点からずれて軌道半径ぶん潰れなくなる。
+  test('frame: @activeShip 基準・@activeShip 公転の座標系は、未来の複数時刻すべてで船自身を原点へ潰す', () => {
+    const t0 = 10000;
+    const r = 7e6;
+    const omega = Math.sqrt(MU_EARTH / (r * r * r));
+    const shipStateAt = (t: number): KinematicState => {
+      const earth = eph.stateOf('earth', t);
+      const angle = omega * t;
+      const relR = v3(r * Math.cos(angle), r * Math.sin(angle), 0);
+      const relV = v3(-r * omega * Math.sin(angle), r * omega * Math.cos(angle), 0);
+      return kinematicState(t, add(earth.r, relR), add(earth.v, relV));
+    };
+    const anchors = new FrameAnchors({
+      entityState: () => null,
+      activeShipState: (t) => shipStateAt(t),
+      navTargetState: () => null,
+    });
+    const frame = eph.frameOf(SHIP, { kind: 'revolution', id: SHIP });
+    for (const t of [t0, t0 + 500, t0 + 3600, t0 + 43200]) {
+      anchors.update(eph.celestialBodiesAt(t));
+      const tf = eph.frameTransformAt(frame, t, anchors);
+      const rel = toFrameState(tf, shipStateAt(t));
+      assert.ok(close(rel.r, v3(), 1), `t=${t}: ${JSON.stringify(rel.r)}`);
+    }
   });
 }

@@ -7,21 +7,30 @@ import { v3 } from '../../src/physics/vec3';
 
 export function register(): void {
   const shipState = kinematicState(0, v3(7e6, 0, 0), v3(0, 7500, 0));
+  // t に応じて違う状態を返す(円軌道ふうに x を t だけ進める)。stateOf(id, t) が実際に
+  // 渡された t の状態を返しているかを、固定値を返すスタブでは見逃してしまうため。
+  const shipStateAt = (t: number): KinematicState => t === 0 ? shipState : kinematicState(t, v3(7e6 + t, 0, 0), v3(0, 7500, 0));
 
   function anchorsWithShip(): { anchors: FrameAnchors; setShip: (s: KinematicState | null) => void } {
-    let ship: KinematicState | null = shipState;
+    let ship: ((t: number) => KinematicState) | null = shipStateAt;
     const anchors = new FrameAnchors({
       entityState: () => null,
-      activeShipState: () => ship,
+      activeShipState: (t) => ship?.(t) ?? null,
       navTargetState: () => null,
     });
     anchors.update([]);
-    return { anchors, setShip: (s) => { ship = s; } };
+    return { anchors, setShip: (s) => { ship = s === null ? null : () => s; } };
   }
 
   test('frame-anchors: 役割トークンは解決できる間はその状態を返す', () => {
     const { anchors } = anchorsWithShip();
     assert.equal(anchors.stateOf('@activeShip', 0), shipState);
+  });
+
+  test('frame-anchors: stateOf(id, t) は渡された t の状態を返す', () => {
+    const { anchors } = anchorsWithShip();
+    assert.deepEqual(anchors.stateOf('@activeShip', 500), shipStateAt(500));
+    assert.deepEqual(anchors.stateOf('@activeShip', 1000), shipStateAt(1000));
   });
 
   // 猶予は「フレーム」で数える。呼び出し回数で数えると、1フレームのうちにカメラ・軌道フレーム・
