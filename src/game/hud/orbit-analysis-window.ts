@@ -27,11 +27,11 @@ const APPROACH_SAMPLE_SPAN_SEC = 86400;
 // 接近タブは1日ぶんを描くため、高度タブと同じ密度では周回1つあたりの点が粗く、折れ線が
 // 角ばって見える。密度を底上げする倍率。
 const APPROACH_SAMPLE_MULTIPLIER = 4;
-// 接近タブのドラッグ/ホイール/ピンチ操作。感度は combat カメラのホイールズームに合わせる。
+// 両タブ共通のドラッグ/ホイール/ピンチ操作。感度は combat カメラのホイールズームに合わせる。
 const WHEEL_ZOOM_SENSITIVITY = 0.0015;
 const PINCH_ZOOM_SENSITIVITY = 0.004;
-const APPROACH_SCALE_MIN_KM = 1;
-const APPROACH_SCALE_MAX_KM = 1_000_000;
+const SCALE_MIN_KM = 1;
+const SCALE_MAX_KM = 1_000_000;
 
 const TAB_ITEMS_ALTITUDE_ONLY: readonly (readonly [AnalysisTab, string])[] = [['altitude', '高度']];
 const TAB_ITEMS_BOTH: readonly (readonly [AnalysisTab, string])[] =
@@ -97,8 +97,11 @@ export class OrbitAnalysisWindow {
   // 直接書き換える(入力欄と同じ状態)。リセットボタンはこの2つだけを戻す。
   private readonly approachPan = { x: 0, y: 0 };
   private approachBaselineScale: TabScale = { ...DEFAULT_SCALES.approach };
+  // 高度タブは縦軸(高度)だけがドラッグ・ホイールの対象——横軸(経過時間)は現在時刻を
+  // 基準とした固定の軸で、平行移動すると「現在」の意味を失うため入力欄でのみ変更できる。
+  private altitudeYBaselineKm: number = DEFAULT_SCALES.altitude.yKm;
   private resetBtn!: Button;
-  // 接近タブのドラッグ/ピンチで押されているポインタ。中心(重心)の移動をパン、2本間の
+  // ドラッグ/ピンチで押されているポインタ。中心(重心)の移動をパン、2本間の
   // 距離の変化をズームに使う。
   private readonly pointers = new Map<number, { x: number; y: number }>();
   private lastPanPoint: { x: number; y: number } | null = null;
@@ -121,6 +124,7 @@ export class OrbitAnalysisWindow {
     this.tabBar = new TabBar<AnalysisTab>(TAB_ITEMS_ALTITUDE_ONLY, (tab) => this.selectTab(tab));
     this.win.body.appendChild(this.tabBar.element);
     this.win.body.appendChild(this.chart.element);
+    this.chart.element.classList.add('panzoom');
     this.attachChartPanZoom();
 
     const relIncLabel = document.createElement('span');
@@ -146,8 +150,8 @@ export class OrbitAnalysisWindow {
     this.xInput = xField.input;
     this.xUnitEl = xField.unitEl;
     scalesRow.appendChild(xField.element);
-    this.resetBtn = new Button('リセット', () => this.resetApproachView());
-    this.resetBtn.element.classList.add('orbit-analysis-reset', 'hidden');
+    this.resetBtn = new Button('リセット', () => this.resetView());
+    this.resetBtn.element.classList.add('orbit-analysis-reset');
     scalesRow.appendChild(this.resetBtn.element);
     this.win.body.appendChild(scalesRow);
 
@@ -228,22 +232,23 @@ export class OrbitAnalysisWindow {
 
   private selectTab(tab: AnalysisTab): void {
     this.tab = tab;
-    if (tab === 'altitude') this.altitudeCenterM = null;
-    else this.resetApproachView();
+    this.resetView();
     this.tabBar.setSelected(tab);
     this.relIncRow.classList.toggle('hidden', tab !== 'approach');
-    this.resetBtn.element.classList.toggle('hidden', tab !== 'approach');
-    this.chart.element.classList.toggle('panzoom', tab === 'approach');
-    this.refreshScaleInputs();
   }
 
-  // 接近タブのドラッグ/ズームを、開いた/タブを選び直した時点の状態(パン0・直近に確定した
-  // スケール)へ戻す。
-  private resetApproachView(): void {
-    this.approachPan.x = 0;
-    this.approachPan.y = 0;
-    this.scales.approach = { ...this.approachBaselineScale };
-    if (this.tab === 'approach') this.refreshScaleInputs();
+  // 選択中タブのドラッグ/ズームを、開いた/タブを選び直した時点の状態(パン0・直近に確定した
+  // スケール)へ戻す。高度タブは縦軸(中心・スケール)だけを、接近タブは縦横両方を戻す。
+  private resetView(): void {
+    if (this.tab === 'altitude') {
+      this.altitudeCenterM = null;
+      this.scales.altitude = { ...this.scales.altitude, yKm: this.altitudeYBaselineKm };
+    } else {
+      this.approachPan.x = 0;
+      this.approachPan.y = 0;
+      this.scales.approach = { ...this.approachBaselineScale };
+    }
+    this.refreshScaleInputs();
   }
 
   // 選択中タブのスケール値・単位を入力欄へ反映する。タブ切替のたびに呼ぶ。
@@ -262,6 +267,7 @@ export class OrbitAnalysisWindow {
   private commitScale(field: keyof TabScale, v: number): void {
     this.scales[this.tab][field] = v;
     if (this.tab === 'approach') this.approachBaselineScale = { ...this.scales.approach };
+    else if (field === 'yKm') this.altitudeYBaselineKm = v;
   }
 
   // ラベル+ValueInput+単位の1組を作る。非数値・0以下の確定は破棄して getCurrent() の値へ戻す。
@@ -336,12 +342,12 @@ export class OrbitAnalysisWindow {
     return { points, x: axes.x, y: axes.y, marks };
   }
 
-  // 接近タブのチャートへドラッグ(パン)・ホイール/ピンチ(ズーム)を配線する。パネルの
-  // canvas に閉じた操作なので、Input クラスの画面全体入力管理は経由しない。
+  // チャートへドラッグ(パン)・ホイール/ピンチ(ズーム)を配線する。両タブで使うが、
+  // どの軸が動くかは applyPan/applyZoom がタブごとに決める。パネルの canvas に閉じた
+  // 操作なので、Input クラスの画面全体入力管理は経由しない。
   private attachChartPanZoom(): void {
     const el = this.chart.element;
     el.addEventListener('pointerdown', (e) => {
-      if (this.tab !== 'approach') return;
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       el.setPointerCapture(e.pointerId);
       this.lastPanPoint = null;
@@ -360,11 +366,10 @@ export class OrbitAnalysisWindow {
     el.addEventListener('pointerup', release);
     el.addEventListener('pointercancel', release);
     el.addEventListener('wheel', (e) => {
-      if (this.tab !== 'approach') return;
       // ページスクロールへ渡さない。ブラウザ既定の passive では効かないため、
       // このリスナー自体を { passive: false } で登録している。
       e.preventDefault();
-      this.applyApproachZoom(e.deltaY * WHEEL_ZOOM_SENSITIVITY);
+      this.applyZoom(e.deltaY * WHEEL_ZOOM_SENSITIVITY);
     }, { passive: false });
   }
 
@@ -375,37 +380,47 @@ export class OrbitAnalysisWindow {
       x: points.reduce((s, p) => s + p.x, 0) / points.length,
       y: points.reduce((s, p) => s + p.y, 0) / points.length,
     };
-    if (this.lastPanPoint) this.applyApproachPan(centroid.x - this.lastPanPoint.x, centroid.y - this.lastPanPoint.y);
+    if (this.lastPanPoint) this.applyPan(centroid.x - this.lastPanPoint.x, centroid.y - this.lastPanPoint.y);
     this.lastPanPoint = centroid;
 
     // 3本目以降が触れても先頭2本の距離だけを見る — Map の挿入順で決まる。
     const [a, b] = points;
     if (a && b && points.length >= 2) {
       const dist = Math.hypot(a.x - b.x, a.y - b.y);
-      if (this.lastPinchDist !== null) this.applyApproachZoom(-(dist - this.lastPinchDist) * PINCH_ZOOM_SENSITIVITY);
+      if (this.lastPinchDist !== null) this.applyZoom(-(dist - this.lastPinchDist) * PINCH_ZOOM_SENSITIVITY);
       this.lastPinchDist = dist;
     } else {
       this.lastPinchDist = null;
     }
   }
 
-  // ドラッグ移動量 [px] を軸の値 [m] へ換算してパンへ加える。プロット寸法が未確定
-  // (初回描画前)なら何もしない。
-  private applyApproachPan(dxPx: number, dyPx: number): void {
+  // ドラッグ移動量 [px] を軸の値へ換算してパンへ加える。接近タブは縦横とも平行移動するが、
+  // 高度タブは横軸(経過時間)が現在時刻基準の固定軸なので縦軸(高度中心)だけを動かす。
+  // プロット寸法が未確定(初回描画前)なら何もしない。
+  private applyPan(dxPx: number, dyPx: number): void {
     const size = this.chart.plotPixelSize();
     if (!size) return;
-    const spanXM = this.scales.approach.x * 1000;
-    const spanYM = this.scales.approach.yKm * 1000;
-    this.approachPan.x -= (dxPx / size.width) * spanXM;
-    this.approachPan.y += (dyPx / size.height) * spanYM;
+    if (this.tab === 'approach') {
+      const spanXM = this.scales.approach.x * 1000;
+      const spanYM = this.scales.approach.yKm * 1000;
+      this.approachPan.x -= (dxPx / size.width) * spanXM;
+      this.approachPan.y += (dyPx / size.height) * spanYM;
+    } else {
+      const spanYM = this.scales.altitude.yKm * 1000;
+      this.altitudeCenterM = (this.altitudeCenterM ?? 0) + (dyPx / size.height) * spanYM;
+    }
   }
 
-  // 縦横同じ倍率でズームする(接近タブは実質2D の位置図なので縦横比を保つ)。
-  private applyApproachZoom(wheelDelta: number): void {
+  // ホイール/ピンチでズームする。接近タブは実質2D の位置図なので縦横同倍率で保つが、
+  // 高度タブは縦軸(高度スケール)だけを動かす。
+  private applyZoom(wheelDelta: number): void {
     const factor = Math.exp(wheelDelta);
-    const yKm = Math.max(APPROACH_SCALE_MIN_KM, Math.min(APPROACH_SCALE_MAX_KM, this.scales.approach.yKm * factor));
-    const x = Math.max(APPROACH_SCALE_MIN_KM, Math.min(APPROACH_SCALE_MAX_KM, this.scales.approach.x * factor));
-    this.scales.approach = { yKm, x };
+    const clamp = (v: number): number => Math.max(SCALE_MIN_KM, Math.min(SCALE_MAX_KM, v));
+    if (this.tab === 'approach') {
+      this.scales.approach = { yKm: clamp(this.scales.approach.yKm * factor), x: clamp(this.scales.approach.x * factor) };
+    } else {
+      this.scales.altitude = { ...this.scales.altitude, yKm: clamp(this.scales.altitude.yKm * factor) };
+    }
     this.refreshScaleInputs();
   }
 
