@@ -80,6 +80,16 @@ function canHideIconByPriority(m: MarkerRecord): boolean {
   return true;
 }
 
+// GroupedMarkers が管理する船・弾薬のクラス。この集合どうしのペアはクラスタ化(近接まとめ)で
+// 既にアイコンを残す/ラベルを合体する判断が付いているため、下の優先度間引きで重ねてアイコンを
+// 消さない(消すと GroupedMarkers が残したはずのアイコンが消える)。
+const COMBAT_MARKER_CLASSES = ['mk-target', 'mk-enemy', 'mk-base', 'mk-self', 'mk-ally', 'mk-ammo'];
+
+function isCombatMarker(m: MarkerRecord): boolean {
+  const cls = m.root.className;
+  return COMBAT_MARKER_CLASSES.some((c) => cls.includes(c));
+}
+
 // ラベルの概算矩形を入れる画面空間グリッドのセル幅。ラベルの幅は文字数に
 // よって変わるため、各ラベルは矩形がまたがる全セルへ登録する。
 const COLLISION_BUCKET_SIZE = 64;
@@ -410,8 +420,10 @@ export class MarkerManager {
           if (Math.hypot(a.x - b.x, a.y - b.y) >= threshold) continue;
 
           loser.labelHiddenByPriority = true;
-          // 差が100以上の異なるカテゴリ間 (例: 天体 > 船, 船 > 弾薬, 船 > 軌道要素) はアイコンも非表示 (保護対象を除く)
-          if (winner.priority - loser.priority >= 100 && canHideIconByPriority(loser)) {
+          // 差が100以上の異なるカテゴリ間 (例: 天体 > 船, 船 > 弾薬, 船 > 軌道要素) はアイコンも非表示 (保護対象を除く)。
+          // 船・弾薬どうし (GroupedMarkers が既にクラスタ化を決めている組) は対象外。
+          if (winner.priority - loser.priority >= 100 && canHideIconByPriority(loser)
+            && !(isCombatMarker(winner) && isCombatMarker(loser))) {
             loser.iconHiddenByPriority = true;
           }
         }
