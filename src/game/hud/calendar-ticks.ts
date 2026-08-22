@@ -1,5 +1,5 @@
 // 計画軌道のルーラー目盛りを、暦(時・日・月・年)の区切りに合わせて生成する。
-import { fmtDuration } from './utils';
+import { SIM_EPOCH_SEC, fmtDateTime, fmtDuration } from './utils';
 
 // 目盛階数。数が大きいほど粗い単位 — 0:1時間 1:3時間 2:6時間 3:12時間 4:1日 5:1月 6:1年。
 export type TickRank = 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -177,4 +177,17 @@ export function tickLabel(
   if (rank === 4) return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
   if (rank === 5) return `${d.getUTCMonth() + 1}月`;
   return `${d.getUTCFullYear()}`;
+}
+
+// 軌道要素マーカー(近地点/遠地点・昇交点/降交点・再接近点など)へ添える通過時刻の表記。
+// 'relative' は目盛りと同じ T+/- 形式、'absolute' は PREDICT パネルの絶対時刻表示と同じ
+// ISO 風の書式(SIM_EPOCH_SEC 基準)——暦の区切りに揃っていない任意の瞬間を表すため、
+// tickLabel の rank 依存の粗い書式(HH:00 など)は使わない。
+export function elementTimeLabel(simTimeT: number, mode: TickLabelMode, nowSimTime: number): string {
+  if (mode === 'relative') {
+    const delta = simTimeT - nowSimTime;
+    const mag = Math.abs(delta);
+    return `T${delta < 0 ? '-' : '+'}${fmtDuration(mag, mag)}`;
+  }
+  return fmtDateTime(SIM_EPOCH_SEC + simTimeT);
 }

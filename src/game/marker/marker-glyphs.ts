@@ -38,4 +38,5 @@ export const ORBIT_POINT_GLYPH = {
   maneuverNode: '◈',
   burnPoint: '⬡',
   impact: '✕',
+  closestApproach: '✧',
 } as const;
