@@ -40,6 +40,7 @@ const STYLE = `
 @media ${MQ_COMPACT} {
   #hud .dg-window-header { cursor: default; }
 }
+#hud .dg-window-title-icon { flex: none; color: var(--text); font-size: var(--glyph-1-3); line-height: 1; margin-top: var(--space-1); }
 #hud .dg-window-title { flex: 1; min-width: 0; }
 #hud .dg-window-title-main { color: var(--text); font-weight: bold; overflow-wrap: break-word; }
 #hud .dg-window-title-sub { color: var(--text); opacity: 0.7; font-size: var(--font-s); margin-top: var(--space-1); }
@@ -68,6 +69,9 @@ function ensureStyle(): void {
 export interface DraggableWindowOptions {
   readonly title: string;
   readonly subtitle?: string;
+  // タイトル前に添える対象種別のグリフ。省略すると添えない。開いた後は変わらない前提で、
+  // setHeader の差分更新対象にはしない。
+  readonly icon?: string;
   // クリップ済みの状態で開く。省略時は false。
   readonly initiallyClipped?: boolean;
   // 渡すとクリップされていない間だけこの排他グループに参加する一時ウィンドウになる。
@@ -123,6 +127,13 @@ export class DraggableWindow implements OverlayHandle {
 
     const header = document.createElement('div');
     header.className = 'dg-window-header';
+    if (options.icon) {
+      const iconEl = document.createElement('div');
+      iconEl.className = 'dg-window-title-icon';
+      iconEl.setAttribute('aria-hidden', 'true');
+      iconEl.textContent = options.icon;
+      header.appendChild(iconEl);
+    }
     const title = document.createElement('div');
     title.className = 'dg-window-title';
     this.titleMainEl = document.createElement('div');

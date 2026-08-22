@@ -12,7 +12,9 @@ import { PropertyRow, PropertyWindow, PropertyWindowContent, PropertyWindowItem 
 import { TEMP_WINDOW_GROUP } from './hud/overlay-manager';
 import { MenuAction, MenuCommon } from './hud/menu-actions';
 import { celestialBodyName } from './hud/frame-labels';
-import { lagrangeParentId } from './hud/object-groups';
+import { LAGRANGE_ID, lagrangeParentId } from './hud/object-groups';
+import { bodyClassOf } from './celestial/body-class';
+import { ENTITY_GLYPH, ORBIT_POINT_GLYPH, bodyEntityGlyph } from './marker/marker-glyphs';
 import { MapPickable, pickNearest } from './map-pickable';
 import { focusTargetId } from './camera/focus-target';
 import { PhysicalObjectListPanel } from './hud/physical-object-list-panel';
@@ -729,7 +731,24 @@ export class MapContextActions {
   // 抜き出す。開いた直後から sync 時と同じ経路(windowParts)で求める。
   private buildContent(target: MapPickable, simTime: number): PropertyWindowContent<MenuAction> {
     const { title, subtitle, items } = this.windowParts(target, simTime);
-    return { title, subtitle, rows: [], items, onRename: this.renameHandlerFor(target) };
+    return { title, subtitle, icon: this.iconFor(target), rows: [], items, onRename: this.renameHandlerFor(target) };
+  }
+
+  // ウィンドウ題名に添えるグリフ。マップ実マーカーと同じ字形族(ENTITY_GLYPH/ORBIT_POINT_GLYPH)
+  // から種別に対応するものを選ぶ。
+  private iconFor(target: MapPickable): string | undefined {
+    switch (target.kind) {
+      case 'body': return LAGRANGE_ID.test(target.id)
+        ? ENTITY_GLYPH.lagrange : bodyEntityGlyph(bodyClassOf(this.ephemeris.registry, target.id));
+      case 'player': return ENTITY_GLYPH.ship;
+      case 'ship': return ENTITY_GLYPH.enemyShip;
+      case 'base': return ENTITY_GLYPH.base;
+      case 'ammo': return ENTITY_GLYPH.ammo;
+      case 'apsis': return ORBIT_POINT_GLYPH.apsis;
+      case 'relnode': return ORBIT_POINT_GLYPH.ascendingNode;
+      case 'eqnode': return ORBIT_POINT_GLYPH.descendingNode;
+      case 'empty-space': return undefined;
+    }
   }
 
   // 改名できる種別(自艦・基地)にだけコールバックを渡す。対象は id で引き直す —

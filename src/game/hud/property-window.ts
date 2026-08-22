@@ -85,6 +85,8 @@ export interface PropertyWindowItem<A extends string = string> {
 export interface PropertyWindowContent<A extends string = string> {
   readonly title: string;
   readonly subtitle?: string;
+  // タイトル前に添える対象種別のグリフ。省略すると添えない。
+  readonly icon?: string;
   readonly rows: readonly PropertyRow[];
   readonly items: readonly PropertyWindowItem<A>[];
   // 指定すると、タイトル横に改名ボタンが現れる。呼び出し側は確定した新しい名前を
@@ -133,7 +135,7 @@ export class PropertyWindow<A extends string = string> {
     ensureStyle();
     this.lastTitle = content.title;
     this.win = new DraggableWindow(root, clientX, clientY, {
-      title: content.title, subtitle: content.subtitle, tempWindowGroup,
+      title: content.title, subtitle: content.subtitle, icon: content.icon, tempWindowGroup,
     }, overlayManager);
     this.win.onClose = () => this.onClose?.();
     this.win.onClipChange = (clipped) => this.onClipChange?.(clipped);
