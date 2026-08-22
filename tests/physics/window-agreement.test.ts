@@ -163,7 +163,9 @@ export function register(): void {
         const from = descentState(site.bodyId, t);
         const participant = substepInterval(from, SUBSTEP_MAX_DT);
         const candidates = new SurfaceCandidates();
-        candidates.reset([participant], EPHEMERIS.celestialBodiesAt(t));
+        candidates.resetSpan(
+          EPHEMERIS.celestialBodiesAt(t), participant.prevState.t, participant.state.t);
+        candidates.narrow([participant]);
         const sim = candidates.into(participant, []);
         // 何も通らない場所で比べても意味がないので、絞り込みが実際に通していることを先に見る。
         assert.ok(sim.length > 0, `${site.name} t=${t}: 実シミュレーション側が1体も通していない`);

@@ -187,4 +187,68 @@ export function register(): void {
   test('collision-response: 双方が不動なら解決しない', () => {
     assert.equal(overlapPair(v3(1, 0, 0), v3(-1, 0, 0), 0, 0, 0.5), null);
   });
+
+  test('collision-response: 完全弾性では力学エネルギーを失わない', () => {
+    const res = overlapPair(v3(3, 0, 0), v3(-2, 0, 0), 1 / 2, 1 / 5, 1)!;
+    assert.ok(res.bounced);
+    assert.equal(res.specificEnergyLossA, 0);
+    assert.equal(res.specificEnergyLossB, 0);
+  });
+
+  test('collision-response: 反発係数を下げると失う力学エネルギーは単調に増える', () => {
+    let prevA = -1;
+    let prevB = -1;
+    for (const e of [1, 0.8, 0.6, 0.4, 0.2, 0]) {
+      const res = overlapPair(v3(3, 0, 0), v3(-2, 0, 0), 1 / 2, 1 / 5, e)!;
+      assert.ok(res.specificEnergyLossA > prevA, `e=${e}: A が単調でない`);
+      assert.ok(res.specificEnergyLossB > prevB, `e=${e}: B が単調でない`);
+      prevA = res.specificEnergyLossA;
+      prevB = res.specificEnergyLossB;
+    }
+  });
+
+  test('collision-response: 両側の合計は系が実際に失う力学エネルギーに一致する', () => {
+    // 反発で失われるのは ½·μ·(1−e²)·vn²(μ は換算質量)。比量で受け取る両側を質量で戻した
+    // 合計がこれと一致していなければ、熱がどこかで湧いているか消えている。
+    const massA = 2, massB = 5;
+    const restitution = 0.4;
+    const vA = v3(3, -1, 0), vB = v3(-2, 0.5, 0);
+    const res = overlapPair(vA, vB, 1 / massA, 1 / massB, restitution)!;
+    const vn = dot(sub(vB, vA), res.normal);
+    const reduced = 1 / (1 / massA + 1 / massB);
+    const expected = 0.5 * reduced * (1 - restitution * restitution) * vn * vn;
+    const total = massA * res.specificEnergyLossA + massB * res.specificEnergyLossB;
+    assert.ok(Math.abs(total - expected) < 1e-12, `合計 ${total} に対し理論値 ${expected}`);
+  });
+
+  test('collision-response: 質量の両極でも失う力学エネルギーは有限', () => {
+    // 試験粒子(逆質量 ∞)は相手を押さないが、自分は跳ね返るので比エネルギーは失う。
+    const particle = overlapPair(v3(3, 0, 0), v3(), Infinity, 1 / 5, 0.4)!;
+    assert.ok(Number.isFinite(particle.specificEnergyLossA) && particle.specificEnergyLossA > 0);
+    assert.equal(particle.specificEnergyLossB, 0, '押されない側は失わない');
+    // 相手が無限質量(逆質量 0)なら、動く側が全部を受け持つ。
+    const wall = overlapPair(v3(3, 0, 0), v3(), 1 / 2, 0, 0.4)!;
+    assert.ok(Number.isFinite(wall.specificEnergyLossA) && wall.specificEnergyLossA > 0);
+    assert.equal(wall.specificEnergyLossB, 0);
+  });
+
+  test('collision-response: 天体との接触では、動く側が散逸の半分を受け取る', () => {
+    const restitution = 0.4;
+    const res = fixedContact(
+      { state: kinematicState(0, v3(-0.6, 0, 0), v3(1, 0, 0)), radius: 1 },
+      { state: kinematicState(0, v3(0.6, 0, 0), v3()), radius: 1 },
+      restitution,
+    )!;
+    assert.ok(res.bounced);
+    // 不動な相手との散逸は ½·m·(1−e²)·vn²。動く側が受け取るのはその半分の比量。
+    const expected = 0.25 * (1 - restitution * restitution) * 1 * 1;
+    assert.ok(Math.abs(res.specificEnergyLoss - expected) < 1e-12);
+  });
+
+  test('collision-response: 離反中の接触では力学エネルギーを失わない', () => {
+    const res = overlapPair(v3(-1, 0, 0), v3(1, 0, 0), 1 / 2, 1 / 5, 0.4)!;
+    assert.ok(!res.bounced);
+    assert.equal(res.specificEnergyLossA, 0);
+    assert.equal(res.specificEnergyLossB, 0);
+  });
 }

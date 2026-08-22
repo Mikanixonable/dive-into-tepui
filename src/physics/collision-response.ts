@@ -28,6 +28,10 @@ export interface CollisionResponse {
   readonly bounced: boolean;            // 接近していて反発が起きたか
   readonly toi: number;                 // 接触時刻(prev→state 区間内の割合、0..1)。重なり
                                         // フォールバックでは検出できないので区間終端(1)固定
+  // 各側が失う力学エネルギーを、その側の単位質量あたりで表した量 [J/kg]。質量 0 の側でも
+  // 有限の値を持つ。
+  readonly specificEnergyLossA: number;
+  readonly specificEnergyLossB: number;
 }
 
 // 不動な相手との接触の結果。相手には書き込む先が無いので、動く側だけを返す。
@@ -37,6 +41,7 @@ export interface FixedContactResponse {
   readonly normal: Vec3;                // 動く側 → 相手 へ向く接触法線
   readonly bounced: boolean;
   readonly toi: number;
+  readonly specificEnergyLoss: number;  // 動く側が失う力学エネルギー [J/kg]
 }
 
 // 接触の幾何。掃引で解けたなら中心間を separation ちょうどへ揃え、区間終端の重なりを
@@ -81,6 +86,16 @@ function shareOfA(invA: number, invB: number): number {
   return invA / (invA + invB);
 }
 
+// 反発で失われる力学エネルギーのうち、受け持ちの割合 share を持つ側のぶんを、その側の単位
+// 質量あたりで返す [J/kg]。vn は法線相対速度、restitution は反発係数。
+//
+// 系全体で失われるのは ½·μ·(1−e²)·vn²(μ は換算質量)で、これを両側で折半したものが
+// m·q = ¼·μ·(1−e²)·vn²。share = μ/m なので、質量を持ち出さずに q だけが決まる — 相手を
+// 押さない試験粒子(質量 0)でも有限の値になり、不動な相手でも動く側には熱が入る。
+function specificEnergyLoss(vn: number, restitution: number, share: number): number {
+  return 0.25 * (1 - restitution * restitution) * vn * vn * share;
+}
+
 // 幾何が定まった接触を、逆質量の比で両側へ分ける。球ではない形状を持つ相手は、自前で求めた
 // 法線とめり込みを ContactGeometry に組んでこれを呼ぶ。
 export function distributeSphereContact(
@@ -105,13 +120,20 @@ export function distributeSphereContact(
   }
 
   const vn = dot(sub(b.state.v, a.state.v), normal);
-  if (!(vn < 0)) return { rA, rB, vA: a.state.v, vB: b.state.v, normal, bounced: false, toi };
+  if (!(vn < 0)) {
+    return {
+      rA, rB, vA: a.state.v, vB: b.state.v, normal, bounced: false, toi,
+      specificEnergyLossA: 0, specificEnergyLossB: 0,
+    };
+  }
   const exchange = (1 + restitution) * vn;
   return {
     rA, rB,
     vA: addScaled(a.state.v, normal, exchange * wa),
     vB: addScaled(b.state.v, normal, -exchange * wb),
     normal, bounced: true, toi,
+    specificEnergyLossA: specificEnergyLoss(vn, restitution, wa),
+    specificEnergyLossB: specificEnergyLoss(vn, restitution, wb),
   };
 }
 
@@ -146,10 +168,14 @@ export function distributeFixedContact(
     : addScaled(moving.state.r, normal, -geometry.pushOut);
 
   const vn = dot(sub(fixed.state.v, moving.state.v), normal);
-  if (!(vn < 0)) return { r, v: moving.state.v, normal, bounced: false, toi };
+  if (!(vn < 0)) {
+    return { r, v: moving.state.v, normal, bounced: false, toi, specificEnergyLoss: 0 };
+  }
   return {
     r,
     v: addScaled(moving.state.v, normal, (1 + restitution) * vn),
     normal, bounced: true, toi,
+    // 動く側が補正を全部受け持つので、受け持ちの割合は 1。残る半分は相手が持ち去る。
+    specificEnergyLoss: specificEnergyLoss(vn, restitution, 1),
   };
 }
