@@ -9,9 +9,8 @@ import { OrbitalElements } from '../physics/elements';
 import { FloatingOrigin } from './floating-origin';
 import { Curve, CurveSampler } from '../render/curve';
 import { LineStyle } from '../render/line-style';
-import { ReferenceFrame, FrameTransform, toFrameDir } from '../physics/frame';
+import { FrameAnchorSource, ReferenceFrame, FrameTransform, toFrameDir } from '../physics/frame';
 import type { Ephemeris } from '../physics/ephemeris';
-import { CelestialBody } from '../physics/celestial-body';
 import { v3 } from '../physics/vec3';
 
 // Curve の頂点予算。楕円は閉曲線なので初期分割・分割上限のみで足り、固定サンプル数は持たない。
@@ -86,7 +85,7 @@ export class OrbitLine {
   // force = 要素が能動的に変化している間(推力中・ノード編集中)は true。
   sync(
     el: OrbitalElements | null, fo: FloatingOrigin, camera: THREE.Camera, force = false,
-    frame?: ReferenceFrame, displayTime?: number, ephemeris?: Ephemeris, celestialBodies?: readonly CelestialBody[],
+    frame?: ReferenceFrame, displayTime?: number, ephemeris?: Ephemeris, frameAnchors?: FrameAnchorSource,
   ): void {
     if (!el || el.e >= 0.98 || !isFinite(el.a) || el.a <= 0) {
       this.snap = null;
@@ -96,8 +95,8 @@ export class OrbitLine {
     }
 
     let tf: FrameTransform | null = null;
-    if (frame && displayTime !== undefined && ephemeris && celestialBodies) {
-      tf = ephemeris.frameTransformAt(frame, displayTime, celestialBodies);
+    if (frame && displayTime !== undefined && ephemeris && frameAnchors) {
+      tf = ephemeris.frameTransformAt(frame, displayTime, frameAnchors);
     }
 
     if (tf) {
