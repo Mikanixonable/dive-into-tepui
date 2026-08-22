@@ -2,7 +2,7 @@
 // 指定のどちらかを選び、フォームで値を指定して、確定で1隻分の ShipPlacerForm を通知する。
 // 値から KinematicState を組み立てるのは物理側(stateFromOrbitalElements/haloState/lissajousState)の
 // 仕事なので、ここでは行わない。
-import { Button, SegmentedControl, Slider, ValueInput } from '../hud/widgets';
+import { Button, CloseButton, SegmentedControl, Slider, ValueInput } from '../hud/widgets';
 import { ObjectPicker, ObjectPickerGroup } from '../hud/object-picker';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 import { baseMarkerSvg, shipMarkerSvg } from '../marker/marker-shapes';
@@ -411,9 +411,13 @@ export class ObjectPlacerPanel implements OverlayHandle {
     this.panel.style.right = '20px';
     this.panel.style.width = 'max-content';
     this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
+    const header = document.createElement('div');
+    header.className = 'panel-shell-head';
     const title = document.createElement('h3');
     title.textContent = '物体配置';
-    this.panel.appendChild(title);
+    header.appendChild(title);
+    header.appendChild(new CloseButton(() => this.close()).element);
+    this.panel.appendChild(header);
 
     this.objectType = new SegmentedControl('種類', OBJECT_TYPE_ITEMS, (v) => this.selectObjectType(v));
     this.objectType.setSelected(this.objectTypeValue);
@@ -624,14 +628,13 @@ export class ObjectPlacerPanel implements OverlayHandle {
     return { element: nameRow, nameInput: nameField.element };
   }
 
-  // 配置/キャンセルのボタン行を this.panel に追加する。Enter/ESC は OverlayManager 経由で
-  // confirm()/close() へ届く(登録済みの handleShortcut/closeOnEscape)ので、ラベルは実際の
-  // 挙動どおり [Enter]/[ESC] のまま出す。
+  // 配置ボタンを this.panel に追加する。Enter は OverlayManager 経由で confirm() へ届く
+  // (登録済みの handleShortcut)ので、ラベルは実際の挙動どおり [Enter] のまま出す。
+  // 閉じる操作はヘッダの ✕ ボタン(ESC は overlayManager の closeOnEscape)が担う。
   private buildButtonsAndKeybinds(): void {
     const btnRow = document.createElement('div');
     btnRow.className = 'shipplacer-btn-row';
     btnRow.appendChild(new Button('配置 [Enter]', () => this.confirm()).element);
-    btnRow.appendChild(new Button('キャンセル [ESC]', () => this.close()).element);
     this.panel.appendChild(btnRow);
   }
 
