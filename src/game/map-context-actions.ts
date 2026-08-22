@@ -48,7 +48,7 @@ interface PickHandler {
 }
 
 // 軌道計画の実行モードの巡回順。ボタン1つで次のモードへ進める。
-const PLAN_EXECUTION_MODES: readonly PlanExecutionMode[] = ['off', 'instant', 'powered'];
+const PLAN_EXECUTION_MODES: readonly PlanExecutionMode[] = ['off', 'instant'];
 
 // クリップされていないプロパティウィンドウが同時に高々1枚しか開かないための排他グループ名。
 // クリップ状態の遷移ごとの出し入れは PropertyWindow 自身が OverlayManager へ宣言する。

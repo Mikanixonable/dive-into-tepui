@@ -80,7 +80,8 @@ export interface PlayerSaveData extends EntitySaveData {
   throttle: ThrottleSaveData;
   parts: AnyPart[];
   plan: PlanSaveData | null;
-  // 旧セーブデータには無いフィールドなので任意。無ければ followPlan から移行する。
+  // 旧セーブデータには無いフィールドなので任意。無ければ followPlan から移行する。'powered' は
+  // 廃止済みモードだが、旧セーブの読み込みのために型として残す。
   planExecution?: 'off' | 'instant' | 'powered';
   // 'planExecution' 導入前のセーブが持っていたフィールド。
   followPlan?: boolean;

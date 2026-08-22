@@ -27,8 +27,6 @@ import { register as registerDynamicTrajectory } from './dynamic-trajectory.test
 import { register as registerKeplerExtrapolation } from './kepler-extrapolation.test';
 import { register as registerHalo } from './halo.test';
 import { register as registerPlan } from './plan.test';
-import { register as registerPlanExecutorMath } from './plan-executor-math.test';
-import { register as registerPlanExecutor } from './plan-executor.test';
 import { register as registerHudLayout } from './hud-layout.test';
 import { register as registerMapScale } from './map-scale.test';
 import { register as registerShortcutHint } from './shortcut-hint.test';
@@ -78,8 +76,6 @@ registerDynamicTrajectory();
 registerKeplerExtrapolation();
 registerHalo();
 registerPlan();
-registerPlanExecutorMath();
-registerPlanExecutor();
 registerHudLayout();
 registerMapScale();
 registerBodyVisibility();
