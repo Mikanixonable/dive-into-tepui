@@ -120,6 +120,7 @@ function totalAccel(
   atmosphereBody: CelestialBody | null,
   bcInv: number,
   srpCoeff: number,
+  dt: number,
 ): Vec3 {
   let ax = 0, ay = 0, az = 0;
   for (const attractor of attractors) {
@@ -141,7 +142,8 @@ function totalAccel(
   // 抗力はその天体の中心を基準に測る。天体位置は重力項と同じくこの段の時刻へ外挿する。
   const b = celestialBodyPositionAt(atmosphereBody, t);
   const drag = dragAccel(
-    v3(r.x - b.x, r.y - b.y, r.z - b.z), sub(v, atmosphereBody.state.v), bcInv, atmosphereBody.atmosphere,
+    v3(r.x - b.x, r.y - b.y, r.z - b.z), sub(v, atmosphereBody.state.v), bcInv,
+    atmosphereBody.atmosphere, dt,
   );
   return v3(ax + drag.x, ay + drag.y, az + drag.z);
 }
@@ -164,7 +166,7 @@ export function stepDynamics(
 ): KinematicState {
   return stepRK4(state, dt, (t, rx, ry, rz, vx, vy, vz) => {
     const a = totalAccel(
-      t, v3(rx, ry, rz), v3(vx, vy, vz), attractors, occluders, atmosphereBody, bcInv, srpCoeff);
+      t, v3(rx, ry, rz), v3(vx, vy, vz), attractors, occluders, atmosphereBody, bcInv, srpCoeff, dt);
     return thrust ? add(a, thrust) : a;
   });
 }
