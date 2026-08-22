@@ -1,7 +1,7 @@
 // マップモードの「カメラ」「軌道フレーム」パネル オーケストレーター。
 // マップカメラの視点 (CameraFramePanel) と未来表示の描画基準 (TrajectoryFramePanel) を所有し、
 // カメラフォーカス変更時の軌道フレーム自動追随などの連動を疎結合に調停する。
-import { CelestialBody } from '../../physics/celestial-body';
+import { bodyAnchorSource, CelestialBody } from '../../physics/celestial-body';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Vec3 } from '../../physics/vec3';
 import { systemMembersAt } from '../celestial/body-visibility';
@@ -42,7 +42,8 @@ export class FrameControls {
     }
     const starId = this.ephemeris.starId;
     const frame = starId !== null ? this.ephemeris.frameOf(starId, null) : this.ephemeris.inertialFrame;
-    this.setFocus(focusPoint(this.ephemeris, frame, this.mapCamera.resolvedFocus, this.lastTime));
+    // 回さない(rotatingWith: null)ので基準は必ず登録天体 — 機体・役割トークンの解決は要らない。
+    this.setFocus(focusPoint(this.ephemeris, frame, this.mapCamera.resolvedFocus, this.lastTime, bodyAnchorSource([])));
   }
 
   // マップカメラのフォーカスを target へ移す。追随が有効で target が登録天体を指しているときは

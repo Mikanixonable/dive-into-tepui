@@ -2,7 +2,7 @@
 // (⬢ plannedPlayer マーカー)。
 import * as THREE from 'three/webgpu';
 import { Vec3, len, sub } from '../../physics/vec3';
-import { CelestialBody, strongestAttractor } from '../../physics/celestial-body';
+import { CelestialBody, bodyAnchorSource, strongestAttractor } from '../../physics/celestial-body';
 import { isOccluded } from '../../physics/occlusion';
 import { Projected } from '../../physics/projection';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -97,7 +97,7 @@ export class PlanDisplay {
     const { simTime, displayTime } = displayWindow;
     this.celestialBodies = this.ephemeris.celestialBodiesAt(displayTime);
     this.path.update(
-      planData, ship, this.ephemeris, displayWindow.frame, simTime, this.celestialBodies, celestialBodyProvider,
+      planData, ship, this.ephemeris, displayWindow.frame, simTime, bodyAnchorSource(this.celestialBodies), celestialBodyProvider,
       displayWindow.duration,
     );
     this.ghost = this.ghostAt(displayTime, simTime);

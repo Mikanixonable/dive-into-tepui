@@ -13,6 +13,7 @@ import { DIRECTION_GLYPH } from './marker/marker-glyphs';
 import { pickNearest } from './map-pickable';
 import { pickRadiusSq } from './input/pointer-precision';
 import type { Ephemeris } from '../physics/ephemeris';
+import type { FrameAnchorSource } from '../physics/frame';
 import type { DisplayWindow } from './display-window-manager';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import type { MapVisibilityPolicy } from './celestial/map-visibility';
@@ -66,10 +67,12 @@ export class Targeter {
   }
 
   // マップ表示中だけ、戦闘ターゲットの赤道交点マーカーを求め直す(戦闘ビューでは誰も読まない)。
-  updateEquatorNodes(overviewMode: boolean, displayWindow: DisplayWindow, ephemeris: Ephemeris): void {
+  updateEquatorNodes(
+    overviewMode: boolean, displayWindow: DisplayWindow, ephemeris: Ephemeris, frameAnchors: FrameAnchorSource,
+  ): void {
     if (!overviewMode) return;
     this.aliveTarget?.ensureEquatorNodes(this.markerManager)
-      .update(displayWindow.frame, displayWindow.displayTime, ephemeris);
+      .update(displayWindow.frame, displayWindow.displayTime, ephemeris, frameAnchors);
   }
 
   // ターゲット位置に「自機の方を向いた的(標的面)」があると見なし、発射弾がその面を自機側から

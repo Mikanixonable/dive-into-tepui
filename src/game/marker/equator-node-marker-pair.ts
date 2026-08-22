@@ -1,7 +1,7 @@
 // 1つのオブジェクトの軌道が中心天体の赤道面を横切る2点(EqAN/EqDN)の算出と、△▽ マーカー
 // としての表示・被選択物としての公開。
 import { CelestialBody, strongestAttractor } from '../../physics/celestial-body';
-import { ReferenceFrame, unbakeToDisplayPoint } from '../../physics/frame';
+import { FrameAnchorSource, ReferenceFrame, unbakeToDisplayPoint } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { Vec3 } from '../../physics/vec3';
@@ -33,22 +33,22 @@ export class EquatorNodeMarkerPair {
 
   // 交点を求め直す。
   update(
-    frame: ReferenceFrame, displayTime: number, ephemeris: Ephemeris,
+    frame: ReferenceFrame, displayTime: number, ephemeris: Ephemeris, frameAnchors: FrameAnchorSource,
     state: KinematicState = this.owner.state, samples: readonly KinematicState[] | null = null,
   ): void {
     this.icons = [];
-    this.celestialBodies = ephemeris.celestialBodiesAt(displayTime);
+    this.celestialBodies = frameAnchors.bodies;
     const center = strongestAttractor(state.r, ephemeris.celestialBodiesAt(state.t));
     const eqNormal = center.degree2?.pole;
     if (!eqNormal) return;
 
-    const unbakeTf = ephemeris.frameTransformAt(frame, displayTime, this.celestialBodies);
+    const unbakeTf = ephemeris.frameTransformAt(frame, displayTime, frameAnchors);
     const crossings = solveEquatorCrossings(state, center, eqNormal, samples, (t) => ephemeris.positionOf(center.id, t));
     if (!crossings) return;
 
     const centerName = celestialBodyName(center.id);
     const toDisplay = (r: Vec3, t: number): Vec3 =>
-      unbakeToDisplayPoint(unbakeTf, ephemeris.frameTransformAt(frame, t, this.celestialBodies), r);
+      unbakeToDisplayPoint(unbakeTf, ephemeris.frameTransformAt(frame, t, frameAnchors), r);
 
     this.icons = [
       {

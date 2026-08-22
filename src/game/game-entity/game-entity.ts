@@ -12,7 +12,7 @@ import { FloatingOrigin } from '../floating-origin';
 import { OrbitLine } from '../orbit-line';
 import { TrajectoryLine } from '../trajectory-line';
 import { LineStyle } from '../../render/line-style';
-import { ReferenceFrame } from '../../physics/frame';
+import { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { PredictedArc, trajectorySampleInterval } from '../simulation/predicted-arc';
 import type { FutureCelestialBodyProvider } from '../simulation/arc-bodies';
@@ -185,13 +185,13 @@ export class GameEntity {
   // orbitLine を現在位置で最も強く引く天体まわりの軌道楕円に合わせる。線を持たなければ何もしない。
   // frame / displayTime / ephemeris を渡すと、その座標系・時刻で楕円を描く。
   syncOrbitLine(
-    fo: FloatingOrigin, camera: THREE.Camera, celestialBodies: readonly CelestialBody[], force = false,
+    fo: FloatingOrigin, camera: THREE.Camera, frameAnchors: FrameAnchorSource, force = false,
     frame?: ReferenceFrame, displayTime?: number, ephemeris?: Ephemeris,
   ): void {
     if (this.orbitLine === null) return;
-    const center = strongestAttractor(this.state.r, celestialBodies);
+    const center = strongestAttractor(this.state.r, frameAnchors.bodies);
     this.orbitLine.sync(
-      this.orbitalElementsAround(center), fo, camera, force, frame, displayTime, ephemeris, celestialBodies,
+      this.orbitalElementsAround(center), fo, camera, force, frame, displayTime, ephemeris, frameAnchors,
     );
   }
 
@@ -239,18 +239,18 @@ export class GameEntity {
   // simTime は描く区間の境目、displayTime は座標系から慣性系へ戻す時刻。
   syncTrajectoryLines(
     frame: ReferenceFrame, simTime: number, displayTime: number, pastDuration: number, predictedTo: number | null,
-    ephemeris: Ephemeris, fo: FloatingOrigin, camera: THREE.Camera, celestialBodies: readonly CelestialBody[],
+    ephemeris: Ephemeris, fo: FloatingOrigin, camera: THREE.Camera, frameAnchors: FrameAnchorSource,
   ): void {
     if (this.predictedLine !== null) {
-      this.predictedLine.syncGeometry(this.predicted, simTime, predictedTo, frame, ephemeris, celestialBodies);
-      this.predictedLine.syncTransform(frame, displayTime, ephemeris, fo, celestialBodies);
+      this.predictedLine.syncGeometry(this.predicted, simTime, predictedTo, frame, ephemeris, frameAnchors);
+      this.predictedLine.syncTransform(frame, displayTime, ephemeris, fo, frameAnchors);
       this.predictedLine.sync(camera);
     }
     if (this.actualLine !== null) {
       this.actualLine.syncGeometry(
-        this.actual, simTime - pastDuration, simTime, frame, ephemeris, celestialBodies,
+        this.actual, simTime - pastDuration, simTime, frame, ephemeris, frameAnchors,
       );
-      this.actualLine.syncTransform(frame, displayTime, ephemeris, fo, celestialBodies);
+      this.actualLine.syncTransform(frame, displayTime, ephemeris, fo, frameAnchors);
       this.actualLine.sync(camera);
     }
   }

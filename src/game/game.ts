@@ -36,6 +36,7 @@ import type { Ephemeris } from '../physics/ephemeris';
 import { ViewManager } from './view-manager';
 import { NanWatchdog } from './nan-watchdog';
 import { NavTarget } from './nav-target';
+import { FrameAnchors } from './frame-anchors';
 import { OrbitReferenceSelector } from './orbit-reference';
 import { MapPickables } from './map-pickables';
 import { MapContextActions } from './map-context-actions';
@@ -92,6 +93,7 @@ export class Game {
 
   readonly targeter: Targeter;
   readonly navTarget: NavTarget;
+  readonly frameAnchors: FrameAnchors;
   readonly orbitReference = new OrbitReferenceSelector();
   readonly entities: EntityManager;
   private readonly futureCelestialBodies: FutureCelestialBodies;
@@ -155,6 +157,13 @@ export class Game {
     );
 
     this.navTarget = new NavTarget(this._hud, this.markerManager);
+    // 参照フレームの基準・回転対象が機体・役割トークンを指すときの解決役。update()/sync() の
+    // 先頭で毎フレーム celestialBodies を差し込み、以降のフレーム変換の呼び出しはこれを渡す。
+    this.frameAnchors = new FrameAnchors({
+      entityState: (id) => this.entities.all().find((e) => e.id === id && e.alive)?.state ?? null,
+      activeShipState: () => this.activeControllableEntity?.state ?? null,
+      navTargetState: (bodies, t) => this.navTarget.resolveState(this.entities, this.ephemeris, bodies, t)?.state ?? null,
+    });
     this.targeter = new Targeter(this.markerManager, this.navTarget, this.entities);
     this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
     this._environment = new EnvironmentScene(this._scene, this.ephemeris, graphics, pipeline.sunLight, earthSpinPhase0);
@@ -197,6 +206,7 @@ export class Game {
     // activeStage(authoring/executesPlans を読む)を要るので、その直後に生成する。
     this.mapPickables = new MapPickables(
       this.activePlayers, this.entities, this.ephemeris, this.navTarget, this.cameraSystem, this.editor, this.markerManager,
+      this.frameAnchors,
     );
     this.mapActions = new MapContextActions(
       this._hud, this.entities, this.ephemeris, this.navTarget,
@@ -296,10 +306,13 @@ export class Game {
     const displayWindow = this.displayWindowManager.resolve(this.simulator.simTime, activeControllable);
     const overviewMode = this.cameraSystem.overviewMode;
     const canDisplayFuture = !this.displayWindowManager.forceCurrent;
+    // このフレームの表示時刻の celestialBodies を差し込む: 以降の frameTransformAt 呼び出しは
+    // すべてこの frameAnchors を通す。
+    this.frameAnchors.update(this.ephemeris.celestialBodiesAt(displayWindow.displayTime));
     // 計画表示、予測伸長、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
     this._environment.update(displayWindow.displayTime, overviewMode);
     this.sections.enter(SECTION.plan);
-    this.editor.update(displayWindow);
+    this.editor.update(displayWindow, this.frameAnchors);
     this.sections.exit(SECTION.plan);
     // ポーズ中・決着後も無条件に呼ぶ: simTime が止まっている間はサブステップも進まず、
     // 消費も期限切れの張り直しも起きないので、予測は伸び切ったところで止まるだけで害はない。
@@ -310,13 +323,13 @@ export class Game {
     );
     this.sections.exit(SECTION.predict);
     this.sections.enter(SECTION.plan);
-    this.targeter.updateEquatorNodes(overviewMode, displayWindow, this.ephemeris);
-    this.entities.updateBaseEquatorNodes(overviewMode, displayWindow, this.ephemeris);
+    this.targeter.updateEquatorNodes(overviewMode, displayWindow, this.ephemeris, this.frameAnchors);
+    this.entities.updateBaseEquatorNodes(overviewMode, displayWindow, this.ephemeris, this.frameAnchors);
     this.sections.exit(SECTION.plan);
     this.sections.enter(SECTION.camera);
     this.cameraSystem.update(
       activeControllable, displayWindow.displayTime, this.input, dt, this.mapPickables.pickables,
-      this.ephemeris.celestialBodiesAt(displayWindow.displayTime),
+      this.frameAnchors,
     );
     this.sections.exit(SECTION.camera);
     // カメラ更新の後に置く: 候補集合と表示可否はカメラ位置から出るので、先に組むと
@@ -464,6 +477,8 @@ export class Game {
     // 楕円の中心天体位置や折れ線の un-bake を simTime で取ると同一画面上でずれる。
     const celestialBodies = this.ephemeris.celestialBodiesAt(simTime);
     const displayCelestialBodies = this.ephemeris.celestialBodiesAt(displayTime);
+    // sync フェーズの frameTransformAt 呼び出しも同じ表示時刻の celestialBodies を見るように揃える。
+    this.frameAnchors.update(displayCelestialBodies);
 
     // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列を読む。
     this.cameraSystem.sync(fo);
@@ -521,7 +536,7 @@ export class Game {
     this.editor.sync(this.cameraSystem, simTime, fo);
 
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
-    this.entityLines.sync(displayWindow, fo, this.cameraSystem.activeCamera, displayCelestialBodies, this.ephemeris);
+    this.entityLines.sync(displayWindow, fo, this.cameraSystem.activeCamera, this.frameAnchors, this.ephemeris);
 
     if (player) {
       this.touchControls?.syncModeButtons(
