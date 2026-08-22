@@ -409,8 +409,7 @@ export class MapCamera {
       this.lastResolvedFocus = this.ephemeris.positionOf(focus.id, displayTime);
       return this.lastResolvedFocus;
     }
-    // 役割トークンは被選択物の一覧に並ばない(特定の対象を名指ししないため)ので、
-    // 解決役へ直接問う。解決できないフレームの扱いは天体・機体と同じ猶予に乗せる。
+    // 役割トークンは特定の対象を名指ししないぶん被選択物の一覧に並ぶことがなく、解決役へ直接問う。
     if (frameRoleOf(focus.id) !== null) {
       const state = frameAnchors.stateOf(focus.id, displayTime);
       if (state !== null) {
