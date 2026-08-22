@@ -9,7 +9,7 @@ import {
 } from '../../src/physics/halo';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
 import { SOLAR_SYSTEM } from '../../src/physics/solar-system';
-import { OrbitingId } from '../../src/physics/attractor';
+import { OrbitingId } from '../../src/physics/celestial-body';
 import { dot, len, sub } from '../../src/physics/vec3';
 
 const SECONDARIES: OrbitingId[] = ['moon', 'earth'];

@@ -1,31 +1,31 @@
 // ECI 位置から最寄りの登録惑星までの距離と、マップ用の距離フェードを求める。
-import type { Attractor } from '../../physics/attractor';
+import type { CelestialBody } from '../../physics/celestial-body';
 import { Vec3 } from '../../physics/vec3';
 import type { CelestialRegistry } from '../../physics/solar-system';
 import { bodyDef } from '../../physics/solar-system';
 import * as C from '../const';
 
-export type NearestPlanet = { readonly attractor: Attractor; readonly distance: number };
+export type NearestPlanet = { readonly celestialBody: CelestialBody; readonly distance: number };
 
 export function findNearestPlanet(
-  position: Vec3, registry: CelestialRegistry, attractors: readonly Attractor[],
+  position: Vec3, registry: CelestialRegistry, celestialBodies: readonly CelestialBody[],
 ): NearestPlanet | null {
   let nearest: NearestPlanet | null = null;
-  for (const attractor of attractors) {
-    if (registry[attractor.id] === undefined || bodyDef(registry, attractor.id).kind !== 'planet') continue;
-    const dx = position.x - attractor.state.r.x;
-    const dy = position.y - attractor.state.r.y;
-    const dz = position.z - attractor.state.r.z;
+  for (const celestialBody of celestialBodies) {
+    if (registry[celestialBody.id] === undefined || bodyDef(registry, celestialBody.id).kind !== 'planet') continue;
+    const dx = position.x - celestialBody.state.r.x;
+    const dy = position.y - celestialBody.state.r.y;
+    const dz = position.z - celestialBody.state.r.z;
     const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-    if (nearest === null || distance < nearest.distance) nearest = { attractor, distance };
+    if (nearest === null || distance < nearest.distance) nearest = { celestialBody, distance };
   }
   return nearest;
 }
 
 export function nearestPlanetDistance(
-  position: Vec3, registry: CelestialRegistry, attractors: readonly Attractor[],
+  position: Vec3, registry: CelestialRegistry, celestialBodies: readonly CelestialBody[],
 ): number | null {
-  return findNearestPlanet(position, registry, attractors)?.distance ?? null;
+  return findNearestPlanet(position, registry, celestialBodies)?.distance ?? null;
 }
 
 export function mapPlanetFadeOpacity(distance: number | null): number {

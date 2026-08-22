@@ -1,12 +1,11 @@
 // エンティティ配列の保持・追加・上限管理・寿命回収・描画同期。
 import * as THREE from 'three/webgpu';
 import { Vec3 } from '../../physics/vec3';
-import { Attractor } from '../../physics/attractor';
+import { CelestialBody } from '../../physics/celestial-body';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { GameEntity } from '../game-entity/game-entity';
 import { AmmoPickup } from '../game-entity/ammo-pickup';
-import { Asteroid } from '../game-entity/asteroid';
 import { DebrisPiece } from '../game-entity/debris-piece';
 import { Enemy } from '../game-entity/enemy';
 import { Bullet } from '../game-entity/bullet';
@@ -36,7 +35,6 @@ export class EntityManager {
   readonly casings: DebrisPiece[] = [];
   readonly debris: DebrisPiece[] = [];
   public readonly ammoPickups: AmmoPickup[] = [];
-  readonly asteroids: Asteroid[] = [];
   // 自機。操作対象(Game.player)もこの配列の1隻で、積分・衝突・寿命判定・予測では
   // 他の艦と対等に扱う。ステージモードでは1隻だけが入る。
   readonly players: Player[] = [];
@@ -98,12 +96,11 @@ export class EntityManager {
   }
 
   // all()/otherEntities() はSimulatorの各substepから何度も呼ばれる。配列の内容が変わった
-  // ときだけ結合し、Predictor→attractors の入れ子呼び出しでも同じ安定配列を返す。
+  // ときだけ結合し、以降は同じ安定配列を返す。
   private _collectionRevision = 0;
   private cachedRevision = -1;
   private readonly cachedOtherEntities: GameEntity[] = [];
   private readonly cachedAllEntities: GameEntity[] = [];
-  private readonly cachedAttractors: GameEntity[] = [];
   // Targeter/Game は取得した配列を読み取り専用として扱う(filter/sort等で破壊しない)ため、
   // collectionRevision が変わるまで敵・自機の結合結果も再利用する。
   private combatTargetsRevision = -1;
@@ -198,11 +195,6 @@ export class EntityManager {
     this.invalidateCaches();
   }
 
-  // 小惑星を登録する。上限を超えた分は古いものから破棄する。
-  addAsteroid(asteroid: Asteroid): void {
-    this.addCapped(this.asteroids, asteroid, C.MAX_ASTEROIDS);
-  }
-
   // 基地を登録する。
   addBase(base: Base): void {
     this.bases.push(base);
@@ -232,17 +224,12 @@ export class EntityManager {
       ...this.enemies,
       ...this.bullets,
       ...this.ammoPickups,
-      ...this.asteroids,
       ...this.casings,
       ...this.debris,
       ...this.bases,
     );
     this.cachedAllEntities.length = 0;
     this.cachedAllEntities.push(...this.cachedOtherEntities, ...this.players);
-    this.cachedAttractors.length = 0;
-    for (const e of this.cachedAllEntities) {
-      if (e.alive && e.mu !== 0) this.cachedAttractors.push(e);
-    }
     this.cachedRevision = this._collectionRevision;
   }
 
@@ -258,23 +245,18 @@ export class EntityManager {
     return this.cachedAllEntities;
   }
 
-  // 重力を持つ(mu !== 0 かつ生存中の)エンティティを返す。GameEntity は id/radius/mu/degree2/
-  // isStar/state/accel を直接持つので Attractor を満たす。
-  attractors(): readonly GameEntity[] {
-    this.rebuildCachesIfNeeded();
-    return this.cachedAttractors;
-  }
-
   // 全エンティティの寿命判定を行い、死亡したものを破棄・除去する。自機だけは各所の参照掃除と
   // 次艦への引き継ぎが要るため、除去は ActivePlayerController.reclaimDead が担う。
-  cleanup(dt: number, simTime: number, activeStage: Stage, playerPos: Vec3, attractors: readonly Attractor[]): void {
-    for (const e of this.all()) e.checkLoss(dt, simTime, activeStage, playerPos, attractors);
+  cleanup(
+    dt: number, simTime: number, activeStage: Stage, playerPos: Vec3,
+    atmosphereBodies: readonly CelestialBody[],
+  ): void {
+    for (const e of this.all()) e.checkLoss(dt, simTime, activeStage, playerPos, atmosphereBodies);
     this.prune(this.enemies);
     this.prune(this.bullets);
     this.prune(this.casings);
     this.prune(this.debris);
     this.prune(this.ammoPickups);
-    this.prune(this.asteroids);
     this.prune(this.bases);
   }
 
@@ -346,12 +328,12 @@ export class EntityManager {
   // ものなので、どれが操作対象かを各艦へ渡す。
   syncPlayers(
     activePlayer: Player | null, fo: FloatingOrigin, cameraSystem: CameraSystem,
-    displayTime: number, ephemeris: Ephemeris, attractors: readonly Attractor[],
+    displayTime: number, ephemeris: Ephemeris, celestialBodies: readonly CelestialBody[],
     visibilityPolicy: MapVisibilityPolicy | null, displayWindow?: DisplayWindow, orbitRef?: OrbitReference,
   ): void {
     for (const ship of this.players) {
       ship.syncPlayer(
-        fo, cameraSystem, displayTime, ship === activePlayer, ephemeris, attractors,
+        fo, cameraSystem, displayTime, ship === activePlayer, ephemeris, celestialBodies,
         visibilityPolicy?.entity('player', ship === activePlayer) ?? null, displayWindow, orbitRef,
       );
     }
@@ -404,7 +386,7 @@ export class EntityManager {
   // 艦が1隻も無い間は距離を添えない。
   syncMarkers(
     cameraSystem: CameraSystem, displayTime: number, viewerPos: Vec3 | null,
-    attractors: readonly Attractor[], visibilityPolicy: MapVisibilityPolicy | null,
+    celestialBodies: readonly CelestialBody[], visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     const project = cameraSystem.activeCameraProjection;
     const scale = cameraSystem.activeCameraScale;
@@ -412,7 +394,7 @@ export class EntityManager {
     const visibilityOf = (kind: 'ammo' | 'base'): MapVisibility | null =>
       (overviewMode ? visibilityPolicy?.entity(kind) ?? null : null);
     for (const ammoPickup of this.ammoPickups) {
-      ammoPickup.marker?.sync(project, scale, displayTime, overviewMode, cameraSystem.activeCameraPos, viewerPos, attractors, visibilityOf('ammo'));
+      ammoPickup.marker?.sync(project, scale, displayTime, overviewMode, cameraSystem.activeCameraPos, viewerPos, celestialBodies, visibilityOf('ammo'));
     }
   }
 
@@ -459,7 +441,6 @@ export class EntityManager {
     this.disposeAll(this.casings);
     this.disposeAll(this.debris);
     this.disposeAll(this.ammoPickups);
-    this.disposeAll(this.asteroids);
     this.disposeAll(this.bases);
 
     this.bulletBodyPool.dispose();
@@ -479,7 +460,7 @@ export class EntityManager {
   }
 
   // 負荷確認ウィンドウが読む、保持配列ごとの現在の個体数。
-  perfCounts(): Pick<PerfCounts, 'players' | 'enemies' | 'bullets' | 'casings' | 'debris' | 'ammoPickups' | 'asteroids' | 'bases'> {
+  perfCounts(): Pick<PerfCounts, 'players' | 'enemies' | 'bullets' | 'casings' | 'debris' | 'ammoPickups' | 'bases'> {
     return {
       players: this.players.length,
       enemies: this.enemies.length,
@@ -487,7 +468,6 @@ export class EntityManager {
       casings: this.casings.length,
       debris: this.debris.length,
       ammoPickups: this.ammoPickups.length,
-      asteroids: this.asteroids.length,
       bases: this.bases.length,
     };
   }
