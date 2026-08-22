@@ -183,6 +183,10 @@ export class PropertyWindow<A extends string = string> {
     this.win.setHeader(title, subtitle);
   }
 
+  public syncBadge(kind: 'tgt' | 'on' | null): void {
+    this.win.setBadge(kind);
+  }
+
   // タイトルを編集用の入力欄へ差し替え、確定(Enter/blur)で renameCallback へ通知して表示へ戻す。
   private startRename(): void {
     if (this.renaming || !this.renameCallback) return;

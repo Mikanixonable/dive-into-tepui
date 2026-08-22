@@ -116,7 +116,9 @@ export const MAP_VIEW_STYLE = `
   transition: color var(--transition-fast), background var(--transition-fast);
 }
 #hud .hud-map-root.active #hud-physical-object-list .erow:hover { color: var(--title); background: var(--surface-2); }
-#hud .hud-map-root.active #hud-physical-object-list .erow.related-orbit { color: var(--accent-near); }
+#hud .hud-map-root.active #hud-physical-object-list .erow.related-orbit {
+  color: var(--accent-secondary); background: color-mix(in srgb, var(--accent-secondary) 12%, transparent);
+}
 #hud .hud-map-root.active #hud-physical-object-list .erow.on {
   outline: 0;
   color: var(--accent);

@@ -381,6 +381,8 @@ export class MapContextActions {
       entry.win.syncHeader(title, subtitle);
       entry.win.syncRows(this.buildRows(entry.target, celestialBodies, player, simTime));
       entry.win.syncItems(menuItems);
+      entry.win.syncBadge(this.physicalObjectListPanel.isSelected(entry.target.id) ? 'on'
+        : this.physicalObjectListPanel.isTarget(entry.target.id) ? 'tgt' : null);
     }
   }
 
