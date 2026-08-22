@@ -85,6 +85,7 @@ export class SurfaceContactPhysics {
       normal: response.normal,
       selfState: before,
       otherState: hit.body.state,
+      specificEnergyLoss: response.specificEnergyLoss,
     }, activeStage);
   }
 
