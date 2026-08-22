@@ -9,6 +9,10 @@
 
 export type OverlayKind = 'modal' | 'popup' | 'window';
 
+// クリップされていない一時ウィンドウ(プロパティウィンドウ・軌道分析パネル)が同時に高々1枚しか
+// 開かないための排他グループ名。クリップ状態の遷移ごとの出し入れは各ウィンドウ自身が持つ。
+export const TEMP_WINDOW_GROUP = 'property-window-temp';
+
 export interface OverlaySpec {
   readonly kind: OverlayKind;
   readonly closeOnEscape: boolean;
