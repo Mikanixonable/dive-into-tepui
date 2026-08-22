@@ -34,6 +34,8 @@
   役割トークンの予約記号は `@` で確定。
 - 自転回転系の基底は ẑ = 自転軸、x̂ = 本初子午線で、公転回転系(ẑ = 軌道面法線)と軸の割り当てを
   揃えた。逆行自転する天体は軸を反転せず、角速度の符号で表す。SPEC もこの規約に合わせてある。
+- 旧セーブの `rotatingWith`(文字列)は公転として読む変換を入れ済み。役割トークンは `@` 付きの
+  文字列としてそのまま保存・復元されるので、追加の読み替えは要らない。
 - **本件と無関係な既存の失敗が1件ある。** `test:physics` の
   「ephemeris: celestialBodiesAt は SOLAR_SYSTEM の宣言順で、positionOf と整合する」は
   作業開始前の 3acc14a6 の時点で既に FAIL している。**本計画では直さない。**
@@ -202,21 +204,15 @@ spinRotationAt(id: CelestialBodyId, t: number): FrameRotation | null
 
 各ステップは独立に commit できる。上から順に着手する。
 
-1. **`ReferenceFrame.rotatingWith` を union へ差し替える。** `frameOf` のキャッシュキー正規化と
-   `frameTransformAt` の分岐(`null` / `revolution` / `spin`)。呼び出し側は最小の追従だけ。
-   UI にはまだ自転の選択肢を出さない。
-   完了条件: typecheck・test:physics が通り、既存の回転系の見た目が変わらない。
-2. **`FrameAnchorSource` を導入する。** `src/game/frame-anchors.ts` を新設し、
+1. **`FrameAnchorSource` を導入する。** `src/game/frame-anchors.ts` を新設し、
    `frameTransformAt` の第3引数を `CelestialBody[]` から差し替える。役割トークンの解決と
    `attractorOf` による公転回転系の主天体決定をここで実装する。
    完了条件: 船 id を基準に選んだとき、いままで ECI 原点へ落ちていた座標系が正しく解決する。
-3. **セーブデータの読み替えを入れる。** 旧形式(文字列)→ `revolution`。
-   完了条件: 手元の既存スナップショットが読める。
-4. **UI に選択肢を足す。** `RotationZone` の3種生成、`AnchorZone` の役割グループ、
+2. **UI に選択肢を足す。** `RotationZone` の3種生成、`AnchorZone` の役割グループ、
    `frame-controls.ts` の有効判定、両パネルの `rotText` / `setSelected`。
    着手前に `/ui-design` を通す。
    完了条件: 達成目標 1〜5 を確認。
-5. **仕上げ。** `/comment-cleanup` を新規・改変箇所へ通し、`npm run ci`。
+3. **仕上げ。** `/comment-cleanup` を新規・改変箇所へ通し、`npm run ci`。
 
 ## 7. 見積り
 
@@ -235,7 +231,7 @@ spinRotationAt(id: CelestialBodyId, t: number): FrameRotation | null
 
 **選択肢の再生成**: `RotationZone.setNearby` は毎 sync で DOM を組み直している。選択肢が
 最大 2 個 → 最大 (2N + 2) 個へ増える。N ≈ 20 なら 42 要素/sync。sync は毎フレームではなく
-パネル同期時のみなので許容するが、**手順4で「選択肢の並びが前回と同じなら組み直さない」
+パネル同期時のみなので許容するが、**手順2で「選択肢の並びが前回と同じなら組み直さない」
 比較を入れる**(既存の `setItems` が無条件に作り直しているため、ここで初めて効いてくる)。
 
 ## 8. リスクと落とし穴
@@ -249,5 +245,5 @@ spinRotationAt(id: CelestialBodyId, t: number): FrameRotation | null
 | `@` 予約記号が既存の天体 id と衝突する | 役割トークンが天体として解決され、無言で別の座標系になる | 確認済み(`@` を含む天体 id は無い)。動的 id を増やすときに再確認する |
 | 旧セーブの `rotatingWith` を union として読んで `undefined` になる | 回転系の選択だけが静かに慣性系へ戻る。エラーは出ない | `save-data.ts`。達成目標 7 |
 | `spinRateOf` が同期回転天体(月)で null を返す | 月自転座標系だけ選択肢に出ない。他は動くので気付きにくい | `RotationZone` の選択肢一覧。月が出るかを目視 |
-| `RotationZone` の選択肢が増えてクイックボタン列が画面幅を超える | 横スクロールが出るか、ボタンが潰れる | 座標系パネル。`/ui-design` を手順4の着手前に通す |
+| `RotationZone` の選択肢が増えてクイックボタン列が画面幅を超える | 横スクロールが出るか、ボタンが潰れる | 座標系パネル。`/ui-design` を手順2の着手前に通す |
 | 逆行自転天体(金星・天王星)で `spinOrientation` の軸向きが自転角運動量と逆になる | その天体の自転座標系だけ逆回りに見える | CELESTIAL.md §3 が「極を扱う場面では自転角運動量の向きを採る」と定めている。`spinRotationAt` でこの規則を適用したか、実施済み(逆行自転は軸を反転せず角速度の符号で表す規約に確定) |
