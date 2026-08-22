@@ -1,6 +1,6 @@
 // 自機の展開式ラジエーター: 上下2枚それぞれの展開度・損耗度を持ち、
 // 今フレームの放熱面積と太陽入射を答える。機体温度そのものは知らない
-// (温度の4乗則を持つのは ThermalSystem のみ)。
+// (温度の4乗則を持つのは GameEntity の熱収支のみ)。
 import * as THREE from 'three/webgpu';
 import { Attitude, qFromAxisAngle, qRotate } from '../../physics/attitude';
 import { kinematicState } from '../../physics/kinematic-state';
@@ -153,7 +153,8 @@ export class RadiatorSystem {
     }
   }
 
-  // side の有効な放熱面積 [m^2]。展開度と損耗度で目減りする。
+  // side の有効な放熱面積 [m^2]。totalCoolingRate は放熱板部品の面積の総和で、展開度と
+  // 損耗度で目減りする。
   private panelArea(side: RadiatorSide, totalCoolingRate: number): number {
     if (this.wear[side] >= 1) return 0;
     return (totalCoolingRate / 2) * this.panels[side].deploy;
