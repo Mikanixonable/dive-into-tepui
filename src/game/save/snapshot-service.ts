@@ -20,7 +20,7 @@ export class SnapshotService {
     if (slotId === null) return null;
 
     const player = game.player;
-    const info = player ? orbitInfo(player, autoOrbitReference(player.state.r, game.ephemeris.attractorsAt(game.simTime))) : null;
+    const info = player ? orbitInfo(player, autoOrbitReference(player.state.r, game.ephemeris.celestialBodiesAt(game.simTime))) : null;
     const meta: SnapshotMeta = {
       id: generateSnapshotId(),
       kind,

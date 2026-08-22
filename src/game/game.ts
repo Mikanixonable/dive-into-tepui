@@ -18,7 +18,7 @@ import { DisplayWindowManager } from './display-window-manager';
 import { PlanGuide } from './plan/plan-guide';
 import { SimSpeedManager } from './sim-speed-manager';
 import { EntityManager } from './simulation/entity-manager';
-import { FutureAttractors } from './simulation/future-attractors';
+import { FutureCelestialBodies } from './simulation/future-celestial-bodies';
 import { EntityLineManager } from './entity-line-manager';
 import { Simulator } from './simulation/simulator';
 import { Predictor } from './simulation/predictor';
@@ -94,7 +94,7 @@ export class Game {
   readonly navTarget: NavTarget;
   readonly orbitReference = new OrbitReferenceSelector();
   readonly entities: EntityManager;
-  private readonly futureAttractors: FutureAttractors;
+  private readonly futureCelestialBodies: FutureCelestialBodies;
   private readonly entityLines: EntityLineManager;
   readonly simulator: Simulator;
   private readonly predictor: Predictor;
@@ -137,9 +137,9 @@ export class Game {
     this.markerManager = new MarkerManager(this._hud.layers.marker, this._hud.svgOverlay);
 
     this.entities = new EntityManager(this._scene, this._hud, this._worldSfx, this.markerManager, initialSave);
-    this.futureAttractors = new FutureAttractors(this.ephemeris, this.entities);
+    this.futureCelestialBodies = new FutureCelestialBodies(this.ephemeris);
     this.entityLines = new EntityLineManager(this.entities);
-    this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, this.ephemeris, this.entities);
+    this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, this.ephemeris);
 
     this.cameraSystem = new CameraSystem(
       this._hud,
@@ -165,7 +165,7 @@ export class Game {
       this._uiSfx,
       this.simSpeedManager,
       this.ephemeris,
-      this.futureAttractors,
+      this.futureCelestialBodies,
       this._scene,
       this.markerManager,
       this.activePlayers,
@@ -186,7 +186,7 @@ export class Game {
     this.mapHud = new MapHudController(this._hud);
 
     this.simulator = new Simulator(this.entities, this.ephemeris, sections, initialSave?.simTime ?? 0);
-    this.predictor = new Predictor(this.entities, this.ephemeris, this.futureAttractors);
+    this.predictor = new Predictor(this.entities, this.futureCelestialBodies);
 
     this.activeStage = new stageClass(
       initialSave?.stage, this._hud, this._worldSfx, this._uiSfx, this._scene, this.entities, this.unlockManager,
@@ -300,11 +300,11 @@ export class Game {
     this.sections.enter(SECTION.plan);
     this.editor.update(displayWindow);
     this.sections.exit(SECTION.plan);
-    // ポーズ中・決着後も無条件に呼ぶ: simTime が止まっている間は乖離が起きないので、
-    // 予測は伸び切ったところで止まるだけで害はない。
+    // ポーズ中・決着後も無条件に呼ぶ: simTime が止まっている間はサブステップも進まず、
+    // 消費も期限切れの張り直しも起きないので、予測は伸び切ったところで止まるだけで害はない。
     this.sections.enter(SECTION.predict);
     this.predictor.update(
-      this.simulator.simTime, this.player, displayWindow.duration,
+      this.simulator.simTime, this.simulator.lastSimDt, this.player, displayWindow.duration,
       canDisplayFuture, this.editor.growableArcs(),
     );
     this.sections.exit(SECTION.predict);
@@ -315,7 +315,7 @@ export class Game {
     this.sections.enter(SECTION.camera);
     this.cameraSystem.update(
       activeControllable, displayWindow.displayTime, this.input, dt, this.mapPickables.pickables,
-      this.displayWindowManager.attractorsAt(displayWindow.displayTime),
+      this.ephemeris.celestialBodiesAt(displayWindow.displayTime),
     );
     this.sections.exit(SECTION.camera);
     // カメラ更新の後に置く: 候補集合と表示可否はカメラ位置から出るので、先に組むと
@@ -366,7 +366,9 @@ export class Game {
 
     const simDt = dt * this.simSpeedManager.simSpeed;
     this.sections.enter(SECTION.integrate);
-    this.simulator.advance(dt, simDt, this.player, this.activeStage, this.simSpeedManager, this.nanWatchdog);
+    this.simulator.advance(
+      dt, simDt, this.player, this.activeStage,
+      this.simSpeedManager.canResolvePhysicalCollisions, this.nanWatchdog);
     this.sections.exit(SECTION.integrate);
     this.docking.updateDockedPhysics();
     // 積分後の状態でこのフレームの表示窓を確定させ、以降の消費者へ共有する。
@@ -385,7 +387,7 @@ export class Game {
     this.sections.enter(SECTION.plan);
     this.guide.update(
       this.player, this.simulator.simTime, this.editor.editMode,
-      this.ephemeris.attractorsAt(this.simulator.simTime),
+      this.ephemeris.celestialBodiesAt(this.simulator.simTime),
     );
     this.sections.exit(SECTION.plan);
   }
@@ -456,13 +458,11 @@ export class Game {
 
     // 表示時刻 = 未来ゴーストのスライダーぶん先取りした simTime。
     const { displayTime, simTime } = displayWindow;
-    // 表示側は重力を持つ生存中の GameEntity(小惑星)も中心天体解決・遮蔽判定へ合流させる —
-    // EntityManager.cleanup へ渡す表面到達判定用の配列(解析天体のみ)とは別物。
     // 現在時刻の配列は「いまの状態」を数値で読ませる HUD・プロパティ行が使い、表示時刻の配列は
     // 画面に描く幾何(軌道線・折れ線・天体位置)が使う — 天体メッシュは displayTime に置かれるので、
     // 楕円の中心天体位置や折れ線の un-bake を simTime で取ると同一画面上でずれる。
-    const attractors = this.displayWindowManager.attractorsAt(simTime);
-    const displayAttractors = this.displayWindowManager.attractorsAt(displayTime);
+    const celestialBodies = this.ephemeris.celestialBodiesAt(simTime);
+    const displayCelestialBodies = this.ephemeris.celestialBodiesAt(displayTime);
 
     // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列を読む。
     this.cameraSystem.sync(fo);
@@ -481,27 +481,27 @@ export class Game {
     );
 
     const orbitRef = player
-      ? this.orbitReference.resolve(player.state.r, attractors, this.navTarget, this.entities, this.ephemeris, player.state.t)
+      ? this.orbitReference.resolve(player.state.r, celestialBodies, this.navTarget, this.entities, this.ephemeris, player.state.t)
       : undefined;
     this.entities.syncPlayers(
-      player, fo, this.cameraSystem, displayTime, this.ephemeris, displayAttractors, visibilityPolicy, displayWindow, orbitRef,
+      player, fo, this.cameraSystem, displayTime, this.ephemeris, displayCelestialBodies, visibilityPolicy, displayWindow, orbitRef,
     );
     this.entities.syncBases(
       this.controlledBase, fo, this.cameraSystem, displayTime, visibilityPolicy,
     );
     this.entities.sync(fo, displayTime);
     this.entities.applyVisibility(visibilityPolicy, player);
-    this.entities.syncMarkers(this.cameraSystem, displayTime, player?.state.r ?? null, displayAttractors, visibilityPolicy);
+    this.entities.syncMarkers(this.cameraSystem, displayTime, player?.state.r ?? null, displayCelestialBodies, visibilityPolicy);
 
     this.entities.effects.sync(fo, this.cameraSystem.activeCamera, this.cameraSystem.zoomActive);
 
     this.targeter.sync(player, this.cameraSystem);
     this.targeter.syncTargetMarkers(
       player, combatTargets, displayTime, simTime, this.cameraSystem, visibilityPolicy,
-      this.ephemeris.registry, displayAttractors,
+      this.ephemeris.registry, displayCelestialBodies,
     );
     this.cameraSystem.focusMarkers.syncSubLabels(
-      this.markerManager.combatMarkers, this.ephemeris.registry, displayAttractors,
+      this.markerManager.combatMarkers, this.ephemeris.registry, displayCelestialBodies,
       overviewMode, project, this.cameraSystem.activeCameraPos,
     );
     this.navTarget.sync(this.cameraSystem);
@@ -511,16 +511,16 @@ export class Game {
     if (this.viewManager.isMapView) {
       this.displayWindowManager.sync(player);
       this.frameControls.sync(
-        this.mapPickables.pickables, this.cameraSystem.activeCameraPos, attractors, simTime, overviewMode,
+        this.mapPickables.pickables, this.cameraSystem.activeCameraPos, celestialBodies, simTime, overviewMode,
       );
     }
     // マップの常設一覧はマップ時だけ更新するが、戦闘中に開いたプロパティウィンドウは
     // 最新値を表示し続ける必要がある。MapContextActions 側で窓が無ければ即時 return する。
-    this.mapActions.sync(simTime, attractors, player);
+    this.mapActions.sync(simTime, celestialBodies, player);
     this.editor.sync(this.cameraSystem, simTime, fo);
 
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
-    this.entityLines.sync(displayWindow, fo, this.cameraSystem.activeCamera, displayAttractors, this.ephemeris);
+    this.entityLines.sync(displayWindow, fo, this.cameraSystem.activeCamera, displayCelestialBodies, this.ephemeris);
 
     if (player) {
       this.touchControls?.syncModeButtons(
@@ -531,7 +531,7 @@ export class Game {
     this.activeStage.sync(player, fo, this.cameraSystem, displayTime, visibilityPolicy);
 
     if (this.viewManager.isMapView) this.mapHud.sync(this);
-    else this.combatHud.sync(this, attractors);
+    else this.combatHud.sync(this, celestialBodies);
     this._hud.tick();
 
     this.guide.sync(player, simTime, this.editor.editMode, project, this.editor.planDisplay.path);

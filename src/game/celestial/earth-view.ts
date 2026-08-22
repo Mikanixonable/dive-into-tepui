@@ -6,10 +6,10 @@ import { Ephemeris } from '../../physics/ephemeris';
 import { R_EARTH, SIDEREAL_DAY } from '../../physics/solar-system';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
-import { CelestialBody } from './celestial-body';
+import { CelestialView } from './celestial-view';
 import type { GraphicsSettings } from '../../render/graphics-settings';
 
-export class EarthBody extends CelestialBody {
+export class EarthView extends CelestialView {
   readonly id = 'earth' as const;
   private readonly earth: Earth = createEarth();
   // 自転初期位相 [rad]。値は外から与えられる。

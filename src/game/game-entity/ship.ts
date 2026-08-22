@@ -15,7 +15,7 @@ import type {
 } from './parts';
 
 export abstract class Ship extends GameEntity {
-  protected readonly bcInv = C.SHIP_BCINV;
+  override readonly bcInv = C.SHIP_BCINV;
   protected readonly srpCoeff = C.SHIP_SRP_COEFF;
   protected readonly baseHistoryDuration = C.SHIP_HISTORY_DURATION;
   protected readonly predictedForGhost = true;
@@ -146,11 +146,11 @@ export abstract class Ship extends GameEntity {
     this.updateOverallHp();
   }
 
-  // 自身が受けた速度変化 dv = impulse/mass に応じたダメージをパーツへ適用し、
-  // ダメージが発生したかを返す。part を指定すると割り振り先をそのパーツに固定する。
-  protected applyCollisionDamage(dv: number, part?: Part): boolean {
-    const span = C.COLLISION_DAMAGE_FULL_DV - C.COLLISION_DAMAGE_MIN_DV;
-    const t = Math.min(1, Math.max(0, (dv - C.COLLISION_DAMAGE_MIN_DV) / span));
+  // 接触の重み付き接近速度に応じたダメージをパーツへ適用し、ダメージが発生したかを返す。
+  // part を指定すると割り振り先をそのパーツに固定する。
+  protected applyCollisionDamage(closingSpeed: number, part?: Part): boolean {
+    const span = C.COLLISION_DAMAGE_FULL_CLOSING_SPEED - C.COLLISION_DAMAGE_MIN_CLOSING_SPEED;
+    const t = Math.min(1, Math.max(0, (closingSpeed - C.COLLISION_DAMAGE_MIN_CLOSING_SPEED) / span));
     if (t <= 0) return false;
 
     const damage = this.maxHp * t;

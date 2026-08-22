@@ -10,7 +10,7 @@ import {
   findChebyshevSegmentIndex,
 } from '../../src/physics/ephemeris-pack';
 import { ChebyshevEphemerisPack } from '../../src/physics/ephemeris-pack/types';
-import { AttractorId } from '../../src/physics/attractor';
+import { CelestialBodyId } from '../../src/physics/celestial-body';
 import { len, Vec3, v3 } from '../../src/physics/vec3';
 
 function assertVec3Close(actual: Vec3, expected: Vec3, tolerance = 1e-12): void {
@@ -121,7 +121,7 @@ export function register(): void {
       bodies: pack.bodies,
     };
     const absolute = new ChebyshevAbsoluteEphemeris(new ChebyshevEphemeris(normalizedPack), epochJdTdb);
-    const state = absolute.barycentricStateOf('probe' as AttractorId, epochJdTdb + 2.5 / 86400);
+    const state = absolute.barycentricStateOf('probe' as CelestialBodyId, epochJdTdb + 2.5 / 86400);
     // A JD near 2.45 million cannot represent a few-second offset exactly;
     // this tolerance covers that input conversion, not Chebyshev evaluation.
     assertVec3Close(state.r, v3(10, 0.5, 1), 1e-4);

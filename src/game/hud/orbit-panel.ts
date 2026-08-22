@@ -4,7 +4,7 @@
 import * as C from '../const';
 import { fmtDist, fmtSpeed, fmtTime } from './utils';
 import { orbitInfo } from './orbit-info';
-import { Attractor } from '../../physics/attractor';
+import { CelestialBody } from '../../physics/celestial-body';
 import type { Game } from '../game';
 import type { OrbitReferenceMode } from '../orbit-reference';
 import { SegmentedControl } from './widgets/segmented-control';
@@ -34,7 +34,7 @@ export class OrbitPanel {
 
   private game: Game | null = null;
 
-  sync(game: Game, attractors: readonly Attractor[]): void {
+  sync(game: Game, celestialBodies: readonly CelestialBody[]): void {
     this.game = game;
     const entity = game.activeControllableEntity;
     const el = document.getElementById('hud-orbit');
@@ -50,7 +50,7 @@ export class OrbitPanel {
 
     this.referenceControl.setSelected(game.orbitReference.selectedMode);
     const reference = game.orbitReference.resolve(
-      entity.state.r, attractors, game.navTarget, game.entities, game.ephemeris, entity.state.t,
+      entity.state.r, celestialBodies, game.navTarget, game.entities, game.ephemeris, entity.state.t,
     );
     const oi = orbitInfo(entity, reference);
     const apSpec = getApsisLabelSpec('ap', oi.centerId);

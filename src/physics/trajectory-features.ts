@@ -3,7 +3,7 @@
 // 積分結果と一致させたい特徴点はここで求める。赤道交点(findEquatorCrossings)はサンプル列
 // (折れ線)を走査して求め、アプシス(apsisCrossing/ApsisTrack)は積分の1ステップごとに動径速度の
 // 符号反転を直接見て求める — どちらも同じ黄金分割探索/二分法の補間機構を使う。
-import { Attractor } from './attractor';
+import { CelestialBody } from './celestial-body';
 import { hermiteInterpolate, KinematicState } from './kinematic-state';
 import { goldenSectionMin } from './optimize';
 import { dot, len, sub, Vec3 } from './vec3';
@@ -13,7 +13,7 @@ import { dot, len, sub, Vec3 } from './vec3';
 const REFINE_ITERATIONS = 20;
 
 // 中心天体からの距離。
-function distFromCenter(center: Attractor, s: KinematicState): number {
+function distFromCenter(center: CelestialBody, s: KinematicState): number {
   return len(sub(s.r, center.state.r));
 }
 
@@ -24,7 +24,7 @@ function atParam(a: KinematicState, b: KinematicState, u: number): KinematicStat
 
 // [a, b] 区間内の中心天体距離の極大/極小を黄金分割探索で追い込む。
 function refineExtremum(
-  center: Attractor, a: KinematicState, b: KinematicState, findMax: boolean,
+  center: CelestialBody, a: KinematicState, b: KinematicState, findMax: boolean,
 ): KinematicState {
   const sign = findMax ? -1 : 1;
   const u = goldenSectionMin(0, 1, (u) => sign * distFromCenter(center, atParam(a, b, u)), REFINE_ITERATIONS);
@@ -42,7 +42,7 @@ export interface ApsisCrossing {
 // 反転していれば、その瞬間がアプシス。減速→増速(負→正)が近地点、増速→減速
 // (正→負)が遠地点で、どちらでもなければ null。中心天体自身も動いている場合が
 // あるので、位置だけでなく速度も中心天体の値を差し引いた相対量で判定する。
-export function apsisCrossing(center: Attractor, prev: KinematicState, next: KinematicState): ApsisCrossing | null {
+export function apsisCrossing(center: CelestialBody, prev: KinematicState, next: KinematicState): ApsisCrossing | null {
   const radialVel = (s: KinematicState): number =>
     dot(sub(s.r, center.state.r), sub(s.v, center.state.v));
   const vPrev = radialVel(prev);
@@ -70,16 +70,16 @@ function dropBefore(states: KinematicState[], t: number): void {
 export class ApsisTrack {
   private readonly periapsides: KinematicState[] = [];
   private readonly apoapsides: KinematicState[] = [];
-  private _center: Attractor | null = null;
+  private _center: CelestialBody | null = null;
 
   // 直近の observe に渡された中心天体。まだ observe を1度も呼んでいなければ null。
-  public get center(): Attractor | null {
+  public get center(): CelestialBody | null {
     return this._center;
   }
 
   // prev→next の1ステップを、その瞬間の中心天体 center を使って apsisCrossing に掛け、
   // 見つかった極値を種類ごとの列へ追加する。
-  public observe(center: Attractor, prev: KinematicState, next: KinematicState): void {
+  public observe(center: CelestialBody, prev: KinematicState, next: KinematicState): void {
     this._center = center;
     const crossing = apsisCrossing(center, prev, next);
     if (crossing?.kind === 'periapsis') this.periapsides.push(crossing.state);

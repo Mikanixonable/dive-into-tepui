@@ -33,9 +33,15 @@ export const HALO_AZ_EARTH_KM = 120000;
 export const HALO_AX_JUPITER_KM = 7000000;
 export const HALO_AZ_JUPITER_KM = 4000000;
 
-export const REENTRY_ALT = 80e3; // 敵機はこれ以下で大気圏突入・焼失 [m](熱モデルなしの簡易処理)
-export const PLAYER_MIN_ALT = 45e3; // 自機の構造限界高度 [m](通常は加熱・動圧で先に喪失する)
-export const DEBRIS_REENTRY_ALT = 95e3; // 弾・薬莢・破片の消滅高度 [m]
+export const REENTRY_ALT = 80e3; // 敵の軌道の近地点余裕を測る基準高度 [m](wave-attack.ts)
+
+// --- 焼失する大気密度の上限 [kg/m^3] ---
+// 熱シミュレーションを持たない種別は位置と速度しか運ばないので、加熱と動圧の両方を
+// この1つの密度閾値がまとめて代理する。**「加熱だけを見ている」ものではない。**
+// 値は地球の大気テーブルから、それまで使っていた高度を密度へ換算したもの — 大気モデルを
+// 差し替えると相当する高度が変わる。自機は熱・動圧の物理モデルで判定するので閾値を持たない。
+export const ENEMY_BURNUP_DENSITY = 1.905e-5; // 地球で高度 80 km 相当(80 km 層そのもの)
+export const DEBRIS_BURNUP_DENSITY = 1.3412e-6; // 地球で高度 95 km 相当(90 km 層 3.396e-6·exp(-5/5.382))
 
 // 高度低下警告のしきい値(降順)。EMA 高度がこれを下回るたびに一度だけ警告する [m]
 export const ALT_WARN_THRESHOLDS = [120e3, 100e3, 80e3];
@@ -205,8 +211,6 @@ export const RELOAD_TIME = 1.0; // 手動/自動リロード(バレル交換)の
 export const MAGS_PER_BARREL = 3; // バレル交換までに消費できるマガジン数
 export const BELT_MAX_VISIBLE = 18; // ベルト描画の最大リンク数
 export const EJECTED_MAG_PHYS_RADIUS = 1.4; // 排出された空マガジンの物理接触用の半径 [m]
-export const BARREL_MASS = 20; // バレルの物理接触用の質量(実質量ではなくゲーム内衝突用の値)
-export const MAGAZINE_FRAME_MASS = 20; // 空マガジンの物理接触用の質量(同上)
 
 // マガジンチェーン(ベルト)の可動域: 各つなぎ目で許容する最大折れ角。ロール・ピッチ・ヨーを
 // それぞれ独立に制限する。いずれも隣接リンク間の相対角度 [deg]。
@@ -216,29 +220,12 @@ export const MAG_CHAIN_MAX_YAW_DEG = 15;   // ヨー上限(左右方向の折れ
 export const MAG_CHAIN_ROLL_GAIN = 0.6; // 機体のロール角速度→ねじれ目標角への変換係数
 export const MAG_CHAIN_ROLL_RATE = 3.5; // ねじれ角が目標へ追従する速さ [1/s]
 export const CASING_LIFETIME = 1800; // 薬莢寿命 [sim s]
-export const CASING_MASS = 1; // 薬莢の物理接触用の質量(実物同様に軽い)
 export const MAX_BULLETS = 400;
 export const MAX_CASINGS = 260;
 export const MAX_DEBRIS = 600;
 export const MAX_FLASHES = 128; // 同時に存在しうるフラッシュ(発砲・命中・撃破・ガス)の上限。超過分は描画されない
 
-// --- 小惑星(Asteroid、試験配置用) ---
-// 岩石密度(~1900kg/m^3)で半径 ASTEROID_TEST_RADIUS の球とおおよそ整合する質量。
-export const ASTEROID_TEST_MASS = 1e15; // [kg]
-export const ASTEROID_TEST_RADIUS = 5000; // [m]
-export const MAX_ASTEROIDS = 400;
-
 // --- 高負荷デバッグステージ(stage-debug-load.ts)---
-// 小惑星は直径 1km 級で、質量は岩石密度 ~1900kg/m³ と整合する。
-export const DEBUG_LOAD_ASTEROID_MASS = 1e12; // [kg]
-export const DEBUG_LOAD_ASTEROID_RADIUS = 500; // [m]
-export const DEBUG_LOAD_ASTEROID_COUNT = 300;
-// メインベルト(2.1〜3.3 AU)に直径 1km 以上の小惑星が約190万個ある数密度 [1/m^3]。
-// 平均間隔にすると約 3×10^6 km で、この規模の岩塊が互いの重力を及ぼし合う密度ではない。
-export const DEBUG_LOAD_ASTEROID_DENSITY = 3e-29;
-// 上の数密度で DEBUG_LOAD_ASTEROID_COUNT 体が収まる球の半径 [m]。
-export const DEBUG_LOAD_ASTEROID_MAX_DIST =
-  Math.cbrt((3 * DEBUG_LOAD_ASTEROID_COUNT) / (4 * Math.PI * DEBUG_LOAD_ASTEROID_DENSITY));
 // 破片は衛星の破壊直後の雲を想定し、自機の周囲に留める。
 export const DEBUG_LOAD_DEBRIS_COUNT = 500;
 export const DEBUG_LOAD_DEBRIS_MAX_DIST = 250000; // [m]
@@ -299,10 +286,24 @@ export const SUBSTEP_MAX_DT = 20; // 1サブステップの最大秒数 [s](Simu
 // 同じ高度で大気抵抗が実際に削る 14 km/日 の 3% — 艦が焼ける時期は高ワープでも変わらない。
 // 1周27歩(K=32)まで粗くすると数値減衰が実ドラッグと同等になり、待つだけで艦が倍の速さで落ちる。
 export const SUBSTEP_MAX_COUNT = 64;
-export const REENTRY_SUBSTEP_ALT = 200e3; // 大気圏近傍で細分化を開始する高度 [m]
-export const REENTRY_SUBSTEP_MAX_DT = 1; // 大気圏近傍の最大積分刻み [s]
 
-// --- 接触判定(game/simulation/contact.ts) ---
+// 大気の中で刻みを縛る2つの上限(game/simulation/time-step.ts の atmosphericMaxStep)。
+// 抗力は陽的 RK4 にとって剛い項で、逆時定数 λ = ½ρ·s·bcInv が刻みに対して大きくなると、
+// 段ごとの抗力が増幅して1歩で発散する(抗力は速さの2乗なので振動ではなく暴走になる)。
+// DRAG_STEP_MAX_SPEED_LOSS は λ·dt の上限 = 1歩で抗力が奪ってよい対気速度の割合。
+// RK4 の実軸上の安定限界は λ·dt ≒ 2.78 だが、縛っているのは安定性ではなく精度である:
+// GTO からの再突入で外殻温度の最大は、刻み 0.25 s の基準 976 K に対し λ·dt = 1 で 1050 K
+// (+7.6%)、0.5 で 991 K(+1.5%)。限界 1300 K に対して 7.6% は艦の生死を変える。
+export const DRAG_STEP_MAX_SPEED_LOSS = 0.5;
+// もう1つは剛性と無関係に効く。RK4 の中間段は現在の速度と加速度からの直線外挿なので、
+// 重力だけで動径方向に g·dt²/4 沈む。刻み 204.8 s ではこれが 99.6 km になり、高度 91.5 km
+// (λ·dt = 0.006 で剛性は全く問題ない)でも段が地面の下を標本して海面密度を拾う。
+// DRAG_STEP_MAX_SCALE_HEIGHTS は、その沈み込みが密度を e^N 倍までしか変えないよう縛る。
+export const DRAG_STEP_MAX_SCALE_HEIGHTS = 0.5;
+
+// --- 接触判定(game/simulation/ の接触解決) ---
+// 剛体接触の反発係数。天体の表面でも物体どうしでも同じ値を使う。
+export const CONTACT_RESTITUTION = 0.4;
 // 1 substep あたりに解決する接触の上限。TOI(接触時刻)昇順で解決し、これを超えた分は
 // 次の substep へ持ち越す(次回呼び出し時に空間グリッドから改めて列挙し直されるので、
 // 明示的な繰越処理は不要)。
@@ -496,10 +497,11 @@ export const HISTORY_DURATION_MAX = DISPLAY_DURATION_MAX;
 // 1px 未満に収まる(LEO と低月周回では period/300 が ARC_MIN_STEP_DT を割るので、そちらの
 // 床が採用値になってこの値に依らない)。
 export const ARC_STEPS_PER_REV = 300;
-// 1個体の予測列の積分ステップ数・保持サンプル数の上限。予測の長さは表示期間(最大1年)に
-// 追従するので、1周回基準の刻みのままではステップ数もメモリも青天井になる。長い期間では
-// これらが刻み幅と間引き間隔を決め、軌道の形の精度と引き換えに費用を頭打ちにする。
-// 刻み幅を決めるのは span > ARC_MAX_STEPS × ARC_MIN_STEP_DT(≒4.6日)のときだけ。
+// 消費されない弧(計画の区間)の積分ステップ数・保持サンプル数の上限。
+// 弧の長さは表示期間(最大1年)に追従するので、1周回基準の刻みのままではステップ数もメモリも
+// 青天井になる。長い期間ではこれらが刻み幅と間引き間隔を決め、軌道の形の精度と引き換えに
+// 費用を頭打ちにする。刻み幅を決めるのは span > ARC_MAX_STEPS × ARC_MIN_STEP_DT(≒4.6日)の
+// ときだけ。ARC_MAX_SAMPLES は実状態の履歴の間引き(trajectorySampleInterval)でも使う。
 export const ARC_MAX_STEPS = 20000;
 export const ARC_MAX_SAMPLES = 2000;
 // 積分済みのサンプル列が、要求区間の求める間引き間隔に対して何倍まで粗くてよいか
@@ -509,35 +511,41 @@ export const ARC_MAX_SAMPLES = 2000;
 export const ARC_MAX_SAMPLE_COARSENING = 8;
 // Predictor が1フレームに配る積分ステップ数の上限。1歩 ≈ 0.025〜0.055ms(弧が保持する
 // 一覧ぶんの天体解決+掃引到達判定、ブラウザ実測)なので、成長中の予測・計画が1フレームに
-// 使うのは ~7〜17ms まで。
-export const ARC_STEP_BUDGET = 300;
-// 予測刻みの下限 [s]。予測は固定のフレーム予算でホライズンまで伸ばす表示側の近似なので、
-// 実シミュレーションより粗く刻むこと自体が目的である — 細かくすれば届く先が近くなるだけで、
-// 折れ線の誤差は間引き補間(PREDICT_SAMPLE_ERROR)が支配しているので見える精度は増えない。
-// これ以上粗くできない理由は、この下限が周期由来の刻み(period/ARC_STEPS_PER_REV)を上書き
-// する側にあることにある: 自然な刻みが下限を割るのは周期の短い領域 — LEO と、離心軌道の
+// 使うのは ~15〜33ms まで。ここへ払った時間は積分側から返ってくる — 消費される弧の1歩は
+// simDt/SUBSTEP_MAX_COUNT 秒ぶんを覆い、高ワープではその区間の実シミュレーションのサブステップ
+// 数百回ぶんの積分を1歩で肩代わりする。消費されている個体を追い抜かせないだけで1体あたり
+// SUBSTEP_MAX_COUNT(=64)歩/フレームが要り、ホライズンへ伸ばすぶんはその上に乗る。
+export const ARC_STEP_BUDGET = 600;
+// 消費されない弧(計画の区間)の刻みの下限 [s]。消費されない弧は状態を
+// 決めず線としてだけ読まれるので、実シミュレーションより粗く刻むこと自体が目的である —
+// 細かくすれば届く先が近くなるだけで、折れ線の誤差は間引き補間が支配しているので見える精度は
+// 増えない。これ以上粗くできない理由は、この下限が周期由来の刻み(period/ARC_STEPS_PER_REV)を
+// 上書きする側にあることにある: 自然な刻みが下限を割るのは周期の短い領域 — LEO と、離心軌道の
 // 近地点通過 — で、そこはまさに細かく刻む必要がある場所である。表示期間の遠端に残る形状誤差
 // (tests/perf/exp9-step-retune.ts の実測)は 40s で LEO 0.2m・低月周回 0.0m・モルニヤ 105m、
-// 60s で 1.7m・0.1m・533m。モルニヤが PREDICT_RESET_DIST を跨ぐ手前が 40s。
+// 60s で 1.7m・0.1m・533m。
 // 刻みの下限は同時に、天体接近時(下の ARC_APPROACH_SAFETY)の接近項が幾何級数的に潰れるのも防ぐ。
 export const ARC_MIN_STEP_DT = 40;
 // 天体接近時、1ステップで表面までの残距離を跨がないための安全率。動径接近率(表面までの
 // 距離の減り方)に掛かる上限係数で、相対速さそのものではなく接近している成分だけを見る
 // — でないと円軌道でも常に効いて粗化項(ARC_MAX_STEPS)を不当に上書きしてしまう。
 export const ARC_APPROACH_SAFETY = 0.5;
-export const PREDICT_RESET_DIST = 500; // 予測位置と実位置がこれを超えて乖離したら予測列を破棄 [m](補間誤差 30m より十分大きい)
-// TRAJECTORY_SAMPLES_PER_REV で間引いた列を補間したときの位置誤差 [m]。三次エルミート補間の
-// 誤差は間引き間隔の4乗で効くので、上限で間引きが粗くなる長い表示期間では
-// PREDICT_RESET_DIST をこの値から外挿した幅まで広げないと、正しい列まで破棄してしまう。
-export const PREDICT_SAMPLE_ERROR = 30;
+// 消費される弧が、消費前線の近くで毎歩サンプルを残す歩数。この範囲では at() の補間誤差が
+// 1歩ぶん(20s 刻みで 4.5mm)まで落ちる。前線がここを抜けると周期基準の間引きへ移り、
+// 補間誤差は LEO で 20〜26m になる。512 は ×1 で 512×20s = 2.8 時間ぶん、最高ワープで
+// 512×34.1s = 8フレームぶんの前線をこの精度で覆う。
+export const ARC_FINE_STEPS = 512;
+// 消費される弧が、消費前線より過去側にも保持しておく余裕 [s]。保持窓の左端が前線に一致すると
+// at(前線) を挟む補間区間が消える。予測線の下端は simTime なので、余分に保持しても描画は変わらない。
+export const ARC_RETAIN_MARGIN = 300;
 // 1フレームの予測予算のうち、操作艦の弧+計画軌道の弧(interactive 枠)に割ける割合の上限。
 // 優先はするが独占はさせない — 計画の弧は他個体の予測を重力源・衝突判定の相手として読むため、
 // 編集直後の計画にこの枠を丸ごと食わせると、その依存先(background 側)の予測の成長が止まる。
 export const ARC_INTERACTIVE_RATIO = 0.5;
 // background のラウンドロビンで1体に必ず渡すステップ数の下限。予測列の history に最初の
-// サンプルが積まれるまでは at() がほぼ全時刻で null を返し、次フレームの乖離判定で必ず
-// 破棄されるので、その1サンプル分(sampleInterval / 刻み幅 ≒ 10 ステップ)を下回る配分は
-// 作り直しを繰り返す。
+// 保持サンプルが積まれるまでは at() がほぼ全時刻で null を返し、実シミュレーションが消費
+// できずに積分して弧を捨てるので、その1サンプル分(sampleInterval / 刻み幅 ≒ 10 ステップ)を
+// 下回る配分は作り直しを繰り返す。
 export const ARC_MIN_ITEM_STEPS = 16;
 // [N] 自動ワープ: 残り時間 / MARGIN 以下の最大シミュレーション速度を選び、STOP 秒前に解除。
 export const AUTOWARP_MARGIN = 2;
@@ -602,16 +610,11 @@ export const HP_REGEN_RATE = 1; // HP自動回復速度 [HP/s]
 export const PLAYER_BULLET_DAMAGE = 1.25; // 自機が被弾(自弾・プラズマ弾とも)した際のダメージ [HP]
 export const ENEMY_BULLET_DAMAGE = 1; // 既定の機関砲が 1 発で与えるダメージ [HP]。武器部品の damage の初期値
 
-// --- 剛体接触による装甲ダメージ(Ship.collideWith が Δv = impulse/mass に適用) ---
-// 艦同士(Player 1000kg ⇔ Enemy 10000kg、反発係数 e=0.4)の接触で、Player 側が受ける Δv が
-// 旧来の接触速度(法線相対速度 |vn|)しきい値と同じ場面で立つよう逆算した値。
-// Δv_self = impulse/mass_self = (1+e)·(mOther/(mSelf+mOther))·|vn| なので、
-// 換算係数 (1+e)·mEnemy/(mPlayer+mEnemy) = 1.4·10000/11000 ≒ 1.2727 を旧しきい値へ掛けている。
-// 質量が10倍の Enemy は同じ接触で受ける Δv が約1/10に留まるため、ラミングでの被害は Enemy 側が
-// 相対的に軽くなる — これは Δv 化が意図する「重いほど衝撃を受けにくい」という物理そのものであり、
-// 意図した挙動変化として扱う。
-export const COLLISION_DAMAGE_MIN_DV = 700 / 11; // ≈ 63.6 m/s
-export const COLLISION_DAMAGE_FULL_DV = 7000 / 11; // ≈ 636.4 m/s
+// --- 剛体接触による装甲ダメージ ---
+// 接触の瞬間の接近速度(法線方向の相対速度)のしきい値 [m/s]。これ未満なら無傷、これ以上で
+// パーツの最大 HP 分、間は線形。
+export const COLLISION_DAMAGE_MIN_CLOSING_SPEED = 50;
+export const COLLISION_DAMAGE_FULL_CLOSING_SPEED = 500;
 export const PLASMA_BULLET_SPEED = MUZZLE_SPEED * 2 / 3; // MUZZLE_SPEED の 2/3
 export const PLASMA_LIFETIME = 300; // プラズマ弾の寿命 [sim s]
 export const ENEMY_FIRE_INTERVAL = 1.0; // 敵の射撃間隔 [s]

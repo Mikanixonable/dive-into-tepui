@@ -20,7 +20,7 @@ const OCCLUSION_FADE_END = 1.0;
 export function occlusionOpacity<T extends { readonly radius: number; readonly state: KinematicState }>(
   cameraPos: Vec3,
   point: Vec3,
-  attractors: readonly T[],
+  celestialBodies: readonly T[],
 ): number {
   const toPoint = sub(point, cameraPos);
   const dist = len(toPoint);
@@ -28,10 +28,10 @@ export function occlusionOpacity<T extends { readonly radius: number; readonly s
   const dir = { x: toPoint.x / dist, y: toPoint.y / dist, z: toPoint.z / dist } as Vec3;
   let opacity = 1;
 
-  for (const attractor of attractors) {
-    const fromAttractorToPoint = sub(point, attractor.state.r);
-    if (lenSq(fromAttractorToPoint) <= attractor.radius * attractor.radius) continue;
-    const oc = sub(attractor.state.r, cameraPos);
+  for (const celestialBody of celestialBodies) {
+    const fromCelestialBodyToPoint = sub(point, celestialBody.state.r);
+    if (lenSq(fromCelestialBodyToPoint) <= celestialBody.radius * celestialBody.radius) continue;
+    const oc = sub(celestialBody.state.r, cameraPos);
     const centerDistance = len(oc);
     if (centerDistance < 1e-6) continue;
     const tca = dot(oc, dir);
@@ -43,7 +43,7 @@ export function occlusionOpacity<T extends { readonly radius: number; readonly s
     const centerDir = { x: oc.x / centerDistance, y: oc.y / centerDistance, z: oc.z / centerDistance } as Vec3;
     const separationCos = Math.max(-1, Math.min(1, dot(dir, centerDir)));
     const separation = Math.acos(separationCos);
-    const apparentRadius = Math.asin(Math.min(1, attractor.radius / centerDistance));
+    const apparentRadius = Math.asin(Math.min(1, celestialBody.radius / centerDistance));
     const normalizedSeparation = separation / Math.max(apparentRadius, 1e-12);
     const fade = Math.max(0, Math.min(1,
       (normalizedSeparation - OCCLUSION_FADE_END) / (OCCLUSION_FADE_START - OCCLUSION_FADE_END)));
@@ -52,11 +52,11 @@ export function occlusionOpacity<T extends { readonly radius: number; readonly s
   return opacity;
 }
 
-// cameraPos から point への視線が attractors のいずれかの球体に遮られていれば true。
+// cameraPos から point への視線が celestialBodies のいずれかの球体に遮られていれば true。
 export function isOccluded<T extends { readonly radius: number; readonly state: KinematicState }>(
   cameraPos: Vec3,
   point: Vec3,
-  attractors: readonly T[],
+  celestialBodies: readonly T[],
 ): boolean {
   // 各天体についてレイと球の交差判定(判別式 d2 vs r2)を行い、手前側交点が
   // カメラと point の間に収まっていれば遮蔽とみなす。
@@ -65,11 +65,11 @@ export function isOccluded<T extends { readonly radius: number; readonly state: 
   if (dist < 1e-6) return false;
   const dir = { x: toPoint.x / dist, y: toPoint.y / dist, z: toPoint.z / dist } as Vec3;
 
-  for (const attractor of attractors) {
-    const toCenter = sub(attractor.state.r, point);
-    if (dot(toCenter, toCenter) <= attractor.radius * attractor.radius) continue; // 対象点自身がこの天体の内部/表面(その天体の中心ラベルなど)
+  for (const celestialBody of celestialBodies) {
+    const toCenter = sub(celestialBody.state.r, point);
+    if (dot(toCenter, toCenter) <= celestialBody.radius * celestialBody.radius) continue; // 対象点自身がこの天体の内部/表面(その天体の中心ラベルなど)
 
-    const oc = sub(attractor.state.r, cameraPos);
+    const oc = sub(celestialBody.state.r, cameraPos);
     const tca = dot(oc, dir);
     if (tca <= 0) continue; // 天体はカメラの後方
     // d2 = |oc|² − tca² ではなく、視線への垂線ベクトルを先に作ってから2乗する。天体が
@@ -77,7 +77,7 @@ export function isOccluded<T extends { readonly radius: number; readonly state: 
     // 桁落ちで誤差が数千 m² 規模まで膨れ、半径が小さい天体の遮蔽判定を毎フレーム反転させる。
     const perp = addScaled(oc, dir, -tca);
     const d2 = lenSq(perp);
-    const r2 = attractor.radius * attractor.radius;
+    const r2 = celestialBody.radius * celestialBody.radius;
     if (d2 >= r2) continue; // 視線が球を外れる
     const thc = Math.sqrt(r2 - d2);
     const t0 = tca - thc; // 球の手前側交点までの距離

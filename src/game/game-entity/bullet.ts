@@ -1,12 +1,11 @@
 import * as THREE from 'three/webgpu';
 import { GameEntity } from './game-entity';
 import { KinematicState } from '../../physics/kinematic-state';
-import { Attractor } from '../../physics/attractor';
-import { containingBody } from '../../physics/sphere-contact';
+import { CelestialBody } from '../../physics/celestial-body';
 import { burnUpBody } from '../../physics/atmosphere';
 import { FloatingOrigin } from '../floating-origin';
 import type { Stage } from '../stages/stage';
-import type { Contact } from '../simulation/contact';
+import type { Contact } from './contact';
 import { Vec3, lenSq, sub } from '../../physics/vec3';
 import * as C from '../const';
 import { buildBulletMesh, buildPlasmaMesh } from '../../render/ships';
@@ -27,7 +26,9 @@ export type BulletType = 'normal' | 'plasma';
 // 自弾と敵プラズマ弾の両方に使う。
 // geometry/material はビルダーが弾種ごとに共有するため、traverse による個別 dispose は行わない。
 export class Bullet extends GameEntity {
-    protected readonly bcInv = C.BULLET_BCINV;
+    override readonly bcInv = C.BULLET_BCINV;
+    // 弾は姿勢を持たず、速度方向を向く(sync)。
+    readonly hasAttitude = false;
 
     readonly bornSim: number; // 発射時刻。初期 state のエポックそのもの
     readonly shooter: Shooter;
@@ -57,9 +58,9 @@ export class Bullet extends GameEntity {
     // 発射後 SELF_CONTACT_GRACE の間だけ接触しない — 敵は同士討ちしないが自機は猶予を過ぎた
     // 自弾に当たる、という非対称は意図的(規則2・3は対称ではない)。艦に取り付いた実体
     // (ベルトの節点・放熱板の折り)は attachedTo を辿って艦本体と同じ扱いにする。
-    contactsWith(other: GameEntity | Attractor, simTime: number): boolean {
+    contactsWith(other: GameEntity, simTime: number): boolean {
         if (other instanceof Bullet) return false;
-        const ship = other instanceof GameEntity ? other.attachedTo ?? other : other;
+        const ship = other.attachedTo ?? other;
         if (this.shooter === 'enemy' && ship instanceof Enemy) return false;
         const ownShip = (this.shooter === 'player' && ship instanceof Player)
             || (this.shooter === 'enemy' && ship instanceof Enemy);
@@ -67,8 +68,8 @@ export class Bullet extends GameEntity {
         return true;
     }
 
-    // 弾自身は接触したら消える。相手への作用は相手の collideWith が書く。
-    collideWith(_other: GameEntity | Attractor, _contact: Contact): void {
+    // 弾自身は接触したら消える。相手への作用は相手の collideWithEntity が書く。
+    collideWithEntity(_other: GameEntity, _contact: Contact): void {
         this.alive = false;
     }
 
@@ -80,7 +81,10 @@ export class Bullet extends GameEntity {
 
     // 消滅条件は「自機から離れすぎた」が主で、寿命は保険。敵弾が自機の至近を通過した瞬間の
     // 判定もここで行う(substep ごとの位置だけを見る、意図的に雑な最接近判定)。
-    checkLoss(_dt: number, simTime: number, _activeStage: Stage, playerPos: Vec3, attractors: readonly Attractor[]): void {
+    checkLoss(
+        _dt: number, simTime: number, _activeStage: Stage, playerPos: Vec3,
+        atmosphereBodies: readonly CelestialBody[],
+    ): void {
         if (!this.alive) return;
         if (this.shooter === 'enemy' && !this.passedClose
           && lenSq(sub(this.state.r, playerPos)) < C.BULLET_CLOSE_PASS_DIST * C.BULLET_CLOSE_PASS_DIST) {
@@ -88,8 +92,7 @@ export class Bullet extends GameEntity {
             if (this.type === 'plasma') this._worldSfx.magneticInterference();
         }
         // 至近通過音は消滅判定より先に評価する — 同じ substep で寿命が尽きる弾でも通過音は鳴らす。
-        if (containingBody(this.state.r, attractors, 0) !== null
-          || burnUpBody(this.state.r, attractors, C.DEBRIS_REENTRY_ALT) !== null) { this.alive = false; return; }
+        if (burnUpBody(this.state.r, atmosphereBodies, this.burnUpDensity) !== null) { this.alive = false; return; }
         if (lenSq(sub(this.state.r, playerPos)) > C.BULLET_MAX_DIST * C.BULLET_MAX_DIST) { this.alive = false; return; }
         if (simTime - this.bornSim >= this.lifetime) this.alive = false;
     }

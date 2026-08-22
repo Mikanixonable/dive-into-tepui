@@ -124,6 +124,9 @@ export class Base extends GameEntity implements Controllable {
     return this.collisionGeom.testSphereCollision(sphereCenter, sphereRadius, this.state.r, this.att.q, warpLevel);
   }
 
+  // 基地は接触で押されない。mass は推力加速度の分母を兼ねるので、そちらとは別に持つ。
+  override get contactMass(): number { return Infinity; }
+
   // hud/worldSfx/fx/markerManager は格納艦(Player)の組み立てに要る。格納艦は entities.players へ
   // 入らない — それが「格納中」の定義であり、艦自身の状態としては何も倒さない。
   constructor(
@@ -261,7 +264,6 @@ export class Base extends GameEntity implements Controllable {
     );
     this.throttle.updateThrustLatches(input);
     this.thrust = this.throttle.updateThrustState(input, this.att, simDt, this);
-    if (this.thrust !== null) this.invalidatePrediction();
   }
 
   clearTransientCommands(): void {

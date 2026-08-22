@@ -4,7 +4,7 @@
 import { Vec3, v3, add } from '../physics/vec3';
 import { KinematicState } from '../physics/kinematic-state';
 import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from '../physics/elements';
-import { Attractor, OrbitingId, frameOfAttractor, strongestAttractor } from '../physics/attractor';
+import { CelestialBody, OrbitingId, frameOfCelestialBody, strongestAttractor } from '../physics/celestial-body';
 import type { LagrangePoints } from '../physics/lagrange';
 import { toFrameState, unbakeToDisplayPoint } from '../physics/frame';
 import { bodyDef } from '../physics/solar-system';
@@ -41,8 +41,8 @@ export class NavTarget {
   // AN/DN 通過の絶対時刻 [s]。自機軌道要素の現在真近点角からの飛行時間を加えて求める。
   private anTime: number | null = null;
   private dnTime: number | null = null;
-  // update が求めた時点の Attractor[]。sync でのマップビュー遮蔽判定に使う。
-  private attractors: readonly Attractor[] = [];
+  // update が求めた時点の CelestialBody[]。sync でのマップビュー遮蔽判定に使う。
+  private celestialBodies: readonly CelestialBody[] = [];
   private readonly pickableCache: MapPickable[] = [];
 
   constructor(private readonly _hud: Hud, private readonly markerManager: MarkerManager) {
@@ -91,7 +91,7 @@ export class NavTarget {
   // 対象の軌道面が定まらない(地球・太陽自身など)場合や自機軌道要素が無い場合は両方 null にする。
   // positionOnOrbit は中心天体基準の相対位置を返すので、ephemeris.positionOf で通過時刻
   // anT/dnT における中心天体の精密な ECI 位置を求めて足し合わせ、絶対位置に直す — 概算の弾道
-  // 外挿(attractorPositionAt)を使うと、表示側が精密暦で un-bake するのと基準がずれて、
+  // 外挿(celestialBodyPositionAt)を使うと、表示側が精密暦で un-bake するのと基準がずれて、
   // 月周回では通過までの時間ぶん位置がずれる。位置は通過時刻で bake し、displayWindow の
   // 表示時刻で un-bake して描画座標系へ移す。
   update(
@@ -100,14 +100,14 @@ export class NavTarget {
     const { simTime, displayTime, frame } = displayWindow;
     this.anPos = this.dnPos = this.anTime = this.dnTime = null;
     this.ownerName = player?.name ?? null;
-    this.attractors = ephemeris.attractorsAt(displayTime);
+    this.celestialBodies = ephemeris.celestialBodiesAt(displayTime);
     if (!this.targetId) return;
     // 航法ターゲット自身の赤道交点は、自機の軌道要素が求まるかどうかとは無関係に出す。
     const target = this.resolveEntity(this.targetId, entities);
     target?.ensureEquatorNodes(this.markerManager).update(frame, displayTime, ephemeris);
     if (!player) return;
-    const stateAttractors = ephemeris.attractorsAt(simTime);
-    const playerCenter = strongestAttractor(player.state.r, stateAttractors);
+    const stateCelestialBodies = ephemeris.celestialBodiesAt(simTime);
+    const playerCenter = strongestAttractor(player.state.r, stateCelestialBodies);
     const playerEl = player.orbitalElementsAround(playerCenter);
     if (!playerEl) return;
 
@@ -117,15 +117,15 @@ export class NavTarget {
     const nodes = nodeAnomalies(playerEl, targetHat);
     if (!nodes) return;
 
-    const tf = frameOfAttractor(playerCenter);
+    const tf = frameOfCelestialBody(playerCenter);
     const nu0 = trueAnomalyAt(playerEl, toFrameState(tf, player.state).r);
     const anT = simTime + tofBetween(playerEl, nu0, nodes.asc);
     const dnT = simTime + tofBetween(playerEl, nu0, nodes.desc);
     const anEci = add(ephemeris.positionOf(playerCenter.id, anT), positionOnOrbit(playerEl, nodes.asc));
     const dnEci = add(ephemeris.positionOf(playerCenter.id, dnT), positionOnOrbit(playerEl, nodes.desc));
-    const unbakeTf = ephemeris.frameTransformAt(frame, displayTime, this.attractors);
+    const unbakeTf = ephemeris.frameTransformAt(frame, displayTime, this.celestialBodies);
     const toDisplay = (r: Vec3, t: number): Vec3 =>
-      unbakeToDisplayPoint(unbakeTf, ephemeris.frameTransformAt(frame, t, this.attractors), r);
+      unbakeToDisplayPoint(unbakeTf, ephemeris.frameTransformAt(frame, t, this.celestialBodies), r);
     this.anPos = toDisplay(anEci, anT);
     this.dnPos = toDisplay(dnEci, dnT);
     this.anTime = anT;
@@ -161,17 +161,17 @@ export class NavTarget {
     });
   }
 
-  // 現在の航法ターゲットの位置・速度。天体は Attractor.state、ラグランジュ点は
+  // 現在の航法ターゲットの位置・速度。天体は CelestialBody.state、ラグランジュ点は
   // ephemeris.lagrangeStateAt、船・基地は entity.state から得る。天体以外は重力中心ではない
   // ため hasMass=false を返す。ターゲット未設定・解決不能なら null。
   resolveState(
-    entities: EntityManager, ephemeris: Ephemeris, attractors: readonly Attractor[], t: number,
-  ): { id: string; state: KinematicState; hasMass: boolean; attractor: Attractor | null } | null {
+    entities: EntityManager, ephemeris: Ephemeris, celestialBodies: readonly CelestialBody[], t: number,
+  ): { id: string; state: KinematicState; hasMass: boolean; attractor: CelestialBody | null } | null {
     const id = this.targetId;
     if (id === null) return null;
     const registry = ephemeris.registry;
     if (id in registry && bodyDef(registry, id).kind !== 'star') {
-      const attractor = attractors.find((a) => a.id === id);
+      const attractor = celestialBodies.find((a) => a.id === id);
       if (attractor) return { id, state: attractor.state, hasMass: true, attractor };
     }
     const match = /^(.+)-l([1-5])$/.exec(id);
@@ -207,7 +207,7 @@ export class NavTarget {
     }
     const entity = this.resolveEntity(id, entities);
     if (!entity) return null;
-    const center = strongestAttractor(entity.state.r, ephemeris.attractorsAt(t));
+    const center = strongestAttractor(entity.state.r, ephemeris.celestialBodiesAt(t));
     return entity.orbitalElementsAround(center)?.hHat ?? null;
   }
 
@@ -235,8 +235,8 @@ export class NavTarget {
     const overviewMode = cameraSystem.overviewMode;
     const cameraPos = cameraSystem.activeCameraPos;
     if (!this.anPos) this.markerManager.hide('nav-an');
-    else this.markerManager.setNodePosition('nav-an', 'mk-node', ORBIT_POINT_GLYPH.ascendingNode, this.anPos, project, cameraPos, this.attractors, overviewMode, 'AN');
+    else this.markerManager.setNodePosition('nav-an', 'mk-node', ORBIT_POINT_GLYPH.ascendingNode, this.anPos, project, cameraPos, this.celestialBodies, overviewMode, 'AN');
     if (!this.dnPos) this.markerManager.hide('nav-dn');
-    else this.markerManager.setNodePosition('nav-dn', 'mk-node', ORBIT_POINT_GLYPH.descendingNode, this.dnPos, project, cameraPos, this.attractors, overviewMode, 'DN');
+    else this.markerManager.setNodePosition('nav-dn', 'mk-node', ORBIT_POINT_GLYPH.descendingNode, this.dnPos, project, cameraPos, this.celestialBodies, overviewMode, 'DN');
   }
 }

@@ -11,7 +11,7 @@
 // 大質量天体だけなので、結論には影響しない。重力源は共通の stepDynamicsAt(全64天体・
 // グリッド絞り込みなし・SRPなし)で、比較する全構成と基準積分に同一に効く。
 import { Ephemeris } from '../../src/physics/ephemeris';
-import { Attractor, orbitalElementsOf, strongestAttractor } from '../../src/physics/attractor';
+import { CelestialBody, orbitalElementsOf, strongestAttractor } from '../../src/physics/celestial-body';
 import { keplerPeriod } from '../../src/physics/elements';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { add, cross, dot, len, norm, sub, v3, Vec3 } from '../../src/physics/vec3';
@@ -30,7 +30,7 @@ type StepPolicy = { minStepDt: number; stepsPerRev: number; maxSteps: number; la
 
 // predicted-arc.ts の stepDt の複製。span は表示期間(requiredEnd - retainFrom)で固定。
 function policyDt(
-  tip: KinematicState, span: number, policy: StepPolicy, window: readonly Attractor[],
+  tip: KinematicState, span: number, policy: StepPolicy, window: readonly CelestialBody[],
 ): number {
   const center = strongestAttractor(tip.r, window);
   const period = keplerPeriod(len(sub(tip.r, center.state.r)), center.mu);
