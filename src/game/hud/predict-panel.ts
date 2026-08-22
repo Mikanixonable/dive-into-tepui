@@ -8,13 +8,14 @@ import type { DisplayDurationKey, DisplayPastDurationKey } from '../display-wind
 import type { TickLabelMode } from './calendar-ticks';
 import type { DisplayTick } from './tick-scale';
 
-type FixedDurationKey = 'orbit' | 'day' | 'week' | 'month';
+type FixedDurationKey = 'orbit' | 'day' | 'tenDay' | 'month' | 'threeMonth';
 
 const FIXED_DURATIONS: readonly (readonly [FixedDurationKey, string])[] = [
   ['orbit', '1周'],
   ['day', '1日'],
-  ['week', '7日'],
-  ['month', '28日'],
+  ['tenDay', '10日'],
+  ['month', '1ヶ月'],
+  ['threeMonth', '3ヶ月'],
 ];
 
 type FixedPastDurationKey = 'none' | FixedDurationKey;
@@ -45,6 +46,7 @@ class DurationValueInput {
   private unitValue: DurationUnit;
   private minSec = 0;
   private maxSec = Infinity;
+  private lastSec = 0;
 
   // onCommit は Enter・blur・確定ボタンでのみ呼ばれる — 呼び出し側は打鍵ごとの値を追う必要がない。
   public constructor(
@@ -65,11 +67,12 @@ class DurationValueInput {
     // ValueInput 自身は非有限値/空欄しか破棄しない。
     this.value = new ValueInput({ type: 'number', step: 1 }, (text) => this.commitText(text), () => this.onCancel());
     this.element.appendChild(this.value.element);
-    // 単位切り替え。単位が変わると min/max の表示値も単位に合わせて引き直す。
+    // 単位切り替え。min/max とその時点の秒数を、新しい単位での表示値に引き直す。
     this.unit = new SegmentedControl('', UNITS, (u) => {
       this.unitValue = u;
       this.unit.setSelected(u);
       this.syncMinMaxAttr();
+      this.value.setValue(String(this.lastSec / UNIT_SEC[u]));
     });
     this.unit.setSelected(this.unitValue);
     this.element.appendChild(this.unit.element);
@@ -77,18 +80,26 @@ class DurationValueInput {
 
   // 秒数を今の単位での表示値に変換して入力欄へ反映し、フォーカスする。
   public openWithSec(sec: number, minSec: number, maxSec: number): void {
+    this.syncSec(sec, minSec, maxSec);
+    this.value.element.focus();
+    this.value.element.select();
+  }
+
+  // 秒数を今の単位での表示値に反映するだけで、フォーカスは奪わない。常時表示の入力欄を
+  // 外部状態に同期させるときに使う — 呼び出し側は編集中(フォーカス中)なら呼ばないこと。
+  public syncSec(sec: number, minSec: number, maxSec: number): void {
+    this.lastSec = sec;
     this.minSec = minSec;
     this.maxSec = maxSec;
     this.syncMinMaxAttr();
     this.value.setValue(String(sec / UNIT_SEC[this.unitValue]));
-    this.value.element.focus();
-    this.value.element.select();
   }
 
   // ValueInput が確定した生の文字列をレンジへクランプして通知する。
   private commitText(text: string): void {
     const unitSec = UNIT_SEC[this.unitValue];
     const sec = Math.max(this.minSec, Math.min(this.maxSec, Number(text) * unitSec));
+    this.lastSec = sec;
     this.value.setValue(String(sec / unitSec));
     this.onCommit(sec);
   }
@@ -102,6 +113,11 @@ class DurationValueInput {
     this.value.cancel();
   }
 
+  // 編集中(フォーカス中)かどうか。常時表示の入力欄を外部状態で上書きしてよいかの判定に使う。
+  public get focused(): boolean {
+    return document.activeElement === this.value.element;
+  }
+
   // 入力欄の min/max 属性を現在の単位での表示値に換算して合わせる(ブラウザのスピンボタン用の
   // ヒントで、実際のクランプは commitText が担う)。
   private syncMinMaxAttr(): void {
@@ -110,29 +126,6 @@ class DurationValueInput {
     if (isFinite(this.maxSec)) this.value.element.max = String(this.maxSec / unitSec);
     else this.value.element.removeAttribute('max');
   }
-}
-
-// 任意期間のピルに出す秒数の表記。固定プリセットのピル(1日/7日/28日)と並ぶので、
-// 単位は UNITS と同じ和字にし、割り切れる中で最も大きい単位を選ぶ。
-function customPillLabel(sec: number): string {
-  for (let i = UNITS.length - 1; i > 0; i--) {
-    const unit = UNITS[i];
-    if (unit === undefined) continue;
-    const unitSec = UNIT_SEC[unit[0]];
-    if (sec >= unitSec && sec % unitSec === 0) return `${sec / unitSec}${unit[1]}`;
-  }
-  return `${Math.round(sec / UNIT_SEC.hour)}時`;
-}
-
-// フォーカス移動による commit() の割り込みを避けつつ押せる小ボタン(✓/✕ など)。
-function inlineIconButton(label: string, title: string, onClick: () => void): HTMLElement {
-  const btn = document.createElement('span');
-  btn.className = 'predict-edit-btn';
-  btn.textContent = label;
-  btn.title = title;
-  btn.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); });
-  btn.addEventListener('click', () => onClick());
-  return btn;
 }
 
 // 「表示用要素 ⇔ 数値入力(DurationValueInput)」の開閉を1つ受け持つ。open() で表示用要素を
@@ -186,23 +179,19 @@ class ToggleValueEdit {
   }
 }
 
-// 「見出し + 固定期間ピル列 + 任意…ピル」の1行。任意…を押すとピル列を数値入力フォームへ
-// 差し替え、確定・取り消しでピル列へ戻る。K は固定ピルのキー、Kd は選択状態として受け取る
-// キー(固定ピルに加えて 'custom' を含む)。
+// 「見出し + 固定期間ピル列 + 常時表示の数値入力」の1行。数値入力を書き換えて確定すると
+// 選択キーが 'custom' になる。K は固定ピルのキー、Kd は選択状態として受け取るキー
+// (固定ピルに加えて 'custom' を含む)。
 class DurationPillRow<K extends string, Kd extends K | 'custom'> {
   public readonly element: HTMLElement;
   private readonly buttons = new Map<K, Button>();
-  private readonly pillsEl: HTMLElement;
-  private readonly customPillBtn: Button;
-  private readonly editEl: HTMLElement;
-  private readonly toggle: ToggleValueEdit;
-  private currentSec = C.DISPLAY_DUR_DAY;
+  private readonly input: DurationValueInput;
 
   public constructor(
     title: string,
     entries: readonly (readonly [K, string])[],
     private readonly onSelect: (key: K) => void,
-    private readonly onCustomConfirm: (sec: number) => void,
+    onCustomConfirm: (sec: number) => void,
   ) {
     this.element = document.createElement('div');
     this.element.className = 'predict-row1';
@@ -211,49 +200,31 @@ class DurationPillRow<K extends string, Kd extends K | 'custom'> {
     label.textContent = title;
     this.element.appendChild(label);
 
-    this.pillsEl = document.createElement('span');
-    this.pillsEl.className = 'predict-pills';
+    const pillsEl = document.createElement('span');
+    pillsEl.className = 'predict-pills';
     for (const [key, text] of entries) {
       const btn = new Button(text, () => this.onSelect(key));
-      this.pillsEl.appendChild(btn.element);
+      pillsEl.appendChild(btn.element);
       this.buttons.set(key, btn);
     }
-    this.customPillBtn = new Button('任意…', () => this.openEdit());
-    this.pillsEl.appendChild(this.customPillBtn.element);
-    this.element.appendChild(this.pillsEl);
+    this.element.appendChild(pillsEl);
 
-    this.editEl = document.createElement('span');
-    this.editEl.className = 'predict-pills hidden';
-    this.toggle = new ToggleValueEdit(this.pillsEl, this.editEl, 'day', (sec) => this.onCustomConfirm(sec));
-    this.editEl.appendChild(this.toggle.inputEl);
-    this.editEl.appendChild(inlineIconButton('✓', '確定', () => this.toggle.commit()));
-    this.editEl.appendChild(inlineIconButton('✕', 'キャンセル', () => this.toggle.cancel()));
-    this.element.appendChild(this.editEl);
+    this.input = new DurationValueInput('day', onCustomConfirm, () => {});
+    this.element.appendChild(this.input.element);
   }
 
-  // 選択中のキーと、任意…ピルに出す秒数を反映する。currentSec は任意…を開いたときの初期値。
-  // 編集中の行はユーザー入力を壊さないよう書き換えない。
-  public render(key: Kd, customDurationSec: number, currentSec: number): void {
-    this.currentSec = currentSec;
-    if (this.toggle.editing) return;
+  // 選択中のキーと、数値入力欄に示す秒数を反映する。入力欄は編集中(フォーカス中)なら
+  // ユーザー入力を壊さないよう書き換えない。
+  public render(key: Kd, currentSec: number): void {
     for (const [k, btn] of this.buttons) btn.setOn(key === k);
-    this.customPillBtn.setOn(key === 'custom');
-    const label = key === 'custom' ? `${customPillLabel(customDurationSec)} ✎` : '任意…';
-    if (this.customPillBtn.element.textContent !== label) this.customPillBtn.setLabel(label);
-  }
-
-  // ピル列を数値入力フォームへ差し替え、直近に受け取った秒数を初期値として入れる。
-  private openEdit(): void {
-    this.toggle.open(Math.max(C.DISPLAY_DURATION_MIN, this.currentSec), C.DISPLAY_DURATION_MIN, C.DISPLAY_DURATION_MAX);
+    if (!this.input.focused) this.input.syncSec(currentSec, C.DISPLAY_DURATION_MIN, C.DISPLAY_DURATION_MAX);
   }
 }
 
 export interface PredictPanelState {
   readonly visible: boolean;
   readonly durationKey: DisplayDurationKey;
-  readonly customDurationSec: number;
   readonly pastDurationKey: DisplayPastDurationKey;
-  readonly customPastDurationSec: number;
   readonly pastDuration: number;
   readonly tickLabelMode: TickLabelMode;
   readonly duration: number;
@@ -391,8 +362,8 @@ export class PredictPanel {
     this.setVisible(state.visible);
     if (!state.visible) return;
     this.currentDuration = state.duration;
-    this.durationRow.render(state.durationKey, state.customDurationSec, state.duration);
-    this.pastDurationRow.render(state.pastDurationKey, state.customPastDurationSec, state.pastDuration);
+    this.durationRow.render(state.durationKey, state.duration);
+    this.pastDurationRow.render(state.pastDurationKey, state.pastDuration);
     this.tickLabelModeSwitch.setOn(state.tickLabelMode === 'relative');
     this.renderSlider(state.sliderSteps, state.sliderT, state.predictionRatio);
     this.renderAbsoluteLabel(state.displayTime);
