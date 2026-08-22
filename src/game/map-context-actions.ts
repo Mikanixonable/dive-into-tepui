@@ -15,6 +15,7 @@ import { celestialBodyName } from './hud/frame-labels';
 import { LAGRANGE_ID, lagrangeParentId } from './hud/object-groups';
 import { bodyClassOf } from './celestial/body-class';
 import { ENTITY_GLYPH, ORBIT_POINT_GLYPH, bodyEntityGlyph } from './marker/marker-glyphs';
+import { baseMarkerSvg, shipMarkerSvg } from './marker/marker-shapes';
 import { MapPickable, pickNearest } from './map-pickable';
 import { focusTargetId } from './camera/focus-target';
 import { PhysicalObjectListPanel } from './hud/physical-object-list-panel';
@@ -735,14 +736,14 @@ export class MapContextActions {
   }
 
   // ウィンドウ題名に添えるグリフ。マップ実マーカーと同じ字形族(ENTITY_GLYPH/ORBIT_POINT_GLYPH)
-  // から種別に対応するものを選ぶ。
+  // から種別に対応するものを選ぶ。player/ship/base はマップ実マーカーと同じ SVG 形状を使う。
   private iconFor(target: MapPickable): string | undefined {
     switch (target.kind) {
       case 'body': return LAGRANGE_ID.test(target.id)
         ? ENTITY_GLYPH.lagrange : bodyEntityGlyph(bodyClassOf(this.ephemeris.registry, target.id));
-      case 'player': return ENTITY_GLYPH.ship;
-      case 'ship': return ENTITY_GLYPH.enemyShip;
-      case 'base': return ENTITY_GLYPH.base;
+      case 'player': return shipMarkerSvg(true);
+      case 'ship': return shipMarkerSvg(false);
+      case 'base': return baseMarkerSvg();
       case 'ammo': return ENTITY_GLYPH.ammo;
       case 'apsis': return ORBIT_POINT_GLYPH.apsis;
       case 'relnode': return ORBIT_POINT_GLYPH.ascendingNode;
