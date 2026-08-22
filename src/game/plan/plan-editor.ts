@@ -27,8 +27,8 @@ import type { Controllable } from '../game-entity/controllable';
 import type { ActivePlayerController } from '../active-player-controller';
 import type { FrameControls } from '../hud/frame-controls';
 import { focusPoint } from '../camera/focus-target';
-import { CelestialBody, orbitalElementsOf, frameOfCelestialBody, strongestAttractor } from '../../physics/celestial-body';
-import { toFrameState } from '../../physics/frame';
+import { CelestialBody, bodyAnchorSource, orbitalElementsOf, frameOfCelestialBody, strongestAttractor } from '../../physics/celestial-body';
+import { FrameAnchorSource, toFrameState } from '../../physics/frame';
 import type { FutureCelestialBodies } from '../simulation/future-celestial-bodies';
 import type { PredictedArc } from '../simulation/predicted-arc';
 import type { DisplayWindow } from '../display-window-manager';
@@ -153,7 +153,7 @@ export class PlanEditor {
     g.onMenuFocus = (idx) => {
       const n = this.plan?.nodes[idx];
       if (n) this.frameControls.setFocus(
-        focusPoint(this.ephemeris, this.ephemeris.inertialFrame, n.r, n.t));
+        focusPoint(this.ephemeris, this.ephemeris.inertialFrame, n.r, n.t, bodyAnchorSource([])));
     };
   }
 
@@ -703,7 +703,7 @@ export class PlanEditor {
 
   // 計画折れ線を再積分し、ゴースト位置とアプシスアイコンを求め直す。折れ線は戦闘ビューでも
   // 描く — 計画どおりに機体を動かすのは戦闘ビューだから。
-  update(displayWindow: DisplayWindow): void {
+  update(displayWindow: DisplayWindow, frameAnchors: FrameAnchorSource): void {
     // 艦が替わったフレームで、前の艦のノードに対して開いたままのメニューを畳む(選択中ノードは
     // 参照で解決するので、計画が替われば同一性が外れて自然に選択なしになる)。
     const ship = this.ship;
@@ -713,17 +713,17 @@ export class PlanEditor {
     }
     this.simTime = displayWindow.simTime;
     this.planDisplay.update(this.displayedPlan, displayWindow, this.celestialBodies, ship);
-    this.updateEquatorNodes(displayWindow);
+    this.updateEquatorNodes(displayWindow, frameAnchors);
   }
 
   // 操作艦の赤道交点マーカーを、計画の最終区間(=これから乗る軌道)を代表状態として求め直す。
   // 区間の折れ線も渡すので、交点は解析楕円ではなく実際に描かれている積分線の上に載る。
-  private updateEquatorNodes(displayWindow: DisplayWindow): void {
+  private updateEquatorNodes(displayWindow: DisplayWindow, frameAnchors: FrameAnchorSource): void {
     const ship = this.ship;
     if (!ship) return;
     const segment = this.planDisplay.path.finalSegment();
     ship.ensureEquatorNodes(this.markerManager).update(
-      displayWindow.frame, displayWindow.displayTime, this.ephemeris,
+      displayWindow.frame, displayWindow.displayTime, this.ephemeris, frameAnchors,
       segment?.state0, segment?.samples,
     );
   }

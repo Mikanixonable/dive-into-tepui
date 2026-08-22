@@ -14,7 +14,7 @@ import { FILL_4 } from '../theme';
 import { GroupedMarkers } from './grouped-markers';
 import { LeadMarkers } from './lead-markers';
 import { isOccluded } from '../../physics/occlusion';
-import { CelestialBody, strongestAttractor } from '../../physics/celestial-body';
+import { CelestialBody, bodyAnchorSource, strongestAttractor } from '../../physics/celestial-body';
 import type { ReferenceFrame } from '../../physics/frame';
 import { toFrameDir } from '../../physics/frame';
 import { qRotate } from '../../physics/attitude';
@@ -272,7 +272,7 @@ export class MarkerManager {
     const center = celestialBodies.length > 0 ? strongestAttractor(worldPos, celestialBodies) : null;
     let relVel = center ? sub(vel, center.state.v) : vel;
     if (frame && displayTime !== undefined && ephemeris && celestialBodies.length > 0) {
-      const tf = ephemeris.frameTransformAt(frame, displayTime, celestialBodies);
+      const tf = ephemeris.frameTransformAt(frame, displayTime, bodyAnchorSource(celestialBodies));
       if (tf) {
         const vFrame = toFrameDir(tf, relVel);
         relVel = qRotate(tf.q, v3(vFrame.x, vFrame.y, vFrame.z));
