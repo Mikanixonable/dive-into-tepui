@@ -263,64 +263,36 @@ maxTemperature       [K]           超えたら失われる。既定 Infinity
 
 # 第3章 手順
 
-## Phase 2 — 衝突で失われた力学的エネルギーを出す
+## Phase 6.5 — 限界温度を**遷移**で較正し直す(未着手・ユーザーの判断待ち)
 
-- `physics/collision-response.ts`: `CollisionResponse`/`FixedContactResponse` へ、各側が受け取る
-  **比エネルギー** `¼(1−e²)·v_n²·w`(2-2)を載せる。`shareOfA` の結果をそのまま使う。
-- `game-entity/contact.ts`: `Contact` へ同じ量を載せる(`self` から見た形)。
-- `tests/physics/collision-response.test.ts`: e = 1 で 0、e を下げると単調増加、
-  両側の合計 × 質量が `½(1−e²)v_n²·μ` を**超えない**、無限質量・質量 0 のどちらの極でも有限。
+**平衡温度で較正したのは誤りだった。** 再突入は速すぎて平衡に達しない。降下する物体が
+実際に到達する最高温度は、その高度の放射平衡温度よりはるかに低い。
 
-**受入**: `test:physics` 通過。まだ誰も読まないのでゲーム挙動は不変。
+遠地点 413 km の楕円を近地点まで降ろし、地表へ届くまで積んだときの実測(刻みは抗力の要求に
+従う):
 
-## Phase 3 — 熱の純関数を `physics/` に置く
+| 近地点 | 艦の最高温度 | 破片の最高温度 | 到達高度 |
+|---|---|---|---|
+| 80 km | 686 K | 1190 K | 約 47 km |
+| 60 km | 676 K | 1136 K | 約 44 km |
+| 40 km | 668 K | 1099 K | 約 44 km |
+| 20 km | 660 K | 1069 K | 約 44 km |
 
-- `physics/thermal.ts` を新設。すべて比量、すべて純関数、調整値を持たない:
-  - 抗力の散逸 [W/kg]。
-  - Sutton–Graves の受熱 [W/kg](曲率半径・比受熱面積を引数で受ける)。
-  - 受熱の頭打ち(散逸との `min`)。
-  - 放射冷却 [W/kg]。
-- `tests/physics/thermal.test.ts`: 平衡温度へ収束する、**受熱が散逸を超えない**、`c_p = 0` で温度不変、
-  `ε = 0` で放熱 0、`T = T_env` で正味 0。
+**`MAX_HULL_TEMP` = 1300 K にも `SMALL_DEBRIS_MAX_TEMP` = 1200 K にも届かない。** どちらも
+焼失せず、地表へ落ちるか、抗力を積めなくなって失われる(破片は高度 21〜24 km)。
 
-**受入**: `test:physics` 通過。まだ誰も呼ばない。
+原因は熱容量である。**`SPEC/FLIGHT.md` の2つの数字が互いに矛盾している。**
 
-## Phase 5 — 焼失を温度へ切り替え、発散対策を置き直す
+- 射撃 0.55 MJ ≒ 1.6 K/発、被弾 0.3 MJ ≒ 0.9 K/発 は、外殻の熱容量 **0.34 MJ/K** を前提にする。
+- 「1,300 K を超えると機体喪失」が再突入で起きるには、熱容量が **0.1 MJ/K** 程度でなければ
+  ならない(0.34 MJ/K だと最高 686 K)。
 
-**Phase 4 で温度は積まれるようになったが、まだ誰も死なない。** 死ぬ規則を密度から温度へ
-移すのはここで一度に行う — 2つの喪失規則が同時に生きている状態を作らないため。
+Phase 6 では前者を採った(比熱 340 J/(kg·K))。その結果、**自機は熱では焼失しなくなり、
+地表へ到達して失われる。** 変更前は後者(`ship.mass * 100` = 0.1 MJ/K)で、最高温度は
+およそ 1720 K に達して 1300 K で焼失していた。
 
-- `burnUpBody`・`burnUpDensity`・`ENEMY_BURNUP_DENSITY`・`DEBRIS_BURNUP_DENSITY` を削除。
-- `stepSimulation` の中で、温度が上限を超えた個体を失う(判定は細分の内側 = 2-3)。
-  死因を記録する種別のために、失われる口を仮想メソッドで開ける。
-- 剛性の上限に触れた `doPreciseReentry = false` の個体を失う規則を、`simulationSubdivision` と
-  同じ場所(個体側)へ置く。**`atmosphericMaxStep` の合成値ではなく剛性の項だけを見る**(2-4)。
-  剛性の項は `time-step.ts` の `dragMaxStep` の内側にあるので、そこから取り出せる形にする。
-- `Enemy` の焼失分岐を、死因の記録だけ残して基底へ寄せる。`Bullet` も同様。
-
-**受入**: `typecheck`。`burnUpDensity`/`BURNUP_DENSITY` の全文検索が 0 件。
-LEO から降下したデブリ・敵・自機が温度で失われる(実機)。最高ワープ・低 fps で高度 400 km の
-デブリが消えない。
-
-## Phase 6 — 自機の熱システムを基盤の上へ載せ替える
-
-- `SPEC/FLIGHT.md`「熱管理」「ラジエーター」を、比熱・比輻射面積・エネルギー収支の言葉へ書き換える。
-- `pendingHeat`/`addGunHeat`/`addImpactHeat` を基底の `absorbHeat` 経由へ。
-- Sutton–Graves を基底の一般の経路へ載せ替える(2-6 で自機の現行値と一致することは確認済み)。
-- **ラジエーターを輻射面積の上乗せとして作り直す。** `emissivity` は材質の性質なので変えない。
-  死んでいる `RADIATOR_PANEL_AREA`/`RADIATOR_EFFICIENCY_MULT` を実際に使い、
-  `totalCoolingRate`(部品の `coolingRate` の総和)を m² として扱っている現状を解消する。
-- **動圧・構造限界・高度低下警告を `ThermalSystem` から出す。** これらは熱ではない。
-  `updateAltitudeAlarm` が `checkThermalLimits()` を tail-return している相乗りを解消する。
-- `MAX_HULL_TEMP` → `Player.maxTemperature`。`'heat-aero'`/`'heat-internal'` の区別を、
-  演出のしきい値(`REENTRY_GLOW_MIN_Q`)の流用から **`nearestAtmosphereBody` が非 null か**へ変える。
-- 熱容量の `ship.mass * 100`(比熱 100 J/(kg·K) が式に埋まっている)を `specificHeat` へ出す。
-  死んでいる `C.HEAT_CAPACITY` を削除するか、比熱として復活させるかをここで決める。
-- HUD(`hud/panel.ts`・`stage-status-panel.ts`・`map-picker.ts`)の温度・動圧表示と
-  セーブ(`ThermalSaveData`)を新しい所有者へ追随させる。
-
-**受入**: `typecheck`。自機の温度挙動が現行と実用上同等(射撃で上がる、ラジエーター展開で下がる、
-再突入で焼失する)。セーブ/ロードが往復する。
+**どちらを正とするかはユーザーの判断。** 決まったら `SPEC/FLIGHT.md` の矛盾する側を直し、
+コードをそれに合わせる。破片の限界温度も同じ問題なので、同時に遷移で較正し直す。
 
 ## Phase 7 — 太陽輻射による加熱
 
