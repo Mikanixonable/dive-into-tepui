@@ -4,7 +4,7 @@
 // ここでは「実装の性質」(連続、非負、単調減少)を検証する。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import { Atmosphere, atmosphericDensity, dragAccel, ellipsoidAltitude } from '../../src/physics/atmosphere';
+import { Atmosphere, airspeed, atmosphericDensity, dragAccel, ellipsoidAltitude } from '../../src/physics/atmosphere';
 import { EARTH_ATMOSPHERE } from '../../src/physics/solar-system';
 import { len, v3 } from '../../src/physics/vec3';
 
@@ -99,9 +99,32 @@ export function register(): void {
     // 大気があり bcInv が正なら実際に抗力が立つことの両方を固定する。
     const rLow = v3(EARTH_ATMOSPHERE.equatorRadius + 100e3, 0, 0);
     const v = v3(0, 0, 7800);
-    assert.equal(len(dragAccel(rLow, v, 0, EARTH)), 0);
-    assert.ok(len(dragAccel(rLow, v, 3.3e-3, EARTH)) > 0);
+    assert.equal(len(dragAccel(rLow, v, 0, EARTH, 1)), 0);
+    assert.ok(len(dragAccel(rLow, v, 3.3e-3, EARTH, 1)) > 0);
     // 大気の届かない高高度では、bcInv が正でも密度の下限で切られてゼロになる。
-    assert.equal(len(dragAccel(v3(EARTH_ATMOSPHERE.equatorRadius + 3000e3, 0, 0), v, 3.3e-3, EARTH)), 0);
+    assert.equal(len(dragAccel(v3(EARTH_ATMOSPHERE.equatorRadius + 3000e3, 0, 0), v, 3.3e-3, EARTH, 1)), 0);
+  });
+
+  test('atmosphere: 抗力が1ステップで奪う対気速度は、対気速度そのものを超えない', () => {
+    // 抗力は対気速度を減らすだけで、反転させることはできない。刻みが抗力に対して広すぎるとき、
+    // この上限を外すと陽的な積分が段どうしで増幅し合って1ステップで発散する。
+    const rSurface = v3(EARTH_ATMOSPHERE.equatorRadius, 0, 0);
+    const v = v3(0, 0, 7800);
+    const speed = len(airspeed(rSurface, v, EARTH));
+    for (const dt of [1e-3, 0.1, 1, 20, 204.8]) {
+      const lost = len(dragAccel(rSurface, v, 3.3e-3, EARTH, dt)) * dt;
+      assert.ok(lost <= speed * (1 + 1e-9), `dt=${dt}: 奪った量 ${lost} が対気速さ ${speed} を超えた`);
+    }
+  });
+
+  test('atmosphere: 上限に触れない刻みでは、抗力は頭打ちの影響を受けない', () => {
+    // 上限は刻みが既に広すぎるときだけ効く。効く前は dt を変えても加速度は変わらない。
+    const rHigh = v3(EARTH_ATMOSPHERE.equatorRadius + 120e3, 0, 0);
+    const v = v3(0, 0, 7800);
+    const base = len(dragAccel(rHigh, v, 3.3e-3, EARTH, 1));
+    assert.ok(base > 0);
+    for (const dt of [1e-3, 0.1, 20, 204.8]) {
+      assert.ok(Math.abs(len(dragAccel(rHigh, v, 3.3e-3, EARTH, dt)) - base) < base * 1e-12);
+    }
   });
 }
