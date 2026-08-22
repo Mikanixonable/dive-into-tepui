@@ -273,26 +273,28 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-stagestatus .radiator-btn.on { border-color: var(--accent); }
 #hud-stagestatus .radiator-btn.on .label { color: var(--accent); }
 #hud-pause-menu {
-  position: absolute; bottom: 40px; top: auto; left: 50%; transform: translateX(-50%);
-  display: none; min-width: 260px; pointer-events: auto;
+  position: fixed; display: none; min-width: 260px; pointer-events: auto;
 }
 #hud-pause-menu .pm-header {
-  display: flex; justify-content: space-between; align-items: center; gap: var(--space-6);
+  display: flex; justify-content: space-between; align-items: center; gap: var(--space-6); cursor: move;
 }
 #hud-pause-menu .pm-header h3 { margin: 0; }
-#hud-pause-menu .pm-header .w-close { flex: 0 0 auto; border-radius: 50%; }
+#hud-pause-menu .pm-header .w-close, #hud-pause-menu .pm-minimize {
+  flex: 0 0 auto; border-radius: 50%;
+}
+#hud-pause-menu .pm-minimize {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; padding: 0; font-size: var(--font-m); border: 1px solid transparent;
+  background: var(--surface-2); color: var(--body); cursor: pointer;
+}
+#hud-pause-menu .pm-minimize:hover { color: var(--accent-near); background: var(--surface-3); }
+#hud-pause-menu .pm-body.hidden { display: none; }
 #hud-pause-menu .pm-row {
   display: flex; justify-content: space-between; align-items: center; gap: var(--space-6); padding: var(--space-3) 0;
 }
-#hud-pause-menu .pm-theme-row { align-items: center; }
-#hud-pause-menu .pm-theme-preview { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 3px; }
-#hud-pause-menu .pm-theme-swatch { width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 0 1px color-mix(in srgb, var(--title) 24%, transparent); }
-#hud-pause-menu .pm-theme-select { flex: 1 1 180px; min-width: 0; color-scheme: var(--theme-tone); }
 /* span. まで指定して .w-btn 側の padding/font-size より確実に勝たせる
    (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
 #hud-pause-menu span.pm-quit { margin-top: var(--space-5); text-align: center; padding: var(--space-4) var(--space-5); font-size: var(--font-m); }
-#hud-pause-menu .w-tabs { margin-bottom: var(--space-4); }
-#hud-pause-menu .gp-body { display: flex; flex-direction: column; gap: var(--space-4); }
 #hud-settings-view {
   inset: 0; display: none; overflow-y: auto; pointer-events: auto;
   padding: clamp(24px, 7vh, 72px) max(var(--space-6), 6vw);
@@ -300,17 +302,26 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 }
 #hud-settings-view .sv-header,
 #hud-settings-view .sv-description,
-#hud-settings-view .sv-section,
-#hud-settings-view .sv-footer { width: min(100%, 720px); margin-inline: auto; }
+#hud-settings-view .sv-section { width: min(100%, 720px); margin-inline: auto; }
 #hud-settings-view .sv-header {
-  display: flex; align-items: baseline; gap: var(--space-4);
+  display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4);
   border-bottom: 1px solid var(--edge); padding-bottom: var(--space-4);
 }
+#hud-settings-view .sv-heading-group { display: flex; flex-direction: column; gap: var(--space-2); }
 #hud-settings-view .sv-header h2 { color: var(--title); font-size: var(--font-2xl); letter-spacing: 0.08em; }
+#hud-settings-view .sv-header .w-close { flex: 0 0 auto; border-radius: 50%; }
 #hud-settings-view .sv-eyebrow { color: var(--accent); font-size: var(--font-xxs); letter-spacing: 0.12em; }
 #hud-settings-view .sv-description { margin-top: var(--space-5); color: var(--text-dim); font-size: var(--font-s); }
 #hud-settings-view .sv-section { margin-top: var(--space-7); }
 #hud-settings-view .sv-section h3 { color: var(--accent); font-size: var(--font-m); letter-spacing: 0.08em; }
+#hud-settings-view .sv-theme-row {
+  display: flex; align-items: center; gap: var(--space-4); margin-top: var(--space-4);
+  padding: var(--space-4); background: var(--surface-1); border: 1px solid var(--edge);
+}
+#hud-settings-view .sv-theme-preview { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 3px; }
+#hud-settings-view .sv-theme-swatch { width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 0 1px color-mix(in srgb, var(--title) 24%, transparent); }
+#hud-settings-view .sv-theme-select { flex: 1; min-width: 0; color-scheme: var(--theme-tone); }
+#hud-settings-view .gp-body { display: flex; flex-direction: column; gap: var(--space-4); margin-top: var(--space-4); }
 #hud-settings-view .sv-volume-row {
   display: flex; align-items: center; gap: var(--space-4); margin-top: var(--space-4);
   padding: var(--space-4); background: var(--surface-1); border: 1px solid var(--edge);
@@ -329,7 +340,6 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-settings-view .sv-track-number { color: var(--text-dim); font-size: var(--font-xxs); font-variant-numeric: tabular-nums; }
 #hud-settings-view .sv-preview-button { min-width: 76px; text-align: center; }
 #hud-settings-view .sv-track-actions { margin-top: var(--space-4); text-align: right; }
-#hud-settings-view .sv-footer { margin-top: var(--space-8); text-align: center; }
 
 @media ${MQ_MEDIUM_DOWN} {
   #hud-plan { min-width: 0; max-width: none; }

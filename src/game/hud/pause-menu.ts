@@ -1,23 +1,20 @@
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import {
-  ACTIVE_THEME_ID, applyThemePalette, getThemePalette, SPACE_4, SPACE_6, THEME_PRESETS,
-} from '../theme';
-import type { GraphicsSettings } from '../../render/graphics-settings';
-import type { DebugTargetHost } from '../../render/pipeline/debug-target';
-import { GraphicsPanel } from './graphics-panel';
+import { SPACE_4, SPACE_6 } from '../theme';
+import { CLICK_MOVE_THRESHOLD } from '../const';
+import { clampOverlayPosition, Point2 } from './layout';
+import { onViewportChange } from './viewport';
 import type { OverlayHandle, OverlayManager } from './overlay-manager';
-import { Button, CloseButton, Slider, TabBar } from './widgets';
-
-type PauseTab = 'general' | 'graphics';
-
-const TAB_ITEMS: readonly (readonly [PauseTab, string])[] = [['general', '一般'], ['graphics', '描画']];
+import {
+  Button, CloseButton, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, Slider,
+} from './widgets';
 
 export class PauseMenu implements OverlayHandle {
   private readonly panel: HTMLElement;
+  private readonly body: HTMLElement;
+  private readonly minimizeToggle: HTMLButtonElement;
   private _isOpen = false;
-  // タブごとの中身。表示面の切り替えは .hidden の付け外しだけで行う。
-  private readonly faces: ReadonlyMap<PauseTab, HTMLElement>;
-  private readonly tabs: TabBar<PauseTab>;
+  private minimized = false;
+  private hasCustomPosition = false;
 
   onPauseMenuOpenChange: ((open: boolean) => void) | null = null;
   onQuitToTitle: (() => void) | null = null;
@@ -34,32 +31,41 @@ export class PauseMenu implements OverlayHandle {
   // (0 かどうか)から読めるので別に持たない。
   private lastVol = 1;
 
-  // 一般・描画の2面をタブで束ねたパネル DOM を組み立て、BGM・セーブ・セーブデータの管理・
-  // 負荷表示・タイトルへ戻るのイベントを配線する。debugTargetHost は描画面の GraphicsPanel が
-  // デバッグ表示の選択を書き込む先(RenderPipeline)。
-  constructor(
-    root: HTMLElement, overlayManager: OverlayManager, graphics: GraphicsSettings, debugTargetHost: DebugTargetHost,
-  ) {
+  private dragPointerId: number | null = null;
+  private dragStartClient: Point2 | null = null;
+  private dragStartWindowPos: Point2 = { x: 0, y: 0 };
+
+  // BGM・セーブ・セーブデータの管理・負荷表示・設定ビューを開く・タイトルへ戻るのイベントを
+  // 配線したパネル DOM を組み立てる。ヘッダーはドラッグ移動と最小化トグルを持つ。
+  constructor(root: HTMLElement, overlayManager: OverlayManager) {
     this.overlayManager = overlayManager;
     this.panel = document.createElement('div');
     this.panel.id = 'hud-pause-menu';
     this.panel.className = 'panel';
+
     const header = document.createElement('div');
     header.className = 'pm-header';
     const heading = document.createElement('h3');
     heading.textContent = '一時停止 / 設定';
     header.appendChild(heading);
+    this.minimizeToggle = document.createElement('button');
+    this.minimizeToggle.type = 'button';
+    this.minimizeToggle.className = 'pm-minimize';
+    this.minimizeToggle.addEventListener('pointerdown', (e) => e.stopPropagation());
+    this.minimizeToggle.addEventListener('click', () => this.setMinimized(!this.minimized));
+    header.appendChild(this.minimizeToggle);
     const closeBtn = new CloseButton(() => this.toggle(false));
     header.appendChild(closeBtn.element);
+    header.addEventListener('pointerdown', this.handleHeaderPointerDown);
+    header.addEventListener('pointermove', this.handleHeaderPointerMove);
+    header.addEventListener('pointerup', this.handleHeaderPointerUp);
+    header.addEventListener('pointercancel', this.handleHeaderPointerUp);
     this.panel.appendChild(header);
 
-    this.tabs = new TabBar<PauseTab>(TAB_ITEMS, (tab) => this.showTab(tab));
-    this.panel.appendChild(this.tabs.element);
-
-    const general = document.createElement('div');
-    const graphicsPanel = new GraphicsPanel(graphics, debugTargetHost);
-    this.faces = new Map([['general', general], ['graphics', graphicsPanel.element]]);
-    for (const face of this.faces.values()) this.panel.appendChild(face);
+    this.body = document.createElement('div');
+    this.body.className = 'pm-body';
+    this.panel.appendChild(this.body);
+    this.syncMinimizeToggle();
 
     const bgmRow = document.createElement('div');
     bgmRow.className = 'pm-row';
@@ -78,51 +84,7 @@ export class PauseMenu implements OverlayHandle {
     this.bgmMute = new Button('消音', () => this.toggleMute());
     this.bgmMute.element.style.marginLeft = SPACE_4;
     bgmRow.appendChild(this.bgmMute.element);
-    general.appendChild(bgmRow);
-
-    const themeRow = document.createElement('div');
-    themeRow.className = 'pm-row pm-theme-row';
-    const themeLabel = document.createElement('span');
-    themeLabel.className = 'k';
-    themeLabel.textContent = '配色';
-    themeRow.appendChild(themeLabel);
-    const themePreview = document.createElement('span');
-    themePreview.className = 'pm-theme-preview';
-    themePreview.setAttribute('aria-hidden', 'true');
-    const updateThemePreview = (id: string): void => {
-      const palette = getThemePalette(id);
-      if (!palette) return;
-      themePreview.replaceChildren();
-      for (const color of [palette.accent, palette.accentNear, palette.secondary]) {
-        const swatch = document.createElement('span');
-        swatch.className = 'pm-theme-swatch';
-        swatch.style.backgroundColor = color;
-        themePreview.appendChild(swatch);
-      }
-    };
-    const themeSelect = document.createElement('select');
-    themeSelect.className = 'w-input pm-theme-select';
-    themeSelect.setAttribute('aria-label', '配色プリセット');
-    for (const palette of THEME_PRESETS) {
-      const option = document.createElement('option');
-      option.value = palette.id;
-      option.textContent = `● ${palette.name}`;
-      option.style.color = palette.accent;
-      option.title = palette.description;
-      themeSelect.appendChild(option);
-    }
-    themeSelect.value = ACTIVE_THEME_ID;
-    updateThemePreview(themeSelect.value);
-    themeSelect.addEventListener('change', () => {
-      if (!applyThemePalette(themeSelect.value)) {
-        themeSelect.value = ACTIVE_THEME_ID;
-        return;
-      }
-      updateThemePreview(themeSelect.value);
-    });
-    themeRow.appendChild(themePreview);
-    themeRow.appendChild(themeSelect);
-    this.panel.appendChild(themeRow);
+    this.body.appendChild(bgmRow);
 
     const saveRow = document.createElement('div');
     saveRow.className = 'pm-row';
@@ -130,7 +92,7 @@ export class PauseMenu implements OverlayHandle {
     const saveBtn = new Button('セーブ', () => this.onSave?.());
     saveBtn.element.style.flex = '1';
     saveRow.appendChild(saveBtn.element);
-    general.appendChild(saveRow);
+    this.body.appendChild(saveRow);
 
     const saveBrowserRow = document.createElement('div');
     saveBrowserRow.className = 'pm-row';
@@ -138,7 +100,7 @@ export class PauseMenu implements OverlayHandle {
     const saveBrowserBtn = new Button('セーブデータの管理', () => this.onOpenSaveBrowser?.());
     saveBrowserBtn.element.style.flex = '1';
     saveBrowserRow.appendChild(saveBrowserBtn.element);
-    general.appendChild(saveBrowserRow);
+    this.body.appendChild(saveBrowserRow);
 
     const perfRow = document.createElement('div');
     perfRow.className = 'pm-row';
@@ -146,7 +108,7 @@ export class PauseMenu implements OverlayHandle {
     const perfBtn = new Button(`負荷を表示 [${K.togglePerfWindow.label}]`, () => this.onOpenPerfWindow?.());
     perfBtn.element.style.flex = '1';
     perfRow.appendChild(perfBtn.element);
-    general.appendChild(perfRow);
+    this.body.appendChild(perfRow);
 
     const settingsRow = document.createElement('div');
     settingsRow.className = 'pm-row';
@@ -154,20 +116,14 @@ export class PauseMenu implements OverlayHandle {
     const settingsBtn = new Button('設定ビューを開く', () => this.onOpenSettings?.());
     settingsBtn.element.style.flex = '1';
     settingsRow.appendChild(settingsBtn.element);
-    general.appendChild(settingsRow);
+    this.body.appendChild(settingsRow);
 
     const quitBtn = new Button('ゲームを中断してタイトル画面に戻る', () => this.onQuitToTitle?.());
     quitBtn.element.classList.add('pm-quit');
-    general.appendChild(quitBtn.element);
+    this.body.appendChild(quitBtn.element);
 
     root.appendChild(this.panel);
-    this.showTab('general');
-  }
-
-  // 表示面を切り替える。タブの点灯も合わせる。
-  private showTab(tab: PauseTab): void {
-    for (const [name, face] of this.faces) face.classList.toggle('hidden', name !== tab);
-    this.tabs.setSelected(tab);
+    onViewportChange(() => this.reclamp());
   }
 
   // ミュート/復帰を切り替える。復帰は直前の音量へ戻す。
@@ -185,6 +141,20 @@ export class PauseMenu implements OverlayHandle {
   // 消音ボタンの点灯を音量から合わせる。
   private updateMuteState(vol: number): void {
     this.bgmMute.setOn(vol <= 0);
+  }
+
+  // 最小化状態を切り替える。永続化はせず、開き直すたびに展開状態へ戻る。
+  private setMinimized(minimized: boolean): void {
+    this.minimized = minimized;
+    this.body.classList.toggle('hidden', minimized);
+    this.syncMinimizeToggle();
+    this.reclamp();
+  }
+
+  private syncMinimizeToggle(): void {
+    this.minimizeToggle.textContent = this.minimized ? COLLAPSE_COLLAPSED_GLYPH : COLLAPSE_EXPANDED_GLYPH;
+    this.minimizeToggle.setAttribute('aria-expanded', String(!this.minimized));
+    this.minimizeToggle.title = this.minimized ? '展開する' : '最小化する';
   }
 
   contains(target: Node): boolean {
@@ -208,6 +178,7 @@ export class PauseMenu implements OverlayHandle {
       'title-menu-open', show && document.getElementById('stage-select') !== null,
     );
     if (show) {
+      if (!this.hasCustomPosition) this.centerPanel();
       // ESCメニュー表示中も、背景のマップ切替とカメラ操作は受け付ける(gatesInput: false)。
       this.overlayManager.open('pause-menu', this, {
         kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: false,
@@ -218,6 +189,57 @@ export class PauseMenu implements OverlayHandle {
     }
     this.onPauseMenuOpenChange?.(show);
   }
+
+  // 画面中央へ配置する。初回表示時のみ呼ぶ — 以降はドラッグした位置を維持する。
+  private centerPanel(): void {
+    const rect = this.panel.getBoundingClientRect();
+    this.moveTo((window.innerWidth - rect.width) / 2, (window.innerHeight - rect.height) / 2);
+  }
+
+  // 要求座標をビューポート内へクランプして配置する。
+  private moveTo(clientX: number, clientY: number): void {
+    const rect = this.panel.getBoundingClientRect();
+    const pos = clampOverlayPosition(
+      { x: clientX, y: clientY },
+      { width: rect.width, height: rect.height },
+      { width: window.innerWidth, height: window.innerHeight },
+    );
+    this.panel.style.left = `${pos.x}px`;
+    this.panel.style.top = `${pos.y}px`;
+  }
+
+  // 現在位置をビューポート内へ収め直す。ウィンドウリサイズと最小化(サイズ変化)の両方から呼ぶ。
+  private reclamp(): void {
+    if (!this._isOpen) return;
+    this.moveTo(this.panel.offsetLeft, this.panel.offsetTop);
+  }
+
+  // ボタン上からは開始せず、ドラッグ開始点とポインタキャプチャだけ確保する。
+  private handleHeaderPointerDown = (e: PointerEvent): void => {
+    if (e.target instanceof Element && e.target.closest('button')) return;
+    this.dragPointerId = e.pointerId;
+    this.dragStartClient = { x: e.clientX, y: e.clientY };
+    this.dragStartWindowPos = { x: this.panel.offsetLeft, y: this.panel.offsetTop };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  // しきい値(CLICK_MOVE_THRESHOLD)を超えて動いたら位置を持ち出し位置として確定させる。
+  private handleHeaderPointerMove = (e: PointerEvent): void => {
+    if (this.dragPointerId !== e.pointerId || this.dragStartClient === null) return;
+    const dx = e.clientX - this.dragStartClient.x;
+    const dy = e.clientY - this.dragStartClient.y;
+    if (!this.hasCustomPosition && Math.hypot(dx, dy) < CLICK_MOVE_THRESHOLD) return;
+    this.hasCustomPosition = true;
+    this.moveTo(this.dragStartWindowPos.x + dx, this.dragStartWindowPos.y + dy);
+  };
+
+  // ポインタキャプチャを解放してドラッグ状態を終える。
+  private handleHeaderPointerUp = (e: PointerEvent): void => {
+    if (this.dragPointerId !== e.pointerId) return;
+    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    this.dragPointerId = null;
+    this.dragStartClient = null;
+  };
 
   // BGM スライダーの表示を更新する。
   setBgmVolume(vol: number): void {
