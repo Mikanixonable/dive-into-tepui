@@ -6,6 +6,10 @@
 完了したタスクは文書から削除し、残りのToDoと、後件の判断のために必要な情報だけのこす。
 コードの状況についても計画開始時点の歴史的経緯を残さず、常に最新にする。
 
+**この文書のコード上の事実・行番号・ライブラリの版は、リビジョン `0f240b22`(2026-08-23)
+時点で確認したもの。** 直近のフェーズの詳細計画は別ファイルに切ってある —
+`phase3.5.md`(描画テスト環境)と `phase4.md`(深度の反転と距離圧縮の撤去)。
+
 **適用範囲の前提**: LEO で優れた性能が出ることは最低要件だが、**太陽系全域で破綻しないこと**が
 同時に要件である。「LEO でしか使わないから」を実装する/しないの根拠にしてはならない。
 カメラは既に太陽系全体を見渡せる(`OverviewCamera`)ので、そこで破綻する設計は採れない。
@@ -79,7 +83,7 @@ L(p) = E_sun(その天体の太陽からの距離) * albedo * max(0, dot(n_p, su
 `RingOpticsDef` の単一散乱アルベド・法線光学的厚さ・HG 非対称因子が全 36 帯に出典コメント付きで入り、
 その単一散乱の式(`render/ring.ts` の `physicalMaterial` が組む TSL グラフ)は明示された単位を持つ。
 この手調整係数はもうリング固有ではない — **出力段の露出係数
-`EXPOSURE = 0.72`(`render/pipeline/render-pipeline.ts`)としてフレーム全体に掛かっている。**
+`EXPOSURE = 0.72`(`render/pipeline/render-pipeline.ts:23`)としてフレーム全体に掛かっている。**
 リング以外は一律 0.72 倍で暗い。**Phase 5 の課題は、この 1 個の係数を上の放射照度基準の式から
 引き直すこと**であり、**`EXPOSURE` が 1.0 になる**ことを完了条件の一つにする。
 
@@ -102,21 +106,34 @@ GPU に ECI 座標(独自 `Vec3`)が渡らないこと。具体的には
 `OrbitLine` / `TrajectoryLine` は `Curve` 経由なので、海王星軌道のような大きな絶対値でも
 f32 量子化は起きない。
 
-**残っている 1 箇所**: `game/celestial/point-field-view.ts:97` の `instanceMatrix` は
+**残っている 1 箇所**: `game/celestial/point-field-view.ts:94` の `instanceMatrix` は
 太陽中心の生座標(カイパー帯で ~7.5e12 m)を pivot 補正なしに f32 へ書いている(量子化 ~5e5 m)。
 **引きの絵では画素以下だが、寄ると露見するはず。Phase 4 で実測する** — 距離圧縮の撤去と
 同じ「真の絶対値を f32 へ載せてよいか」という問いなので、同じフェーズで測る。
 `Curve` と同じ pivot 補正を入れるのが対処だが、**測ってから決める。**
 
-### 1-3. 深度精度 — 第一候補は reversed-Z + float32。カスケードは退路
+### 1-3. 深度は「画素ごとの位置を復元する器」である
 
-**方針(確定)**: 距離圧縮の撤去は GPU 上の深度精度が担保できるかが鍵。
-**ただし第一候補は深度カスケードではなく、reversed-Z + 32bit float 深度による単一バッファである。**
-**スパイク → 測定 → 判断 → 本実装を 1 つのフェーズ(Phase 4)で通す。**
+**深度バッファに求めるのは z-fighting を消すことではない。** 求めるのは
+**画素ごとに、その面が描画座標(ECI − 浮動原点)のどこにあるかを正確に復元できること**である。
+浮動原点はアクティブカメラの ECI 位置そのものなので、描画座標の原点はカメラであり、
+**この座標系は `render/` の中で完結する**(GPU に ECI 絶対座標は渡らない)。
+
+復元ができると**太陽を点光源として扱える** — 画素の復元位置と太陽の位置の**差分ベクトル**から、
+その画素における太陽の方向と距離が正確に出る。これが軸 1(§1-5)の入口であり、
+**天体ごとの `sunDirection` uniform を不要にし、天体を `LIT_OPAQUE_LAYER` へ載せる前提**でもある。
+球エリアライト(Phase 8)は、この点を有限の立体角へ替えるだけになる。
+
+復元は `getViewPosition(screenUV, depth, projectionMatrixInverse)`、すなわち
+**screenUV(誤差なし)× 深度から得た距離**なので、横方向 x,y は z に比例する。
+**復元位置の相対誤差は深度の相対誤差そのものである。**
+
+**方針(確定)**: 単一の深度バッファを **reversed-Z + 32bit float** にする。
+深度カスケードは退路。**スパイク → 測定 → 判断 → 本実装を 1 つのフェーズ(Phase 4)で通す。**
 
 #### なぜカスケードより先に reversed-Z を試すか
 
-深度分解能 Δz(隣り合う深度値が表す距離の差)を、カメラからの距離 z ごとに:
+深度分解能 Δz(= その距離での位置復元の絶対誤差)を、カメラからの距離 z ごとに:
 
 | z | 現状(`depth24plus`・非反転・near=2) | **reversed-Z + `depth32float`** |
 |---|---|---|
@@ -132,13 +149,14 @@ f32 量子化は起きない。
 reversed-Z + float32 は `Δz ≈ z·2⁻²⁴` で**距離に比例する**。
 1 px の world 幅も距離に比例する(`metersPerPixel ≈ 9.6e-4·z`)ので、
 
-> **reversed-Z + float32 の深度分解能は、距離によらず画面上つねに約 6e-5 px 相当。**
+> **reversed-Z + float32 の深度分解能 = 位置復元の相対誤差は、距離によらず 6.0e-8。**
+> 画面上に直すと、どの距離でもつねに約 6e-5 px 相当。
 
 **距離に対して一様である**ことが要点で、これはまさに「近くは高精度、遠くは低精度」を
 浮動小数の指数部が自動的にやっている状態である。**カスケードで人為的に分ける動機が消える。**
 深度カスケードは固定小数点深度バッファ時代の技法であり、
 **float32 + reversed-Z の下では枚数を増やしても得るものがほとんど無い**一方、
-`renderOrder`・`depthTest: false` の 3 箇所・`frustumCulled = false` の 6 箇所を
+`renderOrder`・`depthTest: false` の 3 箇所・`frustumCulled = false` の 7 箇所を
 すべて段ごとに整理し直す構造的コストを丸ごと払うことになる。
 
 原理: 非反転は `z_ndc = 1 − near/z` の形で、**1 から微小量を引く**ため
@@ -149,26 +167,52 @@ reversed-Z + float32 は `Δz ≈ z·2⁻²⁴` で**距離に比例する**。
 反転形の係数 `c = near/(far−near)`, `d = far·near/(far−near)` では
 **桁落ちが起きる引き算そのものが式から消える**ので同時に解消する。
 
-#### three.js 側の事実(r0.185.1、調査済み)
+#### three.js 側の事実(three `0.185.1`、調査済み)
 
-- **`WebGPURenderer` に `reversedDepthBuffer` は存在する**(r183 で追加、`Renderer.js`)。
-  投影行列(`Matrix4.makePerspective` の `reversedDepth` 引数)・深度比較関数の反転テーブル
-  (`utils.js` の `ReversedDepthFuncs`)・深度クリア値(`getClearDepth()`)が
-  **レンダラー単位で一括して切り替わる。同一カメラを使い回す 5 パス構成にも一貫して効く。**
-- **`depth32float` は `new THREE.DepthTexture(w, h, THREE.FloatType)` で明示指定できる**
-  (`WebGPUTextureUtils` の型→フォーマット表で `FloatType → Depth32Float`。WebGPU コア機能で追加 feature 不要)。
-  **暗黙の深度バッファは `reversedDepthBuffer` で自動的に `depth32float` へ切り替わるが、
-  自前で `DepthTexture` を付けた RenderTarget は切り替わらない** — three 自身の `PassNode` も
-  `depthTexture.type = FloatType` を手で入れている。
-  **`gbuffer.ts` の `new THREE.DepthTexture(1, 1)` は既定の `UnsignedIntType`(= `depth24plus`)なので、
-  ここを明示しないと反転しても精度が出ない。**
-- **⚠ `0.185.1` には `reversedDepthBuffer` が `renderOrder` を全反転させるバグがある**
-  (`RenderList.sort` が `reversedDepth` のとき配列全体を `.reverse()` する。
-  three.js Issue #33944 / 修正 PR #33945)。
-  **`LINE_RENDER_ORDER`(§2-4)の 6 段が丸ごと逆順になる。**
-  修正はマイルストーン **r186(2026-08-19 予定)**。
-  **Phase 4 は r186 への更新を前提に組む。** 更新が間に合わない場合のみ、
-  `RenderList.sort` を回避する形(カスタムソート関数)を検討する。
+**r186 はまだ出ていない。** npm 上の最新は `0.185.1`(2026-07-01 公開)で `0.186.x` は存在せず、
+`RenderList.sort` の `.reverse()` も入ったままである。**Phase 4 を「r186 を待つ」形では組めない** —
+下の等価変換で通す。
+
+- **`reversedDepthBuffer` はコンストラクタ引数でしか渡せない。**
+  `new WebGPURenderer({ reversedDepthBuffer: true })`。`@types/three` の
+  `Renderer.reversedDepthBuffer` は `readonly` で、実行時にも深度比較関数だけが
+  **構築時の値**(`backend.parameters.reversedDepthBuffer`、`WebGPUPipelineUtils.js:892`)を
+  読むため、後から代入すると投影行列とクリア値だけが反転して比較関数が取り残される。
+  **書き換え先は `render/scene.ts` の `createGameScene` 1 箇所。**
+- 投影行列(`Matrix4.makePerspective` / `makeOrthographic` の `reversedDepth` 引数)・
+  深度比較関数の反転テーブル(`utils.js` の `ReversedDepthFuncs`)・深度クリア値
+  (`getClearDepth()`)が**レンダラー単位で一括して切り替わる。同一カメラを使い回す
+  5 パス構成にも一貫して効く。** カメラ側は描画のたびに `camera._reversedDepth` が立ち、
+  `updateProjectionMatrix()` がそれを読むので、`camera-system.ts` は無変更でよい。
+- **⚠ RenderTarget の深度は自動では `depth32float` にならない。**
+  `Textures.updateRenderTarget`(`Textures.js:93`)は暗黙の深度テクスチャを
+  **`reversedDepthBuffer` に関係なく `UnsignedIntType`(= `depth24plus`)で作る。**
+  自動で `Depth32Float` が選ばれるのは `renderContext.depthTexture === null` の経路、
+  つまり**キャンバスへ直接描くときだけ**(`WebGPUUtils.js:56`)。
+  **本作は全パスが RenderTarget へ描くので、放っておくと 1 枚も 32bit にならない。**
+  明示が要るのは 2 枚 — `pipeline/gbuffer.ts` の `new THREE.DepthTexture(1, 1)` と、
+  `pipeline/render-pipeline.ts` の HDR ターゲット(いま暗黙。`depthTexture` を自前で持たせる)。
+  どちらも `new THREE.DepthTexture(1, 1, THREE.FloatType)` でよい
+  (`WebGPUTextureUtils` の型→フォーマット表で `FloatType → Depth32Float`。WebGPU コア機能で
+  追加 feature 不要)。antialias 時の `samples: 4` でも `Textures.updateRenderTarget` が
+  深度テクスチャへ同じ `sampleCount` を渡すので、明示しても壊れない。
+- **⚠ `0.185.1` は `reversedDepthBuffer` のとき描画順を全反転させる。**
+  `RenderList.sort`(`RenderList.js:389`)が custom sort を適用した**あとで**
+  `opaque` / `transparent` / `transparentDoublePass` を無条件に `.reverse()` する
+  (three.js Issue #33944 / 修正 PR #33945、マイルストーン r186)。
+  **§2-4 の段が丸ごと逆順になる。**
+  **対処は `renderer.setOpaqueSort()` / `setTransparentSort()` へ既定比較関数の符号反転を渡すこと。**
+  `.reverse()` は sort の直後に無条件で走り、既定の比較関数は最後に `a.id - b.id` でタイを割るので
+  **全順序**である。ゆえに「反転比較でソート → reverse」は「既定比較でソート」と厳密に一致する。
+  近似でも回避でもなく等価変換なので、**r186 を待つ理由は無い。**
+- **⚠ その等価変換は three を上げた瞬間に二重反転する。** `package.json` の
+  `"three": "^0.185.1"` のままだと `npm install` が 0.186 を拾い、`.reverse()` が消えたぶん
+  描画順が黙って逆さになる。**反転比較関数を入れるのと同時に版を `0.185.1` へピン留めする。**
+- **`viewZToReversedPerspectiveDepth` / `viewZToReversedOrthographicDepth` は `three/tsl` から
+  公開されており `@types/three` も持つ。** 自前で `depthNode` を書いている 1 箇所
+  (`render/celestial-surface.ts:119`、非反転の `viewZToPerspectiveDepth`)は反転すると
+  **例外も出さずに深度だけ裏返る。** Phase 4 ではこの `depthNode` ごと消える —
+  距離圧縮が無くなれば `depthScale ≡ 1` で存在理由が無い。
 - **対数深度は「併用相手」ではなく「代案」。** `logarithmicDepthBuffer` は WebGPU 経路にも
   配線されている(`NodeMaterial.setupDepth`)が、**reversed 版の
   `viewZToReversedLogarithmicDepth` が three に存在しない**ので、両方同時に有効化した場合の
@@ -176,32 +220,59 @@ reversed-Z + float32 は `Δz ≈ z·2⁻²⁴` で**距離に比例する**。
 
 #### 判断を楽にする事実(維持)
 
-- **`physics/projection.ts` は near/far に一切依存しない**(`:49, 53-70`)。
+- **`physics/projection.ts` は near/far に一切依存しない。**
   → **fov/aspect を共有する限り `ProjectFn` / `ScaleFn` の全消費者(マーカー約10系統、picking 5系統、
-  plan 系、`TrajectoryLine` の頂点密度、`ring-view` の LOD、`point-body` の 2px 判定)は無変更で通る。**
+  plan 系、`TrajectoryLine` の頂点密度、`ring-view` の LOD、`point-view` の 2px 判定)は無変更で通る。**
 - **投影行列を書く箇所は `camera/camera-system.ts` の `syncCameraToViewpoint` 1 箇所だけ。**
-- **`COMBAT_CAMERA_FAR = 6e7`(`const.ts:124`)は `MOON_VIS_DIST = 4.5e7` から逆算された値。**
-- **地球だけは既に真位置・実半径**(`earth-body.ts`)。真スケール描画の前例が既にある。
-- **マップカメラは既に破綻していない** — `near = dist/1000` / `far = dist×100` と
-  near が距離に比例するので比が 1e5 に固定されている。**問題は `near = 2` 固定の戦闘カメラだけ。**
+  ただし **`camera` の静的型は `THREE.Camera`** で、実体は戦闘ビューの `PerspectiveCamera` と
+  マップビューの `PerspectiveCamera` / `OrthographicCamera` の 3 通り(`map-camera.ts` が
+  投影方式を切り替える)。**反転はこの 3 つすべてに一律で効く。**
+- **`COMBAT_CAMERA_FAR = 6e7`(`const.ts:158`)は `MOON_VIS_DIST = 4.5e7` から逆算された値。**
+- **地球だけは既に真位置・実半径**(`earth-view.ts`)。真スケール描画の前例が既にある。
+- **マップカメラも実は破綻している。** `near = dist/1000` / `far = clamp(dist×100, 1.5e10, 1e16)`
+  で、**far に下限クランプがあるため near/far 比は固定されていない** — 最小ズーム
+  (`dist = 1e5`)で near=100 / far=1.5e10、**比 1.5e8**。非反転 `depth24plus` では
+  この far 付近の分解能が far 自身を超える。最大ズーム(`dist = 1e14`)では near が
+  天球シェル基準でクランプされて比 9e5 に収まる。
+  **戦闘カメラ(`near = 2` 固定、比 3e7)だけの問題ではない。**
+  なお正射影では深度が線形なので反転しても分解能は変わらない — こちらは
+  `depth24plus → depth32float` の 8bit ぶんだけが効く。
 - `light-prepass.ts` の視点位置復元は `camera.projectionMatrixInverse` を渡しているので、
   **反転しても自動的に追随する**(行列そのものが反転版になるため)。
 - `render-pipeline.ts` の `viewDistanceFromDepth` は分母の `near` と `far` を
   入れ替えるだけで反転形になる(`near·far / (near(1−d) + far·d)`)。デバッグ表示のみの影響。
 
-**変換の切り出し(要件)**: ECI → 描画位置の順変換は **5 種類に分散**し、逆変換は **1 つも無い**。
-`FloatingOrigin.RtoThreeV3` / `sphere-body.ts:96-115` / `point-body.ts` の 2 箇所 /
-`sun-body.ts` / `environment-scene.ts`。
-1 モジュール(`render/view-space.ts`)へ集約し `toRender` / `toEci` を公開する。
-**圧縮を採るにせよ撤去するにせよ、この集約は先にやる。**
+**天体だけが浮動原点を通っていない(要件)**: ECI → 描画座標の写像は
+`FloatingOrigin.RtoThreeV3`(`floating-origin.ts:28`)が唯一の正本であるべきで、
+**新しいモジュールを作るのではなく、通っていない箇所を通す。** 通っていないのは 2 種類:
+
+- 戦闘ビューの圧縮 4 箇所 — `sphere-view.ts:107-112` / `point-view.ts:167-171`(輝点)と
+  `:218-222`(星殻上の輝点)/ `sun-view.ts:58-62`。`cam.position + dir * visDist` と置いており
+  **`fo` を一切通らない。**
+- `point-field-view.ts:92-99` — 親の `mesh.position` は通るが、`instanceMatrix` には
+  太陽中心の生座標が入る。**子だけが通っていない**(§1-2 の f32 量子化はこれと同じ問題)。
+
+**圧縮は描画座標だけで閉じた操作である。** `FloatingOrigin.r` はアクティブカメラの ECI 位置
+そのもの(`game.ts:472`)で、カメラはその位置へ置かれる(`camera-system.ts:52`)ため
+**`camera.position` は描画座標で厳密に (0,0,0)。** よって圧縮は
+`k = visDist / |p|` を `p = fo.RtoThreeV3(pos)` へ掛ける**一様な放射スケール**として厳密に書き直せ、
+位置も半径も現行の深度補正(`1/k`)もこの 1 個の数で表せる。
+
+**圧縮は視覚の判断なので `game/` の範囲外**(§4)。表示距離の定数ごと `render/` へ移し、
+`game/celestial/` は `fo.RtoThreeV3(pos)` と真の半径を渡すだけにする。
+**圧縮が撤去されればそのモジュールごと消え、残るなら `render/pipeline/` の中へ完全に隠蔽する。**
+**逆変換 `toEci` は作らない** — 必要なのは描画座標で、その逆変換は GPU 側の
+`getViewPosition` がやる(`CODING-RULE.md` 1.5)。
 **カスケード選択のポリシーはここへ置かない** — 深度カスケードとシャドウマップの解像度は
 別の資源を別の軸で分けており、共有してよいのは `render/screen-lod.ts` /
 `physics/projection.ts` に既にある「長さ → px」の換算だけ(`shadow_implement.md` §4-1)。
 
-**測定項目**: (a) reversed-Z + float32 単一バッファで、圧縮を外した全距離域に z-fighting が出ないか、
-(b) `renderOrder` が r186 で正しく効いているか、
-(c) `depthTest: false` の 3 箇所(`stars.ts:28` / `earth.ts:99` / `plan-gizmo-3d.ts:33`)が
-反転後も意図どおりか、(d) フレーム時間の変化(パス数は増えないので誤差程度のはず)。
+**測定項目**: (a) **位置復元の相対誤差が距離によらず 6e-8 付近で一定になるか** —
+1e4 / 1e6 / 1e8 / 1e11 m のそれぞれで、視線方向に相対 ε だけずらした 2 面が
+分離して見える最小の ε を読む。(b) 反転比較関数を入れた状態で `renderOrder` が正しい順に効いているか。
+(c) `depthTest: false` の 3 箇所(`stars.ts:34` / `earth.ts:107` / `plan-gizmo-3d.ts:33`)が
+反転後も意図どおりか。(d) フレーム時間の変化(パス数は増えないので誤差程度のはず)。
+**測る場所は Phase 3.5 のテスト環境**(ゲーム本体ではなく、同じ深度構成を持つ別ページ)。
 **カスケードのスパイクは (a) が否だったときにだけ行う。**
 
 `Renderer.clearDepth()` は `@types/three` が型を持つので、必要になれば自前宣言なしで書ける。
@@ -319,6 +390,10 @@ G バッファ → ライティング → マテリアル → ワールド → �
 後から球光源・ランバート球へ差し替えられる。**受け手側のコードは一行も変わらない。**
 これが軸 2 より優先度を下げられる理由である。
 
+**「点光源として実装しておく」の部分は Phase 4 で入る。** 深度から画素ごとの描画座標が
+復元できるようになった時点で、太陽の位置との差分ベクトルから方向と距離が引ける(§1-3)。
+**Phase 8 に残るのは、その点を有限の立体角へ広げる部分だけ**である。
+
 ---
 
 ### 1-6. 軸 2 — 太陽光の遮蔽
@@ -343,11 +418,18 @@ three 側で使えるものは、すべて **`memos/hedalu244/better_graphics/sh
 
 #### 1-6-2. 方式に依らず確定していること
 
-- **受け手の入口は `SunLight.sunVisibility(worldPos)` のまま変えない。**
+- **受け手の入口は `SunLight.sunVisibility()` 1 本のまま変えない。**
   中身だけが差し替わり、天体表面・艦の BRDF・環・大気の呼び出しは無変更。
-- **置き場をライティングパスの中にしてはならない。** 環(`render/ring.ts`)と天体表面
-  (`render/celestial-surface.ts`)は前方描画のままなので、同じ関数を呼ぶ必要がある。
-  **環は半透明なので恒久的に前方描画側**であり、この共有は過渡的なものではない。
+  **いまは引数を取らない**(CPU が求めた 1 個のスカラを返すだけ)ので、
+  画素ごとの遮蔽を返すには `worldPos` を受ける形へ広げる必要がある —
+  **その引数追加が Phase 6 の実質的な中身。**
+- **置き場をライティングパスの中にしてはならない。** 環(`render/ring.ts`)は半透明なので
+  **恒久的に前方描画側**であり、同じ遮蔽を後から必要とする。この共有は過渡的なものではない。
+- **遮蔽度バッファそのものは Phase 4 で先に置かれる**(`render/pipeline/occlusion.ts`)。
+  天体をライティングパスの受け手にすると環の影の行き場が無くなるため、
+  **環の帯と天体の本影・半影を源として載せた最小形が Phase 4 で入る。**
+  Phase 6 の仕事は、そこへ**前方描画側からの呼び出し口**を開け、源を増やしても
+  受け手が変わらない形へ固めること。
 - **合成は透過率の積(= 光学的厚さの和)。** 不透明も τ→∞ の極限として同じ式に乗るので、
   不透明・半透明で規則を分けない。**この規約は受け手の呼び出し形を決めてしまうので、
   源の実装より先に確定させる必要がある。**
@@ -362,8 +444,13 @@ three 側で使えるものは、すべて **`memos/hedalu244/better_graphics/sh
 **リング影シェーダは現状「真の方向 × 偽の位置」を混ぜている。**
 `sunDirNode` は天体の**真の ECI 位置**から引いた方向なのに、
 `positionWorld` と 32 バンドの `center` / `inner` / `outer` は**圧縮された描画位置・描画長**
-(`celestial-surface.ts:143` の `setRingShadowSystem` が受け取る `displayScale`)。
+(`celestial-surface.ts:166` の `setRingShadowSystem` が受け取る `displayScale`)。
 `ring.ts` の `bodyRadius` にも描画スケールが入る。
+
+さらに `sphere-view.ts` は、圧縮した表示位置のまま**深度だけを真の距離へ引き戻す**
+補正(`CelestialSurface.setDepthScale` → `celestial-surface.ts:119` の自前 `depthNode`)を
+掛けている。近距離ですれ違う艦艇との遮蔽は正しくなるが、**表示位置と深度が食い違う状態**を
+作っており、遮蔽器の位置が偽であることは変わらない。
 
 **これはどちらの方式を選んでも直らない。** 距離圧縮が残る限り、解析でもシャドウマップでも
 遮蔽器の位置が偽になる。**Phase 4 を軸 2 より前に置く決定的な理由。**
@@ -402,7 +489,9 @@ three 側で使えるものは、すべて **`memos/hedalu244/better_graphics/sh
 
 **残っている 1 本の配線だけが軸 2 の作業対象**: 描画照明が `environment-scene.ts` 経由で
 この関数を読み、`SunLight.sunVisibility()` のスカラとしてライティングパスへ渡っている
-(艦を 1 点と見なした値が艦全体に一様に掛かる)。**Phase 6 の完成をもってこの経路は切れる。**
+(艦を 1 点と見なした値が艦全体に一様に掛かる)。**この経路は Phase 4 で切れる。**
+Phase 4 で天体を同じライティングパスの受け手にすると、**一様スカラは艦と天体を区別できず、
+艦が地球の影に入った瞬間に地球まで暗くなる。** 画素ごとの遮蔽へ置き換えるほかない。
 
 **この関数と軸 2 の実装がどう関係するかは、選ぶ方式による**(`shadow_implement.md`)。
 確定しているのは**描画側がこの関数を読まなくなること**だけで、
@@ -419,25 +508,41 @@ three 側で使えるものは、すべて **`memos/hedalu244/better_graphics/sh
   シーンの `AmbientLight`/`DirectionalLight` も同じ値から設定されるが、これらはもう値を決める
   場所ではない — **§1-4 の three 側の制約により、光源オブジェクトそのものは消せない。**
 - 受け手は `MeshStandardMaterial` の層 = 艦船・デブリ・薬莢・基地・小惑星のみ
-  (生成 12 箇所、すべて `render/ships.ts`)。この層は `lit-layer.ts` の `LIT_OPAQUE_LAYER` に
-  **のみ**属し、G バッファパスとマテリアルパスだけが描く。
+  (すべて `render/ships.ts` と `render/instanced-pool.ts` が `markLitOpaque` で印を付ける)。
+  この層は `lit-layer.ts` の `LIT_OPAQUE_LAYER` に**のみ**属し、G バッファパスとマテリアルパスだけが描く。
+- **背景専用の第3のチャンネル `WORLD_BACKGROUND_LAYER = 2` がある**(`lit-layer.ts`)。
+  星殻(`stars.ts`、`renderOrder = -10` / `depthTest: false`)だけが乗り、
+  **マテリアルパスが不透明物より先に描く。** world パスの既定チャンネルには居ないので、
+  星殻があとから不透明物を塗り潰すことがない。マテリアルパスのカメラマスクは
+  `setOpaquePassLayers()` が `LIT_OPAQUE_LAYER + WORLD_BACKGROUND_LAYER` に設定し、
+  **G バッファパスは `LIT_OPAQUE_LAYER` だけ**に絞る(星殻は法線も粗さも持たない)。
 - 天体は全て `MeshBasic(Node)Material` でライト非依存。手書き Lambert + `NIGHT_AMBIENT = 0.04`
-  (`celestial-surface.ts:31`)が地球にも他天体にも同じ値で掛かる。
-  **これを艦船と同じ BRDF へ統合するのは Phase 4 の後**でしかできない — 天体が各自
-  `sunDirection` uniform を持つのは**描画位置が距離圧縮で偽物だから**であり、シーンライト 1 本へ
-  寄せると圧縮座標で誤った向きから照らすことになる(§1-6-3 と同じ構造)。
+  (`celestial-surface.ts:35`)が地球にも他天体にも同じ値で掛かる。
+  **これを艦船と同じ BRDF へ統合するのは Phase 4 の後半**(§1-3 の位置復元が済んだあと)。
+  天体が各自 `sunDirection` uniform を持つのは**描画位置が距離圧縮で偽物だから**であり、
+  かつ**太陽が太陽系スケールでは平行光でないから**でもある。前者は圧縮の撤去で、
+  後者は画素ごとの差分ベクトルで解ける。**シーンライト 1 本へ寄せるのは、どちらの理由でも誤り。**
+- **地球の地表シェーダは、1 つの `colorNode` にアルベド・陰影・大気のもや・夕焼けを混ぜている**
+  (`render/earth.ts:51-80`)。**不透明と半透明が 1 枚のシェーダに同居している唯一の箇所。**
+  Phase 4 でアルベドだけの不透明マテリアルと、画面空間の半透明フィルタへ分ける。
 - **「艦が惑星の影に入る」は依然として日照率のスカラ変調のみ**(`SunLight.sunVisibility()`)。
   **形状に依存する影は一切無い。`castShadow` / `receiveShadow` / `shadowMap` は `src/` に 0 件。**
   この関数が軸 2 で中身だけ差し替わる継ぎ目。
 - 平行光の向きは描画原点から見た恒星方向(`ephemeris.sunDirFrom`)。
 - **`AmbientLight` は §1-5 の地球照の代用品として働いてしまっている。** 軸 1 の完成で消える。
+- **シーンの `AmbientLight` / `DirectionalLight` は `LIT_OPAQUE_LAYER` にも属させてある**
+  (`environment-scene.ts:115-116`)。§1-4 の three 側の制約により、これを外すと
+  `setupLightingModel()` ごと呼ばれず**受け手が一斉に真っ黒になる。**
+  **無言で壊れる経路なので、テスト環境(Phase 3.5)の必須ケースに含める。**
 
 ### 2-2. 天体の座標系の扱いが不統一
 
-地球のみ真位置・実半径(`earth-body.ts`、実半径は `render/earth.ts`)。
+地球のみ真位置・実半径(`earth-view.ts`、実半径は `render/earth.ts`)。
 他天体は半径 1 の単位球(`celestial-surface.ts`)を呼び出し側がスケールする方式
-(`sphere-body.ts:96-115` / `point-body.ts`)で、かつ距離圧縮を受ける
-(`sphere-body.ts` の overview/combat 分岐)。**距離圧縮の不統一は Phase 4 で解消。**
+(`sphere-view.ts:97-118` / `point-view.ts`)で、かつ距離圧縮を受ける
+(`sphere-view.ts` の overview/combat 分岐)。**距離圧縮の不統一は Phase 4 で解消。**
+**圧縮側では深度だけを `setDepthScale(dist / visDist)` で真の距離へ戻している** —
+表示位置と深度が食い違う状態であり、Phase 4 でこの補正ごと消える。
 **分割数の選び方は全天体で統一済み** — `render/screen-lod.ts` の `SPHERE_LOD_LADDER`
 (見かけ直径で 64×48〜384×288 を選ぶ)へ全 101 天体が乗っており、
 `PHYSICAL_DIAMETER_THRESHOLD_PX`(2px)未満は球を描かない判定も同モジュールへ一般化されている。
@@ -450,42 +555,43 @@ three の出力色空間の既定は `SRGBColorSpace` なので、**欠けてい
 `celestial-surface.ts` / `earth.ts` / `stars.ts` の 3 箇所で、
 未設定なのは `8k_clouds.jpg` のみ。これは `.r` をマスクとして使うので線形扱いが正しい。
 
-### 2-4. `renderOrder` の実測(9 段。うち線の族は集約済み)
+### 2-4. `renderOrder` の実測(8 段。うち線の族は集約済み)
 
-**線の族は `LINE_RENDER_ORDER`(`game/const.ts:569`)へ既に集約されている**
-(reference:0 / shipOrbit:1 / secondaryTarget:2 / target:3 / plan:4 / predicted:5)。
+**線の族は `LINE_RENDER_ORDER`(`game/const.ts:674`)へ既に集約されている**
+(reference:0 / shipOrbit:1 / target:2 / plan:3 / predicted:4)。
 
 | 値 | 対象 |
 |---|---|
-| -10 | 星空シェル(`stars.ts:35`、`depthTest:false`) |
-| -9 | 太陽ビルボード(`stars.ts:52`)、惑星輝点ビルボード(`point-body.ts:74`) |
-| 0 | 天球グリッド(`celestial-grid.ts:69,81`)、`Curve` 既定、`LINE_RENDER_ORDER.reference`、天体本体球、点群、艦船モデル(`instanced-pool.ts:21` 既定) |
+| -10 | 星空シェル(`stars.ts:42`、`depthTest:false`、`WORLD_BACKGROUND_LAYER`) |
+| -9 | 太陽ビルボード(`stars.ts:68`)、惑星輝点ビルボード(`point-view.ts:75`) |
+| 0 | 天球グリッド(`celestial-grid.ts:74,86`)、縮尺グリッド(`spatial-grid.ts:63`)、`Curve` 既定、`LINE_RENDER_ORDER.reference`、天体本体球、点群、艦船モデル(`instanced-pool.ts:22` 既定) |
 | 1 | `LINE_RENDER_ORDER.shipOrbit`、リング(本体 `renderOrder + 1`、`ring-view.ts:43`) |
-| 2 | 大気リム(`earth.ts:131`、`depthTest:false`)、`LINE_RENDER_ORDER.secondaryTarget` |
-| 3 | オーロラ(`aurora.ts:53`)、`LINE_RENDER_ORDER.target` |
-| 4 | `LINE_RENDER_ORDER.plan` |
-| 5 | **`LINE_RENDER_ORDER.predicted` と `Billboard` 既定(`billboard.ts:11`)が同値**(どちらも半透明) |
+| 2 | 大気リム(`earth.ts:139`、`depthTest:false`)、`LINE_RENDER_ORDER.target` |
+| 3 | オーロラ(`aurora.ts:54`)、`LINE_RENDER_ORDER.plan` |
+| 4 | `LINE_RENDER_ORDER.predicted` |
+| 5 | `Billboard` 既定(`billboard.ts:11`) |
 | 999 | Δv ギズモの `Group`(`plan-gizmo-3d.ts:11`)— **THREE は親→子へ伝播しないので実質無効** |
 
-**残る問題**: (1) 値 5 の衝突、(2) `LINE_RENDER_ORDER` が `game/const.ts` にあり §4 の規則に反する。
-どちらも Phase 9 で解消する。
+**残る問題**: `LINE_RENDER_ORDER` が `game/const.ts` にあり §4 の規則に反する。Phase 9 で解消する。
+(かつてあった値 5 の衝突は `secondaryTarget` の廃止で解けている。)
 
 **⚠ この表は Phase 4 の reversed-Z と衝突する。** three `0.185.1` の `reversedDepthBuffer` は
-`RenderList.sort` が描画リスト全体を `.reverse()` するため、**この 9 段が丸ごと逆順になる**
-(Issue #33944、修正は r186)。**Phase 4 の完了条件にこの表の順序確認を入れてある**(§1-3)。
+`RenderList.sort` が描画リスト全体を `.reverse()` するため、**この表が丸ごと逆順になる**
+(Issue #33944)。**対処は反転比較関数(§1-3)。Phase 4 の完了条件にこの表の順序確認を入れてある。**
 
 ### 2-5. `frustumCulled = false` の箇所(レビュー済み)
 
-残っている 6 箇所は、いずれも外接球によるフラスタム判定が意味を持たない構造ゆえで、
+残っている 7 箇所は、いずれも外接球によるフラスタム判定が意味を持たない構造ゆえで、
 理由をコメントで明記済み:
 
 | 箇所 | 理由 |
 |---|---|
-| `stars.ts:34` | カメラ追従シェル(`EnvironmentScene.sync` が毎フレーム position をカメラ位置へ合わせる) |
-| `celestial-grid.ts:68,80` | 同上(天球グリッドもカメラ中心の殻) |
-| `curve.ts:167` | 頂点バッファを書き換えるだけで外接球を更新しないため、既定の判定が古い外接球を使ってしまう |
-| `instanced-pool.ts:28` | インスタンスが原点周りの広い空間へ散らばる(弾・薬莢・デブリ片等の共有プール) |
-| `point-field-view.ts:62` | 同上(main-belt〜kuiper-belt が AU スケールへ散らばる点群) |
+| `stars.ts:40` | カメラ追従シェル(`EnvironmentScene.sync` が毎フレーム position をカメラ位置へ合わせる) |
+| `celestial-grid.ts:73,85` | 同上(天球グリッドもカメラ中心の殻) |
+| `spatial-grid.ts:62` | 同上(自機/カメラを通る縮尺グリッド) |
+| `curve.ts:188` | 頂点バッファを書き換えるだけで外接球を更新しないため、既定の判定が古い外接球を使ってしまう |
+| `instanced-pool.ts:29` | インスタンスが原点周りの広い空間へ散らばる(弾・薬莢・デブリ片等の共有プール) |
+| `point-field-view.ts:61` | 同上(main-belt〜kuiper-belt が AU スケールへ散らばる点群) |
 
 **軸 2 でシャドウマップを採る場合、その遮蔽器のカリングにも同じ問題が効く** —
 影の投射側でも外接球が当てにならないので、自前でカリングの根拠を持つ必要がある。
@@ -530,19 +636,31 @@ three の出力色空間の既定は `SRGBColorSpace` なので、**欠けてい
   持たせず永続もしない**(`RenderPipeline` のセッション限定の状態)。新しいパスを足したら
   ここへ 1 行足す — 目で見て確かめられないバッファは、間違っていても気付けない。
 
-- **three.js の版**: r0.185.1。`@types/three` が `three/webgpu` / `three/tsl` を完全に型付けする
-  ので自前の型シムは無い。ノード型の語彙は `render/tsl-types.ts`。
+- **three.js の版**: `0.185.1`(npm 上の最新。`0.186.x` はまだ存在しない)。
+  `@types/three`(`0.185.4`)が `three/webgpu` / `three/tsl` を完全に型付けするので自前の型シムは無い。
+  ノード型の語彙は `render/tsl-types.ts`。**`package.json` の指定は `^0.185.1` のままで、
+  上がると §1-3 の反転ソートが二重になる。**
+
+- **絵を確かめる器はまだ無い。** ヘッドレスのスモーク(`npm run smoke:browser`)は
+  例外とエンティティ数しか見ておらず、スクリーンショットは撮らない。
+  **描画の正しさを目で確かめる場は Phase 3.5 で作る**(ゲーム本体とは別ページ、
+  フォワード描画との突き合わせ)。
+  `render/geometry-validator.ts` はメッシュ作図の検査(オープンエッジ・同一平面の重複ポリゴン)
+  であって、**深度バッファの精度とは無関係**。混同しない。
 
 ---
 
 ## 3. ロードマップ
 
-**順序の根拠**は次の 5 点。軸の実装順(軸 2 → 軸 1 → 軸 3)はこの下に入る。
+**順序の根拠**は次のとおり。軸の実装順(軸 2 → 軸 1 → 軸 3)はこの下に入る。
 
 **器(`src/render/pipeline/` の 5 パス構成とパス別 GPU 計測)は組み上がっている**(§1-4)。
-残る順序の根拠は次の 4 点。
+残る順序の根拠は次の 5 点。
 
-1. **座標(距離圧縮の撤去)が最初** — 遮蔽を物理的に正しく統一する前提(§1-6-3)。
+0. **絵を判定する場が最初** — 以降のどのフェーズも「変えたら何が変わったか」を見て決める。
+   その場が無いまま Phase 4 を通すと、reversed-Z の可否を実機の目視だけで判断することになる。
+   **パスの形を確定させるのも Phase 4 まで** — 以降は各フィルタの中身だけを触る。
+1. **座標(距離圧縮の撤去)が次** — 遮蔽を物理的に正しく統一する前提(§1-6-3)。
    判断が否だった場合に後続の限定版の範囲が決まるので、早いほど計画が確定する。
    **測定と本実装は同じ変更の前後なので、1 フェーズにまとめる。**
 2. **量(アルベドと露出)が次** — 影もエリアライトもこの量を消費する。実作業量が最大であり、
@@ -558,7 +676,8 @@ three の出力色空間の既定は `SRGBColorSpace` なので、**欠けてい
 
 | Phase | 内容 |
 |---|---|
-| 4 | **Z 精度の実測と距離圧縮の撤去** |
+| 3.5 | **描画テスト環境(ゲーム本体と別の A/B ページ)** — 詳細計画は `phase3.5.md` |
+| 4 | **深度の反転・32bit 化と距離圧縮の撤去** — 詳細計画は `phase4.md` |
 | 5 | **アルベドの物理量化と、露出・トーンマッピングの本実装** |
 | 6 | **軸 2a: 遮蔽の合成基盤と、受け手側の差し替え** |
 | 7 | **軸 2b: 遮蔽源の実装(方式は未定 — `shadow_implement.md`)** |
@@ -571,9 +690,15 @@ three の出力色空間の既定は `SRGBColorSpace` なので、**欠けてい
 
 各フェーズは独立に比較可能であること。**一度に全面置換しない。**
 
-### パイプラインの現況(組み上がっている器)
+### パイプラインの現況と最終形
 
-§1-4。フレームは `src/render/pipeline/` の 5 パス。**各パスは負荷確認ウィンドウに独立した
+**最終形は 3 段構え** — **不透明(ライトプリパス + 遮蔽)+ 半透明 + ポストプロセス。**
+分割の目的は**視覚効果を疎結合にして、後から個別に品質を上げられるようにすること**である。
+したがって **Phase 5 以降のどのフェーズも、パイプラインの再構成を伴ってはならない。**
+**この形を確定させるのが Phase 4 の後半**(遮蔽度バッファと大気フィルタの新設、
+1 枚のシェーダに不透明と半透明が同居している箇所の解消)。
+
+§1-4。いまのフレームは `src/render/pipeline/` の 5 パス。**各パスは負荷確認ウィンドウに独立した
 GPU 時間の行を持ち、描画設定の「デバッグ表示」で中間ターゲットを全画面に出せる。**
 
 ```text
@@ -596,52 +721,81 @@ render-pipeline.ts  出力段。露出を掛けてキャンバスへ
 
 1. **鏡面の近似の限界を実測する**(§1-4)。鏡面照度バッファは材質の F0 を持てないので
    F0=1 で評価し、マテリアルパスが掛け直している。破綻するなら艦船だけ前方描画へ逃がす。
-2. **画像回帰シーンを撮る。役割は「一致判定」ではなく「変化の可読化」**(§1-1)。
-   Phase 4 / 5 が絵を大きく動かすので、その前に用意すると効く。
+   **Phase 3.5 のテスト環境がそのまま測定器になる** — 同じ球・同じ艦を
+   ライトプリパスとフォワードで並べれば、差が鏡面近似の誤差そのもの。
+2. **画素一致の画像回帰は採らない。** いま撮った基準画は、いま入っているバグごと固定してしまう
+   (重なり順・受け手が真っ黒・本番ビルドだけ陰影が消える、のいずれも過去に実際に起きている)。
+   代わりに **Phase 3.5 で「ライトプリパス vs フォワード描画」を並べて出す。**
+   基準は過去の自分ではなく、同じ入力に対する別経路の描画である。
 
-### Phase 4 — Z 精度の実測と距離圧縮の撤去
+### Phase 3.5 — 描画テスト環境
 
-§1-3。**スパイク・測定・判断・本実装を 1 フェーズで通す。**
-**判断が否でも項目 1 と 2 は成果として残る。**
+**詳細計画は `phase3.5.md`。** ここには置き場と目的だけを残す。
 
-0. **画像回帰シーンを撮る**(パイプライン現況節の宿題 2)。役割は「一致判定」ではなく
-   「変化の可読化」。このフェーズは絵を最も大きく動かすので、先に用意すると以降の判定が楽になる。
-1. `render/view-space.ts` を新設し、順変換 5 種を集約。逆変換 `toEci` を作る。
-   **判断の結果によらず有効**なので先にやる。**カスケード選択ポリシーはここへ置かない**(§1-3 末尾)。
-2. **`three` を r186 以降へ更新する。** `0.185.1` の `reversedDepthBuffer` には
-   `renderOrder` を全反転させるバグ(Issue #33944)があり、`LINE_RENDER_ORDER` の 6 段が逆順になる。
-   修正 PR #33945 は r186(2026-08-19 予定)。**更新できるまでこのフェーズの本体は始められない。**
-3. **reversed-Z + `depth32float` の単一バッファを試す**(§1-3)。カスケードより先にこれを測る。
-   - `renderer.reversedDepthBuffer = true`。
-   - **`gbuffer.ts` の `DepthTexture` を `THREE.FloatType` で作り直す** — 自前でアタッチした
-     深度テクスチャは自動で 32bit float にならない。HDR ターゲット側は暗黙の深度なので自動。
-   - `render-pipeline.ts` の `viewDistanceFromDepth` を反転形へ(分母の `near` と `far` を入れ替え)。
-   - `COMBAT_CAMERA_FAR` を圧縮撤去後の実距離(カイパー帯まで届く 1e13 程度)へ広げ、
-     §1-3 の測定項目 (a)〜(d) を測る。
-   **カスケード 2 / 3 / 4 枚のスパイクは、これが否だったときにだけ作る。**
-4. **`point-field-view.ts:96` の f32 精度を実測する**(§1-2)。
-   `instanceMatrix` に書いているのは**太陽中心の相対位置**(カイパー帯で ~7.5e12 m、量子化 ~4.5e5 m)。
-   親の `mesh.position` 側だけが浮動原点補正を受けているので、instance 側は素の絶対値。
-   **カメラが点群から 1e8 m まで寄ると量子化が数 px になる**はずで、そこを確かめる。
-   曲線側は `Curve` の pivot 補正で解決済みなので、残るのはここだけ。
-   見えたときだけ `Curve` と同じ pivot 補正を入れる。
-5. **判断**。否なら距離圧縮を維持し、**Phase 6 は「圧縮空間の中で幾何を整合させる」限定版に留まる**
-   (§5 に影響を明記)。以下は可の場合のみ:
-6. 天体を真位置・真半径で配置。`sphere-body.ts:96-115` / `point-body.ts` のスケール計算を削除。
-7. `MOON_VIS_DIST` / `PLANET_VIS_DIST` / `POINT_BODY_VIS_DIST` / `SUN_DISTANCE` / `SUN_VISUAL_SIZE` を削除。
-   `STAR_SHELL_RADIUS` / `CELESTIAL_SHELL_RADIUS` を「無限遠背景」へ一本化。
-8. `COMBAT_CAMERA_FAR`(`const.ts:124`)の根拠(`MOON_VIS_DIST` からの逆算)が消えるので、
-   実際に描く必要のある最遠距離から引き直す。
-9. `sun-body.ts` / `point-body.ts` の overview/combat 分岐を削除。§2-2 の不統一も解消。
-10. シーンライトを真の太陽方向へ統一。天体ごとの `sunDirection` uniform の役目が終わる。
-11. **ここで初めて天体を `LIT_OPAQUE_LAYER` へ載せられる。** 天体の自前 Lambert +
-    `NIGHT_AMBIENT = 0.04` の複製を、艦船と同じマテリアルパスの BRDF へ統合する
-    (§2-1)。真位置になるまでは、天体ごとに違う `sunDirection` を持つこと自体が正しいので着手できない。
-    `earth.ts` の地表シェーダも同時に分解する — BRDF 部分はマテリアルパスへ、
-    もや・夕焼けは Phase 10 の大気パスへ移すため**一旦そのまま残す**。
+ゲーム本体とは別の 1 ページで、**同じ深度構成・同じメッシュを
+「5 パスのライトプリパス」と「フォワード描画」の 2 経路で並べて描く。**
+持ち込むのは球(`CelestialSurface`)・自機メッシュ(`buildPlayerShip`)・線(`Curve`)の 3 種と
+その深度のオーダーだけで、HUD・DOM・ゲーム状態は持ち込まない。
 
-**完了条件**: 圧縮定数がゼロ件。ズームを通して天体の見かけサイズが連続。
-カイパー帯へ寄っても点群の量子化が見えない。**`LINE_RENDER_ORDER` の重なり順が反転していない。**
+口は 2 つ。**`npm run render-lab` が目視**(http://localhost:8082)、
+**`npm run render-lab:shot` が撮影**(`.render-lab/shots/` へ、ケースごとに
+ライトプリパス・フォワード・その差分の 3 枚)。撮影は
+`setOutputRenderTarget` + `readRenderTargetPixelsAsync` で画素を直接読むので、
+**WebGPU の提示経路もヘッドレスのスクリーンショットも通らない**(どちらも不安定)。
+
+**画素一致の画像回帰は採らない。** 基準を過去の自分に取ると、いま入っているバグごと固定してしまう。
+基準は**同じ入力に対する別経路の描画**であり、差分画像がそれをそのまま可視化する。
+
+**完了条件**: 深度が桁で違う複数のケースを目視でも画像でも見比べられ、
+**位置復元の精度が距離によらず一様になるか**(§1-3)をゲーム本体を起動せずに判定できる。
+
+### Phase 4 — 深度からの位置復元と、パスの疎結合化
+
+**詳細計画は `phase4.md`。** ここには目的と完了条件だけを残す。
+
+**このフェーズの終わりに到達していたい状態:**
+
+> **G バッファとそこからの座標復元が完成し、各パスが疎結合化され、
+> あとは個々のフィルターの品質を上げるだけになっている。**
+
+パイプラインの最終形は **不透明(ライトプリパス + 遮蔽)+ 半透明 + ポストプロセス**。
+分割の目的は視覚効果を疎結合にして後から個別に品質を上げられるようにすることなので、
+**Phase 5 以降のどのフェーズも、パイプラインの再構成を伴ってはならない。** 伴うなら分割の意味が無い。
+
+§1-3。**深度に求めるのは z-fighting を消すことではなく、画素ごとに描画座標
+(ECI − 浮動原点)を正確に復元できること。** そのうえで太陽を点光源として扱い、
+画素の復元位置との差分ベクトルから方向と距離を引く。距離圧縮の撤去は、
+**描画座標が偽物なら差分ベクトルも偽物になる**から必要になる。
+
+前半(4-A)と後半(4-B)に分かれ、4-A で止めても絵は正しい。
+
+**4-A** — 天体の描画位置を `FloatingOrigin` 一本へ通す → 深度を反転 + `depth32float` 化 →
+Phase 3.5 の環境で位置復元の精度を測って判断 → 距離圧縮を撤去。
+`three` の版は上げない(`0.185.1` の描画順全反転は反転比較関数で等価に打ち消せる。§1-3)。
+深度テクスチャは **G バッファと HDR ターゲットの両方**に `FloatType` を明示する必要がある(§1-3)。
+
+**4-B** — 太陽を点光源へ(ライティングパスが画素ごとに差分ベクトルを取る)→
+**遮蔽度バッファ `render/pipeline/occlusion.ts`** を新設し、環の帯と天体の本影・半影を源として載せる →
+天体を `LIT_OPAQUE_LAYER` へ載せ、自前 Lambert・`NIGHT_AMBIENT`・`sunDirNode` を撤去 →
+**地球を本体(不透明)と大気(画面空間の半透明フィルタ
+`render/pipeline/atmosphere-pass.ts`)へ分ける。**
+
+**地球の分割を Phase 4 に入れる理由**: 地表シェーダが 1 つの `colorNode` にアルベド・陰影・
+もや・夕焼けを混ぜており、**不透明と半透明が同居している唯一の箇所**だから。
+ここを残すと Phase 10(大気散乱の品質向上)がパイプラインの再構成を伴うことになる。
+**Phase 4 でやるのは置き場の是正であって品質の向上ではない** — もやもリムも夕焼けも、
+いまの式のままフィルタの中へ移す。Phase 10 はその中身だけを差し替える。
+
+**カスケード 2 / 3 / 4 枚のスパイクは、4-A の測定が否だったときにだけ作る。**
+
+**完了条件**: **天体の描画位置がすべて `FloatingOrigin.RtoThreeV3` から始まっており、
+`game/celestial/` に表示距離の定数もカメラ位置からの直接配置も無い。**
+圧縮定数がゼロ件。ズームを通して天体の見かけサイズが連続。
+カイパー帯へ寄っても点群の量子化が見えない。**`renderOrder` の重なり順が反転していない。**
+**`sunDirNode` と `NIGHT_AMBIENT` が `src/` から消え、天体の明るさが太陽からの距離に応じて変わる。**
+**艦が地球の影に入っても地球は暗くならない。**
+**どのオブジェクトも「光を受ける不透明」と「半透明」を 1 つのシェーダに混ぜていない。**
+**`depthTest: false` が 3 箇所から 2 箇所へ減る**(地球の大気リム球が消える)。
 **天体を 1 つ追加してもシェーダコードが増えない。**
 
 ### Phase 5 — アルベドの物理量化と、露出・トーンマッピングの本実装
@@ -669,18 +823,19 @@ render-pipeline.ts  出力段。露出を掛けてキャンバスへ
 
 ### Phase 6 — 軸 2a: 遮蔽の合成基盤と、受け手側の差し替え
 
-§1-6。**パイプラインの器(組み上がり済み)と Phase 4 の真位置が前提。**
+§1-6。**Phase 4 が置いた `render/pipeline/occlusion.ts`(環の帯 + 天体の本影・半影)が前提。**
 **このフェーズは方式に依らない部分だけを置く** — 遮蔽源が何であっても要る配線と規約。
 **実装方式が未決のまま進められる**ように切ってある。
 
-1. **`render/pipeline/occlusion.ts` を新設。** 遮蔽源の列と、
-   **透過率の積(= 光学的厚さの和)による合成**(§1-6-2)。
-   **合成規約はここで確定させる** — 不透明も τ→∞ の極限として同じ式に乗るので、
-   Phase 7 でどんな源が加わっても規約は変わらない。**逆に、後から差し替えることはできない**
-   (受け手の呼び出し形を決めてしまう)。
-   **置き場をライティングパスの中にしない** — 環と天体表面が前方描画のまま同じ関数を呼ぶ(§1-6-2)。
-2. `sun-light.ts` の `sunVisibility()` の中身をこの基盤へ差し替える。**呼び出し側は無変更。**
-   `environment-scene.ts` が `physics/shadow.ts` を読んでスカラを渡す配線を切る(§1-8)。
+1. **合成規約を確定させる。** 透過率の積(= 光学的厚さの和、§1-6-2)。
+   不透明も τ→∞ の極限として同じ式に乗るので、Phase 7 でどんな源が加わっても規約は変わらない。
+   **逆に、後から差し替えることはできない**(受け手の呼び出し形を決めてしまう)。
+   Phase 4 の最小形は既にこの形で書かれているはずで、ここでやるのは
+   **源を足しても受け手が変わらないことを型と配線で担保する**こと。
+2. **前方描画側からの呼び出し口を開ける。** Phase 4 の遮蔽度バッファはライティングパスからしか
+   読まれない。環(`render/ring.ts`、半透明なので恒久的に前方描画)と大気が同じ遮蔽を引けるよう、
+   `sunVisibility(worldPos)` の形へ広げる(**いまは引数を取らない**)。
+   **置き場をライティングパスの中にしない**(§1-6-2)。
 3. **遮蔽器の打ち切り規則。** 最大遮蔽率 `min(1, (β/α)²)` が閾値を下回る遮蔽器を CPU 側で落とす。
    **`physics/shadow.ts` の全件走査をオラクルにして打ち切り誤差を測る。**
    方式に依らず要る(どの源に渡すかが変わるだけ)。
@@ -691,7 +846,8 @@ render-pipeline.ts  出力段。露出を掛けてキャンバスへ
    どの源を最初に載せるかは `shadow_implement.md` の判断に従う。
 
 **完了条件**: 受け手側が `sunVisibility(worldPos)` 1 本で遮蔽を引いており、
-源を足しても受け手のコードが変わらない。`environment-scene.ts` が `physics/shadow.ts` を読んでいない。
+源を足しても受け手のコードが変わらない。**前方描画の環と大気が同じ関数を通っている。**
+(`environment-scene.ts` が `physics/shadow.ts` を読まなくなるのは Phase 4 で済んでいる。)
 
 ### Phase 7 — 軸 2b: 遮蔽源の実装
 
@@ -717,6 +873,8 @@ Phase 6 の合成規約の上へ源を足す作業であり、**受け手側は�
 ### Phase 8 — 軸 1: エリアライト(球光源・ランバート球)
 
 §1-5。**Phase 5 のアルベドが前提。変更はライティングパス(`light-prepass.ts`)の中に閉じる。**
+**Phase 4 で太陽は既に「位置と半径を持つ点光源」になっている**(画素ごとの差分ベクトルで
+方向と距離を引く)。ここでやるのは、その点を**有限の立体角**へ広げる部分だけ。
 
 1. **太陽を一様球光源へ**(§1-5-1)。拡散項は距離とともに逆二乗則へ自動で縮退する閉じた解を使い、
    **「遠いときは点光源」という分岐を書かない。** 鏡面項だけ角半径の閾値で LTC / 点光源を切り替える。
@@ -731,7 +889,7 @@ Phase 6 の合成規約の上へ源を足す作業であり、**受け手側は�
    G バッファへ天体 id を書いて除外する。**Phase 7 まで許容できていた ±30 km の二重暗化
    (地球の直径の 0.2%)が、ここで許容できなくなる**(`shadow_implement.md` §3-2)。
 6. **`AmbientLight(0x8899bb, 0.25)` を削除。** 地球照が置き換える(§2-1)。
-   **`SHADOW_MIN_SUN` / `SHADOW_MIN_AMBIENT` の床もここで捨てる**(Phase 6 の項目 7)。
+   **`SHADOW_MIN_SUN` / `SHADOW_MIN_AMBIENT` の床もここで捨てる**(Phase 6 の項目 4)。
 7. 色を持つ光源として扱う。**艦の影側が地球の色を帯びることを検証ケースにする。**
 
 **完了条件**: LEO で艦の地球を向いた面と宇宙を向いた面の明るさが桁で違う。
@@ -742,22 +900,31 @@ Phase 6 の合成規約の上へ源を足す作業であり、**受け手側は�
 
 ### Phase 9 — 半透明パスの統合
 
-1. `render/transparent-pass.ts`: 不透明カスケード解決後に描画。`viewportDepthTexture` / `linearDepth`。
+**Phase 4 で大気は既に画面空間のフィルタになっている**(`render/pipeline/atmosphere-pass.ts`)。
+ここでやるのは、残りの半透明物をその形へ揃えることと、共通化。
+
+1. `render/transparent-pass.ts`: 不透明解決後に描画。`viewportDepthTexture` / `linearDepth`。
 2. 「視線に沿って不透明面までメディアを積分する」共通ヘルパ。**大気・オーロラ・プルーム・リングが共有する。**
    **環の遮蔽と同じ光学モデル(Beer–Lambert)を共有できるか検討する。**
-3. `earth.ts` の大気リム球を廃止 — `depthTest:false` + 自前球交差の回避策が不要になる。
-4. `aurora.ts` の CPU 頂点更新を GPU へ。
-5. `depthTest: false` の 3 箇所を規約内へ回収する。
-6. **`LINE_RENDER_ORDER` を `render/` へ移し、線以外の半透明物を同じ表へ統合する。**
-   値 5 の衝突(§2-4)はこの統合で解消する。
-7. 加算合成の上限は Phase 5 の露出基準に従う。
+   Phase 4 の大気フィルタはこのヘルパの最初の利用者になるので、**切り出す形はそこから引く。**
+3. `aurora.ts` の CPU 頂点更新を GPU へ。
+4. **残る `depthTest: false` の 2 箇所**(`stars.ts` / `plan-gizmo-3d.ts`)を規約内へ回収する。
+   地球の大気リム球のぶんは Phase 4 で片付いている。
+5. **`LINE_RENDER_ORDER` を `render/` へ移し、線以外の半透明物を同じ表へ統合する。**
+6. 加算合成の上限は Phase 5 の露出基準に従う。
 
 ### Phase 10 — 大気散乱(指数密度)
 
+**このフェーズはパイプラインを触らない。** 触るのは
+`render/pipeline/atmosphere-pass.ts` の中身だけ — Phase 4 が置き場を確定させてあるので、
+ここでやるのは同じ入口・同じ出口のまま式を差し替えることに限られる。
+**触らざるを得なくなったら、Phase 4 の分割が足りていない。**
+
 1. 透過・単散乱・多重散乱近似を LUT 化(オフライン生成も可)。カメラが大気圏内外どちらでも同じモデル。
-2. Phase 9 のレイ積分枠組みへ載せ、エアリアルパースペクティブを不透明深度に対して積分。
-   `earth.ts` のもや(`ATMO_HAZE_TAU0 = 0.34`)を置換。
-3. 夕焼けを光路長から導出し、`vec3(1,0.4,0.1)` の固定補間を削除。
+2. エアリアルパースペクティブを不透明深度に対して積分し、Phase 4 が持ってきた
+   Beer-Lambert 一本のもや(`ATMO_HAZE_TAU0 = 0.34`)を置換。
+3. **夕焼けを光路長から導出**し、`vec3(1,0.4,0.1)` の固定補間を削除。
+   Phase 4 で薄れる「雲を橙に染める項」は、ここで太陽光路の透過率として物理的に戻る。
 4. 雲は当面マテリアルパス内の 2 層サンプリング。
    **`earth.ts` の UV ずらしによる雲影は、そのままでよい。** 雲の高度 ~1e4 m での半影幅は
    2αd = 93 m なのに対し、雲テクスチャは 8192px で赤道一周 4.0e7 m = **4.9 km/テクセル**。
@@ -801,7 +968,7 @@ Phase 9 のレイ積分枠組みが前提。プルーム・RCS・再突入・オ
 | 対象 | 現在 | 移動先 | 対応フェーズ |
 |---|---|---|---|
 | **描画用の日照判定** | `environment-scene.ts` が `physics/shadow.ts` を読み `SunLight` へ渡す | **`render/pipeline/occlusion.ts` の遮蔽源。物理側の関数は残るが描画は読まない**(§1-8) | Phase 6(中身の差し替え) |
-| `celestial/{sphere,point,sun,earth}-body.ts`, `ring-view.ts`, `point-field-view.ts` | `game/celestial/` | `render/celestial/` | Phase 4 |
+| `celestial/{sphere,point,sun,earth}-view.ts`, `ring-view.ts`, `point-field-view.ts` | `game/celestial/` | `render/celestial/` | **要検討**。これらは `Ephemeris` / `FloatingOrigin` / `Vec3` を読むので、そのまま移すと §1-2 の不変条件を破る。移せるのは ECI を受け取らない部分だけ。**Phase 4 には含めない** |
 | テクスチャURL表・101天体の配色 | `celestial-registry.ts:14-26, 103-196` | `render/`。レジストリには**表示名とidだけ**残す | Phase 5 |
 | `RingOpticsDef.color` | `physics/solar-system.ts` | `render/`。τ・アルベド・位相係数は物理なので残す | Phase 5 |
 | エフェクトの size/opacity 式・配色 | `vfx/`, `player/*-effects.ts`, `const.ts` | `render/` | Phase 5 |
@@ -832,7 +999,12 @@ Phase 9 のレイ積分枠組みが前提。プルーム・RCS・再突入・オ
 
 | 項目 | リスク | 備考 |
 |---|---|---|
-| **three r186 待ち** | **高** | `0.185.1` の `reversedDepthBuffer` は `renderOrder` を全反転させる(Issue #33944)。修正は r186(2026-08-19 予定)。**Phase 4 の本体はこれが入るまで始められない。** 遅れるならカスタムソート関数での回避を検討 |
+| **three の版が上がると描画順が二重反転する** | **高** | `0.185.1` は `reversedDepthBuffer` のとき `renderOrder` を全反転させる(Issue #33944)。Phase 4 は反転比較関数で等価に打ち消すが、**修正済みの r186 以降へ上がるとその打ち消しが余計になり、描画順が黙って逆さになる。** `package.json` を `0.185.1` へピン留めして塞ぐ(§1-3) |
+| **RenderTarget の深度が 32bit にならない** | **高** | `reversedDepthBuffer` で自動的に `depth32float` になるのはキャンバス直描きのときだけ。本作は全パスが RenderTarget なので、**明示しないと反転だけして精度は 24bit のまま**という、何も壊れずに効果だけ出ない状態になる(§1-3) |
+| **一様な日照スカラと画素ごとの遮蔽の同居** | **高** | `SunLight.sunVisibility()` は CPU が艦の 1 点で求めた値を全画素へ掛ける。Phase 4 で天体を同じパスの受け手にすると、**艦が地球の影に入った瞬間に地球まで暗くなる。** 画素で区別できないので、遮蔽度バッファへ天体の本影・半影まで載せて CPU スカラを描画から外すほかない(`phase4.md`) |
+| **地球の分割で昼夜境界の見た目が後退する** | 中 | 雲を橙に染める項(`cloudColorLit`)はライティングなのでアルベドから外れる。同じ見た目は大気フィルタの内部散乱色が担うが、位相の掛け方を引き直さないと終端の橙が薄れる。**物理的な導出(太陽光路の透過率)は Phase 10** |
+| **明るさの 2 つのスケールが 1 つになる** | **高** | 艦と天体はいま独立に調整されている(天体の昼側 `色 × 1.0` / 艦の昼側 `albedo × 2.2`)。統合するとどれかは必ず動く。天体の色を `1/SUN_INTENSITY` してアルベドとして渡すのが暫定の辻褄合わせ(§1-1-1 のとおり現状の色は放射照度を畳み込んでいる)。**数値は机上で決めず lab の画素値で決める** — sRGB→線形変換の有無で 2 倍近く変わる |
+| **`SHADOW_MIN_AMBIENT` の廃止で食が暗くなる** | 中 | 環境光の変調は CPU の一様スカラが入力だったので、それを外すと再構成できない。**その差が Phase 8 で地球照が埋めるべき量そのもの**だが、暗すぎて遊べないなら暫定の床が要る |
 | **軸 2 の方式が未決** | **高** | 解析 / シャドウマップ / その組み合わせのどれを採るかが決まっていない(`shadow_implement.md`)。**Phase 6 は方式に依らない部分だけで切ってあるので進められるが、Phase 7 の規模はここで 1 桁変わる**(メモリ 12 MB 〜 168 MB、追加パス 2〜10) |
 | **遮蔽器の打ち切り規則** | 中 | どの方式でも、CPU が毎フレーム有効な遮蔽器を選ぶ必要がある。選択規則を誤ると影が消える。**`physics/shadow.ts` の全件走査がオラクルになるので、誤差は直接測れる** |
 | **Phase 5 のアルベド 101 天体** | **高** | 出典の無い 63 種の直書き色を、根拠のある RGB のアルベド値へ。**現状の色は放射照度を畳み込んでいるので、そのままの読み替えでは済まない**(§1-1-1)。**Phase 8 の光源強度も兼ねるため重い** |
@@ -853,16 +1025,24 @@ Phase 9 のレイ積分枠組みが前提。プルーム・RCS・再突入・オ
 
 ## 6. 次の一歩
 
-**次に着手するのは Phase 4(Z 精度の実測と距離圧縮の撤去)。**
-ただし**本体は three r186(2026-08-19 予定)を待つ** — `0.185.1` の `reversedDepthBuffer` は
-`renderOrder` を全反転させる(§1-3)。
+**次に着手するのは Phase 3.5(描画テスト環境)、続いて Phase 4。** 詳細計画は
+`phase3.5.md` / `phase4.md`。**待ち要因は無い** — r186 は出ていないが、
+描画順の全反転は反転比較関数で等価に打ち消せる(§1-3)ので Phase 4 の本体を止める理由にならない。
+**ただしその打ち消しは three を上げた瞬間に二重反転する。**
+版のピン留めと検査、そして上げるときの復帰手順書は `phase4.md` が持つ。
 
-**待っている間に前倒しできるもの**(いずれも r186 に依存しない):
+Phase 3.5 を先に置くのは、**Phase 4 の判断(位置復元の精度が距離によらず一様になるか)を
+測る場が他に無い**ため。ヘッドレスのスモークは例外とエンティティ数しか見ず、
+実機での手動確認は「見えるが再現しにくい」欠陥に弱い。
+Phase 3.5 は `npm run render-lab`(目視)と `npm run render-lab:shot`(撮影)の
+2 つの口を持ち、後者は WebGPU の提示経路もヘッドレスのスクリーンショットも通さない
+(`setOutputRenderTarget` + `readRenderTargetPixelsAsync`)。
 
-- **画像回帰シーン**(パイプライン現況節の宿題 2)。Phase 4 が絵を最も大きく動かすので、
-  先に用意すると以降の判定が楽になる。パス別 GPU 時間と中間ターゲットのデバッグ表示は既に使える。
-- **`render/view-space.ts` への順変換 5 種の集約**(Phase 4 の項目 1)。判断の結果によらず有効。
-- **`point-field-view.ts` の f32 量子化の実測**(Phase 4 の項目 4)。深度とは独立した問い。
+**Phase 4 と並行して進められるもの:**
+
+- **天体を `FloatingOrigin` へ通し、圧縮を `render/` へ切り出す**(Phase 4 の手順 1)。
+  判断の結果によらず有効で、挙動も変わらない。
+- **`point-field-view.ts` の f32 量子化の実測**(Phase 4 の項目 3)。深度とは独立した問い。
 - **Phase 5 のアルベド調査** — 他フェーズと独立。**Phase 8(軸 1)の光源強度の前提でもあるので、
   早く始めるほど効く。** RGB のアルベド値として集める(§1-1-1)。
 - **軸 2 の方式の決定** — `shadow_implement.md` §8 の「判断に必要だが、まだ測っていないもの」を潰す。
@@ -906,4 +1086,4 @@ three の `InstanceNode` は instanceMatrix の受け渡し経路(uniform buffer
 
 **参照軌道線(惑星)の遠距離での見た目、天体近傍フェードの見た目、デバッグ線の色分け。**
 いずれもヘッドレスでのカメラ操作が安定せず到達できていない。
-画像回帰シーンを組むときに合わせて確認する。
+**Phase 3.5 のテスト環境はカメラ操作を持たないので、ここは埋まらない** — 実機で見るしかない。
