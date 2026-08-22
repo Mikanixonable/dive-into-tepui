@@ -326,7 +326,7 @@ export function buildHudDom(): HudDomRefs {
 
   // 常設パネル群を組む。
   buildInfoPanels(combatRoot.leftRail, combatRoot.rightRail);
-  buildGlobalStatus(combatRoot.element);
+  buildGlobalStatus(layers.panel);
   buildChaseReset(combatRoot.element);
   buildMapScale(mapRoot.element);
   const overlayShield = createHudElement('div', 'hud-overlay-shield', layers.gate);
