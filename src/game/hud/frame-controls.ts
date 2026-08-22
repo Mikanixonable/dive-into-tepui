@@ -33,7 +33,7 @@ export class FrameControls {
     this.cameraPanel.onSelectCenter = (id) => this.selectCameraCenter(id);
   }
 
-  // カメラの基準天体を選び直す。解除は、いま見ている位置を恒星中心の慣性系へ焼き込んだ
+  // カメラの基準を選び直す。解除は、いま見ている位置を恒星中心の慣性系へ焼き込んだ
   // 固定点にする — どの天体にも追随しないが、視線はその場に留まる。
   private selectCameraCenter(id: string | null): void {
     if (id !== null) {
