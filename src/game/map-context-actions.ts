@@ -9,6 +9,7 @@ import { orbitInfo, relativeInfo } from './hud/orbit-info';
 import { autoOrbitReference } from './orbit-reference';
 import { ContextMenu, MenuItem } from './hud/context-menu';
 import { PropertyRow, PropertyWindow, PropertyWindowContent, PropertyWindowItem } from './hud/property-window';
+import { TEMP_WINDOW_GROUP } from './hud/overlay-manager';
 import { MenuAction, MenuCommon } from './hud/menu-actions';
 import { celestialBodyName } from './hud/frame-labels';
 import { lagrangeParentId } from './hud/object-groups';
@@ -49,10 +50,6 @@ interface PickHandler {
 
 // 軌道計画の実行モードの巡回順。ボタン1つで次のモードへ進める。
 const PLAN_EXECUTION_MODES: readonly PlanExecutionMode[] = ['off', 'instant'];
-
-// クリップされていないプロパティウィンドウが同時に高々1枚しか開かないための排他グループ名。
-// クリップ状態の遷移ごとの出し入れは PropertyWindow 自身が OverlayManager へ宣言する。
-const PROPERTY_WINDOW_TEMP_GROUP = 'property-window-temp';
 
 // 開いているプロパティウィンドウ本体と、開いた時点の対象。rows/items の再導出はこの target
 // (毎フレーム候補列から更新されうる)を経由するので、対象が消滅したかどうかの判定にも使える。
@@ -140,7 +137,7 @@ export class MapContextActions {
 
   // 対象1つにつきウィンドウは高々1枚: 既存があればクリック位置へ動かして最前面に出すだけで
   // 新規には開かない。一時ウィンドウ(非クリップ)どうしの排他は PropertyWindow 自身が
-  // OverlayManager の PROPERTY_WINDOW_TEMP_GROUP を通じて保つ。
+  // OverlayManager の TEMP_WINDOW_GROUP を通じて保つ。
   private openPropertyWindow(clientX: number, clientY: number, target: MapPickable, simTime: number): void {
     const key = this.windowKey(target);
     const existing = this.windows.get(key);
@@ -151,7 +148,7 @@ export class MapContextActions {
     }
     const w = new PropertyWindow<MenuAction>(
       this.hud.layers.window, clientX, clientY, this.buildContent(target, simTime),
-      this.hud.overlayManager, PROPERTY_WINDOW_TEMP_GROUP,
+      this.hud.overlayManager, TEMP_WINDOW_GROUP,
     );
     const entry: WindowEntry = { win: w, target };
     this.windows.set(key, entry);

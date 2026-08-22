@@ -8,10 +8,17 @@ import { TargetPanel } from './target-panel';
 import { EnemiesPanel } from './enemies-panel';
 import { SimulationStatusBar } from './simulation-status-bar';
 import { MapScaleBadge } from './map-scale-badge';
+import { OrbitAnalysisWindow } from './orbit-analysis-window';
 import type { Input } from '../input/input';
+import type { CelestialBody } from '../../physics/celestial-body';
+import type { Game } from '../game';
 import type { OverlayLayers } from './overlay-layer';
-import type { OverlayManager } from './overlay-manager';
+import { TEMP_WINDOW_GROUP, type OverlayManager } from './overlay-manager';
 import type { HelpPanel } from './help-panel';
+
+// 軌道分析パネルを開く既定位置。ドラッグ可能ウィンドウなのでビューポート内へクランプされる。
+const ANALYSIS_WINDOW_OPEN_X = 320;
+const ANALYSIS_WINDOW_OPEN_Y = 100;
 
 export class Hud {
   readonly root: HTMLElement;
@@ -27,6 +34,7 @@ export class Hud {
   readonly orbitPanel: OrbitPanel;
   readonly targetPanel: TargetPanel;
   readonly enemiesPanel: EnemiesPanel;
+  private orbitAnalysisWindow: OrbitAnalysisWindow | null = null;
   private hintUntil = 0;
   private toastUntil = 0;
 
@@ -48,7 +56,26 @@ export class Hud {
     this.orbitPanel = new OrbitPanel(els);
     this.targetPanel = new TargetPanel(els);
     this.enemiesPanel = new EnemiesPanel(els);
+    this.orbitPanel.setOpenAnalysisHandler(() => this.openOrbitAnalysis());
     this.setWorldView('combat');
+  }
+
+  // 軌道分析パネルを開く。既に開いていれば最前面へ持ち上げるだけで、2枚目は開かない。
+  private openOrbitAnalysis(): void {
+    if (this.orbitAnalysisWindow) {
+      this.orbitAnalysisWindow.bringToFront();
+      return;
+    }
+    const win = new OrbitAnalysisWindow(
+      this.layers.window, ANALYSIS_WINDOW_OPEN_X, ANALYSIS_WINDOW_OPEN_Y, this.overlayManager, TEMP_WINDOW_GROUP,
+    );
+    win.onClose = () => { this.orbitAnalysisWindow = null; };
+    this.orbitAnalysisWindow = win;
+  }
+
+  // 戦闘/マップ HUD コントローラの sync から呼ばれる。窓が無ければ何もしない。
+  syncOrbitAnalysis(game: Game, celestialBodies: readonly CelestialBody[]): void {
+    this.orbitAnalysisWindow?.sync(game, celestialBodies);
   }
 
   // 戦闘/マップ固有の HUD ルートを切り替える。表示状態は ViewManager が正本として通知する。
