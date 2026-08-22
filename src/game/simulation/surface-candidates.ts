@@ -1,7 +1,13 @@
-// 表面へ触れうる天体の絞り込み。区間を共有する参加者全員を覆う一覧を1回だけ組み、個体ごとには
-// その短い一覧へ安価な距離判定を掛ける。**絞り込みは判定器の答えを変えない** — 触れうる相手を
+// 表面へ触れうる天体の絞り込み。**絞り込みは判定器の答えを変えない** — 触れうる相手を
 // 1つも落とさないことだけが正しさの条件で、通す数が多いぶんには構わない。除外の根拠は距離と
 // 区間変位という物理量だけで、種別や時間加速倍率は見ない。
+//
+// 二段構えで、段ごとに何に依存するかが違う。
+//  1. resetSpan — 区間だけで決まる。各天体の表面がその区間のあいだに届きうる範囲を求める。
+//     **部分区間の到達範囲はこの範囲に含まれる**ので、区間を内側でさらに割って解く個体も、
+//     組み直さずにそのまま使える。
+//  2. narrow — 参加者の顔ぶれで決まる。区間を共有する多数を同じ窓で解くときだけ得になる
+//     (参加者が1つなら into と同じ判定を二度やることになる)。
 import { CelestialBody, celestialBodyStateAt } from '../../physics/celestial-body';
 import { KinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, len, scale, sub, v3 } from '../../physics/vec3';
@@ -35,38 +41,45 @@ export type SurfaceParticipant = {
 };
 
 export class SurfaceCandidates {
-  // 直前の reset で選ばれた、この区間で誰かが触れうる天体。
+  // 区間 [tStart, tEnd] のあいだに各天体の表面が届きうる範囲。
+  private readonly spanning: BodyReach[] = [];
+  // そのうち、いま into が選び先とする一覧。narrow を掛けるまでは spanning と同じ顔ぶれ。
   private readonly reachable: BodyReach[] = [];
 
-  // 直近の reset が選んだ天体の数。
+  // into が選び先とする天体の数。
   get count(): number { return this.reachable.length; }
 
-  // 区間を共有する参加者全員に対し、この区間で誰かが触れうる天体を選び直す。参加者の区間が
-  // 少しずつずれていても落とさないよう、天体の変位は全参加者の区間の合併で見る。
-  reset(participants: readonly SurfaceParticipant[], bodies: readonly CelestialBody[]): void {
+  // 区間 [tStart, tEnd] のあいだに各天体の表面が届きうる範囲を求める。以降の into と narrow は
+  // この上で答えるので、区間の内側をさらに細かく割って解く個体も組み直しを要さない。
+  resetSpan(bodies: readonly CelestialBody[], tStart: number, tEnd: number): void {
+    this.spanning.length = 0;
+    this.reachable.length = 0;
+    if (!(tStart <= tEnd)) return;
+    for (const body of bodies) {
+      const start = celestialBodyStateAt(body, tStart);
+      const reach = body.radius + intervalReach(start, celestialBodyStateAt(body, tEnd));
+      this.spanning.push({ body, r0: start.r, reach });
+    }
+    for (const candidate of this.spanning) this.reachable.push(candidate);
+  }
+
+  // into の選び先を、この顔ぶれの誰かが触れうる天体だけへ狭める。狭めた結果は次の resetSpan
+  // まで残るので、**区間を共有する参加者へ続けて into を掛けるあいだにだけ掛ける。**
+  narrow(participants: readonly SurfaceParticipant[]): void {
     this.reachable.length = 0;
     if (participants.length === 0) return;
 
-    // 参加者全体を覆う球の中心と、そこから表面が届きうる最大距離。
+    // 参加者全体を覆う球の中心と、そこから表面が届きうる最大距離。into が個体ごとに測る
+    // 距離はこの margin を超えないので、ここで落とした天体が into を通ることはない。
     let sum = v3();
     for (const p of participants) sum = add(sum, p.prevState.r);
     const center = scale(sum, 1 / participants.length);
     let margin = 0;
-    let tStart = Infinity;
-    let tEnd = -Infinity;
     for (const p of participants) {
       margin = Math.max(margin, len(sub(p.prevState.r, center)) + p.radius + intervalReach(p.prevState, p.state));
-      tStart = Math.min(tStart, p.prevState.t);
-      tEnd = Math.max(tEnd, p.state.t);
     }
-    if (!(tStart <= tEnd)) return;
-
-    for (const body of bodies) {
-      const start = celestialBodyStateAt(body, tStart);
-      const reach = body.radius + intervalReach(start, celestialBodyStateAt(body, tEnd));
-      if (len(sub(center, start.r)) <= margin + reach) {
-        this.reachable.push({ body, r0: start.r, reach });
-      }
+    for (const candidate of this.spanning) {
+      if (len(sub(center, candidate.r0)) <= margin + candidate.reach) this.reachable.push(candidate);
     }
   }
 

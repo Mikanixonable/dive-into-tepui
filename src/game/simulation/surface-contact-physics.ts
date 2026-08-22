@@ -13,6 +13,12 @@ import type { Stage } from '../stages/stage';
 import { contactTime, isFiniteParticipant } from './contact-participant';
 import { SurfaceCandidates } from './surface-candidates';
 
+// 天体との接触に参加するのは、独立した実体すべて。艦に取り付いた接触代理(ベルトの節点・
+// 放熱板の折り)は艦本体が代表するので参加しない。
+function isParticipant(e: GameEntity): boolean {
+  return e.alive && e.attachedTo === null && isFiniteParticipant(e);
+}
+
 // 位置・速度・半径が有限か。
 function isFiniteCelestialBody(a: CelestialBody): boolean {
   const { r, v } = a.state;
@@ -22,35 +28,46 @@ function isFiniteCelestialBody(a: CelestialBody): boolean {
 }
 
 export class SurfaceContactPhysics {
-  // 解決は Simulator の substep ごとに同期的に完了するため、作業配列を使い回せる。
+  // 解決は区間ごとに同期的に完了するので、作業配列を使い回せる。
   private readonly participantScratch: GameEntity[] = [];
   private readonly bodyScratch: CelestialBody[] = [];
   private readonly candidates = new SurfaceCandidates();
   private readonly nearbyScratch: CelestialBody[] = [];
 
-  // 1 substep ぶんの天体との接触。時間加速倍率にも collides にも依らず、独立した実体すべてが
-  // 参加する。
-  resolveSurfaceContacts(
-    entities: readonly GameEntity[],
-    celestialBodies: readonly CelestialBody[],
-    activeStage: Stage,
+  // 区間 [tStart, tEnd] で触れうる天体の下ごしらえ。判定できる天体を選び、各天体の表面が
+  // その区間のあいだに届きうる範囲を求める。どちらも参加者に依らないので、区間を内側でさらに
+  // 割って解く個体もこの1組で足りる。
+  beginSubstep(
+    celestialBodies: readonly CelestialBody[], tStart: number, tEnd: number,
   ): void {
+    this.collectCelestialBodies(celestialBodies, this.bodyScratch);
+    this.candidates.resetSpan(this.bodyScratch, tStart, tEnd);
+  }
+
+  // 個体1つの天体との接触。区間は beginSubstep へ渡した区間の内側であればよい。
+  resolveOne(e: GameEntity, activeStage: Stage): void {
+    if (!isParticipant(e)) return;
+    this.resolveAgainstCandidates(e, activeStage);
+  }
+
+  // 区間を共有する個体をまとめて解く。顔ぶれで先に絞り込むぶん1体あたりが安くなるので、
+  // **同じ区間を1歩で渡った個体をここへまとめる。** 絞り込みは次の beginSubstep まで残る。
+  resolveShared(entities: readonly GameEntity[], activeStage: Stage): void {
     this.collectParticipants(entities, this.participantScratch);
     if (this.participantScratch.length === 0) return;
-    this.collectCelestialBodies(celestialBodies, this.bodyScratch);
-    this.candidates.reset(this.participantScratch, this.bodyScratch);
-    for (const e of this.participantScratch) this.resolveOne(e, activeStage);
+    this.candidates.narrow(this.participantScratch);
+    for (const e of this.participantScratch) this.resolveAgainstCandidates(e, activeStage);
   }
 
   // 個体1つが区間内で最も早く触れる天体を1体だけ解き、反発を当ててから
   // collideWithCelestialBody を呼ぶ。
-  private resolveOne(e: GameEntity, activeStage: Stage): void {
+  private resolveAgainstCandidates(e: GameEntity, activeStage: Stage): void {
     const candidates = this.candidates.into(e, this.nearbyScratch);
     const hit = firstSurfaceContact(e.prevState, e.state, e.radius, candidates);
     if (hit === null) return;
 
-    // 天体の状態は個体の区間終端の時刻へ外挿してから渡す — 天体一式はサブステップの中点で
-    // 1回組まれるので、そのままでは区間の終端と別の瞬間の値になる。
+    // 天体の状態は個体の区間終端の時刻へ外挿してから渡す — 天体一式は区間の開始時刻で1回
+    // 組まれるので、そのままでは区間の終端と別の瞬間の値になる。
     const response = distributeFixedContact(
       { state: e.state, radius: e.radius },
       { state: celestialBodyStateAt(hit.body, e.state.t), radius: hit.body.radius },
@@ -71,13 +88,10 @@ export class SurfaceContactPhysics {
     }, activeStage);
   }
 
-  // 天体との接触に参加するのは、独立した実体すべて。艦に取り付いた接触代理(ベルトの節点・
-  // 放熱板の折り)は艦本体が代表するので参加しない。
+  // 参加者だけを out へ写す。out は呼び出し側が所有する。
   private collectParticipants(source: readonly GameEntity[], out: GameEntity[]): void {
     out.length = 0;
-    for (const entity of source) {
-      if (entity.alive && entity.attachedTo === null && isFiniteParticipant(entity)) out.push(entity);
-    }
+    for (const entity of source) if (isParticipant(entity)) out.push(entity);
   }
 
   // 判定できる天体だけを out へ写す。out は呼び出し側が所有する。

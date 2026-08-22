@@ -233,7 +233,7 @@ export class Player extends Ship {
   }
 
   // bodies はこの区間の天体窓で、恒星の取り出しと日照率の遮蔽体に使う。
-  override stepEnvironment(dt: number, ephemeris: Ephemeris, simTime: number, bodies: readonly CelestialBody[]): void {
+  protected override stepEnvironment(dt: number, ephemeris: Ephemeris, simTime: number, bodies: readonly CelestialBody[]): void {
     if (!this.alive) return;
     this.radiator.update(dt, this.radiatorWear());
     const sunDir = ephemeris.sunDirFrom(this.state.r, simTime);

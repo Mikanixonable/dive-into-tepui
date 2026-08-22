@@ -40,12 +40,19 @@ function participant(r0: Vec3, v0: Vec3, a: Vec3, dt: number, radius: number): S
   };
 }
 
+// 参加者全員の区間を覆う時刻の範囲。
+const spanStart = (ps: readonly SurfaceParticipant[]): number =>
+  Math.min(...ps.map((p) => p.prevState.t));
+const spanEnd = (ps: readonly SurfaceParticipant[]): number =>
+  Math.max(...ps.map((p) => p.state.t));
+
 // 絞り込んだ窓と総当たりとで firstSurfaceContact の答えを突き合わせ、到達した件数を返す。
 function assertAgreement(
   label: string, participants: readonly SurfaceParticipant[], bodies: readonly CelestialBody[],
 ): number {
   const candidates = new SurfaceCandidates();
-  candidates.reset(participants, bodies);
+  candidates.resetSpan(bodies, spanStart(participants), spanEnd(participants));
+  candidates.narrow(participants);
   const out: CelestialBody[] = [];
   let reached = 0;
   for (let i = 0; i < participants.length; i++) {
@@ -112,7 +119,8 @@ export function register(): void {
     assert.ok(chordDistance > target.radius, '前提: 弦は表面に触れない');
 
     const candidates = new SurfaceCandidates();
-    candidates.reset([p], [target]);
+    candidates.resetSpan([target], 0, 1);
+    candidates.narrow([p]);
     assert.deepEqual(candidates.into(p, []).map((b) => b.id), ['bulge']);
   });
 
@@ -125,8 +133,61 @@ export function register(): void {
     const p = participant(v3(), v3(0, 400, 0), v3(), 1, 1);
 
     const candidates = new SurfaceCandidates();
-    candidates.reset([p], [near, ...far]);
+    candidates.resetSpan([near, ...far], 0, 1);
+    candidates.narrow([p]);
     assert.equal(candidates.count, 1, '1段目を通るのは near だけ');
     assert.deepEqual(candidates.into(p, []).map((b) => b.id), ['near']);
+  });
+
+  test('surface-candidates: 区間全体で組んだ窓は、その内側のどの部分区間でも落とさない', () => {
+    // 濃い大気の中の個体はサブステップの内側でさらに割って進み、その1歩ごとに表面到達を解く。
+    // 窓を組み直さずに済むのは、部分区間の到達範囲が区間全体の到達範囲に含まれるからで、
+    // それが崩れると内側の歩だけが天体を落とす。
+    const rand = mulberry32(20260823);
+    const span = 8;
+    const divisions = 5;
+    let checked = 0;
+    for (let trial = 0; trial < 100; trial++) {
+      const bodies: CelestialBody[] = [];
+      for (let i = 0; i < 8; i++) {
+        bodies.push(body(
+          `b${i}`,
+          v3(randSym(1500, rand), randSym(1500, rand), randSym(1500, rand)),
+          v3(randSym(120, rand), randSym(120, rand), randSym(120, rand)),
+          50 + rand() * 250,
+        ));
+      }
+      // 区間全体を等加速度で渡り、その内側を divisions 等分した歩に切り出す。
+      const r0 = v3(randSym(1200, rand), randSym(1200, rand), randSym(1200, rand));
+      const v0 = v3(randSym(300, rand), randSym(300, rand), randSym(300, rand));
+      const a = v3(randSym(200, rand), randSym(200, rand), randSym(200, rand));
+      const radius = rand() * 30;
+      // 一定加速度の軌跡を、絶対時刻 t から dt だけ切り出した区間。
+      const cut = (t: number, dt: number): SurfaceParticipant => {
+        const at = (s: number) => kinematicState(
+          s,
+          v3(r0.x + v0.x * s + 0.5 * a.x * s * s, r0.y + v0.y * s + 0.5 * a.y * s * s,
+            r0.z + v0.z * s + 0.5 * a.z * s * s),
+          v3(v0.x + a.x * s, v0.y + a.y * s, v0.z + a.z * s),
+        );
+        return { prevState: at(t), state: at(t + dt), radius };
+      };
+
+      const spanning = new SurfaceCandidates();
+      spanning.resetSpan(bodies, 0, span);
+      const out: CelestialBody[] = [];
+      for (let i = 0; i < divisions; i++) {
+        const step = cut((i * span) / divisions, span / divisions);
+        const exact = new SurfaceCandidates();
+        exact.resetSpan(bodies, step.prevState.t, step.state.t);
+        const strict = new Set(exact.into(step, []).map((b) => b.id));
+        const loose = new Set(spanning.into(step, out).map((b) => b.id));
+        for (const id of strict) {
+          assert.ok(loose.has(id), `trial ${trial} 歩 ${i}: 区間全体の窓が ${id} を落とした`);
+        }
+        checked += strict.size;
+      }
+    }
+    assert.ok(checked > 0, '通過した天体が1件も無い — 配置が試験になっていない');
   });
 }
