@@ -42,9 +42,11 @@ EP0/C-2/E-9/E-13 相当の前提はユーザーの許可を得て実装に合わ
 13. `NanWatchdog` が発火する場合の残りの発生源(接触経路の外)
 `game/simulation/contact.ts` の参加者フィルタ(位置・速度・半径・質量の4つ)と
 `physics/collision-response.ts`/`sphere-contact.ts` の非有限値伝播をテストで固定し、
-`Simulator.advance` 内の軌道積分・姿勢積分・接触・ベルトの4境界を `NanWatchdog.checkPlayer`
-で区別できるようにした。**これは接触経路について塞いだというだけで、NaN そのものが直った
-という意味ではない。** 次に `NanWatchdog` が発火した場合に疑うべき、接触経路の外にある発生源:
+`Simulator.advance` 内の個体の前進・天体接触・物体どうしの接触・ベルトの4境界を
+`NanWatchdog.checkPlayer` で区別できるようにした。**これは接触経路について塞いだというだけで、
+NaN そのものが直ったという意味ではない。** 「個体の前進」は軌道積分・姿勢積分・受動的な環境を
+まとめた1つの境界なので、そこで発火したときは下の3つを順に疑う。次に `NanWatchdog` が発火した
+場合に疑うべき、接触経路の外にある発生源:
 
 - 姿勢積分(`physics/attitude.ts` の `stepAttitude`)の発散 — 極端なトルク・角速度での数値安定性は未検証。
 - ベルトの Verlet 解法(`player/belt-physics.ts` の `BeltPhysics`)— 拘束緩和が発散する入力(過大な擬似力)は未検証。
