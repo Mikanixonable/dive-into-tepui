@@ -22,6 +22,7 @@ import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import type { MarkerRole } from '../targeter';
 import { fmtMarkerDist } from '../hud/utils';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
+import { baseMarkerSvg } from '../marker/marker-shapes';
 import * as C from '../const';
 import { BaseCollisionGeometry, RayHit, SphereHit } from '../../physics/base-collision';
 import { PlayerThrottle } from '../player/player-throttle';
@@ -77,13 +78,6 @@ const idAllocator = new EntityIdAllocator('base-');
 export type BaseInit =
   | { readonly state: KinematicState; readonly name?: string; readonly att?: Attitude; readonly id?: string }
   | { readonly saved: BaseSaveData; readonly simTime: number };
-
-export function baseMarkerSvg(): string {
-  const pts = "12,2.5 19.43,6.08 21.26,14.11 16.12,20.56 7.88,20.56 2.74,14.11 4.57,6.08";
-  return `<svg viewBox="0 0 24 24" width="24" height="24" aria-label="Base">` +
-    `<polygon points="${pts}" fill="none" stroke="currentColor" stroke-width="1.8"/>` +
-    `</svg>`;
-}
 
 export class Base extends GameEntity implements Controllable {
   readonly collisionGeom = new BaseCollisionGeometry();
