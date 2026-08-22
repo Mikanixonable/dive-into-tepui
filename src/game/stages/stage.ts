@@ -171,7 +171,7 @@ export abstract class Stage {
     this.scoreCounter = new ScoreCounter(saved?.scoreCounter);
     this._phase = saved?.phase ?? 'playing';
     this.restored = saved !== undefined;
-    this.logistics = new Logistics(hud, worldSfx, uiSfx, scene, entities, markerManager, saved?.logistics);
+    this.logistics = new Logistics(hud, worldSfx, uiSfx, scene, entities, saved?.logistics);
     this.statusPanel = new StatusPanel(hud.combatRoot);
   }
 
