@@ -6,9 +6,9 @@
 // 画面判定も同じ表示変換を通すため描画とずれない。
 import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../physics/kinematic-state';
-import { CelestialBody } from '../../physics/celestial-body';
+import { CelestialBody, bodyAnchorSource } from '../../physics/celestial-body';
 import { Vec3, v3 } from '../../physics/vec3';
-import { FrameTransform, ReferenceFrame, toFrameDir, toFramePoint, toInertialDir, toInertialPoint } from '../../physics/frame';
+import { FrameAnchorSource, FrameTransform, ReferenceFrame, toFrameDir, toFramePoint, toInertialDir, toInertialPoint } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Projected } from '../../physics/projection';
 import { isOccluded } from '../../physics/occlusion';
@@ -75,9 +75,9 @@ export class PlanPath {
   // 折れ線同期・ポインタ判定が何度も参照するため、update 単位で1回だけ組み立てる。天体暦の
   // celestialBodies はフレームごとに差し替わりうるので、時刻だけでなく update() ごとに無効化する。
   private unbakeTransform: FrameTransform | null = null;
-  // 直近の update が受け取った重力源一覧。toDisplay/toDisplayDir/nearestSample はポインタ
-  // イベント起点でフレーム外から呼ばれうるため、update と同じ値をここから読む。
-  private celestialBodies: readonly CelestialBody[] = [];
+  // 直近の update が受け取った FrameAnchorSource。toDisplay/toDisplayDir/nearestSample は
+  // ポインタイベント起点でフレーム外から呼ばれうるため、update と同じ値をここから読む。
+  private frameAnchors: FrameAnchorSource = bodyAnchorSource([]);
   private project: ProjectFn | null = null;
   // sync が最後に受け取ったカメラ位置。nearestSample の遮蔽判定に使う(呼び出しは DOM
   // ポインタイベント起点でフレーム外なので、直近の sync から引き継ぐ)。
@@ -107,7 +107,7 @@ export class PlanPath {
   update(
     planData: PlanData, ship: Controllable | null,
     ephemeris: Ephemeris, frame: ReferenceFrame, currentTime: number,
-    celestialBodies: readonly CelestialBody[], celestialBodyProvider: FutureCelestialBodyProvider,
+    frameAnchors: FrameAnchorSource, celestialBodyProvider: FutureCelestialBodyProvider,
     displayDurationSec: number,
   ): void {
     this.frame = frame;
@@ -115,8 +115,8 @@ export class PlanPath {
     this.unbakeTime = currentTime;
     this.displayFrom = currentTime;
     this.displayTo = currentTime + Math.max(0, displayDurationSec);
-    this.celestialBodies = celestialBodies;
-    this.unbakeTransform = ephemeris.frameTransformAt(frame, currentTime, celestialBodies);
+    this.frameAnchors = frameAnchors;
+    this.unbakeTransform = ephemeris.frameTransformAt(frame, currentTime, frameAnchors);
     this.lastRebuiltArcs = 0;
     // 起点→node…→末尾区間に分解する
     const segments = buildSegments(planData, ephemeris, this.displayDuration);
@@ -228,9 +228,9 @@ export class PlanPath {
         source.arc.trajectory,
         Math.max(this.displayFrom, source.from),
         Math.min(this.displayTo, source.to),
-        this.frame, this.ephemeris, this.celestialBodies,
+        this.frame, this.ephemeris, this.frameAnchors,
       );
-      line.syncTransform(this.frame, this.unbakeTime, this.ephemeris, fo, this.celestialBodies);
+      line.syncTransform(this.frame, this.unbakeTime, this.ephemeris, fo, this.frameAnchors);
       line.sync(camera);
     }
     // 線プールは区間数が減っても捨てずに残すので、隠す範囲は sources でなく lines の本数まで見る。
@@ -300,7 +300,7 @@ export class PlanPath {
   // 時刻 t で bake し、表示時刻 unbakeTime で un-bake する(点なので FrameTransform を2つ引く)。
   toDisplay(r: Vec3, t: number): Vec3 {
     if (!this.ephemeris) return v3(r.x, r.y, r.z);
-    const bakeTf = this.ephemeris.frameTransformAt(this.frame, t, this.celestialBodies);
+    const bakeTf = this.ephemeris.frameTransformAt(this.frame, t, this.frameAnchors);
     const unbakeTf = this.currentUnbakeTransform()!;
     return toInertialPoint(unbakeTf, toFramePoint(bakeTf, r));
   }
@@ -309,7 +309,7 @@ export class PlanPath {
   // サンプル時刻 t の bake 姿勢と表示時刻 unbakeTime の un-bake 姿勢の回転だけを受ける。
   toDisplayDir(dir: Vec3, t: number): Vec3 {
     if (!this.ephemeris) return v3(dir.x, dir.y, dir.z);
-    const bakeTf = this.ephemeris.frameTransformAt(this.frame, t, this.celestialBodies);
+    const bakeTf = this.ephemeris.frameTransformAt(this.frame, t, this.frameAnchors);
     const unbakeTf = this.currentUnbakeTransform()!;
     return toInertialDir(unbakeTf, toFrameDir(bakeTf, dir));
   }
@@ -344,7 +344,7 @@ export class PlanPath {
         const s = samples[j]!;
         if (range && (s.t < range.min || s.t > range.max)) continue;
         const pos = ephemeris && unbakeTf
-          ? toInertialPoint(unbakeTf, toFramePoint(ephemeris.frameTransformAt(this.frame, s.t, this.celestialBodies), s.r))
+          ? toInertialPoint(unbakeTf, toFramePoint(ephemeris.frameTransformAt(this.frame, s.t, this.frameAnchors), s.r))
           : v3(s.r.x, s.r.y, s.r.z);
         // 天体に遮蔽されて画面上見えていない点は候補から除く — マップ右クリックの
         // ピック候補(map-picker.ts)と同じ判定を通す。
@@ -402,7 +402,7 @@ export class PlanPath {
     if (!this.ephemeris) return null;
     if (this.unbakeTransform === null) {
       this.unbakeTransform = this.ephemeris.frameTransformAt(
-        this.frame, this.unbakeTime, this.celestialBodies,
+        this.frame, this.unbakeTime, this.frameAnchors,
       );
     }
     return this.unbakeTransform;

@@ -15,7 +15,7 @@ import { GroupedMarkers } from './grouped-markers';
 import { LeadMarkers } from './lead-markers';
 import { isOccluded } from '../../physics/occlusion';
 import { CelestialBody, strongestAttractor } from '../../physics/celestial-body';
-import type { ReferenceFrame } from '../../physics/frame';
+import type { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
 import { toFrameDir } from '../../physics/frame';
 import { qRotate } from '../../physics/attitude';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -35,6 +35,9 @@ interface MarkerRecord {
   priority: number;
   iconHiddenByPriority: boolean;
   labelHiddenByPriority: boolean;
+  // 直前フレームで優先度間引きにより隠れていたか(resolveCollisions のヒステリシス用)。
+  prevIconHiddenByPriority: boolean;
+  prevLabelHiddenByPriority: boolean;
 }
 
 interface ActiveLabel {
@@ -145,6 +148,7 @@ export class MarkerManager {
       m = {
         root, sym: symEl, lbl: lblEl, fixedLabel, hidden: !visible, occlusionHidden: false,
         x, y, priority: itemPriority, iconHiddenByPriority: false, labelHiddenByPriority: false,
+        prevIconHiddenByPriority: false, prevLabelHiddenByPriority: false,
       };
       this.markerDictionary.set(key, m);
     }
@@ -264,11 +268,12 @@ export class MarkerManager {
     frame?: ReferenceFrame,
     displayTime?: number,
     ephemeris?: Ephemeris,
+    frameAnchors?: FrameAnchorSource,
   ): number | undefined {
     const center = celestialBodies.length > 0 ? strongestAttractor(worldPos, celestialBodies) : null;
     let relVel = center ? sub(vel, center.state.v) : vel;
-    if (frame && displayTime !== undefined && ephemeris && celestialBodies.length > 0) {
-      const tf = ephemeris.frameTransformAt(frame, displayTime, celestialBodies);
+    if (frame && displayTime !== undefined && ephemeris && frameAnchors && celestialBodies.length > 0) {
+      const tf = ephemeris.frameTransformAt(frame, displayTime, frameAnchors);
       if (tf) {
         const vFrame = toFrameDir(tf, relVel);
         relVel = qRotate(tf.q, v3(vFrame.x, vFrame.y, vFrame.z));
@@ -391,28 +396,30 @@ export class MarkerManager {
     }
 
     // マップモード(overviewMode === true)のときのみ、画面上の近接に基づく優先度間引きを行う。
+    // 隠す/再び出すしきい値をそれぞれの対象自身の直前フレームの状態(prevLabelHiddenByPriority)
+    // で分ける(ヒステリシス)。周期が数時間の衛星どうしなど、タイムワープ中に画面距離が
+    // しきい値付近で急変する組で、間引きが毎フレーム反転する明滅を防ぐ。
     if (overviewMode) {
-      const clusterDistPx = C.MARKER_CLUSTER_PX;
       for (let i = 0; i < activeRecords.length; i++) {
         const a = activeRecords[i]!;
         for (let j = i + 1; j < activeRecords.length; j++) {
           const b = activeRecords[j]!;
-          if (Math.hypot(a.x - b.x, a.y - b.y) >= clusterDistPx) continue;
+          if (a.priority === b.priority) continue;
+          const [winner, loser] = a.priority > b.priority ? [a, b] : [b, a];
+          const threshold = loser.prevLabelHiddenByPriority ? C.MARKER_CLUSTER_RELEASE_PX : C.MARKER_CLUSTER_PX;
+          if (Math.hypot(a.x - b.x, a.y - b.y) >= threshold) continue;
 
-          if (a.priority > b.priority) {
-            b.labelHiddenByPriority = true;
-            // 差が100以上の異なるカテゴリ間 (例: 天体 > 船, 船 > 弾薬, 船 > 軌道要素) はアイコンも非表示 (保護対象を除く)
-            if (a.priority - b.priority >= 100 && canHideIconByPriority(b)) {
-              b.iconHiddenByPriority = true;
-            }
-          } else if (b.priority > a.priority) {
-            a.labelHiddenByPriority = true;
-            if (b.priority - a.priority >= 100 && canHideIconByPriority(a)) {
-              a.iconHiddenByPriority = true;
-            }
+          loser.labelHiddenByPriority = true;
+          // 差が100以上の異なるカテゴリ間 (例: 天体 > 船, 船 > 弾薬, 船 > 軌道要素) はアイコンも非表示 (保護対象を除く)
+          if (winner.priority - loser.priority >= 100 && canHideIconByPriority(loser)) {
+            loser.iconHiddenByPriority = true;
           }
         }
       }
+    }
+    for (const m of activeRecords) {
+      m.prevIconHiddenByPriority = m.iconHiddenByPriority;
+      m.prevLabelHiddenByPriority = m.labelHiddenByPriority;
     }
 
     // アイコン/ラベルの間引き結果を反映 (priority-hidden クラスのトグルによる CSS フェード)

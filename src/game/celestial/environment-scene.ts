@@ -24,7 +24,7 @@ import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
 import { CelestialView } from './celestial-view';
 import { CELESTIAL_VIEWS, fallbackCelestialView } from './celestial-registry';
 import { EarthView } from './earth-view';
-import { BodyClassToggles, systemMembersAt } from './body-visibility';
+import { BodyClassToggles, NearbySystemTracker } from './body-visibility';
 import { MapVisibilityPolicy } from './map-visibility';
 
 // 静止軌道高度の参照リング。実在の衛星や特定経度を表すものではない定数。地球が現在の
@@ -70,6 +70,7 @@ export class EnvironmentScene {
   readonly celestialGrid: CelestialGrid;
   readonly spatialGrid: SpatialGrid;
   private readonly bodies: readonly CelestialView[];
+  private readonly nearbyTracker = new NearbySystemTracker();
   // 小惑星帯・トロヤ群の点群。天体暦から作られるマップ専用の表示なので、マップへ入るまで
   // 生成しない。11,200点の軌道要素・mesh・instance bufferをロード時に確保しないため。
   private pointFieldView: PointFieldView | null = null;
@@ -164,7 +165,7 @@ export class EnvironmentScene {
     // Game.sync が同じカメラ位置・表示時刻で組んだ policy を渡せるようにする。渡されない
     // 既存経路ではここで一度だけ構築し、参照線にも同じインスタンスを渡す。
     const nearbyIds = cameraSystem.overviewMode && sharedVisibilityPolicy === null
-      ? systemMembersAt(this.ephemeris.registry, cameraSystem.activeCameraPos, this.ephemeris.celestialBodiesAt(displayTime))
+      ? this.nearbyTracker.membersAt(this.ephemeris.registry, cameraSystem.activeCameraPos, this.ephemeris.celestialBodiesAt(displayTime))
       : [];
     const visibilityPolicy = cameraSystem.overviewMode
       ? sharedVisibilityPolicy ?? new MapVisibilityPolicy(
@@ -205,12 +206,16 @@ export class EnvironmentScene {
     this.celestialGrid.sync(
       gridVisibility, cameraSystem.activeCamera,
       cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
+    const moonInRegistry = 'moon' in this.ephemeris.registry;
+    const moonPole = moonInRegistry ? this.ephemeris.poleAt('moon', displayTime) : null;
     this.spatialGrid.sync(
       cameraSystem.overviewMode,
       gridVisibility.eclipticScaleGrid,
       gridVisibility.equatorScaleGrid,
       gridVisibility.moonOrbitScaleGrid,
-      'moon' in this.ephemeris.registry ? this.toThreeNormal(this.ephemeris.orbitNormalAt('moon', displayTime)) : undefined,
+      gridVisibility.moonEquatorScaleGrid,
+      moonInRegistry ? this.toThreeNormal(this.ephemeris.orbitNormalAt('moon', displayTime)) : undefined,
+      moonPole === null ? undefined : this.toThreeNormal(moonPole.axis),
       cameraSystem.mapCamera.resolvedFocus,
       floatingOrigin,
       cameraSystem.activeCamera,

@@ -30,6 +30,7 @@ export function getApsisLabelSpec(type: 'pe' | 'ap', centerId: string): OrbitLab
 export const ORBIT_ELEMENT_LABELS = {
   an: { short: 'AN', nameJa: '昇交点', nameEn: 'Ascending Node', full: '昇交点 Ascending Node' },
   dn: { short: 'DN', nameJa: '降交点', nameEn: 'Descending Node', full: '降交点 Descending Node' },
+  ca: { short: '再接近', nameJa: '再接近点', nameEn: 'Closest Approach', full: '再接近点 Closest Approach' },
   eqAn: { short: 'EqAN', nameJa: '赤道昇交点', nameEn: 'Equatorial Ascending Node', full: '赤道昇交点 Equatorial Ascending Node' },
   eqDn: { short: 'EqDN', nameJa: '赤道降交点', nameEn: 'Equatorial Descending Node', full: '赤道降交点 Equatorial Descending Node' },
   inc: { short: 'INC', nameJa: '傾斜角', nameEn: 'Inclination', full: '傾斜角 Inclination' },
