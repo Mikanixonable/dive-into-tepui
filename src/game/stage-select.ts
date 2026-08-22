@@ -4,7 +4,8 @@ import { STAGE_CLASSES } from './stages/stage-dictionary';
 import { UnlockManager } from './unlock-manager';
 import type { StageClass } from './stages/stage';
 import { StageDebug } from './stages/stage-debug';
-import { TabBar } from './hud/widgets';
+import { Button, TabBar, ValueInput } from './hud/widgets';
+import { dateStringToSimTime, SIM_EPOCH_CALENDAR_TDB } from './sim-epoch';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import { MQ_COMPACT, MQ_SHORT } from './hud/breakpoints';
 import tepuiRmqrUrl from '../assets/tepui-rmqr.svg';
@@ -244,6 +245,17 @@ const STYLE = `
   font: 12px ${FONT_SANS}; cursor: pointer;
 }
 #stage-select .ss-settings:hover { color: ${TITLE_INK}; border-color: ${ACCENT}; background: color-mix(in srgb, ${ACCENT} 8%, transparent); }
+#stage-select .ss-datetime { display: flex; flex-direction: column; gap: 14px; }
+#stage-select .ss-datetime.hidden { display: none; }
+#stage-select .ss-datetime-fields { display: flex; flex-wrap: wrap; gap: 12px; }
+#stage-select .ss-datetime-field {
+  display: flex; flex-direction: column; gap: 4px;
+  color: ${MUTED_INK}; font-family: ${FONT_SANS}; font-size: 11px; letter-spacing: 0.04em;
+}
+#stage-select .ss-datetime-field .w-input { width: 88px; }
+#stage-select .ss-datetime-error { margin: 0; color: ${SECONDARY_ACCENT}; font-size: 12px; }
+#stage-select .ss-datetime-error.hidden { display: none; }
+#stage-select .ss-datetime-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: auto; }
 @media ${MQ_COMPACT} {
   #stage-select .ss-shell { place-items: center; padding-block: 12px; }
   #stage-select .ss-layout { height: 100%; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
@@ -284,13 +296,14 @@ function ensureTitleFonts(): void {
   document.head.appendChild(link);
 }
 
-// 起動選択画面(各ステージの selectGroup ごとのタブ)を表示し、選ばれたステージクラスで解決される Promise を返す。
+// 起動選択画面(各ステージの selectGroup ごとのタブ)を表示し、選ばれたステージクラス(クリエイティブ
+// なら指定した開始日時の simTime オフセットも併せて)で解決される Promise を返す。
 export function selectStage(
   unlockManager: UnlockManager,
   onEscape?: () => void,
   onClose?: () => void,
   onSettings?: () => void,
-): Promise<StageClass> {
+): Promise<{ stageClass: StageClass; startSimTime?: number }> {
   return new Promise((resolve) => {
     ensureStyle();
     ensureTitleFonts();
@@ -373,7 +386,12 @@ export function selectStage(
           `<div class="ss-stage-label"><span>${stageClass.selectLabel}</span><span class="ss-stage-key">${key}</span></div>` +
           `<div class="ss-stage-sub">${sub}</div>`;
         listDiv.appendChild(row);
-        if (enabled) row.addEventListener('click', () => done(stageClass));
+        if (enabled) {
+          row.addEventListener('click', () => {
+            if (stageClass.id === 'creative') openDateTimeStep(stageClass);
+            else done(stageClass);
+          });
+        }
       }
     };
 
@@ -395,6 +413,85 @@ export function selectStage(
     settingsButton.addEventListener('click', () => onSettings?.());
     windowDiv.appendChild(settingsButton);
 
+    // クリエイティブモード開始日時の指定画面(GAME.md 9.0)。年/月/日/時/分の5欄を持ち、
+    // 有効な日時のときだけ確定ボタンを押せる。
+    const dateTimeDiv = document.createElement('div');
+    dateTimeDiv.className = 'ss-datetime hidden';
+    const dateTimeTitle = document.createElement('p');
+    dateTimeTitle.className = 'ss-window-title';
+    dateTimeTitle.textContent = '開始日時';
+    dateTimeDiv.appendChild(dateTimeTitle);
+    const fieldsDiv = document.createElement('div');
+    fieldsDiv.className = 'ss-datetime-fields';
+    dateTimeDiv.appendChild(fieldsDiv);
+    const errorP = document.createElement('p');
+    errorP.className = 'ss-datetime-error';
+    dateTimeDiv.appendChild(errorP);
+    const actionsDiv = document.createElement('div');
+    actionsDiv.className = 'ss-datetime-actions';
+    dateTimeDiv.appendChild(actionsDiv);
+    windowDiv.appendChild(dateTimeDiv);
+
+    const epoch = SIM_EPOCH_CALENDAR_TDB;
+    const fieldDefs: readonly [label: string, initial: number][] = [
+      ['年', epoch.year], ['月', epoch.month], ['日', epoch.day], ['時', epoch.hour], ['分', epoch.minute],
+    ];
+    const inputs = fieldDefs.map(([label, initial]) => {
+      const field = document.createElement('label');
+      field.className = 'ss-datetime-field';
+      const span = document.createElement('span');
+      span.textContent = label;
+      field.appendChild(span);
+      const input = new ValueInput({ type: 'number', step: 1 }, () => validate());
+      input.setValue(String(initial));
+      input.element.addEventListener('input', validate);
+      field.appendChild(input.element);
+      fieldsDiv.appendChild(field);
+      return input;
+    });
+    const startButton = new Button('開始', () => {
+      const simTime = readSimTime();
+      if (simTime === null) return;
+      done(pendingCreativeStage!, simTime);
+    });
+    const backButton = new Button('戻る', () => {
+      dateTimeStepOpen = false;
+      dateTimeDiv.classList.add('hidden');
+      listDiv.classList.remove('hidden');
+      tabBar.element.classList.remove('hidden');
+    });
+    actionsDiv.appendChild(backButton.element);
+    actionsDiv.appendChild(startButton.element);
+
+    // 年+2桁パディングした月日時分から parseCalendarDate が要求する拡張ISO形式を組み立てる。
+    const pad2 = (n: number) => String(n).padStart(2, '0');
+    // 5欄の入力値から simTime オフセットを求める。数値でない/存在しない日時なら null。
+    const readSimTime = (): number | null => {
+      if (inputs.some((input) => input.element.value.trim() === '' || !isFinite(Number(input.element.value)))) return null;
+      const [year, month, day, hour, minute] = inputs.map((input) => Number(input.element.value)) as [number, number, number, number, number];
+      const iso = `${String(year).padStart(4, '0')}-${pad2(month)}-${pad2(day)}T${pad2(hour)}:${pad2(minute)}:00`;
+      return dateStringToSimTime(iso);
+    };
+    // 入力のたびに確定ボタンの有効/無効とエラーメッセージを更新する。
+    const validate = () => {
+      const simTime = readSimTime();
+      startButton.setEnabled(simTime !== null);
+      errorP.classList.toggle('hidden', simTime !== null);
+    };
+    errorP.textContent = '存在しない日時です。';
+    validate();
+
+    let pendingCreativeStage: StageClass | null = null;
+    let dateTimeStepOpen = false;
+    // 一覧・タブを隠して日時入力欄を出す。開いている間は他ステージのショートカットキーを止める。
+    const openDateTimeStep = (stageClass: StageClass) => {
+      pendingCreativeStage = stageClass;
+      dateTimeStepOpen = true;
+      listDiv.classList.add('hidden');
+      tabBar.element.classList.add('hidden');
+      dateTimeDiv.classList.remove('hidden');
+    };
+
     document.body.appendChild(root);
 
     // 3D 場面は非同期に立ち上がる。選択が先に済んだ場合はでき次第そのまま破棄する。
@@ -410,13 +507,13 @@ export function selectStage(
       .catch(() => {});
 
     // 選択確定: 3D 場面と画面を片付けて Promise を解決する
-    const done = (stageClass: StageClass) => {
+    const done = (stageClass: StageClass, startSimTime?: number) => {
       window.removeEventListener('keydown', onKey);
       onClose?.();
       selected = true;
       scene?.dispose();
       root.remove();
-      resolve(stageClass);
+      resolve({ stageClass, startSimTime });
     };
     // 解放済みステージのショートカットキーにマッチしたら選択確定する。タブに関係なく効く。
     const onKey = (e: KeyboardEvent) => {
@@ -428,6 +525,7 @@ export function selectStage(
       // 設定/一時停止などのシステム窓が開いている間は、背後のステージ選択ショートカットを
       // 起動しない。ESC だけは上の分岐で現在の最前面窓へ配送する。
       if (document.body.classList.contains('hud-overlay-modal-open')) return;
+      if (dateTimeStepOpen) return;
       for (const stageClass of STAGE_CLASSES) {
         if (!(enabledByStage.get(stageClass.id) ?? false)) continue;
         if (!stageClass.selectKeys.includes(e.code)) continue;

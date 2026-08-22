@@ -122,6 +122,7 @@ export class Game {
     pipeline: RenderPipeline,
     earthSpinPhase0: number,
     initialSave?: GameSaveData,
+    initialSimTime?: number,
   ) {
     this.sections = sections;
     this._scene = gs.scene;
@@ -185,7 +186,7 @@ export class Game {
     this.combatHud = new CombatHudController(this._hud);
     this.mapHud = new MapHudController(this._hud);
 
-    this.simulator = new Simulator(this.entities, this.ephemeris, sections, initialSave?.simTime ?? 0);
+    this.simulator = new Simulator(this.entities, this.ephemeris, sections, initialSave?.simTime ?? initialSimTime ?? 0);
     this.predictor = new Predictor(this.entities, this.futureCelestialBodies);
 
     this.activeStage = new stageClass(
