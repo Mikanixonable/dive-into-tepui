@@ -1,5 +1,7 @@
 import * as assert from 'node:assert/strict';
-import { atmosphericMaxStep, simulationStepDuration } from '../../src/game/simulation/time-step';
+import {
+  atmosphericMaxStep, dragTakesFullAirspeed, simulationStepDuration,
+} from '../../src/game/simulation/time-step';
 import { test } from './harness';
 import { v3 } from '../../src/physics/vec3';
 import { kinematicState } from '../../src/physics/kinematic-state';
@@ -98,5 +100,47 @@ export function register(): void {
     // 縛っているのは境界までの猶予ではなく、いま浴びている抗力そのもの。
     const climbing = kinematicState(0, v3(1000, 0, 0), v3(100, 0, 0));
     assert.ok(atmosphericMaxStep(climbing, 1e-3, [body(UNIT_ATMOSPHERE)]) < 20);
+  });
+
+  test('time-step: 抵抗を受けない相手・大気の無い相手は、どんな刻みでも奪い切られない', () => {
+    const bodies = [body(UNIT_ATMOSPHERE)];
+    assert.equal(dragTakesFullAirspeed(descending(0), 0, bodies, 1e9), false, '抵抗を受けない');
+    assert.equal(dragTakesFullAirspeed(descending(0), 1, [body(null)], 1e9), false, '大気が無い');
+    assert.equal(dragTakesFullAirspeed(descending(0), 1, [], 1e9), false, '相手がいない');
+    assert.equal(dragTakesFullAirspeed(descending(0), 1, bodies, 0), false, '刻みが 0');
+  });
+
+  test('time-step: 刻みを広げるほど、奪い切られる高度は上がる', () => {
+    const bodies = [body(UNIT_ATMOSPHERE)];
+    // 境界高度を二分で求める。低いほど密度が高く、奪い切られやすい。
+    const boundary = (dt: number): number => {
+      let lo = 0;
+      let hi = 4000;
+      for (let i = 0; i < 60; i++) {
+        const mid = (lo + hi) / 2;
+        if (dragTakesFullAirspeed(descending(mid), 1e-3, bodies, dt)) lo = mid; else hi = mid;
+      }
+      return (lo + hi) / 2;
+    };
+    const wide = boundary(200);
+    const narrow = boundary(20);
+    assert.ok(narrow < wide, `刻み 20 の境界 ${narrow} が刻み 200 の境界 ${wide} より上`);
+    // 境界のすぐ外側では奪い切られない。
+    assert.equal(dragTakesFullAirspeed(descending(wide + 1), 1e-3, bodies, 200), false);
+    assert.equal(dragTakesFullAirspeed(descending(wide - 1), 1e-3, bodies, 200), true);
+  });
+
+  test('time-step: 奪い切りの判定は、沈み込みの上限に引きずられない', () => {
+    // atmosphericMaxStep は中間段の沈み込みでも刻みを縛るので、大気から遥かに離れていても
+    // 有限の値を返す。奪い切りの判定がその合成値を根拠にすると、空気の無いところの物体まで
+    // 巻き込んで消える。
+    const bodies = [body(UNIT_ATMOSPHERE)];
+    const farAbove = descending(3000); // スケールハイト 30 個ぶん上 = 密度は e^-30
+    assert.ok(
+      atmosphericMaxStep(farAbove, 1e-3, bodies) < 1e4,
+      '前提: 沈み込みの上限が有限の刻みを要求している');
+    assert.equal(
+      dragTakesFullAirspeed(farAbove, 1e-3, bodies, 1e4), false,
+      '空気が無いのに奪い切られている');
   });
 }

@@ -17,7 +17,7 @@ import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { buildPlayerShip } from '../../render/ships';
-import { CelestialBody, nearestAtmosphereBody } from '../../physics/celestial-body';
+import { CelestialBody } from '../../physics/celestial-body';
 import type { CameraSystem } from '../camera/camera-system';
 import type { MapVisibility } from '../celestial/map-visibility';
 import { generateRandomName } from '../random-name';
@@ -25,7 +25,8 @@ import type { Stage } from '../stages/stage';
 import { PlayerThrottle } from './player-throttle';
 import { PlayerFire, type AmmoLoad } from './player-fire';
 import { Belt } from './belt';
-import { ThermalSystem } from './thermal';
+import { AeroLoad } from './aero-load';
+import { AltitudeAlarm } from './altitude-alarm';
 import { currentThemePalette } from '../theme';
 import { EffectsSystem } from '../vfx/effects-system';
 import { ThrustEffects } from './thrust-effects';
@@ -37,7 +38,6 @@ import type { MarkerManager } from '../marker/marker-manager';
 import { RadiatorSide, RadiatorSystem } from './radiator';
 import { PowerSystem } from './power';
 import { Ephemeris } from '../../physics/ephemeris';
-import { sunlitFactor } from '../../physics/shadow';
 import { Plan } from '../plan/plan';
 import type { PlayerSaveData, PlanSaveData } from '../save-data';
 import { partFromSaveData, type AnyPart } from '../game-entity/parts';
@@ -66,7 +66,8 @@ export class Player extends Ship {
   readonly throttle: PlayerThrottle;
   readonly fire: PlayerFire;
   readonly belt: Belt;
-  readonly thermal: ThermalSystem;
+  readonly aero: AeroLoad;
+  readonly altitudeAlarm: AltitudeAlarm;
   readonly radiator: RadiatorSystem;
   readonly power: PowerSystem;
 
@@ -113,7 +114,9 @@ export class Player extends Ship {
     this.throttle = new PlayerThrottle(_hud, saved?.throttle);
     this.fire = new PlayerFire(this, _hud, _worldSfx, _scene, _fx, 'saved' in init ? { saved: init.saved.fire } : { ammo: init.ammo });
     this.belt = new Belt(this.renderObject, this);
-    this.thermal = new ThermalSystem(_hud, _worldSfx, saved?.thermal);
+    this.aero = new AeroLoad();
+    this.altitudeAlarm = new AltitudeAlarm(_hud, _worldSfx);
+    this.temperature = saved?.thermal.hullTemp ?? C.HULL_START_TEMP;
     this.radiator = new RadiatorSystem(this.renderObject, this, saved?.radiator);
     this.power = new PowerSystem(this.renderObject, saved?.power);
     this.thrustEffects = new ThrustEffects(_scene, _worldSfx);
@@ -226,20 +229,26 @@ export class Player extends Ship {
     this.hpRegen(dt);
   }
 
-  // bodies はこの区間の天体窓で、恒星の取り出しと日照率の遮蔽体に使う。
-  override stepEnvironment(dt: number, ephemeris: Ephemeris, simTime: number, bodies: readonly CelestialBody[]): void {
+  protected override stepEnvironment(
+    dt: number, atmosphereBody: CelestialBody | null, sunlit: number, sunDir: Vec3,
+  ): void {
     if (!this.alive) return;
     this.radiator.update(dt, this.radiatorWear());
-    const sunDir = ephemeris.sunDirFrom(this.state.r, simTime);
-    const star = bodies.find((a) => a.id === ephemeris.starId);
-    const sunlit = star ? sunlitFactor(this.state.r, star, bodies) : 1;
-    this.thermal.setRadiatorLoad(
-      this.radiator.radiatingArea(this.totalCoolingRate),
-      this.radiator.solarLoad(sunlit, sunDir, this.att, this.totalCoolingRate),
-    );
+    this.aero.update(this.state.r, this.state.v, atmosphereBody);
+    this.altitudeAlarm.update(dt, this.state.r, atmosphereBody);
     this.power.update(dt, sunlit, sunDir, this.att, this);
-    this.thermal.updateThermal(
-      dt, this.state.r, this.state.v, nearestAtmosphereBody(this.state.r, bodies), this);
+  }
+
+  // 艦体自体の放熱面積に、展開した放熱板のぶんを上乗せする。
+  protected override get radiatingAreaPerMass(): number {
+    return C.SHIP_RADIATING_AREA_PER_MASS
+      + this.radiator.radiatingArea(this.totalCoolingRate) / C.PLAYER_MASS;
+  }
+
+  // 艦体の断面積に、展開した放熱板の日照面を上乗せする。
+  protected override solarAbsorbAreaPerMass(sunDir: Vec3): number {
+    return super.solarAbsorbAreaPerMass(sunDir)
+      + this.radiator.solarAbsorbArea(sunDir, this.att, this.totalCoolingRate) / C.PLAYER_MASS;
   }
 
   // 操作できない間、次のフレームへ持ち越してはならない連続指令を畳む。
@@ -294,7 +303,7 @@ export class Player extends Ship {
   // 被弾によるダメージ・致死判定。side を指定するとその放熱板パーツへ、無指定なら
   // 無作為なパーツへダメージが入る。
   private attackedByBullet(bullet: Bullet, impactPoint: Vec3, activeStage: Stage, side: RadiatorSide | null = null): void {
-    this.thermal.addImpactHeat();
+    this.absorbHeat(C.BULLET_IMPACT_HEAT / C.PLAYER_MASS);
     const damagedPart = side === null ? undefined : this.radiatorParts[side === 'up' ? 0 : 1];
     this.applyDamageToParts(side === null ? bullet.damage : C.RADIATOR_BULLET_DAMAGE, damagedPart);
     if (side !== null && damagedPart && damagedPart.hp <= 0) this.radiatorBreakEffect(side);
@@ -367,23 +376,28 @@ export class Player extends Ship {
     return this.radiator.collisionFolds(this.state.r, this.state.v, this.att, simTime);
   }
 
-  // 熱防御の飽和・熱機能不全・空力破壊・天体の地表到達の判定(自然死)。大気による焼失は
-  // 熱・動圧の物理モデルだけが判定する — 自機は外殻温度と動圧を積分しているので、それより
-  // 粗い高度・密度の近似を重ねる理由がない。
+  // 動圧が構造限界を超えたことによる喪失。熱による焼失は burnUp が、天体の地表への到達は
+  // collideWithCelestialBody が扱う。
   checkLoss(
-    dt: number, _simTime: number, activeStage: Stage, _playerPos: Vec3,
-    atmosphereBodies: readonly CelestialBody[],
+    _dt: number, _simTime: number, activeStage: Stage, _playerPos: Vec3,
+    _atmosphereBodies: readonly CelestialBody[],
   ): void {
     if (!this.alive) return;
-    const limit = this.thermal.updateAltitudeAlarm(
-      dt, this.state.r, nearestAtmosphereBody(this.state.r, atmosphereBodies));
+    if (!this.aero.overStructuralLimit) return;
+    this.lose('動圧が構造限界を超え、機体は空力的に分解した', activeStage);
+  }
 
-    let reason: string | null = null;
-    if (limit === 'heat-aero') reason = '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した';
-    else if (limit === 'heat-internal') reason = '排熱が追いつかず、機体は熱で機能不全に陥った';
-    else if (limit === 'dynpressure') reason = '動圧が構造限界を超え、機体は空力的に分解した';
-    if (reason === null) return;
+  // 外殻の温度が上限を超えたときの喪失。理由は、そこで空力加熱が効いていたかで分ける。
+  protected override burnUp(activeStage: Stage): void {
+    this.lose(
+      this.aero.heatingAerodynamically
+        ? '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した'
+        : '排熱が追いつかず、機体は熱で機能不全に陥った',
+      activeStage);
+  }
 
+  // 喪失の共通処理。理由の文言だけが呼び出し側ごとに違う。
+  private lose(reason: string, activeStage: Stage): void {
     this.alive = false;
     this.destroyEffect();
     activeStage.recordPlayerLost(reason);
@@ -457,7 +471,7 @@ export class Player extends Ship {
     const maxAccel = this.mass > 0 ? this.totalThrust / this.mass : 0;
     this.thrustEffects.sync(fo, effectState.r, this.thrust, maxAccel, effectVisible, isActive, camera);
     this.rcsEffects.sync(fo, effectState.r, this.torque, this.att, effectVisible, camera, isActive);
-    this.reentryEffects.sync(fo, effectState.r, effectState.v, this.thermal.qdyn, effectVisible, camera);
+    this.reentryEffects.sync(fo, effectState.r, effectState.v, this.aero.qdyn, effectVisible, camera);
     this.belt.sync();
     this.radiator.sync();
     this.power.sync();
@@ -523,7 +537,7 @@ export class Player extends Ship {
       q: { ...this.att.q },
       w: { ...this.att.w },
       fire: this.fire.serialize(),
-      thermal: this.thermal.serialize(),
+      thermal: { hullTemp: this.temperature },
       radiator: this.radiator.serialize(),
       power: this.power.serialize(),
       throttle: this.throttle.serialize(),
