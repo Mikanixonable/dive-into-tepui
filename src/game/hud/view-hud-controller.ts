@@ -21,6 +21,7 @@ export class MapHudController {
   public constructor(private readonly hud: Hud) {}
 
   public sync(game: Game, celestialBodies: readonly CelestialBody[]): void {
+    this.hud.simulationStatusBar.sync(game);
     this.hud.mapScaleBadge.sync(game);
     this.hud.syncOrbitAnalysis(game, celestialBodies);
   }
