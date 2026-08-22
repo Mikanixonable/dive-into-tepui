@@ -25,6 +25,35 @@ export type ReferenceFrame = {
   readonly rotatingWith: OrbitingId | null;
 };
 
+// 参照フレームの基準・回転対象を役割で指す予約 id。天体 id は小文字 ASCII と '-'/':' しか
+// 使わないので、'@' で始まる id が天体と衝突することはない。
+export type FrameRole = 'activeShip' | 'navTarget';
+
+// 参照フレームの基準(原点)に置けるもの。登録天体・生存中の重力天体・機体の id か、役割トークン。
+export type FrameAnchorId = CelestialBodyId | `@${FrameRole}`;
+
+// 何の回転に合わせて座標系を回すか。
+export type FrameRotationSource =
+  | { readonly kind: 'revolution'; readonly id: FrameAnchorId }  // 主天体まわりの公転
+  | { readonly kind: 'spin'; readonly id: CelestialBodyId };     // 自転(天体のみ)
+
+// 役割トークンの全種。UI の選択肢生成と frameRoleOf の検証がここを唯一の出所にする。
+export const FRAME_ROLES: readonly FrameRole[] = ['activeShip', 'navTarget'];
+
+// id が役割トークンかどうかを判定し、そうであれば役割を取り出す。天体 id なら null。
+// '@' で始まっていても未知の役割なら null を返す — セーブデータなど外から来た文字列を
+// 無検証で FrameRole として扱うと、解決できない役割が静かに座標系へ入り込む。
+export function frameRoleOf(id: FrameAnchorId): FrameRole | null {
+  const role = id.startsWith('@') ? id.slice(1) : null;
+  return role !== null && FRAME_ROLES.includes(role as FrameRole) ? role as FrameRole : null;
+}
+
+// frameOf のキャッシュキー。同じ選択には必ず同じ文字列を返す(参照同一性の維持に使う)。
+export function rotationSourceKey(rotatingWith: FrameRotationSource | null): string {
+  if (rotatingWith === null) return '';
+  return rotatingWith.kind === 'spin' ? `spin:${rotatingWith.id}` : rotatingWith.id;
+}
+
 // Frame の時刻 t における剛体運動。origin/originVel は ECI での原点の位置・速度、
 // q は「座標系相対 → ECI」の姿勢、omega は ECI 成分の角速度。回転軸が時刻とともに向きを
 // 変える系(月回転系など)もあるため、軸と回転角の対ではなくこの対で扱う。
