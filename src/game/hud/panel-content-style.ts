@@ -56,7 +56,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-enemies .erow { display: flex; justify-content: space-between; gap: var(--space-4); color: var(--text-dim); }
 #hud-enemies .erow.tgt { color: var(--accent); }
 
-#hud .hud-rail > #hud-shipplacer { max-height: none; overflow: visible; }
+#hud .hud-rail > #hud-object-placer { max-height: none; overflow: visible; }
 #hud .hud-rail > #hud-plan { width: 100%; min-width: 0; max-width: none; max-height: none; overflow: visible; }
 /* MANEUVER PLAN はマップ操作の主パネルとして右レールの最上段に固定する。 */
 #hud .hud-rail-right > #hud-plan {
@@ -197,22 +197,22 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud .hud-frame-controls .camera-angle-group .w-select { flex: 1 1 auto; min-width: 80px; }
 #hud-creative-options { width: 100%; pointer-events: auto; }
 /* 物体配置パネル(クリエイティブモード限定): MANEUVER PLAN の下、右上に縦積みする。 */
-#hud-shipplacer { width: 100%; pointer-events: auto; max-height: 70vh; max-height: 70dvh; overflow-y: auto; }
+#hud-object-placer { width: 100%; pointer-events: auto; max-height: 70vh; max-height: 70dvh; overflow-y: auto; }
 #hud-object-placer .w-close { border-radius: 50%; }
-#hud-shipplacer .shipplacer-btn-row { display: flex; gap: var(--space-4); margin-top: var(--space-5); }
-#hud-shipplacer .slider-field { margin-bottom: var(--space-4); }
-#hud-shipplacer .slider-field .w-group { flex-wrap: nowrap; margin-bottom: 0; }
-#hud-shipplacer .slider-field .slider-col { flex: 1 1 60px; min-width: 60px; }
-#hud-shipplacer .slider-field input[type="range"] { width: 100%; pointer-events: auto; accent-color: var(--accent); }
-#hud-shipplacer .slider-field .slider-ticks { display: flex; justify-content: space-between; margin-top: var(--space-1); }
-#hud-shipplacer .slider-field .slider-ticks span { flex: 0 1 auto; min-width: 0; font-size: calc(var(--font-xxs) * 0.82); color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#hud-shipplacer .slider-field .slider-ticks span:first-child { text-align: left; }
-#hud-shipplacer .slider-field .slider-ticks span:last-child { text-align: right; }
-#hud-shipplacer input[type="text"] { flex: 1; width: auto; }
-#hud-shipplacer .preset-row { flex-wrap: wrap; gap: var(--space-3); }
-#hud-shipplacer .field-issue { border: 1px solid var(--danger); border-radius: var(--radius-s); padding: var(--space-1) var(--space-2); }
-#hud-shipplacer .issue-list { margin: var(--space-4) 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--danger); border-radius: var(--radius-s); background: var(--danger-fill); }
-#hud-shipplacer .issue-list .issue-line { font-size: var(--font-s); color: var(--danger); }
+#hud-object-placer .shipplacer-btn-row { display: flex; gap: var(--space-4); margin-top: var(--space-5); }
+#hud-object-placer .slider-field { margin-bottom: var(--space-4); }
+#hud-object-placer .slider-field .w-group { flex-wrap: nowrap; margin-bottom: 0; }
+#hud-object-placer .slider-field .slider-col { flex: 1 1 60px; min-width: 60px; }
+#hud-object-placer .slider-field input[type="range"] { width: 100%; pointer-events: auto; accent-color: var(--accent); }
+#hud-object-placer .slider-field .slider-ticks { display: flex; justify-content: space-between; margin-top: var(--space-1); }
+#hud-object-placer .slider-field .slider-ticks span { flex: 0 1 auto; min-width: 0; font-size: calc(var(--font-xxs) * 0.82); color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#hud-object-placer .slider-field .slider-ticks span:first-child { text-align: left; }
+#hud-object-placer .slider-field .slider-ticks span:last-child { text-align: right; }
+#hud-object-placer input[type="text"] { flex: 1; width: auto; }
+#hud-object-placer .preset-row { flex-wrap: wrap; gap: var(--space-3); }
+#hud-object-placer .field-issue { border: 1px solid var(--danger); border-radius: var(--radius-s); padding: var(--space-1) var(--space-2); }
+#hud-object-placer .issue-list { margin: var(--space-4) 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--danger); border-radius: var(--radius-s); background: var(--danger-fill); }
+#hud-object-placer .issue-list .issue-line { font-size: var(--font-s); color: var(--danger); }
 #navball { top: 12px; left: 12px; width: 190px; pointer-events: auto; }
 #navball .nb-ball { display: block; width: 100%; height: auto; margin: var(--space-2) 0 var(--space-4); }
 #navball .nb-rim { fill: var(--fill-1); stroke: var(--edge); stroke-width: 1; }
