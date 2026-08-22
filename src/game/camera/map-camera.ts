@@ -5,7 +5,7 @@ import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { MouseDelta } from '../input/input';
 import { metersPerPixelAtDepth, ProjectionMode, Viewpoint } from '../../physics/projection';
-import { FrameAnchorSource, ReferenceFrame, FrameDir, FrameRotationSource, frameDir, framePoint, toFrameDir, toInertialDir, toInertialPoint } from '../../physics/frame';
+import { FrameAnchorSource, ReferenceFrame, FrameDir, FrameRotationSource, frameDir, framePoint, frameRoleOf, toFrameDir, toInertialDir, toInertialPoint } from '../../physics/frame';
 import { bodyAnchorSource, strongestAttractor } from '../../physics/celestial-body';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Quat, qFromAxisAngle, qFromForwardUp, qMul, qNormalize, qRotate } from '../../physics/attitude';
@@ -408,6 +408,16 @@ export class MapCamera {
       this.missingFocusFrames = 0;
       this.lastResolvedFocus = this.ephemeris.positionOf(focus.id, displayTime);
       return this.lastResolvedFocus;
+    }
+    // 役割トークンは被選択物の一覧に並ばない(特定の対象を名指ししないため)ので、
+    // 解決役へ直接問う。解決できないフレームの扱いは天体・機体と同じ猶予に乗せる。
+    if (frameRoleOf(focus.id) !== null) {
+      const state = frameAnchors.stateOf(focus.id, displayTime);
+      if (state !== null) {
+        this.missingFocusFrames = 0;
+        this.lastResolvedFocus = state.r;
+        return state.r;
+      }
     }
     const candidate = candidates.find((c) => c.id === focus.id);
     if (candidate) {

@@ -14,7 +14,7 @@ import { isPositionInFocusedSystem } from '../celestial/body-visibility';
 import { findNearestPlanet } from '../celestial/planet-distance';
 import type { MapVisibility } from '../celestial/map-visibility';
 import { isOccluded } from '../../physics/occlusion';
-import type { ReferenceFrame } from '../../physics/frame';
+import type { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 
 import type { Ship } from '../game-entity/ship';
@@ -38,6 +38,7 @@ export class PlayerMarkers {
     name: string, rounds = 0, _reloadTimer = 0, beltLinks = 0, muzzleSpeed = 0, focusId?: string,
     registry?: CelestialRegistry, celestialBodies: readonly CelestialBody[] = [], visibility: MapVisibility | null = null,
     frame?: ReferenceFrame, displayTime?: number, ephemeris?: Ephemeris, orbitRef?: OrbitReference,
+    frameAnchors?: FrameAnchorSource,
   ): void {
     const selfKey = `self-${this.id}`;
     const nearbyLabelKey = `${selfKey}-planet-label`;
@@ -73,7 +74,7 @@ export class PlayerMarkers {
           this.markerManager.hide(nearbyLabelKey);
           const shipOccluded = isOccluded(cameraPos, displayState.r, celestialBodies);
           if (fadedOpacity > 0 && !shipOccluded) {
-            const rotationDeg = this.markerManager.headingRotationDeg(displayState.r, displayState.v, project, scaleFn, celestialBodies, frame, displayTime, ephemeris);
+            const rotationDeg = this.markerManager.headingRotationDeg(displayState.r, displayState.v, project, scaleFn, celestialBodies, frame, displayTime, ephemeris, frameAnchors);
             const sym = visibility?.icon === false ? '' : (overviewMode && this.owner ? this.owner.headingHpMarkerSvg() : (this.owner ? this.owner.hpMarkerSvg() : ENTITY_GLYPH.ship));
             const symMarkup = overviewMode && !!this.owner;
             this.markerManager.setPosition(

@@ -1,10 +1,10 @@
 // マップモードの「軌道フレーム」パネル。計画折れ線・予測軌道線の描画基準(中心天体・回転系)とカメラ追随設定を担当する。
 import type { Ephemeris } from '../../physics/ephemeris';
-import type { FrameRotationSource } from '../../physics/frame';
+import { FrameRole, frameRoleOf } from '../../physics/frame';
 import { AnchorZone } from './anchor-zone';
 import { RotationZone } from './rotation-zone';
 import { ToggleSwitch } from './widgets';
-import { celestialBodyName } from './frame-labels';
+import { celestialBodyName, frameRoleName, rotationSourceLabel } from './frame-labels';
 import { hudRail } from './hud-root';
 import type { MapPickable } from '../map-pickable';
 import type { DisplayWindowManager } from '../display-window-manager';
@@ -67,23 +67,24 @@ export class TrajectoryFramePanel {
   }
 
   private orbitSummaryText(): string {
-    const planCenter = celestialBodyName(this.displayWindow.frame.center);
+    const centerId = this.displayWindow.frame.center;
+    const centerRole = frameRoleOf(centerId);
+    const planCenter = centerRole !== null ? frameRoleName(centerRole) : celestialBodyName(centerId);
     const planRot = this.displayWindow.frame.rotatingWith;
-    const rotText = (source: FrameRotationSource | null): string => {
-      if (source === null) return '慣性系';
-      return source.kind === 'spin' ? `${celestialBodyName(source.id)}自転系` : `${celestialBodyName(source.id)}回転系`;
-    };
-    return `基準: ${planCenter}・${rotText(planRot)}`;
+    return `基準: ${planCenter}・${rotationSourceLabel(planRot)}`;
   }
 
-  public sync(pickables: readonly MapPickable[], members: readonly string[], isVisible: boolean): void {
+  public sync(
+    pickables: readonly MapPickable[], members: readonly string[], displayTime: number,
+    validRoles: readonly FrameRole[], isVisible: boolean,
+  ): void {
     this.panel.classList.toggle('hidden', !isVisible);
     if (!isVisible) return;
 
     this.planCenterZone.setItems(pickables);
     this.planCenterZone.setNearby(members, pickables);
     this.planCenterZone.setSelected(this.displayWindow.frame.center);
-    this.planRotationZone.setNearby(members);
+    this.planRotationZone.setNearby(members, displayTime, validRoles);
     this.planRotationZone.setSelected(this.displayWindow.frame.rotatingWith);
 
     this.followToggle.setOn(this.followCamera);

@@ -38,6 +38,7 @@ import type { MarkerManager } from '../marker/marker-manager';
 import { RadiatorSide, RadiatorSystem } from './radiator';
 import { PowerSystem } from './power';
 import { Ephemeris } from '../../physics/ephemeris';
+import type { FrameAnchorSource } from '../../physics/frame';
 import { sunlitFactor } from '../../physics/shadow';
 import { Plan } from '../plan/plan';
 import type { PlayerSaveData, PlanSaveData } from '../save-data';
@@ -443,6 +444,7 @@ export class Player extends Ship {
     visibility: MapVisibility | null = null,
     displayWindow?: DisplayWindow,
     orbitRef?: OrbitReference,
+    frameAnchors?: FrameAnchorSource,
   ): void {
     // メッシュ本体の位置・姿勢
     const displayState = this.displayState(displayTime);
@@ -466,7 +468,7 @@ export class Player extends Ship {
     this.radiator.sync();
     this.power.sync();
     // マーカー。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
-    this.markers.sync(this.state, displayState, this.att, camera.overviewMode, isActive, camera.activeCameraPos, camera.activeCameraProjection, camera.activeCameraScale, this.name, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.mapCamera.focus), ephemeris.registry, celestialBodies, visibility, displayWindow?.frame, displayTime, ephemeris, orbitRef);
+    this.markers.sync(this.state, displayState, this.att, camera.overviewMode, isActive, camera.activeCameraPos, camera.activeCameraProjection, camera.activeCameraScale, this.name, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.mapCamera.focus), ephemeris.registry, celestialBodies, visibility, displayWindow?.frame, displayTime, ephemeris, orbitRef, frameAnchors);
   }
 
   // 艦は任意のタイミングで削除されうるので、Player が所有する線・ビルボード・HUD も一度だけ解放する。

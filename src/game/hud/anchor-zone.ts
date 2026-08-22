@@ -3,11 +3,20 @@
 // 系の天体だけに絞ったクイックボタン(SegmentedControl)。
 import { CelestialBodyId } from '../../physics/celestial-body';
 import { Ephemeris } from '../../physics/ephemeris';
+import { FRAME_ROLES } from '../../physics/frame';
 import type { MapPickable } from '../map-pickable';
 import { SegmentedControl } from './widgets';
+import { frameRoleAnchorId, frameRoleName } from './frame-labels';
 import { groupPickables, LAGRANGE_ID, lagrangeParentId } from './object-groups';
 import { ObjectPicker, ObjectPickerGroup } from './object-picker';
 import type { OverlayManager } from './overlay-manager';
+
+// プルダウン先頭に置く役割グループ。役割は毎フレーム対象へ解決されるので、乗り換え・付け替えを
+// またいで選択が保たれる(MAP.md 3節)。
+const ROLE_GROUP: ObjectPickerGroup<string | null> = {
+  label: '役割',
+  items: FRAME_ROLES.map((role) => [frameRoleAnchorId(role), frameRoleName(role)] as const),
+};
 
 const STYLE = `
 #hud .hud-anchor-zone { display: flex; flex-direction: column; gap: var(--space-2); }
@@ -55,6 +64,7 @@ export class AnchorZone {
   setItems(pickables: readonly MapPickable[]): void {
     const groups: ObjectPickerGroup<string | null>[] = [
       ...(this.releaseLabel !== null ? [{ label: '', items: [[null, this.releaseLabel] as const] }] : []),
+      ROLE_GROUP,
       ...groupPickables(this.ephemeris.registry, pickables),
     ];
     this.picker.setGroups(groups);

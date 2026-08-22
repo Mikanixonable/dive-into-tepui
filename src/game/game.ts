@@ -151,11 +151,6 @@ export class Game {
       initialSave?.camera,
     );
     this.simSpeedManager = new SimSpeedManager(this._hud, this._uiSfx);
-    this.frameControls = new FrameControls(
-      this._hud.mapRoot, this._hud.layers.popup, this.ephemeris, this.cameraSystem.mapCamera,
-      this.displayWindowManager, this._hud.overlayManager,
-    );
-
     this.navTarget = new NavTarget(this._hud, this.markerManager);
     // 参照フレームの基準・回転対象が機体・役割トークンを指すときの解決役。update()/sync() の
     // 先頭で毎フレーム celestialBodies を差し込み、以降のフレーム変換の呼び出しはこれを渡す。
@@ -164,6 +159,10 @@ export class Game {
       activeShipState: () => this.activeControllableEntity?.state ?? null,
       navTargetState: (bodies, t) => this.navTarget.resolveState(this.entities, this.ephemeris, bodies, t)?.state ?? null,
     });
+    this.frameControls = new FrameControls(
+      this._hud.mapRoot, this._hud.layers.popup, this.ephemeris, this.cameraSystem.mapCamera,
+      this.displayWindowManager, this._hud.overlayManager, this.frameAnchors,
+    );
     this.targeter = new Targeter(this.markerManager, this.navTarget, this.entities);
     this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
     this._environment = new EnvironmentScene(this._scene, this.ephemeris, graphics, pipeline.sunLight, earthSpinPhase0);
@@ -501,6 +500,7 @@ export class Game {
       : undefined;
     this.entities.syncPlayers(
       player, fo, this.cameraSystem, displayTime, this.ephemeris, displayCelestialBodies, visibilityPolicy, displayWindow, orbitRef,
+      this.frameAnchors,
     );
     this.entities.syncBases(
       this.controlledBase, fo, this.cameraSystem, displayTime, visibilityPolicy,
@@ -527,7 +527,7 @@ export class Game {
     if (this.viewManager.isMapView) {
       this.displayWindowManager.sync(player);
       this.frameControls.sync(
-        this.mapPickables.pickables, this.cameraSystem.activeCameraPos, celestialBodies, simTime, overviewMode,
+        this.mapPickables.pickables, this.cameraSystem.activeCameraPos, celestialBodies, simTime, displayTime, overviewMode,
       );
     }
     // マップの常設一覧はマップ時だけ更新するが、戦闘中に開いたプロパティウィンドウは
