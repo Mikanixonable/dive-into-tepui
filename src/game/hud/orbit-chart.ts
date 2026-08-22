@@ -1,5 +1,5 @@
 // 折れ線グラフの描き手。渡された点列と軸をそのまま canvas 2D へ描く。何をプロットするかは知らない。
-import { ACCENT, ACCENT_SOFT, EDGE, FONT_FAMILY, FONT_XXS, TEXT_DIM, TEXT_MUTED } from '../theme';
+import { ACCENT, ACCENT_SOFT, EDGE, FONT_FAMILY, FONT_XXS, TEXT_DIM, TEXT_MUTED, TEXT_STRONG } from '../theme';
 import { fmtDist, fmtDuration } from './utils';
 import { chooseTickInterval } from './tick-scale';
 
@@ -20,13 +20,19 @@ export interface ChartAxis {
   readonly caption: string;
 }
 
+export interface ChartMark {
+  readonly point: ChartPoint;
+  // 'current' = 現在地点(塗り丸)。'target' = ターゲット位置(縁だけの丸)。
+  readonly style: 'current' | 'target';
+}
+
 export interface ChartSpec {
   // null は「ここで線が切れる」印。折り返しをまたぐ点のように、繋ぐと実在しない線になる
   // 隣り合わせを分割する。
   readonly points: readonly (ChartPoint | null)[];
   readonly x: ChartAxis;
   readonly y: ChartAxis;
-  readonly mark: ChartPoint | null;
+  readonly marks: readonly ChartMark[];
   readonly emptyMessage?: string;
 }
 
@@ -118,7 +124,7 @@ export class OrbitChart {
     ctx.rect(plotLeft, plotTop, plotWidth, plotHeight);
     ctx.clip();
     this.drawLine(spec, plotLeft, plotTop, plotWidth, plotHeight);
-    if (spec.mark) this.drawMark(spec.mark, spec, plotLeft, plotTop, plotWidth, plotHeight);
+    for (const mark of spec.marks) this.drawMark(mark, spec, plotLeft, plotTop, plotWidth, plotHeight);
     ctx.restore();
   }
 
@@ -208,7 +214,7 @@ export class OrbitChart {
   }
 
   private drawMark(
-    mark: ChartPoint,
+    mark: ChartMark,
     spec: ChartSpec,
     plotLeft: number,
     plotTop: number,
@@ -216,13 +222,17 @@ export class OrbitChart {
     plotHeight: number,
   ): void {
     const ctx = this.ctx;
-    const px = scaleValue(mark.x, spec.x.min, spec.x.max, plotLeft, plotWidth, false);
-    const py = scaleValue(mark.y, spec.y.min, spec.y.max, plotTop, plotHeight, true);
-    ctx.fillStyle = ACCENT_SOFT;
+    const px = scaleValue(mark.point.x, spec.x.min, spec.x.max, plotLeft, plotWidth, false);
+    const py = scaleValue(mark.point.y, spec.y.min, spec.y.max, plotTop, plotHeight, true);
     ctx.beginPath();
     ctx.arc(px, py, MARK_RADIUS, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = ACCENT;
+    if (mark.style === 'current') {
+      ctx.fillStyle = ACCENT_SOFT;
+      ctx.fill();
+      ctx.strokeStyle = ACCENT;
+    } else {
+      ctx.strokeStyle = TEXT_STRONG;
+    }
     ctx.lineWidth = MARK_RING_WIDTH;
     ctx.stroke();
   }
