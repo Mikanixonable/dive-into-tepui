@@ -336,6 +336,13 @@ export const FOCUS_LABEL_DEPTH_GUARD_RATIO = 3;
 // 値だとしきい値ちょうどで距離比が揺れたときに毎フレーム表示・非表示が反転する
 // (周期が数時間の衛星どうしなど、タイムワープ中に距離比が急変する組で顕著)。
 export const FOCUS_LABEL_DEPTH_GUARD_EXIT_RATIO = 2;
+// 位置の点(アイコン)側の混雑判定。名前(FOCUS_LABEL_PRIORITY_PX)より小さい値にし、名前だけが
+// 間引かれて点は残る距離帯を作る。
+export const FOCUS_ICON_PRIORITY_PX = 16;
+// アイコン側の奥行きガード。名前側と同じ距離比を使うが、混雑判定の半径が小さいぶん実際に
+// アイコンが隠れるのは名前より近接した場合に限られる。
+export const FOCUS_ICON_DEPTH_GUARD_RATIO = 3;
+export const FOCUS_ICON_DEPTH_GUARD_EXIT_RATIO = 2;
 
 // マーカーラベル優先度 (数値が大きいものが優先。天体 > 船・エンティティ)
 export const MARKER_PRIORITY = {

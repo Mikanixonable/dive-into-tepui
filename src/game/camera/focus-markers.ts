@@ -10,7 +10,11 @@ import { occlusionOpacity } from '../../physics/occlusion';
 import { BodyClassToggles, NearbySystemTracker } from '../celestial/body-visibility';
 import { bodyClassOf } from '../celestial/body-class';
 import { MapVisibilityPolicy } from '../celestial/map-visibility';
-import { FOCUS_LABEL_DEPTH_GUARD_EXIT_RATIO, FOCUS_LABEL_DEPTH_GUARD_RATIO, FOCUS_LABEL_PRIORITY_PX, LAGRANGE_MIN_CLEARANCE_RATIO, MARKER_PRIORITY } from '../const';
+import {
+  FOCUS_ICON_DEPTH_GUARD_EXIT_RATIO, FOCUS_ICON_DEPTH_GUARD_RATIO, FOCUS_ICON_PRIORITY_PX,
+  FOCUS_LABEL_DEPTH_GUARD_EXIT_RATIO, FOCUS_LABEL_DEPTH_GUARD_RATIO, FOCUS_LABEL_PRIORITY_PX,
+  LAGRANGE_MIN_CLEARANCE_RATIO, MARKER_PRIORITY,
+} from '../const';
 import type { MapPickable } from '../map-pickable';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 import type { GroupedMarkers, GroupedMarkerItem } from '../marker/grouped-markers';
@@ -81,6 +85,90 @@ const LABEL_PRIORITY: Record<'star' | 'planet' | 'dwarf' | 'satellite' | 'smallB
   lagrange: MARKER_PRIORITY.LAGRANGE,
 };
 
+// 画面上で近接する2つの投影済みラベルのうち、優先度または奥行きガードで隠す側を選ぶ一様グリッド。
+// 名前用・アイコン用でそれぞれ1インスタンスを持ち、混雑半径と距離比ヒステリシスの状態を分離する。
+class CrowdingGrid {
+  private readonly cellsScratch = new Map<number, Map<number, ProjectedFocusLabel[]>>();
+  private readonly cellPool: ProjectedFocusLabel[][] = [];
+  private readonly cellRowPool: Map<number, ProjectedFocusLabel[]>[] = [];
+  private readonly hiddenScratchA = new Set<string>();
+  private readonly hiddenScratchB = new Set<string>();
+  private hiddenLastFrame: ReadonlySet<string> = new Set();
+
+  constructor(
+    private readonly cellSizePx: number,
+    private readonly depthGuardRatio: number,
+    private readonly depthGuardExitRatio: number,
+  ) {}
+
+  // items 内で cellSizePx 未満に近接するペアごとに、距離比(depth-guard)→優先度→深さ→id の順で
+  // 隠す側を決め、隠す id の集合を返す。返した集合は次回呼び出しまで有効(内部でダブルバッファ)。
+  compute(items: readonly ProjectedFocusLabel[]): ReadonlySet<string> {
+    const hidden = this.hiddenLastFrame === this.hiddenScratchA ? this.hiddenScratchB : this.hiddenScratchA;
+    hidden.clear();
+    for (const row of this.cellsScratch.values()) {
+      for (const cell of row.values()) {
+        cell.length = 0;
+        this.cellPool.push(cell);
+      }
+      row.clear();
+      this.cellRowPool.push(row);
+    }
+    this.cellsScratch.clear();
+    const cells = this.cellsScratch;
+    // 一様グリッドで近傍セルだけを比較する。ラベル数が増えても O(N²) で全画面を走査しない。
+    for (const current of items) {
+      const cx = Math.floor(current.x / this.cellSizePx);
+      const cy = Math.floor(current.y / this.cellSizePx);
+      for (let x = cx - 1; x <= cx + 1; x++) {
+        const row = cells.get(x);
+        if (row === undefined) continue;
+        for (let y = cy - 1; y <= cy + 1; y++) {
+          const cell = row.get(y);
+          if (cell === undefined) continue;
+          for (const other of cell) {
+            if (Math.hypot(current.x - other.x, current.y - other.y) >= this.cellSizePx) continue;
+            const currentRatio = this.hiddenLastFrame.has(current.label.id) ? this.depthGuardExitRatio : this.depthGuardRatio;
+            const otherRatio = this.hiddenLastFrame.has(other.label.id) ? this.depthGuardExitRatio : this.depthGuardRatio;
+            if (current.dist > other.dist * currentRatio) {
+              hidden.add(current.label.id);
+            } else if (other.dist > current.dist * otherRatio) {
+              hidden.add(other.label.id);
+            } else if (current.label.labelPriority > other.label.labelPriority) {
+              hidden.add(other.label.id);
+            } else if (other.label.labelPriority > current.label.labelPriority) {
+              hidden.add(current.label.id);
+            } else if (current.label.depth > other.label.depth) {
+              // 優先度が等しい場合の決定論的タイブレーク(格子順に依存せずチラつきを防ぐ)
+              hidden.add(current.label.id);
+            } else if (other.label.depth > current.label.depth) {
+              hidden.add(other.label.id);
+            } else if (current.label.id > other.label.id) {
+              hidden.add(current.label.id);
+            } else {
+              hidden.add(other.label.id);
+            }
+          }
+        }
+      }
+      let row = cells.get(cx);
+      if (row === undefined) {
+        row = this.cellRowPool.pop() ?? new Map<number, ProjectedFocusLabel[]>();
+        cells.set(cx, row);
+      }
+      const cell = row.get(cy);
+      if (cell) cell.push(current);
+      else {
+        const nextCell = this.cellPool.pop() ?? [];
+        nextCell.push(current);
+        row.set(cy, nextCell);
+      }
+    }
+    this.hiddenLastFrame = hidden;
+    return hidden;
+  }
+}
+
 export class FocusMarkers {
   // 天体本体1つにつき1ラベル、ラグランジュ点が力学的に意味を持つ天体にはさらに L1〜L5 の
   // うち成立する点ぶんのラベルが並ぶ(表示名は「中心天体名-自分の名 Ln」)。
@@ -102,20 +190,12 @@ export class FocusMarkers {
   private cachedBodyPickablesTime: number | null = null;
   private cachedBodyPickablesPolicy: MapVisibilityPolicy | null = null;
   private readonly frameScratch = new Map<string, FocusProjection>();
-  private readonly projectedScratch: ProjectedFocusLabel[] = [];
-  // hiddenByPriority の2フレームぶんのバッファ。直前フレームの結果を hiddenByDepthGuardLastFrame
-  // として参照しつつ、当該フレームぶんはもう片方へ書き込む(コピーを避けるための入れ替え)。
-  private readonly hiddenByPriorityScratchA = new Set<string>();
-  private readonly hiddenByPriorityScratchB = new Set<string>();
-  // 直前フレームで depth-guard により隠れていたラベル id。周期が数時間の衛星どうしなど、
-  // 距離比がしきい値付近で揺れる組の明滅を防ぐため、隠すしきい値と再び出すしきい値を分ける
-  // (ヒステリシス)。
-  private hiddenByDepthGuardLastFrame: ReadonlySet<string> = new Set();
-  // セル添字 (cx, cy) を x → y の二段の Map で引く。添字をそのまま鍵にするので、
-  // 別のセルが同じ鍵を共有することはない。
-  private readonly cellsScratch = new Map<number, Map<number, ProjectedFocusLabel[]>>();
-  private readonly cellPool: ProjectedFocusLabel[][] = [];
-  private readonly cellRowPool: Map<number, ProjectedFocusLabel[]>[] = [];
+  private readonly projectedForLabel: ProjectedFocusLabel[] = [];
+  private readonly projectedForIcon: ProjectedFocusLabel[] = [];
+  // 名前の間引きとアイコンの間引きは混雑半径が異なる(アイコンの方が近接しないと間引かれない)ため、
+  // グリッドとヒステリシス状態を別々に持つ。
+  private readonly labelCrowding = new CrowdingGrid(FOCUS_LABEL_PRIORITY_PX, FOCUS_LABEL_DEPTH_GUARD_RATIO, FOCUS_LABEL_DEPTH_GUARD_EXIT_RATIO);
+  private readonly iconCrowding = new CrowdingGrid(FOCUS_ICON_PRIORITY_PX, FOCUS_ICON_DEPTH_GUARD_RATIO, FOCUS_ICON_DEPTH_GUARD_EXIT_RATIO);
   private shownIdsScratch: string[] = [];
   private readonly nowShownScratch = new Set<string>();
   private readonly activeCelestialLabels: ActiveCelestialLabel[] = [];
@@ -308,81 +388,26 @@ export class FocusMarkers {
   syncLabels(project: ProjectFn, cameraPos: Vec3): void {
     const frame = this.frameScratch;
     frame.clear();
-    // 実際に文字列を出すラベルだけを競合対象にする。同じ優先度同士は両方残し、
-    // MarkerManager の通常の衝突緩和へ任せる。遮蔽判定と投影は各ラベル1回だけ行う。
-    const projected = this.projectedScratch;
-    projected.length = 0;
+    // 実際に文字列を出すラベル・アイコンだけをそれぞれの競合対象にする。同じ優先度同士は
+    // 両方残し、MarkerManager の通常の衝突緩和へ任せる。遮蔽判定と投影は各ラベル1回だけ行う。
+    const projectedForLabel = this.projectedForLabel;
+    const projectedForIcon = this.projectedForIcon;
+    projectedForLabel.length = 0;
+    projectedForIcon.length = 0;
     for (const lbl of this.shownLabels) {
       const opacity = occlusionOpacity(cameraPos, lbl.pos, this.attractors);
       const occluded = opacity <= 0;
       const p = project(lbl.pos);
       frame.set(lbl.id, { occluded, opacity, x: p.x, y: p.y, front: p.front });
-      if (!occluded && p.front && lbl.showLabel) {
-        projected.push({ label: lbl, x: p.x, y: p.y, dist: len(sub(lbl.pos, cameraPos)) });
+      if (!occluded && p.front) {
+        const entry = { label: lbl, x: p.x, y: p.y, dist: len(sub(lbl.pos, cameraPos)) };
+        if (lbl.showLabel) projectedForLabel.push(entry);
+        if (lbl.showIcon) projectedForIcon.push(entry);
       }
     }
 
-    const hiddenByPriority = this.hiddenByDepthGuardLastFrame === this.hiddenByPriorityScratchA
-      ? this.hiddenByPriorityScratchB : this.hiddenByPriorityScratchA;
-    hiddenByPriority.clear();
-    // 一様グリッドで近傍セルだけを比較する。ラベル数が増えても O(N²) で全画面を走査しない。
-    const cellSize = FOCUS_LABEL_PRIORITY_PX;
-    for (const row of this.cellsScratch.values()) {
-      for (const cell of row.values()) {
-        cell.length = 0;
-        this.cellPool.push(cell);
-      }
-      row.clear();
-      this.cellRowPool.push(row);
-    }
-    this.cellsScratch.clear();
-    const cells = this.cellsScratch;
-    for (const current of projected) {
-      const cx = Math.floor(current.x / cellSize);
-      const cy = Math.floor(current.y / cellSize);
-      for (let x = cx - 1; x <= cx + 1; x++) {
-        const row = cells.get(x);
-        if (row === undefined) continue;
-        for (let y = cy - 1; y <= cy + 1; y++) {
-          const cell = row.get(y);
-          if (cell === undefined) continue;
-          for (const other of cell) {
-            if (Math.hypot(current.x - other.x, current.y - other.y) >= FOCUS_LABEL_PRIORITY_PX) continue;
-            const currentRatio = this.hiddenByDepthGuardLastFrame.has(current.label.id)
-              ? FOCUS_LABEL_DEPTH_GUARD_EXIT_RATIO : FOCUS_LABEL_DEPTH_GUARD_RATIO;
-            const otherRatio = this.hiddenByDepthGuardLastFrame.has(other.label.id)
-              ? FOCUS_LABEL_DEPTH_GUARD_EXIT_RATIO : FOCUS_LABEL_DEPTH_GUARD_RATIO;
-            if (current.dist > other.dist * currentRatio) {
-              hiddenByPriority.add(current.label.id);
-            } else if (other.dist > current.dist * otherRatio) {
-              hiddenByPriority.add(other.label.id);
-            } else if (current.label.labelPriority > other.label.labelPriority) {
-              hiddenByPriority.add(other.label.id);
-            } else if (other.label.labelPriority > current.label.labelPriority) {
-              hiddenByPriority.add(current.label.id);
-            } else {
-              // 優先度が等しい場合の決定論的タイブレーク (格子順に依存せずチラつきを防ぐ)
-              if (current.label.depth > other.label.depth) hiddenByPriority.add(current.label.id);
-              else if (other.label.depth > current.label.depth) hiddenByPriority.add(other.label.id);
-              else if (current.label.id > other.label.id) hiddenByPriority.add(current.label.id);
-              else hiddenByPriority.add(other.label.id);
-            }
-          }
-        }
-      }
-      let row = cells.get(cx);
-      if (row === undefined) {
-        row = this.cellRowPool.pop() ?? new Map<number, ProjectedFocusLabel[]>();
-        cells.set(cx, row);
-      }
-      const cell = row.get(cy);
-      if (cell) cell.push(current);
-      else {
-        const nextCell = this.cellPool.pop() ?? [];
-        nextCell.push(current);
-        row.set(cy, nextCell);
-      }
-    }
+    const hiddenLabelByPriority = this.labelCrowding.compute(projectedForLabel);
+    const hiddenIconByPriority = this.iconCrowding.compute(projectedForIcon);
 
     const shownIds = this.shownIdsScratch;
     shownIds.length = 0;
@@ -399,16 +424,15 @@ export class FocusMarkers {
         continue;
       }
       const markerOpacity = projectedState.opacity;
-      // 画面上でより優先度の高い親/主天体に吸収されたマーカー(hiddenByPriority)は、マーカーDOMを確実に隠し衝突緩和走査からも除外する
-      if (hiddenByPriority.has(lbl.id)) {
+      const isLabelVisible = lbl.showLabel && !hiddenLabelByPriority.has(lbl.id);
+      const isIconVisible = lbl.showIcon && !hiddenIconByPriority.has(lbl.id);
+      if (!isLabelVisible && !isIconVisible) {
         lbl.pickable = false;
         const rec = this.bodyPickableRecords.get(lbl.id);
         if (rec) rec.pickable = false;
         this.markerManager.hide(lbl.id);
         continue;
       }
-      const isLabelVisible = lbl.showLabel;
-      const isIconVisible = lbl.showIcon;
       lbl.pickable = isLabelVisible || isIconVisible;
       const rec = this.bodyPickableRecords.get(lbl.id);
       if (rec) rec.pickable = lbl.pickable;
@@ -430,7 +454,6 @@ export class FocusMarkers {
         markerOpacity, undefined, undefined, false, false, lbl.labelPriority,
       );
     }
-    this.hiddenByDepthGuardLastFrame = hiddenByPriority;
     const nowShown = this.nowShownScratch;
     nowShown.clear();
     for (const id of shownIds) nowShown.add(id);
