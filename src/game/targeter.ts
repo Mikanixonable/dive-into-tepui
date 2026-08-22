@@ -1,8 +1,9 @@
-import { add, addScaled, dot, lenSq, norm, scale, sub, v3, Vec3 } from '../physics/vec3';
+import { add, addScaled, dot, len, lenSq, norm, scale, sub, v3, Vec3 } from '../physics/vec3';
 import { CelestialBody } from '../physics/celestial-body';
 import * as C from './const';
 import { Enemy } from './game-entity/enemy';
 import { Base } from './game-entity/base';
+import type { AmmoPickup } from './game-entity/ammo-pickup';
 import type { EntityManager } from './simulation/entity-manager';
 import { Player } from './player/player';
 import { Input, PointerPoint } from './input/input';
@@ -16,7 +17,7 @@ import type { Ephemeris } from '../physics/ephemeris';
 import type { FrameAnchorSource } from '../physics/frame';
 import type { DisplayWindow } from './display-window-manager';
 import { KEY_MAPPING as K } from './input/key-mapping';
-import type { MapVisibilityPolicy } from './celestial/map-visibility';
+import type { MapVisibility, MapVisibilityPolicy } from './celestial/map-visibility';
 import { mapPlanetFadeOpacity, nearestPlanetDistance } from './celestial/planet-distance';
 import { isOccluded } from '../physics/occlusion';
 import type { NavTarget } from './nav-target';
@@ -25,6 +26,12 @@ export type CombatTarget = Enemy | Player | Base;
 
 // マーカー上での対象の役割。ターゲットは色と字形が変わる。
 export type MarkerRole = 'none' | 'primary';
+
+// 自機からの距離が MAP_AMMO_FADE_END を超えるとマップ上で見えなくなる(近くの弾薬だけ拾えれば
+// よいため、遠方まで塗り続けない)。
+function ammoFadeOpacity(distance: number): number {
+  return Math.max(0, Math.min(1, (C.MAP_AMMO_FADE_END - distance) / (C.MAP_AMMO_FADE_END - C.MAP_AMMO_FADE_START)));
+}
 
 export class Targeter {
   // syncTargetMarkers が毎フレーム組み直す作業用配列。
@@ -124,8 +131,8 @@ export class Targeter {
   // 位置は機体メッシュと同じ displayState — 揃えないと「機体は未来位置、マーカーは現在位置」に割れる。
   // 予測地平の先を指していて displayState を返せない対象と、可視性判定で選択不可の対象は出さない。
   syncTargetMarkers(
-    player: Player | null, targets: readonly CombatTarget[], displayTime: number, simTime: number,
-    cameraSystem: CameraSystem, visibilityPolicy: MapVisibilityPolicy | null,
+    player: Player | null, targets: readonly CombatTarget[], ammoPickups: readonly AmmoPickup[],
+    displayTime: number, simTime: number, cameraSystem: CameraSystem, visibilityPolicy: MapVisibilityPolicy | null,
     registry: Ephemeris['registry'], celestialBodies: readonly CelestialBody[],
   ): void {
     const overviewMode = cameraSystem.overviewMode;
@@ -142,31 +149,44 @@ export class Targeter {
       const visibility = visibilityPolicy?.entity(tgt instanceof Player ? 'player' : (tgt instanceof Base ? 'base' : 'ship'), tgt === player);
       if (visibility && !visibility.pickable) continue;
       const role: MarkerRole = tgt === this.aliveTarget ? 'primary' : 'none';
-      const item = tgt.markerItem(role, viewerPos, ds.r, ds.v, overviewMode);
+      const item = tgt instanceof Player
+        ? tgt.markerItem(role, viewerPos, ds.r, ds.v, overviewMode, tgt === player)
+        : tgt.markerItem(role, viewerPos, ds.r, ds.v, overviewMode);
       const mapOccluded = overviewMode && isOccluded(cameraSystem.activeCameraPos, ds.r, celestialBodies);
       const mapOpacity = mapOccluded
         ? 0
         : tgt instanceof Enemy && overviewMode
           ? mapPlanetFadeOpacity(nearestPlanetDistance(ds.r, registry, celestialBodies))
           : 1;
-      this.markerItemScratch.push(visibility ? {
-        ...item,
-        sym: visibility.icon ? item.sym : '',
-        name: visibility.label ? item.name : '',
-        detail: visibility.label ? item.detail : '',
-        opacity: mapOpacity,
-        occluded: mapOccluded,
-      } : {
-        ...item,
-        opacity: mapOpacity,
-        occluded: mapOccluded,
-      });
+      this.pushMarkerItem(item, visibility, mapOpacity, mapOccluded);
+    }
+    for (const ammo of ammoPickups) {
+      if (!ammo.alive) continue;
+      const visibility = visibilityPolicy?.entity('ammo');
+      if (visibility && !visibility.pickable) continue;
+      const mapOccluded = overviewMode && isOccluded(cameraSystem.activeCameraPos, ammo.state.r, celestialBodies);
+      const mapOpacity = mapOccluded ? 0 : overviewMode ? ammoFadeOpacity(len(sub(ammo.state.r, viewerPos))) : 1;
+      this.pushMarkerItem(ammo.markerItem(viewerPos, overviewMode), visibility, mapOpacity, mapOccluded);
     }
     const celestialLabels = overviewMode ? cameraSystem.focusMarkers.activeLabels : [];
     this.markerManager.combatMarkers.sync(this.markerItemScratch, project, overviewMode, screenScale, celestialLabels, celestialBodies);
     if (player) {
       this.markerManager.leadMarkers.sync(player, this.aliveScratch, this.aliveTarget, simTime, overviewMode, project);
     }
+  }
+
+  // markerItemScratch へ、可視性設定(アイコン/名前の個別トグル)とマップ上のフェード/遮蔽を反映して積む。
+  private pushMarkerItem(
+    item: GroupedMarkerItem, visibility: MapVisibility | undefined, opacity: number, occluded: boolean,
+  ): void {
+    this.markerItemScratch.push(visibility ? {
+      ...item,
+      sym: visibility.icon ? item.sym : '',
+      name: visibility.label ? item.name : '',
+      detail: visibility.label ? item.detail : '',
+      opacity,
+      occluded,
+    } : { ...item, opacity, occluded });
   }
 
   // ターゲット標的面を通過した自弾の位置を、的に貼り付いた光点として表示する
