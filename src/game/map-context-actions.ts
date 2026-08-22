@@ -115,6 +115,10 @@ export class MapContextActions {
       const target = this.pickables.pickables.find((i) => i.id === id);
       if (target) this.openPropertyWindow(clientX, clientY, target, this.pickables.lastSimTime);
     };
+    this.hud.enemiesPanel.onSelectRight = (id, clientX, clientY) => {
+      const enemy = this.entities.enemies.find((e) => e.id === id);
+      if (enemy) this.openPropertyWindow(clientX, clientY, this.entityToPickable(enemy), this.pickables.lastSimTime);
+    };
   }
 
   // 右クリック位置の最寄りの被選択物(天体・自艦・他艦・ノード等)のプロパティウィンドウを開く。
