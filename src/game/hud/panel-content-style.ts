@@ -88,10 +88,10 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-physical-object-list .physical-object-list-detail { margin-left: auto; font-size: var(--font-xxs); color: var(--text-dim); white-space: nowrap; }
 #hud-physical-object-list .erow:hover { color: var(--text); }
 #hud-physical-object-list .erow.tgt {
-  color: var(--accent-secondary); background: color-mix(in srgb, var(--accent-secondary) 12%, transparent);
+  color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 #hud-physical-object-list .erow.on {
-  outline: 0; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent);
+  outline: 0; color: var(--accent-secondary); background: color-mix(in srgb, var(--accent-secondary) 12%, transparent);
 }
 #hud-physical-object-list .erow.cluster { opacity: .55; }
 #hud-physical-object-list .physical-object-list-toggle { width: 10px; text-align: center; flex: none; }
