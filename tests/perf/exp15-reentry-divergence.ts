@@ -15,18 +15,16 @@
 //        安定性ではなく精度であること
 //   表4: 最高ワープ1フレームのサブステップ数が細分で増えないこと
 //
-// 熱と動圧の式は player/thermal.ts の updateThermal の複製(原本は Hud を import するので
-// tests/perf の tsconfig ではコンパイルできない)。ラジエーターと投入熱は 0 とする。
-//   qdyn = 0.5 ρ s²
-//   q̇    = SG_CONST √(ρ / NOSE_RADIUS) s³
-//   T   += (q̇ · HEAT_ABSORB_AREA + cool) / heatCapacity · dtSub
-//   cool = HULL_EMISS · STEFAN_BOLTZMANN · RAD_AREA · (ENV_TEMP⁴ − T⁴)
+// 熱は physics/thermal.ts の比量モデルをそのまま呼ぶ。動圧だけはここで組む(qdyn = ½ρs²)。
+// ラジエーターと投入熱は 0 とする。
 import { CelestialBody, attractorAccel, nearestAtmosphereBody } from '../../src/physics/celestial-body';
 import {
   Atmosphere, airspeed, atmosphericDensity, atmosphericScaleHeight, dragAccel, ellipsoidAltitude,
 } from '../../src/physics/atmosphere';
 import { degree2Accel, stepDynamics } from '../../src/physics/dynamics';
-import { STEFAN_BOLTZMANN } from '../../src/physics/thermal';
+import {
+  aeroHeating, radiativeCooling, sphereNoseRadius, stepTemperature,
+} from '../../src/physics/thermal';
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { Vec3, add, dot, len, sub, v3 } from '../../src/physics/vec3';
@@ -62,14 +60,9 @@ function airflow(s: KinematicState, body: CelestialBody):
   };
 }
 
-// 外殻温度の一次(矩形)積分。updateThermal の複製。
+// 外殻温度の一次(矩形)積分。ラジエーターと投入熱は 0 とする。
 function absorbHeat(temp: number, rho: number, speed: number, dt: number): number {
-  const qdot = C.SG_CONST * Math.sqrt(rho / C.NOSE_RADIUS) * speed * speed * speed;
-  const cool = C.HULL_EMISS * STEFAN_BOLTZMANN * C.RAD_AREA
-    * (Math.pow(C.ENV_TEMP, 4) - Math.pow(temp, 4));
-  return Math.max(
-    C.HULL_TEMP_FLOOR,
-    temp + ((qdot * C.HEAT_ABSORB_AREA + cool) / (C.PLAYER_MASS * 100)) * dt);
+  return stepTemperature(temp, shipHeating(rho, speed) - shipCooling(temp, dt), C.SHIP_SPECIFIC_HEAT, dt);
 }
 
 // 刻みの決め方。'fixed' は刻み固定、'rule' は大気の上限を cap と併せて使う。
@@ -334,6 +327,20 @@ function substepCount(eph: Ephemeris): void {
   }
   table(['高度 [km]', '大気が要求する刻み [s]', '大域サブステップ', '細分する個体の歩数',
     '(参考)高度 200 km 以下 1 s のとき'], rows);
+}
+
+// 艦が浴びる比パワー [W/kg]。game/game-entity の stepThermal と同じ引数の組み立て。
+function shipHeating(density: number, speed: number): number {
+  return aeroHeating(
+    density, speed, SHIP_BCINV, C.SG_CONST,
+    sphereNoseRadius(SHIP_BCINV, C.DRAG_COEFFICIENT, C.SHIP_BULK_DENSITY),
+    (C.STAGNATION_AREA_FRACTION * SHIP_BCINV) / C.DRAG_COEFFICIENT);
+}
+
+// 艦が捨てる比パワー [W/kg]。放熱板は畳んだ状態(艦体だけ)。
+function shipCooling(temp: number, dt: number): number {
+  return radiativeCooling(
+    temp, C.ENV_TEMP, C.HULL_EMISS, C.SHIP_RADIATING_AREA_PER_MASS, C.SHIP_SPECIFIC_HEAT, dt);
 }
 
 export function run(): void {
