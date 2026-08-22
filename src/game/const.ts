@@ -288,7 +288,7 @@ export const DESTROY_FLASH2_DURATION = 0.5; // [s]
 export const DESTROY_FRAG_SIZE_MIN = 1.5; // 撃破デブリの破片サイズ下限。ENEMY_SCALE 倍される
 export const DESTROY_FRAG_SIZE_MAX = 6.0;
 
-export const SIM_SPEED_LEVELS = [1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 131072];
+export const SIM_SPEED_LEVELS = [1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 131072, 524288, 2097152, 8388608, 33554432];
 export const MAX_PHYS_SIM_SPEED = 4; // 推進・射撃・衝突解決・敵AIが有効な最大タイムワープ(SimSpeedManager の can* が参照)
 
 export const SUBSTEP_MAX_DT = 20; // 1サブステップの最大秒数 [s](Simulator.advance のサブステップ分割数の算出に使う)
@@ -338,11 +338,26 @@ export const INITIAL_INC_DEG = 97.0; // 自機初期軌道傾斜角 [deg]
 // --- HUD マーカー ---
 export const MARKER_DIR_DIST = 5e4; // 方向マーカーを投影する仮想距離 [m](実在の位置ではなく方向のみを示す)
 export const MARKER_CLUSTER_PX = 40; // これより画面上で近いマーカー同士は1つの代表にまとめる [px]
+// 優先度間引きで一度隠したラベル/アイコンを再び出す画面距離のしきい値(MARKER_CLUSTER_PX より
+// 緩い値)。同じ値だと境界ちょうどで距離が揺れたときに毎フレーム表示・非表示が反転する
+// (周期が数時間の衛星どうしなど、タイムワープ中に画面距離が急変する組で顕著)。
+export const MARKER_CLUSTER_RELEASE_PX = 60;
 // 天体ラベルからこれより画面上で近いラグランジュ点ラベルは、天体ラベルを優先して隠す [px]
 export const FOCUS_LABEL_PRIORITY_PX = 40;
 // 画面上で近接する2ラベルのカメラからの距離比がこれ以上なら、優先度に関わらず遠い側を隠す
 // (奥の天体ラベルが手前のラグランジュ点ラベルを消してしまう逆転を防ぐ)
 export const FOCUS_LABEL_DEPTH_GUARD_RATIO = 3;
+// 一度 DEPTH_GUARD で隠したラベルを再び出す距離比のしきい値(ENTER より緩い値)。ENTER と同じ
+// 値だとしきい値ちょうどで距離比が揺れたときに毎フレーム表示・非表示が反転する
+// (周期が数時間の衛星どうしなど、タイムワープ中に距離比が急変する組で顕著)。
+export const FOCUS_LABEL_DEPTH_GUARD_EXIT_RATIO = 2;
+// 位置の点(アイコン)側の混雑判定。名前(FOCUS_LABEL_PRIORITY_PX)より小さい値にし、名前だけが
+// 間引かれて点は残る距離帯を作る。
+export const FOCUS_ICON_PRIORITY_PX = 16;
+// アイコン側の奥行きガード。名前側と同じ距離比を使うが、混雑判定の半径が小さいぶん実際に
+// アイコンが隠れるのは名前より近接した場合に限られる。
+export const FOCUS_ICON_DEPTH_GUARD_RATIO = 3;
+export const FOCUS_ICON_DEPTH_GUARD_EXIT_RATIO = 2;
 
 // マーカーラベル優先度 (数値が大きいものが優先。天体 > 船・エンティティ)
 export const MARKER_PRIORITY = {
@@ -443,8 +458,9 @@ export const PLAN_EXECUTOR_TRIM_DV = 5.0; // 残り射影がこれを下回っ�
 
 // --- 未来表示の時刻(display-window-manager.ts のスライダー) ---
 export const DISPLAY_DUR_DAY = 86400; // 1日
-export const DISPLAY_DUR_WEEK = 7 * 86400; // 7日
-export const DISPLAY_DUR_MONTH = 28 * 86400; // 28日
+export const DISPLAY_DUR_TEN_DAY = 10 * 86400; // 10日
+export const DISPLAY_DUR_MONTH = 30 * 86400; // 1ヶ月
+export const DISPLAY_DUR_THREE_MONTH = 90 * 86400; // 3ヶ月
 export const DISPLAY_DURATION_MAX = 365 * 86400; // 手動レンジで指定できる表示期間の上限 [s](1年)
 // 手動レンジで指定できる表示期間の下限 [s]。表示期間は予測列の保持窓でもあり、0 では
 // サンプルが1件も残らず、どの時刻も引けない列になる。
@@ -645,9 +661,9 @@ export const COLOR_DESTROY_FLASH_1 = '#ffb36b';
 export const COLOR_DESTROY_FLASH_2 = '#fffbe8';
 export const COLOR_PLAYER_DESTROY_FRAG = '#9fd8e8';
 export const COLOR_ENEMY_DESTROY_FRAG = '#ff6a4a';
+export const COLOR_PLAYER_ORBIT_LINE_INACTIVE = '#ffffff'; // マップビューで操作対象でない自艦の軌道線
 export const COLOR_ENEMY_ORBIT_LINE = '#565b63';
 export const COLOR_BASE_ORBIT_LINE = '#4f8f7d'; // 拠点(味方施設)の軌道線。落ち着いた緑がかった色で他線と区別
-export const COLOR_PLAYER_ORBIT_LINE = '#bfc9d4'; // 自機の軌道線(予測線・過去線)に共通の色
 export const COLOR_ENEMY_PLASMA = '#ff3333'; // 蛍光色の赤
 export const COLOR_SHIP_DARK_HULL = '#2e3340';
 export const COLOR_STAGE0_GROUP_ACCENTS = ['#ff4a3d', '#3dc6ff', '#3dff8f', '#ffe23d', '#bf3dff'];
@@ -667,9 +683,6 @@ export const LINE_RENDER_ORDER = {
 export const LINE_STYLE = {
   enemyOrbit: { color: COLOR_ENEMY_ORBIT_LINE, opacity: 0.35, renderOrder: LINE_RENDER_ORDER.shipOrbit },
   baseOrbit: { color: COLOR_BASE_ORBIT_LINE, opacity: 0.35, renderOrder: LINE_RENDER_ORDER.shipOrbit },
-  playerOrbit: { color: COLOR_PLAYER_ORBIT_LINE, opacity: 0.55, renderOrder: LINE_RENDER_ORDER.shipOrbit },
-  playerPredicted: { color: COLOR_PLAYER_ORBIT_LINE, opacity: 0.55, renderOrder: LINE_RENDER_ORDER.predicted },
-  playerActual: { color: COLOR_PLAYER_ORBIT_LINE, opacity: 0.3, renderOrder: LINE_RENDER_ORDER.predicted },
 } as const satisfies Record<string, LineStyle>;
 
 // 惑星・衛星の参照軌道線のフェード距離 [m]。カメラから天体までの距離がこれ未満なら非表示、

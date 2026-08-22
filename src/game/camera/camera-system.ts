@@ -13,7 +13,7 @@ import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { Vec3 } from '../../physics/vec3';
 import { metersPerPixel, ndcToScreen, Projected, projectToNdc, Viewpoint } from '../../physics/projection';
-import { CelestialBody } from '../../physics/celestial-body';
+import type { FrameAnchorSource } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { CameraSaveData } from '../save-data';
 
@@ -121,7 +121,7 @@ export class CameraSystem {
   private _overviewMode = false;
   get overviewMode(): boolean { return this._overviewMode; }
 
-  // クラスごとの天体表示トグル。マップのラベル・軌道オブジェクト一覧・配置UIの基準天体が
+  // クラスごとの天体表示トグル。マップのラベル・軌道物体一覧・配置UIの基準天体が
   // この1つの状態を共有する(body-visibility.ts の visibleBodyIds に渡す)。フォーカスと
   // 太陽系パネルを既に所有しているこのクラスが、同じ場所で持つ。
   private _bodyClassToggles: BodyClassToggles = loadBodyClassToggles();
@@ -191,7 +191,7 @@ export class CameraSystem {
   }
 
   // 入力からカメラの向き・ズームを更新する。overviewMode に応じてどちらか一方のカメラだけを駆動する。
-  // displayTime/celestialBodies は広範囲視点の座標系変換にのみ使う — 線・メッシュと同じ表示時刻でないと
+  // displayTime/frameAnchors は広範囲視点の座標系変換にのみ使う — 線・メッシュと同じ表示時刻でないと
   // 回転系選択時にカメラだけが現在時刻に取り残される。
   update(
     player: GameEntity | null,
@@ -199,7 +199,7 @@ export class CameraSystem {
     input: Input,
     dt: number,
     mapPickables: readonly MapPickable[],
-    celestialBodies: readonly CelestialBody[],
+    frameAnchors: FrameAnchorSource,
   ): void {
     // 中クリックで視点リセット
     input.takeMiddleClicks(() => {
@@ -228,7 +228,7 @@ export class CameraSystem {
     mouse.roll += keyRoll * C.CAM_KEY_ROLL_RATE * dt;
 
     if (this.overviewMode) {
-      this.mapCamera.update(mouse, keyYaw, keyPitch, dt, displayTime, mapPickables, celestialBodies);
+      this.mapCamera.update(mouse, keyYaw, keyPitch, dt, displayTime, mapPickables, frameAnchors);
     }
     else {
       this.combatCamera.update(mouse, keyYaw, keyPitch, dt, player, input);

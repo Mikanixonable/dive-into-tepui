@@ -1382,7 +1382,7 @@ export const SOLAR_SYSTEM = {
   // 黄道座標・J2000 の a/e/i/Ω(om)/ω(w)/M(ma) から、raanDeg=Ω・lonPeriDeg=Ω+ω・
   // l0Deg=Ω+ω+M として求めた(360を超えて構わない)。lRateDegPerCentury は
   // lRateFromSemiMajorAxis(a) がケプラー第3法則から導く。SBDB の元期は天体ごとに異なり、
-  // churyumov(JD2457305.5)・tempel1(JD2457470.5)・wild2(JD2458808.5)・
+  // tempel1(JD2457470.5)・wild2(JD2458808.5)・
   // hartley2(JD2457152.5)・bennu(JD2455562.5)だけが上記と別の元期を持つ — この実装は
   // どの元期も simTime=0 に対応させるので、同一の実在時刻の空を再現しているわけではない。
   // GM は SBDB(なければ 0 = 質量未測定)、直径は SBDB または各天体の観測文献。
@@ -1537,26 +1537,6 @@ export const SOLAR_SYSTEM = {
       lonPeriDeg: 68.283927,
       l0Deg: 169.987879,
       lRateDegPerCentury: lRateFromSemiMajorAxis(1.126391 * AU),
-      raanRateDegPerCentury: 0,
-      incRateDegPerCentury: 0,
-      lonPeriRateDegPerCentury: 0,
-      eRatePerCentury: 0,
-      aRatePerCenturyAu: 0,
-    }),
-  },
-  churyumov: {
-    kind: 'planet',
-    id: 'churyumov',
-    mu: 662.2,
-    radius: 1700.0,
-    orbit: planetOrbit({
-      a: 3.4622495 * AU,
-      e: 0.6409081,
-      incDeg: 7.0402949,
-      raanDeg: 50.1355738,
-      lonPeriDeg: 62.9338235,
-      l0Deg: 71.7937509,
-      lRateDegPerCentury: lRateFromSemiMajorAxis(3.4622495 * AU),
       raanRateDegPerCentury: 0,
       incRateDegPerCentury: 0,
       lonPeriRateDegPerCentury: 0,
@@ -1860,27 +1840,6 @@ export const SOLAR_SYSTEM = {
       aRatePerCenturyAu: 0,
     }),
   },
-  itokawa: {
-    kind: 'planet',
-    id: 'itokawa',
-    mu: 0,
-    radius: 267.5, // 三軸の最長半軸(外接球)
-    shape: { kind: 'triaxial', a: 267.5, b: 147.0, c: 104.5 },
-    orbit: planetOrbit({
-      a: 1.324052 * AU,
-      e: 0.280178,
-      incDeg: 1.620941,
-      raanDeg: 69.0745,
-      lonPeriDeg: 231.9154,
-      l0Deg: 402.5693,
-      lRateDegPerCentury: lRateFromSemiMajorAxis(1.324052 * AU),
-      raanRateDegPerCentury: 0,
-      incRateDegPerCentury: 0,
-      lonPeriRateDegPerCentury: 0,
-      eRatePerCentury: 0,
-      aRatePerCenturyAu: 0,
-    }),
-  },
   apophis: {
     kind: 'planet',
     id: 'apophis',
@@ -1921,17 +1880,6 @@ export const SOLAR_SYSTEM = {
       eRatePerCentury: 0,
       aRatePerCenturyAu: 0,
     }),
-  },
-  // ディディモスの衛星ディモルフォス(DART 衝突前の値)。基準面は黄道面(出典・扱いは
-  // ハウメアの衛星と同じ)。i=169.3° は黄道基準の値で、順行(親の赤道面基準では逆向きに
-  // 見える)と混同しないこと — equatorBasis を渡していないのはその整合を保つため。
-  dimorphos: {
-    kind: 'satellite',
-    id: 'dimorphos',
-    mu: GRAVITATIONAL_CONSTANT * 5.0e9,
-    radius: 75.5,
-    planet: 'didymos',
-    orbit: jplSatelliteOrbit({ a: 1206, e: 0, incDeg: 169.3, periodDays: 0.4967, nodePeriodYears: 0, apsisPeriodYears: 0 }),
   },
   tempel1: {
     kind: 'planet',
@@ -2088,4 +2036,14 @@ export function bodyDef(registry: CelestialRegistry, id: CelestialBodyId): Celes
   const def = registry[id];
   if (def === undefined) throw new Error(`bodyDef: レジストリに登録されていない天体 id: ${id}`);
   return def;
+}
+
+// pole 定義から自転角速度 [rad/s] を取り出す。自転モデルを持たない天体は null。符号は自転の
+// 向きを表し、逆行自転する天体では負になる。同期回転の衛星は本初子午線が公転の平均黄経を追うので、
+// 自転角速度は公転の平均運動と一致する。歳差は自転の 10⁻⁷ 倍未満なので織り込まない。
+export function spinRateOf(def: CelestialBodyDef): number | null {
+  if (def.kind === 'star' || def.pole === undefined) return null;
+  if (def.pole.kind === 'eciPole') return (2 * Math.PI) / SIDEREAL_DAY;
+  if (def.pole.kind === 'iau') return (def.pole.wRateDegPerDay * Math.PI) / 180 / 86400;
+  return def.kind === 'satellite' ? def.orbit.kepler.lRate : null;
 }

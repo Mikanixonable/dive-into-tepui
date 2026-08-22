@@ -5,7 +5,6 @@ import { Enemy } from './game-entity/enemy';
 import { Base } from './game-entity/base';
 import type { EntityManager } from './simulation/entity-manager';
 import { Player } from './player/player';
-import { Hud } from './hud/hud';
 import { Input, PointerPoint } from './input/input';
 import { CameraSystem, ProjectFn } from './camera/camera-system';
 import type { GroupedMarkerItem } from './marker/grouped-markers';
@@ -14,6 +13,7 @@ import { DIRECTION_GLYPH } from './marker/marker-glyphs';
 import { pickNearest } from './map-pickable';
 import { pickRadiusSq } from './input/pointer-precision';
 import type { Ephemeris } from '../physics/ephemeris';
+import type { FrameAnchorSource } from '../physics/frame';
 import type { DisplayWindow } from './display-window-manager';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import type { MapVisibilityPolicy } from './celestial/map-visibility';
@@ -31,38 +31,25 @@ export class Targeter {
   private readonly aliveScratch: CombatTarget[] = [];
   private readonly markerItemScratch: GroupedMarkerItem[] = [];
 
-  // 唯一の真実。右クリックのプロパティウィンドウでのみ変わり、自動選定・自動再選択は行わない。
-  target: CombatTarget | null = null;
-
   // ターゲット標的面(自機の方を向いた仮想の的)の通過点(ターゲット相対オフセットで
   // 保持し、的に貼り付いて見せる)。updateBoardMarks が寿命を持ち、syncBoardMarkers が描く。
   boardMarks: { off: Vec3; age: number; }[] = [];
 
   constructor(
-    private readonly _hud: Hud, private readonly markerManager: MarkerManager,
-    private readonly navTarget: NavTarget,
+    private readonly markerManager: MarkerManager,
+    private readonly navTarget: NavTarget, private readonly entities: EntityManager,
   ) {}
 
-  // 生存判定込みの現在のターゲット。撃破後は target を保持したままにせず、ここで
-  // 死亡個体を隠す(描画・軌道線更新など「生きているターゲットだけを見たい」箇所が使う)。
+  // 現在の戦闘ターゲット。正本は NavTarget(航法ターゲットと状態を共有)が持ち、ここでは
+  // 生存中の敵・自艦・基地としてその場で解決するだけ。
   get aliveTarget(): CombatTarget | null {
-    return this.target && this.target.alive ? this.target : null;
+    return this.navTarget.resolveCombatTarget(this.entities);
   }
 
-  // アクティブ艦の切替時などに、選定済みのターゲットを解除する。
-  clearTargets(): void {
-    this.target = null;
-  }
-
-  // 取り除かれた対象への参照を落とす。選定していなければ何もしない。
-  clearIfTargeting(entity: CombatTarget): void {
-    if (this.target === entity) this.target = null;
-  }
-
-  // Tキーで照準中心に最も近い敵をターゲットにする。オート選定は行わない —
-  // 右クリックでの設定/解除は MapContextActions が開くプロパティウィンドウの項目(target)から
-  // setTarget を呼ぶ。ビューはここでは持たないので毎フレーム引数で受け取り、マップ視点では
-  // 何もしない。
+  // Tキーで照準中心に最も近い敵をターゲットにする。オート選定は行わない — 右クリックでの
+  // 設定/解除は MapContextActions が開くプロパティウィンドウの項目(target)から
+  // navTarget.toggleTarget を呼ぶ。ビューはここでは持たないので毎フレーム引数で受け取り、
+  // マップ視点では何もしない。
   handleTargetSelectKey(input: Input, targets: CombatTarget[], project: ProjectFn, overviewMode: boolean): void {
     if (overviewMode) return;
     if (!input.takeKey(K.targetSelect)) return;
@@ -76,14 +63,19 @@ export class Targeter {
       })
       .filter((x) => x.front)
       .sort((a, b) => a.d2 - b.d2)[0]?.target ?? null;
-    this.setTarget(next);
+    this.navTarget.setCombatTarget(next);
   }
 
   // マップ表示中だけ、戦闘ターゲットの赤道交点マーカーを求め直す(戦闘ビューでは誰も読まない)。
-  updateEquatorNodes(overviewMode: boolean, displayWindow: DisplayWindow, ephemeris: Ephemeris): void {
+  updateEquatorNodes(
+    overviewMode: boolean, displayWindow: DisplayWindow, ephemeris: Ephemeris, frameAnchors: FrameAnchorSource,
+  ): void {
     if (!overviewMode) return;
+    const timeLabel = {
+      mode: displayWindow.tickLabelMode, show: displayWindow.showElementTimes, nowSimTime: displayWindow.simTime,
+    };
     this.aliveTarget?.ensureEquatorNodes(this.markerManager)
-      .updateOnEllipse(displayWindow.displayTime, ephemeris);
+      .updateOnEllipse(displayWindow.displayTime, ephemeris, frameAnchors, timeLabel);
   }
 
   // ターゲット位置に「自機の方を向いた的(標的面)」があると見なし、発射弾がその面を自機側から
@@ -212,12 +204,5 @@ export class Targeter {
     const pickables = targets.filter((e) => e.alive).map((target) => ({ pos: target.state.r, target }));
     const picked = pickNearest(pickables, click.x, click.y, project, pickRadiusSq(C.TARGET_LOCK_PICK_PX_SQ, C.TARGET_LOCK_PICK_PX_SQ_COARSE));
     return picked?.target ?? null;
-  }
-
-  // ターゲットを設定する。対象が艦である限り、航法ターゲットも同じ対象へ追従させる。
-  setTarget(t: CombatTarget | null): void {
-    this.target = t;
-    this._hud.hint(t ? `ターゲット固定: ${t.name}` : 'ターゲット固定解除');
-    this.navTarget.setShipTarget(t?.id ?? null, t?.name ?? null);
   }
 }

@@ -2,6 +2,7 @@
 import * as THREE from 'three/webgpu';
 import { Vec3 } from '../../physics/vec3';
 import { CelestialBody } from '../../physics/celestial-body';
+import type { FrameAnchorSource } from '../../physics/frame';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { GameEntity } from '../game-entity/game-entity';
@@ -330,11 +331,12 @@ export class EntityManager {
     activePlayer: Player | null, fo: FloatingOrigin, cameraSystem: CameraSystem,
     displayTime: number, ephemeris: Ephemeris, celestialBodies: readonly CelestialBody[],
     visibilityPolicy: MapVisibilityPolicy | null, displayWindow?: DisplayWindow, orbitRef?: OrbitReference,
+    frameAnchors?: FrameAnchorSource,
   ): void {
     for (const ship of this.players) {
       ship.syncPlayer(
         fo, cameraSystem, displayTime, ship === activePlayer, ephemeris, celestialBodies,
-        visibilityPolicy?.entity('player', ship === activePlayer) ?? null, displayWindow, orbitRef,
+        visibilityPolicy?.entity('player', ship === activePlayer) ?? null, displayWindow, orbitRef, frameAnchors,
       );
     }
   }
@@ -367,10 +369,15 @@ export class EntityManager {
 
   // マップ表示中だけ、全基地の赤道交点マーカーを求め直す(戦闘ビューでは誰も読まない)。基地は
   // 常設の軌道構造物で、接近・ドッキングは軌道面合わせそのものなので、選択の有無に関わらず出す。
-  updateBaseEquatorNodes(overviewMode: boolean, displayWindow: DisplayWindow, ephemeris: Ephemeris): void {
+  updateBaseEquatorNodes(
+    overviewMode: boolean, displayWindow: DisplayWindow, ephemeris: Ephemeris, frameAnchors: FrameAnchorSource,
+  ): void {
     if (!overviewMode) return;
+    const timeLabel = {
+      mode: displayWindow.tickLabelMode, show: displayWindow.showElementTimes, nowSimTime: displayWindow.simTime,
+    };
     for (const base of this.bases) {
-      if (base.alive) base.equatorNodes?.updateOnEllipse(displayWindow.displayTime, ephemeris);
+      if (base.alive) base.equatorNodes?.updateOnEllipse(displayWindow.displayTime, ephemeris, frameAnchors, timeLabel);
     }
   }
 

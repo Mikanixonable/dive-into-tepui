@@ -13,7 +13,7 @@ import { ReferenceFrame } from '../physics/frame';
 import type { Ephemeris } from '../physics/ephemeris';
 import type { GameEntity } from './game-entity/game-entity';
 
-export type DisplayDurationKey = 'orbit' | 'day' | 'week' | 'month' | 'custom';
+export type DisplayDurationKey = 'orbit' | 'day' | 'tenDay' | 'month' | 'threeMonth' | 'custom';
 
 // 過去方向の表示期間の選択。'none'(既定)は過去を描かない。
 export type DisplayPastDurationKey = 'none' | DisplayDurationKey;
@@ -31,16 +31,19 @@ export interface DisplayWindow {
   readonly displayTime: number;
   // 時刻ラベルを UTC カレンダーで書くか、simTime からの経過時間で書くか。
   readonly tickLabelMode: TickLabelMode;
+  // 軌道要素マーカー(近地点/遠地点・昇交点/降交点・再接近点など)へ通過時刻を併記するか。
+  readonly showElementTimes: boolean;
 }
 
 // パネル幅に収まる目盛りの上限本数。
 const TICK_MAX_COUNT = 6;
 
 // 固定長プリセットの秒数。キーを増やすと網羅漏れが型エラーになる。
-const FIXED_DURATION_SEC: Record<'day' | 'week' | 'month', number> = {
+const FIXED_DURATION_SEC: Record<'day' | 'tenDay' | 'month' | 'threeMonth', number> = {
   day: C.DISPLAY_DUR_DAY,
-  week: C.DISPLAY_DUR_WEEK,
+  tenDay: C.DISPLAY_DUR_TEN_DAY,
   month: C.DISPLAY_DUR_MONTH,
+  threeMonth: C.DISPLAY_DUR_THREE_MONTH,
 };
 
 // スライダーの段階数 [下限, 上限]。期間が長いほど 1 段階あたりの時間が粗くなるので、
@@ -57,6 +60,7 @@ export class DisplayWindowManager {
   private customDurationSec = C.DISPLAY_DUR_DAY;
   private customPastDurationSec = C.DISPLAY_DUR_DAY;
   private _tickLabelMode: TickLabelMode = 'absolute';
+  private _showElementTimes = false;
   private _frame: ReferenceFrame;
 
   private readonly panel: PredictPanel;
@@ -72,7 +76,7 @@ export class DisplayWindowManager {
     this._current = {
       frame: this._frame, simTime: 0, referencePeriod: NaN,
       duration: C.APERIODIC_ARC_DURATION, pastDuration: 0, displayTime: 0,
-      tickLabelMode: this._tickLabelMode,
+      tickLabelMode: this._tickLabelMode, showElementTimes: this._showElementTimes,
     };
     this.panel = new PredictPanel(hudRoot);
     // 期間はスライダーの尺度そのものなので、尺度を変えたら位置も原点へ戻す。
@@ -95,6 +99,9 @@ export class DisplayWindowManager {
     };
     this.panel.onTickLabelModeChange = (mode) => {
       this.tickLabelMode = mode;
+    };
+    this.panel.onShowElementTimesChange = (show) => {
+      this.showElementTimes = show;
     };
     this.panel.onSliderChange = (t) => {
       this.sliderT = t;
@@ -126,6 +133,16 @@ export class DisplayWindowManager {
   set tickLabelMode(value: TickLabelMode) {
     if (this._tickLabelMode === value) return;
     this._tickLabelMode = value;
+  }
+
+  // 軌道要素マーカーへ通過時刻を併記するか(既定 OFF)。
+  get showElementTimes(): boolean {
+    return this._showElementTimes;
+  }
+
+  set showElementTimes(value: boolean) {
+    if (this._showElementTimes === value) return;
+    this._showElementTimes = value;
   }
 
   // 未来表示を禁止するフラグ。true にすると未来ゴーストスライダーの位置も原点へ戻す。
@@ -182,6 +199,7 @@ export class DisplayWindowManager {
       pastDuration: this.pastDurationSec(referencePeriod),
       displayTime: this._forceCurrent || this.sliderT <= 0 ? simTime : simTime + this.sliderT * duration,
       tickLabelMode: this._tickLabelMode,
+      showElementTimes: this._showElementTimes,
     };
     return this._current;
   }
@@ -191,11 +209,10 @@ export class DisplayWindowManager {
     this.panel.render({
       visible: !this._forceCurrent,
       durationKey: this.durationKey,
-      customDurationSec: this.customDurationSec,
       pastDurationKey: this.pastDurationKey,
-      customPastDurationSec: this.customPastDurationSec,
       pastDuration: this._current.pastDuration,
       tickLabelMode: this._tickLabelMode,
+      showElementTimes: this._showElementTimes,
       duration: this._current.duration,
       displayTime: this._current.displayTime,
       sliderSteps: this.sliderSteps(),

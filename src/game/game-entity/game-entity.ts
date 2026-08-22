@@ -16,7 +16,7 @@ import { FloatingOrigin } from '../floating-origin';
 import { OrbitLine } from '../orbit-line';
 import { TrajectoryLine } from '../trajectory-line';
 import { LineStyle } from '../../render/line-style';
-import { ReferenceFrame } from '../../physics/frame';
+import { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { PredictedArc, trajectorySampleInterval } from '../simulation/predicted-arc';
 import { atmosphericMaxStep, dragTakesFullAirspeed } from '../simulation/time-step';
@@ -137,10 +137,20 @@ export class GameEntity {
   // 表示時刻(未来ゴースト)の位置でメッシュとマーカーを描く種別か。
   protected readonly predictedForGhost: boolean = false;
 
+  // 軌道分析パネルがこの個体の未来を読んでいるか。戦闘ビューでも(canDisplayFuture が false
+  // でも)開いている間は弧を伸ばし続けたいので、他の理由と同じく独立に持つ。
+  analysisPanelReader = false;
+
+  // ナビゲーションターゲットとして選ばれ、相対軌道要素(再接近点など)の計算対象になって
+  // いるか。マップビューでのみ意味を持つが、そこでは canDisplayFuture が既に真なので
+  // 専用のフラグとして独立に持つ。
+  navTargetReader = false;
+
   // この個体の未来を読む消費者がいるか。ゴーストだけは表示時刻が未来へ動けるかに依るので、
   // 動けるかどうかを引数で受け取る。
   hasFutureReader(canDisplayFuture: boolean): boolean {
-    return (this.predictedForGhost && canDisplayFuture) || this.predictedLine !== null;
+    return (this.predictedForGhost && canDisplayFuture)
+      || this.predictedLine !== null || this.analysisPanelReader || this.navTargetReader;
   }
 
   // 予測列を持ちうる種別か。上の理由のどれか1つでも立ちうれば持つ。
@@ -207,10 +217,16 @@ export class GameEntity {
   }
 
   // orbitLine を現在位置で最も強く引く天体まわりの軌道楕円に合わせる。線を持たなければ何もしない。
-  syncOrbitLine(fo: FloatingOrigin, camera: THREE.Camera, celestialBodies: readonly CelestialBody[]): void {
+  // frame / displayTime / ephemeris を渡すと、その座標系・時刻で楕円を描く。
+  syncOrbitLine(
+    fo: FloatingOrigin, camera: THREE.Camera, frameAnchors: FrameAnchorSource, force = false,
+    frame?: ReferenceFrame, displayTime?: number, ephemeris?: Ephemeris,
+  ): void {
     if (this.orbitLine === null) return;
-    const center = strongestAttractor(this.state.r, celestialBodies);
-    this.orbitLine.sync(this.orbitalElementsAround(center), fo, camera);
+    const center = strongestAttractor(this.state.r, frameAnchors.bodies);
+    this.orbitLine.sync(
+      this.orbitalElementsAround(center), fo, camera, force, frame, displayTime, ephemeris, frameAnchors,
+    );
   }
 
   // 予測線を style で出す。既に出ていれば style を塗り直す。
@@ -257,18 +273,18 @@ export class GameEntity {
   // simTime は描く区間の境目、displayTime は座標系から慣性系へ戻す時刻。
   syncTrajectoryLines(
     frame: ReferenceFrame, simTime: number, displayTime: number, pastDuration: number, predictedTo: number | null,
-    ephemeris: Ephemeris, fo: FloatingOrigin, camera: THREE.Camera, celestialBodies: readonly CelestialBody[],
+    ephemeris: Ephemeris, fo: FloatingOrigin, camera: THREE.Camera, frameAnchors: FrameAnchorSource,
   ): void {
     if (this.predictedLine !== null) {
-      this.predictedLine.syncGeometry(this.predicted, simTime, predictedTo, frame, ephemeris, celestialBodies);
-      this.predictedLine.syncTransform(frame, displayTime, ephemeris, fo, celestialBodies);
+      this.predictedLine.syncGeometry(this.predicted, simTime, predictedTo, frame, ephemeris, frameAnchors);
+      this.predictedLine.syncTransform(frame, displayTime, ephemeris, fo, frameAnchors);
       this.predictedLine.sync(camera);
     }
     if (this.actualLine !== null) {
       this.actualLine.syncGeometry(
-        this.actual, simTime - pastDuration, simTime, frame, ephemeris, celestialBodies,
+        this.actual, simTime - pastDuration, simTime, frame, ephemeris, frameAnchors,
       );
-      this.actualLine.syncTransform(frame, displayTime, ephemeris, fo, celestialBodies);
+      this.actualLine.syncTransform(frame, displayTime, ephemeris, fo, frameAnchors);
       this.actualLine.sync(camera);
     }
   }

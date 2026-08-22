@@ -2,7 +2,7 @@
 // (地球は原点に静止)。THREE/DOM 非依存の純関数群。
 import { Atmosphere } from './atmosphere';
 import { Quat } from './attitude';
-import { FrameTransform, toFrameState } from './frame';
+import { FrameAnchorId, FrameAnchorSource, FrameTransform, toFrameState } from './frame';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { OrbitalElements, orbitalElementsFromState, keplerPeriod } from './elements';
 import { Vec3, addScaled, lenSq, len, sub, v3 } from './vec3';
@@ -147,4 +147,27 @@ export function frameOfCelestialBody(center: CelestialBody): FrameTransform {
 export function orbitalElementsOf(s: KinematicState, center: CelestialBody): OrbitalElements | null {
   const rel = toFrameState(frameOfCelestialBody(center), s);
   return orbitalElementsFromState(kinematicState(s.t, rel.r, rel.v), center);
+}
+
+// state が周回している(離心率 1 未満の)主天体。frame.ts の FrameAnchorSource.attractorOf の
+// 実装がここへ集約する — 公転回転系の基底を組めるかどうかの判定はこの条件に一本化する。
+export function orbitingAttractorOf(state: KinematicState, bodies: readonly CelestialBody[]): CelestialBody | null {
+  if (bodies.length === 0) return null;
+  const attractor = strongestAttractor(state.r, bodies);
+  const elements = orbitalElementsOf(state, attractor);
+  return elements !== null && elements.e < 1 ? attractor : null;
+}
+
+// celestialBodies 配列だけを情報源にする FrameAnchorSource。機体・役割トークンの文脈を
+// 持たない呼び出し元(HUD マーカーの向き計算など)が frameTransformAt へ渡すための簡易実装で、
+// 天体以外の基準・回転対象は解決できない(null)。
+export function bodyAnchorSource(bodies: readonly CelestialBody[]): FrameAnchorSource {
+  return {
+    bodies,
+    stateOf: (id: FrameAnchorId) => bodies.find((b) => b.id === id)?.state ?? null,
+    attractorOf: (id: FrameAnchorId) => {
+      const state = bodies.find((b) => b.id === id)?.state;
+      return state ? orbitingAttractorOf(state, bodies)?.id ?? null : null;
+    },
+  };
 }

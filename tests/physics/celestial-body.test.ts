@@ -6,11 +6,12 @@ import {
   attractorAccel,
   celestialBodyStateAt,
   orbitalElementsOf,
+  orbitingAttractorOf,
   localOrbitPeriod,
   strongestAttractor,
 } from '../../src/physics/celestial-body';
 import { kinematicState } from '../../src/physics/kinematic-state';
-import { MU_EARTH, R_EARTH, SOLAR_SYSTEM } from '../../src/physics/solar-system';
+import { MU_EARTH, R_EARTH, SIDEREAL_DAY, SOLAR_SYSTEM, bodyDef } from '../../src/physics/solar-system';
 import { keplerPeriod, stateFromOrbitalElements, tofBetween } from '../../src/physics/elements';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
 import { MU_MOON, MU_SUN, R_MOON, R_SUN } from '../../src/physics/solar-system';
@@ -143,7 +144,7 @@ export function register(): void {
   test('ephemeris: celestialBodiesAt は SOLAR_SYSTEM の宣言順で、positionOf と整合する', () => {
     const ephemeris = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.1, moon: 0.2 });
     const celestialBodies = ephemeris.celestialBodiesAt(5000);
-    assert.deepEqual(celestialBodies.map((b) => b.id), ['earth', 'moon', 'mercury', 'venus', 'mars', 'phobos', 'deimos', 'jupiter', 'metis', 'adrastea', 'amalthea', 'thebe', 'io', 'europa', 'ganymede', 'callisto', 'himalia', 'elara', 'ananke', 'carme', 'pasiphae', 'sinope', 'saturn', 'pan', 'daphnis', 'prometheus', 'pandora', 'epimetheus', 'janus', 'mimas', 'enceladus', 'tethys', 'dione', 'rhea', 'titan', 'hyperion', 'iapetus', 'phoebe', 'uranus', 'puck', 'miranda', 'ariel', 'umbriel', 'titania', 'oberon', 'neptune', 'triton', 'nereid', 'ceres', 'vesta', 'pallas', 'pluto', 'charon', 'styx', 'nix', 'kerberos', 'hydra', 'haumea', 'hiiaka', 'namaka', 'makemake', 'eris', 'dysnomia', 'halley', 'encke', 'sedna', 'quaoar', 'weywot', 'chariklo', 'hygiea', 'eros', 'ryugu', 'bennu', 'churyumov', 'orcus', 'vanth', 'gonggong', 'salacia', 'varuna', 'ixion', 'arrokoth', 'chiron', 'interamnia', 'europa52', 'davida', 'juno', 'psyche', 'eunomia', 'sylvia', 'itokawa', 'apophis', 'didymos', 'dimorphos', 'tempel1', 'wild2', 'hartley2', 'cruithne', 'kamooalewa', 'tk7', 'eureka', 'sun']);
+    assert.deepEqual(celestialBodies.map((b) => b.id), ['earth', 'moon', 'mercury', 'venus', 'mars', 'phobos', 'deimos', 'jupiter', 'metis', 'adrastea', 'amalthea', 'thebe', 'io', 'europa', 'ganymede', 'callisto', 'himalia', 'elara', 'ananke', 'carme', 'pasiphae', 'sinope', 'saturn', 'pan', 'daphnis', 'prometheus', 'pandora', 'epimetheus', 'janus', 'mimas', 'enceladus', 'tethys', 'dione', 'rhea', 'titan', 'hyperion', 'iapetus', 'phoebe', 'uranus', 'puck', 'miranda', 'ariel', 'umbriel', 'titania', 'oberon', 'neptune', 'triton', 'nereid', 'ceres', 'vesta', 'pallas', 'pluto', 'charon', 'styx', 'nix', 'kerberos', 'hydra', 'haumea', 'hiiaka', 'namaka', 'makemake', 'eris', 'dysnomia', 'halley', 'encke', 'sedna', 'quaoar', 'weywot', 'chariklo', 'hygiea', 'eros', 'ryugu', 'bennu', 'orcus', 'vanth', 'gonggong', 'salacia', 'varuna', 'ixion', 'arrokoth', 'chiron', 'interamnia', 'europa52', 'davida', 'juno', 'psyche', 'eunomia', 'sylvia', 'apophis', 'didymos', 'tempel1', 'wild2', 'hartley2', 'cruithne', 'kamooalewa', 'tk7', 'eureka', 'sun']);
     // 天体を1つ挿入しても静かに別天体を指さないよう、添字ではなく id で引く。
     const byId = (id: string) => celestialBodies.find((b) => b.id === id)!;
     assert.deepEqual(byId('earth').state.r, ZERO, '地球は原点に静止');
@@ -154,5 +155,16 @@ export function register(): void {
     assert.equal(byId('moon').mu, MU_MOON);
     assert.equal(byId('sun').mu, MU_SUN);
     assert.equal(byId('sun').radius, R_SUN);
+  });
+
+  // 参照フレームの「役割の公転」を選択肢に出すかどうかがこの判定に乗っている。周回して
+  // いない対象の公転は定義できないので、選択肢そのものを出さないための入口。
+  test('orbitingAttractorOf: 楕円軌道なら主天体、脱出速度以上なら null', () => {
+    const bodies = new Ephemeris().celestialBodiesAt(0).filter((b) => b.id === 'earth');
+    const r = v3(7e6, 0, 0);
+    const vCirc = Math.sqrt(MU_EARTH / 7e6);
+    assert.equal(orbitingAttractorOf(kinematicState(0, r, v3(0, vCirc, 0)), bodies)?.id, 'earth');
+    // 脱出速度の 1.2 倍は双曲線軌道(e >= 1)。
+    assert.equal(orbitingAttractorOf(kinematicState(0, r, v3(0, vCirc * Math.SQRT2 * 1.2, 0)), bodies), null);
   });
 }

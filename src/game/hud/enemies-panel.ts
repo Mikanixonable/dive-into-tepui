@@ -11,6 +11,7 @@ const SYNC_INTERVAL_MS = 250;
 type EnemyRow =
   | {
     readonly kind: 'single';
+    readonly id: string;
     readonly name: string;
     readonly distanceM: number;
     readonly targeted: boolean;
@@ -26,6 +27,9 @@ type EnemyRow =
 export class EnemiesPanel {
   private nextSyncAt = 0;
   private hasContacts = false;
+
+  // 単独表示の行(波に集約されていない敵)の右クリック。波の集約行は特定の1機を指さないため呼ばれない。
+  onSelectRight: ((id: string, clientX: number, clientY: number) => void) | null = null;
 
   public constructor(private readonly els: ReadonlyMap<string, HTMLElement>) {}
 
@@ -77,7 +81,7 @@ export class EnemiesPanel {
       const distanceM = len(sub(enemy.state.r, playerPositionEci));
       const targeted = enemy === primaryTarget;
       if (enemy.waveId === undefined) {
-        singles.push({ kind: 'single', name: enemy.name, distanceM, targeted });
+        singles.push({ kind: 'single', id: enemy.id, name: enemy.name, distanceM, targeted });
         continue;
       }
       const waveSummary = waves.get(enemy.waveId);
@@ -126,6 +130,12 @@ export class EnemiesPanel {
       ].filter(Boolean).join(' ');
       if (row.targeted) item.setAttribute('aria-current', 'true');
       item.setAttribute('aria-label', [label, distance, role ? `${role}ターゲット` : '未選択'].join('、'));
+      if (row.kind === 'single') {
+        item.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          this.onSelectRight?.(row.id, e.clientX, e.clientY);
+        });
+      }
 
       const name = document.createElement('span');
       name.className = 'contact-name';
