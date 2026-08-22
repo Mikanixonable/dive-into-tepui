@@ -328,6 +328,10 @@ export const FOCUS_LABEL_PRIORITY_PX = 40;
 // 画面上で近接する2ラベルのカメラからの距離比がこれ以上なら、優先度に関わらず遠い側を隠す
 // (奥の天体ラベルが手前のラグランジュ点ラベルを消してしまう逆転を防ぐ)
 export const FOCUS_LABEL_DEPTH_GUARD_RATIO = 3;
+// 一度 DEPTH_GUARD で隠したラベルを再び出す距離比のしきい値(ENTER より緩い値)。ENTER と同じ
+// 値だとしきい値ちょうどで距離比が揺れたときに毎フレーム表示・非表示が反転する
+// (周期が数時間の衛星どうしなど、タイムワープ中に距離比が急変する組で顕著)。
+export const FOCUS_LABEL_DEPTH_GUARD_EXIT_RATIO = 2;
 
 // マーカーラベル優先度 (数値が大きいものが優先。天体 > 船・エンティティ)
 export const MARKER_PRIORITY = {
@@ -428,8 +432,9 @@ export const PLAN_EXECUTOR_TRIM_DV = 5.0; // 残り射影がこれを下回っ�
 
 // --- 未来表示の時刻(display-window-manager.ts のスライダー) ---
 export const DISPLAY_DUR_DAY = 86400; // 1日
-export const DISPLAY_DUR_WEEK = 7 * 86400; // 7日
-export const DISPLAY_DUR_MONTH = 28 * 86400; // 28日
+export const DISPLAY_DUR_TEN_DAY = 10 * 86400; // 10日
+export const DISPLAY_DUR_MONTH = 30 * 86400; // 1ヶ月
+export const DISPLAY_DUR_THREE_MONTH = 90 * 86400; // 3ヶ月
 export const DISPLAY_DURATION_MAX = 365 * 86400; // 手動レンジで指定できる表示期間の上限 [s](1年)
 // 手動レンジで指定できる表示期間の下限 [s]。表示期間は予測列の保持窓でもあり、0 では
 // サンプルが1件も残らず、どの時刻も引けない列になる。

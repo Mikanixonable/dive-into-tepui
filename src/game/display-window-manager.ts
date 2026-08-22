@@ -16,7 +16,7 @@ import type { Ephemeris } from '../physics/ephemeris';
 import type { EntityManager } from './simulation/entity-manager';
 import type { GameEntity } from './game-entity/game-entity';
 
-export type DisplayDurationKey = 'orbit' | 'day' | 'week' | 'month' | 'custom';
+export type DisplayDurationKey = 'orbit' | 'day' | 'tenDay' | 'month' | 'threeMonth' | 'custom';
 
 // 過去方向の表示期間の選択。'none'(既定)は過去を描かない。
 export type DisplayPastDurationKey = 'none' | DisplayDurationKey;
@@ -40,10 +40,11 @@ export interface DisplayWindow {
 const TICK_MAX_COUNT = 6;
 
 // 固定長プリセットの秒数。キーを増やすと網羅漏れが型エラーになる。
-const FIXED_DURATION_SEC: Record<'day' | 'week' | 'month', number> = {
+const FIXED_DURATION_SEC: Record<'day' | 'tenDay' | 'month' | 'threeMonth', number> = {
   day: C.DISPLAY_DUR_DAY,
-  week: C.DISPLAY_DUR_WEEK,
+  tenDay: C.DISPLAY_DUR_TEN_DAY,
   month: C.DISPLAY_DUR_MONTH,
+  threeMonth: C.DISPLAY_DUR_THREE_MONTH,
 };
 
 // スライダーの段階数 [下限, 上限]。期間が長いほど 1 段階あたりの時間が粗くなるので、
@@ -205,9 +206,7 @@ export class DisplayWindowManager {
     this.panel.render({
       visible: !this._forceCurrent,
       durationKey: this.durationKey,
-      customDurationSec: this.customDurationSec,
       pastDurationKey: this.pastDurationKey,
-      customPastDurationSec: this.customPastDurationSec,
       pastDuration: this._current.pastDuration,
       tickLabelMode: this._tickLabelMode,
       duration: this._current.duration,
