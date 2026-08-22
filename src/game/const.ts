@@ -326,6 +326,9 @@ export const MARKER_DIR_DIST = 5e4; // 方向マーカーを投影する仮想�
 export const MARKER_CLUSTER_PX = 40; // これより画面上で近いマーカー同士は1つの代表にまとめる [px]
 // 天体ラベルからこれより画面上で近いラグランジュ点ラベルは、天体ラベルを優先して隠す [px]
 export const FOCUS_LABEL_PRIORITY_PX = 40;
+// 画面上で近接する2ラベルのカメラからの距離比がこれ以上なら、優先度に関わらず遠い側を隠す
+// (奥の天体ラベルが手前のラグランジュ点ラベルを消してしまう逆転を防ぐ)
+export const FOCUS_LABEL_DEPTH_GUARD_RATIO = 3;
 
 // マーカーラベル優先度 (数値が大きいものが優先。天体 > 船・エンティティ)
 export const MARKER_PRIORITY = {
@@ -335,7 +338,6 @@ export const MARKER_PRIORITY = {
   LAGRANGE: 2000,
   PRIMARY_TARGET: 900,
   IMPACT: 850,
-  SECONDARY_TARGET: 800,
   BASE: 700,
   PLAYER: 600,
   ENEMY: 500,
@@ -426,7 +428,6 @@ export const PLAN_EXECUTOR_ARM_ANGLE_DEG = 2.0; // 姿勢誤差がこれを切�
 export const PLAN_EXECUTOR_TRIM_DV = 5.0; // 残り射影がこれを下回ったら最低出力段へ落とす [m/s]
 
 // --- 未来表示の時刻(display-window-manager.ts のスライダー) ---
-export const DISPLAY_DUR_90MIN = 90 * 60; // 90分
 export const DISPLAY_DUR_DAY = 86400; // 1日
 export const DISPLAY_DUR_WEEK = 7 * 86400; // 7日
 export const DISPLAY_DUR_MONTH = 28 * 86400; // 28日
@@ -641,12 +642,11 @@ export const COLOR_STAGE0_GROUP_ACCENTS = ['#ff4a3d', '#3dc6ff', '#3dff8f', '#ff
 // 描画順は線どうしの相対関係でしか意味を持たない(同値だと透明描画の前後が不定になる)ので、
 // 各線が自分の値を単独で決めず、この表で一括して割り当てる。
 export const LINE_RENDER_ORDER = {
-  reference: 0,        // 天体の参照軌道線
-  shipOrbit: 1,        // 自機・敵・拠点の解析楕円
-  secondaryTarget: 2,  // 第二ターゲットの軌道線
-  target: 3,           // 主ターゲットの軌道線
-  plan: 4,             // 計画軌道(破線)
-  predicted: 5,        // 積分予測線。解析楕円の代替なので、両方出る境界フレームでは必ずこちらを手前に置く
+  reference: 0,  // 天体の参照軌道線
+  shipOrbit: 1,  // 自機・敵・拠点の解析楕円
+  target: 2,     // ターゲットの軌道線
+  plan: 3,       // 計画軌道(破線)
+  predicted: 4,  // 積分予測線。解析楕円の代替なので、両方出る境界フレームでは必ずこちらを手前に置く
 } as const;
 
 // 役割ごとの軌道線の見た目(色・不透明度・描画順)を一括して決める表。

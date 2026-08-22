@@ -63,23 +63,25 @@ function dropBefore(states: KinematicState[], t: number): void {
   if (cut > 0) states.splice(0, cut);
 }
 
-// 中心天体を生成時に固定し、積分の1ステップ対を時刻順に observe へ渡すと、見つかった
-// 近地点・遠地点を時刻昇順に溜める。dropBefore で範囲の先頭より前を落とすので、
-// periapsis/apoapsis は常に「いま答える範囲で最初の極値」を返す。
+// 積分の1ステップ対を時刻順に observe へ渡すと、見つかった近地点・遠地点を時刻昇順に溜める。
+// 中心天体は observe のたびに渡される — 生成時に固定すると、中心天体自身が動く(月など)
+// 場合に検出済みの値が古い中心位置基準のままずれ続けるため。dropBefore で範囲の先頭より前を
+// 落とすので、periapsis/apoapsis は常に「いま答える範囲で最初の極値」を返す。
 export class ApsisTrack {
   private readonly periapsides: KinematicState[] = [];
   private readonly apoapsides: KinematicState[] = [];
+  private _center: CelestialBody | null = null;
 
-  public constructor(private readonly _center: CelestialBody) {}
-
-  // 極値の検出に使っている中心天体。
-  public get center(): CelestialBody {
+  // 直近の observe に渡された中心天体。まだ observe を1度も呼んでいなければ null。
+  public get center(): CelestialBody | null {
     return this._center;
   }
 
-  // prev→next の1ステップを apsisCrossing に掛け、見つかった極値を種類ごとの列へ追加する。
-  public observe(prev: KinematicState, next: KinematicState): void {
-    const crossing = apsisCrossing(this._center, prev, next);
+  // prev→next の1ステップを、その瞬間の中心天体 center を使って apsisCrossing に掛け、
+  // 見つかった極値を種類ごとの列へ追加する。
+  public observe(center: CelestialBody, prev: KinematicState, next: KinematicState): void {
+    this._center = center;
+    const crossing = apsisCrossing(center, prev, next);
     if (crossing?.kind === 'periapsis') this.periapsides.push(crossing.state);
     if (crossing?.kind === 'apoapsis') this.apoapsides.push(crossing.state);
   }
