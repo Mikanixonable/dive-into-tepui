@@ -109,7 +109,7 @@ function startAnimationLoop(
 // 使えるべきなので、Game より先に main.ts が生成して所有し、Launcher には参照として渡す。
 // pauseMenu も同様に main.ts が所有し、開閉に応じた一時停止の反映
 // (launcher.current?.pause()/resume())も持ち主である main.ts がここで配線する。
-// pipeline はここで組む PauseMenu の描画タブ(GraphicsPanel)がデバッグ表示の選択を書き込む先。
+// pipeline はここで組む SettingsView の描画面(GraphicsPanel)がデバッグ表示の選択を書き込む先。
 function initHud(graphics: GraphicsSettings, pipeline: RenderPipeline): {
   hud: Hud; audioEngine: AudioEngine; bgm: Bgm; worldSfx: WorldSfx; uiSfx: UiSfx;
   pauseMenu: PauseMenu; settingsView: SettingsView;
@@ -119,8 +119,8 @@ function initHud(graphics: GraphicsSettings, pipeline: RenderPipeline): {
   const bgm = new Bgm(audioEngine);
   const worldSfx = new WorldSfx(audioEngine);
   const uiSfx = new UiSfx(audioEngine);
-  const pauseMenu = new PauseMenu(hud.layers.system, hud.overlayManager, graphics, pipeline);
-  const settingsView = new SettingsView(hud.layers.system, hud.overlayManager, bgm);
+  const pauseMenu = new PauseMenu(hud.layers.system, hud.overlayManager);
+  const settingsView = new SettingsView(hud.layers.system, hud.overlayManager, bgm, graphics, pipeline);
   pauseMenu.setBgmVolume(bgm.getVolume());
   pauseMenu.onBgmVolumeChange = (vol) => bgm.setVolume(vol);
   return { hud, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView };
@@ -175,7 +175,7 @@ async function main() {
   saveBrowser.onSlotSwitched = () => launcher.switchSlot();
   saveBrowser.onLoadSnapshot = (id) => launcher.loadSnapshot(id);
   // 設定メニューと一覧は同じシステム窓の帯にいるので、片方を開くときもう片方は閉じる。
-  pauseMenu.onOpenSnapshots = () => {
+  pauseMenu.onOpenSaveBrowser = () => {
     pauseMenu.toggle(false);
     saveBrowser.open();
   };
@@ -188,6 +188,7 @@ async function main() {
   };
 
   const snapshotControls = new SnapshotControls(hud, pauseMenu, saveBrowser, snapshotService);
+  pauseMenu.onSave = () => snapshotControls.captureManual(launcher.current);
 
   await launcher.start();
 

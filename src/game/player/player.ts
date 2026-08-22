@@ -28,6 +28,7 @@ import { PlayerThrottle } from './player-throttle';
 import { PlayerFire, type AmmoLoad } from './player-fire';
 import { Belt } from './belt';
 import { ThermalSystem } from './thermal';
+import { currentThemePalette } from '../theme';
 import { EffectsSystem } from '../vfx/effects-system';
 import { ThrustEffects } from './thrust-effects';
 import { RcsEffects } from './rcs-effects';
@@ -38,16 +39,17 @@ import type { MarkerManager } from '../marker/marker-manager';
 import { RadiatorSide, RadiatorSystem } from './radiator';
 import { PowerSystem } from './power';
 import { Ephemeris } from '../../physics/ephemeris';
+import type { FrameAnchorSource } from '../../physics/frame';
 import { sunlitFactor } from '../../physics/shadow';
 import { Plan } from '../plan/plan';
-import { PlanExecutor, type PlanExecutionMode } from '../plan/plan-executor';
 import type { PlayerSaveData, PlanSaveData } from '../save-data';
 import { partFromSaveData, type AnyPart } from '../game-entity/parts';
 import { DIRECTION_GLYPH } from '../marker/marker-glyphs';
 
-export type { PlanExecutionMode };
+// 'off': ノードを消化しない。'instant': ノード時刻ちょうどで絶対状態へ乗り移る(自動実行)。
+export type PlanExecutionMode = 'off' | 'instant';
 
-const PLAN_EXECUTION_LABELS: Record<PlanExecutionMode, string> = { off: 'OFF', instant: '瞬間移動', powered: '自動操縦' };
+const PLAN_EXECUTION_LABELS: Record<PlanExecutionMode, string> = { off: 'OFF', instant: '自動実行' };
 
 // mode の表示ラベル(HUDのメニュー項目・プロパティ行が共有する)。
 export function planExecutionLabel(mode: PlanExecutionMode): string {
@@ -77,8 +79,7 @@ export class Player extends Ship {
   private readonly markers: PlayerMarkers;
   // この艦自身のマニューバ計画。PlanEditor はアクティブ艦のこれを編集する。
   readonly plan = new Plan();
-  readonly planExecutor: PlanExecutor;
-  planExecution: PlanExecutionMode = 'off';
+  planExecution: PlanExecutionMode = 'instant';
 
   private readonly _hud: Hud;
   private readonly _worldSfx: WorldSfx;
@@ -122,11 +123,13 @@ export class Player extends Ship {
     this.rcsEffects = new RcsEffects(_scene, _worldSfx);
     this.reentryEffects = new ReentryEffects(_scene);
     this.markers = new PlayerMarkers(markerManager, this.id, this);
-    this.planExecutor = new PlanExecutor(_hud);
 
     if (saved) {
-      // 旧セーブは followPlan: boolean だった(true→'instant' / false→'off')。
-      this.planExecution = saved.planExecution ?? (saved.followPlan ? 'instant' : 'off');
+      // 旧セーブは followPlan: boolean だった(true→'instant' / false→'off')。'powered' だった
+      // セーブは廃止済みモードなので既定の 'instant' へ寄せる。
+      this.planExecution = saved.planExecution === 'off' || saved.planExecution === 'instant'
+        ? saved.planExecution
+        : (saved.followPlan ? 'instant' : 'off');
       this.fineAttitude = saved.fineAttitude ?? false;
       this.parts.splice(0, this.parts.length, ...saved.parts.map(partFromSaveData));
       this.refreshFromParts();
@@ -215,14 +218,8 @@ export class Player extends Ship {
 
     this.throttle.updateThrustLatches(input);
     this.thrust = this.throttle.updateThrustState(input, this.att, simDt, this);
-
-    // 操作対象艦での手動並進・手動回転は 'powered' 自動実行を中断する(進行方向ホールドが
-    // 手動回転で解除されるのと同じ作法)。
-    if (this.planExecution === 'powered'
-      && (this.thrust !== null || this.throttle.hasManualRotationInput(input))) {
-      this.planExecution = 'off';
-      this._hud.hint('軌道計画の自動実行を中断(手動操作)');
-    }
+    // 噴射中は毎フレーム破棄する — 次の Predictor がその時点の実状態を種に作り直す。
+    if (this.thrust !== null) this.invalidatePrediction();
   }
 
   // 表示フレーム基準の受動状態。環境(熱・電力・ラジエータ)は stepEnvironment で
@@ -448,6 +445,7 @@ export class Player extends Ship {
     visibility: MapVisibility | null = null,
     displayWindow?: DisplayWindow,
     orbitRef?: OrbitReference,
+    frameAnchors?: FrameAnchorSource,
   ): void {
     // メッシュ本体の位置・姿勢
     const displayState = this.displayState(displayTime);
@@ -471,7 +469,7 @@ export class Player extends Ship {
     this.radiator.sync();
     this.power.sync();
     // マーカー。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
-    this.markers.sync(this.state, displayState, this.att, camera.overviewMode, isActive, camera.activeCameraPos, camera.activeCameraProjection, camera.activeCameraScale, this.name, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.mapCamera.focus), ephemeris.registry, celestialBodies, visibility, displayWindow?.frame, displayTime, ephemeris, orbitRef);
+    this.markers.sync(this.state, displayState, this.att, camera.overviewMode, isActive, camera.activeCameraPos, camera.activeCameraProjection, camera.activeCameraScale, this.name, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.mapCamera.focus), ephemeris.registry, celestialBodies, visibility, displayWindow?.frame, displayTime, ephemeris, orbitRef, frameAnchors);
   }
 
   // 艦は任意のタイミングで削除されうるので、Player が所有する線・ビルボード・HUD も一度だけ解放する。
@@ -494,11 +492,11 @@ export class Player extends Ship {
       priority,
       name: this.name,
       detail: overviewMode ? '' : fmtMarkerDist(dist),
-      bearingColor: C.COLOR_MARKER_ALLY,
+      bearingColor: role === 'primary' ? currentThemePalette().secondary : C.COLOR_MARKER_ALLY,
       bearingSym: DIRECTION_GLYPH.allyBearing,
       bearingClass: 'mk-dir mk-ally-dir',
       bearingVisible: dist <= C.ALLY_BEARING_MAX_DISTANCE,
-      color: C.COLOR_MARKER_ALLY,
+      color: role === 'primary' ? currentThemePalette().secondary : C.COLOR_MARKER_ALLY,
       symMarkup: true,
     };
   }

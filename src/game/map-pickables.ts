@@ -9,6 +9,7 @@ import { focusTargetId } from './camera/focus-target';
 import { EntityManager } from './simulation/entity-manager';
 import { Ephemeris } from '../physics/ephemeris';
 import { NavTarget } from './nav-target';
+import type { FrameAnchorSource } from '../physics/frame';
 import { CameraSystem } from './camera/camera-system';
 import { PlanEditor } from './plan/plan-editor';
 import type { ActivePlayerController } from './active-player-controller';
@@ -16,7 +17,7 @@ import { len, sub } from '../physics/vec3';
 import { strongestAttractor } from '../physics/celestial-body';
 import { isOccluded } from '../physics/occlusion';
 import { apsisAltitudes } from '../physics/elements';
-import { isPositionInFocusedSystem, systemMembersAt } from './celestial/body-visibility';
+import { isPositionInFocusedSystem, NearbySystemTracker } from './celestial/body-visibility';
 import { MapVisibilityPolicy } from './celestial/map-visibility';
 import { MarkerManager } from './marker/marker-manager';
 import type { DisplayWindow } from './display-window-manager';
@@ -32,6 +33,7 @@ export class MapPickables {
   private items: readonly MapPickable[] = this.candidateItems;
   private _lastSimTime = 0;
   private _visibilityPolicy: MapVisibilityPolicy | null = null;
+  private readonly nearbyTracker = new NearbySystemTracker();
 
   // このフレームの被選択物候補。refresh の後に読む。
   get pickables(): readonly MapPickable[] { return this.items; }
@@ -70,6 +72,7 @@ export class MapPickables {
     private readonly cameraSystem: CameraSystem,
     private readonly editor: PlanEditor,
     private readonly markerManager: MarkerManager,
+    private readonly frameAnchors: FrameAnchorSource,
   ) {}
 
   // マップの天体ラベル(表示のみ)と航法ターゲットの AN/DN を求め直したうえで、このフレームの
@@ -93,14 +96,14 @@ export class MapPickables {
       this.ephemeris.registry,
       this.cameraSystem.bodyClassToggles,
       focusId,
-      systemMembersAt(this.ephemeris.registry, this.cameraSystem.activeCameraPos, displayCelestialBodies),
+      this.nearbyTracker.membersAt(this.ephemeris.registry, this.cameraSystem.activeCameraPos, displayCelestialBodies),
     );
     this._visibilityPolicy = visibilityPolicy;
     this.cameraSystem.focusMarkers.update(
       displayTime, focusId, this.cameraSystem.bodyClassToggles,
       this.cameraSystem.activeCameraPos, visibilityPolicy,
     );
-    this.navTarget.update(this.activePlayers.current, this.entities, this.ephemeris, displayWindow);
+    this.navTarget.update(this.activePlayers.current, this.entities, this.ephemeris, displayWindow, this.frameAnchors);
 
     // 船の位置は表示時刻の displayState — 機体メッシュや敵マーカーと同じ未来ゴースト位置に揃える。
     this.candidateItems.length = 0;
@@ -170,7 +173,7 @@ export class MapPickables {
     // マップビューでは player だけ、フォーカス天体の系に所属するかで候補を絞る。表示側と
     // 同じ判定なので、地球の裏側の player は表示・選択でき、土星系の player はどちらにも
     // 現れない。天体(body)は MapVisibilityPolicy が選んだ候補を維持する(カメラ遮蔽で
-    // 一覧や被選択候補から除くと、小衛星ディモルフォスのように公転・カメラ移動に伴い
+    // 一覧や被選択候補から除くと、小衛星ナマカのように公転・カメラ移動に伴い
     // 一覧の行が明滅してしまうため)。その他の候補(船・弾薬・基地・軌道点)は天体遮蔽で
     // ピック対象から除く。
     for (const item of this.candidateItems) {

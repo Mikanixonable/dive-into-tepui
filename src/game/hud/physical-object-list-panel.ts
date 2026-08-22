@@ -50,9 +50,9 @@ const HEADER_SUMMARY: Partial<Record<MapPickKind, { readonly needle: string; rea
 
 const EMPTY_IDS: readonly string[] = [];
 
-type ObjectListFilter = 'system' | Exclude<BodyClass, 'star'>;
+type PhysicalObjectListFilter = 'system' | Exclude<BodyClass, 'star'>;
 
-const FILTERS: readonly (readonly [ObjectListFilter, string])[] = [
+const FILTERS: readonly (readonly [PhysicalObjectListFilter, string])[] = [
   ['planet', '惑星'],
   ['satellite', '衛星'],
   ['dwarf', '準惑星'],
@@ -64,13 +64,13 @@ const FILTERS: readonly (readonly [ObjectListFilter, string])[] = [
 const COLLAPSE_LABELS: CollapseToggleLabels = {
   expandedGlyph: COLLAPSE_EXPANDED_GLYPH,
   collapsedGlyph: COLLAPSE_COLLAPSED_GLYPH,
-  expandedTitle: '軌道オブジェクト一覧を閉じる',
-  collapsedTitle: '軌道オブジェクト一覧を開く',
+  expandedTitle: '軌道物体一覧を閉じる',
+  collapsedTitle: '軌道物体一覧を開く',
 };
 
-type ObjectListSort = 'distance' | 'name';
+type PhysicalObjectListSort = 'distance' | 'name';
 
-const SORTS: readonly (readonly [ObjectListSort, string])[] = [
+const SORTS: readonly (readonly [PhysicalObjectListSort, string])[] = [
   ['distance', '近さ'],
   ['name', '名前'],
 ];
@@ -105,10 +105,10 @@ interface RowNode {
   savedExpanded: boolean | null;
 }
 
-// マップビュー右部に常設の軌道オブジェクト一覧ウィンドウ。種別ごとの区画にタブ見出しで
+// マップビュー右部に常設の軌道物体一覧ウィンドウ。種別ごとの区画にタブ見出しで
 // 開閉し、行クリックで選択状態をトグルする。天体区画は衛星・ラグランジュ点を親の下の
 // トグル子メニューへ格納する(衛星自身のラグランジュ点はさらにその衛星の子メニューへ)。
-export class ObjectListPanel {
+export class PhysicalObjectListPanel {
   public onFocus: ((id: string) => void) | null = null;
   public onNavTarget: ((id: string) => void) | null = null;
   public onSelectRight: ((id: string, clientX: number, clientY: number) => void) | null = null;
@@ -118,8 +118,8 @@ export class ObjectListPanel {
   private readonly registry: CelestialRegistry;
   private selectedId: string | null = null;
   private query = '';
-  private filter: ObjectListFilter | null = null;
-  private sort: ObjectListSort = 'distance';
+  private filter: PhysicalObjectListFilter | null = null;
+  private sort: PhysicalObjectListSort = 'distance';
   private lastFocusId: string | undefined = undefined;
   // sync() は毎フレーム呼ばれるが、これらは同期中だけ使う scratch であり、呼び出し元へ
   // 参照を渡さない。Map/Set/配列の器だけを保持して GC を抑える。
@@ -136,7 +136,7 @@ export class ObjectListPanel {
   // 絞り込み条件(検索語・クラスフィルタ)の直前フレーム値。変化を検知した回だけ
   // 一致行の祖先を強制的に開く — 毎フレーム開き直すとプレイヤーの手動での畳み操作と競合する。
   private prevAutoExpandQuery = '';
-  private prevAutoExpandFilter: ObjectListFilter | null = null;
+  private prevAutoExpandFilter: PhysicalObjectListFilter | null = null;
   private wasFilteringActive = false;
   // 並べ替え・親子構造の入力を前フレームぶん保持し、変化した時だけ組み直す。
   private readonly prevIds: string[] = [];
@@ -144,8 +144,8 @@ export class ObjectListPanel {
   private readonly prevKinds: MapPickKind[] = [];
   private readonly prevParents: (string | undefined)[] = [];
   private readonly prevMatches: boolean[] = [];
-  private prevSort: ObjectListSort | null = null;
-  private prevFilter: ObjectListFilter | null | undefined = undefined;
+  private prevSort: PhysicalObjectListSort | null = null;
+  private prevFilter: PhysicalObjectListFilter | null | undefined = undefined;
   private readonly breadcrumb: HTMLElement;
   private readonly emptyState: HTMLElement;
   private readonly unsubscribeCollapsedView: () => void;
@@ -153,21 +153,21 @@ export class ObjectListPanel {
   public constructor(root: HTMLElement, registry: CelestialRegistry) {
     this.registry = registry;
     this.panel = document.createElement('div');
-    this.panel.id = 'hud-object-list';
+    this.panel.id = 'hud-physical-object-list';
     this.panel.className = 'panel';
     this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
 
     const head = document.createElement('div');
-    head.className = 'object-list-head';
+    head.className = 'physical-object-list-head';
 
     const titleRow = document.createElement('div');
-    titleRow.className = 'object-list-title';
+    titleRow.className = 'physical-object-list-title';
     const title = document.createElement('h3');
-    title.textContent = 'オブジェクト';
+    title.textContent = '物体';
     titleRow.appendChild(title);
     head.appendChild(titleRow);
     const searchWrap = document.createElement('div');
-    searchWrap.className = 'object-list-search';
+    searchWrap.className = 'physical-object-list-search';
     // Escape は「破棄」ではなく「絞り込み解除」に読めるので、検索欄だけは 'clear' を渡す(§7-9)。
     const updateQuery = (value: string) => { this.query = value.trim().toLocaleLowerCase(); };
     const search = new ValueInput(
@@ -175,13 +175,13 @@ export class ObjectListPanel {
       updateQuery,
       () => { this.query = ''; },
     );
-    search.element.setAttribute('aria-label', '軌道オブジェクトを検索');
+    search.element.setAttribute('aria-label', '軌道物体を検索');
     // 確定を待たず、打鍵のたびに絞り込みへ反映する。
     search.element.addEventListener('input', () => updateQuery(search.element.value));
     searchWrap.appendChild(search.element);
     head.appendChild(searchWrap);
 
-    const filterControl = new SegmentedControl<ObjectListFilter | null>('分類', FILTERS, (key) => {
+    const filterControl = new SegmentedControl<PhysicalObjectListFilter | null>('分類', FILTERS, (key) => {
       this.filter = this.filter === key ? null : key;
       filterControl.setSelected(this.filter);
     });
@@ -189,7 +189,7 @@ export class ObjectListPanel {
     head.appendChild(filterControl.element);
 
     // 並び順はフィルタとは別行 — 絞り込みと並べ替えは独立な操作であることを見た目でも分ける。
-    const sortControl = new SegmentedControl<ObjectListSort>('並び順', SORTS, (key) => {
+    const sortControl = new SegmentedControl<PhysicalObjectListSort>('並び順', SORTS, (key) => {
       this.sort = key;
       sortControl.setSelected(key);
     });
@@ -198,28 +198,28 @@ export class ObjectListPanel {
     this.panel.appendChild(head);
     // 見出し以外をまとめて畳める区画にする — 一覧は常時表示で画面右を大きく占有するため。
     const body = document.createElement('div');
-    body.className = 'object-list-body';
+    body.className = 'physical-object-list-body';
     this.panel.appendChild(body);
-    const collapseToggle = buildCollapseToggle(titleRow, 'hud-object-list-toggle', 'object-list-collapse', body, COLLAPSE_LABELS);
+    const collapseToggle = buildCollapseToggle(titleRow, 'hud-physical-object-list-toggle', 'physical-object-list-collapse', body, COLLAPSE_LABELS);
     const applyCollapsedState = (): void => {
-      const collapsed = loadPanelCollapsed('hud-object-list') ?? false;
+      const collapsed = loadPanelCollapsed('hud-physical-object-list') ?? false;
       body.classList.toggle('collapsed', collapsed);
       syncCollapseToggle(collapseToggle, body, COLLAPSE_LABELS);
     };
     applyCollapsedState();
     this.unsubscribeCollapsedView = onPanelCollapsedViewChange(applyCollapsedState);
-    collapseToggle.addEventListener('click', () => savePanelCollapsed('hud-object-list', body.classList.contains('collapsed')));
+    collapseToggle.addEventListener('click', () => savePanelCollapsed('hud-physical-object-list', body.classList.contains('collapsed')));
     this.breadcrumb = document.createElement('div');
-    this.breadcrumb.className = 'object-list-breadcrumb';
+    this.breadcrumb.className = 'physical-object-list-breadcrumb';
     body.appendChild(this.breadcrumb);
 
     for (const { kind } of SECTIONS) {
       const header = document.createElement('div');
-      header.className = 'object-list-section-header';
+      header.className = 'physical-object-list-section-header';
       header.tabIndex = 0;
       header.setAttribute('role', 'button');
       const sectionBody = document.createElement('div');
-      sectionBody.className = 'object-list-section-body';
+      sectionBody.className = 'physical-object-list-section-body';
       const order: SectionOrder = { ids: [], rootIds: [], childIds: new Map() };
       const section: Section = { header, body: sectionBody, rows: new Map(), order, expanded: true, savedExpanded: null };
       header.addEventListener('click', () => {
@@ -239,8 +239,8 @@ export class ObjectListPanel {
     }
 
     this.emptyState = document.createElement('div');
-    this.emptyState.className = 'object-list-empty hidden';
-    this.emptyState.textContent = '該当するオブジェクトがありません';
+    this.emptyState.className = 'physical-object-list-empty hidden';
+    this.emptyState.textContent = '該当する物体がありません';
     body.appendChild(this.emptyState);
 
     hudRail(root, 'right').appendChild(this.panel);
@@ -539,20 +539,20 @@ export class ObjectListPanel {
     const row = document.createElement('div');
     row.className = 'erow';
     const toggle = document.createElement('span');
-    toggle.className = 'object-list-toggle';
+    toggle.className = 'physical-object-list-toggle';
     const glyph = document.createElement('span');
-    glyph.className = 'object-list-glyph';
+    glyph.className = 'physical-object-list-glyph';
     glyph.setAttribute('aria-hidden', 'true');
     const label = document.createElement('span');
-    label.className = 'object-list-name';
+    label.className = 'physical-object-list-name';
     const detail = document.createElement('small');
-    detail.className = 'object-list-detail';
+    detail.className = 'physical-object-list-detail';
     row.appendChild(toggle);
     row.appendChild(glyph);
     row.appendChild(label);
     row.appendChild(detail);
     const childrenContainer = document.createElement('div');
-    childrenContainer.className = 'object-list-children';
+    childrenContainer.className = 'physical-object-list-children';
 
     row.tabIndex = 0;
     row.setAttribute('role', 'button');

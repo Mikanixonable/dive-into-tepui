@@ -170,10 +170,11 @@ export class SaveBrowser implements OverlayHandle {
     root.appendChild(this.el);
   }
 
-  // パネルを開く。表示対象スロットは既定でアクティブスロット。開いている間はゲームを止める。
+  // パネルを開く。表示対象スロットは既定でアクティブスロット、ステージタブは既定でいま
+  // プレイ中のステージ。開いている間はゲームを止める。
   open(): void {
     this.viewedSlotId = this.slots.activeSlotId;
-    this.viewedStageId = null;
+    this.viewedStageId = this.gameSource.current?.activeStage.id ?? null;
     this.statusLine = '';
     this.statusIsError = false;
     this.rebuild();
@@ -222,7 +223,7 @@ export class SaveBrowser implements OverlayHandle {
     header.className = 'sb-header';
     const title = document.createElement('span');
     title.className = 'sb-title';
-    title.textContent = 'save browser';
+    title.textContent = 'セーブデータ';
     header.appendChild(title);
     const closeBtn = new CloseButton(() => this.close());
     header.appendChild(closeBtn.element);

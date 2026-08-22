@@ -1,46 +1,75 @@
-// マップの座標系UIのうち「何の公転に合わせて回すか」を選ばせるゾーン。いまカメラがいる系の
-// 天体ぶんの回転対象を SegmentedControl の選択肢として並べる。座標系そのもの(原点込み)は
-// 呼び出し側が別途選ぶ原点と組み合わせて Ephemeris.frameOf で作るので、ここは回転対象の id だけを返す。
-import { CelestialBodyId, OrbitingId } from '../../physics/celestial-body';
+// マップの座標系UIのうち「何の回転に合わせて回すか」を選ばせるゾーン。いまカメラがいる系の
+// 天体ぶんの公転・自転と、役割(操作対象の船/ターゲット)の公転を選択肢として並べ、
+// 選ばれた回転対象を返す。
+import { CelestialBodyId } from '../../physics/celestial-body';
 import { Ephemeris } from '../../physics/ephemeris';
+import { FrameRole, FrameRotationSource, rotationSourceKey } from '../../physics/frame';
 import { primaryOf } from '../../physics/solar-system';
 import { SegmentedControl } from './widgets';
-import { celestialBodyName } from './frame-labels';
+import { celestialBodyName, frameRoleName } from './frame-labels';
 
 export class RotationZone {
   readonly element: HTMLElement;
   // null は「解除」= 回転させない(慣性系)。
-  onSelect: ((rotatingWith: OrbitingId | null) => void) | null = null;
+  onSelect: ((rotatingWith: FrameRotationSource | null) => void) | null = null;
 
-  private readonly control: SegmentedControl<OrbitingId | null>;
+  // 正規化キー → 回転対象。SegmentedControl は値を参照同一性で比べるので、組み直すたびに
+  // 新しくなるオブジェクトではなく安定した文字列を値に持たせる。
+  private readonly sources = new Map<string, FrameRotationSource | null>([['', null]]);
+  private readonly control: SegmentedControl<string>;
   private readonly ephemeris: Ephemeris;
 
   // title は選択肢見出し。
   constructor(title: string, ephemeris: Ephemeris) {
     this.ephemeris = ephemeris;
-    this.control = new SegmentedControl<OrbitingId | null>(
-      title, [[null, '解除']], (rotatingWith) => this.onSelect?.(rotatingWith),
+    this.control = new SegmentedControl<string>(
+      title, [['', '解除']], (key) => this.onSelect?.(this.sources.get(key) ?? null),
     );
     this.element = this.control.element;
   }
 
-  // 渡された天体列に応じて選択肢を組み直す。回転対象として妥当なのは登録天体かつ
-  // 恒星でないもの(Ephemeris が回転系を作れる条件と同じ)。
-  setNearby(members: readonly CelestialBodyId[]): void {
+  // 選択肢を「解除・各天体の公転・各天体の自転・validRoles の役割の公転」へ組み直す。
+  // validRoles には、周回軌道にあって公転を固定できる役割だけを渡す。
+  setNearby(
+    members: readonly CelestialBodyId[], displayTime: number, validRoles: readonly FrameRole[] = [],
+  ): void {
     const registry = this.ephemeris.registry;
-    const items: (readonly [OrbitingId | null, string])[] = [[null, '解除']];
+    this.sources.clear();
+    this.sources.set('', null);
+    const items: (readonly [string, string])[] = [['', '解除']];
+
+    const revolvable: CelestialBodyId[] = [];
     for (const id of members) {
       if (registry[id] === undefined) continue;
       // 恒星は primaryOf が null を返すのでここで外れる。
-      const primary = primaryOf(registry, id);
-      if (primary === null) continue;
-      items.push([id, `${celestialBodyName(primary)}-${celestialBodyName(id)}回転座標系`]);
+      if (primaryOf(registry, id) === null) continue;
+      revolvable.push(id);
+    }
+    for (const id of revolvable) {
+      const primary = primaryOf(registry, id)!;
+      const source: FrameRotationSource = { kind: 'revolution', id };
+      const key = rotationSourceKey(source);
+      this.sources.set(key, source);
+      items.push([key, `${celestialBodyName(primary)}-${celestialBodyName(id)}回転座標系`]);
+    }
+    for (const id of revolvable) {
+      if (this.ephemeris.spinRotationAt(id, displayTime) === null) continue;
+      const source: FrameRotationSource = { kind: 'spin', id };
+      const key = rotationSourceKey(source);
+      this.sources.set(key, source);
+      items.push([key, `${celestialBodyName(id)}自転座標系`]);
+    }
+    for (const role of validRoles) {
+      const source: FrameRotationSource = { kind: 'revolution', id: `@${role}` };
+      const key = rotationSourceKey(source);
+      this.sources.set(key, source);
+      items.push([key, `${frameRoleName(role)}の公転`]);
     }
     this.control.setItems(items);
   }
 
   // 選択中の表示を合わせる。
-  setSelected(rotatingWith: OrbitingId | null): void {
-    this.control.setSelected(rotatingWith);
+  setSelected(rotatingWith: FrameRotationSource | null): void {
+    this.control.setSelected(rotationSourceKey(rotatingWith));
   }
 }

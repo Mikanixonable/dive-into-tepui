@@ -1,8 +1,10 @@
 // マップモードの「カメラ」「軌道フレーム」パネル オーケストレーター。
 // マップカメラの視点 (CameraFramePanel) と未来表示の描画基準 (TrajectoryFramePanel) を所有し、
 // カメラフォーカス変更時の軌道フレーム自動追随などの連動を疎結合に調停する。
-import { CelestialBody } from '../../physics/celestial-body';
+import { bodyAnchorSource, CelestialBody } from '../../physics/celestial-body';
 import type { Ephemeris } from '../../physics/ephemeris';
+import { FRAME_ROLES, FrameRole, FrameRotationSource, frameRoleOf } from '../../physics/frame';
+import type { FrameAnchorSource } from '../../physics/frame';
 import { Vec3 } from '../../physics/vec3';
 import { systemMembersAt } from '../celestial/body-visibility';
 import { MapCamera } from '../camera/map-camera';
@@ -26,6 +28,7 @@ export class FrameControls {
     private readonly mapCamera: MapCamera,
     private readonly displayWindow: DisplayWindowManager,
     overlayManager: OverlayManager,
+    private readonly frameAnchors: FrameAnchorSource,
   ) {
     this.cameraPanel = new CameraFramePanel(panelRoot, popupRoot, ephemeris, mapCamera, overlayManager);
     this.trajectoryPanel = new TrajectoryFramePanel(panelRoot, popupRoot, ephemeris, displayWindow, overlayManager);
@@ -33,7 +36,21 @@ export class FrameControls {
     this.cameraPanel.onSelectCenter = (id) => this.selectCameraCenter(id);
   }
 
-  // カメラの基準天体を選び直す。解除は、いま見ている位置を恒星中心の慣性系へ焼き込んだ
+  // 離心率1未満の周回軌道にある役割だけを、回転ゾーンの「役割の公転」選択肢として返す
+  // (RotationZone は Ephemeris しか知らないため、判定はここで行う)。
+  private validRevolutionRoles(t: number): readonly FrameRole[] {
+    return FRAME_ROLES.filter((role) => this.frameAnchors.attractorOf(`@${role}`, t) !== null);
+  }
+
+  // いま選ばれている回転が、もう周回していない役割の公転を指しているか。天体を指す回転と
+  // 慣性系は対象外(条件で消えることがない)。
+  private isStaleRole(rotatingWith: FrameRotationSource | null, validRoles: readonly FrameRole[]): boolean {
+    if (rotatingWith === null || rotatingWith.kind !== 'revolution') return false;
+    const role = frameRoleOf(rotatingWith.id);
+    return role !== null && !validRoles.includes(role);
+  }
+
+  // カメラの基準を選び直す。解除は、いま見ている位置を恒星中心の慣性系へ焼き込んだ
   // 固定点にする — どの天体にも追随しないが、視線はその場に留まる。
   private selectCameraCenter(id: string | null): void {
     if (id !== null) {
@@ -42,7 +59,8 @@ export class FrameControls {
     }
     const starId = this.ephemeris.starId;
     const frame = starId !== null ? this.ephemeris.frameOf(starId, null) : this.ephemeris.inertialFrame;
-    this.setFocus(focusPoint(this.ephemeris, frame, this.mapCamera.resolvedFocus, this.lastTime));
+    // 回さない(rotatingWith: null)ので基準は必ず登録天体 — 機体・役割トークンの解決は要らない。
+    this.setFocus(focusPoint(this.ephemeris, frame, this.mapCamera.resolvedFocus, this.lastTime, bodyAnchorSource([])));
   }
 
   // マップカメラのフォーカスを target へ移す。追随が有効で target が登録天体を指しているときは
@@ -59,13 +77,25 @@ export class FrameControls {
   // パネルの表示と選択肢・選択表示を、他モジュールの状態へ合わせる。
   public sync(
     pickables: readonly MapPickable[], cameraPos: Vec3, celestialBodies: readonly CelestialBody[],
-    simTime: number, visible: boolean,
+    simTime: number, displayTime: number, visible: boolean,
   ): void {
     this.lastTime = simTime;
     const members = visible ? systemMembersAt(this.ephemeris.registry, cameraPos, celestialBodies) : [];
+    // 役割が周回しているかどうかはパネルが見えているかと関係がないので、非表示でも判定する
+    // — 見えていないあいだ空扱いにすると、パネルを畳んだだけで下の巻き戻しが走り、選択が消える。
+    const validRoles = this.validRevolutionRoles(displayTime);
 
-    this.cameraPanel.sync(pickables, members, visible);
-    this.trajectoryPanel.sync(pickables, members, visible);
+    // 選択中の役割の公転が条件を崩したら、既存の onSelect と同じ経路(カメラは
+    // setCameraRotation、軌道フレームは frame の差し替え)で慣性系へ落とす。
+    if (this.isStaleRole(this.mapCamera.cameraFrame.rotatingWith, validRoles)) {
+      this.mapCamera.setCameraRotation(null);
+    }
+    if (this.isStaleRole(this.displayWindow.frame.rotatingWith, validRoles)) {
+      this.displayWindow.frame = this.ephemeris.frameOf(this.displayWindow.frame.center, null);
+    }
+
+    this.cameraPanel.sync(pickables, members, displayTime, validRoles, visible);
+    this.trajectoryPanel.sync(pickables, members, displayTime, validRoles, visible);
   }
 
   // 両パネルと、保持している座標系選択ゾーンを片付ける。
