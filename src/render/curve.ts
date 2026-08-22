@@ -473,6 +473,7 @@ export class Curve {
   setTransform(position: THREE.Vector3, quaternion?: THREE.Quaternion): void {
     this.reqPosition.copy(position);
     if (quaternion) this.reqQuaternion.copy(quaternion);
+    else this.reqQuaternion.identity();
     this.applyTransform();
   }
 
