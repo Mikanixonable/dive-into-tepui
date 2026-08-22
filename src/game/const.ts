@@ -286,8 +286,20 @@ export const SUBSTEP_MAX_DT = 20; // 1サブステップの最大秒数 [s](Simu
 // 同じ高度で大気抵抗が実際に削る 14 km/日 の 3% — 艦が焼ける時期は高ワープでも変わらない。
 // 1周27歩(K=32)まで粗くすると数値減衰が実ドラッグと同等になり、待つだけで艦が倍の速さで落ちる。
 export const SUBSTEP_MAX_COUNT = 64;
-export const REENTRY_SUBSTEP_ALT = 200e3; // 大気圏近傍で細分化を開始する高度 [m]
-export const REENTRY_SUBSTEP_MAX_DT = 1; // 大気圏近傍の最大積分刻み [s]
+
+// 大気の中で刻みを縛る2つの上限(game/simulation/time-step.ts の atmosphericMaxStep)。
+// 抗力は陽的 RK4 にとって剛い項で、逆時定数 λ = ½ρ·s·bcInv が刻みに対して大きくなると、
+// 段ごとの抗力が増幅して1歩で発散する(抗力は速さの2乗なので振動ではなく暴走になる)。
+// DRAG_STEP_MAX_SPEED_LOSS は λ·dt の上限 = 1歩で抗力が奪ってよい対気速度の割合。
+// RK4 の実軸上の安定限界は λ·dt ≒ 2.78 だが、縛っているのは安定性ではなく精度である:
+// GTO からの再突入で外殻温度の最大は、刻み 0.25 s の基準 976 K に対し λ·dt = 1 で 1050 K
+// (+7.6%)、0.5 で 991 K(+1.5%)。限界 1300 K に対して 7.6% は艦の生死を変える。
+export const DRAG_STEP_MAX_SPEED_LOSS = 0.5;
+// もう1つは剛性と無関係に効く。RK4 の中間段は現在の速度と加速度からの直線外挿なので、
+// 重力だけで動径方向に g·dt²/4 沈む。刻み 204.8 s ではこれが 99.6 km になり、高度 91.5 km
+// (λ·dt = 0.006 で剛性は全く問題ない)でも段が地面の下を標本して海面密度を拾う。
+// DRAG_STEP_MAX_SCALE_HEIGHTS は、その沈み込みが密度を e^N 倍までしか変えないよう縛る。
+export const DRAG_STEP_MAX_SCALE_HEIGHTS = 0.5;
 
 // --- 接触判定(game/simulation/ の接触解決) ---
 // 剛体接触の反発係数。天体の表面でも物体どうしでも同じ値を使う。

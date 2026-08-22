@@ -14,7 +14,7 @@ import { keplerPeriod } from '../../physics/elements';
 import { ApsisTrack } from '../../physics/trajectory-features';
 import { dot, len, sub } from '../../physics/vec3';
 import { ArcBodies, type ArcBodyWindow, type FutureCelestialBodyProvider } from './arc-bodies';
-import { reentryAwareMaxStep } from './time-step';
+import { atmosphericMaxStep } from './time-step';
 import * as C from '../const';
 
 // keepDuration ぶんを保持する列へ積む最小間隔 [s]。軌道周期 period を TRAJECTORY_SAMPLES_PER_REV
@@ -147,10 +147,9 @@ export class PredictedArc {
   }
 
   // 刻み幅。消費される弧は実シミュレーションの刻み規則をそのまま採る — ある時間帯の状態を
-  // 決める積分が同じ刻みで積まれるのが目的なので、所有者が毎フレーム書く simulationMaxStep を
-  // 実シミュレーションと同じ再突入域の細分化(reentryAwareMaxStep)へ通した値と、接近項の
-  // 小さい方を使う。周期・粗化項・下限は使わない。細分化が要るのは、大気の密度が 1 スケール
-  // ハイト(約 7km)で桁が変わるためで、降下中に刻みを縮めないと抵抗の積分がその変化を跨ぐ。
+  // 決める積分が同じ刻みで積まれるのが目的なので、所有者が毎フレーム書く simulationMaxStep と、
+  // 実シミュレーションと同じ大気の上限(atmosphericMaxStep)と、接近項の最も小さいものを使う。
+  // 周期・粗化項・下限は使わない。
   // 消費されない弧は、軌道項(周期基準)・粗化項(span を ARC_MAX_STEPS 等分)・接近項(動径
   // 接近率基準)のうち最も厳しいものを、下限 ARC_MIN_STEP_DT で頭打ちにする。接近項が相対速さで
   // なく動径接近率であることが要 — 円軌道では相対速さが軌道速度そのものになり、接近して
@@ -171,13 +170,17 @@ export class PredictedArc {
       if (closingRate <= 1e-9) continue;
       approachDt = Math.min(approachDt, (clearance / closingRate) * C.ARC_APPROACH_SAFETY);
     }
+    // 大気が要求する上限は下限 ARC_MIN_STEP_DT より優先される。下限は接近項の Zeno を断つため
+    // のもので、抗力を積めない幅まで刻みを広げる権利は持たない。
+    const atmosphericDt = atmosphericMaxStep(tip, this.bcInv, collisionBodies);
     if (this.consumable) {
-      const maxStep = reentryAwareMaxStep([tip], collisionBodies, this.simulationMaxStep);
-      return Math.min(approachDt, maxStep);
+      return Math.min(approachDt, atmosphericDt, this.simulationMaxStep);
     }
     const naturalDt = period / C.ARC_STEPS_PER_REV;
     const coarseFloor = span / C.ARC_MAX_STEPS;
-    return Math.max(C.ARC_MIN_STEP_DT, Math.min(span, approachDt, Math.max(naturalDt, coarseFloor)));
+    return Math.min(
+      atmosphericDt,
+      Math.max(C.ARC_MIN_STEP_DT, Math.min(span, approachDt, Math.max(naturalDt, coarseFloor))));
   }
 
   // 固体表面への到達の判定。触れた天体があれば、その接触時刻へ経路を補間した状態を到達点

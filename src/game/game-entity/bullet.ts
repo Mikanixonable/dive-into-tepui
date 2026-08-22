@@ -26,7 +26,7 @@ export type BulletType = 'normal' | 'plasma';
 // 自弾と敵プラズマ弾の両方に使う。
 // geometry/material はビルダーが弾種ごとに共有するため、traverse による個別 dispose は行わない。
 export class Bullet extends GameEntity {
-    protected readonly bcInv = C.BULLET_BCINV;
+    override readonly bcInv = C.BULLET_BCINV;
     // 弾は姿勢を持たず、速度方向を向く(sync)。
     readonly hasAttitude = false;
 

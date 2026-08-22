@@ -37,7 +37,7 @@ function buildDebrisRenderObject(debrisKind: DebrisKind): THREE.Object3D {
 }
 
 export class DebrisPiece extends GameEntity {
-  protected readonly bcInv = C.SMALL_DEBRIS_BCINV;
+  override readonly bcInv = C.SMALL_DEBRIS_BCINV;
   protected readonly srpCoeff = C.SMALL_DEBRIS_SRP_COEFF;
 
   // fragment のみ意味を持つ: どのバリアントジオメトリを使うか、InstancedPool の
