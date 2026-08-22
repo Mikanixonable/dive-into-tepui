@@ -63,7 +63,7 @@ class DurationValueInput {
     }, true);
     // 数値入力欄そのものは ValueInput へ委譲する。レンジへのクランプは commitText で行う —
     // ValueInput 自身は非有限値/空欄しか破棄しない。
-    this.value = new ValueInput({ type: 'number' }, (text) => this.commitText(text), () => this.onCancel());
+    this.value = new ValueInput({ type: 'number', step: 1 }, (text) => this.commitText(text), () => this.onCancel());
     this.element.appendChild(this.value.element);
     // 単位切り替え。単位が変わると min/max の表示値も単位に合わせて引き直す。
     this.unit = new SegmentedControl('', UNITS, (u) => {
