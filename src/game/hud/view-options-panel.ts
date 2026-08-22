@@ -77,7 +77,7 @@ const GRID_COLUMNS: readonly ViewOptionColumn[] = [
   { glyph: '⌒', label: '面' },
   { glyph: DIRECTION_GLYPH.axis, label: '極' },
   { glyph: '⊞', label: '網' },
-  { glyph: '十', label: '縮尺' },
+  { glyph: '十', label: '面' },
 ];
 
 // 列見出しの凡例を持たない、グループ間の細い区切り(節見出しの凡例はセクション先頭で1回だけ
@@ -226,7 +226,7 @@ export class ViewOptionsPanel {
     // (見出し+トグル列)を流用し、面/極/網/縮尺を1つの表にまとめる。
     const gridButtons: (readonly [keyof CelestialGridVisibility, Button])[] = [];
     const gridCategories: (readonly [keyof CelestialGridVisibility, Button, HTMLElement])[] = [];
-    appendSectionHeading(body, '天球', GRID_COLUMNS, 'view-options-heading-grid');
+    appendSectionHeading(body, 'ガイド', GRID_COLUMNS, 'view-options-heading-grid');
     for (const row of GRID_ROWS) {
       const rowEl = document.createElement('div');
       rowEl.className = 'body-class-row grid-class-row';
