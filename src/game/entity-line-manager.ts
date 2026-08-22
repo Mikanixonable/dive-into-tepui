@@ -30,9 +30,15 @@ export class EntityLineManager {
     const palette = currentThemePalette();
     const primaryStyle: LineStyle = { color: palette.secondary, opacity: TARGET_LINE_OPACITY, renderOrder: C.LINE_RENDER_ORDER.target };
     const targetStyleOf = (e: CombatTarget): LineStyle | null => e === primaryTarget ? primaryStyle : null;
-    const playerOrbitStyle: LineStyle = { color: palette.accent, opacity: 0.55, renderOrder: C.LINE_RENDER_ORDER.shipOrbit };
-    const playerPredictedStyle: LineStyle = { color: palette.accent, opacity: 0.55, renderOrder: C.LINE_RENDER_ORDER.predicted };
-    const playerActualStyle: LineStyle = { color: palette.accent, opacity: 0.3, renderOrder: C.LINE_RENDER_ORDER.predicted };
+    const playerOrbitStyleOf = (isActive: boolean): LineStyle => (
+      { color: isActive ? palette.accent : C.COLOR_PLAYER_ORBIT_LINE_INACTIVE, opacity: 0.55, renderOrder: C.LINE_RENDER_ORDER.shipOrbit }
+    );
+    const playerPredictedStyleOf = (isActive: boolean): LineStyle => (
+      { color: isActive ? palette.accent : C.COLOR_PLAYER_ORBIT_LINE_INACTIVE, opacity: 0.55, renderOrder: C.LINE_RENDER_ORDER.predicted }
+    );
+    const playerActualStyleOf = (isActive: boolean): LineStyle => (
+      { color: isActive ? palette.accent : C.COLOR_PLAYER_ORBIT_LINE_INACTIVE, opacity: 0.3, renderOrder: C.LINE_RENDER_ORDER.predicted }
+    );
 
     for (const ship of this.entities.players) {
       const isActive = ship === activePlayer;
@@ -42,11 +48,11 @@ export class EntityLineManager {
       // 戦闘ビューの操作艦は、積分した予測線ではなく解析楕円で軌道を描く。
       const ownEllipse = showLines && !overviewMode;
       if (asTarget !== null && visible) ship.showOrbitLine(asTarget);
-      else if (ownEllipse) ship.showOrbitLine(playerOrbitStyle);
+      else if (ownEllipse) ship.showOrbitLine(playerOrbitStyleOf(isActive));
       else ship.hideOrbitLine();
-      if (showLines && !ownEllipse) ship.showPredictedLine(playerPredictedStyle);
+      if (showLines && !ownEllipse) ship.showPredictedLine(playerPredictedStyleOf(isActive));
       else ship.hidePredictedLine();
-      if (showLines && pastDuration > 0) ship.showActualLine(playerActualStyle);
+      if (showLines && pastDuration > 0) ship.showActualLine(playerActualStyleOf(isActive));
       else ship.hideActualLine();
     }
     for (const enemy of this.entities.enemies) {
