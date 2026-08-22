@@ -20,7 +20,7 @@ export const MARKER_STYLE = `
 #hud .mk { z-index: var(--z-mk-base); }
 #hud .mk-node, #hud .mk-mnode, #hud .mk-burn, #hud .mk-poi, #hud .mk-base, #hud .mk-nav, #hud .mk-dir, #hud .mk-bearing-triangle, #hud .mk-boardpass, #hud .mk-lead, #hud .mk-pro, #hud .mk-retro, #hud .mk-nrm, #hud .mk-rad, #hud .mk-tgtdir, #hud .mk-boresight { z-index: var(--z-mk-node); }
 #hud .mk-ammo { z-index: var(--z-mk-ammo); }
-#hud .mk-enemy, #hud .mk-target { z-index: var(--z-mk-enemy); }
+#hud .mk-enemy, #hud .mk-target, #hud .mk-ally { z-index: var(--z-mk-enemy); }
 #hud .mk-self { z-index: var(--z-mk-self); }
 #hud .mk-longpress { z-index: var(--z-mk-longpress); }
 
@@ -47,7 +47,7 @@ export const MARKER_STYLE = `
 #hud .mk .lbl { margin-top: var(--space-1); }
 
 /* 各種エンティティ・要素別スタイル */
-.mk-enemy .lbl, .mk-target .lbl { font-size: var(--font-xxs); line-height: 1.2; white-space: pre; }
+.mk-enemy .lbl, .mk-target .lbl, .mk-ally .lbl, .mk-self .lbl { font-size: var(--font-xxs); line-height: 1.2; white-space: pre; }
 .mk-dir { color: var(--text-strong); font-size: var(--font-s); text-shadow: none; }
 #hud .mk-bearing-triangle .sym { font-size: var(--glyph-2-3); }
 #hud .mk-ally-dir .sym { font-size: var(--glyph-1-3); }
@@ -61,6 +61,7 @@ export const MARKER_STYLE = `
 
 .mk-target { color: var(--accent-secondary); }
 .mk-enemy { color: var(--text-strong); }
+.mk-ally { color: ${C.COLOR_MARKER_ALLY}; }
 .mk-lead { color: var(--accent); }
 .mk-pro { color: var(--axis-prograde); }
 .mk-retro { color: var(--axis-prograde); }
@@ -75,7 +76,6 @@ export const MARKER_STYLE = `
 #hud .mk-mnode .lbl, #hud .mk-burn .lbl { margin-top: var(--space-2); }
 .mk-burn { color: var(--accent); }
 .mk-self { color: ${C.COLOR_MARKER_SELF}; }
-.mk-planet-nearby-label .lbl { margin-top: 18px; font-size: var(--font-xxs); white-space: nowrap; }
 .mk-ammo { color: var(--accent-soft); }
 .mk-planned { color: ${C.COLOR_MARKER_PLANNED}; }
 .mk-apsis { color: ${C.COLOR_MARKER_PLANNED}; }
@@ -103,8 +103,8 @@ export const MARKER_STYLE = `
   width: calc(100% * var(--mk-scale-element)); height: calc(100% * var(--mk-scale-element));
 }
 
-.mk-self .sym, .mk-enemy .sym, .mk-target .sym { font-size: calc(var(--glyph-base) * var(--mk-scale-vessel)); }
-.mk-self .sym svg, .mk-enemy .sym svg, .mk-target .sym svg {
+.mk-self .sym, .mk-enemy .sym, .mk-target .sym, .mk-ally .sym { font-size: calc(var(--glyph-base) * var(--mk-scale-vessel)); }
+.mk-self .sym svg, .mk-enemy .sym svg, .mk-target .sym svg, .mk-ally .sym svg {
   width: calc(100% * var(--mk-scale-vessel)); height: calc(100% * var(--mk-scale-vessel));
 }
 

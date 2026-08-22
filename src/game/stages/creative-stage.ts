@@ -225,7 +225,7 @@ export class CreativeStage extends Stage {
         this._hud.hint(`${enemy.name} を配置`);
       } else if (form.objectType === 'ammo') {
         const id = this.ammoPickupIdAllocator.next();
-        const ammoPickup = new AmmoPickup({ state, id }, this._scene, this._markerManager);
+        const ammoPickup = new AmmoPickup({ state, id }, this._scene);
         this._entities.addAmmoPickup(ammoPickup);
         const finalName = name.trim() || generateRandomName('ammo');
         this._hud.hint(`${finalName} を配置`);
