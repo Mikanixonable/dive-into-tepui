@@ -8,7 +8,7 @@
 // 刻み幅ポリシー・誤差分解(局所基底 radial/along/cross)・各ケースの初期状態組み立ては
 // exp6-arc-far-end-error.ts と同じ(ARC_MAX_STEPS はこの掃引の対象外なので現行値で固定)。
 import { Ephemeris } from '../../src/physics/ephemeris';
-import { Attractor, orbitalElementsOf, strongestAttractor } from '../../src/physics/attractor';
+import { CelestialBody, orbitalElementsOf, strongestAttractor } from '../../src/physics/celestial-body';
 import { keplerPeriod } from '../../src/physics/elements';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { add, cross, dot, len, norm, sub, v3, Vec3 } from '../../src/physics/vec3';
@@ -25,7 +25,7 @@ type StepPolicy = { minStepDt: number; stepsPerRev: number; maxSteps: number };
 
 // predicted-arc.ts の stepDt の複製(exp6 と同一)。
 function policyDt(
-  tip: KinematicState, span: number, policy: StepPolicy, window: readonly Attractor[],
+  tip: KinematicState, span: number, policy: StepPolicy, window: readonly CelestialBody[],
 ): number {
   const center = strongestAttractor(tip.r, window);
   const period = keplerPeriod(len(sub(tip.r, center.state.r)), center.mu);

@@ -14,7 +14,7 @@ import { kinematicState } from '../../physics/kinematic-state';
 import { add } from '../../physics/vec3';
 import type { StageSaveData } from '../save-data';
 import { Ephemeris } from '../../physics/ephemeris';
-import type { AttractorId } from '../../physics/attractor';
+import type { CelestialBodyId } from '../../physics/celestial-body';
 
 const PRIMARY_ID = 'zephyrus';
 const MOON_ID = 'zephyrus-i';
@@ -56,7 +56,7 @@ const ALT_REGISTRY: CelestialRegistry = {
 
 export class StageDebugAltSystem extends Stage {
   static readonly id = 'debug-alt-system' as const;
-  static async createEphemeris(phaseOffsets: Partial<Record<AttractorId, number>>): Promise<Ephemeris> {
+  static async createEphemeris(phaseOffsets: Partial<Record<CelestialBodyId, number>>): Promise<Ephemeris> {
     return new Ephemeris(ALT_REGISTRY, PRIMARY_ID, 0, phaseOffsets);
   }
   static readonly selectLabel = 'DEBUG(架空星系)';
@@ -76,7 +76,7 @@ export class StageDebugAltSystem extends Stage {
   // 自機を zephyrus の低軌道へ置く(このレジストリでは既定の地球 LEO に意味が無い)。
   protected init(): void {
     const t = this._simulator.simTime;
-    const primary = this._ephemeris.attractorsAt(t).find((a) => a.id === PRIMARY_ID)!;
+    const primary = this._ephemeris.celestialBodiesAt(t).find((a) => a.id === PRIMARY_ID)!;
     const rel = stateFromOrbitalElements(t, PRIMARY_RADIUS + 5e5, 0, 0, 0, 0, 0, primary.mu);
     this.addPlayer({
       state: kinematicState(t, add(primary.state.r, rel.r), add(primary.state.v, rel.v)),

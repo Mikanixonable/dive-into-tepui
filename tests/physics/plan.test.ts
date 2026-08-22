@@ -2,7 +2,7 @@
 import * as assert from 'node:assert/strict';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
 import { MU_MOON, R_MOON, SOLAR_SYSTEM } from '../../src/physics/solar-system';
-import { orbitalElementsOf, strongestAttractor } from '../../src/physics/attractor';
+import { orbitalElementsOf, strongestAttractor } from '../../src/physics/celestial-body';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
 import { apsisAltitudes, keplerPeriod } from '../../src/physics/elements';
@@ -23,14 +23,14 @@ export function register(): void {
       add(moonState.r, relativeR),
       add(moonState.v, relativeV),
     );
-    const attractors = ephemeris.attractorsAt(t);
+    const celestialBodies = ephemeris.celestialBodiesAt(t);
 
     // 中心天体は設定ではなく状態から決まる。地球の μ で計算すると周期は約 1/9 になる。
-    const center = strongestAttractor(state.r, attractors);
+    const center = strongestAttractor(state.r, celestialBodies);
     assert.equal(center.id, 'moon');
 
     const expected = keplerPeriod(radius, MU_MOON);
-    assert.ok(Math.abs(orbitPeriodOf(state, attractors) - expected) / expected < 1e-10);
+    assert.ok(Math.abs(orbitPeriodOf(state, celestialBodies) - expected) / expected < 1e-10);
 
     const plan = new Plan();
     const orbitDisplayDuration = { durationSec: (referencePeriod: number) => referencePeriod };
@@ -51,10 +51,10 @@ export function register(): void {
     const a = (rp + ra) / 2;
     const vp = Math.sqrt(MU_EARTH * (2 / rp - 1 / a));
     const state = kinematicState(t, v3(rp, 0, 0), v3(0, 0, vp));
-    const attractors = ephemeris.attractorsAt(t);
+    const celestialBodies = ephemeris.celestialBodiesAt(t);
 
     const expected = keplerPeriod(a, MU_EARTH);
-    const actual = orbitPeriodOf(state, attractors);
+    const actual = orbitPeriodOf(state, celestialBodies);
     assert.ok(Math.abs(actual - expected) / expected < 1e-6, `周期: ${actual}, 期待値: ${expected}`);
 
     const circularAtPerigee = keplerPeriod(rp, MU_EARTH);
@@ -66,8 +66,8 @@ export function register(): void {
     const t = 1000;
     const rp = R_EARTH + 400e3;
     const state = kinematicState(t, v3(rp, 0, 0), v3(0, 0, Math.sqrt(MU_EARTH / rp)));
-    const attractors = ephemeris.attractorsAt(t);
-    const period = orbitPeriodOf(state, attractors);
+    const celestialBodies = ephemeris.celestialBodiesAt(t);
+    const period = orbitPeriodOf(state, celestialBodies);
 
     const plan = new Plan();
 

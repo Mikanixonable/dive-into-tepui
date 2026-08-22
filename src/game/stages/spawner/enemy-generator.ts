@@ -2,6 +2,12 @@
 // 中間データ(spec/preset)は持たない — 呼び出し側(各 Stage、stages/)がこの関数を直接呼んで
 // Enemy を得る。意図的に異なる2つの姿勢方針(無秩序に漂う/プログレードで接近する)を
 // この1ファイルに並べて置き、互いを見比べやすくする。
+//
+// **ここの軌道は「地球中心の ECI・平均半径の真球」を前提にした簡易な置き方である。** 高度は
+// ECI 原点からの距離で測り、周回速度は MU_EARTH から出す。これはゲームバランスのための
+// 配置であって物理量の測定ではないので、天体ごとの大気・基準楕円体(physics/atmosphere.ts)へは
+// 寄せていない — 緯度による基準面のずれ(赤道 +7km / 極 -14km)は、出現高度に持たせた余裕に
+// 埋もれる大きさに収まる。地球以外を主星とするステージで敵を出すなら、この前提ごと組み直す。
 import * as THREE from 'three/webgpu';
 import { qFromForwardUp, randomQuat } from '../../../physics/attitude';
 import { KinematicState, kinematicState, orbitAxes } from '../../../physics/kinematic-state';
