@@ -3,13 +3,13 @@
 // physics/ephemeris.ts の Ephemeris.stateOf を呼ぶだけで、新しい積分・外挿コードは書かない。
 // 距離は [m]、時間は [s]、角度は内部では [rad](公開する relIncDeg だけ [deg])。
 import { CelestialBody, orbitalElementsOf, strongestAttractor } from '../../physics/celestial-body';
-import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import type { OrbitalElements } from '../../physics/elements';
 import { semiMajorFromPeriod } from '../../physics/elements';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { KinematicState } from '../../physics/kinematic-state';
 import { dot, len, sub } from '../../physics/vec3';
 import type { GameEntity } from '../game-entity/game-entity';
+import { entityStateAt } from '../simulation/entity-state-at';
 import type { OrbitReference } from '../orbit-reference';
 
 export interface AltitudeSample { readonly t: number; readonly alt: number }
@@ -35,24 +35,6 @@ export interface ApproachSeries {
 export type ApproachTargetSource =
   | { readonly kind: 'entity'; readonly entity: GameEntity }
   | { readonly kind: 'celestialBody'; readonly body: CelestialBody };
-
-// t <= trajectory の現在時刻なら保持区間の内挿(at)、それより先なら extrapolationCenter
-// まわりの二体ケプラー外挿(extrapolatedAt)で答える。両者とも先端以前は内挿に落ちる
-// (DynamicTrajectory.extrapolatedAt 自身の契約)ので、ここでは呼び分けを気にせず
-// extrapolatedAt を呼ぶだけでよい。center は外挿が必要になったときにだけ ephemeris を引く。
-function stateAt(trajectory: DynamicTrajectory, t: number, center: CelestialBody, ephemeris: Ephemeris): KinematicState | null {
-  if (t <= trajectory.state.t) return trajectory.at(t);
-  return trajectory.extrapolatedAt(t, ephemeris.stateOf(center.id, t));
-}
-
-// エンティティ(艦・基地)の時刻 t の状態。predicted を持たない(＝未来を予測しない種別の)
-// エンティティでは、t が現在時刻より先なら求まらない。
-function entityStateAt(entity: GameEntity, t: number, center: CelestialBody, ephemeris: Ephemeris): KinematicState | null {
-  if (t <= entity.state.t) return entity.actual.at(t);
-  const predicted = entity.predicted;
-  if (predicted === null) return null;
-  return stateAt(predicted, t, center, ephemeris);
-}
 
 // center 相対の高度(orbit-info.ts の orbitInfo と同じ式)。
 function altitudeOf(state: KinematicState, centerState: KinematicState, center: CelestialBody): number {

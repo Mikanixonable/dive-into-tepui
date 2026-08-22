@@ -7,6 +7,7 @@ import type { KinematicState } from '../../physics/kinematic-state';
 import { Vec3 } from '../../physics/vec3';
 import { solveEquatorCrossings } from '../../physics/orbit-solvers';
 import { celestialBodyName } from '../hud/frame-labels';
+import { TickLabelMode, elementTimeLabel } from '../hud/calendar-ticks';
 import type { MarkerManager } from './marker-manager';
 import { ORBIT_POINT_GLYPH } from './marker-glyphs';
 import type { ProjectFn } from '../camera/camera-system';
@@ -34,6 +35,7 @@ export class EquatorNodeMarkerPair {
   // 交点を求め直す。
   update(
     frame: ReferenceFrame, displayTime: number, ephemeris: Ephemeris, frameAnchors: FrameAnchorSource,
+    timeLabel: { readonly mode: TickLabelMode; readonly show: boolean; readonly nowSimTime: number },
     state: KinematicState = this.owner.state, samples: readonly KinematicState[] | null = null,
   ): void {
     this.icons = [];
@@ -50,16 +52,21 @@ export class EquatorNodeMarkerPair {
     const toDisplay = (r: Vec3, t: number): Vec3 =>
       unbakeToDisplayPoint(unbakeTf, ephemeris.frameTransformAt(frame, t, frameAnchors), r);
 
+    // PREDICT パネルの「軌道要素の時刻を表示」がONのときだけ通過時刻を併記する。
+    const labelWithTime = (base: string, t: number): string =>
+      timeLabel.show ? `${base} ${elementTimeLabel(t, timeLabel.mode, timeLabel.nowSimTime)}` : base;
     this.icons = [
       {
         id: this.anKey, name: `${this.owner.name}の${centerName}赤道昇交点`, kind: 'eqnode',
         ownerName: this.owner.name,
-        pos: toDisplay(crossings.asc.r, crossings.asc.t), time: crossings.asc.t, label: 'EqAN',
+        pos: toDisplay(crossings.asc.r, crossings.asc.t), time: crossings.asc.t,
+        label: labelWithTime('EqAN', crossings.asc.t),
       },
       {
         id: this.dnKey, name: `${this.owner.name}の${centerName}赤道降交点`, kind: 'eqnode',
         ownerName: this.owner.name,
-        pos: toDisplay(crossings.desc.r, crossings.desc.t), time: crossings.desc.t, label: 'EqDN',
+        pos: toDisplay(crossings.desc.r, crossings.desc.t), time: crossings.desc.t,
+        label: labelWithTime('EqDN', crossings.desc.t),
       },
     ];
   }

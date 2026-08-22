@@ -10,7 +10,7 @@ import type { Ephemeris } from '../../physics/ephemeris';
 import { SIM_EPOCH_SEC, fmtMarkerDist } from '../hud/utils';
 import { celestialBodyName } from '../hud/frame-labels';
 import { getApsisLabelSpec } from '../hud/orbit-labels';
-import { TickLabelMode, TickRank, calendarBoundaries, tickLabel } from '../hud/calendar-ticks';
+import { TickLabelMode, TickRank, calendarBoundaries, elementTimeLabel, tickLabel } from '../hud/calendar-ticks';
 import { MarkerManager } from '../marker/marker-manager';
 import { ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-glyphs';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
@@ -103,7 +103,8 @@ export class PlanDisplay {
       displayWindow.duration,
     );
     this.ghost = this.ghostAt(displayTime, simTime);
-    this.apsisIcons = this.apsisIconsOf(ship?.name);
+    // 時刻併記の可否・表記は PREDICT パネルの設定(displayWindow 経由)にそのまま従う。
+    this.apsisIcons = this.apsisIconsOf(displayWindow.tickLabelMode, displayWindow.showElementTimes, simTime, ship?.name);
     this.impactIcons = this.impactIconsOf();
     this.tickIcons = this.tickIconsOf(displayWindow.tickLabelMode, simTime);
   }
@@ -199,7 +200,9 @@ export class PlanDisplay {
   // 両方揃っているときだけ、2点の中心からの距離比から離心率相当の値を求め、ほぼ円
   // (APSIS_MIN_ECC 未満)なら方向が不定として両方隠す — 片方しか無い場合(双曲線軌道等)は
   // この判定自体を行わず、そのまま出す。
-  private apsisIconsOf(ownerName?: string): readonly ApsisIcon[] {
+  private apsisIconsOf(
+    mode: TickLabelMode, showTime: boolean, nowSimTime: number, ownerName?: string,
+  ): readonly ApsisIcon[] {
     const final = this.path.finalSegment();
     if (!final) return [];
     const pe = final.periapsis;
@@ -223,6 +226,8 @@ export class PlanDisplay {
     if (pe && ap && (apDist - peDist) / (apDist + peDist) < C.APSIS_MIN_ECC) return [];
 
     const namePrefix = ownerName ? (this.path.nodeCount > 0 ? `${ownerName} (計画)` : ownerName) : undefined;
+    const labelWithTime = (base: string, t: number): string =>
+      showTime ? `${base} ${elementTimeLabel(t, mode, nowSimTime)}` : base;
     const icons: ApsisIcon[] = [];
     if (pe && peCenter) {
       const peSpec = getApsisLabelSpec('pe', peCenter.id);
@@ -231,7 +236,7 @@ export class PlanDisplay {
         ownerName: namePrefix,
         pos: this.path.toDisplay(pe.r, pe.t),
         time: pe.t,
-        label: peSpec.short,
+        label: labelWithTime(peSpec.short, pe.t),
       });
     }
     if (ap && apCenter) {
@@ -241,7 +246,7 @@ export class PlanDisplay {
         ownerName: namePrefix,
         pos: this.path.toDisplay(ap.r, ap.t),
         time: ap.t,
-        label: apSpec.short,
+        label: labelWithTime(apSpec.short, ap.t),
       });
     }
     return icons;

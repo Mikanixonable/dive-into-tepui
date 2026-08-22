@@ -373,8 +373,13 @@ export class EntityManager {
     overviewMode: boolean, displayWindow: DisplayWindow, ephemeris: Ephemeris, frameAnchors: FrameAnchorSource,
   ): void {
     if (!overviewMode) return;
+    const timeLabel = {
+      mode: displayWindow.tickLabelMode, show: displayWindow.showElementTimes, nowSimTime: displayWindow.simTime,
+    };
     for (const base of this.bases) {
-      if (base.alive) base.equatorNodes?.update(displayWindow.frame, displayWindow.displayTime, ephemeris, frameAnchors);
+      if (base.alive) {
+        base.equatorNodes?.update(displayWindow.frame, displayWindow.displayTime, ephemeris, frameAnchors, timeLabel);
+      }
     }
   }
 

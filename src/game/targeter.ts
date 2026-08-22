@@ -71,8 +71,11 @@ export class Targeter {
     overviewMode: boolean, displayWindow: DisplayWindow, ephemeris: Ephemeris, frameAnchors: FrameAnchorSource,
   ): void {
     if (!overviewMode) return;
+    const timeLabel = {
+      mode: displayWindow.tickLabelMode, show: displayWindow.showElementTimes, nowSimTime: displayWindow.simTime,
+    };
     this.aliveTarget?.ensureEquatorNodes(this.markerManager)
-      .update(displayWindow.frame, displayWindow.displayTime, ephemeris, frameAnchors);
+      .update(displayWindow.frame, displayWindow.displayTime, ephemeris, frameAnchors, timeLabel);
   }
 
   // ターゲット位置に「自機の方を向いた的(標的面)」があると見なし、発射弾がその面を自機側から
