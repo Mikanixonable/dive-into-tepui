@@ -155,8 +155,8 @@ export class Game {
     // 参照フレームの基準・回転対象が機体・役割トークンを指すときの解決役。update()/sync() の
     // 先頭で毎フレーム celestialBodies を差し込み、以降のフレーム変換の呼び出しはこれを渡す。
     this.frameAnchors = new FrameAnchors({
-      entityState: (id) => this.entities.all().find((e) => e.id === id && e.alive)?.state ?? null,
-      activeShipState: () => this.activeControllableEntity?.state ?? null,
+      entityState: (id, t) => this.entities.all().find((e) => e.id === id && e.alive)?.displayState(t, this.ephemeris) ?? null,
+      activeShipState: (t) => this.activeControllableEntity?.displayState(t, this.ephemeris) ?? null,
       navTargetState: (bodies, t) => this.navTarget.resolveState(this.entities, this.ephemeris, bodies, t)?.state ?? null,
     });
     this.frameControls = new FrameControls(

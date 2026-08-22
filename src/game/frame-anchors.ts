@@ -9,10 +9,10 @@ import { KinematicState } from '../physics/kinematic-state';
 // 解決に要る問い合わせをまとめた受け口。ゲーム側の型ではなく状態だけを受け取ることで、
 // 参照フレームの解決がエンティティ管理や航法ターゲットの都合から独立する。
 export interface AnchorTargets {
-  // 生存中のエンティティ id → 現在の状態。見つからなければ null。
-  entityState(id: string): KinematicState | null;
-  // 操作対象の船の現在の状態。乗り換え中などで定まらなければ null。
-  activeShipState(): KinematicState | null;
+  // 生存中のエンティティ id の時刻 t における状態。見つからなければ null。
+  entityState(id: string, t: number): KinematicState | null;
+  // 操作対象の船の時刻 t における状態。乗り換え中などで定まらなければ null。
+  activeShipState(t: number): KinematicState | null;
   // 航法ターゲットの時刻 t における状態。設定されていない・消滅していれば null。
   navTargetState(bodies: readonly CelestialBody[], t: number): KinematicState | null;
 }
@@ -44,7 +44,7 @@ export class FrameAnchors implements FrameAnchorSource {
   stateOf(id: FrameAnchorId, t: number): KinematicState | null {
     const role = frameRoleOf(id);
     if (role !== null) return this.heldRoleState(role, this.resolveRoleState(role, t));
-    return this.targets.entityState(id) ?? this.bodies.find((b) => b.id === id)?.state ?? null;
+    return this.targets.entityState(id, t) ?? this.bodies.find((b) => b.id === id)?.state ?? null;
   }
 
   // 基準 id が公転している主天体。離心率1未満の周回軌道にないなら null。
@@ -67,7 +67,7 @@ export class FrameAnchors implements FrameAnchorSource {
 
   // 役割そのものの解決。猶予は掛かっていない生の結果を返す。
   private resolveRoleState(role: FrameRole, t: number): KinematicState | null {
-    if (role === 'activeShip') return this.targets.activeShipState();
+    if (role === 'activeShip') return this.targets.activeShipState(t);
     return this.targets.navTargetState(this.bodies, t);
   }
 
