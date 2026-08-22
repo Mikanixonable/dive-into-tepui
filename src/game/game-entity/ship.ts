@@ -4,6 +4,7 @@ import { KinematicState } from '../../physics/kinematic-state';
 import * as C from '../const';
 import { GameEntity } from './game-entity';
 import { Part, PartType, createPart } from './parts';
+import { SHIP_ARROWHEAD_POINTS } from '../marker/marker-shapes';
 import type {
   ArmorPart,
   CockpitPart,
@@ -271,7 +272,7 @@ export abstract class Ship extends GameEntity {
     const baseY = 21;
     const fillTopY = (baseY - ratio * (baseY - apexY)).toFixed(2);
     const clipId = `hpfill-${this.name}`;
-    const pts = '12,1.5 17.5,21 12,16.5 6.5,21';
+    const pts = SHIP_ARROWHEAD_POINTS;
     if (isEnemy) {
       return `<svg viewBox="0 0 24 24" width="24" height="24" aria-label="HP ${Math.max(0, this.hp)} / ${this.maxHp}">` +
         `<polygon points="${pts}" fill="none" stroke="currentColor" stroke-width="1.8"/>` +

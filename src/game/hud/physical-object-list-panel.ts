@@ -1,5 +1,6 @@
 import { bodyClassOf } from '../celestial/body-class';
 import { ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-glyphs';
+import { baseMarkerSvg, shipMarkerSvg } from '../marker/marker-shapes';
 import {
   COLLAPSE_COLLAPSED_GLYPH,
   COLLAPSE_EXPANDED_GLYPH,
@@ -86,6 +87,13 @@ const OBJECT_GLYPHS: Readonly<Record<MapPickKind, string>> = {
   relnode: ORBIT_POINT_GLYPH.ascendingNode,
   eqnode: ORBIT_POINT_GLYPH.descendingNode,
   'empty-space': '·',
+};
+
+// player/ship/base はマップ実マーカーと同じ SVG 形状を凡例にも使う。それ以外は Unicode 文字のまま。
+const OBJECT_GLYPH_SVGS: Partial<Readonly<Record<MapPickKind, string>>> = {
+  player: shipMarkerSvg(true),
+  ship: shipMarkerSvg(false),
+  base: baseMarkerSvg(),
 };
 
 // 1件ぶんの行 + その子を畳めるトグル区画。子を持たない行(自艦/敵/弾薬/基地、および
@@ -492,8 +500,19 @@ export class PhysicalObjectListPanel {
       container.appendChild(node.row);
       container.appendChild(node.childrenContainer);
     }
-    const glyph = OBJECT_GLYPHS[item.kind];
-    if (node.glyph.textContent !== glyph) node.glyph.textContent = glyph;
+    const svgGlyph = OBJECT_GLYPH_SVGS[item.kind];
+    if (svgGlyph !== undefined) {
+      if (node.glyph.dataset.svgGlyph !== svgGlyph) {
+        node.glyph.innerHTML = svgGlyph;
+        node.glyph.dataset.svgGlyph = svgGlyph;
+      }
+    } else {
+      const glyph = OBJECT_GLYPHS[item.kind];
+      if (node.glyph.textContent !== glyph) {
+        node.glyph.textContent = glyph;
+        delete node.glyph.dataset.svgGlyph;
+      }
+    }
     if (node.label.textContent !== item.name) node.label.textContent = item.name;
     const detailText = item.kind === 'body' ? '' : (item.detail ?? '');
     if (node.detail.textContent !== detailText) node.detail.textContent = detailText;

@@ -125,9 +125,15 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active #hud-physical-object-list .erow:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-glyph {
   flex: 0 0 16px;
+  height: 16px;
   color: currentColor;
   text-align: center;
   font-size: var(--font-xs);
+}
+#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-glyph svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-detail { color: var(--muted); }
 
