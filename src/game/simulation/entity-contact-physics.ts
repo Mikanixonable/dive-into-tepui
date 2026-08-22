@@ -242,15 +242,18 @@ export class EntityContactPhysics {
     replaceIfMoved(b, bBefore, { r: response.rB, v: response.vB }, working, changed);
     if (!response.bounced) return;
 
+    // 反発で失われた力学エネルギーは熱になる。当事者の判断ではなく物理なので、ダメージや
+    // 効果音を委ねる前にここで当てる。
+    a.absorbHeat(response.specificEnergyLossA);
+    b.absorbHeat(response.specificEnergyLossB);
+
     const point = add(response.rA, scale(response.normal, a.radius));
     const t = contactTime(a, response.toi);
     a.collideWithEntity(b, {
       t, point, normal: response.normal, selfState: aBefore, otherState: bBefore,
-      specificEnergyLoss: response.specificEnergyLossA,
     }, activeStage);
     b.collideWithEntity(a, {
       t, point, normal: scale(response.normal, -1), selfState: bBefore, otherState: aBefore,
-      specificEnergyLoss: response.specificEnergyLossB,
     }, activeStage);
   }
 }

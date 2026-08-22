@@ -19,6 +19,9 @@ export abstract class Ship extends GameEntity {
   protected readonly srpCoeff = C.SHIP_SRP_COEFF;
   protected readonly baseHistoryDuration = C.SHIP_HISTORY_DURATION;
   protected readonly predictedForGhost = true;
+  protected readonly specificHeat = C.SHIP_SPECIFIC_HEAT;
+  protected readonly bulkDensity = C.SHIP_BULK_DENSITY;
+  protected readonly radiatingAreaPerMass = C.SHIP_RADIATING_AREA_PER_MASS;
 
   hp: number;
   maxHp: number;

@@ -39,6 +39,10 @@ function buildDebrisRenderObject(debrisKind: DebrisKind): THREE.Object3D {
 export class DebrisPiece extends GameEntity {
   override readonly bcInv = C.SMALL_DEBRIS_BCINV;
   protected readonly srpCoeff = C.SMALL_DEBRIS_SRP_COEFF;
+  protected readonly specificHeat = C.SMALL_DEBRIS_SPECIFIC_HEAT;
+  protected readonly bulkDensity = C.SMALL_DEBRIS_BULK_DENSITY;
+  protected readonly radiatingAreaPerMass = C.SMALL_DEBRIS_RADIATING_AREA_PER_MASS;
+  protected readonly maxTemperature = C.SMALL_DEBRIS_MAX_TEMP;
 
   // fragment のみ意味を持つ: どのバリアントジオメトリを使うか、InstancedPool の
   // per-instance color へ渡す色。EntityManager.sync が variant ごとのプールへ push する。

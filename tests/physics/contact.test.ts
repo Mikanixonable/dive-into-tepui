@@ -18,7 +18,7 @@ import { Vec3, scale, v3 } from '../../src/physics/vec3';
 // closingSpeed が読むのは速度と法線だけなので、時刻と接触点は退化させてよい。
 function contact(selfV: Vec3, otherV: Vec3, normal: Vec3): Contact {
   return {
-    t: 0, point: v3(), normal, specificEnergyLoss: 0,
+    t: 0, point: v3(), normal,
     selfState: kinematicState(0, v3(), selfV),
     otherState: kinematicState(0, v3(), otherV),
   };
@@ -26,7 +26,7 @@ function contact(selfV: Vec3, otherV: Vec3, normal: Vec3): Contact {
 
 // 解決器が反発の結果から受け手ごとの記述を組むのと同じ形。
 function received(selfState: KinematicState, otherState: KinematicState, normal: Vec3): Contact {
-  return { t: 0, point: v3(), normal, selfState, otherState, specificEnergyLoss: 0 };
+  return { t: 0, point: v3(), normal, selfState, otherState };
 }
 
 export function register(): void {

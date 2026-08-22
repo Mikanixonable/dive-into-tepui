@@ -64,6 +64,17 @@ export function airspeed(rRel: Vec3, vRel: Vec3, atm: Atmosphere): Vec3 {
   return sub(vRel, scale(cross(atm.pole, rRel), atm.spinRate));
 }
 
+// その物体が浴びている流れ。rRel/vRel は天体中心からの相対位置・速度。抗力・動圧・空力加熱は
+// どれもこの2つだけから決まる。
+export function airflow(
+  rRel: Vec3, vRel: Vec3, atm: Atmosphere,
+): { readonly density: number; readonly speed: number } {
+  return {
+    density: atmosphericDensity(ellipsoidAltitude(rRel, atm), atm),
+    speed: len(airspeed(rRel, vRel, atm)),
+  };
+}
+
 // 大気抵抗の加速度。rRel/vRel はその大気を持つ天体の中心からの相対位置・速度、bcInv は
 // 弾道係数の逆数 Cd·A/m(0 なら抵抗なし = ゼロベクトル)。dt はこの加速度が積分される刻み [s]。
 // 抗力は対気速度を減らすだけで反転させることはできないので、dt のあいだに奪う量を対気速度

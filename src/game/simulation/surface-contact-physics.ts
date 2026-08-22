@@ -79,13 +79,15 @@ export class SurfaceContactPhysics {
       e.state = kinematicState(before.t, response.r, response.v);
     }
     if (!response.bounced) return;
+    // 反発で失われた力学エネルギーは熱になる。当事者の判断ではなく物理なので、失われるかどうか
+    // を委ねる前にここで当てる。
+    e.absorbHeat(response.specificEnergyLoss);
     e.collideWithCelestialBody(hit.body, {
       t: contactTime(e, response.toi),
       point: add(response.r, scale(response.normal, e.radius)),
       normal: response.normal,
       selfState: before,
       otherState: hit.body.state,
-      specificEnergyLoss: response.specificEnergyLoss,
     }, activeStage);
   }
 
