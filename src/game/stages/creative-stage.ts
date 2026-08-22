@@ -52,9 +52,6 @@ export class CreativeStage extends Stage {
   private preview: { readonly elements: OrbitalElements; readonly pos: Vec3 } | null = null;
   // 現在のフォーム値に対するフィールド単位の検証結果。パネルが閉じている間は空。
   private issues: readonly PlacementFieldIssue[] = [];
-  // 噴射の可否を substep 境界でも問い合わせられるよう、update() が受け取る参照を保持する
-  // (値ではなく参照なので、境界での読み取りは常にその時点の時間加速段を反映する)。
-  private simSpeed: SimSpeedManager | null = null;
   private readonly playerIdAllocator = new EntityIdAllocator('creative-player-');
   private readonly ammoPickupIdAllocator = new EntityIdAllocator('creative-ammo-');
 
@@ -308,10 +305,9 @@ export class CreativeStage extends Stage {
   }
 
   // 通常ステージと同じ残弾監視・回収・遠方補給の再投入を行い、配置プレビューとフォームの
-  // フィールド単位の検証結果を求め直す。'powered' な艦の自動計画実行も全艦ぶん進める。
-  // 既存敵の AI 行動は常に進める。トグルが制御するのは新規ウェーブの発生のみ
-  // (OFF の間は waveAttack.update を止め、既に出ている敵はそのまま残る)。
-  // ノードの消化・点火・遮断は Simulator のイベント境界(applySimulationEvents)で行う。
+  // フィールド単位の検証結果を求め直す。既存敵の AI 行動は常に進める。トグルが制御するのは
+  // 新規ウェーブの発生のみ(OFF の間は waveAttack.update を止め、既に出ている敵はそのまま残る)。
+  // ノードの消化は Simulator のイベント境界(applySimulationEvents)で行う。
   update(dt: number, player: Player | null, _entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
     if (player) {
       this.logistics.updateLogistics(simTime, player, simSpeed, true);
@@ -323,45 +319,35 @@ export class CreativeStage extends Stage {
     const form = this.placerPanel.isOpen ? this.placerPanel.getForm() : null;
     this.preview = form ? this.computePreview(form) : null;
     this.issues = form ? this.computeFieldIssues(form) : [];
-    this.simSpeed = simSpeed;
-    const simDt = dt * simSpeed.simSpeed;
-    for (const ship of this._entities.players) ship.planExecutor.update(ship, simDt, simTime, simSpeed);
   }
 
-  // 'instant' の艦はノード時刻ちょうど、'powered' の艦は点火予定時刻を Simulator の既知
-  // イベントとして返し、simTime がその時刻ちょうどで積分を切るようにする。
+  // 'instant' の艦のノード時刻ちょうどを Simulator の既知イベントとして返し、simTime が
+  // その時刻ちょうどで積分を切るようにする。
   nextSimulationEventTime(simTime: number): number | null {
     let next: number | null = null;
     for (const ship of this._entities.players) {
-      const t = ship.planExecution === 'instant' ? ship.plan.firstNode()?.t
-        : ship.planExecution === 'powered' && this.simSpeed
-          ? (ship.planExecutor.nextEventTime(ship, simTime, this.simSpeed) ?? undefined)
-        : undefined;
+      const t = ship.planExecution === 'instant' ? ship.plan.firstNode()?.t : undefined;
       if (t !== undefined && t >= simTime && (next === null || t < next)) next = t;
     }
     return next;
   }
 
-  // 'instant' はノード時刻ちょうどでノードの絶対状態へ乗り移り、'powered' は PlanExecutor に
-  // 点火・遮断そのものを委ねる。
+  // ノード時刻ちょうどでノードの絶対状態へ乗り移る。
   applySimulationEvents(simTime: number): void {
     for (const ship of this._entities.players) {
-      if (ship.planExecution === 'instant') {
-        const node = ship.plan.firstNode();
-        if (!node || node.t > simTime + 1e-9) continue;
-        // 瞬間移動では、消化する最後のノードの絶対状態がそのまま到達状態になる(誤差が無い)。
-        const nodes = ship.plan.nodes;
-        let reached: KinematicState | undefined;
-        for (let i = nodes.length - 1; i >= 0; i--) {
-          const n = nodes[i];
-          if (n && n.t <= simTime) { reached = n; break; }
-        }
-        if (!reached) continue;
-        ship.plan.consumeNodesUpTo(simTime, reached);
-        ship.state = reached;
-      } else if (ship.planExecution === 'powered' && this.simSpeed) {
-        ship.planExecutor.applyIgnitionAndCutoff(ship, simTime, this.simSpeed);
+      if (ship.planExecution !== 'instant') continue;
+      const node = ship.plan.firstNode();
+      if (!node || node.t > simTime + 1e-9) continue;
+      // 消化する最後のノードの絶対状態がそのまま到達状態になる(誤差が無い)。
+      const nodes = ship.plan.nodes;
+      let reached: KinematicState | undefined;
+      for (let i = nodes.length - 1; i >= 0; i--) {
+        const n = nodes[i];
+        if (n && n.t <= simTime) { reached = n; break; }
       }
+      if (!reached) continue;
+      ship.plan.consumeNodesUpTo(simTime, reached);
+      ship.state = reached;
     }
   }
 
