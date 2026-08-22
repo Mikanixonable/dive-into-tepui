@@ -21,7 +21,15 @@ interface TargetPanelData {
 export class TargetPanel {
   private nextSyncAt = 0;
 
-  public constructor(private readonly els: ReadonlyMap<string, HTMLElement>) {}
+  // ロック中ターゲットの右クリック。ターゲットが無いときは呼ばれない。
+  onSelectRight: ((clientX: number, clientY: number) => void) | null = null;
+
+  public constructor(private readonly els: ReadonlyMap<string, HTMLElement>) {
+    this.els.get('tgtbody')?.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      this.onSelectRight?.(e.clientX, e.clientY);
+    });
+  }
 
   public sync(game: Game, celestialBodies: readonly CelestialBody[]): void {
     const player = game.player;
