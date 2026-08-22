@@ -1,5 +1,5 @@
 // 軌道上の特徴点(赤道交点 EqAN/EqDN、相対交点 AN/DN など)の計算を行う純粋物理計算層。
-import { Attractor, frameOfAttractor, orbitalElementsOf } from './attractor';
+import { Attractor, frameOfAttractor, frameOfAttractorAt, orbitalElementsOf } from './attractor';
 import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from './elements';
 import { frameKinematicState, toFrameState, toInertialState } from './frame';
 import { KinematicState } from './kinematic-state';
@@ -37,7 +37,11 @@ export function solveEquatorCrossings(
   const nodeState = (nu: number): KinematicState => {
     const dt = tofBetween(el, trueAnomalyAt(el, relative.r), nu);
     const t = state.t + (isFinite(dt) ? dt : 0);
-    return toInertialState(tf, t, frameKinematicState(positionOnOrbit(el, nu), relative.v));
+    return toInertialState(
+      frameOfAttractorAt(center, t),
+      t,
+      frameKinematicState(positionOnOrbit(el, nu), relative.v),
+    );
   };
 
   return { asc: nodeState(nodes.asc), desc: nodeState(nodes.desc) };

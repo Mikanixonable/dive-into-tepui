@@ -124,6 +124,24 @@ export function frameOfAttractor(center: Attractor): FrameTransform {
   return { origin: center.state.r, originVel: center.state.v, q: IDENTITY_QUAT, omega: v3() };
 }
 
+// frameOfAttractor と同じく center を原点とする ECI 恒等姿勢の座標系変換だが、原点位置・
+// 原点速度を center.state.t からではなく時刻 t へ弾道外挿(attractorPositionAt と同じ2次外挿)
+// して組む。center.state.t と異なる時刻 t を un-bake の基準時刻に使う(例: 未来の交点通過時刻)
+// 場合は、frameOfAttractor(center) をその時刻にそのまま使うと中心天体が動いていないことになり
+// 位置がズレる — この関数を使うこと。
+export function frameOfAttractorAt(center: Attractor, t: number): FrameTransform {
+  const s = t - center.state.t;
+  const origin = attractorPositionAt(center, t);
+  const originVel = s === 0
+    ? center.state.v
+    : v3(
+      center.state.v.x + center.accel.x * s,
+      center.state.v.y + center.accel.y * s,
+      center.state.v.z + center.accel.z * s,
+    );
+  return { origin, originVel, q: IDENTITY_QUAT, omega: v3() };
+}
+
 // 天体表面へ到達した瞬間の状態と、その相手の天体。
 export interface BodyImpact {
   readonly body: Attractor;
