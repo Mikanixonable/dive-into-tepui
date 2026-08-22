@@ -142,7 +142,7 @@ export function register(): void {
     const inc2 = 51.6;
     const samples = sampleKeplerOrbit(a2, e2, inc2, 0, 0, 36);
     const pole = v3(0, 1, 0);
-    const { ascending, descending } = findEquatorCrossings(samples, EARTH, pole);
+    const { ascending, descending } = findEquatorCrossings(samples, () => EARTH.state.r, pole);
     assert.ok(ascending && descending, 'both nodes should be found');
     const scale = len(sub(ascending!.r, EARTH.state.r));
     assert.ok(Math.abs(ascending!.r.y) / scale < 1e-3, `ascending node should sit at zero latitude: y=${ascending!.r.y}`);
