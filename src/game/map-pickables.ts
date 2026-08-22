@@ -16,7 +16,7 @@ import { len, sub } from '../physics/vec3';
 import { strongestAttractor } from '../physics/attractor';
 import { isOccluded } from '../physics/occlusion';
 import { apsisAltitudes } from '../physics/elements';
-import { isPositionInFocusedSystem, systemMembersAt } from './celestial/body-visibility';
+import { isPositionInFocusedSystem, NearbySystemTracker } from './celestial/body-visibility';
 import { MapVisibilityPolicy } from './celestial/map-visibility';
 import { MarkerManager } from './marker/marker-manager';
 import type { DisplayWindow } from './display-window-manager';
@@ -32,6 +32,7 @@ export class MapPickables {
   private items: readonly MapPickable[] = this.candidateItems;
   private _lastSimTime = 0;
   private _visibilityPolicy: MapVisibilityPolicy | null = null;
+  private readonly nearbyTracker = new NearbySystemTracker();
 
   // このフレームの被選択物候補。refresh の後に読む。
   get pickables(): readonly MapPickable[] { return this.items; }
@@ -93,7 +94,7 @@ export class MapPickables {
       this.ephemeris.registry,
       this.cameraSystem.bodyClassToggles,
       focusId,
-      systemMembersAt(this.ephemeris.registry, this.cameraSystem.activeCameraPos, displayAttractors),
+      this.nearbyTracker.membersAt(this.ephemeris.registry, this.cameraSystem.activeCameraPos, displayAttractors),
     );
     this._visibilityPolicy = visibilityPolicy;
     this.cameraSystem.focusMarkers.update(
