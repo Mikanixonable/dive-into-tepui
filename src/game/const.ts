@@ -323,6 +323,10 @@ export const INITIAL_INC_DEG = 97.0; // 自機初期軌道傾斜角 [deg]
 // --- HUD マーカー ---
 export const MARKER_DIR_DIST = 5e4; // 方向マーカーを投影する仮想距離 [m](実在の位置ではなく方向のみを示す)
 export const MARKER_CLUSTER_PX = 40; // これより画面上で近いマーカー同士は1つの代表にまとめる [px]
+// 優先度間引きで一度隠したラベル/アイコンを再び出す画面距離のしきい値(MARKER_CLUSTER_PX より
+// 緩い値)。同じ値だと境界ちょうどで距離が揺れたときに毎フレーム表示・非表示が反転する
+// (周期が数時間の衛星どうしなど、タイムワープ中に画面距離が急変する組で顕著)。
+export const MARKER_CLUSTER_RELEASE_PX = 60;
 // 天体ラベルからこれより画面上で近いラグランジュ点ラベルは、天体ラベルを優先して隠す [px]
 export const FOCUS_LABEL_PRIORITY_PX = 40;
 // 画面上で近接する2ラベルのカメラからの距離比がこれ以上なら、優先度に関わらず遠い側を隠す
