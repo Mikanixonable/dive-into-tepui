@@ -117,12 +117,12 @@ export const MAP_VIEW_STYLE = `
 }
 #hud .hud-map-root.active #hud-physical-object-list .erow:hover { color: var(--title); background: var(--surface-2); }
 #hud .hud-map-root.active #hud-physical-object-list .erow.related-orbit {
-  color: var(--accent-secondary); background: color-mix(in srgb, var(--accent-secondary) 12%, transparent);
+  color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 #hud .hud-map-root.active #hud-physical-object-list .erow.on {
   outline: 0;
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent-secondary);
+  background: color-mix(in srgb, var(--accent-secondary) 12%, transparent);
 }
 #hud .hud-map-root.active #hud-physical-object-list .erow:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-glyph {
