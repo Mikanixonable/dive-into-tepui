@@ -184,6 +184,20 @@ interface Narrowed {
   readonly stage2Total: number; // 2段目を通った延べ候補数(全 substep × 全個体)
 }
 
+// 参加者全員の区間を覆う範囲で絞り込みを組み直す。1サブステップぶんの2段をまとめて通す。
+function resetForInterval(
+  candidates: SurfaceCandidates, interval: Interval, bodies: readonly CelestialBody[],
+): void {
+  let tStart = Infinity;
+  let tEnd = -Infinity;
+  for (const p of interval) {
+    tStart = Math.min(tStart, p.prevState.t);
+    tEnd = Math.max(tEnd, p.state.t);
+  }
+  candidates.resetSpan(bodies, tStart, tEnd);
+  candidates.narrow(interval);
+}
+
 // SurfaceCandidates を1フレームぶん通し、段ごとの所要 [ms] と通過数を返す。
 function narrow(timeline: readonly Interval[], windows: SurfaceWindows): Narrowed {
   const candidates = new SurfaceCandidates();
@@ -196,7 +210,7 @@ function narrow(timeline: readonly Interval[], windows: SurfaceWindows): Narrowe
   for (let k = 0; k < SUBSTEPS; k++) {
     const interval = timeline[k]!;
     const t0 = performance.now();
-    candidates.reset(interval, windows[k]!);
+    resetForInterval(candidates, interval, windows[k]!);
     const t1 = performance.now();
     for (const p of interval) stage2Total += candidates.into(p, out).length;
     stage2Ms += performance.now() - t1;
@@ -215,7 +229,7 @@ function mismatches(timeline: readonly Interval[], windows: SurfaceWindows): num
   let count = 0;
   for (let k = 0; k < SUBSTEPS; k++) {
     const interval = timeline[k]!;
-    candidates.reset(interval, windows[k]!);
+    resetForInterval(candidates, interval, windows[k]!);
     for (const p of interval) {
       const full = firstSurfaceContact(p.prevState, p.state, p.radius, windows[k]!);
       const only = firstSurfaceContact(p.prevState, p.state, p.radius, candidates.into(p, out));
