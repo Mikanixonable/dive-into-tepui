@@ -21,7 +21,6 @@ import type { Stage } from '../stages/stage';
 import type { Contact } from './contact';
 import { EntityIdAllocator } from './entity-id';
 import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';
-import type { EntityMarker } from '../marker/entity-marker';
 import type { MarkerManager } from '../marker/marker-manager';
 
 const identityAttitude = (): Attitude => ({
@@ -88,8 +87,6 @@ export class GameEntity {
   actualLine: TrajectoryLine | null = null;
   // 自身の軌道と中心天体の赤道面との交点マーカー。null = まだ出す必要が生じていない。
   equatorNodes: EquatorNodeMarkerPair | null = null;
-  // 自身の位置を指すマーカー。null = 出さない。
-  marker: EntityMarker | null = null;
   // 弾道係数の逆数 Cd·A/m(既定 0 = 抵抗なし)。抗力が要求する刻みを外から引けるよう公開する。
   readonly bcInv: number = 0;
   protected readonly srpCoeff: number = 0;
@@ -401,7 +398,6 @@ export class GameEntity {
   dispose(): void {
     this.scene?.remove(this.renderObject);
     this.equatorNodes?.dispose();
-    this.marker?.dispose();
     this.hideOrbitLine();
     this.hidePredictedLine();
     this.hideActualLine();
