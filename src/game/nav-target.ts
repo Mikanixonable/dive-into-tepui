@@ -142,6 +142,18 @@ export class NavTarget {
     this.setInternal(null, null);
   }
 
+  // セーブデータからの復元用。id が敵・自機・基地を指していた場合はそれが生存していないと
+  // 復元しない(撃墜・破壊されていれば未選択に戻す)。天体・ラグランジュ点など消滅しない対象は
+  // 常に復元する。ヒントは出さない。
+  restore(data: { id: string; name: string } | null | undefined, entities: EntityManager): void {
+    if (!data) return;
+    const wasEntityId = entities.findEnemy(data.id) !== null
+      || entities.players.some((p) => p.id === data.id)
+      || entities.bases.some((b) => b.id === data.id);
+    if (wasEntityId && !this.resolveEntity(data.id, entities)) return;
+    this.setInternal(data.id, data.name);
+  }
+
   // 現在のターゲットを、生存中の戦闘対象(敵・自艦・基地)として解決する。天体・ラグランジュ点
   // など戦闘対象になれない対象がターゲットの場合は null。
   resolveCombatTarget(entities: EntityManager): CombatTarget | null {
