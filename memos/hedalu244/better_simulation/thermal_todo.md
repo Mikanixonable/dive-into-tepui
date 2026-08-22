@@ -285,27 +285,14 @@ maxTemperature       [K]           超えたら失われる。既定 Infinity
 
 **受入**: `test:physics` 通過。まだ誰も呼ばない。
 
-## Phase 4 — `GameEntity` に温度を載せ、空力加熱と衝突を配線する
+## Phase 5 — 焼失を温度へ切り替え、発散対策を置き直す
 
-- `SPEC/ORBIT.md`「大気モデル」の焼失の 3 段(艦 / 熱を持たない種別 / 予測の弧)を、
-  **温度一本 + 積分器の都合による喪失**へ書き換える。`SPEC/COMBAT.md`・`SPEC/GAME.md` の
-  「耐えられる大気密度の上限(高度 80 km 相当)」も同時に直す。
-- `GameEntity` へ 2-1 の 5 フィールドと `absorbHeat(specificJoules)` を足す。材質密度から
-  曲率半径を導く形(2-6)にする。
-- `stepSimulation` の中で、空力加熱と放射冷却を 1 回積み、**焼失の判定もそこで行う**(2-3)。
-- 基底の `collideWithEntity`/`collideWithCelestialBody` で `contact` の比エネルギーを吸収する。
-- 種別ごとの値を `game/const.ts` に置く(敵・破片・薬莢・弾薬・基地)。既定は
-  `specificHeat = 0` なので、値を入れた種別だけが熱を持つ。**弾には入れない**(2-6)。
-- **この段階では `burnUpDensity` も併存させる**(削除は Phase 5)。
+**Phase 4 で温度は積まれるようになったが、まだ誰も死なない。** 死ぬ規則を密度から温度へ
+移すのはここで一度に行う — 2つの喪失規則が同時に生きている状態を作らないため。
 
-**受入**: `typecheck`。`burnUpDensity` の併存により既存の挙動は大きく変わらない。
-
-## Phase 5 — 密度しきい値を廃止し、発散対策を置き直す
-
-- `SPEC/ORBIT.md` へ、**細分しない個体は抗力が刻みに対して剛くなった時点で失われる**ことを書く。
-  時間加速が運命を変えることを認める節になるので、限定(濃い大気の中にいる物体だけ、地球で
-  28〜73 km)も同時に書く。
 - `burnUpBody`・`burnUpDensity`・`ENEMY_BURNUP_DENSITY`・`DEBRIS_BURNUP_DENSITY` を削除。
+- `stepSimulation` の中で、温度が上限を超えた個体を失う(判定は細分の内側 = 2-3)。
+  死因を記録する種別のために、失われる口を仮想メソッドで開ける。
 - 剛性の上限に触れた `doPreciseReentry = false` の個体を失う規則を、`simulationSubdivision` と
   同じ場所(個体側)へ置く。**`atmosphericMaxStep` の合成値ではなく剛性の項だけを見る**(2-4)。
   剛性の項は `time-step.ts` の `dragMaxStep` の内側にあるので、そこから取り出せる形にする。
