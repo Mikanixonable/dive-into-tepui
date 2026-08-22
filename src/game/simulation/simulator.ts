@@ -96,9 +96,12 @@ export class Simulator {
       // 重力源はこのサブステップの中点で1回だけ組み、全エンティティで使い回す。
       const sources = this.ephemeris.gravityAttractorsAt(this.simTime + subDt / 2);
       this.lastGravitySourceCount = sources.length;
-      // 遮蔽体はサブステップ開始時刻の窓を使う。遮蔽の幾何はステップ内の天体の移動にほとんど
-      // 左右されないので中点で組み直す意味が無く、前のサブステップの終端で組んだ窓と同じ
-      // 時刻なのでそのまま使い回せる。
+      // 遮蔽体・表面ともサブステップ開始時刻の窓を1つだけ組み、日照率にも天体接触にも使う。
+      // 遮蔽の幾何はステップ内の天体の移動にほとんど左右されないので中点で組み直す意味が無く、
+      // 天体接触の側は firstSurfaceContact が celestialBodyStateAt で各個体の時刻へ引き直すので、
+      // 窓がサブステップのどちらの端の時刻でも 2 次外挿の誤差しか変わらない(地球は ECI 原点に
+      // 静止するので厳密に同じ)。細分した個体は区間の途中の時刻に着地するので、開始時刻の窓を
+      // 共有するほうが素直でもある。
       const surfaceBodies = this.surfaceBodies();
       this.substep(
         subDt, sources, surfaceBodies,
