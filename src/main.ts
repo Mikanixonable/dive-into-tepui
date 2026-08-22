@@ -175,7 +175,7 @@ async function main() {
   saveBrowser.onSlotSwitched = () => launcher.switchSlot();
   saveBrowser.onLoadSnapshot = (id) => launcher.loadSnapshot(id);
   // 設定メニューと一覧は同じシステム窓の帯にいるので、片方を開くときもう片方は閉じる。
-  pauseMenu.onOpenSnapshots = () => {
+  pauseMenu.onOpenSaveBrowser = () => {
     pauseMenu.toggle(false);
     saveBrowser.open();
   };
@@ -188,6 +188,7 @@ async function main() {
   };
 
   const snapshotControls = new SnapshotControls(hud, pauseMenu, saveBrowser, snapshotService);
+  pauseMenu.onSave = () => snapshotControls.captureManual(launcher.current);
 
   await launcher.start();
 
