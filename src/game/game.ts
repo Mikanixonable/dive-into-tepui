@@ -211,7 +211,7 @@ export class Game {
     this.mapActions = new MapContextActions(
       this._hud, this.entities, this.ephemeris, this.navTarget,
       this.cameraSystem, this.editor, this.simSpeedManager, this.pauseMenu, this.mapPickables,
-      this.activePlayers, this.frameControls, this.activeStage,
+      this.activePlayers, this.frameControls, this.activeStage, this.targeter,
     );
 
     // 初期ビューは世界が組み上がった後にしか決まらない — 攻略ステージの自機は Stage の初期配置で
