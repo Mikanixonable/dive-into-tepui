@@ -205,12 +205,16 @@ export class EnvironmentScene {
     this.celestialGrid.sync(
       gridVisibility, cameraSystem.activeCamera,
       cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
+    const moonInRegistry = 'moon' in this.ephemeris.registry;
+    const moonPole = moonInRegistry ? this.ephemeris.poleAt('moon', displayTime) : null;
     this.spatialGrid.sync(
       cameraSystem.overviewMode,
       gridVisibility.eclipticScaleGrid,
       gridVisibility.equatorScaleGrid,
       gridVisibility.moonOrbitScaleGrid,
-      'moon' in this.ephemeris.registry ? this.toThreeNormal(this.ephemeris.orbitNormalAt('moon', displayTime)) : undefined,
+      gridVisibility.moonEquatorScaleGrid,
+      moonInRegistry ? this.toThreeNormal(this.ephemeris.orbitNormalAt('moon', displayTime)) : undefined,
+      moonPole === null ? undefined : this.toThreeNormal(moonPole.axis),
       cameraSystem.mapCamera.resolvedFocus,
       floatingOrigin,
       cameraSystem.activeCamera,

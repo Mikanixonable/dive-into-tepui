@@ -17,6 +17,7 @@ export interface CelestialGridVisibility {
   readonly eclipticScaleGrid: boolean;
   readonly equatorScaleGrid: boolean;
   readonly moonOrbitScaleGrid: boolean;
+  readonly moonEquatorScaleGrid: boolean;
 }
 
 // 面を張る直交基底。e1/e2 が面内、pole が法線(北極方向)。
