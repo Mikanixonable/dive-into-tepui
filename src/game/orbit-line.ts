@@ -9,10 +9,10 @@ import { OrbitalElements } from '../physics/elements';
 import { FloatingOrigin } from './floating-origin';
 import { Curve, CurveSampler } from '../render/curve';
 import { LineStyle } from '../render/line-style';
-import { ReferenceFrame, FrameTransform, toFramePoint } from '../physics/frame';
+import { ReferenceFrame, FrameTransform, toFrameDir } from '../physics/frame';
 import type { Ephemeris } from '../physics/ephemeris';
 import { Attractor } from '../physics/attractor';
-import { add, v3, Vec3 } from '../physics/vec3';
+import { v3 } from '../physics/vec3';
 
 // Curve の頂点予算。楕円は閉曲線なので初期分割・分割上限のみで足り、固定サンプル数は持たない。
 const MAX_VERTICES = 4096;
@@ -31,7 +31,6 @@ export class OrbitLine {
   private snap: OrbitalElements | null = null;
   private snapFrame: ReferenceFrame | null = null;
   private snapTf: FrameTransform | null = null;
-  private snapCenterPos: Vec3 = v3();
   // Curve へ渡す revision。楕円を作り直すたびに新しいオブジェクトへ差し替える。
   private revision: object = {};
 
@@ -60,7 +59,9 @@ export class OrbitLine {
   }
 
   // 離心近点角 E=t·2π を軌道要素で位置へ写す、閉曲線サンプラ。読むのは snap で、
-  // revision が指す形状と焼かれる形状が常に一致する。
+  // revision が指す形状と焼かれる形状が常に一致する。頂点は中心天体からのオフセットのみを
+  // 持ち(方向変換 toFrameDir、原点移動なし)、中心天体自身の位置は毎フレーム sync が
+  // setTransform で足すので、ここでは中心天体が動いても古びない。
   private readonly sampler: CurveSampler = (t, out) => {
     const el = this.snap;
     if (!el) return;
@@ -73,9 +74,8 @@ export class OrbitLine {
     const rz = el.pHat.z * x + el.qHat.z * y;
 
     if (this.snapTf) {
-      const rEci = add(this.snapCenterPos, v3(rx, ry, rz));
-      const pFrame = toFramePoint(this.snapTf, rEci);
-      out.set(pFrame.x, pFrame.y, pFrame.z);
+      const dFrame = toFrameDir(this.snapTf, v3(rx, ry, rz));
+      out.set(dFrame.x, dFrame.y, dFrame.z);
     } else {
       out.set(rx, ry, rz);
     }
@@ -101,7 +101,7 @@ export class OrbitLine {
     }
 
     if (tf) {
-      this.curve.setTransform(fo.RtoThreeV3(tf.origin), new THREE.Quaternion(tf.q.x, tf.q.y, tf.q.z, tf.q.w));
+      this.curve.setTransform(fo.RtoThreeV3(el.center.state.r), new THREE.Quaternion(tf.q.x, tf.q.y, tf.q.z, tf.q.w));
     } else {
       this.curve.setTransform(fo.RtoThreeV3(el.center.state.r));
     }
@@ -111,7 +111,6 @@ export class OrbitLine {
       this.snap = el;
       this.snapFrame = frame ?? null;
       this.snapTf = tf;
-      this.snapCenterPos = el.center.state.r;
     }
 
     this.curve.setCurve(this.sampler, { revision: this.revision, camera });
