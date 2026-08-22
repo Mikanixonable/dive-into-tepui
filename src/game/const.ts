@@ -649,7 +649,6 @@ export const COLOR_PLAYER_DESTROY_FRAG = '#9fd8e8';
 export const COLOR_ENEMY_DESTROY_FRAG = '#ff6a4a';
 export const COLOR_ENEMY_ORBIT_LINE = '#565b63';
 export const COLOR_BASE_ORBIT_LINE = '#4f8f7d'; // 拠点(味方施設)の軌道線。落ち着いた緑がかった色で他線と区別
-export const COLOR_PLAYER_ORBIT_LINE = '#bfc9d4'; // 自機の軌道線(予測線・過去線)に共通の色
 export const COLOR_ENEMY_PLASMA = '#ff3333'; // 蛍光色の赤
 export const COLOR_SHIP_DARK_HULL = '#2e3340';
 export const COLOR_STAGE0_GROUP_ACCENTS = ['#ff4a3d', '#3dc6ff', '#3dff8f', '#ffe23d', '#bf3dff'];
@@ -669,9 +668,6 @@ export const LINE_RENDER_ORDER = {
 export const LINE_STYLE = {
   enemyOrbit: { color: COLOR_ENEMY_ORBIT_LINE, opacity: 0.35, renderOrder: LINE_RENDER_ORDER.shipOrbit },
   baseOrbit: { color: COLOR_BASE_ORBIT_LINE, opacity: 0.35, renderOrder: LINE_RENDER_ORDER.shipOrbit },
-  playerOrbit: { color: COLOR_PLAYER_ORBIT_LINE, opacity: 0.55, renderOrder: LINE_RENDER_ORDER.shipOrbit },
-  playerPredicted: { color: COLOR_PLAYER_ORBIT_LINE, opacity: 0.55, renderOrder: LINE_RENDER_ORDER.predicted },
-  playerActual: { color: COLOR_PLAYER_ORBIT_LINE, opacity: 0.3, renderOrder: LINE_RENDER_ORDER.predicted },
 } as const satisfies Record<string, LineStyle>;
 
 // 惑星・衛星の参照軌道線のフェード距離 [m]。カメラから天体までの距離がこれ未満なら非表示、

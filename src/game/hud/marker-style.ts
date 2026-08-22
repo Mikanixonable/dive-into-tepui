@@ -59,7 +59,7 @@ export const MARKER_STYLE = `
   white-space: pre; text-align: left; font-size: var(--font-xxs); line-height: 1.2;
 }
 
-.mk-target { color: var(--accent); }
+.mk-target { color: var(--accent-secondary); }
 .mk-enemy { color: var(--text-strong); }
 .mk-lead { color: var(--accent); }
 .mk-pro { color: var(--axis-prograde); }
