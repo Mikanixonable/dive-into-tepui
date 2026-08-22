@@ -28,6 +28,7 @@ import { PlayerThrottle } from './player-throttle';
 import { PlayerFire, type AmmoLoad } from './player-fire';
 import { Belt } from './belt';
 import { ThermalSystem } from './thermal';
+import { currentThemePalette } from '../theme';
 import { EffectsSystem } from '../vfx/effects-system';
 import { ThrustEffects } from './thrust-effects';
 import { RcsEffects } from './rcs-effects';
@@ -491,11 +492,11 @@ export class Player extends Ship {
       priority,
       name: this.name,
       detail: overviewMode ? '' : fmtMarkerDist(dist),
-      bearingColor: C.COLOR_MARKER_ALLY,
+      bearingColor: role === 'primary' ? currentThemePalette().secondary : C.COLOR_MARKER_ALLY,
       bearingSym: DIRECTION_GLYPH.allyBearing,
       bearingClass: 'mk-dir mk-ally-dir',
       bearingVisible: dist <= C.ALLY_BEARING_MAX_DISTANCE,
-      color: C.COLOR_MARKER_ALLY,
+      color: role === 'primary' ? currentThemePalette().secondary : C.COLOR_MARKER_ALLY,
       symMarkup: true,
     };
   }
