@@ -3,14 +3,14 @@
 // 値から KinematicState を組み立てるのは物理側(stateFromOrbitalElements/haloState/lissajousState)の
 // 仕事なので、ここでは行わない。
 import { Button, CloseButton, SegmentedControl, Slider, ValueInput } from '../hud/widgets';
-import { ObjectPicker, ObjectPickerGroup } from '../hud/object-picker';
+import { ObjectPicker, ObjectPickerGroup } from '../hud/windows/object-picker';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 import { baseMarkerSvg, shipMarkerSvg } from '../marker/marker-shapes';
 import type { OverlayHandle, OverlayManager } from '../hud/overlay-manager';
 import { BodyClass, bodyClassOf } from '../celestial/body-class';
 import { sameSystemIds } from '../celestial/body-visibility';
-import { celestialBodyName } from '../hud/frame-labels';
-import { getApsisLabelSpec } from '../hud/orbit-labels';
+import { celestialBodyName } from '../hud/frame/frame-labels';
+import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
 import { CollinearPoint } from '../../physics/halo';
 import { CelestialBodyId } from '../../physics/celestial-body';
 import { bodyDef, primaryOf, CelestialRegistry, SOLAR_SYSTEM, MU_EARTH, R_EARTH, SIDEREAL_DAY, J2_EARTH } from '../../physics/solar-system';
