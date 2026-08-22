@@ -14,7 +14,7 @@ import { FILL_4 } from '../theme';
 import { GroupedMarkers } from './grouped-markers';
 import { LeadMarkers } from './lead-markers';
 import { isOccluded } from '../../physics/occlusion';
-import { Attractor, strongestAttractor } from '../../physics/attractor';
+import { CelestialBody, strongestAttractor } from '../../physics/celestial-body';
 import type { ReferenceFrame } from '../../physics/frame';
 import { toFrameDir } from '../../physics/frame';
 import { qRotate } from '../../physics/attitude';
@@ -221,12 +221,12 @@ export class MarkerManager {
     worldPos: Vec3,
     project: ProjectFn,
     cameraPos: Vec3,
-    attractors: readonly Attractor[],
+    celestialBodies: readonly CelestialBody[],
     overviewMode: boolean,
     label = '',
     priority?: number,
   ): void {
-    if (overviewMode && isOccluded(cameraPos, worldPos, attractors)) {
+    if (overviewMode && isOccluded(cameraPos, worldPos, celestialBodies)) {
       this.fadeOut(key);
     } else {
       this.setPosition(key, cls, sym, worldPos, project, label, 1, undefined, undefined, false, false, priority);
@@ -264,15 +264,15 @@ export class MarkerManager {
     vel: Vec3,
     project: ProjectFn,
     scale: ScaleFn,
-    attractors: readonly Attractor[] = [],
+    celestialBodies: readonly CelestialBody[] = [],
     frame?: ReferenceFrame,
     displayTime?: number,
     ephemeris?: Ephemeris,
   ): number | undefined {
-    const center = attractors.length > 0 ? strongestAttractor(worldPos, attractors) : null;
+    const center = celestialBodies.length > 0 ? strongestAttractor(worldPos, celestialBodies) : null;
     let relVel = center ? sub(vel, center.state.v) : vel;
-    if (frame && displayTime !== undefined && ephemeris && attractors.length > 0) {
-      const tf = ephemeris.frameTransformAt(frame, displayTime, attractors);
+    if (frame && displayTime !== undefined && ephemeris && celestialBodies.length > 0) {
+      const tf = ephemeris.frameTransformAt(frame, displayTime, celestialBodies);
       if (tf) {
         const vFrame = toFrameDir(tf, relVel);
         relVel = qRotate(tf.q, v3(vFrame.x, vFrame.y, vFrame.z));

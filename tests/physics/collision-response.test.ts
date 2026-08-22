@@ -1,12 +1,34 @@
 import * as assert from 'node:assert/strict';
-import { resolveSphereCollision } from '../../src/physics/collision-response';
-import { dot, lenSq, sub, v3, Vec3 } from '../../src/physics/vec3';
+import {
+  FixedContactResponse, Sphere,
+  distributeFixedContact, resolveSphereCollision, sphereContactGeometry,
+} from '../../src/physics/collision-response';
+import { dot, len, lenSq, sub, v3, Vec3 } from '../../src/physics/vec3';
+import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { test } from './harness';
+
+// 天体との接触を、幾何を出す段と当てる段を繋いで解く — 表面接触の解決器が同じ順で呼ぶ。
+function fixedContact(
+  moving: Sphere, fixed: Sphere, restitution: number,
+  prevMoving?: KinematicState, prevFixed?: KinematicState,
+): FixedContactResponse | null {
+  const geometry = sphereContactGeometry(moving, fixed, prevMoving, prevFixed);
+  return geometry === null ? null : distributeFixedContact(moving, fixed, restitution, geometry);
+}
+
+// 渡されたベクトルの全成分が有限であること。質量の両極(0 と無限大)で NaN/Infinity が
+// 位置・速度へ漏れないことを見るために使う。
+function assertFinite(...vectors: readonly Vec3[]): void {
+  for (const [i, u] of vectors.entries()) {
+    assert.ok(Number.isFinite(u.x) && Number.isFinite(u.y) && Number.isFinite(u.z),
+      `${i} 番目のベクトルに非有限値: ${JSON.stringify(u)}`);
+  }
+}
 
 function overlapPair(vA: Vec3, vB: Vec3, invMassA: number, invMassB: number, restitution: number) {
   return resolveSphereCollision(
-    { r: v3(-0.6, 0, 0), v: vA, radius: 1, invMass: invMassA },
-    { r: v3(0.6, 0, 0), v: vB, radius: 1, invMass: invMassB },
+    { state: kinematicState(0, v3(-0.6, 0, 0), vA), radius: 1, invMass: invMassA },
+    { state: kinematicState(0, v3(0.6, 0, 0), vB), radius: 1, invMass: invMassB },
     restitution,
   );
 }
@@ -54,14 +76,15 @@ export function register(): void {
     assert.ok(Math.abs(vnAfter - (-0.5 * vnBefore)) < 1e-9);
   });
 
-  test('collision-response: 力積は換算質量に比例する', () => {
+  test('collision-response: 交換される運動量は換算質量に比例する', () => {
     const vA = v3(4, 0, 0), vB = v3(-4, 0, 0);
     const light = overlapPair(vA, vB, 1, 1, 0.6)!; // mass 1, 1 → 換算質量 0.5
     const heavy = overlapPair(vA, vB, 0.1, 0.1, 0.6)!; // mass 10, 10 → 換算質量 5(10倍)
-    assert.ok(Math.abs(heavy.impulse - light.impulse * 10) < 1e-6);
+    const momentum = (res: { vA: Vec3 }, mass: number) => Math.abs(res.vA.x - vA.x) * mass;
+    assert.ok(Math.abs(momentum(heavy, 10) - momentum(light, 1) * 10) < 1e-6);
   });
 
-  test('collision-response: Δv(=impulse/mass)は質量に反比例する', () => {
+  test('collision-response: Δv は質量に反比例する', () => {
     const massA = 2, massB = 8;
     const vA = v3(3, 0, 0), vB = v3(-3, 0, 0);
     const res = overlapPair(vA, vB, 1 / massA, 1 / massB, 0.5)!;
@@ -78,8 +101,8 @@ export function register(): void {
   // 反発の要否判定(vn)だけが壊れて非nullのまま返る — その場合も相手側(vB)は無傷。
   test('collision-response: 片側が非有限な位置なら null', () => {
     const res = resolveSphereCollision(
-      { r: v3(NaN, 0, 0), v: v3(1, 0, 0), radius: 1, invMass: 1 },
-      { r: v3(0.6, 0, 0), v: v3(-1, 0, 0), radius: 1, invMass: 1 },
+      { state: kinematicState(0, v3(NaN, 0, 0), v3(1, 0, 0)), radius: 1, invMass: 1 },
+      { state: kinematicState(0, v3(0.6, 0, 0), v3(-1, 0, 0)), radius: 1, invMass: 1 },
       0.5,
     );
     assert.equal(res, null);
@@ -87,8 +110,8 @@ export function register(): void {
 
   test('collision-response: 片側が非有限な速度は相手側の速度を書き換えない', () => {
     const res = resolveSphereCollision(
-      { r: v3(-0.6, 0, 0), v: v3(NaN, 0, 0), radius: 1, invMass: 1 },
-      { r: v3(0.6, 0, 0), v: v3(-1, 0, 0), radius: 1, invMass: 1 },
+      { state: kinematicState(0, v3(-0.6, 0, 0), v3(NaN, 0, 0)), radius: 1, invMass: 1 },
+      { state: kinematicState(0, v3(0.6, 0, 0), v3(-1, 0, 0)), radius: 1, invMass: 1 },
       0.5,
     )!;
     assert.ok(res !== null);
@@ -97,8 +120,8 @@ export function register(): void {
 
   test('collision-response: 片側が非有限な半径なら null', () => {
     const res = resolveSphereCollision(
-      { r: v3(-0.6, 0, 0), v: v3(1, 0, 0), radius: NaN, invMass: 1 },
-      { r: v3(0.6, 0, 0), v: v3(-1, 0, 0), radius: 1, invMass: 1 },
+      { state: kinematicState(0, v3(-0.6, 0, 0), v3(1, 0, 0)), radius: NaN, invMass: 1 },
+      { state: kinematicState(0, v3(0.6, 0, 0), v3(-1, 0, 0)), radius: 1, invMass: 1 },
       0.5,
     );
     assert.equal(res, null);
@@ -106,25 +129,62 @@ export function register(): void {
 
   test('collision-response: 片側が非有限な逆質量なら null', () => {
     const res = resolveSphereCollision(
-      { r: v3(-0.6, 0, 0), v: v3(1, 0, 0), radius: 1, invMass: NaN },
-      { r: v3(0.6, 0, 0), v: v3(-1, 0, 0), radius: 1, invMass: 1 },
+      { state: kinematicState(0, v3(-0.6, 0, 0), v3(1, 0, 0)), radius: 1, invMass: NaN },
+      { state: kinematicState(0, v3(0.6, 0, 0), v3(-1, 0, 0)), radius: 1, invMass: 1 },
       0.5,
     );
     assert.equal(res, null);
   });
 
-  // 質量0(逆質量Infinity)側は自分の位置・速度がNaNになりうるが、相手側(有限質量)の
-  // 値は一切書き換えられない — 0×Infinityがどちらの式でも invMass の側にしか掛からないため。
-  // 質量0を参加者に含めない保証自体は game/ 側(6-3)の責務で、ここは万一素通りしても
-  // 相手側へは伝播しないことを固定する。
-  test('collision-response: 質量0(逆質量Infinity)は相手側の値を書き換えない', () => {
+  // 質量0(逆質量Infinity)は試験粒子 — 相手に力を及ぼさず、自分だけが跳ね返る。
+  test('collision-response: 質量0は相手を動かさず、自分だけが跳ね返る', () => {
     const res = resolveSphereCollision(
-      { r: v3(-0.6, 0, 0), v: v3(1, 0, 0), radius: 1, invMass: Infinity },
-      { r: v3(0.6, 0, 0), v: v3(-1, 0, 0), radius: 1, invMass: 1 },
+      { state: kinematicState(0, v3(-0.6, 0, 0), v3(1, 0, 0)), radius: 1, invMass: Infinity },
+      { state: kinematicState(0, v3(0.6, 0, 0), v3(-1, 0, 0)), radius: 1, invMass: 1 },
       0.5,
     )!;
     assert.ok(res !== null);
     assert.deepEqual(res.rB, v3(0.6, 0, 0));
     assert.deepEqual(res.vB, v3(-1, 0, 0));
+    assertFinite(res.rA, res.vA);
+    // 接近速度 2 が -e 倍になるので、自分の速度は 1 → 1 - 1.5·2 = -2。
+    assert.ok(Math.abs(res.vA.x - -2) < 1e-12);
+  });
+
+  test('collision-response: 質量0どうしは折半して離れ、非有限値を出さない', () => {
+    const res = overlapPair(v3(1, 0, 0), v3(-1, 0, 0), Infinity, Infinity, 0.5)!;
+    assert.ok(res !== null);
+    assertFinite(res.rA, res.vA, res.rB, res.vB);
+    // 折半なので、両者の速度変化は大きさが等しく向きが逆になる。
+    assert.ok(Math.abs((res.vA.x - 1) + (res.vB.x - -1)) < 1e-12);
+  });
+
+  test('collision-response: 質量0の球が天体へ接触しても非有限値を出さない', () => {
+    const res = fixedContact(
+      { state: kinematicState(0, v3(-0.6, 0, 0), v3(1, 0, 0)), radius: 1 },
+      { state: kinematicState(0, v3(0.6, 0, 0), v3()), radius: 1 },
+      0.5,
+    )!;
+    assert.ok(res !== null);
+    assertFinite(res.r, res.v);
+    assert.ok(res.bounced);
+    // 天体は 100% 相手が受け持つので、法線速度は -e 倍になる。
+    assert.ok(Math.abs(res.v.x - -0.5) < 1e-12);
+  });
+
+  test('collision-response: 天体との接触は中心間を半径和ちょうどへ揃える', () => {
+    const res = fixedContact(
+      { state: kinematicState(0, v3(-0.6, 0, 0), v3(1, 0, 0)), radius: 1 },
+      { state: kinematicState(0, v3(0.6, 0, 0), v3()), radius: 1 },
+      0.5,
+      kinematicState(-1, v3(-4, 0, 0), v3(1, 0, 0)),
+      kinematicState(-1, v3(0.6, 0, 0), v3()),
+    )!;
+    assert.ok(res !== null);
+    assert.ok(Math.abs(len(sub(v3(0.6, 0, 0), res.r)) - 2) < 1e-9);
+  });
+
+  test('collision-response: 双方が不動なら解決しない', () => {
+    assert.equal(overlapPair(v3(1, 0, 0), v3(-1, 0, 0), 0, 0, 0.5), null);
   });
 }

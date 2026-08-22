@@ -1,5 +1,5 @@
 // 軌道エンティティの基準・軌道要素・相対情報の導出。DOM に依存しない純粋関数。
-import { Attractor, strongestAttractor } from '../../physics/attractor';
+import { CelestialBody, strongestAttractor } from '../../physics/celestial-body';
 import { apsisAltitudes } from '../../physics/elements';
 import { kinematicState } from '../../physics/kinematic-state';
 import { dot, len, sub } from '../../physics/vec3';
@@ -47,9 +47,9 @@ export interface RelativeInfo {
 
 // self から見た other の距離・接近速度・相対速度・相対傾斜角を導出する。相対傾斜角は
 // 双方の基準天体(strongestAttractor)が一致するときのみ意味を持ち、異なる場合は NaN にする。
-export function relativeInfo(self: GameEntity, other: GameEntity, attractors: readonly Attractor[]): RelativeInfo {
-  const selfCenter = strongestAttractor(self.state.r, attractors);
-  const otherCenter = strongestAttractor(other.state.r, attractors);
+export function relativeInfo(self: GameEntity, other: GameEntity, celestialBodies: readonly CelestialBody[]): RelativeInfo {
+  const selfCenter = strongestAttractor(self.state.r, celestialBodies);
+  const otherCenter = strongestAttractor(other.state.r, celestialBodies);
   const selfEl = self.orbitalElementsAround(selfCenter);
   const otherEl = other.orbitalElementsAround(otherCenter);
   const relP = sub(other.state.r, self.state.r);
