@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../physics/kinematic-state';
 import { OrbitalElements } from '../../physics/elements';
-import { Attitude } from '../../physics/attitude';
+import { Attitude, stepAttitude } from '../../physics/attitude';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { CelestialBody, orbitalElementsOf, localOrbitPeriod, strongestAttractor } from '../../physics/celestial-body';
 import { burnUpBody } from '../../physics/atmosphere';
@@ -15,6 +15,7 @@ import { LineStyle } from '../../render/line-style';
 import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { PredictedArc, trajectorySampleInterval } from '../simulation/predicted-arc';
+import { atmosphericMaxStep } from '../simulation/time-step';
 import type { FutureCelestialBodyProvider } from '../simulation/arc-bodies';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
@@ -268,28 +269,46 @@ export class GameEntity {
       ? this.sampleInterval(celestialBodies, this.state, this.historyDuration) : 0;
   }
 
-  // 重力源 + J2 + 大気抵抗 + 自身の推力で 1 ステップ積分する。celestialBodies はこのステップの
-  // 重力源一覧、occluders は日照率の遮蔽体一覧 — どちらも呼び出し側(Simulator)が全
-  // エンティティで同じ瞬間の同じ配列を使い回す。atmosphereBody は抗力を及ぼすただ1体の
-  // 大気天体(null なら抗力なし)。
-  stepActual(
+  // このサブステップを内側で何等分して進めるか。濃い大気の中では抗力が dt より短い刻みを
+  // 要求するので、それに従う種別はここで 2 以上を返す。atmosphereBodies はその区間の大気天体
+  // 一覧。
+  substepDivisions(dt: number, atmosphereBodies: readonly CelestialBody[]): number {
+    if (!this.doPreciseReentry) return 1;
+    const innerDt = atmosphericMaxStep(this.state, this.bcInv, atmosphereBodies);
+    return innerDt >= dt ? 1 : Math.ceil(dt / innerDt);
+  }
+
+  // 1区間ぶん自分を進める。呼び出し側は生存を確かめてから呼ぶ。celestialBodies はこの区間の
+  // 重力源一覧、occluders は日照率の遮蔽体一覧、atmosphereBody は抗力を及ぼすただ1体の大気
+  // 天体(null なら抗力なし)。
+  //
+  // 位置と速度は、既に伸びている予測が区間の終端を持っていればそれを辿り、無ければ積分する。
+  // **どちらを通っても姿勢と受動的な環境は同じ区間ぶん進む** — 位置と速度の決まり方は、その
+  // 個体に何が起きるかを変えない。積分したなら true を返す(負荷確認の集計だけがこれを読む)。
+  stepSimulation(
     dt: number,
     celestialBodies: readonly CelestialBody[],
     occluders: readonly CelestialBody[],
     atmosphereBody: CelestialBody | null,
-  ): void {
-    if (!this.alive) return;
-    this.actual.step(
-      dt, celestialBodies, occluders, atmosphereBody, this.bcInv, this.srpCoeff, this.thrust,
-      this.historySampleInterval(celestialBodies), this.historyDuration,
-    );
-    // 積分した弧はもう現実を表さない。ある時間帯の状態を決める積分を常に1本に保つ。
-    this.invalidatePrediction();
+    ephemeris: Ephemeris,
+  ): boolean {
+    const integrated = !this.followPredicted(this.state.t + dt, celestialBodies);
+    if (integrated) {
+      this.actual.step(
+        dt, celestialBodies, occluders, atmosphereBody, this.bcInv, this.srpCoeff, this.thrust,
+        this.historySampleInterval(celestialBodies), this.historyDuration,
+      );
+      // 積分した弧はもう現実を表さない。ある時間帯の状態を決める積分を常に1本に保つ。
+      this.invalidatePrediction();
+    }
+    if (this.hasAttitude) this.att = stepAttitude(this.att, this.torque, dt);
+    this.stepEnvironment(dt, ephemeris, this.state.t, occluders);
+    return integrated;
   }
 
-  // 直前の stepActual と同じ区間ぶん、位置と姿勢から決まる受動的な環境(熱・電力など)を
-  // 進める。既定では持たない。bodies はその区間の天体窓。
-  stepEnvironment(
+  // 同じ区間ぶん、位置と姿勢から決まる受動的な環境(熱・電力など)を進める。既定では持たない。
+  // bodies はその区間の天体窓。
+  protected stepEnvironment(
     _dt: number, _ephemeris: Ephemeris, _simTime: number, _bodies: readonly CelestialBody[],
   ): void {
   }
@@ -315,10 +334,9 @@ export class GameEntity {
     return this._predictedArc;
   }
 
-  // 予測列が時刻 t を持っていれば、その状態を先端にして true。持っていなければ何もせず false
-  // (呼び出し側は積分へ落とす)。celestialBodies は履歴の間引き間隔を出すための重力源一覧。
-  followPredicted(t: number, celestialBodies: readonly CelestialBody[]): boolean {
-    if (!this.alive) return false;
+  // 予測列が時刻 t を持っていれば、その状態を先端にして true。持っていなければ何もせず false。
+  // celestialBodies は履歴の間引き間隔を出すための重力源一覧。
+  private followPredicted(t: number, celestialBodies: readonly CelestialBody[]): boolean {
     const s = this._predictedArc?.trajectory.at(t) ?? null;
     if (s === null) return false;
     this.actual.follow(s, this.historySampleInterval(celestialBodies), this.historyDuration);
