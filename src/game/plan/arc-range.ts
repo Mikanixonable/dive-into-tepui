@@ -31,3 +31,14 @@ export function clipSamplesTo(
   while (cut > 0 && source[cut - 1]!.t > end) cut--;
   return source.slice(0, cut);
 }
+
+// 時刻昇順のサンプル列を start で切る。先頭から start に満たない間だけ削り、削る必要が無ければ
+// source をそのまま返す。
+export function clipSamplesFrom(
+  source: readonly KinematicState[], start: number,
+): readonly KinematicState[] {
+  if (source.length === 0 || source[0]!.t >= start) return source;
+  let cut = 0;
+  while (cut < source.length && source[cut]!.t < start) cut++;
+  return source.slice(cut);
+}

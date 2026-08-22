@@ -31,10 +31,26 @@ export class EquatorNodeMarkerPair {
     this.dnKey = `eqdn-${owner.id}`;
   }
 
-  // 交点を求め直す。
-  update(
+  // 解析軌道楕円の上に交点を置く。楕円は中心天体に固定して描かれるので、交点もその天体の
+  // 慣性系で表示時刻へ写す。
+  updateOnEllipse(displayTime: number, ephemeris: Ephemeris): void {
+    this.update(null, displayTime, ephemeris, this.owner.state, []);
+  }
+
+  // 表示中の折れ線の上に交点を置く。paths(区間ごとのサンプル列、時刻昇順)が空なら state の
+  // 軌道要素から求める。位置は折れ線と同じ frame で写す。
+  updateOnPath(
     frame: ReferenceFrame, displayTime: number, ephemeris: Ephemeris,
-    state: KinematicState = this.owner.state, samples: readonly KinematicState[] | null = null,
+    state: KinematicState, paths: readonly (readonly KinematicState[])[],
+  ): void {
+    this.update(frame, displayTime, ephemeris, state, paths);
+  }
+
+  // 交点を求め直す。frame は交点位置を表示時刻へ写す座標系で、null なら中心天体の慣性系
+  // (= 解析軌道楕円の置き方)。
+  private update(
+    frame: ReferenceFrame | null, displayTime: number, ephemeris: Ephemeris,
+    state: KinematicState, paths: readonly (readonly KinematicState[])[],
   ): void {
     this.icons = [];
     this.celestialBodies = ephemeris.celestialBodiesAt(displayTime);
@@ -42,13 +58,14 @@ export class EquatorNodeMarkerPair {
     const eqNormal = center.degree2?.pole;
     if (!eqNormal) return;
 
-    const unbakeTf = ephemeris.frameTransformAt(frame, displayTime, this.celestialBodies);
-    const crossings = solveEquatorCrossings(state, center, eqNormal, samples, (t) => ephemeris.positionOf(center.id, t));
+    const displayFrame = frame ?? ephemeris.frameFor(center.id);
+    const unbakeTf = ephemeris.frameTransformAt(displayFrame, displayTime, this.celestialBodies);
+    const crossings = solveEquatorCrossings(state, center, eqNormal, paths, (t) => ephemeris.positionOf(center.id, t));
     if (!crossings) return;
 
     const centerName = celestialBodyName(center.id);
     const toDisplay = (r: Vec3, t: number): Vec3 =>
-      unbakeToDisplayPoint(unbakeTf, ephemeris.frameTransformAt(frame, t, this.celestialBodies), r);
+      unbakeToDisplayPoint(unbakeTf, ephemeris.frameTransformAt(displayFrame, t, this.celestialBodies), r);
 
     this.icons = [
       {
