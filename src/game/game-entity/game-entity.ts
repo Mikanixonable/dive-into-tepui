@@ -183,16 +183,10 @@ export class GameEntity {
   }
 
   // orbitLine を現在位置で最も強く引く天体まわりの軌道楕円に合わせる。線を持たなければ何もしない。
-  // frame / displayTime / ephemeris を渡すと、その座標系・時刻で楕円を描く。
-  syncOrbitLine(
-    fo: FloatingOrigin, camera: THREE.Camera, celestialBodies: readonly CelestialBody[], force = false,
-    frame?: ReferenceFrame, displayTime?: number, ephemeris?: Ephemeris,
-  ): void {
+  syncOrbitLine(fo: FloatingOrigin, camera: THREE.Camera, celestialBodies: readonly CelestialBody[]): void {
     if (this.orbitLine === null) return;
     const center = strongestAttractor(this.state.r, celestialBodies);
-    this.orbitLine.sync(
-      this.orbitalElementsAround(center), fo, camera, force, frame, displayTime, ephemeris, celestialBodies,
-    );
+    this.orbitLine.sync(this.orbitalElementsAround(center), fo, camera);
   }
 
   // 予測線を style で出す。既に出ていれば style を塗り直す。
