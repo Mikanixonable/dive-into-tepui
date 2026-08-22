@@ -56,6 +56,29 @@ export const SMALL_DEBRIS_BCINV = 8e-3; // 薬莢・破片
 export const SHIP_SRP_COEFF = 1.56e-2; // 機体: C_R≈1.3, A≈12m², m=PLAYER_MASS
 export const SMALL_DEBRIS_SRP_COEFF = 4.7e-3; // 薬莢・破片・弾薬
 
+// --- 熱(physics/thermal.ts の比量モデルへ渡す種別ごとの値) ---
+// 弾道係数 bcInv に織り込まれている抗力係数。よどみ点の曲率半径と断面積の比を bcInv から
+// 戻すのに使う。物体ごとに変えると bcInv の意味が種別で変わってしまうので、1つに固定する。
+export const DRAG_COEFFICIENT = 2.2;
+// 断面積のうち、よどみ点の加熱を実際に受ける割合。
+export const STAGNATION_AREA_FRACTION = 0.6;
+
+// 艦(自機・敵機)。材質密度は宇宙機の実効密度で、曲率半径 0.6 m を与える値。
+export const SHIP_BULK_DENSITY = 833; // [kg/m^3]
+export const SHIP_SPECIFIC_HEAT = 100; // [J/(kg·K)]
+export const SHIP_RADIATING_AREA_PER_MASS = 0.07; // [m^2/kg]
+// 敵機は熱防御を持たないので、艦より低い温度で構造が保たなくなる。地球の大気では放射平衡が
+// これに達するのが高度 80 km 付近。
+export const ENEMY_MAX_TEMP = 700; // [K]
+
+// 破片・薬莢・弾薬。アルミ合金相当の材質。
+export const SMALL_DEBRIS_BULK_DENSITY = 2700; // [kg/m^3]
+export const SMALL_DEBRIS_SPECIFIC_HEAT = 900; // [J/(kg·K)]
+// 球とみなした断面積比(bcInv/Cd)の 4 倍。
+export const SMALL_DEBRIS_RADIATING_AREA_PER_MASS = 0.01455; // [m^2/kg]
+// 地球の大気では放射平衡がこれに達するのが高度 95 km 付近。
+export const SMALL_DEBRIS_MAX_TEMP = 1200; // [K]
+
 // --- 空力加熱・構造限界(自機のみ) ---
 export const SG_CONST = 1.7415e-4; // Sutton–Graves 定数(地球) [kg^0.5/m]
 export const NOSE_RADIUS = 0.6; // 機首曲率半径 [m]

@@ -11,9 +11,6 @@ export interface Contact {
   readonly normal: Vec3; // self → other 向きの単位法線
   readonly selfState: KinematicState; // 接触直前(反応前)の自分
   readonly otherState: KinematicState; // 接触直前(反応前)の相手
-  // 反発で自分が失う力学エネルギーを、自分の単位質量あたりで表した量 [J/kg]。質量 0 の
-  // 個体でも有限。
-  readonly specificEnergyLoss: number;
 }
 
 // 接触の瞬間に両者が近づいていた速さ [m/s]。離反していれば 0。normal は self → other 向きな
