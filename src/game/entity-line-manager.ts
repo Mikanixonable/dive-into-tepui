@@ -72,14 +72,13 @@ export class EntityLineManager {
       const predictedTo = ship.predictionTruncated ? null : simTime + duration;
       ship.syncTrajectoryLines(
         frame, simTime, displayTime, pastDuration, predictedTo, ephemeris, fo, camera, celestialBodies);
-      // 噴射中は軌道要素が動き続けるので、閾値を待たずに焼き直す。
-      ship.syncOrbitLine(fo, camera, celestialBodies, ship.thrust !== null, frame, displayTime, ephemeris);
+      ship.syncOrbitLine(fo, camera, celestialBodies);
     }
     for (const enemy of this.entities.enemies) {
-      enemy.syncOrbitLine(fo, camera, celestialBodies, enemy.thrust !== null, frame, displayTime, ephemeris);
+      enemy.syncOrbitLine(fo, camera, celestialBodies);
     }
     for (const base of this.entities.bases) {
-      base.syncOrbitLine(fo, camera, celestialBodies, base.thrust !== null, frame, displayTime, ephemeris);
+      base.syncOrbitLine(fo, camera, celestialBodies);
     }
   }
 }

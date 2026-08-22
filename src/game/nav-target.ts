@@ -104,7 +104,7 @@ export class NavTarget {
     if (!this.targetId) return;
     // 航法ターゲット自身の赤道交点は、自機の軌道要素が求まるかどうかとは無関係に出す。
     const target = this.resolveEntity(this.targetId, entities);
-    target?.ensureEquatorNodes(this.markerManager).update(frame, displayTime, ephemeris);
+    target?.ensureEquatorNodes(this.markerManager).updateOnEllipse(displayTime, ephemeris);
     if (!player) return;
     const stateCelestialBodies = ephemeris.celestialBodiesAt(simTime);
     const playerCenter = strongestAttractor(player.state.r, stateCelestialBodies);
