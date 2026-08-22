@@ -19,7 +19,7 @@ import { DisplayDurationSource, PlanData, TimeRange, segmentDurationFrom } from 
 import { BodyImpact, PredictedArc } from '../simulation/predicted-arc';
 import type { FutureCelestialBodyProvider } from '../simulation/arc-bodies';
 import type { Controllable } from '../game-entity/controllable';
-import { clipSamplesTo, stateAt, withinEnd } from './arc-range';
+import { clipSamplesFrom, clipSamplesTo, stateAt, withinEnd } from './arc-range';
 import { goldenSectionMin } from '../../physics/optimize';
 import * as C from '../const';
 
@@ -43,13 +43,10 @@ type Segment = { state0: KinematicState; end: number };
 // フレームは null)。
 type SegmentSource = { arc: PredictedArc | null; from: number; to: number; owned: boolean };
 
-// 最後のバーン後(これから乗る軌道)の区間。samples はその区間の(クリップ済み)積分結果を
-// そのまま渡す参照で、その区間の終端(end)が変わらない限り同一参照を保つ。
+// 最後のバーン後(これから乗る軌道)の区間で見つかったアプシス。
 // periapsis/apoapsis は、区間が地表到達等で打ち切られてその極値へ届かなければ null。
 // apsisCenter はその極値を検出した弧自身が答える中心天体。
 export interface FinalSegment {
-  readonly state0: KinematicState;
-  readonly samples: readonly KinematicState[];
   readonly periapsis: KinematicState | null;
   readonly apoapsis: KinematicState | null;
   readonly apsisCenter: CelestialBody | null;
@@ -155,14 +152,32 @@ export class PlanPath {
     this.activeCount = segments.length;
     this._nodeCount = planData.nodes.length;
     const finalSource = this.sources[segments.length - 1]!;
-    const finalSeg = segments[segments.length - 1]!;
     this.final = {
-      state0: finalSeg.state0,
-      samples: this.samplesOf(segments.length - 1, finalSource),
       periapsis: this.periapsisOf(finalSource),
       apoapsis: this.apoapsisOf(finalSource),
       apsisCenter: finalSource.arc?.apsides?.center ?? null,
     };
+  }
+
+  // 表示する区間を空にする。
+  clear(): void {
+    this.activeCount = 0;
+    this.final = null;
+  }
+
+  // いま描いている折れ線そのもの(表示窓で切った区間ごとのサンプル列、時刻昇順)。線の上に
+  // 乗せる点(交点など)を探す対象になる。
+  displayedSamples(): readonly (readonly KinematicState[])[] {
+    const out: (readonly KinematicState[])[] = [];
+    for (let i = 0; i < this.activeCount; i++) {
+      const source = this.sources[i]!;
+      const drawn = clipSamplesFrom(
+        clipSamplesTo(this.samplesOf(i, source), Math.min(this.displayTo, source.to)),
+        Math.max(this.displayFrom, source.from),
+      );
+      if (drawn.length >= 2) out.push(drawn);
+    }
+    return out;
   }
 
   // このフレーム owned な弧を区間順(= 時刻順)で返す。Predictor の予算パスが実際に伸ばす対象。

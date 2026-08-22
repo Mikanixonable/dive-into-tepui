@@ -716,15 +716,14 @@ export class PlanEditor {
     this.updateEquatorNodes(displayWindow);
   }
 
-  // 操作艦の赤道交点マーカーを、計画の最終区間(=これから乗る軌道)を代表状態として求め直す。
-  // 区間の折れ線も渡すので、交点は解析楕円ではなく実際に描かれている積分線の上に載る。
+  // 操作艦の赤道交点マーカーを、いま描かれている計画の折れ線の上で求め直す。折れ線が出ていない
+  // 間は自艦の現在の軌道要素から求める。
   private updateEquatorNodes(displayWindow: DisplayWindow): void {
     const ship = this.ship;
     if (!ship) return;
-    const segment = this.planDisplay.path.finalSegment();
-    ship.ensureEquatorNodes(this.markerManager).update(
+    ship.ensureEquatorNodes(this.markerManager).updateOnPath(
       displayWindow.frame, displayWindow.displayTime, this.ephemeris,
-      segment?.state0, segment?.samples,
+      ship.state, this.planDisplay.path.displayedSamples(),
     );
   }
 
