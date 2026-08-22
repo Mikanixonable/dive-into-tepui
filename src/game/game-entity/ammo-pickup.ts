@@ -26,7 +26,9 @@ export class AmmoPickup extends GameEntity {
   protected readonly srpCoeff = C.SMALL_DEBRIS_SRP_COEFF;
   protected readonly specificHeat = C.SMALL_DEBRIS_SPECIFIC_HEAT;
   protected readonly bulkDensity = C.SMALL_DEBRIS_BULK_DENSITY;
-  protected readonly radiatingAreaPerMass = C.SMALL_DEBRIS_RADIATING_AREA_PER_MASS;
+  protected override get radiatingAreaPerMass(): number {
+    return C.SMALL_DEBRIS_RADIATING_AREA_PER_MASS;
+  }
   protected readonly maxTemperature = C.SMALL_DEBRIS_MAX_TEMP;
   protected readonly predictedForGhost = true;
 

@@ -105,8 +105,8 @@ export class GameEntity {
   protected readonly specificHeat: number = 0;
   // 材質の密度 [kg/m^3]。よどみ点の曲率半径を bcInv から戻すのに使う。
   protected readonly bulkDensity: number = C.SMALL_DEBRIS_BULK_DENSITY;
-  // 輻射面積の比 [m^2/kg]。
-  protected readonly radiatingAreaPerMass: number = 0;
+  // いまの輻射面積の比 [m^2/kg]。展開して面積が変わる放熱面を持つ種別は override する。
+  protected get radiatingAreaPerMass(): number { return 0; }
   // 輻射率。
   protected readonly emissivity: number = C.HULL_EMISS;
   // これを超えると焼失する温度 [K]。既定 Infinity = 熱では失われない。
@@ -327,8 +327,9 @@ export class GameEntity {
       this.invalidatePrediction();
     }
     if (this.hasAttitude) this.att = stepAttitude(this.att, this.torque, dt);
-    this.stepThermal(dt, atmosphereBody, activeStage);
+    // 環境を先に進める。放熱面の展開のように、熱収支が読む値をここで書き換える種別がある。
     this.stepEnvironment(dt, ephemeris, this.state.t, occluders);
+    this.stepThermal(dt, atmosphereBody, activeStage);
     return integrated;
   }
 

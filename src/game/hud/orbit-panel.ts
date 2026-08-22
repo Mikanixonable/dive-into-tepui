@@ -55,13 +55,13 @@ export class OrbitPanel {
     const oi = orbitInfo(entity, reference);
     const apSpec = getApsisLabelSpec('ap', oi.centerId);
     const peSpec = getApsisLabelSpec('pe', oi.centerId);
-    const thermal = entity instanceof Player ? entity.thermal : null;
+    const ship = entity instanceof Player ? entity : null;
     // 航法ターゲット基準で対象が重力天体でない(艦・基地・ラグランジュ点)場合は、
     // celestialBodyName の生 ID フォールバックより航法ターゲットの表示名を優先する。
     const centerName = !reference.attractor && game.navTarget.name ? game.navTarget.name : oi.centerName;
     this.setText('center', centerName);
     this.setText('alt', fmtDist(oi.alt));
-    this.els.get('alt')?.classList.toggle('warn-hot', thermal?.altDescendWarned ?? false);
+    this.els.get('alt')?.classList.toggle('warn-hot', ship?.altitudeAlarm.descendWarned ?? false);
     this.setText('spd', fmtSpeed(oi.spd));
     this.setText('ap-label', `${apSpec.nameJa} ${apSpec.short}`);
     this.setText('pe-label', `${peSpec.nameJa} ${peSpec.short}`);
@@ -72,9 +72,9 @@ export class OrbitPanel {
     // 動圧・機体温度は閾値超過で警告表示にする。
     const qEl = this.els.get('qdyn');
     if (qEl) {
-      if (thermal) {
-        qEl.textContent = thermal.qdyn >= 10 ? `${(thermal.qdyn / 1000).toFixed(2)} kPa` : '0.00 kPa';
-        qEl.classList.toggle('warn-hot', thermal.qdyn > 0.5 * C.MAX_DYN_PRESSURE);
+      if (ship) {
+        qEl.textContent = ship.aero.qdyn >= 10 ? `${(ship.aero.qdyn / 1000).toFixed(2)} kPa` : '0.00 kPa';
+        qEl.classList.toggle('warn-hot', ship.aero.qdyn > 0.5 * C.MAX_DYN_PRESSURE);
       } else {
         qEl.textContent = '---';
         qEl.classList.remove('warn-hot');
@@ -82,9 +82,9 @@ export class OrbitPanel {
     }
     const tEl = this.els.get('temp');
     if (tEl) {
-      if (thermal) {
-        tEl.textContent = `${thermal.hullTemp.toFixed(0)} K`;
-        tEl.classList.toggle('warn-hot', thermal.hullTemp > 0.7 * C.MAX_HULL_TEMP);
+      if (ship) {
+        tEl.textContent = `${ship.temperature.toFixed(0)} K`;
+        tEl.classList.toggle('warn-hot', ship.temperature > 0.7 * C.MAX_HULL_TEMP);
       } else {
         tEl.textContent = '---';
         tEl.classList.remove('warn-hot');
