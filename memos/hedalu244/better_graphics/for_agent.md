@@ -43,9 +43,10 @@ L_surface = E(d) * albedo / pi          [W/m^2/sr] — 完全拡散反射面の�
 exposure  = 1 / L_ref                              — L_ref を中間グレーへ写す係数
 ```
 
-必要な量は**すべて既にある**: `SOLAR_CONSTANT = 1361`(`game/const.ts:65`)、
-`ASTRONOMICAL_UNIT`(`physics/srp.ts:9`)、逆二乗則(`physics/srp.ts:24`)、
-`STEFAN_BOLTZMANN` / `HULL_EMISS`(`game/const.ts:44-45`)、機体温度(`game/const.ts:47-51`)。
+必要な量は**すべて既にある**: `SOLAR_CONSTANT = 1361`(`game/const.ts:58`)、
+`ASTRONOMICAL_UNIT`(`physics/srp.ts:9`)、逆二乗則(`physics/srp.ts:24`、
+`physics/thermal.ts` の `solarHeating` も同じ形で使う)、`STEFAN_BOLTZMANN`
+(`physics/thermal.ts:12`)、`HULL_EMISS` と温度の各しきい値(`game/const.ts:81-84`)。
 
 **唯一の欠落はアルベドである。** 天体表面は 101 天体ぶんの 16 進直書き色(86 リテラル、ユニーク 63 種、
 `celestial-registry.ts:103-196`)しか持たず、アルベド値は 1 つも無い。根拠コメントも無い。
@@ -395,7 +396,8 @@ three 側で使えるものは、すべて **`memos/hedalu244/better_graphics/sh
 (艦は点ではなく、自己影を持つ)。したがって軸 2 が完成しても `physics/shadow.ts` は残る。
 
 `physics/shadow.ts` の `sunlitFactor(r, star, attractors)` は実装済みで、
-熱・電力(`game/player/player.ts`)と SRP(`physics/dynamics.ts`)が消費者。
+熱(全個体 — `game/game-entity/game-entity.ts` が区間ごとに 1 回引く)・電力
+(`game/player/power.ts`)と SRP(`physics/dynamics.ts`)が消費者。
 **このフェーズで新たにやることは無い。**
 
 **残っている 1 本の配線だけが軸 2 の作業対象**: 描画照明が `environment-scene.ts` 経由で
@@ -656,6 +658,9 @@ render-pipeline.ts  出力段。露出を掛けてキャンバスへ
    **`EXPOSURE` が 1.0 になる**(§1-1-2)。
 4. `Billboard` をノードマテリアル化(§1-1-2)。太陽・惑星輝点は等級 → 放射照度へ。
 5. 砲身赤熱を機体温度 + `STEFAN_BOLTZMANN` + `HULL_EMISS` の黒体放射へ。
+   **温度を持つのは艦だけではない** — 敵機・破片・薬莢・弾薬も同じ熱収支で温まるので、
+   焼失する物体の赤熱も同じ黒体放射から出す。再突入の輝きは現状 動圧から強度を引いているが、
+   周囲の空気の発光として温度から引き直す余地がある(`better_simulation/backlog.md` 16)。
 6. 手調整値(`NIGHT_AMBIENT`、`SUN_INTENSITY`、各 opacity、`ZOOM_MUZZLE_FLASH_SCALE`)は**捨てる。**
 
 **完了条件**: LDR クリップ回避のための係数が不要になる。

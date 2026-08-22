@@ -5,18 +5,15 @@
 // 動圧に至っては積分ですらなく点値である。生死を決めるのはその2つなので、刻み感度は
 // 「RK4 の刻み感度」ではなく「一次積分と点サンプルの刻み感度」として現れる。
 //
-// 熱と動圧の式は player/thermal.ts の updateThermal の複製。原本は Hud を import するので
-// tests/perf の tsconfig ではコンパイルできない。複製したのは次の3式で、定数は game/const
-// からそのまま import している:
-//   qdyn = 0.5 ρ s²
-//   q̇    = SG_CONST √(ρ / NOSE_RADIUS) s³
-//   T   += (q̇ · HEAT_ABSORB_AREA + cool) / heatCapacity · dtSub
-//   cool = HULL_EMISS · STEFAN_BOLTZMANN · RAD_AREA · (ENV_TEMP⁴ − T⁴)
+// 熱は physics/thermal.ts の比量モデルをそのまま呼ぶ。動圧だけはここで組む(qdyn = ½ρs²)。
 // ラジエーター(面積・太陽入射)と射撃・被弾の投入熱は 0 とする — 再突入の刻み感度を測る
 // のに、刻みに依存しない項は要らない。
 import { CelestialBody, nearestAtmosphereBody } from '../../src/physics/celestial-body';
 import { airspeed, atmosphericDensity, ellipsoidAltitude } from '../../src/physics/atmosphere';
 import { stepDynamics } from '../../src/physics/dynamics';
+import {
+  aeroHeating, radiativeCooling, sphereNoseRadius, stepTemperature,
+} from '../../src/physics/thermal';
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { KinematicState, hermiteInterpolate, kinematicState } from '../../src/physics/kinematic-state';
 import { len, sub, v3 } from '../../src/physics/vec3';
@@ -59,22 +56,16 @@ function airflow(state: KinematicState, body: CelestialBody | null): { rho: numb
   };
 }
 
-// 外殻温度と動圧。ThermalSystem の状態のうち、刻みに依存する2つだけを持つ。
+// 外殻温度と動圧。刻みに依存する2つだけを持つ。ラジエーターと投入熱は 0 とする。
 class Hull {
   temp = C.HULL_START_TEMP;
   qdyn = 0;
 
-  // updateThermal の複製(ラジエーターと投入熱を 0 とした形)。state は区間終端。
+  // state は区間終端。
   absorb(state: KinematicState, body: CelestialBody | null, dtSub: number): void {
     const { rho, speed: s } = airflow(state, body);
     this.qdyn = 0.5 * rho * s * s;
-    const qdot = C.SG_CONST * Math.sqrt(rho / C.NOSE_RADIUS) * s * s * s;
-    const cool = C.HULL_EMISS * C.STEFAN_BOLTZMANN * C.RAD_AREA
-      * (Math.pow(C.ENV_TEMP, 4) - Math.pow(this.temp, 4));
-    const heatCapacity = C.PLAYER_MASS * 100; // 比熱 約100 J/kg/K(thermal.ts と同じ)
-    this.temp = Math.max(
-      C.HULL_TEMP_FLOOR,
-      this.temp + ((qdot * C.HEAT_ABSORB_AREA + cool) / heatCapacity) * dtSub);
+    this.temp = stepTemperature(this.temp, shipHeating(rho, s) - shipCooling(this.temp, dtSub), C.SHIP_SPECIFIC_HEAT, dtSub);
   }
 }
 
@@ -152,6 +143,20 @@ function row(label: string, r: Result): readonly string[] {
     (r.minAlt / 1e3).toFixed(1),
     `${r.steps.toLocaleString('en-US')} / ${r.thermalSteps.toLocaleString('en-US')}`,
   ];
+}
+
+// 艦が浴びる比パワー [W/kg]。game/game-entity の stepThermal と同じ引数の組み立て。
+function shipHeating(density: number, speed: number): number {
+  return aeroHeating(
+    density, speed, SHIP_BCINV, C.SG_CONST,
+    sphereNoseRadius(SHIP_BCINV, C.DRAG_COEFFICIENT, C.SHIP_BULK_DENSITY),
+    (C.STAGNATION_AREA_FRACTION * SHIP_BCINV) / C.DRAG_COEFFICIENT);
+}
+
+// 艦が捨てる比パワー [W/kg]。放熱板は畳んだ状態(艦体だけ)。
+function shipCooling(temp: number, dt: number): number {
+  return radiativeCooling(
+    temp, C.ENV_TEMP, C.HULL_EMISS, C.SHIP_RADIATING_AREA_PER_MASS, C.SHIP_SPECIFIC_HEAT, dt);
 }
 
 export function run(): void {

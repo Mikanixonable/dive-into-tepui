@@ -256,7 +256,7 @@ export class PlayerFire {
     this.spawnMuzzleFlash(this.player, muzzle, fwd);
 
     activeStage.scoreCounter.recordShot();
-    this.player.thermal.addGunHeat(1);
+    this.player.absorbHeat(C.GUN_HEAT_PER_ROUND / C.PLAYER_MASS);
     this._worldSfx.fire();
   }
 
