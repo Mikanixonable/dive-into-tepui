@@ -288,6 +288,11 @@ export interface CameraSaveData {
   overview: MapCameraSaveData;
 }
 
+export interface NavTargetSaveData {
+  id: string;
+  name: string;
+}
+
 export interface GameSaveData {
   version: number;
   stageId: string;
@@ -305,4 +310,6 @@ export interface GameSaveData {
   stage: StageSaveData;
   // 旧セーブデータには無いフィールドなので任意。無ければ視点は既定のまま始まる。
   camera?: CameraSaveData;
+  // 旧セーブデータには無い。無ければターゲット未選択のまま始まる。
+  navTarget?: NavTargetSaveData | null;
 }
