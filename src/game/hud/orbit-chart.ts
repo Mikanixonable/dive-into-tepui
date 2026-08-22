@@ -1,6 +1,6 @@
 // 折れ線グラフの描き手。渡された点列と軸をそのまま canvas 2D へ描く。何をプロットするかは知らない。
 import { ACCENT, ACCENT_SOFT, EDGE, FONT_FAMILY, FONT_XXS, TEXT_DIM, TEXT_MUTED, TEXT_STRONG } from '../theme';
-import { fmtDist, fmtDuration } from './utils';
+import { fmtDuration } from './utils';
 import { chooseTickInterval } from './tick-scale';
 
 export interface ChartPoint {
@@ -52,6 +52,8 @@ const MARK_RING_WIDTH = 1;
 
 const STYLE = `
 #hud .orbit-chart { display: block; width: 100%; aspect-ratio: ${ASPECT_RATIO}; }
+#hud .orbit-chart.panzoom { touch-action: none; cursor: grab; }
+#hud .orbit-chart.panzoom:active { cursor: grabbing; }
 `;
 
 let styleInjected = false;
@@ -89,6 +91,14 @@ export class OrbitChart {
   }
 
   public dispose(): void {
+  }
+
+  // 直近の draw() が描いたプロット領域のピクセル寸法。まだ描いていない/寸法0なら null
+  // ——呼び出し側がドラッグ移動量を軸の値へ換算する変換係数として使う。
+  public plotPixelSize(): { width: number; height: number } | null {
+    const width = this.lastCssWidth - PADDING_LEFT - PADDING_RIGHT;
+    const height = this.lastCssHeight - PADDING_TOP - PADDING_BOTTOM;
+    return width > 0 && height > 0 ? { width, height } : null;
   }
 
   public draw(spec: ChartSpec): void {
@@ -266,18 +276,31 @@ function chooseDistanceTickIntervalKm(spanKm: number, maxTicks: number): number 
   return interval;
 }
 
+// 軸目盛り専用の距離表記。目盛り値は常に km ラダーの丸い数なので、fmtDist の小数
+// 表示だと ".00" だけが残って PADDING_LEFT からはみ出す — 整数に丸める。
+function fmtAxisDist(m: number): string {
+  if (Math.abs(m) >= 1e6) return `${Math.round(m / 1e6)} Mm`;
+  if (Math.abs(m) >= 1e3) return `${Math.round(m / 1e3)} km`;
+  return `${Math.round(m)} m`;
+}
+
 // centerM を中央に置いた幅 spanM の距離軸 [m]。目盛りは km 単位のラダーから選ぶ。
-export function distanceAxis(centerM: number, spanM: number, maxTicks: number, caption: string): ChartAxis {
+// floorAtZero は下端を 0 未満にせず、その分だけ上端へ span を寄せる(高度は 0 未満が
+// 意味を持たないため)。
+export function distanceAxis(
+  centerM: number, spanM: number, maxTicks: number, caption: string, floorAtZero = false,
+): ChartAxis {
   const span = isFinite(spanM) && spanM > 0 ? spanM : 0;
   const center = isFinite(centerM) ? centerM : 0;
   if (span === 0) return { min: center, max: center, ticks: [], caption };
-  const min = center - span / 2;
-  const max = center + span / 2;
+  let min = center - span / 2;
+  let max = center + span / 2;
+  if (floorAtZero && min < 0) { max -= min; min = 0; }
   const intervalM = chooseDistanceTickIntervalKm(span / 1000, maxTicks) * 1000;
   const firstTick = Math.ceil(min / intervalM) * intervalM;
   const ticks: ChartTick[] = [];
   for (let value = firstTick; value <= max; value += intervalM) {
-    ticks.push({ value, label: fmtDist(value) });
+    ticks.push({ value, label: fmtAxisDist(value) });
   }
   return { min, max, ticks, caption };
 }
