@@ -23,14 +23,14 @@ import { SunLight } from './sun-light';
 // LDR で飽和しない値として 0.72 に置く。
 export const EXPOSURE = 0.72;
 
-// 深度テクスチャの生値(WebGPU の非反転規約: 0=near/1=far)を view 空間の距離へ変換する。
+// 深度テクスチャの生値(反転深度: 1=near/0=far)を view 空間の距離へ変換する。
 // three.js 標準の perspectiveDepthToViewZ は far-near を素朴に引くが、near=2m/far=6e7m の
 // ように float32 の分解能を near がまるごと下回る組み合わせでは far-near が far そのものへ
-// 丸め込まれ、depth が 1 に近い領域で 0 除算(→NaN)に破綻する。far*(1-depth) と near*depth を
-// 個別に求めてから足し合わせる形に組み替えると、depth=1 ちょうどで分母が near ちょうどに
+// 丸め込まれ、深度が far 側に近い領域で 0 除算(→NaN)に破綻する。near*(1-depth) と far*depth を
+// 個別に求めてから足し合わせる形に組み替えると、depth=0 ちょうどで分母が near ちょうどに
 // なり(0 にならず)この破綻を避けられる。
 function viewDistanceFromDepth(depth: FloatNode, near: FloatUniform, far: FloatUniform): FloatNode {
-  return near.mul(far).div(far.mul(depth.oneMinus()).add(near.mul(depth)));
+  return near.mul(far).div(near.mul(depth.oneMinus()).add(far.mul(depth)));
 }
 
 export class RenderPipeline implements DebugTargetHost {
@@ -79,6 +79,8 @@ export class RenderPipeline implements DebugTargetHost {
       depthBuffer: true,
       samples,
     });
+    // G バッファと同じく、深度を 32bit 浮動小数点にするには明示が要る(gbuffer.ts 参照)。
+    this.target.depthTexture = new THREE.DepthTexture(1, 1, THREE.FloatType);
 
     this.exposure = uniform(EXPOSURE);
     this.depthDebugNear = uniform(1);
