@@ -10,9 +10,11 @@ import {
   D_GGX, F_Schlick, V_GGX_SmithCorrelated, dot, float, getViewPosition, mrt, normalize, saturate,
   screenUV, texture, uniform, vec4,
 } from 'three/tsl';
+import { SHADOW_MIN_SUN } from '../../game/const';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import type { FloatNode, Mat4Uniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 import { GBufferPass, octDecodeNormal } from './gbuffer';
+import type { OcclusionPass } from './occlusion';
 import type { SunLight } from './sun-light';
 
 export class LightPrepass {
@@ -34,6 +36,7 @@ export class LightPrepass {
   constructor(
     renderer: WebGPURenderer,
     private readonly gbuffer: GBufferPass,
+    occlusion: OcclusionPass,
     private readonly sunLight: SunLight,
     private readonly gpu: GpuTimings,
   ) {
@@ -68,9 +71,14 @@ export class LightPrepass {
 
     const dotNL: FloatNode = saturate(dot(normal, lightDir));
     // 恒星から届く放射照度(遮蔽込み)。拡散・鏡面の両方がこれを基準に BRDF を掛ける。
+    // 恒星の直射は遮蔽パスの透過率で落ち、本影では 0 になる。そこへ足す SHADOW_MIN_SUN は、
+    // 影の中にも届く星明かり・地球照ぶんを「恒星と同じ向きから来る一定量」で代用したもので、
+    // 基準強度のうちその割合を直射から分けて持つ。
+    const direct = texture(occlusion.texture, screenUV).r.mul(1 - SHADOW_MIN_SUN);
+    const sunlit = direct.add(SHADOW_MIN_SUN);
     const irradiance: Vec3Node = this.sunLight.color
       .mul(this.sunLight.intensity).div(dot(toSun, toSun))
-      .mul(dotNL).mul(this.sunLight.sunVisibility());
+      .mul(dotNL).mul(sunlit);
     const diffuse: Vec3Node = irradiance.add(this.sunLight.ambientColor.mul(this.sunLight.ambientIntensity));
 
     const alpha = roughnessValue.mul(roughnessValue);
