@@ -3,7 +3,8 @@
 // ジオメトリ/マテリアルの構築自体は tools/export-models.mjs に移し、
 // src/assets/models/*.json として事前に焼き出したものを ObjectLoader で読み込む。
 import * as THREE from 'three/webgpu';
-import * as C from '../game/const';
+import { ENEMY_PLASMA_COLOR } from './vfx-style';
+import { F0_BURNT_STEEL, F0_STEEL } from './metal-f0';
 import { mulberry32 } from '../physics/random';
 import { markLitOpaque } from './pipeline/lit-layer';
 
@@ -266,9 +267,9 @@ export function buildBulletMesh(): THREE.Group {
   }
   if (!bulletHaloMat) {
     bulletHaloMat = new THREE.MeshBasicMaterial({
-      color: 0xffc86e,
+      // 明るさは色に載せ、不透明度は 1 のままにする(render/billboard.ts と同じ規約)。
+      color: new THREE.Color(0xffc86e).multiplyScalar(0.35),
       transparent: true,
-      opacity: 0.35,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
@@ -310,7 +311,7 @@ export function buildPlasmaMesh(): THREE.Mesh {
   }
   if (!plasmaBodyMat) {
     plasmaBodyMat = new THREE.MeshBasicMaterial({
-      color: C.COLOR_ENEMY_PLASMA,
+      color: ENEMY_PLASMA_COLOR,
       transparent: false,
       opacity: 1.0,
       depthWrite: true,
@@ -424,7 +425,7 @@ export function debrisFragmentResources(): { geometries: readonly THREE.BufferGe
     const rand = mulberry32(DEBRIS_FRAGMENT_SEED);
     debrisFragmentGeometries = [];
     for (let i = 0; i < DEBRIS_FRAGMENT_VARIANT_COUNT; i++) debrisFragmentGeometries.push(buildDebrisFragmentGeometry(rand));
-    debrisFragmentMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.65, metalness: 0.30 });
+    debrisFragmentMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.65, metalness: 0 });
   }
   return { geometries: debrisFragmentGeometries, material: debrisFragmentMaterial! };
 }
@@ -442,13 +443,13 @@ export function buildBarrelMesh(): THREE.Group {
 
   // --- 砲身チューブ本体(熱焼け黒鋼) ---
   const tubeGeo = new THREE.CylinderGeometry(0.58 * S, 0.64 * S, 4.4, 12);
-  const tubeMat = new THREE.MeshStandardMaterial({ color: 0x1c2028, roughness: 0.38, metalness: 0.88 });
+  const tubeMat = new THREE.MeshStandardMaterial({ color: F0_BURNT_STEEL, roughness: 0.38, metalness: 1 });
   const tube = new THREE.Mesh(tubeGeo, tubeMat);
   tube.rotation.x = Math.PI / 2;
   g.add(tube);
 
   // --- 後端フランジ(薬室側・太めリング) ---
-  const flangeMat = new THREE.MeshStandardMaterial({ color: 0x2c3440, roughness: 0.42, metalness: 0.82 });
+  const flangeMat = new THREE.MeshStandardMaterial({ color: F0_STEEL, roughness: 0.42, metalness: 1 });
   const flange = new THREE.Mesh(new THREE.CylinderGeometry(0.88 * S, 0.85 * S, 0.32, 12), flangeMat);
   flange.rotation.x = Math.PI / 2;
   flange.position.z = -2.3;
@@ -461,7 +462,7 @@ export function buildBarrelMesh(): THREE.Group {
   g.add(midRing);
 
   // --- 放熱フィン(6枚、後部寄りに配置) ---
-  const finMat = new THREE.MeshStandardMaterial({ color: 0x252d38, roughness: 0.52, metalness: 0.78 });
+  const finMat = new THREE.MeshStandardMaterial({ color: F0_BURNT_STEEL, roughness: 0.52, metalness: 1 });
   const FIN_COUNT = 6;
   for (let i = 0; i < FIN_COUNT; i++) {
     const angle = (i / FIN_COUNT) * Math.PI * 2;
@@ -472,14 +473,14 @@ export function buildBarrelMesh(): THREE.Group {
   }
 
   // --- ガスポートリング(中間部) ---
-  const gasPortMat = new THREE.MeshStandardMaterial({ color: 0x3a4250, roughness: 0.50, metalness: 0.72 });
+  const gasPortMat = new THREE.MeshStandardMaterial({ color: F0_STEEL, roughness: 0.50, metalness: 1 });
   const gasPort = new THREE.Mesh(new THREE.TorusGeometry(0.66 * S, 0.065, 6, 16), gasPortMat);
   gasPort.rotation.x = Math.PI / 2;
   gasPort.position.z = 0.4;
   g.add(gasPort);
 
   // --- マズルブレーキ(先端3連リング) ---
-  const brakeMat = new THREE.MeshStandardMaterial({ color: 0x242c38, roughness: 0.30, metalness: 0.92 });
+  const brakeMat = new THREE.MeshStandardMaterial({ color: F0_STEEL, roughness: 0.30, metalness: 1 });
   for (let ri = 0; ri < 3; ri++) {
     const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.76 * S, 0.70 * S, 0.11, 12), brakeMat);
     ring.rotation.x = Math.PI / 2;
@@ -488,7 +489,8 @@ export function buildBarrelMesh(): THREE.Group {
   }
 
   // --- 砲口ボア(最前端・暗い穴) ---
-  const boreMat = new THREE.MeshStandardMaterial({ color: 0x080b10, roughness: 0.80, metalness: 0.20 });
+  // 発射煙のすすで覆われた内壁なので金属ではない。ベース色は拡散アルベドとして読まれる。
+  const boreMat = new THREE.MeshStandardMaterial({ color: 0x080b10, roughness: 0.80, metalness: 0 });
   const bore = new THREE.Mesh(new THREE.CylinderGeometry(0.34 * S, 0.34 * S, 0.14, 10), boreMat);
   bore.rotation.x = Math.PI / 2;
   bore.position.z = 2.28;
@@ -496,9 +498,8 @@ export function buildBarrelMesh(): THREE.Group {
 
   // --- 赤熱グロー(後端・発射熱を表現) ---
   const heatMat = new THREE.MeshBasicMaterial({
-    color: 0xff3c00,
+    color: new THREE.Color(0xff3c00).multiplyScalar(0.48),
     transparent: true,
-    opacity: 0.48,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
   });

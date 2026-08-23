@@ -11,6 +11,9 @@ import { kinematicState } from '../../physics/kinematic-state';
 import { mulberry32 } from '../../physics/random';
 import { add, v3, Vec3 } from '../../physics/vec3';
 import type { StageSaveData } from '../save-data';
+import {
+  DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN,
+} from '../../render/vfx-style';
 
 export class StageDebugLoad extends Stage {
   static readonly id = 'debug-load' as const;
@@ -35,7 +38,7 @@ export class StageDebugLoad extends Stage {
     for (let i = 0; i < C.DEBUG_LOAD_DEBRIS_COUNT; i++) {
       const offset = randomOffset(rand, C.DEBUG_LOAD_DEBRIS_MAX_DIST);
       const state = kinematicState(player.state.t, add(player.state.r, offset), player.state.v);
-      const size = C.DESTROY_FRAG_SIZE_MIN + rand() * (C.DESTROY_FRAG_SIZE_MAX - C.DESTROY_FRAG_SIZE_MIN);
+      const size = DESTROY_FRAG_SIZE_MIN + rand() * (DESTROY_FRAG_SIZE_MAX - DESTROY_FRAG_SIZE_MIN);
       const att = { q: randomQuat(rand), w: v3(0, 0, 0), inertia: v3(1, 1, 1) };
       entities.addDebris(new DebrisPiece(state, { kind: 'fragment', accent: 0x888888, size }, att, this._worldSfx, this._fx, undefined, this._scene));
     }

@@ -2,8 +2,8 @@
 // 照度バッファを screenUV で読み、素材(アルベド・金属度・F0)を掛けて描く。背景専用レイヤーは
 // renderOrder により不透明物より先に描かれ、world パスの既定レイヤーには現れない。
 //
-// PhysicalLightingModel の direct() を no-op にしてシーンの実光源(DirectionalLight/AmbientLight)
-// の寄与を切り、indirect() だけをライトプリパス読み出しへ差し替える — BRDF・マップ・粗さ/金属度の
+// PhysicalLightingModel の direct() を no-op にしてシーンの実光源の寄与を切り、
+// indirect() だけをライトプリパス読み出しへ差し替える — BRDF・マップ・粗さ/金属度の
 // 扱いは three 標準の MeshStandardNodeMaterial のまま何も変えない。
 //
 // world パスより前に、world パスと共有する HDR ターゲットへの最初の書き込みとしてこのパスが描く
@@ -17,15 +17,20 @@
 // 3回目のジオメトリ描画を払わせない。
 import * as THREE from 'three/webgpu';
 import { WebGPURenderer, PhysicalLightingModel } from 'three/webgpu';
-import { diffuseColor, metalness, mix, screenUV, texture, vec3 } from 'three/tsl';
+import { BRDF_Lambert, diffuseColor, metalness, mix, screenUV, texture, vec3 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
-import { LIT_OPAQUE_LAYER, setOpaquePassLayers } from './lit-layer';
+import { LIT_OPAQUE_LAYER, isStandardMaterial, setOpaquePassLayers } from './lit-layer';
 import type { LightPrepass } from './light-prepass';
 import type { Vec3Node } from '../tsl-types';
 
 // direct() で実シーンの光源からの寄与を足さず、indirect() でライトプリパスの2枚の照度
-// バッファだけを反射率に掛ける。specularColorBlended(誘電体 F0=0.04 と金属を metalness で
-// 混ぜた値)は MeshStandardNodeMaterial 内部専用で公開されていないため、同じ式で組み直す。
+// バッファへ BRDF を掛ける。掛ける中身は three がフォワード経路の direct() で使うものと同一で、
+// 拡散が BRDF_Lambert(アルベド×(1−金属度)/π)、鏡面が F0(誘電体 0.04 と金属色を金属度で
+// 混ぜた値)。どちらも MeshStandardNodeMaterial の内部プロパティ(diffuseContribution /
+// specularColorBlended)にあたるが three/tsl から公開されていないため、同じ式で組み直す。
+//
+// 照度バッファが持つのは放射照度なので、そこへ掛けるのは反射率ではなく BRDF である。
+// 拡散の 1/π を落とすと、それだけでフォワード経路より π 倍明るくなる。
 class MaterialPassLightingModel extends PhysicalLightingModel {
   constructor(
     private readonly diffuseIrradiance: Vec3Node,
@@ -39,13 +44,17 @@ class MaterialPassLightingModel extends PhysicalLightingModel {
   override indirect(builder: THREE.NodeBuilder): void {
     const { reflectedLight } = builder.context as { reflectedLight: THREE.LightingModelReflectedLight };
     const specularColorBlended = mix(vec3(0.04), diffuseColor.rgb, metalness);
+    const diffuseContribution = diffuseColor.rgb.mul(metalness.oneMinus());
     // reflectedLight.indirectDiffuse/indirectSpecular の @types/three 上の型は無引数の Node
     // (light-prepass.ts の D_GGX 等と同じく実体は他の TSL ノードと同じプロキシで addAssign を
     // 持つのに、Node<'vec3'> でないため型定義側でメソッドチェインが欠落している)ため、
     // Vec3Node へ読み替えてから足し込む。
     const indirectDiffuse = reflectedLight.indirectDiffuse as unknown as Vec3Node;
     const indirectSpecular = reflectedLight.indirectSpecular as unknown as Vec3Node;
-    indirectDiffuse.addAssign(this.diffuseIrradiance.mul(diffuseColor.rgb));
+    // BRDF_Lambert の @types/three 上の戻り値型 OperatorNode はメソッドチェインを持たない
+    // (light-prepass.ts の D_GGX 等と同じ型定義側の欠落)ため、Vec3Node へ読み替える。
+    const lambert = BRDF_Lambert({ diffuseColor: diffuseContribution }) as unknown as Vec3Node;
+    indirectDiffuse.addAssign(this.diffuseIrradiance.mul(lambert));
     indirectSpecular.addAssign(this.specularIrradiance.mul(specularColorBlended));
   }
 }
@@ -90,25 +99,34 @@ export class MaterialPass {
   ) {
     this.renderer = renderer;
     this.target = new THREE.RenderTarget(1, 1, { type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: true, samples: 0 });
+    // G バッファと同じく、深度を 32bit 浮動小数点にするには明示が要る(gbuffer.ts 参照)。
+    // 欠くとこのターゲットだけ depth24plus になり、デバッグ表示が本番と違う前後関係を映す。
+    this.target.depthTexture = new THREE.DepthTexture(1, 1, THREE.FloatType);
     this.diffuseNode = texture(this.lightPrepass.diffuseTexture, screenUV).rgb;
     this.specularNode = texture(this.lightPrepass.specularTexture, screenUV).rgb;
   }
 
   get texture(): THREE.Texture { return this.target.texture; }
 
-  // MeshStandardMaterial を、同じ見た目の値を持つ MeshStandardNodeMaterial + 上のライティング
-  // モデルへ置き換える。mesh.material が既に置き換え済みならなにもしない。ships.ts がメッシュを
-  // 組み立てる時点ではライティングモデルが読む2枚の照度テクスチャ(ライトプリパスの出力)がまだ
-  // 存在しない — このクラス自身の構築より前には作りようがない — ため、構築時ではなく毎フレーム
-  // この呼び出しでアップグレードする。
+  // 標準マテリアルへ上のライティングモデルを据える。値だけの MeshStandardMaterial は同じ見た目の
+  // 値を持つ MeshStandardNodeMaterial へ置き換え、アルベドをノードで組んである
+  // MeshStandardNodeMaterial はそのまま使う。mesh.material が既に済みならなにもしない。
+  // 呼び出し元がメッシュを組み立てる時点では、ライティングモデルが読む2枚の照度テクスチャ
+  // (ライトプリパスの出力)がまだ存在しない — このクラス自身の構築より前には作りようがない —
+  // ため、構築時ではなく毎フレームこの呼び出しで据える。
   private upgrade(mesh: THREE.Mesh): void {
     const material = mesh.material as THREE.Material;
-    if (this.upgraded.has(material)) return;
-    if (!(material as THREE.MeshStandardMaterial).isMeshStandardMaterial) return;
+    if (this.upgraded.has(material) || !isStandardMaterial(material)) return;
 
+    const setupLightingModel = () => new MaterialPassLightingModel(this.diffuseNode, this.specularNode);
+    if ((material as THREE.MeshStandardNodeMaterial).isMeshStandardNodeMaterial) {
+      (material as THREE.MeshStandardNodeMaterial).setupLightingModel = setupLightingModel;
+      this.upgraded.add(material);
+      return;
+    }
     const src = material as THREE.MeshStandardMaterial;
     const upgraded = new THREE.MeshStandardNodeMaterial(standardMaterialParams(src));
-    upgraded.setupLightingModel = () => new MaterialPassLightingModel(this.diffuseNode, this.specularNode);
+    upgraded.setupLightingModel = setupLightingModel;
     this.upgraded.add(upgraded);
     mesh.material = upgraded;
     src.dispose();

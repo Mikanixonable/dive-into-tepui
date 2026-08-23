@@ -12,6 +12,9 @@ import { buildBarrelMesh, buildCasingMesh, buildMagazineFrame, DEBRIS_FRAGMENT_V
 import { GameEntity } from './game-entity';
 import { Player } from '../player/player';
 import { Bullet } from './bullet';
+import {
+  SHIP_DARK_HULL_COLOR,
+} from '../../render/vfx-style';
 
 // DebrisPiece の見た目・振る舞いの種別。
 export type DebrisKind =
@@ -77,7 +80,7 @@ export class DebrisPiece extends GameEntity {
     if (debrisKind.kind === 'fragment') {
       this.fragmentVariant = Math.floor(Math.random() * DEBRIS_FRAGMENT_VARIANT_COUNT);
       const dark = Math.random() < 0.30;
-      this.fragmentColor = new THREE.Color(dark ? C.COLOR_SHIP_DARK_HULL : debrisKind.accent);
+      this.fragmentColor = new THREE.Color(dark ? SHIP_DARK_HULL_COLOR : debrisKind.accent);
     } else {
       this.fragmentVariant = -1;
       this.fragmentColor = null;

@@ -38,7 +38,8 @@ description: /write-plan で書いた計画ファイルのステップを実施�
 各ステップの終わりに、順に:
 
 1. **コードレビュー** — `/code-review`、または自分で `DEVELOP/CODING-RULE.md` を当てる。
-2. **検証** — `npm run typecheck`。`src/physics/` を触ったなら `npm run test:physics` も。
+2. **検証** — **計画のそのステップの「達成条件と検証」に書かれたものを走らせる。** 書かれていなければ
+   既定は `npm run typecheck`(`src/physics/` を触ったなら `npm run test:physics` も)。
    変更と無関係な検証に時間を使わない。
 3. **git commit** — そのステップで1コミット。
 4. **計画ファイルの更新** — **実施したステップの手順を削除する。** 部分実施なら残工程だけを残す。
