@@ -44,11 +44,15 @@ export class EntityLineManager {
       const isActive = ship === activePlayer;
       const visible = visibilityPolicy?.entity('player', isActive).orbit ?? true;
       const asTarget = targetStyleOf(ship);
-      const showLines = (isActive || overviewMode) && visible && asTarget === null;
+      // マップビューでは操作艦だけが既定で予測線・過去線を使う。それ以外の自艦は、
+      // プロパティウィンドウのトグル(showTrajectoryLine)がONのときだけ同様に使う。
+      const trajectoryEligible = isActive || (overviewMode && ship.showTrajectoryLine);
+      const showLines = trajectoryEligible && visible && asTarget === null;
       // 戦闘ビューの操作艦は、積分した予測線ではなく解析楕円で軌道を描く。
       const ownEllipse = showLines && !overviewMode;
+      const fallbackEllipse = !trajectoryEligible && overviewMode && visible && asTarget === null;
       if (asTarget !== null && visible) ship.showOrbitLine(asTarget);
-      else if (ownEllipse) ship.showOrbitLine(playerOrbitStyleOf(isActive));
+      else if (ownEllipse || fallbackEllipse) ship.showOrbitLine(playerOrbitStyleOf(isActive));
       else ship.hideOrbitLine();
       if (showLines && !ownEllipse) ship.showPredictedLine(playerPredictedStyleOf(isActive));
       else ship.hidePredictedLine();
@@ -58,15 +62,27 @@ export class EntityLineManager {
     for (const enemy of this.entities.enemies) {
       const asTarget = targetStyleOf(enemy);
       const orbit = visibilityPolicy?.entity('ship').orbit;
-      // ターゲットはビューを問わず出し、可視性の既定も通常の線(false)と逆向き(true)。
+      // ターゲットはビューを問わず出し、可視性の既定も通常の線(false)と逆向き(true)。ターゲットは
+      // 常に解析楕円のまま(強調色を保つため)、それ以外はトグルONなら予測線・過去線に切り替える。
       const show = asTarget !== null ? (orbit ?? true) : overviewMode && enemy.alive && (orbit ?? false);
-      if (show) enemy.showOrbitLine(asTarget ?? { ...C.LINE_STYLE.enemyOrbit, color: enemy.orbitLineColor });
+      const useTrajectory = show && asTarget === null && overviewMode && enemy.showTrajectoryLine;
+      const enemyLineStyle: LineStyle = { ...C.LINE_STYLE.enemyOrbit, color: enemy.orbitLineColor };
+      if (show && !useTrajectory) enemy.showOrbitLine(asTarget ?? enemyLineStyle);
       else enemy.hideOrbitLine();
+      if (useTrajectory) enemy.showPredictedLine(enemyLineStyle);
+      else enemy.hidePredictedLine();
+      if (useTrajectory && pastDuration > 0) enemy.showActualLine(enemyLineStyle);
+      else enemy.hideActualLine();
     }
     for (const base of this.entities.bases) {
       const show = overviewMode && (visibilityPolicy?.entity('base').orbit ?? false);
-      if (show) base.showOrbitLine(C.LINE_STYLE.baseOrbit);
+      const useTrajectory = show && base.showTrajectoryLine;
+      if (show && !useTrajectory) base.showOrbitLine(C.LINE_STYLE.baseOrbit);
       else base.hideOrbitLine();
+      if (useTrajectory) base.showPredictedLine(C.LINE_STYLE.baseOrbit);
+      else base.hidePredictedLine();
+      if (useTrajectory && pastDuration > 0) base.showActualLine(C.LINE_STYLE.baseOrbit);
+      else base.hideActualLine();
     }
   }
 
@@ -85,9 +101,15 @@ export class EntityLineManager {
       ship.syncOrbitLine(fo, camera, frameAnchors, ship.thrust !== null, frame, displayTime, ephemeris);
     }
     for (const enemy of this.entities.enemies) {
+      const predictedTo = enemy.predictionTruncated ? null : simTime + duration;
+      enemy.syncTrajectoryLines(
+        frame, simTime, displayTime, pastDuration, predictedTo, ephemeris, fo, camera, frameAnchors);
       enemy.syncOrbitLine(fo, camera, frameAnchors, enemy.thrust !== null, frame, displayTime, ephemeris);
     }
     for (const base of this.entities.bases) {
+      const predictedTo = base.predictionTruncated ? null : simTime + duration;
+      base.syncTrajectoryLines(
+        frame, simTime, displayTime, pastDuration, predictedTo, ephemeris, fo, camera, frameAnchors);
       base.syncOrbitLine(fo, camera, frameAnchors, base.thrust !== null, frame, displayTime, ephemeris);
     }
   }
