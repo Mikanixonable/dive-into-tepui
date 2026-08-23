@@ -10,12 +10,11 @@ import {
   D_GGX, F_Schlick, V_GGX_SmithCorrelated, dot, float, mrt, normalize, saturate,
   screenUV, texture, uniform, vec4,
 } from 'three/tsl';
-import { SHADOW_MIN_SUN } from '../../game/const';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import type { FloatNode, Mat4Uniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 import { GBufferPass, octDecodeNormal } from './gbuffer';
 import type { OcclusionPass } from './occlusion';
-import type { SunLight } from './sun-light';
+import { SHADOW_MIN_SUN, type SunLight } from './sun-light';
 import { viewPositionAt, viewRayAt } from './view-ray';
 
 export class LightPrepass {
