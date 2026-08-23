@@ -377,46 +377,6 @@ depthScale = 1 / k
 
 ## 手順
 
-### 手順 6. 圧縮を外す
-
-**目的**: 天体を真位置・真半径で描き、描画座標を本物にする。
-**ここから先の差分ベクトルがすべて意味を持つようになる。**
-
-**`COMBAT_CAMERA_FAR` の導出**: 戦闘ビューで実際に描かれる最も遠いものは、
-球として描かれる天体のうち見かけ直径が 2 px を超える最遠のもの。
-`apparentDiameterPx = lodBias · D / (9.64e-4·z) ≥ 2` より `z ≤ lodBias · 519 · D`。
-最大の D は太陽の 1.392e9 m、`lodBias` の最大は 2 なので `z ≤ 1.44e12 m`。
-**`COMBAT_CAMERA_FAR = 2e12` を採る。** このとき反転 float32 の Δz は `1.2e5 m`、
-その距離の 1 px は `1.9e9 m` なので **6e-5 px。far を広げる費用は事実上ゼロ。**
-
-**変更が必要な箇所**
-
-| ファイル | 変更 |
-|---|---|
-| `src/render/view-compression.ts` | **モジュールごと削除。** 手順 1 で作ったものがここで役目を終える |
-| `src/game/celestial/sphere-view.ts` | 圧縮の呼び出しと `visDist` 引数を削除。常に真位置・真半径 |
-| `src/game/celestial/point-view.ts` | 同上 |
-| `src/game/celestial/sun-view.ts` | 同上 |
-| `src/render/celestial-surface.ts` | `depthScaleNode` / `setDepthScale` / `mat.depthNode` を削除 |
-| `src/render/stars.ts` | `SUN_VISUAL_SIZE` を削除 |
-| `src/game/celestial/celestial-registry.ts` | 各 `SphereView` へ渡す `visDist` 引数を削除 |
-| `src/game/const.ts:158` | `COMBAT_CAMERA_FAR = 2e12` |
-| `src/game/celestial/environment-scene.ts:208, 230` | 星殻を overview で拡大する分岐の見直し |
-
-**達成条件と検証**
-
-- 達成目標 1〜4・6。
-- ズームを通して天体の見かけサイズが連続。
-- 月・太陽が far の外に落ちていない。
-- `npm run typecheck`
-- `grep -rn "VIS_DIST\|SUN_DISTANCE\|SUN_VISUAL_SIZE\|setDepthScale\|view-compression" src/` → 0 件
-- `grep -rn "overviewMode" src/game/celestial/` → 座標計算の分岐が残っていないこと
-- `npm run render-lab:shot` → `order` の順序が変わっていないこと
-- `npm run dev` → 戦闘ビューで月・太陽が見え、マップビューへ切り替えても大きさが飛ばないこと
-- マップビューを最大までズームアウトしても天体が消えないこと
-
----
-
 ### 手順 7. 太陽を点光源にする
 
 **目的**: ライティングパスが画素ごとに太陽との差分ベクトルを取る形へ替える。
