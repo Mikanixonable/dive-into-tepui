@@ -402,15 +402,19 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   background: transparent; box-shadow: none;
 }
 #hud-settings-view .sv-theme-button:not(.on) {
+  background: color-mix(in srgb, var(--sv-theme-title) 8%, var(--surface-0));
   color: var(--sv-theme-title);
 }
 #hud-settings-view .sv-theme-button:not(.on):hover {
-  background: transparent;
+  background: color-mix(in srgb, var(--sv-theme-title) 16%, var(--surface-0));
   color: var(--sv-theme-title);
 }
 #hud-settings-view .sv-theme-button.on {
-  background: transparent;
+  background: color-mix(in srgb, var(--accent) 18%, var(--sv-theme-page));
   color: var(--sv-theme-title);
+}
+#hud-settings-view .sv-theme-button.on::after {
+  margin-left: auto; color: var(--accent); content: '選択中'; font-size: var(--font-xxs); white-space: nowrap;
 }
 #hud-settings-view .sv-theme-button .w-btn-icon {
   display: inline-flex; align-items: center; gap: 3px; width: auto; height: auto; margin-right: var(--space-2);
@@ -446,9 +450,9 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-settings-view .sv-track-row {
   display: flex; align-items: center; justify-content: space-between; gap: var(--space-4);
   min-height: var(--hit-target-min); padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
-  background: var(--surface-1); border: 1px solid var(--edge); border-radius: var(--radius-control);
+  background: var(--surface-1); border: 0; border-radius: 0;
 }
-#hud-settings-view .sv-track-row:has(.w-btn.on) { border-color: var(--accent); background: var(--surface-2); }
+#hud-settings-view .sv-track-row:has(.w-btn.on) { background: var(--surface-2); }
 #hud-settings-view .sv-track-label { display: flex; align-items: baseline; gap: var(--space-4); color: var(--text); }
 #hud-settings-view .sv-track-number { color: var(--text-dim); font-size: var(--font-xxs); font-variant-numeric: tabular-nums; }
 #hud-settings-view .sv-preview-button { min-width: 76px; text-align: center; }
