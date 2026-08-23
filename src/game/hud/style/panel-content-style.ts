@@ -318,33 +318,38 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-settings-view {
   inset: 0; display: none; overflow-y: auto; pointer-events: auto;
   padding: clamp(24px, 7vh, 72px) max(var(--space-6), 6vw);
-  border-radius: 0; background: var(--shade-2); box-shadow: none;
+  border-radius: 0; background: var(--scrim); box-shadow: none;
 }
 #hud-settings-view .sv-header,
 #hud-settings-view .sv-description,
-#hud-settings-view .sv-section { width: min(100%, 720px); margin-inline: auto; }
+#hud-settings-view .sv-section { width: min(100%, 760px); margin-inline: auto; }
 #hud-settings-view .sv-header {
   display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4);
-  border-bottom: 1px solid var(--edge); padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--edge); padding-bottom: var(--space-5);
 }
 #hud-settings-view .sv-heading-group { display: flex; flex-direction: column; gap: var(--space-2); }
-#hud-settings-view .sv-header h2 { color: var(--title); font-size: var(--font-2xl); letter-spacing: 0.08em; }
-#hud-settings-view .sv-header .w-close { flex: 0 0 auto; border-radius: 50%; }
+#hud-settings-view .sv-header h2 { color: var(--title); font-size: var(--font-2xl); letter-spacing: 0.1em; }
+#hud-settings-view .sv-header .w-close {
+  flex: 0 0 auto; width: var(--hit-target-min); height: var(--hit-target-min); border-radius: var(--radius-control);
+  border-color: var(--edge); background: var(--surface-1);
+}
+#hud-settings-view .sv-header .w-close:hover { border-color: var(--accent); background: var(--surface-2); }
 #hud-settings-view .sv-eyebrow { color: var(--accent); font-size: var(--font-xxs); letter-spacing: 0.12em; }
-#hud-settings-view .sv-description { margin-top: var(--space-5); color: var(--text-dim); font-size: var(--font-s); }
+#hud-settings-view .sv-description {
+  margin-top: var(--space-5); padding-left: var(--space-4); border-left: 2px solid var(--accent);
+  color: var(--text-dim); font-size: var(--font-s); line-height: 1.6;
+}
 #hud-settings-view .sv-tabs {
-  width: min(100%, 720px); margin: var(--space-6) auto 0; padding: var(--space-2);
+  width: min(100%, 760px); margin: var(--space-6) auto 0; padding: var(--space-2);
   gap: var(--space-2); border: 1px solid var(--edge); border-radius: var(--radius-panel);
-  background: color-mix(in srgb, var(--surface-1) 72%, transparent);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--title) 8%, transparent), 0 12px 28px var(--shade-1);
+  background: var(--surface-0);
 }
 #hud-settings-view .sv-tabs .w-btn {
   position: relative; display: flex; flex: 1 1 0; min-width: 0; min-height: 62px;
   align-items: center; justify-content: center; padding: var(--space-4) var(--space-3) var(--space-3);
   border: 1px solid transparent; border-radius: var(--radius-control); text-align: center;
   font-size: var(--font-m); font-weight: 600; letter-spacing: 0.06em;
-  background: linear-gradient(145deg, color-mix(in srgb, var(--surface-3) 82%, transparent), var(--surface-1));
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--title) 7%, transparent);
+  background: var(--surface-1); color: var(--body);
 }
 #hud-settings-view .sv-tabs .w-btn::before {
   position: absolute; top: 7px; left: 10px; color: var(--text-dim); content: '01';
@@ -358,18 +363,26 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   opacity: 0; transform: scaleX(0.35); transition: opacity var(--transition-fast), transform var(--transition-fast);
 }
 #hud-settings-view .sv-tabs .w-btn:hover {
-  border-color: var(--accent-edge-soft); background: linear-gradient(145deg, var(--surface-3), var(--surface-2));
+  border-color: var(--accent-edge-soft); background: var(--surface-2);
   color: var(--accent-near); transform: translateY(-1px);
 }
 #hud-settings-view .sv-tabs .w-btn.on {
-  border-color: var(--accent-edge); background: linear-gradient(145deg, var(--accent-fill-strong), var(--accent-fill));
-  color: var(--accent); box-shadow: inset 0 1px 0 color-mix(in srgb, var(--accent) 30%, transparent), 0 8px 20px color-mix(in srgb, var(--accent) 16%, transparent);
+  border-color: var(--accent-edge); background: var(--accent-fill); color: var(--accent);
 }
 #hud-settings-view .sv-tabs .w-btn.on::before { color: var(--accent-near); }
 #hud-settings-view .sv-tabs .w-btn.on::after { opacity: 1; transform: scaleX(1); }
-#hud-settings-view .sv-section { margin-top: var(--space-7); }
+#hud-settings-view .sv-section {
+  position: relative; margin-top: var(--space-7); padding: var(--space-6);
+  border: 1px solid var(--edge); border-radius: var(--radius-panel); background: var(--surface-0);
+}
 #hud-settings-view .sv-tab-panel[hidden] { display: none; }
-#hud-settings-view .sv-section h3 { color: var(--accent); font-size: var(--font-m); letter-spacing: 0.08em; }
+#hud-settings-view .sv-section h3 {
+  display: flex; align-items: center; gap: var(--space-3); margin: 0;
+  color: var(--title); font-size: var(--font-m); letter-spacing: 0.08em;
+}
+#hud-settings-view .sv-section h3::before {
+  width: var(--space-2); height: var(--font-m); border-radius: var(--radius-micro); background: var(--accent); content: '';
+}
 #hud-settings-view .sv-theme-options {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: var(--space-3);
   margin-top: var(--space-4);
@@ -407,7 +420,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-settings-view .gp-body { display: flex; flex-direction: column; gap: var(--space-4); margin-top: var(--space-4); }
 #hud-settings-view .sv-volume-row {
   display: flex; align-items: center; gap: var(--space-4); margin-top: var(--space-4);
-  padding: var(--space-4); background: var(--surface-1); border: 1px solid var(--edge);
+  padding: var(--space-4); background: var(--surface-1); border: 1px solid var(--edge); border-radius: var(--radius-control);
 }
 #hud-settings-view .sv-label { width: 4em; color: var(--text-dim); }
 #hud-settings-view .sv-volume-row .w-slider { flex: 1; }
@@ -415,8 +428,8 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-settings-view .sv-track-list { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-4); }
 #hud-settings-view .sv-track-row {
   display: flex; align-items: center; justify-content: space-between; gap: var(--space-4);
-  min-height: 44px; padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
-  background: var(--surface-1); border: 1px solid transparent;
+  min-height: var(--hit-target-min); padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
+  background: var(--surface-1); border: 1px solid var(--edge); border-radius: var(--radius-control);
 }
 #hud-settings-view .sv-track-row:has(.w-btn.on) { border-color: var(--accent); background: var(--surface-2); }
 #hud-settings-view .sv-track-label { display: flex; align-items: baseline; gap: var(--space-4); color: var(--text); }
