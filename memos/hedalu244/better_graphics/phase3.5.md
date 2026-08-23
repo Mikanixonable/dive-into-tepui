@@ -93,41 +93,6 @@ GPU の起動オプション依存で不安定である。**この環境はそ�
 
 ## 手順
 
-**手順 3 はこのフェーズの前提となるリファクタリングで、器を作る前に片付ける。**
-描画設定の受け渡しを、クラス(`GraphicsSettings` — 永続と設定パネルからの書き込み口を持つ)から
-設定値(`GraphicsSettingsData`)へ移す。**絵は変わらない。**
-
-### 手順 3. `game/` の連鎖を毎フレームの `GraphicsSettingsData` 受け渡しへ
-
-**目的**: 残るクラス参照は `Launcher` → `Game` → `EnvironmentScene` の持ち回りだけになる。
-**保持をやめ、フレームごとに設定値を渡す。** クラスを持つのは設定の供給側(`main.ts` と
-設定パネル)だけにする。**挙動は変えない。**
-
-**構築時に受け取って保持してはいけない。** 環・オーロラ・大気・点群・詳細度は、設定パネルで
-切り替えた次のフレームから効く。`GraphicsSettings.update()` は `data` を丸ごと差し替えるので、
-**構築時のスナップショットを持つと以後の変更が届かない。** いま `EnvironmentScene` が毎フレーム
-`this.graphics.current` を読んでいるのと同じものを、引数で運ぶ。
-
-**変更が必要な箇所**
-
-| ファイル | 変更 |
-|---|---|
-| `src/main.ts` | `startAnimationLoop` へ `graphics` を渡し、`game.update(dt, graphics.current)` / `game.sync(graphics.current)`。`new Launcher(...)` の引数から `graphics` を落とす |
-| `src/launcher.ts` | `graphics` フィールドを削除し、`new Game(...)` の引数からも落とす |
-| `src/game/game.ts` | コンストラクタの `graphics` を削除。`update(dtRaw, graphics)` / `sync(graphics)` で受け、`_environment.update` / `_environment.sync` へ渡す |
-| `src/game/celestial/environment-scene.ts` | `graphics` フィールドを削除。`update(t, overviewMode, graphics)` / `sync(..., graphics)` で受け、`body.sync(...)` へ渡す |
-| `src/game/celestial/celestial-view.ts` | `sync` の `graphics` と手順 2 の下請けを `GraphicsSettingsData` へ |
-| `src/game/celestial/earth-view.ts` / `sphere-view.ts` / `point-view.ts` / `sun-view.ts` | 型を `GraphicsSettingsData` へ。`graphics.current.X` → `graphics.X` |
-
-**達成条件と検証**
-
-- クラス `GraphicsSettings` を参照するのは供給側の 4 ファイルだけ — `render/graphics-settings.ts`(定義)、`main.ts`、`game/hud/settings-view.ts`、`game/hud/graphics-panel.ts`。
-- `npm run typecheck`
-- `grep -rn "GraphicsSettings\b" src/ --include=*.ts` → 上の 4 ファイルだけ
-- `npm run dev` → 設定パネルで環・オーロラ・大気・点群を切り替え、**その場で絵が変わること**
-
----
-
 ### 手順 4. 単独ビルドの器を作る
 
 **目的**: ゲーム本体と別のページとして立ち上がる土台を先に通す。中身はまだ無くてよい —
@@ -384,6 +349,7 @@ G バッファ 0.6ms / ライティング 0.5ms / マテリアル 0.6ms / ワー
 
 | リスク | 影響 | 露見する場所 |
 |---|---|---|
+| **この環境のヘッドレスは 1〜2 fps しか出ない** | `npm run smoke:browser` の「30 秒で 60 フレーム」判定に届かず落ちる。**実測(2026-08-23、`docs/` 本番ビルド): 起動・HUD・コンソールとも正常で、30 秒間の rAF が 40 回。** 撮影も見積りより遅くなる | 全手順。**smoke の失敗を変更の回帰と読み違えない** |
 | **設定値を構築時に受け取って保持する** | 環・オーロラ・大気・点群・詳細度の切り替えが次の起動まで効かなくなる。**絵は出るので気付きにくい** | 手順 3。設定パネルで切り替えて、その場で絵が変わるか |
 | **`bindResolutionTarget` の呼び出しが宙に浮く** | 解像度倍率の設定が起動時に反映されず、常に 1 倍で描く | 手順 1。`main.ts` が `initScene` の直後に呼んでいるか |
 | **撮影ターゲットを sRGB フォーマットで作る** | 合成パスは既に sRGB へ変換済みの値を書く。ターゲットも `-srgb` だと**二重変換**になり、撮った PNG だけが白っぽくなる。「パイプラインが明るすぎる」と誤読する | 手順 7。`RGBAFormat` + `UnsignedByteType` で作っているか |
