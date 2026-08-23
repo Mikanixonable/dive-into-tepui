@@ -19,7 +19,7 @@ import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { PointFieldView } from './point-field-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
-import { SunLight } from '../../render/pipeline/sun-light';
+import { AMBIENT_IRRADIANCE, SUN_COLOR, SUN_IRRADIANCE_1AU, SunLight } from '../../render/pipeline/sun-light';
 import { MAX_OCCLUDERS, type Occluder, type OcclusionPass } from '../../render/pipeline/occlusion';
 import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
@@ -51,12 +51,9 @@ function buildGeoElements(registry: CelestialRegistry): OrbitalElements | null {
 const SATELLITE_REFERENCE_LINE_COLOR = 0xaab3c0;
 const PLANET_REFERENCE_LINE_COLOR = 0xffffff;
 
-// 恒星光の色。ライティングパス(render/pipeline/sun-light.ts の SunLight)が毎フレーム受け取る。
-const SUN_COLOR = new THREE.Color(C.COLOR_SUN);
-
-// 恒星の放射強度 [SUN_INTENSITY と同じ単位 · m²]。SUN_INTENSITY は地球軌道で受ける放射照度
-// なので、1 天文単位ぶんの逆二乗を戻して放射強度にする。
-const SUN_RADIANT_INTENSITY = C.SUN_INTENSITY * AU * AU;
+// 恒星の放射強度 [SUN_IRRADIANCE_1AU と同じ単位 · m²]。SUN_IRRADIANCE_1AU は 1 天文単位で
+// 受ける放射照度なので、そのぶんの逆二乗を戻して放射強度にする。
+const SUN_RADIANT_INTENSITY = SUN_IRRADIANCE_1AU * AU * AU;
 
 // 遮蔽器と環の持ち主を選ぶ尺度。カメラから見た視半径が大きい天体ほど、その影が画面に
 // 写っている何かへ落ちる見込みが高い。
@@ -184,7 +181,7 @@ export class EnvironmentScene {
     const sunPos = starId === null
       ? this.toThreeNormal(this.ephemeris.sunDirFrom(floatingOrigin.r, displayTime)).multiplyScalar(AU)
       : floatingOrigin.RtoThreeV3(this.ephemeris.positionOf(starId, displayTime));
-    this.sunLight.set(sunPos, star?.radius ?? 0, SUN_COLOR, SUN_RADIANT_INTENSITY, C.AMBIENT_INTENSITY);
+    this.sunLight.set(sunPos, star?.radius ?? 0, SUN_COLOR, SUN_RADIANT_INTENSITY, AMBIENT_IRRADIANCE);
     this.syncOcclusion(floatingOrigin, displayTime, graphics);
     this.syncAtmosphere(floatingOrigin, displayTime, graphics);
 
