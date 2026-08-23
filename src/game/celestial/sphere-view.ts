@@ -82,9 +82,7 @@ export class SphereView extends CelestialView {
       return;
     }
     this.syncLod(apparentDiameterPx);
-    const activeSurface = this.surfaces.get(this.activeLevel!)!;
     const sunDirection = ephemeris.sunDirFrom(pos, displayTime);
-    activeSurface.setSunDirection(new THREE.Vector3(sunDirection.x, sunDirection.y, sunDirection.z));
     this.group.position.copy(fo.RtoThreeV3(pos));
     // 歪んだ天体は3軸それぞれの半軸を使う。環へ渡すのは一様スケール(赤道半径)の方で、
     // 扁平は乗せない。
