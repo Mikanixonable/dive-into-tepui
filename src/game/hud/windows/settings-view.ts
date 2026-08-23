@@ -192,10 +192,6 @@ export class SettingsView implements OverlayHandle {
     this.stopButton.setEnabled(false);
     if (mode === 'dock') {
       this.panel.style.display = 'block';
-      this.panel.style.padding = 'var(--space-4)';
-      this.panel.style.background = 'var(--glass-quiet)';
-      this.panel.style.boxShadow = 'none';
-      this.panel.style.backdropFilter = 'none';
     }
   }
 
