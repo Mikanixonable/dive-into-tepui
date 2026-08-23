@@ -126,6 +126,21 @@ export const COMBAT_VIEW_STYLE = `
   background: var(--accent-fill);
   color: var(--accent);
 }
+#hud:not(.base-mode) .hud-combat-root.active #hud-vessel-status .vessel-deploy-controls .vessel-deploy-btn {
+  border: 0;
+  border-radius: var(--radius-control, 11px);
+  background: var(--fill-1);
+  color: var(--text-dim);
+  font-size: var(--font-xxs);
+}
+#hud:not(.base-mode) .hud-combat-root.active #hud-vessel-status .vessel-deploy-controls .vessel-deploy-btn.on {
+  background: var(--accent-fill);
+  color: var(--accent);
+}
+#hud:not(.base-mode) .hud-combat-root.active #hud-vessel-status .vessel-deploy-controls .vessel-deploy-btn:hover {
+  background: var(--fill-2);
+  color: var(--accent-near, var(--accent-soft));
+}
 
 #hud:not(.base-mode) .hud-combat-root.active #hud-target .target-identity {
   display: grid;

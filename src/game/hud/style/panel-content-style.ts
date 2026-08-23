@@ -42,6 +42,27 @@ export const PANEL_CONTENT_STYLE = `
   text-align: right;
   white-space: nowrap;
 }
+#hud-vessel-status .vessel-deploy-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+/* パドル/放熱板の展開度と損耗をボタン内の塗りつぶしで示す。 */
+#hud-vessel-status span.vessel-deploy-btn {
+  position: relative; overflow: hidden; width: 100%; min-width: 0;
+  padding: var(--space-2) var(--space-3); text-align: left;
+}
+#hud-vessel-status .vessel-deploy-btn .fill {
+  position: absolute; inset: 0; z-index: 0;
+  transition: width var(--transition-fast), background var(--transition-fast);
+}
+#hud-vessel-status .vessel-deploy-btn .label {
+  position: relative; z-index: 1; color: var(--text); font-size: var(--font-xxs); line-height: 1.5;
+  text-shadow: 0 0 3px var(--bg), 0 0 3px var(--bg); transition: color var(--transition-fast);
+}
+#hud-vessel-status .vessel-deploy-btn.on { border-color: var(--accent); }
+#hud-vessel-status .vessel-deploy-btn.on .label { color: var(--accent); }
 /* 常設パネルの操作ボタン列(艦ステータスの R/F/G/T 代替、軌道情報の分析パネル起動、
    いずれもタッチ・マウスどちらでも常設)。 */
 .combat-panel .panel-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
@@ -264,21 +285,6 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-stagestatus .t .w-meter { width: 240px; }
 #hud-stagestatus .k { font-size: var(--font-s); color: var(--text-dim); line-height: 1.8; white-space: nowrap; }
 #hud-stagestatus .k-widgets:not(:empty) { margin-top: var(--space-3); }
-#hud-stagestatus .radiators { display: flex; flex-direction: column; gap: var(--space-3); }
-/* span. まで指定して .w-btn 側の padding より確実に勝たせる
-   (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
-#hud-stagestatus span.radiator-btn {
-  position: relative; overflow: hidden; width: 132px; padding: var(--space-2) var(--space-4); text-align: left;
-}
-#hud-stagestatus .radiator-btn .fill {
-  position: absolute; inset: 0; z-index: 0; transition: width var(--transition-fast), background var(--transition-fast);
-}
-#hud-stagestatus .radiator-btn .label {
-  position: relative; z-index: 1; color: var(--text); font-size: var(--font-xs); line-height: 1.5;
-  text-shadow: 0 0 3px var(--bg), 0 0 3px var(--bg); transition: color var(--transition-fast);
-}
-#hud-stagestatus .radiator-btn.on { border-color: var(--accent); }
-#hud-stagestatus .radiator-btn.on .label { color: var(--accent); }
 #hud-pause-menu {
   position: fixed; display: none; width: 320px; pointer-events: auto;
 }
