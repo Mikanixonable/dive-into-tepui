@@ -9,6 +9,7 @@ const vdwRadius = {
   H: 1.20, C: 1.70, N: 1.55, O: 1.52, F: 1.47, P: 1.80, S: 1.80, SE: 1.90,
 };
 const atoms = [];
+const backboneAtomCoordinates = new Map();
 const helices = [];
 const sheets = [];
 const entityByChain = new Map();
@@ -36,6 +37,17 @@ for (const line of text.split('\n')) {
   if (![x, y, z].every(Number.isFinite)) continue;
   const element = line.slice(76, 78).trim().toUpperCase() || line.slice(12, 16).trim()[0].toUpperCase();
   atoms.push({ x, y, z, radius: vdwRadius[element] ?? 1.70 });
+  if (line.startsWith('ATOM')) {
+    const atomName = line.slice(12, 16).trim();
+    if (atomName === 'CA' || atomName === 'O') {
+      const chain = line.slice(21, 22).trim();
+      const residue = Number(line.slice(22, 26));
+      const key = `${chain}:${residue}`;
+      const record = backboneAtomCoordinates.get(key) ?? {};
+      record[atomName] = { x, y, z };
+      backboneAtomCoordinates.set(key, record);
+    }
+  }
 }
 if (atoms.length === 0) throw new Error('no atoms found');
 
@@ -47,9 +59,11 @@ for (const line of text.split('\n')) {
   const z = Number(line.slice(46, 54));
   if (![x, y, z].every(Number.isFinite)) continue;
   const chain = line.slice(21, 22).trim();
+  const residue = Number(line.slice(22, 26));
+  const atomRecord = backboneAtomCoordinates.get(`${chain}:${residue}`);
   backbone.push({
-    chain, entity: entityByChain.get(chain) ?? 0, bFactor: Number(line.slice(60, 66)),
-    residue: Number(line.slice(22, 26)), x, y, z,
+    chain, entity: entityByChain.get(chain) ?? 0, bFactor: Number(line.slice(60, 66)), residue, x, y, z,
+    o: atomRecord?.O ?? null,
   });
 }
 
@@ -65,6 +79,7 @@ const backboneSecondary = [];
 const backboneChains = [];
 const backboneEntities = [];
 const backboneBFactors = [];
+const backboneOCoordinates = [];
 for (const atom of backbone) {
   backboneCoordinates.push(
     Number((atom.x - center.x).toFixed(3)),
@@ -74,6 +89,12 @@ for (const atom of backbone) {
   backboneChains.push(atom.chain);
   backboneEntities.push(atom.entity);
   backboneBFactors.push(Number(atom.bFactor.toFixed(2)));
+  const oxygen = atom.o ?? atom;
+  backboneOCoordinates.push(
+    Number((oxygen.x - center.x).toFixed(3)),
+    Number((oxygen.y - center.y).toFixed(3)),
+    Number((oxygen.z - center.z).toFixed(3)),
+  );
   const inRange = (entry) => entry.chain === atom.chain && entry.endChain === atom.chain
     && atom.residue >= entry.start && atom.residue <= entry.end;
   backboneSecondary.push(helices.some(inRange) ? 'helix' : sheets.some(inRange) ? 'sheet' : 'coil');
@@ -91,5 +112,6 @@ await writeFile('src/assets/models/pdb5i4rBackbone.json', JSON.stringify({
   backboneChains,
   backboneEntities,
   backboneBFactors,
+  backboneOCoordinates,
 }) + '\n');
 console.log(`Wrote ${backbone.length} backbone points from PDB ${PDB_ID}`);
