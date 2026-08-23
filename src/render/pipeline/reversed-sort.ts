@@ -6,7 +6,8 @@
 //
 // **これがこのアプリ唯一の custom sort である。** 他所から `setOpaqueSort` /
 // `setTransparentSort` を呼ぶと反転が二重になるか消える。修正の入った three へ上げたら
-// このモジュールごと削除する — その版へ上がったことは `tools/check-three-pin.mjs` が検知する。
+// このモジュールごと削除する — その版へ上がったことは `tools/check-three-pin.mjs` が検知し、
+// 外し方は memos/hedalu244/better_graphics/how_to_update_three.md にある。
 
 // 比較関数が受け取る描画項目のうち、既定の比較が読む欄だけ。RenderItem 型は
 // `three/webgpu` から公開されていない。
