@@ -2,6 +2,8 @@
 // シーンへ足すのもチャンネルを振るのも呼び出し側の仕事。ケースを増やすのはこの表への追記で済む。
 import * as THREE from 'three/webgpu';
 import { CelestialSurface } from '../../src/render/celestial-surface';
+import { createEarth } from '../../src/render/earth';
+import { R_EARTH } from '../../src/physics/solar-system';
 import { Curve } from '../../src/render/curve';
 import { buildPlayerShip } from '../../src/render/ships';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
@@ -25,6 +27,8 @@ const NEAR = 2;
 export type LabCase = {
   readonly objects: readonly THREE.Object3D[];
   readonly camera: THREE.PerspectiveCamera;
+  // 大気パスへ渡す天体。中心は描画座標。
+  readonly atmosphere?: { readonly center: THREE.Vector3; readonly surfaceRadius: number };
   // 遮蔽パスへ渡す球。フォワード経路は遮蔽を持たないので、影は 2 経路の差としても出る。
   readonly occluders?: readonly Occluder[];
   // 遮蔽パスへ渡す環。中心と法線軸は描画座標。
@@ -134,6 +138,23 @@ function depthProbe(z: number, far: number): LabCase {
   return { objects, camera };
 }
 
+// 地球: 高度 420km から地平線方向を見て、大気のリムと地表のもやを見る。
+function earth(): LabCase {
+  const camera = labCamera(6e7);
+  // 地平線が画面中央へ来る向きへ地球を置く — 視線が地球へ接する角だけ、カメラから見た
+  // 中心の向きを視線から傾ける。
+  const dist = R_EARTH + 420e3;
+  const tilt = Math.asin(R_EARTH / dist);
+  const center = new THREE.Vector3(0, -Math.sin(tilt), -Math.cos(tilt)).multiplyScalar(dist);
+  const built = createEarth();
+  built.group.position.copy(center);
+  built.setAuroraVisible(false);
+  built.syncSurfaceLod(6e4);
+  built.setSunDir(SUN_DIR.x, SUN_DIR.y, SUN_DIR.z);
+  built.tick(0);
+  return { objects: [built.group], camera, atmosphere: { center, surfaceRadius: R_EARTH } };
+}
+
 // 日食: 光を受ける球へ、太陽とほぼ同じ視半径の球と、その球を巡る環の帯が落とす影。
 // 視半径がほぼ等しいので本影は点に近く、面の大半が半影の階調になる — 影の縁がぼけて
 // 見えることが円盤の重なり面積を解いている証拠で、環の縞はそれとは別の経路の証拠になる。
@@ -186,6 +207,7 @@ export const CASES = {
   'depth-1e8': () => depthProbe(1e8, 1e13),
   'depth-1e11': () => depthProbe(1e11, 1e13),
   'eclipse': eclipse,
+  'earth': earth,
   'far': far,
 } as const satisfies Record<string, () => LabCase>;
 
