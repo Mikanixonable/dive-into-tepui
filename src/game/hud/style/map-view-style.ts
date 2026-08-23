@@ -8,13 +8,21 @@ export const MAP_VIEW_STYLE = `
 
 /* Quiet Glass: 視野を隠さない常設情報。 */
 #hud .hud-map-root.active #hud-physical-object-list,
-#hud .hud-map-root.active #hud-view-options {
+#hud .hud-map-root.active #hud-view-options,
+#hud .hud-map-root.active #hud-orbit {
   border: 0;
   border-radius: var(--radius-panel);
   background: var(--glass-quiet);
   box-shadow: 0 12px 30px var(--shade-1);
   backdrop-filter: blur(14px) saturate(82%);
   -webkit-backdrop-filter: blur(14px) saturate(82%);
+}
+
+/* Orbit は表示設定の上に置く。初期状態は PanelShell のビュー別既定値で収納される。 */
+#hud .hud-map-root.active .hud-rail-left > #hud-orbit {
+  width: 100%;
+  max-height: min(360px, 48dvh);
+  overflow-y: auto;
 }
 
 /* Focus Glass: 時間スクラブと座標系編集は、意思決定中だけ一段密度を上げる。 */
@@ -31,6 +39,7 @@ export const MAP_VIEW_STYLE = `
 
 #hud .hud-map-root.active #hud-physical-object-list h3,
 #hud .hud-map-root.active #hud-view-options h3,
+#hud .hud-map-root.active #hud-orbit h3,
 #hud .hud-map-root.active #hud-predict h3,
 #hud .hud-map-root.active .hud-frame-controls h3,
 #hud .hud-map-root.active #hud-plan h3 {

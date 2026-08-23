@@ -198,7 +198,9 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
     <div class="status-throttle-touch" data-id="status-throttle-touch"></div>
     <div class="panel-actions" data-id="status-actions" role="group" aria-label="機体の主要操作"></div>`;
 
-  const orbit = new PanelShell(leftRail, 'hud-orbit', 'Orbit', isCompactViewport());
+  const orbit = new PanelShell(
+    leftRail, 'hud-orbit', 'Orbit', (view) => view === 'map' || isCompactViewport(),
+  );
   configureCombatPanel(orbit);
   orbit.body.innerHTML = `
     <div class="row" data-id="reference-row"></div>
