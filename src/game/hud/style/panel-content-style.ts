@@ -321,15 +321,30 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-settings-view .sv-header .w-close { flex: 0 0 auto; border-radius: 50%; }
 #hud-settings-view .sv-eyebrow { color: var(--accent); font-size: var(--font-xxs); letter-spacing: 0.12em; }
 #hud-settings-view .sv-description { margin-top: var(--space-5); color: var(--text-dim); font-size: var(--font-s); }
-#hud-settings-view .sv-section { margin-top: var(--space-7); }
-#hud-settings-view .sv-section h3 { color: var(--accent); font-size: var(--font-m); letter-spacing: 0.08em; }
-#hud-settings-view .sv-theme-row {
-  display: flex; align-items: center; gap: var(--space-4); margin-top: var(--space-4);
-  padding: var(--space-4); background: var(--surface-1); border: 1px solid var(--edge);
+#hud-settings-view .sv-tabs {
+  width: min(100%, 720px); margin: var(--space-6) auto 0; padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--edge);
 }
-#hud-settings-view .sv-theme-preview { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 3px; }
-#hud-settings-view .sv-theme-swatch { width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 0 1px color-mix(in srgb, var(--title) 24%, transparent); }
-#hud-settings-view .sv-theme-select { flex: 1; min-width: 0; color-scheme: var(--theme-tone); }
+#hud-settings-view .sv-tabs .w-btn { flex: 1 1 0; min-width: 0; text-align: center; }
+#hud-settings-view .sv-section { margin-top: var(--space-7); }
+#hud-settings-view .sv-tab-panel[hidden] { display: none; }
+#hud-settings-view .sv-section h3 { color: var(--accent); font-size: var(--font-m); letter-spacing: 0.08em; }
+#hud-settings-view .sv-theme-options {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+#hud-settings-view .sv-theme-button {
+  display: flex; align-items: center; gap: var(--space-2); min-height: 48px; width: 100%;
+  padding-inline: var(--space-4); text-align: left;
+}
+#hud-settings-view .sv-theme-button .w-btn-icon {
+  display: inline-flex; align-items: center; gap: 3px; width: auto; height: auto; margin-right: var(--space-2);
+}
+#hud-settings-view .sv-theme-icon { display: inline-flex; align-items: center; gap: 3px; }
+#hud-settings-view .sv-theme-swatch {
+  display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--title) 30%, transparent);
+}
 #hud-settings-view .gp-body { display: flex; flex-direction: column; gap: var(--space-4); margin-top: var(--space-4); }
 #hud-settings-view .sv-volume-row {
   display: flex; align-items: center; gap: var(--space-4); margin-top: var(--space-4);
