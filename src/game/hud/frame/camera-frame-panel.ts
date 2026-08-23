@@ -130,7 +130,8 @@ export class CameraFramePanel {
     this.panel.classList.toggle('hidden', !isVisible);
     if (!isVisible) return;
 
-    this.cameraCenterZone.setItems(pickables);
+    // カメラ基準は表示設定に左右されず、登録済みの全天体を選択できるようにする。
+    this.cameraCenterZone.setItems(pickables, true);
     this.cameraCenterZone.setNearby(members, pickables);
     this.cameraCenterZone.setSelected(focusTargetId(this.mapCamera.focus) ?? null);
     this.cameraRotationZone.setNearby(members, displayTime, validRoles);

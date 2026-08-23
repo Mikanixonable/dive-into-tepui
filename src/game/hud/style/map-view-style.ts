@@ -6,15 +6,32 @@ export const MAP_VIEW_STYLE = `
 /* マップでは戦闘固有の棚とターゲット計器を外し、計画用のレールへ視線を集中させる。 */
 #hud .hud-map-root.active #hud-target { display: none; }
 
+/* 宇宙空間は常に暗いため、ライトテーマでも天体ラベルは暗色の札と明色文字で読む。 */
+#hud .hud-map-root.active .mk-poi .lbl {
+  background: #0b0d11;
+  color: #f5f7ff;
+  text-shadow: none;
+}
+#hud .hud-map-root.active .mk-poi:not(.mk-lagrange) .lbl .lbl-main { color: #f5f7ff; }
+#hud .hud-map-root.active .mk-poi:not(.mk-lagrange) .lbl .lbl-sub { color: #b8c1d1; }
+
 /* Quiet Glass: 視野を隠さない常設情報。 */
 #hud .hud-map-root.active #hud-physical-object-list,
-#hud .hud-map-root.active #hud-view-options {
+#hud .hud-map-root.active #hud-view-options,
+#hud .hud-map-root.active #hud-orbit {
   border: 0;
   border-radius: var(--radius-panel);
   background: var(--glass-quiet);
   box-shadow: 0 12px 30px var(--shade-1);
   backdrop-filter: blur(14px) saturate(82%);
   -webkit-backdrop-filter: blur(14px) saturate(82%);
+}
+
+/* Orbit は表示設定の上に置く。初期状態は PanelShell のビュー別既定値で収納される。 */
+#hud .hud-map-root.active .hud-rail-left > #hud-orbit {
+  width: 100%;
+  max-height: min(360px, 48dvh);
+  overflow-y: auto;
 }
 
 /* Focus Glass: 時間スクラブと座標系編集は、意思決定中だけ一段密度を上げる。 */
@@ -31,6 +48,7 @@ export const MAP_VIEW_STYLE = `
 
 #hud .hud-map-root.active #hud-physical-object-list h3,
 #hud .hud-map-root.active #hud-view-options h3,
+#hud .hud-map-root.active #hud-orbit h3,
 #hud .hud-map-root.active #hud-predict h3,
 #hud .hud-map-root.active .hud-frame-controls h3,
 #hud .hud-map-root.active #hud-plan h3 {
@@ -151,6 +169,9 @@ export const MAP_VIEW_STYLE = `
   margin: var(--space-5) 0 var(--space-2);
 }
 #hud .hud-map-root.active #hud-view-options .view-options-section-heading:first-child { margin-top: 0; }
+#hud .hud-map-root.active #hud-view-options .view-options-section-heading.view-options-heading-target {
+  grid-template-columns: minmax(0, 1fr);
+}
 #hud .hud-map-root.active #hud-view-options .view-options-section-title {
   color: var(--body);
   font-size: var(--font-xs);
@@ -248,6 +269,39 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active #hud-view-options .body-class-row.category-off { opacity: .52; }
 #hud .hud-map-root.active #hud-view-options .body-class-row.category-off .body-class-icon-btn.on::after { display: none; }
 
+/* 対象は1行1ボタン。状態はボタンタイトル左のアイコンで表し、ラベル/軌道列を分けずに
+   現在の表示状態を読み取れるようにする。 */
+#hud .hud-map-root.active #hud-view-options .target-class-group {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-1) var(--space-2);
+}
+#hud .hud-map-root.active #hud-view-options .target-class-group .target-class-row { margin-bottom: 0; }
+#hud .hud-map-root.active #hud-view-options .body-class-row.target-class-row {
+  grid-template-columns: minmax(0, 1fr);
+}
+#hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button {
+  display: flex; align-items: center; justify-content: flex-start; gap: var(--space-2);
+  width: 100%; padding-right: var(--space-3);
+  background: var(--surface-2); color: var(--muted);
+}
+#hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button .w-btn-icon {
+  flex: 0 0 auto; width: 1.1em; height: 1.1em; margin-right: 0; color: var(--muted);
+}
+#hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="orbit"] {
+  color: var(--title); background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
+}
+#hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="orbit"] .w-btn-icon {
+  color: var(--accent);
+}
+#hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="label"] {
+  color: var(--title); background: var(--surface-2);
+}
+#hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="label"] .w-btn-icon {
+  color: var(--accent-near);
+}
+#hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="hidden"] {
+  background: transparent;
+}
+
 /* Predict: 未来は Accent、隣接する過去範囲は Near accent。Secondary は同期状態用に残す。 */
 #hud .hud-map-root.active #hud-predict .w-btn,
 #hud .hud-map-root.active #hud-predict .w-input {
@@ -312,6 +366,7 @@ export const MAP_VIEW_STYLE = `
   #hud .hud-map-root.active .hud-frame-controls { border-radius: var(--radius-panel); }
   #hud .hud-map-root.active #hud-view-options .view-options-section-heading,
   #hud .hud-map-root.active #hud-view-options .body-class-row { grid-template-columns: 82px minmax(0, 1fr); }
+  #hud .hud-map-root.active #hud-view-options .body-class-row.target-class-row { grid-template-columns: minmax(0, 1fr); }
   #hud .hud-map-root.active #hud-view-options .view-options-column { font-size: 8px; }
 }
 
@@ -325,6 +380,8 @@ export const MAP_VIEW_STYLE = `
   #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-detail { font-size: 8px; }
   #hud .hud-map-root.active #hud-view-options .view-options-section-heading,
   #hud .hud-map-root.active #hud-view-options .body-class-row { grid-template-columns: 68px minmax(0, 1fr); }
+  #hud .hud-map-root.active #hud-view-options .body-class-row.target-class-row { grid-template-columns: minmax(0, 1fr); }
+  #hud .hud-map-root.active #hud-view-options .target-class-group { grid-template-columns: minmax(0, 1fr); }
   #hud .hud-map-root.active #hud-view-options .view-options-column { overflow: hidden; text-overflow: ellipsis; }
   #hud .hud-map-root.active #hud-predict .predict-row1 { align-items: flex-start; }
 }

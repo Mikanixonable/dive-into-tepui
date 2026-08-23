@@ -3,7 +3,7 @@
 // 積分結果と一致させたい特徴点はここで求める。赤道交点(findEquatorCrossings)はサンプル列
 // (折れ線)を走査して求め、アプシス(apsisCrossing/ApsisTrack)は積分の1ステップごとに動径速度の
 // 符号反転を直接見て求める — どちらも同じ黄金分割探索/二分法の補間機構を使う。
-import { CelestialBody } from './celestial-body';
+import { CelestialBody, celestialBodyStateAt } from './celestial-body';
 import { hermiteInterpolate, KinematicState } from './kinematic-state';
 import { goldenSectionMin } from './optimize';
 import { dot, len, sub, Vec3 } from './vec3';
@@ -13,8 +13,10 @@ import { dot, len, sub, Vec3 } from './vec3';
 const REFINE_ITERATIONS = 20;
 
 // 中心天体からの距離。
-function distFromCenter(center: CelestialBody, s: KinematicState): number {
-  return len(sub(s.r, center.state.r));
+type CenterStateAt = (t: number) => KinematicState;
+
+function distFromCenter(centerStateAt: CenterStateAt, s: KinematicState): number {
+  return len(sub(s.r, centerStateAt(s.t).r));
 }
 
 // a-b 区間を hermiteInterpolate で埋めた [0,1] パラメータ位置 u の状態。
@@ -24,10 +26,12 @@ function atParam(a: KinematicState, b: KinematicState, u: number): KinematicStat
 
 // [a, b] 区間内の中心天体距離の極大/極小を黄金分割探索で追い込む。
 function refineExtremum(
-  center: CelestialBody, a: KinematicState, b: KinematicState, findMax: boolean,
+  centerStateAt: CenterStateAt, a: KinematicState, b: KinematicState, findMax: boolean,
 ): KinematicState {
   const sign = findMax ? -1 : 1;
-  const u = goldenSectionMin(0, 1, (u) => sign * distFromCenter(center, atParam(a, b, u)), REFINE_ITERATIONS);
+  const u = goldenSectionMin(
+    0, 1, (u) => sign * distFromCenter(centerStateAt, atParam(a, b, u)), REFINE_ITERATIONS,
+  );
   return atParam(a, b, u);
 }
 
@@ -42,24 +46,29 @@ export interface ApsisCrossing {
 // 反転していれば、その瞬間がアプシス。減速→増速(負→正)が近地点、増速→減速
 // (正→負)が遠地点で、どちらでもなければ null。中心天体自身も動いている場合が
 // あるので、位置だけでなく速度も中心天体の値を差し引いた相対量で判定する。
-export function apsisCrossing(center: CelestialBody, prev: KinematicState, next: KinematicState): ApsisCrossing | null {
-  const radialVel = (s: KinematicState): number =>
-    dot(sub(s.r, center.state.r), sub(s.v, center.state.v));
+export function apsisCrossing(
+  center: CelestialBody, prev: KinematicState, next: KinematicState,
+  centerStateAt: CenterStateAt = (t) => celestialBodyStateAt(center, t),
+): ApsisCrossing | null {
+  const radialVel = (s: KinematicState): number => {
+    const centerState = centerStateAt(s.t);
+    return dot(sub(s.r, centerState.r), sub(s.v, centerState.v));
+  };
   const vPrev = radialVel(prev);
   const vNext = radialVel(next);
   if (vPrev < 0 && vNext >= 0) {
-    return { state: refineExtremum(center, prev, next, false), kind: 'periapsis' };
+    return { state: refineExtremum(centerStateAt, prev, next, false), kind: 'periapsis' };
   }
   if (vPrev > 0 && vNext <= 0) {
-    return { state: refineExtremum(center, prev, next, true), kind: 'apoapsis' };
+    return { state: refineExtremum(centerStateAt, prev, next, true), kind: 'apoapsis' };
   }
   return null;
 }
 
 // 時刻昇順の states から t より前のものを落とす。
-function dropBefore(states: KinematicState[], t: number): void {
+function dropBefore<T extends { readonly state: KinematicState }>(states: T[], t: number): void {
   let cut = 0;
-  while (cut < states.length && states[cut]!.t < t) cut++;
+  while (cut < states.length && states[cut]!.state.t < t) cut++;
   if (cut > 0) states.splice(0, cut);
 }
 
@@ -68,8 +77,8 @@ function dropBefore(states: KinematicState[], t: number): void {
 // 場合に検出済みの値が古い中心位置基準のままずれ続けるため。dropBefore で範囲の先頭より前を
 // 落とすので、periapsis/apoapsis は常に「いま答える範囲で最初の極値」を返す。
 export class ApsisTrack {
-  private readonly periapsides: KinematicState[] = [];
-  private readonly apoapsides: KinematicState[] = [];
+  private readonly periapsides: { readonly state: KinematicState; readonly center: CelestialBody }[] = [];
+  private readonly apoapsides: { readonly state: KinematicState; readonly center: CelestialBody }[] = [];
   private _center: CelestialBody | null = null;
 
   // 直近の observe に渡された中心天体。まだ observe を1度も呼んでいなければ null。
@@ -79,11 +88,14 @@ export class ApsisTrack {
 
   // prev→next の1ステップを、その瞬間の中心天体 center を使って apsisCrossing に掛け、
   // 見つかった極値を種類ごとの列へ追加する。
-  public observe(center: CelestialBody, prev: KinematicState, next: KinematicState): void {
+  public observe(
+    center: CelestialBody, prev: KinematicState, next: KinematicState,
+    centerStateAt: CenterStateAt = (t) => celestialBodyStateAt(center, t),
+  ): void {
     this._center = center;
-    const crossing = apsisCrossing(center, prev, next);
-    if (crossing?.kind === 'periapsis') this.periapsides.push(crossing.state);
-    if (crossing?.kind === 'apoapsis') this.apoapsides.push(crossing.state);
+    const crossing = apsisCrossing(center, prev, next, centerStateAt);
+    if (crossing?.kind === 'periapsis') this.periapsides.push({ state: crossing.state, center });
+    if (crossing?.kind === 'apoapsis') this.apoapsides.push({ state: crossing.state, center });
   }
 
   // 両列から t より前(< t)の要素を先頭から落とす。
@@ -94,12 +106,20 @@ export class ApsisTrack {
 
   // 時刻昇順の列で最初の近地点。無ければ null。
   public get periapsis(): KinematicState | null {
-    return this.periapsides[0] ?? null;
+    return this.periapsides[0]?.state ?? null;
+  }
+
+  public get periapsisCenter(): CelestialBody | null {
+    return this.periapsides[0]?.center ?? null;
   }
 
   // 時刻昇順の列で最初の遠地点。無ければ null。
   public get apoapsis(): KinematicState | null {
-    return this.apoapsides[0] ?? null;
+    return this.apoapsides[0]?.state ?? null;
+  }
+
+  public get apoapsisCenter(): CelestialBody | null {
+    return this.apoapsides[0]?.center ?? null;
   }
 }
 

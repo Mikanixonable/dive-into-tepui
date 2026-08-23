@@ -76,7 +76,7 @@ export const MARKER_STYLE = `
 #hud .mk-mnode .lbl, #hud .mk-burn .lbl { margin-top: var(--space-2); }
 .mk-burn { color: var(--accent); }
 .mk-self { color: ${C.COLOR_MARKER_SELF}; }
-.mk-ammo { color: var(--accent-soft); }
+.mk-ammo { color: var(--text-dim); }
 .mk-planned { color: ${C.COLOR_MARKER_PLANNED}; }
 .mk-apsis { color: ${C.COLOR_MARKER_PLANNED}; }
 .mk-impact { color: var(--danger); }

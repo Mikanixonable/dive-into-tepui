@@ -42,16 +42,20 @@ export class EntityLineManager {
 
     for (const ship of this.entities.players) {
       const isActive = ship === activePlayer;
-      const visible = visibilityPolicy?.entity('player', isActive).orbit ?? true;
+      const visibility = visibilityPolicy?.entity('player', isActive);
+      const categoryVisible = visibility?.category ?? true;
+      const orbitVisible = visibility?.orbit ?? true;
       const asTarget = targetStyleOf(ship);
       // マップビューでは操作艦だけが既定で予測線・過去線を使う。それ以外の自艦は、
       // プロパティウィンドウのトグル(showTrajectoryLine)がONのときだけ同様に使う。
       const trajectoryEligible = isActive || (overviewMode && ship.showTrajectoryLine);
-      const showLines = trajectoryEligible && visible && asTarget === null;
+      // クラスまたは軌道線が非表示なら、解析楕円・予測線・過去線をすべて隠す。
+      const lineVisible = categoryVisible && orbitVisible;
+      const showLines = trajectoryEligible && lineVisible && asTarget === null;
       // 戦闘ビューの操作艦は、積分した予測線ではなく解析楕円で軌道を描く。
       const ownEllipse = showLines && !overviewMode;
-      const fallbackEllipse = !trajectoryEligible && overviewMode && visible && asTarget === null;
-      if (asTarget !== null && visible) ship.showOrbitLine(asTarget);
+      const fallbackEllipse = !trajectoryEligible && overviewMode && lineVisible && asTarget === null;
+      if (asTarget !== null && lineVisible) ship.showOrbitLine(asTarget);
       else if (ownEllipse || fallbackEllipse) ship.showOrbitLine(playerOrbitStyleOf(isActive));
       else ship.hideOrbitLine();
       if (showLines && !ownEllipse) ship.showPredictedLine(playerPredictedStyleOf(isActive));
@@ -61,10 +65,14 @@ export class EntityLineManager {
     }
     for (const enemy of this.entities.enemies) {
       const asTarget = targetStyleOf(enemy);
-      const orbit = visibilityPolicy?.entity('ship').orbit;
-      // ターゲットはビューを問わず出し、可視性の既定も通常の線(false)と逆向き(true)。ターゲットは
-      // 常に解析楕円のまま(強調色を保つため)、それ以外はトグルONなら予測線・過去線に切り替える。
-      const show = asTarget !== null ? (orbit ?? true) : overviewMode && enemy.alive && (orbit ?? false);
+      const visibility = visibilityPolicy?.entity('ship');
+      const categoryVisible = visibility?.category ?? true;
+      const orbitVisible = visibility?.orbit ?? true;
+      const lineVisible = categoryVisible && orbitVisible;
+      // クラスと軌道線が表示対象ならターゲットはビューを問わず出す。ターゲットは常に解析楕円のまま
+      // (強調色を保つため)、それ以外はマップの軌道線トグルがONで個別トグルもONなら予測線・
+      // 過去線に切り替える。
+      const show = (asTarget !== null || (overviewMode && enemy.alive)) && lineVisible;
       const useTrajectory = show && asTarget === null && overviewMode && enemy.showTrajectoryLine;
       const enemyLineStyle: LineStyle = { ...C.LINE_STYLE.enemyOrbit, color: enemy.orbitLineColor };
       if (show && !useTrajectory) enemy.showOrbitLine(asTarget ?? enemyLineStyle);
@@ -98,19 +106,19 @@ export class EntityLineManager {
       ship.syncTrajectoryLines(
         frame, simTime, displayTime, pastDuration, predictedTo, ephemeris, fo, camera, frameAnchors);
       // 噴射中は軌道要素が動き続けるので、閾値を待たずに焼き直す。
-      ship.syncOrbitLine(fo, camera, frameAnchors, ship.thrust !== null, frame, displayTime, ephemeris);
+      ship.syncOrbitLine(fo, camera, { frameAnchors, displayTime, ephemeris, force: ship.thrust !== null });
     }
     for (const enemy of this.entities.enemies) {
       const predictedTo = enemy.predictionTruncated ? null : simTime + duration;
       enemy.syncTrajectoryLines(
         frame, simTime, displayTime, pastDuration, predictedTo, ephemeris, fo, camera, frameAnchors);
-      enemy.syncOrbitLine(fo, camera, frameAnchors, enemy.thrust !== null, frame, displayTime, ephemeris);
+      enemy.syncOrbitLine(fo, camera, { frameAnchors, displayTime, ephemeris, force: enemy.thrust !== null });
     }
     for (const base of this.entities.bases) {
       const predictedTo = base.predictionTruncated ? null : simTime + duration;
       base.syncTrajectoryLines(
         frame, simTime, displayTime, pastDuration, predictedTo, ephemeris, fo, camera, frameAnchors);
-      base.syncOrbitLine(fo, camera, frameAnchors, base.thrust !== null, frame, displayTime, ephemeris);
+      base.syncOrbitLine(fo, camera, { frameAnchors, displayTime, ephemeris, force: base.thrust !== null });
     }
   }
 }

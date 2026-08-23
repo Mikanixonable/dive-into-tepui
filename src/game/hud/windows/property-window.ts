@@ -15,6 +15,7 @@ const STYLE = `
   width: 100%; background: var(--surface-2); border: 1px solid transparent; border-radius: var(--radius-control);
   color: var(--text); font: inherit; font-weight: bold; padding: var(--space-1) var(--space-2); box-sizing: border-box;
 }
+#hud .dg-window.property-window { width: 560px; max-width: 560px; }
 #hud .prop-window-rows { padding: var(--space-2) 0; }
 #hud .prop-window-row {
   display: flex; justify-content: space-between; gap: var(--space-4); padding: var(--space-2) var(--space-5); color: var(--text);
@@ -33,6 +34,27 @@ const STYLE = `
   padding: var(--space-2);
   background: color-mix(in srgb, var(--surface-0) 28%, transparent);
 }
+#hud .prop-window-related {
+  padding: var(--space-2);
+  background: color-mix(in srgb, var(--surface-0) 28%, transparent);
+}
+#hud .prop-window-related-title {
+  padding: var(--space-2) var(--space-5);
+  color: var(--text); opacity: 0.6; font-size: 0.9em;
+  cursor: pointer;
+}
+#hud .prop-window-related-title:hover { opacity: 1; color: var(--accent-soft); }
+#hud .prop-window-related-list {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-1);
+}
+#hud .prop-window-related-item {
+  padding: var(--space-4) var(--space-5); color: var(--body); cursor: pointer;
+  border: 0; border-radius: var(--radius-micro);
+}
+#hud .prop-window-related-item:hover, #hud .prop-window-related-item:active {
+  background: var(--surface-2); color: var(--accent-near);
+}
+#hud .prop-window-related-item:focus-visible { outline: 2px solid var(--accent-near); outline-offset: -2px; }
 #hud .prop-window-item {
   padding: var(--space-4) var(--space-5); color: var(--body); cursor: pointer;
   border: 0; border-radius: var(--radius-micro);
@@ -82,6 +104,13 @@ export interface PropertyWindowItem<A extends string = string> {
   readonly keepOpen?: boolean;
 }
 
+export interface PropertyWindowRelatedItem {
+  readonly id: string;
+  readonly label: string;
+  readonly onFocus: () => void;
+  readonly onContextMenu: (clientX: number, clientY: number) => void;
+}
+
 export interface PropertyWindowContent<A extends string = string> {
   readonly title: string;
   readonly subtitle?: string;
@@ -89,6 +118,9 @@ export interface PropertyWindowContent<A extends string = string> {
   readonly icon?: string;
   readonly rows: readonly PropertyRow[];
   readonly items: readonly PropertyWindowItem<A>[];
+  // 対象に関連する物体を本文上部へ表示する。ダブルクリック/右クリックの動作は呼び出し側が持つ。
+  readonly relatedItems?: readonly PropertyWindowRelatedItem[];
+  readonly relatedTitle?: string;
   // 指定すると、タイトル横に改名ボタンが現れる。呼び出し側は確定した新しい名前を
   // 実体へ書き戻すところまでを行う — このクラスは編集 UI の開閉のみを持つ。
   readonly onRename?: (name: string) => void;
@@ -98,6 +130,7 @@ export class PropertyWindow<A extends string = string> {
   private readonly win: DraggableWindow;
   private readonly rowsEl: HTMLDivElement;
   private readonly itemsEl: HTMLDivElement;
+  private readonly relatedEl: HTMLDivElement;
   private titleMainEl: HTMLElement;
   // 前フレームに描画した行の値。同じ値なら DOM に触れない差分更新のための記録。
   private lastRowValues = new Map<string, string>();
@@ -106,10 +139,16 @@ export class PropertyWindow<A extends string = string> {
   private collapsibleContainerEl: HTMLDivElement | null = null;
   private toggleEl: HTMLDivElement | null = null;
   private collapsibleExpanded = false;
+  private relatedListEl: HTMLDivElement | null = null;
+  private relatedTitleEl: HTMLDivElement | null = null;
+  private relatedExpanded = false;
+  private relatedTitle = '';
+  private relatedCount = 0;
   // グループ名ごとの開閉状態。syncRows の再構築をまたいで保つ。
   private readonly groupExpanded = new Map<string, boolean>();
   // 前回描画した操作項目の直列化(act/label/shortcut)。同じなら DOM を組み直さない。
   private lastItemsKey = '';
+  private lastRelatedItemsKey = '';
   private readonly renameCallback: ((name: string) => void) | null;
   private renaming = false;
   private lastTitle: string;
@@ -155,9 +194,13 @@ export class PropertyWindow<A extends string = string> {
     this.rowsEl.className = 'prop-window-rows';
     this.itemsEl = document.createElement('div');
     this.itemsEl.className = 'prop-window-items';
+    this.relatedEl = document.createElement('div');
+    this.relatedEl.className = 'prop-window-related';
+    this.win.element.classList.add('property-window');
     this.win.body.appendChild(this.rowsEl);
     this.win.body.appendChild(this.itemsEl);
 
+    this.syncRelatedItems(content.relatedItems ?? [], content.relatedTitle);
     this.syncRows(content.rows);
     this.syncItems(content.items);
   }
@@ -247,6 +290,85 @@ export class PropertyWindow<A extends string = string> {
       this.itemsEl.appendChild(row);
     }
     this.reclamp();
+  }
+
+  // 対象に関連する物体の集合が変わったときだけ DOM を組み直す。欄は常にプロパティ行より上に置く。
+  public syncRelatedItems(items: readonly PropertyWindowRelatedItem[], relatedTitle = '周回物体'): void {
+    const key = `${relatedTitle}|${items.map((it) => `${it.id} ${it.label}`).join('|')}`;
+    if (key === this.lastRelatedItemsKey) return;
+    this.lastRelatedItemsKey = key;
+    this.relatedEl.innerHTML = '';
+    if (items.length === 0) {
+      this.relatedEl.remove();
+      this.relatedListEl = null;
+      this.relatedTitleEl = null;
+      this.relatedTitle = '';
+      this.relatedCount = 0;
+      return;
+    }
+    const title = document.createElement('div');
+    title.className = 'prop-window-related-title';
+    title.setAttribute('role', 'button');
+    title.tabIndex = 0;
+    title.setAttribute('aria-expanded', String(this.relatedExpanded));
+    title.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.setRelatedExpanded(!this.relatedExpanded);
+    });
+    title.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      this.setRelatedExpanded(!this.relatedExpanded);
+    });
+    this.relatedEl.appendChild(title);
+    const list = document.createElement('div');
+    list.className = 'prop-window-related-list';
+    for (const it of items) {
+      const row = document.createElement('div');
+      row.className = 'prop-window-related-item';
+      row.setAttribute('role', 'button');
+      row.tabIndex = 0;
+      row.textContent = it.label;
+      row.title = 'ダブルクリック: フォーカス · 右クリック: プロパティ';
+      row.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        it.onFocus();
+      });
+      row.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        it.onContextMenu(e.clientX, e.clientY);
+      });
+      row.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        it.onFocus();
+      });
+      list.appendChild(row);
+    }
+    this.relatedEl.appendChild(list);
+    this.relatedListEl = list;
+    this.relatedTitleEl = title;
+    this.relatedTitle = relatedTitle;
+    this.relatedCount = items.length;
+    this.syncRelatedToggleLabel(relatedTitle, items.length);
+    this.setRelatedExpanded(this.relatedExpanded, false);
+    if (!this.relatedEl.parentElement) this.win.body.insertBefore(this.relatedEl, this.rowsEl);
+    this.reclamp();
+  }
+
+  private syncRelatedToggleLabel(name: string, count: number): void {
+    if (!this.relatedTitleEl) return;
+    this.relatedTitleEl.textContent = `${this.relatedExpanded ? COLLAPSE_EXPANDED_GLYPH : COLLAPSE_COLLAPSED_GLYPH} ${name} (${count})`;
+    this.relatedTitleEl.setAttribute('aria-expanded', String(this.relatedExpanded));
+  }
+
+  private setRelatedExpanded(expanded: boolean, reclamp = true): void {
+    this.relatedExpanded = expanded;
+    if (this.relatedListEl) this.relatedListEl.style.display = expanded ? 'grid' : 'none';
+    this.syncRelatedToggleLabel(this.relatedTitle, this.relatedCount);
+    if (reclamp) this.reclamp();
   }
 
   // key/label/value の行 div を組み立てて container へ足し、値を lastRowValues へ記録する。
