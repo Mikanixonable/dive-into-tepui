@@ -78,7 +78,7 @@ export function createSun(): Sun {
 }
 
 // 単位球(半径1)の太陽本体。自己発光する光源そのものなので、シーンの照明を受けない
-// MeshBasicMaterial で塗る。広範囲視点でのみ実位置・実半径に置いて使う。
+// MeshBasicMaterial で塗る。実位置・実半径へ置くのは呼び出し側(sun-view.ts)の仕事。
 function createSunMesh(): THREE.Mesh {
   const geo = new THREE.SphereGeometry(1, 48, 24);
   const mat = new THREE.MeshBasicMaterial({ color: 0xfff3d0 });
