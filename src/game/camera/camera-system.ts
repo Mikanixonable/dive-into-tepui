@@ -242,8 +242,9 @@ export class CameraSystem {
   sync(fo: FloatingOrigin): void {
     const active = this.overviewMode ? this.mapCamera : this.combatCamera;
     syncCameraToViewpoint(active.camera, active.viewpoint, active.near, active.far, fo);
-    // 広範囲視点のときだけ操作パネルとフォーカスラベルを表示する
-    this.viewOptionsPanel.setVisible(this.overviewMode);
+    // 表示設定はマップだけでなく戦闘ビューの右ドックにも常設する。
+    // ビューごとの配置は Hud.setWorldView() が行い、ここでは hidden を解除するだけにする。
+    this.viewOptionsPanel.setVisible(true);
 
     if (this.overviewMode) {
       this.focusMarkers.syncLabels(this.activeCameraProjection, this.activeCameraPos);
