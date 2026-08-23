@@ -76,6 +76,7 @@ export class CreativeStage extends Stage {
   private activePlayer: Player | null = null;
   private manualEnemyCount = 0;
   private manualEnemySpawnDistance = STAGE_CONTROL_DEFAULT_ENEMY_SPAWN_DISTANCE;
+  private proteinColorMode: Pdb5i4rColorMode = 'chain';
 
   briefingHtml(): string {
     return '<b>クリエイティブモード</b><br>マップから艦艇を配置して軌道を眺められる。';
@@ -190,19 +191,19 @@ export class CreativeStage extends Stage {
     proteinShapeControl.element.classList.add('stage-control-shapes');
     proteinShapeControl.setSelected(selectedProteinShape);
     proteinSection.appendChild(proteinShapeControl.element);
-    let selectedProteinColorMode: Pdb5i4rColorMode = 'chain';
     const proteinColorControl = new SegmentedControl<Pdb5i4rColorMode>(
       '着色', STAGE_CONTROL_PROTEIN_COLOR_MODES,
       (mode) => {
-        selectedProteinColorMode = mode;
+        this.proteinColorMode = mode;
+        for (const enemy of this._entities.enemies) enemy.setPdb5i4rColorMode(mode);
         proteinColorControl.setSelected(mode);
       },
     );
     proteinColorControl.element.classList.add('stage-control-protein-colors');
-    proteinColorControl.setSelected(selectedProteinColorMode);
+    proteinColorControl.setSelected(this.proteinColorMode);
     proteinSection.appendChild(proteinColorControl.element);
     const proteinSpawnButton = new Button('敵をスポーン', () => {
-      this.spawnManualEnemy(selectedProteinShape, selectedProteinColorMode);
+      this.spawnManualEnemy(selectedProteinShape, String(0xffffff));
     });
     proteinSection.appendChild(proteinSpawnButton.element);
     body.appendChild(proteinSection);
@@ -249,7 +250,7 @@ export class CreativeStage extends Stage {
     const enemy = shapeDefinition.kind === 'drifting'
       ? generateDriftingEnemy(name, state, C.ENEMY_MAX_HP, color, color, this._hud, this._worldSfx, this._fx, this._scene)
       : shapeDefinition.kind === 'pdb-5i4r'
-        ? generatePdb5i4rEnemy(name, state, colorValue as Pdb5i4rColorMode, this._hud, this._worldSfx, this._fx, this._scene)
+        ? generatePdb5i4rEnemy(name, state, this.proteinColorMode, this._hud, this._worldSfx, this._fx, this._scene)
       : generateApproachingEnemy(
         name, state, C.STAGE0_ENEMY_HP, color, color, shapeDefinition.typeIndex, undefined,
         this._hud, this._worldSfx, this._fx, this._scene,
