@@ -1,6 +1,6 @@
 // 画面全体のシミュレーションステータスバー(#hud-simulation-status)の同期: MET・時間加速・NODE WARP。
 // 自機の有無に関係なく常に出す画面全体の状態。
-import { SIM_EPOCH_SEC, fmtDateTime, fmtTime } from '../utils';
+import { SIM_EPOCH_SEC, fmtDateTime, fmtElapsedUnits, fmtTime } from '../utils';
 import type { Game } from '../../game';
 
 const SYNC_INTERVAL_MS = 100;
@@ -11,7 +11,7 @@ export class SimulationStatusBar {
   constructor(private readonly els: Map<string, HTMLElement>) {}
 
   sync(game: Game): void {
-    this.setText('met', `${fmtDateTime(SIM_EPOCH_SEC + game.simulator.simTime)} / T+ ${fmtTime(game.simulator.simTime)}`);
+    this.setText('met', `${fmtDateTime(SIM_EPOCH_SEC + game.simulator.simTime)} / T+ ${fmtElapsedUnits(game.simulator.simTime)}`);
 
     const now = performance.now();
     if (now < this.nextSyncAt) return;

@@ -169,7 +169,10 @@ export class Targeter {
       this.pushMarkerItem(ammo.markerItem(viewerPos, overviewMode), visibility, mapOpacity, mapOccluded);
     }
     const celestialLabels = overviewMode ? cameraSystem.focusMarkers.activeLabels : [];
-    this.markerManager.combatMarkers.sync(this.markerItemScratch, project, overviewMode, screenScale, celestialLabels, celestialBodies);
+    this.markerManager.combatMarkers.sync(
+      this.markerItemScratch, project, overviewMode, screenScale, celestialLabels, celestialBodies,
+      cameraSystem.activeCameraPos,
+    );
     if (player) {
       this.markerManager.leadMarkers.sync(player, this.aliveScratch, this.aliveTarget, simTime, overviewMode, project);
     }
