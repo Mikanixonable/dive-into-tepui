@@ -13,6 +13,7 @@ const DEFAULT_GRID_VISIBILITY: CelestialGridVisibility = {
   equatorScaleGrid: false,
   moonOrbitScaleGrid: false,
   moonEquatorScaleGrid: false,
+  geostationaryOrbit: true,
 };
 
 const STORAGE_KEY = 'tepui.gridVisibility';

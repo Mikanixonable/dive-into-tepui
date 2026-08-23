@@ -16,6 +16,15 @@ export const HUD_BADGE_STYLE = `
   max-width: 100%; overflow-x: auto; scrollbar-width: none;
 }
 #hud-simulation-status .v { color: var(--text); }
+#hud-simulation-status .gs-speed-select {
+  min-width: 76px; padding: var(--space-1) var(--space-5) var(--space-1) var(--space-2);
+  border: 1px solid var(--edge); border-radius: var(--radius-micro);
+  background: var(--surface-2); color: var(--text); font: inherit; font-size: var(--font-s);
+  font-variant-numeric: tabular-nums; cursor: pointer;
+}
+#hud-simulation-status .gs-speed-select:hover,
+#hud-simulation-status .gs-speed-select:focus { border-color: var(--accent); background: var(--surface-3); }
+#hud-simulation-status .gs-speed-select.sim-speed-hot { color: var(--accent); }
 #hud-simulation-status .gs-sep { color: var(--edge); }
 
 #hud-viewbadge {
@@ -24,6 +33,10 @@ export const HUD_BADGE_STYLE = `
 }
 #hud-viewbadge .vb-title { color: var(--accent); }
 #hud-viewbadge .vb-mode { color: var(--text-dim); }
+#hud-viewbadge .vb-context { display: inline-flex; align-items: center; gap: var(--space-1); min-width: 0; }
+#hud-viewbadge .vb-context-k { color: var(--text-dim); }
+#hud-viewbadge .vb-context-v { color: var(--text); max-width: 18em; overflow: hidden; text-overflow: ellipsis; }
+#hud-viewbadge .vb-sep { color: var(--edge); }
 #hud-viewbadge span.vb-view-btn {
   background: var(--surface-2);
   border-radius: var(--radius-micro); padding: var(--space-1) var(--space-3);
