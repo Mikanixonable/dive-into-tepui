@@ -57,9 +57,16 @@ export class SimSpeedManager {
   // ワープ段を step 分だけ変更する。上下限を超える変更は無視する。操作できない倍率へ
   // 上げたときは、自機の操作が効かなくなったことをヒントに併記する。
   shift(step: number): void {
-    this.cancelAutoWarp();
     const next = this.levelIdx + step;
     if (next < 0 || next >= C.SIM_SPEED_LEVELS.length) return;
+    this.setSpeed(C.SIM_SPEED_LEVELS[next]!);
+  }
+
+  // UI のプルダウンから選ばれた時間加速倍率を適用する。
+  setSpeed(speed: number): void {
+    const next = C.SIM_SPEED_LEVELS.indexOf(speed);
+    if (next < 0 || next === this.levelIdx) return;
+    this.cancelAutoWarp();
     this.levelIdx = next;
     this._uiSfx.warp();
     const gated = this.canShipAct ? '' : `(自機の操作はワープ ×${C.MAX_PHYS_SIM_SPEED} 以下でのみ可能)`;

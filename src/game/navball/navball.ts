@@ -1,18 +1,19 @@
 // 表示設定(天球グリッド)の状態を保持し、localStorage へ永続化する。DOM は ViewOptionsPanel
 // (表示パネル)に同居する — グリッドトグルの配線だけをここが担う。
-import { CelestialGridVisibility } from '../../render/celestial-grid';
-import type { ViewOptionsPanel } from '../hud/view-options-panel';
+import { applyGridToggle, CelestialGridVisibility, normalizeGridVisibility } from '../../render/celestial-grid';
+import type { ViewOptionsPanel } from '../hud/panels/view-options-panel';
 
 const DEFAULT_GRID_VISIBILITY: CelestialGridVisibility = {
   stars: true,
-  ecliptic: true,
+  ecliptic: false,
   eclipticPlane: false, eclipticPole: false, eclipticGrid: false,
-  equator: true,
+  equator: false,
   equatorPlane: false, equatorPole: false, equatorGrid: false,
   eclipticScaleGrid: false,
   equatorScaleGrid: false,
   moonOrbitScaleGrid: false,
   moonEquatorScaleGrid: false,
+  geostationaryOrbit: true,
 };
 
 const STORAGE_KEY = 'tepui.gridVisibility';
@@ -24,7 +25,7 @@ function loadGridVisibility(): CelestialGridVisibility {
     if (!raw) return DEFAULT_GRID_VISIBILITY;
     const parsed = JSON.parse(raw);
     if (typeof parsed !== 'object' || parsed === null) return DEFAULT_GRID_VISIBILITY;
-    return { ...DEFAULT_GRID_VISIBILITY, ...parsed };
+    return normalizeGridVisibility({ ...DEFAULT_GRID_VISIBILITY, ...parsed });
   } catch {
     return DEFAULT_GRID_VISIBILITY;
   }
@@ -44,8 +45,9 @@ export class Navball {
 
   constructor(viewOptionsPanel: ViewOptionsPanel) {
     viewOptionsPanel.onGridToggle = (key, on) => {
-      this.gridVisibility = { ...this.gridVisibility, [key]: on };
+      this.gridVisibility = applyGridToggle(this.gridVisibility, key, on);
       saveGridVisibility(this.gridVisibility);
+      viewOptionsPanel.setGridVisibility(this.gridVisibility);
     };
     viewOptionsPanel.setGridVisibility(this.gridVisibility);
   }

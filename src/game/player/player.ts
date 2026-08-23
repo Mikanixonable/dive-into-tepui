@@ -19,9 +19,7 @@ import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { buildPlayerShip } from '../../render/ships';
 import { CelestialBody } from '../../physics/celestial-body';
 import type { CameraSystem } from '../camera/camera-system';
-import { focusTargetId } from '../camera/focus-target';
 import type { MapVisibility } from '../celestial/map-visibility';
-import type { DisplayWindow } from '../display-window-manager';
 import { generateRandomName } from '../random-name';
 import type { Stage } from '../stages/stage';
 import { PlayerThrottle } from './player-throttle';
@@ -40,7 +38,6 @@ import type { MarkerManager } from '../marker/marker-manager';
 import { RadiatorSide, RadiatorSystem } from './radiator';
 import { PowerSystem } from './power';
 import { Ephemeris } from '../../physics/ephemeris';
-import type { FrameAnchorSource } from '../../physics/frame';
 import { Plan } from '../plan/plan';
 import type { PlayerSaveData, PlanSaveData } from '../save-data';
 import { partFromSaveData, type AnyPart } from '../game-entity/parts';
@@ -128,7 +125,7 @@ export class Player extends Ship {
     this.thrustEffects = new ThrustEffects(_scene, _worldSfx);
     this.rcsEffects = new RcsEffects(_scene, _worldSfx);
     this.reentryEffects = new ReentryEffects(_scene);
-    this.markers = new PlayerMarkers(markerManager, this.id, this);
+    this.markers = new PlayerMarkers(markerManager, this.id);
 
     if (saved) {
       // 旧セーブは followPlan: boolean だった(true→'instant' / false→'off')。'powered' だった
@@ -137,6 +134,7 @@ export class Player extends Ship {
         ? saved.planExecution
         : (saved.followPlan ? 'instant' : 'off');
       this.fineAttitude = saved.fineAttitude ?? false;
+      this.showTrajectoryLine = saved.showTrajectoryLine ?? false;
       this.parts.splice(0, this.parts.length, ...saved.parts.map(partFromSaveData));
       this.refreshFromParts();
 
@@ -457,12 +455,8 @@ export class Player extends Ship {
     camera: CameraSystem,
     displayTime: number,
     isActive: boolean,
-    ephemeris: Ephemeris,
-    celestialBodies: readonly CelestialBody[],
     visibility: MapVisibility | null = null,
-    displayWindow?: DisplayWindow,
     orbitRef?: OrbitReference,
-    frameAnchors?: FrameAnchorSource,
   ): void {
     // メッシュ本体の位置・姿勢
     const displayState = this.displayState(displayTime);
@@ -486,23 +480,29 @@ export class Player extends Ship {
     this.radiator.sync();
     this.power.sync();
     // マーカー。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
-    this.markers.sync(this.state, displayState, this.att, camera.overviewMode, isActive, camera.activeCameraPos, camera.activeCameraProjection, camera.activeCameraScale, this.name, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.mapCamera.focus), ephemeris.registry, celestialBodies, visibility, displayWindow?.frame, displayTime, ephemeris, orbitRef, frameAnchors);
+    this.markers.sync(
+      this.state, this.att, camera.overviewMode, isActive, camera.activeCameraProjection,
+      this.roundsInMag, this.magsLeft, this.averageMuzzleVelocity, orbitRef,
+    );
   }
 
   // 艦は任意のタイミングで削除されうるので、Player が所有する線・ビルボード・HUD も一度だけ解放する。
   private disposed: boolean = false;
 
   // ターゲットとして指定された際などのマーカー。Enemy の markerItem と互換性を持たせる。
-  markerItem(role: 'none' | 'primary', viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): {
+  // isActive はこの艦が操作対象かどうか(マップ上の自艦マーカーを他の僚艦と塗り分けるため)。
+  markerItem(role: 'none' | 'primary', viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean, isActive: boolean): {
     key: string; cls: string; sym: string; pos: Vec3; vel: Vec3; priority: number;
     name: string; detail: string; bearingColor: string; bearingSym: string; bearingClass: string;
     bearingVisible: boolean; color: string; symMarkup: boolean;
   } {
     const dist = len(sub(pos, viewerPos));
     const priority = role === 'primary' ? C.MARKER_PRIORITY.PRIMARY_TARGET : C.MARKER_PRIORITY.PLAYER;
+    const kindCls = isActive ? 'mk-self' : 'mk-ally';
+    const color = role === 'primary' ? currentThemePalette().secondary : isActive ? 'var(--accent)' : C.COLOR_MARKER_ALLY;
     return {
       key: `player-${this.id}`,
-      cls: role === 'primary' ? 'mk-target' : 'mk-enemy', // player も味方ターゲットとして mk-enemy に準じる
+      cls: role === 'primary' ? `${kindCls} mk-target` : kindCls,
       sym: overviewMode ? this.headingHpMarkerSvg() : this.hpMarkerSvg(),
       pos,
       vel,
@@ -513,7 +513,7 @@ export class Player extends Ship {
       bearingSym: DIRECTION_GLYPH.allyBearing,
       bearingClass: 'mk-dir mk-ally-dir',
       bearingVisible: dist <= C.ALLY_BEARING_MAX_DISTANCE,
-      color: role === 'primary' ? currentThemePalette().secondary : C.COLOR_MARKER_ALLY,
+      color,
       symMarkup: true,
     };
   }
@@ -548,6 +548,7 @@ export class Player extends Ship {
       parts: this.parts.map(p => ({ ...p })) as AnyPart[],
       planExecution: this.planExecution,
       fineAttitude: this.fineAttitude,
+      showTrajectoryLine: this.showTrajectoryLine,
       plan: this.serializePlan(),
     };
   }

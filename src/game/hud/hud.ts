@@ -2,19 +2,19 @@
 // root/svgOverlay の公開・常設パネル群の所有を担う。
 import { buildHudDom } from './hud-root';
 import type { HudWorldView } from './panel-shell';
-import { VesselPanel } from './vessel-panel';
-import { OrbitPanel } from './orbit-panel';
-import { TargetPanel } from './target-panel';
-import { EnemiesPanel } from './enemies-panel';
-import { SimulationStatusBar } from './simulation-status-bar';
-import { MapScaleBadge } from './map-scale-badge';
-import { OrbitAnalysisWindow } from './orbit-analysis-window';
+import { VesselPanel } from './panels/vessel-panel';
+import { OrbitPanel } from './orbit/orbit-panel';
+import { TargetPanel } from './panels/target-panel';
+import { EnemiesPanel } from './panels/enemies-panel';
+import { SimulationStatusBar } from './panels/simulation-status-bar';
+import { MapScaleBadge } from './panels/map-scale-badge';
+import { OrbitAnalysisWindow } from './orbit/orbit-analysis-window';
 import type { Input } from '../input/input';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { Game } from '../game';
 import type { OverlayLayers } from './overlay-layer';
 import { TEMP_WINDOW_GROUP, type OverlayManager } from './overlay-manager';
-import type { HelpPanel } from './help-panel';
+import type { HelpPanel } from './windows/help-panel';
 
 // 軌道分析パネルを開く既定位置。ドラッグ可能ウィンドウなのでビューポート内へクランプされる。
 const ANALYSIS_WINDOW_OPEN_X = 320;
@@ -29,6 +29,7 @@ export class Hud {
   readonly overlayManager: OverlayManager;
   readonly helpPanel: HelpPanel;
   readonly simulationStatusBar: SimulationStatusBar;
+  readonly viewBadgeRow: HTMLElement;
   readonly mapScaleBadge: MapScaleBadge;
   readonly vesselPanel: VesselPanel;
   readonly orbitPanel: OrbitPanel;
@@ -51,6 +52,7 @@ export class Hud {
     this.overlayManager = overlayManager;
     this.helpPanel = helpPanel;
     this.simulationStatusBar = new SimulationStatusBar(els);
+    this.viewBadgeRow = els.get('gs-viewrow')!;
     this.mapScaleBadge = new MapScaleBadge(els);
     this.vesselPanel = new VesselPanel(els);
     this.orbitPanel = new OrbitPanel(els);
@@ -81,6 +83,17 @@ export class Hud {
   // 戦闘/マップ固有の HUD ルートを切り替える。表示状態は ViewManager が正本として通知する。
   setWorldView(view: HudWorldView): void {
     const map = view === 'map';
+    const orbit = this.root.querySelector<HTMLElement>('#hud-orbit');
+    const leftRail = (map ? this.mapRoot : this.combatRoot)
+      .querySelector<HTMLElement>('.hud-rail-left');
+    if (orbit && leftRail && orbit.parentElement !== leftRail) {
+      if (map) {
+        const viewOptions = leftRail.querySelector<HTMLElement>('#hud-view-options');
+        leftRail.insertBefore(orbit, viewOptions ?? leftRail.firstChild);
+      } else {
+        leftRail.appendChild(orbit);
+      }
+    }
     this.combatRoot.classList.toggle('active', !map);
     this.mapRoot.classList.toggle('active', map);
     // 既存のビュー別スタイルが残る間も、共有 HUD の状態を同期しておく。

@@ -18,7 +18,7 @@ import type { Stage } from '../stages/stage';
 import type { SimSpeedManager } from '../sim-speed-manager';
 import type { Input } from '../input/input';
 import type { CombatTarget } from '../targeter';
-import type { MapVisibility, MapVisibilityPolicy } from '../celestial/map-visibility';
+import type { MapVisibilityPolicy } from '../celestial/map-visibility';
 import type { CameraSystem } from '../camera/camera-system';
 import type { Ephemeris } from '../../physics/ephemeris';
 import type { DisplayWindow } from '../display-window-manager';
@@ -89,7 +89,7 @@ export class EntityManager {
       this.addEnemy(new Enemy({ saved: data, simTime }, hud, worldSfx, this.effects, scene));
     }
     for (const data of save.ammoPickups) {
-      this.addAmmoPickup(new AmmoPickup({ saved: data, simTime }, scene, markerManager));
+      this.addAmmoPickup(new AmmoPickup({ saved: data, simTime }, scene));
     }
     for (const data of save.bases) {
       this.addBase(new Base({ saved: data, simTime }, scene, hud, worldSfx, this.effects, markerManager));
@@ -329,14 +329,12 @@ export class EntityManager {
   // ものなので、どれが操作対象かを各艦へ渡す。
   syncPlayers(
     activePlayer: Player | null, fo: FloatingOrigin, cameraSystem: CameraSystem,
-    displayTime: number, ephemeris: Ephemeris, celestialBodies: readonly CelestialBody[],
-    visibilityPolicy: MapVisibilityPolicy | null, displayWindow?: DisplayWindow, orbitRef?: OrbitReference,
-    frameAnchors?: FrameAnchorSource,
+    displayTime: number, visibilityPolicy: MapVisibilityPolicy | null, orbitRef?: OrbitReference,
   ): void {
     for (const ship of this.players) {
       ship.syncPlayer(
-        fo, cameraSystem, displayTime, ship === activePlayer, ephemeris, celestialBodies,
-        visibilityPolicy?.entity('player', ship === activePlayer) ?? null, displayWindow, orbitRef, frameAnchors,
+        fo, cameraSystem, displayTime, ship === activePlayer,
+        visibilityPolicy?.entity('player', ship === activePlayer) ?? null, orbitRef,
       );
     }
   }
@@ -387,22 +385,6 @@ export class EntityManager {
     const overviewMode = cameraSystem.overviewMode;
     const cameraPos = cameraSystem.activeCameraPos;
     for (const e of this.all()) e.equatorNodes?.sync(project, overviewMode, cameraPos);
-  }
-
-  // 弾薬・基地の位置マーカーを displayTime の位置へ置く。ラベルの距離は viewerPos 基準で、
-  // 艦が1隻も無い間は距離を添えない。
-  syncMarkers(
-    cameraSystem: CameraSystem, displayTime: number, viewerPos: Vec3 | null,
-    celestialBodies: readonly CelestialBody[], visibilityPolicy: MapVisibilityPolicy | null,
-  ): void {
-    const project = cameraSystem.activeCameraProjection;
-    const scale = cameraSystem.activeCameraScale;
-    const overviewMode = cameraSystem.overviewMode;
-    const visibilityOf = (kind: 'ammo' | 'base'): MapVisibility | null =>
-      (overviewMode ? visibilityPolicy?.entity(kind) ?? null : null);
-    for (const ammoPickup of this.ammoPickups) {
-      ammoPickup.marker?.sync(project, scale, displayTime, overviewMode, cameraSystem.activeCameraPos, viewerPos, celestialBodies, visibilityOf('ammo'));
-    }
   }
 
   // 自機以外のメッシュを displayTime 時点の状態に同期する。自機はエフェクト・ベルト・

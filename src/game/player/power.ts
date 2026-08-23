@@ -37,6 +37,13 @@ export class PowerSystem {
     p.deployTarget = p.deployTarget === 0 ? 1 : 0;
   }
 
+  // side の展開目標を明示的に設定する。HUD の「展開」「収納」ボタンから使う。
+  setDeployed(side: SolarSide, deployed: boolean): void {
+    const p = this.panels[side];
+    const target: 0 | 1 = deployed ? 1 : 0;
+    if (p.deployTarget !== target) p.deployTarget = target;
+  }
+
   // 毎フレーム呼ぶ。sunlit は sunlitFactor(0..1)、sunDir は太陽方向の単位ベクトル(world)。
   update(dt: number, sunlit: number, sunDir: Vec3, att: Attitude, ship: import('../game-entity/ship').Ship): void {
     // 展開度の更新

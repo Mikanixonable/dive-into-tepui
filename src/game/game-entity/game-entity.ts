@@ -27,7 +27,6 @@ import type { Stage } from '../stages/stage';
 import type { Contact } from './contact';
 import { EntityIdAllocator } from './entity-id';
 import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';
-import type { EntityMarker } from '../marker/entity-marker';
 import type { MarkerManager } from '../marker/marker-manager';
 
 const identityAttitude = (): Attitude => ({
@@ -35,6 +34,13 @@ const identityAttitude = (): Attitude => ({
   w: v3(),
   inertia: v3(1, 1, 1),
 });
+
+export interface OrbitLineSyncContext {
+  readonly displayTime: number;
+  readonly ephemeris: Ephemeris;
+  readonly frameAnchors: FrameAnchorSource;
+  readonly force?: boolean;
+}
 
 // 軌道上を運動するゲーム内エンティティの基底。表示ルート・HP・生死・姿勢・AI といったゲーム側の
 // 付帯情報と、種別ごとの積分パラメータ(bcInv・historyDuration)を持つ。
@@ -92,10 +98,11 @@ export class GameEntity {
   predictedLine: TrajectoryLine | null = null;
   // 過去に通ってきた軌跡の線。持たせるかは種別の判断。
   actualLine: TrajectoryLine | null = null;
+  // プロパティウィンドウから切り替える、軌道線の表示方式。true = 解析軌道楕円の代わりに
+  // 予測線・過去線を表示する。
+  showTrajectoryLine = false;
   // 自身の軌道と中心天体の赤道面との交点マーカー。null = まだ出す必要が生じていない。
   equatorNodes: EquatorNodeMarkerPair | null = null;
-  // 自身の位置を指すマーカー。null = 出さない。
-  marker: EntityMarker | null = null;
   // 弾道係数の逆数 Cd·A/m(既定 0 = 抵抗なし)。抗力が要求する刻みを外から引けるよう公開する。
   readonly bcInv: number = 0;
   protected readonly srpCoeff: number = 0;
@@ -217,16 +224,21 @@ export class GameEntity {
     this.orbitLine = null;
   }
 
-  // orbitLine を現在位置で最も強く引く天体まわりの軌道楕円に合わせる。線を持たなければ何もしない。
-  // frame / displayTime / ephemeris を渡すと、その座標系・時刻で楕円を描く。
+  // orbitLine を表示時刻の状態で最も強く引く天体まわりの軌道楕円に合わせる。線を持たなければ
+  // 何もしない。displayTime が現在時刻より先なら、表示用の予測状態を使って船体と同じ時刻に揃える。
   syncOrbitLine(
-    fo: FloatingOrigin, camera: THREE.Camera, frameAnchors: FrameAnchorSource, force = false,
-    frame?: ReferenceFrame, displayTime?: number, ephemeris?: Ephemeris,
+    fo: FloatingOrigin, camera: THREE.Camera, context: OrbitLineSyncContext,
   ): void {
     if (this.orbitLine === null) return;
-    const center = strongestAttractor(this.state.r, frameAnchors.bodies);
+    const { displayTime, ephemeris, frameAnchors, force = false } = context;
+    const state = this.displayState(displayTime, ephemeris);
+    if (state === null) {
+      this.orbitLine.sync(null, fo, camera);
+      return;
+    }
+    const center = strongestAttractor(state.r, frameAnchors.bodies);
     this.orbitLine.sync(
-      this.orbitalElementsAround(center), fo, camera, force, frame, displayTime, ephemeris, frameAnchors,
+      orbitalElementsOf(state, center), fo, camera, { force },
     );
   }
 
@@ -504,7 +516,6 @@ export class GameEntity {
   dispose(): void {
     this.scene?.remove(this.renderObject);
     this.equatorNodes?.dispose();
-    this.marker?.dispose();
     this.hideOrbitLine();
     this.hidePredictedLine();
     this.hideActualLine();

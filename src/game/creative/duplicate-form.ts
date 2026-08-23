@@ -1,4 +1,4 @@
-// マップ上の既存オブジェクトを「複製」するための、状態→艦艇配置フォーム値の逆変換。
+// マップ上の既存オブジェクトを「複製」するための、状態→物体配置フォーム値の逆変換。
 // elements.ts の orbitPlaneBasis(inc, raan, argp → pHat/qHat) の逆方向を解くだけで、
 // 新しい軌道計算はしない。中心天体の選定・要素化・真近点角の算出は celestial-body.ts/elements.ts の
 // 既存関数(strongestAttractor/elementsAround/trueAnomalyAt/apsisAltitudes)をそのまま使う。
@@ -24,7 +24,7 @@ function raanArgpFromBasis(el: OrbitalElements): { raanDeg: number; argpDeg: num
   return { raanDeg, argpDeg };
 }
 
-// state の接触軌道要素を、艦艇配置パネルの軌道要素フォーム値(サイズ/形は近地点+遠地点高度)へ
+// state の接触軌道要素を、物体配置パネルの軌道要素フォーム値(サイズ/形は近地点+遠地点高度)へ
 // 逆算する。中心天体は state に最も強く働く重力源から選ぶが、パネルが基準天体に選べるのは
 // 公転天体のみなので、恒星が選ばれた場合は ECI 原点(origin)へ落とす。放物線・双曲線軌道
 // (e>=1)は遠地点高度も基準天体の選択も意味を持たないため null。

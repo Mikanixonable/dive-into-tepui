@@ -8,7 +8,10 @@ import { SOLAR_SYSTEM, bodyDef, primaryOf } from '../../src/physics/solar-system
 import {
   TRIANGULAR_STABILITY_MASS_RATIO, collinearClearanceRatio, hasStableTriangularPoints,
 } from '../../src/physics/lagrange';
-import { BodyClassToggles, DEFAULT_BODY_CLASS_TOGGLES, isPositionInFocusedSystem, systemChainAt, systemMembersAt } from '../../src/game/celestial/body-visibility';
+import {
+  applyBodyClassDisplayMode, bodyClassDisplayMode, BodyClassToggles, DEFAULT_BODY_CLASS_TOGGLES,
+  isPositionInFocusedSystem, nextBodyClassDisplayMode, systemChainAt, systemMembersAt,
+} from '../../src/game/celestial/body-visibility';
 import { MapVisibilityPolicy } from '../../src/game/celestial/map-visibility';
 import { v3, addScaled } from '../../src/physics/vec3';
 
@@ -113,6 +116,28 @@ export function register(): void {
       category: true, icon: false, label: false, orbit: true, pickable: false,
     });
     assert.equal(hidden.entity('base').orbit, false);
+  });
+
+  test('visibility controls: 対象クラスは非表示→ラベル→軌道+ラベルを循環する', () => {
+    const orbit = bodyClassDisplayMode(DEFAULT_BODY_CLASS_TOGGLES, 'planetVisible');
+    assert.equal(orbit, 'orbit');
+    assert.equal(nextBodyClassDisplayMode(orbit, true), 'hidden');
+    assert.equal(nextBodyClassDisplayMode('hidden', true), 'label');
+    assert.equal(nextBodyClassDisplayMode('label', true), 'orbit');
+
+    const label = applyBodyClassDisplayMode(DEFAULT_BODY_CLASS_TOGGLES, 'planetVisible', 'label');
+    assert.equal(label.planetVisible, true);
+    assert.equal(label.planetName, true);
+    assert.equal(label.planetOrbit, false);
+
+    const hidden = applyBodyClassDisplayMode(label, 'planetVisible', 'hidden');
+    assert.equal(bodyClassDisplayMode(hidden, 'planetVisible'), 'hidden');
+    assert.equal(hidden.planetVisible, false);
+    assert.equal(hidden.planetName, false);
+    assert.equal(hidden.planetOrbit, false);
+
+    assert.equal(nextBodyClassDisplayMode('hidden', false), 'label');
+    assert.equal(nextBodyClassDisplayMode('label', false), 'hidden');
   });
 
   test('visibility policy: 操作対象の自機はカテゴリを閉じても位置を失わない', () => {

@@ -8,9 +8,9 @@ import { isOccluded } from '../../physics/occlusion';
 import { Projected } from '../../physics/projection';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { SIM_EPOCH_SEC, fmtMarkerDist } from '../hud/utils';
-import { celestialBodyName } from '../hud/frame-labels';
-import { getApsisLabelSpec } from '../hud/orbit-labels';
-import { TickLabelMode, TickRank, calendarBoundaries, elementTimeLabel, tickLabel } from '../hud/calendar-ticks';
+import { celestialBodyName } from '../hud/frame/frame-labels';
+import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
+import { TickLabelMode, TickRank, calendarBoundaries, elementTimeLabel, tickLabel } from '../hud/orbit/calendar-ticks';
 import { MarkerManager } from '../marker/marker-manager';
 import { ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-glyphs';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
@@ -100,8 +100,8 @@ export class PlanDisplay {
     const { simTime, displayTime } = displayWindow;
     this.celestialBodies = this.ephemeris.celestialBodiesAt(displayTime);
     this.path.update(
-      planData, ship, this.ephemeris, displayWindow.frame, simTime, frameAnchors, celestialBodyProvider,
-      displayWindow.duration,
+      planData, ship, this.ephemeris, displayWindow.frame, simTime, displayTime, frameAnchors,
+      celestialBodyProvider, displayWindow.duration,
     );
     this.ghost = this.ghostAt(displayTime, simTime);
     // 時刻併記の可否・表記は PREDICT パネルの設定(displayWindow 経由)にそのまま従う。
@@ -179,6 +179,7 @@ export class PlanDisplay {
     }
     this.markerManager.setPosition(
       'plannedPlayer', 'mk-planned', ENTITY_GLYPH.ghost, this.ghost.pos, project, this.ghost.label,
+      1, undefined, undefined, false, false, undefined, cameraPos,
     );
   }
 
@@ -209,22 +210,21 @@ export class PlanDisplay {
     const pe = final.periapsis;
     const ap = final.apoapsis;
 
-    // 中心天体は極値を検出したときと同じもの(区間が持つ apsisCenter)を使い、その位置だけを
+    // 中心天体は極値ごとに検出時と同じものを使い、その位置だけを
     // 極値の時刻で引き直す — 距離を測る基準が検出時と食い違わないようにするため。
-    const center = final.apsisCenter;
+    const peCenter = final.periapsisCenter;
+    const apCenter = final.apoapsisCenter;
     let peDist = 0;
-    let peCenter: CelestialBody | null = null;
-    if (pe && center) {
-      peCenter = center;
-      peDist = len(sub(pe.r, this.ephemeris.positionOf(center.id, pe.t)));
+    if (pe && peCenter) {
+      peDist = len(sub(pe.r, this.ephemeris.positionOf(peCenter.id, pe.t)));
     }
     let apDist = 0;
-    let apCenter: CelestialBody | null = null;
-    if (ap && center) {
-      apCenter = center;
-      apDist = len(sub(ap.r, this.ephemeris.positionOf(center.id, ap.t)));
+    if (ap && apCenter) {
+      apDist = len(sub(ap.r, this.ephemeris.positionOf(apCenter.id, ap.t)));
     }
-    if (pe && ap && (apDist - peDist) / (apDist + peDist) < C.APSIS_MIN_ECC) return [];
+    // 中心天体が遷移の前後で変わる場合、異なる中心からの距離を比較して円軌道と判定しない。
+    if (pe && ap && peCenter && apCenter && peCenter.id === apCenter.id
+      && (apDist - peDist) / (apDist + peDist) < C.APSIS_MIN_ECC) return [];
 
     const namePrefix = ownerName ? (this.path.nodeCount > 0 ? `${ownerName} (計画)` : ownerName) : undefined;
     const labelWithTime = (base: string, t: number): string =>
@@ -299,7 +299,10 @@ export class PlanDisplay {
       } else if (overviewMode && isOccluded(cameraPos, icon.pos, this.celestialBodies)) {
         this.markerManager.fadeOut(key);
       } else {
-        this.markerManager.setPosition(key, 'mk-apsis', ORBIT_POINT_GLYPH.apsis, icon.pos, project, icon.label);
+        this.markerManager.setPosition(
+          key, 'mk-apsis', ORBIT_POINT_GLYPH.apsis, icon.pos, project, icon.label,
+          1, undefined, undefined, false, false, undefined, cameraPos,
+        );
       }
     }
   }
@@ -313,7 +316,10 @@ export class PlanDisplay {
       } else if (overviewMode && isOccluded(cameraPos, icon.pos, this.celestialBodies)) {
         this.markerManager.fadeOut(key);
       } else {
-        this.markerManager.setPosition(key, 'mk-impact', ORBIT_POINT_GLYPH.impact, icon.pos, project, icon.label);
+        this.markerManager.setPosition(
+          key, 'mk-impact', ORBIT_POINT_GLYPH.impact, icon.pos, project, icon.label,
+          1, undefined, undefined, false, false, undefined, cameraPos,
+        );
       }
     }
   }

@@ -3,7 +3,7 @@
 // プロパティウィンドウ)は map-context-actions.ts の MapContextActions が持つ。
 import * as C from './const';
 import { fmtDist, fmtSpeed } from './hud/utils';
-import { celestialBodyName } from './hud/frame-labels';
+import { celestialBodyName } from './hud/frame/frame-labels';
 import { MapPickable } from './map-pickable';
 import { focusTargetId } from './camera/focus-target';
 import { EntityManager } from './simulation/entity-manager';
@@ -12,7 +12,7 @@ import { NavTarget } from './nav-target';
 import type { FrameAnchorSource } from '../physics/frame';
 import { CameraSystem } from './camera/camera-system';
 import { PlanEditor } from './plan/plan-editor';
-import type { ActivePlayerController } from './active-player-controller';
+import type { ActivePlayerController } from './active-controllable-controller';
 import { len, sub } from '../physics/vec3';
 import { strongestAttractor } from '../physics/celestial-body';
 import { isOccluded } from '../physics/occlusion';
@@ -155,6 +155,11 @@ export class MapPickables {
       if (e.equatorNodes) for (const item of e.equatorNodes.mapPickables()) this.appendPickable(item);
     }
 
+    // 太陽系順の並べ替え基準。恒星の無いレジストリでは undefined のまま(呼び出し側が
+    // 自機距離へ委譲する)。
+    const starPos = this.ephemeris.starId !== null ? this.ephemeris.positionOf(this.ephemeris.starId, displayTime) : null;
+    if (starPos) for (const item of this.candidateItems) item.distanceFromStar = len(sub(item.pos, starPos));
+
     // 自艦からの距離は一覧の実用順と補助情報にだけ使う。軌道予測はここで増やさない。
     const viewer = this.activePlayers.current?.state;
     if (viewer) for (const item of this.candidateItems) {
@@ -218,6 +223,7 @@ export class MapPickables {
     // ように、候補へ追加するたびに全ての派生フィールドを上書きする。
     item.detail = detail;
     item.distance = undefined;
+    item.distanceFromStar = undefined;
     item.priority = priority;
     item.time = time;
     item.inFocusedSystem = undefined;

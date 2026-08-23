@@ -22,7 +22,7 @@ import type { StageSaveData } from '../save-data';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
 import type { ObjectType } from '../creative/object-placer-panel';
 import type { KinematicState } from '../../physics/kinematic-state';
-import type { ActivePlayerController } from '../active-player-controller';
+import type { ActivePlayerController } from '../active-controllable-controller';
 import type { CelestialBodyId } from '../../physics/celestial-body';
 import { loadAbsoluteEphemeris } from '../../physics/ephemeris-catalog';
 import { profileAt } from '../../physics/ephemeris-profile';
@@ -171,7 +171,7 @@ export abstract class Stage {
     this.scoreCounter = new ScoreCounter(saved?.scoreCounter);
     this._phase = saved?.phase ?? 'playing';
     this.restored = saved !== undefined;
-    this.logistics = new Logistics(hud, worldSfx, uiSfx, scene, entities, markerManager, saved?.logistics);
+    this.logistics = new Logistics(hud, worldSfx, uiSfx, scene, entities, saved?.logistics);
     this.statusPanel = new StatusPanel(hud.combatRoot);
   }
 

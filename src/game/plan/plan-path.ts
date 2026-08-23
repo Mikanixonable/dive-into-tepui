@@ -20,7 +20,7 @@ import { DisplayDurationSource, PlanData, TimeRange, segmentDurationFrom } from 
 import { BodyImpact, PredictedArc } from '../simulation/predicted-arc';
 import type { FutureCelestialBodyProvider } from '../simulation/arc-bodies';
 import type { Controllable } from '../game-entity/controllable';
-import { clipSamplesFrom, clipSamplesTo, stateAt, withinEnd } from './arc-range';
+import { clipSamplesTo, samplesInRange, stateAt, withinEnd } from './arc-range';
 import { goldenSectionMin } from '../../physics/optimize';
 import * as C from '../const';
 
@@ -50,7 +50,8 @@ type SegmentSource = { arc: PredictedArc | null; from: number; to: number; owned
 export interface FinalSegment {
   readonly periapsis: KinematicState | null;
   readonly apoapsis: KinematicState | null;
-  readonly apsisCenter: CelestialBody | null;
+  readonly periapsisCenter: CelestialBody | null;
+  readonly apoapsisCenter: CelestialBody | null;
 }
 
 export interface PlanPathSample {
@@ -72,7 +73,7 @@ export class PlanPath {
   private frame: ReferenceFrame = { center: 'earth', rotatingWith: null };
   private ephemeris: Ephemeris | null = null;
   private unbakeTime = 0;
-  // un-bake は update() が受け取った currentTime に固定される。同じフレーム中に ghost/impact/apsis/tick と
+  // un-bake は update() が受け取った displayTime に固定される。同じフレーム中に ghost/impact/apsis/tick と
   // 折れ線同期・ポインタ判定が何度も参照するため、update 単位で1回だけ組み立てる。天体暦の
   // celestialBodies はフレームごとに差し替わりうるので、時刻だけでなく update() ごとに無効化する。
   private unbakeTransform: FrameTransform | null = null;
@@ -107,17 +108,17 @@ export class PlanPath {
   // 参照)。表示変換の文脈(座標系・un-bake 時刻)もこのフレームのものに更新する。
   update(
     planData: PlanData, ship: Controllable | null,
-    ephemeris: Ephemeris, frame: ReferenceFrame, currentTime: number,
+    ephemeris: Ephemeris, frame: ReferenceFrame, simTime: number, displayTime: number,
     frameAnchors: FrameAnchorSource, celestialBodyProvider: FutureCelestialBodyProvider,
     displayDurationSec: number,
   ): void {
     this.frame = frame;
     this.ephemeris = ephemeris;
-    this.unbakeTime = currentTime;
-    this.displayFrom = currentTime;
-    this.displayTo = currentTime + Math.max(0, displayDurationSec);
+    this.unbakeTime = displayTime;
+    this.displayFrom = simTime;
+    this.displayTo = simTime + Math.max(0, displayDurationSec);
     this.frameAnchors = frameAnchors;
-    this.unbakeTransform = ephemeris.frameTransformAt(frame, currentTime, frameAnchors);
+    this.unbakeTransform = ephemeris.frameTransformAt(frame, displayTime, frameAnchors);
     this.lastRebuiltArcs = 0;
     // 起点→node…→末尾区間に分解する
     const segments = buildSegments(planData, ephemeris, this.displayDuration);
@@ -156,7 +157,8 @@ export class PlanPath {
     this.final = {
       periapsis: this.periapsisOf(finalSource),
       apoapsis: this.apoapsisOf(finalSource),
-      apsisCenter: finalSource.arc?.apsides?.center ?? null,
+      periapsisCenter: finalSource.arc?.apsides?.periapsisCenter ?? null,
+      apoapsisCenter: finalSource.arc?.apsides?.apoapsisCenter ?? null,
     };
   }
 
@@ -172,9 +174,10 @@ export class PlanPath {
     const out: (readonly KinematicState[])[] = [];
     for (let i = 0; i < this.activeCount; i++) {
       const source = this.sources[i]!;
-      const drawn = clipSamplesFrom(
-        clipSamplesTo(this.samplesOf(i, source), Math.min(this.displayTo, source.to)),
-        Math.max(this.displayFrom, source.from),
+      const from = Math.max(this.displayFrom, source.from);
+      const to = Math.min(this.displayTo, source.to);
+      const drawn = samplesInRange(
+        this.samplesOf(i, source), from, to, (t) => this.stateAtSource(source, t),
       );
       if (drawn.length >= 2) out.push(drawn);
     }

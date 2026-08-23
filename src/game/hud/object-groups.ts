@@ -2,8 +2,9 @@
 // マーカー(近地点/遠地点・相対AN/DN・赤道昇降交点・空クリック)はオブジェクトではないので出さない。
 import type { CelestialRegistry } from '../../physics/solar-system';
 import { bodyClassOf } from '../celestial/body-class';
+import { celestialBodyName } from './frame/frame-labels';
 import type { MapPickable } from '../map-pickable';
-import type { ObjectPickerGroup } from './object-picker';
+import type { ObjectPickerGroup } from './windows/object-picker';
 
 const GROUP_LABELS = ['恒星', '惑星', '準惑星', '衛星', '小天体', 'ラグランジュ点', '自艦', '敵', '基地', '弾薬'] as const;
 
@@ -17,9 +18,10 @@ export function lagrangeParentId(id: string): string {
 
 // items をジャンル別にグループ分けする。値は MapPickable.id。空のグループは返さない。
 export function groupPickables(
-  registry: CelestialRegistry, items: readonly MapPickable[],
+  registry: CelestialRegistry, items: readonly MapPickable[], includeAllRegistryBodies = false,
 ): readonly ObjectPickerGroup<string>[] {
   const byLabel = new Map<typeof GROUP_LABELS[number], [string, string][]>();
+  const bodyIds = new Set<string>();
   // label のグループへ [id, name] を積む(未登場のラベルなら新規に作る)。
   const push = (label: typeof GROUP_LABELS[number], id: string, name: string): void => {
     const list = byLabel.get(label);
@@ -30,6 +32,7 @@ export function groupPickables(
   for (const item of items) {
     switch (item.kind) {
       case 'body':
+        bodyIds.add(item.id);
         if (LAGRANGE_ID.test(item.id)) { push('ラグランジュ点', item.id, item.name); break; }
         switch (bodyClassOf(registry, item.id)) {
           case 'star': push('恒星', item.id, item.name); break;
@@ -44,6 +47,21 @@ export function groupPickables(
       case 'base': push('基地', item.id, item.name); break;
       case 'ammo': push('弾薬', item.id, item.name); break;
       case 'apsis': case 'relnode': case 'eqnode': case 'empty-space': break;
+    }
+  }
+
+  // カメラ基準のように「表示中の候補」ではなく、登録済み天体を全件選ばせる
+  // 呼び出し側では、表示設定で除外された天体も補う。
+  if (includeAllRegistryBodies) {
+    for (const id of Object.keys(registry)) {
+      if (bodyIds.has(id)) continue;
+      switch (bodyClassOf(registry, id)) {
+        case 'star': push('恒星', id, celestialBodyName(id)); break;
+        case 'planet': push('惑星', id, celestialBodyName(id)); break;
+        case 'dwarf': push('準惑星', id, celestialBodyName(id)); break;
+        case 'satellite': push('衛星', id, celestialBodyName(id)); break;
+        case 'smallBody': push('小天体', id, celestialBodyName(id)); break;
+      }
     }
   }
 

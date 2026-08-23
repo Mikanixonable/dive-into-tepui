@@ -25,7 +25,7 @@ import { Predictor } from './simulation/predictor';
 import { Input } from './input/input';
 import { TouchControls } from './input/touch';
 import { Hud } from './hud/hud';
-import { PauseMenu } from './hud/pause-menu';
+import { PauseMenu } from './hud/windows/pause-menu';
 import { WorldSfx } from '../audio/sfx/world-sfx';
 import { UiSfx } from '../audio/sfx/ui-sfx';
 import { GameScene } from '../render/scene';
@@ -44,9 +44,11 @@ import { Navball } from './navball/navball';
 import { GameSaveData } from './save-data';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import { Docking } from './docking';
-import { ViewBadge } from './hud/view-badge';
-import { FrameControls } from './hud/frame-controls';
+import { ViewBadge, type ViewBadgeContext } from './hud/view-badge';
+import { FrameControls } from './hud/frame/frame-controls';
 import { CombatHudController, MapHudController } from './hud/view-hud-controller';
+import { focusTargetId } from './camera/focus-target';
+import { celestialBodyName } from './hud/frame/frame-labels';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -211,7 +213,7 @@ export class Game {
     this.mapActions = new MapContextActions(
       this._hud, this.entities, this.ephemeris, this.navTarget,
       this.cameraSystem, this.editor, this.simSpeedManager, this.pauseMenu, this.mapPickables,
-      this.activePlayers, this.frameControls, this.activeStage,
+      this.activePlayers, this.frameControls, this.activeStage, this.targeter,
     );
 
     // 初期ビューは世界が組み上がった後にしか決まらない — 攻略ステージの自機は Stage の初期配置で
@@ -235,7 +237,7 @@ export class Game {
       () => this.controlledBase,
     );
     this.viewManager.setControlledBaseProvider(() => this.controlledBase);
-    this.viewBadge = new ViewBadge(this._hud.layers.notify, this._hud.layers.notify, this.viewManager, this._hud.overlayManager);
+    this.viewBadge = new ViewBadge(this._hud.viewBadgeRow, this._hud.layers.notify, this.viewManager, this._hud.overlayManager);
 
     // ロード復元時の focus は MapCamera が直接持つだけで frameControls.setFocus() を経由しないため、
     // ここで明示的に同期しないと軌道表示の基準系がフォーカス天体に追随しない。
@@ -459,13 +461,34 @@ export class Game {
 
   // ------------------------------------------------------------------ sync
 
+  // フォーカス対象は天体・エンティティだけでなく、アプシス/交点などの一時マーカーも指しうる。
+  // まず現在の MapPickable と実体を引き、最後に id を表示することで、マップ候補が更新されていない
+  // 戦闘ビューや一時的に非表示の対象でもステータス表示を空欄にしない。
+  private objectName(id: string): string {
+    const pickable = this.mapPickables.pickables.find((item) => item.id === id);
+    if (pickable) return pickable.name;
+    const entity = this.entities.all().find((item) => item.id === id);
+    if (entity) return entity.name;
+    if (id in this.ephemeris.registry) return celestialBodyName(id);
+    return id;
+  }
+
+  private viewBadgeContext(): ViewBadgeContext {
+    const focus = this.cameraSystem.mapCamera.focus;
+    return {
+      focus: focus.kind === 'object' ? this.objectName(focusTargetId(focus)!) : '固定点',
+      control: (this.controlledBase ?? this.player)?.name ?? null,
+      target: this.navTarget.name,
+    };
+  }
+
   sync(graphics: GraphicsSettingsData): void {
     const activeControllable = this.activeControllableEntity;
     const player = this.player;
     // update() と sync() は同一の animate() 呼び出し内で同期的に実行されるため、
     // update() が確定させた表示窓をそのまま読める。
     const displayWindow = this.displayWindowManager.current;
-    this.viewBadge.sync(this.activeStage.stageClass.selectLabel);
+    this.viewBadge.sync(this.activeStage.stageClass.selectLabel, this.viewBadgeContext());
     // 原点(位置)はアクティブカメラの ECI 位置 — cameraSystem.update() は update フェーズの
     // 毎フレーム呼ばれるので、この sync の時点で activeCameraPos は確定済み。
     // 速度基準は自機のまま(弾の相対速度描画・再突入エフェクトが前提とする値で、原点とは別concern)。
@@ -489,7 +512,9 @@ export class Game {
     // 表示・選択可否はこのフレームの update フェーズで MapPickables が確定させたものを読む
     // (選べる対象と描かれる対象が同じ判定から出るようにする)。
     const visibilityPolicy = this.mapPickables.visibilityPolicy;
-    const combatTargets = this.entities.getCombatTargets(player);
+    // マーカー描画は操作艦自身も他の船と同列に扱うので、ターゲット選定用(自分自身は除外)とは
+    // 別に、除外なしの一覧を使う。
+    const combatTargets = this.entities.getCombatTargets(null);
 
     this._environment.sync(
       fo, displayTime,
@@ -500,22 +525,18 @@ export class Game {
     const orbitRef = player
       ? this.orbitReference.resolve(player.state.r, celestialBodies, this.navTarget, this.entities, this.ephemeris, player.state.t)
       : undefined;
-    this.entities.syncPlayers(
-      player, fo, this.cameraSystem, displayTime, this.ephemeris, displayCelestialBodies, visibilityPolicy, displayWindow, orbitRef,
-      this.frameAnchors,
-    );
+    this.entities.syncPlayers(player, fo, this.cameraSystem, displayTime, visibilityPolicy, orbitRef);
     this.entities.syncBases(
       this.controlledBase, fo, this.cameraSystem, displayTime, visibilityPolicy,
     );
     this.entities.sync(fo, displayTime);
     this.entities.applyVisibility(visibilityPolicy, player);
-    this.entities.syncMarkers(this.cameraSystem, displayTime, player?.state.r ?? null, displayCelestialBodies, visibilityPolicy);
 
     this.entities.effects.sync(fo, this.cameraSystem.activeCamera, this.cameraSystem.zoomActive);
 
     this.targeter.sync(player, this.cameraSystem);
     this.targeter.syncTargetMarkers(
-      player, combatTargets, displayTime, simTime, this.cameraSystem, visibilityPolicy,
+      player, combatTargets, this.entities.ammoPickups, displayTime, simTime, this.cameraSystem, visibilityPolicy,
       this.ephemeris.registry, displayCelestialBodies,
     );
     this.cameraSystem.focusMarkers.syncSubLabels(

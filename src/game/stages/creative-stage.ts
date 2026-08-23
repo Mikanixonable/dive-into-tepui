@@ -1,4 +1,4 @@
-// クリエイティブモード: 勝敗判定を発生させず、艦艇配置と軌道計画を自由に試すためのステージ。
+// クリエイティブモード: 勝敗判定を発生させず、物体配置と軌道計画を自由に試すためのステージ。
 import type * as THREE from 'three/webgpu';
 import { Stage, type ObjectAuthoring, type StageDeps } from './stage';
 import type { Player } from '../player/player';
@@ -49,7 +49,7 @@ export class CreativeStage extends Stage {
   // 敵の波状攻撃を発生させるかどうか。既定 OFF — ON の間だけ update が WaveAttack を進める。
   private waveAttackEnabled: boolean;
   private readonly previewOrbitLine: OrbitLine;
-  // 艦艇配置パネルのフォーム値から求めた配置プレビュー。出すものが無ければ null。
+  // 物体配置パネルのフォーム値から求めた配置プレビュー。出すものが無ければ null。
   private preview: { readonly elements: OrbitalElements; readonly pos: Vec3 } | null = null;
   // 現在のフォーム値に対するフィールド単位の検証結果。パネルが閉じている間は空。
   private issues: readonly PlacementFieldIssue[] = [];
@@ -104,18 +104,29 @@ export class CreativeStage extends Stage {
     return panel;
   }
 
+  // クリエイティブの設定は、表示中のワールドビューの右ドックへ追従させる。
+  private mountCreativeOptionsPanel(inMapView: boolean): void {
+    const root = inMapView ? this._hud.mapRoot : this._hud.combatRoot;
+    const rightRail = hudRail(root, 'right');
+    if (this.creativeOptionsPanel.parentElement === rightRail) return;
+    const vessel = rightRail.querySelector<HTMLElement>('#hud-vessel-status');
+    if (vessel !== null) rightRail.insertBefore(this.creativeOptionsPanel, vessel);
+    else rightRail.appendChild(this.creativeOptionsPanel);
+  }
+
   // 共通のステータス表示に加えて、配置プレビューの軌道線とマーカーを同期する。
   sync(
     player: Player | null, fo: FloatingOrigin, cameraSystem: CameraSystem, displayTime: number,
     visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     super.sync(player, fo, cameraSystem, displayTime, visibilityPolicy);
+    this.mountCreativeOptionsPanel(cameraSystem.overviewMode);
     this.syncPreview(
       fo, cameraSystem.activeCameraProjection, cameraSystem.activeCamera,
       cameraSystem.overviewMode, cameraSystem.activeCameraPos, this._ephemeris.celestialBodiesAt(displayTime),
     );
     this.placerPanel.setIssues(this.issues);
-    this.creativeOptionsPanel.classList.toggle('hidden', !cameraSystem.overviewMode);
+    this.creativeOptionsPanel.classList.remove('hidden');
   }
 
   // オブジェクト配置モーダルを開く (MapContextActions から呼ばれる)。focusId はマップの現在フォーカスで、
@@ -199,7 +210,7 @@ export class CreativeStage extends Stage {
     }
     this._markerManager.setPosition(
       'creative-preview', 'mk-self', ENTITY_GLYPH.preview, this.preview.pos, project,
-      'PREVIEW', 1, C.COLOR_MARKER_ALLY, 0, false, false,
+      'PREVIEW', 1, C.COLOR_MARKER_ALLY, 0, false, false, undefined, cameraPos,
     );
   }
 
@@ -226,7 +237,7 @@ export class CreativeStage extends Stage {
         this._hud.hint(`${enemy.name} を配置`);
       } else if (form.objectType === 'ammo') {
         const id = this.ammoPickupIdAllocator.next();
-        const ammoPickup = new AmmoPickup({ state, id }, this._scene, this._markerManager);
+        const ammoPickup = new AmmoPickup({ state, id }, this._scene);
         this._entities.addAmmoPickup(ammoPickup);
         const finalName = name.trim() || generateRandomName('ammo');
         this._hud.hint(`${finalName} を配置`);
@@ -366,7 +377,7 @@ export class CreativeStage extends Stage {
     return this.waveAttackEnabled ? '波状攻撃: ON' : 'クリエイティブ';
   }
 
-  // 配置プレビューの軌道線・設定パネル・艦艇配置パネルを片付けたうえで super.dispose() を呼ぶ。
+  // 配置プレビューの軌道線・設定パネル・物体配置パネルを片付けたうえで super.dispose() を呼ぶ。
   dispose(): void {
     super.dispose();
     this.previewOrbitLine.line.removeFromParent();
