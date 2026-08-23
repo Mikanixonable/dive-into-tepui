@@ -137,6 +137,7 @@ export class Enemy extends Ship {
       this.burstDelay = init.saved.burstDelay;
       this.alive = init.saved.alive;
       if (!this.alive) this.renderObject.visible = false;
+      this.showTrajectoryLine = init.saved.showTrajectoryLine ?? false;
     }
   }
 
@@ -158,7 +159,7 @@ export class Enemy extends Ship {
     const priority = role === 'primary' ? C.MARKER_PRIORITY.PRIMARY_TARGET : C.MARKER_PRIORITY.ENEMY - dist / 1e9;
     return {
       key: `enemy-${this.name}`,
-      cls: role === 'primary' ? 'mk-target' : 'mk-enemy',
+      cls: role === 'primary' ? 'mk-enemy mk-target' : 'mk-enemy',
       sym: overviewMode ? this.headingHpMarkerSvg(true) : this.hpMarkerSvg(),
       pos,
       vel,
@@ -360,6 +361,7 @@ export class Enemy extends Ship {
       waveId: this.waveId,
       burstLeft: this.burstLeft,
       burstDelay: this.burstDelay,
+      showTrajectoryLine: this.showTrajectoryLine,
     };
   }
 }

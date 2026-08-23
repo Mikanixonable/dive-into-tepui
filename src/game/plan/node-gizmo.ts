@@ -2,8 +2,7 @@
 // 画面座標に絶対配置し、pointer イベントを処理してコールバックを発火する。
 import * as C from '../const';
 import { FONT_FAMILY, FONT_XS } from '../theme';
-import { ContextMenu } from '../hud/context-menu';
-import { MenuAction, MenuCommon } from '../hud/menu-actions';
+import { ContextMenu, MenuAction, MenuCommon } from '../hud/windows';
 import type { OverlayManager } from '../hud/overlay-manager';
 
 const STYLE = `

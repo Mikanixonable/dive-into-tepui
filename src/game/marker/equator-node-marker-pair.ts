@@ -6,8 +6,8 @@ import type { Ephemeris } from '../../physics/ephemeris';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { Vec3 } from '../../physics/vec3';
 import { solveEquatorCrossings } from '../../physics/orbit-solvers';
-import { celestialBodyName } from '../hud/frame-labels';
-import { TickLabelMode, elementTimeLabel } from '../hud/calendar-ticks';
+import { celestialBodyName } from '../hud/frame/frame-labels';
+import { TickLabelMode, elementTimeLabel } from '../hud/orbit/calendar-ticks';
 import type { MarkerManager } from './marker-manager';
 import { ORBIT_POINT_GLYPH } from './marker-glyphs';
 import type { ProjectFn } from '../camera/camera-system';
@@ -38,7 +38,10 @@ export class EquatorNodeMarkerPair {
     displayTime: number, ephemeris: Ephemeris, frameAnchors: FrameAnchorSource,
     timeLabel: { readonly mode: TickLabelMode; readonly show: boolean; readonly nowSimTime: number },
   ): void {
-    this.update(null, displayTime, ephemeris, frameAnchors, this.owner.state, [], timeLabel);
+    this.update(
+      null, displayTime, ephemeris, frameAnchors,
+      this.owner.displayState(displayTime, ephemeris), [], timeLabel,
+    );
   }
 
   // 表示中の折れ線の上に交点を置く。paths(区間ごとのサンプル列、時刻昇順)が空なら state の
@@ -55,12 +58,16 @@ export class EquatorNodeMarkerPair {
   // (= 解析軌道楕円の置き方)。
   private update(
     frame: ReferenceFrame | null, displayTime: number, ephemeris: Ephemeris, frameAnchors: FrameAnchorSource,
-    state: KinematicState, paths: readonly (readonly KinematicState[])[],
+    state: KinematicState | null, paths: readonly (readonly KinematicState[])[],
     timeLabel: { readonly mode: TickLabelMode; readonly show: boolean; readonly nowSimTime: number },
   ): void {
     this.icons = [];
     this.celestialBodies = frameAnchors.bodies;
-    const center = strongestAttractor(state.r, ephemeris.celestialBodiesAt(state.t));
+    if (state === null) return;
+    // 解析楕円は displayTime の状態ベクトルから作るので、その中心選択も同じ時刻の天体を
+    // 使う。折れ線側は state が simTime のままなので、従来どおり state.t の天体を使う。
+    const centerBodies = frame === null ? frameAnchors.bodies : ephemeris.celestialBodiesAt(state.t);
+    const center = strongestAttractor(state.r, centerBodies);
     const eqNormal = center.degree2?.pole;
     if (!eqNormal) return;
 

@@ -311,22 +311,19 @@ export const MARKER_CLUSTER_PX = 40; // これより画面上で近いマーカ�
 // 緩い値)。同じ値だと境界ちょうどで距離が揺れたときに毎フレーム表示・非表示が反転する
 // (周期が数時間の衛星どうしなど、タイムワープ中に画面距離が急変する組で顕著)。
 export const MARKER_CLUSTER_RELEASE_PX = 60;
+// 画面上で近接する2対象(マーカー・天体ラベル・ラグランジュ点ラベルいずれも)のカメラからの
+// 距離比がこれ以上なら、優先度に関わらず遠い側を隠す(奥にあるだけの対象が手前の対象を
+// 消してしまう逆転を防ぐ)。
+export const DEPTH_GUARD_RATIO = 3;
+// 一度 DEPTH_GUARD で隠した対象を再び出す距離比のしきい値(ENTER より緩い値)。同じ値だと
+// しきい値ちょうどで距離比が揺れたときに毎フレーム表示・非表示が反転する
+// (周期が数時間の衛星どうしなど、タイムワープ中に距離比が急変する組で顕著)。
+export const DEPTH_GUARD_EXIT_RATIO = 2;
 // 天体ラベルからこれより画面上で近いラグランジュ点ラベルは、天体ラベルを優先して隠す [px]
 export const FOCUS_LABEL_PRIORITY_PX = 40;
-// 画面上で近接する2ラベルのカメラからの距離比がこれ以上なら、優先度に関わらず遠い側を隠す
-// (奥の天体ラベルが手前のラグランジュ点ラベルを消してしまう逆転を防ぐ)
-export const FOCUS_LABEL_DEPTH_GUARD_RATIO = 3;
-// 一度 DEPTH_GUARD で隠したラベルを再び出す距離比のしきい値(ENTER より緩い値)。ENTER と同じ
-// 値だとしきい値ちょうどで距離比が揺れたときに毎フレーム表示・非表示が反転する
-// (周期が数時間の衛星どうしなど、タイムワープ中に距離比が急変する組で顕著)。
-export const FOCUS_LABEL_DEPTH_GUARD_EXIT_RATIO = 2;
 // 位置の点(アイコン)側の混雑判定。名前(FOCUS_LABEL_PRIORITY_PX)より小さい値にし、名前だけが
 // 間引かれて点は残る距離帯を作る。
 export const FOCUS_ICON_PRIORITY_PX = 16;
-// アイコン側の奥行きガード。名前側と同じ距離比を使うが、混雑判定の半径が小さいぶん実際に
-// アイコンが隠れるのは名前より近接した場合に限られる。
-export const FOCUS_ICON_DEPTH_GUARD_RATIO = 3;
-export const FOCUS_ICON_DEPTH_GUARD_EXIT_RATIO = 2;
 
 // マーカーラベル優先度 (数値が大きいものが優先。天体 > 船・エンティティ)
 export const MARKER_PRIORITY = {
@@ -356,7 +353,7 @@ export const MARKER_HEADING_DEGENERATE_PX = 4;
 export const LEAD_MAX_TIME = 25; // これより先にしか当たらない見越し解は表示しない [s]
 
 // --- 軌道計画モード([M]) ---
-export const OVERVIEW_CAMERA_MIN_DIST = 1e5; // 広範囲視点カメラの注視点までの距離 [m]
+export const OVERVIEW_CAMERA_MIN_DIST = 1e3; // 広範囲視点カメラの注視点までの距離 [m]
 export const OVERVIEW_CAMERA_FOV_MIN = 15; // 広範囲視点の最小垂直画角 [deg]
 export const OVERVIEW_CAMERA_FOV_MAX = 120; // 広範囲視点の最大垂直画角 [deg]
 export const OVERVIEW_CAMERA_FOV_STEP = 1; // HUD から入力する画角の刻み [deg]
@@ -468,7 +465,7 @@ export const PLAN_TICK_RADIUS_PX = [1.5, 2.5, 3.5] as const;
 // --- エンティティの過去・未来状態列(physics/dynamic-trajectory.ts の DynamicTrajectory、
 // game/simulation/predicted-arc.ts の PredictedArc/Predictor) ---
 export const TRAJECTORY_SAMPLES_PER_REV = 32; // 1周回あたりの保持サンプル数(補間誤差 30m 程度に収まる実測値)
-export const SHIP_HISTORY_DURATION = 5580; // Ship の過去列の保持時間 [s]。LEO(420km)の公転周期に近似
+export const DEFAULT_HISTORY_DURATION = 10 * 86400; // 過去列を持つ種別(Ship・Base)の既定保持時間 [s]
 // 過去表示の要求で伸ばせる保持時間の上限 [s]。保持サンプル数は間引きにより
 // ARC_MAX_SAMPLES で頭打ちなので、この値が決めるのは間引きの粗さ(補間精度)の下限。
 export const HISTORY_DURATION_MAX = DISPLAY_DURATION_MAX;
@@ -487,7 +484,7 @@ export const ARC_STEPS_PER_REV = 300;
 // 費用を頭打ちにする。刻み幅を決めるのは span > ARC_MAX_STEPS × ARC_MIN_STEP_DT(≒4.6日)の
 // ときだけ。ARC_MAX_SAMPLES は実状態の履歴の間引き(trajectorySampleInterval)でも使う。
 export const ARC_MAX_STEPS = 20000;
-export const ARC_MAX_SAMPLES = 2000;
+export const ARC_MAX_SAMPLES = 10000;
 // 積分済みのサンプル列が、要求区間の求める間引き間隔に対して何倍まで粗くてよいか
 // (PredictedArc.represents 用)。表示期間を短くしたときは積分結果を捨てず答える範囲だけを
 // 狭めるが、狭めた区間に残るサンプルが数点まで減ると、折れ線上のクリック候補が飛び飛びの
