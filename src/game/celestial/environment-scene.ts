@@ -50,8 +50,7 @@ function buildGeoElements(registry: CelestialRegistry): OrbitalElements | null {
 const SATELLITE_REFERENCE_LINE_COLOR = 0xaab3c0;
 const PLANET_REFERENCE_LINE_COLOR = 0xffffff;
 
-// 恒星光の色。THREE.DirectionalLight と render/pipeline/sun-light.ts の SunLight の両方が
-// この同じ値を受け取る — 世界パスとライティングパスで別々の色にならないようにするため。
+// 恒星光の色。ライティングパス(render/pipeline/sun-light.ts の SunLight)が毎フレーム受け取る。
 const SUN_COLOR = new THREE.Color(C.COLOR_SUN);
 
 // 恒星の放射強度 [SUN_INTENSITY と同じ単位 · m²]。SUN_INTENSITY は地球軌道で受ける放射照度
@@ -74,13 +73,12 @@ function referenceLineIds(registry: CelestialRegistry): readonly OrbitingId[] {
 
 export class EnvironmentScene {
   private readonly scene: THREE.Scene;
-  readonly ambient: THREE.AmbientLight;
-  // 自機・デブリ・薬莢を直接照らすことはない(それらは LIT_OPAQUE_LAYER 単独に立ち、
-  // 既定チャンネルの world パスには描かれない) — マテリアルパスが読む SunLight への
-  // 生値の供給元と、LIT_OPAQUE_LAYER を絞ったカメラでも光源としてカメラに拾われ続ける
-  // ための存在。天体は各自の CelestialSurface が sunDirection uniform を持って
-  // 自分で陰影を計算するので、いずれにせよこの光を受けない。
-  private readonly directionalLight: THREE.DirectionalLight;
+  // **絵に出ない光源。** three はカメラのチャンネルと重なる光源が 1 つも無いとライティング
+  // モデルごと組まないので(NodeMaterial.setupLighting)、受け手を真っ黒にしないために
+  // 1 個だけ置いてある。マテリアルパスは direct() を無効化し indirect() を照度バッファの
+  // 読み出しへ差し替えるため、この光源の色も強度もどこからも読まれない — 光の値の正本は
+  // SunLight ただ 1 つ。
+  private readonly lightingAnchor: THREE.AmbientLight;
   private readonly stars: Stars;
   readonly celestialGrid: CelestialGrid;
   readonly spatialGrid: SpatialGrid;
@@ -120,16 +118,12 @@ export class EnvironmentScene {
     // 参照線はマップで表示される天体だけが必要とする。全カタログぶんを起動時に
     // GPUへ確保すると、非表示設定でも頂点バッファとオブジェクトが残り続ける。
     this.referenceLines = new Map();
-    this.ambient = new THREE.AmbientLight(0x8899bb, C.AMBIENT_INTENSITY);
-    scene.add(this.ambient);
-    this.directionalLight = new THREE.DirectionalLight(SUN_COLOR.getHex(), C.SUN_INTENSITY);
-    scene.add(this.directionalLight);
+    this.lightingAnchor = new THREE.AmbientLight();
+    scene.add(this.lightingAnchor);
     // レンダラーは光源自身の layers とカメラの layers が重ならないと光源をそのカメラの描画対象
-    // から除外する(direct()/indirect() どちらかの呼び出し自体が起きなくなる)。マテリアルパスは
-    // 自身の render() の間だけカメラを LIT_OPAQUE_LAYER 単独へ絞るため、この光源も同チャンネルへ
-    // 加えておかないと、間接光評価そのものがスキップされてしまう。
-    this.ambient.layers.enable(LIT_OPAQUE_LAYER);
-    this.directionalLight.layers.enable(LIT_OPAQUE_LAYER);
+    // から除外する(ライティングモデルの呼び出し自体が起きなくなる)。マテリアルパスは自身の
+    // render() の間だけカメラを LIT_OPAQUE_LAYER 単独へ絞るため、同チャンネルへも加えておく。
+    this.lightingAnchor.layers.enable(LIT_OPAQUE_LAYER);
     this.stars = createStars();
     scene.add(this.stars.mesh);
     this.celestialGrid = new CelestialGrid(scene);
@@ -182,17 +176,12 @@ export class EnvironmentScene {
       body.setVisible(!cameraSystem.overviewMode || visibilityPolicy!.body(body.id).category);
       body.sync(floatingOrigin, displayTime, cameraSystem, this.ephemeris, graphics);
     }
-    // 平行光の向きは描画原点から見た恒星方向 — 照らす相手がその近傍にいる物体だけなので、
-    // 全員が同じ向きでよい。
-    const sd = this.ephemeris.sunDirFrom(floatingOrigin.r, displayTime);
-    const sunDirWorld = new THREE.Vector3(sd.x, sd.y, sd.z);
-    this.directionalLight.position.copy(sunDirWorld).multiplyScalar(1e5);
-    // 主星が無いレジストリでは、恒星方向へ 1 天文単位の位置に半径 0 の光源を置く
+    // 主星が無いレジストリでは、描画原点から見た恒星方向へ 1 天文単位の位置に半径 0 の光源を置く
     // (基準強度どおりの放射照度が届き、遮蔽パスは誰も遮らないと答える)。
     const starId = this.ephemeris.starId;
     const star = starId === null ? null : bodyDef(this.ephemeris.registry, starId);
     const sunPos = starId === null
-      ? sunDirWorld.clone().multiplyScalar(AU)
+      ? this.toThreeNormal(this.ephemeris.sunDirFrom(floatingOrigin.r, displayTime)).multiplyScalar(AU)
       : floatingOrigin.RtoThreeV3(this.ephemeris.positionOf(starId, displayTime));
     this.sunLight.set(sunPos, star?.radius ?? 0, SUN_COLOR, SUN_RADIANT_INTENSITY, C.AMBIENT_INTENSITY);
     this.syncOcclusion(floatingOrigin, displayTime, graphics);
@@ -462,11 +451,9 @@ export class EnvironmentScene {
     this.geoLine.line.removeFromParent();
     this.geoLine.dispose();
     for (const id of [...this.referenceLines.keys()]) this.removeReferenceLine(id);
-    // 環境光・平行光。
-    this.ambient.removeFromParent();
-    this.ambient.dispose();
-    this.directionalLight.removeFromParent();
-    this.directionalLight.dispose();
+    // ライティングモデルを組ませるためだけの光源。
+    this.lightingAnchor.removeFromParent();
+    this.lightingAnchor.dispose();
     // 星殻・天球グリッド・空間グリッド。
     this.stars.mesh.removeFromParent();
     this.stars.dispose();

@@ -671,7 +671,6 @@ three の出力色空間の既定は `SRGBColorSpace` なので、**欠けてい
 `reversedDepthBuffer` に関係なく `UnsignedIntType`(= `depth24plus`)で作る(`Textures.js:94`)。
 自動で `Depth32Float` が選ばれるのはキャンバスへ直接描く経路だけ。**深度を持つターゲットには
 `new THREE.DepthTexture(w, h, THREE.FloatType)` を必ず据える。**
-(`material-pass.ts` のデバッグ専用ターゲットだけ明示を欠いていて `depth24plus` のまま。)
 
 **深度を持つターゲットは 2 枚あり、表現は同じ。**
 

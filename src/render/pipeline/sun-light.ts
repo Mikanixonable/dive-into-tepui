@@ -7,8 +7,9 @@ import { uniform } from 'three/tsl';
 import type { ColorUniform, FloatNode, FloatUniform, Vec3Uniform } from '../tsl-types';
 
 // 環境光の色味。恒星の色(太陽光は暖色、set() で毎フレーム更新)とは独立した固定値で、
-// game/const.ts の管理対象ではない(environment-scene.ts の THREE.AmbientLight と同じ値)。
-const AMBIENT_COLOR = new THREE.Color(0x8899bb);
+// game/const.ts の管理対象ではない。描画テスト環境のフォワード経路が同じ色の
+// THREE.AmbientLight を置くので、値の正本としてここから公開する。
+export const AMBIENT_COLOR = new THREE.Color(0x8899bb);
 
 export class SunLight {
   private readonly positionUniform: Vec3Uniform;

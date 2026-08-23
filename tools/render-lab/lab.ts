@@ -6,6 +6,7 @@ import { WebGPURenderer } from 'three/webgpu';
 import { GpuTimings } from '../../src/gpu-timings';
 import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
 import { LIT_OPAQUE_LAYER } from '../../src/render/pipeline/lit-layer';
+import { AMBIENT_COLOR } from '../../src/render/pipeline/sun-light';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
 import { QUALITY_PRESETS } from '../../src/render/graphics-settings';
 import { AMBIENT_INTENSITY, COLOR_SUN, SUN_INTENSITY } from '../../src/game/const';
@@ -19,8 +20,6 @@ const ORIGIN = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
 
 const SUN_COLOR = new THREE.Color(COLOR_SUN);
-// 環境光の色味は恒星の色とは独立した固定値(EnvironmentScene と同じ)。
-const AMBIENT_COLOR = 0x8899bb;
 // 恒星は 1 天文単位の位置に置く。ゲーム本体と同じく SUN_INTENSITY はそこでの放射照度なので、
 // 点光源へ渡す放射強度は逆二乗ぶんを戻した値になる。
 const SUN_POSITION = SUN_DIR.clone().multiplyScalar(AU);

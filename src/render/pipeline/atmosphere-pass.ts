@@ -19,7 +19,6 @@ import { viewPositionAt, viewRayAt } from './view-ray';
 // 昼側の大気の色と、昼夜境界で寄っていく夕焼けの色。
 const ATMO_COLOR = vec3(0.36, 0.62, 0.91);
 const SUNSET_COLOR = vec3(1.0, 0.4, 0.1);
-// 地表付近のもやの濃さ(視線が真上からのときの光学的厚み)。
 // リム光の可視上限高度・下限高度・指数減衰のスケールハイト [m]。
 const RIM_MAX_H = 340e3;
 const RIM_MIN_H = 20e3;
@@ -28,6 +27,7 @@ const RIM_SCALE_H = 90e3;
 // 奥行きが高度に対して急峻に変化するため、奥行きで測るとぼかし幅が画素未満に潰れる。
 const RIM_EDGE_SOFTEN = 25e3;
 const RIM_OPACITY = 0.6;
+// 地表付近のもやの濃さ(視線が真上からのときの光学的厚み)。
 const HAZE_TAU0 = 0.34;
 // 視線が地平線と平行に近づいたときの光路長の上限(cosθ の下限)。
 const HAZE_MIN_COS = 0.05;

@@ -2,8 +2,8 @@
 // 照度バッファを screenUV で読み、素材(アルベド・金属度・F0)を掛けて描く。背景専用レイヤーは
 // renderOrder により不透明物より先に描かれ、world パスの既定レイヤーには現れない。
 //
-// PhysicalLightingModel の direct() を no-op にしてシーンの実光源(DirectionalLight/AmbientLight)
-// の寄与を切り、indirect() だけをライトプリパス読み出しへ差し替える — BRDF・マップ・粗さ/金属度の
+// PhysicalLightingModel の direct() を no-op にしてシーンの実光源の寄与を切り、
+// indirect() だけをライトプリパス読み出しへ差し替える — BRDF・マップ・粗さ/金属度の
 // 扱いは three 標準の MeshStandardNodeMaterial のまま何も変えない。
 //
 // world パスより前に、world パスと共有する HDR ターゲットへの最初の書き込みとしてこのパスが描く
@@ -99,6 +99,9 @@ export class MaterialPass {
   ) {
     this.renderer = renderer;
     this.target = new THREE.RenderTarget(1, 1, { type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: true, samples: 0 });
+    // G バッファと同じく、深度を 32bit 浮動小数点にするには明示が要る(gbuffer.ts 参照)。
+    // 欠くとこのターゲットだけ depth24plus になり、デバッグ表示が本番と違う前後関係を映す。
+    this.target.depthTexture = new THREE.DepthTexture(1, 1, THREE.FloatType);
     this.diffuseNode = texture(this.lightPrepass.diffuseTexture, screenUV).rgb;
     this.specularNode = texture(this.lightPrepass.specularTexture, screenUV).rgb;
   }
