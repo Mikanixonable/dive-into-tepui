@@ -1,17 +1,31 @@
-// 描画テスト環境の画面。いまは配線の確認だけ — canvas 1 枚を単色で塗る。
-import * as THREE from 'three/webgpu';
-import { WebGPURenderer } from 'three/webgpu';
+// 描画テスト環境の画面。ケースを選ぶと、ライトプリパスとフォワードの 2 経路を並べて描く。
+import { CASE_NAMES, type CaseName } from './cases';
+import { LabView } from './lab';
 
-const WIDTH = 960;
-const HEIGHT = 540;
+function canvasById(id: string): HTMLCanvasElement {
+  return document.getElementById(id) as HTMLCanvasElement;
+}
 
 async function init(): Promise<void> {
-  const canvas = document.getElementById('prepass') as HTMLCanvasElement;
-  const renderer = new WebGPURenderer({ canvas, antialias: true });
-  renderer.setSize(WIDTH, HEIGHT);
-  renderer.setClearColor(0x1b3a5a);
-  await renderer.init();
-  renderer.render(new THREE.Scene(), new THREE.PerspectiveCamera());
+  const views = [
+    await LabView.create(canvasById('prepass'), 'prepass'),
+    await LabView.create(canvasById('forward'), 'forward'),
+  ];
+
+  const row = document.getElementById('cases')!;
+  const buttons = new Map<CaseName, HTMLButtonElement>();
+  const select = (name: CaseName) => {
+    for (const [key, button] of buttons) button.classList.toggle('active', key === name);
+    for (const view of views) view.show(name);
+  };
+  for (const name of CASE_NAMES) {
+    const button = document.createElement('button');
+    button.textContent = name;
+    button.addEventListener('click', () => select(name));
+    row.appendChild(button);
+    buttons.set(name, button);
+  }
+  select(CASE_NAMES[0]!);
 }
 
 // 失敗は握り潰さない。canvas が黒いまま無言で残ると、器の不備を絵の問題と読み違える。

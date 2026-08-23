@@ -1,0 +1,71 @@
+// 同じケースをライトプリパスとフォワードの 2 経路で描く。違いは「メッシュとライトがどの
+// チャンネルに居るか」だけで、HDR ターゲット・露出・合成・色空間変換はどちらも同じ
+// RenderPipeline を通る。だから画面に出る差はシェーディング経路の差そのものになる。
+import * as THREE from 'three/webgpu';
+import { WebGPURenderer } from 'three/webgpu';
+import { GpuTimings } from '../../src/gpu-timings';
+import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
+import { LIT_OPAQUE_LAYER } from '../../src/render/pipeline/lit-layer';
+import { QUALITY_PRESETS } from '../../src/render/graphics-settings';
+import { AMBIENT_INTENSITY, COLOR_SUN, SUN_INTENSITY } from '../../src/game/const';
+import { CASES, type CaseName, type LabCase, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './cases';
+
+export type LabPath = 'prepass' | 'forward';
+
+const SUN_COLOR = new THREE.Color(COLOR_SUN);
+// 環境光の色味は恒星の色とは独立した固定値(EnvironmentScene と同じ)。
+const AMBIENT_COLOR = 0x8899bb;
+
+export class LabView {
+  private readonly scene = new THREE.Scene();
+  private current: LabCase | null = null;
+
+  private constructor(
+    private readonly path: LabPath,
+    private readonly pipeline: RenderPipeline,
+  ) {
+    // RenderPipeline はカメラのチャンネルを一時的に絞る。シーンルートが既定の 0 だけだと
+    // その時点で子要素の走査が止まるため、コンテナとして全チャンネルを受ける。
+    this.scene.layers.enableAll();
+    const sun = new THREE.DirectionalLight(SUN_COLOR.getHex(), SUN_INTENSITY);
+    sun.position.copy(SUN_DIR).multiplyScalar(1e5);
+    const ambient = new THREE.AmbientLight(AMBIENT_COLOR, AMBIENT_INTENSITY);
+    // NodeMaterial はカメラのチャンネルと重なる光源が1つも無いと照明モデルを組まない。
+    // マテリアルパスはカメラを LIT_OPAQUE_LAYER 単独へ絞るので、その経路の光源は同チャンネルにも属させる。
+    if (path === 'prepass') {
+      sun.layers.enable(LIT_OPAQUE_LAYER);
+      ambient.layers.enable(LIT_OPAQUE_LAYER);
+    }
+    this.scene.add(sun, ambient);
+  }
+
+  static async create(canvas: HTMLCanvasElement, path: LabPath): Promise<LabView> {
+    const renderer = new WebGPURenderer({ canvas, antialias: QUALITY_PRESETS.high.antialias });
+    renderer.setSize(VIEW_WIDTH, VIEW_HEIGHT);
+    await renderer.init();
+    const pipeline = new RenderPipeline(renderer, QUALITY_PRESETS.high, new GpuTimings(renderer));
+    return new LabView(path, pipeline);
+  }
+
+  // ケースを組み直して描く。前のケースはシーンから外すだけで解放しない — 球の単位ジオメトリは
+  // LOD 段ごとに全利用元で共有されていて、ここで捨てると次のケースが壊れる。
+  show(name: CaseName): void {
+    if (this.current !== null) this.scene.remove(...this.current.objects);
+    const built = CASES[name]();
+    for (const object of built.objects) {
+      // フォワード経路では buildPlayerShip() が内部で付けた LIT_OPAQUE_LAYER を打ち消す。
+      // 呼ばないのではなく、呼ばれたあとに戻す。
+      if (this.path === 'forward') object.traverse((o) => o.layers.set(0));
+    }
+    this.scene.add(...built.objects);
+    this.current = built;
+    this.render();
+  }
+
+  // 動くものが無いので、描くのはケースを差し替えたときと撮影のときだけ。
+  render(): void {
+    if (this.current === null) return;
+    this.pipeline.sunLight.set(SUN_DIR, SUN_COLOR, SUN_INTENSITY, AMBIENT_INTENSITY, 1);
+    this.pipeline.render(this.scene, this.current.camera);
+  }
+}
