@@ -148,8 +148,11 @@ export class ViewOptionsPanel {
 
   private readonly panel: HTMLElement;
   private readonly unsubscribeCollapsedView: () => void;
+  private readonly mapRoot: HTMLElement;
+  private combatRoot: HTMLElement | null = null;
 
   public constructor(root: HTMLElement) {
+    this.mapRoot = root;
     // パネル本体とタイトル
     this.panel = document.createElement('div');
     this.panel.id = 'hud-view-options';
@@ -253,6 +256,22 @@ export class ViewOptionsPanel {
     body.appendChild(starsRow);
 
     hudRail(root, 'left').appendChild(this.panel);
+  }
+
+  // マップでは左ドック、戦闘では右ドックへ同じ表示設定パネルを載せ替える。
+  public attachCombatRoot(root: HTMLElement): void {
+    this.combatRoot = root;
+  }
+
+  public setWorldView(view: 'combat' | 'map'): void {
+    if (view === 'combat' && this.combatRoot !== null) {
+      const rightRail = hudRail(this.combatRoot, 'right');
+      const vessel = rightRail.querySelector<HTMLElement>('#hud-vessel-status');
+      if (vessel !== null) rightRail.insertBefore(this.panel, vessel);
+      else rightRail.appendChild(this.panel);
+    } else if (view === 'map') {
+      hudRail(this.mapRoot, 'left').appendChild(this.panel);
+    }
   }
 
   private setBodyClassModeButton(
