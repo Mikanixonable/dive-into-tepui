@@ -216,16 +216,21 @@ export class GameEntity {
     this.orbitLine = null;
   }
 
-  // orbitLine を現在位置で最も強く引く天体まわりの軌道楕円に合わせる。線を持たなければ何もしない。
-  // frame / displayTime / ephemeris を渡すと、その座標系・時刻で楕円を描く。
+  // orbitLine を表示時刻の状態で最も強く引く天体まわりの軌道楕円に合わせる。線を持たなければ
+  // 何もしない。displayTime が現在時刻より先なら、表示用の予測状態を使って船体と同じ時刻に揃える。
   syncOrbitLine(
     fo: FloatingOrigin, camera: THREE.Camera, frameAnchors: FrameAnchorSource, force = false,
-    frame?: ReferenceFrame, displayTime?: number, ephemeris?: Ephemeris,
+    displayTime = this.state.t, ephemeris?: Ephemeris,
   ): void {
     if (this.orbitLine === null) return;
-    const center = strongestAttractor(this.state.r, frameAnchors.bodies);
+    const state = ephemeris === undefined ? this.state : this.displayState(displayTime, ephemeris);
+    if (state === null) {
+      this.orbitLine.sync(null, fo, camera, { frameAnchors });
+      return;
+    }
+    const center = strongestAttractor(state.r, frameAnchors.bodies);
     this.orbitLine.sync(
-      this.orbitalElementsAround(center), fo, camera, { force, frame, displayTime, ephemeris, frameAnchors },
+      orbitalElementsOf(state, center), fo, camera, { force, frameAnchors },
     );
   }
 
