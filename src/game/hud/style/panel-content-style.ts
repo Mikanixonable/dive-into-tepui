@@ -282,15 +282,18 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   position: fixed; display: none; min-width: 260px; pointer-events: auto;
 }
 #hud-pause-menu .pm-header {
-  display: flex; justify-content: space-between; align-items: center; gap: var(--space-6); cursor: move;
+  display: flex; align-items: center; gap: var(--space-6); cursor: move;
 }
-#hud-pause-menu .pm-header h3 { margin: 0; }
+#hud-pause-menu .pm-header h3 { flex: 1 1 auto; min-width: 0; margin: 0; }
+#hud-pause-menu .pm-header-actions {
+  display: flex; align-items: center; gap: var(--space-2); flex: 0 0 auto;
+}
 #hud-pause-menu .pm-header .w-close, #hud-pause-menu .pm-minimize {
-  flex: 0 0 auto; border-radius: 50%;
+  flex: 0 0 auto; width: 20px; height: 20px; border-radius: 50%;
 }
 #hud-pause-menu .pm-minimize {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 20px; height: 20px; padding: 0; font-size: var(--font-m); border: 1px solid transparent;
+  padding: 0; font: inherit; font-size: var(--font-m); border: 1px solid transparent;
   background: var(--surface-2); color: var(--body); cursor: pointer;
 }
 #hud-pause-menu .pm-minimize:hover { color: var(--accent-near); background: var(--surface-3); }

@@ -53,9 +53,12 @@ export class PauseMenu implements OverlayHandle {
     this.minimizeToggle.className = 'pm-minimize';
     this.minimizeToggle.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.minimizeToggle.addEventListener('click', () => this.setMinimized(!this.minimized));
-    header.appendChild(this.minimizeToggle);
     const closeBtn = new CloseButton(() => this.toggle(false));
-    header.appendChild(closeBtn.element);
+    const headerActions = document.createElement('div');
+    headerActions.className = 'pm-header-actions';
+    headerActions.appendChild(this.minimizeToggle);
+    headerActions.appendChild(closeBtn.element);
+    header.appendChild(headerActions);
     header.addEventListener('pointerdown', this.handleHeaderPointerDown);
     header.addEventListener('pointermove', this.handleHeaderPointerMove);
     header.addEventListener('pointerup', this.handleHeaderPointerUp);
