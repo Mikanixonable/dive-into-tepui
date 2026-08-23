@@ -11,7 +11,7 @@ import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
 import type { Occluder, RingBand } from '../../src/render/pipeline/occlusion';
 import type { LineStyle } from '../../src/render/line-style';
 import { RingView } from '../../src/game/celestial/ring-view';
-import { SUN_IRRADIANCE_1AU } from '../../src/render/pipeline/sun-light';
+import { sunIrradianceAtDistance } from '../../src/render/pipeline/sun-light';
 import { AU } from '../../src/physics/planet-orbit';
 import { bodyDef, SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { v3 } from '../../src/physics/vec3';
@@ -223,10 +223,10 @@ function albedo(): LabCase {
   return { objects: [surface], camera };
 }
 
-// 土星: 本体の球と実データの環を並べ、**環だけが本体より桁で明るくないか**を見る。放射照度は
-// 本体(ライティングパスが画素ごとに逆二乗を掛ける)にも環(sync が受け取る)にも同じだけ
-// 掛かるので、**両者の明るさの比は太陽までの距離に依らない** — 恒星を他のケースと同じ
-// 1 天文単位に置いたまま、その比だけを読めばよい。
+// 土星: 本体の球と実データの環を並べ、**環だけが本体より桁で明るくないか**を見る。恒星の
+// 放射照度は本体(ライティングパスが画素ごとに逆二乗を掛ける)にも環(sync が受け取る)にも
+// 同じだけ掛かる。**恒星は他のケースと同じ 1 天文単位に置く** — 本体だけが位置によらない
+// 環境光を受け取るので、太陽から遠ざけると比がそのぶん動いてしまう。
 function saturn(): LabCase {
   const camera = labCamera(1e13);
   const radius = 6.0268e7;
@@ -242,7 +242,7 @@ function saturn(): LabCase {
     v3(center.x, center.y, center.z),
     () => distance / VIEW_HEIGHT,
     v3(SUN_DIR.x, SUN_DIR.y, SUN_DIR.z),
-    SUN_IRRADIANCE_1AU * (AU / sunDistance) ** 2,
+    sunIrradianceAtDistance(sunDistance),
   );
   return { objects: [sphere(SATURN_ALBEDO, radius, center), view.group], camera };
 }

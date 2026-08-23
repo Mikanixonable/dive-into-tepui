@@ -6,8 +6,7 @@ import { Ephemeris } from '../../physics/ephemeris';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { apparentSizePx } from '../../render/screen-lod';
-import { SUN_IRRADIANCE_1AU } from '../../render/pipeline/sun-light';
-import { AU } from '../../physics/planet-orbit';
+import { SUN_IRRADIANCE_1AU, sunIrradianceAtDistance } from '../../render/pipeline/sun-light';
 import { len, sub } from '../../physics/vec3';
 import type { Vec3 } from '../../physics/vec3';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
@@ -31,7 +30,7 @@ export abstract class CelestialView {
     if (starId === null) return SUN_IRRADIANCE_1AU;
     const d = len(sub(pos, ephemeris.positionOf(starId, displayTime)));
     if (d <= 0) return SUN_IRRADIANCE_1AU;
-    return SUN_IRRADIANCE_1AU * (AU / d) * (AU / d);
+    return sunIrradianceAtDistance(d);
   }
 
   // LOD 段の選択と球体表示の閾値判定が通る見かけ直径 [px]。詳細度の設定はここで掛かる。
