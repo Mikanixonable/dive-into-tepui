@@ -266,9 +266,9 @@ export function buildBulletMesh(): THREE.Group {
   }
   if (!bulletHaloMat) {
     bulletHaloMat = new THREE.MeshBasicMaterial({
-      color: 0xffc86e,
+      // 明るさは色に載せ、不透明度は 1 のままにする(render/billboard.ts と同じ規約)。
+      color: new THREE.Color(0xffc86e).multiplyScalar(0.35),
       transparent: true,
-      opacity: 0.35,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
@@ -496,9 +496,8 @@ export function buildBarrelMesh(): THREE.Group {
 
   // --- 赤熱グロー(後端・発射熱を表現) ---
   const heatMat = new THREE.MeshBasicMaterial({
-    color: 0xff3c00,
+    color: new THREE.Color(0xff3c00).multiplyScalar(0.48),
     transparent: true,
-    opacity: 0.48,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
   });
