@@ -11,7 +11,7 @@ import { GpuTimings } from '../../src/gpu-timings';
 import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
 import { LIT_OPAQUE_LAYER, OVERLAY_LAYER } from '../../src/render/pipeline/lit-layer';
 import {
-  AMBIENT_COLOR, AMBIENT_IRRADIANCE, SUN_COLOR, SUN_IRRADIANCE_1AU,
+  AMBIENT_COLOR, AMBIENT_IRRADIANCE, SUN_COLOR, SUN_IRRADIANCE_1AU, SUN_RADIANT_INTENSITY,
 } from '../../src/render/pipeline/sun-light';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
 import { QUALITY_PRESETS } from '../../src/render/graphics-settings';
@@ -24,10 +24,9 @@ export type LabPath = 'prepass' | 'forward';
 const ORIGIN = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
 
-// 恒星は 1 天文単位の位置に置く。ゲーム本体と同じく SUN_IRRADIANCE_1AU はそこでの放射照度
-// なので、点光源へ渡す放射強度は逆二乗ぶんを戻した値になる。
+// 恒星は 1 天文単位の位置に置く。ゲーム本体と同じ放射強度を渡すので、そこで受ける放射照度も
+// ゲーム本体の 1 天文単位と一致する。
 const SUN_POSITION = SUN_DIR.clone().multiplyScalar(AU);
-const SUN_RADIANT_INTENSITY = SUN_IRRADIANCE_1AU * AU * AU;
 
 export class LabView {
   private readonly scene = new THREE.Scene();
