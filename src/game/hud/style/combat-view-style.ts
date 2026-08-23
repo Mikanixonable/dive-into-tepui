@@ -1,6 +1,6 @@
 // 戦闘ビュー専用の意匠。常設計器は背後の戦場を隠しすぎない Quiet Glass とし、
 // 有彩色は第一対象・隣接・第二対象/同期・危険を表す小さな箇所だけへ限定する。
-import { MQ_COARSE, MQ_COMPACT, MQ_MEDIUM_DOWN } from '../breakpoints';
+import { MQ_COARSE, MQ_MEDIUM_DOWN } from '../breakpoints';
 
 export const COMBAT_VIEW_STYLE = `
 #hud:not(.base-mode) .hud-combat-root.active #hud-vessel-status,
@@ -127,10 +127,6 @@ export const COMBAT_VIEW_STYLE = `
   color: var(--accent);
 }
 
-#hud:not(.base-mode) .hud-combat-root.active .hud-rail-right > #hud-target {
-  width: min(270px, var(--rail-w-right));
-  margin-left: auto;
-}
 #hud:not(.base-mode) .hud-combat-root.active #hud-target .target-identity {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -300,11 +296,6 @@ export const COMBAT_VIEW_STYLE = `
   #hud:not(.base-mode) .hud-combat-root.active #hud-enemies,
   #hud:not(.base-mode) .hud-combat-root.active #hud-target {
     padding: 8px 10px;
-  }
-}
-@media ${MQ_COMPACT} {
-  #hud:not(.base-mode) .hud-combat-root.active .hud-rail-right > #hud-target {
-    width: var(--rail-w-right);
   }
 }
 @media ${MQ_COARSE} {
