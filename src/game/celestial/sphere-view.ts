@@ -15,7 +15,7 @@ import { spinOrientation } from '../../physics/body-orientation';
 import { showsPhysicalSphere, sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from '../../render/screen-lod';
 import { CelestialSurface } from '../../render/celestial-surface';
 import { CelestialView } from './celestial-view';
-import type { GraphicsSettings } from '../../render/graphics-settings';
+import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import { RingView } from './ring-view';
 
 export class SphereView extends CelestialView {
@@ -77,7 +77,7 @@ export class SphereView extends CelestialView {
   // 見かけ直径は圧縮前の真の位置から求め、閾値未満なら球自体(と環)を描かない。
   sync(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris,
-    graphics: GraphicsSettings,
+    graphics: GraphicsSettingsData,
   ): void {
     if (!this.group.visible) return;
     const pos = ephemeris.positionOf(this.id, displayTime);
@@ -123,7 +123,7 @@ export class SphereView extends CelestialView {
     const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
     if (q !== null) this.group.quaternion.set(q.x, q.y, q.z, q.w);
     // 環を切ったときは、帯そのものだけでなく本体表面へ落ちる環の影も消す。
-    const rings = graphics.current.rings ? this.rings : undefined;
+    const rings = graphics.rings ? this.rings : undefined;
     activeSurface.setRingShadowSystem(
       rings,
       this.group.position,

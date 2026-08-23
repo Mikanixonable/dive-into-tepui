@@ -43,7 +43,8 @@ async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
 
 // rAF ループを起動する。フレームで例外が起きたらループを止める。
 function startAnimationLoop(
-  launcher: Launcher, perf: PerfMeter, sections: FrameSections, gpu: GpuTimings, autoSave: AutoSave,
+  launcher: Launcher, graphics: GraphicsSettings, perf: PerfMeter, sections: FrameSections,
+  gpu: GpuTimings, autoSave: AutoSave,
   snapshotControls: SnapshotControls,
 ): void {
   let lastTime = performance.now();
@@ -61,7 +62,7 @@ function startAnimationLoop(
     const t0 = perf.on ? performance.now() : 0;
     try {
       sections.beginFrame();
-      game.update(dt);
+      game.update(dt, graphics.current);
       sections.endFrame();
       // このフレームで Game が消費しなかった入力エッジだけが残っている。
       snapshotControls.handleInput(game.input, game);
@@ -75,7 +76,7 @@ function startAnimationLoop(
       autoSave.update(game);
       launcher.update();
       const t1 = perf.on ? performance.now() : 0;
-      game.sync();
+      game.sync(graphics.current);
       const t2 = perf.on ? performance.now() : 0;
       game.render();
       const t3 = perf.on ? performance.now() : 0;
@@ -153,7 +154,7 @@ async function main() {
 
   const launcher = new Launcher(
     hud, gs, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView, unlockmanager, sections,
-    graphics, pipeline, slots, snapshotService,
+    pipeline, slots, snapshotService,
   );
 
 
@@ -194,7 +195,7 @@ async function main() {
 
   await launcher.start();
 
-  startAnimationLoop(launcher, perf, sections, gpu, new AutoSave(snapshotService), snapshotControls);
+  startAnimationLoop(launcher, graphics, perf, sections, gpu, new AutoSave(snapshotService), snapshotControls);
 }
 
 main().catch((err) => {

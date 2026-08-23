@@ -18,7 +18,7 @@ import { focusTargetId } from '../camera/focus-target';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { PointFieldView } from './point-field-view';
-import type { GraphicsSettings } from '../../render/graphics-settings';
+import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import { SunLight } from '../../render/pipeline/sun-light';
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
 import { CelestialView } from './celestial-view';
@@ -91,7 +91,6 @@ export class EnvironmentScene {
   constructor(
     scene: THREE.Scene,
     private readonly ephemeris: Ephemeris,
-    private readonly graphics: GraphicsSettings,
     private readonly sunLight: SunLight,
     earthSpinPhase0: number,
   ) {
@@ -127,8 +126,8 @@ export class EnvironmentScene {
   }
 
   // 表示時刻 t の点群の位置を更新する。
-  update(t: number, overviewMode: boolean): void {
-    if (!overviewMode || this.ephemeris.starId === null || !this.graphics.current.pointField) return;
+  update(t: number, overviewMode: boolean, graphics: GraphicsSettingsData): void {
+    if (!overviewMode || this.ephemeris.starId === null || !graphics.pointField) return;
     const pointField = this.ensurePointField();
     pointField.update(t, true, this.ephemeris);
   }
@@ -151,6 +150,7 @@ export class EnvironmentScene {
     floatingOrigin: FloatingOrigin,
     displayTime: number,
     cameraSystem: CameraSystem,
+    graphics: GraphicsSettingsData,
     gridVisibility: CelestialGridVisibility,
     sharedVisibilityPolicy: MapVisibilityPolicy | null = null,
     markerManager: MarkerManager | null = null,
@@ -177,7 +177,7 @@ export class EnvironmentScene {
       : null;
     for (const body of this.bodies) {
       body.setVisible(!cameraSystem.overviewMode || visibilityPolicy!.body(body.id).category);
-      body.sync(floatingOrigin, displayTime, cameraSystem, this.ephemeris, this.graphics);
+      body.sync(floatingOrigin, displayTime, cameraSystem, this.ephemeris, graphics);
     }
     // 平行光の向きは描画原点から見た恒星方向 — 照らす相手がその近傍にいる物体だけなので、
     // 全員が同じ向きでよい。
@@ -190,7 +190,7 @@ export class EnvironmentScene {
     // ここで渡すのは掛ける前の生値。
     this.sunLight.set(sunDirWorld, SUN_COLOR, C.SUN_INTENSITY, C.AMBIENT_INTENSITY, lit);
 
-    if (cameraSystem.overviewMode && this.ephemeris.starId !== null && this.graphics.current.pointField) {
+    if (cameraSystem.overviewMode && this.ephemeris.starId !== null && graphics.pointField) {
       this.ensurePointField().sync(
         floatingOrigin, true, cameraSystem.bodyClassToggles.smallBodyVisible,
       );

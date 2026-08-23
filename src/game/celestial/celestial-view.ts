@@ -6,7 +6,7 @@ import { Ephemeris } from '../../physics/ephemeris';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { apparentSizePx } from '../../render/screen-lod';
-import type { GraphicsSettings } from '../../render/graphics-settings';
+import type { GraphicsSettingsData } from '../../render/graphics-settings';
 
 export abstract class CelestialView {
   abstract readonly id: CelestialBodyId;
@@ -14,15 +14,15 @@ export abstract class CelestialView {
   abstract setVisible(visible: boolean): void;
   abstract sync(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris,
-    graphics: GraphicsSettings,
+    graphics: GraphicsSettingsData,
   ): void;
   // build(scene) で登録した自分のメッシュ一式をシーンから外し、GPU 資源を解放する。
   abstract dispose(): void;
 
   // LOD 段の選択と球体表示の閾値判定が通る見かけ直径 [px]。詳細度の設定はここで掛かる。
   protected lodApparentDiameterPx(
-    diameterMeters: number, metersPerPixel: number, graphics: GraphicsSettings,
+    diameterMeters: number, metersPerPixel: number, graphics: GraphicsSettingsData,
   ): number {
-    return apparentSizePx(diameterMeters, metersPerPixel) * graphics.current.lodBias;
+    return apparentSizePx(diameterMeters, metersPerPixel) * graphics.lodBias;
   }
 }
