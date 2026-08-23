@@ -198,7 +198,7 @@ export class CreativeStage extends Stage {
     }
     this._markerManager.setPosition(
       'creative-preview', 'mk-self', ENTITY_GLYPH.preview, this.preview.pos, project,
-      'PREVIEW', 1, C.COLOR_MARKER_ALLY, 0, false, false,
+      'PREVIEW', 1, C.COLOR_MARKER_ALLY, 0, false, false, undefined, cameraPos,
     );
   }
 

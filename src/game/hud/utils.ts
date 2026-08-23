@@ -54,15 +54,16 @@ export function fmtDateTime(unixSec: number): string {
   return `${y}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
 }
 
-// 経過秒 sec を "YY-MoM-DD-hHh-mMm-sSs" の単位付きで表記する(例: "0Y-1M-2D-3h-4m-5s")。
-// 1970-01-01T00:00:00 UTC を経過0とする換算(年月日は暦通りの繰り上がり)。
+// 経過秒 sec を単位付きで表記する(例: "0Y-01M-02D-03h-04m-05s")。年だけ自由桁、
+// 月日時分秒は2桁固定。1970-01-01T00:00:00 UTC を経過0とする換算(年月日は暦通りの繰り上がり)。
 export function fmtElapsedUnits(sec: number): string {
   if (!isFinite(sec)) return '--';
   const d = new Date(Math.max(0, sec) * 1000);
+  const pad = (n: number) => String(n).padStart(2, '0');
   const y = d.getUTCFullYear() - 1970;
-  const mo = d.getUTCMonth();
-  const day = d.getUTCDate() - 1;
-  return `${y}Y-${mo}M-${day}D-${d.getUTCHours()}h-${d.getUTCMinutes()}m-${d.getUTCSeconds()}s`;
+  const mo = pad(d.getUTCMonth());
+  const day = pad(d.getUTCDate() - 1);
+  return `${y}Y-${mo}M-${day}D-${pad(d.getUTCHours())}h-${pad(d.getUTCMinutes())}m-${pad(d.getUTCSeconds())}s`;
 }
 
 // 経過秒 sec を、目盛り間隔 unitHintSec が示す単位で表記する
