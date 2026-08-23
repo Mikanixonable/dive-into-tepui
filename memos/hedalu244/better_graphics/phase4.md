@@ -377,30 +377,6 @@ depthScale = 1 / k
 
 ## 手順
 
-### 手順 7. 太陽を点光源にする
-
-**目的**: ライティングパスが画素ごとに太陽との差分ベクトルを取る形へ替える。
-**この時点では受け手は艦だけなので、絵はほとんど変わらない**(艦は浮動原点の近傍にいて、
-そこでは点光源と平行光の差が無い)。**変わらないことが正しさの確認になる。**
-
-**変更が必要な箇所**
-
-| ファイル | 変更 |
-|---|---|
-| `src/render/pipeline/sun-light.ts` | 方向 + 強度 → **描画座標での位置 + 半径 + 放射強度**。`angularRadius`(フレームに 1 個のスカラ)は画素ごとに変わる量なので廃す |
-| `src/render/pipeline/light-prepass.ts` | `lightDir` を uniform から `normalize(sunPosView − viewPos)` へ。放射照度に `1/|sunPosView − viewPos|²` を掛ける |
-| `src/game/celestial/environment-scene.ts` | `sunLight.set()` へ方向でなく描画座標での太陽位置と半径を渡す |
-
-**達成条件と検証**
-
-- `leo` ケースの `diff` が手順 7 の前後で変わらない。
-- 艦の陰影が実機で変わって見えない。
-- `npm run typecheck`
-- `npm run render-lab:shot` → `leo-prepass.png` を手順 6 時点のものと見比べて差が無いこと
-- `npm run dev` → 戦闘ビューで艦の陰影が変わっていないこと
-
----
-
 ### 手順 8. 遮蔽度バッファを作る
 
 **目的**: 太陽の直達光の透過率を画素ごとに持つ器を置き、CPU の一様スカラを描画から外す。
