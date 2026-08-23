@@ -6,10 +6,20 @@ import { Billboard } from './billboard';
 import { CelestialSurface } from './celestial-surface';
 import { textureOf } from './celestial-textures';
 import { WORLD_BACKGROUND_LAYER } from './pipeline/lit-layer';
+import { ASTRONOMICAL_UNIT } from '../physics/srp';
+import { R_SUN } from '../physics/solar-system';
 
 export const STAR_SHELL_RADIUS = 3.5e7; // [m] 自機中心に固定するので視差は出ない
 // 恒星のグローの一辺を実半径の何倍にするか。肉眼で見た太陽は視直径そのものより大きく滲む。
 export const STAR_GLOW_SIZE_RATIO = 12.3;
+
+// 太陽面の輝度(render/pipeline/sun-light.ts の単位)。1 天文単位での放射照度 π は太陽円盤が
+// 張る立体角 π(R/d)² を通して届くので、面の輝度は (d/R)² になる。5772 K の黒体として
+// σT⁴/太陽定数 を計算しても同じ 4.62e4 が出る。
+export const SUN_SURFACE_RADIANCE = (ASTRONOMICAL_UNIT / R_SUN) ** 2;
+// グローの輝度。太陽円盤の放射束を、円盤より広いスプライト面へ広げ直したもの — グローは
+// 光を増やす演出ではなく、目やレンズの中で同じ光が滲む現象を表す。
+export const SUN_GLOW_RADIANCE = SUN_SURFACE_RADIANCE * Math.PI / (4 * STAR_GLOW_SIZE_RATIO ** 2);
 
 export interface Stars {
   readonly mesh: THREE.Mesh;
@@ -82,7 +92,9 @@ export function createSun(): Sun {
 // MeshBasicMaterial で塗る。実位置・実半径へ置くのは呼び出し側(sun-view.ts)の仕事。
 function createSunMesh(): THREE.Mesh {
   const geo = new THREE.SphereGeometry(1, 48, 24);
-  const mat = new THREE.MeshBasicMaterial({ color: 0xfff3d0 });
+  const mat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(0xfff3d0).multiplyScalar(SUN_SURFACE_RADIANCE),
+  });
   const mesh = new THREE.Mesh(geo, mat);
   return mesh;
 }

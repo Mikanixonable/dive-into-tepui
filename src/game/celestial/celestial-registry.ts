@@ -13,7 +13,7 @@ import { SphereLodLevel } from '../../render/screen-lod';
 import { CelestialView } from './celestial-view';
 import { EarthView } from './earth-view';
 import { SphereView } from './sphere-view';
-import { PointView, PointBrightness } from './point-view';
+import { PointView } from './point-view';
 import { SunView } from './sun-view';
 
 // id のテクスチャを LOD 段ごとの球面へ貼る関数。テクスチャ表に無い id を渡すと投げる
@@ -31,18 +31,12 @@ function solidSurface(id: SolarSystemId): (level: SphereLodLevel) => CelestialSu
 }
 
 // テクスチャ付き惑星のレジストリ項を表示名から組む。rings(bodyDef からそのまま渡す)が
-// あれば環付きになる。pointBrightness を渡すと戦闘ビューでの表示が PointView の輝点
-// スプライトになる(省略時は SphereView の球のまま)。
-function planetEntry(id: SolarSystemId, name: string, pointBrightness?: PointBrightness): CelestialViewDef {
+// あれば環付きになる。**惑星は戦闘ビューでは常に輝点スプライトとして描かれる**(PointView)—
+// 見えるかどうかはその天体が届ける光の量が決める。
+function planetEntry(id: SolarSystemId, name: string): CelestialViewDef {
   const buildSurface = texturedSurface(id);
   const def = bodyDef(SOLAR_SYSTEM, id);
-  return {
-    name,
-    create: () =>
-      pointBrightness === undefined
-        ? new SphereView(id, buildSurface, def.radius, shapeOf(id), ringsOf(id))
-        : new PointView(id, buildSurface, def.radius, pointBrightness, shapeOf(id), ringsOf(id)),
-  };
+  return { name, create: () => new PointView(id, buildSurface, def.radius, shapeOf(id), ringsOf(id)) };
 }
 
 // id の環(恒星と衛星は持たない)。shape と同じく、判別を1箇所に閉じる。
@@ -87,12 +81,12 @@ export type CelestialViewDef = { readonly name: string; create(): CelestialView 
 export const CELESTIAL_VIEWS: Record<SolarSystemId, CelestialViewDef> = {
   earth: { name: '地球', create: () => new EarthView() },
   moon: { name: '月', create: () => new SphereView('moon', createMoon, bodyDef(SOLAR_SYSTEM, 'moon').radius) },
-  mercury: planetEntry('mercury', '水星', 'medium'),
-  venus: planetEntry('venus', '金星', 'bright'),
-  mars: planetEntry('mars', '火星', 'medium'),
+  mercury: planetEntry('mercury', '水星'),
+  venus: planetEntry('venus', '金星'),
+  mars: planetEntry('mars', '火星'),
   phobos: texturedSatelliteEntry('phobos', 'フォボス'),
   deimos: satelliteEntry('deimos', 'ダイモス'),
-  jupiter: planetEntry('jupiter', '木星', 'bright'),
+  jupiter: planetEntry('jupiter', '木星'),
   metis: satelliteEntry('metis', 'メティス'),
   adrastea: satelliteEntry('adrastea', 'アドラステア'),
   amalthea: satelliteEntry('amalthea', 'アマルテア'),
@@ -107,7 +101,7 @@ export const CELESTIAL_VIEWS: Record<SolarSystemId, CelestialViewDef> = {
   carme: satelliteEntry('carme', 'カルメ'),
   pasiphae: satelliteEntry('pasiphae', 'パシファエ'),
   sinope: satelliteEntry('sinope', 'シノーペ'),
-  saturn: planetEntry('saturn', '土星', 'medium'),
+  saturn: planetEntry('saturn', '土星'),
   pan: satelliteEntry('pan', 'パン'),
   daphnis: satelliteEntry('daphnis', 'ダフニス'),
   prometheus: satelliteEntry('prometheus', 'プロメテウス'),
@@ -123,7 +117,7 @@ export const CELESTIAL_VIEWS: Record<SolarSystemId, CelestialViewDef> = {
   hyperion: satelliteEntry('hyperion', 'ヒペリオン'),
   iapetus: satelliteEntry('iapetus', 'イアペトゥス'),
   phoebe: satelliteEntry('phoebe', 'フェーベ'),
-  uranus: planetEntry('uranus', '天王星', 'faint'),
+  uranus: planetEntry('uranus', '天王星'),
   puck: satelliteEntry('puck', 'パック'),
   miranda: satelliteEntry('miranda', 'ミランダ'),
   ariel: satelliteEntry('ariel', 'アリエル'),
