@@ -21,6 +21,7 @@ import { PointFieldView } from './point-field-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import { SunLight } from '../../render/pipeline/sun-light';
 import { MAX_OCCLUDERS, type Occluder, type OcclusionPass } from '../../render/pipeline/occlusion';
+import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
 import { CelestialView } from './celestial-view';
 import { CELESTIAL_VIEWS, fallbackCelestialView } from './celestial-registry';
@@ -107,6 +108,7 @@ export class EnvironmentScene {
     private readonly ephemeris: Ephemeris,
     private readonly sunLight: SunLight,
     private readonly occlusion: OcclusionPass,
+    private readonly atmosphere: AtmospherePass,
     earthSpinPhase0: number,
   ) {
     this.scene = scene;
@@ -194,6 +196,7 @@ export class EnvironmentScene {
       : floatingOrigin.RtoThreeV3(this.ephemeris.positionOf(starId, displayTime));
     this.sunLight.set(sunPos, star?.radius ?? 0, SUN_COLOR, SUN_RADIANT_INTENSITY, C.AMBIENT_INTENSITY);
     this.syncOcclusion(floatingOrigin, displayTime, graphics);
+    this.syncAtmosphere(floatingOrigin, displayTime, graphics);
 
     if (cameraSystem.overviewMode && this.ephemeris.starId !== null && graphics.pointField) {
       this.ensurePointField().sync(
@@ -271,6 +274,15 @@ export class EnvironmentScene {
         outerRadius: band.outerRadius,
         normalOpticalDepth: band.optics.normalOpticalDepth,
       })),
+    );
+  }
+
+  // 大気パスへ、大気を持つ天体を渡す。半径 0 は「このフレームは大気を描かない」の意。
+  private syncAtmosphere(fo: FloatingOrigin, displayTime: number, graphics: GraphicsSettingsData): void {
+    const hasEarth = graphics.atmosphere && 'earth' in this.ephemeris.registry;
+    this.atmosphere.setBody(
+      hasEarth ? fo.RtoThreeV3(this.ephemeris.positionOf('earth', displayTime)) : ZERO_VECTOR,
+      hasEarth ? bodyDef(this.ephemeris.registry, 'earth').radius : 0,
     );
   }
 
