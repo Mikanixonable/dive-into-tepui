@@ -118,12 +118,12 @@ export function register(): void {
     assert.equal(hidden.entity('base').orbit, false);
   });
 
-  test('visibility controls: 対象クラスは軌道+ラベル→ラベル→非表示を循環する', () => {
+  test('visibility controls: 対象クラスは非表示→ラベル→軌道+ラベルを循環する', () => {
     const orbit = bodyClassDisplayMode(DEFAULT_BODY_CLASS_TOGGLES, 'planetVisible');
     assert.equal(orbit, 'orbit');
-    assert.equal(nextBodyClassDisplayMode(orbit, true), 'label');
-    assert.equal(nextBodyClassDisplayMode('label', true), 'hidden');
-    assert.equal(nextBodyClassDisplayMode('hidden', true), 'orbit');
+    assert.equal(nextBodyClassDisplayMode(orbit, true), 'hidden');
+    assert.equal(nextBodyClassDisplayMode('hidden', true), 'label');
+    assert.equal(nextBodyClassDisplayMode('label', true), 'orbit');
 
     const label = applyBodyClassDisplayMode(DEFAULT_BODY_CLASS_TOGGLES, 'planetVisible', 'label');
     assert.equal(label.planetVisible, true);
