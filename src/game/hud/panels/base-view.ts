@@ -36,7 +36,7 @@ const STYLE = `
 #base-view .dock-title-group { min-width: 0; }
 #base-view .dock-kicker {
   display: block; margin-bottom: var(--space-2);
-  color: var(--accent); font-size: var(--font-xs); line-height: 1.3;
+  color: var(--color-primary); font-size: var(--font-xs); line-height: 1.3;
 }
 #base-view .dock-title {
   display: block; margin: 0; color: var(--title);
@@ -52,13 +52,13 @@ const STYLE = `
   border: 0; border-radius: var(--radius-control);
   background: transparent; color: var(--muted);
 }
-#base-view .dock-tabs .w-btn:hover { background: var(--surface-2); color: var(--accent-near); }
-#base-view .dock-tabs .w-btn.on { background: var(--accent-fill); color: var(--accent); }
+#base-view .dock-tabs .w-btn:hover { background: var(--surface-2); color: var(--color-primary-hover); }
+#base-view .dock-tabs .w-btn.on { background: var(--color-primary-fill); color: var(--color-primary); }
 #base-view .w-close {
   width: 34px; height: 34px; border: 0; border-radius: var(--radius-control);
   background: var(--surface-2); color: var(--muted);
 }
-#base-view .w-close:hover { background: var(--surface-3); color: var(--accent-near); }
+#base-view .w-close:hover { background: var(--surface-3); color: var(--color-primary-hover); }
 #base-view .dock-status-bar {
   flex: 0 0 auto; padding: 0 17px 13px;
   border-radius: 0 0 var(--radius-window) var(--radius-window);
@@ -66,7 +66,7 @@ const STYLE = `
   font-size: var(--font-s); font-variant-numeric: tabular-nums;
 }
 #base-view .dock-status-bar::before {
-  content: "∗"; margin-right: var(--space-3); color: var(--accent-secondary);
+  content: "∗"; margin-right: var(--space-3); color: var(--color-signal);
 }
 #base-view .dock-body {
   flex: 1 1 0; min-height: 0; margin-top: 9px; padding: var(--space-6) 0;
@@ -76,7 +76,7 @@ const STYLE = `
 #base-view .dock-ship-select:focus-visible,
 #base-view .dock-part-swap-select:focus-visible,
 #base-view .w-btn:focus-visible,
-#base-view .w-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+#base-view .w-close:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 3px; }
 #base-view .dock-section { display: flex; flex-direction: column; gap: 9px; }
 #base-view .dock-section-head {
   display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-6);
@@ -113,7 +113,7 @@ const STYLE = `
 }
 #base-view .dock-ship-row.is-selected::before {
   content: ""; position: absolute; top: 12px; bottom: 12px; left: 6px; width: 3px;
-  border-radius: var(--radius-control); background: var(--accent);
+  border-radius: var(--radius-control); background: var(--color-primary);
 }
 #base-view .dock-ship-select {
   flex: 1 1 auto; min-width: 0; display: block; padding: var(--space-3) var(--space-4);
@@ -122,10 +122,10 @@ const STYLE = `
 }
 #base-view .dock-ship-info { flex: 1; display: flex; flex-direction: column; gap: var(--space-1); }
 #base-view .dock-ship-name { color: var(--title); font-size: var(--font-l); font-weight: 500; }
-#base-view .dock-ship-row:not(.is-selected) .dock-ship-select:hover .dock-ship-name { color: var(--accent-near); }
-#base-view .dock-ship-row.is-selected .dock-ship-name { color: var(--accent); }
+#base-view .dock-ship-row:not(.is-selected) .dock-ship-select:hover .dock-ship-name { color: var(--color-primary-hover); }
+#base-view .dock-ship-row.is-selected .dock-ship-name { color: var(--color-primary); }
 #base-view .dock-ship-hp { color: var(--muted); font-size: var(--font-s); font-variant-numeric: tabular-nums; }
-#base-view .dock-ship-row.is-critical .dock-ship-hp { color: var(--danger); }
+#base-view .dock-ship-row.is-critical .dock-ship-hp { color: var(--color-error); }
 #base-view .dock-ship-actions { display: flex; flex: 0 0 auto; gap: 5px; }
 /* Parts tab */
 #base-view .dock-parts-header {
@@ -138,7 +138,7 @@ const STYLE = `
   box-shadow: 0 16px 48px var(--shadow, var(--shade-1));
 }
 #base-view .dock-ship-label { flex: 1; color: var(--body); font-size: var(--font-m); }
-#base-view .dock-ship-label strong { color: var(--accent); font-weight: 600; }
+#base-view .dock-ship-label strong { color: var(--color-primary); font-weight: 600; }
 #base-view .dock-part-list { display: flex; flex-direction: column; gap: 7px; }
 #base-view .dock-part-row {
   display: flex; flex-direction: column; gap: var(--space-3); padding: 9px 11px;
@@ -192,12 +192,12 @@ const STYLE = `
   padding: 7px 10px; border: 0; border-radius: var(--radius-control);
   background: var(--surface-2); color: var(--body); white-space: nowrap;
 }
-#base-view span.dock-btn:hover { background: var(--surface-3); color: var(--accent-near); }
-#base-view span.dock-btn-primary { background: var(--accent-fill); color: var(--accent); }
-#base-view span.dock-btn-primary:hover { background: var(--accent-fill-strong); color: var(--accent-near); }
+#base-view span.dock-btn:hover { background: var(--surface-3); color: var(--color-primary-hover); }
+#base-view span.dock-btn-primary { background: var(--color-primary-fill); color: var(--color-primary); }
+#base-view span.dock-btn-primary:hover { background: var(--color-primary-fill-strong); color: var(--color-primary-hover); }
 #base-view span.dock-btn-service { color: var(--body); }
-#base-view span.dock-btn-service:hover { background: var(--surface-3); color: var(--accent-near); }
-#base-view span.dock-btn-complete.disabled { opacity: 0.72; color: var(--accent-secondary); }
+#base-view span.dock-btn-service:hover { background: var(--surface-3); color: var(--color-primary-hover); }
+#base-view span.dock-btn-complete.disabled { opacity: 0.72; color: var(--color-signal); }
 #base-view span.dock-btn-quiet { color: var(--muted); }
 
 @media ${MQ_COMPACT} {

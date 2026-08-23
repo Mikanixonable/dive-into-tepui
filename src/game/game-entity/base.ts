@@ -320,11 +320,11 @@ export class Base extends GameEntity implements Controllable {
       priority,
       name: this.name,
       detail: overviewMode ? '' : fmtMarkerDist(dist),
-      bearingColor: role === 'primary' ? currentThemePalette().secondary : C.COLOR_MARKER_ALLY,
+      bearingColor: role === 'primary' ? currentThemePalette().signal : C.COLOR_MARKER_ALLY,
       bearingSym: ENTITY_GLYPH.base,
       bearingClass: 'mk-dir mk-ally-dir',
       bearingVisible: false,
-      color: role === 'primary' ? currentThemePalette().secondary : C.COLOR_MARKER_ALLY,
+      color: role === 'primary' ? currentThemePalette().signal : C.COLOR_MARKER_ALLY,
       symMarkup: true,
     };
   }

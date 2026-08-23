@@ -8,12 +8,12 @@ export const MAP_VIEW_STYLE = `
 
 /* 宇宙空間は常に暗いため、ライトテーマでも天体ラベルは暗色の札と明色文字で読む。 */
 #hud .hud-map-root.active .mk-poi .lbl {
-  background: #0b0d11;
-  color: #f5f7ff;
+  background: var(--space-label-background);
+  color: var(--space-label-text);
   text-shadow: none;
 }
-#hud .hud-map-root.active .mk-poi:not(.mk-lagrange) .lbl .lbl-main { color: #f5f7ff; }
-#hud .hud-map-root.active .mk-poi:not(.mk-lagrange) .lbl .lbl-sub { color: #b8c1d1; }
+#hud .hud-map-root.active .mk-poi:not(.mk-lagrange) .lbl .lbl-main { color: var(--space-label-text); }
+#hud .hud-map-root.active .mk-poi:not(.mk-lagrange) .lbl .lbl-sub { color: var(--space-label-subtext); }
 
 /* Quiet Glass: 視野を隠さない常設情報。 */
 #hud .hud-map-root.active #hud-physical-object-list,
@@ -71,9 +71,9 @@ export const MAP_VIEW_STYLE = `
   -webkit-backdrop-filter: blur(14px) saturate(82%);
 }
 #hud .hud-map-root.active .rail-toggle:hover,
-#hud .hud-map-root.active #hud-predict-toggle:hover { color: var(--accent-near); background: var(--surface-2); }
+#hud .hud-map-root.active #hud-predict-toggle:hover { color: var(--color-primary-hover); background: var(--surface-2); }
 #hud .hud-map-root.active .rail-toggle:focus-visible,
-#hud .hud-map-root.active #hud-predict-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#hud .hud-map-root.active #hud-predict-toggle:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 
 /* Object list: 現在の選択だけを Accent、カメラの関連軌道を Near accent で分ける。 */
 #hud .hud-map-root.active #hud-physical-object-list { max-height: min(576px, 64dvh); }
@@ -110,8 +110,8 @@ export const MAP_VIEW_STYLE = `
   border-radius: var(--radius-control);
   background: transparent;
 }
-#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-head .w-btn:hover { color: var(--accent-near); background: var(--surface-2); }
-#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-head .w-btn.on { color: var(--accent); background: var(--surface-2); }
+#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-head .w-btn:hover { color: var(--color-primary-hover); background: var(--surface-2); }
+#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-head .w-btn.on { color: var(--color-primary); background: var(--surface-2); }
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-breadcrumb {
   margin: var(--space-2) 0 var(--space-3);
   padding: var(--space-2) var(--space-3);
@@ -128,8 +128,8 @@ export const MAP_VIEW_STYLE = `
   letter-spacing: 0;
   cursor: pointer;
 }
-#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-section-header:hover { color: var(--accent-near); background: var(--surface-2); }
-#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-section-header:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-section-header:hover { color: var(--color-primary-hover); background: var(--surface-2); }
+#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-section-header:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 #hud .hud-map-root.active #hud-physical-object-list .erow {
   min-height: 28px;
   border-radius: var(--radius-control);
@@ -138,14 +138,14 @@ export const MAP_VIEW_STYLE = `
 }
 #hud .hud-map-root.active #hud-physical-object-list .erow:hover { color: var(--title); background: var(--surface-2); }
 #hud .hud-map-root.active #hud-physical-object-list .erow.related-orbit {
-  color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
 #hud .hud-map-root.active #hud-physical-object-list .erow.on {
   outline: 0;
-  color: var(--accent-secondary);
-  background: color-mix(in srgb, var(--accent-secondary) 12%, transparent);
+  color: var(--color-signal);
+  background: color-mix(in srgb, var(--color-signal) 12%, transparent);
 }
-#hud .hud-map-root.active #hud-physical-object-list .erow:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+#hud .hud-map-root.active #hud-physical-object-list .erow:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-glyph {
   flex: 0 0 16px;
   height: 16px;
@@ -246,7 +246,7 @@ export const MAP_VIEW_STYLE = `
   color: var(--muted);
   background: transparent;
 }
-#hud .hud-map-root.active #hud-view-options .body-class-row .w-btn:hover { color: var(--accent-near); background: var(--surface-2); }
+#hud .hud-map-root.active #hud-view-options .body-class-row .w-btn:hover { color: var(--color-primary-hover); background: var(--surface-2); }
 #hud .hud-map-root.active #hud-view-options .body-class-row .body-class-icon-btn.on {
   color: var(--title);
   background: var(--surface-2);
@@ -255,7 +255,7 @@ export const MAP_VIEW_STYLE = `
   color: var(--title);
   background: transparent;
 }
-#hud .hud-map-root.active #hud-view-options .body-class-row .body-class-title.on::before { background: var(--accent); }
+#hud .hud-map-root.active #hud-view-options .body-class-row .body-class-title.on::before { background: var(--color-primary); }
 #hud .hud-map-root.active #hud-view-options .body-class-row .body-class-icon-btn.on::after {
   content: '';
   position: absolute;
@@ -264,7 +264,7 @@ export const MAP_VIEW_STYLE = `
   width: 3px;
   height: 3px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--color-primary);
 }
 #hud .hud-map-root.active #hud-view-options .body-class-row.category-off { opacity: .52; }
 #hud .hud-map-root.active #hud-view-options .body-class-row.category-off .body-class-icon-btn.on::after { display: none; }
@@ -287,16 +287,16 @@ export const MAP_VIEW_STYLE = `
   flex: 0 0 auto; width: 1.1em; height: 1.1em; margin-right: 0; color: var(--muted);
 }
 #hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="orbit"] {
-  color: var(--title); background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
+  color: var(--title); background: color-mix(in srgb, var(--color-primary) 12%, var(--surface-2));
 }
 #hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="orbit"] .w-btn-icon {
-  color: var(--accent);
+  color: var(--color-primary);
 }
 #hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="label"] {
   color: var(--title); background: var(--surface-2);
 }
 #hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="label"] .w-btn-icon {
-  color: var(--accent-near);
+  color: var(--color-primary-hover);
 }
 #hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="hidden"] {
   background: transparent;
@@ -309,18 +309,18 @@ export const MAP_VIEW_STYLE = `
   border-radius: var(--radius-control);
   background: var(--surface-2);
 }
-#hud .hud-map-root.active #hud-predict .w-btn:hover { color: var(--accent-near); background: var(--surface-3); }
-#hud .hud-map-root.active #hud-predict .w-btn.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--surface-2)); }
+#hud .hud-map-root.active #hud-predict .w-btn:hover { color: var(--color-primary-hover); background: var(--surface-3); }
+#hud .hud-map-root.active #hud-predict .w-btn.on { color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 12%, var(--surface-2)); }
 #hud .hud-map-root.active #hud-predict .predict-past .w-btn.on {
-  color: var(--accent-near);
-  background: color-mix(in srgb, var(--accent-near) 10%, var(--surface-2));
+  color: var(--color-primary-hover);
+  background: color-mix(in srgb, var(--color-primary-hover) 10%, var(--surface-2));
 }
 #hud .hud-map-root.active #hud-predict .w-group-title,
 #hud .hud-map-root.active #hud-predict .w-toggle-title,
 #hud .hud-map-root.active #hud-predict .predict-absolute,
 #hud .hud-map-root.active #hud-predict .slider-ticks span { color: var(--muted); letter-spacing: 0; }
 #hud .hud-map-root.active #hud-predict .predict-elapsed { color: var(--title); }
-#hud .hud-map-root.active #hud-predict .predict-elapsed:hover { color: var(--accent-near); }
+#hud .hud-map-root.active #hud-predict .predict-elapsed:hover { color: var(--color-primary-hover); }
 
 /* Frame controls: ウィンドウ見出し > 操作 > 読み取り専用サマリーの順に弱くする。 */
 #hud .hud-map-root.active .hud-frame-controls .frame-summary {
@@ -336,9 +336,9 @@ export const MAP_VIEW_STYLE = `
   border-radius: var(--radius-control);
   background: var(--surface-2);
 }
-#hud .hud-map-root.active .hud-frame-controls .w-btn:hover { color: var(--accent-near); background: var(--surface-3); }
-#hud .hud-map-root.active .hud-frame-controls .w-btn.on { color: var(--accent); }
-#hud .hud-map-root.active .hud-frame-controls .w-toggle-track.on { background: var(--accent-secondary); }
+#hud .hud-map-root.active .hud-frame-controls .w-btn:hover { color: var(--color-primary-hover); background: var(--surface-3); }
+#hud .hud-map-root.active .hud-frame-controls .w-btn.on { color: var(--color-primary); }
+#hud .hud-map-root.active .hud-frame-controls .w-toggle-track.on { background: var(--color-signal); }
 
 /* Map scale は視野端の小さな Quiet Glass に留める。 */
 #hud-map-scale {

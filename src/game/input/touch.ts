@@ -30,10 +30,10 @@ const STYLE = `
 #touch-ui.shown .tbtn { pointer-events: auto; }
 #touch-ui .tbtn .g { font-size: ${FONT_XL}; }
 #touch-ui .tbtn .l { font-size: ${FONT_XXS}; color: var(--text-dim); margin-top: ${SPACE_1}; }
-#touch-ui .tbtn.pressed { background: var(--accent-fill-strong); border-color: var(--accent); color: var(--text-strong); }
+#touch-ui .tbtn.pressed { background: var(--color-primary-fill-strong); border-color: var(--color-primary); color: var(--text-strong); }
 /* .on: 押下中かどうかに関わらず、モードが実際に ON の間ずっと点灯させる
    (制動・微動・ホールド・推力ラッチなどの向け。.pressed と見た目は同じでよい) */
-#touch-ui .tbtn.on { background: var(--accent-fill-strong); border-color: var(--accent); color: var(--text-strong); }
+#touch-ui .tbtn.on { background: var(--color-primary-fill-strong); border-color: var(--color-primary); color: var(--text-strong); }
 #touch-ui .mini-col {
   position: absolute; display: grid; gap: 6px; grid-template-rows: repeat(2, 52px);
 }
@@ -48,7 +48,7 @@ const STYLE = `
 #touch-fire {
   position: absolute; right: calc(22px + var(--safe-r)); bottom: calc(138px + var(--safe-b));
   width: 74px; height: 74px; border-radius: 50% !important;
-  border-color: var(--accent-edge) !important; color: var(--accent) !important;
+  border-color: var(--color-primary-edge) !important; color: var(--color-primary) !important;
 }
 #touch-zoom {
   position: absolute; right: calc(112px + var(--safe-r)); bottom: calc(148px + var(--safe-b));

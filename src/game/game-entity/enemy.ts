@@ -164,10 +164,10 @@ export class Enemy extends Ship {
       name: this.name,
       detail: overviewMode ? '' : fmtMarkerDist(dist),
       // 敵本体・距離ラベル・画面外方位マーカーは同じ色で統一する。ターゲット中は第二アクセントカラーで強調する。
-      bearingColor: role === 'primary' ? currentThemePalette().secondary : C.COLOR_MARKER_ENEMY,
+      bearingColor: role === 'primary' ? currentThemePalette().signal : C.COLOR_MARKER_ENEMY,
       bearingSym: ENTITY_GLYPH.enemyShip,
       bearingClass: 'mk-dir mk-bearing-triangle',
-      color: role === 'primary' ? currentThemePalette().secondary : C.COLOR_MARKER_ENEMY,
+      color: role === 'primary' ? currentThemePalette().signal : C.COLOR_MARKER_ENEMY,
       symMarkup: true,
     };
   }

@@ -29,11 +29,11 @@ export const PANEL_CONTENT_STYLE = `
   width: 0;
   height: 100%;
   border-radius: inherit;
-  background: var(--accent);
+  background: var(--color-primary);
   transition: width 180ms;
 }
 #hud-vessel-status .vessel-meter.critical .vessel-meter-fill {
-  background: var(--danger);
+  background: var(--color-error);
 }
 #hud-vessel-status .vessel-meter-value {
   min-width: 48px;
@@ -61,8 +61,8 @@ export const PANEL_CONTENT_STYLE = `
   position: relative; z-index: 1; color: var(--text); font-size: var(--font-xxs); line-height: 1.5;
   text-shadow: 0 0 3px var(--bg), 0 0 3px var(--bg); transition: color var(--transition-fast);
 }
-#hud-vessel-status .vessel-deploy-btn.on { border-color: var(--accent); }
-#hud-vessel-status .vessel-deploy-btn.on .label { color: var(--accent); }
+#hud-vessel-status .vessel-deploy-btn.on { border-color: var(--color-primary); }
+#hud-vessel-status .vessel-deploy-btn.on .label { color: var(--color-primary); }
 /* 常設パネルの操作ボタン列(艦ステータスの R/F/G/T 代替、軌道情報の分析パネル起動、
    いずれもタッチ・マウスどちらでも常設)。 */
 .combat-panel .panel-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
@@ -76,7 +76,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud .hud-rail-right > #hud-target h3 { font-size: var(--font-xxs); }
 #hud-enemies h3 { font-size: var(--font-xxs); }
 #hud-enemies .erow { display: flex; justify-content: space-between; gap: var(--space-4); color: var(--text-dim); }
-#hud-enemies .erow.tgt { color: var(--accent); }
+#hud-enemies .erow.tgt { color: var(--color-primary); }
 
 #hud .hud-rail > #hud-object-placer { max-height: none; overflow: visible; }
 #hud .hud-rail > #hud-plan { width: 100%; min-width: 0; max-width: none; max-height: none; overflow: visible; }
@@ -111,10 +111,10 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-physical-object-list .physical-object-list-detail { margin-left: auto; font-size: var(--font-xxs); color: var(--text-dim); white-space: nowrap; }
 #hud-physical-object-list .erow:hover { color: var(--text); }
 #hud-physical-object-list .erow.tgt {
-  color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
 #hud-physical-object-list .erow.on {
-  outline: 0; color: var(--accent-secondary); background: color-mix(in srgb, var(--accent-secondary) 12%, transparent);
+  outline: 0; color: var(--color-signal); background: color-mix(in srgb, var(--color-signal) 12%, transparent);
 }
 #hud-physical-object-list .erow.cluster { opacity: .55; }
 #hud-physical-object-list .physical-object-list-toggle { width: 10px; text-align: center; flex: none; }
@@ -162,7 +162,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-predict-toggle {
   display: none; order: 1; align-self: center; pointer-events: auto; cursor: pointer;
   width: 26px; height: 26px; border: 1px solid var(--edge); border-radius: var(--radius-m);
-  background: var(--surface); color: var(--accent);
+  background: var(--surface); color: var(--color-primary);
 }
 #hud .hud-map-root.active #hud-predict-toggle { display: block; }
 #hud.dock-mode #hud-predict-toggle { display: none; }
@@ -176,9 +176,9 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
   font-size: var(--font-m);
 }
-#hud-predict span.predict-reset:hover { border-color: var(--accent); color: var(--accent); }
+#hud-predict span.predict-reset:hover { border-color: var(--color-primary); color: var(--color-primary); }
 #hud-predict .predict-slider-wrap { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; height: 22px; }
-#hud-predict input[type="range"] { width: 100%; height: 22px; margin: 0; pointer-events: auto; accent-color: var(--accent); }
+#hud-predict input[type="range"] { width: 100%; height: 22px; margin: 0; pointer-events: auto; accent-color: var(--color-primary); }
 #hud-predict .predict-elapsed {
   flex: 0 0 auto; pointer-events: auto; cursor: pointer;
   font-size: var(--font-s); color: var(--text-dim); font-variant-numeric: tabular-nums; white-space: nowrap;
@@ -230,16 +230,16 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-object-placer .slider-field { margin-bottom: var(--space-4); }
 #hud-object-placer .slider-field .w-group { flex-wrap: nowrap; margin-bottom: 0; }
 #hud-object-placer .slider-field .slider-col { flex: 1 1 60px; min-width: 60px; }
-#hud-object-placer .slider-field input[type="range"] { width: 100%; pointer-events: auto; accent-color: var(--accent); }
+#hud-object-placer .slider-field input[type="range"] { width: 100%; pointer-events: auto; accent-color: var(--color-primary); }
 #hud-object-placer .slider-field .slider-ticks { display: flex; justify-content: space-between; margin-top: var(--space-1); }
 #hud-object-placer .slider-field .slider-ticks span { flex: 0 1 auto; min-width: 0; font-size: calc(var(--font-xxs) * 0.82); color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #hud-object-placer .slider-field .slider-ticks span:first-child { text-align: left; }
 #hud-object-placer .slider-field .slider-ticks span:last-child { text-align: right; }
 #hud-object-placer input[type="text"] { flex: 1; width: auto; }
 #hud-object-placer .preset-row { flex-wrap: wrap; gap: var(--space-3); }
-#hud-object-placer .field-issue { border: 1px solid var(--danger); border-radius: var(--radius-s); padding: var(--space-1) var(--space-2); }
-#hud-object-placer .issue-list { margin: var(--space-4) 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--danger); border-radius: var(--radius-s); background: var(--danger-fill); }
-#hud-object-placer .issue-list .issue-line { font-size: var(--font-s); color: var(--danger); }
+#hud-object-placer .field-issue { border: 1px solid var(--color-error); border-radius: var(--radius-s); padding: var(--space-1) var(--space-2); }
+#hud-object-placer .issue-list { margin: var(--space-4) 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--color-error); border-radius: var(--radius-s); background: var(--color-error-fill); }
+#hud-object-placer .issue-list .issue-line { font-size: var(--font-s); color: var(--color-error); }
 #navball { top: 12px; left: 12px; width: 190px; pointer-events: auto; }
 #navball .nb-ball { display: block; width: 100%; height: auto; margin: var(--space-2) 0 var(--space-4); }
 #navball .nb-rim { fill: var(--fill-1); stroke: var(--edge); stroke-width: 1; }
@@ -258,19 +258,19 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 }
 #hud-result h1 { font-size: var(--font-3xl); letter-spacing: 6px; margin-bottom: var(--space-6); }
 #hud-result.win h1 { color: var(--text); }
-#hud-result.lose h1 { color: var(--accent); }
+#hud-result.lose h1 { color: var(--color-primary); }
 #hud-result .detail {
   font-size: var(--font-xl); line-height: 2; color: var(--text);
   background: var(--surface); border: 1px solid var(--edge); border-radius: var(--radius-m); padding: var(--space-6) var(--space-6);
 }
-#hud-result .restart { margin-top: var(--space-6); color: var(--accent-soft); font-size: var(--font-l); }
+#hud-result .restart { margin-top: var(--space-6); color: var(--color-primary-hover); font-size: var(--font-l); }
 #hud-help {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
   display: none; min-width: min(480px, calc(100vw - 24px)); max-height: 86vh; max-height: 86dvh; overflow-y: auto; pointer-events: auto;
 }
 #hud-help table { border-collapse: collapse; width: 100%; }
 #hud-help td { padding: var(--space-2) var(--space-5); color: var(--text); }
-#hud-help td.key { color: var(--accent-soft); text-align: right; white-space: nowrap; }
+#hud-help td.key { color: var(--color-primary-hover); text-align: right; white-space: nowrap; }
 
 #hud-stagestatus {
   bottom: calc(12px + var(--safe-b)); left: 50%; transform: translateX(-50%);
@@ -281,7 +281,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   font-size: var(--font-s); letter-spacing: 2px; color: var(--text); font-variant-numeric: tabular-nums;
   display: grid; grid-template-columns: auto 1fr; gap: var(--space-2) var(--space-4); align-items: center;
 }
-#hud-stagestatus .t.warn { color: var(--accent); }
+#hud-stagestatus .t.warn { color: var(--color-warning); }
 #hud-stagestatus .t .w-meter { width: 240px; }
 #hud-stagestatus .k { font-size: var(--font-s); color: var(--text-dim); line-height: 1.8; white-space: nowrap; }
 #hud-stagestatus .k-widgets:not(:empty) { margin-top: var(--space-3); }
@@ -303,7 +303,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   padding: 0; font: inherit; font-size: var(--font-m); border: 1px solid transparent;
   background: var(--surface-2); color: var(--body); cursor: pointer;
 }
-#hud-pause-menu .pm-minimize:hover { color: var(--accent-near); background: var(--surface-3); }
+#hud-pause-menu .pm-minimize:hover { color: var(--color-primary-hover); background: var(--surface-3); }
 #hud-pause-menu .pm-body.hidden { display: none; }
 #hud-pause-menu .pm-row {
   display: flex; justify-content: space-between; align-items: center; gap: var(--space-6); padding: var(--space-3) 0;
@@ -347,10 +347,10 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   flex: 0 0 auto; width: var(--hit-target-min); height: var(--hit-target-min); border-radius: var(--radius-control);
   border-color: var(--edge); background: var(--surface-1);
 }
-#hud-settings-view .sv-header .w-close:hover { border-color: var(--accent); background: var(--surface-2); }
-#hud-settings-view .sv-eyebrow { color: var(--accent); font-size: var(--font-xxs); letter-spacing: 0.12em; }
+#hud-settings-view .sv-header .w-close:hover { border-color: var(--color-primary); background: var(--surface-2); }
+#hud-settings-view .sv-eyebrow { color: var(--color-primary); font-size: var(--font-xxs); letter-spacing: 0.12em; }
 #hud-settings-view .sv-description {
-  margin-top: var(--space-5); padding-left: var(--space-4); border-left: 2px solid var(--accent);
+  margin-top: var(--space-5); padding-left: var(--space-4); border-left: 2px solid var(--color-primary);
   color: var(--text-dim); font-size: var(--font-s); line-height: 1.6;
 }
 #hud-settings-view .sv-tabs {
@@ -370,14 +370,14 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 }
 #hud-settings-view .sv-tabs .w-btn::after {
   position: absolute; right: 0; bottom: -1px; left: 0; height: 2px; border-radius: 0;
-  background: var(--accent); content: '';
+  background: var(--color-primary); content: '';
   opacity: 0; transform: scaleX(0.35); transition: opacity var(--transition-fast), transform var(--transition-fast);
 }
 #hud-settings-view .sv-tabs .w-btn:hover {
-  background: transparent; color: var(--accent-near); transform: none;
+  background: transparent; color: var(--color-primary-hover); transform: none;
 }
 #hud-settings-view .sv-tabs .w-btn.on {
-  border: 0; background: transparent; color: var(--accent);
+  border: 0; background: transparent; color: var(--color-primary);
 }
 #hud-settings-view .sv-tabs .w-btn.on::after { opacity: 1; transform: scaleX(1); }
 #hud-settings-view .sv-section {
@@ -390,7 +390,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   color: var(--title); font-size: var(--font-m); letter-spacing: 0.08em;
 }
 #hud-settings-view .sv-section h3::before {
-  width: var(--space-2); height: var(--font-m); border-radius: var(--radius-micro); background: var(--accent); content: '';
+  width: var(--space-2); height: var(--font-m); border-radius: var(--radius-micro); background: var(--color-primary); content: '';
 }
 #hud-settings-view .sv-theme-options {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: var(--space-3);
@@ -410,11 +410,11 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   color: var(--sv-theme-title);
 }
 #hud-settings-view .sv-theme-button.on {
-  background: color-mix(in srgb, var(--accent) 18%, var(--sv-theme-page));
+  background: color-mix(in srgb, var(--color-primary) 18%, var(--sv-theme-page));
   color: var(--sv-theme-title);
 }
 #hud-settings-view .sv-theme-button.on::after {
-  margin-left: auto; color: var(--accent); content: '選択中'; font-size: var(--font-xxs); white-space: nowrap;
+  margin-left: auto; color: var(--color-primary); content: '選択中'; font-size: var(--font-xxs); white-space: nowrap;
 }
 #hud-settings-view .sv-theme-button .w-btn-icon {
   display: inline-flex; align-items: center; gap: 3px; width: auto; height: auto; margin-right: var(--space-2);
@@ -436,7 +436,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-settings-view .sv-header .w-close:hover,
 #hud-settings-view .sv-preview-button:hover,
 #hud-settings-view .sv-track-actions .w-btn:hover {
-  border: 0; background: transparent; color: var(--accent-near);
+  border: 0; background: transparent; color: var(--color-primary-hover);
 }
 #hud-settings-view .gp-body { display: flex; flex-direction: column; gap: var(--space-4); margin-top: var(--space-4); }
 #hud-settings-view .sv-volume-row {
