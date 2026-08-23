@@ -7,3 +7,4 @@ docs/
 .claude/worktrees/
 .claude/settings.local.json
 .bgm-lab/
+.render-lab/
