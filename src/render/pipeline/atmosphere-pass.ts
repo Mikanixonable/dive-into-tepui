@@ -26,7 +26,8 @@ const RIM_SCALE_H = 90e3;
 // 天体本体による遮蔽境界をぼかす幅 [m](視線の最接近高度で測る)。地表すれすれの視線では
 // 奥行きが高度に対して急峻に変化するため、奥行きで測るとぼかし幅が画素未満に潰れる。
 const RIM_EDGE_SOFTEN = 25e3;
-const RIM_OPACITY = 0.6;
+// リム光の明るさ。下地(宇宙空間)から奪うものが無い加算ぶんなので、透過率ではなく輝度に掛かる。
+const RIM_BRIGHTNESS = 0.6;
 // 地表付近のもやの濃さ(視線が真上からのときの光学的厚み)。
 const HAZE_TAU0 = 0.34;
 // 視線が地平線と平行に近づいたときの光路長の上限(cosθ の下限)。
@@ -99,7 +100,7 @@ export class AtmospherePass {
     // シェルに当たらない・視線の起点より後ろ・不透明面の方が手前・大気を持つ天体が無いフレーム。
     const inShell = and(greaterThan(shellDisc, 0), greaterThan(shellFar, 0));
     const hasAtmosphere = and(inShell, greaterThan(surface, 0));
-    const rim = select(and(hasAtmosphere, lessThan(shellFar, opaqueDist)), falloff.mul(sunFactor).mul(bodyVisible).mul(RIM_OPACITY), float(0));
+    const rim = select(and(hasAtmosphere, lessThan(shellFar, opaqueDist)), falloff.mul(sunFactor).mul(bodyVisible).mul(RIM_BRIGHTNESS), float(0));
 
     // もや(aerial perspective): 大気層の内側にある不透明面は、視線が地平線に近いほど長い
     // 光路を通って見える。Beer-Lambert 則で haze = 1 − exp(−τ₀/cosθ)。
