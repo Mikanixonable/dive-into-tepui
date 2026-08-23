@@ -151,10 +151,10 @@ export const RCS_PUFF_TORQUE_EPS = 0.15; // RCSパフを表示する実トルク
 // 微調整モード([V]キーでトグル、射撃中は自動でON)で角加速度に掛ける倍率
 export const FINE_ATTITUDE_SCALE = 0.5;
 
-// 戦闘視点カメラの near/far [m]。near は LEO 高度からの地平線距離(~2,400km)での深度誤差が
-// 十分小さく、対数深度バッファなしで z-fighting を避けられる値。far は球として描かれる天体の
-// うち見かけ直径が 2px を超える最遠のもの — 直径 1.4e9 m の恒星を LOD 上限で見た 1.4e12 m —
-// が入る距離。反転 32bit 深度の分解能は距離に比例するので、far を広げる費用は事実上ゼロ。
+// 戦闘視点カメラの near/far [m]。反転 32bit 深度では復元誤差が距離に比例し near に依らないので、
+// near は精度のためではなく「カメラが物へめり込む手前で切り取られない」値として置く。far は球
+// として描かれる天体のうち見かけ直径が 2px を超える最遠のもの — 直径 1.4e9 m の恒星を LOD 上限で
+// 見た 1.4e12 m — が入る距離。far を広げる費用は事実上ゼロ。
 export const COMBAT_CAMERA_NEAR = 2;
 export const COMBAT_CAMERA_FAR = 2e12;
 
@@ -397,7 +397,8 @@ export const OVERVIEW_CAMERA_FOV_STEP = 1; // HUD から入力する画角の刻
 export const OVERVIEW_CAMERA_MAX_DIST = 1e14;
 // 広範囲視点の near は固定値ではなく、注視点までの距離をこの比で割った値を毎フレーム使う
 // (near = dist / OVERVIEW_CAMERA_NEAR_RATIO)。比を大きくすると near が注視点に近づいて
-// 手前がクリップされにくくなる代わりに、24bit 深度バッファの分解能が落ちる。
+// 手前がクリップされにくくなる。反転 32bit 深度では分解能が near に依らないので、
+// この比が深度精度と取引になることはない。
 export const OVERVIEW_CAMERA_NEAR_RATIO = 1000;
 // near = dist / OVERVIEW_CAMERA_NEAR_RATIO の比例則は dist の上限では星球シェル・
 // 天球グリッド(CELESTIAL_SHELL_RADIUS)より大きくなる(dist=1e14 で near=1e11)。
@@ -409,8 +410,8 @@ export const OVERVIEW_CAMERA_NEAR_SHELL_MARGIN = 0.9;
 // 広範囲視点の far も near と同様に固定値ではなく dist に連動させる
 // (far = clamp(dist × OVERVIEW_CAMERA_FAR_RATIO, OVERVIEW_CAMERA_FAR_MIN, OVERVIEW_CAMERA_FAR_MAX))。
 // far を dist に比例させないと、太陽・木星のような遠方天体は引いたカメラでは
-// far 平面の外に出て消える一方、近距離域で far を大きく取ると 24bit 深度の分解能を
-// 無駄に浪費する。
+// far 平面の外に出て消える。逆に近距離域で far を大きく取ることの費用は、反転 32bit 深度では
+// 事実上ゼロ。
 export const OVERVIEW_CAMERA_FAR_RATIO = 100;
 // 最小ズーム(dist = OVERVIEW_CAMERA_MIN_DIST)でも月(3.8e8m)や星球シェルが
 // far の外に出ないための下限。
