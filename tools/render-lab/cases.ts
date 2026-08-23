@@ -69,11 +69,11 @@ function ship(z: number): THREE.Object3D {
 function leo(): LabCase {
   const camera = labCamera(6e7);
   const orbitRadius = 6.791e6;
-  const center = new THREE.Vector3(0, 0, -orbitRadius);
-  // 軌道面はカメラの視線から 10° 傾ける。真上に取ると円が視点そのものを通り、
-  // 手前側が near 面の内側で消える。
-  const u = new THREE.Vector3(Math.sin(0.175), 0, Math.cos(0.175));
-  const v = new THREE.Vector3(0, 1, 0);
+  // 地球は真下。視線は軌道の接線方向なので、地平線と、そこへ伸びていく自分の軌道が入る
+  // (真下を向けると地球が全画面を覆い、線も地平線も見えない)。
+  const center = new THREE.Vector3(0, -orbitRadius, 0);
+  const u = new THREE.Vector3(0, 1, 0);
+  const v = new THREE.Vector3(0, 0, -1);
   const style: LineStyle = { color: 0x6fd3ff, opacity: 0.9, renderOrder: LINE_RENDER_ORDER.shipOrbit };
   return {
     objects: [
