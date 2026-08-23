@@ -428,6 +428,14 @@ export function register(): void {
     assert.ok(angle < 1e-6, `1恒星日後の残差角: ${angle}`);
   });
 
+  test('ephemeris: spinRotationAt(earth) の姿勢は時刻とともに自転角だけ進む', () => {
+    const q0 = eph.spinRotationAt('earth', 0)!.q;
+    const quarter = eph.spinRotationAt('earth', SIDEREAL_DAY / 4)!.q;
+    const rel = qMul(quarter, qInvert(q0));
+    const angle = 2 * Math.acos(Math.min(1, Math.abs(rel.w)));
+    assert.ok(Math.abs(angle - Math.PI / 2) < 1e-9, `1/4恒星日後の姿勢差: ${angle}`);
+  });
+
   test('ephemeris: spinRotationAt(earth) の omega の大きさは 2π/恒星日 に一致する', () => {
     const { omega } = eph.spinRotationAt('earth', 12345)!;
     const expected = (2 * Math.PI) / SIDEREAL_DAY;
