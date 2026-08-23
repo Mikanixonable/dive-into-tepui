@@ -1,12 +1,12 @@
 // 太陽の見た目: 戦闘視点はカメラ相対に置くビルボード、広範囲視点は実位置・実半径の球体。
 import * as THREE from 'three/webgpu';
-import { createSun, Sun, SUN_DISTANCE, SUN_VISUAL_SIZE } from '../../render/stars';
+import { createSun, Sun } from '../../render/stars';
 import { Ephemeris } from '../../physics/ephemeris';
 import { CelestialBodyId } from '../../physics/celestial-body';
-import { norm, sub } from '../../physics/vec3';
 import { R_SUN } from '../../physics/solar-system';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
+import { compressionRatio, STAR_BILLBOARD_SIZE } from '../../render/view-compression';
 import { CelestialView } from './celestial-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 
@@ -39,30 +39,23 @@ export class SunView extends CelestialView {
     _graphics: GraphicsSettingsData,
   ): void {
     if (!this.sun.billboard.mesh.visible && !this.sun.mesh.visible) return;
-    const sunPos = ephemeris.positionOf(this.id, displayTime);
+    const p = fo.RtoThreeV3(ephemeris.positionOf(this.id, displayTime));
     if (cameraSystem.overviewMode) {
       // 広範囲視点は実スケール: 実 ECI 位置に実半径で置き、ビルボードは隠す
       // (SphereView の月・木星と同じ扱い)。
-      this.sun.mesh.position.copy(fo.RtoThreeV3(sunPos));
+      this.sun.mesh.position.copy(p);
       this.sun.mesh.scale.setScalar(this.radius);
       this.sun.mesh.visible = true;
       this.sun.billboard.hide();
     } else {
-      const cam = cameraSystem.activeCamera;
-      // ビルボードは方向のみ実天体暦に従うカメラ相対の空の遠景。地心方向ではなく
-      // 「カメラから見た太陽の方向」を使う: 広範囲視点はカメラが地球から最大 4.5e9 m
-      // 離れるため、地心方向で置くと視差ぶん(最大 1.7°)実位置からずれ、実 ECI 位置に
-      // 置かれる太陽ラベルと像が合わなくなる。
-      const sdCam = norm(sub(sunPos, cameraSystem.activeCameraPos));
+      // ビルボードは方向のみ実天体暦に従うカメラ相対の空の遠景。大きさは実半径を圧縮した値
+      // ではなく、実視直径よりやや大きめの固定値。
+      const k = compressionRatio(p, 'star', false);
       this.sun.billboard.sync(
-        tmpSunPos.set(
-          cam.position.x + sdCam.x * SUN_DISTANCE,
-          cam.position.y + sdCam.y * SUN_DISTANCE,
-          cam.position.z + sdCam.z * SUN_DISTANCE,
-        ),
-        SUN_VISUAL_SIZE,
+        tmpSunPos.copy(p).multiplyScalar(k),
+        STAR_BILLBOARD_SIZE,
         1,
-        cam.quaternion,
+        cameraSystem.activeCamera.quaternion,
       );
       this.sun.mesh.visible = false;
     }

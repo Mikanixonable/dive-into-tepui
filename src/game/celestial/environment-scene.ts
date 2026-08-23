@@ -223,10 +223,10 @@ export class EnvironmentScene {
     );
   }
 
-  // 星球はカメラに追従する固定半径の殻。広範囲視点では CELESTIAL_SHELL_RADIUS まで拡大する
-  // (far は dist に連動して毎フレーム変わるため、殻の拡大率はそこから独立させる)。
+  // 星球は描画原点(= カメラ)に固定した半径の殻。広範囲視点では CELESTIAL_SHELL_RADIUS まで
+  // 拡大する(far は dist に連動して毎フレーム変わるため、殻の拡大率はそこから独立させる)。
   private syncStars(cameraSystem: CameraSystem, visible = true): void {
-    this.stars.mesh.position.copy(cameraSystem.activeCamera.position);
+    this.stars.mesh.position.set(0, 0, 0);
     this.stars.mesh.scale.setScalar(cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
     this.stars.mesh.visible = visible;
   }

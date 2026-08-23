@@ -72,7 +72,6 @@ export class RingView {
     bodyPos: Vec3,
     metersPerPixelAt: ScaleFn,
     sunDirection: Vec3,
-    cameraPosition: THREE.Vector3,
   ): void {
     this.group.position.copy(pos);
     this.group.scale.setScalar(scale);
@@ -87,7 +86,6 @@ export class RingView {
       bodyCenter: pos,
       bodyRadius: scale,
       sunDirection: new THREE.Vector3(sunDirection.x, sunDirection.y, sunDirection.z).normalize(),
-      cameraPosition,
       ringAxis,
       coverage: 1,
     };
