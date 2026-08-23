@@ -150,7 +150,6 @@ function earth(): LabCase {
   built.group.position.copy(center);
   built.setAuroraVisible(false);
   built.syncSurfaceLod(6e4);
-  built.setSunDir(SUN_DIR.x, SUN_DIR.y, SUN_DIR.z);
   built.tick(0);
   return { objects: [built.group], camera, atmosphere: { center, surfaceRadius: R_EARTH } };
 }
