@@ -1,5 +1,5 @@
-// ステージ固有の状況表示パネル(左部: ステージ補助メッセージ・撃墜数 / 中央部: 自機の装甲・エンジン出力・
-// 動圧・温度・電力 / 右部: ラジエーター左右の展開ボタン)。表示内容がステージごとに決まるので Stage が所有し、
+// ステージ固有の状況表示パネル(左部: ステージ補助メッセージ・撃墜数 / 中央部: 自機の装甲・温度・電力 /
+// 右部: ラジエーター左右の展開ボタン)。表示内容がステージごとに決まるので Stage が所有し、
 // hudSubStatus() を返すステージでだけ現れる。CSS(#hud-stagestatus)は hud/hud-root.ts の STYLE に一元管理されている。
 
 const LOW_HP_RATIO = 0.3;
@@ -47,8 +47,6 @@ export class StatusPanel {
   private readonly radiatorButtons: Record<RadiatorSide, RadiatorButtonDom>;
   private readonly solarButtons: Record<SolarSide, RadiatorButtonDom>;
   private readonly hpMeter: Meter;
-  private readonly throttleMeter: Meter;
-  private readonly qdynMeter: Meter;
   private readonly tempMeter: Meter;
   private readonly powerMeter: Meter;
 
@@ -66,8 +64,6 @@ export class StatusPanel {
     root.appendChild(this.panel);
 
     this.hpMeter = this.buildMeterRow('装甲');
-    this.throttleMeter = this.buildMeterRow('出力');
-    this.qdynMeter = this.buildMeterRow('動圧');
     this.tempMeter = this.buildMeterRow('温度');
     this.powerMeter = this.buildMeterRow('電力');
 
@@ -156,27 +152,14 @@ export class StatusPanel {
     if (!player) return;
 
     const { hp, maxHp } = player;
-    const throttleIdx = player.throttleIdx;
     const low = hp <= maxHp * LOW_HP_RATIO;
-    const throttleVal = C.THROTTLE_LEVELS[throttleIdx];
-    const throttleText = `${C.THROTTLE_LABELS[throttleIdx]} (${throttleVal!.toFixed(1)} m/s²)`;
     const temp = Math.round(player.temperature);
     const tempHigh = temp > 0.7 * C.MAX_HULL_TEMP;
-    const qdyn = player.aero.qdyn;
-    const qdynHigh = qdyn > 0.5 * C.MAX_DYN_PRESSURE;
-    const qdynText = qdyn >= 1000 ? `${(qdyn / 1000).toFixed(2)} kPa` : `${qdyn.toFixed(0)} Pa`;
     const chargeJ = player.power.chargeJ;
 
     this.hpMeter.setRatio(hp / maxHp);
     this.hpMeter.setDanger(low);
     this.hpMeter.setLabel(`${Math.floor(hp)} / ${maxHp}`);
-
-    this.throttleMeter.setRatio((throttleIdx + 1) / C.THROTTLE_LEVELS.length);
-    this.throttleMeter.setLabel(throttleText);
-
-    this.qdynMeter.setRatio(qdyn / C.MAX_DYN_PRESSURE);
-    this.qdynMeter.setDanger(qdynHigh);
-    this.qdynMeter.setLabel(qdynText);
 
     this.tempMeter.setRatio(temp / C.MAX_HULL_TEMP);
     this.tempMeter.setDanger(tempHigh);

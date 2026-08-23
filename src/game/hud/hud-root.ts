@@ -161,12 +161,12 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
     <dl class="metric-list">
       <div class="row metric">
         <dt class="k">RCS燃料</dt>
-        <dd class="v rcs-fuel-readout">
-          <span class="rcs-fuel-meter" data-id="rcs-fuel-meter" role="progressbar"
+        <dd class="v vessel-meter-readout">
+          <span class="vessel-meter" data-id="rcs-fuel-meter" role="progressbar"
             aria-label="RCS燃料" aria-valuemin="0">
-            <span class="rcs-fuel-fill" data-id="rcs-fuel-fill"></span>
+            <span class="vessel-meter-fill" data-id="rcs-fuel-fill"></span>
           </span>
-          <output class="rcs-fuel-value" data-id="rcs-fuel-value">—</output>
+          <output class="vessel-meter-value" data-id="rcs-fuel-value">—</output>
         </dd>
       </div>
       <div class="row metric">
@@ -175,7 +175,11 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
       </div>
       <div class="row metric">
         <dt class="k">並進出力 <kbd>${K.throttleLow.label}–${K.throttleMax.label}</kbd></dt>
-        <dd class="v"><output data-id="throttle">—</output></dd>
+        <dd class="v vessel-meter-readout" data-id="throttle-readout"></dd>
+      </div>
+      <div class="row metric" data-id="qdyn-row">
+        <dt class="k">動圧</dt>
+        <dd class="v vessel-meter-readout" data-id="qdyn-readout"></dd>
       </div>
       <div class="row metric">
         <dt class="k">微調整 <kbd>${K.fineAttitudeToggle.label}</kbd></dt>

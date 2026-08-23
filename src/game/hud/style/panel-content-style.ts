@@ -11,20 +11,20 @@ export const PANEL_CONTENT_STYLE = `
 #hud:not(.creative-mode) .hud-map-root.active #hud-vessel-status { display: none; }
 #hud-orbit h3 { font-size: var(--font-xxs); }
 #hud-vessel-status .v, #hud-orbit .v { min-width: 75px; }
-#hud-vessel-status .rcs-fuel-readout {
+#hud-vessel-status .vessel-meter-readout {
   display: inline-grid;
   grid-template-columns: minmax(64px, 1fr) auto;
   align-items: center;
   gap: 6px;
   width: 128px;
 }
-#hud-vessel-status .rcs-fuel-meter {
+#hud-vessel-status .vessel-meter {
   height: 6px;
   overflow: hidden;
   border-radius: var(--radius-pill);
   background: var(--bar-bg);
 }
-#hud-vessel-status .rcs-fuel-fill {
+#hud-vessel-status .vessel-meter-fill {
   display: block;
   width: 0;
   height: 100%;
@@ -32,14 +32,15 @@ export const PANEL_CONTENT_STYLE = `
   background: var(--accent);
   transition: width 180ms;
 }
-#hud-vessel-status .rcs-fuel-meter.critical .rcs-fuel-fill {
+#hud-vessel-status .vessel-meter.critical .vessel-meter-fill {
   background: var(--danger);
 }
-#hud-vessel-status .rcs-fuel-value {
+#hud-vessel-status .vessel-meter-value {
   min-width: 48px;
   color: var(--text);
   font-size: var(--font-xxs);
   text-align: right;
+  white-space: nowrap;
 }
 /* 常設パネルの操作ボタン列(艦ステータスの R/F/G/T 代替、軌道情報の分析パネル起動、
    いずれもタッチ・マウスどちらでも常設)。 */
