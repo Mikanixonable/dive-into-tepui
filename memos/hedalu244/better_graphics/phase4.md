@@ -377,43 +377,6 @@ depthScale = 1 / k
 
 ## 手順
 
-### 手順 8. 遮蔽度バッファを作る
-
-**目的**: 太陽の直達光の透過率を画素ごとに持つ器を置き、CPU の一様スカラを描画から外す。
-**環の影の移し先**であり、**復元位置の最初の実消費者**でもある。
-
-**変更が必要な箇所**
-
-| ファイル | 変更 |
-|---|---|
-| `src/render/pipeline/occlusion.ts`(新規) | 復元位置に対し**環の帯**(`celestial-surface.ts` の 32 帯の計算をそのまま移す)と**遮蔽天体の球**(`physics/shadow.ts` の `occludedFraction` を TSL へ)の透過率を求め、1 チャンネルへ書く画面空間パス。合成は**透過率の積**。`SHADOW_MIN_SUN` を床として掛ける |
-| `src/render/pipeline/light-prepass.ts` | 遮蔽度バッファを読んで太陽の放射照度へ掛ける。環境光の変調をやめる |
-| `src/render/pipeline/sun-light.ts` | `sunVisibility()` の中身をバッファ読み出しへ。`SHADOW_MIN_AMBIENT` の項を削除 |
-| `src/render/pipeline/render-pipeline.ts` | 遮蔽パスを G バッファとライティングの間へ |
-| `src/gpu-timings.ts` | `GPU_PASS` / `GPU_PASS_LABELS` に遮蔽の 1 行 |
-| `src/render/pipeline/debug-target.ts` | 遮蔽度バッファ単体の目視を足す |
-| `src/game/celestial/environment-scene.ts` | `physics/shadow.ts` を読んでスカラを渡す配線を切り、**遮蔽天体の位置と半径の列**を遮蔽パスへ渡す |
-| `src/game/celestial/sphere-view.ts` / `point-view.ts` | `setRingShadowSystem` の呼び出しを、環の帯を遮蔽パスへ渡す形へ |
-| `src/game/const.ts` | `SHADOW_MIN_AMBIENT` を削除 |
-| `DEVELOP/SPEC/RENDERING.md` | 描画パイプラインの段数(5 → 6)、デバッグ表示の候補、負荷計測の行 |
-
-環の帯を渡すのは環付き天体 1 体ぶん(画面に環付き天体が複数写る状況は実質起きない。
-いまも 1 体ぶんしか持っていない)。**そう決めたことをコメントに残す。**
-
-**達成条件と検証**
-
-- 達成目標 10・11。
-- 艦が地球の影へ入るときの減光が連続で起きる(源が CPU から GPU へ移っただけ)。
-- 遮蔽度バッファ単体をデバッグ表示で見られる。
-- `npm run typecheck`
-- `grep -rn "physics/shadow" src/game/celestial/ src/render/` → 0 件
-- `npm run dev` → `[Esc]` → 描画設定 → デバッグ表示「遮蔽」で、地球の本影が円として見えること
-- 土星へフォーカスし、遮蔽度バッファに環の縞が写ること
-- 艦を地球の影へ入れ、**艦だけが暗くなり地球は暗くならない**こと
-- `[F3]` で遮蔽パスの GPU 時間が出ること
-
----
-
 ### 手順 9. 天体を `LIT_OPAQUE_LAYER` へ載せ、明るさを合わせる
 
 **目的**: 天体の自前 Lambert を捨て、艦と同じ BRDF・同じ光源で描く。
