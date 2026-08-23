@@ -7,13 +7,14 @@
 // 投影手順(project → set)を一元化したもの。headingRotationDeg は進行方向(ECI 速度)を
 // 向くグリフの回転角を求める。camera-system.ts が MarkerManager に依存しているため、
 // ProjectFn/ScaleFn 型を直接 import せず同形の関数型で受ける(循環 import を避ける)。
-import { Vec3, addScaled, norm, sub, v3 } from '../../physics/vec3';
+import { Vec3, addScaled, len, norm, sub, v3 } from '../../physics/vec3';
 import { Projected } from '../../physics/projection';
 import * as C from '../const';
 import { FILL_4 } from '../theme';
 import { GroupedMarkers } from './grouped-markers';
 import { LeadMarkers } from './lead-markers';
 import { isOccluded } from '../../physics/occlusion';
+import { resolveCrowdingWinner } from './crowding';
 import { CelestialBody, strongestAttractor } from '../../physics/celestial-body';
 import type { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
 import { toFrameDir } from '../../physics/frame';
@@ -24,6 +25,7 @@ type ProjectFn = (worldPos: Vec3) => Projected;
 type ScaleFn = (worldPos: Vec3) => number;
 
 interface MarkerRecord {
+  key: string;
   root: HTMLElement;
   sym: HTMLElement;
   lbl: HTMLElement;
@@ -33,6 +35,9 @@ interface MarkerRecord {
   x: number;
   y: number;
   priority: number;
+  // カメラからの距離。setPosition/setNodePosition が worldPos を持つ呼び出し元でのみ
+  // 埋まる(undefined なら resolveCollisions の depth-guard を評価しない)。
+  dist: number | undefined;
   iconHiddenByPriority: boolean;
   labelHiddenByPriority: boolean;
   // 直前フレームで優先度間引きにより隠れていたか(resolveCollisions のヒステリシス用)。
@@ -148,6 +153,7 @@ export class MarkerManager {
     symMarkup = false,
     fixedLabel = false,
     priority?: number,
+    dist?: number,
   ): void {
     let m = this.markerDictionary.get(key);
     const itemPriority = priority ?? defaultPriorityForClass(key, cls);
@@ -156,8 +162,8 @@ export class MarkerManager {
       const symEl = el('span', `mk-${key}-s`, root, 'sym');
       const lblEl = el('span', `mk-${key}-l`, root, 'lbl');
       m = {
-        root, sym: symEl, lbl: lblEl, fixedLabel, hidden: !visible, occlusionHidden: false,
-        x, y, priority: itemPriority, iconHiddenByPriority: false, labelHiddenByPriority: false,
+        key, root, sym: symEl, lbl: lblEl, fixedLabel, hidden: !visible, occlusionHidden: false,
+        x, y, priority: itemPriority, dist, iconHiddenByPriority: false, labelHiddenByPriority: false,
         prevIconHiddenByPriority: false, prevLabelHiddenByPriority: false,
       };
       this.markerDictionary.set(key, m);
@@ -169,6 +175,7 @@ export class MarkerManager {
     m.x = x;
     m.y = y;
     m.priority = itemPriority;
+    m.dist = dist;
     m.iconHiddenByPriority = false;
     m.labelHiddenByPriority = false;
     m.sym.classList.remove('priority-hidden');
@@ -218,9 +225,11 @@ export class MarkerManager {
     symMarkup = false,
     fixedLabel = false,
     priority?: number,
+    cameraPos?: Vec3,
   ): void {
     const p = project(worldPos);
-    this.set(key, cls, sym, p.x, p.y, p.front, label, opacity, color, rotationDeg, symMarkup, fixedLabel, priority);
+    const dist = cameraPos === undefined ? undefined : len(sub(worldPos, cameraPos));
+    this.set(key, cls, sym, p.x, p.y, p.front, label, opacity, color, rotationDeg, symMarkup, fixedLabel, priority, dist);
   }
 
   // 遮蔽判定を行い、天体に遮蔽されている場合は fadeOut、表示されている場合は setPosition するヘルパー。
@@ -239,7 +248,7 @@ export class MarkerManager {
     if (overviewMode && isOccluded(cameraPos, worldPos, celestialBodies)) {
       this.fadeOut(key);
     } else {
-      this.setPosition(key, cls, sym, worldPos, project, label, 1, undefined, undefined, false, false, priority);
+      this.setPosition(key, cls, sym, worldPos, project, label, 1, undefined, undefined, false, false, priority, cameraPos);
     }
   }
 
@@ -414,15 +423,22 @@ export class MarkerManager {
         const a = activeRecords[i]!;
         for (let j = i + 1; j < activeRecords.length; j++) {
           const b = activeRecords[j]!;
-          if (a.priority === b.priority) continue;
-          const [winner, loser] = a.priority > b.priority ? [a, b] : [b, a];
+          const pick = resolveCrowdingWinner(
+            a.key, a.priority, a.dist, a.prevLabelHiddenByPriority,
+            b.key, b.priority, b.dist, b.prevLabelHiddenByPriority,
+            C.DEPTH_GUARD_RATIO, C.DEPTH_GUARD_EXIT_RATIO, false,
+          );
+          if (pick === undefined) continue;
+          const [loser, winner] = pick === 'a' ? [a, b] : [b, a];
           const threshold = loser.prevLabelHiddenByPriority ? C.MARKER_CLUSTER_RELEASE_PX : C.MARKER_CLUSTER_PX;
           if (Math.hypot(a.x - b.x, a.y - b.y) >= threshold) continue;
 
           loser.labelHiddenByPriority = true;
           // 差が100以上の異なるカテゴリ間 (例: 天体 > 船, 船 > 弾薬, 船 > 軌道要素) はアイコンも非表示 (保護対象を除く)。
-          // 船・弾薬どうし (GroupedMarkers が既にクラスタ化を決めている組) は対象外。
-          if (winner.priority - loser.priority >= 100 && canHideIconByPriority(loser)
+          // 船・弾薬どうし (GroupedMarkers が既にクラスタ化を決めている組) は対象外。depth-guard で
+          // 優先度が逆転して隠れた側(手前の低優先度が奥の高優先度を隠した)でも、種別の隔たりの
+          // 大きさそのものは変わらないため絶対値で見る。
+          if (Math.abs(winner.priority - loser.priority) >= 100 && canHideIconByPriority(loser)
             && !(isCombatMarker(winner) && isCombatMarker(loser))) {
             loser.iconHiddenByPriority = true;
           }

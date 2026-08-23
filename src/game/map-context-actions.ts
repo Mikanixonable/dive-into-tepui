@@ -439,17 +439,25 @@ export class MapContextActions {
       run: (act, target) => this.runBodyShip(act, target),
     },
     'ship': {
-      itemsFor: (target, simTime) => [
-        ...this.targetItems(target, simTime),
-        MenuCommon.focus(),
-        ...this.duplicateItems(),
-        { label: '削除', act: 'delete' },
-        MenuCommon.cancel(),
-      ],
+      itemsFor: (target, simTime) => {
+        const enemy = this.entities.findEnemy(target.id);
+        const trajectoryItem: readonly MenuItem<MenuAction>[] = enemy
+          ? [MenuCommon.trajectoryLine(enemy.showTrajectoryLine)] : [];
+        return [
+          ...this.targetItems(target, simTime),
+          MenuCommon.focus(),
+          ...trajectoryItem,
+          ...this.duplicateItems(),
+          { label: '削除', act: 'delete' },
+          MenuCommon.cancel(),
+        ];
+      },
       run: (act, target) => {
+        const enemy = this.entities.findEnemy(target.id);
         if (act === 'delete') {
-          const enemy = this.entities.findEnemy(target.id);
           if (enemy) enemy.alive = false;
+        } else if (act === 'toggleTrajectoryLine') {
+          if (enemy) enemy.showTrajectoryLine = !enemy.showTrajectoryLine;
         } else if (act === 'duplicate') {
           this.runDuplicate(target);
         } else {
@@ -544,6 +552,9 @@ export class MapContextActions {
             dockItems.push(MenuCommon.dock());
           }
         }
+        // 操作対象の自艦は常に予測線・過去線固定なのでトグル自体を出さない。
+        const trajectoryItem: readonly MenuItem<MenuAction>[] = (!isActive && ship)
+          ? [MenuCommon.trajectoryLine(ship.showTrajectoryLine)] : [];
 
         return [
           ...this.targetItems(target, simTime),
@@ -551,6 +562,7 @@ export class MapContextActions {
           ...planExec,
           ...activate,
           MenuCommon.focus(),
+          ...trajectoryItem,
           ...this.duplicateItems(),
           ...remove,
           MenuCommon.cancel(),
@@ -559,7 +571,9 @@ export class MapContextActions {
       run: (act, target) => {
         const activeShip = this.activePlayers.current;
         const ship = this.entities.findPlayer(target.id);
-        if (act === 'dock') {
+        if (act === 'toggleTrajectoryLine') {
+          if (ship) ship.showTrajectoryLine = !ship.showTrajectoryLine;
+        } else if (act === 'dock') {
           if (activeShip && ship) this.docking?.dockTo(activeShip, ship);
         } else if (act === 'undock') {
           if (activeShip) this.docking?.undock(activeShip);
@@ -627,6 +641,8 @@ export class MapContextActions {
             ? { label: '操作対象を解除', act: 'deactivate' }
             : { label: '操作対象にする', act: 'activate' }]
           : [];
+        const trajectoryItem: readonly MenuItem<MenuAction>[] = base
+          ? [MenuCommon.trajectoryLine(base.showTrajectoryLine)] : [];
 
         return [
           { type: 'header', label: base?.name ?? target.name, subLabel },
@@ -635,6 +651,7 @@ export class MapContextActions {
           ...dockItems,
           { label: '基地ビューを開く', act: 'openDock' },
           MenuCommon.focus(),
+          ...trajectoryItem,
           ...this.duplicateItems(),
           { label: '削除', act: 'delete' },
           MenuCommon.cancel(),
@@ -651,6 +668,8 @@ export class MapContextActions {
           if (base && this.controlBaseHandler) this.controlBaseHandler(base);
         } else if (act === 'deactivateBase') {
           if (this.controlBaseHandler) this.controlBaseHandler(null);
+        } else if (act === 'toggleTrajectoryLine') {
+          if (base) base.showTrajectoryLine = !base.showTrajectoryLine;
         } else if (act === 'dock') {
           if (activeShip && base) this.docking?.dockTo(activeShip, base);
         } else if (act === 'undock') {
