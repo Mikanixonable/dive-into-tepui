@@ -628,9 +628,6 @@ export const COLOR_ENEMY_ORBIT_LINE = '#565b63';
 export const COLOR_BASE_ORBIT_LINE = '#4f8f7d'; // 拠点(味方施設)の軌道線。落ち着いた緑がかった色で他線と区別
 export const COLOR_STAGE0_GROUP_ACCENTS = ['#ff4a3d', '#3dc6ff', '#3dff8f', '#ffe23d', '#bf3dff'];
 
-// 軌道まわりの線の描画順。値が大きいほど後に描かれ、重なったときに手前へ来る。
-// 描画順は線どうしの相対関係でしか意味を持たない(同値だと透明描画の前後が不定になる)ので、
-// 各線が自分の値を単独で決めず、この表で一括して割り当てる。
 // 役割ごとの軌道線の見た目(色・不透明度・描画順)を一括して決める表。
 export const LINE_STYLE = {
   enemyOrbit: { color: COLOR_ENEMY_ORBIT_LINE, opacity: 0.35, renderOrder: LINE_RENDER_ORDER.shipOrbit },
