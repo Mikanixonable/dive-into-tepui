@@ -7,13 +7,14 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import {
-  and, clamp, dot, exp, float, getViewPosition, greaterThan, length, lessThan, max, mix, normalize,
-  screenUV, select, smoothstep, sqrt, sub, texture, uniform, vec3, vec4,
+  and, clamp, dot, exp, float, greaterThan, length, lessThan, max, mix, normalize,
+  select, smoothstep, sqrt, sub, uniform, vec3, vec4,
 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 import type { GBufferPass } from './gbuffer';
 import type { SunLight } from './sun-light';
+import { viewPositionAt, viewRayAt } from './view-ray';
 
 // 昼側の大気の色と、昼夜境界で寄っていく夕焼けの色。
 const ATMO_COLOR = vec3(0.36, 0.62, 0.91);
@@ -58,24 +59,25 @@ export class AtmospherePass {
     this.bodyCenter = uniform(new THREE.Vector3());
     this.surfaceRadius = uniform(0);
 
-    const rawDepth = texture(gbuffer.depthTexture, screenUV).r;
-    const viewPos = getViewPosition(screenUV, rawDepth, this.projMatrixInverse);
+    const viewPos = viewPositionAt(gbuffer.depthTexture, this.projMatrixInverse);
     const opaquePos: Vec3Node = this.viewToWorld.mul(vec4(viewPos, 1)).xyz;
-    const cameraPos: Vec3Node = this.viewToWorld.mul(vec4(0, 0, 0, 1)).xyz;
-    const toOpaque = sub(opaquePos, cameraPos);
-    const opaqueDist = length(toOpaque);
-    const rayDir = normalize(toOpaque);
+    // 視線は投影方式に依らない形(view-ray.ts)から取る — 平行投影の視線はカメラ位置から
+    // 放射状に出ないので、「カメラ位置から復元位置へ」の形では組めない。
+    const ray = viewRayAt(this.projMatrixInverse);
+    const rayOrigin: Vec3Node = this.viewToWorld.mul(vec4(ray.origin, 1)).xyz;
+    const rayDir: Vec3Node = this.viewToWorld.mul(vec4(ray.direction, 0)).xyz;
+    const opaqueDist = length(sub(opaquePos, rayOrigin));
 
     const surface = this.surfaceRadius;
     const shell = surface.add(RIM_MAX_H);
-    const toCamera = sub(cameraPos, this.bodyCenter);
-    const b = dot(toCamera, rayDir);
-    const centerDistSq = dot(toCamera, toCamera);
+    const toOrigin = sub(rayOrigin, this.bodyCenter);
+    const b = dot(toOrigin, rayDir);
+    const centerDistSq = dot(toOrigin, toOrigin);
 
     // 視線と大気シェルの交差のうち奥側。ここが、加算シェルを裏面で描いていたときの面にあたる。
     const shellDisc = b.mul(b).sub(centerDistSq.sub(shell.mul(shell)));
     const shellFar = b.negate().add(sqrt(max(shellDisc, 0)));
-    const shellPoint: Vec3Node = cameraPos.add(rayDir.mul(shellFar));
+    const shellPoint: Vec3Node = rayOrigin.add(rayDir.mul(shellFar));
 
     // 天体本体による遮蔽。視線が本体を貫くなら、最接近高度で測った幅で縁をぼかして落とす。
     const bodyDisc = b.mul(b).sub(centerDistSq.sub(surface.mul(surface)));
@@ -94,7 +96,7 @@ export class AtmospherePass {
     const sunFactor: FloatNode = clamp(sunDot, 0, 1);
     const color: Vec3Node = mix(SUNSET_COLOR, ATMO_COLOR, smoothstep(0, 0.2, sunDot));
 
-    // シェルに当たらない・カメラの後ろ・不透明面の方が手前・大気を持つ天体が無いフレーム。
+    // シェルに当たらない・視線の起点より後ろ・不透明面の方が手前・大気を持つ天体が無いフレーム。
     const inShell = and(greaterThan(shellDisc, 0), greaterThan(shellFar, 0));
     const hasAtmosphere = and(inShell, greaterThan(surface, 0));
     const rim = select(and(hasAtmosphere, lessThan(shellFar, opaqueDist)), falloff.mul(sunFactor).mul(bodyVisible).mul(RIM_OPACITY), float(0));

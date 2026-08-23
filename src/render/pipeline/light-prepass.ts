@@ -7,7 +7,7 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import {
-  D_GGX, F_Schlick, V_GGX_SmithCorrelated, dot, float, getViewPosition, mrt, normalize, saturate,
+  D_GGX, F_Schlick, V_GGX_SmithCorrelated, dot, float, mrt, normalize, saturate,
   screenUV, texture, uniform, vec4,
 } from 'three/tsl';
 import { SHADOW_MIN_SUN } from '../../game/const';
@@ -16,6 +16,7 @@ import type { FloatNode, Mat4Uniform, Vec3Node, Vec3Uniform } from '../tsl-types
 import { GBufferPass, octDecodeNormal } from './gbuffer';
 import type { OcclusionPass } from './occlusion';
 import type { SunLight } from './sun-light';
+import { viewPositionAt, viewRayAt } from './view-ray';
 
 export class LightPrepass {
   private readonly renderer: WebGPURenderer;
@@ -56,15 +57,13 @@ export class LightPrepass {
     this.projMatrixInverse = uniform(new THREE.Matrix4());
     this.sunPositionView = uniform(new THREE.Vector3(0, 1, 0));
 
-    const rawDepth = texture(this.gbuffer.depthTexture, screenUV).r;
     const normal = octDecodeNormal(texture(this.gbuffer.normalTexture, screenUV).rg);
     const roughnessValue = texture(this.gbuffer.roughnessTexture, screenUV).r;
 
-    // WGSL では screenUV の原点が上端(NodeBuilder.isFlipY が WGSL のとき偽で、fragCoord が
-    // そのまま使われる)。getViewPosition はその向きを前提に上下を反転して NDC を組むので、
-    // G バッファのサンプルと同じ screenUV をそのまま渡してよい。
-    const viewPos = getViewPosition(screenUV, rawDepth, this.projMatrixInverse);
-    const viewDir = normalize(viewPos.negate());
+    const viewPos = viewPositionAt(this.gbuffer.depthTexture, this.projMatrixInverse);
+    // 面から視点へ向かう向き = 視線の逆向き。「復元位置の逆向き」は透視投影でしか成り立たない
+    // ので、投影方式に依らない形(view-ray.ts)から取る。
+    const viewDir = viewRayAt(this.projMatrixInverse).direction.negate();
     // 恒星は点光源。画素ごとに差分ベクトルを取るので、方向も逆二乗の減衰もその画素のものになる。
     const toSun = this.sunPositionView.sub(viewPos);
     const lightDir = normalize(toSun);

@@ -13,7 +13,7 @@ import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { log, screenUV, texture, uniform, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import type { GraphicsSettingsData } from '../graphics-settings';
-import type { FloatNode, FloatUniform, Vec4Node } from '../tsl-types';
+import type { FloatNode, FloatUniform, Mat4Uniform, Vec4Node } from '../tsl-types';
 import type { DebugTargetHost, DebugTargetId } from './debug-target';
 import { GBufferPass, octDecodeNormal } from './gbuffer';
 import { AtmospherePass } from './atmosphere-pass';
@@ -21,21 +21,12 @@ import { LightPrepass } from './light-prepass';
 import { MaterialPass } from './material-pass';
 import { OcclusionPass } from './occlusion';
 import { SunLight } from './sun-light';
+import { viewPositionAt } from './view-ray';
 
 // composite パスが HDR 値全体へ一律に掛ける、フレーム唯一の明るさ係数。実照度に対する
 // 物理的な較正は後続のサブフェーズの課題で、現状は環(render/ring.ts)の単一散乱輝度が
 // LDR で飽和しない値として 0.72 に置く。
 export const EXPOSURE = 0.72;
-
-// 深度テクスチャの生値(反転深度: 1=near/0=far)を view 空間の距離へ変換する。
-// three.js 標準の perspectiveDepthToViewZ は far-near を素朴に引くが、near=2m/far=2e12m の
-// ように float32 の分解能を near がまるごと下回る組み合わせでは far-near が far そのものへ
-// 丸め込まれ、深度が far 側に近い領域で 0 除算(→NaN)に破綻する。near*(1-depth) と far*depth を
-// 個別に求めてから足し合わせる形に組み替えると、depth=0 ちょうどで分母が near ちょうどに
-// なり(0 にならず)この破綻を避けられる。
-function viewDistanceFromDepth(depth: FloatNode, near: FloatUniform, far: FloatUniform): FloatNode {
-  return near.mul(far).div(near.mul(depth.oneMinus()).add(far.mul(depth)));
-}
 
 export class RenderPipeline implements DebugTargetHost {
   private readonly renderer: WebGPURenderer;
@@ -49,12 +40,13 @@ export class RenderPipeline implements DebugTargetHost {
   private readonly quad: QuadMesh;
   private readonly compositeMaterials: Readonly<Record<DebugTargetId, THREE.MeshBasicNodeMaterial>>;
   private readonly exposure: FloatUniform;
-  // 深度デバッグ表示が near/far 間の対数スケールを組むのに使う uniform。composite パスは
-  // QuadMesh 自前の固定直交カメラ(near=0/far=1)で描かれるため、TSL の cameraNear/cameraFar
+  // 深度デバッグ表示が使う uniform。composite パスは QuadMesh 自前の固定直交カメラ
+  // (near=0/far=1)で描かれるため、TSL の cameraNear/cameraFar/cameraProjectionMatrix
   // 組み込みノードはここでは実カメラの値を返さない — render() が毎フレーム実カメラの
-  // near/far を書き込む。
+  // near/far と逆射影行列を書き込む。
   private readonly depthDebugNear: FloatUniform;
   private readonly depthDebugFar: FloatUniform;
+  private readonly depthDebugProjInv: Mat4Uniform;
   // getDrawingBufferSize の書き込み先。フレームごとに確保しない使い回し領域。
   private readonly drawingBufferSize = new THREE.Vector2();
 
@@ -99,6 +91,7 @@ export class RenderPipeline implements DebugTargetHost {
     this.exposure = uniform(EXPOSURE);
     this.depthDebugNear = uniform(1);
     this.depthDebugFar = uniform(2);
+    this.depthDebugProjInv = uniform(new THREE.Matrix4());
 
     // デバッグ表示の切替は quad.material の差し替えで行う(WebGPU ではジオメトリ/頂点属性の
     // 差し替えは禁止だが、マテリアルの差し替えは可 — CLAUDE.md の WebGPU 注意点参照)。1枚の
@@ -147,8 +140,9 @@ export class RenderPipeline implements DebugTargetHost {
   // near=2m/far=2e12m のスケールでは端に潰れて識別できないため、対数を挟むことで
   // 精度の落ち方そのものを見えるようにする。
   private logDepthNode(): FloatNode {
-    const rawDepth = texture(this.gbuffer.depthTexture, screenUV).r;
-    const dist = viewDistanceFromDepth(rawDepth, this.depthDebugNear, this.depthDebugFar);
+    // 深度の生値から距離への逆写像は投影方式ごとに違う(透視は 1/z、平行投影は線形)ので、
+    // 生値ではなく復元位置の view 空間 z から測る — 逆射影行列がその違いを吸収する。
+    const dist = viewPositionAt(this.gbuffer.depthTexture, this.depthDebugProjInv).z.negate();
     return log(dist.div(this.depthDebugNear)).div(log(this.depthDebugFar.div(this.depthDebugNear)));
   }
 
@@ -195,6 +189,7 @@ export class RenderPipeline implements DebugTargetHost {
 
     // composite パス。QuadMesh.render も内部で renderer.render() を呼ぶので、world パスとは
     // 別の GPU 計測枠が付く。
+    this.depthDebugProjInv.value.copy(camera.projectionMatrixInverse);
     if (camera instanceof THREE.PerspectiveCamera || camera instanceof THREE.OrthographicCamera) {
       this.depthDebugNear.value = camera.near;
       this.depthDebugFar.value = camera.far;

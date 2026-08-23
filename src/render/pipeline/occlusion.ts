@@ -11,13 +11,14 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import {
-  Fn, PI, abs, acos, and, asin, clamp, dot, exp, float, getViewPosition, greaterThan, length,
-  lessThan, max, min, normalize, screenUV, select, sqrt, texture, uniform, vec3, vec4,
+  Fn, PI, abs, acos, and, asin, clamp, dot, exp, float, greaterThan, length,
+  lessThan, max, min, normalize, select, sqrt, uniform, vec3, vec4,
 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 import type { GBufferPass } from './gbuffer';
 import type { SunLight } from './sun-light';
+import { viewPositionAt } from './view-ray';
 
 export const MAX_OCCLUDERS = 4;
 export const MAX_RING_BANDS = 32;
@@ -136,8 +137,7 @@ export class OcclusionPass {
       active: uniform(0),
     }));
 
-    const rawDepth = texture(gbuffer.depthTexture, screenUV).r;
-    const viewPos = getViewPosition(screenUV, rawDepth, this.projMatrixInverse);
+    const viewPos = viewPositionAt(gbuffer.depthTexture, this.projMatrixInverse);
     const worldPos: Vec3Node = this.viewToWorld.mul(vec4(viewPos, 1)).xyz;
     const toSun = sunLight.position.sub(worldPos);
     const sunDist = max(length(toSun), 1);
