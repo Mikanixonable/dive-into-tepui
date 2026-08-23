@@ -97,6 +97,7 @@
 | `npm run ci` | 上記をまとめて通す | 大きな変更を締めるとき |
 | `npm run bgm-lab` | BGM の試聴環境(http://localhost:8081) | 曲を調整するとき |
 | `npm run render-lab` | 描画の比較環境(http://localhost:8082) | 描画を目で確かめるとき |
+| `npm run render-lab:shot` | 描画の比較環境の撮影(`.render-lab/shots/`) | 描画を画像で確かめるとき |
 | `npm run export-assets` | `src/assets/` の焼き込みアセット再生成 | モデルかノズル表を変えたときだけ |
 
 `npm run export-assets` は実行のたびに全アセットの識別子が振り直されるため、差分が識別子だけの

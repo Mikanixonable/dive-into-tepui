@@ -105,40 +105,6 @@ GPU で引くのと変わらない。
 
 ## 手順
 
-### 手順 9. 撮影の駆動を書く
-
-**目的**: エージェントがコマンド 1 つで全ケースの PNG を得られるようにする。
-
-**変更が必要な箇所**
-
-| ファイル | 変更 |
-|---|---|
-| `tools/render-lab-shot.mjs`(新規) | `chrome-session.mjs` で Chrome を上げ、`.render-lab/` を配信し、ページを開き、ケースごとに手順 7 の関数を `Runtime.evaluate` で呼び、`.render-lab/shots/` へ書く |
-| `package.json` | `"render-lab:shot": "webpack --config webpack.render-lab.config.js --mode production && node tools/render-lab-shot.mjs"` |
-| `CLAUDE.md` のコマンド表 | `npm run render-lab:shot` の行(用途:描画を画像で確かめるとき) |
-
-出力の名前:
-
-```
-.render-lab/shots/<case>-prepass.png    ライトプリパス経路
-.render-lab/shots/<case>-forward.png    フォワード経路
-.render-lab/shots/<case>-diff.png       |prepass − forward| × 8
-```
-
-**本番ビルドを踏むこと。** 開発ビルドで回すと、クラス名のマングルで陰影が消える種類の不具合を
-撮影が見逃す。
-
-**達成条件と検証**
-
-- `.render-lab/shots/` に 21 枚の PNG が出る。
-- ソースに `Page.captureScreenshot` が 1 件も無い。
-- `npm run render-lab:shot`
-- `ls .render-lab/shots/ | wc -l` → 21
-- `grep -rn "captureScreenshot" tools/` → 0 件
-- 出た PNG を開いて、手順 6・7 で目視したものと同じ絵であること
-
----
-
 ### 手順 10. 深度プローブのケースを当てる
 
 **目的**: **この器が信用できるかを確かめる。** Phase 4 の判断をここへ預ける以上、

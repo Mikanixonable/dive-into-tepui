@@ -4,8 +4,8 @@ import { LabView, type LabViews, type Shot, shootCase } from './lab';
 
 declare global {
   interface Window {
-    // 撮影の駆動(tools/render-lab-shot.mjs)が CDP から呼ぶ入口。
-    renderLabShoot?: (name: CaseName) => Promise<Shot>;
+    // 撮影の駆動(tools/render-lab-shot.mjs)が CDP から読む入口。
+    renderLab?: { cases: readonly CaseName[]; shoot: (name: CaseName) => Promise<Shot> };
   }
 }
 
@@ -35,7 +35,7 @@ async function init(): Promise<void> {
   }
   select(CASE_NAMES[0]!);
 
-  window.renderLabShoot = (name) => shootCase(views, name);
+  window.renderLab = { cases: CASE_NAMES, shoot: (name) => shootCase(views, name) };
 }
 
 // 失敗は握り潰さない。canvas が黒いまま無言で残ると、器の不備を絵の問題と読み違える。
