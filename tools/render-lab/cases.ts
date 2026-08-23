@@ -204,6 +204,25 @@ function eclipse(): LabCase {
   };
 }
 
+// 較正: アルベド 1 の完全拡散面を 1 天文単位に置く。**放射照度の単位が「1 AU で π」に取れて
+// いれば、太陽へ正対した面のトーンマッピング前の線形値は 1.0 になる** — ランバート BRDF の
+// 1/π が単位を打ち消すため。ここが動いたら光の単位か BRDF のどちらかが崩れている。
+//
+// 画面へ出るのはそこから 2 段ぶん先で、**最も明るい画素は sRGB (241, 231, 215)** になる:
+// 恒星光の色 (1, 0.905, 0.761) x π に環境光 (0.246, 0.283, 0.479) x 0.292 を足し、1/π を掛けて
+// (1.023, 0.931, 0.805) — R が 1 をわずかに超えるのは環境光ぶん — これを PBR Neutral へ通すと
+// (0.876, 0.795, 0.685) になり、sRGB 符号化で上の値へ落ちる。
+function albedo(): LabCase {
+  const camera = labCamera(6e7);
+  const surface = new THREE.Mesh(
+    new THREE.SphereGeometry(300, 96, 64),
+    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0 }),
+  );
+  surface.position.set(0, 0, -1000);
+  markLitOpaque(surface);
+  return { objects: [surface], camera };
+}
+
 // 土星: 本体の球と実データの環を並べ、**環だけが本体より桁で明るくないか**を見る。放射照度は
 // 本体(ライティングパスが画素ごとに逆二乗を掛ける)にも環(sync が受け取る)にも同じだけ
 // 掛かるので、**両者の明るさの比は太陽までの距離に依らない** — 恒星を他のケースと同じ
@@ -255,6 +274,7 @@ export const CASES = {
   'earth': earth,
   'far': far,
   'saturn': saturn,
+  'albedo': albedo,
 } as const satisfies Record<string, () => LabCase>;
 
 export type CaseName = keyof typeof CASES;
