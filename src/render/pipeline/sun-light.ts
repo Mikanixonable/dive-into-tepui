@@ -4,6 +4,7 @@
 // EnvironmentScene が毎フレーム set() で書き込み、RenderPipeline がインスタンスを所有する。
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
+import { AU } from '../../physics/planet-orbit';
 import type { ColorUniform, FloatNode, FloatUniform, Vec3Uniform } from '../tsl-types';
 
 // 描画が扱う放射照度の単位。1 天文単位で太陽から届く放射照度をこの値に取る。
@@ -13,6 +14,16 @@ import type { ColorUniform, FloatNode, FloatUniform, Vec3Uniform } from '../tsl-
 // 完全拡散面は 1 天文単位で表示値 A になる** — 露出係数を持たずに済むのはこのため。
 export const SUN_IRRADIANCE_1AU = Math.PI;
 
+// 恒星の放射強度。SUN_IRRADIANCE_1AU は 1 天文単位で受ける放射照度なので、そのぶんの逆二乗を
+// 戻したもの。set() の intensity にはこれを渡す。
+export const SUN_RADIANT_INTENSITY = SUN_IRRADIANCE_1AU * AU * AU;
+
+// 恒星から distance [m] の点が受ける放射照度。画素ごとの陰影はライティングパスが同じ量を
+// GPU 側で引くが、前方描画の環や輝点は CPU 側で要る。
+export function sunIrradianceAtDistance(distance: number): number {
+  return SUN_RADIANT_INTENSITY / (distance * distance);
+}
+
 // 恒星光の色。5772 K(太陽の実効温度)の黒体を sRGB へ写した色にほぼ一致する。
 export const SUN_COLOR = new THREE.Color(0xfff4e0);
 
@@ -21,9 +32,9 @@ export const SUN_COLOR = new THREE.Color(0xfff4e0);
 // ここから公開する。
 export const AMBIENT_COLOR = new THREE.Color(0x8899bb);
 
-// 環境光の放射照度。地球照(地球が反射して低軌道の物体を照らす光)の代用で、太陽定数に
-// 地球のボンドアルベド 0.3 と、高度 420 km から地球が占める立体角の全天に対する比 0.31 を
-// 掛けた 9.3% として引く。方向を持たないので遮蔽も受けない。
+// 環境光の放射照度。地球照(地球が反射して低軌道の物体を照らす光)の代用で置いた暫定値。
+// **低軌道での明るさに合わせただけの手書きの定数で、位置によらず一定に足される** —
+// 太陽から遠いほど直射を上回っていく。方向を持たないので遮蔽も受けない。
 export const AMBIENT_IRRADIANCE = SUN_IRRADIANCE_1AU * 0.093;
 
 // 本影の中にも届く光の量(星明かり・地球照ぶん)を、恒星と同じ向きから来る一定量で代用した
