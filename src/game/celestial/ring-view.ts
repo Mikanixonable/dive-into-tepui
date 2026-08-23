@@ -63,13 +63,16 @@ export class RingView {
   }
 
   // pos/axis は本体メッシュ(SphereView/PointView)と揃える。bodyPos/metersPerPixelAt は
-  // 帯の被覆率減光専用で、sunDirection は環自身の光学計算用。
+  // 帯の被覆率減光専用で、sunDirection と sunIrradiance は環自身の光学計算用。放射照度は
+  // 呼び出し側が計算済みのスカラで受け取る — render/ は ECI を知らないという不変条件を
+  // 環でも崩さないため。
   sync(
     pos: THREE.Vector3,
     axis: Vec3 | null,
     bodyPos: Vec3,
     metersPerPixelAt: ScaleFn,
     sunDirection: Vec3,
+    sunIrradiance: number,
   ): void {
     this.group.position.copy(pos);
     this.group.scale.setScalar(this.bodyRadius);
@@ -86,6 +89,7 @@ export class RingView {
       sunDirection: new THREE.Vector3(sunDirection.x, sunDirection.y, sunDirection.z).normalize(),
       ringAxis,
       coverage: 1,
+      sunIrradiance,
     };
     for (const visual of this.visuals) visual.sync(state);
     if (this.coverageBands.length === 0) return;

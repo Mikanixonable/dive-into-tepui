@@ -6,6 +6,10 @@ import { Ephemeris } from '../../physics/ephemeris';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { apparentSizePx } from '../../render/screen-lod';
+import { SUN_IRRADIANCE_1AU } from '../../render/pipeline/sun-light';
+import { AU } from '../../physics/planet-orbit';
+import { len, sub } from '../../physics/vec3';
+import type { Vec3 } from '../../physics/vec3';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 
 export abstract class CelestialView {
@@ -18,6 +22,17 @@ export abstract class CelestialView {
   ): void;
   // build(scene) で登録した自分のメッシュ一式をシーンから外し、GPU 資源を解放する。
   abstract dispose(): void;
+
+  // pos が恒星から受けている放射照度(render/pipeline/sun-light.ts の単位)。恒星を持たない
+  // レジストリでは 1 天文単位ぶんを返す — 恒星光を 1 天文単位の位置へ置く EnvironmentScene の
+  // 扱いと揃える。
+  protected sunIrradianceAt(ephemeris: Ephemeris, pos: Vec3, displayTime: number): number {
+    const starId = ephemeris.starId;
+    if (starId === null) return SUN_IRRADIANCE_1AU;
+    const d = len(sub(pos, ephemeris.positionOf(starId, displayTime)));
+    if (d <= 0) return SUN_IRRADIANCE_1AU;
+    return SUN_IRRADIANCE_1AU * (AU / d) * (AU / d);
+  }
 
   // LOD 段の選択と球体表示の閾値判定が通る見かけ直径 [px]。詳細度の設定はここで掛かる。
   protected lodApparentDiameterPx(
