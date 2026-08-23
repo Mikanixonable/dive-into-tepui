@@ -316,11 +316,12 @@ function pdb5i4rRibbonGeometry(
     }
     const candidateWidthDirection = helixFrame === null
       ? oxygen.sub(center).projectOnPlane(tangent).normalize()
-      : center.clone()
-        .sub(helixFrame.center)
-        .projectOnPlane(helixFrame.axis)
-        .projectOnPlane(tangent)
-        .normalize();
+      : (() => {
+        // HELIXは軸から外へ広がる階段状の帯ではなく、円筒へ巻きつくwrap型の帯にする。
+        // 半径方向と軸の外積が螺旋の周方向なので、ここをリボンの幅方向に使う。
+        const radial = center.clone().sub(helixFrame.center).projectOnPlane(helixFrame.axis).normalize();
+        return helixFrame.axis.clone().cross(radial).projectOnPlane(tangent).normalize();
+      })();
     const widthDirection = candidateWidthDirection.clone();
     if (widthDirection.lengthSq() < 1e-8) {
       const reference = Math.abs(tangent.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
