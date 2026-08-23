@@ -18,7 +18,7 @@ import { len, norm, rotateAxis, scale, v3 } from '../../../physics/vec3';
 import { Hud } from '../../hud/hud';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../../vfx/effects-system';
-import { Enemy, inertiaForEnemyKind } from '../../game-entity/enemy';
+import { Enemy, inertiaForEnemyKind, type EnemyKind, type Pdb5i4rColorMode } from '../../game-entity/enemy';
 
 // 自機軌道(base)を dAlong だけ進めた位置の軌道状態(プリセット配置の共通基盤)。
 function phasedState(base: KinematicState, dAlong: number): KinematicState {
@@ -29,16 +29,25 @@ function phasedState(base: KinematicState, dAlong: number): KinematicState {
 
 // 無秩序に漂う敵(訓練クラスタ・通常ステージのプリセット敵の生成本体): ランダム姿勢+角速度。
 export function generateDriftingEnemy(name: string, state: KinematicState, _hp: number, accent: string | number, orbitLineColor: string | number, hud: Hud, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
+  return generateFreeEnemy(name, state, accent, orbitLineColor, { kind: 'drifting' }, hud, worldSfx, fx, scene);
+}
+
+// PDB 5I4R のCdiA/CdiI/EF-Tu複合体を、登録された構造に基づくcartoon表現で描画する敵。
+export function generatePdb5i4rEnemy(name: string, state: KinematicState, colorMode: Pdb5i4rColorMode, hud: Hud, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
+  return generateFreeEnemy(name, state, 0xffffff, 0xffffff, { kind: 'pdb-5i4r', colorMode }, hud, worldSfx, fx, scene);
+}
+
+function generateFreeEnemy(name: string, state: KinematicState, accent: string | number, orbitLineColor: string | number, enemyKind: EnemyKind, hud: Hud, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
   return new Enemy(
     {
       name,
       state,
-      enemyKind: { kind: 'drifting' },
+      enemyKind,
       att: {
         // ランダムな姿勢・角速度を与える
         q: randomQuat(),
         w: v3(randSym(0.12), randSym(0.12), randSym(0.12)),
-        inertia: inertiaForEnemyKind({ kind: 'drifting' }),
+        inertia: inertiaForEnemyKind(enemyKind),
       },
       accent,
       orbitLineColor,

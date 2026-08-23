@@ -14,12 +14,13 @@ import type { FloatingOrigin } from '../floating-origin';
 import { qRotate } from '../../physics/attitude';
 import { Vec3, add, addScaled, v3 } from '../../physics/vec3';
 import { isOccluded } from '../../physics/occlusion';
-import { Button, SegmentedControl, ToggleSwitch } from '../hud/widgets';
+import { Button, SegmentedControl, ToggleSwitch, ValueInput } from '../hud/widgets';
 import { hudRail } from '../hud/hud-root';
 import type { CameraSystem, ProjectFn } from '../camera/camera-system';
 import { AmmoPickup } from '../game-entity/ammo-pickup';
 import { Base } from '../game-entity/base';
-import { generateApproachingEnemy, generateDriftingEnemy } from './spawner/enemy-generator';
+import { generateApproachingEnemy, generateDriftingEnemy, generatePdb5i4rEnemy } from './spawner/enemy-generator';
+import type { Pdb5i4rColorMode } from '../game-entity/enemy';
 import { WaveAttack } from './stage-utils/wave-attack';
 import { generateRandomName } from '../random-name';
 import * as C from '../const';
@@ -33,16 +34,20 @@ import type { CreativeStageSaveData, StageSaveData } from '../save-data';
 const DEG = Math.PI / 180;
 
 const STAGE_CONTROL_ENEMY_SHAPES = [
-  { id: 'drifting', kind: 'drifting' },
-  { id: 'stage0-a', kind: 'stage0', typeIndex: 0 },
-  { id: 'stage0-b', kind: 'stage0', typeIndex: 1 },
-  { id: 'stage0-c', kind: 'stage0', typeIndex: 2 },
+  { id: 'drifting', family: 'conventional', kind: 'drifting' },
+  { id: 'pdb-5i4r', family: 'protein', kind: 'pdb-5i4r' },
+  { id: 'stage0-a', family: 'conventional', kind: 'stage0', typeIndex: 0 },
+  { id: 'stage0-b', family: 'conventional', kind: 'stage0', typeIndex: 1 },
+  { id: 'stage0-c', family: 'conventional', kind: 'stage0', typeIndex: 2 },
 ] as const;
 type EnemySpawnShape = typeof STAGE_CONTROL_ENEMY_SHAPES[number]['id'];
 const STAGE_CONTROL_ENEMY_COLORS = [
   [0xff4a3d, '赤'], [0xff7a2d, '橙'], [0xe0409f, '桃'], [0xbf3dff, '紫'], [0x3dc6ff, '青'],
 ] as const;
-const STAGE_CONTROL_ENEMY_SPAWN_DISTANCE = 200;
+const STAGE_CONTROL_PROTEIN_COLOR_MODES = [
+  ['chain', 'Chain'], ['b-factor', 'B-Factor'], ['entity', 'Entity'],
+] as const satisfies readonly (readonly [Pdb5i4rColorMode, string])[];
+const STAGE_CONTROL_DEFAULT_ENEMY_SPAWN_DISTANCE = 200;
 
 export class CreativeStage extends Stage {
   static readonly id = 'creative' as const;
@@ -57,7 +62,7 @@ export class CreativeStage extends Stage {
   private readonly placerPanel: ObjectPlacerPanel;
   // 補給の自動投入・敵の波状攻撃を切り替えるトグルを載せたパネル。マップ視点でだけ出す。
   private readonly stageControlsPanel: HTMLElement;
-  private spawnEnemyButton!: Button;
+  private spawnEnemyButtons: Button[] = [];
   private readonly waveAttack: WaveAttack;
   // 敵の波状攻撃を発生させるかどうか。既定 OFF — ON の間だけ update が WaveAttack を進める。
   private waveAttackEnabled: boolean;
@@ -70,6 +75,7 @@ export class CreativeStage extends Stage {
   private readonly ammoPickupIdAllocator = new EntityIdAllocator('creative-ammo-');
   private activePlayer: Player | null = null;
   private manualEnemyCount = 0;
+  private manualEnemySpawnDistance = STAGE_CONTROL_DEFAULT_ENEMY_SPAWN_DISTANCE;
 
   briefingHtml(): string {
     return '<b>クリエイティブモード</b><br>マップから艦艇を配置して軌道を眺められる。';
@@ -124,20 +130,83 @@ export class CreativeStage extends Stage {
     waveAttackToggle.setOn(this.waveAttackEnabled);
     body.appendChild(waveAttackToggle.element);
 
-    let selectedEnemyShape: EnemySpawnShape = STAGE_CONTROL_ENEMY_SHAPES[0].id;
+    const spawnDistanceWrapper = document.createElement('label');
+    spawnDistanceWrapper.className = 'stage-control-select';
+    const spawnDistanceTitle = document.createElement('span');
+    spawnDistanceTitle.textContent = '敵のスポーン距離 (m)';
+    spawnDistanceWrapper.appendChild(spawnDistanceTitle);
+    const spawnDistanceInput = new ValueInput({ type: 'number', min: 0, step: 1 }, (text) => {
+      const distance = Number(text);
+      if (Number.isFinite(distance) && distance >= 0) {
+        this.manualEnemySpawnDistance = distance;
+      }
+      spawnDistanceInput.setValue(String(this.manualEnemySpawnDistance));
+    });
+    spawnDistanceInput.setValue(String(this.manualEnemySpawnDistance));
+    spawnDistanceWrapper.appendChild(spawnDistanceInput.element);
+    body.appendChild(spawnDistanceWrapper);
+
+    const conventionalShapes = STAGE_CONTROL_ENEMY_SHAPES.filter(({ family }) => family === 'conventional');
+    const proteinShapes = STAGE_CONTROL_ENEMY_SHAPES.filter(({ family }) => family === 'protein');
+    let selectedConventionalShape: EnemySpawnShape = conventionalShapes[0]!.id;
+    const conventionalSection = document.createElement('div');
+    conventionalSection.className = 'stage-control-section';
+    const conventionalTitle = document.createElement('div');
+    conventionalTitle.className = 'stage-control-section-title';
+    conventionalTitle.textContent = '従来型の敵';
+    conventionalSection.appendChild(conventionalTitle);
     const shapeControl = new SegmentedControl<EnemySpawnShape>(
-      '敵の形状', STAGE_CONTROL_ENEMY_SHAPES.map(({ id }) => [id, id] as const),
-      (shape) => { selectedEnemyShape = shape; },
+      '敵の形状', conventionalShapes.map(({ id }) => [id, id] as const),
+      (shape) => {
+        selectedConventionalShape = shape;
+        shapeControl.setSelected(shape);
+      },
     );
     shapeControl.element.classList.add('stage-control-shapes');
-    shapeControl.setSelected(selectedEnemyShape);
-    body.appendChild(shapeControl.element);
+    shapeControl.setSelected(selectedConventionalShape);
+    conventionalSection.appendChild(shapeControl.element);
     const colorSelect = this.buildStageControlSelect('敵の色', STAGE_CONTROL_ENEMY_COLORS);
-    body.appendChild(colorSelect.wrapper);
-    this.spawnEnemyButton = new Button('敵をスポーン', () => {
-      this.spawnManualEnemy(selectedEnemyShape, colorSelect.select.value);
+    conventionalSection.appendChild(colorSelect.wrapper);
+    const conventionalSpawnButton = new Button('敵をスポーン', () => {
+      this.spawnManualEnemy(selectedConventionalShape, colorSelect.select.value);
     });
-    body.appendChild(this.spawnEnemyButton.element);
+    conventionalSection.appendChild(conventionalSpawnButton.element);
+    body.appendChild(conventionalSection);
+
+    let selectedProteinShape: EnemySpawnShape = proteinShapes[0]!.id;
+    const proteinSection = document.createElement('div');
+    proteinSection.className = 'stage-control-section';
+    const proteinTitle = document.createElement('div');
+    proteinTitle.className = 'stage-control-section-title';
+    proteinTitle.textContent = 'タンパク質型の敵';
+    proteinSection.appendChild(proteinTitle);
+    const proteinShapeControl = new SegmentedControl<EnemySpawnShape>(
+      '敵の形状', proteinShapes.map(({ id }) => [id, id] as const),
+      (shape) => {
+        selectedProteinShape = shape;
+        proteinShapeControl.setSelected(shape);
+      },
+    );
+    proteinShapeControl.element.classList.add('stage-control-shapes');
+    proteinShapeControl.setSelected(selectedProteinShape);
+    proteinSection.appendChild(proteinShapeControl.element);
+    let selectedProteinColorMode: Pdb5i4rColorMode = 'chain';
+    const proteinColorControl = new SegmentedControl<Pdb5i4rColorMode>(
+      '着色', STAGE_CONTROL_PROTEIN_COLOR_MODES,
+      (mode) => {
+        selectedProteinColorMode = mode;
+        proteinColorControl.setSelected(mode);
+      },
+    );
+    proteinColorControl.element.classList.add('stage-control-protein-colors');
+    proteinColorControl.setSelected(selectedProteinColorMode);
+    proteinSection.appendChild(proteinColorControl.element);
+    const proteinSpawnButton = new Button('敵をスポーン', () => {
+      this.spawnManualEnemy(selectedProteinShape, selectedProteinColorMode);
+    });
+    proteinSection.appendChild(proteinSpawnButton.element);
+    body.appendChild(proteinSection);
+    this.spawnEnemyButtons = [conventionalSpawnButton, proteinSpawnButton];
     hudRail(hudRoot, 'right').appendChild(panel);
     return panel;
   }
@@ -172,13 +241,15 @@ export class CreativeStage extends Stage {
     }
     const color = Number(colorValue);
     const forward = qRotate(player.att.q, v3(0, 0, 1));
-    const position = addScaled(player.state.r, forward, STAGE_CONTROL_ENEMY_SPAWN_DISTANCE);
+    const position = addScaled(player.state.r, forward, this.manualEnemySpawnDistance);
     const state = kinematicState(player.state.t, position, player.state.v);
     const name = `MANUAL-${++this.manualEnemyCount}`;
     const shapeDefinition = STAGE_CONTROL_ENEMY_SHAPES.find(({ id }) => id === shape);
     if (shapeDefinition === undefined) return;
     const enemy = shapeDefinition.kind === 'drifting'
       ? generateDriftingEnemy(name, state, C.ENEMY_MAX_HP, color, color, this._hud, this._worldSfx, this._fx, this._scene)
+      : shapeDefinition.kind === 'pdb-5i4r'
+        ? generatePdb5i4rEnemy(name, state, colorValue as Pdb5i4rColorMode, this._hud, this._worldSfx, this._fx, this._scene)
       : generateApproachingEnemy(
         name, state, C.STAGE0_ENEMY_HP, color, color, shapeDefinition.typeIndex, undefined,
         this._hud, this._worldSfx, this._fx, this._scene,
@@ -203,7 +274,7 @@ export class CreativeStage extends Stage {
   ): void {
     super.sync(player, fo, cameraSystem, displayTime, visibilityPolicy);
     this.activePlayer = player;
-    this.spawnEnemyButton.setEnabled(player !== null && player.alive);
+    for (const button of this.spawnEnemyButtons) button.setEnabled(player !== null && player.alive);
     this.mountStageControlsPanel(cameraSystem.overviewMode);
     this.syncPreview(
       fo, cameraSystem.activeCameraProjection, cameraSystem.activeCamera,

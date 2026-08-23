@@ -4,6 +4,7 @@
 // src/assets/models/*.json として事前に焼き出したものを ObjectLoader で読み込む。
 import * as THREE from 'three/webgpu';
 import * as C from '../game/const';
+import type { Pdb5i4rColorMode } from '../game/game-entity/enemy';
 import { mulberry32 } from '../physics/random';
 import { markLitOpaque } from './pipeline/lit-layer';
 
@@ -25,6 +26,7 @@ import enemyData from '../assets/models/enemy.json';
 import stage0EnemyDataA from '../assets/models/stage0EnemyA.json';
 import stage0EnemyDataB from '../assets/models/stage0EnemyB.json';
 import stage0EnemyDataC from '../assets/models/stage0EnemyC.json';
+import pdb5i4rBackboneData from '../assets/models/pdb5i4rBackbone.json';
 import magazineData from '../assets/models/magazine.json';
 import ammoPickupData from '../assets/models/ammo.json';
 import bulletData from '../assets/models/bullet.json';
@@ -227,6 +229,133 @@ export function buildEnemyShip(accent: string | number = 0xff4a3d): THREE.Group 
     }
   });
   return g;
+}
+
+// PDB 5I4R のCα主鎖とHELIX/SHEET注釈から、論文・PDBビューアで一般的なcartoon表現を
+// 組み立てる。座標はÅのままの比率を保ち、ゲーム内のサイズへは一様スケールだけを掛ける。
+const PDB5I4R_COORDINATE_SCALE = 0.06;
+
+function pdb5i4rRainbowColor(t: number): THREE.Color {
+  return new THREE.Color().setHSL(0.66 * (1 - Math.max(0, Math.min(1, t))), 0.86, 0.56);
+}
+
+const pdb5i4rBFactorMin = Math.min(...pdb5i4rBackboneData.backboneBFactors);
+const pdb5i4rBFactorMax = Math.max(...pdb5i4rBackboneData.backboneBFactors);
+
+function pdb5i4rColorAt(index: number, mode: Pdb5i4rColorMode): THREE.Color {
+  if (mode === 'b-factor') {
+    const range = Math.max(1e-6, pdb5i4rBFactorMax - pdb5i4rBFactorMin);
+    return pdb5i4rRainbowColor((pdb5i4rBackboneData.backboneBFactors[index]! - pdb5i4rBFactorMin) / range);
+  }
+  if (mode === 'entity') {
+    const entity = pdb5i4rBackboneData.backboneEntities[index]!;
+    return new THREE.Color().setHSL(((entity - 1) * 0.19 + 0.04) % 1, 0.78, 0.56);
+  }
+  const chain = pdb5i4rBackboneData.backboneChains[index] ?? '';
+  const chainIndex = Math.max(0, chain.charCodeAt(0) - 65);
+  return new THREE.Color().setHSL((chainIndex * 0.13 + 0.02) % 1, 0.78, 0.56);
+}
+
+function pdb5i4rRibbonGeometry(
+  points: readonly THREE.Vector3[], width: number, startIndex: number, colorMode: Pdb5i4rColorMode,
+): THREE.BufferGeometry {
+  const positions: number[] = [];
+  const colors: number[] = [];
+  for (let i = 0; i < points.length; i++) {
+    const prev = points[Math.max(0, i - 1)]!;
+    const next = points[Math.min(points.length - 1, i + 1)]!;
+    const tangent = next.clone().sub(prev).normalize();
+    const reference = Math.abs(tangent.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+    const side = tangent.clone().cross(reference).normalize();
+    const arrowFactor = i >= points.length - 2 ? 1.65 : 1;
+    const halfWidth = (width * arrowFactor) / 2;
+    const left = points[i]!.clone().addScaledVector(side, halfWidth);
+    const right = points[i]!.clone().addScaledVector(side, -halfWidth);
+    positions.push(left.x, left.y, left.z, right.x, right.y, right.z);
+    const color = pdb5i4rColorAt(startIndex + i, colorMode);
+    colors.push(color.r, color.g, color.b, color.r, color.g, color.b);
+  }
+  const indices: number[] = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = i * 2;
+    indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function pdb5i4rBackboneRuns(): { kind: string; points: THREE.Vector3[]; startIndex: number }[] {
+  const runs: { kind: string; points: THREE.Vector3[]; startIndex: number }[] = [];
+  let current: { kind: string; points: THREE.Vector3[]; startIndex: number } | null = null;
+  for (let i = 0; i < pdb5i4rBackboneData.backboneCount; i++) {
+    const offset = i * 3;
+    const point = new THREE.Vector3(
+      pdb5i4rBackboneData.backboneCoordinates[offset]!,
+      pdb5i4rBackboneData.backboneCoordinates[offset + 1]!,
+      pdb5i4rBackboneData.backboneCoordinates[offset + 2]!,
+    );
+    const kind = pdb5i4rBackboneData.backboneSecondary[i]!;
+    // The source is ordered by chain; a large coordinate jump also separates chains or missing residues.
+    if (current === null || current.kind !== kind || (i > 0 &&
+      Math.abs(point.distanceTo(current.points[current.points.length - 1]!)) > 8)) {
+      current = { kind, points: [], startIndex: i };
+      runs.push(current);
+    }
+    current.points.push(point);
+  }
+  return runs;
+}
+
+function pdb5i4rTubeColors(
+  geometry: THREE.BufferGeometry, startIndex: number, pointCount: number, totalPoints: number,
+  tubularSegments: number, colorMode: Pdb5i4rColorMode,
+): void {
+  const radialSegments = 6;
+  const colors: number[] = [];
+  for (let vertex = 0; vertex < geometry.getAttribute('position').count; vertex++) {
+    const longitudinal = Math.floor(vertex / (radialSegments + 1));
+    const index = Math.min(totalPoints - 1, Math.round(startIndex + (pointCount - 1) * longitudinal / tubularSegments));
+    const color = pdb5i4rColorAt(index, colorMode);
+    colors.push(color.r, color.g, color.b);
+  }
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+}
+
+export function buildPdb5i4rEnemyShip(colorMode: Pdb5i4rColorMode = 'chain'): THREE.Group {
+  const material = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    roughness: 0.42,
+    metalness: 0.28,
+    side: THREE.DoubleSide,
+    vertexColors: true,
+  });
+  material.userData.role = 'accent';
+  const group = new THREE.Group();
+  let ownsMaterial = true;
+  for (const run of pdb5i4rBackboneRuns()) {
+    if (run.points.length < 2) continue;
+    let geometry: THREE.BufferGeometry;
+    if (run.kind === 'sheet') {
+      geometry = pdb5i4rRibbonGeometry(run.points, 1.6, run.startIndex, colorMode);
+    } else {
+      const radius = run.kind === 'helix' ? 1.25 : 0.38;
+      const curve = new THREE.CatmullRomCurve3(run.points, false, 'centripetal', 0.35);
+      const tubularSegments = Math.max(2, run.points.length * 2);
+      geometry = new THREE.TubeGeometry(curve, tubularSegments, radius, 6, false);
+      pdb5i4rTubeColors(geometry, run.startIndex, run.points.length, pdb5i4rBackboneData.backboneCount, tubularSegments, colorMode);
+    }
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.userData.ownsGeometry = true;
+    mesh.userData.ownsMaterial = ownsMaterial;
+    ownsMaterial = false;
+    group.add(mesh);
+  }
+  group.scale.setScalar(PDB5I4R_COORDINATE_SCALE);
+  return group;
 }
 
 // stage0 敵機のメッシュを typeIndex(0〜2)の機体テンプレートから生成し、accent 色に塗り替える。
