@@ -195,6 +195,7 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
       </div>
       <div class="row metric"><dt class="k">弾薬</dt><dd class="v"><output data-id="ammo">—</output></dd></div>
     </dl>
+    <div class="vessel-deploy-controls" data-id="vessel-deploy-controls" role="group" aria-label="太陽電池パドル・放熱板の収納展開"></div>
     <div class="status-throttle-touch" data-id="status-throttle-touch"></div>
     <div class="panel-actions" data-id="status-actions" role="group" aria-label="機体の主要操作"></div>`;
 
