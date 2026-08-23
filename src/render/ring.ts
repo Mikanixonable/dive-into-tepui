@@ -4,21 +4,23 @@
 import * as THREE from 'three/webgpu';
 import {
   and,
-  cameraPosition,
+  cameraProjectionMatrixInverse,
+  cameraWorldMatrix,
   dot,
   exp,
   float,
   length,
   lessThan,
   max,
-  normalize,
   positionWorld,
   select,
   sub,
   uniform,
   vec3,
+  vec4,
 } from 'three/tsl';
 import { RingArcDef, RingOpticsDef } from '../physics/solar-system';
+import { viewRayAt } from './pipeline/view-ray';
 import type { FloatNode, Vec3Node } from './tsl-types';
 
 const RING_TILT = -Math.PI / 2;
@@ -61,7 +63,9 @@ function ringOpticsNodes(baseColor: Vec3Node, optics: RingOpticsDef): {
   const coverage = uniform(1);
   const ringAxis = uniform(new THREE.Vector3(0, 1, 0));
 
-  const viewDirection = normalize(sub(cameraPosition, positionWorld));
+  // 面から視点へ向かう向き = 視線の逆向き。**「カメラ位置から引く」形は透視投影でしか成り立たない**
+  // ので、画面空間のパスと同じ器(pipeline/view-ray.ts)から取って world へ回す。
+  const viewDirection = cameraWorldMatrix.mul(vec4(viewRayAt(cameraProjectionMatrixInverse).direction.negate(), 0)).xyz;
   // RingGeometry の面法線だけでなく、側壁を持つ拡散環でも環面に垂直な
   // normal optical depth を評価するため、常に物理的な環軸を使う。
   const muView = max(dot(ringAxis, viewDirection).abs(), MU_MIN);
