@@ -90,10 +90,10 @@ export class SettingsView implements OverlayHandle {
     const themeButtons = new Map<string, Button>();
     let activeThemeId = currentThemePalette().id;
     for (const palette of THEME_PRESETS) {
-      const preview = `<span class="sv-theme-preview" style="background-color: ${palette.page}; border-color: ${palette.title}">` +
-        `<span class="sv-theme-preview-surface" style="background-color: ${palette.surface1}">` +
-        `<span style="background-color: ${palette.title}"></span><span style="background-color: ${palette.accent}"></span>` +
-        `</span></span>`;
+      const previewColors = [palette.page, palette.surface1, palette.title, palette.accent, palette.secondary];
+      const preview = `<span class="sv-theme-preview">${previewColors
+        .map((color) => `<span class="sv-theme-swatch" style="background-color: ${color}"></span>`)
+        .join('')}</span>`;
       const themeButton = new Button(
         palette.name,
         () => {
@@ -104,6 +104,8 @@ export class SettingsView implements OverlayHandle {
         `<span class="sv-theme-icon">${preview}</span>`,
       );
       themeButton.element.classList.add('sv-theme-button');
+      themeButton.element.style.setProperty('--sv-theme-page', palette.page);
+      themeButton.element.style.setProperty('--sv-theme-title', palette.title);
       themeButton.element.title = palette.description;
       themeButton.element.setAttribute('aria-label', `${palette.name}: ${palette.description}`);
       themeButtons.set(palette.id, themeButton);
