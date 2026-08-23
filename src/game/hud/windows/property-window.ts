@@ -114,6 +114,7 @@ export interface PropertyWindowContent<A extends string = string> {
   readonly items: readonly PropertyWindowItem<A>[];
   // 対象に関連する物体を本文上部へ表示する。ダブルクリック/右クリックの動作は呼び出し側が持つ。
   readonly relatedItems?: readonly PropertyWindowRelatedItem[];
+  readonly relatedTitle?: string;
   // 指定すると、タイトル横に改名ボタンが現れる。呼び出し側は確定した新しい名前を
   // 実体へ書き戻すところまでを行う — このクラスは編集 UI の開閉のみを持つ。
   readonly onRename?: (name: string) => void;
@@ -187,7 +188,7 @@ export class PropertyWindow<A extends string = string> {
     this.win.body.appendChild(this.rowsEl);
     this.win.body.appendChild(this.itemsEl);
 
-    this.syncRelatedItems(content.relatedItems ?? []);
+    this.syncRelatedItems(content.relatedItems ?? [], content.relatedTitle);
     this.syncRows(content.rows);
     this.syncItems(content.items);
   }
@@ -280,8 +281,8 @@ export class PropertyWindow<A extends string = string> {
   }
 
   // 対象に関連する物体の集合が変わったときだけ DOM を組み直す。欄は常にプロパティ行より上に置く。
-  public syncRelatedItems(items: readonly PropertyWindowRelatedItem[]): void {
-    const key = items.map((it) => `${it.id} ${it.label}`).join('|');
+  public syncRelatedItems(items: readonly PropertyWindowRelatedItem[], relatedTitle = '周回物体'): void {
+    const key = `${relatedTitle}|${items.map((it) => `${it.id} ${it.label}`).join('|')}`;
     if (key === this.lastRelatedItemsKey) return;
     this.lastRelatedItemsKey = key;
     this.relatedEl.innerHTML = '';
@@ -291,7 +292,7 @@ export class PropertyWindow<A extends string = string> {
     }
     const title = document.createElement('div');
     title.className = 'prop-window-related-title';
-    title.textContent = `周回物体 (${items.length})`;
+    title.textContent = `${relatedTitle} (${items.length})`;
     this.relatedEl.appendChild(title);
     for (const it of items) {
       const row = document.createElement('div');

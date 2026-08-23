@@ -20,7 +20,9 @@ export type MenuAction =
   | 'dock'
   | 'undock'
   | 'storeInBase'
-  | 'transferResources';
+  | 'transferResources'
+  | 'deployPart'
+  | 'stowPart';
 
 // 共通メニュー項目ファクトリ。shortcut は KeyboardEvent.code — OverlayManager.dispatchShortcut
 // が Input のエッジキューから受け取る値と同じ表記にする。

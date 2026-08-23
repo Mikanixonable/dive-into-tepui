@@ -106,6 +106,13 @@ export class RadiatorSystem {
     p.deployTarget = p.deployTarget === 0 ? 1 : 0;
   }
 
+  // side の展開目標を明示的に設定する。HUD の「展開」「収納」ボタンから使う。
+  setDeployed(side: RadiatorSide, deployed: boolean): void {
+    const p = this.panels[side];
+    const target: 0 | 1 = deployed ? 1 : 0;
+    if (p.deployTarget !== target) p.deployTarget = target;
+  }
+
   // 展開度を指示値へ RADIATOR_DEPLOY_TIME 秒かけて近づける。数値のみを動かす(THREE には触れない)。
   // wear は放熱板パーツの残 HP 由来の損耗率で、修理はドックでしか行えない。
   update(dt: number, wear: Record<RadiatorSide, number>): void {

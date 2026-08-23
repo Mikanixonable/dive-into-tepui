@@ -46,6 +46,7 @@ import { apsisAltitudes } from '../physics/elements';
 import { bodyDef, primaryOf } from '../physics/solar-system';
 import * as C from './const';
 import type { MapPickables } from './map-pickables';
+import type { Part } from './game-entity/parts';
 
 interface PickHandler {
   itemsFor(target: MapPickable, simTime: number): readonly MenuItem<MenuAction>[];
@@ -62,12 +63,19 @@ interface WindowEntry {
   target: MapPickable;
 }
 
+interface PartWindowEntry {
+  readonly win: PropertyWindow<MenuAction>;
+  readonly shipId: string;
+  readonly partId: string;
+}
+
 export class MapContextActions {
   // 'empty-space' は宇宙空間そのものでプロパティを持たないので、従来どおり ContextMenu を使う。
   private readonly menu: ContextMenu<MapPickable, MenuAction>;
   // 開いているプロパティウィンドウ。`${kind}:${id}` でオブジェクト1つにつき高々1枚に保つ
   // (一時ウィンドウの排他自体は OverlayManager が持つ — ここは対象との対応づけのみ)。
   private readonly windows = new Map<string, WindowEntry>();
+  private readonly partWindows = new Map<string, PartWindowEntry>();
   private readonly physicalObjectListPanel: PhysicalObjectListPanel;
 
   // Docking は MapContextActions より後に生成されるので、生成後に登録する。
@@ -174,12 +182,76 @@ export class MapContextActions {
       if (handler) handler.run(act, entry.target);
       if (act === 'delete' || (!w.clipped && !keepOpen)) this.closeWindow(key);
     };
-    w.onClose = () => this.forgetWindow(key);
+    w.onClose = () => {
+      this.closePartWindowsForShip(entry.target.kind === 'player' ? entry.target.id : '');
+      this.forgetWindow(key);
+    };
   }
 
   // windows のキー。kind をまたいで id が衝突しないよう種別込みにする。
   private windowKey(target: MapPickable): string {
     return `${target.kind}:${target.id}`;
+  }
+
+  private partWindowKey(shipId: string, partId: string): string {
+    return `part:${shipId}:${partId}`;
+  }
+
+  private openPartPropertyWindow(ship: Player, part: Part, clientX: number, clientY: number): void {
+    const key = this.partWindowKey(ship.id, part.id);
+    const existing = this.partWindows.get(key);
+    if (existing) {
+      existing.win.moveTo(clientX, clientY);
+      existing.win.bringToFront();
+      return;
+    }
+    const w = new PropertyWindow<MenuAction>(
+      this.hud.layers.window, clientX, clientY, this.partWindowContent(ship, part), this.hud.overlayManager,
+    );
+    const entry: PartWindowEntry = { win: w, shipId: ship.id, partId: part.id };
+    this.partWindows.set(key, entry);
+    w.onSelect = (act) => {
+      const currentShip = this.entities.findPlayer(entry.shipId);
+      const currentPart = currentShip?.parts.find((candidate) => candidate.id === entry.partId);
+      if (!currentShip || !currentPart) return;
+      this.setPartDeployment(currentShip, currentPart, act === 'deployPart');
+    };
+    w.onClose = () => this.partWindows.delete(key);
+  }
+
+  private closePartWindowsForShip(shipId: string): void {
+    for (const entry of this.partWindows.values()) {
+      if (entry.shipId === shipId) entry.win.close();
+    }
+  }
+
+  private partWindowContent(ship: Player, part: Part): PropertyWindowContent<MenuAction> {
+    const deployable = part.type === 'radiator' || part.type === 'solar_panel';
+    const items: PropertyWindowItem<MenuAction>[] = deployable
+      ? [{ label: '展開', act: 'deployPart', keepOpen: true }, { label: '収納', act: 'stowPart', keepOpen: true }]
+      : [];
+    return {
+      title: part.name,
+      subtitle: `取り付け艦: ${ship.name}`,
+      rows: [
+        { key: 'name', label: '部品名', value: part.name },
+        { key: 'ship', label: '取り付け艦', value: ship.name },
+        { key: 'wear', label: '損耗度', value: this.partWearText(part) },
+      ],
+      items,
+    };
+  }
+
+  private partWearText(part: Part): string {
+    const wear = part.maxHp > 0 ? Math.max(0, Math.min(1, 1 - part.hp / part.maxHp)) : 1;
+    return `${(wear * 100).toFixed(1)}% (${Math.floor(part.hp)} / ${part.maxHp})`;
+  }
+
+  private setPartDeployment(ship: Player, part: Part, deployed: boolean): void {
+    const sameTypeParts = ship.parts.filter((candidate) => candidate.type === part.type);
+    const side = sameTypeParts.indexOf(part) === 0 ? 'up' : 'down';
+    if (part.type === 'radiator') ship.radiator.setDeployed(side, deployed);
+    if (part.type === 'solar_panel') ship.power.setDeployed(side, deployed);
   }
 
   // 台帳から外すだけで DOM 破棄はしない — ✕ ボタン自身が dispose 済みのときに呼ぶ経路。
@@ -358,7 +430,7 @@ export class MapContextActions {
     this.physicalObjectListPanel.setVisible(overviewMode);
     // マップを離れると ViewManager.closeMap() が開いているウィンドウを閉じる。
     // 戦闘中は候補列を更新せず、ウィンドウもないため、毎フレームの Map 生成と行導出を省く。
-    if (!overviewMode && this.windows.size === 0) return;
+    if (!overviewMode && this.windows.size === 0 && this.partWindows.size === 0) return;
     const items = this.pickables.pickables;
     if (overviewMode) {
       // ラグランジュ点は自分を持つ天体(衛星ならその衛星自身)、それ以外の天体は主星/主天体を
@@ -380,11 +452,26 @@ export class MapContextActions {
       entry.target = byKey.get(key) ?? entry.target;
       const { title, subtitle, items: menuItems } = this.windowParts(entry.target, simTime);
       entry.win.syncHeader(title, subtitle);
-      entry.win.syncRelatedItems(this.relatedItemsFor(entry.target, celestialBodies));
+      entry.win.syncRelatedItems(this.relatedItemsFor(entry.target, celestialBodies), this.relatedTitleFor(entry.target));
       entry.win.syncRows(this.buildRows(entry.target, celestialBodies, player, simTime));
       entry.win.syncItems(menuItems);
       entry.win.syncBadge(this.physicalObjectListPanel.isSelected(entry.target.id) ? 'on'
         : this.physicalObjectListPanel.isTarget(entry.target.id) ? 'tgt' : null);
+    }
+    for (const entry of [...this.partWindows.values()]) {
+      const ship = this.entities.findPlayer(entry.shipId);
+      const part = ship?.parts.find((candidate) => candidate.id === entry.partId);
+      if (!ship || !part || !ship.alive || ship !== this.activePlayers.current) {
+        entry.win.close();
+        continue;
+      }
+      entry.win.syncHeader(part.name, `取り付け艦: ${ship.name}`);
+      entry.win.syncRows([
+        { key: 'name', label: '部品名', value: part.name },
+        { key: 'ship', label: '取り付け艦', value: ship.name },
+        { key: 'wear', label: '損耗度', value: this.partWearText(part) },
+      ]);
+      entry.win.syncItems(this.partWindowContent(ship, part).items);
     }
   }
 
@@ -407,6 +494,7 @@ export class MapContextActions {
   close(): void {
     this.menu.close();
     for (const key of [...this.windows.keys()]) this.closeWindow(key);
+    for (const entry of [...this.partWindows.values()]) entry.win.close();
   }
 
   // 開いているメニュー・ウィンドウを畳んだうえで、常設の一覧パネルと自身のメニューを取り除く。
@@ -758,6 +846,7 @@ export class MapContextActions {
     return {
       title, subtitle, icon: this.iconFor(target), rows: [], items,
       relatedItems: this.relatedItemsFor(target, this.ephemeris.celestialBodiesAt(simTime)),
+      relatedTitle: this.relatedTitleFor(target),
       onRename: this.renameHandlerFor(target),
     };
   }
@@ -969,6 +1058,19 @@ export class MapContextActions {
   private relatedItemsFor(
     target: MapPickable, celestialBodies: readonly CelestialBody[],
   ): readonly PropertyWindowRelatedItem[] {
+    if (target.kind === 'player') {
+      const ship = this.entities.findPlayer(target.id);
+      if (!ship || ship !== this.activePlayers.current) return [];
+      return ship.parts.map((part) => ({
+        id: part.id,
+        label: part.name,
+        onFocus: () => {
+          this.frameControls.setFocus({ kind: 'object', id: ship.id });
+          this.hud.hint(`${part.name} を搭載する ${ship.name} にフォーカス`);
+        },
+        onContextMenu: (clientX, clientY) => this.openPartPropertyWindow(ship, part, clientX, clientY),
+      }));
+    }
     if (target.kind !== 'body' || LAGRANGE_ID.test(target.id) || !(target.id in this.ephemeris.registry)) return [];
     const related: { item: MapPickable; label: string }[] = [];
     for (const item of this.pickables.pickables) {
@@ -995,6 +1097,11 @@ export class MapContextActions {
         if (current) this.openPropertyWindow(clientX, clientY, current, this.pickables.lastSimTime);
       },
     }));
+  }
+
+  private relatedTitleFor(target: MapPickable): string {
+    return target.kind === 'player' && this.entities.findPlayer(target.id) === this.activePlayers.current
+      ? '搭載部品' : '周回物体';
   }
 
   private stateOfPickable(item: MapPickable): KinematicState | null {
