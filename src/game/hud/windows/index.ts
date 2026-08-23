@@ -11,4 +11,5 @@ export { ResultScreen, type RunTransitions } from './result-screen';
 export { SaveBrowser, type CurrentGameSource } from './save-browser';
 export { SettingsView } from './settings-view';
 export { HelpPanel } from './help-panel';
-export { MenuAction, MenuCommon } from './menu-actions';
+export type { MenuAction } from './menu-actions';
+export { MenuCommon } from './menu-actions';
