@@ -165,7 +165,7 @@ export class Game {
     );
     this.targeter = new Targeter(this.markerManager, this.navTarget, this.entities);
     this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
-    this._environment = new EnvironmentScene(this._scene, this.ephemeris, pipeline.sunLight, earthSpinPhase0);
+    this._environment = new EnvironmentScene(this._scene, this.ephemeris, pipeline.sunLight, pipeline.occlusion, earthSpinPhase0);
     this.activePlayers = new ActiveControllableController(
       initialSave?.activePlayerId, this.entities, this.cameraSystem, this.navTarget, this._worldSfx, this._hud,
     );
@@ -491,7 +491,7 @@ export class Game {
     const combatTargets = this.entities.getCombatTargets(player);
 
     this._environment.sync(
-      player?.state.r ?? null, fo, displayTime,
+      fo, displayTime,
       this.cameraSystem, graphics, this.navball.gridVisibility, visibilityPolicy,
       this.markerManager,
     );
