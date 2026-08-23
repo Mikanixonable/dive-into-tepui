@@ -3,8 +3,7 @@
 // 照度バッファを書き、マテリアルパスがそこへ反射率を掛けるという分業の境界そのもの。
 // EnvironmentScene が毎フレーム set() で書き込み、RenderPipeline がインスタンスを所有する。
 import * as THREE from 'three/webgpu';
-import { float, uniform } from 'three/tsl';
-import { SHADOW_MIN_AMBIENT, SHADOW_MIN_SUN } from '../../game/const';
+import { uniform } from 'three/tsl';
 import type { ColorUniform, FloatNode, FloatUniform, Vec3Uniform } from '../tsl-types';
 
 // 環境光の色味。恒星の色(太陽光は暖色、set() で毎フレーム更新)とは独立した固定値で、
@@ -13,39 +12,42 @@ const AMBIENT_COLOR = new THREE.Color(0x8899bb);
 
 export class SunLight {
   private readonly positionUniform: Vec3Uniform;
+  private readonly radiusUniform: FloatUniform;
   private readonly colorUniform: ColorUniform;
   private readonly intensityUniform: FloatUniform;
   private readonly ambientIntensityUniform: FloatUniform;
   private readonly ambientColorUniform: ColorUniform;
-  // CPU 側(physics/shadow.ts の sunlitFactor)で求めた恒星の日照率(0=完全遮蔽、1=全開)。
-  private readonly sunlitFactorUniform: FloatUniform;
 
   constructor() {
     this.positionUniform = uniform(new THREE.Vector3(0, 1, 0));
+    this.radiusUniform = uniform(1);
     this.colorUniform = uniform(new THREE.Color(1, 1, 1));
     this.intensityUniform = uniform(0);
     this.ambientIntensityUniform = uniform(0);
     this.ambientColorUniform = uniform(AMBIENT_COLOR.clone());
-    this.sunlitFactorUniform = uniform(1);
   }
 
-  // 恒星の描画座標での位置・色・放射強度(距離の二乗で割ると放射照度になる量)・
-  // 環境光強度・恒星の日照率を1フレーム分まとめて書く。
+  // 恒星の描画座標での位置・半径・色・放射強度(距離の二乗で割ると放射照度になる量)・
+  // 環境光強度を1フレーム分まとめて書く。
   set(
     position: THREE.Vector3,
+    radius: number,
     color: THREE.Color,
     intensity: number,
     ambientIntensity: number,
-    sunlitFactor: number,
   ): void {
     this.positionUniform.value.copy(position);
+    this.radiusUniform.value = radius;
     this.colorUniform.value.copy(color);
     this.intensityUniform.value = intensity;
     this.ambientIntensityUniform.value = ambientIntensity;
-    this.sunlitFactorUniform.value = sunlitFactor;
   }
 
   get position(): Vec3Uniform { return this.positionUniform; }
+
+  // 恒星の半径 [m]。遮蔽パスが本影と半影を分けるのに要る。
+  get radius(): FloatNode { return this.radiusUniform; }
+
   get color(): ColorUniform { return this.colorUniform; }
 
   // 放射強度。シェーディング点から恒星までの距離の二乗で割ると、その点の放射照度になる。
@@ -54,17 +56,6 @@ export class SunLight {
   // 環境光の色。恒星光と違って方向を持たない固定値。
   get ambientColor(): ColorUniform { return this.ambientColorUniform; }
 
-  // 環境光強度そのものに日照率の下限を織り込んで返す。環境光は特定方向からの遮蔽を持たず、
-  // シャドウマップに置き換わる対象でもないため、恒星のように可視率を独立した関数へは分けない。
-  get ambientIntensity(): FloatNode {
-    const floor = float(SHADOW_MIN_AMBIENT).add(float(1 - SHADOW_MIN_AMBIENT).mul(this.sunlitFactorUniform));
-    return this.ambientIntensityUniform.mul(floor);
-  }
-
-  // シェーディング点における恒星自身の可視率(0=完全遮蔽・1=全開)。今はCPU側で求めた
-  // 日照率へ影の下限を掛けるだけだが、シャドウマップが実装されたらここが深度比較による
-  // 問い合わせへ置き換わる、遮蔽問い合わせの継ぎ目そのもの。
-  sunVisibility(): FloatNode {
-    return float(SHADOW_MIN_SUN).add(float(1 - SHADOW_MIN_SUN).mul(this.sunlitFactorUniform));
-  }
+  // 環境光強度。方向を持たないので遮蔽も受けない。
+  get ambientIntensity(): FloatNode { return this.ambientIntensityUniform; }
 }

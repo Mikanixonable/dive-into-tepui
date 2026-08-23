@@ -93,13 +93,7 @@ export class SphereView extends CelestialView {
     const orientation = ephemeris.poleAt(this.id, displayTime);
     const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
     if (q !== null) this.group.quaternion.set(q.x, q.y, q.z, q.w);
-    // 環を切ったときは、帯そのものだけでなく本体表面へ落ちる環の影も消す。
     const rings = graphics.rings ? this.rings : undefined;
-    activeSurface.setRingShadowSystem(
-      rings,
-      this.group.position,
-      orientation === null ? null : new THREE.Vector3(orientation.axis.x, orientation.axis.y, orientation.axis.z),
-    );
     if (this.ring !== undefined && rings !== undefined) {
       this.ring.group.visible = true;
       this.ring.sync(

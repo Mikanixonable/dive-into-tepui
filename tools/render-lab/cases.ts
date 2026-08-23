@@ -4,6 +4,8 @@ import * as THREE from 'three/webgpu';
 import { CelestialSurface } from '../../src/render/celestial-surface';
 import { Curve } from '../../src/render/curve';
 import { buildPlayerShip } from '../../src/render/ships';
+import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
+import type { Occluder } from '../../src/render/pipeline/occlusion';
 import type { LineStyle } from '../../src/render/line-style';
 import { LINE_RENDER_ORDER } from '../../src/game/const';
 
@@ -23,6 +25,8 @@ const NEAR = 2;
 export type LabCase = {
   readonly objects: readonly THREE.Object3D[];
   readonly camera: THREE.PerspectiveCamera;
+  // 遮蔽パスへ渡す球。フォワード経路は遮蔽を持たないので、影は 2 経路の差としても出る。
+  readonly occluders?: readonly Occluder[];
 };
 
 function labCamera(far: number): THREE.PerspectiveCamera {
@@ -129,6 +133,25 @@ function depthProbe(z: number, far: number): LabCase {
   return { objects, camera };
 }
 
+// 日食: 光を受ける球へ、太陽とほぼ同じ視半径の球が落とす影。視半径がほぼ等しいので本影は
+// 点に近く、面の大半が半影の階調になる — 影の縁がぼけて見えることが、円盤の重なり面積を
+// 解いている証拠になる。
+function eclipse(): LabCase {
+  const camera = labCamera(6e7);
+  const center = new THREE.Vector3(0, 0, -1000);
+  const receiver = new THREE.Mesh(
+    new THREE.SphereGeometry(300, 64, 48),
+    new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.9, metalness: 0 }),
+  );
+  receiver.position.copy(center);
+  markLitOpaque(receiver);
+  return {
+    objects: [receiver],
+    camera,
+    occluders: [{ center: center.clone().addScaledVector(SUN_DIR, 1e4), radius: 50 }],
+  };
+}
+
 // 遠距離: 月と海王星の距離に球を置く。far=1e13 の外へ落ちないか、潰れたり消えたりしないか。
 // 半径は深度プローブと同じ z/10 — 実半径だと海王星の距離では 1px を大きく下回り、
 // 「出ているかどうか」自体が判定できない。
@@ -152,6 +175,7 @@ export const CASES = {
   'depth-1e6': () => depthProbe(1e6, 6e7),
   'depth-1e8': () => depthProbe(1e8, 1e13),
   'depth-1e11': () => depthProbe(1e11, 1e13),
+  'eclipse': eclipse,
   'far': far,
 } as const satisfies Record<string, () => LabCase>;
 
