@@ -498,7 +498,7 @@ export const PLAN_TICK_RADIUS_PX = [1.5, 2.5, 3.5] as const;
 // --- エンティティの過去・未来状態列(physics/dynamic-trajectory.ts の DynamicTrajectory、
 // game/simulation/predicted-arc.ts の PredictedArc/Predictor) ---
 export const TRAJECTORY_SAMPLES_PER_REV = 32; // 1周回あたりの保持サンプル数(補間誤差 30m 程度に収まる実測値)
-export const SHIP_HISTORY_DURATION = 5580; // Ship の過去列の保持時間 [s]。LEO(420km)の公転周期に近似
+export const DEFAULT_HISTORY_DURATION = 10 * 86400; // 過去列を持つ種別(Ship・Base)の既定保持時間 [s]
 // 過去表示の要求で伸ばせる保持時間の上限 [s]。保持サンプル数は間引きにより
 // ARC_MAX_SAMPLES で頭打ちなので、この値が決めるのは間引きの粗さ(補間精度)の下限。
 export const HISTORY_DURATION_MAX = DISPLAY_DURATION_MAX;
@@ -517,7 +517,7 @@ export const ARC_STEPS_PER_REV = 300;
 // 費用を頭打ちにする。刻み幅を決めるのは span > ARC_MAX_STEPS × ARC_MIN_STEP_DT(≒4.6日)の
 // ときだけ。ARC_MAX_SAMPLES は実状態の履歴の間引き(trajectorySampleInterval)でも使う。
 export const ARC_MAX_STEPS = 20000;
-export const ARC_MAX_SAMPLES = 2000;
+export const ARC_MAX_SAMPLES = 10000;
 // 積分済みのサンプル列が、要求区間の求める間引き間隔に対して何倍まで粗くてよいか
 // (PredictedArc.represents 用)。表示期間を短くしたときは積分結果を捨てず答える範囲だけを
 // 狭めるが、狭めた区間に残るサンプルが数点まで減ると、折れ線上のクリック候補が飛び飛びの

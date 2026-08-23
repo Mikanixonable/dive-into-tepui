@@ -82,6 +82,7 @@ export type BaseInit =
 export class Base extends GameEntity implements Controllable {
   readonly collisionGeom = new BaseCollisionGeometry();
   protected readonly predictedForGhost = true;
+  protected readonly baseHistoryDuration = C.DEFAULT_HISTORY_DURATION;
   readonly plan = new Plan();
   planExecution: PlanExecutionMode = 'off';
   fineAttitude = false;
@@ -165,6 +166,7 @@ export class Base extends GameEntity implements Controllable {
     this.equatorNodes = new EquatorNodeMarkerPair(this, markerManager);
 
     if ('saved' in init) {
+      this.showTrajectoryLine = init.saved.showTrajectoryLine ?? false;
       this.baseState.money = init.saved.money;
       this.baseState.inventory = (init.saved.inventory ?? []).map(partFromSaveData);
       const savedVessels = init.saved.dockedVessels ?? init.saved.dockedShips ?? [];
@@ -354,6 +356,7 @@ export class Base extends GameEntity implements Controllable {
       inventory: this.baseState.inventory.map(p => ({ ...p })),
       dockedVessels: this.baseState.dockedVessels.map(entry => entry.player.serialize()),
       throttle: this.throttle.serialize(),
+      showTrajectoryLine: this.showTrajectoryLine,
     };
   }
 }

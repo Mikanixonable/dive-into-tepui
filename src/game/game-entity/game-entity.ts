@@ -90,6 +90,9 @@ export class GameEntity {
   predictedLine: TrajectoryLine | null = null;
   // 過去に通ってきた軌跡の線。持たせるかは種別の判断。
   actualLine: TrajectoryLine | null = null;
+  // プロパティウィンドウから切り替える、軌道線の表示方式。true = 解析軌道楕円の代わりに
+  // 予測線・過去線を表示する。
+  showTrajectoryLine = false;
   // 自身の軌道と中心天体の赤道面との交点マーカー。null = まだ出す必要が生じていない。
   equatorNodes: EquatorNodeMarkerPair | null = null;
   // 弾道係数の逆数 Cd·A/m(既定 0 = 抵抗なし)。抗力が要求する刻みを外から引けるよう公開する。

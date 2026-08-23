@@ -86,6 +86,8 @@ export interface PlayerSaveData extends EntitySaveData {
   followPlan?: boolean;
   // 旧セーブデータには無いフィールドなので任意。無ければ既定値(false)。
   fineAttitude?: boolean;
+  // プロパティウィンドウの軌道線表示トグル。旧セーブには無いため任意(既定 false)。
+  showTrajectoryLine?: boolean;
 }
 
 // 基地は艦(EntitySaveData)と持ち物が根本的に異なる(所持金・在庫・収容艦)ため、
@@ -109,6 +111,8 @@ export interface BaseSaveData {
   dockedVessels: PlayerSaveData[];
   dockedShips?: PlayerSaveData[];
   throttle?: ThrottleSaveData;
+  // プロパティウィンドウの軌道線表示トグル。旧セーブには無いため任意(既定 false)。
+  showTrajectoryLine?: boolean;
 }
 
 export interface EnemySaveData extends EntitySaveData {
@@ -120,6 +124,8 @@ export interface EnemySaveData extends EntitySaveData {
   // バースト射撃の残弾・次弾までの残り時間。未着手なら両方 undefined。
   burstLeft?: number;
   burstDelay?: number;
+  // プロパティウィンドウの軌道線表示トグル。旧セーブには無いため任意(既定 false)。
+  showTrajectoryLine?: boolean;
 }
 
 export interface AmmoPickupSaveData extends EntitySaveData {

@@ -134,6 +134,7 @@ export class Enemy extends Ship {
       this.burstDelay = init.saved.burstDelay;
       this.alive = init.saved.alive;
       if (!this.alive) this.renderObject.visible = false;
+      this.showTrajectoryLine = init.saved.showTrajectoryLine ?? false;
     }
   }
 
@@ -357,6 +358,7 @@ export class Enemy extends Ship {
       waveId: this.waveId,
       burstLeft: this.burstLeft,
       burstDelay: this.burstDelay,
+      showTrajectoryLine: this.showTrajectoryLine,
     };
   }
 }
