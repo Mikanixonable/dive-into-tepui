@@ -259,9 +259,28 @@ function pdb5i4rColorAt(index: number, mode: Pdb5i4rColorMode): THREE.Color {
   return new THREE.Color().setHSL((chainIndex * 0.13 + 0.02) % 1, 0.78, 0.56);
 }
 
+// ヘリックスは実測Cα列の局所的な揺らぎではなく、残基列全体から求めた主軸を基準にする。
+// これにより短いヘリックスでも帯の位相が跳ねず、円に近い螺旋を保てる。
+function pdb5i4rHelixFrame(points: readonly THREE.Vector3[]): { center: THREE.Vector3; axis: THREE.Vector3 } {
+  const center = points.reduce((sum, point) => sum.add(point), new THREE.Vector3()).multiplyScalar(1 / points.length);
+  let axis = points[points.length - 1]!.clone().sub(points[0]!).normalize();
+  if (axis.lengthSq() < 1e-8) axis.set(0, 0, 1);
+  for (let iteration = 0; iteration < 8; iteration++) {
+    const next = new THREE.Vector3();
+    for (const point of points) {
+      const offset = point.clone().sub(center);
+      next.addScaledVector(offset, offset.dot(axis));
+    }
+    if (next.lengthSq() < 1e-8) break;
+    axis.copy(next.normalize());
+  }
+  if (axis.dot(points[points.length - 1]!.clone().sub(points[0]!)) < 0) axis.negate();
+  return { center, axis };
+}
+
 function pdb5i4rRibbonGeometry(
   points: readonly THREE.Vector3[], width: number, startIndex: number, colorMode: Pdb5i4rColorMode,
-  arrow: boolean,
+  arrow: boolean, helixFrame: { center: THREE.Vector3; axis: THREE.Vector3 } | null,
 ): THREE.BufferGeometry {
   const positions: number[] = [];
   const colors: number[] = [];
@@ -295,7 +314,13 @@ function pdb5i4rRibbonGeometry(
         pdb5i4rBackboneData.backboneOCoordinates[nextOffset + 2]!,
       ), localT);
     }
-    const candidateWidthDirection = oxygen.sub(center).projectOnPlane(tangent).normalize();
+    const candidateWidthDirection = helixFrame === null
+      ? oxygen.sub(center).projectOnPlane(tangent).normalize()
+      : center.clone()
+        .sub(helixFrame.center)
+        .projectOnPlane(helixFrame.axis)
+        .projectOnPlane(tangent)
+        .normalize();
     const widthDirection = candidateWidthDirection.clone();
     if (widthDirection.lengthSq() < 1e-8) {
       const reference = Math.abs(tangent.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
@@ -400,10 +425,11 @@ export function buildPdb5i4rEnemyShip(colorMode: Pdb5i4rColorMode = 'chain'): TH
     if (run.kind === 'helix' || run.kind === 'sheet') {
       geometry = pdb5i4rRibbonGeometry(
         run.points,
-        run.kind === 'helix' ? 2.5 : 1.8,
+        run.kind === 'helix' ? 2.0 : 1.8,
         run.startIndex,
         colorMode,
         run.kind === 'sheet',
+        run.kind === 'helix' ? pdb5i4rHelixFrame(run.points) : null,
       );
     } else {
       const radius = 0.38;
