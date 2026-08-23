@@ -1,4 +1,4 @@
-// 天体1つぶんの見た目(メッシュ・表示距離圧縮など)。位置・速度は持たない —
+// 天体1つぶんの見た目(メッシュ・輝点スプライト・環など)。位置・速度は持たない —
 // Ephemeris が唯一の正本で、sync のたびにそこから引く。
 import * as THREE from 'three/webgpu';
 import { CelestialBodyId } from '../../physics/celestial-body';

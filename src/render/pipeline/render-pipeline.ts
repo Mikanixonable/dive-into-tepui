@@ -24,7 +24,7 @@ import { SunLight } from './sun-light';
 export const EXPOSURE = 0.72;
 
 // 深度テクスチャの生値(反転深度: 1=near/0=far)を view 空間の距離へ変換する。
-// three.js 標準の perspectiveDepthToViewZ は far-near を素朴に引くが、near=2m/far=6e7m の
+// three.js 標準の perspectiveDepthToViewZ は far-near を素朴に引くが、near=2m/far=2e12m の
 // ように float32 の分解能を near がまるごと下回る組み合わせでは far-near が far そのものへ
 // 丸め込まれ、深度が far 側に近い領域で 0 除算(→NaN)に破綻する。near*(1-depth) と far*depth を
 // 個別に求めてから足し合わせる形に組み替えると、depth=0 ちょうどで分母が near ちょうどに
@@ -124,7 +124,7 @@ export class RenderPipeline implements DebugTargetHost {
   }
 
   // 深度バッファの生値を near/far 間の対数スケール(0=near, 1=far)へ変換する。素の深度値は
-  // near=2m/far=6e7m のスケールでは 1.0 付近に潰れて識別できないため、対数を挟むことで
+  // near=2m/far=2e12m のスケールでは端に潰れて識別できないため、対数を挟むことで
   // 精度の落ち方そのものを見えるようにする。
   private logDepthNode(): FloatNode {
     const rawDepth = texture(this.gbuffer.depthTexture, screenUV).r;

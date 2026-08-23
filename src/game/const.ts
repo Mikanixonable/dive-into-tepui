@@ -153,10 +153,11 @@ export const RCS_PUFF_TORQUE_EPS = 0.15; // RCSパフを表示する実トルク
 export const FINE_ATTITUDE_SCALE = 0.5;
 
 // 戦闘視点カメラの near/far [m]。near は LEO 高度からの地平線距離(~2,400km)での深度誤差が
-// 十分小さく、対数深度バッファなしで z-fighting を避けられる値。far は星空シェル・
-// 太陽ビルボード・月表示距離を余裕を持って内側に収める。
+// 十分小さく、対数深度バッファなしで z-fighting を避けられる値。far は球として描かれる天体の
+// うち見かけ直径が 2px を超える最遠のもの — 直径 1.4e9 m の恒星を LOD 上限で見た 1.4e12 m —
+// が入る距離。反転 32bit 深度の分解能は距離に比例するので、far を広げる費用は事実上ゼロ。
 export const COMBAT_CAMERA_NEAR = 2;
-export const COMBAT_CAMERA_FAR = 6e7;
+export const COMBAT_CAMERA_FAR = 2e12;
 
 export const BASE_FOV = 55; // 通常時の垂直画角 [deg]
 export const ZOOM_FOV = 6; // [Z]キー長押し時の照準ズーム画角 [deg]

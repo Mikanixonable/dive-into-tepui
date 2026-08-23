@@ -1,10 +1,8 @@
-// 戦闘ビューで肉眼の「明るい星」程度にしか見えない惑星の見た目。SphereView の視距離圧縮
-// (visDist 方式)は視直径がピクセル未満になり意味がないため、戦闘ビューでは星シェルと同じ
-// カメラ追従シェル上の輝点スプライトに切り替える。マップビューは SphereView と同じ
-// 実位置・実半径の球体 — 実体表示と輝点表示は別モデルの丸ごと差し替えであり、
-// SphereView 側に視点モード分岐を足す形は取らない。球メッシュ自体は SphereView と同じく
-// screen-lod.ts の分割段ラダーに乗り、見かけ直径が閾値未満なら(マップビューでは輝点も
-// 出さず)実体を隠す。
+// 戦闘ビューで肉眼の「明るい星」程度にしか見えない惑星の見た目。視直径がピクセル未満に
+// なるので、戦闘ビューでは星殻上の輝点スプライトに切り替える。実体表示と輝点表示は別モデルの
+// 丸ごと差し替えであり、SphereView 側に視点モード分岐を足す形は取らない。球メッシュ自体は
+// SphereView と同じく screen-lod.ts の分割段ラダーに乗り、見かけ直径が閾値未満なら
+// (マップビューでは輝点も出さず)実体を隠す。
 import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
 import { OrbitingId } from '../../physics/celestial-body';
@@ -15,7 +13,6 @@ import { spinOrientation } from '../../physics/body-orientation';
 import { STAR_SHELL_RADIUS } from '../../render/stars';
 import { Billboard } from '../../render/billboard';
 import { CelestialSurface } from '../../render/celestial-surface';
-import { compressionRatio } from '../../render/view-compression';
 import { showsPhysicalSphere, sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from '../../render/screen-lod';
 import { CelestialView } from './celestial-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
@@ -102,8 +99,8 @@ export class PointView extends CelestialView {
   }
 
   // displayTime 時点の位置へ実体メッシュか輝点ビルボードのどちらかを同期する(常に片方は
-  // 隠す)。見かけ直径は圧縮前の真の位置から求め、閾値未満では実体を隠す(戦闘視点は輝点へ
-  // 切り替え、広範囲視点は輝点も出さない)。
+  // 隠す)。見かけ直径が閾値未満では実体を隠す(戦闘視点は輝点へ切り替え、広範囲視点は
+  // 輝点も出さない)。
   sync(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris,
     graphics: GraphicsSettingsData,
@@ -131,24 +128,14 @@ export class PointView extends CelestialView {
     // 環を切ったときは、帯そのものだけでなく本体表面へ落ちる環の影も消す。
     const rings = graphics.rings ? this.rings : undefined;
     if (this.ring !== undefined) this.ring.group.visible = rings !== undefined;
-    const p = fo.RtoThreeV3(pos);
-    const k = compressionRatio(p, 'planet', cameraSystem.overviewMode);
-    this.group.position.copy(p).multiplyScalar(k);
-    const scaleFactor = this.radius * k;
-    this.group.scale.set(this.axes.x * k, this.axes.y * k, this.axes.z * k);
+    this.group.position.copy(fo.RtoThreeV3(pos));
+    this.group.scale.copy(this.axes);
     if (q !== null) this.group.quaternion.set(q.x, q.y, q.z, q.w);
     this.billboard.hide();
-    activeSurface.setRingShadowSystem(
-      rings,
-      this.group.position,
-      this.radius,
-      scaleFactor,
-      axis,
-    );
+    activeSurface.setRingShadowSystem(rings, this.group.position, axis);
     if (this.ring !== undefined && rings !== undefined) {
       this.ring.sync(
         this.group.position,
-        scaleFactor,
         orientation === null ? null : orientation.axis,
         pos,
         cameraSystem.activeCameraScale,

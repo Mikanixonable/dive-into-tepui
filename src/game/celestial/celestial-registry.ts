@@ -27,7 +27,7 @@ import titanTextureUrl from '../../assets/2k_titan.jpg';
 
 // テクスチャ付き惑星のレジストリ項を、表示名とテクスチャ URL から組む。rings(bodyDef から
 // そのまま渡す)があれば環付きになる。pointBrightness を渡すと戦闘ビューでの表示が
-// PointView の輝点スプライトになる(省略時は SphereView の視距離圧縮球のまま)。
+// PointView の輝点スプライトになる(省略時は SphereView の球のまま)。
 function planetEntry(id: SolarSystemId, name: string, textureUrl: string, pointBrightness?: PointBrightness): CelestialViewDef {
   const buildSurface = (level: SphereLodLevel) => CelestialSurface.textured(textureUrl, level.widthSegments, level.heightSegments);
   const def = bodyDef(SOLAR_SYSTEM, id);
@@ -35,7 +35,7 @@ function planetEntry(id: SolarSystemId, name: string, textureUrl: string, pointB
     name,
     create: () =>
       pointBrightness === undefined
-        ? new SphereView(id, buildSurface, def.radius, 'planet', shapeOf(id), ringsOf(id))
+        ? new SphereView(id, buildSurface, def.radius, shapeOf(id), ringsOf(id))
         : new PointView(id, buildSurface, def.radius, pointBrightness, shapeOf(id), ringsOf(id)),
   };
 }
@@ -60,7 +60,6 @@ function satelliteEntry(id: SolarSystemId, name: string, color: number): Celesti
       id,
       (level) => CelestialSurface.solid(color, level.widthSegments, level.heightSegments),
       bodyDef(SOLAR_SYSTEM, id).radius,
-      'satellite',
       shapeOf(id),
     ),
   };
@@ -70,7 +69,7 @@ function satelliteEntry(id: SolarSystemId, name: string, color: number): Celesti
 // 入手できた衛星のみ; それ以外は satelliteEntry の単色のまま)。
 function texturedSatelliteEntry(id: SolarSystemId, name: string, textureUrl: string): CelestialViewDef {
   const buildSurface = (level: SphereLodLevel) => CelestialSurface.textured(textureUrl, level.widthSegments, level.heightSegments);
-  return { name, create: () => new SphereView(id, buildSurface, bodyDef(SOLAR_SYSTEM, id).radius, 'satellite', shapeOf(id)) };
+  return { name, create: () => new SphereView(id, buildSurface, bodyDef(SOLAR_SYSTEM, id).radius, shapeOf(id)) };
 }
 
 // テクスチャを持たない太陽中心天体(準惑星・大型小惑星・彗星核)のレジストリ項。
@@ -81,7 +80,6 @@ function solidPlanetEntry(id: SolarSystemId, name: string, color: number): Celes
       id,
       (level) => CelestialSurface.solid(color, level.widthSegments, level.heightSegments),
       bodyDef(SOLAR_SYSTEM, id).radius,
-      'planet',
       shapeOf(id),
       ringsOf(id),
     ),
@@ -92,7 +90,7 @@ export type CelestialViewDef = { readonly name: string; create(): CelestialView 
 
 export const CELESTIAL_VIEWS: Record<SolarSystemId, CelestialViewDef> = {
   earth: { name: '地球', create: () => new EarthView() },
-  moon: { name: '月', create: () => new SphereView('moon', createMoon, bodyDef(SOLAR_SYSTEM, 'moon').radius, 'satellite') },
+  moon: { name: '月', create: () => new SphereView('moon', createMoon, bodyDef(SOLAR_SYSTEM, 'moon').radius) },
   mercury: planetEntry('mercury', '水星', mercuryTextureUrl, 'medium'),
   venus: planetEntry('venus', '金星', venusTextureUrl, 'bright'),
   mars: planetEntry('mars', '火星', marsTextureUrl, 'medium'),
@@ -202,6 +200,5 @@ export function fallbackCelestialView(registry: CelestialRegistry, id: Celestial
       id,
       (level) => CelestialSurface.solid(0x888888, level.widthSegments, level.heightSegments),
       def.radius,
-      def.kind === 'satellite' ? 'satellite' : 'planet',
     );
 }

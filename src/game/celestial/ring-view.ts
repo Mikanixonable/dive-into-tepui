@@ -35,7 +35,7 @@ export class RingView {
   // していて親から子へ伝播しないので、グループではなく帯のメッシュ1つ1つへ書く。
   constructor(
     rings: RingSystemDef,
-    bodyRadius: number,
+    private readonly bodyRadius: number,
     renderOrder: number,
   ) {
     for (const band of rings.bands) {
@@ -62,19 +62,17 @@ export class RingView {
     return visual;
   }
 
-  // pos/scale/axis は本体メッシュ(SphereView/PointView)と揃える。bodyPos/metersPerPixelAt は
-  // 帯の被覆率減光専用 — 真の ECI 位置での実距離で判定するので、戦闘視点の視距離圧縮表示でも
-  // 見かけの角直径どおりに減光する。sunDirection/cameraPosition は環自身の光学計算用。
+  // pos/axis は本体メッシュ(SphereView/PointView)と揃える。bodyPos/metersPerPixelAt は
+  // 帯の被覆率減光専用で、sunDirection は環自身の光学計算用。
   sync(
     pos: THREE.Vector3,
-    scale: number,
     axis: Vec3 | null,
     bodyPos: Vec3,
     metersPerPixelAt: ScaleFn,
     sunDirection: Vec3,
   ): void {
     this.group.position.copy(pos);
-    this.group.scale.setScalar(scale);
+    this.group.scale.setScalar(this.bodyRadius);
     const ringAxis = axis === null
       ? new THREE.Vector3(0, 1, 0)
       : new THREE.Vector3(axis.x, axis.y, axis.z).normalize();
@@ -84,7 +82,7 @@ export class RingView {
     }
     const state: RingVisualState = {
       bodyCenter: pos,
-      bodyRadius: scale,
+      bodyRadius: this.bodyRadius,
       sunDirection: new THREE.Vector3(sunDirection.x, sunDirection.y, sunDirection.z).normalize(),
       ringAxis,
       coverage: 1,

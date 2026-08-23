@@ -8,6 +8,8 @@ import { CelestialSurface } from './celestial-surface';
 import { WORLD_BACKGROUND_LAYER } from './pipeline/lit-layer';
 
 export const STAR_SHELL_RADIUS = 3.5e7; // [m] 自機中心に固定するので視差は出ない
+// 恒星のグローの一辺を実半径の何倍にするか。肉眼で見た太陽は視直径そのものより大きく滲む。
+export const STAR_GLOW_SIZE_RATIO = 12.3;
 
 export interface Stars {
   readonly mesh: THREE.Mesh;
