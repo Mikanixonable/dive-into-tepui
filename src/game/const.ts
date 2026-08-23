@@ -342,22 +342,19 @@ export const MARKER_CLUSTER_PX = 40; // これより画面上で近いマーカ�
 // 緩い値)。同じ値だと境界ちょうどで距離が揺れたときに毎フレーム表示・非表示が反転する
 // (周期が数時間の衛星どうしなど、タイムワープ中に画面距離が急変する組で顕著)。
 export const MARKER_CLUSTER_RELEASE_PX = 60;
+// 画面上で近接する2対象(マーカー・天体ラベル・ラグランジュ点ラベルいずれも)のカメラからの
+// 距離比がこれ以上なら、優先度に関わらず遠い側を隠す(奥にあるだけの対象が手前の対象を
+// 消してしまう逆転を防ぐ)。
+export const DEPTH_GUARD_RATIO = 3;
+// 一度 DEPTH_GUARD で隠した対象を再び出す距離比のしきい値(ENTER より緩い値)。同じ値だと
+// しきい値ちょうどで距離比が揺れたときに毎フレーム表示・非表示が反転する
+// (周期が数時間の衛星どうしなど、タイムワープ中に距離比が急変する組で顕著)。
+export const DEPTH_GUARD_EXIT_RATIO = 2;
 // 天体ラベルからこれより画面上で近いラグランジュ点ラベルは、天体ラベルを優先して隠す [px]
 export const FOCUS_LABEL_PRIORITY_PX = 40;
-// 画面上で近接する2ラベルのカメラからの距離比がこれ以上なら、優先度に関わらず遠い側を隠す
-// (奥の天体ラベルが手前のラグランジュ点ラベルを消してしまう逆転を防ぐ)
-export const FOCUS_LABEL_DEPTH_GUARD_RATIO = 3;
-// 一度 DEPTH_GUARD で隠したラベルを再び出す距離比のしきい値(ENTER より緩い値)。ENTER と同じ
-// 値だとしきい値ちょうどで距離比が揺れたときに毎フレーム表示・非表示が反転する
-// (周期が数時間の衛星どうしなど、タイムワープ中に距離比が急変する組で顕著)。
-export const FOCUS_LABEL_DEPTH_GUARD_EXIT_RATIO = 2;
 // 位置の点(アイコン)側の混雑判定。名前(FOCUS_LABEL_PRIORITY_PX)より小さい値にし、名前だけが
 // 間引かれて点は残る距離帯を作る。
 export const FOCUS_ICON_PRIORITY_PX = 16;
-// アイコン側の奥行きガード。名前側と同じ距離比を使うが、混雑判定の半径が小さいぶん実際に
-// アイコンが隠れるのは名前より近接した場合に限られる。
-export const FOCUS_ICON_DEPTH_GUARD_RATIO = 3;
-export const FOCUS_ICON_DEPTH_GUARD_EXIT_RATIO = 2;
 
 // マーカーラベル優先度 (数値が大きいものが優先。天体 > 船・エンティティ)
 export const MARKER_PRIORITY = {

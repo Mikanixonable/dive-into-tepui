@@ -198,11 +198,12 @@ export class EnvironmentScene {
       this.pointFieldView?.sync(floatingOrigin, false, true);
     }
     this.syncStars(cameraSystem, gridVisibility.stars);
+    const celestialBodies = this.ephemeris.celestialBodiesAt(displayTime);
     this.syncReferenceLines(
       displayTime, floatingOrigin, cameraSystem.overviewMode,
       focusTargetId(cameraSystem.mapCamera.focus), cameraSystem.bodyClassToggles,
-      visibilityPolicy, nearbyIds, cameraSystem.activeCamera, cameraSystem.activeCameraPos);
-    this.syncGeoLabels(displayTime, cameraSystem.overviewMode, cameraSystem, markerManager, this.ephemeris.celestialBodiesAt(displayTime));
+      visibilityPolicy, nearbyIds, cameraSystem.activeCamera, cameraSystem.activeCameraPos, celestialBodies);
+    this.syncGeoLabels(displayTime, cameraSystem.overviewMode, cameraSystem, markerManager, celestialBodies);
     this.celestialGrid.sync(
       gridVisibility, cameraSystem.activeCamera,
       cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
@@ -241,6 +242,7 @@ export class EnvironmentScene {
     simTime: number, fo: FloatingOrigin, overviewMode: boolean, focusId: CelestialBodyId | undefined,
     toggles: BodyClassToggles, sharedVisibilityPolicy: MapVisibilityPolicy | null,
     nearbyIds: readonly CelestialBodyId[], camera: THREE.Camera, cameraPos: Vec3,
+    celestialBodies: readonly CelestialBody[],
   ): void {
     if (!overviewMode) {
       this.geoLine.sync(null, fo, camera);
@@ -253,7 +255,7 @@ export class EnvironmentScene {
       focusId,
       nearbyIds,
     );
-    this.geoLine.sync(this.geoElements, fo, camera);
+    this.geoLine.sync(this.geoElements, fo, camera, { occludingBodies: celestialBodies });
     if ('earth' in this.ephemeris.registry) {
       const earthPos = this.ephemeris.positionOf('earth', simTime);
       const distToEarth = len(sub(earthPos, cameraPos));
@@ -268,7 +270,7 @@ export class EnvironmentScene {
       }
       const line = this.ensureReferenceLine(id);
       const el = this.orbitElementsFor(id, simTime);
-      line.sync(el, fo, camera);
+      line.sync(el, fo, camera, { occludingBodies: celestialBodies });
       const dist = len(sub(this.ephemeris.stateOf(id, simTime).r, cameraPos));
       line.setOpacity(this.referenceLineOpacityAt(id, dist));
     }
@@ -337,6 +339,7 @@ export class EnvironmentScene {
         false,
         true,
         C.MARKER_PRIORITY.ORBITAL_NODE,
+        len(sub(pos, cameraPos)),
       );
     }
   }

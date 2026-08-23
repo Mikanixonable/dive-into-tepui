@@ -11,13 +11,13 @@ import { BodyClassToggles, NearbySystemTracker } from '../celestial/body-visibil
 import { bodyClassOf, BodyClass } from '../celestial/body-class';
 import { MapVisibilityPolicy } from '../celestial/map-visibility';
 import {
-  FOCUS_ICON_DEPTH_GUARD_EXIT_RATIO, FOCUS_ICON_DEPTH_GUARD_RATIO, FOCUS_ICON_PRIORITY_PX,
-  FOCUS_LABEL_DEPTH_GUARD_EXIT_RATIO, FOCUS_LABEL_DEPTH_GUARD_RATIO, FOCUS_LABEL_PRIORITY_PX,
+  DEPTH_GUARD_EXIT_RATIO, DEPTH_GUARD_RATIO, FOCUS_ICON_PRIORITY_PX, FOCUS_LABEL_PRIORITY_PX,
   LAGRANGE_MIN_CLEARANCE_RATIO, MARKER_PRIORITY,
 } from '../const';
 import type { MapPickable } from '../map-pickable';
 import { ENTITY_GLYPH, bodyEntityGlyph } from '../marker/marker-glyphs';
 import type { GroupedMarkers, GroupedMarkerItem } from '../marker/grouped-markers';
+import { resolveCrowdingWinner } from '../marker/crowding';
 
 type MutableMapPickable = { -readonly [K in keyof MapPickable]: MapPickable[K] };
 type ProjectedFocusLabel = { label: FocusLabel; x: number; y: number; dist: number };
@@ -28,6 +28,7 @@ export interface ActiveCelestialLabel {
   readonly x: number;
   readonly y: number;
   readonly priority: number;
+  readonly dist: number;
   readonly iconVisible: boolean;
   readonly labelVisible: boolean;
 }
@@ -130,26 +131,14 @@ class CrowdingGrid {
           if (cell === undefined) continue;
           for (const other of cell) {
             if (Math.hypot(current.x - other.x, current.y - other.y) >= this.cellSizePx) continue;
-            const currentRatio = this.hiddenLastFrame.has(current.label.id) ? this.depthGuardExitRatio : this.depthGuardRatio;
-            const otherRatio = this.hiddenLastFrame.has(other.label.id) ? this.depthGuardExitRatio : this.depthGuardRatio;
-            if (current.dist > other.dist * currentRatio) {
-              hidden.add(current.label.id);
-            } else if (other.dist > current.dist * otherRatio) {
-              hidden.add(other.label.id);
-            } else if (current.label.labelPriority > other.label.labelPriority) {
-              hidden.add(other.label.id);
-            } else if (other.label.labelPriority > current.label.labelPriority) {
-              hidden.add(current.label.id);
-            } else if (current.label.depth > other.label.depth) {
-              // 優先度が等しい場合の決定論的タイブレーク(格子順に依存せずチラつきを防ぐ)
-              hidden.add(current.label.id);
-            } else if (other.label.depth > current.label.depth) {
-              hidden.add(other.label.id);
-            } else if (current.label.id > other.label.id) {
-              hidden.add(current.label.id);
-            } else {
-              hidden.add(other.label.id);
-            }
+            const winner = resolveCrowdingWinner(
+              current.label.id, current.label.labelPriority, current.dist, this.hiddenLastFrame.has(current.label.id),
+              other.label.id, other.label.labelPriority, other.dist, this.hiddenLastFrame.has(other.label.id),
+              this.depthGuardRatio, this.depthGuardExitRatio, true,
+              current.label.depth, other.label.depth,
+            );
+            if (winner === 'a') hidden.add(current.label.id);
+            else if (winner === 'b') hidden.add(other.label.id);
           }
         }
       }
@@ -192,12 +181,13 @@ export class FocusMarkers {
   private cachedBodyPickablesTime: number | null = null;
   private cachedBodyPickablesPolicy: MapVisibilityPolicy | null = null;
   private readonly frameScratch = new Map<string, FocusProjection>();
+  private readonly distScratch = new Map<string, number>();
   private readonly projectedForLabel: ProjectedFocusLabel[] = [];
   private readonly projectedForIcon: ProjectedFocusLabel[] = [];
   // 名前の間引きとアイコンの間引きは混雑半径が異なる(アイコンの方が近接しないと間引かれない)ため、
   // グリッドとヒステリシス状態を別々に持つ。
-  private readonly labelCrowding = new CrowdingGrid(FOCUS_LABEL_PRIORITY_PX, FOCUS_LABEL_DEPTH_GUARD_RATIO, FOCUS_LABEL_DEPTH_GUARD_EXIT_RATIO);
-  private readonly iconCrowding = new CrowdingGrid(FOCUS_ICON_PRIORITY_PX, FOCUS_ICON_DEPTH_GUARD_RATIO, FOCUS_ICON_DEPTH_GUARD_EXIT_RATIO);
+  private readonly labelCrowding = new CrowdingGrid(FOCUS_LABEL_PRIORITY_PX, DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO);
+  private readonly iconCrowding = new CrowdingGrid(FOCUS_ICON_PRIORITY_PX, DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO);
   private shownIdsScratch: string[] = [];
   private readonly nowShownScratch = new Set<string>();
   private readonly activeCelestialLabels: ActiveCelestialLabel[] = [];
@@ -391,6 +381,8 @@ export class FocusMarkers {
   syncLabels(project: ProjectFn, cameraPos: Vec3): void {
     const frame = this.frameScratch;
     frame.clear();
+    const distById = this.distScratch;
+    distById.clear();
     // 実際に文字列を出すラベル・アイコンだけをそれぞれの競合対象にする。同じ優先度同士は
     // 両方残し、MarkerManager の通常の衝突緩和へ任せる。遮蔽判定と投影は各ラベル1回だけ行う。
     const projectedForLabel = this.projectedForLabel;
@@ -404,6 +396,7 @@ export class FocusMarkers {
       frame.set(lbl.id, { occluded, opacity, x: p.x, y: p.y, front: p.front });
       if (!occluded && p.front) {
         const entry = { label: lbl, x: p.x, y: p.y, dist: len(sub(lbl.pos, cameraPos)) };
+        distById.set(lbl.id, entry.dist);
         if (lbl.showLabel) projectedForLabel.push(entry);
         if (lbl.showIcon) projectedForIcon.push(entry);
       }
@@ -445,6 +438,7 @@ export class FocusMarkers {
           x: projectedState.x,
           y: projectedState.y,
           priority: lbl.labelPriority,
+          dist: distById.get(lbl.id)!,
           iconVisible: isIconVisible,
           labelVisible: isLabelVisible,
         });
@@ -454,7 +448,7 @@ export class FocusMarkers {
         isIconVisible ? (lbl.isLagrange ? ENTITY_GLYPH.lagrange : bodyEntityGlyph(lbl.bodyClass)) : '',
         lbl.pos, project,
         isLabelVisible ? lbl.markerLabel : '',
-        markerOpacity, undefined, undefined, false, false, lbl.labelPriority,
+        markerOpacity, undefined, undefined, false, false, lbl.labelPriority, cameraPos,
       );
     }
     const nowShown = this.nowShownScratch;
@@ -592,7 +586,7 @@ export class FocusMarkers {
           lbl.showIcon ? (lbl.isLagrange ? ENTITY_GLYPH.lagrange : bodyEntityGlyph(lbl.bodyClass)) : '',
           lbl.pos, project,
           fullLabelText,
-          proj.opacity, undefined, undefined, false, false, lbl.labelPriority,
+          proj.opacity, undefined, undefined, false, false, lbl.labelPriority, cameraPos,
         );
       }
     }
