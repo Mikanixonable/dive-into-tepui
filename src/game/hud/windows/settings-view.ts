@@ -11,6 +11,10 @@ import { Button, CloseButton, Slider, TabBar } from '../widgets';
 
 type SettingsTab = 'theme' | 'graphics' | 'bgm';
 
+export interface SettingsViewOptions {
+  readonly mode?: 'modal' | 'dock';
+}
+
 // タイトル画面とゲーム中の両方から開く、システム設定の共通ビュー。
 // 3D の ViewManager とは独立した DOM ビューなので、閉じると開く前のワールドビューへ戻る。
 export class SettingsView implements OverlayHandle {
@@ -27,15 +31,18 @@ export class SettingsView implements OverlayHandle {
   constructor(
     root: HTMLElement, overlayManager: OverlayManager, bgm: Bgm,
     graphics: GraphicsSettings, debugTargetHost: DebugTargetHost,
+    options: SettingsViewOptions = {},
   ) {
     this.overlayManager = overlayManager;
     this.bgm = bgm;
+    const mode = options.mode ?? 'modal';
 
     this.panel = document.createElement('section');
     this.panel.id = 'hud-settings-view';
     this.panel.className = 'panel';
+    this.panel.classList.toggle('settings-dock', mode === 'dock');
     this.panel.setAttribute('role', 'dialog');
-    this.panel.setAttribute('aria-modal', 'true');
+    if (mode === 'modal') this.panel.setAttribute('aria-modal', 'true');
     this.panel.setAttribute('aria-labelledby', 'hud-settings-title');
 
     const header = document.createElement('div');
@@ -52,7 +59,7 @@ export class SettingsView implements OverlayHandle {
     headingGroup.appendChild(eyebrow);
     header.appendChild(headingGroup);
     const closeButton = new CloseButton(() => this.toggle(false));
-    header.appendChild(closeButton.element);
+    if (mode === 'modal') header.appendChild(closeButton.element);
     this.panel.appendChild(header);
 
     const description = document.createElement('p');
@@ -183,6 +190,13 @@ export class SettingsView implements OverlayHandle {
 
     root.appendChild(this.panel);
     this.stopButton.setEnabled(false);
+    if (mode === 'dock') {
+      this.panel.style.display = 'block';
+      this.panel.style.padding = 'var(--space-4)';
+      this.panel.style.background = 'var(--glass-quiet)';
+      this.panel.style.boxShadow = 'none';
+      this.panel.style.backdropFilter = 'none';
+    }
   }
 
   contains(target: Node): boolean {
