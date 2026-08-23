@@ -1,6 +1,5 @@
 // 常設 ORBIT パネル(#hud-orbit)の同期: 自艦の基準・高度・速度・遠地点/近地点・傾斜角・
-// 周期・動圧・機体温度、および基準切替のセグメントコントロール。戦闘ビュー専用 — マップ
-// ビューでは畳む(対象側の軌道要素はプロパティウィンドウが持ち、ここでは二重に出さない)。
+// 周期・動圧・機体温度、および基準切替のセグメントコントロール。戦闘/マップ共通。
 import * as C from '../../const';
 import { fmtDist, fmtSpeed, fmtTime } from '../utils';
 import { orbitInfo } from './orbit-info';
@@ -50,7 +49,7 @@ export class OrbitPanel {
 
   private game: Game | null = null;
 
-  sync(game: Game, celestialBodies: readonly CelestialBody[]): void {
+  sync(game: Game, celestialBodies: readonly CelestialBody[], hideInOverview = true): void {
     this.game = game;
     const entity = game.activeControllableEntity;
     const el = document.getElementById('hud-orbit');
@@ -58,7 +57,7 @@ export class OrbitPanel {
       el?.classList.add('hidden');
       return;
     }
-    el?.classList.toggle('hidden', game.cameraSystem.overviewMode);
+    el?.classList.toggle('hidden', hideInOverview && game.cameraSystem.overviewMode);
 
     const now = performance.now();
     if (now < this.nextSyncAt) return;
