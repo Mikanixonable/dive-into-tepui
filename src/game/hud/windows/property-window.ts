@@ -33,6 +33,22 @@ const STYLE = `
   padding: var(--space-2);
   background: color-mix(in srgb, var(--surface-0) 28%, transparent);
 }
+#hud .prop-window-related {
+  padding: var(--space-2);
+  background: color-mix(in srgb, var(--surface-0) 28%, transparent);
+}
+#hud .prop-window-related-title {
+  padding: var(--space-2) var(--space-5);
+  color: var(--text); opacity: 0.6; font-size: 0.9em;
+}
+#hud .prop-window-related-item {
+  padding: var(--space-4) var(--space-5); color: var(--body); cursor: pointer;
+  border: 0; border-radius: var(--radius-micro);
+}
+#hud .prop-window-related-item:hover, #hud .prop-window-related-item:active {
+  background: var(--surface-2); color: var(--accent-near);
+}
+#hud .prop-window-related-item:focus-visible { outline: 2px solid var(--accent-near); outline-offset: -2px; }
 #hud .prop-window-item {
   padding: var(--space-4) var(--space-5); color: var(--body); cursor: pointer;
   border: 0; border-radius: var(--radius-micro);
@@ -82,6 +98,13 @@ export interface PropertyWindowItem<A extends string = string> {
   readonly keepOpen?: boolean;
 }
 
+export interface PropertyWindowRelatedItem {
+  readonly id: string;
+  readonly label: string;
+  readonly onFocus: () => void;
+  readonly onContextMenu: (clientX: number, clientY: number) => void;
+}
+
 export interface PropertyWindowContent<A extends string = string> {
   readonly title: string;
   readonly subtitle?: string;
@@ -89,6 +112,8 @@ export interface PropertyWindowContent<A extends string = string> {
   readonly icon?: string;
   readonly rows: readonly PropertyRow[];
   readonly items: readonly PropertyWindowItem<A>[];
+  // 対象に関連する物体を本文上部へ表示する。ダブルクリック/右クリックの動作は呼び出し側が持つ。
+  readonly relatedItems?: readonly PropertyWindowRelatedItem[];
   // 指定すると、タイトル横に改名ボタンが現れる。呼び出し側は確定した新しい名前を
   // 実体へ書き戻すところまでを行う — このクラスは編集 UI の開閉のみを持つ。
   readonly onRename?: (name: string) => void;
@@ -98,6 +123,7 @@ export class PropertyWindow<A extends string = string> {
   private readonly win: DraggableWindow;
   private readonly rowsEl: HTMLDivElement;
   private readonly itemsEl: HTMLDivElement;
+  private readonly relatedEl: HTMLDivElement;
   private titleMainEl: HTMLElement;
   // 前フレームに描画した行の値。同じ値なら DOM に触れない差分更新のための記録。
   private lastRowValues = new Map<string, string>();
@@ -110,6 +136,7 @@ export class PropertyWindow<A extends string = string> {
   private readonly groupExpanded = new Map<string, boolean>();
   // 前回描画した操作項目の直列化(act/label/shortcut)。同じなら DOM を組み直さない。
   private lastItemsKey = '';
+  private lastRelatedItemsKey = '';
   private readonly renameCallback: ((name: string) => void) | null;
   private renaming = false;
   private lastTitle: string;
@@ -155,9 +182,12 @@ export class PropertyWindow<A extends string = string> {
     this.rowsEl.className = 'prop-window-rows';
     this.itemsEl = document.createElement('div');
     this.itemsEl.className = 'prop-window-items';
+    this.relatedEl = document.createElement('div');
+    this.relatedEl.className = 'prop-window-related';
     this.win.body.appendChild(this.rowsEl);
     this.win.body.appendChild(this.itemsEl);
 
+    this.syncRelatedItems(content.relatedItems ?? []);
     this.syncRows(content.rows);
     this.syncItems(content.items);
   }
@@ -246,6 +276,48 @@ export class PropertyWindow<A extends string = string> {
       });
       this.itemsEl.appendChild(row);
     }
+    this.reclamp();
+  }
+
+  // 対象に関連する物体の集合が変わったときだけ DOM を組み直す。欄は常にプロパティ行より上に置く。
+  public syncRelatedItems(items: readonly PropertyWindowRelatedItem[]): void {
+    const key = items.map((it) => `${it.id} ${it.label}`).join('|');
+    if (key === this.lastRelatedItemsKey) return;
+    this.lastRelatedItemsKey = key;
+    this.relatedEl.innerHTML = '';
+    if (items.length === 0) {
+      this.relatedEl.remove();
+      return;
+    }
+    const title = document.createElement('div');
+    title.className = 'prop-window-related-title';
+    title.textContent = `周回物体 (${items.length})`;
+    this.relatedEl.appendChild(title);
+    for (const it of items) {
+      const row = document.createElement('div');
+      row.className = 'prop-window-related-item';
+      row.setAttribute('role', 'button');
+      row.tabIndex = 0;
+      row.textContent = it.label;
+      row.title = 'ダブルクリック: フォーカス · 右クリック: プロパティ';
+      row.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        it.onFocus();
+      });
+      row.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        it.onContextMenu(e.clientX, e.clientY);
+      });
+      row.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        it.onFocus();
+      });
+      this.relatedEl.appendChild(row);
+    }
+    if (!this.relatedEl.parentElement) this.win.body.insertBefore(this.relatedEl, this.rowsEl);
     this.reclamp();
   }
 
