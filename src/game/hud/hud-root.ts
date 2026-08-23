@@ -272,16 +272,20 @@ function buildMapScale(root: HTMLElement): void {
     </div>`;
 }
 
-// 画面全体のグローバルステータス(MET・時間加速・NODE WARP)を組む。
+// 画面全体のグローバルステータスを組む。1行目はビュー切替バッジ(ViewBadge が中身を組む)、
+// 2行目は MET・時間加速・NODE WARP。
 function buildGlobalStatus(root: HTMLElement): void {
   const bar = createHudElement('section', 'hud-simulation-status', root);
   bar.setAttribute('aria-label', 'Mission status');
   bar.innerHTML = `
-    <span class="k">Mission time</span><output class="v" data-id="met">—</output>
-    <span class="gs-sep" aria-hidden="true">·</span>
-    <span class="k">時間加速</span><output class="v" data-id="sim-speed">—</output>
-    <span class="gs-sep" aria-hidden="true">·</span>
-    <span class="k">Node warp</span><output class="v" data-id="node-warp-remain">—</output>`;
+    <div class="gs-row" id="hud-viewbadge" data-id="gs-viewrow"></div>
+    <div class="gs-row">
+      <span class="k">Mission time</span><output class="v" data-id="met">—</output>
+      <span class="gs-sep" aria-hidden="true">·</span>
+      <span class="k">時間加速</span><output class="v" data-id="sim-speed">—</output>
+      <span class="gs-sep" aria-hidden="true">·</span>
+      <span class="k">Node warp</span><output class="v" data-id="node-warp-remain">—</output>
+    </div>`;
 }
 
 // 追従カメラの視点リセットボタンを組む。
