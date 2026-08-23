@@ -2,9 +2,9 @@
 // 星は小さな三角形をまとめた単一ジオメトリで描く(レンダラー非依存で確実)。
 import * as THREE from 'three/webgpu';
 import starsTextureUrl from '../assets/8k_stars.jpg';
-import moonTextureUrl from '../assets/8k_moon.jpg';
 import { Billboard } from './billboard';
 import { CelestialSurface } from './celestial-surface';
+import { textureOf } from './celestial-textures';
 import { WORLD_BACKGROUND_LAYER } from './pipeline/lit-layer';
 
 export const STAR_SHELL_RADIUS = 3.5e7; // [m] 自機中心に固定するので視差は出ない
@@ -57,7 +57,8 @@ export interface Sun {
 
 // 月の表面。テクスチャの経度原点がモデルの本初子午線(+Z)と揃うようジオメトリを回す。
 export function createMoon(): CelestialSurface {
-  const surface = CelestialSurface.textured(moonTextureUrl, 64, 32);
+  const moon = textureOf('moon')!;
+  const surface = CelestialSurface.textured(moon.url, moon.albedoScale, 64, 32);
   surface.mesh.geometry.rotateY(-Math.PI / 2);
   return surface;
 }
