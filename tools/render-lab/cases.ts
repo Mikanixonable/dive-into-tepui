@@ -2,6 +2,7 @@
 // シーンへ足すのもチャンネルを振るのも呼び出し側の仕事。ケースを増やすのはこの表への追記で済む。
 import * as THREE from 'three/webgpu';
 import { CelestialSurface } from '../../src/render/celestial-surface';
+import type { Albedo } from '../../src/render/celestial-albedo';
 import { createEarth } from '../../src/render/earth';
 import { R_EARTH } from '../../src/physics/solar-system';
 import { Curve } from '../../src/render/curve';
@@ -18,6 +19,10 @@ const FOV_DEG = 50;
 
 // 全ケース共通の恒星方向。球の陰影と、呼び出し側が置く光源が同じ向きを使う。
 export const SUN_DIR = new THREE.Vector3(1, 0.35, 0.5).normalize();
+
+// テスト用の球のアルベド。実在天体の値ではなく、線・深度・陰影を読むための識別色。
+const BLUE_SPHERE_ALBEDO: Albedo = [0.0242, 0.15, 0.4342];
+const GREY_SPHERE_ALBEDO: Albedo = [0.521, 0.4793, 0.4179];
 
 // カメラは常に原点から -Z を見る。near はゲーム本体と同じ 2 m(深度分解能の導出がこの値に乗る)。
 const EYE = new THREE.Vector3(0, 0, 0);
@@ -43,8 +48,8 @@ function labCamera(far: number): THREE.PerspectiveCamera {
   return camera;
 }
 
-function sphere(color: number, radius: number, center: THREE.Vector3): THREE.Object3D {
-  const surface = CelestialSurface.solid(color, 64, 48);
+function sphere(albedo: Albedo, radius: number, center: THREE.Vector3): THREE.Object3D {
+  const surface = CelestialSurface.solid(albedo, 64, 48);
   surface.mesh.position.copy(center);
   surface.mesh.scale.setScalar(radius);
   return surface.mesh;
@@ -86,7 +91,7 @@ function leo(): LabCase {
   const style: LineStyle = { color: 0x6fd3ff, opacity: 0.9, renderOrder: LINE_RENDER_ORDER.shipOrbit };
   return {
     objects: [
-      sphere(0x2b6cb0, 6.371e6, center),
+      sphere(BLUE_SPHERE_ALBEDO, 6.371e6, center),
       circle(center, orbitRadius, u, v, style, camera),
       ship(-10),
     ],
@@ -126,14 +131,17 @@ function backdrop(depth: number): THREE.Object3D {
 // 深度プローブ: 距離 z に半径 z/10 の球を2個、視線方向へ δ = z·ε だけずらして重ねる。
 // 深度分解能が δ を下回る組だけが斑になる。見かけの大きさは z に依らない。
 const PROBE_EPSILONS = [1e-3, 1e-4, 1e-5, 1e-6, 1e-7] as const;
+// 手前と奥をひと目で見分けるための赤・青。深度の判定だけが目的で、実在天体の値ではない。
+const PROBE_NEAR_ALBEDO: Albedo = [1.0, 0.0908, 0.0578];
+const PROBE_FAR_ALBEDO: Albedo = [0.0578, 0.2462, 1.0];
 
 function depthProbe(z: number, far: number): LabCase {
   const camera = labCamera(far);
   const objects: THREE.Object3D[] = [];
   for (const [i, epsilon] of PROBE_EPSILONS.entries()) {
     const x = (i - 2) * 0.3 * z;
-    objects.push(sphere(0xff5544, z / 10, new THREE.Vector3(x, 0, -z)));
-    objects.push(sphere(0x4488ff, z / 10, new THREE.Vector3(x, 0, -z * (1 + epsilon))));
+    objects.push(sphere(PROBE_NEAR_ALBEDO, z / 10, new THREE.Vector3(x, 0, -z)));
+    objects.push(sphere(PROBE_FAR_ALBEDO, z / 10, new THREE.Vector3(x, 0, -z * (1 + epsilon))));
   }
   return { objects, camera };
 }
@@ -191,8 +199,8 @@ function far(): LabCase {
   const neptune = 4.5e12;
   return {
     objects: [
-      sphere(0xbfb8ad, moon / 10, new THREE.Vector3(-0.4 * moon, 0, -moon)),
-      sphere(0x4f7fd0, neptune / 10, new THREE.Vector3(0.4 * neptune, 0, -neptune)),
+      sphere(GREY_SPHERE_ALBEDO, moon / 10, new THREE.Vector3(-0.4 * moon, 0, -moon)),
+      sphere(BLUE_SPHERE_ALBEDO, neptune / 10, new THREE.Vector3(0.4 * neptune, 0, -neptune)),
     ],
     camera,
   };

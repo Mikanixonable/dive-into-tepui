@@ -5,13 +5,11 @@
 import * as THREE from 'three/webgpu';
 import { texture as textureNode, mix, uv, vec2, vec3 } from 'three/tsl';
 import { R_EARTH } from '../physics/solar-system';
-import { ALBEDO_FROM_LIT_COLOR } from './celestial-surface';
+import { EARTH_TEXTURES } from './celestial-textures';
 import { markLitOpaque } from './pipeline/lit-layer';
 
 import { Aurora } from './aurora';
 import { SPHERE_LOD_LADDER, sphereLodLevel, SphereLodLevel } from './screen-lod';
-import earthTextureUrl from '../assets/earth.jpg';
-import cloudsTextureUrl from '../assets/8k_clouds.jpg';
 
 interface SurfaceMaterial {
   readonly material: THREE.MeshStandardNodeMaterial;
@@ -22,11 +20,11 @@ interface SurfaceMaterial {
 // 地表のアルベド(地表テクスチャ・雲・雲影)だけを持つマテリアルを組む(全LOD段で共有)。
 // 陰影・遮蔽・大気はパイプラインの仕事で、ここには入らない。
 function buildSurfaceMaterial(): SurfaceMaterial {
-  const earthMap = new THREE.TextureLoader().load(earthTextureUrl);
+  const earthMap = new THREE.TextureLoader().load(EARTH_TEXTURES.surfaceUrl);
   earthMap.colorSpace = THREE.SRGBColorSpace;
   earthMap.anisotropy = 16;
   
-  const cloudsMap = new THREE.TextureLoader().load(cloudsTextureUrl);
+  const cloudsMap = new THREE.TextureLoader().load(EARTH_TEXTURES.cloudsUrl);
   cloudsMap.anisotropy = 16;
 
   const mat = new THREE.MeshStandardNodeMaterial({ roughness: 1, metalness: 0 });
@@ -36,7 +34,7 @@ function buildSurfaceMaterial(): SurfaceMaterial {
   const cloudAlpha = textureNode(cloudsMap, uv()).r;
   const cloudShadowAlpha = textureNode(cloudsMap, uv().add(vec2(0.001, 0.0))).r;
   const shadowColor = mix(earthSample, earthSample.mul(0.2), cloudShadowAlpha.mul(0.8));
-  mat.colorNode = mix(shadowColor, vec3(1, 1, 1), cloudAlpha).mul(ALBEDO_FROM_LIT_COLOR);
+  mat.colorNode = mix(shadowColor, vec3(1, 1, 1), cloudAlpha).mul(EARTH_TEXTURES.albedoScale);
 
   return { material: mat, earthMap, cloudsMap };
 }
