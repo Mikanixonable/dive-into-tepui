@@ -1,6 +1,6 @@
 // 太陽の見た目: 実位置・実半径の自発光球体と、戦闘視点でその周りへ重ねるグロー。
 import * as THREE from 'three/webgpu';
-import { createSun, Sun, STAR_GLOW_SIZE_RATIO } from '../../render/stars';
+import { createSun, Sun, STAR_GLOW_SIZE_RATIO, SUN_GLOW_RADIANCE } from '../../render/stars';
 import { Ephemeris } from '../../physics/ephemeris';
 import { CelestialBodyId } from '../../physics/celestial-body';
 import { R_SUN } from '../../physics/solar-system';
@@ -47,7 +47,7 @@ export class SunView extends CelestialView {
       this.sun.billboard.sync(
         p,
         this.radius * STAR_GLOW_SIZE_RATIO,
-        1,
+        SUN_GLOW_RADIANCE,
         cameraSystem.activeCamera.quaternion,
       );
     }
