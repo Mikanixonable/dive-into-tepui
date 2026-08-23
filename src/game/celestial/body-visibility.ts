@@ -108,16 +108,17 @@ export function bodyClassDisplayMode(
   return entry.orbit !== null && toggles[entry.orbit] ? 'orbit' : 'label';
 }
 
-// 表示パネルの1ボタンを押したときの次の状態。軌道を持たないラグランジュ点だけは、
-// 見た目が同じ状態を重複させず「ラベル / 非表示」を循環する。
+// 表示パネルの1ボタンを押したときの次の状態。軌道を持つ対象は
+// 「非表示 → ラベル → ラベル＋軌道」を循環し、軌道を持たないラグランジュ点だけは、
+// 見た目が同じ状態を重複させず「非表示 / ラベル」を循環する。
 export function nextBodyClassDisplayMode(
   current: BodyClassDisplayMode, hasOrbit: boolean,
 ): BodyClassDisplayMode {
   if (!hasOrbit) return current === 'hidden' ? 'label' : 'hidden';
   switch (current) {
-    case 'orbit': return 'label';
-    case 'label': return 'hidden';
-    case 'hidden': return 'orbit';
+    case 'hidden': return 'label';
+    case 'label': return 'orbit';
+    case 'orbit': return 'hidden';
   }
 }
 

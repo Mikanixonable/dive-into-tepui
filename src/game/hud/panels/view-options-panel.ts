@@ -49,6 +49,18 @@ const ENTITY_ROWS: readonly BodyClassRow[] = [
   { label: '基地', categoryKey: 'baseVisible', nameKey: 'baseName', orbitKey: 'baseOrbit' },
 ];
 
+// 対象クラスの表示状態を文字ではなく、ラベル・軌道・非表示を連想できる SVG で示す。
+// Button の共通アイコン枠へ入れるため、ここは信頼できる固定マークアップだけを返す。
+const BODY_CLASS_DISPLAY_ICONS: Readonly<Record<BodyClassDisplayMode, string>> = {
+  hidden: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M5.1 5.1C3.4 6.5 2.4 8.4 2 12c.7 3.1 2.7 5.4 5.2 6.8"/><path d="M9.7 19.2c.7.2 1.5.3 2.3.3 5.4 0 9.2-4.4 10-7.5-.3-1.3-1-2.6-2.2-3.8"/></svg>',
+  label: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h10.5L20 12l-5.5 7H4z"/><circle cx="8" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg>',
+  orbit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><ellipse cx="12" cy="12" rx="9" ry="4.5" transform="rotate(-28 12 12)"/><ellipse cx="12" cy="12" rx="9" ry="4.5" transform="rotate(28 12 12)"/><circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none"/></svg>',
+};
+
+function bodyClassDisplayIcon(mode: BodyClassDisplayMode): string {
+  return BODY_CLASS_DISPLAY_ICONS[mode];
+}
+
 // 天球グリッドの1行分。面/極/網/縮尺の4列のうち、月軌道・月赤道は縮尺しか持たないため
 // 該当列は null(セル自体を空にする)。categoryKey が null の行(月軌道・月赤道)は面・極・網の
 // ゲートを持たず、行見出し自身が縮尺トグルを兼ねる(celestial-grid.ts の GRID_CATEGORIES 参照)。
@@ -185,7 +197,7 @@ export class ViewOptionsPanel {
           this.bodyClassModes.set(row.categoryKey, next);
           this.setBodyClassModeButton(modeButton, row.label, next, row.orbitKey !== null);
           this.onBodyClassModeChange?.(row.categoryKey, next);
-        });
+        }, bodyClassDisplayIcon('hidden'));
         modeButton.element.classList.add('body-class-title', 'body-class-mode-button');
         rowEl.appendChild(modeButton.element);
         groupEl.appendChild(rowEl);
@@ -252,7 +264,8 @@ export class ViewOptionsPanel {
     const description = `${label}: ${modeLabel}。クリックで${nextLabel}`;
     button.setOn(mode !== 'hidden');
     button.element.dataset.displayMode = mode;
-    button.element.dataset.displayState = modeLabel;
+    const icon = button.element.querySelector<HTMLElement>('.w-btn-icon');
+    if (icon !== null) icon.innerHTML = bodyClassDisplayIcon(mode);
     button.element.title = description;
     button.element.setAttribute('aria-label', description);
   }

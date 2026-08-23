@@ -251,7 +251,7 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active #hud-view-options .body-class-row.category-off { opacity: .52; }
 #hud .hud-map-root.active #hud-view-options .body-class-row.category-off .body-class-icon-btn.on::after { display: none; }
 
-/* 対象は1行1ボタン。状態名をボタン右端に置くことで、ラベル/軌道列を分けずに
+/* 対象は1行1ボタン。状態はボタンタイトル左のアイコンで表し、ラベル/軌道列を分けずに
    現在の表示状態を読み取れるようにする。 */
 #hud .hud-map-root.active #hud-view-options .target-class-group {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-1) var(--space-2);
@@ -261,24 +261,23 @@ export const MAP_VIEW_STYLE = `
   grid-template-columns: minmax(0, 1fr);
 }
 #hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button {
-  display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
+  display: flex; align-items: center; justify-content: flex-start; gap: var(--space-2);
   width: 100%; padding-right: var(--space-3);
   background: var(--surface-2); color: var(--muted);
 }
-#hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button::after {
-  content: attr(data-display-state);
-  flex: 0 0 auto; color: var(--muted); font-size: var(--font-xxs); letter-spacing: 0;
+#hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button .w-btn-icon {
+  flex: 0 0 auto; width: 1.1em; height: 1.1em; margin-right: 0; color: var(--muted);
 }
 #hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="orbit"] {
   color: var(--title); background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
 }
-#hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="orbit"]::after {
+#hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="orbit"] .w-btn-icon {
   color: var(--accent);
 }
 #hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="label"] {
   color: var(--title); background: var(--surface-2);
 }
-#hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="label"]::after {
+#hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="label"] .w-btn-icon {
   color: var(--accent-near);
 }
 #hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="hidden"] {
