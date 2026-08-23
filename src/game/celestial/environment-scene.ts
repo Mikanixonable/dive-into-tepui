@@ -201,9 +201,12 @@ export class EnvironmentScene {
     const celestialBodies = this.ephemeris.celestialBodiesAt(displayTime);
     this.syncReferenceLines(
       displayTime, floatingOrigin, cameraSystem.overviewMode,
+      gridVisibility.geostationaryOrbit,
       focusTargetId(cameraSystem.mapCamera.focus), cameraSystem.bodyClassToggles,
       visibilityPolicy, nearbyIds, cameraSystem.activeCamera, cameraSystem.activeCameraPos, celestialBodies);
-    this.syncGeoLabels(displayTime, cameraSystem.overviewMode, cameraSystem, markerManager, celestialBodies);
+    this.syncGeoLabels(
+      displayTime, cameraSystem.overviewMode, gridVisibility.geostationaryOrbit,
+      cameraSystem, markerManager, celestialBodies);
     this.celestialGrid.sync(
       gridVisibility, cameraSystem.activeCamera,
       cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
@@ -239,7 +242,8 @@ export class EnvironmentScene {
   // 広範囲視点のときだけ参照軌道線を表示する(戦闘ビューでは非表示)。cameraPos はフェード
   // 距離を測る基準(カメラの真の ECI 位置)。
   private syncReferenceLines(
-    simTime: number, fo: FloatingOrigin, overviewMode: boolean, focusId: CelestialBodyId | undefined,
+    simTime: number, fo: FloatingOrigin, overviewMode: boolean, geostationaryOrbitVisible: boolean,
+    focusId: CelestialBodyId | undefined,
     toggles: BodyClassToggles, sharedVisibilityPolicy: MapVisibilityPolicy | null,
     nearbyIds: readonly CelestialBodyId[], camera: THREE.Camera, cameraPos: Vec3,
     celestialBodies: readonly CelestialBody[],
@@ -255,8 +259,10 @@ export class EnvironmentScene {
       focusId,
       nearbyIds,
     );
-    this.geoLine.sync(this.geoElements, fo, camera, { occludingBodies: celestialBodies });
-    if ('earth' in this.ephemeris.registry) {
+    this.geoLine.sync(
+      geostationaryOrbitVisible ? this.geoElements : null,
+      fo, camera, { occludingBodies: celestialBodies });
+    if (geostationaryOrbitVisible && 'earth' in this.ephemeris.registry) {
       const earthPos = this.ephemeris.positionOf('earth', simTime);
       const distToEarth = len(sub(earthPos, cameraPos));
       // 静止軌道リングは 240,000km で薄れ始め 720,000km で消える。
@@ -280,12 +286,13 @@ export class EnvironmentScene {
   private syncGeoLabels(
     displayTime: number,
     overviewMode: boolean,
+    geostationaryOrbitVisible: boolean,
     cameraSystem: CameraSystem,
     markerManager: MarkerManager | null,
     celestialBodies: readonly CelestialBody[],
   ): void {
     const keys = ['geolabel-0', 'geolabel-1', 'geolabel-2', 'geolabel-3'];
-    if (!markerManager || !overviewMode || !this.geoElements || !('earth' in this.ephemeris.registry)) {
+    if (!markerManager || !overviewMode || !geostationaryOrbitVisible || !this.geoElements || !('earth' in this.ephemeris.registry)) {
       if (markerManager) {
         for (const key of keys) markerManager.hide(key);
       }

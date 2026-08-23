@@ -151,6 +151,9 @@ export const MAP_VIEW_STYLE = `
   margin: var(--space-5) 0 var(--space-2);
 }
 #hud .hud-map-root.active #hud-view-options .view-options-section-heading:first-child { margin-top: 0; }
+#hud .hud-map-root.active #hud-view-options .view-options-section-heading.view-options-heading-target {
+  grid-template-columns: minmax(0, 1fr);
+}
 #hud .hud-map-root.active #hud-view-options .view-options-section-title {
   color: var(--body);
   font-size: var(--font-xs);
@@ -248,6 +251,40 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active #hud-view-options .body-class-row.category-off { opacity: .52; }
 #hud .hud-map-root.active #hud-view-options .body-class-row.category-off .body-class-icon-btn.on::after { display: none; }
 
+/* 対象は1行1ボタン。状態名をボタン右端に置くことで、ラベル/軌道列を分けずに
+   現在の表示状態を読み取れるようにする。 */
+#hud .hud-map-root.active #hud-view-options .target-class-group {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-1) var(--space-2);
+}
+#hud .hud-map-root.active #hud-view-options .target-class-group .target-class-row { margin-bottom: 0; }
+#hud .hud-map-root.active #hud-view-options .body-class-row.target-class-row {
+  grid-template-columns: minmax(0, 1fr);
+}
+#hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
+  width: 100%; padding-right: var(--space-3);
+  background: var(--surface-2); color: var(--muted);
+}
+#hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button::after {
+  content: attr(data-display-state);
+  flex: 0 0 auto; color: var(--muted); font-size: var(--font-xxs); letter-spacing: 0;
+}
+#hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="orbit"] {
+  color: var(--title); background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
+}
+#hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="orbit"]::after {
+  color: var(--accent);
+}
+#hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="label"] {
+  color: var(--title); background: var(--surface-2);
+}
+#hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="label"]::after {
+  color: var(--accent-near);
+}
+#hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="hidden"] {
+  background: transparent;
+}
+
 /* Predict: 未来は Accent、隣接する過去範囲は Near accent。Secondary は同期状態用に残す。 */
 #hud .hud-map-root.active #hud-predict .w-btn,
 #hud .hud-map-root.active #hud-predict .w-input {
@@ -312,6 +349,7 @@ export const MAP_VIEW_STYLE = `
   #hud .hud-map-root.active .hud-frame-controls { border-radius: var(--radius-panel); }
   #hud .hud-map-root.active #hud-view-options .view-options-section-heading,
   #hud .hud-map-root.active #hud-view-options .body-class-row { grid-template-columns: 82px minmax(0, 1fr); }
+  #hud .hud-map-root.active #hud-view-options .body-class-row.target-class-row { grid-template-columns: minmax(0, 1fr); }
   #hud .hud-map-root.active #hud-view-options .view-options-column { font-size: 8px; }
 }
 
@@ -325,6 +363,8 @@ export const MAP_VIEW_STYLE = `
   #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-detail { font-size: 8px; }
   #hud .hud-map-root.active #hud-view-options .view-options-section-heading,
   #hud .hud-map-root.active #hud-view-options .body-class-row { grid-template-columns: 68px minmax(0, 1fr); }
+  #hud .hud-map-root.active #hud-view-options .body-class-row.target-class-row { grid-template-columns: minmax(0, 1fr); }
+  #hud .hud-map-root.active #hud-view-options .target-class-group { grid-template-columns: minmax(0, 1fr); }
   #hud .hud-map-root.active #hud-view-options .view-options-column { overflow: hidden; text-overflow: ellipsis; }
   #hud .hud-map-root.active #hud-predict .predict-row1 { align-items: flex-start; }
 }

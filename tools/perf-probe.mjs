@@ -465,11 +465,9 @@ function median(nums) {
 // 条件マトリクスモード: 起動 → ワープ/ビュー/ノードを整えて設定(settle)→ N サンプル取得 → 中央値化。
 // これを1条件につき PERF_REPEATS 回(既定3)繰り返し、ラウンド間の中央値を採る。
 // ============================================================================================
-// 表示パネルの「軌道線(⌒)」ボタンを、指定した天体クラス行だけ desiredOn の状態にする。
-// 行の識別子はカテゴリボタンの title(`<ラベル>を表示`)しかないので、そこから行を辿って
-// ボタン列の3つ目(0=アイコン 1=ラベル 2=軌道線)を見る。既にその状態なら押さない
-// (トグルなので、押すこと自体を目的にすると初期値が変わったときに逆を向く)。
-// 衛星・ラグランジュ点の行は軌道線ボタンを持たないので err を返す。
+// 表示パネルの1ボタンを循環させ、指定した天体クラス行の表示状態を合わせる。
+// 軌道線を切る計測条件ではラベルを残すため、desiredOn=true は「ラベル＋軌道」、
+// false は「ラベル」に合わせる。
 async function setOrbitLineFor(devTools, rowLabel, desiredOn) {
   // 表示パネルは既定で畳まれているので、本文が隠れていれば先に開く。
   await devTools.evaluate(`(() => {
@@ -481,26 +479,28 @@ async function setOrbitLineFor(devTools, rowLabel, desiredOn) {
   await sleep(200);
   const probe = await devTools.evaluate(`(() => {
     const panel = document.querySelector('#hud-view-options');
-    const cat = document.querySelector('#hud-view-options [title=${JSON.stringify(`${rowLabel}を表示`)}]');
-    if (!cat) return { err: 'no category button', panelHidden: panel ? panel.className : 'no panel' };
-    const row = cat.closest('.body-class-row');
-    if (!row) return { err: 'no row' };
-    const btns = row.querySelectorAll('.body-class-btns .body-class-icon-btn');
-    if (btns.length < 3) return { err: 'row has ' + btns.length + ' buttons (needs orbit)' };
-    const r = btns[2].getBoundingClientRect();
-    if (r.width === 0) return { err: 'orbit button has zero width', panelClass: panel ? panel.className : '?' };
-    return { x: r.left + r.width / 2, y: r.top + r.height / 2, wasOn: btns[2].classList.contains('on') };
+    const row = [...document.querySelectorAll('#hud-view-options .target-class-row')]
+      .find((candidate) => candidate.querySelector('.body-class-mode-button')?.textContent === ${JSON.stringify(rowLabel)});
+    if (!row) return { err: 'no target row', panelHidden: panel ? panel.className : 'no panel' };
+    const button = row.querySelector('.body-class-mode-button');
+    if (!button) return { err: 'no mode button' };
+    const r = button.getBoundingClientRect();
+    if (r.width === 0) return { err: 'mode button has zero width', panelClass: panel ? panel.className : '?' };
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2, mode: button.dataset.displayMode };
   })()`);
   if (!probe || probe.err) return { ok: false, ...(probe ?? { err: 'evaluate returned null' }) };
-  if (probe.wasOn === desiredOn) return { ok: true, wasOn: probe.wasOn, clicked: false };
-  await leftClickAt(devTools, probe.x, probe.y);
-  await sleep(250);
-  const nowOn = await devTools.evaluate(`(() => {
-    const cat = document.querySelector('#hud-view-options [title=${JSON.stringify(`${rowLabel}を表示`)}]');
-    const btns = cat?.closest('.body-class-row')?.querySelectorAll('.body-class-btns .body-class-icon-btn');
-    return btns ? btns[2].classList.contains('on') : false;
-  })()`);
-  return { ok: nowOn === desiredOn, wasOn: probe.wasOn, nowOn, clicked: true };
+  const desiredMode = desiredOn ? 'orbit' : 'label';
+  if (probe.mode === desiredMode) return { ok: true, mode: probe.mode, clicked: false };
+  for (let i = 0; i < 3 && probe.mode !== desiredMode; i++) {
+    await leftClickAt(devTools, probe.x, probe.y);
+    await sleep(250);
+    probe.mode = await devTools.evaluate(`(() => {
+      const row = [...document.querySelectorAll('#hud-view-options .target-class-row')]
+        .find((candidate) => candidate.querySelector('.body-class-mode-button')?.textContent === ${JSON.stringify(rowLabel)});
+      return row?.querySelector('.body-class-mode-button')?.dataset.displayMode ?? null;
+    })()`);
+  }
+  return { ok: probe.mode === desiredMode, mode: probe.mode, clicked: true };
 }
 
 async function runConditionOnce(devTools, baseUrl, cond, fatalEvents) {
