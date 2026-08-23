@@ -6,6 +6,7 @@
 import * as THREE from 'three/webgpu';
 import { metersPerPixelFromTanHalfFov, MIN_DEPTH } from '../physics/projection';
 import type { LineStyle } from './line-style';
+import { markOverlay } from './pipeline/lit-layer';
 
 export type CurveOptions = {
   readonly style: LineStyle;
@@ -181,6 +182,8 @@ export class Curve {
       : new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
 
     this.line = new THREE.LineSegments(this.geom, this.mat);
+    // 折れ線は表示値であって物理的な明るさを持たないので、3D UI パスへ置く。
+    markOverlay(this.line);
     this.line.renderOrder = renderOrder;
     this.line.visible = false;
     // 頂点はバッファへ書き込んで needsUpdate を立てるだけで外接球を更新しないので、
