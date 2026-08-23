@@ -12,7 +12,8 @@ import { Curve, CurveSampler } from '../render/curve';
 import { LineOcclusion, MAX_OCCLUDING_BODIES } from '../render/line-occlusion';
 import { LineStyle } from '../render/line-style';
 import { nearestOccludingBodies } from '../physics/occlusion';
-import { FrameAnchorSource, ReferenceFrame, FrameTransform } from '../physics/frame';
+import { FrameAnchorSource, ReferenceFrame, FrameTransform, toFrameDir } from '../physics/frame';
+import { v3 } from '../physics/vec3';
 import type { CelestialBody } from '../physics/celestial-body';
 import type { Ephemeris } from '../physics/ephemeris';
 
@@ -32,6 +33,10 @@ export class OrbitLine {
   // 一切書き換えないことで、osculating 要素の微小なゆらぎによる楕円の振動を防ぐ。
   private snap: OrbitalElements | null = null;
   private snapFrame: ReferenceFrame | null = null;
+  // 楕円の中心天体相対オフセットを、スナップショット時点の表示フレームへ焼いた変換。
+  // Curve の Object3D には現在時刻の q を渡すため、頂点を ECI のまま持つと回転を二重に
+  // 解釈してしまう。頂点はこの変換でフレーム相対にしてから、現在の q で un-bake する。
+  private snapTf: FrameTransform | null = null;
   // Curve へ渡す revision。楕円を作り直すたびに新しいオブジェクトへ差し替える。
   private revision: object = {};
 
@@ -62,9 +67,9 @@ export class OrbitLine {
   }
 
   // 離心近点角 E=t·2π を軌道要素で位置へ写す、閉曲線サンプラ。読むのは snap で、
-  // revision が指す形状と焼かれる形状が常に一致する。頂点は常に中心天体相対・慣性系のまま
-  // 持ち、原点移動と回転フレームへの回転はどちらも sync が setTransform で Object3D 側に
-  // 与えるので、ここでは中心天体が動いても回転フレームが変わっても古びない。
+  // revision が指す形状と焼かれる形状が常に一致する。頂点は中心天体相対の慣性系オフセットを
+  // スナップショット時点のフレームへ bake し、原点移動と現在姿勢への un-bake は sync が
+  // setTransform で Object3D 側に与える。これで中心天体の移動とフレーム回転を毎フレーム追従する。
   private readonly sampler: CurveSampler = (t, out) => {
     const el = this.snap;
     if (!el) return;
@@ -75,7 +80,12 @@ export class OrbitLine {
     const rx = el.pHat.x * x + el.qHat.x * y;
     const ry = el.pHat.y * x + el.qHat.y * y;
     const rz = el.pHat.z * x + el.qHat.z * y;
-    out.set(rx, ry, rz);
+    if (this.snapTf) {
+      const dFrame = toFrameDir(this.snapTf, v3(rx, ry, rz));
+      out.set(dFrame.x, dFrame.y, dFrame.z);
+    } else {
+      out.set(rx, ry, rz);
+    }
   };
 
   // 毎フレーム呼ぶ。fo = 描画のフローティングオリジン、camera = 画面上のサジッタを実距離へ
@@ -97,6 +107,7 @@ export class OrbitLine {
     const { force = false, frame, displayTime, ephemeris, frameAnchors, occludingBodies } = opts;
     if (!el || el.e >= 0.98 || !isFinite(el.a) || el.a <= 0) {
       this.snap = null;
+      this.snapTf = null;
       this.curve.setVisible(false);
       return;
     }
@@ -117,10 +128,11 @@ export class OrbitLine {
       this.curve.setTransform(fo.RtoThreeV3(el.center.state.r));
     }
 
-    if (this.needsRegen(el, force, frame)) {
+    if (this.needsRegen(el, force, frame, tf)) {
       this.revision = {};
       this.snap = el;
       this.snapFrame = frame ?? null;
+      this.snapTf = tf;
     }
 
     this.curve.setCurve(this.sampler, { revision: this.revision, camera });
@@ -128,10 +140,13 @@ export class OrbitLine {
   }
 
   // 現在の要素が直近のスナップショットから許容誤差を超えて変化していれば true(要再生成)。
-  private needsRegen(el: OrbitalElements, force: boolean, frame?: ReferenceFrame): boolean {
+  private needsRegen(
+    el: OrbitalElements, force: boolean, frame?: ReferenceFrame, tf: FrameTransform | null = null,
+  ): boolean {
     if (!this.snap) return true;
     if (force) return true;
     if (this.snapFrame !== (frame ?? null)) return true;
+    if ((this.snapTf === null) !== (tf === null)) return true;
     const s = this.snap;
     // 頂点は中心天体相対、平行移動は毎フレームの中心天体位置。中心が入れ替われば、
     // 別の天体を基準に焼いた形状をそのまま新しい中心へ動かすことになる。
