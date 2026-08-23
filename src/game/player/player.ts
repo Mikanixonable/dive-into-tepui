@@ -131,6 +131,7 @@ export class Player extends Ship {
         ? saved.planExecution
         : (saved.followPlan ? 'instant' : 'off');
       this.fineAttitude = saved.fineAttitude ?? false;
+      this.showTrajectoryLine = saved.showTrajectoryLine ?? false;
       this.parts.splice(0, this.parts.length, ...saved.parts.map(partFromSaveData));
       this.refreshFromParts();
 
@@ -544,6 +545,7 @@ export class Player extends Ship {
       parts: this.parts.map(p => ({ ...p })) as AnyPart[],
       planExecution: this.planExecution,
       fineAttitude: this.fineAttitude,
+      showTrajectoryLine: this.showTrajectoryLine,
       plan: this.serializePlan(),
     };
   }

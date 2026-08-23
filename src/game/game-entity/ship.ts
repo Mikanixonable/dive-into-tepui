@@ -18,7 +18,7 @@ import type {
 export abstract class Ship extends GameEntity {
   override readonly bcInv = C.SHIP_BCINV;
   protected readonly srpCoeff = C.SHIP_SRP_COEFF;
-  protected readonly baseHistoryDuration = C.SHIP_HISTORY_DURATION;
+  protected readonly baseHistoryDuration = C.DEFAULT_HISTORY_DURATION;
   protected readonly predictedForGhost = true;
   protected readonly specificHeat = C.SHIP_SPECIFIC_HEAT;
   protected readonly bulkDensity = C.SHIP_BULK_DENSITY;

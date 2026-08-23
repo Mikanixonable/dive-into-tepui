@@ -4,8 +4,10 @@
 // 渡せばよく、それが楕円かエルミート補間かは知らない。座標変換前の値も座標型
 // (Vec3/KinematicState/…)も知らず、受け取るのは THREE.Vector3/THREE.Camera と数値だけ。
 import * as THREE from 'three/webgpu';
+import { materialOpacity } from 'three/tsl';
 import { metersPerPixelFromTanHalfFov, MIN_DEPTH } from '../physics/projection';
 import type { LineStyle } from './line-style';
+import { LineOcclusion } from './line-occlusion';
 
 export type CurveOptions = {
   readonly style: LineStyle;
@@ -13,6 +15,10 @@ export type CurveOptions = {
   // (WebGPURenderer は描画対象ごとに頂点バッファの束縛をキャッシュしており、ジオメトリや
   // 属性ごと差し替えても新しい頂点は反映されない)。
   readonly maxVertices: number;
+  // 天体による遮蔽の解析判定(line-occlusion.ts)。depthTest を切り、この遮蔽体との交差だけで
+  // 不透明度を0/1に決める — 低軌道高度ではハードウェア深度テストが精度不足で z-fighting を
+  // 起こすため、深度テストには頼らない。
+  readonly occlusion: LineOcclusion;
 };
 
 // t∈[0,1] の位置における曲線上の点を out へ書く。sample(0) と sample(1) が一致する(周期的
@@ -153,7 +159,7 @@ export class Curve {
   // style はマテリアルと描画順、maxVertices は確保する頂点バッファの上限。style.dash が
   // あれば破線(LineDashedMaterial、頂点ごとの累積距離を焼く)。
   constructor(opts: CurveOptions) {
-    const { style, maxVertices } = opts;
+    const { style, maxVertices, occlusion } = opts;
     const { color, opacity, renderOrder, dash } = style;
     this.maxVertices = maxVertices;
     this.maxSegments = Math.max(0, maxVertices - 1);
@@ -173,12 +179,16 @@ export class Curve {
       this.lineDistances = null;
     }
 
+    // NodeMaterial 版(LineBasicNodeMaterial/LineDashedNodeMaterial)を使い、depthTest を切って
+    // opacityNode に occlusion.factor を掛ける — 深度テストの精度に頼らず、その線自身が
+    // 解析判定した遮蔽だけで見え方を決める。
     this.mat = dash
-      ? new THREE.LineDashedMaterial({
-        color, transparent: true, opacity, depthWrite: false,
+      ? new THREE.LineDashedNodeMaterial({
+        color, transparent: true, opacity, depthWrite: false, depthTest: false,
         dashSize: dash.dashSize, gapSize: dash.gapSize,
       })
-      : new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
+      : new THREE.LineBasicNodeMaterial({ color, transparent: true, opacity, depthWrite: false, depthTest: false });
+    (this.mat as THREE.NodeMaterial).opacityNode = materialOpacity.mul(occlusion.factor);
 
     this.line = new THREE.LineSegments(this.geom, this.mat);
     this.line.renderOrder = renderOrder;
@@ -424,7 +434,7 @@ export class Curve {
 
   // 破線パターンを書き換える。破線でないマテリアルでは何もしない。
   setDash(dashSize: number, gapSize: number): void {
-    if (this.mat instanceof THREE.LineDashedMaterial) {
+    if (this.mat instanceof THREE.LineDashedNodeMaterial) {
       this.mat.dashSize = dashSize;
       this.mat.gapSize = gapSize;
     }
@@ -439,7 +449,7 @@ export class Curve {
 
   // マテリアルを作り直さず色だけ更新する。テーマ切替時も GPU の頂点バッファを維持できる。
   setColor(color: THREE.ColorRepresentation): void {
-    const material = this.mat as THREE.LineBasicMaterial | THREE.LineDashedMaterial;
+    const material = this.mat as THREE.LineBasicNodeMaterial | THREE.LineDashedNodeMaterial;
     material.color.set(color);
     material.needsUpdate = true;
     this.appliedStyle = null;

@@ -3,13 +3,17 @@
 // 中心に描くかは OrbitalElements 自身が持つため、呼び出し側が外側で選び直すことはできない。
 // 頂点の再サンプリングは軌道要素が閾値を超えて変化したときだけ行う。解像度そのものの決定
 // (画面上のサジッタに応じた適応分割)は Curve に委ねる。楕円は天体自身の現在位置を貫くが、
-// 天体メッシュは不透明・深度書き込み有りで先に描かれるため、深度テストだけで天体が手前に残る。
+// 天体による遮蔽はハードウェア深度テストではなく解析判定で行う(render/line-occlusion.ts) —
+// 低軌道高度では深度バッファの精度不足で深度テストが z-fighting を起こすため。
 import * as THREE from 'three/webgpu';
 import { OrbitalElements } from '../physics/elements';
 import { FloatingOrigin } from './floating-origin';
 import { Curve, CurveSampler } from '../render/curve';
+import { LineOcclusion, MAX_OCCLUDING_BODIES } from '../render/line-occlusion';
 import { LineStyle } from '../render/line-style';
+import { nearestOccludingBodies } from '../physics/occlusion';
 import { FrameAnchorSource, ReferenceFrame, FrameTransform } from '../physics/frame';
+import type { CelestialBody } from '../physics/celestial-body';
 import type { Ephemeris } from '../physics/ephemeris';
 
 // Curve の頂点予算。楕円は閉曲線なので初期分割・分割上限のみで足り、固定サンプル数は持たない。
@@ -31,10 +35,12 @@ export class OrbitLine {
   // Curve へ渡す revision。楕円を作り直すたびに新しいオブジェクトへ差し替える。
   private revision: object = {};
 
+  private readonly occlusion = new LineOcclusion();
+
   // style.renderOrder は、この線が他の線と重なったときにどちらを手前へ描くかを決める —
   // 透明描画どうしの前後は描画順でしか決まらない。
   constructor(style: LineStyle) {
-    this.curve = new Curve({ style, maxVertices: MAX_VERTICES });
+    this.curve = new Curve({ style, maxVertices: MAX_VERTICES, occlusion: this.occlusion });
     this.line = this.curve.object;
   }
 
@@ -74,16 +80,31 @@ export class OrbitLine {
 
   // 毎フレーム呼ぶ。fo = 描画のフローティングオリジン、camera = 画面上のサジッタを実距離へ
   // 換算するための描画カメラ。el が null なら軌道要素を持たない状態として非表示にする。
-  // force = 要素が能動的に変化している間(推力中・ノード編集中)は true。
+  // opts.force = 要素が能動的に変化している間(推力中・ノード編集中)は true。
+  // opts.occludingBodies を渡すと、その天体による遮蔽を解析判定する(省略時は
+  // opts.frameAnchors.bodies、それも無ければ常に非遮蔽)。
   sync(
-    el: OrbitalElements | null, fo: FloatingOrigin, camera: THREE.Camera, force = false,
-    frame?: ReferenceFrame, displayTime?: number, ephemeris?: Ephemeris, frameAnchors?: FrameAnchorSource,
+    el: OrbitalElements | null, fo: FloatingOrigin, camera: THREE.Camera,
+    opts: {
+      readonly force?: boolean;
+      readonly frame?: ReferenceFrame;
+      readonly displayTime?: number;
+      readonly ephemeris?: Ephemeris;
+      readonly frameAnchors?: FrameAnchorSource;
+      readonly occludingBodies?: readonly CelestialBody[];
+    } = {},
   ): void {
+    const { force = false, frame, displayTime, ephemeris, frameAnchors, occludingBodies } = opts;
     if (!el || el.e >= 0.98 || !isFinite(el.a) || el.a <= 0) {
       this.snap = null;
       this.curve.setVisible(false);
       return;
     }
+
+    this.occlusion.set(
+      nearestOccludingBodies(fo.r, occludingBodies ?? frameAnchors?.bodies ?? [], MAX_OCCLUDING_BODIES)
+        .map((body) => ({ position: fo.RtoThreeV3(body.state.r), radius: body.radius })),
+    );
 
     let tf: FrameTransform | null = null;
     if (frame && displayTime !== undefined && ephemeris && frameAnchors) {
