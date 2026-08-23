@@ -272,7 +272,7 @@ function buildMapScale(root: HTMLElement): void {
     </div>`;
 }
 
-// 画面全体のグローバルステータスを組む。1行目はビュー切替バッジ(ViewBadge が中身を組む)、
+// 画面全体のグローバルステータスを組む。1行目はビュー切替と現在の対象バッジ(ViewBadge が中身を組む)、
 // 2行目は MET・時間加速・NODE WARP。
 function buildGlobalStatus(root: HTMLElement): void {
   const bar = createHudElement('section', 'hud-simulation-status', root);

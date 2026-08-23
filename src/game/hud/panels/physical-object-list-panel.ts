@@ -117,7 +117,7 @@ interface RowNode {
 }
 
 // マップビュー右部に常設の軌道物体一覧ウィンドウ。種別ごとの区画にタブ見出しで
-// 開閉し、行クリックで選択状態をトグルする。天体区画は衛星・ラグランジュ点を親の下の
+// 開閉し、行クリックで選択状態をトグル、ダブルクリックでフォーカスを移動する。天体区画は衛星・ラグランジュ点を親の下の
 // トグル子メニューへ格納する(衛星自身のラグランジュ点はさらにその衛星の子メニューへ)。
 export class PhysicalObjectListPanel {
   public onFocus: ((id: string) => void) | null = null;
@@ -597,9 +597,12 @@ export class PhysicalObjectListPanel {
     row.tabIndex = 0;
     row.setAttribute('role', 'button');
     row.setAttribute('aria-keyshortcuts', 'Enter Space F T');
-    row.title = 'Enter / Space: 選択 · F: フォーカス · T: ナビ対象';
+    row.title = 'Enter / Space: 選択 · ダブルクリック / F: フォーカス · T: ナビ対象';
     row.addEventListener('click', () => this.toggleSelect(id));
-    row.addEventListener('dblclick', () => this.onFocus?.(id));
+    row.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      this.onFocus?.(id);
+    });
     row.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.toggleSelect(id); }
       if (e.key.toLowerCase() === 'f') { e.preventDefault(); this.onFocus?.(id); }
