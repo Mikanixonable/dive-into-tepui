@@ -114,12 +114,6 @@ export const ALT_DESCEND_WARN_RATE = -3; // この降下率(EMA)を下回ると�
 export const ALT_DESCEND_CLEAR_RATE = -1; // この降下率(EMA)まで戻ると警告解除 [m/s]
 export const ALT_WARN_HYSTERESIS = 5e3; // しきい値の再警告までのヒステリシス幅 [m]
 
-// --- 地球の影 ---
-export const COLOR_SUN = 0xfff4e0; // 太陽光の色
-export const SUN_INTENSITY = 6.9; // 太陽光の基準強度
-export const AMBIENT_INTENSITY = 0.79; // 環境光の基準強度
-export const SHADOW_MIN_SUN = 0.04; // 影の中にも届く光の量(星明かり・地球照ぶん)。基準強度に対する割合
-
 // 並進推力(WSADQE の全 6 方向で共通)の出力 4 段階 [m/s^2]。[1]/[2]/[3]/[4] キーで切替、
 // 方向キーが押されている間だけ選択中の段の加速度がその方向へ出る。4段目は3段目の4倍。
 export const THROTTLE_LEVELS = [5.0, 20.0, 100.0, 400.0];//エンジン出力、スロットル
