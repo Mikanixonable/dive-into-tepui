@@ -191,14 +191,14 @@ export class CreativeStage extends Stage {
       this._markerManager.fadeOut('creative-preview');
       return;
     }
-    this.previewOrbitLine.sync(this.preview.elements, fo, camera, { occludingBodies: celestialBodies });
+    this.previewOrbitLine.sync(this.preview.elements, fo, camera);
     if (overviewMode && isOccluded(cameraPos, this.preview.pos, celestialBodies)) {
       this._markerManager.hide('creative-preview');
       return;
     }
     this._markerManager.setPosition(
       'creative-preview', 'mk-self', ENTITY_GLYPH.preview, this.preview.pos, project,
-      'PREVIEW', 1, C.COLOR_MARKER_ALLY, 0, false, false,
+      'PREVIEW', 1, C.COLOR_MARKER_ALLY, 0, false, false, undefined, cameraPos,
     );
   }
 

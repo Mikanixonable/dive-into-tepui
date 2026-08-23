@@ -179,7 +179,6 @@ export class PlanDisplay {
     }
     this.markerManager.setPosition(
       'plannedPlayer', 'mk-planned', ENTITY_GLYPH.ghost, this.ghost.pos, project, this.ghost.label,
-      1, undefined, undefined, false, false, undefined, cameraPos,
     );
   }
 
@@ -300,10 +299,7 @@ export class PlanDisplay {
       } else if (overviewMode && isOccluded(cameraPos, icon.pos, this.celestialBodies)) {
         this.markerManager.fadeOut(key);
       } else {
-        this.markerManager.setPosition(
-          key, 'mk-apsis', ORBIT_POINT_GLYPH.apsis, icon.pos, project, icon.label,
-          1, undefined, undefined, false, false, undefined, cameraPos,
-        );
+        this.markerManager.setPosition(key, 'mk-apsis', ORBIT_POINT_GLYPH.apsis, icon.pos, project, icon.label);
       }
     }
   }
@@ -317,10 +313,7 @@ export class PlanDisplay {
       } else if (overviewMode && isOccluded(cameraPos, icon.pos, this.celestialBodies)) {
         this.markerManager.fadeOut(key);
       } else {
-        this.markerManager.setPosition(
-          key, 'mk-impact', ORBIT_POINT_GLYPH.impact, icon.pos, project, icon.label,
-          1, undefined, undefined, false, false, undefined, cameraPos,
-        );
+        this.markerManager.setPosition(key, 'mk-impact', ORBIT_POINT_GLYPH.impact, icon.pos, project, icon.label);
       }
     }
   }
