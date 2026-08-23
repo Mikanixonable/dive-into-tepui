@@ -34,6 +34,13 @@ const identityAttitude = (): Attitude => ({
   inertia: v3(1, 1, 1),
 });
 
+export interface OrbitLineSyncContext {
+  readonly displayTime: number;
+  readonly ephemeris: Ephemeris;
+  readonly frameAnchors: FrameAnchorSource;
+  readonly force?: boolean;
+}
+
 // 軌道上を運動するゲーム内エンティティの基底。表示ルート・HP・生死・姿勢・AI といったゲーム側の
 // 付帯情報と、種別ごとの積分パラメータ(bcInv・historyDuration)を持つ。
 export class GameEntity {
@@ -219,11 +226,11 @@ export class GameEntity {
   // orbitLine を表示時刻の状態で最も強く引く天体まわりの軌道楕円に合わせる。線を持たなければ
   // 何もしない。displayTime が現在時刻より先なら、表示用の予測状態を使って船体と同じ時刻に揃える。
   syncOrbitLine(
-    fo: FloatingOrigin, camera: THREE.Camera, frameAnchors: FrameAnchorSource, force = false,
-    displayTime = this.state.t, ephemeris?: Ephemeris,
+    fo: FloatingOrigin, camera: THREE.Camera, context: OrbitLineSyncContext,
   ): void {
     if (this.orbitLine === null) return;
-    const state = ephemeris === undefined ? this.state : this.displayState(displayTime, ephemeris);
+    const { displayTime, ephemeris, frameAnchors, force = false } = context;
+    const state = this.displayState(displayTime, ephemeris);
     if (state === null) {
       this.orbitLine.sync(null, fo, camera, { frameAnchors });
       return;
