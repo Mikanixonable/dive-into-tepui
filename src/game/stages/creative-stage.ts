@@ -11,14 +11,15 @@ import { OrbitalElements, semiMajorFromPeriod, stateFromOrbitalElements } from '
 import { CelestialBody, orbitalElementsOf } from '../../physics/celestial-body';
 import { haloState, lissajousState } from '../../physics/halo';
 import type { FloatingOrigin } from '../floating-origin';
-import { Vec3, add } from '../../physics/vec3';
+import { qRotate } from '../../physics/attitude';
+import { Vec3, add, addScaled, v3 } from '../../physics/vec3';
 import { isOccluded } from '../../physics/occlusion';
-import { ToggleSwitch } from '../hud/widgets';
+import { Button, ToggleSwitch } from '../hud/widgets';
 import { hudRail } from '../hud/hud-root';
 import type { CameraSystem, ProjectFn } from '../camera/camera-system';
 import { AmmoPickup } from '../game-entity/ammo-pickup';
 import { Base } from '../game-entity/base';
-import { generateDriftingEnemy } from './spawner/enemy-generator';
+import { generateApproachingEnemy, generateDriftingEnemy } from './spawner/enemy-generator';
 import { WaveAttack } from './stage-utils/wave-attack';
 import { generateRandomName } from '../random-name';
 import * as C from '../const';
@@ -30,6 +31,14 @@ import type { MapVisibilityPolicy } from '../celestial/map-visibility';
 import type { CreativeStageSaveData, StageSaveData } from '../save-data';
 
 const DEG = Math.PI / 180;
+
+const STAGE_CONTROL_ENEMY_TYPES = [
+  [0, 'A型'], [1, 'B型'], [2, 'C型'],
+] as const;
+const STAGE_CONTROL_ENEMY_COLORS = [
+  [0xff4a3d, '赤'], [0xff7a2d, '橙'], [0xe0409f, '桃'], [0xbf3dff, '紫'], [0x3dc6ff, '青'],
+] as const;
+const STAGE_CONTROL_ENEMY_SPAWN_DISTANCE = 200;
 
 export class CreativeStage extends Stage {
   static readonly id = 'creative' as const;
@@ -44,6 +53,7 @@ export class CreativeStage extends Stage {
   private readonly placerPanel: ObjectPlacerPanel;
   // 補給の自動投入・敵の波状攻撃を切り替えるトグルを載せたパネル。マップ視点でだけ出す。
   private readonly stageControlsPanel: HTMLElement;
+  private spawnEnemyButton!: Button;
   private readonly waveAttack: WaveAttack;
   // 敵の波状攻撃を発生させるかどうか。既定 OFF — ON の間だけ update が WaveAttack を進める。
   private waveAttackEnabled: boolean;
@@ -54,6 +64,8 @@ export class CreativeStage extends Stage {
   private issues: readonly PlacementFieldIssue[] = [];
   private readonly playerIdAllocator = new EntityIdAllocator('creative-player-');
   private readonly ammoPickupIdAllocator = new EntityIdAllocator('creative-ammo-');
+  private activePlayer: Player | null = null;
+  private manualEnemyCount = 0;
 
   briefingHtml(): string {
     return '<b>クリエイティブモード</b><br>マップから艦艇を配置して軌道を眺められる。';
@@ -93,14 +105,71 @@ export class CreativeStage extends Stage {
     const title = document.createElement('h3');
     title.textContent = 'ステージ操作';
     panel.appendChild(title);
+    const body = document.createElement('div');
+    body.className = 'stage-controls-body';
+    panel.appendChild(body);
+    const compactToggle = new ToggleSwitch('コンパクト表示', (on) => {
+      body.classList.toggle('hidden', on);
+    });
+    compactToggle.setOn(false);
+    panel.insertBefore(compactToggle.element, body);
     const resupplyToggle = new ToggleSwitch('弾薬の自動投入', (on) => { this.logistics.resupplyEnabled = on; });
     resupplyToggle.setOn(this.logistics.resupplyEnabled);
-    panel.appendChild(resupplyToggle.element);
+    body.appendChild(resupplyToggle.element);
     const waveAttackToggle = new ToggleSwitch('敵の波状攻撃', (on) => { this.waveAttackEnabled = on; });
     waveAttackToggle.setOn(this.waveAttackEnabled);
-    panel.appendChild(waveAttackToggle.element);
+    body.appendChild(waveAttackToggle.element);
+
+    const typeSelect = this.buildStageControlSelect('敵の種類', STAGE_CONTROL_ENEMY_TYPES);
+    body.appendChild(typeSelect.wrapper);
+    const colorSelect = this.buildStageControlSelect('敵の色', STAGE_CONTROL_ENEMY_COLORS);
+    body.appendChild(colorSelect.wrapper);
+    this.spawnEnemyButton = new Button('敵をスポーン', () => {
+      this.spawnManualEnemy(typeSelect.select.value, colorSelect.select.value);
+    });
+    body.appendChild(this.spawnEnemyButton.element);
     hudRail(hudRoot, 'right').appendChild(panel);
     return panel;
+  }
+
+  private buildStageControlSelect<T extends number>(
+    label: string, items: readonly (readonly [T, string])[],
+  ): { readonly wrapper: HTMLElement; readonly select: HTMLSelectElement } {
+    const wrapper = document.createElement('label');
+    wrapper.className = 'stage-control-select';
+    const title = document.createElement('span');
+    title.textContent = label;
+    wrapper.appendChild(title);
+    const select = document.createElement('select');
+    select.className = 'w-select';
+    select.setAttribute('aria-label', label);
+    select.addEventListener('keydown', (event) => event.stopPropagation());
+    for (const [value, text] of items) {
+      const option = document.createElement('option');
+      option.value = String(value);
+      option.textContent = text;
+      select.appendChild(option);
+    }
+    wrapper.appendChild(select);
+    return { wrapper, select };
+  }
+
+  private spawnManualEnemy(typeValue: string, colorValue: string): void {
+    const player = this.activePlayer;
+    if (player === null || !player.alive) {
+      this._hud.hint('操作艦がいないため敵をスポーンできません');
+      return;
+    }
+    const typeIndex = Number(typeValue);
+    const color = Number(colorValue);
+    const forward = qRotate(player.att.q, v3(0, 0, 1));
+    const position = addScaled(player.state.r, forward, STAGE_CONTROL_ENEMY_SPAWN_DISTANCE);
+    const state = kinematicState(player.state.t, position, player.state.v);
+    const enemy = generateApproachingEnemy(
+      `MANUAL-${++this.manualEnemyCount}`, state, C.STAGE0_ENEMY_HP, color, color, typeIndex, undefined,
+      this._hud, this._worldSfx, this._fx, this._scene,
+    );
+    this.addEnemy(enemy, this._entities);
   }
 
   // ステージ操作パネルは、表示中のワールドビューの右ドックへ追従させる。
@@ -119,6 +188,8 @@ export class CreativeStage extends Stage {
     visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     super.sync(player, fo, cameraSystem, displayTime, visibilityPolicy);
+    this.activePlayer = player;
+    this.spawnEnemyButton.setEnabled(player !== null && player.alive);
     this.mountStageControlsPanel(cameraSystem.overviewMode);
     this.syncPreview(
       fo, cameraSystem.activeCameraProjection, cameraSystem.activeCamera,
