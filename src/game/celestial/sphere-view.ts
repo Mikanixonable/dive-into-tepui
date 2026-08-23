@@ -100,6 +100,7 @@ export class SphereView extends CelestialView {
         pos,
         cameraSystem.activeCameraScale,
         sunDirection,
+        this.sunIrradianceAt(ephemeris, pos, displayTime),
       );
     } else if (this.ring !== undefined) {
       this.ring.group.visible = false;

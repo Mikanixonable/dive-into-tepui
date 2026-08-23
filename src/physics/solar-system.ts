@@ -139,12 +139,11 @@ export type ShapeDef =
   | { readonly kind: 'triaxial'; readonly a: number; readonly b: number; readonly c: number };
 // 環の光学特性。opacity は保持しない — normalOpticalDepth は環面に垂直な消散光学的厚さで、
 // 描画時に観測開き角から透過率へ変換する。値は可視光の代表値で、各bandコメントに出典と
-// 近似範囲を残す。color は線形RGBの代表アルベド色。
+// 近似範囲を残す。
 export type RingOpticsDef = {
   readonly normalOpticalDepth: number;
   readonly singleScatteringAlbedo: number;
   readonly phaseG: number;
-  readonly color: readonly [number, number, number];
   readonly volumetric?: { readonly radialScale: number; readonly verticalScale: number };
 };
 
@@ -355,15 +354,13 @@ function equatorialSatelliteOrbit(p: {
 
 const KM = 1e3;
 
-const RING_COLOR: readonly [number, number, number] = [0.72, 0.68, 0.58];
-
 function ringOptics(
   normalOpticalDepth: number,
   singleScatteringAlbedo: number,
   phaseG: number,
   volumetric?: RingOpticsDef['volumetric'],
 ): RingOpticsDef {
-  return { normalOpticalDepth, singleScatteringAlbedo, phaseG, color: RING_COLOR, volumetric };
+  return { normalOpticalDepth, singleScatteringAlbedo, phaseG, volumetric };
 }
 
 // [km] 単位の帯を RingBandDef([m])へ変換する。optics は全帯で明示的に持つ。
