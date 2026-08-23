@@ -1,5 +1,5 @@
-// パフォーマンス再現計測プローブ。tools/browser-smoke.mjs の Chrome 起動/静的配信/CDP 接続を
-// 流用し、負荷確認ウィンドウ(PerfMeter, `.prop-window` タイトル「負荷」)の全行をワープ段数・
+// パフォーマンス再現計測プローブ。tools/chrome-session.mjs でヘッドレス Chrome を上げ、
+// 負荷確認ウィンドウ(PerfMeter, `.prop-window` タイトル「負荷」)の全行をワープ段数・
 // ビュー・計画ノード有無ごとに読み取って JSON で出す。ゲーム本体(src/)は一切変更しない。
 //
 // 使い方:
@@ -24,16 +24,12 @@
 // 既知の限界: PerfMeter が predictDiscarded 等のカウンタ系を積むのは毎フレームだが、DOM へ
 // 出るのは 500ms ごとの flush 期間の avg/max なので、本プローブがそれより速く読んでも同じ値を
 // 読み直すだけになりうる。時系列サンプリングは 500ms 周期のストロボ的な観測になる。
-import { accessSync, constants, mkdtempSync, rmSync, createReadStream, statSync, writeFileSync } from 'node:fs';
-import { spawn, spawnSync } from 'node:child_process';
-import { createServer } from 'node:http';
-import { once } from 'node:events';
-import { tmpdir } from 'node:os';
+import { writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { openChromeSession, sleep } from './chrome-session.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const staticPort = 8766;
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ---- src/game/const.ts SIM_SPEED_LEVELS / src/game/input/key-mapping.ts の写し -----------------
 // (import はできない — ビルド済み docs/ を外側から駆動するだけなので、値をここに複製する。
@@ -41,189 +37,6 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const SIM_SPEED_LEVELS = [1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 131072];
 const KEY_WARP_FASTER = { key: '.', code: 'Period', keyCode: 190 };
 const KEY_MAP_MODE = { key: 'm', code: 'KeyM', keyCode: 77 };
-
-// ---- Chrome 探索 (tools/browser-smoke.mjs から) --------------------------------------------------
-const candidates = [
-  process.env.CHROME_PATH,
-  'google-chrome',
-  'chromium',
-  'chromium-browser',
-  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-  'C:/Program Files/Google/Chrome/Application/chrome.exe',
-  'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
-  process.env.LOCALAPPDATA && `${process.env.LOCALAPPDATA}/Google/Chrome/Application/chrome.exe`,
-].filter(Boolean);
-
-function findChrome() {
-  const lookup = process.platform === 'win32'
-    ? (name) => spawnSync('where', [name], { encoding: 'utf8' })
-    : (name) => spawnSync('sh', ['-c', 'command -v "$1"', 'find-chrome', name], { encoding: 'utf8' });
-  for (const candidate of candidates) {
-    if (candidate.includes('/') || candidate.includes('\\')) {
-      try {
-        accessSync(candidate, constants.X_OK);
-        return candidate;
-      } catch {
-        continue;
-      }
-    }
-    const found = lookup(candidate);
-    if (found.status === 0 && found.stdout.trim()) return found.stdout.trim().split(/\r?\n/)[0];
-  }
-  throw new Error('Chrome/Chromium not found. Set CHROME_PATH.');
-}
-
-// ---- docs/ 静的配信 (tools/browser-smoke.mjs から) ------------------------------------------------
-const MIME = {
-  '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
-  '.jpg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml',
-  '.woff': 'font/woff', '.woff2': 'font/woff2', '.epk': 'application/octet-stream',
-};
-function startStaticServer(directory, listenPort) {
-  const server = createServer((request, response) => {
-    const rel = decodeURIComponent(new URL(request.url, 'http://127.0.0.1').pathname);
-    const file = path.join(directory, rel === '/' ? 'index.html' : rel);
-    if (!file.startsWith(directory)) {
-      response.writeHead(403).end();
-      return;
-    }
-    try {
-      const size = statSync(file).size;
-      response.writeHead(200, {
-        'content-type': MIME[path.extname(file).toLowerCase()] ?? 'application/octet-stream',
-        'content-length': size,
-      });
-      createReadStream(file).pipe(response);
-    } catch {
-      response.writeHead(404).end();
-    }
-  });
-  server.listen(listenPort, '127.0.0.1');
-  return server;
-}
-
-async function waitForServer(url) {
-  for (let attempt = 0; attempt < 50; attempt++) {
-    try {
-      const response = await fetch(url);
-      if (response.ok) return;
-    } catch {
-      // Server startup race; retry briefly.
-    }
-    await sleep(100);
-  }
-  throw new Error(`Static server did not become ready: ${url}`);
-}
-
-async function waitForDebugPage(port) {
-  for (let attempt = 0; attempt < 100; attempt++) {
-    try {
-      const pages = await fetch(`http://127.0.0.1:${port}/json/list`).then((response) => response.json());
-      const page = pages.find((target) => target.type === 'page');
-      if (page?.webSocketDebuggerUrl) return page.webSocketDebuggerUrl;
-    } catch {
-      // Chrome startup race; retry briefly.
-    }
-    await sleep(100);
-  }
-  throw new Error('Chrome DevTools endpoint did not become ready.');
-}
-
-// 1リクエストの待ち時間の上限。ページのレンダラが落ちるとその接続宛の応答は二度と返らないので、
-// 上限が無いと待ち続けて条件マトリクスがそこで永久に止まる(実際に止まった)。重い条件では
-// 1フレームが1秒を超えるため、フレーム数十回ぶんの余裕を見る — ここを詰めると遅いマシンで
-// ラウンドを取りこぼし、中央値を採るラウンド数が減って値の信頼性が落ちる。
-const REQUEST_TIMEOUT_MS = 60_000;
-
-function connectDevTools(url, onEvent) {
-  const socket = new WebSocket(url);
-  let nextId = 1;
-  const pending = new Map();
-  // 待っている全リクエストを失敗させる。接続が死んだ後に個々のタイムアウトを待たせない。
-  const failAll = (reason) => {
-    for (const [id, { reject, timer }] of pending) {
-      clearTimeout(timer);
-      pending.delete(id);
-      reject(new Error(reason));
-    }
-  };
-  socket.addEventListener('message', (event) => {
-    const response = JSON.parse(event.data);
-    if (!response.id) {
-      onEvent(response);
-      // レンダラが落ちた時点で、この接続宛の応答はもう返らない。
-      if (response.method === 'Inspector.targetCrashed') failAll('Renderer target crashed.');
-      return;
-    }
-    if (!pending.has(response.id)) return;
-    const { resolve, reject, timer } = pending.get(response.id);
-    clearTimeout(timer);
-    pending.delete(response.id);
-    if (response.error) reject(new Error(response.error.message));
-    else resolve(response.result);
-  });
-  socket.addEventListener('close', () => failAll('Chrome DevTools WebSocket closed.'), { once: true });
-  const opened = new Promise((resolve, reject) => {
-    socket.addEventListener('open', resolve, { once: true });
-    socket.addEventListener('error', () => reject(new Error('Chrome DevTools WebSocket failed.')), { once: true });
-  });
-  return {
-    opened,
-    send(method, params = {}) {
-      const id = nextId++;
-      return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => {
-          pending.delete(id);
-          reject(new Error(`Timed out after ${REQUEST_TIMEOUT_MS}ms: ${method}`));
-        }, REQUEST_TIMEOUT_MS);
-        pending.set(id, { resolve, reject, timer });
-        try {
-          socket.send(JSON.stringify({ id, method, params }));
-        } catch (e) {
-          clearTimeout(timer);
-          pending.delete(id);
-          reject(e);
-        }
-      });
-    },
-    async evaluate(expression) {
-      const result = await this.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
-      if (result.exceptionDetails) {
-        throw new Error(`Page evaluation threw: ${result.exceptionDetails.exception?.description ?? result.exceptionDetails.text}`);
-      }
-      return result.result.value;
-    },
-    close: () => socket.close(),
-  };
-}
-
-// 接続が死んでも条件マトリクスを続けられるように、張り直せる接続として扱う。レンダラが落ちると
-// その接続宛の応答は返らなくなるが、Chrome 自体は生きていて新しいページ target を持つので、
-// target を取り直して繋ぎ直せば残りの条件は計測できる。
-async function createSession(debugPort, onEvent) {
-  let current = null;
-  const attach = async () => {
-    const devTools = connectDevTools(await waitForDebugPage(debugPort), onEvent);
-    await devTools.opened;
-    await devTools.send('Runtime.enable');
-    await devTools.send('Page.enable');
-    await devTools.send('Inspector.enable');
-    await devTools.send('Emulation.setDeviceMetricsOverride', {
-      width: 1280, height: 800, deviceScaleFactor: 1, mobile: false,
-    });
-    current = devTools;
-  };
-  await attach();
-  return {
-    send: (method, params) => current.send(method, params),
-    evaluate: (expression) => current.evaluate(expression),
-    async reconnect() {
-      current?.close();
-      await attach();
-    },
-    close: () => current?.close(),
-  };
-}
 
 // ---- ページ操作ヘルパ ------------------------------------------------------------------------
 async function pressKey(devTools, binding) {
@@ -822,41 +635,24 @@ async function runTimeseries(devTools, baseUrl) {
 // main
 // ============================================================================================
 async function main() {
-  const chrome = findChrome();
   const debugPort = 9333;
-  const profile = mkdtempSync(path.join(tmpdir(), 'tepui-perf-'));
-  const server = startStaticServer(path.join(root, 'docs'), staticPort);
   const fatalEvents = [];
-  let browser;
-  let devTools;
+  let session;
   try {
-    const baseUrl = `http://127.0.0.1:${staticPort}`;
-    await waitForServer(`${baseUrl}/`);
-    browser = spawn(chrome, [
-      '--headless=new',
-      '--no-proxy-server',
-      '--enable-gpu',
-      '--enable-unsafe-webgpu',
-      '--disable-gpu-sandbox',
-      '--no-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-background-timer-throttling',
-      '--disable-renderer-backgrounding',
-      '--disable-backgrounding-occluded-windows',
-      '--run-all-compositor-stages-before-draw',
-      '--mute-audio',
-      '--window-size=1280,800',
-      '--force-device-scale-factor=1',
-      `--remote-debugging-port=${debugPort}`,
-      `--user-data-dir=${profile}`,
-      'about:blank',
-    ], { stdio: 'ignore' });
-
-    devTools = await createSession(debugPort, (event) => {
-      if (event.method === 'Runtime.exceptionThrown') fatalEvents.push(event);
-      if (event.method === 'Runtime.consoleAPICalled' && event.params?.type === 'error') fatalEvents.push(event);
-      if (event.method === 'Inspector.targetCrashed') fatalEvents.push(event);
+    session = await openChromeSession({
+      serveDir: path.join(root, 'docs'),
+      port: staticPort,
+      debugPort,
+      profilePrefix: 'tepui-perf-',
+      windowSize: { width: 1280, height: 800 },
+      onEvent: (event) => {
+        if (event.method === 'Runtime.exceptionThrown') fatalEvents.push(event);
+        if (event.method === 'Runtime.consoleAPICalled' && event.params?.type === 'error') fatalEvents.push(event);
+        if (event.method === 'Inspector.targetCrashed') fatalEvents.push(event);
+      },
     });
+    const devTools = session.devTools;
+    const baseUrl = session.baseUrl;
 
     const mode = process.env.PERF_MODE ?? 'matrix';
     const output = mode === 'timeseries'
@@ -876,13 +672,7 @@ async function main() {
     console.log(json);
     if (process.env.PERF_OUT) writeFileSync(process.env.PERF_OUT, json);
   } finally {
-    devTools?.close();
-    if (browser) {
-      browser.kill('SIGTERM');
-      await Promise.race([once(browser, 'exit'), new Promise((resolve) => setTimeout(resolve, 2_000))]);
-    }
-    server.close();
-    rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    await session?.close();
   }
 }
 

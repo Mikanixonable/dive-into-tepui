@@ -105,32 +105,6 @@ GPU で引くのと変わらない。
 
 ## 手順
 
-### 手順 8. Chrome の起動・配信・CDP を共通化する
-
-**目的**: 手順 9 で 3 つ目の写しを作らないため。`tools/browser-smoke.mjs` と
-`tools/perf-probe.mjs` に、Chrome の探索・`--headless=new` 一式での起動・静的配信・
-CDP クライアント・セッション生成が**同じものとして 2 つある**(約 180 行)。
-
-**このステップは切り離せる。** 見送るなら手順 9 で 3 つ目の写しを作ることになり、
-その費用は「同じ約 180 行が 3 箇所」— `DEVELOP/CODING-RULE.md` 1.2 の重複禁止に正面から反する。
-
-**変更が必要な箇所**
-
-| ファイル | 変更 |
-|---|---|
-| `tools/chrome-session.mjs`(新規) | 上の共通部分を移す。**振る舞いは変えない** |
-| `tools/browser-smoke.mjs` | 共通部分を削り、`chrome-session.mjs` から読む |
-| `tools/perf-probe.mjs` | 同上 |
-
-**達成条件と検証**
-
-- `browser-smoke.mjs` と `perf-probe.mjs` に Chrome 起動・静的配信・CDP のコードが残っていない。
-- `npm run smoke:browser` が通る(**これが唯一の合否判定** — `npm run ci` の最後にいる)
-- `PERF_ONLY=map node tools/perf-probe.mjs` が結果を出す
-- `grep -n "headless=new\|createServer\|remote-debugging-port" tools/browser-smoke.mjs tools/perf-probe.mjs` → 0 件
-
----
-
 ### 手順 9. 撮影の駆動を書く
 
 **目的**: エージェントがコマンド 1 つで全ケースの PNG を得られるようにする。
