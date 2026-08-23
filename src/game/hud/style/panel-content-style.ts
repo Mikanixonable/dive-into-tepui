@@ -333,10 +333,40 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-settings-view .sv-eyebrow { color: var(--accent); font-size: var(--font-xxs); letter-spacing: 0.12em; }
 #hud-settings-view .sv-description { margin-top: var(--space-5); color: var(--text-dim); font-size: var(--font-s); }
 #hud-settings-view .sv-tabs {
-  width: min(100%, 720px); margin: var(--space-6) auto 0; padding-bottom: var(--space-2);
-  border-bottom: 1px solid var(--edge);
+  width: min(100%, 720px); margin: var(--space-6) auto 0; padding: var(--space-2);
+  gap: var(--space-2); border: 1px solid var(--edge); border-radius: var(--radius-panel);
+  background: color-mix(in srgb, var(--surface-1) 72%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--title) 8%, transparent), 0 12px 28px var(--shade-1);
 }
-#hud-settings-view .sv-tabs .w-btn { flex: 1 1 0; min-width: 0; text-align: center; }
+#hud-settings-view .sv-tabs .w-btn {
+  position: relative; display: flex; flex: 1 1 0; min-width: 0; min-height: 62px;
+  align-items: center; justify-content: center; padding: var(--space-4) var(--space-3) var(--space-3);
+  border: 1px solid transparent; border-radius: var(--radius-control); text-align: center;
+  font-size: var(--font-m); font-weight: 600; letter-spacing: 0.06em;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--surface-3) 82%, transparent), var(--surface-1));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--title) 7%, transparent);
+}
+#hud-settings-view .sv-tabs .w-btn::before {
+  position: absolute; top: 7px; left: 10px; color: var(--text-dim); content: '01';
+  font-size: var(--font-xxs); font-weight: 500; letter-spacing: 0.12em; opacity: 0.8;
+}
+#hud-settings-view .sv-tabs .w-btn:nth-child(2)::before { content: '02'; }
+#hud-settings-view .sv-tabs .w-btn:nth-child(3)::before { content: '03'; }
+#hud-settings-view .sv-tabs .w-btn::after {
+  position: absolute; right: 14%; bottom: 5px; left: 14%; height: 2px; border-radius: 2px;
+  background: var(--accent); box-shadow: 0 0 10px var(--accent); content: '';
+  opacity: 0; transform: scaleX(0.35); transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+#hud-settings-view .sv-tabs .w-btn:hover {
+  border-color: var(--accent-edge-soft); background: linear-gradient(145deg, var(--surface-3), var(--surface-2));
+  color: var(--accent-near); transform: translateY(-1px);
+}
+#hud-settings-view .sv-tabs .w-btn.on {
+  border-color: var(--accent-edge); background: linear-gradient(145deg, var(--accent-fill-strong), var(--accent-fill));
+  color: var(--accent); box-shadow: inset 0 1px 0 color-mix(in srgb, var(--accent) 30%, transparent), 0 8px 20px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+#hud-settings-view .sv-tabs .w-btn.on::before { color: var(--accent-near); }
+#hud-settings-view .sv-tabs .w-btn.on::after { opacity: 1; transform: scaleX(1); }
 #hud-settings-view .sv-section { margin-top: var(--space-7); }
 #hud-settings-view .sv-tab-panel[hidden] { display: none; }
 #hud-settings-view .sv-section h3 { color: var(--accent); font-size: var(--font-m); letter-spacing: 0.08em; }
