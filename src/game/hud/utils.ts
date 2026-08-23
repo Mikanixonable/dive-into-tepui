@@ -54,6 +54,16 @@ export function fmtDateTime(unixSec: number): string {
   return `${y}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
 }
 
+// 経過秒 sec を、絶対日時と同じ ISO 8601 書式 "YYYY-MM-DDTHH:MM:SS" で表記する。
+// 1970-01-01T00:00:00 UTC を経過0とする換算(年:1970年からの経過年数、月日:暦通りの繰り上がり)。
+export function fmtElapsedDateTime(sec: number): string {
+  if (!isFinite(sec)) return '-------------------';
+  const d = new Date(Math.max(0, sec) * 1000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const y = String(d.getUTCFullYear() - 1970).padStart(4, '0');
+  return `${y}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+}
+
 // 経過秒 sec を、目盛り間隔 unitHintSec が示す単位で表記する
 // (1時間未満なら分、1日未満なら時間、30日未満なら日、それ以上は1ヶ月=30日換算の月)。
 // 例: "30m" / "6h" / "10d" / "3mo"
