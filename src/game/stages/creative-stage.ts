@@ -43,7 +43,7 @@ export class CreativeStage extends Stage {
 
   private readonly placerPanel: ObjectPlacerPanel;
   // 補給の自動投入・敵の波状攻撃を切り替えるトグルを載せたパネル。マップ視点でだけ出す。
-  private readonly creativeOptionsPanel: HTMLElement;
+  private readonly stageControlsPanel: HTMLElement;
   private readonly waveAttack: WaveAttack;
   // 敵の波状攻撃を発生させるかどうか。既定 OFF — ON の間だけ update が WaveAttack を進める。
   private waveAttackEnabled: boolean;
@@ -79,19 +79,19 @@ export class CreativeStage extends Stage {
     this.placerPanel.onConfirm = (name, form) => this.placeObject(name, form);
     this.waveAttack = new WaveAttack(this._hud, this._worldSfx, this._fx, this._scene, this._ephemeris, savedCreative?.waveAttack);
     this.waveAttackEnabled = savedCreative?.waveAttackEnabled ?? false;
-    this.creativeOptionsPanel = this.buildCreativeOptionsPanel(this._hud.mapRoot);
+    this.stageControlsPanel = this.buildStageControlsPanel(this._hud.mapRoot);
 
     this.begin();
   }
 
-  // 補給の自動投入・敵の波状攻撃のトグルを載せたパネルを組み立て、マップ右ドックへ追加して返す。
-  private buildCreativeOptionsPanel(hudRoot: HTMLElement): HTMLElement {
+  // 補給の自動投入・敵の波状攻撃のトグルを載せたステージ操作パネルを組み立て、右ドックへ追加して返す。
+  private buildStageControlsPanel(hudRoot: HTMLElement): HTMLElement {
     const panel = document.createElement('div');
-    panel.id = 'hud-creative-options';
+    panel.id = 'hud-stage-controls';
     panel.className = 'panel hidden';
     panel.addEventListener('pointerdown', (e) => e.stopPropagation());
     const title = document.createElement('h3');
-    title.textContent = '設定';
+    title.textContent = 'ステージ操作';
     panel.appendChild(title);
     const resupplyToggle = new ToggleSwitch('弾薬の自動投入', (on) => { this.logistics.resupplyEnabled = on; });
     resupplyToggle.setOn(this.logistics.resupplyEnabled);
@@ -103,14 +103,14 @@ export class CreativeStage extends Stage {
     return panel;
   }
 
-  // クリエイティブの設定は、表示中のワールドビューの右ドックへ追従させる。
-  private mountCreativeOptionsPanel(inMapView: boolean): void {
+  // ステージ操作パネルは、表示中のワールドビューの右ドックへ追従させる。
+  private mountStageControlsPanel(inMapView: boolean): void {
     const root = inMapView ? this._hud.mapRoot : this._hud.combatRoot;
     const rightRail = hudRail(root, 'right');
-    if (this.creativeOptionsPanel.parentElement === rightRail) return;
+    if (this.stageControlsPanel.parentElement === rightRail) return;
     const vessel = rightRail.querySelector<HTMLElement>('#hud-vessel-status');
-    if (vessel !== null) rightRail.insertBefore(this.creativeOptionsPanel, vessel);
-    else rightRail.appendChild(this.creativeOptionsPanel);
+    if (vessel !== null) rightRail.insertBefore(this.stageControlsPanel, vessel);
+    else rightRail.appendChild(this.stageControlsPanel);
   }
 
   // 共通のステータス表示に加えて、配置プレビューの軌道線とマーカーを同期する。
@@ -119,13 +119,13 @@ export class CreativeStage extends Stage {
     visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     super.sync(player, fo, cameraSystem, displayTime, visibilityPolicy);
-    this.mountCreativeOptionsPanel(cameraSystem.overviewMode);
+    this.mountStageControlsPanel(cameraSystem.overviewMode);
     this.syncPreview(
       fo, cameraSystem.activeCameraProjection, cameraSystem.activeCamera,
       cameraSystem.overviewMode, cameraSystem.activeCameraPos, this._ephemeris.celestialBodiesAt(displayTime),
     );
     this.placerPanel.setIssues(this.issues);
-    this.creativeOptionsPanel.classList.remove('hidden');
+    this.stageControlsPanel.classList.remove('hidden');
   }
 
   // オブジェクト配置モーダルを開く (MapContextActions から呼ばれる)。focusId はマップの現在フォーカスで、
@@ -381,7 +381,7 @@ export class CreativeStage extends Stage {
     super.dispose();
     this.previewOrbitLine.line.removeFromParent();
     this.previewOrbitLine.dispose();
-    this.creativeOptionsPanel.remove();
+    this.stageControlsPanel.remove();
     this.placerPanel.dispose();
   }
 

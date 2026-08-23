@@ -222,7 +222,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 /* 「角度」プルダウン: 見出しを独立行にし、次の行へ選択欄とセットボタンを並べる。 */
 #hud .hud-frame-controls .camera-angle-group > .w-group-title { flex: 0 0 100%; min-width: 0; }
 #hud .hud-frame-controls .camera-angle-group .w-select { flex: 1 1 auto; min-width: 80px; }
-#hud-creative-options { width: 100%; pointer-events: auto; }
+#hud-stage-controls { width: 100%; pointer-events: auto; }
 /* 物体配置パネル(クリエイティブモード限定): MANEUVER PLAN の下、右上に縦積みする。 */
 #hud-object-placer { width: 100%; pointer-events: auto; max-height: 70vh; max-height: 70dvh; overflow-y: auto; }
 #hud-object-placer .w-close { border-radius: 50%; }
