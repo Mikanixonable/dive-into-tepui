@@ -54,9 +54,6 @@ export const SMALL_DEBRIS_SRP_COEFF = 4.7e-3; // 薬莢・破片・弾薬
 export const DRAG_COEFFICIENT = 2.2;
 // 断面積のうち、よどみ点の加熱を実際に受ける割合。
 export const STAGNATION_AREA_FRACTION = 0.6;
-// 1天文単位における太陽定数 [W/m^2]。距離の2乗に反比例して弱まる。
-export const SOLAR_CONSTANT = 1361;
-
 // 艦(自機・敵機)。材質密度は宇宙機の実効密度で、曲率半径 0.6 m を与える値。
 export const SHIP_BULK_DENSITY = 833; // [kg/m^3]
 // PLAYER_MASS と掛けて外殻の熱容量 0.1 MJ/K。射撃・被弾の発熱量はこれを基準に決めてある。
