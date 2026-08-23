@@ -8,7 +8,7 @@ import { add, len, sub, v3, Vec3 } from '../../physics/vec3';
 import type { AnyPart, Part } from './parts';
 import { partFromSaveData } from './parts';
 import { Player } from '../player/player';
-import { buildBaseModel } from '../../render/ships';
+import { buildBaseModel } from '../../render/base-station-model';
 import type { Hud } from '../hud/hud';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../vfx/effects-system';

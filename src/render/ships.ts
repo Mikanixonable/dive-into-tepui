@@ -521,5 +521,3 @@ export function buildBarrelMesh(): THREE.Group {
   markLitOpaque(g);
   return g;
 }
-
-export { buildBaseModel } from './base-station-model';
