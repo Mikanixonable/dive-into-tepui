@@ -79,6 +79,13 @@ const SORTS: readonly (readonly [PhysicalObjectListSort, string])[] = [
   ['name', '名前'],
 ];
 
+type LagrangeSortKey = { readonly parentId: string; readonly point: number };
+
+function lagrangeSortKey(id: string): LagrangeSortKey | null {
+  const match = /^(.+)-l([1-5])$/.exec(id);
+  return match ? { parentId: match[1]!, point: Number(match[2]) } : null;
+}
+
 // 色が消えても種別を判別できる、マップ用の小さな形態記号。名称と常に並べて表示する。
 // body は恒星・衛星・ラグランジュ点で字形が変わるため、この表ではなく bodyGlyph() で選ぶ。
 const OBJECT_GLYPHS: Readonly<Record<Exclude<MapPickKind, 'body'>, string>> = {
@@ -427,12 +434,26 @@ export class PhysicalObjectListPanel {
 
   // 現在の並び順での a と b の前後関係。負なら a が先。
   private compare(a: MapPickable, b: MapPickable): number {
-    if (this.sort === 'name') return a.name.localeCompare(b.name);
+    if (this.sort === 'name') return a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
+    const priority = (a.priority ?? 0) - (b.priority ?? 0);
+    if (priority !== 0) return priority;
+
+    // 同じ親天体の L4/L5 は理論上同じ太陽距離にある。浮動小数点誤差で距離の大小を
+    // 比較すると毎フレーム順序が反転するため、ラグランジュ点同士は点番号を正本にする。
+    const aLagrange = lagrangeSortKey(a.id);
+    const bLagrange = lagrangeSortKey(b.id);
+    if (aLagrange !== null && bLagrange !== null && aLagrange.parentId === bLagrange.parentId) {
+      return aLagrange.point - bLagrange.point;
+    }
+
     // 太陽系順は恒星からの距離。恒星の無いレジストリでは distanceFromStar が undefined の
     // ままなので、自機からの距離(近さ順)へ自然に委譲される。
-    const dist = this.sort === 'solar' ? (a.distanceFromStar ?? a.distance ?? 0) - (b.distanceFromStar ?? b.distance ?? 0)
-      : (a.distance ?? 0) - (b.distance ?? 0);
-    return (a.priority ?? 0) - (b.priority ?? 0) || dist || a.name.localeCompare(b.name);
+    const aDistance = this.sort === 'solar' ? (a.distanceFromStar ?? a.distance ?? 0) : (a.distance ?? 0);
+    const bDistance = this.sort === 'solar' ? (b.distanceFromStar ?? b.distance ?? 0) : (b.distance ?? 0);
+    const dist = aDistance - bDistance;
+    const scale = Math.max(1, Math.abs(aDistance), Math.abs(bDistance));
+    const distanceTie = Math.abs(dist) <= scale * 1e-12;
+    return (distanceTie ? 0 : dist) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
   }
 
   // kind の区画に出す行を選び直し、表示順・根・親ごとの子を order へ書き直す。
