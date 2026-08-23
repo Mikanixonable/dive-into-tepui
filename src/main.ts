@@ -119,10 +119,6 @@ function initHud(graphics: GraphicsSettings, pipeline: RenderPipeline): {
   const uiSfx = new UiSfx(audioEngine);
   const pauseMenu = new PauseMenu(hud.layers.system, hud.overlayManager);
   const settingsView = new SettingsView(hud.layers.system, hud.overlayManager, bgm, graphics, pipeline);
-  new SettingsView(
-    hud.combatRoot.querySelector<HTMLElement>('.hud-rail-right') ?? hud.combatRoot,
-    hud.overlayManager, bgm, graphics, pipeline, { mode: 'dock' },
-  );
   pauseMenu.setBgmVolume(bgm.getVolume());
   pauseMenu.onBgmVolumeChange = (vol) => bgm.setVolume(vol);
   return { hud, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView };
