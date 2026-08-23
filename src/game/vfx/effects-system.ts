@@ -89,14 +89,14 @@ export class EffectsSystem {
     size1: number,
     duration: number,
     color: string | number,
-    peakOpacity = 1,
+    peakBrightness = 1,
     dimsInGunsight = false,
   ): void {
     const fx: FlashEffect = {
       transform: new THREE.Object3D(),
       baseColor: new THREE.Color(color),
       color: new THREE.Color(),
-      state, age: 0, duration, size0, size1, peakOpacity, dimsInGunsight,
+      state, age: 0, duration, size0, size1, peakBrightness, dimsInGunsight,
     };
     this._flashEffects.addFlash(fx);
   }
