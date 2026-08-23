@@ -15,6 +15,9 @@ import { CASES, type CaseName, type LabCase, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } 
 
 export type LabPath = 'prepass' | 'forward';
 
+const ORIGIN = new THREE.Vector3();
+const UP = new THREE.Vector3(0, 1, 0);
+
 const SUN_COLOR = new THREE.Color(COLOR_SUN);
 // 環境光の色味は恒星の色とは独立した固定値(EnvironmentScene と同じ)。
 const AMBIENT_COLOR = 0x8899bb;
@@ -88,6 +91,8 @@ export class LabView {
     if (this.current === null) return;
     this.pipeline.sunLight.set(SUN_POSITION, R_SUN, SUN_COLOR, SUN_RADIANT_INTENSITY, AMBIENT_INTENSITY);
     this.pipeline.occlusion.setOccluders(this.current.occluders ?? []);
+    const rings = this.current.rings;
+    this.pipeline.occlusion.setRings(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
     this.pipeline.render(this.scene, this.current.camera);
   }
 

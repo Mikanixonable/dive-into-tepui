@@ -119,9 +119,7 @@ export class PointView extends CelestialView {
       return;
     }
     this.syncLod(apparentDiameterPx);
-    const activeSurface = this.surfaces.get(this.activeLevel!)!;
     const sunDirection = ephemeris.sunDirFrom(pos, displayTime);
-    activeSurface.setSunDirection(new THREE.Vector3(sunDirection.x, sunDirection.y, sunDirection.z));
     const orientation = ephemeris.poleAt(this.id, displayTime);
     const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
     const rings = graphics.rings ? this.rings : undefined;

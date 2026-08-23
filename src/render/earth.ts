@@ -15,12 +15,15 @@ import {
   dot, max, sqrt, select, and, greaterThan, lessThan, normalize, length, sub, clamp, smoothstep,
 } from 'three/tsl';
 import { R_EARTH } from '../physics/solar-system';
-import { NIGHT_AMBIENT } from './celestial-surface';
+
 import { Aurora } from './aurora';
 import { SPHERE_LOD_LADDER, sphereLodLevel, SphereLodLevel } from './screen-lod';
 import type { Vec3Uniform } from './tsl-types';
 import earthTextureUrl from '../assets/earth.jpg';
 import cloudsTextureUrl from '../assets/8k_clouds.jpg';
+
+// 夜側の明るさ(0 で真っ暗)。惑星光・星明かりを表す最低限の底上げ。
+const NIGHT_AMBIENT = 0.04;
 
 const ATMO_COLOR = vec3(0.36, 0.62, 0.91);
 const ATMO_HAZE_TAU0 = 0.34; // 大気のもやの濃さ(視線が真上からのときの光学的厚み)

@@ -5,7 +5,7 @@ import { CelestialSurface } from '../../src/render/celestial-surface';
 import { Curve } from '../../src/render/curve';
 import { buildPlayerShip } from '../../src/render/ships';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
-import type { Occluder } from '../../src/render/pipeline/occlusion';
+import type { Occluder, RingBand } from '../../src/render/pipeline/occlusion';
 import type { LineStyle } from '../../src/render/line-style';
 import { LINE_RENDER_ORDER } from '../../src/game/const';
 
@@ -27,6 +27,8 @@ export type LabCase = {
   readonly camera: THREE.PerspectiveCamera;
   // 遮蔽パスへ渡す球。フォワード経路は遮蔽を持たないので、影は 2 経路の差としても出る。
   readonly occluders?: readonly Occluder[];
+  // 遮蔽パスへ渡す環。中心と法線軸は描画座標。
+  readonly rings?: { readonly center: THREE.Vector3; readonly axis: THREE.Vector3; readonly bands: readonly RingBand[] };
 };
 
 function labCamera(far: number): THREE.PerspectiveCamera {
@@ -39,7 +41,6 @@ function labCamera(far: number): THREE.PerspectiveCamera {
 
 function sphere(color: number, radius: number, center: THREE.Vector3): THREE.Object3D {
   const surface = CelestialSurface.solid(color, 64, 48);
-  surface.setSunDirection(SUN_DIR);
   surface.mesh.position.copy(center);
   surface.mesh.scale.setScalar(radius);
   return surface.mesh;
@@ -133,9 +134,9 @@ function depthProbe(z: number, far: number): LabCase {
   return { objects, camera };
 }
 
-// 日食: 光を受ける球へ、太陽とほぼ同じ視半径の球が落とす影。視半径がほぼ等しいので本影は
-// 点に近く、面の大半が半影の階調になる — 影の縁がぼけて見えることが、円盤の重なり面積を
-// 解いている証拠になる。
+// 日食: 光を受ける球へ、太陽とほぼ同じ視半径の球と、その球を巡る環の帯が落とす影。
+// 視半径がほぼ等しいので本影は点に近く、面の大半が半影の階調になる — 影の縁がぼけて
+// 見えることが円盤の重なり面積を解いている証拠で、環の縞はそれとは別の経路の証拠になる。
 function eclipse(): LabCase {
   const camera = labCamera(6e7);
   const center = new THREE.Vector3(0, 0, -1000);
@@ -145,10 +146,19 @@ function eclipse(): LabCase {
   );
   receiver.position.copy(center);
   markLitOpaque(receiver);
+  const occluderCenter = center.clone().addScaledVector(SUN_DIR, 1e4);
   return {
     objects: [receiver],
     camera,
-    occluders: [{ center: center.clone().addScaledVector(SUN_DIR, 1e4), radius: 50 }],
+    occluders: [{ center: occluderCenter, radius: 50 }],
+    rings: {
+      center: occluderCenter,
+      axis: SUN_DIR.clone().add(new THREE.Vector3(0, 0.7, 0)).normalize(),
+      bands: [
+        { innerRadius: 110, outerRadius: 170, normalOpticalDepth: 0.4 },
+        { innerRadius: 210, outerRadius: 320, normalOpticalDepth: 1.6 },
+      ],
+    },
   };
 }
 
