@@ -29,7 +29,7 @@ import { PauseMenu } from './hud/windows/pause-menu';
 import { WorldSfx } from '../audio/sfx/world-sfx';
 import { UiSfx } from '../audio/sfx/ui-sfx';
 import { GameScene } from '../render/scene';
-import type { GraphicsSettings } from '../render/graphics-settings';
+import type { GraphicsSettingsData } from '../render/graphics-settings';
 import type { RenderPipeline } from '../render/pipeline/render-pipeline';
 import { EnvironmentScene } from './celestial/environment-scene';
 import type { Ephemeris } from '../physics/ephemeris';
@@ -122,7 +122,6 @@ export class Game {
     unlockManager: UnlockManager,
     sections: FrameSections,
     ephemeris: Ephemeris,
-    graphics: GraphicsSettings,
     pipeline: RenderPipeline,
     earthSpinPhase0: number,
     initialSave?: GameSaveData,
@@ -168,7 +167,8 @@ export class Game {
     );
     this.targeter = new Targeter(this.markerManager, this.navTarget, this.entities);
     this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
-    this._environment = new EnvironmentScene(this._scene, this.ephemeris, graphics, pipeline.sunLight, earthSpinPhase0);
+    this._environment = new EnvironmentScene(
+      this._scene, this.ephemeris, pipeline.sunLight, pipeline.occlusion, pipeline.atmosphere, earthSpinPhase0);
     this.activePlayers = new ActiveControllableController(
       initialSave?.activePlayerId, this.entities, this.cameraSystem, this.navTarget, this._worldSfx, this._hud,
     );
@@ -291,7 +291,7 @@ export class Game {
 
   // ------------------------------------------------------------ update
 
-  update(dtRaw: number): void {
+  update(dtRaw: number, graphics: GraphicsSettingsData): void {
     this.sections.enter(SECTION.input);
     this.input.update();
     const dt = Math.min(dtRaw, 0.1);
@@ -311,7 +311,7 @@ export class Game {
     // すべてこの frameAnchors を通す。
     this.frameAnchors.update(this.ephemeris.celestialBodiesAt(displayWindow.displayTime));
     // 計画表示、予測伸長、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
-    this._environment.update(displayWindow.displayTime, overviewMode);
+    this._environment.update(displayWindow.displayTime, overviewMode, graphics);
     this.sections.enter(SECTION.plan);
     this.editor.update(displayWindow, this.frameAnchors);
     this.sections.exit(SECTION.plan);
@@ -482,7 +482,7 @@ export class Game {
     };
   }
 
-  sync(): void {
+  sync(graphics: GraphicsSettingsData): void {
     const activeControllable = this.activeControllableEntity;
     const player = this.player;
     // update() と sync() は同一の animate() 呼び出し内で同期的に実行されるため、
@@ -517,8 +517,8 @@ export class Game {
     const combatTargets = this.entities.getCombatTargets(null);
 
     this._environment.sync(
-      player?.state.r ?? null, fo, displayTime,
-      this.cameraSystem, this.navball.gridVisibility, visibilityPolicy,
+      fo, displayTime,
+      this.cameraSystem, graphics, this.navball.gridVisibility, visibilityPolicy,
       this.markerManager,
     );
 

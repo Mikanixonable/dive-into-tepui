@@ -42,6 +42,9 @@ import { Plan } from '../plan/plan';
 import type { PlayerSaveData, PlanSaveData } from '../save-data';
 import { partFromSaveData, type AnyPart } from '../game-entity/parts';
 import { DIRECTION_GLYPH } from '../marker/marker-glyphs';
+import {
+  DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, PLAYER_DESTROY_FRAG_COLOR,
+} from '../../render/vfx-style';
 
 // 'off': ノードを消化しない。'instant': ノード時刻ちょうどで絶対状態へ乗り移る(自動実行)。
 export type PlanExecutionMode = 'off' | 'instant';
@@ -418,14 +421,14 @@ export class Player extends Ship {
   // 機体喪失時の爆発音・爆発エフェクトを発生させる。
   private destroyEffect(): void {
     this._worldSfx.explosion();
-    this._fx.spawnShipDestroyEffect(this.state, 1, C.COLOR_PLAYER_DESTROY_FRAG);
+    this._fx.spawnShipDestroyEffect(this.state, 1, PLAYER_DESTROY_FRAG_COLOR);
   }
 
   // ラジエーターが全損した瞬間の破片エフェクトを、そのパネル先端付近から発生させる。
   private radiatorBreakEffect(side: RadiatorSide): void {
     this._worldSfx.hit();
     const tipR = this.radiator.tipWorldPosition(side, this.state.r, this.att);
-    this._fx.scatterFragments(this.state.t, tipR, this.state.v, 4, C.COLOR_PLAYER_DESTROY_FRAG, C.DESTROY_FRAG_SIZE_MIN, C.DESTROY_FRAG_SIZE_MAX, 8.0);
+    this._fx.scatterFragments(this.state.t, tipR, this.state.v, 4, PLAYER_DESTROY_FRAG_COLOR, DESTROY_FRAG_SIZE_MIN, DESTROY_FRAG_SIZE_MAX, 8.0);
   }
 
   // 入力から機体座標系トルクを求めて this.torque へ反映し、角速度をクランプする。

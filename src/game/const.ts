@@ -1,5 +1,5 @@
 // ゲームバランス・チューニング定数
-import type { LineStyle } from '../render/line-style';
+import { LINE_RENDER_ORDER, type LineStyle } from '../render/line-style';
 export { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../physics/solar-system';
 
 // 軌道上へ配置できる自機の上限隻数。
@@ -54,9 +54,6 @@ export const SMALL_DEBRIS_SRP_COEFF = 4.7e-3; // 薬莢・破片・弾薬
 export const DRAG_COEFFICIENT = 2.2;
 // 断面積のうち、よどみ点の加熱を実際に受ける割合。
 export const STAGNATION_AREA_FRACTION = 0.6;
-// 1天文単位における太陽定数 [W/m^2]。距離の2乗に反比例して弱まる。
-export const SOLAR_CONSTANT = 1361;
-
 // 艦(自機・敵機)。材質密度は宇宙機の実効密度で、曲率半径 0.6 m を与える値。
 export const SHIP_BULK_DENSITY = 833; // [kg/m^3]
 // PLAYER_MASS と掛けて外殻の熱容量 0.1 MJ/K。射撃・被弾の発熱量はこれを基準に決めてある。
@@ -117,12 +114,6 @@ export const ALT_DESCEND_WARN_RATE = -3; // この降下率(EMA)を下回ると�
 export const ALT_DESCEND_CLEAR_RATE = -1; // この降下率(EMA)まで戻ると警告解除 [m/s]
 export const ALT_WARN_HYSTERESIS = 5e3; // しきい値の再警告までのヒステリシス幅 [m]
 
-// --- 地球の影 ---
-export const SUN_INTENSITY = 2.2; // 太陽光の基準強度
-export const AMBIENT_INTENSITY = 0.25; // 環境光の基準強度
-export const SHADOW_MIN_SUN = 0.04; // 影の中に残す太陽光の割合(星明かり・地球照ぶん)
-export const SHADOW_MIN_AMBIENT = 0.35; // 影の中に残す環境光の割合
-
 // 並進推力(WSADQE の全 6 方向で共通)の出力 4 段階 [m/s^2]。[1]/[2]/[3]/[4] キーで切替、
 // 方向キーが押されている間だけ選択中の段の加速度がその方向へ出る。4段目は3段目の4倍。
 export const THROTTLE_LEVELS = [5.0, 20.0, 100.0, 400.0];//エンジン出力、スロットル
@@ -151,11 +142,12 @@ export const RCS_PUFF_TORQUE_EPS = 0.15; // RCSパフを表示する実トルク
 // 微調整モード([V]キーでトグル、射撃中は自動でON)で角加速度に掛ける倍率
 export const FINE_ATTITUDE_SCALE = 0.5;
 
-// 戦闘視点カメラの near/far [m]。near は LEO 高度からの地平線距離(~2,400km)での深度誤差が
-// 十分小さく、対数深度バッファなしで z-fighting を避けられる値。far は星空シェル・
-// 太陽ビルボード・月表示距離を余裕を持って内側に収める。
+// 戦闘視点カメラの near/far [m]。反転 32bit 深度では復元誤差が距離に比例し near に依らないので、
+// near は精度のためではなく「カメラが物へめり込む手前で切り取られない」値として置く。far は球
+// として描かれる天体のうち見かけ直径が 2px を超える最遠のもの — 直径 1.4e9 m の恒星を LOD 上限で
+// 見た 1.4e12 m — が入る距離。far を広げる費用は事実上ゼロ。
 export const COMBAT_CAMERA_NEAR = 2;
-export const COMBAT_CAMERA_FAR = 6e7;
+export const COMBAT_CAMERA_FAR = 2e12;
 
 export const BASE_FOV = 55; // 通常時の垂直画角 [deg]
 export const ZOOM_FOV = 6; // [Z]キー長押し時の照準ズーム画角 [deg]
@@ -265,29 +257,6 @@ export const ARC_BODY_CLOSING_MARGIN = 2000;
 // 天体が一覧の外に残ると、その歩の掃引到達判定がその天体を見ないまま通り抜ける。
 export const ARC_BODY_LEAD_STEPS = 4;
 
-// --- 被弾・撃破エフェクト(フラッシュ/破片) ---
-export const BULLET_IMPACT_FLASH_SIZE0 = 1.5;
-export const BULLET_IMPACT_FLASH_SIZE1 = 6;
-export const BULLET_IMPACT_FLASH_DURATION = 0.25; // [s]
-export const MUZZLE_FLASH_SIZE0 = 2.2;
-export const MUZZLE_FLASH_SIZE1 = 6;
-export const MUZZLE_FLASH_DURATION = 0.07; // [s]
-export const PLASMA_IMPACT_FLASH_SIZE0 = 2;
-export const PLASMA_IMPACT_FLASH_SIZE1 = 8;
-export const PLASMA_IMPACT_FLASH_DURATION = 0.3; // [s]
-export const IMPACT_FRAG_COUNT = 3; // 被弾時に飛散させる欠片の数
-export const IMPACT_FRAG_SIZE_MIN = 0.18;
-export const IMPACT_FRAG_SIZE_MAX = 0.5;
-export const IMPACT_FRAG_SPEED = 5.5; // [m/s]
-export const DESTROY_FLASH1_SIZE0 = 10; // 撃破時フラッシュ(芯)のサイズ下限。ENEMY_SCALE 倍される
-export const DESTROY_FLASH1_SIZE1 = 110;
-export const DESTROY_FLASH1_DURATION = 1.1; // [s]
-export const DESTROY_FLASH2_SIZE0 = 6; // 撃破時フラッシュ(外殻)のサイズ下限
-export const DESTROY_FLASH2_SIZE1 = 40;
-export const DESTROY_FLASH2_DURATION = 0.5; // [s]
-export const DESTROY_FRAG_SIZE_MIN = 1.5; // 撃破デブリの破片サイズ下限。ENEMY_SCALE 倍される
-export const DESTROY_FRAG_SIZE_MAX = 6.0;
-
 export const SIM_SPEED_LEVELS = [1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 131072, 524288, 2097152, 8388608, 33554432];
 export const MAX_PHYS_SIM_SPEED = 4; // 推進・射撃・衝突解決・敵AIが有効な最大タイムワープ(SimSpeedManager の can* が参照)
 
@@ -393,7 +362,8 @@ export const OVERVIEW_CAMERA_FOV_STEP = 1; // HUD から入力する画角の刻
 export const OVERVIEW_CAMERA_MAX_DIST = 1e14;
 // 広範囲視点の near は固定値ではなく、注視点までの距離をこの比で割った値を毎フレーム使う
 // (near = dist / OVERVIEW_CAMERA_NEAR_RATIO)。比を大きくすると near が注視点に近づいて
-// 手前がクリップされにくくなる代わりに、24bit 深度バッファの分解能が落ちる。
+// 手前がクリップされにくくなる。反転 32bit 深度では分解能が near に依らないので、
+// この比が深度精度と取引になることはない。
 export const OVERVIEW_CAMERA_NEAR_RATIO = 1000;
 // near = dist / OVERVIEW_CAMERA_NEAR_RATIO の比例則は dist の上限では星球シェル・
 // 天球グリッド(CELESTIAL_SHELL_RADIUS)より大きくなる(dist=1e14 で near=1e11)。
@@ -405,8 +375,8 @@ export const OVERVIEW_CAMERA_NEAR_SHELL_MARGIN = 0.9;
 // 広範囲視点の far も near と同様に固定値ではなく dist に連動させる
 // (far = clamp(dist × OVERVIEW_CAMERA_FAR_RATIO, OVERVIEW_CAMERA_FAR_MIN, OVERVIEW_CAMERA_FAR_MAX))。
 // far を dist に比例させないと、太陽・木星のような遠方天体は引いたカメラでは
-// far 平面の外に出て消える一方、近距離域で far を大きく取ると 24bit 深度の分解能を
-// 無駄に浪費する。
+// far 平面の外に出て消える。逆に近距離域で far を大きく取ることの費用は、反転 32bit 深度では
+// 事実上ゼロ。
 export const OVERVIEW_CAMERA_FAR_RATIO = 100;
 // 最小ズーム(dist = OVERVIEW_CAMERA_MIN_DIST)でも月(3.8e8m)や星球シェルが
 // far の外に出ないための下限。
@@ -637,7 +607,8 @@ export const ENEMY_BURST_COUNTS = [3, 5, 7, 20]; // バースト射撃弾数の�
 export const PLASMA_SPREAD_DEG = 0.05; // プラズマ弾の散布角 [deg]
 
 // 色管理 (Colors)
-// ゲーム世界(方位マーカー・演出・軌道線・船体)の色のみ。UI の色は theme.ts が持つ。
+// ゲーム世界の識別色(方位マーカー・陣営ごとの軌道線・ステージ演出)のみ。UI の色は theme.ts、
+// 「どう見えるか」だけを決めるエフェクトの色は render/vfx-style.ts が持つ。
 // 軌道3軸(prograde/normal/radial)だけは theme.ts の AXIS_* を使う。Δv 編集の 3D ギズモと
 // 方位マーカーは同じ軸を指すので、同じ軸に二系統の色を持たせない。
 export const COLOR_MARKER_BORESIGHT = '#dfe3e8';
@@ -649,32 +620,10 @@ export const COLOR_MARKER_PLANNED = '#8fd0ff';
 export const COLOR_MARKER_ALLY = '#ffffff';
 export const COLOR_MARKER_ENEMY = '#ffffff';
 export const COLOR_MARKER_HP_EMPTY = 'rgba(120, 125, 130, .2)';
-export const COLOR_BULLET_IMPACT_FLASH = '#ffe2a0';
-export const COLOR_MUZZLE_FLASH = '#fff0b8';
-export const COLOR_PLASMA_IMPACT_FLASH = '#ffa0ff';
-export const COLOR_GAS_PUFF_1 = '#aaaaaa';
-export const COLOR_GAS_PUFF_2 = '#ffffff';
-export const COLOR_DESTROY_FLASH_1 = '#ffb36b';
-export const COLOR_DESTROY_FLASH_2 = '#fffbe8';
-export const COLOR_PLAYER_DESTROY_FRAG = '#9fd8e8';
-export const COLOR_ENEMY_DESTROY_FRAG = '#ff6a4a';
 export const COLOR_PLAYER_ORBIT_LINE_INACTIVE = '#ffffff'; // マップビューで操作対象でない自艦の軌道線
 export const COLOR_ENEMY_ORBIT_LINE = '#565b63';
 export const COLOR_BASE_ORBIT_LINE = '#4f8f7d'; // 拠点(味方施設)の軌道線。落ち着いた緑がかった色で他線と区別
-export const COLOR_ENEMY_PLASMA = '#ff3333'; // 蛍光色の赤
-export const COLOR_SHIP_DARK_HULL = '#2e3340';
 export const COLOR_STAGE0_GROUP_ACCENTS = ['#ff4a3d', '#3dc6ff', '#3dff8f', '#ffe23d', '#bf3dff'];
-
-// 軌道まわりの線の描画順。値が大きいほど後に描かれ、重なったときに手前へ来る。
-// 描画順は線どうしの相対関係でしか意味を持たない(同値だと透明描画の前後が不定になる)ので、
-// 各線が自分の値を単独で決めず、この表で一括して割り当てる。
-export const LINE_RENDER_ORDER = {
-  reference: 0,  // 天体の参照軌道線
-  shipOrbit: 1,  // 自機・敵・拠点の解析楕円
-  target: 2,     // ターゲットの軌道線
-  plan: 3,       // 計画軌道(破線)
-  predicted: 4,  // 積分予測線。解析楕円の代替なので、両方出る境界フレームでは必ずこちらを手前に置く
-} as const;
 
 // 役割ごとの軌道線の見た目(色・不透明度・描画順)を一括して決める表。
 export const LINE_STYLE = {

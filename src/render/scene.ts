@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { WebGPURenderer } from 'three/webgpu';
-import type { GraphicsSettings } from './graphics-settings';
+import type { GraphicsSettingsData } from './graphics-settings';
+import { reversedOpaqueSort, reversedTransparentSort } from './pipeline/reversed-sort';
 
 export interface GameScene {
   scene: THREE.Scene;
@@ -11,21 +12,25 @@ export interface GameScene {
 }
 
 // 描画は自機中心のフローティングオリジン(単位: m)。宇宙船(数m)から
-// 地球(半径6,371km)・星空シェル(3.5e7m)までを1つの深度レンジに収める。
+// 地球(半径6,371km)・星空シェル(3.5e7m)までを1つの深度レンジに収める。深度は反転
+// (near=1 / far=0)して 32bit 浮動小数点で持つので、相対誤差は距離に依らず一定になる。
 // カメラ(CombatCameraSystem / MapCamera)はそれぞれ自身の near/far を持ち、この
 // モジュールでは生成しない — アスペクト比も各カメラが毎フレーム自己補正する。
-export async function createGameScene(canvas: HTMLCanvasElement, graphics: GraphicsSettings): Promise<GameScene> {
+export async function createGameScene(canvas: HTMLCanvasElement, graphics: GraphicsSettingsData): Promise<GameScene> {
   const scene = new THREE.Scene();
   // RenderPipeline はカメラのレイヤーを一時的に不透明物/背景へ絞る。Scene 自身が既定の
   // layer 0 だけだと、その時点で子要素の走査まで止まるため、コンテナとして全レイヤーを受ける。
   scene.layers.enableAll();
 
-  // antialias も trackTimestamp もレンダラ生成時にしか渡せない。前者は設定変更が次回起動から
-  // 効く理由で、後者はデバイスの要求機能に載るため負荷確認ウィンドウの開閉では切り替えられない。
-  // 常時オンで払う時刻印の費用は、閉窓時のフレーム間隔の実測でばらつきに埋もれた。
+  // antialias も trackTimestamp も reversedDepthBuffer もレンダラ生成時にしか渡せない。
+  // 前者2つは設定変更が次回起動から効く理由とデバイスの要求機能に載る理由で、最後のものは
+  // 深度比較関数が構築時の値だけを読むため — あとから代入すると投影行列とクリア値だけが
+  // 反転し、比較関数が非反転のまま取り残される。
   const renderer = new WebGPURenderer({
-    canvas, antialias: graphics.current.antialias, trackTimestamp: true,
+    canvas, antialias: graphics.antialias, trackTimestamp: true, reversedDepthBuffer: true,
   });
+  renderer.setOpaqueSort(reversedOpaqueSort);
+  renderer.setTransparentSort(reversedTransparentSort);
   // devicePixelRatio は表示先の切り替えで変わるので、倍率だけを覚えて掛け直す。
   let resolutionScale = 1;
   // 描画解像度を devicePixelRatio の何倍にするかを与える。
@@ -45,7 +50,5 @@ export async function createGameScene(canvas: HTMLCanvasElement, graphics: Graph
 
   window.addEventListener('resize', resize);
 
-  const gameScene: GameScene = { scene, renderer, resize, setResolutionScale };
-  graphics.bindResolutionTarget(gameScene);
-  return gameScene;
+  return { scene, renderer, resize, setResolutionScale };
 }
