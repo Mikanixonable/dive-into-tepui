@@ -507,13 +507,12 @@ export class MapContextActions {
   private readonly handlers: Record<MapPickable['kind'], PickHandler> = {
     'body': {
       itemsFor: (target, simTime) => {
-        const registry = this.ephemeris.registry;
         let subLabel = '天体・ラグランジュ点';
         const lagrangeMatch = target.id.match(/^(.+)-l[1-5]$/);
         if (lagrangeMatch) {
           const secondary = lagrangeMatch[1]!;
-          const primary = primaryOf(registry, secondary);
-          subLabel = primary === null
+          const primary = this.bodyParentId(secondary);
+          subLabel = primary === undefined || primary === null
             ? 'ラグランジュ点'
             : `${celestialBodyName(primary)}-${celestialBodyName(secondary)} ラグランジュ点`;
         } else if (target.id === this.ephemeris.originId) subLabel = '母星 (中心天体)';
@@ -790,6 +789,18 @@ export class MapContextActions {
   private itemsFor(target: MapPickable, simTime: number): readonly MenuItem<MenuAction>[] {
     const handler = this.handlers[target.kind];
     return handler ? handler.itemsFor(target, simTime) : [];
+  }
+
+  // 天体候補の親を解決する。通常の天体はレジストリから primaryOf で、ラグランジュ点は
+  // ID の親部分から解決する。MapPickable は通常天体と派生したラグランジュ点をどちらも
+  // kind:'body' で表すため、未登録の文字列を primaryOf/bodyDef へ渡さない境界をここに置く。
+  // undefined は候補が不正/古い、null は恒星など親を持たない天体を表す。
+  private bodyParentId(id: string): string | null | undefined {
+    const registry = this.ephemeris.registry;
+    const lagrangeParent = LAGRANGE_ID.test(id) ? lagrangeParentId(id) : undefined;
+    if (lagrangeParent !== undefined) return lagrangeParent in registry ? lagrangeParent : undefined;
+    if (!(id in registry)) return undefined;
+    return primaryOf(registry, id);
   }
 
   // ターゲットに設定/解除する項目。軌道面が定まらない対象(地球・太陽自身など)では選んでも
@@ -1077,7 +1088,7 @@ export class MapContextActions {
       if (item.id === target.id) continue;
       let isOrbiting = false;
       if (item.kind === 'body') {
-        isOrbiting = primaryOf(this.ephemeris.registry, item.id) === target.id;
+        isOrbiting = this.bodyParentId(item.id) === target.id;
       } else {
         const state = this.stateOfPickable(item);
         isOrbiting = state !== null && orbitingAttractorOf(state, celestialBodies)?.id === target.id;
