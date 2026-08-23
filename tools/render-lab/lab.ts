@@ -9,6 +9,7 @@ import { LIT_OPAQUE_LAYER } from '../../src/render/pipeline/lit-layer';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
 import { QUALITY_PRESETS } from '../../src/render/graphics-settings';
 import { AMBIENT_INTENSITY, COLOR_SUN, SUN_INTENSITY } from '../../src/game/const';
+import { AU } from '../../src/physics/planet-orbit';
 import { CASES, type CaseName, type LabCase, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './cases';
 
 export type LabPath = 'prepass' | 'forward';
@@ -16,6 +17,10 @@ export type LabPath = 'prepass' | 'forward';
 const SUN_COLOR = new THREE.Color(COLOR_SUN);
 // 環境光の色味は恒星の色とは独立した固定値(EnvironmentScene と同じ)。
 const AMBIENT_COLOR = 0x8899bb;
+// 恒星は 1 天文単位の位置に置く。ゲーム本体と同じく SUN_INTENSITY はそこでの放射照度なので、
+// 点光源へ渡す放射強度は逆二乗ぶんを戻した値になる。
+const SUN_POSITION = SUN_DIR.clone().multiplyScalar(AU);
+const SUN_RADIANT_INTENSITY = SUN_INTENSITY * AU * AU;
 
 export class LabView {
   private readonly scene = new THREE.Scene();
@@ -80,7 +85,7 @@ export class LabView {
   // 動くものが無いので、描くのはケースを差し替えたときと撮影のときだけ。
   render(): void {
     if (this.current === null) return;
-    this.pipeline.sunLight.set(SUN_DIR, SUN_COLOR, SUN_INTENSITY, AMBIENT_INTENSITY, 1);
+    this.pipeline.sunLight.set(SUN_POSITION, SUN_COLOR, SUN_RADIANT_INTENSITY, AMBIENT_INTENSITY, 1);
     this.pipeline.render(this.scene, this.current.camera);
   }
 

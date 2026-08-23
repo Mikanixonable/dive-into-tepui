@@ -12,7 +12,7 @@ import type { ColorUniform, FloatNode, FloatUniform, Vec3Uniform } from '../tsl-
 const AMBIENT_COLOR = new THREE.Color(0x8899bb);
 
 export class SunLight {
-  private readonly directionUniform: Vec3Uniform;
+  private readonly positionUniform: Vec3Uniform;
   private readonly colorUniform: ColorUniform;
   private readonly intensityUniform: FloatUniform;
   private readonly ambientIntensityUniform: FloatUniform;
@@ -20,12 +20,8 @@ export class SunLight {
   // CPU 側(physics/shadow.ts の sunlitFactor)で求めた恒星の日照率(0=完全遮蔽、1=全開)。
   private readonly sunlitFactorUniform: FloatUniform;
 
-  // 恒星の視半径 [rad]。0 = 点光源。面光源(球光源)へ切り替える将来の拡張点として型に
-  // 持たせるだけで、現行のライティングパスはまだ読まない。
-  angularRadius = 0;
-
   constructor() {
-    this.directionUniform = uniform(new THREE.Vector3(0, 1, 0));
+    this.positionUniform = uniform(new THREE.Vector3(0, 1, 0));
     this.colorUniform = uniform(new THREE.Color(1, 1, 1));
     this.intensityUniform = uniform(0);
     this.ambientIntensityUniform = uniform(0);
@@ -33,24 +29,26 @@ export class SunLight {
     this.sunlitFactorUniform = uniform(1);
   }
 
-  // 恒星方向(描画原点から見た単位方向)・色・照度(受け手が実際に浴びる値 — 逆二乗込み)・
+  // 恒星の描画座標での位置・色・放射強度(距離の二乗で割ると放射照度になる量)・
   // 環境光強度・恒星の日照率を1フレーム分まとめて書く。
   set(
-    direction: THREE.Vector3,
+    position: THREE.Vector3,
     color: THREE.Color,
     intensity: number,
     ambientIntensity: number,
     sunlitFactor: number,
   ): void {
-    this.directionUniform.value.copy(direction);
+    this.positionUniform.value.copy(position);
     this.colorUniform.value.copy(color);
     this.intensityUniform.value = intensity;
     this.ambientIntensityUniform.value = ambientIntensity;
     this.sunlitFactorUniform.value = sunlitFactor;
   }
 
-  get direction(): Vec3Uniform { return this.directionUniform; }
+  get position(): Vec3Uniform { return this.positionUniform; }
   get color(): ColorUniform { return this.colorUniform; }
+
+  // 放射強度。シェーディング点から恒星までの距離の二乗で割ると、その点の放射照度になる。
   get intensity(): FloatNode { return this.intensityUniform; }
 
   // 環境光の色。恒星光と違って方向を持たない固定値。
