@@ -24,9 +24,9 @@ const STYLE = `
   border: 0; border-radius: var(--radius-micro);
 }
 #hud .ctx-menu-item:hover, #hud .ctx-menu-item:active {
-  background: var(--surface-2); color: var(--accent-near);
+  background: var(--surface-2); color: var(--color-primary-hover);
 }
-#hud .ctx-menu-item:focus-visible { outline: 2px solid var(--accent-near); outline-offset: -2px; }
+#hud .ctx-menu-item:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 #hud .ctx-menu-header {
   padding: var(--space-4) var(--space-5);
   border: 0; background: transparent; color: var(--title); font-weight: 600;

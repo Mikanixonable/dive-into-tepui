@@ -496,7 +496,7 @@ export class Player extends Ship {
     const dist = len(sub(pos, viewerPos));
     const priority = role === 'primary' ? C.MARKER_PRIORITY.PRIMARY_TARGET : C.MARKER_PRIORITY.PLAYER;
     const kindCls = isActive ? 'mk-self' : 'mk-ally';
-    const color = role === 'primary' ? currentThemePalette().secondary : isActive ? 'var(--accent)' : C.COLOR_MARKER_ALLY;
+    const color = role === 'primary' ? currentThemePalette().signal : isActive ? 'var(--color-primary)' : C.COLOR_MARKER_ALLY;
     return {
       key: `player-${this.id}`,
       cls: role === 'primary' ? `${kindCls} mk-target` : kindCls,
@@ -506,7 +506,7 @@ export class Player extends Ship {
       priority,
       name: this.name,
       detail: overviewMode ? '' : fmtMarkerDist(dist),
-      bearingColor: role === 'primary' ? currentThemePalette().secondary : C.COLOR_MARKER_ALLY,
+      bearingColor: role === 'primary' ? currentThemePalette().signal : C.COLOR_MARKER_ALLY,
       bearingSym: DIRECTION_GLYPH.allyBearing,
       bearingClass: 'mk-dir mk-ally-dir',
       bearingVisible: dist <= C.ALLY_BEARING_MAX_DISTANCE,

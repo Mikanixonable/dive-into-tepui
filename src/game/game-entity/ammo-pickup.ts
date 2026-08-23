@@ -74,7 +74,7 @@ export class AmmoPickup extends GameEntity {
       priority: C.MARKER_PRIORITY.AMMO,
       name: this.name,
       detail: overviewMode ? '' : fmtMarkerDist(dist),
-      bearingColor: 'var(--accent-soft)',
+      bearingColor: 'var(--color-primary-hover)',
       bearingSym: DIRECTION_GLYPH.bearing,
       bearingClass: 'mk-ammo mk-bearing-triangle',
       symMarkup: false,
