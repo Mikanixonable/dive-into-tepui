@@ -377,35 +377,6 @@ depthScale = 1 / k
 
 ## 手順
 
-### 手順 9. 天体を `LIT_OPAQUE_LAYER` へ載せ、明るさを合わせる
-
-**目的**: 天体の自前 Lambert を捨て、艦と同じ BRDF・同じ光源で描く。
-**天体を 1 つ追加してもシェーダコードが増えない状態**にする。
-
-**変更が必要な箇所**
-
-| ファイル | 変更 |
-|---|---|
-| `src/render/celestial-surface.ts` | 自前 Lambert・`NIGHT_AMBIENT`・32 帯の環影・`sunDirNode` を削除し、`MeshStandardNodeMaterial` へ。色は `1 / SUN_INTENSITY` してアルベドとして渡す(判断 (3))。`markLitOpaque` の対象になる |
-| `src/game/celestial/sphere-view.ts` / `point-view.ts` | `setSunDirection` の呼び出しを削除 |
-| `src/game/const.ts` | `AMBIENT_INTENSITY` を lab の実測から引き直す |
-| `DEVELOP/SPEC/RENDERING.md` | 「天体は自分自身の真の位置から見た太陽方向で自ら昼夜の陰影を計算する」→ **画素ごとの差分ベクトル**。夜側の明るさの根拠 |
-
-**地球はこの手順では触らない**(手順 10・11 で分割する)。
-
-**達成条件と検証**
-
-- 達成目標 9・12・13・14・17。
-- 天体の昼側と夜側が統合前とほぼ同じ明るさ。艦の影側が同等かやや暗い。
-- `npm run typecheck`
-- `grep -rn "NIGHT_AMBIENT\|sunDirNode\|setSunDirection\|SHADOW_MIN_AMBIENT" src/` → 0 件
-- `npm run render-lab:shot` → `leo-prepass.png` の球の昼側・夜側と艦の影側の画素値を、
-  手順 8 時点の同じ画像と数値で比べる(**ここで `AMBIENT_INTENSITY` を決める**)
-- `npm run dev` → 木星圏と地球圏の天体を見比べ、明るさが距離に応じて違うこと
-- 土星の環の影が本体表面に落ちていること
-
----
-
 ### 手順 10. 地球の大気リムを画面空間フィルタへ移す
 
 **目的**: 大気フィルタの器を作り、**まずリム光だけ**を移して器が正しく動くかを見る。
