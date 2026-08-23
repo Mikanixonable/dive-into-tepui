@@ -25,11 +25,11 @@ const STYLE = `
 #hud .prop-window-row-toggle {
   padding: var(--space-2) var(--space-5); color: var(--text); opacity: 0.6; cursor: pointer;
 }
-#hud .prop-window-row-toggle:hover { opacity: 1; color: var(--accent-soft); }
+#hud .prop-window-row-toggle:hover { opacity: 1; color: var(--color-primary-hover); }
 #hud .prop-window-row-group-toggle {
   padding: var(--space-2) var(--space-5); color: var(--text); opacity: 0.6; cursor: pointer;
 }
-#hud .prop-window-row-group-toggle:hover { opacity: 1; color: var(--accent-soft); }
+#hud .prop-window-row-group-toggle:hover { opacity: 1; color: var(--color-primary-hover); }
 #hud .prop-window-items {
   padding: var(--space-2);
   background: color-mix(in srgb, var(--surface-0) 28%, transparent);
@@ -43,7 +43,7 @@ const STYLE = `
   color: var(--text); opacity: 0.6; font-size: 0.9em;
   cursor: pointer;
 }
-#hud .prop-window-related-title:hover { opacity: 1; color: var(--accent-soft); }
+#hud .prop-window-related-title:hover { opacity: 1; color: var(--color-primary-hover); }
 #hud .prop-window-related-list {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-1);
 }
@@ -52,21 +52,21 @@ const STYLE = `
   border: 0; border-radius: var(--radius-micro);
 }
 #hud .prop-window-related-item:hover, #hud .prop-window-related-item:active {
-  background: var(--surface-2); color: var(--accent-near);
+  background: var(--surface-2); color: var(--color-primary-hover);
 }
-#hud .prop-window-related-item:focus-visible { outline: 2px solid var(--accent-near); outline-offset: -2px; }
+#hud .prop-window-related-item:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 #hud .prop-window-item {
   padding: var(--space-4) var(--space-5); color: var(--body); cursor: pointer;
   border: 0; border-radius: var(--radius-micro);
 }
 #hud .prop-window-item:hover, #hud .prop-window-item:active {
-  background: var(--surface-2); color: var(--accent-near);
+  background: var(--surface-2); color: var(--color-primary-hover);
 }
 #hud .prop-window-item.on {
-  color: var(--accent); background: var(--accent-fill);
+  color: var(--color-primary); background: var(--color-primary-fill);
 }
 #hud .prop-window-item.on::before { content: '▪ '; }
-#hud .prop-window-item:focus-visible { outline: 2px solid var(--accent-near); outline-offset: -2px; }
+#hud .prop-window-item:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 `;
 
 let styleInjected = false;

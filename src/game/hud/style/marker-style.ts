@@ -59,10 +59,10 @@ export const MARKER_STYLE = `
   white-space: pre; text-align: left; font-size: var(--font-xxs); line-height: 1.2;
 }
 
-.mk-target { color: var(--accent-secondary); }
+.mk-target { color: var(--color-signal); }
 .mk-enemy { color: var(--text-strong); }
 .mk-ally { color: ${C.COLOR_MARKER_ALLY}; }
-.mk-lead { color: var(--accent); }
+.mk-lead { color: var(--color-primary); }
 .mk-pro { color: var(--axis-prograde); }
 .mk-retro { color: var(--axis-prograde); }
 .mk-nrm { color: var(--axis-normal); }
@@ -71,15 +71,15 @@ export const MARKER_STYLE = `
 .mk-node { color: ${C.COLOR_MARKER_NODE}; }
 .mk-boardpass { color: ${C.COLOR_MARKER_BOARDPASS}; }
 .mk-boardpass .sym { font-size: var(--font-xxs); }
-.mk-mnode { color: var(--accent-soft); }
+.mk-mnode { color: var(--color-primary-hover); }
 .mk-mnode .lbl { white-space: pre; line-height: 1.25; }
 #hud .mk-mnode .lbl, #hud .mk-burn .lbl { margin-top: var(--space-2); }
-.mk-burn { color: var(--accent); }
+.mk-burn { color: var(--color-primary); }
 .mk-self { color: ${C.COLOR_MARKER_SELF}; }
 .mk-ammo { color: var(--text-dim); }
 .mk-planned { color: ${C.COLOR_MARKER_PLANNED}; }
 .mk-apsis { color: ${C.COLOR_MARKER_PLANNED}; }
-.mk-impact { color: var(--danger); }
+.mk-impact { color: var(--color-error); }
 .mk-plantick { color: var(--text-dim); }
 
 .mk-poi { color: var(--text-strong); text-shadow: 0 0 4px var(--bg); }
@@ -109,5 +109,5 @@ export const MARKER_STYLE = `
 }
 
 .mk-longpress { width: 40px; height: 40px; }
-.mk-longpress .sym { border: 2px solid var(--accent); border-radius: 50%; box-sizing: border-box; }
+.mk-longpress .sym { border: 2px solid var(--color-primary); border-radius: 50%; box-sizing: border-box; }
 `;
