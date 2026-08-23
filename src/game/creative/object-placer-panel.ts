@@ -2,23 +2,25 @@
 // 指定のどちらかを選び、フォームで値を指定して、確定で1隻分の ShipPlacerForm を通知する。
 // 値から KinematicState を組み立てるのは物理側(stateFromOrbitalElements/haloState/lissajousState)の
 // 仕事なので、ここでは行わない。
-import { Button, CloseButton, SegmentedControl, Slider, ValueInput } from '../hud/widgets';
-import { ObjectPicker, ObjectPickerGroup } from '../hud/windows/object-picker';
+import { Button, CloseButton, SegmentedControl, ValueInput } from '../hud/widgets';
+import { ObjectPicker } from '../hud/windows/object-picker';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 import { baseMarkerSvg, shipMarkerSvg } from '../marker/marker-shapes';
 import type { OverlayHandle, OverlayManager } from '../hud/overlay-manager';
-import { BodyClass, bodyClassOf } from '../celestial/body-class';
-import { sameSystemIds } from '../celestial/body-visibility';
 import { celestialBodyName } from '../hud/frame/frame-labels';
 import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
 import { CollinearPoint } from '../../physics/halo';
 import { CelestialBodyId } from '../../physics/celestial-body';
-import { bodyDef, primaryOf, CelestialRegistry, SOLAR_SYSTEM, MU_EARTH, R_EARTH, SIDEREAL_DAY, J2_EARTH } from '../../physics/solar-system';
+import { CelestialRegistry, MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../../physics/solar-system';
 import type { OrbitingId } from '../../physics/celestial-body';
 import { semiMajorFromPeriod } from '../../physics/elements';
 import type { PlacementFieldId, PlacementFieldIssue } from './placement-validation';
 import type { Ephemeris } from '../../physics/ephemeris';
 import * as C from '../const';
+import { bodyGroupsOf, lagrangeSystemItemsOf, orbitingIdsOf, primaryDistanceKm, sunSyncInclinationDeg } from './orbit-form-fields';
+import {
+  SliderRow, bindAngleSlider, bindEccentricitySlider, bindRelativeSlider, numberField, setFieldVisible, sliderField,
+} from './slider-field';
 
 export type ObjectType = 'player' | 'enemy' | 'ammo' | 'base';
 export type ReferenceCelestialBody = CelestialBodyId;
@@ -86,40 +88,6 @@ const SIZE_MODE_ITEMS: readonly (readonly [SizeShapeMode, string])[] = [
   ['periodEcc', '周期+離心率'],
 ];
 
-// ラグランジュ点を持てる天体(惑星 + 衛星)を副天体として列挙する。軌道要素指定の基準天体も
-// これを使う(公転していない恒星を周回の中心には選べない)。
-function orbitingIdsOf(registry: CelestialRegistry): readonly OrbitingId[] {
-  return Object.keys(registry).filter((id) => bodyDef(registry, id).kind !== 'star');
-}
-
-// 天体の候補をクラス別のまとまりへ組む。先頭は「いま選んでいる系」— 実際に選ばれるのは
-// ほぼ常に同じ系の別天体なので、1クリック目に置く。
-function bodyGroupsOf(
-  registry: CelestialRegistry, items: readonly (readonly [ReferenceCelestialBody, string])[], selected: ReferenceCelestialBody,
-): readonly ObjectPickerGroup<ReferenceCelestialBody>[] {
-  const near0 = sameSystemIds(registry, selected);
-  const near = items.filter(([id]) => near0.has(id));
-  const byClass = (cls: BodyClass) => items.filter(([id]) => bodyClassOf(registry, id) === cls);
-  return [
-    { label: 'いま選んでいる系', items: near },
-    { label: '惑星', items: byClass('planet') },
-    { label: '衛星', items: byClass('satellite') },
-    { label: '準惑星', items: byClass('dwarf') },
-    { label: '小天体', items: byClass('smallBody') },
-  ].filter((g) => g.items.length > 0);
-}
-
-// 表示名を「中心天体名-自分の名」として ephemeris から組む(primaryOf で主星を解決する)。
-function lagrangeSystemItemsOf(ephemeris: Ephemeris, orbitingIds: readonly OrbitingId[]): readonly (readonly [OrbitingId, string])[] {
-  // 共線点が行き先として意味を持つ系だけを出す。質量が未測定の天体では質量比が 0 になり、
-  // 共線点の距離比を解く反復が収束せず NaN の状態を返すため、選ばせてはいけない。
-  return orbitingIds.filter((id) => ephemeris.hasUsableCollinearPoints(id, C.LAGRANGE_MIN_CLEARANCE_RATIO)).map((id) => {
-    const primary = primaryOf(ephemeris.registry, id);
-    const primaryName = primary === null ? celestialBodyName(id) : celestialBodyName(primary);
-    return [id, `${primaryName}-${celestialBodyName(id)}`] as const;
-  });
-}
-
 const LAGRANGE_POINT_ITEMS: readonly (readonly [CollinearPoint, string])[] = [
   ['L1', 'L1'],
   ['L2', 'L2'],
@@ -138,33 +106,13 @@ const LAGRANGE_DEFAULT_AMPLITUDE_KM: Partial<Record<OrbitingId, { ax: number; az
   jupiter: { ax: C.HALO_AX_JUPITER_KM, az: C.HALO_AZ_JUPITER_KM },
 };
 
-// 副天体とその主天体の距離 [km](= 副天体の軌道長半径)。
-function primaryDistanceKm(secondary: OrbitingId): number {
-  const def = bodyDef(SOLAR_SYSTEM, secondary);
-  if (def.kind === 'star') throw new Error(`primaryDistanceKm: ${secondary} は恒星なので公転していない`);
-  return (def.kind === 'planet' ? def.orbit.a : def.orbit.kepler.a) / 1e3;
-}
-
 // 表に無い天体の既定振幅を主天体間距離から導くときの比。月の既定値と月の軌道長半径の比を
 // そのまま使うので、表に載っている天体と桁感が揃う。
 const AMPLITUDE_AX_RATIO = C.HALO_AX_MOON_KM / primaryDistanceKm('moon');
 const AMPLITUDE_AZ_RATIO = C.HALO_AZ_MOON_KM / primaryDistanceKm('moon');
 
-const DEG = Math.PI / 180;
-
 // 静止軌道の高度: 恒星日ちょうどの円軌道の半長軸から導出する(マジックナンバーで別途持たない)。
 const GEO_ALT_KM = (semiMajorFromPeriod(SIDEREAL_DAY, MU_EARTH) - R_EARTH) / 1e3;
-
-// 太陽同期軌道の傾斜角: その高度の円軌道が J2 摂動で受ける昇交点歳差(dynamics.ts の j2Accel と
-// 同じ式)が、地球の公転角速度(SOLAR_SYSTEM の地球公転要素そのもの)にちょうど一致する条件から
-// 逆算する。retrograde 解(i>90°)が太陽同期の側。
-function sunSyncInclinationDeg(altKm: number): number {
-  const a = R_EARTH + altKm * 1e3;
-  const n = Math.sqrt(MU_EARTH / (a * a * a));
-  const earthOrbitRate = SOLAR_SYSTEM.earth.orbit.lRate;
-  const cosI = earthOrbitRate / (-1.5 * n * J2_EARTH * (R_EARTH / a) ** 2);
-  return Math.acos(cosI) / DEG;
-}
 
 const SUN_SYNC_ALT_KM = 700;
 const MOON_LOW_ALT_KM = 100;
@@ -182,154 +130,6 @@ const PRESETS_BY_BODY: Partial<Record<ReferenceCelestialBody, readonly SizePrese
     { label: '低軌道', peAltKm: MOON_LOW_ALT_KM, apAltKm: MOON_LOW_ALT_KM },
   ],
 };
-
-// ラベル行(.w-group + .w-group-title)と数値入力を組み立てて返す。root への追加は呼び出し側の仕事
-// (numberField はそのまま追加するだけだが、sliderField はスライダー列を同じ行に足してから追加する)。
-// 値は打鍵のたびに(sliderField が)直接読み書きするので、ValueInput の commit 通知自体は使わない。
-function buildNumberRow(label: string, defaultValue: number, step: number, min?: number, max?: number): { row: HTMLElement; input: HTMLInputElement } {
-  const row = document.createElement('div');
-  row.className = 'w-group';
-  const heading = document.createElement('span');
-  heading.className = 'w-group-title';
-  heading.textContent = label;
-  row.appendChild(heading);
-  const valueInput = new ValueInput({ type: 'number', step, min, max }, () => {});
-  valueInput.setValue(String(defaultValue));
-  row.appendChild(valueInput.element);
-  return { row, input: valueInput.element };
-}
-
-// ラベル付き数値入力を1行分組み立てて root へ追加し、input 要素を返す。
-function numberField(root: HTMLElement, label: string, defaultValue: number, step: number, min?: number, max?: number): HTMLInputElement {
-  const { row, input } = buildNumberRow(label, defaultValue, step, min, max);
-  root.appendChild(row);
-  return input;
-}
-
-// numberField が組んだ入力の行(ラベルごと)を出し入れする。
-function setFieldVisible(input: HTMLInputElement, visible: boolean): void {
-  (input.parentElement as HTMLElement).classList.toggle('hidden', !visible);
-}
-
-// numberField にスライダー+目盛りを添えた行。数値入力とスライダーは双方向に同期する。
-// 値⇔スライダー位置(0..1)の対応と目盛りラベルは呼び出し側が bindAngleSlider/
-// bindEccentricitySlider/bindRelativeSlider 経由で決める(角度・離心率は固定範囲の線形対応、
-// 半長軸・周期・高度は上限がなく基準値相対の対応になるため、この行自体は対応関係を知らない)。
-interface SliderRow {
-  readonly element: HTMLElement;
-  readonly input: HTMLInputElement;
-  readonly slider: HTMLInputElement;
-  setLabel(text: string): void;
-  setTicks(labels: readonly string[]): void;
-  setMapping(toT: (value: number) => number, fromT: (t: number) => number): void;
-  // bindRelativeSlider が結んだ行にだけ立つ: 基準値相対スライダーの基準をいまの input.value へ
-  // 取り直す。値を外部から書き換えたときはこれも呼ばないと、つまみの位置が実際の値とずれる。
-  rebase?(): void;
-}
-
-function sliderField(root: HTMLElement, label: string, defaultValue: number, step: number, min?: number, max?: number): SliderRow {
-  const wrap = document.createElement('div');
-  wrap.className = 'slider-field';
-
-  const { row, input } = buildNumberRow(label, defaultValue, step, min, max);
-
-  const sliderCol = document.createElement('div');
-  sliderCol.className = 'slider-col';
-
-  const slider = new Slider({ min: 0, max: 1000, step: 1 }, () => {}).element;
-  sliderCol.appendChild(slider);
-
-  const ticksEl = document.createElement('div');
-  ticksEl.className = 'slider-ticks';
-  sliderCol.appendChild(ticksEl);
-
-  row.appendChild(sliderCol);
-  wrap.appendChild(row);
-
-  root.appendChild(wrap);
-
-  let toT = (v: number): number => v;
-  let fromT = (t: number): number => t;
-  const syncSliderFromInput = (): void => {
-    const t = Math.max(0, Math.min(1, toT(Number(input.value))));
-    slider.value = String(Math.round(t * 1000));
-  };
-  input.addEventListener('input', syncSliderFromInput);
-  slider.addEventListener('input', () => {
-    // 入力欄の刻みへ丸めてから書き戻す。高度スライダーは書き戻した値を次のドラッグの基準に
-    // 取り直すので、丸めないと端数がドラッグのたびに積み上がる。
-    input.value = String(Math.round(fromT(Number(slider.value) / 1000) / step) * step);
-  });
-
-  const titleEl = row.querySelector('.w-group-title');
-
-  return {
-    element: wrap,
-    input,
-    slider,
-    setLabel(text) {
-      if (titleEl) titleEl.textContent = text;
-    },
-    setTicks(labels) {
-      ticksEl.innerHTML = '';
-      for (const text of labels) {
-        const span = document.createElement('span');
-        span.textContent = text;
-        ticksEl.appendChild(span);
-      }
-    },
-    setMapping(newToT, newFromT) {
-      toT = newToT;
-      fromT = newFromT;
-      syncSliderFromInput();
-    },
-  };
-}
-
-// 角度スライダー(i/Ω/ω/ν): 0..rangeDeg の線形対応、90度ごとに目盛りを表示する。
-function bindAngleSlider(field: SliderRow, rangeDeg: number): void {
-  field.setMapping((v) => v / rangeDeg, (t) => t * rangeDeg);
-  const tickCount = rangeDeg / 90 + 1;
-  field.setTicks(Array.from({ length: tickCount }, (_, i) => `${i * 90}°`));
-}
-
-// 離心率スライダー: 0..0.99 の線形対応、0/0.25/0.5/0.75/0.99 に目盛りを表示する。
-function bindEccentricitySlider(field: SliderRow): void {
-  const max = 0.99;
-  field.setMapping((v) => v / max, (t) => t * max);
-  field.setTicks([0, 0.25, 0.5, 0.75, 0.99].map((v) => v.toFixed(2)));
-}
-
-// 基準値相対スライダーの倍率: 中央(t=0)を基準値の100%とし、左は等倍で0%まで、
-// 右は2倍指数で400%まで伸びる。上限のない量を有限のスライダー幅で操作するための仕様。
-function relativeMultiplier(tOffset: number): number {
-  return tOffset <= 0 ? 1 + tOffset : Math.pow(2, 2 * tOffset);
-}
-
-// 基準値相対スライダー(Ap/Pe高度・半長軸・周期): ドラッグ開始時点の値を基準の100%として
-// スライダー中央に据え、ドラッグが終わるたびにそのときの値を新しい基準に取り直してつまみを
-// 中央へ戻す(基準を固定しないと上限のない量を動かせない)。refFloor は基準値の下限 —
-// 基準はスライダーの可動範囲そのものなので、値が 0 まで下がったときに 0 を基準にすると倍率を
-// いくら掛けても 0 のままになり、二度と操作で戻せなくなる。量ごとに単位・オーダーが違うので
-// 呼び出し側がその量にとって妥当な床を渡す。
-function bindRelativeSlider(field: SliderRow, refFloor: number): void {
-  const rebase = (): void => {
-    const ref = Math.max(Number(field.input.value), refFloor);
-    field.setMapping(
-      (v) => {
-        const mult = v / ref;
-        const tOffset = mult <= 1 ? mult - 1 : Math.log2(mult) / 2;
-        return (tOffset + 1) / 2;
-      },
-      (t) => ref * relativeMultiplier(2 * t - 1),
-    );
-    field.setTicks([0, 0.5, 1, 2, 4].map((m) => `${Math.round((ref * m) * 100) / 100}`));
-  };
-  field.slider.addEventListener('pointerdown', rebase);
-  field.slider.addEventListener('pointerup', rebase);
-  field.rebase = rebase;
-  rebase();
-}
 
 // 高度・半長軸の基準値の下限(km): 一度のドラッグでこの4倍まで戻せる値を床に置く。
 const ALTITUDE_REF_FLOOR_KM = 100;
