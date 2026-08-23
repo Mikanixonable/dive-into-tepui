@@ -358,6 +358,25 @@ export function buildPdb5i4rEnemyShip(colorMode: Pdb5i4rColorMode = 'chain'): TH
   return group;
 }
 
+// 既存の5I4R敵の頂点色だけを差し替え、位置・姿勢・スケールを維持したまま表示モードを更新する。
+export function recolorPdb5i4rEnemyShip(target: THREE.Object3D, colorMode: Pdb5i4rColorMode): void {
+  const replacement = buildPdb5i4rEnemyShip(colorMode);
+  for (const child of [...target.children]) {
+    child.traverse((nested) => {
+      const mesh = nested as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      if (mesh.userData.ownsGeometry) mesh.geometry.dispose();
+      if (mesh.userData.ownsMaterial) {
+        if (Array.isArray(mesh.material)) mesh.material.forEach((material) => material.dispose());
+        else mesh.material.dispose();
+      }
+    });
+    target.remove(child);
+  }
+  for (const child of [...replacement.children]) target.add(child);
+  replacement.clear();
+}
+
 // stage0 敵機のメッシュを typeIndex(0〜2)の機体テンプレートから生成し、accent 色に塗り替える。
 export function buildStage0EnemyShip(accent: string | number = 0x3dc6ff, typeIndex = 0): THREE.Group {
   let g: THREE.Group;
