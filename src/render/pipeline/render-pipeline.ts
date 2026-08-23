@@ -1,11 +1,12 @@
 // フレームの描画パス構成を制御する。render/** 配下の個々の描画物モジュールとは別に、
 // 「何段で、どのターゲットへ描き、どう合成してキャンバスへ出すか」をここへ集約する。
-// 現在は5段: G バッファパス(深度・法線・ラフネスを MRT へ描く)→ ライティングパス(G バッファ
-// だけを読み、拡散/鏡面の照度を MRT へ描く)→ マテリアルパス(lit-opaque 層をライティングパスの
-// 照度で描き、world パスと共有する HDR ターゲットの最初の書き込みとしてクリアする)→ world パス
+// 現在は6段: G バッファパス(深度・法線・ラフネスを MRT へ描く)→ 遮蔽パス(G バッファ深度から
+// 復元した位置に届く恒星の直射光の透過率を1枚へ描く)→ ライティングパス(その2枚だけを読み、
+// 拡散/鏡面の照度を MRT へ描く)→ マテリアルパス(lit-opaque 層をライティングパスの照度で描き、
+// world パスと共有する HDR ターゲットの最初の書き込みとしてクリアする)→ world パス
 // (シーンを同じ HDR ターゲットへ重ね描きする)→ composite パス。composite パスは通常表示
 // (debugTarget==='off')では HDR ターゲットへ露出を掛けてキャンバスへ合成し、それ以外を選ぶと
-// 代わりに G バッファ/照度バッファ/マテリアルパス単体の中身を画面いっぱいに映す(debug-target.ts)。
+// 代わりに中間ターゲットの中身を画面いっぱいに映す(debug-target.ts)。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { log, screenUV, texture, uniform, vec3, vec4 } from 'three/tsl';
@@ -16,6 +17,7 @@ import type { DebugTargetHost, DebugTargetId } from './debug-target';
 import { GBufferPass, octDecodeNormal } from './gbuffer';
 import { LightPrepass } from './light-prepass';
 import { MaterialPass } from './material-pass';
+import { OcclusionPass } from './occlusion';
 import { SunLight } from './sun-light';
 
 // composite パスが HDR 値全体へ一律に掛ける、フレーム唯一の明るさ係数。実照度に対する
@@ -36,6 +38,7 @@ function viewDistanceFromDepth(depth: FloatNode, near: FloatUniform, far: FloatU
 export class RenderPipeline implements DebugTargetHost {
   private readonly renderer: WebGPURenderer;
   private readonly gbuffer: GBufferPass;
+  private readonly occlusionPass: OcclusionPass;
   private readonly lightPrepass: LightPrepass;
   private readonly materialPass: MaterialPass;
   private readonly _sunLight: SunLight;
@@ -59,6 +62,9 @@ export class RenderPipeline implements DebugTargetHost {
   // ライティングパスが読む恒星光。EnvironmentScene がここへ毎フレーム書き込む。
   get sunLight(): SunLight { return this._sunLight; }
 
+  // 遮蔽パス。EnvironmentScene が遮蔽器と環の帯を毎フレーム書き込む。
+  get occlusion(): OcclusionPass { return this.occlusionPass; }
+
   // G バッファパス・ライティングパス・マテリアルパスと、world パスの描画先である HDR
   // オフスクリーンターゲット、それらをキャンバスへ合成する QuadMesh 用のデバッグ表示ごとの
   // マテリアルを構築する。
@@ -66,7 +72,8 @@ export class RenderPipeline implements DebugTargetHost {
     this.renderer = renderer;
     this.gbuffer = new GBufferPass(renderer, gpu);
     this._sunLight = new SunLight();
-    this.lightPrepass = new LightPrepass(renderer, this.gbuffer, this._sunLight, gpu);
+    this.occlusionPass = new OcclusionPass(renderer, this.gbuffer, this._sunLight, gpu);
+    this.lightPrepass = new LightPrepass(renderer, this.gbuffer, this.occlusionPass, this._sunLight, gpu);
     this.materialPass = new MaterialPass(renderer, this.lightPrepass, gpu);
 
     // antialias はレンダラ生成時にしか渡せず(scene.ts 参照)、キャンバスへの直描きは
@@ -101,6 +108,9 @@ export class RenderPipeline implements DebugTargetHost {
         vec4(vec3(texture(this.gbuffer.roughnessTexture, screenUV).r), 1),
       ),
       depth: this.buildCompositeMaterial(vec4(vec3(this.logDepthNode()), 1)),
+      occlusion: this.buildCompositeMaterial(
+        vec4(vec3(texture(this.occlusionPass.texture, screenUV).r), 1),
+      ),
       // 照度は 1 を超え得る HDR 値なので、通常表示と同じ露出係数を掛けてから画面へ出す。
       diffuse: this.buildCompositeMaterial(
         vec4(texture(this.lightPrepass.diffuseTexture, screenUV).rgb.mul(this.exposure), 1),
@@ -145,7 +155,10 @@ export class RenderPipeline implements DebugTargetHost {
     // G バッファパス。camera.layers の一時的な絞り込みと GPU 計測の申告は自身の中で行う。
     this.gbuffer.render(scene, camera, width, height);
 
-    // ライティングパス。G バッファだけを読むので scene は渡さない。
+    // 遮蔽パス。G バッファ深度だけを読むので scene は渡さない。
+    this.occlusionPass.render(camera, width, height);
+
+    // ライティングパス。G バッファと遮蔽度だけを読むので scene は渡さない。
     this.lightPrepass.render(camera, width, height);
 
     // マテリアルパス。LIT_OPAQUE_LAYER のオブジェクトと背景専用レイヤーを this.target(このあとの
@@ -182,6 +195,7 @@ export class RenderPipeline implements DebugTargetHost {
   // 共有する単一の板なので、ここでは解放しない。
   dispose(): void {
     this.gbuffer.dispose();
+    this.occlusionPass.dispose();
     this.lightPrepass.dispose();
     this.materialPass.dispose();
     this.target.dispose();
