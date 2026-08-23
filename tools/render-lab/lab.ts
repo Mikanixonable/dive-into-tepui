@@ -6,6 +6,7 @@ import { WebGPURenderer } from 'three/webgpu';
 import { GpuTimings } from '../../src/gpu-timings';
 import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
 import { LIT_OPAQUE_LAYER } from '../../src/render/pipeline/lit-layer';
+import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
 import { QUALITY_PRESETS } from '../../src/render/graphics-settings';
 import { AMBIENT_INTENSITY, COLOR_SUN, SUN_INTENSITY } from '../../src/game/const';
 import { CASES, type CaseName, type LabCase, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './cases';
@@ -48,7 +49,13 @@ export class LabView {
   }
 
   static async create(canvas: HTMLCanvasElement, path: LabPath): Promise<LabView> {
-    const renderer = new WebGPURenderer({ canvas, antialias: QUALITY_PRESETS.high.antialias });
+    // 深度の扱いはゲーム本体(src/render/scene.ts)と揃える。ここが違うと、測りたい深度の
+    // 分解能そのものが本番と別物になる。
+    const renderer = new WebGPURenderer({
+      canvas, antialias: QUALITY_PRESETS.high.antialias, reversedDepthBuffer: true,
+    });
+    renderer.setOpaqueSort(reversedOpaqueSort);
+    renderer.setTransparentSort(reversedTransparentSort);
     renderer.setSize(VIEW_WIDTH, VIEW_HEIGHT);
     await renderer.init();
     const pipeline = new RenderPipeline(renderer, QUALITY_PRESETS.high, new GpuTimings(renderer));
