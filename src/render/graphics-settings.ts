@@ -24,7 +24,7 @@ export type GraphicsSettingsData = {
   readonly rings: boolean;
   // 地球のオーロラ。
   readonly aurora: boolean;
-  // 地球の大気リム光。
+  // 地球の大気。
   readonly atmosphere: boolean;
   // マルチサンプリング。レンダラ生成時にしか渡せないので、変更は次回起動から効く。
   readonly antialias: boolean;
