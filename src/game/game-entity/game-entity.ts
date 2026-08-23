@@ -225,7 +225,7 @@ export class GameEntity {
     if (this.orbitLine === null) return;
     const center = strongestAttractor(this.state.r, frameAnchors.bodies);
     this.orbitLine.sync(
-      this.orbitalElementsAround(center), fo, camera, force, frame, displayTime, ephemeris, frameAnchors,
+      this.orbitalElementsAround(center), fo, camera, { force, frame, displayTime, ephemeris, frameAnchors },
     );
   }
 

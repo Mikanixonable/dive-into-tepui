@@ -29,7 +29,9 @@ import { StateQueue } from '../physics/state-queue';
 import { add } from '../physics/vec3';
 import { FloatingOrigin } from './floating-origin';
 import { Curve, CurveSampler } from '../render/curve';
+import { LineOcclusion, MAX_OCCLUDING_BODIES } from '../render/line-occlusion';
 import { LineStyle } from '../render/line-style';
+import { nearestOccludingBodies } from '../physics/occlusion';
 
 // 1本の折れ線が持てる頂点数。ここを超えた分は描かれない(Curve のバッファ確保上限)。
 const MAX_VERTICES = 16384;
@@ -89,9 +91,11 @@ export class TrajectoryLine {
   // 描画区間の上限(bake 済み区間の末尾へクランプ済み)。null は上限なし。
   private endTime: number | null = null;
 
+  private readonly occlusion = new LineOcclusion();
+
   // 単色の折れ線を構築する。style.dash があれば破線になる。
   constructor(style: LineStyle) {
-    this.curve = new Curve({ style, maxVertices: MAX_VERTICES });
+    this.curve = new Curve({ style, maxVertices: MAX_VERTICES, occlusion: this.occlusion });
     this.line = this.curve.object;
   }
 
@@ -191,8 +195,8 @@ export class TrajectoryLine {
     this.curve.setCurve(this.sampler, { revision: this.revision, camera, initialTs: this.initialTs });
   }
 
-  // 毎フレーム: 剛体 un-bake(回転) + フローティングオリジン補正(平行移動 = 座標系原点)。
-  // currentTime = 描画時刻(通常 simTime)。
+  // 毎フレーム: 剛体 un-bake(回転) + フローティングオリジン補正(平行移動 = 座標系原点) +
+  // 天体遮蔽の解析判定に使う天体一覧の更新。currentTime = 描画時刻(通常 simTime)。
   syncTransform(
     frame: ReferenceFrame, currentTime: number, ephemeris: Ephemeris, fo: FloatingOrigin,
     frameAnchors: FrameAnchorSource,
@@ -200,6 +204,10 @@ export class TrajectoryLine {
     const tf = ephemeris.frameTransformAt(frame, currentTime, frameAnchors);
     this.unbakeQuat.set(tf.q.x, tf.q.y, tf.q.z, tf.q.w);
     this.curve.setTransform(fo.RtoThreeV3(tf.origin), this.unbakeQuat);
+    this.occlusion.set(
+      nearestOccludingBodies(fo.r, frameAnchors.bodies, MAX_OCCLUDING_BODIES)
+        .map((body) => ({ position: fo.RtoThreeV3(body.state.r), radius: body.radius })),
+    );
   }
 
   // 表示を要求する。頂点数が2未満の間は実際には隠れたままになる。
