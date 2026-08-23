@@ -2,13 +2,13 @@ import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import {
   ChebyshevBodyNotFoundError,
-  ChebyshevAbsoluteEphemeris,
   ChebyshevEphemeris,
   ChebyshevTimeOutOfRangeError,
   evaluateChebyshev,
   evaluateChebyshevDerivative,
   findChebyshevSegmentIndex,
-} from '../../src/physics/ephemeris-pack';
+} from '../../src/physics/ephemeris-pack/evaluator';
+import { ChebyshevAbsoluteEphemeris } from '../../src/physics/ephemeris-pack/absolute-adapter';
 import { ChebyshevEphemerisPack } from '../../src/physics/ephemeris-pack/types';
 import { CelestialBodyId } from '../../src/physics/celestial-body';
 import { len, Vec3, v3 } from '../../src/physics/vec3';
