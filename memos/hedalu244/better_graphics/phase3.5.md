@@ -93,36 +93,6 @@ GPU の起動オプション依存で不安定である。**この環境はそ�
 
 ## 手順
 
-### 手順 4. 単独ビルドの器を作る
-
-**目的**: ゲーム本体と別のページとして立ち上がる土台を先に通す。中身はまだ無くてよい —
-**webpack・devServer・HTML の配線が通っていることだけを確かめる。**
-
-**変更が必要な箇所**
-
-| ファイル | 変更 |
-|---|---|
-| `webpack.render-lab.config.js`(新規) | `tools/render-lab/main.ts` を単独ビルド。出力 `.render-lab/`、devServer port 8082。`webpack.bgm-lab.config.js` と同じ形。**`EsbuildPlugin({ keepNames: true })` を `webpack.config.js` から写す**(クラス名がマングルされると TSL のノード実装が引けず本番ビルドだけ陰影が消える。撮影を本番ビルドで回す以上ここも同じにする) |
-| `tools/render-lab/index.html`(新規) | canvas 2 枚とケース選択のボタン列だけの素の HTML |
-| `tools/render-lab/main.ts`(新規) | この時点では canvas 1 枚へ `WebGPURenderer` を作って一色でクリアするだけ |
-| `package.json` | `"render-lab": "node node_modules/webpack-cli/bin/cli.js serve --config webpack.render-lab.config.js --mode development"` |
-| `.gitignore` | `.render-lab/` |
-| `CLAUDE.md` のコマンド表 | `npm run render-lab` の行(用途:描画を目で確かめるとき) |
-
-**このフェーズの範囲ではアセットの読み込みは要らない。** 持ち込む 3 種のうち
-`buildPlayerShip()` が読むのは `src/assets/models/*.json`(webpack 標準の JSON 解決で足りる)、
-`CelestialSurface.solid()` と `Curve` はどちらも外部ファイルを読まない。
-`.jpg` を読むのは Phase 4 が足す `earth` ケースからで、`asset/resource` はそのとき入れる。
-
-**達成条件と検証**
-
-- `npm run render-lab` でページが開き、canvas が塗られる。
-- `npm run typecheck`
-- `npm run render-lab` → ブラウザで canvas が単色で塗られていること
-- `git status` に `.render-lab/` が未追跡として出ないこと
-
----
-
 ### 手順 5. テストシーンの組み立てを書く
 
 **目的**: 何を描くかを、レンダラーから切り離した純粋な関数の表にする。
