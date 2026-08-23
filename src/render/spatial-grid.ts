@@ -4,6 +4,7 @@ import * as THREE from 'three/webgpu';
 import { Q_ECL_TO_ECI } from '../physics/ecliptic';
 import { FloatingOrigin } from '../game/floating-origin';
 import { Vec3, v3 } from '../physics/vec3';
+import { markOverlay } from './pipeline/lit-layer';
 
 export const SPATIAL_GRID_SPACING = 1e8; // 100,000 km [m]
 
@@ -59,6 +60,7 @@ const GRID_FADE_OUT_PX = 180;
 function makeLine(color: number): { line: THREE.LineSegments; material: THREE.LineBasicMaterial } {
   const material = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0, depthWrite: false });
   const line = new THREE.LineSegments(new THREE.BufferGeometry(), material);
+  markOverlay(line);
   line.frustumCulled = false;
   line.renderOrder = 0;
   return { line, material };

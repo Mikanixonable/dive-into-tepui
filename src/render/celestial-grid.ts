@@ -3,6 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { Q_ECL_TO_ECI } from '../physics/ecliptic';
 import { STAR_SHELL_RADIUS } from './stars';
+import { markOverlay } from './pipeline/lit-layer';
 
 export interface CelestialGridVisibility {
   readonly stars: boolean;
@@ -68,6 +69,7 @@ function makeLine(color: number, opacity: number): THREE.Line {
   const geo = new THREE.BufferGeometry();
   const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
   const line = new THREE.Line(geo, mat);
+  markOverlay(line);
   // 常にカメラを中心とする殻として置く(sync が position をカメラ位置へ毎フレーム合わせる)ため、
   // 外接球によるフラスタム判定は常に「視界内」を返し意味を持たない。
   line.frustumCulled = false;
@@ -81,6 +83,7 @@ function makeLineSegments(color: number, opacity: number): THREE.LineSegments {
   const geo = new THREE.BufferGeometry();
   const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
   const line = new THREE.LineSegments(geo, mat);
+  markOverlay(line);
   // makeLine と同じ理由(常にカメラ中心の殻)。
   line.frustumCulled = false;
   line.renderOrder = 0;
