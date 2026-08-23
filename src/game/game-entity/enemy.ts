@@ -15,7 +15,7 @@ import { solveLeadTime } from '../../physics/intercept';
 import { fmtMarkerDist } from '../hud/utils';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
-import { buildEnemyShip, buildStage0EnemyShip } from '../../render/ships';
+import { buildEnemyShip, buildPdb5i4rEnemyShip, buildStage0EnemyShip } from '../../render/ships';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { EffectsSystem } from '../vfx/effects-system';
 import { Player } from '../player/player';
@@ -29,7 +29,12 @@ import type { EnemySaveData } from '../save-data';
 import { currentThemePalette } from '../theme';
 
 // Enemy の見た目の種別。どの build を呼ぶかをコンストラクタ内部で選ぶための判別用。
-export type EnemyKind = { kind: 'drifting' } | { kind: 'stage0'; typeIndex: number };
+export type Pdb5i4rColorMode = 'chain' | 'b-factor' | 'entity';
+
+export type EnemyKind =
+  | { kind: 'drifting' }
+  | { kind: 'stage0'; typeIndex: number }
+  | { kind: 'pdb-5i4r'; colorMode?: Pdb5i4rColorMode };
 
 // enemyKind ごとの主慣性モーメント。'drifting' は非対称にしてジャニベコフ効果(中間軸不安定性)
 // を起こし、'stage0' は機首をプログレードへ向けたまま飛ぶので等方でよい。
@@ -54,7 +59,9 @@ function sunGlareSpreadScale(pos: Vec3, aimDir: Vec3, sunDir: Vec3): number {
 
 // enemyKind の種別に応じたメッシュを組む。
 function buildEnemyRenderObject(enemyKind: EnemyKind, accent: string | number): THREE.Object3D {
-  return enemyKind.kind === 'stage0' ? buildStage0EnemyShip(accent, enemyKind.typeIndex) : buildEnemyShip(accent);
+  if (enemyKind.kind === 'stage0') return buildStage0EnemyShip(accent, enemyKind.typeIndex);
+  if (enemyKind.kind === 'pdb-5i4r') return buildPdb5i4rEnemyShip(enemyKind.colorMode ?? 'chain');
+  return buildEnemyShip(accent);
 }
 
 // 新規配置は各フィールドを直接渡し、スナップショットからの再開は saved を simTime の
