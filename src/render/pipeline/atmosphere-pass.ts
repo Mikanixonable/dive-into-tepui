@@ -61,20 +61,21 @@ export class AtmospherePass {
     const rawDepth = texture(gbuffer.depthTexture, screenUV).r;
     const viewPos = getViewPosition(screenUV, rawDepth, this.projMatrixInverse);
     const opaquePos: Vec3Node = this.viewToWorld.mul(vec4(viewPos, 1)).xyz;
-    // カメラは描画座標の原点にいるので、不透明面の位置がそのまま視線になる。
-    const opaqueDist = length(opaquePos);
-    const rayDir = normalize(opaquePos);
+    const cameraPos: Vec3Node = this.viewToWorld.mul(vec4(0, 0, 0, 1)).xyz;
+    const toOpaque = sub(opaquePos, cameraPos);
+    const opaqueDist = length(toOpaque);
+    const rayDir = normalize(toOpaque);
 
     const surface = this.surfaceRadius;
     const shell = surface.add(RIM_MAX_H);
-    const toCamera = this.bodyCenter.negate();
+    const toCamera = sub(cameraPos, this.bodyCenter);
     const b = dot(toCamera, rayDir);
     const centerDistSq = dot(toCamera, toCamera);
 
     // 視線と大気シェルの交差のうち奥側。ここが、加算シェルを裏面で描いていたときの面にあたる。
     const shellDisc = b.mul(b).sub(centerDistSq.sub(shell.mul(shell)));
     const shellFar = b.negate().add(sqrt(max(shellDisc, 0)));
-    const shellPoint: Vec3Node = rayDir.mul(shellFar);
+    const shellPoint: Vec3Node = cameraPos.add(rayDir.mul(shellFar));
 
     // 天体本体による遮蔽。視線が本体を貫くなら、最接近高度で測った幅で縁をぼかして落とす。
     const bodyDisc = b.mul(b).sub(centerDistSq.sub(surface.mul(surface)));
@@ -101,7 +102,7 @@ export class AtmospherePass {
     // もや(aerial perspective): 大気層の内側にある不透明面は、視線が地平線に近いほど長い
     // 光路を通って見える。Beer-Lambert 則で haze = 1 − exp(−τ₀/cosθ)。
     const surfaceNormal = normalize(sub(opaquePos, this.bodyCenter));
-    const cosTheta = clamp(dot(surfaceNormal, normalize(opaquePos.negate())), HAZE_MIN_COS, 1);
+    const cosTheta = clamp(dot(surfaceNormal, rayDir.negate()), HAZE_MIN_COS, 1);
     const hazeDepth = float(1).sub(exp(float(HAZE_TAU0).div(cosTheta).negate()));
     const hazeSunDot = dot(surfaceNormal, normalize(sub(sunLight.position, opaquePos)));
     const insideShell = lessThan(length(sub(opaquePos, this.bodyCenter)), shell);
