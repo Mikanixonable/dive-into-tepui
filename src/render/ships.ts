@@ -440,6 +440,7 @@ export function buildPdb5i4rEnemyShip(colorMode: Pdb5i4rColorMode = 'chain'): TH
       pdb5i4rTubeColors(geometry, run.startIndex, run.points.length, pdb5i4rBackboneData.backboneCount, tubularSegments, colorMode);
     }
     const mesh = new THREE.Mesh(geometry, material);
+    mesh.userData.proteinComponent = pdb5i4rBackboneData.backboneChains[run.startIndex] ?? 'A';
     mesh.userData.ownsGeometry = true;
     mesh.userData.ownsMaterial = ownsMaterial;
     ownsMaterial = false;

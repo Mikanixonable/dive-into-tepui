@@ -78,6 +78,11 @@ export class EffectsSystem {
     );
   }
 
+  spawnProteinStateFlash(state: KinematicState, kind: string): void {
+    const color = kind === 'critical' ? 0xff3d88 : kind === 'dissociated' ? 0xa76dff : 0x59e7ff;
+    this.spawnFlash(state, 2.5, 13, 0.34, color, 0.9, true);
+  }
+
   // state は発生位置・発生源速度と、その位置が表す時刻(エポック)。積分前の座標から
   // 生成する場合も、その座標の時刻をそのまま渡せば取り残されない。
   spawnFlash(

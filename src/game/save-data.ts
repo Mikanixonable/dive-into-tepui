@@ -3,6 +3,7 @@ import { EnemyKind } from './game-entity/enemy';
 import { CelestialBodyId } from '../physics/celestial-body';
 import type { GamePhase } from './stages/stage';
 import type { WaveAttackSaveData } from './stages/stage-utils/wave-attack';
+import type { ProteinSaveData } from './protein/protein-schema';
 
 export interface Vec3SaveData {
   x: number;
@@ -126,6 +127,8 @@ export interface EnemySaveData extends EntitySaveData {
   burstDelay?: number;
   // プロパティウィンドウの軌道線表示トグル。旧セーブには無いため任意(既定 false)。
   showTrajectoryLine?: boolean;
+  // 5I4Rだけが持つ部位HP・フェーズ・修飾。旧セーブには存在しない。
+  protein?: ProteinSaveData;
 }
 
 export interface AmmoPickupSaveData extends EntitySaveData {

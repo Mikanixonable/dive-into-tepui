@@ -6,7 +6,7 @@ import { CelestialBody } from '../../physics/celestial-body';
 
 import { GameEntity } from './game-entity';
 import { closingSpeed, type Contact } from './contact';
-import { contactDamageSpeed } from './contact-damage';
+import { collisionDamageFraction, contactDamageSpeed } from './contact-damage';
 import { Attitude } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { R_EARTH_EQ } from '../../physics/solar-system';
@@ -27,6 +27,9 @@ import type { EntityManager } from '../simulation/entity-manager';
 import type { SimSpeedManager } from '../sim-speed-manager';
 import type { EnemySaveData } from '../save-data';
 import { currentThemePalette } from '../theme';
+import { PDB5I4R_ASSET } from '../protein/protein-asset-loader';
+import { ProteinRuntime } from '../protein/protein-runtime';
+import type { ProteinDamageResult } from '../protein/protein-combat-state';
 
 // Enemy の見た目の種別。どの build を呼ぶかをコンストラクタ内部で選ぶための判別用。
 export type Pdb5i4rColorMode = 'chain' | 'b-factor' | 'entity';
@@ -97,6 +100,7 @@ export class Enemy extends Ship {
   private readonly _worldSfx: WorldSfx;
   private readonly _fx: EffectsSystem;
   public readonly enemyKind: EnemyKind;
+  readonly proteinRuntime: ProteinRuntime | null;
 
   // init の enemyKind に応じたメッシュで Ship を初期化し、専用の軌道線をシーンへ追加する。
   constructor(
@@ -123,6 +127,9 @@ export class Enemy extends Ship {
     this._worldSfx = worldSfx;
     this._fx = fx;
     this.enemyKind = enemyKind;
+    this.proteinRuntime = enemyKind.kind === 'pdb-5i4r'
+      ? new ProteinRuntime(this.renderObject, PDB5I4R_ASSET, 'saved' in init ? init.saved.protein : undefined, 'saved' in init ? init.saved.health : undefined, this.id)
+      : null;
     this.accent = accent;
     this.waveId = waveId;
     this.mass = 10000;
@@ -135,8 +142,16 @@ export class Enemy extends Ship {
     this.radius = visualSphere.radius;
     this.orbitLineColor = orbitLineColor;
 
+    if (this.proteinRuntime) {
+      // Ship starts with the legacy 6 HP template; protein integrity is authoritative immediately,
+      // including newly spawned enemies before their first hit.
+      this.hp = this.proteinRuntime.combat.integrityHp;
+      this.maxHp = this.proteinRuntime.combat.integrityMaxHp;
+    }
     if ('saved' in init) {
-      this.setOverallHp(init.saved.health);
+      if (!this.proteinRuntime) {
+        this.setOverallHp(init.saved.health);
+      }
       this.burstLeft = init.saved.burstLeft;
       this.burstDelay = init.saved.burstDelay;
       this.alive = init.saved.alive;
@@ -149,7 +164,18 @@ export class Enemy extends Ship {
   setPdb5i4rColorMode(colorMode: Pdb5i4rColorMode): void {
     if (this.enemyKind.kind !== 'pdb-5i4r') return;
     this.enemyKind.colorMode = colorMode;
+    this.proteinRuntime?.clearVisuals();
     recolorPdb5i4rEnemyShip(this.renderObject, colorMode);
+    this.proteinRuntime?.rebuildVisuals();
+  }
+
+  get proteinHudSnapshot() {
+    return this.proteinRuntime?.hudSnapshot ?? null;
+  }
+
+  override sync(fo: import('../floating-origin').FloatingOrigin, displayTime: number): void {
+    super.sync(fo, displayTime);
+    if (this.proteinRuntime && this.renderObject.visible) this.proteinRuntime.updateVisual(displayTime);
   }
 
   // 個体色の CSS 表記。方位マーカー・LEAD マーカーの着色に使う。
@@ -208,7 +234,12 @@ export class Enemy extends Ship {
   private attackedByBullet(bullet: Bullet, impactPoint: Vec3, simTime: number, activeStage: Stage): void {
     activeStage.scoreCounter.recordHit();
 
-    this.applyDamageToParts(bullet.damage);
+    const proteinResult = this.proteinRuntime ? this.applyProteinDamage(bullet.damage, impactPoint) : null;
+    if (proteinResult) {
+      this.handleProteinDamage(proteinResult, impactPoint);
+    } else {
+      this.applyDamageToParts(bullet.damage);
+    }
     if (this.hp > 0) {
       this.impactEffect(bullet, impactPoint);
       return;
@@ -218,6 +249,27 @@ export class Enemy extends Ship {
     this.alive = false;
     activeStage.recordEnemyDeath(this, simTime, 'killed');
     this.destroyEffect();
+  }
+
+  private applyProteinDamage(amount: number, impactPoint: Vec3): ProteinDamageResult | null {
+    const runtime = this.proteinRuntime;
+    if (!runtime) return null;
+    const localPoint = runtime.localImpactPoint(impactPoint, this.state.r, this.att.q);
+    const result = runtime.combat.applyDamage(amount, localPoint);
+    this.hp = runtime.combat.integrityHp;
+    this.maxHp = runtime.combat.integrityMaxHp;
+    return result;
+  }
+
+  private handleProteinDamage(result: ProteinDamageResult, impactPoint: Vec3): void {
+    if (!this.proteinRuntime) return;
+    if (result.siteDisabled && this.proteinRuntime.charging) {
+      this.proteinRuntime.finishCharge();
+      this.proteinChargeStarted = undefined;
+    }
+    if (result.siteDisabled || result.phaseChanged) {
+      this._fx.spawnProteinStateFlash(kinematicState(this.state.t, impactPoint, this.state.v), result.phaseChanged ? result.phase : 'site-disabled');
+    }
   }
 
   // 弾は武装のダメージを、それ以外は接触の接近速度と相手の種別を根拠にする
@@ -246,6 +298,21 @@ export class Enemy extends Ship {
   private damagedByContact(
     damageSpeed: number, simTime: number, cause: EnemyDeathCause, activeStage: Stage,
   ): void {
+    if (this.proteinRuntime) {
+      const damageFraction = collisionDamageFraction(damageSpeed);
+      if (damageFraction <= 0) return;
+      const result = this.proteinRuntime.combat.applyContactDamage(this.maxHp * damageFraction);
+      this.hp = this.proteinRuntime.combat.integrityHp;
+      if (result.defeated) {
+        this.alive = false;
+        activeStage.recordEnemyDeath(this, simTime, cause);
+        this.destroyEffect();
+      } else {
+        this._worldSfx.clank();
+        this._fx.spawnGasPuff(this.state);
+      }
+      return;
+    }
     if (!this.applyCollisionDamage(damageSpeed)) return;
     if (this.hp > 0) {
       this._worldSfx.clank();
@@ -280,6 +347,10 @@ export class Enemy extends Ship {
     this.lastBehaviorSim = simTime;
     if (!simSpeed.canShipAct) return;
     if (!this.fireEnabled) return;
+    if (this.proteinRuntime) {
+      this.behaveProtein(behaviorDt, simTime, player, entities, ephemeris);
+      return;
+    }
     const dist = len(sub(player.state.r, this.state.r));
     if (!(dist < C.STAGE00_MAX_RANGE && dist > C.ENEMY_AI_MIN_RANGE)) return;
 
@@ -307,6 +378,38 @@ export class Enemy extends Ship {
     this.firePlasma(simTime, player, entities, ephemeris);
   }
 
+  private behaveProtein(behaviorDt: number, simTime: number, player: Player, entities: EntityManager, ephemeris: Ephemeris): void {
+    const runtime = this.proteinRuntime;
+    if (!runtime) return;
+    if (!runtime.combat.isActionEnabled('plasma-burst')) {
+      if (runtime.charging) runtime.finishCharge();
+      this.proteinChargeStarted = undefined;
+      return;
+    }
+    const dist = len(sub(player.state.r, this.state.r));
+    if (!(dist < C.STAGE00_MAX_RANGE && dist > C.ENEMY_AI_MIN_RANGE)) return;
+    const cooldown = C.ENEMY_FIRE_INTERVAL * 2.1 / runtime.combat.effectMultiplier('phosphate-1', 'fireRateMultiplier');
+    if (this.lastFireSim === undefined) this.lastFireSim = simTime - Math.random() * cooldown;
+    if (runtime.charging) {
+      const start = this.proteinChargeStarted ?? simTime;
+      const progress = Math.min(1, Math.max(0, (simTime - start) / 0.65));
+      runtime.setCharge(progress);
+      if (progress < 1) return;
+      this.firePlasma(simTime, player, entities, ephemeris, runtime.activeSiteWorldPosition(this.state.r, this.att.q));
+      runtime.finishCharge();
+      this.proteinChargeStarted = undefined;
+      this.lastFireSim = simTime;
+      return;
+    }
+    if (simTime - this.lastFireSim <= cooldown) return;
+    if (!runtime.beginCharge()) return;
+    this.proteinChargeStarted = simTime;
+    runtime.setCharge(0.02);
+    void behaviorDt;
+  }
+
+  private proteinChargeStarted?: number;
+
   // enemies のうち、自分と同じ accent でバースト射撃中の個体数を数える。
   private attackingCountInGroup(enemies: readonly Enemy[]): number {
     let n = 0;
@@ -317,8 +420,8 @@ export class Enemy extends Ship {
   }
 
   // player へ向けた見越し射撃でプラズマ弾を1発生成し、entities に追加する。
-  private firePlasma(simTime: number, player: Player, entities: EntityManager, ephemeris: Ephemeris): void {
-    const r = this.state.r;
+  private firePlasma(simTime: number, player: Player, entities: EntityManager, ephemeris: Ephemeris, origin = this.state.r): void {
+    const r = origin;
     const v = this.state.v;
     const toPlayer = sub(player.state.r, r);
     const relV = sub(player.state.v, v);
@@ -342,7 +445,10 @@ export class Enemy extends Ship {
 
     const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
 
-    const pb = new Bullet(kinematicState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', C.PLAYER_BULLET_DAMAGE, this._worldSfx, this.scene);
+    const bulletDamage = this.proteinRuntime
+      ? this.proteinRuntime.combat.projectileDamage(C.PLAYER_BULLET_DAMAGE)
+      : C.PLAYER_BULLET_DAMAGE;
+    const pb = new Bullet(kinematicState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', bulletDamage, this._worldSfx, this.scene);
     pb.renderObject.position.set(r.x, r.y, r.z);
     // 進行方向に向ける
     const mz = new THREE.Matrix4().lookAt(
@@ -351,6 +457,10 @@ export class Enemy extends Ship {
       new THREE.Vector3(0, 1, 0),
     );
     pb.renderObject.quaternion.setFromRotationMatrix(mz);
+
+    if (this.proteinRuntime) {
+      this._fx.spawnMuzzleFlash(kinematicState(simTime, r, v));
+    }
 
     entities.addBullet(pb);
   }
@@ -373,6 +483,12 @@ export class Enemy extends Ship {
       burstLeft: this.burstLeft,
       burstDelay: this.burstDelay,
       showTrajectoryLine: this.showTrajectoryLine,
+      protein: this.proteinRuntime?.combat.serialize(),
     };
+  }
+
+  override dispose(): void {
+    this.proteinRuntime?.dispose();
+    super.dispose();
   }
 }

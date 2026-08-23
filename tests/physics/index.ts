@@ -59,6 +59,7 @@ import { register as registerThermal } from './thermal.test';
 import { register as registerWindowAgreement } from './window-agreement.test';
 import { register as registerPlanArcRange } from './plan-arc-range.test';
 import './creative-placement-validation.test';
+import { register as registerProtein } from './protein-combat-state.test';
 
 registerVec3();
 registerKinematicState();
@@ -117,6 +118,7 @@ registerSurfaceCandidates();
 registerThermal();
 registerWindowAgreement();
 registerPlanArcRange();
+registerProtein();
 
 runAll().catch((error) => {
   console.error(error);

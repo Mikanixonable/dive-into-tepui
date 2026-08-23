@@ -15,6 +15,9 @@
     "typecheck": "tsc --noEmit",
     "test:physics": "tsc -p tsconfig.test.json && node tests/dist/tests/physics/index.js",
     "export-assets": "node tools/export-models.mjs",
+    "protein:author": "python3 tools/protein-builder/build-protein.py --require-blender",
+    "protein:validate": "node tools/protein-builder/validate-protein.mjs",
+    "protein:generate": "node tools/protein-builder/generate-protein-asset.mjs",
     "bgm-lab": "node node_modules/webpack-cli/bin/cli.js serve --config webpack.bgm-lab.config.js --mode development"
   },
   "devDependencies": {
