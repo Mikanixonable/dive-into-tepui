@@ -3,7 +3,11 @@
 import { CelestialBody } from './celestial-body';
 import { Vec3, v3 } from './vec3';
 
-export const SOLAR_PRESSURE_1AU = 4.56e-6; // 1天文単位における太陽輻射圧 [N/m^2]
+export const SPEED_OF_LIGHT = 299792458; // 真空中の光速 [m/s](SI 定義値)
+// 1天文単位における太陽の全波長放射照度 [W/m^2]。距離の2乗に反比例して弱まる。
+export const SOLAR_CONSTANT = 1361;
+// 完全吸収面が受ける輻射圧 [N/m^2]。放射照度を光速で割ったもので、独立した測定値ではない。
+export const SOLAR_PRESSURE_1AU = SOLAR_CONSTANT / SPEED_OF_LIGHT;
 // 天文単位。地球軌道の長半径(solar-system.ts)と数値は近いが、こちらは輻射圧の基準距離の
 // 定義値であって、地球がいまその距離にいるかとは無関係。
 export const ASTRONOMICAL_UNIT = 1.495978707e11; // [m]

@@ -10,6 +10,7 @@ import {
   aeroHeating, radiativeCooling, solarHeating, sphereNoseRadius, stepTemperature,
 } from '../../physics/thermal';
 import { sunlitFactor } from '../../physics/shadow';
+import { SOLAR_CONSTANT } from '../../physics/srp';
 import { ApsisTrack } from '../../physics/trajectory-features';
 import { Vec3, len, scale, sub, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
@@ -388,7 +389,7 @@ export class GameEntity {
     if (this.specificHeat <= 0) return;
     const atm = atmosphereBody?.atmosphere ?? null;
     let heating = solarHeating(
-      C.SOLAR_CONSTANT, sunDist, sunlit, this.solarAbsorbAreaPerMass(sunDir));
+      SOLAR_CONSTANT, sunDist, sunlit, this.solarAbsorbAreaPerMass(sunDir));
     if (atm !== null && this.bcInv > 0) {
       const { density, speed } = airflow(
         sub(this.state.r, atmosphereBody!.state.r),
