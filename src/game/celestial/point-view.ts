@@ -174,7 +174,8 @@ export class PointView extends CelestialView {
   ): void {
     const observerDistance = p.length();
     const sunDir = ephemeris.sunDirFrom(pos, displayTime);
-    // 位相角は天体から見た恒星方向と観測者方向の成す角。観測者は描画原点なので -p̂。
+    // 位相角は天体から見た恒星方向と観測者方向の成す角。観測者は描画原点なので -p̂ で、
+    // フローティングオリジンは平行移動しかしないため、描画座標の向きは ECI の向きと一致する。
     tmpToObserver.copy(p).negate().normalize();
     const cosPhase = Math.max(-1, Math.min(1,
       sunDir.x * tmpToObserver.x + sunDir.y * tmpToObserver.y + sunDir.z * tmpToObserver.z));
