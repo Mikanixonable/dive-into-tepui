@@ -5,6 +5,11 @@ import * as C from '../../const';
 import { MQ_COARSE, MQ_COARSE_SHORT, MQ_COMPACT, MQ_MEDIUM_DOWN, MQ_SHORT } from '../breakpoints';
 
 export const PANEL_CONTENT_STYLE = `
+  .protein-target-details { margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--line-subtle); }
+  .protein-target-heading { display: flex; justify-content: space-between; color: var(--text-muted); font-size: var(--font-xxs); letter-spacing: .08em; }
+  .protein-site-row { display: grid; grid-template-columns: 5.2rem minmax(3rem, 1fr) auto; gap: var(--space-2); align-items: center; margin-top: var(--space-2); font-size: var(--font-xxs); }
+  .protein-site-meter { height: 4px; background: var(--line-subtle); overflow: hidden; }
+  .protein-site-meter i { display: block; height: 100%; background: var(--signal); }
 #hud-vessel-status h3 { font-size: var(--font-xxs); }
 /* 通常のマップビューでは艦固有の情報を右クリックのプロパティウィンドウで参照するので、常設の
    SHIP STATUS は畳んでパネル占有面積を減らす。クリエイティブでは配置後の操作用に表示する。 */

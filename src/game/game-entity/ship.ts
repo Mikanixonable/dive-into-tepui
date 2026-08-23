@@ -4,6 +4,7 @@ import { KinematicState } from '../../physics/kinematic-state';
 import * as C from '../const';
 import { GameEntity } from './game-entity';
 import { Part, PartType, createPart } from './parts';
+import { collisionDamageFraction } from './contact-damage';
 import { SHIP_ARROWHEAD_POINTS } from '../marker/marker-shapes';
 import type {
   ArmorPart,
@@ -153,8 +154,7 @@ export abstract class Ship extends GameEntity {
   // 接触の重み付き接近速度に応じたダメージをパーツへ適用し、ダメージが発生したかを返す。
   // part を指定すると割り振り先をそのパーツに固定する。
   protected applyCollisionDamage(closingSpeed: number, part?: Part): boolean {
-    const span = C.COLLISION_DAMAGE_FULL_CLOSING_SPEED - C.COLLISION_DAMAGE_MIN_CLOSING_SPEED;
-    const t = Math.min(1, Math.max(0, (closingSpeed - C.COLLISION_DAMAGE_MIN_CLOSING_SPEED) / span));
+    const t = collisionDamageFraction(closingSpeed);
     if (t <= 0) return false;
 
     const damage = this.maxHp * t;
