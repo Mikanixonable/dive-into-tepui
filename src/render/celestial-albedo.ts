@@ -121,11 +121,14 @@ export function albedoOf(id: string): Albedo {
   return CELESTIAL_ALBEDO[id] ?? DEFAULT_ALBEDO;
 }
 
+// 線形 RGB の Rec.709 輝度。色みを持つアルベドを、ボンドアルベドという1つのスカラへ落とす。
+export function rec709Luminance(albedo: Albedo): number {
+  return 0.2126 * albedo[0] + 0.7152 * albedo[1] + 0.0722 * albedo[2];
+}
+
 // id のボンドアルベドをスカラ1つで。実写テクスチャを持つ天体はその倍率の導出元
-// (celestial-textures.ts)を、それ以外は単色アルベドの Rec.709 輝度を返す。
+// (celestial-textures.ts)を、それ以外は単色アルベドの輝度を返す。
 export function bondAlbedoOf(id: string): number {
   const texture = textureOf(id);
-  if (texture !== null) return texture.bondAlbedo;
-  const [r, g, b] = albedoOf(id);
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return texture !== null ? texture.bondAlbedo : rec709Luminance(albedoOf(id));
 }

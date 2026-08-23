@@ -17,9 +17,17 @@ export const PLASMA_IMPACT_FLASH_COLOR = '#ffa0ff';
 export const PLASMA_IMPACT_FLASH_SIZE0 = 2;
 export const PLASMA_IMPACT_FLASH_SIZE1 = 8;
 export const PLASMA_IMPACT_FLASH_DURATION = 0.3;
-// 被弾・デブリ命中時のガス放出。灰色の低透明度のビルボードを2枚重ねて気体らしさを出す。
+// 被弾・デブリ命中時のガス放出。薄く広がる灰色のビルボードを2枚重ねて気体らしさを出す。
 export const GAS_PUFF_COLOR_1 = '#aaaaaa';
+export const GAS_PUFF1_SIZE0 = 1.0;
+export const GAS_PUFF1_SIZE1 = 8.0;
+export const GAS_PUFF1_DURATION = 0.45;
+export const GAS_PUFF1_BRIGHTNESS = 0.3;
 export const GAS_PUFF_COLOR_2 = '#ffffff';
+export const GAS_PUFF2_SIZE0 = 0.5;
+export const GAS_PUFF2_SIZE1 = 6.0;
+export const GAS_PUFF2_DURATION = 0.35;
+export const GAS_PUFF2_BRIGHTNESS = 0.4;
 // 撃破フラッシュ。芯(1)と外殻(2)の2枚。サイズは敵機の ENEMY_SCALE 倍される。
 export const DESTROY_FLASH_COLOR_1 = '#ffb36b';
 export const DESTROY_FLASH1_SIZE0 = 10;

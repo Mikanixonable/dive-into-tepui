@@ -2,7 +2,7 @@
 // シーンへ足すのもチャンネルを振るのも呼び出し側の仕事。ケースを増やすのはこの表への追記で済む。
 import * as THREE from 'three/webgpu';
 import { CelestialSurface } from '../../src/render/celestial-surface';
-import type { Albedo } from '../../src/render/celestial-albedo';
+import { rec709Luminance, type Albedo } from '../../src/render/celestial-albedo';
 import { createEarth } from '../../src/render/earth';
 import { R_EARTH } from '../../src/physics/solar-system';
 import { Curve } from '../../src/render/curve';
@@ -14,6 +14,7 @@ import { RingView } from '../../src/game/celestial/ring-view';
 import { sunIrradianceAtDistance } from '../../src/render/pipeline/sun-light';
 import { AU } from '../../src/physics/planet-orbit';
 import { bodyDef, SOLAR_SYSTEM } from '../../src/physics/solar-system';
+import { textureOf } from '../../src/render/celestial-textures';
 import { v3 } from '../../src/physics/vec3';
 import { LINE_RENDER_ORDER } from '../../src/render/line-style';
 
@@ -32,11 +33,17 @@ const SATURN_RINGS = (() => {
 // 全ケース共通の恒星方向。球の陰影と、呼び出し側が置く光源が同じ向きを使う。
 export const SUN_DIR = new THREE.Vector3(1, 0.35, 0.5).normalize();
 
+// 色みはそのままに、Rec.709 輝度がボンドアルベドと一致するよう倍率を合わせる。
+function scaleToBondAlbedo(hue: Albedo, bondAlbedo: number): Albedo {
+  const k = bondAlbedo / rec709Luminance(hue);
+  return [hue[0] * k, hue[1] * k, hue[2] * k];
+}
+
 // テスト用の球のアルベド。実在天体の値ではなく、線・深度・陰影を読むための識別色。
 const BLUE_SPHERE_ALBEDO: Albedo = [0.0242, 0.15, 0.4342];
 const GREY_SPHERE_ALBEDO: Albedo = [0.521, 0.4793, 0.4179];
-// 土星本体。実写テクスチャの平均色を、公表ボンドアルベド 0.342 の輝度へ合わせたもの。
-const SATURN_ALBEDO: Albedo = [0.4114, 0.3339, 0.2181];
+// 土星本体。実写テクスチャの平均色の色みを、その天体のボンドアルベドの輝度へ合わせたもの。
+const SATURN_ALBEDO: Albedo = scaleToBondAlbedo([1, 0.812, 0.530], textureOf('saturn')!.bondAlbedo);
 
 // カメラは常に原点から -Z を見る。near はゲーム本体と同じ 2 m(深度分解能の導出がこの値に乗る)。
 const EYE = new THREE.Vector3(0, 0, 0);

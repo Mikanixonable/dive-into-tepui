@@ -5,7 +5,6 @@
 // celestial-textures.ts)。ここに残るのは id・表示名・どの view クラスを使うかの選択だけ。
 import { bodyDef, CelestialRegistry, RingSystemDef, ShapeDef, SOLAR_SYSTEM, SolarSystemId } from '../../physics/solar-system';
 import { CelestialBodyId } from '../../physics/celestial-body';
-import { createMoon } from '../../render/stars';
 import { CelestialSurface } from '../../render/celestial-surface';
 import { albedoOf, DEFAULT_ALBEDO } from '../../render/celestial-albedo';
 import { textureOf } from '../../render/celestial-textures';
@@ -22,6 +21,15 @@ function texturedSurface(id: SolarSystemId): (level: SphereLodLevel) => Celestia
   const texture = textureOf(id);
   if (texture === null) throw new Error(`no texture registered for ${id}`);
   return (level) => CelestialSurface.textured(texture.url, texture.albedoScale, level.widthSegments, level.heightSegments);
+}
+
+// 月の表面。テクスチャの経度原点をモデルの本初子午線(+Z)へ揃えるためにジオメトリを回すので、
+// 分割段ラダーの共有ジオメトリには乗せられない(乗せると他の天体まで一緒に回る)。
+function moonSurface(): CelestialSurface {
+  const moon = textureOf('moon')!;
+  const surface = CelestialSurface.textured(moon.url, moon.albedoScale, 64, 32);
+  surface.mesh.geometry.rotateY(-Math.PI / 2);
+  return surface;
 }
 
 // id のアルベドを LOD 段ごとの単色球面へ与える関数。
@@ -80,7 +88,7 @@ export type CelestialViewDef = { readonly name: string; create(): CelestialView 
 
 export const CELESTIAL_VIEWS: Record<SolarSystemId, CelestialViewDef> = {
   earth: { name: '地球', create: () => new EarthView() },
-  moon: { name: '月', create: () => new SphereView('moon', createMoon, bodyDef(SOLAR_SYSTEM, 'moon').radius) },
+  moon: { name: '月', create: () => new SphereView('moon', moonSurface, bodyDef(SOLAR_SYSTEM, 'moon').radius) },
   mercury: planetEntry('mercury', '水星'),
   venus: planetEntry('venus', '金星'),
   mars: planetEntry('mars', '火星'),
