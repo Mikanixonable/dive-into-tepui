@@ -29,6 +29,7 @@ export class Hud {
   readonly overlayManager: OverlayManager;
   readonly helpPanel: HelpPanel;
   readonly simulationStatusBar: SimulationStatusBar;
+  readonly viewBadgeRow: HTMLElement;
   readonly mapScaleBadge: MapScaleBadge;
   readonly vesselPanel: VesselPanel;
   readonly orbitPanel: OrbitPanel;
@@ -51,6 +52,7 @@ export class Hud {
     this.overlayManager = overlayManager;
     this.helpPanel = helpPanel;
     this.simulationStatusBar = new SimulationStatusBar(els);
+    this.viewBadgeRow = els.get('gs-viewrow')!;
     this.mapScaleBadge = new MapScaleBadge(els);
     this.vesselPanel = new VesselPanel(els);
     this.orbitPanel = new OrbitPanel(els);
