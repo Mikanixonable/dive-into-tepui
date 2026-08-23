@@ -1,13 +1,26 @@
 // HUD の固定バッジ・ステータスバー・通知 CSS (視点バッジ、シミュレーションステータス、スケール定規、ヒント、トースト、カメラリセット)。
 
 export const HUD_BADGE_STYLE = `
+#hud-simulation-status {
+  position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  pointer-events: auto;
+  padding: var(--space-3) var(--space-5); border-radius: 0 0 var(--radius-panel) var(--radius-panel);
+  background: var(--glass-quiet); border: 0; backdrop-filter: blur(14px) saturate(82%);
+  font-size: var(--font-s); letter-spacing: 1px; font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-2);
+  max-width: calc(100vw - var(--space-6) * 2);
+}
+#hud-simulation-status .gs-row {
+  display: flex; align-items: center; gap: var(--space-4); white-space: nowrap;
+  max-width: 100%; overflow-x: auto; scrollbar-width: none;
+}
+#hud-simulation-status .v { color: var(--text); }
+#hud-simulation-status .gs-sep { color: var(--edge); }
+
 #hud-viewbadge {
-  position: absolute; top: 8px; left: 48px;
-  display: flex; align-items: center; gap: var(--space-3);
-  padding: var(--space-2) var(--space-4); border-radius: var(--radius-control);
-  background: var(--glass-quiet); backdrop-filter: blur(14px) saturate(82%);
-  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: 1.2px;
-  white-space: nowrap; opacity: 0.9;
+  gap: var(--space-3);
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: 1.2px; opacity: 0.9;
 }
 #hud-viewbadge .vb-title { color: var(--accent); }
 #hud-viewbadge .vb-mode { color: var(--text-dim); }
@@ -17,19 +30,6 @@ export const HUD_BADGE_STYLE = `
   color: var(--text-dim); font: inherit; letter-spacing: inherit;
 }
 #hud-viewbadge span.vb-view-btn:hover { color: var(--text); border-color: var(--accent-soft); }
-
-#hud-simulation-status {
-  position: absolute; top: 0; left: 50%; transform: translateX(-50%);
-  pointer-events: auto;
-  padding: var(--space-3) var(--space-5); border-radius: 0 0 var(--radius-panel) var(--radius-panel);
-  background: var(--glass-quiet); border: 0; backdrop-filter: blur(14px) saturate(82%);
-  font-size: var(--font-s); letter-spacing: 1px; font-variant-numeric: tabular-nums;
-  color: var(--text-dim);
-  display: flex; align-items: center; gap: var(--space-4); white-space: nowrap;
-  max-width: calc(100vw - var(--space-6) * 2); overflow-x: auto; scrollbar-width: none;
-}
-#hud-simulation-status .v { color: var(--text); }
-#hud-simulation-status .gs-sep { color: var(--edge); }
 
 #hud-map-scale {
   position: absolute; right: 12px; bottom: 12px; display: none; pointer-events: none;
