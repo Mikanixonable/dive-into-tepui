@@ -26,10 +26,10 @@ export class LightPrepass {
   // QuadMesh は固定直交カメラで描かれるため、実カメラの逆射影行列は毎フレーム自前で書き込む
   // (render-pipeline.ts の depthDebugNear/Far と同じ理由)。
   private readonly projMatrixInverse: Mat4Uniform;
-  // 恒星方向は世界座標(SunLight.direction)で保持されるので、G バッファの法線と同じ view 空間へ
-  // 回転した値を毎フレーム CPU 側で用意する — シェーダ内で行列を組むより単純。
-  private readonly sunDirectionView: Vec3Uniform;
-  private readonly scratchDir = new THREE.Vector3();
+  // 恒星の位置は描画座標(SunLight.position)で保持されるので、G バッファの法線・復元位置と
+  // 同じ view 空間へ移した値を毎フレーム CPU 側で用意する — シェーダ内で行列を組むより単純。
+  private readonly sunPositionView: Vec3Uniform;
+  private readonly scratchPosition = new THREE.Vector3();
 
   constructor(
     renderer: WebGPURenderer,
@@ -51,7 +51,7 @@ export class LightPrepass {
     specularTex!.type = THREE.HalfFloatType;
 
     this.projMatrixInverse = uniform(new THREE.Matrix4());
-    this.sunDirectionView = uniform(new THREE.Vector3(0, 1, 0));
+    this.sunPositionView = uniform(new THREE.Vector3(0, 1, 0));
 
     const rawDepth = texture(this.gbuffer.depthTexture, screenUV).r;
     const normal = octDecodeNormal(texture(this.gbuffer.normalTexture, screenUV).rg);
@@ -62,12 +62,16 @@ export class LightPrepass {
     // G バッファのサンプルと同じ screenUV をそのまま渡してよい。
     const viewPos = getViewPosition(screenUV, rawDepth, this.projMatrixInverse);
     const viewDir = normalize(viewPos.negate());
-    const lightDir = this.sunDirectionView;
+    // 恒星は点光源。画素ごとに差分ベクトルを取るので、方向も逆二乗の減衰もその画素のものになる。
+    const toSun = this.sunPositionView.sub(viewPos);
+    const lightDir = normalize(toSun);
 
     const dotNL: FloatNode = saturate(dot(normal, lightDir));
-    // 恒星から届く放射輝度(遮蔽込み)。拡散・鏡面の両方がこれを基準に反射率を掛ける。
-    const sunRadiance: Vec3Node = this.sunLight.color.mul(this.sunLight.intensity).mul(dotNL).mul(this.sunLight.sunVisibility());
-    const diffuse: Vec3Node = sunRadiance.add(this.sunLight.ambientColor.mul(this.sunLight.ambientIntensity));
+    // 恒星から届く放射照度(遮蔽込み)。拡散・鏡面の両方がこれを基準に BRDF を掛ける。
+    const irradiance: Vec3Node = this.sunLight.color
+      .mul(this.sunLight.intensity).div(dot(toSun, toSun))
+      .mul(dotNL).mul(this.sunLight.sunVisibility());
+    const diffuse: Vec3Node = irradiance.add(this.sunLight.ambientColor.mul(this.sunLight.ambientIntensity));
 
     const alpha = roughnessValue.mul(roughnessValue);
     const halfDir = normalize(lightDir.add(viewDir));
@@ -81,7 +85,7 @@ export class LightPrepass {
     const visibility = V_GGX_SmithCorrelated({ alpha, dotNL, dotNV }) as unknown as FloatNode;
     const distribution = D_GGX({ alpha, dotNH }) as unknown as FloatNode;
     const ggx = fresnel.mul(visibility).mul(distribution);
-    const specular: Vec3Node = sunRadiance.mul(ggx);
+    const specular: Vec3Node = irradiance.mul(ggx);
 
     this.mrtNode = mrt({ diffuse: vec4(diffuse, 1), specular: vec4(specular, 1) });
 
@@ -92,14 +96,14 @@ export class LightPrepass {
   get diffuseTexture(): THREE.Texture { return this.target.textures[0]!; }
   get specularTexture(): THREE.Texture { return this.target.textures[1]!; }
 
-  // G バッファを読んで拡散/鏡面の照度バッファへ書く。camera は逆射影行列と恒星方向の view 空間
+  // G バッファを読んで拡散/鏡面の照度バッファへ書く。camera は逆射影行列と恒星位置の view 空間
   // 変換を毎フレーム引き直すためだけに使い、シーン自体は描かない(フルスクリーン1枚のみ)。
   render(camera: THREE.Camera, width: number, height: number): void {
     if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
 
     this.projMatrixInverse.value.copy(camera.projectionMatrixInverse);
-    this.scratchDir.copy(this.sunLight.direction.value).transformDirection(camera.matrixWorldInverse);
-    this.sunDirectionView.value.copy(this.scratchDir);
+    this.scratchPosition.copy(this.sunLight.position.value).applyMatrix4(camera.matrixWorldInverse);
+    this.sunPositionView.value.copy(this.scratchPosition);
 
     this.renderer.setMRT(this.mrtNode);
     this.renderer.setRenderTarget(this.target);
