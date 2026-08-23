@@ -32,13 +32,29 @@ export function clipSamplesTo(
   return source.slice(0, cut);
 }
 
-// 時刻昇順のサンプル列を start で切る。先頭から start に満たない間だけ削り、削る必要が無ければ
-// source をそのまま返す。
-export function clipSamplesFrom(
-  source: readonly KinematicState[], start: number,
+// 時刻範囲の両端を状態列上で補間し、範囲内の元サンプルと合わせて返す。表示線と、その線を
+// 走査する交点探索が同じ境界を読むための共有処理。at は元の弧が答えられる範囲だけを返し、
+// 範囲外では null を返す。
+export function samplesInRange(
+  source: readonly KinematicState[], from: number, to: number,
+  at: (t: number) => KinematicState | null,
 ): readonly KinematicState[] {
-  if (source.length === 0 || source[0]!.t >= start) return source;
-  let cut = 0;
-  while (cut < source.length && source[cut]!.t < start) cut++;
-  return source.slice(cut);
+  if (source.length === 0 || to < from) return [];
+  const start = Math.max(from, source[0]!.t);
+  const end = Math.min(to, source[source.length - 1]!.t);
+  if (end < start) return [];
+
+  const result: KinematicState[] = [];
+  const append = (state: KinematicState | null): void => {
+    if (!state) return;
+    const last = result[result.length - 1];
+    if (last && Math.abs(last.t - state.t) <= EPOCH_EPS) return;
+    result.push(state);
+  };
+  append(at(start));
+  for (const state of source) {
+    if (state.t > start + EPOCH_EPS && state.t < end - EPOCH_EPS) append(state);
+  }
+  append(at(end));
+  return result;
 }
