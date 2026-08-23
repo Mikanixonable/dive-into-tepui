@@ -93,6 +93,8 @@ export class LabView {
     this.pipeline.occlusion.setOccluders(this.current.occluders ?? []);
     const rings = this.current.rings;
     this.pipeline.occlusion.setRings(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
+    const atmosphere = this.current.atmosphere;
+    this.pipeline.atmosphere.setBody(atmosphere?.center ?? ORIGIN, atmosphere?.surfaceRadius ?? 0);
     this.pipeline.render(this.scene, this.current.camera);
   }
 
