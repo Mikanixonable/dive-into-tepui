@@ -1,16 +1,13 @@
-// 太陽の見た目: 戦闘視点はカメラ相対に置くビルボード、広範囲視点は実位置・実半径の球体。
+// 太陽の見た目: 実位置・実半径の自発光球体と、戦闘視点でその周りへ重ねるグロー。
 import * as THREE from 'three/webgpu';
-import { createSun, Sun } from '../../render/stars';
+import { createSun, Sun, STAR_GLOW_SIZE_RATIO } from '../../render/stars';
 import { Ephemeris } from '../../physics/ephemeris';
 import { CelestialBodyId } from '../../physics/celestial-body';
 import { R_SUN } from '../../physics/solar-system';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
-import { compressionRatio, STAR_BILLBOARD_SIZE } from '../../render/view-compression';
 import { CelestialView } from './celestial-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
-
-const tmpSunPos = new THREE.Vector3();
 
 export class SunView extends CelestialView {
   readonly id: CelestialBodyId;
@@ -33,31 +30,26 @@ export class SunView extends CelestialView {
     this.sun.mesh.visible = visible;
   }
 
-  // displayTime 時点の方向・位置へビルボード/実球体を同期する。
+  // displayTime 時点の実位置へ球体を置き、戦闘視点でだけグローを重ねる。グローは太陽へ
+  // 十分に近づけるマップビューでは画面を埋め尽くしてしまうので出さない。
   sync(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris,
     _graphics: GraphicsSettingsData,
   ): void {
     if (!this.sun.billboard.mesh.visible && !this.sun.mesh.visible) return;
     const p = fo.RtoThreeV3(ephemeris.positionOf(this.id, displayTime));
+    this.sun.mesh.position.copy(p);
+    this.sun.mesh.scale.setScalar(this.radius);
+    this.sun.mesh.visible = true;
     if (cameraSystem.overviewMode) {
-      // 広範囲視点は実スケール: 実 ECI 位置に実半径で置き、ビルボードは隠す
-      // (SphereView の月・木星と同じ扱い)。
-      this.sun.mesh.position.copy(p);
-      this.sun.mesh.scale.setScalar(this.radius);
-      this.sun.mesh.visible = true;
       this.sun.billboard.hide();
     } else {
-      // ビルボードは方向のみ実天体暦に従うカメラ相対の空の遠景。大きさは実半径を圧縮した値
-      // ではなく、実視直径よりやや大きめの固定値。
-      const k = compressionRatio(p, 'star', false);
       this.sun.billboard.sync(
-        tmpSunPos.copy(p).multiplyScalar(k),
-        STAR_BILLBOARD_SIZE,
+        p,
+        this.radius * STAR_GLOW_SIZE_RATIO,
         1,
         cameraSystem.activeCamera.quaternion,
       );
-      this.sun.mesh.visible = false;
     }
   }
 
