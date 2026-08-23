@@ -148,6 +148,9 @@ export class Targeter {
       if (!ds) continue;
       const visibility = visibilityPolicy?.entity(tgt instanceof Player ? 'player' : (tgt instanceof Base ? 'base' : 'ship'), tgt === player);
       if (visibility && !visibility.pickable) continue;
+      // 戦闘ビューではカメラ直下の自機をマーカーで重ねて表示しない。マップビューでは
+      // 他の自機と同じ位置マーカーが必要なので、操作対象かつ戦闘ビューのときだけ除外する。
+      if (!overviewMode && tgt === player) continue;
       const role: MarkerRole = tgt === this.aliveTarget ? 'primary' : 'none';
       const item = tgt instanceof Player
         ? tgt.markerItem(role, viewerPos, ds.r, ds.v, overviewMode, tgt === player)
