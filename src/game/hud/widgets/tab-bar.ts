@@ -23,6 +23,9 @@ export class TabBar<T> {
       const selected = v === value;
       btn.setOn(selected);
       btn.element.setAttribute('aria-selected', String(selected));
+      // タブは排他ボタンの見た目を借りるが、ARIA上は aria-pressed ではなく
+      // aria-selected で選択状態を表す。
+      btn.element.removeAttribute('aria-pressed');
     }
   }
 
