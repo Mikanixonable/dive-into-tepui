@@ -3,7 +3,8 @@ export { DraggableWindow, type DraggableWindowOptions } from './draggable-window
 export { ContextMenu, type MenuItem } from './context-menu';
 export { PauseMenu } from './pause-menu';
 export {
-  PropertyWindow, type PropertyRow, type PropertyWindowItem, type PropertyWindowContent,
+  PropertyWindow, type PropertyRow, type PropertyWindowItem, type PropertyWindowRelatedItem,
+  type PropertyWindowContent,
 } from './property-window';
 export { ObjectPicker, type ObjectPickerGroup } from './object-picker';
 export { ResourceTransferDialog } from './resource-transfer-dialog';

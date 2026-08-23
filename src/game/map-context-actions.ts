@@ -9,6 +9,7 @@ import { orbitInfo, relativeInfo } from './hud/orbit/orbit-info';
 import { autoOrbitReference } from './orbit-reference';
 import {
   ContextMenu, MenuItem, PropertyRow, PropertyWindow, PropertyWindowContent, PropertyWindowItem,
+  type PropertyWindowRelatedItem,
   MenuAction, MenuCommon, type PauseMenu,
 } from './hud/windows';
 import { TEMP_WINDOW_GROUP } from './hud/overlay-manager';
@@ -40,7 +41,7 @@ import { add, cross, len, norm, scale, sub, v3 } from '../physics/vec3';
 import { metersPerPixel } from '../physics/projection';
 import type { ObjectType } from './creative/object-placer-panel';
 import type { KinematicState } from '../physics/kinematic-state';
-import { CelestialBody, orbitalElementsOf, strongestAttractor } from '../physics/celestial-body';
+import { CelestialBody, orbitalElementsOf, orbitingAttractorOf, strongestAttractor } from '../physics/celestial-body';
 import { apsisAltitudes } from '../physics/elements';
 import { bodyDef, primaryOf } from '../physics/solar-system';
 import * as C from './const';
@@ -379,6 +380,7 @@ export class MapContextActions {
       entry.target = byKey.get(key) ?? entry.target;
       const { title, subtitle, items: menuItems } = this.windowParts(entry.target, simTime);
       entry.win.syncHeader(title, subtitle);
+      entry.win.syncRelatedItems(this.relatedItemsFor(entry.target, celestialBodies));
       entry.win.syncRows(this.buildRows(entry.target, celestialBodies, player, simTime));
       entry.win.syncItems(menuItems);
       entry.win.syncBadge(this.physicalObjectListPanel.isSelected(entry.target.id) ? 'on'
@@ -753,7 +755,11 @@ export class MapContextActions {
   // 抜き出す。開いた直後から sync 時と同じ経路(windowParts)で求める。
   private buildContent(target: MapPickable, simTime: number): PropertyWindowContent<MenuAction> {
     const { title, subtitle, items } = this.windowParts(target, simTime);
-    return { title, subtitle, icon: this.iconFor(target), rows: [], items, onRename: this.renameHandlerFor(target) };
+    return {
+      title, subtitle, icon: this.iconFor(target), rows: [], items,
+      relatedItems: this.relatedItemsFor(target, this.ephemeris.celestialBodiesAt(simTime)),
+      onRename: this.renameHandlerFor(target),
+    };
   }
 
   // ウィンドウ題名に添えるグリフ。マップ実マーカーと同じ字形族(ENTITY_GLYPH/ORBIT_POINT_GLYPH)
@@ -956,6 +962,49 @@ export class MapContextActions {
       { key: 'prd', label: ORBIT_ELEMENT_LABELS.prd.full, value: fmtTime(el.period), group: '軌道' },
     );
     return rows;
+  }
+
+  // 天体プロパティーの先頭に表示する、現在その天体を周回している物体。
+  // 天体は静的な primaryOf、人工物は現在状態から orbitingAttractorOf で判定する。
+  private relatedItemsFor(
+    target: MapPickable, celestialBodies: readonly CelestialBody[],
+  ): readonly PropertyWindowRelatedItem[] {
+    if (target.kind !== 'body' || LAGRANGE_ID.test(target.id) || !(target.id in this.ephemeris.registry)) return [];
+    const related: { item: MapPickable; label: string }[] = [];
+    for (const item of this.pickables.pickables) {
+      if (item.id === target.id) continue;
+      let isOrbiting = false;
+      if (item.kind === 'body') {
+        isOrbiting = primaryOf(this.ephemeris.registry, item.id) === target.id;
+      } else {
+        const state = this.stateOfPickable(item);
+        isOrbiting = state !== null && orbitingAttractorOf(state, celestialBodies)?.id === target.id;
+      }
+      if (isOrbiting) related.push({ item, label: item.name });
+    }
+    related.sort((a, b) => a.label.localeCompare(b.label));
+    return related.map(({ item, label }) => ({
+      id: this.windowKey(item),
+      label,
+      onFocus: () => {
+        this.frameControls.setFocus({ kind: 'object', id: item.id });
+        this.hud.hint(`${label} にフォーカス`);
+      },
+      onContextMenu: (clientX, clientY) => {
+        const current = this.pickables.pickables.find((candidate) => this.windowKey(candidate) === this.windowKey(item));
+        if (current) this.openPropertyWindow(clientX, clientY, current, this.pickables.lastSimTime);
+      },
+    }));
+  }
+
+  private stateOfPickable(item: MapPickable): KinematicState | null {
+    switch (item.kind) {
+      case 'player': return this.entities.findPlayer(item.id)?.state ?? null;
+      case 'ship': return this.entities.findEnemy(item.id)?.state ?? null;
+      case 'ammo': return this.entities.ammoPickups.find((ammo) => ammo.id === item.id)?.state ?? null;
+      case 'base': return this.entities.findBase(item.id)?.state ?? null;
+      default: return null;
+    }
   }
 
   // Pe/Ap の別・AN/DN の別はタイトル側(header)に既に出ているので、ここには乗せない。
