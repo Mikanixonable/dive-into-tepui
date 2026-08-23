@@ -27,6 +27,9 @@ import type { EntityManager } from '../simulation/entity-manager';
 import type { SimSpeedManager } from '../sim-speed-manager';
 import type { EnemySaveData } from '../save-data';
 import { currentThemePalette } from '../theme';
+import {
+  ENEMY_DESTROY_FRAG_COLOR,
+} from '../../render/vfx-style';
 
 // Enemy の見た目の種別。どの build を呼ぶかをコンストラクタ内部で選ぶための判別用。
 export type EnemyKind = { kind: 'drifting' } | { kind: 'stage0'; typeIndex: number };
@@ -186,7 +189,7 @@ export class Enemy extends Ship {
   private destroyEffect(): void {
     this._worldSfx.explosion();
     // 敵機は自機の ENEMY_SCALE 倍サイズなので、撃破エフェクトも見合った大きさにする
-    this._fx.spawnShipDestroyEffect(this.state, C.ENEMY_SCALE, C.COLOR_ENEMY_DESTROY_FRAG);
+    this._fx.spawnShipDestroyEffect(this.state, C.ENEMY_SCALE, ENEMY_DESTROY_FRAG_COLOR);
   }
 
   // 被弾によるダメージ・致死判定。
