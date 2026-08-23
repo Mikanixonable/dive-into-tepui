@@ -1,5 +1,5 @@
 // ゲームバランス・チューニング定数
-import type { LineStyle } from '../render/line-style';
+import { LINE_RENDER_ORDER, type LineStyle } from '../render/line-style';
 export { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../physics/solar-system';
 
 // 軌道上へ配置できる自機の上限隻数。
@@ -670,14 +670,6 @@ export const COLOR_STAGE0_GROUP_ACCENTS = ['#ff4a3d', '#3dc6ff', '#3dff8f', '#ff
 // 軌道まわりの線の描画順。値が大きいほど後に描かれ、重なったときに手前へ来る。
 // 描画順は線どうしの相対関係でしか意味を持たない(同値だと透明描画の前後が不定になる)ので、
 // 各線が自分の値を単独で決めず、この表で一括して割り当てる。
-export const LINE_RENDER_ORDER = {
-  reference: 0,  // 天体の参照軌道線
-  shipOrbit: 1,  // 自機・敵・拠点の解析楕円
-  target: 2,     // ターゲットの軌道線
-  plan: 3,       // 計画軌道(破線)
-  predicted: 4,  // 積分予測線。解析楕円の代替なので、両方出る境界フレームでは必ずこちらを手前に置く
-} as const;
-
 // 役割ごとの軌道線の見た目(色・不透明度・描画順)を一括して決める表。
 export const LINE_STYLE = {
   enemyOrbit: { color: COLOR_ENEMY_ORBIT_LINE, opacity: 0.35, renderOrder: LINE_RENDER_ORDER.shipOrbit },

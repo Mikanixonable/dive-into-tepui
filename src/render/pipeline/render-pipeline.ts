@@ -1,13 +1,15 @@
 // フレームの描画パス構成を制御する。render/** 配下の個々の描画物モジュールとは別に、
 // 「何段で、どのターゲットへ描き、どう合成してキャンバスへ出すか」をここへ集約する。
-// 現在は7段: G バッファパス(深度・法線・ラフネスを MRT へ描く)→ 遮蔽パス(G バッファ深度から
+// 現在は8段: G バッファパス(深度・法線・ラフネスを MRT へ描く)→ 遮蔽パス(G バッファ深度から
 // 復元した位置に届く恒星の直射光の透過率を1枚へ描く)→ ライティングパス(その2枚だけを読み、
 // 拡散/鏡面の照度を MRT へ描く)→ マテリアルパス(lit-opaque 層をライティングパスの照度で描き、
 // world パスと共有する HDR ターゲットの最初の書き込みとしてクリアする)→ 大気パス(同じ
 // ターゲットへ画面空間で大気を重ねる)→ world パス(シーンを同じ HDR ターゲットへ重ね描きする)
-// → composite パス。composite パスは通常表示
+// → composite パス → 3D UI パス。composite パスは通常表示
 // (debugTarget==='off')では HDR ターゲットへ露出を掛けてキャンバスへ合成し、それ以外を選ぶと
-// 代わりに中間ターゲットの中身を画面いっぱいに映す(debug-target.ts)。
+// 代わりに中間ターゲットの中身を画面いっぱいに映す(debug-target.ts)。あわせて G バッファの
+// 深度をキャンバスの深度バッファへ複製するので、最後の 3D UI パス(overlay-pass.ts)は
+// 普通に深度テストするだけで不透明物の奥へ隠れる。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { log, screenUV, texture, uniform, vec3, vec4 } from 'three/tsl';
@@ -20,6 +22,7 @@ import { AtmospherePass } from './atmosphere-pass';
 import { LightPrepass } from './light-prepass';
 import { MaterialPass } from './material-pass';
 import { OcclusionPass } from './occlusion';
+import { OverlayPass } from './overlay-pass';
 import { SunLight } from './sun-light';
 import { viewPositionAt } from './view-ray';
 
@@ -35,6 +38,7 @@ export class RenderPipeline implements DebugTargetHost {
   private readonly lightPrepass: LightPrepass;
   private readonly materialPass: MaterialPass;
   private readonly atmospherePass: AtmospherePass;
+  private readonly overlayPass: OverlayPass;
   private readonly _sunLight: SunLight;
   private readonly target: THREE.RenderTarget;
   private readonly quad: QuadMesh;
@@ -74,6 +78,7 @@ export class RenderPipeline implements DebugTargetHost {
     this.lightPrepass = new LightPrepass(renderer, this.gbuffer, this.occlusionPass, this._sunLight, gpu);
     this.materialPass = new MaterialPass(renderer, this.lightPrepass, gpu);
     this.atmospherePass = new AtmospherePass(renderer, this.gbuffer, this._sunLight, gpu);
+    this.overlayPass = new OverlayPass(renderer, gpu);
 
     // antialias はレンダラ生成時にしか渡せず(scene.ts 参照)、キャンバスへの直描きは
     // それでマルチサンプルされていた。オフスクリーンの HDR ターゲットは自前で samples を
@@ -130,9 +135,15 @@ export class RenderPipeline implements DebugTargetHost {
 
   // depthTest/depthWrite/transparent の共通設定を1箇所へまとめた、composite 用マテリアルの
   // 下請け。colorNode だけがデバッグ表示ごとに異なる。
+  //
+  // 深度は G バッファのものを画面の深度バッファへそのまま複製する(depthTest は切ったまま
+  // depthWrite を立てるので、全画素が無条件に書かれる)。次段の 3D UI パスがこれに対して
+  // 深度テストするだけで済み、線のマテリアルをノード化せずに不透明物の奥へ隠せる。
+  // デバッグ表示中も同じく書く — 中間結果を見ている間も 3D UI が正しく隠れるほうが読みやすい。
   private buildCompositeMaterial(colorNode: Vec4Node): THREE.MeshBasicNodeMaterial {
-    const material = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false, transparent: false });
+    const material = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: true, transparent: false });
     material.colorNode = colorNode;
+    material.depthNode = texture(this.gbuffer.depthTexture, screenUV).r;
     return material;
   }
 
@@ -147,9 +158,10 @@ export class RenderPipeline implements DebugTargetHost {
   }
 
   // G バッファパス → ライティングパス → マテリアルパス → シーンを同じ HDR ターゲットへ重ね描く
-  // world パス → debugTarget に応じたマテリアルでキャンバスへ合成する composite パスの順に
-  // 実行する。Game.render() から毎フレーム1回呼ぶ。デバッグ表示を選んでいてもいずれのパスも
-  // 省略しない — 見せるのは通常のフレームが実際に生成した中身であるべきため。
+  // world パス → debugTarget に応じたマテリアルでキャンバスへ合成する composite パス →
+  // 表示値として描くものをその上へ重ねる 3D UI パスの順に実行する。Game.render() から毎フレーム
+  // 1回呼ぶ。デバッグ表示を選んでいてもいずれのパスも省略しない — 見せるのは通常のフレームが
+  // 実際に生成した中身であるべきため。
   render(scene: THREE.Scene, camera: THREE.Camera): void {
     this.renderer.getDrawingBufferSize(this.drawingBufferSize);
     const width = this.drawingBufferSize.x;
@@ -197,6 +209,9 @@ export class RenderPipeline implements DebugTargetHost {
     this.quad.material = this.compositeMaterials[this.debugTarget];
     this.gpu.beginPass(GPU_PASS.composite);
     this.quad.render(this.renderer);
+
+    // 3D UI パス。合成パスが複製した深度に対して深度テストしながら、キャンバスへ重ね描きする。
+    this.overlayPass.render(scene, camera);
   }
 
   // 保持している GPU 資源を解放する。QuadMesh の geometry は three が全インスタンスで
