@@ -304,7 +304,8 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 }
 /* span. まで指定して .w-btn 側の padding/font-size より確実に勝たせる
    (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
-#hud-pause-menu span.pm-quit { margin-top: var(--space-5); text-align: center; padding: var(--space-4) var(--space-5); font-size: var(--font-m); }
+#hud-pause-menu span.pm-menu-btn { text-align: center; padding: var(--space-4) var(--space-5); font-size: var(--font-m); }
+#hud-pause-menu span.pm-quit { margin-top: var(--space-5); }
 #hud-settings-view {
   inset: 0; display: none; overflow-y: auto; pointer-events: auto;
   padding: clamp(24px, 7vh, 72px) max(var(--space-6), 6vw);
