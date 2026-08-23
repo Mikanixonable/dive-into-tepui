@@ -1,4 +1,4 @@
-// 常設 VESSEL パネル(#hud-status)の同期: RCS制動・並進出力・微調整・
+// 常設 VESSEL パネル(#hud-status)の同期: RCS燃料・出力・動圧・RCS制動・微調整・
 // 進行方向ホールド・視点のRCS追従・弾薬。自機が無ければ隠す。
 // 装填/姿勢リセット/視点追従切替/ターゲット選択の4操作と、タッチ時のみのスロットル段は、
 // キー押下と同じ経路(Input.tapKey)で発火するボタンとして
@@ -17,15 +17,45 @@ const SYNC_INTERVAL_MS = 100;
 
 const THROTTLE_KEYS: readonly KeyBinding[] = [K.throttleLow, K.throttleMid, K.throttleHigh, K.throttleMax];
 
+interface VesselMeterDom {
+  readonly meter: HTMLElement;
+  readonly fill: HTMLElement;
+  readonly value: HTMLElement;
+}
+
 export class VesselPanel {
   private nextSyncAt = 0;
   private input: Input | null = null;
   private followButton: Button | null = null;
   private readonly throttleControl: SegmentedControl<number> | null;
+  private readonly throttleMeter: VesselMeterDom | null;
+  private readonly qdynMeter: VesselMeterDom | null;
 
   public constructor(private readonly els: ReadonlyMap<string, HTMLElement>) {
+    this.throttleMeter = this.buildMeter('throttle-readout', '並進出力');
+    this.qdynMeter = this.buildMeter('qdyn-readout', '動圧');
     this.buildActionButtons();
     this.throttleControl = this.buildThrottleControl();
+  }
+
+  // Vessel パネルの既存バー(RCS燃料)と同じ、トラック+右寄せ値のバーを組み立てる。
+  private buildMeter(readoutId: string, label: string): VesselMeterDom | null {
+    const readout = this.els.get(readoutId);
+    if (!readout) return null;
+    const meter = document.createElement('span');
+    meter.className = 'vessel-meter';
+    meter.setAttribute('role', 'progressbar');
+    meter.setAttribute('aria-label', label);
+    meter.setAttribute('aria-valuemin', '0');
+    const fill = document.createElement('span');
+    fill.className = 'vessel-meter-fill';
+    const value = document.createElement('output');
+    value.className = 'vessel-meter-value';
+    value.textContent = '—';
+    meter.appendChild(fill);
+    readout.appendChild(meter);
+    readout.appendChild(value);
+    return { meter, fill, value };
   }
 
   // 操作の受け口となる Input を差し込む。ボタン構築時にはまだ存在しないための late injection で、
@@ -100,11 +130,31 @@ export class VesselPanel {
     if (!throttleObj) return;
 
     this.syncState('rcs', throttleObj.throttle.rcsDamp, 'near');
-    this.setText(
-      'throttle',
-      `${C.THROTTLE_LABELS[throttleObj.throttle.throttleIdx]} (${C.THROTTLE_LEVELS[throttleObj.throttle.throttleIdx]!.toFixed(1)} m/s²)`,
+    const throttleIdx = throttleObj.throttle.throttleIdx;
+    this.syncMeter(
+      this.throttleMeter,
+      (throttleIdx + 1) / C.THROTTLE_LEVELS.length,
+      `${C.THROTTLE_LABELS[throttleIdx]} (${C.THROTTLE_LEVELS[throttleIdx]!.toFixed(1)} m/s²)`,
+      C.THROTTLE_LEVELS.length,
+      throttleIdx + 1,
+      false,
     );
-    this.throttleControl?.setSelected(throttleObj.throttle.throttleIdx);
+    this.throttleControl?.setSelected(throttleIdx);
+    const qdynRow = this.els.get('qdyn-row');
+    const hasQdyn = target instanceof Player;
+    qdynRow?.classList.toggle('hidden', !hasQdyn);
+    if (hasQdyn) {
+      const qdyn = target.aero.qdyn;
+      const qdynText = qdyn >= 1000 ? `${(qdyn / 1000).toFixed(2)} kPa` : `${qdyn.toFixed(0)} Pa`;
+      this.syncMeter(
+        this.qdynMeter,
+        qdyn / C.MAX_DYN_PRESSURE,
+        qdynText,
+        C.MAX_DYN_PRESSURE,
+        qdyn,
+        qdyn > 0.5 * C.MAX_DYN_PRESSURE,
+      );
+    }
     const fineAtt = target instanceof Player ? target.fineAttitude : false;
     this.syncState('fine', fineAtt, 'near');
     const cameraFollowsAttitude = game.cameraSystem.combatCamera.camFollowAttitude;
@@ -155,6 +205,19 @@ export class VesselPanel {
   private setText(id: string, text: string): void {
     const element = this.els.get(id);
     if (element && element.textContent !== text) element.textContent = text;
+  }
+
+  private syncMeter(
+    dom: VesselMeterDom | null, ratio: number, label: string, max: number, now: number, critical: boolean,
+  ): void {
+    if (!dom) return;
+    const clampedRatio = Math.max(0, Math.min(1, ratio));
+    dom.fill.style.width = `${(clampedRatio * 100).toFixed(1)}%`;
+    dom.meter.classList.toggle('critical', critical);
+    dom.meter.setAttribute('aria-valuemax', String(max));
+    dom.meter.setAttribute('aria-valuenow', String(now));
+    dom.meter.setAttribute('aria-valuetext', label);
+    if (dom.value.textContent !== label) dom.value.textContent = label;
   }
 
   // 機体モードの状態語と色ロールを同期する。
