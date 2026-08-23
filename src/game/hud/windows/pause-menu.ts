@@ -53,9 +53,12 @@ export class PauseMenu implements OverlayHandle {
     this.minimizeToggle.className = 'pm-minimize';
     this.minimizeToggle.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.minimizeToggle.addEventListener('click', () => this.setMinimized(!this.minimized));
-    header.appendChild(this.minimizeToggle);
     const closeBtn = new CloseButton(() => this.toggle(false));
-    header.appendChild(closeBtn.element);
+    const headerActions = document.createElement('div');
+    headerActions.className = 'pm-header-actions';
+    headerActions.appendChild(this.minimizeToggle);
+    headerActions.appendChild(closeBtn.element);
+    header.appendChild(headerActions);
     header.addEventListener('pointerdown', this.handleHeaderPointerDown);
     header.addEventListener('pointermove', this.handleHeaderPointerMove);
     header.addEventListener('pointerup', this.handleHeaderPointerUp);
@@ -90,6 +93,7 @@ export class PauseMenu implements OverlayHandle {
     saveRow.className = 'pm-row';
     saveRow.style.marginTop = SPACE_6;
     const saveBtn = new Button('セーブ', () => this.onSave?.());
+    saveBtn.element.classList.add('pm-menu-btn');
     saveBtn.element.style.flex = '1';
     saveRow.appendChild(saveBtn.element);
     this.body.appendChild(saveRow);
@@ -98,6 +102,7 @@ export class PauseMenu implements OverlayHandle {
     saveBrowserRow.className = 'pm-row';
     saveBrowserRow.style.marginTop = SPACE_4;
     const saveBrowserBtn = new Button('セーブデータの管理', () => this.onOpenSaveBrowser?.());
+    saveBrowserBtn.element.classList.add('pm-menu-btn');
     saveBrowserBtn.element.style.flex = '1';
     saveBrowserRow.appendChild(saveBrowserBtn.element);
     this.body.appendChild(saveBrowserRow);
@@ -106,6 +111,7 @@ export class PauseMenu implements OverlayHandle {
     perfRow.className = 'pm-row';
     perfRow.style.marginTop = SPACE_4;
     const perfBtn = new Button(`負荷を表示 [${K.togglePerfWindow.label}]`, () => this.onOpenPerfWindow?.());
+    perfBtn.element.classList.add('pm-menu-btn');
     perfBtn.element.style.flex = '1';
     perfRow.appendChild(perfBtn.element);
     this.body.appendChild(perfRow);
@@ -114,12 +120,13 @@ export class PauseMenu implements OverlayHandle {
     settingsRow.className = 'pm-row';
     settingsRow.style.marginTop = SPACE_4;
     const settingsBtn = new Button('設定ビューを開く', () => this.onOpenSettings?.());
+    settingsBtn.element.classList.add('pm-menu-btn');
     settingsBtn.element.style.flex = '1';
     settingsRow.appendChild(settingsBtn.element);
     this.body.appendChild(settingsRow);
 
     const quitBtn = new Button('ゲームを中断してタイトル画面に戻る', () => this.onQuitToTitle?.());
-    quitBtn.element.classList.add('pm-quit');
+    quitBtn.element.classList.add('pm-menu-btn', 'pm-quit');
     this.body.appendChild(quitBtn.element);
 
     root.appendChild(this.panel);
