@@ -8,7 +8,7 @@ import path from 'node:path';
 const root = path.resolve(import.meta.dirname, '..');
 const PINNED_VERSION = '0.185.1';
 const REVERSE_SNIPPET = 'if(reversedDepth){this.opaque.reverse();';
-const RECOVERY = 'src/render/pipeline/reversed-sort.ts の先頭コメントと phase4 の復帰手順書を読むこと。';
+const RECOVERY = 'memos/hedalu244/better_graphics/how_to_update_three.md の手順に従うこと。';
 
 const version = JSON.parse(readFileSync(path.join(root, 'node_modules/three/package.json'), 'utf8')).version;
 const renderList = readFileSync(path.join(root, 'node_modules/three/src/renderers/common/RenderList.js'), 'utf8');
