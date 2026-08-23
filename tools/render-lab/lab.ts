@@ -18,10 +18,18 @@ const AMBIENT_COLOR = 0x8899bb;
 
 export class LabView {
   private readonly scene = new THREE.Scene();
+  // 撮影先。合成パスが既に sRGB へ変換した値を書くので、素の RGBA8 で受ける
+  // (-srgb フォーマットにすると二重変換になり、撮った PNG だけが白っぽくなる)。
+  private readonly captureTarget = new THREE.RenderTarget(VIEW_WIDTH, VIEW_HEIGHT, {
+    format: THREE.RGBAFormat,
+    type: THREE.UnsignedByteType,
+    depthBuffer: false,
+  });
   private current: LabCase | null = null;
 
   private constructor(
     private readonly path: LabPath,
+    private readonly renderer: WebGPURenderer,
     private readonly pipeline: RenderPipeline,
   ) {
     // RenderPipeline はカメラのチャンネルを一時的に絞る。シーンルートが既定の 0 だけだと
@@ -44,7 +52,7 @@ export class LabView {
     renderer.setSize(VIEW_WIDTH, VIEW_HEIGHT);
     await renderer.init();
     const pipeline = new RenderPipeline(renderer, QUALITY_PRESETS.high, new GpuTimings(renderer));
-    return new LabView(path, pipeline);
+    return new LabView(path, renderer, pipeline);
   }
 
   // ケースを組み直して描く。前のケースはシーンから外すだけで解放しない — 球の単位ジオメトリは
@@ -68,4 +76,53 @@ export class LabView {
     this.pipeline.sunLight.set(SUN_DIR, SUN_COLOR, SUN_INTENSITY, AMBIENT_INTENSITY, 1);
     this.pipeline.render(this.scene, this.current.camera);
   }
+
+  // キャンバスへ出るのと同じ絵を画素で受け取る。合成パスが「キャンバスへ」と書いた出力先が
+  // 撮影ターゲットへ差し替わるだけなので、トーンマッピングも sRGB 変換も同じに掛かる —
+  // WebGPU キャンバスの提示・合成・スクリーンショットはどこも通らない。
+  async capture(name: CaseName): Promise<Uint8Array> {
+    this.show(name);
+    this.renderer.setOutputRenderTarget(this.captureTarget);
+    try {
+      this.render();
+    } finally {
+      // 戻し忘れると以後キャンバスに何も出なくなる(撮影だけは通るので気付きにくい)。
+      this.renderer.setOutputRenderTarget(null);
+    }
+    const pixels = await this.renderer.readRenderTargetPixelsAsync(this.captureTarget, 0, 0, VIEW_WIDTH, VIEW_HEIGHT);
+    return new Uint8Array(pixels.buffer);
+  }
+}
+
+export type LabViews = { readonly prepass: LabView; readonly forward: LabView };
+export type Shot = { readonly prepass: string; readonly forward: string; readonly diff: string };
+
+// 差分の増幅率。1/255 の丸め差は見えず、実質的な差は見える倍率。
+const DIFF_GAIN = 8;
+
+// 2 経路の画素差。レンダラーが 2 台=デバイスも 2 つなので、GPU 上でテクスチャを突き合わせられない。
+// 読み出したあとの引き算で出す。
+function diffPixels(a: Uint8Array, b: Uint8Array): Uint8Array {
+  const out = new Uint8Array(a.length);
+  for (let i = 0; i < a.length; i += 4) {
+    for (let c = 0; c < 3; c++) out[i + c] = Math.min(255, Math.abs(a[i + c]! - b[i + c]!) * DIFF_GAIN);
+    out[i + 3] = 255;
+  }
+  return out;
+}
+
+function toPng(pixels: Uint8Array): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = VIEW_WIDTH;
+  canvas.height = VIEW_HEIGHT;
+  const context = canvas.getContext('2d')!;
+  context.putImageData(new ImageData(new Uint8ClampedArray(pixels), VIEW_WIDTH, VIEW_HEIGHT), 0, 0);
+  return canvas.toDataURL('image/png');
+}
+
+// ケース1つを 3 枚の PNG(2 経路と差分)にする。撮影の駆動(tools/render-lab-shot.mjs)が呼ぶ。
+export async function shootCase(views: LabViews, name: CaseName): Promise<Shot> {
+  const prepass = await views.prepass.capture(name);
+  const forward = await views.forward.capture(name);
+  return { prepass: toPng(prepass), forward: toPng(forward), diff: toPng(diffPixels(prepass, forward)) };
 }
