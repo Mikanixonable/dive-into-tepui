@@ -3,7 +3,7 @@
 // ジオメトリ/マテリアルの構築自体は tools/export-models.mjs に移し、
 // src/assets/models/*.json として事前に焼き出したものを ObjectLoader で読み込む。
 import * as THREE from 'three/webgpu';
-import * as C from '../game/const';
+import { ENEMY_PLASMA_COLOR } from './vfx-style';
 import { mulberry32 } from '../physics/random';
 import { markLitOpaque } from './pipeline/lit-layer';
 
@@ -310,7 +310,7 @@ export function buildPlasmaMesh(): THREE.Mesh {
   }
   if (!plasmaBodyMat) {
     plasmaBodyMat = new THREE.MeshBasicMaterial({
-      color: C.COLOR_ENEMY_PLASMA,
+      color: ENEMY_PLASMA_COLOR,
       transparent: false,
       opacity: 1.0,
       depthWrite: true,
