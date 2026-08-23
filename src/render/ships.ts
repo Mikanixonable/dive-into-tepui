@@ -4,6 +4,7 @@
 // src/assets/models/*.json として事前に焼き出したものを ObjectLoader で読み込む。
 import * as THREE from 'three/webgpu';
 import { ENEMY_PLASMA_COLOR } from './vfx-style';
+import { F0_BURNT_STEEL, F0_STEEL } from './metal-f0';
 import { mulberry32 } from '../physics/random';
 import { markLitOpaque } from './pipeline/lit-layer';
 
@@ -442,13 +443,13 @@ export function buildBarrelMesh(): THREE.Group {
 
   // --- 砲身チューブ本体(熱焼け黒鋼) ---
   const tubeGeo = new THREE.CylinderGeometry(0.58 * S, 0.64 * S, 4.4, 12);
-  const tubeMat = new THREE.MeshStandardMaterial({ color: 0x1c2028, roughness: 0.38, metalness: 1 });
+  const tubeMat = new THREE.MeshStandardMaterial({ color: F0_BURNT_STEEL, roughness: 0.38, metalness: 1 });
   const tube = new THREE.Mesh(tubeGeo, tubeMat);
   tube.rotation.x = Math.PI / 2;
   g.add(tube);
 
   // --- 後端フランジ(薬室側・太めリング) ---
-  const flangeMat = new THREE.MeshStandardMaterial({ color: 0x2c3440, roughness: 0.42, metalness: 1 });
+  const flangeMat = new THREE.MeshStandardMaterial({ color: F0_STEEL, roughness: 0.42, metalness: 1 });
   const flange = new THREE.Mesh(new THREE.CylinderGeometry(0.88 * S, 0.85 * S, 0.32, 12), flangeMat);
   flange.rotation.x = Math.PI / 2;
   flange.position.z = -2.3;
@@ -461,7 +462,7 @@ export function buildBarrelMesh(): THREE.Group {
   g.add(midRing);
 
   // --- 放熱フィン(6枚、後部寄りに配置) ---
-  const finMat = new THREE.MeshStandardMaterial({ color: 0x252d38, roughness: 0.52, metalness: 1 });
+  const finMat = new THREE.MeshStandardMaterial({ color: F0_BURNT_STEEL, roughness: 0.52, metalness: 1 });
   const FIN_COUNT = 6;
   for (let i = 0; i < FIN_COUNT; i++) {
     const angle = (i / FIN_COUNT) * Math.PI * 2;
@@ -472,14 +473,14 @@ export function buildBarrelMesh(): THREE.Group {
   }
 
   // --- ガスポートリング(中間部) ---
-  const gasPortMat = new THREE.MeshStandardMaterial({ color: 0x3a4250, roughness: 0.50, metalness: 1 });
+  const gasPortMat = new THREE.MeshStandardMaterial({ color: F0_STEEL, roughness: 0.50, metalness: 1 });
   const gasPort = new THREE.Mesh(new THREE.TorusGeometry(0.66 * S, 0.065, 6, 16), gasPortMat);
   gasPort.rotation.x = Math.PI / 2;
   gasPort.position.z = 0.4;
   g.add(gasPort);
 
   // --- マズルブレーキ(先端3連リング) ---
-  const brakeMat = new THREE.MeshStandardMaterial({ color: 0x242c38, roughness: 0.30, metalness: 1 });
+  const brakeMat = new THREE.MeshStandardMaterial({ color: F0_STEEL, roughness: 0.30, metalness: 1 });
   for (let ri = 0; ri < 3; ri++) {
     const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.76 * S, 0.70 * S, 0.11, 12), brakeMat);
     ring.rotation.x = Math.PI / 2;
@@ -488,7 +489,8 @@ export function buildBarrelMesh(): THREE.Group {
   }
 
   // --- 砲口ボア(最前端・暗い穴) ---
-  const boreMat = new THREE.MeshStandardMaterial({ color: 0x080b10, roughness: 0.80, metalness: 1 });
+  // 発射煙のすすで覆われた内壁なので金属ではない。ベース色は拡散アルベドとして読まれる。
+  const boreMat = new THREE.MeshStandardMaterial({ color: 0x080b10, roughness: 0.80, metalness: 0 });
   const bore = new THREE.Mesh(new THREE.CylinderGeometry(0.34 * S, 0.34 * S, 0.14, 10), boreMat);
   bore.rotation.x = Math.PI / 2;
   bore.position.z = 2.28;
@@ -535,7 +537,7 @@ export function buildBaseModel(): THREE.Group {
   const conduitMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, flatShading: true, roughness: 0.3, metalness: 1 });
   const conduitJointMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, flatShading: true, roughness: 0.35, metalness: 1 });
   const windowGlowMat = new THREE.MeshStandardMaterial({ color: 0xfef08a, emissive: 0xfde047, emissiveIntensity: 0.95, roughness: 0.2 });
-  const sensorPodMat = new THREE.MeshStandardMaterial({ color: 0x64748b, flatShading: true, roughness: 0.3, metalness: 1 });
+  const sensorPodMat = new THREE.MeshStandardMaterial({ color: F0_STEEL, flatShading: true, roughness: 0.3, metalness: 1 });
   const panelGrooveMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, flatShading: true, roughness: 0.7, metalness: 0 });
 
   // コンテナ・タンク群用カラーパレット (統一感のあるホワイト・シルバー・プラチナ基調)
@@ -545,7 +547,7 @@ export function buildBaseModel(): THREE.Group {
     new THREE.MeshStandardMaterial({ color: 0xf1f5f9, flatShading: true, roughness: 0.35, metalness: 0 }), // エアロスペースホワイト
     new THREE.MeshStandardMaterial({ color: 0xe2e8f0, flatShading: true, roughness: 0.3, metalness: 1 }),   // シルバーホワイト
     new THREE.MeshStandardMaterial({ color: 0xcbd5e1, flatShading: true, roughness: 0.35, metalness: 1 }),  // ライトプラチナ
-    new THREE.MeshStandardMaterial({ color: 0x94a3b8, flatShading: true, roughness: 0.4, metalness: 1 }),  // ピューターアクセント
+    new THREE.MeshStandardMaterial({ color: F0_STEEL, flatShading: true, roughness: 0.4, metalness: 1 }),  // ピューターアクセント
   ];
   const neonAccentMat = new THREE.MeshStandardMaterial({ color: 0x0ea5e9, emissive: 0x38bdf8, emissiveIntensity: 0.8 });
   const hazardOrangeMat = new THREE.MeshStandardMaterial({ color: 0xd97706, emissive: 0xf59e0b, emissiveIntensity: 0.7 });
@@ -1004,7 +1006,8 @@ export function buildBaseModel(): THREE.Group {
 
   // 【貨物部上部: 4枚の細長い蛇腹状放熱板 & 逆位相暗色骨格 (45°, 135°, 225°, 315° R=7m〜24m, Z=-132m)】
   const radiatorPanelMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, flatShading: true, roughness: 0.15, metalness: 0 });
-  const darkSkeletonMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, flatShading: true, roughness: 0.4, metalness: 1 });
+  // 骨格は放熱板と明暗を逆にするための暗色塗装。金属だと F0 がこの暗さを取れない。
+  const darkSkeletonMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, flatShading: true, roughness: 0.4, metalness: 0 });
 
   for (let radIdx = 0; radIdx < 4; radIdx++) {
     const angle = (radIdx * Math.PI) / 2 + Math.PI / 4;
@@ -1145,7 +1148,7 @@ export function buildBaseModel(): THREE.Group {
   // 【コンテナ生成用ヘルパー】ISO規格リアル宇宙貨物コンテナ
   const containerCornerMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, flatShading: true, roughness: 0.3, metalness: 1 });
   const containerGrooveMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, flatShading: true, roughness: 0.6, metalness: 0 });
-  const containerBarMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, flatShading: true, roughness: 0.2, metalness: 1 });
+  const containerBarMat = new THREE.MeshStandardMaterial({ color: F0_STEEL, flatShading: true, roughness: 0.2, metalness: 1 });
 
   const buildContainer = (w: number, h: number, d: number, mat: THREE.Material, tagMat?: THREE.Material): THREE.Group => {
     const container = new THREE.Group();
