@@ -257,29 +257,6 @@ export const ARC_BODY_CLOSING_MARGIN = 2000;
 // 天体が一覧の外に残ると、その歩の掃引到達判定がその天体を見ないまま通り抜ける。
 export const ARC_BODY_LEAD_STEPS = 4;
 
-// --- 被弾・撃破エフェクト(フラッシュ/破片) ---
-export const BULLET_IMPACT_FLASH_SIZE0 = 1.5;
-export const BULLET_IMPACT_FLASH_SIZE1 = 6;
-export const BULLET_IMPACT_FLASH_DURATION = 0.25; // [s]
-export const MUZZLE_FLASH_SIZE0 = 2.2;
-export const MUZZLE_FLASH_SIZE1 = 6;
-export const MUZZLE_FLASH_DURATION = 0.07; // [s]
-export const PLASMA_IMPACT_FLASH_SIZE0 = 2;
-export const PLASMA_IMPACT_FLASH_SIZE1 = 8;
-export const PLASMA_IMPACT_FLASH_DURATION = 0.3; // [s]
-export const IMPACT_FRAG_COUNT = 3; // 被弾時に飛散させる欠片の数
-export const IMPACT_FRAG_SIZE_MIN = 0.18;
-export const IMPACT_FRAG_SIZE_MAX = 0.5;
-export const IMPACT_FRAG_SPEED = 5.5; // [m/s]
-export const DESTROY_FLASH1_SIZE0 = 10; // 撃破時フラッシュ(芯)のサイズ下限。ENEMY_SCALE 倍される
-export const DESTROY_FLASH1_SIZE1 = 110;
-export const DESTROY_FLASH1_DURATION = 1.1; // [s]
-export const DESTROY_FLASH2_SIZE0 = 6; // 撃破時フラッシュ(外殻)のサイズ下限
-export const DESTROY_FLASH2_SIZE1 = 40;
-export const DESTROY_FLASH2_DURATION = 0.5; // [s]
-export const DESTROY_FRAG_SIZE_MIN = 1.5; // 撃破デブリの破片サイズ下限。ENEMY_SCALE 倍される
-export const DESTROY_FRAG_SIZE_MAX = 6.0;
-
 export const SIM_SPEED_LEVELS = [1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 131072, 524288, 2097152, 8388608, 33554432];
 export const MAX_PHYS_SIM_SPEED = 4; // 推進・射撃・衝突解決・敵AIが有効な最大タイムワープ(SimSpeedManager の can* が参照)
 
@@ -633,7 +610,8 @@ export const ENEMY_BURST_COUNTS = [3, 5, 7, 20]; // バースト射撃弾数の�
 export const PLASMA_SPREAD_DEG = 0.05; // プラズマ弾の散布角 [deg]
 
 // 色管理 (Colors)
-// ゲーム世界(方位マーカー・演出・軌道線・船体)の色のみ。UI の色は theme.ts が持つ。
+// ゲーム世界の識別色(方位マーカー・陣営ごとの軌道線・ステージ演出)のみ。UI の色は theme.ts、
+// 「どう見えるか」だけを決めるエフェクトの色は render/vfx-style.ts が持つ。
 // 軌道3軸(prograde/normal/radial)だけは theme.ts の AXIS_* を使う。Δv 編集の 3D ギズモと
 // 方位マーカーは同じ軸を指すので、同じ軸に二系統の色を持たせない。
 export const COLOR_MARKER_BORESIGHT = '#dfe3e8';
@@ -645,20 +623,9 @@ export const COLOR_MARKER_PLANNED = '#8fd0ff';
 export const COLOR_MARKER_ALLY = '#ffffff';
 export const COLOR_MARKER_ENEMY = '#ffffff';
 export const COLOR_MARKER_HP_EMPTY = 'rgba(120, 125, 130, .2)';
-export const COLOR_BULLET_IMPACT_FLASH = '#ffe2a0';
-export const COLOR_MUZZLE_FLASH = '#fff0b8';
-export const COLOR_PLASMA_IMPACT_FLASH = '#ffa0ff';
-export const COLOR_GAS_PUFF_1 = '#aaaaaa';
-export const COLOR_GAS_PUFF_2 = '#ffffff';
-export const COLOR_DESTROY_FLASH_1 = '#ffb36b';
-export const COLOR_DESTROY_FLASH_2 = '#fffbe8';
-export const COLOR_PLAYER_DESTROY_FRAG = '#9fd8e8';
-export const COLOR_ENEMY_DESTROY_FRAG = '#ff6a4a';
 export const COLOR_PLAYER_ORBIT_LINE_INACTIVE = '#ffffff'; // マップビューで操作対象でない自艦の軌道線
 export const COLOR_ENEMY_ORBIT_LINE = '#565b63';
 export const COLOR_BASE_ORBIT_LINE = '#4f8f7d'; // 拠点(味方施設)の軌道線。落ち着いた緑がかった色で他線と区別
-export const COLOR_ENEMY_PLASMA = '#ff3333'; // 蛍光色の赤
-export const COLOR_SHIP_DARK_HULL = '#2e3340';
 export const COLOR_STAGE0_GROUP_ACCENTS = ['#ff4a3d', '#3dc6ff', '#3dff8f', '#ffe23d', '#bf3dff'];
 
 // 軌道まわりの線の描画順。値が大きいほど後に描かれ、重なったときに手前へ来る。
