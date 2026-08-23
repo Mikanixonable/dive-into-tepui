@@ -3,21 +3,22 @@ import * as THREE from 'three/webgpu';
 import { Attitude, qRotate } from '../../physics/attitude';
 import { Vec3, add, cross, dot, lenSq, scale, v3 } from '../../physics/vec3';
 import { Billboard } from '../../render/billboard';
+import {
+  RCS_PLUME_BRIGHTNESS, RCS_PLUME_COLOR, RCS_PLUME_OFFSET, RCS_PLUME_SIZE,
+} from '../../render/vfx-style';
 import { RCS_NOZZLES } from '../../render/rcs-nozzles';
 import * as C from '../const';
 import type { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 
-// ノズルからプルーム中心までの距離 [m]
-const PLUME_OFFSET = 0.55;
 
 export class RcsEffects {
   // ノズルごとの取付位置・噴射方向・噴射で機体に生じるトルク(いずれも機体座標)とプルーム。
   private readonly puffs = RCS_NOZZLES.map((nozzle) => {
     const pos = v3(nozzle.pos.x, nozzle.pos.y, nozzle.pos.z);
     const exhaust = v3(nozzle.dir.x, nozzle.dir.y, nozzle.dir.z);
-    return { pos, exhaust, torque: cross(pos, scale(exhaust, -1)), plume: new Billboard(0xcfeaff) };
+    return { pos, exhaust, torque: cross(pos, scale(exhaust, -1)), plume: new Billboard(RCS_PLUME_COLOR) };
   });
 
   // 全ノズルのプルームのビルボードを生成し scene へ追加する。
@@ -55,10 +56,11 @@ export class RcsEffects {
       }
       // ノズルの先へプルームを置き、明滅させる
       const flick = 0.6 + Math.random() * 0.4;
-      const offsetDist = PLUME_OFFSET * plumeScale;
+      const offsetDist = RCS_PLUME_OFFSET * plumeScale;
       const localPos = add(scale(puff.pos, plumeScale), scale(puff.exhaust, offsetDist));
       const pos = qRotate(att.q, localPos);
-      puff.plume.sync(fo.RtoThreeV3(add(playerPos, pos)), 0.55 * flick * plumeScale, 0.75 * flick, camera.activeCamera.quaternion);
+      puff.plume.sync(fo.RtoThreeV3(add(playerPos, pos)),
+        RCS_PLUME_SIZE * flick * plumeScale, RCS_PLUME_BRIGHTNESS * flick, camera.activeCamera.quaternion);
     }
   }
 

@@ -4,22 +4,27 @@
 import * as THREE from 'three/webgpu';
 import {
   and,
-  cameraPosition,
+  cameraProjectionMatrixInverse,
+  cameraWorldMatrix,
   dot,
   exp,
   float,
   length,
   lessThan,
   max,
-  normalize,
   positionWorld,
   select,
   sub,
   uniform,
   vec3,
+  vec4,
 } from 'three/tsl';
 import { RingArcDef, RingOpticsDef } from '../physics/solar-system';
+import { viewRayAt } from './pipeline/view-ray';
 import type { FloatNode, Vec3Node } from './tsl-types';
+
+// 環粒子の代表アルベド色(線形 RGB)。氷と岩の混合で、可視域では中性よりわずかに黄色い。
+const RING_COLOR: readonly [number, number, number] = [0.72, 0.68, 0.58];
 
 const RING_TILT = -Math.PI / 2;
 const D2R = Math.PI / 180;
@@ -30,9 +35,11 @@ export type RingVisualState = {
   readonly bodyCenter: THREE.Vector3;
   readonly bodyRadius: number;
   readonly sunDirection: THREE.Vector3;
-  readonly cameraPosition: THREE.Vector3;
   readonly ringAxis: THREE.Vector3;
   readonly coverage: number;
+  // 環がいる場所で受けている放射照度(render/pipeline/sun-light.ts の単位)。天体表面と
+  // 同じ基準へ乗せるためのもので、これが無いと環だけが太陽からの距離で暗くならない。
+  readonly sunIrradiance: number;
 };
 
 export type RingVisual = {
@@ -44,6 +51,11 @@ export type RingVisual = {
 
 function colorNode(color: readonly [number, number, number]): Vec3Node {
   return vec3(color[0], color[1], color[2]);
+}
+
+// 環の代表色をノードにしたもの。全帯で同じ色を使う。
+function ringBaseColor(): Vec3Node {
+  return colorNode(RING_COLOR);
 }
 
 // annulus/line 共通の光学TSLグラフ。coverage は帯の画面上被覆率(1px未満の細帯を
@@ -61,8 +73,11 @@ function ringOpticsNodes(baseColor: Vec3Node, optics: RingOpticsDef): {
   const phaseG = uniform(Math.max(-0.999, Math.min(0.999, optics.phaseG)));
   const coverage = uniform(1);
   const ringAxis = uniform(new THREE.Vector3(0, 1, 0));
+  const sunIrradiance = uniform(0);
 
-  const viewDirection = normalize(sub(cameraPosition, positionWorld));
+  // 面から視点へ向かう向き = 視線の逆向き。**「カメラ位置から引く」形は透視投影でしか成り立たない**
+  // ので、画面空間のパスと同じ器(pipeline/view-ray.ts)から取って world へ回す。
+  const viewDirection = cameraWorldMatrix.mul(vec4(viewRayAt(cameraProjectionMatrixInverse).direction.negate(), 0)).xyz;
   // RingGeometry の面法線だけでなく、側壁を持つ拡散環でも環面に垂直な
   // normal optical depth を評価するため、常に物理的な環軸を使う。
   const muView = max(dot(ringAxis, viewDirection).abs(), MU_MIN);
@@ -96,8 +111,12 @@ function ringOpticsNodes(baseColor: Vec3Node, optics: RingOpticsDef): {
   // baseExtinction で割ることで、散乱輝度にもcoverageが一度だけ掛かる。
   const safeBaseExtinction = max(baseExtinction, 0.001);
 
+  // 放射照度を 1/π 倍して輝度へ直す — ランバート面が同じ反射率で返す輝度と揃うので、
+  // 本体と環が1つの明るさ基準に乗る。
+  const radiance = scattering.div(safeBaseExtinction).mul(sunIrradiance.div(Math.PI));
+
   return {
-    colorNode: baseColor.mul(scattering.div(safeBaseExtinction)),
+    colorNode: baseColor.mul(radiance),
     opacityNode: extinction,
     sync: (state) => {
       bodyCenter.value.copy(state.bodyCenter);
@@ -105,6 +124,7 @@ function ringOpticsNodes(baseColor: Vec3Node, optics: RingOpticsDef): {
       sunDirection.value.copy(state.sunDirection).normalize();
       coverage.value = state.coverage;
       ringAxis.value.copy(state.ringAxis).normalize();
+      sunIrradiance.value = state.sunIrradiance;
     },
   };
 }
@@ -176,7 +196,7 @@ function buildAnnulusMesh(
   thetaLength: number,
 ): RingVisual {
   const geo = new THREE.RingGeometry(innerRadius, outerRadius, 128, 1, thetaStart, thetaLength);
-  const { material, sync } = physicalMaterial(colorNode(optics.color), optics);
+  const { material, sync } = physicalMaterial(ringBaseColor(), optics);
   const mesh = new THREE.Mesh(geo, material);
   mesh.rotation.x = RING_TILT;
   return { object: mesh, sync, dispose: () => { geo.dispose(); material.dispose(); } };
@@ -211,7 +231,7 @@ function buildLineRingSegment(
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  const { material, sync } = lineOpticsMaterial(colorNode(optics.color), optics);
+  const { material, sync } = lineOpticsMaterial(ringBaseColor(), optics);
   const line = new THREE.Line(geo, material);
   line.rotation.x = RING_TILT;
   return { object: line, sync, dispose: () => { geo.dispose(); material.dispose(); } };
@@ -265,7 +285,7 @@ export function createTorusRing(
   thickness: number,
 ): RingVisual {
   const geo = annularPrism(innerRadius, outerRadius, thickness);
-  const { material, sync } = physicalMaterial(colorNode(optics.color), optics);
+  const { material, sync } = physicalMaterial(ringBaseColor(), optics);
   const mesh = new THREE.Mesh(geo, material);
   mesh.rotation.x = RING_TILT;
   return { object: mesh, sync, dispose: () => { geo.dispose(); material.dispose(); } };

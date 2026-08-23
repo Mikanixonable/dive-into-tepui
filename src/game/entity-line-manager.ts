@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../physics/ephemeris';
 import type { FrameAnchorSource } from '../physics/frame';
-import type { LineStyle } from '../render/line-style';
+import { LINE_RENDER_ORDER, type LineStyle } from '../render/line-style';
 import * as C from './const';
 import { FloatingOrigin } from './floating-origin';
 import { Player } from './player/player';
@@ -28,16 +28,16 @@ export class EntityLineManager {
   ): void {
     const { pastDuration } = displayWindow;
     const palette = currentThemePalette();
-    const primaryStyle: LineStyle = { color: palette.secondary, opacity: TARGET_LINE_OPACITY, renderOrder: C.LINE_RENDER_ORDER.target };
+    const primaryStyle: LineStyle = { color: palette.secondary, opacity: TARGET_LINE_OPACITY, renderOrder: LINE_RENDER_ORDER.target };
     const targetStyleOf = (e: CombatTarget): LineStyle | null => e === primaryTarget ? primaryStyle : null;
     const playerOrbitStyleOf = (isActive: boolean): LineStyle => (
-      { color: isActive ? palette.accent : C.COLOR_PLAYER_ORBIT_LINE_INACTIVE, opacity: 0.55, renderOrder: C.LINE_RENDER_ORDER.shipOrbit }
+      { color: isActive ? palette.accent : C.COLOR_PLAYER_ORBIT_LINE_INACTIVE, opacity: 0.55, renderOrder: LINE_RENDER_ORDER.shipOrbit }
     );
     const playerPredictedStyleOf = (isActive: boolean): LineStyle => (
-      { color: isActive ? palette.accent : C.COLOR_PLAYER_ORBIT_LINE_INACTIVE, opacity: 0.55, renderOrder: C.LINE_RENDER_ORDER.predicted }
+      { color: isActive ? palette.accent : C.COLOR_PLAYER_ORBIT_LINE_INACTIVE, opacity: 0.55, renderOrder: LINE_RENDER_ORDER.predicted }
     );
     const playerActualStyleOf = (isActive: boolean): LineStyle => (
-      { color: isActive ? palette.accent : C.COLOR_PLAYER_ORBIT_LINE_INACTIVE, opacity: 0.3, renderOrder: C.LINE_RENDER_ORDER.predicted }
+      { color: isActive ? palette.accent : C.COLOR_PLAYER_ORBIT_LINE_INACTIVE, opacity: 0.3, renderOrder: LINE_RENDER_ORDER.predicted }
     );
 
     for (const ship of this.entities.players) {
