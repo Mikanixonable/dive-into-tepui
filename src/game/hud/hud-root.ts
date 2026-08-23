@@ -251,6 +251,11 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
           <output class="armor-value" data-id="tgt-armor-value">—</output>
         </dd></div>
       </dl>
+      <section id="tgt-protein" data-id="tgt-protein" class="protein-target-details hidden" aria-label="タンパク質構造">
+        <div class="protein-target-heading"><span>タンパク質</span><output data-id="tgt-protein-phase">INTACT</output></div>
+        <div class="row metric"><dt class="k">構造安定性</dt><dd class="v"><output data-id="tgt-integrity-value">—</output></dd></div>
+        <div data-id="tgt-protein-sites"></div>
+      </section>
       <p class="target-help">軌道要素は右クリックで表示</p>
     </div>`;
 

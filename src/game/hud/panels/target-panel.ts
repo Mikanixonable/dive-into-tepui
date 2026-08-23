@@ -6,6 +6,7 @@ import { fmtDist, fmtSpeed } from '../utils';
 import { relativeInfo } from '../orbit/orbit-info';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import type { Game } from '../../game';
+import type { ProteinHudSnapshot } from '../../protein/protein-schema';
 
 const SYNC_INTERVAL_MS = 100;
 
@@ -16,6 +17,7 @@ interface TargetPanelData {
   readonly relativeSpeedMps: number;
   readonly hp: number;
   readonly maxHp: number;
+  readonly protein: ProteinHudSnapshot | null;
 }
 
 export class TargetPanel {
@@ -53,6 +55,9 @@ export class TargetPanel {
       relativeSpeedMps: relative.relSpeed,
       hp: 'hp' in target ? (target as { hp: number }).hp : 1000,
       maxHp: 'maxHp' in target ? (target as { maxHp: number }).maxHp : 1000,
+      protein: 'proteinHudSnapshot' in target
+        ? (target as { proteinHudSnapshot: TargetPanelData['protein'] }).proteinHudSnapshot
+        : null,
     });
   }
 
@@ -60,6 +65,7 @@ export class TargetPanel {
   private syncTarget(target: TargetPanelData | null): void {
     if (!target) {
       this.setText('tgtname', '—');
+      this.els.get('tgt-protein')?.classList.add('hidden');
       return;
     }
 
@@ -79,6 +85,21 @@ export class TargetPanel {
     const armorFill = this.els.get('tgt-armor-fill');
     if (armorFill) armorFill.style.width = `${armorPercent}%`;
     this.setText('tgt-armor-value', armorValue);
+    const proteinPanel = this.els.get('tgt-protein');
+    if (proteinPanel) {
+      proteinPanel.classList.toggle('hidden', target.protein === null);
+      if (target.protein) {
+        this.setText('tgt-protein-phase', target.protein.phase.toUpperCase());
+        const rows = target.protein.sites.map((site) => {
+          const ratio = site.maxHp > 0 ? Math.max(0, Math.min(1, site.hp / site.maxHp)) * 100 : 0;
+          const status = site.disabled ? '停止' : `${Math.floor(site.hp)} / ${site.maxHp}`;
+          return `<div class="protein-site-row"><span>${site.label}</span><span class="protein-site-meter"><i style="width:${ratio}%"></i></span><output>${status}</output></div>`;
+        }).join('');
+        const siteRows = this.els.get('tgt-protein-sites');
+        if (siteRows && siteRows.innerHTML !== rows) siteRows.innerHTML = rows;
+        this.setText('tgt-integrity-value', `${Math.floor(target.protein.integrityHp)} / ${target.protein.integrityMaxHp}`);
+      }
+    }
   }
 
   // data-id 要素のテキストを、変化があるときだけ書き換える。
