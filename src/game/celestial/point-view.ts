@@ -135,6 +135,7 @@ export class PointView extends CelestialView {
         pos,
         cameraSystem.activeCameraScale,
         sunDirection,
+        this.sunIrradianceAt(ephemeris, pos, displayTime),
       );
     }
   }

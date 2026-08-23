@@ -10,6 +10,11 @@ import { buildPlayerShip } from '../../src/render/ships';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
 import type { Occluder, RingBand } from '../../src/render/pipeline/occlusion';
 import type { LineStyle } from '../../src/render/line-style';
+import { RingView } from '../../src/game/celestial/ring-view';
+import { SUN_IRRADIANCE_1AU } from '../../src/render/pipeline/sun-light';
+import { AU } from '../../src/physics/planet-orbit';
+import { bodyDef, SOLAR_SYSTEM } from '../../src/physics/solar-system';
+import { v3 } from '../../src/physics/vec3';
 import { LINE_RENDER_ORDER } from '../../src/render/line-style';
 
 // 描画は 960×540 固定(撮影した PNG の大きさを決め打ちにするため)。
@@ -17,12 +22,21 @@ export const VIEW_WIDTH = 960;
 export const VIEW_HEIGHT = 540;
 const FOV_DEG = 50;
 
+// 土星ケースが使う実データの環。planet 以外は rings を持たないので、ここで判別を閉じる。
+const SATURN_RINGS = (() => {
+  const def = bodyDef(SOLAR_SYSTEM, 'saturn');
+  if (def.kind !== 'planet' || def.rings === undefined) throw new Error('saturn has no rings');
+  return def.rings;
+})();
+
 // 全ケース共通の恒星方向。球の陰影と、呼び出し側が置く光源が同じ向きを使う。
 export const SUN_DIR = new THREE.Vector3(1, 0.35, 0.5).normalize();
 
 // テスト用の球のアルベド。実在天体の値ではなく、線・深度・陰影を読むための識別色。
 const BLUE_SPHERE_ALBEDO: Albedo = [0.0242, 0.15, 0.4342];
 const GREY_SPHERE_ALBEDO: Albedo = [0.521, 0.4793, 0.4179];
+// 土星本体。実写テクスチャの平均色を、公表ボンドアルベド 0.342 の輝度へ合わせたもの。
+const SATURN_ALBEDO: Albedo = [0.4114, 0.3339, 0.2181];
 
 // カメラは常に原点から -Z を見る。near はゲーム本体と同じ 2 m(深度分解能の導出がこの値に乗る)。
 const EYE = new THREE.Vector3(0, 0, 0);
@@ -190,6 +204,30 @@ function eclipse(): LabCase {
   };
 }
 
+// 土星: 本体の球と実データの環を並べ、**環だけが本体より桁で明るくないか**を見る。放射照度は
+// 本体(ライティングパスが画素ごとに逆二乗を掛ける)にも環(sync が受け取る)にも同じだけ
+// 掛かるので、**両者の明るさの比は太陽までの距離に依らない** — 恒星を他のケースと同じ
+// 1 天文単位に置いたまま、その比だけを読めばよい。
+function saturn(): LabCase {
+  const camera = labCamera(1e13);
+  const radius = 6.0268e7;
+  const distance = 1.2e9;
+  const center = new THREE.Vector3(0, -0.15 * distance, -distance);
+  const axis = v3(0.3, 0.9, 0.32);
+  const view = new RingView(SATURN_RINGS, radius, 1);
+  const sunPosition = SUN_DIR.clone().multiplyScalar(AU);
+  const sunDistance = center.distanceTo(sunPosition);
+  view.sync(
+    center,
+    axis,
+    v3(center.x, center.y, center.z),
+    () => distance / VIEW_HEIGHT,
+    v3(SUN_DIR.x, SUN_DIR.y, SUN_DIR.z),
+    SUN_IRRADIANCE_1AU * (AU / sunDistance) ** 2,
+  );
+  return { objects: [sphere(SATURN_ALBEDO, radius, center), view.group], camera };
+}
+
 // 遠距離: 月と海王星の距離に球を置く。far=1e13 の外へ落ちないか、潰れたり消えたりしないか。
 // 半径は深度プローブと同じ z/10 — 実半径だと海王星の距離では 1px を大きく下回り、
 // 「出ているかどうか」自体が判定できない。
@@ -216,6 +254,7 @@ export const CASES = {
   'eclipse': eclipse,
   'earth': earth,
   'far': far,
+  'saturn': saturn,
 } as const satisfies Record<string, () => LabCase>;
 
 export type CaseName = keyof typeof CASES;
