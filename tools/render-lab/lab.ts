@@ -10,6 +10,7 @@ import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pi
 import { QUALITY_PRESETS } from '../../src/render/graphics-settings';
 import { AMBIENT_INTENSITY, COLOR_SUN, SUN_INTENSITY } from '../../src/game/const';
 import { AU } from '../../src/physics/planet-orbit';
+import { R_SUN } from '../../src/physics/solar-system';
 import { CASES, type CaseName, type LabCase, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './cases';
 
 export type LabPath = 'prepass' | 'forward';
@@ -85,7 +86,8 @@ export class LabView {
   // 動くものが無いので、描くのはケースを差し替えたときと撮影のときだけ。
   render(): void {
     if (this.current === null) return;
-    this.pipeline.sunLight.set(SUN_POSITION, SUN_COLOR, SUN_RADIANT_INTENSITY, AMBIENT_INTENSITY, 1);
+    this.pipeline.sunLight.set(SUN_POSITION, R_SUN, SUN_COLOR, SUN_RADIANT_INTENSITY, AMBIENT_INTENSITY);
+    this.pipeline.occlusion.setOccluders(this.current.occluders ?? []);
     this.pipeline.render(this.scene, this.current.camera);
   }
 

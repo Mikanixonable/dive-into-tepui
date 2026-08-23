@@ -123,16 +123,13 @@ export class PointView extends CelestialView {
     const sunDirection = ephemeris.sunDirFrom(pos, displayTime);
     activeSurface.setSunDirection(new THREE.Vector3(sunDirection.x, sunDirection.y, sunDirection.z));
     const orientation = ephemeris.poleAt(this.id, displayTime);
-    const axis = orientation === null ? null : new THREE.Vector3(orientation.axis.x, orientation.axis.y, orientation.axis.z);
     const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
-    // 環を切ったときは、帯そのものだけでなく本体表面へ落ちる環の影も消す。
     const rings = graphics.rings ? this.rings : undefined;
     if (this.ring !== undefined) this.ring.group.visible = rings !== undefined;
     this.group.position.copy(fo.RtoThreeV3(pos));
     this.group.scale.copy(this.axes);
     if (q !== null) this.group.quaternion.set(q.x, q.y, q.z, q.w);
     this.billboard.hide();
-    activeSurface.setRingShadowSystem(rings, this.group.position, axis);
     if (this.ring !== undefined && rings !== undefined) {
       this.ring.sync(
         this.group.position,

@@ -1,9 +1,8 @@
 // 環境(天体ビュー・星・天球グリッド・参照軌道線・環境光)の構築と毎フレーム更新。
 import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
-import { sunlitFactor } from '../../physics/shadow';
 import { kinematicState } from '../../physics/kinematic-state';
-import { CelestialRegistry, SolarSystemId, bodyDef, primaryOf } from '../../physics/solar-system';
+import { CelestialRegistry, RingSystemDef, SolarSystemId, bodyDef, primaryOf } from '../../physics/solar-system';
 import { OrbitalElements } from '../../physics/elements';
 import { AU } from '../../physics/planet-orbit';
 import { CelestialBody, CelestialBodyId, OrbitingId, orbitalElementsOf } from '../../physics/celestial-body';
@@ -21,6 +20,7 @@ import * as C from '../const';
 import { PointFieldView } from './point-field-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import { SunLight } from '../../render/pipeline/sun-light';
+import { MAX_OCCLUDERS, type Occluder, type OcclusionPass } from '../../render/pipeline/occlusion';
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
 import { CelestialView } from './celestial-view';
 import { CELESTIAL_VIEWS, fallbackCelestialView } from './celestial-registry';
@@ -56,6 +56,15 @@ const SUN_COLOR = new THREE.Color(C.COLOR_SUN);
 // 恒星の放射強度 [SUN_INTENSITY と同じ単位 · m²]。SUN_INTENSITY は地球軌道で受ける放射照度
 // なので、1 天文単位ぶんの逆二乗を戻して放射強度にする。
 const SUN_RADIANT_INTENSITY = C.SUN_INTENSITY * AU * AU;
+
+// 遮蔽器と環の持ち主を選ぶ尺度。カメラから見た視半径が大きい天体ほど、その影が画面に
+// 写っている何かへ落ちる見込みが高い。
+function apparentRadius(radius: number, center: Vec3, cameraPos: Vec3): number {
+  return radius / Math.max(1, len(sub(center, cameraPos)));
+}
+
+const ZERO_VECTOR = new THREE.Vector3();
+const UP_VECTOR = new THREE.Vector3(0, 1, 0);
 
 // 恒星以外の全公転天体の id(registry の宣言順)。天体が増えれば参照線もここから自動で増える。
 function referenceLineIds(registry: CelestialRegistry): readonly OrbitingId[] {
@@ -97,6 +106,7 @@ export class EnvironmentScene {
     scene: THREE.Scene,
     private readonly ephemeris: Ephemeris,
     private readonly sunLight: SunLight,
+    private readonly occlusion: OcclusionPass,
     earthSpinPhase0: number,
   ) {
     this.scene = scene;
@@ -143,15 +153,8 @@ export class EnvironmentScene {
     return earth?.spinPhase0();
   }
 
-  // 天体ビュー・星・照明・参照線・天球グリッドを、この1フレームの表示状態に同期する。
-  // playerPos は照明の日照率を引く基準位置。艦がいなければ null(このフレームは減光しない)。
-  //
-  // TODO: アクティブ艦1点の日照率を平行光・環境光の全体へ流用しているのは、「全エンティティが
-  // その近くにいる」という成り立っていない前提に乗った近似。艦がいないフレームに、実在する他の
-  // エンティティを照らせなくなるのはその帰結にすぎない。null を減光なしで埋めるのは暫定処置で、
-  // 照度はエンティティごとに引くか、遮蔽そのものをシャドウマップへ置き換える。
+  // 天体ビュー・星・照明・遮蔽・参照線・天球グリッドを、この1フレームの表示状態に同期する。
   sync(
-    playerPos: Vec3 | null,
     floatingOrigin: FloatingOrigin,
     displayTime: number,
     cameraSystem: CameraSystem,
@@ -160,13 +163,6 @@ export class EnvironmentScene {
     sharedVisibilityPolicy: MapVisibilityPolicy | null = null,
     markerManager: MarkerManager | null = null,
   ): void {
-    // lit は自機位置の日照率。主星が無いレジストリでは日照そのものが無意味なので計算を飛ばす。
-    let lit = 1.0;
-    if (playerPos !== null && !cameraSystem.overviewMode && this.ephemeris.starId !== null) {
-      const celestialBodiesNow = this.ephemeris.celestialBodiesAt(displayTime);
-      const star = celestialBodiesNow.find((a) => a.id === this.ephemeris.starId);
-      if (star) lit = sunlitFactor(playerPos, star, celestialBodiesNow);
-    }
     // Game.sync が同じカメラ位置・表示時刻で組んだ policy を渡せるようにする。渡されない
     // 既存経路ではここで一度だけ構築し、参照線にも同じインスタンスを渡す。
     const nearbyIds = cameraSystem.overviewMode && sharedVisibilityPolicy === null
@@ -189,15 +185,15 @@ export class EnvironmentScene {
     const sd = this.ephemeris.sunDirFrom(floatingOrigin.r, displayTime);
     const sunDirWorld = new THREE.Vector3(sd.x, sd.y, sd.z);
     this.directionalLight.position.copy(sunDirWorld).multiplyScalar(1e5);
-    this.directionalLight.intensity = C.SUN_INTENSITY * (C.SHADOW_MIN_SUN + (1 - C.SHADOW_MIN_SUN) * lit);
-    this.ambient.intensity = C.AMBIENT_INTENSITY * (C.SHADOW_MIN_AMBIENT + (1 - C.SHADOW_MIN_AMBIENT) * lit);
-    // ライティングパス向けの値。遮蔽の下限式は SunLight 自身が sunlitFactor から掛けるので、
-    // ここで渡すのは掛ける前の生値。
+    // 主星が無いレジストリでは、恒星方向へ 1 天文単位の位置に半径 0 の光源を置く
+    // (基準強度どおりの放射照度が届き、遮蔽パスは誰も遮らないと答える)。
     const starId = this.ephemeris.starId;
+    const star = starId === null ? null : bodyDef(this.ephemeris.registry, starId);
     const sunPos = starId === null
       ? sunDirWorld.clone().multiplyScalar(AU)
       : floatingOrigin.RtoThreeV3(this.ephemeris.positionOf(starId, displayTime));
-    this.sunLight.set(sunPos, SUN_COLOR, SUN_RADIANT_INTENSITY, C.AMBIENT_INTENSITY, lit);
+    this.sunLight.set(sunPos, star?.radius ?? 0, SUN_COLOR, SUN_RADIANT_INTENSITY, C.AMBIENT_INTENSITY);
+    this.syncOcclusion(floatingOrigin, displayTime, graphics);
 
     if (cameraSystem.overviewMode && this.ephemeris.starId !== null && graphics.pointField) {
       this.ensurePointField().sync(
@@ -229,6 +225,52 @@ export class EnvironmentScene {
       floatingOrigin,
       cameraSystem.activeCamera,
       cameraSystem.mapCamera.dist,
+    );
+  }
+
+  // 遮蔽パスへ、この1フレームの遮蔽器と環の帯を渡す。どちらもカメラから見た視半径の大きい順に
+  // 選ぶ — 大きく写る天体ほど、その影が見えている何かへ落ちる見込みが高い。遮蔽器は上位
+  // MAX_OCCLUDERS 体、環は最上位の環付き天体 1 体ぶん。
+  private syncOcclusion(fo: FloatingOrigin, displayTime: number, graphics: GraphicsSettingsData): void {
+    const ranked = this.ephemeris.celestialBodiesAt(displayTime)
+      .filter((body) => !body.isStar && body.radius > 0)
+      .map((body) => ({ body, apparent: apparentRadius(body.radius, body.state.r, fo.r) }))
+      .sort((a, b) => b.apparent - a.apparent)
+      .slice(0, MAX_OCCLUDERS);
+    this.occlusion.setOccluders(ranked.map(({ body }): Occluder => (
+      { center: fo.RtoThreeV3(body.state.r), radius: body.radius }
+    )));
+    this.syncRingShadow(fo, displayTime, graphics);
+  }
+
+  // 環の影を落とす天体を1体選び、その帯を遮蔽パスへ渡す。画面に環付き天体が複数写る状況は
+  // 実質起きないので、最も大きく見える1体だけを扱う。
+  private syncRingShadow(fo: FloatingOrigin, displayTime: number, graphics: GraphicsSettingsData): void {
+    let ringed: { readonly id: OrbitingId; readonly rings: RingSystemDef } | null = null;
+    let bestApparent = 0;
+    if (graphics.rings) {
+      for (const id of this.referenceIds) {
+        const def = bodyDef(this.ephemeris.registry, id);
+        if (def.kind !== 'planet' || def.rings === undefined) continue;
+        const apparent = apparentRadius(def.radius, this.ephemeris.positionOf(id, displayTime), fo.r);
+        if (apparent <= bestApparent) continue;
+        bestApparent = apparent;
+        ringed = { id, rings: def.rings };
+      }
+    }
+    if (ringed === null) {
+      this.occlusion.setRings(ZERO_VECTOR, UP_VECTOR, []);
+      return;
+    }
+    const pole = this.ephemeris.poleAt(ringed.id, displayTime);
+    this.occlusion.setRings(
+      fo.RtoThreeV3(this.ephemeris.positionOf(ringed.id, displayTime)),
+      pole === null ? UP_VECTOR : this.toThreeNormal(pole.axis),
+      ringed.rings.bands.map((band) => ({
+        innerRadius: band.innerRadius,
+        outerRadius: band.outerRadius,
+        normalOpticalDepth: band.optics.normalOpticalDepth,
+      })),
     );
   }
 
