@@ -57,6 +57,7 @@ import { register as registerPredictedArc } from './predicted-arc.test';
 import { register as registerSurfaceCandidates } from './surface-candidates.test';
 import { register as registerThermal } from './thermal.test';
 import { register as registerWindowAgreement } from './window-agreement.test';
+import { register as registerPlanArcRange } from './plan-arc-range.test';
 import './creative-placement-validation.test';
 
 registerVec3();
@@ -115,6 +116,7 @@ registerPredictedArc();
 registerSurfaceCandidates();
 registerThermal();
 registerWindowAgreement();
+registerPlanArcRange();
 
 runAll().catch((error) => {
   console.error(error);
