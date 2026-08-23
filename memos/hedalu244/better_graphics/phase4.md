@@ -275,10 +275,9 @@ Phase 10 はこのフィルタの**中身だけ**を差し替える(LUT 化・�
 **ECI → 描画座標の写像は `FloatingOrigin.RtoThreeV3`(`game/floating-origin.ts:28`)が既に持っている。**
 第二のモジュールを作るのは重複でしかない。**直すべきは「天体だけがその写像を通っていない」ことである。**
 
-| 通っていない箇所 | 中身 |
-|---|---|
-| `sphere-view.ts:107-112` / `point-view.ts:167-171`(輝点)`:218-222`(星殻上の輝点)/ `sun-view.ts:58-62` | 戦闘ビューで `cam.position + dir * visDist` と置く。**`fo` を一切通らない** |
-| `point-field-view.ts:92-99` | 親の `mesh.position` は `fo` を通るが、`instanceMatrix` には太陽中心の生座標が入る。**子だけが通っていない** |
+**球・輝点・恒星ビルボードは手順 1 で通した。** 残るのは `point-field-view.ts:92-99` —
+親の `mesh.position` は `fo` を通るが、`instanceMatrix` には太陽中心の生座標が入る。
+**子だけが通っていない**(手順 4 の実測しだい)。
 
 **圧縮は描画座標だけで閉じた操作である。** `FloatingOrigin.r` は
 `cameraSystem.activeCameraPos` そのもの(`game.ts:472`)で、`syncCameraToViewpoint` は
@@ -345,43 +344,6 @@ depthScale = 1 / k
 ---
 
 ## 手順
-
-### 手順 1. 天体を `FloatingOrigin` へ通す
-
-**目的**: 天体だけが `fo.RtoThreeV3` を通っていない状態を解消し、圧縮を `render/` 側の
-「描画座標 → 描画座標」の関数へ隔離する。**この時点で挙動は 1 ミリも変えない**
-(判断 (5) のとおり `camera.position` が厳密に (0,0,0) なので、書き直しは厳密に同値)。
-
-**変更が必要な箇所**
-
-| ファイル | 変更 |
-|---|---|
-| `src/render/view-compression.ts`(新規) | 描画座標に対する圧縮率 `k` と、分類ごとの表示距離。**手順 6 で消える前提のモジュール**である旨と、`camera.position === (0,0,0)` への依存をコメントに書く |
-| `src/game/celestial/sphere-view.ts:97-118` | `overviewMode` 分岐と `cam.position` 参照を廃し、`fo.RtoThreeV3(pos)` → 圧縮率 → position/scale/depthScale へ |
-| `src/game/celestial/point-view.ts:135-141`(球)`:160-175`(輝点)`:212-225`(星殻上の輝点) | 同上 |
-| `src/game/celestial/sun-view.ts:43-64` | 同上 |
-| `src/game/celestial/celestial-registry.ts:28` | `PLANET_VIS_DIST` を `render/view-compression.ts` へ移す |
-| `src/game/celestial/point-view.ts:40` | `POINT_BODY_VIS_DIST` を同上 |
-| `src/render/stars.ts:11-13` | `SUN_DISTANCE` / `MOON_VIS_DIST` を同上へ集める |
-| `src/game/celestial/environment-scene.ts:228` / `src/render/celestial-grid.ts:317-318` | `cam.position` を写している箇所を原点直書きへ(**厳密に同値**) |
-
-`earth-view.ts` と `point-field-view.ts` の親位置は既に `fo` を通っているので無変更。
-`point-field-view.ts` の `instanceMatrix` は手順 4 の実測しだいなので、ここでは触らない。
-
-**達成条件と検証**
-
-- `game/celestial/` に表示距離の定数(`*_VIS_DIST` / `SUN_DISTANCE`)が 0 件。
-- `game/celestial/` に `activeCamera.position` / `activeCameraPos` を使った位置計算が 0 件。
-- `src/render/**` から `Vec3` / `FloatingOrigin` 等への import が 0 件のまま。
-- 絵が変わっていない。
-- `npm run typecheck`
-- `grep -rn "VIS_DIST\|SUN_DISTANCE" src/game/` → 0 件
-- `grep -rn "activeCameraPos\|activeCamera.position" src/game/celestial/` → 0 件
-- `grep -rn "physics/vec3\|floating-origin\|ephemeris" src/render/` → 0 件
-- `npm run render-lab:shot` → `leo` / `far` の `prepass` が変更前と同じ絵
-- `npm run dev` → 戦闘ビュー ⇄ マップビューを切り替え、月の見かけサイズが飛ばないこと
-
----
 
 ### 手順 2. 深度を反転し、32bit にする(圧縮はまだ残す)
 
