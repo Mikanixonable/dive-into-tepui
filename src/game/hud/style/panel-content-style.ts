@@ -378,20 +378,31 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   display: flex; align-items: center; gap: var(--space-2); min-height: 48px; width: 100%;
   padding-inline: var(--space-4); text-align: left;
 }
+#hud-settings-view .sv-theme-button:not(.on) {
+  border-color: color-mix(in srgb, var(--sv-theme-title) 36%, transparent);
+  background: var(--sv-theme-page); color: var(--sv-theme-title);
+}
+#hud-settings-view .sv-theme-button:not(.on):hover {
+  border-color: color-mix(in srgb, var(--sv-theme-title) 68%, transparent);
+  background: color-mix(in srgb, var(--sv-theme-title) 10%, var(--sv-theme-page));
+  color: var(--sv-theme-title);
+}
+#hud-settings-view .sv-theme-button.on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, var(--sv-theme-page));
+  color: var(--sv-theme-title);
+}
 #hud-settings-view .sv-theme-button .w-btn-icon {
   display: inline-flex; align-items: center; gap: 3px; width: auto; height: auto; margin-right: var(--space-2);
 }
 #hud-settings-view .sv-theme-icon { display: inline-flex; align-items: center; }
 #hud-settings-view .sv-theme-preview {
-  display: inline-flex; align-items: center; width: 38px; height: 25px; padding: 3px;
-  border: 1px solid; border-radius: 5px; box-sizing: border-box;
+  display: inline-flex; align-items: center; gap: 3px; width: auto; height: 25px; padding: 3px;
+  border: 1px solid color-mix(in srgb, var(--sv-theme-title) 30%, transparent); border-radius: 5px; box-sizing: border-box;
 }
-#hud-settings-view .sv-theme-preview-surface {
-  display: flex; align-items: center; gap: 3px; width: 100%; height: 100%; padding: 3px;
-  box-sizing: border-box; border-radius: 2px;
-}
-#hud-settings-view .sv-theme-preview-surface span {
-  display: block; flex: 1; height: 3px; border-radius: 2px;
+#hud-settings-view .sv-theme-swatch {
+  display: block; width: 10px; height: 17px; border-radius: 3px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--sv-theme-title) 28%, transparent);
 }
 #hud-settings-view .gp-body { display: flex; flex-direction: column; gap: var(--space-4); margin-top: var(--space-4); }
 #hud-settings-view .sv-volume-row {
