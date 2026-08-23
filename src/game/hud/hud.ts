@@ -15,6 +15,7 @@ import type { Game } from '../game';
 import type { OverlayLayers } from './overlay-layer';
 import { TEMP_WINDOW_GROUP, type OverlayManager } from './overlay-manager';
 import type { HelpPanel } from './windows/help-panel';
+import type { ViewOptionsPanel } from './panels/view-options-panel';
 
 // 軌道分析パネルを開く既定位置。ドラッグ可能ウィンドウなのでビューポート内へクランプされる。
 const ANALYSIS_WINDOW_OPEN_X = 320;
@@ -36,6 +37,7 @@ export class Hud {
   readonly targetPanel: TargetPanel;
   readonly enemiesPanel: EnemiesPanel;
   private orbitAnalysisWindow: OrbitAnalysisWindow | null = null;
+  private viewOptionsPanel: ViewOptionsPanel | null = null;
   private hintUntil = 0;
   private toastUntil = 0;
 
@@ -99,6 +101,13 @@ export class Hud {
     // 既存のビュー別スタイルが残る間も、共有 HUD の状態を同期しておく。
     this.root.classList.toggle('map-mode', map);
     this.root.classList.toggle('map-ui-active', map);
+    this.viewOptionsPanel?.setWorldView(view);
+  }
+
+  setViewOptionsPanel(panel: ViewOptionsPanel): void {
+    this.viewOptionsPanel = panel;
+    panel.attachCombatRoot(this.combatRoot);
+    panel.setWorldView(this.combatRoot.classList.contains('active') ? 'combat' : 'map');
   }
 
   // ヒントテキストを durationMs だけ表示する。
