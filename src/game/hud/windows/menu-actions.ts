@@ -10,6 +10,7 @@ export type MenuAction =
   | 'activateBase'
   | 'deactivateBase'
   | 'planExecCycle'
+  | 'toggleTrajectoryLine'
   | 'duplicate'
   | 'delete'
   | 'cancel'
@@ -34,6 +35,9 @@ export const MenuCommon = {
     label: isTarget ? 'ターゲット解除' : 'ターゲットに設定',
     act: 'target',
     shortcut: 'KeyT',
+  }),
+  trajectoryLine: (on: boolean): MenuItem<MenuAction> => ({
+    label: '予測線・過去線で表示', act: 'toggleTrajectoryLine', selected: on, keepOpen: true,
   }),
   dock: (): MenuItem<MenuAction> => ({ label: 'ドッキング', act: 'dock' }),
   undock: (): MenuItem<MenuAction> => ({ label: 'ドッキング解除', act: 'undock' }),
