@@ -351,10 +351,17 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-settings-view .sv-theme-button .w-btn-icon {
   display: inline-flex; align-items: center; gap: 3px; width: auto; height: auto; margin-right: var(--space-2);
 }
-#hud-settings-view .sv-theme-icon { display: inline-flex; align-items: center; gap: 3px; }
-#hud-settings-view .sv-theme-swatch {
-  display: inline-block; width: 10px; height: 10px; border-radius: 50%;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--title) 30%, transparent);
+#hud-settings-view .sv-theme-icon { display: inline-flex; align-items: center; }
+#hud-settings-view .sv-theme-preview {
+  display: inline-flex; align-items: center; width: 38px; height: 25px; padding: 3px;
+  border: 1px solid; border-radius: 5px; box-sizing: border-box;
+}
+#hud-settings-view .sv-theme-preview-surface {
+  display: flex; align-items: center; gap: 3px; width: 100%; height: 100%; padding: 3px;
+  box-sizing: border-box; border-radius: 2px;
+}
+#hud-settings-view .sv-theme-preview-surface span {
+  display: block; flex: 1; height: 3px; border-radius: 2px;
 }
 #hud-settings-view .gp-body { display: flex; flex-direction: column; gap: var(--space-4); margin-top: var(--space-4); }
 #hud-settings-view .sv-volume-row {
