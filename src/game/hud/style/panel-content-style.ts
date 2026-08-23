@@ -354,36 +354,31 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   color: var(--text-dim); font-size: var(--font-s); line-height: 1.6;
 }
 #hud-settings-view .sv-tabs {
-  width: min(100%, 760px); margin: var(--space-6) auto 0; padding: var(--space-2);
-  gap: var(--space-2); border: 1px solid var(--edge); border-radius: var(--radius-panel);
-  background: var(--surface-0);
+  width: min(100%, 760px); margin: var(--space-6) auto 0; padding: 0;
+  gap: var(--space-4); border: 0; border-bottom: 1px solid var(--edge); border-radius: 0;
+  background: transparent;
 }
 #hud-settings-view .sv-tabs .w-btn {
   position: relative; display: flex; flex: 1 1 0; min-width: 0; min-height: 62px;
   align-items: center; justify-content: center; padding: var(--space-4) var(--space-3) var(--space-3);
-  border: 1px solid transparent; border-radius: var(--radius-control); text-align: center;
+  border: 0; border-radius: 0; text-align: center;
   font-size: var(--font-m); font-weight: 600; letter-spacing: 0.06em;
-  background: var(--surface-1); color: var(--body);
+  background: transparent; color: var(--text-dim); box-shadow: none;
 }
 #hud-settings-view .sv-tabs .w-btn::before {
-  position: absolute; top: 7px; left: 10px; color: var(--text-dim); content: '01';
-  font-size: var(--font-xxs); font-weight: 500; letter-spacing: 0.12em; opacity: 0.8;
+  display: none;
 }
-#hud-settings-view .sv-tabs .w-btn:nth-child(2)::before { content: '02'; }
-#hud-settings-view .sv-tabs .w-btn:nth-child(3)::before { content: '03'; }
 #hud-settings-view .sv-tabs .w-btn::after {
-  position: absolute; right: 14%; bottom: 5px; left: 14%; height: 2px; border-radius: 2px;
-  background: var(--accent); box-shadow: 0 0 10px var(--accent); content: '';
+  position: absolute; right: 0; bottom: -1px; left: 0; height: 2px; border-radius: 0;
+  background: var(--accent); content: '';
   opacity: 0; transform: scaleX(0.35); transition: opacity var(--transition-fast), transform var(--transition-fast);
 }
 #hud-settings-view .sv-tabs .w-btn:hover {
-  border-color: var(--accent-edge-soft); background: var(--surface-2);
-  color: var(--accent-near); transform: translateY(-1px);
+  background: transparent; color: var(--accent-near); transform: none;
 }
 #hud-settings-view .sv-tabs .w-btn.on {
-  border-color: var(--accent-edge); background: var(--accent-fill); color: var(--accent);
+  border: 0; background: transparent; color: var(--accent);
 }
-#hud-settings-view .sv-tabs .w-btn.on::before { color: var(--accent-near); }
 #hud-settings-view .sv-tabs .w-btn.on::after { opacity: 1; transform: scaleX(1); }
 #hud-settings-view .sv-section {
   position: relative; margin-top: var(--space-7); padding: var(--space-6);
@@ -403,20 +398,18 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 }
 #hud-settings-view .sv-theme-button {
   display: flex; align-items: center; gap: var(--space-2); min-height: 48px; width: 100%;
-  padding-inline: var(--space-4); text-align: left;
+  padding-inline: var(--space-2); border: 0; border-radius: 0; text-align: left;
+  background: transparent; box-shadow: none;
 }
 #hud-settings-view .sv-theme-button:not(.on) {
-  border-color: color-mix(in srgb, var(--sv-theme-title) 36%, transparent);
-  background: var(--sv-theme-page); color: var(--sv-theme-title);
+  color: var(--sv-theme-title);
 }
 #hud-settings-view .sv-theme-button:not(.on):hover {
-  border-color: color-mix(in srgb, var(--sv-theme-title) 68%, transparent);
-  background: color-mix(in srgb, var(--sv-theme-title) 10%, var(--sv-theme-page));
+  background: transparent;
   color: var(--sv-theme-title);
 }
 #hud-settings-view .sv-theme-button.on {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 18%, var(--sv-theme-page));
+  background: transparent;
   color: var(--sv-theme-title);
 }
 #hud-settings-view .sv-theme-button .w-btn-icon {
@@ -424,12 +417,22 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 }
 #hud-settings-view .sv-theme-icon { display: inline-flex; align-items: center; }
 #hud-settings-view .sv-theme-preview {
-  display: inline-flex; align-items: center; gap: 3px; width: auto; height: 25px; padding: 3px;
-  border: 1px solid color-mix(in srgb, var(--sv-theme-title) 30%, transparent); border-radius: 5px; box-sizing: border-box;
+  display: inline-flex; align-items: center; gap: 4px; width: auto; height: 25px; padding: 3px;
+  border: 0; border-radius: 0; box-sizing: border-box;
 }
 #hud-settings-view .sv-theme-swatch {
-  display: block; width: 10px; height: 17px; border-radius: 3px;
+  display: block; width: 14px; height: 14px; border-radius: 50%;
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--sv-theme-title) 28%, transparent);
+}
+#hud-settings-view .sv-header .w-close,
+#hud-settings-view .sv-preview-button,
+#hud-settings-view .sv-track-actions .w-btn {
+  border: 0; border-radius: 0; background: transparent; box-shadow: none;
+}
+#hud-settings-view .sv-header .w-close:hover,
+#hud-settings-view .sv-preview-button:hover,
+#hud-settings-view .sv-track-actions .w-btn:hover {
+  border: 0; background: transparent; color: var(--accent-near);
 }
 #hud-settings-view .gp-body { display: flex; flex-direction: column; gap: var(--space-4); margin-top: var(--space-4); }
 #hud-settings-view .sv-volume-row {
