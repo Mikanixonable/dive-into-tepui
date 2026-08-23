@@ -18,7 +18,7 @@ import { Billboard } from '../../render/billboard';
 import { CelestialSurface } from '../../render/celestial-surface';
 import { showsPhysicalSphere, sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from '../../render/screen-lod';
 import { CelestialView } from './celestial-view';
-import type { GraphicsSettings } from '../../render/graphics-settings';
+import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import { RingView } from './ring-view';
 
 // 見かけの明るさ3段階。金星(-4等)・木星(-2等)が bright、水星・火星・土星(0〜+1等台)が
@@ -107,7 +107,7 @@ export class PointView extends CelestialView {
   // 求め、閾値未満では実体を隠す(戦闘視点は輝点へ切り替え、広範囲視点は輝点も出さない)。
   sync(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris,
-    graphics: GraphicsSettings,
+    graphics: GraphicsSettingsData,
   ): void {
     if (!this.group.visible && !this.billboard.mesh.visible) return;
     const pos = ephemeris.positionOf(this.id, displayTime);
@@ -130,7 +130,7 @@ export class PointView extends CelestialView {
     const axis = orientation === null ? null : new THREE.Vector3(orientation.axis.x, orientation.axis.y, orientation.axis.z);
     const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
     // 環を切ったときは、帯そのものだけでなく本体表面へ落ちる環の影も消す。
-    const rings = graphics.current.rings ? this.rings : undefined;
+    const rings = graphics.rings ? this.rings : undefined;
     if (this.ring !== undefined) this.ring.group.visible = rings !== undefined;
     if (cameraSystem.overviewMode) {
       // 広範囲視点は SphereView と同じ実スケール。
