@@ -98,33 +98,6 @@ GPU の起動オプション依存で不安定である。**この環境はそ�
 
 ## 手順
 
-### 手順 6. 2 経路を並べる
-
-**目的**: 同じケースをライトプリパスとフォワードで同時に描き、**目視で見比べられる状態**にする。
-
-**変更が必要な箇所**
-
-| ファイル | 変更 |
-|---|---|
-| `tools/render-lab/lab.ts`(新規) | canvas 2 枚それぞれに `WebGPURenderer` と `RenderPipeline`(設定は `QUALITY_PRESETS.high` をそのまま渡す — localStorage を読まない)を作り、ケースの物体を 2 つのシーンへ入れる。**違いは 2 点だけ** — 左は艦へ `markLitOpaque()`、ライトを `LIT_OPAQUE_LAYER` にも属させ、`pipeline.sunLight.set(dir, SUN_COLOR, SUN_INTENSITY, AMBIENT_INTENSITY, 1)` を毎フレーム書く。右は `markLitOpaque()` を打ち消してチャンネル 0 へ戻し、ライトもチャンネル 0 のまま |
-| `tools/render-lab/main.ts` | ケース切替のボタン列。押されたら両方のシーンを組み直す |
-
-**`NodeMaterial.setupLighting` はカメラのチャンネルと重なる光源が 1 つも無いと
-`setupLightingModel()` を呼ばず、受け手が一斉に真っ黒になる。** 左のライトを
-`LIT_OPAQUE_LAYER` にも属させるのはそのため。
-
-**達成条件と検証**
-
-- 2 枚の canvas が並び、ボタンで 7 ケースを切り替えられる。
-- `leo` で左右とも艦・球・線が出ている。
-- `order` で 5 本の線が `reference` → `predicted` の順に手前へ重なる。
-- `npm run typecheck`
-- `npm run render-lab` → 7 ケースすべてを順に開き、左右とも黒画面でないこと
-- `order` を開き、手前の線ほど `predicted` に近い色であること
-- ブラウザのコンソールにエラーが出ていないこと(**`init()` の失敗を握り潰さずページへ文字で出す**)
-
----
-
 ### 手順 7. 画素の読み出しと差分画像
 
 **目的**: 目で見た同じ絵を、**提示経路を通さずに PNG として取り出せる**ようにする。
