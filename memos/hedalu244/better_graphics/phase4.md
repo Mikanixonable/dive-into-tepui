@@ -377,35 +377,6 @@ depthScale = 1 / k
 
 ## 手順
 
-### 手順 10. 地球の大気リムを画面空間フィルタへ移す
-
-**目的**: 大気フィルタの器を作り、**まずリム光だけ**を移して器が正しく動くかを見る。
-もやまで一度に移すと「フィルタが壊れている」のか「移し方が違う」のか切り分けられない。
-
-**変更が必要な箇所**
-
-| ファイル | 変更 |
-|---|---|
-| `src/render/pipeline/atmosphere-pass.ts`(新規) | 復元位置と視線から大気シェルとのレイ・スフィア交差を解き、高度の指数減衰と夕焼け色で内部散乱を評価して不透明の絵の上へ合成する画面空間パス。**`buildAtmoRim` の式をそのまま移す** |
-| `src/render/pipeline/render-pipeline.ts` | 大気パスをマテリアルパスと world パスの間へ |
-| `src/render/earth.ts:86-140` | `buildAtmoRim` とリム球を削除 |
-| `src/game/celestial/earth-view.ts` | 地球の中心と半径を大気パスへ渡す |
-| `src/gpu-timings.ts` | `GPU_PASS` / `GPU_PASS_LABELS` に大気の 1 行 |
-| `src/render/pipeline/debug-target.ts` | 大気フィルタ単体の目視を足す |
-| `src/render/graphics-settings.ts` | `atmosphere` トグルの効き先をフィルタへ |
-| `tools/render-lab/cases.ts` / `webpack.render-lab.config.js` | `earth` ケースを足す(`.jpg` を読むので `asset/resource` のルールが要る) |
-| `DEVELOP/SPEC/RENDERING.md` | パイプラインの段数(6 → 7)、デバッグ表示の候補、負荷計測の行 |
-
-**達成条件と検証**
-
-- 達成目標 15(`depthTest: false` が 2 箇所へ)。
-- リム光が移す前と同じに見える。
-- `earth` ケースが lab に出る。
-- `npm run typecheck`
-- `grep -rn "depthTest: false" src/` → `stars.ts` と `plan-gizmo-3d.ts` の 2 件だけ
-- `npm run render-lab:shot` → `earth-prepass.png` のリムが移す前と同じ
-- `npm run dev` → 地球の縁の発光が同じに見え、地球本体に隠れるべき側が光っていないこと
-- 描画設定で大気をオフにすると消えること
 
 ---
 
