@@ -2,6 +2,7 @@
 // 自機の有無に関係なく常に出す画面全体の状態。
 import { SIM_EPOCH_SEC, fmtDateTime, fmtElapsedUnits, fmtTime } from '../utils';
 import type { Game } from '../../game';
+import * as C from '../../const';
 
 const SYNC_INTERVAL_MS = 100;
 
@@ -20,10 +21,20 @@ export class SimulationStatusBar {
     const simSpeedLabel = `×${game.simSpeedManager.simSpeed}`;
     const autoWarpRealRemain = game.simSpeedManager.estimatedRealSecondsToWarpEnd(game.simulator.simTime);
     const simSpeedEl = this.els.get('sim-speed');
-    if (simSpeedEl) {
-      // 自動ワープ中は現在のワープ段の右に残り実時間を添える。停止中はワープ段より PAUSE を優先する。
+    if (simSpeedEl instanceof HTMLSelectElement) {
+      if (simSpeedEl.dataset['speedOptions'] !== 'ready') {
+        for (const speed of C.SIM_SPEED_LEVELS) {
+          const option = document.createElement('option');
+          option.value = String(speed);
+          option.textContent = `×${speed}`;
+          simSpeedEl.appendChild(option);
+        }
+        simSpeedEl.dataset['speedOptions'] = 'ready';
+        simSpeedEl.addEventListener('change', () => game.simSpeedManager.setSpeed(Number(simSpeedEl.value)));
+      }
+      simSpeedEl.value = String(game.simSpeedManager.simSpeed);
       const warpRemain = autoWarpRealRemain !== null ? ` (残り ${fmtTime(autoWarpRealRemain)})` : '';
-      simSpeedEl.textContent = game.isPaused ? 'PAUSE' : `${simSpeedLabel}${warpRemain}`;
+      simSpeedEl.title = game.isPaused ? '一時停止中' : `時間加速 ${simSpeedLabel}${warpRemain}`;
       simSpeedEl.classList.toggle('sim-speed-hot', simSpeedLabel !== '×1' || game.isPaused);
     }
     const autoWarpSimRemain = game.simSpeedManager.remainingSimulationSeconds(game.simulator.simTime);

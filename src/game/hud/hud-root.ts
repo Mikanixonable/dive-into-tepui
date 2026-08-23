@@ -289,7 +289,7 @@ function buildGlobalStatus(root: HTMLElement): void {
     <div class="gs-row">
       <span class="k">Mission time</span><output class="v" data-id="met">—</output>
       <span class="gs-sep" aria-hidden="true">·</span>
-      <span class="k">時間加速</span><output class="v" data-id="sim-speed">—</output>
+      <span class="k">時間加速</span><select class="v gs-speed-select" data-id="sim-speed" aria-label="時間加速"></select>
       <span class="gs-sep" aria-hidden="true">·</span>
       <span class="k">Node warp</span><output class="v" data-id="node-warp-remain">—</output>
     </div>`;

@@ -16,6 +16,15 @@ export const HUD_BADGE_STYLE = `
   max-width: 100%; overflow-x: auto; scrollbar-width: none;
 }
 #hud-simulation-status .v { color: var(--text); }
+#hud-simulation-status .gs-speed-select {
+  min-width: 76px; padding: var(--space-1) var(--space-5) var(--space-1) var(--space-2);
+  border: 1px solid var(--edge); border-radius: var(--radius-micro);
+  background: var(--surface-2); color: var(--text); font: inherit; font-size: var(--font-s);
+  font-variant-numeric: tabular-nums; cursor: pointer;
+}
+#hud-simulation-status .gs-speed-select:hover,
+#hud-simulation-status .gs-speed-select:focus { border-color: var(--accent); background: var(--surface-3); }
+#hud-simulation-status .gs-speed-select.sim-speed-hot { color: var(--accent); }
 #hud-simulation-status .gs-sep { color: var(--edge); }
 
 #hud-viewbadge {
