@@ -2,13 +2,8 @@
 // すべてパイプラインが与える — このモジュールが持つのはアルベドと球のジオメトリだけ。
 import * as THREE from 'three/webgpu';
 import { markLitOpaque } from './pipeline/lit-layer';
-import { SUN_IRRADIANCE_1AU } from './pipeline/sun-light';
+import type { Albedo } from './celestial-albedo';
 import { SPHERE_LOD_LADDER, SphereLodLevel } from './screen-lod';
-
-// 天体の直書き色・テクスチャから拡散アルベドへの換算。それらは「1 天文単位で照らされた
-// 見え方」をそのまま置いた値なので、そこへ届く放射照度と Lambert の 1/π を戻す。本物の
-// アルベドを持たせるまでの繋ぎで、色そのものが物理量になれば消える。
-export const ALBEDO_FROM_LIT_COLOR = Math.PI / SUN_IRRADIANCE_1AU;
 
 // 分割数の組が SPHERE_LOD_LADDER のいずれかの段と一致する呼び出しだけ、その段の単位球
 // ジオメトリを全呼び出し元(=全天体)で共有する。一致しない組(既存のジオメトリを
@@ -43,19 +38,21 @@ export class CelestialSurface {
     markLitOpaque(this.mesh);
   }
 
-  // 実写テクスチャを貼った球面。
-  static textured(textureUrl: string, widthSegments: number, heightSegments: number): CelestialSurface {
+  // 実写テクスチャを貼った球面。albedoScale はテクスチャの明るさをその天体のアルベドへ
+  // 合わせる倍率(render/celestial-textures.ts)。
+  static textured(textureUrl: string, albedoScale: number, widthSegments: number, heightSegments: number): CelestialSurface {
     const map = new THREE.TextureLoader().load(textureUrl);
     map.colorSpace = THREE.SRGBColorSpace;
     const { geometry, shared } = unitSphereGeometry(widthSegments, heightSegments);
-    const tint = new THREE.Color(ALBEDO_FROM_LIT_COLOR, ALBEDO_FROM_LIT_COLOR, ALBEDO_FROM_LIT_COLOR);
+    const tint = new THREE.Color(albedoScale, albedoScale, albedoScale);
     return new CelestialSurface(geometry, !shared, tint, map);
   }
 
-  // テクスチャを持たない天体の単色球面。
-  static solid(color: number, widthSegments: number, heightSegments: number): CelestialSurface {
+  // テクスチャを持たない天体の単色球面。albedo は線形 RGB の拡散アルベド
+  // (render/celestial-albedo.ts)で、sRGB の見た目色ではない。
+  static solid(albedo: Albedo, widthSegments: number, heightSegments: number): CelestialSurface {
     const { geometry, shared } = unitSphereGeometry(widthSegments, heightSegments);
-    const tint = new THREE.Color(color).multiplyScalar(ALBEDO_FROM_LIT_COLOR);
+    const tint = new THREE.Color().setRGB(albedo[0], albedo[1], albedo[2], THREE.LinearSRGBColorSpace);
     return new CelestialSurface(geometry, !shared, tint, null);
   }
 
