@@ -30,7 +30,6 @@ export type RingVisualState = {
   readonly bodyCenter: THREE.Vector3;
   readonly bodyRadius: number;
   readonly sunDirection: THREE.Vector3;
-  readonly cameraPosition: THREE.Vector3;
   readonly ringAxis: THREE.Vector3;
   readonly coverage: number;
 };

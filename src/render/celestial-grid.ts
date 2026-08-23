@@ -237,19 +237,19 @@ class GridPlane {
     for (const obj of [this.planeLine, this.gridLine, this.poleLine]) obj.quaternion.copy(this.basisRotation);
   }
 
-  sync(planeVisible: boolean, poleVisible: boolean, gridVisible: boolean, origin: THREE.Vector3, scale: number, camera: THREE.Camera): void {
+  sync(planeVisible: boolean, poleVisible: boolean, gridVisible: boolean, scale: number, camera: THREE.Camera): void {
     this.planeLine.visible = planeVisible;
     this.gridLine.visible = gridVisible;
     this.poleLine.visible = poleVisible;
     for (const obj of [this.planeLine, this.gridLine, this.poleLine]) {
-      obj.position.copy(origin);
+      obj.position.set(0, 0, 0);
       obj.scale.setScalar(scale);
       obj.quaternion.copy(this.basisRotation);
     }
     this.labels.forEach((el) => { el.style.display = 'none'; });
     const show = (el: HTMLDivElement, p: THREE.Vector3, below = false) => {
       const w = window.innerWidth, h = window.innerHeight;
-      const v = new THREE.Vector3(origin.x + p.x * scale, origin.y + p.y * scale, origin.z + p.z * scale).project(camera);
+      const v = new THREE.Vector3(p.x * scale, p.y * scale, p.z * scale).project(camera);
       if (v.z < -1 || v.z > 1) return;
       const margin = 18;
       const x = Math.max(margin, Math.min(w - margin, (v.x * .5 + .5) * w));
@@ -264,7 +264,7 @@ class GridPlane {
     }
     if (gridVisible) {
       const w = window.innerWidth, h = window.innerHeight;
-      const project = (p: THREE.Vector3) => new THREE.Vector3(origin.x + p.x * scale, origin.y + p.y * scale, origin.z + p.z * scale).project(camera);
+      const project = (p: THREE.Vector3) => new THREE.Vector3(p.x * scale, p.y * scale, p.z * scale).project(camera);
       for (const item of this.gridLabels) {
         const latRad = item.lat * Math.PI / 180;
         const lonRad = item.lon * Math.PI / 180;
@@ -310,12 +310,12 @@ export class CelestialGrid {
     this.ecliptic = new GridPlane(scene, ECLIPTIC_BASIS, 0xc0a878, 'ECLIPTIC');
   }
 
-  // 星殻と同じくカメラ追従の固定半径殻として、2 面ぶんの可視状態を反映する。
+  // 星殻と同じく描画原点(= カメラ)に固定した半径殻として、2 面ぶんの可視状態を反映する。
   // scale は星殻半径 STAR_SHELL_RADIUS に対する拡大率(広範囲視点では呼び出し側が
   // CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS を渡す)。
   sync(visibility: CelestialGridVisibility, cam: THREE.Camera, scale: number): void {
-    this.equator.sync(visibility.equator && visibility.equatorPlane, visibility.equator && visibility.equatorPole, visibility.equator && visibility.equatorGrid, cam.position, scale, cam);
-    this.ecliptic.sync(visibility.ecliptic && visibility.eclipticPlane, visibility.ecliptic && visibility.eclipticPole, visibility.ecliptic && visibility.eclipticGrid, cam.position, scale, cam);
+    this.equator.sync(visibility.equator && visibility.equatorPlane, visibility.equator && visibility.equatorPole, visibility.equator && visibility.equatorGrid, scale, cam);
+    this.ecliptic.sync(visibility.ecliptic && visibility.eclipticPlane, visibility.ecliptic && visibility.eclipticPole, visibility.ecliptic && visibility.eclipticGrid, scale, cam);
   }
 
   // 2面ぶんの GridPlane を解放する。

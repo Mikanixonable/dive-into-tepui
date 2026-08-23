@@ -8,7 +8,6 @@
 import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
 import { OrbitingId } from '../../physics/celestial-body';
-import { Vec3, len, scale as scaleVec, sub } from '../../physics/vec3';
 import { RingSystemDef, ShapeDef, shapeAxes } from '../../physics/solar-system';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
@@ -16,6 +15,7 @@ import { spinOrientation } from '../../physics/body-orientation';
 import { STAR_SHELL_RADIUS } from '../../render/stars';
 import { Billboard } from '../../render/billboard';
 import { CelestialSurface } from '../../render/celestial-surface';
+import { compressionRatio } from '../../render/view-compression';
 import { showsPhysicalSphere, sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from '../../render/screen-lod';
 import { CelestialView } from './celestial-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
@@ -37,7 +37,6 @@ const POINT_OPACITY: Record<PointBrightness, number> = {
 };
 
 const tmpPos = new THREE.Vector3();
-const POINT_BODY_VIS_DIST = 5e7;
 
 export class PointView extends CelestialView {
   readonly id: OrbitingId;
@@ -102,9 +101,9 @@ export class PointView extends CelestialView {
     if (this.ring !== undefined) this.ring.group.visible = visible;
   }
 
-  // displayTime 時点の位置へ、視点モードに応じて広範囲視点の実体メッシュか戦闘視点の
-  // 輝点ビルボードのどちらかを同期する(常に片方は隠す)。見かけ直径は圧縮前の真の位置から
-  // 求め、閾値未満では実体を隠す(戦闘視点は輝点へ切り替え、広範囲視点は輝点も出さない)。
+  // displayTime 時点の位置へ実体メッシュか輝点ビルボードのどちらかを同期する(常に片方は
+  // 隠す)。見かけ直径は圧縮前の真の位置から求め、閾値未満では実体を隠す(戦闘視点は輝点へ
+  // 切り替え、広範囲視点は輝点も出さない)。
   sync(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris,
     graphics: GraphicsSettingsData,
@@ -118,7 +117,7 @@ export class PointView extends CelestialView {
       if (cameraSystem.overviewMode) {
         this.billboard.hide();
       } else {
-        this.syncBillboard(pos, cameraSystem);
+        this.syncBillboard(fo.RtoThreeV3(pos), cameraSystem.activeCamera.quaternion);
       }
       return;
     }
@@ -132,46 +131,13 @@ export class PointView extends CelestialView {
     // 環を切ったときは、帯そのものだけでなく本体表面へ落ちる環の影も消す。
     const rings = graphics.rings ? this.rings : undefined;
     if (this.ring !== undefined) this.ring.group.visible = rings !== undefined;
-    if (cameraSystem.overviewMode) {
-      // 広範囲視点は SphereView と同じ実スケール。
-      this.group.position.copy(fo.RtoThreeV3(pos));
-      this.group.scale.copy(this.axes);
-      this.billboard.hide();
-      if (q !== null) this.group.quaternion.set(q.x, q.y, q.z, q.w);
-      activeSurface.setRingShadowSystem(
-        rings,
-        this.group.position,
-        this.radius,
-        this.radius,
-        axis,
-      );
-      if (this.ring !== undefined && rings !== undefined) {
-        this.ring.sync(
-          this.group.position,
-          this.radius,
-          orientation === null ? null : orientation.axis,
-          pos,
-          cameraSystem.activeCameraScale,
-          sunDirection,
-          cameraSystem.activeCamera.position,
-        );
-      }
-      return;
-    }
-    // 戦闘視点でも見かけ直径が閾値以上なら SphereView と同じ圧縮実体を描く。
-    const rel = sub(pos, cameraSystem.activeCameraPos);
-    const trueDistance = Math.max(1, len(rel));
-    const cam = cameraSystem.activeCamera;
-    const dir = scaleVec(rel, 1 / trueDistance);
-    const scaleFactor = POINT_BODY_VIS_DIST * (this.radius / trueDistance);
-    this.group.position.set(
-      cam.position.x + dir.x * POINT_BODY_VIS_DIST,
-      cam.position.y + dir.y * POINT_BODY_VIS_DIST,
-      cam.position.z + dir.z * POINT_BODY_VIS_DIST,
-    );
-    const k = scaleFactor / this.radius;
+    const p = fo.RtoThreeV3(pos);
+    const k = compressionRatio(p, 'planet', cameraSystem.overviewMode);
+    this.group.position.copy(p).multiplyScalar(k);
+    const scaleFactor = this.radius * k;
     this.group.scale.set(this.axes.x * k, this.axes.y * k, this.axes.z * k);
     if (q !== null) this.group.quaternion.set(q.x, q.y, q.z, q.w);
+    this.billboard.hide();
     activeSurface.setRingShadowSystem(
       rings,
       this.group.position,
@@ -179,7 +145,6 @@ export class PointView extends CelestialView {
       scaleFactor,
       axis,
     );
-    this.billboard.hide();
     if (this.ring !== undefined && rings !== undefined) {
       this.ring.sync(
         this.group.position,
@@ -188,7 +153,6 @@ export class PointView extends CelestialView {
         pos,
         cameraSystem.activeCameraScale,
         sunDirection,
-        cameraSystem.activeCamera.position,
       );
     }
   }
@@ -208,21 +172,13 @@ export class PointView extends CelestialView {
     for (const [lvl, surface] of this.surfaces) surface.mesh.visible = lvl === level;
   }
 
-  // 星シェル上に、カメラから見た方向だけを反映した輝点を置く。
-  private syncBillboard(pos: Vec3, cameraSystem: CameraSystem): void {
-    const cam = cameraSystem.activeCamera;
-    const rel = sub(pos, cameraSystem.activeCameraPos);
-    const trueDistance = Math.max(1, len(rel));
-    const dir = scaleVec(rel, 1 / trueDistance);
+  // 星殻上に、描画座標 p の方向だけを反映した輝点を置く。
+  private syncBillboard(p: THREE.Vector3, cameraQuaternion: THREE.Quaternion): void {
     this.billboard.sync(
-      tmpPos.set(
-        cam.position.x + dir.x * STAR_SHELL_RADIUS,
-        cam.position.y + dir.y * STAR_SHELL_RADIUS,
-        cam.position.z + dir.z * STAR_SHELL_RADIUS,
-      ),
+      tmpPos.copy(p).setLength(STAR_SHELL_RADIUS),
       this.scale,
       this.opacity,
-      cam.quaternion,
+      cameraQuaternion,
     );
   }
 

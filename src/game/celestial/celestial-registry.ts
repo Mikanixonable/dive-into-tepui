@@ -2,7 +2,7 @@
 // 天体の日本語表示名の定義元はここ1箇所 — 他のモジュールは必ずここを読む。
 import { bodyDef, CelestialRegistry, RingSystemDef, ShapeDef, SOLAR_SYSTEM, SolarSystemId } from '../../physics/solar-system';
 import { CelestialBodyId } from '../../physics/celestial-body';
-import { createMoon, MOON_VIS_DIST } from '../../render/stars';
+import { createMoon } from '../../render/stars';
 import { CelestialSurface } from '../../render/celestial-surface';
 import { SphereLodLevel } from '../../render/screen-lod';
 import { CelestialView } from './celestial-view';
@@ -25,8 +25,6 @@ import ganymedeTextureUrl from '../../assets/2k_ganymede.jpg';
 import callistoTextureUrl from '../../assets/2k_callisto.jpg';
 import titanTextureUrl from '../../assets/2k_titan.jpg';
 
-const PLANET_VIS_DIST = 5e7;
-
 // テクスチャ付き惑星のレジストリ項を、表示名とテクスチャ URL から組む。rings(bodyDef から
 // そのまま渡す)があれば環付きになる。pointBrightness を渡すと戦闘ビューでの表示が
 // PointView の輝点スプライトになる(省略時は SphereView の視距離圧縮球のまま)。
@@ -37,7 +35,7 @@ function planetEntry(id: SolarSystemId, name: string, textureUrl: string, pointB
     name,
     create: () =>
       pointBrightness === undefined
-        ? new SphereView(id, buildSurface, def.radius, PLANET_VIS_DIST, shapeOf(id), ringsOf(id))
+        ? new SphereView(id, buildSurface, def.radius, 'planet', shapeOf(id), ringsOf(id))
         : new PointView(id, buildSurface, def.radius, pointBrightness, shapeOf(id), ringsOf(id)),
   };
 }
@@ -54,7 +52,7 @@ function shapeOf(id: SolarSystemId): ShapeDef | undefined {
   return def.kind === 'star' ? undefined : def.shape;
 }
 
-// 単色の衛星のレジストリ項を、表示名と色から組む。表示距離は月と揃える。
+// 単色の衛星のレジストリ項を、表示名と色から組む。
 function satelliteEntry(id: SolarSystemId, name: string, color: number): CelestialViewDef {
   return {
     name,
@@ -62,21 +60,20 @@ function satelliteEntry(id: SolarSystemId, name: string, color: number): Celesti
       id,
       (level) => CelestialSurface.solid(color, level.widthSegments, level.heightSegments),
       bodyDef(SOLAR_SYSTEM, id).radius,
-      MOON_VIS_DIST,
+      'satellite',
       shapeOf(id),
     ),
   };
 }
 
 // テクスチャ付き衛星のレジストリ項を、表示名とテクスチャ URL から組む(実写の全球モザイクが
-// 入手できた衛星のみ; それ以外は satelliteEntry の単色のまま)。表示距離は月と揃える。
+// 入手できた衛星のみ; それ以外は satelliteEntry の単色のまま)。
 function texturedSatelliteEntry(id: SolarSystemId, name: string, textureUrl: string): CelestialViewDef {
   const buildSurface = (level: SphereLodLevel) => CelestialSurface.textured(textureUrl, level.widthSegments, level.heightSegments);
-  return { name, create: () => new SphereView(id, buildSurface, bodyDef(SOLAR_SYSTEM, id).radius, MOON_VIS_DIST, shapeOf(id)) };
+  return { name, create: () => new SphereView(id, buildSurface, bodyDef(SOLAR_SYSTEM, id).radius, 'satellite', shapeOf(id)) };
 }
 
-// テクスチャを持たない太陽中心天体(準惑星・大型小惑星・彗星核)のレジストリ項。表示距離は
-// テクスチャ付き惑星と揃える。
+// テクスチャを持たない太陽中心天体(準惑星・大型小惑星・彗星核)のレジストリ項。
 function solidPlanetEntry(id: SolarSystemId, name: string, color: number): CelestialViewDef {
   return {
     name,
@@ -84,7 +81,7 @@ function solidPlanetEntry(id: SolarSystemId, name: string, color: number): Celes
       id,
       (level) => CelestialSurface.solid(color, level.widthSegments, level.heightSegments),
       bodyDef(SOLAR_SYSTEM, id).radius,
-      PLANET_VIS_DIST,
+      'planet',
       shapeOf(id),
       ringsOf(id),
     ),
@@ -95,7 +92,7 @@ export type CelestialViewDef = { readonly name: string; create(): CelestialView 
 
 export const CELESTIAL_VIEWS: Record<SolarSystemId, CelestialViewDef> = {
   earth: { name: '地球', create: () => new EarthView() },
-  moon: { name: '月', create: () => new SphereView('moon', createMoon, bodyDef(SOLAR_SYSTEM, 'moon').radius, MOON_VIS_DIST) },
+  moon: { name: '月', create: () => new SphereView('moon', createMoon, bodyDef(SOLAR_SYSTEM, 'moon').radius, 'satellite') },
   mercury: planetEntry('mercury', '水星', mercuryTextureUrl, 'medium'),
   venus: planetEntry('venus', '金星', venusTextureUrl, 'bright'),
   mars: planetEntry('mars', '火星', marsTextureUrl, 'medium'),
@@ -205,6 +202,6 @@ export function fallbackCelestialView(registry: CelestialRegistry, id: Celestial
       id,
       (level) => CelestialSurface.solid(0x888888, level.widthSegments, level.heightSegments),
       def.radius,
-      def.kind === 'satellite' ? MOON_VIS_DIST : PLANET_VIS_DIST,
+      def.kind === 'satellite' ? 'satellite' : 'planet',
     );
 }
