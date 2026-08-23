@@ -15,7 +15,8 @@
     "test:physics": "tsc -p tsconfig.test.json && node tests/dist/tests/physics/index.js",
     "export-assets": "node tools/export-models.mjs",
     "bgm-lab": "node node_modules/webpack-cli/bin/cli.js serve --config webpack.bgm-lab.config.js --mode development",
-    "render-lab": "node node_modules/webpack-cli/bin/cli.js serve --config webpack.render-lab.config.js --mode development"
+    "render-lab": "node node_modules/webpack-cli/bin/cli.js serve --config webpack.render-lab.config.js --mode development",
+    "render-lab:shot": "webpack --config webpack.render-lab.config.js --mode production && node tools/render-lab-shot.mjs"
   },
   "devDependencies": {
     "@types/three": "^0.185.4",
