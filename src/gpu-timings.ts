@@ -14,12 +14,13 @@ export const GPU_PASS = {
   atmosphere: 4,
   world: 5,
   composite: 6,
+  overlay: 7,
 } as const;
 
 export type GpuPassId = (typeof GPU_PASS)[keyof typeof GPU_PASS];
 
 // 表示名。並びは GPU_PASS の値の順。
-export const GPU_PASS_LABELS: readonly string[] = ['Gバッファ', '遮蔽', 'ライティング', 'マテリアル', '大気', 'ワールド', '合成'];
+export const GPU_PASS_LABELS: readonly string[] = ['Gバッファ', '遮蔽', 'ライティング', 'マテリアル', '大気', 'ワールド', '合成', '3D UI'];
 
 export const GPU_PASS_COUNT = GPU_PASS_LABELS.length;
 

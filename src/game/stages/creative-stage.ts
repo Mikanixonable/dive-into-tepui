@@ -26,6 +26,7 @@ import { ElementsForm, LagrangeForm, ObjectType, ReferenceCelestialBody, ObjectP
 import { validateEllipticPlacementFields, validateBaseReferenceFields, validateLagrangePlacementFields, PlacementFieldIssue } from '../creative/placement-validation';
 import { elementsFormFromState } from '../creative/duplicate-form';
 import { OrbitLine } from '../orbit-line';
+import { LINE_RENDER_ORDER } from '../../render/line-style';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
 import type { CreativeStageSaveData, StageSaveData } from '../save-data';
 
@@ -70,7 +71,7 @@ export class CreativeStage extends Stage {
     for (const p of this._entities.players) this.playerIdAllocator.next(p.id);
     for (const ammoPickup of this._entities.ammoPickups) this.ammoPickupIdAllocator.next(ammoPickup.id);
 
-    this.previewOrbitLine = new OrbitLine({ color: 0xffffff, opacity: 0.6, renderOrder: C.LINE_RENDER_ORDER.plan });
+    this.previewOrbitLine = new OrbitLine({ color: 0xffffff, opacity: 0.6, renderOrder: LINE_RENDER_ORDER.plan });
     this._scene.add(this.previewOrbitLine.line);
 
     this.placerPanel = new ObjectPlacerPanel(

@@ -14,6 +14,7 @@ import { Projected } from '../../physics/projection';
 import { isOccluded } from '../../physics/occlusion';
 import { FloatingOrigin } from '../floating-origin';
 import { TrajectoryLine } from '../trajectory-line';
+import { LINE_RENDER_ORDER } from '../../render/line-style';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { DisplayDurationSource, PlanData, TimeRange, segmentDurationFrom } from './plan';
 import { BodyImpact, PredictedArc } from '../simulation/predicted-arc';
@@ -462,7 +463,7 @@ export class PlanPath {
     while (this.lines.length <= i) {
       const idx = this.lines.length;
       const line = new TrajectoryLine({
-        color: arcColor(idx), opacity: C.PLAN_ARC_OPACITY, renderOrder: C.LINE_RENDER_ORDER.plan,
+        color: arcColor(idx), opacity: C.PLAN_ARC_OPACITY, renderOrder: LINE_RENDER_ORDER.plan,
         dash: { dashSize: C.PLAN_ARC_DASH_PX, gapSize: C.PLAN_ARC_GAP_PX },
       });
       this.lines.push(line);

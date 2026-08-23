@@ -12,12 +12,28 @@ export const LIT_OPAQUE_LAYER = 1;
 // 同じカメラで描くことで、renderOrder(-10)を使って不透明物より先に色を書ける。world パスの
 // 既定チャンネルには置かないので、後段の world 描画で星空が不透明物を上書きすることもない。
 export const WORLD_BACKGROUND_LAYER = 2;
+// 3D 空間に居るが物理的な明るさを持たない表示物(軌道線・軌跡線・天球グリッド・縮尺グリッド・
+// Δv ギズモ)の専用チャンネル。合成パスの後ろで描かれるので、露出もトーンマッピングも受けず、
+// 指定した色がそのまま画面へ出る。LIT_OPAQUE_LAYER と同じくチャンネル0からは外す。
+export const OVERLAY_LAYER = 3;
 
 // マテリアルパスが見るチャンネル。シーンルートは全チャンネルを持つ必要があるため、呼び出し側は
 // このマスクを設定する前に scene.layers.enableAll() を済ませておく。
 export function setOpaquePassLayers(camera: THREE.Camera): void {
   camera.layers.set(LIT_OPAQUE_LAYER);
   camera.layers.enable(WORLD_BACKGROUND_LAYER);
+}
+
+// 3D UI パスが見るチャンネル。gbuffer.ts / material-pass.ts と同じく、呼び出し側は
+// camera.layers.mask を呼び出し前の値へ戻す責任を持つ。
+export function setOverlayPassLayers(camera: THREE.Camera): void {
+  camera.layers.set(OVERLAY_LAYER);
+}
+
+// root 以下のすべてを 3D UI チャンネルだけへ置く。markLitOpaque と違ってマテリアルは見ない —
+// 表示値として描くかどうかはマテリアルの種類ではなく、その物体が何であるかで決まる。
+export function markOverlay(root: THREE.Object3D): void {
+  root.traverse((obj) => obj.layers.set(OVERLAY_LAYER));
 }
 
 // 標準マテリアル(値だけの MeshStandardMaterial と、アルベドをノードで組む
