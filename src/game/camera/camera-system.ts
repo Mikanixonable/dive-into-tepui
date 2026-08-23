@@ -155,7 +155,6 @@ export class CameraSystem {
     this.mapCamera = new MapCamera(_hud, ephemeris, saved?.overview);
     // 表示パネルと天体クラス側操作のコールバック
     this.viewOptionsPanel = new ViewOptionsPanel(_hud.mapRoot);
-    _hud.setViewOptionsPanel(this.viewOptionsPanel);
     this.viewOptionsPanel.onBodyClassModeChange = (key, mode) => {
       this._bodyClassToggles = applyBodyClassDisplayMode(this._bodyClassToggles, key, mode);
       saveBodyClassToggles(this._bodyClassToggles);
@@ -242,9 +241,8 @@ export class CameraSystem {
   sync(fo: FloatingOrigin): void {
     const active = this.overviewMode ? this.mapCamera : this.combatCamera;
     syncCameraToViewpoint(active.camera, active.viewpoint, active.near, active.far, fo);
-    // 表示設定はマップだけでなく戦闘ビューの右ドックにも常設する。
-    // ビューごとの配置は Hud.setWorldView() が行い、ここでは hidden を解除するだけにする。
-    this.viewOptionsPanel.setVisible(true);
+    // 広範囲視点のときだけ表示設定パネルとフォーカスラベルを表示する。
+    this.viewOptionsPanel.setVisible(this.overviewMode);
 
     if (this.overviewMode) {
       this.focusMarkers.syncLabels(this.activeCameraProjection, this.activeCameraPos);

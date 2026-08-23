@@ -103,18 +103,29 @@ export class CreativeStage extends Stage {
     return panel;
   }
 
+  // クリエイティブの設定は、表示中のワールドビューの右ドックへ追従させる。
+  private mountCreativeOptionsPanel(inMapView: boolean): void {
+    const root = inMapView ? this._hud.mapRoot : this._hud.combatRoot;
+    const rightRail = hudRail(root, 'right');
+    if (this.creativeOptionsPanel.parentElement === rightRail) return;
+    const vessel = rightRail.querySelector<HTMLElement>('#hud-vessel-status');
+    if (vessel !== null) rightRail.insertBefore(this.creativeOptionsPanel, vessel);
+    else rightRail.appendChild(this.creativeOptionsPanel);
+  }
+
   // 共通のステータス表示に加えて、配置プレビューの軌道線とマーカーを同期する。
   sync(
     player: Player | null, fo: FloatingOrigin, cameraSystem: CameraSystem, displayTime: number,
     visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     super.sync(player, fo, cameraSystem, displayTime, visibilityPolicy);
+    this.mountCreativeOptionsPanel(cameraSystem.overviewMode);
     this.syncPreview(
       fo, cameraSystem.activeCameraProjection, cameraSystem.activeCamera,
       cameraSystem.overviewMode, cameraSystem.activeCameraPos, this._ephemeris.celestialBodiesAt(displayTime),
     );
     this.placerPanel.setIssues(this.issues);
-    this.creativeOptionsPanel.classList.toggle('hidden', !cameraSystem.overviewMode);
+    this.creativeOptionsPanel.classList.remove('hidden');
   }
 
   // オブジェクト配置モーダルを開く (MapContextActions から呼ばれる)。focusId はマップの現在フォーカスで、
