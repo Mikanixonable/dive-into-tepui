@@ -9,7 +9,7 @@ import { createGameScene, GameScene } from './render/scene';
 import { PerfMeter } from './perf-meter';
 import { FrameSections } from './frame-sections';
 import { GpuTimings } from './gpu-timings';
-import { GraphicsSettings } from './render/graphics-settings';
+import { GraphicsSettings, type GraphicsSettingsData } from './render/graphics-settings';
 import { RenderPipeline } from './render/pipeline/render-pipeline';
 import { Hud } from './game/hud/hud';
 import { PauseMenu, SettingsView, SaveBrowser } from './game/hud/windows';
@@ -29,7 +29,7 @@ import { showLoading, hideLoading } from './loading-overlay';
 import { showFatalError } from './fatal-error';
 
 // ローディング表示下で canvas を作り WebGPU シーンを初期化する
-async function initScene(graphics: GraphicsSettings): Promise<GameScene> {
+async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
   showLoading();
   const canvas = document.createElement('canvas');
   document.body.appendChild(canvas);
@@ -41,7 +41,8 @@ async function initScene(graphics: GraphicsSettings): Promise<GameScene> {
 
 // rAF ループを起動する。フレームで例外が起きたらループを止める。
 function startAnimationLoop(
-  launcher: Launcher, perf: PerfMeter, sections: FrameSections, gpu: GpuTimings, autoSave: AutoSave,
+  launcher: Launcher, graphics: GraphicsSettings, perf: PerfMeter, sections: FrameSections,
+  gpu: GpuTimings, autoSave: AutoSave,
   snapshotControls: SnapshotControls,
 ): void {
   let lastTime = performance.now();
@@ -59,7 +60,7 @@ function startAnimationLoop(
     const t0 = perf.on ? performance.now() : 0;
     try {
       sections.beginFrame();
-      game.update(dt);
+      game.update(dt, graphics.current);
       sections.endFrame();
       // このフレームで Game が消費しなかった入力エッジだけが残っている。
       snapshotControls.handleInput(game.input, game);
@@ -73,7 +74,7 @@ function startAnimationLoop(
       autoSave.update(game);
       launcher.update();
       const t1 = perf.on ? performance.now() : 0;
-      game.sync();
+      game.sync(graphics.current);
       const t2 = perf.on ? performance.now() : 0;
       game.render();
       const t3 = perf.on ? performance.now() : 0;
@@ -141,15 +142,17 @@ async function main() {
   const slots = initSaveSlots(saveStore);
   const snapshotService = new SnapshotService(saveStore, slots);
   const graphics = new GraphicsSettings();
-  const gs = await initScene(graphics);
+  const gs = await initScene(graphics.current);
+  // 解像度倍率の押し出し先の登録は、設定を持っている側の配線。
+  graphics.bindResolutionTarget(gs);
   const gpu = new GpuTimings(gs.renderer);
-  const pipeline = new RenderPipeline(gs.renderer, graphics, gpu);
+  const pipeline = new RenderPipeline(gs.renderer, graphics.current, gpu);
   const { hud, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView } = initHud(graphics, pipeline);
   const sections = new FrameSections();
 
   const launcher = new Launcher(
     hud, gs, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView, unlockmanager, sections,
-    graphics, pipeline, slots, snapshotService,
+    pipeline, slots, snapshotService,
   );
 
 
@@ -190,7 +193,7 @@ async function main() {
 
   await launcher.start();
 
-  startAnimationLoop(launcher, perf, sections, gpu, new AutoSave(snapshotService), snapshotControls);
+  startAnimationLoop(launcher, graphics, perf, sections, gpu, new AutoSave(snapshotService), snapshotControls);
 }
 
 main().catch((err) => {

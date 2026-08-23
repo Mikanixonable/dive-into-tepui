@@ -2,16 +2,18 @@
 import * as THREE from 'three/webgpu';
 import { Vec3, addScaled, lenSq, norm } from '../../physics/vec3';
 import { Billboard } from '../../render/billboard';
+import {
+  REENTRY_CORE_BRIGHTNESS, REENTRY_CORE_COLOR, REENTRY_CORE_OFFSET, REENTRY_CORE_SIZE_RATIO,
+  REENTRY_OUTER_BRIGHTNESS, REENTRY_OUTER_COLOR, REENTRY_OUTER_OFFSET, REENTRY_OUTER_SIZE_RATIO,
+  REENTRY_SIZE_MIN, REENTRY_SIZE_SPAN,
+} from '../../render/vfx-style';
 import type { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 
-const PLASMA_CORE_COLOR = 0xfff2d9;
-const PLASMA_OUTER_COLOR = 0xff7a1f;
-
 export class ReentryEffects {
-  private readonly core = new Billboard(PLASMA_CORE_COLOR);
-  private readonly outer = new Billboard(PLASMA_OUTER_COLOR);
+  private readonly core = new Billboard(REENTRY_CORE_COLOR);
+  private readonly outer = new Billboard(REENTRY_OUTER_COLOR);
 
   // core/outer ビルボードを scene に登録する。
   constructor(scene: THREE.Scene) {
@@ -37,9 +39,11 @@ export class ReentryEffects {
     }
     const dir = norm(v);
     const camQuat = camera.activeCamera.quaternion;
-    const sc = 1.5 + 3.5 * intensity;
-    this.core.sync(fo.RtoThreeV3(addScaled(r, dir, 3.0)), sc * 1.4, 0.75 * intensity, camQuat);
-    this.outer.sync(fo.RtoThreeV3(addScaled(r, dir, 5.5)), sc * 3.2, 0.35 * intensity, camQuat);
+    const sc = REENTRY_SIZE_MIN + REENTRY_SIZE_SPAN * intensity;
+    this.core.sync(fo.RtoThreeV3(addScaled(r, dir, REENTRY_CORE_OFFSET)),
+      sc * REENTRY_CORE_SIZE_RATIO, REENTRY_CORE_BRIGHTNESS * intensity, camQuat);
+    this.outer.sync(fo.RtoThreeV3(addScaled(r, dir, REENTRY_OUTER_OFFSET)),
+      sc * REENTRY_OUTER_SIZE_RATIO, REENTRY_OUTER_BRIGHTNESS * intensity, camQuat);
   }
 
   dispose(scene: THREE.Scene): void {

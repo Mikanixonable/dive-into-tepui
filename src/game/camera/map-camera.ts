@@ -349,7 +349,7 @@ export class MapCamera {
   }
 
   // CameraSystem.sync が読む近クリップ距離。dist に比例させることで、どのズーム段でも
-  // 注視点を切り落とさずに深度分解能を保つ(OVERVIEW_CAMERA_NEAR_RATIO 参照)。
+  // 注視点を切り落とさない(OVERVIEW_CAMERA_NEAR_RATIO 参照)。
   // near クリップは光軸からの角度 θ の点を R·cosθ で切り詰める平面なので、画面対角の
   // 半視野角(fov・aspect から求まる)での R·cosθ_diag を超えないようクランプし、
   // 星球シェル・天球グリッドの周辺・四隅がクリップされないようにする。
