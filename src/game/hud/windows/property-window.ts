@@ -15,6 +15,7 @@ const STYLE = `
   width: 100%; background: var(--surface-2); border: 1px solid transparent; border-radius: var(--radius-control);
   color: var(--text); font: inherit; font-weight: bold; padding: var(--space-1) var(--space-2); box-sizing: border-box;
 }
+#hud .dg-window.property-window { width: 560px; max-width: 560px; }
 #hud .prop-window-rows { padding: var(--space-2) 0; }
 #hud .prop-window-row {
   display: flex; justify-content: space-between; gap: var(--space-4); padding: var(--space-2) var(--space-5); color: var(--text);
@@ -40,6 +41,11 @@ const STYLE = `
 #hud .prop-window-related-title {
   padding: var(--space-2) var(--space-5);
   color: var(--text); opacity: 0.6; font-size: 0.9em;
+  cursor: pointer;
+}
+#hud .prop-window-related-title:hover { opacity: 1; color: var(--accent-soft); }
+#hud .prop-window-related-list {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-1);
 }
 #hud .prop-window-related-item {
   padding: var(--space-4) var(--space-5); color: var(--body); cursor: pointer;
@@ -133,6 +139,11 @@ export class PropertyWindow<A extends string = string> {
   private collapsibleContainerEl: HTMLDivElement | null = null;
   private toggleEl: HTMLDivElement | null = null;
   private collapsibleExpanded = false;
+  private relatedListEl: HTMLDivElement | null = null;
+  private relatedTitleEl: HTMLDivElement | null = null;
+  private relatedExpanded = false;
+  private relatedTitle = '';
+  private relatedCount = 0;
   // グループ名ごとの開閉状態。syncRows の再構築をまたいで保つ。
   private readonly groupExpanded = new Map<string, boolean>();
   // 前回描画した操作項目の直列化(act/label/shortcut)。同じなら DOM を組み直さない。
@@ -185,6 +196,7 @@ export class PropertyWindow<A extends string = string> {
     this.itemsEl.className = 'prop-window-items';
     this.relatedEl = document.createElement('div');
     this.relatedEl.className = 'prop-window-related';
+    this.win.element.classList.add('property-window');
     this.win.body.appendChild(this.rowsEl);
     this.win.body.appendChild(this.itemsEl);
 
@@ -288,12 +300,29 @@ export class PropertyWindow<A extends string = string> {
     this.relatedEl.innerHTML = '';
     if (items.length === 0) {
       this.relatedEl.remove();
+      this.relatedListEl = null;
+      this.relatedTitleEl = null;
+      this.relatedTitle = '';
+      this.relatedCount = 0;
       return;
     }
     const title = document.createElement('div');
     title.className = 'prop-window-related-title';
-    title.textContent = `${relatedTitle} (${items.length})`;
+    title.setAttribute('role', 'button');
+    title.tabIndex = 0;
+    title.setAttribute('aria-expanded', String(this.relatedExpanded));
+    title.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.setRelatedExpanded(!this.relatedExpanded);
+    });
+    title.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      this.setRelatedExpanded(!this.relatedExpanded);
+    });
     this.relatedEl.appendChild(title);
+    const list = document.createElement('div');
+    list.className = 'prop-window-related-list';
     for (const it of items) {
       const row = document.createElement('div');
       row.className = 'prop-window-related-item';
@@ -316,10 +345,30 @@ export class PropertyWindow<A extends string = string> {
         e.preventDefault();
         it.onFocus();
       });
-      this.relatedEl.appendChild(row);
+      list.appendChild(row);
     }
+    this.relatedEl.appendChild(list);
+    this.relatedListEl = list;
+    this.relatedTitleEl = title;
+    this.relatedTitle = relatedTitle;
+    this.relatedCount = items.length;
+    this.syncRelatedToggleLabel(relatedTitle, items.length);
+    this.setRelatedExpanded(this.relatedExpanded, false);
     if (!this.relatedEl.parentElement) this.win.body.insertBefore(this.relatedEl, this.rowsEl);
     this.reclamp();
+  }
+
+  private syncRelatedToggleLabel(name: string, count: number): void {
+    if (!this.relatedTitleEl) return;
+    this.relatedTitleEl.textContent = `${this.relatedExpanded ? COLLAPSE_EXPANDED_GLYPH : COLLAPSE_COLLAPSED_GLYPH} ${name} (${count})`;
+    this.relatedTitleEl.setAttribute('aria-expanded', String(this.relatedExpanded));
+  }
+
+  private setRelatedExpanded(expanded: boolean, reclamp = true): void {
+    this.relatedExpanded = expanded;
+    if (this.relatedListEl) this.relatedListEl.style.display = expanded ? 'grid' : 'none';
+    this.syncRelatedToggleLabel(this.relatedTitle, this.relatedCount);
+    if (reclamp) this.reclamp();
   }
 
   // key/label/value の行 div を組み立てて container へ足し、値を lastRowValues へ記録する。
