@@ -19,9 +19,9 @@ import * as C from '../const';
 
 // keepDuration ぶんを保持する列へ積む最小間隔 [s]。軌道周期 period を TRAJECTORY_SAMPLES_PER_REV
 // 等分した値と、保持窓を ARC_MAX_SAMPLES 等分した値の大きい方(period が非有限なら
-// SHIP_HISTORY_DURATION で代用)。
+// DEFAULT_HISTORY_DURATION で代用)。
 export function trajectorySampleInterval(period: number, keepDuration: number): number {
-  const span = isFinite(period) && period > 0 ? period : C.SHIP_HISTORY_DURATION;
+  const span = isFinite(period) && period > 0 ? period : C.DEFAULT_HISTORY_DURATION;
   return Math.max(span / C.TRAJECTORY_SAMPLES_PER_REV, keepDuration / C.ARC_MAX_SAMPLES);
 }
 
