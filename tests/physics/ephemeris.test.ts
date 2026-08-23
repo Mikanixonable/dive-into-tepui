@@ -16,6 +16,7 @@ import { cross, dot, len, norm, scale, sub, v3 } from '../../src/physics/vec3';
 import { toFrameState } from '../../src/physics/frame';
 import { bodyAnchorSource } from '../../src/physics/celestial-body';
 import { kinematicState } from '../../src/physics/kinematic-state';
+import { assertOmegaMatchesBasis } from './test-helpers';
 
 const YEAR = 365.25636 * 86400;
 const MOON_PERIOD = 27.321661 * 86400;
@@ -426,6 +427,16 @@ export function register(): void {
     const rel = qMul(q1, qInvert(q0));
     const angle = 2 * Math.acos(Math.min(1, Math.abs(rel.w)));
     assert.ok(angle < 1e-6, `1恒星日後の残差角: ${angle}`);
+  });
+
+  test('ephemeris: spinRotationAt(earth) の姿勢は自転中も omega と整合する', () => {
+    const t = SIDEREAL_DAY / 3;
+    const q0 = eph.spinRotationAt('earth', 0)!.q;
+    const qt = eph.spinRotationAt('earth', t)!.q;
+    const rel = qMul(qt, qInvert(q0));
+    const angle = 2 * Math.acos(Math.min(1, Math.abs(rel.w)));
+    assert.ok(Math.abs(angle - (2 * Math.PI) / 3) < 1e-6, `経過角: ${angle}`);
+    assertOmegaMatchesBasis((time) => eph.spinRotationAt('earth', time)!, t, 1);
   });
 
   test('ephemeris: spinRotationAt(earth) の姿勢は時刻とともに自転角だけ進む', () => {
