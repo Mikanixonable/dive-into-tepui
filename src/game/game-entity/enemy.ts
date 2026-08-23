@@ -15,7 +15,7 @@ import { solveLeadTime } from '../../physics/intercept';
 import { fmtMarkerDist } from '../hud/utils';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
-import { buildEnemyShip, buildPdb5i4rEnemyShip, buildStage0EnemyShip } from '../../render/ships';
+import { buildEnemyShip, buildPdb5i4rEnemyShip, buildStage0EnemyShip, recolorPdb5i4rEnemyShip } from '../../render/ships';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { EffectsSystem } from '../vfx/effects-system';
 import { Player } from '../player/player';
@@ -143,6 +143,13 @@ export class Enemy extends Ship {
       if (!this.alive) this.renderObject.visible = false;
       this.showTrajectoryLine = init.saved.showTrajectoryLine ?? false;
     }
+  }
+
+  // ステージ操作の着色モード変更を既存のタンパク質型敵へ反映する。
+  setPdb5i4rColorMode(colorMode: Pdb5i4rColorMode): void {
+    if (this.enemyKind.kind !== 'pdb-5i4r') return;
+    this.enemyKind.colorMode = colorMode;
+    recolorPdb5i4rEnemyShip(this.renderObject, colorMode);
   }
 
   // 個体色の CSS 表記。方位マーカー・LEAD マーカーの着色に使う。
