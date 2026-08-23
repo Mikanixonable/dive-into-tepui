@@ -279,7 +279,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-stagestatus .radiator-btn.on { border-color: var(--accent); }
 #hud-stagestatus .radiator-btn.on .label { color: var(--accent); }
 #hud-pause-menu {
-  position: fixed; display: none; min-width: 260px; pointer-events: auto;
+  position: fixed; display: none; width: 320px; pointer-events: auto;
 }
 #hud-pause-menu .pm-header {
   display: flex; align-items: center; gap: var(--space-6); cursor: move;
