@@ -3,11 +3,13 @@ import { BGM_TRACKS } from '../../../audio/bgm/tracks/tracks';
 import type { GraphicsSettings } from '../../../render/graphics-settings';
 import type { DebugTargetHost } from '../../../render/pipeline/debug-target';
 import {
-  ACTIVE_THEME_ID, applyThemePalette, getThemePalette, THEME_PRESETS,
+  applyThemePalette, currentThemePalette, THEME_PRESETS,
 } from '../../theme';
 import { GraphicsPanel } from '../panels/graphics-panel';
 import type { OverlayHandle, OverlayManager } from '../overlay-manager';
-import { Button, CloseButton, Slider } from '../widgets';
+import { Button, CloseButton, Slider, TabBar } from '../widgets';
+
+type SettingsTab = 'theme' | 'graphics' | 'bgm';
 
 // タイトル画面とゲーム中の両方から開く、システム設定の共通ビュー。
 // 3D の ViewManager とは独立した DOM ビューなので、閉じると開く前のワールドビューへ戻る。
@@ -55,69 +57,67 @@ export class SettingsView implements OverlayHandle {
 
     const description = document.createElement('p');
     description.className = 'sv-description';
-    description.textContent = 'ゲームの音量を調整し、航行中に流れるBGMを試聴できます。';
+    description.textContent = '配色・描画・BGMの設定を切り替えられます。';
     this.panel.appendChild(description);
 
-    const themeSection = document.createElement('section');
-    themeSection.className = 'sv-section';
-    const themeTitle = document.createElement('h3');
-    themeTitle.textContent = '配色';
-    themeSection.appendChild(themeTitle);
-    const themeRow = document.createElement('div');
-    themeRow.className = 'sv-theme-row';
-    const themePreview = document.createElement('span');
-    themePreview.className = 'sv-theme-preview';
-    themePreview.setAttribute('aria-hidden', 'true');
-    const updateThemePreview = (id: string): void => {
-      const palette = getThemePalette(id);
-      if (!palette) return;
-      themePreview.replaceChildren();
-      for (const color of [palette.accent, palette.accentNear, palette.secondary]) {
-        const swatch = document.createElement('span');
-        swatch.className = 'sv-theme-swatch';
-        swatch.style.backgroundColor = color;
-        themePreview.appendChild(swatch);
-      }
-    };
-    const themeSelect = document.createElement('select');
-    themeSelect.className = 'w-input sv-theme-select';
-    themeSelect.setAttribute('aria-label', '配色プリセット');
-    for (const palette of THEME_PRESETS) {
-      const option = document.createElement('option');
-      option.value = palette.id;
-      option.textContent = `● ${palette.name}`;
-      option.style.color = palette.accent;
-      option.title = palette.description;
-      themeSelect.appendChild(option);
-    }
-    themeSelect.value = ACTIVE_THEME_ID;
-    updateThemePreview(themeSelect.value);
-    themeSelect.addEventListener('change', () => {
-      if (!applyThemePalette(themeSelect.value)) {
-        themeSelect.value = ACTIVE_THEME_ID;
-        return;
-      }
-      updateThemePreview(themeSelect.value);
-    });
-    themeRow.appendChild(themePreview);
-    themeRow.appendChild(themeSelect);
-    themeSection.appendChild(themeRow);
-    this.panel.appendChild(themeSection);
+    const tabPanels = new Map<SettingsTab, HTMLElement>();
+    const tabs = new TabBar<SettingsTab>(
+      [['theme', '配色'], ['graphics', '描画'], ['bgm', 'BGM']],
+      (selectedTab) => {
+        tabs.setSelected(selectedTab);
+        for (const [tab, panel] of tabPanels) panel.hidden = tab !== selectedTab;
+      },
+    );
+    tabs.element.classList.add('sv-tabs');
+    this.panel.appendChild(tabs.element);
 
-    const graphicsSection = document.createElement('section');
-    graphicsSection.className = 'sv-section';
-    const graphicsTitle = document.createElement('h3');
-    graphicsTitle.textContent = '描画';
-    graphicsSection.appendChild(graphicsTitle);
+    const addTabPanel = (tab: SettingsTab, title: string): HTMLElement => {
+      const section = document.createElement('section');
+      section.className = 'sv-section sv-tab-panel';
+      section.setAttribute('role', 'tabpanel');
+      section.setAttribute('aria-label', title);
+      section.hidden = true;
+      const sectionTitle = document.createElement('h3');
+      sectionTitle.textContent = title;
+      section.appendChild(sectionTitle);
+      tabPanels.set(tab, section);
+      return section;
+    };
+
+    const themePanel = addTabPanel('theme', '配色');
+    const themeOptions = document.createElement('div');
+    themeOptions.className = 'sv-theme-options';
+    const themeButtons = new Map<string, Button>();
+    let activeThemeId = currentThemePalette().id;
+    for (const palette of THEME_PRESETS) {
+      const swatches = [palette.accent, palette.accentNear, palette.secondary]
+        .map((color) => `<span class="sv-theme-swatch" style="background-color: ${color}"></span>`)
+        .join('');
+      const themeButton = new Button(
+        palette.name,
+        () => {
+          if (!applyThemePalette(palette.id)) return;
+          activeThemeId = palette.id;
+          for (const [id, button] of themeButtons) button.setOn(id === activeThemeId);
+        },
+        `<span class="sv-theme-icon">${swatches}</span>`,
+      );
+      themeButton.element.classList.add('sv-theme-button');
+      themeButton.element.title = palette.description;
+      themeButton.element.setAttribute('aria-label', `${palette.name}: ${palette.description}`);
+      themeButtons.set(palette.id, themeButton);
+      themeOptions.appendChild(themeButton.element);
+    }
+    for (const [id, button] of themeButtons) button.setOn(id === activeThemeId);
+    themePanel.appendChild(themeOptions);
+    this.panel.appendChild(themePanel);
+
+    const graphicsSection = addTabPanel('graphics', '描画');
     const graphicsPanel = new GraphicsPanel(graphics, debugTargetHost);
     graphicsSection.appendChild(graphicsPanel.element);
     this.panel.appendChild(graphicsSection);
 
-    const bgmSection = document.createElement('section');
-    bgmSection.className = 'sv-section';
-    const bgmTitle = document.createElement('h3');
-    bgmTitle.textContent = 'BGM';
-    bgmSection.appendChild(bgmTitle);
+    const bgmSection = addTabPanel('bgm', 'BGM');
 
     const volumeRow = document.createElement('div');
     volumeRow.className = 'sv-volume-row';
@@ -173,6 +173,10 @@ export class SettingsView implements OverlayHandle {
     trackActions.appendChild(this.stopButton.element);
     bgmSection.appendChild(trackActions);
     this.panel.appendChild(bgmSection);
+
+    tabs.setSelected('theme');
+    const initialPanel = tabPanels.get('theme');
+    if (initialPanel !== undefined) initialPanel.hidden = false;
 
     root.appendChild(this.panel);
     this.stopButton.setEnabled(false);
