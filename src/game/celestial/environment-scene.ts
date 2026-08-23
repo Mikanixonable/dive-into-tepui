@@ -5,6 +5,7 @@ import { sunlitFactor } from '../../physics/shadow';
 import { kinematicState } from '../../physics/kinematic-state';
 import { CelestialRegistry, SolarSystemId, bodyDef, primaryOf } from '../../physics/solar-system';
 import { OrbitalElements } from '../../physics/elements';
+import { AU } from '../../physics/planet-orbit';
 import { CelestialBody, CelestialBodyId, OrbitingId, orbitalElementsOf } from '../../physics/celestial-body';
 import { add, len, scale, sub, v3, Vec3 } from '../../physics/vec3';
 import { isOccluded } from '../../physics/occlusion';
@@ -51,6 +52,10 @@ const PLANET_REFERENCE_LINE_COLOR = 0xffffff;
 // 恒星光の色。THREE.DirectionalLight と render/pipeline/sun-light.ts の SunLight の両方が
 // この同じ値を受け取る — 世界パスとライティングパスで別々の色にならないようにするため。
 const SUN_COLOR = new THREE.Color(C.COLOR_SUN);
+
+// 恒星の放射強度 [SUN_INTENSITY と同じ単位 · m²]。SUN_INTENSITY は地球軌道で受ける放射照度
+// なので、1 天文単位ぶんの逆二乗を戻して放射強度にする。
+const SUN_RADIANT_INTENSITY = C.SUN_INTENSITY * AU * AU;
 
 // 恒星以外の全公転天体の id(registry の宣言順)。天体が増えれば参照線もここから自動で増える。
 function referenceLineIds(registry: CelestialRegistry): readonly OrbitingId[] {
@@ -188,7 +193,11 @@ export class EnvironmentScene {
     this.ambient.intensity = C.AMBIENT_INTENSITY * (C.SHADOW_MIN_AMBIENT + (1 - C.SHADOW_MIN_AMBIENT) * lit);
     // ライティングパス向けの値。遮蔽の下限式は SunLight 自身が sunlitFactor から掛けるので、
     // ここで渡すのは掛ける前の生値。
-    this.sunLight.set(sunDirWorld, SUN_COLOR, C.SUN_INTENSITY, C.AMBIENT_INTENSITY, lit);
+    const starId = this.ephemeris.starId;
+    const sunPos = starId === null
+      ? sunDirWorld.clone().multiplyScalar(AU)
+      : floatingOrigin.RtoThreeV3(this.ephemeris.positionOf(starId, displayTime));
+    this.sunLight.set(sunPos, SUN_COLOR, SUN_RADIANT_INTENSITY, C.AMBIENT_INTENSITY, lit);
 
     if (cameraSystem.overviewMode && this.ephemeris.starId !== null && graphics.pointField) {
       this.ensurePointField().sync(
