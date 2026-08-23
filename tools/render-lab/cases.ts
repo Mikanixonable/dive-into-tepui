@@ -9,7 +9,7 @@ import { buildPlayerShip } from '../../src/render/ships';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
 import type { Occluder, RingBand } from '../../src/render/pipeline/occlusion';
 import type { LineStyle } from '../../src/render/line-style';
-import { LINE_RENDER_ORDER } from '../../src/game/const';
+import { LINE_RENDER_ORDER } from '../../src/render/line-style';
 
 // 描画は 960×540 固定(撮影した PNG の大きさを決め打ちにするため)。
 export const VIEW_WIDTH = 960;

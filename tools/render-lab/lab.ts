@@ -5,7 +5,7 @@ import * as THREE from 'three/webgpu';
 import { WebGPURenderer } from 'three/webgpu';
 import { GpuTimings } from '../../src/gpu-timings';
 import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
-import { LIT_OPAQUE_LAYER } from '../../src/render/pipeline/lit-layer';
+import { LIT_OPAQUE_LAYER, OVERLAY_LAYER } from '../../src/render/pipeline/lit-layer';
 import { AMBIENT_COLOR } from '../../src/render/pipeline/sun-light';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
 import { QUALITY_PRESETS } from '../../src/render/graphics-settings';
@@ -29,10 +29,12 @@ export class LabView {
   private readonly scene = new THREE.Scene();
   // 撮影先。合成パスが既に sRGB へ変換した値を書くので、素の RGBA8 で受ける
   // (-srgb フォーマットにすると二重変換になり、撮った PNG だけが白っぽくなる)。
+  // 深度は 3D UI パスが要る — 合成パスが G バッファの深度をここへ複製し、線はそれに対して
+  // 深度テストする。持たせないと線が不透明物を貫通して常に手前へ出る。
   private readonly captureTarget = new THREE.RenderTarget(VIEW_WIDTH, VIEW_HEIGHT, {
     format: THREE.RGBAFormat,
     type: THREE.UnsignedByteType,
-    depthBuffer: false,
+    depthBuffer: true,
   });
   private current: LabCase | null = null;
 
@@ -77,8 +79,11 @@ export class LabView {
     const built = CASES[name]();
     for (const object of built.objects) {
       // フォワード経路では buildPlayerShip() が内部で付けた LIT_OPAQUE_LAYER を打ち消す。
-      // 呼ばないのではなく、呼ばれたあとに戻す。
-      if (this.path === 'forward') object.traverse((o) => o.layers.set(0));
+      // 呼ばないのではなく、呼ばれたあとに戻す。3D UI チャンネルはシェーディング経路と無関係
+      // (どちらの経路でも合成後に同じ 3D UI パスが描く)なので、そこは戻さない。
+      if (this.path === 'forward') {
+        object.traverse((o) => { if (!o.layers.isEnabled(OVERLAY_LAYER)) o.layers.set(0); });
+      }
     }
     this.scene.add(...built.objects);
     this.current = built;
