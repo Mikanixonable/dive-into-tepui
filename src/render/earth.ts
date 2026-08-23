@@ -1,27 +1,17 @@
-// リアル調の地球: 高解像度球 + 実在の地球のテクスチャ、大気は解析的シェーディング。
-// 実寸(半径 6371km)。テクスチャは実在の地球の写真 (src/assets/earth.jpg) を使用。
-//
-// near=2m・24bit 非対数深度バッファでは、地表 +数十〜数百km に浮かぶジオメトリは
-// 水平線に近い視線ほど地表との深度差が量子化幅(δz ≈ z²/near/2^24。距離の2乗で
-// 悪化する)を下回り z-fighting でちらつく。そこで「高度 ~400km 以下で深度テストされる
-// ジオメトリは不透明な地球1枚だけ」という不変条件を維持し、雲は地表マテリアルの
-// アルベドに焼き込み、大気の発光(近距離のもや・遠距離のリム光)は視線方向から解析的に
-// 計算する(地球本体による遮蔽もレイ・スフィア交差で解析的に判定し、ハードウェア深度
-// テストの精度に依存しない)。
+// リアル調の地球: 実寸(半径 6371km)の高解像度球へ実写テクスチャを貼った地表と、
+// 磁極を囲むオーロラ。雲は別のシェルとしてではなく地表のアルベドへ焼き込む — 高度
+// 数十〜数百km に浮かぶジオメトリは、水平線に近い視線では地表との深度差が量子化幅を
+// 下回ってちらつくため。
 import * as THREE from 'three/webgpu';
 import { texture as textureNode, mix, uv, vec2, vec3 } from 'three/tsl';
 import { R_EARTH } from '../physics/solar-system';
-import { SUN_INTENSITY } from '../game/const';
+import { ALBEDO_FROM_LIT_COLOR } from './celestial-surface';
 import { markLitOpaque } from './pipeline/lit-layer';
 
 import { Aurora } from './aurora';
 import { SPHERE_LOD_LADDER, sphereLodLevel, SphereLodLevel } from './screen-lod';
 import earthTextureUrl from '../assets/earth.jpg';
 import cloudsTextureUrl from '../assets/8k_clouds.jpg';
-
-// 地表テクスチャは「1 天文単位で照らされた見え方」なので、そこへ届く放射照度と Lambert の
-// 1/π を戻して拡散アルベドにする(celestial-surface.ts と同じ換算)。
-const ALBEDO_FROM_LIT_COLOR = Math.PI / SUN_INTENSITY;
 
 interface SurfaceMaterial {
   readonly material: THREE.MeshStandardNodeMaterial;

@@ -377,33 +377,6 @@ depthScale = 1 / k
 
 ## 手順
 
-
----
-
-### 手順 11. 地球の地表からもやと陰影を外す
-
-**目的**: 地表マテリアルをアルベドだけにし、**不透明と半透明を 1 枚のシェーダに混ぜている
-最後の箇所**を解消する。
-
-**変更が必要な箇所**
-
-| ファイル | 変更 |
-|---|---|
-| `src/render/earth.ts:41-84` | 地表マテリアルを `mix(shadowColor, vec3(1), cloudAlpha)`(= アルベドだけ)の `MeshStandardNodeMaterial` へ。もや・夕焼け・`NIGHT_AMBIENT`・`sunFactor` を削除 |
-| `src/render/pipeline/atmosphere-pass.ts` | もや(`1 − exp(−τ₀/cosθ)`)と夕焼け色を足す。**昼夜境界の橙が薄れる分だけ位相の掛け方を引き直す**(`a = haze` にして太陽依存を色側へ寄せる) |
-| `src/game/celestial/earth-view.ts` | `setSunDir` の呼び出しを削除 |
-| `DEVELOP/SPEC/RENDERING.md`「地球の描画」 | 地表と大気の役割分担 |
-
-**達成条件と検証**
-
-- 達成目標 16・18。
-- 地球の昼側・夜側・昼夜境界が、分割前と見比べて許容できる範囲。
-- `npm run typecheck`
-- `grep -n "ATMO_HAZE_TAU0\|sunsetColor\|NIGHT_AMBIENT" src/render/earth.ts` → 0 件
-- `npm run render-lab:shot` → 分割前後の `earth-prepass.png` を見比べる。**特に昼夜境界の橙**
-- `npm run dev` → 地球を昼夜境界が見える角度から眺め、雲の橙が極端に失われていないこと
-- 高度 420km から地平線方向を見て、もやが以前と同じように掛かること
-
 ---
 
 ## three r186 以降へ上げるときの復帰手順書
