@@ -1,14 +1,14 @@
 // 天体表面のメッシュ。艦艇と同じライトプリパスの受け手として立ち、陰影・遮蔽・逆二乗の減衰は
 // すべてパイプラインが与える — このモジュールが持つのはアルベドと球のジオメトリだけ。
 import * as THREE from 'three/webgpu';
-import { SUN_INTENSITY } from '../game/const';
 import { markLitOpaque } from './pipeline/lit-layer';
+import { SUN_IRRADIANCE_1AU } from './pipeline/sun-light';
 import { SPHERE_LOD_LADDER, SphereLodLevel } from './screen-lod';
 
 // 天体の直書き色・テクスチャから拡散アルベドへの換算。それらは「1 天文単位で照らされた
-// 見え方」をそのまま置いた値なので、そこへ届く放射照度 SUN_INTENSITY と Lambert の 1/π を
-// 戻す。本物のアルベドを持たせるまでの繋ぎで、色そのものが物理量になれば消える。
-export const ALBEDO_FROM_LIT_COLOR = Math.PI / SUN_INTENSITY;
+// 見え方」をそのまま置いた値なので、そこへ届く放射照度と Lambert の 1/π を戻す。本物の
+// アルベドを持たせるまでの繋ぎで、色そのものが物理量になれば消える。
+export const ALBEDO_FROM_LIT_COLOR = Math.PI / SUN_IRRADIANCE_1AU;
 
 // 分割数の組が SPHERE_LOD_LADDER のいずれかの段と一致する呼び出しだけ、その段の単位球
 // ジオメトリを全呼び出し元(=全天体)で共有する。一致しない組(既存のジオメトリを

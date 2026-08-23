@@ -6,10 +6,29 @@ import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
 import type { ColorUniform, FloatNode, FloatUniform, Vec3Uniform } from '../tsl-types';
 
-// 環境光の色味。恒星の色(太陽光は暖色、set() で毎フレーム更新)とは独立した固定値で、
-// game/const.ts の管理対象ではない。描画テスト環境のフォワード経路が同じ色の
-// THREE.AmbientLight を置くので、値の正本としてここから公開する。
+// 描画が扱う放射照度の単位。1 天文単位で太陽から届く放射照度をこの値に取る。
+//
+// 単位は SI ではなく `SOLAR_CONSTANT / π = 433.2 W/m²` で、1 天文単位での値が π になるよう
+// 選んである。ランバート BRDF の 1/π がこれを打ち消すので、**太陽に正対したアルベド A の
+// 完全拡散面は 1 天文単位で表示値 A になる** — 露出係数を持たずに済むのはこのため。
+export const SUN_IRRADIANCE_1AU = Math.PI;
+
+// 恒星光の色。5772 K(太陽の実効温度)の黒体を sRGB へ写した色にほぼ一致する。
+export const SUN_COLOR = new THREE.Color(0xfff4e0);
+
+// 環境光の色味。恒星の色(太陽光は暖色、set() で毎フレーム更新)とは独立した固定値。
+// 描画テスト環境のフォワード経路が同じ色の THREE.AmbientLight を置くので、値の正本として
+// ここから公開する。
 export const AMBIENT_COLOR = new THREE.Color(0x8899bb);
+
+// 環境光の放射照度。地球照(地球が反射して低軌道の物体を照らす光)の代用で、太陽定数に
+// 地球のボンドアルベド 0.3 と、高度 420 km から地球が占める立体角の全天に対する比 0.31 を
+// 掛けた 9.3% として引く。方向を持たないので遮蔽も受けない。
+export const AMBIENT_IRRADIANCE = SUN_IRRADIANCE_1AU * 0.093;
+
+// 本影の中にも届く光の量(星明かり・地球照ぶん)を、恒星と同じ向きから来る一定量で代用した
+// もの。恒星の放射照度に対する割合で、ライティングパスが直射ぶんと分け合う。
+export const SHADOW_MIN_SUN = 0.04;
 
 export class SunLight {
   private readonly positionUniform: Vec3Uniform;
