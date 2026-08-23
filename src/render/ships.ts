@@ -232,7 +232,8 @@ export function buildEnemyShip(accent: string | number = 0xff4a3d): THREE.Group 
 }
 
 // PDB 5I4R のCα主鎖とHELIX/SHEET注釈から、論文・PDBビューアで一般的なcartoon表現を
-// 組み立てる。座標はÅのままの比率を保ち、ゲーム内のサイズへは一様スケールだけを掛ける。
+// 組み立てる。HELIXは平たい帯状フィラメント、SHEETは矢印、COILは細いチューブで表す。
+// 座標はÅのままの比率を保ち、ゲーム内のサイズへは一様スケールだけを掛ける。
 const PDB5I4R_COORDINATE_SCALE = 0.06;
 
 function pdb5i4rRainbowColor(t: number): THREE.Color {
@@ -258,6 +259,7 @@ function pdb5i4rColorAt(index: number, mode: Pdb5i4rColorMode): THREE.Color {
 
 function pdb5i4rRibbonGeometry(
   points: readonly THREE.Vector3[], width: number, startIndex: number, colorMode: Pdb5i4rColorMode,
+  arrow: boolean,
 ): THREE.BufferGeometry {
   const positions: number[] = [];
   const colors: number[] = [];
@@ -267,7 +269,8 @@ function pdb5i4rRibbonGeometry(
     const tangent = next.clone().sub(prev).normalize();
     const reference = Math.abs(tangent.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
     const side = tangent.clone().cross(reference).normalize();
-    const arrowFactor = i >= points.length - 2 ? 1.65 : 1;
+    // βストランドだけ終端を一点へ絞り、一般的なcartoonビューアーの矢印先端にする。
+    const arrowFactor = arrow && i === points.length - 1 ? 0.04 : arrow && i === points.length - 2 ? 1.15 : 1;
     const halfWidth = (width * arrowFactor) / 2;
     const left = points[i]!.clone().addScaledVector(side, halfWidth);
     const right = points[i]!.clone().addScaledVector(side, -halfWidth);
@@ -339,10 +342,16 @@ export function buildPdb5i4rEnemyShip(colorMode: Pdb5i4rColorMode = 'chain'): TH
   for (const run of pdb5i4rBackboneRuns()) {
     if (run.points.length < 2) continue;
     let geometry: THREE.BufferGeometry;
-    if (run.kind === 'sheet') {
-      geometry = pdb5i4rRibbonGeometry(run.points, 1.6, run.startIndex, colorMode);
+    if (run.kind === 'helix' || run.kind === 'sheet') {
+      geometry = pdb5i4rRibbonGeometry(
+        run.points,
+        run.kind === 'helix' ? 2.5 : 1.8,
+        run.startIndex,
+        colorMode,
+        run.kind === 'sheet',
+      );
     } else {
-      const radius = run.kind === 'helix' ? 1.25 : 0.38;
+      const radius = 0.38;
       const curve = new THREE.CatmullRomCurve3(run.points, false, 'centripetal', 0.35);
       const tubularSegments = Math.max(2, run.points.length * 2);
       geometry = new THREE.TubeGeometry(curve, tubularSegments, radius, 6, false);
