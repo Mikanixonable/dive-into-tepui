@@ -38,8 +38,6 @@ export class EarthView extends CelestialView {
     const pos = ephemeris.positionOf('earth', displayTime);
     this.earth.group.position.copy(fo.RtoThreeV3(pos));
     this.earth.setRotation(this.phase0 + (2 * Math.PI * displayTime) / SIDEREAL_DAY);
-    const sd = ephemeris.sunDirFrom(pos, displayTime);
-    this.earth.setSunDir(sd.x, sd.y, sd.z);
     const metersPerPixel = cameraSystem.activeCameraScale(pos);
     this.earth.setAuroraVisible(graphics.aurora);
     this.earth.syncSurfaceLod(this.lodApparentDiameterPx(2 * R_EARTH, metersPerPixel, graphics));

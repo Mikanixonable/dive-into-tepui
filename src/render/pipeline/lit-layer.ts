@@ -20,17 +20,24 @@ export function setOpaquePassLayers(camera: THREE.Camera): void {
   camera.layers.enable(WORLD_BACKGROUND_LAYER);
 }
 
-// root 以下を走査し、MeshStandardMaterial を持つ Mesh(マテリアル配列中の1つでも該当すれば)を
+// 標準マテリアル(値だけの MeshStandardMaterial と、アルベドをノードで組む
+// MeshStandardNodeMaterial のどちらでも)かどうか。
+export function isStandardMaterial(material: THREE.Material): boolean {
+  const m = material as THREE.MeshStandardMaterial & THREE.MeshStandardNodeMaterial;
+  return m.isMeshStandardMaterial === true || m.isMeshStandardNodeMaterial === true;
+}
+
+// root 以下を走査し、標準マテリアルを持つ Mesh(マテリアル配列中の1つでも該当すれば)を
 // チャンネル0から外して LIT_OPAQUE_LAYER だけへ置く。それ以外のマテリアルは無視するので、
 // 組み立て済みのオブジェクトへ何度呼んでも、またどの段階で呼んでも安全。
 export function markLitOpaque(root: THREE.Object3D): void {
   root.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
     if (!mesh.isMesh) return;
-    const material = mesh.material as THREE.MeshStandardMaterial | THREE.MeshStandardMaterial[];
+    const material = mesh.material as THREE.Material | THREE.Material[];
     const isStandard = Array.isArray(material)
-      ? material.some((m) => m.isMeshStandardMaterial)
-      : material.isMeshStandardMaterial;
+      ? material.some(isStandardMaterial)
+      : isStandardMaterial(material);
     if (isStandard) mesh.layers.set(LIT_OPAQUE_LAYER);
   });
 }
