@@ -5,10 +5,10 @@ import { SUN_INTENSITY } from '../game/const';
 import { markLitOpaque } from './pipeline/lit-layer';
 import { SPHERE_LOD_LADDER, SphereLodLevel } from './screen-lod';
 
-// 天体の直書き色から拡散アルベドへの換算。直書き色は「1 天文単位で照らされた見え方」を
-// そのまま置いた値なので、そこへ届く放射照度 SUN_INTENSITY と Lambert の 1/π を戻す。
-// 本物のアルベドを持たせるまでの繋ぎで、色そのものが物理量になれば消える。
-const ALBEDO_FROM_LIT_COLOR = Math.PI / SUN_INTENSITY;
+// 天体の直書き色・テクスチャから拡散アルベドへの換算。それらは「1 天文単位で照らされた
+// 見え方」をそのまま置いた値なので、そこへ届く放射照度 SUN_INTENSITY と Lambert の 1/π を
+// 戻す。本物のアルベドを持たせるまでの繋ぎで、色そのものが物理量になれば消える。
+export const ALBEDO_FROM_LIT_COLOR = Math.PI / SUN_INTENSITY;
 
 // 分割数の組が SPHERE_LOD_LADDER のいずれかの段と一致する呼び出しだけ、その段の単位球
 // ジオメトリを全呼び出し元(=全天体)で共有する。一致しない組(既存のジオメトリを
