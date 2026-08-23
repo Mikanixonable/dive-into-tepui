@@ -19,7 +19,7 @@ export interface FlashEffect {
   duration: number;
   size0: number;
   size1: number;
-  peakOpacity: number; // 発生直後の最大不透明度倍率
+  peakBrightness: number; // 発生直後の最大の明るさ倍率
   dimsInGunsight: boolean; // ガンサイトズーム中に減光するか
 }
 
@@ -62,13 +62,14 @@ export class FlashEffectManager {
       const t = fx.age / fx.duration;
       const size = fx.size0 + (fx.size1 - fx.size0) * Math.sqrt(t);
       const zoomScale = zoomActive && fx.dimsInGunsight ? C.ZOOM_MUZZLE_FLASH_SCALE : 1;
-      const opacity = fx.peakOpacity * (1 - t) * zoomScale;
+      const brightness = fx.peakBrightness * (1 - t) * zoomScale;
       fx.transform.position.copy(fo.RtoThreeV3(fx.state.r));
       fx.transform.scale.setScalar(size);
       fx.transform.quaternion.copy(camQuat);
+      // **明るさは色に載せ、不透明度は 1 のままにする**(render/billboard.ts と同じ規約)。
       // 加算ブレンドでは 最終色 = テクスチャ × material.color × instanceColor なので、
-      // 色×不透明度を instanceColor 一本に畳めば不透明度を個別に持つのと数学的に等価になる。
-      fx.color.copy(fx.baseColor).multiplyScalar(opacity);
+      // 寿命による減衰も instanceColor 一本へ畳める。
+      fx.color.copy(fx.baseColor).multiplyScalar(brightness);
       this.pool.push(fx.transform, fx.color);
     }
     this.pool.endFrame();
