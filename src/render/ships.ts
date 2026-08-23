@@ -235,6 +235,8 @@ export function buildEnemyShip(accent: string | number = 0xff4a3d): THREE.Group 
 // 組み立てる。HELIXは平たい帯状フィラメント、SHEETは矢印、COILは細いチューブで表す。
 // 座標はÅのままの比率を保ち、ゲーム内のサイズへは一様スケールだけを掛ける。
 const PDB5I4R_COORDINATE_SCALE = 0.06;
+const PDB5I4R_RIBBON_SUBDIVISIONS = 12;
+const PDB5I4R_RIBBON_THICKNESS = 0.32;
 
 function pdb5i4rRainbowColor(t: number): THREE.Color {
   return new THREE.Color().setHSL(0.66 * (1 - Math.max(0, Math.min(1, t))), 0.86, 0.56);
@@ -263,26 +265,79 @@ function pdb5i4rRibbonGeometry(
 ): THREE.BufferGeometry {
   const positions: number[] = [];
   const colors: number[] = [];
-  for (let i = 0; i < points.length; i++) {
-    const prev = points[Math.max(0, i - 1)]!;
-    const next = points[Math.min(points.length - 1, i + 1)]!;
-    const tangent = next.clone().sub(prev).normalize();
-    const reference = Math.abs(tangent.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
-    const side = tangent.clone().cross(reference).normalize();
-    // βストランドだけ終端を一点へ絞り、一般的なcartoonビューアーの矢印先端にする。
-    const arrowFactor = arrow && i === points.length - 1 ? 0.04 : arrow && i === points.length - 2 ? 1.15 : 1;
+  const curve = new THREE.CatmullRomCurve3([...points], false, 'centripetal', 0.35);
+  const segments = Math.max(1, (points.length - 1) * PDB5I4R_RIBBON_SUBDIVISIONS);
+  let previousTangent: THREE.Vector3 | null = null;
+  let previousWidthDirection: THREE.Vector3 | null = null;
+  for (let sample = 0; sample <= segments; sample++) {
+    const t = sample / segments;
+    const center = curve.getPoint(t);
+    const tangent = curve.getTangent(t).normalize();
+    const residuePosition = t * (points.length - 1);
+    const localIndex = Math.min(points.length - 1, Math.floor(residuePosition));
+    const nextIndex = Math.min(points.length - 1, localIndex + 1);
+    const localT = residuePosition - localIndex;
+    const globalIndex = Math.min(
+      pdb5i4rBackboneData.backboneCount - 1,
+      Math.round(startIndex + residuePosition),
+    );
+    const oxygenOffset = (startIndex + localIndex) * 3;
+    const oxygen = new THREE.Vector3(
+      pdb5i4rBackboneData.backboneOCoordinates[oxygenOffset]!,
+      pdb5i4rBackboneData.backboneOCoordinates[oxygenOffset + 1]!,
+      pdb5i4rBackboneData.backboneOCoordinates[oxygenOffset + 2]!,
+    );
+    if (nextIndex !== localIndex) {
+      const nextOffset = (startIndex + nextIndex) * 3;
+      oxygen.lerp(new THREE.Vector3(
+        pdb5i4rBackboneData.backboneOCoordinates[nextOffset]!,
+        pdb5i4rBackboneData.backboneOCoordinates[nextOffset + 1]!,
+        pdb5i4rBackboneData.backboneOCoordinates[nextOffset + 2]!,
+      ), localT);
+    }
+    const candidateWidthDirection = oxygen.sub(center).projectOnPlane(tangent).normalize();
+    const widthDirection = candidateWidthDirection.clone();
+    if (widthDirection.lengthSq() < 1e-8) {
+      const reference = Math.abs(tangent.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+      widthDirection.copy(reference).projectOnPlane(tangent).normalize();
+    }
+    if (previousTangent !== null && previousWidthDirection !== null) {
+      const transport = previousWidthDirection.clone()
+        .applyQuaternion(new THREE.Quaternion().setFromUnitVectors(previousTangent, tangent))
+        .projectOnPlane(tangent).normalize();
+      if (candidateWidthDirection.lengthSq() >= 1e-8 && candidateWidthDirection.dot(transport) < 0) widthDirection.negate();
+      widthDirection.lerp(transport, 0.25).normalize();
+    }
+    previousTangent = tangent.clone();
+    previousWidthDirection = widthDirection.clone();
+    const thicknessDirection = tangent.clone().cross(widthDirection).normalize();
+    const arrowFactor = arrow && residuePosition >= points.length - 2
+      ? Math.max(0.04, 1.15 * (points.length - 1 - residuePosition))
+      : 1;
     const halfWidth = (width * arrowFactor) / 2;
-    const left = points[i]!.clone().addScaledVector(side, halfWidth);
-    const right = points[i]!.clone().addScaledVector(side, -halfWidth);
-    positions.push(left.x, left.y, left.z, right.x, right.y, right.z);
-    const color = pdb5i4rColorAt(startIndex + i, colorMode);
-    colors.push(color.r, color.g, color.b, color.r, color.g, color.b);
+    const halfThickness = (PDB5I4R_RIBBON_THICKNESS * Math.min(1, arrowFactor)) / 2;
+    const corners = [
+      center.clone().addScaledVector(widthDirection, halfWidth).addScaledVector(thicknessDirection, halfThickness),
+      center.clone().addScaledVector(widthDirection, -halfWidth).addScaledVector(thicknessDirection, halfThickness),
+      center.clone().addScaledVector(widthDirection, -halfWidth).addScaledVector(thicknessDirection, -halfThickness),
+      center.clone().addScaledVector(widthDirection, halfWidth).addScaledVector(thicknessDirection, -halfThickness),
+    ];
+    for (const corner of corners) positions.push(corner.x, corner.y, corner.z);
+    const color = pdb5i4rColorAt(globalIndex, colorMode);
+    for (let corner = 0; corner < 4; corner++) colors.push(color.r, color.g, color.b);
   }
   const indices: number[] = [];
-  for (let i = 0; i < points.length - 1; i++) {
-    const a = i * 2;
-    indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+  for (let i = 0; i < segments; i++) {
+    const a = i * 4;
+    const b = a + 4;
+    indices.push(a, b, a + 1, a + 1, b, b + 1); // 上面
+    indices.push(a + 3, a + 2, b + 3, a + 2, b + 2, b + 3); // 下面
+    indices.push(a, a + 3, b, a + 3, b + 3, b); // 左側面
+    indices.push(a + 1, b + 1, a + 2, a + 2, b + 1, b + 2); // 右側面
   }
+  indices.push(0, 1, 2, 0, 2, 3); // N端面
+  const end = segments * 4;
+  indices.push(end, end + 2, end + 1, end, end + 3, end + 2); // C端面
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
@@ -317,7 +372,7 @@ function pdb5i4rTubeColors(
   geometry: THREE.BufferGeometry, startIndex: number, pointCount: number, totalPoints: number,
   tubularSegments: number, colorMode: Pdb5i4rColorMode,
 ): void {
-  const radialSegments = 6;
+  const radialSegments = 12;
   const colors: number[] = [];
   for (let vertex = 0; vertex < geometry.getAttribute('position').count; vertex++) {
     const longitudinal = Math.floor(vertex / (radialSegments + 1));
@@ -353,8 +408,8 @@ export function buildPdb5i4rEnemyShip(colorMode: Pdb5i4rColorMode = 'chain'): TH
     } else {
       const radius = 0.38;
       const curve = new THREE.CatmullRomCurve3(run.points, false, 'centripetal', 0.35);
-      const tubularSegments = Math.max(2, run.points.length * 2);
-      geometry = new THREE.TubeGeometry(curve, tubularSegments, radius, 6, false);
+      const tubularSegments = Math.max(2, (run.points.length - 1) * PDB5I4R_RIBBON_SUBDIVISIONS);
+      geometry = new THREE.TubeGeometry(curve, tubularSegments, radius, 12, false);
       pdb5i4rTubeColors(geometry, run.startIndex, run.points.length, pdb5i4rBackboneData.backboneCount, tubularSegments, colorMode);
     }
     const mesh = new THREE.Mesh(geometry, material);
