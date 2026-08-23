@@ -50,7 +50,7 @@ const PLANET_REFERENCE_LINE_COLOR = 0xffffff;
 
 // 恒星光の色。THREE.DirectionalLight と render/pipeline/sun-light.ts の SunLight の両方が
 // この同じ値を受け取る — 世界パスとライティングパスで別々の色にならないようにするため。
-const SUN_COLOR = new THREE.Color(0xfff4e0);
+const SUN_COLOR = new THREE.Color(C.COLOR_SUN);
 
 // 恒星以外の全公転天体の id(registry の宣言順)。天体が増えれば参照線もここから自動で増える。
 function referenceLineIds(registry: CelestialRegistry): readonly OrbitingId[] {
