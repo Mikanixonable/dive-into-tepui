@@ -119,8 +119,8 @@ export const ALT_WARN_HYSTERESIS = 5e3; // しきい値の再警告までのヒ�
 
 // --- 地球の影 ---
 export const COLOR_SUN = 0xfff4e0; // 太陽光の色
-export const SUN_INTENSITY = 2.2; // 太陽光の基準強度
-export const AMBIENT_INTENSITY = 0.25; // 環境光の基準強度
+export const SUN_INTENSITY = 6.9; // 太陽光の基準強度
+export const AMBIENT_INTENSITY = 0.79; // 環境光の基準強度
 export const SHADOW_MIN_SUN = 0.04; // 影の中に残す太陽光の割合(星明かり・地球照ぶん)
 export const SHADOW_MIN_AMBIENT = 0.35; // 影の中に残す環境光の割合
 

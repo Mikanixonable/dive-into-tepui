@@ -17,15 +17,20 @@
 // 3回目のジオメトリ描画を払わせない。
 import * as THREE from 'three/webgpu';
 import { WebGPURenderer, PhysicalLightingModel } from 'three/webgpu';
-import { diffuseColor, metalness, mix, screenUV, texture, vec3 } from 'three/tsl';
+import { BRDF_Lambert, diffuseColor, metalness, mix, screenUV, texture, vec3 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import { LIT_OPAQUE_LAYER, setOpaquePassLayers } from './lit-layer';
 import type { LightPrepass } from './light-prepass';
 import type { Vec3Node } from '../tsl-types';
 
 // direct() で実シーンの光源からの寄与を足さず、indirect() でライトプリパスの2枚の照度
-// バッファだけを反射率に掛ける。specularColorBlended(誘電体 F0=0.04 と金属を metalness で
-// 混ぜた値)は MeshStandardNodeMaterial 内部専用で公開されていないため、同じ式で組み直す。
+// バッファへ BRDF を掛ける。掛ける中身は three がフォワード経路の direct() で使うものと同一で、
+// 拡散が BRDF_Lambert(アルベド×(1−金属度)/π)、鏡面が F0(誘電体 0.04 と金属色を金属度で
+// 混ぜた値)。どちらも MeshStandardNodeMaterial の内部プロパティ(diffuseContribution /
+// specularColorBlended)にあたるが three/tsl から公開されていないため、同じ式で組み直す。
+//
+// 照度バッファが持つのは放射照度なので、そこへ掛けるのは反射率ではなく BRDF である。
+// 拡散の 1/π を落とすと、それだけでフォワード経路より π 倍明るくなる。
 class MaterialPassLightingModel extends PhysicalLightingModel {
   constructor(
     private readonly diffuseIrradiance: Vec3Node,
@@ -39,13 +44,17 @@ class MaterialPassLightingModel extends PhysicalLightingModel {
   override indirect(builder: THREE.NodeBuilder): void {
     const { reflectedLight } = builder.context as { reflectedLight: THREE.LightingModelReflectedLight };
     const specularColorBlended = mix(vec3(0.04), diffuseColor.rgb, metalness);
+    const diffuseContribution = diffuseColor.rgb.mul(metalness.oneMinus());
     // reflectedLight.indirectDiffuse/indirectSpecular の @types/three 上の型は無引数の Node
     // (light-prepass.ts の D_GGX 等と同じく実体は他の TSL ノードと同じプロキシで addAssign を
     // 持つのに、Node<'vec3'> でないため型定義側でメソッドチェインが欠落している)ため、
     // Vec3Node へ読み替えてから足し込む。
     const indirectDiffuse = reflectedLight.indirectDiffuse as unknown as Vec3Node;
     const indirectSpecular = reflectedLight.indirectSpecular as unknown as Vec3Node;
-    indirectDiffuse.addAssign(this.diffuseIrradiance.mul(diffuseColor.rgb));
+    // BRDF_Lambert の @types/three 上の戻り値型 OperatorNode はメソッドチェインを持たない
+    // (light-prepass.ts の D_GGX 等と同じ型定義側の欠落)ため、Vec3Node へ読み替える。
+    const lambert = BRDF_Lambert({ diffuseColor: diffuseContribution }) as unknown as Vec3Node;
+    indirectDiffuse.addAssign(this.diffuseIrradiance.mul(lambert));
     indirectSpecular.addAssign(this.specularIrradiance.mul(specularColorBlended));
   }
 }
