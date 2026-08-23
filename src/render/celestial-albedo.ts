@@ -23,6 +23,8 @@
 // **衝効果(opposition surge)はモデル化していない。** 満月に近い構図で写真より暗く写るのは
 // その正しい帰結で、アルベドを盛って埋めてはならない(埋めるなら再帰反射項を足す)。
 
+import { textureOf } from './celestial-textures';
+
 // 線形 RGB の拡散アルベド。各成分は 0..1。
 export type Albedo = readonly [number, number, number];
 
@@ -117,4 +119,13 @@ const CELESTIAL_ALBEDO: Readonly<Record<string, Albedo>> = {
 // id の拡散アルベド。表に無ければ DEFAULT_ALBEDO。
 export function albedoOf(id: string): Albedo {
   return CELESTIAL_ALBEDO[id] ?? DEFAULT_ALBEDO;
+}
+
+// id のボンドアルベドをスカラ1つで。実写テクスチャを持つ天体はその倍率の導出元
+// (celestial-textures.ts)を、それ以外は単色アルベドの Rec.709 輝度を返す。
+export function bondAlbedoOf(id: string): number {
+  const texture = textureOf(id);
+  if (texture !== null) return texture.bondAlbedo;
+  const [r, g, b] = albedoOf(id);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
