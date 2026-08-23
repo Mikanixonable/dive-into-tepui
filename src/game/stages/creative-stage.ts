@@ -14,7 +14,7 @@ import type { FloatingOrigin } from '../floating-origin';
 import { qRotate } from '../../physics/attitude';
 import { Vec3, add, addScaled, v3 } from '../../physics/vec3';
 import { isOccluded } from '../../physics/occlusion';
-import { Button, ToggleSwitch } from '../hud/widgets';
+import { Button, SegmentedControl, ToggleSwitch } from '../hud/widgets';
 import { hudRail } from '../hud/hud-root';
 import type { CameraSystem, ProjectFn } from '../camera/camera-system';
 import { AmmoPickup } from '../game-entity/ammo-pickup';
@@ -32,9 +32,13 @@ import type { CreativeStageSaveData, StageSaveData } from '../save-data';
 
 const DEG = Math.PI / 180;
 
-const STAGE_CONTROL_ENEMY_TYPES = [
-  [0, 'A型'], [1, 'B型'], [2, 'C型'],
+const STAGE_CONTROL_ENEMY_SHAPES = [
+  { id: 'drifting', kind: 'drifting' },
+  { id: 'stage0-a', kind: 'stage0', typeIndex: 0 },
+  { id: 'stage0-b', kind: 'stage0', typeIndex: 1 },
+  { id: 'stage0-c', kind: 'stage0', typeIndex: 2 },
 ] as const;
+type EnemySpawnShape = typeof STAGE_CONTROL_ENEMY_SHAPES[number]['id'];
 const STAGE_CONTROL_ENEMY_COLORS = [
   [0xff4a3d, '赤'], [0xff7a2d, '橙'], [0xe0409f, '桃'], [0xbf3dff, '紫'], [0x3dc6ff, '青'],
 ] as const;
@@ -120,12 +124,18 @@ export class CreativeStage extends Stage {
     waveAttackToggle.setOn(this.waveAttackEnabled);
     body.appendChild(waveAttackToggle.element);
 
-    const typeSelect = this.buildStageControlSelect('敵の種類', STAGE_CONTROL_ENEMY_TYPES);
-    body.appendChild(typeSelect.wrapper);
+    let selectedEnemyShape: EnemySpawnShape = STAGE_CONTROL_ENEMY_SHAPES[0].id;
+    const shapeControl = new SegmentedControl<EnemySpawnShape>(
+      '敵の形状', STAGE_CONTROL_ENEMY_SHAPES.map(({ id }) => [id, id] as const),
+      (shape) => { selectedEnemyShape = shape; },
+    );
+    shapeControl.element.classList.add('stage-control-shapes');
+    shapeControl.setSelected(selectedEnemyShape);
+    body.appendChild(shapeControl.element);
     const colorSelect = this.buildStageControlSelect('敵の色', STAGE_CONTROL_ENEMY_COLORS);
     body.appendChild(colorSelect.wrapper);
     this.spawnEnemyButton = new Button('敵をスポーン', () => {
-      this.spawnManualEnemy(typeSelect.select.value, colorSelect.select.value);
+      this.spawnManualEnemy(selectedEnemyShape, colorSelect.select.value);
     });
     body.appendChild(this.spawnEnemyButton.element);
     hudRail(hudRoot, 'right').appendChild(panel);
@@ -154,21 +164,25 @@ export class CreativeStage extends Stage {
     return { wrapper, select };
   }
 
-  private spawnManualEnemy(typeValue: string, colorValue: string): void {
+  private spawnManualEnemy(shape: EnemySpawnShape, colorValue: string): void {
     const player = this.activePlayer;
     if (player === null || !player.alive) {
       this._hud.hint('操作艦がいないため敵をスポーンできません');
       return;
     }
-    const typeIndex = Number(typeValue);
     const color = Number(colorValue);
     const forward = qRotate(player.att.q, v3(0, 0, 1));
     const position = addScaled(player.state.r, forward, STAGE_CONTROL_ENEMY_SPAWN_DISTANCE);
     const state = kinematicState(player.state.t, position, player.state.v);
-    const enemy = generateApproachingEnemy(
-      `MANUAL-${++this.manualEnemyCount}`, state, C.STAGE0_ENEMY_HP, color, color, typeIndex, undefined,
-      this._hud, this._worldSfx, this._fx, this._scene,
-    );
+    const name = `MANUAL-${++this.manualEnemyCount}`;
+    const shapeDefinition = STAGE_CONTROL_ENEMY_SHAPES.find(({ id }) => id === shape);
+    if (shapeDefinition === undefined) return;
+    const enemy = shapeDefinition.kind === 'drifting'
+      ? generateDriftingEnemy(name, state, C.ENEMY_MAX_HP, color, color, this._hud, this._worldSfx, this._fx, this._scene)
+      : generateApproachingEnemy(
+        name, state, C.STAGE0_ENEMY_HP, color, color, shapeDefinition.typeIndex, undefined,
+        this._hud, this._worldSfx, this._fx, this._scene,
+      );
     this.addEnemy(enemy, this._entities);
   }
 
