@@ -1,6 +1,6 @@
 import { AbsoluteEphemeris, BarycentricState } from './absolute-ephemeris';
 import { CelestialBodyId } from './celestial-body';
-import { ChebyshevEphemeris } from './ephemeris-pack';
+import { ChebyshevEphemeris } from './ephemeris-pack/evaluator';
 import {
   DecodedEphemerisPack, EphemerisPackFormatError, decodeEphemerisPack, toEvaluatorEphemerisPack,
 } from './ephemeris-pack/format';

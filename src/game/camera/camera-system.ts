@@ -2,9 +2,9 @@ import * as THREE from 'three/webgpu';
 import { Hud } from '../hud/hud';
 import { CombatCameraSystem } from './combat-camera-system';
 import { MapCamera } from './map-camera';
-import { ViewOptionsPanel } from '../hud/view-options-panel';
+import { ViewOptionsPanel } from '../hud/panels/view-options-panel';
 import { FocusMarkers } from './focus-markers';
-import { BodyClassToggles, DEFAULT_BODY_CLASS_TOGGLES } from '../celestial/body-visibility';
+import { applyBodyClassDisplayMode, BodyClassToggles, DEFAULT_BODY_CLASS_TOGGLES, normalizeBodyClassToggles } from '../celestial/body-visibility';
 import { MapPickable } from '../map-pickable';
 import { MarkerManager } from '../marker/marker-manager';
 import { Input } from '../input/input';
@@ -26,7 +26,7 @@ function loadBodyClassToggles(): BodyClassToggles {
     if (!raw) return DEFAULT_BODY_CLASS_TOGGLES;
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== 'object' || parsed === null) return DEFAULT_BODY_CLASS_TOGGLES;
-    return { ...DEFAULT_BODY_CLASS_TOGGLES, ...parsed };
+    return normalizeBodyClassToggles({ ...DEFAULT_BODY_CLASS_TOGGLES, ...parsed });
   } catch {
     return DEFAULT_BODY_CLASS_TOGGLES;
   }
@@ -155,10 +155,12 @@ export class CameraSystem {
     this.mapCamera = new MapCamera(_hud, ephemeris, saved?.overview);
     // 表示パネルと天体クラス側操作のコールバック
     this.viewOptionsPanel = new ViewOptionsPanel(_hud.mapRoot);
-    this.viewOptionsPanel.onBodyClassToggle = (key, on) => {
-      this._bodyClassToggles = { ...this._bodyClassToggles, [key]: on };
+    this.viewOptionsPanel.onBodyClassModeChange = (key, mode) => {
+      this._bodyClassToggles = applyBodyClassDisplayMode(this._bodyClassToggles, key, mode);
       saveBodyClassToggles(this._bodyClassToggles);
+      this.viewOptionsPanel.setBodyClassToggles(this._bodyClassToggles);
     };
+    this.viewOptionsPanel.setBodyClassToggles(this._bodyClassToggles);
 
     this.chaseResetBtn = _hud.root.querySelector('#hud-chase-reset') as HTMLElement | null;
     this.chaseResetBtn?.addEventListener('pointerdown', this.handleChaseReset);
@@ -239,9 +241,8 @@ export class CameraSystem {
   sync(fo: FloatingOrigin): void {
     const active = this.overviewMode ? this.mapCamera : this.combatCamera;
     syncCameraToViewpoint(active.camera, active.viewpoint, active.near, active.far, fo);
-    // 広範囲視点のときだけ操作パネルとフォーカスラベルを表示する
+    // 広範囲視点のときだけ表示設定パネルとフォーカスラベルを表示する。
     this.viewOptionsPanel.setVisible(this.overviewMode);
-    this.viewOptionsPanel.setBodyClassToggles(this._bodyClassToggles);
 
     if (this.overviewMode) {
       this.focusMarkers.syncLabels(this.activeCameraProjection, this.activeCameraPos);

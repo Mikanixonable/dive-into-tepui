@@ -8,7 +8,7 @@ import { add, len, sub, v3, Vec3 } from '../../physics/vec3';
 import type { AnyPart, Part } from './parts';
 import { partFromSaveData } from './parts';
 import { Player } from '../player/player';
-import { buildBaseModel } from '../../render/ships';
+import { buildBaseModel } from '../../render/base-station-model';
 import type { Hud } from '../hud/hud';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
@@ -22,6 +22,7 @@ import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import type { MarkerRole } from '../targeter';
 import { fmtMarkerDist } from '../hud/utils';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
+import { baseMarkerSvg } from '../marker/marker-shapes';
 import * as C from '../const';
 import { BaseCollisionGeometry, RayHit, SphereHit } from '../../physics/base-collision';
 import { PlayerThrottle } from '../player/player-throttle';
@@ -78,16 +79,10 @@ export type BaseInit =
   | { readonly state: KinematicState; readonly name?: string; readonly att?: Attitude; readonly id?: string }
   | { readonly saved: BaseSaveData; readonly simTime: number };
 
-export function baseMarkerSvg(): string {
-  const pts = "12,2.5 19.43,6.08 21.26,14.11 16.12,20.56 7.88,20.56 2.74,14.11 4.57,6.08";
-  return `<svg viewBox="0 0 24 24" width="24" height="24" aria-label="Base">` +
-    `<polygon points="${pts}" fill="none" stroke="currentColor" stroke-width="1.8"/>` +
-    `</svg>`;
-}
-
 export class Base extends GameEntity implements Controllable {
   readonly collisionGeom = new BaseCollisionGeometry();
   protected readonly predictedForGhost = true;
+  protected readonly baseHistoryDuration = C.DEFAULT_HISTORY_DURATION;
   readonly plan = new Plan();
   planExecution: PlanExecutionMode = 'off';
   fineAttitude = false;
@@ -171,6 +166,7 @@ export class Base extends GameEntity implements Controllable {
     this.equatorNodes = new EquatorNodeMarkerPair(this, markerManager);
 
     if ('saved' in init) {
+      this.showTrajectoryLine = init.saved.showTrajectoryLine ?? false;
       this.baseState.money = init.saved.money;
       this.baseState.inventory = (init.saved.inventory ?? []).map(partFromSaveData);
       const savedVessels = init.saved.dockedVessels ?? init.saved.dockedShips ?? [];
@@ -317,7 +313,7 @@ export class Base extends GameEntity implements Controllable {
     const priority = role === 'primary' ? C.MARKER_PRIORITY.PRIMARY_TARGET : C.MARKER_PRIORITY.BASE - dist / 1e9;
     return {
       key: `base-${this.id}`,
-      cls: role === 'primary' ? 'mk-target' : 'mk-base',
+      cls: role === 'primary' ? 'mk-base mk-target' : 'mk-base',
       sym: baseMarkerSvg(),
       pos,
       vel,
@@ -360,6 +356,7 @@ export class Base extends GameEntity implements Controllable {
       inventory: this.baseState.inventory.map(p => ({ ...p })),
       dockedVessels: this.baseState.dockedVessels.map(entry => entry.player.serialize()),
       throttle: this.throttle.serialize(),
+      showTrajectoryLine: this.showTrajectoryLine,
     };
   }
 }

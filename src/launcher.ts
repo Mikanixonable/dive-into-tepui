@@ -1,11 +1,10 @@
 import { Game } from './game/game';
 import type { Input } from './game/input/input';
 import { KEY_MAPPING as K } from './game/input/key-mapping';
-import { ResultScreen, type RunTransitions } from './game/hud/result-screen';
-import type { CurrentGameSource } from './game/hud/save-browser';
+import {
+  ResultScreen, type RunTransitions, type CurrentGameSource, type PauseMenu, type SettingsView,
+} from './game/hud/windows';
 import type { Hud } from './game/hud/hud';
-import type { PauseMenu } from './game/hud/pause-menu';
-import type { SettingsView } from './game/hud/settings-view';
 import type { GamePhase, StageClass, StageResult } from './game/stages/stage';
 import { findStageClass } from './game/stages/stage-dictionary';
 import { selectStage } from './game/stage-select';

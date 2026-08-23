@@ -571,8 +571,13 @@ export class Ephemeris {
     if (def.kind === 'star' || def.pole === undefined) return null;
     const model = def.pole;
     const te = t + this.epochOffsetSec;
-    // 'eciPole' は ECI の極軸そのもの。位相の原点は春分点方向に取る。
-    if (model.kind === 'eciPole') return { axis: ECI_POLE, spinAngle: 0 };
+    // 'eciPole' は ECI の極軸そのもの。位相の原点は春分点方向に取り、地球の自転ぶんだけ
+    // 時刻とともに進める。軸は ECI に固定されているため、ここを固定位相にすると
+    // spinRotationAt() の omega だけが進み、フレーム姿勢 q が時間変化しなくなる。
+    if (model.kind === 'eciPole') {
+      const rate = spinRateOf(def);
+      return { axis: ECI_POLE, spinAngle: rate === null ? 0 : rate * t };
+    }
     if (model.kind === 'iau') {
       const cy = te / JULIAN_CENTURY;
       const axis = raDecToEci(
