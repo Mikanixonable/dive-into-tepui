@@ -18,6 +18,7 @@ import type { SunLight } from './sun-light';
 // 昼側の大気の色と、昼夜境界で寄っていく夕焼けの色。
 const ATMO_COLOR = vec3(0.36, 0.62, 0.91);
 const SUNSET_COLOR = vec3(1.0, 0.4, 0.1);
+// 地表付近のもやの濃さ(視線が真上からのときの光学的厚み)。
 // リム光の可視上限高度・下限高度・指数減衰のスケールハイト [m]。
 const RIM_MAX_H = 340e3;
 const RIM_MIN_H = 20e3;
@@ -26,6 +27,9 @@ const RIM_SCALE_H = 90e3;
 // 奥行きが高度に対して急峻に変化するため、奥行きで測るとぼかし幅が画素未満に潰れる。
 const RIM_EDGE_SOFTEN = 25e3;
 const RIM_OPACITY = 0.6;
+const HAZE_TAU0 = 0.34;
+// 視線が地平線と平行に近づいたときの光路長の上限(cosθ の下限)。
+const HAZE_MIN_COS = 0.05;
 
 export class AtmospherePass {
   private readonly target: THREE.RenderTarget;
@@ -90,8 +94,23 @@ export class AtmospherePass {
     const color: Vec3Node = mix(SUNSET_COLOR, ATMO_COLOR, smoothstep(0, 0.2, sunDot));
 
     // シェルに当たらない・カメラの後ろ・不透明面の方が手前・大気を持つ天体が無いフレーム。
-    const present = and(greaterThan(shellDisc, 0), and(greaterThan(shellFar, 0), lessThan(shellFar, opaqueDist)));
-    const rim = select(and(present, greaterThan(surface, 0)), falloff.mul(sunFactor).mul(bodyVisible).mul(RIM_OPACITY), float(0));
+    const inShell = and(greaterThan(shellDisc, 0), greaterThan(shellFar, 0));
+    const hasAtmosphere = and(inShell, greaterThan(surface, 0));
+    const rim = select(and(hasAtmosphere, lessThan(shellFar, opaqueDist)), falloff.mul(sunFactor).mul(bodyVisible).mul(RIM_OPACITY), float(0));
+
+    // もや(aerial perspective): 大気層の内側にある不透明面は、視線が地平線に近いほど長い
+    // 光路を通って見える。Beer-Lambert 則で haze = 1 − exp(−τ₀/cosθ)。
+    const surfaceNormal = normalize(sub(opaquePos, this.bodyCenter));
+    const cosTheta = clamp(dot(surfaceNormal, normalize(opaquePos.negate())), HAZE_MIN_COS, 1);
+    const hazeDepth = float(1).sub(exp(float(HAZE_TAU0).div(cosTheta).negate()));
+    const hazeSunDot = dot(surfaceNormal, normalize(sub(sunLight.position, opaquePos)));
+    const insideShell = lessThan(length(sub(opaquePos, this.bodyCenter)), shell);
+    const hazeSunFactor: FloatNode = clamp(hazeSunDot, 0, 1);
+    // 奪う割合にも戻る量にも、その空気柱への日の当たり方を掛ける。太陽の高度が低いほど
+    // 太陽光自身がより長い大気を通ってくることの近似で、厳密な光路長は Phase 10 の課題。
+    const haze = select(and(hasAtmosphere, insideShell), hazeDepth.mul(hazeSunFactor), float(0));
+    const hazeColor: Vec3Node = mix(SUNSET_COLOR, ATMO_COLOR, smoothstep(0, 0.2, hazeSunDot))
+      .mul(hazeSunFactor);
 
     this.material = new THREE.MeshBasicNodeMaterial({
       depthTest: false,
@@ -101,10 +120,10 @@ export class AtmospherePass {
       blendSrc: THREE.OneFactor,
       blendDst: THREE.OneMinusSrcAlphaFactor,
     });
-    // 前乗算アルファ: 色は透過率を掛けたあとの内部散乱、アルファは大気が奪う割合。
-    // リム光は奪わない(アルファ 0)ので、そのまま加算になる。
-    this.material.colorNode = color.mul(rim);
-    this.material.opacityNode = float(0);
+    // 前乗算アルファ: 色は既に割合を掛けた内部散乱、アルファは大気が下地から奪う割合。
+    // リム光は下地(宇宙空間)から奪うものが無いので、アルファには入らず加算だけになる。
+    this.material.colorNode = color.mul(rim).add(hazeColor.mul(haze));
+    this.material.opacityNode = haze;
     this.quad = new QuadMesh(this.material);
   }
 
