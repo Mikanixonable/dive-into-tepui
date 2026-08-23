@@ -63,7 +63,10 @@ export class GBufferPass {
     roughnessTex!.name = 'roughness';
     roughnessTex!.format = THREE.RedFormat;
     roughnessTex!.type = THREE.UnsignedByteType;
-    this.target.depthTexture = new THREE.DepthTexture(1, 1);
+    // 深度は 32bit 浮動小数点。RenderTarget の深度が自動で depth32float になるのは
+    // キャンバス直描きのときだけで、明示しないと depth24plus のまま — 絵は正常なのに
+    // 精度だけ落ちる。
+    this.target.depthTexture = new THREE.DepthTexture(1, 1, THREE.FloatType);
 
     this.mrtNode = mrt({
       normal: octEncodeNormal(normalView),

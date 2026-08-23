@@ -25,7 +25,7 @@ import {
   uniform,
   uv,
   vec3,
-  viewZToPerspectiveDepth,
+  viewZToReversedPerspectiveDepth,
 } from 'three/tsl';
 import { RingSystemDef } from '../physics/solar-system';
 import { SPHERE_LOD_LADDER, SphereLodLevel } from './screen-lod';
@@ -116,7 +116,7 @@ export class CelestialSurface {
     mat.colorNode = albedo.mul(float(NIGHT_AMBIENT).add(
       lambert.mul(1 - NIGHT_AMBIENT).mul(ringTransmission),
     ));
-    mat.depthNode = viewZToPerspectiveDepth(positionView.z.mul(this.depthScaleNode), cameraNear, cameraFar);
+    mat.depthNode = viewZToReversedPerspectiveDepth(positionView.z.mul(this.depthScaleNode), cameraNear, cameraFar);
     return mat;
   }
 
