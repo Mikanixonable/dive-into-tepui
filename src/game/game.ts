@@ -44,9 +44,11 @@ import { Navball } from './navball/navball';
 import { GameSaveData } from './save-data';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import { Docking } from './docking';
-import { ViewBadge } from './hud/view-badge';
+import { ViewBadge, type ViewBadgeContext } from './hud/view-badge';
 import { FrameControls } from './hud/frame/frame-controls';
 import { CombatHudController, MapHudController } from './hud/view-hud-controller';
+import { focusTargetId } from './camera/focus-target';
+import { celestialBodyName } from './hud/frame/frame-labels';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -459,13 +461,34 @@ export class Game {
 
   // ------------------------------------------------------------------ sync
 
+  // フォーカス対象は天体・エンティティだけでなく、アプシス/交点などの一時マーカーも指しうる。
+  // まず現在の MapPickable と実体を引き、最後に id を表示することで、マップ候補が更新されていない
+  // 戦闘ビューや一時的に非表示の対象でもステータス表示を空欄にしない。
+  private objectName(id: string): string {
+    const pickable = this.mapPickables.pickables.find((item) => item.id === id);
+    if (pickable) return pickable.name;
+    const entity = this.entities.all().find((item) => item.id === id);
+    if (entity) return entity.name;
+    if (id in this.ephemeris.registry) return celestialBodyName(id);
+    return id;
+  }
+
+  private viewBadgeContext(): ViewBadgeContext {
+    const focus = this.cameraSystem.mapCamera.focus;
+    return {
+      focus: focus.kind === 'object' ? this.objectName(focusTargetId(focus)!) : '固定点',
+      control: (this.controlledBase ?? this.player)?.name ?? null,
+      target: this.navTarget.name,
+    };
+  }
+
   sync(): void {
     const activeControllable = this.activeControllableEntity;
     const player = this.player;
     // update() と sync() は同一の animate() 呼び出し内で同期的に実行されるため、
     // update() が確定させた表示窓をそのまま読める。
     const displayWindow = this.displayWindowManager.current;
-    this.viewBadge.sync(this.activeStage.stageClass.selectLabel);
+    this.viewBadge.sync(this.activeStage.stageClass.selectLabel, this.viewBadgeContext());
     // 原点(位置)はアクティブカメラの ECI 位置 — cameraSystem.update() は update フェーズの
     // 毎フレーム呼ばれるので、この sync の時点で activeCameraPos は確定済み。
     // 速度基準は自機のまま(弾の相対速度描画・再突入エフェクトが前提とする値で、原点とは別concern)。
