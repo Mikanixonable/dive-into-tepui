@@ -1,10 +1,11 @@
 // フレームの描画パス構成を制御する。render/** 配下の個々の描画物モジュールとは別に、
 // 「何段で、どのターゲットへ描き、どう合成してキャンバスへ出すか」をここへ集約する。
-// 現在は6段: G バッファパス(深度・法線・ラフネスを MRT へ描く)→ 遮蔽パス(G バッファ深度から
+// 現在は7段: G バッファパス(深度・法線・ラフネスを MRT へ描く)→ 遮蔽パス(G バッファ深度から
 // 復元した位置に届く恒星の直射光の透過率を1枚へ描く)→ ライティングパス(その2枚だけを読み、
 // 拡散/鏡面の照度を MRT へ描く)→ マテリアルパス(lit-opaque 層をライティングパスの照度で描き、
-// world パスと共有する HDR ターゲットの最初の書き込みとしてクリアする)→ world パス
-// (シーンを同じ HDR ターゲットへ重ね描きする)→ composite パス。composite パスは通常表示
+// world パスと共有する HDR ターゲットの最初の書き込みとしてクリアする)→ 大気パス(同じ
+// ターゲットへ画面空間で大気を重ねる)→ world パス(シーンを同じ HDR ターゲットへ重ね描きする)
+// → composite パス。composite パスは通常表示
 // (debugTarget==='off')では HDR ターゲットへ露出を掛けてキャンバスへ合成し、それ以外を選ぶと
 // 代わりに中間ターゲットの中身を画面いっぱいに映す(debug-target.ts)。
 import * as THREE from 'three/webgpu';
@@ -15,6 +16,7 @@ import type { GraphicsSettingsData } from '../graphics-settings';
 import type { FloatNode, FloatUniform, Vec4Node } from '../tsl-types';
 import type { DebugTargetHost, DebugTargetId } from './debug-target';
 import { GBufferPass, octDecodeNormal } from './gbuffer';
+import { AtmospherePass } from './atmosphere-pass';
 import { LightPrepass } from './light-prepass';
 import { MaterialPass } from './material-pass';
 import { OcclusionPass } from './occlusion';
@@ -41,6 +43,7 @@ export class RenderPipeline implements DebugTargetHost {
   private readonly occlusionPass: OcclusionPass;
   private readonly lightPrepass: LightPrepass;
   private readonly materialPass: MaterialPass;
+  private readonly atmospherePass: AtmospherePass;
   private readonly _sunLight: SunLight;
   private readonly target: THREE.RenderTarget;
   private readonly quad: QuadMesh;
@@ -65,6 +68,9 @@ export class RenderPipeline implements DebugTargetHost {
   // 遮蔽パス。EnvironmentScene が遮蔽器と環の帯を毎フレーム書き込む。
   get occlusion(): OcclusionPass { return this.occlusionPass; }
 
+  // 大気パス。EnvironmentScene が大気を持つ天体を毎フレーム書き込む。
+  get atmosphere(): AtmospherePass { return this.atmospherePass; }
+
   // G バッファパス・ライティングパス・マテリアルパスと、world パスの描画先である HDR
   // オフスクリーンターゲット、それらをキャンバスへ合成する QuadMesh 用のデバッグ表示ごとの
   // マテリアルを構築する。
@@ -75,6 +81,7 @@ export class RenderPipeline implements DebugTargetHost {
     this.occlusionPass = new OcclusionPass(renderer, this.gbuffer, this._sunLight, gpu);
     this.lightPrepass = new LightPrepass(renderer, this.gbuffer, this.occlusionPass, this._sunLight, gpu);
     this.materialPass = new MaterialPass(renderer, this.lightPrepass, gpu);
+    this.atmospherePass = new AtmospherePass(renderer, this.gbuffer, this._sunLight, gpu);
 
     // antialias はレンダラ生成時にしか渡せず(scene.ts 参照)、キャンバスへの直描きは
     // それでマルチサンプルされていた。オフスクリーンの HDR ターゲットは自前で samples を
@@ -121,6 +128,9 @@ export class RenderPipeline implements DebugTargetHost {
       material: this.buildCompositeMaterial(
         vec4(texture(this.materialPass.texture, screenUV).rgb.mul(this.exposure), 1),
       ),
+      atmosphere: this.buildCompositeMaterial(
+        vec4(texture(this.atmospherePass.texture, screenUV).rgb.mul(this.exposure), 1),
+      ),
     };
     this.quad = new QuadMesh(this.compositeMaterials.off);
   }
@@ -166,6 +176,9 @@ export class RenderPipeline implements DebugTargetHost {
     // ときだけ、自前のターゲットへも同じジオメトリをもう一度描く。
     this.materialPass.render(scene, camera, this.target, width, height, this.debugTarget === 'material');
 
+    // 大気パス。不透明の絵の上へ画面空間で重ねる。G バッファ深度と視線だけを読むので scene は渡さない。
+    this.atmospherePass.render(camera, this.target, width, height, this.debugTarget === 'atmosphere');
+
     // world パス。マテリアルパスが LIT_OPAQUE_LAYER と背景専用レイヤーをチャンネル0から外しているので、
     // 既定のカメラマスクで描く限りここでは自動的に重複しない。autoClear を落として
     // マテリアルパスの描画(色・深度とも)を残したまま重ね描きする — world パスは透明物
@@ -198,6 +211,7 @@ export class RenderPipeline implements DebugTargetHost {
     this.occlusionPass.dispose();
     this.lightPrepass.dispose();
     this.materialPass.dispose();
+    this.atmospherePass.dispose();
     this.target.dispose();
     for (const material of Object.values(this.compositeMaterials)) material.dispose();
   }

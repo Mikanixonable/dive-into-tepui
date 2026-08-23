@@ -18,6 +18,10 @@ module.exports = {
         options: { target: 'es2020' },
         exclude: /node_modules/,
       },
+      {
+        test: /\.(png|jpe?g)$/,
+        type: 'asset/resource',
+      },
     ],
   },
   output: {
