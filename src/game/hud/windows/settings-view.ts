@@ -90,9 +90,10 @@ export class SettingsView implements OverlayHandle {
     const themeButtons = new Map<string, Button>();
     let activeThemeId = currentThemePalette().id;
     for (const palette of THEME_PRESETS) {
-      const swatches = [palette.accent, palette.accentNear, palette.secondary]
-        .map((color) => `<span class="sv-theme-swatch" style="background-color: ${color}"></span>`)
-        .join('');
+      const preview = `<span class="sv-theme-preview" style="background-color: ${palette.page}; border-color: ${palette.title}">` +
+        `<span class="sv-theme-preview-surface" style="background-color: ${palette.surface1}">` +
+        `<span style="background-color: ${palette.title}"></span><span style="background-color: ${palette.accent}"></span>` +
+        `</span></span>`;
       const themeButton = new Button(
         palette.name,
         () => {
@@ -100,7 +101,7 @@ export class SettingsView implements OverlayHandle {
           activeThemeId = palette.id;
           for (const [id, button] of themeButtons) button.setOn(id === activeThemeId);
         },
-        `<span class="sv-theme-icon">${swatches}</span>`,
+        `<span class="sv-theme-icon">${preview}</span>`,
       );
       themeButton.element.classList.add('sv-theme-button');
       themeButton.element.title = palette.description;

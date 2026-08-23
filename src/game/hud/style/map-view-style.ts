@@ -6,6 +6,15 @@ export const MAP_VIEW_STYLE = `
 /* マップでは戦闘固有の棚とターゲット計器を外し、計画用のレールへ視線を集中させる。 */
 #hud .hud-map-root.active #hud-target { display: none; }
 
+/* 宇宙空間は常に暗いため、ライトテーマでも天体ラベルは暗色の札と明色文字で読む。 */
+#hud .hud-map-root.active .mk-poi .lbl {
+  background: #0b0d11;
+  color: #f5f7ff;
+  text-shadow: none;
+}
+#hud .hud-map-root.active .mk-poi:not(.mk-lagrange) .lbl .lbl-main { color: #f5f7ff; }
+#hud .hud-map-root.active .mk-poi:not(.mk-lagrange) .lbl .lbl-sub { color: #b8c1d1; }
+
 /* Quiet Glass: 視野を隠さない常設情報。 */
 #hud .hud-map-root.active #hud-physical-object-list,
 #hud .hud-map-root.active #hud-view-options,
