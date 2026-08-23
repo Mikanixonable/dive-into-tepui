@@ -1,15 +1,20 @@
 // 同じケースをライトプリパスとフォワードの 2 経路で描く。違いは「メッシュとライトがどの
-// チャンネルに居るか」だけで、HDR ターゲット・露出・合成・色空間変換はどちらも同じ
-// RenderPipeline を通る。だから画面に出る差はシェーディング経路の差そのものになる。
+// チャンネルに居るか」だけで、HDR ターゲット・トーンマッピング・合成・色空間変換はどちらも
+// 同じ RenderPipeline を通る。だから画面に出る差はシェーディング経路の差そのものになる。
+//
+// 例外が 1 つある: フォワード経路は G バッファを空にするので、合成パスがキャンバスの深度
+// バッファへ複製する深度も空になり、3D UI パスの線が不透明物に隠れない。**差分画像で線が
+// 不透明物を横切る箇所だけは、2 経路が食い違うのが正しい。**
 import * as THREE from 'three/webgpu';
 import { WebGPURenderer } from 'three/webgpu';
 import { GpuTimings } from '../../src/gpu-timings';
 import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
 import { LIT_OPAQUE_LAYER, OVERLAY_LAYER } from '../../src/render/pipeline/lit-layer';
-import { AMBIENT_COLOR } from '../../src/render/pipeline/sun-light';
+import {
+  AMBIENT_COLOR, AMBIENT_IRRADIANCE, SUN_COLOR, SUN_IRRADIANCE_1AU,
+} from '../../src/render/pipeline/sun-light';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
 import { QUALITY_PRESETS } from '../../src/render/graphics-settings';
-import { AMBIENT_INTENSITY, COLOR_SUN, SUN_INTENSITY } from '../../src/game/const';
 import { AU } from '../../src/physics/planet-orbit';
 import { R_SUN } from '../../src/physics/solar-system';
 import { CASES, type CaseName, type LabCase, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './cases';
@@ -19,11 +24,10 @@ export type LabPath = 'prepass' | 'forward';
 const ORIGIN = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
 
-const SUN_COLOR = new THREE.Color(COLOR_SUN);
-// 恒星は 1 天文単位の位置に置く。ゲーム本体と同じく SUN_INTENSITY はそこでの放射照度なので、
-// 点光源へ渡す放射強度は逆二乗ぶんを戻した値になる。
+// 恒星は 1 天文単位の位置に置く。ゲーム本体と同じく SUN_IRRADIANCE_1AU はそこでの放射照度
+// なので、点光源へ渡す放射強度は逆二乗ぶんを戻した値になる。
 const SUN_POSITION = SUN_DIR.clone().multiplyScalar(AU);
-const SUN_RADIANT_INTENSITY = SUN_INTENSITY * AU * AU;
+const SUN_RADIANT_INTENSITY = SUN_IRRADIANCE_1AU * AU * AU;
 
 export class LabView {
   private readonly scene = new THREE.Scene();
@@ -46,9 +50,9 @@ export class LabView {
     // RenderPipeline はカメラのチャンネルを一時的に絞る。シーンルートが既定の 0 だけだと
     // その時点で子要素の走査が止まるため、コンテナとして全チャンネルを受ける。
     this.scene.layers.enableAll();
-    const sun = new THREE.DirectionalLight(SUN_COLOR.getHex(), SUN_INTENSITY);
+    const sun = new THREE.DirectionalLight(SUN_COLOR.getHex(), SUN_IRRADIANCE_1AU);
     sun.position.copy(SUN_DIR).multiplyScalar(1e5);
-    const ambient = new THREE.AmbientLight(AMBIENT_COLOR, AMBIENT_INTENSITY);
+    const ambient = new THREE.AmbientLight(AMBIENT_COLOR, AMBIENT_IRRADIANCE);
     // NodeMaterial はカメラのチャンネルと重なる光源が1つも無いと照明モデルを組まない。
     // マテリアルパスはカメラを LIT_OPAQUE_LAYER 単独へ絞るので、その経路の光源は同チャンネルにも属させる。
     if (path === 'prepass') {
@@ -93,7 +97,7 @@ export class LabView {
   // 動くものが無いので、描くのはケースを差し替えたときと撮影のときだけ。
   render(): void {
     if (this.current === null) return;
-    this.pipeline.sunLight.set(SUN_POSITION, R_SUN, SUN_COLOR, SUN_RADIANT_INTENSITY, AMBIENT_INTENSITY);
+    this.pipeline.sunLight.set(SUN_POSITION, R_SUN, SUN_COLOR, SUN_RADIANT_INTENSITY, AMBIENT_IRRADIANCE);
     this.pipeline.occlusion.setOccluders(this.current.occluders ?? []);
     const rings = this.current.rings;
     this.pipeline.occlusion.setRings(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);

@@ -6,16 +6,16 @@
 // world パスと共有する HDR ターゲットの最初の書き込みとしてクリアする)→ 大気パス(同じ
 // ターゲットへ画面空間で大気を重ねる)→ world パス(シーンを同じ HDR ターゲットへ重ね描きする)
 // → composite パス → 3D UI パス。composite パスは通常表示
-// (debugTarget==='off')では HDR ターゲットへ露出を掛けてキャンバスへ合成し、それ以外を選ぶと
+// (debugTarget==='off')では HDR ターゲットをトーンマッピングしてキャンバスへ合成し、それ以外を選ぶと
 // 代わりに中間ターゲットの中身を画面いっぱいに映す(debug-target.ts)。あわせて G バッファの
 // 深度をキャンバスの深度バッファへ複製するので、最後の 3D UI パス(overlay-pass.ts)は
 // 普通に深度テストするだけで不透明物の奥へ隠れる。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
-import { log, screenUV, texture, uniform, vec3, vec4 } from 'three/tsl';
+import { float, log, neutralToneMapping, screenUV, texture, uniform, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import type { GraphicsSettingsData } from '../graphics-settings';
-import type { FloatNode, FloatUniform, Mat4Uniform, Vec4Node } from '../tsl-types';
+import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec4Node } from '../tsl-types';
 import type { DebugTargetHost, DebugTargetId } from './debug-target';
 import { GBufferPass, octDecodeNormal } from './gbuffer';
 import { AtmospherePass } from './atmosphere-pass';
@@ -26,10 +26,13 @@ import { OverlayPass } from './overlay-pass';
 import { SunLight } from './sun-light';
 import { viewPositionAt } from './view-ray';
 
-// composite パスが HDR 値全体へ一律に掛ける、フレーム唯一の明るさ係数。実照度に対する
-// 物理的な較正は後続のサブフェーズの課題で、現状は環(render/ring.ts)の単一散乱輝度が
-// LDR で飽和しない値として 0.72 に置く。
-export const EXPOSURE = 0.72;
+// 1 を超える HDR 値を切り落とさず白へ寄せる。Khronos PBR Neutral を選ぶのは、圧縮開始点より
+// 下では色相・彩度を保ったまま素通しするため — 「表示値 = アルベド」という校正が中間調では
+// そのまま読み取れる。明るさの基準は放射照度の単位そのもの(sun-light.ts の
+// SUN_IRRADIANCE_1AU)が決めているので、出力段の露出には 1 を渡す。
+function toneMapped(color: Vec3Node): Vec3Node {
+  return neutralToneMapping(color, float(1)) as Vec3Node;
+}
 
 export class RenderPipeline implements DebugTargetHost {
   private readonly renderer: WebGPURenderer;
@@ -43,7 +46,6 @@ export class RenderPipeline implements DebugTargetHost {
   private readonly target: THREE.RenderTarget;
   private readonly quad: QuadMesh;
   private readonly compositeMaterials: Readonly<Record<DebugTargetId, THREE.MeshBasicNodeMaterial>>;
-  private readonly exposure: FloatUniform;
   // 深度デバッグ表示が使う uniform。composite パスは QuadMesh 自前の固定直交カメラ
   // (near=0/far=1)で描かれるため、TSL の cameraNear/cameraFar/cameraProjectionMatrix
   // 組み込みノードはここでは実カメラの値を返さない — render() が毎フレーム実カメラの
@@ -93,7 +95,6 @@ export class RenderPipeline implements DebugTargetHost {
     // G バッファと同じく、深度を 32bit 浮動小数点にするには明示が要る(gbuffer.ts 参照)。
     this.target.depthTexture = new THREE.DepthTexture(1, 1, THREE.FloatType);
 
-    this.exposure = uniform(EXPOSURE);
     this.depthDebugNear = uniform(1);
     this.depthDebugFar = uniform(2);
     this.depthDebugProjInv = uniform(new THREE.Matrix4());
@@ -103,9 +104,7 @@ export class RenderPipeline implements DebugTargetHost {
     // マテリアルをユニフォーム分岐させると、通常プレイの毎フレームで G バッファの全テクスチャを
     // bind/sample することになるため、表示ごとに別マテリアルを構築する。
     this.compositeMaterials = {
-      off: this.buildCompositeMaterial(
-        vec4(texture(this.target.texture, screenUV).rgb.mul(this.exposure), 1),
-      ),
+      off: this.buildCompositeMaterial(vec4(toneMapped(texture(this.target.texture, screenUV).rgb), 1)),
       normal: this.buildCompositeMaterial(
         vec4(octDecodeNormal(texture(this.gbuffer.normalTexture, screenUV).rg).mul(0.5).add(0.5), 1),
       ),
@@ -116,18 +115,19 @@ export class RenderPipeline implements DebugTargetHost {
       occlusion: this.buildCompositeMaterial(
         vec4(vec3(texture(this.occlusionPass.texture, screenUV).r), 1),
       ),
-      // 照度は 1 を超え得る HDR 値なので、通常表示と同じ露出係数を掛けてから画面へ出す。
+      // 照度・陰影は 1 を超え得る HDR 値なので、通常表示と同じトーンマッピングを通してから
+      // 画面へ出す(1 天文単位の放射照度は π を超えるため、通さないと全面白になる)。
       diffuse: this.buildCompositeMaterial(
-        vec4(texture(this.lightPrepass.diffuseTexture, screenUV).rgb.mul(this.exposure), 1),
+        vec4(toneMapped(texture(this.lightPrepass.diffuseTexture, screenUV).rgb), 1),
       ),
       specular: this.buildCompositeMaterial(
-        vec4(texture(this.lightPrepass.specularTexture, screenUV).rgb.mul(this.exposure), 1),
+        vec4(toneMapped(texture(this.lightPrepass.specularTexture, screenUV).rgb), 1),
       ),
       material: this.buildCompositeMaterial(
-        vec4(texture(this.materialPass.texture, screenUV).rgb.mul(this.exposure), 1),
+        vec4(toneMapped(texture(this.materialPass.texture, screenUV).rgb), 1),
       ),
       atmosphere: this.buildCompositeMaterial(
-        vec4(texture(this.atmospherePass.texture, screenUV).rgb.mul(this.exposure), 1),
+        vec4(toneMapped(texture(this.atmospherePass.texture, screenUV).rgb), 1),
       ),
     };
     this.quad = new QuadMesh(this.compositeMaterials.off);
