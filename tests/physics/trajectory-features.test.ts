@@ -107,6 +107,18 @@ export function register(): void {
     assert.ok(track.periapsis!.t < track.apoapsis!.t, 'periapsis should precede apoapsis in time');
   });
 
+  test('trajectory-features: ApsisTrack keeps the center used by each extremum', () => {
+    const pairs = apsisStepPairs();
+    const moon: CelestialBody = { ...EARTH, id: 'moon' };
+    const track = new ApsisTrack();
+    track.observe(EARTH, ...pairs[0]!);
+    track.observe(moon, ...pairs[1]!);
+
+    assert.equal(track.periapsisCenter?.id, 'earth');
+    assert.equal(track.apoapsisCenter?.id, 'moon');
+    assert.equal(track.center?.id, 'moon');
+  });
+
   test('trajectory-features: ApsisTrack.dropBefore drops earlier extrema and promotes the next one to the front', () => {
     const period = keplerPeriod(a, MU_EARTH);
     const pairs = apsisStepPairs();

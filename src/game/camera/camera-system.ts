@@ -4,7 +4,7 @@ import { CombatCameraSystem } from './combat-camera-system';
 import { MapCamera } from './map-camera';
 import { ViewOptionsPanel } from '../hud/panels/view-options-panel';
 import { FocusMarkers } from './focus-markers';
-import { applyBodyClassToggle, BodyClassToggles, DEFAULT_BODY_CLASS_TOGGLES, normalizeBodyClassToggles } from '../celestial/body-visibility';
+import { applyBodyClassDisplayMode, BodyClassToggles, DEFAULT_BODY_CLASS_TOGGLES, normalizeBodyClassToggles } from '../celestial/body-visibility';
 import { MapPickable } from '../map-pickable';
 import { MarkerManager } from '../marker/marker-manager';
 import { Input } from '../input/input';
@@ -155,8 +155,8 @@ export class CameraSystem {
     this.mapCamera = new MapCamera(_hud, ephemeris, saved?.overview);
     // 表示パネルと天体クラス側操作のコールバック
     this.viewOptionsPanel = new ViewOptionsPanel(_hud.mapRoot);
-    this.viewOptionsPanel.onBodyClassToggle = (key, on) => {
-      this._bodyClassToggles = applyBodyClassToggle(this._bodyClassToggles, key, on);
+    this.viewOptionsPanel.onBodyClassModeChange = (key, mode) => {
+      this._bodyClassToggles = applyBodyClassDisplayMode(this._bodyClassToggles, key, mode);
       saveBodyClassToggles(this._bodyClassToggles);
       this.viewOptionsPanel.setBodyClassToggles(this._bodyClassToggles);
     };
@@ -241,7 +241,7 @@ export class CameraSystem {
   sync(fo: FloatingOrigin): void {
     const active = this.overviewMode ? this.mapCamera : this.combatCamera;
     syncCameraToViewpoint(active.camera, active.viewpoint, active.near, active.far, fo);
-    // 広範囲視点のときだけ操作パネルとフォーカスラベルを表示する
+    // 広範囲視点のときだけ表示設定パネルとフォーカスラベルを表示する。
     this.viewOptionsPanel.setVisible(this.overviewMode);
 
     if (this.overviewMode) {

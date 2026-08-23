@@ -61,11 +61,11 @@ export class AnchorZone {
   }
 
   // 選べる対象の一覧を現在のマップ候補へ合わせる。releaseLabel があれば先頭に解除の選択肢を足す。
-  setItems(pickables: readonly MapPickable[]): void {
+  setItems(pickables: readonly MapPickable[], includeAllCelestialBodies = false): void {
     const groups: ObjectPickerGroup<string | null>[] = [
       ...(this.releaseLabel !== null ? [{ label: '', items: [[null, this.releaseLabel] as const] }] : []),
       ROLE_GROUP,
-      ...groupPickables(this.ephemeris.registry, pickables),
+      ...groupPickables(this.ephemeris.registry, pickables, includeAllCelestialBodies),
     ];
     this.picker.setGroups(groups);
   }
