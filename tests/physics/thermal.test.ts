@@ -9,14 +9,13 @@ import {
   STEFAN_BOLTZMANN, aeroHeating, dragDissipation, radiativeCooling, solarHeating,
   sphereNoseRadius, stepTemperature,
 } from '../../src/physics/thermal';
-import { ASTRONOMICAL_UNIT } from '../../src/physics/srp';
+import { ASTRONOMICAL_UNIT, SOLAR_CONSTANT } from '../../src/physics/srp';
 
 const ENV_TEMP = 255;
 const SG_CONST = 1.7415e-4; // 地球大気の Sutton–Graves 定数 [kg^0.5/m]
 const SHIP_BCINV = 3.3e-3;
 const SMALL_DEBRIS_BCINV = 8e-3;
 const DRAG_COEFFICIENT = 2.2;
-const SOLAR_CONSTANT = 1361; // 1天文単位での太陽定数 [W/m^2]
 const HULL_EMISS = 0.85;
 
 // 灰色体とみなした物体が太陽光を受ける実効面積の比 [m^2/kg](game/const.ts と同じ導き方)。
