@@ -19,7 +19,7 @@ import * as THREE from 'three/webgpu';
 import { WebGPURenderer, PhysicalLightingModel } from 'three/webgpu';
 import { BRDF_Lambert, diffuseColor, metalness, mix, screenUV, texture, vec3 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
-import { LIT_OPAQUE_LAYER, setOpaquePassLayers } from './lit-layer';
+import { LIT_OPAQUE_LAYER, isStandardMaterial, setOpaquePassLayers } from './lit-layer';
 import type { LightPrepass } from './light-prepass';
 import type { Vec3Node } from '../tsl-types';
 
@@ -105,19 +105,25 @@ export class MaterialPass {
 
   get texture(): THREE.Texture { return this.target.texture; }
 
-  // MeshStandardMaterial を、同じ見た目の値を持つ MeshStandardNodeMaterial + 上のライティング
-  // モデルへ置き換える。mesh.material が既に置き換え済みならなにもしない。ships.ts がメッシュを
-  // 組み立てる時点ではライティングモデルが読む2枚の照度テクスチャ(ライトプリパスの出力)がまだ
-  // 存在しない — このクラス自身の構築より前には作りようがない — ため、構築時ではなく毎フレーム
-  // この呼び出しでアップグレードする。
+  // 標準マテリアルへ上のライティングモデルを据える。値だけの MeshStandardMaterial は同じ見た目の
+  // 値を持つ MeshStandardNodeMaterial へ置き換え、アルベドをノードで組んである
+  // MeshStandardNodeMaterial はそのまま使う。mesh.material が既に済みならなにもしない。
+  // 呼び出し元がメッシュを組み立てる時点では、ライティングモデルが読む2枚の照度テクスチャ
+  // (ライトプリパスの出力)がまだ存在しない — このクラス自身の構築より前には作りようがない —
+  // ため、構築時ではなく毎フレームこの呼び出しで据える。
   private upgrade(mesh: THREE.Mesh): void {
     const material = mesh.material as THREE.Material;
-    if (this.upgraded.has(material)) return;
-    if (!(material as THREE.MeshStandardMaterial).isMeshStandardMaterial) return;
+    if (this.upgraded.has(material) || !isStandardMaterial(material)) return;
 
+    const setupLightingModel = () => new MaterialPassLightingModel(this.diffuseNode, this.specularNode);
+    if ((material as THREE.MeshStandardNodeMaterial).isMeshStandardNodeMaterial) {
+      (material as THREE.MeshStandardNodeMaterial).setupLightingModel = setupLightingModel;
+      this.upgraded.add(material);
+      return;
+    }
     const src = material as THREE.MeshStandardMaterial;
     const upgraded = new THREE.MeshStandardNodeMaterial(standardMaterialParams(src));
-    upgraded.setupLightingModel = () => new MaterialPassLightingModel(this.diffuseNode, this.specularNode);
+    upgraded.setupLightingModel = setupLightingModel;
     this.upgraded.add(upgraded);
     mesh.material = upgraded;
     src.dispose();

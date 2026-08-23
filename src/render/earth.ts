@@ -9,33 +9,29 @@
 // 計算する(地球本体による遮蔽もレイ・スフィア交差で解析的に判定し、ハードウェア深度
 // テストの精度に依存しない)。
 import * as THREE from 'three/webgpu';
-import {
-  texture as textureNode, mix, uv, vec2, vec3, float, uniform, exp,
-  normalWorld, positionWorld, cameraPosition,
-  dot, normalize, sub, clamp, smoothstep,
-} from 'three/tsl';
+import { texture as textureNode, mix, uv, vec2, vec3 } from 'three/tsl';
 import { R_EARTH } from '../physics/solar-system';
+import { SUN_INTENSITY } from '../game/const';
+import { markLitOpaque } from './pipeline/lit-layer';
 
 import { Aurora } from './aurora';
 import { SPHERE_LOD_LADDER, sphereLodLevel, SphereLodLevel } from './screen-lod';
-import type { Vec3Uniform } from './tsl-types';
 import earthTextureUrl from '../assets/earth.jpg';
 import cloudsTextureUrl from '../assets/8k_clouds.jpg';
 
-// 夜側の明るさ(0 で真っ暗)。惑星光・星明かりを表す最低限の底上げ。
-const NIGHT_AMBIENT = 0.04;
-
-const ATMO_COLOR = vec3(0.36, 0.62, 0.91);
-const ATMO_HAZE_TAU0 = 0.34; // 大気のもやの濃さ(視線が真上からのときの光学的厚み)
+// 地表テクスチャは「1 天文単位で照らされた見え方」なので、そこへ届く放射照度と Lambert の
+// 1/π を戻して拡散アルベドにする(celestial-surface.ts と同じ換算)。
+const ALBEDO_FROM_LIT_COLOR = Math.PI / SUN_INTENSITY;
 
 interface SurfaceMaterial {
-  readonly material: THREE.MeshBasicNodeMaterial;
+  readonly material: THREE.MeshStandardNodeMaterial;
   readonly earthMap: THREE.Texture;
   readonly cloudsMap: THREE.Texture;
 }
 
-// 雲・夕焼け・大気のもやを合成した地表マテリアルを組む(全LOD段で共有)。
-function buildSurfaceMaterial(sunDir: Vec3Uniform): SurfaceMaterial {
+// 地表のアルベド(地表テクスチャ・雲・雲影)だけを持つマテリアルを組む(全LOD段で共有)。
+// 陰影・遮蔽・大気はパイプラインの仕事で、ここには入らない。
+function buildSurfaceMaterial(): SurfaceMaterial {
   const earthMap = new THREE.TextureLoader().load(earthTextureUrl);
   earthMap.colorSpace = THREE.SRGBColorSpace;
   earthMap.anisotropy = 16;
@@ -43,49 +39,26 @@ function buildSurfaceMaterial(sunDir: Vec3Uniform): SurfaceMaterial {
   const cloudsMap = new THREE.TextureLoader().load(cloudsTextureUrl);
   cloudsMap.anisotropy = 16;
 
-  // 陰影はシーンのライトではなく sunDir から自分で計算する — 他の天体と同じ規則で、
-  // 描画原点がどこにあっても昼夜境界が実際の太陽方向と一致する。
-  const mat = new THREE.MeshBasicNodeMaterial();
+  const mat = new THREE.MeshStandardNodeMaterial({ roughness: 1, metalness: 0 });
 
   const earthSample = textureNode(earthMap, uv());
-  
-  // 雲と影
+  // 雲そのものと、雲を太陽方向へずらして参照した地表側の影。
   const cloudAlpha = textureNode(cloudsMap, uv()).r;
   const cloudShadowAlpha = textureNode(cloudsMap, uv().add(vec2(0.001, 0.0))).r;
   const shadowColor = mix(earthSample, earthSample.mul(0.2), cloudShadowAlpha.mul(0.8));
-  
-  // 夕焼けの色 (オレンジ・赤系)
-  const sunsetColor = vec3(1.0, 0.4, 0.1);
-  const sunDot = dot(normalWorld, sunDir);
-  const sunFactor = clamp(sunDot, 0, 1);
-  
-  // 雲の色 (夕方になると夕焼け色に、夜側では地表と同じ暗さまで落とす)
-  const cloudColorLit = mix(sunsetColor, vec3(1, 1, 1), smoothstep(-0.1, 0.2, sunDot));
-  const cloudColor = mix(shadowColor, cloudColorLit, sunFactor);
-  const baseColor = mix(shadowColor, cloudColor, cloudAlpha);
-
-  // 大気のもや(aerial perspective): 視線が地平線に近いほど大気中の光路長が
-  // 伸びて濃くなる。Beer-Lambert 則で haze = 1 - exp(-tau0 / cosθ)。
-  const viewDir = normalize(sub(cameraPosition, positionWorld));
-  const cosTheta = clamp(dot(normalWorld, viewDir), 0.05, 1);
-  const haze = float(1).sub(exp(float(ATMO_HAZE_TAU0).div(cosTheta).negate()));
-  
-  // もやの色 (夕方になると夕焼け色に)
-  const dynamicAtmoColor = mix(sunsetColor, ATMO_COLOR, smoothstep(0.0, 0.2, sunDot));
-  
-  const litColor = mix(baseColor, dynamicAtmoColor, haze.mul(sunFactor));
-  mat.colorNode = litColor.mul(float(NIGHT_AMBIENT).add(sunFactor.mul(1 - NIGHT_AMBIENT)));
+  mat.colorNode = mix(shadowColor, vec3(1, 1, 1), cloudAlpha).mul(ALBEDO_FROM_LIT_COLOR);
 
   return { material: mat, earthMap, cloudsMap };
 }
 
 // LOD段ごとの地表メッシュを、共有マテリアルで一括生成する。
-function buildSurfaceMeshes(mat: THREE.MeshBasicNodeMaterial): ReadonlyMap<SphereLodLevel, THREE.Mesh> {
+function buildSurfaceMeshes(mat: THREE.MeshStandardNodeMaterial): ReadonlyMap<SphereLodLevel, THREE.Mesh> {
   const meshes = new Map<SphereLodLevel, THREE.Mesh>();
   for (const level of SPHERE_LOD_LADDER) {
     const geo = new THREE.SphereGeometry(R_EARTH, level.widthSegments, level.heightSegments);
     const mesh = new THREE.Mesh(geo, mat);
     mesh.visible = false;
+    markLitOpaque(mesh);
     meshes.set(level, mesh);
   }
   return meshes;
@@ -94,7 +67,6 @@ function buildSurfaceMeshes(mat: THREE.MeshBasicNodeMaterial): ReadonlyMap<Spher
 export interface Earth {
   group: THREE.Group;
   setRotation(angleRad: number): void;
-  setSunDir(x: number, y: number, z: number): void;
   // オーロラのカーテンを出すかどうか。
   setAuroraVisible(visible: boolean): void;
   // 見かけ直径[px]から地表メッシュのLOD段を選び、その段だけを visible にする。
@@ -108,9 +80,7 @@ export function createEarth(): Earth {
   const group = new THREE.Group();
   const spin = new THREE.Group();
 
-  const sunDir = uniform(new THREE.Vector3(1, 0, 0));
-
-  const { material: surfaceMaterial, earthMap, cloudsMap } = buildSurfaceMaterial(sunDir);
+  const { material: surfaceMaterial, earthMap, cloudsMap } = buildSurfaceMaterial();
   const surfaceMeshes = buildSurfaceMeshes(surfaceMaterial);
   let activeSurfaceLevel: SphereLodLevel | null = null;
   for (const mesh of surfaceMeshes.values()) spin.add(mesh);
@@ -130,10 +100,6 @@ export function createEarth(): Earth {
     // 自転角(ラジアン)を設定する。
     setRotation(angleRad: number) {
       spin.rotation.y = angleRad;
-    },
-    // 太陽方向ベクトルを設定する。
-    setSunDir(x: number, y: number, z: number) {
-      sunDir.value.set(x, y, z);
     },
     setAuroraVisible(visible: boolean) {
       for (const a of auroras) a.mesh.visible = visible;
