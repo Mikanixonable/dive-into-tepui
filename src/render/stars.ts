@@ -3,8 +3,6 @@
 import * as THREE from 'three/webgpu';
 import starsTextureUrl from '../assets/8k_stars.jpg';
 import { Billboard } from './billboard';
-import { CelestialSurface } from './celestial-surface';
-import { textureOf } from './celestial-textures';
 import { WORLD_BACKGROUND_LAYER } from './pipeline/lit-layer';
 import { AU } from '../physics/planet-orbit';
 import { R_SUN } from '../physics/solar-system';
@@ -63,14 +61,6 @@ export interface Sun {
   readonly billboard: Billboard;
   readonly mesh: THREE.Mesh;
   dispose(): void;
-}
-
-// 月の表面。テクスチャの経度原点がモデルの本初子午線(+Z)と揃うようジオメトリを回す。
-export function createMoon(): CelestialSurface {
-  const moon = textureOf('moon')!;
-  const surface = CelestialSurface.textured(moon.url, moon.albedoScale, 64, 32);
-  surface.mesh.geometry.rotateY(-Math.PI / 2);
-  return surface;
 }
 
 export function createSun(): Sun {
