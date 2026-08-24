@@ -1,0 +1,2221 @@
+{
+  "schemaVersion": 1,
+  "viewport": {
+    "width": 960,
+    "height": 540
+  },
+  "warmupFrames": 6,
+  "sampleFrames": 30,
+  "gpuTimingSource": "src/gpu-timings.ts:GpuTimings",
+  "cpuTimingSource": "performance.now() around RenderPipeline.render()",
+  "cases": {
+    "protein-5i4r-molecular-1": {
+      "prepass": {
+        "caseName": "protein-5i4r-molecular-1",
+        "path": "prepass",
+        "frames": 30,
+        "cpuRenderMs": {
+          "avg": 2.5099999984105428,
+          "p50": 0.5,
+          "p95": 1.2000000476837158,
+          "max": 56.5
+        },
+        "gpuSupported": false,
+        "gpuPassMs": {
+          "Gバッファ": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "遮蔽": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ライティング": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "マテリアル": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "大気": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ワールド": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "合成": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "3D UI": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "proteinMotion": {
+          "frames": 30,
+          "cpuMs": {
+            "avg": 0.07333332697550456,
+            "p50": 0.09999990463256836,
+            "p95": 0.10000014305114746,
+            "max": 0.20000004768371582
+          },
+          "uploadBytes": {
+            "avg": 17808,
+            "p50": 17808,
+            "p95": 17808,
+            "max": 17808
+          },
+          "lodCounts": {
+            "near": 1,
+            "medium": 0,
+            "far": 0,
+            "marker": 0
+          }
+        },
+        "proteinCase": {
+          "family": "protein",
+          "assetId": "pdb-5i4r",
+          "pdbId": "5I4R",
+          "representation": "molecular",
+          "instanceCount": 1,
+          "baselineLod": "near"
+        }
+      },
+      "forward": {
+        "caseName": "protein-5i4r-molecular-1",
+        "path": "forward",
+        "frames": 30,
+        "cpuRenderMs": {
+          "avg": 0.33666669527689613,
+          "p50": 0.3000001907348633,
+          "p95": 0.5999999046325684,
+          "max": 0.7000000476837158
+        },
+        "gpuSupported": false,
+        "gpuPassMs": {
+          "Gバッファ": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "遮蔽": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ライティング": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "マテリアル": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "大気": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ワールド": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "合成": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "3D UI": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "proteinMotion": {
+          "frames": 30,
+          "cpuMs": {
+            "avg": 0.04999996821085612,
+            "p50": 0,
+            "p95": 0.19999980926513672,
+            "max": 0.20000004768371582
+          },
+          "uploadBytes": {
+            "avg": 17808,
+            "p50": 17808,
+            "p95": 17808,
+            "max": 17808
+          },
+          "lodCounts": {
+            "near": 1,
+            "medium": 0,
+            "far": 0,
+            "marker": 0
+          }
+        },
+        "proteinCase": {
+          "family": "protein",
+          "assetId": "pdb-5i4r",
+          "pdbId": "5I4R",
+          "representation": "molecular",
+          "instanceCount": 1,
+          "baselineLod": "near"
+        }
+      }
+    },
+    "protein-5i4r-molecular-10": {
+      "prepass": {
+        "caseName": "protein-5i4r-molecular-10",
+        "path": "prepass",
+        "frames": 30,
+        "cpuRenderMs": {
+          "avg": 8.67999999523163,
+          "p50": 8.799999952316284,
+          "p95": 9.799999952316284,
+          "max": 10.200000047683716
+        },
+        "gpuSupported": false,
+        "gpuPassMs": {
+          "Gバッファ": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "遮蔽": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ライティング": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "マテリアル": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "大気": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ワールド": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "合成": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "3D UI": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "proteinMotion": {
+          "frames": 30,
+          "cpuMs": {
+            "avg": 0.6099999904632568,
+            "p50": 0.5999999046325684,
+            "p95": 0.7000000476837158,
+            "max": 0.8000001907348633
+          },
+          "uploadBytes": {
+            "avg": 178080,
+            "p50": 178080,
+            "p95": 178080,
+            "max": 178080
+          },
+          "lodCounts": {
+            "near": 10,
+            "medium": 0,
+            "far": 0,
+            "marker": 0
+          }
+        },
+        "proteinCase": {
+          "family": "protein",
+          "assetId": "pdb-5i4r",
+          "pdbId": "5I4R",
+          "representation": "molecular",
+          "instanceCount": 10,
+          "baselineLod": "near"
+        }
+      },
+      "forward": {
+        "caseName": "protein-5i4r-molecular-10",
+        "path": "forward",
+        "frames": 30,
+        "cpuRenderMs": {
+          "avg": 5.106666644414266,
+          "p50": 5.299999952316284,
+          "p95": 6,
+          "max": 6.200000047683716
+        },
+        "gpuSupported": false,
+        "gpuPassMs": {
+          "Gバッファ": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "遮蔽": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ライティング": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "マテリアル": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "大気": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ワールド": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "合成": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "3D UI": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "proteinMotion": {
+          "frames": 30,
+          "cpuMs": {
+            "avg": 0.6300000270207723,
+            "p50": 0.6000001430511475,
+            "p95": 0.7000000476837158,
+            "max": 0.7999999523162842
+          },
+          "uploadBytes": {
+            "avg": 178080,
+            "p50": 178080,
+            "p95": 178080,
+            "max": 178080
+          },
+          "lodCounts": {
+            "near": 10,
+            "medium": 0,
+            "far": 0,
+            "marker": 0
+          }
+        },
+        "proteinCase": {
+          "family": "protein",
+          "assetId": "pdb-5i4r",
+          "pdbId": "5I4R",
+          "representation": "molecular",
+          "instanceCount": 10,
+          "baselineLod": "near"
+        }
+      }
+    },
+    "protein-5i4r-ribbon-1": {
+      "prepass": {
+        "caseName": "protein-5i4r-ribbon-1",
+        "path": "prepass",
+        "frames": 30,
+        "cpuRenderMs": {
+          "avg": 2.740000009536743,
+          "p50": 3.0999999046325684,
+          "p95": 4.1000001430511475,
+          "max": 4.200000047683716
+        },
+        "gpuSupported": false,
+        "gpuPassMs": {
+          "Gバッファ": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "遮蔽": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ライティング": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "マテリアル": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "大気": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ワールド": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "合成": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "3D UI": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "proteinMotion": {
+          "frames": 30,
+          "cpuMs": {
+            "avg": 0.05999999046325684,
+            "p50": 0.09999990463256836,
+            "p95": 0.10000014305114746,
+            "max": 0.20000004768371582
+          },
+          "uploadBytes": {
+            "avg": 17808,
+            "p50": 17808,
+            "p95": 17808,
+            "max": 17808
+          },
+          "lodCounts": {
+            "near": 1,
+            "medium": 0,
+            "far": 0,
+            "marker": 0
+          }
+        },
+        "proteinCase": {
+          "family": "protein",
+          "assetId": "pdb-5i4r",
+          "pdbId": "5I4R",
+          "representation": "ribbon",
+          "instanceCount": 1,
+          "baselineLod": "near"
+        }
+      },
+      "forward": {
+        "caseName": "protein-5i4r-ribbon-1",
+        "path": "forward",
+        "frames": 30,
+        "cpuRenderMs": {
+          "avg": 1.2933333317438762,
+          "p50": 0.8000001907348633,
+          "p95": 2.1000001430511475,
+          "max": 7
+        },
+        "gpuSupported": false,
+        "gpuPassMs": {
+          "Gバッファ": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "遮蔽": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ライティング": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "マテリアル": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "大気": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ワールド": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "合成": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "3D UI": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "proteinMotion": {
+          "frames": 30,
+          "cpuMs": {
+            "avg": 0.05666666825612386,
+            "p50": 0.09999990463256836,
+            "p95": 0.10000014305114746,
+            "max": 0.20000004768371582
+          },
+          "uploadBytes": {
+            "avg": 17808,
+            "p50": 17808,
+            "p95": 17808,
+            "max": 17808
+          },
+          "lodCounts": {
+            "near": 1,
+            "medium": 0,
+            "far": 0,
+            "marker": 0
+          }
+        },
+        "proteinCase": {
+          "family": "protein",
+          "assetId": "pdb-5i4r",
+          "pdbId": "5I4R",
+          "representation": "ribbon",
+          "instanceCount": 1,
+          "baselineLod": "near"
+        }
+      }
+    },
+    "protein-5i4r-ribbon-10": {
+      "prepass": {
+        "caseName": "protein-5i4r-ribbon-10",
+        "path": "prepass",
+        "frames": 30,
+        "cpuRenderMs": {
+          "avg": 30.406666692097982,
+          "p50": 30.59999990463257,
+          "p95": 33.299999952316284,
+          "max": 35.10000014305115
+        },
+        "gpuSupported": false,
+        "gpuPassMs": {
+          "Gバッファ": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "遮蔽": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ライティング": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "マテリアル": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "大気": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ワールド": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "合成": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "3D UI": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "proteinMotion": {
+          "frames": 30,
+          "cpuMs": {
+            "avg": 0.5933333079020182,
+            "p50": 0.5999999046325684,
+            "p95": 0.7000000476837158,
+            "max": 0.7000000476837158
+          },
+          "uploadBytes": {
+            "avg": 178080,
+            "p50": 178080,
+            "p95": 178080,
+            "max": 178080
+          },
+          "lodCounts": {
+            "near": 10,
+            "medium": 0,
+            "far": 0,
+            "marker": 0
+          }
+        },
+        "proteinCase": {
+          "family": "protein",
+          "assetId": "pdb-5i4r",
+          "pdbId": "5I4R",
+          "representation": "ribbon",
+          "instanceCount": 10,
+          "baselineLod": "near"
+        }
+      },
+      "forward": {
+        "caseName": "protein-5i4r-ribbon-10",
+        "path": "forward",
+        "frames": 30,
+        "cpuRenderMs": {
+          "avg": 18.133333357175193,
+          "p50": 17.90000009536743,
+          "p95": 20.90000009536743,
+          "max": 21.299999952316284
+        },
+        "gpuSupported": false,
+        "gpuPassMs": {
+          "Gバッファ": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "遮蔽": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ライティング": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "マテリアル": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "大気": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ワールド": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "合成": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "3D UI": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "proteinMotion": {
+          "frames": 30,
+          "cpuMs": {
+            "avg": 0.6166666269302368,
+            "p50": 0.5999999046325684,
+            "p95": 0.7999999523162842,
+            "max": 0.9000000953674316
+          },
+          "uploadBytes": {
+            "avg": 178080,
+            "p50": 178080,
+            "p95": 178080,
+            "max": 178080
+          },
+          "lodCounts": {
+            "near": 10,
+            "medium": 0,
+            "far": 0,
+            "marker": 0
+          }
+        },
+        "proteinCase": {
+          "family": "protein",
+          "assetId": "pdb-5i4r",
+          "pdbId": "5I4R",
+          "representation": "ribbon",
+          "instanceCount": 10,
+          "baselineLod": "near"
+        }
+      }
+    },
+    "protein-5i4r-silhouette-1": {
+      "prepass": {
+        "caseName": "protein-5i4r-silhouette-1",
+        "path": "prepass",
+        "frames": 30,
+        "cpuRenderMs": {
+          "avg": 4.573333350817363,
+          "p50": 4.700000047683716,
+          "p95": 5.8999998569488525,
+          "max": 6.099999904632568
+        },
+        "gpuSupported": false,
+        "gpuPassMs": {
+          "Gバッファ": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "遮蔽": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ライティング": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "マテリアル": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "大気": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ワールド": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "合成": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "3D UI": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "proteinMotion": {
+          "frames": 30,
+          "cpuMs": {
+            "avg": 0.07333331902821859,
+            "p50": 0.09999990463256836,
+            "p95": 0.20000004768371582,
+            "max": 0.20000004768371582
+          },
+          "uploadBytes": {
+            "avg": 17808,
+            "p50": 17808,
+            "p95": 17808,
+            "max": 17808
+          },
+          "lodCounts": {
+            "near": 1,
+            "medium": 0,
+            "far": 0,
+            "marker": 0
+          }
+        },
+        "proteinCase": {
+          "family": "protein",
+          "assetId": "pdb-5i4r",
+          "pdbId": "5I4R",
+          "representation": "silhouette",
+          "instanceCount": 1,
+          "baselineLod": "near"
+        }
+      },
+      "forward": {
+        "caseName": "protein-5i4r-silhouette-1",
+        "path": "forward",
+        "frames": 30,
+        "cpuRenderMs": {
+          "avg": 1.1099999984105429,
+          "p50": 0.9000000953674316,
+          "p95": 2,
+          "max": 2.200000047683716
+        },
+        "gpuSupported": false,
+        "gpuPassMs": {
+          "Gバッファ": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "遮蔽": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ライティング": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "マテリアル": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "大気": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ワールド": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "合成": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "3D UI": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "proteinMotion": {
+          "frames": 30,
+          "cpuMs": {
+            "avg": 0.05666666825612386,
+            "p50": 0.09999990463256836,
+            "p95": 0.10000014305114746,
+            "max": 0.20000004768371582
+          },
+          "uploadBytes": {
+            "avg": 17808,
+            "p50": 17808,
+            "p95": 17808,
+            "max": 17808
+          },
+          "lodCounts": {
+            "near": 1,
+            "medium": 0,
+            "far": 0,
+            "marker": 0
+          }
+        },
+        "proteinCase": {
+          "family": "protein",
+          "assetId": "pdb-5i4r",
+          "pdbId": "5I4R",
+          "representation": "silhouette",
+          "instanceCount": 1,
+          "baselineLod": "near"
+        }
+      }
+    },
+    "protein-5i4r-silhouette-10": {
+      "prepass": {
+        "caseName": "protein-5i4r-silhouette-10",
+        "path": "prepass",
+        "frames": 30,
+        "cpuRenderMs": {
+          "avg": 49.92333331108093,
+          "p50": 49.59999990463257,
+          "p95": 55.09999990463257,
+          "max": 56.700000047683716
+        },
+        "gpuSupported": false,
+        "gpuPassMs": {
+          "Gバッファ": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "遮蔽": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ライティング": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "マテリアル": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "大気": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ワールド": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "合成": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "3D UI": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "proteinMotion": {
+          "frames": 30,
+          "cpuMs": {
+            "avg": 0.5700000365575154,
+            "p50": 0.5999999046325684,
+            "p95": 0.7000000476837158,
+            "max": 0.7000000476837158
+          },
+          "uploadBytes": {
+            "avg": 178080,
+            "p50": 178080,
+            "p95": 178080,
+            "max": 178080
+          },
+          "lodCounts": {
+            "near": 10,
+            "medium": 0,
+            "far": 0,
+            "marker": 0
+          }
+        },
+        "proteinCase": {
+          "family": "protein",
+          "assetId": "pdb-5i4r",
+          "pdbId": "5I4R",
+          "representation": "silhouette",
+          "instanceCount": 10,
+          "baselineLod": "near"
+        }
+      },
+      "forward": {
+        "caseName": "protein-5i4r-silhouette-10",
+        "path": "forward",
+        "frames": 30,
+        "cpuRenderMs": {
+          "avg": 21.20999999841054,
+          "p50": 20.700000047683716,
+          "p95": 24.700000047683716,
+          "max": 25.299999952316284
+        },
+        "gpuSupported": false,
+        "gpuPassMs": {
+          "Gバッファ": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "遮蔽": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ライティング": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "マテリアル": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "大気": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ワールド": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "合成": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "3D UI": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "proteinMotion": {
+          "frames": 30,
+          "cpuMs": {
+            "avg": 0.6133333285649617,
+            "p50": 0.5999999046325684,
+            "p95": 0.7000000476837158,
+            "max": 0.7000000476837158
+          },
+          "uploadBytes": {
+            "avg": 178080,
+            "p50": 178080,
+            "p95": 178080,
+            "max": 178080
+          },
+          "lodCounts": {
+            "near": 10,
+            "medium": 0,
+            "far": 0,
+            "marker": 0
+          }
+        },
+        "proteinCase": {
+          "family": "protein",
+          "assetId": "pdb-5i4r",
+          "pdbId": "5I4R",
+          "representation": "silhouette",
+          "instanceCount": 10,
+          "baselineLod": "near"
+        }
+      }
+    },
+    "protein-1mbn-molecular-1": {
+      "prepass": {
+        "caseName": "protein-1mbn-molecular-1",
+        "path": "prepass",
+        "frames": 30,
+        "cpuRenderMs": {
+          "avg": 0.20666666825612387,
+          "p50": 0.20000004768371582,
+          "p95": 0.40000009536743164,
+          "max": 0.5
+        },
+        "gpuSupported": false,
+        "gpuPassMs": {
+          "Gバッファ": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "遮蔽": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ライティング": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "マテリアル": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "大気": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ワールド": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "合成": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "3D UI": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "proteinMotion": {
+          "frames": 30,
+          "cpuMs": {
+            "avg": 0.009999998410542806,
+            "p50": 0,
+            "p95": 0.09999990463256836,
+            "max": 0.10000014305114746
+          },
+          "uploadBytes": {
+            "avg": 2448,
+            "p50": 2448,
+            "p95": 2448,
+            "max": 2448
+          },
+          "lodCounts": {
+            "near": 1,
+            "medium": 0,
+            "far": 0,
+            "marker": 0
+          }
+        },
+        "proteinCase": {
+          "family": "protein",
+          "assetId": "pdb-1mbn-myoglobin",
+          "pdbId": "1MBN",
+          "representation": "molecular",
+          "instanceCount": 1,
+          "baselineLod": "near"
+        }
+      },
+      "forward": {
+        "caseName": "protein-1mbn-molecular-1",
+        "path": "forward",
+        "frames": 30,
+        "cpuRenderMs": {
+          "avg": 0.18000000317891438,
+          "p50": 0.20000004768371582,
+          "p95": 0.39999985694885254,
+          "max": 0.40000009536743164
+        },
+        "gpuSupported": false,
+        "gpuPassMs": {
+          "Gバッファ": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "遮蔽": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ライティング": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "マテリアル": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "大気": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ワールド": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "合成": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "3D UI": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "proteinMotion": {
+          "frames": 30,
+          "cpuMs": {
+            "avg": 0.0066666682561238606,
+            "p50": 0,
+            "p95": 0.09999990463256836,
+            "max": 0.10000014305114746
+          },
+          "uploadBytes": {
+            "avg": 2448,
+            "p50": 2448,
+            "p95": 2448,
+            "max": 2448
+          },
+          "lodCounts": {
+            "near": 1,
+            "medium": 0,
+            "far": 0,
+            "marker": 0
+          }
+        },
+        "proteinCase": {
+          "family": "protein",
+          "assetId": "pdb-1mbn-myoglobin",
+          "pdbId": "1MBN",
+          "representation": "molecular",
+          "instanceCount": 1,
+          "baselineLod": "near"
+        }
+      }
+    },
+    "protein-1mbn-molecular-20": {
+      "prepass": {
+        "caseName": "protein-1mbn-molecular-20",
+        "path": "prepass",
+        "frames": 30,
+        "cpuRenderMs": {
+          "avg": 1.9366667111714682,
+          "p50": 1.9000000953674316,
+          "p95": 2.8000001907348633,
+          "max": 3.200000047683716
+        },
+        "gpuSupported": false,
+        "gpuPassMs": {
+          "Gバッファ": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "遮蔽": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ライティング": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "マテリアル": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "大気": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ワールド": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "合成": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "3D UI": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "proteinMotion": {
+          "frames": 30,
+          "cpuMs": {
+            "avg": 0.21333329677581786,
+            "p50": 0.20000004768371582,
+            "p95": 0.2999999523162842,
+            "max": 0.3000001907348633
+          },
+          "uploadBytes": {
+            "avg": 48960,
+            "p50": 48960,
+            "p95": 48960,
+            "max": 48960
+          },
+          "lodCounts": {
+            "near": 20,
+            "medium": 0,
+            "far": 0,
+            "marker": 0
+          }
+        },
+        "proteinCase": {
+          "family": "protein",
+          "assetId": "pdb-1mbn-myoglobin",
+          "pdbId": "1MBN",
+          "representation": "molecular",
+          "instanceCount": 20,
+          "baselineLod": "near"
+        }
+      },
+      "forward": {
+        "caseName": "protein-1mbn-molecular-20",
+        "path": "forward",
+        "frames": 30,
+        "cpuRenderMs": {
+          "avg": 2.106666684150696,
+          "p50": 1.5,
+          "p95": 1.9000000953674316,
+          "max": 23.100000143051147
+        },
+        "gpuSupported": false,
+        "gpuPassMs": {
+          "Gバッファ": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "遮蔽": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ライティング": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "マテリアル": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "大気": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ワールド": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "合成": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "3D UI": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "proteinMotion": {
+          "frames": 30,
+          "cpuMs": {
+            "avg": 0.23333334922790527,
+            "p50": 0.20000004768371582,
+            "p95": 0.3000001907348633,
+            "max": 0.40000009536743164
+          },
+          "uploadBytes": {
+            "avg": 48960,
+            "p50": 48960,
+            "p95": 48960,
+            "max": 48960
+          },
+          "lodCounts": {
+            "near": 20,
+            "medium": 0,
+            "far": 0,
+            "marker": 0
+          }
+        },
+        "proteinCase": {
+          "family": "protein",
+          "assetId": "pdb-1mbn-myoglobin",
+          "pdbId": "1MBN",
+          "representation": "molecular",
+          "instanceCount": 20,
+          "baselineLod": "near"
+        }
+      }
+    },
+    "protein-1mbn-ribbon-1": {
+      "prepass": {
+        "caseName": "protein-1mbn-ribbon-1",
+        "path": "prepass",
+        "frames": 30,
+        "cpuRenderMs": {
+          "avg": 0.27666667302449544,
+          "p50": 0.2999999523162842,
+          "p95": 0.39999985694885254,
+          "max": 0.40000009536743164
+        },
+        "gpuSupported": false,
+        "gpuPassMs": {
+          "Gバッファ": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "遮蔽": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ライティング": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "マテリアル": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "大気": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ワールド": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "合成": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "3D UI": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "proteinMotion": {
+          "frames": 30,
+          "cpuMs": {
+            "avg": 0.009999998410542806,
+            "p50": 0,
+            "p95": 0.09999990463256836,
+            "max": 0.10000014305114746
+          },
+          "uploadBytes": {
+            "avg": 2448,
+            "p50": 2448,
+            "p95": 2448,
+            "max": 2448
+          },
+          "lodCounts": {
+            "near": 1,
+            "medium": 0,
+            "far": 0,
+            "marker": 0
+          }
+        },
+        "proteinCase": {
+          "family": "protein",
+          "assetId": "pdb-1mbn-myoglobin",
+          "pdbId": "1MBN",
+          "representation": "ribbon",
+          "instanceCount": 1,
+          "baselineLod": "near"
+        }
+      },
+      "forward": {
+        "caseName": "protein-1mbn-ribbon-1",
+        "path": "forward",
+        "frames": 30,
+        "cpuRenderMs": {
+          "avg": 0.18666666348775227,
+          "p50": 0.20000004768371582,
+          "p95": 0.3000001907348633,
+          "max": 0.5
+        },
+        "gpuSupported": false,
+        "gpuPassMs": {
+          "Gバッファ": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "遮蔽": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ライティング": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "マテリアル": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "大気": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ワールド": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "合成": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "3D UI": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "proteinMotion": {
+          "frames": 30,
+          "cpuMs": {
+            "avg": 0.013333328564961751,
+            "p50": 0,
+            "p95": 0.09999990463256836,
+            "max": 0.10000014305114746
+          },
+          "uploadBytes": {
+            "avg": 2448,
+            "p50": 2448,
+            "p95": 2448,
+            "max": 2448
+          },
+          "lodCounts": {
+            "near": 1,
+            "medium": 0,
+            "far": 0,
+            "marker": 0
+          }
+        },
+        "proteinCase": {
+          "family": "protein",
+          "assetId": "pdb-1mbn-myoglobin",
+          "pdbId": "1MBN",
+          "representation": "ribbon",
+          "instanceCount": 1,
+          "baselineLod": "near"
+        }
+      }
+    },
+    "protein-1mbn-ribbon-20": {
+      "prepass": {
+        "caseName": "protein-1mbn-ribbon-20",
+        "path": "prepass",
+        "frames": 30,
+        "cpuRenderMs": {
+          "avg": 6.959999990463257,
+          "p50": 7,
+          "p95": 8.699999809265137,
+          "max": 8.900000095367432
+        },
+        "gpuSupported": false,
+        "gpuPassMs": {
+          "Gバッファ": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "遮蔽": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ライティング": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "マテリアル": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "大気": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ワールド": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "合成": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "3D UI": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "proteinMotion": {
+          "frames": 30,
+          "cpuMs": {
+            "avg": 0.2333333412806193,
+            "p50": 0.20000004768371582,
+            "p95": 0.3000001907348633,
+            "max": 0.40000009536743164
+          },
+          "uploadBytes": {
+            "avg": 48960,
+            "p50": 48960,
+            "p95": 48960,
+            "max": 48960
+          },
+          "lodCounts": {
+            "near": 20,
+            "medium": 0,
+            "far": 0,
+            "marker": 0
+          }
+        },
+        "proteinCase": {
+          "family": "protein",
+          "assetId": "pdb-1mbn-myoglobin",
+          "pdbId": "1MBN",
+          "representation": "ribbon",
+          "instanceCount": 20,
+          "baselineLod": "near"
+        }
+      },
+      "forward": {
+        "caseName": "protein-1mbn-ribbon-20",
+        "path": "forward",
+        "frames": 30,
+        "cpuRenderMs": {
+          "avg": 3.306666684150696,
+          "p50": 3.5,
+          "p95": 4.599999904632568,
+          "max": 4.599999904632568
+        },
+        "gpuSupported": false,
+        "gpuPassMs": {
+          "Gバッファ": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "遮蔽": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ライティング": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "マテリアル": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "大気": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ワールド": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "合成": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "3D UI": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "proteinMotion": {
+          "frames": 30,
+          "cpuMs": {
+            "avg": 0.21999998887379965,
+            "p50": 0.20000004768371582,
+            "p95": 0.2999999523162842,
+            "max": 0.3000001907348633
+          },
+          "uploadBytes": {
+            "avg": 48960,
+            "p50": 48960,
+            "p95": 48960,
+            "max": 48960
+          },
+          "lodCounts": {
+            "near": 20,
+            "medium": 0,
+            "far": 0,
+            "marker": 0
+          }
+        },
+        "proteinCase": {
+          "family": "protein",
+          "assetId": "pdb-1mbn-myoglobin",
+          "pdbId": "1MBN",
+          "representation": "ribbon",
+          "instanceCount": 20,
+          "baselineLod": "near"
+        }
+      }
+    },
+    "protein-1mbn-silhouette-1": {
+      "prepass": {
+        "caseName": "protein-1mbn-silhouette-1",
+        "path": "prepass",
+        "frames": 30,
+        "cpuRenderMs": {
+          "avg": 0.4166666587193807,
+          "p50": 0.40000009536743164,
+          "p95": 0.6999998092651367,
+          "max": 0.7999999523162842
+        },
+        "gpuSupported": false,
+        "gpuPassMs": {
+          "Gバッファ": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "遮蔽": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ライティング": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "マテリアル": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "大気": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ワールド": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "合成": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "3D UI": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "proteinMotion": {
+          "frames": 30,
+          "cpuMs": {
+            "avg": 0.0066666682561238606,
+            "p50": 0,
+            "p95": 0.09999990463256836,
+            "max": 0.10000014305114746
+          },
+          "uploadBytes": {
+            "avg": 2448,
+            "p50": 2448,
+            "p95": 2448,
+            "max": 2448
+          },
+          "lodCounts": {
+            "near": 1,
+            "medium": 0,
+            "far": 0,
+            "marker": 0
+          }
+        },
+        "proteinCase": {
+          "family": "protein",
+          "assetId": "pdb-1mbn-myoglobin",
+          "pdbId": "1MBN",
+          "representation": "silhouette",
+          "instanceCount": 1,
+          "baselineLod": "near"
+        }
+      },
+      "forward": {
+        "caseName": "protein-1mbn-silhouette-1",
+        "path": "forward",
+        "frames": 30,
+        "cpuRenderMs": {
+          "avg": 0.246666685740153,
+          "p50": 0.20000004768371582,
+          "p95": 0.40000009536743164,
+          "max": 0.5
+        },
+        "gpuSupported": false,
+        "gpuPassMs": {
+          "Gバッファ": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "遮蔽": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ライティング": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "マテリアル": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "大気": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ワールド": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "合成": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "3D UI": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "proteinMotion": {
+          "frames": 30,
+          "cpuMs": {
+            "avg": 0.019999980926513672,
+            "p50": 0,
+            "p95": 0.09999990463256836,
+            "max": 0.09999990463256836
+          },
+          "uploadBytes": {
+            "avg": 2448,
+            "p50": 2448,
+            "p95": 2448,
+            "max": 2448
+          },
+          "lodCounts": {
+            "near": 1,
+            "medium": 0,
+            "far": 0,
+            "marker": 0
+          }
+        },
+        "proteinCase": {
+          "family": "protein",
+          "assetId": "pdb-1mbn-myoglobin",
+          "pdbId": "1MBN",
+          "representation": "silhouette",
+          "instanceCount": 1,
+          "baselineLod": "near"
+        }
+      }
+    },
+    "protein-1mbn-silhouette-20": {
+      "prepass": {
+        "caseName": "protein-1mbn-silhouette-20",
+        "path": "prepass",
+        "frames": 30,
+        "cpuRenderMs": {
+          "avg": 10.489999969800314,
+          "p50": 10.299999952316284,
+          "p95": 12.599999904632568,
+          "max": 12.700000047683716
+        },
+        "gpuSupported": false,
+        "gpuPassMs": {
+          "Gバッファ": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "遮蔽": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ライティング": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "マテリアル": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "大気": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ワールド": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "合成": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "3D UI": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "proteinMotion": {
+          "frames": 30,
+          "cpuMs": {
+            "avg": 0.25000002384185793,
+            "p50": 0.20000004768371582,
+            "p95": 0.3000001907348633,
+            "max": 0.3000001907348633
+          },
+          "uploadBytes": {
+            "avg": 48960,
+            "p50": 48960,
+            "p95": 48960,
+            "max": 48960
+          },
+          "lodCounts": {
+            "near": 20,
+            "medium": 0,
+            "far": 0,
+            "marker": 0
+          }
+        },
+        "proteinCase": {
+          "family": "protein",
+          "assetId": "pdb-1mbn-myoglobin",
+          "pdbId": "1MBN",
+          "representation": "silhouette",
+          "instanceCount": 20,
+          "baselineLod": "near"
+        }
+      },
+      "forward": {
+        "caseName": "protein-1mbn-silhouette-20",
+        "path": "forward",
+        "frames": 30,
+        "cpuRenderMs": {
+          "avg": 4.079999995231629,
+          "p50": 4.099999904632568,
+          "p95": 5.299999952316284,
+          "max": 5.5
+        },
+        "gpuSupported": false,
+        "gpuPassMs": {
+          "Gバッファ": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "遮蔽": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ライティング": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "マテリアル": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "大気": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "ワールド": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "合成": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "3D UI": {
+            "avg": 0,
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "proteinMotion": {
+          "frames": 30,
+          "cpuMs": {
+            "avg": 0.21333333651224773,
+            "p50": 0.20000004768371582,
+            "p95": 0.2999999523162842,
+            "max": 0.3000001907348633
+          },
+          "uploadBytes": {
+            "avg": 48960,
+            "p50": 48960,
+            "p95": 48960,
+            "max": 48960
+          },
+          "lodCounts": {
+            "near": 20,
+            "medium": 0,
+            "far": 0,
+            "marker": 0
+          }
+        },
+        "proteinCase": {
+          "family": "protein",
+          "assetId": "pdb-1mbn-myoglobin",
+          "pdbId": "1MBN",
+          "representation": "silhouette",
+          "instanceCount": 20,
+          "baselineLod": "near"
+        }
+      }
+    }
+  }
+}

@@ -22,7 +22,7 @@ import {
   SliderRow, bindAngleSlider, bindEccentricitySlider, bindRelativeSlider, numberField, setFieldVisible, sliderField,
 } from './slider-field';
 
-export type ObjectType = 'player' | 'enemy' | 'ammo' | 'base';
+export type ObjectType = 'player' | 'enemy' | 'ammo' | 'fuel' | 'base';
 export type ReferenceCelestialBody = CelestialBodyId;
 export type SizeShapeMode = 'apsides' | 'semiMajorEcc' | 'periodEcc';
 export type PlacementMode = 'elements' | 'lagrange';
@@ -74,6 +74,7 @@ const OBJECT_TYPE_ITEMS: readonly (readonly [ObjectType, string, string])[] = [
   ['player', '自機', shipMarkerSvg(true)],
   ['enemy', '敵機', shipMarkerSvg(false)],
   ['ammo', '弾薬', ENTITY_GLYPH.ammo],
+  ['fuel', 'RCS燃料', ENTITY_GLYPH.fuel],
   ['base', '基地', baseMarkerSvg()],
 ];
 
