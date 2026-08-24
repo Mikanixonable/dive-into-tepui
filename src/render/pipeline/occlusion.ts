@@ -1,12 +1,10 @@
-// G バッファの深度から画素ごとの描画座標を復元し、そこへ恒星の直射光がどれだけ届くかを
-// 1 枚の透過率へ書く。透過率そのものを決めるのは sun-occlusion.ts で、このパスはその関数を
-// 画面の全画素で評価してキャッシュするだけ。ライティングパスはこの 1 枚を読んで恒星の
-// 放射照度へ掛ける。
+// G バッファの深度から画素ごとの描画座標を復元し、そこへ恒星の直射光がどれだけ届くかを 1 枚の
+// 透過率へ書く。透過率を決めるのは sun-occlusion.ts で、このパスはその関数を画面の全画素で
+// 評価してキャッシュするだけ。ライティングパスはこの 1 枚を読んで恒星の放射照度へ掛ける。
 //
-// マテリアルは環の項を持つものと持たないものの 2 枚で、フレームごとに差し替える。
-// **1 枚を uniform で分岐させると、環付き天体が画面に無いフレームでも 13 帯ぶんの演算列を
-// 毎画素通ることになる**(TSL のグラフは静的に展開される) — render-pipeline.ts の
-// compositeMaterials が表示ごとに別マテリアルを持つのと同じ理由・同じ形。
+// マテリアルは環の項を持つものと持たないものの 2 枚で、フレームごとに差し替える。**1 枚を
+// uniform で分岐させると、環付き天体が画面に無いフレームでも 13 帯ぶんの演算列を毎画素通る**
+// (TSL のグラフは静的に展開される) — render-pipeline.ts の compositeMaterials と同じ形。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { screenUV, texture, uniform, vec3, vec4 } from 'three/tsl';
@@ -46,6 +44,7 @@ export class OcclusionPass {
     // 位置と同じ行列で描画座標へ回す。
     const viewNormal = octDecodeNormal(texture(gbuffer.normalTexture, screenUV).rg);
     const meshNormal: Vec3Node = this.viewToWorld.mul(vec4(viewNormal, 0)).xyz;
+    // 環の項を含める/含めないの 2 枚を、同じ位置と法線から組む。
     const build = (rings: boolean): THREE.MeshBasicNodeMaterial => {
       const material = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
       material.colorNode = vec4(
