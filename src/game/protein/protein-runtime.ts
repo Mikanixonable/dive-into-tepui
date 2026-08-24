@@ -17,8 +17,6 @@ export class ProteinRuntime {
   private readonly baseComponentRotations = new Map<THREE.Object3D, THREE.Quaternion>();
   private readonly bondMaterial: THREE.LineBasicMaterial;
   private readonly motionSeed: number;
-  private chargeProgress = 0;
-  private chargeSiteId: string | null = null;
 
   constructor(root: THREE.Object3D, asset: ProteinAssetDefinition, saved?: ProteinSaveData, legacyHealth?: number, seedKey = asset.id) {
     this.root = root;
@@ -30,7 +28,6 @@ export class ProteinRuntime {
 
   get asset(): ProteinAssetDefinition { return this.combat.asset; }
   get hudSnapshot(): ProteinHudSnapshot { return this.combat.hudSnapshot(); }
-  get charging(): boolean { return this.chargeProgress > 0 && this.chargeProgress < 1; }
 
   clearVisuals(): void {
     for (const child of [...this.root.children]) {
@@ -63,13 +60,16 @@ export class ProteinRuntime {
       const material = new THREE.MeshStandardMaterial({
         color: site.type === 'active' ? 0x55eaff : site.type === 'interface' ? 0x887cff : 0xffbb55,
         emissive: site.type === 'active' ? 0x007caa : 0x25104c,
-        emissiveIntensity: 0.35,
+        emissiveIntensity: 0.55,
         roughness: 0.22,
         metalness: 0.5,
         transparent: true,
-        opacity: 0.82,
+        opacity: 0.9,
+        side: THREE.DoubleSide,
       });
-      const mesh = new THREE.Mesh(new THREE.SphereGeometry(Math.max(0.45, site.radius * scale * 0.42), 16, 10), material);
+      // A small triangular marker is deliberately separate from the structure. Its size and
+      // opacity encode the remaining HP while the marker itself keeps the region targetable.
+      const mesh = new THREE.Mesh(new THREE.ConeGeometry(Math.max(0.36, site.radius * scale * 0.18), 0.16, 3), material);
       mesh.position.copy(position);
       mesh.renderOrder = 4;
       mesh.userData[RUNTIME_VISUAL] = true;
@@ -106,7 +106,6 @@ export class ProteinRuntime {
   }
 
   updateVisual(simTime: number): void {
-    if (this.charging && !this.combat.isActionEnabled('plasma-burst')) this.finishCharge();
     const motion = proteinMotionAt(simTime, this.asset.motion, this.motionSeed + 1.3);
     const state = this.combat;
     this.root.traverse((child) => {
@@ -134,11 +133,12 @@ export class ProteinRuntime {
       const siteState = state.siteState(site.id);
       if (!base || !siteState) continue;
       mesh.position.copy(base).add(new THREE.Vector3(motion.x * 0.5, motion.y * 0.5, motion.z * 0.5));
-      mesh.visible = !siteState.disabled || state.phase === 'critical';
+      mesh.visible = true;
       const material = mesh.material as THREE.MeshStandardMaterial;
-      const charge = site.id === this.chargeSiteId ? this.chargeProgress : 0;
-      material.emissiveIntensity = (siteState.disabled ? 0.05 : 0.3) + charge * 2.5 + (state.phase === 'critical' ? 0.65 : 0);
-      mesh.scale.setScalar(1 + charge * 0.55 + (state.phase === 'dissociated' ? 0.12 : 0));
+      const ratio = siteState.maxHp > 0 ? Math.max(0, Math.min(1, siteState.hp / siteState.maxHp)) : 0;
+      material.opacity = siteState.disabled ? 0.18 : 0.32 + ratio * 0.68;
+      material.emissiveIntensity = (siteState.disabled ? 0.05 : 0.25 + ratio * 0.5) + (state.phase === 'critical' ? 0.35 : 0);
+      mesh.scale.setScalar(0.55 + ratio * 0.45);
     }
     for (const slot of this.asset.modificationSlots) {
       const mesh = this.modificationMeshes.get(slot.id);
@@ -150,19 +150,15 @@ export class ProteinRuntime {
     this.bondMaterial.opacity = state.phase === 'intact' ? 0.42 : state.phase === 'critical' ? 0.12 : 0.68;
   }
 
-  beginCharge(): boolean {
-    const site = this.combat.activeSite;
-    if (!site || !this.combat.isActionEnabled('plasma-burst')) return false;
-    this.chargeSiteId = site.id;
-    this.chargeProgress = 0.001;
-    return true;
+  activeSiteWorldPosition(origin: Vec3, attitude: Quat): Vec3 {
+    return this.siteWorldPosition(this.combat.activeSite, origin, attitude);
   }
 
-  setCharge(progress: number): void { this.chargeProgress = Math.max(0, Math.min(1, progress)); }
-  finishCharge(): void { this.chargeProgress = 0; this.chargeSiteId = null; }
+  nextAttackSiteWorldPosition(origin: Vec3, attitude: Quat): Vec3 {
+    return this.siteWorldPosition(this.combat.nextAttackSite(), origin, attitude);
+  }
 
-  activeSiteWorldPosition(origin: Vec3, attitude: Quat): Vec3 {
-    const site = this.combat.activeSite;
+  private siteWorldPosition(site: ProteinAssetDefinition['sites'][number] | null, origin: Vec3, attitude: Quat): Vec3 {
     if (!site) return origin;
     const [x, y, z] = site.position;
     const rootScale = this.root.scale.x;
