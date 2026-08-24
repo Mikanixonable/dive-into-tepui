@@ -192,7 +192,7 @@ export const RECOIL_DV = 0.04; // 反動 [m/s]
 export const SELF_CONTACT_GRACE = 2.0; // 自弾が自機に当たり得るまでの猶予 [sim s]
 export const BULLET_MASS = 0.1; // 弾の剛体接触用質量 [kg](実体弾・プラズマ弾とも共通)
 export const BULLET_RADIUS = 0.02; // 弾の剛体接触用半径 [m]
-export const BULLET_CLOSE_PASS_DIST = 20; // 敵弾が艦の至近を通過したとみなす距離 [m]
+export const BULLET_CLOSE_PASS_DIST = 40; // 敵弾が艦の至近を通過したとみなす距離 [m]
 
 // ターゲット位置に自機側を向けて置いた仮想標的面(的)を弾が通過した点のマーカー。
 // 最新の 1 点のみ表示する(複数出ると照準の目安として紛らわしいため)。
