@@ -15,9 +15,13 @@ import {
 const asset = rawAsset as unknown as ProteinAssetDefinition;
 
 export function register(): void {
-  test('protein combat: active site damage disables its action', () => {
+  test('protein combat: each attack site has independent HP and disabling one preserves the others', () => {
     const state = new ProteinCombatState(asset);
     const site = asset.sites.find((entry) => entry.id === 'primary-active-site')!;
+    assert.ok(state.attackSites.length >= 3);
+    const snapshot = state.hudSnapshot();
+    assert.equal(snapshot.sites.length, asset.sites.length);
+    assert.equal(snapshot.sites.filter((entry) => entry.attackable).length, state.attackSites.length);
     const result = state.applyDamage(site.maxHp, {
       x: site.position[0] * asset.coordinateScale,
       y: site.position[1] * asset.coordinateScale,
@@ -25,6 +29,15 @@ export function register(): void {
     });
     assert.equal(result.siteId, site.id);
     assert.equal(result.siteDisabled, true);
+    assert.equal(state.isActionEnabled('plasma-burst'), true);
+    assert.ok(!state.attackSites.some((entry) => entry.id === site.id));
+    for (const attackSite of [...state.attackSites]) {
+      state.applyDamage(attackSite.maxHp, {
+        x: attackSite.position[0] * asset.coordinateScale,
+        y: attackSite.position[1] * asset.coordinateScale,
+        z: attackSite.position[2] * asset.coordinateScale,
+      });
+    }
     assert.equal(state.isActionEnabled('plasma-burst'), false);
   });
 
@@ -57,7 +70,7 @@ export function register(): void {
       });
     };
     hit('complex-interface');
-    hit('primary-active-site');
+    for (const site of asset.sites.filter((entry) => entry.actions.includes('plasma-burst'))) hit(site.id);
     assert.equal(state.phase, 'dissociated');
   });
 
@@ -120,13 +133,11 @@ export function register(): void {
     assert.equal(byEntity.get(4)?.source, 'author');
   });
 
-  test('protein runtime: visual motion preserves the physics root pose and stops charge on site loss', () => {
+  test('protein runtime: visual motion preserves the physics root pose and cycles attack origins', () => {
     const root = new THREE.Group();
     root.rotation.z = 0.47;
     root.scale.setScalar(3);
     const runtime = new ProteinRuntime(root, asset, undefined, undefined, 'enemy-42');
-    assert.equal(runtime.beginCharge(), true);
-    runtime.setCharge(0.5);
     const active = asset.sites.find((entry) => entry.id === 'primary-active-site')!;
     const origin = v3(100, 200, 300);
     const activeWorld = runtime.activeSiteWorldPosition(origin, { x: 0, y: 0, z: 0, w: 1 });
@@ -139,6 +150,10 @@ export function register(): void {
     assert.ok(Math.abs(localImpact.x - active.position[0] * asset.coordinateScale) < 1e-12);
     assert.ok(Math.abs(localImpact.y - active.position[1] * asset.coordinateScale) < 1e-12);
     assert.ok(Math.abs(localImpact.z - active.position[2] * asset.coordinateScale) < 1e-12);
+    const firstAttackWorld = runtime.nextAttackSiteWorldPosition(origin, { x: 0, y: 0, z: 0, w: 1 });
+    const nextWorld = runtime.nextAttackSiteWorldPosition(origin, { x: 0, y: 0, z: 0, w: 1 });
+    assert.deepEqual(firstAttackWorld, activeWorld);
+    assert.notDeepEqual(nextWorld, activeWorld);
     runtime.combat.applyDamage(active.maxHp, {
       x: active.position[0] * asset.coordinateScale,
       y: active.position[1] * asset.coordinateScale,
@@ -146,7 +161,6 @@ export function register(): void {
     });
     runtime.updateVisual(1);
     assert.equal(root.rotation.z, 0.47);
-    assert.equal(runtime.charging, false);
     runtime.dispose();
   });
 

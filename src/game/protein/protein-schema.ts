@@ -85,6 +85,7 @@ export interface ProteinHudSnapshot {
     readonly hp: number;
     readonly maxHp: number;
     readonly disabled: boolean;
+    readonly attackable: boolean;
   }[];
 }
 
