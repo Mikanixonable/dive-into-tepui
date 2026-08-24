@@ -1,5 +1,5 @@
 import { KEY_MAPPING as K } from '../../input/key-mapping';
-import { SPACE_4, SPACE_6 } from '../../theme';
+import { SPACE_2, SPACE_4 } from '../../theme';
 import { CLICK_MOVE_THRESHOLD } from '../../const';
 import { clampOverlayPosition, Point2 } from '../layout';
 import { onViewportChange } from '../viewport';
@@ -91,7 +91,7 @@ export class PauseMenu implements OverlayHandle {
 
     const saveRow = document.createElement('div');
     saveRow.className = 'pm-row';
-    saveRow.style.marginTop = SPACE_6;
+    saveRow.style.marginTop = SPACE_4;
     const saveBtn = new Button('セーブ', () => this.onSave?.());
     saveBtn.element.classList.add('pm-menu-btn');
     saveBtn.element.style.flex = '1';
@@ -100,7 +100,7 @@ export class PauseMenu implements OverlayHandle {
 
     const saveBrowserRow = document.createElement('div');
     saveBrowserRow.className = 'pm-row';
-    saveBrowserRow.style.marginTop = SPACE_4;
+    saveBrowserRow.style.marginTop = SPACE_2;
     const saveBrowserBtn = new Button('セーブデータの管理', () => this.onOpenSaveBrowser?.());
     saveBrowserBtn.element.classList.add('pm-menu-btn');
     saveBrowserBtn.element.style.flex = '1';
@@ -109,7 +109,7 @@ export class PauseMenu implements OverlayHandle {
 
     const perfRow = document.createElement('div');
     perfRow.className = 'pm-row';
-    perfRow.style.marginTop = SPACE_4;
+    perfRow.style.marginTop = SPACE_2;
     const perfBtn = new Button(`負荷を表示 [${K.togglePerfWindow.label}]`, () => this.onOpenPerfWindow?.());
     perfBtn.element.classList.add('pm-menu-btn');
     perfBtn.element.style.flex = '1';
@@ -118,7 +118,7 @@ export class PauseMenu implements OverlayHandle {
 
     const settingsRow = document.createElement('div');
     settingsRow.className = 'pm-row';
-    settingsRow.style.marginTop = SPACE_4;
+    settingsRow.style.marginTop = SPACE_2;
     const settingsBtn = new Button('設定ビューを開く', () => this.onOpenSettings?.());
     settingsBtn.element.classList.add('pm-menu-btn');
     settingsBtn.element.style.flex = '1';

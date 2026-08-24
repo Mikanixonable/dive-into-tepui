@@ -28,7 +28,7 @@ export class EntityLineManager {
   ): void {
     const { pastDuration } = displayWindow;
     const palette = currentThemePalette();
-    const primaryStyle: LineStyle = { color: palette.secondary, opacity: TARGET_LINE_OPACITY, renderOrder: LINE_RENDER_ORDER.target };
+    const primaryStyle: LineStyle = { color: palette.signal, opacity: TARGET_LINE_OPACITY, renderOrder: LINE_RENDER_ORDER.target };
     const targetStyleOf = (e: CombatTarget): LineStyle | null => e === primaryTarget ? primaryStyle : null;
     const playerOrbitStyleOf = (isActive: boolean): LineStyle => (
       { color: isActive ? palette.accent : C.COLOR_PLAYER_ORBIT_LINE_INACTIVE, opacity: 0.55, renderOrder: LINE_RENDER_ORDER.shipOrbit }
