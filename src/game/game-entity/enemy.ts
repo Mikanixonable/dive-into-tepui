@@ -11,6 +11,8 @@ import { Attitude } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { R_EARTH_EQ } from '../../physics/solar-system';
 import { add, addScaled, dot, len, lenSq, norm, randPerp, rotateAxis, scale, sub, Vec3, v3 } from '../../physics/vec3';
+import { metersPerPixel, type Viewpoint } from '../../physics/projection';
+import { apparentSizePx } from '../../render/screen-lod';
 import { solveLeadTime } from '../../physics/intercept';
 import { fmtMarkerDist } from '../hud/utils';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
@@ -288,12 +290,14 @@ export class Enemy extends Ship {
     return this.proteinRuntime?.hudSnapshot ?? null;
   }
 
-  override sync(fo: import('../floating-origin').FloatingOrigin, displayTime: number, viewerPosition?: Vec3): void {
+  override sync(fo: import('../floating-origin').FloatingOrigin, displayTime: number, viewer?: Viewpoint): void {
     super.sync(fo, displayTime);
     if (this.proteinRuntime && this.renderObject.visible) {
       const displayed = this.displayState(displayTime);
-      const distance = viewerPosition && displayed ? len(sub(displayed.r, viewerPosition)) : 0;
-      this.proteinRuntime.updateVisual(displayTime, distance, this.radius);
+      const projectedDiameterPx = viewer && displayed
+        ? apparentSizePx(this.radius * 2, metersPerPixel(viewer, displayed.r, window.innerHeight))
+        : Number.POSITIVE_INFINITY;
+      this.proteinRuntime.updateVisual(displayTime, projectedDiameterPx);
     }
   }
 
