@@ -31,6 +31,7 @@ export class ProteinCombatState {
   private readonly siteStates: SiteState[];
   private readonly modifications = new Map<string, string>();
   private selectedSiteId: string | null = null;
+  private attackSiteCursor = 0;
 
   constructor(asset: ProteinAssetDefinition, saved?: ProteinSaveData, legacyHealth?: number) {
     this.asset = asset;
@@ -52,7 +53,25 @@ export class ProteinCombatState {
   get defeated(): boolean { return this.integrityHp <= 0; }
 
   get activeSite(): ProteinSiteDefinition | null {
-    return this.siteStates.find((site) => !site.disabled && site.definition.type === 'active')?.definition ?? null;
+    return this.attackSites[0] ?? null;
+  }
+
+  /** Functional regions that can independently originate the protein's attack. */
+  get attackSites(): readonly ProteinSiteDefinition[] {
+    return this.siteStates
+      .filter((site) => !site.disabled && site.definition.actions.includes('plasma-burst'))
+      .map((site) => site.definition);
+  }
+
+  hasAttackSite(): boolean { return this.attackSites.length > 0; }
+
+  /** Pick the next still-functional attack region for an ordinary enemy shot. */
+  nextAttackSite(): ProteinSiteDefinition | null {
+    const sites = this.attackSites;
+    if (sites.length === 0) return null;
+    const site = sites[this.attackSiteCursor % sites.length] ?? sites[0]!;
+    this.attackSiteCursor = (this.attackSiteCursor + 1) % sites.length;
+    return site;
   }
 
   site(id: string): ProteinSiteDefinition | null {
@@ -144,18 +163,26 @@ export class ProteinCombatState {
   }
 
   hudSnapshot(): ProteinHudSnapshot {
+    let attackOrdinal = 0;
     return {
       phase: this.phase,
       integrityHp: this.integrityHp,
       integrityMaxHp: this.integrityMaxHp,
       selectedSiteId: this.selectedSiteId,
-      sites: this.siteStates.slice(0, 3).map((site) => ({
+      sites: this.siteStates.map((site) => {
+        const attackable = site.definition.actions.includes('plasma-burst');
+        const label = attackable
+          ? `攻撃部位${++attackOrdinal}`
+          : site.definition.type === 'interface' ? '結合界面' : site.definition.type === 'core' ? '核心部' : '修飾部位';
+        return {
         id: site.definition.id,
-        label: site.definition.type === 'active' ? '活性部位' : site.definition.type === 'interface' ? '結合界面' : site.definition.type === 'core' ? '核心部' : '修飾部位',
+        label,
         hp: site.hp,
         maxHp: site.definition.maxHp,
         disabled: site.disabled,
-      })),
+        attackable,
+        };
+      }),
     };
   }
 
@@ -193,7 +220,8 @@ export class ProteinCombatState {
 
   private updatePhase(): void {
     const interfaceDisabled = this.siteStates.some((site) => site.definition.type === 'interface' && site.disabled);
-    const activeDisabled = this.siteStates.some((site) => site.definition.type === 'active' && site.disabled);
+    const activeSites = this.siteStates.filter((site) => site.definition.type === 'active');
+    const activeDisabled = activeSites.length > 0 && activeSites.every((site) => site.disabled);
     const coreDisabled = this.siteStates.some((site) => site.definition.type === 'core' && site.disabled);
     const integrityRatio = this.integrityMaxHp > 0 ? this.integrityHp / this.integrityMaxHp : 0;
     if (coreDisabled || integrityRatio <= 0.25) this.phase = 'critical';
