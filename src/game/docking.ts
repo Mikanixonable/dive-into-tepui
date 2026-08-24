@@ -19,6 +19,30 @@ import type { ActivePlayerController } from './active-controllable-controller';
 import type { Stage } from './stages/stage';
 import { generateRandomName } from './random-name';
 
+export type DockingCandidateKind = 'slot' | 'hatch' | 'ship';
+
+// 判定とガイドが共有する接続点の評価結果。canDock だけでなく各残差を公開することで、
+// 未整合・速度超過の接近もガイドに表示できる。
+export interface DockingCandidate {
+  readonly target: GameEntity;
+  readonly kind: DockingCandidateKind;
+  readonly position: ReturnType<typeof v3>;
+  readonly normal: ReturnType<typeof v3>;
+  readonly distance: number;
+  readonly axisAlignment: number;
+  readonly axisErrorDeg: number;
+  readonly relSpeed: number;
+  readonly distanceOk: boolean;
+  readonly approachOk: boolean;
+  readonly alignmentOk: boolean;
+  readonly speedOk: boolean;
+  readonly canDock: boolean;
+  readonly slotIndex: number | null;
+}
+
+const alignmentErrorDeg = (alignment: number): number =>
+  Math.acos(Math.max(-1, Math.min(1, alignment))) * 180 / Math.PI;
+
 export class Docking {
   // アクティブな基地が変わるたびに通知する — 物体一覧パネルのハイライトを追随させる用途。
   onSelect: ((id: string | null) => void) | null = null;
@@ -65,51 +89,83 @@ export class Docking {
     return target;
   }
 
-  // ドッキング可能判定 (距離・ドックスロット前方正面判定・相対速度)
+  // 候補評価を正本にしたドッキング可能判定。
   canDock(ship: Player, target: GameEntity): boolean {
-    if (!ship.alive || !target.alive || ship === target) return false;
-    if (this.getDockedTarget(ship) === target) return false;
+    return this.evaluateCandidates(ship, target).some((candidate) => candidate.canDock);
+  }
+
+  // 指定対象の候補を返す。基地の占有済みスロットは候補から除外し、ハッチは常に
+  // 評価する(ただし満杯なら canDock は false)。
+  evaluateCandidates(ship: Player, target: GameEntity): DockingCandidate[] {
+    if (!ship.alive || !target.alive || ship === target || this.getDockedTarget(ship) === target) return [];
+    const portPos = ship.getPortWorldPos();
+    const portNormal = norm(ship.getPortWorldNormal());
     const relSpeed = len(sub(ship.state.v, target.state.v));
-    if (relSpeed > C.DOCK_CAPTURE_REL_V) return false;
+    const speedOk = relSpeed <= C.DOCK_CAPTURE_REL_V;
+    const candidates: DockingCandidate[] = [];
+    const make = (
+      kind: DockingCandidateKind,
+      position: ReturnType<typeof v3>, normal: ReturnType<typeof v3>,
+      maxDist: number, slotIndex: number | null, approach: number,
+      alignment: number, capacityOk: boolean,
+    ): void => {
+      const distance = len(sub(portPos, position));
+      const distanceOk = distance <= maxDist;
+      const approachOk = approach >= C.PORT_DOCK_MIN_ALIGNMENT;
+      const alignmentOk = alignment >= C.PORT_DOCK_MIN_ALIGNMENT;
+      candidates.push({
+        target, kind, position, normal, distance, axisAlignment: alignment,
+        axisErrorDeg: alignmentErrorDeg(alignment), relSpeed,
+        distanceOk, approachOk, alignmentOk, speedOk, slotIndex,
+        canDock: capacityOk && distanceOk && approachOk && alignmentOk && speedOk,
+      });
+    };
 
     if (target instanceof Base) {
-      if (target.baseState.dockedVessels.length >= C.BASE_MAX_VESSELS) return false;
-
-      // 1) 基地の 4 箇所のドックスロットのいずれかの前方エリア判定
+      const occupied = new Set(target.baseState.dockedVessels.map((entry) => entry.slotIndex));
+      const capacityOk = target.baseState.dockedVessels.length < C.BASE_MAX_VESSELS;
       for (let i = 0; i < C.BASE_MAX_VESSELS; i++) {
-        const slotPos = target.getSlotWorldPos(i);
-        const slotNormal = target.getSlotWorldNormal(i);
-        const distToSlot = len(sub(ship.state.r, slotPos));
-        if (distToSlot <= C.SLOT_DOCK_MAX_DIST) {
-          const dirToShip = norm(sub(ship.state.r, slotPos));
-          const alignment = dot(dirToShip, slotNormal);
-          if (alignment >= C.SLOT_DOCK_MIN_ALIGNMENT) return true;
-        }
+        if (occupied.has(i)) continue;
+        const position = target.getSlotWorldPos(i);
+        const normal = norm(target.getSlotWorldNormal(i));
+        const toShip = norm(sub(portPos, position));
+        // 基地接続面の正面側 (位置) と、船軸の進入方向 (姿勢) は別条件。
+        make('slot', position, normal, C.SLOT_DOCK_MAX_DIST, i,
+          dot(toShip, normal), -dot(portNormal, normal), capacityOk);
       }
-
-      // 2) または中央ハッチ前方エリア判定
-      const hatchPos = target.getHatchWorldPos();
-      const hatchNormal = target.getHatchWorldNormal();
-      const distToHatch = len(sub(ship.state.r, hatchPos));
-      if (distToHatch <= C.HATCH_DOCK_MAX_DIST) {
-        const dirToShip = norm(sub(ship.state.r, hatchPos));
-        const alignment = dot(dirToShip, hatchNormal);
-        if (alignment >= C.HATCH_DOCK_MIN_ALIGNMENT) return true;
-      }
-
-      return false;
+      const position = target.getHatchWorldPos();
+      const normal = norm(target.getHatchWorldNormal());
+      const toShip = norm(sub(portPos, position));
+      make('hatch', position, normal, C.HATCH_DOCK_MAX_DIST, null,
+        dot(toShip, normal), -dot(portNormal, normal), capacityOk);
+      return candidates;
     }
 
-    // 船対船ドッキングは従来の距離判定
-    const dist = len(sub(ship.state.r, target.state.r));
-    return dist <= C.DOCK_CAPTURE_DIST;
+    if (target instanceof Player) {
+      const targetPortPos = target.getPortWorldPos();
+      const targetPortNormal = norm(target.getPortWorldNormal());
+      const toTarget = norm(sub(targetPortPos, portPos));
+      const toShip = norm(sub(portPos, targetPortPos));
+      const facing = -dot(portNormal, targetPortNormal);
+      // 船対船では各ポートの法線が相手方向を向くことも必要にする。
+      const approach = Math.min(dot(portNormal, toTarget), dot(targetPortNormal, toShip));
+      make('ship', targetPortPos, targetPortNormal, C.PORT_DOCK_MAX_DIST, null, approach, facing, true);
+    }
+    return candidates;
+  }
+
+  private bestDockingCandidate(ship: Player, target: GameEntity): DockingCandidate | null {
+    return this.evaluateCandidates(ship, target)
+      .filter((candidate) => candidate.canDock)
+      .sort((a, b) => a.distance - b.distance)[0] ?? null;
   }
 
   // 船または基地への物理ドッキングを実行。
   dockTo(ship: Player, target: GameEntity): void {
-    if (!this.canDock(ship, target)) return;
+    const candidate = this.bestDockingCandidate(ship, target);
+    if (!candidate) return;
     if (target instanceof Base) {
-      this.storeInBase(ship, target);
+      this.storeInBase(ship, target, candidate.slotIndex);
     } else {
       this.dockedPairs.set(ship.id, target);
       // 相対速度をゼロにする
@@ -173,7 +229,7 @@ export class Docking {
   }
 
   // 手動で艦を基地へ収容する
-  storeInBase(ship: Player, base: Base): void {
+  storeInBase(ship: Player, base: Base, slotIndex: number | null = null): void {
     if (!ship.alive || !base.alive) return;
     if (!this.entities.players.includes(ship)) return;
     if (this.entities.bases.some((candidate) =>
@@ -182,8 +238,11 @@ export class Docking {
       this.hud.hint(`基地のドックが満杯です (最大 ${C.BASE_MAX_VESSELS} 隻)`);
       return;
     }
-    if (!this.canDock(ship, base)) return;
-    const slotIndex = base.getAvailableSlotIndex() ?? 0;
+    const candidate = this.bestDockingCandidate(ship, base);
+    if (!candidate) return;
+    // スロットへ直接入る候補はそのスロットを保持し、ハッチ候補だけ格納時に空きを選ぶ。
+    const selectedSlot = candidate.slotIndex ?? slotIndex ?? base.getAvailableSlotIndex();
+    if (selectedSlot === null || selectedSlot === undefined) return;
     this.undock(ship);
     base.baseState.dockedVessels.push({
       id: ship.id,
@@ -192,9 +251,9 @@ export class Docking {
       maxHp: ship.maxHp,
       parts: ship.parts,
       player: ship,
-      slotIndex,
+      slotIndex: selectedSlot,
     });
-    base.attachDockedVesselMesh(ship, slotIndex);
+    base.attachDockedVesselMesh(ship, selectedSlot);
 
     const wasActive = this.activePlayers.current === ship;
     this.mapActions.close();
@@ -209,7 +268,7 @@ export class Docking {
       this.activePlayers.setOrNull(this.entities.players.find((p) => p.alive) ?? null);
       if (this.activePlayers.current === null) this.viewManager.setView('map');
     }
-    this.hud.hint(`${ship.name} を基地のドック ${slotIndex + 1} に収納しました`);
+    this.hud.hint(`${ship.name} を基地のドック ${selectedSlot + 1} に収納しました`);
   }
 
   private buildVessel(base: Base): void {
