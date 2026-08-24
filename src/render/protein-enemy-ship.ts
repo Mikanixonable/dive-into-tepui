@@ -1,301 +1,37 @@
+// タンパク質敵の原子・リボン・分子表面表示を組み立てる。
 import * as THREE from 'three/webgpu';
-import type { ProteinAssetDefinition } from '../game/protein/protein-schema';
 import type { ProteinDisplayAsset } from '../game/protein/protein-display-asset';
 import type { ProteinDisplaySettings, ProteinRibbonColorMode } from '../game/protein/protein-display';
 import { markLitOpaque, markProteinShadowLayers } from './pipeline/lit-layer';
+import {
+  buildProteinRibbon,
+  type ProteinRenderSource,
+} from './protein-ribbon';
 
-export interface ProteinBackboneAsset {
-  readonly backboneCount: number;
-  readonly backboneCoordinates: readonly number[];
-  /** Carbonyl oxygen coordinates, used as a stable ribbon-width reference. */
-  readonly backboneOCoordinates?: readonly number[];
-  readonly backboneSecondary: readonly string[];
-  readonly backboneChains: readonly string[];
-  readonly backboneEntities: readonly number[];
-  readonly backboneBFactors: readonly number[];
-}
-
-export interface ProteinRenderSource {
-  readonly semantic: ProteinAssetDefinition;
-  readonly backbone: ProteinBackboneAsset;
-  readonly structure: ProteinDisplayAsset;
-}
+export type { ProteinBackboneAsset, ProteinRenderSource } from './protein-ribbon';
 
 const ELEMENT_COLORS: Readonly<Record<string, number>> = {
   H: 0xffffff, C: 0x909090, N: 0x3050f8, O: 0xff0d0d, F: 0x90e050,
   P: 0xff8000, S: 0xffff30, CL: 0x1ff01f, SE: 0xffa100, MG: 0x8aff00,
   ZN: 0x7d80b0, NA: 0xab5cf2, CA: 0x3dff00, FE: 0xe06633, K: 0x8f40d4,
 };
-const COMPONENT_ROLE_COLORS = [0x4fc3f7, 0xa78bfa, 0xffc857, 0x56df9b, 0xff6b91, 0xb7e06b];
-const RIBBON_SUBDIVISIONS = 12;
-const RIBBON_THICKNESS = 0.32;
-const bFactorRanges = new WeakMap<object, { min: number; max: number }>();
-const componentRoleLookups = new WeakMap<object, {
-  byEntity: ReadonlyMap<number, number>;
-  byChain: ReadonlyMap<string, number>;
-}>();
 
-type ProteinSecondaryKind = 'coil' | 'helix' | 'sheet';
-
-function secondaryKind(value: string | undefined): ProteinSecondaryKind {
-  const normalized = value?.toLowerCase();
-  if (normalized === 'helix' || normalized === 'h' || normalized === 'alpha-helix') return 'helix';
-  if (normalized === 'sheet' || normalized === 'e' || normalized === 'beta-sheet') return 'sheet';
-  return 'coil';
-}
-
-function rainbowColor(t: number): THREE.Color {
-  return new THREE.Color().setHSL(0.66 * (1 - Math.max(0, Math.min(1, t))), 0.86, 0.56);
-}
-
-function componentRoleColor(source: ProteinRenderSource, index: number): THREE.Color {
-  let lookup = componentRoleLookups.get(source);
-  if (!lookup) {
-    const roles = [...new Set(source.semantic.components.map((component) => component.role))];
-    const byEntity = new Map<number, number>();
-    const byChain = new Map<string, number>();
-    for (const component of source.semantic.components) {
-      const roleIndex = Math.max(0, roles.indexOf(component.role));
-      for (const entity of component.entities ?? []) byEntity.set(entity, roleIndex);
-      for (const chain of component.chains) byChain.set(chain, roleIndex);
-    }
-    lookup = { byEntity, byChain };
-    componentRoleLookups.set(source, lookup);
-  }
-  const entity = source.backbone.backboneEntities[index];
-  const chain = source.backbone.backboneChains[index];
-  const roleIndex = (entity === undefined ? undefined : lookup.byEntity.get(entity))
-    ?? (chain === undefined ? undefined : lookup.byChain.get(chain))
-    ?? 0;
-  return new THREE.Color(COMPONENT_ROLE_COLORS[roleIndex % COMPONENT_ROLE_COLORS.length]!);
-}
-
-function ribbonColor(source: ProteinRenderSource, index: number, mode: ProteinRibbonColorMode): THREE.Color {
-  const backbone = source.backbone;
-  if (mode === 'rainbow') return rainbowColor(index / Math.max(1, backbone.backboneCount - 1));
-  if (mode === 'secondary-structure') {
-    const kind = secondaryKind(backbone.backboneSecondary[index]);
-    return new THREE.Color(kind === 'helix' ? 0xe85d75 : kind === 'sheet' ? 0xf2c14e : 0x8fa7bd);
-  }
-  if (mode === 'b-factor') {
-    let range = bFactorRanges.get(backbone);
-    if (!range) {
-      range = { min: Math.min(...backbone.backboneBFactors), max: Math.max(...backbone.backboneBFactors) };
-      bFactorRanges.set(backbone, range);
-    }
-    const { min, max } = range;
-    return rainbowColor(((backbone.backboneBFactors[index] ?? min) - min) / Math.max(1e-6, max - min));
-  }
-  if (mode === 'component-role') return componentRoleColor(source, index);
-  if (mode === 'entity') {
-    const entity = backbone.backboneEntities[index] ?? 1;
-    return new THREE.Color().setHSL(((entity - 1) * 0.19 + 0.04) % 1, 0.78, 0.56);
-  }
-  const chain = backbone.backboneChains[index] ?? 'A';
-  const chainIndex = Math.max(0, chain.charCodeAt(0) - 65);
-  return new THREE.Color().setHSL((chainIndex * 0.13 + 0.02) % 1, 0.78, 0.56);
-}
-
-function backboneRuns(backbone: ProteinBackboneAsset): {
-  kind: ProteinSecondaryKind;
-  points: THREE.Vector3[];
-  startIndex: number;
-}[] {
-  const runs: { kind: ProteinSecondaryKind; points: THREE.Vector3[]; startIndex: number }[] = [];
-  let current: { kind: ProteinSecondaryKind; points: THREE.Vector3[]; startIndex: number } | null = null;
-  for (let index = 0; index < backbone.backboneCount; index++) {
-    const offset = index * 3;
-    const point = new THREE.Vector3(
-      backbone.backboneCoordinates[offset]!, backbone.backboneCoordinates[offset + 1]!, backbone.backboneCoordinates[offset + 2]!,
-    );
-    const previous = current?.points[current.points.length - 1];
-    const kind = secondaryKind(backbone.backboneSecondary[index]);
-    if (!current || !previous || point.distanceTo(previous) > 8
-      || backbone.backboneChains[index] !== backbone.backboneChains[index - 1]
-      || current.kind !== kind) {
-      current = { kind, points: [], startIndex: index };
-      runs.push(current);
-    }
-    current.points.push(point);
-  }
-  return runs;
-}
-
-function helixFrame(points: readonly THREE.Vector3[]): { center: THREE.Vector3; axis: THREE.Vector3 } {
-  const center = points.reduce((sum, point) => sum.add(point), new THREE.Vector3()).multiplyScalar(1 / points.length);
-  let axis = points[points.length - 1]!.clone().sub(points[0]!).normalize();
-  if (axis.lengthSq() < 1e-8) axis.set(0, 0, 1);
-  for (let iteration = 0; iteration < 8; iteration++) {
-    const next = new THREE.Vector3();
-    for (const point of points) {
-      const offset = point.clone().sub(center);
-      next.addScaledVector(offset, offset.dot(axis));
-    }
-    if (next.lengthSq() < 1e-8) break;
-    axis.copy(next.normalize());
-  }
-  if (axis.dot(points[points.length - 1]!.clone().sub(points[0]!)) < 0) axis.negate();
-  return { center, axis };
-}
-
-function backboneO(backbone: ProteinBackboneAsset, index: number, fallback: THREE.Vector3): THREE.Vector3 {
-  const coordinates = backbone.backboneOCoordinates;
-  const offset = index * 3;
-  if (!coordinates || offset + 2 >= coordinates.length) return fallback.clone();
-  return new THREE.Vector3(coordinates[offset]!, coordinates[offset + 1]!, coordinates[offset + 2]!);
-}
-
-function ribbonGeometry(
-  source: ProteinRenderSource,
-  run: { kind: ProteinSecondaryKind; points: readonly THREE.Vector3[]; startIndex: number },
-  mode: ProteinRibbonColorMode,
-  fixedColor: THREE.Color | null,
-): THREE.BufferGeometry {
-  const { backbone } = source;
-  const positions: number[] = [];
-  const colors: number[] = [];
-  const curve = new THREE.CatmullRomCurve3([...run.points], false, 'centripetal', 0.35);
-  const segments = Math.max(1, (run.points.length - 1) * RIBBON_SUBDIVISIONS);
-  const frame = run.kind === 'helix' ? helixFrame(run.points) : null;
-  let previousTangent: THREE.Vector3 | null = null;
-  let previousWidthDirection: THREE.Vector3 | null = null;
-
-  for (let sample = 0; sample <= segments; sample++) {
-    const t = sample / segments;
-    const center = curve.getPoint(t);
-    const tangent = curve.getTangent(t).normalize();
-    const residuePosition = t * (run.points.length - 1);
-    const localIndex = Math.min(run.points.length - 1, Math.floor(residuePosition));
-    const nextIndex = Math.min(run.points.length - 1, localIndex + 1);
-    const localT = residuePosition - localIndex;
-    const sourceIndex = Math.min(backbone.backboneCount - 1, Math.round(run.startIndex + residuePosition));
-    const oxygen = backboneO(backbone, run.startIndex + localIndex, center);
-    if (nextIndex !== localIndex) {
-      oxygen.lerp(backboneO(backbone, run.startIndex + nextIndex, center), localT);
-    }
-
-    let candidateWidthDirection: THREE.Vector3;
-    if (frame !== null) {
-      const radial = center.clone().sub(frame.center).projectOnPlane(frame.axis).normalize();
-      candidateWidthDirection = frame.axis.clone().cross(radial).projectOnPlane(tangent).normalize();
-    } else {
-      candidateWidthDirection = oxygen.sub(center).projectOnPlane(tangent).normalize();
-    }
-    const widthDirection = candidateWidthDirection.clone();
-    if (widthDirection.lengthSq() < 1e-8) {
-      const reference = Math.abs(tangent.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
-      widthDirection.copy(reference).projectOnPlane(tangent).normalize();
-    }
-    if (previousTangent !== null && previousWidthDirection !== null) {
-      const transport = previousWidthDirection.clone()
-        .applyQuaternion(new THREE.Quaternion().setFromUnitVectors(previousTangent, tangent))
-        .projectOnPlane(tangent).normalize();
-      if (candidateWidthDirection.lengthSq() >= 1e-8 && candidateWidthDirection.dot(transport) < 0) widthDirection.negate();
-      widthDirection.lerp(transport, 0.25).normalize();
-    }
-    previousTangent = tangent.clone();
-    previousWidthDirection = widthDirection.clone();
-
-    const thicknessDirection = tangent.clone().cross(widthDirection).normalize();
-    const arrowFactor = run.kind === 'sheet' && residuePosition >= run.points.length - 2
-      ? Math.max(0.04, 1.15 * (run.points.length - 1 - residuePosition))
-      : 1;
-    const halfWidth = ((run.kind === 'helix' ? 2.0 : 1.8) * arrowFactor) / 2;
-    const halfThickness = (RIBBON_THICKNESS * Math.min(1, arrowFactor)) / 2;
-    const corners = [
-      center.clone().addScaledVector(widthDirection, halfWidth).addScaledVector(thicknessDirection, halfThickness),
-      center.clone().addScaledVector(widthDirection, -halfWidth).addScaledVector(thicknessDirection, halfThickness),
-      center.clone().addScaledVector(widthDirection, -halfWidth).addScaledVector(thicknessDirection, -halfThickness),
-      center.clone().addScaledVector(widthDirection, halfWidth).addScaledVector(thicknessDirection, -halfThickness),
-    ];
-    for (const corner of corners) positions.push(corner.x, corner.y, corner.z);
-    const color = fixedColor ?? ribbonColor(source, sourceIndex, mode);
-    for (let corner = 0; corner < 4; corner++) colors.push(color.r, color.g, color.b);
-  }
-
-  const indices: number[] = [];
-  for (let index = 0; index < segments; index++) {
-    const a = index * 4;
-    const b = a + 4;
-    indices.push(a, b, a + 1, a + 1, b, b + 1);
-    indices.push(a + 3, a + 2, b + 3, a + 2, b + 2, b + 3);
-    indices.push(a, a + 3, b, a + 3, b + 3, b);
-    indices.push(a + 1, b + 1, a + 2, a + 2, b + 1, b + 2);
-  }
-  indices.push(0, 1, 2, 0, 2, 3);
-  const end = segments * 4;
-  indices.push(end, end + 2, end + 1, end, end + 3, end + 2);
-
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-  geometry.userData.proteinSecondary = run.kind;
-  geometry.userData.proteinSecondaryKind = run.kind;
-  return geometry;
-}
-
-function tubeColors(
-  source: ProteinRenderSource, geometry: THREE.BufferGeometry, startIndex: number,
-  pointCount: number, tubularSegments: number, mode: ProteinRibbonColorMode, fixedColor: THREE.Color | null,
-): void {
-  const radialSegments = 12;
-  const colors: number[] = [];
-  for (let vertex = 0; vertex < geometry.getAttribute('position').count; vertex++) {
-    const longitudinal = Math.floor(vertex / (radialSegments + 1));
-    const index = Math.min(source.backbone.backboneCount - 1,
-      Math.round(startIndex + (pointCount - 1) * longitudinal / tubularSegments));
-    const color = fixedColor ?? ribbonColor(source, index, mode);
-    colors.push(color.r, color.g, color.b);
-  }
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-}
-
-function buildRibbon(source: ProteinRenderSource, mode: ProteinRibbonColorMode, fixedColor: THREE.Color | null = null): THREE.Group {
-  const group = new THREE.Group();
-  for (const run of backboneRuns(source.backbone)) {
-    if (run.points.length < 2) continue;
-    let geometry: THREE.BufferGeometry;
-    if (run.kind === 'helix' || run.kind === 'sheet') {
-      geometry = ribbonGeometry(source, run, mode, fixedColor);
-    } else {
-      const curve = new THREE.CatmullRomCurve3(run.points, false, 'centripetal', 0.35);
-      const tubularSegments = Math.max(2, (run.points.length - 1) * RIBBON_SUBDIVISIONS);
-      geometry = new THREE.TubeGeometry(curve, tubularSegments, 0.38, 12, false);
-      tubeColors(source, geometry, run.startIndex, run.points.length, tubularSegments, mode, fixedColor);
-      geometry.userData.proteinSecondary = run.kind;
-      geometry.userData.proteinSecondaryKind = run.kind;
-    }
-    const material = new THREE.MeshStandardMaterial({
-      color: 0xffffff, vertexColors: true, roughness: 0.42, metalness: 0.24,
-      side: THREE.DoubleSide,
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.userData.proteinComponent = source.backbone.backboneChains[run.startIndex] ?? 'A';
-    mesh.userData.proteinRibbon = true;
-    mesh.userData.proteinSecondary = run.kind;
-    mesh.userData.proteinSecondaryKind = run.kind;
-    mesh.userData.proteinShadowReceiver = true;
-    mesh.userData.ownsGeometry = true;
-    mesh.userData.ownsMaterial = true;
-    group.add(mesh);
-  }
-  return group;
-}
-
+/** atom の元素記号をテーブルから復元する。 */
 function atomElement(structure: ProteinDisplayAsset, atom: number): string {
   return structure.atoms.elementTable[structure.atoms.elements[atom] ?? 1] ?? 'C';
 }
 
+/** atom の residue 名をテーブルから復元する。 */
 function atomResidue(structure: ProteinDisplayAsset, atom: number): string {
   return structure.atoms.residueTable[structure.atoms.residues[atom] ?? 0] ?? '';
 }
 
+/** atom の chain ID をテーブルから復元する。 */
 function atomChain(structure: ProteinDisplayAsset, atom: number): string {
   return structure.atoms.chainTable[structure.atoms.chains[atom] ?? 0] ?? 'A';
 }
 
+/** 元素とリガンド状態に対応する原子材質を返す。 */
 function atomMaterial(element: string, ligand = false): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({
     color: ELEMENT_COLORS[element.toUpperCase()] ?? 0xc0c0c0,
@@ -306,10 +42,12 @@ function atomMaterial(element: string, ligand = false): THREE.MeshStandardMateri
   });
 }
 
+/** 選択した atom を鎖・元素別の InstancedMesh と結合線へ変換する。 */
 function buildAtoms(source: ProteinRenderSource, selected: ReadonlySet<number> | null, ligand = false): THREE.Group {
   const structure = source.structure;
   const group = new THREE.Group();
   const byChain = new Map<string, Map<string, number[]>>();
+  // 同じ材質と半径を共有できる atom を鎖・元素単位にまとめる。
   for (let atom = 0; atom < structure.atoms.count; atom++) {
     if (selected && !selected.has(atom)) continue;
     const chain = atomChain(structure, atom);
@@ -348,6 +86,7 @@ function buildAtoms(source: ProteinRenderSource, selected: ReadonlySet<number> |
   }
 
   const bondPositionsByChain = new Map<string, number[]>();
+  // 選択集合の内部だけにある結合を鎖別の LineSegments へまとめる。
   for (let offset = 0; offset + 1 < structure.bonds.pairs.length; offset += 2) {
     const first = structure.bonds.pairs[offset]!;
     const second = structure.bonds.pairs[offset + 1]!;
@@ -377,6 +116,7 @@ function buildAtoms(source: ProteinRenderSource, selected: ReadonlySet<number> |
   return group;
 }
 
+/** semantic 定義に列挙された residue の原子表示を生成する。 */
 function buildLigands(source: ProteinRenderSource): THREE.Group {
   const residues = new Set(source.semantic.ligands.map((ligand) => ligand.residue.toUpperCase()));
   const selected = new Set<number>();
@@ -389,6 +129,7 @@ function buildLigands(source: ProteinRenderSource): THREE.Group {
   return group;
 }
 
+/** 分子表面のスカラー値を選択モードの発散色へ写像する。 */
 function surfaceColor(value: number, mode: 'surface-charge' | 'hydrophobicity'): THREE.Color {
   const t = Math.max(0, Math.min(1, (value + 127) / 254));
   if (mode === 'surface-charge') {
@@ -399,6 +140,7 @@ function surfaceColor(value: number, mode: 'surface-charge' | 'hydrophobicity'):
     .lerp(new THREE.Color(0xd95f02), Math.max(0, (t - 0.5) * 2));
 }
 
+/** 三角形の頂点多数決から所属 component を決める。 */
 function triangleComponent(components: readonly string[], a: number, b: number, c: number): string {
   const first = components[a] ?? 'A';
   const second = components[b] ?? first;
@@ -415,16 +157,17 @@ interface ProteinSurfacePart {
   readonly vertices: Map<number, number>;
 }
 
+/** 半透明分子表面、白色 Ribbon、リガンドを重ねた表示を生成する。 */
 function buildSilhouette(source: ProteinRenderSource, mode: 'surface-charge' | 'hydrophobicity'): THREE.Group {
   const group = new THREE.Group();
-  // The shell carries the selected scalar field; the internal cartoon stays white so
-  // it remains legible through the translucent surface in every protein asset.
-  group.add(buildRibbon(source, 'chain', new THREE.Color(0xffffff)));
+  // シェルは選択したスカラー場を示し、内部 Ribbon は半透明面越しにも読める白色にする。
+  group.add(buildProteinRibbon(source, 'chain', new THREE.Color(0xffffff)));
   if (source.semantic.ligands.length) group.add(buildLigands(source));
   const surface = source.structure.surface.mesh;
   const values = mode === 'surface-charge' ? surface.charge : surface.hydrophobicity;
   const center = source.structure.coordinateFrame.centeredAt;
   const parts = new Map<string, ProteinSurfacePart>();
+  // component ごとに頂点を再配置し、運動制御できる独立 Mesh に分ける。
   for (let offset = 0; offset + 2 < surface.index.length; offset += 3) {
     const triangle = [surface.index[offset]!, surface.index[offset + 1]!, surface.index[offset + 2]!] as const;
     const component = triangleComponent(surface.component, ...triangle);
@@ -468,10 +211,11 @@ function buildSilhouette(source: ProteinRenderSource, mode: 'surface-charge' | '
   return group;
 }
 
+/** リボンとリガンドをゲーム座標の縮尺で構築する。 */
 export function buildProteinRibbonShip(
   source: ProteinRenderSource, mode: ProteinRibbonColorMode, fixedColor: THREE.Color | null = null,
 ): THREE.Group {
-  const group = buildRibbon(source, mode, fixedColor);
+  const group = buildProteinRibbon(source, mode, fixedColor);
   if (source.semantic.ligands.length) group.add(buildLigands(source));
   group.scale.setScalar(source.semantic.coordinateScale);
   markLitOpaque(group);
@@ -479,6 +223,7 @@ export function buildProteinRibbonShip(
   return group;
 }
 
+/** 表示設定に対応するタンパク質敵の Object3D を構築する。 */
 export function buildProteinEnemyShip(source: ProteinRenderSource, display: ProteinDisplaySettings): THREE.Group {
   let group: THREE.Group;
   if (display.representation === 'molecular') group = buildAtoms(source, null);
@@ -486,8 +231,7 @@ export function buildProteinEnemyShip(source: ProteinRenderSource, display: Prot
   else return buildProteinRibbonShip(source, display.colorMode);
   group.scale.setScalar(source.semantic.coordinateScale);
   markLitOpaque(group);
-  // The translucent shell must be composited by the world pass. Keeping it in the
-  // opaque GBuffer would overwrite the internal ribbon's depth and normal data.
+  // 半透明シェルは World pass で合成し、内部 Ribbon の深度・法線を保つ。
   if (display.representation === 'silhouette') {
     group.traverse((child) => {
       if (child.userData.proteinShadowOccluder === true) child.layers.set(0);
@@ -497,7 +241,9 @@ export function buildProteinEnemyShip(source: ProteinRenderSource, display: Prot
   return group;
 }
 
+/** target の所有リソースを破棄し、replacement の子要素へ入れ替える。 */
 export function replaceProteinEnemyShip(target: THREE.Object3D, replacement: THREE.Object3D): void {
+  // target が所有する geometry と material だけを表示ツリーから回収する。
   for (const child of [...target.children]) {
     child.traverse((nested) => {
       const mesh = nested as THREE.Mesh;
