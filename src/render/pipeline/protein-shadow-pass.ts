@@ -8,7 +8,6 @@ import type { FloatNode, FloatUniform, Mat4Uniform } from '../tsl-types';
 import {
   PROTEIN_SHADOW_OCCLUDER_LAYER, PROTEIN_SHADOW_RECEIVER_LAYER,
 } from './lit-layer';
-import { installProteinMotionOverridePropagation } from '../protein-motion-material';
 import type { SunLight } from './sun-light';
 
 const SHADOW_MAP_SIZE = 1024;
@@ -104,10 +103,6 @@ export class ProteinShadowPass {
     const savedAutoClearDepth = this.renderer.autoClearDepth;
     const savedClearColor = this.renderer.getClearColor(this.clearColor).clone();
     const savedClearAlpha = this.renderer.getClearAlpha();
-    const restoreMotionPropagation = installProteinMotionOverridePropagation(
-      scene, [this.shadowMaterial, this.receiverMaterial],
-    );
-
     try {
       this.renderer.autoClear = true;
       this.renderer.autoClearColor = true;
@@ -127,7 +122,6 @@ export class ProteinShadowPass {
       this.renderer.render(scene, camera);
       this.activeUniform.value = 1;
     } finally {
-      restoreMotionPropagation();
       scene.overrideMaterial = savedOverride;
       camera.layers.mask = savedMask;
       this.renderer.setRenderTarget(savedTarget);
