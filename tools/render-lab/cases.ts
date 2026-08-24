@@ -8,7 +8,7 @@ import { R_EARTH } from '../../src/physics/solar-system';
 import { Curve } from '../../src/render/curve';
 import { buildPlayerShip } from '../../src/render/ships';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
-import type { Occluder, RingBand } from '../../src/render/pipeline/occlusion';
+import type { Occluder, RingBand } from '../../src/render/pipeline/sun-occlusion';
 import type { LineStyle } from '../../src/render/line-style';
 import { RingView } from '../../src/game/celestial/ring-view';
 import { sunIrradianceAtDistance } from '../../src/render/pipeline/sun-light';
