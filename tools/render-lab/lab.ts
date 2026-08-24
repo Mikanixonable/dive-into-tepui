@@ -37,11 +37,16 @@ const ORIGIN = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
 
 // 恒星は 1 天文単位の位置に置く。ゲーム本体と同じ放射強度を渡すので、そこで受ける放射照度も
-// ゲーム本体の 1 天文単位と一致する。
-const SUN_POSITION = SUN_DIR.clone().multiplyScalar(AU);
+// ゲーム本体の 1 天文単位と一致する。ケースごとの向きを毎フレーム書き込む。
+const SUN_POSITION = new THREE.Vector3();
+
+// シーン光源(平行光)を置く距離 [m]。向きだけが意味を持つので、ケースの広がりより十分遠ければよい。
+const SUN_LIGHT_DISTANCE = 1e5;
 
 export class LabView {
   private readonly scene = new THREE.Scene();
+  // ケースの太陽方向へ向け直すために持つ。恒星の位置と同じ向きを指す。
+  private readonly sun = new THREE.DirectionalLight(SUN_COLOR.getHex(), SUN_IRRADIANCE_1AU);
   // 撮影先。合成パスが既に sRGB へ変換した値を書くので、素の RGBA8 で受ける
   // (-srgb フォーマットにすると二重変換になり、撮った PNG だけが白っぽくなる)。
   // 深度は 3D UI パスが要る — 合成パスが G バッファの深度をここへ複製し、線はそれに対して
@@ -62,14 +67,12 @@ export class LabView {
     // RenderPipeline はカメラのチャンネルを一時的に絞る。シーンルートが既定の 0 だけだと
     // その時点で子要素の走査が止まるため、コンテナとして全チャンネルを受ける。
     this.scene.layers.enableAll();
-    const sun = new THREE.DirectionalLight(SUN_COLOR.getHex(), SUN_IRRADIANCE_1AU);
-    sun.position.copy(SUN_DIR).multiplyScalar(1e5);
     const ambient = new THREE.AmbientLight(AMBIENT_COLOR, AMBIENT_IRRADIANCE);
     // NodeMaterial はカメラのチャンネルと重なる光源が1つも無いと照明モデルを組まない。
     // マテリアルパスはカメラを LIT_OPAQUE_LAYER 単独へ絞るので、光源も同チャンネルへ属させる。
-    sun.layers.enable(LIT_OPAQUE_LAYER);
+    this.sun.layers.enable(LIT_OPAQUE_LAYER);
     ambient.layers.enable(LIT_OPAQUE_LAYER);
-    this.scene.add(sun, ambient);
+    this.scene.add(this.sun, ambient);
   }
 
   static async create(canvas: HTMLCanvasElement): Promise<LabView> {
@@ -110,7 +113,14 @@ export class LabView {
   // 動くものが無いので、描くのはケースを差し替えたときと、表示を切り替えたときと、撮影のとき。
   render(): void {
     if (this.current === null) return;
-    this.pipeline.sunLight.set(SUN_POSITION, R_SUN, SUN_COLOR, SUN_RADIANT_INTENSITY, AMBIENT_IRRADIANCE);
+    // 恒星の位置とシーン光源の向きは、必ず同じ向きから引く。片方だけを更新すると、影の向きと
+    // 明暗の境界の向きが食い違ったまま「それらしく」写る。
+    const sunDirection = this.current.sunDirection ?? SUN_DIR;
+    this.sun.position.copy(sunDirection).multiplyScalar(SUN_LIGHT_DISTANCE);
+    this.pipeline.sunLight.set(
+      SUN_POSITION.copy(sunDirection).multiplyScalar(AU),
+      R_SUN, SUN_COLOR, SUN_RADIANT_INTENSITY, AMBIENT_IRRADIANCE,
+    );
     this.pipeline.sunOcclusion.setOccluders(this.current.occluders ?? []);
     const rings = this.current.rings;
     this.pipeline.sunOcclusion.setRings(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
