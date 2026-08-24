@@ -1,7 +1,5 @@
 // 「テクスチャ球」で済む天体(月・木星など)の見た目を実 ECI 位置・実半径で描く。
-// 球メッシュは screen-lod.ts の分割段ラダーに乗る: 段ごとに単位球メッシュを作り分けて
-// おき(WebGPU は mesh.geometry の差し替えが効かないため)、見かけ直径から選んだ1段だけを
-// visible にする。見かけ直径が閾値未満なら球自体を描かない。
+// 見かけ直径が閾値未満なら球自体を描かない。
 import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
 import { OrbitingId } from '../../physics/celestial-body';
@@ -9,7 +7,7 @@ import { RingSystemDef, ShapeDef, shapeAxes } from '../../physics/solar-system';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { spinOrientation } from '../../physics/body-orientation';
-import { showsPhysicalSphere, sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from '../../render/screen-lod';
+import { showsPhysicalSphere } from '../../render/screen-lod';
 import { CelestialSurface } from '../../render/celestial-surface';
 import { CelestialView } from './celestial-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
@@ -17,9 +15,7 @@ import { RingView } from './ring-view';
 
 export class SphereView extends CelestialView {
   readonly id: OrbitingId;
-  private readonly surfaces: ReadonlyMap<SphereLodLevel, CelestialSurface>;
   private readonly group = new THREE.Group();
-  private activeLevel: SphereLodLevel | null = null;
   // 自転姿勢が乗る前のローカル半軸 [m](真球なら3軸とも radius)。
   private readonly axes: THREE.Vector3;
   // 環を含めた最外半径 [m]。radius だけで見かけ直径を判定すると、本体が閾値未満でも
@@ -27,12 +23,11 @@ export class SphereView extends CelestialView {
   private readonly outerRadius: number;
   private ring?: RingView;
 
-  // buildSurface は分割段(screen-lod.ts の SPHERE_LOD_LADDER の要素)ごとに表面を作る
-  // 遅延コンストラクタ、radius は実半径 [m]、shape は歪みの形状データ(省略時は radius に
-  // よる真球)。rings を渡すと環を持つ天体になる(ring-view.ts 参照)。
+  // radius は実半径 [m]、shape は歪みの形状データ(省略時は radius による真球)。
+  // rings を渡すと環を持つ天体になる(ring-view.ts 参照)。
   constructor(
     id: OrbitingId,
-    buildSurface: (level: SphereLodLevel) => CelestialSurface,
+    private readonly surface: CelestialSurface,
     private readonly radius: number,
     shape?: ShapeDef,
     private readonly rings?: RingSystemDef,
@@ -44,18 +39,11 @@ export class SphereView extends CelestialView {
     this.outerRadius = rings === undefined
       ? radius
       : rings.bands.reduce((maxRadius, band) => Math.max(maxRadius, band.outerRadius), radius);
-    const surfaces = new Map<SphereLodLevel, CelestialSurface>();
-    for (const level of SPHERE_LOD_LADDER) {
-      const surface = buildSurface(level);
-      surface.mesh.visible = false;
-      surfaces.set(level, surface);
-    }
-    this.surfaces = surfaces;
   }
 
-  // 分割段ごとの表面メッシュと環をシーンへ一度だけ登録する。
+  // 表面メッシュと環をシーンへ一度だけ登録する。
   build(scene: THREE.Scene): void {
-    for (const surface of this.surfaces.values()) this.group.add(surface.mesh);
+    this.surface.addTo(this.group);
     scene.add(this.group);
     if (this.rings !== undefined) {
       this.ring = new RingView(this.rings, this.radius, this.group.renderOrder + 1);
@@ -81,7 +69,7 @@ export class SphereView extends CelestialView {
       this.hidePhysical();
       return;
     }
-    this.syncLod(apparentDiameterPx);
+    this.surface.syncLod(apparentDiameterPx);
     const sunDirection = ephemeris.sunDirFrom(pos, displayTime);
     this.group.position.copy(fo.RtoThreeV3(pos));
     // 歪んだ天体は3軸それぞれの半軸を使う。環へ渡すのは一様スケール(赤道半径)の方で、
@@ -107,25 +95,16 @@ export class SphereView extends CelestialView {
     }
   }
 
-  // 見かけ直径が閾値未満のときの共通後始末: 全段のメッシュと環を隠す。
+  // 見かけ直径が閾値未満のときの共通後始末: 表面と環を隠す。
   private hidePhysical(): void {
-    for (const surface of this.surfaces.values()) surface.mesh.visible = false;
-    this.activeLevel = null;
+    this.surface.hide();
     if (this.ring !== undefined) this.ring.group.visible = false;
   }
 
-  // 見かけ直径から球分割段を選び、その段のメッシュだけを visible にする。
-  private syncLod(apparentDiameterPx: number): void {
-    const level = sphereLodLevel(apparentDiameterPx);
-    if (level === this.activeLevel) return;
-    this.activeLevel = level;
-    for (const [lvl, surface] of this.surfaces) surface.mesh.visible = lvl === level;
-  }
-
-  // 全分割段の表面と環を解放し、group を親から外す。
+  // 表面と環を解放し、group を親から外す。
   dispose(): void {
     this.group.removeFromParent();
-    for (const surface of this.surfaces.values()) surface.dispose();
+    this.surface.dispose();
     this.ring?.dispose();
   }
 }

@@ -2,7 +2,6 @@
 // シーンへ足すのもチャンネルを振るのも呼び出し側の仕事。ケースを増やすのはこの表への追記で済む。
 import * as THREE from 'three/webgpu';
 import { CelestialSurface } from '../../src/render/celestial-surface';
-import { SPHERE_LOD_LADDER } from '../../src/render/screen-lod';
 import { rec709Luminance, type Albedo } from '../../src/render/celestial-albedo';
 import { createEarth } from '../../src/render/earth';
 import { R_EARTH } from '../../src/physics/solar-system';
@@ -71,10 +70,14 @@ function labCamera(far: number): THREE.PerspectiveCamera {
 }
 
 function sphere(albedo: Albedo, radius: number, center: THREE.Vector3): THREE.Object3D {
-  const surface = CelestialSurface.solid(albedo, SPHERE_LOD_LADDER[0]!);
-  surface.mesh.position.copy(center);
-  surface.mesh.scale.setScalar(radius);
-  return surface.mesh;
+  const group = new THREE.Group();
+  group.position.copy(center);
+  group.scale.setScalar(radius);
+  const surface = CelestialSurface.solid(albedo);
+  surface.addTo(group);
+  // 見かけ直径は画面の高さぶんとみなす(ケースの球はおおむね画面いっぱいに写る)。
+  surface.syncLod(VIEW_HEIGHT);
+  return group;
 }
 
 // 中心 center、半径 radius、平面 (u, v) の円を1本。分割はカメラで決まるので、カメラを作った
