@@ -78,10 +78,14 @@ function labCamera(far: number): THREE.PerspectiveCamera {
 }
 
 function sphere(albedo: Albedo, radius: number, center: THREE.Vector3): THREE.Object3D {
-  const surface = CelestialSurface.solid(albedo, 64, 48);
-  surface.mesh.position.copy(center);
-  surface.mesh.scale.setScalar(radius);
-  return surface.mesh;
+  const group = new THREE.Group();
+  group.position.copy(center);
+  group.scale.setScalar(radius);
+  const surface = CelestialSurface.solid(albedo);
+  surface.addTo(group);
+  // 見かけ直径は画面の高さぶんとみなす(ケースの球はおおむね画面いっぱいに写る)。
+  surface.syncLod(VIEW_HEIGHT);
+  return group;
 }
 
 // 中心 center、半径 radius、平面 (u, v) の円を1本。分割はカメラで決まるので、カメラを作った

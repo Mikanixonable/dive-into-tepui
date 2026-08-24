@@ -12,12 +12,12 @@ import type { MarkerManager } from '../marker/marker-manager';
 import { OrbitLine } from '../orbit-line';
 import { createStars, Stars, STAR_SHELL_RADIUS } from '../../render/stars';
 import { CelestialGrid, CelestialGridVisibility } from '../../render/celestial-grid';
-import { SpatialGrid } from '../../render/spatial-grid';
 import { CameraSystem } from '../camera/camera-system';
 import { focusTargetId } from '../camera/focus-target';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { PointFieldView } from './point-field-view';
+import { ScaleGridView } from './scale-grid-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import { AMBIENT_IRRADIANCE, SUN_COLOR, SUN_RADIANT_INTENSITY, SunLight } from '../../render/pipeline/sun-light';
 import { MAX_OCCLUDERS, type Occluder, type OcclusionPass } from '../../render/pipeline/occlusion';
@@ -77,7 +77,7 @@ export class EnvironmentScene {
   private readonly lightingAnchor: THREE.AmbientLight;
   private readonly stars: Stars;
   readonly celestialGrid: CelestialGrid;
-  readonly spatialGrid: SpatialGrid;
+  private readonly scaleGrid: ScaleGridView;
   private readonly bodies: readonly CelestialView[];
   private readonly nearbyTracker = new NearbySystemTracker();
   // 小惑星帯・トロヤ群の点群。天体暦から作られるマップ専用の表示なので、マップへ入るまで
@@ -128,7 +128,7 @@ export class EnvironmentScene {
     this.stars = createStars();
     scene.add(this.stars.mesh);
     this.celestialGrid = new CelestialGrid(scene);
-    this.spatialGrid = new SpatialGrid(scene);
+    this.scaleGrid = new ScaleGridView(scene);
 
     this.bodies = Object.keys(registry).map((id) =>
       id in CELESTIAL_VIEWS ? CELESTIAL_VIEWS[id as SolarSystemId].create() : fallbackCelestialView(registry, id));
@@ -216,21 +216,7 @@ export class EnvironmentScene {
     this.celestialGrid.sync(
       gridVisibility, cameraSystem.activeCamera,
       cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
-    const moonInRegistry = 'moon' in this.ephemeris.registry;
-    const moonPole = moonInRegistry ? this.ephemeris.poleAt('moon', displayTime) : null;
-    this.spatialGrid.sync(
-      cameraSystem.overviewMode,
-      gridVisibility.eclipticScaleGrid,
-      gridVisibility.equatorScaleGrid,
-      gridVisibility.moonOrbitScaleGrid,
-      gridVisibility.moonEquatorScaleGrid,
-      moonInRegistry ? this.toThreeNormal(this.ephemeris.orbitNormalAt('moon', displayTime)) : undefined,
-      moonPole === null ? undefined : this.toThreeNormal(moonPole.axis),
-      cameraSystem.mapCamera.resolvedFocus,
-      floatingOrigin,
-      cameraSystem.activeCamera,
-      cameraSystem.mapCamera.dist,
-    );
+    this.scaleGrid.sync(floatingOrigin, displayTime, cameraSystem, this.ephemeris, gridVisibility);
   }
 
   // 遮蔽パスへ、この1フレームの遮蔽器と環の帯を渡す。どちらもカメラから見た視半径の大きい順に
@@ -473,11 +459,11 @@ export class EnvironmentScene {
     // ライティングモデルを組ませるためだけの光源。
     this.lightingAnchor.removeFromParent();
     this.lightingAnchor.dispose();
-    // 星殻・天球グリッド・空間グリッド。
+    // 星殻・天球グリッド・縮尺グリッド。
     this.stars.mesh.removeFromParent();
     this.stars.dispose();
     this.celestialGrid.dispose();
-    this.spatialGrid.dispose();
+    this.scaleGrid.dispose();
     // 各天体ビューと、マップを一度でも開いていれば生成済みの小天体点群。
     for (const body of this.bodies) body.dispose();
     this.pointFieldView?.dispose();

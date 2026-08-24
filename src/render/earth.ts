@@ -6,10 +6,9 @@ import * as THREE from 'three/webgpu';
 import { texture as textureNode, mix, uv, vec2, vec3 } from 'three/tsl';
 import { R_EARTH } from '../physics/solar-system';
 import { EARTH_TEXTURES } from './celestial-textures';
-import { markLitOpaque } from './pipeline/lit-layer';
+import { CelestialSurface } from './celestial-surface';
 
 import { Aurora } from './aurora';
-import { SPHERE_LOD_LADDER, sphereLodLevel, SphereLodLevel } from './screen-lod';
 
 interface SurfaceMaterial {
   readonly material: THREE.MeshStandardNodeMaterial;
@@ -39,25 +38,12 @@ function buildSurfaceMaterial(): SurfaceMaterial {
   return { material: mat, earthMap, cloudsMap };
 }
 
-// LOD段ごとの地表メッシュを、共有マテリアルで一括生成する。
-function buildSurfaceMeshes(mat: THREE.MeshStandardNodeMaterial): ReadonlyMap<SphereLodLevel, THREE.Mesh> {
-  const meshes = new Map<SphereLodLevel, THREE.Mesh>();
-  for (const level of SPHERE_LOD_LADDER) {
-    const geo = new THREE.SphereGeometry(R_EARTH, level.widthSegments, level.heightSegments);
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.visible = false;
-    markLitOpaque(mesh);
-    meshes.set(level, mesh);
-  }
-  return meshes;
-}
-
 export interface Earth {
   group: THREE.Group;
   setRotation(angleRad: number): void;
   // オーロラのカーテンを出すかどうか。
   setAuroraVisible(visible: boolean): void;
-  // 見かけ直径[px]から地表メッシュのLOD段を選び、その段だけを visible にする。
+  // 見かけ直径[px]に応じた地表メッシュのLOD段を選ぶ。
   syncSurfaceLod(apparentDiameterPx: number): void;
   tick(simTime: number): void; // オーロラの明滅アニメーション
   dispose(): void; // group が保持する全 GPU 資源を解放する。
@@ -69,9 +55,13 @@ export function createEarth(): Earth {
   const spin = new THREE.Group();
 
   const { material: surfaceMaterial, earthMap, cloudsMap } = buildSurfaceMaterial();
-  const surfaceMeshes = buildSurfaceMeshes(surfaceMaterial);
-  let activeSurfaceLevel: SphereLodLevel | null = null;
-  for (const mesh of surfaceMeshes.values()) spin.add(mesh);
+  const surface = CelestialSurface.withMaterial(surfaceMaterial);
+  // 実半径への拡大は地表だけへ掛ける — オーロラは実寸 [m] の頂点を持つので、spin ごと
+  // 拡大すると地球半径倍に膨らむ。
+  const surfaceScale = new THREE.Group();
+  surfaceScale.scale.setScalar(R_EARTH);
+  surface.addTo(surfaceScale);
+  spin.add(surfaceScale);
 
   // オーロラは磁気極に固定なので自転と一緒に回す
   const auroras = [
@@ -92,23 +82,19 @@ export function createEarth(): Earth {
     setAuroraVisible(visible: boolean) {
       for (const a of auroras) a.mesh.visible = visible;
     },
-    // 見かけ直径[px]から地表LOD段を選び、その段のメッシュだけを visible にする。
+    // 見かけ直径[px]から地表LOD段を選ぶ。
     syncSurfaceLod(apparentDiameterPx: number) {
-      const level = sphereLodLevel(apparentDiameterPx);
-      if (level === activeSurfaceLevel) return;
-      activeSurfaceLevel = level;
-      for (const [meshLevel, mesh] of surfaceMeshes) mesh.visible = meshLevel === level;
+      surface.syncLod(apparentDiameterPx);
     },
     // オーロラの明滅・波打ちを simTime に応じて進める。
     tick(simTime: number) {
       const phase = simTime * 0.02;
       for (const a of auroras) a.sync(phase);
     },
-    // 地表LOD各段・地表マテリアルとその2枚のテクスチャ・オーロラ4層を解放する。
+    // 地表とそのマテリアル・2枚のテクスチャ・オーロラ4層を解放する。
     dispose() {
       group.removeFromParent();
-      for (const mesh of surfaceMeshes.values()) mesh.geometry.dispose();
-      surfaceMaterial.dispose();
+      surface.dispose();
       earthMap.dispose();
       cloudsMap.dispose();
       for (const a of auroras) a.dispose();

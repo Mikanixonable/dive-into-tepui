@@ -417,7 +417,7 @@ three の出力色空間の既定は `SRGBColorSpace` なので、**欠けてい
 |---|---|
 | -10 | 星空シェル(`stars.ts:42`、`depthTest:false`、`WORLD_BACKGROUND_LAYER`) |
 | -9 | 太陽ビルボード(`stars.ts:68`)、惑星輝点ビルボード(`point-view.ts:75`) |
-| 0 | 天球グリッド(`celestial-grid.ts:74,86`)、縮尺グリッド(`spatial-grid.ts:63`)、`Curve` 既定、`LINE_RENDER_ORDER.reference`、天体本体球、点群、艦船モデル(`instanced-pool.ts:22` 既定) |
+| 0 | 天球グリッド(`celestial-grid.ts:74,86`)、縮尺グリッド(`scale-grid.ts:74`)、`Curve` 既定、`LINE_RENDER_ORDER.reference`、天体本体球、点群、艦船モデル(`instanced-pool.ts:22` 既定) |
 | 1 | `LINE_RENDER_ORDER.shipOrbit`、リング(本体 `renderOrder + 1`、`ring-view.ts:43`) |
 | 2 | `LINE_RENDER_ORDER.target` |
 | 3 | オーロラ(`aurora.ts:54`)、`LINE_RENDER_ORDER.plan` |
@@ -442,7 +442,7 @@ three の出力色空間の既定は `SRGBColorSpace` なので、**欠けてい
 |---|---|
 | `stars.ts:40` | カメラ追従シェル(`EnvironmentScene.sync` が毎フレーム position をカメラ位置へ合わせる) |
 | `celestial-grid.ts:73,85` | 同上(天球グリッドもカメラ中心の殻) |
-| `spatial-grid.ts:62` | 同上(自機/カメラを通る縮尺グリッド) |
+| `scale-grid.ts:73` | 同上(自機/カメラを通る縮尺グリッド) |
 | `curve.ts:188` | 頂点バッファを書き換えるだけで外接球を更新しないため、既定の判定が古い外接球を使ってしまう |
 | `instanced-pool.ts:29` | インスタンスが原点周りの広い空間へ散らばる(弾・薬莢・デブリ片等の共有プール) |
 | `point-field-view.ts:61` | 同上(main-belt〜kuiper-belt が AU スケールへ散らばる点群) |
