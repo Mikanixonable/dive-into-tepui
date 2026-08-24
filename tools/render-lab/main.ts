@@ -1,34 +1,26 @@
-// 描画テスト環境の画面。ケースを選ぶと、ライトプリパスとフォワードの 2 経路を並べて描く。
+// 描画テスト環境の画面。ケースを選ぶと、その絵をゲーム本体と同じ描画経路で描く。
 import { CASE_NAMES, type CaseName } from './cases';
-import { LabView, type LabMeasurement, type LabViews, type Shot, shootCase } from './lab';
+import { LabView, type LabMeasurement } from './lab';
 
 declare global {
   interface Window {
     // 撮影の駆動(tools/render-lab-shot.mjs)が CDP から読む入口。
     renderLab?: {
       cases: readonly CaseName[];
-      shoot: (name: CaseName) => Promise<Shot>;
-      measure: (name: CaseName) => Promise<{ readonly prepass: LabMeasurement; readonly forward: LabMeasurement }>;
+      shoot: (name: CaseName) => Promise<string>;
+      measure: (name: CaseName) => Promise<LabMeasurement>;
     };
   }
 }
 
-function canvasById(id: string): HTMLCanvasElement {
-  return document.getElementById(id) as HTMLCanvasElement;
-}
-
 async function init(): Promise<void> {
-  const views: LabViews = {
-    prepass: await LabView.create(canvasById('prepass'), 'prepass'),
-    forward: await LabView.create(canvasById('forward'), 'forward'),
-  };
+  const view = await LabView.create(document.getElementById('view') as HTMLCanvasElement);
 
   const row = document.getElementById('cases')!;
   const buttons = new Map<CaseName, HTMLButtonElement>();
   const select = (name: CaseName) => {
     for (const [key, button] of buttons) button.classList.toggle('active', key === name);
-    views.prepass.show(name);
-    views.forward.show(name);
+    view.show(name);
   };
   for (const name of CASE_NAMES) {
     const button = document.createElement('button');
@@ -41,11 +33,8 @@ async function init(): Promise<void> {
 
   window.renderLab = {
     cases: CASE_NAMES,
-    shoot: (name) => shootCase(views, name),
-    measure: async (name) => ({
-      prepass: await views.prepass.measure(name),
-      forward: await views.forward.measure(name),
-    }),
+    shoot: (name) => view.shoot(name),
+    measure: (name) => view.measure(name),
   };
 }
 

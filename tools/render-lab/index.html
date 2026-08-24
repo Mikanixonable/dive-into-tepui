@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Render Lab</title>
 <style>
-  :root { --bg: #0b0d10; --panel: #14181d; --edge: #2a3038; --text: #d7dde5; --dim: #7d8894; }
+  :root { --bg: #0b0d10; --panel: #14181d; --edge: #2a3038; --text: #d7dde5; }
   * { box-sizing: border-box; }
   body {
     margin: 0; padding: 16px; background: var(--bg); color: var(--text);
@@ -20,7 +20,6 @@
   #cases button.active { background: #ff6a00; border-color: #ff6a00; color: #12151a; font-weight: 600; }
   #views { display: flex; gap: 12px; flex-wrap: wrap; }
   #views figure { margin: 0; background: var(--panel); border: 1px solid var(--edge); padding: 8px; }
-  #views figcaption { color: var(--dim); margin-bottom: 6px; }
   #views canvas { display: block; width: 960px; height: 540px; background: #000; }
   #error { color: #ff8a5c; white-space: pre-wrap; }
 </style>
@@ -29,8 +28,7 @@
   <h1>Render Lab</h1>
   <div id="cases"></div>
   <div id="views">
-    <figure><figcaption>light prepass</figcaption><canvas id="prepass"></canvas></figure>
-    <figure><figcaption>forward</figcaption><canvas id="forward"></canvas></figure>
+    <figure><canvas id="view"></canvas></figure>
   </div>
   <p id="error"></p>
 </body>
