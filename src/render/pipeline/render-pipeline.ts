@@ -184,12 +184,11 @@ export class RenderPipeline implements DebugTargetHost {
     return log(dist.div(this.depthDebugNear)).div(log(this.depthDebugFar.div(this.depthDebugNear)));
   }
 
-  // G バッファパス → ライティングパス → マテリアルパス → シーンを同じ HDR ターゲットへ重ね描く
-  // world パス → debugTarget に応じたマテリアルでキャンバスへ合成する composite パス →
-  // 表示値として描くものをその上へ重ねる 3D UI パスの順に実行する。Game.render() から毎フレーム
-  // 1回呼ぶ。デバッグ表示を選んでいてもいずれのパスも省略しない — 見せるのは通常のフレームが
-  // 実際に生成した中身であるべきため。
-  render(scene: THREE.Scene, camera: THREE.Camera, graphics: GraphicsSettingsData): void {
+  // 1 フレームぶんの描画を、影 → G バッファ → 遮蔽 → ライティング → マテリアル → 大気 →
+  // world → 合成 → 3D UI の順に発行する。meshShadow が偽ならメッシュの影だけを描かない。
+  // デバッグ表示を選んでいてもいずれのパスも省略しない — 見せるのは通常のフレームが実際に
+  // 生成した中身であるべきため。
+  render(scene: THREE.Scene, camera: THREE.Camera, meshShadow: boolean): void {
     this.renderer.getDrawingBufferSize(this.drawingBufferSize);
     const width = this.drawingBufferSize.x;
     const height = this.drawingBufferSize.y;
@@ -197,7 +196,7 @@ export class RenderPipeline implements DebugTargetHost {
 
     // 太陽光の影パス。G バッファを必要としないので、その前に置く。設定で切られているフレームは
     // スロットが空のまま返り、遮蔽関数側も 1 を返す。
-    this.sunShadowMaps.render(scene, camera, height, this._sunLight, graphics.meshShadow);
+    this.sunShadowMaps.render(scene, camera, height, this._sunLight, meshShadow);
 
     // G バッファパス。camera.layers の一時的な絞り込みと GPU 計測の申告は自身の中で行う。
     this.gbuffer.render(scene, camera, width, height);

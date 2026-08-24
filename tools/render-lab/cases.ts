@@ -11,8 +11,7 @@ import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
 import type { Occluder, RingBand, SunOcclusion } from '../../src/render/pipeline/sun-occlusion';
 import type { LineStyle } from '../../src/render/line-style';
 import { RingView } from '../../src/game/celestial/ring-view';
-import { sunIrradianceAtDistance } from '../../src/render/pipeline/sun-light';
-import { AU } from '../../src/physics/planet-orbit';
+import type { SunLight } from '../../src/render/pipeline/sun-light';
 import { bodyDef, SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { textureOf } from '../../src/render/celestial-textures';
 import { v3 } from '../../src/physics/vec3';
@@ -283,22 +282,18 @@ function albedo(): LabCase {
 //
 // 本体を遮蔽器に、環の帯を遮蔽する環に登録するので、**環が本体の影へ入る境界と、本体表面に
 // 落ちる環の影の境界の両方**が同じ 1 つの遮蔽関数から出る。どちらもぼけていることを見る。
-function saturn(sunOcclusion: SunOcclusion): LabCase {
+function saturn(sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
   const camera = labCamera(1e13);
   const radius = 6.0268e7;
   const distance = 1.2e9;
   const center = new THREE.Vector3(0, -0.15 * distance, -distance);
   const axis = v3(0.3, 0.9, 0.32);
-  const view = new RingView(SATURN_RINGS, radius, 1, sunOcclusion);
-  const sunPosition = SUN_DIR.clone().multiplyScalar(AU);
-  const sunDistance = center.distanceTo(sunPosition);
+  const view = new RingView(SATURN_RINGS, radius, 1, sunOcclusion, sunLight);
   view.sync(
     center,
     axis,
     v3(center.x, center.y, center.z),
     () => distance / VIEW_HEIGHT,
-    v3(SUN_DIR.x, SUN_DIR.y, SUN_DIR.z),
-    sunIrradianceAtDistance(sunDistance),
   );
   return {
     objects: [sphere(SATURN_ALBEDO, radius, center), view.group],
@@ -319,7 +314,7 @@ function saturn(sunOcclusion: SunOcclusion): LabCase {
 // - **本体表面に落ちる環の影**: カッシーニの間隙が明るい帯として出る。恒星が円盤である以上、
 //   その帯の縁は硬くならない(半影 4px 対 帯 19px)。
 // - **環が本体の影へ入る境界**: 環の帯を横切る影の縁も、天体の球の半影ぶんだけぼける。
-function saturnShadow(sunOcclusion: SunOcclusion): LabCase {
+function saturnShadow(sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
   const distance = 1.9e8;
   const radius = 6.0268e7;
   // カメラは環面から 20° 傾けて、**恒星とは反対側**へ置く — 同じ側だと影が落ちる面は
@@ -332,12 +327,8 @@ function saturnShadow(sunOcclusion: SunOcclusion): LabCase {
   camera.lookAt(center);
   camera.updateMatrixWorld(true);
   const axis = v3(0, 1, 0);
-  const view = new RingView(SATURN_RINGS, radius, 1, sunOcclusion);
-  const sunPosition = SUN_DIR.clone().multiplyScalar(AU);
-  view.sync(
-    center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT,
-    v3(SUN_DIR.x, SUN_DIR.y, SUN_DIR.z), sunIrradianceAtDistance(center.distanceTo(sunPosition)),
-  );
+  const view = new RingView(SATURN_RINGS, radius, 1, sunOcclusion, sunLight);
+  view.sync(center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT);
   return {
     objects: [sphere(SATURN_ALBEDO, radius, center), view.group],
     camera,
@@ -377,7 +368,7 @@ export const CASES = {
   'saturn-shadow': saturnShadow,
   'albedo': albedo,
   ...PROTEIN_CASES,
-} as const satisfies Record<string, (sunOcclusion: SunOcclusion) => LabCase>;
+} as const satisfies Record<string, (sunOcclusion: SunOcclusion, sunLight: SunLight) => LabCase>;
 
 export type CaseName = keyof typeof CASES;
 export const CASE_NAMES = Object.keys(CASES) as readonly CaseName[];

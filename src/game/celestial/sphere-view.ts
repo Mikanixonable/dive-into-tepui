@@ -11,6 +11,7 @@ import { showsPhysicalSphere } from '../../render/screen-lod';
 import { CelestialSurface } from '../../render/celestial-surface';
 import { CelestialView } from './celestial-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
+import type { SunLight } from '../../render/pipeline/sun-light';
 import type { SunOcclusion } from '../../render/pipeline/sun-occlusion';
 import { RingView } from './ring-view';
 
@@ -25,12 +26,13 @@ export class SphereView extends CelestialView {
   private ring?: RingView;
 
   // radius は実半径 [m]、shape は歪みの形状データ(省略時は radius による真球)。
-  // rings を渡すと環を持つ天体になる(ring-view.ts 参照)。sunOcclusion は環が直射散乱の
-  // 遮蔽を引くために要る — 環を持たない天体でも、持ちうる形として構築時に受ける。
+  // rings を渡すと環を持つ天体になる。sunOcclusion と sunLight は環が直射散乱の遮蔽と
+  // 明るさを引くために要る — 環を持たない天体でも、持ちうる形として構築時に受ける。
   constructor(
     id: OrbitingId,
     private readonly surface: CelestialSurface,
     private readonly sunOcclusion: SunOcclusion,
+    private readonly sunLight: SunLight,
     private readonly radius: number,
     shape?: ShapeDef,
     private readonly rings?: RingSystemDef,
@@ -49,7 +51,9 @@ export class SphereView extends CelestialView {
     this.surface.addTo(this.group);
     scene.add(this.group);
     if (this.rings !== undefined) {
-      this.ring = new RingView(this.rings, this.radius, this.group.renderOrder + 1, this.sunOcclusion);
+      this.ring = new RingView(
+        this.rings, this.radius, this.group.renderOrder + 1, this.sunOcclusion, this.sunLight,
+      );
       scene.add(this.ring.group);
     }
   }
@@ -73,7 +77,6 @@ export class SphereView extends CelestialView {
       return;
     }
     this.surface.syncLod(apparentDiameterPx);
-    const sunDirection = ephemeris.sunDirFrom(pos, displayTime);
     this.group.position.copy(fo.RtoThreeV3(pos));
     // 歪んだ天体は3軸それぞれの半軸を使う。環へ渡すのは一様スケール(赤道半径)の方で、
     // 扁平は乗せない。
@@ -90,8 +93,6 @@ export class SphereView extends CelestialView {
         orientation === null ? null : orientation.axis,
         pos,
         cameraSystem.activeCameraScale,
-        sunDirection,
-        this.sunIrradianceAt(ephemeris, pos, displayTime),
       );
     } else if (this.ring !== undefined) {
       this.ring.group.visible = false;

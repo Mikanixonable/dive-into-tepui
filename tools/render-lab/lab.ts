@@ -94,7 +94,7 @@ export class LabView {
       this.scene.remove(...this.current.objects);
       disposeCaseObjects(this.current);
     }
-    const built = CASES[name](this.pipeline.sunOcclusion);
+    const built = CASES[name](this.pipeline.sunOcclusion, this.pipeline.sunLight);
     this.scene.add(...built.objects);
     this.current = built;
     this.render();
@@ -110,7 +110,7 @@ export class LabView {
     const atmosphere = this.current.atmosphere;
     this.pipeline.atmosphere.setBody(atmosphere?.center ?? ORIGIN, atmosphere?.surfaceRadius ?? 0);
     const startedAt = performance.now();
-    this.pipeline.render(this.scene, this.current.camera, QUALITY_PRESETS.high);
+    this.pipeline.render(this.scene, this.current.camera, QUALITY_PRESETS.high.meshShadow);
     this.lastRenderCpuMs = performance.now() - startedAt;
     this.gpu.resolve();
   }

@@ -101,7 +101,7 @@ export class AtmospherePass {
     // 大気も遮蔽を受ける。**シェル上の点は G バッファの画素位置とは別の点**なので、遮蔽パスが
     // 書いた 1 枚は引けない — 同じ遮蔽関数をこの点で評価し直す。日食のとき月の影が大気にも落ちる。
     const sunFactor: FloatNode = clamp(sunDot, 0, 1)
-      .mul(sunOcclusion.transmittance(shellPoint, { spheres: true, rings: false, meshNormal: null }));
+      .mul(sunOcclusion.transmittance(shellPoint, { rings: false, meshNormal: null }));
     const color: Vec3Node = mix(SUNSET_COLOR, ATMO_COLOR, smoothstep(0, 0.2, sunDot));
 
     // シェルに当たらない・視線の起点より後ろ・不透明面の方が手前・大気を持つ天体が無いフレーム。

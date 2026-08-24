@@ -1,11 +1,9 @@
 // 恒星の直射光がどれだけ届くかを答える唯一の場。transmittance() が描画座標の点に対する透過率の
-// TSL グラフを返し、遮蔽パス(occlusion.ts)はそれを G バッファの深度から復元した位置で評価して
-// 1 枚へ書くだけの消費者になる。環や大気のような前方描画の受け手は、自分のフラグメント位置で
-// 同じ関数を直に評価する。
+// TSL グラフを返す。遮蔽するのは天体の球・惑星の環の帯・シャドウアトラスへ描かれたメッシュで、
+// 複数の遮蔽は透過率の積で合成する。遮蔽器と環の帯は毎フレーム呼び出し側が渡す。
 //
-// 遮蔽器は毎フレーム呼び出し側が選んで渡す。環が 1 体ぶんなのは、環付き天体が画面に複数写る
-// 状況が実質起きないため。**受け手が乗っている天体自身も遮蔽器に数えるので、昼夜境界では
-// N·L と幾何遮蔽が二重に効く**(差は恒星の視半径ぶんの帯で、地球なら直径の 0.2 %)。
+// TODO: 受け手が乗っている天体自身も遮蔽器に数えるため、昼夜境界では N·L と幾何遮蔽が二重に
+// 効く(差は恒星の視半径ぶんの帯で、地球なら直径の 0.2 %)。仕様に根拠が無い。
 import * as THREE from 'three/webgpu';
 import {
   Fn, If, PI, abs, acos, and, asin, clamp, dot, exp, float, greaterThan, length,
@@ -37,7 +35,6 @@ export type Occluder = {
 // グラフへ畳み込む遮蔽源の選択。TSL のグラフは静的に展開されるので実行時の分岐にはできず、
 // 受け手ごとに要る源が違う(環は自分の帯を外す必要がある)ため、構築時に呼び出し側が決める。
 export type OcclusionSources = {
-  readonly spheres: boolean;
   readonly rings: boolean;
   // 艦艇・基地・デブリなどのメッシュ。**真偽ではなく受け手の法線で選ぶ** — バイアスを法線方向の
   // オフセットで入れるので法線が要り、型の側で「法線を持たずにこの源を選ぶ」を塞ぐ。
@@ -207,12 +204,10 @@ export class SunOcclusion {
     const sunAngRadius = asin(clamp(this.sunLight.radius.div(sunDist), 1e-9, 1));
 
     let transmittance: FloatNode = float(1);
-    if (sources.spheres) {
-      for (const occluder of this.occluders) {
-        transmittance = transmittance.mul(
-          sphereTransmittance(worldPos, sunDir, sunDist, sunAngRadius, occluder.center, occluder.radius),
-        );
-      }
+    for (const occluder of this.occluders) {
+      transmittance = transmittance.mul(
+        sphereTransmittance(worldPos, sunDir, sunDist, sunAngRadius, occluder.center, occluder.radius),
+      );
     }
     if (sources.rings) {
       for (const band of this.ringBands) {
