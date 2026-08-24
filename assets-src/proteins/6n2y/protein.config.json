@@ -1,0 +1,25 @@
+{
+  "assetId": "pdb-6n2y-atp-synthase",
+  "pdbId": "6N2Y",
+  "source": "src/assets/models/atpSynthase6n2yBackbone.json",
+  "sourceStructureUrl": "https://files.rcsb.org/download/6N2Y.cif",
+  "structureAsset": "src/assets/models/atpSynthase6n2yStructure.json",
+  "motionAsset": "src/assets/models/atpSynthase6n2yMotion.json",
+  "glbOutput": "src/assets/models/atpSynthase6n2y.glb",
+  "coordinateScale": 0.025,
+  "surfaceGridSpacingAngstrom": 1.5,
+  "amplitudeCalibration": "uncalibrated-display",
+  "representation": "cartoon",
+  "molecularNodes": {
+    "requiredVersion": "4.4.3",
+    "minimumBlenderVersion": "4.4.0",
+    "releaseUrl": "https://github.com/BradyAJohnston/MolecularNodes/releases/tag/v4.4.3"
+  },
+  "externalTool": {
+    "command": "python3 tools/protein-builder/build-protein.py --config assets-src/proteins/6n2y/protein.config.json --require-blender",
+    "optional": true,
+    "fallback": "existing-backbone"
+  },
+  "definitionAsset": "assets-src/proteins/6n2y/protein.definition.json",
+  "semanticAsset": "src/assets/models/atpSynthase6n2yProtein.json"
+}
