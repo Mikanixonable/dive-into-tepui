@@ -65,6 +65,8 @@ export type LabCase = {
   readonly camera: THREE.PerspectiveCamera;
   // 恒星の向き(原点から見た単位ベクトル)。省略すると SUN_DIR。
   readonly sunDirection?: THREE.Vector3;
+  // カメラを周回させるときに中心へ据える点(描画座標)。省略するとケースの物体を包む箱の中心。
+  readonly viewTarget?: THREE.Vector3;
   // 大気パスへ渡す天体。中心は描画座標。
   readonly atmosphere?: { readonly center: THREE.Vector3; readonly surfaceRadius: number };
   // 遮蔽パスへ渡す球。中心は描画座標。
@@ -168,10 +170,12 @@ function debrisPool(center: THREE.Vector3, count: number): THREE.Object3D {
 
 // 自己影: 艦 1 隻を斜光で照らし、突起(アンテナ・放熱板)の影が船体へ落ちるのを見る。
 function shipSelfShadow(): LabCase {
+  const shipPosition = new THREE.Vector3(0, -1, -10);
   return {
-    objects: [shipAt(new THREE.Vector3(0, -1, -10), OBLIQUE_SHIP_ROTATION)],
+    objects: [shipAt(shipPosition, OBLIQUE_SHIP_ROTATION)],
     camera: labCamera(6e7),
     sunDirection: OBLIQUE_SUN_DIR,
+    viewTarget: shipPosition,
   };
 }
 
@@ -187,6 +191,7 @@ function shipCluster(): LabCase {
     objects: positions.map((position) => shipAt(position, OBLIQUE_SHIP_ROTATION)),
     camera: labCamera(6e7),
     sunDirection: OBLIQUE_SUN_DIR,
+    viewTarget: positions[0]!,
   };
 }
 
@@ -197,6 +202,7 @@ function shipInDebris(): LabCase {
     objects: [shipAt(shipPosition, OBLIQUE_SHIP_ROTATION), debrisPool(shipPosition, 512)],
     camera: labCamera(6e7),
     sunDirection: OBLIQUE_SUN_DIR,
+    viewTarget: shipPosition,
   };
 }
 
@@ -210,13 +216,15 @@ function leo(): LabCase {
   const u = new THREE.Vector3(0, 1, 0);
   const v = new THREE.Vector3(0, 0, -1);
   const style: LineStyle = { color: 0x6fd3ff, opacity: 0.9, renderOrder: LINE_RENDER_ORDER.shipOrbit };
+  const shipPosition = new THREE.Vector3(0, -1, -10);
   return {
     objects: [
       sphere(BLUE_SPHERE_ALBEDO, 6.371e6, center),
       circle(center, orbitRadius, u, v, style, camera),
-      shipAt(new THREE.Vector3(0, -1, -10)),
+      shipAt(shipPosition),
     ],
     camera,
+    viewTarget: shipPosition,
   };
 }
 
