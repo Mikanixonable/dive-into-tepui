@@ -106,12 +106,13 @@ export class Docking {
     const make = (
       kind: DockingCandidateKind,
       position: ReturnType<typeof v3>, normal: ReturnType<typeof v3>,
-      maxDist: number, slotIndex: number | null, approach: number,
+      maxDist: number, approachMinAlignment: number,
+      slotIndex: number | null, approach: number,
       alignment: number, capacityOk: boolean,
     ): void => {
       const distance = len(sub(portPos, position));
       const distanceOk = distance <= maxDist;
-      const approachOk = approach >= C.PORT_DOCK_MIN_ALIGNMENT;
+      const approachOk = approach >= approachMinAlignment;
       const alignmentOk = alignment >= C.PORT_DOCK_MIN_ALIGNMENT;
       candidates.push({
         target, kind, position, normal, distance, axisAlignment: alignment,
@@ -130,13 +131,13 @@ export class Docking {
         const normal = norm(target.getSlotWorldNormal(i));
         const toShip = norm(sub(portPos, position));
         // 基地接続面の正面側 (位置) と、船軸の進入方向 (姿勢) は別条件。
-        make('slot', position, normal, C.SLOT_DOCK_MAX_DIST, i,
+        make('slot', position, normal, C.SLOT_DOCK_MAX_DIST, C.SLOT_DOCK_MIN_ALIGNMENT, i,
           dot(toShip, normal), -dot(portNormal, normal), capacityOk);
       }
       const position = target.getHatchWorldPos();
       const normal = norm(target.getHatchWorldNormal());
       const toShip = norm(sub(portPos, position));
-      make('hatch', position, normal, C.HATCH_DOCK_MAX_DIST, null,
+      make('hatch', position, normal, C.HATCH_DOCK_MAX_DIST, C.HATCH_DOCK_MIN_ALIGNMENT, null,
         dot(toShip, normal), -dot(portNormal, normal), capacityOk);
       return candidates;
     }
@@ -149,7 +150,8 @@ export class Docking {
       const facing = -dot(portNormal, targetPortNormal);
       // 船対船では各ポートの法線が相手方向を向くことも必要にする。
       const approach = Math.min(dot(portNormal, toTarget), dot(targetPortNormal, toShip));
-      make('ship', targetPortPos, targetPortNormal, C.PORT_DOCK_MAX_DIST, null, approach, facing, true);
+      make('ship', targetPortPos, targetPortNormal, C.PORT_DOCK_MAX_DIST, C.PORT_DOCK_MIN_ALIGNMENT,
+        null, approach, facing, true);
     }
     return candidates;
   }
@@ -241,8 +243,9 @@ export class Docking {
     const candidate = this.bestDockingCandidate(ship, base);
     if (!candidate) return;
     // スロットへ直接入る候補はそのスロットを保持し、ハッチ候補だけ格納時に空きを選ぶ。
-    const selectedSlot = candidate.slotIndex ?? slotIndex ?? base.getAvailableSlotIndex();
+    const selectedSlot = slotIndex ?? candidate.slotIndex ?? base.getAvailableSlotIndex();
     if (selectedSlot === null || selectedSlot === undefined) return;
+    if (base.baseState.dockedVessels.some((entry) => entry.slotIndex === selectedSlot)) return;
     this.undock(ship);
     base.baseState.dockedVessels.push({
       id: ship.id,
