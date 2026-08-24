@@ -138,7 +138,7 @@ export interface EnemySaveData extends EntitySaveData {
   burstDelay?: number;
   // プロパティウィンドウの軌道線表示トグル。旧セーブには無いため任意(既定 false)。
   showTrajectoryLine?: boolean;
-  // 5I4Rだけが持つ部位HP・フェーズ・修飾。旧セーブには存在しない。
+  // タンパク質敵が持つ部位HP・フェーズ・修飾。旧セーブには存在しない。
   protein?: ProteinSaveData;
 }
 

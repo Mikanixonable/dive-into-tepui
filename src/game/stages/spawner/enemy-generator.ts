@@ -39,11 +39,6 @@ export function generateProteinEnemy(name: string, state: KinematicState, assetI
   return generateFreeEnemy(name, state, 0xffffff, 0xffffff, { kind: 'protein', assetId, display }, hud, worldSfx, fx, scene);
 }
 
-// 既存のステージ呼び出し向け5I4Rラッパー。
-export function generatePdb5i4rEnemy(name: string, state: KinematicState, display: ProteinDisplaySettings, hud: Hud, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
-  return generateProteinEnemy(name, state, 'pdb-5i4r', display, hud, worldSfx, fx, scene);
-}
-
 function generateFreeEnemy(name: string, state: KinematicState, accent: string | number, orbitLineColor: string | number, enemyKind: EnemyKind, hud: Hud, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
   return new Enemy(
     {

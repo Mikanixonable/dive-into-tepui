@@ -3,7 +3,7 @@ export type ProteinRepresentation = 'molecular' | 'ribbon' | 'silhouette';
 export type ProteinMolecularColorMode = 'element';
 export type ProteinRibbonColorMode = 'chain' | 'b-factor' | 'entity' | 'rainbow' | 'secondary-structure' | 'component-role';
 export type ProteinSilhouetteColorMode = 'surface-charge' | 'hydrophobicity';
-export type Pdb5i4rColorMode = ProteinMolecularColorMode | ProteinRibbonColorMode | ProteinSilhouetteColorMode;
+export type ProteinColorMode = ProteinMolecularColorMode | ProteinRibbonColorMode | ProteinSilhouetteColorMode;
 
 export type ProteinDisplaySettings =
   | { readonly representation: 'molecular'; readonly colorMode: ProteinMolecularColorMode }
@@ -21,7 +21,7 @@ export const PROTEIN_DISPLAY_LABELS: Readonly<Record<ProteinRepresentation, stri
   silhouette: 'シルエット',
 };
 
-export const PROTEIN_COLOR_LABELS: Readonly<Record<Pdb5i4rColorMode, string>> = {
+export const PROTEIN_COLOR_LABELS: Readonly<Record<ProteinColorMode, string>> = {
   element: '元素',
   chain: 'Chain',
   'b-factor': 'B-Factor',
@@ -33,7 +33,7 @@ export const PROTEIN_COLOR_LABELS: Readonly<Record<Pdb5i4rColorMode, string>> = 
   hydrophobicity: '疎水性',
 };
 
-export function proteinColorModesFor(representation: ProteinRepresentation): readonly Pdb5i4rColorMode[] {
+export function proteinColorModesFor(representation: ProteinRepresentation): readonly ProteinColorMode[] {
   if (representation === 'molecular') return ['element'];
   if (representation === 'silhouette') return ['surface-charge', 'hydrophobicity'];
   return ['chain', 'b-factor', 'entity', 'rainbow', 'secondary-structure', 'component-role'];
@@ -45,7 +45,7 @@ export function defaultProteinDisplayFor(representation: ProteinRepresentation):
   return { representation, colorMode: 'chain' };
 }
 
-export function proteinDisplayFromLegacyColorMode(colorMode: Pdb5i4rColorMode | undefined): ProteinDisplaySettings {
+export function proteinDisplayFromLegacyColorMode(colorMode: ProteinColorMode | undefined): ProteinDisplaySettings {
   if (colorMode === 'element') return { representation: 'molecular', colorMode };
   if (colorMode === 'surface-charge' || colorMode === 'hydrophobicity') return { representation: 'silhouette', colorMode };
   return {
@@ -57,7 +57,7 @@ export function proteinDisplayFromLegacyColorMode(colorMode: Pdb5i4rColorMode | 
 }
 
 export function proteinDisplayWithColor(
-  representation: ProteinRepresentation, colorMode: Pdb5i4rColorMode,
+  representation: ProteinRepresentation, colorMode: ProteinColorMode,
 ): ProteinDisplaySettings | null {
   if (representation === 'molecular' && colorMode === 'element') return { representation, colorMode };
   if (representation === 'ribbon' && proteinColorModesFor('ribbon').includes(colorMode)) {
