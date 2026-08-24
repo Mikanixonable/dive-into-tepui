@@ -1,18 +1,19 @@
 // THREE で折れ線(曲線)を描く機構だけを担う。頂点をどこに置くかは t∈[0,1] を評価する
 // sample 関数から画面上のサジッタ・折れ角を見て自前で決める(適応分割) — 呼び出し側は
-// 「t を渡すと曲線上の点が返る」関数だけを渡せばよく、それが楕円かエルミート補間かは
-// 知らない。座標変換前の値も座標型(Vec3/KinematicState/…)も知らず、受け取るのは
-// THREE.Vector3/THREE.Camera と数値だけ。
+// 「t を渡すと曲線上の点が返る」関数(と、細部の位置を知っているならその t の列)だけを
+// 渡せばよく、それが楕円かエルミート補間かは知らない。座標変換前の値も座標型
+// (Vec3/KinematicState/…)も知らず、受け取るのは THREE.Vector3/THREE.Camera と数値だけ。
 import * as THREE from 'three/webgpu';
 import { MaxHeap } from '../physics/max-heap';
 import { metersPerPixelFromTanHalfFov, MIN_DEPTH } from '../physics/projection';
 import type { LineStyle } from './line-style';
+import { markOverlay } from './pipeline/lit-layer';
 
 export type CurveOptions = {
   readonly style: LineStyle;
   // 生成時に確保する頂点数の上限。バッファは生成時に1回だけ確保し、以後は差し替えない
   // (WebGPURenderer は描画対象ごとに頂点バッファの束縛をキャッシュしており、ジオメトリや
-  // 属性ごと差し替えても新しい頂点は反映されない)。MIN_INITIAL_SEGMENTS の2倍以上を渡すこと。
+  // 属性ごと差し替えても新しい頂点は反映されない)。INITIAL_SEGMENTS の2倍以上を渡すこと。
   readonly maxVertices: number;
 };
 
@@ -27,10 +28,12 @@ export type SetCurveOptions = {
   readonly revision: unknown;
   // 画面上のサジッタ目標を実距離に換算するための、現在の描画カメラ。
   readonly camera: THREE.Camera;
-  // t∈[0,1] の間に曲線が何周するか。粗い見積もりでよく、1 未満でも構わない。逸脱は区間の
-  // 中点1点で測るので、1区間が何周も含むと中点が偶然弦の近くに落ちて過小評価されうる —
-  // これを避けるだけの初期分割数をここから決める。
-  readonly loops: number;
+  // 適応分割を始める前に必ず頂点を置く t の列(昇順、両端の 0 と 1 を含む)。曲線の細部が
+  // どこにあるかを知っているのは呼び出し側だけなので、知っているならここで渡す — 適応分割は
+  // 弦の中点しか見ないため、1区間に何周ぶんも入るような曲線では中点がたまたま曲線上に乗り、
+  // 分割済みと誤判定して区間まるごとが直線に化ける。2点未満なら t の等分割へフォールバックする。
+  // 焼き直すかどうかは revision だけで決まるので、この列を変えたなら revision も変えること。
+  readonly initialTs?: readonly number[];
 };
 
 // 弦に対する曲線の膨らみ(サジッタ)の目標値 [px]。画面上のサジッタをこの値以下に抑える
@@ -42,21 +45,21 @@ const MAX_EDGE_SAG_PX = 0.5;
 // (画面上のサジッタが縮まないぶん実距離の許容量が際限なく伸びる)ため、その歯止めとして残す。
 const MAX_EDGE_TURN = (5 * Math.PI) / 180;
 
-// 初期分割数の下限。閉曲線を1区間のまま評価すると t=0/1 が同一点で弦が縮退するため、最低限
-// これだけ分けてから適応分割に入る。開曲線でも同じ数から始めて構わない。
-const MIN_INITIAL_SEGMENTS = 8;
+// initialTs を省いたときの初期分割数。閉曲線を1区間のまま評価すると t=0/1 が同一点で弦が
+// 縮退するため、最低限これだけ分けてから適応分割に入る。
+const INITIAL_SEGMENTS = 8;
 
-// 1周あたりに割り当てる初期分割数。過小評価が起きるのは1区間がちょうど整数周ぶんあるときなので、
-// 1周を割り切って区間にすれば起こりえない。周回数の見積もりが粗くても成り立つよう余裕を取るが、
-// 増やすほど初期分割が予算を食って適応分割の取り分が減るため、両者が釣り合う値を採る。
-const INITIAL_SEGMENTS_PER_LOOP = 4;
+// initialTs を省略したときの初期頂点列(t を INITIAL_SEGMENTS 等分したもの)。
+const DEFAULT_INITIAL_TS: readonly number[] = Array.from(
+  { length: INITIAL_SEGMENTS + 1 }, (_, i) => i / INITIAL_SEGMENTS,
+);
 
-// 頂点予算のうち初期分割へ回してよい割合。周回数が多いと初期分割だけで予算を使い切りうるので、
+// 頂点予算のうち初期頂点列へ回してよい割合。initialTs が長いと初期列だけで予算を使い切りうるので、
 // 逸脱の大きいところへ回す分をここで残す。
 const INITIAL_SEGMENT_BUDGET_RATIO = 0.5;
 
 // 焼き直しの要否を決める代表スケールを測る点数。曲線上でカメラに最も寄っている点を拾うのが
-// 目的なので初期分割数とは無関係でよく、毎フレーム走るぶんここは固定にしておく。
+// 目的なので初期頂点列の長さとは無関係でよく、毎フレーム走るぶんここは固定にしておく。
 const SCALE_PROBE_POINTS = 8;
 
 // 1区間に許す t 幅の下限。同じ点を返し続ける sample を渡されると逸脱がいくら分割しても
@@ -131,7 +134,6 @@ export class Curve {
   private hasBaked = false;
   private lastRevision: unknown = undefined;
   private bakedScale: number | null = null;
-  private bakedInitialSegments = 0;
   private readonly bakedCamFwd = new THREE.Vector3();
 
   // 頂点バッファ(f32)へ書く直前に bakedLocal の全頂点から差し引く基準点。sample が返す
@@ -197,6 +199,8 @@ export class Curve {
       : new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
 
     this.line = new THREE.LineSegments(this.geom, this.mat);
+    // 折れ線は表示値であって物理的な明るさを持たないので、3D UI パスへ置く。
+    markOverlay(this.line);
     this.line.renderOrder = renderOrder;
     this.line.visible = false;
     // 頂点はバッファへ書き込んで needsUpdate を立てるだけで外接球を更新しないので、
@@ -248,12 +252,13 @@ export class Curve {
 
   // 焼き直し判定と pivot の追従判定に使う代表スケール(m/px)。sample(0) 1点だけを見ると、
   // その点が視点面をまたぐ曲線で値が乱高下し、SCALE_REBAKE_RATIO を毎フレーム跨いでしまう。
-  // 分割の粗さを決めるのは曲線上で最もカメラに寄っている点なので、等間隔に取った
-  // SCALE_PROBE_POINTS+1 点の中の最小値を代表値とする。cacheCameraFrame を先に呼んでおくこと。
-  private representativeScale(sample: CurveSampler): number {
+  // 分割の粗さを決めるのは曲線上で最もカメラに寄っている点なので、初期頂点列 ts から等間隔に
+  // 抜いた SCALE_PROBE_POINTS+1 点の中の最小値を代表値とする。cacheCameraFrame を先に呼んでおくこと。
+  private representativeScale(sample: CurveSampler, ts: readonly number[]): number {
     let minScale = Infinity;
+    const last = ts.length - 1;
     for (let i = 0; i <= SCALE_PROBE_POINTS; i++) {
-      sample(i / SCALE_PROBE_POINTS, this.scratchA);
+      sample(ts[Math.round((i * last) / SCALE_PROBE_POINTS)]!, this.scratchA);
       const s = this.scaleAtLocal(this.scratchA.x, this.scratchA.y, this.scratchA.z);
       if (s < minScale) minScale = s;
     }
@@ -314,27 +319,29 @@ export class Curve {
     return Math.max(sagittaPx / MAX_EDGE_SAG_PX, turn / MAX_EDGE_TURN);
   }
 
-  // 周回数から、1区間が1周の一部しか含まないだけの初期分割数を決める。頂点予算のうち
-  // 初期分割へ回してよい分で頭打ちにするので、周回数がいくら多くても適応分割の取り分は残る。
-  private initialSegmentsFor(loops: number): number {
-    const wanted = Number.isFinite(loops) ? Math.ceil(loops * INITIAL_SEGMENTS_PER_LOOP) : 0;
-    const cap = Math.floor(this.maxVertices * INITIAL_SEGMENT_BUDGET_RATIO);
-    return Math.max(MIN_INITIAL_SEGMENTS, Math.min(wanted, cap));
+  // 初期頂点列を、予算のうち初期分割へ回してよい分に収まるよう間引いて使う。先頭から順に
+  // 積んで打ち切ると曲線の後半がまるごと描かれなくなるので、間引くのは一様にする。
+  private seedStride(ts: readonly number[]): number {
+    const maxSeed = Math.max(2, Math.floor(this.maxVertices * INITIAL_SEGMENT_BUDGET_RATIO));
+    return Math.max(1, Math.ceil((ts.length - 1) / (maxSeed - 1)));
   }
 
-  // 等分から始めて、逸脱が最大の区間から順に二分していく。予算が尽きて打ち切っても、残った
+  // 初期頂点列から始めて、逸脱が最大の区間から順に二分していく。予算が尽きて打ち切っても、残った
   // 区間の逸脱はすべて最後に分割した区間以下 — 一箇所だけが粗いまま取り残されることはなく、
   // 曲線全体が一様に粗くなる方向へ劣化する。
-  private rebake(sample: CurveSampler, initialSegments: number): void {
+  private rebake(sample: CurveSampler, ts: readonly number[]): void {
     this.bakedCount = 0;
     this.pending.clear();
-    for (let i = 0; i <= initialSegments; i++) {
-      const t = i / initialSegments;
+    const last = ts.length - 1;
+    const stride = this.seedStride(ts);
+    const segmentCount = Math.ceil(last / stride);
+    for (let i = 0; i <= segmentCount; i++) {
+      const t = ts[Math.min(last, i * stride)]!;
       sample(t, this.scratchA);
       this.pushVertex(t, this.scratchA.x, this.scratchA.y, this.scratchA.z);
-      this.nextVertex[i] = i < initialSegments ? i + 1 : -1;
+      this.nextVertex[i] = i < segmentCount ? i + 1 : -1;
     }
-    for (let i = 0; i < initialSegments; i++) this.pending.push(this.segmentError(i, sample), i);
+    for (let i = 0; i < segmentCount; i++) this.pending.push(this.segmentError(i, sample), i);
 
     while (this.pending.topScore > 1 && this.bakedCount < this.maxVertices) {
       const left = this.pending.pop();
@@ -352,23 +359,21 @@ export class Curve {
   // 曲線を(必要なら)焼き直し、GPU バッファへ反映する。revision・画面スケール・カメラ視線
   // 方向のいずれも前回と実質同じであれば焼き直しも GPU への再アップロードも省く。
   setCurve(sample: CurveSampler, opts: SetCurveOptions): void {
-    const { revision, camera, loops } = opts;
+    const { revision, camera, initialTs } = opts;
+    const ts = initialTs && initialTs.length >= 2 ? initialTs : DEFAULT_INITIAL_TS;
     this.cacheCameraFrame(camera);
-    const scaleNow = this.representativeScale(sample);
+    const scaleNow = this.representativeScale(sample, ts);
     const scaleChanged = this.bakedScale === null
       || scaleNow / this.bakedScale > SCALE_REBAKE_RATIO || this.bakedScale / scaleNow > SCALE_REBAKE_RATIO;
     const camDirChanged = this.camFwd.dot(this.bakedCamFwd) < CAM_DIR_REBAKE_COS;
     const revisionChanged = !this.hasBaked || revision !== this.lastRevision;
-    const initialSegments = this.initialSegmentsFor(loops);
-    const rebaked = revisionChanged || scaleChanged || camDirChanged
-      || initialSegments !== this.bakedInitialSegments;
+    const rebaked = revisionChanged || scaleChanged || camDirChanged;
 
     if (rebaked) {
-      this.rebake(sample, initialSegments);
+      this.rebake(sample, ts);
       this.hasBaked = true;
       this.lastRevision = revision;
       this.bakedScale = scaleNow;
-      this.bakedInitialSegments = initialSegments;
       this.bakedCamFwd.copy(this.camFwd);
     }
 
@@ -498,6 +503,7 @@ export class Curve {
   setTransform(position: THREE.Vector3, quaternion?: THREE.Quaternion): void {
     this.reqPosition.copy(position);
     if (quaternion) this.reqQuaternion.copy(quaternion);
+    else this.reqQuaternion.identity();
     this.applyTransform();
   }
 

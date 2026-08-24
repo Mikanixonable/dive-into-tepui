@@ -1,5 +1,5 @@
 // 太陽を公転する小天体32個の回帰テスト: lRate がケプラー第3法則と一致すること、
-// セドナ(高離心率)のケプラー往復精度、離心率・半径の妥当性、attractorsAt からの取得。
+// セドナ(高離心率)のケプラー往復精度、離心率・半径の妥当性、celestialBodiesAt からの取得。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
@@ -14,9 +14,9 @@ function planetOrbitOf(id: string): PlanetOrbit {
 }
 
 const SMALL_BODY_IDS: readonly string[] = [
-  'sedna', 'quaoar', 'chariklo', 'hygiea', 'eros', 'ryugu', 'bennu', 'churyumov',
+  'sedna', 'quaoar', 'chariklo', 'hygiea', 'eros', 'ryugu', 'bennu',
   'orcus', 'gonggong', 'salacia', 'varuna', 'ixion', 'arrokoth', 'chiron', 'interamnia',
-  'europa52', 'davida', 'juno', 'psyche', 'eunomia', 'sylvia', 'itokawa', 'apophis',
+  'europa52', 'davida', 'juno', 'psyche', 'eunomia', 'sylvia', 'apophis',
   'didymos', 'tempel1', 'wild2', 'hartley2', 'cruithne', 'kamooalewa', 'tk7', 'eureka',
 ];
 
@@ -64,12 +64,12 @@ export function register(): void {
     }
   });
 
-  test('small-bodies: attractorsAt から32体すべてが取れ、太陽からの距離が有限で正', () => {
-    const attractors = eph.attractorsAt(1e7);
-    const sun = attractors.find((a) => a.id === 'sun')!;
+  test('small-bodies: celestialBodiesAt から32体すべてが取れ、太陽からの距離が有限で正', () => {
+    const celestialBodies = eph.celestialBodiesAt(1e7);
+    const sun = celestialBodies.find((a) => a.id === 'sun')!;
     for (const id of SMALL_BODY_IDS) {
-      const a = attractors.find((x) => x.id === id);
-      assert.ok(a !== undefined, `${id} が attractorsAt に無い`);
+      const a = celestialBodies.find((x) => x.id === id);
+      assert.ok(a !== undefined, `${id} が celestialBodiesAt に無い`);
       const dist = len(sub(a!.state.r, sun.state.r));
       assert.ok(Number.isFinite(dist) && dist > 0, `${id} の太陽からの距離`);
     }

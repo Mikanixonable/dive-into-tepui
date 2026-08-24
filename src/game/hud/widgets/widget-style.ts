@@ -8,7 +8,7 @@ import { MQ_COARSE } from '../breakpoints';
 export const WIDGET_STYLE = `
 /* #hud 自体が pointer-events:none のため、対話要素はここで明示的に有効化する
    (#hud の外では既定で auto だが、明示しても害はない)。 */
-.w-btn, .w-toggle-track, .w-close, .w-input { pointer-events: auto; cursor: pointer; }
+.w-btn, .w-toggle-track, .w-close, .w-input, .w-select { pointer-events: auto; cursor: pointer; }
 .w-btn, .w-toggle, .w-close, .w-tabs, .w-group { user-select: none; }
 .w-input { cursor: text; }
 
@@ -22,13 +22,17 @@ export const WIDGET_STYLE = `
   background: var(--surface-2); color: var(--body);
   transition: border-color var(--transition-fast), color var(--transition-fast), background var(--transition-fast), transform var(--transition-fast);
 }
-.w-btn:hover, .w-close:hover { color: var(--accent-near); background: var(--surface-3); }
+.w-btn:hover, .w-close:hover { color: var(--color-primary-hover); background: var(--surface-3); }
 .w-btn.pressed, .w-close.pressed { background: var(--fill-3); transform: translateY(1px); }
-.w-btn.on { background: var(--accent-fill); border-color: transparent; color: var(--accent); }
+.w-btn.on { background: var(--color-primary-fill); border-color: transparent; color: var(--color-primary); }
 .w-btn.disabled, .w-close.disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
 .w-btn:focus-visible, .w-close:focus-visible, .w-toggle-track:focus-visible, .w-input:focus-visible {
-  outline: 2px solid var(--accent-near); outline-offset: 2px;
+  outline: 2px solid var(--color-focus); outline-offset: 2px;
 }
+.w-btn-icon {
+  display: inline-block; width: 1em; height: 1em; vertical-align: middle; margin-right: var(--space-2);
+}
+.w-btn-icon svg { display: block; width: 100%; height: 100%; }
 
 /* w-group: 見出し + 排他選択ボタン列(3択以上専用)。 */
 .w-group { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
@@ -45,8 +49,8 @@ export const WIDGET_STYLE = `
   border-radius: var(--radius-pill); border: 1px solid transparent; background: var(--surface-3);
   transition: border-color var(--transition-fast), background var(--transition-fast);
 }
-.w-toggle-track:hover { background: color-mix(in srgb, var(--accent-near) 18%, var(--surface-3)); }
-.w-toggle-track.on { border-color: transparent; background: var(--accent); }
+.w-toggle-track:hover { background: color-mix(in srgb, var(--color-primary-hover) 18%, var(--surface-3)); }
+.w-toggle-track.on { border-color: transparent; background: var(--color-primary); }
 .w-toggle-knob {
   position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
   background: var(--text-dim); transition: left var(--transition-fast), background var(--transition-fast);
@@ -68,16 +72,25 @@ export const WIDGET_STYLE = `
   transition: border-color var(--transition-fast), background var(--transition-fast);
 }
 .w-input:hover { background: var(--surface-3); }
-.w-input:focus { background: var(--surface-3); border-color: var(--accent); }
+.w-input:focus { background: var(--surface-3); border-color: var(--color-primary); }
+
+/* w-select: プルダウンのドロップダウン選択(見出し・反映ボタンは .w-group/.w-btn 側)。 */
+.w-select {
+  box-sizing: border-box; padding: var(--space-2) var(--space-3); font: inherit; font-size: var(--font-s);
+  color: var(--text); background: var(--surface-2); border: 1px solid transparent; border-radius: var(--radius-control);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+.w-select:hover { background: var(--surface-3); }
+.w-select:focus { background: var(--surface-3); border-color: var(--color-primary); }
 
 /* w-slider: つまみ型の連続値スライダー。トラックの寸法はパネル側の CSS が決める。 */
-.w-slider { pointer-events: auto; accent-color: var(--accent); }
+.w-slider { pointer-events: auto; accent-color: var(--color-primary); }
 
 /* w-meter: HP/温度/電力バー。常に左から右へ満ちる。 */
 .w-meter { display: flex; align-items: center; }
 .w-meter-track { position: relative; flex: 1 1 auto; height: 12px; overflow: hidden; border-radius: var(--radius-micro); background: var(--bar-bg); }
-.w-meter-fill { width: 0; height: 100%; background: var(--accent); transition: width var(--transition-fast); }
-.w-meter-fill.danger { background: var(--danger); }
+.w-meter-fill { width: 0; height: 100%; background: var(--color-primary); transition: width var(--transition-fast); }
+.w-meter-fill.danger { background: var(--color-error); }
 .w-meter-value {
   position: absolute; inset: 0; right: var(--space-2); display: flex; align-items: center; justify-content: flex-end;
   font-size: var(--font-xs); color: var(--text-strong); text-shadow: 0 0 2px var(--bg), 0 0 2px var(--bg);

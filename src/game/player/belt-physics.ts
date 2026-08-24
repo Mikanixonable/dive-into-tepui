@@ -6,7 +6,6 @@ import { Vec3, add, addScaled, cross, len, norm, scale, sub, v3 } from '../../ph
 import { MAG_BELT_ANCHOR_X, MAG_BELT_PITCH } from '../../render/ships';
 import * as C from '../const';
 import { GameEntity } from '../game-entity/game-entity';
-import type { Attractor } from '../../physics/attractor';
 
 // ベルトが機体座標系でたわみなく伸びる基準方向。
 export const X_AXIS: Vec3 = v3(1, 0, 0);
@@ -29,9 +28,9 @@ export class BeltSection extends GameEntity {
   }
 
   // 吊り元の艦、およびそれに取り付いた他の実体(ベルトの他節点・放熱板の折り)とは接触しない。
-  contactsWith(other: GameEntity | Attractor): boolean {
+  contactsWith(other: GameEntity): boolean {
     if (other === this.owner) return false;
-    return !(other instanceof GameEntity && other.attachedTo === this.owner);
+    return other.attachedTo !== this.owner;
   }
 }
 
@@ -87,7 +86,7 @@ export class BeltPhysics {
     this.pinRootToAnchor(beltFeed);
     this.relaxDistanceConstraints();
 
-    this.advanceOrientationConstraints(dt, att);
+    this.advanceOrientationConstraints(dt, att, beltFeed);
   }
 
   // 初回のみ、節点をアンカーから等間隔に並べて初期化する。
@@ -168,12 +167,13 @@ export class BeltPhysics {
   }
 
   // つなぎ目ごとに許容するピッチ/ヨーの角度上限を tan クランプで適用し、クランプ後の方向を
-  // beltPos/beltPrevPos へ書き戻す。併せてねじれ角(beltTwist)を積分する。
-  private advanceOrientationConstraints(dt: number, att: Attitude): void {
+  // beltPos/beltPrevPos へ書き戻す。併せてねじれ角(beltTwist)を積分する。根本から2番目の
+  // つなぎ目だけは、次にリンク0へ昇格する前に直立させるため feed に応じて上限を0へ絞る。
+  private advanceOrientationConstraints(dt: number, att: Attitude, feed: number): void {
     const maxRoll = (C.MAG_CHAIN_MAX_ROLL_DEG * Math.PI) / 180;
-    // tan(最大角度) = ローカル座標系での横ずれ/前進量の上限
-    const tanMaxPitch = Math.tan((C.MAG_CHAIN_MAX_PITCH_DEG * Math.PI) / 180);
-    const tanMaxYaw = Math.tan((C.MAG_CHAIN_MAX_YAW_DEG * Math.PI) / 180);
+    const maxPitchRad = (C.MAG_CHAIN_MAX_PITCH_DEG * Math.PI) / 180;
+    const maxYawRad = (C.MAG_CHAIN_MAX_YAW_DEG * Math.PI) / 180;
+    const secondLinkNarrowing = clamp(1 - feed, 0, 1);
     const rollLerp = Math.min(1, dt * C.MAG_CHAIN_ROLL_RATE);
     let prevPoint = this.anchor;
     let prevQ: Quat = IDENTITY_Q; // アンカー(機体)側の基準姿勢: ベルトは+X方向へ伸びる
@@ -184,6 +184,10 @@ export class BeltPhysics {
       const segLen = len(rawDir); // 方向を取り出すためだけの実長
       let bendQ = prevQ;
       if (segLen > 1e-6) {
+        const narrowing = i === 1 ? secondLinkNarrowing : 1;
+        // tan(最大角度) = ローカル座標系での横ずれ/前進量の上限
+        const tanMaxPitch = Math.tan(maxPitchRad * narrowing);
+        const tanMaxYaw = Math.tan(maxYawRad * narrowing);
         const clampedDir = this.clampDirectionToPrevFrame(scale(rawDir, 1 / segLen), prevQ, tanMaxPitch, tanMaxYaw);
 
         // 実長ではなく目標長 MAG_BELT_PITCH を使う: 実長は補正済み prevPoint からの誤差を増幅して NaN へ発散する。

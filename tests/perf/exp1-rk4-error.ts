@@ -5,10 +5,11 @@
 // なぜ乖離しうるのかを、フレーム分割の端数(Simulator.advance の ceil(simDt/20))から
 // 生じる実際の per-substep dt を計算して検証する。
 import { Ephemeris } from '../../src/physics/ephemeris';
-import { localOrbitPeriod } from '../../src/physics/attractor';
+import { localOrbitPeriod } from '../../src/physics/celestial-body';
 import {
   buildEphemeris, initialLeoState, integrateFixedDt, integrateToCheckpoints,
   posError, SUBSTEP_MAX_DT, SIM_SPEED_LEVELS,
+  ARC_MIN_STEP_DT, ARC_STEPS_PER_REV, ARC_MAX_STEPS,
 } from './common';
 
 const CHECKPOINTS = [60, 300, 600, 1800, 5580, 11160, 86400];
@@ -53,24 +54,24 @@ function partA(ephemeris: Ephemeris): void {
 
 function partB(ephemeris: Ephemeris): void {
   console.log('\n## 実験1-B: 予測の実効刻み幅の検証\n');
-  console.log('予測の dt = min(remaining, max(PREDICT_MIN_STEP_DT=20, localOrbitPeriod/PREDICT_STEPS_PER_REV(=600), horizon/PREDICT_MAX_STEPS(=20000)))');
+  console.log(`予測の dt = min(remaining, max(ARC_MIN_STEP_DT=${ARC_MIN_STEP_DT}, localOrbitPeriod/ARC_STEPS_PER_REV(=${ARC_STEPS_PER_REV}), horizon/ARC_MAX_STEPS(=${ARC_MAX_STEPS})))`);
   console.log('horizon は表示期間既定値「1周」= その時点の周期そのもの、を仮定する(remaining は');
   console.log('その瞬間に予測を開始したときの初期値 = horizon 自身とする)。\n');
 
   const s0 = initialLeoState();
   let s = s0;
-  console.log('経過時間 | 高度[km] | period[s] | period/600[s] | horizon/20000[s] | 予測dt[s]');
+  console.log('経過時間 | 高度[km] | period[s] | period/stepsPerRev[s] | horizon/maxSteps[s] | 予測dt[s]');
   console.log('--- | --- | --- | --- | --- | ---');
   const checks = [0, 60, 300, 600, 1800, 5580, 11160, 86400];
   for (const t of checks) {
     s = integrateFixedDt(ephemeris, s, 20, t);
-    const attractors = ephemeris.gravityAttractorsAt(s.t);
-    const period = localOrbitPeriod(s.r, attractors);
+    const celestialBodies = ephemeris.gravityAttractorsAt(s.t);
+    const period = localOrbitPeriod(s.r, celestialBodies);
     const horizon = period; // 'orbit' プリセット既定値
     const remaining = horizon;
-    const dt = Math.min(remaining, Math.max(20, period / 600, horizon / 20000));
+    const dt = Math.min(remaining, Math.max(ARC_MIN_STEP_DT, period / ARC_STEPS_PER_REV, horizon / ARC_MAX_STEPS));
     const alt = (Math.sqrt(s.r.x * s.r.x + s.r.y * s.r.y + s.r.z * s.r.z) - 6371e3) / 1000;
-    console.log(`${t}s | ${alt.toFixed(2)} | ${period.toFixed(2)} | ${(period / 600).toFixed(3)} | ${(horizon / 20000).toFixed(3)} | ${dt.toFixed(4)}`);
+    console.log(`${t}s | ${alt.toFixed(2)} | ${period.toFixed(2)} | ${(period / ARC_STEPS_PER_REV).toFixed(3)} | ${(horizon / ARC_MAX_STEPS).toFixed(3)} | ${dt.toFixed(4)}`);
   }
 }
 

@@ -14,10 +14,12 @@ export type LagrangePoints = {
   readonly L5: Vec3;
 };
 
-// 共線点 L1/L2 の副天体からの距離(軌道半径比 gamma)。回転系での釣り合いは gamma の5次方程式
-// になり、閉じた形では解けない。Hill 半径 (mu/3)^(1/3) を初期値に Newton 法で解く —
-// 地球-月系では Hill 半径そのものが真の解から 5%(約 5,000 km)ずれるため、反復して詰める。
-export function collinearGamma(mu: number, point: 'L1' | 'L2'): number {
+// 共線点の、最も近い天体からの距離(軌道半径比 gamma)。L1/L2 は副天体から、L3 は主天体から
+// 測る。回転系での釣り合いはどれも gamma の5次方程式になり、閉じた形では解けないので
+// Newton 法で解く — L1/L2 の初期値である Hill 半径 (mu/3)^(1/3) は地球-月系で真の解から
+// 5%(約 5,000 km)ずれるため、反復して詰める。
+export function collinearGamma(mu: number, point: 'L1' | 'L2' | 'L3'): number {
+  if (point === 'L3') return collinearGammaL3(mu);
   const sign = point === 'L1' ? -1 : 1;
   let g = Math.cbrt(mu / 3);
   for (let i = 0; i < 40; i++) {
@@ -27,6 +29,23 @@ export function collinearGamma(mu: number, point: 'L1' | 'L2'): number {
       - mu * g * g - sign * 2 * mu * g - mu;
     const df = 5 * g ** 4 + sign * 4 * (3 - mu) * g ** 3 + 3 * (3 - 2 * mu) * g * g
       - 2 * mu * g - sign * 2 * mu;
+    const step = f / df;
+    g -= step;
+    if (Math.abs(step) < 1e-15) break;
+  }
+  return g;
+}
+
+// L3 の主天体からの距離(軌道半径比)。一次の近似 1-(7/12)mu を初期値に5次方程式
+// g^5 +(2+mu)g^4 +(1+2mu)g^3 -(1-mu)g^2 -2(1-mu)g -(1-mu) = 0 を Newton 法で解く。
+function collinearGammaL3(mu: number): number {
+  let g = 1 - (7 / 12) * mu;
+  // 反復ごとに5次方程式とその導関数を評価し、修正量が丸め誤差に達したら止める。
+  for (let i = 0; i < 40; i++) {
+    const f = g ** 5 + (2 + mu) * g ** 4 + (1 + 2 * mu) * g ** 3
+      - (1 - mu) * g * g - 2 * (1 - mu) * g - (1 - mu);
+    const df = 5 * g ** 4 + 4 * (2 + mu) * g ** 3 + 3 * (1 + 2 * mu) * g * g
+      - 2 * (1 - mu) * g - 2 * (1 - mu);
     const step = f / df;
     g -= step;
     if (Math.abs(step) < 1e-15) break;
@@ -54,7 +73,7 @@ export function lagrangePoints(mu: number, place: (x: number, y: number) => Vec3
   return {
     L1: place(1 - collinearGamma(mu, 'L1'), 0),
     L2: place(1 + collinearGamma(mu, 'L2'), 0),
-    L3: place(-(1 + (5 / 12) * mu), 0),
+    L3: place(-collinearGamma(mu, 'L3'), 0),
     L4: place(0.5, s60),
     L5: place(0.5, -s60),
   };

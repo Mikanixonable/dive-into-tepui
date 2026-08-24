@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { Vec3 } from '../../physics/vec3';
 import { AXIS_PROGRADE, AXIS_NORMAL, AXIS_RADIAL } from '../theme';
+import { markOverlay } from '../../render/pipeline/lit-layer';
 
 // 選択中ノードの Δv アーム6本(PRO/RET・NRM/ANM・OUT/IN)を表す3D矢印ギズモ。
 export class PlanGizmo3D {
@@ -8,8 +9,6 @@ export class PlanGizmo3D {
   private parts: { stem: THREE.Mesh, head: THREE.Mesh, dir: THREE.Vector3, baseLen: number }[] = [];
 
   constructor() {
-    this.group.renderOrder = 999;
-
     this.createAxis(new THREE.Vector3(0, 1, 0), AXIS_PROGRADE); // PRO
     this.createAxis(new THREE.Vector3(0, -1, 0), AXIS_PROGRADE); // RETRO
     this.createAxis(new THREE.Vector3(0, 0, 1), AXIS_NORMAL); // NRM
@@ -30,7 +29,6 @@ export class PlanGizmo3D {
 
     const material = new THREE.MeshBasicMaterial({
       color,
-      depthTest: false,
       transparent: true,
       opacity: 0.8
     });
@@ -47,6 +45,10 @@ export class PlanGizmo3D {
     stem.quaternion.copy(quaternion);
     head.quaternion.copy(quaternion);
 
+    // ギズモは表示値であって物理的な明るさを持たないので、3D UI パスへ置く。深度テストは
+    // 効かせたまま — 不透明物には隠れるのが 3D UI の約束。
+    markOverlay(stem);
+    markOverlay(head);
     this.group.add(stem);
     this.group.add(head);
     this.parts.push({ stem, head, dir, baseLen: length });
