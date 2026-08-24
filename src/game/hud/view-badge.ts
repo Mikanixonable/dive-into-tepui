@@ -7,7 +7,7 @@ import packageJson from '../../../package.json';
 const GAME_TITLE = 'Dive into Tepui';
 const GAME_VERSION = `v${packageJson.version}`;
 
-const VIEW_LABELS: Record<ViewId, string> = { combat: 'Combat', map: 'Map', dock: 'Base' };
+const VIEW_LABELS: Record<ViewId, string> = { combat: 'Combat', map: 'Map' };
 
 export interface ViewBadgeContext {
   readonly focus: string | null;

@@ -1,4 +1,5 @@
-// Runtime UI の意味トークン。値と役割は UI_DESIGN_REFERENCE_V6 を正本とする。
+// Runtime UI の色システム。
+// Primitive (色相・明度の値) と Semantic (UI上の意味) を同じパレットで公開する。
 // ゲーム世界(マーカー・演出・船体など)の Material 色は const.ts が持ち、ここには含まない。
 
 export interface ThemePalette {
@@ -18,7 +19,15 @@ export interface ThemePalette {
   readonly bright: string;
   readonly accent: string;
   readonly accentNear: string;
-  readonly secondary: string;
+  // Semantic key colors
+  readonly signal: string;
+  // Semantic state colors
+  readonly success: string;
+  readonly warning: string;
+  readonly error: string;
+  readonly info: string;
+  readonly focus: string;
+  readonly focusContrast: string;
 }
 
 const DARK_SURFACE = {
@@ -26,39 +35,49 @@ const DARK_SURFACE = {
   title: '#eeeaf5', body: '#c3bec9', muted: '#89838f', faint: '#5f5a65', bright: '#ffffff',
 } as const;
 
+const DARK_SEMANTIC = {
+  success: '#19f5c2', warning: '#ffd166', error: '#ff4f5e', info: '#3478ff',
+  focus: '#ffd43b', focusContrast: '#000000',
+} as const;
+
+const LIGHT_SEMANTIC = {
+  success: '#006b4f', warning: '#6b4600', error: '#b42318', info: '#005ea8',
+  focus: '#ffd43b', focusContrast: '#000000',
+} as const;
+
 // モックアップ §4.3 のプリセット。初期値は既存ランタイムの Fluorescent red / blue を保つ。
 export const THEME_PRESETS: readonly ThemePalette[] = [
   {
     id: 'orbital-orange', name: 'Orbital orange', description: '暖色の主役とエメラルド Signal', tone: 'dark',
-    ...DARK_SURFACE, accent: '#ff5a00', accentNear: '#ff8b52', secondary: '#19f5c2',
+    ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#ff5a00', accentNear: '#ff8b52', signal: '#19f5c2',
   },
   {
     id: 'red-lime', name: 'Red / lime', description: '赤とライムの蛍光対比', tone: 'dark',
-    ...DARK_SURFACE, accent: '#ff334e', accentNear: '#ff6a78', secondary: '#c7ff38',
+    ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#ff334e', accentNear: '#ff6a78', signal: '#c7ff38',
   },
   {
     id: 'red-orange-emerald', name: 'Red-orange / emerald', description: '赤寄りオレンジと深いエメラルド', tone: 'dark',
-    ...DARK_SURFACE, accent: '#ff4b1f', accentNear: '#ff7652', secondary: '#19e6b3',
+    ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#ff4b1f', accentNear: '#ff7652', signal: '#19e6b3',
   },
   {
     id: 'red-orange-turquoise', name: 'Red-orange / turquoise', description: '暖色と青緑の明快な Signal', tone: 'dark',
-    ...DARK_SURFACE, accent: '#ff4a20', accentNear: '#ff8060', secondary: '#1ee7d2',
+    ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#ff4a20', accentNear: '#ff8060', signal: '#1ee7d2',
   },
   {
     id: 'fluorescent-red-blue', name: 'Fluorescent red / blue', description: '赤と青の強い電気的対比', tone: 'dark',
-    ...DARK_SURFACE, page: '#08090d', accent: '#ff3155', accentNear: '#ff6b82', secondary: '#3478ff',
+    ...DARK_SURFACE, ...DARK_SEMANTIC, page: '#08090d', accent: '#ff3155', accentNear: '#ff6b82', signal: '#3478ff',
   },
   {
     id: 'repository-mono', name: 'Repository mono', description: 'ダークグレーと白、Signalは最小限', tone: 'dark',
     page: '#0d1117', surface0: '#0d1117', surface1: '#161b22', surface2: '#21262d', surface3: '#30363d',
     title: '#f0f6fc', body: '#c9d1d9', muted: '#8b949e', faint: '#6e7681', bright: '#ffffff',
-    accent: '#c9d1d9', accentNear: '#8b949e', secondary: '#58a6ff',
+    ...DARK_SEMANTIC, accent: '#c9d1d9', accentNear: '#8b949e', signal: '#58a6ff',
   },
   {
     id: 'matte-red', name: 'Matte red', description: '暖かい灰白地とマットな赤', tone: 'light',
     page: '#d9d7d2', surface0: '#efede8', surface1: '#f8f6f1', surface2: '#e5e2dc', surface3: '#cac6bf',
-    title: '#252525', body: '#494949', muted: '#737373', faint: '#96928c', bright: '#111111',
-    accent: '#a3463f', accentNear: '#c07369', secondary: '#666b70',
+    title: '#252525', body: '#494949', muted: '#625e59', faint: '#96928c', bright: '#111111',
+    ...LIGHT_SEMANTIC, accent: '#873b35', accentNear: '#a95d54', signal: '#4e545a',
   },
 ] as const;
 
@@ -114,10 +133,39 @@ function rgba(hex: string, alpha: number): string {
 
 function themeCssVariables(palette: ThemePalette): Readonly<Record<string, string>> {
   return {
+    // Semantic key colors. The old --accent names below remain compatibility aliases.
+    '--color-primary': palette.accent,
+    '--color-primary-hover': palette.accentNear,
+    '--color-primary-active': palette.accent,
+    '--color-signal': palette.signal,
+    '--color-primary-fill-weak': rgba(palette.accent, 0.08),
+    '--color-primary-fill': rgba(palette.accent, 0.16),
+    '--color-primary-fill-strong': rgba(palette.accent, 0.24),
+    '--color-primary-edge-soft': rgba(palette.accent, 0.22),
+    '--color-primary-edge': rgba(palette.accent, 0.4),
+    // Semantic state colors.
+    '--color-success': palette.success,
+    '--color-success-fill': rgba(palette.success, 0.12),
+    '--color-success-edge': rgba(palette.success, 0.42),
+    '--color-warning': palette.warning,
+    '--color-warning-fill': rgba(palette.warning, 0.12),
+    '--color-warning-edge': rgba(palette.warning, 0.42),
+    '--color-error': palette.error,
+    '--color-error-fill': rgba(palette.error, 0.12),
+    '--color-error-edge': rgba(palette.error, 0.42),
+    '--color-info': palette.info,
+    '--color-info-fill': rgba(palette.info, 0.12),
+    '--color-info-edge': rgba(palette.info, 0.42),
+    '--color-focus': palette.focus,
+    '--color-focus-contrast': palette.focusContrast,
+    // Space labels sit on a rendered starfield, not on the UI theme surface.
+    '--space-label-background': '#0b0d11',
+    '--space-label-text': '#f5f7ff',
+    '--space-label-subtext': '#b8c1d1',
     '--accent': palette.accent,
     '--accent-soft': palette.accentNear,
     '--accent-near': palette.accentNear,
-    '--accent-secondary': palette.secondary,
+    '--accent-secondary': palette.signal,
     '--bg': palette.page,
     '--page': palette.page,
     '--theme-tone': palette.tone,
@@ -153,10 +201,19 @@ function themeCssVariables(palette: ThemePalette): Readonly<Record<string, strin
 
 export const ACCENT = ACTIVE_THEME.accent;
 export const ACCENT_SOFT = ACTIVE_THEME.accentNear;
-export const ACCENT_SECONDARY = ACTIVE_THEME.secondary;
-// 危険・警告だけに使う意味色。第一ターゲットは ACCENT を使う。
-export const DANGER = '#ff4f5e';
-export const DANGER_FILL = 'rgba(255, 79, 94, 0.08)'; // 危険を示す領域の地色
+export const SIGNAL = ACTIVE_THEME.signal;
+/** @deprecated Use SIGNAL. Kept for non-UI renderers during migration. */
+export const ACCENT_SECONDARY = SIGNAL;
+export const SUCCESS = ACTIVE_THEME.success;
+export const WARNING = ACTIVE_THEME.warning;
+export const DANGER = ACTIVE_THEME.error;
+export const INFO = ACTIVE_THEME.info;
+export const FOCUS = ACTIVE_THEME.focus;
+export const FOCUS_CONTRAST = ACTIVE_THEME.focusContrast;
+export const SUCCESS_FILL = rgba(SUCCESS, 0.12);
+export const WARNING_FILL = rgba(WARNING, 0.12);
+export const DANGER_FILL = rgba(DANGER, 0.12);
+export const INFO_FILL = rgba(INFO, 0.12);
 
 export const BG = ACTIVE_THEME.page;
 export const SURFACE_0 = ACTIVE_THEME.surface0;
@@ -260,6 +317,32 @@ export const FONT_FAMILY =
 // --token-name のケバブケースで :root にカスタムプロパティとして注入するトークンの一覧。
 // calc() を要するトークンは、計算済みの値ではなく派生関係そのものを注入する。
 const CSS_VARIABLES: Readonly<Record<string, string>> = {
+  '--color-primary': ACCENT,
+  '--color-primary-hover': ACCENT_SOFT,
+  '--color-primary-active': ACCENT,
+  '--color-signal': SIGNAL,
+  '--color-primary-fill-weak': ACCENT_FILL_WEAK,
+  '--color-primary-fill': ACCENT_FILL,
+  '--color-primary-fill-strong': ACCENT_FILL_STRONG,
+  '--color-primary-edge-soft': ACCENT_EDGE_SOFT,
+  '--color-primary-edge': ACCENT_EDGE,
+  '--color-success': SUCCESS,
+  '--color-success-fill': SUCCESS_FILL,
+  '--color-success-edge': rgba(SUCCESS, 0.42),
+  '--color-warning': WARNING,
+  '--color-warning-fill': WARNING_FILL,
+  '--color-warning-edge': rgba(WARNING, 0.42),
+  '--color-error': DANGER,
+  '--color-error-fill': DANGER_FILL,
+  '--color-error-edge': rgba(DANGER, 0.42),
+  '--color-info': INFO,
+  '--color-info-fill': INFO_FILL,
+  '--color-info-edge': rgba(INFO, 0.42),
+  '--color-focus': FOCUS,
+  '--color-focus-contrast': FOCUS_CONTRAST,
+  '--space-label-background': '#0b0d11',
+  '--space-label-text': '#f5f7ff',
+  '--space-label-subtext': '#b8c1d1',
   '--accent': ACCENT,
   '--accent-soft': ACCENT_SOFT,
   '--accent-near': ACCENT_SOFT,
@@ -340,6 +423,54 @@ const CSS_VARIABLES: Readonly<Record<string, string>> = {
   '--safe-l': SAFE_AREA_LEFT,
   '--font-family': FONT_FAMILY,
 };
+
+function relativeLuminance(hex: string): number {
+  const value = Number.parseInt(hex.slice(1), 16);
+  const channels = [value >> 16, value >> 8, value].map((channel) => (channel & 0xff) / 255);
+  const linear = channels.map((channel) => channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * linear[0]! + 0.7152 * linear[1]! + 0.0722 * linear[2]!;
+}
+
+export function contrastRatio(foreground: string, background: string): number {
+  const foregroundLuminance = relativeLuminance(foreground);
+  const backgroundLuminance = relativeLuminance(background);
+  const lighter = Math.max(foregroundLuminance, backgroundLuminance);
+  const darker = Math.min(foregroundLuminance, backgroundLuminance);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+export interface ThemeContrastIssue {
+  readonly themeId: string;
+  readonly pair: string;
+  readonly ratio: number;
+  readonly minimum: number;
+}
+
+/** WCAG-oriented checks for the semantic text and non-text pairs of every preset. */
+export function themeContrastIssues(palette: ThemePalette): readonly ThemeContrastIssue[] {
+  const textPairs = [
+    ['text', palette.title, palette.surface1],
+    ['body', palette.body, palette.surface1],
+    ['muted', palette.muted, palette.surface1],
+    ['primary', palette.accent, palette.page],
+    ['signal', palette.signal, palette.page],
+    ['success', palette.success, palette.page],
+    ['warning', palette.warning, palette.page],
+    ['error', palette.error, palette.page],
+    ['info', palette.info, palette.page],
+  ] as const;
+  const issues: ThemeContrastIssue[] = textPairs.flatMap(([pair, foreground, background]) => {
+    const ratio = contrastRatio(foreground, background);
+    return ratio >= 4.5 ? [] : [{ themeId: palette.id, pair, ratio, minimum: 4.5 }];
+  });
+  const focusRatio = contrastRatio(palette.focus, palette.focusContrast);
+  if (focusRatio < 3) issues.push({ themeId: palette.id, pair: 'focus-keyline', ratio: focusRatio, minimum: 3 });
+  return issues;
+}
+
+export function allThemeContrastIssues(): readonly ThemeContrastIssue[] {
+  return THEME_PRESETS.flatMap(themeContrastIssues);
+}
 
 let injected = false;
 

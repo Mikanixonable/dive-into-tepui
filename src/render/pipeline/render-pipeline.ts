@@ -23,8 +23,10 @@ import { LightPrepass } from './light-prepass';
 import { MaterialPass } from './material-pass';
 import { OcclusionPass } from './occlusion';
 import { OverlayPass } from './overlay-pass';
+import { ProteinShadowPass } from './protein-shadow-pass';
 import { SunLight } from './sun-light';
 import { viewPositionAt } from './view-ray';
+import { registerProteinMotionRenderer } from '../protein-motion-material';
 
 // 1 を超える HDR 値を切り落とさず白へ寄せる。Khronos PBR Neutral を選ぶのは、圧縮開始点より
 // 下では色相・彩度を保ったまま素通しするため — 「表示値 = アルベド」という校正が中間調では
@@ -38,6 +40,7 @@ export class RenderPipeline implements DebugTargetHost {
   private readonly renderer: WebGPURenderer;
   private readonly gbuffer: GBufferPass;
   private readonly occlusionPass: OcclusionPass;
+  private readonly proteinShadowPass: ProteinShadowPass;
   private readonly lightPrepass: LightPrepass;
   private readonly materialPass: MaterialPass;
   private readonly atmospherePass: AtmospherePass;
@@ -55,6 +58,7 @@ export class RenderPipeline implements DebugTargetHost {
   private readonly depthDebugProjInv: Mat4Uniform;
   // getDrawingBufferSize の書き込み先。フレームごとに確保しない使い回し領域。
   private readonly drawingBufferSize = new THREE.Vector2();
+  private readonly unregisterProteinMotionRenderer: () => void;
 
   // 通常表示に代えて画面いっぱいに映す中間ターゲットの選択。ページ再読み込みでは必ず 'off'
   // に戻るセッション限定の状態で、永続化しない。
@@ -74,10 +78,14 @@ export class RenderPipeline implements DebugTargetHost {
   // マテリアルを構築する。
   constructor(renderer: WebGPURenderer, graphics: GraphicsSettingsData, private readonly gpu: GpuTimings) {
     this.renderer = renderer;
+    this.unregisterProteinMotionRenderer = registerProteinMotionRenderer(renderer);
     this.gbuffer = new GBufferPass(renderer, gpu);
     this._sunLight = new SunLight();
     this.occlusionPass = new OcclusionPass(renderer, this.gbuffer, this._sunLight, gpu);
-    this.lightPrepass = new LightPrepass(renderer, this.gbuffer, this.occlusionPass, this._sunLight, gpu);
+    this.proteinShadowPass = new ProteinShadowPass(renderer);
+    this.lightPrepass = new LightPrepass(
+      renderer, this.gbuffer, this.occlusionPass, this._sunLight, this.proteinShadowPass, gpu,
+    );
     this.materialPass = new MaterialPass(renderer, this.lightPrepass, gpu);
     this.atmospherePass = new AtmospherePass(renderer, this.gbuffer, this._sunLight, gpu);
     this.overlayPass = new OverlayPass(renderer, gpu);
@@ -168,6 +176,10 @@ export class RenderPipeline implements DebugTargetHost {
     const height = this.drawingBufferSize.y;
     if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
 
+    // シルエット外殻を遮蔽器、内部リボンを影の受け手として先に描く。対象が無いフレームは
+    // パス自身が inactive に戻るので、通常の敵・他のリボン表現へ影響しない。
+    this.proteinShadowPass.render(scene, camera, width, height, this._sunLight);
+
     // G バッファパス。camera.layers の一時的な絞り込みと GPU 計測の申告は自身の中で行う。
     this.gbuffer.render(scene, camera, width, height);
 
@@ -217,8 +229,10 @@ export class RenderPipeline implements DebugTargetHost {
   // 保持している GPU 資源を解放する。QuadMesh の geometry は three が全インスタンスで
   // 共有する単一の板なので、ここでは解放しない。
   dispose(): void {
+    this.unregisterProteinMotionRenderer();
     this.gbuffer.dispose();
     this.occlusionPass.dispose();
+    this.proteinShadowPass.dispose();
     this.lightPrepass.dispose();
     this.materialPass.dispose();
     this.atmospherePass.dispose();

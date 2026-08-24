@@ -6,7 +6,7 @@ import { CelestialBody } from '../../physics/celestial-body';
 
 import { GameEntity } from './game-entity';
 import { closingSpeed, type Contact } from './contact';
-import { contactDamageSpeed } from './contact-damage';
+import { collisionDamageFraction, contactDamageSpeed } from './contact-damage';
 import { Attitude } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { R_EARTH_EQ } from '../../physics/solar-system';
@@ -15,7 +15,9 @@ import { solveLeadTime } from '../../physics/intercept';
 import { fmtMarkerDist } from '../hud/utils';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
-import { buildEnemyShip, buildStage0EnemyShip } from '../../render/ships';
+import {
+  buildEnemyShip, buildStage0EnemyShip,
+} from '../../render/ships';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { EffectsSystem } from '../vfx/effects-system';
 import { Player } from '../player/player';
@@ -27,12 +29,47 @@ import type { EntityManager } from '../simulation/entity-manager';
 import type { SimSpeedManager } from '../sim-speed-manager';
 import type { EnemySaveData } from '../save-data';
 import { currentThemePalette } from '../theme';
+import type { ProteinAssetId } from '../protein/protein-asset-loader';
+import { proteinEnemyDefinitionFor } from '../protein/protein-enemy-registry';
+import { ProteinRuntime } from '../protein/protein-runtime';
+import { ProteinRibbonCollisionGeometry } from '../protein/protein-ribbon-collision';
+import { createProteinMotionBinding, type ProteinMotionBinding } from '../../render/protein-motion-material';
+import type { ProteinDamageResult } from '../protein/protein-combat-state';
+import {
+  DEFAULT_PROTEIN_DISPLAY, isProteinDisplaySettings, proteinDisplayFromLegacyColorMode, type ProteinColorMode, type ProteinDisplaySettings,
+} from '../protein/protein-display';
 import {
   ENEMY_DESTROY_FRAG_COLOR,
 } from '../../render/vfx-style';
 
-// Enemy の見た目の種別。どの build を呼ぶかをコンストラクタ内部で選ぶための判別用。
-export type EnemyKind = { kind: 'drifting' } | { kind: 'stage0'; typeIndex: number };
+type LegacyPdb5i4rEnemyKind = {
+  kind: 'pdb-5i4r';
+  colorMode?: ProteinColorMode;
+  display?: ProteinDisplaySettings;
+};
+
+export type EnemyKind =
+  | { kind: 'drifting' }
+  | { kind: 'stage0'; typeIndex: number }
+  | { kind: 'protein'; assetId: ProteinAssetId; display?: ProteinDisplaySettings }
+  | LegacyPdb5i4rEnemyKind;
+
+export function proteinAssetIdForEnemyKind(enemyKind: EnemyKind): ProteinAssetId | null {
+  if (enemyKind.kind === 'protein') return enemyKind.assetId;
+  if (enemyKind.kind === 'pdb-5i4r') return 'pdb-5i4r';
+  return null;
+}
+
+function normalizeEnemyKind(enemyKind: EnemyKind): EnemyKind {
+  if (enemyKind.kind !== 'pdb-5i4r') return enemyKind;
+  return {
+    kind: 'protein',
+    assetId: 'pdb-5i4r',
+    display: isProteinDisplaySettings(enemyKind.display)
+      ? enemyKind.display
+      : proteinDisplayFromLegacyColorMode(enemyKind.colorMode),
+  };
+}
 
 // enemyKind ごとの主慣性モーメント。'drifting' は非対称にしてジャニベコフ効果(中間軸不安定性)
 // を起こし、'stage0' は機首をプログレードへ向けたまま飛ぶので等方でよい。
@@ -56,8 +93,18 @@ function sunGlareSpreadScale(pos: Vec3, aimDir: Vec3, sunDir: Vec3): number {
 }
 
 // enemyKind の種別に応じたメッシュを組む。
-function buildEnemyRenderObject(enemyKind: EnemyKind, accent: string | number): THREE.Object3D {
-  return enemyKind.kind === 'stage0' ? buildStage0EnemyShip(accent, enemyKind.typeIndex) : buildEnemyShip(accent);
+function buildEnemyRenderObject(enemyKind: EnemyKind, accent: string | number, motionBinding?: ProteinMotionBinding): THREE.Object3D {
+  if (enemyKind.kind === 'stage0') return buildStage0EnemyShip(accent, enemyKind.typeIndex);
+  const proteinId = proteinAssetIdForEnemyKind(enemyKind);
+  if (proteinId !== null) {
+    const definition = proteinEnemyDefinitionFor(proteinId);
+    if (!definition) throw new Error(`No protein enemy definition registered for ${proteinId}`);
+    const display: ProteinDisplaySettings = enemyKind.kind === 'protein' && isProteinDisplaySettings(enemyKind.display)
+      ? enemyKind.display
+      : DEFAULT_PROTEIN_DISPLAY;
+    return definition.buildRenderObject(display, motionBinding);
+  }
+  return buildEnemyShip(accent);
 }
 
 // 新規配置は各フィールドを直接渡し、スナップショットからの再開は saved を simTime の
@@ -93,6 +140,8 @@ export class Enemy extends Ship {
   private readonly _worldSfx: WorldSfx;
   private readonly _fx: EffectsSystem;
   public readonly enemyKind: EnemyKind;
+  readonly proteinRuntime: ProteinRuntime | null;
+  private readonly proteinRibbonCollision: ProteinRibbonCollisionGeometry | null;
 
   // init の enemyKind に応じたメッシュで Ship を初期化し、専用の軌道線をシーンへ追加する。
   constructor(
@@ -102,7 +151,7 @@ export class Enemy extends Ship {
     fx: EffectsSystem,
     scene?: THREE.Scene,
   ) {
-    const { name, state, enemyKind, att, accent, orbitLineColor, waveId, id } = 'saved' in init
+    const { name, state, enemyKind: rawEnemyKind, att, accent, orbitLineColor, waveId, id } = 'saved' in init
       ? {
         name: init.saved.name || '',
         state: kinematicState(init.simTime, v3(init.saved.r.x, init.saved.r.y, init.saved.r.z), v3(init.saved.v.x, init.saved.v.y, init.saved.v.z)),
@@ -114,30 +163,125 @@ export class Enemy extends Ship {
         id: init.saved.id || undefined,
       }
       : init;
-    const renderObject = buildEnemyRenderObject(enemyKind, accent);
+    const enemyKind = normalizeEnemyKind(rawEnemyKind);
+    const proteinId = proteinAssetIdForEnemyKind(enemyKind);
+    const proteinDefinition = proteinId === null ? null : proteinEnemyDefinitionFor(proteinId);
+    if (proteinId !== null && proteinDefinition === null) {
+      throw new Error(`No protein enemy definition registered for ${proteinId}`);
+    }
+    const motionBinding = proteinDefinition
+      ? createProteinMotionBinding(proteinDefinition.motion.residueCount)
+      : undefined;
+    const renderObject = buildEnemyRenderObject(enemyKind, accent, motionBinding);
     super(name, state, renderObject, att, C.ENEMY_RADIUS, C.ENEMY_MAX_HP, scene, id);
     this._worldSfx = worldSfx;
     this._fx = fx;
     this.enemyKind = enemyKind;
+    this.proteinRuntime = proteinDefinition
+      ? new ProteinRuntime(
+        this.renderObject,
+        proteinDefinition.asset,
+        proteinDefinition.motion,
+        'saved' in init ? init.saved.protein : undefined,
+        'saved' in init ? init.saved.health : undefined,
+        this.id,
+        motionBinding,
+      )
+      : null;
     this.accent = accent;
     this.waveId = waveId;
     this.mass = 10000;
     this.collides = true;
     this.doPreciseReentry = true;
     this.renderObject.scale.setScalar(C.ENEMY_SCALE);
+    if (this.proteinRuntime) {
+      // 表示が原子模型へ切り替わっていても判定形状は常に同じリボンに固定する。専用の
+      // 一時メッシュから三角形を抽出し、抽出後は GPU/CPU 資源をただちに解放する。
+      const collisionSource = proteinDefinition?.buildCollisionObject();
+      if (!collisionSource) throw new Error(`No protein collision definition registered for ${proteinId}`);
+      this.proteinRibbonCollision = new ProteinRibbonCollisionGeometry(collisionSource, C.ENEMY_SCALE);
+      collisionSource.traverse((child) => {
+        const mesh = child as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        if (mesh.userData.ownsGeometry) mesh.geometry.dispose();
+        if (mesh.userData.ownsMaterial) {
+          if (Array.isArray(mesh.material)) mesh.material.forEach((material) => material.dispose());
+          else mesh.material.dispose();
+        }
+      });
+    } else {
+      this.proteinRibbonCollision = null;
+    }
     // 描画メッシュの実スケール後バウンディング球を、弾丸・物理接触の両判定に共有する。
     const visualBounds = new THREE.Box3().setFromObject(this.renderObject);
     const visualSphere = visualBounds.getBoundingSphere(new THREE.Sphere());
-    this.radius = visualSphere.radius;
+    this.radius = this.proteinRibbonCollision?.outerRadius ?? visualSphere.radius;
     this.orbitLineColor = orbitLineColor;
 
+    if (this.proteinRuntime) {
+      // Ship starts with the legacy 6 HP template; protein integrity is authoritative immediately,
+      // including newly spawned enemies before their first hit.
+      this.hp = this.proteinRuntime.combat.integrityHp;
+      this.maxHp = this.proteinRuntime.combat.integrityMaxHp;
+    }
     if ('saved' in init) {
-      this.setOverallHp(init.saved.health);
+      if (!this.proteinRuntime) {
+        this.setOverallHp(init.saved.health);
+      }
       this.burstLeft = init.saved.burstLeft;
       this.burstDelay = init.saved.burstDelay;
       this.alive = init.saved.alive;
       if (!this.alive) this.renderObject.visible = false;
       this.showTrajectoryLine = init.saved.showTrajectoryLine ?? false;
+    }
+  }
+
+  override testCustomSphereCollision(
+    sphereCenter: Vec3, sphereRadius: number, selfState: KinematicState,
+  ) {
+    if (this.proteinRibbonCollision === null) return null;
+    return this.proteinRibbonCollision.testSphereCollision(
+      sphereCenter, sphereRadius, selfState.r, this.att.q,
+    );
+  }
+
+  override testCustomSweptSphereCollision(
+    previousSphereCenter: Vec3, sphereCenter: Vec3, sphereRadius: number,
+    previousSelfState: KinematicState, selfState: KinematicState,
+  ) {
+    if (this.proteinRibbonCollision === null) return null;
+    return this.proteinRibbonCollision.testSweptSphereCollision(
+      previousSphereCenter, sphereCenter, sphereRadius,
+      previousSelfState, selfState, this.att.q,
+    );
+  }
+
+  override usesCustomSphereCollision(): boolean {
+    return this.proteinRibbonCollision !== null;
+  }
+
+  // ステージ操作の表示形態・着色変更を既存のタンパク質型敵へ反映する。
+  setProteinDisplay(display: ProteinDisplaySettings): void {
+    const proteinId = proteinAssetIdForEnemyKind(this.enemyKind);
+    if (proteinId === null || this.enemyKind.kind !== 'protein') return;
+    const definition = proteinEnemyDefinitionFor(proteinId);
+    if (!definition) return;
+    this.enemyKind.display = display;
+    this.proteinRuntime?.clearVisuals();
+    definition.recolorRenderObject(this.renderObject, display, this.proteinRuntime?.motionBinding);
+    this.proteinRuntime?.rebuildVisuals();
+  }
+
+  get proteinHudSnapshot() {
+    return this.proteinRuntime?.hudSnapshot ?? null;
+  }
+
+  override sync(fo: import('../floating-origin').FloatingOrigin, displayTime: number, viewerPosition?: Vec3): void {
+    super.sync(fo, displayTime);
+    if (this.proteinRuntime && this.renderObject.visible) {
+      const displayed = this.displayState(displayTime);
+      const distance = viewerPosition && displayed ? len(sub(displayed.r, viewerPosition)) : 0;
+      this.proteinRuntime.updateVisual(displayTime, distance, this.radius);
     }
   }
 
@@ -167,10 +311,10 @@ export class Enemy extends Ship {
       name: this.name,
       detail: overviewMode ? '' : fmtMarkerDist(dist),
       // 敵本体・距離ラベル・画面外方位マーカーは同じ色で統一する。ターゲット中は第二アクセントカラーで強調する。
-      bearingColor: role === 'primary' ? currentThemePalette().secondary : C.COLOR_MARKER_ENEMY,
+      bearingColor: role === 'primary' ? currentThemePalette().signal : C.COLOR_MARKER_ENEMY,
       bearingSym: ENTITY_GLYPH.enemyShip,
       bearingClass: 'mk-dir mk-bearing-triangle',
-      color: role === 'primary' ? currentThemePalette().secondary : C.COLOR_MARKER_ENEMY,
+      color: role === 'primary' ? currentThemePalette().signal : C.COLOR_MARKER_ENEMY,
       symMarkup: true,
     };
   }
@@ -197,7 +341,12 @@ export class Enemy extends Ship {
   private attackedByBullet(bullet: Bullet, impactPoint: Vec3, simTime: number, activeStage: Stage): void {
     activeStage.scoreCounter.recordHit();
 
-    this.applyDamageToParts(bullet.damage);
+    const proteinResult = this.proteinRuntime ? this.applyProteinDamage(bullet.damage, impactPoint) : null;
+    if (proteinResult) {
+      this.handleProteinDamage(proteinResult, impactPoint);
+    } else {
+      this.applyDamageToParts(bullet.damage);
+    }
     if (this.hp > 0) {
       this.impactEffect(bullet, impactPoint);
       return;
@@ -207,6 +356,23 @@ export class Enemy extends Ship {
     this.alive = false;
     activeStage.recordEnemyDeath(this, simTime, 'killed');
     this.destroyEffect();
+  }
+
+  private applyProteinDamage(amount: number, impactPoint: Vec3): ProteinDamageResult | null {
+    const runtime = this.proteinRuntime;
+    if (!runtime) return null;
+    const localPoint = runtime.localImpactPoint(impactPoint, this.state.r, this.att.q);
+    const result = runtime.combat.applyDamage(amount, localPoint);
+    this.hp = runtime.combat.integrityHp;
+    this.maxHp = runtime.combat.integrityMaxHp;
+    return result;
+  }
+
+  private handleProteinDamage(result: ProteinDamageResult, impactPoint: Vec3): void {
+    if (!this.proteinRuntime) return;
+    if (result.siteDisabled || result.phaseChanged) {
+      this._fx.spawnProteinStateFlash(kinematicState(this.state.t, impactPoint, this.state.v), result.phaseChanged ? result.phase : 'site-disabled');
+    }
   }
 
   // 弾は武装のダメージを、それ以外は接触の接近速度と相手の種別を根拠にする
@@ -235,6 +401,21 @@ export class Enemy extends Ship {
   private damagedByContact(
     damageSpeed: number, simTime: number, cause: EnemyDeathCause, activeStage: Stage,
   ): void {
+    if (this.proteinRuntime) {
+      const damageFraction = collisionDamageFraction(damageSpeed);
+      if (damageFraction <= 0) return;
+      const result = this.proteinRuntime.combat.applyContactDamage(this.maxHp * damageFraction);
+      this.hp = this.proteinRuntime.combat.integrityHp;
+      if (result.defeated) {
+        this.alive = false;
+        activeStage.recordEnemyDeath(this, simTime, cause);
+        this.destroyEffect();
+      } else {
+        this._worldSfx.clank();
+        this._fx.spawnGasPuff(this.state);
+      }
+      return;
+    }
     if (!this.applyCollisionDamage(damageSpeed)) return;
     if (this.hp > 0) {
       this._worldSfx.clank();
@@ -269,6 +450,7 @@ export class Enemy extends Ship {
     this.lastBehaviorSim = simTime;
     if (!simSpeed.canShipAct) return;
     if (!this.fireEnabled) return;
+    if (this.proteinRuntime && !this.proteinRuntime.combat.hasAttackSite()) return;
     const dist = len(sub(player.state.r, this.state.r));
     if (!(dist < C.STAGE00_MAX_RANGE && dist > C.ENEMY_AI_MIN_RANGE)) return;
 
@@ -306,8 +488,10 @@ export class Enemy extends Ship {
   }
 
   // player へ向けた見越し射撃でプラズマ弾を1発生成し、entities に追加する。
-  private firePlasma(simTime: number, player: Player, entities: EntityManager, ephemeris: Ephemeris): void {
-    const r = this.state.r;
+  private firePlasma(simTime: number, player: Player, entities: EntityManager, ephemeris: Ephemeris, origin?: Vec3): void {
+    const r = origin ?? (this.proteinRuntime
+      ? this.proteinRuntime.nextAttackSiteWorldPosition(this.state.r, this.att.q)
+      : this.state.r);
     const v = this.state.v;
     const toPlayer = sub(player.state.r, r);
     const relV = sub(player.state.v, v);
@@ -329,17 +513,23 @@ export class Enemy extends Ship {
     const spreadAng = (Math.random() * C.PLASMA_SPREAD_DEG * spreadScale * Math.PI) / 180;
     const actualAim = rotateAxis(aimDir, perp, spreadAng);
 
-    const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
+    const relativeBulletVelocity = scale(actualAim, C.PLASMA_BULLET_SPEED);
+    const bV = add(v, relativeBulletVelocity);
 
-    const pb = new Bullet(kinematicState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', C.PLAYER_BULLET_DAMAGE, this._worldSfx, this.scene);
-    pb.renderObject.position.set(r.x, r.y, r.z);
-    // 進行方向に向ける
-    const mz = new THREE.Matrix4().lookAt(
-      new THREE.Vector3(),
-      new THREE.Vector3(actualAim.x, actualAim.y, actualAim.z),
-      new THREE.Vector3(0, 1, 0),
+    const bulletDamage = this.proteinRuntime
+      ? this.proteinRuntime.combat.projectileDamage(C.PLAYER_BULLET_DAMAGE)
+      : C.PLAYER_BULLET_DAMAGE;
+    const pb = new Bullet(
+      kinematicState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', bulletDamage,
+      this._worldSfx, this.scene, this,
     );
-    pb.renderObject.quaternion.setFromRotationMatrix(mz);
+    // 弾の姿勢は Bullet.sync() に一本化する。プラズマの長軸(+Z)を、
+    // 浮動原点に対する実際の相対速度へ向けるため、発射方向(actualAim)を
+    // 直接 lookAt() するよりも、敵自身の速度を含む軌道と一致する。
+
+    if (this.proteinRuntime) {
+      this._fx.spawnMuzzleFlash(kinematicState(simTime, r, v));
+    }
 
     entities.addBullet(pb);
   }
@@ -362,6 +552,12 @@ export class Enemy extends Ship {
       burstLeft: this.burstLeft,
       burstDelay: this.burstDelay,
       showTrajectoryLine: this.showTrajectoryLine,
+      protein: this.proteinRuntime?.combat.serialize(),
     };
+  }
+
+  override dispose(): void {
+    this.proteinRuntime?.dispose();
+    super.dispose();
   }
 }
