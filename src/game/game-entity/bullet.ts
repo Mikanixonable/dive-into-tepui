@@ -37,10 +37,18 @@ export class Bullet extends GameEntity {
     private passedClose: boolean = false; // 至近通過音を鳴らし終えたか
     private readonly lifetime: number;
     private readonly _worldSfx: WorldSfx;
+    // The direction shown by a projectile is relative to its shooter, not to the
+    // floating-origin velocity (which is usually the player's velocity). Keeping
+    // the reference entity lets a moving enemy's plasma point along its actual
+    // launch direction instead of appearing to slide sideways.
+    private readonly velocityReference: GameEntity | null;
 
     // accent: plasma 弾のみ使う発光色(未指定なら buildPlasmaMesh の既定色)。normal 弾では無視する。
     // damage は着弾時に与える HP。撃った側の武装で決まるので、弾自身が持ち歩く。
-    constructor(state: KinematicState, lifetime: number, shooter: Shooter, type: BulletType, damage: number, worldSfx: WorldSfx, scene?: THREE.Scene) {
+    constructor(
+        state: KinematicState, lifetime: number, shooter: Shooter, type: BulletType, damage: number,
+        worldSfx: WorldSfx, scene?: THREE.Scene, velocityReference?: GameEntity,
+    ) {
         // renderObject は InstancedPool へ渡す変換を保持する。
         super(state, type === 'plasma' ? buildPlasmaMesh() : buildBulletMesh(), scene, undefined, undefined, false);
         this.bornSim = state.t;
@@ -49,6 +57,7 @@ export class Bullet extends GameEntity {
         this.type = type;
         this.damage = damage;
         this._worldSfx = worldSfx;
+        this.velocityReference = velocityReference ?? null;
         this.mass = C.BULLET_MASS;
         this.radius = C.BULLET_RADIUS;
         this.collides = true;
@@ -96,7 +105,7 @@ export class Bullet extends GameEntity {
         if (simTime - this.bornSim >= this.lifetime) this.alive = false;
     }
 
-    // 姿勢を持たないため、att.q ではなくフローティングオリジンに対する相対速度方向を向く。
+    // 姿勢を持たないため、att.q ではなく射手に対する相対速度方向を向く。
     sync(fo: FloatingOrigin, displayTime: number): void {
         // 表示できる時刻の範囲外なら非表示にする
         const s = this.displayState(displayTime);
@@ -106,8 +115,13 @@ export class Bullet extends GameEntity {
         }
         this.renderObject.visible = true;
         this.renderObject.position.copy(fo.RtoThreeV3(s.r));
-        // 相対速度方向へ機体を向ける
-        const relVel = fo.VtoThreeV3(s.v);
+        // 射手の表示時刻の速度を差し引く。射手が無い旧来の呼び出しだけは
+        // FloatingOrigin の速度基準へフォールバックする。
+        const reference = this.velocityReference?.displayState(displayTime);
+        const relative = reference === null || reference === undefined ? null : sub(s.v, reference.v);
+        const relVel = relative === null
+            ? fo.VtoThreeV3(s.v)
+            : new THREE.Vector3(relative.x, relative.y, relative.z);
         if (!orientProjectile(tmpQuat, relVel)) return;
         this.renderObject.quaternion.copy(tmpQuat);
     }
