@@ -21,6 +21,7 @@ export interface ProteinLabCaseMetadata {
   readonly pdbId: '5I4R' | '1MBN';
   readonly representation: ProteinLabRepresentation;
   readonly instanceCount: number;
+  /** 静止比較で使用する最高詳細度。 */
   readonly baselineLod: 'near';
 }
 
@@ -45,6 +46,16 @@ const ASSETS: Readonly<Record<ProteinLabAsset, {
   '1mbn': { assetId: 'pdb-1mbn-myoglobin', pdbId: '1MBN', count: 20, columns: 5, spacing: 5.2, depth: 32 },
 };
 
+const PUBLICATION_FRAMED_RADIUS = 4.25;
+const PUBLICATION_FRAME_FILL = 0.76;
+const PUBLICATION_ROTATION = new THREE.Euler(0.14, -0.34, 0.08);
+
+const PUBLICATION_DISPLAY: ProteinDisplaySettings = {
+  representation: 'ribbon',
+  colorMode: 'publication',
+};
+
+/** 個体数に対応した従来比較ケースの固定カメラを返す。 */
 function cameraFor(asset: ProteinLabAsset, count: ProteinLabPopulation): THREE.PerspectiveCamera {
   const definition = ASSETS[asset];
   const columns = count === 1 ? 1 : definition.columns;
@@ -54,18 +65,19 @@ function cameraFor(asset: ProteinLabAsset, count: ProteinLabPopulation): THREE.P
   camera.position.set(0, 0, 0);
   camera.lookAt(0, 0, -1);
   camera.updateMatrixWorld();
-  // Keep a little margin around the grid. The camera is fixed at the origin, matching the other
-  // Render Lab cases, so the resulting GPU timings remain comparable across representations.
+  // グリッド寸法を保持し、各 representation の GPU 計測条件をそろえる。
   camera.userData.proteinGrid = { columns, rows, depth };
   return camera;
 }
 
+/** 登録済み asset を描画 source として取得する。 */
 function sourceFor(assetId: ProteinAssetId): ProteinRenderSource {
   const bundle = proteinAssetBundleFor(assetId);
   if (!bundle) throw new Error(`Unknown Render Lab protein asset: ${assetId}`);
   return { semantic: bundle.semantic, backbone: bundle.backbone, structure: bundle.structure, motion: bundle.motion };
 }
 
+/** 比較グリッド内の個体位置を返す。 */
 function gridPosition(index: number, count: number, columns: number, spacing: number): THREE.Vector3 {
   if (count === 1) return new THREE.Vector3(0, 0, -10);
   const row = Math.floor(index / columns);
@@ -78,6 +90,7 @@ function gridPosition(index: number, count: number, columns: number, spacing: nu
   );
 }
 
+/** 指定 asset・表示形態・個体数の比較ケースを生成する。 */
 function proteinCase(
   asset: ProteinLabAsset,
   representation: ProteinLabRepresentation,
@@ -87,6 +100,7 @@ function proteinCase(
   const display = DISPLAY_BY_REPRESENTATION[representation];
   const source = sourceFor(definition.assetId);
   const objects: THREE.Object3D[] = [];
+  // 全個体に同じ表示設定を適用し、指定グリッドへ並べる。
   const controllers: ProteinMotionController[] = [];
   const bindings: ProteinMotionBinding[] = [];
   for (let index = 0; index < count; index++) {
@@ -126,8 +140,83 @@ function proteinCase(
   };
 }
 
+/** 比較ケースの安定した識別名を返す。 */
 function proteinCaseName(asset: ProteinLabAsset, representation: ProteinLabRepresentation, count: number): string {
   return `protein-${asset}-${representation}-${count}`;
+}
+
+/** モデル全体を収める固定カメラを返す。 */
+function publicationCamera(distance: number, modelDepth: number): THREE.PerspectiveCamera {
+  const camera = new THREE.PerspectiveCamera(
+    FOV_DEG, VIEW_WIDTH / VIEW_HEIGHT, NEAR, distance + modelDepth * 2,
+  );
+  camera.position.set(0, 0, 0);
+  camera.lookAt(0, 0, -1);
+  camera.updateMatrixWorld();
+  return camera;
+}
+
+/** 論文調 Ribbon の形状・陰影・リガンドを1体の固定構図で返す。 */
+function publicationCase(asset: ProteinLabAsset): LabCase {
+  const definition = ASSETS[asset];
+  const source = sourceFor(definition.assetId);
+  const controller = new ProteinMotionController(source.motion, `render-lab-${asset}-publication`);
+  const binding = createProteinMotionBinding(source.motion.residueCount);
+  const object = buildProteinEnemyShip(source, PUBLICATION_DISPLAY, binding);
+  object.rotation.copy(PUBLICATION_ROTATION);
+  object.updateMatrixWorld(true);
+
+  // asset 間で比較しやすいよう外接球半径を共通化する。
+  const bounds = new THREE.Box3().setFromObject(object);
+  if (bounds.isEmpty()) throw new Error(`Protein Render Lab model has no bounds: ${definition.assetId}`);
+  const sphere = new THREE.Sphere();
+  bounds.getBoundingSphere(sphere);
+  if (!Number.isFinite(sphere.radius) || sphere.radius <= 0) {
+    throw new Error(`Protein Render Lab model has invalid bounds: ${definition.assetId}`);
+  }
+
+  object.scale.multiplyScalar(PUBLICATION_FRAMED_RADIUS / sphere.radius);
+  object.updateMatrixWorld(true);
+  // 回転後の箱を透視投影へ収め、形状を判読できる画面占有率にする。
+  const framedBounds = new THREE.Box3().setFromObject(object);
+  const framedCenter = framedBounds.getCenter(new THREE.Vector3());
+  const halfSize = framedBounds.getSize(new THREE.Vector3()).multiplyScalar(0.5);
+  const verticalFov = FOV_DEG * Math.PI / 180;
+  const verticalTangent = Math.tan(verticalFov / 2);
+  const horizontalTangent = verticalTangent * VIEW_WIDTH / VIEW_HEIGHT;
+  const distance = halfSize.z + Math.max(
+    halfSize.x / (horizontalTangent * PUBLICATION_FRAME_FILL),
+    halfSize.y / (verticalTangent * PUBLICATION_FRAME_FILL),
+  );
+  object.position.set(
+    -framedCenter.x,
+    -framedCenter.y,
+    -framedCenter.z - distance,
+  );
+  object.updateMatrixWorld(true);
+
+  return {
+    objects: [object],
+    camera: publicationCamera(distance, halfSize.z),
+    proteinMotion: {
+      family: 'protein',
+      assetId: definition.assetId,
+      pdbId: definition.pdbId,
+      representation: 'ribbon',
+      instanceCount: 1,
+      baselineLod: 'near',
+    },
+    updateProteinMotion(displayTime) {
+      const startedAt = performance.now();
+      updateProteinMotionBinding(binding, controller.update(displayTime, 'near'));
+      return {
+        cpuMs: performance.now() - startedAt,
+        uploadBytes: source.motion.residueCount * 4 * Float32Array.BYTES_PER_ELEMENT,
+        lodCounts: { near: 1 },
+      };
+    },
+    disposeProteinMotion() { disposeProteinMotionBinding(binding); },
+  };
 }
 
 const PROTEIN_CASES: Record<string, () => LabCase> = {};
@@ -141,5 +230,8 @@ for (const asset of Object.keys(ASSETS) as ProteinLabAsset[]) {
     }
   }
 }
+
+PROTEIN_CASES['protein-5i4r-publication'] = () => publicationCase('5i4r');
+PROTEIN_CASES['protein-1mbn-publication'] = () => publicationCase('1mbn');
 
 export { PROTEIN_CASES };
