@@ -8,43 +8,34 @@ import { CelestialBodyId } from '../../physics/celestial-body';
 import { CelestialSurface } from '../../render/celestial-surface';
 import { albedoOf, DEFAULT_ALBEDO } from '../../render/celestial-albedo';
 import { textureOf } from '../../render/celestial-textures';
-import { SphereLodLevel } from '../../render/screen-lod';
 import { CelestialView } from './celestial-view';
 import { EarthView } from './earth-view';
 import { SphereView } from './sphere-view';
 import { PointView } from './point-view';
 import { SunView } from './sun-view';
 
-// id のテクスチャを LOD 段ごとの球面へ貼る関数。テクスチャ表に無い id を渡すと投げる
-// (テクスチャ付きとして登録した天体の表が欠けているということなので、黙って単色へ落とさない)。
-function texturedSurface(id: SolarSystemId): (level: SphereLodLevel) => CelestialSurface {
+// id のテクスチャを貼った球面。テクスチャ表に無い id を渡すと投げる(テクスチャ付きとして
+// 登録した天体の表が欠けているということなので、黙って単色へ落とさない)。
+function texturedSurface(id: SolarSystemId): CelestialSurface {
   const texture = textureOf(id);
   if (texture === null) throw new Error(`no texture registered for ${id}`);
-  return (level) => CelestialSurface.textured(texture.url, texture.albedoScale, level.widthSegments, level.heightSegments);
+  return CelestialSurface.textured(texture);
 }
 
-// 月の表面。テクスチャの経度原点をモデルの本初子午線(+Z)へ揃えるためにジオメトリを回すので、
-// 分割段ラダーの共有ジオメトリには乗せられない(乗せると他の天体まで一緒に回る)。
-function moonSurface(): CelestialSurface {
-  const moon = textureOf('moon')!;
-  const surface = CelestialSurface.textured(moon.url, moon.albedoScale, 64, 32);
-  surface.mesh.geometry.rotateY(-Math.PI / 2);
-  return surface;
-}
-
-// id のアルベドを LOD 段ごとの単色球面へ与える関数。
-function solidSurface(id: SolarSystemId): (level: SphereLodLevel) => CelestialSurface {
-  const albedo = albedoOf(id);
-  return (level) => CelestialSurface.solid(albedo, level.widthSegments, level.heightSegments);
+// id のアルベドを与えた単色球面。
+function solidSurface(id: SolarSystemId): CelestialSurface {
+  return CelestialSurface.solid(albedoOf(id));
 }
 
 // テクスチャ付き惑星のレジストリ項を表示名から組む。rings(bodyDef からそのまま渡す)が
 // あれば環付きになる。**惑星は戦闘ビューでは常に輝点スプライトとして描かれる**(PointView)—
 // 見えるかどうかはその天体が届ける光の量が決める。
 function planetEntry(id: SolarSystemId, name: string): CelestialViewDef {
-  const buildSurface = texturedSurface(id);
   const def = bodyDef(SOLAR_SYSTEM, id);
-  return { name, create: () => new PointView(id, buildSurface, def.radius, shapeOf(id), ringsOf(id)) };
+  return {
+    name,
+    create: () => new PointView(id, texturedSurface(id), def.radius, shapeOf(id), ringsOf(id)),
+  };
 }
 
 // id の環(恒星と衛星は持たない)。shape と同じく、判別を1箇所に閉じる。
@@ -70,8 +61,10 @@ function satelliteEntry(id: SolarSystemId, name: string): CelestialViewDef {
 // テクスチャ付き衛星のレジストリ項を表示名から組む(実写の全球モザイクが入手できた衛星のみ;
 // それ以外は satelliteEntry の単色のまま)。
 function texturedSatelliteEntry(id: SolarSystemId, name: string): CelestialViewDef {
-  const buildSurface = texturedSurface(id);
-  return { name, create: () => new SphereView(id, buildSurface, bodyDef(SOLAR_SYSTEM, id).radius, shapeOf(id)) };
+  return {
+    name,
+    create: () => new SphereView(id, texturedSurface(id), bodyDef(SOLAR_SYSTEM, id).radius, shapeOf(id)),
+  };
 }
 
 // テクスチャを持たない太陽中心天体(準惑星・大型小惑星・彗星核)のレジストリ項。
@@ -88,7 +81,7 @@ export type CelestialViewDef = { readonly name: string; create(): CelestialView 
 
 export const CELESTIAL_VIEWS: Record<SolarSystemId, CelestialViewDef> = {
   earth: { name: '地球', create: () => new EarthView() },
-  moon: { name: '月', create: () => new SphereView('moon', moonSurface, bodyDef(SOLAR_SYSTEM, 'moon').radius) },
+  moon: texturedSatelliteEntry('moon', '月'),
   mercury: planetEntry('mercury', '水星'),
   venus: planetEntry('venus', '金星'),
   mars: planetEntry('mars', '火星'),
@@ -196,7 +189,7 @@ export function fallbackCelestialView(registry: CelestialRegistry, id: Celestial
     ? new SunView(id, def.radius)
     : new SphereView(
       id,
-      (level) => CelestialSurface.solid(DEFAULT_ALBEDO, level.widthSegments, level.heightSegments),
+      CelestialSurface.solid(DEFAULT_ALBEDO),
       def.radius,
     );
 }
