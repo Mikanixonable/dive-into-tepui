@@ -6,6 +6,7 @@ import { CelestialBody, orbitalElementsOf, strongestAttractor } from '../../../p
 import type { OrbitalElements } from '../../../physics/elements';
 import { semiMajorFromPeriod } from '../../../physics/elements';
 import type { Ephemeris } from '../../../physics/ephemeris';
+import { latLonOf } from '../../../physics/body-orientation';
 import { KinematicState } from '../../../physics/kinematic-state';
 import { dot, len, sub } from '../../../physics/vec3';
 import type { GameEntity } from '../../game-entity/game-entity';
@@ -87,7 +88,8 @@ function phaseAngleOn(el: OrbitalElements, positionRelCenter: KinematicState['r'
 }
 
 // ターゲット(target)の状態と軌道要素を、他の対象と同じ形(状態取得関数 + 軌道要素)へ揃える。
-function resolveTarget(
+// 接近タブ・投影タブの両方が、ターゲットの状態取得に同じこの関数を使う。
+export function resolveTarget(
   target: ApproachTargetSource,
 ): { stateAt: (t: number, center: CelestialBody, ephemeris: Ephemeris) => KinematicState | null; currentR: KinematicState['r'] } {
   // 艦・基地は predicted(将来は外挿できないことがある)、天体は ephemeris(常に解析的に解ける)。
@@ -165,4 +167,56 @@ export function approachSeries(
     samples.push({ x: rCirc * theta, y: len(shipRel) - len(targetRel) });
   }
   return { samples, relIncDeg, truncated };
+}
+
+export interface ProjectionSample { readonly latDeg: number; readonly lonDeg: number }
+
+export interface ProjectionSeries {
+  readonly current: ProjectionSample;
+  // null は経度 ±180° をまたぐ跳びの印(接近タブの位相折り返しと同じ扱い)。
+  readonly samples: readonly (ProjectionSample | null)[];
+  readonly truncated: boolean;
+}
+
+// state(center 相対ではなく ECI)を center の時刻 t での自転を通じて緯度経度へ変換する。
+// center が自転モデルを持たなければ null。
+function projectionSampleAt(state: KinematicState, centerState: KinematicState, center: CelestialBody, ephemeris: Ephemeris, t: number): ProjectionSample | null {
+  const orientation = ephemeris.poleAt(center.id, t);
+  if (orientation === null) return null;
+  const { latRad, lonRad } = latLonOf(sub(state.r, centerState.r), orientation.axis, orientation.spinAngle);
+  return { latDeg: (latRad * 180) / Math.PI, lonDeg: (lonRad * 180) / Math.PI };
+}
+
+// 投影タブ: stateAt(艦・基地は entityStateAt、天体は ephemeris.stateOf)が返す位置を、center の
+// 自転(ephemeris.poleAt)を通じて緯度経度へ変換した点列。center が自転モデルを持たない場合は null。
+export function projectionSeries(
+  stateAt: (t: number) => KinematicState | null,
+  center: CelestialBody,
+  ephemeris: Ephemeris,
+  now: number,
+  spanSec: number,
+  sampleCount: number,
+): ProjectionSeries | null {
+  const currentState = stateAt(now);
+  if (currentState === null) return null;
+  const current = projectionSampleAt(currentState, ephemeris.stateOf(center.id, now), center, ephemeris, now);
+  if (current === null) return null;
+
+  if (spanSec <= 0 || sampleCount <= 0 || !isFinite(spanSec) || !Number.isFinite(sampleCount)) {
+    return { current, samples: [], truncated: true };
+  }
+
+  const samples: (ProjectionSample | null)[] = [];
+  let truncated = false;
+  let lastLonDeg: number | null = null;
+  for (let i = 0; i <= sampleCount; i++) {
+    const t = now + (i * spanSec) / sampleCount;
+    const state = stateAt(t);
+    const sample = state === null ? null : projectionSampleAt(state, ephemeris.stateOf(center.id, t), center, ephemeris, t);
+    if (sample === null) { truncated = true; break; }
+    if (lastLonDeg !== null && Math.abs(sample.lonDeg - lastLonDeg) > 180) samples.push(null);
+    lastLonDeg = sample.lonDeg;
+    samples.push(sample);
+  }
+  return { current, samples, truncated };
 }

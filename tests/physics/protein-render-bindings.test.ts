@@ -28,7 +28,6 @@ const semantic = {
   components: [{ id: 'component-a', chains: ['A'], entities: [1], role: 'core', source: 'computed' }],
   sites: [],
   modificationSlots: [],
-  motion: { model: 'overdamped-normal-modes', sampleHz: 60, visualGain: 1, modes: [] },
 } as ProteinAssetDefinition;
 
 const motion = {
