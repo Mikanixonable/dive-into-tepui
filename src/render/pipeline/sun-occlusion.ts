@@ -229,7 +229,7 @@ export class SunOcclusion {
   // 判定は select ではなく If で書く。select は両辺を評価するので、画面のほとんどを占める
   // 虚空の画素からもテクスチャフェッチが消えない。
   //
-  // スロットは互いに重ならないので、**入っている最初のスロットだけを引く**(積ではなく単一選択)。
+  // **入っている最初のスロットだけを引く**(積ではなく単一選択)。
   private meshTransmittance(worldPos: Vec3Node, normal: Vec3Node, sunDir: Vec3Node): FloatNode {
     const slots = this.shadowMaps.slots;
     // 恒星の視半径。半影の幅はここに遮蔽器までの距離を掛けたものになる。
