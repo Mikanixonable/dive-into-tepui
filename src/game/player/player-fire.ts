@@ -281,6 +281,7 @@ export class PlayerFire {
       ship.weaponDamage,
       this._worldSfx,
       this._scene,
+      ship,
     );
     entities.addBullet(bullet);
   }

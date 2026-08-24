@@ -214,6 +214,33 @@ export function buildAmmoPickup(count = 4): THREE.Group {
   return g;
 }
 
+// 軌道上の RCS 燃料補給ピックアップ。弾薬と見分けやすい黄色のタンクとビーコンで構成する。
+export function buildRcsFuelPickup(): THREE.Group {
+  const g = new THREE.Group();
+  const tank = withDispose(new THREE.Mesh(
+    new THREE.CylinderGeometry(0.45, 0.45, 1.8, 10),
+    new THREE.MeshStandardMaterial({ color: 0xffb347, metalness: 0.75, roughness: 0.3 }),
+  ));
+  tank.rotation.z = Math.PI / 2;
+  g.add(tank);
+
+  const band = withDispose(new THREE.Mesh(
+    new THREE.TorusGeometry(0.46, 0.06, 6, 12),
+    new THREE.MeshStandardMaterial({ color: 0xffe0a3, metalness: 0.8, roughness: 0.25 }),
+  ));
+  band.rotation.y = Math.PI / 2;
+  g.add(band);
+
+  const beacon = withDispose(new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.28, 0),
+    new THREE.MeshBasicMaterial({ color: 0xffd166 }),
+  ));
+  beacon.position.x = 1.15;
+  g.add(beacon);
+  markLitOpaque(g);
+  return g;
+}
+
 // 敵機: プレースホルダの基本色で焼き出されたテンプレートのうち、
 // userData.role === 'accent' が付与されたマテリアルだけを accent 色へ塗り替える。
 export function buildEnemyShip(accent: string | number = 0xff4a3d): THREE.Group {
@@ -293,22 +320,14 @@ export function bulletHaloResources(): { geometry: THREE.BufferGeometry; materia
   return { geometry: bulletHaloGeom!, material: bulletHaloMat! };
 }
 
-let plasmaGeomFixed = false;
 let plasmaBodyMat: THREE.MeshBasicMaterial | null = null;
 
 // 敵プラズマ弾のメッシュ(本体のみ)を生成する。マテリアルは1つキャッシュして全弾で共有する。
 export function buildPlasmaMesh(): THREE.Mesh {
   const m = parsePlasma();
-  if (!plasmaGeomFixed) {
-    // plasma.json (CylinderGeometry) は toJSON() がコンストラクタ引数のみを保存する
-    // 仕様のため、export-models.mjs 側で焼き込んだ rotateX() 補正がロード時に失われ、
-    // 円柱の長さ軸が既定の Y のままになる。
-    // memoParseShared は geometry を clone しないため
-    // 全インスタンスがこの共有ジオメトリを参照する。一度だけ補正を掛け直す
-    // (毎回だと累積回転してしまう)。
-    m.geometry.rotateX(Math.PI / 2);
-    plasmaGeomFixed = true;
-  }
+  // export-models.mjs で CylinderGeometry の長さ軸を +Z へ回してから
+  // BufferGeometry として書き出している。BufferGeometry の頂点座標には
+  // その回転が焼き込まれているため、ここで再度 rotateX() してはならない。
   if (!plasmaBodyMat) {
     plasmaBodyMat = new THREE.MeshBasicMaterial({
       color: ENEMY_PLASMA_COLOR,

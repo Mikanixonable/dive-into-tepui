@@ -1,5 +1,6 @@
 // ゲームバランス・チューニング定数
 import { LINE_RENDER_ORDER, type LineStyle } from '../render/line-style';
+import { v3 } from '../physics/vec3';
 export { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../physics/solar-system';
 
 // 軌道上へ配置できる自機の上限隻数。
@@ -7,8 +8,12 @@ export const MAX_PLACED_SHIPS = 50;
 
 // --- 基地ドッキング ---
 export const BASE_MAX_VESSELS = 4;      // 基地が保有・格納できる艦艇の最大数
-export const DOCK_CAPTURE_DIST = 500;    // [m] (船船ドッキング用)
 export const DOCK_CAPTURE_REL_V = 20;   // [m/s]
+// 艦首(+Z)の船体外側に置く単一の接続ポート。位置は姿勢から導出し、保存しない。
+export const SHIP_PORT_OFFSET = v3(0, 0, 3.0);
+export const PORT_DOCK_MAX_DIST = 50;          // [m] 船対船ポート間の最大捕捉距離
+export const PORT_DOCK_MIN_ALIGNMENT = 0.5;    // ポート軸の最小内積 (cos 60°)
+export const DOCK_GUIDE_SHOW_DIST = 300;       // [m] ガイドを表示するポート接続点までの距離
 export const HATCH_DOCK_MAX_DIST = 80;        // 基地ハッチ前での最大ドッキング距離 [m]
 export const HATCH_DOCK_MIN_ALIGNMENT = 0.5;  // ハッチ正面コーンの最小内積 (cos 60° = 0.5)
 export const SLOT_DOCK_MAX_DIST = 50;         // 各ドックスロット前での最大ドッキング距離 [m]
@@ -122,6 +127,21 @@ export const THROTTLE_LABELS = ['弱', '中', '強', '最強'] as const;
 // 加速度になるよう決めてあるので、両者を別々に動かすと表示と実挙動がずれる。
 export const PLAYER_MASS = 1000;
 export const THROTTLE_DEFAULT_IDX = 1;
+
+// 分離式ブースターの標準段。自機 1,000 kg と並べたとき、1段あたりの乾燥+満載質量
+// 1,000 kg、推力 0.6 MN で約 300 m/s² となるようにする。燃料 800 kg を 80 kg/s
+// で燃やし切るので、通常のフレーム刻みでも十数秒の燃焼と最後の燃料切れを扱える。
+export const BOOSTER_DEFAULT_DRY_MASS = 200; // [kg]
+export const BOOSTER_DEFAULT_MAX_FUEL = 800; // [kg]
+export const BOOSTER_DEFAULT_THRUST = 6e5; // [N]
+export const BOOSTER_DEFAULT_FUEL_RATE = 80; // [kg/s]
+export const BOOSTER_MAX_ATTACHED = 4;
+export const BOOSTER_MOUNT_Z = -4.0; // 船体中心から最初の段の前端まで [m]
+export const BOOSTER_SEPARATION_SPEED = 8; // 爆砕ボルトによる相対分離速度 [m/s]
+export const BOOSTER_COLLISION_GRACE = 0.5; // 分離直後に接続面同士が再衝突しない猶予 [s]
+export const BOOSTER_COLLISION_RADIUS = 4.2; // 長さ8mの段を包む接触球 [m]
+export const BOOSTER_HARDWARE_LIFETIME = 2.4; // 段間カバー/爆砕ボルトの飛散表示時間 [s]
+export const MAX_DETACHED_BOOSTERS = 64;
 // 並進方向キーをこの秒数以内に連打すると、押しっぱなし相当にラッチ/解除する [s]
 export const THRUST_LATCH_DOUBLE_TAP_SEC = 0.3;
 
@@ -177,7 +197,7 @@ export const RECOIL_DV = 0.04; // 反動 [m/s]
 export const SELF_CONTACT_GRACE = 2.0; // 自弾が自機に当たり得るまでの猶予 [sim s]
 export const BULLET_MASS = 0.1; // 弾の剛体接触用質量 [kg](実体弾・プラズマ弾とも共通)
 export const BULLET_RADIUS = 0.02; // 弾の剛体接触用半径 [m]
-export const BULLET_CLOSE_PASS_DIST = 20; // 敵弾が艦の至近を通過したとみなす距離 [m]
+export const BULLET_CLOSE_PASS_DIST = 40; // 敵弾が艦の至近を通過したとみなす距離 [m]
 
 // ターゲット位置に自機側を向けて置いた仮想標的面(的)を弾が通過した点のマーカー。
 // 最新の 1 点のみ表示する(複数出ると照準の目安として紛らわしいため)。
@@ -197,6 +217,11 @@ export const MAP_PLANET_SHIP_LABEL_END = 1e9;
 export const AMMO_PHYS_RADIUS = 1.3; // 補給の物理接触用の半径 [m](見た目に近い実寸)
 export const LOGISTICS_LOW_MAGS = 7; // 残りマガジンがこれ未満になると付近の軌道に補給を投入
 export const MAX_ACTIVE_AMMO_PICKUPS = 3; // 同時に存在する補給の最大数
+export const RCS_FUEL_PICKUP_AMOUNT = 1000; // 補給 1 個の取り込みで増える RCS 燃料 [kg]
+export const RCS_FUEL_PICKUP_RADIUS = 100; // 取り込み距離 [m]
+export const RCS_FUEL_PHYS_RADIUS = 1.3; // 補給の物理接触用の半径 [m]
+export const LOGISTICS_LOW_FUEL_RATIO = 0.3; // この割合未満になると燃料補給を投入
+export const MAX_ACTIVE_RCS_FUEL_PICKUPS = 3; // 同時に存在する燃料補給の最大数
 export const LOGISTICS_CHECK_INTERVAL = 20; // 補給投入判定の間隔 [sim s]
 export const LOGISTICS_MIN_DIST = 625; // 補給投入位置(自機軌道上の位相シフト距離)下限 [m]
 export const LOGISTICS_MAX_DIST = 1250; // 同上限 [m]

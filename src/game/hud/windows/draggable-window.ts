@@ -57,10 +57,10 @@ const STYLE = `
   border: 0; border-radius: var(--radius-micro); background: var(--surface-2); color: var(--text);
   cursor: pointer; font-size: var(--font-s); padding: 0;
 }
-#hud .dg-window-btn:hover { background: var(--surface-3); color: var(--accent-near); }
-#hud .dg-window-btn.clipped { background: var(--accent-fill); color: var(--accent); }
-#hud .dg-window.tgt { background: color-mix(in srgb, var(--accent) 16%, var(--glass-focus)); }
-#hud .dg-window.on { background: color-mix(in srgb, var(--accent-secondary) 16%, var(--glass-focus)); }
+#hud .dg-window-btn:hover { background: var(--surface-3); color: var(--color-primary-hover); }
+#hud .dg-window-btn.clipped { background: var(--color-primary-fill); color: var(--color-primary); }
+#hud .dg-window.tgt { background: color-mix(in srgb, var(--color-primary) 16%, var(--glass-focus)); }
+#hud .dg-window.on { background: color-mix(in srgb, var(--color-signal) 16%, var(--glass-focus)); }
 `;
 
 let styleInjected = false;

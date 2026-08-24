@@ -90,7 +90,7 @@ export class SettingsView implements OverlayHandle {
     const themeButtons = new Map<string, Button>();
     let activeThemeId = currentThemePalette().id;
     for (const palette of THEME_PRESETS) {
-      const previewColors = [palette.page, palette.surface1, palette.title, palette.accent, palette.secondary];
+      const previewColors = [palette.page, palette.surface1, palette.title, palette.accent, palette.signal];
       const preview = `<span class="sv-theme-preview">${previewColors
         .map((color) => `<span class="sv-theme-swatch" style="background-color: ${color}"></span>`)
         .join('')}</span>`;

@@ -1,29 +1,26 @@
-// ドックビュー: 基地に接岸した際に開くフルスクリーンUI。
+// 基地パネル: 基地のプロパティウィンドウ内へ展開する運用UI。
 // 格納されている船の一覧、部品の確認・修理・換装、ショップを提供する。
 import type { Base } from '../../game-entity/base';
 import type { Player } from '../../player/player';
 import { CloseButton, TabBar } from '../widgets';
 import { MQ_COMPACT, MQ_SHORT } from '../breakpoints';
-import type { BaseViewContext } from './base-view-context';
+import type { BasePanelContext } from './base-view-context';
 import { VesselsTabController } from './base-view-vessels-tab';
 import { PartsTabController } from './base-view-parts-tab';
 import { ShopTabController } from './base-view-shop-tab';
 
 const STYLE = `
-/* 戦闘・マップと対等な全画面ビュー。情報面は Solid を基調にし、
-   選択中の艦とその整備コンテキストだけ Focus Glass へ持ち上げる。 */
-#base-view.base-view-overlay {
-  position: fixed; inset: 0;
-  display: flex;
+/* プロパティウィンドウ内の展開パネル。 */
+#base-view.base-panel {
+  display: flex; width: 100%; min-width: 0;
   box-sizing: border-box;
-  background: var(--page);
+  background: transparent;
   color: var(--body);
   font-family: var(--font-neutral, var(--font-family));
   pointer-events: auto;
-  padding: max(var(--space-6), var(--safe-t)) max(var(--space-5), var(--safe-r)) max(var(--space-5), var(--safe-b)) max(var(--space-5), var(--safe-l));
 }
 #base-view .dock-panel {
-  width: min(100%, 1160px); min-width: 0; min-height: 0; margin: 0 auto;
+  width: 100%; min-width: 0; min-height: 0;
   display: flex; flex-direction: column;
 }
 #base-view .dock-header {
@@ -36,7 +33,7 @@ const STYLE = `
 #base-view .dock-title-group { min-width: 0; }
 #base-view .dock-kicker {
   display: block; margin-bottom: var(--space-2);
-  color: var(--accent); font-size: var(--font-xs); line-height: 1.3;
+  color: var(--color-primary); font-size: var(--font-xs); line-height: 1.3;
 }
 #base-view .dock-title {
   display: block; margin: 0; color: var(--title);
@@ -52,13 +49,13 @@ const STYLE = `
   border: 0; border-radius: var(--radius-control);
   background: transparent; color: var(--muted);
 }
-#base-view .dock-tabs .w-btn:hover { background: var(--surface-2); color: var(--accent-near); }
-#base-view .dock-tabs .w-btn.on { background: var(--accent-fill); color: var(--accent); }
+#base-view .dock-tabs .w-btn:hover { background: var(--surface-2); color: var(--color-primary-hover); }
+#base-view .dock-tabs .w-btn.on { background: var(--color-primary-fill); color: var(--color-primary); }
 #base-view .w-close {
   width: 34px; height: 34px; border: 0; border-radius: var(--radius-control);
   background: var(--surface-2); color: var(--muted);
 }
-#base-view .w-close:hover { background: var(--surface-3); color: var(--accent-near); }
+#base-view .w-close:hover { background: var(--surface-3); color: var(--color-primary-hover); }
 #base-view .dock-status-bar {
   flex: 0 0 auto; padding: 0 17px 13px;
   border-radius: 0 0 var(--radius-window) var(--radius-window);
@@ -66,7 +63,7 @@ const STYLE = `
   font-size: var(--font-s); font-variant-numeric: tabular-nums;
 }
 #base-view .dock-status-bar::before {
-  content: "∗"; margin-right: var(--space-3); color: var(--accent-secondary);
+  content: "∗"; margin-right: var(--space-3); color: var(--color-signal);
 }
 #base-view .dock-body {
   flex: 1 1 0; min-height: 0; margin-top: 9px; padding: var(--space-6) 0;
@@ -76,7 +73,7 @@ const STYLE = `
 #base-view .dock-ship-select:focus-visible,
 #base-view .dock-part-swap-select:focus-visible,
 #base-view .w-btn:focus-visible,
-#base-view .w-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+#base-view .w-close:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 3px; }
 #base-view .dock-section { display: flex; flex-direction: column; gap: 9px; }
 #base-view .dock-section-head {
   display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-6);
@@ -113,7 +110,7 @@ const STYLE = `
 }
 #base-view .dock-ship-row.is-selected::before {
   content: ""; position: absolute; top: 12px; bottom: 12px; left: 6px; width: 3px;
-  border-radius: var(--radius-control); background: var(--accent);
+  border-radius: var(--radius-control); background: var(--color-primary);
 }
 #base-view .dock-ship-select {
   flex: 1 1 auto; min-width: 0; display: block; padding: var(--space-3) var(--space-4);
@@ -122,10 +119,10 @@ const STYLE = `
 }
 #base-view .dock-ship-info { flex: 1; display: flex; flex-direction: column; gap: var(--space-1); }
 #base-view .dock-ship-name { color: var(--title); font-size: var(--font-l); font-weight: 500; }
-#base-view .dock-ship-row:not(.is-selected) .dock-ship-select:hover .dock-ship-name { color: var(--accent-near); }
-#base-view .dock-ship-row.is-selected .dock-ship-name { color: var(--accent); }
+#base-view .dock-ship-row:not(.is-selected) .dock-ship-select:hover .dock-ship-name { color: var(--color-primary-hover); }
+#base-view .dock-ship-row.is-selected .dock-ship-name { color: var(--color-primary); }
 #base-view .dock-ship-hp { color: var(--muted); font-size: var(--font-s); font-variant-numeric: tabular-nums; }
-#base-view .dock-ship-row.is-critical .dock-ship-hp { color: var(--danger); }
+#base-view .dock-ship-row.is-critical .dock-ship-hp { color: var(--color-error); }
 #base-view .dock-ship-actions { display: flex; flex: 0 0 auto; gap: 5px; }
 /* Parts tab */
 #base-view .dock-parts-header {
@@ -138,7 +135,7 @@ const STYLE = `
   box-shadow: 0 16px 48px var(--shadow, var(--shade-1));
 }
 #base-view .dock-ship-label { flex: 1; color: var(--body); font-size: var(--font-m); }
-#base-view .dock-ship-label strong { color: var(--accent); font-weight: 600; }
+#base-view .dock-ship-label strong { color: var(--color-primary); font-weight: 600; }
 #base-view .dock-part-list { display: flex; flex-direction: column; gap: 7px; }
 #base-view .dock-part-row {
   display: flex; flex-direction: column; gap: var(--space-3); padding: 9px 11px;
@@ -192,12 +189,12 @@ const STYLE = `
   padding: 7px 10px; border: 0; border-radius: var(--radius-control);
   background: var(--surface-2); color: var(--body); white-space: nowrap;
 }
-#base-view span.dock-btn:hover { background: var(--surface-3); color: var(--accent-near); }
-#base-view span.dock-btn-primary { background: var(--accent-fill); color: var(--accent); }
-#base-view span.dock-btn-primary:hover { background: var(--accent-fill-strong); color: var(--accent-near); }
+#base-view span.dock-btn:hover { background: var(--surface-3); color: var(--color-primary-hover); }
+#base-view span.dock-btn-primary { background: var(--color-primary-fill); color: var(--color-primary); }
+#base-view span.dock-btn-primary:hover { background: var(--color-primary-fill-strong); color: var(--color-primary-hover); }
 #base-view span.dock-btn-service { color: var(--body); }
-#base-view span.dock-btn-service:hover { background: var(--surface-3); color: var(--accent-near); }
-#base-view span.dock-btn-complete.disabled { opacity: 0.72; color: var(--accent-secondary); }
+#base-view span.dock-btn-service:hover { background: var(--surface-3); color: var(--color-primary-hover); }
+#base-view span.dock-btn-complete.disabled { opacity: 0.72; color: var(--color-signal); }
 #base-view span.dock-btn-quiet { color: var(--muted); }
 
 @media ${MQ_COMPACT} {
@@ -249,7 +246,7 @@ const STYLE = `
 `;
 
 let styleInjected = false;
-// ドックビューのスタイルシートを document.head へ一度だけ挿入する。
+// 基地パネルのスタイルシートを document.head へ一度だけ挿入する。
 function ensureStyle(): void {
   if (styleInjected) return;
   styleInjected = true;
@@ -266,7 +263,7 @@ const TAB_ITEMS: readonly (readonly [DockTab, string])[] = [
   ['shop', 'ショップ'],
 ];
 
-export class BaseView {
+export class BasePanel {
   private readonly el: HTMLElement;
   private readonly tabBar: TabBar<DockTab>;
   private readonly moneyLabel: HTMLElement;
@@ -276,7 +273,6 @@ export class BaseView {
   private currentVessel: Player | null = null;
   private currentTab: DockTab = 'ships';
   private freeProcurement = false;
-  private previouslyFocused: HTMLElement | null = null;
 
   private readonly vesselsTab: VesselsTabController;
   private readonly partsTab: PartsTabController;
@@ -284,17 +280,17 @@ export class BaseView {
 
   // 外部コールバック
   public onLaunchVessel: ((ship: Player, base: Base) => void) | null = null;
-  // 「新造」ボタン。実際の艦の生成は Docking 側が行う(BaseView は UI のみ)。
+  // 「新造」ボタン。実際の艦の生成は Docking 側が行う(BasePanel は UI のみ)。
   public onBuildVessel: ((base: Base) => void) | null = null;
   public onClose: (() => void) | null = null;
 
   public get visible(): boolean { return this._visible; }
   public get element(): HTMLElement { return this.el; }
 
-  public constructor(root: HTMLElement) {
+  public constructor() {
     ensureStyle();
 
-    const ctx: BaseViewContext = {
+    const ctx: BasePanelContext = {
       base: () => this.currentBase!,
       freeProcurement: () => this.freeProcurement,
       vessel: () => this.currentVessel,
@@ -310,12 +306,10 @@ export class BaseView {
 
     this.el = document.createElement('div');
     this.el.id = 'base-view';
-    this.el.className = 'base-view-overlay';
+    this.el.className = 'base-panel';
     this.el.style.display = 'none';
-    this.el.setAttribute('role', 'dialog');
-    this.el.setAttribute('aria-modal', 'true');
+    this.el.setAttribute('role', 'region');
     this.el.setAttribute('aria-labelledby', 'base-view-title');
-    this.el.addEventListener('keydown', (event) => this.trapFocus(event));
 
     const panel = document.createElement('div');
     panel.className = 'dock-panel';
@@ -352,7 +346,7 @@ export class BaseView {
     });
     header.appendChild(this.tabBar.element);
 
-    // 閉じる操作は要求を伝えるだけで、実際に閉じてポーズを解くのは onClose の受け手が行う。
+    // 閉じる操作は、プロパティウィンドウ側へパネル収納を要求する。
     const closeBtn = new CloseButton(() => this.onClose?.());
     header.appendChild(closeBtn.element);
     panel.appendChild(header);
@@ -374,14 +368,10 @@ export class BaseView {
     panel.appendChild(this.bodyEl);
 
     this.el.appendChild(panel);
-    root.appendChild(this.el);
   }
 
-  // ドックビューを開く
+  // 基地パネルを開く。
   public open(base: Base, inspectShip: Player | null, freeProcurement: boolean): void {
-    if (!this._visible) {
-      this.previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    }
     this.currentBase = base;
     this.freeProcurement = freeProcurement;
     // inspectShip が基地に格納されていれば選択状態にする
@@ -402,34 +392,6 @@ export class BaseView {
     this._visible = false;
     this.currentBase = null;
     this.currentVessel = null;
-    const focusTarget = this.previouslyFocused;
-    this.previouslyFocused = null;
-    if (focusTarget?.isConnected) focusTarget.focus({ preventScroll: true });
-  }
-
-  // aria-modal の宣言どおり、Tab移動を表示中のドック内部だけで循環させる。
-  private trapFocus(event: KeyboardEvent): void {
-    if (event.key !== 'Tab' || !this._visible) return;
-    const focusable = Array.from(this.el.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), '
-      + '[href], [tabindex]:not([tabindex="-1"])',
-    )).filter((element) => element.getAttribute('aria-disabled') !== 'true' && element.offsetParent !== null);
-    if (focusable.length === 0) {
-      event.preventDefault();
-      this.bodyEl.focus({ preventScroll: true });
-      return;
-    }
-
-    const active = document.activeElement;
-    const first = focusable[0]!;
-    const last = focusable[focusable.length - 1]!;
-    if (event.shiftKey && (active === first || !this.el.contains(active))) {
-      event.preventDefault();
-      last.focus({ preventScroll: true });
-    } else if (!event.shiftKey && (active === last || !this.el.contains(active))) {
-      event.preventDefault();
-      first.focus({ preventScroll: true });
-    }
   }
 
   private focusEntry(): void {
