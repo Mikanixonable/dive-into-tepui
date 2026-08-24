@@ -428,9 +428,9 @@ export class EntityManager {
   // 自機以外のメッシュを displayTime 時点の状態に同期する。自機はエフェクト・ベルト・
   // 軌道線まで持つので Player.syncPlayer が担当する。弾本体・弾ハロー・プラズマ弾・薬莢・
   // 破片(fragment)の変換は各エンティティの renderObject に同期された後、InstancedPool へ push する。
-  sync(fo: FloatingOrigin, displayTime: number): void {
+  sync(fo: FloatingOrigin, displayTime: number, viewerPosition?: Vec3): void {
     for (const e of this.otherEntities()) {
-      if (!(e instanceof DetachedBooster)) e.sync(fo, displayTime);
+      if (!(e instanceof DetachedBooster)) e.sync(fo, displayTime, viewerPosition);
     }
 
     this.bulletBodyPool.beginFrame();
