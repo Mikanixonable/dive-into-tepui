@@ -17,5 +17,6 @@
     "optional": true,
     "fallback": "existing-backbone"
   },
+  "definitionAsset": "assets-src/proteins/1mbn/protein.definition.json",
   "semanticAsset": "src/assets/models/myoglobin1mbnProtein.json"
 }
