@@ -1,16 +1,11 @@
-// 同じケースをライトプリパスとフォワードの 2 経路で描く。違いは「メッシュとライトがどの
-// チャンネルに居るか」だけで、HDR ターゲット・トーンマッピング・合成・色空間変換はどちらも
-// 同じ RenderPipeline を通る。だから画面に出る差はシェーディング経路の差そのものになる。
-//
-// 例外が 1 つある: フォワード経路は G バッファを空にするので、合成パスがキャンバスの深度
-// バッファへ複製する深度も空になり、3D UI パスの線が不透明物に隠れない。**差分画像で線が
-// 不透明物を横切る箇所だけは、2 経路が食い違うのが正しい。**
+// 描画テスト環境の 1 ビュー。ケースを組み、ゲーム本体と同じ RenderPipeline でキャンバスへ描く。
+// 絵の撮影(PNG)と、CPU / GPU それぞれの所要時間の計測もここが担う。
 import * as THREE from 'three/webgpu';
 import { WebGPURenderer } from 'three/webgpu';
 import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings } from '../../src/gpu-timings';
 import { ProteinMotionMetricsRecorder, type ProteinMotionMetricSummary } from '../../src/protein-motion-metrics';
 import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
-import { LIT_OPAQUE_LAYER, OVERLAY_LAYER } from '../../src/render/pipeline/lit-layer';
+import { LIT_OPAQUE_LAYER } from '../../src/render/pipeline/lit-layer';
 import {
   AMBIENT_COLOR, AMBIENT_IRRADIANCE, SUN_COLOR, SUN_IRRADIANCE_1AU, SUN_RADIANT_INTENSITY,
 } from '../../src/render/pipeline/sun-light';
@@ -19,8 +14,6 @@ import { QUALITY_PRESETS } from '../../src/render/graphics-settings';
 import { AU } from '../../src/physics/planet-orbit';
 import { R_SUN } from '../../src/physics/solar-system';
 import { CASES, type CaseName, type LabCase, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './cases';
-
-export type LabPath = 'prepass' | 'forward';
 
 export interface LabDistribution {
   readonly avg: number;
@@ -31,7 +24,6 @@ export interface LabDistribution {
 
 export interface LabMeasurement {
   readonly caseName: CaseName;
-  readonly path: LabPath;
   readonly frames: number;
   readonly cpuRenderMs: LabDistribution;
   readonly gpuSupported: boolean;
@@ -62,7 +54,6 @@ export class LabView {
   private lastRenderCpuMs = 0;
 
   private constructor(
-    private readonly path: LabPath,
     private readonly renderer: WebGPURenderer,
     private readonly pipeline: RenderPipeline,
     private readonly gpu: GpuTimings,
@@ -74,15 +65,13 @@ export class LabView {
     sun.position.copy(SUN_DIR).multiplyScalar(1e5);
     const ambient = new THREE.AmbientLight(AMBIENT_COLOR, AMBIENT_IRRADIANCE);
     // NodeMaterial はカメラのチャンネルと重なる光源が1つも無いと照明モデルを組まない。
-    // マテリアルパスはカメラを LIT_OPAQUE_LAYER 単独へ絞るので、その経路の光源は同チャンネルにも属させる。
-    if (path === 'prepass') {
-      sun.layers.enable(LIT_OPAQUE_LAYER);
-      ambient.layers.enable(LIT_OPAQUE_LAYER);
-    }
+    // マテリアルパスはカメラを LIT_OPAQUE_LAYER 単独へ絞るので、光源も同チャンネルへ属させる。
+    sun.layers.enable(LIT_OPAQUE_LAYER);
+    ambient.layers.enable(LIT_OPAQUE_LAYER);
     this.scene.add(sun, ambient);
   }
 
-  static async create(canvas: HTMLCanvasElement, path: LabPath): Promise<LabView> {
+  static async create(canvas: HTMLCanvasElement): Promise<LabView> {
     // 深度の扱いはゲーム本体(src/render/scene.ts)と揃える。ここが違うと、測りたい深度の
     // 分解能そのものが本番と別物になる。
     const renderer = new WebGPURenderer({
@@ -95,7 +84,7 @@ export class LabView {
     const gpu = new GpuTimings(renderer);
     gpu.enabled = true;
     const pipeline = new RenderPipeline(renderer, QUALITY_PRESETS.high, gpu);
-    return new LabView(path, renderer, pipeline, gpu);
+    return new LabView(renderer, pipeline, gpu);
   }
 
   // ケースを組み直して描く。前のケースはシーンから外すだけで解放しない — 球の単位ジオメトリは
@@ -106,14 +95,6 @@ export class LabView {
       disposeCaseObjects(this.current);
     }
     const built = CASES[name](this.pipeline.sunOcclusion);
-    for (const object of built.objects) {
-      // フォワード経路では buildPlayerShip() が内部で付けた LIT_OPAQUE_LAYER を打ち消す。
-      // 呼ばないのではなく、呼ばれたあとに戻す。3D UI チャンネルはシェーディング経路と無関係
-      // (どちらの経路でも合成後に同じ 3D UI パスが描く)なので、そこは戻さない。
-      if (this.path === 'forward') {
-        object.traverse((o) => { if (!o.layers.isEnabled(OVERLAY_LAYER)) o.layers.set(0); });
-      }
-    }
     this.scene.add(...built.objects);
     this.current = built;
     this.render();
@@ -161,7 +142,6 @@ export class LabView {
 
     return {
       caseName: name,
-      path: this.path,
       frames: sampleFrames,
       cpuRenderMs: distribution(cpuSamples),
       gpuSupported: this.gpu.snapshot().supported,
@@ -171,10 +151,9 @@ export class LabView {
     };
   }
 
-  // キャンバスへ出るのと同じ絵を画素で受け取る。合成パスが「キャンバスへ」と書いた出力先が
-  // 撮影ターゲットへ差し替わるだけなので、トーンマッピングも sRGB 変換も同じに掛かる —
-  // WebGPU キャンバスの提示・合成・スクリーンショットはどこも通らない。
-  async capture(name: CaseName): Promise<Uint8Array> {
+  // キャンバスへ出るのと同じ絵を PNG のデータ URL で返す。合成パスが「キャンバスへ」と書いた
+  // 出力先が撮影ターゲットへ差し替わるだけなので、トーンマッピングも sRGB 変換も同じに掛かる。
+  async shoot(name: CaseName): Promise<string> {
     this.show(name);
     this.renderer.setOutputRenderTarget(this.captureTarget);
     try {
@@ -185,7 +164,7 @@ export class LabView {
       this.renderer.setOutputRenderTarget(null);
     }
     const pixels = await this.renderer.readRenderTargetPixelsAsync(this.captureTarget, 0, 0, VIEW_WIDTH, VIEW_HEIGHT);
-    return new Uint8Array(pixels.buffer);
+    return toPng(new Uint8Array(pixels.buffer));
   }
 }
 
@@ -221,23 +200,7 @@ function distribution(values: readonly number[]): LabDistribution {
   };
 }
 
-export type LabViews = { readonly prepass: LabView; readonly forward: LabView };
-export type Shot = { readonly prepass: string; readonly forward: string; readonly diff: string };
-
-// 差分の増幅率。1/255 の丸め差は見えず、実質的な差は見える倍率。
-const DIFF_GAIN = 8;
-
-// 2 経路の画素差。レンダラーが 2 台=デバイスも 2 つなので、GPU 上でテクスチャを突き合わせられない。
-// 読み出したあとの引き算で出す。
-function diffPixels(a: Uint8Array, b: Uint8Array): Uint8Array {
-  const out = new Uint8Array(a.length);
-  for (let i = 0; i < a.length; i += 4) {
-    for (let c = 0; c < 3; c++) out[i + c] = Math.min(255, Math.abs(a[i + c]! - b[i + c]!) * DIFF_GAIN);
-    out[i + 3] = 255;
-  }
-  return out;
-}
-
+// 読み出した RGBA 画素を PNG のデータ URL にする。
 function toPng(pixels: Uint8Array): string {
   const canvas = document.createElement('canvas');
   canvas.width = VIEW_WIDTH;
@@ -245,11 +208,4 @@ function toPng(pixels: Uint8Array): string {
   const context = canvas.getContext('2d')!;
   context.putImageData(new ImageData(new Uint8ClampedArray(pixels), VIEW_WIDTH, VIEW_HEIGHT), 0, 0);
   return canvas.toDataURL('image/png');
-}
-
-// ケース1つを 3 枚の PNG(2 経路と差分)にする。撮影の駆動(tools/render-lab-shot.mjs)が呼ぶ。
-export async function shootCase(views: LabViews, name: CaseName): Promise<Shot> {
-  const prepass = await views.prepass.capture(name);
-  const forward = await views.forward.capture(name);
-  return { prepass: toPng(prepass), forward: toPng(forward), diff: toPng(diffPixels(prepass, forward)) };
 }
