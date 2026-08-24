@@ -31,8 +31,12 @@ import { FloatingOrigin } from './floating-origin';
 import { Curve, CurveSampler } from '../render/curve';
 import { LineStyle } from '../render/line-style';
 
-// 1本の折れ線が持てる頂点数。ここを超えた分は描かれない(Curve のバッファ確保上限)。
-const MAX_VERTICES = 16384;
+// 1本の折れ線が持てる頂点数。数周ぶんの軌跡なら数百頂点で収束するが、28日表示のように
+// 数百周が重なる区間は何頂点あっても収束しないので、ここは「どこで頭打ちにするか」の値。
+// マップの通常のズームで残留誤差が 99% の区間でサジッタ目標(0.5px)を下回る水準を採る
+// (400周ぶんの軌跡の内側にカメラを置くと 1.4px ほどまで上がるが、その視点では軌跡自体が
+// 画面を埋める網目になっていて見分けられない)。
+const MAX_VERTICES = 4096;
 
 // 外挿区間に足すサンプル数の上限。
 const MAX_EXTRAPOLATED_SAMPLES = 2048;
