@@ -13,8 +13,7 @@ export interface SphereLodLevel {
 }
 
 // 4:3(横×縦)を保った固定3段。最上段の 384×288 は見かけ直径 6万px まで下記の誤差
-// 上限を満たすので、天体が画面をはみ出して写る状況にも余裕がある。段ごとにメッシュを
-// 作り分ける側(render/earth.ts)が反復できるよう公開する。
+// 上限を満たすので、天体が画面をはみ出して写る状況にも余裕がある。
 export const SPHERE_LOD_LADDER: readonly SphereLodLevel[] = [
   { widthSegments: 64, heightSegments: 48 },
   { widthSegments: 160, heightSegments: 120 },
