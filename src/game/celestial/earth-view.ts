@@ -1,13 +1,12 @@
 // 地球本体の見た目: 位置・自転角・太陽方向・表面アニメーションを表示時刻に同期する。
 import * as THREE from 'three/webgpu';
 import { createEarth, Earth } from '../../render/earth';
-import { apparentSizePx } from '../../render/screen-lod';
 import { Ephemeris } from '../../physics/ephemeris';
 import { R_EARTH, SIDEREAL_DAY } from '../../physics/solar-system';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { CelestialView } from './celestial-view';
-import type { GraphicsSettings } from '../../render/graphics-settings';
+import type { GraphicsSettingsData } from '../../render/graphics-settings';
 
 export class EarthView extends CelestialView {
   readonly id = 'earth' as const;
@@ -33,18 +32,15 @@ export class EarthView extends CelestialView {
   // displayTime 時点の位置・自転角・太陽方向・表面アニメーション・地表LODへ同期する。
   sync(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris,
-    graphics: GraphicsSettings,
+    graphics: GraphicsSettingsData,
   ): void {
     if (!this.earth.group.visible) return;
     const pos = ephemeris.positionOf('earth', displayTime);
     this.earth.group.position.copy(fo.RtoThreeV3(pos));
     this.earth.setRotation(this.phase0 + (2 * Math.PI * displayTime) / SIDEREAL_DAY);
-    const sd = ephemeris.sunDirFrom(pos, displayTime);
-    this.earth.setSunDir(sd.x, sd.y, sd.z);
     const metersPerPixel = cameraSystem.activeCameraScale(pos);
-    this.earth.setAuroraVisible(graphics.current.aurora);
-    this.earth.setAtmosphereVisible(graphics.current.atmosphere);
-    this.earth.syncSurfaceLod(graphics.scaleApparentSize(apparentSizePx(2 * R_EARTH, metersPerPixel)));
+    this.earth.setAuroraVisible(graphics.aurora);
+    this.earth.syncSurfaceLod(this.lodApparentDiameterPx(2 * R_EARTH, metersPerPixel, graphics));
     this.earth.tick(displayTime);
   }
 
