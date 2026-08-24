@@ -142,53 +142,6 @@ git history が持っている。**
 
 ## 手順
 
-### 手順 3. 大気パスの二重評価を落とす
-
-**目的.** 大気パスが遮蔽度を画面全体で 2 回計算し直している。**もやが評価する点は G バッファ深度
-から復元した位置そのもの**なので、遮蔽パスが書いた 1 枚を読めば済む。あわせて、大気を持つ天体が
-地球だけである以上、大気パスの環の項はどのフレームでも絵に出ないので落とす。
-
-**変更が必要な箇所.**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/render/pipeline/atmosphere-pass.ts` | もやの遮蔽項を遮蔽パスの出力から読む。リム光の源の選択から環を落とす。コンストラクタで遮蔽パスを受ける |
-| `src/render/pipeline/render-pipeline.ts` | 大気パスへ遮蔽パスを渡す(生成順は既に遮蔽パスが先) |
-
-**達成条件と検証.** `npm run typecheck`。
-`grep -c "transmittance" src/render/pipeline/atmosphere-pass.ts` が 1。
-`npm run render-lab:shot` の `earth` / `earth-eclipse` で、リム光が実施前と同じで、もやの明暗が
-実施前と同じか、そこへメッシュの影が乗るぶんだけ増えていること。
-
----
-
-### 手順 4. 規約からの逸脱をまとめて是正する
-
-**目的.** 原因究明へ入る前に、影と遮蔽の作業範囲を規約どおりの姿へ戻す。**この手順は絵を変えない。**
-片付けるのは、いま把握している逸脱と、**手順 1〜3 が新たに生んだ逸脱・死にコード**の両方である。
-
-**変更が必要な箇所.**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/render/pipeline/sun-occlusion.ts` | `OcclusionSources.spheres` を落とす — 呼び出し 3 か所すべてが真を渡しており、偽になる呼び出しが存在しない。モジュール先頭コメントを目安の分量へ削り、否定形と、昼夜境界で遮蔽が二重に効くことの弁明を **TODO へ書き換える**(仕様に根拠が無い) |
-| `src/render/pipeline/sun-shadow-maps.ts` | 先頭コメントを目安の分量へ削り、他モジュールへの言及・採らなかった実装の経緯を落とす。`metersPerPixelAt` がカメラ位置のスクラッチへ差分ベクトルを入れて流用しているのをやめる |
-| `src/render/pipeline/lit-layer.ts` | 他モジュールとの対比・呼び出し側の作法に踏み込んだコメントを落とす |
-| `src/render/instanced-pool.ts` | `mesh.boundingBox` に世界座標の箱を入れるのをやめ、**プール自身が自分の広がりと個体 1 つぶんの世界寸法を公開する**(後者は手順 7 が読む)。呼び出し側の事情に踏み込んだコメントを落とす |
-| `src/render/pipeline/render-pipeline.ts` | `render()` 直上のコメントが 6 段しか並べておらず、影パス・遮蔽パス・大気パスが抜けている。`graphics` を丸ごと渡すのをやめ、影を描くかどうかの真偽だけを渡す |
-| `src/game/game.ts` / `src/main.ts` | 上に合わせて渡す値を変える |
-| `src/render/ring.ts` | `RingVisualState` の太陽方向と放射照度を落とし、恒星の情報を 1 か所から引く。`physicalMaterial` / `lineOpticsMaterial`(121 行・136 行)の 180 文字を超えた宣言を折る |
-| `src/game/celestial/ring-view.ts` / `src/game/celestial/environment-scene.ts` | 上に合わせて渡す値を減らす |
-| **手順 1〜3 の残骸** | 消した経路にだけ使われていた型・定数・引数・import・テストを探して落とす。`SunOcclusion` / `AtmospherePass` / `RenderPipeline` のコンストラクタに、使われない依存が残っていないかを見る |
-
-**達成条件と検証.** `npm run typecheck` と `npm run test:physics`。
-`grep -rn "spheres:" src/` が 0 件。
-`grep -rn "LabPath\|ProteinShadow\|proteinShadow" src/ tools/` と `grep -rn "forward" tools/` が
-どちらも 0 件(手順 1・2 の残骸。`src/` の forward は前方散乱・機体前方なので含めない)。
-`npm run render-lab:shot` の全ケースが、手順 3 の後の絵と画素単位で一致すること。
-
----
-
 ### 手順 5. `render-lab` に中間バッファのデバッグ表示を載せる
 
 **目的.** 手順 8 の原因究明は「影のスロットに何が写っているか」を読めるかどうかで決まる。
@@ -244,7 +197,8 @@ git history が持っている。**
 
 | ファイル | 何をするか |
 | --- | --- |
-| `src/render/pipeline/sun-shadow-maps.ts` | 見かけの大きさを、枝の箱の対角ではなく「その枝が持つ単一個体の大きさ」で測る(手順 4 で `InstancedPool` が公開した口から読む)。塊どうしが重なるときの棄却をやめ、収まるなら吸収へ倒す |
+| `src/render/instanced-pool.ts` | 手順 4 で公開した `SunShadowExtent` へ、個体 1 つぶんの世界寸法を足す |
+| `src/render/pipeline/sun-shadow-maps.ts` | 見かけの大きさを、枝の箱の対角ではなく「その枝が持つ単一個体の大きさ」で測る(`SunShadowExtent` を持つ枝はそちらを読む)。塊どうしが重なるときの棄却をやめ、収まるなら吸収へ倒す |
 
 **達成条件と検証.** `npm run typecheck`。
 `npm run render-lab` の `ship-in-debris` の「影」表示で、**小片群がスロットを 1 枚も取っておらず、
@@ -280,6 +234,9 @@ git history が持っている。**
   `REQUEST_TIMEOUT_MS`)。さらに close() がプロファイルの削除で EBUSY を投げるため、**本体側の
   例外が見えない**。軽い 16 ケースは毎回通るので、重いケースを見るときは 1 ケースずつ CDP で撮る。
   **この問題はこの計画の変更とは無関係で、実施前から同じ場所で落ちていた。**
+- **GPU 時間はこの環境では測れない。** ヘッドレスでは `gpuSupported` が偽になるので、
+  大気パスの二重評価を落とした削減（見積もり 1.4 ms 前後）は実測していない。実機の
+  負荷計測ウィンドウで確かめる。
 - **`memos/mikanixonable/protein-motion-baseline.json` はこの環境では撮り直さない。**
   上の理由で計測段まで進めないうえ、ここでは GPU の時間計測が未対応なので、他人の環境で
   取った値を全部 0 で上書きすることになる。撮影スクリプトは `schemaVersion: 2` を書くので、
@@ -298,25 +255,6 @@ git history が持っている。**
 その深度バッファ  1920×1080 × 4 B              =  8.3 MB
 合計                                             23.0 MB
 ```
-
-### 手順 3 — 大気パスの GPU 時間
-
-単価は球 1 個 80 ALU、半影ありの帯 1 本 65 ALU。遮蔽器は最大 4 体、帯は最大 13 本。
-
-```text
-現状      = 2 回 × (4 × 80 + 13 × 65) = 2 × 1165 = 2330 ALU/px
-手順 3 後 = 1 回 × (4 × 80) + テクスチャ 1 フェッチ = 320 ALU/px
-```
-
-1920×1080 = 2.07e6 画素。換算率は既知の対応(2.32e9 ALU = 0.77 ms、すなわち 3.01e12 ALU/s):
-
-```text
-削減 = (2330 − 320) × 2.07e6 = 4.16e9 ALU
-     = 4.16e9 / 3.01e12 = 1.38 ms
-```
-
-**低軌道の構図で 1.4 ms 前後。** 遮蔽パスの帯を切り分けて得た改善(0.77 → 0.22 ms、0.55 ms)より
-大きい。
 
 ### 手順 7 — 散らばった遮蔽器が占有していたスロットの無駄
 
