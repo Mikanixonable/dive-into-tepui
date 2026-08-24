@@ -18,14 +18,14 @@ export type ProteinLabRepresentation = ProteinRepresentation;
 export interface ProteinLabCaseMetadata {
   readonly family: 'protein';
   readonly assetId: ProteinAssetId;
-  readonly pdbId: '5I4R' | '1MBN';
+  readonly pdbId: '5I4R' | '1MBN' | '8RUC' | '6N2Y';
   readonly representation: ProteinLabRepresentation;
   readonly instanceCount: number;
   /** 静止比較で使用する最高詳細度。 */
   readonly baselineLod: 'near';
 }
 
-type ProteinLabAsset = '5i4r' | '1mbn';
+type ProteinLabAsset = '5i4r' | '1mbn' | '8ruc' | '6n2y';
 type ProteinLabPopulation = 1 | 10 | 20;
 
 const DISPLAY_BY_REPRESENTATION: Readonly<Record<ProteinLabRepresentation, ProteinDisplaySettings>> = {
@@ -36,7 +36,7 @@ const DISPLAY_BY_REPRESENTATION: Readonly<Record<ProteinLabRepresentation, Prote
 
 const ASSETS: Readonly<Record<ProteinLabAsset, {
   readonly assetId: ProteinAssetId;
-  readonly pdbId: '5I4R' | '1MBN';
+  readonly pdbId: '5I4R' | '1MBN' | '8RUC' | '6N2Y';
   readonly count: ProteinLabPopulation;
   readonly columns: number;
   readonly spacing: number;
@@ -44,6 +44,9 @@ const ASSETS: Readonly<Record<ProteinLabAsset, {
 }>> = {
   '5i4r': { assetId: 'pdb-5i4r', pdbId: '5I4R', count: 10, columns: 5, spacing: 6.3, depth: 38 },
   '1mbn': { assetId: 'pdb-1mbn-myoglobin', pdbId: '1MBN', count: 20, columns: 5, spacing: 5.2, depth: 32 },
+  // 陣形の盾役・エネルギー役(タンパク質陣形攻撃)。大型複合体なので比較グリッドは組まず単体のみ撮る。
+  '8ruc': { assetId: 'pdb-8ruc-rubisco', pdbId: '8RUC', count: 1, columns: 1, spacing: 0, depth: 0 },
+  '6n2y': { assetId: 'pdb-6n2y-atp-synthase', pdbId: '6N2Y', count: 1, columns: 1, spacing: 0, depth: 0 },
 };
 
 const PUBLICATION_FRAMED_RADIUS = 4.25;
@@ -220,7 +223,7 @@ function publicationCase(asset: ProteinLabAsset): LabCase {
 }
 
 const PROTEIN_CASES: Record<string, () => LabCase> = {};
-for (const asset of Object.keys(ASSETS) as ProteinLabAsset[]) {
+for (const asset of ['5i4r', '1mbn'] as const) {
   const count = asset === '5i4r' ? 10 : 20;
   for (const representation of ['molecular', 'ribbon', 'silhouette'] as const) {
     for (const population of [1, count] as const) {
@@ -230,8 +233,16 @@ for (const asset of Object.keys(ASSETS) as ProteinLabAsset[]) {
     }
   }
 }
+// 8ruc/6n2y は大型複合体なので比較グリッドを組まず、単体表示のみ確認する。
+for (const asset of ['8ruc', '6n2y'] as const) {
+  for (const representation of ['molecular', 'ribbon', 'silhouette'] as const) {
+    PROTEIN_CASES[proteinCaseName(asset, representation, 1)] = () => proteinCase(asset, representation, 1);
+  }
+}
 
 PROTEIN_CASES['protein-5i4r-publication'] = () => publicationCase('5i4r');
 PROTEIN_CASES['protein-1mbn-publication'] = () => publicationCase('1mbn');
+PROTEIN_CASES['protein-8ruc-publication'] = () => publicationCase('8ruc');
+PROTEIN_CASES['protein-6n2y-publication'] = () => publicationCase('6n2y');
 
 export { PROTEIN_CASES };
