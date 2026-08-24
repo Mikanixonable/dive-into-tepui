@@ -77,11 +77,13 @@ export class MapContextActions {
   private readonly windows = new Map<string, WindowEntry>();
   private readonly partWindows = new Map<string, PartWindowEntry>();
   private readonly physicalObjectListPanel: PhysicalObjectListPanel;
+  private expandedBaseWindowKey: string | null = null;
 
   // Docking は MapContextActions より後に生成されるので、生成後に登録する。
   setDocking(docking: Docking): void {
     this.docking = docking;
     docking.onSelect = (id) => this.physicalObjectListPanel.select(id);
+    docking.basePanel.onClose = () => this.collapseBasePanel();
   }
   private docking: Docking | null = null;
 
@@ -178,11 +180,19 @@ export class MapContextActions {
     // 操作項目のクリックは、クリップ済みか keepOpen(排他選択肢の切り替え)なら開いたままにする。
     // 「削除」は対象自体が消えるのでどちらでも閉じる。
     w.onSelect = (act, keepOpen) => {
+      if (act === 'toggleBasePanel' && entry.target.kind === 'base') {
+        this.toggleBasePanel(key, entry);
+        return;
+      }
       const handler = this.handlers[entry.target.kind];
       if (handler) handler.run(act, entry.target);
       if (act === 'delete' || (!w.clipped && !keepOpen)) this.closeWindow(key);
     };
     w.onClose = () => {
+      if (this.expandedBaseWindowKey === key) {
+        this.expandedBaseWindowKey = null;
+        this.docking?.closePanel();
+      }
       this.closePartWindowsForShip(entry.target.kind === 'player' ? entry.target.id : '');
       this.forgetWindow(key);
     };
@@ -267,6 +277,27 @@ export class MapContextActions {
     entry.win.close();
   }
 
+  private toggleBasePanel(key: string, entry: WindowEntry): void {
+    if (this.expandedBaseWindowKey === key) {
+      this.collapseBasePanel();
+      return;
+    }
+    const base = this.entities.findBase(entry.target.id);
+    if (!base || !this.docking) return;
+    this.collapseBasePanel();
+    entry.win.setExpandedPanel(this.docking.openPanel(base));
+    this.expandedBaseWindowKey = key;
+    entry.win.bringToFront();
+  }
+
+  private collapseBasePanel(): void {
+    if (this.expandedBaseWindowKey !== null) {
+      this.windows.get(this.expandedBaseWindowKey)?.win.setExpandedPanel(null);
+      this.expandedBaseWindowKey = null;
+    }
+    this.docking?.closePanel();
+  }
+
   // 左クリック位置の最寄りの自艦・基地を選択する。当たらなければ消費せず、PlanEditor の
   // ノード配置/選択解除に読み進める(呼び出し側が editor.handleMapPointer より先に呼ぶことで、
   // マーカーへの命中をノード配置より優先する)。マップ視点でなければ何もしない。
@@ -306,7 +337,7 @@ export class MapContextActions {
   }
 
   // 単クリックは選択までに留める: 自艦はプロパティウィンドウを開くだけで操作対象は変えず、
-  // 基地も selectBase のみ呼んでドックビューへは遷移しない。取り消せない操作は明示の項目
+  // 基地も selectBase のみ呼んで基地パネルは展開しない。取り消せない操作は明示の項目
   // (プロパティウィンドウ)かダブルクリックに限る。
   private selectPickable(target: MapPickable, clientX: number, clientY: number): void {
     if (target.kind === 'player') {
@@ -735,7 +766,11 @@ export class MapContextActions {
           ...this.targetItems(target, simTime),
           ...controlItem,
           ...dockItems,
-          { label: '基地ビューを開く', act: 'openDock' },
+          {
+            label: this.expandedBaseWindowKey === this.windowKey(target)
+              ? '基地パネルを収納' : '基地パネルを展開',
+            act: 'toggleBasePanel', keepOpen: true,
+          },
           MenuCommon.focus(),
           ...trajectoryItem,
           ...this.duplicateItems(),
@@ -764,9 +799,6 @@ export class MapContextActions {
             this.docking?.clearActiveBaseIf(base);
             base.alive = false;
           }
-        } else if (act === 'openDock') {
-          if (base) this.docking?.activate(base);
-          else this.hud.hint('基地が見つかりません');
         } else if (act === 'duplicate') {
           this.runDuplicate(target);
         } else {
