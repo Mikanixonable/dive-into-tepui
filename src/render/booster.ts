@@ -33,6 +33,16 @@ export const BOOSTER_PLUME_OUTER_OFFSET = 1.35;
 export const BOOSTER_PLUME_CORE_SIZE = 0.95;
 export const BOOSTER_PLUME_OUTER_SIZE = 2.2;
 
+// 段間接続部。カバーはノズルの外周を6枚のパネルで囲み、次段の前端を
+// 段間の隙間から見せずに一続きのブースターとして読めるようにする。
+export const BOOSTER_INTERSTAGE_COVER_SEGMENTS = 6;
+export const BOOSTER_INTERSTAGE_COVER_Z = -7.02;
+export const BOOSTER_INTERSTAGE_COVER_LENGTH = 1.66;
+export const BOOSTER_INTERSTAGE_COVER_RADIUS = 1.43;
+export const BOOSTER_INTERSTAGE_COVER_PANEL_RADIAL = 0.18;
+export const BOOSTER_INTERSTAGE_COVER_PANEL_TANGENTIAL = 0.72;
+export const BOOSTER_INTERSTAGE_BOLT_Z = -7.78;
+
 export interface BoosterStageOptions {
   /** タンク外皮の色。 */
   readonly tankColor?: THREE.ColorRepresentation;
@@ -40,6 +50,8 @@ export interface BoosterStageOptions {
   readonly metalColor?: THREE.ColorRepresentation;
   /** ノズルの色。 */
   readonly nozzleColor?: THREE.ColorRepresentation;
+  /** 段間カバー。分離後の単独段では切り離されたものとして省略する。 */
+  readonly interstageCover?: boolean;
 }
 
 type OwnedMaterial = THREE.Material;
@@ -179,8 +191,45 @@ export class BoosterStage extends THREE.Group {
       this.add(fin);
     }
 
+    if (options.interstageCover !== false) this.addInterstageCover();
+
     // MeshStandardMaterial の全サブメッシュを太陽光プリパスへ参加させる。
     markLitOpaque(this);
+  }
+
+  private addInterstageCover(): void {
+    const cover = new THREE.Group();
+    cover.name = 'interstage-cover';
+    for (let i = 0; i < BOOSTER_INTERSTAGE_COVER_SEGMENTS; i++) {
+      const angle = (i * Math.PI * 2) / BOOSTER_INTERSTAGE_COVER_SEGMENTS;
+      const panel = buildBoosterInterstageCoverPanelMesh(i);
+      panel.position.set(
+        Math.cos(angle) * BOOSTER_INTERSTAGE_COVER_RADIUS,
+        Math.sin(angle) * BOOSTER_INTERSTAGE_COVER_RADIUS,
+        BOOSTER_INTERSTAGE_COVER_Z,
+      );
+      panel.name = `interstage-cover-panel-${i}`;
+      this.ownMesh(panel, cover);
+
+      const bolt = buildBoosterExplosiveBoltMesh(i);
+      bolt.position.set(
+        Math.cos(angle) * (BOOSTER_INTERSTAGE_COVER_RADIUS + 0.08),
+        Math.sin(angle) * (BOOSTER_INTERSTAGE_COVER_RADIUS + 0.08),
+        BOOSTER_INTERSTAGE_BOLT_Z,
+      );
+      bolt.name = `interstage-explosive-bolt-${i}`;
+      this.ownMesh(bolt, cover);
+    }
+    this.add(cover);
+  }
+
+  private ownMesh(mesh: THREE.Mesh, parent: THREE.Object3D): void {
+    this.ownedGeometries.add(mesh.geometry);
+    const material = mesh.material as OwnedMaterial | OwnedMaterial[];
+    if (Array.isArray(material)) material.forEach((m) => this.ownedMaterials.add(m));
+    else this.ownedMaterials.add(material);
+    mesh.userData.boosterOwned = true;
+    parent.add(mesh);
   }
 
   private addMesh(geometry: THREE.BufferGeometry, material: OwnedMaterial, z: number, name: string): void {
@@ -252,6 +301,53 @@ export const buildBoosterModel = buildBoosterStage;
 /** THREE.Object3D.clone(true) の資源共有を避けた独立複製。 */
 export function cloneBoosterStage(options: BoosterStageOptions = {}): BoosterStage {
   return buildBoosterStage(options);
+}
+
+/** 接続中にデカプラー側面を覆うパネル。分離時は DebrisPiece として再生成する。 */
+export function buildBoosterInterstageCoverPanelMesh(segment: number): THREE.Mesh {
+  const angle = (segment * Math.PI * 2) / BOOSTER_INTERSTAGE_COVER_SEGMENTS;
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(
+      BOOSTER_INTERSTAGE_COVER_PANEL_RADIAL,
+      BOOSTER_INTERSTAGE_COVER_PANEL_TANGENTIAL,
+      BOOSTER_INTERSTAGE_COVER_LENGTH,
+    ),
+    new THREE.MeshStandardMaterial({
+      color: 0x3d4b59,
+      flatShading: true,
+      roughness: 0.42,
+      metalness: 0.82,
+    }),
+  );
+  mesh.rotation.z = angle;
+  mesh.userData.ownsGeometry = true;
+  mesh.userData.ownsMaterial = true;
+  mesh.userData.boosterOwned = true;
+  markLitOpaque(mesh);
+  return mesh;
+}
+
+/** 段間を固定する爆砕ボルト。分離時は径方向へ射出する。 */
+export function buildBoosterExplosiveBoltMesh(segment: number): THREE.Mesh {
+  const angle = (segment * Math.PI * 2) / BOOSTER_INTERSTAGE_COVER_SEGMENTS;
+  const mesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.095, 0.095, 0.28, 8),
+    new THREE.MeshStandardMaterial({
+      color: 0xe19a3e,
+      emissive: 0x6d260c,
+      emissiveIntensity: 0.55,
+      flatShading: true,
+      roughness: 0.38,
+      metalness: 0.9,
+    }),
+  );
+  mesh.rotation.x = Math.PI / 2;
+  mesh.rotation.z += angle;
+  mesh.userData.ownsGeometry = true;
+  mesh.userData.ownsMaterial = true;
+  mesh.userData.boosterOwned = true;
+  markLitOpaque(mesh);
+  return mesh;
 }
 
 export interface BoosterPlumeSample {

@@ -286,6 +286,7 @@ export class Player extends Ship {
     );
     const t = this.state.t;
     this.state = kinematicState(t, this.state.r, separated.player);
+    this._fx.spawnBoosterSeparation(t, jointR, separated.player, separated.booster, this.att);
     const detached = new DetachedBooster({
       stage: detachedStage,
       state: kinematicState(t, boosterR, separated.booster),
@@ -335,7 +336,9 @@ export class Player extends Ship {
     for (const model of this.boosterModels) model.dispose();
     this.boosterModels.length = 0;
     for (let i = 0; i < this.boosters.stages.length; i++) {
-      const model = buildBoosterStage();
+      // 段間カバーは内側段の後端にだけ残す。最後尾段にはカバーが無く、
+      // 分離時はこの接続部を爆砕ボルトと一緒にデブリへ移す。
+      const model = buildBoosterStage({ interstageCover: i < this.boosters.stages.length - 1 });
       model.position.z = C.BOOSTER_MOUNT_Z - i * BOOSTER_STAGE_DIMENSIONS.length;
       this.renderObject.add(model);
       this.boosterModels.push(model);

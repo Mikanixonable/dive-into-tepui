@@ -66,7 +66,8 @@ export class DetachedBooster extends GameEntity {
         inertia: v3(1, 1, 0.4),
       }
       : init.att;
-    const model = buildBoosterStage();
+    // 接続部のカバーは分離時に爆砕ボルトで切り離されるため、独立した段には残さない。
+    const model = buildBoosterStage({ interstageCover: false });
     const root = new THREE.Group();
     // GameEntity.state は段の重心。描画モデルは前端原点なので、その中点をrootへ合わせる。
     const centerZ = (BOOSTER_STAGE_DIMENSIONS.frontZ + BOOSTER_STAGE_DIMENSIONS.aftZ) / 2;
