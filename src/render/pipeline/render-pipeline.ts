@@ -22,6 +22,7 @@ import { AtmospherePass } from './atmosphere-pass';
 import { LightPrepass } from './light-prepass';
 import { MaterialPass } from './material-pass';
 import { OcclusionPass } from './occlusion';
+import { SunOcclusion } from './sun-occlusion';
 import { OverlayPass } from './overlay-pass';
 import { ProteinShadowPass } from './protein-shadow-pass';
 import { SunLight } from './sun-light';
@@ -40,6 +41,7 @@ export class RenderPipeline implements DebugTargetHost {
   private readonly renderer: WebGPURenderer;
   private readonly gbuffer: GBufferPass;
   private readonly occlusionPass: OcclusionPass;
+  private readonly _sunOcclusion: SunOcclusion;
   private readonly proteinShadowPass: ProteinShadowPass;
   private readonly lightPrepass: LightPrepass;
   private readonly materialPass: MaterialPass;
@@ -67,8 +69,8 @@ export class RenderPipeline implements DebugTargetHost {
   // ライティングパスが読む恒星光。EnvironmentScene がここへ毎フレーム書き込む。
   get sunLight(): SunLight { return this._sunLight; }
 
-  // 遮蔽パス。EnvironmentScene が遮蔽器と環の帯を毎フレーム書き込む。
-  get occlusion(): OcclusionPass { return this.occlusionPass; }
+  // 恒星の直射光の遮蔽。EnvironmentScene が遮蔽器と環の帯を毎フレーム書き込む。
+  get sunOcclusion(): SunOcclusion { return this._sunOcclusion; }
 
   // 大気パス。EnvironmentScene が大気を持つ天体を毎フレーム書き込む。
   get atmosphere(): AtmospherePass { return this.atmospherePass; }
@@ -81,7 +83,8 @@ export class RenderPipeline implements DebugTargetHost {
     this.unregisterProteinMotionRenderer = registerProteinMotionRenderer(renderer);
     this.gbuffer = new GBufferPass(renderer, gpu);
     this._sunLight = new SunLight();
-    this.occlusionPass = new OcclusionPass(renderer, this.gbuffer, this._sunLight, gpu);
+    this._sunOcclusion = new SunOcclusion(this._sunLight);
+    this.occlusionPass = new OcclusionPass(renderer, this.gbuffer, this._sunOcclusion, gpu);
     this.proteinShadowPass = new ProteinShadowPass(renderer);
     this.lightPrepass = new LightPrepass(
       renderer, this.gbuffer, this.occlusionPass, this._sunLight, this.proteinShadowPass, gpu,
