@@ -2,6 +2,7 @@
 // シーンへ足すのもチャンネルを振るのも呼び出し側の仕事。ケースを増やすのはこの表への追記で済む。
 import * as THREE from 'three/webgpu';
 import { CelestialSurface } from '../../src/render/celestial-surface';
+import { SPHERE_LOD_LADDER } from '../../src/render/screen-lod';
 import { rec709Luminance, type Albedo } from '../../src/render/celestial-albedo';
 import { createEarth } from '../../src/render/earth';
 import { R_EARTH } from '../../src/physics/solar-system';
@@ -70,7 +71,7 @@ function labCamera(far: number): THREE.PerspectiveCamera {
 }
 
 function sphere(albedo: Albedo, radius: number, center: THREE.Vector3): THREE.Object3D {
-  const surface = CelestialSurface.solid(albedo, 64, 48);
+  const surface = CelestialSurface.solid(albedo, SPHERE_LOD_LADDER[0]!);
   surface.mesh.position.copy(center);
   surface.mesh.scale.setScalar(radius);
   return surface.mesh;

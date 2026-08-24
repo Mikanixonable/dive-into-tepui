@@ -20,22 +20,13 @@ import { SunView } from './sun-view';
 function texturedSurface(id: SolarSystemId): (level: SphereLodLevel) => CelestialSurface {
   const texture = textureOf(id);
   if (texture === null) throw new Error(`no texture registered for ${id}`);
-  return (level) => CelestialSurface.textured(texture.url, texture.albedoScale, level.widthSegments, level.heightSegments);
-}
-
-// 月の表面。テクスチャの経度原点をモデルの本初子午線(+Z)へ揃えるためにジオメトリを回すので、
-// 分割段ラダーの共有ジオメトリには乗せられない(乗せると他の天体まで一緒に回る)。
-function moonSurface(): CelestialSurface {
-  const moon = textureOf('moon')!;
-  const surface = CelestialSurface.textured(moon.url, moon.albedoScale, 64, 32);
-  surface.mesh.geometry.rotateY(-Math.PI / 2);
-  return surface;
+  return (level) => CelestialSurface.textured(texture.url, texture.albedoScale, level);
 }
 
 // id のアルベドを LOD 段ごとの単色球面へ与える関数。
 function solidSurface(id: SolarSystemId): (level: SphereLodLevel) => CelestialSurface {
   const albedo = albedoOf(id);
-  return (level) => CelestialSurface.solid(albedo, level.widthSegments, level.heightSegments);
+  return (level) => CelestialSurface.solid(albedo, level);
 }
 
 // テクスチャ付き惑星のレジストリ項を表示名から組む。rings(bodyDef からそのまま渡す)が
@@ -88,7 +79,7 @@ export type CelestialViewDef = { readonly name: string; create(): CelestialView 
 
 export const CELESTIAL_VIEWS: Record<SolarSystemId, CelestialViewDef> = {
   earth: { name: '地球', create: () => new EarthView() },
-  moon: { name: '月', create: () => new SphereView('moon', moonSurface, bodyDef(SOLAR_SYSTEM, 'moon').radius) },
+  moon: texturedSatelliteEntry('moon', '月'),
   mercury: planetEntry('mercury', '水星'),
   venus: planetEntry('venus', '金星'),
   mars: planetEntry('mars', '火星'),
@@ -196,7 +187,7 @@ export function fallbackCelestialView(registry: CelestialRegistry, id: Celestial
     ? new SunView(id, def.radius)
     : new SphereView(
       id,
-      (level) => CelestialSurface.solid(DEFAULT_ALBEDO, level.widthSegments, level.heightSegments),
+      (level) => CelestialSurface.solid(DEFAULT_ALBEDO, level),
       def.radius,
     );
 }
