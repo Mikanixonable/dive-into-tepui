@@ -226,7 +226,6 @@ export class Game {
 
     this.nanWatchdog = new NanWatchdog(this._hud);
     this.docking = new Docking(
-      () => this.pause(), () => this.resume(),
       this._hud, this._worldSfx, this._scene, this.entities.effects, this.markerManager,
       this.entities, this.mapActions, this.cameraSystem, this.viewManager,
       this.activePlayers, this.activeStage,
@@ -267,7 +266,6 @@ export class Game {
   dispose(): void {
     this.viewBadge.dispose();
     this.docking.dispose();
-    this.viewManager.dispose();
     this.mapActions.dispose();
     this.activeStage.dispose();
     // Hud・効果音はこのゲームより長生きするので、書き換えたクラス・差し込んだ参照・鳴らしている
@@ -584,7 +582,6 @@ export class Game {
   // ------------------------------------------------------------------ render
 
   render(): void {
-    if (!this.viewManager.rendersWorld) return;
     this.pipeline.render(this._scene, this.cameraSystem.activeCamera);
   }
 

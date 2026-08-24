@@ -1,5 +1,4 @@
-// どのビューを表示しているかの正本と、ビュー間の遷移。戦闘・マップ・ドックは
-// いずれも画面全体を占める対等なビューで、遷移は必ず setView() を通る。
+// どのワールドビューを表示しているかの正本。遷移は必ず setView() を通る。
 import { Hud } from './hud/hud';
 import { CameraSystem } from './camera/camera-system';
 import { TouchControls } from './input/touch';
@@ -8,48 +7,28 @@ import { KEY_MAPPING as K } from './input/key-mapping';
 import { PlanEditor } from './plan/plan-editor';
 import { DisplayWindowManager } from './display-window-manager';
 import { MapContextActions } from './map-context-actions';
-import type { Docking } from './docking';
 import type { ActiveControllableController } from './active-controllable-controller';
 import { setPanelCollapsedView } from './hud/panel-shell';
-import type { OverlayHandle } from './hud/overlay-manager';
 import type { Base } from './game-entity/base';
 
-export type ViewId = 'combat' | 'map' | 'dock';
+export type ViewId = 'combat' | 'map';
 
 export interface ViewMenuItem {
   readonly id: string;
   readonly label: string;
   readonly viewId: ViewId;
-  readonly base?: Base;
 }
 
-// 3D 世界を描くビュー。ドックはこのどちらかに重なる形で開き、閉じると元へ戻る。
 export type WorldViewId = 'combat' | 'map';
 
-// TODO: 戦闘⇔マップの切り替えと、ドックの開閉という2つの責務が同居している。分けるには
-// 3つのビューを1つの排他選択として外へ見せている口(current / setView / selectableViews)を
-// 2軸へ割る必要があり、ViewBadge のビュー選択 UI まで及ぶため現時点では容易ではない。
 export class ViewManager {
-  // ドック表示中も保持される 3D 側のビュー。カメラ・軌道計画の状態はこちらに従う。
   private worldView: WorldViewId;
-  private isDockOpen = false;
-  private docking: Docking | null = null;
   private controlledBaseProvider: (() => Base | null) | null = null;
 
-  // ドックの開閉の正本はこのクラス(isDockOpen)自身であり続ける — OverlayManager へは
-  // 「開いた/閉じた」を通知するだけの一方向で、この adapter は leaveDock() を呼び戻すのみ。
-  private readonly dockOverlayHandle: OverlayHandle = {
-    contains: (target) => this.docking?.baseView.element.contains(target) ?? false,
-    close: () => this.leaveDock(),
-  };
-
-  get current(): ViewId { return this.isDockOpen ? 'dock' : this.worldView; }
+  get current(): ViewId { return this.worldView; }
 
   get isMapView(): boolean { return this.worldView === 'map'; }
   get isCombatView(): boolean { return this.worldView === 'combat'; }
-
-  // このビューが 3D 世界を描くか。ドックは画面全体を不透明に覆い 3D 世界を持たない。
-  get rendersWorld(): boolean { return !this.isDockOpen; }
 
   constructor(
     private readonly hud: Hud,
@@ -67,11 +46,6 @@ export class ViewManager {
     this.applyChrome();
   }
 
-  // Docking は ViewManager より後に生成されるので、生成後に登録する。
-  setDocking(docking: Docking): void {
-    this.docking = docking;
-  }
-
   setControlledBaseProvider(provider: () => Base | null): void {
     this.controlledBaseProvider = provider;
   }
@@ -84,62 +58,24 @@ export class ViewManager {
     if (!this.canEnter(next)) return;
 
     const prevWorld = this.worldView;
-    const wasDockOpen = this.isDockOpen;
-    if (this.isDockOpen) this.docking?.leaveDock();
-    if (next === 'dock') {
-      this.isDockOpen = true;
-    } else {
-      this.isDockOpen = false;
-      this.worldView = next;
-    }
+    this.worldView = next;
 
-    // 3D 側のビューが実際に変わるときだけマップの開閉処理を走らせる。マップ→ドックでは
-    // 背後のマップを維持するので、計画編集の後始末(空ノードの間引き)を起こさない。
+    // ビューが実際に変わるときだけマップの開閉処理を走らせる。
     const nextWorld = this.worldView;
     if (prevWorld !== nextWorld) {
       if (prevWorld === 'map') this.leaveMap();
       if (nextWorld === 'map') this.enterMap();
     }
-    if (next === 'dock') this.docking?.enterDock();
-    this.syncDockOverlay(wasDockOpen);
     this.applyChrome();
   }
 
-  // ドックを閉じ、その裏で保たれていた 3D 側のビューへ戻る。
-  leaveDock(): void {
-    if (!this.isDockOpen) return;
-    this.docking?.leaveDock();
-    this.isDockOpen = false;
-    this.hud.overlayManager.close('base-view');
-    this.applyChrome();
-  }
-
-  // ドックの登録を OverlayManager の台帳から下ろす。台帳は Hud のもので自分より長生きするため、
-  // 開いたまま消えると、以後どのビューでも入力を塞ぐハンドルが残る。
-  dispose(): void {
-    this.hud.overlayManager.close('base-view');
-  }
-
-  // isDockOpen が変化したフレームだけ OverlayManager 側の登録を追従させる。
-  private syncDockOverlay(wasDockOpen: boolean): void {
-    if (this.isDockOpen === wasDockOpen) return;
-    if (this.isDockOpen) {
-      this.hud.overlayManager.open('base-view', this.dockOverlayHandle, {
-        kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: true,
-      });
-    } else {
-      this.hud.overlayManager.close('base-view');
-    }
-  }
-
-  // 現在の3D側ビュー(ドック表示中はその背後のビュー)をセーブデータへ書き出す。
   serializeView(): WorldViewId {
     return this.worldView;
   }
 
   // ビュー選択 UI に並べる遷移先。現在のビュー自身と、いま入れないビューは含まない。
   selectableViews(): readonly ViewId[] {
-    const all: readonly ViewId[] = ['combat', 'map', 'dock'];
+    const all: readonly ViewId[] = ['combat', 'map'];
     return all.filter((v) => v !== this.current && this.canEnter(v));
   }
 
@@ -155,38 +91,19 @@ export class ViewManager {
       items.push({ id: 'map', label: 'Map', viewId: 'map' });
     }
 
-    const availableBases = this.docking?.getAvailableBases() ?? [];
-    if (availableBases.length === 1) {
-      const base = availableBases[0]!;
-      if (!(this.current === 'dock' && this.docking?.activeBase === base)) {
-        items.push({ id: `dock:${base.id}`, label: `Base (${base.name})`, viewId: 'dock', base });
-      }
-    } else if (availableBases.length > 1) {
-      for (const base of availableBases) {
-        if (this.current === 'dock' && this.docking?.activeBase === base) continue;
-        items.push({ id: `dock:${base.id}`, label: `Base: ${base.name}`, viewId: 'dock', base });
-      }
-    }
-
     return items;
   }
 
   // ビュー選択 UI で選ばれた項目を実行する。
   selectMenuItem(item: ViewMenuItem): void {
-    if (item.viewId === 'dock' && item.base && this.docking) {
-      this.docking.activate(item.base);
-    } else {
-      this.setView(item.viewId);
-    }
+    this.setView(item.viewId);
   }
 
-  // そのビューへいま入れるか。ドックは対象基地が要り、戦闘は操作対象の艦が要る。
+  // 戦闘ビューは操作対象の艦または基地が必要。
   private canEnter(view: ViewId): boolean {
-    if (view === 'dock') return this.docking?.canEnterDock() ?? false;
     if (view === 'combat') {
       return this.activePlayers.current !== null
-        || (this.controlledBaseProvider?.() ?? null) !== null
-        || (this.docking?.getAvailableBases().length ?? 0) > 0;
+        || (this.controlledBaseProvider?.() ?? null) !== null;
     }
     return true;
   }
@@ -196,7 +113,6 @@ export class ViewManager {
     const map = this.worldView === 'map';
     setPanelCollapsedView(map ? 'map' : 'combat');
     this.hud.setWorldView(map ? 'map' : 'combat');
-    this.hud.root.classList.toggle('base-mode', this.isDockOpen);
     this.touchControls?.setMapMode(map);
     this.cameraSystem.setMapMode(map);
     this.editor.setMapMode(map);
@@ -215,9 +131,8 @@ export class ViewManager {
     this.mapActions.close();
   }
 
-  // [M] による戦闘⇔マップの切り替えを受ける。ドック表示中はキーを消費しない。
+  // [M] による戦闘⇔マップの切り替えを受ける。
   handleInput(input: Input): void {
-    if (this.isDockOpen) return;
     if (!input.takeKey(K.toggleMapMode)) return;
 
     if (this.current === 'map') {
