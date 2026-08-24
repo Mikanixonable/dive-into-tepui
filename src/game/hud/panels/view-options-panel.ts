@@ -72,6 +72,8 @@ interface GridRow {
   readonly poleKey: keyof CelestialGridVisibility | null;
   readonly gridKey: keyof CelestialGridVisibility | null;
   readonly scaleKey: keyof CelestialGridVisibility;
+  // 行の末尾に添える補助ボタン。トグルではなく、その行の設定パネルを開く操作を持つ行だけが指定する。
+  readonly auxButton?: { readonly glyph: string; readonly description: string };
 }
 
 const GRID_ROWS: readonly GridRow[] = [
@@ -80,10 +82,11 @@ const GRID_ROWS: readonly GridRow[] = [
   { label: '月軌道面', categoryKey: null, planeKey: null, poleKey: null, gridKey: null, scaleKey: 'moonOrbitScaleGrid' },
   { label: '月赤道面', categoryKey: null, planeKey: null, poleKey: null, gridKey: null, scaleKey: 'moonEquatorScaleGrid' },
   { label: '静止軌道', categoryKey: null, planeKey: null, poleKey: null, gridKey: null, scaleKey: 'geostationaryOrbit' },
-  { label: 'ハロー軌道', categoryKey: null, planeKey: null, poleKey: null, gridKey: null, scaleKey: 'haloOrbits' },
+  {
+    label: 'ハロー軌道', categoryKey: null, planeKey: null, poleKey: null, gridKey: null, scaleKey: 'haloOrbits',
+    auxButton: { glyph: '⚙', description: 'ハロー軌道パネルを開閉' },
+  },
 ];
-
-const HALO_PANEL_TOGGLE_GLYPH = '⚙';
 
 interface ViewOptionColumn {
   readonly glyph: string;
@@ -239,12 +242,14 @@ export class ViewOptionsPanel {
         [row.gridKey, '⊞', `${row.label}グリッド`],
         [row.scaleKey, '十', `${row.label}の縮尺グリッド`],
       ] as const) {
-        if (key === row.scaleKey && row.scaleKey === 'haloOrbits') {
-          this.haloPanelToggleButton = new Button(HALO_PANEL_TOGGLE_GLYPH, () => this.onHaloPanelToggle?.());
-          this.haloPanelToggleButton.element.classList.add('body-class-icon-btn');
-          this.haloPanelToggleButton.element.title = 'ハロー軌道パネルを開閉';
-          this.haloPanelToggleButton.element.setAttribute('aria-label', 'ハロー軌道パネルを開閉');
-          btnsEl.appendChild(this.haloPanelToggleButton.element);
+        // 補助ボタンを持つ行は、縮尺列の位置をそのボタンに充てる(列トグルを持たない行だけが指定する)。
+        if (key === row.scaleKey && row.auxButton !== undefined) {
+          const aux = new Button(row.auxButton.glyph, () => this.onHaloPanelToggle?.());
+          aux.element.classList.add('body-class-icon-btn');
+          aux.element.title = row.auxButton.description;
+          aux.element.setAttribute('aria-label', row.auxButton.description);
+          btnsEl.appendChild(aux.element);
+          this.haloPanelToggleButton = aux;
           continue;
         }
         if (key === null || (row.categoryKey === null && key === row.scaleKey)) {
