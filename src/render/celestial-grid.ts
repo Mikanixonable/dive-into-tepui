@@ -20,6 +20,7 @@ export interface CelestialGridVisibility {
   readonly moonOrbitScaleGrid: boolean;
   readonly moonEquatorScaleGrid: boolean;
   readonly geostationaryOrbit: boolean;
+  readonly haloOrbits: boolean;
 }
 
 // 黄道・赤道それぞれのカテゴリトグルと、配下の面・極・グリッドの対応。表示パネルのボタン構成も
