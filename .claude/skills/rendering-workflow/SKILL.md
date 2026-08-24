@@ -27,8 +27,8 @@ description: 描画コード(src/render/・シェーダ・three.js/WebGPU まわ
 
 | 見たいもの | 使うもの |
 | --- | --- |
-| 描画単体の比較・調整 | `npm run render-lab`(http://localhost:8082) |
-| 画像として残す・差分を見る | `npm run render-lab:shot`(`.render-lab/shots/`) |
+| 描画単体を切り出して見る・調整する | `npm run render-lab`(http://localhost:8082) |
+| 画像として残す・変更の前後を見比べる | `npm run render-lab:shot`(`.render-lab/shots/`) |
 | ゲームの中での見え方 | `npm run dev` |
 | 実行時例外の有無まで込みで | `/verify` |
 
