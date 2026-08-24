@@ -144,6 +144,9 @@ export class SunShadowMaps {
     for (const slot of this.slotUniforms) slot.active.value = 0;
     this.clusters.length = 0;
     if (enabled) {
+      // 遮蔽器の箱は親の変換込みで測る必要がある。**Box3.expandByObject は親の行列を更新しない**
+      // ので、このパスがフレームの先頭で走る限り、ここで確定させないと箱が前フレームの位置で作られる。
+      scene.updateMatrixWorld();
       this.collectCasters(scene, camera, viewportHeight);
       this.buildClusters(camera, viewportHeight);
     }
