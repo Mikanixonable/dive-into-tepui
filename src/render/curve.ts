@@ -4,6 +4,7 @@
 // 渡せばよく、それが楕円かエルミート補間かは知らない。座標変換前の値も座標型
 // (Vec3/KinematicState/…)も知らず、受け取るのは THREE.Vector3/THREE.Camera と数値だけ。
 import * as THREE from 'three/webgpu';
+import { MaxHeap } from '../physics/max-heap';
 import { metersPerPixelFromTanHalfFov, MIN_DEPTH } from '../physics/projection';
 import type { LineStyle } from './line-style';
 import { markOverlay } from './pipeline/lit-layer';
@@ -12,7 +13,7 @@ export type CurveOptions = {
   readonly style: LineStyle;
   // 生成時に確保する頂点数の上限。バッファは生成時に1回だけ確保し、以後は差し替えない
   // (WebGPURenderer は描画対象ごとに頂点バッファの束縛をキャッシュしており、ジオメトリや
-  // 属性ごと差し替えても新しい頂点は反映されない)。
+  // 属性ごと差し替えても新しい頂点は反映されない)。INITIAL_SEGMENTS の2倍以上を渡すこと。
   readonly maxVertices: number;
 };
 
@@ -44,9 +45,8 @@ const MAX_EDGE_SAG_PX = 0.5;
 // (画面上のサジッタが縮まないぶん実距離の許容量が際限なく伸びる)ため、その歯止めとして残す。
 const MAX_EDGE_TURN = (5 * Math.PI) / 180;
 
-// 既定の初期分割数。閉曲線を1区間のまま評価すると t=0/1 が同一点で弦が縮退するため、最低限
-// これだけ分けてから適応分割に入る。曲線の細部の位置を知っている呼び出し側は、代わりに
-// SetCurveOptions.initialTs でその位置を直接渡す。
+// initialTs を省いたときの初期分割数。閉曲線を1区間のまま評価すると t=0/1 が同一点で弦が
+// 縮退するため、最低限これだけ分けてから適応分割に入る。
 const INITIAL_SEGMENTS = 8;
 
 // initialTs を省略したときの初期頂点列(t を INITIAL_SEGMENTS 等分したもの)。
@@ -54,9 +54,18 @@ const DEFAULT_INITIAL_TS: readonly number[] = Array.from(
   { length: INITIAL_SEGMENTS + 1 }, (_, i) => i / INITIAL_SEGMENTS,
 );
 
-// 適応分割の再帰深さの上限。頂点予算(maxVertices)よりずっと余裕を持たせた安全弁で、
-// 通常は予算の方が先に効く。
-const MAX_SUBDIVIDE_DEPTH = 24;
+// 頂点予算のうち初期頂点列へ回してよい割合。initialTs が長いと初期列だけで予算を使い切りうるので、
+// 逸脱の大きいところへ回す分をここで残す。
+const INITIAL_SEGMENT_BUDGET_RATIO = 0.5;
+
+// 焼き直しの要否を決める代表スケールを測る点数。曲線上でカメラに最も寄っている点を拾うのが
+// 目的なので初期頂点列の長さとは無関係でよく、毎フレーム走るぶんここは固定にしておく。
+const SCALE_PROBE_POINTS = 8;
+
+// 1区間に許す t 幅の下限。同じ点を返し続ける sample を渡されると逸脱がいくら分割しても
+// 下がらないため、その区間へ予算を吸わせないための安全弁。頂点予算(maxVertices)より
+// ずっと余裕を持たせてあり、通常は予算の方が先に効く。
+const MIN_T_SPAN = 2 ** -24;
 
 // スケール変化に対する焼き直し抑制の遊び幅。毎フレームの微小なズーム変化のたびに
 // 焼き直さないための遊び。
@@ -113,8 +122,14 @@ export class Curve {
 
   // 直近に適応分割で焼いた頂点(sample が返した座標系のまま、変換前)。倍精度で持つ理由は
   // pivot 自体の精度を落とさないため — GPU へ渡す positions(f32)は常にこの配列から pivot
-  // を差し引いた差分として書く。
+  // を差し引いた差分として書く。並びは生成順で、t の昇順は nextVertex が持つ。
   private readonly bakedLocal: Float64Array;
+  // 各頂点の曲線上の位置 t。分割は区間の両端の t から中点を求めるので、頂点と対で要る。
+  private readonly ts: Float64Array;
+  // 焼いた頂点を t 昇順に繋ぐ連結リスト(終端は -1)。分割は t の途中へ頂点を挿し込むため、
+  // 生成順と描画順は一致しない。描画順を担うのはインデックスバッファの方で、頂点自体は
+  // 生成順に置いたまま動かさない。
+  private readonly nextVertex: Int32Array;
   private bakedCount = 0;
   private hasBaked = false;
   private lastRevision: unknown = undefined;
@@ -133,7 +148,6 @@ export class Curve {
   private readonly reqQuaternion = new THREE.Quaternion();
 
   private readonly scratchA = new THREE.Vector3();
-  private readonly scratchB = new THREE.Vector3();
   private readonly scratchM = new THREE.Vector3();
   private readonly scratchWorld = new THREE.Vector3();
   private readonly scratchLocalCam = new THREE.Vector3();
@@ -148,8 +162,9 @@ export class Curve {
   private camOrthoHalfHeight = 0;
   private camNear = 0;
 
-  // 現在の初期区間に割り当てられた頂点予算(rebake がこの値までしか subdivide に積ませない)。
-  private segmentBakedLimit = 0;
+  // 未分割の区間を逸脱の大きい順に取り出す待ち行列。区間はその左端の頂点番号で表し、
+  // 右端は nextVertex から辿る。
+  private readonly pending: MaxHeap;
 
   // style はマテリアルと描画順、maxVertices は確保する頂点バッファの上限。style.dash が
   // あれば破線(LineDashedMaterial、頂点ごとの累積距離を焼く)。
@@ -160,11 +175,13 @@ export class Curve {
     this.maxSegments = Math.max(0, maxVertices - 1);
     this.positions = new Float32Array(maxVertices * 3);
     this.bakedLocal = new Float64Array(maxVertices * 3);
+    this.ts = new Float64Array(maxVertices);
+    this.nextVertex = new Int32Array(maxVertices);
+    this.pending = new MaxHeap(maxVertices);
     this.indices = new Uint32Array(this.maxSegments * 2);
     this.geom = new THREE.BufferGeometry();
     this.geom.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
     this.geom.setIndex(new THREE.BufferAttribute(this.indices, 1));
-    this.resetIndicesToStrip();
     this.geom.setDrawRange(0, 0);
 
     if (dash) {
@@ -191,14 +208,6 @@ export class Curve {
     this.line.frustumCulled = false;
     this.object = this.line;
     this.appliedStyle = style;
-  }
-
-  // 連続した折れ線(0-1, 1-2, ...)のインデックスを埋める。
-  private resetIndicesToStrip(): void {
-    for (let i = 0; i < this.maxSegments; i++) {
-      this.indices[i * 2] = i;
-      this.indices[i * 2 + 1] = i + 1;
-    }
   }
 
   // 以後の scaleAtLocal が読むカメラのワールド前方向・位置・画角換算値・ニアプレーン距離を
@@ -244,13 +253,12 @@ export class Curve {
   // 焼き直し判定と pivot の追従判定に使う代表スケール(m/px)。sample(0) 1点だけを見ると、
   // その点が視点面をまたぐ曲線で値が乱高下し、SCALE_REBAKE_RATIO を毎フレーム跨いでしまう。
   // 分割の粗さを決めるのは曲線上で最もカメラに寄っている点なので、初期頂点列 ts から等間隔に
-  // 抜いた INITIAL_SEGMENTS+1 点の中の最小値を代表値とする(この判定は毎フレーム走るので、
-  // ts がいくら長くても見る点数は増やさない)。cacheCameraFrame を先に呼んでおくこと。
+  // 抜いた SCALE_PROBE_POINTS+1 点の中の最小値を代表値とする。cacheCameraFrame を先に呼んでおくこと。
   private representativeScale(sample: CurveSampler, ts: readonly number[]): number {
     let minScale = Infinity;
     const last = ts.length - 1;
-    for (let i = 0; i <= INITIAL_SEGMENTS; i++) {
-      sample(ts[Math.round((i * last) / INITIAL_SEGMENTS)]!, this.scratchA);
+    for (let i = 0; i <= SCALE_PROBE_POINTS; i++) {
+      sample(ts[Math.round((i * last) / SCALE_PROBE_POINTS)]!, this.scratchA);
       const s = this.scaleAtLocal(this.scratchA.x, this.scratchA.y, this.scratchA.z);
       if (s < minScale) minScale = s;
     }
@@ -272,28 +280,29 @@ export class Curve {
     this.line.position.copy(this.reqPosition).add(this.scratchPivotWorld);
   }
 
-  private pushBaked(x: number, y: number, z: number): void {
-    if (this.bakedCount >= this.maxVertices) return;
-    const i = this.bakedCount * 3;
-    this.bakedLocal[i] = x;
-    this.bakedLocal[i + 1] = y;
-    this.bakedLocal[i + 2] = z;
-    this.bakedCount++;
+  // 位置 t の頂点を積み、その番号を返す。連結リストへの接続は呼び出し側が行う。
+  private pushVertex(t: number, x: number, y: number, z: number): number {
+    const i = this.bakedCount++;
+    this.ts[i] = t;
+    const o = i * 3;
+    this.bakedLocal[o] = x;
+    this.bakedLocal[o + 1] = y;
+    this.bakedLocal[o + 2] = z;
+    return i;
   }
 
-  // 区間 [t0,(x0,y0,z0)] → [t1,(x1,y1,z1)] を、画面上のサジッタ・折れ角が閾値を下回るまで
-  // 再帰的に二分する。左端は呼び出し側が既に積んでいるので、ここでは右端だけを積む。
-  private subdivide(
-    t0: number, x0: number, y0: number, z0: number,
-    t1: number, x1: number, y1: number, z1: number,
-    depth: number, sample: CurveSampler,
-  ): void {
-    if (this.bakedCount + 1 >= this.segmentBakedLimit || depth >= MAX_SUBDIVIDE_DEPTH) {
-      this.pushBaked(x1, y1, z1);
-      return;
-    }
-    const tm = (t0 + t1) / 2;
-    sample(tm, this.scratchM);
+  // 左端が頂点 seg の区間について、その区間を弦で代用したときの逸脱を返す。画面上のサジッタと
+  // 折れ角のそれぞれを許容値との比にして、大きい方を採る — 単位の違う2つの基準を1つの順序に
+  // まとめるための正規化で、1 を超える区間だけが分割に値する。
+  private segmentError(seg: number, sample: CurveSampler): number {
+    const right = this.nextVertex[seg]!;
+    const t0 = this.ts[seg]!, t1 = this.ts[right]!;
+    if (t1 - t0 <= MIN_T_SPAN) return 0;
+
+    const a = seg * 3, b = right * 3;
+    const x0 = this.bakedLocal[a]!, y0 = this.bakedLocal[a + 1]!, z0 = this.bakedLocal[a + 2]!;
+    const x1 = this.bakedLocal[b]!, y1 = this.bakedLocal[b + 1]!, z1 = this.bakedLocal[b + 2]!;
+    sample((t0 + t1) / 2, this.scratchM);
     const mx = this.scratchM.x, my = this.scratchM.y, mz = this.scratchM.z;
 
     const sagSq = distanceSqPointToSegment(mx, my, mz, x0, y0, z0, x1, y1, z1);
@@ -307,36 +316,43 @@ export class Curve {
       ? Math.acos(Math.max(-1, Math.min(1, (ax * bx + ay * by + az * bz) / (aLen * bLen))))
       : 0;
 
-    if (sagittaPx > MAX_EDGE_SAG_PX || turn > MAX_EDGE_TURN) {
-      this.subdivide(t0, x0, y0, z0, tm, mx, my, mz, depth + 1, sample);
-      this.subdivide(tm, mx, my, mz, t1, x1, y1, z1, depth + 1, sample);
-    } else {
-      this.pushBaked(x1, y1, z1);
-    }
+    return Math.max(sagittaPx / MAX_EDGE_SAG_PX, turn / MAX_EDGE_TURN);
   }
 
-  // 初期頂点列 ts の各区間へ頂点予算を均等割りしてから、区間ごとに適応分割する。分割は
-  // 深さ優先で、積めなかった頂点は落ちるだけなので、割り当てずに進めると先頭側の区間が予算を
-  // 使い切って以降の区間が1頂点も積めない。均等割りにすることで、予算が尽きても曲線全体が
-  // 一様に粗くなるだけになる(使い残しは残り区間数で割り直されるぶん後続へ回る)。ts 自体が
-  // 予算より多いときも同じ理由で間引いて使う — 先頭から順に積んで打ち切ると、曲線の後半が
-  // まるごと描かれなくなってしまう。
+  // 初期頂点列を、予算のうち初期分割へ回してよい分に収まるよう間引いて使う。先頭から順に
+  // 積んで打ち切ると曲線の後半がまるごと描かれなくなるので、間引くのは一様にする。
+  private seedStride(ts: readonly number[]): number {
+    const maxSeed = Math.max(2, Math.floor(this.maxVertices * INITIAL_SEGMENT_BUDGET_RATIO));
+    return Math.max(1, Math.ceil((ts.length - 1) / (maxSeed - 1)));
+  }
+
+  // 初期頂点列から始めて、逸脱が最大の区間から順に二分していく。予算が尽きて打ち切っても、残った
+  // 区間の逸脱はすべて最後に分割した区間以下 — 一箇所だけが粗いまま取り残されることはなく、
+  // 曲線全体が一様に粗くなる方向へ劣化する。
   private rebake(sample: CurveSampler, ts: readonly number[]): void {
     this.bakedCount = 0;
+    this.pending.clear();
     const last = ts.length - 1;
-    const stride = Math.max(1, Math.ceil(last / Math.max(1, this.maxVertices - 1)));
+    const stride = this.seedStride(ts);
     const segmentCount = Math.ceil(last / stride);
-    sample(ts[0]!, this.scratchA);
-    this.pushBaked(this.scratchA.x, this.scratchA.y, this.scratchA.z);
-    let t0 = ts[0]!, x0 = this.scratchA.x, y0 = this.scratchA.y, z0 = this.scratchA.z;
-    for (let i = 1; i <= segmentCount; i++) {
-      const remainingSegments = segmentCount - i + 1;
-      this.segmentBakedLimit = this.bakedCount
-        + Math.floor((this.maxVertices - this.bakedCount) / remainingSegments);
-      const t1 = ts[Math.min(last, i * stride)]!;
-      sample(t1, this.scratchB);
-      this.subdivide(t0, x0, y0, z0, t1, this.scratchB.x, this.scratchB.y, this.scratchB.z, 0, sample);
-      t0 = t1; x0 = this.scratchB.x; y0 = this.scratchB.y; z0 = this.scratchB.z;
+    for (let i = 0; i <= segmentCount; i++) {
+      const t = ts[Math.min(last, i * stride)]!;
+      sample(t, this.scratchA);
+      this.pushVertex(t, this.scratchA.x, this.scratchA.y, this.scratchA.z);
+      this.nextVertex[i] = i < segmentCount ? i + 1 : -1;
+    }
+    for (let i = 0; i < segmentCount; i++) this.pending.push(this.segmentError(i, sample), i);
+
+    while (this.pending.topScore > 1 && this.bakedCount < this.maxVertices) {
+      const left = this.pending.pop();
+      const right = this.nextVertex[left]!;
+      const tm = (this.ts[left]! + this.ts[right]!) / 2;
+      sample(tm, this.scratchM);
+      const mid = this.pushVertex(tm, this.scratchM.x, this.scratchM.y, this.scratchM.z);
+      this.nextVertex[mid] = right;
+      this.nextVertex[left] = mid;
+      this.pending.push(this.segmentError(left, sample), left);
+      this.pending.push(this.segmentError(mid, sample), mid);
     }
   }
 
@@ -380,7 +396,7 @@ export class Curve {
     this.writePositions();
   }
 
-  // 焼いた頂点(pivot 差し引き後)と全セグメントの描画範囲を GPU へ反映する。
+  // 焼いた頂点(pivot 差し引き後)と描画範囲を GPU へ反映する。
   private writePositions(): void {
     const n = this.bakedCount;
     const { x: px, y: py, z: pz } = this.pivot;
@@ -391,27 +407,38 @@ export class Curve {
     }
     this.vertexCount = n;
     (this.geom.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
-    this.writeLineDistances(n);
-    this.resetIndicesToStrip();
-    const segmentIndexCount = Math.max(0, n - 1) * 2;
+    const segments = this.writeSegments();
     (this.geom.getIndex() as THREE.BufferAttribute).needsUpdate = true;
-    this.geom.setDrawRange(0, segmentIndexCount);
+    this.geom.setDrawRange(0, segments * 2);
     this.applyVisible();
   }
 
-  // 破線用の始点からの累積距離を焼く(破線でない構築なら何もしない)。
-  private writeLineDistances(n: number): void {
-    if (!this.lineDistances) return;
+  // 連結リストを辿って線分のインデックス対を書き、その本数を返す(破線なら始点からの累積距離も
+  // 同じ走査で書く)。頂点は生成順に置かれているので、t 昇順の並びはここで書くインデックスが担う。
+  private writeSegments(): number {
+    let count = 0;
     let dist = 0;
-    this.lineDistances[0] = 0;
-    for (let i = 1; i < n; i++) {
-      const dx = this.bakedLocal[i * 3]! - this.bakedLocal[(i - 1) * 3]!;
-      const dy = this.bakedLocal[i * 3 + 1]! - this.bakedLocal[(i - 1) * 3 + 1]!;
-      const dz = this.bakedLocal[i * 3 + 2]! - this.bakedLocal[(i - 1) * 3 + 2]!;
-      dist += Math.hypot(dx, dy, dz);
-      this.lineDistances[i] = dist;
+    for (let v = 0; ;) {
+      if (this.lineDistances) this.lineDistances[v] = dist;
+      const w = this.nextVertex[v]!;
+      if (w < 0) break;
+      this.indices[count * 2] = v;
+      this.indices[count * 2 + 1] = w;
+      count++;
+      if (this.lineDistances) {
+        const a = v * 3, b = w * 3;
+        dist += Math.hypot(
+          this.bakedLocal[b]! - this.bakedLocal[a]!,
+          this.bakedLocal[b + 1]! - this.bakedLocal[a + 1]!,
+          this.bakedLocal[b + 2]! - this.bakedLocal[a + 2]!,
+        );
+      }
+      v = w;
     }
-    (this.geom.getAttribute('lineDistance') as THREE.BufferAttribute).needsUpdate = true;
+    if (this.lineDistances) {
+      (this.geom.getAttribute('lineDistance') as THREE.BufferAttribute).needsUpdate = true;
+    }
+    return count;
   }
 
   // 曲線を持たない状態へ戻す。表示要求に関わらず何も描かれなくなる。
