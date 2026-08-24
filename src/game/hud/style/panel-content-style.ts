@@ -265,6 +265,10 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-stage-controls .stage-control-protein-colors .w-group-title { flex: 0 0 100%; }
 #hud-stage-controls .stage-control-protein-representation .w-btn,
 #hud-stage-controls .stage-control-protein-colors .w-btn { flex: 1 1 0; min-width: 0; }
+/* 着色は長い分析用ラベルを含むため2列へ折り返し、全文をボタン内に収める。 */
+#hud-stage-controls .stage-control-protein-colors .w-btn {
+  flex: 1 1 calc(50% - var(--space-2)); min-width: 110px; white-space: normal; overflow-wrap: anywhere;
+}
 #hud-stage-controls .stage-control-protein-representation .w-btn.on,
 #hud-stage-controls .stage-control-protein-colors .w-btn.on { background: var(--color-primary-fill); border-color: var(--color-primary); color: var(--color-primary); }
 #hud-stage-controls .stage-control-select { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); color: var(--text-dim); font-size: var(--font-xxs); }
