@@ -100,3 +100,18 @@
 
 `npm run export-assets` は実行のたびに全アセットの識別子が振り直されるため、差分が識別子だけの
 ファイルは commit せず戻す。
+
+### タンパク質を1体追加する
+
+1. `assets-src/proteins/<id>/` に `protein.config.json` と `protein.definition.json` を置き、PDB ID・
+   各出力先・coordinate scale・機能部位・構成要素を定義する。
+2. `node tools/protein-builder/fetch-pdb-backbone.mjs assets-src/proteins/<id>/protein.config.json` で
+   PDB の Cα・カルボニル酸素・二次構造・B-factor を取り込む。
+3. `npm run protein:generate-structure -- --network` で構造資産を生成する(論文調の GLB が要る場合は
+   config の外部 exporter を実行する)。
+4. `npm run protein:generate` で semantic asset と残基 motion asset を生成し、`npm run protein:catalog`
+   で登録カタログを更新する。
+5. `npm run protein:validate`(`-structure` / `-motion` も)・`npm run typecheck`・
+   `npm run render-lab:shot` を通す。生成されたアセットはクリエイティブステージの一覧へ自動的に現れる。
+
+**どう見せるか・どう振舞うかは `DEVELOP/SPEC/PROTEIN.md`。** ここにあるのは生成の手順だけ。
