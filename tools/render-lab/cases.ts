@@ -7,6 +7,7 @@ import { createEarth } from '../../src/render/earth';
 import { R_EARTH } from '../../src/physics/solar-system';
 import { Curve } from '../../src/render/curve';
 import { buildPlayerShip } from '../../src/render/ships';
+import { InstancedPool } from '../../src/render/instanced-pool';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
 import type { Occluder, RingBand, SunOcclusion } from '../../src/render/pipeline/sun-occlusion';
 import type { LineStyle } from '../../src/render/line-style';
@@ -62,9 +63,11 @@ const NEAR = 2;
 export type LabCase = {
   readonly objects: readonly THREE.Object3D[];
   readonly camera: THREE.PerspectiveCamera;
+  // 恒星の向き(原点から見た単位ベクトル)。省略すると SUN_DIR。
+  readonly sunDirection?: THREE.Vector3;
   // 大気パスへ渡す天体。中心は描画座標。
   readonly atmosphere?: { readonly center: THREE.Vector3; readonly surfaceRadius: number };
-  // 遮蔽パスへ渡す球。フォワード経路は遮蔽を持たないので、影は 2 経路の差としても出る。
+  // 遮蔽パスへ渡す球。中心は描画座標。
   readonly occluders?: readonly Occluder[];
   // 遮蔽パスへ渡す環。中心と法線軸は描画座標。
   readonly rings?: { readonly center: THREE.Vector3; readonly axis: THREE.Vector3; readonly bands: readonly RingBand[] };
@@ -110,12 +113,91 @@ function circle(
   return curve.object;
 }
 
-// 自機メッシュ。buildPlayerShip() は内部で markLitOpaque() を呼ぶので、フォワード経路へ
-// 回す側はチャンネル 0 へ戻し直す必要がある。
-function ship(z: number): THREE.Object3D {
+// 自機メッシュ 1 隻を、描画座標の position へ置く。rotation を渡すと機体の姿勢を回す。
+function shipAt(position: THREE.Vector3, rotation?: THREE.Euler): THREE.Object3D {
   const group = buildPlayerShip();
-  group.position.set(0, -1, z);
+  group.position.copy(position);
+  if (rotation !== undefined) group.rotation.copy(rotation);
   return group;
+}
+
+// 斜光のケースで使う恒星の向きと、機体の姿勢。カメラは −Z を見るので、恒星を左上手前へ置き、
+// 機体を上面と左舷が見える向きへ回すと、突起の影が見えている面を横切る。
+const OBLIQUE_SUN_DIR = new THREE.Vector3(-0.70, 0.20, 0.68).normalize();
+const OBLIQUE_SHIP_ROTATION = new THREE.Euler(-0.5, 0.6, 0.12);
+
+// 小片 1 個の一辺 [m] と、散らばる範囲の半幅 [m]。
+const DEBRIS_SIZE = 0.12;
+const DEBRIS_SPREAD = 100;
+
+// 決定的な擬似乱数(同じ絵を毎回撮るため)。
+function lcg(seed: number): () => number {
+  let state = seed;
+  return () => {
+    state = (state * 1664525 + 1013904223) % 4294967296;
+    return state / 4294967296;
+  };
+}
+
+// 薬莢や破片と同じ形の枝(1 本の InstancedMesh に個体を詰めたプール)を、center のまわりへ
+// 散らして返す。ゲーム本体と同じ InstancedPool を通すので、影パスから見た姿も同じになる。
+function debrisPool(center: THREE.Vector3, count: number): THREE.Object3D {
+  const host = new THREE.Scene();
+  const geometry = new THREE.BoxGeometry(DEBRIS_SIZE, DEBRIS_SIZE, DEBRIS_SIZE);
+  const material = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, roughness: 0.8, metalness: 0 });
+  const pool = new InstancedPool(host, geometry, material, count);
+  const random = lcg(20260825);
+  const piece = new THREE.Object3D();
+  pool.beginFrame();
+  for (let i = 0; i < count; i++) {
+    piece.position.set(
+      center.x + (random() * 2 - 1) * DEBRIS_SPREAD,
+      center.y + (random() * 2 - 1) * DEBRIS_SPREAD,
+      center.z + (random() * 2 - 1) * DEBRIS_SPREAD,
+    );
+    piece.rotation.set(random() * Math.PI, random() * Math.PI, random() * Math.PI);
+    pool.push(piece);
+  }
+  pool.endFrame();
+  const mesh = host.children[0]!;
+  host.remove(mesh);
+  mesh.userData.ownsGeometry = true;
+  mesh.userData.ownsMaterial = true;
+  return mesh;
+}
+
+// 自己影: 艦 1 隻を斜光で照らし、突起(アンテナ・放熱板)の影が船体へ落ちるのを見る。
+function shipSelfShadow(): LabCase {
+  return {
+    objects: [shipAt(new THREE.Vector3(0, -1, -10), OBLIQUE_SHIP_ROTATION)],
+    camera: labCamera(6e7),
+    sunDirection: OBLIQUE_SUN_DIR,
+  };
+}
+
+// 複数塊: 互いに離した艦を並べ、スロットが 2 枚以上へ分かれるのを見る。
+function shipCluster(): LabCase {
+  const positions = [
+    new THREE.Vector3(0, -1, -10),
+    new THREE.Vector3(9, 3, -18),
+    new THREE.Vector3(-8, 2, -16),
+    new THREE.Vector3(3, -7, -24),
+  ];
+  return {
+    objects: positions.map((position) => shipAt(position, OBLIQUE_SHIP_ROTATION)),
+    camera: labCamera(6e7),
+    sunDirection: OBLIQUE_SUN_DIR,
+  };
+}
+
+// 小片群のなかの自己影: 自己影のケースへ、広く散らばった小片群を 1 本の枝として足す。
+function shipInDebris(): LabCase {
+  const shipPosition = new THREE.Vector3(0, -1, -10);
+  return {
+    objects: [shipAt(shipPosition, OBLIQUE_SHIP_ROTATION), debrisPool(shipPosition, 512)],
+    camera: labCamera(6e7),
+    sunDirection: OBLIQUE_SUN_DIR,
+  };
 }
 
 // 地球低軌道: 艦・地球・自機の円軌道。線が艦と球に正しく隠れるかと、艦の陰影を見る。
@@ -132,7 +214,7 @@ function leo(): LabCase {
     objects: [
       sphere(BLUE_SPHERE_ALBEDO, 6.371e6, center),
       circle(center, orbitRadius, u, v, style, camera),
-      ship(-10),
+      shipAt(new THREE.Vector3(0, -1, -10)),
     ],
     camera,
   };
@@ -355,6 +437,9 @@ function far(): LabCase {
 
 export const CASES = {
   'leo': leo,
+  'ship-selfshadow': shipSelfShadow,
+  'ship-cluster': shipCluster,
+  'ship-in-debris': shipInDebris,
   'order': order,
   'depth-1e4': () => depthProbe(1e4, 6e7),
   'depth-1e6': () => depthProbe(1e6, 6e7),
