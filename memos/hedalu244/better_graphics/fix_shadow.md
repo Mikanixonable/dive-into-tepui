@@ -142,58 +142,6 @@ git history が持っている。**
 
 ## 手順
 
-### 手順 1. `render-lab` からフォワード経路を落とす
-
-**目的.** 以降の手順で触る面を減らす。レンダラー 2 台・差分画像・チャンネルの打ち消しが消える。
-**プリパス経路の絵はこの時点で変えない。**
-
-**変更が必要な箇所.**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `tools/render-lab/lab.ts` | `LabPath` / `LabViews` / `Shot` / `shootCase` / `diffPixels` / `DIFF_GAIN` を落とす。`show()` の `path === 'forward'` によるチャンネル戻し(113-115 行)を落とす。コンストラクタの光源チャンネル分岐(78-81 行)を無条件にする。`LabView.create` から `path` 引数を落とす。モジュール先頭コメントを書き直す — 2 経路の説明とその例外がまるごと不要になる |
-| `tools/render-lab/main.ts` | `LabView` 1 台にする。`window.renderLab.shoot` / `measure` の戻り値を 1 本にする |
-| `tools/render-lab/index.html` | `#forward` の `<figure>`(33 行)を落とす |
-| `tools/render-lab-shot.mjs` | 出力名を `<case>.png` にする。枚数のログを `names.length` にする。ベースライン JSON の `schemaVersion` を 2 にする |
-| `memos/mikanixonable/protein-motion-baseline.json` | 手順の最後に `npm run render-lab:shot` で撮り直す(書き手はこのスクリプトだけで、読み手は無い) |
-| `CLAUDE.md` のコマンド表(97-98 行) | 「描画の**比較**環境」を、比較でなくなった実態に合わせて書き直す。`.claude/skills/rendering-workflow/SKILL.md` 2 節の表も同じ語で説明しているので合わせる |
-
-**達成条件と検証.** `npm run typecheck`。
-`grep -rn "forward" tools/render-lab/ tools/render-lab-shot.mjs` が 0 件。
-`npm run render-lab:shot` が `.render-lab/shots/` にケース数と同じ枚数の PNG を吐き、
-`leo.png` / `saturn.png` / `earth.png` が実施前の `*-prepass.png` と同じ絵であること。
-
----
-
-### 手順 2. タンパク質の自己影を落とす
-
-**目的.** 誰も意図していない 4 つ目の遮蔽源を消し、球・環の帯・メッシュの 3 つへ揃える。ライト空間の
-深度マップを撮る機構が 1 つになり、`OcclusionSources` から「遮蔽パスからしか選べない源」という
-例外が消える。**シルエット表現の内部リボンは、外殻の影を失って明るくなる。**
-
-**変更が必要な箇所.**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/render/pipeline/protein-shadow-pass.ts` | ファイルごと削除 |
-| `src/render/pipeline/render-pipeline.ts` | 生成・呼び出し・破棄を落とす |
-| `src/render/pipeline/sun-occlusion.ts` | `OcclusionSources.protein` と `proteinTransmittance()` を落とす。コンストラクタから依存を外す |
-| `src/render/pipeline/occlusion.ts` | 源の選択から `protein` を落とす |
-| `src/render/pipeline/atmosphere-pass.ts` / `src/render/ring.ts` | 源の選択から `protein` を落とす |
-| `src/render/pipeline/lit-layer.ts` | `PROTEIN_SHADOW_OCCLUDER_LAYER` / `PROTEIN_SHADOW_RECEIVER_LAYER` / `markProteinShadowLayers` を落とす。`markSunShadowCaster` の外殻除外も不要になる |
-| `src/render/protein-enemy-ship.ts` | `markProteinShadowLayers` の呼び出し2か所を落とす。ただし**シルエット外殻を G バッファから外す `layers.set(0)`(62 行)は、半透明を world パスで合成するために必要なので残し、判定の根拠を差し替える** |
-| `src/render/protein-silhouette-view.ts` | `userData.proteinShadowOccluder` の付与(89 行)を落とす。上の `layers.set(0)` が読む印は、ここへ置き直す |
-| `src/render/protein-ribbon.ts` / `src/render/protein-collision-ribbon.ts` | `userData.proteinShadowReceiver` の付与を落とす |
-| `src/render/protein-motion-material.ts` | `installProteinMotionOverridePropagation` と `proteinMotionPositionNodeForMaterial` を落とす — 判定にこの `userData` を使っている。**`src/` からは呼ばれておらず、唯一の呼び出し元は `tests/physics/protein-render-bindings.test.ts` の「shadow override receives the source position node per draw」なので、そのテストも一緒に消す** |
-
-**達成条件と検証.** `npm run typecheck` と `npm run test:physics`(テストを1件消すので)。
-`grep -rn "ProteinShadow\|proteinShadow" src/ tests/physics/` が 0 件。
-`npm run render-lab` の `5i4r-silhouette-1` で、内部リボンに外殻の影が無いこと(外殻そのものは
-これまでどおり半透明で描かれ、G バッファには入らない)。
-`5i4r-molecular-1` の自己影が、実施前と変わらず出ていること(こちらはアトラス経由なので消えない)。
-
----
-
 ### 手順 3. 大気パスの二重評価を落とす
 
 **目的.** 大気パスが遮蔽度を画面全体で 2 回計算し直している。**もやが評価する点は G バッファ深度
@@ -322,6 +270,20 @@ git history が持っている。**
 手順 5 で記録した状態と比べて、白紙だったスロットが埋まること。
 **ここで初めて絵として確かめる** — `ship-selfshadow` の通常表示に艦の突起の影が船体へ落ちて見え、
 `ship-in-debris` にも同じ自己影が出ていること(達成目標 3・5)。
+
+---
+
+## 残件
+
+- **`npm run render-lab:shot` は全 35 ケースを撮り切れない。** 17 番目(`protein-5i4r-ribbon-10`)
+  の 1 枚が CDP の制限時間 60 秒を超え、そこで落ちる(`tools/chrome-session.mjs` の
+  `REQUEST_TIMEOUT_MS`)。さらに close() がプロファイルの削除で EBUSY を投げるため、**本体側の
+  例外が見えない**。軽い 16 ケースは毎回通るので、重いケースを見るときは 1 ケースずつ CDP で撮る。
+  **この問題はこの計画の変更とは無関係で、実施前から同じ場所で落ちていた。**
+- **`memos/mikanixonable/protein-motion-baseline.json` はこの環境では撮り直さない。**
+  上の理由で計測段まで進めないうえ、ここでは GPU の時間計測が未対応なので、他人の環境で
+  取った値を全部 0 で上書きすることになる。撮影スクリプトは `schemaVersion: 2` を書くので、
+  次に計測が通る環境で撮り直したときにファイル側も 2 へ上がる。
 
 ---
 
