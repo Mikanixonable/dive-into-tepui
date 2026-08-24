@@ -1,15 +1,10 @@
 import * as THREE from 'three/webgpu';
 import {
-  buildPdb5i4rEnemyShip, buildPdb5i4rRibbonShip, recolorPdb5i4rEnemyShip,
-} from '../../render/ships';
-import myoglobinBackbone from '../../assets/models/myoglobin1mbnBackbone.json';
-import {
   buildProteinEnemyShip, buildProteinRibbonShip, replaceProteinEnemyShip, type ProteinRenderSource,
 } from '../../render/protein-enemy-ship';
 import {
-  MYOGLOBIN_1MBN_ASSET, PDB5I4R_ASSET, proteinAssetFor, type ProteinAssetId,
+  PROTEIN_ASSET_IDS, proteinAssetBundleFor, proteinAssetFor, type ProteinAssetId,
 } from './protein-asset-loader';
-import { MYOGLOBIN_1MBN_DISPLAY_ASSET } from './protein-display-asset';
 import type { ProteinAssetDefinition } from './protein-schema';
 import type { ProteinDisplaySettings } from './protein-display';
 
@@ -21,30 +16,35 @@ export interface ProteinEnemyDefinition {
   readonly buildCollisionObject: () => THREE.Object3D;
 }
 
-const MYOGLOBIN_RENDER_SOURCE: ProteinRenderSource = {
-  semantic: MYOGLOBIN_1MBN_ASSET,
-  backbone: myoglobinBackbone,
-  structure: MYOGLOBIN_1MBN_DISPLAY_ASSET,
-};
+const PROTEIN_INTERNAL_RIBBON_COLOR = new THREE.Color(0xffffff);
 
-const PROTEIN_ENEMY_DEFINITIONS: Readonly<Record<ProteinAssetId, ProteinEnemyDefinition>> = {
-  'pdb-5i4r': {
-    assetId: 'pdb-5i4r',
-    asset: PDB5I4R_ASSET,
-    buildRenderObject: (display) => buildPdb5i4rEnemyShip(display),
-    recolorRenderObject: (target, display) => recolorPdb5i4rEnemyShip(target, display),
-    buildCollisionObject: () => buildPdb5i4rRibbonShip('chain'),
-  },
-  'pdb-1mbn-myoglobin': {
-    assetId: 'pdb-1mbn-myoglobin',
-    asset: MYOGLOBIN_1MBN_ASSET,
-    buildRenderObject: (display) => buildProteinEnemyShip(MYOGLOBIN_RENDER_SOURCE, display),
+function proteinRenderSourceFor(id: ProteinAssetId): ProteinRenderSource {
+  const bundle = proteinAssetBundleFor(id);
+  if (!bundle) throw new Error(`Unknown protein asset bundle: ${id}`);
+  return bundle;
+}
+
+function createProteinEnemyDefinition(
+  assetId: ProteinAssetId,
+  source: ProteinRenderSource,
+): ProteinEnemyDefinition {
+  return {
+    assetId,
+    asset: source.semantic,
+    buildRenderObject: (display) => buildProteinEnemyShip(source, display),
     recolorRenderObject: (target, display) => replaceProteinEnemyShip(
-      target, buildProteinEnemyShip(MYOGLOBIN_RENDER_SOURCE, display),
+      target, buildProteinEnemyShip(source, display),
     ),
-    buildCollisionObject: () => buildProteinRibbonShip(MYOGLOBIN_RENDER_SOURCE, 'chain'),
-  },
-};
+    buildCollisionObject: () => buildProteinRibbonShip(
+      source, 'chain', PROTEIN_INTERNAL_RIBBON_COLOR,
+    ),
+  };
+}
+
+const PROTEIN_ENEMY_DEFINITIONS = Object.fromEntries(PROTEIN_ASSET_IDS.map((assetId) => [
+  assetId,
+  createProteinEnemyDefinition(assetId, proteinRenderSourceFor(assetId)),
+])) as Readonly<Record<ProteinAssetId, ProteinEnemyDefinition>>;
 
 export function proteinEnemyDefinitionFor(id: string): ProteinEnemyDefinition | null {
   if (!proteinAssetFor(id)) return null;
