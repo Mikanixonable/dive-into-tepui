@@ -12,11 +12,11 @@ import { DebrisPiece } from '../game-entity/debris-piece';
 import { Enemy } from '../game-entity/enemy';
 import { Bullet } from '../game-entity/bullet';
 import { Base } from '../game-entity/base';
+import { DetachedBooster } from '../game-entity/detached-booster';
 import { InstancedPool } from '../../render/instanced-pool';
 import { bulletBodyResources, bulletHaloResources, plasmaBodyResources, casingBodyResources, debrisFragmentResources } from '../../render/ships';
 import { Player } from '../player/player';
 import type { Stage } from '../stages/stage';
-import type { SimSpeedManager } from '../sim-speed-manager';
 import type { Input } from '../input/input';
 import type { CombatTarget } from '../targeter';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
@@ -38,6 +38,7 @@ export class EntityManager {
   readonly debris: DebrisPiece[] = [];
   public readonly ammoPickups: AmmoPickup[] = [];
   public readonly rcsFuelPickups: RcsFuelPickup[] = [];
+  readonly detachedBoosters: DetachedBooster[] = [];
   // 自機。操作対象(Game.player)もこの配列の1隻で、積分・衝突・寿命判定・予測では
   // 他の艦と対等に扱う。ステージモードでは1隻だけが入る。
   readonly players: Player[] = [];
@@ -95,6 +96,9 @@ export class EntityManager {
     }
     for (const data of save.rcsFuelPickups ?? []) {
       this.addRcsFuelPickup(new RcsFuelPickup({ saved: data, simTime }, scene));
+    }
+    for (const data of save.detachedBoosters ?? []) {
+      this.addDetachedBooster(new DetachedBooster({ saved: data, simTime }, scene));
     }
     for (const data of save.bases) {
       this.addBase(new Base({ saved: data, simTime }, scene, hud, worldSfx, this.effects, markerManager));
@@ -207,6 +211,11 @@ export class EntityManager {
     this.invalidateCaches();
   }
 
+  // 分離済みブースターを登録する。古いものから上限回収し、無制限に残骸を増やさない。
+  addDetachedBooster(booster: DetachedBooster): void {
+    this.addCapped(this.detachedBoosters, booster, C.MAX_DETACHED_BOOSTERS);
+  }
+
   // 基地を登録する。
   addBase(base: Base): void {
     this.bases.push(base);
@@ -237,6 +246,7 @@ export class EntityManager {
       ...this.bullets,
       ...this.ammoPickups,
       ...this.rcsFuelPickups,
+      ...this.detachedBoosters,
       ...this.casings,
       ...this.debris,
       ...this.bases,
@@ -271,6 +281,7 @@ export class EntityManager {
     this.prune(this.debris);
     this.prune(this.ammoPickups);
     this.prune(this.rcsFuelPickups);
+    this.prune(this.detachedBoosters);
     this.prune(this.bases);
   }
 
@@ -298,11 +309,10 @@ export class EntityManager {
   // 操作できないワープ倍率ではどの艦も操作できない — その2つは同じ「操作できない」状態なので、
   // input を渡すかどうかの1つの判断にまとめる。
   updatePlayers(
-    activePlayer: Player | null, input: Input | null, simSpeed: SimSpeedManager,
-    dt: number, activeStage: Stage, ephemeris: Ephemeris,
+    activePlayer: Player | null, input: Input | null, operable: boolean,
+    dt: number, simDt: number, activeStage: Stage, ephemeris: Ephemeris,
   ): void {
-    const operable = simSpeed.canShipAct;
-    const simDt = dt * simSpeed.simSpeed;
+    for (const booster of this.detachedBoosters) if (booster.alive) booster.updateBurn(simDt);
     for (const ship of this.players) {
       ship.updatePlayerControls(
         ship === activePlayer && operable ? input : null,
@@ -318,10 +328,8 @@ export class EntityManager {
   // 毎フレーム、操作対象の基地へ updateBaseControls を1度ずつ通す。
   // 操作対象でない基地は clearTransientCommands で慣性飛行に戻る。
   updateBases(
-    controlledBase: Base | null, input: Input, simSpeed: SimSpeedManager, dt: number,
+    controlledBase: Base | null, input: Input, operable: boolean, dt: number, simDt: number,
   ): void {
-    const operable = simSpeed.canShipAct;
-    const simDt = dt * simSpeed.simSpeed;
     for (const base of this.bases) {
       if (!base.alive) continue;
       base.updateBaseControls(
@@ -352,6 +360,17 @@ export class EntityManager {
     }
   }
 
+  // 分離済みブースターは通常メッシュに加えて個別ノズル位置のプルームも同期する。
+  syncDetachedBoosters(
+    fo: FloatingOrigin, cameraSystem: CameraSystem, displayTime: number,
+    visibilityPolicy: MapVisibilityPolicy | null,
+  ): void {
+    const categoryVisible = visibilityPolicy?.entity('ship').category ?? true;
+    for (const booster of this.detachedBoosters) {
+      booster.syncBooster(fo, displayTime, cameraSystem, categoryVisible);
+    }
+  }
+
   // 全基地のメッシュ・エフェクト(推力プルーム・RCS音・パフ)を同期する。
   syncBases(
     controlledBase: Base | null, fo: FloatingOrigin, cameraSystem: CameraSystem,
@@ -377,6 +396,9 @@ export class EntityManager {
     }
     for (const pickup of this.rcsFuelPickups) {
       if (!visibilityPolicy.entity('fuel').category) pickup.renderObject.visible = false;
+    }
+    for (const booster of this.detachedBoosters) {
+      if (!visibilityPolicy.entity('ship').category) booster.renderObject.visible = false;
     }
     for (const base of this.bases) if (!visibilityPolicy.entity('base').category) base.renderObject.visible = false;
   }
@@ -407,7 +429,9 @@ export class EntityManager {
   // 軌道線まで持つので Player.syncPlayer が担当する。弾本体・弾ハロー・プラズマ弾・薬莢・
   // 破片(fragment)の変換は各エンティティの renderObject に同期された後、InstancedPool へ push する。
   sync(fo: FloatingOrigin, displayTime: number): void {
-    for (const e of this.otherEntities()) e.sync(fo, displayTime);
+    for (const e of this.otherEntities()) {
+      if (!(e instanceof DetachedBooster)) e.sync(fo, displayTime);
+    }
 
     this.bulletBodyPool.beginFrame();
     this.bulletHaloPool.beginFrame();
@@ -447,6 +471,7 @@ export class EntityManager {
     this.disposeAll(this.debris);
     this.disposeAll(this.ammoPickups);
     this.disposeAll(this.rcsFuelPickups);
+    this.disposeAll(this.detachedBoosters);
     this.disposeAll(this.bases);
 
     this.bulletBodyPool.dispose();
