@@ -232,6 +232,8 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud .hud-frame-controls .camera-angle-group .w-select { flex: 1 1 auto; min-width: 80px; }
 #hud-stage-controls { width: 100%; pointer-events: auto; }
 #hud-stage-controls .stage-controls-body { display: grid; gap: var(--space-2); margin-top: var(--space-3); }
+#hud-stage-controls .stage-control-enemy-tabs { display: flex; gap: var(--space-2); }
+#hud-stage-controls .stage-control-enemy-tabs .w-btn { flex: 1 1 0; min-width: 0; }
 #hud-stage-controls .stage-control-section { display: grid; gap: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--edge); }
 #hud-stage-controls .stage-control-section-title { color: var(--text); font-size: var(--font-xxs); letter-spacing: .04em; }
 #hud-stage-controls .stage-control-shapes { display: flex; flex-wrap: wrap; gap: var(--space-2); }
