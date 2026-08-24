@@ -4,6 +4,7 @@
   "source": "src/assets/models/myoglobin1mbnBackbone.json",
   "sourceStructureUrl": "https://files.rcsb.org/download/1MBN.pdb",
   "structureAsset": "src/assets/models/myoglobin1mbnStructure.json",
+  "motionAsset": "src/assets/models/myoglobin1mbnMotion.json",
   "glbOutput": "src/assets/models/myoglobin1mbn.glb",
   "coordinateScale": 0.09,
   "representation": "cartoon",

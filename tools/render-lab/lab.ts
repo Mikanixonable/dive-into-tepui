@@ -140,6 +140,7 @@ export class LabView {
     this.gpu.reset();
 
     for (let frame = 0; frame < warmupFrames; frame++) {
+      this.current?.updateProteinMotion?.((frame + 1) / 60);
       this.render();
       await this.gpu.waitForResolve();
     }
@@ -148,18 +149,14 @@ export class LabView {
     const cpuSamples: number[] = [];
     const gpuSamples = Array.from({ length: GPU_PASS_COUNT }, () => [] as number[]);
     const motion = new ProteinMotionMetricsRecorder();
-    const metadata = this.current?.proteinMotion;
-    const lodCounts = metadata ? { near: metadata.instanceCount } : {};
     for (let frame = 0; frame < sampleFrames; frame++) {
+      const motionSample = this.current?.updateProteinMotion?.((warmupFrames + frame + 1) / 60);
       this.render();
       cpuSamples.push(this.lastRenderCpuMs);
       await this.gpu.waitForResolve();
       const snapshot = this.gpu.snapshot();
       for (const [index, samples] of gpuSamples.entries()) samples.push(snapshot.elapsedMs[index] ?? 0);
-      // Baseline: the current render path has no residue motion controller or buffer upload.
-      // Future controller code can replace this record with its real per-frame sample without
-      // changing the output schema or the Render Lab driver.
-      motion.record({ cpuMs: 0, uploadBytes: 0, lodCounts });
+      motion.record(motionSample ?? { cpuMs: 0, uploadBytes: 0, lodCounts: {} });
     }
 
     return {
@@ -181,6 +178,7 @@ export class LabView {
     this.show(name);
     this.renderer.setOutputRenderTarget(this.captureTarget);
     try {
+      this.current?.updateProteinMotion?.(1);
       this.render();
     } finally {
       // 戻し忘れると以後キャンバスに何も出なくなる(撮影だけは通るので気付きにくい)。
@@ -192,6 +190,7 @@ export class LabView {
 }
 
 function disposeCaseObjects(built: LabCase): void {
+  built.disposeProteinMotion?.();
   for (const root of built.objects) {
     root.traverse((object) => {
       const mesh = object as THREE.Mesh;
