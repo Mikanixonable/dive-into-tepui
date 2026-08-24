@@ -38,6 +38,7 @@
 | サブエージェントへ作業を配る | `/delegate`(配る前に) |
 | 機能の追加・変更・削除を要求された | `/modify-feature`(書き始める前に) |
 | HUD/UI/DOM/CSS に触れる | `/ui-design`(書き始める前に) |
+| 描画(`src/render/`・シェーダ)に触れる / 見た目を目で確かめる | `/rendering-workflow` |
 | 大きな変更を終えた / 規約からの逸脱が疑わしい | `/refactor` |
 | 大規模な変更のあと、コメントを一括点検する | `/comment-cleanup` |
 | どこで何が起きているか当たりを付けたい | `/overview` |
