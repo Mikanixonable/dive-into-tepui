@@ -64,7 +64,8 @@ const PCF_MIN_TEXELS = 0.5;
 const PCF_MAX_TEXELS = 8;
 const VOGEL_GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 
-// デバッグ表示「影スロット」がスロットへ割り当てる色。並びがスロット番号の順。
+// デバッグ表示「影スロット」がスロットへ割り当てる色。並びがスロット番号の順で、
+// 件数は SHADOW_SLOT_COUNT と揃える。
 const SLOT_DEBUG_COLORS: readonly (readonly [number, number, number])[] = [
   [1, 0.25, 0.2], [0.3, 1, 0.35], [0.35, 0.5, 1], [1, 0.85, 0.25],
 ];
@@ -241,34 +242,50 @@ export class SunOcclusion {
       .and(worldPos.z.greaterThan(lo.z)).and(worldPos.z.lessThan(hi.z));
   }
 
-  // 描画座標の点を覆うスロットの色を足し合わせた、デバッグ表示「影スロット」の色。
-  // どのスロットも覆っていなければ黒。
+  // 描画座標の点を覆うスロットのうち、texel がいちばん細かいものの番号。どれも覆っていなければ
+  // −1。**どのスロットも自分の枠の遮蔽器をすべて持つので、どれを選んでも答えは正しい** —
+  // 細かいほうが影の形をよく表すというだけの基準である。
+  private selectSlot(worldPos: Vec3Node): FloatNode {
+    return Fn(() => {
+      const bestTexel = float(0).toVar();
+      const bestIndex = float(-1).toVar();
+      for (const [index, slot] of this.shadowMaps.slots.entries()) {
+        const finer = bestIndex.lessThan(0).or(slot.texelWorld.lessThan(bestTexel));
+        If(this.slotCovers(slot, worldPos).and(finer), () => {
+          bestTexel.assign(slot.texelWorld);
+          bestIndex.assign(index);
+        });
+      }
+      return bestIndex;
+    })();
+  }
+
+  // デバッグ表示「影スロット」の色。選ばれたスロットの色で、どれも覆っていなければ黒。
   slotDebugColor(worldPos: Vec3Node): Vec3Node {
     return Fn(() => {
+      const selected = this.selectSlot(worldPos);
       const color = vec3(0, 0, 0).toVar();
-      for (const [index, slot] of this.shadowMaps.slots.entries()) {
-        const tint = SLOT_DEBUG_COLORS[index]!;
-        If(this.slotCovers(slot, worldPos), () => { color.addAssign(vec3(...tint)); });
+      for (const [index, tint] of SLOT_DEBUG_COLORS.entries()) {
+        If(selected.equal(index), () => { color.assign(vec3(...tint)); });
       }
       return color;
     })();
   }
 
-  // シャドウアトラスへ描かれたメッシュが落とす影。**スロットの境界の外なら引かない** —
-  // 判定は select ではなく If で書く。select は両辺を評価するので、画面のほとんどを占める
-  // 虚空の画素からもテクスチャフェッチが消えない。
+  // シャドウアトラスへ描かれたメッシュが落とす影。**選んだ 1 枚だけを引く** — 透過率は恒星
+  // 円盤の遮られずに残る面積比なので、複数の答えを掛け合わせると重なった半影が二重に濃くなる。
   //
-  // **入っている最初のスロットだけを引く**(積ではなく単一選択)。
+  // 判定は select ではなく If で書く。select は両辺を評価するので、画面のほとんどを占める
+  // 虚空の画素からもテクスチャフェッチが消えない。**選ぶ段と引く段を分けるのも同じ理由** —
+  // 1 段で書くと、より細かいスロットが見つかるたびに引き直すことになる。
   private meshTransmittance(worldPos: Vec3Node, normal: Vec3Node, sunDir: Vec3Node): FloatNode {
-    const slots = this.shadowMaps.slots;
     // 恒星の視半径。半影の幅はここに遮蔽器までの距離を掛けたものになる。
     const sunAngRadius = this.sunLight.radius.div(max(length(this.sunLight.position.sub(worldPos)), 1));
     return Fn(() => {
+      const selected = this.selectSlot(worldPos);
       const visibility = float(1).toVar();
-      const taken = float(0).toVar();
-      for (const slot of slots) {
-        If(lessThan(taken, 0.5).and(this.slotCovers(slot, worldPos)), () => {
-          taken.assign(1);
+      for (const [index, slot] of this.shadowMaps.slots.entries()) {
+        If(selected.equal(index), () => {
           visibility.assign(this.slotVisibility(slot, worldPos, normal, sunDir, sunAngRadius));
         });
       }
@@ -317,6 +334,11 @@ export class SunOcclusion {
       const stored = texture(slot.texture, uv).r;
       lit.addAssign(select(receiverDepth.sub(depthBias).greaterThan(stored), float(0), float(1)));
     }
-    return lit.div(PCF_TAPS);
+    // 枠の外は遮られないものとして返す。**箱の判定は法線オフセットぶん枠より広い**ので、
+    // 縁の外へわずかに出た点がテクスチャの縁の値を引き延ばして帯状の影を作る経路がある。
+    const outside = uvBase.x.lessThan(0).or(uvBase.x.greaterThan(1))
+      .or(uvBase.y.lessThan(0)).or(uvBase.y.greaterThan(1))
+      .or(receiverDepth.lessThan(0)).or(receiverDepth.greaterThan(1));
+    return select(outside, float(1), lit.div(PCF_TAPS));
   }
 }

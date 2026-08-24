@@ -1,10 +1,9 @@
 // 恒星の直射光を遮るメッシュ(艦艇・基地・デブリなど)を、恒星方向を向いた平行投影のライト空間へ
 // 描き、線形深度をスロットごとの深度マップへ書く。
 //
-// **スロットは視錐台の深度分割ではなく、遮蔽器の塊 1 つずつへ割り当てる。** 塊どうしは重なりうる。
-//
-// TODO: 重なりの中に居る受け手は、入っている最初のスロットしか引かないので片方の遮蔽器を
-// 取りこぼす。仕様に根拠が無い。
+// **スロットは視錐台の深度分割ではなく、遮蔽器の塊 1 つずつへ枠を合わせる。** 枠どうしは重なりうる
+// ので、**どのスロットも自分の枠に入る遮蔽器をすべて描く** — 受け手はそのうち 1 枚を選ぶだけで
+// 答えが得られる。
 import * as THREE from 'three/webgpu';
 import { MeshBasicNodeMaterial, WebGPURenderer } from 'three/webgpu';
 import { clamp, positionView, uniform, vec3, vec4 } from 'three/tsl';
@@ -54,16 +53,8 @@ export type SunShadowSlot = {
   readonly active: FloatUniform;
 };
 
-// このフレームに 1 スロットぶんとしてまとめた遮蔽器。roots はスロットを描くとき以外を
-// 一時的に隠すために持つ。
-type Cluster = {
-  readonly box: THREE.Box3;
-  readonly roots: THREE.Object3D[];
-};
-
 // シーン直下の 1 単位ぶんの遮蔽器(艦 1 隻・基地 1 つ・インスタンスプール 1 本)。
 type Caster = {
-  readonly root: THREE.Object3D;
   readonly box: THREE.Box3;
   // その枝が持つ単一個体の差し渡し [m]。艦や基地は枝ぜんたいで 1 個体なので箱の対角に等しい。
   readonly individualSize: number;
@@ -82,9 +73,12 @@ export class SunShadowMaps {
   private readonly casters: Caster[] = [];
   // collectCasters が枝ごとに拾う、その枝の単一個体の差し渡し [m](0 なら見つからなかった)。
   private branchInstanceSize = 0;
-  private readonly clusters: Cluster[] = [];
-  private readonly hidden: THREE.Object3D[] = [];
+  // このフレームにスロットを与えた塊の枠(描画座標の AABB)。
+  private readonly clusters: THREE.Box3[] = [];
+  // 遮蔽器をすべて包む箱。枠の near を光源側へどこまで延ばすかがここから決まる。
+  private readonly castersBounds = new THREE.Box3();
   private readonly scratchBox = new THREE.Box3();
+  private readonly scratchCorner = new THREE.Vector3();
   private readonly size = new THREE.Vector3();
   private readonly center = new THREE.Vector3();
   private readonly lightDirection = new THREE.Vector3();
@@ -177,21 +171,13 @@ export class SunShadowMaps {
       this.renderer.setRenderTarget(savedTarget);
       this.renderer.autoClear = savedAutoClear;
       this.renderer.setClearColor(savedClearColor, savedClearAlpha);
-      this.showHidden();
     }
   }
 
-  // 塊 1 つをスロット index へ描く。**塊に属さない遮蔽器は visible を一時的に落として外す** —
-  // 層は塊ごとに用意できず、InstancedMesh.count を絞ると以後まったく描かれなくなる。
-  private drawSlot(scene: THREE.Scene, sun: SunLight, index: number, cluster: Cluster): void {
+  // 枠 1 つをスロット index へ描く。**枠に入る遮蔽器はすべて描く** — 枠の外は平行投影が落とす。
+  private drawSlot(scene: THREE.Scene, sun: SunLight, index: number, box: THREE.Box3): void {
     const slot = this.slotUniforms[index]!;
-    if (!this.configureSlot(slot, cluster.box, sun)) return;
-    // この塊に属さない遮蔽器を退避する。
-    for (const caster of this.casters) {
-      if (cluster.roots.includes(caster.root)) continue;
-      caster.root.visible = false;
-      this.hidden.push(caster.root);
-    }
+    if (!this.configureSlot(slot, box, sun)) return;
     // 深度マテリアルはスロット共有なので、正規化に使う near/far をこのスロットのものへ差し替える。
     this.drawNear.value = slot.near.value;
     this.drawFar.value = slot.far.value;
@@ -199,13 +185,6 @@ export class SunShadowMaps {
     this.renderer.clear(true, true, false);
     this.renderer.render(scene, this.lightCamera);
     slot.active.value = 1;
-    this.showHidden();
-  }
-
-  // drawSlot が退避した遮蔽器を元へ戻す。スロットを描くたびに必ず対で呼ぶ。
-  private showHidden(): void {
-    for (const root of this.hidden) root.visible = true;
-    this.hidden.length = 0;
   }
 
   // シーン直下の枝ごとに、SUN_SHADOW_CASTER_LAYER のメッシュを包む描画座標の AABB を作る。
@@ -216,6 +195,7 @@ export class SunShadowMaps {
   // ルートに当たり、Box3.expandByObject が子を再帰して天体ごと箱に入れてしまう。
   private collectCasters(scene: THREE.Scene, camera: THREE.Camera, viewportHeight: number): void {
     this.casters.length = 0;
+    this.castersBounds.makeEmpty();
     for (const root of scene.children) {
       if (!root.visible) continue;
       this.scratchBox.makeEmpty();
@@ -229,7 +209,8 @@ export class SunShadowMaps {
       // 遮蔽器として先頭へ来てしまい、実際には影を何も落とせないままスロットを奪う。
       const individualSize = this.branchInstanceSize > 0 ? this.branchInstanceSize : this.size.length();
       const mpp = this.metersPerPixelAt(camera, viewportHeight, this.center);
-      this.casters.push({ root, box, individualSize, apparentPx: apparentSizePx(individualSize, mpp) });
+      this.casters.push({ box, individualSize, apparentPx: apparentSizePx(individualSize, mpp) });
+      this.castersBounds.union(box);
     }
     // 大きく写るものから順に塊を起こす。小さいものは枠が尽きた時点で捨ててよい。
     this.casters.sort((a, b) => b.apparentPx - a.apparentPx);
@@ -263,17 +244,16 @@ export class SunShadowMaps {
     for (const caster of this.casters) {
       if (caster.apparentPx < MIN_CASTER_PX) break; // 降順なので、以降はすべて小さい
       const absorbed = this.clusters.find((cluster) => {
-        this.scratchBox.copy(cluster.box).union(caster.box);
+        this.scratchBox.copy(cluster).union(caster.box);
         return this.fitsSlot(camera, viewportHeight, this.scratchBox);
       });
       if (absorbed !== undefined) {
-        absorbed.box.union(caster.box);
-        absorbed.roots.push(caster.root);
+        absorbed.union(caster.box);
         continue;
       }
       if (this.clusters.length >= SHADOW_SLOT_COUNT) continue;
       if (!this.resolvesInSlot(caster)) continue;
-      this.clusters.push({ box: caster.box.clone(), roots: [caster.root] });
+      this.clusters.push(caster.box.clone());
     }
   }
 
@@ -321,9 +301,14 @@ export class SunShadowMaps {
     this.lightCamera.right = extent;
     this.lightCamera.top = extent;
     this.lightCamera.bottom = -extent;
-    this.lightCamera.near = eyeDistance - extent;
-    this.lightCamera.far = eyeDistance + extent;
     this.lightCamera.position.copy(this.center).addScaledVector(this.lightDirection, eyeDistance);
+    // **near は箱ではなく、いちばん光源寄りの遮蔽器へ合わせる。** 箱へ密着させると、箱と光源の
+    // 間に立つ遮蔽器が near で切られ、その影が枠の中へ落ちてこない。far は箱に密着させたまま —
+    // その先に受け手は居ない。
+    this.lightCamera.near = Math.min(
+      eyeDistance - extent, this.nearestCasterDepth(this.lightCamera.position, this.lightDirection),
+    );
+    this.lightCamera.far = eyeDistance + extent;
     // 視線と平行な up は姿勢を決められない。protein-shadow-pass.ts と同じ切り替えで避ける。
     this.lightCamera.up.set(
       Math.abs(this.lightDirection.y) < 0.9 ? 0 : 1,
@@ -346,6 +331,22 @@ export class SunShadowMaps {
     slot.boundsMin.value.copy(box.min).addScalar(-slot.texelWorld.value * 4);
     slot.boundsMax.value.copy(box.max).addScalar(slot.texelWorld.value * 4);
     return true;
+  }
+
+  // 遮蔽器をすべて包む箱のうち、いちばん光源寄りの点のライト空間での深度。遮蔽器が 1 つも
+  // 無ければ +Infinity を返すので、呼び出し側の Math.min が箱に密着した near をそのまま採る。
+  private nearestCasterDepth(eye: THREE.Vector3, lightDirection: THREE.Vector3): number {
+    if (this.castersBounds.isEmpty()) return Infinity;
+    let nearest = Infinity;
+    for (let corner = 0; corner < 8; corner++) {
+      this.scratchCorner.set(
+        (corner & 1) === 0 ? this.castersBounds.min.x : this.castersBounds.max.x,
+        (corner & 2) === 0 ? this.castersBounds.min.y : this.castersBounds.max.y,
+        (corner & 4) === 0 ? this.castersBounds.min.z : this.castersBounds.max.z,
+      );
+      nearest = Math.min(nearest, this.scratchCorner.sub(eye).negate().dot(lightDirection));
+    }
+    return nearest;
   }
 
   // 保持している GPU 資源を解放する。
