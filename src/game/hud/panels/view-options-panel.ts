@@ -72,6 +72,8 @@ interface GridRow {
   readonly poleKey: keyof CelestialGridVisibility | null;
   readonly gridKey: keyof CelestialGridVisibility | null;
   readonly scaleKey: keyof CelestialGridVisibility;
+  // 行の末尾に添える補助ボタン。トグルではなく、その行の設定パネルを開く操作を持つ行だけが指定する。
+  readonly auxButton?: { readonly glyph: string; readonly description: string };
 }
 
 const GRID_ROWS: readonly GridRow[] = [
@@ -80,6 +82,10 @@ const GRID_ROWS: readonly GridRow[] = [
   { label: '月軌道面', categoryKey: null, planeKey: null, poleKey: null, gridKey: null, scaleKey: 'moonOrbitScaleGrid' },
   { label: '月赤道面', categoryKey: null, planeKey: null, poleKey: null, gridKey: null, scaleKey: 'moonEquatorScaleGrid' },
   { label: '静止軌道', categoryKey: null, planeKey: null, poleKey: null, gridKey: null, scaleKey: 'geostationaryOrbit' },
+  {
+    label: 'ハロー軌道', categoryKey: null, planeKey: null, poleKey: null, gridKey: null, scaleKey: 'haloOrbits',
+    auxButton: { glyph: '⚙', description: 'ハロー軌道パネルを開閉' },
+  },
 ];
 
 interface ViewOptionColumn {
@@ -136,6 +142,10 @@ function appendSectionHeading(
 export class ViewOptionsPanel {
   public onBodyClassModeChange: ((key: keyof BodyClassToggles, mode: BodyClassDisplayMode) => void) | null = null;
   public onGridToggle: ((key: keyof CelestialGridVisibility, on: boolean) => void) | null = null;
+  public onHaloPanelToggle: (() => void) | null = null;
+
+  // haloOrbits 行の縮尺列に置く、ハロー軌道パネルの開閉ボタン。
+  private haloPanelToggleButton!: Button;
 
   private readonly bodyClassModeButtons: readonly (readonly [BodyClassRow, Button, HTMLElement])[];
   // 各ボタンの現在状態の鏡映し。正本は setBodyClassToggles が受け取る boolean 組にあり、
@@ -232,6 +242,16 @@ export class ViewOptionsPanel {
         [row.gridKey, '⊞', `${row.label}グリッド`],
         [row.scaleKey, '十', `${row.label}の縮尺グリッド`],
       ] as const) {
+        // 補助ボタンを持つ行は、縮尺列の位置をそのボタンに充てる(列トグルを持たない行だけが指定する)。
+        if (key === row.scaleKey && row.auxButton !== undefined) {
+          const aux = new Button(row.auxButton.glyph, () => this.onHaloPanelToggle?.());
+          aux.element.classList.add('body-class-icon-btn');
+          aux.element.title = row.auxButton.description;
+          aux.element.setAttribute('aria-label', row.auxButton.description);
+          btnsEl.appendChild(aux.element);
+          this.haloPanelToggleButton = aux;
+          continue;
+        }
         if (key === null || (row.categoryKey === null && key === row.scaleKey)) {
           btnsEl.appendChild(document.createElement('span')).className = 'body-class-icon-btn-empty';
           continue;
@@ -290,6 +310,11 @@ export class ViewOptionsPanel {
   // パネルの表示/非表示を切り替える。
   public setVisible(visible: boolean): void {
     this.panel.classList.toggle('hidden', !visible);
+  }
+
+  // ハロー軌道パネルの開閉ボタンの点灯状態を外部から与える。
+  public setHaloPanelOpen(open: boolean): void {
+    this.haloPanelToggleButton.setOn(open);
   }
 
   // パネルを取り除き、折りたたみ状態変化の購読を解く。

@@ -29,6 +29,8 @@ import { CELESTIAL_VIEWS, fallbackCelestialView } from './celestial-registry';
 import { EarthView } from './earth-view';
 import { BodyClassToggles, NearbySystemTracker } from './body-visibility';
 import { MapVisibilityPolicy } from './map-visibility';
+import { HaloGuideLines } from './halo-guide-lines';
+import { HaloGuideSettings } from './halo-guide-settings';
 
 // 静止軌道高度の参照リング。実在の衛星や特定経度を表すものではない定数。地球が現在の
 // レジストリに実在しないなら架空レジストリでは無意味なので組まない(constructor で判定)。
@@ -90,6 +92,8 @@ export class EnvironmentScene {
   // 惑星は太陽中心)。マップモード専用で、天体暦の状態から作られる表示なのでここが所有する。
   private readonly referenceIds: readonly OrbitingId[];
   private readonly referenceLines: Map<OrbitingId, OrbitLine>;
+  // ラグランジュ点まわりの周期・準周期軌道のガイド線(表示パネルのハロー軌道行)。
+  private readonly haloGuideLines: HaloGuideLines;
 
   // 天体ビューの配列がすべて ephemeris から引く。天体暦はゲーム側が所有する単一インスタンスを
   // 共有参照する(状態を持たない純サンプラ)。sunLight はライティングパス(render/pipeline/)が
@@ -112,6 +116,7 @@ export class EnvironmentScene {
     // 参照線はマップで表示される天体だけが必要とする。全カタログぶんを起動時に
     // GPUへ確保すると、非表示設定でも頂点バッファとオブジェクトが残り続ける。
     this.referenceLines = new Map();
+    this.haloGuideLines = new HaloGuideLines(scene, ephemeris);
     this.lightingAnchor = new THREE.AmbientLight();
     scene.add(this.lightingAnchor);
     // レンダラーは光源自身の layers とカメラの layers が重ならないと光源をそのカメラの描画対象
@@ -135,6 +140,11 @@ export class EnvironmentScene {
     if (!overviewMode || this.ephemeris.starId === null || !graphics.pointField) return;
     const pointField = this.ensurePointField();
     pointField.update(t, true, this.ephemeris);
+  }
+
+  // ハロー軌道パネル(表示パネル5.1節)の設定。ゲーム側が変更のたびに渡す。
+  setHaloGuideSettings(settings: HaloGuideSettings): void {
+    this.haloGuideLines.setSettings(settings);
   }
 
   // 地球の自転初期位相(セーブ用)。地球が現在のレジストリに無ければ undefined。
@@ -198,6 +208,8 @@ export class EnvironmentScene {
     this.syncGeoLabels(
       displayTime, cameraSystem.overviewMode, gridVisibility.geostationaryOrbit,
       cameraSystem, markerManager, celestialBodies);
+    this.haloGuideLines.sync(
+      displayTime, cameraSystem.overviewMode, gridVisibility.haloOrbits, floatingOrigin, cameraSystem.activeCamera);
     this.celestialGrid.sync(
       gridVisibility, cameraSystem.activeCamera,
       cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
@@ -454,6 +466,7 @@ export class EnvironmentScene {
     this.geoLine.line.removeFromParent();
     this.geoLine.dispose();
     for (const id of [...this.referenceLines.keys()]) this.removeReferenceLine(id);
+    this.haloGuideLines.dispose();
     // ライティングモデルを組ませるためだけの光源。
     this.lightingAnchor.removeFromParent();
     this.lightingAnchor.dispose();
