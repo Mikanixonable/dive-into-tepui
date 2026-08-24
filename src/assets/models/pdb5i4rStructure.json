@@ -1924566,7 +1924566,8 @@
   },
   "generator": {
     "name": "generate-protein-structure.mjs",
-    "version": 2,
-    "sourceFallback": "existing-backbone"
+    "version": 3,
+    "sourceFallback": "existing-backbone",
+    "contentHash": "2a1005f22e0bbc3713c4b2b033bde4aa8ddf5336ed3c53ac08befcb84b879a2e"
   }
 }
