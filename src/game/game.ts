@@ -394,7 +394,6 @@ export class Game {
 
     this.targeter.updateBoardMarks(dt, this.player, this.entities);
     this.activePlayers.reclaimDead();
-    this.docking.checkProximity();
 
     this.sections.enter(SECTION.effects);
     this.entities.effects.update(dt, this.simulator.simTime);

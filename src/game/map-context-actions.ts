@@ -717,10 +717,7 @@ export class MapContextActions {
 
         const dockItems: MenuItem<MenuAction>[] = [];
         if (activeShip && base && this.docking) {
-          const isDocked = this.docking.getDockedTarget(activeShip) === base;
-          if (isDocked) {
-            dockItems.push(MenuCommon.transferResources(), MenuCommon.storeInBase(), MenuCommon.undock());
-          } else if (this.docking.canDock(activeShip, base)) {
+          if (this.docking.canDock(activeShip, base)) {
             dockItems.push(MenuCommon.dock());
           }
         }
@@ -761,12 +758,6 @@ export class MapContextActions {
           if (base) base.showTrajectoryLine = !base.showTrajectoryLine;
         } else if (act === 'dock') {
           if (activeShip && base) this.docking?.dockTo(activeShip, base);
-        } else if (act === 'undock') {
-          if (activeShip) this.docking?.undock(activeShip);
-        } else if (act === 'storeInBase') {
-          if (activeShip && base) this.docking?.storeInBase(activeShip, base);
-        } else if (act === 'transferResources') {
-          if (activeShip && base) this.docking?.openTransfer(activeShip, base);
         } else if (act === 'delete') {
           if (base) {
             if (this.getControlledBase?.() === base) this.controlBaseHandler?.(null);
