@@ -664,3 +664,11 @@ export const SATELLITE_ORBIT_LINE_FADE_NEAR_DIST = 5e8; // 50万km
 export const SATELLITE_ORBIT_LINE_FADE_FAR_DIST = 1e9; // 100万km
 // 参照軌道線が完全表示のときの不透明度。
 export const REFERENCE_LINE_OPACITY = 0.3;
+
+// マップのハロー軌道ガイド(halo-guide-lines.ts)の線色。静止軌道リング(0x8b93a0)と同じ
+// 控えめな系統だが、ファミリーごとに色相を変えて重なっても見分けられるようにする。
+export const COLOR_HALO_GUIDE_LINE = 0x6fa3c9; // ハロー族(s に沿った不透明度グラデーションの基準色)
+export const COLOR_PLANAR_LYAPUNOV_LINE = 0x7fb88a;
+export const COLOR_VERTICAL_LYAPUNOV_LINE = 0xc9a969;
+export const COLOR_LISSAJOUS_LINE = 0xb08bc9;
+export const COLOR_DRO_LINE = 0x6fc9b8;
