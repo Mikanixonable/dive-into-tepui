@@ -2,6 +2,11 @@
 // 1 枚の透過率へ書く。透過率そのものを決めるのは sun-occlusion.ts で、このパスはその関数を
 // 画面の全画素で評価してキャッシュするだけ。ライティングパスはこの 1 枚を読んで恒星の
 // 放射照度へ掛ける。
+//
+// マテリアルは環の項を持つものと持たないものの 2 枚で、フレームごとに差し替える。
+// **1 枚を uniform で分岐させると、環付き天体が画面に無いフレームでも 13 帯ぶんの演算列を
+// 毎画素通ることになる**(TSL のグラフは静的に展開される) — render-pipeline.ts の
+// compositeMaterials が表示ごとに別マテリアルを持つのと同じ理由・同じ形。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { uniform, vec3, vec4 } from 'three/tsl';
@@ -14,7 +19,8 @@ import { viewPositionAt } from './view-ray';
 export class OcclusionPass {
   private readonly target: THREE.RenderTarget;
   private readonly quad: QuadMesh;
-  private readonly material: THREE.MeshBasicNodeMaterial;
+  private readonly spheresOnlyMaterial: THREE.MeshBasicNodeMaterial;
+  private readonly withRingsMaterial: THREE.MeshBasicNodeMaterial;
   // QuadMesh は固定直交カメラで描かれるため、実カメラの逆射影行列と view→描画座標の行列は
   // 毎フレーム自前で書き込む(light-prepass.ts の逆射影行列と同じ理由)。
   private readonly projMatrixInverse: Mat4Uniform;
@@ -24,7 +30,7 @@ export class OcclusionPass {
   constructor(
     private readonly renderer: WebGPURenderer,
     gbuffer: GBufferPass,
-    sunOcclusion: SunOcclusion,
+    private readonly sunOcclusion: SunOcclusion,
     private readonly gpu: GpuTimings,
   ) {
     this.target = new THREE.RenderTarget(1, 1, {
@@ -36,10 +42,16 @@ export class OcclusionPass {
 
     const viewPos = viewPositionAt(gbuffer.depthTexture, this.projMatrixInverse);
     const worldPos: Vec3Node = this.viewToWorld.mul(vec4(viewPos, 1)).xyz;
-    const transmittance = sunOcclusion.transmittance(worldPos, { spheres: true, rings: true, protein: true });
-    this.material = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
-    this.material.colorNode = vec4(vec3(transmittance), 1);
-    this.quad = new QuadMesh(this.material);
+    const build = (rings: boolean): THREE.MeshBasicNodeMaterial => {
+      const material = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
+      material.colorNode = vec4(
+        vec3(sunOcclusion.transmittance(worldPos, { spheres: true, rings, protein: true })), 1,
+      );
+      return material;
+    };
+    this.spheresOnlyMaterial = build(false);
+    this.withRingsMaterial = build(true);
+    this.quad = new QuadMesh(this.spheresOnlyMaterial);
   }
 
   get texture(): THREE.Texture { return this.target.texture; }
@@ -51,6 +63,8 @@ export class OcclusionPass {
 
     this.projMatrixInverse.value.copy(camera.projectionMatrixInverse);
     this.viewToWorld.value.copy(camera.matrixWorld);
+    this.quad.material = this.sunOcclusion.hasActiveRings()
+      ? this.withRingsMaterial : this.spheresOnlyMaterial;
 
     this.renderer.setRenderTarget(this.target);
     // beginPass はこのあとの renderer.render() 呼び出しの直前に呼び、GPU 計測の対象パスを申告する。
@@ -63,6 +77,7 @@ export class OcclusionPass {
   // 共有する単一の板なので、ここでは解放しない。
   dispose(): void {
     this.target.dispose();
-    this.material.dispose();
+    this.spheresOnlyMaterial.dispose();
+    this.withRingsMaterial.dispose();
   }
 }
