@@ -22,7 +22,8 @@ import {
 } from '../../src/render/pipeline/lit-layer';
 import { v3 } from '../../src/physics/vec3';
 import {
-  DEFAULT_PROTEIN_DISPLAY, defaultProteinDisplayFor, isProteinDisplaySettings, proteinColorModesFor,
+  DEFAULT_PROTEIN_DISPLAY, defaultProteinDisplayFor, isProteinDisplaySettings, PROTEIN_COLOR_LABELS,
+  proteinColorModesFor, proteinDisplayFromLegacyColorMode,
 } from '../../src/game/protein/protein-display';
 
 const asset = rawAsset as unknown as ProteinAssetDefinition;
@@ -365,9 +366,26 @@ export function register(): void {
   test('protein display: each representation exposes only compatible color modes', () => {
     assert.deepEqual(proteinColorModesFor('molecular'), ['element']);
     assert.deepEqual(proteinColorModesFor('silhouette'), ['surface-charge', 'hydrophobicity']);
-    assert.ok(proteinColorModesFor('ribbon').includes('rainbow'));
+    assert.deepEqual(proteinColorModesFor('ribbon'), [
+      'publication', 'chain', 'b-factor', 'entity', 'rainbow', 'secondary-structure', 'component-role',
+    ]);
+    assert.equal(PROTEIN_COLOR_LABELS.publication, '論文調（鎖別）');
     assert.ok(isProteinDisplaySettings(DEFAULT_PROTEIN_DISPLAY));
+    assert.deepEqual(DEFAULT_PROTEIN_DISPLAY, { representation: 'ribbon', colorMode: 'publication' });
     assert.ok(isProteinDisplaySettings(defaultProteinDisplayFor('molecular')));
+    assert.deepEqual(defaultProteinDisplayFor('ribbon'), { representation: 'ribbon', colorMode: 'publication' });
     assert.ok(!isProteinDisplaySettings({ representation: 'molecular', colorMode: 'chain' }));
+  });
+
+  test('protein display: legacy color modes restore without losing valid ribbon choices', () => {
+    assert.deepEqual(proteinDisplayFromLegacyColorMode(undefined), { representation: 'ribbon', colorMode: 'chain' });
+    for (const colorMode of [
+      'chain', 'b-factor', 'entity', 'rainbow', 'secondary-structure', 'component-role', 'publication',
+    ] as const) {
+      assert.deepEqual(proteinDisplayFromLegacyColorMode(colorMode), {
+        representation: 'ribbon',
+        colorMode,
+      });
+    }
   });
 }
