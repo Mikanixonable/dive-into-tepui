@@ -8,6 +8,7 @@ import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings, type GpuPassId } from './g
 import type { OverlayManager } from './game/hud/overlay-manager';
 import type { Input } from './game/input/input';
 import { KEY_MAPPING as K } from './game/input/key-mapping';
+import { ProteinMotionMetricsRecorder, PROTEIN_MOTION_LODS, type ProteinMotionFrameSample } from './protein-motion-metrics';
 
 // 計測表示に載せるエンティティ数・シミュレーション規模の一式。
 export type PerfCounts = {
@@ -25,6 +26,7 @@ export type PerfCounts = {
 
 export interface PerfCountSource {
   perfCounts(): PerfCounts;
+  proteinMotionFrameSample(): ProteinMotionFrameSample;
 }
 
 // フレームごとに数え直される項目。集計期間の1フレームだけを覗くと実態を取り違えるので、
@@ -95,6 +97,7 @@ export class PerfMeter {
   private lastTimeMisses = 0;
   // 直近フラッシュで組んだ行。窓を開き直したときに空の窓を出さないために持つ。
   private rows: readonly PropertyRow[] = [];
+  private readonly proteinMotion = new ProteinMotionMetricsRecorder();
 
   // 計測が走っているか。窓が開いている間だけ真になる。
   get on(): boolean { return this.win !== null; }
@@ -125,6 +128,7 @@ export class PerfMeter {
     for (const s of this.sectionStats) this.resetStats(s);
     for (const s of this.gpuStats) this.resetStats(s);
     for (const s of this.rateStats) this.resetStats(s);
+    this.proteinMotion.reset();
     this.sections.enabled = true;
     this.gpu.enabled = true;
     this.frames = 0;
@@ -176,6 +180,7 @@ export class PerfMeter {
     for (const [i, stats] of this.gpuStats.entries()) this.addSample(stats, this.gpu.msOf(i as GpuPassId));
     const c = counts.perfCounts();
     for (const [i, stats] of this.rateStats.entries()) this.addSample(stats, RATE_COUNTS[i]!.read(c));
+    this.proteinMotion.record(counts.proteinMotionFrameSample());
     this.frames++;
     this.flush(c, now);
   }
@@ -222,6 +227,7 @@ export class PerfMeter {
     for (const s of this.sectionStats) this.resetStats(s);
     for (const s of this.gpuStats) this.resetStats(s);
     for (const s of this.rateStats) this.resetStats(s);
+    this.proteinMotion.reset();
     this.frames = 0;
     this.lastFlush = now;
   }
@@ -262,6 +268,7 @@ export class PerfMeter {
     this.lastTimeHits = c.timeCacheHits;
     this.lastTimeMisses = c.timeCacheMisses;
     const mem = (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory;
+    const proteinSummary = this.proteinMotion.summary();
 
     return [
       { key: 'fps', label: 'fps', value: ((frames * 1000) / elapsedMs).toFixed(0) },
@@ -306,6 +313,19 @@ export class PerfMeter {
 
       { key: 'heap', label: 'JS heap', group: 'メモリ',
         value: mem ? `${(mem.usedJSHeapSize / 1048576).toFixed(1)} MB` : '--' },
+
+      {
+        key: 'protein-motion-cpu', label: 'Motion CPU', group: 'タンパク質モーション',
+        value: `${barText(proteinSummary.cpuMs.avg)} p95 ${proteinSummary.cpuMs.p95.toFixed(2)} max ${proteinSummary.cpuMs.max.toFixed(2)}`,
+      },
+      {
+        key: 'protein-motion-upload', label: 'Upload', group: 'タンパク質モーション',
+        value: `avg ${(proteinSummary.uploadBytes.avg / 1024).toFixed(1)}KiB max ${(proteinSummary.uploadBytes.max / 1024).toFixed(1)}KiB`,
+      },
+      ...PROTEIN_MOTION_LODS.map((lod) => ({
+        key: `protein-motion-lod-${lod}`, label: lod, group: 'タンパク質モーション',
+        value: `${proteinSummary.lodCounts[lod].toFixed(1)}`,
+      })),
     ];
   }
 }

@@ -13,7 +13,7 @@ import type { ProteinMotionAsset } from '../../src/game/protein/protein-schema';
 import { collisionDamageFraction } from '../../src/game/game-entity/contact-damage';
 import * as THREE from 'three/webgpu';
 import { ProteinRuntime } from '../../src/game/protein/protein-runtime';
-import { PROTEIN_ASSET_IDS, proteinAssetFor } from '../../src/game/protein/protein-asset-loader';
+import { PROTEIN_ASSET_IDS, proteinAssetFor, proteinMotionAssetFor } from '../../src/game/protein/protein-asset-loader';
 import { proteinEnemyDefinitionFor } from '../../src/game/protein/protein-enemy-registry';
 import type { ProteinDisplayAsset } from '../../src/game/protein/protein-display-asset';
 import {
@@ -57,7 +57,11 @@ export function register(): void {
   test('protein combat: each attack site has independent HP and disabling one preserves the others', () => {
     const state = new ProteinCombatState(asset);
     const site = asset.sites.find((entry) => entry.id === 'primary-active-site')!;
+    const actionId = state.attackAction?.id;
+    assert.equal(actionId, 'plasma-burst');
+    assert.ok(actionId);
     assert.ok(state.attackSites.length >= 3);
+    assert.equal(state.isActionEnabled(actionId, true), state.hasAttackSite());
     const snapshot = state.hudSnapshot();
     assert.equal(snapshot.sites.length, asset.sites.length);
     assert.equal(snapshot.sites.filter((entry) => entry.attackable).length, state.attackSites.length);
@@ -68,7 +72,7 @@ export function register(): void {
     });
     assert.equal(result.siteId, site.id);
     assert.equal(result.siteDisabled, true);
-    assert.equal(state.isActionEnabled('plasma-burst'), true);
+    assert.equal(state.isActionEnabled(actionId, true), true);
     assert.ok(!state.attackSites.some((entry) => entry.id === site.id));
     for (const attackSite of [...state.attackSites]) {
       state.applyDamage(attackSite.maxHp, {
@@ -77,7 +81,8 @@ export function register(): void {
         z: attackSite.position[2] * asset.coordinateScale,
       });
     }
-    assert.equal(state.isActionEnabled('plasma-burst'), false);
+    assert.equal(state.isActionEnabled(actionId, true), false);
+    assert.equal(state.isActionEnabled(actionId, true), state.hasAttackSite());
   });
 
   test('protein combat: attack sites follow the asset action definition', () => {
@@ -95,6 +100,39 @@ export function register(): void {
     assert.equal(state.isActionEnabled('plasma-burst'), false);
   });
 
+  test('protein combat: myoglobin uses its own projectile action ID with external gating', () => {
+    const state = new ProteinCombatState(myoglobinAsset);
+    const actionId = state.attackAction?.id;
+    assert.equal(actionId, 'heme-iron-pulse');
+    assert.ok(actionId);
+    assert.equal(state.isActionEnabled(actionId, true), true);
+    assert.equal(state.isActionEnabled(actionId, false), false);
+    assert.equal(state.isActionEnabled('plasma-burst', true), false);
+  });
+
+  test('protein combat: external action conditions are ANDed with site availability', () => {
+    const state = new ProteinCombatState(asset);
+    assert.equal(state.isActionEnabled('plasma-burst', true), true);
+    assert.equal(state.isActionEnabled('plasma-burst', false), false);
+
+    for (const site of [...state.attackSites]) {
+      state.applyDamage(site.maxHp, {
+        x: site.position[0] * asset.coordinateScale,
+        y: site.position[1] * asset.coordinateScale,
+        z: site.position[2] * asset.coordinateScale,
+      });
+    }
+    assert.equal(state.isActionEnabled('plasma-burst', true), false);
+  });
+
+  test('protein combat: an action-less protein cannot fire under an external condition', () => {
+    const state = new ProteinCombatState({ ...asset, actions: [], sites: [] });
+    assert.equal(state.attackAction, null);
+    assert.equal(state.hasAttackSite(), false);
+    assert.equal(state.isActionEnabled('plasma-burst', true), false);
+    assert.equal(state.isActionEnabled('plasma-burst', false), false);
+  });
+
   test('protein assets: registered assets resolve by ID', () => {
     assert.ok(PROTEIN_ASSET_IDS.includes('pdb-5i4r'));
     assert.ok(PROTEIN_ASSET_IDS.includes('pdb-1mbn-myoglobin'));
@@ -103,16 +141,17 @@ export function register(): void {
     assert.equal(proteinAssetFor('missing-protein'), null);
   });
 
-  test('protein assets: every registered enemy uses component-bound Brownian modes', () => {
+  test('protein assets: every registered enemy uses residue-bound ANM modes', () => {
     for (const id of PROTEIN_ASSET_IDS) {
       const candidate = proteinAssetFor(id)!;
-      const componentIds = new Set(candidate.components.map((component) => component.id));
-      assert.equal(candidate.motion.model, 'overdamped-normal-modes');
-      assert.ok(candidate.motion.modes.length > 0);
-      for (const site of candidate.sites) assert.ok(componentIds.has(site.componentId));
-      for (const mode of candidate.motion.modes) {
-        assert.deepEqual(new Set(mode.components.map((component) => component.componentId)), componentIds);
-      }
+      const motionAsset = proteinMotionAssetFor(id);
+      assert.ok(motionAsset);
+      assert.equal(motionAsset.model, 'c-alpha-anm-overdamped');
+      assert.equal(motionAsset.modes.length, 24);
+      assert.equal(motionAsset.bindings.siteResidues.length, candidate.sites.length);
+      assert.ok(motionAsset.bindings.backboneResidues.length > 0);
+      assert.ok(motionAsset.modes.some((mode) => mode.band === 'collective'));
+      assert.ok(motionAsset.modes.some((mode) => mode.band === 'local'));
     }
   });
 

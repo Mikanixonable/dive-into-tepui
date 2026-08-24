@@ -115,7 +115,8 @@ export class CameraSystem {
   readonly combatCamera: CombatCameraSystem;
   readonly mapCamera: MapCamera;
   readonly focusMarkers: FocusMarkers;
-  // 表示パネル(天体クラス表示トグル+天球グリッドトグル)。天球グリッド側の配線は Navball が行う。
+  // 表示パネル(天体クラス表示トグル+天球グリッドトグル+軌道ガイドタブ)。天球グリッド・
+  // 軌道ガイド側の配線は Navball が行う。
   readonly viewOptionsPanel: ViewOptionsPanel;
   // 広範囲視点に切り替わっているか(視点・描画側の判定に使う)。
   private _overviewMode = false;
