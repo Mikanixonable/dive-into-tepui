@@ -47,7 +47,7 @@ const STYLE = `
   display: flex; flex-direction: column; gap: 8px;
 }
 #resource-transfer-dialog .rt-card-title {
-  font-size: var(--font-s); font-weight: 600; color: var(--accent);
+  font-size: var(--font-s); font-weight: 600; color: var(--color-primary);
 }
 #resource-transfer-dialog .rt-metric {
   display: flex; justify-content: space-between; font-size: var(--font-s);
@@ -57,7 +57,7 @@ const STYLE = `
   font-weight: 600; color: var(--title);
 }
 #resource-transfer-dialog .rt-section-head {
-  font-size: var(--font-s); font-weight: 600; color: var(--accent-secondary);
+  font-size: var(--font-s); font-weight: 600; color: var(--color-signal);
   border-bottom: 1px solid var(--edge); padding-bottom: 4px; margin-bottom: 8px;
 }
 #resource-transfer-dialog .rt-actions {
@@ -76,7 +76,7 @@ const STYLE = `
   background: var(--surface-3); font-size: var(--font-xs); cursor: pointer;
 }
 #resource-transfer-dialog .rt-inv-item:hover {
-  background: var(--surface-1); border-color: var(--accent);
+  background: var(--surface-1); border-color: var(--color-primary);
 }
 `;
 

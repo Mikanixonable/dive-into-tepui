@@ -6,7 +6,7 @@ import { celestialBodyName } from './frame/frame-labels';
 import type { MapPickable } from '../map-pickable';
 import type { ObjectPickerGroup } from './windows/object-picker';
 
-const GROUP_LABELS = ['恒星', '惑星', '準惑星', '衛星', '小天体', 'ラグランジュ点', '自艦', '敵', '基地', '弾薬'] as const;
+const GROUP_LABELS = ['恒星', '惑星', '準惑星', '衛星', '小天体', 'ラグランジュ点', '自艦', '敵', '基地', '弾薬', 'RCS燃料'] as const;
 
 // id が `${親id}-l1`〜`${親id}-l5` の形かどうか(FocusMarkers のラグランジュ点ラベルの命名)。
 export const LAGRANGE_ID = /-l[1-5]$/;
@@ -46,6 +46,7 @@ export function groupPickables(
       case 'ship': push('敵', item.id, item.name); break;
       case 'base': push('基地', item.id, item.name); break;
       case 'ammo': push('弾薬', item.id, item.name); break;
+      case 'fuel': push('RCS燃料', item.id, item.name); break;
       case 'apsis': case 'relnode': case 'eqnode': case 'empty-space': break;
     }
   }

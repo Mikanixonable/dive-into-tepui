@@ -1,12 +1,12 @@
 import type { Base, DockedVesselEntry } from '../../game-entity/base';
 import * as C from '../../const';
 import { Button } from '../widgets';
-import type { BaseViewContext } from './base-view-context';
+import type { BasePanelContext } from './base-view-context';
 import { buildSectionHeader, NEW_VESSEL_COST } from './base-view-shared';
 
-// ドックビューの「格納艦艇」タブ: 発進する艦の選択と、既定構成での新造を担う。
+// 基地パネルの「格納艦艇」タブ: 発進する艦の選択と、既定構成での新造を担う。
 export class VesselsTabController {
-  public constructor(private readonly ctx: BaseViewContext) {}
+  public constructor(private readonly ctx: BasePanelContext) {}
 
   public build(): HTMLElement {
     const base = this.ctx.base();
@@ -104,9 +104,9 @@ export class VesselsTabController {
     const base = this.ctx.base();
     const shipData = base.baseState.dockedVessels[idx];
     if (!shipData) return;
-    this.ctx.notifyLaunch(shipData.player, base);
-    base.baseState.dockedVessels.splice(idx, 1);
-    if (this.ctx.vessel() === shipData.player) this.ctx.selectVessel(null);
+    const ship = shipData.player;
+    this.ctx.notifyLaunch(ship, base);
+    if (this.ctx.vessel() === ship) this.ctx.selectVessel(null);
     this.ctx.refresh();
   }
 

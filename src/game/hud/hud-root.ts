@@ -222,6 +222,36 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
     </dl>
     <div class="panel-actions" data-id="orbit-actions" role="group" aria-label="軌道の操作"></div>`;
 
+  // ブースター燃焼管理は戦闘/マップで同じ DOM を移動して使う。ゲーム状態を直接
+  // 参照する controller は Hud 側へ注入し、ここでは表示用のシェルだけを組む。
+  const burnManagement = new PanelShell(
+    leftRail, 'burn-management-panel', '燃焼管理',
+  );
+  configureCombatPanel(burnManagement);
+  burnManagement.body.innerHTML = `
+    <dl class="metric-list burn-management-metrics">
+      <div class="row metric">
+        <dt class="k">接続段数</dt><dd class="v"><output data-id="burn-stage-count">—</output></dd>
+      </div>
+      <div class="row metric">
+        <dt class="k">総質量</dt><dd class="v"><output data-id="burn-total-mass">—</output></dd>
+      </div>
+      <div class="row metric">
+        <dt class="k">最後尾燃料</dt>
+        <dd class="v burn-fuel-readout">
+          <span class="burn-fuel-meter" data-id="burn-active-fuel-meter" role="progressbar"
+            aria-label="最後尾ブースター燃料" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
+            <span class="burn-fuel-fill" data-id="burn-active-fuel-fill"></span>
+          </span>
+          <output class="burn-fuel-value" data-id="burn-active-fuel-value">—</output>
+        </dd>
+      </div>
+      <div class="row metric">
+        <dt class="k">燃焼状態</dt><dd class="v"><output data-id="burn-state" aria-live="polite">—</output></dd>
+      </div>
+    </dl>
+    <div class="panel-actions burn-actions" data-id="burn-actions" role="group" aria-label="ブースター操作"></div>`;
+
   const target = new PanelShell(rightRail, 'hud-target', 'Target');
   configureCombatPanel(target);
   target.setHidden(true);
@@ -251,6 +281,11 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
           <output class="armor-value" data-id="tgt-armor-value">—</output>
         </dd></div>
       </dl>
+      <section id="tgt-protein" data-id="tgt-protein" class="protein-target-details hidden" aria-label="タンパク質構造">
+        <div class="protein-target-heading"><span>タンパク質</span><output data-id="tgt-protein-phase">INTACT</output></div>
+        <div class="row metric"><dt class="k">構造安定性</dt><dd class="v"><output data-id="tgt-integrity-value">—</output></dd></div>
+        <div data-id="tgt-protein-sites"></div>
+      </section>
       <p class="target-help">軌道要素は右クリックで表示</p>
     </div>`;
 

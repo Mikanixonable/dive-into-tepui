@@ -11,7 +11,7 @@ import {
 import { bodyClassOf } from './body-class';
 import { bodyDef } from '../../physics/solar-system';
 
-export type MapEntityKind = 'player' | 'ship' | 'ammo' | 'base';
+export type MapEntityKind = 'player' | 'ship' | 'ammo' | 'fuel' | 'base';
 
 export type MapVisibility = {
   readonly category: boolean;
@@ -29,6 +29,7 @@ const ENTITY_KEYS: Record<MapEntityKind, {
   player: { category: 'playerVisible', name: 'playerName', orbit: 'playerOrbit' },
   ship: { category: 'shipVisible', name: 'shipName', orbit: 'shipOrbit' },
   ammo: { category: 'ammoVisible', name: 'ammoName', orbit: 'ammoOrbit' },
+  fuel: { category: 'fuelVisible', name: 'fuelName', orbit: 'fuelOrbit' },
   base: { category: 'baseVisible', name: 'baseName', orbit: 'baseOrbit' },
 };
 

@@ -5,6 +5,7 @@ import { MQ_COARSE, MQ_MEDIUM_DOWN } from '../breakpoints';
 export const COMBAT_VIEW_STYLE = `
 #hud:not(.base-mode) .hud-combat-root.active #hud-vessel-status,
 #hud:not(.base-mode) .hud-combat-root.active #hud-orbit,
+#hud:not(.base-mode) .hud-combat-root.active #burn-management-panel,
 #hud:not(.base-mode) .hud-combat-root.active #hud-enemies,
 #hud:not(.base-mode) .hud-combat-root.active #hud-target {
   background: var(--glass-quiet, var(--surface));
@@ -19,6 +20,7 @@ export const COMBAT_VIEW_STYLE = `
 }
 #hud:not(.base-mode) .hud-combat-root.active .hud-rail-right > #hud-vessel-status,
 #hud:not(.base-mode) .hud-combat-root.active .hud-rail-left > #hud-orbit,
+#hud:not(.base-mode) .hud-combat-root.active .hud-rail-left > #burn-management-panel,
 #hud:not(.base-mode) .hud-combat-root.active .hud-rail-right > #hud-enemies {
   width: 100%;
 }
@@ -49,7 +51,7 @@ export const COMBAT_VIEW_STYLE = `
 }
 #hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-shell-collapse:hover {
   background: var(--fill-1);
-  color: var(--accent-near, var(--accent-soft));
+  color: var(--color-primary-hover);
 }
 #hud:not(.base-mode) .hud-combat-root.active .combat-panel .metric-list {
   display: grid;
@@ -81,10 +83,10 @@ export const COMBAT_VIEW_STYLE = `
   font-size: 0.9em;
 }
 #hud:not(.base-mode) .hud-combat-root.active .combat-panel .state-near {
-  color: var(--accent-near, var(--accent-soft));
+  color: var(--color-primary-hover);
 }
 #hud:not(.base-mode) .hud-combat-root.active .combat-panel .state-signal {
-  color: var(--accent-secondary);
+  color: var(--color-signal);
 }
 #hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-actions {
   gap: 5px;
@@ -99,16 +101,16 @@ export const COMBAT_VIEW_STYLE = `
   font-size: var(--font-xxs);
 }
 #hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-actions .w-btn.on {
-  background: var(--accent-fill);
-  color: var(--accent);
+  background: var(--color-primary-fill);
+  color: var(--color-primary);
 }
 #hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-actions .w-btn:hover {
   background: var(--fill-2);
-  color: var(--accent-near, var(--accent-soft));
+  color: var(--color-primary-hover);
 }
 #hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-actions .status-action-primary {
-  background: var(--accent-fill-weak);
-  color: var(--accent);
+  background: var(--color-primary-fill-weak);
+  color: var(--color-primary);
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-vessel-status .status-throttle-touch {
   margin-top: 7px;
@@ -123,8 +125,8 @@ export const COMBAT_VIEW_STYLE = `
   background: var(--fill-1);
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-vessel-status .status-throttle-touch .w-btn.on {
-  background: var(--accent-fill);
-  color: var(--accent);
+  background: var(--color-primary-fill);
+  color: var(--color-primary);
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-vessel-status .vessel-deploy-controls .vessel-deploy-btn {
   border: 0;
@@ -134,12 +136,12 @@ export const COMBAT_VIEW_STYLE = `
   font-size: var(--font-xxs);
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-vessel-status .vessel-deploy-controls .vessel-deploy-btn.on {
-  background: var(--accent-fill);
-  color: var(--accent);
+  background: var(--color-primary-fill);
+  color: var(--color-primary);
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-vessel-status .vessel-deploy-controls .vessel-deploy-btn:hover {
   background: var(--fill-2);
-  color: var(--accent-near, var(--accent-soft));
+  color: var(--color-primary-hover);
 }
 
 #hud:not(.base-mode) .hud-combat-root.active #hud-target .target-identity {
@@ -150,17 +152,17 @@ export const COMBAT_VIEW_STYLE = `
   margin-bottom: 7px;
   padding: 7px 8px;
   border-radius: var(--radius-control, 11px);
-  background: color-mix(in srgb, var(--accent-secondary) 8%, transparent);
+  background: color-mix(in srgb, var(--color-signal) 8%, transparent);
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-target .target-lock-glyph {
   grid-row: 1 / span 2;
-  color: var(--accent-secondary);
+  color: var(--color-signal);
   font-size: var(--font-xl);
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-target .target-name {
   min-width: 0;
   overflow: hidden;
-  color: var(--accent-secondary);
+  color: var(--color-signal);
   font-size: var(--font-l);
   font-weight: 600;
   line-height: 1.2;
@@ -172,7 +174,7 @@ export const COMBAT_VIEW_STYLE = `
   font-size: var(--font-xxs);
   line-height: 1.25;
 }
-#hud:not(.base-mode) .hud-combat-root.active #hud-target .target-primary-value { color: var(--accent-secondary); }
+#hud:not(.base-mode) .hud-combat-root.active #hud-target .target-primary-value { color: var(--color-signal); }
 #hud:not(.base-mode) .hud-combat-root.active #hud-target .armor-readout {
   display: inline-grid;
   grid-template-columns: minmax(64px, 1fr) auto;
@@ -191,11 +193,11 @@ export const COMBAT_VIEW_STYLE = `
   width: 0;
   height: 100%;
   border-radius: inherit;
-  background: var(--accent-secondary);
+  background: var(--color-signal);
   transition: width 180ms;
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-target .armor-meter.critical .armor-meter-fill {
-  background: var(--danger);
+  background: var(--color-error);
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-target .armor-value {
   min-width: 48px;
@@ -246,14 +248,14 @@ export const COMBAT_VIEW_STYLE = `
   text-align: right;
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-enemies .contact-row.primary {
-  background: var(--accent-fill-weak);
-  color: var(--accent);
+  background: var(--color-primary-fill-weak);
+  color: var(--color-primary);
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-enemies .contact-row.near {
-  color: var(--accent-near, var(--accent-soft));
+  color: var(--color-primary-hover);
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-enemies .contact-row.secondary {
-  color: var(--accent-secondary);
+  color: var(--color-signal);
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-enemies .contact-empty {
   padding: 4px 0;
@@ -284,12 +286,12 @@ export const COMBAT_VIEW_STYLE = `
 #hud:not(.base-mode) .hud-combat-root.active #hud-chase-reset { border-radius: 50%; }
 #hud:not(.base-mode) .hud-combat-root.active #hud-chase-reset:hover {
   background: var(--fill-2);
-  color: var(--accent-near, var(--accent-soft));
+  color: var(--color-primary-hover);
 }
 #hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-shell-collapse:focus-visible,
 #hud:not(.base-mode) .hud-combat-root.active #hud-chase-reset:focus-visible,
 #hud:not(.base-mode) .hud-combat-root.active #hud-vessel-status .w-btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
 
