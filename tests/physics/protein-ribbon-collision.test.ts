@@ -40,7 +40,7 @@ const RIBBON_CHARACTERIZATIONS: readonly RibbonCharacterization[] = [
 function sourceFor(assetId: ProteinAssetId): ProteinRenderSource {
   const bundle = proteinAssetBundleFor(assetId);
   if (!bundle) throw new Error(`Missing protein asset bundle: ${assetId}`);
-  return { semantic: bundle.semantic, backbone: bundle.backbone, structure: bundle.structure };
+  return bundle;
 }
 
 // typed array の実バイト列をハッシュ入力として返す。

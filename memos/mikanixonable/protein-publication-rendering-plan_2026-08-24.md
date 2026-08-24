@@ -99,9 +99,16 @@
   Creative Stage の着色ボタンは7項目を返し、長いラベルを切らず2列へ折り返す。
 - Render Lab に 5I4R/1MBN の固定 publication ケースを追加した。各 prepass/forward/diff の計6枚を
   含む75 PNGを生成し、二次構造、鎖別色、リガンド、陰影、境界遷移を目視確認した。
+- workspace3 の Brownian motion 実装と統合し、表示用 Ribbon の全頂点へ補間 residue binding を
+  付与した。材質は共有 GPU motion buffer を読む `MeshStandardNodeMaterial` とし、publication の
+  Render Lab ケースも controller の更新・GPU upload 計測・binding の破棄へ対応した。固定衝突
+  Ribbon は motion binding を持たない静的 geometry のまま維持した。
 - Lunaの独立レビューで、初版のSSE境界が中心線だけ共有して側面未接続だった問題と、衝突回帰テストが
   子Mesh変換および固定代表座標を十分に拘束していなかった問題を検出し、実装とテストを修正した。
-- `npm run typecheck`、`npm run test:physics`（562/562）、`npm run render-lab:shot`、
+- Brownian motion との統合後レビューでは、`StorageBufferAttribute` の CPU 配列だけを空にして GPU
+  buffer を解放していない問題を検出した。`RenderPipeline` が renderer の attribute owner を登録し、
+  binding 破棄時に各 backend buffer を1回だけ解放するよう修正し、重複破棄の回帰テストを追加した。
+- `npm run typecheck`、`npm run test:physics`（575/575）、`npm run render-lab:shot`、
   `npm run ci`（production build と browser smoke を含む）はすべて成功した。対話ブラウザが
   セッションへ接続されていなかったため、1280×720/1920×1080 の手動操作確認だけは実施できなかった。
 
@@ -132,7 +139,7 @@ coil 4,116。現行実装は二次構造境界で169間隔を切っているた�
 を使うため BVH の三角形数と起動時構築量は増えない。geometry は spawn・表示形態変更時だけ作り、
 毎フレーム負荷は頂点数増加に伴う描画分だけである。
 
-最終検証は typecheck、562件の physics test、75枚の Render Lab 撮影、全生成物検査・production build・
+最終検証は typecheck、575件の physics test、75枚の Render Lab 撮影、全生成物検査・production build・
 browser smoke を含む CI まで実行した。
 
 ## リスクと落とし穴

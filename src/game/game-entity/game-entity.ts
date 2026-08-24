@@ -29,6 +29,7 @@ import type { Contact } from './contact';
 import { EntityIdAllocator } from './entity-id';
 import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';
 import type { MarkerManager } from '../marker/marker-manager';
+import { disposeOwnedRenderResources } from '../../render/dispose-owned-render-resources';
 
 const identityAttitude = (): Attitude => ({
   q: { x: 0, y: 0, z: 0, w: 1 },
@@ -475,7 +476,7 @@ export class GameEntity {
   }
 
   // displayTime の描画位置・姿勢を fo 経由でメッシュへ同期する。
-  sync(fo: FloatingOrigin, displayTime: number): void {
+  sync(fo: FloatingOrigin, displayTime: number, _viewerPosition?: Vec3): void {
     const s = this.displayState(displayTime);
     if (s === null) {
       this.renderObject.visible = false;
@@ -547,16 +548,6 @@ export class GameEntity {
     this.hideOrbitLine();
     this.hidePredictedLine();
     this.hideActualLine();
-    this.renderObject.traverse((child) => {
-      const mesh = child as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      if (mesh.userData.ownsGeometry && mesh.geometry) {
-        mesh.geometry.dispose();
-      }
-      if (mesh.userData.ownsMaterial && mesh.material) {
-        if (Array.isArray(mesh.material)) mesh.material.forEach((m) => m.dispose());
-        else mesh.material.dispose();
-      }
-    });
+    disposeOwnedRenderResources(this.renderObject);
   }
 }

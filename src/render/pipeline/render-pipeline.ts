@@ -26,6 +26,7 @@ import { OverlayPass } from './overlay-pass';
 import { ProteinShadowPass } from './protein-shadow-pass';
 import { SunLight } from './sun-light';
 import { viewPositionAt } from './view-ray';
+import { registerProteinMotionRenderer } from '../protein-motion-material';
 
 // 1 を超える HDR 値を切り落とさず白へ寄せる。Khronos PBR Neutral を選ぶのは、圧縮開始点より
 // 下では色相・彩度を保ったまま素通しするため — 「表示値 = アルベド」という校正が中間調では
@@ -57,6 +58,7 @@ export class RenderPipeline implements DebugTargetHost {
   private readonly depthDebugProjInv: Mat4Uniform;
   // getDrawingBufferSize の書き込み先。フレームごとに確保しない使い回し領域。
   private readonly drawingBufferSize = new THREE.Vector2();
+  private readonly unregisterProteinMotionRenderer: () => void;
 
   // 通常表示に代えて画面いっぱいに映す中間ターゲットの選択。ページ再読み込みでは必ず 'off'
   // に戻るセッション限定の状態で、永続化しない。
@@ -76,6 +78,7 @@ export class RenderPipeline implements DebugTargetHost {
   // マテリアルを構築する。
   constructor(renderer: WebGPURenderer, graphics: GraphicsSettingsData, private readonly gpu: GpuTimings) {
     this.renderer = renderer;
+    this.unregisterProteinMotionRenderer = registerProteinMotionRenderer(renderer);
     this.gbuffer = new GBufferPass(renderer, gpu);
     this._sunLight = new SunLight();
     this.occlusionPass = new OcclusionPass(renderer, this.gbuffer, this._sunLight, gpu);
@@ -226,6 +229,7 @@ export class RenderPipeline implements DebugTargetHost {
   // 保持している GPU 資源を解放する。QuadMesh の geometry は three が全インスタンスで
   // 共有する単一の板なので、ここでは解放しない。
   dispose(): void {
+    this.unregisterProteinMotionRenderer();
     this.gbuffer.dispose();
     this.occlusionPass.dispose();
     this.proteinShadowPass.dispose();
