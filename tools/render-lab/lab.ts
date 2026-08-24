@@ -43,6 +43,42 @@ const SUN_POSITION = new THREE.Vector3();
 // シーン光源(平行光)を置く距離 [m]。向きだけが意味を持つので、ケースの広がりより十分遠ければよい。
 const SUN_LIGHT_DISTANCE = 1e5;
 
+// 恒星方向とカメラ位置を毎フレーム組み立てる書き込み先。
+const SUN_DIRECTION = new THREE.Vector3();
+const CAMERA_OFFSET = new THREE.Vector3();
+
+// カメラの仰角の限界 [deg]。真上・真下では上方向と視線が平行になり、姿勢が決まらない。
+export const MAX_CAMERA_ELEVATION_DEG = 89;
+
+// カメラの距離の倍率の常用対数の限界。0 がケース既定の距離。
+export const MAX_CAMERA_ZOOM = 1;
+
+// 観察の向き。角度は度、cameraZoom はケース既定の距離に対する倍率の常用対数。
+export type LabViewAngles = {
+  readonly sunAzimuthDeg: number;
+  readonly sunElevationDeg: number;
+  readonly cameraAzimuthDeg: number;
+  readonly cameraElevationDeg: number;
+  readonly cameraZoom: number;
+};
+
+// 方位角・仰角 [deg] から単位ベクトルを組む。方位角 0 が +Z、+90 度が +X。
+function directionFromAngles(azimuthDeg: number, elevationDeg: number, out: THREE.Vector3): THREE.Vector3 {
+  const azimuth = THREE.MathUtils.degToRad(azimuthDeg);
+  const elevation = THREE.MathUtils.degToRad(elevationDeg);
+  const horizontal = Math.cos(elevation);
+  return out.set(Math.sin(azimuth) * horizontal, Math.sin(elevation), Math.cos(azimuth) * horizontal);
+}
+
+// directionFromAngles の逆写像。長さ 0 でない任意のベクトルを受ける。
+function anglesFromDirection(v: THREE.Vector3): { azimuthDeg: number; elevationDeg: number } {
+  const unitY = THREE.MathUtils.clamp(v.y / Math.max(v.length(), 1e-12), -1, 1);
+  return {
+    azimuthDeg: THREE.MathUtils.radToDeg(Math.atan2(v.x, v.z)),
+    elevationDeg: THREE.MathUtils.radToDeg(Math.asin(unitY)),
+  };
+}
+
 export class LabView {
   private readonly scene = new THREE.Scene();
   // ケースの太陽方向へ向け直すために持つ。恒星の位置と同じ向きを指す。
@@ -58,6 +94,18 @@ export class LabView {
   });
   private current: LabCase | null = null;
   private lastRenderCpuMs = 0;
+  // カメラが周回する点。ケースの注視点を視線上へ落としたもの。
+  private readonly pivot = new THREE.Vector3();
+  // ケース既定のカメラ距離 [m]。cameraZoom の基準になる。
+  private defaultCameraDistance = 1;
+  private angles: LabViewAngles = {
+    sunAzimuthDeg: 0, sunElevationDeg: 0,
+    cameraAzimuthDeg: 0, cameraElevationDeg: 0, cameraZoom: 0,
+  };
+  private readonly scratchBox = new THREE.Box3();
+  private readonly caseCenterVector = new THREE.Vector3();
+  private readonly scratchVector = new THREE.Vector3();
+  private readonly forward = new THREE.Vector3();
 
   private constructor(
     private readonly renderer: WebGPURenderer,
@@ -101,6 +149,7 @@ export class LabView {
     const built = CASES[name](this.pipeline.sunOcclusion, this.pipeline.sunLight);
     this.scene.add(...built.objects);
     this.current = built;
+    this.resetView(built);
     this.render();
   }
 
@@ -110,24 +159,83 @@ export class LabView {
     this.render();
   }
 
+  // いま観察している向き。ケースを選び直すとそのケースの既定値へ戻る。
+  get viewAngles(): LabViewAngles { return this.angles; }
+
+  // 現在のカメラ距離 [m]。cameraZoom は倍率の対数なので、実寸はここから読む。
+  get cameraDistance(): number { return this.defaultCameraDistance * 10 ** this.angles.cameraZoom; }
+
+  // 観察の向きを部分的に差し替え、その場で描き直す。仰角は姿勢が決まる範囲へ丸める。
+  setViewAngles(changes: Partial<LabViewAngles>): void {
+    const merged = { ...this.angles, ...changes };
+    this.angles = {
+      ...merged,
+      cameraElevationDeg: THREE.MathUtils.clamp(
+        merged.cameraElevationDeg, -MAX_CAMERA_ELEVATION_DEG, MAX_CAMERA_ELEVATION_DEG,
+      ),
+    };
+    this.render();
+  }
+
+  // ケースのカメラと注視点から、観察の向きの既定値を引き直す。**注視点はカメラの視線上へ
+  // 落としてから使う** — 視線から外れた点を注視させると、向きへ触れていないのに絵が回る。
+  private resetView(built: LabCase): void {
+    const camera = built.camera;
+    camera.updateMatrixWorld(true);
+    camera.getWorldDirection(this.forward);
+    const pivot = built.viewTarget ?? this.caseCenter(built);
+    const depth = this.forward.dot(this.scratchVector.subVectors(pivot, camera.position));
+    this.defaultCameraDistance = Math.max(depth, camera.near);
+    this.pivot.copy(camera.position).addScaledVector(this.forward, this.defaultCameraDistance);
+    const sun = anglesFromDirection(built.sunDirection ?? SUN_DIR);
+    const eye = anglesFromDirection(this.scratchVector.copy(this.forward).negate());
+    this.angles = {
+      sunAzimuthDeg: sun.azimuthDeg,
+      sunElevationDeg: sun.elevationDeg,
+      cameraAzimuthDeg: eye.azimuthDeg,
+      cameraElevationDeg: eye.elevationDeg,
+      cameraZoom: 0,
+    };
+  }
+
+  // ケースの物体をすべて包む箱の中心。viewTarget を持たないケースの注視点になる。
+  private caseCenter(built: LabCase): THREE.Vector3 {
+    this.scratchBox.makeEmpty();
+    for (const root of built.objects) {
+      root.updateWorldMatrix(true, true);
+      this.scratchBox.expandByObject(root);
+    }
+    if (this.scratchBox.isEmpty()) {
+      return this.caseCenterVector.copy(built.camera.position).addScaledVector(this.forward, 1);
+    }
+    return this.scratchBox.getCenter(this.caseCenterVector);
+  }
+
   // 動くものが無いので、描くのはケースを差し替えたときと、表示を切り替えたときと、撮影のとき。
   render(): void {
     if (this.current === null) return;
     // 恒星の位置とシーン光源の向きは、必ず同じ向きから引く。片方だけを更新すると、影の向きと
     // 明暗の境界の向きが食い違ったまま「それらしく」写る。
-    const sunDirection = this.current.sunDirection ?? SUN_DIR;
+    const sunDirection = directionFromAngles(
+      this.angles.sunAzimuthDeg, this.angles.sunElevationDeg, SUN_DIRECTION,
+    );
     this.sun.position.copy(sunDirection).multiplyScalar(SUN_LIGHT_DISTANCE);
     this.pipeline.sunLight.set(
       SUN_POSITION.copy(sunDirection).multiplyScalar(AU),
       R_SUN, SUN_COLOR, SUN_RADIANT_INTENSITY, AMBIENT_IRRADIANCE,
     );
+    const camera = this.current.camera;
+    directionFromAngles(this.angles.cameraAzimuthDeg, this.angles.cameraElevationDeg, CAMERA_OFFSET);
+    camera.position.copy(this.pivot).addScaledVector(CAMERA_OFFSET, this.cameraDistance);
+    camera.lookAt(this.pivot);
+    camera.updateMatrixWorld(true);
     this.pipeline.sunOcclusion.setOccluders(this.current.occluders ?? []);
     const rings = this.current.rings;
     this.pipeline.sunOcclusion.setRings(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
     const atmosphere = this.current.atmosphere;
     this.pipeline.atmosphere.setBody(atmosphere?.center ?? ORIGIN, atmosphere?.surfaceRadius ?? 0);
     const startedAt = performance.now();
-    this.pipeline.render(this.scene, this.current.camera, QUALITY_PRESETS.high.meshShadow);
+    this.pipeline.render(this.scene, camera, QUALITY_PRESETS.high.meshShadow);
     this.lastRenderCpuMs = performance.now() - startedAt;
     this.gpu.resolve();
   }
@@ -172,9 +280,14 @@ export class LabView {
   // 出力先が撮影ターゲットへ差し替わるだけなので、トーンマッピングも sRGB 変換も同じに掛かる。
   async shoot(name: CaseName): Promise<string> {
     this.show(name);
+    this.current?.updateProteinMotion?.(1);
+    return this.capture();
+  }
+
+  // いま画面に出ているものを、ケースも観察の向きも変えずに撮る。
+  async capture(): Promise<string> {
     this.renderer.setOutputRenderTarget(this.captureTarget);
     try {
-      this.current?.updateProteinMotion?.(1);
       this.render();
     } finally {
       // 戻し忘れると以後キャンバスに何も出なくなる(撮影だけは通るので気付きにくい)。
