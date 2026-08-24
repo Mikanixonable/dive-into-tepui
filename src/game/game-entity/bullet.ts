@@ -9,13 +9,13 @@ import type { Contact } from './contact';
 import { Vec3, lenSq, sub } from '../../physics/vec3';
 import * as C from '../const';
 import { buildBulletMesh, buildPlasmaMesh } from '../../render/ships';
+import { orientProjectile } from '../../render/projectile-orientation';
 import { Enemy } from './enemy';
 import { Player } from '../player/player';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
 
 
 const tmpQuat = new THREE.Quaternion();
-const zAxis = new THREE.Vector3(0, 0, 1);
 
 // 弾を撃った主体
 export type Shooter = 'player' | 'enemy';
@@ -108,8 +108,7 @@ export class Bullet extends GameEntity {
         this.renderObject.position.copy(fo.RtoThreeV3(s.r));
         // 相対速度方向へ機体を向ける
         const relVel = fo.VtoThreeV3(s.v);
-        if (relVel.lengthSq() <= 1e-6) return;
-        tmpQuat.setFromUnitVectors(zAxis, relVel.normalize());
+        if (!orientProjectile(tmpQuat, relVel)) return;
         this.renderObject.quaternion.copy(tmpQuat);
     }
 }

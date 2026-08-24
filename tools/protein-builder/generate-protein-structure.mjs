@@ -280,23 +280,87 @@ function surfaceField(atoms) {
     const atom = nearestAtom(px, py, pz);
     const fields = residueFields(residueNames[atom]);
     const index = meshPosition.length / 3;
-    meshPosition.push(round(px), round(py), round(pz));
+    // Four decimal places preserve sub-picometre contour detail while keeping
+    // the bundled JSON compact. Edge identity is established from grid endpoints,
+    // so this quantization does not decide connectivity.
+    meshPosition.push(round(px, 4), round(py, 4), round(pz, 4));
     meshCharge.push(fields.charge);
     meshHydrophobicity.push(fields.hydrophobicity);
     meshComponent.push(atoms[atom].chain);
     edgeVertices.set(key, index);
     return index;
   }
-  function pushTriangle(a, b, c) {
+  function positionOf(vertex) {
+    return [meshPosition[vertex * 3], meshPosition[vertex * 3 + 1], meshPosition[vertex * 3 + 2]];
+  }
+  function subtract(a, b) {
+    return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  }
+  function cross(a, b) {
+    return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  }
+  function dot(a, b) {
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  }
+  function length(value) {
+    return Math.hypot(value[0], value[1], value[2]);
+  }
+  function normalize(value) {
+    const magnitude = length(value);
+    return magnitude > 1e-12 ? value.map((component) => component / magnitude) : [0, 0, 0];
+  }
+  function pushTriangle(a, b, c, outward) {
     if (a === b || b === c || c === a) return;
-    const ax = meshPosition[a * 3]; const ay = meshPosition[a * 3 + 1]; const az = meshPosition[a * 3 + 2];
-    const bx = meshPosition[b * 3]; const by = meshPosition[b * 3 + 1]; const bz = meshPosition[b * 3 + 2];
-    const cx = meshPosition[c * 3]; const cy = meshPosition[c * 3 + 1]; const cz = meshPosition[c * 3 + 2];
-    const abx = bx - ax; const aby = by - ay; const abz = bz - az;
-    const acx = cx - ax; const acy = cy - ay; const acz = cz - az;
-    const areaTwice = Math.hypot(aby * acz - abz * acy, abz * acx - abx * acz, abx * acy - aby * acx);
-    if (areaTwice < 1e-6) return;
-    meshIndex.push(a, b, c);
+    const first = positionOf(a);
+    const second = positionOf(b);
+    const third = positionOf(c);
+    const normal = cross(subtract(second, first), subtract(third, first));
+    const areaTwice = length(normal);
+    // Keep the contour topology closed; validation separately rejects exact and
+    // numerically degenerate triangles without deleting the tiny bridge triangles
+    // that close neighboring tetrahedra.
+    if (areaTwice < 1e-12) return;
+    if (dot(normal, outward) < 0) meshIndex.push(a, c, b);
+    else meshIndex.push(a, b, c);
+  }
+  function appendContour(crossings, tetra, corners) {
+    const unique = [...new Set(crossings)];
+    if (unique.length < 3 || unique.length > 4) return;
+
+    const inside = [];
+    const outside = [];
+    for (const localCorner of tetra) {
+      const gridVertex = corners[localCorner];
+      const target = field[gridVertex] <= 0 ? inside : outside;
+      target.push(positionOfGrid(gridVertex));
+    }
+    if (!inside.length || !outside.length) return;
+    const insideCenter = inside.reduce((sum, value) => [sum[0] + value[0], sum[1] + value[1], sum[2] + value[2]], [0, 0, 0]).map((value) => value / inside.length);
+    const outsideCenter = outside.reduce((sum, value) => [sum[0] + value[0], sum[1] + value[1], sum[2] + value[2]], [0, 0, 0]).map((value) => value / outside.length);
+    const outward = subtract(outsideCenter, insideCenter);
+    if (length(outward) < 1e-6) return;
+
+    const center = unique.reduce((sum, vertex) => {
+      const position = positionOf(vertex);
+      return [sum[0] + position[0], sum[1] + position[1], sum[2] + position[2]];
+    }, [0, 0, 0]).map((value) => value / unique.length);
+    const reference = length(outward) > 1e-6 ? normalize(outward) : [1, 0, 0];
+    const helper = Math.abs(reference[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+    const basisX = normalize(cross(helper, reference));
+    const basisY = cross(reference, basisX);
+    unique.sort((left, right) => {
+      const leftOffset = subtract(positionOf(left), center);
+      const rightOffset = subtract(positionOf(right), center);
+      return Math.atan2(dot(leftOffset, basisY), dot(leftOffset, basisX))
+        - Math.atan2(dot(rightOffset, basisY), dot(rightOffset, basisX));
+    });
+    for (let index = 1; index < unique.length - 1; index++) pushTriangle(unique[0], unique[index], unique[index + 1], outward);
+  }
+  function positionOfGrid(vertex) {
+    const x = vertex % dims[0];
+    const y = Math.floor(vertex / dims[0]) % dims[1];
+    const z = Math.floor(vertex / (dims[0] * dims[1]));
+    return [origin[0] + x * spacing, origin[1] + y * spacing, origin[2] + z * spacing];
   }
   for (let z = 0; z < dims[2] - 1; z++) for (let y = 0; y < dims[1] - 1; y++) for (let x = 0; x < dims[0] - 1; x++) {
     const corners = cornerOffsets.map(([dx, dy, dz]) => gridIndex(x + dx, y + dy, z + dz));
@@ -307,11 +371,66 @@ function surfaceField(atoms) {
         const second = corners[tetra[b]];
         if ((field[first] <= 0) !== (field[second] <= 0)) crossings.push(contourVertex(first, second));
       }
-      if (crossings.length === 3) pushTriangle(crossings[0], crossings[1], crossings[2]);
-      else if (crossings.length === 4) {
-        pushTriangle(crossings[0], crossings[1], crossings[2]);
-        pushTriangle(crossings[0], crossings[2], crossings[3]);
-      }
+      appendContour(crossings, tetra, corners);
+    }
+  }
+  // A finite floating-point contour can leave a tiny open loop where several
+  // tetrahedra meet at a nearly tangent atom sphere. Seal only true boundary
+  // loops here; non-manifold edges are not repaired and remain validator errors.
+  const edgeCounts = new Map();
+  for (let offset = 0; offset < meshIndex.length; offset += 3) {
+    const triangle = [meshIndex[offset], meshIndex[offset + 1], meshIndex[offset + 2]];
+    for (const [first, second] of [[triangle[0], triangle[1]], [triangle[1], triangle[2]], [triangle[2], triangle[0]]]) {
+      const low = Math.min(first, second);
+      const high = Math.max(first, second);
+      const key = `${low}:${high}`;
+      const edge = edgeCounts.get(key) ?? { low, high, count: 0 };
+      edge.count++;
+      edgeCounts.set(key, edge);
+    }
+  }
+  const boundaryEdges = [...edgeCounts.values()].filter((edge) => edge.count === 1);
+  const boundaryNeighbors = new Map();
+  for (const edge of boundaryEdges) {
+    const first = boundaryNeighbors.get(edge.low) ?? [];
+    const second = boundaryNeighbors.get(edge.high) ?? [];
+    first.push(edge.high);
+    second.push(edge.low);
+    boundaryNeighbors.set(edge.low, first);
+    boundaryNeighbors.set(edge.high, second);
+  }
+  const visitedBoundaryEdges = new Set();
+  const boundaryEdgeKey = (first, second) => first < second ? `${first}:${second}` : `${second}:${first}`;
+  for (const edge of boundaryEdges) {
+    const initialKey = boundaryEdgeKey(edge.low, edge.high);
+    if (visitedBoundaryEdges.has(initialKey)) continue;
+    const loop = [edge.low];
+    let current = edge.high;
+    visitedBoundaryEdges.add(initialKey);
+    while (current !== loop[0] && loop.length <= boundaryEdges.length + 1) {
+      loop.push(current);
+      const neighbors = boundaryNeighbors.get(current) ?? [];
+      const next = neighbors.find((candidate) => !visitedBoundaryEdges.has(boundaryEdgeKey(current, candidate)));
+      if (next === undefined) break;
+      visitedBoundaryEdges.add(boundaryEdgeKey(current, next));
+      current = next;
+    }
+    if (current !== loop[0] || loop.length < 3 || loop.some((vertex) => (boundaryNeighbors.get(vertex)?.length ?? 0) !== 2)) continue;
+    const center = loop.reduce((sum, vertex) => {
+      const position = positionOf(vertex);
+      return [sum[0] + position[0], sum[1] + position[1], sum[2] + position[2]];
+    }, [0, 0, 0]).map((value) => value / loop.length);
+    const centerAtom = nearestAtom(center[0], center[1], center[2]);
+    const centerVertex = meshPosition.length / 3;
+    meshPosition.push(center[0], center[1], center[2]);
+    const centerFields = residueFields(residueNames[centerAtom]);
+    meshCharge.push(centerFields.charge);
+    meshHydrophobicity.push(centerFields.hydrophobicity);
+    meshComponent.push(atoms[centerAtom].chain);
+    for (let index = 0; index < loop.length; index++) {
+      const first = loop[index];
+      const second = loop[(index + 1) % loop.length];
+      pushTriangle(centerVertex, first, second, [0, 0, 0]);
     }
   }
   return {
@@ -400,5 +519,6 @@ if (!parsed.atoms.length) throw new Error('structure contains no atoms');
 const outputFile = process.argv.find((argument) => argument.startsWith('--output='))?.slice('--output='.length)
   ?? config.structureAsset
   ?? 'src/assets/models/pdb5i4rStructure.json';
-await writeFile(outputFile, `${JSON.stringify(encodeStructure(parsed, source), null, 2)}\n`);
-console.log(`generated ${outputFile}: ${parsed.atoms.length} atoms, ${encodeStructure(parsed, source).bonds.count} bonds, ${source.kind}`);
+const encoded = encodeStructure(parsed, source);
+await writeFile(outputFile, `${JSON.stringify(encoded, null, 2)}\n`);
+console.log(`generated ${outputFile}: ${parsed.atoms.length} atoms, ${encoded.bonds.count} bonds, ${source.kind}`);

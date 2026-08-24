@@ -433,14 +433,9 @@ export class Enemy extends Ship {
       ? this.proteinRuntime.combat.projectileDamage(C.PLAYER_BULLET_DAMAGE)
       : C.PLAYER_BULLET_DAMAGE;
     const pb = new Bullet(kinematicState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', bulletDamage, this._worldSfx, this.scene);
-    pb.renderObject.position.set(r.x, r.y, r.z);
-    // 進行方向に向ける
-    const mz = new THREE.Matrix4().lookAt(
-      new THREE.Vector3(),
-      new THREE.Vector3(actualAim.x, actualAim.y, actualAim.z),
-      new THREE.Vector3(0, 1, 0),
-    );
-    pb.renderObject.quaternion.setFromRotationMatrix(mz);
+    // 弾の姿勢は Bullet.sync() に一本化する。プラズマの長軸(+Z)を、
+    // 浮動原点に対する実際の相対速度へ向けるため、発射方向(actualAim)を
+    // 直接 lookAt() するよりも、敵自身の速度を含む軌道と一致する。
 
     if (this.proteinRuntime) {
       this._fx.spawnMuzzleFlash(kinematicState(simTime, r, v));
