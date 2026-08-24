@@ -6,8 +6,10 @@ import rawStructure from '../../src/assets/models/pdb5i4rStructure.json';
 import rawMyoglobinAsset from '../../src/assets/models/myoglobin1mbnProtein.json';
 import rawMyoglobinBackbone from '../../src/assets/models/myoglobin1mbnBackbone.json';
 import rawMyoglobinStructure from '../../src/assets/models/myoglobin1mbnStructure.json';
+import rawMotion from '../../src/assets/models/pdb5i4rMotion.json';
 import { ProteinCombatState } from '../../src/game/protein/protein-combat-state';
 import type { ProteinAssetDefinition } from '../../src/game/protein/protein-schema';
+import type { ProteinMotionAsset } from '../../src/game/protein/protein-schema';
 import { collisionDamageFraction } from '../../src/game/game-entity/contact-damage';
 import * as THREE from 'three/webgpu';
 import { ProteinRuntime } from '../../src/game/protein/protein-runtime';
@@ -26,13 +28,16 @@ import {
 } from '../../src/game/protein/protein-display';
 
 const asset = rawAsset as unknown as ProteinAssetDefinition;
+const motion = rawMotion as unknown as ProteinMotionAsset;
 const myoglobinAsset = rawMyoglobinAsset as unknown as ProteinAssetDefinition;
 const sourceFor = (
   semantic: ProteinAssetDefinition,
   backbone: unknown,
   structure: unknown,
+  motion: ProteinMotionAsset = rawMotion as unknown as ProteinMotionAsset,
 ): ProteinRenderSource => ({
   semantic,
+  motion,
   backbone: backbone as ProteinBackboneAsset,
   structure: structure as ProteinDisplayAsset,
 });
@@ -314,7 +319,7 @@ export function register(): void {
     const baseRootPosition = root.position.clone();
     const baseRootQuaternion = root.quaternion.clone();
     const baseRootScale = root.scale.clone();
-    const runtime = new ProteinRuntime(root, asset, undefined, undefined, 'enemy-42');
+    const runtime = new ProteinRuntime(root, asset, motion, undefined, undefined, 'enemy-42');
     const active = asset.sites.find((entry) => entry.id === 'primary-active-site')!;
     const origin = v3(100, 200, 300);
     const activeWorld = runtime.activeSiteWorldPosition(origin, { x: 0, y: 0, z: 0, w: 1 });
@@ -337,11 +342,11 @@ export function register(): void {
       z: active.position[2] * asset.coordinateScale,
     });
     runtime.updateVisual(12.5);
-    const firstDisplacement = tagged.position.clone().sub(baseChildPosition);
-    assert.ok(firstDisplacement.length() > 1e-9);
+    assert.ok(Array.from(runtime.motionBinding.residueOffsets.array as Float32Array).some((value) => Math.abs(value) > 1e-9));
     assert.deepEqual(root.position, baseRootPosition);
     assert.ok(root.quaternion.equals(baseRootQuaternion));
     assert.deepEqual(root.scale, baseRootScale);
+    assert.deepEqual(tagged.position, baseChildPosition);
     assert.ok(tagged.quaternion.equals(baseChildQuaternion));
     const marker = root.children.find((child) => child.userData.proteinSiteId === 'complex-interface');
     assert.ok(marker);
@@ -357,7 +362,7 @@ export function register(): void {
     assert.deepEqual(root.scale, baseRootScale);
     runtime.rebuildVisuals();
     runtime.updateVisual(12.5);
-    assert.ok(tagged.position.clone().sub(baseChildPosition).distanceTo(firstDisplacement) < 1e-12);
+    assert.ok(Array.from(runtime.motionBinding.residueOffsets.array as Float32Array).some((value) => Math.abs(value) > 1e-9));
     assert.equal(root.rotation.z, 0.47);
     runtime.dispose();
   });

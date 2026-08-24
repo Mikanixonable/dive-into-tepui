@@ -53,6 +53,8 @@ export interface ProteinModificationDefinition {
   readonly label: string;
   readonly source: ProteinSource;
   readonly anchor: string;
+  /** Optional structure residue descriptors used to average a moving marker anchor. */
+  readonly residues?: readonly string[];
   readonly position: ProteinVec3;
   readonly states: readonly string[];
   readonly defaultState: string;
@@ -81,6 +83,55 @@ export interface ProteinMotionModeDefinition {
   /** Stationary RMS displacement (standard deviation) in source-structure Å. */
   readonly rmsAmplitude: number;
   readonly components: readonly ProteinMotionComponentDefinition[];
+}
+
+export interface ProteinMotionAsset {
+  readonly schemaVersion: 1;
+  readonly model: 'c-alpha-anm-overdamped';
+  readonly source: {
+    readonly pdbId: string;
+    readonly structureHash: string;
+    readonly backboneHash: string;
+    readonly generatorVersion: number;
+    readonly cutoffAngstrom: number;
+  };
+  readonly residueCount: number;
+  readonly residues: {
+    readonly chains: readonly string[];
+    readonly residueNumbers: readonly number[];
+    readonly centers: readonly number[];
+    readonly bFactors: readonly number[];
+  };
+  readonly bindings: {
+    readonly atomResidues: readonly number[];
+    readonly backboneResidues: readonly number[];
+    readonly surfaceResidues: readonly number[];
+    readonly siteResidues: readonly number[];
+    readonly modificationResidues: readonly number[];
+  };
+  readonly modes: readonly {
+    readonly id: string;
+    readonly band: 'collective' | 'local';
+    readonly eigenvalue: number;
+    readonly displayRelaxationRate: number;
+    readonly physicalRmsAngstrom?: number;
+    readonly displayRmsAngstrom?: number;
+    readonly displacements: readonly number[];
+  }[];
+  readonly display: {
+    readonly sampleHz: number;
+    readonly collectiveGain: number;
+    readonly localGain: number;
+  };
+  readonly amplitudeCalibration: 'b-factor-relative' | 'uncalibrated-display';
+}
+
+export interface ProteinMotionExpectedCounts {
+  readonly atomResidues: number;
+  readonly backboneResidues: number;
+  readonly surfaceResidues: number;
+  readonly siteResidues: number;
+  readonly modificationResidues: number;
 }
 
 export interface ProteinAssetDefinition {
@@ -210,5 +261,52 @@ export function validateProteinAsset(asset: ProteinAssetDefinition): string[] {
     if (slot.position.length !== 3 || slot.position.some((value) => !Number.isFinite(value))) issues.push(`modification ${slot.id} position must be a finite 3-vector`);
     if (!slot.states.includes(slot.defaultState)) issues.push(`modification ${slot.id} defaultState is not listed`);
   }
+  return issues;
+}
+
+export function validateProteinMotionAsset(asset: ProteinMotionAsset, expectedPdbId?: string, expectedCounts?: ProteinMotionExpectedCounts): string[] {
+  const issues: string[] = [];
+  if (asset.schemaVersion !== 1) issues.push(`unsupported motion schemaVersion: ${asset.schemaVersion}`);
+  if (asset.model !== 'c-alpha-anm-overdamped') issues.push(`unsupported motion asset model: ${asset.model}`);
+  if (expectedPdbId && asset.source?.pdbId !== expectedPdbId) issues.push(`motion source pdbId must be ${expectedPdbId}`);
+  if (!asset.source?.structureHash || !asset.source?.backboneHash) issues.push('motion source hashes are required');
+  if (!Number.isInteger(asset.residueCount) || asset.residueCount <= 0) issues.push('motion residueCount must be positive');
+  const residueCount = asset.residueCount;
+  for (const [name, length] of [
+    ['chains', residueCount], ['residueNumbers', residueCount], ['bFactors', residueCount], ['centers', residueCount * 3],
+  ] as const) {
+    if (!Array.isArray(asset.residues?.[name]) || asset.residues[name].length !== length) issues.push(`motion residues.${name} must have length ${length}`);
+  }
+  const bindings = asset.bindings;
+  const bindingNames = ['atomResidues', 'backboneResidues', 'surfaceResidues', 'siteResidues', 'modificationResidues'] as const;
+  for (const name of bindingNames) {
+    const values = bindings?.[name];
+    if (!Array.isArray(values)) issues.push(`motion bindings.${name} must be an array`);
+    else {
+      if (expectedCounts && values.length !== expectedCounts[name]) issues.push(`motion bindings.${name} must have length ${expectedCounts[name]}`);
+      for (const index of values) if (!Number.isInteger(index) || index < 0 || index >= residueCount) issues.push(`motion bindings.${name} index out of range: ${index}`);
+    }
+  }
+  if (!Array.isArray(asset.modes) || asset.modes.length !== 24) issues.push('motion modes must contain 24 modes');
+  const modeIds = new Set<string>();
+  for (const [index, mode] of (asset.modes ?? []).entries()) {
+    if (!mode.id || modeIds.has(mode.id)) issues.push(`duplicate motion asset mode id: ${mode.id}`);
+    modeIds.add(mode.id);
+    if (mode.band !== (index < 4 ? 'collective' : 'local')) issues.push(`motion mode ${mode.id} has incorrect band`);
+    if (!Number.isFinite(mode.eigenvalue) || mode.eigenvalue <= 0) issues.push(`motion mode ${mode.id} eigenvalue must be positive`);
+    if (!Number.isFinite(mode.displayRelaxationRate) || mode.displayRelaxationRate <= 0) issues.push(`motion mode ${mode.id} displayRelaxationRate must be positive`);
+    const amplitude = asset.amplitudeCalibration === 'b-factor-relative' ? mode.physicalRmsAngstrom : mode.displayRmsAngstrom;
+    if (!Number.isFinite(amplitude) || (amplitude ?? 0) <= 0 || (amplitude ?? 0) > 50) issues.push(`motion mode ${mode.id} amplitude must be in (0, 50] Å`);
+    if (asset.amplitudeCalibration === 'b-factor-relative' && mode.displayRmsAngstrom !== undefined) issues.push(`motion mode ${mode.id} must not have display RMS`);
+    if (asset.amplitudeCalibration === 'uncalibrated-display' && mode.physicalRmsAngstrom !== undefined) issues.push(`motion mode ${mode.id} must not claim physical RMS`);
+    if (!Array.isArray(mode.displacements) || mode.displacements.length !== residueCount * 3) issues.push(`motion mode ${mode.id} displacement length mismatch`);
+    else if (mode.displacements.some((value) => !Number.isFinite(value))) issues.push(`motion mode ${mode.id} contains non-finite displacement`);
+    if (index > 0 && mode.eigenvalue < asset.modes[index - 1]!.eigenvalue) issues.push('motion eigenvalues must be sorted');
+  }
+  if (!Number.isFinite(asset.display?.sampleHz) || asset.display.sampleHz <= 0) issues.push('motion display.sampleHz must be positive');
+  if (!Number.isFinite(asset.display?.collectiveGain) || asset.display.collectiveGain <= 0 || asset.display.collectiveGain > 1) issues.push('motion display.collectiveGain must be in (0, 1]');
+  if (!Number.isFinite(asset.display?.localGain) || asset.display.localGain <= 0 || asset.display.localGain > 1) issues.push('motion display.localGain must be in (0, 1]');
+  if (!['b-factor-relative', 'uncalibrated-display'].includes(asset.amplitudeCalibration)) issues.push('motion amplitudeCalibration is invalid');
+  for (const name of ['centers', 'bFactors'] as const) if (asset.residues?.[name]?.some((value) => !Number.isFinite(value))) issues.push(`motion residues.${name} must be finite`);
   return issues;
 }

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { readFile, writeFile } from 'node:fs/promises';
+import { backboneContentHash } from './protein-content-hash.mjs';
 
 const configFile = process.argv[2];
 if (!configFile) throw new Error('usage: fetch-pdb-backbone.mjs <protein.config.json>');
@@ -83,6 +84,7 @@ const rounded = (value) => Number(value.toFixed(3));
 const backboneCoordinates = [];
 const backboneSecondary = [];
 const backboneChains = [];
+const backboneResidueNumbers = [];
 const backboneEntities = [];
 const backboneBFactors = [];
 const backboneOCoordinates = [];
@@ -91,6 +93,7 @@ for (const atom of backbone) {
   const oxygen = atom.o ?? atom;
   backboneOCoordinates.push(rounded(oxygen.x - center.x), rounded(oxygen.y - center.y), rounded(oxygen.z - center.z));
   backboneChains.push(atom.chain);
+  backboneResidueNumbers.push(atom.residue);
   backboneEntities.push(atom.entity);
   backboneBFactors.push(Number(atom.bFactor.toFixed(2)));
   const inRange = (entry) => entry.chain === atom.chain && entry.endChain === atom.chain
@@ -98,7 +101,7 @@ for (const atom of backbone) {
   backboneSecondary.push(helices.some(inRange) ? 'helix' : sheets.some(inRange) ? 'sheet' : 'coil');
 }
 
-await writeFile(config.source, `${JSON.stringify({
+const output = {
   pdbId: config.pdbId,
   source: sourceUrl,
   model: 'C-alpha backbone coordinates with deposited HELIX/SHEET annotations, centered at the all-atom centroid',
@@ -107,8 +110,11 @@ await writeFile(config.source, `${JSON.stringify({
   backboneCoordinates,
   backboneSecondary,
   backboneChains,
+  backboneResidueNumbers,
   backboneEntities,
   backboneBFactors,
   backboneOCoordinates,
-}, null, 2)}\n`);
+};
+output.contentHash = backboneContentHash(output);
+await writeFile(config.source, `${JSON.stringify(output, null, 2)}\n`);
 console.log(`generated ${config.source}: ${backbone.length} backbone points from PDB ${config.pdbId}`);

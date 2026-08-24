@@ -17,6 +17,7 @@
   "include": [
     "src/types/three-shims.d.ts",
     "src/render/geometry-validator.ts",
+    "src/render/dispose-owned-render-resources.ts",
     "src/physics/vec3.ts",
     "src/physics/attitude.ts",
     "src/physics/atmosphere.ts",

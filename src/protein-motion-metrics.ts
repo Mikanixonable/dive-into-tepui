@@ -1,8 +1,6 @@
 // Protein motion の性能計測を、実装本体から切り離すための小さな収集器。
 //
-// Phase 0 では current runtime に motion controller が接続されていないため、Render Lab が
-// 0 値の baseline を記録する。Phase 2/5 以降は controller が同じ sink へ 1 frame ごとの
-// CPU 時間・upload bytes・LOD 体数を渡せば、同じ出力形式で比較できる。
+// Render Lab と runtime が同じ形式で controller CPU 時間・upload bytes・LOD 体数を記録する。
 
 export const PROTEIN_MOTION_LODS = ['near', 'medium', 'far', 'marker'] as const;
 export type ProteinMotionLod = (typeof PROTEIN_MOTION_LODS)[number];
