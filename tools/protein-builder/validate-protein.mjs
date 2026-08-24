@@ -9,26 +9,29 @@ if (!asset.id) errors.push('id is required');
 if (!Number.isFinite(asset.coordinateScale) || asset.coordinateScale <= 0) errors.push('coordinateScale must be positive');
 if (!Number.isFinite(asset.integrity?.maxHp) || asset.integrity.maxHp <= 0) errors.push('integrity.maxHp must be positive');
 const siteIds = new Set();
+const actionIds = new Set();
+for (const action of asset.actions ?? []) {
+  if (!action.id) errors.push('action id is required');
+  if (actionIds.has(action.id)) errors.push(`duplicate action id: ${action.id}`);
+  actionIds.add(action.id);
+}
 for (const site of asset.sites ?? []) {
   if (siteIds.has(site.id)) errors.push(`duplicate site id: ${site.id}`);
   siteIds.add(site.id);
   if (!Array.isArray(site.position) || site.position.length !== 3) errors.push(`invalid position: ${site.id}`);
   if (!Number.isFinite(site.radius) || site.radius <= 0) errors.push(`invalid radius: ${site.id}`);
   if (!Number.isFinite(site.maxHp) || site.maxHp <= 0) errors.push(`invalid maxHp: ${site.id}`);
-}
-const expectedEntityChains = new Map([
-  [1, ['A', 'E']], // CdiA
-  [2, ['C', 'G']], // EF-Tu
-  [3, ['D', 'H']], // EF-Tu
-  [4, ['B', 'F']], // CdiI
-]);
-for (const component of asset.components ?? []) {
-  for (const entity of component.entities ?? []) {
-    const expected = expectedEntityChains.get(entity);
-    if (expected && JSON.stringify(component.chains) !== JSON.stringify(expected)) {
-      errors.push(`entity ${entity} chains must be ${expected.join('/')} (got ${(component.chains ?? []).join('/')})`);
-    }
+  for (const action of site.actions ?? []) {
+    if (!actionIds.has(action)) errors.push(`unknown action ${action} on site ${site.id}`);
   }
+}
+for (const bond of asset.bonds ?? []) {
+  if (!siteIds.has(bond.from)) errors.push(`bond references unknown site: ${bond.from}`);
+  if (!siteIds.has(bond.to)) errors.push(`bond references unknown site: ${bond.to}`);
+}
+for (const component of asset.components ?? []) {
+  if (!component.id) errors.push('component id is required');
+  if (!Array.isArray(component.chains) || component.chains.length === 0) errors.push(`component ${component.id} has no chains`);
 }
 for (const slot of asset.modificationSlots ?? []) {
   if (!(slot.states ?? []).includes(slot.defaultState)) errors.push(`invalid defaultState: ${slot.id}`);
