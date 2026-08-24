@@ -38,17 +38,12 @@ function customContactGeometry(
   const makeSweptGeometry = (
     hit: { readonly hit: SphereHit; readonly toi: number },
     normal: Vec3,
-  ): ContactGeometry => {
-    const aPosition = interpolatePosition(a.prevState.r, aWork.r, hit.toi);
-    const bPosition = interpolatePosition(b.prevState.r, bWork.r, hit.toi);
-    return {
-      normal,
-      toi: hit.toi,
-      pushOut: hit.hit.depth,
-      contactPoint: hit.hit.point,
-      contactPositions: { a: aPosition, b: bPosition },
-    };
-  };
+  ): ContactGeometry => ({
+    normal,
+    toi: hit.toi,
+    pushOut: hit.hit.depth,
+    contactPoint: hit.hit.point,
+  });
 
   if (sweptValid) {
     const sweptA = a.testCustomSweptSphereCollision(
@@ -72,14 +67,6 @@ function customContactGeometry(
     return { normal: scale(hitB.normal, -1), toi: 1, pushOut: hitB.depth, contactPoint: hitB.point };
   }
   return null;
-}
-
-function interpolatePosition(previous: Vec3, current: Vec3, t: number): Vec3 {
-  return {
-    x: previous.x + (current.x - previous.x) * t,
-    y: previous.y + (current.y - previous.y) * t,
-    z: previous.z + (current.z - previous.z) * t,
-  } as Vec3;
 }
 
 // aWork/bWork は解決の途中経過を含む「いまの状態」で、a.state とは限らない。

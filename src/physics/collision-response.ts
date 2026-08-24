@@ -54,7 +54,6 @@ export type ContactGeometry = { readonly normal: Vec3; readonly toi: number; rea
   | {
     readonly pushOut: number;
     readonly separation?: undefined;
-    readonly contactPositions?: { readonly a: Vec3; readonly b: Vec3 };
   }
 );
 
@@ -122,10 +121,11 @@ export function distributeSphereContact(
     rA = sub(center, scale(offset, wa));
     rB = add(center, scale(offset, wb));
   } else {
-    const positionA = geometry.contactPositions?.a ?? a.state.r;
-    const positionB = geometry.contactPositions?.b ?? b.state.r;
-    rA = addScaled(positionA, normal, -geometry.pushOut * wa);
-    rB = addScaled(positionB, normal, geometry.pushOut * wb);
+    // TOI は衝突時刻と接触点の報告に使うが、state の時刻はサブステップ終端のままなので、
+    // 位置補正も終端位置へ当てる。途中時刻の位置をここへ代入すると、移動量の残りを失い、
+    // 高速で公転する重い側まで被弾のたびに後方へ巻き戻される。
+    rA = addScaled(a.state.r, normal, -geometry.pushOut * wa);
+    rB = addScaled(b.state.r, normal, geometry.pushOut * wb);
   }
 
   const vn = dot(sub(b.state.v, a.state.v), normal);
