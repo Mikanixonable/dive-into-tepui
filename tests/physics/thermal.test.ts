@@ -9,14 +9,14 @@ import {
   STEFAN_BOLTZMANN, aeroHeating, dragDissipation, radiativeCooling, solarHeating,
   sphereNoseRadius, stepTemperature,
 } from '../../src/physics/thermal';
-import { ASTRONOMICAL_UNIT } from '../../src/physics/srp';
+import { SOLAR_CONSTANT } from '../../src/physics/srp';
+import { AU } from '../../src/physics/planet-orbit';
 
 const ENV_TEMP = 255;
 const SG_CONST = 1.7415e-4; // 地球大気の Sutton–Graves 定数 [kg^0.5/m]
 const SHIP_BCINV = 3.3e-3;
 const SMALL_DEBRIS_BCINV = 8e-3;
 const DRAG_COEFFICIENT = 2.2;
-const SOLAR_CONSTANT = 1361; // 1天文単位での太陽定数 [W/m^2]
 const HULL_EMISS = 0.85;
 
 // 灰色体とみなした物体が太陽光を受ける実効面積の比 [m^2/kg](game/const.ts と同じ導き方)。
@@ -118,19 +118,19 @@ export function register(): void {
 
   test('thermal: 太陽光の受熱は1天文単位で太陽定数そのもので、距離の2乗に反比例する', () => {
     const area = solarAbsorbAreaPerMass(SHIP_BCINV);
-    const at1AU = solarHeating(SOLAR_CONSTANT, ASTRONOMICAL_UNIT, 1, area);
+    const at1AU = solarHeating(SOLAR_CONSTANT, AU, 1, area);
     assert.ok(Math.abs(at1AU - SOLAR_CONSTANT * area) < 1e-12, `1AU で ${at1AU} W/kg`);
     for (const ratio of [0.5, 2, 5.2, 30]) {
-      const far = solarHeating(SOLAR_CONSTANT, ratio * ASTRONOMICAL_UNIT, 1, area);
+      const far = solarHeating(SOLAR_CONSTANT, ratio * AU, 1, area);
       assert.ok(Math.abs(far - at1AU / (ratio * ratio)) < 1e-12 * at1AU, `${ratio} AU で ${far} W/kg`);
     }
   });
 
   test('thermal: 太陽光の受熱は日照率に比例し、本影では入らない', () => {
     const area = solarAbsorbAreaPerMass(SMALL_DEBRIS_BCINV);
-    const full = solarHeating(SOLAR_CONSTANT, ASTRONOMICAL_UNIT, 1, area);
-    assert.ok(Math.abs(solarHeating(SOLAR_CONSTANT, ASTRONOMICAL_UNIT, 0.25, area) - full / 4) < 1e-12 * full);
-    assert.equal(solarHeating(SOLAR_CONSTANT, ASTRONOMICAL_UNIT, 0, area), 0, '本影では入らない');
+    const full = solarHeating(SOLAR_CONSTANT, AU, 1, area);
+    assert.ok(Math.abs(solarHeating(SOLAR_CONSTANT, AU, 0.25, area) - full / 4) < 1e-12 * full);
+    assert.equal(solarHeating(SOLAR_CONSTANT, AU, 0, area), 0, '本影では入らない');
   });
 
   // 日照だけで焼ける物体があると、軌道に置いただけの破片や敵機が戦闘前に勝手に消える。
@@ -141,7 +141,7 @@ export function register(): void {
     ];
     for (const c of cases) {
       const heating = solarHeating(
-        SOLAR_CONSTANT, ASTRONOMICAL_UNIT, 1, solarAbsorbAreaPerMass(c.bcInv));
+        SOLAR_CONSTANT, AU, 1, solarAbsorbAreaPerMass(c.bcInv));
       const t = equilibrium(heating, HULL_EMISS, c.radiatingAreaPerMass);
       assert.ok(t < c.maxTemp, `${c.name}: 日照の平衡 ${t.toFixed(0)} K が限界 ${c.maxTemp} K に達する`);
       assert.ok(t > ENV_TEMP, `${c.name}: 日照で環境温度より暖まらない`);

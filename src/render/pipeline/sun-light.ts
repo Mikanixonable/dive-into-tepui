@@ -3,70 +3,90 @@
 // 照度バッファを書き、マテリアルパスがそこへ反射率を掛けるという分業の境界そのもの。
 // EnvironmentScene が毎フレーム set() で書き込み、RenderPipeline がインスタンスを所有する。
 import * as THREE from 'three/webgpu';
-import { float, uniform } from 'three/tsl';
-import { SHADOW_MIN_AMBIENT, SHADOW_MIN_SUN } from '../../game/const';
+import { uniform } from 'three/tsl';
+import { AU } from '../../physics/planet-orbit';
 import type { ColorUniform, FloatNode, FloatUniform, Vec3Uniform } from '../tsl-types';
 
-// 環境光の色味。恒星の色(太陽光は暖色、set() で毎フレーム更新)とは独立した固定値で、
-// game/const.ts の管理対象ではない(environment-scene.ts の THREE.AmbientLight と同じ値)。
-const AMBIENT_COLOR = new THREE.Color(0x8899bb);
+// 描画が扱う放射照度の単位。1 天文単位で太陽から届く放射照度をこの値に取る。
+//
+// 単位は SI ではなく `SOLAR_CONSTANT / π = 433.2 W/m²` で、1 天文単位での値が π になるよう
+// 選んである。ランバート BRDF の 1/π がこれを打ち消すので、**太陽に正対したアルベド A の
+// 完全拡散面は 1 天文単位で表示値 A になる** — 露出係数を持たずに済むのはこのため。
+export const SUN_IRRADIANCE_1AU = Math.PI;
+
+// 恒星の放射強度。SUN_IRRADIANCE_1AU は 1 天文単位で受ける放射照度なので、そのぶんの逆二乗を
+// 戻したもの。set() の intensity にはこれを渡す。
+export const SUN_RADIANT_INTENSITY = SUN_IRRADIANCE_1AU * AU * AU;
+
+// 恒星から distance [m] の点が受ける放射照度。画素ごとの陰影はライティングパスが同じ量を
+// GPU 側で引くが、前方描画の環や輝点は CPU 側で要る。
+export function sunIrradianceAtDistance(distance: number): number {
+  return SUN_RADIANT_INTENSITY / (distance * distance);
+}
+
+// 恒星光の色。5772 K(太陽の実効温度)の黒体を sRGB へ写した色にほぼ一致する。
+export const SUN_COLOR = new THREE.Color(0xfff4e0);
+
+// 環境光の色味。恒星の色(太陽光は暖色、set() で毎フレーム更新)とは独立した固定値。
+// 描画テスト環境のフォワード経路が同じ色の THREE.AmbientLight を置くので、値の正本として
+// ここから公開する。
+export const AMBIENT_COLOR = new THREE.Color(0x8899bb);
+
+// 環境光の放射照度。地球照(地球が反射して低軌道の物体を照らす光)の代用で置いた暫定値。
+// **低軌道での明るさに合わせただけの手書きの定数で、位置によらず一定に足される** —
+// 太陽から遠いほど直射を上回っていく。方向を持たないので遮蔽も受けない。
+export const AMBIENT_IRRADIANCE = SUN_IRRADIANCE_1AU * 0.093;
+
+// 本影の中にも届く光の量(星明かり・地球照ぶん)を、恒星と同じ向きから来る一定量で代用した
+// もの。恒星の放射照度に対する割合で、ライティングパスが直射ぶんと分け合う。
+export const SHADOW_MIN_SUN = 0.04;
 
 export class SunLight {
-  private readonly directionUniform: Vec3Uniform;
+  private readonly positionUniform: Vec3Uniform;
+  private readonly radiusUniform: FloatUniform;
   private readonly colorUniform: ColorUniform;
   private readonly intensityUniform: FloatUniform;
   private readonly ambientIntensityUniform: FloatUniform;
   private readonly ambientColorUniform: ColorUniform;
-  // CPU 側(physics/shadow.ts の sunlitFactor)で求めた恒星の日照率(0=完全遮蔽、1=全開)。
-  private readonly sunlitFactorUniform: FloatUniform;
-
-  // 恒星の視半径 [rad]。0 = 点光源。面光源(球光源)へ切り替える将来の拡張点として型に
-  // 持たせるだけで、現行のライティングパスはまだ読まない。
-  angularRadius = 0;
 
   constructor() {
-    this.directionUniform = uniform(new THREE.Vector3(0, 1, 0));
+    this.positionUniform = uniform(new THREE.Vector3(0, 1, 0));
+    this.radiusUniform = uniform(1);
     this.colorUniform = uniform(new THREE.Color(1, 1, 1));
     this.intensityUniform = uniform(0);
     this.ambientIntensityUniform = uniform(0);
     this.ambientColorUniform = uniform(AMBIENT_COLOR.clone());
-    this.sunlitFactorUniform = uniform(1);
   }
 
-  // 恒星方向(描画原点から見た単位方向)・色・照度(受け手が実際に浴びる値 — 逆二乗込み)・
-  // 環境光強度・恒星の日照率を1フレーム分まとめて書く。
+  // 恒星の描画座標での位置・半径・色・放射強度(距離の二乗で割ると放射照度になる量)・
+  // 環境光強度を1フレーム分まとめて書く。
   set(
-    direction: THREE.Vector3,
+    position: THREE.Vector3,
+    radius: number,
     color: THREE.Color,
     intensity: number,
     ambientIntensity: number,
-    sunlitFactor: number,
   ): void {
-    this.directionUniform.value.copy(direction);
+    this.positionUniform.value.copy(position);
+    this.radiusUniform.value = radius;
     this.colorUniform.value.copy(color);
     this.intensityUniform.value = intensity;
     this.ambientIntensityUniform.value = ambientIntensity;
-    this.sunlitFactorUniform.value = sunlitFactor;
   }
 
-  get direction(): Vec3Uniform { return this.directionUniform; }
+  get position(): Vec3Uniform { return this.positionUniform; }
+
+  // 恒星の半径 [m]。遮蔽パスが本影と半影を分けるのに要る。
+  get radius(): FloatNode { return this.radiusUniform; }
+
   get color(): ColorUniform { return this.colorUniform; }
+
+  // 放射強度。シェーディング点から恒星までの距離の二乗で割ると、その点の放射照度になる。
   get intensity(): FloatNode { return this.intensityUniform; }
 
   // 環境光の色。恒星光と違って方向を持たない固定値。
   get ambientColor(): ColorUniform { return this.ambientColorUniform; }
 
-  // 環境光強度そのものに日照率の下限を織り込んで返す。環境光は特定方向からの遮蔽を持たず、
-  // シャドウマップに置き換わる対象でもないため、恒星のように可視率を独立した関数へは分けない。
-  get ambientIntensity(): FloatNode {
-    const floor = float(SHADOW_MIN_AMBIENT).add(float(1 - SHADOW_MIN_AMBIENT).mul(this.sunlitFactorUniform));
-    return this.ambientIntensityUniform.mul(floor);
-  }
-
-  // シェーディング点における恒星自身の可視率(0=完全遮蔽・1=全開)。今はCPU側で求めた
-  // 日照率へ影の下限を掛けるだけだが、シャドウマップが実装されたらここが深度比較による
-  // 問い合わせへ置き換わる、遮蔽問い合わせの継ぎ目そのもの。
-  sunVisibility(): FloatNode {
-    return float(SHADOW_MIN_SUN).add(float(1 - SHADOW_MIN_SUN).mul(this.sunlitFactorUniform));
-  }
+  // 環境光強度。方向を持たないので遮蔽も受けない。
+  get ambientIntensity(): FloatNode { return this.ambientIntensityUniform; }
 }
