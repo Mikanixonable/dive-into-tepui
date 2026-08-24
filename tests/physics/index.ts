@@ -63,6 +63,8 @@ import { register as registerProtein } from './protein-combat-state.test';
 import { register as registerProjectileOrientation } from './projectile-orientation.test';
 import { register as registerProteinRibbonCollision } from './protein-ribbon-collision.test';
 import { register as registerProteinBrownianMotion } from './protein-brownian-motion.test';
+import { register as registerBoosterStack } from './booster-stack.test';
+import { register as registerBoosterSeparation } from './booster-separation.test';
 
 registerVec3();
 registerKinematicState();
@@ -125,6 +127,8 @@ registerProtein();
 registerProjectileOrientation();
 registerProteinRibbonCollision();
 registerProteinBrownianMotion();
+registerBoosterStack();
+registerBoosterSeparation();
 
 runAll().catch((error) => {
   console.error(error);

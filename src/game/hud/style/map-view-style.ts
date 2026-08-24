@@ -18,7 +18,8 @@ export const MAP_VIEW_STYLE = `
 /* Quiet Glass: 視野を隠さない常設情報。 */
 #hud .hud-map-root.active #hud-physical-object-list,
 #hud .hud-map-root.active #hud-view-options,
-#hud .hud-map-root.active #hud-orbit {
+#hud .hud-map-root.active #hud-orbit,
+#hud .hud-map-root.active #burn-management-panel {
   border: 0;
   border-radius: var(--radius-panel);
   background: var(--glass-quiet);
@@ -31,6 +32,11 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active .hud-rail-left > #hud-orbit {
   width: 100%;
   max-height: min(360px, 48dvh);
+  overflow-y: auto;
+}
+#hud .hud-map-root.active .hud-rail-left > #burn-management-panel {
+  width: 100%;
+  max-height: min(260px, 36dvh);
   overflow-y: auto;
 }
 
@@ -49,6 +55,7 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active #hud-physical-object-list h3,
 #hud .hud-map-root.active #hud-view-options h3,
 #hud .hud-map-root.active #hud-orbit h3,
+#hud .hud-map-root.active #burn-management-panel h3,
 #hud .hud-map-root.active #hud-predict h3,
 #hud .hud-map-root.active .hud-frame-controls h3,
 #hud .hud-map-root.active #hud-plan h3 {
