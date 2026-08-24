@@ -10,6 +10,18 @@
   "integrity": {
     "maxHp": 320
   },
+  "actions": [
+    {
+      "id": "plasma-burst",
+      "kind": "projectile"
+    }
+  ],
+  "bonds": [
+    {
+      "from": "primary-active-site",
+      "to": "complex-interface"
+    }
+  ],
   "components": [
     {
       "id": "cdiA",

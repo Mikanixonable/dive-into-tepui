@@ -7,6 +7,7 @@ import { proteinMotionAt, proteinMotionSeedFor } from '../../src/game/protein/pr
 import { collisionDamageFraction } from '../../src/game/game-entity/contact-damage';
 import * as THREE from 'three/webgpu';
 import { ProteinRuntime } from '../../src/game/protein/protein-runtime';
+import { PROTEIN_ASSET_IDS, proteinAssetFor } from '../../src/game/protein/protein-asset-loader';
 import { v3 } from '../../src/physics/vec3';
 import {
   DEFAULT_PROTEIN_DISPLAY, defaultProteinDisplayFor, isProteinDisplaySettings, proteinColorModesFor,
@@ -39,6 +40,27 @@ export function register(): void {
       });
     }
     assert.equal(state.isActionEnabled('plasma-burst'), false);
+  });
+
+  test('protein combat: attack sites follow the asset action definition', () => {
+    const genericActionAsset: ProteinAssetDefinition = {
+      ...asset,
+      actions: [{ id: 'ion-pulse', kind: 'projectile' }],
+      sites: asset.sites.map((site) => ({
+        ...site,
+        actions: site.actions.map(() => 'ion-pulse'),
+      })),
+    };
+    const state = new ProteinCombatState(genericActionAsset);
+    assert.equal(state.attackSites.length, 3);
+    assert.equal(state.isActionEnabled('ion-pulse'), true);
+    assert.equal(state.isActionEnabled('plasma-burst'), false);
+  });
+
+  test('protein assets: registered assets resolve by ID', () => {
+    assert.ok(PROTEIN_ASSET_IDS.includes('pdb-5i4r'));
+    assert.equal(proteinAssetFor('pdb-5i4r')?.id, asset.id);
+    assert.equal(proteinAssetFor('missing-protein'), null);
   });
 
   test('protein combat: interface and core damage move through phases', () => {

@@ -19,6 +19,7 @@ import { Hud } from '../../hud/hud';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../../vfx/effects-system';
 import { Enemy, inertiaForEnemyKind, type EnemyKind } from '../../game-entity/enemy';
+import type { ProteinAssetId } from '../../protein/protein-asset-loader';
 import type { ProteinDisplaySettings } from '../../protein/protein-display';
 
 // 自機軌道(base)を dAlong だけ進めた位置の軌道状態(プリセット配置の共通基盤)。
@@ -33,9 +34,14 @@ export function generateDriftingEnemy(name: string, state: KinematicState, _hp: 
   return generateFreeEnemy(name, state, accent, orbitLineColor, { kind: 'drifting' }, hud, worldSfx, fx, scene);
 }
 
-// PDB 5I4R のCdiA/CdiI/EF-Tu複合体を、現在のタンパク質表示設定で描画する敵。
+// 登録されたタンパク質アセットを、現在の表示設定で描画する敵。
+export function generateProteinEnemy(name: string, state: KinematicState, assetId: ProteinAssetId, display: ProteinDisplaySettings, hud: Hud, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
+  return generateFreeEnemy(name, state, 0xffffff, 0xffffff, { kind: 'protein', assetId, display }, hud, worldSfx, fx, scene);
+}
+
+// 既存のステージ呼び出し向け5I4Rラッパー。
 export function generatePdb5i4rEnemy(name: string, state: KinematicState, display: ProteinDisplaySettings, hud: Hud, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
-  return generateFreeEnemy(name, state, 0xffffff, 0xffffff, { kind: 'pdb-5i4r', display, colorMode: display.colorMode }, hud, worldSfx, fx, scene);
+  return generateProteinEnemy(name, state, 'pdb-5i4r', display, hud, worldSfx, fx, scene);
 }
 
 function generateFreeEnemy(name: string, state: KinematicState, accent: string | number, orbitLineColor: string | number, enemyKind: EnemyKind, hud: Hud, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {

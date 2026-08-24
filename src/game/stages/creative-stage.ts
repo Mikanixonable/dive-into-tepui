@@ -19,7 +19,8 @@ import { hudRail } from '../hud/hud-root';
 import type { CameraSystem, ProjectFn } from '../camera/camera-system';
 import { AmmoPickup } from '../game-entity/ammo-pickup';
 import { Base } from '../game-entity/base';
-import { generateApproachingEnemy, generateDriftingEnemy, generatePdb5i4rEnemy } from './spawner/enemy-generator';
+import { generateApproachingEnemy, generateDriftingEnemy, generateProteinEnemy } from './spawner/enemy-generator';
+import { PROTEIN_ASSET_IDS, type ProteinAssetId } from '../protein/protein-asset-loader';
 import {
   DEFAULT_PROTEIN_DISPLAY, defaultProteinDisplayFor, PROTEIN_COLOR_LABELS, PROTEIN_DISPLAY_LABELS,
   isProteinDisplaySettings, proteinColorModesFor, proteinDisplayWithColor, type Pdb5i4rColorMode, type ProteinDisplaySettings,
@@ -38,13 +39,18 @@ import type { CreativeStageSaveData, StageSaveData } from '../save-data';
 
 const DEG = Math.PI / 180;
 
-const STAGE_CONTROL_ENEMY_SHAPES = [
+type EnemyShapeDefinition =
+  | { readonly id: 'drifting'; readonly family: 'conventional'; readonly kind: 'drifting' }
+  | { readonly id: 'stage0-a' | 'stage0-b' | 'stage0-c'; readonly family: 'conventional'; readonly kind: 'stage0'; readonly typeIndex: number }
+  | { readonly id: ProteinAssetId; readonly family: 'protein'; readonly kind: 'protein'; readonly assetId: ProteinAssetId };
+
+const STAGE_CONTROL_ENEMY_SHAPES: readonly EnemyShapeDefinition[] = [
   { id: 'drifting', family: 'conventional', kind: 'drifting' },
-  { id: 'pdb-5i4r', family: 'protein', kind: 'pdb-5i4r' },
   { id: 'stage0-a', family: 'conventional', kind: 'stage0', typeIndex: 0 },
   { id: 'stage0-b', family: 'conventional', kind: 'stage0', typeIndex: 1 },
   { id: 'stage0-c', family: 'conventional', kind: 'stage0', typeIndex: 2 },
-] as const;
+  ...PROTEIN_ASSET_IDS.map((assetId) => ({ id: assetId, family: 'protein', kind: 'protein', assetId } as const)),
+];
 type EnemySpawnShape = typeof STAGE_CONTROL_ENEMY_SHAPES[number]['id'];
 const STAGE_CONTROL_ENEMY_COLORS = [
   [0xff4a3d, '赤'], [0xff7a2d, '橙'], [0xe0409f, '桃'], [0xbf3dff, '紫'], [0x3dc6ff, '青'],
@@ -99,8 +105,8 @@ export class CreativeStage extends Stage {
     // (スナップショットからの再開では entities が復元済み — 新規開始では空なので何もしない)。
     for (const p of this._entities.players) this.playerIdAllocator.next(p.id);
     for (const ammoPickup of this._entities.ammoPickups) this.ammoPickupIdAllocator.next(ammoPickup.id);
-    const restoredProtein = this._entities.enemies.find((enemy) => enemy.enemyKind.kind === 'pdb-5i4r' && isProteinDisplaySettings(enemy.enemyKind.display));
-    if (restoredProtein && restoredProtein.enemyKind.kind === 'pdb-5i4r' && isProteinDisplaySettings(restoredProtein.enemyKind.display)) {
+    const restoredProtein = this._entities.enemies.find((enemy) => enemy.enemyKind.kind === 'protein' && isProteinDisplaySettings(enemy.enemyKind.display));
+    if (restoredProtein && restoredProtein.enemyKind.kind === 'protein' && isProteinDisplaySettings(restoredProtein.enemyKind.display)) {
       this.proteinDisplay = restoredProtein.enemyKind.display;
       this.proteinDisplayByRepresentation.set(this.proteinDisplay.representation, this.proteinDisplay);
     }
@@ -285,8 +291,8 @@ export class CreativeStage extends Stage {
     if (shapeDefinition === undefined) return;
     const enemy = shapeDefinition.kind === 'drifting'
       ? generateDriftingEnemy(name, state, C.ENEMY_MAX_HP, color, color, this._hud, this._worldSfx, this._fx, this._scene)
-      : shapeDefinition.kind === 'pdb-5i4r'
-        ? generatePdb5i4rEnemy(name, state, this.proteinDisplay, this._hud, this._worldSfx, this._fx, this._scene)
+      : shapeDefinition.kind === 'protein'
+        ? generateProteinEnemy(name, state, shapeDefinition.assetId, this.proteinDisplay, this._hud, this._worldSfx, this._fx, this._scene)
       : generateApproachingEnemy(
         name, state, C.STAGE0_ENEMY_HP, color, color, shapeDefinition.typeIndex, undefined,
         this._hud, this._worldSfx, this._fx, this._scene,

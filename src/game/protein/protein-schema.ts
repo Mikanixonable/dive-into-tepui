@@ -26,6 +26,16 @@ export interface ProteinSiteDefinition {
   readonly actions: readonly string[];
 }
 
+export interface ProteinActionDefinition {
+  readonly id: string;
+  readonly kind: 'projectile';
+}
+
+export interface ProteinBondDefinition {
+  readonly from: string;
+  readonly to: string;
+}
+
 export interface ProteinModificationDefinition {
   readonly id: string;
   readonly label: string;
@@ -54,6 +64,8 @@ export interface ProteinAssetDefinition {
   };
   readonly coordinateScale: number;
   readonly integrity: { readonly maxHp: number };
+  readonly actions: readonly ProteinActionDefinition[];
+  readonly bonds: readonly ProteinBondDefinition[];
   readonly components: readonly ProteinComponentDefinition[];
   readonly sites: readonly ProteinSiteDefinition[];
   readonly modificationSlots: readonly ProteinModificationDefinition[];
@@ -100,6 +112,12 @@ export function validateProteinAsset(asset: ProteinAssetDefinition): string[] {
   if (!asset.id) issues.push('id is empty');
   if (!Number.isFinite(asset.coordinateScale) || asset.coordinateScale <= 0) issues.push('coordinateScale must be positive');
   if (!Number.isFinite(asset.integrity.maxHp) || asset.integrity.maxHp <= 0) issues.push('integrity.maxHp must be positive');
+  const actionIds = new Set<string>();
+  for (const action of asset.actions) {
+    if (!action.id) issues.push('action id is empty');
+    if (actionIds.has(action.id)) issues.push(`duplicate action id: ${action.id}`);
+    actionIds.add(action.id);
+  }
   const ids = new Set<string>();
   for (const site of asset.sites) {
     if (ids.has(site.id)) issues.push(`duplicate site id: ${site.id}`);
@@ -107,6 +125,13 @@ export function validateProteinAsset(asset: ProteinAssetDefinition): string[] {
     if (!Number.isFinite(site.radius) || site.radius <= 0) issues.push(`site ${site.id} radius must be positive`);
     if (!Number.isFinite(site.maxHp) || site.maxHp <= 0) issues.push(`site ${site.id} maxHp must be positive`);
     if (site.position.length !== 3 || site.forward.length !== 3) issues.push(`site ${site.id} vector must have 3 components`);
+    for (const action of site.actions) {
+      if (!actionIds.has(action)) issues.push(`site ${site.id} references unknown action: ${action}`);
+    }
+  }
+  for (const bond of asset.bonds) {
+    if (!ids.has(bond.from)) issues.push(`bond references unknown site: ${bond.from}`);
+    if (!ids.has(bond.to)) issues.push(`bond references unknown site: ${bond.to}`);
   }
   const modificationIds = new Set<string>();
   for (const slot of asset.modificationSlots) {
