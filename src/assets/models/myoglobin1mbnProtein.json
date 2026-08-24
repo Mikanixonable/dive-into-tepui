@@ -119,58 +119,6 @@
     }
   ],
   "modificationSlots": [],
-  "motion": {
-    "model": "overdamped-normal-modes",
-    "sampleHz": 30,
-    "visualGain": 4,
-    "modes": [
-      {
-        "id": "rigid-translation-x",
-        "relaxationRate": 0.6,
-        "rmsAmplitude": 0.16,
-        "components": [
-          {
-            "componentId": "globin",
-            "translation": [
-              1,
-              0,
-              0
-            ]
-          }
-        ]
-      },
-      {
-        "id": "rigid-translation-y",
-        "relaxationRate": 0.6,
-        "rmsAmplitude": 0.16,
-        "components": [
-          {
-            "componentId": "globin",
-            "translation": [
-              0,
-              1,
-              0
-            ]
-          }
-        ]
-      },
-      {
-        "id": "rigid-translation-z",
-        "relaxationRate": 0.6,
-        "rmsAmplitude": 0.16,
-        "components": [
-          {
-            "componentId": "globin",
-            "translation": [
-              0,
-              0,
-              1
-            ]
-          }
-        ]
-      }
-    ]
-  },
   "generated": {
     "backend": "existing-backbone",
     "backboneCount": 153,
@@ -183,11 +131,6 @@
     ],
     "entities": [
       1
-    ],
-    "modalDerivation": {
-      "model": "confined-rigid-body-brownian-translation",
-      "contactCutoffAngstrom": 12,
-      "modeCount": 3
-    }
+    ]
   }
 }
