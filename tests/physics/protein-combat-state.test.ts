@@ -1,6 +1,9 @@
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import rawAsset from '../../src/assets/models/pdb5i4rProtein.json';
+import rawMyoglobinAsset from '../../src/assets/models/myoglobin1mbnProtein.json';
+import rawMyoglobinBackbone from '../../src/assets/models/myoglobin1mbnBackbone.json';
+import rawMyoglobinStructure from '../../src/assets/models/myoglobin1mbnStructure.json';
 import { ProteinCombatState } from '../../src/game/protein/protein-combat-state';
 import type { ProteinAssetDefinition } from '../../src/game/protein/protein-schema';
 import { proteinMotionAt, proteinMotionSeedFor } from '../../src/game/protein/protein-motion';
@@ -8,12 +11,15 @@ import { collisionDamageFraction } from '../../src/game/game-entity/contact-dama
 import * as THREE from 'three/webgpu';
 import { ProteinRuntime } from '../../src/game/protein/protein-runtime';
 import { PROTEIN_ASSET_IDS, proteinAssetFor } from '../../src/game/protein/protein-asset-loader';
+import type { ProteinDisplayAsset } from '../../src/game/protein/protein-display-asset';
+import { buildProteinEnemyShip, type ProteinBackboneAsset } from '../../src/render/protein-enemy-ship';
 import { v3 } from '../../src/physics/vec3';
 import {
   DEFAULT_PROTEIN_DISPLAY, defaultProteinDisplayFor, isProteinDisplaySettings, proteinColorModesFor,
 } from '../../src/game/protein/protein-display';
 
 const asset = rawAsset as unknown as ProteinAssetDefinition;
+const myoglobinAsset = rawMyoglobinAsset as unknown as ProteinAssetDefinition;
 
 export function register(): void {
   test('protein combat: each attack site has independent HP and disabling one preserves the others', () => {
@@ -59,8 +65,49 @@ export function register(): void {
 
   test('protein assets: registered assets resolve by ID', () => {
     assert.ok(PROTEIN_ASSET_IDS.includes('pdb-5i4r'));
+    assert.ok(PROTEIN_ASSET_IDS.includes('pdb-1mbn-myoglobin'));
     assert.equal(proteinAssetFor('pdb-5i4r')?.id, asset.id);
+    assert.equal(proteinAssetFor('pdb-1mbn-myoglobin')?.id, myoglobinAsset.id);
     assert.equal(proteinAssetFor('missing-protein'), null);
+  });
+
+  test('myoglobin: heme ligand uses its iron ion as the sole attack center', () => {
+    const state = new ProteinCombatState(myoglobinAsset);
+    assert.equal(myoglobinAsset.ligands.length, 1);
+    assert.equal(myoglobinAsset.ligands[0]?.residue, 'HEM');
+    assert.equal(myoglobinAsset.ligands[0]?.metalElement, 'FE');
+    assert.equal(myoglobinAsset.ligands[0]?.centerSite, 'heme-iron');
+    assert.deepEqual(state.attackSites.map((site) => site.id), ['heme-iron']);
+    assert.equal(state.nextAttackSite()?.id, 'heme-iron');
+
+    const structure = rawMyoglobinStructure as unknown as {
+      atoms: {
+        count: number; elementTable: string[]; elements: number[]; residueTable: string[]; residues: number[]; coordinates: number[];
+      };
+    };
+    const iron = Array.from({ length: structure.atoms.count }, (_, index) => index).find((index) => (
+      structure.atoms.elementTable[structure.atoms.elements[index]!] === 'FE'
+      && structure.atoms.residueTable[structure.atoms.residues[index]!] === 'HEM'
+    ));
+    assert.notEqual(iron, undefined);
+    const site = myoglobinAsset.sites.find((entry) => entry.id === 'heme-iron')!;
+    assert.deepEqual(site.position, structure.atoms.coordinates.slice(iron! * 3, iron! * 3 + 3));
+  });
+
+  test('myoglobin: ribbon render includes the heme ligand and visible iron', () => {
+    const object = buildProteinEnemyShip({
+      semantic: myoglobinAsset,
+      backbone: rawMyoglobinBackbone as ProteinBackboneAsset,
+      structure: rawMyoglobinStructure as unknown as ProteinDisplayAsset,
+    }, { representation: 'ribbon', colorMode: 'chain' });
+    let ligandFound = false;
+    let ironFound = false;
+    object.traverse((child) => {
+      ligandFound ||= child.userData.proteinLigand === true;
+      ironFound ||= child.userData.proteinLigand === true && child.userData.proteinElement === 'FE';
+    });
+    assert.equal(ligandFound, true);
+    assert.equal(ironFound, true);
   });
 
   test('protein combat: interface and core damage move through phases', () => {

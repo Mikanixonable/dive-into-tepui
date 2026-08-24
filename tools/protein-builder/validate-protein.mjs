@@ -29,6 +29,14 @@ for (const bond of asset.bonds ?? []) {
   if (!siteIds.has(bond.from)) errors.push(`bond references unknown site: ${bond.from}`);
   if (!siteIds.has(bond.to)) errors.push(`bond references unknown site: ${bond.to}`);
 }
+const ligandIds = new Set();
+for (const ligand of asset.ligands ?? []) {
+  if (!ligand.id) errors.push('ligand id is required');
+  if (ligandIds.has(ligand.id)) errors.push(`duplicate ligand id: ${ligand.id}`);
+  ligandIds.add(ligand.id);
+  if (!ligand.residue) errors.push(`ligand ${ligand.id} residue is required`);
+  if (!siteIds.has(ligand.centerSite)) errors.push(`ligand ${ligand.id} references unknown center site: ${ligand.centerSite}`);
+}
 for (const component of asset.components ?? []) {
   if (!component.id) errors.push('component id is required');
   if (!Array.isArray(component.chains) || component.chains.length === 0) errors.push(`component ${component.id} has no chains`);

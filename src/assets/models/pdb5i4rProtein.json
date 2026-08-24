@@ -22,6 +22,7 @@
       "to": "complex-interface"
     }
   ],
+  "ligands": [],
   "components": [
     {
       "id": "cdiA",

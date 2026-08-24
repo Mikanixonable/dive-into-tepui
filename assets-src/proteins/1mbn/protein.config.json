@@ -1,0 +1,21 @@
+{
+  "assetId": "pdb-1mbn-myoglobin",
+  "pdbId": "1MBN",
+  "source": "src/assets/models/myoglobin1mbnBackbone.json",
+  "sourceStructureUrl": "https://files.rcsb.org/download/1MBN.pdb",
+  "structureAsset": "src/assets/models/myoglobin1mbnStructure.json",
+  "glbOutput": "src/assets/models/myoglobin1mbn.glb",
+  "coordinateScale": 0.09,
+  "representation": "cartoon",
+  "molecularNodes": {
+    "requiredVersion": "4.4.3",
+    "minimumBlenderVersion": "4.4.0",
+    "releaseUrl": "https://github.com/BradyAJohnston/MolecularNodes/releases/tag/v4.4.3"
+  },
+  "externalTool": {
+    "command": "python3 tools/protein-builder/build-protein.py --config assets-src/proteins/1mbn/protein.config.json --require-blender",
+    "optional": true,
+    "fallback": "existing-backbone"
+  },
+  "semanticAsset": "src/assets/models/myoglobin1mbnProtein.json"
+}
