@@ -593,7 +593,7 @@ export class Player extends Ship {
 
   // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。
   private impactEffect(bullet: Bullet, impactPoint: Vec3): void {
-    this._worldSfx.hit();
+    this._worldSfx.hit(len(sub(impactPoint, this.state.r)));
     if (bullet.type === 'plasma') {
       this._fx.spawnPlasmaFlash(kinematicState(this.state.t, impactPoint, this.state.v));
     } else {
@@ -610,8 +610,8 @@ export class Player extends Ship {
 
   // ラジエーターが全損した瞬間の破片エフェクトを、そのパネル先端付近から発生させる。
   private radiatorBreakEffect(side: RadiatorSide): void {
-    this._worldSfx.hit();
     const tipR = this.radiator.tipWorldPosition(side, this.state.r, this.att);
+    this._worldSfx.hit(len(sub(tipR, this.state.r)));
     this._fx.scatterFragments(this.state.t, tipR, this.state.v, 4, PLAYER_DESTROY_FRAG_COLOR, DESTROY_FRAG_SIZE_MIN, DESTROY_FRAG_SIZE_MAX, 8.0);
   }
 
