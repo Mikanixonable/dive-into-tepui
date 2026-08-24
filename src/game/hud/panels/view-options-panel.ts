@@ -1,5 +1,6 @@
 // 表示パネル(マップモード左レール): 「マップに何を出すか」という1つの問いに答える —
-// 対象はラベル+軌道/ラベル/非表示を1ボタンで循環し、天球グリッド(赤道・黄道)のトグルも持つ。
+// 対象・ガイド・軌道ガイドの3タブに分かれ、対象はラベル+軌道/ラベル/非表示を1ボタンで循環、
+// ガイドは天球グリッド(赤道・黄道・月軌道面・月赤道面)と星空のトグルを持つ。
 import { DIRECTION_GLYPH } from '../../marker/marker-glyphs';
 import {
   COLLAPSE_COLLAPSED_GLYPH,
@@ -8,7 +9,7 @@ import {
   hudRail,
   type CollapseToggleLabels,
 } from '../hud-root';
-import { Button, syncCollapseToggle } from '../widgets';
+import { Button, TabBar, syncCollapseToggle } from '../widgets';
 import {
   bodyClassDisplayMode,
   nextBodyClassDisplayMode,
@@ -16,7 +17,47 @@ import {
   type BodyClassToggles,
 } from '../../celestial/body-visibility';
 import type { CelestialGridVisibility } from '../../../render/celestial-grid';
+import type { OrbitGuideSettings } from '../../celestial/orbit-guide-settings';
+import { OrbitGuideTab } from './orbit-guide-tab';
 import { loadPanelCollapsed, onPanelCollapsedViewChange, savePanelCollapsed } from '../panel-shell';
+
+export type ViewOptionsTab = 'target' | 'guide' | 'orbit';
+
+const TAB_ITEMS: readonly (readonly [ViewOptionsTab, string])[] = [
+  ['target', '対象'],
+  ['guide', 'ガイド'],
+  ['orbit', '軌道ガイド'],
+];
+
+const TAB_STORAGE_KEY = 'tepui.viewOptionsTab';
+
+// localStorage から選択中タブを読み込む。壊れた値・未知の値は 'target' に落とす。
+function loadViewOptionsTab(): ViewOptionsTab {
+  try {
+    const raw = localStorage.getItem(TAB_STORAGE_KEY);
+    return raw === 'target' || raw === 'guide' || raw === 'orbit' ? raw : 'target';
+  } catch {
+    return 'target';
+  }
+}
+
+function saveViewOptionsTab(tab: ViewOptionsTab): void {
+  try {
+    localStorage.setItem(TAB_STORAGE_KEY, tab);
+  } catch {
+    /* localStorage 不可なら保存しない */
+  }
+}
+
+// タブ1枚ぶんの本体。選択中のタブ本体だけが表示され、対応するタブボタンから aria-controls で指される。
+function buildTabBody(tab: ViewOptionsTab): HTMLElement {
+  const el = document.createElement('div');
+  el.className = 'view-options-tab-body';
+  el.id = `hud-view-options-${tab}`;
+  el.setAttribute('role', 'tabpanel');
+  el.tabIndex = 0;
+  return el;
+}
 
 // クラス別トグルの1行分。orbitKey が null のクラス(衛星・ラグランジュ点)は軌道線ボタンを持たない
 // ——衛星の参照軌道線はフォーカス中の系かどうかで別途決まり、ラグランジュ点はそもそも軌道を持たない。
@@ -72,8 +113,6 @@ interface GridRow {
   readonly poleKey: keyof CelestialGridVisibility | null;
   readonly gridKey: keyof CelestialGridVisibility | null;
   readonly scaleKey: keyof CelestialGridVisibility;
-  // 行の末尾に添える補助ボタン。トグルではなく、その行の設定パネルを開く操作を持つ行だけが指定する。
-  readonly auxButton?: { readonly glyph: string; readonly description: string };
 }
 
 const GRID_ROWS: readonly GridRow[] = [
@@ -81,11 +120,6 @@ const GRID_ROWS: readonly GridRow[] = [
   { label: '赤道', categoryKey: 'equator', planeKey: 'equatorPlane', poleKey: 'equatorPole', gridKey: 'equatorGrid', scaleKey: 'equatorScaleGrid' },
   { label: '月軌道面', categoryKey: null, planeKey: null, poleKey: null, gridKey: null, scaleKey: 'moonOrbitScaleGrid' },
   { label: '月赤道面', categoryKey: null, planeKey: null, poleKey: null, gridKey: null, scaleKey: 'moonEquatorScaleGrid' },
-  { label: '静止軌道', categoryKey: null, planeKey: null, poleKey: null, gridKey: null, scaleKey: 'geostationaryOrbit' },
-  {
-    label: 'ハロー軌道', categoryKey: null, planeKey: null, poleKey: null, gridKey: null, scaleKey: 'haloOrbits',
-    auxButton: { glyph: '⚙', description: 'ハロー軌道パネルを開閉' },
-  },
 ];
 
 interface ViewOptionColumn {
@@ -97,11 +131,11 @@ const GRID_COLUMNS: readonly ViewOptionColumn[] = [
   { glyph: '⌒', label: '面' },
   { glyph: DIRECTION_GLYPH.axis, label: '極' },
   { glyph: '⊞', label: '網' },
-  { glyph: '十', label: '面' },
+  { glyph: '十', label: '縮尺' },
 ];
 
-// 列見出しの凡例を持たない、グループ間の細い区切り(節見出しの凡例はセクション先頭で1回だけ
-// 出せば足りるため、天体/機体と設備のようなサブグループはラベルだけの区切りにする)。
+// 列見出しの凡例を持たない、グループ間の細い区切り(天体/機体と設備のようなサブグループを
+// ラベルだけで区切る)。
 function appendSectionDivider(parent: HTMLElement, title: string): void {
   const divider = document.createElement('div');
   divider.className = 'view-options-section-divider';
@@ -109,43 +143,32 @@ function appendSectionDivider(parent: HTMLElement, title: string): void {
   parent.appendChild(divider);
 }
 
-// トグルのグリフと意味をカラム見出しで常に並記し、色だけに識別を委ねない。extraClass は列数が
-// 異なる見出し(天球の4列)を CSS 側で区別するためのモディファイア。
-function appendSectionHeading(
-  parent: HTMLElement,
-  title: string,
-  columns: readonly ViewOptionColumn[],
-  extraClass?: string,
-): void {
+// トグルのグリフと意味を並記する列見出し(天球グリッドの面/極/網/縮尺)。タブ名と重複する
+// 節タイトルは持たず、凡例だけを出す。
+function appendColumnLegend(parent: HTMLElement, columns: readonly ViewOptionColumn[]): void {
   const heading = document.createElement('div');
-  heading.className = extraClass === undefined ? 'view-options-section-heading' : `view-options-section-heading ${extraClass}`;
-
-  const label = document.createElement('span');
-  label.className = 'view-options-section-title';
-  label.textContent = title;
-  heading.appendChild(label);
-
-  if (columns.length > 0) {
-    const legend = document.createElement('span');
-    legend.className = 'view-options-column-legend';
-    for (const column of columns) {
-      const item = document.createElement('span');
-      item.className = 'view-options-column';
-      item.textContent = `${column.glyph} ${column.label}`;
-      legend.appendChild(item);
-    }
-    heading.appendChild(legend);
+  heading.className = 'view-options-section-heading';
+  const legend = document.createElement('span');
+  legend.className = 'view-options-column-legend';
+  for (const column of columns) {
+    const item = document.createElement('span');
+    item.className = 'view-options-column';
+    item.textContent = `${column.glyph} ${column.label}`;
+    legend.appendChild(item);
   }
+  heading.appendChild(legend);
   parent.appendChild(heading);
 }
 
 export class ViewOptionsPanel {
   public onBodyClassModeChange: ((key: keyof BodyClassToggles, mode: BodyClassDisplayMode) => void) | null = null;
   public onGridToggle: ((key: keyof CelestialGridVisibility, on: boolean) => void) | null = null;
-  public onHaloPanelToggle: (() => void) | null = null;
+  public onOrbitGuideChange: ((settings: OrbitGuideSettings) => void) | null = null;
 
-  // haloOrbits 行の縮尺列に置く、ハロー軌道パネルの開閉ボタン。
-  private haloPanelToggleButton!: Button;
+  private readonly tabBar: TabBar<ViewOptionsTab>;
+  private readonly tabBodies: ReadonlyMap<ViewOptionsTab, HTMLElement>;
+  private selectedTab: ViewOptionsTab;
+  private readonly orbitGuideTab: OrbitGuideTab;
 
   private readonly bodyClassModeButtons: readonly (readonly [BodyClassRow, Button, HTMLElement])[];
   // 各ボタンの現在状態の鏡映し。正本は setBodyClassToggles が受け取る boolean 組にあり、
@@ -186,17 +209,22 @@ export class ViewOptionsPanel {
     this.unsubscribeCollapsedView = onPanelCollapsedViewChange(applyCollapsedState);
     collapseToggle.addEventListener('click', () => savePanelCollapsed('hud-view-options', body.classList.contains('collapsed')));
 
-    // マップに出す対象クラスごとに、ラベル+軌道 / ラベル / 非表示を1ボタンで循環する。
+    this.tabBar = new TabBar<ViewOptionsTab>(TAB_ITEMS, (tab) => this.selectTab(tab));
+    this.tabBar.element.setAttribute('aria-label', '表示するものの種類');
+    body.appendChild(this.tabBar.element);
+
+    // 対象タブ: マップに出す対象クラスごとに、ラベル+軌道 / ラベル / 非表示を1ボタンで循環する。
     // 恒星・惑星と、フォーカス中の系の親子は常に出るので、ここで足すのは「その外まで見たい」
     // という明示の意思表示にあたる。
+    const targetBody = buildTabBody('target');
+    body.appendChild(targetBody);
     const bodyClassModeButtons: (readonly [BodyClassRow, Button, HTMLElement])[] = [];
     const rowGroups: readonly { readonly title: string; readonly rows: readonly BodyClassRow[] }[] = [
       { title: '天体', rows: BODY_CLASS_ROWS },
       { title: '機体と設備', rows: ENTITY_ROWS },
     ];
-    appendSectionHeading(body, '対象', [], 'view-options-heading-target');
     for (const group of rowGroups) {
-      appendSectionDivider(body, group.title);
+      appendSectionDivider(targetBody, group.title);
       const groupEl = document.createElement('div');
       groupEl.className = 'target-class-group';
       for (const row of group.rows) {
@@ -214,15 +242,17 @@ export class ViewOptionsPanel {
         groupEl.appendChild(rowEl);
         bodyClassModeButtons.push([row, modeButton, rowEl]);
       }
-      body.appendChild(groupEl);
+      targetBody.appendChild(groupEl);
     }
     this.bodyClassModeButtons = bodyClassModeButtons;
 
-    // 天球(参照面:黄道・赤道・月軌道・月赤道、環境:星空)。天体クラスと同じ行の形
+    // ガイドタブ: 天球(参照面:黄道・赤道・月軌道・月赤道、環境:星空)。天体クラスと同じ行の形
     // (見出し+トグル列)を流用し、面/極/網/縮尺を1つの表にまとめる。
+    const guideBody = buildTabBody('guide');
+    body.appendChild(guideBody);
     const gridButtons: (readonly [keyof CelestialGridVisibility, Button])[] = [];
     const gridCategories: (readonly [keyof CelestialGridVisibility, Button, HTMLElement])[] = [];
-    appendSectionHeading(body, 'ガイド', GRID_COLUMNS, 'view-options-heading-grid');
+    appendColumnLegend(guideBody, GRID_COLUMNS);
     for (const row of GRID_ROWS) {
       const rowEl = document.createElement('div');
       rowEl.className = 'body-class-row grid-class-row';
@@ -242,16 +272,6 @@ export class ViewOptionsPanel {
         [row.gridKey, '⊞', `${row.label}グリッド`],
         [row.scaleKey, '十', `${row.label}の縮尺グリッド`],
       ] as const) {
-        // 補助ボタンを持つ行は、縮尺列の位置をそのボタンに充てる(列トグルを持たない行だけが指定する)。
-        if (key === row.scaleKey && row.auxButton !== undefined) {
-          const aux = new Button(row.auxButton.glyph, () => this.onHaloPanelToggle?.());
-          aux.element.classList.add('body-class-icon-btn');
-          aux.element.title = row.auxButton.description;
-          aux.element.setAttribute('aria-label', row.auxButton.description);
-          btnsEl.appendChild(aux.element);
-          this.haloPanelToggleButton = aux;
-          continue;
-        }
         if (key === null || (row.categoryKey === null && key === row.scaleKey)) {
           btnsEl.appendChild(document.createElement('span')).className = 'body-class-icon-btn-empty';
           continue;
@@ -261,7 +281,7 @@ export class ViewOptionsPanel {
         btnsEl.appendChild(button.element);
         gridButtons.push([key, button]);
       }
-      body.appendChild(rowEl);
+      guideBody.appendChild(rowEl);
     }
     this.gridButtons = gridButtons;
     this.gridCategoryButtons = gridCategories;
@@ -271,9 +291,35 @@ export class ViewOptionsPanel {
     this.starsButton = this.toggleButton('星空', '星空を表示', 'stars', this.gridCurrent, (key, on) => this.onGridToggle?.(key, on));
     this.starsButton.element.classList.add('body-class-title');
     starsRow.appendChild(this.starsButton.element);
-    body.appendChild(starsRow);
+    guideBody.appendChild(starsRow);
+
+    // 軌道ガイドタブ: 参照として描く軌道のガイド線(静止軌道・ハロー軌道・平面/垂直リヤプノフ・
+    // リサジュー・DRO)。
+    const orbitBody = buildTabBody('orbit');
+    body.appendChild(orbitBody);
+    this.orbitGuideTab = new OrbitGuideTab();
+    this.orbitGuideTab.onSettingsChange = (settings) => this.onOrbitGuideChange?.(settings);
+    orbitBody.appendChild(this.orbitGuideTab.element);
+
+    this.tabBodies = new Map([['target', targetBody], ['guide', guideBody], ['orbit', orbitBody]]);
+    for (const [tab] of TAB_ITEMS) this.tabBar.buttonFor(tab)?.setAttribute('aria-controls', `hud-view-options-${tab}`);
+    this.selectedTab = loadViewOptionsTab();
+    this.tabBar.setSelected(this.selectedTab);
+    this.applyTabVisibility();
 
     hudRail(root, 'left').appendChild(this.panel);
+  }
+
+  // タブボタン押下で選択タブを切り替え、保存する。
+  private selectTab(tab: ViewOptionsTab): void {
+    this.selectedTab = tab;
+    saveViewOptionsTab(tab);
+    this.tabBar.setSelected(tab);
+    this.applyTabVisibility();
+  }
+
+  private applyTabVisibility(): void {
+    for (const [tab, el] of this.tabBodies) el.classList.toggle('hidden', tab !== this.selectedTab);
   }
 
   private setBodyClassModeButton(
@@ -312,11 +358,6 @@ export class ViewOptionsPanel {
     this.panel.classList.toggle('hidden', !visible);
   }
 
-  // ハロー軌道パネルの開閉ボタンの点灯状態を外部から与える。
-  public setHaloPanelOpen(open: boolean): void {
-    this.haloPanelToggleButton.setOn(open);
-  }
-
   // パネルを取り除き、折りたたみ状態変化の購読を解く。
   public dispose(): void {
     this.unsubscribeCollapsedView();
@@ -348,5 +389,10 @@ export class ViewOptionsPanel {
       category.setOn(enabled);
       row.classList.toggle('category-off', !enabled);
     }
+  }
+
+  // 軌道ガイドタブの表示状態を現在値へ合わせる。
+  public setOrbitGuideSettings(settings: OrbitGuideSettings): void {
+    this.orbitGuideTab.setSettings(settings);
   }
 }
