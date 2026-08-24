@@ -5,15 +5,22 @@
 import { Hud } from './hud/hud';
 import { Base } from './game-entity/base';
 import { fmtAmmoStatus, fmtDist, fmtEnergy, fmtSpeed, fmtTime } from './hud/utils';
-import { orbitInfo, relativeInfo } from './hud/orbit-info';
-import { ContextMenu, MenuItem } from './hud/context-menu';
-import { PropertyRow, PropertyWindow, PropertyWindowContent, PropertyWindowItem } from './hud/property-window';
-import { MenuAction, MenuCommon } from './hud/menu-actions';
-import { celestialBodyName } from './hud/frame-labels';
-import { lagrangeParentId } from './hud/object-groups';
+import { orbitInfo, relativeInfo } from './hud/orbit/orbit-info';
+import { autoOrbitReference } from './orbit-reference';
+import {
+  ContextMenu, MenuItem, PropertyRow, PropertyWindow, PropertyWindowContent, PropertyWindowItem,
+  type PropertyWindowRelatedItem,
+  MenuAction, MenuCommon, type PauseMenu,
+} from './hud/windows';
+import { TEMP_WINDOW_GROUP } from './hud/overlay-manager';
+import { celestialBodyName } from './hud/frame/frame-labels';
+import { LAGRANGE_ID, lagrangeParentId } from './hud/object-groups';
+import { bodyClassOf } from './celestial/body-class';
+import { ENTITY_GLYPH, ORBIT_POINT_GLYPH, bodyEntityGlyph } from './marker/marker-glyphs';
+import { baseMarkerSvg, shipMarkerSvg } from './marker/marker-shapes';
 import { MapPickable, pickNearest } from './map-pickable';
 import { focusTargetId } from './camera/focus-target';
-import { ObjectListPanel } from './hud/object-list-panel';
+import { PhysicalObjectListPanel } from './hud/panels/physical-object-list-panel';
 import type { Input } from './input/input';
 import { pickRadiusSq } from './input/pointer-precision';
 import { EntityManager } from './simulation/entity-manager';
@@ -22,24 +29,24 @@ import { NavTarget } from './nav-target';
 import { CameraSystem } from './camera/camera-system';
 import { PlanEditor } from './plan/plan-editor';
 import { SimSpeedManager } from './sim-speed-manager';
-import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from './hud/orbit-labels';
-import type { PauseMenu } from './hud/pause-menu';
-import { Targeter, type CombatTarget } from './targeter';
+import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from './hud/orbit/orbit-labels';
 import type { Docking } from './docking';
-import type { ActivePlayerController } from './active-player-controller';
-import type { FrameControls } from './hud/frame-controls';
+import type { ActivePlayerController } from './active-controllable-controller';
+import type { FrameControls } from './hud/frame/frame-controls';
 import type { Stage } from './stages/stage';
 import { Player, planExecutionLabel, type PlanExecutionMode } from './player/player';
 import type { GameEntity } from './game-entity/game-entity';
+import type { Targeter } from './targeter';
 import { add, cross, len, norm, scale, sub, v3 } from '../physics/vec3';
 import { metersPerPixel } from '../physics/projection';
 import type { ObjectType } from './creative/object-placer-panel';
 import type { KinematicState } from '../physics/kinematic-state';
-import { Attractor, orbitalElementsOf, strongestAttractor } from '../physics/attractor';
+import { CelestialBody, orbitalElementsOf, orbitingAttractorOf, strongestAttractor } from '../physics/celestial-body';
 import { apsisAltitudes } from '../physics/elements';
 import { bodyDef, primaryOf } from '../physics/solar-system';
 import * as C from './const';
 import type { MapPickables } from './map-pickables';
+import type { Part } from './game-entity/parts';
 
 interface PickHandler {
   itemsFor(target: MapPickable, simTime: number): readonly MenuItem<MenuAction>[];
@@ -47,11 +54,7 @@ interface PickHandler {
 }
 
 // 軌道計画の実行モードの巡回順。ボタン1つで次のモードへ進める。
-const PLAN_EXECUTION_MODES: readonly PlanExecutionMode[] = ['off', 'instant', 'powered'];
-
-// クリップされていないプロパティウィンドウが同時に高々1枚しか開かないための排他グループ名。
-// クリップ状態の遷移ごとの出し入れは PropertyWindow 自身が OverlayManager へ宣言する。
-const PROPERTY_WINDOW_TEMP_GROUP = 'property-window-temp';
+const PLAN_EXECUTION_MODES: readonly PlanExecutionMode[] = ['off', 'instant'];
 
 // 開いているプロパティウィンドウ本体と、開いた時点の対象。rows/items の再導出はこの target
 // (毎フレーム候補列から更新されうる)を経由するので、対象が消滅したかどうかの判定にも使える。
@@ -60,16 +63,28 @@ interface WindowEntry {
   target: MapPickable;
 }
 
+interface PartWindowEntry {
+  readonly win: PropertyWindow<MenuAction>;
+  readonly shipId: string;
+  readonly partId: string;
+}
+
 export class MapContextActions {
   // 'empty-space' は宇宙空間そのものでプロパティを持たないので、従来どおり ContextMenu を使う。
   private readonly menu: ContextMenu<MapPickable, MenuAction>;
   // 開いているプロパティウィンドウ。`${kind}:${id}` でオブジェクト1つにつき高々1枚に保つ
   // (一時ウィンドウの排他自体は OverlayManager が持つ — ここは対象との対応づけのみ)。
   private readonly windows = new Map<string, WindowEntry>();
-  private readonly objectListPanel: ObjectListPanel;
+  private readonly partWindows = new Map<string, PartWindowEntry>();
+  private readonly physicalObjectListPanel: PhysicalObjectListPanel;
+  private expandedBaseWindowKey: string | null = null;
 
   // Docking は MapContextActions より後に生成されるので、生成後に登録する。
-  setDocking(docking: Docking): void { this.docking = docking; }
+  setDocking(docking: Docking): void {
+    this.docking = docking;
+    docking.onSelect = (id) => this.physicalObjectListPanel.select(id);
+    docking.basePanel.onClose = () => this.collapseBasePanel();
+  }
   private docking: Docking | null = null;
 
   setControlledBaseHandler(handler: (base: Base | null) => void, getControlledBase: () => Base | null): void {
@@ -100,24 +115,29 @@ export class MapContextActions {
       const handler = this.handlers[target.kind];
       if (handler) handler.run(act, target);
     };
-    this.objectListPanel = new ObjectListPanel(hud.mapRoot, ephemeris.registry);
-    this.objectListPanel.onSelect = (id) => {
-      const target = this.pickables.pickables.find((i) => i.id === id);
-      if (target) this.objectListPanel.select(id);
-    };
-    this.objectListPanel.onFocus = (id) => {
+    this.physicalObjectListPanel = new PhysicalObjectListPanel(hud.mapRoot, ephemeris.registry);
+    this.navTarget.onSelect = (id) => this.physicalObjectListPanel.select(id);
+    this.physicalObjectListPanel.onFocus = (id) => {
       this.frameControls.setFocus({ kind: 'object', id });
       this.hud.hint(`${this.pickables.pickables.find((i) => i.id === id)?.name ?? id} にフォーカス`);
     };
-    this.objectListPanel.onNavTarget = (id) => {
+    this.physicalObjectListPanel.onNavTarget = (id) => {
       const target = this.pickables.pickables.find((i) => i.id === id);
       if (target && this.navTarget.canTarget(id, this.entities, this.ephemeris, this.pickables.lastSimTime)) {
         this.navTarget.toggleTarget(id, target.name);
       }
     };
-    this.objectListPanel.onSelectRight = (id, clientX, clientY) => {
+    this.physicalObjectListPanel.onSelectRight = (id, clientX, clientY) => {
       const target = this.pickables.pickables.find((i) => i.id === id);
       if (target) this.openPropertyWindow(clientX, clientY, target, this.pickables.lastSimTime);
+    };
+    this.hud.enemiesPanel.onSelectRight = (id, clientX, clientY) => {
+      const enemy = this.entities.enemies.find((e) => e.id === id);
+      if (enemy) this.openPropertyWindow(clientX, clientY, this.entityToPickable(enemy), this.pickables.lastSimTime);
+    };
+    this.hud.targetPanel.onSelectRight = (clientX, clientY) => {
+      const target = this.targeter.aliveTarget;
+      if (target) this.openPropertyWindow(clientX, clientY, this.entityToPickable(target), this.pickables.lastSimTime);
     };
   }
 
@@ -140,7 +160,7 @@ export class MapContextActions {
 
   // 対象1つにつきウィンドウは高々1枚: 既存があればクリック位置へ動かして最前面に出すだけで
   // 新規には開かない。一時ウィンドウ(非クリップ)どうしの排他は PropertyWindow 自身が
-  // OverlayManager の PROPERTY_WINDOW_TEMP_GROUP を通じて保つ。
+  // OverlayManager の TEMP_WINDOW_GROUP を通じて保つ。
   private openPropertyWindow(clientX: number, clientY: number, target: MapPickable, simTime: number): void {
     const key = this.windowKey(target);
     const existing = this.windows.get(key);
@@ -151,7 +171,7 @@ export class MapContextActions {
     }
     const w = new PropertyWindow<MenuAction>(
       this.hud.layers.window, clientX, clientY, this.buildContent(target, simTime),
-      this.hud.overlayManager, PROPERTY_WINDOW_TEMP_GROUP,
+      this.hud.overlayManager, TEMP_WINDOW_GROUP,
     );
     const entry: WindowEntry = { win: w, target };
     this.windows.set(key, entry);
@@ -160,16 +180,88 @@ export class MapContextActions {
     // 操作項目のクリックは、クリップ済みか keepOpen(排他選択肢の切り替え)なら開いたままにする。
     // 「削除」は対象自体が消えるのでどちらでも閉じる。
     w.onSelect = (act, keepOpen) => {
+      if (act === 'toggleBasePanel' && entry.target.kind === 'base') {
+        this.toggleBasePanel(key, entry);
+        return;
+      }
       const handler = this.handlers[entry.target.kind];
       if (handler) handler.run(act, entry.target);
       if (act === 'delete' || (!w.clipped && !keepOpen)) this.closeWindow(key);
     };
-    w.onClose = () => this.forgetWindow(key);
+    w.onClose = () => {
+      if (this.expandedBaseWindowKey === key) {
+        this.expandedBaseWindowKey = null;
+        this.docking?.closePanel();
+      }
+      this.closePartWindowsForShip(entry.target.kind === 'player' ? entry.target.id : '');
+      this.forgetWindow(key);
+    };
   }
 
   // windows のキー。kind をまたいで id が衝突しないよう種別込みにする。
   private windowKey(target: MapPickable): string {
     return `${target.kind}:${target.id}`;
+  }
+
+  private partWindowKey(shipId: string, partId: string): string {
+    return `part:${shipId}:${partId}`;
+  }
+
+  private openPartPropertyWindow(ship: Player, part: Part, clientX: number, clientY: number): void {
+    const key = this.partWindowKey(ship.id, part.id);
+    const existing = this.partWindows.get(key);
+    if (existing) {
+      existing.win.moveTo(clientX, clientY);
+      existing.win.bringToFront();
+      return;
+    }
+    const w = new PropertyWindow<MenuAction>(
+      this.hud.layers.window, clientX, clientY, this.partWindowContent(ship, part), this.hud.overlayManager,
+    );
+    const entry: PartWindowEntry = { win: w, shipId: ship.id, partId: part.id };
+    this.partWindows.set(key, entry);
+    w.onSelect = (act) => {
+      const currentShip = this.entities.findPlayer(entry.shipId);
+      const currentPart = currentShip?.parts.find((candidate) => candidate.id === entry.partId);
+      if (!currentShip || !currentPart) return;
+      this.setPartDeployment(currentShip, currentPart, act === 'deployPart');
+    };
+    w.onClose = () => this.partWindows.delete(key);
+  }
+
+  private closePartWindowsForShip(shipId: string): void {
+    for (const entry of this.partWindows.values()) {
+      if (entry.shipId === shipId) entry.win.close();
+    }
+  }
+
+  private partWindowContent(ship: Player, part: Part): PropertyWindowContent<MenuAction> {
+    const deployable = part.type === 'radiator' || part.type === 'solar_panel';
+    const items: PropertyWindowItem<MenuAction>[] = deployable
+      ? [{ label: '展開', act: 'deployPart', keepOpen: true }, { label: '収納', act: 'stowPart', keepOpen: true }]
+      : [];
+    return {
+      title: part.name,
+      subtitle: `取り付け艦: ${ship.name}`,
+      rows: [
+        { key: 'name', label: '部品名', value: part.name },
+        { key: 'ship', label: '取り付け艦', value: ship.name },
+        { key: 'wear', label: '損耗度', value: this.partWearText(part) },
+      ],
+      items,
+    };
+  }
+
+  private partWearText(part: Part): string {
+    const wear = part.maxHp > 0 ? Math.max(0, Math.min(1, 1 - part.hp / part.maxHp)) : 1;
+    return `${(wear * 100).toFixed(1)}% (${Math.floor(part.hp)} / ${part.maxHp})`;
+  }
+
+  private setPartDeployment(ship: Player, part: Part, deployed: boolean): void {
+    const sameTypeParts = ship.parts.filter((candidate) => candidate.type === part.type);
+    const side = sameTypeParts.indexOf(part) === 0 ? 'up' : 'down';
+    if (part.type === 'radiator') ship.radiator.setDeployed(side, deployed);
+    if (part.type === 'solar_panel') ship.power.setDeployed(side, deployed);
   }
 
   // 台帳から外すだけで DOM 破棄はしない — ✕ ボタン自身が dispose 済みのときに呼ぶ経路。
@@ -183,6 +275,27 @@ export class MapContextActions {
     const entry = this.windows.get(key);
     if (!entry) return;
     entry.win.close();
+  }
+
+  private toggleBasePanel(key: string, entry: WindowEntry): void {
+    if (this.expandedBaseWindowKey === key) {
+      this.collapseBasePanel();
+      return;
+    }
+    const base = this.entities.findBase(entry.target.id);
+    if (!base || !this.docking) return;
+    this.collapseBasePanel();
+    entry.win.setExpandedPanel(this.docking.openPanel(base));
+    this.expandedBaseWindowKey = key;
+    entry.win.bringToFront();
+  }
+
+  private collapseBasePanel(): void {
+    if (this.expandedBaseWindowKey !== null) {
+      this.windows.get(this.expandedBaseWindowKey)?.win.setExpandedPanel(null);
+      this.expandedBaseWindowKey = null;
+    }
+    this.docking?.closePanel();
   }
 
   // 左クリック位置の最寄りの自艦・基地を選択する。当たらなければ消費せず、PlanEditor の
@@ -224,11 +337,11 @@ export class MapContextActions {
   }
 
   // 単クリックは選択までに留める: 自艦はプロパティウィンドウを開くだけで操作対象は変えず、
-  // 基地も selectBase のみ呼んでドックビューへは遷移しない。取り消せない操作は明示の項目
+  // 基地も selectBase のみ呼んで基地パネルは展開しない。取り消せない操作は明示の項目
   // (プロパティウィンドウ)かダブルクリックに限る。
   private selectPickable(target: MapPickable, clientX: number, clientY: number): void {
-    this.objectListPanel.select(target.id);
     if (target.kind === 'player') {
+      this.physicalObjectListPanel.select(target.id);
       this.openPropertyWindow(clientX, clientY, target, this.pickables.lastSimTime);
     } else if (target.kind === 'base') {
       const base = this.entities.findBase(target.id);
@@ -339,16 +452,16 @@ export class MapContextActions {
     return { id: entity.id, name: entity.name, pos: entity.state.r, kind: 'ship' };
   }
 
-  // 軌道オブジェクトウィンドウをマップ視点である間は常設で表示し、開いている全プロパティ
+  // 軌道物体ウィンドウをマップ視点である間は常設で表示し、開いている全プロパティ
   // ウィンドウの値を最新化する。対象そのものが消滅していれば(撃破・回収・削除)閉じる —
   // 未来ゴースト時刻で位置が求まらないだけのフレーム(displayState が null)は候補列
   // (pickables.pickables)から外れるだけで消滅ではないので、生存判定は対象の alive で行う。
-  sync(simTime: number, attractors: readonly Attractor[], player: Player | null): void {
+  sync(simTime: number, celestialBodies: readonly CelestialBody[], player: Player | null): void {
     const overviewMode = this.cameraSystem.overviewMode;
-    this.objectListPanel.setVisible(overviewMode);
+    this.physicalObjectListPanel.setVisible(overviewMode);
     // マップを離れると ViewManager.closeMap() が開いているウィンドウを閉じる。
     // 戦闘中は候補列を更新せず、ウィンドウもないため、毎フレームの Map 生成と行導出を省く。
-    if (!overviewMode && this.windows.size === 0) return;
+    if (!overviewMode && this.windows.size === 0 && this.partWindows.size === 0) return;
     const items = this.pickables.pickables;
     if (overviewMode) {
       // ラグランジュ点は自分を持つ天体(衛星ならその衛星自身)、それ以外の天体は主星/主天体を
@@ -359,7 +472,7 @@ export class MapContextActions {
         const parent = l.isLagrange ? lagrangeParentId(l.id) : primaryOf(registry, l.id);
         if (parent !== null) parentOf.set(l.id, parent);
       }
-      this.objectListPanel.sync(items, focusTargetId(this.cameraSystem.mapCamera.focus), parentOf);
+      this.physicalObjectListPanel.sync(items, focusTargetId(this.cameraSystem.mapCamera.focus), parentOf);
     }
 
     const byKey = new Map(items.map((i) => [this.windowKey(i), i]));
@@ -370,8 +483,26 @@ export class MapContextActions {
       entry.target = byKey.get(key) ?? entry.target;
       const { title, subtitle, items: menuItems } = this.windowParts(entry.target, simTime);
       entry.win.syncHeader(title, subtitle);
-      entry.win.syncRows(this.buildRows(entry.target, attractors, player, simTime));
+      entry.win.syncRelatedItems(this.relatedItemsFor(entry.target, celestialBodies), this.relatedTitleFor(entry.target));
+      entry.win.syncRows(this.buildRows(entry.target, celestialBodies, player, simTime));
       entry.win.syncItems(menuItems);
+      entry.win.syncBadge(this.physicalObjectListPanel.isSelected(entry.target.id) ? 'on'
+        : this.physicalObjectListPanel.isTarget(entry.target.id) ? 'tgt' : null);
+    }
+    for (const entry of [...this.partWindows.values()]) {
+      const ship = this.entities.findPlayer(entry.shipId);
+      const part = ship?.parts.find((candidate) => candidate.id === entry.partId);
+      if (!ship || !part || !ship.alive || ship !== this.activePlayers.current) {
+        entry.win.close();
+        continue;
+      }
+      entry.win.syncHeader(part.name, `取り付け艦: ${ship.name}`);
+      entry.win.syncRows([
+        { key: 'name', label: '部品名', value: part.name },
+        { key: 'ship', label: '取り付け艦', value: ship.name },
+        { key: 'wear', label: '損耗度', value: this.partWearText(part) },
+      ]);
+      entry.win.syncItems(this.partWindowContent(ship, part).items);
     }
   }
 
@@ -385,6 +516,9 @@ export class MapContextActions {
       case 'ammo': return !(
         this.entities.ammoPickups.find((ammoPickup) => ammoPickup.id === target.id)?.alive ?? false
       );
+      case 'fuel': return !(
+        this.entities.rcsFuelPickups.find((pickup) => pickup.id === target.id)?.alive ?? false
+      );
       case 'base': return !(this.entities.findBase(target.id)?.alive ?? false);
       default: return !this.pickables.pickables.some((i) => this.windowKey(i) === this.windowKey(target));
     }
@@ -394,25 +528,25 @@ export class MapContextActions {
   close(): void {
     this.menu.close();
     for (const key of [...this.windows.keys()]) this.closeWindow(key);
+    for (const entry of [...this.partWindows.values()]) entry.win.close();
   }
 
   // 開いているメニュー・ウィンドウを畳んだうえで、常設の一覧パネルと自身のメニューを取り除く。
   dispose(): void {
     this.close();
     this.menu.dispose();
-    this.objectListPanel.dispose();
+    this.physicalObjectListPanel.dispose();
   }
 
   private readonly handlers: Record<MapPickable['kind'], PickHandler> = {
     'body': {
       itemsFor: (target, simTime) => {
-        const registry = this.ephemeris.registry;
         let subLabel = '天体・ラグランジュ点';
         const lagrangeMatch = target.id.match(/^(.+)-l[1-5]$/);
         if (lagrangeMatch) {
           const secondary = lagrangeMatch[1]!;
-          const primary = primaryOf(registry, secondary);
-          subLabel = primary === null
+          const primary = this.bodyParentId(secondary);
+          subLabel = primary === undefined || primary === null
             ? 'ラグランジュ点'
             : `${celestialBodyName(primary)}-${celestialBodyName(secondary)} ラグランジュ点`;
         } else if (target.id === this.ephemeris.originId) subLabel = '母星 (中心天体)';
@@ -421,29 +555,34 @@ export class MapContextActions {
         return [
           { type: 'header', label: target.name, subLabel },
           MenuCommon.focus(),
-          ...this.navTargetItems(target, simTime),
+          ...this.targetItems(target, simTime),
           MenuCommon.cancel(),
         ];
       },
       run: (act, target) => this.runBodyShip(act, target),
     },
     'ship': {
-      itemsFor: (target, simTime) => [
-        ...this.combatTargetLockItems(this.entities.findEnemy(target.id)),
-        MenuCommon.focus(),
-        ...this.navTargetItems(target, simTime),
-        ...this.duplicateItems(),
-        { label: '削除', act: 'delete' },
-        MenuCommon.cancel(),
-      ],
+      itemsFor: (target, simTime) => {
+        const enemy = this.entities.findEnemy(target.id);
+        const trajectoryItem: readonly MenuItem<MenuAction>[] = enemy
+          ? [MenuCommon.trajectoryLine(enemy.showTrajectoryLine)] : [];
+        return [
+          ...this.targetItems(target, simTime),
+          MenuCommon.focus(),
+          ...trajectoryItem,
+          ...this.duplicateItems(),
+          { label: '削除', act: 'delete' },
+          MenuCommon.cancel(),
+        ];
+      },
       run: (act, target) => {
+        const enemy = this.entities.findEnemy(target.id);
         if (act === 'delete') {
-          const enemy = this.entities.findEnemy(target.id);
           if (enemy) enemy.alive = false;
+        } else if (act === 'toggleTrajectoryLine') {
+          if (enemy) enemy.showTrajectoryLine = !enemy.showTrajectoryLine;
         } else if (act === 'duplicate') {
           this.runDuplicate(target);
-        } else if (act === 'targetPrimary' || act === 'targetSecondary') {
-          this.runTargetLock(act, this.entities.findEnemy(target.id));
         } else {
           this.runBodyShip(act, target);
         }
@@ -452,7 +591,7 @@ export class MapContextActions {
     'ammo': {
       itemsFor: (target, simTime) => [
         MenuCommon.focus(),
-        ...this.navTargetItems(target, simTime),
+        ...this.targetItems(target, simTime),
         ...this.duplicateItems(),
         { label: '削除', act: 'delete' },
         MenuCommon.cancel(),
@@ -468,9 +607,28 @@ export class MapContextActions {
         }
       },
     },
+    'fuel': {
+      itemsFor: (target, simTime) => [
+        MenuCommon.focus(),
+        ...this.targetItems(target, simTime),
+        ...this.duplicateItems(),
+        { label: '削除', act: 'delete' },
+        MenuCommon.cancel(),
+      ],
+      run: (act, target) => {
+        if (act === 'delete') {
+          const pickup = this.entities.rcsFuelPickups.find((candidate) => candidate.id === target.id);
+          if (pickup) pickup.alive = false;
+        } else if (act === 'duplicate') {
+          this.runDuplicate(target);
+        } else {
+          this.runBodyShip(act, target);
+        }
+      },
+    },
     'apsis': {
       itemsFor: (target, simTime) => {
-        const centerId = strongestAttractor(target.pos, this.ephemeris.attractorsAt(simTime)).id;
+        const centerId = strongestAttractor(target.pos, this.ephemeris.celestialBodiesAt(simTime)).id;
         const peOrAp = target.id === 'apsisAp' ? 'ap' : 'pe';
         const spec = getApsisLabelSpec(peOrAp, centerId);
         return [
@@ -485,7 +643,8 @@ export class MapContextActions {
     },
     'relnode': {
       itemsFor: (target) => {
-        const spec = target.id === 'nav-an' ? ORBIT_ELEMENT_LABELS.an : ORBIT_ELEMENT_LABELS.dn;
+        const spec = target.id === 'nav-an' ? ORBIT_ELEMENT_LABELS.an
+          : target.id === 'nav-dn' ? ORBIT_ELEMENT_LABELS.dn : ORBIT_ELEMENT_LABELS.ca;
         return [
           { type: 'header', label: spec.nameJa, subLabel: spec.nameEn },
           MenuCommon.warp(),
@@ -498,9 +657,9 @@ export class MapContextActions {
     },
     'eqnode': {
       itemsFor: (target, simTime) => {
-        const isAn = target.id.endsWith('-eqan');
+        const isAn = target.id.startsWith('eqan-');
         const spec = isAn ? ORBIT_ELEMENT_LABELS.eqAn : ORBIT_ELEMENT_LABELS.eqDn;
-        const centerName = celestialBodyName(strongestAttractor(target.pos, this.ephemeris.attractorsAt(simTime)).id);
+        const centerName = celestialBodyName(strongestAttractor(target.pos, this.ephemeris.celestialBodiesAt(simTime)).id);
         const label = `${centerName}${spec.nameJa}`;
         return [
           { type: 'header', label, subLabel: spec.nameEn },
@@ -535,14 +694,17 @@ export class MapContextActions {
             dockItems.push(MenuCommon.dock());
           }
         }
+        // 操作対象の自艦は常に予測線・過去線固定なのでトグル自体を出さない。
+        const trajectoryItem: readonly MenuItem<MenuAction>[] = (!isActive && ship)
+          ? [MenuCommon.trajectoryLine(ship.showTrajectoryLine)] : [];
 
         return [
-          ...this.combatTargetLockItems(ship),
+          ...this.targetItems(target, simTime),
           ...dockItems,
           ...planExec,
           ...activate,
           MenuCommon.focus(),
-          ...this.navTargetItems(target, simTime),
+          ...trajectoryItem,
           ...this.duplicateItems(),
           ...remove,
           MenuCommon.cancel(),
@@ -551,7 +713,9 @@ export class MapContextActions {
       run: (act, target) => {
         const activeShip = this.activePlayers.current;
         const ship = this.entities.findPlayer(target.id);
-        if (act === 'dock') {
+        if (act === 'toggleTrajectoryLine') {
+          if (ship) ship.showTrajectoryLine = !ship.showTrajectoryLine;
+        } else if (act === 'dock') {
           if (activeShip && ship) this.docking?.dockTo(activeShip, ship);
         } else if (act === 'undock') {
           if (activeShip) this.docking?.undock(activeShip);
@@ -570,8 +734,6 @@ export class MapContextActions {
           this.runDuplicate(target);
         } else if (act === 'delete') {
           if (ship) this.activePlayers.remove(ship);
-        } else if (act === 'targetPrimary' || act === 'targetSecondary') {
-          this.runTargetLock(act, ship);
         } else {
           this.runBodyShip(act, target);
         }
@@ -598,7 +760,7 @@ export class MapContextActions {
       },
     },
     'base': {
-      itemsFor: (target) => {
+      itemsFor: (target, simTime) => {
         const base = this.entities.findBase(target.id);
         const activeShip = this.activePlayers.current;
         const isControlled = base && this.getControlledBase ? this.getControlledBase() === base : false;
@@ -608,10 +770,7 @@ export class MapContextActions {
 
         const dockItems: MenuItem<MenuAction>[] = [];
         if (activeShip && base && this.docking) {
-          const isDocked = this.docking.getDockedTarget(activeShip) === base;
-          if (isDocked) {
-            dockItems.push(MenuCommon.transferResources(), MenuCommon.storeInBase(), MenuCommon.undock());
-          } else if (this.docking.canDock(activeShip, base)) {
+          if (this.docking.canDock(activeShip, base)) {
             dockItems.push(MenuCommon.dock());
           }
         }
@@ -621,14 +780,21 @@ export class MapContextActions {
             ? { label: '操作対象を解除', act: 'deactivate' }
             : { label: '操作対象にする', act: 'activate' }]
           : [];
+        const trajectoryItem: readonly MenuItem<MenuAction>[] = base
+          ? [MenuCommon.trajectoryLine(base.showTrajectoryLine)] : [];
 
         return [
           { type: 'header', label: base?.name ?? target.name, subLabel },
+          ...this.targetItems(target, simTime),
           ...controlItem,
           ...dockItems,
-          { label: '基地ビューを開く', act: 'openDock' },
+          {
+            label: this.expandedBaseWindowKey === this.windowKey(target)
+              ? '基地パネルを収納' : '基地パネルを展開',
+            act: 'toggleBasePanel', keepOpen: true,
+          },
           MenuCommon.focus(),
-          ...this.navTargetItems(target, 0),
+          ...trajectoryItem,
           ...this.duplicateItems(),
           { label: '削除', act: 'delete' },
           MenuCommon.cancel(),
@@ -645,23 +811,16 @@ export class MapContextActions {
           if (base && this.controlBaseHandler) this.controlBaseHandler(base);
         } else if (act === 'deactivateBase') {
           if (this.controlBaseHandler) this.controlBaseHandler(null);
+        } else if (act === 'toggleTrajectoryLine') {
+          if (base) base.showTrajectoryLine = !base.showTrajectoryLine;
         } else if (act === 'dock') {
           if (activeShip && base) this.docking?.dockTo(activeShip, base);
-        } else if (act === 'undock') {
-          if (activeShip) this.docking?.undock(activeShip);
-        } else if (act === 'storeInBase') {
-          if (activeShip && base) this.docking?.storeInBase(activeShip, base);
-        } else if (act === 'transferResources') {
-          if (activeShip && base) this.docking?.openTransfer(activeShip, base);
         } else if (act === 'delete') {
           if (base) {
             if (this.getControlledBase?.() === base) this.controlBaseHandler?.(null);
             this.docking?.clearActiveBaseIf(base);
             base.alive = false;
           }
-        } else if (act === 'openDock') {
-          if (base) this.docking?.activate(base);
-          else this.hud.hint('基地が見つかりません');
         } else if (act === 'duplicate') {
           this.runDuplicate(target);
         } else {
@@ -677,39 +836,32 @@ export class MapContextActions {
     return handler ? handler.itemsFor(target, simTime) : [];
   }
 
-  // 対象を航法ターゲットにする/解除する項目。軌道面が定まらない対象(地球・太陽自身など)
-  // では選んでも AN/DN が出ないので項目自体を出さない。
-  private navTargetItems(target: MapPickable, simTime: number): readonly MenuItem<MenuAction>[] {
-    if (target.id === this.navTarget.id) return [MenuCommon.navTarget(true)];
-    const canTarget = this.navTarget.canTarget(target.id, this.entities, this.ephemeris, simTime);
-    return canTarget ? [MenuCommon.navTarget(false)] : [];
+  // 天体候補の親を解決する。通常の天体はレジストリから primaryOf で、ラグランジュ点は
+  // ID の親部分から解決する。MapPickable は通常天体と派生したラグランジュ点をどちらも
+  // kind:'body' で表すため、未登録の文字列を primaryOf/bodyDef へ渡さない境界をここに置く。
+  // undefined は候補が不正/古い、null は恒星など親を持たない天体を表す。
+  private bodyParentId(id: string): string | null | undefined {
+    const registry = this.ephemeris.registry;
+    const lagrangeParent = LAGRANGE_ID.test(id) ? lagrangeParentId(id) : undefined;
+    if (lagrangeParent !== undefined) return lagrangeParent in registry ? lagrangeParent : undefined;
+    if (!(id in registry)) return undefined;
+    return primaryOf(registry, id);
   }
 
-  // 「複製」項目。複製先が艦艇配置パネルなので、それを持つステージだけに出す。
+  // ターゲットに設定/解除する項目。軌道面が定まらない対象(地球・太陽自身など)では選んでも
+  // AN/DN が出ないので項目自体を出さない。マップビュー・戦闘ビューどちらでも同じ項目を出す。
+  private targetItems(target: MapPickable, simTime: number): readonly MenuItem<MenuAction>[] {
+    if (target.id === this.navTarget.id) return [MenuCommon.target(true)];
+    const canTarget = this.navTarget.canTarget(target.id, this.entities, this.ephemeris, simTime);
+    return canTarget ? [MenuCommon.target(false)] : [];
+  }
+
+  // 「複製」項目。複製先が物体配置パネルなので、それを持つステージだけに出す。
   private duplicateItems(): readonly MenuItem<MenuAction>[] {
     return this.activeStage.authoring ? [MenuCommon.duplicate()] : [];
   }
 
-  // ターゲット固定/第二ターゲット固定の項目。戦闘ターゲットとして戦える対象(生存中の
-  // 敵・自艦)にだけ出し、マップビューでは出さない(視界占有を抑える — §7-2)。
-  private combatTargetLockItems(entity: CombatTarget | null | undefined): readonly MenuItem<MenuAction>[] {
-    if (this.cameraSystem.overviewMode || !entity || !entity.alive) return [];
-    const targeter = this.targeter;
-    return [
-      MenuCommon.targetPrimary(targeter.target === entity),
-      MenuCommon.targetSecondary(targeter.secondaryTarget === entity),
-    ];
-  }
-
-  // ターゲット固定/第二ターゲット固定を、押した時点の設定と比べてトグルする。
-  private runTargetLock(act: 'targetPrimary' | 'targetSecondary', entity: CombatTarget | null | undefined): void {
-    if (!entity) return;
-    const targeter = this.targeter;
-    if (act === 'targetPrimary') targeter.setPrimaryTarget(targeter.target === entity ? null : entity);
-    else targeter.setSecondaryTarget(targeter.secondaryTarget === entity ? null : entity);
-  }
-
-  // 対象の現在状態を軌道要素へ逆算し、その値をプリセットして艦艇配置パネルを開く。
+  // 対象の現在状態を軌道要素へ逆算し、その値をプリセットして物体配置パネルを開く。
   private runDuplicate(target: MapPickable): void {
     const authoring = this.activeStage.authoring;
     if (!authoring) return;
@@ -734,6 +886,10 @@ export class MapContextActions {
         const ammoPickup = this.entities.ammoPickups.find((candidate) => candidate.id === target.id);
         return ammoPickup ? { objectType: 'ammo', state: ammoPickup.state } : null;
       }
+      case 'fuel': {
+        const pickup = this.entities.rcsFuelPickups.find((candidate) => candidate.id === target.id);
+        return pickup ? { objectType: 'fuel', state: pickup.state } : null;
+      }
       case 'base': {
         const base = this.entities.findBase(target.id);
         return base ? { objectType: 'base', state: base.state } : null;
@@ -747,7 +903,30 @@ export class MapContextActions {
   // 抜き出す。開いた直後から sync 時と同じ経路(windowParts)で求める。
   private buildContent(target: MapPickable, simTime: number): PropertyWindowContent<MenuAction> {
     const { title, subtitle, items } = this.windowParts(target, simTime);
-    return { title, subtitle, rows: [], items, onRename: this.renameHandlerFor(target) };
+    return {
+      title, subtitle, icon: this.iconFor(target), rows: [], items,
+      relatedItems: this.relatedItemsFor(target, this.ephemeris.celestialBodiesAt(simTime)),
+      relatedTitle: this.relatedTitleFor(target),
+      onRename: this.renameHandlerFor(target),
+    };
+  }
+
+  // ウィンドウ題名に添えるグリフ。マップ実マーカーと同じ字形族(ENTITY_GLYPH/ORBIT_POINT_GLYPH)
+  // から種別に対応するものを選ぶ。player/ship/base はマップ実マーカーと同じ SVG 形状を使う。
+  private iconFor(target: MapPickable): string | undefined {
+    switch (target.kind) {
+      case 'body': return LAGRANGE_ID.test(target.id)
+        ? ENTITY_GLYPH.lagrange : bodyEntityGlyph(bodyClassOf(this.ephemeris.registry, target.id));
+      case 'player': return shipMarkerSvg(true);
+      case 'ship': return shipMarkerSvg(false);
+      case 'base': return baseMarkerSvg();
+      case 'ammo': return ENTITY_GLYPH.ammo;
+      case 'fuel': return ENTITY_GLYPH.fuel;
+      case 'apsis': return ORBIT_POINT_GLYPH.apsis;
+      case 'relnode': return ORBIT_POINT_GLYPH.ascendingNode;
+      case 'eqnode': return ORBIT_POINT_GLYPH.descendingNode;
+      case 'empty-space': return undefined;
+    }
   }
 
   // 改名できる種別(自艦・基地)にだけコールバックを渡す。対象は id で引き直す —
@@ -789,24 +968,25 @@ export class MapContextActions {
 
   // 種別ごとのプロパティ行。値の導出は sync フェーズで毎フレーム呼び直す(表示専用のため)。
   private buildRows(
-    target: MapPickable, attractors: readonly Attractor[], player: Player | null, simTime: number,
+    target: MapPickable, celestialBodies: readonly CelestialBody[], player: Player | null, simTime: number,
   ): PropertyRow[] {
     switch (target.kind) {
-      case 'player': return this.playerRows(target, attractors);
-      case 'ship': return this.shipRows(target, attractors, player);
-      case 'base': return this.baseRows(target, attractors, player);
-      case 'ammo': return this.ammoPickupRows(target, attractors, player);
-      case 'body': return this.bodyRows(target, attractors, player);
-      case 'apsis': return this.apsisRows(target, attractors, simTime);
-      case 'relnode': case 'eqnode': return this.nodeRows(target, attractors, simTime);
+      case 'player': return this.playerRows(target, celestialBodies);
+      case 'ship': return this.shipRows(target, celestialBodies, player);
+      case 'base': return this.baseRows(target, celestialBodies, player);
+      case 'ammo': return this.ammoPickupRows(target, celestialBodies, player);
+      case 'fuel': return this.rcsFuelPickupRows(target, celestialBodies, player);
+      case 'body': return this.bodyRows(target, celestialBodies, player);
+      case 'apsis': return this.apsisRows(target, celestialBodies, simTime);
+      case 'relnode': case 'eqnode': return this.nodeRows(target, celestialBodies, simTime);
       case 'empty-space': return [];
     }
   }
 
   // 基準天体・高度・速度・AP/PE/INC/PRD の軌道要素一式。軌道上の実体種別間で共通化する。
   // 「軌道」グループにまとめ、ウィンドウ先頭の折り畳みセクションへ描かれる。
-  private orbitRows(entity: GameEntity, attractors: readonly Attractor[]): PropertyRow[] {
-    const oi = orbitInfo(entity, attractors);
+  private orbitRows(entity: GameEntity, celestialBodies: readonly CelestialBody[]): PropertyRow[] {
+    const oi = orbitInfo(entity, autoOrbitReference(entity.state.r, celestialBodies));
     const apSpec = getApsisLabelSpec('ap', oi.centerId);
     const peSpec = getApsisLabelSpec('pe', oi.centerId);
     const group = '軌道';
@@ -826,7 +1006,7 @@ export class MapContextActions {
 
   // 名前は既にウィンドウのタイトルにあるので行には含めない。装甲・電力・弾薬を主要行とし、
   // それ以外(操作対象か・計画追従)は詳細トグル、軌道要素は「軌道」グループの下に畳む。
-  private playerRows(target: MapPickable, attractors: readonly Attractor[]): PropertyRow[] {
+  private playerRows(target: MapPickable, celestialBodies: readonly CelestialBody[]): PropertyRow[] {
     const ship = this.entities.findPlayer(target.id);
     if (!ship) return [];
     return [
@@ -835,19 +1015,19 @@ export class MapContextActions {
       },
       { key: 'follow', label: '計画実行', value: planExecutionLabel(ship.planExecution), collapsible: true },
       { key: 'hp', label: '装甲', value: `${Math.floor(ship.hp)} / ${ship.maxHp}` },
-      { key: 'temp', label: '温度', value: `${ship.thermal.hullTemp.toFixed(0)} K` },
+      { key: 'temp', label: '温度', value: `${ship.temperature.toFixed(0)} K` },
       { key: 'power', label: '電力', value: fmtEnergy(ship.power.chargeJ) },
       { key: 'ammo', label: '弾薬', value: fmtAmmoStatus(ship.roundsInMag, ship.magsLeft, ship.reloadTimer) },
-      ...this.orbitRows(ship, attractors),
+      ...this.orbitRows(ship, celestialBodies),
     ];
   }
 
   // 自艦がいなければ距離・接近速度・相対速度・相対傾斜角の行はそもそも出さない。
   // 装甲・距離・接近速度を主要行とし、相対速度は詳細トグル、軌道要素・相対傾斜角は「軌道」グループの下に畳む。
-  private shipRows(target: MapPickable, attractors: readonly Attractor[], player: Player | null): PropertyRow[] {
+  private shipRows(target: MapPickable, celestialBodies: readonly CelestialBody[], player: Player | null): PropertyRow[] {
     const enemy = this.entities.findEnemy(target.id);
     if (!enemy) return [];
-    const rel = player ? relativeInfo(player, enemy, attractors) : null;
+    const rel = player ? relativeInfo(player, enemy, celestialBodies) : null;
     const rows: PropertyRow[] = [{ key: 'hp', label: '装甲', value: `${Math.floor(enemy.hp)} / ${enemy.maxHp}` }];
     if (rel) {
       rows.push(
@@ -856,7 +1036,7 @@ export class MapContextActions {
         { key: 'relspeed', label: '相対速度', value: fmtSpeed(rel.relSpeed), collapsible: true },
       );
     }
-    rows.push(...this.orbitRows(enemy, attractors));
+    rows.push(...this.orbitRows(enemy, celestialBodies));
     if (rel) {
       rows.push({
         key: 'relinc', label: '相対傾斜 [AN/DN]',
@@ -867,7 +1047,7 @@ export class MapContextActions {
   }
 
   // 自艦がいなければ距離の行は出さない。軌道要素は「軌道」グループの下に畳む。
-  private baseRows(target: MapPickable, attractors: readonly Attractor[], player: Player | null): PropertyRow[] {
+  private baseRows(target: MapPickable, celestialBodies: readonly CelestialBody[], player: Player | null): PropertyRow[] {
     const base = this.entities.findBase(target.id);
     if (!base) return [];
     const isControlled = this.activePlayers.controlledBase === base;
@@ -877,14 +1057,14 @@ export class MapContextActions {
       { key: 'vessels', label: '格納艦艇数', value: `${base.baseState.dockedVessels.length}` },
     ];
     if (player) rows.push({ key: 'dist', label: '距離', value: fmtDist(len(sub(base.state.r, player.state.r))) });
-    rows.push(...this.orbitRows(base, attractors));
+    rows.push(...this.orbitRows(base, celestialBodies));
     return rows;
   }
 
   // 自艦がいなければ距離の行は出さない。軌道要素は「軌道」グループの下に畳む。
   private ammoPickupRows(
     target: MapPickable,
-    attractors: readonly Attractor[],
+    celestialBodies: readonly CelestialBody[],
     player: Player | null,
   ): PropertyRow[] {
     const ammoPickup = this.entities.ammoPickups.find((candidate) => candidate.id === target.id);
@@ -897,13 +1077,33 @@ export class MapContextActions {
         value: fmtDist(len(sub(ammoPickup.state.r, player.state.r))),
       });
     }
-    rows.push(...this.orbitRows(ammoPickup, attractors));
+    rows.push(...this.orbitRows(ammoPickup, celestialBodies));
+    return rows;
+  }
+
+  private rcsFuelPickupRows(
+    target: MapPickable,
+    celestialBodies: readonly CelestialBody[],
+    player: Player | null,
+  ): PropertyRow[] {
+    const pickup = this.entities.rcsFuelPickups.find((candidate) => candidate.id === target.id);
+    if (!pickup) return [];
+    const rows: PropertyRow[] = [];
+    if (player) {
+      rows.push({
+        key: 'dist',
+        label: '距離',
+        value: fmtDist(len(sub(pickup.state.r, player.state.r))),
+      });
+    }
+    rows.push({ key: 'amount', label: '補給量', value: `${C.RCS_FUEL_PICKUP_AMOUNT.toLocaleString()} kg` });
+    rows.push(...this.orbitRows(pickup, celestialBodies));
     return rows;
   }
 
   // 実在の天体(現在のレジストリに登録された ID)なら種別・μ・半径・(公転していれば)軌道要素を、
   // ラグランジュ点なら種別のみを出す。
-  private bodyRows(target: MapPickable, attractors: readonly Attractor[], player: Player | null): PropertyRow[] {
+  private bodyRows(target: MapPickable, celestialBodies: readonly CelestialBody[], player: Player | null): PropertyRow[] {
     const registry = this.ephemeris.registry;
     const rows: PropertyRow[] = [];
     if (player) rows.push({ key: 'dist', label: '自艦からの距離', value: fmtDist(len(sub(target.pos, player.state.r))) });
@@ -919,8 +1119,8 @@ export class MapContextActions {
       { key: 'radius', label: '半径', value: fmtDist(def.radius) },
     );
     if (def.kind === 'star') return rows;
-    const primary = attractors.find((b) => b.id === primaryOf(registry, def.id));
-    const self = attractors.find((b) => b.id === def.id);
+    const primary = celestialBodies.find((b) => b.id === primaryOf(registry, def.id));
+    const self = celestialBodies.find((b) => b.id === def.id);
     const el = primary && self ? orbitalElementsOf(self.state, primary) : null;
     if (!el) return rows;
     const apsis = apsisAltitudes(el);
@@ -935,9 +1135,71 @@ export class MapContextActions {
     return rows;
   }
 
+  // 天体プロパティーの先頭に表示する、現在その天体を周回している物体。
+  // 天体は静的な primaryOf、人工物は現在状態から orbitingAttractorOf で判定する。
+  private relatedItemsFor(
+    target: MapPickable, celestialBodies: readonly CelestialBody[],
+  ): readonly PropertyWindowRelatedItem[] {
+    if (target.kind === 'player') {
+      const ship = this.entities.findPlayer(target.id);
+      if (!ship || ship !== this.activePlayers.current) return [];
+      return ship.parts.map((part) => ({
+        id: part.id,
+        label: part.name,
+        onFocus: () => {
+          this.frameControls.setFocus({ kind: 'object', id: ship.id });
+          this.hud.hint(`${part.name} を搭載する ${ship.name} にフォーカス`);
+        },
+        onContextMenu: (clientX, clientY) => this.openPartPropertyWindow(ship, part, clientX, clientY),
+      }));
+    }
+    if (target.kind !== 'body' || LAGRANGE_ID.test(target.id) || !(target.id in this.ephemeris.registry)) return [];
+    const related: { item: MapPickable; label: string }[] = [];
+    for (const item of this.pickables.pickables) {
+      if (item.id === target.id) continue;
+      let isOrbiting = false;
+      if (item.kind === 'body') {
+        isOrbiting = this.bodyParentId(item.id) === target.id;
+      } else {
+        const state = this.stateOfPickable(item);
+        isOrbiting = state !== null && orbitingAttractorOf(state, celestialBodies)?.id === target.id;
+      }
+      if (isOrbiting) related.push({ item, label: item.name });
+    }
+    related.sort((a, b) => a.label.localeCompare(b.label));
+    return related.map(({ item, label }) => ({
+      id: this.windowKey(item),
+      label,
+      onFocus: () => {
+        this.frameControls.setFocus({ kind: 'object', id: item.id });
+        this.hud.hint(`${label} にフォーカス`);
+      },
+      onContextMenu: (clientX, clientY) => {
+        const current = this.pickables.pickables.find((candidate) => this.windowKey(candidate) === this.windowKey(item));
+        if (current) this.openPropertyWindow(clientX, clientY, current, this.pickables.lastSimTime);
+      },
+    }));
+  }
+
+  private relatedTitleFor(target: MapPickable): string {
+    return target.kind === 'player' && this.entities.findPlayer(target.id) === this.activePlayers.current
+      ? '搭載部品' : '周回物体';
+  }
+
+  private stateOfPickable(item: MapPickable): KinematicState | null {
+    switch (item.kind) {
+      case 'player': return this.entities.findPlayer(item.id)?.state ?? null;
+      case 'ship': return this.entities.findEnemy(item.id)?.state ?? null;
+      case 'ammo': return this.entities.ammoPickups.find((ammo) => ammo.id === item.id)?.state ?? null;
+      case 'fuel': return this.entities.rcsFuelPickups.find((pickup) => pickup.id === item.id)?.state ?? null;
+      case 'base': return this.entities.findBase(item.id)?.state ?? null;
+      default: return null;
+    }
+  }
+
   // Pe/Ap の別・AN/DN の別はタイトル側(header)に既に出ているので、ここには乗せない。
-  private apsisRows(target: MapPickable, attractors: readonly Attractor[], simTime: number): PropertyRow[] {
-    const center = strongestAttractor(target.pos, attractors);
+  private apsisRows(target: MapPickable, celestialBodies: readonly CelestialBody[], simTime: number): PropertyRow[] {
+    const center = strongestAttractor(target.pos, celestialBodies);
     const alt = len(sub(target.pos, center.state.r)) - center.radius;
     const rows: PropertyRow[] = [];
     if (target.ownerName) rows.push({ key: 'owner', label: '所属軌道', value: target.ownerName });
@@ -947,10 +1209,10 @@ export class MapContextActions {
   }
 
   // AN/DN の別はタイトル側(header)に既に出ているので、ここでは対象名と通過時刻のみ出す。
-  private nodeRows(target: MapPickable, attractors: readonly Attractor[], simTime: number): PropertyRow[] {
+  private nodeRows(target: MapPickable, celestialBodies: readonly CelestialBody[], simTime: number): PropertyRow[] {
     const targetName = target.kind === 'relnode'
       ? (this.navTarget.name ?? '対象')
-      : celestialBodyName(strongestAttractor(target.pos, attractors).id);
+      : celestialBodyName(strongestAttractor(target.pos, celestialBodies).id);
     const rows: PropertyRow[] = [];
     if (target.ownerName) rows.push({ key: 'owner', label: '所属軌道', value: target.ownerName });
     rows.push({ key: 'target', label: '対象', value: targetName });
@@ -962,7 +1224,7 @@ export class MapContextActions {
     if (act === 'focus') {
       this.frameControls.setFocus({ kind: 'object', id: target.id });
       this.hud.hint(`${target.name} にフォーカス`);
-    } else if (act === 'navTarget') {
+    } else if (act === 'target') {
       this.navTarget.toggleTarget(target.id, target.name);
     }
   }

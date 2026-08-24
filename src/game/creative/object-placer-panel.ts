@@ -1,25 +1,29 @@
-// クリエイティブモードの「艦艇配置」パネル: 軌道要素指定とラグランジュ点(ハロー/リサジュー)
+// クリエイティブモードの「物体配置」パネル: 軌道要素指定とラグランジュ点(ハロー/リサジュー)
 // 指定のどちらかを選び、フォームで値を指定して、確定で1隻分の ShipPlacerForm を通知する。
 // 値から KinematicState を組み立てるのは物理側(stateFromOrbitalElements/haloState/lissajousState)の
 // 仕事なので、ここでは行わない。
-import { Button, SegmentedControl, Slider, ValueInput } from '../hud/widgets';
-import { ObjectPicker, ObjectPickerGroup } from '../hud/object-picker';
+import { Button, CloseButton, SegmentedControl, ValueInput } from '../hud/widgets';
+import { ObjectPicker } from '../hud/windows/object-picker';
+import { ENTITY_GLYPH } from '../marker/marker-glyphs';
+import { baseMarkerSvg, shipMarkerSvg } from '../marker/marker-shapes';
 import type { OverlayHandle, OverlayManager } from '../hud/overlay-manager';
-import { BodyClass, bodyClassOf } from '../celestial/body-class';
-import { sameSystemIds } from '../celestial/body-visibility';
-import { celestialBodyName } from '../hud/frame-labels';
-import { getApsisLabelSpec } from '../hud/orbit-labels';
+import { celestialBodyName } from '../hud/frame/frame-labels';
+import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
 import { CollinearPoint } from '../../physics/halo';
-import { AttractorId } from '../../physics/attractor';
-import { bodyDef, primaryOf, CelestialRegistry, SOLAR_SYSTEM, MU_EARTH, R_EARTH, SIDEREAL_DAY, J2_EARTH } from '../../physics/solar-system';
-import type { OrbitingId } from '../../physics/attractor';
+import { CelestialBodyId } from '../../physics/celestial-body';
+import { CelestialRegistry, MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../../physics/solar-system';
+import type { OrbitingId } from '../../physics/celestial-body';
 import { semiMajorFromPeriod } from '../../physics/elements';
 import type { PlacementFieldId, PlacementFieldIssue } from './placement-validation';
 import type { Ephemeris } from '../../physics/ephemeris';
 import * as C from '../const';
+import { bodyGroupsOf, lagrangeSystemItemsOf, orbitingIdsOf, primaryDistanceKm, sunSyncInclinationDeg } from './orbit-form-fields';
+import {
+  SliderRow, bindAngleSlider, bindEccentricitySlider, bindRelativeSlider, numberField, setFieldVisible, sliderField,
+} from './slider-field';
 
-export type ObjectType = 'player' | 'enemy' | 'ammo' | 'base';
-export type ReferenceAttractor = AttractorId;
+export type ObjectType = 'player' | 'enemy' | 'ammo' | 'fuel' | 'base';
+export type ReferenceCelestialBody = CelestialBodyId;
 export type SizeShapeMode = 'apsides' | 'semiMajorEcc' | 'periodEcc';
 export type PlacementMode = 'elements' | 'lagrange';
 export type LagrangeOrbitKind = 'halo' | 'lissajous';
@@ -33,7 +37,7 @@ export type EllipticSizeForm =
 // 軌道要素指定一式: 基準天体・サイズ/形(上記)・向き/位相。
 export type ElementsForm = {
   readonly placementMode: 'elements';
-  readonly attractor: ReferenceAttractor;
+  readonly celestialBody: ReferenceCelestialBody;
   readonly incDeg: number;
   readonly raanDeg: number;
   readonly argpDeg: number;
@@ -61,15 +65,17 @@ export type ObjectPlacerForm = { readonly objectType: ObjectType } & (ElementsFo
 // 'form' は種類を objectType に固定し、軌道要素一式をその値へ書き換える —
 // 軌道要素をそのまま引き継げる複製の経路。
 export type ObjectPlacerPreset =
-  | { readonly kind: 'body'; readonly attractor: ReferenceAttractor }
+  | { readonly kind: 'body'; readonly celestialBody: ReferenceCelestialBody }
   | { readonly kind: 'objectType'; readonly objectType: ObjectType }
   | { readonly kind: 'form'; readonly objectType: ObjectType; readonly form: ElementsForm };
 
-const OBJECT_TYPE_ITEMS: readonly (readonly [ObjectType, string])[] = [
-  ['player', '自機'],
-  ['enemy', '敵機'],
-  ['ammo', '弾薬'],
-  ['base', '基地'],
+// アイコンはマップ実マーカーと同じ形状(自機=鏃の塗りつぶし、敵機=鏃の中抜き、基地=正七角形)。
+const OBJECT_TYPE_ITEMS: readonly (readonly [ObjectType, string, string])[] = [
+  ['player', '自機', shipMarkerSvg(true)],
+  ['enemy', '敵機', shipMarkerSvg(false)],
+  ['ammo', '弾薬', ENTITY_GLYPH.ammo],
+  ['fuel', 'RCS燃料', ENTITY_GLYPH.fuel],
+  ['base', '基地', baseMarkerSvg()],
 ];
 
 const PLACEMENT_MODE_ITEMS: readonly (readonly [PlacementMode, string])[] = [
@@ -82,40 +88,6 @@ const SIZE_MODE_ITEMS: readonly (readonly [SizeShapeMode, string])[] = [
   ['semiMajorEcc', '半長軸+離心率'],
   ['periodEcc', '周期+離心率'],
 ];
-
-// ラグランジュ点を持てる天体(惑星 + 衛星)を副天体として列挙する。軌道要素指定の基準天体も
-// これを使う(公転していない恒星を周回の中心には選べない)。
-function orbitingIdsOf(registry: CelestialRegistry): readonly OrbitingId[] {
-  return Object.keys(registry).filter((id) => bodyDef(registry, id).kind !== 'star');
-}
-
-// 天体の候補をクラス別のまとまりへ組む。先頭は「いま選んでいる系」— 実際に選ばれるのは
-// ほぼ常に同じ系の別天体なので、1クリック目に置く。
-function bodyGroupsOf(
-  registry: CelestialRegistry, items: readonly (readonly [ReferenceAttractor, string])[], selected: ReferenceAttractor,
-): readonly ObjectPickerGroup<ReferenceAttractor>[] {
-  const near0 = sameSystemIds(registry, selected);
-  const near = items.filter(([id]) => near0.has(id));
-  const byClass = (cls: BodyClass) => items.filter(([id]) => bodyClassOf(registry, id) === cls);
-  return [
-    { label: 'いま選んでいる系', items: near },
-    { label: '惑星', items: byClass('planet') },
-    { label: '衛星', items: byClass('satellite') },
-    { label: '準惑星', items: byClass('dwarf') },
-    { label: '小天体', items: byClass('smallBody') },
-  ].filter((g) => g.items.length > 0);
-}
-
-// 表示名を「中心天体名-自分の名」として ephemeris から組む(primaryOf で主星を解決する)。
-function lagrangeSystemItemsOf(ephemeris: Ephemeris, orbitingIds: readonly OrbitingId[]): readonly (readonly [OrbitingId, string])[] {
-  // 共線点が行き先として意味を持つ系だけを出す。質量が未測定の天体では質量比が 0 になり、
-  // 共線点の距離比を解く反復が収束せず NaN の状態を返すため、選ばせてはいけない。
-  return orbitingIds.filter((id) => ephemeris.hasUsableCollinearPoints(id, C.LAGRANGE_MIN_CLEARANCE_RATIO)).map((id) => {
-    const primary = primaryOf(ephemeris.registry, id);
-    const primaryName = primary === null ? celestialBodyName(id) : celestialBodyName(primary);
-    return [id, `${primaryName}-${celestialBodyName(id)}`] as const;
-  });
-}
 
 const LAGRANGE_POINT_ITEMS: readonly (readonly [CollinearPoint, string])[] = [
   ['L1', 'L1'],
@@ -135,33 +107,13 @@ const LAGRANGE_DEFAULT_AMPLITUDE_KM: Partial<Record<OrbitingId, { ax: number; az
   jupiter: { ax: C.HALO_AX_JUPITER_KM, az: C.HALO_AZ_JUPITER_KM },
 };
 
-// 副天体とその主天体の距離 [km](= 副天体の軌道長半径)。
-function primaryDistanceKm(secondary: OrbitingId): number {
-  const def = bodyDef(SOLAR_SYSTEM, secondary);
-  if (def.kind === 'star') throw new Error(`primaryDistanceKm: ${secondary} は恒星なので公転していない`);
-  return (def.kind === 'planet' ? def.orbit.a : def.orbit.kepler.a) / 1e3;
-}
-
 // 表に無い天体の既定振幅を主天体間距離から導くときの比。月の既定値と月の軌道長半径の比を
 // そのまま使うので、表に載っている天体と桁感が揃う。
 const AMPLITUDE_AX_RATIO = C.HALO_AX_MOON_KM / primaryDistanceKm('moon');
 const AMPLITUDE_AZ_RATIO = C.HALO_AZ_MOON_KM / primaryDistanceKm('moon');
 
-const DEG = Math.PI / 180;
-
 // 静止軌道の高度: 恒星日ちょうどの円軌道の半長軸から導出する(マジックナンバーで別途持たない)。
 const GEO_ALT_KM = (semiMajorFromPeriod(SIDEREAL_DAY, MU_EARTH) - R_EARTH) / 1e3;
-
-// 太陽同期軌道の傾斜角: その高度の円軌道が J2 摂動で受ける昇交点歳差(dynamics.ts の j2Accel と
-// 同じ式)が、地球の公転角速度(SOLAR_SYSTEM の地球公転要素そのもの)にちょうど一致する条件から
-// 逆算する。retrograde 解(i>90°)が太陽同期の側。
-function sunSyncInclinationDeg(altKm: number): number {
-  const a = R_EARTH + altKm * 1e3;
-  const n = Math.sqrt(MU_EARTH / (a * a * a));
-  const earthOrbitRate = SOLAR_SYSTEM.earth.orbit.lRate;
-  const cosI = earthOrbitRate / (-1.5 * n * J2_EARTH * (R_EARTH / a) ** 2);
-  return Math.acos(cosI) / DEG;
-}
 
 const SUN_SYNC_ALT_KM = 700;
 const MOON_LOW_ALT_KM = 100;
@@ -169,7 +121,7 @@ const MOON_LOW_ALT_KM = 100;
 // 軌道要素指定のサイズ/形プリセット。近地点+遠地点高度(円軌道は両方同値)と、向きを固定する
 // 軌道では傾斜角も併せて埋める。基準天体ごとに桁が違う軌道しか意味を持たないため天体単位で持つ。
 type SizePreset = { readonly label: string; readonly peAltKm: number; readonly apAltKm: number; readonly incDeg?: number };
-const PRESETS_BY_BODY: Partial<Record<ReferenceAttractor, readonly SizePreset[]>> = {
+const PRESETS_BY_BODY: Partial<Record<ReferenceCelestialBody, readonly SizePreset[]>> = {
   earth: [
     { label: '低軌道(LEO)', peAltKm: 400, apAltKm: 400 },
     { label: '静止軌道(GEO)', peAltKm: GEO_ALT_KM, apAltKm: GEO_ALT_KM, incDeg: 0 },
@@ -179,154 +131,6 @@ const PRESETS_BY_BODY: Partial<Record<ReferenceAttractor, readonly SizePreset[]>
     { label: '低軌道', peAltKm: MOON_LOW_ALT_KM, apAltKm: MOON_LOW_ALT_KM },
   ],
 };
-
-// ラベル行(.w-group + .w-group-title)と数値入力を組み立てて返す。root への追加は呼び出し側の仕事
-// (numberField はそのまま追加するだけだが、sliderField はスライダー列を同じ行に足してから追加する)。
-// 値は打鍵のたびに(sliderField が)直接読み書きするので、ValueInput の commit 通知自体は使わない。
-function buildNumberRow(label: string, defaultValue: number, step: number, min?: number, max?: number): { row: HTMLElement; input: HTMLInputElement } {
-  const row = document.createElement('div');
-  row.className = 'w-group';
-  const heading = document.createElement('span');
-  heading.className = 'w-group-title';
-  heading.textContent = label;
-  row.appendChild(heading);
-  const valueInput = new ValueInput({ type: 'number', step, min, max }, () => {});
-  valueInput.setValue(String(defaultValue));
-  row.appendChild(valueInput.element);
-  return { row, input: valueInput.element };
-}
-
-// ラベル付き数値入力を1行分組み立てて root へ追加し、input 要素を返す。
-function numberField(root: HTMLElement, label: string, defaultValue: number, step: number, min?: number, max?: number): HTMLInputElement {
-  const { row, input } = buildNumberRow(label, defaultValue, step, min, max);
-  root.appendChild(row);
-  return input;
-}
-
-// numberField が組んだ入力の行(ラベルごと)を出し入れする。
-function setFieldVisible(input: HTMLInputElement, visible: boolean): void {
-  (input.parentElement as HTMLElement).classList.toggle('hidden', !visible);
-}
-
-// numberField にスライダー+目盛りを添えた行。数値入力とスライダーは双方向に同期する。
-// 値⇔スライダー位置(0..1)の対応と目盛りラベルは呼び出し側が bindAngleSlider/
-// bindEccentricitySlider/bindRelativeSlider 経由で決める(角度・離心率は固定範囲の線形対応、
-// 半長軸・周期・高度は上限がなく基準値相対の対応になるため、この行自体は対応関係を知らない)。
-interface SliderRow {
-  readonly element: HTMLElement;
-  readonly input: HTMLInputElement;
-  readonly slider: HTMLInputElement;
-  setLabel(text: string): void;
-  setTicks(labels: readonly string[]): void;
-  setMapping(toT: (value: number) => number, fromT: (t: number) => number): void;
-  // bindRelativeSlider が結んだ行にだけ立つ: 基準値相対スライダーの基準をいまの input.value へ
-  // 取り直す。値を外部から書き換えたときはこれも呼ばないと、つまみの位置が実際の値とずれる。
-  rebase?(): void;
-}
-
-function sliderField(root: HTMLElement, label: string, defaultValue: number, step: number, min?: number, max?: number): SliderRow {
-  const wrap = document.createElement('div');
-  wrap.className = 'slider-field';
-
-  const { row, input } = buildNumberRow(label, defaultValue, step, min, max);
-
-  const sliderCol = document.createElement('div');
-  sliderCol.className = 'slider-col';
-
-  const slider = new Slider({ min: 0, max: 1000, step: 1 }, () => {}).element;
-  sliderCol.appendChild(slider);
-
-  const ticksEl = document.createElement('div');
-  ticksEl.className = 'slider-ticks';
-  sliderCol.appendChild(ticksEl);
-
-  row.appendChild(sliderCol);
-  wrap.appendChild(row);
-
-  root.appendChild(wrap);
-
-  let toT = (v: number): number => v;
-  let fromT = (t: number): number => t;
-  const syncSliderFromInput = (): void => {
-    const t = Math.max(0, Math.min(1, toT(Number(input.value))));
-    slider.value = String(Math.round(t * 1000));
-  };
-  input.addEventListener('input', syncSliderFromInput);
-  slider.addEventListener('input', () => {
-    // 入力欄の刻みへ丸めてから書き戻す。高度スライダーは書き戻した値を次のドラッグの基準に
-    // 取り直すので、丸めないと端数がドラッグのたびに積み上がる。
-    input.value = String(Math.round(fromT(Number(slider.value) / 1000) / step) * step);
-  });
-
-  const titleEl = row.querySelector('.w-group-title');
-
-  return {
-    element: wrap,
-    input,
-    slider,
-    setLabel(text) {
-      if (titleEl) titleEl.textContent = text;
-    },
-    setTicks(labels) {
-      ticksEl.innerHTML = '';
-      for (const text of labels) {
-        const span = document.createElement('span');
-        span.textContent = text;
-        ticksEl.appendChild(span);
-      }
-    },
-    setMapping(newToT, newFromT) {
-      toT = newToT;
-      fromT = newFromT;
-      syncSliderFromInput();
-    },
-  };
-}
-
-// 角度スライダー(i/Ω/ω/ν): 0..rangeDeg の線形対応、90度ごとに目盛りを表示する。
-function bindAngleSlider(field: SliderRow, rangeDeg: number): void {
-  field.setMapping((v) => v / rangeDeg, (t) => t * rangeDeg);
-  const tickCount = rangeDeg / 90 + 1;
-  field.setTicks(Array.from({ length: tickCount }, (_, i) => `${i * 90}°`));
-}
-
-// 離心率スライダー: 0..0.99 の線形対応、0/0.25/0.5/0.75/0.99 に目盛りを表示する。
-function bindEccentricitySlider(field: SliderRow): void {
-  const max = 0.99;
-  field.setMapping((v) => v / max, (t) => t * max);
-  field.setTicks([0, 0.25, 0.5, 0.75, 0.99].map((v) => v.toFixed(2)));
-}
-
-// 基準値相対スライダーの倍率: 中央(t=0)を基準値の100%とし、左は等倍で0%まで、
-// 右は2倍指数で400%まで伸びる。上限のない量を有限のスライダー幅で操作するための仕様。
-function relativeMultiplier(tOffset: number): number {
-  return tOffset <= 0 ? 1 + tOffset : Math.pow(2, 2 * tOffset);
-}
-
-// 基準値相対スライダー(Ap/Pe高度・半長軸・周期): ドラッグ開始時点の値を基準の100%として
-// スライダー中央に据え、ドラッグが終わるたびにそのときの値を新しい基準に取り直してつまみを
-// 中央へ戻す(基準を固定しないと上限のない量を動かせない)。refFloor は基準値の下限 —
-// 基準はスライダーの可動範囲そのものなので、値が 0 まで下がったときに 0 を基準にすると倍率を
-// いくら掛けても 0 のままになり、二度と操作で戻せなくなる。量ごとに単位・オーダーが違うので
-// 呼び出し側がその量にとって妥当な床を渡す。
-function bindRelativeSlider(field: SliderRow, refFloor: number): void {
-  const rebase = (): void => {
-    const ref = Math.max(Number(field.input.value), refFloor);
-    field.setMapping(
-      (v) => {
-        const mult = v / ref;
-        const tOffset = mult <= 1 ? mult - 1 : Math.log2(mult) / 2;
-        return (tOffset + 1) / 2;
-      },
-      (t) => ref * relativeMultiplier(2 * t - 1),
-    );
-    field.setTicks([0, 0.5, 1, 2, 4].map((m) => `${Math.round((ref * m) * 100) / 100}`));
-  };
-  field.slider.addEventListener('pointerdown', rebase);
-  field.slider.addEventListener('pointerup', rebase);
-  field.rebase = rebase;
-  rebase();
-}
 
 // 高度・半長軸の基準値の下限(km): 一度のドラッグでこの4倍まで戻せる値を床に置く。
 const ALTITUDE_REF_FLOOR_KM = 100;
@@ -344,7 +148,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
   private readonly objectType: SegmentedControl<ObjectType>;
   private readonly placementMode: SegmentedControl<PlacementMode>;
   private readonly placementGroups: Record<PlacementMode, HTMLElement>;
-  private readonly attractor: ObjectPicker<ReferenceAttractor>;
+  private readonly celestialBody: ObjectPicker<ReferenceCelestialBody>;
   private readonly sizeMode: SegmentedControl<SizeShapeMode>;
   private readonly sizeGroups: Record<SizeShapeMode, HTMLElement>;
   private readonly nameInput: HTMLInputElement;
@@ -364,10 +168,10 @@ export class ObjectPlacerPanel implements OverlayHandle {
   private readonly libAx: HTMLInputElement;
   private readonly libAz: HTMLInputElement;
   private readonly refreshPresets: () => void;
-  private readonly attractorItems: readonly (readonly [ReferenceAttractor, string])[];
+  private readonly celestialBodyItems: readonly (readonly [ReferenceCelestialBody, string])[];
   // 基地は敵の射程となる惑星近傍を避けるため、軌道要素指定の基準天体は月だけに絞る
   // (地球・木星は選択肢自体を出さない — placement-validation.ts の validateBaseReferenceFields と対にする)。
-  private readonly baseAttractorItems: readonly (readonly [ReferenceAttractor, string])[];
+  private readonly baseCelestialBodyItems: readonly (readonly [ReferenceCelestialBody, string])[];
   private readonly lagrangeSystemItems: readonly (readonly [OrbitingId, string])[];
   private readonly issueList: HTMLElement;
   private issueRows: readonly HTMLElement[] = [];
@@ -375,13 +179,13 @@ export class ObjectPlacerPanel implements OverlayHandle {
 
   private objectTypeValue: ObjectType = 'player';
   private placementModeValue: PlacementMode = 'elements';
-  private attractorValue: ReferenceAttractor = 'earth';
+  private celestialBodyValue: ReferenceCelestialBody = 'earth';
   private sizeModeValue: SizeShapeMode = 'apsides';
   private lagrangeSecondaryValue: OrbitingId = 'moon';
   private lagrangePointValue: CollinearPoint = 'L1';
   private lagrangeOrbitKindValue: LagrangeOrbitKind = 'halo';
 
-  // 艦艇配置パネルの DOM を組み立て、root へ追加する。基準天体・ラグランジュ系の選択肢は
+  // 物体配置パネルの DOM を組み立て、root へ追加する。基準天体・ラグランジュ系の選択肢は
   // ephemeris が実際に持つレジストリから組む。
   private readonly registry: CelestialRegistry;
   // ObjectPicker のポップアップの親。パネル自身の overflow に切られないよう popup レイヤへ置く。
@@ -395,8 +199,8 @@ export class ObjectPlacerPanel implements OverlayHandle {
     this.registry = ephemeris.registry;
     this.popupRoot = popupRoot;
     const orbitingIds = orbitingIdsOf(ephemeris.registry);
-    this.attractorItems = orbitingIds.map((id) => [id, celestialBodyName(id)] as const);
-    this.baseAttractorItems = this.attractorItems.filter(([id]) => id === 'moon');
+    this.celestialBodyItems = orbitingIds.map((id) => [id, celestialBodyName(id)] as const);
+    this.baseCelestialBodyItems = this.celestialBodyItems.filter(([id]) => id === 'moon');
     this.lagrangeSystemItems = lagrangeSystemItemsOf(ephemeris, orbitingIds);
 
     this.panel = document.createElement('div');
@@ -408,9 +212,13 @@ export class ObjectPlacerPanel implements OverlayHandle {
     this.panel.style.right = '20px';
     this.panel.style.width = 'max-content';
     this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
+    const header = document.createElement('div');
+    header.className = 'panel-shell-head';
     const title = document.createElement('h3');
-    title.textContent = '軌道オブジェクト配置';
-    this.panel.appendChild(title);
+    title.textContent = '物体配置';
+    header.appendChild(title);
+    header.appendChild(new CloseButton(() => this.close()).element);
+    this.panel.appendChild(header);
 
     this.objectType = new SegmentedControl('種類', OBJECT_TYPE_ITEMS, (v) => this.selectObjectType(v));
     this.objectType.setSelected(this.objectTypeValue);
@@ -420,7 +228,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
     this.panel.appendChild(this.placementMode.element);
 
     const elements = this.buildElementsGroup();
-    this.attractor = elements.attractor;
+    this.celestialBody = elements.celestialBody;
     this.sizeMode = elements.sizeMode;
     this.sizeGroups = elements.sizeGroups;
     this.peAlt = elements.peAlt;
@@ -466,7 +274,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
   // 呼び出し側は返った sizeGroups を this.sizeGroups へ代入してから selectSizeMode を呼ぶ必要がある。
   private buildElementsGroup(): {
     element: HTMLElement;
-    attractor: ObjectPicker<ReferenceAttractor>;
+    celestialBody: ObjectPicker<ReferenceCelestialBody>;
     sizeMode: SegmentedControl<SizeShapeMode>;
     sizeGroups: Record<SizeShapeMode, HTMLElement>;
     peAlt: SliderRow;
@@ -482,14 +290,14 @@ export class ObjectPlacerPanel implements OverlayHandle {
     refreshPresets: () => void;
   } {
     const elementsGroup = document.createElement('div');
-    const attractorControl = new ObjectPicker<ReferenceAttractor>(this.popupRoot, '基準天体', (v) => {
-      this.attractorValue = v;
-      attractorControl.setSelected(v);
+    const celestialBodyControl = new ObjectPicker<ReferenceCelestialBody>(this.popupRoot, '基準天体', (v) => {
+      this.celestialBodyValue = v;
+      celestialBodyControl.setSelected(v);
       this.refreshPresets();
     }, this.overlayManager);
-    attractorControl.setGroups(bodyGroupsOf(this.registry, this.attractorItems, this.attractorValue));
-    attractorControl.setSelected(this.attractorValue);
-    elementsGroup.appendChild(attractorControl.element);
+    celestialBodyControl.setGroups(bodyGroupsOf(this.registry, this.celestialBodyItems, this.celestialBodyValue));
+    celestialBodyControl.setSelected(this.celestialBodyValue);
+    elementsGroup.appendChild(celestialBodyControl.element);
 
     const sizeMode = new SegmentedControl('サイズ/形', SIZE_MODE_ITEMS, (v) => this.selectSizeMode(v));
 
@@ -518,8 +326,8 @@ export class ObjectPlacerPanel implements OverlayHandle {
     const presetRow = document.createElement('div');
     presetRow.className = 'w-group preset-row';
     const refreshPresets = (): void => {
-      const peSpec = getApsisLabelSpec('pe', this.attractorValue);
-      const apSpec = getApsisLabelSpec('ap', this.attractorValue);
+      const peSpec = getApsisLabelSpec('pe', this.celestialBodyValue);
+      const apSpec = getApsisLabelSpec('ap', this.celestialBodyValue);
       peAlt.setLabel(`${peSpec.nameJa}高度 [km]`);
       apAlt.setLabel(`${apSpec.nameJa}高度 [km]`);
       sizeMode.setItems([
@@ -528,7 +336,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
         ['periodEcc', '周期+離心率'],
       ]);
       presetRow.innerHTML = '';
-      const presets = PRESETS_BY_BODY[this.attractorValue] ?? [];
+      const presets = PRESETS_BY_BODY[this.celestialBodyValue] ?? [];
       presetRow.classList.toggle('hidden', presets.length === 0);
       if (presets.length === 0) return;
       const heading = document.createElement('span');
@@ -565,7 +373,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
 
     refreshPresets();
 
-    return { element: elementsGroup, attractor: attractorControl, sizeMode, sizeGroups, peAlt, apAlt, semiMajor, eccSemiMajor, period, eccPeriod, inc, raan, argp, nu, refreshPresets };
+    return { element: elementsGroup, celestialBody: celestialBodyControl, sizeMode, sizeGroups, peAlt, apAlt, semiMajor, eccSemiMajor, period, eccPeriod, inc, raan, argp, nu, refreshPresets };
   }
 
   // ラグランジュ点指定(ハロー/リサジュー)の一式を1つの div にまとめて返す。
@@ -621,14 +429,13 @@ export class ObjectPlacerPanel implements OverlayHandle {
     return { element: nameRow, nameInput: nameField.element };
   }
 
-  // 配置/キャンセルのボタン行を this.panel に追加する。Enter/ESC は OverlayManager 経由で
-  // confirm()/close() へ届く(登録済みの handleShortcut/closeOnEscape)ので、ラベルは実際の
-  // 挙動どおり [Enter]/[ESC] のまま出す。
+  // 配置ボタンを this.panel に追加する。Enter は OverlayManager 経由で confirm() へ届く
+  // (登録済みの handleShortcut)ので、ラベルは実際の挙動どおり [Enter] のまま出す。
+  // 閉じる操作はヘッダの ✕ ボタン(ESC は overlayManager の closeOnEscape)が担う。
   private buildButtonsAndKeybinds(): void {
     const btnRow = document.createElement('div');
     btnRow.className = 'shipplacer-btn-row';
     btnRow.appendChild(new Button('配置 [Enter]', () => this.confirm()).element);
-    btnRow.appendChild(new Button('キャンセル [ESC]', () => this.close()).element);
     this.panel.appendChild(btnRow);
   }
 
@@ -639,12 +446,12 @@ export class ObjectPlacerPanel implements OverlayHandle {
     this.objectTypeValue = v;
     this.objectType.setSelected(v);
     if (v === 'base') {
-      if (this.attractorValue !== 'moon') this.attractorValue = 'moon';
-      this.attractor.setGroups([{ label: '', items: this.baseAttractorItems }]);
+      if (this.celestialBodyValue !== 'moon') this.celestialBodyValue = 'moon';
+      this.celestialBody.setGroups([{ label: '', items: this.baseCelestialBodyItems }]);
     } else {
-      this.attractor.setGroups(bodyGroupsOf(this.registry, this.attractorItems, this.attractorValue));
+      this.celestialBody.setGroups(bodyGroupsOf(this.registry, this.celestialBodyItems, this.celestialBodyValue));
     }
-    this.attractor.setSelected(this.attractorValue);
+    this.celestialBody.setSelected(this.celestialBodyValue);
     this.refreshPresets();
   }
 
@@ -712,7 +519,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
     }
     const common = {
       placementMode: 'elements' as const,
-      attractor: this.attractorValue,
+      celestialBody: this.celestialBodyValue,
       incDeg: Number(this.inc.input.value),
       raanDeg: Number(this.raan.input.value),
       argpDeg: Number(this.argp.input.value),
@@ -751,7 +558,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
       case 'raan': return this.raan.element;
       case 'argumentOfPeriapsis': return this.argp.element;
       case 'trueAnomaly': return this.nu.element;
-      case 'referenceAttractor': return this.attractor.element;
+      case 'referenceCelestialBody': return this.celestialBody.element;
       case 'inPlaneAmplitude': return this.libAx.parentElement as HTMLElement;
       case 'outOfPlaneAmplitude': return this.libAz.parentElement as HTMLElement;
     }
@@ -789,10 +596,10 @@ export class ObjectPlacerPanel implements OverlayHandle {
     } else if (preset?.kind === 'objectType') {
       this.selectObjectType(preset.objectType);
     } else if (preset?.kind === 'body') {
-      const allowed = this.objectTypeValue === 'base' ? this.baseAttractorItems : this.attractorItems;
-      if (allowed.some(([id]) => id === preset.attractor)) {
-        this.attractorValue = preset.attractor;
-        this.attractor.setSelected(this.attractorValue);
+      const allowed = this.objectTypeValue === 'base' ? this.baseCelestialBodyItems : this.celestialBodyItems;
+      if (allowed.some(([id]) => id === preset.celestialBody)) {
+        this.celestialBodyValue = preset.celestialBody;
+        this.celestialBody.setSelected(this.celestialBodyValue);
         this.refreshPresets();
       }
     }
@@ -822,7 +629,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
   dispose(): void {
     this.close();
     this.panel.remove();
-    this.attractor.dispose();
+    this.celestialBody.dispose();
     this.lagrangeSecondary.dispose();
   }
 
@@ -842,12 +649,12 @@ export class ObjectPlacerPanel implements OverlayHandle {
     row.rebase?.();
   }
 
-  // 軌道要素一式をフォームへ書き込む。form.attractor は呼び出し側 (open) が現在の種類で選べる
+  // 軌道要素一式をフォームへ書き込む。form.celestialBody は呼び出し側 (open) が現在の種類で選べる
   // 基準天体であることを保証済みの前提で、確認なしにそのまま書き込む。
   private applyElementsForm(form: ElementsForm): void {
     this.selectPlacementMode('elements');
-    this.attractorValue = form.attractor;
-    this.attractor.setSelected(this.attractorValue);
+    this.celestialBodyValue = form.celestialBody;
+    this.celestialBody.setSelected(this.celestialBodyValue);
     this.refreshPresets();
     this.selectSizeMode(form.sizeMode);
 

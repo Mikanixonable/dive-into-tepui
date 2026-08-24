@@ -5,15 +5,17 @@
 //      MarkerManager.setBearing の担当で、ここは対象ごとに呼ぶだけ)
 // を行う。どちらも「対象 1 体では決められない = 集合の側の責務」であり、逆に対象ごとの
 // 見た目とラベル内容(GroupedMarkerItem)は対象自身が用意する。
-import { Vec3 } from '../../physics/vec3';
+import { Vec3, len, sub } from '../../physics/vec3';
 import { Projected } from '../../physics/projection';
 import type { ProjectFn, ScaleFn } from '../camera/camera-system';
 import type { ActiveCelestialLabel } from '../camera/focus-markers';
 import type { MarkerManager } from './marker-manager';
 import { DIRECTION_GLYPH } from './marker-glyphs';
-import type { Attractor } from '../../physics/attractor';
-import type { ReferenceFrame } from '../../physics/frame';
+import type { CelestialBody } from '../../physics/celestial-body';
+import type { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
+import { resolveCrowdingWinner } from './crowding';
+import * as C from '../const';
 
 export interface GroupedMarkerItem {
   key: string; // 対象を一意に識別するマーカーキー
@@ -39,6 +41,7 @@ const bearingKey = (key: string): string => `${key}-bearing`;
 interface PlacedItem {
   item: GroupedMarkerItem;
   p: Projected;
+  dist: number | undefined;
   count: number; // 自分がまとめた件数(1 = 単独)
   labeled: boolean; // false = 代表に吸収されたのでラベルを出さない
   groupMembers?: readonly GroupedMarkerItem[];
@@ -50,6 +53,8 @@ export class GroupedMarkers {
   private shownKeys: readonly string[] = [];
   private readonly visibleKeys = new Set<string>();
   private readonly hiddenItemsList: GroupedMarkerItem[] = [];
+  // 天体ラベルとの近接で前フレームに隠したキー(depth-guard のヒステリシス用)。
+  private prevHiddenByCelestialLabel = new Set<string>();
 
   isPickable(key: string): boolean {
     return this.visibleKeys.has(key);
@@ -74,13 +79,15 @@ export class GroupedMarkers {
     overviewMode: boolean,
     scale: ScaleFn,
     celestialLabels: readonly ActiveCelestialLabel[] = [],
-    attractors: readonly Attractor[] = [],
+    celestialBodies: readonly CelestialBody[] = [],
+    cameraPos?: Vec3,
     frame?: ReferenceFrame,
     displayTime?: number,
     ephemeris?: Ephemeris,
+    frameAnchors?: FrameAnchorSource,
   ): void {
     const placed: PlacedItem[] = items.map(
-      (item) => ({ item, p: project(item.pos), count: 1, labeled: true }),
+      (item) => ({ item, p: project(item.pos), dist: cameraPos ? len(sub(item.pos, cameraPos)) : undefined, count: 1, labeled: true }),
     );
     this.groupNearby(placed, celestialLabels);
 
@@ -98,11 +105,11 @@ export class GroupedMarkers {
       }
       const label = m.labeled ? this.label(m.item, m.count, m.groupMembers) : '';
       const rotationDeg = overviewMode
-        ? this.markerManager.headingRotationDeg(m.item.pos, m.item.vel, project, scale, attractors, frame, displayTime, ephemeris)
+        ? this.markerManager.headingRotationDeg(m.item.pos, m.item.vel, project, scale, celestialBodies, frame, displayTime, ephemeris, frameAnchors)
         : undefined;
       this.markerManager.set(
         m.item.key, m.item.cls, m.item.sym, m.p.x, m.p.y, m.p.front, label, opacity, m.item.color,
-        rotationDeg, m.item.symMarkup, false, m.item.priority,
+        rotationDeg, m.item.symMarkup, false, m.item.priority, m.dist,
       );
       // 画面外(背面を含む)の対象は、画面端の方位マーカーで方位だけを示す。
       // bearingVisible は味方機など、距離によって方位マーカーを抑制する対象に使う。
@@ -160,19 +167,31 @@ export class GroupedMarkers {
       g[0]!.groupMembers = g.map((m) => m.item);
       for (const m of g.slice(1)) m.labeled = false;
     }
-    // 天体ラベル(優先度 2000 以上)と画面上で近接している船マーカー(優先度 900 以下)はラベルを隠す
+    // 天体ラベルと画面上で近接している船マーカーはラベルを隠す。ただし船がカメラに著しく
+    // 近く天体が著しく遠い(depth-guard)場合は、優先度(天体 > 船)に関わらず船を残す —
+    // 手前の船が奥の天体ラベルに隠され続けることを防ぐ(DEVELOP/SPEC/MAP.md 7.2 節)。
+    const nowHiddenByCelestialLabel = new Set<string>();
     if (celestialLabels.length > 0) {
       for (const m of placed) {
         if (!m.labeled || !m.p.front) continue;
         for (const c of celestialLabels) {
-          if (c.labelVisible && Math.hypot(m.p.x - c.x, m.p.y - c.y) < this.clusterRadiusPx) {
-            m.labeled = false;
-            m.hiddenByCelestialLabel = true;
-            break;
-          }
+          if (!c.labelVisible || Math.hypot(m.p.x - c.x, m.p.y - c.y) >= this.clusterRadiusPx) continue;
+          // 天体ラベル側(c)の前フレームの間引き状態はここでは追跡していない(focus-markers.ts が
+          // 別に持つ)ため、常に基準の depthGuardRatio を使う(false)。
+          const pick = resolveCrowdingWinner(
+            m.item.key, m.item.priority, m.dist, this.prevHiddenByCelestialLabel.has(m.item.key),
+            c.id, c.priority, c.dist, false,
+            C.DEPTH_GUARD_RATIO, C.DEPTH_GUARD_EXIT_RATIO, true,
+          );
+          if (pick !== 'a') continue;
+          m.labeled = false;
+          m.hiddenByCelestialLabel = true;
+          nowHiddenByCelestialLabel.add(m.item.key);
+          break;
         }
       }
     }
+    this.prevHiddenByCelestialLabel = nowHiddenByCelestialLabel;
   }
 
   // a と b がクラスタ化する距離内にあるか判定する。
@@ -181,11 +200,14 @@ export class GroupedMarkers {
   }
 
   // 代表のラベル文字列を組み立てる。
-  //   - 2隻近接の時: 2行でそれぞれの正式名称を表示
+  //   - 2隻近接の時: 2行でそれぞれの正式名称を、各自の色で表示
   //   - 3隻以上近接の時: "xN" の形式とし、正式名称は表示しない
   private label(item: GroupedMarkerItem, count: number, members?: readonly GroupedMarkerItem[]): string {
     if (count === 2 && members && members.length >= 2) {
-      return `${members[0]!.name}\n${members[1]!.name}`;
+      const line = (m: GroupedMarkerItem): string => m.color
+        ? `<span style="color:${m.color}">${m.name}</span>`
+        : m.name;
+      return `${line(members[0]!)}\n${line(members[1]!)}`;
     }
     if (count >= 3) {
       return `x${count}`;

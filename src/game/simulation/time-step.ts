@@ -1,6 +1,12 @@
-// シミュレーション刻みの純粋な決定規則。既知イベントを越えず、低高度では刻みを縮める。
+// シミュレーション刻みの純粋な決定規則。既知イベントを越えず、大気抵抗を積める幅に収める。
 
+import {
+  Atmosphere, airspeed, atmosphericDensity, atmosphericScaleHeight, ellipsoidAltitude,
+} from '../../physics/atmosphere';
+import { CelestialBody, nearestAtmosphereBody } from '../../physics/celestial-body';
 import { KinematicState } from '../../physics/kinematic-state';
+import { Vec3, dot, len, sub } from '../../physics/vec3';
+import * as C from '../const';
 
 // targetTime・maxStep・nextEventTime のいずれよりも先へ進まない、今回のサブステップ幅 [s] を返す。
 export function simulationStepDuration(
@@ -14,23 +20,64 @@ export function simulationStepDuration(
   return Math.max(0, end - simTime);
 }
 
-// 再突入域の境界を越えない最大刻み。境界ちょうどは必ずreentryMaxStep側に含める。
-export function adaptiveSimulationMaxStep(
-  states: readonly KinematicState[],
-  reentryRadius: number,
-  normalMaxStep: number,
-  reentryMaxStep: number,
+// 時間送り simDt を分割するサブステップ幅の上限 [s]。上限が固定値 maxDt だけだとサブステップ数が
+// ワープ倍率に正比例するので、maxCount を超える分割になるときは刻みの側を伸ばす。
+export function simulationMaxStep(simDt: number, maxDt: number, maxCount: number): number {
+  return Math.max(maxDt, simDt / maxCount);
+}
+
+// 弾道係数の逆数 bcInv を持つ物体が、大気天体の中心から見て rRel/vRel にいるとき、抗力を
+// 積める最大刻み [s]。上限は2つあり、どちらか片方では足りない。
+//   剛性: 抗力の逆時定数 λ = ½ρ·s·bcInv に対し λ·dt を DRAG_STEP_MAX_SPEED_LOSS で抑える。
+//   沈み込み: 中間段の直線外挿が動径方向へ沈む深さ(降下率·dt + ½g·dt²)を、密度が
+//     e^DRAG_STEP_MAX_SCALE_HEIGHTS 倍を超えない範囲に抑える。
+// 抗力の逆時定数 λ = ½ρ·s·bcInv [1/s]。刻み dt に対する λ·dt が、その1歩で抗力が奪う
+// 対気速度の割合になる。
+function dragRate(rRel: Vec3, vRel: Vec3, bcInv: number, atm: Atmosphere): number {
+  return 0.5 * atmosphericDensity(ellipsoidAltitude(rRel, atm), atm)
+    * len(airspeed(rRel, vRel, atm)) * bcInv;
+}
+
+function dragMaxStep(rRel: Vec3, vRel: Vec3, bcInv: number, mu: number, atm: Atmosphere): number {
+  const d = len(rRel);
+  const alt = ellipsoidAltitude(rRel, atm);
+  const lambda = dragRate(rRel, vRel, bcInv, atm);
+  const stiff = lambda > 0 ? C.DRAG_STEP_MAX_SPEED_LOSS / lambda : Infinity;
+  // 沈み込みの許容深さ [m] と、そこへ達するまでの時間。2次方程式 ½g·dt² + 降下率·dt = depth を
+  // 有理化した形で解く — 遠方や薄い大気で g → 0 でも 0 除算にならない。
+  const depth = C.DRAG_STEP_MAX_SCALE_HEIGHTS * atmosphericScaleHeight(alt, atm);
+  const descentRate = Math.max(0, -dot(rRel, vRel) / d);
+  const g = mu / (d * d);
+  const sink = (2 * depth) / (descentRate + Math.sqrt(descentRate * descentRate + 2 * g * depth));
+  return Math.min(stiff, sink);
+}
+
+// その状態を積むのに大気が要求する最大刻み [s]。相手は自分にとって最も近い大気天体ただ1体で、
+// それがいなければ Infinity(大気の無いところに上限は無い)。抵抗を受けない物体(bcInv = 0)も
+// 同じく Infinity。時間送りやイベント由来の上限との合成は呼び出し側が行う。
+export function atmosphericMaxStep(
+  state: KinematicState, bcInv: number, atmosphereBodies: readonly CelestialBody[],
 ): number {
-  let maxStep = normalMaxStep;
-  for (const { r, v } of states) {
-    const radius = Math.sqrt(r.x * r.x + r.y * r.y + r.z * r.z);
-    if (radius <= reentryRadius) return reentryMaxStep;
-    const radialSpeed = (r.x * v.x + r.y * v.y + r.z * v.z) / radius;
-    if (radialSpeed < 0) {
-      const untilBoundary = (radius - reentryRadius) / -radialSpeed;
-      if (untilBoundary > 1e-9) maxStep = Math.min(maxStep, untilBoundary);
-      else return reentryMaxStep;
-    }
-  }
-  return maxStep;
+  if (bcInv <= 0) return Infinity;
+  const body = nearestAtmosphereBody(state.r, atmosphereBodies);
+  if (body === null || body.atmosphere === null) return Infinity;
+  return dragMaxStep(
+    sub(state.r, body.state.r), sub(state.v, body.state.v), bcInv, body.mu, body.atmosphere);
+}
+
+// 刻み dt のあいだに、抗力がその物体の対気速度を丸ごと奪い切るか。奪い切る幅で積んだ軌道は
+// もはや正確ではない(dragAccel が対気速度で頭打ちにするので発散こそしない)。
+//
+// **見るのは剛性の項だけで、atmosphericMaxStep の合成値ではない。** 中間段の沈み込みの上限は
+// 密度にも bcInv にも依らず、高い倍率では大気から遥かに離れた低軌道でも下回る — それを根拠に
+// すると、大気に触れていない物体まで巻き込んでしまう。
+export function dragTakesFullAirspeed(
+  state: KinematicState, bcInv: number, atmosphereBodies: readonly CelestialBody[], dt: number,
+): boolean {
+  if (bcInv <= 0 || dt <= 0) return false;
+  const body = nearestAtmosphereBody(state.r, atmosphereBodies);
+  if (body === null || body.atmosphere === null) return false;
+  const rate = dragRate(
+    sub(state.r, body.state.r), sub(state.v, body.state.v), bcInv, body.atmosphere);
+  return rate * dt >= 1;
 }

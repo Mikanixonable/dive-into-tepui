@@ -1,12 +1,13 @@
 // 1つのオブジェクトの軌道が中心天体の赤道面を横切る2点(EqAN/EqDN)の算出と、△▽ マーカー
 // としての表示・被選択物としての公開。
-import { Attractor, strongestAttractor } from '../../physics/attractor';
-import { ReferenceFrame, unbakeToDisplayPoint } from '../../physics/frame';
+import { CelestialBody, strongestAttractor } from '../../physics/celestial-body';
+import { FrameAnchorSource, ReferenceFrame, unbakeToDisplayPoint } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { Vec3 } from '../../physics/vec3';
 import { solveEquatorCrossings } from '../../physics/orbit-solvers';
-import { celestialBodyName } from '../hud/frame-labels';
+import { celestialBodyName } from '../hud/frame/frame-labels';
+import { TickLabelMode, elementTimeLabel } from '../hud/orbit/calendar-ticks';
 import type { MarkerManager } from './marker-manager';
 import { ORBIT_POINT_GLYPH } from './marker-glyphs';
 import type { ProjectFn } from '../camera/camera-system';
@@ -20,8 +21,8 @@ interface EqNodeIcon extends MapPickable {
 
 export class EquatorNodeMarkerPair {
   private icons: readonly EqNodeIcon[] = [];
-  // update が求めた時点の Attractor[]。sync でのマップビュー遮蔽判定に使う。
-  private attractors: readonly Attractor[] = [];
+  // update が求めた時点の CelestialBody[]。sync でのマップビュー遮蔽判定に使う。
+  private celestialBodies: readonly CelestialBody[] = [];
 
   private readonly anKey: string;
   private readonly dnKey: string;
@@ -31,35 +32,69 @@ export class EquatorNodeMarkerPair {
     this.dnKey = `eqdn-${owner.id}`;
   }
 
-  // 交点を求め直す。
-  update(
-    frame: ReferenceFrame, displayTime: number, ephemeris: Ephemeris,
-    state: KinematicState = this.owner.state, samples: readonly KinematicState[] | null = null,
+  // 解析軌道楕円の上に交点を置く。楕円は中心天体に固定して描かれるので、交点もその天体の
+  // 慣性系で表示時刻へ写す。
+  updateOnEllipse(
+    displayTime: number, ephemeris: Ephemeris, frameAnchors: FrameAnchorSource,
+    timeLabel: { readonly mode: TickLabelMode; readonly show: boolean; readonly nowSimTime: number },
+  ): void {
+    this.update(
+      null, displayTime, ephemeris, frameAnchors,
+      this.owner.displayState(displayTime, ephemeris), [], timeLabel,
+    );
+  }
+
+  // 表示中の折れ線の上に交点を置く。paths(区間ごとのサンプル列、時刻昇順)が空なら state の
+  // 軌道要素から求める。位置は折れ線と同じ frame で写す。
+  updateOnPath(
+    frame: ReferenceFrame, displayTime: number, ephemeris: Ephemeris, frameAnchors: FrameAnchorSource,
+    state: KinematicState, paths: readonly (readonly KinematicState[])[],
+    timeLabel: { readonly mode: TickLabelMode; readonly show: boolean; readonly nowSimTime: number },
+  ): void {
+    this.update(frame, displayTime, ephemeris, frameAnchors, state, paths, timeLabel);
+  }
+
+  // 交点を求め直す。frame は交点位置を表示時刻へ写す座標系で、null なら中心天体の慣性系
+  // (= 解析軌道楕円の置き方)。
+  private update(
+    frame: ReferenceFrame | null, displayTime: number, ephemeris: Ephemeris, frameAnchors: FrameAnchorSource,
+    state: KinematicState | null, paths: readonly (readonly KinematicState[])[],
+    timeLabel: { readonly mode: TickLabelMode; readonly show: boolean; readonly nowSimTime: number },
   ): void {
     this.icons = [];
-    this.attractors = ephemeris.attractorsAt(displayTime);
-    const center = strongestAttractor(state.r, ephemeris.attractorsAt(state.t));
+    this.celestialBodies = frameAnchors.bodies;
+    if (state === null) return;
+    // 解析楕円は displayTime の状態ベクトルから作るので、その中心選択も同じ時刻の天体を
+    // 使う。折れ線側は state が simTime のままなので、従来どおり state.t の天体を使う。
+    const centerBodies = frame === null ? frameAnchors.bodies : ephemeris.celestialBodiesAt(state.t);
+    const center = strongestAttractor(state.r, centerBodies);
     const eqNormal = center.degree2?.pole;
     if (!eqNormal) return;
 
-    const unbakeTf = ephemeris.frameTransformAt(frame, displayTime, this.attractors);
-    const crossings = solveEquatorCrossings(state, center, eqNormal, samples);
+    const displayFrame = frame ?? ephemeris.frameFor(center.id);
+    const unbakeTf = ephemeris.frameTransformAt(displayFrame, displayTime, frameAnchors);
+    const crossings = solveEquatorCrossings(state, center, eqNormal, paths, (t) => ephemeris.positionOf(center.id, t));
     if (!crossings) return;
 
     const centerName = celestialBodyName(center.id);
     const toDisplay = (r: Vec3, t: number): Vec3 =>
-      unbakeToDisplayPoint(unbakeTf, ephemeris.frameTransformAt(frame, t, this.attractors), r);
+      unbakeToDisplayPoint(unbakeTf, ephemeris.frameTransformAt(displayFrame, t, frameAnchors), r);
 
+    // PREDICT パネルの「軌道要素の時刻を表示」がONのときだけ通過時刻を併記する。
+    const labelWithTime = (base: string, t: number): string =>
+      timeLabel.show ? `${base} ${elementTimeLabel(t, timeLabel.mode, timeLabel.nowSimTime)}` : base;
     this.icons = [
       {
         id: this.anKey, name: `${this.owner.name}の${centerName}赤道昇交点`, kind: 'eqnode',
         ownerName: this.owner.name,
-        pos: toDisplay(crossings.asc.r, crossings.asc.t), time: crossings.asc.t, label: 'EqAN',
+        pos: toDisplay(crossings.asc.r, crossings.asc.t), time: crossings.asc.t,
+        label: labelWithTime('EqAN', crossings.asc.t),
       },
       {
         id: this.dnKey, name: `${this.owner.name}の${centerName}赤道降交点`, kind: 'eqnode',
         ownerName: this.owner.name,
-        pos: toDisplay(crossings.desc.r, crossings.desc.t), time: crossings.desc.t, label: 'EqDN',
+        pos: toDisplay(crossings.desc.r, crossings.desc.t), time: crossings.desc.t,
+        label: labelWithTime('EqDN', crossings.desc.t),
       },
     ];
   }
@@ -77,7 +112,7 @@ export class EquatorNodeMarkerPair {
         this.markerManager.hide(icon.id);
       } else {
         this.markerManager.setNodePosition(
-          icon.id, 'mk-node', glyph, icon.pos, project, cameraPos, this.attractors, true, icon.label,
+          icon.id, 'mk-node', glyph, icon.pos, project, cameraPos, this.celestialBodies, true, icon.label,
         );
       }
     }

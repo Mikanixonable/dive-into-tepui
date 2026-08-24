@@ -59,8 +59,12 @@ export class Aurora {
     this.writeVertices(phase);
     this.geo.attributes.position!.needsUpdate = true;
     this.geo.attributes.color!.needsUpdate = true;
-    this.material.opacity =
-      0.55 + 0.2 * Math.sin(phase * 0.7 + this.phaseOffset * 2.1) * Math.sin(phase * 0.23 + this.phaseOffset);
+  }
+
+  // 全体の明滅。**明るさは色に載せ、不透明度は 1 に固定する** — 不透明度は「背景をどれだけ
+  // 置き換えるか」という別の量で、1 を超える明るさを表せない。
+  private pulse(phase: number): number {
+    return 0.55 + 0.2 * Math.sin(phase * 0.7 + this.phaseOffset * 2.1) * Math.sin(phase * 0.23 + this.phaseOffset);
   }
 
   // mesh を親から外し、ジオメトリ・マテリアルを解放する。
@@ -94,7 +98,7 @@ export class Aurora {
 
       // 時間による色の揺らぎ
       const flick = 0.8 + 0.2 * Math.sin(19 * th + cPhase * 4.1);
-      const coreInt = intensity * flick * INTENSITY_SCALE;
+      const coreInt = intensity * flick * INTENSITY_SCALE * this.pulse(phase);
 
       // 4層のグラデーション色 (加算合成なので 0 で透明)
       const colArr = [
