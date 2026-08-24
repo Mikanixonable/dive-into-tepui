@@ -550,70 +550,58 @@ function buildPdb5i4rSilhouetteShip(colorMode: 'surface-charge' | 'hydrophobicit
   // JSON stays compact: -127..127 maps to charge -1..1 or Kyte-Doolittle -4.5..4.5.
   const min = -127;
   const max = 127;
-  const components = new Set(surface.component.length > 0 ? surface.component : ['A']);
-  for (const component of components) {
-    const geometry = new THREE.BufferGeometry();
-    const centeredAt = PDB5I4R_DISPLAY_ASSET.coordinateFrame.centeredAt;
-    const positions: number[] = [];
-    const colors: number[] = [];
-    const indices: number[] = [];
-    const remap = new Map<number, number>();
-    const appendVertex = (globalVertex: number): number => {
-      const existing = remap.get(globalVertex);
-      if (existing !== undefined) return existing;
-      const localVertex = positions.length / 3;
-      positions.push(
-        surface.position[globalVertex * 3]! - (centeredAt[0] ?? 0),
-        surface.position[globalVertex * 3 + 1]! - (centeredAt[1] ?? 0),
-        surface.position[globalVertex * 3 + 2]! - (centeredAt[2] ?? 0),
-      );
-      const color = surfaceColor(values[globalVertex] ?? 0, colorMode, min, max);
-      colors.push(color.r, color.g, color.b);
-      remap.set(globalVertex, localVertex);
-      return localVertex;
-    };
-    for (let offset = 0; offset + 2 < surface.index.length; offset += 3) {
-      const a = surface.index[offset]!;
-      const b = surface.index[offset + 1]!;
-      const c = surface.index[offset + 2]!;
-      if ((surface.component[a] ?? component) === component) indices.push(appendVertex(a), appendVertex(b), appendVertex(c));
-    }
-    if (indices.length === 0) continue;
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-    geometry.setIndex(indices);
-    geometry.computeVertexNormals();
-    const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({
-      color: 0xffffff,
-      vertexColors: true,
-      roughness: 0.32,
-      metalness: 0.08,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.28,
-      depthWrite: false,
-    }));
-    mesh.renderOrder = 2;
-    mesh.userData.proteinComponent = component;
-    mesh.userData.ownsGeometry = true;
-    mesh.userData.ownsMaterial = true;
-    group.add(mesh);
-    // Back faces form a restrained inner occlusion layer. It is rendered after the
-    // translucent front shell so the shell darkens the ribbon and molecular markers
-    // behind it instead of looking like a flat, uniformly tinted bubble.
-    const innerShadow = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
-      color: 0x07101d,
-      transparent: true,
-      opacity: 0.22,
-      side: THREE.BackSide,
-      depthWrite: false,
-    }));
-    innerShadow.renderOrder = 3;
-    innerShadow.userData.proteinComponent = component;
-    innerShadow.userData.ownsGeometry = false;
-    innerShadow.userData.ownsMaterial = true;
-    group.add(innerShadow);
+  const geometry = new THREE.BufferGeometry();
+  const centeredAt = PDB5I4R_DISPLAY_ASSET.coordinateFrame.centeredAt;
+  const positions: number[] = [];
+  const colors: number[] = [];
+  const indices: number[] = [];
+  for (let globalVertex = 0; globalVertex < surface.position.length / 3; globalVertex++) {
+    positions.push(
+      surface.position[globalVertex * 3]! - (centeredAt[0] ?? 0),
+      surface.position[globalVertex * 3 + 1]! - (centeredAt[1] ?? 0),
+      surface.position[globalVertex * 3 + 2]! - (centeredAt[2] ?? 0),
+    );
+    const color = surfaceColor(values[globalVertex] ?? 0, colorMode, min, max);
+    colors.push(color.r, color.g, color.b);
   }
+  indices.push(...surface.index);
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    vertexColors: true,
+    roughness: 0.32,
+    metalness: 0.08,
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 0.28,
+    depthWrite: false,
+  }));
+  mesh.renderOrder = 2;
+  mesh.userData.proteinComponent = 'A';
+  mesh.userData.ownsGeometry = true;
+  mesh.userData.ownsMaterial = true;
+  group.add(mesh);
+  // Back faces form a restrained inner occlusion layer. This is deliberately a
+  // visual self-occlusion pass inside the closed shell, not a solar shadow map:
+  // it must remain visible even when the front shell has already written depth.
+  // Keep depth testing/writing disabled and render after the front shell so the
+  // shell darkens the ribbon and molecular markers instead of hiding this layer.
+  const innerShadow = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
+    color: 0x07101d,
+    transparent: true,
+    opacity: 0.22,
+    side: THREE.BackSide,
+    depthTest: false,
+    depthWrite: false,
+  }));
+  innerShadow.renderOrder = 3;
+  innerShadow.userData.proteinComponent = 'A';
+  innerShadow.userData.ownsGeometry = false;
+  innerShadow.userData.ownsMaterial = true;
+  group.add(innerShadow);
   group.scale.setScalar(PDB5I4R_COORDINATE_SCALE);
   markLitOpaque(group);
   return group;
