@@ -1,5 +1,5 @@
 import { AnyPart } from './game-entity/parts';
-import { EnemyKind } from './game-entity/enemy';
+import type { EnemyKind, FormationRole } from './game-entity/enemy';
 import { CelestialBodyId } from '../physics/celestial-body';
 import type { GamePhase } from './stages/stage';
 import type { WaveAttackSaveData } from './stages/stage-utils/wave-attack';
@@ -133,6 +133,9 @@ export interface EnemySaveData extends EntitySaveData {
   health: number;
   accent: string | number;
   waveId?: number;
+  // 陣形に属する敵だけが持つ識別子と役割。無ければ単体敵として復元する。
+  formationId?: string;
+  formationRole?: FormationRole;
   // バースト射撃の残弾・次弾までの残り時間。未着手なら両方 undefined。
   burstLeft?: number;
   burstDelay?: number;

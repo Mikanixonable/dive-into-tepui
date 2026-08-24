@@ -2,7 +2,7 @@ import {
   ProteinBrownianSampler,
   proteinBrownianSeedFor,
 } from './protein-brownian-motion';
-import type { ProteinMotionAsset } from './protein-schema';
+import type { ProteinMotionAsset, ProteinPhase } from './protein-schema';
 
 type ProteinMotionBand = ProteinMotionAsset['modes'][number]['band'];
 
@@ -15,20 +15,56 @@ export const PROTEIN_MOTION_LOD_MODE_COUNTS: Readonly<Record<ProteinMotionLod, n
   marker: 0,
 };
 
-/** Distance-based fallback used by the entity sync path when projected size is unavailable. */
-export function proteinMotionLodForDistance(distance: number, visualRadius: number): ProteinMotionLod {
-  const safeDistance = Number.isFinite(distance) && distance >= 0 ? distance : Number.POSITIVE_INFINITY;
-  const safeRadius = Number.isFinite(visualRadius) && visualRadius > 0 ? visualRadius : 1;
-  if (safeDistance <= safeRadius * 24) return 'near';
-  if (safeDistance <= safeRadius * 96) return 'medium';
-  if (safeDistance <= safeRadius * 384) return 'far';
-  return 'marker';
+/** Display-only phase gains; physical ANM amplitudes remain unchanged. */
+export const PROTEIN_MOTION_PHASE_GAINS: Readonly<Record<ProteinPhase, number>> = {
+  intact: 1,
+  exposed: 1,
+  dissociated: 1,
+  critical: 1.5,
+};
+
+// LOD ごとの最小投影直径 [px]。並びは細かい方から粗い方(near→marker)。
+const LODS_FINE_TO_COARSE: readonly ProteinMotionLod[] = ['near', 'medium', 'far', 'marker'];
+const LOD_MIN_PROJECTED_PX: Readonly<Record<ProteinMotionLod, number>> = {
+  near: 160, medium: 40, far: 8, marker: 0,
+};
+// 閾値ちょうどで毎フレーム LOD が往復しないための不感帯。
+const LOD_HYSTERESIS_RATIO = 0.15;
+
+/**
+ * 画面投影直径 [px] から次の LOD を選ぶ。`previous` を跨いだヒステリシスを掛けるため、
+ * より細かい LOD へ上げるには自身の閾値を +15% 上回る必要があり、より粗い LOD へ下げるには
+ * 現在の LOD の閾値を -15% 下回る必要がある。大きな距離の飛び(seek 直後など)では複数段
+ * まとめて遷移する。
+ */
+export function proteinMotionLodForProjectedSize(diameterPx: number, previous: ProteinMotionLod): ProteinMotionLod {
+  // NaN は 0(marker側)へ、+Infinity(視点が無く LOD を判断できない呼び出し)は近距離側へ倒す。
+  const safeDiameter = diameterPx >= 0 ? diameterPx : 0;
+  let index = LODS_FINE_TO_COARSE.indexOf(previous);
+  if (index < 0) index = 0;
+  for (;;) {
+    const currentMin = LOD_MIN_PROJECTED_PX[LODS_FINE_TO_COARSE[index]!];
+    if (index < LODS_FINE_TO_COARSE.length - 1 && safeDiameter < currentMin * (1 - LOD_HYSTERESIS_RATIO)) {
+      index += 1;
+      continue;
+    }
+    if (index > 0) {
+      const finerMin = LOD_MIN_PROJECTED_PX[LODS_FINE_TO_COARSE[index - 1]!];
+      if (safeDiameter >= finerMin * (1 + LOD_HYSTERESIS_RATIO)) {
+        index -= 1;
+        continue;
+      }
+    }
+    return LODS_FINE_TO_COARSE[index]!;
+  }
 }
 
 const MAX_MOTION_MODES = PROTEIN_MOTION_LOD_MODE_COUNTS.near;
 const MEDIUM_UPDATE_HZ = 30;
 const FAR_UPDATE_HZ = 15;
 const UINT32_SCALE = 0x1_0000_0000;
+/** LOD 切替時、旧 LOD の変位から新 LOD の変位へ表示上ブレンドする時間 [s]。 */
+export const PROTEIN_MOTION_LOD_FADE_DURATION_SEC = 0.25;
 
 export interface ProteinMotionControllerOptions {
   /** Optional display-only overrides; physical modal amplitudes remain asset data. */
@@ -96,10 +132,16 @@ export class ProteinMotionController {
   private readonly sampler: ProteinBrownianSampler;
   private readonly modeCoefficientsBuffer: Float64Array;
   private readonly residueOffsetsBuffer: Float32Array;
+  private readonly rawTargetBuffer: Float32Array;
+  private readonly fadeFromBuffer: Float32Array;
   private readonly modeGains: Float64Array;
   private currentLod: ProteinMotionLod = 'near';
   private currentModeCount = 0;
+  private lastRawSampleTime = Number.NaN;
   private lastSampleTime = Number.NaN;
+  private currentPhase: ProteinPhase = 'intact';
+  private fading = false;
+  private fadeStartTime = 0;
 
   constructor(
     asset: ProteinMotionAsset,
@@ -131,6 +173,8 @@ export class ProteinMotionController {
     );
     this.modeCoefficientsBuffer = new Float64Array(this.modeCount);
     this.residueOffsetsBuffer = new Float32Array(this.residueCount * 4);
+    this.rawTargetBuffer = new Float32Array(this.residueCount * 4);
+    this.fadeFromBuffer = new Float32Array(this.residueCount * 4);
     this.modeGains = new Float64Array(this.modeCount);
     for (let modeIndex = 0; modeIndex < this.modeCount; modeIndex += 1) {
       const mode = this.modes[modeIndex]!;
@@ -160,48 +204,81 @@ export class ProteinMotionController {
   /**
    * Update at a display time and return the same residue buffer each time.
    * `sampleAt` and `seek` are aliases so callers can describe their intent
-   * without changing the deterministic sampling semantics.
+   * without changing the deterministic sampling semantics. A LOD change
+   * blends from the previously returned buffer into the new target over
+   * `PROTEIN_MOTION_LOD_FADE_DURATION_SEC` of display time instead of
+   * popping, so callers may keep calling `update` every frame through a
+   * LOD transition without special-casing it.
    */
-  update(time: number, lod: ProteinMotionLod = 'near'): Float32Array {
-    const nextModeCount = modeCountFor(lod, this.modeCount);
+  update(
+    time: number,
+    lod: ProteinMotionLod = 'near',
+    phase: ProteinPhase = this.currentPhase,
+  ): Float32Array {
     const output = this.residueOffsetsBuffer;
-    const sampleTime = nextModeCount === 0 ? 0 : this.sampleTimeFor(time, lod);
-    if (lod === this.currentLod && nextModeCount === this.currentModeCount && sampleTime === this.lastSampleTime) {
+    const nextModeCount = modeCountFor(lod, this.modeCount);
+    const rawSampleTime = nextModeCount === 0 ? 0 : this.sampleTimeFor(time, lod);
+    const safeTime = safeDisplayTime(time);
+    const inputsChanged = lod !== this.currentLod || nextModeCount !== this.currentModeCount
+      || rawSampleTime !== this.lastRawSampleTime || phase !== this.currentPhase;
+
+    if (!inputsChanged && !this.fading) return output;
+
+    if (inputsChanged) {
+      if (lod !== this.currentLod) {
+        this.fadeFromBuffer.set(output);
+        this.fading = true;
+        this.fadeStartTime = safeTime;
+      }
+      this.currentLod = lod;
+      this.currentModeCount = nextModeCount;
+      this.currentPhase = phase;
+      this.lastRawSampleTime = rawSampleTime;
+      this.computeRawInto(this.rawTargetBuffer, rawSampleTime, nextModeCount, phase);
+    }
+
+    if (!this.fading) {
+      output.set(this.rawTargetBuffer);
+      this.lastSampleTime = rawSampleTime;
       return output;
     }
-    this.currentLod = lod;
-    this.currentModeCount = nextModeCount;
 
-    if (this.currentModeCount === 0) {
-      output.fill(0);
-      this.lastSampleTime = sampleTime;
-      return output;
+    const fadeT = Math.min(1, Math.max(0, (safeTime - this.fadeStartTime) / PROTEIN_MOTION_LOD_FADE_DURATION_SEC));
+    for (let index = 0; index < output.length; index += 1) {
+      const from = this.fadeFromBuffer[index]!;
+      output[index] = from + (this.rawTargetBuffer[index]! - from) * fadeT;
     }
+    this.lastSampleTime = safeTime;
+    if (fadeT >= 1) this.fading = false;
+    return output;
+  }
 
-    output.fill(0);
+  /** Projects the sampled modal coefficients into `target` as residue xyz offsets. */
+  private computeRawInto(target: Float32Array, sampleTime: number, activeModeCount: number, phase: ProteinPhase): void {
+    target.fill(0);
+    if (activeModeCount === 0) return;
     this.sampler.sampleAt(sampleTime, this.modeCoefficientsBuffer);
-    for (let modeIndex = 0; modeIndex < this.currentModeCount; modeIndex += 1) {
-      const coefficient = this.modeCoefficientsBuffer[modeIndex]! * this.modeGains[modeIndex]!;
+    const phaseGain = PROTEIN_MOTION_PHASE_GAINS[phase];
+    for (let modeIndex = 0; modeIndex < activeModeCount; modeIndex += 1) {
+      const coefficient = this.modeCoefficientsBuffer[modeIndex]! * this.modeGains[modeIndex]! * phaseGain;
       if (coefficient === 0) continue;
       const displacements = this.modes[modeIndex]!.displacements;
       for (let residueIndex = 0; residueIndex < this.residueCount; residueIndex += 1) {
         const sourceOffset = residueIndex * 3;
         const outputOffset = residueIndex * 4;
-        output[outputOffset] = output[outputOffset]! + coefficient * (displacements[sourceOffset] ?? 0);
-        output[outputOffset + 1] = output[outputOffset + 1]! + coefficient * (displacements[sourceOffset + 1] ?? 0);
-        output[outputOffset + 2] = output[outputOffset + 2]! + coefficient * (displacements[sourceOffset + 2] ?? 0);
+        target[outputOffset] = target[outputOffset]! + coefficient * (displacements[sourceOffset] ?? 0);
+        target[outputOffset + 1] = target[outputOffset + 1]! + coefficient * (displacements[sourceOffset + 1] ?? 0);
+        target[outputOffset + 2] = target[outputOffset + 2]! + coefficient * (displacements[sourceOffset + 2] ?? 0);
       }
     }
-    this.lastSampleTime = sampleTime;
-    return output;
   }
 
-  sampleAt(time: number, lod: ProteinMotionLod = this.currentLod): Float32Array {
-    return this.update(time, lod);
+  sampleAt(time: number, lod: ProteinMotionLod = this.currentLod, phase: ProteinPhase = this.currentPhase): Float32Array {
+    return this.update(time, lod, phase);
   }
 
-  seek(time: number, lod: ProteinMotionLod = this.currentLod): Float32Array {
-    return this.update(time, lod);
+  seek(time: number, lod: ProteinMotionLod = this.currentLod, phase: ProteinPhase = this.currentPhase): Float32Array {
+    return this.update(time, lod, phase);
   }
 
   private sampleTimeFor(time: number, lod: ProteinMotionLod): number {

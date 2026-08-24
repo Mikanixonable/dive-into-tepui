@@ -20,7 +20,7 @@ import type { CameraSystem, ProjectFn } from '../camera/camera-system';
 import { AmmoPickup } from '../game-entity/ammo-pickup';
 import { RcsFuelPickup } from '../game-entity/rcs-fuel-pickup';
 import { Base } from '../game-entity/base';
-import { generateApproachingEnemy, generateDriftingEnemy, generateProteinEnemy } from './spawner/enemy-generator';
+import { generateApproachingEnemy, generateDriftingEnemy, generateProteinEnemy, generateProteinFormation } from './spawner/enemy-generator';
 import { PROTEIN_ASSET_IDS, type ProteinAssetId } from '../protein/protein-asset-loader';
 import {
   DEFAULT_PROTEIN_DISPLAY, defaultProteinDisplayFor, PROTEIN_COLOR_LABELS, PROTEIN_DISPLAY_LABELS,
@@ -85,6 +85,7 @@ export class CreativeStage extends Stage {
   private readonly rcsFuelPickupIdAllocator = new EntityIdAllocator('creative-rcs-fuel-');
   private activePlayer: Player | null = null;
   private manualEnemyCount = 0;
+  private manualFormationCount = 0;
   private manualEnemySpawnDistance = STAGE_CONTROL_DEFAULT_ENEMY_SPAWN_DISTANCE;
   private proteinDisplay: ProteinDisplaySettings = DEFAULT_PROTEIN_DISPLAY;
   private readonly proteinDisplayByRepresentation = new Map<ProteinRepresentation, ProteinDisplaySettings>([
@@ -281,6 +282,10 @@ export class CreativeStage extends Stage {
       this.spawnManualEnemy(selectedProteinShape, String(0xffffff));
     });
     proteinSection.appendChild(proteinSpawnButton.element);
+    const proteinFormationSpawnButton = new Button('陣形をスポーン', () => {
+      this.spawnProteinFormation();
+    });
+    proteinSection.appendChild(proteinFormationSpawnButton.element);
     enemySections.set('protein', proteinSection);
     body.appendChild(proteinSection);
     enemyTabs.setSelected(selectedEnemyFamily);
@@ -289,7 +294,7 @@ export class CreativeStage extends Stage {
       section.classList.toggle('hidden', !visible);
       section.setAttribute('aria-hidden', String(!visible));
     }
-    this.spawnEnemyButtons = [conventionalSpawnButton, proteinSpawnButton];
+    this.spawnEnemyButtons = [conventionalSpawnButton, proteinSpawnButton, proteinFormationSpawnButton];
     hudRail(hudRoot, 'right').appendChild(panel);
     return panel;
   }
@@ -342,6 +347,23 @@ export class CreativeStage extends Stage {
         this._hud, this._worldSfx, this._fx, this._scene,
       );
     this.addEnemy(enemy, this._entities);
+  }
+
+  // タンパク質陣形(SPEC COMBAT.md「タンパク質陣形」節)の 3 役を、自機前方に一括スポーンする。
+  private spawnProteinFormation(): void {
+    const player = this.activePlayer;
+    if (player === null || !player.alive) {
+      this._hud.hint('操作艦がいないため敵をスポーンできません');
+      return;
+    }
+    const forward = qRotate(player.att.q, v3(0, 0, 1));
+    const position = addScaled(player.state.r, forward, this.manualEnemySpawnDistance);
+    const state = kinematicState(player.state.t, position, player.state.v);
+    const name = `FORMATION-${++this.manualFormationCount}`;
+    const formationId = name;
+    for (const enemy of generateProteinFormation(name, state, player.state.r, this.proteinDisplay, formationId, this._hud, this._worldSfx, this._fx, this._scene)) {
+      this.addEnemy(enemy, this._entities);
+    }
   }
 
   // ステージ操作パネルは、表示中のワールドビューの右ドックへ追従させる。

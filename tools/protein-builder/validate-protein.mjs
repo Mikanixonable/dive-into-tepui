@@ -8,9 +8,6 @@ if (asset.schemaVersion !== 1) errors.push('schemaVersion must be 1');
 if (!asset.id) errors.push('id is required');
 if (!Number.isFinite(asset.coordinateScale) || asset.coordinateScale <= 0) errors.push('coordinateScale must be positive');
 if (!Number.isFinite(asset.integrity?.maxHp) || asset.integrity.maxHp <= 0) errors.push('integrity.maxHp must be positive');
-if (asset.motion?.model !== 'overdamped-normal-modes') errors.push('motion.model must be overdamped-normal-modes');
-if (!Number.isFinite(asset.motion?.sampleHz) || asset.motion.sampleHz <= 0) errors.push('motion.sampleHz must be positive');
-if (!Number.isFinite(asset.motion?.visualGain) || asset.motion.visualGain <= 0) errors.push('motion.visualGain must be positive');
 const componentIds = new Set();
 for (const component of asset.components ?? []) {
   if (!component.id) errors.push('component id is required');
@@ -24,25 +21,6 @@ for (const action of asset.actions ?? []) {
   if (actionIds.has(action.id)) errors.push(`duplicate action id: ${action.id}`);
   actionIds.add(action.id);
 }
-const modeIds = new Set();
-for (const mode of asset.motion?.modes ?? []) {
-  if (!mode.id) errors.push('motion mode id is required');
-  if (modeIds.has(mode.id)) errors.push(`duplicate motion mode id: ${mode.id}`);
-  modeIds.add(mode.id);
-  if (!Number.isFinite(mode.relaxationRate) || mode.relaxationRate <= 0) errors.push(`invalid relaxationRate: ${mode.id}`);
-  if (!Number.isFinite(mode.rmsAmplitude) || mode.rmsAmplitude <= 0) errors.push(`invalid rmsAmplitude: ${mode.id}`);
-  const transformedIds = new Set();
-  for (const transform of mode.components ?? []) {
-    if (!componentIds.has(transform.componentId)) errors.push(`motion mode ${mode.id} references unknown component: ${transform.componentId}`);
-    if (transformedIds.has(transform.componentId)) errors.push(`motion mode ${mode.id} has duplicate component: ${transform.componentId}`);
-    transformedIds.add(transform.componentId);
-    if (!Array.isArray(transform.translation) || transform.translation.length !== 3 || transform.translation.some((value) => !Number.isFinite(value))) {
-      errors.push(`invalid translation: ${mode.id}/${transform.componentId}`);
-    }
-  }
-  for (const componentId of componentIds) if (!transformedIds.has(componentId)) errors.push(`motion mode ${mode.id} is missing component: ${componentId}`);
-}
-if (!(asset.motion?.modes?.length > 0)) errors.push('motion.modes must be non-empty');
 const siteIds = new Set();
 for (const site of asset.sites ?? []) {
   if (siteIds.has(site.id)) errors.push(`duplicate site id: ${site.id}`);

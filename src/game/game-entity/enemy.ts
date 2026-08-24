@@ -11,6 +11,8 @@ import { Attitude } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { R_EARTH_EQ } from '../../physics/solar-system';
 import { add, addScaled, dot, len, lenSq, norm, randPerp, rotateAxis, scale, sub, Vec3, v3 } from '../../physics/vec3';
+import { metersPerPixel, type Viewpoint } from '../../physics/projection';
+import { apparentSizePx } from '../../render/screen-lod';
 import { solveLeadTime } from '../../physics/intercept';
 import { fmtMarkerDist } from '../hud/utils';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
@@ -34,7 +36,8 @@ import { proteinEnemyDefinitionFor } from '../protein/protein-enemy-registry';
 import { ProteinRuntime } from '../protein/protein-runtime';
 import { ProteinRibbonCollisionGeometry } from '../protein/protein-ribbon-collision';
 import { createProteinMotionBinding, type ProteinMotionBinding } from '../../render/protein-motion-material';
-import type { ProteinDamageResult } from '../protein/protein-combat-state';
+import { isFormationEnergyAvailable, type FormationRole, type ProteinDamageResult } from '../protein/protein-combat-state';
+export type { FormationRole } from '../protein/protein-combat-state';
 import {
   DEFAULT_PROTEIN_DISPLAY, isProteinDisplaySettings, proteinDisplayFromLegacyColorMode, type ProteinColorMode, type ProteinDisplaySettings,
 } from '../protein/protein-display';
@@ -119,6 +122,8 @@ export type EnemyInit =
     readonly orbitLineColor: string | number;
     readonly waveId?: number;
     readonly id?: string;
+    readonly formationId?: string;
+    readonly formationRole?: FormationRole;
   }
   | { readonly saved: EnemySaveData; readonly simTime: number };
 
@@ -127,6 +132,8 @@ export class Enemy extends Ship {
   protected readonly maxTemperature = C.ENEMY_MAX_TEMP;
   accent: string | number; // マーカー色・集団識別。全敵が保持する
   waveId?: number; // stage00 のウェーブ敵のみ。生存ウェーブ集計に使う
+  readonly formationId?: string;
+  readonly formationRole?: FormationRole;
   readonly orbitLineColor: string | number;
 
   // 実行時状態(遅延初期化)。未設定 = まだその状態に入っていない
@@ -143,6 +150,24 @@ export class Enemy extends Ship {
   readonly proteinRuntime: ProteinRuntime | null;
   private readonly proteinRibbonCollision: ProteinRibbonCollisionGeometry | null;
 
+  override get hp(): number {
+    return this.proteinRuntime?.combat.integrityHp ?? super.hp;
+  }
+
+  override set hp(value: number) {
+    // Ship's constructor initializes the legacy backing value before the protein
+    // runtime exists. Once the runtime is attached, integrityHp is authoritative.
+    if (!this.proteinRuntime) super.hp = value;
+  }
+
+  override get maxHp(): number {
+    return this.proteinRuntime?.combat.integrityMaxHp ?? super.maxHp;
+  }
+
+  override set maxHp(value: number) {
+    if (!this.proteinRuntime) super.maxHp = value;
+  }
+
   // init の enemyKind に応じたメッシュで Ship を初期化し、専用の軌道線をシーンへ追加する。
   constructor(
     init: EnemyInit,
@@ -151,7 +176,7 @@ export class Enemy extends Ship {
     fx: EffectsSystem,
     scene?: THREE.Scene,
   ) {
-    const { name, state, enemyKind: rawEnemyKind, att, accent, orbitLineColor, waveId, id } = 'saved' in init
+    const { name, state, enemyKind: rawEnemyKind, att, accent, orbitLineColor, waveId, id, formationId, formationRole } = 'saved' in init
       ? {
         name: init.saved.name || '',
         state: kinematicState(init.simTime, v3(init.saved.r.x, init.saved.r.y, init.saved.r.z), v3(init.saved.v.x, init.saved.v.y, init.saved.v.z)),
@@ -161,6 +186,8 @@ export class Enemy extends Ship {
         orbitLineColor: init.saved.accent,
         waveId: init.saved.waveId,
         id: init.saved.id || undefined,
+        formationId: init.saved.formationId,
+        formationRole: init.saved.formationRole,
       }
       : init;
     const enemyKind = normalizeEnemyKind(rawEnemyKind);
@@ -190,6 +217,8 @@ export class Enemy extends Ship {
       : null;
     this.accent = accent;
     this.waveId = waveId;
+    this.formationId = formationId;
+    this.formationRole = formationRole;
     this.mass = 10000;
     this.collides = true;
     this.doPreciseReentry = true;
@@ -218,12 +247,6 @@ export class Enemy extends Ship {
     this.radius = this.proteinRibbonCollision?.outerRadius ?? visualSphere.radius;
     this.orbitLineColor = orbitLineColor;
 
-    if (this.proteinRuntime) {
-      // Ship starts with the legacy 6 HP template; protein integrity is authoritative immediately,
-      // including newly spawned enemies before their first hit.
-      this.hp = this.proteinRuntime.combat.integrityHp;
-      this.maxHp = this.proteinRuntime.combat.integrityMaxHp;
-    }
     if ('saved' in init) {
       if (!this.proteinRuntime) {
         this.setOverallHp(init.saved.health);
@@ -276,12 +299,14 @@ export class Enemy extends Ship {
     return this.proteinRuntime?.hudSnapshot ?? null;
   }
 
-  override sync(fo: import('../floating-origin').FloatingOrigin, displayTime: number, viewerPosition?: Vec3): void {
+  override sync(fo: import('../floating-origin').FloatingOrigin, displayTime: number, viewer?: Viewpoint): void {
     super.sync(fo, displayTime);
     if (this.proteinRuntime && this.renderObject.visible) {
       const displayed = this.displayState(displayTime);
-      const distance = viewerPosition && displayed ? len(sub(displayed.r, viewerPosition)) : 0;
-      this.proteinRuntime.updateVisual(displayTime, distance, this.radius);
+      const projectedDiameterPx = viewer && displayed
+        ? apparentSizePx(this.radius * 2, metersPerPixel(viewer, displayed.r, window.innerHeight))
+        : Number.POSITIVE_INFINITY;
+      this.proteinRuntime.updateVisual(displayTime, projectedDiameterPx);
     }
   }
 
@@ -363,8 +388,6 @@ export class Enemy extends Ship {
     if (!runtime) return null;
     const localPoint = runtime.localImpactPoint(impactPoint, this.state.r, this.att.q);
     const result = runtime.combat.applyDamage(amount, localPoint);
-    this.hp = runtime.combat.integrityHp;
-    this.maxHp = runtime.combat.integrityMaxHp;
     return result;
   }
 
@@ -405,7 +428,6 @@ export class Enemy extends Ship {
       const damageFraction = collisionDamageFraction(damageSpeed);
       if (damageFraction <= 0) return;
       const result = this.proteinRuntime.combat.applyContactDamage(this.maxHp * damageFraction);
-      this.hp = this.proteinRuntime.combat.integrityHp;
       if (result.defeated) {
         this.alive = false;
         activeStage.recordEnemyDeath(this, simTime, cause);
@@ -450,7 +472,15 @@ export class Enemy extends Ship {
     this.lastBehaviorSim = simTime;
     if (!simSpeed.canShipAct) return;
     if (!this.fireEnabled) return;
-    if (this.proteinRuntime && !this.proteinRuntime.combat.hasAttackSite()) return;
+    if (this.proteinRuntime) {
+      const attackAction = this.proteinRuntime.combat.attackAction;
+      const energyAvailable = isFormationEnergyAvailable(this.formationRole, this.formationId, entities.enemies);
+      if (attackAction === null || !this.proteinRuntime.combat.isActionEnabled(attackAction.id, energyAvailable)) {
+        this.burstLeft = undefined;
+        this.burstDelay = undefined;
+        return;
+      }
+    }
     const dist = len(sub(player.state.r, this.state.r));
     if (!(dist < C.STAGE00_MAX_RANGE && dist > C.ENEMY_AI_MIN_RANGE)) return;
 
@@ -549,6 +579,8 @@ export class Enemy extends Ship {
       health: this.hp,
       accent: this.accent,
       waveId: this.waveId,
+      ...(this.formationId === undefined ? {} : { formationId: this.formationId }),
+      ...(this.formationRole === undefined ? {} : { formationRole: this.formationRole }),
       burstLeft: this.burstLeft,
       burstDelay: this.burstDelay,
       showTrajectoryLine: this.showTrajectoryLine,

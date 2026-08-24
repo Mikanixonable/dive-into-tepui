@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 1,
+  "id": "pdb-8ruc-rubisco",
+  "source": {
+    "pdbId": "8RUC",
+    "structureFile": "src/assets/models/rubisco8rucBackbone.json",
+    "citation": "Spinach Rubisco structure"
+  },
+  "coordinateScale": 0.06,
+  "integrity": {
+    "maxHp": 640
+  },
+  "actions": [],
+  "bonds": [],
+  "ligands": [],
+  "components": [
+    {
+      "id": "large-subunits",
+      "chains": [
+        "A",
+        "C",
+        "E",
+        "G"
+      ],
+      "entities": [
+        1
+      ],
+      "role": "Rubisco large subunits",
+      "source": "deposited entity"
+    },
+    {
+      "id": "small-subunits",
+      "chains": [
+        "I",
+        "J",
+        "K",
+        "L"
+      ],
+      "entities": [
+        2
+      ],
+      "role": "Rubisco small subunits",
+      "source": "deposited entity"
+    }
+  ],
+  "sites": [],
+  "modificationSlots": [],
+  "motion": {
+    "model": "overdamped-normal-modes",
+    "sampleHz": 30,
+    "visualGain": 4,
+    "modes": [
+      {
+        "id": "mode-1",
+        "relaxationRate": 0.45,
+        "rmsAmplitude": 1.2,
+        "components": [
+          {
+            "componentId": "large-subunits",
+            "translation": [
+              -0.136475,
+              0.098337,
+              0.985751
+            ]
+          },
+          {
+            "componentId": "small-subunits",
+            "translation": [
+              0.136475,
+              -0.098337,
+              -0.985751
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mode-2",
+        "relaxationRate": 0.463037,
+        "rmsAmplitude": 1.182986,
+        "components": [
+          {
+            "componentId": "large-subunits",
+            "translation": [
+              -0.68913,
+              0.705419,
+              -0.16578
+            ]
+          },
+          {
+            "componentId": "small-subunits",
+            "translation": [
+              0.68913,
+              -0.705419,
+              0.16578
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mode-3",
+        "relaxationRate": 0.466011,
+        "rmsAmplitude": 1.179205,
+        "components": [
+          {
+            "componentId": "large-subunits",
+            "translation": [
+              0.71167,
+              0.701935,
+              0.028506
+            ]
+          },
+          {
+            "componentId": "small-subunits",
+            "translation": [
+              -0.71167,
+              -0.701935,
+              -0.028506
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "generated": {
+    "backend": "existing-backbone",
+    "backboneCount": 2356,
+    "secondaryKinds": [
+      "coil",
+      "helix",
+      "sheet"
+    ],
+    "chains": [
+      "A",
+      "C",
+      "E",
+      "G",
+      "I",
+      "J",
+      "K",
+      "L"
+    ],
+    "entities": [
+      1,
+      2
+    ],
+    "modalDerivation": {
+      "model": "rigid-domain-anisotropic-elastic-network",
+      "contactCutoffAngstrom": 12,
+      "modeCount": 3
+    }
+  }
+}

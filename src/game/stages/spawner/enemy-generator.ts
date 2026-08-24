@@ -14,11 +14,11 @@ import { KinematicState, kinematicState, orbitAxes } from '../../../physics/kine
 import { MU_EARTH, R_EARTH } from '../../../physics/solar-system';
 import { stateFromOrbitalElements } from '../../../physics/elements';
 import { randSym } from '../../../physics/random';
-import { len, norm, rotateAxis, scale, v3 } from '../../../physics/vec3';
+import { addScaled, len, norm, rotateAxis, scale, v3, type Vec3 } from '../../../physics/vec3';
 import { Hud } from '../../hud/hud';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../../vfx/effects-system';
-import { Enemy, inertiaForEnemyKind, type EnemyKind } from '../../game-entity/enemy';
+import { Enemy, inertiaForEnemyKind, type EnemyKind, type FormationRole } from '../../game-entity/enemy';
 import type { ProteinAssetId } from '../../protein/protein-asset-loader';
 import type { ProteinDisplaySettings } from '../../protein/protein-display';
 
@@ -39,7 +39,11 @@ export function generateProteinEnemy(name: string, state: KinematicState, assetI
   return generateFreeEnemy(name, state, 0xffffff, 0xffffff, { kind: 'protein', assetId, display }, hud, worldSfx, fx, scene);
 }
 
-function generateFreeEnemy(name: string, state: KinematicState, accent: string | number, orbitLineColor: string | number, enemyKind: EnemyKind, hud: Hud, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
+function generateFreeEnemy(
+  name: string, state: KinematicState, accent: string | number, orbitLineColor: string | number, enemyKind: EnemyKind,
+  hud: Hud, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene,
+  formationId?: string, formationRole?: FormationRole,
+): Enemy {
   return new Enemy(
     {
       name,
@@ -53,12 +57,31 @@ function generateFreeEnemy(name: string, state: KinematicState, accent: string |
       },
       accent,
       orbitLineColor,
+      formationId,
+      formationRole,
     },
     hud,
     worldSfx,
     fx,
     scene,
   );
+}
+
+// タンパク質陣形の 3 役(SPEC COMBAT.md「タンパク質陣形」節)を、共通の epoch・速度で一括生成する。
+// centerState を中心に、攻撃担当(5I4R)はその場、盾役(ルビスコ)はプレイヤー方向へ 450 m、
+// エネルギー役(ATPシンテターゼ)は反対方向へ 450 m 離して置く。以後の隊列維持操舵はしない。
+export function generateProteinFormation(
+  name: string, centerState: KinematicState, playerPosition: Vec3, display: ProteinDisplaySettings, formationId: string,
+  hud: Hud, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene,
+): readonly [Enemy, Enemy, Enemy] {
+  const towardPlayer = norm(v3(playerPosition.x - centerState.r.x, playerPosition.y - centerState.r.y, playerPosition.z - centerState.r.z));
+  const offset = 450;
+  const shieldState = kinematicState(centerState.t, addScaled(centerState.r, towardPlayer, offset), centerState.v);
+  const energyState = kinematicState(centerState.t, addScaled(centerState.r, towardPlayer, -offset), centerState.v);
+  const attacker = generateFreeEnemy(`${name}-ATTACKER`, centerState, 0xffffff, 0xffffff, { kind: 'protein', assetId: 'pdb-5i4r', display }, hud, worldSfx, fx, scene, formationId, 'attacker');
+  const shield = generateFreeEnemy(`${name}-SHIELD`, shieldState, 0xffffff, 0xffffff, { kind: 'protein', assetId: 'pdb-8ruc-rubisco', display }, hud, worldSfx, fx, scene, formationId, 'shield');
+  const energy = generateFreeEnemy(`${name}-ENERGY`, energyState, 0xffffff, 0xffffff, { kind: 'protein', assetId: 'pdb-6n2y-atp-synthase', display }, hud, worldSfx, fx, scene, formationId, 'energy');
+  return [attacker, shield, energy];
 }
 
 // base から dAlong だけ進んだ位置に漂う敵を生成する。

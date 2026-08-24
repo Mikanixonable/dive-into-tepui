@@ -57,3 +57,20 @@ export function meridianBasisToEci(axis: Vec3, spinAngle: number): Quat {
 export function spinOrientation(axis: Vec3, spinAngle: number): Quat | null {
   return qFromForwardUp(meridianDirection(axis, spinAngle), axis);
 }
+
+// 天体固定の緯度 [rad](北極方向が正)・経度 [rad, (-pi, pi]、本初子午線から自転方向へ測る)。
+export interface LatLon {
+  readonly latRad: number;
+  readonly lonRad: number;
+}
+
+// position(天体中心相対、ECI)を、自転軸 axis・自転位相 spinAngle の天体表面座標へ変換する。
+// 経度は本初子午線(meridianDirection)を 0 とし、自転が進む向き(cross(axis, meridian))を正に取る。
+export function latLonOf(position: Vec3, axis: Vec3, spinAngle: number): LatLon {
+  const r = norm(position);
+  const latRad = Math.asin(Math.max(-1, Math.min(1, dot(r, axis))));
+  const meridian = meridianDirection(axis, spinAngle);
+  const east = cross(axis, meridian);
+  const lonRad = Math.atan2(dot(r, east), dot(r, meridian));
+  return { latRad, lonRad };
+}
