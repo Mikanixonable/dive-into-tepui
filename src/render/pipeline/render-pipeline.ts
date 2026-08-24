@@ -59,6 +59,8 @@ export class RenderPipeline implements DebugTargetHost {
   private readonly depthDebugNear: FloatUniform;
   private readonly depthDebugFar: FloatUniform;
   private readonly depthDebugProjInv: Mat4Uniform;
+  // 「影スロット」表示が、復元した view 空間の位置を描画座標へ戻すのに使う。
+  private readonly debugViewToWorld: Mat4Uniform;
   // getDrawingBufferSize の書き込み先。フレームごとに確保しない使い回し領域。
   private readonly drawingBufferSize = new THREE.Vector2();
   private readonly unregisterProteinMotionRenderer: () => void;
@@ -110,6 +112,7 @@ export class RenderPipeline implements DebugTargetHost {
     this.depthDebugNear = uniform(1);
     this.depthDebugFar = uniform(2);
     this.depthDebugProjInv = uniform(new THREE.Matrix4());
+    this.debugViewToWorld = uniform(new THREE.Matrix4());
 
     // デバッグ表示の切替は quad.material の差し替えで行う(WebGPU ではジオメトリ/頂点属性の
     // 差し替えは禁止だが、マテリアルの差し替えは可 — CLAUDE.md の WebGPU 注意点参照)。1枚の
@@ -127,6 +130,7 @@ export class RenderPipeline implements DebugTargetHost {
       // 4 枚のスロットを 2x2 に並べて画面いっぱいへ映す。線形深度なのでそのまま濃淡として
       // 読め(遠いほど白)、使われていないスロットは真っ白のまま残る。
       shadow: this.buildCompositeMaterial(vec4(vec3(this.shadowSlotGridNode()), 1)),
+      'shadow-slot': this.buildCompositeMaterial(vec4(this.shadowSlotColorNode(), 1)),
       occlusion: this.buildCompositeMaterial(
         vec4(vec3(texture(this.occlusionPass.texture, screenUV).r), 1),
       ),
@@ -173,6 +177,13 @@ export class RenderPipeline implements DebugTargetHost {
     const topRow = select(left, texture(slots[0]!.texture, tileUV).r, texture(slots[1]!.texture, tileUV).r);
     const bottomRow = select(left, texture(slots[2]!.texture, tileUV).r, texture(slots[3]!.texture, tileUV).r);
     return select(top, topRow, bottomRow);
+  }
+
+  // G バッファ深度から復元した位置を覆う影スロットの色。どのスロットも覆っていなければ黒。
+  private shadowSlotColorNode(): Vec3Node {
+    const viewPos = viewPositionAt(this.gbuffer.depthTexture, this.depthDebugProjInv);
+    const worldPos: Vec3Node = this.debugViewToWorld.mul(vec4(viewPos, 1)).xyz;
+    return this._sunOcclusion.slotDebugColor(worldPos);
   }
 
   // 深度バッファの生値を near/far 間の対数スケール(0=near, 1=far)へ変換する。素の深度値は
@@ -233,6 +244,7 @@ export class RenderPipeline implements DebugTargetHost {
     // composite パス。QuadMesh.render も内部で renderer.render() を呼ぶので、world パスとは
     // 別の GPU 計測枠が付く。
     this.depthDebugProjInv.value.copy(camera.projectionMatrixInverse);
+    this.debugViewToWorld.value.copy(camera.matrixWorld);
     if (camera instanceof THREE.PerspectiveCamera || camera instanceof THREE.OrthographicCamera) {
       this.depthDebugNear.value = camera.near;
       this.depthDebugFar.value = camera.far;
