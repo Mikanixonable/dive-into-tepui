@@ -3,6 +3,7 @@ import * as THREE from 'three/webgpu';
 import { FloatingOrigin } from './floating-origin';
 import { v3 } from '../physics/vec3';
 import type { PerfCounts } from '../perf-meter';
+import type { ProteinMotionFrameSample } from '../protein-motion-metrics';
 import { FrameSections, SECTION } from '../frame-sections';
 import { Player } from './player/player';
 import { Base } from './game-entity/base';
@@ -551,7 +552,7 @@ export class Game {
     this.entities.syncBases(
       this.controlledBase, fo, this.cameraSystem, displayTime, visibilityPolicy,
     );
-    this.entities.sync(fo, displayTime, this.cameraSystem.activeCameraPos);
+    this.entities.sync(fo, displayTime, this.cameraSystem.activeViewpoint);
     this.entities.applyVisibility(visibilityPolicy, player);
 
     this.entities.effects.sync(fo, this.cameraSystem.activeCamera, this.cameraSystem.zoomActive);
@@ -623,5 +624,9 @@ export class Game {
       displayDurationSec: this.displayWindowManager.current.duration,
       warp: this.simSpeedManager.simSpeed,
     };
+  }
+
+  proteinMotionFrameSample(): ProteinMotionFrameSample {
+    return this.entities.proteinMotionFrameSample();
   }
 }
