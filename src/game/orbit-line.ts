@@ -9,10 +9,6 @@ import { OrbitalElements } from '../physics/elements';
 import { FloatingOrigin } from './floating-origin';
 import { Curve, CurveSampler } from '../render/curve';
 import { LineStyle } from '../render/line-style';
-import { ReferenceFrame, FrameTransform, toFramePoint } from '../physics/frame';
-import type { Ephemeris } from '../physics/ephemeris';
-import { Attractor } from '../physics/attractor';
-import { add, v3, Vec3 } from '../physics/vec3';
 
 // Curve の頂点予算。描くのは常に1周ぶんの楕円なので、離心率・ズーム・見る向きを振っても
 // 適応分割は 360 頂点ほどで収束する(サジッタ目標 0.5px を満たして自ら止まる)。それを超える
@@ -31,9 +27,6 @@ export class OrbitLine {
   // 直近に描いた軌道要素のスナップショット。sampler はこれを読む — 閾値を超えるまでは
   // 一切書き換えないことで、osculating 要素の微小なゆらぎによる楕円の振動を防ぐ。
   private snap: OrbitalElements | null = null;
-  private snapFrame: ReferenceFrame | null = null;
-  private snapTf: FrameTransform | null = null;
-  private snapCenterPos: Vec3 = v3();
   // Curve へ渡す revision。楕円を作り直すたびに新しいオブジェクトへ差し替える。
   private revision: object = {};
 
@@ -62,7 +55,9 @@ export class OrbitLine {
   }
 
   // 離心近点角 E=t·2π を軌道要素で位置へ写す、閉曲線サンプラ。読むのは snap で、
-  // revision が指す形状と焼かれる形状が常に一致する。
+  // revision が指す形状と焼かれる形状が常に一致する。頂点は中心天体相対の ECI オフセットで、
+  // 表示座標系の回転はカメラ側が担う。これにより、軌道要素の再生成時刻と現在時刻の回転を
+  // 混ぜず、回転座標系でも楕円が慣性空間上の同じ軌道を保つ。
   private readonly sampler: CurveSampler = (t, out) => {
     const el = this.snap;
     if (!el) return;
@@ -73,58 +68,43 @@ export class OrbitLine {
     const rx = el.pHat.x * x + el.qHat.x * y;
     const ry = el.pHat.y * x + el.qHat.y * y;
     const rz = el.pHat.z * x + el.qHat.z * y;
-
-    if (this.snapTf) {
-      const rEci = add(this.snapCenterPos, v3(rx, ry, rz));
-      const pFrame = toFramePoint(this.snapTf, rEci);
-      out.set(pFrame.x, pFrame.y, pFrame.z);
-    } else {
-      out.set(rx, ry, rz);
-    }
+    out.set(rx, ry, rz);
   };
 
   // 毎フレーム呼ぶ。fo = 描画のフローティングオリジン、camera = 画面上のサジッタを実距離へ
   // 換算するための描画カメラ。el が null なら軌道要素を持たない状態として非表示にする。
-  // force = 要素が能動的に変化している間(推力中・ノード編集中)は true。
+  // opts.force = 要素が能動的に変化している間(推力中・ノード編集中)は true。
   sync(
-    el: OrbitalElements | null, fo: FloatingOrigin, camera: THREE.Camera, force = false,
-    frame?: ReferenceFrame, displayTime?: number, ephemeris?: Ephemeris, attractors?: readonly Attractor[],
+    el: OrbitalElements | null, fo: FloatingOrigin, camera: THREE.Camera,
+    opts: {
+      readonly force?: boolean;
+    } = {},
   ): void {
+    const { force = false } = opts;
     if (!el || el.e >= 0.98 || !isFinite(el.a) || el.a <= 0) {
       this.snap = null;
-      this.snapTf = null;
       this.curve.setVisible(false);
       return;
     }
 
-    let tf: FrameTransform | null = null;
-    if (frame && displayTime !== undefined && ephemeris && attractors) {
-      tf = ephemeris.frameTransformAt(frame, displayTime, attractors);
-    }
+    // OrbitLineの頂点はECI相対、シーンもECI基準なので、回転クォータニオンは恒等にする。
+    // 回転座標系はMapCameraの視点・姿勢で表現する。ここへ現在時刻のフレーム回転を掛けると、
+    // 再生成時刻に焼いた軌道形状だけが回転し続け、船の現在位置から外れていく。
+    this.curve.setTransform(fo.RtoThreeV3(el.center.state.r));
 
-    if (tf) {
-      this.curve.setTransform(fo.RtoThreeV3(tf.origin), new THREE.Quaternion(tf.q.x, tf.q.y, tf.q.z, tf.q.w));
-    } else {
-      this.curve.setTransform(fo.RtoThreeV3(el.center.state.r));
-    }
-
-    if (this.needsRegen(el, force, frame)) {
+    if (this.needsRegen(el, force)) {
       this.revision = {};
       this.snap = el;
-      this.snapFrame = frame ?? null;
-      this.snapTf = tf;
-      this.snapCenterPos = el.center.state.r;
     }
 
-    this.curve.setCurve(this.sampler, { revision: this.revision, camera, loops: 1 });
+    this.curve.setCurve(this.sampler, { revision: this.revision, camera });
     this.curve.setVisible(true);
   }
 
   // 現在の要素が直近のスナップショットから許容誤差を超えて変化していれば true(要再生成)。
-  private needsRegen(el: OrbitalElements, force: boolean, frame?: ReferenceFrame): boolean {
+  private needsRegen(el: OrbitalElements, force: boolean): boolean {
     if (!this.snap) return true;
     if (force) return true;
-    if (this.snapFrame !== (frame ?? null)) return true;
     const s = this.snap;
     // 頂点は中心天体相対、平行移動は毎フレームの中心天体位置。中心が入れ替われば、
     // 別の天体を基準に焼いた形状をそのまま新しい中心へ動かすことになる。

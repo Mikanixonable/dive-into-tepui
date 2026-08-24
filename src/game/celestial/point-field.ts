@@ -1,9 +1,8 @@
 // 小惑星帯・木星トロヤ群・ヒルダ群・カイパーベルト・散乱円盤の点群を、軌道要素の統計分布として
-// 生成し位置を評価する。表示専用なので AttractorId 系(重力源・ピック対象・フォーカス対象)には
+// 生成し位置を評価する。表示専用なので CelestialBodyId 系(重力源・ピック対象・フォーカス対象)には
 // 載せない。THREE 非依存に保ってあり、生成の決定性と分布は tests/physics で検査する。
 // 各群は PointFieldDef 1つのデータで駆動する — 群を増やすには POINT_FIELD_DEFS に要素を足すだけ
 // でよく、生成コード自体に群固有の分岐を増やさない。
-// game-entity/asteroid.ts の Asteroid(重力を及ぼし積分される個別の GameEntity)とは別物。
 import { Q_ECLY_TO_ECI } from '../../physics/ecliptic';
 import { positionFromOrbitalElements, trueAnomalyFromMean } from '../../physics/elements';
 import { EPOCH_T_OFFSET } from '../../physics/ephemeris';

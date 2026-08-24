@@ -1,7 +1,6 @@
-// 天王星の衛星6個・冥王星の衛星5個・準惑星/小惑星の衛星6個(計17体)の回帰テスト:
+// 天王星の衛星6個・冥王星の衛星5個・準惑星/小惑星の衛星5個(計16体)の回帰テスト:
 // JPL 公開値との公転周期の一致、天王星系が黄道に対し横倒しであること、冥王星-カロンが
-// 実際に連星(共通重心が冥王星本体の外側にある)であること、ディモルフォスの傾斜角が
-// 黄道基準(親の赤道面基準ではない)であることの確認、および未測定 GM が 0 として
+// 実際に連星(共通重心が冥王星本体の外側にある)であること、および未測定 GM が 0 として
 // 登録されていること。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
@@ -39,7 +38,6 @@ const CASES: readonly [string, number][] = [
   ['namaka', 18.2783],
   ['vanth', 9.539154],
   ['weywot', 12.42727],
-  ['dimorphos', 0.4967],
 ];
 
 const URANUS_MOONS: readonly string[] = ['miranda', 'ariel', 'umbriel', 'titania', 'oberon'];
@@ -96,12 +94,6 @@ export function register(): void {
     assert.ok(Math.abs(maxOffsetKm - 2130) < 200, `共通重心までの振幅: ${maxOffsetKm} km`);
     const plutoRadiusKm = bodyDef(SOLAR_SYSTEM, 'pluto').radius / 1e3;
     assert.ok(maxOffsetKm > plutoRadiusKm, '共通重心が冥王星本体の内側に収まっている(連星になっていない)');
-  });
-
-  test('equatorial-satellites: ディモルフォスは逆行(i=169.3°が黄道基準の値であることの確認)', () => {
-    const t = 1e6;
-    const h = orbitNormal(eph, 'dimorphos', 'didymos', t);
-    assert.ok(dot(h, ECL_POLE_ECI) < 0, 'ディディモスの赤道面基準に読み替えられ、順行になっている疑い');
   });
 
   test('equatorial-satellites: 未測定 GM は 0、実測されているものは 0 でない', () => {

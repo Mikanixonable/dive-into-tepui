@@ -1,8 +1,10 @@
 import { AnyPart } from './game-entity/parts';
-import { EnemyKind } from './game-entity/enemy';
-import { AttractorId } from '../physics/attractor';
+import type { EnemyKind, FormationRole } from './game-entity/enemy';
+import { CelestialBodyId } from '../physics/celestial-body';
 import type { GamePhase } from './stages/stage';
 import type { WaveAttackSaveData } from './stages/stage-utils/wave-attack';
+import type { ProteinSaveData } from './protein/protein-schema';
+import type { BoosterStackData, BoosterStageData } from './player/booster-stack';
 
 export interface Vec3SaveData {
   x: number;
@@ -20,7 +22,7 @@ export interface QuatSaveData {
 export interface EntitySaveData {
   id: string;
   name?: string;
-  kind: 'player' | 'enemy' | 'ammo';
+  kind: 'player' | 'enemy' | 'ammo' | 'rcs-fuel' | 'booster';
   r: Vec3SaveData;
   v: Vec3SaveData;
   q: QuatSaveData;
@@ -48,7 +50,6 @@ export interface FireSaveData {
 
 export interface ThermalSaveData {
   hullTemp: number;
-  pendingHeat: number;
 }
 
 export interface RadiatorPanelSaveData {
@@ -80,12 +81,25 @@ export interface PlayerSaveData extends EntitySaveData {
   throttle: ThrottleSaveData;
   parts: AnyPart[];
   plan: PlanSaveData | null;
-  // 旧セーブデータには無いフィールドなので任意。無ければ followPlan から移行する。
+  // 旧セーブデータには無いフィールドなので任意。無ければ followPlan から移行する。'powered' は
+  // 廃止済みモードだが、旧セーブの読み込みのために型として残す。
   planExecution?: 'off' | 'instant' | 'powered';
   // 'planExecution' 導入前のセーブが持っていたフィールド。
   followPlan?: boolean;
   // 旧セーブデータには無いフィールドなので任意。無ければ既定値(false)。
   fineAttitude?: boolean;
+  // プロパティウィンドウの軌道線表示トグル。旧セーブには無いため任意(既定 false)。
+  showTrajectoryLine?: boolean;
+  // 接続中のブースター。旧セーブには無いため任意(既定は空スタック)。
+  boosters?: BoosterStackData;
+}
+
+// 分離後も独立して燃焼・慣性飛行するブースター。接続中の段は PlayerSaveData 側へ保存する。
+export interface DetachedBoosterSaveData extends EntitySaveData {
+  kind: 'booster';
+  stage: BoosterStageData;
+  // 分離直後の親艦との再接触を避ける猶予期限。旧データでは即時接触可能とする。
+  collisionEnableAt?: number;
 }
 
 // 基地は艦(EntitySaveData)と持ち物が根本的に異なる(所持金・在庫・収容艦)ため、
@@ -109,6 +123,8 @@ export interface BaseSaveData {
   dockedVessels: PlayerSaveData[];
   dockedShips?: PlayerSaveData[];
   throttle?: ThrottleSaveData;
+  // プロパティウィンドウの軌道線表示トグル。旧セーブには無いため任意(既定 false)。
+  showTrajectoryLine?: boolean;
 }
 
 export interface EnemySaveData extends EntitySaveData {
@@ -117,12 +133,22 @@ export interface EnemySaveData extends EntitySaveData {
   health: number;
   accent: string | number;
   waveId?: number;
+  // 陣形に属する敵だけが持つ識別子と役割。無ければ単体敵として復元する。
+  formationId?: string;
+  formationRole?: FormationRole;
   // バースト射撃の残弾・次弾までの残り時間。未着手なら両方 undefined。
   burstLeft?: number;
   burstDelay?: number;
+  // プロパティウィンドウの軌道線表示トグル。旧セーブには無いため任意(既定 false)。
+  showTrajectoryLine?: boolean;
+  // タンパク質敵が持つ部位HP・フェーズ・修飾。旧セーブには存在しない。
+  protein?: ProteinSaveData;
 }
 
 export interface AmmoPickupSaveData extends EntitySaveData {
+}
+
+export interface RcsFuelPickupSaveData extends EntitySaveData {
 }
 
 export interface ScoreCounterSaveData {
@@ -136,6 +162,8 @@ export interface ScoreCounterSaveData {
 export interface LogisticsSaveData {
   resupplyCheckAt: number;
   resupplyEnabled: boolean;
+  // 旧セーブデータには無い。無ければ自動投入を有効にする。
+  rcsFuelResupplyEnabled?: boolean;
 }
 
 // 全ステージ共通の内訳(スコア・決着状態・補給タイマー)。ステージ固有の内訳を持つ
@@ -176,7 +204,7 @@ export interface SnapshotMeta {
   name: string;
   createdAtReal: number;
   simTime: number;
-  centerBodyId: AttractorId;
+  centerBodyId: CelestialBodyId;
   altitude: number;
   speed: number;
   hpRatio: number;
@@ -252,17 +280,24 @@ export interface ChaseCameraSaveData {
   followAttitude: boolean;
 }
 
+// FrameRotationSource の保存形。
+export interface FrameRotationSourceSaveData {
+  kind: 'revolution' | 'spin';
+  id: string;
+}
+
 // MapCamera のフォーカス対象(FocusTarget の保存形)。'point' は焼き込み先の座標系
-// (center/rotatingWith)と、その座標系相対の点をそのまま持つ。
+// (center/rotatingWith)と、その座標系相対の点をそのまま持つ。rotatingWith は
+// 旧セーブでは文字列(公転対象の id)または null だったので、読み込み側がその形も受け付ける。
 export type FocusTargetSaveData =
   | { kind: 'object'; id: string }
-  | { kind: 'point'; center: string; rotatingWith: string | null; point: Vec3SaveData };
+  | { kind: 'point'; center: string; rotatingWith: FrameRotationSourceSaveData | string | null; point: Vec3SaveData };
 
 export interface MapCameraSaveData {
   offset: Vec3SaveData;
   pan: Vec3SaveData;
   up: Vec3SaveData;
-  rotatingWith: string | null;
+  rotatingWith: FrameRotationSourceSaveData | string | null;
   focus: FocusTargetSaveData;
   // 旧セーブデータには無い。無ければ既定のオイラー操作。
   rotationMode?: 'quaternion' | 'euler';
@@ -280,21 +315,32 @@ export interface CameraSaveData {
   overview: MapCameraSaveData;
 }
 
+export interface NavTargetSaveData {
+  id: string;
+  name: string;
+}
+
 export interface GameSaveData {
   version: number;
   stageId: string;
   simTime: number;
   /** 旧スナップショットには無い。存在する場合は現在の暦と一致しなければ復元しない。 */
   ephemerisContext?: EphemerisContext;
-  phaseOffsets: Partial<Record<AttractorId, number>>;
+  phaseOffsets: Partial<Record<CelestialBodyId, number>>;
   /** 旧スナップショットには無い。存在しなければ地球の自転初期位相は復元されない。 */
   earthSpinPhase0?: number;
   players: PlayerSaveData[];
   activePlayerId: string | null;
   enemies: EnemySaveData[];
   ammoPickups: AmmoPickupSaveData[];
+  // 旧スナップショットには無い。読み込み時に空配列へ正規化する。
+  rcsFuelPickups?: RcsFuelPickupSaveData[];
+  // 旧スナップショットには無い。読み込み時は空配列として扱う。
+  detachedBoosters?: DetachedBoosterSaveData[];
   bases: BaseSaveData[];
   stage: StageSaveData;
   // 旧セーブデータには無いフィールドなので任意。無ければ視点は既定のまま始まる。
   camera?: CameraSaveData;
+  // 旧セーブデータには無い。無ければターゲット未選択のまま始まる。
+  navTarget?: NavTargetSaveData | null;
 }

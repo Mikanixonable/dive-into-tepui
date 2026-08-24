@@ -28,7 +28,7 @@ export function register(): void {
     const a = kinematicState(0, v3(r0, 0, 0), v3(0, 0, vCirc));
     const span = 300;
     let b = a;
-    for (let i = 0; i < span; i++) b = stepRK4(b, 1, (rx, ry, rz) => earthGravity(v3(rx, ry, rz)));
+    for (let i = 0; i < span; i++) b = stepRK4(b, 1, (_t, rx, ry, rz) => earthGravity(v3(rx, ry, rz)));
 
     // 両端では入力そのもの(エルミートの定義どおり位置・速度とも一致する)
     const at0 = hermiteInterpolate(a, b, a.t);
@@ -38,7 +38,7 @@ export function register(): void {
 
     // 中間時刻: 真値(同じ RK4 で積分した状態)との誤差が線形補間より桁違いに小さい
     let truth = a;
-    for (let i = 0; i < span / 2; i++) truth = stepRK4(truth, 1, (rx, ry, rz) => earthGravity(v3(rx, ry, rz)));
+    for (let i = 0; i < span / 2; i++) truth = stepRK4(truth, 1, (_t, rx, ry, rz) => earthGravity(v3(rx, ry, rz)));
     const herm = hermiteInterpolate(a, b, truth.t);
     const linear = v3(
       (a.r.x + b.r.x) / 2, (a.r.y + b.r.y) / 2, (a.r.z + b.r.z) / 2,

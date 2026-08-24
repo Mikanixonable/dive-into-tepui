@@ -170,11 +170,11 @@ export function register(): void {
     }
   });
 
-  test('laplace-satellites: attractorsAt から得られる位置が正の距離を持つ(有限性の smoke test)', () => {
-    const attractors = eph.attractorsAt(1e7);
+  test('laplace-satellites: celestialBodiesAt から得られる位置が正の距離を持つ(有限性の smoke test)', () => {
+    const celestialBodies = eph.celestialBodiesAt(1e7);
     for (const [id] of CASES) {
-      const a = attractors.find((x) => x.id === id)!;
-      assert.ok(a !== undefined, `${id} が attractorsAt に無い`);
+      const a = celestialBodies.find((x) => x.id === id)!;
+      assert.ok(a !== undefined, `${id} が celestialBodiesAt に無い`);
       assert.ok(Number.isFinite(len(a.state.r)) && len(a.state.r) > 0, `${id} の距離`);
     }
   });
