@@ -168,10 +168,11 @@ export class RenderPipeline implements DebugTargetHost {
     const tileUV = screenUV.mul(2).fract();
     const slots = this.sunShadowMaps.slots;
     const left = screenUV.x.lessThan(0.5);
-    const bottom = screenUV.y.lessThan(0.5);
-    const lower = select(left, texture(slots[0]!.texture, tileUV).r, texture(slots[1]!.texture, tileUV).r);
-    const upper = select(left, texture(slots[2]!.texture, tileUV).r, texture(slots[3]!.texture, tileUV).r);
-    return select(bottom, lower, upper);
+    // screenUV は上端が原点なので、y の小さいほうが画面の上段。
+    const top = screenUV.y.lessThan(0.5);
+    const topRow = select(left, texture(slots[0]!.texture, tileUV).r, texture(slots[1]!.texture, tileUV).r);
+    const bottomRow = select(left, texture(slots[2]!.texture, tileUV).r, texture(slots[3]!.texture, tileUV).r);
+    return select(top, topRow, bottomRow);
   }
 
   // 深度バッファの生値を near/far 間の対数スケール(0=near, 1=far)へ変換する。素の深度値は

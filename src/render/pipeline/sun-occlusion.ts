@@ -269,7 +269,10 @@ export class SunOcclusion {
     const depthBias = min(texel.mul(slope).mul(2), texel.mul(MAX_SLOPE_BIAS_TEXELS)).div(depthRange);
 
     const clip = slot.lightViewProjection.mul(vec4(offsetPos, 1));
-    const uvBase = clip.xyz.div(clip.w).xy.mul(0.5).add(0.5);
+    // **深度マップの v は上端が 0。** 描いたとき NDC y=+1 の画素がテクスチャの 0 行目へ落ちるので、
+    // x と揃えて 0.5·y+0.5 にすると鏡像になり、遮蔽器のシルエットが鏡に映した位置へ出る。
+    const ndc = clip.xyz.div(clip.w);
+    const uvBase = vec2(ndc.x.mul(0.5).add(0.5), ndc.y.mul(-0.5).add(0.5));
     const receiverDepth = slot.lightView.mul(vec4(offsetPos, 1)).z.negate()
       .sub(slot.near).div(depthRange);
 
