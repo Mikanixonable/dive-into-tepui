@@ -1,8 +1,7 @@
 // 戦闘ビューで肉眼の「明るい星」程度にしか見えない惑星の見た目。視直径がピクセル未満に
 // なるので、戦闘ビューでは星殻上の輝点スプライトに切り替える。実体表示と輝点表示は別モデルの
-// 丸ごと差し替えであり、SphereView 側に視点モード分岐を足す形は取らない。球メッシュ自体は
-// SphereView と同じく screen-lod.ts の分割段ラダーに乗り、見かけ直径が閾値未満なら
-// (マップビューでは輝点も出さず)実体を隠す。
+// 丸ごと差し替えであり、SphereView 側に視点モード分岐を足す形は取らない。見かけ直径が閾値
+// 未満なら(マップビューでは輝点も出さず)実体を隠す。
 import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
 import { OrbitingId } from '../../physics/celestial-body';
@@ -13,7 +12,7 @@ import { spinOrientation } from '../../physics/body-orientation';
 import { STAR_SHELL_RADIUS } from '../../render/stars';
 import { Billboard } from '../../render/billboard';
 import { CelestialSurface } from '../../render/celestial-surface';
-import { showsPhysicalSphere, sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from '../../render/screen-lod';
+import { showsPhysicalSphere } from '../../render/screen-lod';
 import { CelestialView } from './celestial-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import { RingView } from './ring-view';
@@ -49,9 +48,7 @@ const tmpToObserver = new THREE.Vector3();
 
 export class PointView extends CelestialView {
   readonly id: OrbitingId;
-  private readonly surfaces: ReadonlyMap<SphereLodLevel, CelestialSurface>;
   private readonly group = new THREE.Group();
-  private activeLevel: SphereLodLevel | null = null;
   private ring?: RingView;
   private readonly billboard: Billboard;
   private readonly bondAlbedo: number;
@@ -59,13 +56,12 @@ export class PointView extends CelestialView {
   // 自転姿勢が乗る前のローカル半軸 [m](真球なら3軸とも radius)。
   private readonly axes: THREE.Vector3;
 
-  // buildSurface は分割段(screen-lod.ts の SPHERE_LOD_LADDER の要素)ごとにマップビュー用の
-  // 実体表面を作る遅延コンストラクタ、radius は実半径 [m]、shape は歪みの形状データ
+  // surface はマップビューで見せる実体、radius は実半径 [m]、shape は歪みの形状データ
   // (省略時は radius による真球)。rings を渡すとマップビューでのみ環を持つ(戦闘ビューの
   // 輝点に環はない — ring-view.ts 参照)。
   constructor(
     id: OrbitingId,
-    buildSurface: (level: SphereLodLevel) => CelestialSurface,
+    private readonly surface: CelestialSurface,
     private readonly radius: number,
     shape?: ShapeDef,
     private readonly rings?: RingSystemDef,
@@ -80,19 +76,11 @@ export class PointView extends CelestialView {
     this.billboard = new Billboard(0xffffff, -9);
     const a = shapeAxes(radius, shape);
     this.axes = new THREE.Vector3(a.x, a.y, a.z);
-    const surfaces = new Map<SphereLodLevel, CelestialSurface>();
-    for (const level of SPHERE_LOD_LADDER) {
-      const surface = buildSurface(level);
-      surface.mesh.visible = false;
-      surfaces.set(level, surface);
-    }
-    this.surfaces = surfaces;
   }
 
-  // buildSurface でマップビュー用の分割段ごとの表面を組み立て、輝点用ビルボードと
-  // あわせてシーンへ一度だけ登録する。
+  // マップビュー用の実体表面と輝点用ビルボードをシーンへ一度だけ登録する。
   build(scene: THREE.Scene): void {
-    for (const surface of this.surfaces.values()) this.group.add(surface.mesh);
+    this.surface.addTo(this.group);
     scene.add(this.group);
     if (this.rings !== undefined) {
       this.ring = new RingView(this.rings, this.radius, this.group.renderOrder + 1);
@@ -127,7 +115,7 @@ export class PointView extends CelestialView {
       }
       return;
     }
-    this.syncLod(apparentDiameterPx);
+    this.surface.syncLod(apparentDiameterPx);
     const sunDirection = ephemeris.sunDirFrom(pos, displayTime);
     const orientation = ephemeris.poleAt(this.id, displayTime);
     const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
@@ -149,19 +137,10 @@ export class PointView extends CelestialView {
     }
   }
 
-  // 見かけ直径が閾値未満のときの共通後始末: 全段の実体メッシュと環を隠す。
+  // 見かけ直径が閾値未満のときの共通後始末: 実体メッシュと環を隠す。
   private hidePhysical(): void {
-    for (const surface of this.surfaces.values()) surface.mesh.visible = false;
-    this.activeLevel = null;
+    this.surface.hide();
     if (this.ring !== undefined) this.ring.group.visible = false;
-  }
-
-  // 見かけ直径から球分割段を選び、その段のメッシュだけを visible にする。
-  private syncLod(apparentDiameterPx: number): void {
-    const level = sphereLodLevel(apparentDiameterPx);
-    if (level === this.activeLevel) return;
-    this.activeLevel = level;
-    for (const [lvl, surface] of this.surfaces) surface.mesh.visible = lvl === level;
   }
 
   // 星殻上に、描画座標 p の方向だけを反映した輝点を置く。明るさは「いま観測者へ届く光の量」
@@ -190,10 +169,10 @@ export class PointView extends CelestialView {
     );
   }
 
-  // 全分割段の表面・環・輝点ビルボードを解放する。
+  // 表面・環・輝点ビルボードを解放する。
   dispose(): void {
     this.group.removeFromParent();
-    for (const surface of this.surfaces.values()) surface.dispose();
+    this.surface.dispose();
     this.ring?.dispose();
     this.billboard.mesh.removeFromParent();
     this.billboard.dispose();
