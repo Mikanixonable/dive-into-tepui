@@ -98,7 +98,7 @@ export class AtmospherePass {
     const sunDot = dot(inward, normalize(sub(sunLight.position, shellPoint)));
     // 大気も遮蔽を受ける。**シェル上の点は G バッファの画素位置とは別の点**なので、遮蔽パスが
     // 書いた 1 枚は引けない — 同じ遮蔽関数をこの点で評価し直す。日食のとき月の影が大気にも落ちる。
-    const shellSources = { spheres: true, rings: true, protein: false, meshNormal: null };
+    const shellSources = { spheres: true, rings: true, meshNormal: null };
     const sunFactor: FloatNode = clamp(sunDot, 0, 1).mul(sunOcclusion.transmittance(shellPoint, shellSources));
     const color: Vec3Node = mix(SUNSET_COLOR, ATMO_COLOR, smoothstep(0, 0.2, sunDot));
 

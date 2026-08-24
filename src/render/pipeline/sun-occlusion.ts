@@ -9,10 +9,9 @@
 import * as THREE from 'three/webgpu';
 import {
   Fn, If, PI, abs, acos, and, asin, clamp, dot, exp, float, greaterThan, length,
-  lessThan, max, min, normalize, screenUV, select, sqrt, texture, uniform, vec2, vec4,
+  lessThan, max, min, normalize, select, sqrt, texture, uniform, vec2, vec4,
 } from 'three/tsl';
 import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
-import type { ProteinShadowPass } from './protein-shadow-pass';
 import { SHADOW_SLOT_SIZE, type SunShadowMaps, type SunShadowSlot } from './sun-shadow-maps';
 import type { SunLight } from './sun-light';
 
@@ -40,9 +39,6 @@ export type Occluder = {
 export type OcclusionSources = {
   readonly spheres: boolean;
   readonly rings: boolean;
-  // タンパク質の半透明外殻。**遮蔽パスからしか選べない** — 受け手が内部リボンだけに画面空間の
-  // マスクで限定されており、画面の画素以外ではそのマスクを引けないため。
-  readonly protein: boolean;
   // 艦艇・基地・デブリなどのメッシュ。**真偽ではなく受け手の法線で選ぶ** — バイアスを法線方向の
   // オフセットで入れるので法線が要り、型の側で「法線を持たずにこの源を選ぶ」を塞ぐ。
   readonly meshNormal: Vec3Node | null;
@@ -158,7 +154,6 @@ export class SunOcclusion {
   // transmittance() が返すグラフの形は変わらない。
   constructor(
     private readonly sunLight: SunLight,
-    private readonly proteinShadow: ProteinShadowPass,
     private readonly shadowMaps: SunShadowMaps,
   ) {
     this.occluders = Array.from({ length: MAX_OCCLUDERS }, () => ({
@@ -229,33 +224,10 @@ export class SunOcclusion {
         );
       }
     }
-    if (sources.protein) transmittance = transmittance.mul(this.proteinTransmittance(worldPos));
     if (sources.meshNormal !== null) {
       transmittance = transmittance.mul(this.meshTransmittance(worldPos, sources.meshNormal, sunDir));
     }
     return transmittance;
-  }
-
-  // タンパク質の外殻が落とす影。受け手は画面空間のマスクで内部リボンへ限定され、外殻の深度は
-  // ProteinShadowPass が撮ったライト空間の 1 枚から引く。マスクを引くのに screenUV を使うので、
-  // この項は画面の画素を評価している呼び出し(遮蔽パス)でしか意味を持たない。
-  private proteinTransmittance(worldPos: Vec3Node): FloatNode {
-    const lightClip = this.proteinShadow.lightViewProjection.mul(vec4(worldPos, 1));
-    const shadowUV = lightClip.xyz.div(lightClip.w).xy.mul(0.5).add(0.5);
-    const inShadowMap = shadowUV.x.greaterThan(0).and(shadowUV.x.lessThan(1))
-      .and(shadowUV.y.greaterThan(0)).and(shadowUV.y.lessThan(1));
-    const lightViewPosition = this.proteinShadow.lightView.mul(vec4(worldPos, 1)).xyz;
-    const pointDepth = lightViewPosition.z.negate()
-      .sub(this.proteinShadow.near)
-      .div(this.proteinShadow.far.sub(this.proteinShadow.near))
-      .clamp(0, 1);
-    const storedDepth = texture(this.proteinShadow.shadowTexture, shadowUV).r;
-    const shadowed = pointDepth.greaterThan(storedDepth.add(this.proteinShadow.bias));
-    const receiver = texture(this.proteinShadow.receiverTexture, screenUV).r;
-    const isReceiver = this.proteinShadow.active.greaterThan(0.5).and(receiver.greaterThan(0.5));
-    return select(
-      isReceiver, select(inShadowMap, select(shadowed, float(0), float(1)), float(1)), float(1),
-    );
   }
 
   // シャドウアトラスへ描かれたメッシュが落とす影。**スロットの境界の外なら引かない** —
