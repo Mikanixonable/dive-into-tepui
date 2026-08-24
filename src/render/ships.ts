@@ -218,6 +218,33 @@ export function buildAmmoPickup(count = 4): THREE.Group {
   return g;
 }
 
+// 軌道上の RCS 燃料補給ピックアップ。弾薬と見分けやすい黄色のタンクとビーコンで構成する。
+export function buildRcsFuelPickup(): THREE.Group {
+  const g = new THREE.Group();
+  const tank = withDispose(new THREE.Mesh(
+    new THREE.CylinderGeometry(0.45, 0.45, 1.8, 10),
+    new THREE.MeshStandardMaterial({ color: 0xffb347, metalness: 0.75, roughness: 0.3 }),
+  ));
+  tank.rotation.z = Math.PI / 2;
+  g.add(tank);
+
+  const band = withDispose(new THREE.Mesh(
+    new THREE.TorusGeometry(0.46, 0.06, 6, 12),
+    new THREE.MeshStandardMaterial({ color: 0xffe0a3, metalness: 0.8, roughness: 0.25 }),
+  ));
+  band.rotation.y = Math.PI / 2;
+  g.add(band);
+
+  const beacon = withDispose(new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.28, 0),
+    new THREE.MeshBasicMaterial({ color: 0xffd166 }),
+  ));
+  beacon.position.x = 1.15;
+  g.add(beacon);
+  markLitOpaque(g);
+  return g;
+}
+
 // 敵機: プレースホルダの基本色で焼き出されたテンプレートのうち、
 // userData.role === 'accent' が付与されたマテリアルだけを accent 色へ塗り替える。
 export function buildEnemyShip(accent: string | number = 0xff4a3d): THREE.Group {

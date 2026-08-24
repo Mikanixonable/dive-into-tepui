@@ -90,7 +90,7 @@ export function validateLagrangePlacementFields(input: LagrangePlacementInput): 
 // 基地は敵の射程となる惑星近傍を避け、月基準の軌道要素かラグランジュ点指定でのみ設置できる。
 // 問題がなければ空配列を返す。
 export function validateBaseReferenceFields(
-  objectType: 'player' | 'enemy' | 'ammo' | 'base', placementMode: 'elements' | 'lagrange', celestialBody?: CelestialBodyId,
+  objectType: 'player' | 'enemy' | 'ammo' | 'fuel' | 'base', placementMode: 'elements' | 'lagrange', celestialBody?: CelestialBodyId,
 ): PlacementFieldIssue[] {
   if (objectType !== 'base') return [];
   if (placementMode === 'elements' && celestialBody !== 'moon') {
