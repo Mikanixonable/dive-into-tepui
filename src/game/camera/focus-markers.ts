@@ -73,6 +73,7 @@ function cleanSubLabelGlyph(item: GroupedMarkerItem): string {
   if (cls.includes('mk-base')) return '⬡';
   if (cls.includes('mk-enemy')) return '△';
   if (cls.includes('mk-ammo')) return '▣';
+  if (cls.includes('mk-fuel')) return '◈';
   if (item.sym && !item.sym.trim().startsWith('<')) return item.sym.trim();
   return '▲';
 }
@@ -538,12 +539,14 @@ export class FocusMarkers {
         let nAlly = 0;
         let nBase = 0;
         let nAmmo = 0;
+        let nFuel = 0;
 
         for (const entry of entries) {
           const item = entry.item;
           if (item.cls.includes('mk-enemy')) nEnemy++;
           else if (item.cls.includes('mk-base')) nBase++;
           else if (item.cls.includes('mk-ammo')) nAmmo++;
+          else if (item.cls.includes('mk-fuel')) nFuel++;
           else nAlly++;
         }
 
@@ -552,6 +555,7 @@ export class FocusMarkers {
         if (nAlly > 0) parts.push(`▲${nAlly}`);
         if (nBase > 0) parts.push(`⬡${nBase}`);
         if (nAmmo > 0) parts.push(`▣${nAmmo}`);
+        if (nFuel > 0) parts.push(`◈${nFuel}`);
 
         if (parts.length > 0) {
           subDivs.push(`<div class="lbl-sub">${parts.join(' ')}</div>`);

@@ -516,6 +516,9 @@ export class MapContextActions {
       case 'ammo': return !(
         this.entities.ammoPickups.find((ammoPickup) => ammoPickup.id === target.id)?.alive ?? false
       );
+      case 'fuel': return !(
+        this.entities.rcsFuelPickups.find((pickup) => pickup.id === target.id)?.alive ?? false
+      );
       case 'base': return !(this.entities.findBase(target.id)?.alive ?? false);
       default: return !this.pickables.pickables.some((i) => this.windowKey(i) === this.windowKey(target));
     }
@@ -597,6 +600,25 @@ export class MapContextActions {
         if (act === 'delete') {
           const ammoPickup = this.entities.ammoPickups.find((candidate) => candidate.id === target.id);
           if (ammoPickup) ammoPickup.alive = false;
+        } else if (act === 'duplicate') {
+          this.runDuplicate(target);
+        } else {
+          this.runBodyShip(act, target);
+        }
+      },
+    },
+    'fuel': {
+      itemsFor: (target, simTime) => [
+        MenuCommon.focus(),
+        ...this.targetItems(target, simTime),
+        ...this.duplicateItems(),
+        { label: '削除', act: 'delete' },
+        MenuCommon.cancel(),
+      ],
+      run: (act, target) => {
+        if (act === 'delete') {
+          const pickup = this.entities.rcsFuelPickups.find((candidate) => candidate.id === target.id);
+          if (pickup) pickup.alive = false;
         } else if (act === 'duplicate') {
           this.runDuplicate(target);
         } else {
@@ -864,6 +886,10 @@ export class MapContextActions {
         const ammoPickup = this.entities.ammoPickups.find((candidate) => candidate.id === target.id);
         return ammoPickup ? { objectType: 'ammo', state: ammoPickup.state } : null;
       }
+      case 'fuel': {
+        const pickup = this.entities.rcsFuelPickups.find((candidate) => candidate.id === target.id);
+        return pickup ? { objectType: 'fuel', state: pickup.state } : null;
+      }
       case 'base': {
         const base = this.entities.findBase(target.id);
         return base ? { objectType: 'base', state: base.state } : null;
@@ -895,6 +921,7 @@ export class MapContextActions {
       case 'ship': return shipMarkerSvg(false);
       case 'base': return baseMarkerSvg();
       case 'ammo': return ENTITY_GLYPH.ammo;
+      case 'fuel': return ENTITY_GLYPH.fuel;
       case 'apsis': return ORBIT_POINT_GLYPH.apsis;
       case 'relnode': return ORBIT_POINT_GLYPH.ascendingNode;
       case 'eqnode': return ORBIT_POINT_GLYPH.descendingNode;
@@ -948,6 +975,7 @@ export class MapContextActions {
       case 'ship': return this.shipRows(target, celestialBodies, player);
       case 'base': return this.baseRows(target, celestialBodies, player);
       case 'ammo': return this.ammoPickupRows(target, celestialBodies, player);
+      case 'fuel': return this.rcsFuelPickupRows(target, celestialBodies, player);
       case 'body': return this.bodyRows(target, celestialBodies, player);
       case 'apsis': return this.apsisRows(target, celestialBodies, simTime);
       case 'relnode': case 'eqnode': return this.nodeRows(target, celestialBodies, simTime);
@@ -1053,6 +1081,26 @@ export class MapContextActions {
     return rows;
   }
 
+  private rcsFuelPickupRows(
+    target: MapPickable,
+    celestialBodies: readonly CelestialBody[],
+    player: Player | null,
+  ): PropertyRow[] {
+    const pickup = this.entities.rcsFuelPickups.find((candidate) => candidate.id === target.id);
+    if (!pickup) return [];
+    const rows: PropertyRow[] = [];
+    if (player) {
+      rows.push({
+        key: 'dist',
+        label: '距離',
+        value: fmtDist(len(sub(pickup.state.r, player.state.r))),
+      });
+    }
+    rows.push({ key: 'amount', label: '補給量', value: `${C.RCS_FUEL_PICKUP_AMOUNT.toLocaleString()} kg` });
+    rows.push(...this.orbitRows(pickup, celestialBodies));
+    return rows;
+  }
+
   // 実在の天体(現在のレジストリに登録された ID)なら種別・μ・半径・(公転していれば)軌道要素を、
   // ラグランジュ点なら種別のみを出す。
   private bodyRows(target: MapPickable, celestialBodies: readonly CelestialBody[], player: Player | null): PropertyRow[] {
@@ -1143,6 +1191,7 @@ export class MapContextActions {
       case 'player': return this.entities.findPlayer(item.id)?.state ?? null;
       case 'ship': return this.entities.findEnemy(item.id)?.state ?? null;
       case 'ammo': return this.entities.ammoPickups.find((ammo) => ammo.id === item.id)?.state ?? null;
+      case 'fuel': return this.entities.rcsFuelPickups.find((pickup) => pickup.id === item.id)?.state ?? null;
       case 'base': return this.entities.findBase(item.id)?.state ?? null;
       default: return null;
     }

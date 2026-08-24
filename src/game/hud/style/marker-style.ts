@@ -20,6 +20,7 @@ export const MARKER_STYLE = `
 #hud .mk { z-index: var(--z-mk-base); }
 #hud .mk-node, #hud .mk-mnode, #hud .mk-burn, #hud .mk-poi, #hud .mk-base, #hud .mk-nav, #hud .mk-dir, #hud .mk-bearing-triangle, #hud .mk-boardpass, #hud .mk-lead, #hud .mk-pro, #hud .mk-retro, #hud .mk-nrm, #hud .mk-rad, #hud .mk-tgtdir, #hud .mk-boresight { z-index: var(--z-mk-node); }
 #hud .mk-ammo { z-index: var(--z-mk-ammo); }
+#hud .mk-fuel { z-index: var(--z-mk-ammo); }
 #hud .mk-enemy, #hud .mk-target, #hud .mk-ally { z-index: var(--z-mk-enemy); }
 #hud .mk-self { z-index: var(--z-mk-self); }
 #hud .mk-longpress { z-index: var(--z-mk-longpress); }
@@ -77,6 +78,7 @@ export const MARKER_STYLE = `
 .mk-burn { color: var(--color-primary); }
 .mk-self { color: ${C.COLOR_MARKER_SELF}; }
 .mk-ammo { color: var(--text-dim); }
+.mk-fuel { color: #ffcf70; }
 .mk-planned { color: ${C.COLOR_MARKER_PLANNED}; }
 .mk-apsis { color: ${C.COLOR_MARKER_PLANNED}; }
 .mk-impact { color: var(--color-error); }

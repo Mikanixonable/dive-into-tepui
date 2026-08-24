@@ -7,6 +7,7 @@ import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { GameEntity } from '../game-entity/game-entity';
 import { AmmoPickup } from '../game-entity/ammo-pickup';
+import { RcsFuelPickup } from '../game-entity/rcs-fuel-pickup';
 import { DebrisPiece } from '../game-entity/debris-piece';
 import { Enemy } from '../game-entity/enemy';
 import { Bullet } from '../game-entity/bullet';
@@ -36,6 +37,7 @@ export class EntityManager {
   readonly casings: DebrisPiece[] = [];
   readonly debris: DebrisPiece[] = [];
   public readonly ammoPickups: AmmoPickup[] = [];
+  public readonly rcsFuelPickups: RcsFuelPickup[] = [];
   // 自機。操作対象(Game.player)もこの配列の1隻で、積分・衝突・寿命判定・予測では
   // 他の艦と対等に扱う。ステージモードでは1隻だけが入る。
   readonly players: Player[] = [];
@@ -77,7 +79,7 @@ export class EntityManager {
     if (saved) this.restoreFromSave(saved, hud, worldSfx, scene, markerManager);
   }
 
-  // スナップショットから自機・敵・弾薬・基地を復元する。
+  // スナップショットから自機・敵・弾薬・RCS燃料・基地を復元する。
   private restoreFromSave(
     save: GameSaveData, hud: Hud, worldSfx: WorldSfx, scene: THREE.Scene, markerManager: MarkerManager,
   ): void {
@@ -90,6 +92,9 @@ export class EntityManager {
     }
     for (const data of save.ammoPickups) {
       this.addAmmoPickup(new AmmoPickup({ saved: data, simTime }, scene));
+    }
+    for (const data of save.rcsFuelPickups ?? []) {
+      this.addRcsFuelPickup(new RcsFuelPickup({ saved: data, simTime }, scene));
     }
     for (const data of save.bases) {
       this.addBase(new Base({ saved: data, simTime }, scene, hud, worldSfx, this.effects, markerManager));
@@ -196,6 +201,12 @@ export class EntityManager {
     this.invalidateCaches();
   }
 
+  // RCS燃料ピックアップを登録する。
+  public addRcsFuelPickup(pickup: RcsFuelPickup): void {
+    this.rcsFuelPickups.push(pickup);
+    this.invalidateCaches();
+  }
+
   // 基地を登録する。
   addBase(base: Base): void {
     this.bases.push(base);
@@ -225,6 +236,7 @@ export class EntityManager {
       ...this.enemies,
       ...this.bullets,
       ...this.ammoPickups,
+      ...this.rcsFuelPickups,
       ...this.casings,
       ...this.debris,
       ...this.bases,
@@ -258,6 +270,7 @@ export class EntityManager {
     this.prune(this.casings);
     this.prune(this.debris);
     this.prune(this.ammoPickups);
+    this.prune(this.rcsFuelPickups);
     this.prune(this.bases);
   }
 
@@ -362,6 +375,9 @@ export class EntityManager {
     for (const ammoPickup of this.ammoPickups) {
       if (!visibilityPolicy.entity('ammo').category) ammoPickup.renderObject.visible = false;
     }
+    for (const pickup of this.rcsFuelPickups) {
+      if (!visibilityPolicy.entity('fuel').category) pickup.renderObject.visible = false;
+    }
     for (const base of this.bases) if (!visibilityPolicy.entity('base').category) base.renderObject.visible = false;
   }
 
@@ -430,6 +446,7 @@ export class EntityManager {
     this.disposeAll(this.casings);
     this.disposeAll(this.debris);
     this.disposeAll(this.ammoPickups);
+    this.disposeAll(this.rcsFuelPickups);
     this.disposeAll(this.bases);
 
     this.bulletBodyPool.dispose();
@@ -449,7 +466,7 @@ export class EntityManager {
   }
 
   // 負荷確認ウィンドウが読む、保持配列ごとの現在の個体数。
-  perfCounts(): Pick<PerfCounts, 'players' | 'enemies' | 'bullets' | 'casings' | 'debris' | 'ammoPickups' | 'bases'> {
+  perfCounts(): Pick<PerfCounts, 'players' | 'enemies' | 'bullets' | 'casings' | 'debris' | 'ammoPickups' | 'rcsFuelPickups' | 'bases'> {
     return {
       players: this.players.length,
       enemies: this.enemies.length,
@@ -457,6 +474,7 @@ export class EntityManager {
       casings: this.casings.length,
       debris: this.debris.length,
       ammoPickups: this.ammoPickups.length,
+      rcsFuelPickups: this.rcsFuelPickups.length,
       bases: this.bases.length,
     };
   }
