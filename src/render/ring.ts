@@ -9,6 +9,7 @@ import {
   exp,
   float,
   max,
+  normalize,
   positionWorld,
   uniform,
   vec3,
@@ -16,6 +17,7 @@ import {
 } from 'three/tsl';
 import { RingArcDef, RingOpticsDef } from '../physics/solar-system';
 import { viewRayAt } from './pipeline/view-ray';
+import type { SunLight } from './pipeline/sun-light';
 import type { SunOcclusion } from './pipeline/sun-occlusion';
 import type { FloatNode, Vec3Node } from './tsl-types';
 
@@ -28,12 +30,8 @@ const FOUR_PI = 4 * Math.PI;
 const MU_MIN = 0.015;
 
 export type RingVisualState = {
-  readonly sunDirection: THREE.Vector3;
   readonly ringAxis: THREE.Vector3;
   readonly coverage: number;
-  // 環がいる場所で受けている放射照度(render/pipeline/sun-light.ts の単位)。天体表面と
-  // 同じ基準へ乗せるためのもので、これが無いと環だけが太陽からの距離で暗くならない。
-  readonly sunIrradiance: number;
 };
 
 export type RingVisual = {
@@ -54,18 +52,24 @@ function ringBaseColor(): Vec3Node {
 
 // annulus/line 共通の光学TSLグラフ。coverage は帯の画面上被覆率(1px未満の細帯を
 // 減光するための係数)で、面・線どちらのジオメトリへ載せても解釈は同じ。
-function ringOpticsNodes(baseColor: Vec3Node, optics: RingOpticsDef, sunOcclusion: SunOcclusion): {
+function ringOpticsNodes(
+  baseColor: Vec3Node, optics: RingOpticsDef, sunOcclusion: SunOcclusion, sunLight: SunLight,
+): {
   colorNode: Vec3Node;
   opacityNode: FloatNode;
   sync: (state: RingVisualState) => void;
 } {
-  const sunDirection = uniform(new THREE.Vector3(1, 0, 0));
   const tauNormal = uniform(Math.max(0, optics.normalOpticalDepth));
   const albedo = uniform(Math.max(0, Math.min(1, optics.singleScatteringAlbedo)));
   const phaseG = uniform(Math.max(-0.999, Math.min(0.999, optics.phaseG)));
   const coverage = uniform(1);
   const ringAxis = uniform(new THREE.Vector3(0, 1, 0));
-  const sunIrradiance = uniform(0);
+
+  // 恒星の向きと、そのフラグメントが受けている放射照度。天体表面と同じ 1 か所から引くので、
+  // 環だけが別の明るさ基準に乗ることはない。
+  const toSun = sunLight.position.sub(positionWorld);
+  const sunDirection: Vec3Node = normalize(toSun);
+  const sunIrradiance: FloatNode = sunLight.intensity.div(max(dot(toSun, toSun), 1));
 
   // 面から視点へ向かう向き = 視線の逆向き。**「カメラ位置から引く」形は透視投影でしか成り立たない**
   // ので、画面空間のパスと同じ器(pipeline/view-ray.ts)から取って world へ回す。
@@ -84,7 +88,7 @@ function ringOpticsNodes(baseColor: Vec3Node, optics: RingOpticsDef, sunOcclusio
   // ので、境界は半影の幅でぼける。**環の帯は源から外す** — 環のフラグメントは自分が乗って
   // いる帯の平面上に居るため、含めると自己遮蔽で刃こぼれする。
   const directLight = sunOcclusion.transmittance(positionWorld, {
-    spheres: true, rings: false, meshNormal: null,
+    rings: false, meshNormal: null,
   });
 
   const denominator = float(1).add(phaseG.mul(phaseG)).sub(
@@ -110,16 +114,18 @@ function ringOpticsNodes(baseColor: Vec3Node, optics: RingOpticsDef, sunOcclusio
     colorNode: baseColor.mul(radiance),
     opacityNode: extinction,
     sync: (state) => {
-      sunDirection.value.copy(state.sunDirection).normalize();
       coverage.value = state.coverage;
       ringAxis.value.copy(state.ringAxis).normalize();
-      sunIrradiance.value = state.sunIrradiance;
     },
   };
 }
 
-function physicalMaterial(baseColor: Vec3Node, optics: RingOpticsDef, sunOcclusion: SunOcclusion): { material: THREE.MeshBasicNodeMaterial; sync: (state: RingVisualState) => void } {
-  const { colorNode: color, opacityNode, sync } = ringOpticsNodes(baseColor, optics, sunOcclusion);
+// 面として描く帯のマテリアルと、その状態同期口。半透明で深度は書かない。
+function physicalMaterial(
+  baseColor: Vec3Node, optics: RingOpticsDef, sunOcclusion: SunOcclusion, sunLight: SunLight,
+): { material: THREE.MeshBasicNodeMaterial; sync: (state: RingVisualState) => void } {
+  const nodes = ringOpticsNodes(baseColor, optics, sunOcclusion, sunLight);
+  const { colorNode: color, opacityNode, sync } = nodes;
   const mat = new THREE.MeshBasicNodeMaterial({
     transparent: true,
     side: THREE.DoubleSide,
@@ -133,8 +139,11 @@ function physicalMaterial(baseColor: Vec3Node, optics: RingOpticsDef, sunOcclusi
 // 面(annulus)と同じ光学TSLグラフを THREE.Line 用マテリアルへ載せる。1px未満に痩せる
 // 細帯はラスタライズで面のまま描くと消えうるので、常にこの線1本で表す(coverage が
 // 被覆率ぶん減光するので、遠方ほど濃くなることはない)。
-function lineOpticsMaterial(baseColor: Vec3Node, optics: RingOpticsDef, sunOcclusion: SunOcclusion): { material: THREE.LineBasicNodeMaterial; sync: (state: RingVisualState) => void } {
-  const { colorNode: color, opacityNode, sync } = ringOpticsNodes(baseColor, optics, sunOcclusion);
+function lineOpticsMaterial(
+  baseColor: Vec3Node, optics: RingOpticsDef, sunOcclusion: SunOcclusion, sunLight: SunLight,
+): { material: THREE.LineBasicNodeMaterial; sync: (state: RingVisualState) => void } {
+  const nodes = ringOpticsNodes(baseColor, optics, sunOcclusion, sunLight);
+  const { colorNode: color, opacityNode, sync } = nodes;
   const mat = new THREE.LineBasicNodeMaterial({
     transparent: true,
     depthWrite: false,
@@ -177,6 +186,7 @@ function combineVisuals(visuals: readonly RingVisual[]): RingVisual {
   };
 }
 
+// 帯 1 本ぶんの面メッシュ。半径は「本体半径 = 1」単位で受ける。
 function buildAnnulusMesh(
   optics: RingOpticsDef,
   innerRadius: number,
@@ -184,9 +194,10 @@ function buildAnnulusMesh(
   thetaStart: number,
   thetaLength: number,
   sunOcclusion: SunOcclusion,
+  sunLight: SunLight,
 ): RingVisual {
   const geo = new THREE.RingGeometry(innerRadius, outerRadius, 128, 1, thetaStart, thetaLength);
-  const { material, sync } = physicalMaterial(ringBaseColor(), optics, sunOcclusion);
+  const { material, sync } = physicalMaterial(ringBaseColor(), optics, sunOcclusion, sunLight);
   const mesh = new THREE.Mesh(geo, material);
   mesh.rotation.x = RING_TILT;
   return { object: mesh, sync, dispose: () => { geo.dispose(); material.dispose(); } };
@@ -198,15 +209,17 @@ export function createAnnulusRing(
   innerRadius: number,
   outerRadius: number,
   sunOcclusion: SunOcclusion,
+  sunLight: SunLight,
   arcs?: readonly RingArcDef[],
 ): RingVisual {
   const visuals = sectorParts(arcs).map((part) => buildAnnulusMesh({
     ...optics,
     normalOpticalDepth: optics.normalOpticalDepth * part.scale,
-  }, innerRadius, outerRadius, part.start, part.length, sunOcclusion));
+  }, innerRadius, outerRadius, part.start, part.length, sunOcclusion, sunLight));
   return visuals.length === 1 ? visuals[0]! : combineVisuals(visuals);
 }
 
+// 帯 1 本ぶんの線分。半径は「本体半径 = 1」単位で受け、segments が円弧の分割数になる。
 function buildLineRingSegment(
   optics: RingOpticsDef,
   radius: number,
@@ -214,6 +227,7 @@ function buildLineRingSegment(
   thetaLength: number,
   segments: number,
   sunOcclusion: SunOcclusion,
+  sunLight: SunLight,
 ): RingVisual {
   const positions = new Float32Array((segments + 1) * 3);
   for (let i = 0; i <= segments; i++) {
@@ -223,7 +237,7 @@ function buildLineRingSegment(
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  const { material, sync } = lineOpticsMaterial(ringBaseColor(), optics, sunOcclusion);
+  const { material, sync } = lineOpticsMaterial(ringBaseColor(), optics, sunOcclusion, sunLight);
   const line = new THREE.Line(geo, material);
   line.rotation.x = RING_TILT;
   return { object: line, sync, dispose: () => { geo.dispose(); material.dispose(); } };
@@ -234,12 +248,13 @@ export function createRingLine(
   optics: RingOpticsDef,
   radius: number,
   sunOcclusion: SunOcclusion,
+  sunLight: SunLight,
   arcs?: readonly RingArcDef[],
 ): RingVisual {
   const visuals = sectorParts(arcs).map((part) => buildLineRingSegment({
     ...optics,
     normalOpticalDepth: optics.normalOpticalDepth * part.scale,
-  }, radius, part.start, part.length, part.length >= Math.PI * 1.9 ? 256 : 32, sunOcclusion));
+  }, radius, part.start, part.length, part.length >= Math.PI * 1.9 ? 256 : 32, sunOcclusion, sunLight));
   return visuals.length === 1 ? visuals[0]! : combineVisuals(visuals);
 }
 
@@ -277,9 +292,10 @@ export function createTorusRing(
   outerRadius: number,
   thickness: number,
   sunOcclusion: SunOcclusion,
+  sunLight: SunLight,
 ): RingVisual {
   const geo = annularPrism(innerRadius, outerRadius, thickness);
-  const { material, sync } = physicalMaterial(ringBaseColor(), optics, sunOcclusion);
+  const { material, sync } = physicalMaterial(ringBaseColor(), optics, sunOcclusion, sunLight);
   const mesh = new THREE.Mesh(geo, material);
   mesh.rotation.x = RING_TILT;
   return { object: mesh, sync, dispose: () => { geo.dispose(); material.dispose(); } };
