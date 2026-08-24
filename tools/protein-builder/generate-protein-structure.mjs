@@ -170,7 +170,10 @@ function residueFields(residueName) {
 }
 
 function surfaceField(atoms) {
-  const spacing = 2.5;
+  // The surface is the solvent-excluded approximation of the union of atom
+  // spheres.  A tetrahedral contour avoids the block-shaped faces produced by
+  // the old occupied-voxel shell while keeping the asset renderer-independent.
+  const spacing = 1.25;
   const probeRadius = 1.4;
   const min = [Infinity, Infinity, Infinity];
   const max = [-Infinity, -Infinity, -Infinity];
@@ -186,75 +189,129 @@ function surfaceField(atoms) {
   const origin = min.map((value) => round(value, 2));
   const dims = max.map((value, index) => Math.ceil((value - origin[index]) / spacing) + 1);
   const buckets = new Map();
+  const bucketSize = Math.max(...ELEMENTS.map((element) => VDW_RADII[element])) + probeRadius;
+  const bucketKey = (x, y, z) => `${x}:${y}:${z}`;
+  const bucketCoordinates = (px, py, pz) => [
+    Math.floor((px - origin[0]) / bucketSize),
+    Math.floor((py - origin[1]) / bucketSize),
+    Math.floor((pz - origin[2]) / bucketSize),
+  ];
   atoms.forEach((atom, index) => {
-    const key = `${Math.floor((atom.x - origin[0]) / spacing)}:${Math.floor((atom.y - origin[1]) / spacing)}:${Math.floor((atom.z - origin[2]) / spacing)}`;
+    const [x, y, z] = bucketCoordinates(atom.x, atom.y, atom.z);
+    const key = bucketKey(x, y, z);
     const list = buckets.get(key) ?? [];
     list.push(index);
     buckets.set(key, list);
   });
+  function nearbyAtoms(px, py, pz) {
+    const [cellX, cellY, cellZ] = bucketCoordinates(px, py, pz);
+    const result = [];
+    for (let dz = -1; dz <= 1; dz++) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      result.push(...(buckets.get(bucketKey(cellX + dx, cellY + dy, cellZ + dz)) ?? []));
+    }
+    return result;
+  }
+  function fieldAt(px, py, pz) {
+    let value = Infinity;
+    for (const index of nearbyAtoms(px, py, pz)) {
+      const atom = atoms[index];
+      const radius = VDW_RADII[atom.element] ?? 1.7;
+      value = Math.min(value, Math.hypot(px - atom.x, py - atom.y, pz - atom.z) - radius - probeRadius);
+    }
+    return value;
+  }
+  function nearestAtom(px, py, pz) {
+    let nearest = 0;
+    let distance = Infinity;
+    for (const index of nearbyAtoms(px, py, pz)) {
+      const atom = atoms[index];
+      const nextDistance = Math.hypot(px - atom.x, py - atom.y, pz - atom.z);
+      if (nextDistance < distance) { distance = nextDistance; nearest = index; }
+    }
+    return nearest;
+  }
   const residueNames = atoms.map((atom) => atom.residueName);
   const sampleIndices = [];
   const hydrophobicity = [];
   const surfaceCharge = [];
   const surfaceComponents = [];
+  const field = new Float32Array(dims[0] * dims[1] * dims[2]);
   for (let z = 0; z < dims[2]; z++) for (let y = 0; y < dims[1]; y++) for (let x = 0; x < dims[0]; x++) {
     const px = origin[0] + x * spacing;
     const py = origin[1] + y * spacing;
     const pz = origin[2] + z * spacing;
-    let nearest = -1;
-    let nearestDistance = Infinity;
-    const cellX = Math.floor((px - origin[0]) / spacing);
-    const cellY = Math.floor((py - origin[1]) / spacing);
-    const cellZ = Math.floor((pz - origin[2]) / spacing);
-    for (let dz = -2; dz <= 2; dz++) for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
-      const candidates = buckets.get(`${cellX + dx}:${cellY + dy}:${cellZ + dz}`) ?? [];
-      for (const index of candidates) {
-        const atom = atoms[index];
-        const distance = Math.hypot(px - atom.x, py - atom.y, pz - atom.z);
-        if (distance < nearestDistance) { nearestDistance = distance; nearest = index; }
-      }
+    const voxel = x + dims[0] * (y + dims[1] * z);
+    field[voxel] = fieldAt(px, py, pz);
+    if (field[voxel] <= 0) {
+      const nearest = nearestAtom(px, py, pz);
+      const fields = residueFields(residueNames[nearest]);
+      sampleIndices.push(voxel);
+      hydrophobicity.push(fields.hydrophobicity);
+      surfaceCharge.push(fields.charge);
+      surfaceComponents.push(atoms[nearest].chain);
     }
-    if (nearest < 0) continue;
-    const atom = atoms[nearest];
-    const radius = VDW_RADII[atom.element] ?? 1.7;
-    if (nearestDistance < Math.max(0, radius - 0.75) || nearestDistance > radius + probeRadius) continue;
-    const fields = residueFields(residueNames[nearest]);
-    sampleIndices.push(x + dims[0] * (y + dims[1] * z));
-    hydrophobicity.push(fields.hydrophobicity);
-    surfaceCharge.push(fields.charge);
-    surfaceComponents.push(atom.chain);
   }
-  const sampleByVoxel = new Map(sampleIndices.map((voxel, index) => [voxel, index]));
   const meshPosition = [];
   const meshIndex = [];
   const meshCharge = [];
   const meshHydrophobicity = [];
   const meshComponent = [];
-  const faces = [
-    [[-1, 0, 0], [[-1, -1, -1], [-1, -1, 1], [-1, 1, 1], [-1, 1, -1]]],
-    [[1, 0, 0], [[1, -1, -1], [1, 1, -1], [1, 1, 1], [1, -1, 1]]],
-    [[0, -1, 0], [[-1, -1, -1], [1, -1, -1], [1, -1, 1], [-1, -1, 1]]],
-    [[0, 1, 0], [[-1, 1, -1], [-1, 1, 1], [1, 1, 1], [1, 1, -1]]],
-    [[0, 0, -1], [[-1, -1, -1], [-1, 1, -1], [1, 1, -1], [1, -1, -1]]],
-    [[0, 0, 1], [[-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]]],
-  ];
-  for (let sample = 0; sample < sampleIndices.length; sample++) {
-    const voxel = sampleIndices[sample];
-    const x = voxel % dims[0];
-    const y = Math.floor(voxel / dims[0]) % dims[1];
-    const z = Math.floor(voxel / (dims[0] * dims[1]));
-    const center = [origin[0] + x * spacing, origin[1] + y * spacing, origin[2] + z * spacing];
-    for (const [normal, corners] of faces) {
-      const neighbor = (x + normal[0]) + dims[0] * ((y + normal[1]) + dims[1] * (z + normal[2]));
-      if (sampleByVoxel.has(neighbor)) continue;
-      const base = meshPosition.length / 3;
-      for (const corner of corners) {
-        meshPosition.push(center[0] + corner[0] * spacing * 0.5, center[1] + corner[1] * spacing * 0.5, center[2] + corner[2] * spacing * 0.5);
-        meshCharge.push(surfaceCharge[sample]);
-        meshHydrophobicity.push(hydrophobicity[sample]);
-        meshComponent.push(surfaceComponents[sample]);
+  const cornerOffsets = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0], [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]];
+  const tetrahedra = [[0, 5, 1, 6], [0, 1, 2, 6], [0, 2, 3, 6], [0, 3, 7, 6], [0, 7, 4, 6], [0, 4, 5, 6]];
+  const tetraEdges = [[0, 1], [1, 2], [2, 0], [0, 3], [1, 3], [2, 3]];
+  const edgeVertices = new Map();
+  const gridIndex = (x, y, z) => x + dims[0] * (y + dims[1] * z);
+  function contourVertex(first, second) {
+    const key = first < second ? `${first}:${second}` : `${second}:${first}`;
+    const existing = edgeVertices.get(key);
+    if (existing !== undefined) return existing;
+    const firstValue = field[first];
+    const secondValue = field[second];
+    const t = Math.max(0, Math.min(1, firstValue / (firstValue - secondValue)));
+    const firstX = first % dims[0];
+    const firstY = Math.floor(first / dims[0]) % dims[1];
+    const firstZ = Math.floor(first / (dims[0] * dims[1]));
+    const secondX = second % dims[0];
+    const secondY = Math.floor(second / dims[0]) % dims[1];
+    const secondZ = Math.floor(second / (dims[0] * dims[1]));
+    const px = origin[0] + (firstX + (secondX - firstX) * t) * spacing;
+    const py = origin[1] + (firstY + (secondY - firstY) * t) * spacing;
+    const pz = origin[2] + (firstZ + (secondZ - firstZ) * t) * spacing;
+    const atom = nearestAtom(px, py, pz);
+    const fields = residueFields(residueNames[atom]);
+    const index = meshPosition.length / 3;
+    meshPosition.push(round(px), round(py), round(pz));
+    meshCharge.push(fields.charge);
+    meshHydrophobicity.push(fields.hydrophobicity);
+    meshComponent.push(atoms[atom].chain);
+    edgeVertices.set(key, index);
+    return index;
+  }
+  function pushTriangle(a, b, c) {
+    if (a === b || b === c || c === a) return;
+    const ax = meshPosition[a * 3]; const ay = meshPosition[a * 3 + 1]; const az = meshPosition[a * 3 + 2];
+    const bx = meshPosition[b * 3]; const by = meshPosition[b * 3 + 1]; const bz = meshPosition[b * 3 + 2];
+    const cx = meshPosition[c * 3]; const cy = meshPosition[c * 3 + 1]; const cz = meshPosition[c * 3 + 2];
+    const abx = bx - ax; const aby = by - ay; const abz = bz - az;
+    const acx = cx - ax; const acy = cy - ay; const acz = cz - az;
+    const areaTwice = Math.hypot(aby * acz - abz * acy, abz * acx - abx * acz, abx * acy - aby * acx);
+    if (areaTwice < 1e-6) return;
+    meshIndex.push(a, b, c);
+  }
+  for (let z = 0; z < dims[2] - 1; z++) for (let y = 0; y < dims[1] - 1; y++) for (let x = 0; x < dims[0] - 1; x++) {
+    const corners = cornerOffsets.map(([dx, dy, dz]) => gridIndex(x + dx, y + dy, z + dz));
+    for (const tetra of tetrahedra) {
+      const crossings = [];
+      for (const [a, b] of tetraEdges) {
+        const first = corners[tetra[a]];
+        const second = corners[tetra[b]];
+        if ((field[first] <= 0) !== (field[second] <= 0)) crossings.push(contourVertex(first, second));
       }
-      meshIndex.push(base, base + 1, base + 2, base, base + 2, base + 3);
+      if (crossings.length === 3) pushTriangle(crossings[0], crossings[1], crossings[2]);
+      else if (crossings.length === 4) {
+        pushTriangle(crossings[0], crossings[1], crossings[2]);
+        pushTriangle(crossings[0], crossings[2], crossings[3]);
+      }
     }
   }
   return {
@@ -269,7 +326,7 @@ function surfaceField(atoms) {
     },
     metadata: {
       approximate: true,
-      method: 'nearest-atom voxel shell with residue Kyte-Doolittle hydrophobicity and formal-charge approximation',
+      method: 'marching tetrahedra over the union of atom VDW spheres plus a 1.4 angstrom probe, with residue Kyte-Doolittle hydrophobicity and formal-charge approximation',
       hydrophobicityRange: [-127, 127], surfaceChargeRange: [-127, 127],
     },
   };
@@ -319,7 +376,7 @@ function encodeStructure(parsed, source) {
     },
     bonds: { count: bonds.length, pairs: bonds.flatMap(([a, b]) => [a, b]), orders: bonds.map((bond) => bond[2]), inference: parsed.conect.length ? 'PDB CONECT plus covalent-distance inference' : 'covalent-distance inference' },
     surface,
-    generator: { name: 'generate-protein-structure.mjs', version: 1, sourceFallback: 'existing-backbone' },
+    generator: { name: 'generate-protein-structure.mjs', version: 2, sourceFallback: 'existing-backbone' },
   };
 }
 
