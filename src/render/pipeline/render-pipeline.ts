@@ -23,6 +23,7 @@ import { LightPrepass } from './light-prepass';
 import { MaterialPass } from './material-pass';
 import { OcclusionPass } from './occlusion';
 import { OverlayPass } from './overlay-pass';
+import { ProteinShadowPass } from './protein-shadow-pass';
 import { SunLight } from './sun-light';
 import { viewPositionAt } from './view-ray';
 
@@ -38,6 +39,7 @@ export class RenderPipeline implements DebugTargetHost {
   private readonly renderer: WebGPURenderer;
   private readonly gbuffer: GBufferPass;
   private readonly occlusionPass: OcclusionPass;
+  private readonly proteinShadowPass: ProteinShadowPass;
   private readonly lightPrepass: LightPrepass;
   private readonly materialPass: MaterialPass;
   private readonly atmospherePass: AtmospherePass;
@@ -77,7 +79,10 @@ export class RenderPipeline implements DebugTargetHost {
     this.gbuffer = new GBufferPass(renderer, gpu);
     this._sunLight = new SunLight();
     this.occlusionPass = new OcclusionPass(renderer, this.gbuffer, this._sunLight, gpu);
-    this.lightPrepass = new LightPrepass(renderer, this.gbuffer, this.occlusionPass, this._sunLight, gpu);
+    this.proteinShadowPass = new ProteinShadowPass(renderer);
+    this.lightPrepass = new LightPrepass(
+      renderer, this.gbuffer, this.occlusionPass, this._sunLight, this.proteinShadowPass, gpu,
+    );
     this.materialPass = new MaterialPass(renderer, this.lightPrepass, gpu);
     this.atmospherePass = new AtmospherePass(renderer, this.gbuffer, this._sunLight, gpu);
     this.overlayPass = new OverlayPass(renderer, gpu);
@@ -168,6 +173,10 @@ export class RenderPipeline implements DebugTargetHost {
     const height = this.drawingBufferSize.y;
     if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
 
+    // シルエット外殻を遮蔽器、内部リボンを影の受け手として先に描く。対象が無いフレームは
+    // パス自身が inactive に戻るので、通常の敵・他のリボン表現へ影響しない。
+    this.proteinShadowPass.render(scene, camera, width, height, this._sunLight);
+
     // G バッファパス。camera.layers の一時的な絞り込みと GPU 計測の申告は自身の中で行う。
     this.gbuffer.render(scene, camera, width, height);
 
@@ -219,6 +228,7 @@ export class RenderPipeline implements DebugTargetHost {
   dispose(): void {
     this.gbuffer.dispose();
     this.occlusionPass.dispose();
+    this.proteinShadowPass.dispose();
     this.lightPrepass.dispose();
     this.materialPass.dispose();
     this.atmospherePass.dispose();

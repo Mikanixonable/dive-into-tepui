@@ -9,7 +9,7 @@ import { PDB5I4R_DISPLAY_ASSET } from '../game/protein/protein-display-asset';
 import { ENEMY_PLASMA_COLOR } from './vfx-style';
 import { F0_BURNT_STEEL, F0_STEEL } from './metal-f0';
 import { mulberry32 } from '../physics/random';
-import { markLitOpaque } from './pipeline/lit-layer';
+import { markLitOpaque, markProteinShadowLayers } from './pipeline/lit-layer';
 
 // BufferGeometry を属性・index ごと複製する(clone() だけでは頂点属性配列を共有したままになる)。
 function deepCloneGeometry(geo: THREE.BufferGeometry): THREE.BufferGeometry {
@@ -299,6 +299,7 @@ function pdb5i4rHelixFrame(points: readonly THREE.Vector3[]): { center: THREE.Ve
 function pdb5i4rRibbonGeometry(
   points: readonly THREE.Vector3[], width: number, startIndex: number, colorMode: ProteinRibbonColorMode,
   arrow: boolean, helixFrame: { center: THREE.Vector3; axis: THREE.Vector3 } | null,
+  fixedColor: THREE.Color | null = null,
 ): THREE.BufferGeometry {
   const positions: number[] = [];
   const colors: number[] = [];
@@ -367,7 +368,7 @@ function pdb5i4rRibbonGeometry(
       center.clone().addScaledVector(widthDirection, halfWidth).addScaledVector(thicknessDirection, -halfThickness),
     ];
     for (const corner of corners) positions.push(corner.x, corner.y, corner.z);
-    const color = pdb5i4rRibbonColorAt(globalIndex, colorMode);
+    const color = fixedColor ?? pdb5i4rRibbonColorAt(globalIndex, colorMode);
     for (let corner = 0; corner < 4; corner++) colors.push(color.r, color.g, color.b);
   }
   const indices: number[] = [];
@@ -414,14 +415,14 @@ function pdb5i4rBackboneRuns(): { kind: string; points: THREE.Vector3[]; startIn
 
 function pdb5i4rTubeColors(
   geometry: THREE.BufferGeometry, startIndex: number, pointCount: number, totalPoints: number,
-  tubularSegments: number, colorMode: ProteinRibbonColorMode,
+  tubularSegments: number, colorMode: ProteinRibbonColorMode, fixedColor: THREE.Color | null = null,
 ): void {
   const radialSegments = 12;
   const colors: number[] = [];
   for (let vertex = 0; vertex < geometry.getAttribute('position').count; vertex++) {
     const longitudinal = Math.floor(vertex / (radialSegments + 1));
     const index = Math.min(totalPoints - 1, Math.round(startIndex + (pointCount - 1) * longitudinal / tubularSegments));
-    const color = pdb5i4rRibbonColorAt(index, colorMode);
+    const color = fixedColor ?? pdb5i4rRibbonColorAt(index, colorMode);
     colors.push(color.r, color.g, color.b);
   }
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
@@ -541,7 +542,9 @@ function buildPdb5i4rSilhouetteShip(colorMode: 'surface-charge' | 'hydrophobicit
   // Keep the familiar cartoon representation inside the solvent-excluded shell. The child
   // builder normally applies the game scale itself; the parent owns the scale here so the
   // shell and ribbon remain exactly coincident.
-  const ribbon = buildPdb5i4rRibbonShip('chain');
+  // The shell carries the selected surface scalar field; the internal cartoon
+  // stays white so it remains legible through the translucent colored shell.
+  const ribbon = buildPdb5i4rRibbonShip('chain', new THREE.Color(0xffffff));
   ribbon.scale.setScalar(1);
   group.add(ribbon);
   const surface = PDB5I4R_DISPLAY_ASSET.surface.mesh;
@@ -554,7 +557,10 @@ function buildPdb5i4rSilhouetteShip(colorMode: 'surface-charge' | 'hydrophobicit
   const centeredAt = PDB5I4R_DISPLAY_ASSET.coordinateFrame.centeredAt;
   const positions: number[] = [];
   const colors: number[] = [];
-  const indices: number[] = [];
+  // Copy the large surface index buffer iteratively. Passing it to push with a
+  // spread argument exceeds JavaScript's argument stack limit; the resulting
+  // error appears in the builder call chain even though there is no recursion.
+  const indices = Array.from(surface.index);
   for (let globalVertex = 0; globalVertex < surface.position.length / 3; globalVertex++) {
     positions.push(
       surface.position[globalVertex * 3]! - (centeredAt[0] ?? 0),
@@ -564,7 +570,6 @@ function buildPdb5i4rSilhouetteShip(colorMode: 'surface-charge' | 'hydrophobicit
     const color = surfaceColor(values[globalVertex] ?? 0, colorMode, min, max);
     colors.push(color.r, color.g, color.b);
   }
-  indices.push(...surface.index);
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   geometry.setIndex(indices);
@@ -581,33 +586,21 @@ function buildPdb5i4rSilhouetteShip(colorMode: 'surface-charge' | 'hydrophobicit
   }));
   mesh.renderOrder = 2;
   mesh.userData.proteinComponent = 'A';
+  mesh.userData.proteinShadowOccluder = true;
   mesh.userData.ownsGeometry = true;
   mesh.userData.ownsMaterial = true;
   group.add(mesh);
-  // Back faces form a restrained inner occlusion layer. This is deliberately a
-  // visual self-occlusion pass inside the closed shell, not a solar shadow map:
-  // it must remain visible even when the front shell has already written depth.
-  // Keep depth testing/writing disabled and render after the front shell so the
-  // shell darkens the ribbon and molecular markers instead of hiding this layer.
-  const innerShadow = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
-    color: 0x07101d,
-    transparent: true,
-    opacity: 0.22,
-    side: THREE.BackSide,
-    depthTest: false,
-    depthWrite: false,
-  }));
-  innerShadow.renderOrder = 3;
-  innerShadow.userData.proteinComponent = 'A';
-  innerShadow.userData.ownsGeometry = false;
-  innerShadow.userData.ownsMaterial = true;
-  group.add(innerShadow);
   group.scale.setScalar(PDB5I4R_COORDINATE_SCALE);
   markLitOpaque(group);
+  // 外殻は GBuffer の法線・深度をリボンの上から上書きしてはいけない。通常のワールド描画へ
+  // 残し、先に LightPrepass で陰影を付けたリボンへ透明合成することで、外殻に遮られた内部が
+  // 実際の自己影として見えるようにする。
+  mesh.layers.set(0);
+  markProteinShadowLayers(group);
   return group;
 }
 
-function buildPdb5i4rRibbonShip(colorMode: ProteinRibbonColorMode): THREE.Group {
+export function buildPdb5i4rRibbonShip(colorMode: ProteinRibbonColorMode, fixedColor: THREE.Color | null = null): THREE.Group {
   const material = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     roughness: 0.42,
@@ -629,16 +622,22 @@ function buildPdb5i4rRibbonShip(colorMode: ProteinRibbonColorMode): THREE.Group 
         colorMode,
         run.kind === 'sheet',
         run.kind === 'helix' ? pdb5i4rHelixFrame(run.points) : null,
+        fixedColor,
       );
     } else {
       const radius = 0.38;
       const curve = new THREE.CatmullRomCurve3(run.points, false, 'centripetal', 0.35);
       const tubularSegments = Math.max(2, (run.points.length - 1) * PDB5I4R_RIBBON_SUBDIVISIONS);
       geometry = new THREE.TubeGeometry(curve, tubularSegments, radius, 12, false);
-      pdb5i4rTubeColors(geometry, run.startIndex, run.points.length, pdb5i4rBackboneData.backboneCount, tubularSegments, colorMode);
+      pdb5i4rTubeColors(
+        geometry, run.startIndex, run.points.length, pdb5i4rBackboneData.backboneCount,
+        tubularSegments, colorMode, fixedColor,
+      );
     }
     const mesh = new THREE.Mesh(geometry, material);
     mesh.userData.proteinComponent = pdb5i4rBackboneData.backboneChains[run.startIndex] ?? 'A';
+    mesh.userData.proteinRibbon = true;
+    mesh.userData.proteinShadowReceiver = true;
     mesh.userData.ownsGeometry = true;
     mesh.userData.ownsMaterial = ownsMaterial;
     ownsMaterial = false;
@@ -646,6 +645,7 @@ function buildPdb5i4rRibbonShip(colorMode: ProteinRibbonColorMode): THREE.Group 
   }
   group.scale.setScalar(PDB5I4R_COORDINATE_SCALE);
   markLitOpaque(group);
+  markProteinShadowLayers(group);
   return group;
 }
 

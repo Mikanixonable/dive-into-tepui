@@ -61,6 +61,7 @@ import { register as registerPlanArcRange } from './plan-arc-range.test';
 import './creative-placement-validation.test';
 import { register as registerProtein } from './protein-combat-state.test';
 import { register as registerProjectileOrientation } from './projectile-orientation.test';
+import { register as registerProteinRibbonCollision } from './protein-ribbon-collision.test';
 
 registerVec3();
 registerKinematicState();
@@ -121,6 +122,7 @@ registerWindowAgreement();
 registerPlanArcRange();
 registerProtein();
 registerProjectileOrientation();
+registerProteinRibbonCollision();
 
 runAll().catch((error) => {
   console.error(error);
