@@ -482,7 +482,7 @@ function encodeStructure(parsed, source) {
   const surface = surfaceField(atoms);
   return {
     schemaVersion: 1,
-    id: 'pdb-5i4r-structure',
+    id: `${config.assetId}-structure`,
     pdbId: config.pdbId,
     source,
     coordinateFrame: { units: 'angstrom', centeredAt: [round(center.x), round(center.y), round(center.z)] },
