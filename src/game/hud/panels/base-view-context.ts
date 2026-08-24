@@ -1,8 +1,8 @@
 import type { Base } from '../../game-entity/base';
 import type { Player } from '../../player/player';
 
-// 各タブコントローラが BaseView の共有状態を読み書きするための窓口。
-export interface BaseViewContext {
+// 各タブコントローラが BasePanel の共有状態を読み書きするための窓口。
+export interface BasePanelContext {
   base(): Base;
   freeProcurement(): boolean;
   vessel(): Player | null;
