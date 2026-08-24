@@ -6,7 +6,7 @@
 // 局所量から熱流束を出すだけで収支を知らないので、超えないことは受け取る側で保証する。
 // 太陽光は力学エネルギーの散逸ではないので、この頭打ちは掛からない。
 
-import { ASTRONOMICAL_UNIT } from './srp';
+import { AU } from './planet-orbit';
 
 // ステファン・ボルツマン定数 [W/m²/K⁴]。
 export const STEFAN_BOLTZMANN = 5.670374419e-8;
@@ -54,7 +54,7 @@ export function solarHeating(
   flux1AU: number, sunDist: number, sunlit: number, absorbAreaPerMass: number,
 ): number {
   if (!(sunDist > 0) || sunlit <= 0) return 0;
-  const scale = ASTRONOMICAL_UNIT / sunDist;
+  const scale = AU / sunDist;
   return flux1AU * scale * scale * sunlit * absorbAreaPerMass;
 }
 
