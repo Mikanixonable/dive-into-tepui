@@ -83,6 +83,7 @@ export class Hud {
   // 戦闘/マップ固有の HUD ルートを切り替える。表示状態は ViewManager が正本として通知する。
   setWorldView(view: HudWorldView): void {
     const map = view === 'map';
+    this.helpPanel.setWorldView(view);
     const orbit = this.root.querySelector<HTMLElement>('#hud-orbit');
     const leftRail = (map ? this.mapRoot : this.combatRoot)
       .querySelector<HTMLElement>('.hud-rail-left');

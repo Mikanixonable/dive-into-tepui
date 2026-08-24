@@ -454,6 +454,9 @@ export class Game {
     this.input.takeKeys((code) => this._hud.overlayManager.dispatchShortcut(code));
     // 上から下へ優先順位順に呼ぶ。
     this._hud.handleInput(this.input);
+    // ヘルプや設定など、背景入力をゲートするモーダルが開いた後は、同じフレームの
+    // ワープ/ビュー切り替え/計画編集へキーを漏らさない。
+    if (this._hud.overlayManager.isInputGated()) return;
     this.simSpeedManager.handleInput(this.input);
     this.viewManager.handleInput(this.input);
     if (this.viewManager.isMapView) this.editor.handleInput(this.input, dt);
