@@ -20,5 +20,6 @@
     "optional": true,
     "fallback": "existing-backbone"
   },
+  "definitionAsset": "assets-src/proteins/5i4r/protein.definition.json",
   "semanticAsset": "src/assets/models/pdb5i4rProtein.json"
 }

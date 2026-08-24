@@ -1,6 +1,8 @@
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import rawAsset from '../../src/assets/models/pdb5i4rProtein.json';
+import rawBackbone from '../../src/assets/models/pdb5i4rBackbone.json';
+import rawStructure from '../../src/assets/models/pdb5i4rStructure.json';
 import rawMyoglobinAsset from '../../src/assets/models/myoglobin1mbnProtein.json';
 import rawMyoglobinBackbone from '../../src/assets/models/myoglobin1mbnBackbone.json';
 import rawMyoglobinStructure from '../../src/assets/models/myoglobin1mbnStructure.json';
@@ -10,8 +12,14 @@ import { collisionDamageFraction } from '../../src/game/game-entity/contact-dama
 import * as THREE from 'three/webgpu';
 import { ProteinRuntime } from '../../src/game/protein/protein-runtime';
 import { PROTEIN_ASSET_IDS, proteinAssetFor } from '../../src/game/protein/protein-asset-loader';
+import { proteinEnemyDefinitionFor } from '../../src/game/protein/protein-enemy-registry';
 import type { ProteinDisplayAsset } from '../../src/game/protein/protein-display-asset';
-import { buildProteinEnemyShip, type ProteinBackboneAsset } from '../../src/render/protein-enemy-ship';
+import {
+  buildProteinEnemyShip, buildProteinRibbonShip, type ProteinBackboneAsset, type ProteinRenderSource,
+} from '../../src/render/protein-enemy-ship';
+import {
+  LIT_OPAQUE_LAYER, PROTEIN_SHADOW_OCCLUDER_LAYER, PROTEIN_SHADOW_RECEIVER_LAYER,
+} from '../../src/render/pipeline/lit-layer';
 import { v3 } from '../../src/physics/vec3';
 import {
   DEFAULT_PROTEIN_DISPLAY, defaultProteinDisplayFor, isProteinDisplaySettings, proteinColorModesFor,
@@ -19,6 +27,25 @@ import {
 
 const asset = rawAsset as unknown as ProteinAssetDefinition;
 const myoglobinAsset = rawMyoglobinAsset as unknown as ProteinAssetDefinition;
+const sourceFor = (
+  semantic: ProteinAssetDefinition,
+  backbone: unknown,
+  structure: unknown,
+): ProteinRenderSource => ({
+  semantic,
+  backbone: backbone as ProteinBackboneAsset,
+  structure: structure as ProteinDisplayAsset,
+});
+
+function ribbonKinds(object: THREE.Object3D): Set<string> {
+  const kinds = new Set<string>();
+  object.traverse((child) => {
+    if (child.userData.proteinRibbon && typeof child.userData.proteinSecondary === 'string') {
+      kinds.add(child.userData.proteinSecondary);
+    }
+  });
+  return kinds;
+}
 
 export function register(): void {
   test('protein combat: each attack site has independent HP and disabling one preserves the others', () => {
@@ -83,6 +110,15 @@ export function register(): void {
     }
   });
 
+  test('protein assets: every generated catalog entry has an enemy definition', () => {
+    for (const id of PROTEIN_ASSET_IDS) {
+      const definition = proteinEnemyDefinitionFor(id);
+      assert.ok(definition, `missing enemy definition for ${id}`);
+      assert.equal(definition.assetId, id);
+      assert.equal(definition.asset, proteinAssetFor(id));
+    }
+  });
+
   test('myoglobin: heme ligand uses its iron ion as the sole attack center', () => {
     const state = new ProteinCombatState(myoglobinAsset);
     assert.equal(myoglobinAsset.ligands.length, 1);
@@ -107,11 +143,9 @@ export function register(): void {
   });
 
   test('myoglobin: ribbon render includes the heme ligand and visible iron', () => {
-    const object = buildProteinEnemyShip({
-      semantic: myoglobinAsset,
-      backbone: rawMyoglobinBackbone as ProteinBackboneAsset,
-      structure: rawMyoglobinStructure as unknown as ProteinDisplayAsset,
-    }, { representation: 'ribbon', colorMode: 'chain' });
+    const object = buildProteinEnemyShip(sourceFor(
+      myoglobinAsset, rawMyoglobinBackbone, rawMyoglobinStructure,
+    ), { representation: 'ribbon', colorMode: 'chain' });
     let ligandFound = false;
     let ironFound = false;
     object.traverse((child) => {
@@ -120,6 +154,65 @@ export function register(): void {
     });
     assert.equal(ligandFound, true);
     assert.equal(ironFound, true);
+  });
+
+  test('protein ribbon: shared renderer preserves each asset secondary structures', () => {
+    const myoglobin = buildProteinRibbonShip(sourceFor(
+      myoglobinAsset, rawMyoglobinBackbone, rawMyoglobinStructure,
+    ), 'secondary-structure');
+    assert.deepEqual(ribbonKinds(myoglobin), new Set(['coil', 'helix']));
+
+    const complex = buildProteinRibbonShip(sourceFor(asset, rawBackbone, rawStructure), 'secondary-structure');
+    assert.ok(ribbonKinds(complex).has('helix'));
+    assert.ok(ribbonKinds(complex).has('sheet'));
+    assert.ok(ribbonKinds(complex).has('coil'));
+  });
+
+  test('protein silhouette: internal ribbon is white while the ligand remains visible', () => {
+    const object = buildProteinEnemyShip(sourceFor(
+      myoglobinAsset, rawMyoglobinBackbone, rawMyoglobinStructure,
+    ), { representation: 'silhouette', colorMode: 'surface-charge' });
+    let ribbons = 0;
+    let ligandFound = false;
+    let shellFound = false;
+    object.traverse((child) => {
+      ligandFound ||= child.userData.proteinLigand === true;
+      if (child.userData.proteinShadowOccluder === true) {
+        shellFound = true;
+        assert.equal(child.layers.isEnabled(0), true);
+        assert.equal(child.layers.isEnabled(LIT_OPAQUE_LAYER), false);
+        assert.equal(child.layers.isEnabled(PROTEIN_SHADOW_OCCLUDER_LAYER), true);
+      }
+      if (!child.userData.proteinRibbon) return;
+      ribbons += 1;
+      assert.equal(child.layers.isEnabled(LIT_OPAQUE_LAYER), true);
+      assert.equal(child.layers.isEnabled(PROTEIN_SHADOW_RECEIVER_LAYER), true);
+      const mesh = child as THREE.Mesh;
+      const colors = mesh.geometry.getAttribute('color');
+      assert.ok(colors, 'silhouette ribbon should expose vertex colors');
+      for (let index = 0; index < colors.count; index++) {
+        assert.equal(colors.getX(index), 1);
+        assert.equal(colors.getY(index), 1);
+        assert.equal(colors.getZ(index), 1);
+      }
+    });
+    assert.ok(ribbons > 0);
+    assert.equal(shellFound, true);
+    assert.equal(ligandFound, true);
+  });
+
+  test('protein silhouette: multi-component shell follows the same component motion as its ribbon', () => {
+    const object = buildProteinEnemyShip(
+      sourceFor(asset, rawBackbone, rawStructure),
+      { representation: 'silhouette', colorMode: 'hydrophobicity' },
+    );
+    const shellComponents = new Set<string>();
+    object.traverse((child) => {
+      if (child.userData.proteinShadowOccluder === true) {
+        shellComponents.add(String(child.userData.proteinComponent));
+      }
+    });
+    assert.deepEqual(shellComponents, new Set(asset.components.flatMap((component) => component.chains)));
   });
 
   test('protein combat: interface and core damage move through phases', () => {
