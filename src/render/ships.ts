@@ -5,6 +5,8 @@
 import * as THREE from 'three/webgpu';
 import * as C from '../game/const';
 import type { Pdb5i4rColorMode } from '../game/game-entity/enemy';
+import { isProteinDisplaySettings, type ProteinDisplaySettings, type ProteinRibbonColorMode } from '../game/protein/protein-display';
+import { PDB5I4R_DISPLAY_ASSET } from '../game/protein/protein-display-asset';
 import { mulberry32 } from '../physics/random';
 import { markLitOpaque } from './pipeline/lit-layer';
 
@@ -245,7 +247,22 @@ function pdb5i4rRainbowColor(t: number): THREE.Color {
 const pdb5i4rBFactorMin = Math.min(...pdb5i4rBackboneData.backboneBFactors);
 const pdb5i4rBFactorMax = Math.max(...pdb5i4rBackboneData.backboneBFactors);
 
-function pdb5i4rColorAt(index: number, mode: Pdb5i4rColorMode): THREE.Color {
+function pdb5i4rRibbonColorAt(index: number, mode: ProteinRibbonColorMode): THREE.Color {
+  if (mode === 'rainbow') {
+    return pdb5i4rRainbowColor(index / Math.max(1, pdb5i4rBackboneData.backboneCount - 1));
+  }
+  if (mode === 'secondary-structure') {
+    const kind = pdb5i4rBackboneData.backboneSecondary[index] ?? 'coil';
+    if (kind === 'helix') return new THREE.Color(0xe85d75);
+    if (kind === 'sheet') return new THREE.Color(0xf2c14e);
+    return new THREE.Color(0x8fa7bd);
+  }
+  if (mode === 'component-role') {
+    const entity = pdb5i4rBackboneData.backboneEntities[index]!;
+    if (entity === 1) return new THREE.Color(0x4fc3f7); // CdiA
+    if (entity === 4) return new THREE.Color(0xffc857); // CdiI
+    return new THREE.Color(0xa78bfa); // EF-Tu
+  }
   if (mode === 'b-factor') {
     const range = Math.max(1e-6, pdb5i4rBFactorMax - pdb5i4rBFactorMin);
     return pdb5i4rRainbowColor((pdb5i4rBackboneData.backboneBFactors[index]! - pdb5i4rBFactorMin) / range);
@@ -279,7 +296,7 @@ function pdb5i4rHelixFrame(points: readonly THREE.Vector3[]): { center: THREE.Ve
 }
 
 function pdb5i4rRibbonGeometry(
-  points: readonly THREE.Vector3[], width: number, startIndex: number, colorMode: Pdb5i4rColorMode,
+  points: readonly THREE.Vector3[], width: number, startIndex: number, colorMode: ProteinRibbonColorMode,
   arrow: boolean, helixFrame: { center: THREE.Vector3; axis: THREE.Vector3 } | null,
 ): THREE.BufferGeometry {
   const positions: number[] = [];
@@ -349,7 +366,7 @@ function pdb5i4rRibbonGeometry(
       center.clone().addScaledVector(widthDirection, halfWidth).addScaledVector(thicknessDirection, -halfThickness),
     ];
     for (const corner of corners) positions.push(corner.x, corner.y, corner.z);
-    const color = pdb5i4rColorAt(globalIndex, colorMode);
+    const color = pdb5i4rRibbonColorAt(globalIndex, colorMode);
     for (let corner = 0; corner < 4; corner++) colors.push(color.r, color.g, color.b);
   }
   const indices: number[] = [];
@@ -396,20 +413,181 @@ function pdb5i4rBackboneRuns(): { kind: string; points: THREE.Vector3[]; startIn
 
 function pdb5i4rTubeColors(
   geometry: THREE.BufferGeometry, startIndex: number, pointCount: number, totalPoints: number,
-  tubularSegments: number, colorMode: Pdb5i4rColorMode,
+  tubularSegments: number, colorMode: ProteinRibbonColorMode,
 ): void {
   const radialSegments = 12;
   const colors: number[] = [];
   for (let vertex = 0; vertex < geometry.getAttribute('position').count; vertex++) {
     const longitudinal = Math.floor(vertex / (radialSegments + 1));
     const index = Math.min(totalPoints - 1, Math.round(startIndex + (pointCount - 1) * longitudinal / tubularSegments));
-    const color = pdb5i4rColorAt(index, colorMode);
+    const color = pdb5i4rRibbonColorAt(index, colorMode);
     colors.push(color.r, color.g, color.b);
   }
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
 }
 
-export function buildPdb5i4rEnemyShip(colorMode: Pdb5i4rColorMode = 'chain'): THREE.Group {
+function normalizePdb5i4rDisplay(display: ProteinDisplaySettings | Pdb5i4rColorMode): ProteinDisplaySettings {
+  if (typeof display !== 'string' && isProteinDisplaySettings(display)) return display;
+  if (display === 'element') return { representation: 'molecular', colorMode: 'element' };
+  if (display === 'surface-charge' || display === 'hydrophobicity') return { representation: 'silhouette', colorMode: display };
+  if (display === 'rainbow' || display === 'secondary-structure' || display === 'component-role') {
+    return { representation: 'ribbon', colorMode: display };
+  }
+  return { representation: 'ribbon', colorMode: 'chain' };
+}
+
+const PDB5I4R_ELEMENT_COLORS: Readonly<Record<string, number>> = {
+  H: 0xffffff,
+  C: 0x909090,
+  N: 0x3050f8,
+  O: 0xff0d0d,
+  F: 0x90e050,
+  P: 0xff8000,
+  S: 0xffff30,
+  CL: 0x1ff01f,
+  BR: 0xa62929,
+  I: 0x940094,
+  SE: 0xffa100,
+  MG: 0x8aff00,
+  ZN: 0x7d80b0,
+  NA: 0xab5cf2,
+  CA: 0x3dff00,
+  FE: 0xe06633,
+  K: 0x8f40d4,
+};
+
+function molecularAtomMaterial(element: string): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({
+    color: PDB5I4R_ELEMENT_COLORS[element.toUpperCase()] ?? 0xc0c0c0,
+    roughness: 0.26,
+    metalness: 0.18,
+  });
+}
+
+function buildPdb5i4rMolecularShip(): THREE.Group {
+  const group = new THREE.Group();
+  const scale = PDB5I4R_COORDINATE_SCALE;
+  const atomPositions = PDB5I4R_DISPLAY_ASSET.atoms.coordinates;
+  const atomCount = PDB5I4R_DISPLAY_ASSET.atoms.count;
+  const byComponent = new Map<string, Map<string, { count: number; radius: number }>>();
+  for (let atom = 0; atom < atomCount; atom++) {
+    const component = PDB5I4R_DISPLAY_ASSET.atoms.chainTable[PDB5I4R_DISPLAY_ASSET.atoms.chains[atom] ?? 0] ?? 'A';
+    const element = PDB5I4R_DISPLAY_ASSET.atoms.elementTable[PDB5I4R_DISPLAY_ASSET.atoms.elements[atom] ?? 1] ?? 'C';
+    const elements = byComponent.get(component) ?? new Map<string, { count: number; radius: number }>();
+    const atomRadius = PDB5I4R_DISPLAY_ASSET.atoms.radiusTable[PDB5I4R_DISPLAY_ASSET.atoms.radiusCodes[atom] ?? 1] ?? 1.7;
+    const entry = elements.get(element) ?? { count: 0, radius: atomRadius };
+    entry.count += 1;
+    elements.set(element, entry);
+    byComponent.set(component, elements);
+  }
+  for (const [component, elementCounts] of byComponent) {
+    const componentGroup = new THREE.Group();
+    componentGroup.userData.proteinComponent = component;
+    for (const [element, entry] of elementCounts) {
+      const radius = Math.max(0.16, entry.radius);
+      const mesh = new THREE.InstancedMesh(new THREE.SphereGeometry(radius, 8, 6), molecularAtomMaterial(element), entry.count);
+      const matrix = new THREE.Matrix4();
+      let instance = 0;
+      for (let atom = 0; atom < atomCount; atom++) {
+        const atomComponent = PDB5I4R_DISPLAY_ASSET.atoms.chainTable[PDB5I4R_DISPLAY_ASSET.atoms.chains[atom] ?? 0] ?? 'A';
+        const atomElement = PDB5I4R_DISPLAY_ASSET.atoms.elementTable[PDB5I4R_DISPLAY_ASSET.atoms.elements[atom] ?? 1] ?? 'C';
+        if (atomComponent !== component || atomElement !== element) continue;
+        matrix.makeTranslation(atomPositions[atom * 3]!, atomPositions[atom * 3 + 1]!, atomPositions[atom * 3 + 2]!);
+        mesh.setMatrixAt(instance++, matrix);
+      }
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.userData.ownsGeometry = true;
+      mesh.userData.ownsMaterial = true;
+      componentGroup.add(mesh);
+    }
+    group.add(componentGroup);
+  }
+  const bondPositions: number[] = [];
+  const indices = PDB5I4R_DISPLAY_ASSET.bonds.pairs;
+  for (let bond = 0; bond + 1 < indices.length; bond += 2) {
+    const a = indices[bond]!;
+    const b = indices[bond + 1]!;
+    if (a < 0 || b < 0 || a >= atomCount || b >= atomCount) continue;
+    bondPositions.push(
+      atomPositions[a * 3]!, atomPositions[a * 3 + 1]!, atomPositions[a * 3 + 2]!,
+      atomPositions[b * 3]!, atomPositions[b * 3 + 1]!, atomPositions[b * 3 + 2]!,
+    );
+  }
+  const bondGeometry = new THREE.BufferGeometry();
+  bondGeometry.setAttribute('position', new THREE.Float32BufferAttribute(bondPositions, 3));
+  const bonds = new THREE.LineSegments(bondGeometry, new THREE.LineBasicMaterial({ color: 0x778899, transparent: true, opacity: 0.7 }));
+  bonds.userData.proteinComponent = 'A';
+  bonds.userData.ownsGeometry = true;
+  bonds.userData.ownsMaterial = true;
+  group.add(bonds);
+  group.scale.setScalar(scale);
+  return group;
+}
+
+function surfaceColor(value: number, mode: 'surface-charge' | 'hydrophobicity', min: number, max: number): THREE.Color {
+  const t = Math.max(0, Math.min(1, (value - min) / Math.max(1e-6, max - min)));
+  if (mode === 'surface-charge') {
+    if (t < 0.5) return new THREE.Color(0xd84a4a).lerp(new THREE.Color(0xf4f0e8), t * 2);
+    return new THREE.Color(0xf4f0e8).lerp(new THREE.Color(0x477fd1), (t - 0.5) * 2);
+  }
+  return new THREE.Color(0x4575b4).lerp(new THREE.Color(0xf7f7f7), t < 0.5 ? t * 2 : 1)
+    .lerp(new THREE.Color(0xd95f02), t > 0.5 ? (t - 0.5) * 2 : 0);
+}
+
+function buildPdb5i4rSilhouetteShip(colorMode: 'surface-charge' | 'hydrophobicity'): THREE.Group {
+  const group = new THREE.Group();
+  const surface = PDB5I4R_DISPLAY_ASSET.surface.mesh;
+  const values = colorMode === 'surface-charge' ? surface.charge : surface.hydrophobicity;
+  // The offline asset stores both fields as signed int8-compatible values so the
+  // JSON stays compact: -127..127 maps to charge -1..1 or Kyte-Doolittle -4.5..4.5.
+  const min = -127;
+  const max = 127;
+  const components = new Set(surface.component.length > 0 ? surface.component : ['A']);
+  for (const component of components) {
+    const geometry = new THREE.BufferGeometry();
+    const centeredAt = PDB5I4R_DISPLAY_ASSET.coordinateFrame.centeredAt;
+    const positions: number[] = [];
+    const colors: number[] = [];
+    const indices: number[] = [];
+    const remap = new Map<number, number>();
+    const appendVertex = (globalVertex: number): number => {
+      const existing = remap.get(globalVertex);
+      if (existing !== undefined) return existing;
+      const localVertex = positions.length / 3;
+      positions.push(
+        surface.position[globalVertex * 3]! - (centeredAt[0] ?? 0),
+        surface.position[globalVertex * 3 + 1]! - (centeredAt[1] ?? 0),
+        surface.position[globalVertex * 3 + 2]! - (centeredAt[2] ?? 0),
+      );
+      const color = surfaceColor(values[globalVertex] ?? 0, colorMode, min, max);
+      colors.push(color.r, color.g, color.b);
+      remap.set(globalVertex, localVertex);
+      return localVertex;
+    };
+    for (let offset = 0; offset + 2 < surface.index.length; offset += 3) {
+      const a = surface.index[offset]!;
+      const b = surface.index[offset + 1]!;
+      const c = surface.index[offset + 2]!;
+      if ((surface.component[a] ?? component) === component) indices.push(appendVertex(a), appendVertex(b), appendVertex(c));
+    }
+    if (indices.length === 0) continue;
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({
+      color: 0xffffff, vertexColors: true, roughness: 0.24, metalness: 0.3, side: THREE.DoubleSide,
+    }));
+    mesh.userData.proteinComponent = component;
+    mesh.userData.ownsGeometry = true;
+    mesh.userData.ownsMaterial = true;
+    group.add(mesh);
+  }
+  group.scale.setScalar(PDB5I4R_COORDINATE_SCALE);
+  return group;
+}
+
+function buildPdb5i4rRibbonShip(colorMode: ProteinRibbonColorMode): THREE.Group {
   const material = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     roughness: 0.42,
@@ -450,9 +628,16 @@ export function buildPdb5i4rEnemyShip(colorMode: Pdb5i4rColorMode = 'chain'): TH
   return group;
 }
 
-// 既存の5I4R敵の頂点色だけを差し替え、位置・姿勢・スケールを維持したまま表示モードを更新する。
-export function recolorPdb5i4rEnemyShip(target: THREE.Object3D, colorMode: Pdb5i4rColorMode): void {
-  const replacement = buildPdb5i4rEnemyShip(colorMode);
+export function buildPdb5i4rEnemyShip(display: ProteinDisplaySettings | Pdb5i4rColorMode = { representation: 'ribbon', colorMode: 'chain' }): THREE.Group {
+  const settings = normalizePdb5i4rDisplay(display);
+  if (settings.representation === 'molecular') return buildPdb5i4rMolecularShip();
+  if (settings.representation === 'silhouette') return buildPdb5i4rSilhouetteShip(settings.colorMode);
+  return buildPdb5i4rRibbonShip(settings.colorMode);
+}
+
+// 既存の5I4R敵の表示メッシュだけを差し替え、位置・姿勢・スケール・戦闘用オーバーレイを維持する。
+export function recolorPdb5i4rEnemyShip(target: THREE.Object3D, display: ProteinDisplaySettings | Pdb5i4rColorMode): void {
+  const replacement = buildPdb5i4rEnemyShip(display);
   for (const child of [...target.children]) {
     child.traverse((nested) => {
       const mesh = nested as THREE.Mesh;
