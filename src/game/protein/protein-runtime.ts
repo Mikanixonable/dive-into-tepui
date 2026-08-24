@@ -18,7 +18,7 @@ import {
 } from './protein-anchors';
 import {
   ProteinMotionController,
-  proteinMotionLodForDistance,
+  proteinMotionLodForProjectedSize,
   type ProteinMotionLod,
 } from './protein-motion-controller';
 import {
@@ -161,8 +161,8 @@ export class ProteinRuntime {
   }
 
   /** Update deterministic OU coefficients and upload the shared GPU residue buffer. */
-  updateVisual(displayTime: number, distance = 0, visualRadius = 1): void {
-    this.currentLod = proteinMotionLodForDistance(distance, visualRadius);
+  updateVisual(displayTime: number, projectedDiameterPx = Number.POSITIVE_INFINITY): void {
+    this.currentLod = proteinMotionLodForProjectedSize(projectedDiameterPx, this.currentLod);
     const offsets = this.controller.update(displayTime, this.currentLod, this.combat.phase);
     if (this.uploadedLod !== this.currentLod || this.uploadedSampleTime !== this.controller.sampleTime
       || this.uploadedPhase !== this.combat.phase) {
