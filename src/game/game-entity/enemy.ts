@@ -33,6 +33,7 @@ import type { ProteinAssetId } from '../protein/protein-asset-loader';
 import { proteinEnemyDefinitionFor } from '../protein/protein-enemy-registry';
 import { ProteinRuntime } from '../protein/protein-runtime';
 import { ProteinRibbonCollisionGeometry } from '../protein/protein-ribbon-collision';
+import { createProteinMotionBinding, type ProteinMotionBinding } from '../../render/protein-motion-material';
 import type { ProteinDamageResult } from '../protein/protein-combat-state';
 import {
   DEFAULT_PROTEIN_DISPLAY, isProteinDisplaySettings, proteinDisplayFromLegacyColorMode, type ProteinColorMode, type ProteinDisplaySettings,
@@ -92,7 +93,7 @@ function sunGlareSpreadScale(pos: Vec3, aimDir: Vec3, sunDir: Vec3): number {
 }
 
 // enemyKind の種別に応じたメッシュを組む。
-function buildEnemyRenderObject(enemyKind: EnemyKind, accent: string | number): THREE.Object3D {
+function buildEnemyRenderObject(enemyKind: EnemyKind, accent: string | number, motionBinding?: ProteinMotionBinding): THREE.Object3D {
   if (enemyKind.kind === 'stage0') return buildStage0EnemyShip(accent, enemyKind.typeIndex);
   const proteinId = proteinAssetIdForEnemyKind(enemyKind);
   if (proteinId !== null) {
@@ -101,7 +102,7 @@ function buildEnemyRenderObject(enemyKind: EnemyKind, accent: string | number): 
     const display: ProteinDisplaySettings = enemyKind.kind === 'protein' && isProteinDisplaySettings(enemyKind.display)
       ? enemyKind.display
       : DEFAULT_PROTEIN_DISPLAY;
-    return definition.buildRenderObject(display);
+    return definition.buildRenderObject(display, motionBinding);
   }
   return buildEnemyShip(accent);
 }
@@ -163,18 +164,29 @@ export class Enemy extends Ship {
       }
       : init;
     const enemyKind = normalizeEnemyKind(rawEnemyKind);
-    const renderObject = buildEnemyRenderObject(enemyKind, accent);
-    super(name, state, renderObject, att, C.ENEMY_RADIUS, C.ENEMY_MAX_HP, scene, id);
-    this._worldSfx = worldSfx;
-    this._fx = fx;
-    this.enemyKind = enemyKind;
     const proteinId = proteinAssetIdForEnemyKind(enemyKind);
     const proteinDefinition = proteinId === null ? null : proteinEnemyDefinitionFor(proteinId);
     if (proteinId !== null && proteinDefinition === null) {
       throw new Error(`No protein enemy definition registered for ${proteinId}`);
     }
+    const motionBinding = proteinDefinition
+      ? createProteinMotionBinding(proteinDefinition.motion.residueCount)
+      : undefined;
+    const renderObject = buildEnemyRenderObject(enemyKind, accent, motionBinding);
+    super(name, state, renderObject, att, C.ENEMY_RADIUS, C.ENEMY_MAX_HP, scene, id);
+    this._worldSfx = worldSfx;
+    this._fx = fx;
+    this.enemyKind = enemyKind;
     this.proteinRuntime = proteinDefinition
-      ? new ProteinRuntime(this.renderObject, proteinDefinition.asset, 'saved' in init ? init.saved.protein : undefined, 'saved' in init ? init.saved.health : undefined, this.id)
+      ? new ProteinRuntime(
+        this.renderObject,
+        proteinDefinition.asset,
+        proteinDefinition.motion,
+        'saved' in init ? init.saved.protein : undefined,
+        'saved' in init ? init.saved.health : undefined,
+        this.id,
+        motionBinding,
+      )
       : null;
     this.accent = accent;
     this.waveId = waveId;
@@ -256,7 +268,7 @@ export class Enemy extends Ship {
     if (!definition) return;
     this.enemyKind.display = display;
     this.proteinRuntime?.clearVisuals();
-    definition.recolorRenderObject(this.renderObject, display);
+    definition.recolorRenderObject(this.renderObject, display, this.proteinRuntime?.motionBinding);
     this.proteinRuntime?.rebuildVisuals();
   }
 
@@ -264,9 +276,13 @@ export class Enemy extends Ship {
     return this.proteinRuntime?.hudSnapshot ?? null;
   }
 
-  override sync(fo: import('../floating-origin').FloatingOrigin, displayTime: number): void {
+  override sync(fo: import('../floating-origin').FloatingOrigin, displayTime: number, viewerPosition?: Vec3): void {
     super.sync(fo, displayTime);
-    if (this.proteinRuntime && this.renderObject.visible) this.proteinRuntime.updateVisual(displayTime);
+    if (this.proteinRuntime && this.renderObject.visible) {
+      const displayed = this.displayState(displayTime);
+      const distance = viewerPosition && displayed ? len(sub(displayed.r, viewerPosition)) : 0;
+      this.proteinRuntime.updateVisual(displayTime, distance, this.radius);
+    }
   }
 
   // 個体色の CSS 表記。方位マーカー・LEAD マーカーの着色に使う。

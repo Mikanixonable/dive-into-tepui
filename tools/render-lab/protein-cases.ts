@@ -1,11 +1,11 @@
 // Render Lab のタンパク質 baseline。ゲームの runtime へ依存せず、catalog の既存 asset と
-// protein-enemy-ship の現行描画経路をそのまま組み立てる。Phase 0 では表示を動かさないため、
-// 後続の motion controller が注入する CPU/upload/LOD telemetry は LabCase の metadata と
-// 同じ識別子で結び付けられる。
+// protein-enemy-ship の現行描画経路を controller + GPU binding 込みで組み立てる。
 import * as THREE from 'three/webgpu';
 import { proteinAssetBundleFor, type ProteinAssetId } from '../../src/game/protein/protein-asset-loader';
 import type { ProteinDisplaySettings, ProteinRepresentation } from '../../src/game/protein/protein-display';
 import { buildProteinEnemyShip, type ProteinRenderSource } from '../../src/render/protein-enemy-ship';
+import { ProteinMotionController } from '../../src/game/protein/protein-motion-controller';
+import { createProteinMotionBinding, disposeProteinMotionBinding, updateProteinMotionBinding, type ProteinMotionBinding } from '../../src/render/protein-motion-material';
 import type { LabCase } from './cases';
 
 const VIEW_WIDTH = 960;
@@ -21,7 +21,6 @@ export interface ProteinLabCaseMetadata {
   readonly pdbId: '5I4R' | '1MBN';
   readonly representation: ProteinLabRepresentation;
   readonly instanceCount: number;
-  /** Current render-lab baseline has no motion controller, so all visible instances are full quality. */
   readonly baselineLod: 'near';
 }
 
@@ -64,7 +63,7 @@ function cameraFor(asset: ProteinLabAsset, count: ProteinLabPopulation): THREE.P
 function sourceFor(assetId: ProteinAssetId): ProteinRenderSource {
   const bundle = proteinAssetBundleFor(assetId);
   if (!bundle) throw new Error(`Unknown Render Lab protein asset: ${assetId}`);
-  return { semantic: bundle.semantic, backbone: bundle.backbone, structure: bundle.structure };
+  return { semantic: bundle.semantic, backbone: bundle.backbone, structure: bundle.structure, motion: bundle.motion };
 }
 
 function gridPosition(index: number, count: number, columns: number, spacing: number): THREE.Vector3 {
@@ -88,8 +87,14 @@ function proteinCase(
   const display = DISPLAY_BY_REPRESENTATION[representation];
   const source = sourceFor(definition.assetId);
   const objects: THREE.Object3D[] = [];
+  const controllers: ProteinMotionController[] = [];
+  const bindings: ProteinMotionBinding[] = [];
   for (let index = 0; index < count; index++) {
-    const object = buildProteinEnemyShip(source, display);
+    const controller = new ProteinMotionController(source.motion, `render-lab-${asset}-${index}`);
+    const binding = createProteinMotionBinding(source.motion.residueCount);
+    const object = buildProteinEnemyShip(source, display, binding);
+    controllers.push(controller);
+    bindings.push(binding);
     const position = gridPosition(index, count, definition.columns, definition.spacing);
     object.position.copy(position);
     if (count > 1) object.position.z = -definition.depth;
@@ -106,6 +111,18 @@ function proteinCase(
       instanceCount: count,
       baselineLod: 'near',
     },
+    updateProteinMotion(displayTime) {
+      const startedAt = performance.now();
+      for (let index = 0; index < controllers.length; index++) {
+        updateProteinMotionBinding(bindings[index]!, controllers[index]!.update(displayTime, 'near'));
+      }
+      return {
+        cpuMs: performance.now() - startedAt,
+        uploadBytes: source.motion.residueCount * 4 * Float32Array.BYTES_PER_ELEMENT * count,
+        lodCounts: { near: count },
+      };
+    },
+    disposeProteinMotion() { for (const binding of bindings) disposeProteinMotionBinding(binding); },
   };
 }
 
