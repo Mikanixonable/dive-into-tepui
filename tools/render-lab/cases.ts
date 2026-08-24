@@ -8,7 +8,7 @@ import { R_EARTH } from '../../src/physics/solar-system';
 import { Curve } from '../../src/render/curve';
 import { buildPlayerShip } from '../../src/render/ships';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
-import type { Occluder, RingBand } from '../../src/render/pipeline/sun-occlusion';
+import type { Occluder, RingBand, SunOcclusion } from '../../src/render/pipeline/sun-occlusion';
 import type { LineStyle } from '../../src/render/line-style';
 import { RingView } from '../../src/game/celestial/ring-view';
 import { sunIrradianceAtDistance } from '../../src/render/pipeline/sun-light';
@@ -179,6 +179,13 @@ function depthProbe(z: number, far: number): LabCase {
   return { objects, camera };
 }
 
+// 日食ケースの遮蔽器: 地表のどこへ影を落とすか(直下からの中心角 [rad])と、その球の半径・
+// 距離。距離に対する半径の比を太陽の視半径(4.65e-3)よりわずかに大きく取ると、本影を半影が
+// 縁取る金環直前の配置になる。
+const ECLIPSE_GROUND_ANGLE = 0.25;
+const ECLIPSE_OCCLUDER_RADIUS = 2e5;
+const ECLIPSE_OCCLUDER_DISTANCE = 3e7;
+
 // 地球: 高度 420km から地平線方向を見て、大気のリムと地表のもやを見る。
 function earth(): LabCase {
   const camera = labCamera(6e7);
@@ -193,6 +200,26 @@ function earth(): LabCase {
   built.syncSurfaceLod(6e4);
   built.tick(0);
   return { objects: [built.group], camera, atmosphere: { center, surfaceRadius: R_EARTH } };
+}
+
+// 日食下の地球: earth と同じ構図へ、地球自身と食を起こす球を遮蔽器として足す。**大気の明暗は
+// 入射角だけでなく遮蔽度にも比例する**ので、リムともやの両方へ影の落ちた斑が出る。遮蔽器の
+// 視半径は太陽よりわずかに大きく取ってあり、本影(半径 60km)を半影(340km)が縁取る。
+function earthEclipse(): LabCase {
+  const base = earth();
+  const center = base.atmosphere!.center;
+  // 影を落とす地表点。カメラ直下と地平線(地表距離 2,255km)の中間へ来るよう、直下の向きを
+  // 視線側へ回す。
+  const groundDir = center.clone().negate().normalize()
+    .applyAxisAngle(new THREE.Vector3(1, 0, 0), -ECLIPSE_GROUND_ANGLE);
+  const ground = center.clone().addScaledVector(groundDir, R_EARTH);
+  return {
+    ...base,
+    occluders: [
+      { center: ground.clone().addScaledVector(SUN_DIR, ECLIPSE_OCCLUDER_DISTANCE), radius: ECLIPSE_OCCLUDER_RADIUS },
+      { center, radius: R_EARTH },
+    ],
+  };
 }
 
 // 日食: 光を受ける球へ、太陽とほぼ同じ視半径の球と、その球を巡る環の帯が落とす影。
@@ -246,13 +273,16 @@ function albedo(): LabCase {
 // 放射照度は本体(ライティングパスが画素ごとに逆二乗を掛ける)にも環(sync が受け取る)にも
 // 同じだけ掛かる。**恒星は他のケースと同じ 1 天文単位に置く** — 本体だけが位置によらない
 // 環境光を受け取るので、太陽から遠ざけると比がそのぶん動いてしまう。
-function saturn(): LabCase {
+//
+// 本体を遮蔽器に、環の帯を遮蔽する環に登録するので、**環が本体の影へ入る境界と、本体表面に
+// 落ちる環の影の境界の両方**が同じ 1 つの遮蔽関数から出る。どちらもぼけていることを見る。
+function saturn(sunOcclusion: SunOcclusion): LabCase {
   const camera = labCamera(1e13);
   const radius = 6.0268e7;
   const distance = 1.2e9;
   const center = new THREE.Vector3(0, -0.15 * distance, -distance);
   const axis = v3(0.3, 0.9, 0.32);
-  const view = new RingView(SATURN_RINGS, radius, 1);
+  const view = new RingView(SATURN_RINGS, radius, 1, sunOcclusion);
   const sunPosition = SUN_DIR.clone().multiplyScalar(AU);
   const sunDistance = center.distanceTo(sunPosition);
   view.sync(
@@ -263,7 +293,20 @@ function saturn(): LabCase {
     v3(SUN_DIR.x, SUN_DIR.y, SUN_DIR.z),
     sunIrradianceAtDistance(sunDistance),
   );
-  return { objects: [sphere(SATURN_ALBEDO, radius, center), view.group], camera };
+  return {
+    objects: [sphere(SATURN_ALBEDO, radius, center), view.group],
+    camera,
+    occluders: [{ center, radius }],
+    rings: {
+      center,
+      axis: new THREE.Vector3(axis.x, axis.y, axis.z).normalize(),
+      bands: SATURN_RINGS.bands.map((band): RingBand => ({
+        innerRadius: band.innerRadius,
+        outerRadius: band.outerRadius,
+        normalOpticalDepth: band.optics.normalOpticalDepth,
+      })),
+    },
+  };
 }
 
 // 遠距離: 月と海王星の距離に球を置く。far=1e13 の外へ落ちないか、潰れたり消えたりしないか。
@@ -291,11 +334,12 @@ export const CASES = {
   'depth-1e11': () => depthProbe(1e11, 1e13),
   'eclipse': eclipse,
   'earth': earth,
+  'earth-eclipse': earthEclipse,
   'far': far,
   'saturn': saturn,
   'albedo': albedo,
   ...PROTEIN_CASES,
-} as const satisfies Record<string, () => LabCase>;
+} as const satisfies Record<string, (sunOcclusion: SunOcclusion) => LabCase>;
 
 export type CaseName = keyof typeof CASES;
 export const CASE_NAMES = Object.keys(CASES) as readonly CaseName[];
