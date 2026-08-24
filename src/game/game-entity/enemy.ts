@@ -15,7 +15,10 @@ import { solveLeadTime } from '../../physics/intercept';
 import { fmtMarkerDist } from '../hud/utils';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
-import { buildEnemyShip, buildPdb5i4rEnemyShip, buildStage0EnemyShip, recolorPdb5i4rEnemyShip } from '../../render/ships';
+import {
+  buildEnemyShip, buildPdb5i4rEnemyShip, buildPdb5i4rRibbonShip, buildStage0EnemyShip,
+  recolorPdb5i4rEnemyShip,
+} from '../../render/ships';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { EffectsSystem } from '../vfx/effects-system';
 import { Player } from '../player/player';
@@ -29,6 +32,7 @@ import type { EnemySaveData } from '../save-data';
 import { currentThemePalette } from '../theme';
 import { PDB5I4R_ASSET } from '../protein/protein-asset-loader';
 import { ProteinRuntime } from '../protein/protein-runtime';
+import { ProteinRibbonCollisionGeometry } from '../protein/protein-ribbon-collision';
 import type { ProteinDamageResult } from '../protein/protein-combat-state';
 import {
   DEFAULT_PROTEIN_DISPLAY, isProteinDisplaySettings, proteinDisplayFromLegacyColorMode, type Pdb5i4rColorMode, type ProteinDisplaySettings, type ProteinRibbonColorMode,
@@ -112,6 +116,7 @@ export class Enemy extends Ship {
   private readonly _fx: EffectsSystem;
   public readonly enemyKind: EnemyKind;
   readonly proteinRuntime: ProteinRuntime | null;
+  private readonly proteinRibbonCollision: ProteinRibbonCollisionGeometry | null;
 
   // init の enemyKind に応じたメッシュで Ship を初期化し、専用の軌道線をシーンへ追加する。
   constructor(
@@ -147,10 +152,27 @@ export class Enemy extends Ship {
     this.collides = true;
     this.doPreciseReentry = true;
     this.renderObject.scale.setScalar(C.ENEMY_SCALE);
+    if (this.proteinRuntime) {
+      // 表示が原子模型へ切り替わっていても判定形状は常に同じリボンに固定する。専用の
+      // 一時メッシュから三角形を抽出し、抽出後は GPU/CPU 資源をただちに解放する。
+      const collisionSource = buildPdb5i4rRibbonShip('chain');
+      this.proteinRibbonCollision = new ProteinRibbonCollisionGeometry(collisionSource, C.ENEMY_SCALE);
+      collisionSource.traverse((child) => {
+        const mesh = child as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        if (mesh.userData.ownsGeometry) mesh.geometry.dispose();
+        if (mesh.userData.ownsMaterial) {
+          if (Array.isArray(mesh.material)) mesh.material.forEach((material) => material.dispose());
+          else mesh.material.dispose();
+        }
+      });
+    } else {
+      this.proteinRibbonCollision = null;
+    }
     // 描画メッシュの実スケール後バウンディング球を、弾丸・物理接触の両判定に共有する。
     const visualBounds = new THREE.Box3().setFromObject(this.renderObject);
     const visualSphere = visualBounds.getBoundingSphere(new THREE.Sphere());
-    this.radius = visualSphere.radius;
+    this.radius = this.proteinRibbonCollision?.outerRadius ?? visualSphere.radius;
     this.orbitLineColor = orbitLineColor;
 
     if (this.proteinRuntime) {
@@ -169,6 +191,30 @@ export class Enemy extends Ship {
       if (!this.alive) this.renderObject.visible = false;
       this.showTrajectoryLine = init.saved.showTrajectoryLine ?? false;
     }
+  }
+
+  override testCustomSphereCollision(
+    sphereCenter: Vec3, sphereRadius: number, selfState: KinematicState,
+  ) {
+    if (this.proteinRibbonCollision === null) return null;
+    return this.proteinRibbonCollision.testSphereCollision(
+      sphereCenter, sphereRadius, selfState.r, this.att.q,
+    );
+  }
+
+  override testCustomSweptSphereCollision(
+    previousSphereCenter: Vec3, sphereCenter: Vec3, sphereRadius: number,
+    previousSelfState: KinematicState, selfState: KinematicState,
+  ) {
+    if (this.proteinRibbonCollision === null) return null;
+    return this.proteinRibbonCollision.testSweptSphereCollision(
+      previousSphereCenter, sphereCenter, sphereRadius,
+      previousSelfState, selfState, this.att.q,
+    );
+  }
+
+  override usesCustomSphereCollision(): boolean {
+    return this.proteinRibbonCollision !== null;
   }
 
   // ステージ操作の表示形態・着色変更を既存のタンパク質型敵へ反映する。
@@ -427,12 +473,16 @@ export class Enemy extends Ship {
     const spreadAng = (Math.random() * C.PLASMA_SPREAD_DEG * spreadScale * Math.PI) / 180;
     const actualAim = rotateAxis(aimDir, perp, spreadAng);
 
-    const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
+    const relativeBulletVelocity = scale(actualAim, C.PLASMA_BULLET_SPEED);
+    const bV = add(v, relativeBulletVelocity);
 
     const bulletDamage = this.proteinRuntime
       ? this.proteinRuntime.combat.projectileDamage(C.PLAYER_BULLET_DAMAGE)
       : C.PLAYER_BULLET_DAMAGE;
-    const pb = new Bullet(kinematicState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', bulletDamage, this._worldSfx, this.scene);
+    const pb = new Bullet(
+      kinematicState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', bulletDamage,
+      this._worldSfx, this.scene, this,
+    );
     // 弾の姿勢は Bullet.sync() に一本化する。プラズマの長軸(+Z)を、
     // 浮動原点に対する実際の相対速度へ向けるため、発射方向(actualAim)を
     // 直接 lookAt() するよりも、敵自身の速度を含む軌道と一致する。

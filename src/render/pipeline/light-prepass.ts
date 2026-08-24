@@ -7,7 +7,7 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import {
-  D_GGX, F_Schlick, V_GGX_SmithCorrelated, dot, float, mrt, normalize, saturate,
+  D_GGX, F_Schlick, V_GGX_SmithCorrelated, dot, float, mrt, normalize, saturate, select,
   screenUV, texture, uniform, vec4,
 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
@@ -15,6 +15,7 @@ import type { FloatNode, Mat4Uniform, Vec3Node, Vec3Uniform } from '../tsl-types
 import { GBufferPass, octDecodeNormal } from './gbuffer';
 import type { OcclusionPass } from './occlusion';
 import { SHADOW_MIN_SUN, type SunLight } from './sun-light';
+import type { ProteinShadowPass } from './protein-shadow-pass';
 import { viewPositionAt, viewRayAt } from './view-ray';
 
 export class LightPrepass {
@@ -31,6 +32,7 @@ export class LightPrepass {
   // 恒星の位置は描画座標(SunLight.position)で保持されるので、G バッファの法線・復元位置と
   // 同じ view 空間へ移した値を毎フレーム CPU 側で用意する — シェーダ内で行列を組むより単純。
   private readonly sunPositionView: Vec3Uniform;
+  private readonly viewToWorld: Mat4Uniform;
   private readonly scratchPosition = new THREE.Vector3();
 
   constructor(
@@ -38,6 +40,7 @@ export class LightPrepass {
     private readonly gbuffer: GBufferPass,
     occlusion: OcclusionPass,
     private readonly sunLight: SunLight,
+    private readonly proteinShadow: ProteinShadowPass,
     private readonly gpu: GpuTimings,
   ) {
     this.renderer = renderer;
@@ -55,6 +58,7 @@ export class LightPrepass {
 
     this.projMatrixInverse = uniform(new THREE.Matrix4());
     this.sunPositionView = uniform(new THREE.Vector3(0, 1, 0));
+    this.viewToWorld = uniform(new THREE.Matrix4());
 
     const normal = octDecodeNormal(texture(this.gbuffer.normalTexture, screenUV).rg);
     const roughnessValue = texture(this.gbuffer.roughnessTexture, screenUV).r;
@@ -73,7 +77,28 @@ export class LightPrepass {
     // 影の中にも届く星明かり・地球照ぶんを「恒星と同じ向きから来る一定量」で代用したもので、
     // 基準強度のうちその割合を直射から分けて持つ。
     const direct = texture(occlusion.texture, screenUV).r.mul(1 - SHADOW_MIN_SUN);
-    const sunlit = direct.add(SHADOW_MIN_SUN);
+    const worldPos: Vec3Node = this.viewToWorld.mul(vec4(viewPos, 1)).xyz;
+    const lightClip = this.proteinShadow.lightViewProjection.mul(vec4(worldPos, 1));
+    const lightNdc = lightClip.xyz.div(lightClip.w);
+    const shadowUV = lightNdc.xy.mul(0.5).add(0.5);
+    const inShadowMap = shadowUV.x.greaterThan(0).and(shadowUV.x.lessThan(1))
+      .and(shadowUV.y.greaterThan(0)).and(shadowUV.y.lessThan(1));
+    const lightViewPosition = this.proteinShadow.lightView.mul(vec4(worldPos, 1)).xyz;
+    const pointDepth = lightViewPosition.z.negate()
+      .sub(this.proteinShadow.near)
+      .div(this.proteinShadow.far.sub(this.proteinShadow.near))
+      .clamp(0, 1);
+    const storedDepth = texture(this.proteinShadow.shadowTexture, shadowUV).r;
+    const shadowed = pointDepth.greaterThan(storedDepth.add(this.proteinShadow.bias));
+    const shadowVisibility = select(shadowed, float(0), float(1));
+    const receiver = texture(this.proteinShadow.receiverTexture, screenUV).r;
+    const proteinReceiver = this.proteinShadow.active.greaterThan(0.5).and(receiver.greaterThan(0.5));
+    const proteinVisibility = select(
+      proteinReceiver, select(inShadowMap, shadowVisibility, float(1)), float(1),
+    );
+    // SHADOW_MIN_SUN は環境光相当の微弱な星明かり。本影でも完全な黒にはせず、外殻による
+    // 直射光だけを落とす。
+    const sunlit = direct.mul(proteinVisibility).add(SHADOW_MIN_SUN);
     const irradiance: Vec3Node = this.sunLight.color
       .mul(this.sunLight.intensity).div(dot(toSun, toSun))
       .mul(dotNL).mul(sunlit);
@@ -108,6 +133,7 @@ export class LightPrepass {
     if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
 
     this.projMatrixInverse.value.copy(camera.projectionMatrixInverse);
+    this.viewToWorld.value.copy(camera.matrixWorld);
     this.scratchPosition.copy(this.sunLight.position.value).applyMatrix4(camera.matrixWorldInverse);
     this.sunPositionView.value.copy(this.scratchPosition);
 
