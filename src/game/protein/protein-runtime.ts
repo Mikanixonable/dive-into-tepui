@@ -6,6 +6,8 @@ import { ProteinCombatState } from './protein-combat-state';
 import { ProteinBrownianSampler, proteinBrownianSeedFor } from './protein-brownian-motion';
 
 const RUNTIME_VISUAL = 'protein-runtime-visual';
+// タンパク質のブラウン振動は振幅を保ったまま、時間方向だけ現状の 1/4 で進める。
+const PROTEIN_BROWNIAN_TIME_SCALE = 1 / 4;
 
 interface ProteinBondVisual {
   readonly line: THREE.Line;
@@ -144,7 +146,7 @@ export class ProteinRuntime {
   }
 
   updateVisual(simTime: number): void {
-    this.motionSampler.sampleAt(simTime, this.motionCoefficients);
+    this.motionSampler.sampleAt(simTime * PROTEIN_BROWNIAN_TIME_SCALE, this.motionCoefficients);
     const visualScale = this.asset.coordinateScale * this.asset.motion.visualGain;
     const state = this.combat;
     // Motion here is capped visual deformation; the physics root and collision positions remain authoritative.
