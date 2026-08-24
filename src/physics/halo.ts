@@ -17,7 +17,7 @@ import { OrbitingId } from './celestial-body';
 import { bodyDef, primaryOf } from './solar-system';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, add, cross, len, scale, sub } from './vec3';
-import { Vec3Tuple } from './cr3bp';
+import { Cr3bpState, Vec3Tuple } from './cr3bp';
 import { collinearGamma } from './lagrange';
 
 export type CollinearPoint = 'L1' | 'L2' | 'L3';
@@ -279,6 +279,24 @@ export function richardsonAmplitudeX(c: RichardsonCoefficients, az: number): num
 // Richardson 三次近似での軌道周期(τ=n·t 単位)。
 export function richardsonPeriod(c: RichardsonCoefficients, ax: number, az: number): number {
   return (2 * Math.PI) / (c.lambda * (1 + c.s1 * ax * ax + c.s2 * az * az));
+}
+
+// 面外振幅 az(gamma 単位)のハロー軌道について、CR3BP 回転系(重心原点)で xz 面を横切る
+// 瞬間の状態と周期の見積り。微分修正の初期推定として使う。振幅拘束を満たす ax が無ければ null。
+export function richardsonHaloSeed(
+  params: CollinearParams, az: number,
+): { state: Cr3bpState; period: number } | null {
+  const c = richardsonCoefficients(params);
+  const ax = richardsonAmplitudeX(c, az);
+  if (!Number.isFinite(ax)) return null;
+  const period = richardsonPeriod(c, ax, az);
+  // 横断の瞬間は面内 y 方向の速度だけが 0 でないので、位相を微小に進めた点との差から取る。
+  const dtau = 1e-6;
+  const pointAt = (tau: number): Vec3Tuple =>
+    collinearLocalToBarycentric(params, richardsonPoint(c, ax, az, true, tau));
+  const p0 = pointAt(0);
+  const vy = ((pointAt(dtau)[1] - p0[1]) / dtau) * ((2 * Math.PI) / period);
+  return { state: [p0[0], 0, p0[2], 0, vy, 0], period };
 }
 
 // 指定したラグランジュ点(副天体 secondary の L1/L2)まわりのリサジュー軌道初期状態。

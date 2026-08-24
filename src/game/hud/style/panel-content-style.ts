@@ -250,16 +250,23 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud .hud-frame-controls .camera-angle-group > .w-group-title { flex: 0 0 100%; min-width: 0; }
 #hud .hud-frame-controls .camera-angle-group .w-select { flex: 1 1 auto; min-width: 80px; }
 /* ハロー軌道パネル: 独立トグル行(系/点/南北)は見出し+ボタン列を折り返す。 */
-#hud-halo-orbit { width: 100%; pointer-events: auto; }
+#hud-halo-orbit {
+  width: 100%; pointer-events: auto;
+  /* スライダー列の最小幅と、それに添える数値入力欄の幅。 */
+  --halo-slider-min-w: 60px;
+  --halo-value-w: 60px;
+}
 #hud-halo-orbit .halo-toggle-row { flex-wrap: wrap; }
 #hud-halo-orbit .halo-range-row,
 #hud-halo-orbit .halo-amplitude-row { flex-wrap: nowrap; align-items: center; }
 #hud-halo-orbit .halo-range-row .slider-col,
-#hud-halo-orbit .halo-amplitude-row .slider-col { flex: 1 1 60px; min-width: 60px; }
+#hud-halo-orbit .halo-amplitude-row .slider-col {
+  flex: 1 1 var(--halo-slider-min-w); min-width: var(--halo-slider-min-w);
+}
 #hud-halo-orbit .halo-range-row .w-slider,
 #hud-halo-orbit .halo-amplitude-row .w-slider { width: 100%; }
 #hud-halo-orbit .halo-range-row .w-input,
-#hud-halo-orbit .halo-amplitude-row .w-input { width: 60px; }
+#hud-halo-orbit .halo-amplitude-row .w-input { width: var(--halo-value-w); }
 #hud-halo-orbit .halo-amplitude-unit { color: var(--text-dim); font-size: var(--font-xs); }
 /* 「発展的な設定」折りたたみ: 見出しと開閉トグルを1行に、本文は畳んだ間だけ隠す。 */
 #hud-halo-orbit .halo-advanced-head { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-4); }
