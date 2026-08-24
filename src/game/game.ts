@@ -172,6 +172,14 @@ export class Game {
     this.activePlayers = new ActiveControllableController(
       initialSave?.activePlayerId, this.entities, this.cameraSystem, this.navTarget, this._worldSfx, this._hud,
     );
+    this._hud.burnManagementPanel.setHandlers({
+      onAttach: () => { this.player?.attachBooster(); },
+      onToggleIgnition: () => { this.player?.toggleBoosterIgnition(); },
+      onDecouple: () => {
+        const player = this.player;
+        if (player) player.decoupleBooster(this.entities);
+      },
+    });
     this.editor = new PlanEditor(
       this._hud,
       this._uiSfx,
@@ -272,6 +280,8 @@ export class Game {
     // 継続音を元へ戻す。BGM は周回の外側が決めるものなので触らない。
     this._hud.root.classList.remove('creative-mode');
     this._hud.vesselPanel.setInput(null);
+    this._hud.burnManagementPanel.setHandlers({});
+    this._hud.syncBurnManagement(null);
     this._worldSfx.setThrust(false);
     this._worldSfx.setRcs(false);
     this.touchControls?.dispose();
@@ -356,14 +366,20 @@ export class Game {
     // 過去表示に要る履歴の長さを、積分がサンプルを積む前に要求しておく。表示窓は前フレームの
     // 確定値でよい — 保持窓が1フレーム遅れても描ける区間は変わらない。
     this.entities.requestHistoryDuration(this.displayWindowManager.current.pastDuration);
+    // このフレームで使う倍率を最初に一度だけ確定する。燃料消費・操作ゲート・積分が
+    // 自動ワープの段階変更を跨いで別の倍率を読むと、同じ区間を表さなくなる。
+    this.simSpeedManager.update(this.simulator.simTime);
+    const simDt = dt * this.simSpeedManager.simSpeed;
+    const canShipAct = this.simSpeedManager.canShipAct;
+    const canResolvePhysicalCollisions = this.simSpeedManager.canResolvePhysicalCollisions;
     this.sections.enter(SECTION.player);
     this.nanWatchdog.checkPlayer('frameStart', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
     const playerInput = this.controlledBase !== null ? null : this.input;
     this.entities.updatePlayers(
-      this.player, playerInput, this.simSpeedManager, dt, this.activeStage, this.ephemeris,
+      this.player, playerInput, canShipAct, dt, simDt, this.activeStage, this.ephemeris,
     );
     this.entities.updateBases(
-      this.controlledBase, this.input, this.simSpeedManager, dt,
+      this.controlledBase, this.input, canShipAct, dt, simDt,
     );
     this.nanWatchdog.checkPlayer(
       'player.updatePlayerControls',
@@ -378,13 +394,10 @@ export class Game {
     this.activeStage.update(dt, this.player, this.entities, this.simulator.simTime, this.simSpeedManager);
     this.sections.exit(SECTION.stage);
     this.nanWatchdog.checkPlayer('activeStage.update', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
-    this.simSpeedManager.update(this.simulator.simTime);
-
-    const simDt = dt * this.simSpeedManager.simSpeed;
     this.sections.enter(SECTION.integrate);
     this.simulator.advance(
       dt, simDt, this.player, this.activeStage,
-      this.simSpeedManager.canResolvePhysicalCollisions, this.nanWatchdog);
+      canResolvePhysicalCollisions, this.nanWatchdog);
     this.sections.exit(SECTION.integrate);
     this.docking.updateDockedPhysics();
     // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全エンティティを見る。
@@ -526,6 +539,7 @@ export class Game {
       ? this.orbitReference.resolve(player.state.r, celestialBodies, this.navTarget, this.entities, this.ephemeris, player.state.t)
       : undefined;
     this.entities.syncPlayers(player, fo, this.cameraSystem, displayTime, visibilityPolicy, orbitRef);
+    this.entities.syncDetachedBoosters(fo, this.cameraSystem, displayTime, visibilityPolicy);
     this.entities.syncBases(
       this.controlledBase, fo, this.cameraSystem, displayTime, visibilityPolicy,
     );

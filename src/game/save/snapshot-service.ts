@@ -71,7 +71,11 @@ function normalizeAmmoPickupKey(data: GameSaveData): GameSaveData | null {
   const ammoPickups = storedData.ammoPickups ?? storedData.ammos;
   if (!Array.isArray(ammoPickups)) return null;
 
-  const normalizedData = { ...storedData, ammoPickups };
+  const normalizedData = {
+    ...storedData,
+    ammoPickups,
+    detachedBoosters: storedData.detachedBoosters ?? [],
+  };
   delete normalizedData.ammos;
   return normalizedData;
 }
@@ -89,6 +93,7 @@ function buildSaveData(game: Game): GameSaveData {
     activePlayerId: game.player ? game.player.id : null,
     enemies: game.entities.enemies.map(e => e.serialize()),
     ammoPickups: game.entities.ammoPickups.map((ammoPickup) => ammoPickup.serialize()),
+    detachedBoosters: game.entities.detachedBoosters.map((booster) => booster.serialize()),
     bases: game.entities.bases.map(b => b.serialize()),
     stage: game.activeStage.serialize(),
     camera: { view: game.viewManager.serializeView(), ...game.cameraSystem.serialize() },

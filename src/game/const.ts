@@ -122,6 +122,20 @@ export const THROTTLE_LABELS = ['弱', '中', '強', '最強'] as const;
 // 加速度になるよう決めてあるので、両者を別々に動かすと表示と実挙動がずれる。
 export const PLAYER_MASS = 1000;
 export const THROTTLE_DEFAULT_IDX = 1;
+
+// 分離式ブースターの標準段。自機 1,000 kg と並べたとき、1段あたりの乾燥+満載質量
+// 1,000 kg、推力 0.6 MN で約 300 m/s² となるようにする。燃料 800 kg を 80 kg/s
+// で燃やし切るので、通常のフレーム刻みでも十数秒の燃焼と最後の燃料切れを扱える。
+export const BOOSTER_DEFAULT_DRY_MASS = 200; // [kg]
+export const BOOSTER_DEFAULT_MAX_FUEL = 800; // [kg]
+export const BOOSTER_DEFAULT_THRUST = 6e5; // [N]
+export const BOOSTER_DEFAULT_FUEL_RATE = 80; // [kg/s]
+export const BOOSTER_MAX_ATTACHED = 4;
+export const BOOSTER_MOUNT_Z = -4.0; // 船体中心から最初の段の前端まで [m]
+export const BOOSTER_SEPARATION_SPEED = 8; // 爆砕ボルトによる相対分離速度 [m/s]
+export const BOOSTER_COLLISION_GRACE = 0.5; // 分離直後に接続面同士が再衝突しない猶予 [s]
+export const BOOSTER_COLLISION_RADIUS = 4.2; // 長さ8mの段を包む接触球 [m]
+export const MAX_DETACHED_BOOSTERS = 64;
 // 並進方向キーをこの秒数以内に連打すると、押しっぱなし相当にラッチ/解除する [s]
 export const THRUST_LATCH_DOUBLE_TAP_SEC = 0.3;
 
