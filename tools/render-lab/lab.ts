@@ -105,7 +105,7 @@ export class LabView {
       this.scene.remove(...this.current.objects);
       disposeCaseObjects(this.current);
     }
-    const built = CASES[name]();
+    const built = CASES[name](this.pipeline.sunOcclusion);
     for (const object of built.objects) {
       // フォワード経路では buildPlayerShip() が内部で付けた LIT_OPAQUE_LAYER を打ち消す。
       // 呼ばないのではなく、呼ばれたあとに戻す。3D UI チャンネルはシェーディング経路と無関係

@@ -124,7 +124,9 @@ export class EnvironmentScene {
     this.scaleGrid = new ScaleGridView(scene);
 
     this.bodies = Object.keys(registry).map((id) =>
-      id in CELESTIAL_VIEWS ? CELESTIAL_VIEWS[id as SolarSystemId].create() : fallbackCelestialView(registry, id));
+      id in CELESTIAL_VIEWS
+        ? CELESTIAL_VIEWS[id as SolarSystemId].create(sunOcclusion)
+        : fallbackCelestialView(registry, id, sunOcclusion));
     for (const body of this.bodies) body.build(scene);
 
     this.bodies.find((b): b is EarthView => b instanceof EarthView)?.setSpinPhase0(earthSpinPhase0);

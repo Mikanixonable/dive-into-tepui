@@ -12,6 +12,7 @@ import {
   RingVisualState,
 } from '../../render/ring';
 import { ringPixelCoverage } from '../../render/screen-lod';
+import type { SunOcclusion } from '../../render/pipeline/sun-occlusion';
 import { ScaleFn } from '../camera/camera-system';
 
 // thickness===0 の帯を annulus(面)/line(線)どちらで表すかの分かれ目[m]。土星の主環群や
@@ -37,9 +38,10 @@ export class RingView {
     rings: RingSystemDef,
     private readonly bodyRadius: number,
     renderOrder: number,
+    sunOcclusion: SunOcclusion,
   ) {
     for (const band of rings.bands) {
-      const built = this.buildBand(band, bodyRadius);
+      const built = this.buildBand(band, bodyRadius, sunOcclusion);
       built.object.traverse((o) => { o.renderOrder = renderOrder; });
       this.group.add(built.object);
       this.visuals.push(built);
@@ -48,16 +50,16 @@ export class RingView {
 
   // 帯1本ぶんの RingVisual を組む。半径は「本体半径 = 1」単位へ換算して渡す。厚みのある帯は
   // 拡散した雲なので扁平トーラス、厚み0の帯は実幅で annulus/line を選び、選んだ側だけを控える。
-  private buildBand(band: RingBandDef, bodyRadius: number): RingVisual {
+  private buildBand(band: RingBandDef, bodyRadius: number, sunOcclusion: SunOcclusion): RingVisual {
     const inner = band.innerRadius / bodyRadius;
     const outer = band.outerRadius / bodyRadius;
     if (band.thickness > 0) {
-      return createTorusRing(band.optics, inner, outer, band.thickness / bodyRadius);
+      return createTorusRing(band.optics, inner, outer, band.thickness / bodyRadius, sunOcclusion);
     }
     const widthMeters = band.outerRadius - band.innerRadius;
     const visual = widthMeters >= RING_LINE_WIDTH_THRESHOLD_M
-      ? createAnnulusRing(band.optics, inner, outer, band.arcs)
-      : createRingLine(band.optics, (inner + outer) / 2, band.arcs);
+      ? createAnnulusRing(band.optics, inner, outer, sunOcclusion, band.arcs)
+      : createRingLine(band.optics, (inner + outer) / 2, sunOcclusion, band.arcs);
     this.coverageBands.push({ widthMeters, visual });
     return visual;
   }
@@ -84,8 +86,6 @@ export class RingView {
       if (q !== null) this.group.quaternion.set(q.x, q.y, q.z, q.w);
     }
     const state: RingVisualState = {
-      bodyCenter: pos,
-      bodyRadius: this.bodyRadius,
       sunDirection: new THREE.Vector3(sunDirection.x, sunDirection.y, sunDirection.z).normalize(),
       ringAxis,
       coverage: 1,
