@@ -7,8 +7,6 @@ export const PROTEIN_ASSETS = Object.fromEntries(
 
 export type ProteinAssetId = keyof typeof PROTEIN_ASSETS;
 export const PROTEIN_ASSET_IDS: readonly ProteinAssetId[] = Object.freeze(Object.keys(PROTEIN_ASSETS) as ProteinAssetId[]);
-export const PDB5I4R_ASSET = PROTEIN_ASSETS['pdb-5i4r'];
-export const MYOGLOBIN_1MBN_ASSET = PROTEIN_ASSETS['pdb-1mbn-myoglobin'];
 
 export function proteinAssetBundleFor(id: string) {
   return PROTEIN_ASSET_BUNDLES[id as ProteinAssetId] ?? null;
