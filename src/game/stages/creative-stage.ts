@@ -181,7 +181,11 @@ export class CreativeStage extends Stage {
       (family) => {
         selectedEnemyFamily = family;
         enemyTabs.setSelected(family);
-        for (const [tab, section] of enemySections) section.hidden = tab !== selectedEnemyFamily;
+        for (const [tab, section] of enemySections) {
+          const visible = tab === selectedEnemyFamily;
+          section.classList.toggle('hidden', !visible);
+          section.setAttribute('aria-hidden', String(!visible));
+        }
       },
     );
     enemyTabs.element.classList.add('stage-control-enemy-tabs');
@@ -280,7 +284,11 @@ export class CreativeStage extends Stage {
     enemySections.set('protein', proteinSection);
     body.appendChild(proteinSection);
     enemyTabs.setSelected(selectedEnemyFamily);
-    for (const [family, section] of enemySections) section.hidden = family !== selectedEnemyFamily;
+    for (const [family, section] of enemySections) {
+      const visible = family === selectedEnemyFamily;
+      section.classList.toggle('hidden', !visible);
+      section.setAttribute('aria-hidden', String(!visible));
+    }
     this.spawnEnemyButtons = [conventionalSpawnButton, proteinSpawnButton];
     hudRail(hudRoot, 'right').appendChild(panel);
     return panel;
