@@ -1,5 +1,4 @@
 import * as THREE from 'three/webgpu';
-import type { ProteinAssetDefinition, ProteinMotionAsset } from '../game/protein/protein-schema';
 import type { ProteinDisplayAsset } from '../game/protein/protein-display-asset';
 import type { ProteinDisplaySettings, ProteinRibbonColorMode } from '../game/protein/protein-display';
 import {
@@ -10,24 +9,9 @@ import {
   type ProteinMotionBinding,
 } from './protein-motion-material';
 import { markLitOpaque, markProteinShadowLayers } from './pipeline/lit-layer';
+import { buildProteinRibbon, type ProteinRenderSource } from './protein-ribbon';
 
-export interface ProteinBackboneAsset {
-  readonly backboneCount: number;
-  readonly backboneCoordinates: readonly number[];
-  /** Carbonyl oxygen coordinates, used as a stable ribbon-width reference. */
-  readonly backboneOCoordinates?: readonly number[];
-  readonly backboneSecondary: readonly string[];
-  readonly backboneChains: readonly string[];
-  readonly backboneEntities: readonly number[];
-  readonly backboneBFactors: readonly number[];
-}
-
-export interface ProteinRenderSource {
-  readonly semantic: ProteinAssetDefinition;
-  readonly motion: ProteinMotionAsset;
-  readonly backbone: ProteinBackboneAsset;
-  readonly structure: ProteinDisplayAsset;
-}
+export type { ProteinBackboneAsset, ProteinRenderSource } from './protein-ribbon';
 
 function validateMotionBinding(source: ProteinRenderSource, motion?: ProteinMotionBinding): void {
   if (motion && motion.residueCount !== source.motion.residueCount) {
@@ -49,308 +33,11 @@ const ELEMENT_COLORS: Readonly<Record<string, number>> = {
   P: 0xff8000, S: 0xffff30, CL: 0x1ff01f, SE: 0xffa100, MG: 0x8aff00,
   ZN: 0x7d80b0, NA: 0xab5cf2, CA: 0x3dff00, FE: 0xe06633, K: 0x8f40d4,
 };
-const COMPONENT_ROLE_COLORS = [0x4fc3f7, 0xa78bfa, 0xffc857, 0x56df9b, 0xff6b91, 0xb7e06b];
-const RIBBON_SUBDIVISIONS = 12;
-const RIBBON_THICKNESS = 0.32;
-const bFactorRanges = new WeakMap<object, { min: number; max: number }>();
-const componentRoleLookups = new WeakMap<object, {
-  byEntity: ReadonlyMap<number, number>;
-  byChain: ReadonlyMap<string, number>;
-}>();
 const residueBindingLookups = new WeakMap<object, ProteinResidueBindingLookup>();
 
 interface ProteinResidueBindingLookup {
   readonly atomResidues: readonly number[];
   readonly surfaceResidues: readonly number[];
-}
-
-type ProteinSecondaryKind = 'coil' | 'helix' | 'sheet';
-
-function secondaryKind(value: string | undefined): ProteinSecondaryKind {
-  const normalized = value?.toLowerCase();
-  if (normalized === 'helix' || normalized === 'h' || normalized === 'alpha-helix') return 'helix';
-  if (normalized === 'sheet' || normalized === 'e' || normalized === 'beta-sheet') return 'sheet';
-  return 'coil';
-}
-
-function rainbowColor(t: number): THREE.Color {
-  return new THREE.Color().setHSL(0.66 * (1 - Math.max(0, Math.min(1, t))), 0.86, 0.56);
-}
-
-function componentRoleColor(source: ProteinRenderSource, index: number): THREE.Color {
-  let lookup = componentRoleLookups.get(source);
-  if (!lookup) {
-    const roles = [...new Set(source.semantic.components.map((component) => component.role))];
-    const byEntity = new Map<number, number>();
-    const byChain = new Map<string, number>();
-    for (const component of source.semantic.components) {
-      const roleIndex = Math.max(0, roles.indexOf(component.role));
-      for (const entity of component.entities ?? []) byEntity.set(entity, roleIndex);
-      for (const chain of component.chains) byChain.set(chain, roleIndex);
-    }
-    lookup = { byEntity, byChain };
-    componentRoleLookups.set(source, lookup);
-  }
-  const entity = source.backbone.backboneEntities[index];
-  const chain = source.backbone.backboneChains[index];
-  const roleIndex = (entity === undefined ? undefined : lookup.byEntity.get(entity))
-    ?? (chain === undefined ? undefined : lookup.byChain.get(chain))
-    ?? 0;
-  return new THREE.Color(COMPONENT_ROLE_COLORS[roleIndex % COMPONENT_ROLE_COLORS.length]!);
-}
-
-function ribbonColor(source: ProteinRenderSource, index: number, mode: ProteinRibbonColorMode): THREE.Color {
-  const backbone = source.backbone;
-  if (mode === 'rainbow') return rainbowColor(index / Math.max(1, backbone.backboneCount - 1));
-  if (mode === 'secondary-structure') {
-    const kind = secondaryKind(backbone.backboneSecondary[index]);
-    return new THREE.Color(kind === 'helix' ? 0xe85d75 : kind === 'sheet' ? 0xf2c14e : 0x8fa7bd);
-  }
-  if (mode === 'b-factor') {
-    let range = bFactorRanges.get(backbone);
-    if (!range) {
-      range = { min: Math.min(...backbone.backboneBFactors), max: Math.max(...backbone.backboneBFactors) };
-      bFactorRanges.set(backbone, range);
-    }
-    const { min, max } = range;
-    return rainbowColor(((backbone.backboneBFactors[index] ?? min) - min) / Math.max(1e-6, max - min));
-  }
-  if (mode === 'component-role') return componentRoleColor(source, index);
-  if (mode === 'entity') {
-    const entity = backbone.backboneEntities[index] ?? 1;
-    return new THREE.Color().setHSL(((entity - 1) * 0.19 + 0.04) % 1, 0.78, 0.56);
-  }
-  const chain = backbone.backboneChains[index] ?? 'A';
-  const chainIndex = Math.max(0, chain.charCodeAt(0) - 65);
-  return new THREE.Color().setHSL((chainIndex * 0.13 + 0.02) % 1, 0.78, 0.56);
-}
-
-function backboneRuns(backbone: ProteinBackboneAsset): {
-  kind: ProteinSecondaryKind;
-  points: THREE.Vector3[];
-  startIndex: number;
-}[] {
-  const runs: { kind: ProteinSecondaryKind; points: THREE.Vector3[]; startIndex: number }[] = [];
-  let current: { kind: ProteinSecondaryKind; points: THREE.Vector3[]; startIndex: number } | null = null;
-  for (let index = 0; index < backbone.backboneCount; index++) {
-    const offset = index * 3;
-    const point = new THREE.Vector3(
-      backbone.backboneCoordinates[offset]!, backbone.backboneCoordinates[offset + 1]!, backbone.backboneCoordinates[offset + 2]!,
-    );
-    const previous = current?.points[current.points.length - 1];
-    const kind = secondaryKind(backbone.backboneSecondary[index]);
-    if (!current || !previous || point.distanceTo(previous) > 8
-      || backbone.backboneChains[index] !== backbone.backboneChains[index - 1]
-      || current.kind !== kind) {
-      current = { kind, points: [], startIndex: index };
-      runs.push(current);
-    }
-    current.points.push(point);
-  }
-  return runs;
-}
-
-function helixFrame(points: readonly THREE.Vector3[]): { center: THREE.Vector3; axis: THREE.Vector3 } {
-  const center = points.reduce((sum, point) => sum.add(point), new THREE.Vector3()).multiplyScalar(1 / points.length);
-  let axis = points[points.length - 1]!.clone().sub(points[0]!).normalize();
-  if (axis.lengthSq() < 1e-8) axis.set(0, 0, 1);
-  for (let iteration = 0; iteration < 8; iteration++) {
-    const next = new THREE.Vector3();
-    for (const point of points) {
-      const offset = point.clone().sub(center);
-      next.addScaledVector(offset, offset.dot(axis));
-    }
-    if (next.lengthSq() < 1e-8) break;
-    axis.copy(next.normalize());
-  }
-  if (axis.dot(points[points.length - 1]!.clone().sub(points[0]!)) < 0) axis.negate();
-  return { center, axis };
-}
-
-function backboneO(backbone: ProteinBackboneAsset, index: number, fallback: THREE.Vector3): THREE.Vector3 {
-  const coordinates = backbone.backboneOCoordinates;
-  const offset = index * 3;
-  if (!coordinates || offset + 2 >= coordinates.length) return fallback.clone();
-  return new THREE.Vector3(coordinates[offset]!, coordinates[offset + 1]!, coordinates[offset + 2]!);
-}
-
-function ribbonGeometry(
-  source: ProteinRenderSource,
-  run: { kind: ProteinSecondaryKind; points: readonly THREE.Vector3[]; startIndex: number },
-  mode: ProteinRibbonColorMode,
-  fixedColor: THREE.Color | null,
-): THREE.BufferGeometry {
-  const { backbone } = source;
-  const positions: number[] = [];
-  const colors: number[] = [];
-  const residueA: number[] = [];
-  const residueB: number[] = [];
-  const residueT: number[] = [];
-  const curve = new THREE.CatmullRomCurve3([...run.points], false, 'centripetal', 0.35);
-  const segments = Math.max(1, (run.points.length - 1) * RIBBON_SUBDIVISIONS);
-  const frame = run.kind === 'helix' ? helixFrame(run.points) : null;
-  let previousTangent: THREE.Vector3 | null = null;
-  let previousWidthDirection: THREE.Vector3 | null = null;
-
-  for (let sample = 0; sample <= segments; sample++) {
-    const t = sample / segments;
-    const center = curve.getPoint(t);
-    const tangent = curve.getTangent(t).normalize();
-    const residuePosition = t * (run.points.length - 1);
-    const localIndex = Math.min(run.points.length - 1, Math.floor(residuePosition));
-    const nextIndex = Math.min(run.points.length - 1, localIndex + 1);
-    const localT = residuePosition - localIndex;
-    const sourceIndex = Math.min(backbone.backboneCount - 1, Math.round(run.startIndex + residuePosition));
-    const oxygen = backboneO(backbone, run.startIndex + localIndex, center);
-    if (nextIndex !== localIndex) {
-      oxygen.lerp(backboneO(backbone, run.startIndex + nextIndex, center), localT);
-    }
-
-    let candidateWidthDirection: THREE.Vector3;
-    if (frame !== null) {
-      const radial = center.clone().sub(frame.center).projectOnPlane(frame.axis).normalize();
-      candidateWidthDirection = frame.axis.clone().cross(radial).projectOnPlane(tangent).normalize();
-    } else {
-      candidateWidthDirection = oxygen.sub(center).projectOnPlane(tangent).normalize();
-    }
-    const widthDirection = candidateWidthDirection.clone();
-    if (widthDirection.lengthSq() < 1e-8) {
-      const reference = Math.abs(tangent.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
-      widthDirection.copy(reference).projectOnPlane(tangent).normalize();
-    }
-    if (previousTangent !== null && previousWidthDirection !== null) {
-      const transport = previousWidthDirection.clone()
-        .applyQuaternion(new THREE.Quaternion().setFromUnitVectors(previousTangent, tangent))
-        .projectOnPlane(tangent).normalize();
-      if (candidateWidthDirection.lengthSq() >= 1e-8 && candidateWidthDirection.dot(transport) < 0) widthDirection.negate();
-      widthDirection.lerp(transport, 0.25).normalize();
-    }
-    previousTangent = tangent.clone();
-    previousWidthDirection = widthDirection.clone();
-
-    const thicknessDirection = tangent.clone().cross(widthDirection).normalize();
-    const arrowFactor = run.kind === 'sheet' && residuePosition >= run.points.length - 2
-      ? Math.max(0.04, 1.15 * (run.points.length - 1 - residuePosition))
-      : 1;
-    const halfWidth = ((run.kind === 'helix' ? 2.0 : 1.8) * arrowFactor) / 2;
-    const halfThickness = (RIBBON_THICKNESS * Math.min(1, arrowFactor)) / 2;
-    const corners = [
-      center.clone().addScaledVector(widthDirection, halfWidth).addScaledVector(thicknessDirection, halfThickness),
-      center.clone().addScaledVector(widthDirection, -halfWidth).addScaledVector(thicknessDirection, halfThickness),
-      center.clone().addScaledVector(widthDirection, -halfWidth).addScaledVector(thicknessDirection, -halfThickness),
-      center.clone().addScaledVector(widthDirection, halfWidth).addScaledVector(thicknessDirection, -halfThickness),
-    ];
-    for (const corner of corners) positions.push(corner.x, corner.y, corner.z);
-    for (let corner = 0; corner < 4; corner += 1) {
-      const backboneA = run.startIndex + localIndex;
-      const backboneB = run.startIndex + nextIndex;
-      residueA.push(source.motion.bindings.backboneResidues[backboneA] ?? backboneA);
-      residueB.push(source.motion.bindings.backboneResidues[backboneB] ?? backboneB);
-      residueT.push(localT);
-    }
-    const color = fixedColor ?? ribbonColor(source, sourceIndex, mode);
-    for (let corner = 0; corner < 4; corner++) colors.push(color.r, color.g, color.b);
-  }
-
-  const indices: number[] = [];
-  for (let index = 0; index < segments; index++) {
-    const a = index * 4;
-    const b = a + 4;
-    indices.push(a, b, a + 1, a + 1, b, b + 1);
-    indices.push(a + 3, a + 2, b + 3, a + 2, b + 2, b + 3);
-    indices.push(a, a + 3, b, a + 3, b + 3, b);
-    indices.push(a + 1, b + 1, a + 2, a + 2, b + 1, b + 2);
-  }
-  indices.push(0, 1, 2, 0, 2, 3);
-  const end = segments * 4;
-  indices.push(end, end + 2, end + 1, end, end + 3, end + 2);
-
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  geometry.setIndex(indices);
-  attachProteinResidueBinding(geometry, residueA, residueB, residueT);
-  geometry.computeVertexNormals();
-  geometry.userData.proteinSecondary = run.kind;
-  geometry.userData.proteinSecondaryKind = run.kind;
-  return geometry;
-}
-
-function tubeColors(
-  source: ProteinRenderSource, geometry: THREE.BufferGeometry, startIndex: number,
-  pointCount: number, tubularSegments: number, mode: ProteinRibbonColorMode, fixedColor: THREE.Color | null,
-): void {
-  const radialSegments = 12;
-  const colors: number[] = [];
-  for (let vertex = 0; vertex < geometry.getAttribute('position').count; vertex++) {
-    const longitudinal = Math.floor(vertex / (radialSegments + 1));
-    const index = Math.min(source.backbone.backboneCount - 1,
-      Math.round(startIndex + (pointCount - 1) * longitudinal / tubularSegments));
-    const color = fixedColor ?? ribbonColor(source, index, mode);
-    colors.push(color.r, color.g, color.b);
-  }
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-}
-
-function tubeResidueBinding(
-  geometry: THREE.BufferGeometry,
-  startIndex: number,
-  pointCount: number,
-  tubularSegments: number,
-  backboneResidues: readonly number[],
-): void {
-  const radialSegments = 12;
-  const residueA: number[] = [];
-  const residueB: number[] = [];
-  const residueT: number[] = [];
-  for (let vertex = 0; vertex < geometry.getAttribute('position').count; vertex += 1) {
-    const longitudinal = Math.floor(vertex / (radialSegments + 1));
-    const residuePosition = (pointCount - 1) * longitudinal / tubularSegments;
-    const localIndex = Math.min(pointCount - 1, Math.floor(residuePosition));
-    const nextIndex = Math.min(pointCount - 1, localIndex + 1);
-    residueA.push(backboneResidues[startIndex + localIndex] ?? startIndex + localIndex);
-    residueB.push(backboneResidues[startIndex + nextIndex] ?? startIndex + nextIndex);
-    residueT.push(residuePosition - localIndex);
-  }
-  attachProteinResidueBinding(geometry, residueA, residueB, residueT);
-}
-
-function buildRibbon(
-  source: ProteinRenderSource,
-  mode: ProteinRibbonColorMode,
-  fixedColor: THREE.Color | null = null,
-  motion?: ProteinMotionBinding,
-): THREE.Group {
-  const group = new THREE.Group();
-  for (const run of backboneRuns(source.backbone)) {
-    if (run.points.length < 2) continue;
-    let geometry: THREE.BufferGeometry;
-    if (run.kind === 'helix' || run.kind === 'sheet') {
-      geometry = ribbonGeometry(source, run, mode, fixedColor);
-    } else {
-      const curve = new THREE.CatmullRomCurve3(run.points, false, 'centripetal', 0.35);
-      const tubularSegments = Math.max(2, (run.points.length - 1) * RIBBON_SUBDIVISIONS);
-      geometry = new THREE.TubeGeometry(curve, tubularSegments, 0.38, 12, false);
-      tubeColors(source, geometry, run.startIndex, run.points.length, tubularSegments, mode, fixedColor);
-      tubeResidueBinding(geometry, run.startIndex, run.points.length, tubularSegments, source.motion.bindings.backboneResidues);
-      geometry.userData.proteinSecondary = run.kind;
-      geometry.userData.proteinSecondaryKind = run.kind;
-    }
-    const material = proteinStandardMaterial({
-      color: 0xffffff, vertexColors: true, roughness: 0.42, metalness: 0.24,
-      side: THREE.DoubleSide,
-    }, motion);
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.userData.proteinComponent = source.backbone.backboneChains[run.startIndex] ?? 'A';
-    mesh.userData.proteinRibbon = true;
-    mesh.userData.proteinSecondary = run.kind;
-    mesh.userData.proteinSecondaryKind = run.kind;
-    mesh.userData.proteinShadowReceiver = true;
-    mesh.userData.ownsGeometry = true;
-    mesh.userData.ownsMaterial = true;
-    group.add(mesh);
-  }
-  return group;
 }
 
 function atomElement(structure: ProteinDisplayAsset, atom: number): string {
@@ -635,7 +322,7 @@ function buildSilhouette(
   const group = new THREE.Group();
   // The shell carries the selected scalar field; the internal cartoon stays white so
   // it remains legible through the translucent surface in every protein asset.
-  group.add(buildRibbon(source, 'chain', new THREE.Color(0xffffff), motion));
+  group.add(buildProteinRibbon(source, 'chain', new THREE.Color(0xffffff), motion));
   if (source.semantic.ligands.length) group.add(buildLigands(source, motion));
   const surface = source.structure.surface.mesh;
   const bindings = residueBindingLookup(source);
@@ -694,7 +381,7 @@ export function buildProteinRibbonShip(
   motion?: ProteinMotionBinding,
 ): THREE.Group {
   validateMotionBinding(source, motion);
-  const structure = buildRibbon(source, mode, fixedColor, motion);
+  const structure = buildProteinRibbon(source, mode, fixedColor, motion);
   if (source.semantic.ligands.length) structure.add(buildLigands(source, motion));
   const root = proteinCoordinateRoot(structure, source.semantic.coordinateScale);
   markLitOpaque(root);
