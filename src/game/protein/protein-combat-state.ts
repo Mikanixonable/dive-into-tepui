@@ -1,5 +1,5 @@
 import type {
-  ProteinAssetDefinition, ProteinHudSnapshot, ProteinPhase, ProteinSaveData, ProteinSiteDefinition,
+  ProteinActionDefinition, ProteinAssetDefinition, ProteinHudSnapshot, ProteinPhase, ProteinSaveData, ProteinSiteDefinition,
 } from './protein-schema';
 
 export interface ProteinDamageResult {
@@ -56,10 +56,16 @@ export class ProteinCombatState {
     return this.attackSites[0] ?? null;
   }
 
+  get attackAction(): ProteinActionDefinition | null {
+    return this.asset.actions.find((action) => action.kind === 'projectile') ?? null;
+  }
+
   /** Functional regions that can independently originate the protein's attack. */
   get attackSites(): readonly ProteinSiteDefinition[] {
+    const actionId = this.attackAction?.id;
+    if (!actionId) return [];
     return this.siteStates
-      .filter((site) => !site.disabled && site.definition.actions.includes('plasma-burst'))
+      .filter((site) => !site.disabled && site.definition.actions.includes(actionId))
       .map((site) => site.definition);
   }
 
@@ -170,7 +176,8 @@ export class ProteinCombatState {
       integrityMaxHp: this.integrityMaxHp,
       selectedSiteId: this.selectedSiteId,
       sites: this.siteStates.map((site) => {
-        const attackable = site.definition.actions.includes('plasma-burst');
+        const attackActionId = this.attackAction?.id;
+        const attackable = attackActionId !== undefined && site.definition.actions.includes(attackActionId);
         const label = attackable
           ? `攻撃部位${++attackOrdinal}`
           : site.definition.type === 'interface' ? '結合界面' : site.definition.type === 'core' ? '核心部' : '修飾部位';

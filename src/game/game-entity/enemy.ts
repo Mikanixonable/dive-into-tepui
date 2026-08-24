@@ -16,8 +16,7 @@ import { fmtMarkerDist } from '../hud/utils';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 import {
-  buildEnemyShip, buildPdb5i4rEnemyShip, buildPdb5i4rRibbonShip, buildStage0EnemyShip,
-  recolorPdb5i4rEnemyShip,
+  buildEnemyShip, buildStage0EnemyShip,
 } from '../../render/ships';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { EffectsSystem } from '../vfx/effects-system';
@@ -30,7 +29,8 @@ import type { EntityManager } from '../simulation/entity-manager';
 import type { SimSpeedManager } from '../sim-speed-manager';
 import type { EnemySaveData } from '../save-data';
 import { currentThemePalette } from '../theme';
-import { PDB5I4R_ASSET } from '../protein/protein-asset-loader';
+import type { ProteinAssetId } from '../protein/protein-asset-loader';
+import { proteinEnemyDefinitionFor } from '../protein/protein-enemy-registry';
 import { ProteinRuntime } from '../protein/protein-runtime';
 import { ProteinRibbonCollisionGeometry } from '../protein/protein-ribbon-collision';
 import type { ProteinDamageResult } from '../protein/protein-combat-state';
@@ -44,10 +44,34 @@ import {
 // Enemy の見た目の種別。どの build を呼ぶかをコンストラクタ内部で選ぶための判別用。
 export type { Pdb5i4rColorMode } from '../protein/protein-display';
 
+type LegacyPdb5i4rEnemyKind = {
+  kind: 'pdb-5i4r';
+  colorMode?: Pdb5i4rColorMode;
+  display?: ProteinDisplaySettings;
+};
+
 export type EnemyKind =
   | { kind: 'drifting' }
   | { kind: 'stage0'; typeIndex: number }
-  | { kind: 'pdb-5i4r'; colorMode?: Pdb5i4rColorMode; display?: ProteinDisplaySettings };
+  | { kind: 'protein'; assetId: ProteinAssetId; display?: ProteinDisplaySettings }
+  | LegacyPdb5i4rEnemyKind;
+
+export function proteinAssetIdForEnemyKind(enemyKind: EnemyKind): ProteinAssetId | null {
+  if (enemyKind.kind === 'protein') return enemyKind.assetId;
+  if (enemyKind.kind === 'pdb-5i4r') return 'pdb-5i4r';
+  return null;
+}
+
+function normalizeEnemyKind(enemyKind: EnemyKind): EnemyKind {
+  if (enemyKind.kind !== 'pdb-5i4r') return enemyKind;
+  return {
+    kind: 'protein',
+    assetId: 'pdb-5i4r',
+    display: isProteinDisplaySettings(enemyKind.display)
+      ? enemyKind.display
+      : proteinDisplayFromLegacyColorMode(enemyKind.colorMode),
+  };
+}
 
 // enemyKind ごとの主慣性モーメント。'drifting' は非対称にしてジャニベコフ効果(中間軸不安定性)
 // を起こし、'stage0' は機首をプログレードへ向けたまま飛ぶので等方でよい。
@@ -73,11 +97,14 @@ function sunGlareSpreadScale(pos: Vec3, aimDir: Vec3, sunDir: Vec3): number {
 // enemyKind の種別に応じたメッシュを組む。
 function buildEnemyRenderObject(enemyKind: EnemyKind, accent: string | number): THREE.Object3D {
   if (enemyKind.kind === 'stage0') return buildStage0EnemyShip(accent, enemyKind.typeIndex);
-  if (enemyKind.kind === 'pdb-5i4r') {
-    const display: ProteinDisplaySettings = isProteinDisplaySettings(enemyKind.display)
+  const proteinId = proteinAssetIdForEnemyKind(enemyKind);
+  if (proteinId !== null) {
+    const definition = proteinEnemyDefinitionFor(proteinId);
+    if (!definition) throw new Error(`No protein enemy definition registered for ${proteinId}`);
+    const display: ProteinDisplaySettings = enemyKind.kind === 'protein' && isProteinDisplaySettings(enemyKind.display)
       ? enemyKind.display
-      : proteinDisplayFromLegacyColorMode(enemyKind.colorMode);
-    return buildPdb5i4rEnemyShip(display);
+      : DEFAULT_PROTEIN_DISPLAY;
+    return definition.buildRenderObject(display);
   }
   return buildEnemyShip(accent);
 }
@@ -126,7 +153,7 @@ export class Enemy extends Ship {
     fx: EffectsSystem,
     scene?: THREE.Scene,
   ) {
-    const { name, state, enemyKind, att, accent, orbitLineColor, waveId, id } = 'saved' in init
+    const { name, state, enemyKind: rawEnemyKind, att, accent, orbitLineColor, waveId, id } = 'saved' in init
       ? {
         name: init.saved.name || '',
         state: kinematicState(init.simTime, v3(init.saved.r.x, init.saved.r.y, init.saved.r.z), v3(init.saved.v.x, init.saved.v.y, init.saved.v.z)),
@@ -138,13 +165,19 @@ export class Enemy extends Ship {
         id: init.saved.id || undefined,
       }
       : init;
+    const enemyKind = normalizeEnemyKind(rawEnemyKind);
     const renderObject = buildEnemyRenderObject(enemyKind, accent);
     super(name, state, renderObject, att, C.ENEMY_RADIUS, C.ENEMY_MAX_HP, scene, id);
     this._worldSfx = worldSfx;
     this._fx = fx;
     this.enemyKind = enemyKind;
-    this.proteinRuntime = enemyKind.kind === 'pdb-5i4r'
-      ? new ProteinRuntime(this.renderObject, PDB5I4R_ASSET, 'saved' in init ? init.saved.protein : undefined, 'saved' in init ? init.saved.health : undefined, this.id)
+    const proteinId = proteinAssetIdForEnemyKind(enemyKind);
+    const proteinDefinition = proteinId === null ? null : proteinEnemyDefinitionFor(proteinId);
+    if (proteinId !== null && proteinDefinition === null) {
+      throw new Error(`No protein enemy definition registered for ${proteinId}`);
+    }
+    this.proteinRuntime = proteinDefinition
+      ? new ProteinRuntime(this.renderObject, proteinDefinition.asset, 'saved' in init ? init.saved.protein : undefined, 'saved' in init ? init.saved.health : undefined, this.id)
       : null;
     this.accent = accent;
     this.waveId = waveId;
@@ -155,7 +188,8 @@ export class Enemy extends Ship {
     if (this.proteinRuntime) {
       // 表示が原子模型へ切り替わっていても判定形状は常に同じリボンに固定する。専用の
       // 一時メッシュから三角形を抽出し、抽出後は GPU/CPU 資源をただちに解放する。
-      const collisionSource = buildPdb5i4rRibbonShip('chain');
+      const collisionSource = proteinDefinition?.buildCollisionObject();
+      if (!collisionSource) throw new Error(`No protein collision definition registered for ${proteinId}`);
       this.proteinRibbonCollision = new ProteinRibbonCollisionGeometry(collisionSource, C.ENEMY_SCALE);
       collisionSource.traverse((child) => {
         const mesh = child as THREE.Mesh;
@@ -219,17 +253,19 @@ export class Enemy extends Ship {
 
   // ステージ操作の表示形態・着色変更を既存のタンパク質型敵へ反映する。
   setProteinDisplay(display: ProteinDisplaySettings): void {
-    if (this.enemyKind.kind !== 'pdb-5i4r') return;
+    const proteinId = proteinAssetIdForEnemyKind(this.enemyKind);
+    if (proteinId === null || this.enemyKind.kind !== 'protein') return;
+    const definition = proteinEnemyDefinitionFor(proteinId);
+    if (!definition) return;
     this.enemyKind.display = display;
-    this.enemyKind.colorMode = display.colorMode;
     this.proteinRuntime?.clearVisuals();
-    recolorPdb5i4rEnemyShip(this.renderObject, display);
+    definition.recolorRenderObject(this.renderObject, display);
     this.proteinRuntime?.rebuildVisuals();
   }
 
   // 旧UI/APIとの互換用。リボン表示中の着色だけを切り替える。
   setPdb5i4rColorMode(colorMode: Pdb5i4rColorMode): void {
-    if (this.enemyKind.kind !== 'pdb-5i4r') return;
+    if (this.enemyKind.kind !== 'protein') return;
     const current = isProteinDisplaySettings(this.enemyKind.display) ? this.enemyKind.display : DEFAULT_PROTEIN_DISPLAY;
     if (current.representation !== 'ribbon') return;
     if (!['chain', 'b-factor', 'entity', 'rainbow', 'secondary-structure', 'component-role'].includes(colorMode)) return;
