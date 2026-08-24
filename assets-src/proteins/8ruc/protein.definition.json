@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "pdb-8ruc-rubisco",
+  "source": {
+    "pdbId": "8RUC",
+    "structureFile": "src/assets/models/rubisco8rucBackbone.json",
+    "citation": "Spinach Rubisco structure"
+  },
+  "coordinateScale": 0.06,
+  "integrity": {
+    "maxHp": 640
+  },
+  "actions": [],
+  "bonds": [],
+  "ligands": [],
+  "components": [
+    {
+      "id": "large-subunits",
+      "chains": ["A", "C", "E", "G"],
+      "entities": [1],
+      "role": "Rubisco large subunits",
+      "source": "deposited entity"
+    },
+    {
+      "id": "small-subunits",
+      "chains": ["I", "J", "K", "L"],
+      "entities": [2],
+      "role": "Rubisco small subunits",
+      "source": "deposited entity"
+    }
+  ],
+  "sites": [],
+  "modificationSlots": []
+}
