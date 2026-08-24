@@ -11,13 +11,15 @@
     "verify:theme": "node tools/verify-theme-contrast.mjs",
     "verify:release": "node tools/verify-release.mjs",
     "smoke:browser": "node tools/browser-smoke.mjs",
-    "ci": "npm run verify:source && npm run verify:theme && npm run typecheck && npm run test:physics && npm run build && npm run verify:release && npm run smoke:browser",
+    "ci": "npm run verify:source && npm run verify:theme && npm run typecheck && npm run protein:validate && npm run protein:validate-structure && npm run test:physics && npm run build && npm run verify:release && npm run smoke:browser",
     "typecheck": "tsc --noEmit",
     "test:physics": "tsc -p tsconfig.test.json && node tests/dist/tests/physics/index.js",
     "export-assets": "node tools/export-models.mjs",
     "protein:author": "python3 tools/protein-builder/build-protein.py --require-blender",
     "protein:validate": "node tools/protein-builder/validate-protein.mjs",
     "protein:generate": "node tools/protein-builder/generate-protein-asset.mjs",
+    "protein:generate-structure": "node tools/protein-builder/generate-protein-structure.mjs",
+    "protein:validate-structure": "node tools/protein-builder/validate-protein-structure.mjs",
     "bgm-lab": "node node_modules/webpack-cli/bin/cli.js serve --config webpack.bgm-lab.config.js --mode development"
   },
   "devDependencies": {

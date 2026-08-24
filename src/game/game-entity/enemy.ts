@@ -30,14 +30,17 @@ import { currentThemePalette } from '../theme';
 import { PDB5I4R_ASSET } from '../protein/protein-asset-loader';
 import { ProteinRuntime } from '../protein/protein-runtime';
 import type { ProteinDamageResult } from '../protein/protein-combat-state';
+import {
+  DEFAULT_PROTEIN_DISPLAY, isProteinDisplaySettings, proteinDisplayFromLegacyColorMode, type Pdb5i4rColorMode, type ProteinDisplaySettings, type ProteinRibbonColorMode,
+} from '../protein/protein-display';
 
 // Enemy の見た目の種別。どの build を呼ぶかをコンストラクタ内部で選ぶための判別用。
-export type Pdb5i4rColorMode = 'chain' | 'b-factor' | 'entity';
+export type { Pdb5i4rColorMode } from '../protein/protein-display';
 
 export type EnemyKind =
   | { kind: 'drifting' }
   | { kind: 'stage0'; typeIndex: number }
-  | { kind: 'pdb-5i4r'; colorMode?: Pdb5i4rColorMode };
+  | { kind: 'pdb-5i4r'; colorMode?: Pdb5i4rColorMode; display?: ProteinDisplaySettings };
 
 // enemyKind ごとの主慣性モーメント。'drifting' は非対称にしてジャニベコフ効果(中間軸不安定性)
 // を起こし、'stage0' は機首をプログレードへ向けたまま飛ぶので等方でよい。
@@ -63,7 +66,12 @@ function sunGlareSpreadScale(pos: Vec3, aimDir: Vec3, sunDir: Vec3): number {
 // enemyKind の種別に応じたメッシュを組む。
 function buildEnemyRenderObject(enemyKind: EnemyKind, accent: string | number): THREE.Object3D {
   if (enemyKind.kind === 'stage0') return buildStage0EnemyShip(accent, enemyKind.typeIndex);
-  if (enemyKind.kind === 'pdb-5i4r') return buildPdb5i4rEnemyShip(enemyKind.colorMode ?? 'chain');
+  if (enemyKind.kind === 'pdb-5i4r') {
+    const display: ProteinDisplaySettings = isProteinDisplaySettings(enemyKind.display)
+      ? enemyKind.display
+      : proteinDisplayFromLegacyColorMode(enemyKind.colorMode);
+    return buildPdb5i4rEnemyShip(display);
+  }
   return buildEnemyShip(accent);
 }
 
@@ -160,13 +168,23 @@ export class Enemy extends Ship {
     }
   }
 
-  // ステージ操作の着色モード変更を既存のタンパク質型敵へ反映する。
+  // ステージ操作の表示形態・着色変更を既存のタンパク質型敵へ反映する。
+  setProteinDisplay(display: ProteinDisplaySettings): void {
+    if (this.enemyKind.kind !== 'pdb-5i4r') return;
+    this.enemyKind.display = display;
+    this.enemyKind.colorMode = display.colorMode;
+    this.proteinRuntime?.clearVisuals();
+    recolorPdb5i4rEnemyShip(this.renderObject, display);
+    this.proteinRuntime?.rebuildVisuals();
+  }
+
+  // 旧UI/APIとの互換用。リボン表示中の着色だけを切り替える。
   setPdb5i4rColorMode(colorMode: Pdb5i4rColorMode): void {
     if (this.enemyKind.kind !== 'pdb-5i4r') return;
-    this.enemyKind.colorMode = colorMode;
-    this.proteinRuntime?.clearVisuals();
-    recolorPdb5i4rEnemyShip(this.renderObject, colorMode);
-    this.proteinRuntime?.rebuildVisuals();
+    const current = isProteinDisplaySettings(this.enemyKind.display) ? this.enemyKind.display : DEFAULT_PROTEIN_DISPLAY;
+    if (current.representation !== 'ribbon') return;
+    if (!['chain', 'b-factor', 'entity', 'rainbow', 'secondary-structure', 'component-role'].includes(colorMode)) return;
+    this.setProteinDisplay({ representation: 'ribbon', colorMode: colorMode as ProteinRibbonColorMode });
   }
 
   get proteinHudSnapshot() {

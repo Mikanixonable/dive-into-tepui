@@ -330,7 +330,7 @@ async function checkMapLayout() {
         const el = document.getElementById(id);
         if (visible(el) && !insideViewport(rect(el))) errors.push('outside viewport: ' + id);
       }
-      const objectList = document.getElementById('hud-object-list');
+      const objectList = document.getElementById('hud-physical-object-list');
       const plan = document.getElementById('hud-plan');
       if (visible(objectList) && visible(plan) && overlaps(rect(objectList), rect(plan))) {
         errors.push('object list overlaps maneuver plan');
@@ -470,11 +470,11 @@ async function placeShipThroughMenu() {
   })()`);
   if (openedPlacer) throw new Error(`Creative placement menu failed: ${openedPlacer}`);
   await waitFor(
-    `getComputedStyle(document.getElementById('hud-shipplacer')).display !== 'none'`,
+    `getComputedStyle(document.getElementById('hud-object-placer')).display !== 'none'`,
     'the placement panel to open',
   );
   const confirmed = await devTools.evaluate(`(() => {
-    const panel = document.getElementById('hud-shipplacer');
+    const panel = document.getElementById('hud-object-placer');
     const button = [...panel.querySelectorAll('.w-btn')].find((b) => b.textContent?.startsWith('配置'));
     if (!button) return 'no confirm button: ' + [...panel.querySelectorAll('.w-btn')].map((b) => b.textContent).join('/');
     button.click();
@@ -482,7 +482,7 @@ async function placeShipThroughMenu() {
   })()`);
   if (confirmed) throw new Error(`Creative placement panel failed: ${confirmed}`);
   await waitFor(
-    `getComputedStyle(document.getElementById('hud-shipplacer')).display === 'none'`,
+    `getComputedStyle(document.getElementById('hud-object-placer')).display === 'none'`,
     'the placement panel to close after confirming',
   );
 }
@@ -575,10 +575,10 @@ try {
         mapView: Boolean(document.querySelector('.hud-map-root.active')),
         viewOptionsShown: visible(document.getElementById('hud-view-options')),
         frameControlsShown: [...document.querySelectorAll('.hud-map-root.active .hud-frame-controls')].some(visible),
-        objectListShown: visible(document.getElementById('hud-object-list')),
+        objectListShown: visible(document.getElementById('hud-physical-object-list')),
         predictShown: visible(document.getElementById('hud-predict')),
         statusHidden: !visible(document.getElementById('hud-status')),
-        placerClosed: !visible(document.getElementById('hud-shipplacer')),
+        placerClosed: !visible(document.getElementById('hud-object-placer')),
       };
     })()`);
     expectAll('Creative mode did not remain in its zero-ship map state', chromeState);

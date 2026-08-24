@@ -20,7 +20,11 @@ import type { CameraSystem, ProjectFn } from '../camera/camera-system';
 import { AmmoPickup } from '../game-entity/ammo-pickup';
 import { Base } from '../game-entity/base';
 import { generateApproachingEnemy, generateDriftingEnemy, generatePdb5i4rEnemy } from './spawner/enemy-generator';
-import type { Pdb5i4rColorMode } from '../game-entity/enemy';
+import {
+  DEFAULT_PROTEIN_DISPLAY, defaultProteinDisplayFor, PROTEIN_COLOR_LABELS, PROTEIN_DISPLAY_LABELS,
+  isProteinDisplaySettings, proteinColorModesFor, proteinDisplayWithColor, type Pdb5i4rColorMode, type ProteinDisplaySettings,
+  type ProteinRepresentation,
+} from '../protein/protein-display';
 import { WaveAttack } from './stage-utils/wave-attack';
 import { generateRandomName } from '../random-name';
 import * as C from '../const';
@@ -44,9 +48,6 @@ type EnemySpawnShape = typeof STAGE_CONTROL_ENEMY_SHAPES[number]['id'];
 const STAGE_CONTROL_ENEMY_COLORS = [
   [0xff4a3d, '赤'], [0xff7a2d, '橙'], [0xe0409f, '桃'], [0xbf3dff, '紫'], [0x3dc6ff, '青'],
 ] as const;
-const STAGE_CONTROL_PROTEIN_COLOR_MODES = [
-  ['chain', 'Chain'], ['b-factor', 'B-Factor'], ['entity', 'Entity'],
-] as const satisfies readonly (readonly [Pdb5i4rColorMode, string])[];
 const STAGE_CONTROL_DEFAULT_ENEMY_SPAWN_DISTANCE = 200;
 
 export class CreativeStage extends Stage {
@@ -76,7 +77,12 @@ export class CreativeStage extends Stage {
   private activePlayer: Player | null = null;
   private manualEnemyCount = 0;
   private manualEnemySpawnDistance = STAGE_CONTROL_DEFAULT_ENEMY_SPAWN_DISTANCE;
-  private proteinColorMode: Pdb5i4rColorMode = 'chain';
+  private proteinDisplay: ProteinDisplaySettings = DEFAULT_PROTEIN_DISPLAY;
+  private readonly proteinDisplayByRepresentation = new Map<ProteinRepresentation, ProteinDisplaySettings>([
+    ['molecular', defaultProteinDisplayFor('molecular')],
+    ['ribbon', DEFAULT_PROTEIN_DISPLAY],
+    ['silhouette', defaultProteinDisplayFor('silhouette')],
+  ]);
 
   briefingHtml(): string {
     return '<b>クリエイティブモード</b><br>マップから艦艇を配置して軌道を眺められる。';
@@ -92,6 +98,11 @@ export class CreativeStage extends Stage {
     // (スナップショットからの再開では entities が復元済み — 新規開始では空なので何もしない)。
     for (const p of this._entities.players) this.playerIdAllocator.next(p.id);
     for (const ammoPickup of this._entities.ammoPickups) this.ammoPickupIdAllocator.next(ammoPickup.id);
+    const restoredProtein = this._entities.enemies.find((enemy) => enemy.enemyKind.kind === 'pdb-5i4r' && isProteinDisplaySettings(enemy.enemyKind.display));
+    if (restoredProtein && restoredProtein.enemyKind.kind === 'pdb-5i4r' && isProteinDisplaySettings(restoredProtein.enemyKind.display)) {
+      this.proteinDisplay = restoredProtein.enemyKind.display;
+      this.proteinDisplayByRepresentation.set(this.proteinDisplay.representation, this.proteinDisplay);
+    }
 
     this.previewOrbitLine = new OrbitLine({ color: 0xffffff, opacity: 0.6, renderOrder: C.LINE_RENDER_ORDER.plan });
     this._scene.add(this.previewOrbitLine.line);
@@ -191,16 +202,36 @@ export class CreativeStage extends Stage {
     proteinShapeControl.element.classList.add('stage-control-shapes');
     proteinShapeControl.setSelected(selectedProteinShape);
     proteinSection.appendChild(proteinShapeControl.element);
-    const proteinColorControl = new SegmentedControl<Pdb5i4rColorMode>(
-      '着色', STAGE_CONTROL_PROTEIN_COLOR_MODES,
-      (mode) => {
-        this.proteinColorMode = mode;
-        for (const enemy of this._entities.enemies) enemy.setPdb5i4rColorMode(mode);
-        proteinColorControl.setSelected(mode);
+    const representationItems = (Object.keys(PROTEIN_DISPLAY_LABELS) as ProteinRepresentation[])
+      .map((representation) => [representation, PROTEIN_DISPLAY_LABELS[representation]] as const);
+    const proteinDisplayControl = new SegmentedControl<ProteinRepresentation>(
+      '表示形態', representationItems,
+      (representation) => {
+        this.proteinDisplay = this.proteinDisplayByRepresentation.get(representation) ?? defaultProteinDisplayFor(representation);
+        this.proteinDisplayByRepresentation.set(representation, this.proteinDisplay);
+        proteinDisplayControl.setSelected(representation);
+        updateProteinColorItems();
+        this.applyProteinDisplay(this.proteinDisplay);
       },
     );
+    proteinDisplayControl.element.classList.add('stage-control-protein-representation');
+    proteinDisplayControl.setSelected(this.proteinDisplay.representation);
+    proteinSection.appendChild(proteinDisplayControl.element);
+    const proteinColorControl = new SegmentedControl<Pdb5i4rColorMode>('着色', [], (mode) => {
+      const next = proteinDisplayWithColor(this.proteinDisplay.representation, mode);
+      if (next === null) return;
+      this.proteinDisplay = next;
+      this.proteinDisplayByRepresentation.set(next.representation, next);
+      proteinColorControl.setSelected(mode);
+      this.applyProteinDisplay(next);
+    });
     proteinColorControl.element.classList.add('stage-control-protein-colors');
-    proteinColorControl.setSelected(this.proteinColorMode);
+    const updateProteinColorItems = (): void => {
+      const modes = proteinColorModesFor(this.proteinDisplay.representation);
+      proteinColorControl.setItems(modes.map((mode) => [mode, PROTEIN_COLOR_LABELS[mode]] as const));
+      proteinColorControl.setSelected(this.proteinDisplay.colorMode);
+    };
+    updateProteinColorItems();
     proteinSection.appendChild(proteinColorControl.element);
     const proteinSpawnButton = new Button('敵をスポーン', () => {
       this.spawnManualEnemy(selectedProteinShape, String(0xffffff));
@@ -234,6 +265,10 @@ export class CreativeStage extends Stage {
     return { wrapper, select };
   }
 
+  private applyProteinDisplay(display: ProteinDisplaySettings): void {
+    for (const enemy of this._entities.enemies) enemy.setProteinDisplay(display);
+  }
+
   private spawnManualEnemy(shape: EnemySpawnShape, colorValue: string): void {
     const player = this.activePlayer;
     if (player === null || !player.alive) {
@@ -250,7 +285,7 @@ export class CreativeStage extends Stage {
     const enemy = shapeDefinition.kind === 'drifting'
       ? generateDriftingEnemy(name, state, C.ENEMY_MAX_HP, color, color, this._hud, this._worldSfx, this._fx, this._scene)
       : shapeDefinition.kind === 'pdb-5i4r'
-        ? generatePdb5i4rEnemy(name, state, this.proteinColorMode, this._hud, this._worldSfx, this._fx, this._scene)
+        ? generatePdb5i4rEnemy(name, state, this.proteinDisplay, this._hud, this._worldSfx, this._fx, this._scene)
       : generateApproachingEnemy(
         name, state, C.STAGE0_ENEMY_HP, color, color, shapeDefinition.typeIndex, undefined,
         this._hud, this._worldSfx, this._fx, this._scene,
