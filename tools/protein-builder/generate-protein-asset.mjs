@@ -2,9 +2,12 @@
 // Generate the semantic protein asset and deterministic coarse-grained thermal modes.
 import { readFile, writeFile } from 'node:fs/promises';
 
-const configFile = process.argv[2] ?? 'assets-src/proteins/5i4r/protein.config.json';
+const positionalArguments = process.argv.slice(2).filter((argument) => !argument.startsWith('--'));
+const checkOnly = process.argv.includes('--check');
+const configFile = positionalArguments[0] ?? 'assets-src/proteins/5i4r/protein.config.json';
 const config = JSON.parse(await readFile(configFile, 'utf8'));
-const semantic = JSON.parse(await readFile(config.semanticAsset, 'utf8'));
+if (!config.definitionAsset) throw new Error(`${configFile}: definitionAsset is required`);
+const semantic = JSON.parse(await readFile(config.definitionAsset, 'utf8'));
 const backbone = JSON.parse(await readFile(config.source, 'utf8'));
 const COMPONENT_COUNT = semantic.components.length;
 const CONTACT_CUTOFF = 12;
@@ -176,6 +179,17 @@ const output = {
     },
   },
 };
-const outputFile = process.argv[3] ?? config.semanticAsset;
-await writeFile(outputFile, `${JSON.stringify(output, null, 2)}\n`);
-console.log(`generated ${outputFile} from ${config.source} (${motion.modes.length} normal modes)`);
+const outputFile = positionalArguments[1] ?? config.semanticAsset;
+const serializedOutput = `${JSON.stringify(output, null, 2)}\n`;
+if (checkOnly) {
+  const existing = await readFile(outputFile, 'utf8');
+  if (existing !== serializedOutput) {
+    console.error(`${configFile}: generated output differs from ${outputFile}`);
+    process.exitCode = 1;
+  } else {
+    console.log(`${configFile}: ${outputFile} is up to date`);
+  }
+} else {
+  await writeFile(outputFile, serializedOutput);
+  console.log(`generated ${outputFile} from ${config.source} (${motion.modes.length} normal modes)`);
+}
