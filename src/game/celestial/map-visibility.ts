@@ -1,17 +1,17 @@
 // 天体とゲーム内 entity に共通するマップ表示ポリシー。
 // category/icon/label/orbit/pickable を各描画・選択系で個別に解釈しないための正本。
-import type { AttractorId } from '../../physics/attractor';
+import type { CelestialBodyId } from '../../physics/celestial-body';
 import type { CelestialRegistry } from '../../physics/solar-system';
 import {
   alwaysFullyVisibleIds,
   bodyClassVisible,
-  bodyIconLabel,
+  bodyNameVisible,
   type BodyClassToggles,
 } from './body-visibility';
 import { bodyClassOf } from './body-class';
 import { bodyDef } from '../../physics/solar-system';
 
-export type MapEntityKind = 'player' | 'ship' | 'ammo' | 'base';
+export type MapEntityKind = 'player' | 'ship' | 'ammo' | 'fuel' | 'base';
 
 export type MapVisibility = {
   readonly category: boolean;
@@ -23,17 +23,17 @@ export type MapVisibility = {
 
 const ENTITY_KEYS: Record<MapEntityKind, {
   readonly category: keyof BodyClassToggles;
-  readonly icon: keyof BodyClassToggles;
-  readonly label: keyof BodyClassToggles;
+  readonly name: keyof BodyClassToggles;
   readonly orbit: keyof BodyClassToggles;
 }> = {
-  player: { category: 'playerVisible', icon: 'playerIcon', label: 'playerLabel', orbit: 'playerOrbit' },
-  ship: { category: 'shipVisible', icon: 'shipIcon', label: 'shipLabel', orbit: 'shipOrbit' },
-  ammo: { category: 'ammoVisible', icon: 'ammoIcon', label: 'ammoLabel', orbit: 'ammoOrbit' },
-  base: { category: 'baseVisible', icon: 'baseIcon', label: 'baseLabel', orbit: 'baseOrbit' },
+  player: { category: 'playerVisible', name: 'playerName', orbit: 'playerOrbit' },
+  ship: { category: 'shipVisible', name: 'shipName', orbit: 'shipOrbit' },
+  ammo: { category: 'ammoVisible', name: 'ammoName', orbit: 'ammoOrbit' },
+  fuel: { category: 'fuelVisible', name: 'fuelName', orbit: 'fuelOrbit' },
+  base: { category: 'baseVisible', name: 'baseName', orbit: 'baseOrbit' },
 };
 
-function focusSystemOf(registry: CelestialRegistry, focusId: AttractorId | undefined): AttractorId | null {
+function focusSystemOf(registry: CelestialRegistry, focusId: CelestialBodyId | undefined): CelestialBodyId | null {
   if (focusId === undefined) return null;
   const bodyId = focusId.replace(/-l[1-5]$/, '');
   if (!(bodyId in registry)) return null;
@@ -47,25 +47,25 @@ function noVisibility(): MapVisibility {
 }
 
 export class MapVisibilityPolicy {
-  private readonly alwaysVisible: ReadonlySet<AttractorId>;
-  private readonly nearby: ReadonlySet<AttractorId>;
+  private readonly alwaysVisible: ReadonlySet<CelestialBodyId>;
+  private readonly nearby: ReadonlySet<CelestialBodyId>;
   // policy の入力(toggles/focus/nearby)はインスタンス生成後に変わらない。判定結果を
   // id/kind ごとに保持し、同じフレームで body()/entity() を何度呼んでもオブジェクトと
   // 条件分岐を作り直さない。呼び出し側がトグルを変える場合は新しい policy を作る。
-  private readonly bodyResults = new Map<AttractorId, MapVisibility>();
+  private readonly bodyResults = new Map<CelestialBodyId, MapVisibility>();
   private readonly entityResults = new Map<string, MapVisibility>();
 
   constructor(
     private readonly registry: CelestialRegistry,
     private readonly toggles: BodyClassToggles,
-    private readonly focusId?: AttractorId,
-    nearbyIds: Iterable<AttractorId> = [],
+    private readonly focusId?: CelestialBodyId,
+    nearbyIds: Iterable<CelestialBodyId> = [],
   ) {
     this.alwaysVisible = alwaysFullyVisibleIds(registry, focusId, nearbyIds, toggles);
     this.nearby = new Set(nearbyIds);
   }
 
-  body(id: AttractorId): MapVisibility {
+  body(id: CelestialBodyId): MapVisibility {
     const cached = this.bodyResults.get(id);
     if (cached !== undefined) return cached;
 
@@ -74,12 +74,11 @@ export class MapVisibilityPolicy {
     return result;
   }
 
-  private computeBody(id: AttractorId): MapVisibility {
+  private computeBody(id: CelestialBodyId): MapVisibility {
     if (/-l[1-5]$/.test(id)) {
       const category = this.toggles.lagrangeVisible;
-      const icon = category && this.toggles.lagrangeIcon;
-      const label = category && this.toggles.lagrangeLabel;
-      return { category, icon, label, orbit: false, pickable: category && (icon || label) };
+      const shown = category && this.toggles.lagrangeName;
+      return { category, icon: shown, label: shown, orbit: false, pickable: shown };
     }
     if (this.registry[id] === undefined) return noVisibility();
 
@@ -87,11 +86,9 @@ export class MapVisibilityPolicy {
     const category = bodyClassVisible(cls, this.toggles);
     if (!category) return noVisibility();
     const forced = this.alwaysVisible.has(id);
-    const classDisplay = bodyIconLabel(this.registry, this.toggles, id);
-    const icon = forced || classDisplay.icon;
-    const label = forced || classDisplay.label;
+    const shown = forced || bodyNameVisible(this.registry, this.toggles, id);
     const orbit = this.orbitForBody(id, cls);
-    return { category, icon, label, orbit, pickable: icon || label };
+    return { category, icon: shown, label: shown, orbit, pickable: shown };
   }
 
   entity(kind: MapEntityKind, isActivePlayer = false): MapVisibility {
@@ -108,16 +105,17 @@ export class MapVisibilityPolicy {
     const keys = ENTITY_KEYS[kind];
     const categoryToggle = this.toggles[keys.category];
     // 操作対象の自艦は、カテゴリを閉じても現在位置を失わないように残す。ただし
-    // ラベル/軌道線は個別トグルに従うので、例外が表示設定を無効化しない。
+    // 艦名/軌道線は名前トグルに従うので、例外が表示設定を無効化しない。
     const category = categoryToggle || (kind === 'player' && isActivePlayer);
     if (!category) return noVisibility();
-    const icon = kind === 'player' && isActivePlayer ? true : Boolean(this.toggles[keys.icon]);
-    const label = Boolean(this.toggles[keys.label]);
+    const nameToggle = Boolean(this.toggles[keys.name]);
+    const icon = kind === 'player' && isActivePlayer ? true : nameToggle;
+    const label = nameToggle;
     const orbit = Boolean(this.toggles[keys.orbit]) && category;
     return { category, icon, label, orbit, pickable: icon || label };
   }
 
-  private orbitForBody(id: AttractorId, cls: ReturnType<typeof bodyClassOf>): boolean {
+  private orbitForBody(id: CelestialBodyId, cls: ReturnType<typeof bodyClassOf>): boolean {
     switch (cls) {
       case 'planet': return this.toggles.planetOrbit;
       case 'dwarf': return this.toggles.dwarfOrbit;

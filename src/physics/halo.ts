@@ -1,60 +1,106 @@
-// 円制限三体問題(CR3BP)の共線ラグランジュ点(L1/L2)まわりの周期・準周期軌道の初期状態。
+// 円制限三体問題(CR3BP)の共線ラグランジュ点(L1/L2/L3)まわりの解析解。共線点の局所基底と
+// 無次元パラメータ、Richardson (1980) の三次近似の係数と軌道形状、そして線形解から組んだ
+// ハロー軌道・リサジュー軌道の初期状態を持つ。
 // ラグランジュ点の位置と回転フレームの姿勢/角速度は ephemeris.ts の既存 API
 // (lagrangeAt/orbitFrameRotationAt/orbitNormalAt)からそのまま取り、ここでは基底・法線を
 // 作り直さない。
 //
-// 面内・面外の運動は Richardson (1980) の記法に従う。線形解では面内振動数 λ と面外振動数
-// ωz=√c2 が一致しないため、一次の範囲でハロー軌道(閉じた三次元ループ)は存在しない。
-// ハロー軌道は三次の振幅拘束 l1·Ax² + l2·Az² + Δ = 0 が成り立つときに両振動数が一致して
-// 現れるので、haloState は面外振幅 Az からこの拘束で面内振幅 Ax を決め、そのうえで線形解を
-// 面内振動数で駆動する。lissajousState は拘束を課さず、面内・面外を独立な振幅・振動数で
-// 振動させる(一般に非共鳴なので準周期のリサジュー図形になる)。
+// 線形解では面内振動数 λ と面外振動数 ωz=√c2 が一致しないため、一次の範囲でハロー軌道
+// (閉じた三次元ループ)は存在しない。ハロー軌道は三次の振幅拘束 l1·Ax² + l2·Az² + Δ = 0 が
+// 成り立つときに両振動数が一致して現れるので、面外振幅 Az からこの拘束で面内振幅 Ax を決める。
 //
-// 位置・速度そのものは一次の線形解であり、三次の級数展開までは含まない。またゲームの積分器は
+// haloState/lissajousState が返す位置・速度は一次の線形解にとどまる。またゲームの積分器は
 // 地球中心二体 + J2 + 抗力 + 日月三体であって制限三体問題そのものではないため、ここで返した
 // 状態を実際にゲーム内で積分すると軌道はドリフトする。
 import { Ephemeris } from './ephemeris';
-import { OrbitingId } from './attractor';
+import { OrbitingId } from './celestial-body';
 import { bodyDef, primaryOf } from './solar-system';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, add, cross, len, scale, sub } from './vec3';
+import { Cr3bpState, Vec3Tuple } from './cr3bp';
+import { collinearGamma } from './lagrange';
 
-export type CollinearPoint = 'L1' | 'L2';
+export type CollinearPoint = 'L1' | 'L2' | 'L3';
 
-// 共線ラグランジュ点まわりの回転局所基底とその線形化パラメータ。
+// 共線ラグランジュ点まわりの回転局所基底と、その点の無次元パラメータ。
 // origin: L点の ECI 位置。xHat: 主天体→副天体方向。zHat: 系の公転面法線。
 // yHat = zHat × xHat で右手系を作る。omega: 回転フレームの角速度(ECI 成分、大きさが
-// 無次元化の時間単位 n)。r: 主天体・副天体間距離 [m]。gamma: 副天体から L点までの距離を
-// r で割った無次元値。lambda: 面内線形振動数、omegaZ: 面外線形振動数、kappa: 面内運動の
-// y/x 振幅比(いずれも τ=n·t を単位とする無次元量)。
-export interface CollinearFrame {
-  origin: Vec3;
-  xHat: Vec3;
-  yHat: Vec3;
-  zHat: Vec3;
-  omega: Vec3;
-  r: number;
-  gamma: number;
-  mu: number;
-  lambda: number;
-  omegaZ: number;
-  kappa: number;
+// 無次元化の時間単位 n)。r: 主天体・副天体間距離 [m]。
+export interface CollinearFrame extends CollinearParams {
+  readonly origin: Vec3;
+  readonly xHat: Vec3;
+  readonly yHat: Vec3;
+  readonly zHat: Vec3;
+  readonly omega: Vec3;
+  readonly r: number;
 }
 
-// 共線点における Richardson (1980) の cn 係数。gamma は副天体から L点までの距離を
-// 主天体-副天体間距離で割った無次元値。L1/L2 で分母と符号が異なる。
+// 共線点における Richardson (1980) の cn 係数。gamma は L点から最も近い天体までの距離を
+// 主天体-副天体間距離で割った無次元値(L1/L2 は副天体から、L3 は主天体から測る)。
+// 局所座標の x 軸はどの点でも主天体→副天体向きで、符号の違いはその向きから決まる。
 function cn(point: CollinearPoint, mu: number, gamma: number, n: number): number {
   const sign = (-1) ** n;
   if (point === 'L1') {
     return (mu + sign * (1 - mu) * gamma ** (n + 1) / (1 - gamma) ** (n + 1)) / gamma ** 3;
   }
-  return sign * (mu + (1 - mu) * gamma ** (n + 1) / (1 + gamma) ** (n + 1)) / gamma ** 3;
+  if (point === 'L2') {
+    return sign * (mu + (1 - mu) * gamma ** (n + 1) / (1 + gamma) ** (n + 1)) / gamma ** 3;
+  }
+  return (1 - mu + mu * gamma ** (n + 1) / (1 + gamma) ** (n + 1)) / gamma ** 3;
+}
+
+// c2 から共線点の線形化パラメータを組み立てる。
+function linearParams(c2: number): { lambda: number; omegaZ: number; kappa: number } {
+  // 面内特性方程式 λ⁴+(c2-2)λ²-(2c2+1)(c2-1)=0 の判別式は 9c2²-8c2 に簡約でき、
+  // 正の根が振動解を与える(負の根は双曲解で、ここでは使わない)。
+  const disc = Math.sqrt(9 * c2 * c2 - 8 * c2);
+  const lambda2 = (disc - c2 + 2) / 2;
+  const lambda = Math.sqrt(lambda2);
+  // 面内運動 x=Ax cos(λτ+φ), y=κAx sin(λτ+φ) を線形化方程式へ代入して得る振幅比。
+  return { lambda, omegaZ: Math.sqrt(c2), kappa: (2 * lambda) / (c2 - 1 - lambda2) };
+}
+
+// 質量比 mu だけから決まる共線点の無次元パラメータ。gamma は L点から最も近い天体までの
+// 距離比で、局所座標(x: 主天体→副天体、z: 公転面法線)の長さの単位でもある。
+export interface CollinearParams {
+  readonly point: CollinearPoint;
+  readonly mu: number;
+  readonly gamma: number;
+  readonly lambda: number;
+  readonly omegaZ: number;
+  readonly kappa: number;
+}
+
+// 質量比から共線点の無次元パラメータを解く。
+export function collinearParams(point: CollinearPoint, mu: number): CollinearParams {
+  const gamma = collinearGamma(mu, point);
+  return { point, mu, gamma, ...linearParams(cn(point, mu, gamma, 2)) };
+}
+
+// CR3BP 回転系(重心原点、両天体間距離を 1)での共線点の x 座標。
+function collinearBarycentricX(params: CollinearParams): number {
+  const { mu, gamma, point } = params;
+  if (point === 'L1') return 1 - mu - gamma;
+  if (point === 'L2') return 1 - mu + gamma;
+  return -mu - gamma;
+}
+
+// L点局所座標(gamma 単位、原点=L点)の位置を CR3BP 回転系の座標へ移す。
+export function collinearLocalToBarycentric(params: CollinearParams, local: Vec3Tuple): Vec3Tuple {
+  const xL = collinearBarycentricX(params);
+  return [xL + params.gamma * local[0], params.gamma * local[1], params.gamma * local[2]];
+}
+
+// CR3BP 回転系の位置を L点局所座標(gamma 単位)へ移す。
+export function collinearBarycentricToLocal(params: CollinearParams, bary: Vec3Tuple): Vec3Tuple {
+  const xL = collinearBarycentricX(params);
+  return [(bary[0] - xL) / params.gamma, bary[1] / params.gamma, bary[2] / params.gamma];
 }
 
 // 指定した副天体・L点における共線点まわりの回転局所基底と線形化パラメータを組み立てる。
 // 位置・回転フレームは ephemeris.ts の既存 API から取得し、質量比・距離比だけをここで
-// 計算する。gamma(副天体から L点までの距離の比)は ephemeris.ts が内部に持つ近似値を
-// 公開していないため、公開済みの L点座標から逆算して一貫性を取る。
+// 計算する。gamma は ephemeris.ts が内部に持つ近似値を公開していないため、公開済みの
+// L点座標から逆算して一貫性を取る。
 export function collinearFrame(secondary: OrbitingId, point: CollinearPoint, t: number, ephemeris: Ephemeris): CollinearFrame {
   const def = bodyDef(ephemeris.registry, secondary);
   const primary = primaryOf(ephemeris.registry, secondary);
@@ -75,19 +121,14 @@ export function collinearFrame(secondary: OrbitingId, point: CollinearPoint, t: 
   const zHat = normal;
   const yHat = cross(zHat, xHat);
 
-  const gamma = len(sub(origin, secondaryPos)) / r;
-  const c2 = cn(point, mu, gamma, 2);
+  // L3 だけは最も近い天体が主天体なので、そちらからの距離比を gamma に取る。
+  const nearest = point === 'L3' ? primaryPos : secondaryPos;
+  const gamma = len(sub(origin, nearest)) / r;
 
-  // 面内特性方程式 λ⁴+(c2-2)λ²-(2c2+1)(c2-1)=0 の判別式は 9c2²-8c2 に簡約でき、
-  // 正の根が振動解を与える(負の根は双曲解で、ここでは使わない)。
-  const disc = Math.sqrt(9 * c2 * c2 - 8 * c2);
-  const lambda2 = (disc - c2 + 2) / 2;
-  const lambda = Math.sqrt(lambda2);
-  const omegaZ = Math.sqrt(c2);
-  // 面内運動 x=Ax cos(λτ+φ), y=κAx sin(λτ+φ) を線形化方程式へ代入して得る振幅比。
-  const kappa = (2 * lambda) / (c2 - 1 - lambda2);
-
-  return { origin, xHat, yHat, zHat, omega, r, gamma, mu, lambda, omegaZ, kappa };
+  return {
+    origin, xHat, yHat, zHat, omega, r, gamma, mu, point,
+    ...linearParams(cn(point, mu, gamma, 2)),
+  };
 }
 
 export interface LissajousParams {
@@ -145,11 +186,23 @@ function centerManifoldState(
   return kinematicState(t, rEci, vEci);
 }
 
-// Richardson (1980) 三次近似の振幅拘束 l1·Ax² + l2·Az² + Δ = 0 における (l1, l2, Δ)。
-// いずれも gamma で正規化した無次元量で、この拘束が成り立つとき面内・面外の振動数が
-// 一致してハロー軌道になる。
-function haloConstraint(frame: CollinearFrame, point: CollinearPoint): { l1: number; l2: number; delta: number } {
-  const { mu, gamma, lambda } = frame;
+// Richardson (1980) 三次近似の係数一式。長さはすべて gamma 単位、時間は τ=n·t 単位。
+// l1·Ax² + l2·Az² + delta = 0 が面内・面外の振動数を一致させる振幅拘束で、これが
+// 成り立つ振幅の組だけがハロー軌道になる。
+export interface RichardsonCoefficients {
+  readonly lambda: number;
+  readonly k: number;
+  readonly a21: number; readonly a22: number; readonly a23: number; readonly a24: number;
+  readonly a31: number; readonly a32: number;
+  readonly b21: number; readonly b22: number; readonly b31: number; readonly b32: number;
+  readonly d21: number; readonly d31: number; readonly d32: number;
+  readonly s1: number; readonly s2: number;
+  readonly l1: number; readonly l2: number; readonly delta: number;
+}
+
+// 共線点の無次元パラメータから Richardson 三次近似の係数を解く。
+export function richardsonCoefficients(params: CollinearParams): RichardsonCoefficients {
+  const { mu, gamma, lambda, point } = params;
   const c2 = cn(point, mu, gamma, 2);
   const c3 = cn(point, mu, gamma, 3);
   const c4 = cn(point, mu, gamma, 4);
@@ -158,7 +211,9 @@ function haloConstraint(frame: CollinearFrame, point: CollinearPoint): { l1: num
   const k = (l2sq + 1 + 2 * c2) / (2 * lambda);
 
   const d1 = (3 * l2sq / k) * (k * (6 * l2sq - 1) - 2 * lambda);
+  const d2 = (8 * l2sq / k) * (k * (11 * l2sq - 1) - 2 * lambda);
 
+  // 二次の項。
   const a21 = 3 * c3 * (k * k - 2) / (4 * (1 + 2 * c2));
   const a22 = 3 * c3 / (4 * (1 + 2 * c2));
   const a23 = -(3 * c3 * lambda / (4 * k * d1)) * (3 * k ** 3 * lambda - 6 * k * (k - lambda) + 4);
@@ -167,16 +222,81 @@ function haloConstraint(frame: CollinearFrame, point: CollinearPoint): { l1: num
   const b22 = 3 * c3 * lambda / d1;
   const d21 = -c3 / (2 * l2sq);
 
+  // 三次の項。
+  const p = 9 * l2sq + 1 - c2;
+  const q = 9 * l2sq + 1 + 2 * c2;
+  const a31 = -(9 * lambda / (4 * d2)) * (4 * c3 * (k * a23 - b21) + k * c4 * (4 + k * k))
+    + (p / (2 * d2)) * (3 * c3 * (2 * a23 - k * b21) + c4 * (2 + 3 * k * k));
+  const a32 = -(9 * lambda / (4 * d2)) * (4 * c3 * (k * a24 - b22) + k * c4)
+    - (3 * p / (2 * d2)) * (c3 * (k * b22 + d21 - 2 * a24) - c4);
+  const b31 = (3 / (8 * d2)) * (8 * lambda * (3 * c3 * (k * b21 - 2 * a23) - c4 * (2 + 3 * k * k))
+    + q * (4 * c3 * (k * a23 - b21) + k * c4 * (4 + k * k)));
+  const b32 = (1 / d2) * (9 * lambda * (c3 * (k * b22 + d21 - 2 * a24) - c4)
+    + (3 * q / 8) * (4 * c3 * (k * a24 - b22) + k * c4));
+  const d31 = (3 / (64 * l2sq)) * (4 * c3 * a24 + c4);
+  const d32 = (3 / (64 * l2sq)) * (4 * c3 * (a23 - d21) + c4 * (4 + k * k));
+
+  // 振動数の振幅補正 ω=λ(1+s1Ax²+s2Az²) と、そこから決まる振幅拘束。
   const den = 2 * lambda * (lambda * (1 + k * k) - 2 * k);
   const s1 = (1.5 * c3 * (2 * a21 * (k * k - 2) - a23 * (k * k + 2) - 2 * k * b21)
     - 0.375 * c4 * (3 * k ** 4 - 8 * k * k + 8)) / den;
   const s2 = (1.5 * c3 * (2 * a22 * (k * k - 2) + a24 * (k * k + 2) + 2 * k * b22 + 5 * d21)
     + 0.375 * c4 * (12 - k * k)) / den;
-
   const a1 = -1.5 * c3 * (2 * a21 + a23 + 5 * d21) - 0.375 * c4 * (12 - k * k);
   const a2 = 1.5 * c3 * (a24 - 2 * a22) + 1.125 * c4;
 
-  return { l1: a1 + 2 * l2sq * s1, l2: a2 + 2 * l2sq * s2, delta: l2sq - c2 };
+  return {
+    lambda, k, a21, a22, a23, a24, a31, a32, b21, b22, b31, b32, d21, d31, d32, s1, s2,
+    l1: a1 + 2 * l2sq * s1, l2: a2 + 2 * l2sq * s2, delta: l2sq - c2,
+  };
+}
+
+// Richardson 三次近似の軌道上の1点。位相 tau=ωτ、振幅 ax/az は gamma 単位の無次元量で、
+// northern が真なら面外の突出が公転面法線側(北)を向く。返す位置は L点局所座標(gamma 単位)。
+// ax=0 なら垂直リヤプノフ的な8の字、az=0 なら平面リヤプノフ的な閉曲線になる。
+export function richardsonPoint(
+  c: RichardsonCoefficients, ax: number, az: number, northern: boolean, tau: number,
+): Vec3Tuple {
+  // 面内 x は cos、y は sin、面外 z は cos の級数で、いずれも 3τ までを取る。
+  const dn = northern ? 1 : -1;
+  const x = c.a21 * ax * ax + c.a22 * az * az - ax * Math.cos(tau)
+    + (c.a23 * ax * ax - c.a24 * az * az) * Math.cos(2 * tau)
+    + (c.a31 * ax ** 3 - c.a32 * ax * az * az) * Math.cos(3 * tau);
+  const y = c.k * ax * Math.sin(tau)
+    + (c.b21 * ax * ax - c.b22 * az * az) * Math.sin(2 * tau)
+    + (c.b31 * ax ** 3 - c.b32 * ax * az * az) * Math.sin(3 * tau);
+  const z = dn * (az * Math.cos(tau) + c.d21 * ax * az * (Math.cos(2 * tau) - 3)
+    + (c.d32 * az * ax * ax - c.d31 * az ** 3) * Math.cos(3 * tau));
+  return [x, y, z];
+}
+
+// 面外振幅 az(gamma 単位)に対応する面内振幅(gamma 単位)。az=0 での値が、平面リアプノフ
+// 軌道からハローが分岐する下限になる。
+export function richardsonAmplitudeX(c: RichardsonCoefficients, az: number): number {
+  return Math.sqrt(-(c.delta + c.l2 * az * az) / c.l1);
+}
+
+// Richardson 三次近似での軌道周期(τ=n·t 単位)。
+export function richardsonPeriod(c: RichardsonCoefficients, ax: number, az: number): number {
+  return (2 * Math.PI) / (c.lambda * (1 + c.s1 * ax * ax + c.s2 * az * az));
+}
+
+// 面外振幅 az(gamma 単位)のハロー軌道について、CR3BP 回転系(重心原点)で xz 面を横切る
+// 瞬間の状態と周期の見積り。微分修正の初期推定として使う。振幅拘束を満たす ax が無ければ null。
+export function richardsonHaloSeed(
+  params: CollinearParams, az: number,
+): { state: Cr3bpState; period: number } | null {
+  const c = richardsonCoefficients(params);
+  const ax = richardsonAmplitudeX(c, az);
+  if (!Number.isFinite(ax)) return null;
+  const period = richardsonPeriod(c, ax, az);
+  // 横断の瞬間は面内 y 方向の速度だけが 0 でないので、位相を微小に進めた点との差から取る。
+  const dtau = 1e-6;
+  const pointAt = (tau: number): Vec3Tuple =>
+    collinearLocalToBarycentric(params, richardsonPoint(c, ax, az, true, tau));
+  const p0 = pointAt(0);
+  const vy = ((pointAt(dtau)[1] - p0[1]) / dtau) * ((2 * Math.PI) / period);
+  return { state: [p0[0], 0, p0[2], 0, vy, 0], period };
 }
 
 // 指定したラグランジュ点(副天体 secondary の L1/L2)まわりのリサジュー軌道初期状態。
@@ -193,7 +313,7 @@ export function lissajousState(t: number, ephemeris: Ephemeris, params: Lissajou
 // 振幅拘束で決まる(az=0 でも面内振幅は下限値を取り、そこから単調に増える)。
 export function haloState(t: number, ephemeris: Ephemeris, params: HaloParams): KinematicState {
   const frame = collinearFrame(params.secondary, params.point, t, ephemeris);
-  const ax = haloAmplitudeX(frame, params.point, params.az);
+  const ax = haloAmplitudeX(frame, params.az);
   // 拘束が成り立つ = 面内・面外の振動数が一致するので、面外も面内振動数 λ で駆動する。
   // 面外位相を π/2 ずらして面内の x と直交させ、閉じた三次元ループにする。
   return centerManifoldState(t, frame, ax, params.az, params.phase ?? 0, (params.phase ?? 0) + Math.PI / 2, frame.lambda);
@@ -201,9 +321,8 @@ export function haloState(t: number, ephemeris: Ephemeris, params: HaloParams): 
 
 // 面外振幅 az [m] に対応する面内振幅 [m]。az=0 での値が、平面リアプノフ軌道からハローが
 // 分岐する面内振幅の下限になる。
-export function haloAmplitudeX(frame: CollinearFrame, point: CollinearPoint, az: number): number {
-  const { l1, l2, delta } = haloConstraint(frame, point);
+export function haloAmplitudeX(frame: CollinearFrame, az: number): number {
   // 無次元化は gamma 基準(Richardson の局所座標)なので、その単位で解いてから [m] へ戻す。
-  const azN = az / (frame.r * frame.gamma);
-  return Math.sqrt(-(delta + l2 * azN * azN) / l1) * frame.r * frame.gamma;
+  const unit = frame.r * frame.gamma;
+  return richardsonAmplitudeX(richardsonCoefficients(frame), az / unit) * unit;
 }

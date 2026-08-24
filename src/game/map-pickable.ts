@@ -2,7 +2,7 @@
 import { Vec3 } from '../physics/vec3';
 import type { ProjectFn } from './camera/camera-system';
 
-export type MapPickKind = 'body' | 'ship' | 'player' | 'apsis' | 'relnode' | 'ammo' | 'empty-space' | 'eqnode' | 'base';
+export type MapPickKind = 'body' | 'ship' | 'player' | 'apsis' | 'relnode' | 'ammo' | 'fuel' | 'empty-space' | 'eqnode' | 'base';
 
 export interface MapPickable {
   readonly id: string;
@@ -14,6 +14,8 @@ export interface MapPickable {
   readonly detail?: string;
   // 自機からの距離 [m]。近傍しぼり込みと距離順の並べ替えの基準。
   readonly distance?: number;
+  // 恒星からの距離 [m]。太陽系順の並べ替えの基準。恒星の無いレジストリでは undefined。
+  readonly distanceFromStar?: number;
   // 一覧での表示順の優先度。小さいほど先に出る。同値なら distance 順。
   readonly priority?: number;
   readonly inFocusedSystem?: boolean;

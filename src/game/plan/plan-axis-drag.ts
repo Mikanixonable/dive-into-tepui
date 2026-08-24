@@ -1,0 +1,96 @@
+import { KinematicState, orbitAxes } from '../../physics/kinematic-state';
+import { Projected } from '../../physics/projection';
+import { Vec3, add, scale } from '../../physics/vec3';
+import * as C from '../const';
+import { AxisHandleSpec } from './node-gizmo';
+
+// ホールド継続時間 [s] から Δv 加算レートを指数的に求める。押し始めは細かく、長押しで粗くなる。
+function rampedDvRate(heldSec: number): number {
+  const t = Math.min(heldSec / C.DV_RATE_RAMP_SEC, 1);
+  return C.DV_RATE_MIN * (C.DV_RATE_MAX / C.DV_RATE_MIN) ** t;
+}
+
+// Δv アーム6方向(PRO/RET・NRM/ANM・OUT/IN)の画面配置と、ドラッグ・長押しからの Δv 加算量を
+// 計算する。実際にノードへ Δv を適用するのは onApplyDv 経由で PlanEditor 側に委ねる。
+export class AxisDragGizmo {
+  // 6 方向それぞれのホールド継続時間 [s]。index は axis*2 + (sign<0 ? 1 : 0)。
+  private readonly dvHoldTime: number[] = [0, 0, 0, 0, 0, 0];
+
+  constructor(
+    private readonly bodyStateOf: (state: KinematicState) => KinematicState,
+    private readonly projectPoint: (r: Vec3, t: number) => Projected,
+    private readonly onApplyDv: (axis: 0 | 1 | 2, sign: 1 | -1, amount: number) => void,
+  ) {}
+
+  // Δv アーム 6 個の画面方向をノード位置と微小先の投影差分から求める。
+  computeAxisScreenDirs(
+    node: KinematicState,
+    mapDist: number,
+  ): { pro: { x: number; y: number; }; nrm: { x: number; y: number; }; rad: { x: number; y: number; }; } {
+    const bodyNode = this.bodyStateOf(node);
+    const { r } = node;
+    const { pro, nrm, radOut } = orbitAxes(bodyNode);
+    const L = mapDist * 0.05;
+    const p0 = this.projectPoint(r, node.t);
+    // 軸方向へわずかに動かした点との投影差分から、画面上の単位方向ベクトルを求める。
+    const dirFor = (axisVec: Vec3): { x: number; y: number; } => {
+      const p1 = this.projectPoint(add(r, scale(axisVec, L)), node.t);
+      const dx = p1.x - p0.x;
+      const dy = p1.y - p0.y;
+      const m = Math.hypot(dx, dy);
+      return m > 1e-6 ? { x: dx / m, y: dy / m } : { x: 0, y: -1 };
+    };
+    return { pro: dirFor(pro), nrm: dirFor(nrm), rad: dirFor(radOut) };
+  }
+
+  // ノード周囲に PRO/RET・NRM/ANM・OUT/IN 6 方向の Δv アームハンドル仕様を配置する。
+  buildAxisHandles(
+    nx: number,
+    ny: number,
+    dirs: { pro: { x: number; y: number; }; nrm: { x: number; y: number; }; rad: { x: number; y: number; }; },
+  ): AxisHandleSpec[] {
+    const R = C.NODE_GIZMO_HANDLE_PX;
+    // 軸・符号・画面方向からハンドル1個分の位置とラベルを組む
+    const mk = (axis: 0 | 1 | 2, sign: 1 | -1, d: { x: number; y: number; }, label: string): AxisHandleSpec => ({
+      axis,
+      sign,
+      x: nx + d.x * R * sign,
+      y: ny + d.y * R * sign,
+      dirx: d.x * sign,
+      diry: d.y * sign,
+      label,
+    });
+    return [
+      mk(0, 1, dirs.pro, 'PRO'),
+      mk(0, -1, dirs.pro, 'RET'),
+      mk(1, 1, dirs.nrm, 'NRM'),
+      mk(1, -1, dirs.nrm, 'ANM'),
+      mk(2, 1, dirs.rad, 'OUT'),
+      mk(2, -1, dirs.rad, 'IN'),
+    ];
+  }
+
+  // Δv アームのラッチ前ドラッグ量を選択中ノードの Δv へ加算する。
+  applyAxisDrag(axis: 0 | 1 | 2, sign: 1 | -1, deltaPx: number, fineAttitude: boolean): void {
+    const rate = (fineAttitude ? C.NODE_DV_RATE_FINE : C.NODE_DV_RATE) / 200;
+    this.onApplyDv(axis, sign, deltaPx * rate);
+  }
+
+  // axis/sign 方向のキー/ボタンが held の間ホールド時間を積み上げ、そのレートで dt 秒分の
+  // Δv を加算する。held が false ならホールド時間をリセットするだけで加算はしない。
+  applyHeldDv(axis: 0 | 1 | 2, sign: 1 | -1, held: boolean, dt: number, fineAttitude: boolean): void {
+    const idx = axis * 2 + (sign < 0 ? 1 : 0);
+    if (!held) {
+      this.dvHoldTime[idx] = 0;
+      return;
+    }
+    this.dvHoldTime[idx] = (this.dvHoldTime[idx] ?? 0) + dt;
+    const fineScale = fineAttitude ? C.NODE_DV_RATE_FINE / C.NODE_DV_RATE : 1;
+    this.onApplyDv(axis, sign, rampedDvRate(this.dvHoldTime[idx]!) * fineScale * dt);
+  }
+
+  // 編集対象がない間、6方向すべてのホールド時間をリセットする。
+  resetHold(): void {
+    this.dvHoldTime.fill(0);
+  }
+}

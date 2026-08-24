@@ -8,7 +8,7 @@ import { add, len, sub, v3, Vec3 } from '../../physics/vec3';
 import type { AnyPart, Part } from './parts';
 import { partFromSaveData } from './parts';
 import { Player } from '../player/player';
-import { buildBaseModel } from '../../render/ships';
+import { buildBaseModel } from '../../render/base-station-model';
 import type { Hud } from '../hud/hud';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
@@ -22,6 +22,7 @@ import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import type { MarkerRole } from '../targeter';
 import { fmtMarkerDist } from '../hud/utils';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
+import { baseMarkerSvg } from '../marker/marker-shapes';
 import * as C from '../const';
 import { BaseCollisionGeometry, RayHit, SphereHit } from '../../physics/base-collision';
 import { PlayerThrottle } from '../player/player-throttle';
@@ -33,6 +34,7 @@ import { RcsEffects } from '../player/rcs-effects';
 import type { CameraSystem } from '../camera/camera-system';
 import type { FloatingOrigin } from '../floating-origin';
 import type { MapVisibility } from '../celestial/map-visibility';
+import { currentThemePalette } from '../theme';
 
 // 基地のドッキングハッチのローカル位置および外向き法線ベクトル (中腹ドッキングパレット上部, 3倍スケール対応)
 export const BASE_HATCH_LOCAL_POS: Vec3 = v3(0, 21.0, 0);
@@ -77,16 +79,10 @@ export type BaseInit =
   | { readonly state: KinematicState; readonly name?: string; readonly att?: Attitude; readonly id?: string }
   | { readonly saved: BaseSaveData; readonly simTime: number };
 
-export function baseMarkerSvg(): string {
-  const pts = "12,2.5 19.43,6.08 21.26,14.11 16.12,20.56 7.88,20.56 2.74,14.11 4.57,6.08";
-  return `<svg viewBox="0 0 24 24" width="24" height="24" aria-label="Base">` +
-    `<polygon points="${pts}" fill="none" stroke="currentColor" stroke-width="1.8"/>` +
-    `</svg>`;
-}
-
 export class Base extends GameEntity implements Controllable {
   readonly collisionGeom = new BaseCollisionGeometry();
   protected readonly predictedForGhost = true;
+  protected readonly baseHistoryDuration = C.DEFAULT_HISTORY_DURATION;
   readonly plan = new Plan();
   planExecution: PlanExecutionMode = 'off';
   fineAttitude = false;
@@ -123,6 +119,9 @@ export class Base extends GameEntity implements Controllable {
   testSphereCollision(sphereCenter: Vec3, sphereRadius: number, warpLevel = 1): SphereHit | null {
     return this.collisionGeom.testSphereCollision(sphereCenter, sphereRadius, this.state.r, this.att.q, warpLevel);
   }
+
+  // 基地は接触で押されない。mass は推力加速度の分母を兼ねるので、そちらとは別に持つ。
+  override get contactMass(): number { return Infinity; }
 
   // hud/worldSfx/fx/markerManager は格納艦(Player)の組み立てに要る。格納艦は entities.players へ
   // 入らない — それが「格納中」の定義であり、艦自身の状態としては何も倒さない。
@@ -167,6 +166,7 @@ export class Base extends GameEntity implements Controllable {
     this.equatorNodes = new EquatorNodeMarkerPair(this, markerManager);
 
     if ('saved' in init) {
+      this.showTrajectoryLine = init.saved.showTrajectoryLine ?? false;
       this.baseState.money = init.saved.money;
       this.baseState.inventory = (init.saved.inventory ?? []).map(partFromSaveData);
       const savedVessels = init.saved.dockedVessels ?? init.saved.dockedShips ?? [];
@@ -261,7 +261,6 @@ export class Base extends GameEntity implements Controllable {
     );
     this.throttle.updateThrustLatches(input);
     this.thrust = this.throttle.updateThrustState(input, this.att, simDt, this);
-    if (this.thrust !== null) this.invalidatePrediction();
   }
 
   clearTransientCommands(): void {
@@ -311,25 +310,21 @@ export class Base extends GameEntity implements Controllable {
 
   markerItem(role: MarkerRole, viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): GroupedMarkerItem {
     const dist = len(sub(pos, viewerPos));
-    const priority = role === 'primary'
-      ? C.MARKER_PRIORITY.PRIMARY_TARGET
-      : role === 'secondary'
-        ? C.MARKER_PRIORITY.SECONDARY_TARGET
-        : C.MARKER_PRIORITY.BASE - dist / 1e9;
+    const priority = role === 'primary' ? C.MARKER_PRIORITY.PRIMARY_TARGET : C.MARKER_PRIORITY.BASE - dist / 1e9;
     return {
       key: `base-${this.id}`,
-      cls: role === 'primary' ? 'mk-target' : 'mk-base',
+      cls: role === 'primary' ? 'mk-base mk-target' : 'mk-base',
       sym: baseMarkerSvg(),
       pos,
       vel,
       priority,
       name: this.name,
       detail: overviewMode ? '' : fmtMarkerDist(dist),
-      bearingColor: C.COLOR_MARKER_ALLY,
+      bearingColor: role === 'primary' ? currentThemePalette().signal : C.COLOR_MARKER_ALLY,
       bearingSym: ENTITY_GLYPH.base,
       bearingClass: 'mk-dir mk-ally-dir',
       bearingVisible: false,
-      color: C.COLOR_MARKER_ALLY,
+      color: role === 'primary' ? currentThemePalette().signal : C.COLOR_MARKER_ALLY,
       symMarkup: true,
     };
   }
@@ -361,6 +356,7 @@ export class Base extends GameEntity implements Controllable {
       inventory: this.baseState.inventory.map(p => ({ ...p })),
       dockedVessels: this.baseState.dockedVessels.map(entry => entry.player.serialize()),
       throttle: this.throttle.serialize(),
+      showTrajectoryLine: this.showTrajectoryLine,
     };
   }
 }

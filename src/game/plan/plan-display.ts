@@ -2,14 +2,15 @@
 // (⬢ plannedPlayer マーカー)。
 import * as THREE from 'three/webgpu';
 import { Vec3, len, sub } from '../../physics/vec3';
-import { Attractor, strongestAttractor } from '../../physics/attractor';
+import { CelestialBody, strongestAttractor } from '../../physics/celestial-body';
+import type { FrameAnchorSource } from '../../physics/frame';
 import { isOccluded } from '../../physics/occlusion';
 import { Projected } from '../../physics/projection';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { SIM_EPOCH_SEC, fmtMarkerDist } from '../hud/utils';
-import { celestialBodyName } from '../hud/frame-labels';
-import { getApsisLabelSpec } from '../hud/orbit-labels';
-import { TickLabelMode, TickRank, calendarBoundaries, tickLabel } from '../hud/calendar-ticks';
+import { celestialBodyName } from '../hud/frame/frame-labels';
+import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
+import { TickLabelMode, TickRank, calendarBoundaries, elementTimeLabel, tickLabel } from '../hud/orbit/calendar-ticks';
 import { MarkerManager } from '../marker/marker-manager';
 import { ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-glyphs';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
@@ -19,7 +20,8 @@ import * as C from '../const';
 import { DisplayDurationSource, PlanData } from './plan';
 import { PlanPath } from './plan-path';
 import type { DisplayWindow } from '../display-window-manager';
-import type { PlanAttractorProvider } from './plan-attractors';
+import type { FutureCelestialBodyProvider } from '../simulation/arc-bodies';
+import type { Controllable } from '../game-entity/controllable';
 
 // 近地点・遠地点アイコン。右クリックの被選択物であると同時に、表示するラベルを持つ。
 interface ApsisIcon extends MapPickable {
@@ -67,8 +69,8 @@ export class PlanDisplay {
   private tickIcons: readonly PlanTickIcon[] = [];
   private lastTickKeys: readonly string[] = [];
   private ghost: { readonly pos: Vec3; readonly label: string } | null = null;
-  // update が求めた時点の Attractor[]。sync でのマップビュー遮蔽判定に使う。
-  private attractors: readonly Attractor[] = [];
+  // update が求めた時点の CelestialBody[]。sync でのマップビュー遮蔽判定に使う。
+  private celestialBodies: readonly CelestialBody[] = [];
 
   // 計画折れ線(PlanPath)を構築する。
   constructor(
@@ -81,11 +83,14 @@ export class PlanDisplay {
   }
 
   // 計画折れ線を再積分し、表示時刻のゴースト位置と近地点・遠地点アイコンを求め直す。
-  // 起点が null のときは何も求めない — 出さない計画の位置は持たない。
+  // 起点が null のときは何も求めない — 出さない計画の位置は持たない。ship はノードの無い
+  // 唯一の区間を PlanPath が操作対象の予測列として答えるために渡す。
   update(
-    planData: PlanData | null, displayWindow: DisplayWindow, attractorProvider: PlanAttractorProvider, ownerName?: string,
+    planData: PlanData | null, displayWindow: DisplayWindow, celestialBodyProvider: FutureCelestialBodyProvider, ship: Controllable | null,
+    frameAnchors: FrameAnchorSource,
   ): void {
     if (planData === null) {
+      this.path.clear();
       this.ghost = null;
       this.apsisIcons = [];
       this.impactIcons = [];
@@ -93,13 +98,14 @@ export class PlanDisplay {
       return;
     }
     const { simTime, displayTime } = displayWindow;
-    this.attractors = this.ephemeris.attractorsAt(displayTime);
+    this.celestialBodies = this.ephemeris.celestialBodiesAt(displayTime);
     this.path.update(
-      planData, this.ephemeris, displayWindow.frame, simTime, this.attractors, attractorProvider,
-      displayWindow.duration,
+      planData, ship, this.ephemeris, displayWindow.frame, simTime, displayTime, frameAnchors,
+      celestialBodyProvider, displayWindow.duration,
     );
     this.ghost = this.ghostAt(displayTime, simTime);
-    this.apsisIcons = this.apsisIconsOf(ownerName);
+    // 時刻併記の可否・表記は PREDICT パネルの設定(displayWindow 経由)にそのまま従う。
+    this.apsisIcons = this.apsisIconsOf(displayWindow.tickLabelMode, displayWindow.showElementTimes, simTime, ship?.name);
     this.impactIcons = this.impactIconsOf();
     this.tickIcons = this.tickIconsOf(displayWindow.tickLabelMode, simTime);
   }
@@ -167,12 +173,13 @@ export class PlanDisplay {
       this.markerManager.hide('plannedPlayer');
       return;
     }
-    if (overviewMode && isOccluded(cameraPos, this.ghost.pos, this.attractors)) {
+    if (overviewMode && isOccluded(cameraPos, this.ghost.pos, this.celestialBodies)) {
       this.markerManager.fadeOut('plannedPlayer');
       return;
     }
     this.markerManager.setPosition(
       'plannedPlayer', 'mk-planned', ENTITY_GLYPH.ghost, this.ghost.pos, project, this.ghost.label,
+      1, undefined, undefined, false, false, undefined, cameraPos,
     );
   }
 
@@ -181,7 +188,7 @@ export class PlanDisplay {
   // 高度はその位置で最も強く引く天体の表面からの高さ。
   private plannedPlayerLabel(displayTime: number, simTime: number, r: Vec3): string {
     const tRel = displayTime - simTime;
-    const center = strongestAttractor(r, this.attractors);
+    const center = strongestAttractor(r, this.celestialBodies);
     const alt = len(sub(r, center.state.r)) - center.radius;
     if (tRel <= 0) return `計画位置 高度 ${fmtMarkerDist(alt, 0)}`;
     const h = Math.floor(tRel / 3600);
@@ -195,30 +202,33 @@ export class PlanDisplay {
   // 両方揃っているときだけ、2点の中心からの距離比から離心率相当の値を求め、ほぼ円
   // (APSIS_MIN_ECC 未満)なら方向が不定として両方隠す — 片方しか無い場合(双曲線軌道等)は
   // この判定自体を行わず、そのまま出す。
-  private apsisIconsOf(ownerName?: string): readonly ApsisIcon[] {
+  private apsisIconsOf(
+    mode: TickLabelMode, showTime: boolean, nowSimTime: number, ownerName?: string,
+  ): readonly ApsisIcon[] {
     const final = this.path.finalSegment();
     if (!final) return [];
     const pe = final.periapsis;
     const ap = final.apoapsis;
 
-    // 中心天体は極値を検出したときと同じもの(区間が持つ apsisCenter)を使い、その位置だけを
+    // 中心天体は極値ごとに検出時と同じものを使い、その位置だけを
     // 極値の時刻で引き直す — 距離を測る基準が検出時と食い違わないようにするため。
-    const center = final.apsisCenter;
+    const peCenter = final.periapsisCenter;
+    const apCenter = final.apoapsisCenter;
     let peDist = 0;
-    let peCenter: Attractor | null = null;
-    if (pe && center) {
-      peCenter = center;
-      peDist = len(sub(pe.r, this.ephemeris.positionOf(center.id, pe.t)));
+    if (pe && peCenter) {
+      peDist = len(sub(pe.r, this.ephemeris.positionOf(peCenter.id, pe.t)));
     }
     let apDist = 0;
-    let apCenter: Attractor | null = null;
-    if (ap && center) {
-      apCenter = center;
-      apDist = len(sub(ap.r, this.ephemeris.positionOf(center.id, ap.t)));
+    if (ap && apCenter) {
+      apDist = len(sub(ap.r, this.ephemeris.positionOf(apCenter.id, ap.t)));
     }
-    if (pe && ap && (apDist - peDist) / (apDist + peDist) < C.APSIS_MIN_ECC) return [];
+    // 中心天体が遷移の前後で変わる場合、異なる中心からの距離を比較して円軌道と判定しない。
+    if (pe && ap && peCenter && apCenter && peCenter.id === apCenter.id
+      && (apDist - peDist) / (apDist + peDist) < C.APSIS_MIN_ECC) return [];
 
     const namePrefix = ownerName ? (this.path.nodeCount > 0 ? `${ownerName} (計画)` : ownerName) : undefined;
+    const labelWithTime = (base: string, t: number): string =>
+      showTime ? `${base} ${elementTimeLabel(t, mode, nowSimTime)}` : base;
     const icons: ApsisIcon[] = [];
     if (pe && peCenter) {
       const peSpec = getApsisLabelSpec('pe', peCenter.id);
@@ -227,7 +237,7 @@ export class PlanDisplay {
         ownerName: namePrefix,
         pos: this.path.toDisplay(pe.r, pe.t),
         time: pe.t,
-        label: peSpec.short,
+        label: labelWithTime(peSpec.short, pe.t),
       });
     }
     if (ap && apCenter) {
@@ -237,13 +247,13 @@ export class PlanDisplay {
         ownerName: namePrefix,
         pos: this.path.toDisplay(ap.r, ap.t),
         time: ap.t,
-        label: apSpec.short,
+        label: labelWithTime(apSpec.short, ap.t),
       });
     }
     return icons;
   }
 
-  // 天体衝突が検出された地点(区間ごとに高々1つ)。衝突天体は判定そのもの(PlanArc)が
+  // 天体衝突が検出された地点(区間ごとに高々1つ)。衝突天体は判定そのもの(積分弧)が
   // 返したものをそのまま使う — ここで中心天体を引き直すと、判定に使った天体・時刻と
   // 一致しない高度が出かねない。
   private impactIconsOf(): readonly ImpactIcon[] {
@@ -286,10 +296,13 @@ export class PlanDisplay {
       const icon = this.apsisIcons.find((m) => m.id === key);
       if (!icon) {
         this.markerManager.hide(key);
-      } else if (overviewMode && isOccluded(cameraPos, icon.pos, this.attractors)) {
+      } else if (overviewMode && isOccluded(cameraPos, icon.pos, this.celestialBodies)) {
         this.markerManager.fadeOut(key);
       } else {
-        this.markerManager.setPosition(key, 'mk-apsis', ORBIT_POINT_GLYPH.apsis, icon.pos, project, icon.label);
+        this.markerManager.setPosition(
+          key, 'mk-apsis', ORBIT_POINT_GLYPH.apsis, icon.pos, project, icon.label,
+          1, undefined, undefined, false, false, undefined, cameraPos,
+        );
       }
     }
   }
@@ -300,10 +313,13 @@ export class PlanDisplay {
       const icon = this.impactIcons.find((m) => m.key === key);
       if (!icon) {
         this.markerManager.hide(key);
-      } else if (overviewMode && isOccluded(cameraPos, icon.pos, this.attractors)) {
+      } else if (overviewMode && isOccluded(cameraPos, icon.pos, this.celestialBodies)) {
         this.markerManager.fadeOut(key);
       } else {
-        this.markerManager.setPosition(key, 'mk-impact', ORBIT_POINT_GLYPH.impact, icon.pos, project, icon.label);
+        this.markerManager.setPosition(
+          key, 'mk-impact', ORBIT_POINT_GLYPH.impact, icon.pos, project, icon.label,
+          1, undefined, undefined, false, false, undefined, cameraPos,
+        );
       }
     }
   }
@@ -323,7 +339,7 @@ export class PlanDisplay {
     for (const rank of ranksDesc) {
       for (let i = 0; i < n; i++) {
         if (icons[i]!.rank !== rank || !projected[i]!.front
-          || (overviewMode && isOccluded(cameraPos, icons[i]!.pos, this.attractors))) continue;
+          || (overviewMode && isOccluded(cameraPos, icons[i]!.pos, this.celestialBodies))) continue;
         if (this.isFarFromShown(projected, shown, i, minPxSq)) shown[i] = true;
       }
     }
@@ -340,7 +356,7 @@ export class PlanDisplay {
 
     for (let i = 0; i < n; i++) {
       const icon = icons[i]!;
-      const occluded = overviewMode && isOccluded(cameraPos, icon.pos, this.attractors);
+      const occluded = overviewMode && isOccluded(cameraPos, icon.pos, this.celestialBodies);
       if (!shown[i] || occluded) {
         if (occluded) this.markerManager.fadeOut(icon.key);
         else this.markerManager.hide(icon.key);

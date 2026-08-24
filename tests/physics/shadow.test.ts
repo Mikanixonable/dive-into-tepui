@@ -2,19 +2,19 @@
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { sunlitFactor } from '../../src/physics/shadow';
-import { Attractor } from '../../src/physics/attractor';
+import { CelestialBody } from '../../src/physics/celestial-body';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, MU_MOON, MU_SUN, R_EARTH, R_MOON, R_SUN } from '../../src/physics/solar-system';
 import { len, sub, v3 } from '../../src/physics/vec3';
 
 const AU = 1.495978707e11;
 
-function star(x: number): Attractor {
-  return { id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState(0, v3(x, 0, 0), v3(0, 0, 0)), degree2: null, isStar: true };
+function star(x: number): CelestialBody {
+  return { id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState(0, v3(x, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, isStar: true };
 }
 
-function body(id: string, mu: number, radius: number, x: number): Attractor {
-  return { id, mu, radius, state: kinematicState(0, v3(x, 0, 0), v3(0, 0, 0)), degree2: null, isStar: false };
+function body(id: string, mu: number, radius: number, x: number): CelestialBody {
+  return { id, mu, radius, state: kinematicState(0, v3(x, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, isStar: false };
 }
 
 export function register(): void {

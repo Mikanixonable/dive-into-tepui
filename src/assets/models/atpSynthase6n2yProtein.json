@@ -1,0 +1,504 @@
+{
+  "schemaVersion": 1,
+  "id": "pdb-6n2y-atp-synthase",
+  "source": {
+    "pdbId": "6N2Y",
+    "structureFile": "src/assets/models/atpSynthase6n2yBackbone.json",
+    "citation": "Bacillus PS3 ATP synthase class 1"
+  },
+  "coordinateScale": 0.025,
+  "integrity": {
+    "maxHp": 320
+  },
+  "actions": [],
+  "bonds": [],
+  "ligands": [],
+  "components": [
+    {
+      "id": "f1-alpha",
+      "chains": [
+        "A",
+        "B",
+        "C"
+      ],
+      "entities": [
+        1
+      ],
+      "role": "F1 alpha subunits",
+      "source": "deposited entity"
+    },
+    {
+      "id": "f1-beta",
+      "chains": [
+        "D",
+        "E",
+        "F"
+      ],
+      "entities": [
+        2
+      ],
+      "role": "F1 beta subunits",
+      "source": "deposited entity"
+    },
+    {
+      "id": "f1-gamma",
+      "chains": [
+        "G"
+      ],
+      "entities": [
+        3
+      ],
+      "role": "F1 gamma subunit",
+      "source": "deposited entity"
+    },
+    {
+      "id": "f1-delta",
+      "chains": [
+        "H"
+      ],
+      "entities": [
+        4
+      ],
+      "role": "F1 delta subunit",
+      "source": "deposited entity"
+    },
+    {
+      "id": "peripheral-stalk-epsilon",
+      "chains": [
+        "I"
+      ],
+      "entities": [
+        5
+      ],
+      "role": "Peripheral stalk epsilon subunit",
+      "source": "deposited entity"
+    },
+    {
+      "id": "peripheral-stalk-b",
+      "chains": [
+        "J"
+      ],
+      "entities": [
+        6
+      ],
+      "role": "Peripheral stalk b subunit",
+      "source": "deposited entity"
+    },
+    {
+      "id": "peripheral-stalk-d",
+      "chains": [
+        "K"
+      ],
+      "entities": [
+        7
+      ],
+      "role": "Peripheral stalk d subunit",
+      "source": "deposited entity"
+    },
+    {
+      "id": "membrane-subunit-a",
+      "chains": [
+        "L"
+      ],
+      "entities": [
+        8
+      ],
+      "role": "Membrane subunit a",
+      "source": "deposited entity"
+    },
+    {
+      "id": "membrane-subunit-atp6",
+      "chains": [
+        "M",
+        "N",
+        "O",
+        "P",
+        "Q",
+        "R",
+        "S",
+        "T",
+        "U",
+        "V"
+      ],
+      "entities": [
+        9
+      ],
+      "role": "ATP synthase membrane subunits",
+      "source": "deposited entity"
+    }
+  ],
+  "sites": [],
+  "modificationSlots": [],
+  "motion": {
+    "model": "overdamped-normal-modes",
+    "sampleHz": 30,
+    "visualGain": 4,
+    "modes": [
+      {
+        "id": "mode-1",
+        "relaxationRate": 0.45,
+        "rmsAmplitude": 1.2,
+        "components": [
+          {
+            "componentId": "f1-alpha",
+            "translation": [
+              -0.40409,
+              0.239264,
+              -0.332421
+            ]
+          },
+          {
+            "componentId": "f1-beta",
+            "translation": [
+              -0.427089,
+              0.252595,
+              -0.369016
+            ]
+          },
+          {
+            "componentId": "f1-gamma",
+            "translation": [
+              -0.480466,
+              0.281032,
+              -0.46638
+            ]
+          },
+          {
+            "componentId": "f1-delta",
+            "translation": [
+              -0.470819,
+              0.259101,
+              -0.494482
+            ]
+          },
+          {
+            "componentId": "peripheral-stalk-epsilon",
+            "translation": [
+              -0.161841,
+              0.096092,
+              -0.110676
+            ]
+          },
+          {
+            "componentId": "peripheral-stalk-b",
+            "translation": [
+              0.567118,
+              -0.336107,
+              0.751937
+            ]
+          },
+          {
+            "componentId": "peripheral-stalk-d",
+            "translation": [
+              0.4929,
+              -0.30083,
+              0.611115
+            ]
+          },
+          {
+            "componentId": "membrane-subunit-a",
+            "translation": [
+              0.608168,
+              -0.329895,
+              0.631963
+            ]
+          },
+          {
+            "componentId": "membrane-subunit-atp6",
+            "translation": [
+              0.276118,
+              -0.161252,
+              -0.222039
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mode-2",
+        "relaxationRate": 0.485453,
+        "rmsAmplitude": 1.155351,
+        "components": [
+          {
+            "componentId": "f1-alpha",
+            "translation": [
+              0.144716,
+              -0.515154,
+              -0.308571
+            ]
+          },
+          {
+            "componentId": "f1-beta",
+            "translation": [
+              0.15773,
+              -0.542523,
+              -0.353153
+            ]
+          },
+          {
+            "componentId": "f1-gamma",
+            "translation": [
+              0.215686,
+              -0.578166,
+              -0.493917
+            ]
+          },
+          {
+            "componentId": "f1-delta",
+            "translation": [
+              0.211626,
+              -0.529117,
+              -0.504575
+            ]
+          },
+          {
+            "componentId": "peripheral-stalk-epsilon",
+            "translation": [
+              0.102359,
+              -0.236039,
+              -0.144276
+            ]
+          },
+          {
+            "componentId": "peripheral-stalk-b",
+            "translation": [
+              -0.282769,
+              0.617617,
+              0.707391
+            ]
+          },
+          {
+            "componentId": "peripheral-stalk-d",
+            "translation": [
+              -0.318495,
+              0.462938,
+              0.638419
+            ]
+          },
+          {
+            "componentId": "membrane-subunit-a",
+            "translation": [
+              -0.31877,
+              0.701525,
+              0.637376
+            ]
+          },
+          {
+            "componentId": "membrane-subunit-atp6",
+            "translation": [
+              0.087918,
+              0.618919,
+              -0.178694
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mode-3",
+        "relaxationRate": 0.517693,
+        "rmsAmplitude": 1.118797,
+        "components": [
+          {
+            "componentId": "f1-alpha",
+            "translation": [
+              -0.447225,
+              -0.387524,
+              0.142144
+            ]
+          },
+          {
+            "componentId": "f1-beta",
+            "translation": [
+              -0.478927,
+              -0.410758,
+              0.166955
+            ]
+          },
+          {
+            "componentId": "f1-gamma",
+            "translation": [
+              -0.567888,
+              -0.460618,
+              0.280751
+            ]
+          },
+          {
+            "componentId": "f1-delta",
+            "translation": [
+              -0.573783,
+              -0.449347,
+              0.238098
+            ]
+          },
+          {
+            "componentId": "peripheral-stalk-epsilon",
+            "translation": [
+              -0.270184,
+              -0.156933,
+              0.108559
+            ]
+          },
+          {
+            "componentId": "peripheral-stalk-b",
+            "translation": [
+              0.594394,
+              0.474279,
+              -0.370181
+            ]
+          },
+          {
+            "componentId": "peripheral-stalk-d",
+            "translation": [
+              0.531446,
+              0.344997,
+              -0.400313
+            ]
+          },
+          {
+            "componentId": "membrane-subunit-a",
+            "translation": [
+              0.743722,
+              0.558663,
+              -0.367114
+            ]
+          },
+          {
+            "componentId": "membrane-subunit-atp6",
+            "translation": [
+              0.468445,
+              0.487241,
+              0.201102
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mode-4",
+        "relaxationRate": 0.712858,
+        "rmsAmplitude": 0.953424,
+        "components": [
+          {
+            "componentId": "f1-alpha",
+            "translation": [
+              -0.137891,
+              0.024255,
+              0.233647
+            ]
+          },
+          {
+            "componentId": "f1-beta",
+            "translation": [
+              -0.127165,
+              0.023569,
+              0.231834
+            ]
+          },
+          {
+            "componentId": "f1-gamma",
+            "translation": [
+              0.044074,
+              0.03352,
+              0.000087
+            ]
+          },
+          {
+            "componentId": "f1-delta",
+            "translation": [
+              0.197767,
+              0.050971,
+              -0.239884
+            ]
+          },
+          {
+            "componentId": "peripheral-stalk-epsilon",
+            "translation": [
+              -0.288218,
+              0.028826,
+              0.285952
+            ]
+          },
+          {
+            "componentId": "peripheral-stalk-b",
+            "translation": [
+              -0.258249,
+              -0.036464,
+              -0.012382
+            ]
+          },
+          {
+            "componentId": "peripheral-stalk-d",
+            "translation": [
+              -0.281105,
+              -0.020009,
+              0.064284
+            ]
+          },
+          {
+            "componentId": "membrane-subunit-a",
+            "translation": [
+              -0.05746,
+              -0.030814,
+              -0.151671
+            ]
+          },
+          {
+            "componentId": "membrane-subunit-atp6",
+            "translation": [
+              0.908247,
+              -0.073855,
+              -0.411866
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "generated": {
+    "backend": "existing-backbone",
+    "backboneCount": 4713,
+    "secondaryKinds": [
+      "coil",
+      "helix",
+      "sheet"
+    ],
+    "chains": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F",
+      "G",
+      "H",
+      "I",
+      "J",
+      "K",
+      "L",
+      "M",
+      "N",
+      "O",
+      "P",
+      "Q",
+      "R",
+      "S",
+      "T",
+      "U",
+      "V"
+    ],
+    "entities": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "modalDerivation": {
+      "model": "rigid-domain-anisotropic-elastic-network",
+      "contactCutoffAngstrom": 12,
+      "modeCount": 4
+    }
+  }
+}

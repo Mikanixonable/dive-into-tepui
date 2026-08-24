@@ -9,11 +9,10 @@ import { createGameScene, GameScene } from './render/scene';
 import { PerfMeter } from './perf-meter';
 import { FrameSections } from './frame-sections';
 import { GpuTimings } from './gpu-timings';
-import { GraphicsSettings } from './render/graphics-settings';
+import { GraphicsSettings, type GraphicsSettingsData } from './render/graphics-settings';
 import { RenderPipeline } from './render/pipeline/render-pipeline';
 import { Hud } from './game/hud/hud';
-import { PauseMenu } from './game/hud/pause-menu';
-import { SettingsView } from './game/hud/settings-view';
+import { PauseMenu, SettingsView, SaveBrowser } from './game/hud/windows';
 import { AudioEngine } from './audio/audio-engine';
 import { Bgm } from './audio/bgm/bgm';
 import { UiSfx } from './audio/sfx/ui-sfx';
@@ -24,14 +23,13 @@ import { SaveSlots } from './game/save/save-slots';
 import { SnapshotService } from './game/save/snapshot-service';
 import { AutoSave } from './game/save/autosave';
 import { migrateLegacySave } from './game/save/legacy-save';
-import { SaveBrowser } from './game/hud/save-browser';
 import { SnapshotControls } from './snapshot-controls';
 import { Launcher } from './launcher';
 import { showLoading, hideLoading } from './loading-overlay';
 import { showFatalError } from './fatal-error';
 
 // ローディング表示下で canvas を作り WebGPU シーンを初期化する
-async function initScene(graphics: GraphicsSettings): Promise<GameScene> {
+async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
   showLoading();
   const canvas = document.createElement('canvas');
   document.body.appendChild(canvas);
@@ -43,7 +41,8 @@ async function initScene(graphics: GraphicsSettings): Promise<GameScene> {
 
 // rAF ループを起動する。フレームで例外が起きたらループを止める。
 function startAnimationLoop(
-  launcher: Launcher, perf: PerfMeter, sections: FrameSections, gpu: GpuTimings, autoSave: AutoSave,
+  launcher: Launcher, graphics: GraphicsSettings, perf: PerfMeter, sections: FrameSections,
+  gpu: GpuTimings, autoSave: AutoSave,
   snapshotControls: SnapshotControls,
 ): void {
   let lastTime = performance.now();
@@ -61,7 +60,7 @@ function startAnimationLoop(
     const t0 = perf.on ? performance.now() : 0;
     try {
       sections.beginFrame();
-      game.update(dt);
+      game.update(dt, graphics.current);
       sections.endFrame();
       // このフレームで Game が消費しなかった入力エッジだけが残っている。
       snapshotControls.handleInput(game.input, game);
@@ -75,7 +74,7 @@ function startAnimationLoop(
       autoSave.update(game);
       launcher.update();
       const t1 = perf.on ? performance.now() : 0;
-      game.sync();
+      game.sync(graphics.current);
       const t2 = perf.on ? performance.now() : 0;
       game.render();
       const t3 = perf.on ? performance.now() : 0;
@@ -109,7 +108,7 @@ function startAnimationLoop(
 // 使えるべきなので、Game より先に main.ts が生成して所有し、Launcher には参照として渡す。
 // pauseMenu も同様に main.ts が所有し、開閉に応じた一時停止の反映
 // (launcher.current?.pause()/resume())も持ち主である main.ts がここで配線する。
-// pipeline はここで組む PauseMenu の描画タブ(GraphicsPanel)がデバッグ表示の選択を書き込む先。
+// pipeline はここで組む SettingsView の描画面(GraphicsPanel)がデバッグ表示の選択を書き込む先。
 function initHud(graphics: GraphicsSettings, pipeline: RenderPipeline): {
   hud: Hud; audioEngine: AudioEngine; bgm: Bgm; worldSfx: WorldSfx; uiSfx: UiSfx;
   pauseMenu: PauseMenu; settingsView: SettingsView;
@@ -119,8 +118,8 @@ function initHud(graphics: GraphicsSettings, pipeline: RenderPipeline): {
   const bgm = new Bgm(audioEngine);
   const worldSfx = new WorldSfx(audioEngine);
   const uiSfx = new UiSfx(audioEngine);
-  const pauseMenu = new PauseMenu(hud.layers.system, hud.overlayManager, graphics, pipeline);
-  const settingsView = new SettingsView(hud.layers.system, hud.overlayManager, bgm);
+  const pauseMenu = new PauseMenu(hud.layers.system, hud.overlayManager);
+  const settingsView = new SettingsView(hud.layers.system, hud.overlayManager, bgm, graphics, pipeline);
   pauseMenu.setBgmVolume(bgm.getVolume());
   pauseMenu.onBgmVolumeChange = (vol) => bgm.setVolume(vol);
   return { hud, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView };
@@ -143,15 +142,17 @@ async function main() {
   const slots = initSaveSlots(saveStore);
   const snapshotService = new SnapshotService(saveStore, slots);
   const graphics = new GraphicsSettings();
-  const gs = await initScene(graphics);
+  const gs = await initScene(graphics.current);
+  // 解像度倍率の押し出し先の登録は、設定を持っている側の配線。
+  graphics.bindResolutionTarget(gs);
   const gpu = new GpuTimings(gs.renderer);
-  const pipeline = new RenderPipeline(gs.renderer, graphics, gpu);
+  const pipeline = new RenderPipeline(gs.renderer, graphics.current, gpu);
   const { hud, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView } = initHud(graphics, pipeline);
   const sections = new FrameSections();
 
   const launcher = new Launcher(
     hud, gs, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView, unlockmanager, sections,
-    graphics, pipeline, slots, snapshotService,
+    pipeline, slots, snapshotService,
   );
 
 
@@ -175,7 +176,7 @@ async function main() {
   saveBrowser.onSlotSwitched = () => launcher.switchSlot();
   saveBrowser.onLoadSnapshot = (id) => launcher.loadSnapshot(id);
   // 設定メニューと一覧は同じシステム窓の帯にいるので、片方を開くときもう片方は閉じる。
-  pauseMenu.onOpenSnapshots = () => {
+  pauseMenu.onOpenSaveBrowser = () => {
     pauseMenu.toggle(false);
     saveBrowser.open();
   };
@@ -188,10 +189,11 @@ async function main() {
   };
 
   const snapshotControls = new SnapshotControls(hud, pauseMenu, saveBrowser, snapshotService);
+  pauseMenu.onSave = () => snapshotControls.captureManual(launcher.current);
 
   await launcher.start();
 
-  startAnimationLoop(launcher, perf, sections, gpu, new AutoSave(snapshotService), snapshotControls);
+  startAnimationLoop(launcher, graphics, perf, sections, gpu, new AutoSave(snapshotService), snapshotControls);
 }
 
 main().catch((err) => {

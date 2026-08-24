@@ -46,7 +46,31 @@ export function equatorBasisToEci(axis: Vec3): Quat {
   return qFromForwardUp(axis, cross(axis, spinPhaseRef(axis)))!;
 }
 
+// 自転軸 axis・自転位相 spinAngle の天体に固定した座標系(z = 自転軸、x = 本初子午線の向き)
+// から ECI への回転。参照フレームの自転回転系の姿勢に使う。
+export function meridianBasisToEci(axis: Vec3, spinAngle: number): Quat {
+  // up は自転軸に直交するように組むので、qFromForwardUp の退化条件には当たらない。
+  return qFromForwardUp(axis, cross(axis, meridianDirection(axis, spinAngle)))!;
+}
+
 // 自転軸と自転位相から組む天体の姿勢。モデル座標の +Y が自転軸、+Z が本初子午線を向く。
 export function spinOrientation(axis: Vec3, spinAngle: number): Quat | null {
   return qFromForwardUp(meridianDirection(axis, spinAngle), axis);
+}
+
+// 天体固定の緯度 [rad](北極方向が正)・経度 [rad, (-pi, pi]、本初子午線から自転方向へ測る)。
+export interface LatLon {
+  readonly latRad: number;
+  readonly lonRad: number;
+}
+
+// position(天体中心相対、ECI)を、自転軸 axis・自転位相 spinAngle の天体表面座標へ変換する。
+// 経度は本初子午線(meridianDirection)を 0 とし、自転が進む向き(cross(axis, meridian))を正に取る。
+export function latLonOf(position: Vec3, axis: Vec3, spinAngle: number): LatLon {
+  const r = norm(position);
+  const latRad = Math.asin(Math.max(-1, Math.min(1, dot(r, axis))));
+  const meridian = meridianDirection(axis, spinAngle);
+  const east = cross(axis, meridian);
+  const lonRad = Math.atan2(dot(r, east), dot(r, meridian));
+  return { latRad, lonRad };
 }

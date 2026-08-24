@@ -2,14 +2,14 @@
 // 折れ線走査/隣接ステップ判定が解析値と十分一致することを確認する。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import { Attractor } from '../../src/physics/attractor';
-import { apsisCrossing, findEquatorCrossings } from '../../src/physics/trajectory-features';
+import { CelestialBody } from '../../src/physics/celestial-body';
+import { apsisCrossing, ApsisTrack, findEquatorCrossings } from '../../src/physics/trajectory-features';
 import { keplerPeriod, stateFromOrbitalElements, trueAnomalyFromMean } from '../../src/physics/elements';
 import { kinematicState, KinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
 import { len, sub, v3 } from '../../src/physics/vec3';
 
-const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), degree2: null, isStar: false };
+const EARTH: CelestialBody = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, isStar: false };
 
 // a/e/inc/raan/argp のケプラー軌道を、真近点角を等間隔に刻んで(粗く)サンプリングする。
 // 開始位相をわずかにずらすのは、近地点(nu=0)ぴったりが列の端に来ると走査が端点を
@@ -87,13 +87,74 @@ export function register(): void {
     assert.equal(apsisCrossing(EARTH, prev, next), null);
   });
 
+  // 2周回ぶんの近地点・遠地点をまたぐステップ対を、時刻昇順(m=0 の近地点→m=π の遠地点→
+  // m=2π の近地点→m=3π の遠地点)で作る。
+  const apsisStepPairs = (): readonly (readonly [KinematicState, KinematicState])[] =>
+    [-dm, Math.PI - dm, 2 * Math.PI - dm, 3 * Math.PI - dm].map((m0) => [
+      stateAtMeanAnomaly(a, e, incDeg, raan, argp, m0),
+      stateAtMeanAnomaly(a, e, incDeg, raan, argp, m0 + 2 * dm),
+    ] as const);
+
+  test('trajectory-features: ApsisTrack accumulates periapsis/apoapsis in ascending time order and answers the first', () => {
+    const pairs = apsisStepPairs();
+    const track = new ApsisTrack();
+    for (const [prev, next] of pairs) track.observe(EARTH, prev, next);
+
+    const expectedFirstPeriapsis = apsisCrossing(EARTH, ...pairs[0]!)!.state;
+    const expectedFirstApoapsis = apsisCrossing(EARTH, ...pairs[1]!)!.state;
+    assert.deepEqual(track.periapsis, expectedFirstPeriapsis);
+    assert.deepEqual(track.apoapsis, expectedFirstApoapsis);
+    assert.ok(track.periapsis!.t < track.apoapsis!.t, 'periapsis should precede apoapsis in time');
+  });
+
+  test('trajectory-features: ApsisTrack keeps the center used by each extremum', () => {
+    const pairs = apsisStepPairs();
+    const moon: CelestialBody = { ...EARTH, id: 'moon' };
+    const track = new ApsisTrack();
+    track.observe(EARTH, ...pairs[0]!);
+    track.observe(moon, ...pairs[1]!);
+
+    assert.equal(track.periapsisCenter?.id, 'earth');
+    assert.equal(track.apoapsisCenter?.id, 'moon');
+    assert.equal(track.center?.id, 'moon');
+  });
+
+  test('trajectory-features: ApsisTrack.dropBefore drops earlier extrema and promotes the next one to the front', () => {
+    const period = keplerPeriod(a, MU_EARTH);
+    const pairs = apsisStepPairs();
+    const track = new ApsisTrack();
+    for (const [prev, next] of pairs) track.observe(EARTH, prev, next);
+
+    const expectedSecondPeriapsis = apsisCrossing(EARTH, ...pairs[2]!)!.state;
+    const expectedSecondApoapsis = apsisCrossing(EARTH, ...pairs[3]!)!.state;
+    // 1つめの近地点(t≈0)・遠地点(t≈period/2)は落ち、2つめ(t≈period, t≈1.5period)が先頭になる。
+    track.dropBefore(period * 0.75);
+    assert.deepEqual(track.periapsis, expectedSecondPeriapsis);
+    assert.deepEqual(track.apoapsis, expectedSecondApoapsis);
+  });
+
+  test('trajectory-features: ApsisTrack answers null with no observations or no crossings observed', () => {
+    const track = new ApsisTrack();
+    assert.equal(track.periapsis, null);
+    assert.equal(track.apoapsis, null);
+
+    // 遠地点手前でまだ遠ざかり続けている脚 — 符号反転がなく極値が見つからない対。
+    track.observe(
+      EARTH,
+      stateAtMeanAnomaly(a, e, incDeg, raan, argp, Math.PI / 4),
+      stateAtMeanAnomaly(a, e, incDeg, raan, argp, Math.PI / 2),
+    );
+    assert.equal(track.periapsis, null);
+    assert.equal(track.apoapsis, null);
+  });
+
   test('trajectory-features: findEquatorCrossings finds ascending/descending nodes at zero latitude with the correct sign', () => {
     const a2 = R_EARTH + 500e3;
     const e2 = 0.01;
     const inc2 = 51.6;
     const samples = sampleKeplerOrbit(a2, e2, inc2, 0, 0, 36);
     const pole = v3(0, 1, 0);
-    const { ascending, descending } = findEquatorCrossings(samples, EARTH, pole);
+    const { ascending, descending } = findEquatorCrossings(samples, () => EARTH.state.r, pole);
     assert.ok(ascending && descending, 'both nodes should be found');
     const scale = len(sub(ascending!.r, EARTH.state.r));
     assert.ok(Math.abs(ascending!.r.y) / scale < 1e-3, `ascending node should sit at zero latitude: y=${ascending!.r.y}`);

@@ -1,22 +1,12 @@
-// 自機の位置・姿勢だけから決まる HUD マーカー。戦闘ビューでは軌道基準の方向マーカーと
-// 機首ボアサイト、広範囲視点では自機位置マーカーを出す。
+// 自機の姿勢だけから決まる戦闘ビュー専用 HUD マーカー(軌道基準の方向マーカーと機首ボアサイト)。
+// マップ上の自機位置マーカーは他の船と同じく Targeter → GroupedMarkers が描く。
 import { Attitude, qRotate } from '../../physics/attitude';
-import { KinematicState, orbitAxes } from '../../physics/kinematic-state';
-import { scale, v3, type Vec3 } from '../../physics/vec3';
-import type { ProjectFn, ScaleFn } from '../camera/camera-system';
+import { KinematicState, kinematicState, orbitAxes } from '../../physics/kinematic-state';
+import { scale, sub, v3 } from '../../physics/vec3';
+import type { OrbitReference } from '../orbit-reference';
+import type { ProjectFn } from '../camera/camera-system';
 import type { MarkerManager } from '../marker/marker-manager';
-import { DIRECTION_GLYPH, ENTITY_GLYPH } from '../marker/marker-glyphs';
-import type { Attractor } from '../../physics/attractor';
-import type { CelestialRegistry } from '../../physics/solar-system';
-import * as C from '../const';
-import { isPositionInFocusedSystem } from '../celestial/body-visibility';
-import { findNearestPlanet } from '../celestial/planet-distance';
-import type { MapVisibility } from '../celestial/map-visibility';
-import { isOccluded } from '../../physics/occlusion';
-import type { ReferenceFrame } from '../../physics/frame';
-import type { Ephemeris } from '../../physics/ephemeris';
-
-import type { Ship } from '../game-entity/ship';
+import { DIRECTION_GLYPH } from '../marker/marker-glyphs';
 
 // 戦闘ビュー専用のマーカー(広範囲視点ではまとめて隠す)。
 const COMBAT_KEYS = ['pro', 'retro', 'nrm', 'anm', 'radout', 'radin', 'bore'] as const;
@@ -25,92 +15,37 @@ export class PlayerMarkers {
   constructor(
     private readonly markerManager: MarkerManager,
     private readonly id: string,
-    private readonly owner?: Ship,
   ) { }
 
-  // currentState: 現在の自機状態(方向マーカー・ボアサイト用)。
-  // displayState: スライダー位置の状態(null なら予測期間超過)、▲ マーカー用。
-  // 表示名は改名可能なので毎フレーム引数で受け取り、保持しない。
+  // 戦闘ビューかつ操作対象のときだけ軌道軸・ボアサイトを出す。マップビューでは既存の
+  // 戦闘ビュー用マーカーを片付けるだけで、自機位置マーカー自体は描かない。
   sync(
-    currentState: KinematicState, displayState: KinematicState | null, att: Attitude,
-    overviewMode: boolean, isActive: boolean, cameraPos: Vec3, project: ProjectFn, scaleFn: ScaleFn,
-    name: string, rounds = 0, _reloadTimer = 0, beltLinks = 0, muzzleSpeed = 0, focusId?: string,
-    registry?: CelestialRegistry, attractors: readonly Attractor[] = [], visibility: MapVisibility | null = null,
-    frame?: ReferenceFrame, displayTime?: number, ephemeris?: Ephemeris,
+    currentState: KinematicState, att: Attitude, overviewMode: boolean, isActive: boolean, project: ProjectFn,
+    rounds = 0, beltLinks = 0, muzzleSpeed = 0, orbitRef?: OrbitReference,
   ): void {
-    const selfKey = `self-${this.id}`;
-    const nearbyLabelKey = `${selfKey}-planet-label`;
-
     if (overviewMode) {
-      if (isActive) {
-        for (const key of COMBAT_KEYS) this.markerManager.hide(`${key}-${this.id}`);
-      }
-      if (displayState && (!registry || isPositionInFocusedSystem(registry, focusId, displayState.r, attractors))
-        && (!visibility || visibility.pickable)) {
-        const color = isActive ? 'var(--accent)' : undefined;
-        const nearestPlanet = registry === undefined ? undefined : findNearestPlanet(displayState.r, registry, attractors);
-        const nearPlanet = nearestPlanet !== undefined
-          && nearestPlanet !== null && nearestPlanet.distance <= C.MAP_PLANET_SHIP_LABEL_END;
-        const fadedOpacity = nearPlanet
-          ? Math.max(0, Math.min(1, (C.MAP_PLANET_SHIP_LABEL_END - nearestPlanet.distance)
-            / (C.MAP_PLANET_SHIP_LABEL_END - C.MAP_PLANET_SHIP_LABEL_START)))
-          : 1;
-        if (nearestPlanet !== undefined && nearestPlanet !== null && nearestPlanet.distance > C.MAP_PLANET_SHIP_LABEL_END) {
-          this.markerManager.hide(selfKey);
-          const planetOccluded = isOccluded(cameraPos, nearestPlanet.attractor.state.r, attractors);
-          if (visibility?.label !== false && !planetOccluded) {
-            this.markerManager.setPosition(
-              nearbyLabelKey, 'mk-planet-nearby-label', '', nearestPlanet.attractor.state.r, project,
-              `${ENTITY_GLYPH.ship}${name}`, 1, color,
-            );
-          } else if (visibility?.label !== false) {
-            this.markerManager.fadeOut(nearbyLabelKey);
-          } else {
-            this.markerManager.hide(nearbyLabelKey);
-          }
-        } else {
-          this.markerManager.hide(nearbyLabelKey);
-          const shipOccluded = isOccluded(cameraPos, displayState.r, attractors);
-          if (fadedOpacity > 0 && !shipOccluded) {
-            const rotationDeg = this.markerManager.headingRotationDeg(displayState.r, displayState.v, project, scaleFn, attractors, frame, displayTime, ephemeris);
-            const sym = visibility?.icon === false ? '' : (overviewMode && this.owner ? this.owner.headingHpMarkerSvg() : (this.owner ? this.owner.hpMarkerSvg() : ENTITY_GLYPH.ship));
-            const symMarkup = overviewMode && !!this.owner;
-            this.markerManager.setPosition(
-              selfKey, 'mk-self', sym, displayState.r, project,
-              isActive && visibility?.label !== false ? name : '', fadedOpacity, color, rotationDeg,
-              symMarkup,
-            );
-          } else if (fadedOpacity > 0 && shipOccluded) {
-            this.markerManager.fadeOut(selfKey);
-          } else {
-            this.markerManager.hide(selfKey);
-          }
-        }
-      } else {
-        this.markerManager.hide(selfKey);
-        this.markerManager.hide(nearbyLabelKey);
-      }
+      if (isActive) for (const key of COMBAT_KEYS) this.markerManager.hide(`${key}-${this.id}`);
       return;
     }
-    this.markerManager.hide(selfKey);
-    
-    if (isActive) {
-      this.syncOrbitAxes(currentState, project);
-      this.syncBoresight(currentState, att, project, rounds, beltLinks, muzzleSpeed);
-    }
+    if (!isActive) return;
+    this.syncOrbitAxes(currentState, project, orbitRef);
+    this.syncBoresight(currentState, att, project, rounds, beltLinks, muzzleSpeed);
   }
 
   // キーは艦ごとに一意で増え続けるため、hide ではなく remove で DOM ごと片付ける。
   dispose(): void {
     for (const key of COMBAT_KEYS) this.markerManager.remove(`${key}-${this.id}`);
-    this.markerManager.remove(`self-${this.id}`);
-    this.markerManager.remove(`self-${this.id}-planet-label`);
   }
 
   // prograde/retrograde/normal/antinormal/radial in-out の6方向マーカーを配置する。
-  private syncOrbitAxes(state: KinematicState, project: ProjectFn): void {
+  // 方向は orbitRef が指す基準(未指定なら ECI = 地球基準)に対する相対 r/v から求める——
+  // マーカーの設置位置(pr)は常に艦の絶対位置のまま変わらない。
+  private syncOrbitAxes(state: KinematicState, project: ProjectFn, orbitRef?: OrbitReference): void {
     const pr = state.r;
-    const { pro: proDir, nrm: nrmDir, radOut: radDir } = orbitAxes(state);
+    const relState = orbitRef
+      ? kinematicState(state.t, sub(state.r, orbitRef.state.r), sub(state.v, orbitRef.state.v))
+      : state;
+    const { pro: proDir, nrm: nrmDir, radOut: radDir } = orbitAxes(relState);
 
     this.markerManager.setDirection(`pro-${this.id}`, 'mk-pro', DIRECTION_GLYPH.prograde, pr, proDir, project, 'PROGRADE');
     this.markerManager.setDirection(`retro-${this.id}`, 'mk-retro', DIRECTION_GLYPH.retrograde, pr, scale(proDir, -1), project, 'RETROGRADE');

@@ -1,11 +1,12 @@
-import { add, addScaled, dot, lenSq, norm, scale, sub, v3, Vec3 } from '../physics/vec3';
-import { Attractor } from '../physics/attractor';
+import { add, addScaled, dot, len, lenSq, norm, scale, sub, v3, Vec3 } from '../physics/vec3';
+import { CelestialBody } from '../physics/celestial-body';
 import * as C from './const';
 import { Enemy } from './game-entity/enemy';
 import { Base } from './game-entity/base';
+import type { AmmoPickup } from './game-entity/ammo-pickup';
+import type { RcsFuelPickup } from './game-entity/rcs-fuel-pickup';
 import type { EntityManager } from './simulation/entity-manager';
 import { Player } from './player/player';
-import { Hud } from './hud/hud';
 import { Input, PointerPoint } from './input/input';
 import { CameraSystem, ProjectFn } from './camera/camera-system';
 import type { GroupedMarkerItem } from './marker/grouped-markers';
@@ -14,70 +15,53 @@ import { DIRECTION_GLYPH } from './marker/marker-glyphs';
 import { pickNearest } from './map-pickable';
 import { pickRadiusSq } from './input/pointer-precision';
 import type { Ephemeris } from '../physics/ephemeris';
+import type { FrameAnchorSource } from '../physics/frame';
 import type { DisplayWindow } from './display-window-manager';
 import { KEY_MAPPING as K } from './input/key-mapping';
-import type { MapVisibilityPolicy } from './celestial/map-visibility';
+import type { MapVisibility, MapVisibilityPolicy } from './celestial/map-visibility';
 import { mapPlanetFadeOpacity, nearestPlanetDistance } from './celestial/planet-distance';
 import { isOccluded } from '../physics/occlusion';
+import type { NavTarget } from './nav-target';
 
 export type CombatTarget = Enemy | Player | Base;
 
-// マーカー上での対象の役割。第一/第二ターゲットは色と字形が変わる。
-export type MarkerRole = 'none' | 'primary' | 'secondary';
+// マーカー上での対象の役割。ターゲットは色と字形が変わる。
+export type MarkerRole = 'none' | 'primary';
+
+// 自機からの距離が MAP_AMMO_FADE_END を超えるとマップ上で見えなくなる(近くの弾薬だけ拾えれば
+// よいため、遠方まで塗り続けない)。
+function ammoFadeOpacity(distance: number): number {
+  return Math.max(0, Math.min(1, (C.MAP_AMMO_FADE_END - distance) / (C.MAP_AMMO_FADE_END - C.MAP_AMMO_FADE_START)));
+}
 
 export class Targeter {
   // syncTargetMarkers が毎フレーム組み直す作業用配列。
   private readonly aliveScratch: CombatTarget[] = [];
   private readonly markerItemScratch: GroupedMarkerItem[] = [];
 
-  // 唯一の真実。右クリックのプロパティウィンドウでのみ変わり、自動選定・自動再選択は行わない。
-  target: CombatTarget | null = null;
-  secondaryTarget: CombatTarget | null = null;
-  private targetSelectAt = -Infinity;
-  private targetSelectIndex = -1;
-
   // ターゲット標的面(自機の方を向いた仮想の的)の通過点(ターゲット相対オフセットで
   // 保持し、的に貼り付いて見せる)。updateBoardMarks が寿命を持ち、syncBoardMarkers が描く。
   boardMarks: { off: Vec3; age: number; }[] = [];
 
   constructor(
-    private readonly _hud: Hud, private readonly markerManager: MarkerManager,
+    private readonly markerManager: MarkerManager,
+    private readonly navTarget: NavTarget, private readonly entities: EntityManager,
   ) {}
 
-  // 生存判定込みの現在の第一ターゲット。撃破後は target を保持したままにせず、ここで
-  // 死亡個体を隠す(描画・軌道線更新など「生きているターゲットだけを見たい」箇所が使う)。
+  // 現在の戦闘ターゲット。正本は NavTarget(航法ターゲットと状態を共有)が持ち、ここでは
+  // 生存中の敵・自艦・基地としてその場で解決するだけ。
   get aliveTarget(): CombatTarget | null {
-    return this.target && this.target.alive ? this.target : null;
+    return this.navTarget.resolveCombatTarget(this.entities);
   }
 
-  // 生存判定込みの現在の第二ターゲット。表示専用の扱いは aliveTarget と同じ。
-  get aliveSecondaryTarget(): CombatTarget | null {
-    return this.secondaryTarget && this.secondaryTarget.alive ? this.secondaryTarget : null;
-  }
-
-  // アクティブ艦の切替時などに、選定済みのターゲットをまとめて解除する。
-  clearTargets(): void {
-    this.target = null;
-    this.secondaryTarget = null;
-    this.targetSelectAt = -Infinity;
-    this.targetSelectIndex = -1;
-  }
-
-  // 取り除かれた対象への参照を落とす。選定していなければ何もしない。
-  clearIfTargeting(entity: CombatTarget): void {
-    if (this.target === entity) this.target = null;
-    if (this.secondaryTarget === entity) this.secondaryTarget = null;
-  }
-
-  // Tキーで照準中心に近い敵を選ぶ。連打(2秒以内)では第二ターゲット候補を順送りする。
-  // オート選定は行わない — 右クリックでの設定/解除は MapContextActions が開くプロパティウィンドウの
-  // 項目(targetPrimary/targetSecondary)から setPrimaryTarget/setSecondaryTarget を呼ぶ。
-  // ビューはここでは持たないので毎フレーム引数で受け取り、マップ視点では何もしない。
+  // Tキーで照準中心に最も近い敵をターゲットにする。オート選定は行わない — 右クリックでの
+  // 設定/解除は MapContextActions が開くプロパティウィンドウの項目(target)から
+  // navTarget.toggleTarget を呼ぶ。ビューはここでは持たないので毎フレーム引数で受け取り、
+  // マップ視点では何もしない。
   handleTargetSelectKey(input: Input, targets: CombatTarget[], project: ProjectFn, overviewMode: boolean): void {
     if (overviewMode) return;
     if (!input.takeKey(K.targetSelect)) return;
-    const now = performance.now() / 1000;
-    const candidates = targets
+    const next = targets
       .filter((e) => e.alive)
       .map((target) => {
         const p = project(target.state.r);
@@ -86,29 +70,20 @@ export class Targeter {
         return { target, d2: dx * dx + dy * dy, front: p.front };
       })
       .filter((x) => x.front)
-      .sort((a, b) => a.d2 - b.d2);
-    const primary = this.aliveTarget;
-    if (!primary) {
-      const next = candidates[0]?.target ?? null;
-      this.setPrimaryTarget(next);
-      this.targetSelectIndex = -1;
-      this.targetSelectAt = now;
-      return;
-    }
-    // 第一ターゲットが既にあるので、以降の連打は候補を順送りして第二ターゲットへ回す
-    const secondaryCandidates = candidates.filter((x) => x.target !== primary);
-    if (now - this.targetSelectAt > 2) this.targetSelectIndex = -1;
-    this.targetSelectIndex = (this.targetSelectIndex + 1) % Math.max(1, secondaryCandidates.length);
-    const next = secondaryCandidates[this.targetSelectIndex]?.target ?? null;
-    if (next) this.setSecondaryTarget(next);
-    this.targetSelectAt = now;
+      .sort((a, b) => a.d2 - b.d2)[0]?.target ?? null;
+    this.navTarget.setCombatTarget(next);
   }
 
   // マップ表示中だけ、戦闘ターゲットの赤道交点マーカーを求め直す(戦闘ビューでは誰も読まない)。
-  updateEquatorNodes(overviewMode: boolean, displayWindow: DisplayWindow, ephemeris: Ephemeris): void {
+  updateEquatorNodes(
+    overviewMode: boolean, displayWindow: DisplayWindow, ephemeris: Ephemeris, frameAnchors: FrameAnchorSource,
+  ): void {
     if (!overviewMode) return;
+    const timeLabel = {
+      mode: displayWindow.tickLabelMode, show: displayWindow.showElementTimes, nowSimTime: displayWindow.simTime,
+    };
     this.aliveTarget?.ensureEquatorNodes(this.markerManager)
-      .update(displayWindow.frame, displayWindow.displayTime, ephemeris);
+      .updateOnEllipse(displayWindow.displayTime, ephemeris, frameAnchors, timeLabel);
   }
 
   // ターゲット位置に「自機の方を向いた的(標的面)」があると見なし、発射弾がその面を自機側から
@@ -153,13 +128,13 @@ export class Targeter {
     this.syncTargetDirMarkers(player, overviewMode, project);
   }
 
-  // 全戦闘対象のマーカー集合(第一/第二ターゲットの役割を含む)と LEAD マーカーを同期する。
+  // 全戦闘対象のマーカー集合(ターゲットの役割を含む)と LEAD マーカーを同期する。
   // 位置は機体メッシュと同じ displayState — 揃えないと「機体は未来位置、マーカーは現在位置」に割れる。
   // 予測地平の先を指していて displayState を返せない対象と、可視性判定で選択不可の対象は出さない。
   syncTargetMarkers(
-    player: Player | null, targets: readonly CombatTarget[], displayTime: number, simTime: number,
-    cameraSystem: CameraSystem, visibilityPolicy: MapVisibilityPolicy | null,
-    registry: Ephemeris['registry'], attractors: readonly Attractor[],
+    player: Player | null, targets: readonly CombatTarget[], ammoPickups: readonly AmmoPickup[], fuelPickups: readonly RcsFuelPickup[],
+    displayTime: number, simTime: number, cameraSystem: CameraSystem, visibilityPolicy: MapVisibilityPolicy | null,
+    registry: Ephemeris['registry'], celestialBodies: readonly CelestialBody[],
   ): void {
     const overviewMode = cameraSystem.overviewMode;
     const project = cameraSystem.activeCameraProjection;
@@ -174,34 +149,59 @@ export class Targeter {
       if (!ds) continue;
       const visibility = visibilityPolicy?.entity(tgt instanceof Player ? 'player' : (tgt instanceof Base ? 'base' : 'ship'), tgt === player);
       if (visibility && !visibility.pickable) continue;
-      const role: MarkerRole =
-        tgt === this.aliveTarget ? 'primary' : tgt === this.aliveSecondaryTarget ? 'secondary' : 'none';
-      const item = tgt.markerItem(role, viewerPos, ds.r, ds.v, overviewMode);
-      const mapOccluded = overviewMode && isOccluded(cameraSystem.activeCameraPos, ds.r, attractors);
+      // 戦闘ビューではカメラ直下の自機をマーカーで重ねて表示しない。マップビューでは
+      // 他の自機と同じ位置マーカーが必要なので、操作対象かつ戦闘ビューのときだけ除外する。
+      if (!overviewMode && tgt === player) continue;
+      const role: MarkerRole = tgt === this.aliveTarget ? 'primary' : 'none';
+      const item = tgt instanceof Player
+        ? tgt.markerItem(role, viewerPos, ds.r, ds.v, overviewMode, tgt === player)
+        : tgt.markerItem(role, viewerPos, ds.r, ds.v, overviewMode);
+      const mapOccluded = overviewMode && isOccluded(cameraSystem.activeCameraPos, ds.r, celestialBodies);
       const mapOpacity = mapOccluded
         ? 0
         : tgt instanceof Enemy && overviewMode
-          ? mapPlanetFadeOpacity(nearestPlanetDistance(ds.r, registry, attractors))
+          ? mapPlanetFadeOpacity(nearestPlanetDistance(ds.r, registry, celestialBodies))
           : 1;
-      this.markerItemScratch.push(visibility ? {
-        ...item,
-        sym: visibility.icon ? item.sym : '',
-        name: visibility.label ? item.name : '',
-        detail: visibility.label ? item.detail : '',
-        opacity: mapOpacity,
-        occluded: mapOccluded,
-      } : {
-        ...item,
-        opacity: mapOpacity,
-        occluded: mapOccluded,
-      });
+      this.pushMarkerItem(item, visibility, mapOpacity, mapOccluded);
+    }
+    for (const ammo of ammoPickups) {
+      if (!ammo.alive) continue;
+      const visibility = visibilityPolicy?.entity('ammo');
+      if (visibility && !visibility.pickable) continue;
+      const mapOccluded = overviewMode && isOccluded(cameraSystem.activeCameraPos, ammo.state.r, celestialBodies);
+      const mapOpacity = mapOccluded ? 0 : overviewMode ? ammoFadeOpacity(len(sub(ammo.state.r, viewerPos))) : 1;
+      this.pushMarkerItem(ammo.markerItem(viewerPos, overviewMode), visibility, mapOpacity, mapOccluded);
+    }
+    for (const fuel of fuelPickups) {
+      if (!fuel.alive) continue;
+      const visibility = visibilityPolicy?.entity('fuel');
+      if (visibility && !visibility.pickable) continue;
+      const mapOccluded = overviewMode && isOccluded(cameraSystem.activeCameraPos, fuel.state.r, celestialBodies);
+      const mapOpacity = mapOccluded ? 0 : overviewMode ? ammoFadeOpacity(len(sub(fuel.state.r, viewerPos))) : 1;
+      this.pushMarkerItem(fuel.markerItem(viewerPos, overviewMode), visibility, mapOpacity, mapOccluded);
     }
     const celestialLabels = overviewMode ? cameraSystem.focusMarkers.activeLabels : [];
-    this.markerManager.combatMarkers.sync(this.markerItemScratch, project, overviewMode, screenScale, celestialLabels, attractors);
+    this.markerManager.combatMarkers.sync(
+      this.markerItemScratch, project, overviewMode, screenScale, celestialLabels, celestialBodies,
+      cameraSystem.activeCameraPos,
+    );
     if (player) {
-      this.markerManager.leadMarkers.sync(
-        player, this.aliveScratch, this.aliveTarget, this.aliveSecondaryTarget, simTime, overviewMode, project);
+      this.markerManager.leadMarkers.sync(player, this.aliveScratch, this.aliveTarget, simTime, overviewMode, project);
     }
+  }
+
+  // markerItemScratch へ、可視性設定(アイコン/名前の個別トグル)とマップ上のフェード/遮蔽を反映して積む。
+  private pushMarkerItem(
+    item: GroupedMarkerItem, visibility: MapVisibility | undefined, opacity: number, occluded: boolean,
+  ): void {
+    this.markerItemScratch.push(visibility ? {
+      ...item,
+      sym: visibility.icon ? item.sym : '',
+      name: visibility.label ? item.name : '',
+      detail: visibility.label ? item.detail : '',
+      opacity,
+      occluded,
+    } : { ...item, opacity, occluded });
   }
 
   // ターゲット標的面を通過した自弾の位置を、的に貼り付いた光点として表示する
@@ -220,7 +220,7 @@ export class Targeter {
   }
 
   // ターゲット/その反対方向を指す方向マーカー(戦闘ビューのみ)。自機の軌道基準方向マーカー
-  // (player-markers.ts)と同じ扱いで、自機位置を原点に置く。第一ターゲットのみ。
+  // (player-markers.ts)と同じ扱いで、自機位置を原点に置く。
   private syncTargetDirMarkers(player: Player | null, overviewMode: boolean, project: ProjectFn): void {
     const tgt = this.aliveTarget;
     if (overviewMode || !tgt || !player) {
@@ -239,19 +239,5 @@ export class Targeter {
     const pickables = targets.filter((e) => e.alive).map((target) => ({ pos: target.state.r, target }));
     const picked = pickNearest(pickables, click.x, click.y, project, pickRadiusSq(C.TARGET_LOCK_PICK_PX_SQ, C.TARGET_LOCK_PICK_PX_SQ_COARSE));
     return picked?.target ?? null;
-  }
-
-  // 第一ターゲットを設定する。同じ個体が第二ターゲットなら外す(両方兼務を禁止)。
-  setPrimaryTarget(t: CombatTarget | null): void {
-    if (t && this.secondaryTarget === t) this.secondaryTarget = null;
-    this.target = t;
-    this._hud.hint(t ? `ターゲット固定: ${t.name}` : 'ターゲット固定解除');
-  }
-
-  // 第二ターゲットを設定する。同じ個体が第一ターゲットなら外す(両方兼務を禁止)。
-  setSecondaryTarget(t: CombatTarget | null): void {
-    if (t && this.target === t) this.target = null;
-    this.secondaryTarget = t;
-    this._hud.hint(t ? `第二ターゲット固定: ${t.name}` : '第二ターゲット固定解除');
   }
 }

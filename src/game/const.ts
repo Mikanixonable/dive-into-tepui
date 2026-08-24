@@ -1,5 +1,6 @@
 // ゲームバランス・チューニング定数
-import type { LineStyle } from '../render/line-style';
+import { LINE_RENDER_ORDER, type LineStyle } from '../render/line-style';
+import { v3 } from '../physics/vec3';
 export { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../physics/solar-system';
 
 // 軌道上へ配置できる自機の上限隻数。
@@ -7,8 +8,12 @@ export const MAX_PLACED_SHIPS = 50;
 
 // --- 基地ドッキング ---
 export const BASE_MAX_VESSELS = 4;      // 基地が保有・格納できる艦艇の最大数
-export const DOCK_CAPTURE_DIST = 500;    // [m] (船船ドッキング用)
 export const DOCK_CAPTURE_REL_V = 20;   // [m/s]
+// 艦首(+Z)の船体外側に置く単一の接続ポート。位置は姿勢から導出し、保存しない。
+export const SHIP_PORT_OFFSET = v3(0, 0, 3.0);
+export const PORT_DOCK_MAX_DIST = 50;          // [m] 船対船ポート間の最大捕捉距離
+export const PORT_DOCK_MIN_ALIGNMENT = 0.5;    // ポート軸の最小内積 (cos 60°)
+export const DOCK_GUIDE_SHOW_DIST = 300;       // [m] ガイドを表示するポート接続点までの距離
 export const HATCH_DOCK_MAX_DIST = 80;        // 基地ハッチ前での最大ドッキング距離 [m]
 export const HATCH_DOCK_MIN_ALIGNMENT = 0.5;  // ハッチ正面コーンの最小内積 (cos 60° = 0.5)
 export const SLOT_DOCK_MAX_DIST = 50;         // 各ドックスロット前での最大ドッキング距離 [m]
@@ -33,9 +38,7 @@ export const HALO_AZ_EARTH_KM = 120000;
 export const HALO_AX_JUPITER_KM = 7000000;
 export const HALO_AZ_JUPITER_KM = 4000000;
 
-export const REENTRY_ALT = 80e3; // 敵機はこれ以下で大気圏突入・焼失 [m](熱モデルなしの簡易処理)
-export const PLAYER_MIN_ALT = 45e3; // 自機の構造限界高度 [m](通常は加熱・動圧で先に喪失する)
-export const DEBRIS_REENTRY_ALT = 95e3; // 弾・薬莢・破片の消滅高度 [m]
+export const REENTRY_ALT = 80e3; // 敵の軌道の近地点余裕を測る基準高度 [m](wave-attack.ts)
 
 // 高度低下警告のしきい値(降順)。EMA 高度がこれを下回るたびに一度だけ警告する [m]
 export const ALT_WARN_THRESHOLDS = [120e3, 100e3, 80e3];
@@ -50,19 +53,41 @@ export const SMALL_DEBRIS_BCINV = 8e-3; // 薬莢・破片
 export const SHIP_SRP_COEFF = 1.56e-2; // 機体: C_R≈1.3, A≈12m², m=PLAYER_MASS
 export const SMALL_DEBRIS_SRP_COEFF = 4.7e-3; // 薬莢・破片・弾薬
 
-// --- 空力加熱・構造限界(自機のみ) ---
+// --- 熱(physics/thermal.ts の比量モデルへ渡す種別ごとの値) ---
+// 弾道係数 bcInv に織り込まれている抗力係数。よどみ点の曲率半径と断面積の比を bcInv から
+// 戻すのに使う。物体ごとに変えると bcInv の意味が種別で変わってしまうので、1つに固定する。
+export const DRAG_COEFFICIENT = 2.2;
+// 断面積のうち、よどみ点の加熱を実際に受ける割合。
+export const STAGNATION_AREA_FRACTION = 0.6;
+// 艦(自機・敵機)。材質密度は宇宙機の実効密度で、曲率半径 0.6 m を与える値。
+export const SHIP_BULK_DENSITY = 833; // [kg/m^3]
+// PLAYER_MASS と掛けて外殻の熱容量 0.1 MJ/K。射撃・被弾の発熱量はこれを基準に決めてある。
+export const SHIP_SPECIFIC_HEAT = 100; // [J/(kg·K)]
+// 艦体自体の放熱面積 70 m² を PLAYER_MASS で割った値。放熱板の展開ぶんはこれに上乗せする。
+export const SHIP_RADIATING_AREA_PER_MASS = 0.07; // [m^2/kg]
+// 敵機は熱防御を持たないので、艦より低い温度で構造が保たなくなる。降下してくる艦がこの温度に
+// 達するのは、地球の大気では高度 80 km 付近。
+export const ENEMY_MAX_TEMP = 500; // [K]
+
+// 破片・薬莢・弾薬。アルミ合金相当の材質。
+export const SMALL_DEBRIS_BULK_DENSITY = 2700; // [kg/m^3]
+export const SMALL_DEBRIS_SPECIFIC_HEAT = 900; // [J/(kg·K)]
+// 球とみなした断面積比(bcInv/Cd)の 4 倍。
+export const SMALL_DEBRIS_RADIATING_AREA_PER_MASS = 0.01455; // [m^2/kg]
+// アルミ合金の融点。降下してくる破片がこの温度に達するのは、地球の大気では高度 60 km 付近
+// — 平衡温度はもっと高いところで既にこれを超えるが、再突入は速すぎて平衡に達しない。
+export const SMALL_DEBRIS_MAX_TEMP = 933; // [K]
+
+// --- 空力加熱・構造限界 ---
 export const SG_CONST = 1.7415e-4; // Sutton–Graves 定数(地球) [kg^0.5/m]
-export const NOSE_RADIUS = 0.6; // 機首曲率半径 [m]
-export const HEAT_ABSORB_AREA = 0.9; // よどみ点熱流束を受ける実効面積 [m^2]
-export const RAD_AREA = 70; // ハル自体の放射冷却面積 [m^2]
 export const HULL_EMISS = 0.85; // 放射率
-export const STEFAN_BOLTZMANN = 5.670374419e-8; // [W/m^2/K^4]
-export const HEAT_CAPACITY = 3.4e5; // 外殻の熱容量 [J/K]
 export const ENV_TEMP = 255; // 放射平衡の環境温度 [K]
 export const HULL_START_TEMP = 273; // 初期機体温度 [K]
 export const MAX_HULL_TEMP = 1300; // 超過で熱防御飽和 → 機体喪失 [K]
 export const MAX_DYN_PRESSURE = 35e3; // 超過で空力破壊 [Pa]
-export const HULL_TEMP_FLOOR = 120; // 放射冷却で下がりきる機体温度の下限 [K]
+// 加熱の理由を「空力」と「内部」に分ける動圧 [Pa]。地球の大気では高度 133 km 相当で、これを
+// 下回る動圧では空力加熱が放射冷却に対して桁で小さい。
+export const AERO_HEATING_MIN_Q = 1;
 
 // --- 再突入の燃焼エフェクト ---
 export const REENTRY_GLOW_MIN_Q = 200; // 燃焼エフェクトが出始める動圧 [Pa]
@@ -72,16 +97,13 @@ export const REENTRY_GLOW_FULL_Q = 2e4; // 燃焼エフェクトが最大強度�
 export const GUN_HEAT_PER_ROUND = 5.5e5; // 1発あたりの投入熱量 [J]
 
 // --- ラジエーター(上下2枚、個別展開) ---
-export const RADIATOR_PANEL_AREA = 42; // 1枚の放熱面積 [m^2](2.3 × 2.3 m の蛇腹 4 折りの両面ぶん)
 export const RADIATOR_FOLD_COUNT = 6; // 蛇腹の折り数(1枚あたり)
 export const RADIATOR_DEPLOY_TIME = 3.0; // 収納⇔全開にかかる時間 [s]
 export const RADIATOR_SOLAR_ABSORB = 0.15; // 日照面の太陽光吸収率
-export const SOLAR_CONSTANT = 1361; // 地球軌道の太陽定数 [W/m^2]
 // 展開中の放熱板に当たった1発が放熱板パーツへ与えるダメージ [HP]。薄く大きい構造物なので
 // 船体への直撃(PLAYER_BULLET_DAMAGE)より軽い。損耗はドックで修理するまで戻らない。
 export const RADIATOR_BULLET_DAMAGE = 0.25;
 export const RADIATOR_CONTACT_DEPLOY = 0.15; // これ以上展開していると被弾対象になる展開度
-export const RADIATOR_EFFICIENCY_MULT = 1; // 放熱面積(RADIATOR_PANEL_AREA)に掛ける性能係数
 
 // --- 被弾による発熱 ---
 export const BULLET_IMPACT_HEAT = 3.0e5; // 自機が被弾1発あたりに受ける熱量 [J]
@@ -97,12 +119,6 @@ export const ALT_DESCEND_WARN_RATE = -3; // この降下率(EMA)を下回ると�
 export const ALT_DESCEND_CLEAR_RATE = -1; // この降下率(EMA)まで戻ると警告解除 [m/s]
 export const ALT_WARN_HYSTERESIS = 5e3; // しきい値の再警告までのヒステリシス幅 [m]
 
-// --- 地球の影 ---
-export const SUN_INTENSITY = 2.2; // 太陽光の基準強度
-export const AMBIENT_INTENSITY = 0.25; // 環境光の基準強度
-export const SHADOW_MIN_SUN = 0.04; // 影の中に残す太陽光の割合(星明かり・地球照ぶん)
-export const SHADOW_MIN_AMBIENT = 0.35; // 影の中に残す環境光の割合
-
 // 並進推力(WSADQE の全 6 方向で共通)の出力 4 段階 [m/s^2]。[1]/[2]/[3]/[4] キーで切替、
 // 方向キーが押されている間だけ選択中の段の加速度がその方向へ出る。4段目は3段目の4倍。
 export const THROTTLE_LEVELS = [5.0, 20.0, 100.0, 400.0];//エンジン出力、スロットル
@@ -111,6 +127,21 @@ export const THROTTLE_LABELS = ['弱', '中', '強', '最強'] as const;
 // 加速度になるよう決めてあるので、両者を別々に動かすと表示と実挙動がずれる。
 export const PLAYER_MASS = 1000;
 export const THROTTLE_DEFAULT_IDX = 1;
+
+// 分離式ブースターの標準段。自機 1,000 kg と並べたとき、1段あたりの乾燥+満載質量
+// 1,000 kg、推力 0.6 MN で約 300 m/s² となるようにする。燃料 800 kg を 80 kg/s
+// で燃やし切るので、通常のフレーム刻みでも十数秒の燃焼と最後の燃料切れを扱える。
+export const BOOSTER_DEFAULT_DRY_MASS = 200; // [kg]
+export const BOOSTER_DEFAULT_MAX_FUEL = 800; // [kg]
+export const BOOSTER_DEFAULT_THRUST = 6e5; // [N]
+export const BOOSTER_DEFAULT_FUEL_RATE = 80; // [kg/s]
+export const BOOSTER_MAX_ATTACHED = 4;
+export const BOOSTER_MOUNT_Z = -4.0; // 船体中心から最初の段の前端まで [m]
+export const BOOSTER_SEPARATION_SPEED = 8; // 爆砕ボルトによる相対分離速度 [m/s]
+export const BOOSTER_COLLISION_GRACE = 0.5; // 分離直後に接続面同士が再衝突しない猶予 [s]
+export const BOOSTER_COLLISION_RADIUS = 4.2; // 長さ8mの段を包む接触球 [m]
+export const BOOSTER_HARDWARE_LIFETIME = 2.4; // 段間カバー/爆砕ボルトの飛散表示時間 [s]
+export const MAX_DETACHED_BOOSTERS = 64;
 // 並進方向キーをこの秒数以内に連打すると、押しっぱなし相当にラッチ/解除する [s]
 export const THRUST_LATCH_DOUBLE_TAP_SEC = 0.3;
 
@@ -131,11 +162,12 @@ export const RCS_PUFF_TORQUE_EPS = 0.15; // RCSパフを表示する実トルク
 // 微調整モード([V]キーでトグル、射撃中は自動でON)で角加速度に掛ける倍率
 export const FINE_ATTITUDE_SCALE = 0.5;
 
-// 戦闘視点カメラの near/far [m]。near は LEO 高度からの地平線距離(~2,400km)での深度誤差が
-// 十分小さく、対数深度バッファなしで z-fighting を避けられる値。far は星空シェル・
-// 太陽ビルボード・月表示距離を余裕を持って内側に収める。
+// 戦闘視点カメラの near/far [m]。反転 32bit 深度では復元誤差が距離に比例し near に依らないので、
+// near は精度のためではなく「カメラが物へめり込む手前で切り取られない」値として置く。far は球
+// として描かれる天体のうち見かけ直径が 2px を超える最遠のもの — 直径 1.4e9 m の恒星を LOD 上限で
+// 見た 1.4e12 m — が入る距離。far を広げる費用は事実上ゼロ。
 export const COMBAT_CAMERA_NEAR = 2;
-export const COMBAT_CAMERA_FAR = 6e7;
+export const COMBAT_CAMERA_FAR = 2e12;
 
 export const BASE_FOV = 55; // 通常時の垂直画角 [deg]
 export const ZOOM_FOV = 6; // [Z]キー長押し時の照準ズーム画角 [deg]
@@ -165,7 +197,7 @@ export const RECOIL_DV = 0.04; // 反動 [m/s]
 export const SELF_CONTACT_GRACE = 2.0; // 自弾が自機に当たり得るまでの猶予 [sim s]
 export const BULLET_MASS = 0.1; // 弾の剛体接触用質量 [kg](実体弾・プラズマ弾とも共通)
 export const BULLET_RADIUS = 0.02; // 弾の剛体接触用半径 [m]
-export const BULLET_CLOSE_PASS_DIST = 20; // 敵弾が艦の至近を通過したとみなす距離 [m]
+export const BULLET_CLOSE_PASS_DIST = 40; // 敵弾が艦の至近を通過したとみなす距離 [m]
 
 // ターゲット位置に自機側を向けて置いた仮想標的面(的)を弾が通過した点のマーカー。
 // 最新の 1 点のみ表示する(複数出ると照準の目安として紛らわしいため)。
@@ -185,6 +217,11 @@ export const MAP_PLANET_SHIP_LABEL_END = 1e9;
 export const AMMO_PHYS_RADIUS = 1.3; // 補給の物理接触用の半径 [m](見た目に近い実寸)
 export const LOGISTICS_LOW_MAGS = 7; // 残りマガジンがこれ未満になると付近の軌道に補給を投入
 export const MAX_ACTIVE_AMMO_PICKUPS = 3; // 同時に存在する補給の最大数
+export const RCS_FUEL_PICKUP_AMOUNT = 1000; // 補給 1 個の取り込みで増える RCS 燃料 [kg]
+export const RCS_FUEL_PICKUP_RADIUS = 100; // 取り込み距離 [m]
+export const RCS_FUEL_PHYS_RADIUS = 1.3; // 補給の物理接触用の半径 [m]
+export const LOGISTICS_LOW_FUEL_RATIO = 0.3; // この割合未満になると燃料補給を投入
+export const MAX_ACTIVE_RCS_FUEL_PICKUPS = 3; // 同時に存在する燃料補給の最大数
 export const LOGISTICS_CHECK_INTERVAL = 20; // 補給投入判定の間隔 [sim s]
 export const LOGISTICS_MIN_DIST = 625; // 補給投入位置(自機軌道上の位相シフト距離)下限 [m]
 export const LOGISTICS_MAX_DIST = 1250; // 同上限 [m]
@@ -205,8 +242,6 @@ export const RELOAD_TIME = 1.0; // 手動/自動リロード(バレル交換)の
 export const MAGS_PER_BARREL = 3; // バレル交換までに消費できるマガジン数
 export const BELT_MAX_VISIBLE = 18; // ベルト描画の最大リンク数
 export const EJECTED_MAG_PHYS_RADIUS = 1.4; // 排出された空マガジンの物理接触用の半径 [m]
-export const BARREL_MASS = 20; // バレルの物理接触用の質量(実質量ではなくゲーム内衝突用の値)
-export const MAGAZINE_FRAME_MASS = 20; // 空マガジンの物理接触用の質量(同上)
 
 // マガジンチェーン(ベルト)の可動域: 各つなぎ目で許容する最大折れ角。ロール・ピッチ・ヨーを
 // それぞれ独立に制限する。いずれも隣接リンク間の相対角度 [deg]。
@@ -216,29 +251,12 @@ export const MAG_CHAIN_MAX_YAW_DEG = 15;   // ヨー上限(左右方向の折れ
 export const MAG_CHAIN_ROLL_GAIN = 0.6; // 機体のロール角速度→ねじれ目標角への変換係数
 export const MAG_CHAIN_ROLL_RATE = 3.5; // ねじれ角が目標へ追従する速さ [1/s]
 export const CASING_LIFETIME = 1800; // 薬莢寿命 [sim s]
-export const CASING_MASS = 1; // 薬莢の物理接触用の質量(実物同様に軽い)
 export const MAX_BULLETS = 400;
 export const MAX_CASINGS = 260;
 export const MAX_DEBRIS = 600;
 export const MAX_FLASHES = 128; // 同時に存在しうるフラッシュ(発砲・命中・撃破・ガス)の上限。超過分は描画されない
 
-// --- 小惑星(Asteroid、試験配置用) ---
-// 岩石密度(~1900kg/m^3)で半径 ASTEROID_TEST_RADIUS の球とおおよそ整合する質量。
-export const ASTEROID_TEST_MASS = 1e15; // [kg]
-export const ASTEROID_TEST_RADIUS = 5000; // [m]
-export const MAX_ASTEROIDS = 400;
-
 // --- 高負荷デバッグステージ(stage-debug-load.ts)---
-// 小惑星は直径 1km 級で、質量は岩石密度 ~1900kg/m³ と整合する。
-export const DEBUG_LOAD_ASTEROID_MASS = 1e12; // [kg]
-export const DEBUG_LOAD_ASTEROID_RADIUS = 500; // [m]
-export const DEBUG_LOAD_ASTEROID_COUNT = 300;
-// メインベルト(2.1〜3.3 AU)に直径 1km 以上の小惑星が約190万個ある数密度 [1/m^3]。
-// 平均間隔にすると約 3×10^6 km で、この規模の岩塊が互いの重力を及ぼし合う密度ではない。
-export const DEBUG_LOAD_ASTEROID_DENSITY = 3e-29;
-// 上の数密度で DEBUG_LOAD_ASTEROID_COUNT 体が収まる球の半径 [m]。
-export const DEBUG_LOAD_ASTEROID_MAX_DIST =
-  Math.cbrt((3 * DEBUG_LOAD_ASTEROID_COUNT) / (4 * Math.PI * DEBUG_LOAD_ASTEROID_DENSITY));
 // 破片は衛星の破壊直後の雲を想定し、自機の周囲に留める。
 export const DEBUG_LOAD_DEBRIS_COUNT = 500;
 export const DEBUG_LOAD_DEBRIS_MAX_DIST = 250000; // [m]
@@ -253,37 +271,47 @@ export const GRAVITY_ALWAYS_COUNT = 15;
 // この値まで落ちる距離として天体構成から導かれる。
 export const GRAVITY_NEGLIGIBLE_ACCEL = 1e-8;
 
-// --- 被弾・撃破エフェクト(フラッシュ/破片) ---
-export const BULLET_IMPACT_FLASH_SIZE0 = 1.5;
-export const BULLET_IMPACT_FLASH_SIZE1 = 6;
-export const BULLET_IMPACT_FLASH_DURATION = 0.25; // [s]
-export const MUZZLE_FLASH_SIZE0 = 2.2;
-export const MUZZLE_FLASH_SIZE1 = 6;
-export const MUZZLE_FLASH_DURATION = 0.07; // [s]
-export const PLASMA_IMPACT_FLASH_SIZE0 = 2;
-export const PLASMA_IMPACT_FLASH_SIZE1 = 8;
-export const PLASMA_IMPACT_FLASH_DURATION = 0.3; // [s]
-export const IMPACT_FRAG_COUNT = 3; // 被弾時に飛散させる欠片の数
-export const IMPACT_FRAG_SIZE_MIN = 0.18;
-export const IMPACT_FRAG_SIZE_MAX = 0.5;
-export const IMPACT_FRAG_SPEED = 5.5; // [m/s]
-export const DESTROY_FLASH1_SIZE0 = 10; // 撃破時フラッシュ(芯)のサイズ下限。ENEMY_SCALE 倍される
-export const DESTROY_FLASH1_SIZE1 = 110;
-export const DESTROY_FLASH1_DURATION = 1.1; // [s]
-export const DESTROY_FLASH2_SIZE0 = 6; // 撃破時フラッシュ(外殻)のサイズ下限
-export const DESTROY_FLASH2_SIZE1 = 40;
-export const DESTROY_FLASH2_DURATION = 0.5; // [s]
-export const DESTROY_FRAG_SIZE_MIN = 1.5; // 撃破デブリの破片サイズ下限。ENEMY_SCALE 倍される
-export const DESTROY_FRAG_SIZE_MAX = 6.0;
+// --- 弧が引く天体の絞り込み(game/simulation/arc-bodies.ts) ---
+// 一覧の外にある天体が「いつまで効き得ないか」を見積もるときの、相対速さの安全率と下限 [m/s]。
+// 見積りは保守的でありさえすればよく、精密である必要はない — 外れても訪問が1回増えるだけで、
+// 逆に短く見積もりすぎることだけが取りこぼしになる。下限は、相対速度がいま 0 の天体にも
+// 有限の期限を与えるために要る。
+export const ARC_BODY_CLOSING_SAFETY = 2;
+export const ARC_BODY_CLOSING_MARGIN = 2000;
+// 一覧へ入れておく先読み時間を、そのときの刻み幅の何歩ぶんに取るか。次の1歩で表面へ届きうる
+// 天体が一覧の外に残ると、その歩の掃引到達判定がその天体を見ないまま通り抜ける。
+export const ARC_BODY_LEAD_STEPS = 4;
 
-export const SIM_SPEED_LEVELS = [1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 131072];
+export const SIM_SPEED_LEVELS = [1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 131072, 524288, 2097152, 8388608, 33554432];
 export const MAX_PHYS_SIM_SPEED = 4; // 推進・射撃・衝突解決・敵AIが有効な最大タイムワープ(SimSpeedManager の can* が参照)
 
 export const SUBSTEP_MAX_DT = 20; // 1サブステップの最大秒数 [s](Simulator.advance のサブステップ分割数の算出に使う)
-export const REENTRY_SUBSTEP_ALT = 200e3; // 大気圏近傍で細分化を開始する高度 [m]
-export const REENTRY_SUBSTEP_MAX_DT = 1; // 大気圏近傍の最大積分刻み [s]
+// 1フレームに許すサブステップ数の上限。これを超える時間送りが要求されたら刻み幅の側を伸ばす。
+// 刻み幅の上限が固定値だけだと substep 数がワープ倍率に正比例し、高ワープでは1フレームの値段が
+// そのまま倍率に比例して増える。再突入中の細分化はこれに優先する(加熱と動圧の積分結果が艦の
+// 生死を決め、それをプレイヤーが観測するため)。
+// 64 は最高ワープ(×65536)の LEO で1周あたり54歩。そこでの数値的な軌道減衰は 0.42 km/日で、
+// 同じ高度で大気抵抗が実際に削る 14 km/日 の 3% — 艦が焼ける時期は高ワープでも変わらない。
+// 1周27歩(K=32)まで粗くすると数値減衰が実ドラッグと同等になり、待つだけで艦が倍の速さで落ちる。
+export const SUBSTEP_MAX_COUNT = 64;
 
-// --- 接触判定(game/simulation/contact.ts) ---
+// 大気の中で刻みを縛る2つの上限(game/simulation/time-step.ts の atmosphericMaxStep)。
+// 抗力は陽的 RK4 にとって剛い項で、逆時定数 λ = ½ρ·s·bcInv が刻みに対して大きくなると、
+// 段ごとの抗力が増幅して1歩で発散する(抗力は速さの2乗なので振動ではなく暴走になる)。
+// DRAG_STEP_MAX_SPEED_LOSS は λ·dt の上限 = 1歩で抗力が奪ってよい対気速度の割合。
+// RK4 の実軸上の安定限界は λ·dt ≒ 2.78 だが、縛っているのは安定性ではなく精度である:
+// GTO からの再突入で外殻温度の最大は、刻み 0.25 s の基準 976 K に対し λ·dt = 1 で 1050 K
+// (+7.6%)、0.5 で 991 K(+1.5%)。限界 1300 K に対して 7.6% は艦の生死を変える。
+export const DRAG_STEP_MAX_SPEED_LOSS = 0.5;
+// もう1つは剛性と無関係に効く。RK4 の中間段は現在の速度と加速度からの直線外挿なので、
+// 重力だけで動径方向に g·dt²/4 沈む。刻み 204.8 s ではこれが 99.6 km になり、高度 91.5 km
+// (λ·dt = 0.006 で剛性は全く問題ない)でも段が地面の下を標本して海面密度を拾う。
+// DRAG_STEP_MAX_SCALE_HEIGHTS は、その沈み込みが密度を e^N 倍までしか変えないよう縛る。
+export const DRAG_STEP_MAX_SCALE_HEIGHTS = 0.5;
+
+// --- 接触判定(game/simulation/ の接触解決) ---
+// 剛体接触の反発係数。天体の表面でも物体どうしでも同じ値を使う。
+export const CONTACT_RESTITUTION = 0.4;
 // 1 substep あたりに解決する接触の上限。TOI(接触時刻)昇順で解決し、これを超えた分は
 // 次の substep へ持ち越す(次回呼び出し時に空間グリッドから改めて列挙し直されるので、
 // 明示的な繰越処理は不要)。
@@ -304,8 +332,23 @@ export const INITIAL_INC_DEG = 97.0; // 自機初期軌道傾斜角 [deg]
 // --- HUD マーカー ---
 export const MARKER_DIR_DIST = 5e4; // 方向マーカーを投影する仮想距離 [m](実在の位置ではなく方向のみを示す)
 export const MARKER_CLUSTER_PX = 40; // これより画面上で近いマーカー同士は1つの代表にまとめる [px]
+// 優先度間引きで一度隠したラベル/アイコンを再び出す画面距離のしきい値(MARKER_CLUSTER_PX より
+// 緩い値)。同じ値だと境界ちょうどで距離が揺れたときに毎フレーム表示・非表示が反転する
+// (周期が数時間の衛星どうしなど、タイムワープ中に画面距離が急変する組で顕著)。
+export const MARKER_CLUSTER_RELEASE_PX = 60;
+// 画面上で近接する2対象(マーカー・天体ラベル・ラグランジュ点ラベルいずれも)のカメラからの
+// 距離比がこれ以上なら、優先度に関わらず遠い側を隠す(奥にあるだけの対象が手前の対象を
+// 消してしまう逆転を防ぐ)。
+export const DEPTH_GUARD_RATIO = 3;
+// 一度 DEPTH_GUARD で隠した対象を再び出す距離比のしきい値(ENTER より緩い値)。同じ値だと
+// しきい値ちょうどで距離比が揺れたときに毎フレーム表示・非表示が反転する
+// (周期が数時間の衛星どうしなど、タイムワープ中に距離比が急変する組で顕著)。
+export const DEPTH_GUARD_EXIT_RATIO = 2;
 // 天体ラベルからこれより画面上で近いラグランジュ点ラベルは、天体ラベルを優先して隠す [px]
 export const FOCUS_LABEL_PRIORITY_PX = 40;
+// 位置の点(アイコン)側の混雑判定。名前(FOCUS_LABEL_PRIORITY_PX)より小さい値にし、名前だけが
+// 間引かれて点は残る距離帯を作る。
+export const FOCUS_ICON_PRIORITY_PX = 16;
 
 // マーカーラベル優先度 (数値が大きいものが優先。天体 > 船・エンティティ)
 export const MARKER_PRIORITY = {
@@ -315,7 +358,6 @@ export const MARKER_PRIORITY = {
   LAGRANGE: 2000,
   PRIMARY_TARGET: 900,
   IMPACT: 850,
-  SECONDARY_TARGET: 800,
   BASE: 700,
   PLAYER: 600,
   ENEMY: 500,
@@ -336,7 +378,7 @@ export const MARKER_HEADING_DEGENERATE_PX = 4;
 export const LEAD_MAX_TIME = 25; // これより先にしか当たらない見越し解は表示しない [s]
 
 // --- 軌道計画モード([M]) ---
-export const OVERVIEW_CAMERA_MIN_DIST = 1e5; // 広範囲視点カメラの注視点までの距離 [m]
+export const OVERVIEW_CAMERA_MIN_DIST = 1e3; // 広範囲視点カメラの注視点までの距離 [m]
 export const OVERVIEW_CAMERA_FOV_MIN = 15; // 広範囲視点の最小垂直画角 [deg]
 export const OVERVIEW_CAMERA_FOV_MAX = 120; // 広範囲視点の最大垂直画角 [deg]
 export const OVERVIEW_CAMERA_FOV_STEP = 1; // HUD から入力する画角の刻み [deg]
@@ -345,7 +387,8 @@ export const OVERVIEW_CAMERA_FOV_STEP = 1; // HUD から入力する画角の刻
 export const OVERVIEW_CAMERA_MAX_DIST = 1e14;
 // 広範囲視点の near は固定値ではなく、注視点までの距離をこの比で割った値を毎フレーム使う
 // (near = dist / OVERVIEW_CAMERA_NEAR_RATIO)。比を大きくすると near が注視点に近づいて
-// 手前がクリップされにくくなる代わりに、24bit 深度バッファの分解能が落ちる。
+// 手前がクリップされにくくなる。反転 32bit 深度では分解能が near に依らないので、
+// この比が深度精度と取引になることはない。
 export const OVERVIEW_CAMERA_NEAR_RATIO = 1000;
 // near = dist / OVERVIEW_CAMERA_NEAR_RATIO の比例則は dist の上限では星球シェル・
 // 天球グリッド(CELESTIAL_SHELL_RADIUS)より大きくなる(dist=1e14 で near=1e11)。
@@ -357,8 +400,8 @@ export const OVERVIEW_CAMERA_NEAR_SHELL_MARGIN = 0.9;
 // 広範囲視点の far も near と同様に固定値ではなく dist に連動させる
 // (far = clamp(dist × OVERVIEW_CAMERA_FAR_RATIO, OVERVIEW_CAMERA_FAR_MIN, OVERVIEW_CAMERA_FAR_MAX))。
 // far を dist に比例させないと、太陽・木星のような遠方天体は引いたカメラでは
-// far 平面の外に出て消える一方、近距離域で far を大きく取ると 24bit 深度の分解能を
-// 無駄に浪費する。
+// far 平面の外に出て消える。逆に近距離域で far を大きく取ることの費用は、反転 32bit 深度では
+// 事実上ゼロ。
 export const OVERVIEW_CAMERA_FAR_RATIO = 100;
 // 最小ズーム(dist = OVERVIEW_CAMERA_MIN_DIST)でも月(3.8e8m)や星球シェルが
 // far の外に出ないための下限。
@@ -406,28 +449,16 @@ export const PLAN_EXECUTOR_ARM_ANGLE_DEG = 2.0; // 姿勢誤差がこれを切�
 export const PLAN_EXECUTOR_TRIM_DV = 5.0; // 残り射影がこれを下回ったら最低出力段へ落とす [m/s]
 
 // --- 未来表示の時刻(display-window-manager.ts のスライダー) ---
-export const DISPLAY_DUR_90MIN = 90 * 60; // 90分
 export const DISPLAY_DUR_DAY = 86400; // 1日
-export const DISPLAY_DUR_WEEK = 7 * 86400; // 7日
-export const DISPLAY_DUR_MONTH = 28 * 86400; // 28日
+export const DISPLAY_DUR_TEN_DAY = 10 * 86400; // 10日
+export const DISPLAY_DUR_MONTH = 30 * 86400; // 1ヶ月
+export const DISPLAY_DUR_THREE_MONTH = 90 * 86400; // 3ヶ月
 export const DISPLAY_DURATION_MAX = 365 * 86400; // 手動レンジで指定できる表示期間の上限 [s](1年)
 // 手動レンジで指定できる表示期間の下限 [s]。表示期間は予測列の保持窓でもあり、0 では
 // サンプルが1件も残らず、どの時刻も引けない列になる。
 export const DISPLAY_DURATION_MIN = 3600;
 
-// --- 軌道計画の折れ線(plan/plan-arc.ts) ---
-export const PLAN_ARC_MAX_SAMPLES = 2000; // 1区間が保持するサンプル数の上限
-// 積分済みのサンプル列が、要求区間の求める間引き間隔に対して何倍まで粗くてよいか。表示期間を
-// 短くしたときは積分結果を捨てず答える範囲だけを狭めるが、狭めた区間に残るサンプルが数点まで
-// 減ると、折れ線上のクリック候補が飛び飛びの点になる。これを超えて粗ければ区間を作り直す。
-export const PLAN_ARC_MAX_SAMPLE_COARSENING = 8;
-// 1周回あたりの積分ステップ数。RK4 の誤差は1周あたりのステップ数でほぼ決まるので、
-// これを固定すると高度・離心率によらず精度が揃う(28日ぶんの LEO を積分して長半径誤差 1km 未満)。
-export const PLAN_ARC_STEPS_PER_REV = 100;
-// 1区間あたりの積分ステップ数の上限。手動レンジで年スケールの表示期間を許すと
-// 1周回 / PLAN_ARC_STEPS_PER_REV のままではステップ数がフレーム時間を圧迫するので、
-// 超えたら plan-arc.ts の再突入時と同じ「そこで打ち切って endState() を返す」経路に乗せる。
-export const PLAN_ARC_MAX_STEPS = 20000;
+// --- 軌道計画の折れ線(plan/plan-path.ts) ---
 // 計画軌道の折れ線を破線で描くときの、破線1本・間隔の画面上の長さ [px] と不透明度。
 // 実距離ではなく画面ピクセルで持つのは、マップの倍率が数桁変わるため実距離で固定すると
 // 拡大時は数本の線分に、縮小時はサブピクセルになって実線と区別できなくなるため。
@@ -456,46 +487,72 @@ export const PLAN_TICK_HOUR_FAMILY_MAX_COUNT = 1200;
 // 現在表示中の最細目盛からの相対階層(0/1/2以上)で半径を引く。
 export const PLAN_TICK_RADIUS_PX = [1.5, 2.5, 3.5] as const;
 
-// --- エンティティの過去・未来状態列(physics/dynamic-trajectory.ts の DynamicTrajectory/Predictor) ---
+// --- エンティティの過去・未来状態列(physics/dynamic-trajectory.ts の DynamicTrajectory、
+// game/simulation/predicted-arc.ts の PredictedArc/Predictor) ---
 export const TRAJECTORY_SAMPLES_PER_REV = 32; // 1周回あたりの保持サンプル数(補間誤差 30m 程度に収まる実測値)
-export const SHIP_HISTORY_DURATION = 5580; // Ship の過去列の保持時間 [s]。LEO(420km)の公転周期に近似
+export const DEFAULT_HISTORY_DURATION = 10 * 86400; // 過去列を持つ種別(Ship・Base)の既定保持時間 [s]
 // 過去表示の要求で伸ばせる保持時間の上限 [s]。保持サンプル数は間引きにより
-// PREDICT_MAX_SAMPLES で頭打ちなので、この値が決めるのは間引きの粗さ(補間精度)の下限。
+// ARC_MAX_SAMPLES で頭打ちなので、この値が決めるのは間引きの粗さ(補間精度)の下限。
 export const HISTORY_DURATION_MAX = DISPLAY_DURATION_MAX;
-// 1周回あたりの予測の積分ステップ数。刻み幅をその場の周期に比例させることで、低軌道でも
+// 1周回あたりの予測列の積分ステップ数。刻み幅をその場の周期に比例させることで、低軌道でも
 // 遠方の長周期軌道でも精度が一定になる。同時にこれは遅い軌道のコスト上限でもあり、既定の
-// 表示期間では GEO 以遠でこの項が採用値になって、下限だけで刻む場合の 1/7(GEO)〜1/279(日心)
+// 表示期間では GEO 以遠でこの項が採用値になって、下限だけで刻む場合の 1/14(GEO)〜1/558(日心)
 // までステップ数が落ちる。離心軌道では1周の中でも刻みが変わる(モルニヤで近地点 20s /
-// 遠地点 167s)ので、定数刻みでは届かない「安くて同じ精度」の側に出られる。
-export const PREDICT_STEPS_PER_REV = 600;
-// 1個体の予測列の積分ステップ数・保持サンプル数の上限。予測の長さは表示期間(最大1年)に
-// 追従するので、1周回基準の刻みのままではステップ数もメモリも青天井になる。長い期間では
-// これらが刻み幅と間引き間隔を決め、軌道の形の精度と引き換えに費用を頭打ちにする。
-// 刻み幅を決めるのは horizon > PREDICT_MAX_STEPS × PREDICT_MIN_STEP_DT(≒4.6日)のときだけ。
-export const PREDICT_MAX_STEPS = 20000;
-export const PREDICT_MAX_SAMPLES = 2000;
-export const PREDICT_STEP_BUDGET = 500; // Predictor が1フレームに配る予測ステップ数の上限
-export const PREDICT_COMBAT_STEP_BUDGET = 128; // 戦闘中は自機の線だけを粗く維持する
-// 予測刻みの下限 [s]。予測は固定のフレーム予算でホライズンまで伸ばす表示側の近似なので、
-// 実シミュレーションより粗く刻むこと自体が目的である — 細かくすれば届く先が近くなるだけで、
-// 折れ線の誤差は間引き補間(PREDICT_SAMPLE_ERROR)が支配しているので見える精度は増えない。
-// これ以上粗くできない理由は月にある: 低月周回では中心天体が ECI 中を動くぶんの dt² 誤差が
-// 支配的で、20s で既に 419m(PREDICT_RESET_DIST の 84%)。LEO は同条件で 0.29m と余裕が
-// 1700 倍あるので、LEO だけを見て上げると月周回だけが破綻する。
-export const PREDICT_MIN_STEP_DT = 20;
-export const PREDICT_RESET_DIST = 500; // 予測位置と実位置がこれを超えて乖離したら予測列を破棄 [m](補間誤差 30m より十分大きい)
-// TRAJECTORY_SAMPLES_PER_REV で間引いた列を補間したときの位置誤差 [m]。三次エルミート補間の
-// 誤差は間引き間隔の4乗で効くので、上限で間引きが粗くなる長い表示期間では
-// PREDICT_RESET_DIST をこの値から外挿した幅まで広げないと、正しい列まで破棄してしまう。
-export const PREDICT_SAMPLE_ERROR = 30;
-// 1フレームの予測予算のうち操作対象の艦に割ける割合の上限。優先はするが独占はさせない —
-// 予測は表示だけでなく計画軌道の重力源や衝突判定の相手としても消費されるため、艦の予測が
-// 完成するまで他の個体が止まると、計画軌道の形が艦の予測進捗に依存してしまう。
-export const PREDICT_PLAYER_BUDGET_RATIO = 0.5;
-// ラウンドロビンで1体に必ず渡すステップ数の下限。予測列の history に最初のサンプルが積まれる
-// までは at() がほぼ全時刻で null を返し、次フレームの乖離判定で必ず破棄されるので、
-// その1サンプル分(sampleInterval / 刻み幅 ≒ 10 ステップ)を下回る配分は作り直しを繰り返す。
-export const PREDICT_MIN_ENTITY_STEPS = 16;
+// 遠地点 331s)ので、定数刻みでは届かない「安くて同じ精度」の側に出られる。
+// 300 での形状誤差は GEO 28日 0.14km・モルニヤ1日 0.08km(実測)と、どのズームでもマップ
+// 1px 未満に収まる(LEO と低月周回では period/300 が ARC_MIN_STEP_DT を割るので、そちらの
+// 床が採用値になってこの値に依らない)。
+export const ARC_STEPS_PER_REV = 300;
+// 消費されない弧(計画の区間)の積分ステップ数・保持サンプル数の上限。
+// 弧の長さは表示期間(最大1年)に追従するので、1周回基準の刻みのままではステップ数もメモリも
+// 青天井になる。長い期間ではこれらが刻み幅と間引き間隔を決め、軌道の形の精度と引き換えに
+// 費用を頭打ちにする。刻み幅を決めるのは span > ARC_MAX_STEPS × ARC_MIN_STEP_DT(≒4.6日)の
+// ときだけ。ARC_MAX_SAMPLES は実状態の履歴の間引き(trajectorySampleInterval)でも使う。
+export const ARC_MAX_STEPS = 20000;
+export const ARC_MAX_SAMPLES = 10000;
+// 積分済みのサンプル列が、要求区間の求める間引き間隔に対して何倍まで粗くてよいか
+// (PredictedArc.represents 用)。表示期間を短くしたときは積分結果を捨てず答える範囲だけを
+// 狭めるが、狭めた区間に残るサンプルが数点まで減ると、折れ線上のクリック候補が飛び飛びの
+// 点になる。これを超えて粗ければ弧を作り直す。
+export const ARC_MAX_SAMPLE_COARSENING = 8;
+// Predictor が1フレームに配る積分ステップ数の上限。1歩 ≈ 0.025〜0.055ms(弧が保持する
+// 一覧ぶんの天体解決+掃引到達判定、ブラウザ実測)なので、成長中の予測・計画が1フレームに
+// 使うのは ~15〜33ms まで。ここへ払った時間は積分側から返ってくる — 消費される弧の1歩は
+// simDt/SUBSTEP_MAX_COUNT 秒ぶんを覆い、高ワープではその区間の実シミュレーションのサブステップ
+// 数百回ぶんの積分を1歩で肩代わりする。消費されている個体を追い抜かせないだけで1体あたり
+// SUBSTEP_MAX_COUNT(=64)歩/フレームが要り、ホライズンへ伸ばすぶんはその上に乗る。
+export const ARC_STEP_BUDGET = 600;
+// 消費されない弧(計画の区間)の刻みの下限 [s]。消費されない弧は状態を
+// 決めず線としてだけ読まれるので、実シミュレーションより粗く刻むこと自体が目的である —
+// 細かくすれば届く先が近くなるだけで、折れ線の誤差は間引き補間が支配しているので見える精度は
+// 増えない。これ以上粗くできない理由は、この下限が周期由来の刻み(period/ARC_STEPS_PER_REV)を
+// 上書きする側にあることにある: 自然な刻みが下限を割るのは周期の短い領域 — LEO と、離心軌道の
+// 近地点通過 — で、そこはまさに細かく刻む必要がある場所である。表示期間の遠端に残る形状誤差
+// (tests/perf/exp9-step-retune.ts の実測)は 40s で LEO 0.2m・低月周回 0.0m・モルニヤ 105m、
+// 60s で 1.7m・0.1m・533m。
+// 刻みの下限は同時に、天体接近時(下の ARC_APPROACH_SAFETY)の接近項が幾何級数的に潰れるのも防ぐ。
+export const ARC_MIN_STEP_DT = 40;
+// 天体接近時、1ステップで表面までの残距離を跨がないための安全率。動径接近率(表面までの
+// 距離の減り方)に掛かる上限係数で、相対速さそのものではなく接近している成分だけを見る
+// — でないと円軌道でも常に効いて粗化項(ARC_MAX_STEPS)を不当に上書きしてしまう。
+export const ARC_APPROACH_SAFETY = 0.5;
+// 消費される弧が、消費前線の近くで毎歩サンプルを残す歩数。この範囲では at() の補間誤差が
+// 1歩ぶん(20s 刻みで 4.5mm)まで落ちる。前線がここを抜けると周期基準の間引きへ移り、
+// 補間誤差は LEO で 20〜26m になる。512 は ×1 で 512×20s = 2.8 時間ぶん、最高ワープで
+// 512×34.1s = 8フレームぶんの前線をこの精度で覆う。
+export const ARC_FINE_STEPS = 512;
+// 消費される弧が、消費前線より過去側にも保持しておく余裕 [s]。保持窓の左端が前線に一致すると
+// at(前線) を挟む補間区間が消える。予測線の下端は simTime なので、余分に保持しても描画は変わらない。
+export const ARC_RETAIN_MARGIN = 300;
+// 1フレームの予測予算のうち、操作艦の弧+計画軌道の弧(interactive 枠)に割ける割合の上限。
+// 優先はするが独占はさせない — 計画の弧は他個体の予測を重力源・衝突判定の相手として読むため、
+// 編集直後の計画にこの枠を丸ごと食わせると、その依存先(background 側)の予測の成長が止まる。
+export const ARC_INTERACTIVE_RATIO = 0.5;
+// background のラウンドロビンで1体に必ず渡すステップ数の下限。予測列の history に最初の
+// 保持サンプルが積まれるまでは at() がほぼ全時刻で null を返し、実シミュレーションが消費
+// できずに積分して弧を捨てるので、その1サンプル分(sampleInterval / 刻み幅 ≒ 10 ステップ)を
+// 下回る配分は作り直しを繰り返す。
+export const ARC_MIN_ITEM_STEPS = 16;
 // [N] 自動ワープ: 残り時間 / MARGIN 以下の最大シミュレーション速度を選び、STOP 秒前に解除。
 export const AUTOWARP_MARGIN = 2;
 export const AUTOWARP_STOP = 10;
@@ -559,16 +616,11 @@ export const HP_REGEN_RATE = 1; // HP自動回復速度 [HP/s]
 export const PLAYER_BULLET_DAMAGE = 1.25; // 自機が被弾(自弾・プラズマ弾とも)した際のダメージ [HP]
 export const ENEMY_BULLET_DAMAGE = 1; // 既定の機関砲が 1 発で与えるダメージ [HP]。武器部品の damage の初期値
 
-// --- 剛体接触による装甲ダメージ(Ship.collideWith が Δv = impulse/mass に適用) ---
-// 艦同士(Player 1000kg ⇔ Enemy 10000kg、反発係数 e=0.4)の接触で、Player 側が受ける Δv が
-// 旧来の接触速度(法線相対速度 |vn|)しきい値と同じ場面で立つよう逆算した値。
-// Δv_self = impulse/mass_self = (1+e)·(mOther/(mSelf+mOther))·|vn| なので、
-// 換算係数 (1+e)·mEnemy/(mPlayer+mEnemy) = 1.4·10000/11000 ≒ 1.2727 を旧しきい値へ掛けている。
-// 質量が10倍の Enemy は同じ接触で受ける Δv が約1/10に留まるため、ラミングでの被害は Enemy 側が
-// 相対的に軽くなる — これは Δv 化が意図する「重いほど衝撃を受けにくい」という物理そのものであり、
-// 意図した挙動変化として扱う。
-export const COLLISION_DAMAGE_MIN_DV = 700 / 11; // ≈ 63.6 m/s
-export const COLLISION_DAMAGE_FULL_DV = 7000 / 11; // ≈ 636.4 m/s
+// --- 剛体接触による装甲ダメージ ---
+// 接触の瞬間の接近速度(法線方向の相対速度)のしきい値 [m/s]。これ未満なら無傷、これ以上で
+// パーツの最大 HP 分、間は線形。
+export const COLLISION_DAMAGE_MIN_CLOSING_SPEED = 50;
+export const COLLISION_DAMAGE_FULL_CLOSING_SPEED = 500;
 export const PLASMA_BULLET_SPEED = MUZZLE_SPEED * 2 / 3; // MUZZLE_SPEED の 2/3
 export const PLASMA_LIFETIME = 300; // プラズマ弾の寿命 [sim s]
 export const ENEMY_FIRE_INTERVAL = 1.0; // 敵の射撃間隔 [s]
@@ -580,7 +632,8 @@ export const ENEMY_BURST_COUNTS = [3, 5, 7, 20]; // バースト射撃弾数の�
 export const PLASMA_SPREAD_DEG = 0.05; // プラズマ弾の散布角 [deg]
 
 // 色管理 (Colors)
-// ゲーム世界(方位マーカー・演出・軌道線・船体)の色のみ。UI の色は theme.ts が持つ。
+// ゲーム世界の識別色(方位マーカー・陣営ごとの軌道線・ステージ演出)のみ。UI の色は theme.ts、
+// 「どう見えるか」だけを決めるエフェクトの色は render/vfx-style.ts が持つ。
 // 軌道3軸(prograde/normal/radial)だけは theme.ts の AXIS_* を使う。Δv 編集の 3D ギズモと
 // 方位マーカーは同じ軸を指すので、同じ軸に二系統の色を持たせない。
 export const COLOR_MARKER_BORESIGHT = '#dfe3e8';
@@ -592,41 +645,15 @@ export const COLOR_MARKER_PLANNED = '#8fd0ff';
 export const COLOR_MARKER_ALLY = '#ffffff';
 export const COLOR_MARKER_ENEMY = '#ffffff';
 export const COLOR_MARKER_HP_EMPTY = 'rgba(120, 125, 130, .2)';
-export const COLOR_BULLET_IMPACT_FLASH = '#ffe2a0';
-export const COLOR_MUZZLE_FLASH = '#fff0b8';
-export const COLOR_PLASMA_IMPACT_FLASH = '#ffa0ff';
-export const COLOR_GAS_PUFF_1 = '#aaaaaa';
-export const COLOR_GAS_PUFF_2 = '#ffffff';
-export const COLOR_DESTROY_FLASH_1 = '#ffb36b';
-export const COLOR_DESTROY_FLASH_2 = '#fffbe8';
-export const COLOR_PLAYER_DESTROY_FRAG = '#9fd8e8';
-export const COLOR_ENEMY_DESTROY_FRAG = '#ff6a4a';
+export const COLOR_PLAYER_ORBIT_LINE_INACTIVE = '#ffffff'; // マップビューで操作対象でない自艦の軌道線
 export const COLOR_ENEMY_ORBIT_LINE = '#565b63';
 export const COLOR_BASE_ORBIT_LINE = '#4f8f7d'; // 拠点(味方施設)の軌道線。落ち着いた緑がかった色で他線と区別
-export const COLOR_PLAYER_ORBIT_LINE = '#bfc9d4'; // 自機の軌道線(予測線・過去線)に共通の色
-export const COLOR_ENEMY_PLASMA = '#ff3333'; // 蛍光色の赤
-export const COLOR_SHIP_DARK_HULL = '#2e3340';
 export const COLOR_STAGE0_GROUP_ACCENTS = ['#ff4a3d', '#3dc6ff', '#3dff8f', '#ffe23d', '#bf3dff'];
-
-// 軌道まわりの線の描画順。値が大きいほど後に描かれ、重なったときに手前へ来る。
-// 描画順は線どうしの相対関係でしか意味を持たない(同値だと透明描画の前後が不定になる)ので、
-// 各線が自分の値を単独で決めず、この表で一括して割り当てる。
-export const LINE_RENDER_ORDER = {
-  reference: 0,        // 天体の参照軌道線
-  shipOrbit: 1,        // 自機・敵・拠点の解析楕円
-  secondaryTarget: 2,  // 第二ターゲットの軌道線
-  target: 3,           // 主ターゲットの軌道線
-  plan: 4,             // 計画軌道(破線)
-  predicted: 5,        // 積分予測線。解析楕円の代替なので、両方出る境界フレームでは必ずこちらを手前に置く
-} as const;
 
 // 役割ごとの軌道線の見た目(色・不透明度・描画順)を一括して決める表。
 export const LINE_STYLE = {
   enemyOrbit: { color: COLOR_ENEMY_ORBIT_LINE, opacity: 0.35, renderOrder: LINE_RENDER_ORDER.shipOrbit },
   baseOrbit: { color: COLOR_BASE_ORBIT_LINE, opacity: 0.35, renderOrder: LINE_RENDER_ORDER.shipOrbit },
-  playerOrbit: { color: COLOR_PLAYER_ORBIT_LINE, opacity: 0.55, renderOrder: LINE_RENDER_ORDER.shipOrbit },
-  playerPredicted: { color: COLOR_PLAYER_ORBIT_LINE, opacity: 0.55, renderOrder: LINE_RENDER_ORDER.predicted },
-  playerActual: { color: COLOR_PLAYER_ORBIT_LINE, opacity: 0.3, renderOrder: LINE_RENDER_ORDER.predicted },
 } as const satisfies Record<string, LineStyle>;
 
 // 惑星・衛星の参照軌道線のフェード距離 [m]。カメラから天体までの距離がこれ未満なら非表示、
@@ -637,3 +664,11 @@ export const SATELLITE_ORBIT_LINE_FADE_NEAR_DIST = 5e8; // 50万km
 export const SATELLITE_ORBIT_LINE_FADE_FAR_DIST = 1e9; // 100万km
 // 参照軌道線が完全表示のときの不透明度。
 export const REFERENCE_LINE_OPACITY = 0.3;
+
+// マップのハロー軌道ガイド(halo-guide-lines.ts)の線色。静止軌道リング(0x8b93a0)と同じ
+// 控えめな系統だが、ファミリーごとに色相を変えて重なっても見分けられるようにする。
+export const COLOR_HALO_GUIDE_LINE = 0x6fa3c9; // ハロー族(s に沿った不透明度グラデーションの基準色)
+export const COLOR_PLANAR_LYAPUNOV_LINE = 0x7fb88a;
+export const COLOR_VERTICAL_LYAPUNOV_LINE = 0xc9a969;
+export const COLOR_LISSAJOUS_LINE = 0xb08bc9;
+export const COLOR_DRO_LINE = 0x6fc9b8;

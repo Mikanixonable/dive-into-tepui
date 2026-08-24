@@ -1,14 +1,24 @@
 import * as THREE from 'three/webgpu';
-import { Attitude, randomQuat } from '../../physics/attitude';
+import { Attitude, qRotate, randomQuat } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { randSym } from '../../physics/random';
-import { add, randVec, v3, Vec3 } from '../../physics/vec3';
+import { add, addScaled, randVec, scale, v3, Vec3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { DebrisKind, DebrisPiece } from '../game-entity/debris-piece';
 import { FlashEffect, FlashEffectManager } from './flash-effect-manager';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
+import {
+  BULLET_IMPACT_FLASH_COLOR, BULLET_IMPACT_FLASH_DURATION, BULLET_IMPACT_FLASH_SIZE0, BULLET_IMPACT_FLASH_SIZE1, DESTROY_FLASH1_DURATION, DESTROY_FLASH1_SIZE0, DESTROY_FLASH1_SIZE1, DESTROY_FLASH2_DURATION, DESTROY_FLASH2_SIZE0, DESTROY_FLASH2_SIZE1, DESTROY_FLASH_COLOR_1, DESTROY_FLASH_COLOR_2, DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, GAS_PUFF1_BRIGHTNESS, GAS_PUFF1_DURATION, GAS_PUFF1_SIZE0, GAS_PUFF1_SIZE1, GAS_PUFF2_BRIGHTNESS, GAS_PUFF2_DURATION, GAS_PUFF2_SIZE0, GAS_PUFF2_SIZE1, GAS_PUFF_COLOR_1, GAS_PUFF_COLOR_2, MUZZLE_FLASH_COLOR, MUZZLE_FLASH_DURATION, MUZZLE_FLASH_SIZE0, MUZZLE_FLASH_SIZE1, PLASMA_IMPACT_FLASH_COLOR, PLASMA_IMPACT_FLASH_DURATION, PLASMA_IMPACT_FLASH_SIZE0, PLASMA_IMPACT_FLASH_SIZE1,
+} from '../../render/vfx-style';
+import {
+  BOOSTER_INTERSTAGE_BOLT_Z,
+  BOOSTER_INTERSTAGE_COVER_RADIUS,
+  BOOSTER_INTERSTAGE_COVER_SEGMENTS,
+  BOOSTER_INTERSTAGE_COVER_Z,
+  BOOSTER_STAGE_DIMENSIONS,
+} from '../../render/booster';
 
 // フラッシュ・破片エフェクトの生成窓口。scene への注入をここに一元化し、破片は
 // entities へ追加する。フラッシュの毎フレーム更新・寿命管理は FlashEffectManager が持つ。
@@ -43,39 +53,101 @@ export class EffectsSystem {
   // プラズマ弾命中フラッシュを生成する。
   spawnPlasmaFlash(state: KinematicState): void {
     this.spawnFlash(state,
-      C.PLASMA_IMPACT_FLASH_SIZE0,
-      C.PLASMA_IMPACT_FLASH_SIZE1,
-      C.PLASMA_IMPACT_FLASH_DURATION,
-      C.COLOR_PLASMA_IMPACT_FLASH);
+      PLASMA_IMPACT_FLASH_SIZE0,
+      PLASMA_IMPACT_FLASH_SIZE1,
+      PLASMA_IMPACT_FLASH_DURATION,
+      PLASMA_IMPACT_FLASH_COLOR);
   }
 
   // 実弾命中フラッシュを生成する。
   spawnBulletFlash(state: KinematicState): void {
     this.spawnFlash(state,
-      C.BULLET_IMPACT_FLASH_SIZE0,
-      C.BULLET_IMPACT_FLASH_SIZE1,
-      C.BULLET_IMPACT_FLASH_DURATION,
-      C.COLOR_BULLET_IMPACT_FLASH);
+      BULLET_IMPACT_FLASH_SIZE0,
+      BULLET_IMPACT_FLASH_SIZE1,
+      BULLET_IMPACT_FLASH_DURATION,
+      BULLET_IMPACT_FLASH_COLOR);
   }
 
   // ガスのような気体が放出されるエフェクト（被弾時やデブリ命中時用）
   spawnGasPuff(state: KinematicState): void {
-    // 灰色の低透明度のビルボードを2つ重ねてガスっぽさを出す
-    this.spawnFlash(state, 1.0, 8.0, 0.45, C.COLOR_GAS_PUFF_1, 0.3);
-    this.spawnFlash(state, 0.5, 6.0, 0.35, C.COLOR_GAS_PUFF_2, 0.4);
+    this.spawnFlash(state, GAS_PUFF1_SIZE0, GAS_PUFF1_SIZE1, GAS_PUFF1_DURATION, GAS_PUFF_COLOR_1, GAS_PUFF1_BRIGHTNESS);
+    this.spawnFlash(state, GAS_PUFF2_SIZE0, GAS_PUFF2_SIZE1, GAS_PUFF2_DURATION, GAS_PUFF_COLOR_2, GAS_PUFF2_BRIGHTNESS);
+  }
+
+  // 段間カバーと爆砕ボルトを接続点から切り離し、径方向へ散らす。カバーは内側段側へ、
+  // ボルトは両段の平均速度を基準にするので、分離後も接続面に留まらず画面で読める。
+  spawnBoosterSeparation(
+    t: number,
+    joint: Vec3,
+    playerVelocity: Vec3,
+    boosterVelocity: Vec3,
+    att: Attitude,
+  ): void {
+    const coverBaseZ = BOOSTER_STAGE_DIMENSIONS.length + BOOSTER_INTERSTAGE_COVER_Z;
+    const boltBaseZ = BOOSTER_STAGE_DIMENSIONS.length + BOOSTER_INTERSTAGE_BOLT_Z;
+    const averageVelocity = scale(add(playerVelocity, boosterVelocity), 0.5);
+
+    for (let i = 0; i < BOOSTER_INTERSTAGE_COVER_SEGMENTS; i++) {
+      const angle = (i * Math.PI * 2) / BOOSTER_INTERSTAGE_COVER_SEGMENTS;
+      const radialLocal = v3(Math.cos(angle), Math.sin(angle), 0);
+      const tangentLocal = v3(-Math.sin(angle), Math.cos(angle), 0);
+      const radial = qRotate(att.q, radialLocal);
+      const tangent = qRotate(att.q, tangentLocal);
+
+      const coverPosition = add(joint, qRotate(att.q, v3(
+        Math.cos(angle) * BOOSTER_INTERSTAGE_COVER_RADIUS,
+        Math.sin(angle) * BOOSTER_INTERSTAGE_COVER_RADIUS,
+        coverBaseZ,
+      )));
+      const coverVelocity = addScaled(
+        addScaled(playerVelocity, radial, 4.5 + Math.random() * 2.5),
+        tangent,
+        randSym(1.5),
+      );
+      this.spawnDebrisPiece(
+        kinematicState(t, coverPosition, coverVelocity),
+        { kind: 'boosterCover', segment: i, bornSim: t },
+        { q: att.q, w: v3(randSym(0.8), randSym(1.8), randSym(0.8)), inertia: v3(1, 1.7, 2.4) },
+      );
+
+      const boltPosition = add(joint, qRotate(att.q, v3(
+        Math.cos(angle) * (BOOSTER_INTERSTAGE_COVER_RADIUS + 0.08),
+        Math.sin(angle) * (BOOSTER_INTERSTAGE_COVER_RADIUS + 0.08),
+        boltBaseZ,
+      )));
+      const boltVelocity = addScaled(
+        addScaled(
+          addScaled(averageVelocity, radial, 6.0 + Math.random() * 3.5),
+          tangent,
+          randSym(2.0),
+        ),
+        qRotate(att.q, v3(0, 0, 1)),
+        randSym(2.5),
+      );
+      this.spawnDebrisPiece(
+        kinematicState(t, boltPosition, boltVelocity),
+        { kind: 'boosterBolt', segment: i, bornSim: t },
+        { q: att.q, w: v3(randSym(2.5), randSym(2.5), randSym(2.5)), inertia: v3(0.4, 0.5, 0.7) },
+      );
+    }
   }
 
   // マズルフラッシュを生成する。ガンサイトズーム中は sync 側で減光される。
   spawnMuzzleFlash(state: KinematicState): void {
     this.spawnFlash(
       state,
-      C.MUZZLE_FLASH_SIZE0,
-      C.MUZZLE_FLASH_SIZE1,
-      C.MUZZLE_FLASH_DURATION,
-      C.COLOR_MUZZLE_FLASH,
+      MUZZLE_FLASH_SIZE0,
+      MUZZLE_FLASH_SIZE1,
+      MUZZLE_FLASH_DURATION,
+      MUZZLE_FLASH_COLOR,
       1,
       true,
     );
+  }
+
+  spawnProteinStateFlash(state: KinematicState, kind: string): void {
+    const color = kind === 'critical' ? 0xff3d88 : kind === 'dissociated' ? 0xa76dff : 0x59e7ff;
+    this.spawnFlash(state, 2.5, 13, 0.34, color, 0.9, true);
   }
 
   // state は発生位置・発生源速度と、その位置が表す時刻(エポック)。積分前の座標から
@@ -86,14 +158,14 @@ export class EffectsSystem {
     size1: number,
     duration: number,
     color: string | number,
-    peakOpacity = 1,
+    peakBrightness = 1,
     dimsInGunsight = false,
   ): void {
     const fx: FlashEffect = {
       transform: new THREE.Object3D(),
       baseColor: new THREE.Color(color),
       color: new THREE.Color(),
-      state, age: 0, duration, size0, size1, peakOpacity, dimsInGunsight,
+      state, age: 0, duration, size0, size1, peakBrightness, dimsInGunsight,
     };
     this._flashEffects.addFlash(fx);
   }
@@ -133,10 +205,10 @@ export class EffectsSystem {
   // 敵機は自機の ENEMY_SCALE 倍サイズなので、爆発・破片も見合った大きさにする(scale)。
   spawnShipDestroyEffect(state: KinematicState, scale: number, accent: string | number): void {
     const { t, r, v } = state;
-    this.spawnFlash(state, C.DESTROY_FLASH1_SIZE0 * scale, C.DESTROY_FLASH1_SIZE1 * scale, C.DESTROY_FLASH1_DURATION, C.COLOR_DESTROY_FLASH_1);
-    this.spawnFlash(state, C.DESTROY_FLASH2_SIZE0 * scale, C.DESTROY_FLASH2_SIZE1 * scale, C.DESTROY_FLASH2_DURATION, C.COLOR_DESTROY_FLASH_2);
+    this.spawnFlash(state, DESTROY_FLASH1_SIZE0 * scale, DESTROY_FLASH1_SIZE1 * scale, DESTROY_FLASH1_DURATION, DESTROY_FLASH_COLOR_1);
+    this.spawnFlash(state, DESTROY_FLASH2_SIZE0 * scale, DESTROY_FLASH2_SIZE1 * scale, DESTROY_FLASH2_DURATION, DESTROY_FLASH_COLOR_2);
     // 破片のサイズを 1/3 に縮小し、拡散の初速(spread)を大きくして散らせる
-    this.scatterFragments(t, r, v, 11, accent, (C.DESTROY_FRAG_SIZE_MIN * scale) / 3, (C.DESTROY_FRAG_SIZE_MAX * scale) / 3, 20.0);
+    this.scatterFragments(t, r, v, 11, accent, (DESTROY_FRAG_SIZE_MIN * scale) / 3, (DESTROY_FRAG_SIZE_MAX * scale) / 3, 20.0);
   }
 
   // 破壊片1個を生成する。

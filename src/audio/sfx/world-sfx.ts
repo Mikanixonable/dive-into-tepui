@@ -4,11 +4,14 @@
 // AudioContext が unlock されるまでは、どのメソッドも無音のまま何もしない。
 import { AudioEngine } from '../audio-engine';
 
+// 被弾点がこの距離まで自機中心から離れると、遠い被弾として音量・音高を下限にする [m]。
+const HIT_SOUND_DISTANCE_MAX = 10;
+
 export class WorldSfx {
   private thrustGain: GainNode | null = null;
   private rcsGain: GainNode | null = null;
 
-  constructor(private readonly engine: AudioEngine) {}
+  constructor(private readonly engine: AudioEngine) { }
 
   // 常時再生のループ音チャンネル(通常は無音)を組む。ctx が未生成のうちは null を返し、
   // 呼び出し側は次の機会にまた組み直しを試みる。
@@ -150,7 +153,10 @@ export class WorldSfx {
 
     const osc = ctx.createOscillator();
     osc.type = 'sawtooth';
-    osc.frequency.value = 80;
+
+    osc.frequency.setValueAtTime(60, t);
+    osc.frequency.exponentialRampToValueAtTime(80, t + 0.3);
+    osc.frequency.exponentialRampToValueAtTime(40, t + 0.4);
 
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
@@ -160,7 +166,7 @@ export class WorldSfx {
 
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0.01, t);
-    gain.gain.linearRampToValueAtTime(0.3, t + 0.1);
+    gain.gain.linearRampToValueAtTime(0.15, t + 0.2);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
 
     osc.connect(filter).connect(gain).connect(ctx.destination);
@@ -168,22 +174,27 @@ export class WorldSfx {
     osc.stop(t + 0.45);
   }
 
-  // 自機被弾音。敵弾通過音と同じノコギリ波ローパスで、さらに低い音域。
-  hit(): void {
+  // 自機被弾音。被弾点が自機中心から遠いほど、音量と音高を下げる。
+  hit(impactDistance: number): void {
     const ctx = this.engine.ctx;
     if (!ctx) return;
     const t = ctx.currentTime;
+    const proximity = Math.max(0, Math.min(1, 1 - impactDistance / HIT_SOUND_DISTANCE_MAX));
+    const frequency = 80 + 90 * proximity;
+    const peakGain = 0.2 + 0.7 * proximity;
+    const tailGain = 0.02 + 0.08 * proximity;
+
     const osc = ctx.createOscillator();
     osc.type = 'sawtooth';
-    osc.frequency.value = 42;
+    osc.frequency.setValueAtTime(frequency, t);
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
     filter.frequency.setValueAtTime(70, t);
     filter.frequency.exponentialRampToValueAtTime(190, t + 0.1);
     filter.frequency.exponentialRampToValueAtTime(55, t + 0.32);
     const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.18, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+    gain.gain.setValueAtTime(peakGain, t);
+    gain.gain.exponentialRampToValueAtTime(tailGain, t + 0.35);
     osc.connect(filter).connect(gain).connect(ctx.destination);
     osc.start(t);
     osc.stop(t + 0.38);
@@ -236,6 +247,14 @@ export class WorldSfx {
     osc.connect(gain).connect(ctx.destination);
     osc.start(t);
     osc.stop(t + 0.2);
+  }
+
+  // デカプラーの爆砕ボルト。撃破爆発より短い破裂音と金属の解放音を重ねる。
+  decouple(): void {
+    this.engine.noiseBurst(0.055, 'highpass', 1800, 0.16);
+    this.engine.noiseBurst(0.09, 'lowpass', 320, 0.22);
+    this.engine.tone(760, 0.06, 0.07, 'square');
+    this.engine.tone(430, 0.11, 0.05, 'triangle');
   }
 
   // 高度低下警報: 短い二音の警告音(熱防御警報よりは緊急度の低いトーン)

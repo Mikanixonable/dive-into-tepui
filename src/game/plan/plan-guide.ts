@@ -1,7 +1,7 @@
 // 直近ノードの実行ガイド: 実行時刻を過ぎたノードの消化、接近・達成の通知、NODE/BURN マーカー。
 import { KinematicState } from '../../physics/kinematic-state';
 import { OrbitalElements } from '../../physics/elements';
-import { Attractor, orbitalElementsOf, strongestAttractor } from '../../physics/attractor';
+import { CelestialBody, orbitalElementsOf, strongestAttractor } from '../../physics/celestial-body';
 import { addScaled, dot, len, norm, sub } from '../../physics/vec3';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
@@ -28,7 +28,7 @@ export class PlanGuide {
 
   // 実行時刻を過ぎたノードを計画から落とし、直近ノードへの接近と計画軌道の達成を
   // ノードごとに一度だけ通知する。player がいなければ何もしない。
-  update(player: Player | null, simTime: number, editMode: boolean, attractors: readonly Attractor[]): void {
+  update(player: Player | null, simTime: number, editMode: boolean, celestialBodies: readonly CelestialBody[]): void {
     if (!player || editMode) return;
     const plan = player.plan;
     plan.consumeNodesUpTo(simTime - C.NODE_EXPIRE_GRACE, player.state);
@@ -38,7 +38,7 @@ export class PlanGuide {
     // 目標軌道との近さを見ても達成の判定にならない。
     if (node && simTime >= node.t - C.NODE_APPROACH_LEAD) {
       this.notifyApproach(node);
-      this.notifyAchieved(node, player, attractors);
+      this.notifyAchieved(node, player, celestialBodies);
     }
   }
 
@@ -96,11 +96,11 @@ export class PlanGuide {
 
   // 自機の軌道が目標軌道に十分近づいていれば達成を通知する。ノードと自機で最も強く引く
   // 天体が違えば、要素同士の比較自体が意味を持たないので判定しない。
-  private notifyAchieved(node: KinematicState, player: Player, attractors: readonly Attractor[]): void {
+  private notifyAchieved(node: KinematicState, player: Player, celestialBodies: readonly CelestialBody[]): void {
     if (this.achievedNotified === node) return;
     const plan = player.plan;
-    const playerCenter = strongestAttractor(player.state.r, attractors);
-    const nodeCenter = strongestAttractor(node.r, attractors);
+    const playerCenter = strongestAttractor(player.state.r, celestialBodies);
+    const nodeCenter = strongestAttractor(node.r, celestialBodies);
     if (playerCenter.id !== nodeCenter.id) return;
     const targetEl = orbitalElementsOf(node, nodeCenter);
     const playerEl = player.orbitalElementsAround(playerCenter);

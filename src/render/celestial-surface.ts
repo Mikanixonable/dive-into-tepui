@@ -1,183 +1,99 @@
-// 天体表面のメッシュと、その昼夜の陰影。天体は描画される位置が真の位置と一致しない
-// (戦闘ビューは視距離を圧縮してカメラの近くへ置く)ため、シーンのライトで照らすと
-// 昼夜境界が実際の太陽方向と合わない。そこで天体は光源を共有せず、自分の真の位置から見た
-// 恒星方向を uniform で受け取り、自分だけで陰影を計算する。
+// 天体表面のメッシュ。分割段ラダーの各段ぶんの球を1つのアルベドで束ね、見かけ直径に応じて
+// 1段だけを見せる。艦艇と同じライトプリパスの受け手として立ち、陰影・遮蔽・逆二乗の減衰は
+// すべてパイプラインが与える。
 import * as THREE from 'three/webgpu';
-import {
-  and,
-  clamp,
-  dot,
-  exp,
-  float,
-  greaterThan,
-  length,
-  lessThan,
-  max,
-  min,
-  normalWorld,
-  positionWorld,
-  select,
-  sub,
-  texture as textureNode,
-  uniform,
-  uv,
-  vec3,
-} from 'three/tsl';
-import { RingSystemDef } from '../physics/solar-system';
-import { SPHERE_LOD_LADDER, SphereLodLevel } from './screen-lod';
-import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from './tsl-types';
+import { markLitOpaque } from './pipeline/lit-layer';
+import type { Albedo } from './celestial-albedo';
+import type { CelestialTexture } from './celestial-textures';
+import { sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from './screen-lod';
 
-// 夜側の明るさ(0 で真っ暗)。惑星光・星明かりを表す最低限の底上げ。
-export const NIGHT_AMBIENT = 0.04;
+// 球の開始方位 [rad]。正距円筒図法のテクスチャは経度 0 を u=0.5 へ置くので、その経線が
+// モデルの本初子午線(+Z)へ来る向きから分割を始める。
+const PRIME_MERIDIAN_PHI = -Math.PI / 2;
 
-// 分割数の組が SPHERE_LOD_LADDER のいずれかの段と一致する呼び出しだけ、その段の単位球
-// ジオメトリを全呼び出し元(=全天体)で共有する。一致しない組(既存のジオメトリを
-// 個別に書き換える呼び出しなど)は共有すると他の利用元を壊すため、専用に1つ作る。
+// 分割段ごとの単位球ジオメトリを、その段を使う全天体で共有する。
 const sharedLodGeometries = new Map<SphereLodLevel, THREE.BufferGeometry>();
-function unitSphereGeometry(widthSegments: number, heightSegments: number): { geometry: THREE.BufferGeometry; shared: boolean } {
-  const level = SPHERE_LOD_LADDER.find((l) => l.widthSegments === widthSegments && l.heightSegments === heightSegments);
-  if (level === undefined) return { geometry: new THREE.SphereGeometry(1, widthSegments, heightSegments), shared: false };
-  let geo = sharedLodGeometries.get(level);
-  if (geo === undefined) {
-    geo = new THREE.SphereGeometry(1, widthSegments, heightSegments);
-    sharedLodGeometries.set(level, geo);
+function unitSphereGeometry(level: SphereLodLevel): THREE.BufferGeometry {
+  let geometry = sharedLodGeometries.get(level);
+  if (geometry === undefined) {
+    geometry = new THREE.SphereGeometry(
+      1, level.widthSegments, level.heightSegments, PRIME_MERIDIAN_PHI);
+    sharedLodGeometries.set(level, geometry);
   }
-  return { geometry: geo, shared: true };
+  return geometry;
 }
 
-type RingShadowBand = {
-  readonly axis: Vec3Uniform;
-  readonly center: Vec3Uniform;
-  readonly inner: FloatUniform;
-  readonly outer: FloatUniform;
-  readonly tau: FloatUniform;
-  readonly active: FloatUniform;
-};
-
 export class CelestialSurface {
-  private readonly sunDirNode = uniform(new THREE.Vector3(1, 0, 0));
-  // リングを持たない天体では null のままにする。リング付き天体でも、実際に同期される
-  // まで遅延して作ることで、非リング天体の shader graph に32帯ぶんの計算を混ぜない。
-  private ringShadowBands: readonly RingShadowBand[] | null = null;
-  // setRingShadowSystem は毎フレーム呼ばれるため、リング付き天体についても一時ベクトルを再利用する。
-  private readonly ringAxis = new THREE.Vector3(0, 1, 0);
+  // 段ごとの半径 1 の球。表示側が親の位置・スケール・自転姿勢を毎フレーム与える。
+  private readonly meshes: ReadonlyMap<SphereLodLevel, THREE.Mesh>;
+  private activeLevel: SphereLodLevel | null = null;
 
-  // mesh は半径 1 の球で、表示側が位置・スケール・自転姿勢を毎フレーム与える。
-  readonly mesh: THREE.Mesh;
-  private readonly albedoNode: Vec3Node;
-  // false なら mesh.geometry は SPHERE_LOD_LADDER 段の共有ジオメトリで、dispose では触らない。
-  private readonly ownsGeometry: boolean;
-  private readonly texture: THREE.Texture | null;
-
-  // albedo は面の色を返すノード。これに昼夜の陰影を掛けたものが最終色になる。
-  private constructor(geometry: THREE.BufferGeometry, ownsGeometry: boolean, albedo: Vec3Node, texture: THREE.Texture | null) {
-    this.ownsGeometry = ownsGeometry;
-    this.texture = texture;
-    this.albedoNode = albedo;
-    this.material = this.buildMaterial(this.albedoNode, false);
-    this.mesh = new THREE.Mesh(geometry, this.material);
-  }
-
-  private material: THREE.MeshBasicNodeMaterial;
-
-  private buildMaterial(albedo: Vec3Node, withRingShadows: boolean): THREE.MeshBasicNodeMaterial {
-    const mat = new THREE.MeshBasicNodeMaterial();
-    const lambert = clamp(dot(normalWorld, this.sunDirNode), 0, 1);
-    let ringTransmission: FloatNode = float(1);
-    if (withRingShadows) {
-      // withRingShadows は enableRingShadows() で bands を先に作ってから呼ぶ。
-      const bands = this.ringShadowBands;
-      if (bands === null) throw new Error('CelestialSurface: ring shadow bands are not initialized');
-      for (const band of bands) {
-        const relative = sub(positionWorld, band.center);
-        const denominator = dot(band.axis, this.sunDirNode);
-        const safeDenominator = select(greaterThan(denominator, 0), max(denominator, 0.015), min(denominator, -0.015));
-        const planeDistance = dot(relative, band.axis).negate().div(safeDenominator);
-        const hit = positionWorld.add(this.sunDirNode.mul(planeDistance));
-        const radial = length(sub(hit, band.center));
-        const inside = and(
-          greaterThan(planeDistance, 0),
-          and(greaterThan(radial, band.inner), lessThan(radial, band.outer)),
-        );
-        const transmission = exp(band.tau.div(max(denominator.abs(), 0.015)).negate());
-        ringTransmission = ringTransmission.mul(select(and(inside, greaterThan(band.active, 0.5)), transmission, float(1)));
-      }
+  // material と texture は解放までこの表面が持つ。
+  private constructor(
+    private readonly material: THREE.Material,
+    private readonly texture: THREE.Texture | null,
+  ) {
+    const meshes = new Map<SphereLodLevel, THREE.Mesh>();
+    // 段ごとにメッシュを持つ — WebGPU では mesh.geometry の差し替えが効かない。
+    for (const level of SPHERE_LOD_LADDER) {
+      const mesh = new THREE.Mesh(unitSphereGeometry(level), material);
+      mesh.visible = false;
+      markLitOpaque(mesh);
+      meshes.set(level, mesh);
     }
-    // 環が遮るのは太陽の直射光だけ。夜側の環境光まで減衰させない。
-    mat.colorNode = albedo.mul(float(NIGHT_AMBIENT).add(
-      lambert.mul(1 - NIGHT_AMBIENT).mul(ringTransmission),
-    ));
-    return mat;
+    this.meshes = meshes;
   }
 
-  private enableRingShadows(): void {
-    if (this.ringShadowBands !== null) return;
-    this.ringShadowBands = Array.from({ length: 32 }, () => ({
-      axis: uniform(new THREE.Vector3(0, 1, 0)),
-      center: uniform(new THREE.Vector3()),
-      inner: uniform(-1),
-      outer: uniform(-1),
-      tau: uniform(0),
-      active: uniform(0),
-    }));
-    const previousMaterial = this.material;
-    this.material = this.buildMaterial(this.albedoNode, true);
-    this.mesh.material = this.material;
-    previousMaterial.dispose();
-  }
-
-  // 実写テクスチャを貼った球面。
-  static textured(textureUrl: string, widthSegments: number, heightSegments: number): CelestialSurface {
-    const map = new THREE.TextureLoader().load(textureUrl);
+  // 実写テクスチャを貼った球面。テクスチャの明るさはその天体のアルベドへ合わせる倍率で正す。
+  static textured(texture: CelestialTexture): CelestialSurface {
+    const map = new THREE.TextureLoader().load(texture.url);
     map.colorSpace = THREE.SRGBColorSpace;
-    const { geometry, shared } = unitSphereGeometry(widthSegments, heightSegments);
-    return new CelestialSurface(geometry, !shared, textureNode(map, uv()).rgb, map);
+    const scale = texture.albedoScale;
+    const material = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(scale, scale, scale), map, roughness: 1, metalness: 0,
+    });
+    return new CelestialSurface(material, map);
   }
 
-  // テクスチャを持たない天体の単色球面。
-  static solid(color: number, widthSegments: number, heightSegments: number): CelestialSurface {
-    const c = new THREE.Color(color);
-    const { geometry, shared } = unitSphereGeometry(widthSegments, heightSegments);
-    return new CelestialSurface(geometry, !shared, vec3(c.r, c.g, c.b), null);
+  // テクスチャを持たない天体の単色球面。albedo は線形 RGB の拡散アルベド
+  // (render/celestial-albedo.ts)で、sRGB の見た目色ではない。
+  static solid(albedo: Albedo): CelestialSurface {
+    const material = new THREE.MeshStandardMaterial({
+      color: new THREE.Color().setRGB(albedo[0], albedo[1], albedo[2], THREE.LinearSRGBColorSpace),
+      roughness: 1, metalness: 0,
+    });
+    return new CelestialSurface(material, null);
   }
 
-  // この天体の真の ECI 位置から見た恒星方向(単位ベクトル)を与える。
-  setSunDirection(dir: THREE.Vector3): void {
-    this.sunDirNode.value.copy(dir);
+  // マテリアルを自前で組む天体の球面。material の解放もこの表面が担う。
+  static withMaterial(material: THREE.Material): CelestialSurface {
+    return new CelestialSurface(material, null);
   }
 
-  // 環平面と太陽方向の交点を表面シェーダへ渡す。最大32帯まで、複数帯は透過率を乗算する。
-  setRingShadowSystem(rings: RingSystemDef | undefined, bodyCenter: THREE.Vector3, bodyRadius: number, displayScale: number, axis: THREE.Vector3 | null): void {
-    if (rings !== undefined) this.enableRingShadows();
-    const bands = this.ringShadowBands;
-    // リング情報を持たない天体では、リング用uniformもshader nodeも存在しない。
-    if (bands === null) return;
-    const ringAxis = axis === null
-      ? this.ringAxis.set(0, 1, 0)
-      : this.ringAxis.copy(axis).normalize();
-    for (let i = 0; i < bands.length; i++) {
-      const node = bands[i]!;
-      const band = rings?.bands[i];
-      node.axis.value.copy(ringAxis);
-      node.center.value.copy(bodyCenter);
-      if (band === undefined) {
-        node.active.value = 0;
-        continue;
-      }
-      node.inner.value = (band.innerRadius / bodyRadius) * displayScale;
-      node.outer.value = (band.outerRadius / bodyRadius) * displayScale;
-      node.tau.value = band.optics.normalOpticalDepth;
-      node.active.value = 1;
-    }
+  // 全段のメッシュを parent の下へ置く。
+  addTo(parent: THREE.Object3D): void {
+    for (const mesh of this.meshes.values()) parent.add(mesh);
   }
 
-  // mesh を親から外し、現行マテリアルとテクスチャを解放する。テクスチャは
-  // material.dispose() から連鎖解放されない(TSL のノードグラフに埋め込まれているだけ)ため、
-  // ここで個別に dispose する。
+  // 見かけ直径 [px] から分割段を選び、その段のメッシュだけを見せる。
+  syncLod(apparentDiameterPx: number): void {
+    const level = sphereLodLevel(apparentDiameterPx);
+    if (level === this.activeLevel) return;
+    this.activeLevel = level;
+    for (const [meshLevel, mesh] of this.meshes) mesh.visible = meshLevel === level;
+  }
+
+  // 全段のメッシュを隠す。次の syncLod で段を選び直す。
+  hide(): void {
+    this.activeLevel = null;
+    for (const mesh of this.meshes.values()) mesh.visible = false;
+  }
+
+  // 全段のメッシュを親から外し、マテリアルとテクスチャを解放する。テクスチャは
+  // マテリアル側から連鎖解放されないので個別に dispose する。
   dispose(): void {
-    this.mesh.removeFromParent();
+    for (const mesh of this.meshes.values()) mesh.removeFromParent();
     this.material.dispose();
-    if (this.ownsGeometry) this.mesh.geometry.dispose();
     this.texture?.dispose();
   }
 }

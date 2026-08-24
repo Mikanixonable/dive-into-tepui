@@ -5,12 +5,11 @@ import type * as THREE from 'three/webgpu';
 import { KinematicState, fromOrbitAxes, kinematicState, orbitAxes } from '../../physics/kinematic-state';
 import { OrbitalElements } from '../../physics/elements';
 import { Projected } from '../../physics/projection';
-import { Vec3, add, dot, len, scale, sub, v3 } from '../../physics/vec3';
+import { Vec3, add, dot, len, sub, v3 } from '../../physics/vec3';
 import type { Ephemeris } from '../../physics/ephemeris';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
-import { ContextMenu } from '../hud/context-menu';
-import { MenuAction, MenuCommon } from '../hud/menu-actions';
+import { ContextMenu, MenuAction, MenuCommon } from '../hud/windows';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { FloatingOrigin } from '../floating-origin';
@@ -18,27 +17,22 @@ import type { CameraSystem } from '../camera/camera-system';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { AxisHandleSpec, NodeGizmo, NodeHandleSpec } from './node-gizmo';
+import { AxisDragGizmo } from './plan-axis-drag';
 import { PlanGizmo3D } from './plan-gizmo-3d';
 import { PlanPanel } from './plan-panel';
 import { DisplayDurationSource, Plan, PlanData } from './plan';
 import { PlanDisplay } from './plan-display';
 import { SimSpeedManager } from '../sim-speed-manager';
 import type { Controllable } from '../game-entity/controllable';
-import type { ActivePlayerController } from '../active-player-controller';
-import type { FrameControls } from '../hud/frame-controls';
+import type { ActivePlayerController } from '../active-controllable-controller';
+import type { FrameControls } from '../hud/frame/frame-controls';
 import { focusPoint } from '../camera/focus-target';
-import { Attractor, orbitalElementsOf, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
-import { toFrameState } from '../../physics/frame';
-import { PlanAttractors } from './plan-attractors';
-import type { EntityManager } from '../simulation/entity-manager';
+import { CelestialBody, bodyAnchorSource, orbitalElementsOf, frameOfCelestialBody, strongestAttractor } from '../../physics/celestial-body';
+import { FrameAnchorSource, toFrameState } from '../../physics/frame';
+import type { FutureCelestialBodies } from '../simulation/future-celestial-bodies';
+import type { PredictedArc } from '../simulation/predicted-arc';
 import type { DisplayWindow } from '../display-window-manager';
 import type { PerfCounts } from '../../perf-meter';
-
-// ホールド継続時間 [s] から Δv 加算レートを指数的に求める。押し始めは細かく、長押しで粗くなる。
-function rampedDvRate(heldSec: number): number {
-  const t = Math.min(heldSec / C.DV_RATE_RAMP_SEC, 1);
-  return C.DV_RATE_MIN * (C.DV_RATE_MAX / C.DV_RATE_MIN) ** t;
-}
 
 export class PlanEditor {
   // 編集対象として選択中のノード。ノードは不変オブジェクトで、編集のたびに新しい
@@ -71,13 +65,9 @@ export class PlanEditor {
 
   readonly planDisplay: PlanDisplay;
   private readonly gizmo3d: PlanGizmo3D;
-  // 計画の積分が時刻ごとに引く重力源・衝突体。世代値が動いたときだけ保持を捨てるので、
-  // フレームを跨いで持ち続ける。
-  private readonly attractors: PlanAttractors;
 
   // 直近の update() が組んだ計画区間列の終端時刻(表示窓でクリップしない)。一度も
   // update していなければ NaN。
-  private get lastPlanEnd(): number { return this.planDisplay.path.plannedEnd; }
 
   private _editMode = false;
   get editMode(): boolean { return this._editMode; }
@@ -90,8 +80,7 @@ export class PlanEditor {
   // ノード以外の計画軌道上を右クリックしたときのメニュー。
   private readonly orbitMenu: ContextMenu<KinematicState, MenuAction>;
 
-  // 6 方向それぞれのホールド継続時間 [s]。index は axis*2 + (sign<0 ? 1 : 0)。
-  private readonly dvHoldTime: number[] = [0, 0, 0, 0, 0, 0];
+  private readonly axisDrag: AxisDragGizmo;
 
   private readonly panel: PlanPanel;
   private simTime = 0;
@@ -102,7 +91,8 @@ export class PlanEditor {
     private readonly _uiSfx: UiSfx,
     private readonly simSpeedManager: SimSpeedManager,
     private readonly ephemeris: Ephemeris,
-    entities: EntityManager,
+    // 計画の積分が時刻ごとに引く重力源・衝突体。
+    private readonly celestialBodies: FutureCelestialBodies,
     scene: THREE.Scene,
     private readonly markerManager: MarkerManager,
     private readonly activePlayers: ActivePlayerController,
@@ -110,11 +100,15 @@ export class PlanEditor {
     private readonly frameControls: FrameControls,
   ) {
     this.planDisplay = new PlanDisplay(scene, markerManager, ephemeris, displayDuration);
-    this.attractors = new PlanAttractors(ephemeris, entities);
     this.nodeGizmo = new NodeGizmo(this._hud.layers.marker, this._hud.layers.popup, this._hud.overlayManager);
     this.orbitMenu = new ContextMenu<KinematicState, MenuAction>(this._hud.layers.popup, this._hud.overlayManager);
     this.gizmo3d = new PlanGizmo3D();
     scene.add(this.gizmo3d.group);
+    this.axisDrag = new AxisDragGizmo(
+      (state) => this.bodyState(state),
+      (r, t) => this.planDisplay.path.projectPoint(r, t),
+      (axis, sign, amount) => this.applyDv(axis, sign, amount),
+    );
 
     this.panel = new PlanPanel(this._hud.mapRoot);
     this.panel.onDvInputChange = (pro, nrm, rad) => this.setNodeDvLocal(pro, nrm, rad);
@@ -142,7 +136,7 @@ export class PlanEditor {
     };
     g.onNodeContextMenu = (clientX, clientY) => { this.handleNodeRightClick(clientX, clientY); };
     g.onAxisDrag = (axis, sign, deltaPx) => {
-      this.applyAxisDrag(axis, sign, deltaPx, this.ship?.fineAttitude ?? false);
+      this.axisDrag.applyAxisDrag(axis, sign, deltaPx, this.ship?.fineAttitude ?? false);
     };
     // 指定ノードの時刻まで自動ワープを開始する
     g.onMenuWarpTo = (idx) => {
@@ -157,7 +151,7 @@ export class PlanEditor {
     g.onMenuFocus = (idx) => {
       const n = this.plan?.nodes[idx];
       if (n) this.frameControls.setFocus(
-        focusPoint(this.ephemeris, this.ephemeris.inertialFrame, n.r, n.t));
+        focusPoint(this.ephemeris, this.ephemeris.inertialFrame, n.r, n.t, bodyAnchorSource([])));
     };
   }
 
@@ -467,73 +461,6 @@ export class PlanEditor {
     this._uiSfx.warp();
   }
 
-  // Δv アームのラッチ前ドラッグ量を選択中ノードの Δv へ加算する。
-  private applyAxisDrag(axis: 0 | 1 | 2, sign: 1 | -1, deltaPx: number, fineAttitude: boolean): void {
-    const rate = (fineAttitude ? C.NODE_DV_RATE_FINE : C.NODE_DV_RATE) / 200;
-    this.applyDv(axis, sign, deltaPx * rate);
-  }
-
-  // axis/sign 方向のキー/ボタンが held の間ホールド時間を積み上げ、そのレートで dt 秒分の
-  // Δv を加算する。held が false ならホールド時間をリセットするだけで加算はしない。
-  private applyHeldDv(axis: 0 | 1 | 2, sign: 1 | -1, held: boolean, dt: number, fineAttitude: boolean): void {
-    const idx = axis * 2 + (sign < 0 ? 1 : 0);
-    if (!held) {
-      this.dvHoldTime[idx] = 0;
-      return;
-    }
-    this.dvHoldTime[idx] = (this.dvHoldTime[idx] ?? 0) + dt;
-    const fineScale = fineAttitude ? C.NODE_DV_RATE_FINE / C.NODE_DV_RATE : 1;
-    this.applyDv(axis, sign, rampedDvRate(this.dvHoldTime[idx]!) * fineScale * dt);
-  }
-
-  // Δv アーム 6 個の画面方向をノード位置と微小先の投影差分から求める。
-  private computeAxisScreenDirs(
-    node: KinematicState,
-    mapDist: number,
-  ): { pro: { x: number; y: number; }; nrm: { x: number; y: number; }; rad: { x: number; y: number; }; } {
-    const bodyNode = this.bodyState(node);
-    const { r } = node;
-    const { pro, nrm, radOut } = orbitAxes(bodyNode);
-    const L = mapDist * 0.05;
-    const p0 = this.planDisplay.path.projectPoint(r, node.t);
-    // 軸方向へわずかに動かした点との投影差分から、画面上の単位方向ベクトルを求める。
-    const dirFor = (axisVec: Vec3): { x: number; y: number; } => {
-      const p1 = this.planDisplay.path.projectPoint(add(r, scale(axisVec, L)), node.t);
-      const dx = p1.x - p0.x;
-      const dy = p1.y - p0.y;
-      const m = Math.hypot(dx, dy);
-      return m > 1e-6 ? { x: dx / m, y: dy / m } : { x: 0, y: -1 };
-    };
-    return { pro: dirFor(pro), nrm: dirFor(nrm), rad: dirFor(radOut) };
-  }
-
-  // ノード周囲に PRO/RET・NRM/ANM・OUT/IN 6 方向の Δv アームハンドル仕様を配置する。
-  private buildAxisHandles(
-    nx: number,
-    ny: number,
-    dirs: { pro: { x: number; y: number; }; nrm: { x: number; y: number; }; rad: { x: number; y: number; }; },
-  ): AxisHandleSpec[] {
-    const R = C.NODE_GIZMO_HANDLE_PX;
-    // 軸・符号・画面方向からハンドル1個分の位置とラベルを組む
-    const mk = (axis: 0 | 1 | 2, sign: 1 | -1, d: { x: number; y: number; }, label: string): AxisHandleSpec => ({
-      axis,
-      sign,
-      x: nx + d.x * R * sign,
-      y: ny + d.y * R * sign,
-      dirx: d.x * sign,
-      diry: d.y * sign,
-      label,
-    });
-    return [
-      mk(0, 1, dirs.pro, 'PRO'),
-      mk(0, -1, dirs.pro, 'RET'),
-      mk(1, 1, dirs.nrm, 'NRM'),
-      mk(1, -1, dirs.nrm, 'ANM'),
-      mk(2, 1, dirs.rad, 'OUT'),
-      mk(2, -1, dirs.rad, 'IN'),
-    ];
-  }
-
   // ノードギズモを非表示にする。
   private hideGizmo(): void {
     this.nodeGizmo.sync([], null);
@@ -551,14 +478,14 @@ export class PlanEditor {
 
   // center 相対状態。orbitAxes が KinematicState を要求するので、座標系相対の r/v を
   // state の時刻のまま KinematicState へ包み直す。
-  private relativeToBody(state: KinematicState, center: Attractor): KinematicState {
-    const rel = toFrameState(frameOfAttractor(center), state);
+  private relativeToBody(state: KinematicState, center: CelestialBody): KinematicState {
+    const rel = toFrameState(frameOfCelestialBody(center), state);
     return kinematicState(state.t, rel.r, rel.v);
   }
 
   // 軌道要素とΔv方向を解釈するための中心天体相対状態。中心はその位置で最も強く引く天体。
   private bodyState(state: KinematicState): KinematicState {
-    return this.relativeToBody(state, strongestAttractor(state.r, this.ephemeris.attractorsAt(state.t)));
+    return this.relativeToBody(state, strongestAttractor(state.r, this.ephemeris.celestialBodiesAt(state.t)));
   }
 
   // 表示上限までのノードハンドルと、選択中ノードがあれば Δv アームの仕様を組み立ててギズモへ渡す。
@@ -584,8 +511,8 @@ export class PlanEditor {
         arrFor3D = arriving[this.selectedNodeIdx] || null;
         const p = this.nodeScreenPos(node);
         if (p.front) {
-          const dirs = this.computeAxisScreenDirs(arrFor3D || node, mapDist);
-          axisSpecs = this.buildAxisHandles(p.x, p.y, dirs);
+          const dirs = this.axisDrag.computeAxisScreenDirs(arrFor3D || node, mapDist);
+          axisSpecs = this.axisDrag.buildAxisHandles(p.x, p.y, dirs);
         }
       }
     }
@@ -627,17 +554,17 @@ export class PlanEditor {
   // WASDQE キー・長押しボタン・Δv アームのラッチドラッグから選択中ノードの Δv を加算する。
   private updateEditing(input: Input, dt: number): void {
     if (!this.dvEditActive) {
-      this.dvHoldTime.fill(0);
+      this.axisDrag.resetHold();
       return;
     }
     const fine = this.ship?.fineAttitude ?? false;
     const b = this.panel.dvButtons;
-    this.applyHeldDv(0, 1, input.takeHeld(K.dvPrograde) || b.pro.isHeld, dt, fine);
-    this.applyHeldDv(0, -1, input.takeHeld(K.dvRetrograde) || b.ret.isHeld, dt, fine);
-    this.applyHeldDv(1, 1, input.takeHeld(K.dvNormal) || b.nrm.isHeld, dt, fine);
-    this.applyHeldDv(1, -1, input.takeHeld(K.dvAntinormal) || b.anm.isHeld, dt, fine);
-    this.applyHeldDv(2, 1, input.takeHeld(K.dvRadialOut) || b.out.isHeld, dt, fine);
-    this.applyHeldDv(2, -1, input.takeHeld(K.dvRadialIn) || b.in.isHeld, dt, fine);
+    this.axisDrag.applyHeldDv(0, 1, input.takeHeld(K.dvPrograde) || b.pro.isHeld, dt, fine);
+    this.axisDrag.applyHeldDv(0, -1, input.takeHeld(K.dvRetrograde) || b.ret.isHeld, dt, fine);
+    this.axisDrag.applyHeldDv(1, 1, input.takeHeld(K.dvNormal) || b.nrm.isHeld, dt, fine);
+    this.axisDrag.applyHeldDv(1, -1, input.takeHeld(K.dvAntinormal) || b.anm.isHeld, dt, fine);
+    this.axisDrag.applyHeldDv(2, 1, input.takeHeld(K.dvRadialOut) || b.out.isHeld, dt, fine);
+    this.axisDrag.applyHeldDv(2, -1, input.takeHeld(K.dvRadialIn) || b.in.isHeld, dt, fine);
 
     // ラッチ中の Δv アームは、閾値超過量に比例したレートで dt 秒分を加算し続ける。
     const latch = this.nodeGizmo.latch;
@@ -666,7 +593,7 @@ export class PlanEditor {
     let nodeSecondsFromNow: number | null = null;
     // 高度・大気圏警告の基準は、選択中ノード(無ければ計画の起点)で最も強く引く天体。
     const centerState = (this.selectedNodeIdx !== null ? plan.nodes[this.selectedNodeIdx] : null) ?? plan.anchorOr(ship.state);
-    const center = strongestAttractor(centerState.r, this.ephemeris.attractorsAt(centerState.t));
+    const center = strongestAttractor(centerState.r, this.ephemeris.celestialBodiesAt(centerState.t));
     if (this.selectedNodeIdx !== null) {
       const node = plan.nodes[this.selectedNodeIdx];
       const arr = arriving[this.selectedNodeIdx];
@@ -707,7 +634,7 @@ export class PlanEditor {
 
   // 計画折れ線を再積分し、ゴースト位置とアプシスアイコンを求め直す。折れ線は戦闘ビューでも
   // 描く — 計画どおりに機体を動かすのは戦闘ビューだから。
-  update(displayWindow: DisplayWindow): void {
+  update(displayWindow: DisplayWindow, frameAnchors: FrameAnchorSource): void {
     // 艦が替わったフレームで、前の艦のノードに対して開いたままのメニューを畳む(選択中ノードは
     // 参照で解決するので、計画が替われば同一性が外れて自然に選択なしになる)。
     const ship = this.ship;
@@ -716,23 +643,21 @@ export class PlanEditor {
       this.closeMenu();
     }
     this.simTime = displayWindow.simTime;
-    const excludedIds = ship === null ? [] : [ship.id];
-    // revision は前フレームの終端(lastPlanEnd)を基準に畳み込む — 今フレームの終端は
-    // このあとの planDisplay.update が決めるので、渡す時点ではまだ確定していない。
-    this.attractors.resolve(excludedIds, this.plan?.revision ?? 0, this.lastPlanEnd);
-    this.planDisplay.update(this.displayedPlan, displayWindow, this.attractors, ship?.name);
-    this.updateEquatorNodes(displayWindow);
+    this.planDisplay.update(this.displayedPlan, displayWindow, this.celestialBodies, ship, frameAnchors);
+    this.updateEquatorNodes(displayWindow, frameAnchors);
   }
 
-  // 操作艦の赤道交点マーカーを、計画の最終区間(=これから乗る軌道)を代表状態として求め直す。
-  // 区間の折れ線も渡すので、交点は解析楕円ではなく実際に描かれている積分線の上に載る。
-  private updateEquatorNodes(displayWindow: DisplayWindow): void {
+  // 操作艦の赤道交点マーカーを、いま描かれている計画の折れ線の上で求め直す。折れ線が出ていない
+  // 間は自艦の現在の軌道要素から求める。
+  private updateEquatorNodes(displayWindow: DisplayWindow, frameAnchors: FrameAnchorSource): void {
     const ship = this.ship;
     if (!ship) return;
-    const segment = this.planDisplay.path.finalSegment();
-    ship.ensureEquatorNodes(this.markerManager).update(
-      displayWindow.frame, displayWindow.displayTime, this.ephemeris,
-      segment?.state0, segment?.samples,
+    const timeLabel = {
+      mode: displayWindow.tickLabelMode, show: displayWindow.showElementTimes, nowSimTime: displayWindow.simTime,
+    };
+    ship.ensureEquatorNodes(this.markerManager).updateOnPath(
+      displayWindow.frame, displayWindow.displayTime, this.ephemeris, frameAnchors,
+      ship.state, this.planDisplay.path.displayedSamples(), timeLabel,
     );
   }
 
@@ -755,12 +680,15 @@ export class PlanEditor {
     }
   }
 
-  // 負荷確認ウィンドウが読む、直近フレームの計画区間の積分規模。
-  perfCounts(): Pick<PerfCounts, 'planArcs' | 'planSteps'> {
-    return {
-      planArcs: this.planDisplay.path.lastRebuiltArcs,
-      planSteps: this.planDisplay.path.lastSteps,
-    };
+  // 負荷確認ウィンドウが読む、直近フレームに作り直した計画区間の本数。
+  perfCounts(): Pick<PerfCounts, 'planArcs'> {
+    return { planArcs: this.planDisplay.path.lastRebuiltArcs };
+  }
+
+  // Predictor の予算パスへ渡す、このフレーム owned な計画区間の弧。表示していない計画の弧は
+  // 伸ばさない。
+  growableArcs(): readonly PredictedArc[] {
+    return this.displayedPlan === null ? [] : this.planDisplay.path.growableArcs();
   }
 
   // このフレームに出す折れ線の材料。出す価値のある折れ線が無ければ null — ノードの無い計画は

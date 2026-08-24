@@ -1,11 +1,10 @@
 import { Game } from './game/game';
 import type { Input } from './game/input/input';
 import { KEY_MAPPING as K } from './game/input/key-mapping';
-import { ResultScreen, type RunTransitions } from './game/hud/result-screen';
-import type { CurrentGameSource } from './game/hud/save-browser';
+import {
+  ResultScreen, type RunTransitions, type CurrentGameSource, type PauseMenu, type SettingsView,
+} from './game/hud/windows';
 import type { Hud } from './game/hud/hud';
-import type { PauseMenu } from './game/hud/pause-menu';
-import type { SettingsView } from './game/hud/settings-view';
 import type { GamePhase, StageClass, StageResult } from './game/stages/stage';
 import { findStageClass } from './game/stages/stage-dictionary';
 import { selectStage } from './game/stage-select';
@@ -18,11 +17,10 @@ import type { Bgm } from './audio/bgm/bgm';
 import type { WorldSfx } from './audio/sfx/world-sfx';
 import type { UiSfx } from './audio/sfx/ui-sfx';
 import type { GameScene } from './render/scene';
-import type { GraphicsSettings } from './render/graphics-settings';
 import type { RenderPipeline } from './render/pipeline/render-pipeline';
 import type { FrameSections } from './frame-sections';
 import type { Ephemeris } from './physics/ephemeris';
-import type { AttractorId } from './physics/attractor';
+import type { CelestialBodyId } from './physics/celestial-body';
 import { showLoading, hideLoading } from './loading-overlay';
 import { showFatalError } from './fatal-error';
 
@@ -44,7 +42,7 @@ function fallbackResult(phase: GamePhase): StageResult {
 
 // ローディング表示の下で、このステージの天体暦を組む。
 async function initEphemeris(
-  stageClass: StageClass, phaseOffsets: Partial<Record<AttractorId, number>>,
+  stageClass: StageClass, phaseOffsets: Partial<Record<CelestialBodyId, number>>,
 ): Promise<Ephemeris> {
   showLoading();
   try {
@@ -78,7 +76,6 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     private readonly settingsView: SettingsView,
     private readonly unlockManager: UnlockManager,
     private readonly sections: FrameSections,
-    private readonly graphics: GraphicsSettings,
     private readonly pipeline: RenderPipeline,
     private readonly slots: SaveSlots,
     private readonly snapshotService: SnapshotService,
@@ -91,8 +88,8 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     if (this.transitioning) return;
     this.transitioning = true;
     try {
-      const stageClass = await this.resolveStage();
-      await this.startRun(stageClass);
+      const { stageClass, startSimTime } = await this.resolveStage();
+      await this.startRun(stageClass, undefined, startSimTime);
     } finally {
       this.transitioning = false;
     }
@@ -100,19 +97,19 @@ export class Launcher implements RunTransitions, CurrentGameSource {
 
   // ?title=1 は選択画面へ強制する。?stage= は共有リンク・デバッグ用の明示指定として最優先。
   // どちらも無ければアクティブスロットの直近起動を再開し、それも無ければ選択画面を出す。
-  private async resolveStage(): Promise<StageClass> {
+  private async resolveStage(): Promise<{ stageClass: StageClass; startSimTime?: number }> {
     const params = new URLSearchParams(location.search);
     if (params.get('title') !== '1') {
       const fromParam = findStageClass(params.get('stage'));
-      if (fromParam !== null) return fromParam;
+      if (fromParam !== null) return { stageClass: fromParam };
       const resumed = resumableStageClass(this.unlockManager, this.slots);
-      if (resumed !== null) return resumed;
+      if (resumed !== null) return { stageClass: resumed };
     }
     return this.selectStageScreen();
   }
 
-  // 選択画面を出し、選ばれたステージクラスで解決される Promise を返す。
-  private selectStageScreen(): Promise<StageClass> {
+  // 選択画面を出し、選ばれたステージクラス(クリエイティブなら開始日時も)で解決される Promise を返す。
+  private selectStageScreen(): Promise<{ stageClass: StageClass; startSimTime?: number }> {
     return selectStage(
       this.unlockManager,
       () => { if (!this.hud.overlayManager.closeTopmostOnEscape()) this.pauseMenu.toggle(); },
@@ -132,7 +129,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   }
 
   // 現在の周回を畳んだ上で、天体暦の構築から Game の生成までを行い、起動をスロットへ記録する。
-  private async startRun(stageClass: StageClass, snapshotId?: string): Promise<void> {
+  private async startRun(stageClass: StageClass, snapshotId?: string, startSimTime?: number): Promise<void> {
     this.endRun();
     const initialSave = this.initialSaveFor(stageClass, snapshotId);
     const ephemeris = await initEphemeris(stageClass, initialSave?.phaseOffsets ?? {});
@@ -140,7 +137,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     const earthSpinPhase0 = initialSave?.earthSpinPhase0 ?? Math.random() * 2 * Math.PI;
     this.game = new Game(
       this.gs, stageClass, this.hud, this.worldSfx, this.uiSfx, this.pauseMenu, this.unlockManager,
-      this.sections, ephemeris, this.graphics, this.pipeline, earthSpinPhase0, initialSave,
+      this.sections, ephemeris, this.pipeline, earthSpinPhase0, initialSave, startSimTime,
     );
     // AudioContext は実際のユーザー操作でしか作れないため、unlock は入力エッジの発火点へ配線する。
     // Input は周回ごとに作り直されるので、配線もそのたびに張り直す。
@@ -211,7 +208,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     this.transitioning = true;
     this.endRun();
     this.selectStageScreen()
-      .then((stageClass) => this.startRun(stageClass))
+      .then(({ stageClass, startSimTime }) => this.startRun(stageClass, undefined, startSimTime))
       .catch((err) => this.fail(err))
       .finally(() => { this.transitioning = false; });
   }
@@ -234,8 +231,10 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     this.transitioning = true;
     this.endRun();
     const resumed = resumableStageClass(this.unlockManager, this.slots);
-    (resumed !== null ? Promise.resolve(resumed) : this.selectStageScreen())
-      .then((stageClass) => this.startRun(stageClass))
+    const resolved: Promise<{ stageClass: StageClass; startSimTime?: number }> =
+      resumed !== null ? Promise.resolve({ stageClass: resumed }) : this.selectStageScreen();
+    resolved
+      .then(({ stageClass, startSimTime }) => this.startRun(stageClass, undefined, startSimTime))
       .catch((err) => this.fail(err))
       .finally(() => { this.transitioning = false; });
   }

@@ -2,17 +2,25 @@
 // 中間データ(spec/preset)は持たない — 呼び出し側(各 Stage、stages/)がこの関数を直接呼んで
 // Enemy を得る。意図的に異なる2つの姿勢方針(無秩序に漂う/プログレードで接近する)を
 // この1ファイルに並べて置き、互いを見比べやすくする。
+//
+// **ここの軌道は「地球中心の ECI・平均半径の真球」を前提にした簡易な置き方である。** 高度は
+// ECI 原点からの距離で測り、周回速度は MU_EARTH から出す。これはゲームバランスのための
+// 配置であって物理量の測定ではないので、天体ごとの大気・基準楕円体(physics/atmosphere.ts)へは
+// 寄せていない — 緯度による基準面のずれ(赤道 +7km / 極 -14km)は、出現高度に持たせた余裕に
+// 埋もれる大きさに収まる。地球以外を主星とするステージで敵を出すなら、この前提ごと組み直す。
 import * as THREE from 'three/webgpu';
 import { qFromForwardUp, randomQuat } from '../../../physics/attitude';
 import { KinematicState, kinematicState, orbitAxes } from '../../../physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../../physics/solar-system';
 import { stateFromOrbitalElements } from '../../../physics/elements';
 import { randSym } from '../../../physics/random';
-import { len, norm, rotateAxis, scale, v3 } from '../../../physics/vec3';
+import { addScaled, len, norm, rotateAxis, scale, v3, type Vec3 } from '../../../physics/vec3';
 import { Hud } from '../../hud/hud';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../../vfx/effects-system';
-import { Enemy, inertiaForEnemyKind } from '../../game-entity/enemy';
+import { Enemy, inertiaForEnemyKind, type EnemyKind, type FormationRole } from '../../game-entity/enemy';
+import type { ProteinAssetId } from '../../protein/protein-asset-loader';
+import type { ProteinDisplaySettings } from '../../protein/protein-display';
 
 // 自機軌道(base)を dAlong だけ進めた位置の軌道状態(プリセット配置の共通基盤)。
 function phasedState(base: KinematicState, dAlong: number): KinematicState {
@@ -23,25 +31,57 @@ function phasedState(base: KinematicState, dAlong: number): KinematicState {
 
 // 無秩序に漂う敵(訓練クラスタ・通常ステージのプリセット敵の生成本体): ランダム姿勢+角速度。
 export function generateDriftingEnemy(name: string, state: KinematicState, _hp: number, accent: string | number, orbitLineColor: string | number, hud: Hud, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
+  return generateFreeEnemy(name, state, accent, orbitLineColor, { kind: 'drifting' }, hud, worldSfx, fx, scene);
+}
+
+// 登録されたタンパク質アセットを、現在の表示設定で描画する敵。
+export function generateProteinEnemy(name: string, state: KinematicState, assetId: ProteinAssetId, display: ProteinDisplaySettings, hud: Hud, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
+  return generateFreeEnemy(name, state, 0xffffff, 0xffffff, { kind: 'protein', assetId, display }, hud, worldSfx, fx, scene);
+}
+
+function generateFreeEnemy(
+  name: string, state: KinematicState, accent: string | number, orbitLineColor: string | number, enemyKind: EnemyKind,
+  hud: Hud, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene,
+  formationId?: string, formationRole?: FormationRole,
+): Enemy {
   return new Enemy(
     {
       name,
       state,
-      enemyKind: { kind: 'drifting' },
+      enemyKind,
       att: {
         // ランダムな姿勢・角速度を与える
         q: randomQuat(),
         w: v3(randSym(0.12), randSym(0.12), randSym(0.12)),
-        inertia: inertiaForEnemyKind({ kind: 'drifting' }),
+        inertia: inertiaForEnemyKind(enemyKind),
       },
       accent,
       orbitLineColor,
+      formationId,
+      formationRole,
     },
     hud,
     worldSfx,
     fx,
     scene,
   );
+}
+
+// タンパク質陣形の 3 役(SPEC COMBAT.md「タンパク質陣形」節)を、共通の epoch・速度で一括生成する。
+// centerState を中心に、攻撃担当(5I4R)はその場、盾役(ルビスコ)はプレイヤー方向へ 450 m、
+// エネルギー役(ATPシンテターゼ)は反対方向へ 450 m 離して置く。以後の隊列維持操舵はしない。
+export function generateProteinFormation(
+  name: string, centerState: KinematicState, playerPosition: Vec3, display: ProteinDisplaySettings, formationId: string,
+  hud: Hud, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene,
+): readonly [Enemy, Enemy, Enemy] {
+  const towardPlayer = norm(v3(playerPosition.x - centerState.r.x, playerPosition.y - centerState.r.y, playerPosition.z - centerState.r.z));
+  const offset = 450;
+  const shieldState = kinematicState(centerState.t, addScaled(centerState.r, towardPlayer, offset), centerState.v);
+  const energyState = kinematicState(centerState.t, addScaled(centerState.r, towardPlayer, -offset), centerState.v);
+  const attacker = generateFreeEnemy(`${name}-ATTACKER`, centerState, 0xffffff, 0xffffff, { kind: 'protein', assetId: 'pdb-5i4r', display }, hud, worldSfx, fx, scene, formationId, 'attacker');
+  const shield = generateFreeEnemy(`${name}-SHIELD`, shieldState, 0xffffff, 0xffffff, { kind: 'protein', assetId: 'pdb-8ruc-rubisco', display }, hud, worldSfx, fx, scene, formationId, 'shield');
+  const energy = generateFreeEnemy(`${name}-ENERGY`, energyState, 0xffffff, 0xffffff, { kind: 'protein', assetId: 'pdb-6n2y-atp-synthase', display }, hud, worldSfx, fx, scene, formationId, 'energy');
+  return [attacker, shield, energy];
 }
 
 // base から dAlong だけ進んだ位置に漂う敵を生成する。
@@ -96,7 +136,7 @@ export function generateMolniyaEnemy(
 
 // ステージ00ウェーブ敵: 自機へのフライパスなので、機首をプログレードに向けて生成する。
 export function generateApproachingEnemy(
-  name: string, state: KinematicState, _hp: number, accent: number, orbitLineColor: number, typeIndex: number, waveId: number, hud: Hud, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene,
+  name: string, state: KinematicState, _hp: number, accent: number, orbitLineColor: number, typeIndex: number, waveId: number | undefined, hud: Hud, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene,
 ): Enemy {
   return new Enemy(
     {

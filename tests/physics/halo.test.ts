@@ -9,7 +9,7 @@ import {
 } from '../../src/physics/halo';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
 import { SOLAR_SYSTEM } from '../../src/physics/solar-system';
-import { OrbitingId } from '../../src/physics/attractor';
+import { OrbitingId } from '../../src/physics/celestial-body';
 import { dot, len, sub } from '../../src/physics/vec3';
 
 const SECONDARIES: OrbitingId[] = ['moon', 'earth'];
@@ -56,7 +56,7 @@ export function register(): void {
         assert.ok(isFiniteVec(s!.r), `r not finite: ${JSON.stringify(s!.r)}`);
         assert.ok(isFiniteVec(s!.v), `v not finite: ${JSON.stringify(s!.v)}`);
         const frame = collinearFrame(secondary, point, t, ephemeris);
-        const ampX = haloAmplitudeX(frame, point, halo.az)!;
+        const ampX = haloAmplitudeX(frame, halo.az)!;
         const dist = len(sub(s!.r, frame.origin));
         // |kappa| は数のオーダーなので、面内・面外振幅の和の数倍を上限とする。
         assert.ok(dist < 20 * (ampX + halo.az), `${label}: distance from L-point ${dist} too large`);
@@ -93,7 +93,7 @@ export function register(): void {
   // Ax≈206,000 km、Ay=|κ|·Ax≈666,000 km。三次の振幅拘束が正しく解けているかを見る。
   test('halo: Sun-Earth L1 amplitude constraint reproduces the ISEE-3 halo', () => {
     const frame = collinearFrame('earth', 'L1', t, ephemeris);
-    const ax = haloAmplitudeX(frame, 'L1', 110000e3);
+    const ax = haloAmplitudeX(frame, 110000e3);
     assert.ok(ax !== null, 'no halo solution for Az = 110,000 km');
     assert.ok(Math.abs(ax! - 206000e3) < 6000e3, `Ax: ${ax! / 1e3} km`);
     const ay = Math.abs(frame.kappa) * ax!;
@@ -104,8 +104,8 @@ export function register(): void {
   // 分岐する振幅)を与える。太陽-地球 L1 では約 20 万 km で、Az を増やすと単調に増える。
   test('halo: in-plane amplitude has a lower bound and grows with the out-of-plane one', () => {
     const frame = collinearFrame('earth', 'L1', t, ephemeris);
-    const axMin = haloAmplitudeX(frame, 'L1', 0)!;
+    const axMin = haloAmplitudeX(frame, 0)!;
     assert.ok(Math.abs(axMin - 200000e3) < 20000e3, `Ax at Az=0: ${axMin / 1e3} km`);
-    assert.ok(haloAmplitudeX(frame, 'L1', 110000e3)! > axMin, 'Ax should grow with Az');
+    assert.ok(haloAmplitudeX(frame, 110000e3)! > axMin, 'Ax should grow with Az');
   });
 }

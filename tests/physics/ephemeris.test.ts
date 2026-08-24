@@ -9,7 +9,14 @@ import { EPS } from '../../src/physics/ecliptic';
 import { PlanetOrbit } from '../../src/physics/planet-orbit';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
 import { JULIAN_CENTURY, keplerOrbitState } from '../../src/physics/kepler-orbit';
+import { qInvert, qMul, qRotate } from '../../src/physics/attitude';
+import { meridianDirection } from '../../src/physics/body-orientation';
+import { SIDEREAL_DAY } from '../../src/physics/solar-system';
 import { cross, dot, len, norm, scale, sub, v3 } from '../../src/physics/vec3';
+import { toFrameState } from '../../src/physics/frame';
+import { bodyAnchorSource } from '../../src/physics/celestial-body';
+import { kinematicState } from '../../src/physics/kinematic-state';
+import { assertOmegaMatchesBasis } from './test-helpers';
 
 const YEAR = 365.25636 * 86400;
 const MOON_PERIOD = 27.321661 * 86400;
@@ -31,14 +38,19 @@ export function register(): void {
 
   test('ephemeris: frameOf は同じ対に同じ参照を返し、inertialFrame/frames/frameFor と一致する', () => {
     assert.equal(eph.frameOf('earth', null), eph.frameOf('earth', null));
-    assert.equal(eph.frameOf('earth', 'moon'), eph.frameOf('earth', 'moon'));
+    assert.equal(eph.frameOf('earth', { kind: 'revolution', id: 'moon' }), eph.frameOf('earth', { kind: 'revolution', id: 'moon' }));
     assert.equal(eph.frameOf('earth', null), eph.inertialFrame);
     assert.equal(eph.frameOf('earth', null), eph.frameFor('earth'));
     assert.equal(eph.frameOf('sun', null), eph.frameFor('sun'));
     for (const frame of eph.frames) {
       assert.equal(eph.frameOf(frame.center, frame.rotatingWith), frame);
     }
-    assert.notEqual(eph.frameOf('earth', 'moon'), eph.frameOf('earth', null));
+    assert.notEqual(eph.frameOf('earth', { kind: 'revolution', id: 'moon' }), eph.frameOf('earth', null));
+    // 同じ天体でも自転と公転は別の座標系で、rotatingWith オブジェクトも呼び出しごとに同一参照。
+    const spinEarth = eph.frameOf('earth', { kind: 'spin', id: 'earth' });
+    const revolutionEarth = eph.frameOf('earth', { kind: 'revolution', id: 'earth' });
+    assert.notEqual(spinEarth, revolutionEarth);
+    assert.equal(spinEarth.rotatingWith, eph.frameOf('earth', { kind: 'spin', id: 'earth' }).rotatingWith);
   });
 
   test('ephemeris: 地球は ECI 原点に厳密に静止する', () => {
@@ -229,28 +241,28 @@ export function register(): void {
     }
   });
 
-  test('ephemeris: attractorsAt は SOLAR_SYSTEM の宣言順で、地球は静止・半径は赤道半径 R_EARTH_EQ', () => {
-    const attractors = eph.attractorsAt(1234);
-    assert.deepEqual(attractors.map((b) => b.id), ['earth', 'moon', 'mercury', 'venus', 'mars', 'phobos', 'deimos', 'jupiter', 'metis', 'adrastea', 'amalthea', 'thebe', 'io', 'europa', 'ganymede', 'callisto', 'himalia', 'elara', 'ananke', 'carme', 'pasiphae', 'sinope', 'saturn', 'pan', 'daphnis', 'prometheus', 'pandora', 'epimetheus', 'janus', 'mimas', 'enceladus', 'tethys', 'dione', 'rhea', 'titan', 'hyperion', 'iapetus', 'phoebe', 'uranus', 'puck', 'miranda', 'ariel', 'umbriel', 'titania', 'oberon', 'neptune', 'triton', 'nereid', 'ceres', 'vesta', 'pallas', 'pluto', 'charon', 'styx', 'nix', 'kerberos', 'hydra', 'haumea', 'hiiaka', 'namaka', 'makemake', 'eris', 'dysnomia', 'halley', 'encke', 'sedna', 'quaoar', 'weywot', 'chariklo', 'hygiea', 'eros', 'ryugu', 'bennu', 'churyumov', 'orcus', 'vanth', 'gonggong', 'salacia', 'varuna', 'ixion', 'arrokoth', 'chiron', 'interamnia', 'europa52', 'davida', 'juno', 'psyche', 'eunomia', 'sylvia', 'itokawa', 'apophis', 'didymos', 'dimorphos', 'tempel1', 'wild2', 'hartley2', 'cruithne', 'kamooalewa', 'tk7', 'eureka', 'sun']);
-    assert.equal(attractors[0]!.radius, R_EARTH_EQ);
+  test('ephemeris: celestialBodiesAt は SOLAR_SYSTEM の宣言順で、地球は静止・半径は赤道半径 R_EARTH_EQ', () => {
+    const celestialBodies = eph.celestialBodiesAt(1234);
+    assert.deepEqual(celestialBodies.map((b) => b.id), ['earth', 'moon', 'mercury', 'venus', 'mars', 'phobos', 'deimos', 'jupiter', 'metis', 'adrastea', 'amalthea', 'thebe', 'io', 'europa', 'ganymede', 'callisto', 'himalia', 'elara', 'ananke', 'carme', 'pasiphae', 'sinope', 'saturn', 'pan', 'daphnis', 'prometheus', 'pandora', 'epimetheus', 'janus', 'mimas', 'enceladus', 'tethys', 'dione', 'rhea', 'titan', 'hyperion', 'iapetus', 'phoebe', 'uranus', 'puck', 'miranda', 'ariel', 'umbriel', 'titania', 'oberon', 'neptune', 'triton', 'nereid', 'ceres', 'vesta', 'pallas', 'pluto', 'charon', 'styx', 'nix', 'kerberos', 'hydra', 'haumea', 'hiiaka', 'namaka', 'makemake', 'eris', 'dysnomia', 'halley', 'encke', 'sedna', 'quaoar', 'weywot', 'chariklo', 'hygiea', 'eros', 'ryugu', 'bennu', 'orcus', 'vanth', 'gonggong', 'salacia', 'varuna', 'ixion', 'arrokoth', 'chiron', 'interamnia', 'europa52', 'davida', 'juno', 'psyche', 'eunomia', 'sylvia', 'apophis', 'didymos', 'tempel1', 'wild2', 'hartley2', 'cruithne', 'kamooalewa', 'tk7', 'eureka', 'sun']);
+    assert.equal(celestialBodies[0]!.radius, R_EARTH_EQ);
   });
 
-  test('ephemeris: 同一 t の attractorsAt は同一配列参照を返す', () => {
+  test('ephemeris: 同一 t の celestialBodiesAt は同一配列参照を返す', () => {
     const e = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 0.4 });
-    assert.equal(e.attractorsAt(1234), e.attractorsAt(1234));
+    assert.equal(e.celestialBodiesAt(1234), e.celestialBodiesAt(1234));
   });
 
   test('ephemeris: gravityAttractorsAt は mu が 0 でない天体だけを宣言順で返す', () => {
     const gravity = eph.gravityAttractorsAt(1234);
     assert.ok(gravity.every((b) => b.mu !== 0));
-    const expected = eph.attractorsAt(1234).filter((b) => b.mu !== 0).map((b) => b.id);
+    const expected = eph.celestialBodiesAt(1234).filter((b) => b.mu !== 0).map((b) => b.id);
     assert.deepEqual(gravity.map((b) => b.id), expected);
-    assert.ok(gravity.length > 0 && gravity.length < eph.attractorsAt(1234).length);
+    assert.ok(gravity.length > 0 && gravity.length < eph.celestialBodiesAt(1234).length);
   });
 
-  test('ephemeris: gravityAttractorsAt の要素は同一 t の attractorsAt と厳密に一致する', () => {
+  test('ephemeris: gravityAttractorsAt の要素は同一 t の celestialBodiesAt と厳密に一致する', () => {
     const t = 4321;
-    const all = new Map(eph.attractorsAt(t).map((b) => [b.id, b]));
+    const all = new Map(eph.celestialBodiesAt(t).map((b) => [b.id, b]));
     for (const g of eph.gravityAttractorsAt(t)) {
       const a = all.get(g.id)!;
       assert.deepEqual(g.state.r, a.state.r);
@@ -264,28 +276,28 @@ export function register(): void {
   test('ephemeris: 同一 t の gravityAttractorsAt は同一配列参照を返す', () => {
     const e = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 0.4 });
     assert.equal(e.gravityAttractorsAt(1234), e.gravityAttractorsAt(1234));
-    assert.notEqual(e.gravityAttractorsAt(1234), e.attractorsAt(1234));
+    assert.notEqual(e.gravityAttractorsAt(1234), e.celestialBodiesAt(1234));
   });
 
   test('ephemeris: 異なる t では再計算され、値が変わる', () => {
     const e = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 0.4 });
-    const a = e.attractorsAt(0);
-    const b = e.attractorsAt(1e5);
+    const a = e.celestialBodiesAt(0);
+    const b = e.celestialBodiesAt(1e5);
     assert.notEqual(a, b);
     const moonA = a.find((x) => x.id === 'moon')!.state.r;
     const moonB = b.find((x) => x.id === 'moon')!.state.r;
     assert.ok(len(sub(moonA, moonB)) > 1e6, `月が動いていない: ${len(sub(moonA, moonB))}`);
     // 直近 t を巡回で保持するので、古い t を引き直しても同じ値が返る。
-    assert.deepEqual(e.attractorsAt(0), a);
+    assert.deepEqual(e.celestialBodiesAt(0), a);
   });
 
   test('ephemeris: 位相オフセットが違えば同じ時刻でも別の位置になる', () => {
     const a = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 0.4 });
     const b = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 2.1 });
-    const moonA = a.attractorsAt(1234).find((x) => x.id === 'moon')!.state.r;
-    const moonB = b.attractorsAt(1234).find((x) => x.id === 'moon')!.state.r;
+    const moonA = a.celestialBodiesAt(1234).find((x) => x.id === 'moon')!.state.r;
+    const moonB = b.celestialBodiesAt(1234).find((x) => x.id === 'moon')!.state.r;
     assert.ok(len(sub(moonA, moonB)) > 1e6, `位相オフセットが反映されていない: ${len(sub(moonA, moonB))}`);
-    // attractorsAt の時刻キャッシュを経由しても positionOf と同じ値を返す。
+    // celestialBodiesAt の時刻キャッシュを経由しても positionOf と同じ値を返す。
     assert.deepEqual(moonB, b.positionOf('moon', 1234));
   });
 
@@ -406,6 +418,77 @@ export function register(): void {
     const plutoOrbit = planetOrbit('pluto');
     const q = plutoOrbit.a * (1 - plutoOrbit.e);
     assert.ok(q < planetOrbit('neptune').a, `冥王星近日点: ${q}, 海王星半長径: ${planetOrbit('neptune').a}`);
+  });
+
+  test('ephemeris: spinRotationAt(earth) の姿勢は1恒星日でほぼ元へ戻る', () => {
+    const q0 = eph.spinRotationAt('earth', 0)!.q;
+    const q1 = eph.spinRotationAt('earth', SIDEREAL_DAY)!.q;
+    // q1 * inverse(q0) の回転角(2倍角の余弦を w から取り出す)が 2π の整数倍に近いかを見る。
+    const rel = qMul(q1, qInvert(q0));
+    const angle = 2 * Math.acos(Math.min(1, Math.abs(rel.w)));
+    assert.ok(angle < 1e-6, `1恒星日後の残差角: ${angle}`);
+  });
+
+  test('ephemeris: spinRotationAt(earth) の姿勢は自転中も omega と整合する', () => {
+    const t = SIDEREAL_DAY / 3;
+    const q0 = eph.spinRotationAt('earth', 0)!.q;
+    const qt = eph.spinRotationAt('earth', t)!.q;
+    const rel = qMul(qt, qInvert(q0));
+    const angle = 2 * Math.acos(Math.min(1, Math.abs(rel.w)));
+    assert.ok(Math.abs(angle - (2 * Math.PI) / 3) < 1e-6, `経過角: ${angle}`);
+    assertOmegaMatchesBasis((time) => eph.spinRotationAt('earth', time)!, t, 1);
+  });
+
+  test('ephemeris: spinRotationAt(earth) の姿勢は時刻とともに自転角だけ進む', () => {
+    const q0 = eph.spinRotationAt('earth', 0)!.q;
+    const quarter = eph.spinRotationAt('earth', SIDEREAL_DAY / 4)!.q;
+    const rel = qMul(quarter, qInvert(q0));
+    const angle = 2 * Math.acos(Math.min(1, Math.abs(rel.w)));
+    assert.ok(Math.abs(angle - Math.PI / 2) < 1e-9, `1/4恒星日後の姿勢差: ${angle}`);
+  });
+
+  test('ephemeris: spinRotationAt(earth) の omega の大きさは 2π/恒星日 に一致する', () => {
+    const { omega } = eph.spinRotationAt('earth', 12345)!;
+    const expected = (2 * Math.PI) / SIDEREAL_DAY;
+    assert.ok(Math.abs(len(omega) - expected) / expected < 1e-6, `|omega|: ${len(omega)} vs ${expected}`);
+  });
+
+  test('ephemeris: spinRotationAt は自転モデルを持たない天体(ceres)で null', () => {
+    assert.equal(eph.spinRotationAt('ceres', 0), null);
+  });
+
+  // 公転回転系(orbitFrameRotationAt)が ẑ に軌道面法線・x̂ に中心天体→天体を置くのに合わせ、
+  // 自転回転系は ẑ に自転軸・x̂ に本初子午線を置く。ここが崩れると、自転系だけ軸の意味が
+  // 変わってしまい、同じパネルで選んだ2つの座標系が別の規約で回る。
+  test('ephemeris: spinRotationAt の基底は ẑ = 自転軸、x̂ = 本初子午線', () => {
+    const t = 98765;
+    const { axis, spinAngle } = eph.poleAt('earth', t)!;
+    const { q } = eph.spinRotationAt('earth', t)!;
+    const zHat = qRotate(q, v3(0, 0, 1));
+    const xHat = qRotate(q, v3(1, 0, 0));
+    const meridian = meridianDirection(axis, spinAngle);
+    assert.ok(len(sub(zHat, axis)) < 1e-9, `ẑ: ${JSON.stringify(zHat)} vs ${JSON.stringify(axis)}`);
+    assert.ok(len(sub(xHat, meridian)) < 1e-9, `x̂: ${JSON.stringify(xHat)} vs ${JSON.stringify(meridian)}`);
+  });
+
+  // 自転回転系の存在意義そのもの。omega を 0 のまま置くと位置だけは正しく変換されるので
+  // 軌道線では気付けず、速度を通す量(座標系相対速度・計画バーンの Δv)だけが静かにずれる。
+  test('ephemeris: 自転回転系では地表に固定した点の座標系相対速度が 0 になる', () => {
+    const t = 55555;
+    const tf = eph.frameTransformAt(eph.frameOf('earth', { kind: 'spin', id: 'earth' }), t, bodyAnchorSource([]));
+    // 座標系相対で (R, 0, 0) に置いた点を ECI へ戻し、自転とともに動く速度を与える。
+    const r = qRotate(tf.q, v3(R_EARTH_EQ, 0, 0));
+    const rel = toFrameState(tf, kinematicState(t, r, cross(tf.omega, r)));
+    assert.ok(len(rel.v) < 1e-6, `|v_rel|: ${len(rel.v)} m/s`);
+    assert.ok(len(sub(rel.r, v3(R_EARTH_EQ, 0, 0))) < 1e-6, `r_rel: ${JSON.stringify(rel.r)}`);
+  });
+
+  // 逆行自転は軸を反転せずに角速度の符号で表す — 金星の omega は IAU の北極と逆を向く。
+  test('ephemeris: 逆行自転(金星)の omega は自転軸と逆向き', () => {
+    const t = 4242;
+    const { axis } = eph.poleAt('venus', t)!;
+    const { omega } = eph.spinRotationAt('venus', t)!;
+    assert.ok(dot(omega, axis) < 0, `dot: ${dot(omega, axis)}`);
   });
 }
 

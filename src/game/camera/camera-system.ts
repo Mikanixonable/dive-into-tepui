@@ -2,9 +2,9 @@ import * as THREE from 'three/webgpu';
 import { Hud } from '../hud/hud';
 import { CombatCameraSystem } from './combat-camera-system';
 import { MapCamera } from './map-camera';
-import { ViewOptionsPanel } from '../hud/view-options-panel';
+import { ViewOptionsPanel } from '../hud/panels/view-options-panel';
 import { FocusMarkers } from './focus-markers';
-import { BodyClassToggles, DEFAULT_BODY_CLASS_TOGGLES } from '../celestial/body-visibility';
+import { applyBodyClassDisplayMode, BodyClassToggles, DEFAULT_BODY_CLASS_TOGGLES, normalizeBodyClassToggles } from '../celestial/body-visibility';
 import { MapPickable } from '../map-pickable';
 import { MarkerManager } from '../marker/marker-manager';
 import { Input } from '../input/input';
@@ -13,7 +13,7 @@ import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { Vec3 } from '../../physics/vec3';
 import { metersPerPixel, ndcToScreen, Projected, projectToNdc, Viewpoint } from '../../physics/projection';
-import { Attractor } from '../../physics/attractor';
+import type { FrameAnchorSource } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { CameraSaveData } from '../save-data';
 
@@ -26,7 +26,7 @@ function loadBodyClassToggles(): BodyClassToggles {
     if (!raw) return DEFAULT_BODY_CLASS_TOGGLES;
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== 'object' || parsed === null) return DEFAULT_BODY_CLASS_TOGGLES;
-    return { ...DEFAULT_BODY_CLASS_TOGGLES, ...parsed };
+    return normalizeBodyClassToggles({ ...DEFAULT_BODY_CLASS_TOGGLES, ...parsed });
   } catch {
     return DEFAULT_BODY_CLASS_TOGGLES;
   }
@@ -115,13 +115,14 @@ export class CameraSystem {
   readonly combatCamera: CombatCameraSystem;
   readonly mapCamera: MapCamera;
   readonly focusMarkers: FocusMarkers;
-  // 表示パネル(天体クラス表示トグル+天球グリッドトグル)。天球グリッド側の配線は Navball が行う。
+  // 表示パネル(天体クラス表示トグル+天球グリッドトグル+軌道ガイドタブ)。天球グリッド・
+  // 軌道ガイド側の配線は Navball が行う。
   readonly viewOptionsPanel: ViewOptionsPanel;
   // 広範囲視点に切り替わっているか(視点・描画側の判定に使う)。
   private _overviewMode = false;
   get overviewMode(): boolean { return this._overviewMode; }
 
-  // クラスごとの天体表示トグル。マップのラベル・軌道オブジェクト一覧・配置UIの基準天体が
+  // クラスごとの天体表示トグル。マップのラベル・軌道物体一覧・配置UIの基準天体が
   // この1つの状態を共有する(body-visibility.ts の visibleBodyIds に渡す)。フォーカスと
   // 太陽系パネルを既に所有しているこのクラスが、同じ場所で持つ。
   private _bodyClassToggles: BodyClassToggles = loadBodyClassToggles();
@@ -155,10 +156,12 @@ export class CameraSystem {
     this.mapCamera = new MapCamera(_hud, ephemeris, saved?.overview);
     // 表示パネルと天体クラス側操作のコールバック
     this.viewOptionsPanel = new ViewOptionsPanel(_hud.mapRoot);
-    this.viewOptionsPanel.onBodyClassToggle = (key, on) => {
-      this._bodyClassToggles = { ...this._bodyClassToggles, [key]: on };
+    this.viewOptionsPanel.onBodyClassModeChange = (key, mode) => {
+      this._bodyClassToggles = applyBodyClassDisplayMode(this._bodyClassToggles, key, mode);
       saveBodyClassToggles(this._bodyClassToggles);
+      this.viewOptionsPanel.setBodyClassToggles(this._bodyClassToggles);
     };
+    this.viewOptionsPanel.setBodyClassToggles(this._bodyClassToggles);
 
     this.chaseResetBtn = _hud.root.querySelector('#hud-chase-reset') as HTMLElement | null;
     this.chaseResetBtn?.addEventListener('pointerdown', this.handleChaseReset);
@@ -191,7 +194,7 @@ export class CameraSystem {
   }
 
   // 入力からカメラの向き・ズームを更新する。overviewMode に応じてどちらか一方のカメラだけを駆動する。
-  // displayTime/attractors は広範囲視点の座標系変換にのみ使う — 線・メッシュと同じ表示時刻でないと
+  // displayTime/frameAnchors は広範囲視点の座標系変換にのみ使う — 線・メッシュと同じ表示時刻でないと
   // 回転系選択時にカメラだけが現在時刻に取り残される。
   update(
     player: GameEntity | null,
@@ -199,7 +202,7 @@ export class CameraSystem {
     input: Input,
     dt: number,
     mapPickables: readonly MapPickable[],
-    attractors: readonly Attractor[],
+    frameAnchors: FrameAnchorSource,
   ): void {
     // 中クリックで視点リセット
     input.takeMiddleClicks(() => {
@@ -228,7 +231,7 @@ export class CameraSystem {
     mouse.roll += keyRoll * C.CAM_KEY_ROLL_RATE * dt;
 
     if (this.overviewMode) {
-      this.mapCamera.update(mouse, keyYaw, keyPitch, dt, displayTime, mapPickables, attractors);
+      this.mapCamera.update(mouse, keyYaw, keyPitch, dt, displayTime, mapPickables, frameAnchors);
     }
     else {
       this.combatCamera.update(mouse, keyYaw, keyPitch, dt, player, input);
@@ -239,9 +242,8 @@ export class CameraSystem {
   sync(fo: FloatingOrigin): void {
     const active = this.overviewMode ? this.mapCamera : this.combatCamera;
     syncCameraToViewpoint(active.camera, active.viewpoint, active.near, active.far, fo);
-    // 広範囲視点のときだけ操作パネルとフォーカスラベルを表示する
+    // 広範囲視点のときだけ表示設定パネルとフォーカスラベルを表示する。
     this.viewOptionsPanel.setVisible(this.overviewMode);
-    this.viewOptionsPanel.setBodyClassToggles(this._bodyClassToggles);
 
     if (this.overviewMode) {
       this.focusMarkers.syncLabels(this.activeCameraProjection, this.activeCameraPos);

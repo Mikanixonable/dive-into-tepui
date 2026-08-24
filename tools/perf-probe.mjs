@@ -1,5 +1,5 @@
-// パフォーマンス再現計測プローブ。tools/browser-smoke.mjs の Chrome 起動/静的配信/CDP 接続を
-// 流用し、負荷確認ウィンドウ(PerfMeter, `.prop-window` タイトル「負荷」)の全行をワープ段数・
+// パフォーマンス再現計測プローブ。tools/chrome-session.mjs でヘッドレス Chrome を上げ、
+// 負荷確認ウィンドウ(PerfMeter, `.prop-window` タイトル「負荷」)の全行をワープ段数・
 // ビュー・計画ノード有無ごとに読み取って JSON で出す。ゲーム本体(src/)は一切変更しない。
 //
 // 使い方:
@@ -24,16 +24,12 @@
 // 既知の限界: PerfMeter が predictDiscarded 等のカウンタ系を積むのは毎フレームだが、DOM へ
 // 出るのは 500ms ごとの flush 期間の avg/max なので、本プローブがそれより速く読んでも同じ値を
 // 読み直すだけになりうる。時系列サンプリングは 500ms 周期のストロボ的な観測になる。
-import { accessSync, constants, mkdtempSync, rmSync, createReadStream, statSync, writeFileSync } from 'node:fs';
-import { spawn, spawnSync } from 'node:child_process';
-import { createServer } from 'node:http';
-import { once } from 'node:events';
-import { tmpdir } from 'node:os';
+import { writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { openChromeSession, sleep } from './chrome-session.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const staticPort = 8766;
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ---- src/game/const.ts SIM_SPEED_LEVELS / src/game/input/key-mapping.ts の写し -----------------
 // (import はできない — ビルド済み docs/ を外側から駆動するだけなので、値をここに複製する。
@@ -41,188 +37,6 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const SIM_SPEED_LEVELS = [1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 131072];
 const KEY_WARP_FASTER = { key: '.', code: 'Period', keyCode: 190 };
 const KEY_MAP_MODE = { key: 'm', code: 'KeyM', keyCode: 77 };
-
-// ---- Chrome 探索 (tools/browser-smoke.mjs から) --------------------------------------------------
-const candidates = [
-  process.env.CHROME_PATH,
-  'google-chrome',
-  'chromium',
-  'chromium-browser',
-  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-  'C:/Program Files/Google/Chrome/Application/chrome.exe',
-  'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
-  process.env.LOCALAPPDATA && `${process.env.LOCALAPPDATA}/Google/Chrome/Application/chrome.exe`,
-].filter(Boolean);
-
-function findChrome() {
-  const lookup = process.platform === 'win32'
-    ? (name) => spawnSync('where', [name], { encoding: 'utf8' })
-    : (name) => spawnSync('sh', ['-c', 'command -v "$1"', 'find-chrome', name], { encoding: 'utf8' });
-  for (const candidate of candidates) {
-    if (candidate.includes('/') || candidate.includes('\\')) {
-      try {
-        accessSync(candidate, constants.X_OK);
-        return candidate;
-      } catch {
-        continue;
-      }
-    }
-    const found = lookup(candidate);
-    if (found.status === 0 && found.stdout.trim()) return found.stdout.trim().split(/\r?\n/)[0];
-  }
-  throw new Error('Chrome/Chromium not found. Set CHROME_PATH.');
-}
-
-// ---- docs/ 静的配信 (tools/browser-smoke.mjs から) ------------------------------------------------
-const MIME = {
-  '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
-  '.jpg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml',
-  '.woff': 'font/woff', '.woff2': 'font/woff2', '.epk': 'application/octet-stream',
-};
-function startStaticServer(directory, listenPort) {
-  const server = createServer((request, response) => {
-    const rel = decodeURIComponent(new URL(request.url, 'http://127.0.0.1').pathname);
-    const file = path.join(directory, rel === '/' ? 'index.html' : rel);
-    if (!file.startsWith(directory)) {
-      response.writeHead(403).end();
-      return;
-    }
-    try {
-      const size = statSync(file).size;
-      response.writeHead(200, {
-        'content-type': MIME[path.extname(file).toLowerCase()] ?? 'application/octet-stream',
-        'content-length': size,
-      });
-      createReadStream(file).pipe(response);
-    } catch {
-      response.writeHead(404).end();
-    }
-  });
-  server.listen(listenPort, '127.0.0.1');
-  return server;
-}
-
-async function waitForServer(url) {
-  for (let attempt = 0; attempt < 50; attempt++) {
-    try {
-      const response = await fetch(url);
-      if (response.ok) return;
-    } catch {
-      // Server startup race; retry briefly.
-    }
-    await sleep(100);
-  }
-  throw new Error(`Static server did not become ready: ${url}`);
-}
-
-async function waitForDebugPage(port) {
-  for (let attempt = 0; attempt < 100; attempt++) {
-    try {
-      const pages = await fetch(`http://127.0.0.1:${port}/json/list`).then((response) => response.json());
-      const page = pages.find((target) => target.type === 'page');
-      if (page?.webSocketDebuggerUrl) return page.webSocketDebuggerUrl;
-    } catch {
-      // Chrome startup race; retry briefly.
-    }
-    await sleep(100);
-  }
-  throw new Error('Chrome DevTools endpoint did not become ready.');
-}
-
-// 1リクエストの待ち時間の上限。ページのレンダラが落ちるとその接続宛の応答は二度と返らないので、
-// 上限が無いと待ち続けて条件マトリクスがそこで永久に止まる(実際に止まった)。重い条件では
-// 1フレームが数秒になるため、フレーム数回ぶんの余裕を見た値にする。
-const REQUEST_TIMEOUT_MS = 30_000;
-
-function connectDevTools(url, onEvent) {
-  const socket = new WebSocket(url);
-  let nextId = 1;
-  const pending = new Map();
-  // 待っている全リクエストを失敗させる。接続が死んだ後に個々のタイムアウトを待たせない。
-  const failAll = (reason) => {
-    for (const [id, { reject, timer }] of pending) {
-      clearTimeout(timer);
-      pending.delete(id);
-      reject(new Error(reason));
-    }
-  };
-  socket.addEventListener('message', (event) => {
-    const response = JSON.parse(event.data);
-    if (!response.id) {
-      onEvent(response);
-      // レンダラが落ちた時点で、この接続宛の応答はもう返らない。
-      if (response.method === 'Inspector.targetCrashed') failAll('Renderer target crashed.');
-      return;
-    }
-    if (!pending.has(response.id)) return;
-    const { resolve, reject, timer } = pending.get(response.id);
-    clearTimeout(timer);
-    pending.delete(response.id);
-    if (response.error) reject(new Error(response.error.message));
-    else resolve(response.result);
-  });
-  socket.addEventListener('close', () => failAll('Chrome DevTools WebSocket closed.'), { once: true });
-  const opened = new Promise((resolve, reject) => {
-    socket.addEventListener('open', resolve, { once: true });
-    socket.addEventListener('error', () => reject(new Error('Chrome DevTools WebSocket failed.')), { once: true });
-  });
-  return {
-    opened,
-    send(method, params = {}) {
-      const id = nextId++;
-      return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => {
-          pending.delete(id);
-          reject(new Error(`Timed out after ${REQUEST_TIMEOUT_MS}ms: ${method}`));
-        }, REQUEST_TIMEOUT_MS);
-        pending.set(id, { resolve, reject, timer });
-        try {
-          socket.send(JSON.stringify({ id, method, params }));
-        } catch (e) {
-          clearTimeout(timer);
-          pending.delete(id);
-          reject(e);
-        }
-      });
-    },
-    async evaluate(expression) {
-      const result = await this.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
-      if (result.exceptionDetails) {
-        throw new Error(`Page evaluation threw: ${result.exceptionDetails.exception?.description ?? result.exceptionDetails.text}`);
-      }
-      return result.result.value;
-    },
-    close: () => socket.close(),
-  };
-}
-
-// 接続が死んでも条件マトリクスを続けられるように、張り直せる接続として扱う。レンダラが落ちると
-// その接続宛の応答は返らなくなるが、Chrome 自体は生きていて新しいページ target を持つので、
-// target を取り直して繋ぎ直せば残りの条件は計測できる。
-async function createSession(debugPort, onEvent) {
-  let current = null;
-  const attach = async () => {
-    const devTools = connectDevTools(await waitForDebugPage(debugPort), onEvent);
-    await devTools.opened;
-    await devTools.send('Runtime.enable');
-    await devTools.send('Page.enable');
-    await devTools.send('Inspector.enable');
-    await devTools.send('Emulation.setDeviceMetricsOverride', {
-      width: 1280, height: 800, deviceScaleFactor: 1, mobile: false,
-    });
-    current = devTools;
-  };
-  await attach();
-  return {
-    send: (method, params) => current.send(method, params),
-    evaluate: (expression) => current.evaluate(expression),
-    async reconnect() {
-      current?.close();
-      await attach();
-    },
-    close: () => current?.close(),
-  };
-}
 
 // ---- ページ操作ヘルパ ------------------------------------------------------------------------
 async function pressKey(devTools, binding) {
@@ -246,6 +60,19 @@ async function wheelAt(devTools, x, y, deltaY) {
   });
 }
 
+// ゲームが localStorage に置くもの(セーブスロット・スナップショット・表示トグル・
+// パネルの畳み方)を全部消す。Chrome プロファイルは条件マトリクス全体で使い回すので、
+// 消さないと前のラウンドの状態が次の起動へ持ち越される:
+//   - オートセーブが書いたスナップショットは、同じステージの次の起動で復帰し、
+//     復帰した周回では Stage.init() が走らない。スナップショットに載らない種別
+//     (小惑星・破片)は世界から消え、多数個体を測るはずの条件が自機1隻だけになる。
+//   - 表示パネルのトグルは永続するので、軌道線を切る条件の後は、以降の条件が
+//     切られたままの状態で始まる。
+// 条件・ラウンドごとに必ず新規の周回として起動させるため、navigate の直前に呼ぶ。
+async function clearSavedState(devTools, origin) {
+  await devTools.send('Storage.clearDataForOrigin', { origin, storageTypes: 'local_storage' });
+}
+
 // 条件式が真になるまでポーリングする。固定 sleep ではなく条件で待つ(rAF ループの都合)。
 async function waitForCondition(fn, label, timeoutMs = 8000, intervalMs = 50) {
   const deadline = Date.now() + timeoutMs;
@@ -256,7 +83,7 @@ async function waitForCondition(fn, label, timeoutMs = 8000, intervalMs = 50) {
   throw new Error(`Timed out waiting for ${label}.`);
 }
 
-async function bootAndWaitReady(devTools, timeoutMs = 30000) {
+async function bootAndWaitReady(devTools, timeoutMs = 60000) {
   let state;
   const deadline = Date.now() + timeoutMs;
   do {
@@ -351,11 +178,10 @@ async function shipMarkerScreenPos(devTools) {
 }
 
 // マップ・編集モードで計画軌道折れ線をクリックしてノードを1個置く。
-// 計画にノードが0個の間、末尾区間(唯一の区間)は自機の「現在状態」からそのまま伸びる
-// (plan-path.ts の tracksLiveAnchor)ので、その最初のサンプルは自機マーカーの位置と
-// ほぼ一致する — 折れ線を画素から目視で探さなくても、マーカー位置そのものと
-// その近傍を試打鍵すれば当たる。実際に画面キャプチャで検証済み(色走査では計画の
-// オレンジ色は自機軌道の白線とほぼ重なって見分けが付かなかったが、マーカー近傍への
+// 計画にノードが0個の間、唯一の区間は自機の予測列そのものなので、その先頭サンプルは
+// 自機マーカーの位置とほぼ一致する — 折れ線を画素から目視で探さなくても、マーカー位置
+// そのものとその近傍を試打鍵すれば当たる。実際に画面キャプチャで検証済み(色走査では
+// クリック対象の線は自機軌道の白線とほぼ重なって見分けが付かなかったが、マーカー近傍への
 // クリックは NODE_PICK_PX=30px の許容内に収まり、確実にノードが置けた)。
 // 成否は .gz-node(node-gizmo.ts の各ノードハンドル)の増加で確認する。
 // 軌道予測パネルの未来側の表示期間ピル(1周/1日/7日/28日)を押す。過去側の行(.predict-past)は
@@ -452,11 +278,9 @@ function median(nums) {
 // 条件マトリクスモード: 起動 → ワープ/ビュー/ノードを整えて設定(settle)→ N サンプル取得 → 中央値化。
 // これを1条件につき PERF_REPEATS 回(既定3)繰り返し、ラウンド間の中央値を採る。
 // ============================================================================================
-// 表示パネルの「軌道線(⌒)」ボタンを、指定した天体クラス行だけ desiredOn の状態にする。
-// 行の識別子はカテゴリボタンの title(`<ラベル>を表示`)しかないので、そこから行を辿って
-// ボタン列の3つ目(0=アイコン 1=ラベル 2=軌道線)を見る。既にその状態なら押さない
-// (トグルなので、押すこと自体を目的にすると初期値が変わったときに逆を向く)。
-// 衛星・ラグランジュ点の行は軌道線ボタンを持たないので err を返す。
+// 表示パネルの1ボタンを循環させ、指定した天体クラス行の表示状態を合わせる。
+// 軌道線を切る計測条件ではラベルを残すため、desiredOn=true は「ラベル＋軌道」、
+// false は「ラベル」に合わせる。
 async function setOrbitLineFor(devTools, rowLabel, desiredOn) {
   // 表示パネルは既定で畳まれているので、本文が隠れていれば先に開く。
   await devTools.evaluate(`(() => {
@@ -468,26 +292,28 @@ async function setOrbitLineFor(devTools, rowLabel, desiredOn) {
   await sleep(200);
   const probe = await devTools.evaluate(`(() => {
     const panel = document.querySelector('#hud-view-options');
-    const cat = document.querySelector('#hud-view-options [title=${JSON.stringify(`${rowLabel}を表示`)}]');
-    if (!cat) return { err: 'no category button', panelHidden: panel ? panel.className : 'no panel' };
-    const row = cat.closest('.body-class-row');
-    if (!row) return { err: 'no row' };
-    const btns = row.querySelectorAll('.body-class-btns .body-class-icon-btn');
-    if (btns.length < 3) return { err: 'row has ' + btns.length + ' buttons (needs orbit)' };
-    const r = btns[2].getBoundingClientRect();
-    if (r.width === 0) return { err: 'orbit button has zero width', panelClass: panel ? panel.className : '?' };
-    return { x: r.left + r.width / 2, y: r.top + r.height / 2, wasOn: btns[2].classList.contains('on') };
+    const row = [...document.querySelectorAll('#hud-view-options .target-class-row')]
+      .find((candidate) => candidate.querySelector('.body-class-mode-button')?.textContent === ${JSON.stringify(rowLabel)});
+    if (!row) return { err: 'no target row', panelHidden: panel ? panel.className : 'no panel' };
+    const button = row.querySelector('.body-class-mode-button');
+    if (!button) return { err: 'no mode button' };
+    const r = button.getBoundingClientRect();
+    if (r.width === 0) return { err: 'mode button has zero width', panelClass: panel ? panel.className : '?' };
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2, mode: button.dataset.displayMode };
   })()`);
   if (!probe || probe.err) return { ok: false, ...(probe ?? { err: 'evaluate returned null' }) };
-  if (probe.wasOn === desiredOn) return { ok: true, wasOn: probe.wasOn, clicked: false };
-  await leftClickAt(devTools, probe.x, probe.y);
-  await sleep(250);
-  const nowOn = await devTools.evaluate(`(() => {
-    const cat = document.querySelector('#hud-view-options [title=${JSON.stringify(`${rowLabel}を表示`)}]');
-    const btns = cat?.closest('.body-class-row')?.querySelectorAll('.body-class-btns .body-class-icon-btn');
-    return btns ? btns[2].classList.contains('on') : false;
-  })()`);
-  return { ok: nowOn === desiredOn, wasOn: probe.wasOn, nowOn, clicked: true };
+  const desiredMode = desiredOn ? 'orbit' : 'label';
+  if (probe.mode === desiredMode) return { ok: true, mode: probe.mode, clicked: false };
+  for (let i = 0; i < 3 && probe.mode !== desiredMode; i++) {
+    await leftClickAt(devTools, probe.x, probe.y);
+    await sleep(250);
+    probe.mode = await devTools.evaluate(`(() => {
+      const row = [...document.querySelectorAll('#hud-view-options .target-class-row')]
+        .find((candidate) => candidate.querySelector('.body-class-mode-button')?.textContent === ${JSON.stringify(rowLabel)});
+      return row?.querySelector('.body-class-mode-button')?.dataset.displayMode ?? null;
+    })()`);
+  }
+  return { ok: probe.mode === desiredMode, mode: probe.mode, clicked: true };
 }
 
 async function runConditionOnce(devTools, baseUrl, cond, fatalEvents) {
@@ -501,6 +327,7 @@ async function runConditionOnce(devTools, baseUrl, cond, fatalEvents) {
   let lastErr = null;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
+      await clearSavedState(devTools, baseUrl);
       await devTools.send('Page.navigate', { url });
       await bootAndWaitReady(devTools);
       // ビュー切替・ノード配置は等速(×1)の落ち着いた軌道のうちに行う — マップビュー中は
@@ -747,6 +574,7 @@ async function sampleTimeseriesRows(devTools) {
 async function runTimeseriesForWarp(devTools, baseUrl, { stage, warp, durationSec, intervalMs }, fatalEvents) {
   fatalEvents.length = 0;
   const url = `${baseUrl}/?stage=${encodeURIComponent(stage)}&perf=1`;
+  await clearSavedState(devTools, baseUrl);
   await devTools.send('Page.navigate', { url });
   await bootAndWaitReady(devTools);
   await raiseWarpTo(devTools, warp);
@@ -807,41 +635,24 @@ async function runTimeseries(devTools, baseUrl) {
 // main
 // ============================================================================================
 async function main() {
-  const chrome = findChrome();
   const debugPort = 9333;
-  const profile = mkdtempSync(path.join(tmpdir(), 'tepui-perf-'));
-  const server = startStaticServer(path.join(root, 'docs'), staticPort);
   const fatalEvents = [];
-  let browser;
-  let devTools;
+  let session;
   try {
-    const baseUrl = `http://127.0.0.1:${staticPort}`;
-    await waitForServer(`${baseUrl}/`);
-    browser = spawn(chrome, [
-      '--headless=new',
-      '--no-proxy-server',
-      '--enable-gpu',
-      '--enable-unsafe-webgpu',
-      '--disable-gpu-sandbox',
-      '--no-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-background-timer-throttling',
-      '--disable-renderer-backgrounding',
-      '--disable-backgrounding-occluded-windows',
-      '--run-all-compositor-stages-before-draw',
-      '--mute-audio',
-      '--window-size=1280,800',
-      '--force-device-scale-factor=1',
-      `--remote-debugging-port=${debugPort}`,
-      `--user-data-dir=${profile}`,
-      'about:blank',
-    ], { stdio: 'ignore' });
-
-    devTools = await createSession(debugPort, (event) => {
-      if (event.method === 'Runtime.exceptionThrown') fatalEvents.push(event);
-      if (event.method === 'Runtime.consoleAPICalled' && event.params?.type === 'error') fatalEvents.push(event);
-      if (event.method === 'Inspector.targetCrashed') fatalEvents.push(event);
+    session = await openChromeSession({
+      serveDir: path.join(root, 'docs'),
+      port: staticPort,
+      debugPort,
+      profilePrefix: 'tepui-perf-',
+      windowSize: { width: 1280, height: 800 },
+      onEvent: (event) => {
+        if (event.method === 'Runtime.exceptionThrown') fatalEvents.push(event);
+        if (event.method === 'Runtime.consoleAPICalled' && event.params?.type === 'error') fatalEvents.push(event);
+        if (event.method === 'Inspector.targetCrashed') fatalEvents.push(event);
+      },
     });
+    const devTools = session.devTools;
+    const baseUrl = session.baseUrl;
 
     const mode = process.env.PERF_MODE ?? 'matrix';
     const output = mode === 'timeseries'
@@ -861,13 +672,7 @@ async function main() {
     console.log(json);
     if (process.env.PERF_OUT) writeFileSync(process.env.PERF_OUT, json);
   } finally {
-    devTools?.close();
-    if (browser) {
-      browser.kill('SIGTERM');
-      await Promise.race([once(browser, 'exit'), new Promise((resolve) => setTimeout(resolve, 2_000))]);
-    }
-    server.close();
-    rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    await session?.close();
   }
 }
 

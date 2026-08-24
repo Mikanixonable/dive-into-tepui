@@ -1,51 +1,66 @@
 import * as THREE from 'three/webgpu';
-import { Attitude, qFromForwardUp } from '../../physics/attitude';
+import { Attitude, qFromForwardUp, qRotate } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
-import { MU_EARTH, R_EARTH, earthAltitudeOf } from '../../physics/solar-system';
-import { Vec3, v3, len, sub } from '../../physics/vec3';
+import { MU_EARTH, R_EARTH } from '../../physics/solar-system';
+import { Vec3, add, scale, v3, len, sub } from '../../physics/vec3';
+import { fmtMarkerDist } from '../hud/utils';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { Ship } from '../game-entity/ship';
 import { Bullet } from '../game-entity/bullet';
 import type { GameEntity } from '../game-entity/game-entity';
 import type { EntityManager } from '../simulation/entity-manager';
-import type { Contact } from '../simulation/contact';
+import { closingSpeed, type Contact } from '../game-entity/contact';
+import { contactDamageSpeed } from '../game-entity/contact-damage';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { buildPlayerShip } from '../../render/ships';
-import { Attractor, reachedBody } from '../../physics/attractor';
-import { isBurnedUp } from '../../physics/atmosphere';
+import { CelestialBody } from '../../physics/celestial-body';
 import type { CameraSystem } from '../camera/camera-system';
-import { focusTargetId } from '../camera/focus-target';
 import type { MapVisibility } from '../celestial/map-visibility';
-import type { DisplayWindow } from '../display-window-manager';
 import { generateRandomName } from '../random-name';
 import type { Stage } from '../stages/stage';
 import { PlayerThrottle } from './player-throttle';
 import { PlayerFire, type AmmoLoad } from './player-fire';
 import { Belt } from './belt';
-import { ThermalSystem } from './thermal';
+import { AeroLoad } from './aero-load';
+import { AltitudeAlarm } from './altitude-alarm';
+import { currentThemePalette } from '../theme';
 import { EffectsSystem } from '../vfx/effects-system';
 import { ThrustEffects } from './thrust-effects';
 import { RcsEffects } from './rcs-effects';
 import { ReentryEffects } from './reentry-effects';
 import { PlayerMarkers } from './player-markers';
+import type { OrbitReference } from '../orbit-reference';
 import type { MarkerManager } from '../marker/marker-manager';
 import { RadiatorSide, RadiatorSystem } from './radiator';
 import { PowerSystem } from './power';
 import { Ephemeris } from '../../physics/ephemeris';
-import { sunlitFactor } from '../../physics/shadow';
 import { Plan } from '../plan/plan';
-import { PlanExecutor, type PlanExecutionMode } from '../plan/plan-executor';
 import type { PlayerSaveData, PlanSaveData } from '../save-data';
 import { partFromSaveData, type AnyPart } from '../game-entity/parts';
 import { DIRECTION_GLYPH } from '../marker/marker-glyphs';
+import {
+  DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, PLAYER_DESTROY_FRAG_COLOR,
+} from '../../render/vfx-style';
+import { BoosterStack, boosterAverageAcceleration, type BoosterStage } from './booster-stack';
+import { nextBoosterId } from './booster-id';
+import { boosterSeparationVelocities } from './booster-separation';
+import { DetachedBooster } from '../game-entity/detached-booster';
+import {
+  BOOSTER_STAGE_DIMENSIONS,
+  BoosterPlumeSet,
+  buildBoosterStage,
+  type BoosterStage as BoosterStageModel,
+} from '../../render/booster';
+import type { BurnManagementViewModel } from '../hud/panels/burn-management-panel';
 
-export type { PlanExecutionMode };
+// 'off': ノードを消化しない。'instant': ノード時刻ちょうどで絶対状態へ乗り移る(自動実行)。
+export type PlanExecutionMode = 'off' | 'instant';
 
-const PLAN_EXECUTION_LABELS: Record<PlanExecutionMode, string> = { off: 'OFF', instant: '瞬間移動', powered: '自動操縦' };
+const PLAN_EXECUTION_LABELS: Record<PlanExecutionMode, string> = { off: 'OFF', instant: '自動実行' };
 
 // mode の表示ラベル(HUDのメニュー項目・プロパティ行が共有する)。
 export function planExecutionLabel(mode: PlanExecutionMode): string {
@@ -65,18 +80,24 @@ export class Player extends Ship {
   readonly throttle: PlayerThrottle;
   readonly fire: PlayerFire;
   readonly belt: Belt;
-  readonly thermal: ThermalSystem;
+  readonly aero: AeroLoad;
+  readonly altitudeAlarm: AltitudeAlarm;
   readonly radiator: RadiatorSystem;
   readonly power: PowerSystem;
+  readonly boosters: BoosterStack;
 
   private readonly thrustEffects: ThrustEffects;
+  private readonly boosterPlumes: BoosterPlumeSet;
+  private readonly boosterModels: BoosterStageModel[] = [];
+  private rcsThrust: Vec3 | null = null;
+  private boosterThrust: Vec3 | null = null;
+  private lastBoosterBurnRatio = 0;
   private readonly rcsEffects: RcsEffects;
   private readonly reentryEffects: ReentryEffects;
   private readonly markers: PlayerMarkers;
   // この艦自身のマニューバ計画。PlanEditor はアクティブ艦のこれを編集する。
   readonly plan = new Plan();
-  readonly planExecutor: PlanExecutor;
-  planExecution: PlanExecutionMode = 'off';
+  planExecution: PlanExecutionMode = 'instant';
 
   private readonly _hud: Hud;
   private readonly _worldSfx: WorldSfx;
@@ -107,24 +128,37 @@ export class Player extends Ship {
     this.playerScene = _scene;
     this.mass = C.PLAYER_MASS;
     this.collides = true;
+    this.doPreciseReentry = true;
 
     const saved = 'saved' in init ? init.saved : undefined;
+    this.boosters = saved?.boosters
+      ? BoosterStack.importData(saved.boosters)
+      : new BoosterStack();
+    for (const stage of this.boosters.stages) nextBoosterId(stage.id);
     this.throttle = new PlayerThrottle(_hud, saved?.throttle);
     this.fire = new PlayerFire(this, _hud, _worldSfx, _scene, _fx, 'saved' in init ? { saved: init.saved.fire } : { ammo: init.ammo });
     this.belt = new Belt(this.renderObject, this);
-    this.thermal = new ThermalSystem(_hud, _worldSfx, saved?.thermal);
+    this.aero = new AeroLoad();
+    this.altitudeAlarm = new AltitudeAlarm(_hud, _worldSfx);
+    this.temperature = saved?.thermal.hullTemp ?? C.HULL_START_TEMP;
     this.radiator = new RadiatorSystem(this.renderObject, this, saved?.radiator);
     this.power = new PowerSystem(this.renderObject, saved?.power);
     this.thrustEffects = new ThrustEffects(_scene, _worldSfx);
+    this.boosterPlumes = new BoosterPlumeSet(_scene);
     this.rcsEffects = new RcsEffects(_scene, _worldSfx);
     this.reentryEffects = new ReentryEffects(_scene);
-    this.markers = new PlayerMarkers(markerManager, this.id, this);
-    this.planExecutor = new PlanExecutor(_hud);
+    this.markers = new PlayerMarkers(markerManager, this.id);
+    this.rebuildBoosterModels();
+    this.refreshBoosterMassAndInertia();
 
     if (saved) {
-      // 旧セーブは followPlan: boolean だった(true→'instant' / false→'off')。
-      this.planExecution = saved.planExecution ?? (saved.followPlan ? 'instant' : 'off');
+      // 旧セーブは followPlan: boolean だった(true→'instant' / false→'off')。'powered' だった
+      // セーブは廃止済みモードなので既定の 'instant' へ寄せる。
+      this.planExecution = saved.planExecution === 'off' || saved.planExecution === 'instant'
+        ? saved.planExecution
+        : (saved.followPlan ? 'instant' : 'off');
       this.fineAttitude = saved.fineAttitude ?? false;
+      this.showTrajectoryLine = saved.showTrajectoryLine ?? false;
       this.parts.splice(0, this.parts.length, ...saved.parts.map(partFromSaveData));
       this.refreshFromParts();
 
@@ -184,9 +218,170 @@ export class Player extends Ship {
   get reloadTimer(): number { return this.fire.cooldown; }
   get isFiring(): boolean { return this.fire.isFiring; }
 
+  // 機首(+Z)に固定された単一ドッキングポート。ポートは姿勢から毎回導出するため、
+  // セーブデータへ新しい状態を追加しない。
+  getPortWorldPos(): Vec3 {
+    return add(this.state.r, qRotate(this.att.q, C.SHIP_PORT_OFFSET));
+  }
+
+  getPortWorldNormal(): Vec3 {
+    return qRotate(this.att.q, v3(0, 0, 1));
+  }
+
   // 弾薬ピックアップで得たマグ数を加算する。
   onPickup(mags: number): void {
     this.fire.onPickup(mags);
+  }
+
+  // 暫定の燃焼管理パネルから標準ブースターを最後尾へ追加する。
+  attachBooster(): boolean {
+    if (this.boosters.stages.length >= C.BOOSTER_MAX_ATTACHED) {
+      this._hud.hint(`ブースターは最大 ${C.BOOSTER_MAX_ATTACHED} 段です`);
+      return false;
+    }
+    const stage: BoosterStage = {
+      id: nextBoosterId(),
+      dryMass: C.BOOSTER_DEFAULT_DRY_MASS,
+      fuel: C.BOOSTER_DEFAULT_MAX_FUEL,
+      maxFuel: C.BOOSTER_DEFAULT_MAX_FUEL,
+      thrust: C.BOOSTER_DEFAULT_THRUST,
+      fuelRate: C.BOOSTER_DEFAULT_FUEL_RATE,
+      ignited: false,
+    };
+    this.boosters.attach(stage);
+    this.rebuildBoosterModels();
+    this.refreshBoosterMassAndInertia();
+    this.invalidatePrediction();
+    this._hud.hint(`ブースターを追加: ${this.boosters.stages.length} 段`);
+    return true;
+  }
+
+  toggleBoosterIgnition(): boolean {
+    const active = this.activeBooster();
+    if (!active) {
+      this._hud.hint('点火できるブースターがありません');
+      return false;
+    }
+    const ignited = this.boosters.toggleIgnition();
+    this.invalidatePrediction();
+    this._hud.hint(active.fuel <= 0
+      ? '最後尾ブースターは燃料切れです'
+      : `ブースター燃焼: ${ignited ? 'ON' : 'OFF'}`);
+    return ignited;
+  }
+
+  // 最後尾の段だけを独立エンティティへ移し、爆砕ボルトの相対速度を質量比で配る。
+  decoupleBooster(entities: EntityManager): boolean {
+    const stageIndex = this.boosters.stages.length - 1;
+    if (stageIndex < 0) {
+      this._hud.hint('分離できるブースターがありません');
+      return false;
+    }
+    const frontZ = C.BOOSTER_MOUNT_Z - stageIndex * BOOSTER_STAGE_DIMENSIONS.length;
+    const centerZ = frontZ
+      + (BOOSTER_STAGE_DIMENSIONS.frontZ + BOOSTER_STAGE_DIMENSIONS.aftZ) / 2;
+    const jointR = add(this.state.r, qRotate(this.att.q, v3(0, 0, frontZ)));
+    const boosterR = add(this.state.r, qRotate(this.att.q, v3(0, 0, centerZ)));
+    const detachedStage = this.boosters.detachOutermost()!;
+    const boosterMass = detachedStage.dryMass + detachedStage.fuel;
+    this.refreshBoosterMassAndInertia();
+
+    const forward = qRotate(this.att.q, v3(0, 0, 1));
+    const separated = boosterSeparationVelocities(
+      this.state.v,
+      forward,
+      this.mass,
+      boosterMass,
+      C.BOOSTER_SEPARATION_SPEED,
+    );
+    const t = this.state.t;
+    this.state = kinematicState(t, this.state.r, separated.player);
+    this._fx.spawnBoosterSeparation(t, jointR, separated.player, separated.booster, this.att);
+    const detached = new DetachedBooster({
+      stage: detachedStage,
+      state: kinematicState(t, boosterR, separated.booster),
+      att: {
+        // 爆砕ボルトは中心軸上でトルクを与えない。姿勢モデルの inertia は操縦応答用の
+        // 相対値で kg·m² ではないため、分離時は角速度をそのまま引き継ぐ。
+        q: { ...this.att.q },
+        w: { ...this.att.w },
+        inertia: v3(1, 1, 0.4),
+      },
+      collisionEnableAt: t + C.BOOSTER_COLLISION_GRACE,
+    }, this.playerScene);
+    entities.addDetachedBooster(detached);
+
+    this.boosterThrust = null;
+    this.lastBoosterBurnRatio = 0;
+    this.rebuildBoosterModels();
+    this._fx.spawnGasPuff(kinematicState(t, jointR, this.state.v));
+    this._worldSfx.decouple();
+    this.invalidatePrediction();
+    this._hud.hint(`ブースター分離: 残り ${this.boosters.stages.length} 段`);
+    return true;
+  }
+
+  boosterManagementViewModel(): BurnManagementViewModel {
+    const active = this.activeBooster();
+    return {
+      stageCount: this.boosters.stages.length,
+      maxStages: C.BOOSTER_MAX_ATTACHED,
+      totalMass: this.mass,
+      activeFuel: active?.fuel ?? 0,
+      activeFuelMax: active?.maxFuel ?? 0,
+      burnState: !active ? 'idle' : active.fuel <= 0 ? 'empty' : active.ignited ? 'burning' : 'ready',
+      ignitionOn: active?.ignited ?? false,
+      canAttach: this.boosters.stages.length < C.BOOSTER_MAX_ATTACHED,
+      canToggleIgnition: active !== undefined && active.fuel > 0,
+      canDecouple: active !== undefined,
+    };
+  }
+
+  private activeBooster(): BoosterStage | undefined {
+    const stages = this.boosters.stages;
+    return stages[stages.length - 1];
+  }
+
+  private rebuildBoosterModels(): void {
+    for (const model of this.boosterModels) model.dispose();
+    this.boosterModels.length = 0;
+    for (let i = 0; i < this.boosters.stages.length; i++) {
+      // 段間カバーは内側段の後端にだけ残す。最後尾段にはカバーが無く、
+      // 分離時はこの接続部を爆砕ボルトと一緒にデブリへ移す。
+      const model = buildBoosterStage({ interstageCover: i < this.boosters.stages.length - 1 });
+      model.position.z = C.BOOSTER_MOUNT_Z - i * BOOSTER_STAGE_DIMENSIONS.length;
+      this.renderObject.add(model);
+      this.boosterModels.push(model);
+    }
+  }
+
+  private refreshBoosterMassAndInertia(): void {
+    this.mass = C.PLAYER_MASS + this.boosters.totalMass;
+    const massRatio = this.mass / C.PLAYER_MASS;
+    const lengthFactor = 1 + 0.35 * this.boosters.stages.length ** 2;
+    this.att = {
+      ...this.att,
+      inertia: v3(
+        C.PLAYER_INERTIA_PITCH * massRatio * lengthFactor,
+        C.PLAYER_INERTIA_YAW * massRatio * lengthFactor,
+        C.PLAYER_INERTIA_ROLL * massRatio,
+      ),
+    };
+  }
+
+  private stepAttachedBooster(simDt: number): Vec3 | null {
+    const massBefore = C.PLAYER_MASS + this.boosters.totalMass;
+    const burn = this.boosters.step(simDt);
+    this.refreshBoosterMassAndInertia();
+    this.lastBoosterBurnRatio = burn.burnRatio;
+    const averageAcceleration = boosterAverageAcceleration(burn, massBefore, this.mass);
+    if (averageAcceleration <= 0) return null;
+    return scale(qRotate(this.att.q, v3(0, 0, 1)), averageAcceleration);
+  }
+
+  private combinedThrust(rcs: Vec3 | null, booster: Vec3 | null): Vec3 | null {
+    if (rcs && booster) return add(rcs, booster);
+    return rcs ?? booster;
   }
 
   // 毎フレーム、全ての自機に対して1度だけ呼ぶ。input が null の艦はこのフレーム操作されないので、
@@ -201,27 +396,24 @@ export class Player extends Ship {
     ephemeris: Ephemeris,
   ): void {
     this.updatePassive(dt);
+    if (input !== null) this.handleEdgeInput(input, entities);
+    const boosterThrust = this.stepAttachedBooster(simDt);
     if (input === null) {
       this.clearTransientCommands();
+      this.boosterThrust = boosterThrust;
+      this.thrust = boosterThrust;
       return;
     }
-    this.handleEdgeInput(input);
     this.updateTorque(input, dt, simDt);
 
     this.fire.updateFireState(dt, input, activeStage, entities, ephemeris);
 
     this.throttle.updateThrustLatches(input);
-    this.thrust = this.throttle.updateThrustState(input, this.att, simDt, this);
+    this.rcsThrust = this.throttle.updateThrustState(input, this.att, simDt, this);
+    this.boosterThrust = boosterThrust;
+    this.thrust = this.combinedThrust(this.rcsThrust, this.boosterThrust);
     // 噴射中は毎フレーム破棄する — 次の Predictor がその時点の実状態を種に作り直す。
     if (this.thrust !== null) this.invalidatePrediction();
-
-    // 操作対象艦での手動並進・手動回転は 'powered' 自動実行を中断する(進行方向ホールドが
-    // 手動回転で解除されるのと同じ作法)。
-    if (this.planExecution === 'powered'
-      && (this.thrust !== null || this.throttle.hasManualRotationInput(input))) {
-      this.planExecution = 'off';
-      this._hud.hint('軌道計画の自動実行を中断(手動操作)');
-    }
   }
 
   // 表示フレーム基準の受動状態。環境(熱・電力・ラジエータ)は stepEnvironment で
@@ -231,27 +423,34 @@ export class Player extends Ship {
     this.hpRegen(dt);
   }
 
-  // 軌道・姿勢と同じsimulation clockで受動環境系を進める。Game.behaveのwall dtから
-  // 分離し、各substep終端の位置・姿勢・太陽方向を使うことでwarp依存を防ぐ。
-  stepEnvironment(dt: number, ephemeris: Ephemeris, simTime: number): void {
+  protected override stepEnvironment(
+    dt: number, atmosphereBody: CelestialBody | null, sunlit: number, sunDir: Vec3,
+  ): void {
     if (!this.alive) return;
     this.radiator.update(dt, this.radiatorWear());
-    const sunDir = ephemeris.sunDirFrom(this.state.r, simTime);
-    const attractorsNow = ephemeris.attractorsAt(simTime);
-    const star = attractorsNow.find((a) => a.id === ephemeris.starId);
-    const sunlit = star ? sunlitFactor(this.state.r, star, attractorsNow) : 1;
-    this.thermal.setRadiatorLoad(
-      this.radiator.radiatingArea(this.totalCoolingRate),
-      this.radiator.solarLoad(sunlit, sunDir, this.att, this.totalCoolingRate),
-    );
+    this.aero.update(this.state.r, this.state.v, atmosphereBody);
+    this.altitudeAlarm.update(dt, this.state.r, atmosphereBody);
     this.power.update(dt, sunlit, sunDir, this.att, this);
-    this.thermal.updateThermal(dt, this.state.r, this.state.v, this);
+  }
+
+  // 艦体自体の放熱面積に、展開した放熱板のぶんを上乗せする。
+  protected override get radiatingAreaPerMass(): number {
+    return C.SHIP_RADIATING_AREA_PER_MASS
+      + this.radiator.radiatingArea(this.totalCoolingRate) / C.PLAYER_MASS;
+  }
+
+  // 艦体の断面積に、展開した放熱板の日照面を上乗せする。
+  protected override solarAbsorbAreaPerMass(sunDir: Vec3): number {
+    return super.solarAbsorbAreaPerMass(sunDir)
+      + this.radiator.solarAbsorbArea(sunDir, this.att, this.totalCoolingRate) / C.PLAYER_MASS;
   }
 
   // 操作できない間、次のフレームへ持ち越してはならない連続指令を畳む。
   // 角速度によるcoast自体は継続する。
   clearTransientCommands(): void {
     this.thrust = null;
+    this.rcsThrust = null;
+    this.boosterThrust = null;
     this.torque = v3();
     this.throttle.clearTransientState();
     this.fire.stopFiring();
@@ -264,12 +463,12 @@ export class Player extends Ship {
   }
 
   // 自機側のキー(RCS減衰・プログレード・スロットル等)を1フレーム分消費する。
-  private handleEdgeInput(input: Input): void {
-    input.takeKeys((code) => this.handleEdgePress(code));
+  private handleEdgeInput(input: Input, entities: EntityManager): void {
+    input.takeKeys((code) => this.handleEdgePress(code, entities));
   }
 
   // 自機側キー1個を処理する。処理したキーは true を返し input.takeKeys に消費させる。
-  private handleEdgePress(code: string): boolean {
+  private handleEdgePress(code: string, entities: EntityManager): boolean {
     switch (code) {
       case K.rcsDampToggle.code: this.throttle.toggleRcsDamp(); return true;
       case K.progradeReset.code: this.throttle.enableProgradeReset(); return true;
@@ -279,6 +478,8 @@ export class Player extends Ship {
       case K.throttleMid.code: this.throttle.setThrottlePreset(1); return true;
       case K.throttleHigh.code: this.throttle.setThrottlePreset(2); return true;
       case K.throttleMax.code: this.throttle.setThrottlePreset(3); return true;
+      case K.boosterDecouple.code: this.decoupleBooster(entities); return true;
+      case K.boosterIgnitionToggle.code: this.toggleBoosterIgnition(); return true;
       case K.radiatorDeployLeft.code: this.radiator.toggle('up'); return true;
       case K.radiatorDeployRight.code: this.radiator.toggle('down'); return true;
       case K.solarDeployLeft.code: this.power.toggle('up'); return true;
@@ -300,7 +501,7 @@ export class Player extends Ship {
   // 被弾によるダメージ・致死判定。side を指定するとその放熱板パーツへ、無指定なら
   // 無作為なパーツへダメージが入る。
   private attackedByBullet(bullet: Bullet, impactPoint: Vec3, activeStage: Stage, side: RadiatorSide | null = null): void {
-    this.thermal.addImpactHeat();
+    this.absorbHeat(C.BULLET_IMPACT_HEAT / C.PLAYER_MASS);
     const damagedPart = side === null ? undefined : this.radiatorParts[side === 'up' ? 0 : 1];
     this.applyDamageToParts(side === null ? bullet.damage : C.RADIATOR_BULLET_DAMAGE, damagedPart);
     if (side !== null && damagedPart && damagedPart.hp <= 0) this.radiatorBreakEffect(side);
@@ -317,9 +518,9 @@ export class Player extends Ship {
     this.destroyEffect();
   }
 
-  // 弾は武装のダメージを、それ以外は接触の速度変化 Δv = impulse/mass を根拠にする
-  // (前者はゲームバランス、後者は物理量で、統合すると前者の根拠が消える)。
-  collideWith(other: GameEntity | Attractor, contact: Contact, activeStage: Stage): void {
+  // 弾は武装のダメージを、それ以外は接触の接近速度と相手の種別を根拠にする
+  // (どちらもゲームバランスの量で、物理の質量からは導かない)。
+  collideWithEntity(other: GameEntity, contact: Contact, activeStage: Stage): void {
     if (!this.alive) return;
 
     if (other instanceof Bullet) {
@@ -327,22 +528,18 @@ export class Player extends Ship {
       return;
     }
 
-    // 弾以外との接触は Δv ベースの物理ダメージとして、無作為なパーツへ振り分ける。
-    if (!this.applyCollisionDamage(contact.impulse / this.mass)) return;
-    if (this.hp > 0) {
-      this._worldSfx.clank();
-      this._fx.spawnGasPuff(this.state);
-      return;
-    }
+    this.damagedByContact(contactDamageSpeed(other, contact), null, '高速接触により機体を喪失した', activeStage);
+  }
 
-    this.alive = false;
-    activeStage.recordPlayerLost('高速接触により機体を喪失した');
-    this.destroyEffect();
+  // 天体の固体表面への接触。相手の種別による重みが無いので接近速度がそのまま根拠になる。
+  collideWithCelestialBody(_body: CelestialBody, contact: Contact, activeStage: Stage): void {
+    if (!this.alive) return;
+    this.damagedByContact(closingSpeed(contact), null, '天体の地表へ到達し機体は失われた', activeStage);
   }
 
   // 放熱板の接触代理(RadiatorFold)からの帰結。ダメージの割り振り先が side のパーツに
-  // 固定される点だけが collideWith(機体本体)との違い。
-  collideAtRadiator(side: RadiatorSide, other: GameEntity | Attractor, contact: Contact, activeStage: Stage): void {
+  // 固定される点だけが collideWithEntity(機体本体)との違い。
+  collideAtRadiatorWithEntity(side: RadiatorSide, other: GameEntity, contact: Contact, activeStage: Stage): void {
     if (!this.alive) return;
 
     if (other instanceof Bullet) {
@@ -350,10 +547,17 @@ export class Player extends Ship {
       return;
     }
 
-    // 弾以外との接触は、collideWith と異なり side の放熱板パーツへ固定して振り分ける。
-    const damagedPart = this.radiatorParts[side === 'up' ? 0 : 1];
-    if (!this.applyCollisionDamage(contact.impulse / this.mass, damagedPart)) return;
-    if (damagedPart && damagedPart.hp <= 0) this.radiatorBreakEffect(side);
+    this.damagedByContact(contactDamageSpeed(other, contact), side, '高速接触により機体を喪失した', activeStage);
+  }
+
+  // 接触によるダメージ・致死判定。side を指定するとその放熱板パーツへ、無指定なら無作為な
+  // パーツへダメージが入る。
+  private damagedByContact(
+    damageSpeed: number, side: RadiatorSide | null, lossReason: string, activeStage: Stage,
+  ): void {
+    const damagedPart = side === null ? undefined : this.radiatorParts[side === 'up' ? 0 : 1];
+    if (!this.applyCollisionDamage(damageSpeed, damagedPart)) return;
+    if (side !== null && damagedPart && damagedPart.hp <= 0) this.radiatorBreakEffect(side);
     if (this.hp > 0) {
       this._worldSfx.clank();
       this._fx.spawnGasPuff(this.state);
@@ -361,7 +565,7 @@ export class Player extends Ship {
     }
 
     this.alive = false;
-    activeStage.recordPlayerLost('高速接触により機体を喪失した');
+    activeStage.recordPlayerLost(lossReason);
     this.destroyEffect();
   }
 
@@ -370,20 +574,28 @@ export class Player extends Ship {
     return this.radiator.collisionFolds(this.state.r, this.state.v, this.att, simTime);
   }
 
-  // 熱防御の飽和・空力破壊・大気突入高度・天体の地表到達の判定(自然死)。
-  checkLoss(dt: number, _simTime: number, activeStage: Stage, _playerPos: Vec3, attractors: readonly Attractor[]): void {
+  // 動圧が構造限界を超えたことによる喪失。熱による焼失は burnUp が、天体の地表への到達は
+  // collideWithCelestialBody が扱う。
+  checkLoss(
+    _dt: number, _simTime: number, activeStage: Stage, _playerPos: Vec3,
+    _atmosphereBodies: readonly CelestialBody[],
+  ): void {
     if (!this.alive) return;
-    const limit = this.thermal.updateAltitudeAlarm(dt, earthAltitudeOf(this.state.r));
+    if (!this.aero.overStructuralLimit) return;
+    this.lose('動圧が構造限界を超え、機体は空力的に分解した', activeStage);
+  }
 
-    // 熱・動圧・大気突入・地表到達のいずれかを喪失理由として判定する
-    let reason: string | null = null;
-    if (limit === 'heat-aero') reason = '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した';
-    else if (limit === 'heat-internal') reason = '排熱が追いつかず、機体は熱で機能不全に陥った';
-    else if (limit === 'dynpressure') reason = '動圧が構造限界を超え、機体は空力的に分解した';
-    else if (isBurnedUp(this.state.r, attractors, C.PLAYER_MIN_ALT)) reason = '大気圏に突入し機体は焼失した';
-    else if (reachedBody(this.actual.prevState, this.state, attractors, C.PLAYER_MIN_ALT) !== null) reason = '天体の地表へ到達し機体は失われた';
-    if (reason === null) return;
+  // 外殻の温度が上限を超えたときの喪失。理由は、そこで空力加熱が効いていたかで分ける。
+  protected override burnUp(activeStage: Stage): void {
+    this.lose(
+      this.aero.heatingAerodynamically
+        ? '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した'
+        : '排熱が追いつかず、機体は熱で機能不全に陥った',
+      activeStage);
+  }
 
+  // 喪失の共通処理。理由の文言だけが呼び出し側ごとに違う。
+  private lose(reason: string, activeStage: Stage): void {
     this.alive = false;
     this.destroyEffect();
     activeStage.recordPlayerLost(reason);
@@ -391,7 +603,7 @@ export class Player extends Ship {
 
   // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。
   private impactEffect(bullet: Bullet, impactPoint: Vec3): void {
-    this._worldSfx.hit();
+    this._worldSfx.hit(len(sub(impactPoint, this.state.r)));
     if (bullet.type === 'plasma') {
       this._fx.spawnPlasmaFlash(kinematicState(this.state.t, impactPoint, this.state.v));
     } else {
@@ -403,14 +615,14 @@ export class Player extends Ship {
   // 機体喪失時の爆発音・爆発エフェクトを発生させる。
   private destroyEffect(): void {
     this._worldSfx.explosion();
-    this._fx.spawnShipDestroyEffect(this.state, 1, C.COLOR_PLAYER_DESTROY_FRAG);
+    this._fx.spawnShipDestroyEffect(this.state, 1, PLAYER_DESTROY_FRAG_COLOR);
   }
 
   // ラジエーターが全損した瞬間の破片エフェクトを、そのパネル先端付近から発生させる。
   private radiatorBreakEffect(side: RadiatorSide): void {
-    this._worldSfx.hit();
     const tipR = this.radiator.tipWorldPosition(side, this.state.r, this.att);
-    this._fx.scatterFragments(this.state.t, tipR, this.state.v, 4, C.COLOR_PLAYER_DESTROY_FRAG, C.DESTROY_FRAG_SIZE_MIN, C.DESTROY_FRAG_SIZE_MAX, 8.0);
+    this._worldSfx.hit(len(sub(tipR, this.state.r)));
+    this._fx.scatterFragments(this.state.t, tipR, this.state.v, 4, PLAYER_DESTROY_FRAG_COLOR, DESTROY_FRAG_SIZE_MIN, DESTROY_FRAG_SIZE_MAX, 8.0);
   }
 
   // 入力から機体座標系トルクを求めて this.torque へ反映し、角速度をクランプする。
@@ -437,10 +649,8 @@ export class Player extends Ship {
     camera: CameraSystem,
     displayTime: number,
     isActive: boolean,
-    ephemeris: Ephemeris,
-    attractors: readonly Attractor[],
     visibility: MapVisibility | null = null,
-    displayWindow?: DisplayWindow,
+    orbitRef?: OrbitReference,
   ): void {
     // メッシュ本体の位置・姿勢
     const displayState = this.displayState(displayTime);
@@ -457,45 +667,68 @@ export class Player extends Ship {
     const effectState = displayState ?? this.state;
     const effectVisible = displayState !== null && mapEntityVisible;
     const maxAccel = this.mass > 0 ? this.totalThrust / this.mass : 0;
-    this.thrustEffects.sync(fo, effectState.r, this.thrust, maxAccel, effectVisible, isActive, camera);
+    this.thrustEffects.sync(fo, effectState.r, this.rcsThrust, maxAccel, effectVisible, false, camera);
+    const activeIndex = this.boosters.stages.length - 1;
+    const boosterEffectAtCurrentTime = Math.abs(displayTime - this.state.t) <= 1e-6;
+    if (activeIndex >= 0 && this.boosterThrust !== null && effectVisible
+      && boosterEffectAtCurrentTime && !camera.zoomActive) {
+      const nozzleZ = C.BOOSTER_MOUNT_Z
+        - activeIndex * BOOSTER_STAGE_DIMENSIONS.length
+        + BOOSTER_STAGE_DIMENSIONS.nozzleExitZ;
+      const nozzleWorld = add(effectState.r, qRotate(this.att.q, v3(0, 0, nozzleZ)));
+      const tail = qRotate(this.att.q, v3(0, 0, -1));
+      this.boosterPlumes.sync([{
+        position: fo.RtoThreeV3(nozzleWorld),
+        direction: new THREE.Vector3(tail.x, tail.y, tail.z),
+        intensity: Math.max(0.25, this.lastBoosterBurnRatio),
+        visible: true,
+      }], camera.activeCamera.quaternion);
+    } else {
+      this.boosterPlumes.sync([], camera.activeCamera.quaternion);
+    }
+    if (isActive) {
+      this._worldSfx.setThrust(effectVisible && (this.rcsThrust !== null || this.boosterThrust !== null));
+    }
     this.rcsEffects.sync(fo, effectState.r, this.torque, this.att, effectVisible, camera, isActive);
-    this.reentryEffects.sync(fo, effectState.r, effectState.v, this.thermal.qdyn, effectVisible, camera);
+    this.reentryEffects.sync(fo, effectState.r, effectState.v, this.aero.qdyn, effectVisible, camera);
     this.belt.sync();
     this.radiator.sync();
     this.power.sync();
     // マーカー。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
-    this.markers.sync(this.state, displayState, this.att, camera.overviewMode, isActive, camera.activeCameraPos, camera.activeCameraProjection, camera.activeCameraScale, this.name, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.mapCamera.focus), ephemeris.registry, attractors, visibility, displayWindow?.frame, displayTime, ephemeris);
+    this.markers.sync(
+      this.state, this.att, camera.overviewMode, isActive, camera.activeCameraProjection,
+      this.roundsInMag, this.magsLeft, this.averageMuzzleVelocity, orbitRef,
+    );
   }
 
   // 艦は任意のタイミングで削除されうるので、Player が所有する線・ビルボード・HUD も一度だけ解放する。
   private disposed: boolean = false;
 
   // ターゲットとして指定された際などのマーカー。Enemy の markerItem と互換性を持たせる。
-  markerItem(role: 'none' | 'primary' | 'secondary', viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): {
+  // isActive はこの艦が操作対象かどうか(マップ上の自艦マーカーを他の僚艦と塗り分けるため)。
+  markerItem(role: 'none' | 'primary', viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean, isActive: boolean): {
     key: string; cls: string; sym: string; pos: Vec3; vel: Vec3; priority: number;
     name: string; detail: string; bearingColor: string; bearingSym: string; bearingClass: string;
     bearingVisible: boolean; color: string; symMarkup: boolean;
   } {
     const dist = len(sub(pos, viewerPos));
-    const priority = role === 'primary'
-      ? C.MARKER_PRIORITY.PRIMARY_TARGET
-      : role === 'secondary'
-        ? C.MARKER_PRIORITY.SECONDARY_TARGET
-        : C.MARKER_PRIORITY.PLAYER;
+    const priority = role === 'primary' ? C.MARKER_PRIORITY.PRIMARY_TARGET : C.MARKER_PRIORITY.PLAYER;
+    const kindCls = isActive ? 'mk-self' : 'mk-ally';
+    const color = role === 'primary' ? currentThemePalette().signal : isActive ? 'var(--color-primary)' : C.COLOR_MARKER_ALLY;
     return {
       key: `player-${this.id}`,
-      cls: role === 'primary' ? 'mk-target' : 'mk-enemy', // player も味方ターゲットとして mk-enemy に準じる
+      cls: role === 'primary' ? `${kindCls} mk-target` : kindCls,
       sym: overviewMode ? this.headingHpMarkerSvg() : this.hpMarkerSvg(),
       pos,
       vel,
       priority,
       name: this.name,
-      detail: '',
-      bearingColor: C.COLOR_MARKER_ALLY,
+      detail: overviewMode ? '' : fmtMarkerDist(dist),
+      bearingColor: role === 'primary' ? currentThemePalette().signal : C.COLOR_MARKER_ALLY,
       bearingSym: DIRECTION_GLYPH.allyBearing,
       bearingClass: 'mk-dir mk-ally-dir',
       bearingVisible: dist <= C.ALLY_BEARING_MAX_DISTANCE,
-      color: C.COLOR_MARKER_ALLY,
+      color,
       symMarkup: true,
     };
   }
@@ -507,6 +740,9 @@ export class Player extends Ship {
     this.clearTransientCommands();
     this.markers.dispose();
     this.thrustEffects.dispose(this.playerScene);
+    this.boosterPlumes.dispose();
+    for (const model of this.boosterModels) model.dispose();
+    this.boosterModels.length = 0;
     this.rcsEffects.dispose(this.playerScene);
     this.reentryEffects.dispose(this.playerScene);
     super.dispose();
@@ -523,14 +759,16 @@ export class Player extends Ship {
       q: { ...this.att.q },
       w: { ...this.att.w },
       fire: this.fire.serialize(),
-      thermal: this.thermal.serialize(),
+      thermal: { hullTemp: this.temperature },
       radiator: this.radiator.serialize(),
       power: this.power.serialize(),
       throttle: this.throttle.serialize(),
       parts: this.parts.map(p => ({ ...p })) as AnyPart[],
       planExecution: this.planExecution,
       fineAttitude: this.fineAttitude,
+      showTrajectoryLine: this.showTrajectoryLine,
       plan: this.serializePlan(),
+      boosters: this.boosters.exportData(),
     };
   }
 

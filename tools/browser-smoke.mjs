@@ -1,139 +1,8 @@
-import { accessSync, constants, mkdtempSync, rmSync, createReadStream, statSync } from 'node:fs';
-import { spawn, spawnSync } from 'node:child_process';
-import { createServer } from 'node:http';
-import { once } from 'node:events';
-import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { openChromeSession, sleep } from './chrome-session.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const port = 8765;
-const candidates = [
-  process.env.CHROME_PATH,
-  'google-chrome',
-  'chromium',
-  'chromium-browser',
-  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-  'C:/Program Files/Google/Chrome/Application/chrome.exe',
-  'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
-  process.env.LOCALAPPDATA && `${process.env.LOCALAPPDATA}/Google/Chrome/Application/chrome.exe`,
-].filter(Boolean);
-
-// PATH 上の名前と絶対パスの両方を受ける。名前の解決だけは OS ごとのコマンドに委ねる。
-function findChrome() {
-  const lookup = process.platform === 'win32'
-    ? (name) => spawnSync('where', [name], { encoding: 'utf8' })
-    : (name) => spawnSync('sh', ['-c', 'command -v "$1"', 'find-chrome', name], { encoding: 'utf8' });
-  for (const candidate of candidates) {
-    if (candidate.includes('/') || candidate.includes('\\')) {
-      try {
-        accessSync(candidate, constants.X_OK);
-        return candidate;
-      } catch {
-        continue;
-      }
-    }
-    const found = lookup(candidate);
-    if (found.status === 0 && found.stdout.trim()) return found.stdout.trim().split(/\r?\n/)[0];
-  }
-  throw new Error('Chrome/Chromium not found. Set CHROME_PATH to run the browser smoke test.');
-}
-
-// docs/ を配るだけの静的サーバ。検証の連鎖に Node 以外の実行環境を持ち込まないため自前で持つ。
-const MIME = {
-  '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
-  '.jpg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml',
-  '.woff': 'font/woff', '.woff2': 'font/woff2',
-};
-function startStaticServer(directory, listenPort) {
-  const server = createServer((request, response) => {
-    const rel = decodeURIComponent(new URL(request.url, 'http://127.0.0.1').pathname);
-    const file = path.join(directory, rel === '/' ? 'index.html' : rel);
-    if (!file.startsWith(directory)) {
-      response.writeHead(403).end();
-      return;
-    }
-    try {
-      const size = statSync(file).size;
-      response.writeHead(200, {
-        'content-type': MIME[path.extname(file).toLowerCase()] ?? 'application/octet-stream',
-        'content-length': size,
-      });
-      createReadStream(file).pipe(response);
-    } catch {
-      response.writeHead(404).end();
-    }
-  });
-  server.listen(listenPort, '127.0.0.1');
-  return server;
-}
-
-async function waitForServer(url) {
-  for (let attempt = 0; attempt < 50; attempt++) {
-    try {
-      const response = await fetch(url);
-      if (response.ok) return;
-    } catch {
-      // Server startup race; retry briefly.
-    }
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw new Error(`Static server did not become ready: ${url}`);
-}
-
-async function waitForDebugPage(port) {
-  for (let attempt = 0; attempt < 100; attempt++) {
-    try {
-      const pages = await fetch(`http://127.0.0.1:${port}/json/list`).then((response) => response.json());
-      const page = pages.find((target) => target.type === 'page');
-      if (page?.webSocketDebuggerUrl) return page.webSocketDebuggerUrl;
-    } catch {
-      // Chrome startup race; retry briefly.
-    }
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw new Error('Chrome DevTools endpoint did not become ready.');
-}
-
-function connectDevTools(url, onEvent) {
-  const socket = new WebSocket(url);
-  let nextId = 1;
-  const pending = new Map();
-  socket.addEventListener('message', (event) => {
-    const response = JSON.parse(event.data);
-    if (!response.id) {
-      onEvent(response);
-      return;
-    }
-    if (!pending.has(response.id)) return;
-    const { resolve, reject } = pending.get(response.id);
-    pending.delete(response.id);
-    if (response.error) reject(new Error(response.error.message));
-    else resolve(response.result);
-  });
-  const opened = new Promise((resolve, reject) => {
-    socket.addEventListener('open', resolve, { once: true });
-    socket.addEventListener('error', () => reject(new Error('Chrome DevTools WebSocket failed.')), { once: true });
-  });
-  return {
-    opened,
-    send(method, params = {}) {
-      const id = nextId++;
-      socket.send(JSON.stringify({ id, method, params }));
-      return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
-    },
-    // ページ側の式を評価し、その値そのものを返す(result.result.value の掘り下げを毎回書かない)。
-    async evaluate(expression) {
-      const result = await this.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
-      if (result.exceptionDetails) {
-        throw new Error(`Page evaluation threw: ${result.exceptionDetails.exception?.description ?? result.exceptionDetails.text}`);
-      }
-      return result.result.value;
-    },
-    close: () => socket.close(),
-  };
-}
-
-const chrome = findChrome();
 const debugPort = 9222;
 const query = process.env.SMOKE_QUERY ?? '?stage=00';
 if (!query.startsWith('?') || query.includes('#')) {
@@ -141,12 +10,9 @@ if (!query.startsWith('?') || query.includes('#')) {
 }
 const expectCreative = new URLSearchParams(query.slice(1)).get('stage') === 'creative';
 const emulateTouch = process.env.SMOKE_TOUCH === '1';
-const profile = mkdtempSync(path.join(tmpdir(), 'tepui-smoke-'));
-const server = startStaticServer(path.join(root, 'docs'), port);
-let browser;
+let session;
 let devTools;
 const fatalEvents = [];
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // レイアウト検査でページ側に置く共通ヘルパ。視認できるか・矩形・重なりの3つだけ。
 const LAYOUT_HELPERS = `
@@ -330,7 +196,7 @@ async function checkMapLayout() {
         const el = document.getElementById(id);
         if (visible(el) && !insideViewport(rect(el))) errors.push('outside viewport: ' + id);
       }
-      const objectList = document.getElementById('hud-object-list');
+      const objectList = document.getElementById('hud-physical-object-list');
       const plan = document.getElementById('hud-plan');
       if (visible(objectList) && visible(plan) && overlaps(rect(objectList), rect(plan))) {
         errors.push('object list overlaps maneuver plan');
@@ -470,11 +336,11 @@ async function placeShipThroughMenu() {
   })()`);
   if (openedPlacer) throw new Error(`Creative placement menu failed: ${openedPlacer}`);
   await waitFor(
-    `getComputedStyle(document.getElementById('hud-shipplacer')).display !== 'none'`,
+    `getComputedStyle(document.getElementById('hud-object-placer')).display !== 'none'`,
     'the placement panel to open',
   );
   const confirmed = await devTools.evaluate(`(() => {
-    const panel = document.getElementById('hud-shipplacer');
+    const panel = document.getElementById('hud-object-placer');
     const button = [...panel.querySelectorAll('.w-btn')].find((b) => b.textContent?.startsWith('配置'));
     if (!button) return 'no confirm button: ' + [...panel.querySelectorAll('.w-btn')].map((b) => b.textContent).join('/');
     button.click();
@@ -482,7 +348,7 @@ async function placeShipThroughMenu() {
   })()`);
   if (confirmed) throw new Error(`Creative placement panel failed: ${confirmed}`);
   await waitFor(
-    `getComputedStyle(document.getElementById('hud-shipplacer')).display === 'none'`,
+    `getComputedStyle(document.getElementById('hud-object-placer')).display === 'none'`,
     'the placement panel to close after confirming',
   );
 }
@@ -504,37 +370,20 @@ async function bootAndCheckReady() {
 }
 
 try {
-  const url = `http://127.0.0.1:${port}/${query}`;
-  await waitForServer(url);
-  browser = spawn(chrome, [
-    '--headless=new',
-    '--no-proxy-server',
-    '--enable-gpu',
-    '--enable-unsafe-webgpu',
-    '--disable-gpu-sandbox',
-    '--no-sandbox',
-    '--disable-dev-shm-usage',
-    '--disable-background-timer-throttling',
-    '--disable-renderer-backgrounding',
-    '--disable-backgrounding-occluded-windows',
-    '--run-all-compositor-stages-before-draw',
-    '--mute-audio',
-    `--remote-debugging-port=${debugPort}`,
-    `--user-data-dir=${profile}`,
-    'about:blank',
-  ], { stdio: 'ignore' });
-
-  devTools = connectDevTools(await waitForDebugPage(debugPort), (event) => {
-    if (event.method === 'Runtime.exceptionThrown') fatalEvents.push(event);
-    if (event.method === 'Runtime.consoleAPICalled' && event.params?.type === 'error') fatalEvents.push(event);
-    if (event.method === 'Inspector.targetCrashed') fatalEvents.push(event);
+  session = await openChromeSession({
+    serveDir: path.join(root, 'docs'),
+    port,
+    debugPort,
+    profilePrefix: 'tepui-smoke-',
+    onEvent: (event) => {
+      if (event.method === 'Runtime.exceptionThrown') fatalEvents.push(event);
+      if (event.method === 'Runtime.consoleAPICalled' && event.params?.type === 'error') fatalEvents.push(event);
+      if (event.method === 'Inspector.targetCrashed') fatalEvents.push(event);
+    },
   });
-  await devTools.opened;
-  await devTools.send('Runtime.enable');
-  await devTools.send('Page.enable');
-  await devTools.send('Inspector.enable');
+  devTools = session.devTools;
   if (emulateTouch) await devTools.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
-  await devTools.send('Page.navigate', { url });
+  await devTools.send('Page.navigate', { url: `${session.baseUrl}/${query}` });
   await bootAndCheckReady();
   if (emulateTouch) await revealTouchPad();
 
@@ -575,10 +424,10 @@ try {
         mapView: Boolean(document.querySelector('.hud-map-root.active')),
         viewOptionsShown: visible(document.getElementById('hud-view-options')),
         frameControlsShown: [...document.querySelectorAll('.hud-map-root.active .hud-frame-controls')].some(visible),
-        objectListShown: visible(document.getElementById('hud-object-list')),
+        objectListShown: visible(document.getElementById('hud-physical-object-list')),
         predictShown: visible(document.getElementById('hud-predict')),
         statusHidden: !visible(document.getElementById('hud-status')),
-        placerClosed: !visible(document.getElementById('hud-shipplacer')),
+        placerClosed: !visible(document.getElementById('hud-object-placer')),
       };
     })()`);
     expectAll('Creative mode did not remain in its zero-ship map state', chromeState);
@@ -657,11 +506,5 @@ try {
   const mode = expectCreative ? 'creative zero-ship map view' : query;
   console.log(`Browser smoke passed (${mode}): production build ran and its HUD held together without page/console fatal errors.`);
 } finally {
-  devTools?.close();
-  if (browser) {
-    browser.kill('SIGTERM');
-    await Promise.race([once(browser, 'exit'), new Promise((resolve) => setTimeout(resolve, 2_000))]);
-  }
-  server.close();
-  rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await session?.close();
 }

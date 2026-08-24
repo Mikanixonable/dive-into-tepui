@@ -1,44 +1,40 @@
-// 天体の見た目レジストリ: id から表示名と CelestialBody の生成関数を引く。
+// 天体の見た目レジストリ: id から表示名と CelestialView の生成関数を引く。
 // 天体の日本語表示名の定義元はここ1箇所 — 他のモジュールは必ずここを読む。
+//
+// 見た目そのもの(アルベド・テクスチャ)は render/ が持つ(celestial-albedo.ts /
+// celestial-textures.ts)。ここに残るのは id・表示名・どの view クラスを使うかの選択だけ。
 import { bodyDef, CelestialRegistry, RingSystemDef, ShapeDef, SOLAR_SYSTEM, SolarSystemId } from '../../physics/solar-system';
-import { AttractorId } from '../../physics/attractor';
-import { createMoon, MOON_VIS_DIST } from '../../render/stars';
+import { CelestialBodyId } from '../../physics/celestial-body';
 import { CelestialSurface } from '../../render/celestial-surface';
-import { SphereLodLevel } from '../../render/screen-lod';
-import { CelestialBody } from './celestial-body';
-import { EarthBody } from './earth-body';
-import { SphereBody } from './sphere-body';
-import { PointBody, PointBrightness } from './point-body';
-import { SunBody } from './sun-body';
+import { albedoOf, DEFAULT_ALBEDO } from '../../render/celestial-albedo';
+import { textureOf } from '../../render/celestial-textures';
+import { CelestialView } from './celestial-view';
+import { EarthView } from './earth-view';
+import { SphereView } from './sphere-view';
+import { PointView } from './point-view';
+import { SunView } from './sun-view';
 
-import mercuryTextureUrl from '../../assets/2k_mercury.jpg';
-import venusTextureUrl from '../../assets/2k_venus_atmosphere.jpg';
-import marsTextureUrl from '../../assets/2k_mars.jpg';
-import jupiterTextureUrl from '../../assets/2k_jupiter.jpg';
-import saturnTextureUrl from '../../assets/2k_saturn.jpg';
-import uranusTextureUrl from '../../assets/2k_uranus.jpg';
-import neptuneTextureUrl from '../../assets/2k_neptune.jpg';
-import phobosTextureUrl from '../../assets/2k_phobos.jpg';
-import ioTextureUrl from '../../assets/2k_io.jpg';
-import europaTextureUrl from '../../assets/2k_europa.jpg';
-import ganymedeTextureUrl from '../../assets/2k_ganymede.jpg';
-import callistoTextureUrl from '../../assets/2k_callisto.jpg';
-import titanTextureUrl from '../../assets/2k_titan.jpg';
+// id のテクスチャを貼った球面。テクスチャ表に無い id を渡すと投げる(テクスチャ付きとして
+// 登録した天体の表が欠けているということなので、黙って単色へ落とさない)。
+function texturedSurface(id: SolarSystemId): CelestialSurface {
+  const texture = textureOf(id);
+  if (texture === null) throw new Error(`no texture registered for ${id}`);
+  return CelestialSurface.textured(texture);
+}
 
-const PLANET_VIS_DIST = 5e7;
+// id のアルベドを与えた単色球面。
+function solidSurface(id: SolarSystemId): CelestialSurface {
+  return CelestialSurface.solid(albedoOf(id));
+}
 
-// テクスチャ付き惑星のレジストリ項を、表示名とテクスチャ URL から組む。rings(bodyDef から
-// そのまま渡す)があれば環付きになる。pointBrightness を渡すと戦闘ビューでの表示が
-// PointBody の輝点スプライトになる(省略時は SphereBody の視距離圧縮球のまま)。
-function planetEntry(id: SolarSystemId, name: string, textureUrl: string, pointBrightness?: PointBrightness): CelestialView {
-  const buildSurface = (level: SphereLodLevel) => CelestialSurface.textured(textureUrl, level.widthSegments, level.heightSegments);
+// テクスチャ付き惑星のレジストリ項を表示名から組む。rings(bodyDef からそのまま渡す)が
+// あれば環付きになる。**惑星は戦闘ビューでは常に輝点スプライトとして描かれる**(PointView)—
+// 見えるかどうかはその天体が届ける光の量が決める。
+function planetEntry(id: SolarSystemId, name: string): CelestialViewDef {
   const def = bodyDef(SOLAR_SYSTEM, id);
   return {
     name,
-    create: () =>
-      pointBrightness === undefined
-        ? new SphereBody(id, buildSurface, def.radius, PLANET_VIS_DIST, shapeOf(id), ringsOf(id))
-        : new PointBody(id, buildSurface, def.radius, pointBrightness, shapeOf(id), ringsOf(id)),
+    create: () => new PointView(id, texturedSurface(id), def.radius, shapeOf(id), ringsOf(id)),
   };
 }
 
@@ -54,160 +50,146 @@ function shapeOf(id: SolarSystemId): ShapeDef | undefined {
   return def.kind === 'star' ? undefined : def.shape;
 }
 
-// 単色の衛星のレジストリ項を、表示名と色から組む。表示距離は月と揃える。
-function satelliteEntry(id: SolarSystemId, name: string, color: number): CelestialView {
+// 単色の衛星のレジストリ項を表示名から組む。
+function satelliteEntry(id: SolarSystemId, name: string): CelestialViewDef {
   return {
     name,
-    create: () => new SphereBody(
-      id,
-      (level) => CelestialSurface.solid(color, level.widthSegments, level.heightSegments),
-      bodyDef(SOLAR_SYSTEM, id).radius,
-      MOON_VIS_DIST,
-      shapeOf(id),
+    create: () => new SphereView(id, solidSurface(id), bodyDef(SOLAR_SYSTEM, id).radius, shapeOf(id)),
+  };
+}
+
+// テクスチャ付き衛星のレジストリ項を表示名から組む(実写の全球モザイクが入手できた衛星のみ;
+// それ以外は satelliteEntry の単色のまま)。
+function texturedSatelliteEntry(id: SolarSystemId, name: string): CelestialViewDef {
+  return {
+    name,
+    create: () => new SphereView(id, texturedSurface(id), bodyDef(SOLAR_SYSTEM, id).radius, shapeOf(id)),
+  };
+}
+
+// テクスチャを持たない太陽中心天体(準惑星・大型小惑星・彗星核)のレジストリ項。
+function solidPlanetEntry(id: SolarSystemId, name: string): CelestialViewDef {
+  return {
+    name,
+    create: () => new SphereView(
+      id, solidSurface(id), bodyDef(SOLAR_SYSTEM, id).radius, shapeOf(id), ringsOf(id),
     ),
   };
 }
 
-// テクスチャ付き衛星のレジストリ項を、表示名とテクスチャ URL から組む(実写の全球モザイクが
-// 入手できた衛星のみ; それ以外は satelliteEntry の単色のまま)。表示距離は月と揃える。
-function texturedSatelliteEntry(id: SolarSystemId, name: string, textureUrl: string): CelestialView {
-  const buildSurface = (level: SphereLodLevel) => CelestialSurface.textured(textureUrl, level.widthSegments, level.heightSegments);
-  return { name, create: () => new SphereBody(id, buildSurface, bodyDef(SOLAR_SYSTEM, id).radius, MOON_VIS_DIST, shapeOf(id)) };
-}
+export type CelestialViewDef = { readonly name: string; create(): CelestialView };
 
-// テクスチャを持たない太陽中心天体(準惑星・大型小惑星・彗星核)のレジストリ項。表示距離は
-// テクスチャ付き惑星と揃える。
-function solidPlanetEntry(id: SolarSystemId, name: string, color: number): CelestialView {
-  return {
-    name,
-    create: () => new SphereBody(
-      id,
-      (level) => CelestialSurface.solid(color, level.widthSegments, level.heightSegments),
-      bodyDef(SOLAR_SYSTEM, id).radius,
-      PLANET_VIS_DIST,
-      shapeOf(id),
-      ringsOf(id),
-    ),
-  };
-}
-
-export type CelestialView = { readonly name: string; create(): CelestialBody };
-
-export const CELESTIAL_BODIES: Record<SolarSystemId, CelestialView> = {
-  earth: { name: '地球', create: () => new EarthBody() },
-  moon: { name: '月', create: () => new SphereBody('moon', createMoon, bodyDef(SOLAR_SYSTEM, 'moon').radius, MOON_VIS_DIST) },
-  mercury: planetEntry('mercury', '水星', mercuryTextureUrl, 'medium'),
-  venus: planetEntry('venus', '金星', venusTextureUrl, 'bright'),
-  mars: planetEntry('mars', '火星', marsTextureUrl, 'medium'),
-  phobos: texturedSatelliteEntry('phobos', 'フォボス', phobosTextureUrl),
-  deimos: satelliteEntry('deimos', 'ダイモス', 0x9a8a7a),
-  jupiter: planetEntry('jupiter', '木星', jupiterTextureUrl, 'bright'),
-  metis: satelliteEntry('metis', 'メティス', 0x6a6058),
-  adrastea: satelliteEntry('adrastea', 'アドラステア', 0x6a6058),
-  amalthea: satelliteEntry('amalthea', 'アマルテア', 0x8a5a4a),
-  thebe: satelliteEntry('thebe', 'テーベ', 0x6a6058),
-  io: texturedSatelliteEntry('io', 'イオ', ioTextureUrl),
-  europa: texturedSatelliteEntry('europa', 'エウロパ', europaTextureUrl),
-  ganymede: texturedSatelliteEntry('ganymede', 'ガニメデ', ganymedeTextureUrl),
-  callisto: texturedSatelliteEntry('callisto', 'カリスト', callistoTextureUrl),
-  himalia: satelliteEntry('himalia', 'ヒマリア', 0x7a6f60),
-  elara: satelliteEntry('elara', 'エララ', 0x8f7c6a),
-  ananke: satelliteEntry('ananke', 'アナンケ', 0x746a5e),
-  carme: satelliteEntry('carme', 'カルメ', 0x6a6058),
-  pasiphae: satelliteEntry('pasiphae', 'パシファエ', 0x807264),
-  sinope: satelliteEntry('sinope', 'シノーペ', 0x756658),
-  saturn: planetEntry('saturn', '土星', saturnTextureUrl, 'medium'),
-  pan: satelliteEntry('pan', 'パン', 0x6a6058),
-  daphnis: satelliteEntry('daphnis', 'ダフニス', 0x6a6058),
-  prometheus: satelliteEntry('prometheus', 'プロメテウス', 0x7a7068),
-  pandora: satelliteEntry('pandora', 'パンドラ', 0x7a7068),
-  epimetheus: satelliteEntry('epimetheus', 'エピメテウス', 0x8a8078),
-  janus: satelliteEntry('janus', 'ヤヌス', 0x8a8078),
-  mimas: satelliteEntry('mimas', 'ミマス', 0xc8c4bc),
-  enceladus: satelliteEntry('enceladus', 'エンケラドゥス', 0xe8e6e2),
-  tethys: satelliteEntry('tethys', 'テティス', 0xcfcbc3),
-  dione: satelliteEntry('dione', 'ディオネ', 0xc4c0b8),
-  rhea: satelliteEntry('rhea', 'レア', 0xd0ccc4),
-  titan: texturedSatelliteEntry('titan', 'タイタン', titanTextureUrl),
-  hyperion: satelliteEntry('hyperion', 'ヒペリオン', 0x9a8f7c),
-  iapetus: satelliteEntry('iapetus', 'イアペトゥス', 0x9c968c),
-  phoebe: satelliteEntry('phoebe', 'フェーベ', 0x6a625a),
-  uranus: planetEntry('uranus', '天王星', uranusTextureUrl, 'faint'),
-  puck: satelliteEntry('puck', 'パック', 0xa8a49c),
-  miranda: satelliteEntry('miranda', 'ミランダ', 0xc4c0ba),
-  ariel: satelliteEntry('ariel', 'アリエル', 0xd8d6d2),
-  umbriel: satelliteEntry('umbriel', 'ウンブリエル', 0xc0bcb8),
-  titania: satelliteEntry('titania', 'チタニア', 0xd0cec8),
-  oberon: satelliteEntry('oberon', 'オベロン', 0xc8c4bc),
-  neptune: planetEntry('neptune', '海王星', neptuneTextureUrl),
-  triton: satelliteEntry('triton', 'トリトン', 0xd8ccc0),
-  nereid: satelliteEntry('nereid', 'ネレイド', 0x9a8f82),
-  ceres: solidPlanetEntry('ceres', 'ケレス', 0x9a938c),
-  vesta: solidPlanetEntry('vesta', 'ベスタ', 0x8a8378),
-  pallas: solidPlanetEntry('pallas', 'パラス', 0x7a7a72),
-  pluto: solidPlanetEntry('pluto', '冥王星', 0xc9b29a),
-  charon: satelliteEntry('charon', 'カロン', 0xd4d0ca),
-  styx: satelliteEntry('styx', 'ステュクス', 0x8a8078),
-  nix: satelliteEntry('nix', 'ニクス', 0x8a8078),
-  kerberos: satelliteEntry('kerberos', 'ケルベロス', 0x8a8078),
-  hydra: satelliteEntry('hydra', 'ヒドラ', 0x8a8078),
-  haumea: solidPlanetEntry('haumea', 'ハウメア', 0xcccccc),
-  hiiaka: satelliteEntry('hiiaka', 'ヒイアカ', 0x8a8078),
-  namaka: satelliteEntry('namaka', 'ナマカ', 0x8a8078),
-  makemake: solidPlanetEntry('makemake', 'マケマケ', 0xb08a6a),
-  eris: solidPlanetEntry('eris', 'エリス', 0xd8d8d8),
-  dysnomia: satelliteEntry('dysnomia', 'ディスノミア', 0x8a8078),
-  halley: solidPlanetEntry('halley', 'ハレー彗星', 0x666666),
-  encke: solidPlanetEntry('encke', 'エンケ彗星', 0x666666),
-  sedna: solidPlanetEntry('sedna', 'セドナ', 0x8f8378),
-  quaoar: solidPlanetEntry('quaoar', 'クワオアー', 0xa89684),
-  weywot: satelliteEntry('weywot', 'ウェイウォット', 0x8a8078),
-  chariklo: solidPlanetEntry('chariklo', 'カリクロー', 0x9a8f80),
-  hygiea: solidPlanetEntry('hygiea', 'ヒギエア', 0x8c877e),
-  eros: solidPlanetEntry('eros', 'エロス', 0x9c8f74),
-  ryugu: solidPlanetEntry('ryugu', 'リュウグウ', 0x585048),
-  bennu: solidPlanetEntry('bennu', 'ベンヌ', 0x686058),
-  churyumov: solidPlanetEntry('churyumov', 'チュリュモフ・ゲラシメンコ彗星', 0x666666),
-  orcus: solidPlanetEntry('orcus', 'オルクス', 0x9a9aa0),
-  vanth: satelliteEntry('vanth', 'ヴァンス', 0x8a8078),
-  gonggong: solidPlanetEntry('gonggong', 'ゴンゴン', 0xa87860),
-  salacia: solidPlanetEntry('salacia', 'サラキア', 0x8890a0),
-  varuna: solidPlanetEntry('varuna', 'ヴァルナ', 0x8a8478),
-  ixion: solidPlanetEntry('ixion', 'イクシオン', 0x8c8074),
-  arrokoth: solidPlanetEntry('arrokoth', 'アロコス', 0xa85030),
-  chiron: solidPlanetEntry('chiron', 'キロン', 0x787268),
-  interamnia: solidPlanetEntry('interamnia', 'インテラムニア', 0x848078),
-  europa52: solidPlanetEntry('europa52', 'エウロパ (52)', 0x8a847a),
-  davida: solidPlanetEntry('davida', 'ダビダ', 0x827c72),
-  juno: solidPlanetEntry('juno', 'ジュノー', 0x968a7c),
-  psyche: solidPlanetEntry('psyche', 'プシケ', 0x726c66),
-  eunomia: solidPlanetEntry('eunomia', 'エウノミア', 0x9a8e78),
-  sylvia: solidPlanetEntry('sylvia', 'シルビア', 0x76706a),
-  itokawa: solidPlanetEntry('itokawa', 'イトカワ', 0xa89476),
-  apophis: solidPlanetEntry('apophis', 'アポフィス', 0x8e8a86),
-  didymos: solidPlanetEntry('didymos', 'ディディモス', 0x827e78),
-  dimorphos: satelliteEntry('dimorphos', 'ディモルフォス', 0x8a8078),
-  tempel1: solidPlanetEntry('tempel1', 'テンペル第1彗星', 0x666666),
-  wild2: solidPlanetEntry('wild2', 'ワイルド第2彗星', 0x666666),
-  hartley2: solidPlanetEntry('hartley2', 'ハートレー第2彗星', 0x666666),
-  cruithne: solidPlanetEntry('cruithne', 'クルースン', 0x746e64),
-  kamooalewa: solidPlanetEntry('kamooalewa', 'カモオアレワ', 0xa08e70),
-  tk7: solidPlanetEntry('tk7', '2010 TK7', 0x6c6660),
-  eureka: solidPlanetEntry('eureka', 'エウレカ', 0x907c5c),
-  sun: { name: '太陽', create: () => new SunBody() },
+export const CELESTIAL_VIEWS: Record<SolarSystemId, CelestialViewDef> = {
+  earth: { name: '地球', create: () => new EarthView() },
+  moon: texturedSatelliteEntry('moon', '月'),
+  mercury: planetEntry('mercury', '水星'),
+  venus: planetEntry('venus', '金星'),
+  mars: planetEntry('mars', '火星'),
+  phobos: texturedSatelliteEntry('phobos', 'フォボス'),
+  deimos: satelliteEntry('deimos', 'ダイモス'),
+  jupiter: planetEntry('jupiter', '木星'),
+  metis: satelliteEntry('metis', 'メティス'),
+  adrastea: satelliteEntry('adrastea', 'アドラステア'),
+  amalthea: satelliteEntry('amalthea', 'アマルテア'),
+  thebe: satelliteEntry('thebe', 'テーベ'),
+  io: texturedSatelliteEntry('io', 'イオ'),
+  europa: texturedSatelliteEntry('europa', 'エウロパ'),
+  ganymede: texturedSatelliteEntry('ganymede', 'ガニメデ'),
+  callisto: texturedSatelliteEntry('callisto', 'カリスト'),
+  himalia: satelliteEntry('himalia', 'ヒマリア'),
+  elara: satelliteEntry('elara', 'エララ'),
+  ananke: satelliteEntry('ananke', 'アナンケ'),
+  carme: satelliteEntry('carme', 'カルメ'),
+  pasiphae: satelliteEntry('pasiphae', 'パシファエ'),
+  sinope: satelliteEntry('sinope', 'シノーペ'),
+  saturn: planetEntry('saturn', '土星'),
+  pan: satelliteEntry('pan', 'パン'),
+  daphnis: satelliteEntry('daphnis', 'ダフニス'),
+  prometheus: satelliteEntry('prometheus', 'プロメテウス'),
+  pandora: satelliteEntry('pandora', 'パンドラ'),
+  epimetheus: satelliteEntry('epimetheus', 'エピメテウス'),
+  janus: satelliteEntry('janus', 'ヤヌス'),
+  mimas: satelliteEntry('mimas', 'ミマス'),
+  enceladus: satelliteEntry('enceladus', 'エンケラドゥス'),
+  tethys: satelliteEntry('tethys', 'テティス'),
+  dione: satelliteEntry('dione', 'ディオネ'),
+  rhea: satelliteEntry('rhea', 'レア'),
+  titan: texturedSatelliteEntry('titan', 'タイタン'),
+  hyperion: satelliteEntry('hyperion', 'ヒペリオン'),
+  iapetus: satelliteEntry('iapetus', 'イアペトゥス'),
+  phoebe: satelliteEntry('phoebe', 'フェーベ'),
+  uranus: planetEntry('uranus', '天王星'),
+  puck: satelliteEntry('puck', 'パック'),
+  miranda: satelliteEntry('miranda', 'ミランダ'),
+  ariel: satelliteEntry('ariel', 'アリエル'),
+  umbriel: satelliteEntry('umbriel', 'ウンブリエル'),
+  titania: satelliteEntry('titania', 'チタニア'),
+  oberon: satelliteEntry('oberon', 'オベロン'),
+  neptune: planetEntry('neptune', '海王星'),
+  triton: satelliteEntry('triton', 'トリトン'),
+  nereid: satelliteEntry('nereid', 'ネレイド'),
+  ceres: solidPlanetEntry('ceres', 'ケレス'),
+  vesta: solidPlanetEntry('vesta', 'ベスタ'),
+  pallas: solidPlanetEntry('pallas', 'パラス'),
+  pluto: solidPlanetEntry('pluto', '冥王星'),
+  charon: satelliteEntry('charon', 'カロン'),
+  styx: satelliteEntry('styx', 'ステュクス'),
+  nix: satelliteEntry('nix', 'ニクス'),
+  kerberos: satelliteEntry('kerberos', 'ケルベロス'),
+  hydra: satelliteEntry('hydra', 'ヒドラ'),
+  haumea: solidPlanetEntry('haumea', 'ハウメア'),
+  hiiaka: satelliteEntry('hiiaka', 'ヒイアカ'),
+  namaka: satelliteEntry('namaka', 'ナマカ'),
+  makemake: solidPlanetEntry('makemake', 'マケマケ'),
+  eris: solidPlanetEntry('eris', 'エリス'),
+  dysnomia: satelliteEntry('dysnomia', 'ディスノミア'),
+  halley: solidPlanetEntry('halley', 'ハレー彗星'),
+  encke: solidPlanetEntry('encke', 'エンケ彗星'),
+  sedna: solidPlanetEntry('sedna', 'セドナ'),
+  quaoar: solidPlanetEntry('quaoar', 'クワオアー'),
+  weywot: satelliteEntry('weywot', 'ウェイウォット'),
+  chariklo: solidPlanetEntry('chariklo', 'カリクロー'),
+  hygiea: solidPlanetEntry('hygiea', 'ヒギエア'),
+  eros: solidPlanetEntry('eros', 'エロス'),
+  ryugu: solidPlanetEntry('ryugu', 'リュウグウ'),
+  bennu: solidPlanetEntry('bennu', 'ベンヌ'),
+  orcus: solidPlanetEntry('orcus', 'オルクス'),
+  vanth: satelliteEntry('vanth', 'ヴァンス'),
+  gonggong: solidPlanetEntry('gonggong', 'ゴンゴン'),
+  salacia: solidPlanetEntry('salacia', 'サラキア'),
+  varuna: solidPlanetEntry('varuna', 'ヴァルナ'),
+  ixion: solidPlanetEntry('ixion', 'イクシオン'),
+  arrokoth: solidPlanetEntry('arrokoth', 'アロコス'),
+  chiron: solidPlanetEntry('chiron', 'キロン'),
+  interamnia: solidPlanetEntry('interamnia', 'インテラムニア'),
+  europa52: solidPlanetEntry('europa52', 'エウロパ (52)'),
+  davida: solidPlanetEntry('davida', 'ダビダ'),
+  juno: solidPlanetEntry('juno', 'ジュノー'),
+  psyche: solidPlanetEntry('psyche', 'プシケ'),
+  eunomia: solidPlanetEntry('eunomia', 'エウノミア'),
+  sylvia: solidPlanetEntry('sylvia', 'シルビア'),
+  apophis: solidPlanetEntry('apophis', 'アポフィス'),
+  didymos: solidPlanetEntry('didymos', 'ディディモス'),
+  tempel1: solidPlanetEntry('tempel1', 'テンペル第1彗星'),
+  wild2: solidPlanetEntry('wild2', 'ワイルド第2彗星'),
+  hartley2: solidPlanetEntry('hartley2', 'ハートレー第2彗星'),
+  cruithne: solidPlanetEntry('cruithne', 'クルースン'),
+  kamooalewa: solidPlanetEntry('kamooalewa', 'カモオアレワ'),
+  tk7: solidPlanetEntry('tk7', '2010 TK7'),
+  eureka: solidPlanetEntry('eureka', 'エウレカ'),
+  sun: { name: '太陽', create: () => new SunView() },
 };
 
-// CELESTIAL_BODIES に手作りエントリを持たない id(カスタムレジストリの架空天体)向けの見た目。
-// 恒星は SunBody を汎用の id/半径で構築し、それ以外は単色球にする。表示名は呼び出し側
+// CELESTIAL_VIEWS に手作りエントリを持たない id(カスタムレジストリの架空天体)向けの見た目。
+// 恒星は SunView を汎用の id/半径で構築し、それ以外は単色球にする。表示名は呼び出し側
 // (frame-labels.ts の celestialBodyName)が id からフォールバックする。
-export function fallbackCelestialView(registry: CelestialRegistry, id: AttractorId): CelestialBody {
+export function fallbackCelestialView(registry: CelestialRegistry, id: CelestialBodyId): CelestialView {
   const def = bodyDef(registry, id);
   return def.kind === 'star'
-    ? new SunBody(id, def.radius)
-    : new SphereBody(
+    ? new SunView(id, def.radius)
+    : new SphereView(
       id,
-      (level) => CelestialSurface.solid(0x888888, level.widthSegments, level.heightSegments),
+      CelestialSurface.solid(DEFAULT_ALBEDO),
       def.radius,
-      def.kind === 'satellite' ? MOON_VIS_DIST : PLANET_VIS_DIST,
     );
 }

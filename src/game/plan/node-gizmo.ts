@@ -2,8 +2,7 @@
 // 画面座標に絶対配置し、pointer イベントを処理してコールバックを発火する。
 import * as C from '../const';
 import { FONT_FAMILY, FONT_XS } from '../theme';
-import { ContextMenu } from '../hud/context-menu';
-import { MenuAction, MenuCommon } from '../hud/menu-actions';
+import { ContextMenu, MenuAction, MenuCommon } from '../hud/windows';
 import type { OverlayManager } from '../hud/overlay-manager';
 
 const STYLE = `
@@ -16,9 +15,9 @@ const STYLE = `
   position: absolute; transform: translate(-50%, -50%);
   width: 22px; height: 22px; border-radius: 50%; touch-action: none;
   pointer-events: auto; cursor: grab;
-  border: 2px solid var(--accent-soft); background: var(--accent-fill);
+  border: 2px solid var(--color-primary-hover); background: var(--color-primary-fill);
 }
-#node-gizmo .gz-node.on { border-color: var(--accent); background: var(--accent-fill-strong); }
+#node-gizmo .gz-node.on { border-color: var(--color-primary); background: var(--color-primary-fill-strong); }
 #node-gizmo .gz-node .gz-lbl {
   position: absolute; top: 26px; left: 50%; transform: translateX(-50%);
   font-size: ${FONT_XS}; color: var(--text); white-space: nowrap;
@@ -34,7 +33,7 @@ const STYLE = `
   display: flex; align-items: center; justify-content: center;
   text-shadow: 0 0 2px var(--bg), 0 0 4px var(--bg);
 }
-#node-gizmo .gz-axis:active { cursor: grabbing; color: var(--accent-soft); }
+#node-gizmo .gz-axis:active { cursor: grabbing; color: var(--color-primary-hover); }
 `;
 
 export interface NodeHandleSpec {

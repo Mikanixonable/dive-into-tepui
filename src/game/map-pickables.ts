@@ -3,20 +3,21 @@
 // プロパティウィンドウ)は map-context-actions.ts の MapContextActions が持つ。
 import * as C from './const';
 import { fmtDist, fmtSpeed } from './hud/utils';
-import { celestialBodyName } from './hud/frame-labels';
+import { celestialBodyName } from './hud/frame/frame-labels';
 import { MapPickable } from './map-pickable';
 import { focusTargetId } from './camera/focus-target';
 import { EntityManager } from './simulation/entity-manager';
 import { Ephemeris } from '../physics/ephemeris';
 import { NavTarget } from './nav-target';
+import type { FrameAnchorSource } from '../physics/frame';
 import { CameraSystem } from './camera/camera-system';
 import { PlanEditor } from './plan/plan-editor';
-import type { ActivePlayerController } from './active-player-controller';
+import type { ActivePlayerController } from './active-controllable-controller';
 import { len, sub } from '../physics/vec3';
-import { strongestAttractor } from '../physics/attractor';
+import { strongestAttractor } from '../physics/celestial-body';
 import { isOccluded } from '../physics/occlusion';
 import { apsisAltitudes } from '../physics/elements';
-import { isPositionInFocusedSystem, systemMembersAt } from './celestial/body-visibility';
+import { isPositionInFocusedSystem, NearbySystemTracker } from './celestial/body-visibility';
 import { MapVisibilityPolicy } from './celestial/map-visibility';
 import { MarkerManager } from './marker/marker-manager';
 import type { DisplayWindow } from './display-window-manager';
@@ -32,6 +33,7 @@ export class MapPickables {
   private items: readonly MapPickable[] = this.candidateItems;
   private _lastSimTime = 0;
   private _visibilityPolicy: MapVisibilityPolicy | null = null;
+  private readonly nearbyTracker = new NearbySystemTracker();
 
   // このフレームの被選択物候補。refresh の後に読む。
   get pickables(): readonly MapPickable[] { return this.items; }
@@ -70,6 +72,7 @@ export class MapPickables {
     private readonly cameraSystem: CameraSystem,
     private readonly editor: PlanEditor,
     private readonly markerManager: MarkerManager,
+    private readonly frameAnchors: FrameAnchorSource,
   ) {}
 
   // マップの天体ラベル(表示のみ)と航法ターゲットの AN/DN を求め直したうえで、このフレームの
@@ -87,20 +90,20 @@ export class MapPickables {
     const focusId = focusTargetId(this.cameraSystem.mapCamera.focus);
     // 候補の位置は表示時刻のものなので、遮蔽・系の判定もその時刻の天体位置で行う。
     // 現在時刻の配列は「いまの自艦の軌道」を読む項目だけが使う。
-    const attractors = this.ephemeris.attractorsAt(simTime);
-    const displayAttractors = this.ephemeris.attractorsAt(displayTime);
+    const celestialBodies = this.ephemeris.celestialBodiesAt(simTime);
+    const displayCelestialBodies = this.ephemeris.celestialBodiesAt(displayTime);
     const visibilityPolicy = new MapVisibilityPolicy(
       this.ephemeris.registry,
       this.cameraSystem.bodyClassToggles,
       focusId,
-      systemMembersAt(this.ephemeris.registry, this.cameraSystem.activeCameraPos, displayAttractors),
+      this.nearbyTracker.membersAt(this.ephemeris.registry, this.cameraSystem.activeCameraPos, displayCelestialBodies),
     );
     this._visibilityPolicy = visibilityPolicy;
     this.cameraSystem.focusMarkers.update(
       displayTime, focusId, this.cameraSystem.bodyClassToggles,
       this.cameraSystem.activeCameraPos, visibilityPolicy,
     );
-    this.navTarget.update(this.activePlayers.current, this.entities, this.ephemeris, displayWindow);
+    this.navTarget.update(this.activePlayers.current, this.entities, this.ephemeris, displayWindow, this.frameAnchors);
 
     // 船の位置は表示時刻の displayState — 機体メッシュや敵マーカーと同じ未来ゴースト位置に揃える。
     this.candidateItems.length = 0;
@@ -114,7 +117,7 @@ export class MapPickables {
       if (!vPlayer.pickable) continue;
       const pos = ship.displayState(displayTime)?.r;
       if (pos) {
-        const center = strongestAttractor(ship.state.r, attractors);
+        const center = strongestAttractor(ship.state.r, celestialBodies);
         const el = ship.orbitalElementsAround(center);
         const pe = el ? fmtDist(apsisAltitudes(el).pe) : '—';
         this.addCandidate(
@@ -137,6 +140,12 @@ export class MapPickables {
       const pos = ammoPickup.displayState(displayTime)?.r;
       if (pos) this.addCandidate(ammoPickup.id, ammoPickup.name, pos, 'ammo', undefined, undefined, undefined, vAmmo.label);
     }
+    for (const fuelPickup of this.entities.rcsFuelPickups) {
+      const vFuel = visibilityPolicy.entity('fuel');
+      if (!fuelPickup.alive || !vFuel.pickable) continue;
+      const pos = fuelPickup.displayState(displayTime)?.r;
+      if (pos) this.addCandidate(fuelPickup.id, fuelPickup.name, pos, 'fuel', undefined, undefined, undefined, vFuel.label);
+    }
     for (const base of this.entities.bases) {
       const vBase = visibilityPolicy.entity('base');
       if (!base.alive || !vBase.pickable) continue;
@@ -152,33 +161,38 @@ export class MapPickables {
       if (e.equatorNodes) for (const item of e.equatorNodes.mapPickables()) this.appendPickable(item);
     }
 
+    // 太陽系順の並べ替え基準。恒星の無いレジストリでは undefined のまま(呼び出し側が
+    // 自機距離へ委譲する)。
+    const starPos = this.ephemeris.starId !== null ? this.ephemeris.positionOf(this.ephemeris.starId, displayTime) : null;
+    if (starPos) for (const item of this.candidateItems) item.distanceFromStar = len(sub(item.pos, starPos));
+
     // 自艦からの距離は一覧の実用順と補助情報にだけ使う。軌道予測はここで増やさない。
     const viewer = this.activePlayers.current?.state;
     if (viewer) for (const item of this.candidateItems) {
       const d = len(sub(item.pos, viewer.r));
       // 相対速度は対の速度を持つ敵艦にだけ意味がある。
-      const status = item.kind === 'ship' ? `${d < 2e5 ? '接近' : '距離'} ${fmtDist(d)} · ${fmtSpeed(len(sub(this.entities.findEnemy(item.id)?.state.v ?? viewer.v, viewer.v)))}` : item.kind === 'ammo' ? `${fmtDist(d)}${d <= C.AMMO_PICKUP_RADIUS ? ' · 回収可能' : ''}` : item.kind === 'base' ? `${fmtDist(d)} · ドック候補` : item.kind === 'body' ? `${fmtDist(d)} · ${celestialBodyName(strongestAttractor(item.pos, displayAttractors).id)}` : item.detail;
+      const status = item.kind === 'ship' ? `${d < 2e5 ? '接近' : '距離'} ${fmtDist(d)} · ${fmtSpeed(len(sub(this.entities.findEnemy(item.id)?.state.v ?? viewer.v, viewer.v)))}` : item.kind === 'ammo' ? `${fmtDist(d)}${d <= C.AMMO_PICKUP_RADIUS ? ' · 回収可能' : ''}` : item.kind === 'fuel' ? `${fmtDist(d)}${d <= C.RCS_FUEL_PICKUP_RADIUS ? ' · 回収可能' : ''}` : item.kind === 'base' ? `${fmtDist(d)} · ドック候補` : item.kind === 'body' ? `${fmtDist(d)} · ${celestialBodyName(strongestAttractor(item.pos, displayCelestialBodies).id)}` : item.detail;
       item.detail = status;
       item.distance = d;
       // 所属系は天体以外にしか意味を持たない(天体は系そのものを表す行として常に一覧へ出す)。
       // 判定は最強天体から親を辿るぶん高価なので、読まれない天体候補では省く。
       item.inFocusedSystem = item.kind === 'body'
         ? undefined
-        : isPositionInFocusedSystem(this.ephemeris.registry, focusId, item.pos, displayAttractors);
+        : isPositionInFocusedSystem(this.ephemeris.registry, focusId, item.pos, displayCelestialBodies);
     }
 
     // マップビューでは player だけ、フォーカス天体の系に所属するかで候補を絞る。表示側と
     // 同じ判定なので、地球の裏側の player は表示・選択でき、土星系の player はどちらにも
     // 現れない。天体(body)は MapVisibilityPolicy が選んだ候補を維持する(カメラ遮蔽で
-    // 一覧や被選択候補から除くと、小衛星ディモルフォスのように公転・カメラ移動に伴い
+    // 一覧や被選択候補から除くと、小衛星ナマカのように公転・カメラ移動に伴い
     // 一覧の行が明滅してしまうため)。その他の候補(船・弾薬・基地・軌道点)は天体遮蔽で
     // ピック対象から除く。
     for (const item of this.candidateItems) {
       const included = item.kind === 'player'
-        ? item.inFocusedSystem ?? isPositionInFocusedSystem(this.ephemeris.registry, focusId, item.pos, displayAttractors)
+        ? item.inFocusedSystem ?? isPositionInFocusedSystem(this.ephemeris.registry, focusId, item.pos, displayCelestialBodies)
         : item.kind === 'body'
           ? true
-          : !isOccluded(this.cameraSystem.activeCameraPos, item.pos, displayAttractors);
+          : !isOccluded(this.cameraSystem.activeCameraPos, item.pos, displayCelestialBodies);
       if (included) this.visibleItems.push(item);
     }
     this.items = this.visibleItems;
@@ -215,6 +229,7 @@ export class MapPickables {
     // ように、候補へ追加するたびに全ての派生フィールドを上書きする。
     item.detail = detail;
     item.distance = undefined;
+    item.distanceFromStar = undefined;
     item.priority = priority;
     item.time = time;
     item.inFocusedSystem = undefined;

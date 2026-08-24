@@ -1,12 +1,13 @@
 import { Game } from '../game';
 import { SAVE_VERSION } from '../save-data';
-import { orbitInfo } from '../hud/orbit-info';
+import { orbitInfo } from '../hud/orbit/orbit-info';
+import { autoOrbitReference } from '../orbit-reference';
 import { fmtDist, fmtTime } from '../hud/utils';
 import { SaveStore } from './save-store';
 import { SaveSlots } from './save-slots';
 import { CURRENT_EPHEMERIS_CONTEXT, isEphemerisContextCompatible } from './ephemeris-context';
-import type { AmmoPickupSaveData, GameSaveData, SnapshotKind, SnapshotMeta } from '../save-data';
-import type { OrbitInfo } from '../hud/orbit-info';
+import type { AmmoPickupSaveData, GameSaveData, RcsFuelPickupSaveData, SnapshotKind, SnapshotMeta } from '../save-data';
+import type { OrbitInfo } from '../hud/orbit/orbit-info';
 
 // Game の実行状態と GameSaveData の相互変換、およびストア/スロットへの出し入れを担う。
 export class SnapshotService {
@@ -19,7 +20,7 @@ export class SnapshotService {
     if (slotId === null) return null;
 
     const player = game.player;
-    const info = player ? orbitInfo(player, game.ephemeris.attractorsAt(game.simTime)) : null;
+    const info = player ? orbitInfo(player, autoOrbitReference(player.state.r, game.ephemeris.celestialBodiesAt(game.simTime))) : null;
     const meta: SnapshotMeta = {
       id: generateSnapshotId(),
       kind,
@@ -48,7 +49,7 @@ export class SnapshotService {
     const data = this.store.readSnapshot(snapshotId);
     if (data === null) return null;
     if (data.version !== SAVE_VERSION) return null;
-    const normalizedData = normalizeAmmoPickupKey(data);
+    const normalizedData = normalizePickupKeys(data);
     if (normalizedData === null) return null;
     if (expectedStageId !== normalizedData.stageId) return null;
     // 暦情報が無いスナップショットは互換復元で読む。暦情報がある場合は、
@@ -61,16 +62,22 @@ export class SnapshotService {
   }
 }
 
-// version 2 の ammos と現行 ammoPickups を読み込み境界で受け、現行キーへ正規化する。
-function normalizeAmmoPickupKey(data: GameSaveData): GameSaveData | null {
+// 旧形式の補給キーと、RCS燃料追加前の欠落フィールドを読み込み境界で正規化する。
+function normalizePickupKeys(data: GameSaveData): GameSaveData | null {
   const storedData = data as Omit<GameSaveData, 'ammoPickups'> & {
     ammoPickups?: AmmoPickupSaveData[];
     ammos?: AmmoPickupSaveData[];
+    rcsFuelPickups?: RcsFuelPickupSaveData[];
   };
   const ammoPickups = storedData.ammoPickups ?? storedData.ammos;
   if (!Array.isArray(ammoPickups)) return null;
 
-  const normalizedData = { ...storedData, ammoPickups };
+  const normalizedData = {
+    ...storedData,
+    ammoPickups,
+    rcsFuelPickups: storedData.rcsFuelPickups ?? [],
+    detachedBoosters: storedData.detachedBoosters ?? [],
+  };
   delete normalizedData.ammos;
   return normalizedData;
 }
@@ -88,9 +95,12 @@ function buildSaveData(game: Game): GameSaveData {
     activePlayerId: game.player ? game.player.id : null,
     enemies: game.entities.enemies.map(e => e.serialize()),
     ammoPickups: game.entities.ammoPickups.map((ammoPickup) => ammoPickup.serialize()),
+    rcsFuelPickups: game.entities.rcsFuelPickups.map((pickup) => pickup.serialize()),
+    detachedBoosters: game.entities.detachedBoosters.map((booster) => booster.serialize()),
     bases: game.entities.bases.map(b => b.serialize()),
     stage: game.activeStage.serialize(),
     camera: { view: game.viewManager.serializeView(), ...game.cameraSystem.serialize() },
+    navTarget: game.navTarget.id !== null ? { id: game.navTarget.id, name: game.navTarget.name! } : null,
   };
 }
 

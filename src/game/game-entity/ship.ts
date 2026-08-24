@@ -4,6 +4,8 @@ import { KinematicState } from '../../physics/kinematic-state';
 import * as C from '../const';
 import { GameEntity } from './game-entity';
 import { Part, PartType, createPart } from './parts';
+import { collisionDamageFraction } from './contact-damage';
+import { SHIP_ARROWHEAD_POINTS } from '../marker/marker-shapes';
 import type {
   ArmorPart,
   CockpitPart,
@@ -15,14 +17,22 @@ import type {
 } from './parts';
 
 export abstract class Ship extends GameEntity {
-  protected readonly bcInv = C.SHIP_BCINV;
+  override readonly bcInv = C.SHIP_BCINV;
   protected readonly srpCoeff = C.SHIP_SRP_COEFF;
-  protected readonly baseHistoryDuration = C.SHIP_HISTORY_DURATION;
+  protected readonly baseHistoryDuration = C.DEFAULT_HISTORY_DURATION;
   protected readonly predictedForGhost = true;
+  protected readonly specificHeat = C.SHIP_SPECIFIC_HEAT;
+  protected readonly bulkDensity = C.SHIP_BULK_DENSITY;
+  protected override get radiatingAreaPerMass(): number { return C.SHIP_RADIATING_AREA_PER_MASS; }
 
-  hp: number;
-  maxHp: number;
+  private _hp!: number;
+  private _maxHp!: number;
   parts: Part[] = [];
+
+  get hp(): number { return this._hp; }
+  set hp(value: number) { this._hp = value; }
+  get maxHp(): number { return this._maxHp; }
+  set maxHp(value: number) { this._maxHp = value; }
 
   // パーツ配列の type 走査は性能取得 getter から毎回行わず、換装・復元時だけ組み直す。
   // HP/fuel はパーツ本体で変化するため、これらはパーツ参照の固定配列であり、値のキャッシュではない。
@@ -79,8 +89,8 @@ export abstract class Ship extends GameEntity {
         fuelConsumptionRate: 1,
       }),
       mk('rcs_tank', R.rcsTank, { name: 'Main RCS Tank', maxFuel: 1000, fuel: 1000 }),
-      mk('radiator', R.radiator, { name: 'Heat Radiator L', coolingRate: 25 }),
-      mk('radiator', R.radiator, { name: 'Heat Radiator R', coolingRate: 25 }),
+      mk('radiator', R.radiator, { name: 'Heat Radiator L', coolingRate: 42 }),
+      mk('radiator', R.radiator, { name: 'Heat Radiator R', coolingRate: 42 }),
       mk('solar_panel', R.solarPanel, { name: 'Solar Array L', powerGeneration: 50 }),
       mk('solar_panel', R.solarPanel, { name: 'Solar Array R', powerGeneration: 50 }),
       mk('weapon', R.weapon, {
@@ -103,7 +113,7 @@ export abstract class Ship extends GameEntity {
   }
 
   // パーツの換装・セーブ復元後にだけ呼ぶ type 別参照を再構築する。parts 配列は
-  // BaseView/Player の換装経路で splice され、その直後に refreshFromParts が呼ばれる。
+  // BasePanel/Player の換装経路で splice され、その直後に refreshFromParts が呼ばれる。
   private rebuildPartReferences(): void {
     this.thrusterPartRefs.length = 0;
     this.rcsTankPartRefs.length = 0;
@@ -146,11 +156,10 @@ export abstract class Ship extends GameEntity {
     this.updateOverallHp();
   }
 
-  // 自身が受けた速度変化 dv = impulse/mass に応じたダメージをパーツへ適用し、
-  // ダメージが発生したかを返す。part を指定すると割り振り先をそのパーツに固定する。
-  protected applyCollisionDamage(dv: number, part?: Part): boolean {
-    const span = C.COLLISION_DAMAGE_FULL_DV - C.COLLISION_DAMAGE_MIN_DV;
-    const t = Math.min(1, Math.max(0, (dv - C.COLLISION_DAMAGE_MIN_DV) / span));
+  // 接触の重み付き接近速度に応じたダメージをパーツへ適用し、ダメージが発生したかを返す。
+  // part を指定すると割り振り先をそのパーツに固定する。
+  protected applyCollisionDamage(closingSpeed: number, part?: Part): boolean {
+    const t = collisionDamageFraction(closingSpeed);
     if (t <= 0) return false;
 
     const damage = this.maxHp * t;
@@ -228,31 +237,33 @@ export abstract class Ship extends GameEntity {
     this.hp = hp;
   }
 
-  // 逆三角形を辺中央の切り欠きで分割し、残HPに応じて発光するSVGを生成する。
+  // 正三角形を辺中央の切り欠きで分割し、残HPに応じて発光するSVGを生成する。
   // 分割数は3の倍数へ丸めるため、将来HPが12/18になっても多重リングへ拡張しやすい。
   public hpMarkerSvg(): string {
     const segments = Math.max(3, Math.round(this.maxHp / 3) * 3);
     const lit = Math.max(0, Math.min(segments, Math.round((this.hp / this.maxHp) * segments)));
-    // 後部がV字にへこんだ鋭角矢尻シルエット(3/5角度: 12,1.5 -> 17.5,21 -> 12,16.5 -> 6.5,21)。
-    const points: [number, number][] = [[12, 1.5], [17.5, 21], [12, 16.5], [6.5, 21]];
+    // 正三角形のシルエット(辺長18、外接円中心は(12,12))。
+    const points: [number, number][] = [[12, 3], [21, 18.588], [3, 18.588]];
     const lines: string[] = [];
     const emit = (i: number, j: number, k: number, a: number, b: number): void => {
       if (b <= a) return;
       const [x1, y1] = points[i]!;
-      const [x2, y2] = points[(i + 1) % 4]!;
+      const [x2, y2] = points[(i + 1) % 3]!;
       const color = (i * k + j) < lit ? 'currentColor' : C.COLOR_MARKER_HP_EMPTY;
       lines.push(`<line x1="${x1 + (x2 - x1) * a}" y1="${y1 + (y2 - y1) * a}" x2="${x1 + (x2 - x1) * b}" y2="${y1 + (y2 - y1) * b}" stroke="${color}" stroke-width="1.5" stroke-linecap="butt"/>`);
     };
-    for (let i = 0; i < 4; i++) {
-      const k = segments / 4;
-      // 頂点は連続させ、各辺の中央だけを切り欠く。
+    for (let i = 0; i < 3; i++) {
+      const k = segments / 3;
+      const notch = 0.09;
+      const notchStart = 0.5 - notch / 2;
+      const notchEnd = 0.5 + notch / 2;
+      // 頂点は連続させ、各辺の中央だけを切り欠く(境界がちょうど0.5に重なる分割数でも欠ける)。
       for (let j = 0; j < k; j++) {
         const a = j / k;
         const b = (j + 1) / k;
-        const notch = 0.09;
-        if (a < 0.5 && b > 0.5) {
-          emit(i, j, k, a, 0.5 - notch / 2);
-          emit(i, j, k, 0.5 + notch / 2, b);
+        if (a < notchEnd && b > notchStart) {
+          if (a < notchStart) emit(i, j, k, a, notchStart);
+          if (b > notchEnd) emit(i, j, k, notchEnd, b);
         } else {
           emit(i, j, k, a, b);
         }
@@ -269,7 +280,7 @@ export abstract class Ship extends GameEntity {
     const baseY = 21;
     const fillTopY = (baseY - ratio * (baseY - apexY)).toFixed(2);
     const clipId = `hpfill-${this.name}`;
-    const pts = '12,1.5 17.5,21 12,16.5 6.5,21';
+    const pts = SHIP_ARROWHEAD_POINTS;
     if (isEnemy) {
       return `<svg viewBox="0 0 24 24" width="24" height="24" aria-label="HP ${Math.max(0, this.hp)} / ${this.maxHp}">` +
         `<polygon points="${pts}" fill="none" stroke="currentColor" stroke-width="1.8"/>` +
@@ -332,6 +343,26 @@ export abstract class Ship extends GameEntity {
     }
     
     return actualConsumed / amount;
+  }
+
+  // 燃料を補給し、実際に追加できた量 [kg] を返す。破損タンクと容量超過は対象外。
+  refuelFuel(amount: number): number {
+    if (amount <= 0) return 0;
+
+    let remainingToAdd = amount;
+    let actualAdded = 0;
+    for (const tank of this.rcsTankPartRefs) {
+      if (tank.hp <= 0) continue;
+      const space = Math.max(0, tank.maxFuel - tank.fuel);
+      if (space > 0) {
+        const addToTank = Math.min(space, remainingToAdd);
+        tank.fuel += addToTank;
+        remainingToAdd -= addToTank;
+        actualAdded += addToTank;
+      }
+      if (remainingToAdd <= 0) break;
+    }
+    return actualAdded;
   }
 
   // 機体左右2枚の放熱板・太陽電池パドルに対応するパーツ。並び順が side に対応し、
