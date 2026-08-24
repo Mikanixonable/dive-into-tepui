@@ -16,10 +16,10 @@
     "test:physics": "tsc -p tsconfig.test.json && node tests/dist/tests/physics/index.js",
     "export-assets": "node tools/export-models.mjs",
     "protein:author": "python3 tools/protein-builder/build-protein.py --require-blender",
-    "protein:validate": "node tools/protein-builder/validate-protein.mjs",
+    "protein:validate": "node tools/protein-builder/validate-protein.mjs src/assets/models/pdb5i4rProtein.json && node tools/protein-builder/validate-protein.mjs src/assets/models/myoglobin1mbnProtein.json",
     "protein:generate": "node tools/protein-builder/generate-protein-asset.mjs",
     "protein:generate-structure": "node tools/protein-builder/generate-protein-structure.mjs",
-    "protein:validate-structure": "node tools/protein-builder/validate-protein-structure.mjs",
+    "protein:validate-structure": "node tools/protein-builder/validate-protein-structure.mjs src/assets/models/pdb5i4rStructure.json && node tools/protein-builder/validate-protein-structure.mjs src/assets/models/myoglobin1mbnStructure.json",
     "bgm-lab": "node node_modules/webpack-cli/bin/cli.js serve --config webpack.bgm-lab.config.js --mode development",
     "render-lab": "node node_modules/webpack-cli/bin/cli.js serve --config webpack.render-lab.config.js --mode development",
     "render-lab:shot": "webpack --config webpack.render-lab.config.js --mode production && node tools/render-lab-shot.mjs"
