@@ -3,10 +3,11 @@
 // deposited RCSB PDB; without it the existing C-alpha/O backbone becomes an explicitly
 // marked proxy so offline builds remain reproducible without claiming full atom coverage.
 import { readFile, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { structureContentHash } from './protein-content-hash.mjs';
 
 const configFile = process.argv[2] ?? 'assets-src/proteins/5i4r/protein.config.json';
 const useNetwork = process.argv.includes('--network');
+const checkOnly = process.argv.includes('--check');
 const config = JSON.parse(await readFile(configFile, 'utf8'));
 const backbone = JSON.parse(await readFile(config.source, 'utf8'));
 
@@ -480,7 +481,7 @@ function encodeStructure(parsed, source) {
   }
   const bonds = inferBonds(atoms, parsed.conect);
   const surface = surfaceField(atoms);
-  return {
+  const asset = {
     schemaVersion: 1,
     id: `${config.assetId}-structure`,
     pdbId: config.pdbId,
@@ -495,8 +496,10 @@ function encodeStructure(parsed, source) {
     },
     bonds: { count: bonds.length, pairs: bonds.flatMap(([a, b]) => [a, b]), orders: bonds.map((bond) => bond[2]), inference: parsed.conect.length ? 'PDB CONECT plus covalent-distance inference' : 'covalent-distance inference' },
     surface,
-    generator: { name: 'generate-protein-structure.mjs', version: 2, sourceFallback: 'existing-backbone' },
+    generator: { name: 'generate-protein-structure.mjs', version: 3, sourceFallback: 'existing-backbone' },
   };
+  asset.generator.contentHash = structureContentHash(asset);
+  return asset;
 }
 
 let parsed;
@@ -520,5 +523,16 @@ const outputFile = process.argv.find((argument) => argument.startsWith('--output
   ?? config.structureAsset
   ?? 'src/assets/models/pdb5i4rStructure.json';
 const encoded = encodeStructure(parsed, source);
-await writeFile(outputFile, `${JSON.stringify(encoded, null, 2)}\n`);
-console.log(`generated ${outputFile}: ${parsed.atoms.length} atoms, ${encoded.bonds.count} bonds, ${source.kind}`);
+const serialized = `${JSON.stringify(encoded, null, 2)}\n`;
+if (checkOnly) {
+  const existing = await readFile(outputFile, 'utf8');
+  if (existing !== serialized) {
+    console.error(`${configFile}: generated structure differs from ${outputFile}`);
+    process.exitCode = 1;
+  } else {
+    console.log(`${outputFile}: structure is up to date (${parsed.atoms.length} atoms, ${source.kind})`);
+  }
+} else {
+  await writeFile(outputFile, serialized);
+  console.log(`generated ${outputFile}: ${parsed.atoms.length} atoms, ${encoded.bonds.count} bonds, ${source.kind}`);
+}

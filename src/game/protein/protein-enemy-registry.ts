@@ -6,14 +6,15 @@ import { buildProteinCollisionRibbon } from '../../render/protein-ribbon';
 import {
   PROTEIN_ASSET_IDS, proteinAssetBundleFor, proteinAssetFor, type ProteinAssetId,
 } from './protein-asset-loader';
-import type { ProteinAssetDefinition } from './protein-schema';
+import type { ProteinAssetDefinition, ProteinMotionAsset } from './protein-schema';
 import type { ProteinDisplaySettings } from './protein-display';
 
 export interface ProteinEnemyDefinition {
   readonly assetId: ProteinAssetId;
   readonly asset: ProteinAssetDefinition;
-  readonly buildRenderObject: (display: ProteinDisplaySettings) => THREE.Object3D;
-  readonly recolorRenderObject: (target: THREE.Object3D, display: ProteinDisplaySettings) => void;
+  readonly motion: ProteinMotionAsset;
+  readonly buildRenderObject: (display: ProteinDisplaySettings, motion?: import('../../render/protein-motion-material').ProteinMotionBinding) => THREE.Object3D;
+  readonly recolorRenderObject: (target: THREE.Object3D, display: ProteinDisplaySettings, motion?: import('../../render/protein-motion-material').ProteinMotionBinding) => void;
   readonly buildCollisionObject: () => THREE.Object3D;
 }
 
@@ -35,9 +36,10 @@ function createProteinEnemyDefinition(
   return {
     assetId,
     asset: source.semantic,
-    buildRenderObject: (display) => buildProteinEnemyShip(source, display),
-    recolorRenderObject: (target, display) => replaceProteinEnemyShip(
-      target, buildProteinEnemyShip(source, display),
+    motion: source.motion,
+    buildRenderObject: (display, motion) => buildProteinEnemyShip(source, display, motion),
+    recolorRenderObject: (target, display, motion) => replaceProteinEnemyShip(
+      target, buildProteinEnemyShip(source, display, motion),
     ),
     buildCollisionObject: () => buildProteinCollisionRibbon(
       source, 'chain', PROTEIN_INTERNAL_RIBBON_COLOR,

@@ -1,6 +1,6 @@
 // タンパク質の表示用 Cartoon と衝突判定用リボンを生成する。
 import * as THREE from 'three/webgpu';
-import type { ProteinAssetDefinition } from '../game/protein/protein-schema';
+import type { ProteinAssetDefinition, ProteinMotionAsset } from '../game/protein/protein-schema';
 import type { ProteinDisplayAsset } from '../game/protein/protein-display-asset';
 import type { ProteinRibbonColorMode } from '../game/protein/protein-display';
 import {
@@ -8,6 +8,11 @@ import {
   proteinSecondaryKind,
   type ProteinSecondaryKind,
 } from './protein-ribbon-color';
+import {
+  attachProteinResidueBinding,
+  proteinStandardMaterial,
+  type ProteinMotionBinding,
+} from './protein-motion-material';
 export interface ProteinBackboneAsset {
   readonly backboneCount: number;
   readonly backboneCoordinates: readonly number[];
@@ -20,6 +25,7 @@ export interface ProteinBackboneAsset {
 }
 export interface ProteinRenderSource {
   readonly semantic: ProteinAssetDefinition;
+  readonly motion: ProteinMotionAsset;
   readonly backbone: ProteinBackboneAsset;
   readonly structure: ProteinDisplayAsset;
 }
@@ -46,6 +52,9 @@ interface RibbonSample {
   readonly thicknessDirection: THREE.Vector3;
   readonly sourceIndex: number;
   readonly residuePosition: number;
+  readonly residueA: number;
+  readonly residueB: number;
+  readonly residueT: number;
 }
 
 /** 主鎖を鎖境界と欠損で分割する。 */
@@ -152,7 +161,19 @@ function sampleFrames(
     }
     const thicknessDirection = normalizedOr(tangent.clone().cross(widthDirection), new THREE.Vector3(0, 1, 0));
     const sourceIndex = Math.min(source.backbone.backboneCount - 1, Math.round(run.startIndex + residuePosition));
-    samples.push({ center, tangent, widthDirection, thicknessDirection, sourceIndex, residuePosition });
+    const backboneA = run.startIndex + localIndex;
+    const backboneB = run.startIndex + nextIndex;
+    samples.push({
+      center,
+      tangent,
+      widthDirection,
+      thicknessDirection,
+      sourceIndex,
+      residuePosition,
+      residueA: source.motion.bindings.backboneResidues[backboneA] ?? backboneA,
+      residueB: source.motion.bindings.backboneResidues[backboneB] ?? backboneB,
+      residueT: localT,
+    });
     previousTangent = tangent;
     previousWidth = widthDirection;
   }
@@ -220,6 +241,9 @@ function ribbonGeometry(
 ): THREE.BufferGeometry {
   const positions: number[] = [];
   const colors: number[] = [];
+  const residueA: number[] = [];
+  const residueB: number[] = [];
+  const residueT: number[] = [];
   const sectionVertexCount = sectionVertices(kind);
   // 各断面へ同じ頂点順を使い、隣接 ring 間の対応を固定する。
   for (const sample of samples) {
@@ -228,6 +252,9 @@ function ribbonGeometry(
       positions.push(point.x, point.y, point.z);
       const color = fixedColor ?? proteinRibbonColor(source, sample.sourceIndex, mode);
       colors.push(color.r, color.g, color.b);
+      residueA.push(sample.residueA);
+      residueB.push(sample.residueB);
+      residueT.push(sample.residueT);
     }
   }
   const indices: number[] = [];
@@ -244,6 +271,7 @@ function ribbonGeometry(
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   geometry.setIndex(indices);
+  attachProteinResidueBinding(geometry, residueA, residueB, residueT);
   geometry.computeVertexNormals();
   geometry.userData.proteinSecondary = kind;
   geometry.userData.proteinSecondaryKind = kind;
@@ -260,6 +288,9 @@ function transitionGeometry(
 ): THREE.BufferGeometry {
   const positions: number[] = [];
   const colors: number[] = [];
+  const residueA: number[] = [];
+  const residueB: number[] = [];
+  const residueT: number[] = [];
   const fromCount = sectionVertices(from.kind);
   const toCount = sectionVertices(to.kind);
   // 両端の閉じた断面を同じ周回方向で列挙する。
@@ -272,6 +303,9 @@ function transitionGeometry(
       );
       positions.push(point.x, point.y, point.z);
       colors.push(color.r, color.g, color.b);
+      residueA.push(endpoint.sample.residueA);
+      residueB.push(endpoint.sample.residueB);
+      residueT.push(endpoint.sample.residueT);
     }
   }
 
@@ -303,6 +337,7 @@ function transitionGeometry(
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   geometry.setIndex(indices);
+  attachProteinResidueBinding(geometry, residueA, residueB, residueT);
   geometry.computeVertexNormals();
   geometry.userData.proteinSecondary = to.kind;
   geometry.userData.proteinSecondaryKind = to.kind;
@@ -315,14 +350,14 @@ function transitionGeometry(
 }
 
 /** 論文図向けの非金属 Ribbon 材質を返す。 */
-function ribbonMaterial(): THREE.MeshStandardMaterial {
-  return new THREE.MeshStandardMaterial({
+function ribbonMaterial(motion?: ProteinMotionBinding): THREE.MeshStandardNodeMaterial {
+  return proteinStandardMaterial({
     color: 0xffffff,
     vertexColors: true,
     roughness: 0.68,
     metalness: 0,
     side: THREE.DoubleSide,
-  });
+  }, motion);
 }
 
 /** geometry をタンパク質用タグ付き Mesh として group へ追加する。 */
@@ -332,9 +367,10 @@ function addRibbonMesh(
   source: ProteinRenderSource,
   startIndex: number,
   kind: ProteinSecondaryKind,
+  motion?: ProteinMotionBinding,
 ): void {
   // 表示更新と component 運動が読む共通タグを各区間へ付ける。
-  const mesh = new THREE.Mesh(geometry, ribbonMaterial());
+  const mesh = new THREE.Mesh(geometry, ribbonMaterial(motion));
   mesh.userData.proteinComponent = source.backbone.backboneChains[startIndex] ?? 'A';
   mesh.userData.proteinRibbon = true;
   mesh.userData.proteinSecondary = kind;
@@ -357,6 +393,7 @@ function buildPublicationRibbon(
   source: ProteinRenderSource,
   mode: ProteinRibbonColorMode,
   fixedColor: THREE.Color | null,
+  motion?: ProteinMotionBinding,
 ): THREE.Group {
   const group = new THREE.Group();
   // フレームは鎖全体で共有し、二次構造境界では断面だけを切り替える。
@@ -378,14 +415,14 @@ function buildPublicationRibbon(
           { sample: frames[first + 1]!, kind: span.kind, sheetEnd: span.end },
           mode,
           fixedColor,
-        ), source, run.startIndex + span.start, span.kind);
+        ), source, run.startIndex + span.start, span.kind, motion);
       }
       const meshFirst = previousSpan ? first + 1 : first;
       const boundarySamples = frames.slice(meshFirst, last + 1);
       if (boundarySamples.length < 2) continue;
       addRibbonMesh(group, ribbonGeometry(
         source, boundarySamples, span.kind, span.end, mode, fixedColor,
-      ), source, run.startIndex + span.start, span.kind);
+      ), source, run.startIndex + span.start, span.kind, motion);
     }
   }
   return group;
@@ -394,8 +431,9 @@ function buildPublicationRibbon(
 /** 論文図に近い Ribbon 表示をローカル座標で生成する。 */
 export function buildProteinRibbon(
   source: ProteinRenderSource, mode: ProteinRibbonColorMode, fixedColor: THREE.Color | null = null,
+  motion?: ProteinMotionBinding,
 ): THREE.Group {
-  return buildPublicationRibbon(source, mode, fixedColor);
+  return buildPublicationRibbon(source, mode, fixedColor, motion);
 }
 
 export { buildProteinCollisionRibbon } from './protein-collision-ribbon';

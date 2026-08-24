@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Run a protein-builder action for every protein definition in the repository.
 import { access, readdir, readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -9,7 +10,7 @@ const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(scriptDirectory, '../..');
 const proteinRoot = join(repositoryRoot, 'assets-src/proteins');
 const builderRoot = scriptDirectory;
-const supportedActions = new Set(['generate', 'validate', 'generate-structure', 'validate-structure']);
+const supportedActions = new Set(['generate', 'validate', 'generate-motion', 'validate-motion', 'generate-structure', 'validate-structure']);
 const [action = 'validate', ...extraArguments] = process.argv.slice(2);
 
 if (!supportedActions.has(action)) {
@@ -37,6 +38,8 @@ if (!supportedActions.has(action)) {
     switch (action) {
       case 'generate': return ['generate-protein-asset.mjs', relativeConfigPath, ...extraArguments];
       case 'validate': return ['validate-protein.mjs', config.semanticAsset, ...extraArguments];
+      case 'generate-motion': return ['generate-protein-motion.py', relativeConfigPath, ...extraArguments];
+      case 'validate-motion': return ['validate-protein-motion.mjs', config.motionAsset, relativeConfigPath, ...extraArguments];
       case 'generate-structure': return ['generate-protein-structure.mjs', relativeConfigPath, ...extraArguments];
       case 'validate-structure': return ['validate-protein-structure.mjs', config.structureAsset, ...extraArguments];
       default: throw new Error(`unsupported action: ${action}`);
@@ -55,7 +58,9 @@ if (!supportedActions.has(action)) {
         const config = JSON.parse(await readFile(configPath, 'utf8'));
         const [script, ...argumentsForScript] = commandFor(config, configPath);
         console.log(`[protein-runner] ${action}: ${label}`);
-        const result = spawnSync(process.execPath, [join(builderRoot, script), ...argumentsForScript], {
+        const localPython = join(repositoryRoot, '.venv-protein-builder/bin/python');
+        const executable = script.endsWith('.py') ? (process.env.PROTEIN_PYTHON ?? (existsSync(localPython) ? localPython : 'python3')) : process.execPath;
+        const result = spawnSync(executable, [join(builderRoot, script), ...argumentsForScript], {
           cwd: repositoryRoot,
           stdio: 'inherit',
         });
