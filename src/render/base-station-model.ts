@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { markLitOpaque } from './pipeline/lit-layer';
+import { markLitOpaque, markSunShadowCaster } from './pipeline/lit-layer';
 import { F0_STEEL } from './metal-f0';
 
 // 基地: 中央ハブ + 放射状トラス4本 + ドッキングモジュール4基 + 太陽電池パドル2枚の低ポリ構成。
@@ -847,5 +847,6 @@ export function buildBaseModel(): THREE.Group {
   g.scale.setScalar(3.0);
 
   markLitOpaque(g);
+  markSunShadowCaster(g);
   return g;
 }

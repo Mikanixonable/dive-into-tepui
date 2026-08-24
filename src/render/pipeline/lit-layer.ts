@@ -20,6 +20,9 @@ export const OVERLAY_LAYER = 3;
 export const PROTEIN_SHADOW_OCCLUDER_LAYER = 4;
 // タンパク質内部のリボンだけを画面空間の自己影の受け手として描く層。
 export const PROTEIN_SHADOW_RECEIVER_LAYER = 5;
+// 太陽光の影を落とす不透明メッシュ(艦艇・基地・デブリなど)の層。**天体の球はここへ入れない** —
+// 球の影は遮蔽関数が解析式で厳密に解いており、シャドウマップにも入れると半影の途中で二重に効く。
+export const SUN_SHADOW_CASTER_LAYER = 6;
 
 // マテリアルパスが見るチャンネル。シーンルートは全チャンネルを持つ必要があるため、呼び出し側は
 // このマスクを設定する前に scene.layers.enableAll() を済ませておく。
@@ -47,18 +50,33 @@ export function isStandardMaterial(material: THREE.Material): boolean {
   return m.isMeshStandardMaterial === true || m.isMeshStandardNodeMaterial === true;
 }
 
+// obj が標準マテリアルを持つ Mesh か(マテリアル配列中の1つでも該当すればよい)。
+function isStandardMesh(obj: THREE.Object3D): boolean {
+  const mesh = obj as THREE.Mesh;
+  if (!mesh.isMesh) return false;
+  const material = mesh.material as THREE.Material | THREE.Material[];
+  return Array.isArray(material) ? material.some(isStandardMaterial) : isStandardMaterial(material);
+}
+
 // root 以下を走査し、標準マテリアルを持つ Mesh(マテリアル配列中の1つでも該当すれば)を
 // チャンネル0から外して LIT_OPAQUE_LAYER だけへ置く。それ以外のマテリアルは無視するので、
 // 組み立て済みのオブジェクトへ何度呼んでも、またどの段階で呼んでも安全。
 export function markLitOpaque(root: THREE.Object3D): void {
   root.traverse((obj) => {
-    const mesh = obj as THREE.Mesh;
-    if (!mesh.isMesh) return;
-    const material = mesh.material as THREE.Material | THREE.Material[];
-    const isStandard = Array.isArray(material)
-      ? material.some(isStandardMaterial)
-      : isStandardMaterial(material);
-    if (isStandard) mesh.layers.set(LIT_OPAQUE_LAYER);
+    if (isStandardMesh(obj)) obj.layers.set(LIT_OPAQUE_LAYER);
+  });
+}
+
+// root 以下の標準マテリアルの Mesh を、太陽光の影を落とす遮蔽器として印す。markLitOpaque と
+// 違って set ではなく enable — G バッファからは外さない。
+//
+// **タンパク質の半透明外殻だけは除く。** 外殻は ProteinShadowPass が受け手を内部リボンへ
+// 限って別に扱っており、一般のアトラスにも入れると同じ外殻が二重に影を落とす。除外を
+// 呼び出し側の作法にすると落としたときに絵でしか気付けないので、ここで閉じる。
+export function markSunShadowCaster(root: THREE.Object3D): void {
+  root.traverse((obj) => {
+    if (obj.userData.proteinShadowOccluder === true) return;
+    if (isStandardMesh(obj)) obj.layers.enable(SUN_SHADOW_CASTER_LAYER);
   });
 }
 
