@@ -24,7 +24,7 @@ import { generateApproachingEnemy, generateDriftingEnemy, generateProteinEnemy }
 import { PROTEIN_ASSET_IDS, type ProteinAssetId } from '../protein/protein-asset-loader';
 import {
   DEFAULT_PROTEIN_DISPLAY, defaultProteinDisplayFor, PROTEIN_COLOR_LABELS, PROTEIN_DISPLAY_LABELS,
-  isProteinDisplaySettings, proteinColorModesFor, proteinDisplayWithColor, type Pdb5i4rColorMode, type ProteinDisplaySettings,
+  isProteinDisplaySettings, proteinColorModesFor, proteinDisplayWithColor, type ProteinColorMode, type ProteinDisplaySettings,
   type ProteinRepresentation,
 } from '../protein/protein-display';
 import { WaveAttack } from './stage-utils/wave-attack';
@@ -261,7 +261,7 @@ export class CreativeStage extends Stage {
     proteinDisplayControl.element.classList.add('stage-control-protein-representation');
     proteinDisplayControl.setSelected(this.proteinDisplay.representation);
     proteinSection.appendChild(proteinDisplayControl.element);
-    const proteinColorControl = new SegmentedControl<Pdb5i4rColorMode>('着色', [], (mode) => {
+    const proteinColorControl = new SegmentedControl<ProteinColorMode>('着色', [], (mode) => {
       const next = proteinDisplayWithColor(this.proteinDisplay.representation, mode);
       if (next === null) return;
       this.proteinDisplay = next;
