@@ -19,7 +19,7 @@ export class InstancedPool {
   // スケール倍して広げる。InstancedMesh.computeBoundingBox() は一度計算すると結果を握り
   // 続けるので、毎フレーム動く個体には使えない。
   private readonly instanceRadius: number;
-  // 今フレームに push された個体を包む描画座標の AABB。endFrame で確定する。
+  // 今フレームに push された個体を包む描画座標の AABB。endFrame で mesh.boundingBox へ移す。
   private readonly pending = new THREE.Box3();
   private readonly settled = new THREE.Box3();
   private readonly scratchCenter = new THREE.Vector3();
@@ -68,12 +68,12 @@ export class InstancedPool {
     this.lastCount = this.count;
     this.mesh.instanceMatrix.needsUpdate = true;
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
-    this.settled.copy(this.pending);
+    // Box3.expandByObject は InstancedMesh を boundingBox 経由でしか読まず、
+    // InstancedMesh.computeBoundingBox() は一度計算した結果を握り続ける。**個体が毎フレーム
+    // 動くプールでは、このフレームぶんをここで入れ直すのが唯一の手** — 影パスのように
+    // 外からシーンを走査する側は、この箱を通してしかプールの広がりを知れない。
+    this.mesh.boundingBox = this.settled.copy(this.pending);
   }
-
-  // 直近の endFrame で確定した、描画中の個体を包む描画座標の AABB。1体も居なければ空の箱。
-  // 返すのは内部の箱そのものなので、呼び出し側は読むだけにする。
-  bounds(): THREE.Box3 { return this.settled; }
 
   // InstancedMesh をシーンから外し、そのインスタンスバッファを解放する。geometry/material は
   // 呼び出し側から渡された共有資源なので、その所有者だけが破棄できる。

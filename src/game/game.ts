@@ -595,8 +595,8 @@ export class Game {
 
   // ------------------------------------------------------------------ render
 
-  render(): void {
-    this.pipeline.render(this._scene, this.cameraSystem.activeCamera);
+  render(graphics: GraphicsSettingsData): void {
+    this.pipeline.render(this._scene, this.cameraSystem.activeCamera, graphics);
   }
 
   // ------------------------------------------------------------------ debug

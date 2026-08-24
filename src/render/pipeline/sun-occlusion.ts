@@ -11,11 +11,12 @@
 // 夜側は本影として落ちるので破綻しないが、昼夜境界では N·L と幾何遮蔽が二重に効く。
 import * as THREE from 'three/webgpu';
 import {
-  Fn, PI, abs, acos, and, asin, clamp, dot, exp, float, greaterThan, length,
-  lessThan, max, min, normalize, screenUV, select, sqrt, texture, uniform, vec4,
+  Fn, If, PI, abs, acos, and, asin, clamp, dot, exp, float, greaterThan, length,
+  lessThan, max, min, normalize, screenUV, select, sqrt, texture, uniform, vec2, vec4,
 } from 'three/tsl';
 import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 import type { ProteinShadowPass } from './protein-shadow-pass';
+import { SHADOW_ATLAS_SIZE, type SunShadowAtlas } from './sun-shadow-atlas';
 import type { SunLight } from './sun-light';
 
 export const MAX_OCCLUDERS = 4;
@@ -45,6 +46,9 @@ export type OcclusionSources = {
   // タンパク質の半透明外殻。**遮蔽パスからしか選べない** — 受け手が内部リボンだけに画面空間の
   // マスクで限定されており、画面の画素以外ではそのマスクを引けないため。
   readonly protein: boolean;
+  // 艦艇・基地・デブリなどのメッシュ。**真偽ではなく受け手の法線で選ぶ** — バイアスを法線方向の
+  // オフセットで入れるので法線が要り、型の側で「法線を持たずにこの源を選ぶ」を塞ぐ。
+  readonly meshNormal: Vec3Node | null;
 };
 
 type OccluderUniforms = { readonly center: Vec3Uniform; readonly radius: FloatUniform };
@@ -57,6 +61,11 @@ type RingBandUniforms = {
 
 // 環面と視線の交差判定が発散しないよう、環面と恒星方向のなす角の余弦へ入れる下限。
 const RING_GRAZING_MIN = 0.015;
+
+// メッシュの影のバイアス。受け手をこれだけ法線方向へずらしてからライト空間へ写し、残りを
+// 傾きに比例した深度バイアスで吸収する。単位はどちらもそのスロットの 1 texel。
+const NORMAL_OFFSET_TEXELS = 1.5;
+const MAX_SLOPE_BIAS_TEXELS = 8;
 
 // 半径 r1・r2 の 2 円が中心距離 d で重なる面積(すべて同じ角度単位)。
 const circleOverlapArea = Fn(([r1, r2, d]: readonly FloatNode[]) => {
@@ -145,6 +154,7 @@ export class SunOcclusion {
   constructor(
     private readonly sunLight: SunLight,
     private readonly proteinShadow: ProteinShadowPass,
+    private readonly shadowAtlas: SunShadowAtlas,
   ) {
     this.occluders = Array.from({ length: MAX_OCCLUDERS }, () => ({
       center: uniform(new THREE.Vector3()),
@@ -210,6 +220,52 @@ export class SunOcclusion {
     );
   }
 
+  // シャドウアトラスへ描かれたメッシュが落とす影。**スロットの境界の外なら引かない** —
+  // 判定は select ではなく If で書く。select は両辺を評価するので、画面のほとんどを占める
+  // 虚空の画素からもテクスチャフェッチが消えない。
+  private meshTransmittance(worldPos: Vec3Node, normal: Vec3Node, sunDir: Vec3Node): FloatNode {
+    const slot = this.shadowAtlas.slot;
+    return Fn(() => {
+      const visibility = float(1).toVar();
+      const lo = slot.boundsMin;
+      const hi = slot.boundsMax;
+      const inside = greaterThan(slot.active, 0.5)
+        .and(worldPos.x.greaterThan(lo.x)).and(worldPos.x.lessThan(hi.x))
+        .and(worldPos.y.greaterThan(lo.y)).and(worldPos.y.lessThan(hi.y))
+        .and(worldPos.z.greaterThan(lo.z)).and(worldPos.z.lessThan(hi.z));
+      If(inside, () => {
+        const texel = slot.texelWorld;
+        // バイアスは 2 段構え。**無次元の定数は使えない** — スロットの広がりがフレームごとに
+        // 変わるので、texel の実寸を単位に取る。法線方向のオフセットで受け手を遮蔽器から
+        // 離し、残りを傾きに比例した深度バイアスで吸収する。
+        const nDotL = clamp(dot(normal, sunDir), 1e-3, 1);
+        const slope = sqrt(float(1).sub(nDotL.mul(nDotL))).div(nDotL);
+        const offsetPos = worldPos.add(normal.mul(texel.mul(NORMAL_OFFSET_TEXELS)));
+        const depthBias = min(texel.mul(slope).mul(2), texel.mul(MAX_SLOPE_BIAS_TEXELS));
+
+        const clip = slot.lightViewProjection.mul(vec4(offsetPos, 1));
+        const slotUV = clip.xyz.div(clip.w).xy.mul(0.5).add(0.5);
+        const depthRange = max(slot.far.sub(slot.near), 1e-6);
+        const pointDepth = slot.lightView.mul(vec4(offsetPos, 1)).z.negate()
+          .sub(slot.near).div(depthRange).sub(depthBias.div(depthRange));
+
+        // 固定半径 3x3 の PCF。半影の幅を遮蔽器までの距離から出すのは手順 9 の担当で、
+        // ここでは texel 1 つぶんの階段を均すだけ。
+        const step = float(1 / SHADOW_ATLAS_SIZE);
+        const lit = float(0).toVar();
+        for (const dx of [-1, 0, 1]) {
+          for (const dy of [-1, 0, 1]) {
+            const uv = slotUV.add(vec2(dx, dy).mul(step));
+            const stored = texture(this.shadowAtlas.texture, uv).r;
+            lit.addAssign(select(pointDepth.greaterThan(stored), float(0), float(1)));
+          }
+        }
+        visibility.assign(lit.div(9));
+      });
+      return visibility;
+    })();
+  }
+
   // 描画座標の点 worldPos へ恒星の直射光が届く割合 0..1 を組む。sources で選ばれた源だけを
   // 畳み込み、複数の遮蔽は透過率の積で合成する。
   transmittance(worldPos: Vec3Node, sources: OcclusionSources): FloatNode {
@@ -237,6 +293,9 @@ export class SunOcclusion {
       }
     }
     if (sources.protein) transmittance = transmittance.mul(this.proteinTransmittance(worldPos));
+    if (sources.meshNormal !== null) {
+      transmittance = transmittance.mul(this.meshTransmittance(worldPos, sources.meshNormal, sunDir));
+    }
     return transmittance;
   }
 }

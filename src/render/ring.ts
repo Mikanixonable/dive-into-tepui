@@ -84,7 +84,7 @@ function ringOpticsNodes(baseColor: Vec3Node, optics: RingOpticsDef, sunOcclusio
   // ので、境界は半影の幅でぼける。**環の帯は源から外す** — 環のフラグメントは自分が乗って
   // いる帯の平面上に居るため、含めると自己遮蔽で刃こぼれする。
   const directLight = sunOcclusion.transmittance(positionWorld, {
-    spheres: true, rings: false, protein: false,
+    spheres: true, rings: false, protein: false, meshNormal: null,
   });
 
   const denominator = float(1).add(phaseG.mul(phaseG)).sub(

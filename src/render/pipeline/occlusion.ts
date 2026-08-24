@@ -9,10 +9,10 @@
 // compositeMaterials が表示ごとに別マテリアルを持つのと同じ理由・同じ形。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
-import { uniform, vec3, vec4 } from 'three/tsl';
+import { screenUV, texture, uniform, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import type { Mat4Uniform, Vec3Node } from '../tsl-types';
-import type { GBufferPass } from './gbuffer';
+import { octDecodeNormal, type GBufferPass } from './gbuffer';
 import type { SunOcclusion } from './sun-occlusion';
 import { viewPositionAt } from './view-ray';
 
@@ -42,10 +42,14 @@ export class OcclusionPass {
 
     const viewPos = viewPositionAt(gbuffer.depthTexture, this.projMatrixInverse);
     const worldPos: Vec3Node = this.viewToWorld.mul(vec4(viewPos, 1)).xyz;
+    // メッシュの影のバイアスが受け手の法線を要る。G バッファの法線は view 空間なので、
+    // 位置と同じ行列で描画座標へ回す。
+    const viewNormal = octDecodeNormal(texture(gbuffer.normalTexture, screenUV).rg);
+    const meshNormal: Vec3Node = this.viewToWorld.mul(vec4(viewNormal, 0)).xyz;
     const build = (rings: boolean): THREE.MeshBasicNodeMaterial => {
       const material = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
       material.colorNode = vec4(
-        vec3(sunOcclusion.transmittance(worldPos, { spheres: true, rings, protein: true })), 1,
+        vec3(sunOcclusion.transmittance(worldPos, { spheres: true, rings, protein: true, meshNormal })), 1,
       );
       return material;
     };
