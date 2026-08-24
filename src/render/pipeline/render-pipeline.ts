@@ -89,7 +89,9 @@ export class RenderPipeline implements DebugTargetHost {
     this.occlusionPass = new OcclusionPass(renderer, this.gbuffer, this._sunOcclusion, gpu);
     this.lightPrepass = new LightPrepass(renderer, this.gbuffer, this.occlusionPass, this._sunLight, gpu);
     this.materialPass = new MaterialPass(renderer, this.lightPrepass, gpu);
-    this.atmospherePass = new AtmospherePass(renderer, this.gbuffer, this._sunLight, this._sunOcclusion, gpu);
+    this.atmospherePass = new AtmospherePass(
+      renderer, this.gbuffer, this._sunLight, this._sunOcclusion, this.occlusionPass, gpu,
+    );
     this.overlayPass = new OverlayPass(renderer, gpu);
 
     // antialias はレンダラ生成時にしか渡せず(scene.ts 参照)、キャンバスへの直描きは

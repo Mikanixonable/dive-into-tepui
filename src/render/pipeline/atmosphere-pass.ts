@@ -8,11 +8,12 @@ import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import {
   and, clamp, dot, exp, float, greaterThan, length, lessThan, max, mix, normalize,
-  select, smoothstep, sqrt, sub, uniform, vec3, vec4,
+  screenUV, select, smoothstep, sqrt, sub, texture, uniform, vec3, vec4,
 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 import type { GBufferPass } from './gbuffer';
+import type { OcclusionPass } from './occlusion';
 import type { SunOcclusion } from './sun-occlusion';
 import type { SunLight } from './sun-light';
 import { viewPositionAt, viewRayAt } from './view-ray';
@@ -52,6 +53,7 @@ export class AtmospherePass {
     gbuffer: GBufferPass,
     sunLight: SunLight,
     sunOcclusion: SunOcclusion,
+    occlusion: OcclusionPass,
     private readonly gpu: GpuTimings,
   ) {
     this.target = new THREE.RenderTarget(1, 1, {
@@ -98,8 +100,8 @@ export class AtmospherePass {
     const sunDot = dot(inward, normalize(sub(sunLight.position, shellPoint)));
     // 大気も遮蔽を受ける。**シェル上の点は G バッファの画素位置とは別の点**なので、遮蔽パスが
     // 書いた 1 枚は引けない — 同じ遮蔽関数をこの点で評価し直す。日食のとき月の影が大気にも落ちる。
-    const shellSources = { spheres: true, rings: true, meshNormal: null };
-    const sunFactor: FloatNode = clamp(sunDot, 0, 1).mul(sunOcclusion.transmittance(shellPoint, shellSources));
+    const sunFactor: FloatNode = clamp(sunDot, 0, 1)
+      .mul(sunOcclusion.transmittance(shellPoint, { spheres: true, rings: false, meshNormal: null }));
     const color: Vec3Node = mix(SUNSET_COLOR, ATMO_COLOR, smoothstep(0, 0.2, sunDot));
 
     // シェルに当たらない・視線の起点より後ろ・不透明面の方が手前・大気を持つ天体が無いフレーム。
@@ -114,8 +116,9 @@ export class AtmospherePass {
     const hazeDepth = float(1).sub(exp(float(HAZE_TAU0).div(cosTheta).negate()));
     const hazeSunDot = dot(surfaceNormal, normalize(sub(sunLight.position, opaquePos)));
     const insideShell = lessThan(length(sub(opaquePos, this.bodyCenter)), shell);
-    const hazeSunFactor: FloatNode = clamp(hazeSunDot, 0, 1)
-      .mul(sunOcclusion.transmittance(opaquePos, shellSources));
+    // もやが評価する点は G バッファ深度から復元した位置そのものなので、遮蔽パスが同じ点で
+    // 書いた 1 枚をそのまま読む。
+    const hazeSunFactor: FloatNode = clamp(hazeSunDot, 0, 1).mul(texture(occlusion.texture, screenUV).r);
     // 奪う割合にも戻る量にも、その空気柱への日の当たり方を掛ける。太陽の高度が低いほど
     // 太陽光自身がより長い大気を通ってくることの近似で、厳密な光路長は Phase 10 の課題。
     const haze = select(and(hasAtmosphere, insideShell), hazeDepth.mul(hazeSunFactor), float(0));
