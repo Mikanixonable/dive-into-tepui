@@ -25,9 +25,14 @@ export abstract class Ship extends GameEntity {
   protected readonly bulkDensity = C.SHIP_BULK_DENSITY;
   protected override get radiatingAreaPerMass(): number { return C.SHIP_RADIATING_AREA_PER_MASS; }
 
-  hp: number;
-  maxHp: number;
+  private _hp!: number;
+  private _maxHp!: number;
   parts: Part[] = [];
+
+  get hp(): number { return this._hp; }
+  set hp(value: number) { this._hp = value; }
+  get maxHp(): number { return this._maxHp; }
+  set maxHp(value: number) { this._maxHp = value; }
 
   // パーツ配列の type 走査は性能取得 getter から毎回行わず、換装・復元時だけ組み直す。
   // HP/fuel はパーツ本体で変化するため、これらはパーツ参照の固定配列であり、値のキャッシュではない。

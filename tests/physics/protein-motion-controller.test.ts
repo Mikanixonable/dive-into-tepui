@@ -2,6 +2,7 @@ import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import {
   PROTEIN_MOTION_LOD_MODE_COUNTS,
+  PROTEIN_MOTION_PHASE_GAINS,
   ProteinMotionController,
   proteinMotionLodForDistance,
   proteinMotionUpdatePhaseFor,
@@ -78,6 +79,20 @@ export function register(): void {
     assert.ok(controller.residueOffsets.every((value) => value === 0));
     assert.notDeepEqual(near, medium);
     assert.notDeepEqual(medium, far);
+  });
+
+  test('protein motion controller: critical phase applies display-only gain', () => {
+    const controller = new ProteinMotionController(assetFor(2), 'protein-enemy-critical');
+    controller.update(2.25, 'near', 'intact');
+    const intact = [...controller.residueOffsets];
+    controller.update(2.25, 'near', 'critical');
+    const critical = [...controller.residueOffsets];
+
+    assert.equal(PROTEIN_MOTION_PHASE_GAINS.intact, 1);
+    assert.equal(PROTEIN_MOTION_PHASE_GAINS.critical, 1.5);
+    for (let index = 0; index < intact.length; index += 1) {
+      assert.ok(Math.abs(critical[index]! - intact[index]! * 1.5) < 1e-6);
+    }
   });
 
   test('protein motion controller: reuses coefficient and residue buffers', () => {
