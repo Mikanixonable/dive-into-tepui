@@ -1,4 +1,6 @@
-// 描画テスト環境の画面。ケースを選ぶと、その絵をゲーム本体と同じ描画経路で描く。
+// 描画テスト環境の画面。ケースと、画面へ出す中間バッファを選ぶと、その絵をゲーム本体と同じ
+// 描画経路で描く。
+import { DEBUG_TARGETS, type DebugTargetId } from '../../src/render/pipeline/debug-target';
 import { CASE_NAMES, type CaseName } from './cases';
 import { LabView, type LabMeasurement } from './lab';
 
@@ -13,23 +15,40 @@ declare global {
   }
 }
 
+// row の中に選択肢ぶんのボタンを並べ、押されたら select を呼ぶ。返り値で選択の見た目を更新する。
+function buildButtonRow<T extends string>(
+  rowId: string, entries: readonly (readonly [T, string])[], select: (value: T) => void,
+): (active: T) => void {
+  const row = document.getElementById(rowId)!;
+  const buttons = new Map<T, HTMLButtonElement>();
+  for (const [value, label] of entries) {
+    const button = document.createElement('button');
+    button.textContent = label;
+    button.addEventListener('click', () => select(value));
+    row.appendChild(button);
+    buttons.set(value, button);
+  }
+  return (active) => {
+    for (const [value, button] of buttons) button.classList.toggle('active', value === active);
+  };
+}
+
 async function init(): Promise<void> {
   const view = await LabView.create(document.getElementById('view') as HTMLCanvasElement);
 
-  const row = document.getElementById('cases')!;
-  const buttons = new Map<CaseName, HTMLButtonElement>();
-  const select = (name: CaseName) => {
-    for (const [key, button] of buttons) button.classList.toggle('active', key === name);
+  const caseEntries = CASE_NAMES.map((name) => [name, name] as const);
+  const markCase = buildButtonRow<CaseName>('cases', caseEntries, (name) => {
+    markCase(name);
     view.show(name);
-  };
-  for (const name of CASE_NAMES) {
-    const button = document.createElement('button');
-    button.textContent = name;
-    button.addEventListener('click', () => select(name));
-    row.appendChild(button);
-    buttons.set(name, button);
-  }
-  select(CASE_NAMES[0]!);
+  });
+  const markTarget = buildButtonRow<DebugTargetId>('targets', DEBUG_TARGETS, (target) => {
+    markTarget(target);
+    view.showDebugTarget(target);
+  });
+
+  markCase(CASE_NAMES[0]!);
+  markTarget('off');
+  view.show(CASE_NAMES[0]!);
 
   window.renderLab = {
     cases: CASE_NAMES,

@@ -11,13 +11,13 @@
     font: 13px/1.6 "JetBrains Mono", ui-monospace, monospace;
   }
   h1 { font-size: 15px; margin: 0 0 12px; font-weight: 600; letter-spacing: .04em; }
-  #cases { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
-  #cases button {
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .row button {
     background: #1c2229; color: var(--text); border: 1px solid var(--edge);
     border-radius: 4px; padding: 5px 14px; font: inherit; cursor: pointer;
   }
-  #cases button:hover { border-color: #3d4650; }
-  #cases button.active { background: #ff6a00; border-color: #ff6a00; color: #12151a; font-weight: 600; }
+  .row button:hover { border-color: #3d4650; }
+  .row button.active { background: #ff6a00; border-color: #ff6a00; color: #12151a; font-weight: 600; }
   #views { display: flex; gap: 12px; flex-wrap: wrap; }
   #views figure { margin: 0; background: var(--panel); border: 1px solid var(--edge); padding: 8px; }
   #views canvas { display: block; width: 960px; height: 540px; background: #000; }
@@ -26,7 +26,8 @@
 </head>
 <body>
   <h1>Render Lab</h1>
-  <div id="cases"></div>
+  <div class="row" id="cases"></div>
+  <div class="row" id="targets"></div>
   <div id="views">
     <figure><canvas id="view"></canvas></figure>
   </div>
