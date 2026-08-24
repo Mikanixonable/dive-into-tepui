@@ -61,30 +61,6 @@ export interface ProteinModificationDefinition {
   readonly effects: Readonly<Record<string, Readonly<Record<string, number>>>>;
 }
 
-export interface ProteinMotionDefinition {
-  readonly model: 'overdamped-normal-modes';
-  /** Sampling frequency in hertz. */
-  readonly sampleHz: number;
-  /** Dimensionless display-only exaggeration applied to physical motion. */
-  readonly visualGain: number;
-  readonly modes: readonly ProteinMotionModeDefinition[];
-}
-
-export interface ProteinMotionComponentDefinition {
-  readonly componentId: string;
-  /** Dimensionless modal direction, normalized so the largest component translation has length 1. */
-  readonly translation: ProteinVec3;
-}
-
-export interface ProteinMotionModeDefinition {
-  readonly id: string;
-  /** Overdamped relaxation rate in s^-1. */
-  readonly relaxationRate: number;
-  /** Stationary RMS displacement (standard deviation) in source-structure Å. */
-  readonly rmsAmplitude: number;
-  readonly components: readonly ProteinMotionComponentDefinition[];
-}
-
 export interface ProteinMotionAsset {
   readonly schemaVersion: 1;
   readonly model: 'c-alpha-anm-overdamped';
@@ -150,7 +126,6 @@ export interface ProteinAssetDefinition {
   readonly components: readonly ProteinComponentDefinition[];
   readonly sites: readonly ProteinSiteDefinition[];
   readonly modificationSlots: readonly ProteinModificationDefinition[];
-  readonly motion: ProteinMotionDefinition;
 }
 
 export interface ProteinSiteSaveData {
@@ -193,36 +168,12 @@ export function validateProteinAsset(asset: ProteinAssetDefinition): string[] {
   if (!asset.id) issues.push('id is empty');
   if (!Number.isFinite(asset.coordinateScale) || asset.coordinateScale <= 0) issues.push('coordinateScale must be positive');
   if (!Number.isFinite(asset.integrity.maxHp) || asset.integrity.maxHp <= 0) issues.push('integrity.maxHp must be positive');
-  if (asset.motion.model !== 'overdamped-normal-modes') issues.push(`unsupported motion model: ${asset.motion.model}`);
-  if (!Number.isFinite(asset.motion.sampleHz) || asset.motion.sampleHz <= 0) issues.push('motion.sampleHz must be positive');
-  if (!Number.isFinite(asset.motion.visualGain) || asset.motion.visualGain <= 0) issues.push('motion.visualGain must be positive');
   const componentIds = new Set<string>();
   for (const component of asset.components) {
     if (!component.id) issues.push('component id is empty');
     if (componentIds.has(component.id)) issues.push(`duplicate component id: ${component.id}`);
     componentIds.add(component.id);
   }
-  const knownMotionIds = new Set<string>();
-  for (const mode of asset.motion.modes) {
-    if (!mode.id) issues.push('motion mode id is empty');
-    if (knownMotionIds.has(mode.id)) issues.push(`duplicate motion mode id: ${mode.id}`);
-    knownMotionIds.add(mode.id);
-    if (!Number.isFinite(mode.relaxationRate) || mode.relaxationRate <= 0) issues.push(`motion mode ${mode.id} relaxationRate must be positive`);
-    if (!Number.isFinite(mode.rmsAmplitude) || mode.rmsAmplitude <= 0) issues.push(`motion mode ${mode.id} rmsAmplitude must be positive`);
-    const transformedIds = new Set<string>();
-    for (const transform of mode.components) {
-      if (!componentIds.has(transform.componentId)) issues.push(`motion mode ${mode.id} references unknown component: ${transform.componentId}`);
-      if (transformedIds.has(transform.componentId)) issues.push(`motion mode ${mode.id} has duplicate component: ${transform.componentId}`);
-      transformedIds.add(transform.componentId);
-      if (!Array.isArray(transform.translation) || transform.translation.length !== 3 || transform.translation.some((value) => !Number.isFinite(value))) {
-        issues.push(`motion mode ${mode.id} component ${transform.componentId} translation must be a finite 3-vector`);
-      }
-    }
-    for (const componentId of componentIds) {
-      if (!transformedIds.has(componentId)) issues.push(`motion mode ${mode.id} is missing component: ${componentId}`);
-    }
-  }
-  if (asset.motion.modes.length === 0) issues.push('motion.modes must be non-empty');
   const actionIds = new Set<string>();
   for (const action of asset.actions) {
     if (!action.id) issues.push('action id is empty');

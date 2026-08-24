@@ -13,7 +13,7 @@ import type { ProteinMotionAsset } from '../../src/game/protein/protein-schema';
 import { collisionDamageFraction } from '../../src/game/game-entity/contact-damage';
 import * as THREE from 'three/webgpu';
 import { ProteinRuntime } from '../../src/game/protein/protein-runtime';
-import { PROTEIN_ASSET_IDS, proteinAssetFor } from '../../src/game/protein/protein-asset-loader';
+import { PROTEIN_ASSET_IDS, proteinAssetFor, proteinMotionAssetFor } from '../../src/game/protein/protein-asset-loader';
 import { proteinEnemyDefinitionFor } from '../../src/game/protein/protein-enemy-registry';
 import type { ProteinDisplayAsset } from '../../src/game/protein/protein-display-asset';
 import {
@@ -103,16 +103,17 @@ export function register(): void {
     assert.equal(proteinAssetFor('missing-protein'), null);
   });
 
-  test('protein assets: every registered enemy uses component-bound Brownian modes', () => {
+  test('protein assets: every registered enemy uses residue-bound ANM modes', () => {
     for (const id of PROTEIN_ASSET_IDS) {
       const candidate = proteinAssetFor(id)!;
-      const componentIds = new Set(candidate.components.map((component) => component.id));
-      assert.equal(candidate.motion.model, 'overdamped-normal-modes');
-      assert.ok(candidate.motion.modes.length > 0);
-      for (const site of candidate.sites) assert.ok(componentIds.has(site.componentId));
-      for (const mode of candidate.motion.modes) {
-        assert.deepEqual(new Set(mode.components.map((component) => component.componentId)), componentIds);
-      }
+      const motionAsset = proteinMotionAssetFor(id);
+      assert.ok(motionAsset);
+      assert.equal(motionAsset.model, 'c-alpha-anm-overdamped');
+      assert.equal(motionAsset.modes.length, 24);
+      assert.equal(motionAsset.bindings.siteResidues.length, candidate.sites.length);
+      assert.ok(motionAsset.bindings.backboneResidues.length > 0);
+      assert.ok(motionAsset.modes.some((mode) => mode.band === 'collective'));
+      assert.ok(motionAsset.modes.some((mode) => mode.band === 'local'));
     }
   });
 

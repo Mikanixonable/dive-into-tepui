@@ -143,6 +143,24 @@ export class Enemy extends Ship {
   readonly proteinRuntime: ProteinRuntime | null;
   private readonly proteinRibbonCollision: ProteinRibbonCollisionGeometry | null;
 
+  override get hp(): number {
+    return this.proteinRuntime?.combat.integrityHp ?? super.hp;
+  }
+
+  override set hp(value: number) {
+    // Ship's constructor initializes the legacy backing value before the protein
+    // runtime exists. Once the runtime is attached, integrityHp is authoritative.
+    if (!this.proteinRuntime) super.hp = value;
+  }
+
+  override get maxHp(): number {
+    return this.proteinRuntime?.combat.integrityMaxHp ?? super.maxHp;
+  }
+
+  override set maxHp(value: number) {
+    if (!this.proteinRuntime) super.maxHp = value;
+  }
+
   // init の enemyKind に応じたメッシュで Ship を初期化し、専用の軌道線をシーンへ追加する。
   constructor(
     init: EnemyInit,
@@ -218,12 +236,6 @@ export class Enemy extends Ship {
     this.radius = this.proteinRibbonCollision?.outerRadius ?? visualSphere.radius;
     this.orbitLineColor = orbitLineColor;
 
-    if (this.proteinRuntime) {
-      // Ship starts with the legacy 6 HP template; protein integrity is authoritative immediately,
-      // including newly spawned enemies before their first hit.
-      this.hp = this.proteinRuntime.combat.integrityHp;
-      this.maxHp = this.proteinRuntime.combat.integrityMaxHp;
-    }
     if ('saved' in init) {
       if (!this.proteinRuntime) {
         this.setOverallHp(init.saved.health);
@@ -363,8 +375,6 @@ export class Enemy extends Ship {
     if (!runtime) return null;
     const localPoint = runtime.localImpactPoint(impactPoint, this.state.r, this.att.q);
     const result = runtime.combat.applyDamage(amount, localPoint);
-    this.hp = runtime.combat.integrityHp;
-    this.maxHp = runtime.combat.integrityMaxHp;
     return result;
   }
 
@@ -405,7 +415,6 @@ export class Enemy extends Ship {
       const damageFraction = collisionDamageFraction(damageSpeed);
       if (damageFraction <= 0) return;
       const result = this.proteinRuntime.combat.applyContactDamage(this.maxHp * damageFraction);
-      this.hp = this.proteinRuntime.combat.integrityHp;
       if (result.defeated) {
         this.alive = false;
         activeStage.recordEnemyDeath(this, simTime, cause);

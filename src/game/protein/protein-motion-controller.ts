@@ -2,7 +2,7 @@ import {
   ProteinBrownianSampler,
   proteinBrownianSeedFor,
 } from './protein-brownian-motion';
-import type { ProteinMotionAsset } from './protein-schema';
+import type { ProteinMotionAsset, ProteinPhase } from './protein-schema';
 
 type ProteinMotionBand = ProteinMotionAsset['modes'][number]['band'];
 
@@ -13,6 +13,14 @@ export const PROTEIN_MOTION_LOD_MODE_COUNTS: Readonly<Record<ProteinMotionLod, n
   medium: 12,
   far: 4,
   marker: 0,
+};
+
+/** Display-only phase gains; physical ANM amplitudes remain unchanged. */
+export const PROTEIN_MOTION_PHASE_GAINS: Readonly<Record<ProteinPhase, number>> = {
+  intact: 1,
+  exposed: 1,
+  dissociated: 1,
+  critical: 1.5,
 };
 
 /** Distance-based fallback used by the entity sync path when projected size is unavailable. */
@@ -100,6 +108,7 @@ export class ProteinMotionController {
   private currentLod: ProteinMotionLod = 'near';
   private currentModeCount = 0;
   private lastSampleTime = Number.NaN;
+  private currentPhase: ProteinPhase = 'intact';
 
   constructor(
     asset: ProteinMotionAsset,
@@ -162,15 +171,21 @@ export class ProteinMotionController {
    * `sampleAt` and `seek` are aliases so callers can describe their intent
    * without changing the deterministic sampling semantics.
    */
-  update(time: number, lod: ProteinMotionLod = 'near'): Float32Array {
+  update(
+    time: number,
+    lod: ProteinMotionLod = 'near',
+    phase: ProteinPhase = this.currentPhase,
+  ): Float32Array {
     const nextModeCount = modeCountFor(lod, this.modeCount);
     const output = this.residueOffsetsBuffer;
     const sampleTime = nextModeCount === 0 ? 0 : this.sampleTimeFor(time, lod);
-    if (lod === this.currentLod && nextModeCount === this.currentModeCount && sampleTime === this.lastSampleTime) {
+    if (lod === this.currentLod && nextModeCount === this.currentModeCount
+      && sampleTime === this.lastSampleTime && phase === this.currentPhase) {
       return output;
     }
     this.currentLod = lod;
     this.currentModeCount = nextModeCount;
+    this.currentPhase = phase;
 
     if (this.currentModeCount === 0) {
       output.fill(0);
@@ -180,8 +195,9 @@ export class ProteinMotionController {
 
     output.fill(0);
     this.sampler.sampleAt(sampleTime, this.modeCoefficientsBuffer);
+    const phaseGain = PROTEIN_MOTION_PHASE_GAINS[this.currentPhase];
     for (let modeIndex = 0; modeIndex < this.currentModeCount; modeIndex += 1) {
-      const coefficient = this.modeCoefficientsBuffer[modeIndex]! * this.modeGains[modeIndex]!;
+      const coefficient = this.modeCoefficientsBuffer[modeIndex]! * this.modeGains[modeIndex]! * phaseGain;
       if (coefficient === 0) continue;
       const displacements = this.modes[modeIndex]!.displacements;
       for (let residueIndex = 0; residueIndex < this.residueCount; residueIndex += 1) {
@@ -196,12 +212,12 @@ export class ProteinMotionController {
     return output;
   }
 
-  sampleAt(time: number, lod: ProteinMotionLod = this.currentLod): Float32Array {
-    return this.update(time, lod);
+  sampleAt(time: number, lod: ProteinMotionLod = this.currentLod, phase: ProteinPhase = this.currentPhase): Float32Array {
+    return this.update(time, lod, phase);
   }
 
-  seek(time: number, lod: ProteinMotionLod = this.currentLod): Float32Array {
-    return this.update(time, lod);
+  seek(time: number, lod: ProteinMotionLod = this.currentLod, phase: ProteinPhase = this.currentPhase): Float32Array {
+    return this.update(time, lod, phase);
   }
 
   private sampleTimeFor(time: number, lod: ProteinMotionLod): number {
