@@ -1,7 +1,6 @@
 // 同一ジオメトリ/マテリアルを共有する大量の個体を、1本の InstancedMesh でまとめて描画するプール。
 import * as THREE from 'three/webgpu';
 import { markLitOpaque, markSunShadowCaster } from './pipeline/lit-layer';
-import type { SunShadowExtent } from './pipeline/sun-shadow-maps';
 
 // three の InstanceNode は instanceMatrix の受け渡し方を InstancedMesh.count から決め、
 // その判断とバッファ長を最初の描画時に一度だけ確定する。よって count は容量に固定した
@@ -22,7 +21,11 @@ export class InstancedPool {
   private readonly instanceRadius: number;
   // 今フレームに push された個体を包む描画座標の AABB。endFrame で公開用の箱へ移す。
   private readonly pending = new THREE.Box3();
-  private readonly extent: SunShadowExtent = { worldBounds: new THREE.Box3() };
+  private readonly extent: { worldBounds: THREE.Box3; instanceWorldSize: number } = {
+    worldBounds: new THREE.Box3(), instanceWorldSize: 0,
+  };
+  // 今フレームに push された個体のうち、いちばん大きいものの差し渡し [m]。
+  private pendingInstanceSize = 0;
   private readonly scratchCenter = new THREE.Vector3();
   private readonly scratchCorner = new THREE.Vector3();
 
@@ -49,6 +52,7 @@ export class InstancedPool {
   beginFrame(): void {
     this.count = 0;
     this.pending.makeEmpty();
+    this.pendingInstanceSize = 0;
   }
 
   // visible な renderObject を capacity まで受け付け、matrixWorld をインスタンスへ転写する。
@@ -59,6 +63,7 @@ export class InstancedPool {
     this.mesh.setMatrixAt(this.count, renderObject.matrixWorld);
     if (color && this.mesh.instanceColor) this.mesh.setColorAt(this.count, color);
     const reach = this.instanceRadius * renderObject.matrixWorld.getMaxScaleOnAxis();
+    this.pendingInstanceSize = Math.max(this.pendingInstanceSize, 2 * reach);
     this.scratchCenter.setFromMatrixPosition(renderObject.matrixWorld);
     this.pending.expandByPoint(this.scratchCorner.copy(this.scratchCenter).addScalar(reach));
     this.pending.expandByPoint(this.scratchCorner.copy(this.scratchCenter).addScalar(-reach));
@@ -72,6 +77,7 @@ export class InstancedPool {
     this.mesh.instanceMatrix.needsUpdate = true;
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
     this.extent.worldBounds.copy(this.pending);
+    this.extent.instanceWorldSize = this.pendingInstanceSize;
   }
 
   // InstancedMesh をシーンから外し、そのインスタンスバッファを解放する。geometry/material は
