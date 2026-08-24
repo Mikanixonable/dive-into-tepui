@@ -1,0 +1,219 @@
+{
+  "schemaVersion": 1,
+  "id": "pdb-5i4r",
+  "source": {
+    "pdbId": "5I4R",
+    "structureFile": "src/assets/models/pdb5i4rBackbone.json",
+    "citation": "Contact-dependent inhibition system from Escherichia coli NC101 - ternary CdiA/CdiI/EF-Tu complex"
+  },
+  "coordinateScale": 0.06,
+  "integrity": {
+    "maxHp": 320
+  },
+  "actions": [
+    {
+      "id": "plasma-burst",
+      "kind": "projectile"
+    }
+  ],
+  "bonds": [
+    {
+      "from": "primary-active-site",
+      "to": "complex-interface"
+    }
+  ],
+  "ligands": [],
+  "components": [
+    {
+      "id": "cdiA",
+      "chains": [
+        "A",
+        "E"
+      ],
+      "entities": [
+        1
+      ],
+      "role": "CdiA",
+      "source": "author"
+    },
+    {
+      "id": "ef-tu-1",
+      "chains": [
+        "C",
+        "G"
+      ],
+      "entities": [
+        2
+      ],
+      "role": "EF-Tu",
+      "source": "author"
+    },
+    {
+      "id": "ef-tu-2",
+      "chains": [
+        "D",
+        "H"
+      ],
+      "entities": [
+        3
+      ],
+      "role": "EF-Tu",
+      "source": "author"
+    },
+    {
+      "id": "cdiI",
+      "chains": [
+        "B",
+        "F"
+      ],
+      "entities": [
+        4
+      ],
+      "role": "CdiI",
+      "source": "author"
+    }
+  ],
+  "sites": [
+    {
+      "id": "primary-active-site",
+      "type": "active",
+      "source": "game",
+      "residues": [],
+      "anchor": "site_primary_active",
+      "position": [
+        0,
+        25,
+        -30
+      ],
+      "forward": [
+        0,
+        -0.2,
+        1
+      ],
+      "radius": 11,
+      "maxHp": 70,
+      "damageMultiplier": 1.6,
+      "actions": [
+        "plasma-burst"
+      ],
+      "componentId": "cdiA"
+    },
+    {
+      "id": "secondary-active-site",
+      "type": "active",
+      "source": "game",
+      "residues": [],
+      "anchor": "site_secondary_active",
+      "position": [
+        -32,
+        -6,
+        18
+      ],
+      "forward": [
+        0.4,
+        0,
+        0.9
+      ],
+      "radius": 10,
+      "maxHp": 60,
+      "damageMultiplier": 1.45,
+      "actions": [
+        "plasma-burst"
+      ],
+      "componentId": "cdiI"
+    },
+    {
+      "id": "tertiary-active-site",
+      "type": "active",
+      "source": "game",
+      "residues": [],
+      "anchor": "site_tertiary_active",
+      "position": [
+        28,
+        18,
+        12
+      ],
+      "forward": [
+        -0.3,
+        0.1,
+        0.95
+      ],
+      "radius": 9,
+      "maxHp": 55,
+      "damageMultiplier": 1.3,
+      "actions": [
+        "plasma-burst"
+      ],
+      "componentId": "ef-tu-2"
+    },
+    {
+      "id": "complex-interface",
+      "type": "interface",
+      "source": "game",
+      "residues": [],
+      "anchor": "site_complex_interface",
+      "position": [
+        -25,
+        0,
+        -22
+      ],
+      "forward": [
+        1,
+        0,
+        0
+      ],
+      "radius": 13,
+      "maxHp": 80,
+      "damageMultiplier": 1.2,
+      "actions": [],
+      "componentId": "cdiA"
+    },
+    {
+      "id": "structural-core",
+      "type": "core",
+      "source": "game",
+      "residues": [],
+      "anchor": "site_structural_core",
+      "position": [
+        12,
+        -16,
+        20
+      ],
+      "forward": [
+        0,
+        0,
+        1
+      ],
+      "radius": 14,
+      "maxHp": 90,
+      "damageMultiplier": 1.35,
+      "actions": [],
+      "componentId": "ef-tu-1"
+    }
+  ],
+  "modificationSlots": [
+    {
+      "id": "phosphate-1",
+      "label": "リン酸化",
+      "source": "game",
+      "anchor": "mod_phosphate_1",
+      "position": [
+        28,
+        12,
+        -2
+      ],
+      "states": [
+        "empty",
+        "phosphorylated"
+      ],
+      "defaultState": "phosphorylated",
+      "effects": {
+        "phosphorylated": {
+          "fireRateMultiplier": 1.25,
+          "damageMultiplier": 1.1
+        }
+      },
+      "componentId": "ef-tu-2"
+    }
+  ]
+}

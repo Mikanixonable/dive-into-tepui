@@ -53,6 +53,12 @@ export class StageDebug extends Stage {
       this.logistics.spawnForPlayer(player, C.STAGE00_LOGISTICS_MIN_DIST, C.STAGE00_LOGISTICS_MAX_DIST);
     });
     this.addStatusPanelWidget(spawnAmmoBtn.element);
+
+    // RCS燃料をスポーンするボタン
+    const spawnFuelBtn = new Button('RCS燃料をスポーン', () => {
+      this.logistics.spawnRcsFuelForPlayer(player, C.STAGE00_LOGISTICS_MIN_DIST, C.STAGE00_LOGISTICS_MAX_DIST);
+    });
+    this.addStatusPanelWidget(spawnFuelBtn.element);
   }
 
   // 敵の行動を進め、射撃許可を毎フレーム自ステージの敵全体へ反映する。

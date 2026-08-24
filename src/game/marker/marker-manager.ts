@@ -64,7 +64,7 @@ function defaultPriorityForClass(key: string, cls: string): number {
   if (cls.includes('mk-base')) return C.MARKER_PRIORITY.BASE;
   if (cls.includes('mk-self') || cls.includes('mk-ally')) return C.MARKER_PRIORITY.PLAYER;
   if (cls.includes('mk-enemy')) return C.MARKER_PRIORITY.ENEMY;
-  if (cls.includes('mk-ammo')) return C.MARKER_PRIORITY.AMMO;
+  if (cls.includes('mk-ammo') || cls.includes('mk-fuel')) return C.MARKER_PRIORITY.AMMO;
   if (cls.includes('mk-mnode') || cls.includes('mk-burn')) return C.MARKER_PRIORITY.MANEUVER_NODE;
   if (cls.includes('mk-node') || cls.includes('mk-relnode') || cls.includes('mk-eqnode') || cls.includes('mk-boardpass')) {
     return C.MARKER_PRIORITY.ORBITAL_NODE;
@@ -88,7 +88,7 @@ function canHideIconByPriority(m: MarkerRecord): boolean {
 // GroupedMarkers が管理する船・弾薬のクラス。この集合どうしのペアはクラスタ化(近接まとめ)で
 // 既にアイコンを残す/ラベルを合体する判断が付いているため、下の優先度間引きで重ねてアイコンを
 // 消さない(消すと GroupedMarkers が残したはずのアイコンが消える)。
-const COMBAT_MARKER_CLASSES = ['mk-target', 'mk-enemy', 'mk-base', 'mk-self', 'mk-ally', 'mk-ammo'];
+const COMBAT_MARKER_CLASSES = ['mk-target', 'mk-enemy', 'mk-base', 'mk-self', 'mk-ally', 'mk-ammo', 'mk-fuel'];
 
 function isCombatMarker(m: MarkerRecord): boolean {
   const cls = m.root.className;

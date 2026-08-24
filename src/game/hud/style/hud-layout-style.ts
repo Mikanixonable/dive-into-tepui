@@ -12,6 +12,12 @@ export const HUD_LAYOUT_STYLE = `
 /* ステージ選択画面より前面に出す既存の一時停止メニュー */
 #hud.title-menu-open { z-index: 110; }
 
+/* DADS-style persistent focus treatment: a bright keyline plus a dark contrast edge. */
+#hud :focus-visible, #touch-ui :focus-visible {
+  outline-color: var(--color-focus);
+  box-shadow: 0 0 0 1px var(--color-focus-contrast);
+}
+
 /* 選択無効化対象 */
 #hud .ctx-menu-item,
 #hud .mk, #hud .rail-toggle, #hud-chase-reset,
@@ -24,7 +30,7 @@ ${OVERLAY_LAYER_STYLE}
 #hud ::-webkit-scrollbar { width: 8px; height: 8px; }
 #hud ::-webkit-scrollbar-track { background: transparent; }
 #hud ::-webkit-scrollbar-thumb { background: var(--edge); border-radius: var(--radius-m); }
-#hud ::-webkit-scrollbar-thumb:hover { background: var(--accent-soft); }
+#hud ::-webkit-scrollbar-thumb:hover { background: var(--color-primary-hover); }
 
 #hud-overlay-shield { display: none; position: absolute; inset: 0; pointer-events: none; background: var(--shade-1); }
 body.hud-overlay-modal-open #hud-overlay-shield { display: block; }
@@ -55,8 +61,8 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
   flex: 0 0 auto; width: 24px; height: 24px; background: transparent; border: 0;
   border-radius: var(--radius-micro); color: var(--muted); font: inherit; cursor: pointer; pointer-events: auto;
 }
-#hud .panel-shell-collapse:hover { color: var(--accent-near); background: var(--surface-2); }
-#hud .panel-shell-collapse:focus-visible { outline: 2px solid var(--accent-near); outline-offset: 2px; }
+#hud .panel-shell-collapse:hover { color: var(--color-primary-hover); background: var(--surface-2); }
+#hud .panel-shell-collapse:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 #hud .panel-shell-body.collapsed { display: none !important; }
 #hud .row { display: flex; justify-content: space-between; gap: var(--space-5); }
 #hud .row .k { color: var(--text-dim); }
@@ -76,11 +82,11 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud .hud-map-root.active .hud-rail { pointer-events: auto; touch-action: pan-y; }
 #hud .rail-toggle {
   width: 30px; height: 30px; border: 0; border-radius: var(--radius-control);
-  background: var(--surface-2); color: var(--accent); cursor: pointer; pointer-events: auto;
+  background: var(--surface-2); color: var(--color-primary); cursor: pointer; pointer-events: auto;
   transition: color var(--transition-fast), background var(--transition-fast);
 }
-#hud .rail-toggle:hover { color: var(--accent-near); background: var(--surface-3); }
-#hud .rail-toggle:focus-visible { outline: 2px solid var(--accent-near); outline-offset: 2px; }
+#hud .rail-toggle:hover { color: var(--color-primary-hover); background: var(--surface-3); }
+#hud .rail-toggle:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 #hud .rail-toggle { display: none; position: absolute; top: 8px; z-index: 20; }
 #hud:not(.base-mode) .rail-toggle { display: block; }
 #hud .hud-world-root .rail-toggle-left { left: 8px; }

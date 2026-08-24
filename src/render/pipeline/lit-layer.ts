@@ -16,6 +16,10 @@ export const WORLD_BACKGROUND_LAYER = 2;
 // Δv ギズモ)の専用チャンネル。合成パスの後ろで描かれるので、露出もトーンマッピングも受けず、
 // 指定した色がそのまま画面へ出る。LIT_OPAQUE_LAYER と同じくチャンネル0からは外す。
 export const OVERLAY_LAYER = 3;
+// タンパク質の半透明外殻だけをライト空間の遮蔽器として描く層。
+export const PROTEIN_SHADOW_OCCLUDER_LAYER = 4;
+// タンパク質内部のリボンだけを画面空間の自己影の受け手として描く層。
+export const PROTEIN_SHADOW_RECEIVER_LAYER = 5;
 
 // マテリアルパスが見るチャンネル。シーンルートは全チャンネルを持つ必要があるため、呼び出し側は
 // このマスクを設定する前に scene.layers.enableAll() を済ませておく。
@@ -55,5 +59,14 @@ export function markLitOpaque(root: THREE.Object3D): void {
       ? material.some(isStandardMaterial)
       : isStandardMaterial(material);
     if (isStandard) mesh.layers.set(LIT_OPAQUE_LAYER);
+  });
+}
+
+// タンパク質の自己影パスが参照する役割を、通常の lit 層と重ねて有効にする。層を set せず
+// enable するので、GBuffer/MaterialPass からタンパク質を外さない。
+export function markProteinShadowLayers(root: THREE.Object3D): void {
+  root.traverse((obj) => {
+    if (obj.userData.proteinShadowOccluder === true) obj.layers.enable(PROTEIN_SHADOW_OCCLUDER_LAYER);
+    if (obj.userData.proteinShadowReceiver === true) obj.layers.enable(PROTEIN_SHADOW_RECEIVER_LAYER);
   });
 }

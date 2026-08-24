@@ -18,7 +18,9 @@ import { len, norm, rotateAxis, scale, v3 } from '../../../physics/vec3';
 import { Hud } from '../../hud/hud';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../../vfx/effects-system';
-import { Enemy, inertiaForEnemyKind } from '../../game-entity/enemy';
+import { Enemy, inertiaForEnemyKind, type EnemyKind } from '../../game-entity/enemy';
+import type { ProteinAssetId } from '../../protein/protein-asset-loader';
+import type { ProteinDisplaySettings } from '../../protein/protein-display';
 
 // 自機軌道(base)を dAlong だけ進めた位置の軌道状態(プリセット配置の共通基盤)。
 function phasedState(base: KinematicState, dAlong: number): KinematicState {
@@ -29,16 +31,25 @@ function phasedState(base: KinematicState, dAlong: number): KinematicState {
 
 // 無秩序に漂う敵(訓練クラスタ・通常ステージのプリセット敵の生成本体): ランダム姿勢+角速度。
 export function generateDriftingEnemy(name: string, state: KinematicState, _hp: number, accent: string | number, orbitLineColor: string | number, hud: Hud, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
+  return generateFreeEnemy(name, state, accent, orbitLineColor, { kind: 'drifting' }, hud, worldSfx, fx, scene);
+}
+
+// 登録されたタンパク質アセットを、現在の表示設定で描画する敵。
+export function generateProteinEnemy(name: string, state: KinematicState, assetId: ProteinAssetId, display: ProteinDisplaySettings, hud: Hud, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
+  return generateFreeEnemy(name, state, 0xffffff, 0xffffff, { kind: 'protein', assetId, display }, hud, worldSfx, fx, scene);
+}
+
+function generateFreeEnemy(name: string, state: KinematicState, accent: string | number, orbitLineColor: string | number, enemyKind: EnemyKind, hud: Hud, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
   return new Enemy(
     {
       name,
       state,
-      enemyKind: { kind: 'drifting' },
+      enemyKind,
       att: {
         // ランダムな姿勢・角速度を与える
         q: randomQuat(),
         w: v3(randSym(0.12), randSym(0.12), randSym(0.12)),
-        inertia: inertiaForEnemyKind({ kind: 'drifting' }),
+        inertia: inertiaForEnemyKind(enemyKind),
       },
       accent,
       orbitLineColor,
@@ -102,7 +113,7 @@ export function generateMolniyaEnemy(
 
 // ステージ00ウェーブ敵: 自機へのフライパスなので、機首をプログレードに向けて生成する。
 export function generateApproachingEnemy(
-  name: string, state: KinematicState, _hp: number, accent: number, orbitLineColor: number, typeIndex: number, waveId: number, hud: Hud, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene,
+  name: string, state: KinematicState, _hp: number, accent: number, orbitLineColor: number, typeIndex: number, waveId: number | undefined, hud: Hud, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene,
 ): Enemy {
   return new Enemy(
     {

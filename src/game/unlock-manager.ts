@@ -52,7 +52,7 @@ export class UnlockManager {
 
     for (const s of newlyUnlocked) {
       if (isStageUnlocked(s.id, this.clearCounts)) {
-        hud.toast(`<span style="color:var(--accent)">${s.selectLabel} が解放された</span>`);
+        hud.toast(`<span style="color:var(--color-primary)">${s.selectLabel} が解放された</span>`);
       }
     }
   }
