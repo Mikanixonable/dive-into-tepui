@@ -43,6 +43,7 @@ export const MAP_VIEW_STYLE = `
 /* Focus Glass: 時間スクラブと座標系編集は、意思決定中だけ一段密度を上げる。 */
 #hud .hud-map-root.active #hud-predict,
 #hud .hud-map-root.active .hud-frame-controls,
+#hud .hud-map-root.active #hud-halo-orbit,
 #hud .hud-map-root.active #hud-plan {
   border: 0;
   border-radius: var(--radius-panel);
@@ -58,6 +59,7 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active #burn-management-panel h3,
 #hud .hud-map-root.active #hud-predict h3,
 #hud .hud-map-root.active .hud-frame-controls h3,
+#hud .hud-map-root.active #hud-halo-orbit h3,
 #hud .hud-map-root.active #hud-plan h3 {
   color: var(--title);
   border: 0;
