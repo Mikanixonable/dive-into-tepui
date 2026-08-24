@@ -1,8 +1,7 @@
 // 無次元の円制限三体問題(CR3BP)そのもの。回転系・重心原点で、主天体を (−μ,0,0)、副天体を
 // (1−μ,0,0) に置き、長さの単位を両天体間距離、時間の単位を平均運動の逆数(n=1)に取る。
 // 運動方程式・ヤコビ定数・状態遷移行列つき数値積分と、xz 面対称性を使った周期軌道の
-// 微分修正(ハロー軌道・DRO)を持つ。
-// 天体暦・実単位・座標系の写像は扱わず、質量比 μ だけで閉じた力学として書かれている。
+// 微分修正(ハロー軌道・DRO)を持つ。質量比 μ だけで閉じた力学として書かれている。
 
 // 回転系の状態 [x, y, z, ẋ, ẏ, ż](いずれも無次元)。
 export type Cr3bpState = readonly [number, number, number, number, number, number];
@@ -224,18 +223,12 @@ export function correctHaloOrbit(
     const acc = cr3bpDerivative(mu, crossing.state);
     const ax = acc[3];
     const az = acc[5];
-    const correctionMatrix = [0, 1].map((k) => {
-      const col = k === 0 ? freeIndex : 4;
-      const dy = stmAt(crossing.stm, 1, col);
-      return [
-        stmAt(crossing.stm, 3, col) - (ax / vyEnd) * dy,
-        stmAt(crossing.stm, 5, col) - (az / vyEnd) * dy,
-      ];
-    });
-    const m00 = correctionMatrix[0]?.[0] ?? 0;
-    const m10 = correctionMatrix[0]?.[1] ?? 0;
-    const m01 = correctionMatrix[1]?.[0] ?? 0;
-    const m11 = correctionMatrix[1]?.[1] ?? 0;
+    const dyFree = stmAt(crossing.stm, 1, freeIndex);
+    const dyVy = stmAt(crossing.stm, 1, 4);
+    const m00 = stmAt(crossing.stm, 3, freeIndex) - (ax / vyEnd) * dyFree;
+    const m10 = stmAt(crossing.stm, 5, freeIndex) - (az / vyEnd) * dyFree;
+    const m01 = stmAt(crossing.stm, 3, 4) - (ax / vyEnd) * dyVy;
+    const m11 = stmAt(crossing.stm, 5, 4) - (az / vyEnd) * dyVy;
     const det = m00 * m11 - m01 * m10;
     if (!Number.isFinite(det) || Math.abs(det) < 1e-14) return null;
     const rx = -vxEnd;
@@ -280,37 +273,30 @@ export function correctPlanarOrbit(
   return null;
 }
 
-// 周期軌道を弧長等間隔の点列にする。近点で速度が上がる NRHO でも折れ線の粗密が偏らない。
-// 返す点列は閉曲線を一巡し、終点は始点と重ならない。steps は1周を追う積分の刻み数。
-export function sampleOrbitByArcLength(
-  mu: number, s: Cr3bpState, period: number, samples: number, steps = 4000,
-): Vec3Tuple[] {
-  // まず細かい刻みで1周を追い、各点までの累積弧長を作る。
-  const dt = period / steps;
-  let state = s;
-  const path: Vec3Tuple[] = [[s[0], s[1], s[2]]];
+// 折れ線を弧長等間隔の samples 点へ引き直す。closeLoop なら末尾から先頭へ戻る辺も曲線の一部と
+// みなし、返す点列は一巡して終点が始点と重ならない。closeLoop でなければ先頭から末尾までを等分する。
+export function resamplePolyline(path: readonly Vec3Tuple[], samples: number, closeLoop: boolean): Vec3Tuple[] {
+  const edges = closeLoop ? path.length : path.length - 1;
+  // 各頂点までの累積弧長。閉じる場合は戻る辺のぶんだけ末尾が1つ伸びる。
   const cumulative: number[] = [0];
-  for (let i = 0; i < steps; i++) {
-    state = rk4StateStep(mu, state, dt);
-    const point: Vec3Tuple = [state[0], state[1], state[2]];
-    const prev = path[path.length - 1] as Vec3Tuple;
-    const seg = Math.hypot(point[0] - prev[0], point[1] - prev[1], point[2] - prev[2]);
-    cumulative.push(el(cumulative, cumulative.length - 1) + seg);
-    path.push(point);
+  for (let i = 1; i <= edges; i++) {
+    const a = pointAt(path, i - 1);
+    const b = pointAt(path, i % path.length);
+    cumulative.push(el(cumulative, i - 1) + Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]));
   }
 
   // 累積弧長を等分する位置を、折れ線上の内分点として拾い直す。
-  const total = el(cumulative, cumulative.length - 1);
+  const total = el(cumulative, edges);
   const out: Vec3Tuple[] = [];
   let cursor = 0;
   for (let i = 0; i < samples; i++) {
     const target = (total * i) / samples;
-    while (cursor < cumulative.length - 2 && el(cumulative, cursor + 1) < target) cursor++;
+    while (cursor < edges - 1 && el(cumulative, cursor + 1) < target) cursor++;
     const s0 = el(cumulative, cursor);
     const s1 = el(cumulative, cursor + 1);
     const f = s1 > s0 ? (target - s0) / (s1 - s0) : 0;
-    const p0 = path[cursor] as Vec3Tuple;
-    const p1 = path[cursor + 1] as Vec3Tuple;
+    const p0 = pointAt(path, cursor);
+    const p1 = pointAt(path, (cursor + 1) % path.length);
     out.push([
       p0[0] + f * (p1[0] - p0[0]),
       p0[1] + f * (p1[1] - p0[1]),
@@ -318,5 +304,28 @@ export function sampleOrbitByArcLength(
     ]);
   }
   return out;
+}
+
+// 折れ線の頂点の取り出し。範囲外は呼び出し側の索引計算の破綻なので投げる。
+function pointAt(path: readonly Vec3Tuple[], i: number): Vec3Tuple {
+  const p = path[i];
+  if (p === undefined) throw new RangeError(`cr3bp: 範囲外の頂点参照 ${i}`);
+  return p;
+}
+
+// 周期軌道を弧長等間隔の点列にする。近点で速度が上がる NRHO でも折れ線の粗密が偏らない。
+// 返す点列は閉曲線を一巡し、終点は始点と重ならない。steps は1周を追う積分の刻み数。
+export function sampleOrbitByArcLength(
+  mu: number, s: Cr3bpState, period: number, samples: number, steps = 4000,
+): Vec3Tuple[] {
+  // 細かい刻みで1周を追う。終端は始点へ戻ってくるので、閉じる辺を足さずに等分する。
+  const dt = period / steps;
+  let state = s;
+  const path: Vec3Tuple[] = [[s[0], s[1], s[2]]];
+  for (let i = 0; i < steps; i++) {
+    state = rk4StateStep(mu, state, dt);
+    path.push([state[0], state[1], state[2]]);
+  }
+  return resamplePolyline(path, samples, false);
 }
 
