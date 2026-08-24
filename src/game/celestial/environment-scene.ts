@@ -30,6 +30,8 @@ import { CELESTIAL_VIEWS, fallbackCelestialView } from './celestial-registry';
 import { EarthView } from './earth-view';
 import { BodyClassToggles, NearbySystemTracker } from './body-visibility';
 import { MapVisibilityPolicy } from './map-visibility';
+import { OrbitGuideLines } from './orbit-guide-lines';
+import { DEFAULT_ORBIT_GUIDE_SETTINGS, OrbitGuideSettings } from './orbit-guide-settings';
 
 // 静止軌道高度の参照リング。実在の衛星や特定経度を表すものではない定数。地球が現在の
 // レジストリに実在しないなら架空レジストリでは無意味なので組まない(constructor で判定)。
@@ -105,6 +107,10 @@ export class EnvironmentScene {
   // 惑星は太陽中心)。マップモード専用で、天体暦の状態から作られる表示なのでここが所有する。
   private readonly referenceIds: readonly OrbitingId[];
   private readonly referenceLines: Map<OrbitingId, OrbitLine>;
+  // ラグランジュ点まわりの周期・準周期軌道のガイド線(表示パネルの軌道ガイドタブ、静止軌道を除く)。
+  private readonly orbitGuideLines: OrbitGuideLines;
+  // 軌道ガイドタブの正本の鏡映し。静止軌道リング・ラベルの表示可否だけをここから読む。
+  private orbitGuideSettings: OrbitGuideSettings = DEFAULT_ORBIT_GUIDE_SETTINGS;
 
   // 天体ビューの配列がすべて ephemeris から引く。天体暦はゲーム側が所有する単一インスタンスを
   // 共有参照する(状態を持たない純サンプラ)。sunLight はライティングパス(render/pipeline/)が
@@ -127,6 +133,7 @@ export class EnvironmentScene {
     // 参照線はマップで表示される天体だけが必要とする。全カタログぶんを起動時に
     // GPUへ確保すると、非表示設定でも頂点バッファとオブジェクトが残り続ける。
     this.referenceLines = new Map();
+    this.orbitGuideLines = new OrbitGuideLines(scene, ephemeris);
     this.lightingAnchor = new THREE.AmbientLight();
     scene.add(this.lightingAnchor);
     // レンダラーは光源自身の layers とカメラの layers が重ならないと光源をそのカメラの描画対象
@@ -152,6 +159,12 @@ export class EnvironmentScene {
     if (!overviewMode || this.ephemeris.starId === null || !graphics.pointField) return;
     const pointField = this.ensurePointField();
     pointField.update(t, true, this.ephemeris);
+  }
+
+  // 軌道ガイドタブ(表示パネル5.2節)の設定。ゲーム側が変更のたびに渡す。
+  setOrbitGuideSettings(settings: OrbitGuideSettings): void {
+    this.orbitGuideSettings = settings;
+    this.orbitGuideLines.setSettings(settings);
   }
 
   // 地球の自転初期位相(セーブ用)。地球が現在のレジストリに無ければ undefined。
@@ -207,14 +220,16 @@ export class EnvironmentScene {
     }
     this.syncStars(cameraSystem, gridVisibility.stars);
     const celestialBodies = this.ephemeris.celestialBodiesAt(displayTime);
+    const geostationaryOrbitVisible = this.orbitGuideSettings.geostationary;
     this.syncReferenceLines(
       displayTime, floatingOrigin, cameraSystem.overviewMode,
-      gridVisibility.geostationaryOrbit,
+      geostationaryOrbitVisible,
       focusTargetId(cameraSystem.mapCamera.focus), cameraSystem.bodyClassToggles,
       visibilityPolicy, nearbyIds, cameraSystem.activeCamera, cameraSystem.activeCameraPos);
     this.syncGeoLabels(
-      displayTime, cameraSystem.overviewMode, gridVisibility.geostationaryOrbit,
+      displayTime, cameraSystem.overviewMode, geostationaryOrbitVisible,
       cameraSystem, markerManager, celestialBodies);
+    this.orbitGuideLines.sync(displayTime, cameraSystem.overviewMode, floatingOrigin, cameraSystem.activeCamera);
     this.celestialGrid.sync(
       gridVisibility, cameraSystem.activeCamera,
       cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
@@ -466,6 +481,7 @@ export class EnvironmentScene {
     this.geoLine.line.removeFromParent();
     this.geoLine.dispose();
     for (const id of [...this.referenceLines.keys()]) this.removeReferenceLine(id);
+    this.orbitGuideLines.dispose();
     // ライティングモデルを組ませるためだけの光源。
     this.lightingAnchor.removeFromParent();
     this.lightingAnchor.dispose();

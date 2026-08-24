@@ -11,14 +11,11 @@
 
 **`DEVELOP/SPEC/` は「どう振舞うべきか」の原本であり、常にコードより先行する。**
 
-- **コードを変更してから文書を合わせるのではない。仕様を決めてから、コードをそれに合わせる。**
-  機能の追加・変更・削除を要求されたら、書き始める前に SPEC/ を更新する(`/modify-feature`)。
-- 実装できたことを理由に SPEC/ へ書き足さない。書くのは意図であって、報告ではない。
-- 未確定のものは本文に書かず、各ファイル末尾の「未確定の案」節へ。そこにも収まらない構想段階の
-  ものは SPEC/ に書かない。
-- 古くなった記述は経緯を残さず書き換える。矛盾を残さない。
-- SPEC/ とコードが食い違っていたら、それは「未実装」か「仕様違反」のどちらかである。
-  どちらなのかを判断して報告する。**勝手に SPEC/ をコードへ合わせない。**
+- **SPEC/ を開くのは、これから作るものを決めるときだけ**(`/modify-feature`)。書き終えてから
+  コードを書く。**実装を終えたあとに SPEC/ を見に行って突き合わせることはしない。**
+- **未実装の記述が残っているのは正常な状態である。** 仕様と実装が一致することを目標にしない。
+- **コードの現状を知るために SPEC/ を読まない。** 現状はコードから調べる。
+- **書き方の規則は `DEVELOP/SPEC/README.md` が正本。** ここには書かない。
 
 **`DEVELOP/CODING-RULE.md` はコードを編集するとき常に参照する。** 設計方針・命名規則・
 コメント規約・テストとデバッグコードの正本。既存コードに残る違反を、規則を弱める根拠にしない。
@@ -38,6 +35,7 @@
 | サブエージェントへ作業を配る | `/delegate`(配る前に) |
 | 機能の追加・変更・削除を要求された | `/modify-feature`(書き始める前に) |
 | HUD/UI/DOM/CSS に触れる | `/ui-design`(書き始める前に) |
+| 描画(`src/render/`・シェーダ)に触れる / 見た目を目で確かめる | `/rendering-workflow` |
 | 大きな変更を終えた / 規約からの逸脱が疑わしい | `/refactor` |
 | 大規模な変更のあと、コメントを一括点検する | `/comment-cleanup` |
 | どこで何が起きているか当たりを付けたい | `/overview` |
@@ -102,3 +100,18 @@
 
 `npm run export-assets` は実行のたびに全アセットの識別子が振り直されるため、差分が識別子だけの
 ファイルは commit せず戻す。
+
+### タンパク質を1体追加する
+
+1. `assets-src/proteins/<id>/` に `protein.config.json` と `protein.definition.json` を置き、PDB ID・
+   各出力先・coordinate scale・機能部位・構成要素を定義する。
+2. `node tools/protein-builder/fetch-pdb-backbone.mjs assets-src/proteins/<id>/protein.config.json` で
+   PDB の Cα・カルボニル酸素・二次構造・B-factor を取り込む。
+3. `npm run protein:generate-structure -- --network` で構造資産を生成する(論文調の GLB が要る場合は
+   config の外部 exporter を実行する)。
+4. `npm run protein:generate` で semantic asset と残基 motion asset を生成し、`npm run protein:catalog`
+   で登録カタログを更新する。
+5. `npm run protein:validate`(`-structure` / `-motion` も)・`npm run typecheck`・
+   `npm run render-lab:shot` を通す。生成されたアセットはクリエイティブステージの一覧へ自動的に現れる。
+
+**どう見せるか・どう振舞うかは `DEVELOP/SPEC/PROTEIN.md`。** ここにあるのは生成の手順だけ。
