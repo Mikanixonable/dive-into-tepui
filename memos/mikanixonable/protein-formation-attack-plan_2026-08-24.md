@@ -29,6 +29,48 @@
 4. ルビスコの integrity が攻撃担当より高く、正面から撃つより支援役を狙う方が早く陣形を崩せる。
 5. `npm run typecheck` と `npm run ci` が通る。
 
+## 詳細設計
+
+### 陣形データと永続化
+
+- `formationId` は文字列とし、Creative Stageが陣形ごとに重複しない値を採番する。
+- `formationRole` は `attacker | shield | energy` の直和型とし、単体敵では両フィールドを省略する。
+- 両フィールドを敵の初期化データ、実行時個体、セーブデータへ通す。旧セーブに存在しない場合は
+  単体敵として扱い、既存挙動を維持する。
+- 陣形専用クラスや役割対応表を実行時状態として重複保持しない。同じ陣形の生存個体は敵配列から
+  必要時に集計する。
+
+### 生成規則
+
+- `generateProteinFormation` は中央状態、プレイヤー位置、表示設定、陣形IDを受け、3機を返す。
+- 攻撃担当は中央の5I4R、盾役は中央からプレイヤー方向へ450 mの8RUC、エネルギー役は反対方向へ
+  450 mの6N2Yとする。3機のepochと速度は同じにする。
+- Creative Stageのタンパク質欄には既存の単体生成を残し、別の「陣形をスポーン」ボタンを追加する。
+  選択中のタンパク質表示形態・着色は陣形3機にも共通適用する。
+
+### 射撃条件
+
+- 攻撃担当が陣形に属する場合だけ、同じ`formationId`を持つ生存中の`energy`役を検索する。
+- タンパク質内部の攻撃部位有効性と外部のエネルギー供給条件をAND合成する。どちらかが偽なら
+  新規バーストだけでなく進行中バーストも発射しない。
+- 単体の5I4Rと、陣形情報を持たない既存敵は外部条件を常に真として従来どおり動く。
+
+### アセット生成
+
+- asset IDは`pdb-8ruc-rubisco`と`pdb-6n2y-atp-synthase`とする。8RUCの最大integrityは640、
+  6N2Yは320、両者ともactionを持たない。
+- PDB由来backboneを取得してリポジトリへ固定し、既存の再現可能なJSON生成系でsemantic、structure、
+  motion、静的catalogを生成する。現在のパイプラインは新規backboneを取得できるため、Blenderと
+  MolecularNodesは完了条件にしない。
+- 座標scaleは、8RUCを盾として5I4Rより大きく見せ、6N2Yの長軸がゲーム内で過大にならない値を、
+  取得したbackboneの境界寸法から決定してdefinitionとconfigで一致させる。
+
+### テスト境界
+
+- 純粋な陣形供給判定、外部条件を含むaction有効判定、相対配置、セーブ往復を回帰テストで固定する。
+- catalog生成チェック、protein生成・構造・motion検証、Render Lab撮影、型検査、全CIを完了条件とする。
+- 既存の単体タンパク質敵、既存配色・表示設定、既存セーブ読み込みに退行がないことを確認する。
+
 ## 手順
 
 ### 手順 1. SPEC を更新する
@@ -62,8 +104,8 @@
 **達成条件と検証** — `npm run typecheck`。`PROTEIN_ASSET_IDS` に 2 種が増えていることを
 `grep -r "8ruc\|6n2y" src/game/protein/protein-asset-catalog.generated.ts` で確認。
 `npm run render-lab:shot` で両メッシュの見た目を撮影確認(`.render-lab/shots/`)。
-Blender + MolecularNodes が無い環境では `externalTool.optional: true` の fallback が効かない
-(新規アセットには既存 backbone が無い)ため、この手順はビルド環境の用意が前提。
+PDB由来backboneを先に取得し、再現可能なJSON backendで構造・semantic・motionを生成する。
+Blender + MolecularNodesは高精細GLBを再authoringする場合だけ必要で、本手順の完了前提にはしない。
 
 ### 手順 3. 陣形スポーンを実装する
 
@@ -77,6 +119,7 @@ Blender + MolecularNodes が無い環境では `externalTool.optional: true` の
 | `src/game/game-entity/enemy.ts` | `EnemyInit`(:112)に `formationId` と `formationRole: 'attacker' \| 'shield' \| 'energy'` を追加(省略可)。`Enemy` に保持(:125 付近、accent/waveId と同列) |
 | `src/game/stages/spawner/enemy-generator.ts` | `generateProteinFormation(...)` を新設。中心軌道を 1 つ決め、`generateProteinEnemy`(:38)を役割ごとの相対オフセットで呼ぶ。配置は攻撃担当中心・ルビスコ前面・ATPシンテターゼ後方(`enemy-spawner.ts:16` `generateCluster` の円周配置+ジッターを参考) |
 | `src/game/stages/creative-stage.ts` | :339 のタンパク質生成箇所に陣形生成の呼び出しを追加(動作確認用の湧き) |
+| `src/game/save-data.ts` | 陣形IDと役割を任意フィールドとして保存し、旧セーブとの互換を保つ |
 
 **達成条件と検証** — `npm run typecheck`。`npm run dev` で creative stage を開き、3 役が
 前面/中心/後方の相対位置で湧くことを目視。
@@ -120,7 +163,7 @@ Blender + MolecularNodes が無い環境では `externalTool.optional: true` の
 
 | リスク | 影響 | 露見する場所 |
 | --- | --- | --- |
-| Blender + MolecularNodes 環境が無く、新規アセットに fallback 用 backbone も無い | アセットが生成できず手順 3 以降が進まない | 手順 2(`export-assets` 実行時) |
+| RCSBから新規backboneを取得できない | アセット生成を再現できず手順3以降へ進めない | 手順2(backbone取得時) |
 | ATP synthase(6N2Y)は原子数が多く、motion asset・描画コストが 5I4R より大きい | フレーム落ち。無言で重くなる | 手順 2(`render-lab:shot`)・手順 3(`npm run dev` の体感) |
 | `export-assets` が全アセットの識別子を振り直す | 無関係ファイルの差分混入 | 手順 2・手順 5(`git diff --stat`) |
 | 陣形の相対配置が軌道慣性で時間とともに崩れる(隊列維持しない設計のため) | 湧いてしばらくすると陣形の意味が消える。仕様どおりだが、崩れが速すぎると役割リンクが体感できない | 手順 3(目視で 1〜2 分放置して確認) |
