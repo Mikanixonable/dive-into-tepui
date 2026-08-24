@@ -108,7 +108,7 @@ export abstract class Ship extends GameEntity {
   }
 
   // パーツの換装・セーブ復元後にだけ呼ぶ type 別参照を再構築する。parts 配列は
-  // BaseView/Player の換装経路で splice され、その直後に refreshFromParts が呼ばれる。
+  // BasePanel/Player の換装経路で splice され、その直後に refreshFromParts が呼ばれる。
   private rebuildPartReferences(): void {
     this.thrusterPartRefs.length = 0;
     this.rcsTankPartRefs.length = 0;
@@ -338,6 +338,26 @@ export abstract class Ship extends GameEntity {
     }
     
     return actualConsumed / amount;
+  }
+
+  // 燃料を補給し、実際に追加できた量 [kg] を返す。破損タンクと容量超過は対象外。
+  refuelFuel(amount: number): number {
+    if (amount <= 0) return 0;
+
+    let remainingToAdd = amount;
+    let actualAdded = 0;
+    for (const tank of this.rcsTankPartRefs) {
+      if (tank.hp <= 0) continue;
+      const space = Math.max(0, tank.maxFuel - tank.fuel);
+      if (space > 0) {
+        const addToTank = Math.min(space, remainingToAdd);
+        tank.fuel += addToTank;
+        remainingToAdd -= addToTank;
+        actualAdded += addToTank;
+      }
+      if (remainingToAdd <= 0) break;
+    }
+    return actualAdded;
   }
 
   // 機体左右2枚の放熱板・太陽電池パドルに対応するパーツ。並び順が side に対応し、
