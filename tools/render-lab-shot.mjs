@@ -56,6 +56,23 @@ async function main() {
       }
       console.log(`shot ${name}`);
     }
+    const proteinNames = names.filter((name) => String(name).startsWith('protein-'));
+    const baselineCases = {};
+    for (const name of proteinNames) {
+      baselineCases[name] = await devTools.evaluate(`window.renderLab.measure(${JSON.stringify(name)})`);
+      console.log(`measure ${name}`);
+    }
+    const baselineFile = path.join(root, 'memos/mikanixonable/protein-motion-baseline.json');
+    writeFileSync(baselineFile, `${JSON.stringify({
+      schemaVersion: 1,
+      viewport: { width: 960, height: 540 },
+      warmupFrames: 6,
+      sampleFrames: 30,
+      gpuTimingSource: 'src/gpu-timings.ts:GpuTimings',
+      cpuTimingSource: 'performance.now() around RenderPipeline.render()',
+      cases: baselineCases,
+    }, null, 2)}\n`);
+    console.log(`Wrote protein baseline to ${path.relative(root, baselineFile)}`);
     if (fatalEvents.length > 0) throw new Error(`Page reported errors during shooting:\n${fatalEvents.join('\n')}`);
     console.log(`Wrote ${names.length * 3} PNGs to ${path.relative(root, outDir)}`);
   } finally {

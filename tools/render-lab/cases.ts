@@ -17,6 +17,9 @@ import { bodyDef, SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { textureOf } from '../../src/render/celestial-textures';
 import { v3 } from '../../src/physics/vec3';
 import { LINE_RENDER_ORDER } from '../../src/render/line-style';
+import { PROTEIN_CASES } from './protein-cases';
+import type { ProteinLabCaseMetadata } from './protein-cases';
+import type { ProteinMotionFrameSample } from '../../src/protein-motion-metrics';
 
 // 描画は 960×540 固定(撮影した PNG の大きさを決め打ちにするため)。
 export const VIEW_WIDTH = 960;
@@ -59,6 +62,11 @@ export type LabCase = {
   readonly occluders?: readonly Occluder[];
   // 遮蔽パスへ渡す環。中心と法線軸は描画座標。
   readonly rings?: { readonly center: THREE.Vector3; readonly axis: THREE.Vector3; readonly bands: readonly RingBand[] };
+  // Optional benchmark metadata. Rendering itself does not inspect it; the measurement harness
+  // uses it to attach future protein-motion telemetry to a stable case identity.
+  readonly proteinMotion?: ProteinLabCaseMetadata;
+  readonly updateProteinMotion?: (displayTime: number) => ProteinMotionFrameSample;
+  readonly disposeProteinMotion?: () => void;
 };
 
 function labCamera(far: number): THREE.PerspectiveCamera {
@@ -282,6 +290,7 @@ export const CASES = {
   'far': far,
   'saturn': saturn,
   'albedo': albedo,
+  ...PROTEIN_CASES,
 } as const satisfies Record<string, () => LabCase>;
 
 export type CaseName = keyof typeof CASES;

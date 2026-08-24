@@ -2,7 +2,7 @@
 // 各ウィジェットは自分がどのレイヤの子になるかを選ぶだけで、レイヤ内の前後は DOM 順(bringToFront)で決まる。
 // gate は入力ゲート用の遮蔽幕(OverlayManager が構築する #hud-overlay-shield)専用の層で、
 // ゲートの対象(marker/panel/window/popup)より上、ゲートを開く側になり得るモーダル
-// (view の BaseView、system のヘルプ・一時停止・セーブブラウザ)より下に置く —
+// (system のヘルプ・一時停止・セーブブラウザ)より下に置く —
 // 遮蔽幕自身がモーダルの上に乗って操作を奪うことがないようにするため。
 export type OverlayLayerName = 'marker' | 'panel' | 'window' | 'popup' | 'gate' | 'view' | 'notify' | 'system';
 

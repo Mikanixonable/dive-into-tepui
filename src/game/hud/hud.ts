@@ -6,6 +6,7 @@ import { VesselPanel } from './panels/vessel-panel';
 import { OrbitPanel } from './orbit/orbit-panel';
 import { TargetPanel } from './panels/target-panel';
 import { EnemiesPanel } from './panels/enemies-panel';
+import { BurnManagementPanel, type BurnManagementViewModel } from './panels/burn-management-panel';
 import { SimulationStatusBar } from './panels/simulation-status-bar';
 import { MapScaleBadge } from './panels/map-scale-badge';
 import { OrbitAnalysisWindow } from './orbit/orbit-analysis-window';
@@ -35,6 +36,7 @@ export class Hud {
   readonly orbitPanel: OrbitPanel;
   readonly targetPanel: TargetPanel;
   readonly enemiesPanel: EnemiesPanel;
+  readonly burnManagementPanel: BurnManagementPanel;
   private orbitAnalysisWindow: OrbitAnalysisWindow | null = null;
   private hintUntil = 0;
   private toastUntil = 0;
@@ -58,6 +60,8 @@ export class Hud {
     this.orbitPanel = new OrbitPanel(els);
     this.targetPanel = new TargetPanel(els);
     this.enemiesPanel = new EnemiesPanel(els);
+    this.burnManagementPanel = new BurnManagementPanel(els);
+    this.burnManagementPanel.sync(null);
     this.orbitPanel.setOpenAnalysisHandler(() => this.openOrbitAnalysis());
     this.setWorldView('combat');
   }
@@ -83,15 +87,20 @@ export class Hud {
   // 戦闘/マップ固有の HUD ルートを切り替える。表示状態は ViewManager が正本として通知する。
   setWorldView(view: HudWorldView): void {
     const map = view === 'map';
+    this.helpPanel.setWorldView(view);
     const orbit = this.root.querySelector<HTMLElement>('#hud-orbit');
+    const burnManagement = this.root.querySelector<HTMLElement>('#burn-management-panel');
     const leftRail = (map ? this.mapRoot : this.combatRoot)
       .querySelector<HTMLElement>('.hud-rail-left');
-    if (orbit && leftRail && orbit.parentElement !== leftRail) {
+    if (orbit && burnManagement && leftRail) {
+      const viewOptions = map ? leftRail.querySelector<HTMLElement>('#hud-view-options') : null;
+      // Orbit → Burn management → View Options の順で、単一の DOM をビュー間で移動する。
       if (map) {
-        const viewOptions = leftRail.querySelector<HTMLElement>('#hud-view-options');
         leftRail.insertBefore(orbit, viewOptions ?? leftRail.firstChild);
+        leftRail.insertBefore(burnManagement, orbit.nextSibling);
       } else {
         leftRail.appendChild(orbit);
+        leftRail.appendChild(burnManagement);
       }
     }
     this.combatRoot.classList.toggle('active', !map);
@@ -99,6 +108,11 @@ export class Hud {
     // 既存のビュー別スタイルが残る間も、共有 HUD の状態を同期しておく。
     this.root.classList.toggle('map-mode', map);
     this.root.classList.toggle('map-ui-active', map);
+  }
+
+  // ゲーム側で整えた表示用スナップショットだけを受け取り、Player 依存を HUD に持ち込まない。
+  syncBurnManagement(view: BurnManagementViewModel | null): void {
+    this.burnManagementPanel.sync(view);
   }
 
   // ヒントテキストを durationMs だけ表示する。

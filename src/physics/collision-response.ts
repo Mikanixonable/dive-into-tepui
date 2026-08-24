@@ -32,6 +32,9 @@ export interface CollisionResponse {
   // 有限の値を持つ。
   readonly specificEnergyLossA: number;
   readonly specificEnergyLossB: number;
+  // 種別固有メッシュが返した実接触点。通常の球接触では null とし、呼び出し側が
+  // 中心間法線から従来どおり近似する。
+  readonly contactPoint: Vec3 | null;
 }
 
 // 不動な相手との接触の結果。相手には書き込む先が無いので、動く側だけを返す。
@@ -46,9 +49,12 @@ export interface FixedContactResponse {
 
 // 接触の幾何。掃引で解けたなら中心間を separation ちょうどへ揃え、区間終端の重なりを
 // 見つけたなら pushOut だけ離す。normal は a → b、toi は区間内の割合。
-export type ContactGeometry = { readonly normal: Vec3; readonly toi: number } & (
+export type ContactGeometry = { readonly normal: Vec3; readonly toi: number; readonly contactPoint?: Vec3 } & (
   | { readonly separation: number; readonly pushOut?: undefined }
-  | { readonly pushOut: number; readonly separation?: undefined }
+  | {
+    readonly pushOut: number;
+    readonly separation?: undefined;
+  }
 );
 
 // 重なりを検出したときに、1回でめり込みのどれだけを解消するか。1 にすると接触が跳ねる。
@@ -115,6 +121,9 @@ export function distributeSphereContact(
     rA = sub(center, scale(offset, wa));
     rB = add(center, scale(offset, wb));
   } else {
+    // TOI は衝突時刻と接触点の報告に使うが、state の時刻はサブステップ終端のままなので、
+    // 位置補正も終端位置へ当てる。途中時刻の位置をここへ代入すると、移動量の残りを失い、
+    // 高速で公転する重い側まで被弾のたびに後方へ巻き戻される。
     rA = addScaled(a.state.r, normal, -geometry.pushOut * wa);
     rB = addScaled(b.state.r, normal, geometry.pushOut * wb);
   }
@@ -124,6 +133,7 @@ export function distributeSphereContact(
     return {
       rA, rB, vA: a.state.v, vB: b.state.v, normal, bounced: false, toi,
       specificEnergyLossA: 0, specificEnergyLossB: 0,
+      contactPoint: geometry.contactPoint ?? null,
     };
   }
   const exchange = (1 + restitution) * vn;
@@ -134,6 +144,7 @@ export function distributeSphereContact(
     normal, bounced: true, toi,
     specificEnergyLossA: specificEnergyLoss(vn, restitution, wa),
     specificEnergyLossB: specificEnergyLoss(vn, restitution, wb),
+    contactPoint: geometry.contactPoint ?? null,
   };
 }
 

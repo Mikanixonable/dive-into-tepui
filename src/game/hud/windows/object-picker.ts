@@ -40,9 +40,9 @@ const STYLE = `
   margin: var(--space-1); padding: var(--space-3) var(--space-5); cursor: pointer;
   border: 0; border-radius: var(--radius-micro);
 }
-#hud .object-picker-pop .op-row:hover { background: var(--surface-2); color: var(--accent-near); }
-#hud .object-picker-pop .op-row.on { color: var(--accent); background: var(--accent-fill); }
-#hud .object-picker-pop .op-row:focus-visible { outline: 2px solid var(--accent-near); outline-offset: -2px; }
+#hud .object-picker-pop .op-row:hover { background: var(--surface-2); color: var(--color-primary-hover); }
+#hud .object-picker-pop .op-row.on { color: var(--color-primary); background: var(--color-primary-fill); }
+#hud .object-picker-pop .op-row:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 #hud .object-picker-pop .op-empty { grid-column: 1 / -1; padding: var(--space-4) var(--space-5); opacity: 0.5; }
 `;
 
