@@ -90,11 +90,12 @@ export class ProteinRuntime {
       this.root.add(mesh);
       this.modificationMeshes.set(slot.id, mesh);
     }
-    const active = this.combat.site('primary-active-site');
-    const iface = this.combat.site('complex-interface');
-    if (active && iface) {
-      const [ax, ay, az] = active.position;
-      const [ix, iy, iz] = iface.position;
+    for (const bond of this.asset.bonds) {
+      const from = this.combat.site(bond.from);
+      const to = this.combat.site(bond.to);
+      if (!from || !to) continue;
+      const [ax, ay, az] = from.position;
+      const [ix, iy, iz] = to.position;
       const geometry = new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(ax * scale, ay * scale, az * scale),
         new THREE.Vector3(ix * scale, iy * scale, iz * scale),
