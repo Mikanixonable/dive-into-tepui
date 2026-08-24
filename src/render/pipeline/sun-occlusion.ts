@@ -16,7 +16,7 @@ import {
 } from 'three/tsl';
 import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 import type { ProteinShadowPass } from './protein-shadow-pass';
-import { SHADOW_ATLAS_SIZE, type SunShadowAtlas } from './sun-shadow-atlas';
+import { SHADOW_SLOT_SIZE, type SunShadowMaps, type SunShadowSlot } from './sun-shadow-maps';
 import type { SunLight } from './sun-light';
 
 export const MAX_OCCLUDERS = 4;
@@ -66,6 +66,14 @@ const RING_GRAZING_MIN = 0.015;
 // 傾きに比例した深度バイアスで吸収する。単位はどちらもそのスロットの 1 texel。
 const NORMAL_OFFSET_TEXELS = 1.5;
 const MAX_SLOPE_BIAS_TEXELS = 8;
+
+// メッシュの影のフィルタ。半径は半影の幅から決まり、この範囲へ収める(単位は texel)。
+// タップは Vogel disk で散らす — 少ないタップでも規則的な縞にならない。
+const PCF_TAPS = 12;
+const PCF_MIN_TEXELS = 0.5;
+const PCF_MAX_TEXELS = 8;
+const VOGEL_GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+
 
 // 半径 r1・r2 の 2 円が中心距離 d で重なる面積(すべて同じ角度単位)。
 const circleOverlapArea = Fn(([r1, r2, d]: readonly FloatNode[]) => {
@@ -154,7 +162,7 @@ export class SunOcclusion {
   constructor(
     private readonly sunLight: SunLight,
     private readonly proteinShadow: ProteinShadowPass,
-    private readonly shadowAtlas: SunShadowAtlas,
+    private readonly shadowMaps: SunShadowMaps,
   ) {
     this.occluders = Array.from({ length: MAX_OCCLUDERS }, () => ({
       center: uniform(new THREE.Vector3()),
@@ -198,74 +206,6 @@ export class SunOcclusion {
     }
   }
 
-  // タンパク質の外殻が落とす影。受け手は画面空間のマスクで内部リボンへ限定され、外殻の深度は
-  // ProteinShadowPass が撮ったライト空間の 1 枚から引く。マスクを引くのに screenUV を使うので、
-  // この項は画面の画素を評価している呼び出し(遮蔽パス)でしか意味を持たない。
-  private proteinTransmittance(worldPos: Vec3Node): FloatNode {
-    const lightClip = this.proteinShadow.lightViewProjection.mul(vec4(worldPos, 1));
-    const shadowUV = lightClip.xyz.div(lightClip.w).xy.mul(0.5).add(0.5);
-    const inShadowMap = shadowUV.x.greaterThan(0).and(shadowUV.x.lessThan(1))
-      .and(shadowUV.y.greaterThan(0)).and(shadowUV.y.lessThan(1));
-    const lightViewPosition = this.proteinShadow.lightView.mul(vec4(worldPos, 1)).xyz;
-    const pointDepth = lightViewPosition.z.negate()
-      .sub(this.proteinShadow.near)
-      .div(this.proteinShadow.far.sub(this.proteinShadow.near))
-      .clamp(0, 1);
-    const storedDepth = texture(this.proteinShadow.shadowTexture, shadowUV).r;
-    const shadowed = pointDepth.greaterThan(storedDepth.add(this.proteinShadow.bias));
-    const receiver = texture(this.proteinShadow.receiverTexture, screenUV).r;
-    const isReceiver = this.proteinShadow.active.greaterThan(0.5).and(receiver.greaterThan(0.5));
-    return select(
-      isReceiver, select(inShadowMap, select(shadowed, float(0), float(1)), float(1)), float(1),
-    );
-  }
-
-  // シャドウアトラスへ描かれたメッシュが落とす影。**スロットの境界の外なら引かない** —
-  // 判定は select ではなく If で書く。select は両辺を評価するので、画面のほとんどを占める
-  // 虚空の画素からもテクスチャフェッチが消えない。
-  private meshTransmittance(worldPos: Vec3Node, normal: Vec3Node, sunDir: Vec3Node): FloatNode {
-    const slot = this.shadowAtlas.slot;
-    return Fn(() => {
-      const visibility = float(1).toVar();
-      const lo = slot.boundsMin;
-      const hi = slot.boundsMax;
-      const inside = greaterThan(slot.active, 0.5)
-        .and(worldPos.x.greaterThan(lo.x)).and(worldPos.x.lessThan(hi.x))
-        .and(worldPos.y.greaterThan(lo.y)).and(worldPos.y.lessThan(hi.y))
-        .and(worldPos.z.greaterThan(lo.z)).and(worldPos.z.lessThan(hi.z));
-      If(inside, () => {
-        const texel = slot.texelWorld;
-        // バイアスは 2 段構え。**無次元の定数は使えない** — スロットの広がりがフレームごとに
-        // 変わるので、texel の実寸を単位に取る。法線方向のオフセットで受け手を遮蔽器から
-        // 離し、残りを傾きに比例した深度バイアスで吸収する。
-        const nDotL = clamp(dot(normal, sunDir), 1e-3, 1);
-        const slope = sqrt(float(1).sub(nDotL.mul(nDotL))).div(nDotL);
-        const offsetPos = worldPos.add(normal.mul(texel.mul(NORMAL_OFFSET_TEXELS)));
-        const depthBias = min(texel.mul(slope).mul(2), texel.mul(MAX_SLOPE_BIAS_TEXELS));
-
-        const clip = slot.lightViewProjection.mul(vec4(offsetPos, 1));
-        const slotUV = clip.xyz.div(clip.w).xy.mul(0.5).add(0.5);
-        const depthRange = max(slot.far.sub(slot.near), 1e-6);
-        const pointDepth = slot.lightView.mul(vec4(offsetPos, 1)).z.negate()
-          .sub(slot.near).div(depthRange).sub(depthBias.div(depthRange));
-
-        // 固定半径 3x3 の PCF。半影の幅を遮蔽器までの距離から出すのは手順 9 の担当で、
-        // ここでは texel 1 つぶんの階段を均すだけ。
-        const step = float(1 / SHADOW_ATLAS_SIZE);
-        const lit = float(0).toVar();
-        for (const dx of [-1, 0, 1]) {
-          for (const dy of [-1, 0, 1]) {
-            const uv = slotUV.add(vec2(dx, dy).mul(step));
-            const stored = texture(this.shadowAtlas.texture, uv).r;
-            lit.addAssign(select(pointDepth.greaterThan(stored), float(0), float(1)));
-          }
-        }
-        visibility.assign(lit.div(9));
-      });
-      return visibility;
-    })();
-  }
-
   // 描画座標の点 worldPos へ恒星の直射光が届く割合 0..1 を組む。sources で選ばれた源だけを
   // 畳み込み、複数の遮蔽は透過率の積で合成する。
   transmittance(worldPos: Vec3Node, sources: OcclusionSources): FloatNode {
@@ -297,5 +237,96 @@ export class SunOcclusion {
       transmittance = transmittance.mul(this.meshTransmittance(worldPos, sources.meshNormal, sunDir));
     }
     return transmittance;
+  }
+
+  // タンパク質の外殻が落とす影。受け手は画面空間のマスクで内部リボンへ限定され、外殻の深度は
+  // ProteinShadowPass が撮ったライト空間の 1 枚から引く。マスクを引くのに screenUV を使うので、
+  // この項は画面の画素を評価している呼び出し(遮蔽パス)でしか意味を持たない。
+  private proteinTransmittance(worldPos: Vec3Node): FloatNode {
+    const lightClip = this.proteinShadow.lightViewProjection.mul(vec4(worldPos, 1));
+    const shadowUV = lightClip.xyz.div(lightClip.w).xy.mul(0.5).add(0.5);
+    const inShadowMap = shadowUV.x.greaterThan(0).and(shadowUV.x.lessThan(1))
+      .and(shadowUV.y.greaterThan(0)).and(shadowUV.y.lessThan(1));
+    const lightViewPosition = this.proteinShadow.lightView.mul(vec4(worldPos, 1)).xyz;
+    const pointDepth = lightViewPosition.z.negate()
+      .sub(this.proteinShadow.near)
+      .div(this.proteinShadow.far.sub(this.proteinShadow.near))
+      .clamp(0, 1);
+    const storedDepth = texture(this.proteinShadow.shadowTexture, shadowUV).r;
+    const shadowed = pointDepth.greaterThan(storedDepth.add(this.proteinShadow.bias));
+    const receiver = texture(this.proteinShadow.receiverTexture, screenUV).r;
+    const isReceiver = this.proteinShadow.active.greaterThan(0.5).and(receiver.greaterThan(0.5));
+    return select(
+      isReceiver, select(inShadowMap, select(shadowed, float(0), float(1)), float(1)), float(1),
+    );
+  }
+
+  // シャドウアトラスへ描かれたメッシュが落とす影。**スロットの境界の外なら引かない** —
+  // 判定は select ではなく If で書く。select は両辺を評価するので、画面のほとんどを占める
+  // 虚空の画素からもテクスチャフェッチが消えない。
+  //
+  // スロットは互いに重ならないので、**入っている最初のスロットだけを引く**(積ではなく単一選択)。
+  private meshTransmittance(worldPos: Vec3Node, normal: Vec3Node, sunDir: Vec3Node): FloatNode {
+    const slots = this.shadowMaps.slots;
+    // 恒星の視半径。半影の幅はここに遮蔽器までの距離を掛けたものになる。
+    const sunAngRadius = this.sunLight.radius.div(max(length(this.sunLight.position.sub(worldPos)), 1));
+    return Fn(() => {
+      const visibility = float(1).toVar();
+      const taken = float(0).toVar();
+      for (const slot of slots) {
+        const lo = slot.boundsMin;
+        const hi = slot.boundsMax;
+        const inside = lessThan(taken, 0.5).and(greaterThan(slot.active, 0.5))
+          .and(worldPos.x.greaterThan(lo.x)).and(worldPos.x.lessThan(hi.x))
+          .and(worldPos.y.greaterThan(lo.y)).and(worldPos.y.lessThan(hi.y))
+          .and(worldPos.z.greaterThan(lo.z)).and(worldPos.z.lessThan(hi.z));
+        If(inside, () => {
+          taken.assign(1);
+          visibility.assign(this.slotVisibility(slot, worldPos, normal, sunDir, sunAngRadius));
+        });
+      }
+      return visibility;
+    })();
+  }
+
+  // スロット 1 枚ぶんの可視率。ブロッカー探索 1 タップで半影の幅を決め、その半径の
+  // Vogel disk で PCF する。
+  private slotVisibility(
+    slot: SunShadowSlot, worldPos: Vec3Node, normal: Vec3Node, sunDir: Vec3Node, sunAngRadius: FloatNode,
+  ): FloatNode {
+    const texel = slot.texelWorld;
+    // バイアスは 2 段構え。**無次元の定数は使えない** — スロットの広がりがフレームごとに
+    // 変わるので、texel の実寸を単位に取る。法線方向のオフセットで受け手を遮蔽器から離し、
+    // 残りを傾きに比例した深度バイアスで吸収する。
+    const nDotL = clamp(dot(normal, sunDir), 1e-3, 1);
+    const slope = sqrt(float(1).sub(nDotL.mul(nDotL))).div(nDotL);
+    const offsetPos = worldPos.add(normal.mul(texel.mul(NORMAL_OFFSET_TEXELS)));
+    const depthRange = max(slot.far.sub(slot.near), 1e-6);
+    const depthBias = min(texel.mul(slope).mul(2), texel.mul(MAX_SLOPE_BIAS_TEXELS)).div(depthRange);
+
+    const clip = slot.lightViewProjection.mul(vec4(offsetPos, 1));
+    const uvBase = clip.xyz.div(clip.w).xy.mul(0.5).add(0.5);
+    const receiverDepth = slot.lightView.mul(vec4(offsetPos, 1)).z.negate()
+      .sub(slot.near).div(depthRange);
+
+    // 半影の幅を物理から出す。遮蔽器までの距離 (receiver − blocker) に恒星の視半径を掛けた
+    // ものが world 空間での半径で、それを texel へ直す。**1 タップの探索は探索半径の外の
+    // 遮蔽器を見逃す**(PCSS の既知の限界)ので、細い部材の影の縁は硬いまま残る — 半影が
+    // 数 texel の範囲では画面上 2px の差にしかならないので許容する。
+    const blockerDepth = texture(slot.texture, uvBase).r;
+    const blockerDistance = max(receiverDepth.sub(blockerDepth), 0).mul(depthRange);
+    const radiusTexels = clamp(sunAngRadius.mul(blockerDistance).div(texel), PCF_MIN_TEXELS, PCF_MAX_TEXELS);
+
+    const step = radiusTexels.mul(1 / SHADOW_SLOT_SIZE);
+    const lit = float(0).toVar();
+    for (let i = 0; i < PCF_TAPS; i++) {
+      // Vogel disk: 黄金角で回しながら sqrt で半径を振ると、円盤上へ均等に散る。
+      const angle = i * VOGEL_GOLDEN_ANGLE;
+      const spread = Math.sqrt((i + 0.5) / PCF_TAPS);
+      const uv = uvBase.add(vec2(Math.cos(angle) * spread, Math.sin(angle) * spread).mul(step));
+      const stored = texture(slot.texture, uv).r;
+      lit.addAssign(select(receiverDepth.sub(depthBias).greaterThan(stored), float(0), float(1)));
+    }
+    return lit.div(PCF_TAPS);
   }
 }
