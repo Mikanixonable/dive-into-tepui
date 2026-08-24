@@ -8,6 +8,7 @@ import { AU } from '../../physics/planet-orbit';
 import { CelestialBody, CelestialBodyId, OrbitingId, orbitalElementsOf } from '../../physics/celestial-body';
 import { add, len, scale, sub, v3, Vec3 } from '../../physics/vec3';
 import { isOccluded } from '../../physics/occlusion';
+import { maxOccludedFraction } from '../../physics/shadow';
 import type { MarkerManager } from '../marker/marker-manager';
 import { OrbitLine } from '../orbit-line';
 import { createStars, Stars, STAR_SHELL_RADIUS } from '../../render/stars';
@@ -55,6 +56,20 @@ const PLANET_REFERENCE_LINE_COLOR = 0xffffff;
 // 写っている何かへ落ちる見込みが高い。
 function apparentRadius(radius: number, center: Vec3, cameraPos: Vec3): number {
   return radius / Math.max(1, len(sub(center, cameraPos)));
+}
+
+// 遮蔽器として残す最大遮蔽率の下限。これを下回る天体は、どの向きでも恒星面の 1% 未満しか
+// 隠せないので、落としても絵に出ない(physics/shadow.ts の maxOccludedFraction)。
+const MIN_OCCLUDED_FRACTION = 1e-2;
+
+// body が cameraPos か focusPos のどちらかから見て、絵に出るだけの影を落としうるか。
+// **カメラ位置だけで測ってはいけない** — 土星から引いたマップビューでは土星自身が閾値を
+// 切り、環の影が本体から消える。
+function castsVisibleShadow(
+  star: CelestialBody, body: CelestialBody, cameraPos: Vec3, focusPos: Vec3 | null,
+): boolean {
+  if (maxOccludedFraction(cameraPos, star, body) >= MIN_OCCLUDED_FRACTION) return true;
+  return focusPos !== null && maxOccludedFraction(focusPos, star, body) >= MIN_OCCLUDED_FRACTION;
 }
 
 const ZERO_VECTOR = new THREE.Vector3();
@@ -180,7 +195,7 @@ export class EnvironmentScene {
       ? this.toThreeNormal(this.ephemeris.sunDirFrom(floatingOrigin.r, displayTime)).multiplyScalar(AU)
       : floatingOrigin.RtoThreeV3(this.ephemeris.positionOf(starId, displayTime));
     this.sunLight.set(sunPos, star?.radius ?? 0, SUN_COLOR, SUN_RADIANT_INTENSITY, AMBIENT_IRRADIANCE);
-    this.syncOcclusion(floatingOrigin, displayTime, graphics);
+    this.syncOcclusion(floatingOrigin, displayTime, cameraSystem, graphics);
     this.syncAtmosphere(floatingOrigin, displayTime, graphics);
 
     if (cameraSystem.overviewMode && this.ephemeris.starId !== null && graphics.pointField) {
@@ -206,12 +221,21 @@ export class EnvironmentScene {
     this.scaleGrid.sync(floatingOrigin, displayTime, cameraSystem, this.ephemeris, gridVisibility);
   }
 
-  // 遮蔽パスへ、この1フレームの遮蔽器と環の帯を渡す。どちらもカメラから見た視半径の大きい順に
-  // 選ぶ — 大きく写る天体ほど、その影が見えている何かへ落ちる見込みが高い。遮蔽器は上位
-  // MAX_OCCLUDERS 体、環は最上位の環付き天体 1 体ぶん。
-  private syncOcclusion(fo: FloatingOrigin, displayTime: number, graphics: GraphicsSettingsData): void {
-    const ranked = this.ephemeris.celestialBodiesAt(displayTime)
-      .filter((body) => !body.isStar && body.radius > 0)
+  // 遮蔽パスへ、この1フレームの遮蔽器と環の帯を渡す。まず最大遮蔽率が閾値を切る天体を落とし、
+  // 残りをカメラから見た視半径の大きい順に MAX_OCCLUDERS 体まで採る — 恒星の視半径が同じなら
+  // 最大遮蔽率は視半径に比例するので、この並びは最大遮蔽率の降順と一致する。環は最上位の
+  // 環付き天体 1 体ぶん。
+  private syncOcclusion(
+    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, graphics: GraphicsSettingsData,
+  ): void {
+    const bodies = this.ephemeris.celestialBodiesAt(displayTime);
+    const star = bodies.find((body) => body.isStar);
+    const focusId = focusTargetId(cameraSystem.mapCamera.focus);
+    const focusPos = focusId === undefined
+      ? null : bodies.find((body) => body.id === focusId)?.state.r ?? null;
+    const ranked = bodies
+      .filter((body) => !body.isStar && body.radius > 0
+        && (star === undefined || castsVisibleShadow(star, body, fo.r, focusPos)))
       .map((body) => ({ body, apparent: apparentRadius(body.radius, body.state.r, fo.r) }))
       .sort((a, b) => b.apparent - a.apparent)
       .slice(0, MAX_OCCLUDERS);
