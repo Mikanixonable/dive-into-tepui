@@ -249,6 +249,26 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 /* 「角度」プルダウン: 見出しを独立行にし、次の行へ選択欄とセットボタンを並べる。 */
 #hud .hud-frame-controls .camera-angle-group > .w-group-title { flex: 0 0 100%; min-width: 0; }
 #hud .hud-frame-controls .camera-angle-group .w-select { flex: 1 1 auto; min-width: 80px; }
+/* 表示パネルのタブ列と、選択中以外のタブ本体を隠す。 */
+#hud-view-options .w-tabs { margin-bottom: var(--space-3); }
+#hud-view-options .view-options-tab-body.hidden { display: none !important; }
+/* 軌道ガイドタブ: 種類ごとの区画(見出し+軸行+値行)。独立トグル行(系/点/南北)は
+   見出し+ボタン列を折り返す。 */
+.orbit-guide-tab {
+  /* スライダー列の最小幅と、それに添える数値入力欄の幅。 */
+  --orbit-guide-slider-min-w: 60px;
+  --orbit-guide-value-w: 60px;
+}
+.orbit-guide-section { margin-bottom: var(--space-4); }
+.orbit-guide-heading { margin-bottom: var(--space-2); }
+.orbit-guide-heading-btn { width: 100%; text-align: left; }
+.orbit-guide-section.category-off { opacity: var(--toggle-off-opacity); }
+.orbit-guide-toggle-row { flex-wrap: wrap; }
+.orbit-guide-value-row { flex-wrap: nowrap; align-items: center; }
+.orbit-guide-value-row .slider-col { flex: 1 1 var(--orbit-guide-slider-min-w); min-width: var(--orbit-guide-slider-min-w); }
+.orbit-guide-value-row .w-slider { width: 100%; }
+.orbit-guide-value-row .w-input { width: var(--orbit-guide-value-w); }
+.orbit-guide-value-unit { color: var(--text-dim); font-size: var(--font-xs); }
 #hud-stage-controls { width: 100%; pointer-events: auto; }
 #hud-stage-controls .stage-controls-body { display: grid; gap: var(--space-2); margin-top: var(--space-3); }
 #hud-stage-controls .stage-control-enemy-tabs { display: flex; gap: var(--space-2); }

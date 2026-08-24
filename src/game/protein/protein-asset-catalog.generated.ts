@@ -1,5 +1,13 @@
 // Generated from assets-src/proteins/*/protein.config.json.
 // Run npm run protein:catalog after adding or renaming a protein asset.
+import rawPdb8rucRubiscoSemantic from '../../assets/models/rubisco8rucProtein.json';
+import rawPdb8rucRubiscoBackbone from '../../assets/models/rubisco8rucBackbone.json';
+import rawPdb8rucRubiscoStructure from '../../assets/models/rubisco8rucStructure.json';
+import rawPdb8rucRubiscoMotion from '../../assets/models/rubisco8rucMotion.json';
+import rawPdb6n2yAtpSynthaseSemantic from '../../assets/models/atpSynthase6n2yProtein.json';
+import rawPdb6n2yAtpSynthaseBackbone from '../../assets/models/atpSynthase6n2yBackbone.json';
+import rawPdb6n2yAtpSynthaseStructure from '../../assets/models/atpSynthase6n2yStructure.json';
+import rawPdb6n2yAtpSynthaseMotion from '../../assets/models/atpSynthase6n2yMotion.json';
 import rawPdb5i4rSemantic from '../../assets/models/pdb5i4rProtein.json';
 import rawPdb5i4rBackbone from '../../assets/models/pdb5i4rBackbone.json';
 import rawPdb5i4rStructure from '../../assets/models/pdb5i4rStructure.json';
@@ -51,6 +59,12 @@ function bundle(
 }
 
 export const PROTEIN_ASSET_BUNDLES = {
+  'pdb-8ruc-rubisco': bundle(
+    rawPdb8rucRubiscoSemantic, rawPdb8rucRubiscoBackbone, rawPdb8rucRubiscoStructure, rawPdb8rucRubiscoMotion, 'pdb-8ruc-rubisco', '8RUC',
+  ),
+  'pdb-6n2y-atp-synthase': bundle(
+    rawPdb6n2yAtpSynthaseSemantic, rawPdb6n2yAtpSynthaseBackbone, rawPdb6n2yAtpSynthaseStructure, rawPdb6n2yAtpSynthaseMotion, 'pdb-6n2y-atp-synthase', '6N2Y',
+  ),
   'pdb-5i4r': bundle(
     rawPdb5i4rSemantic, rawPdb5i4rBackbone, rawPdb5i4rStructure, rawPdb5i4rMotion, 'pdb-5i4r', '5I4R',
   ),

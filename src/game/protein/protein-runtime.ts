@@ -1,18 +1,24 @@
 import * as THREE from 'three/webgpu';
-import { qInvert, qRotate, type Quat } from '../../physics/attitude';
-import { add, sub, type Vec3, v3 } from '../../physics/vec3';
+import type { Quat } from '../../physics/attitude';
+import type { Vec3 } from '../../physics/vec3';
 import type {
   ProteinAssetDefinition,
   ProteinHudSnapshot,
   ProteinMotionAsset,
+  ProteinPhase,
   ProteinSaveData,
   ProteinSiteDefinition,
-  ProteinModificationDefinition,
 } from './protein-schema';
 import { ProteinCombatState } from './protein-combat-state';
 import {
+  proteinAnchorResidues,
+  proteinLocalImpactPoint,
+  proteinSiteWorldPosition,
+  setProteinAnchorPosition,
+} from './protein-anchors';
+import {
   ProteinMotionController,
-  proteinMotionLodForDistance,
+  proteinMotionLodForProjectedSize,
   type ProteinMotionLod,
 } from './protein-motion-controller';
 import {
@@ -48,6 +54,9 @@ export class ProteinRuntime {
   private currentLod: ProteinMotionLod = 'near';
   private uploadedLod: ProteinMotionLod | null = null;
   private uploadedSampleTime = Number.NaN;
+  private uploadedPhase: ProteinPhase | null = null;
+  private lastCpuMs = 0;
+  private lastUploadBytes = 0;
 
   constructor(
     root: THREE.Object3D,
@@ -73,6 +82,8 @@ export class ProteinRuntime {
   get asset(): ProteinAssetDefinition { return this.combat.asset; }
   get hudSnapshot(): ProteinHudSnapshot { return this.combat.hudSnapshot(); }
   get lod(): ProteinMotionLod { return this.currentLod; }
+  get cpuMs(): number { return this.lastCpuMs; }
+  get uploadBytes(): number { return this.lastUploadBytes; }
 
   clearVisuals(): void {
     for (const child of [...this.root.children]) {
@@ -119,7 +130,7 @@ export class ProteinRuntime {
       this.root.add(mesh);
       this.siteMeshes.set(site.id, mesh);
       this.baseSitePositions.set(site.id, position);
-      this.siteResidueGroups.set(site.id, this.anchorResidues(site, index, this.motion.bindings.siteResidues));
+      this.siteResidueGroups.set(site.id, proteinAnchorResidues(site, index, this.motion, this.motion.bindings.siteResidues));
     }
     for (let index = 0; index < this.asset.modificationSlots.length; index += 1) {
       const slot = this.asset.modificationSlots[index]!;
@@ -134,7 +145,7 @@ export class ProteinRuntime {
       this.root.add(mesh);
       this.modificationMeshes.set(slot.id, mesh);
       this.baseModificationPositions.set(slot.id, mesh.position.clone());
-      this.modificationResidueGroups.set(slot.id, this.anchorResidues(slot, index, this.motion.bindings.modificationResidues));
+      this.modificationResidueGroups.set(slot.id, proteinAnchorResidues(slot, index, this.motion, this.motion.bindings.modificationResidues));
     }
     for (const bond of this.asset.bonds) {
       const from = this.combat.site(bond.from);
@@ -154,14 +165,21 @@ export class ProteinRuntime {
   }
 
   /** Update deterministic OU coefficients and upload the shared GPU residue buffer. */
-  updateVisual(displayTime: number, distance = 0, visualRadius = 1): void {
-    this.currentLod = proteinMotionLodForDistance(distance, visualRadius);
-    const offsets = this.controller.update(displayTime, this.currentLod);
-    if (this.uploadedLod !== this.currentLod || this.uploadedSampleTime !== this.controller.sampleTime) {
+  updateVisual(displayTime: number, projectedDiameterPx = Number.POSITIVE_INFINITY): void {
+    const cpuStart = performance.now();
+    this.currentLod = proteinMotionLodForProjectedSize(projectedDiameterPx, this.currentLod);
+    const offsets = this.controller.update(displayTime, this.currentLod, this.combat.phase);
+    if (this.uploadedLod !== this.currentLod || this.uploadedSampleTime !== this.controller.sampleTime
+      || this.uploadedPhase !== this.combat.phase) {
       updateProteinMotionBinding(this.motionBinding, offsets);
       this.uploadedLod = this.currentLod;
       this.uploadedSampleTime = this.controller.sampleTime;
+      this.uploadedPhase = this.combat.phase;
+      this.lastUploadBytes = offsets.byteLength;
+    } else {
+      this.lastUploadBytes = 0;
     }
+    this.lastCpuMs = performance.now() - cpuStart;
     const scale = this.asset.coordinateScale;
     const state = this.combat;
     for (const site of this.asset.sites) {
@@ -169,7 +187,7 @@ export class ProteinRuntime {
       const base = this.baseSitePositions.get(site.id);
       const siteState = state.siteState(site.id);
       if (!mesh || !base || !siteState) continue;
-      this.setAnchorPosition(mesh, base, this.siteResidueGroups.get(site.id) ?? [], scale);
+      setProteinAnchorPosition(mesh, base, this.siteResidueGroups.get(site.id) ?? [], this.controller.residueOffsets, this.motion.residueCount, scale);
       mesh.visible = true;
       const material = mesh.material as THREE.MeshStandardMaterial;
       const ratio = siteState.maxHp > 0 ? Math.max(0, Math.min(1, siteState.hp / siteState.maxHp)) : 0;
@@ -181,7 +199,7 @@ export class ProteinRuntime {
       const mesh = this.modificationMeshes.get(slot.id);
       const base = this.baseModificationPositions.get(slot.id);
       if (!mesh || !base) continue;
-      this.setAnchorPosition(mesh, base, this.modificationResidueGroups.get(slot.id) ?? [], scale);
+      setProteinAnchorPosition(mesh, base, this.modificationResidueGroups.get(slot.id) ?? [], this.controller.residueOffsets, this.motion.residueCount, scale);
       const active = state.modificationState(slot.id) !== 'empty';
       mesh.visible = active;
       mesh.scale.setScalar(active ? 1 + 0.12 * Math.sin(displayTime * 2.4) : 0.001);
@@ -207,18 +225,20 @@ export class ProteinRuntime {
   }
 
   private siteWorldPosition(site: ProteinSiteDefinition | null, origin: Vec3, attitude: Quat): Vec3 {
-    if (!site) return origin;
-    const [x, y, z] = site.position;
-    const offset = this.anchorOffset(this.siteResidueGroups.get(site.id) ?? []);
-    const scale = this.asset.coordinateScale * this.root.scale.x;
-    const local = v3((x + offset[0]) * scale, (y + offset[1]) * scale, (z + offset[2]) * scale);
-    return add(origin, qRotate(attitude, local));
+    return proteinSiteWorldPosition(
+      site,
+      site ? this.siteResidueGroups.get(site.id) ?? [] : [],
+      this.controller.residueOffsets,
+      this.motion.residueCount,
+      this.asset.coordinateScale,
+      this.root.scale.x,
+      origin,
+      attitude,
+    );
   }
 
   localImpactPoint(worldPoint: Vec3, origin: Vec3, attitude: Quat): Vec3 {
-    const rootScale = this.root.scale.x;
-    const oriented = qRotate(qInvert(attitude), sub(worldPoint, origin));
-    return v3(oriented.x / rootScale, oriented.y / rootScale, oriented.z / rootScale);
+    return proteinLocalImpactPoint(worldPoint, origin, attitude, this.root.scale.x);
   }
 
   dispose(): void {
@@ -227,45 +247,4 @@ export class ProteinRuntime {
     disposeProteinMotionBinding(this.motionBinding);
   }
 
-  private anchorResidues(
-    anchor: ProteinSiteDefinition | ProteinModificationDefinition,
-    index: number,
-    fallbackValues: readonly number[],
-  ): readonly number[] {
-    const fallback = fallbackValues[index];
-    const resolved: number[] = [];
-    for (const descriptor of anchor.residues ?? []) {
-      const match = /\s+([^\s]+)\s+(-?\d+)/.exec(descriptor);
-      if (!match) continue;
-      const chain = match[1]!;
-      const number = Number(match[2]);
-      for (let residue = 0; residue < this.motion.residueCount; residue += 1) {
-        if (this.motion.residues.chains[residue] === chain && this.motion.residues.residueNumbers[residue] === number) {
-          resolved.push(residue);
-          break;
-        }
-      }
-    }
-    if (resolved.length > 0) return [...new Set(resolved)];
-    return fallback === undefined ? [] : [fallback];
-  }
-
-  private anchorOffset(group: readonly number[]): readonly [number, number, number] {
-    if (group.length === 0) return [0, 0, 0];
-    let x = 0; let y = 0; let z = 0; let count = 0;
-    for (const residue of group) {
-      if (!Number.isInteger(residue) || residue < 0 || residue >= this.motion.residueCount) continue;
-      const offset = residue * 4;
-      x += this.controller.residueOffsets[offset] ?? 0;
-      y += this.controller.residueOffsets[offset + 1] ?? 0;
-      z += this.controller.residueOffsets[offset + 2] ?? 0;
-      count += 1;
-    }
-    return count === 0 ? [0, 0, 0] : [x / count, y / count, z / count];
-  }
-
-  private setAnchorPosition(mesh: THREE.Object3D, base: THREE.Vector3, group: readonly number[], scale: number): void {
-    const offset = this.anchorOffset(group);
-    mesh.position.set(base.x + offset[0] * scale, base.y + offset[1] * scale, base.z + offset[2] * scale);
-  }
 }

@@ -1,6 +1,7 @@
 // エンティティ配列の保持・追加・上限管理・寿命回収・描画同期。
 import * as THREE from 'three/webgpu';
 import { Vec3 } from '../../physics/vec3';
+import type { Viewpoint } from '../../physics/projection';
 import { CelestialBody } from '../../physics/celestial-body';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { FloatingOrigin } from '../floating-origin';
@@ -30,6 +31,7 @@ import { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { PerfCounts } from '../../perf-meter';
 import type { OrbitReference } from '../orbit-reference';
+import type { ProteinMotionFrameSample, ProteinMotionLod } from '../../protein-motion-metrics';
 
 export class EntityManager {
   readonly enemies: Enemy[] = [];
@@ -428,9 +430,9 @@ export class EntityManager {
   // 自機以外のメッシュを displayTime 時点の状態に同期する。自機はエフェクト・ベルト・
   // 軌道線まで持つので Player.syncPlayer が担当する。弾本体・弾ハロー・プラズマ弾・薬莢・
   // 破片(fragment)の変換は各エンティティの renderObject に同期された後、InstancedPool へ push する。
-  sync(fo: FloatingOrigin, displayTime: number, viewerPosition?: Vec3): void {
+  sync(fo: FloatingOrigin, displayTime: number, viewer?: Viewpoint): void {
     for (const e of this.otherEntities()) {
-      if (!(e instanceof DetachedBooster)) e.sync(fo, displayTime, viewerPosition);
+      if (!(e instanceof DetachedBooster)) e.sync(fo, displayTime, viewer);
     }
 
     this.bulletBodyPool.beginFrame();
@@ -502,5 +504,20 @@ export class EntityManager {
       rcsFuelPickups: this.rcsFuelPickups.length,
       bases: this.bases.length,
     };
+  }
+
+  // 負荷確認ウィンドウが読む、直近 sync() 時点のタンパク質敵モーションの集計値。
+  proteinMotionFrameSample(): ProteinMotionFrameSample {
+    let cpuMs = 0;
+    let uploadBytes = 0;
+    const lodCounts: Partial<Record<ProteinMotionLod, number>> = {};
+    for (const enemy of this.enemies) {
+      const runtime = enemy.proteinRuntime;
+      if (!runtime) continue;
+      cpuMs += runtime.cpuMs;
+      uploadBytes += runtime.uploadBytes;
+      lodCounts[runtime.lod] = (lodCounts[runtime.lod] ?? 0) + 1;
+    }
+    return { cpuMs, uploadBytes, lodCounts };
   }
 }

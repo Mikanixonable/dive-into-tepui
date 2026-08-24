@@ -1,0 +1,24 @@
+{
+  "assetId": "pdb-8ruc-rubisco",
+  "pdbId": "8RUC",
+  "source": "src/assets/models/rubisco8rucBackbone.json",
+  "sourceStructureUrl": "https://files.rcsb.org/download/8RUC.pdb",
+  "structureAsset": "src/assets/models/rubisco8rucStructure.json",
+  "motionAsset": "src/assets/models/rubisco8rucMotion.json",
+  "glbOutput": "src/assets/models/rubisco8ruc.glb",
+  "coordinateScale": 0.06,
+  "surfaceGridSpacingAngstrom": 1.5,
+  "representation": "cartoon",
+  "molecularNodes": {
+    "requiredVersion": "4.4.3",
+    "minimumBlenderVersion": "4.4.0",
+    "releaseUrl": "https://github.com/BradyAJohnston/MolecularNodes/releases/tag/v4.4.3"
+  },
+  "externalTool": {
+    "command": "python3 tools/protein-builder/build-protein.py --config assets-src/proteins/8ruc/protein.config.json --require-blender",
+    "optional": true,
+    "fallback": "existing-backbone"
+  },
+  "definitionAsset": "assets-src/proteins/8ruc/protein.definition.json",
+  "semanticAsset": "src/assets/models/rubisco8rucProtein.json"
+}

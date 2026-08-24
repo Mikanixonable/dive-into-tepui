@@ -1,7 +1,7 @@
-// 軌道分析パネル: 操作対象の未来の軌道を「高度」「接近」の2タブでグラフ表示するドラッグ可能
-// ウィンドウ。外枠(ドラッグ・クリップ・ヘッダ・OverlayManager 登録)は DraggableWindow に
-// 委譲し、ここではタブ・スケール入力欄の組み立てと、点列を orbit-analysis-data.ts へ問い合わせて
-// OrbitChart へ渡すことだけを持つ。
+// 軌道分析パネル: 操作対象の未来の軌道を「高度」「接近」「投影」の3タブでグラフ表示する
+// ドラッグ可能ウィンドウ。外枠(ドラッグ・クリップ・ヘッダ・OverlayManager 登録)は
+// DraggableWindow に委譲し、ここではタブ・スケール入力欄の組み立てと、点列を
+// orbit-analysis-data.ts へ問い合わせて OrbitChart/OrbitProjectionChart へ渡すことだけを持つ。
 import type { CelestialBody } from '../../../physics/celestial-body';
 import type { Game } from '../../game';
 import type { GameEntity } from '../../game-entity/game-entity';
@@ -9,12 +9,13 @@ import { DraggableWindow } from '../windows/draggable-window';
 import {
   ChartAxis, ChartMark, ChartPoint, ChartSpec, OrbitChart, distanceAxis, timeAxis,
 } from './orbit-chart';
+import { OrbitProjectionTab, projectionTextureUrl } from './orbit-projection-tab';
 import { altitudeSeries, approachSeries, ApproachTargetSource } from './orbit-analysis-data';
 import { MQ_COMPACT } from '../breakpoints';
 import { Button, TabBar, ValueInput } from '../widgets';
 import type { OverlayManager } from '../overlay-manager';
 
-export type AnalysisTab = 'altitude' | 'approach';
+export type AnalysisTab = 'altitude' | 'approach' | 'projection';
 
 const SYNC_INTERVAL_MS = 250;
 const MAX_TICKS = 6;
@@ -33,13 +34,21 @@ const PINCH_ZOOM_SENSITIVITY = 0.004;
 const SCALE_MIN_KM = 1;
 const SCALE_MAX_KM = 1_000_000;
 
-const TAB_ITEMS_ALTITUDE_ONLY: readonly (readonly [AnalysisTab, string])[] = [['altitude', '高度']];
-const TAB_ITEMS_BOTH: readonly (readonly [AnalysisTab, string])[] =
-  [['altitude', '高度'], ['approach', '接近']];
+const TAB_LABELS: Readonly<Record<AnalysisTab, string>> = { altitude: '高度', approach: '接近', projection: '投影' };
+
+function tabItems(approachAvailable: boolean, projectionAvailable: boolean): readonly (readonly [AnalysisTab, string])[] {
+  const tabs: AnalysisTab[] = ['altitude'];
+  if (approachAvailable) tabs.push('approach');
+  if (projectionAvailable) tabs.push('projection');
+  return tabs.map((tab) => [tab, TAB_LABELS[tab]] as const);
+}
+
+// 投影タブは常に全球(経度±180°・緯度±90°)を映すためスケール入力欄・パン・ズームを持たない。
+type ScaleTab = 'altitude' | 'approach';
 
 interface TabScale { yKm: number; x: number }
 
-const DEFAULT_SCALES: Readonly<Record<AnalysisTab, TabScale>> = {
+const DEFAULT_SCALES: Readonly<Record<ScaleTab, TabScale>> = {
   altitude: { yKm: 1000, x: 10 },
   approach: { yKm: 1000, x: 1000 },
 };
@@ -75,21 +84,24 @@ export class OrbitAnalysisWindow {
   private readonly win: DraggableWindow;
   private readonly tabBar: TabBar<AnalysisTab>;
   private readonly chart = new OrbitChart();
+  private readonly projectionTab = new OrbitProjectionTab();
   private readonly relIncRow: HTMLElement;
   private readonly relIncValue: HTMLElement;
+  private readonly scalesRow: HTMLElement;
   private readonly yInput: ValueInput;
   private readonly xInput: ValueInput;
   private readonly xUnitEl: HTMLElement;
   private tab: AnalysisTab = 'altitude';
   private approachAvailable = false;
+  private projectionAvailable = false;
   private nextSyncAt = 0;
   // 縦軸(高度)の中心 [m]。null なら次の sync で現在高度に固定し直す。
   private altitudeCenterM: number | null = null;
   // 戦闘ビューでも未来の弧を伸ばし続けさせるため analysisPanelReader を立てている個体
-  // (操作対象・接近タブのターゲット)。
+  // (操作対象・接近/投影タブのターゲット)。
   private readerEntity: GameEntity | null = null;
   private readerTargetEntity: GameEntity | null = null;
-  private readonly scales: Record<AnalysisTab, TabScale> = {
+  private readonly scales: Record<ScaleTab, TabScale> = {
     altitude: { ...DEFAULT_SCALES.altitude },
     approach: { ...DEFAULT_SCALES.approach },
   };
@@ -121,11 +133,13 @@ export class OrbitAnalysisWindow {
     this.win.element.classList.add('orbit-analysis');
     this.win.onClose = () => this.onClose?.();
 
-    this.tabBar = new TabBar<AnalysisTab>(TAB_ITEMS_ALTITUDE_ONLY, (tab) => this.selectTab(tab));
+    this.tabBar = new TabBar<AnalysisTab>(tabItems(false, false), (tab) => this.selectTab(tab));
     this.win.body.appendChild(this.tabBar.element);
     this.win.body.appendChild(this.chart.element);
     this.chart.element.classList.add('panzoom');
     this.attachChartPanZoom();
+    this.win.body.appendChild(this.projectionTab.chart.element);
+    this.projectionTab.chart.element.classList.add('hidden');
 
     const relIncLabel = document.createElement('span');
     relIncLabel.className = 'orbit-analysis-relinc-label';
@@ -137,23 +151,23 @@ export class OrbitAnalysisWindow {
     this.relIncRow.appendChild(this.relIncValue);
     this.win.body.appendChild(this.relIncRow);
 
-    const scalesRow = document.createElement('div');
-    scalesRow.className = 'orbit-analysis-scales';
+    this.scalesRow = document.createElement('div');
+    this.scalesRow.className = 'orbit-analysis-scales';
     const yField = this.buildScaleField(
-      '縦軸', 'km', () => this.scales[this.tab].yKm, (v) => { this.commitScale('yKm', v); },
+      '縦軸', 'km', () => this.scales[this.tab as ScaleTab].yKm, (v) => { this.commitScale('yKm', v); },
     );
     this.yInput = yField.input;
-    scalesRow.appendChild(yField.element);
+    this.scalesRow.appendChild(yField.element);
     const xField = this.buildScaleField(
-      '横軸', this.xUnitLabel(), () => this.scales[this.tab].x, (v) => { this.commitScale('x', v); },
+      '横軸', this.xUnitLabel(), () => this.scales[this.tab as ScaleTab].x, (v) => { this.commitScale('x', v); },
     );
     this.xInput = xField.input;
     this.xUnitEl = xField.unitEl;
-    scalesRow.appendChild(xField.element);
+    this.scalesRow.appendChild(xField.element);
     this.resetBtn = new Button('リセット', () => this.resetView());
     this.resetBtn.element.classList.add('orbit-analysis-reset');
-    scalesRow.appendChild(this.resetBtn.element);
-    this.win.body.appendChild(scalesRow);
+    this.scalesRow.appendChild(this.resetBtn.element);
+    this.win.body.appendChild(this.scalesRow);
 
     this.refreshScaleInputs();
   }
@@ -168,6 +182,7 @@ export class OrbitAnalysisWindow {
     this.setReaderTargetEntity(null);
     this.win.dispose();
     this.chart.dispose();
+    this.projectionTab.dispose();
   }
 
   // 旧対象のフラグを降ろし、新対象に立て直す。
@@ -197,7 +212,8 @@ export class OrbitAnalysisWindow {
     this.setReaderEntity(entity);
     if (!entity) {
       this.approachAvailable = false;
-      this.tabBar.setItems(TAB_ITEMS_ALTITUDE_ONLY);
+      this.projectionAvailable = false;
+      this.tabBar.setItems(tabItems(false, false));
       this.chart.draw(this.emptySpec('操作対象がありません'));
       return;
     }
@@ -215,18 +231,32 @@ export class OrbitAnalysisWindow {
       )
       : null;
     this.approachAvailable = approach !== null;
-    this.tabBar.setItems(this.approachAvailable ? TAB_ITEMS_BOTH : TAB_ITEMS_ALTITUDE_ONLY);
+
+    const projectionCenter = reference.attractor;
+    const textureUrl = projectionCenter ? projectionTextureUrl(projectionCenter.id) : null;
+    this.projectionAvailable = textureUrl !== null;
+
+    this.tabBar.setItems(tabItems(this.approachAvailable, this.projectionAvailable));
     if (this.tab === 'approach' && !this.approachAvailable) this.selectTab('altitude');
+    if (this.tab === 'projection' && !this.projectionAvailable) this.selectTab('altitude');
     this.tabBar.setSelected(this.tab);
+
+    this.chart.element.classList.toggle('hidden', this.tab === 'projection');
+    this.projectionTab.chart.element.classList.toggle('hidden', this.tab !== 'projection');
 
     if (this.tab === 'altitude') {
       const altitude = altitudeSeries(
         entity, reference, game.ephemeris, entity.state.t, this.scales.altitude.x * 3600, sampleCount,
       );
       this.chart.draw(this.altitudeSpec(altitude));
-    } else if (approach) {
+    } else if (this.tab === 'approach' && approach) {
       this.chart.draw(this.approachSpec(approach));
       this.relIncValue.textContent = isFinite(approach.relIncDeg) ? `${approach.relIncDeg.toFixed(2)}°` : '---';
+    } else if (this.tab === 'projection' && projectionCenter && textureUrl) {
+      this.projectionTab.draw(
+        game, entity, projectionCenter, approachSource, celestialBodies,
+        entity.state.t, game.displayWindowManager.current.duration, sampleCount, textureUrl,
+      );
     }
   }
 
@@ -235,15 +265,17 @@ export class OrbitAnalysisWindow {
     this.resetView();
     this.tabBar.setSelected(tab);
     this.relIncRow.classList.toggle('hidden', tab !== 'approach');
+    this.scalesRow.classList.toggle('hidden', tab === 'projection');
   }
 
   // 選択中タブのドラッグ/ズームを、開いた/タブを選び直した時点の状態(パン0・直近に確定した
   // スケール)へ戻す。高度タブは縦軸(中心・スケール)だけを、接近タブは縦横両方を戻す。
+  // 投影タブは常に全球表示でスケールを持たないため何もしない。
   private resetView(): void {
     if (this.tab === 'altitude') {
       this.altitudeCenterM = null;
       this.scales.altitude = { ...this.scales.altitude, yKm: this.altitudeYBaselineKm };
-    } else {
+    } else if (this.tab === 'approach') {
       this.approachPan.x = 0;
       this.approachPan.y = 0;
       this.scales.approach = { ...this.approachBaselineScale };
@@ -251,8 +283,10 @@ export class OrbitAnalysisWindow {
     this.refreshScaleInputs();
   }
 
-  // 選択中タブのスケール値・単位を入力欄へ反映する。タブ切替のたびに呼ぶ。
+  // 選択中タブのスケール値・単位を入力欄へ反映する。タブ切替のたびに呼ぶ。投影タブでは
+  // scalesRow 自体が隠れるので何もしない。
   private refreshScaleInputs(): void {
+    if (this.tab === 'projection') return;
     this.yInput.setValue(String(this.scales[this.tab].yKm));
     this.xInput.setValue(String(this.scales[this.tab].x));
     this.xUnitEl.textContent = this.xUnitLabel();
@@ -264,8 +298,9 @@ export class OrbitAnalysisWindow {
 
   // 数値入力欄で手入力確定されたスケールを反映する。接近タブでの確定は、リセットで
   // 戻る先(approachBaselineScale)も同時に更新する — 手入力は新しい既定値の指定として扱う。
+  // scalesRow は投影タブでは隠れており、この呼び出しは altitude/approach でしか起こらない。
   private commitScale(field: keyof TabScale, v: number): void {
-    this.scales[this.tab][field] = v;
+    this.scales[this.tab as ScaleTab][field] = v;
     if (this.tab === 'approach') this.approachBaselineScale = { ...this.scales.approach };
     else if (field === 'yKm') this.altitudeYBaselineKm = v;
   }

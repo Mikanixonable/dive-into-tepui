@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "id": "pdb-6n2y-atp-synthase",
+  "source": {
+    "pdbId": "6N2Y",
+    "structureFile": "src/assets/models/atpSynthase6n2yBackbone.json",
+    "citation": "Bacillus PS3 ATP synthase class 1"
+  },
+  "coordinateScale": 0.025,
+  "integrity": {
+    "maxHp": 320
+  },
+  "actions": [],
+  "bonds": [],
+  "ligands": [],
+  "components": [
+    {
+      "id": "f1-alpha",
+      "chains": ["A", "B", "C"],
+      "entities": [1],
+      "role": "F1 alpha subunits",
+      "source": "deposited entity"
+    },
+    {
+      "id": "f1-beta",
+      "chains": ["D", "E", "F"],
+      "entities": [2],
+      "role": "F1 beta subunits",
+      "source": "deposited entity"
+    },
+    {
+      "id": "f1-gamma",
+      "chains": ["G"],
+      "entities": [3],
+      "role": "F1 gamma subunit",
+      "source": "deposited entity"
+    },
+    {
+      "id": "f1-delta",
+      "chains": ["H"],
+      "entities": [4],
+      "role": "F1 delta subunit",
+      "source": "deposited entity"
+    },
+    {
+      "id": "peripheral-stalk-epsilon",
+      "chains": ["I"],
+      "entities": [5],
+      "role": "Peripheral stalk epsilon subunit",
+      "source": "deposited entity"
+    },
+    {
+      "id": "peripheral-stalk-b",
+      "chains": ["J"],
+      "entities": [6],
+      "role": "Peripheral stalk b subunit",
+      "source": "deposited entity"
+    },
+    {
+      "id": "peripheral-stalk-d",
+      "chains": ["K"],
+      "entities": [7],
+      "role": "Peripheral stalk d subunit",
+      "source": "deposited entity"
+    },
+    {
+      "id": "membrane-subunit-a",
+      "chains": ["L"],
+      "entities": [8],
+      "role": "Membrane subunit a",
+      "source": "deposited entity"
+    },
+    {
+      "id": "membrane-subunit-atp6",
+      "chains": ["M", "N", "O", "P", "Q", "R", "S", "T", "U", "V"],
+      "entities": [9],
+      "role": "ATP synthase membrane subunits",
+      "source": "deposited entity"
+    }
+  ],
+  "sites": [],
+  "modificationSlots": []
+}
