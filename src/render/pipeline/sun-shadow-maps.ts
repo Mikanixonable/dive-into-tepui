@@ -1,8 +1,10 @@
 // 恒星の直射光を遮るメッシュ(艦艇・基地・デブリなど)を、恒星方向を向いた平行投影のライト空間へ
 // 描き、線形深度をスロットごとの深度マップへ書く。
 //
-// **スロットは視錐台の深度分割ではなく、遮蔽器の塊 1 つずつへ割り当てる。** 塊どうしは重ならない
-// ので、ある点を覆うスロットは高々 1 枚になる。
+// **スロットは視錐台の深度分割ではなく、遮蔽器の塊 1 つずつへ割り当てる。** 塊どうしは重なりうる。
+//
+// TODO: 重なりの中に居る受け手は、入っている最初のスロットしか引かないので片方の遮蔽器を
+// 取りこぼす。仕様に根拠が無い。
 import * as THREE from 'three/webgpu';
 import { MeshBasicNodeMaterial, WebGPURenderer } from 'three/webgpu';
 import { clamp, positionView, uniform, vec3, vec4 } from 'three/tsl';
@@ -29,6 +31,8 @@ const MIN_CASTER_PX = 4;
 export type SunShadowExtent = {
   // 今フレームの全個体を包む描画座標の AABB。
   readonly worldBounds: THREE.Box3;
+  // 個体 1 つぶんの差し渡し [m]。見かけの大きさはこちらで測る。
+  readonly instanceWorldSize: number;
 };
 
 // スロット 1 枚ぶんの、受け手が引く値。SunOcclusion がこれを読んでグラフを組む。
@@ -61,6 +65,9 @@ type Cluster = {
 type Caster = {
   readonly root: THREE.Object3D;
   readonly box: THREE.Box3;
+  // その枝が持つ単一個体の差し渡し [m]。艦や基地は枝ぜんたいで 1 個体なので箱の対角に等しい。
+  readonly individualSize: number;
+  // 単一個体の見かけの直径 [px]。
   readonly apparentPx: number;
 };
 
@@ -73,6 +80,8 @@ export class SunShadowMaps {
   private readonly drawNear: FloatUniform;
   private readonly drawFar: FloatUniform;
   private readonly casters: Caster[] = [];
+  // collectCasters が枝ごとに拾う、その枝の単一個体の差し渡し [m](0 なら見つからなかった)。
+  private branchInstanceSize = 0;
   private readonly clusters: Cluster[] = [];
   private readonly hidden: THREE.Object3D[] = [];
   private readonly scratchBox = new THREE.Box3();
@@ -207,13 +216,17 @@ export class SunShadowMaps {
     for (const root of scene.children) {
       if (!root.visible) continue;
       this.scratchBox.makeEmpty();
+      this.branchInstanceSize = 0;
       this.expandVisibleCasters(root);
       if (this.scratchBox.isEmpty()) continue;
       const box = this.scratchBox.clone();
       box.getSize(this.size);
       box.getCenter(this.center);
+      // **見かけは箱の対角ではなく単一個体で測る。** 散らばった小片の雲は、箱で測ると常に最大の
+      // 遮蔽器として先頭へ来てしまい、実際には影を何も落とせないままスロットを奪う。
+      const individualSize = this.branchInstanceSize > 0 ? this.branchInstanceSize : this.size.length();
       const mpp = this.metersPerPixelAt(camera, viewportHeight, this.center);
-      this.casters.push({ root, box, apparentPx: apparentSizePx(this.size.length(), mpp) });
+      this.casters.push({ root, box, individualSize, apparentPx: apparentSizePx(individualSize, mpp) });
     }
     // 大きく写るものから順に塊を起こす。小さいものは枠が尽きた時点で捨ててよい。
     this.casters.sort((a, b) => b.apparentPx - a.apparentPx);
@@ -226,8 +239,12 @@ export class SunShadowMaps {
     const mesh = object as THREE.Mesh;
     if (mesh.isMesh && mesh.layers.isEnabled(SUN_SHADOW_CASTER_LAYER)) {
       const extent = mesh.userData.sunShadowExtent as SunShadowExtent | undefined;
-      if (extent === undefined) this.scratchBox.expandByObject(mesh);
-      else if (!extent.worldBounds.isEmpty()) this.scratchBox.union(extent.worldBounds);
+      if (extent === undefined) {
+        this.scratchBox.expandByObject(mesh);
+      } else if (!extent.worldBounds.isEmpty()) {
+        this.scratchBox.union(extent.worldBounds);
+        this.branchInstanceSize = Math.max(this.branchInstanceSize, extent.instanceWorldSize);
+      }
     }
     for (const child of object.children) this.expandVisibleCasters(child);
   }
@@ -237,27 +254,31 @@ export class SunShadowMaps {
   // metersPerPixel(塊のカメラ距離)で、カメラ 12m なら 11.8m 角、カメラ 1km なら 983m 角。
   // これを超える吸収を断ることで、近い遮蔽器のために遠い遮蔽器の解像度を落とさずに済む。
   //
-  // **単独で上限を超える遮蔽器は、そのまま 1 スロットを取る。** ここで捨てると、大きな艦へ
-  // 寄ったときにだけ影が丸ごと消えることになり、粗い影よりはるかに悪い。
+  // **単独で上限を超える遮蔽器は、個体が 1 texel を埋められるならそのまま 1 スロットを取る。**
+  // 大きな艦へ寄ったときに影が丸ごと消えるのは、粗い影よりはるかに悪い。
   private buildClusters(camera: THREE.Camera, viewportHeight: number): void {
     for (const caster of this.casters) {
       if (caster.apparentPx < MIN_CASTER_PX) break; // 降順なので、以降はすべて小さい
       const absorbed = this.clusters.find((cluster) => {
         this.scratchBox.copy(cluster.box).union(caster.box);
-        return this.fitsSlot(camera, viewportHeight, this.scratchBox)
-          && !this.overlapsOther(this.scratchBox, cluster);
+        return this.fitsSlot(camera, viewportHeight, this.scratchBox);
       });
       if (absorbed !== undefined) {
         absorbed.box.union(caster.box);
         absorbed.roots.push(caster.root);
         continue;
       }
-      // 枠が尽きていて、どの塊にも入れられなかったものは捨てる。塊どうしが重なる配置も、
-      // 受け手が片方しか引けない以上は捨てる側へ倒す。
       if (this.clusters.length >= SHADOW_SLOT_COUNT) continue;
-      if (this.overlapsOther(caster.box, null)) continue;
+      if (!this.resolvesInSlot(caster)) continue;
       this.clusters.push({ box: caster.box.clone(), roots: [caster.root] });
     }
+  }
+
+  // 1 スロットを与えたとき、その塊の個体が 1 texel 以上を埋めるか。**埋められない塊にスロットを
+  // 与えても、深度マップには何も写らないまま 1 枚が消える。**
+  private resolvesInSlot(caster: Caster): boolean {
+    caster.box.getSize(this.size);
+    return caster.individualSize * SHADOW_SLOT_SIZE >= this.size.length();
   }
 
   // box をスロット 1 枚へ収めても 1 texel/px を保てるか。カメラから遠い塊ほど広く取れる。
@@ -265,11 +286,6 @@ export class SunShadowMaps {
     box.getSize(this.size);
     box.getCenter(this.center);
     return this.size.length() <= SHADOW_SLOT_SIZE * this.metersPerPixelAt(camera, viewportHeight, this.center);
-  }
-
-  // box が except 以外のどれかの塊と交差するか。
-  private overlapsOther(box: THREE.Box3, except: Cluster | null): boolean {
-    return this.clusters.some((cluster) => cluster !== except && cluster.box.intersectsBox(box));
   }
 
   // worldPos の位置で画面 1px が描画座標で何メートルにあたるか。平行投影では位置に依らない。
