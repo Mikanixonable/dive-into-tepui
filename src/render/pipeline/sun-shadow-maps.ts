@@ -1,13 +1,8 @@
 // 恒星の直射光を遮るメッシュ(艦艇・基地・デブリなど)を、恒星方向を向いた平行投影のライト空間へ
-// 描き、線形深度をスロットごとの深度マップへ書く。構造は protein-shadow-pass.ts を踏襲する。
+// 描き、線形深度をスロットごとの深度マップへ書く。
 //
-// **天体の球と環はここに描かない** — 解析式で厳密に解けるものを近似で二重に持たないため。
-// **スロットは視錐台の深度分割ではなく遮蔽器の塊へ割り当てる** — 標準の CSM は画面のほとんどを
-// 占める虚空へテクセルを配ってしまう。塊は互いに重ねない(受け手は入っている最初のスロットしか
-// 引かないので、重なりに居る受け手は片方の遮蔽器を丸ごと取りこぼす)。
-// **スロットは 1 枚のアトラスの矩形ではなく独立したレンダーターゲット 4 枚** — WebGPURenderer は
-// レンダーターゲットを設定した時点でビューポートを全面へ戻すので、1 枚を切り分ける形は成立しない
-// (切り分けを射影行列へ畳み込む形でも描かれなかった)。メモリは同じで、増えるのはバインド数だけ。
+// **スロットは視錐台の深度分割ではなく、遮蔽器の塊 1 つずつへ割り当てる。** 塊どうしは重ならない
+// ので、ある点を覆うスロットは高々 1 枚になる。
 import * as THREE from 'three/webgpu';
 import { MeshBasicNodeMaterial, WebGPURenderer } from 'three/webgpu';
 import { clamp, positionView, uniform, vec3, vec4 } from 'three/tsl';
@@ -28,6 +23,13 @@ const SLOT_MARGIN = 1.05;
 // 画面上でこの直径 [px] を下回る遮蔽器は捨てる。ここを下回ると影の構造が画面側でも見えず、
 // スロットを 1 枚使う価値が無い。**太陽系全体を見る視点で塊が 0 個になるのはこの足切り。**
 const MIN_CASTER_PX = 4;
+
+// 大量の個体を 1 本のメッシュで描く枝が、自分の広がりを影パスへ渡す口。個体が毎フレーム動く枝は
+// メッシュ自身の外接箱が当てにならないので、userData.sunShadowExtent にこれを置く。
+export type SunShadowExtent = {
+  // 今フレームの全個体を包む描画座標の AABB。
+  readonly worldBounds: THREE.Box3;
+};
 
 // スロット 1 枚ぶんの、受け手が引く値。SunOcclusion がこれを読んでグラフを組む。
 export type SunShadowSlot = {
@@ -79,6 +81,7 @@ export class SunShadowMaps {
   private readonly lightDirection = new THREE.Vector3();
   private readonly cameraPosition = new THREE.Vector3();
   private readonly cameraForward = new THREE.Vector3();
+  private readonly cameraToTarget = new THREE.Vector3();
   private readonly clearColor = new THREE.Color();
   // 前フレームに中身を書いたスロットの数。塊が 0 個になったフレームで 1 度だけ空へ戻すために持つ
   // — 戻さないと、デバッグ表示「影」に前フレームの深度マップが残って読み手を欺く。
@@ -221,7 +224,11 @@ export class SunShadowMaps {
   private expandVisibleCasters(object: THREE.Object3D): void {
     if (!object.visible) return;
     const mesh = object as THREE.Mesh;
-    if (mesh.isMesh && mesh.layers.isEnabled(SUN_SHADOW_CASTER_LAYER)) this.scratchBox.expandByObject(mesh);
+    if (mesh.isMesh && mesh.layers.isEnabled(SUN_SHADOW_CASTER_LAYER)) {
+      const extent = mesh.userData.sunShadowExtent as SunShadowExtent | undefined;
+      if (extent === undefined) this.scratchBox.expandByObject(mesh);
+      else if (!extent.worldBounds.isEmpty()) this.scratchBox.union(extent.worldBounds);
+    }
     for (const child of object.children) this.expandVisibleCasters(child);
   }
 
@@ -272,7 +279,7 @@ export class SunShadowMaps {
     if (!(camera instanceof THREE.PerspectiveCamera)) return 0;
     camera.getWorldPosition(this.cameraPosition);
     camera.getWorldDirection(this.cameraForward);
-    const depth = this.cameraForward.dot(this.cameraPosition.subVectors(worldPos, this.cameraPosition));
+    const depth = this.cameraForward.dot(this.cameraToTarget.subVectors(worldPos, this.cameraPosition));
     return metersPerPixelAtDepth(camera.fov, depth, height);
   }
 

@@ -6,6 +6,7 @@
 import { bodyDef, CelestialRegistry, RingSystemDef, ShapeDef, SOLAR_SYSTEM, SolarSystemId } from '../../physics/solar-system';
 import { CelestialBodyId } from '../../physics/celestial-body';
 import { CelestialSurface } from '../../render/celestial-surface';
+import type { SunLight } from '../../render/pipeline/sun-light';
 import type { SunOcclusion } from '../../render/pipeline/sun-occlusion';
 import { albedoOf, DEFAULT_ALBEDO } from '../../render/celestial-albedo';
 import { textureOf } from '../../render/celestial-textures';
@@ -35,8 +36,8 @@ function planetEntry(id: SolarSystemId, name: string): CelestialViewDef {
   const def = bodyDef(SOLAR_SYSTEM, id);
   return {
     name,
-    create: (sunOcclusion) => new PointView(
-      id, texturedSurface(id), sunOcclusion, def.radius, shapeOf(id), ringsOf(id),
+    create: (sunOcclusion, sunLight) => new PointView(
+      id, texturedSurface(id), sunOcclusion, sunLight, def.radius, shapeOf(id), ringsOf(id),
     ),
   };
 }
@@ -57,8 +58,8 @@ function shapeOf(id: SolarSystemId): ShapeDef | undefined {
 function satelliteEntry(id: SolarSystemId, name: string): CelestialViewDef {
   return {
     name,
-    create: (sunOcclusion) => new SphereView(
-      id, solidSurface(id), sunOcclusion, bodyDef(SOLAR_SYSTEM, id).radius, shapeOf(id),
+    create: (sunOcclusion, sunLight) => new SphereView(
+      id, solidSurface(id), sunOcclusion, sunLight, bodyDef(SOLAR_SYSTEM, id).radius, shapeOf(id),
     ),
   };
 }
@@ -68,8 +69,8 @@ function satelliteEntry(id: SolarSystemId, name: string): CelestialViewDef {
 function texturedSatelliteEntry(id: SolarSystemId, name: string): CelestialViewDef {
   return {
     name,
-    create: (sunOcclusion) => new SphereView(
-      id, texturedSurface(id), sunOcclusion, bodyDef(SOLAR_SYSTEM, id).radius, shapeOf(id),
+    create: (sunOcclusion, sunLight) => new SphereView(
+      id, texturedSurface(id), sunOcclusion, sunLight, bodyDef(SOLAR_SYSTEM, id).radius, shapeOf(id),
     ),
   };
 }
@@ -78,16 +79,19 @@ function texturedSatelliteEntry(id: SolarSystemId, name: string): CelestialViewD
 function solidPlanetEntry(id: SolarSystemId, name: string): CelestialViewDef {
   return {
     name,
-    create: (sunOcclusion) => new SphereView(
-      id, solidSurface(id), sunOcclusion, bodyDef(SOLAR_SYSTEM, id).radius, shapeOf(id), ringsOf(id),
+    create: (sunOcclusion, sunLight) => new SphereView(
+      id, solidSurface(id), sunOcclusion, sunLight, bodyDef(SOLAR_SYSTEM, id).radius, shapeOf(id), ringsOf(id),
     ),
   };
 }
 
-// create が SunOcclusion を受けるのは、環が直射散乱の遮蔽を同じ関数から引くため。**引数を
+// create が恒星光と遮蔽を受けるのは、環がそこから明るさと直射散乱の遮蔽を引くため。**引数を
 // 使わない closure(太陽・地球)も受け取れてしまうが、環を持ちうる SphereView / PointView が
 // これを必須の構築引数にしているので、渡し忘れは型検査で落ちる。**
-export type CelestialViewDef = { readonly name: string; create(sunOcclusion: SunOcclusion): CelestialView };
+export type CelestialViewDef = {
+  readonly name: string;
+  create(sunOcclusion: SunOcclusion, sunLight: SunLight): CelestialView;
+};
 
 export const CELESTIAL_VIEWS: Record<SolarSystemId, CelestialViewDef> = {
   earth: { name: '地球', create: () => new EarthView() },
@@ -194,7 +198,7 @@ export const CELESTIAL_VIEWS: Record<SolarSystemId, CelestialViewDef> = {
 // 恒星は SunView を汎用の id/半径で構築し、それ以外は単色球にする。表示名は呼び出し側
 // (frame-labels.ts の celestialBodyName)が id からフォールバックする。
 export function fallbackCelestialView(
-  registry: CelestialRegistry, id: CelestialBodyId, sunOcclusion: SunOcclusion,
+  registry: CelestialRegistry, id: CelestialBodyId, sunOcclusion: SunOcclusion, sunLight: SunLight,
 ): CelestialView {
   const def = bodyDef(registry, id);
   return def.kind === 'star'
@@ -203,6 +207,7 @@ export function fallbackCelestialView(
       id,
       CelestialSurface.solid(DEFAULT_ALBEDO),
       sunOcclusion,
+      sunLight,
       def.radius,
     );
 }
