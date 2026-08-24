@@ -8,17 +8,48 @@ if (asset.schemaVersion !== 1) errors.push('schemaVersion must be 1');
 if (!asset.id) errors.push('id is required');
 if (!Number.isFinite(asset.coordinateScale) || asset.coordinateScale <= 0) errors.push('coordinateScale must be positive');
 if (!Number.isFinite(asset.integrity?.maxHp) || asset.integrity.maxHp <= 0) errors.push('integrity.maxHp must be positive');
-const siteIds = new Set();
+if (asset.motion?.model !== 'overdamped-normal-modes') errors.push('motion.model must be overdamped-normal-modes');
+if (!Number.isFinite(asset.motion?.sampleHz) || asset.motion.sampleHz <= 0) errors.push('motion.sampleHz must be positive');
+if (!Number.isFinite(asset.motion?.visualGain) || asset.motion.visualGain <= 0) errors.push('motion.visualGain must be positive');
+const componentIds = new Set();
+for (const component of asset.components ?? []) {
+  if (!component.id) errors.push('component id is required');
+  if (componentIds.has(component.id)) errors.push(`duplicate component id: ${component.id}`);
+  componentIds.add(component.id);
+  if (!Array.isArray(component.chains) || component.chains.length === 0) errors.push(`component ${component.id} has no chains`);
+}
 const actionIds = new Set();
 for (const action of asset.actions ?? []) {
   if (!action.id) errors.push('action id is required');
   if (actionIds.has(action.id)) errors.push(`duplicate action id: ${action.id}`);
   actionIds.add(action.id);
 }
+const modeIds = new Set();
+for (const mode of asset.motion?.modes ?? []) {
+  if (!mode.id) errors.push('motion mode id is required');
+  if (modeIds.has(mode.id)) errors.push(`duplicate motion mode id: ${mode.id}`);
+  modeIds.add(mode.id);
+  if (!Number.isFinite(mode.relaxationRate) || mode.relaxationRate <= 0) errors.push(`invalid relaxationRate: ${mode.id}`);
+  if (!Number.isFinite(mode.rmsAmplitude) || mode.rmsAmplitude <= 0) errors.push(`invalid rmsAmplitude: ${mode.id}`);
+  const transformedIds = new Set();
+  for (const transform of mode.components ?? []) {
+    if (!componentIds.has(transform.componentId)) errors.push(`motion mode ${mode.id} references unknown component: ${transform.componentId}`);
+    if (transformedIds.has(transform.componentId)) errors.push(`motion mode ${mode.id} has duplicate component: ${transform.componentId}`);
+    transformedIds.add(transform.componentId);
+    if (!Array.isArray(transform.translation) || transform.translation.length !== 3 || transform.translation.some((value) => !Number.isFinite(value))) {
+      errors.push(`invalid translation: ${mode.id}/${transform.componentId}`);
+    }
+  }
+  for (const componentId of componentIds) if (!transformedIds.has(componentId)) errors.push(`motion mode ${mode.id} is missing component: ${componentId}`);
+}
+if (!(asset.motion?.modes?.length > 0)) errors.push('motion.modes must be non-empty');
+const siteIds = new Set();
 for (const site of asset.sites ?? []) {
   if (siteIds.has(site.id)) errors.push(`duplicate site id: ${site.id}`);
   siteIds.add(site.id);
+  if (!componentIds.has(site.componentId)) errors.push(`site ${site.id} references unknown component: ${site.componentId}`);
   if (!Array.isArray(site.position) || site.position.length !== 3) errors.push(`invalid position: ${site.id}`);
+  if (!Array.isArray(site.position) || site.position.some((value) => !Number.isFinite(value))) errors.push(`non-finite position: ${site.id}`);
   if (!Number.isFinite(site.radius) || site.radius <= 0) errors.push(`invalid radius: ${site.id}`);
   if (!Number.isFinite(site.maxHp) || site.maxHp <= 0) errors.push(`invalid maxHp: ${site.id}`);
   for (const action of site.actions ?? []) {
@@ -37,11 +68,12 @@ for (const ligand of asset.ligands ?? []) {
   if (!ligand.residue) errors.push(`ligand ${ligand.id} residue is required`);
   if (!siteIds.has(ligand.centerSite)) errors.push(`ligand ${ligand.id} references unknown center site: ${ligand.centerSite}`);
 }
-for (const component of asset.components ?? []) {
-  if (!component.id) errors.push('component id is required');
-  if (!Array.isArray(component.chains) || component.chains.length === 0) errors.push(`component ${component.id} has no chains`);
-}
+const modificationIds = new Set();
 for (const slot of asset.modificationSlots ?? []) {
+  if (modificationIds.has(slot.id)) errors.push(`duplicate modification id: ${slot.id}`);
+  modificationIds.add(slot.id);
+  if (!componentIds.has(slot.componentId)) errors.push(`modification ${slot.id} references unknown component: ${slot.componentId}`);
+  if (!Array.isArray(slot.position) || slot.position.length !== 3 || slot.position.some((value) => !Number.isFinite(value))) errors.push(`invalid position: ${slot.id}`);
   if (!(slot.states ?? []).includes(slot.defaultState)) errors.push(`invalid defaultState: ${slot.id}`);
 }
 if (errors.length > 0) {
