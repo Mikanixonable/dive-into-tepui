@@ -471,7 +471,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   width: 100%; box-sizing: border-box; text-align: center;
   padding: var(--space-4) var(--space-5); font-size: var(--font-m);
 }
-#hud-pause-menu span.pm-quit { margin-top: var(--space-5); }
+#hud-pause-menu span.pm-quit { margin-top: var(--space-2); }
 #hud-settings-view {
   inset: 0; display: none; overflow-y: auto; pointer-events: auto;
   padding: clamp(24px, 7vh, 72px) max(var(--space-6), 6vw);
