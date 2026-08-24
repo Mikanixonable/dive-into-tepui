@@ -453,6 +453,9 @@ export class GameEntity {
   // 予測列が時刻 t を持っていれば、その状態を先端にして true。持っていなければ何もせず false。
   // celestialBodies は履歴の間引き間隔を出すための重力源一覧。
   private followPredicted(t: number, celestialBodies: readonly CelestialBody[]): boolean {
+    // 現行の予測弧は自由落下だけを表す。噴射中にそれを実状態へ消費すると、Player/RCSや
+    // ブースターの加速度を丸ごと失うため、推力がある区間は必ず実積分へ落とす。
+    if (this.thrust !== null) return false;
     const s = this._predictedArc?.trajectory.at(t) ?? null;
     if (s === null) return false;
     this.actual.follow(s, this.historySampleInterval(celestialBodies), this.historyDuration);
