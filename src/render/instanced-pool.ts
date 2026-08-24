@@ -1,6 +1,6 @@
 // 同一ジオメトリ/マテリアルを共有する大量の個体を、1本の InstancedMesh でまとめて描画するプール。
 import * as THREE from 'three/webgpu';
-import { markLitOpaque } from './pipeline/lit-layer';
+import { markLitOpaque, markSunShadowCaster } from './pipeline/lit-layer';
 
 // three の InstanceNode は instanceMatrix の受け渡し方を InstancedMesh.count から決め、
 // その判断とバッファ長を最初の描画時に一度だけ確定する。よって count は容量に固定した
@@ -15,6 +15,15 @@ export class InstancedPool {
   private count = 0;
   // 前フレームに使った枠数。今フレームで余った枠だけをゼロ行列へ戻すために持つ。
   private lastCount = 0;
+  // 個体1つぶんの外接球半径 [ジオメトリ座標]。AABB を積むとき、インスタンスの位置へこれを
+  // スケール倍して広げる。InstancedMesh.computeBoundingBox() は一度計算すると結果を握り
+  // 続けるので、毎フレーム動く個体には使えない。
+  private readonly instanceRadius: number;
+  // 今フレームに push された個体を包む描画座標の AABB。endFrame で確定する。
+  private readonly pending = new THREE.Box3();
+  private readonly settled = new THREE.Box3();
+  private readonly scratchCenter = new THREE.Vector3();
+  private readonly scratchCorner = new THREE.Vector3();
 
   constructor(scene: THREE.Scene, geometry: THREE.BufferGeometry, material: THREE.Material, capacity: number, perInstanceColor = false, renderOrder = 0) {
     this.capacity = capacity;
@@ -28,12 +37,16 @@ export class InstancedPool {
     // 個体が広い空間へ散らばるため、原点周りの外接球によるフラスタムカリングは意味を持たない。
     this.mesh.frustumCulled = false;
     markLitOpaque(this.mesh);
+    markSunShadowCaster(this.mesh);
+    geometry.computeBoundingSphere();
+    this.instanceRadius = geometry.boundingSphere?.radius ?? 0;
     for (let i = 0; i < this.capacity; i++) this.mesh.setMatrixAt(i, PARKED);
     scene.add(this.mesh);
   }
 
   beginFrame(): void {
     this.count = 0;
+    this.pending.makeEmpty();
   }
 
   // visible な renderObject を capacity まで受け付け、matrixWorld をインスタンスへ転写する。
@@ -43,6 +56,10 @@ export class InstancedPool {
     renderObject.updateMatrixWorld();
     this.mesh.setMatrixAt(this.count, renderObject.matrixWorld);
     if (color && this.mesh.instanceColor) this.mesh.setColorAt(this.count, color);
+    const reach = this.instanceRadius * renderObject.matrixWorld.getMaxScaleOnAxis();
+    this.scratchCenter.setFromMatrixPosition(renderObject.matrixWorld);
+    this.pending.expandByPoint(this.scratchCorner.copy(this.scratchCenter).addScalar(reach));
+    this.pending.expandByPoint(this.scratchCorner.copy(this.scratchCenter).addScalar(-reach));
     this.count++;
   }
 
@@ -51,7 +68,12 @@ export class InstancedPool {
     this.lastCount = this.count;
     this.mesh.instanceMatrix.needsUpdate = true;
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+    this.settled.copy(this.pending);
   }
+
+  // 直近の endFrame で確定した、描画中の個体を包む描画座標の AABB。1体も居なければ空の箱。
+  // 返すのは内部の箱そのものなので、呼び出し側は読むだけにする。
+  bounds(): THREE.Box3 { return this.settled; }
 
   // InstancedMesh をシーンから外し、そのインスタンスバッファを解放する。geometry/material は
   // 呼び出し側から渡された共有資源なので、その所有者だけが破棄できる。

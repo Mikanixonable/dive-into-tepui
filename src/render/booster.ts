@@ -6,7 +6,7 @@
 // 特別扱いせずに済む。
 import * as THREE from 'three/webgpu';
 import { Billboard } from './billboard';
-import { markLitOpaque } from './pipeline/lit-layer';
+import { markLitOpaque, markSunShadowCaster } from './pipeline/lit-layer';
 
 /** 一段の外形寸法。すべて描画単位(ゲーム内の m)で、前端から船尾へは負 Z。 */
 export const BOOSTER_STAGE_DIMENSIONS = Object.freeze({
@@ -195,6 +195,7 @@ export class BoosterStage extends THREE.Group {
 
     // MeshStandardMaterial の全サブメッシュを太陽光プリパスへ参加させる。
     markLitOpaque(this);
+    markSunShadowCaster(this);
   }
 
   private addInterstageCover(): void {
@@ -324,6 +325,7 @@ export function buildBoosterInterstageCoverPanelMesh(segment: number): THREE.Mes
   mesh.userData.ownsMaterial = true;
   mesh.userData.boosterOwned = true;
   markLitOpaque(mesh);
+  markSunShadowCaster(mesh);
   return mesh;
 }
 
@@ -347,6 +349,7 @@ export function buildBoosterExplosiveBoltMesh(segment: number): THREE.Mesh {
   mesh.userData.ownsMaterial = true;
   mesh.userData.boosterOwned = true;
   markLitOpaque(mesh);
+  markSunShadowCaster(mesh);
   return mesh;
 }
 

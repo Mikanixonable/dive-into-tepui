@@ -8,7 +8,7 @@ import {
   proteinStandardMaterial,
   type ProteinMotionBinding,
 } from './protein-motion-material';
-import { markLitOpaque, markProteinShadowLayers } from './pipeline/lit-layer';
+import { markLitOpaque, markProteinShadowLayers, markSunShadowCaster } from './pipeline/lit-layer';
 import { buildProteinRibbon, type ProteinRenderSource } from './protein-ribbon';
 
 export type { ProteinBackboneAsset, ProteinRenderSource } from './protein-ribbon';
@@ -385,6 +385,7 @@ export function buildProteinRibbonShip(
   if (source.semantic.ligands.length) structure.add(buildLigands(source, motion));
   const root = proteinCoordinateRoot(structure, source.semantic.coordinateScale);
   markLitOpaque(root);
+  markSunShadowCaster(root);
   markProteinShadowLayers(root);
   return root;
 }
@@ -401,6 +402,7 @@ export function buildProteinEnemyShip(
   else return buildProteinRibbonShip(source, display.colorMode, null, motion);
   const root = proteinCoordinateRoot(structure, source.semantic.coordinateScale);
   markLitOpaque(root);
+  markSunShadowCaster(root);
   // The translucent shell must be composited by the world pass. Keeping it in the
   // opaque GBuffer would overwrite the internal ribbon's depth and normal data.
   if (display.representation === 'silhouette') {
