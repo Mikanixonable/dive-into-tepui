@@ -65,6 +65,11 @@ export class CelestialSurface {
     return new CelestialSurface(material, null);
   }
 
+  // マテリアルを自前で組む天体の球面。material の解放もこの表面が担う。
+  static withMaterial(material: THREE.Material): CelestialSurface {
+    return new CelestialSurface(material, null);
+  }
+
   // 全段のメッシュを parent の下へ置く。
   addTo(parent: THREE.Object3D): void {
     for (const mesh of this.meshes.values()) parent.add(mesh);
