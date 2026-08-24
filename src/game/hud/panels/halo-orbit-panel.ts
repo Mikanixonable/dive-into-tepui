@@ -19,8 +19,8 @@ import {
 } from '../../celestial/halo-guide-settings';
 
 const RANGE_STEP = 0.01;
-// 振幅スライダーの代表域。実際に妥当な振幅は系・ラグランジュ点ごとに異なるが、パネル自体は
-// それを知らないため、系に依らない代表域を対数マッピングで operate する。
+// 振幅スライダーの代表域。妥当な振幅は系・ラグランジュ点ごとに桁で異なるので、系に依らない
+// 広い区間を対数で割り当てる。
 const AMPLITUDE_MIN_M = 1_000_000;
 const AMPLITUDE_MAX_M = 200_000_000;
 const AMPLITUDE_SLIDER_STEPS = 1000;
@@ -341,16 +341,19 @@ export class HaloOrbitPanel {
     this.onSettingsChange?.(this.current);
   }
 
+  // スライダーと数値入力を value へ揃える。打鍵中の欄は確定前の文字を壊さないよう触らない。
   private syncRangeField(field: RangeField, value: number): void {
     if (document.activeElement !== field.input.element) field.input.setValue(value.toFixed(2));
     field.slider.setValue(Math.round(value * 100));
   }
 
+  // 振幅欄をメートル値 meters へ揃える。打鍵中の欄は触らない。
   private syncAmplitudeField(field: AmplitudeField, meters: number): void {
     if (document.activeElement !== field.input.element) field.input.setValue(metersToKm(meters).toFixed(0));
     field.slider.setValue(metersToAmplitudeSlider(meters));
   }
 
+  // 1ファミリー行(表示トグルと振幅)を現在値へ揃える。
   private syncFamilyRow(row: FamilyRow, family: FamilyToggle): void {
     row.toggle.setOn(family.on);
     this.syncAmplitudeField(row.amplitude, family.amplitude);
