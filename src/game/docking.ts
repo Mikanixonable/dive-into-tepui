@@ -3,7 +3,7 @@ import * as C from './const';
 import { v3, len, sub, dot, norm } from '../physics/vec3';
 import { kinematicState } from '../physics/kinematic-state';
 import { Hud } from './hud/hud';
-import { BaseView } from './hud/panels/base-view';
+import { BasePanel } from './hud/panels/base-view';
 import { ResourceTransferDialog } from './hud/windows/resource-transfer-dialog';
 import { Base } from './game-entity/base';
 import { Player } from './player/player';
@@ -23,9 +23,9 @@ export class Docking {
   // アクティブな基地が変わるたびに通知する — 物体一覧パネルのハイライトを追随させる用途。
   onSelect: ((id: string | null) => void) | null = null;
 
-  readonly baseView: BaseView;
+  readonly basePanel: BasePanel;
   readonly transferDialog: ResourceTransferDialog;
-  // 選択中/ドックビューの対象基地。設定されている間だけドックビューへ遷移できる。
+  // 選択中/基地パネルの対象基地。
   private _activeBase: Base | null = null;
   // 新造艦艇の連番。基地をまたいで一意な id/表示名を割り振るだけの用途。
   private nextBuiltVesselNo = 0;
@@ -36,8 +36,6 @@ export class Docking {
   get activeBase(): Base | null { return this._activeBase; }
 
   constructor(
-    private readonly pauseGame: () => void,
-    private readonly resumeGame: () => void,
     private readonly hud: Hud,
     private readonly worldSfx: WorldSfx,
     private readonly scene: THREE.Scene,
@@ -50,18 +48,11 @@ export class Docking {
     private readonly activePlayers: ActivePlayerController,
     private readonly activeStage: Stage,
   ) {
-    this.baseView = new BaseView(this.hud.layers.view);
-    this.baseView.onClose = () => this.viewManager.leaveDock();
-    this.baseView.onLaunchVessel = (ship, base) => this.launch(ship, base);
-    this.baseView.onBuildVessel = (base) => this.buildVessel(base);
-    this.viewManager.setDocking(this);
+    this.basePanel = new BasePanel();
+    this.basePanel.onLaunchVessel = (ship, base) => this.launch(ship, base);
+    this.basePanel.onBuildVessel = (base) => this.buildVessel(base);
 
     this.transferDialog = new ResourceTransferDialog(this.hud.layers.view, this.hud.overlayManager);
-  }
-
-  // 生存中の全基地を返す。
-  getAvailableBases(): readonly Base[] {
-    return this.entities.bases.filter((b) => b.alive);
   }
 
   // 指定艦がドッキングしている対象を取得。ドッキングしていなければ null。
@@ -151,41 +142,21 @@ export class Docking {
     this.onSelect?.(base?.id ?? null);
   }
 
-  // 基地を選択し、ドックビューへ遷移する
-  activate(base: Base): void {
-    const isSameBase = this._activeBase === base;
+  // 基地を選択し、プロパティウィンドウへ埋め込むパネルを開く。
+  openPanel(base: Base): HTMLElement {
     this.selectBase(base);
-    if (this.viewManager.current === 'dock') {
-      if (!isSameBase) this.enterDock();
-    } else {
-      this.viewManager.setView('dock');
-    }
-  }
-
-  canEnterDock(): boolean {
-    return this.getAvailableBases().length > 0;
+    this.basePanel.open(base, this.activePlayers.current, this.activeStage.freeProcurement);
+    return this.basePanel.element;
   }
 
   clearActiveBaseIf(base: Base): void {
     if (this._activeBase !== base) return;
     this.setActiveBase(null);
-    this.viewManager.leaveDock();
+    this.basePanel.close();
   }
 
-  enterDock(): void {
-    if (!this._activeBase || !this._activeBase.alive) {
-      const available = this.getAvailableBases();
-      if (available.length === 0) return;
-      this.setActiveBase(available[0]!);
-    }
-    const base = this._activeBase!;
-    this.pauseGame();
-    this.baseView.open(base, this.activePlayers.current, this.activeStage.freeProcurement);
-  }
-
-  leaveDock(): void {
-    this.baseView.close();
-    this.resumeGame();
+  closePanel(): void {
+    this.basePanel.close();
   }
 
   // ドッキング中の運動状態を同期 (毎フレーム call)
@@ -295,8 +266,8 @@ export class Docking {
     this.hud.hint(`${ship.name} がドック ${slotIndex + 1} から切り離され発進しました`);
   }
 
-  // 基地ビューの DOM を片付ける。
+  // 基地パネルの DOM を片付ける。
   dispose(): void {
-    this.baseView.dispose();
+    this.basePanel.dispose();
   }
 }
