@@ -138,6 +138,7 @@ export class SunOcclusion {
   private readonly ringCenter: Vec3Uniform;
   private readonly ringAxis: Vec3Uniform;
   private readonly ringBands: readonly RingBandUniforms[];
+  private activeRingBands = 0;
 
   // 遮蔽器と環の帯ぶんの uniform を確保する。件数は固定なので、遮蔽器や帯が増減しても
   // transmittance() が返すグラフの形は変わらない。
@@ -168,8 +169,13 @@ export class SunOcclusion {
     }
   }
 
+  // このフレームで有効な帯が 1 本でもあるか。遮蔽パスが環の項を持つグラフと持たないグラフを
+  // 選び分けるのに使う。
+  hasActiveRings(): boolean { return this.activeRingBands > 0; }
+
   // 環の影を落とす天体 1 体ぶんの帯。center/axis は描画座標、bands が空なら影は落ちない。
   setRings(center: THREE.Vector3, axis: THREE.Vector3, bands: readonly RingBand[]): void {
+    this.activeRingBands = Math.min(bands.length, MAX_RING_BANDS);
     this.ringCenter.value.copy(center);
     this.ringAxis.value.copy(axis).normalize();
     for (const [i, slot] of this.ringBands.entries()) {
