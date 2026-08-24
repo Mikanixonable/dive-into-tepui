@@ -15,6 +15,7 @@ import { CelestialSurface } from '../../render/celestial-surface';
 import { showsPhysicalSphere } from '../../render/screen-lod';
 import { CelestialView } from './celestial-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
+import type { SunOcclusion } from '../../render/pipeline/sun-occlusion';
 import { RingView } from './ring-view';
 import { bondAlbedoOf } from '../../render/celestial-albedo';
 import { SUN_IRRADIANCE_1AU } from '../../render/pipeline/sun-light';
@@ -58,10 +59,11 @@ export class PointView extends CelestialView {
 
   // surface はマップビューで見せる実体、radius は実半径 [m]、shape は歪みの形状データ
   // (省略時は radius による真球)。rings を渡すとマップビューでのみ環を持つ(戦闘ビューの
-  // 輝点に環はない — ring-view.ts 参照)。
+  // 輝点に環はない — ring-view.ts 参照)。sunOcclusion はその環が直射散乱の遮蔽を引くために要る。
   constructor(
     id: OrbitingId,
     private readonly surface: CelestialSurface,
+    private readonly sunOcclusion: SunOcclusion,
     private readonly radius: number,
     shape?: ShapeDef,
     private readonly rings?: RingSystemDef,
@@ -83,7 +85,7 @@ export class PointView extends CelestialView {
     this.surface.addTo(this.group);
     scene.add(this.group);
     if (this.rings !== undefined) {
-      this.ring = new RingView(this.rings, this.radius, this.group.renderOrder + 1);
+      this.ring = new RingView(this.rings, this.radius, this.group.renderOrder + 1, this.sunOcclusion);
       scene.add(this.ring.group);
     }
     scene.add(this.billboard.mesh);

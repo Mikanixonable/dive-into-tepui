@@ -36,7 +36,7 @@ export class OcclusionPass {
 
     const viewPos = viewPositionAt(gbuffer.depthTexture, this.projMatrixInverse);
     const worldPos: Vec3Node = this.viewToWorld.mul(vec4(viewPos, 1)).xyz;
-    const transmittance = sunOcclusion.transmittance(worldPos, { spheres: true, rings: true });
+    const transmittance = sunOcclusion.transmittance(worldPos, { spheres: true, rings: true, protein: true });
     this.material = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
     this.material.colorNode = vec4(vec3(transmittance), 1);
     this.quad = new QuadMesh(this.material);

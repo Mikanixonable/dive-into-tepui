@@ -12,9 +12,10 @@
 import * as THREE from 'three/webgpu';
 import {
   Fn, PI, abs, acos, and, asin, clamp, dot, exp, float, greaterThan, length,
-  lessThan, max, min, normalize, select, sqrt, uniform,
+  lessThan, max, min, normalize, screenUV, select, sqrt, texture, uniform, vec4,
 } from 'three/tsl';
 import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
+import type { ProteinShadowPass } from './protein-shadow-pass';
 import type { SunLight } from './sun-light';
 
 export const MAX_OCCLUDERS = 4;
@@ -41,6 +42,9 @@ export type Occluder = {
 export type OcclusionSources = {
   readonly spheres: boolean;
   readonly rings: boolean;
+  // タンパク質の半透明外殻。**遮蔽パスからしか選べない** — 受け手が内部リボンだけに画面空間の
+  // マスクで限定されており、画面の画素以外ではそのマスクを引けないため。
+  readonly protein: boolean;
 };
 
 type OccluderUniforms = { readonly center: Vec3Uniform; readonly radius: FloatUniform };
@@ -112,7 +116,10 @@ export class SunOcclusion {
 
   // 遮蔽器と環の帯ぶんの uniform を確保する。件数は固定なので、遮蔽器や帯が増減しても
   // transmittance() が返すグラフの形は変わらない。
-  constructor(private readonly sunLight: SunLight) {
+  constructor(
+    private readonly sunLight: SunLight,
+    private readonly proteinShadow: ProteinShadowPass,
+  ) {
     this.occluders = Array.from({ length: MAX_OCCLUDERS }, () => ({
       center: uniform(new THREE.Vector3()),
       radius: uniform(0),
@@ -150,6 +157,28 @@ export class SunOcclusion {
     }
   }
 
+  // タンパク質の外殻が落とす影。受け手は画面空間のマスクで内部リボンへ限定され、外殻の深度は
+  // ProteinShadowPass が撮ったライト空間の 1 枚から引く。マスクを引くのに screenUV を使うので、
+  // この項は画面の画素を評価している呼び出し(遮蔽パス)でしか意味を持たない。
+  private proteinTransmittance(worldPos: Vec3Node): FloatNode {
+    const lightClip = this.proteinShadow.lightViewProjection.mul(vec4(worldPos, 1));
+    const shadowUV = lightClip.xyz.div(lightClip.w).xy.mul(0.5).add(0.5);
+    const inShadowMap = shadowUV.x.greaterThan(0).and(shadowUV.x.lessThan(1))
+      .and(shadowUV.y.greaterThan(0)).and(shadowUV.y.lessThan(1));
+    const lightViewPosition = this.proteinShadow.lightView.mul(vec4(worldPos, 1)).xyz;
+    const pointDepth = lightViewPosition.z.negate()
+      .sub(this.proteinShadow.near)
+      .div(this.proteinShadow.far.sub(this.proteinShadow.near))
+      .clamp(0, 1);
+    const storedDepth = texture(this.proteinShadow.shadowTexture, shadowUV).r;
+    const shadowed = pointDepth.greaterThan(storedDepth.add(this.proteinShadow.bias));
+    const receiver = texture(this.proteinShadow.receiverTexture, screenUV).r;
+    const isReceiver = this.proteinShadow.active.greaterThan(0.5).and(receiver.greaterThan(0.5));
+    return select(
+      isReceiver, select(inShadowMap, select(shadowed, float(0), float(1)), float(1)), float(1),
+    );
+  }
+
   // 描画座標の点 worldPos へ恒星の直射光が届く割合 0..1 を組む。sources で選ばれた源だけを
   // 畳み込み、複数の遮蔽は透過率の積で合成する。
   transmittance(worldPos: Vec3Node, sources: OcclusionSources): FloatNode {
@@ -173,6 +202,7 @@ export class SunOcclusion {
         );
       }
     }
+    if (sources.protein) transmittance = transmittance.mul(this.proteinTransmittance(worldPos));
     return transmittance;
   }
 }
