@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import {
   FixedContactResponse, Sphere,
-  distributeFixedContact, resolveSphereCollision, sphereContactGeometry,
+  distributeFixedContact, distributeSphereContact, resolveSphereCollision, sphereContactGeometry,
 } from '../../src/physics/collision-response';
 import { dot, len, lenSq, sub, v3, Vec3 } from '../../src/physics/vec3';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
@@ -34,6 +34,26 @@ function overlapPair(vA: Vec3, vB: Vec3, invMassA: number, invMassB: number, res
 }
 
 export function register(): void {
+  test('collision-response: swept custom contact preserves substep-end positions', () => {
+    const enemyEnd = v3(128, 0, 0);
+    const bulletEnd = v3(120, 0, 0);
+    const depth = 0.02;
+    const enemyInvMass = 1 / 10000;
+    const bulletInvMass = 1 / 0.1;
+    const enemyShare = enemyInvMass / (enemyInvMass + bulletInvMass);
+    const response = distributeSphereContact(
+      { state: kinematicState(1 / 60, enemyEnd, v3(7680, 0, 0)), radius: 4, invMass: enemyInvMass },
+      { state: kinematicState(1 / 60, bulletEnd, v3(7000, 0, 0)), radius: 0.02, invMass: bulletInvMass },
+      0.4,
+      { normal: v3(-1, 0, 0), toi: 0.25, pushOut: depth, contactPoint: v3(32, 0, 0) },
+    );
+    assert.ok(Math.abs(response.rA.x - (enemyEnd.x + depth * enemyShare)) < 1e-12);
+    assert.ok(Math.abs(response.rA.x - enemyEnd.x) < 1e-6);
+    assert.ok(response.rA.x > 127, 'enemy must not be rewound to the 32 m TOI position');
+    assert.equal(response.toi, 0.25);
+    assert.deepEqual(response.contactPoint, v3(32, 0, 0));
+  });
+
   test('collision-response: 運動量保存', () => {
     const massA = 2, massB = 5;
     const vA = v3(3, -1, 0), vB = v3(-2, 0.5, 0);
