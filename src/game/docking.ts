@@ -116,7 +116,7 @@ export class Docking {
 
   // 船または基地への物理ドッキングを実行。
   dockTo(ship: Player, target: GameEntity): void {
-    if (!ship.alive || !target.alive) return;
+    if (!this.canDock(ship, target)) return;
     if (target instanceof Base) {
       this.storeInBase(ship, target);
     } else {
@@ -201,18 +201,17 @@ export class Docking {
     }
   }
 
-  // 近接判定。自動収容は行わず、死んだペアの掃除と状況維持を行う。
-  checkProximity(): void {
-    if (this.viewManager.current === 'dock') return;
-    this.updateDockedPhysics();
-  }
-
   // 手動で艦を基地へ収容する
   storeInBase(ship: Player, base: Base): void {
+    if (!ship.alive || !base.alive) return;
+    if (!this.entities.players.includes(ship)) return;
+    if (this.entities.bases.some((candidate) =>
+      candidate.baseState.dockedVessels.some((entry) => entry.id === ship.id || entry.player === ship))) return;
     if (base.baseState.dockedVessels.length >= C.BASE_MAX_VESSELS) {
       this.hud.hint(`基地のドックが満杯です (最大 ${C.BASE_MAX_VESSELS} 隻)`);
       return;
     }
+    if (!this.canDock(ship, base)) return;
     const slotIndex = base.getAvailableSlotIndex() ?? 0;
     this.undock(ship);
     base.baseState.dockedVessels.push({

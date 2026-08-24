@@ -104,9 +104,9 @@ export class VesselsTabController {
     const base = this.ctx.base();
     const shipData = base.baseState.dockedVessels[idx];
     if (!shipData) return;
-    this.ctx.notifyLaunch(shipData.player, base);
-    base.baseState.dockedVessels.splice(idx, 1);
-    if (this.ctx.vessel() === shipData.player) this.ctx.selectVessel(null);
+    const ship = shipData.player;
+    this.ctx.notifyLaunch(ship, base);
+    if (this.ctx.vessel() === ship) this.ctx.selectVessel(null);
     this.ctx.refresh();
   }
 
