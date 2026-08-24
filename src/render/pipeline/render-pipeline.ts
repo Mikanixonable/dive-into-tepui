@@ -25,7 +25,6 @@ import { MaterialPass } from './material-pass';
 import { OcclusionPass } from './occlusion';
 import { SunOcclusion } from './sun-occlusion';
 import { OverlayPass } from './overlay-pass';
-import { ProteinShadowPass } from './protein-shadow-pass';
 import { SunLight } from './sun-light';
 import { SunShadowMaps } from './sun-shadow-maps';
 import { viewPositionAt } from './view-ray';
@@ -44,7 +43,6 @@ export class RenderPipeline implements DebugTargetHost {
   private readonly gbuffer: GBufferPass;
   private readonly occlusionPass: OcclusionPass;
   private readonly _sunOcclusion: SunOcclusion;
-  private readonly proteinShadowPass: ProteinShadowPass;
   private readonly sunShadowMaps: SunShadowMaps;
   private readonly lightPrepass: LightPrepass;
   private readonly materialPass: MaterialPass;
@@ -86,9 +84,8 @@ export class RenderPipeline implements DebugTargetHost {
     this.unregisterProteinMotionRenderer = registerProteinMotionRenderer(renderer);
     this.gbuffer = new GBufferPass(renderer, gpu);
     this._sunLight = new SunLight();
-    this.proteinShadowPass = new ProteinShadowPass(renderer);
     this.sunShadowMaps = new SunShadowMaps(renderer, gpu);
-    this._sunOcclusion = new SunOcclusion(this._sunLight, this.proteinShadowPass, this.sunShadowMaps);
+    this._sunOcclusion = new SunOcclusion(this._sunLight, this.sunShadowMaps);
     this.occlusionPass = new OcclusionPass(renderer, this.gbuffer, this._sunOcclusion, gpu);
     this.lightPrepass = new LightPrepass(renderer, this.gbuffer, this.occlusionPass, this._sunLight, gpu);
     this.materialPass = new MaterialPass(renderer, this.lightPrepass, gpu);
@@ -196,10 +193,6 @@ export class RenderPipeline implements DebugTargetHost {
     const height = this.drawingBufferSize.y;
     if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
 
-    // シルエット外殻を遮蔽器、内部リボンを影の受け手として先に描く。対象が無いフレームは
-    // パス自身が inactive に戻るので、通常の敵・他のリボン表現へ影響しない。
-    this.proteinShadowPass.render(scene, camera, width, height, this._sunLight);
-
     // 太陽光の影パス。G バッファを必要としないので、その前に置く。設定で切られているフレームは
     // スロットが空のまま返り、遮蔽関数側も 1 を返す。
     this.sunShadowMaps.render(scene, camera, height, this._sunLight, graphics.meshShadow);
@@ -256,7 +249,6 @@ export class RenderPipeline implements DebugTargetHost {
     this.unregisterProteinMotionRenderer();
     this.gbuffer.dispose();
     this.occlusionPass.dispose();
-    this.proteinShadowPass.dispose();
     this.sunShadowMaps.dispose();
     this.lightPrepass.dispose();
     this.materialPass.dispose();

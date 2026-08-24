@@ -133,44 +133,6 @@ export function applyProteinMotionBinding<T extends ProteinMotionNodeMaterial>(
   return material;
 }
 
-/** Return the source position node used by the explicit shadow propagation hook. */
-export function proteinMotionPositionNodeForMaterial(material: THREE.Material): THREE.Node | null {
-  const candidate = material as THREE.NodeMaterial;
-  return candidate.positionNode?.isNode ? candidate.positionNode : null;
-}
-
-/**
- * Explicitly carry per-object motion into custom override-material passes.
- *
- * Three's renderer currently copies a source NodeMaterial positionNode while
- * processing an override material, but the protein shadow pass must also work
- * when that implementation detail changes. This hook runs before each tagged
- * object draw, selects that object's source node, and is removed by the caller
- * immediately after the pass.
- */
-export function installProteinMotionOverridePropagation(
-  root: THREE.Object3D,
-  overrides: readonly THREE.NodeMaterial[],
-): () => void {
-  const overrideSet = new Set(overrides);
-  const restore: Array<() => void> = [];
-  root.traverse((object) => {
-    if (object.userData.proteinShadowOccluder !== true && object.userData.proteinShadowReceiver !== true) return;
-    const previous = object.onBeforeRender;
-    object.onBeforeRender = (...args: Parameters<THREE.Object3D['onBeforeRender']>) => {
-      previous.apply(object, args);
-      const scene = args[1];
-      const override = scene.overrideMaterial as THREE.NodeMaterial | null;
-      if (!override || !overrideSet.has(override)) return;
-      override.positionNode = proteinMotionPositionNodeForMaterial(args[4]);
-    };
-    restore.push(() => { object.onBeforeRender = previous; });
-  });
-  return () => {
-    for (const restoreObject of restore) restoreObject();
-  };
-}
-
 export function proteinStandardMaterial(
   parameters: THREE.MeshStandardNodeMaterialParameters,
   binding?: ProteinMotionBinding,

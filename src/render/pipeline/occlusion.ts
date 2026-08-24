@@ -48,7 +48,7 @@ export class OcclusionPass {
     const build = (rings: boolean): THREE.MeshBasicNodeMaterial => {
       const material = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
       material.colorNode = vec4(
-        vec3(sunOcclusion.transmittance(worldPos, { spheres: true, rings, protein: true, meshNormal })), 1,
+        vec3(sunOcclusion.transmittance(worldPos, { spheres: true, rings, meshNormal })), 1,
       );
       return material;
     };

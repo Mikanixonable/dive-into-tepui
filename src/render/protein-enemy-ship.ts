@@ -5,7 +5,7 @@ import {
   buildProteinLigands,
 } from './protein-atom-view';
 import { type ProteinMotionBinding } from './protein-motion-material';
-import { markLitOpaque, markProteinShadowLayers, markSunShadowCaster } from './pipeline/lit-layer';
+import { markLitOpaque, markSunShadowCaster } from './pipeline/lit-layer';
 import { buildProteinSilhouette } from './protein-silhouette-view';
 import { buildProteinRibbon, type ProteinRenderSource } from './protein-ribbon';
 
@@ -38,7 +38,6 @@ export function buildProteinRibbonShip(
   const root = proteinCoordinateRoot(structure, source.semantic.coordinateScale);
   markLitOpaque(root);
   markSunShadowCaster(root);
-  markProteinShadowLayers(root);
   return root;
 }
 
@@ -55,14 +54,13 @@ export function buildProteinEnemyShip(
   const root = proteinCoordinateRoot(structure, source.semantic.coordinateScale);
   markLitOpaque(root);
   markSunShadowCaster(root);
-  // The translucent shell must be composited by the world pass. Keeping it in the
-  // opaque GBuffer would overwrite the internal ribbon's depth and normal data.
+  // 半透明の外殻は world パスで合成する。不透明の G バッファに残すと、内部リボンの深度と
+  // 法線を上書きしてしまう。
   if (display.representation === 'silhouette') {
     root.traverse((child) => {
-      if (child.userData.proteinShadowOccluder === true) child.layers.set(0);
+      if (child.userData.proteinTranslucentShell === true) child.layers.set(0);
     });
   }
-  markProteinShadowLayers(root);
   return root;
 }
 
