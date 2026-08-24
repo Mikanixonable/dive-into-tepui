@@ -33,6 +33,13 @@ const SATURN_RINGS = (() => {
   return def.rings;
 })();
 
+// 土星の環を遮蔽パスへ渡す形へ直したもの。RingView が描く帯と同じ表から引く。
+const SATURN_OCCLUSION_BANDS: readonly RingBand[] = SATURN_RINGS.bands.map((band) => ({
+  innerRadius: band.innerRadius,
+  outerRadius: band.outerRadius,
+  normalOpticalDepth: band.optics.normalOpticalDepth,
+}));
+
 // 全ケース共通の恒星方向。球の陰影と、呼び出し側が置く光源が同じ向きを使う。
 export const SUN_DIR = new THREE.Vector3(1, 0.35, 0.5).normalize();
 
@@ -300,12 +307,42 @@ function saturn(sunOcclusion: SunOcclusion): LabCase {
     rings: {
       center,
       axis: new THREE.Vector3(axis.x, axis.y, axis.z).normalize(),
-      bands: SATURN_RINGS.bands.map((band): RingBand => ({
-        innerRadius: band.innerRadius,
-        outerRadius: band.outerRadius,
-        normalOpticalDepth: band.optics.normalOpticalDepth,
-      })),
+      bands: SATURN_OCCLUSION_BANDS,
     },
+  };
+}
+
+// 土星(近接): 影の境界だけを見るための構図。saturn は本体が画面上 62px しかなく、半影
+// (そこでは 2px 未満)を目で読めない。**環面へ浅い角度で恒星が差す姿勢**(環軸を真上に取り、
+// 恒星の仰角を 17° にする)で本体へ寄り、次の 2 つを同じ絵の中で読む:
+//
+// - **本体表面に落ちる環の影**: カッシーニの間隙が明るい帯として出る。恒星が円盤である以上、
+//   その帯の縁は硬くならない(半影 4px 対 帯 19px)。
+// - **環が本体の影へ入る境界**: 環の帯を横切る影の縁も、天体の球の半影ぶんだけぼける。
+function saturnShadow(sunOcclusion: SunOcclusion): LabCase {
+  const distance = 1.9e8;
+  const radius = 6.0268e7;
+  // カメラは環面から 20° 傾けて、**恒星とは反対側**へ置く — 同じ側だと影が落ちる面は
+  // 常に手前の環の腕に隠れる。真横に置くと環が線に潰れて、影が環を横切る境界を読めない。
+  const elevation = 0.35;
+  const center = new THREE.Vector3(0, Math.sin(elevation), -Math.cos(elevation)).multiplyScalar(distance);
+  // 他のケースと違い、視線は正面ではなく本体の中心へ向ける — 影が落ちるのは環面より南側の
+  // 面なので、正面のままだと読みたい範囲が画面の下へ外れる。
+  const camera = labCamera(1e13);
+  camera.lookAt(center);
+  camera.updateMatrixWorld(true);
+  const axis = v3(0, 1, 0);
+  const view = new RingView(SATURN_RINGS, radius, 1, sunOcclusion);
+  const sunPosition = SUN_DIR.clone().multiplyScalar(AU);
+  view.sync(
+    center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT,
+    v3(SUN_DIR.x, SUN_DIR.y, SUN_DIR.z), sunIrradianceAtDistance(center.distanceTo(sunPosition)),
+  );
+  return {
+    objects: [sphere(SATURN_ALBEDO, radius, center), view.group],
+    camera,
+    occluders: [{ center, radius }],
+    rings: { center, axis: new THREE.Vector3(axis.x, axis.y, axis.z), bands: SATURN_OCCLUSION_BANDS },
   };
 }
 
@@ -337,6 +374,7 @@ export const CASES = {
   'earth-eclipse': earthEclipse,
   'far': far,
   'saturn': saturn,
+  'saturn-shadow': saturnShadow,
   'albedo': albedo,
   ...PROTEIN_CASES,
 } as const satisfies Record<string, (sunOcclusion: SunOcclusion) => LabCase>;

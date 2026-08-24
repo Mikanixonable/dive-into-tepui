@@ -90,22 +90,47 @@ const sphereTransmittance = Fn((
   return select(outOfPlay, float(1), select(lessThan(dist, radius), float(0), lit));
 });
 
+// 半径 w の円盤のうち、半径座標が中心から u·w だけ離れた直線より内側にある面積の割合。
+// u = -1 で 0、u = 0 で 0.5、u = +1 で 1。
+const diskFractionBelow = Fn(([u]: readonly FloatNode[]) => {
+  const safeU = clamp(u!, -1, 1);
+  return acos(safeU.negate()).add(safeU.mul(sqrt(max(float(1).sub(safeU.mul(safeU)), 0)))).div(PI);
+});
+
 // 点 p から恒星へ向かう視線が環の帯 (inner, outer) を横切るときの透過率。
+//
+// **恒星は点ではなく円盤なので、帯の縁は 1 点の内外判定では決まらない。** 環面へ落ちる恒星
+// 円盤の footprint は楕円で、その径方向の半幅 w は入射角の余弦 μ と、交点の径方向と恒星方向の
+// 環面内成分のなす角の余弦 c から閉じた形で出る。帯の被覆率は「footprint のうち半径 outer より
+// 内側」から「inner より内側」を引いた面積比で、サンプリングは要らない。
+//
+// 近似として受け入れるもの: (a) footprint の中で環の環状構造の曲率を無視する、(b) 帯の縁を
+// footprint の中で直線と見なす。どちらも w << r0 が成り立つ限り誤差は二次で消える。
 const ringTransmittance = Fn((
-  [p, sunDir, center, axis, inner, outer, tau, active]: readonly [Vec3Node, Vec3Node, Vec3Node, Vec3Node, FloatNode, FloatNode, FloatNode, FloatNode],
+  [p, sunDir, sunAngRadius, center, axis, inner, outer, tau, active]: readonly [Vec3Node, Vec3Node, FloatNode, Vec3Node, Vec3Node, FloatNode, FloatNode, FloatNode, FloatNode],
 ) => {
   const cosIncidence = dot(axis, sunDir);
   const grazingSafe = select(
     greaterThan(cosIncidence, 0), max(cosIncidence, RING_GRAZING_MIN), min(cosIncidence, -RING_GRAZING_MIN),
   );
+  const mu = abs(grazingSafe);
   const planeDistance = dot(p.sub(center), axis).negate().div(grazingSafe);
-  const radial = length(p.add(sunDir.mul(planeDistance)).sub(center));
-  const inside = and(
-    greaterThan(planeDistance, 0),
-    and(greaterThan(radial, inner), lessThan(radial, outer)),
+  const toIntersection = p.add(sunDir.mul(planeDistance)).sub(center);
+  const r0 = max(length(toIntersection), 1e-6);
+  const radialDir = toIntersection.div(r0);
+  // 恒星方向の環面内成分。μ = 1(真上から差す)では長さ 0 になるが、そのとき下の
+  // (1/μ² − 1) が 0 なので c は結果に効かない。
+  const inPlane = sunDir.sub(axis.mul(cosIncidence));
+  const c = dot(inPlane.div(max(length(inPlane), 1e-9)), radialDir);
+  // footprint の径方向の半幅。**RING_GRAZING_MIN の床が μ 経由でここにも効く** — 無ければ
+  // 環が真横を向く構図で 1/μ² が発散し、環の影が画面全体を覆う。
+  const w = max(sunAngRadius.mul(abs(planeDistance))
+    .mul(sqrt(float(1).add(float(1).div(mu.mul(mu)).sub(1).mul(c.mul(c))))), 1e-6);
+  const bandCoverage = diskFractionBelow(outer.sub(r0).div(w)).sub(diskFractionBelow(inner.sub(r0).div(w)));
+  const coverage = select(
+    and(greaterThan(planeDistance, 0), greaterThan(active, 0.5)), bandCoverage, float(0),
   );
-  const transmission = exp(tau.div(max(abs(cosIncidence), RING_GRAZING_MIN)).negate());
-  return select(and(inside, greaterThan(active, 0.5)), transmission, float(1));
+  return exp(tau.div(mu).mul(coverage).negate());
 });
 
 export class SunOcclusion {
@@ -198,7 +223,10 @@ export class SunOcclusion {
     if (sources.rings) {
       for (const band of this.ringBands) {
         transmittance = transmittance.mul(
-          ringTransmittance(worldPos, sunDir, this.ringCenter, this.ringAxis, band.inner, band.outer, band.tau, band.active),
+          ringTransmittance(
+            worldPos, sunDir, sunAngRadius, this.ringCenter, this.ringAxis,
+            band.inner, band.outer, band.tau, band.active,
+          ),
         );
       }
     }
