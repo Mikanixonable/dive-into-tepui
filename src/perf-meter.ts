@@ -1,29 +1,32 @@
 // 負荷確認ウィンドウ: フレーム時間の計測・集計と、その表示。
 // 窓が開いている間だけ計測が走る(`on` が計測の可否そのもの)。
 import type { WebGPURenderer } from 'three/webgpu';
-import { PropertyRow, PropertyWindow } from './game/hud/property-window';
+import { PropertyRow, PropertyWindow } from './game/hud/windows/property-window';
 import { fmtDuration } from './game/hud/utils';
 import { FrameSections, SECTION_COUNT, SECTION_LABELS, type SectionId } from './frame-sections';
 import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings, type GpuPassId } from './gpu-timings';
 import type { OverlayManager } from './game/hud/overlay-manager';
 import type { Input } from './game/input/input';
 import { KEY_MAPPING as K } from './game/input/key-mapping';
+import { ProteinMotionMetricsRecorder, PROTEIN_MOTION_LODS, type ProteinMotionFrameSample } from './protein-motion-metrics';
 
 // 計測表示に載せるエンティティ数・シミュレーション規模の一式。
 export type PerfCounts = {
   players: number; enemies: number; bullets: number; casings: number;
-  debris: number; ammoPickups: number; asteroids: number; bases: number;
-  predicted: number; predictComplete: number; predictDiscarded: number; predictorSteps: number;
+  debris: number; ammoPickups: number; rcsFuelPickups: number; bases: number;
+  predicted: number; predictComplete: number; predictorSteps: number;
+  arcBodies: number; arcRevisits: number; arcLead: number | null;
   mapMode: boolean; mapItems: number; mapLabels: number; displayDurationSec: number;
-  simSubsteps: number; orbitSteps: number; gravitySources: number;
+  simSubsteps: number; simIntegrated: number; simFollowed: number; gravitySources: number;
   planArcs: number; planSteps: number;
-  attractorsCacheHits: number; attractorsCacheMisses: number;
+  celestialBodiesCacheHits: number; celestialBodiesCacheMisses: number;
   timeCacheHits: number; timeCacheMisses: number;
   warp: number;
 };
 
 export interface PerfCountSource {
   perfCounts(): PerfCounts;
+  proteinMotionFrameSample(): ProteinMotionFrameSample;
 }
 
 // フレームごとに数え直される項目。集計期間の1フレームだけを覗くと実態を取り違えるので、
@@ -33,10 +36,12 @@ const RATE_COUNTS: readonly { key: string; label: string; group: string; read: (
   { key: 'plan-steps', label: '積分step', group: '計画軌道', read: (c) => c.planSteps },
   { key: 'pred-tracked', label: 'tracked', group: '予測', read: (c) => c.predicted },
   { key: 'pred-complete', label: 'complete', group: '予測', read: (c) => c.predictComplete },
-  { key: 'pred-discard', label: 'discard', group: '予測', read: (c) => c.predictDiscarded },
   { key: 'pred-steps', label: 'steps', group: '予測', read: (c) => c.predictorSteps },
+  { key: 'arc-bodies', label: '解決天体', group: '予測', read: (c) => c.arcBodies },
+  { key: 'arc-revisits', label: '期限訪問', group: '予測', read: (c) => c.arcRevisits },
   { key: 'sim-substeps', label: 'substeps', group: 'シミュレーション', read: (c) => c.simSubsteps },
-  { key: 'sim-orbit', label: '軌道積分', group: 'シミュレーション', read: (c) => c.orbitSteps },
+  { key: 'sim-integrated', label: '積分', group: 'シミュレーション', read: (c) => c.simIntegrated },
+  { key: 'sim-followed', label: '予測消費', group: 'シミュレーション', read: (c) => c.simFollowed },
   { key: 'sim-sources', label: '重力源', group: 'シミュレーション', read: (c) => c.gravitySources },
 ];
 
@@ -86,12 +91,13 @@ export class PerfMeter {
   private frames = 0;
   private lastFlush = performance.now();
   // 前回フラッシュ時点の暦キャッシュ累計。表示する集計期間分の差分を取るために持つ。
-  private lastAttractorsHits = 0;
-  private lastAttractorsMisses = 0;
+  private lastCelestialBodiesHits = 0;
+  private lastCelestialBodiesMisses = 0;
   private lastTimeHits = 0;
   private lastTimeMisses = 0;
   // 直近フラッシュで組んだ行。窓を開き直したときに空の窓を出さないために持つ。
   private rows: readonly PropertyRow[] = [];
+  private readonly proteinMotion = new ProteinMotionMetricsRecorder();
 
   // 計測が走っているか。窓が開いている間だけ真になる。
   get on(): boolean { return this.win !== null; }
@@ -122,6 +128,7 @@ export class PerfMeter {
     for (const s of this.sectionStats) this.resetStats(s);
     for (const s of this.gpuStats) this.resetStats(s);
     for (const s of this.rateStats) this.resetStats(s);
+    this.proteinMotion.reset();
     this.sections.enabled = true;
     this.gpu.enabled = true;
     this.frames = 0;
@@ -173,6 +180,7 @@ export class PerfMeter {
     for (const [i, stats] of this.gpuStats.entries()) this.addSample(stats, this.gpu.msOf(i as GpuPassId));
     const c = counts.perfCounts();
     for (const [i, stats] of this.rateStats.entries()) this.addSample(stats, RATE_COUNTS[i]!.read(c));
+    this.proteinMotion.record(counts.proteinMotionFrameSample());
     this.frames++;
     this.flush(c, now);
   }
@@ -219,6 +227,7 @@ export class PerfMeter {
     for (const s of this.sectionStats) this.resetStats(s);
     for (const s of this.gpuStats) this.resetStats(s);
     for (const s of this.rateStats) this.resetStats(s);
+    this.proteinMotion.reset();
     this.frames = 0;
     this.lastFlush = now;
   }
@@ -250,15 +259,16 @@ export class PerfMeter {
     const totalAvg = totals.reduce((a, b) => a + b, 0) / frames;
     const totalSorted = [...totals].sort((a, b) => a - b);
     // 暦キャッシュは累計値なので、この集計期間に増えた分だけを見せる
-    const attrHits = c.attractorsCacheHits - this.lastAttractorsHits;
-    const attrMisses = c.attractorsCacheMisses - this.lastAttractorsMisses;
+    const attrHits = c.celestialBodiesCacheHits - this.lastCelestialBodiesHits;
+    const attrMisses = c.celestialBodiesCacheMisses - this.lastCelestialBodiesMisses;
     const timeHits = c.timeCacheHits - this.lastTimeHits;
     const timeMisses = c.timeCacheMisses - this.lastTimeMisses;
-    this.lastAttractorsHits = c.attractorsCacheHits;
-    this.lastAttractorsMisses = c.attractorsCacheMisses;
+    this.lastCelestialBodiesHits = c.celestialBodiesCacheHits;
+    this.lastCelestialBodiesMisses = c.celestialBodiesCacheMisses;
     this.lastTimeHits = c.timeCacheHits;
     this.lastTimeMisses = c.timeCacheMisses;
     const mem = (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory;
+    const proteinSummary = this.proteinMotion.summary();
 
     return [
       { key: 'fps', label: 'fps', value: ((frames * 1000) / elapsedMs).toFixed(0) },
@@ -279,8 +289,9 @@ export class PerfMeter {
       this.countRow('draw-tris', 'triangles', '描画', this.triangleStats, frames),
 
       ...RATE_COUNTS.map((r, i) => this.countRow(r.key, r.label, r.group, this.rateStats[i]!, frames)),
+      { key: 'arc-lead', label: '先端余裕', group: '予測', value: c.arcLead === null ? '—' : `${c.arcLead.toFixed(0)}s` },
 
-      { key: 'eph-attr', label: 'attractorsAt', value: `hit ${attrHits} / miss ${attrMisses}`, group: '暦キャッシュ' },
+      { key: 'eph-attr', label: 'celestialBodiesAt', value: `hit ${attrHits} / miss ${attrMisses}`, group: '暦キャッシュ' },
       { key: 'eph-all', label: '全リング', value: `hit ${timeHits} / miss ${timeMisses}`, group: '暦キャッシュ' },
 
       { key: 'view', label: 'view', value: c.mapMode ? 'map' : 'combat', group: '表示' },
@@ -297,11 +308,24 @@ export class PerfMeter {
       { key: 'ent-casings', label: 'casings', value: `${c.casings}`, group: 'エンティティ' },
       { key: 'ent-debris', label: 'debris', value: `${c.debris}`, group: 'エンティティ' },
       { key: 'ent-ammo-pickups', label: 'ammoPickups', value: `${c.ammoPickups}`, group: 'エンティティ' },
-      { key: 'ent-asteroids', label: 'asteroids', value: `${c.asteroids}`, group: 'エンティティ' },
+      { key: 'ent-rcs-fuel-pickups', label: 'rcsFuelPickups', value: `${c.rcsFuelPickups}`, group: 'エンティティ' },
       { key: 'ent-bases', label: 'bases', value: `${c.bases}`, group: 'エンティティ' },
 
       { key: 'heap', label: 'JS heap', group: 'メモリ',
         value: mem ? `${(mem.usedJSHeapSize / 1048576).toFixed(1)} MB` : '--' },
+
+      {
+        key: 'protein-motion-cpu', label: 'Motion CPU', group: 'タンパク質モーション',
+        value: `${barText(proteinSummary.cpuMs.avg)} p95 ${proteinSummary.cpuMs.p95.toFixed(2)} max ${proteinSummary.cpuMs.max.toFixed(2)}`,
+      },
+      {
+        key: 'protein-motion-upload', label: 'Upload', group: 'タンパク質モーション',
+        value: `avg ${(proteinSummary.uploadBytes.avg / 1024).toFixed(1)}KiB max ${(proteinSummary.uploadBytes.max / 1024).toFixed(1)}KiB`,
+      },
+      ...PROTEIN_MOTION_LODS.map((lod) => ({
+        key: `protein-motion-lod-${lod}`, label: lod, group: 'タンパク質モーション',
+        value: `${proteinSummary.lodCounts[lod].toFixed(1)}`,
+      })),
     ];
   }
 }

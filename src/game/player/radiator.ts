@@ -1,6 +1,6 @@
 // 自機の展開式ラジエーター: 上下2枚それぞれの展開度・損耗度を持ち、
 // 今フレームの放熱面積と太陽入射を答える。機体温度そのものは知らない
-// (温度の4乗則を持つのは ThermalSystem のみ)。
+// (温度の4乗則を持つのは GameEntity の熱収支のみ)。
 import * as THREE from 'three/webgpu';
 import { Attitude, qFromAxisAngle, qRotate } from '../../physics/attitude';
 import { kinematicState } from '../../physics/kinematic-state';
@@ -12,8 +12,7 @@ import {
 } from '../../render/ships';
 import * as C from '../const';
 import { GameEntity } from '../game-entity/game-entity';
-import type { Attractor } from '../../physics/attractor';
-import type { Contact } from '../simulation/contact';
+import type { Contact } from '../game-entity/contact';
 import type { Stage } from '../stages/stage';
 import type { Player } from './player';
 import type { RadiatorSaveData } from '../save-data';
@@ -58,14 +57,14 @@ export class RadiatorFold extends GameEntity {
   }
 
   // 吊り元の艦、およびそれに取り付いた他の実体(放熱板の他の折り・ベルトの節点)とは接触しない。
-  contactsWith(other: GameEntity | Attractor): boolean {
+  contactsWith(other: GameEntity): boolean {
     if (other === this.owner) return false;
-    return !(other instanceof GameEntity && other.attachedTo === this.owner);
+    return other.attachedTo !== this.owner;
   }
 
-  // 帰結は owner の collideAtRadiator に委ねる。
-  collideWith(other: GameEntity | Attractor, contact: Contact, activeStage: Stage): void {
-    this.owner.collideAtRadiator(this.side, other, contact, activeStage);
+  // 帰結は owner の collideAtRadiatorWithEntity に委ねる。
+  collideWithEntity(other: GameEntity, contact: Contact, activeStage: Stage): void {
+    this.owner.collideAtRadiatorWithEntity(this.side, other, contact, activeStage);
   }
 }
 
@@ -107,6 +106,13 @@ export class RadiatorSystem {
     p.deployTarget = p.deployTarget === 0 ? 1 : 0;
   }
 
+  // side の展開目標を明示的に設定する。HUD の「展開」「収納」ボタンから使う。
+  setDeployed(side: RadiatorSide, deployed: boolean): void {
+    const p = this.panels[side];
+    const target: 0 | 1 = deployed ? 1 : 0;
+    if (p.deployTarget !== target) p.deployTarget = target;
+  }
+
   // 展開度を指示値へ RADIATOR_DEPLOY_TIME 秒かけて近づける。数値のみを動かす(THREE には触れない)。
   // wear は放熱板パーツの残 HP 由来の損耗率で、修理はドックでしか行えない。
   update(dt: number, wear: Record<RadiatorSide, number>): void {
@@ -126,7 +132,7 @@ export class RadiatorSystem {
   }
 
   // 偶数折り目/奇数折り目それぞれの、ヒンジ基準での累積回転角。sync がメッシュへ書く
-  // 相対回転と solarLoad が法線計算に使う絶対角を同一の psi から導く共有点。
+  // 相対回転と solarAbsorbArea が法線計算に使う絶対角を同一の psi から導く共有点。
   // 展開方向(モデル側の折り目オフセット)は side ごとに符号が付くので、回転角自体は
   // side に依らず ±psi で揃えられる。
   private foldThetas(side: RadiatorSide): { even: number; odd: number } {
@@ -154,7 +160,8 @@ export class RadiatorSystem {
     }
   }
 
-  // side の有効な放熱面積 [m^2]。展開度と損耗度で目減りする。
+  // side の有効な放熱面積 [m^2]。totalCoolingRate は放熱板部品の面積の総和で、展開度と
+  // 損耗度で目減りする。
   private panelArea(side: RadiatorSide, totalCoolingRate: number): number {
     if (this.wear[side] >= 1) return 0;
     return (totalCoolingRate / 2) * this.panels[side].deploy;
@@ -172,16 +179,16 @@ export class RadiatorSystem {
     return qRotate(att.q, shipNormal);
   }
 
-  // 日照面が受け取る太陽入射 [W]。sunlit は sunlitFactor の戻り値(0..1)、
-  // sunDir は太陽方向の単位ベクトル(world)。蛇腹は偶数/奇数折りで法線が異なるため、
-  // 面積を半分ずつ割り当てて2方向ぶんを合算する。
-  solarLoad(sunlit: number, sunDir: Vec3, att: Attitude, totalCoolingRate: number): number {
+  // 日照面が太陽光を受ける実効面積 [m^2](日照面の吸収率を織り込む)。sunDir は太陽方向の
+  // 単位ベクトル(world)。蛇腹は偶数/奇数折りで法線が異なるため、面積を半分ずつ割り当てて
+  // 2方向ぶんを合算する。
+  solarAbsorbArea(sunDir: Vec3, att: Attitude, totalCoolingRate: number): number {
     return (['up', 'down'] as const).reduce((sum, side) => {
       const halfArea = this.panelArea(side, totalCoolingRate) / 2;
       const { even, odd } = this.foldThetas(side);
       const cosEven = Math.abs(dot(this.worldNormal(even, att), sunDir));
       const cosOdd = Math.abs(dot(this.worldNormal(odd, att), sunDir));
-      return sum + C.SOLAR_CONSTANT * C.RADIATOR_SOLAR_ABSORB * halfArea * (cosEven + cosOdd) * sunlit;
+      return sum + C.RADIATOR_SOLAR_ABSORB * halfArea * (cosEven + cosOdd);
     }, 0);
   }
 

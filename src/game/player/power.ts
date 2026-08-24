@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { Attitude, qRotate } from '../../physics/attitude';
 import { Vec3, dot, v3 } from '../../physics/vec3';
+import { SOLAR_CONSTANT } from '../../physics/srp';
 import * as C from '../const';
 import type { PowerSaveData } from '../save-data';
 
@@ -36,6 +37,13 @@ export class PowerSystem {
     p.deployTarget = p.deployTarget === 0 ? 1 : 0;
   }
 
+  // side の展開目標を明示的に設定する。HUD の「展開」「収納」ボタンから使う。
+  setDeployed(side: SolarSide, deployed: boolean): void {
+    const p = this.panels[side];
+    const target: 0 | 1 = deployed ? 1 : 0;
+    if (p.deployTarget !== target) p.deployTarget = target;
+  }
+
   // 毎フレーム呼ぶ。sunlit は sunlitFactor(0..1)、sunDir は太陽方向の単位ベクトル(world)。
   update(dt: number, sunlit: number, sunDir: Vec3, att: Attitude, ship: import('../game-entity/ship').Ship): void {
     // 展開度の更新
@@ -52,7 +60,7 @@ export class PowerSystem {
     // 裏面(法線が太陽と反対を向く)では発電しないため負値を0に切り詰める
     const cosIncidence = Math.max(0, dot(normal, sunDir));
     // 展開度 deployMult を掛けて、収納時は発電しないようにする
-    const basePower = ship.totalPowerGeneration > 0 ? ship.totalPowerGeneration : C.SOLAR_CONSTANT * C.SOLAR_PANEL_EFFICIENCY * C.SOLAR_PANEL_AREA;
+    const basePower = ship.totalPowerGeneration > 0 ? ship.totalPowerGeneration : SOLAR_CONSTANT * C.SOLAR_PANEL_EFFICIENCY * C.SOLAR_PANEL_AREA;
     const power = basePower * cosIncidence * sunlit * deployMult;
     this.charge = Math.min(C.POWER_CAPACITY, this.charge + power * dt);
   }

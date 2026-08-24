@@ -21,6 +21,7 @@ interface PanelCollapsedState {
 }
 
 type PanelCollapsedViewListener = (view: HudWorldView) => void;
+type PanelDefaultCollapsed = boolean | ((view: HudWorldView) => boolean);
 
 let currentView: HudWorldView = 'combat';
 let cachedState: PanelCollapsedState | null = null;
@@ -116,7 +117,7 @@ export class PanelShell {
   // titleEl を直接書き換えて埋め込み要素(件数バッジ等)を足してよい。折りたたみ状態は
   // 現在のビューで直前にこの id で畳まれていれば引き継ぎ、一度も操作されていなければ
   // defaultCollapsed に従う。
-  public constructor(parent: HTMLElement, id: string, title: string, defaultCollapsed = false) {
+  public constructor(parent: HTMLElement, id: string, title: string, defaultCollapsed: PanelDefaultCollapsed = false) {
     this.el = document.createElement('div');
     this.el.id = id;
     this.el.className = 'panel panel-shell';
@@ -140,7 +141,8 @@ export class PanelShell {
     };
     const toggle = buildCollapseToggle(head, `${id}-collapse`, 'panel-shell-collapse', this.body, labels);
     const applyCollapsedState = (): void => {
-      const collapsed = loadPanelCollapsed(id) ?? defaultCollapsed;
+      const collapsed = loadPanelCollapsed(id)
+        ?? (typeof defaultCollapsed === 'function' ? defaultCollapsed(currentView) : defaultCollapsed);
       this.body.classList.toggle('collapsed', collapsed);
       syncCollapseToggle(toggle, this.body, labels);
     };

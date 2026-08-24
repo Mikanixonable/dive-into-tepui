@@ -23,6 +23,9 @@ export class TabBar<T> {
       const selected = v === value;
       btn.setOn(selected);
       btn.element.setAttribute('aria-selected', String(selected));
+      // タブは排他ボタンの見た目を借りるが、ARIA上は aria-pressed ではなく
+      // aria-selected で選択状態を表す。
+      btn.element.removeAttribute('aria-pressed');
     }
   }
 
@@ -44,5 +47,11 @@ export class TabBar<T> {
       this.buttons.set(value, btn);
     }
     this.items = items.map(([value, label]) => [value, label] as const);
+  }
+
+  // 値に対応するタブボタンの要素。タブ本体との aria-controls の紐付けなど、呼び出し側が
+  // ボタンへ直接属性を足したいときに使う。
+  buttonFor(value: T): HTMLElement | undefined {
+    return this.buttons.get(value)?.element;
   }
 }

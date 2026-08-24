@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import { Vec3, v3, add, sub, scale, dot, len, lenSq, norm, cross } from './vec3';
 import { Quat, qRotate, qInvert } from './attitude';
-import { buildBaseModel } from '../render/ships';
+import { buildBaseModel } from '../render/base-station-model';
 
 export interface RayHit {
   readonly point: Vec3; // 着弾ワールド座標

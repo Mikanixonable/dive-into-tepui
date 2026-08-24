@@ -3,14 +3,14 @@ import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { assertOmegaMatchesBasis } from './test-helpers';
 import { OrbitalElements, keplerPeriod, timeSincePeriapsis, trueAnomalyFromMean } from '../../src/physics/elements';
-import { Attractor } from '../../src/physics/attractor';
+import { CelestialBody } from '../../src/physics/celestial-body';
 import { ECLIPTIC_BASIS, KeplerOrbit, keplerOrbitNormal, keplerOrbitRotation, keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
 import { qRotate } from '../../src/physics/attitude';
 import { dot, len, scale, sub, v3 } from '../../src/physics/vec3';
 
-const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), degree2: null, isStar: false };
+const EARTH: CelestialBody = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, isStar: false };
 
 // 永年変化率をすべて 0 にした固定楕円(比較用)。
 const STATIC_ORBIT: KeplerOrbit = {

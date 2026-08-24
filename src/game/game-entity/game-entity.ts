@@ -1,30 +1,36 @@
 // ゲーム内エンティティの定義。位置・速度は ECI 座標系 [m, m/s]。
 import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../physics/kinematic-state';
-import { OrbitalElements, keplerPeriod } from '../../physics/elements';
-import { Attitude } from '../../physics/attitude';
+import { OrbitalElements } from '../../physics/elements';
+import { Attitude, stepAttitude } from '../../physics/attitude';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
-import { Attractor, Degree2Gravity, orbitalElementsOf, localOrbitPeriod, reachedBody, strongestAttractor } from '../../physics/attractor';
-import { containingBody } from '../../physics/sphere-contact';
-import { isBurnedUp } from '../../physics/atmosphere';
-import { Vec3, len, sub, v3 } from '../../physics/vec3';
+import { CelestialBody, orbitalElementsOf, localOrbitPeriod, strongestAttractor } from '../../physics/celestial-body';
+import { airflow } from '../../physics/atmosphere';
+import {
+  aeroHeating, radiativeCooling, solarHeating, sphereNoseRadius, stepTemperature,
+} from '../../physics/thermal';
+import { sunlitFactor } from '../../physics/shadow';
+import { SOLAR_CONSTANT } from '../../physics/srp';
+import { ApsisTrack } from '../../physics/trajectory-features';
+import { Vec3, len, scale, sub, v3 } from '../../physics/vec3';
+import type { Viewpoint } from '../../physics/projection';
+import type { SphereHit } from '../../physics/base-collision';
 import { FloatingOrigin } from '../floating-origin';
 import { OrbitLine } from '../orbit-line';
 import { TrajectoryLine } from '../trajectory-line';
 import { LineStyle } from '../../render/line-style';
-import { ReferenceFrame } from '../../physics/frame';
+import { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
+import { PredictedArc, trajectorySampleInterval } from '../simulation/predicted-arc';
+import { atmosphericMaxStep, dragTakesFullAirspeed } from '../simulation/time-step';
+import type { FutureCelestialBodyProvider } from '../simulation/arc-bodies';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
-import type { Contact } from '../simulation/contact';
+import type { Contact } from './contact';
 import { EntityIdAllocator } from './entity-id';
 import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';
-import type { EntityMarker } from '../marker/entity-marker';
 import type { MarkerManager } from '../marker/marker-manager';
-import { GRAVITATIONAL_CONSTANT } from '../../physics/solar-system';
-
-// 乖離許容量の上限。その場の局所軌道の長半径に対する割合 [無次元]。
-const DIVERGENCE_TOLERANCE_MAX_ORBIT_RATIO = 0.02;
+import { disposeOwnedRenderResources } from '../../render/dispose-owned-render-resources';
 
 const identityAttitude = (): Attitude => ({
   q: { x: 0, y: 0, z: 0, w: 1 },
@@ -32,14 +38,22 @@ const identityAttitude = (): Attitude => ({
   inertia: v3(1, 1, 1),
 });
 
+export interface OrbitLineSyncContext {
+  readonly displayTime: number;
+  readonly ephemeris: Ephemeris;
+  readonly frameAnchors: FrameAnchorSource;
+  readonly force?: boolean;
+}
+
 // 軌道上を運動するゲーム内エンティティの基底。表示ルート・HP・生死・姿勢・AI といったゲーム側の
 // 付帯情報と、種別ごとの積分パラメータ(bcInv・historyDuration)を持つ。
 export class GameEntity {
   readonly actual: DynamicTrajectory;
 
   get state(): KinematicState { return this.actual.state; }
-  // 不連続な差し替え専用の口(剛体接触・反動など)。
-  set state(s: KinematicState) { this.actual.reset(s); }
+  // 不連続な差し替え専用の口(剛体接触・反動など)。差し替え前の軌道を表す弧はもう
+  // 現実を表さないので、この場で無効化する。
+  set state(s: KinematicState) { this.actual.reset(s); this.invalidatePrediction(); }
   get prevState(): KinematicState { return this.actual.prevState; }
 
   private static readonly idAllocator = new EntityIdAllocator('entity-');
@@ -49,20 +63,36 @@ export class GameEntity {
   // マーカー・一覧・ウィンドウに出す表示名。既定は id で、名前を持つ種別がコンストラクタで上書きする。
   name: string;
   att: Attitude;
+  // 姿勢を積分する種別か。false の個体は att を進めず、向きを別の規則で決める
+  // (弾は速度方向を向く)。
+  readonly hasAttitude: boolean = true;
   public readonly renderObject: THREE.Object3D;
   alive = true;
   mass = 1; // 剛体接触の換算質量
-  radius = 0; // 物理的な半径 [m]。0 = 点。Attractor.radius と同じ量
-  collides = false; // 剛体接触(ContactPhysics)に参加するか
+  radius = 0; // 物理的な半径 [m]。0 = 点。CelestialBody.radius と同じ量
+  collides = false; // 物体どうしの剛体接触(EntityContactPhysics)に参加するか
+  // 濃い大気の中を、抗力が要求する細かい刻みで積むか。true の個体はサブステップの内側で
+  // さらに分割され、熱・動圧と天体表面への到達もその刻みで解かれる。false の個体は大気圏に
+  // 入れば失われるだけで、いつどれだけの精度で失われるかは結果を変えない。
+  doPreciseReentry = false;
+  // 自分に触れた相手が受けるダメージへ掛かる重み。0 なら触れても相手を傷つけない。
+  contactDamageWeight = 1;
+
+  // 剛体接触で反作用を受け持つ質量 [kg]。0 なら相手に力を及ぼさず自分だけが跳ね返り、
+  // 無限大なら押されない。
+  get contactMass(): number { return this.mass; }
   // 特定の艦に取り付いた実体(ベルトの節点・放熱板の折りなど)であれば、その艦自身。
   // 独立した実体なら既定 null。
   attachedTo: GameEntity | null = null;
-  // 重力定数 GM [m^3/s^2]。0 = 重力を及ぼさない
-  mu = 0;
-  // 自身が及ぼす二次重力項(J2/C22 等)。null = 質点として扱う
-  degree2: Degree2Gravity | null = null;
-  isStar = false;
-  thrust: Vec3 | null = null;
+  private _thrust: Vec3 | null = null;
+  // 自身が出している ECI 加速度 [m/s²]。null = 噴射していない。噴射している間の弧は現実を
+  // 表さないので、非 null を書いた時点で無効化する — 実シミュレーションはそこから積分へ落ち、
+  // 次の Predictor がその時点の実状態を種に弧を作り直す。
+  get thrust(): Vec3 | null { return this._thrust; }
+  set thrust(t: Vec3 | null) {
+    this._thrust = t;
+    if (t !== null) this.invalidatePrediction();
+  }
   // 機体座標系トルク。既定ゼロ = 自由回転。
   torque: Vec3 = v3();
   // 自身の軌道楕円を描く線。null = 持たない。
@@ -71,13 +101,36 @@ export class GameEntity {
   predictedLine: TrajectoryLine | null = null;
   // 過去に通ってきた軌跡の線。持たせるかは種別の判断。
   actualLine: TrajectoryLine | null = null;
+  // プロパティウィンドウから切り替える、軌道線の表示方式。true = 解析軌道楕円の代わりに
+  // 予測線・過去線を表示する。
+  showTrajectoryLine = false;
   // 自身の軌道と中心天体の赤道面との交点マーカー。null = まだ出す必要が生じていない。
   equatorNodes: EquatorNodeMarkerPair | null = null;
-  // 自身の位置を指すマーカー。null = 出さない。
-  marker: EntityMarker | null = null;
-  // 弾道係数の逆数 Cd·A/m(既定 0 = 抵抗なし)。
-  protected readonly bcInv: number = 0;
+  // 弾道係数の逆数 Cd·A/m(既定 0 = 抵抗なし)。抗力が要求する刻みを外から引けるよう公開する。
+  readonly bcInv: number = 0;
   protected readonly srpCoeff: number = 0;
+
+  // --- 熱(physics/thermal.ts の比量モデル) ---
+  // 現在の温度 [K]。
+  temperature = C.ENV_TEMP;
+  // 比熱 [J/(kg·K)]。**0 = 熱を蓄えない種別**で、温度は動かない。
+  protected readonly specificHeat: number = 0;
+  // 材質の密度 [kg/m^3]。よどみ点の曲率半径を bcInv から戻すのに使う。
+  protected readonly bulkDensity: number = C.SMALL_DEBRIS_BULK_DENSITY;
+  // いまの輻射面積の比 [m^2/kg]。展開して面積が変わる放熱面を持つ種別は override する。
+  protected get radiatingAreaPerMass(): number { return 0; }
+  // 輻射率。
+  protected readonly emissivity: number = C.HULL_EMISS;
+  // 太陽光を受ける面積の比 [m^2/kg]。吸収率を織り込んだ実効値で、既定は球とみなした断面積
+  // (bcInv/Cd)に外殻の吸収率(灰色体とみなし輻射率に等しい)を掛けたもの。展開して受光面が
+  // 増える種別は sunDir を見て override する。
+  protected solarAbsorbAreaPerMass(_sunDir: Vec3): number {
+    return (this.emissivity * this.bcInv) / C.DRAG_COEFFICIENT;
+  }
+  // これを超えると焼失する温度 [K]。既定 Infinity = 熱では失われない。
+  protected readonly maxTemperature: number = Infinity;
+  // 刻みに依らない投入熱 [J/kg]。次の熱計算で一度だけ温度へ変換する。
+  private pendingSpecificHeat = 0;
   // 過去列の保持時間 [s]。既定 0 = 記録しない。
   // 種別ごとの過去列の保持時間 [s]。0 は履歴を持たない。
   protected readonly baseHistoryDuration: number = 0;
@@ -85,38 +138,50 @@ export class GameEntity {
 
   // 実際に保持する過去列の長さ [s]。過去表示の要求(requestHistoryDuration)が種別の既定値より
   // 長ければそちらに従う。保持サンプル数は sampleInterval の間引きにより
-  // PREDICT_MAX_SAMPLES で頭打ちなので、長くしてもメモリは有界。
+  // ARC_MAX_SAMPLES で頭打ちなので、長くしてもメモリは有界。
   protected get historyDuration(): number {
     return Math.max(this.baseHistoryDuration, this.requestedHistoryDuration);
   }
   // 未来の状態を引かれる理由。読み手も成り立つ条件も理由ごとに違うので、1つの真偽値へ
   // 畳まずに別々に持つ。予測する長さは表示期間に追従するため、ここで決まるのは可否だけ。
 
-  // 未来位置を重力源として引かれるか。引力を持つなら、予測と計画の積分が未来時刻の
-  // この個体を必要とする。
-  get predictedAsGravitySource(): boolean {
-    return this.mu !== 0;
-  }
-  // 未来位置を計画軌道の衝突体として引かれるか。剛体接触への参加(collides)とは別の判断
-  // で、こちらは「数分から数日先まで伸びる線が相手にするだけの寿命を持つか」を言う。
-  protected readonly predictedAsPlanCollider: boolean = false;
   // 表示時刻(未来ゴースト)の位置でメッシュとマーカーを描く種別か。
   protected readonly predictedForGhost: boolean = false;
 
-  // 予測列を伸ばす種別か。上の理由のどれか1つでも立てば伸ばす。
-  get predictsFuture(): boolean {
-    return this.predictedAsGravitySource || this.predictedAsPlanCollider
-      || this.predictedForGhost || this.predictedLine !== null;
+  // 軌道分析パネルがこの個体の未来を読んでいるか。戦闘ビューでも(canDisplayFuture が false
+  // でも)開いている間は弧を伸ばし続けたいので、他の理由と同じく独立に持つ。
+  analysisPanelReader = false;
+
+  // ナビゲーションターゲットとして選ばれ、相対軌道要素(再接近点など)の計算対象になって
+  // いるか。マップビューでのみ意味を持つが、そこでは canDisplayFuture が既に真なので
+  // 専用のフラグとして独立に持つ。
+  navTargetReader = false;
+
+  // この個体の未来を読む消費者がいるか。ゴーストだけは表示時刻が未来へ動けるかに依るので、
+  // 動けるかどうかを引数で受け取る。
+  hasFutureReader(canDisplayFuture: boolean): boolean {
+    return (this.predictedForGhost && canDisplayFuture)
+      || this.predictedLine !== null || this.analysisPanelReader || this.navTargetReader;
   }
+
+  // 予測列を持ちうる種別か。上の理由のどれか1つでも立ちうれば持つ。
+  get predictsFuture(): boolean {
+    return this.hasFutureReader(true);
+  }
+
   protected readonly scene?: THREE.Scene;
 
-  // 未来の予測列。
-  private _predicted: DynamicTrajectory | null = null;
-  get predicted(): DynamicTrajectory | null { return this._predicted; }
-  // 積分中に再突入高度を割った/非有限値が出て打ち切られたか。打ち切られた列はそれ以上
-  // 伸びない(新しい列を作るまで恒久的)。
-  private truncated = false;
-  get predictionTruncated(): boolean { return this.truncated; }
+  // 未来の予測列を保持する統一積分弧(game/simulation/predicted-arc.ts の PredictedArc)。
+  private _predictedArc: PredictedArc | null = null;
+  // 弧そのもの(素の読み取り専用アクセス)。plan/plan-path.ts がノードの無い末尾区間として
+  // 丸ごと借用するために公開する — 生成は ensurePredictedArc の専任のまま。
+  get predictedArc(): PredictedArc | null { return this._predictedArc; }
+  get predicted(): DynamicTrajectory | null { return this._predictedArc?.trajectory ?? null; }
+  // 弧の積分中に見つかった近地点・遠地点。中心天体は弧を作った時点で最も強く引く解析天体に固定する。
+  get predictedApsides(): ApsisTrack | null { return this._predictedArc?.apsides ?? null; }
+  // 積分中に天体表面へ到達した/非有限値が出て打ち切られたか。打ち切られた弧はそれ以上
+  // 伸びない(新しい弧を作るまで恒久的)。
+  get predictionTruncated(): boolean { return this._predictedArc?.truncated ?? false; }
 
   // 初期状態と姿勢からエンティティを構築する。addToScene は renderObject を scene へ
   // 直接登録する種別に指定し、インスタンス描画種別では同期用の変換として保持する。
@@ -138,15 +203,8 @@ export class GameEntity {
     if (addToScene) this.scene?.add(this.renderObject);
   }
 
-  // 質量から剛体接触の換算質量と重力定数 μ を同時に定める。別々に書くと引力の強さと
-  // 衝突の重さが食い違う。
-  protected setGravitatingMass(mass: number): void {
-    this.mass = mass;
-    this.mu = GRAVITATIONAL_CONSTANT * mass;
-  }
-
   // center を中心とする接触軌道要素。中心は呼び出し側が選ぶ(例: strongestAttractor)。
-  orbitalElementsAround(center: Attractor): OrbitalElements | null {
+  orbitalElementsAround(center: CelestialBody): OrbitalElements | null {
     return orbitalElementsOf(this.state, center);
   }
 
@@ -169,16 +227,21 @@ export class GameEntity {
     this.orbitLine = null;
   }
 
-  // orbitLine を現在位置で最も強く引く天体まわりの軌道楕円に合わせる。線を持たなければ何もしない。
-  // frame / displayTime / ephemeris を渡すと、その座標系・時刻で楕円を描く。
+  // orbitLine を表示時刻の状態で最も強く引く天体まわりの軌道楕円に合わせる。線を持たなければ
+  // 何もしない。displayTime が現在時刻より先なら、表示用の予測状態を使って船体と同じ時刻に揃える。
   syncOrbitLine(
-    fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[], force = false,
-    frame?: ReferenceFrame, displayTime?: number, ephemeris?: Ephemeris,
+    fo: FloatingOrigin, camera: THREE.Camera, context: OrbitLineSyncContext,
   ): void {
     if (this.orbitLine === null) return;
-    const center = strongestAttractor(this.state.r, attractors);
+    const { displayTime, ephemeris, frameAnchors, force = false } = context;
+    const state = this.displayState(displayTime, ephemeris);
+    if (state === null) {
+      this.orbitLine.sync(null, fo, camera);
+      return;
+    }
+    const center = strongestAttractor(state.r, frameAnchors.bodies);
     this.orbitLine.sync(
-      this.orbitalElementsAround(center), fo, camera, force, frame, displayTime, ephemeris, attractors,
+      orbitalElementsOf(state, center), fo, camera, { force },
     );
   }
 
@@ -226,18 +289,18 @@ export class GameEntity {
   // simTime は描く区間の境目、displayTime は座標系から慣性系へ戻す時刻。
   syncTrajectoryLines(
     frame: ReferenceFrame, simTime: number, displayTime: number, pastDuration: number, predictedTo: number | null,
-    ephemeris: Ephemeris, fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
+    ephemeris: Ephemeris, fo: FloatingOrigin, camera: THREE.Camera, frameAnchors: FrameAnchorSource,
   ): void {
     if (this.predictedLine !== null) {
-      this.predictedLine.syncGeometry(this.predicted, simTime, predictedTo, frame, ephemeris, attractors);
-      this.predictedLine.syncTransform(frame, displayTime, ephemeris, fo, attractors);
+      this.predictedLine.syncGeometry(this.predicted, simTime, predictedTo, frame, ephemeris, frameAnchors);
+      this.predictedLine.syncTransform(frame, displayTime, ephemeris, fo, frameAnchors);
       this.predictedLine.sync(camera);
     }
     if (this.actualLine !== null) {
       this.actualLine.syncGeometry(
-        this.actual, simTime - pastDuration, simTime, frame, ephemeris, attractors,
+        this.actual, simTime - pastDuration, simTime, frame, ephemeris, frameAnchors,
       );
-      this.actualLine.syncTransform(frame, displayTime, ephemeris, fo, attractors);
+      this.actualLine.syncTransform(frame, displayTime, ephemeris, fo, frameAnchors);
       this.actualLine.sync(camera);
     }
   }
@@ -251,22 +314,121 @@ export class GameEntity {
 
   // 保持窓が keepDuration の列へ積む最小間隔 [s]。その場で最も強く引く天体を中心とする
   // 軌道周期を等分し、窓が長いときは保持サンプル数の上限側で頭打ちにする。
-  protected sampleInterval(attractors: readonly Attractor[], state: KinematicState, keepDuration: number): number {
-    const period = localOrbitPeriod(state.r, attractors);
-    const span = isFinite(period) && period > 0 ? period : C.SHIP_HISTORY_DURATION;
-    return Math.max(span / C.TRAJECTORY_SAMPLES_PER_REV, keepDuration / C.PREDICT_MAX_SAMPLES);
+  protected sampleInterval(celestialBodies: readonly CelestialBody[], state: KinematicState, keepDuration: number): number {
+    return trajectorySampleInterval(localOrbitPeriod(state.r, celestialBodies), keepDuration);
   }
 
-  // 重力源 + J2 + 大気抵抗 + 自身の推力で 1 ステップ積分する。attractors はこのステップの
-  // 重力源一覧 — 呼び出し側(Simulator)が全エンティティで同じ瞬間の同じ配列を使い回す。
-  // historyDuration が 0(弾・薬莢・破片)の間は間引き間隔を使わないので sampleInterval を
-  // 評価しない。
-  stepActual(dt: number, attractors: readonly Attractor[]): void {
-    if (!this.alive) return;
-    const interval = this.historyDuration > 0
-      ? this.sampleInterval(attractors, this.state, this.historyDuration)
-      : 0;
-    this.actual.step(dt, attractors, this.bcInv, this.srpCoeff, this.thrust, interval, this.historyDuration);
+  // 実状態の履歴へ積む間引き間隔 [s]。履歴を持たない種別は 0。
+  private historySampleInterval(celestialBodies: readonly CelestialBody[]): number {
+    return this.historyDuration > 0
+      ? this.sampleInterval(celestialBodies, this.state, this.historyDuration) : 0;
+  }
+
+  // このサブステップを内側で何等分して進めるか。濃い大気の中では抗力が dt より短い刻みを
+  // 要求するので、それに従う種別はここで 2 以上を返す。atmosphereBodies はその区間の大気天体
+  // 一覧。
+  substepDivisions(dt: number, atmosphereBodies: readonly CelestialBody[]): number {
+    if (!this.doPreciseReentry) return 1;
+    const innerDt = atmosphericMaxStep(this.state, this.bcInv, atmosphereBodies);
+    return innerDt >= dt ? 1 : Math.ceil(dt / innerDt);
+  }
+
+  // 濃い大気に対して刻みが広すぎて、抗力をもう積めなくなったか。刻みを細かく割って積む種別は
+  // 積めなくなることがないので常に false。true になった個体は、そこから先の軌道が正確では
+  // ないので失われる — 物理ではなく積分器の都合による喪失。
+  outpacedByDrag(dt: number, atmosphereBodies: readonly CelestialBody[]): boolean {
+    return !this.doPreciseReentry
+      && dragTakesFullAirspeed(this.state, this.bcInv, atmosphereBodies, dt);
+  }
+
+  // 1区間ぶん自分を進める。呼び出し側は生存を確かめてから呼ぶ。celestialBodies はこの区間の
+  // 重力源一覧、occluders は日照率の遮蔽体一覧、atmosphereBody は抗力を及ぼすただ1体の大気
+  // 天体(null なら抗力なし)、star は日照と受熱の光源(null なら光源なし)。
+  //
+  // 位置と速度は、既に伸びている予測が区間の終端を持っていればそれを辿り、無ければ積分する。
+  // **どちらを通っても姿勢と受動的な環境は同じ区間ぶん進む** — 位置と速度の決まり方は、その
+  // 個体に何が起きるかを変えない。積分したなら true を返す(負荷確認の集計だけがこれを読む)。
+  stepSimulation(
+    dt: number,
+    celestialBodies: readonly CelestialBody[],
+    occluders: readonly CelestialBody[],
+    atmosphereBody: CelestialBody | null,
+    star: CelestialBody | null,
+    activeStage: Stage,
+  ): boolean {
+    const integrated = !this.followPredicted(this.state.t + dt, celestialBodies);
+    if (integrated) {
+      this.actual.step(
+        dt, celestialBodies, occluders, atmosphereBody, this.bcInv, this.srpCoeff, this.thrust,
+        this.historySampleInterval(celestialBodies), this.historyDuration,
+      );
+      // 積分した弧はもう現実を表さない。ある時間帯の状態を決める積分を常に1本に保つ。
+      this.invalidatePrediction();
+    }
+    if (this.hasAttitude) this.att = stepAttitude(this.att, this.torque, dt);
+    // 太陽の幾何は熱収支と受動的な環境の両方が読むので、この区間で1度だけ引いて両方へ渡す。
+    // 日照率は遮蔽体の数だけ走るため、熱を蓄えない種別(弾)には引かせない — 受動的な環境を
+    // 持つ種別はどれも熱を蓄える。
+    const sun = this.specificHeat > 0 ? star : null;
+    const toSun = sun === null ? v3() : sub(sun.state.r, this.state.r);
+    const sunDist = len(toSun);
+    const sunDir = sunDist > 0 ? scale(toSun, 1 / sunDist) : v3();
+    const sunlit = sun === null ? 0 : sunlitFactor(this.state.r, sun, occluders);
+    // 環境を先に進める。放熱面の展開のように、熱収支が読む値をここで書き換える種別がある。
+    this.stepEnvironment(dt, atmosphereBody, sunlit, sunDir);
+    this.stepThermal(dt, atmosphereBody, sunDist, sunlit, sunDir, activeStage);
+    return integrated;
+  }
+
+  // 刻みに依らない投入熱 [J/kg] を次の熱計算へ持ち越す。射撃や被弾のように、サブステップの
+  // 分割数で回数が変わってはならない熱がここを通る。
+  absorbHeat(specificJoules: number): void {
+    this.pendingSpecificHeat += specificJoules;
+  }
+
+  // 温度が上限を超えて失われる。死因を記録する種別が override する。
+  protected burnUp(_activeStage: Stage): void {
+    this.alive = false;
+  }
+
+  // 空力加熱・太陽光の受熱と放射冷却で温度を1区間ぶん進め、上限を超えていれば焼失させる。
+  // atmosphereBody は自分が浴びるただ1体の大気天体(null なら真空)、sunDist は太陽までの
+  // 距離、sunlit は日照率、sunDir は太陽方向。比熱を持たない種別は温度も持たないので何もしない。
+  //
+  // 焼失の判定をここへ置くのは、区間を細かく割って積む個体のためである。放射冷却は高温ほど
+  // 速いので、粗い区間の終わりだけを見ると、加熱の山で上限を越えて戻ってきた個体を取り逃がす。
+  private stepThermal(
+    dt: number, atmosphereBody: CelestialBody | null,
+    sunDist: number, sunlit: number, sunDir: Vec3, activeStage: Stage,
+  ): void {
+    if (this.specificHeat <= 0) return;
+    const atm = atmosphereBody?.atmosphere ?? null;
+    let heating = solarHeating(
+      SOLAR_CONSTANT, sunDist, sunlit, this.solarAbsorbAreaPerMass(sunDir));
+    if (atm !== null && this.bcInv > 0) {
+      const { density, speed } = airflow(
+        sub(this.state.r, atmosphereBody!.state.r),
+        sub(this.state.v, atmosphereBody!.state.v), atm);
+      heating += aeroHeating(
+        density, speed, this.bcInv, C.SG_CONST,
+        sphereNoseRadius(this.bcInv, C.DRAG_COEFFICIENT, this.bulkDensity),
+        (C.STAGNATION_AREA_FRACTION * this.bcInv) / C.DRAG_COEFFICIENT);
+    }
+    const cooling = radiativeCooling(
+      this.temperature, C.ENV_TEMP, this.emissivity, this.radiatingAreaPerMass,
+      this.specificHeat, dt);
+    this.temperature = stepTemperature(this.temperature, heating - cooling, this.specificHeat, dt)
+      + this.pendingSpecificHeat / this.specificHeat;
+    this.pendingSpecificHeat = 0;
+    if (this.temperature > this.maxTemperature) this.burnUp(activeStage);
+  }
+
+  // 同じ区間ぶん、位置と姿勢から決まる受動的な環境(放熱面の展開・電力など)を進める。既定
+  // では持たない。atmosphereBody は自分が浴びるただ1体の大気天体、sunlit は日照率、sunDir は
+  // 太陽方向の単位ベクトル。
+  protected stepEnvironment(
+    _dt: number, _atmosphereBody: CelestialBody | null, _sunlit: number, _sunDir: Vec3,
+  ): void {
   }
 
   // シミュレーションを正確に区切る必要がある次の絶対時刻。寿命など、既知の時刻で
@@ -277,75 +439,28 @@ export class GameEntity {
 
   // 予測列を破棄する。
   invalidatePrediction(): void {
-    this._predicted = null;
+    this._predictedArc = null;
   }
 
-  // 実状態との位置ずれが許容量を超えていたら予測列を破棄する。破棄したら true。
-  // attractors は simTime の重力源一覧。
-  discardPredictionIfDiverged(simTime: number, attractors: readonly Attractor[]): boolean {
-    if (this._predicted === null) return false;
-    const predictedState = this._predicted.at(simTime);
-    if (predictedState !== null
-      && len(sub(predictedState.r, this.state.r)) <= this.divergenceTolerance(attractors)) {
-      return false;
-    }
-    this.invalidatePrediction();
-    return true;
-  }
-
-  // 乖離判定の許容量 [m]。間引きが粗い列では at() の補間そのものが誤差を持つので、その誤差
-  // (間引き間隔の4乗に比例)まで許容量を広げる — 広げないと、実状態と一致している列を
-  // 毎フレーム破棄して予測が永久に完成しなくなる。粗さは列自身が記録している値から取る:
-  // 現在の表示期間から導くと、表示期間を短く切り替えた瞬間に、粗い間隔で積まれた既存の列に
-  // 対して閾値だけが縮み、正しい列を破棄し続けることになる。
-  // coarsening^4 は粗い列で発散するので、その場の局所軌道の長半径に対する一定割合で頭打ちに
-  // する — 距離を基準にすると、惑星間で最強重力源が恒星になった途端に上限が実質無くなる。
-  // 下限の PREDICT_RESET_DIST は、小さな天体のすぐ近くで割合の上限自体が補間誤差を下回り、
-  // 頭打ちが逆に永久破棄を招くのを防ぐ。
-  private divergenceTolerance(attractors: readonly Attractor[]): number {
-    const center = strongestAttractor(this.state.r, attractors);
-    const period = keplerPeriod(len(sub(this.state.r, center.state.r)), center.mu);
-    const span = isFinite(period) && period > 0 ? period : C.SHIP_HISTORY_DURATION;
-    const interval = this._predicted?.sampleInterval ?? 0;
-    const coarsening = Math.max(1, interval / (span / C.TRAJECTORY_SAMPLES_PER_REV));
-    const raw = C.PREDICT_SAMPLE_ERROR * coarsening ** 4;
-    // 局所軌道周期に対応する長半径(ケプラー第三法則)。中心天体の μ が取れなければ
-    // 中心からの距離で代用する。
-    const orbitScale = center.mu > 0 && isFinite(span)
-      ? (center.mu * (span / (2 * Math.PI)) ** 2) ** (1 / 3)
-      : len(sub(this.state.r, center.state.r));
-    return Math.max(C.PREDICT_RESET_DIST, Math.min(raw, orbitScale * DIVERGENCE_TOLERANCE_MAX_ORBIT_RATIO));
-  }
-
-  // 予測列の先端を、呼び出し側が確定させた重力源 attractors のもとで dt ぶん1ステップ伸ばす。
-  // horizon は simTime から先に予測する長さ [s]。extrapolationCenter は先端位置で最も強く引く
-  // 解析天体(外挿用、省略時 null)。伸ばせなかったら false。
-  stepPredicted(
-    attractors: readonly Attractor[], simTime: number, dt: number, horizon: number,
-    extrapolationCenter: Attractor | null = null,
-  ): boolean {
-    if (!this.predictsFuture) return false;
-    if (this._predicted === null) {
-      this._predicted = new DynamicTrajectory(this.actual.state);
-      this.truncated = false;
-    }
-    if (this.truncated) return false;
-    const p = this._predicted;
-
-    // 先端が既にホライズンへ達していたら、それ以上は伸ばさない。
-    if (p.state.t >= simTime + horizon) return false;
-
-    p.step(
-      dt, attractors, this.bcInv, this.srpCoeff, null,
-      this.sampleInterval(attractors, p.state, horizon), horizon, extrapolationCenter,
+  // 未来の予測列を保持する弧を返す(無ければ現在状態を起点に作る)。予測しない種別は null。
+  ensurePredictedArc(sources: FutureCelestialBodyProvider): PredictedArc | null {
+    if (!this.predictsFuture) return null;
+    this._predictedArc ??= new PredictedArc(
+      this.actual.state, sources, this.radius, this.bcInv, this.srpCoeff, /* keplerTail */ true,
+      /* consumable */ true,
     );
+    return this._predictedArc;
+  }
 
-    // 有限チェック
-    const { r, v } = p.state;
-    const finite = Number.isFinite(r.x) && Number.isFinite(r.y) && Number.isFinite(r.z)
-      && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
-    if (!finite || containingBody(r, attractors, 0) !== null || isBurnedUp(r, attractors, C.REENTRY_ALT)) this.truncated = true;
-
+  // 予測列が時刻 t を持っていれば、その状態を先端にして true。持っていなければ何もせず false。
+  // celestialBodies は履歴の間引き間隔を出すための重力源一覧。
+  private followPredicted(t: number, celestialBodies: readonly CelestialBody[]): boolean {
+    // 現行の予測弧は自由落下だけを表す。噴射中にそれを実状態へ消費すると、Player/RCSや
+    // ブースターの加速度を丸ごと失うため、推力がある区間は必ず実積分へ落とす。
+    if (this.thrust !== null) return false;
+    const s = this._predictedArc?.trajectory.at(t) ?? null;
+    if (s === null) return false;
+    this.actual.follow(s, this.historySampleInterval(celestialBodies), this.historyDuration);
     return true;
   }
 
@@ -354,15 +469,15 @@ export class GameEntity {
   // 答える(外挿もできなければ null)。
   displayState(t: number, ephemeris?: Ephemeris): KinematicState | null {
     if (t <= this.actual.state.t) return this.actual.at(t);
-    const predicted = this._predicted;
+    const predicted = this.predicted;
     const normal = predicted?.at(t) ?? null;
     if (normal !== null || ephemeris === undefined) return normal;
-    if (predicted === null || this.truncated || predicted.extrapolationCenter === null) return null;
+    if (predicted === null || this.predictionTruncated || predicted.extrapolationCenter === null) return null;
     return predicted.extrapolatedAt(t, ephemeris.stateOf(predicted.extrapolationCenter.id, t));
   }
 
   // displayTime の描画位置・姿勢を fo 経由でメッシュへ同期する。
-  sync(fo: FloatingOrigin, displayTime: number): void {
+  sync(fo: FloatingOrigin, displayTime: number, _viewer?: Viewpoint): void {
     const s = this.displayState(displayTime);
     if (s === null) {
       this.renderObject.visible = false;
@@ -373,22 +488,53 @@ export class GameEntity {
     this.renderObject.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
   }
 
-  // playerPos は「自機からの距離」で消える種別(弾)のために一律で渡す。attractors はその
-  // 時刻の重力源一覧(表面到達判定に使う)。
-  checkLoss(_dt: number, _simTime: number, _activeStage: Stage, _playerPos: Vec3, attractors: readonly Attractor[]): void {
-    if (!this.alive) return;
-    if (reachedBody(this.actual.prevState, this.state, attractors, 0) !== null
-      || isBurnedUp(this.state.r, attractors, C.DEBRIS_REENTRY_ALT)) this.alive = false;
+  // 種別ごとの自然死。大気による焼失は温度が決めるので(stepSimulation)、ここに残るのは
+  // 寿命や距離のような、状態から直接は決まらない事情だけ。playerPos は「自機からの距離」で
+  // 消える種別(弾)のために一律で渡す。atmosphereBodies はその時刻の大気天体一覧。
+  checkLoss(
+    _dt: number, _simTime: number, _activeStage: Stage, _playerPos: Vec3,
+    _atmosphereBodies: readonly CelestialBody[],
+  ): void {
   }
 
   // 自分がこの相手と接触しうるか。既定 true。両側が true を返したときだけ接触する。
-  contactsWith(_other: GameEntity | Attractor, _simTime: number): boolean {
+  contactsWith(_other: GameEntity, _simTime: number): boolean {
     return true;
   }
 
-  // この接触で自分に何が起きるかを記述する。相手に何が起きるかは書かない(相手の
-  // collideWith が書く)。既定は何もしない。
-  collideWith(_other: GameEntity | Attractor, _contact: Contact, _activeStage: Stage): void {}
+  // 球を broad phase として使った後に、種別固有のメッシュで狭域判定を行うためのフック。
+  // 既定のエンティティは球判定へフォールバックする。法線は「自分の形状から相手の球へ」
+  // 向き、depth は相手の球を自分の形状から押し出す距離 [m] を返す。
+  testCustomSphereCollision(
+    _sphereCenter: Vec3, _sphereRadius: number, _selfState: KinematicState,
+  ): SphereHit | null {
+    return null;
+  }
+
+  // 高速な球が区間の途中でカスタム形状を横切ったときの狭域 CCD フック。toi は
+  // prevState→selfState の割合で、既定の種別は null を返して球の掃引判定へ進む。
+  testCustomSweptSphereCollision(
+    _previousSphereCenter: Vec3, _sphereCenter: Vec3, _sphereRadius: number,
+    _previousSelfState: KinematicState, _selfState: KinematicState,
+  ): { readonly hit: SphereHit; readonly toi: number } | null {
+    return null;
+  }
+
+  // true の種別では、カスタム判定が null を返しても外接球へフォールバックしない。
+  // これを分けないと「リボンに触れていない空間」が球の当たり判定として残ってしまう。
+  usesCustomSphereCollision(): boolean {
+    return false;
+  }
+
+  // 個体どうしの接触で自分に何が起きるかを記述する。相手に何が起きるかは書かない(相手の
+  // collideWithEntity が書く)。既定は何も起きない。
+  collideWithEntity(_other: GameEntity, _contact: Contact, _activeStage: Stage): void {
+  }
+
+  // 天体の固体表面へ触れたときに自分に何が起きるか。既定は失われる。
+  collideWithCelestialBody(_body: CelestialBody, _contact: Contact, _activeStage: Stage): void {
+    this.alive = false;
+  }
 
   // 赤道交点マーカーを用意して返す。出す必要が生じた側が呼ぶ。
   ensureEquatorNodes(markerManager: MarkerManager): EquatorNodeMarkerPair {
@@ -400,20 +546,9 @@ export class GameEntity {
   dispose(): void {
     this.scene?.remove(this.renderObject);
     this.equatorNodes?.dispose();
-    this.marker?.dispose();
     this.hideOrbitLine();
     this.hidePredictedLine();
     this.hideActualLine();
-    this.renderObject.traverse((child) => {
-      const mesh = child as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      if (mesh.userData.ownsGeometry && mesh.geometry) {
-        mesh.geometry.dispose();
-      }
-      if (mesh.userData.ownsMaterial && mesh.material) {
-        if (Array.isArray(mesh.material)) mesh.material.forEach((m) => m.dispose());
-        else mesh.material.dispose();
-      }
-    });
+    disposeOwnedRenderResources(this.renderObject);
   }
 }

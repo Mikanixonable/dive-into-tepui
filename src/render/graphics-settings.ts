@@ -24,7 +24,7 @@ export type GraphicsSettingsData = {
   readonly rings: boolean;
   // 地球のオーロラ。
   readonly aurora: boolean;
-  // 地球の大気リム光。
+  // 地球の大気。
   readonly atmosphere: boolean;
   // マルチサンプリング。レンダラ生成時にしか渡せないので、変更は次回起動から効く。
   readonly antialias: boolean;
@@ -83,9 +83,6 @@ export class GraphicsSettings {
   private resolutionTarget: ResolutionTarget | null = null;
 
   get current(): GraphicsSettingsData { return this.data; }
-
-  // 見かけ直径へ詳細度の倍率を掛ける。LOD 段と球体表示の閾値の両方がこの1つの値を通る。
-  scaleApparentSize(apparentSizePx: number): number { return apparentSizePx * this.data.lodBias; }
 
   // 解像度の押し出し先を登録し、現在値を一度反映する。
   bindResolutionTarget(target: ResolutionTarget): void {

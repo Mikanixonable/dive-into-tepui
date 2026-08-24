@@ -5,15 +5,23 @@ import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { MouseDelta } from '../input/input';
 import { metersPerPixelAtDepth, ProjectionMode, Viewpoint } from '../../physics/projection';
-import { ReferenceFrame, FrameDir, frameDir, framePoint, toFrameDir, toInertialDir, toInertialPoint } from '../../physics/frame';
-import { OrbitingId, Attractor, strongestAttractor } from '../../physics/attractor';
+import { FrameAnchorSource, ReferenceFrame, FrameDir, FrameRotationSource, frameDir, framePoint, toFrameDir, toInertialDir } from '../../physics/frame';
+import { bodyAnchorSource, strongestAttractor } from '../../physics/celestial-body';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Quat, qFromAxisAngle, qFromForwardUp, qMul, qNormalize, qRotate } from '../../physics/attitude';
 import { ECI_POLE, ECL_POLE_ECI, ECL_VERNAL } from '../../physics/ecliptic';
 import { MapPickable } from '../map-pickable';
 import { bodyDef } from '../../physics/solar-system';
-import { FocusTarget } from './focus-target';
-import { MapCameraSaveData } from '../save-data';
+import { FocusTarget, resolveFocusTarget } from './focus-target';
+import { FrameRotationSourceSaveData, MapCameraSaveData } from '../save-data';
+
+// セーブデータの rotatingWith を FrameRotationSource へ変換する。旧セーブは公転対象の id を
+// 文字列(または回さないなら null)でそのまま持っていたので、その形は公転として受ける。
+function rotationSourceFromSaveData(saved: FrameRotationSourceSaveData | string | null): FrameRotationSource | null {
+  if (saved === null) return null;
+  if (typeof saved === 'string') return { kind: 'revolution', id: saved };
+  return { kind: saved.kind, id: saved.id };
+}
 
 const WORLD_UP = v3(0, 1, 0);
 const OVERVIEW_CAMERA_FOV = 50;
@@ -70,9 +78,9 @@ export class MapCamera {
   // カメラ視点を固定する座標系。
   private _cameraFrame: ReferenceFrame;
   private displayTime = 0; // set cameraFrame の座標変換に使う。線・メッシュと同じ表示時刻に揃える。
-  // 最新の update 呼び出しが受け取った重力源一覧。reset/resetPan/cameraFrame setter は
+  // 最新の update 呼び出しが受け取った FrameAnchorSource。reset/resetPan/cameraFrame setter は
   // フレームの外(入力ハンドラ)から呼ばれるため、update と同じ値をここから読む。
-  private attractors: readonly Attractor[] = [];
+  private frameAnchors: FrameAnchorSource = bodyAnchorSource([]);
   private _focus: FocusTarget;
   private missingFocusFrames = 0;
   private lastResolvedFocus = v3();
@@ -116,7 +124,7 @@ export class MapCamera {
       ? saved.referencePlane : 'equator';
     this.fovDeg = this.clampFov(saved?.fovDeg ?? OVERVIEW_CAMERA_FOV);
     if (saved) {
-      this._cameraFrame = ephemeris.frameOf(ephemeris.originId, saved.rotatingWith);
+      this._cameraFrame = ephemeris.frameOf(ephemeris.originId, rotationSourceFromSaveData(saved.rotatingWith));
       this.offset_r = frameDir(saved.offset.x, saved.offset.y, saved.offset.z);
       this.pan_r = frameDir(saved.pan.x, saved.pan.y, saved.pan.z);
       this.up_r = frameDir(saved.up.x, saved.up.y, saved.up.z);
@@ -124,12 +132,12 @@ export class MapCamera {
         ? { kind: 'object', id: saved.focus.id }
         : {
           kind: 'point',
-          frame: ephemeris.frameOf(saved.focus.center, saved.focus.rotatingWith),
+          frame: ephemeris.frameOf(saved.focus.center, rotationSourceFromSaveData(saved.focus.rotatingWith)),
           point: framePoint(saved.focus.point.x, saved.focus.point.y, saved.focus.point.z),
         };
     } else {
       this._cameraFrame = ephemeris.inertialFrame;
-      const tf0 = ephemeris.frameTransformAt(this._cameraFrame, 0, []);
+      const tf0 = ephemeris.frameTransformAt(this._cameraFrame, 0, bodyAnchorSource([]));
       this.offset_r = toFrameDir(tf0, sphericalOffset(INIT_YAW, INIT_PITCH, INIT_DIST));
       this.pan_r = toFrameDir(tf0, v3());
       this.up_r = toFrameDir(tf0, WORLD_UP);
@@ -167,9 +175,9 @@ export class MapCamera {
   // カメラの位置に応じて、ロールリセットおよびオイラー極軸の基準ベクトル(ECI 座標系)を返す。
   // カメラが天体近傍(1,000,000 km 以内)にある場合は最寄り天体の自転軸、広域にある場合は黄道面法線。
   private referenceUpAxisEci(): Vec3 {
-    if (this.attractors.length > 0) {
+    if (this.frameAnchors.bodies.length > 0) {
       const cameraPos = this.viewpoint.position;
-      const nearest = strongestAttractor(cameraPos, this.attractors);
+      const nearest = strongestAttractor(cameraPos, this.frameAnchors.bodies);
       const distToBody = len(sub(cameraPos, nearest.state.r));
       const PLANETARY_SCALE_THRESHOLD = 1e9; // 1,000,000 km in meters
 
@@ -183,7 +191,7 @@ export class MapCamera {
   // Euler 操作の極はカメラ座標系の +Y ではなく、カメラ位置に応じた自転軸または黄道面法線にする。
   // 座標系が慣性系以外でも、基準軸を同じ座標系へ変換してから使う。
   private eulerPolarAxis(): Vec3 {
-    const tf = this.ephemeris.frameTransformAt(this._cameraFrame, this.displayTime, this.attractors);
+    const tf = this.ephemeris.frameTransformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
     return norm(frameDirVector(toFrameDir(tf, this.referenceUpAxisEci())));
   }
 
@@ -318,7 +326,7 @@ export class MapCamera {
   }
 
   public setReferenceView(view: CameraReferenceView): void {
-    const tf = this.ephemeris.frameTransformAt(this._cameraFrame, this.displayTime, this.attractors);
+    const tf = this.ephemeris.frameTransformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
     const normal = norm(frameDirVector(toFrameDir(tf, this.framePlaneNormal(this._referencePlane))));
     const currentOffset = qRotate(this.rotationQ, FRAME_FORWARD);
     let offset: Vec3;
@@ -341,7 +349,7 @@ export class MapCamera {
   }
 
   // CameraSystem.sync が読む近クリップ距離。dist に比例させることで、どのズーム段でも
-  // 注視点を切り落とさずに深度分解能を保つ(OVERVIEW_CAMERA_NEAR_RATIO 参照)。
+  // 注視点を切り落とさない(OVERVIEW_CAMERA_NEAR_RATIO 参照)。
   // near クリップは光軸からの角度 θ の点を R·cosθ で切り詰める平面なので、画面対角の
   // 半視野角(fov・aspect から求まる)での R·cosθ_diag を超えないようクランプし、
   // 星球シェル・天球グリッドの周辺・四隅がクリップされないようにする。
@@ -368,7 +376,7 @@ export class MapCamera {
 
   // カメラのロールのみを初期状態(天体近傍: 自転軸、広域: 黄道面法線)に戻す。
   reset(): void {
-    const tf = this.ephemeris.frameTransformAt(this._cameraFrame, this.displayTime, this.attractors);
+    const tf = this.ephemeris.frameTransformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
     const offset = qRotate(this.rotationQ, FRAME_FORWARD);
     const upAxisEci = this.referenceUpAxisEci();
     const up = norm(frameDirVector(toFrameDir(tf, upAxisEci)));
@@ -379,40 +387,23 @@ export class MapCamera {
 
   // パン変位をゼロに戻す。
   resetPan(): void {
-    this.pan_r = toFrameDir(this.ephemeris.frameTransformAt(this._cameraFrame, this.displayTime, this.attractors), v3());
+    this.pan_r = toFrameDir(this.ephemeris.frameTransformAt(this._cameraFrame, this.displayTime, this.frameAnchors), v3());
   }
 
   // 候補が一時的に欠けたフレームでは直前の注視点を保ち、連続して消えた対象は ECI 原点へ戻す。
   // point は座標系が回っていれば ECI 座標が動くため、毎フレーム焼き直す。
-  private resolveFocus(candidates: readonly MapPickable[], displayTime: number, attractors: readonly Attractor[]): Vec3 {
-    const focus = this._focus;
-    if (focus.kind === 'point') {
-      const tf = this.ephemeris.frameTransformAt(focus.frame, displayTime, attractors);
-      this.lastResolvedFocus = toInertialPoint(tf, focus.point);
-      return this.lastResolvedFocus;
-    }
-    if (focus.id === this.ephemeris.originId) {
-      this.missingFocusFrames = 0;
-      this.lastResolvedFocus = v3();
-      return this.lastResolvedFocus;
-    }
-    if (focus.id in this.ephemeris.registry) {
-      this.missingFocusFrames = 0;
-      this.lastResolvedFocus = this.ephemeris.positionOf(focus.id, displayTime);
-      return this.lastResolvedFocus;
-    }
-    const candidate = candidates.find((c) => c.id === focus.id);
-    if (candidate) {
-      this.missingFocusFrames = 0;
-      this.lastResolvedFocus = candidate.pos;
-      return candidate.pos;
-    }
-    this.missingFocusFrames++;
-    if (this.missingFocusFrames >= 2) {
+  private resolveFocus(candidates: readonly MapPickable[], displayTime: number, frameAnchors: FrameAnchorSource): Vec3 {
+    const result = resolveFocusTarget(this._focus, candidates, displayTime, frameAnchors, this.ephemeris, {
+      missingFocusFrames: this.missingFocusFrames,
+      lastResolvedFocus: this.lastResolvedFocus,
+    });
+    this.missingFocusFrames = result.missingFocusFrames;
+    this.lastResolvedFocus = result.lastResolvedFocus;
+    if (result.fallToOrigin) {
       this.setFocusTarget({ kind: 'object', id: this.ephemeris.originId });
       return v3();
     }
-    return this.lastResolvedFocus;
+    return result.pos;
   }
 
   // 現在視点を固定している座標系を返す。
@@ -428,15 +419,15 @@ export class MapCamera {
   // カメラ視点の回転対象を切り替える。中心は常に ephemeris.originId — offset_r/pan_r/up_r は
   // 方向(FrameDir)しか持たず原点移動の影響を受けないので、中心をどれにしても視点は変わらない。
   // 切替の瞬間にカメラ視点(ECI)を跳ばせないよう、現在の座標系から新しい座標系へ変換し直す。
-  setCameraRotation(rotatingWith: OrbitingId | null): void {
+  setCameraRotation(rotatingWith: FrameRotationSource | null): void {
     const frame = this.ephemeris.frameOf(this.ephemeris.originId, rotatingWith);
     const from = this._cameraFrame;
     if (frame === from) return;
-    const tfFrom = this.ephemeris.frameTransformAt(from, this.displayTime, this.attractors);
+    const tfFrom = this.ephemeris.frameTransformAt(from, this.displayTime, this.frameAnchors);
     const offEci = toInertialDir(tfFrom, this.offset_r);
     const panEci = toInertialDir(tfFrom, this.pan_r);
     const upEci = toInertialDir(tfFrom, this.up_r);
-    const tfTo = this.ephemeris.frameTransformAt(frame, this.displayTime, this.attractors);
+    const tfTo = this.ephemeris.frameTransformAt(frame, this.displayTime, this.frameAnchors);
     this.offset_r = toFrameDir(tfTo, offEci);
     this.pan_r = toFrameDir(tfTo, panEci);
     this.up_r = toFrameDir(tfTo, upEci);
@@ -455,12 +446,12 @@ export class MapCamera {
     dt: number,
     displayTime: number,
     candidates: readonly MapPickable[],
-    attractors: readonly Attractor[],
+    frameAnchors: FrameAnchorSource,
   ): void {
     this.displayTime = displayTime;
-    this.attractors = attractors;
-    const focus = this.resolveFocus(candidates, displayTime, attractors);
-    const tf = this.ephemeris.frameTransformAt(this._cameraFrame, displayTime, attractors);
+    this.frameAnchors = frameAnchors;
+    const focus = this.resolveFocus(candidates, displayTime, frameAnchors);
+    const tf = this.ephemeris.frameTransformAt(this._cameraFrame, displayTime, frameAnchors);
     let offFrame: Vec3;
     let upFrame: Vec3;
     if (this.rotationMode === 'euler') {
