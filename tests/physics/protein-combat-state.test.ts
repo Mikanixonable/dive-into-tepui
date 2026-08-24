@@ -6,7 +6,6 @@ import rawMyoglobinBackbone from '../../src/assets/models/myoglobin1mbnBackbone.
 import rawMyoglobinStructure from '../../src/assets/models/myoglobin1mbnStructure.json';
 import { ProteinCombatState } from '../../src/game/protein/protein-combat-state';
 import type { ProteinAssetDefinition } from '../../src/game/protein/protein-schema';
-import { proteinMotionAt, proteinMotionSeedFor } from '../../src/game/protein/protein-motion';
 import { collisionDamageFraction } from '../../src/game/game-entity/contact-damage';
 import * as THREE from 'three/webgpu';
 import { ProteinRuntime } from '../../src/game/protein/protein-runtime';
@@ -69,6 +68,19 @@ export function register(): void {
     assert.equal(proteinAssetFor('pdb-5i4r')?.id, asset.id);
     assert.equal(proteinAssetFor('pdb-1mbn-myoglobin')?.id, myoglobinAsset.id);
     assert.equal(proteinAssetFor('missing-protein'), null);
+  });
+
+  test('protein assets: every registered enemy uses component-bound Brownian modes', () => {
+    for (const id of PROTEIN_ASSET_IDS) {
+      const candidate = proteinAssetFor(id)!;
+      const componentIds = new Set(candidate.components.map((component) => component.id));
+      assert.equal(candidate.motion.model, 'overdamped-normal-modes');
+      assert.ok(candidate.motion.modes.length > 0);
+      for (const site of candidate.sites) assert.ok(componentIds.has(site.componentId));
+      for (const mode of candidate.motion.modes) {
+        assert.deepEqual(new Set(mode.components.map((component) => component.componentId)), componentIds);
+      }
+    }
   });
 
   test('myoglobin: heme ligand uses its iron ion as the sole attack center', () => {
@@ -181,15 +193,6 @@ export function register(): void {
     assert.equal(state.modificationState('phosphate-1'), 'empty');
   });
 
-  test('protein motion: seed is stable for the same enemy id and differs for another id', () => {
-    assert.equal(proteinMotionSeedFor('enemy-42'), proteinMotionSeedFor('enemy-42'));
-    assert.notEqual(proteinMotionSeedFor('enemy-42'), proteinMotionSeedFor('enemy-43'));
-    assert.deepEqual(
-      proteinMotionAt(12, asset.motion, proteinMotionSeedFor('enemy-42')),
-      proteinMotionAt(12, asset.motion, proteinMotionSeedFor('enemy-42')),
-    );
-  });
-
   test('protein asset: component chains follow the RCSB entity mapping', () => {
     const byEntity = new Map(asset.components.flatMap((component) => component.entities.map((entity) => [entity, component] as const)));
     assert.deepEqual(byEntity.get(1)?.chains, ['A', 'E']);
@@ -204,8 +207,20 @@ export function register(): void {
 
   test('protein runtime: visual motion preserves the physics root pose and cycles attack origins', () => {
     const root = new THREE.Group();
+    root.position.set(11, -7, 3);
     root.rotation.z = 0.47;
+    root.rotation.x = -0.21;
     root.scale.setScalar(3);
+    const tagged = new THREE.Group();
+    tagged.userData.proteinComponent = 'A';
+    tagged.position.set(1.25, -2.5, 0.75);
+    tagged.rotation.set(0.12, -0.18, 0.24);
+    root.add(tagged);
+    const baseChildPosition = tagged.position.clone();
+    const baseChildQuaternion = tagged.quaternion.clone();
+    const baseRootPosition = root.position.clone();
+    const baseRootQuaternion = root.quaternion.clone();
+    const baseRootScale = root.scale.clone();
     const runtime = new ProteinRuntime(root, asset, undefined, undefined, 'enemy-42');
     const active = asset.sites.find((entry) => entry.id === 'primary-active-site')!;
     const origin = v3(100, 200, 300);
@@ -228,7 +243,28 @@ export function register(): void {
       y: active.position[1] * asset.coordinateScale,
       z: active.position[2] * asset.coordinateScale,
     });
-    runtime.updateVisual(1);
+    runtime.updateVisual(12.5);
+    const firstDisplacement = tagged.position.clone().sub(baseChildPosition);
+    assert.ok(firstDisplacement.length() > 1e-9);
+    assert.deepEqual(root.position, baseRootPosition);
+    assert.ok(root.quaternion.equals(baseRootQuaternion));
+    assert.deepEqual(root.scale, baseRootScale);
+    assert.ok(tagged.quaternion.equals(baseChildQuaternion));
+    const marker = root.children.find((child) => child.userData.proteinSiteId === 'complex-interface');
+    assert.ok(marker);
+    const firstMarkerPosition = marker.position.clone();
+    runtime.updateVisual(100);
+    assert.ok(marker.position.distanceTo(firstMarkerPosition) > 1e-9);
+
+    runtime.clearVisuals();
+    assert.deepEqual(tagged.position, baseChildPosition);
+    assert.ok(tagged.quaternion.equals(baseChildQuaternion));
+    assert.deepEqual(root.position, baseRootPosition);
+    assert.ok(root.quaternion.equals(baseRootQuaternion));
+    assert.deepEqual(root.scale, baseRootScale);
+    runtime.rebuildVisuals();
+    runtime.updateVisual(12.5);
+    assert.ok(tagged.position.clone().sub(baseChildPosition).distanceTo(firstDisplacement) < 1e-12);
     assert.equal(root.rotation.z, 0.47);
     runtime.dispose();
   });
