@@ -382,7 +382,6 @@ function addRibbonMesh(
     mesh.userData.proteinTransitionFromVertices = geometry.userData.proteinTransitionFromVertices;
     mesh.userData.proteinTransitionToVertices = geometry.userData.proteinTransitionToVertices;
   }
-  mesh.userData.proteinShadowReceiver = true;
   mesh.userData.ownsGeometry = true;
   mesh.userData.ownsMaterial = true;
   group.add(mesh);
