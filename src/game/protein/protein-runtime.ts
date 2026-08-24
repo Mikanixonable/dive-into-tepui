@@ -55,6 +55,8 @@ export class ProteinRuntime {
   private uploadedLod: ProteinMotionLod | null = null;
   private uploadedSampleTime = Number.NaN;
   private uploadedPhase: ProteinPhase | null = null;
+  private lastCpuMs = 0;
+  private lastUploadBytes = 0;
 
   constructor(
     root: THREE.Object3D,
@@ -80,6 +82,8 @@ export class ProteinRuntime {
   get asset(): ProteinAssetDefinition { return this.combat.asset; }
   get hudSnapshot(): ProteinHudSnapshot { return this.combat.hudSnapshot(); }
   get lod(): ProteinMotionLod { return this.currentLod; }
+  get cpuMs(): number { return this.lastCpuMs; }
+  get uploadBytes(): number { return this.lastUploadBytes; }
 
   clearVisuals(): void {
     for (const child of [...this.root.children]) {
@@ -162,6 +166,7 @@ export class ProteinRuntime {
 
   /** Update deterministic OU coefficients and upload the shared GPU residue buffer. */
   updateVisual(displayTime: number, projectedDiameterPx = Number.POSITIVE_INFINITY): void {
+    const cpuStart = performance.now();
     this.currentLod = proteinMotionLodForProjectedSize(projectedDiameterPx, this.currentLod);
     const offsets = this.controller.update(displayTime, this.currentLod, this.combat.phase);
     if (this.uploadedLod !== this.currentLod || this.uploadedSampleTime !== this.controller.sampleTime
@@ -170,7 +175,11 @@ export class ProteinRuntime {
       this.uploadedLod = this.currentLod;
       this.uploadedSampleTime = this.controller.sampleTime;
       this.uploadedPhase = this.combat.phase;
+      this.lastUploadBytes = offsets.byteLength;
+    } else {
+      this.lastUploadBytes = 0;
     }
+    this.lastCpuMs = performance.now() - cpuStart;
     const scale = this.asset.coordinateScale;
     const state = this.combat;
     for (const site of this.asset.sites) {
