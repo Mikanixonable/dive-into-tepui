@@ -215,26 +215,27 @@ def solve_modes(hessian: coo_matrix, centers: np.ndarray, mode_count: int) -> tu
     return positive_values, positive_vectors
 
 
-def calibrated_amplitudes(values: np.ndarray, vectors: np.ndarray, chains: list[str], b_factors: np.ndarray) -> tuple[np.ndarray, str]:
-    raw_variance = 1.0 / values
-    per_residue_vectors = vectors.T.reshape((len(values), -1, 3)).transpose(1, 0, 2)
-    predicted_msf = np.sum((per_residue_vectors ** 2) * raw_variance[None, :, None], axis=(1, 2))
-    valid = np.isfinite(b_factors) & (b_factors > 0.0)
-    observed_b = np.zeros_like(b_factors)
-    for chain in sorted(set(chains)):
-        indexes = np.array([index for index, value in enumerate(chains) if value == chain and valid[index]], dtype=np.int32)
-        if len(indexes) == 0:
-            continue
-        values_for_chain = b_factors[indexes]
-        low, high = np.percentile(values_for_chain, [5.0, 95.0])
-        observed_b[indexes] = np.clip(values_for_chain, low, high)
-    observed_msf = 3.0 * observed_b / (8.0 * math.pi * math.pi)
-    usable = np.isfinite(observed_msf) & (observed_msf > 0.0) & np.isfinite(predicted_msf) & (predicted_msf > 0.0)
-    if not np.any(usable):
-        scale = (0.25 * 0.25) * values[0]
-        return np.sqrt(scale / values), "uncalibrated-display"
-    scale = float(np.median(observed_msf[usable]) / np.median(predicted_msf[usable]))
-    return np.sqrt(scale / values), "b-factor-relative"
+def calibrated_amplitudes(values: np.ndarray, vectors: np.ndarray, chains: list[str], b_factors: np.ndarray, force_uncalibrated: bool) -> tuple[np.ndarray, str]:
+    if not force_uncalibrated:
+        raw_variance = 1.0 / values
+        per_residue_vectors = vectors.T.reshape((len(values), -1, 3)).transpose(1, 0, 2)
+        predicted_msf = np.sum((per_residue_vectors ** 2) * raw_variance[None, :, None], axis=(1, 2))
+        valid = np.isfinite(b_factors) & (b_factors > 0.0)
+        observed_b = np.zeros_like(b_factors)
+        for chain in sorted(set(chains)):
+            indexes = np.array([index for index, value in enumerate(chains) if value == chain and valid[index]], dtype=np.int32)
+            if len(indexes) == 0:
+                continue
+            values_for_chain = b_factors[indexes]
+            low, high = np.percentile(values_for_chain, [5.0, 95.0])
+            observed_b[indexes] = np.clip(values_for_chain, low, high)
+        observed_msf = 3.0 * observed_b / (8.0 * math.pi * math.pi)
+        usable = np.isfinite(observed_msf) & (observed_msf > 0.0) & np.isfinite(predicted_msf) & (predicted_msf > 0.0)
+        if np.any(usable):
+            scale = float(np.median(observed_msf[usable]) / np.median(predicted_msf[usable]))
+            return np.sqrt(scale / values), "b-factor-relative"
+    scale = (0.25 * 0.25) * values[0]
+    return np.sqrt(scale / values), "uncalibrated-display"
 
 
 def display_rate(index: int, mode_count: int) -> float:
@@ -301,7 +302,10 @@ def generate(config_path: pathlib.Path, output_path: pathlib.Path, check: bool, 
     centers, chains, residue_numbers, b_factors = residue_data(backbone, structure)
     hessian, _ = build_hessian(centers, cutoff)
     eigenvalues, vectors = solve_modes(hessian, centers, mode_count)
-    physical_rms, calibration = calibrated_amplitudes(eigenvalues, vectors, chains, b_factors)
+    # RCSB B-factor は保持したうえで、config が明示すれば物理較正を使わず表示用振幅へ切り替える
+    # (大型複合体では末端の低周波モードで較正振幅が非物理的に発散することがあるため)。
+    force_uncalibrated = config.get("amplitudeCalibration") == "uncalibrated-display"
+    physical_rms, calibration = calibrated_amplitudes(eigenvalues, vectors, chains, b_factors, force_uncalibrated)
     bindings = binding_data(config, semantic, structure, centers, chains)
     structure_hash = structure.get("generator", {}).get("contentHash")
     backbone_hash = backbone.get("contentHash")
