@@ -248,9 +248,15 @@
 - Motion は表示専用であり、敵の軌道状態、衝突メッシュ、命中判定、ゲームプレイ用の半径・形状を変更しない。
   active site marker と攻撃原点は表示上の残基変位へ追従するが、`closestSite` による命中判定は静的アンカーを使う。
   表示モード切替や render object rebuild では既存 Controller と binding を再利用し、破棄時に GPU binding を解放する。
-- 詳細度は見かけの大きさを直接求められない同期経路ではカメラとの距離を半径で正規化して決める。near=24、
-  medium=12、far=4、marker=0 モードを使い、medium/far は Controller の決定的な更新間引きを行う。marker は
-  残基バッファをゼロにして、遠方で不要な微細変形を計算しない。
+- 詳細度はカメラ視点の画面投影直径 [px] で決める: near は 160px 以上で 24 モード、medium は 40〜160px で
+  12 モード、far は 8〜40px で 4 モード、marker は 8px 未満または視点が求まらない場合で 0 モード。medium/far
+  は Controller の決定的な更新間引きを行う。marker は残基バッファをゼロにして、遠方で不要な微細変形を計算
+  しない。各閾値には ±15% のヒステリシスがあり、閾値ちょうどで LOD が毎フレーム往復しない。LOD が切り替わ
+  ると、Controller は切替直前の変位から新 LOD の目標変位へ 0.25 秒かけて表示時刻ベースで線形にブレンドし、
+  形状が瞬間移動しない。
+- LOD 判定に使う視点は `entities.sync` へ渡る `Viewpoint`(位置・注視点・垂直画角)であり、ズーム視点(照準
+  ズーム)で画角が変わればタンパク質敵の見かけの大きさも変わり、LOD もそれに応じて変わる。視点を持たない
+  呼び出し(headless なテスト・Render Lab の直接呼び出し等)は near として扱う。
 - 頂点法線は毎frame再計算せず、表示gainを `(0, 1]` に制限した小変位近似として静的法線を使う。Motion Assetは
   B-factorが有効な場合だけ `physicalRmsAngstrom` を名乗り、1MBNのように入力B-factorが全て0の場合は
   `uncalibrated-display` / `displayRmsAngstrom` として、任意の表示振幅を物理較正値とは扱わない。

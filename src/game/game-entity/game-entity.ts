@@ -13,6 +13,7 @@ import { sunlitFactor } from '../../physics/shadow';
 import { SOLAR_CONSTANT } from '../../physics/srp';
 import { ApsisTrack } from '../../physics/trajectory-features';
 import { Vec3, len, scale, sub, v3 } from '../../physics/vec3';
+import type { Viewpoint } from '../../physics/projection';
 import type { SphereHit } from '../../physics/base-collision';
 import { FloatingOrigin } from '../floating-origin';
 import { OrbitLine } from '../orbit-line';
@@ -476,7 +477,7 @@ export class GameEntity {
   }
 
   // displayTime の描画位置・姿勢を fo 経由でメッシュへ同期する。
-  sync(fo: FloatingOrigin, displayTime: number, _viewerPosition?: Vec3): void {
+  sync(fo: FloatingOrigin, displayTime: number, _viewer?: Viewpoint): void {
     const s = this.displayState(displayTime);
     if (s === null) {
       this.renderObject.visible = false;
