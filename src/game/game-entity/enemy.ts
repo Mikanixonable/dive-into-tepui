@@ -284,10 +284,6 @@ export class Enemy extends Ship {
 
   private handleProteinDamage(result: ProteinDamageResult, impactPoint: Vec3): void {
     if (!this.proteinRuntime) return;
-    if (result.siteDisabled && this.proteinRuntime.charging) {
-      this.proteinRuntime.finishCharge();
-      this.proteinChargeStarted = undefined;
-    }
     if (result.siteDisabled || result.phaseChanged) {
       this._fx.spawnProteinStateFlash(kinematicState(this.state.t, impactPoint, this.state.v), result.phaseChanged ? result.phase : 'site-disabled');
     }
@@ -368,10 +364,7 @@ export class Enemy extends Ship {
     this.lastBehaviorSim = simTime;
     if (!simSpeed.canShipAct) return;
     if (!this.fireEnabled) return;
-    if (this.proteinRuntime) {
-      this.behaveProtein(behaviorDt, simTime, player, entities, ephemeris);
-      return;
-    }
+    if (this.proteinRuntime && !this.proteinRuntime.combat.hasAttackSite()) return;
     const dist = len(sub(player.state.r, this.state.r));
     if (!(dist < C.STAGE00_MAX_RANGE && dist > C.ENEMY_AI_MIN_RANGE)) return;
 
@@ -399,38 +392,6 @@ export class Enemy extends Ship {
     this.firePlasma(simTime, player, entities, ephemeris);
   }
 
-  private behaveProtein(behaviorDt: number, simTime: number, player: Player, entities: EntityManager, ephemeris: Ephemeris): void {
-    const runtime = this.proteinRuntime;
-    if (!runtime) return;
-    if (!runtime.combat.isActionEnabled('plasma-burst')) {
-      if (runtime.charging) runtime.finishCharge();
-      this.proteinChargeStarted = undefined;
-      return;
-    }
-    const dist = len(sub(player.state.r, this.state.r));
-    if (!(dist < C.STAGE00_MAX_RANGE && dist > C.ENEMY_AI_MIN_RANGE)) return;
-    const cooldown = C.ENEMY_FIRE_INTERVAL * 2.1 / runtime.combat.effectMultiplier('phosphate-1', 'fireRateMultiplier');
-    if (this.lastFireSim === undefined) this.lastFireSim = simTime - Math.random() * cooldown;
-    if (runtime.charging) {
-      const start = this.proteinChargeStarted ?? simTime;
-      const progress = Math.min(1, Math.max(0, (simTime - start) / 0.65));
-      runtime.setCharge(progress);
-      if (progress < 1) return;
-      this.firePlasma(simTime, player, entities, ephemeris, runtime.activeSiteWorldPosition(this.state.r, this.att.q));
-      runtime.finishCharge();
-      this.proteinChargeStarted = undefined;
-      this.lastFireSim = simTime;
-      return;
-    }
-    if (simTime - this.lastFireSim <= cooldown) return;
-    if (!runtime.beginCharge()) return;
-    this.proteinChargeStarted = simTime;
-    runtime.setCharge(0.02);
-    void behaviorDt;
-  }
-
-  private proteinChargeStarted?: number;
-
   // enemies のうち、自分と同じ accent でバースト射撃中の個体数を数える。
   private attackingCountInGroup(enemies: readonly Enemy[]): number {
     let n = 0;
@@ -441,8 +402,10 @@ export class Enemy extends Ship {
   }
 
   // player へ向けた見越し射撃でプラズマ弾を1発生成し、entities に追加する。
-  private firePlasma(simTime: number, player: Player, entities: EntityManager, ephemeris: Ephemeris, origin = this.state.r): void {
-    const r = origin;
+  private firePlasma(simTime: number, player: Player, entities: EntityManager, ephemeris: Ephemeris, origin?: Vec3): void {
+    const r = origin ?? (this.proteinRuntime
+      ? this.proteinRuntime.nextAttackSiteWorldPosition(this.state.r, this.att.q)
+      : this.state.r);
     const v = this.state.v;
     const toPlayer = sub(player.state.r, r);
     const relV = sub(player.state.v, v);

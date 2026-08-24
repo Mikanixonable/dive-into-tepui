@@ -93,7 +93,8 @@ export class TargetPanel {
         const rows = target.protein.sites.map((site) => {
           const ratio = site.maxHp > 0 ? Math.max(0, Math.min(1, site.hp / site.maxHp)) * 100 : 0;
           const status = site.disabled ? '停止' : `${Math.floor(site.hp)} / ${site.maxHp}`;
-          return `<div class="protein-site-row"><span>${site.label}</span><span class="protein-site-meter"><i style="width:${ratio}%"></i></span><output>${status}</output></div>`;
+          const glyph = site.disabled ? '▽' : site.attackable ? '▲' : '△';
+          return `<div class="protein-site-row${site.disabled ? ' disabled' : ''}" style="--protein-site-hp:${(ratio / 100).toFixed(3)}"><span class="protein-site-glyph" aria-hidden="true">${glyph}</span><span class="protein-site-label">${site.label}</span><span class="protein-site-meter"><i style="width:${ratio}%"></i></span><output>${status}</output></div>`;
         }).join('');
         const siteRows = this.els.get('tgt-protein-sites');
         if (siteRows && siteRows.innerHTML !== rows) siteRows.innerHTML = rows;

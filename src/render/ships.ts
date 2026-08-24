@@ -522,6 +522,7 @@ function buildPdb5i4rMolecularShip(): THREE.Group {
   bonds.userData.ownsMaterial = true;
   group.add(bonds);
   group.scale.setScalar(scale);
+  markLitOpaque(group);
   return group;
 }
 
@@ -537,6 +538,12 @@ function surfaceColor(value: number, mode: 'surface-charge' | 'hydrophobicity', 
 
 function buildPdb5i4rSilhouetteShip(colorMode: 'surface-charge' | 'hydrophobicity'): THREE.Group {
   const group = new THREE.Group();
+  // Keep the familiar cartoon representation inside the solvent-excluded shell. The child
+  // builder normally applies the game scale itself; the parent owns the scale here so the
+  // shell and ribbon remain exactly coincident.
+  const ribbon = buildPdb5i4rRibbonShip('chain');
+  ribbon.scale.setScalar(1);
+  group.add(ribbon);
   const surface = PDB5I4R_DISPLAY_ASSET.surface.mesh;
   const values = colorMode === 'surface-charge' ? surface.charge : surface.hydrophobicity;
   // The offline asset stores both fields as signed int8-compatible values so the
@@ -577,14 +584,38 @@ function buildPdb5i4rSilhouetteShip(colorMode: 'surface-charge' | 'hydrophobicit
     geometry.setIndex(indices);
     geometry.computeVertexNormals();
     const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({
-      color: 0xffffff, vertexColors: true, roughness: 0.24, metalness: 0.3, side: THREE.DoubleSide,
+      color: 0xffffff,
+      vertexColors: true,
+      roughness: 0.32,
+      metalness: 0.08,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.28,
+      depthWrite: false,
     }));
+    mesh.renderOrder = 2;
     mesh.userData.proteinComponent = component;
     mesh.userData.ownsGeometry = true;
     mesh.userData.ownsMaterial = true;
     group.add(mesh);
+    // Back faces form a restrained inner occlusion layer. It is rendered after the
+    // translucent front shell so the shell darkens the ribbon and molecular markers
+    // behind it instead of looking like a flat, uniformly tinted bubble.
+    const innerShadow = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
+      color: 0x07101d,
+      transparent: true,
+      opacity: 0.22,
+      side: THREE.BackSide,
+      depthWrite: false,
+    }));
+    innerShadow.renderOrder = 3;
+    innerShadow.userData.proteinComponent = component;
+    innerShadow.userData.ownsGeometry = false;
+    innerShadow.userData.ownsMaterial = true;
+    group.add(innerShadow);
   }
   group.scale.setScalar(PDB5I4R_COORDINATE_SCALE);
+  markLitOpaque(group);
   return group;
 }
 
@@ -626,6 +657,7 @@ function buildPdb5i4rRibbonShip(colorMode: ProteinRibbonColorMode): THREE.Group 
     group.add(mesh);
   }
   group.scale.setScalar(PDB5I4R_COORDINATE_SCALE);
+  markLitOpaque(group);
   return group;
 }
 
