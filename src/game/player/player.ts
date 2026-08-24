@@ -218,6 +218,16 @@ export class Player extends Ship {
   get reloadTimer(): number { return this.fire.cooldown; }
   get isFiring(): boolean { return this.fire.isFiring; }
 
+  // 機首(+Z)に固定された単一ドッキングポート。ポートは姿勢から毎回導出するため、
+  // セーブデータへ新しい状態を追加しない。
+  getPortWorldPos(): Vec3 {
+    return add(this.state.r, qRotate(this.att.q, C.SHIP_PORT_OFFSET));
+  }
+
+  getPortWorldNormal(): Vec3 {
+    return qRotate(this.att.q, v3(0, 0, 1));
+  }
+
   // 弾薬ピックアップで得たマグ数を加算する。
   onPickup(mags: number): void {
     this.fire.onPickup(mags);
