@@ -12,7 +12,7 @@
 // 普通に深度テストするだけで不透明物の奥へ隠れる。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
-import { float, log, neutralToneMapping, screenUV, texture, uniform, vec3, vec4 } from 'three/tsl';
+import { float, log, neutralToneMapping, screenUV, select, texture, uniform, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import type { GraphicsSettingsData } from '../graphics-settings';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec4Node } from '../tsl-types';
@@ -26,7 +26,7 @@ import { SunOcclusion } from './sun-occlusion';
 import { OverlayPass } from './overlay-pass';
 import { ProteinShadowPass } from './protein-shadow-pass';
 import { SunLight } from './sun-light';
-import { SunShadowAtlas } from './sun-shadow-atlas';
+import { SunShadowMaps } from './sun-shadow-maps';
 import { viewPositionAt } from './view-ray';
 import { registerProteinMotionRenderer } from '../protein-motion-material';
 
@@ -44,7 +44,7 @@ export class RenderPipeline implements DebugTargetHost {
   private readonly occlusionPass: OcclusionPass;
   private readonly _sunOcclusion: SunOcclusion;
   private readonly proteinShadowPass: ProteinShadowPass;
-  private readonly sunShadowAtlas: SunShadowAtlas;
+  private readonly sunShadowMaps: SunShadowMaps;
   private readonly lightPrepass: LightPrepass;
   private readonly materialPass: MaterialPass;
   private readonly atmospherePass: AtmospherePass;
@@ -86,8 +86,8 @@ export class RenderPipeline implements DebugTargetHost {
     this.gbuffer = new GBufferPass(renderer, gpu);
     this._sunLight = new SunLight();
     this.proteinShadowPass = new ProteinShadowPass(renderer);
-    this.sunShadowAtlas = new SunShadowAtlas(renderer, gpu);
-    this._sunOcclusion = new SunOcclusion(this._sunLight, this.proteinShadowPass, this.sunShadowAtlas);
+    this.sunShadowMaps = new SunShadowMaps(renderer, gpu);
+    this._sunOcclusion = new SunOcclusion(this._sunLight, this.proteinShadowPass, this.sunShadowMaps);
     this.occlusionPass = new OcclusionPass(renderer, this.gbuffer, this._sunOcclusion, gpu);
     this.lightPrepass = new LightPrepass(renderer, this.gbuffer, this.occlusionPass, this._sunLight, gpu);
     this.materialPass = new MaterialPass(renderer, this.lightPrepass, gpu);
@@ -124,11 +124,9 @@ export class RenderPipeline implements DebugTargetHost {
         vec4(vec3(texture(this.gbuffer.roughnessTexture, screenUV).r), 1),
       ),
       depth: this.buildCompositeMaterial(vec4(vec3(this.logDepthNode()), 1)),
-      // アトラスは線形深度なので、そのまま濃淡として読める(遠いほど白)。1 枚を画面いっぱいへ
-      // 引き伸ばすので、スロットの割り付けもそのまま見える。
-      shadow: this.buildCompositeMaterial(
-        vec4(vec3(texture(this.sunShadowAtlas.texture, screenUV).r), 1),
-      ),
+      // 4 枚のスロットを 2x2 に並べて画面いっぱいへ映す。線形深度なのでそのまま濃淡として
+      // 読め(遠いほど白)、使われていないスロットは真っ白のまま残る。
+      shadow: this.buildCompositeMaterial(vec4(vec3(this.shadowSlotGridNode()), 1)),
       occlusion: this.buildCompositeMaterial(
         vec4(vec3(texture(this.occlusionPass.texture, screenUV).r), 1),
       ),
@@ -164,6 +162,18 @@ export class RenderPipeline implements DebugTargetHost {
     return material;
   }
 
+  // 影のスロット 4 枚を 2x2 のタイルとして 1 枚のノードへ畳む。スロットは独立した
+  // レンダーターゲットなので、並べるのは表示のときだけの都合。
+  private shadowSlotGridNode(): FloatNode {
+    const tileUV = screenUV.mul(2).fract();
+    const slots = this.sunShadowMaps.slots;
+    const left = screenUV.x.lessThan(0.5);
+    const bottom = screenUV.y.lessThan(0.5);
+    const lower = select(left, texture(slots[0]!.texture, tileUV).r, texture(slots[1]!.texture, tileUV).r);
+    const upper = select(left, texture(slots[2]!.texture, tileUV).r, texture(slots[3]!.texture, tileUV).r);
+    return select(bottom, lower, upper);
+  }
+
   // 深度バッファの生値を near/far 間の対数スケール(0=near, 1=far)へ変換する。素の深度値は
   // near=2m/far=2e12m のスケールでは端に潰れて識別できないため、対数を挟むことで
   // 精度の落ち方そのものを見えるようにする。
@@ -191,7 +201,7 @@ export class RenderPipeline implements DebugTargetHost {
 
     // 太陽光の影パス。G バッファを必要としないので、その前に置く。設定で切られているフレームは
     // スロットが空のまま返り、遮蔽関数側も 1 を返す。
-    this.sunShadowAtlas.render(scene, this._sunLight, graphics.meshShadow);
+    this.sunShadowMaps.render(scene, camera, height, this._sunLight, graphics.meshShadow);
 
     // G バッファパス。camera.layers の一時的な絞り込みと GPU 計測の申告は自身の中で行う。
     this.gbuffer.render(scene, camera, width, height);
@@ -246,7 +256,7 @@ export class RenderPipeline implements DebugTargetHost {
     this.gbuffer.dispose();
     this.occlusionPass.dispose();
     this.proteinShadowPass.dispose();
-    this.sunShadowAtlas.dispose();
+    this.sunShadowMaps.dispose();
     this.lightPrepass.dispose();
     this.materialPass.dispose();
     this.atmospherePass.dispose();
