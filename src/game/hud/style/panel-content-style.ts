@@ -50,6 +50,25 @@ export const PANEL_CONTENT_STYLE = `
   text-align: right;
   white-space: nowrap;
 }
+#burn-management-panel .burn-management-metrics { gap: 1px; }
+#burn-management-panel .burn-fuel-readout {
+  display: inline-grid; grid-template-columns: minmax(64px, 1fr) auto;
+  align-items: center; gap: 6px; width: 128px;
+}
+#burn-management-panel .burn-fuel-meter {
+  height: 6px; overflow: hidden; border-radius: var(--radius-pill); background: var(--bar-bg);
+}
+#burn-management-panel .burn-fuel-fill {
+  display: block; width: 0; height: 100%; border-radius: inherit;
+  background: var(--color-primary); transition: width 180ms;
+}
+#burn-management-panel .burn-fuel-meter.critical .burn-fuel-fill { background: var(--color-error); }
+#burn-management-panel .burn-fuel-value {
+  min-width: 48px; color: var(--text); font-size: var(--font-xxs);
+  text-align: right; white-space: nowrap;
+}
+#burn-management-panel .burn-actions { margin-top: var(--space-3); }
+#burn-management-panel .burn-actions .w-btn { min-width: 0; }
 #hud-vessel-status .vessel-deploy-controls {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

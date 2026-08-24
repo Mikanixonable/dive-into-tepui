@@ -71,6 +71,12 @@ const HELP_ENTRIES: readonly HelpEntry[] = [
     inputs: ['keyboard'], scope: 'combat', behavior: 'press', example: '1 = 低出力、4 = 最大出力',
   },
   {
+    id: 'booster-management', category: 'combat', label: 'ブースター燃焼管理',
+    description: 'ブースターの点火 / 停止と最後尾段の分離を切り替える。',
+    keys: [K.boosterIgnitionToggle, K.boosterDecouple], inputs: ['keyboard'], scope: 'both', behavior: 'toggle',
+    example: '6 = 点火 / 停止、5 = 分離',
+  },
+  {
     id: 'fine-attitude', category: 'combat', label: '姿勢微調整モード',
     description: '角加速度・角速度を絞り、小刻みに姿勢を調整する。',
     keys: [K.fineAttitudeToggle], inputs: ['keyboard'], scope: 'combat', behavior: 'toggle',

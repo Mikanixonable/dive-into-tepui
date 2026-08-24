@@ -4,6 +4,7 @@ import { CelestialBodyId } from '../physics/celestial-body';
 import type { GamePhase } from './stages/stage';
 import type { WaveAttackSaveData } from './stages/stage-utils/wave-attack';
 import type { ProteinSaveData } from './protein/protein-schema';
+import type { BoosterStackData, BoosterStageData } from './player/booster-stack';
 
 export interface Vec3SaveData {
   x: number;
@@ -21,7 +22,7 @@ export interface QuatSaveData {
 export interface EntitySaveData {
   id: string;
   name?: string;
-  kind: 'player' | 'enemy' | 'ammo' | 'rcs-fuel';
+  kind: 'player' | 'enemy' | 'ammo' | 'rcs-fuel' | 'booster';
   r: Vec3SaveData;
   v: Vec3SaveData;
   q: QuatSaveData;
@@ -89,6 +90,16 @@ export interface PlayerSaveData extends EntitySaveData {
   fineAttitude?: boolean;
   // プロパティウィンドウの軌道線表示トグル。旧セーブには無いため任意(既定 false)。
   showTrajectoryLine?: boolean;
+  // 接続中のブースター。旧セーブには無いため任意(既定は空スタック)。
+  boosters?: BoosterStackData;
+}
+
+// 分離後も独立して燃焼・慣性飛行するブースター。接続中の段は PlayerSaveData 側へ保存する。
+export interface DetachedBoosterSaveData extends EntitySaveData {
+  kind: 'booster';
+  stage: BoosterStageData;
+  // 分離直後の親艦との再接触を避ける猶予期限。旧データでは即時接触可能とする。
+  collisionEnableAt?: number;
 }
 
 // 基地は艦(EntitySaveData)と持ち物が根本的に異なる(所持金・在庫・収容艦)ため、
@@ -321,6 +332,8 @@ export interface GameSaveData {
   ammoPickups: AmmoPickupSaveData[];
   // 旧スナップショットには無い。読み込み時に空配列へ正規化する。
   rcsFuelPickups?: RcsFuelPickupSaveData[];
+  // 旧スナップショットには無い。読み込み時は空配列として扱う。
+  detachedBoosters?: DetachedBoosterSaveData[];
   bases: BaseSaveData[];
   stage: StageSaveData;
   // 旧セーブデータには無いフィールドなので任意。無ければ視点は既定のまま始まる。

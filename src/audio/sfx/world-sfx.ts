@@ -238,6 +238,14 @@ export class WorldSfx {
     osc.stop(t + 0.2);
   }
 
+  // デカプラーの爆砕ボルト。撃破爆発より短い破裂音と金属の解放音を重ねる。
+  decouple(): void {
+    this.engine.noiseBurst(0.055, 'highpass', 1800, 0.16);
+    this.engine.noiseBurst(0.09, 'lowpass', 320, 0.22);
+    this.engine.tone(760, 0.06, 0.07, 'square');
+    this.engine.tone(430, 0.11, 0.05, 'triangle');
+  }
+
   // 高度低下警報: 短い二音の警告音(熱防御警報よりは緊急度の低いトーン)
   altAlarm(): void {
     this.engine.tone(392, 0.16, 0.09, 'square');
