@@ -123,9 +123,9 @@ export class LabView {
   render(): void {
     if (this.current === null) return;
     this.pipeline.sunLight.set(SUN_POSITION, R_SUN, SUN_COLOR, SUN_RADIANT_INTENSITY, AMBIENT_IRRADIANCE);
-    this.pipeline.occlusion.setOccluders(this.current.occluders ?? []);
+    this.pipeline.sunOcclusion.setOccluders(this.current.occluders ?? []);
     const rings = this.current.rings;
-    this.pipeline.occlusion.setRings(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
+    this.pipeline.sunOcclusion.setRings(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
     const atmosphere = this.current.atmosphere;
     this.pipeline.atmosphere.setBody(atmosphere?.center ?? ORIGIN, atmosphere?.surfaceRadius ?? 0);
     const startedAt = performance.now();

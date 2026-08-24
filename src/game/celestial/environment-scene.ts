@@ -20,7 +20,7 @@ import { PointFieldView } from './point-field-view';
 import { ScaleGridView } from './scale-grid-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import { AMBIENT_IRRADIANCE, SUN_COLOR, SUN_RADIANT_INTENSITY, SunLight } from '../../render/pipeline/sun-light';
-import { MAX_OCCLUDERS, type Occluder, type OcclusionPass } from '../../render/pipeline/occlusion';
+import { MAX_OCCLUDERS, type Occluder, type SunOcclusion } from '../../render/pipeline/sun-occlusion';
 import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
@@ -99,7 +99,7 @@ export class EnvironmentScene {
     scene: THREE.Scene,
     private readonly ephemeris: Ephemeris,
     private readonly sunLight: SunLight,
-    private readonly occlusion: OcclusionPass,
+    private readonly sunOcclusion: SunOcclusion,
     private readonly atmosphere: AtmospherePass,
     earthSpinPhase0: number,
   ) {
@@ -213,7 +213,7 @@ export class EnvironmentScene {
       .map((body) => ({ body, apparent: apparentRadius(body.radius, body.state.r, fo.r) }))
       .sort((a, b) => b.apparent - a.apparent)
       .slice(0, MAX_OCCLUDERS);
-    this.occlusion.setOccluders(ranked.map(({ body }): Occluder => (
+    this.sunOcclusion.setOccluders(ranked.map(({ body }): Occluder => (
       { center: fo.RtoThreeV3(body.state.r), radius: body.radius }
     )));
     this.syncRingShadow(fo, displayTime, graphics);
@@ -235,11 +235,11 @@ export class EnvironmentScene {
       }
     }
     if (ringed === null) {
-      this.occlusion.setRings(ZERO_VECTOR, UP_VECTOR, []);
+      this.sunOcclusion.setRings(ZERO_VECTOR, UP_VECTOR, []);
       return;
     }
     const pole = this.ephemeris.poleAt(ringed.id, displayTime);
-    this.occlusion.setRings(
+    this.sunOcclusion.setRings(
       fo.RtoThreeV3(this.ephemeris.positionOf(ringed.id, displayTime)),
       pole === null ? UP_VECTOR : this.toThreeNormal(pole.axis),
       ringed.rings.bands.map((band) => ({
