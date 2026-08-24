@@ -31,6 +31,7 @@ import { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { PerfCounts } from '../../perf-meter';
 import type { OrbitReference } from '../orbit-reference';
+import type { ProteinMotionFrameSample, ProteinMotionLod } from '../../protein-motion-metrics';
 
 export class EntityManager {
   readonly enemies: Enemy[] = [];
@@ -503,5 +504,20 @@ export class EntityManager {
       rcsFuelPickups: this.rcsFuelPickups.length,
       bases: this.bases.length,
     };
+  }
+
+  // 負荷確認ウィンドウが読む、直近 sync() 時点のタンパク質敵モーションの集計値。
+  proteinMotionFrameSample(): ProteinMotionFrameSample {
+    let cpuMs = 0;
+    let uploadBytes = 0;
+    const lodCounts: Partial<Record<ProteinMotionLod, number>> = {};
+    for (const enemy of this.enemies) {
+      const runtime = enemy.proteinRuntime;
+      if (!runtime) continue;
+      cpuMs += runtime.cpuMs;
+      uploadBytes += runtime.uploadBytes;
+      lodCounts[runtime.lod] = (lodCounts[runtime.lod] ?? 0) + 1;
+    }
+    return { cpuMs, uploadBytes, lodCounts };
   }
 }

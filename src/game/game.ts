@@ -3,6 +3,7 @@ import * as THREE from 'three/webgpu';
 import { FloatingOrigin } from './floating-origin';
 import { v3 } from '../physics/vec3';
 import type { PerfCounts } from '../perf-meter';
+import type { ProteinMotionFrameSample } from '../protein-motion-metrics';
 import { FrameSections, SECTION } from '../frame-sections';
 import { Player } from './player/player';
 import { Base } from './game-entity/base';
@@ -623,5 +624,9 @@ export class Game {
       displayDurationSec: this.displayWindowManager.current.duration,
       warp: this.simSpeedManager.simSpeed,
     };
+  }
+
+  proteinMotionFrameSample(): ProteinMotionFrameSample {
+    return this.entities.proteinMotionFrameSample();
   }
 }
