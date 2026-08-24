@@ -7,9 +7,9 @@
 import * as THREE from 'three/webgpu';
 import {
   Fn, If, PI, abs, acos, and, asin, clamp, dot, exp, float, greaterThan, length,
-  lessThan, max, min, normalize, select, sqrt, texture, uniform, vec2, vec4,
+  lessThan, max, min, normalize, select, sqrt, texture, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
-import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
+import type { BoolNode, FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 import { SHADOW_SLOT_SIZE, type SunShadowMaps, type SunShadowSlot } from './sun-shadow-maps';
 import type { SunLight } from './sun-light';
 
@@ -63,6 +63,11 @@ const PCF_TAPS = 12;
 const PCF_MIN_TEXELS = 0.5;
 const PCF_MAX_TEXELS = 8;
 const VOGEL_GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+
+// デバッグ表示「影スロット」がスロットへ割り当てる色。並びがスロット番号の順。
+const SLOT_DEBUG_COLORS: readonly (readonly [number, number, number])[] = [
+  [1, 0.25, 0.2], [0.3, 1, 0.35], [0.35, 0.5, 1], [1, 0.85, 0.25],
+];
 
 
 // 半径 r1・r2 の 2 円が中心距離 d で重なる面積(すべて同じ角度単位)。
@@ -225,6 +230,30 @@ export class SunOcclusion {
     return transmittance;
   }
 
+  // 描画座標の点が、そのスロットの覆う範囲に入っているか。**遮蔽の合成とデバッグ表示が
+  // 同じ判定を読む** — 別々に持つと、塗り分けは正しいのに影が出ない絵が作れてしまう。
+  private slotCovers(slot: SunShadowSlot, worldPos: Vec3Node): BoolNode {
+    const lo = slot.boundsMin;
+    const hi = slot.boundsMax;
+    return greaterThan(slot.active, 0.5)
+      .and(worldPos.x.greaterThan(lo.x)).and(worldPos.x.lessThan(hi.x))
+      .and(worldPos.y.greaterThan(lo.y)).and(worldPos.y.lessThan(hi.y))
+      .and(worldPos.z.greaterThan(lo.z)).and(worldPos.z.lessThan(hi.z));
+  }
+
+  // 描画座標の点を覆うスロットの色を足し合わせた、デバッグ表示「影スロット」の色。
+  // どのスロットも覆っていなければ黒。
+  slotDebugColor(worldPos: Vec3Node): Vec3Node {
+    return Fn(() => {
+      const color = vec3(0, 0, 0).toVar();
+      for (const [index, slot] of this.shadowMaps.slots.entries()) {
+        const tint = SLOT_DEBUG_COLORS[index]!;
+        If(this.slotCovers(slot, worldPos), () => { color.addAssign(vec3(...tint)); });
+      }
+      return color;
+    })();
+  }
+
   // シャドウアトラスへ描かれたメッシュが落とす影。**スロットの境界の外なら引かない** —
   // 判定は select ではなく If で書く。select は両辺を評価するので、画面のほとんどを占める
   // 虚空の画素からもテクスチャフェッチが消えない。
@@ -238,13 +267,7 @@ export class SunOcclusion {
       const visibility = float(1).toVar();
       const taken = float(0).toVar();
       for (const slot of slots) {
-        const lo = slot.boundsMin;
-        const hi = slot.boundsMax;
-        const inside = lessThan(taken, 0.5).and(greaterThan(slot.active, 0.5))
-          .and(worldPos.x.greaterThan(lo.x)).and(worldPos.x.lessThan(hi.x))
-          .and(worldPos.y.greaterThan(lo.y)).and(worldPos.y.lessThan(hi.y))
-          .and(worldPos.z.greaterThan(lo.z)).and(worldPos.z.lessThan(hi.z));
-        If(inside, () => {
+        If(lessThan(taken, 0.5).and(this.slotCovers(slot, worldPos)), () => {
           taken.assign(1);
           visibility.assign(this.slotVisibility(slot, worldPos, normal, sunDir, sunAngRadius));
         });
