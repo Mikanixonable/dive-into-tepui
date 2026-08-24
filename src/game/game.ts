@@ -44,6 +44,7 @@ import { Navball } from './navball/navball';
 import { GameSaveData } from './save-data';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import { Docking } from './docking';
+import { DockingGuide } from './docking-guide';
 import { ViewBadge, type ViewBadgeContext } from './hud/view-badge';
 import { FrameControls } from './hud/frame/frame-controls';
 import { CombatHudController, MapHudController } from './hud/view-hud-controller';
@@ -104,6 +105,7 @@ export class Game {
   private readonly predictor: Predictor;
   private readonly nanWatchdog: NanWatchdog;
   private readonly docking: Docking;
+  private readonly dockingGuide: DockingGuide;
   private readonly viewBadge: ViewBadge;
   readonly frameControls: FrameControls;
   private readonly combatHud: CombatHudController;
@@ -244,6 +246,9 @@ export class Game {
       () => this.controlledBase,
     );
     this.viewManager.setControlledBaseProvider(() => this.controlledBase);
+    this.dockingGuide = new DockingGuide(
+      this._scene, this.markerManager, this.entities, this.docking, this.viewManager,
+    );
     this.viewBadge = new ViewBadge(this._hud.viewBadgeRow, this._hud.layers.notify, this.viewManager, this._hud.overlayManager);
 
     // ロード復元時の focus は MapCamera が直接持つだけで frameControls.setFocus() を経由しないため、
@@ -273,6 +278,7 @@ export class Game {
   // dispose の中で自分のキーを外していくのを先に済ませるため。
   dispose(): void {
     this.viewBadge.dispose();
+    this.dockingGuide.dispose();
     this.docking.dispose();
     this.mapActions.dispose();
     this.activeStage.dispose();
@@ -588,6 +594,8 @@ export class Game {
     this._hud.tick();
 
     this.guide.sync(player, simTime, this.editor.editMode, project, this.editor.planDisplay.path);
+    // カメラ/FloatingOrigin の確定後にのみガイドの3D位置とラベルを同期する。
+    this.dockingGuide.sync(player, fo, project);
 
     // このフレームのマーカーが出揃った後でなければならないので最後に置く。
     this.markerManager.resolveCollisions(this.cameraSystem.overviewMode);
