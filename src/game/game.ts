@@ -76,7 +76,8 @@ export class Game {
 
   private readonly editor: PlanEditor;
   // このフレームの表示座標系・表示時刻窓と、表示側の重力源窓。update で確定させ sync でも読む。
-  private readonly displayWindowManager: DisplayWindowManager;
+  // HUD(軌道分析パネルの投影タブなど)が current 経由で表示期間を読むため公開する。
+  readonly displayWindowManager: DisplayWindowManager;
   private readonly guide: PlanGuide;
   readonly viewManager: ViewManager;
   private readonly mapPickables: MapPickables;
