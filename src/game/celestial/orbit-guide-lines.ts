@@ -1,6 +1,7 @@
-// マップビューのガイドとして描く、ラグランジュ点まわりの周期・準周期軌道の折れ線群。
-// HaloGuideSettings が選ぶ(系×点×南北)の組み合わせごとに halo-guide.ts の点列 API を呼び、
-// 回転基底に載った ECI [m] の点列を折れ線として表示・毎フレーム同期する。
+// マップビューのガイドとして描く、ラグランジュ点まわりの周期・準周期軌道の折れ線群
+// (表示パネルの軌道ガイドタブ、静止軌道を除く5種)。OrbitGuideSettings が種類ごとに
+// 独立して持つ軸(系×点×南北)の直積ごとに halo-guide.ts の点列 API を呼び、回転基底に
+// 載った ECI [m] の点列を折れ線として表示・毎フレーム同期する。
 import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
 import { v3, Vec3 } from '../../physics/vec3';
@@ -11,7 +12,7 @@ import {
 import { FloatingOrigin } from '../floating-origin';
 import { Curve, CurveSampler } from '../../render/curve';
 import { LINE_RENDER_ORDER, LineStyle } from '../../render/line-style';
-import { HaloGuideSettings } from './halo-guide-settings';
+import { GuideAxes, OrbitGuideSettings } from './orbit-guide-settings';
 import * as C from '../const';
 
 const HALO_SAMPLES = 128;
@@ -107,44 +108,61 @@ class PointsCurve {
 // 表示中の1本ぶん: 描画オブジェクトと、現在の設定・時刻から点列を求める関数。
 interface GuideLine {
   readonly curve: PointsCurve;
-  readonly compute: (t: number, ephemeris: Ephemeris, settings: HaloGuideSettings) => Vec3[] | null;
+  readonly compute: (t: number, ephemeris: Ephemeris, settings: OrbitGuideSettings) => Vec3[] | null;
+}
+
+// 系×点(L1/L2/L3)の軸を持つ種類が共通して使う、ON な系・点の列。
+function activeSystems(axes: GuideAxes): readonly GuideSystem[] {
+  return GUIDE_SYSTEMS.filter((system) => (system === 'sun-earth' ? axes.sunEarth : axes.earthMoon));
+}
+function activePoints(axes: GuideAxes): readonly GuidePoint[] {
+  return GUIDE_POINTS.filter((point) => (point === 'L1' ? axes.l1 : point === 'L2' ? axes.l2 : axes.l3));
 }
 
 // ガイド線の本数・組み合わせを決める設定だけを抜いた識別子。振幅・族範囲の値は含めない
-// (それらが変わっても本数は変わらないため、点列の再計算だけで足りる)。
-function structuralKey(s: HaloGuideSettings): string {
+// (それらが変わっても本数は変わらないため、点列の再計算だけで足りる)。種類ごとに軸が
+// 独立しているため、全種類の on と軸を漏れなく含める。
+function axesKey(axes: GuideAxes): string {
+  return `${axes.sunEarth},${axes.earthMoon},${axes.l1},${axes.l2},${axes.l3}`;
+}
+function structuralKey(s: OrbitGuideSettings): string {
   return [
-    s.north, s.south, s.l1, s.l2, s.l3, s.sunEarth, s.earthMoon,
-    s.planarLyapunov.on, s.verticalLyapunov.on, s.lissajous.on, s.dro.on,
-  ].join(',');
+    'halo', s.halo.on, axesKey(s.halo), s.halo.north, s.halo.south,
+    'planar', s.planarLyapunov.on, axesKey(s.planarLyapunov),
+    'vertical', s.verticalLyapunov.on, axesKey(s.verticalLyapunov),
+    'lissajous', s.lissajous.on, axesKey(s.lissajous),
+    'dro', s.dro.on, s.dro.sunEarth, s.dro.earthMoon,
+  ].join('|');
 }
 
 // 表示範囲を等間隔に割った index 番目のハロー族の位置。
-function haloSValue(settings: HaloGuideSettings, index: number): number {
-  return settings.rangeMin + ((settings.rangeMax - settings.rangeMin) * index) / (HALO_FAMILY_COUNT - 1);
+function haloSValue(settings: OrbitGuideSettings, index: number): number {
+  const { rangeMin, rangeMax } = settings.halo;
+  return rangeMin + ((rangeMax - rangeMin) * index) / (HALO_FAMILY_COUNT - 1);
 }
 
 function haloOpacity(index: number): number {
   return HALO_OPACITY_MIN + ((HALO_OPACITY_MAX - HALO_OPACITY_MIN) * index) / (HALO_FAMILY_COUNT - 1);
 }
 
-export class HaloGuideLines {
+export class OrbitGuideLines {
   private lines: GuideLine[] = [];
-  private settings: HaloGuideSettings | null = null;
+  private settings: OrbitGuideSettings | null = null;
   private structureKey = '';
-  private computedSettings: HaloGuideSettings | null = null;
+  private computedSettings: OrbitGuideSettings | null = null;
   private lastComputedTime: number | null = null;
 
   public constructor(private readonly scene: THREE.Scene, private readonly ephemeris: Ephemeris) {}
 
   // ゲーム側配線用の setter。sync はここで受けた最新値を読む。
-  public setSettings(settings: HaloGuideSettings): void {
+  public setSettings(settings: OrbitGuideSettings): void {
     this.settings = settings;
   }
 
-  // マップビューかつ gridVisibility.haloOrbits が ON のときだけガイド線を同期する。
-  public sync(displayTime: number, overviewMode: boolean, visible: boolean, fo: FloatingOrigin, camera: THREE.Camera): void {
-    if (!overviewMode || !visible || !this.settings) {
+  // マップビューのときだけガイド線を同期する。表示可否のゲートは種類ごとの on に移っている
+  // ため、visible の引数は持たない(rebuildLines が0本にすることで非表示を表す)。
+  public sync(displayTime: number, overviewMode: boolean, fo: FloatingOrigin, camera: THREE.Camera): void {
+    if (!overviewMode || !this.settings) {
       for (const entry of this.lines) entry.curve.hide();
       return;
     }
@@ -173,44 +191,59 @@ export class HaloGuideLines {
   // ガイド線を1本組んでシーンへ加える。compute はその線の点列を設定・時刻から求める。
   private addLine(
     closed: boolean, samples: number, color: number, opacity: number,
-    compute: (t: number, ephemeris: Ephemeris, settings: HaloGuideSettings) => Vec3[] | null,
+    compute: (t: number, ephemeris: Ephemeris, settings: OrbitGuideSettings) => Vec3[] | null,
   ): void {
     const curve = new PointsCurve({ color, opacity, renderOrder: LINE_RENDER_ORDER.reference }, samples, closed);
     this.scene.add(curve.line);
     this.lines.push({ curve, compute });
   }
 
-  // 表示すべき(系×点×南北)の組み合わせから折れ線オブジェクトを作り直す。トグルの直積が
-  // 変わったとき(本数が変わるとき)だけ呼ぶ — 振幅・族範囲だけの変更では呼ばない。
-  private rebuildLines(settings: HaloGuideSettings): void {
+  // 種類ごとの on と軸から折れ線オブジェクトを作り直す。トグルの直積が変わったとき
+  // (本数が変わるとき)だけ呼ぶ — 振幅・族範囲だけの変更では呼ばない。
+  private rebuildLines(settings: OrbitGuideSettings): void {
     for (const entry of this.lines) {
       entry.curve.line.removeFromParent();
       entry.curve.dispose();
     }
     this.lines = [];
 
-    const systems = GUIDE_SYSTEMS.filter((system) => (system === 'sun-earth' ? settings.sunEarth : settings.earthMoon));
-    const points = GUIDE_POINTS.filter((point) => (point === 'L1' ? settings.l1 : point === 'L2' ? settings.l2 : settings.l3));
-    const hemispheres = HEMISPHERES.filter((h) => (h === 'north' ? settings.north : settings.south));
-
-    for (const system of systems) {
-      for (const point of points) {
-        for (const hemisphere of hemispheres) {
-          for (let i = 0; i < HALO_FAMILY_COUNT; i++) {
-            this.addLine(true, HALO_SAMPLES, C.COLOR_HALO_GUIDE_LINE, haloOpacity(i), (t, ephemeris, s) => {
-              return haloGuideLoop(t, ephemeris, system, point, haloSValue(s, i), hemisphere, HALO_SAMPLES);
-            });
+    // ハロー: 系×点×南北 の直積 × 族5本。
+    if (settings.halo.on) {
+      const systems = activeSystems(settings.halo);
+      const points = activePoints(settings.halo);
+      const hemispheres = HEMISPHERES.filter((h) => (h === 'north' ? settings.halo.north : settings.halo.south));
+      for (const system of systems) {
+        for (const point of points) {
+          for (const hemisphere of hemispheres) {
+            for (let i = 0; i < HALO_FAMILY_COUNT; i++) {
+              this.addLine(true, HALO_SAMPLES, C.COLOR_HALO_GUIDE_LINE, haloOpacity(i), (t, ephemeris, s) =>
+                haloGuideLoop(t, ephemeris, system, point, haloSValue(s, i), hemisphere, HALO_SAMPLES));
+            }
           }
         }
-        if (settings.planarLyapunov.on) {
+      }
+    }
+
+    // 平面リヤプノフ・垂直リヤプノフ・リサジュー: いずれも系×点。
+    if (settings.planarLyapunov.on) {
+      for (const system of activeSystems(settings.planarLyapunov)) {
+        for (const point of activePoints(settings.planarLyapunov)) {
           this.addLine(true, HALO_SAMPLES, C.COLOR_PLANAR_LYAPUNOV_LINE, EVOLVED_OPACITY, (t, ephemeris, s) =>
             planarLyapunovLoop(t, ephemeris, system, point, s.planarLyapunov.amplitude, HALO_SAMPLES));
         }
-        if (settings.verticalLyapunov.on) {
+      }
+    }
+    if (settings.verticalLyapunov.on) {
+      for (const system of activeSystems(settings.verticalLyapunov)) {
+        for (const point of activePoints(settings.verticalLyapunov)) {
           this.addLine(true, HALO_SAMPLES, C.COLOR_VERTICAL_LYAPUNOV_LINE, EVOLVED_OPACITY, (t, ephemeris, s) =>
             verticalLyapunovLoop(t, ephemeris, system, point, s.verticalLyapunov.amplitude, HALO_SAMPLES));
         }
-        if (settings.lissajous.on) {
+      }
+    }
+    if (settings.lissajous.on) {
+      for (const system of activeSystems(settings.lissajous)) {
+        for (const point of activePoints(settings.lissajous)) {
           this.addLine(false, LISSAJOUS_SAMPLES, C.COLOR_LISSAJOUS_LINE, EVOLVED_OPACITY, (t, ephemeris, s) =>
             lissajousPath(
               t, ephemeris, system, point, s.lissajous.inPlane, s.lissajous.outOfPlane,
@@ -218,7 +251,12 @@ export class HaloGuideLines {
             ));
         }
       }
-      if (settings.dro.on) {
+    }
+
+    // DRO: ラグランジュ点を持たず、系のみ。
+    if (settings.dro.on) {
+      const systems = GUIDE_SYSTEMS.filter((system) => (system === 'sun-earth' ? settings.dro.sunEarth : settings.dro.earthMoon));
+      for (const system of systems) {
         this.addLine(true, HALO_SAMPLES, C.COLOR_DRO_LINE, EVOLVED_OPACITY, (t, ephemeris, s) =>
           droLoop(t, ephemeris, system, s.dro.amplitude, HALO_SAMPLES));
       }
