@@ -135,6 +135,7 @@ export const BOOSTER_MOUNT_Z = -4.0; // 船体中心から最初の段の前端�
 export const BOOSTER_SEPARATION_SPEED = 8; // 爆砕ボルトによる相対分離速度 [m/s]
 export const BOOSTER_COLLISION_GRACE = 0.5; // 分離直後に接続面同士が再衝突しない猶予 [s]
 export const BOOSTER_COLLISION_RADIUS = 4.2; // 長さ8mの段を包む接触球 [m]
+export const BOOSTER_HARDWARE_LIFETIME = 2.4; // 段間カバー/爆砕ボルトの飛散表示時間 [s]
 export const MAX_DETACHED_BOOSTERS = 64;
 // 並進方向キーをこの秒数以内に連打すると、押しっぱなし相当にラッチ/解除する [s]
 export const THRUST_LATCH_DOUBLE_TAP_SEC = 0.3;
