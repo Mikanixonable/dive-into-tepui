@@ -1,24 +1,13 @@
 // 恒星の直射光を遮るメッシュ(艦艇・基地・デブリなど)を、恒星方向を向いた平行投影のライト空間へ
-// 描き、線形深度をスロットごとの深度マップへ書く。**天体の球と環はここに描かない** — 解析式で
-// 厳密に解けるものを近似で二重に持たないため(lit-layer.ts の SUN_SHADOW_CASTER_LAYER)。
+// 描き、線形深度をスロットごとの深度マップへ書く。構造は protein-shadow-pass.ts を踏襲する。
 //
-// 構造は protein-shadow-pass.ts を踏襲する(ライトカメラの構成・レンダラ状態の保存と復帰)。
-// 違いは、走査対象が userData ではなく層であること、出力が r32float の線形深度であること、
-// そしてスロットを視錐台の深度分割ではなく**遮蔽器の塊**へ割り当てることの 3 点。
-//
-// **スロットは塊へ割り当てる。** 標準の CSM は視錐台を深度で切るが、本作は画面のほとんどが
-// 虚空なので、そこへ配ったテクセルは丸ごと無駄になる。代わりに遮蔽器をカメラから見た大きさの
-// 順に並べ、近いものどうしをスロットの解像度が保てる範囲で 1 つの塊にまとめる。塊は互いに
-// 重ならない — 受け手は入っている最初のスロットしか引かないので、重なりに居る受け手は
-// もう一方の塊の遮蔽器を丸ごと取りこぼす。
-//
-// **スロットは 1 枚のアトラスの矩形ではなく、独立したレンダーターゲット 4 枚として持つ。**
-// WebGPURenderer はレンダーターゲットを設定した時点でビューポートをその全面へ戻すため、
-// 1 枚を切り分ける形は成立しない(切り分けを射影行列へ畳み込む形も試したが、そちらは
-// フレームによって描かれないことがある)。メモリは同じで、増えるのは受け手のバインド数だけ。
-//
-// スロットの near/far は塊へ密着させる。艦の自己影と天体が同じマップに同居しないので、
-// light 空間の深度レンジは塊の差し渡し止まりになり、float32 の線形深度で桁が余る。
+// **天体の球と環はここに描かない** — 解析式で厳密に解けるものを近似で二重に持たないため。
+// **スロットは視錐台の深度分割ではなく遮蔽器の塊へ割り当てる** — 標準の CSM は画面のほとんどを
+// 占める虚空へテクセルを配ってしまう。塊は互いに重ねない(受け手は入っている最初のスロットしか
+// 引かないので、重なりに居る受け手は片方の遮蔽器を丸ごと取りこぼす)。
+// **スロットは 1 枚のアトラスの矩形ではなく独立したレンダーターゲット 4 枚** — WebGPURenderer は
+// レンダーターゲットを設定した時点でビューポートを全面へ戻すので、1 枚を切り分ける形は成立しない
+// (切り分けを射影行列へ畳み込む形でも描かれなかった)。メモリは同じで、増えるのはバインド数だけ。
 import * as THREE from 'three/webgpu';
 import { MeshBasicNodeMaterial, WebGPURenderer } from 'three/webgpu';
 import { clamp, positionView, uniform, vec3, vec4 } from 'three/tsl';
@@ -95,6 +84,7 @@ export class SunShadowMaps {
   // — 戻さないと、デバッグ表示「影」に前フレームの深度マップが残って読み手を欺く。
   private drawnSlots = 0;
 
+  // スロット 4 枚ぶんの深度マップと、そこへライト空間の線形深度を書く override マテリアルを組む。
   constructor(private readonly renderer: WebGPURenderer, private readonly gpu: GpuTimings) {
     this.targets = Array.from({ length: SHADOW_SLOT_COUNT }, (_slot, index) => {
       // r32float はレンダーターゲットとしては描けるがフィルタできない。**サンプラを明示して
@@ -181,11 +171,13 @@ export class SunShadowMaps {
   private drawSlot(scene: THREE.Scene, sun: SunLight, index: number, cluster: Cluster): void {
     const slot = this.slotUniforms[index]!;
     if (!this.configureSlot(slot, cluster.box, sun)) return;
+    // この塊に属さない遮蔽器を退避する。
     for (const caster of this.casters) {
       if (cluster.roots.includes(caster.root)) continue;
       caster.root.visible = false;
       this.hidden.push(caster.root);
     }
+    // 深度マテリアルはスロット共有なので、正規化に使う near/far をこのスロットのものへ差し替える。
     this.drawNear.value = slot.near.value;
     this.drawFar.value = slot.far.value;
     this.renderer.setRenderTarget(this.targets[index]!);
@@ -195,6 +187,7 @@ export class SunShadowMaps {
     this.showHidden();
   }
 
+  // drawSlot が退避した遮蔽器を元へ戻す。スロットを描くたびに必ず対で呼ぶ。
   private showHidden(): void {
     for (const root of this.hidden) root.visible = true;
     this.hidden.length = 0;
@@ -329,6 +322,7 @@ export class SunShadowMaps {
     return true;
   }
 
+  // 保持している GPU 資源を解放する。
   dispose(): void {
     for (const target of this.targets) target.dispose();
     this.depthMaterial.dispose();
