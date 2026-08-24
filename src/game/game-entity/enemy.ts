@@ -35,18 +35,15 @@ import { ProteinRuntime } from '../protein/protein-runtime';
 import { ProteinRibbonCollisionGeometry } from '../protein/protein-ribbon-collision';
 import type { ProteinDamageResult } from '../protein/protein-combat-state';
 import {
-  DEFAULT_PROTEIN_DISPLAY, isProteinDisplaySettings, proteinDisplayFromLegacyColorMode, type Pdb5i4rColorMode, type ProteinDisplaySettings, type ProteinRibbonColorMode,
+  DEFAULT_PROTEIN_DISPLAY, isProteinDisplaySettings, proteinDisplayFromLegacyColorMode, type ProteinColorMode, type ProteinDisplaySettings,
 } from '../protein/protein-display';
 import {
   ENEMY_DESTROY_FRAG_COLOR,
 } from '../../render/vfx-style';
 
-// Enemy の見た目の種別。どの build を呼ぶかをコンストラクタ内部で選ぶための判別用。
-export type { Pdb5i4rColorMode } from '../protein/protein-display';
-
 type LegacyPdb5i4rEnemyKind = {
   kind: 'pdb-5i4r';
-  colorMode?: Pdb5i4rColorMode;
+  colorMode?: ProteinColorMode;
   display?: ProteinDisplaySettings;
 };
 
@@ -261,15 +258,6 @@ export class Enemy extends Ship {
     this.proteinRuntime?.clearVisuals();
     definition.recolorRenderObject(this.renderObject, display);
     this.proteinRuntime?.rebuildVisuals();
-  }
-
-  // 旧UI/APIとの互換用。リボン表示中の着色だけを切り替える。
-  setPdb5i4rColorMode(colorMode: Pdb5i4rColorMode): void {
-    if (this.enemyKind.kind !== 'protein') return;
-    const current = isProteinDisplaySettings(this.enemyKind.display) ? this.enemyKind.display : DEFAULT_PROTEIN_DISPLAY;
-    if (current.representation !== 'ribbon') return;
-    if (!['chain', 'b-factor', 'entity', 'rainbow', 'secondary-structure', 'component-role'].includes(colorMode)) return;
-    this.setProteinDisplay({ representation: 'ribbon', colorMode: colorMode as ProteinRibbonColorMode });
   }
 
   get proteinHudSnapshot() {
