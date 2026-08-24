@@ -607,8 +607,8 @@ export class Game {
 
   // ------------------------------------------------------------------ render
 
-  render(graphics: GraphicsSettingsData): void {
-    this.pipeline.render(this._scene, this.cameraSystem.activeCamera, graphics);
+  render(meshShadow: boolean): void {
+    this.pipeline.render(this._scene, this.cameraSystem.activeCamera, meshShadow);
   }
 
   // ------------------------------------------------------------------ debug
