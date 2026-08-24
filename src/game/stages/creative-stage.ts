@@ -14,7 +14,7 @@ import type { FloatingOrigin } from '../floating-origin';
 import { qRotate } from '../../physics/attitude';
 import { Vec3, add, addScaled, v3 } from '../../physics/vec3';
 import { isOccluded } from '../../physics/occlusion';
-import { Button, SegmentedControl, ToggleSwitch, ValueInput } from '../hud/widgets';
+import { Button, SegmentedControl, TabBar, ToggleSwitch, ValueInput } from '../hud/widgets';
 import { hudRail } from '../hud/hud-root';
 import type { CameraSystem, ProjectFn } from '../camera/camera-system';
 import { AmmoPickup } from '../game-entity/ammo-pickup';
@@ -55,7 +55,7 @@ type EnemySpawnShape = typeof STAGE_CONTROL_ENEMY_SHAPES[number]['id'];
 const STAGE_CONTROL_ENEMY_COLORS = [
   [0xff4a3d, '赤'], [0xff7a2d, '橙'], [0xe0409f, '桃'], [0xbf3dff, '紫'], [0x3dc6ff, '青'],
 ] as const;
-const STAGE_CONTROL_DEFAULT_ENEMY_SPAWN_DISTANCE = 200;
+const STAGE_CONTROL_DEFAULT_ENEMY_SPAWN_DISTANCE = 2000;
 
 export class CreativeStage extends Stage {
   static readonly id = 'creative' as const;
@@ -167,9 +167,32 @@ export class CreativeStage extends Stage {
 
     const conventionalShapes = STAGE_CONTROL_ENEMY_SHAPES.filter(({ family }) => family === 'conventional');
     const proteinShapes = STAGE_CONTROL_ENEMY_SHAPES.filter(({ family }) => family === 'protein');
+    type EnemyFamily = 'conventional' | 'protein';
+    const enemySections = new Map<EnemyFamily, HTMLElement>();
+    let selectedEnemyFamily: EnemyFamily = 'conventional';
+    const enemyTabs = new TabBar<EnemyFamily>(
+      [['conventional', '従来型の敵'], ['protein', 'タンパク質型の敵']],
+      (family) => {
+        selectedEnemyFamily = family;
+        enemyTabs.setSelected(family);
+        for (const [tab, section] of enemySections) section.hidden = tab !== selectedEnemyFamily;
+      },
+    );
+    enemyTabs.element.classList.add('stage-control-enemy-tabs');
+    enemyTabs.element.setAttribute('aria-label', '敵の種類');
+    enemyTabs.element.querySelectorAll<HTMLElement>('[role="tab"]').forEach((tab, index) => {
+      const family = (index === 0 ? 'conventional' : 'protein') as EnemyFamily;
+      tab.id = `stage-control-tab-${family}`;
+      tab.setAttribute('aria-controls', `stage-control-panel-${family}`);
+    });
+    body.appendChild(enemyTabs.element);
+
     let selectedConventionalShape: EnemySpawnShape = conventionalShapes[0]!.id;
     const conventionalSection = document.createElement('div');
     conventionalSection.className = 'stage-control-section';
+    conventionalSection.id = 'stage-control-panel-conventional';
+    conventionalSection.setAttribute('role', 'tabpanel');
+    conventionalSection.setAttribute('aria-label', '従来型の敵');
     const conventionalTitle = document.createElement('div');
     conventionalTitle.className = 'stage-control-section-title';
     conventionalTitle.textContent = '従来型の敵';
@@ -190,11 +213,15 @@ export class CreativeStage extends Stage {
       this.spawnManualEnemy(selectedConventionalShape, colorSelect.select.value);
     });
     conventionalSection.appendChild(conventionalSpawnButton.element);
+    enemySections.set('conventional', conventionalSection);
     body.appendChild(conventionalSection);
 
     let selectedProteinShape: EnemySpawnShape = proteinShapes[0]!.id;
     const proteinSection = document.createElement('div');
     proteinSection.className = 'stage-control-section';
+    proteinSection.id = 'stage-control-panel-protein';
+    proteinSection.setAttribute('role', 'tabpanel');
+    proteinSection.setAttribute('aria-label', 'タンパク質型の敵');
     const proteinTitle = document.createElement('div');
     proteinTitle.className = 'stage-control-section-title';
     proteinTitle.textContent = 'タンパク質型の敵';
@@ -244,7 +271,10 @@ export class CreativeStage extends Stage {
       this.spawnManualEnemy(selectedProteinShape, String(0xffffff));
     });
     proteinSection.appendChild(proteinSpawnButton.element);
+    enemySections.set('protein', proteinSection);
     body.appendChild(proteinSection);
+    enemyTabs.setSelected(selectedEnemyFamily);
+    for (const [family, section] of enemySections) section.hidden = family !== selectedEnemyFamily;
     this.spawnEnemyButtons = [conventionalSpawnButton, proteinSpawnButton];
     hudRail(hudRoot, 'right').appendChild(panel);
     return panel;
