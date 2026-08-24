@@ -3,7 +3,7 @@
 //
 // 'world' は無い — composite パスの通常表示が既に world 色ターゲットをそのまま画面へ出しており、
 // 'off' と 'world' は同じ絵になるため。
-export type DebugTargetId = 'off' | 'normal' | 'roughness' | 'depth' | 'occlusion' | 'diffuse' | 'specular' | 'material' | 'atmosphere';
+export type DebugTargetId = 'off' | 'normal' | 'roughness' | 'depth' | 'shadow' | 'occlusion' | 'diffuse' | 'specular' | 'material' | 'atmosphere';
 
 // 選べる値と表示ラベルの組。並びがそのまま UI 上の並び順になる。
 export const DEBUG_TARGETS: readonly (readonly [DebugTargetId, string])[] = [
@@ -11,6 +11,7 @@ export const DEBUG_TARGETS: readonly (readonly [DebugTargetId, string])[] = [
   ['normal', '法線'],
   ['roughness', '粗さ'],
   ['depth', '深度'],
+  ['shadow', '影'],
   ['occlusion', '遮蔽'],
   ['diffuse', '拡散照度'],
   ['specular', '鏡面照度'],

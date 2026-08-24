@@ -26,6 +26,7 @@ import { SunOcclusion } from './sun-occlusion';
 import { OverlayPass } from './overlay-pass';
 import { ProteinShadowPass } from './protein-shadow-pass';
 import { SunLight } from './sun-light';
+import { SunShadowAtlas } from './sun-shadow-atlas';
 import { viewPositionAt } from './view-ray';
 import { registerProteinMotionRenderer } from '../protein-motion-material';
 
@@ -43,6 +44,7 @@ export class RenderPipeline implements DebugTargetHost {
   private readonly occlusionPass: OcclusionPass;
   private readonly _sunOcclusion: SunOcclusion;
   private readonly proteinShadowPass: ProteinShadowPass;
+  private readonly sunShadowAtlas: SunShadowAtlas;
   private readonly lightPrepass: LightPrepass;
   private readonly materialPass: MaterialPass;
   private readonly atmospherePass: AtmospherePass;
@@ -84,7 +86,8 @@ export class RenderPipeline implements DebugTargetHost {
     this.gbuffer = new GBufferPass(renderer, gpu);
     this._sunLight = new SunLight();
     this.proteinShadowPass = new ProteinShadowPass(renderer);
-    this._sunOcclusion = new SunOcclusion(this._sunLight, this.proteinShadowPass);
+    this.sunShadowAtlas = new SunShadowAtlas(renderer, gpu);
+    this._sunOcclusion = new SunOcclusion(this._sunLight, this.proteinShadowPass, this.sunShadowAtlas);
     this.occlusionPass = new OcclusionPass(renderer, this.gbuffer, this._sunOcclusion, gpu);
     this.lightPrepass = new LightPrepass(renderer, this.gbuffer, this.occlusionPass, this._sunLight, gpu);
     this.materialPass = new MaterialPass(renderer, this.lightPrepass, gpu);
@@ -121,6 +124,11 @@ export class RenderPipeline implements DebugTargetHost {
         vec4(vec3(texture(this.gbuffer.roughnessTexture, screenUV).r), 1),
       ),
       depth: this.buildCompositeMaterial(vec4(vec3(this.logDepthNode()), 1)),
+      // アトラスは線形深度なので、そのまま濃淡として読める(遠いほど白)。1 枚を画面いっぱいへ
+      // 引き伸ばすので、スロットの割り付けもそのまま見える。
+      shadow: this.buildCompositeMaterial(
+        vec4(vec3(texture(this.sunShadowAtlas.texture, screenUV).r), 1),
+      ),
       occlusion: this.buildCompositeMaterial(
         vec4(vec3(texture(this.occlusionPass.texture, screenUV).r), 1),
       ),
@@ -171,7 +179,7 @@ export class RenderPipeline implements DebugTargetHost {
   // 表示値として描くものをその上へ重ねる 3D UI パスの順に実行する。Game.render() から毎フレーム
   // 1回呼ぶ。デバッグ表示を選んでいてもいずれのパスも省略しない — 見せるのは通常のフレームが
   // 実際に生成した中身であるべきため。
-  render(scene: THREE.Scene, camera: THREE.Camera): void {
+  render(scene: THREE.Scene, camera: THREE.Camera, graphics: GraphicsSettingsData): void {
     this.renderer.getDrawingBufferSize(this.drawingBufferSize);
     const width = this.drawingBufferSize.x;
     const height = this.drawingBufferSize.y;
@@ -180,6 +188,10 @@ export class RenderPipeline implements DebugTargetHost {
     // シルエット外殻を遮蔽器、内部リボンを影の受け手として先に描く。対象が無いフレームは
     // パス自身が inactive に戻るので、通常の敵・他のリボン表現へ影響しない。
     this.proteinShadowPass.render(scene, camera, width, height, this._sunLight);
+
+    // 太陽光の影パス。G バッファを必要としないので、その前に置く。設定で切られているフレームは
+    // スロットが空のまま返り、遮蔽関数側も 1 を返す。
+    this.sunShadowAtlas.render(scene, this._sunLight, graphics.meshShadow);
 
     // G バッファパス。camera.layers の一時的な絞り込みと GPU 計測の申告は自身の中で行う。
     this.gbuffer.render(scene, camera, width, height);
@@ -234,6 +246,7 @@ export class RenderPipeline implements DebugTargetHost {
     this.gbuffer.dispose();
     this.occlusionPass.dispose();
     this.proteinShadowPass.dispose();
+    this.sunShadowAtlas.dispose();
     this.lightPrepass.dispose();
     this.materialPass.dispose();
     this.atmospherePass.dispose();
