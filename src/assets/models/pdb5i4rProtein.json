@@ -95,7 +95,8 @@
       "damageMultiplier": 1.6,
       "actions": [
         "plasma-burst"
-      ]
+      ],
+      "componentId": "cdiA"
     },
     {
       "id": "secondary-active-site",
@@ -118,7 +119,8 @@
       "damageMultiplier": 1.45,
       "actions": [
         "plasma-burst"
-      ]
+      ],
+      "componentId": "cdiI"
     },
     {
       "id": "tertiary-active-site",
@@ -141,7 +143,8 @@
       "damageMultiplier": 1.3,
       "actions": [
         "plasma-burst"
-      ]
+      ],
+      "componentId": "ef-tu-2"
     },
     {
       "id": "complex-interface",
@@ -162,7 +165,8 @@
       "radius": 13,
       "maxHp": 80,
       "damageMultiplier": 1.2,
-      "actions": []
+      "actions": [],
+      "componentId": "cdiA"
     },
     {
       "id": "structural-core",
@@ -183,7 +187,8 @@
       "radius": 14,
       "maxHp": 90,
       "damageMultiplier": 1.35,
-      "actions": []
+      "actions": [],
+      "componentId": "ef-tu-1"
     }
   ],
   "modificationSlots": [
@@ -207,14 +212,172 @@
           "fireRateMultiplier": 1.25,
           "damageMultiplier": 1.1
         }
-      }
+      },
+      "componentId": "ef-tu-2"
     }
   ],
   "motion": {
-    "morphTargets": 4,
-    "ouTheta": 1.2,
-    "ouSigma": 0.08,
-    "amplitude": 0.9
+    "model": "overdamped-normal-modes",
+    "sampleHz": 30,
+    "visualGain": 4,
+    "modes": [
+      {
+        "id": "mode-1",
+        "relaxationRate": 0.45,
+        "rmsAmplitude": 1.2,
+        "components": [
+          {
+            "componentId": "cdiA",
+            "translation": [
+              -0.076207,
+              -0.112331,
+              0.00532
+            ]
+          },
+          {
+            "componentId": "ef-tu-1",
+            "translation": [
+              -0.328188,
+              -0.412611,
+              -0.006025
+            ]
+          },
+          {
+            "componentId": "ef-tu-2",
+            "translation": [
+              -0.203418,
+              -0.268406,
+              -0.033384
+            ]
+          },
+          {
+            "componentId": "cdiI",
+            "translation": [
+              0.607813,
+              0.793348,
+              0.034088
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mode-2",
+        "relaxationRate": 0.549103,
+        "rmsAmplitude": 1.086327,
+        "components": [
+          {
+            "componentId": "cdiA",
+            "translation": [
+              0.181931,
+              -0.121849,
+              0.035875
+            ]
+          },
+          {
+            "componentId": "ef-tu-1",
+            "translation": [
+              -0.576796,
+              0.443442,
+              -0.176833
+            ]
+          },
+          {
+            "componentId": "ef-tu-2",
+            "translation": [
+              -0.361589,
+              0.280761,
+              -0.113889
+            ]
+          },
+          {
+            "componentId": "cdiI",
+            "translation": [
+              0.756454,
+              -0.602354,
+              0.254847
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mode-3",
+        "relaxationRate": 0.804628,
+        "rmsAmplitude": 0.897408,
+        "components": [
+          {
+            "componentId": "cdiA",
+            "translation": [
+              0.31863,
+              0.015045,
+              -0.580958
+            ]
+          },
+          {
+            "componentId": "ef-tu-1",
+            "translation": [
+              -0.335921,
+              -0.000741,
+              0.94189
+            ]
+          },
+          {
+            "componentId": "ef-tu-2",
+            "translation": [
+              -0.060402,
+              0.082397,
+              0.358459
+            ]
+          },
+          {
+            "componentId": "cdiI",
+            "translation": [
+              0.077693,
+              -0.096701,
+              -0.719392
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mode-4",
+        "relaxationRate": 0.898155,
+        "rmsAmplitude": 0.849399,
+        "components": [
+          {
+            "componentId": "cdiA",
+            "translation": [
+              0.752342,
+              -0.579463,
+              0.313375
+            ]
+          },
+          {
+            "componentId": "ef-tu-1",
+            "translation": [
+              -0.23686,
+              0.196141,
+              -0.147219
+            ]
+          },
+          {
+            "componentId": "ef-tu-2",
+            "translation": [
+              -0.099355,
+              0.07207,
+              -0.054499
+            ]
+          },
+          {
+            "componentId": "cdiI",
+            "translation": [
+              -0.416127,
+              0.311252,
+              -0.111657
+            ]
+          }
+        ]
+      }
+    ]
   },
   "generated": {
     "backend": "existing-backbone",
@@ -239,6 +402,11 @@
       2,
       3,
       4
-    ]
+    ],
+    "modalDerivation": {
+      "model": "rigid-domain-anisotropic-elastic-network",
+      "contactCutoffAngstrom": 12,
+      "modeCount": 4
+    }
   }
 }

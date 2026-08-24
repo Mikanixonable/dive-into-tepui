@@ -62,6 +62,7 @@ import './creative-placement-validation.test';
 import { register as registerProtein } from './protein-combat-state.test';
 import { register as registerProjectileOrientation } from './projectile-orientation.test';
 import { register as registerProteinRibbonCollision } from './protein-ribbon-collision.test';
+import { register as registerProteinBrownianMotion } from './protein-brownian-motion.test';
 
 registerVec3();
 registerKinematicState();
@@ -123,6 +124,7 @@ registerPlanArcRange();
 registerProtein();
 registerProjectileOrientation();
 registerProteinRibbonCollision();
+registerProteinBrownianMotion();
 
 runAll().catch((error) => {
   console.error(error);
