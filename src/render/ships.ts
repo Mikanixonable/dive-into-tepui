@@ -738,22 +738,14 @@ export function bulletHaloResources(): { geometry: THREE.BufferGeometry; materia
   return { geometry: bulletHaloGeom!, material: bulletHaloMat! };
 }
 
-let plasmaGeomFixed = false;
 let plasmaBodyMat: THREE.MeshBasicMaterial | null = null;
 
 // 敵プラズマ弾のメッシュ(本体のみ)を生成する。マテリアルは1つキャッシュして全弾で共有する。
 export function buildPlasmaMesh(): THREE.Mesh {
   const m = parsePlasma();
-  if (!plasmaGeomFixed) {
-    // plasma.json (CylinderGeometry) は toJSON() がコンストラクタ引数のみを保存する
-    // 仕様のため、export-models.mjs 側で焼き込んだ rotateX() 補正がロード時に失われ、
-    // 円柱の長さ軸が既定の Y のままになる。
-    // memoParseShared は geometry を clone しないため
-    // 全インスタンスがこの共有ジオメトリを参照する。一度だけ補正を掛け直す
-    // (毎回だと累積回転してしまう)。
-    m.geometry.rotateX(Math.PI / 2);
-    plasmaGeomFixed = true;
-  }
+  // export-models.mjs で CylinderGeometry の長さ軸を +Z へ回してから
+  // BufferGeometry として書き出している。BufferGeometry の頂点座標には
+  // その回転が焼き込まれているため、ここで再度 rotateX() してはならない。
   if (!plasmaBodyMat) {
     plasmaBodyMat = new THREE.MeshBasicMaterial({
       color: ENEMY_PLASMA_COLOR,
