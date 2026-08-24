@@ -36,7 +36,7 @@ async function main() {
   try {
     const { devTools } = session;
     await devTools.send('Page.navigate', { url: `${session.baseUrl}/` });
-    // 2 台のレンダラーの init() が終わるまで撮れない。ページが失敗を文字で出していたらそれを読む。
+    // レンダラーの init() が終わるまで撮れない。ページが失敗を文字で出していたらそれを読む。
     await waitFor(
       devTools,
       "(document.getElementById('error')?.textContent || typeof window.renderLab === 'object')",
@@ -49,11 +49,8 @@ async function main() {
     mkdirSync(outDir, { recursive: true });
     const names = await devTools.evaluate('window.renderLab.cases');
     for (const name of names) {
-      const shot = await devTools.evaluate(`window.renderLab.shoot(${JSON.stringify(name)})`);
-      for (const [pathName, dataUrl] of Object.entries(shot)) {
-        const file = path.join(outDir, `${name}-${pathName}.png`);
-        writeFileSync(file, Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64'));
-      }
+      const dataUrl = await devTools.evaluate(`window.renderLab.shoot(${JSON.stringify(name)})`);
+      writeFileSync(path.join(outDir, `${name}.png`), Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64'));
       console.log(`shot ${name}`);
     }
     const proteinNames = names.filter((name) => String(name).startsWith('protein-'));
@@ -64,7 +61,7 @@ async function main() {
     }
     const baselineFile = path.join(root, 'memos/mikanixonable/protein-motion-baseline.json');
     writeFileSync(baselineFile, `${JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       viewport: { width: 960, height: 540 },
       warmupFrames: 6,
       sampleFrames: 30,
@@ -74,7 +71,7 @@ async function main() {
     }, null, 2)}\n`);
     console.log(`Wrote protein baseline to ${path.relative(root, baselineFile)}`);
     if (fatalEvents.length > 0) throw new Error(`Page reported errors during shooting:\n${fatalEvents.join('\n')}`);
-    console.log(`Wrote ${names.length * 3} PNGs to ${path.relative(root, outDir)}`);
+    console.log(`Wrote ${names.length} PNGs to ${path.relative(root, outDir)}`);
   } finally {
     await session.close();
   }
