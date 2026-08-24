@@ -52,21 +52,6 @@ export function occlusionOpacity<T extends { readonly radius: number; readonly s
   return opacity;
 }
 
-// cameraPos から見かけの角半径が大きい順に bodies を max 件まで絞る。GPU の遮蔽判定
-// (render/line-occlusion.ts)は一様配列の要素数を固定する必要があり、登録天体全数を
-// そのまま渡せないため。
-export function nearestOccludingBodies<T extends { readonly radius: number; readonly state: KinematicState }>(
-  cameraPos: Vec3,
-  bodies: readonly T[],
-  max: number,
-): readonly T[] {
-  return bodies
-    .map((body) => ({ body, apparent: body.radius / Math.max(1e-6, len(sub(body.state.r, cameraPos))) }))
-    .sort((a, b) => b.apparent - a.apparent)
-    .slice(0, max)
-    .map(({ body }) => body);
-}
-
 // cameraPos から point への視線が celestialBodies のいずれかの球体に遮られていれば true。
 export function isOccluded<T extends { readonly radius: number; readonly state: KinematicState }>(
   cameraPos: Vec3,

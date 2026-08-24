@@ -17,7 +17,6 @@ import type { Bgm } from './audio/bgm/bgm';
 import type { WorldSfx } from './audio/sfx/world-sfx';
 import type { UiSfx } from './audio/sfx/ui-sfx';
 import type { GameScene } from './render/scene';
-import type { GraphicsSettings } from './render/graphics-settings';
 import type { RenderPipeline } from './render/pipeline/render-pipeline';
 import type { FrameSections } from './frame-sections';
 import type { Ephemeris } from './physics/ephemeris';
@@ -77,7 +76,6 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     private readonly settingsView: SettingsView,
     private readonly unlockManager: UnlockManager,
     private readonly sections: FrameSections,
-    private readonly graphics: GraphicsSettings,
     private readonly pipeline: RenderPipeline,
     private readonly slots: SaveSlots,
     private readonly snapshotService: SnapshotService,
@@ -139,7 +137,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     const earthSpinPhase0 = initialSave?.earthSpinPhase0 ?? Math.random() * 2 * Math.PI;
     this.game = new Game(
       this.gs, stageClass, this.hud, this.worldSfx, this.uiSfx, this.pauseMenu, this.unlockManager,
-      this.sections, ephemeris, this.graphics, this.pipeline, earthSpinPhase0, initialSave, startSimTime,
+      this.sections, ephemeris, this.pipeline, earthSpinPhase0, initialSave, startSimTime,
     );
     // AudioContext は実際のユーザー操作でしか作れないため、unlock は入力エッジの発火点へ配線する。
     // Input は周回ごとに作り直されるので、配線もそのたびに張り直す。

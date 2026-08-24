@@ -1,14 +1,11 @@
-// 戦闘ビューで肉眼の「明るい星」程度にしか見えない惑星の見た目。SphereView の視距離圧縮
-// (visDist 方式)は視直径がピクセル未満になり意味がないため、戦闘ビューでは星シェルと同じ
-// カメラ追従シェル上の輝点スプライトに切り替える。マップビューは SphereView と同じ
-// 実位置・実半径の球体 — 実体表示と輝点表示は別モデルの丸ごと差し替えであり、
-// SphereView 側に視点モード分岐を足す形は取らない。球メッシュ自体は SphereView と同じく
-// screen-lod.ts の分割段ラダーに乗り、見かけ直径が閾値未満なら(マップビューでは輝点も
-// 出さず)実体を隠す。
+// 戦闘ビューで肉眼の「明るい星」程度にしか見えない惑星の見た目。視直径がピクセル未満に
+// なるので、戦闘ビューでは星殻上の輝点スプライトに切り替える。実体表示と輝点表示は別モデルの
+// 丸ごと差し替えであり、SphereView 側に視点モード分岐を足す形は取らない。球メッシュ自体は
+// SphereView と同じく screen-lod.ts の分割段ラダーに乗り、見かけ直径が閾値未満なら
+// (マップビューでは輝点も出さず)実体を隠す。
 import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
 import { OrbitingId } from '../../physics/celestial-body';
-import { Vec3, len, scale as scaleVec, sub } from '../../physics/vec3';
 import { RingSystemDef, ShapeDef, shapeAxes } from '../../physics/solar-system';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
@@ -16,28 +13,39 @@ import { spinOrientation } from '../../physics/body-orientation';
 import { STAR_SHELL_RADIUS } from '../../render/stars';
 import { Billboard } from '../../render/billboard';
 import { CelestialSurface } from '../../render/celestial-surface';
-import { apparentSizePx, showsPhysicalSphere, sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from '../../render/screen-lod';
+import { showsPhysicalSphere, sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from '../../render/screen-lod';
 import { CelestialView } from './celestial-view';
-import type { GraphicsSettings } from '../../render/graphics-settings';
+import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import { RingView } from './ring-view';
+import { bondAlbedoOf } from '../../render/celestial-albedo';
+import { SUN_IRRADIANCE_1AU } from '../../render/pipeline/sun-light';
+import type { Vec3 } from '../../physics/vec3';
 
-// 見かけの明るさ3段階。金星(-4等)・木星(-2等)が bright、水星・火星・土星(0〜+1等台)が
-// medium、天王星(+5.7等、肉眼限界+6等付近)が faint — レジストリ側で天体ごとに選ぶ。
-export type PointBrightness = 'bright' | 'medium' | 'faint';
+// 輝点スプライトの一辺 [m](星殻上での長さ)。**点像の広がりは光源の大きさではなく目/レンズの
+// 応答なので、天体ごとには変えない。**
+const POINT_SPRITE_SIZE = 1.3e5;
 
-const POINT_SCALE: Record<PointBrightness, number> = {
-  bright: 2.4e5,
-  medium: 1.3e5,
-  faint: 6e4,
-};
-const POINT_OPACITY: Record<PointBrightness, number> = {
-  bright: 1,
-  medium: 0.75,
-  faint: 0.45,
-};
+// 太陽の視等級。ここから任意の視等級の放射照度が引ける。
+const SUN_APPARENT_MAGNITUDE = -26.74;
+// 肉眼限界の視等級と、そのとき輝点へ与える表示値。
+const NAKED_EYE_LIMIT_MAGNITUDE = 6;
+const NAKED_EYE_LIMIT_DISPLAY = 0.06;
+// 視等級 m の放射照度 = 1 天文単位での太陽の放射照度 x 10^(-0.4(m - m_sun))。
+const NAKED_EYE_LIMIT_IRRADIANCE = SUN_IRRADIANCE_1AU
+  * 10 ** (-0.4 * (NAKED_EYE_LIMIT_MAGNITUDE - SUN_APPARENT_MAGNITUDE));
+// 点光源の表示応答。**肉眼限界の惑星が届ける放射照度は表示値の白に対して 1e-13 の桁しかなく、
+// そのまま出せばどの惑星も黒へ潰れる** — 点として見えること自体が視細胞の順応と眼球内散乱と
+// いう「目の応答」であって、面の輝度の物理ではない。天体ごとの手調整ではなく、**全天体へ一律に
+// 掛かる 1 つの応答**として、肉眼限界がかろうじて見える表示値になるよう決める。
+const POINT_DISPLAY_GAIN = NAKED_EYE_LIMIT_DISPLAY / NAKED_EYE_LIMIT_IRRADIANCE;
+
+// ランバート球の位相関数。位相角 0(満)で 1、π(新)で 0 になる。
+function lambertPhase(phaseAngle: number): number {
+  return (Math.sin(phaseAngle) + (Math.PI - phaseAngle) * Math.cos(phaseAngle)) / Math.PI;
+}
 
 const tmpPos = new THREE.Vector3();
-const POINT_BODY_VIS_DIST = 5e7;
+const tmpToObserver = new THREE.Vector3();
 
 export class PointView extends CelestialView {
   readonly id: OrbitingId;
@@ -46,8 +54,7 @@ export class PointView extends CelestialView {
   private activeLevel: SphereLodLevel | null = null;
   private ring?: RingView;
   private readonly billboard: Billboard;
-  private readonly scale: number;
-  private readonly opacity: number;
+  private readonly bondAlbedo: number;
   private readonly outerRadius: number;
   // 自転姿勢が乗る前のローカル半軸 [m](真球なら3軸とも radius)。
   private readonly axes: THREE.Vector3;
@@ -60,14 +67,12 @@ export class PointView extends CelestialView {
     id: OrbitingId,
     buildSurface: (level: SphereLodLevel) => CelestialSurface,
     private readonly radius: number,
-    brightness: PointBrightness,
     shape?: ShapeDef,
     private readonly rings?: RingSystemDef,
   ) {
     super();
     this.id = id;
-    this.scale = POINT_SCALE[brightness];
-    this.opacity = POINT_OPACITY[brightness];
+    this.bondAlbedo = bondAlbedoOf(id);
     this.outerRadius = rings === undefined
       ? radius
       : rings.bands.reduce((maxRadius, band) => Math.max(maxRadius, band.outerRadius), radius);
@@ -102,93 +107,44 @@ export class PointView extends CelestialView {
     if (this.ring !== undefined) this.ring.group.visible = visible;
   }
 
-  // displayTime 時点の位置へ、視点モードに応じて広範囲視点の実体メッシュか戦闘視点の
-  // 輝点ビルボードのどちらかを同期する(常に片方は隠す)。見かけ直径は圧縮前の真の位置から
-  // 求め、閾値未満では実体を隠す(戦闘視点は輝点へ切り替え、広範囲視点は輝点も出さない)。
+  // displayTime 時点の位置へ実体メッシュか輝点ビルボードのどちらかを同期する(常に片方は
+  // 隠す)。見かけ直径が閾値未満では実体を隠す(戦闘視点は輝点へ切り替え、広範囲視点は
+  // 輝点も出さない)。
   sync(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris,
-    graphics: GraphicsSettings,
+    graphics: GraphicsSettingsData,
   ): void {
     if (!this.group.visible && !this.billboard.mesh.visible) return;
     const pos = ephemeris.positionOf(this.id, displayTime);
-    const apparentDiameterPx = graphics.scaleApparentSize(
-      apparentSizePx(2 * this.outerRadius, cameraSystem.activeCameraScale(pos)));
+    const apparentDiameterPx = this.lodApparentDiameterPx(
+      2 * this.outerRadius, cameraSystem.activeCameraScale(pos), graphics);
     if (!showsPhysicalSphere(apparentDiameterPx)) {
       this.hidePhysical();
       if (cameraSystem.overviewMode) {
         this.billboard.hide();
       } else {
-        this.syncBillboard(pos, cameraSystem);
+        this.syncBillboard(fo.RtoThreeV3(pos), pos, displayTime, ephemeris, cameraSystem.activeCamera.quaternion);
       }
       return;
     }
     this.syncLod(apparentDiameterPx);
-    const activeSurface = this.surfaces.get(this.activeLevel!)!;
     const sunDirection = ephemeris.sunDirFrom(pos, displayTime);
-    activeSurface.setSunDirection(new THREE.Vector3(sunDirection.x, sunDirection.y, sunDirection.z));
     const orientation = ephemeris.poleAt(this.id, displayTime);
-    const axis = orientation === null ? null : new THREE.Vector3(orientation.axis.x, orientation.axis.y, orientation.axis.z);
     const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
-    // 環を切ったときは、帯そのものだけでなく本体表面へ落ちる環の影も消す。
-    const rings = graphics.current.rings ? this.rings : undefined;
+    const rings = graphics.rings ? this.rings : undefined;
     if (this.ring !== undefined) this.ring.group.visible = rings !== undefined;
-    if (cameraSystem.overviewMode) {
-      // 広範囲視点は SphereView と同じ実スケール。
-      this.group.position.copy(fo.RtoThreeV3(pos));
-      this.group.scale.copy(this.axes);
-      this.billboard.hide();
-      if (q !== null) this.group.quaternion.set(q.x, q.y, q.z, q.w);
-      activeSurface.setRingShadowSystem(
-        rings,
-        this.group.position,
-        this.radius,
-        this.radius,
-        axis,
-      );
-      if (this.ring !== undefined && rings !== undefined) {
-        this.ring.sync(
-          this.group.position,
-          this.radius,
-          orientation === null ? null : orientation.axis,
-          pos,
-          cameraSystem.activeCameraScale,
-          sunDirection,
-          cameraSystem.activeCamera.position,
-        );
-      }
-      return;
-    }
-    // 戦闘視点でも見かけ直径が閾値以上なら SphereView と同じ圧縮実体を描く。
-    const rel = sub(pos, cameraSystem.activeCameraPos);
-    const trueDistance = Math.max(1, len(rel));
-    const cam = cameraSystem.activeCamera;
-    const dir = scaleVec(rel, 1 / trueDistance);
-    const scaleFactor = POINT_BODY_VIS_DIST * (this.radius / trueDistance);
-    this.group.position.set(
-      cam.position.x + dir.x * POINT_BODY_VIS_DIST,
-      cam.position.y + dir.y * POINT_BODY_VIS_DIST,
-      cam.position.z + dir.z * POINT_BODY_VIS_DIST,
-    );
-    const k = scaleFactor / this.radius;
-    this.group.scale.set(this.axes.x * k, this.axes.y * k, this.axes.z * k);
+    this.group.position.copy(fo.RtoThreeV3(pos));
+    this.group.scale.copy(this.axes);
     if (q !== null) this.group.quaternion.set(q.x, q.y, q.z, q.w);
-    activeSurface.setRingShadowSystem(
-      rings,
-      this.group.position,
-      this.radius,
-      scaleFactor,
-      axis,
-    );
     this.billboard.hide();
     if (this.ring !== undefined && rings !== undefined) {
       this.ring.sync(
         this.group.position,
-        scaleFactor,
         orientation === null ? null : orientation.axis,
         pos,
         cameraSystem.activeCameraScale,
         sunDirection,
-        cameraSystem.activeCamera.position,
+        this.sunIrradianceAt(ephemeris, pos, displayTime),
       );
     }
   }
@@ -208,21 +164,29 @@ export class PointView extends CelestialView {
     for (const [lvl, surface] of this.surfaces) surface.mesh.visible = lvl === level;
   }
 
-  // 星シェル上に、カメラから見た方向だけを反映した輝点を置く。
-  private syncBillboard(pos: Vec3, cameraSystem: CameraSystem): void {
-    const cam = cameraSystem.activeCamera;
-    const rel = sub(pos, cameraSystem.activeCameraPos);
-    const trueDistance = Math.max(1, len(rel));
-    const dir = scaleVec(rel, 1 / trueDistance);
+  // 星殻上に、描画座標 p の方向だけを反映した輝点を置く。明るさは「いま観測者へ届く光の量」
+  // — 恒星から受ける放射照度・アルベド・半径・観測距離・位相角から引いた放射照度に、点光源の
+  // 表示応答を掛けたもの。係数の 2/3 はランバート球の幾何アルベドが (2/3)ρ であることから来る
+  // (落とすと輝点だけが球より 1.5 倍明るくなり、ビューを切り替えた瞬間に明るさが飛ぶ)。
+  private syncBillboard(
+    p: THREE.Vector3, pos: Vec3, displayTime: number, ephemeris: Ephemeris,
+    cameraQuaternion: THREE.Quaternion,
+  ): void {
+    const observerDistance = p.length();
+    const sunDir = ephemeris.sunDirFrom(pos, displayTime);
+    // 位相角は天体から見た恒星方向と観測者方向の成す角。観測者は描画原点なので -p̂ で、
+    // フローティングオリジンは平行移動しかしないため、描画座標の向きは ECI の向きと一致する。
+    tmpToObserver.copy(p).negate().normalize();
+    const cosPhase = Math.max(-1, Math.min(1,
+      sunDir.x * tmpToObserver.x + sunDir.y * tmpToObserver.y + sunDir.z * tmpToObserver.z));
+    const geometry = (this.radius / observerDistance) ** 2 * lambertPhase(Math.acos(cosPhase));
+    const irradiance = (2 / 3) * this.bondAlbedo
+      * this.sunIrradianceAt(ephemeris, pos, displayTime) * geometry;
     this.billboard.sync(
-      tmpPos.set(
-        cam.position.x + dir.x * STAR_SHELL_RADIUS,
-        cam.position.y + dir.y * STAR_SHELL_RADIUS,
-        cam.position.z + dir.z * STAR_SHELL_RADIUS,
-      ),
-      this.scale,
-      this.opacity,
-      cam.quaternion,
+      tmpPos.copy(p).setLength(STAR_SHELL_RADIUS),
+      POINT_SPRITE_SIZE,
+      irradiance * POINT_DISPLAY_GAIN,
+      cameraQuaternion,
     );
   }
 
