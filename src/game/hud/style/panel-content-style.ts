@@ -5,6 +5,14 @@ import * as C from '../../const';
 import { MQ_COARSE, MQ_COARSE_SHORT, MQ_COMPACT, MQ_MEDIUM_DOWN, MQ_SHORT } from '../breakpoints';
 
 export const PANEL_CONTENT_STYLE = `
+  .protein-target-details { margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--line-subtle); }
+  .protein-target-heading { display: flex; justify-content: space-between; color: var(--text-muted); font-size: var(--font-xxs); letter-spacing: .08em; }
+  .protein-site-row { display: grid; grid-template-columns: 1rem 5.2rem minmax(3rem, 1fr) auto; gap: var(--space-2); align-items: center; margin-top: var(--space-2); font-size: var(--font-xxs); }
+  .protein-site-glyph { color: var(--color-signal); font-size: var(--font-xs); line-height: 1; opacity: calc(.25 + var(--protein-site-hp) * .75); }
+  .protein-site-row.disabled .protein-site-glyph { color: var(--text-dim); }
+  .protein-site-label { min-width: 0; }
+  .protein-site-meter { height: 4px; background: var(--line-subtle); overflow: hidden; }
+  .protein-site-meter i { display: block; height: 100%; background: var(--signal); }
 #hud-vessel-status h3 { font-size: var(--font-xxs); }
 /* 通常のマップビューでは艦固有の情報を右クリックのプロパティウィンドウで参照するので、常設の
    SHIP STATUS は畳んでパネル占有面積を減らす。クリエイティブでは配置後の操作用に表示する。 */
@@ -29,11 +37,11 @@ export const PANEL_CONTENT_STYLE = `
   width: 0;
   height: 100%;
   border-radius: inherit;
-  background: var(--accent);
+  background: var(--color-primary);
   transition: width 180ms;
 }
 #hud-vessel-status .vessel-meter.critical .vessel-meter-fill {
-  background: var(--danger);
+  background: var(--color-error);
 }
 #hud-vessel-status .vessel-meter-value {
   min-width: 48px;
@@ -42,6 +50,25 @@ export const PANEL_CONTENT_STYLE = `
   text-align: right;
   white-space: nowrap;
 }
+#burn-management-panel .burn-management-metrics { gap: 1px; }
+#burn-management-panel .burn-fuel-readout {
+  display: inline-grid; grid-template-columns: minmax(64px, 1fr) auto;
+  align-items: center; gap: 6px; width: 128px;
+}
+#burn-management-panel .burn-fuel-meter {
+  height: 6px; overflow: hidden; border-radius: var(--radius-pill); background: var(--bar-bg);
+}
+#burn-management-panel .burn-fuel-fill {
+  display: block; width: 0; height: 100%; border-radius: inherit;
+  background: var(--color-primary); transition: width 180ms;
+}
+#burn-management-panel .burn-fuel-meter.critical .burn-fuel-fill { background: var(--color-error); }
+#burn-management-panel .burn-fuel-value {
+  min-width: 48px; color: var(--text); font-size: var(--font-xxs);
+  text-align: right; white-space: nowrap;
+}
+#burn-management-panel .burn-actions { margin-top: var(--space-3); }
+#burn-management-panel .burn-actions .w-btn { min-width: 0; }
 #hud-vessel-status .vessel-deploy-controls {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -61,8 +88,8 @@ export const PANEL_CONTENT_STYLE = `
   position: relative; z-index: 1; color: var(--text); font-size: var(--font-xxs); line-height: 1.5;
   text-shadow: 0 0 3px var(--bg), 0 0 3px var(--bg); transition: color var(--transition-fast);
 }
-#hud-vessel-status .vessel-deploy-btn.on { border-color: var(--accent); }
-#hud-vessel-status .vessel-deploy-btn.on .label { color: var(--accent); }
+#hud-vessel-status .vessel-deploy-btn.on { border-color: var(--color-primary); }
+#hud-vessel-status .vessel-deploy-btn.on .label { color: var(--color-primary); }
 /* 常設パネルの操作ボタン列(艦ステータスの R/F/G/T 代替、軌道情報の分析パネル起動、
    いずれもタッチ・マウスどちらでも常設)。 */
 .combat-panel .panel-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
@@ -76,7 +103,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud .hud-rail-right > #hud-target h3 { font-size: var(--font-xxs); }
 #hud-enemies h3 { font-size: var(--font-xxs); }
 #hud-enemies .erow { display: flex; justify-content: space-between; gap: var(--space-4); color: var(--text-dim); }
-#hud-enemies .erow.tgt { color: var(--accent); }
+#hud-enemies .erow.tgt { color: var(--color-primary); }
 
 #hud .hud-rail > #hud-object-placer { max-height: none; overflow: visible; }
 #hud .hud-rail > #hud-plan { width: 100%; min-width: 0; max-width: none; max-height: none; overflow: visible; }
@@ -111,10 +138,10 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-physical-object-list .physical-object-list-detail { margin-left: auto; font-size: var(--font-xxs); color: var(--text-dim); white-space: nowrap; }
 #hud-physical-object-list .erow:hover { color: var(--text); }
 #hud-physical-object-list .erow.tgt {
-  color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
 #hud-physical-object-list .erow.on {
-  outline: 0; color: var(--accent-secondary); background: color-mix(in srgb, var(--accent-secondary) 12%, transparent);
+  outline: 0; color: var(--color-signal); background: color-mix(in srgb, var(--color-signal) 12%, transparent);
 }
 #hud-physical-object-list .erow.cluster { opacity: .55; }
 #hud-physical-object-list .physical-object-list-toggle { width: 10px; text-align: center; flex: none; }
@@ -162,7 +189,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-predict-toggle {
   display: none; order: 1; align-self: center; pointer-events: auto; cursor: pointer;
   width: 26px; height: 26px; border: 1px solid var(--edge); border-radius: var(--radius-m);
-  background: var(--surface); color: var(--accent);
+  background: var(--surface); color: var(--color-primary);
 }
 #hud .hud-map-root.active #hud-predict-toggle { display: block; }
 #hud.dock-mode #hud-predict-toggle { display: none; }
@@ -176,9 +203,9 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
   font-size: var(--font-m);
 }
-#hud-predict span.predict-reset:hover { border-color: var(--accent); color: var(--accent); }
+#hud-predict span.predict-reset:hover { border-color: var(--color-primary); color: var(--color-primary); }
 #hud-predict .predict-slider-wrap { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; height: 22px; }
-#hud-predict input[type="range"] { width: 100%; height: 22px; margin: 0; pointer-events: auto; accent-color: var(--accent); }
+#hud-predict input[type="range"] { width: 100%; height: 22px; margin: 0; pointer-events: auto; accent-color: var(--color-primary); }
 #hud-predict .predict-elapsed {
   flex: 0 0 auto; pointer-events: auto; cursor: pointer;
   font-size: var(--font-s); color: var(--text-dim); font-variant-numeric: tabular-nums; white-space: nowrap;
@@ -222,7 +249,31 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 /* 「角度」プルダウン: 見出しを独立行にし、次の行へ選択欄とセットボタンを並べる。 */
 #hud .hud-frame-controls .camera-angle-group > .w-group-title { flex: 0 0 100%; min-width: 0; }
 #hud .hud-frame-controls .camera-angle-group .w-select { flex: 1 1 auto; min-width: 80px; }
-#hud-creative-options { width: 100%; pointer-events: auto; }
+#hud-stage-controls { width: 100%; pointer-events: auto; }
+#hud-stage-controls .stage-controls-body { display: grid; gap: var(--space-2); margin-top: var(--space-3); }
+#hud-stage-controls .stage-control-enemy-tabs { display: flex; gap: var(--space-2); }
+#hud-stage-controls .stage-control-enemy-tabs .w-btn { flex: 1 1 0; min-width: 0; }
+#hud-stage-controls .stage-control-section { display: grid; gap: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--edge); }
+#hud-stage-controls .stage-control-section-title { color: var(--text); font-size: var(--font-xxs); letter-spacing: .04em; }
+#hud-stage-controls .stage-control-shapes { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+#hud-stage-controls .stage-control-shapes .w-group-title { flex: 0 0 100%; }
+#hud-stage-controls .stage-control-shapes .w-btn { flex: 1 1 0; min-width: 0; }
+#hud-stage-controls .stage-control-shapes .w-btn.on { background: var(--color-primary-fill); border-color: var(--color-primary); color: var(--color-primary); }
+#hud-stage-controls .stage-control-protein-representation,
+#hud-stage-controls .stage-control-protein-colors { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+#hud-stage-controls .stage-control-protein-representation .w-group-title,
+#hud-stage-controls .stage-control-protein-colors .w-group-title { flex: 0 0 100%; }
+#hud-stage-controls .stage-control-protein-representation .w-btn,
+#hud-stage-controls .stage-control-protein-colors .w-btn { flex: 1 1 0; min-width: 0; }
+/* 着色は長い分析用ラベルを含むため2列へ折り返し、全文をボタン内に収める。 */
+#hud-stage-controls .stage-control-protein-colors .w-btn {
+  flex: 1 1 calc(50% - var(--space-2)); min-width: 110px; white-space: normal; overflow-wrap: anywhere;
+}
+#hud-stage-controls .stage-control-protein-representation .w-btn.on,
+#hud-stage-controls .stage-control-protein-colors .w-btn.on { background: var(--color-primary-fill); border-color: var(--color-primary); color: var(--color-primary); }
+#hud-stage-controls .stage-control-select { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); color: var(--text-dim); font-size: var(--font-xxs); }
+#hud-stage-controls .stage-control-select .w-select { min-width: 86px; }
+#hud-stage-controls .stage-control-select .w-input { width: 72px; text-align: right; }
 /* 物体配置パネル(クリエイティブモード限定): MANEUVER PLAN の下、右上に縦積みする。 */
 #hud-object-placer { width: 100%; pointer-events: auto; max-height: 70vh; max-height: 70dvh; overflow-y: auto; }
 #hud-object-placer .w-close { border-radius: 50%; }
@@ -230,16 +281,16 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-object-placer .slider-field { margin-bottom: var(--space-4); }
 #hud-object-placer .slider-field .w-group { flex-wrap: nowrap; margin-bottom: 0; }
 #hud-object-placer .slider-field .slider-col { flex: 1 1 60px; min-width: 60px; }
-#hud-object-placer .slider-field input[type="range"] { width: 100%; pointer-events: auto; accent-color: var(--accent); }
+#hud-object-placer .slider-field input[type="range"] { width: 100%; pointer-events: auto; accent-color: var(--color-primary); }
 #hud-object-placer .slider-field .slider-ticks { display: flex; justify-content: space-between; margin-top: var(--space-1); }
 #hud-object-placer .slider-field .slider-ticks span { flex: 0 1 auto; min-width: 0; font-size: calc(var(--font-xxs) * 0.82); color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #hud-object-placer .slider-field .slider-ticks span:first-child { text-align: left; }
 #hud-object-placer .slider-field .slider-ticks span:last-child { text-align: right; }
 #hud-object-placer input[type="text"] { flex: 1; width: auto; }
 #hud-object-placer .preset-row { flex-wrap: wrap; gap: var(--space-3); }
-#hud-object-placer .field-issue { border: 1px solid var(--danger); border-radius: var(--radius-s); padding: var(--space-1) var(--space-2); }
-#hud-object-placer .issue-list { margin: var(--space-4) 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--danger); border-radius: var(--radius-s); background: var(--danger-fill); }
-#hud-object-placer .issue-list .issue-line { font-size: var(--font-s); color: var(--danger); }
+#hud-object-placer .field-issue { border: 1px solid var(--color-error); border-radius: var(--radius-s); padding: var(--space-1) var(--space-2); }
+#hud-object-placer .issue-list { margin: var(--space-4) 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--color-error); border-radius: var(--radius-s); background: var(--color-error-fill); }
+#hud-object-placer .issue-list .issue-line { font-size: var(--font-s); color: var(--color-error); }
 #navball { top: 12px; left: 12px; width: 190px; pointer-events: auto; }
 #navball .nb-ball { display: block; width: 100%; height: auto; margin: var(--space-2) 0 var(--space-4); }
 #navball .nb-rim { fill: var(--fill-1); stroke: var(--edge); stroke-width: 1; }
@@ -258,19 +309,129 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 }
 #hud-result h1 { font-size: var(--font-3xl); letter-spacing: 6px; margin-bottom: var(--space-6); }
 #hud-result.win h1 { color: var(--text); }
-#hud-result.lose h1 { color: var(--accent); }
+#hud-result.lose h1 { color: var(--color-primary); }
 #hud-result .detail {
   font-size: var(--font-xl); line-height: 2; color: var(--text);
   background: var(--surface); border: 1px solid var(--edge); border-radius: var(--radius-m); padding: var(--space-6) var(--space-6);
 }
-#hud-result .restart { margin-top: var(--space-6); color: var(--accent-soft); font-size: var(--font-l); }
+#hud-result .restart { margin-top: var(--space-6); color: var(--color-primary-hover); font-size: var(--font-l); }
 #hud-help {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-  display: none; min-width: min(480px, calc(100vw - 24px)); max-height: 86vh; max-height: 86dvh; overflow-y: auto; pointer-events: auto;
+  display: none; width: min(920px, calc(100vw - 24px)); min-width: 0;
+  max-height: min(90vh, 900px); max-height: min(90dvh, 900px); overflow: hidden; pointer-events: auto;
 }
-#hud-help table { border-collapse: collapse; width: 100%; }
-#hud-help td { padding: var(--space-2) var(--space-5); color: var(--text); }
-#hud-help td.key { color: var(--accent-soft); text-align: right; white-space: nowrap; }
+#hud-help .help-header {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-5);
+  padding-bottom: var(--space-4); border-bottom: 1px solid var(--edge);
+}
+#hud-help .help-header h3 { margin: 0; }
+#hud-help .help-close-hint { color: var(--text-dim); font-size: var(--font-xxs); font-weight: 400; letter-spacing: 0; }
+#hud-help .help-close-button {
+  flex: 0 0 auto; width: 28px; height: 28px; padding: 0; border: 1px solid var(--edge);
+  border-radius: var(--radius-control); background: var(--surface-2); color: var(--text-dim);
+  font: inherit; font-size: var(--font-l); line-height: 1; cursor: pointer;
+}
+#hud-help .help-close-button:hover, #hud-help .help-close-button:focus-visible { color: var(--color-primary-hover); border-color: var(--color-primary); }
+#hud-help .help-mode-status { margin-top: var(--space-2); color: var(--color-primary-hover); font-size: var(--font-xxs); letter-spacing: .04em; }
+#hud-help .help-toolbar { display: grid; gap: var(--space-3); padding: var(--space-4) 0; }
+#hud-help .help-toolbar-row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+#hud-help .help-toolbar-label { color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .06em; }
+#hud-help .help-tab {
+  min-height: 28px; padding: var(--space-2) var(--space-3); border: 1px solid var(--edge); border-radius: var(--radius-control);
+  background: var(--surface-2); color: var(--text-dim); font: inherit; font-size: var(--font-xxs); cursor: pointer;
+}
+#hud-help .help-tab:hover, #hud-help .help-tab:focus-visible { color: var(--text); border-color: var(--color-primary-edge); }
+#hud-help .help-tab.on { background: var(--color-primary-fill); border-color: var(--color-primary-edge); color: var(--color-primary-hover); }
+#hud-help .help-search {
+  display: flex; align-items: center; gap: var(--space-2); flex: 1 1 220px; min-width: 180px;
+  color: var(--text-dim);
+}
+#hud-help .help-search .w-input { flex: 1 1 auto; width: 100%; }
+#hud-help .help-category-tabs { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+#hud-help .help-body { overflow-y: auto; max-height: calc(min(90vh, 900px) - 190px); max-height: calc(min(90dvh, 900px) - 190px); padding-right: var(--space-2); }
+#hud-help .help-section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-4); margin: var(--space-2) 0 var(--space-3); }
+#hud-help .help-section-heading h4 { margin: 0; color: var(--text); font-size: var(--font-s); letter-spacing: .06em; }
+#hud-help .help-section-heading > span { color: var(--text-dim); font-size: var(--font-xxs); }
+#hud-help .help-quickstart { padding: var(--space-4); border: 1px solid var(--color-primary-edge-soft); background: var(--color-primary-fill-weak); }
+#hud-help .help-quickstart-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); }
+#hud-help .help-recipe {
+  display: flex; align-items: center; gap: var(--space-3); min-height: 40px; padding: var(--space-2) var(--space-3);
+  border-left: 2px solid var(--color-primary); background: var(--surface-1); color: var(--text); font-size: var(--font-xxs);
+}
+#hud-help .help-recipe-number { color: var(--color-primary-hover); font-variant-numeric: tabular-nums; }
+#hud-help kbd, #hud-help .help-entry-key {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 2.1em; min-height: 1.7em;
+  padding: 0 var(--space-2); border: 1px solid var(--color-primary-edge); border-radius: var(--radius-micro);
+  background: var(--surface-2); color: var(--color-primary-hover); font: inherit; font-size: var(--font-xxs); font-weight: 700;
+}
+#hud-help .help-keyboard-section { margin-top: var(--space-5); }
+#hud-help .help-legend { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); margin-bottom: var(--space-3); }
+#hud-help .help-legend-item { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--text-dim); font-size: var(--font-xxs); }
+#hud-help .help-legend-item i, #hud-help .help-group summary i { font-style: normal; margin-right: var(--space-2); }
+#hud-help .help-legend-item.cat-basic i, #hud-help .help-group.cat-basic summary i { color: var(--color-info); }
+#hud-help .help-legend-item.cat-combat i, #hud-help .help-group.cat-combat summary i { color: var(--color-error); }
+#hud-help .help-legend-item.cat-camera i, #hud-help .help-group.cat-camera summary i { color: var(--color-success); }
+#hud-help .help-legend-item.cat-time i, #hud-help .help-group.cat-time summary i { color: var(--color-warning); }
+#hud-help .help-legend-item.cat-map i, #hud-help .help-group.cat-map summary i { color: var(--color-primary-hover); }
+#hud-help .help-legend-item.cat-ui i, #hud-help .help-group.cat-ui summary i { color: var(--text); }
+#hud-help .help-legend-item.cat-gesture i, #hud-help .help-group.cat-gesture summary i { color: var(--color-signal); }
+#hud-help .help-keyboard { display: grid; gap: 3px; padding: var(--space-3); border: 1px solid var(--edge); background: var(--surface-0); }
+#hud-help .help-keyboard-row { display: flex; gap: 3px; }
+#hud-help .help-key {
+  flex: 1 1 0; min-width: 0; height: 30px; padding: 0 2px; overflow: hidden; border: 1px solid var(--edge);
+  border-radius: var(--radius-micro); background: var(--surface-1); color: var(--text-faint); font: inherit; font-size: var(--font-xxs);
+  cursor: pointer; transition: border-color var(--transition-fast), background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+#hud-help .help-key.wide { flex-grow: 1.55; }
+#hud-help .help-key.xwide { flex-grow: 2.1; }
+#hud-help .help-key.space { flex-grow: 5.2; }
+#hud-help .help-key.mapped { color: var(--text); border-color: var(--category-edge, var(--color-primary-edge)); }
+#hud-help .help-key.cat-basic { --category-edge: var(--color-info); --category-fill: var(--color-info-fill); }
+#hud-help .help-key.cat-combat { --category-edge: var(--color-error); --category-fill: var(--color-error-fill); }
+#hud-help .help-key.cat-camera { --category-edge: var(--color-success); --category-fill: var(--color-success-fill); }
+#hud-help .help-key.cat-time { --category-edge: var(--color-warning); --category-fill: var(--color-warning-fill); }
+#hud-help .help-key.cat-map { --category-edge: var(--color-primary); --category-fill: var(--color-primary-fill); }
+#hud-help .help-key.cat-ui { --category-edge: var(--text); --category-fill: var(--surface-3); }
+#hud-help .help-key:hover, #hud-help .help-key:focus-visible, #hud-help .help-key.is-selected {
+  color: var(--text-strong); border-color: var(--category-edge, var(--color-primary)); background: var(--category-fill, var(--color-primary-fill));
+}
+#hud-help .help-key.is-selected, #hud-help .help-entry.is-selected { box-shadow: 0 0 0 2px var(--color-focus); }
+#hud-help .help-key.search-muted { opacity: .2; }
+#hud-help .help-keyboard-aux { display: flex; align-items: center; gap: 3px; margin-top: var(--space-2); }
+#hud-help .help-keyboard-aux .help-key { flex: 0 1 58px; }
+#hud-help .help-keyboard-aux-label { margin-right: var(--space-2); color: var(--text-dim); font-size: var(--font-xxs); }
+#hud-help .help-content { display: grid; gap: var(--space-2); margin-top: var(--space-5); }
+#hud-help .help-group { border: 1px solid var(--edge); background: var(--surface-1); }
+#hud-help .help-group summary {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3) var(--space-4);
+  color: var(--text); font-size: var(--font-xs); letter-spacing: .05em; cursor: pointer; list-style: none;
+}
+#hud-help .help-group summary::-webkit-details-marker { display: none; }
+#hud-help .help-group summary::after { content: '+'; color: var(--text-dim); font-size: var(--font-m); }
+#hud-help .help-group[open] summary::after { content: '−'; }
+#hud-help .help-group summary em { color: var(--text-dim); font-size: var(--font-xxs); font-style: normal; }
+#hud-help .help-group-body { border-top: 1px solid var(--edge); }
+#hud-help .help-entry { display: grid; grid-template-columns: minmax(120px, 25%) minmax(0, 1fr); gap: var(--space-4); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--line-subtle); }
+#hud-help .help-entry:last-child { border-bottom: 0; }
+#hud-help .help-entry:hover, #hud-help .help-entry.is-selected { background: var(--surface-2); }
+#hud-help .help-entry-keyset { display: flex; flex-wrap: wrap; align-content: flex-start; justify-content: flex-end; gap: var(--space-1); }
+#hud-help .help-entry-key { cursor: pointer; }
+#hud-help .help-entry-key:hover, #hud-help .help-entry-key:focus-visible, #hud-help .help-entry-key.is-selected { border-color: var(--color-focus); background: var(--color-primary-fill-strong); }
+#hud-help .help-entry-key.muted { color: var(--text-dim); border-style: dashed; }
+#hud-help .help-key-separator { align-self: center; color: var(--text-dim); }
+#hud-help .help-gesture { display: inline-flex; align-items: center; min-height: 1.7em; padding: 0 var(--space-2); color: var(--color-signal); font-size: var(--font-xxs); }
+#hud-help .help-entry-title { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
+#hud-help .help-entry-title strong { color: var(--text); font-size: var(--font-xs); }
+#hud-help .help-entry-copy p { margin: var(--space-1) 0 0; color: var(--text-dim); font-size: var(--font-xxs); line-height: 1.55; }
+#hud-help .help-entry-tags { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-1); }
+#hud-help .help-behavior, #hud-help .help-input-tag { padding: 1px var(--space-2); border: 1px solid var(--edge); color: var(--text-dim); font-size: 9px; letter-spacing: .04em; white-space: nowrap; }
+#hud-help .help-behavior { color: var(--color-warning); border-color: var(--color-warning-edge); }
+#hud-help .help-input-tag.input-keyboard { color: var(--color-info); border-color: var(--color-info-edge); }
+#hud-help .help-input-tag.input-mouse { color: var(--color-success); border-color: var(--color-success-edge); }
+#hud-help .help-input-tag.input-touch { color: var(--color-signal); border-color: color-mix(in srgb, var(--color-signal) 45%, transparent); }
+#hud-help .help-example { margin-top: var(--space-2); color: var(--color-primary-hover); font-size: var(--font-xxs); }
+#hud-help .help-no-results { padding: var(--space-6); color: var(--text-dim); text-align: center; }
+#hud-help .help-visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
 #hud-stagestatus {
   bottom: calc(12px + var(--safe-b)); left: 50%; transform: translateX(-50%);
@@ -281,7 +442,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   font-size: var(--font-s); letter-spacing: 2px; color: var(--text); font-variant-numeric: tabular-nums;
   display: grid; grid-template-columns: auto 1fr; gap: var(--space-2) var(--space-4); align-items: center;
 }
-#hud-stagestatus .t.warn { color: var(--accent); }
+#hud-stagestatus .t.warn { color: var(--color-warning); }
 #hud-stagestatus .t .w-meter { width: 240px; }
 #hud-stagestatus .k { font-size: var(--font-s); color: var(--text-dim); line-height: 1.8; white-space: nowrap; }
 #hud-stagestatus .k-widgets:not(:empty) { margin-top: var(--space-3); }
@@ -303,7 +464,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   padding: 0; font: inherit; font-size: var(--font-m); border: 1px solid transparent;
   background: var(--surface-2); color: var(--body); cursor: pointer;
 }
-#hud-pause-menu .pm-minimize:hover { color: var(--accent-near); background: var(--surface-3); }
+#hud-pause-menu .pm-minimize:hover { color: var(--color-primary-hover); background: var(--surface-3); }
 #hud-pause-menu .pm-body.hidden { display: none; }
 #hud-pause-menu .pm-row {
   display: flex; justify-content: space-between; align-items: center; gap: var(--space-6); padding: var(--space-3) 0;
@@ -314,7 +475,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   width: 100%; box-sizing: border-box; text-align: center;
   padding: var(--space-4) var(--space-5); font-size: var(--font-m);
 }
-#hud-pause-menu span.pm-quit { margin-top: var(--space-5); }
+#hud-pause-menu span.pm-quit { margin-top: var(--space-2); }
 #hud-settings-view {
   inset: 0; display: none; overflow-y: auto; pointer-events: auto;
   padding: clamp(24px, 7vh, 72px) max(var(--space-6), 6vw);
@@ -347,10 +508,10 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   flex: 0 0 auto; width: var(--hit-target-min); height: var(--hit-target-min); border-radius: var(--radius-control);
   border-color: var(--edge); background: var(--surface-1);
 }
-#hud-settings-view .sv-header .w-close:hover { border-color: var(--accent); background: var(--surface-2); }
-#hud-settings-view .sv-eyebrow { color: var(--accent); font-size: var(--font-xxs); letter-spacing: 0.12em; }
+#hud-settings-view .sv-header .w-close:hover { border-color: var(--color-primary); background: var(--surface-2); }
+#hud-settings-view .sv-eyebrow { color: var(--color-primary); font-size: var(--font-xxs); letter-spacing: 0.12em; }
 #hud-settings-view .sv-description {
-  margin-top: var(--space-5); padding-left: var(--space-4); border-left: 2px solid var(--accent);
+  margin-top: var(--space-5); padding-left: var(--space-4); border-left: 2px solid var(--color-primary);
   color: var(--text-dim); font-size: var(--font-s); line-height: 1.6;
 }
 #hud-settings-view .sv-tabs {
@@ -370,14 +531,14 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 }
 #hud-settings-view .sv-tabs .w-btn::after {
   position: absolute; right: 0; bottom: -1px; left: 0; height: 2px; border-radius: 0;
-  background: var(--accent); content: '';
+  background: var(--color-primary); content: '';
   opacity: 0; transform: scaleX(0.35); transition: opacity var(--transition-fast), transform var(--transition-fast);
 }
 #hud-settings-view .sv-tabs .w-btn:hover {
-  background: transparent; color: var(--accent-near); transform: none;
+  background: transparent; color: var(--color-primary-hover); transform: none;
 }
 #hud-settings-view .sv-tabs .w-btn.on {
-  border: 0; background: transparent; color: var(--accent);
+  border: 0; background: transparent; color: var(--color-primary);
 }
 #hud-settings-view .sv-tabs .w-btn.on::after { opacity: 1; transform: scaleX(1); }
 #hud-settings-view .sv-section {
@@ -390,7 +551,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   color: var(--title); font-size: var(--font-m); letter-spacing: 0.08em;
 }
 #hud-settings-view .sv-section h3::before {
-  width: var(--space-2); height: var(--font-m); border-radius: var(--radius-micro); background: var(--accent); content: '';
+  width: var(--space-2); height: var(--font-m); border-radius: var(--radius-micro); background: var(--color-primary); content: '';
 }
 #hud-settings-view .sv-theme-options {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: var(--space-3);
@@ -410,11 +571,11 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   color: var(--sv-theme-title);
 }
 #hud-settings-view .sv-theme-button.on {
-  background: color-mix(in srgb, var(--accent) 18%, var(--sv-theme-page));
+  background: color-mix(in srgb, var(--color-primary) 18%, var(--sv-theme-page));
   color: var(--sv-theme-title);
 }
 #hud-settings-view .sv-theme-button.on::after {
-  margin-left: auto; color: var(--accent); content: '選択中'; font-size: var(--font-xxs); white-space: nowrap;
+  margin-left: auto; color: var(--color-primary); content: '選択中'; font-size: var(--font-xxs); white-space: nowrap;
 }
 #hud-settings-view .sv-theme-button .w-btn-icon {
   display: inline-flex; align-items: center; gap: 3px; width: auto; height: auto; margin-right: var(--space-2);
@@ -436,7 +597,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-settings-view .sv-header .w-close:hover,
 #hud-settings-view .sv-preview-button:hover,
 #hud-settings-view .sv-track-actions .w-btn:hover {
-  border: 0; background: transparent; color: var(--accent-near);
+  border: 0; background: transparent; color: var(--color-primary-hover);
 }
 #hud-settings-view .gp-body { display: flex; flex-direction: column; gap: var(--space-4); margin-top: var(--space-4); }
 #hud-settings-view .sv-volume-row {
@@ -460,7 +621,9 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 
 @media ${MQ_MEDIUM_DOWN} {
   #hud-plan { min-width: 0; max-width: none; }
-  #hud-help { min-width: 0; width: 94vw; max-height: 78vh; max-height: 78dvh; }
+  #hud-help { min-width: 0; width: 94vw; max-height: 88vh; max-height: 88dvh; }
+  #hud-help .help-body { max-height: calc(min(88vh, 900px) - 190px); max-height: calc(min(88dvh, 900px) - 190px); }
+  #hud-help .help-quickstart-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   #hud-result h1 { font-size: var(--font-2xl); letter-spacing: 3px; }
   #hud-result .detail { font-size: var(--font-l); padding: var(--space-5) var(--space-6); max-width: 92vw; }
   #navball { top: 76px; width: 96px !important; height: auto !important; }
@@ -483,6 +646,20 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   #hud-predict .predict-absolute { display: none; }
   #hud-predict-wrap { left: 8px; right: 8px; bottom: 8px; }
   #hud-predict { max-height: 28vh; max-height: 28dvh; }
+  #hud-help { width: calc(100vw - 16px); }
+  #hud-help .help-header { gap: var(--space-2); }
+  #hud-help .help-close-hint { display: block; margin-top: var(--space-1); }
+  #hud-help .help-toolbar { gap: var(--space-2); }
+  #hud-help .help-toolbar-row { gap: var(--space-2); }
+  #hud-help .help-search { order: -1; flex-basis: 100%; }
+  #hud-help .help-category-tabs { max-height: 62px; overflow-y: auto; }
+  #hud-help .help-keyboard { padding: var(--space-2); gap: 2px; }
+  #hud-help .help-keyboard-row { gap: 2px; }
+  #hud-help .help-key { height: 25px; font-size: 9px; }
+  #hud-help .help-entry { grid-template-columns: 1fr; gap: var(--space-2); }
+  #hud-help .help-entry-keyset { justify-content: flex-start; }
+  #hud-help .help-entry-title { display: block; }
+  #hud-help .help-entry-tags { display: flex; justify-content: flex-start; margin-top: var(--space-2); }
 }
 @media ${MQ_COARSE} {
   #hud-predict-wrap { bottom: 62px; }

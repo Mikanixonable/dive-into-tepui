@@ -20,6 +20,7 @@ const SECTIONS: readonly { kind: MapPickKind; label: string }[] = [
   { kind: 'player', label: '自艦' },
   { kind: 'ship', label: '敵' },
   { kind: 'ammo', label: '弾薬' },
+  { kind: 'fuel', label: 'RCS燃料' },
   { kind: 'base', label: '基地' },
 ];
 
@@ -46,6 +47,7 @@ interface Section {
 const HEADER_SUMMARY: Partial<Record<MapPickKind, { readonly needle: string; readonly label: string }>> = {
   ship: { needle: '接近', label: '接近' },
   ammo: { needle: '回収可能', label: '回収可' },
+  fuel: { needle: '回収可能', label: '回収可' },
   base: { needle: 'ドック', label: 'ドック候補' },
 };
 
@@ -92,6 +94,7 @@ const OBJECT_GLYPHS: Readonly<Record<Exclude<MapPickKind, 'body'>, string>> = {
   player: ENTITY_GLYPH.ship,
   ship: ENTITY_GLYPH.enemyShip,
   ammo: ENTITY_GLYPH.ammo,
+  fuel: ENTITY_GLYPH.fuel,
   base: ENTITY_GLYPH.base,
   apsis: ORBIT_POINT_GLYPH.apsis,
   relnode: ORBIT_POINT_GLYPH.ascendingNode,
@@ -515,7 +518,7 @@ export class PhysicalObjectListPanel {
     if (this.query && !`${item.name} ${item.detail ?? ''}`.toLocaleLowerCase().includes(this.query)) return false;
     if (this.filter === null) return true;
     if (this.filter === 'artifact') {
-      return (item.kind === 'player' || item.kind === 'ammo' || item.kind === 'base') && item.inFocusedSystem !== false;
+      return (item.kind === 'player' || item.kind === 'ammo' || item.kind === 'fuel' || item.kind === 'base') && item.inFocusedSystem !== false;
     }
     if (this.filter === 'enemy') return item.kind === 'ship' && item.inFocusedSystem !== false;
     if (this.filter === 'lagrange') return item.kind === 'body' && LAGRANGE_ID.test(item.id);

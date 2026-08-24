@@ -24,6 +24,11 @@ export const GPU_PASS_LABELS: readonly string[] = ['Gバッファ', '遮蔽', '�
 
 export const GPU_PASS_COUNT = GPU_PASS_LABELS.length;
 
+export interface GpuTimingSnapshot {
+  readonly supported: boolean;
+  readonly elapsedMs: readonly number[];
+}
+
 // backend.timestampQueryPool[type] の型。@types/three の Backend 型には出てこないが、
 // resolveTimestampsAsync の戻り値がフレーム全体の合計だけなのに対し、呼び出しごと(uid ごと)
 // の実測値はここにしかない。
@@ -55,6 +60,7 @@ export class GpuTimings {
   private readonly elapsedMs = new Float64Array(GPU_PASS_COUNT);
   // 解決は非同期なので、前回の解決が返る前に次を積まない。
   private resolving = false;
+  private resolvePromise: Promise<void> | null = null;
   private available = false;
   // 次に来る renderer.render() 呼び出しが属するパス。Inspector が uid を受け取るたび null へ戻す。
   private pendingPass: GpuPassId | null = null;
@@ -95,7 +101,7 @@ export class GpuTimings {
   resolve(): void {
     if (this.resolving) return;
     this.resolving = true;
-    void this.renderer.resolveTimestampsAsync(TimestampQuery.RENDER)
+    this.resolvePromise = this.renderer.resolveTimestampsAsync(TimestampQuery.RENDER)
       .then((ms) => {
         if (ms === undefined) return;
         this.available = true;
@@ -121,7 +127,30 @@ export class GpuTimings {
         // 解決されないまま残った uid が際限なく育たないよう、閾値を超えたら丸ごと捨てる。
         if (this.passByUid.size > PENDING_UID_CAP) this.passByUid.clear();
       })
+      .catch(() => {
+        // Timestamp queries are optional. A lost query must not turn the render loop into an
+        // unhandled rejection; `supported` remains false until a query resolves successfully.
+      })
       .finally(() => { this.resolving = false; });
+  }
+
+  // Render Lab and other offline profilers need a deterministic point at which the asynchronous
+  // timestamp result can be read. The game loop deliberately keeps using fire-and-forget resolve().
+  async waitForResolve(): Promise<void> {
+    await this.resolvePromise;
+  }
+
+  // Discard the current window before a new benchmark case. Callers must waitForResolve() first so
+  // a late GPU result cannot repopulate an already-reset case.
+  reset(): void {
+    this.elapsedMs.fill(0);
+    this.available = false;
+    this.pendingPass = null;
+    this.passByUid.clear();
+  }
+
+  snapshot(): GpuTimingSnapshot {
+    return { supported: this.available, elapsedMs: Array.from(this.elapsedMs) };
   }
 
   // パス id の直近の所要時間 [ms]。

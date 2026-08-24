@@ -1,14 +1,14 @@
 import type { Base, DockedVesselEntry } from '../../game-entity/base';
 import type { AnyPart, Part, RcsTankPart } from '../../game-entity/parts';
 import { Button, Meter } from '../widgets';
-import type { BaseViewContext } from './base-view-context';
+import type { BasePanelContext } from './base-view-context';
 import {
   buildSectionHeader, formatPartMeta, REPAIR_COST_PER_HP, refuelCost, sellPrice,
 } from './base-view-shared';
 
-// ドックビューの「部品」タブ: 搭載部品(修理・換装・補給)と倉庫(在庫確認・売却・補給)を扱う。
+// 基地パネルの「部品」タブ: 搭載部品(修理・換装・補給)と倉庫(在庫確認・売却・補給)を扱う。
 export class PartsTabController {
-  public constructor(private readonly ctx: BaseViewContext) {}
+  public constructor(private readonly ctx: BasePanelContext) {}
 
   // 搭載部品と倉庫を左右に並べ、同じ種類の部品を見比べながら換装先を選べるようにする。
   public build(): HTMLElement {

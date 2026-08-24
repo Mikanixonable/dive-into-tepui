@@ -37,6 +37,8 @@ export type BodyClassToggles = {
   readonly shipName: boolean; readonly shipOrbit: boolean;
   readonly ammoVisible: boolean;
   readonly ammoName: boolean; readonly ammoOrbit: boolean;
+  readonly fuelVisible: boolean;
+  readonly fuelName: boolean; readonly fuelOrbit: boolean;
   readonly baseVisible: boolean;
   readonly baseName: boolean; readonly baseOrbit: boolean;
 };
@@ -67,6 +69,8 @@ export const DEFAULT_BODY_CLASS_TOGGLES: BodyClassToggles = {
   shipName: true, shipOrbit: true,
   ammoVisible: true,
   ammoName: true, ammoOrbit: false,
+  fuelVisible: true,
+  fuelName: true, fuelOrbit: false,
   baseVisible: true,
   baseName: true, baseOrbit: true,
 };
@@ -92,6 +96,7 @@ const BODY_CLASS_CATEGORIES: readonly BodyClassCategory[] = [
   { category: 'playerVisible', name: 'playerName', orbit: 'playerOrbit', children: ['playerName', 'playerOrbit'] },
   { category: 'shipVisible', name: 'shipName', orbit: 'shipOrbit', children: ['shipName', 'shipOrbit'] },
   { category: 'ammoVisible', name: 'ammoName', orbit: 'ammoOrbit', children: ['ammoName', 'ammoOrbit'] },
+  { category: 'fuelVisible', name: 'fuelName', orbit: 'fuelOrbit', children: ['fuelName', 'fuelOrbit'] },
   { category: 'baseVisible', name: 'baseName', orbit: 'baseOrbit', children: ['baseName', 'baseOrbit'] },
 ];
 

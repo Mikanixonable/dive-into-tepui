@@ -16,6 +16,10 @@ const STYLE = `
   color: var(--text); font: inherit; font-weight: bold; padding: var(--space-1) var(--space-2); box-sizing: border-box;
 }
 #hud .dg-window.property-window { width: 560px; max-width: 560px; }
+#hud .dg-window.property-window.has-expanded-panel {
+  width: min(1120px, calc(100vw - 32px)); max-width: min(1120px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px); overflow-y: auto;
+}
 #hud .prop-window-rows { padding: var(--space-2) 0; }
 #hud .prop-window-row {
   display: flex; justify-content: space-between; gap: var(--space-4); padding: var(--space-2) var(--space-5); color: var(--text);
@@ -25,11 +29,11 @@ const STYLE = `
 #hud .prop-window-row-toggle {
   padding: var(--space-2) var(--space-5); color: var(--text); opacity: 0.6; cursor: pointer;
 }
-#hud .prop-window-row-toggle:hover { opacity: 1; color: var(--accent-soft); }
+#hud .prop-window-row-toggle:hover { opacity: 1; color: var(--color-primary-hover); }
 #hud .prop-window-row-group-toggle {
   padding: var(--space-2) var(--space-5); color: var(--text); opacity: 0.6; cursor: pointer;
 }
-#hud .prop-window-row-group-toggle:hover { opacity: 1; color: var(--accent-soft); }
+#hud .prop-window-row-group-toggle:hover { opacity: 1; color: var(--color-primary-hover); }
 #hud .prop-window-items {
   padding: var(--space-2);
   background: color-mix(in srgb, var(--surface-0) 28%, transparent);
@@ -43,7 +47,7 @@ const STYLE = `
   color: var(--text); opacity: 0.6; font-size: 0.9em;
   cursor: pointer;
 }
-#hud .prop-window-related-title:hover { opacity: 1; color: var(--accent-soft); }
+#hud .prop-window-related-title:hover { opacity: 1; color: var(--color-primary-hover); }
 #hud .prop-window-related-list {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-1);
 }
@@ -52,21 +56,31 @@ const STYLE = `
   border: 0; border-radius: var(--radius-micro);
 }
 #hud .prop-window-related-item:hover, #hud .prop-window-related-item:active {
-  background: var(--surface-2); color: var(--accent-near);
+  background: var(--surface-2); color: var(--color-primary-hover);
 }
-#hud .prop-window-related-item:focus-visible { outline: 2px solid var(--accent-near); outline-offset: -2px; }
+#hud .prop-window-related-item:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 #hud .prop-window-item {
   padding: var(--space-4) var(--space-5); color: var(--body); cursor: pointer;
   border: 0; border-radius: var(--radius-micro);
 }
 #hud .prop-window-item:hover, #hud .prop-window-item:active {
-  background: var(--surface-2); color: var(--accent-near);
+  background: var(--surface-2); color: var(--color-primary-hover);
 }
 #hud .prop-window-item.on {
-  color: var(--accent); background: var(--accent-fill);
+  color: var(--color-primary); background: var(--color-primary-fill);
 }
 #hud .prop-window-item.on::before { content: '▪ '; }
-#hud .prop-window-item:focus-visible { outline: 2px solid var(--accent-near); outline-offset: -2px; }
+#hud .prop-window-item:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+#hud .prop-window-expanded-panel {
+  display: none; padding: var(--space-2); border-top: 1px solid var(--surface-2);
+  background: color-mix(in srgb, var(--surface-0) 28%, transparent);
+}
+#hud .prop-window-expanded-panel.open { display: block; }
+@media (max-width: 720px) {
+  #hud .dg-window.property-window.has-expanded-panel {
+    width: 100%; max-width: 100%; max-height: 85dvh;
+  }
+}
 `;
 
 let styleInjected = false;
@@ -131,6 +145,7 @@ export class PropertyWindow<A extends string = string> {
   private readonly rowsEl: HTMLDivElement;
   private readonly itemsEl: HTMLDivElement;
   private readonly relatedEl: HTMLDivElement;
+  private readonly expandedPanelEl: HTMLDivElement;
   private titleMainEl: HTMLElement;
   // 前フレームに描画した行の値。同じ値なら DOM に触れない差分更新のための記録。
   private lastRowValues = new Map<string, string>();
@@ -196,9 +211,12 @@ export class PropertyWindow<A extends string = string> {
     this.itemsEl.className = 'prop-window-items';
     this.relatedEl = document.createElement('div');
     this.relatedEl.className = 'prop-window-related';
+    this.expandedPanelEl = document.createElement('div');
+    this.expandedPanelEl.className = 'prop-window-expanded-panel';
     this.win.element.classList.add('property-window');
     this.win.body.appendChild(this.rowsEl);
     this.win.body.appendChild(this.itemsEl);
+    this.win.body.appendChild(this.expandedPanelEl);
 
     this.syncRelatedItems(content.relatedItems ?? [], content.relatedTitle);
     this.syncRows(content.rows);
@@ -486,6 +504,17 @@ export class PropertyWindow<A extends string = string> {
 
   public get clipped(): boolean {
     return this.win.clipped;
+  }
+
+  // プロパティウィンドウの操作項目から展開する補助パネルを本文末尾へ接続する。
+  // パネル本体の所有権は呼び出し側に残し、null で元の非展開サイズへ戻す。
+  public setExpandedPanel(panel: HTMLElement | null): void {
+    this.expandedPanelEl.replaceChildren();
+    if (panel) this.expandedPanelEl.appendChild(panel);
+    const open = panel !== null;
+    this.expandedPanelEl.classList.toggle('open', open);
+    this.win.element.classList.toggle('has-expanded-panel', open);
+    this.reclamp();
   }
 
   // window レイヤ内で最前面にする。

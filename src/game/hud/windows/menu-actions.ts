@@ -15,7 +15,7 @@ export type MenuAction =
   | 'delete'
   | 'cancel'
   | 'openObjectPlacer'
-  | 'openDock'
+  | 'toggleBasePanel'
   | 'openSettings'
   | 'dock'
   | 'undock'

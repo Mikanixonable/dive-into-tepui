@@ -247,7 +247,7 @@ export class EntityContactPhysics {
     a.absorbHeat(response.specificEnergyLossA);
     b.absorbHeat(response.specificEnergyLossB);
 
-    const point = add(response.rA, scale(response.normal, a.radius));
+    const point = response.contactPoint ?? add(response.rA, scale(response.normal, a.radius));
     const t = contactTime(a, response.toi);
     a.collideWithEntity(b, {
       t, point, normal: response.normal, selfState: aBefore, otherState: bBefore,

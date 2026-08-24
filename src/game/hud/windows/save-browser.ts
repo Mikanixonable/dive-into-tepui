@@ -1,6 +1,6 @@
 // セーブデータブラウザ: 複数のセーブデータ(スロット)とそのスナップショット履歴を
 // 一覧・切替・クリップ・書き出し/取り込みするフルスクリーン UI。
-// BaseView と同じく一発モーダルで、操作のたびに DOM を組み直す(毎フレーム sync は無い)。
+// 一発モーダルで、操作のたびに DOM を組み直す(毎フレーム sync は無い)。
 import type { Game } from '../../game';
 import { SaveSlots, AUTO_SNAPSHOT_LIMIT, PINNED_SNAPSHOT_LIMIT } from '../../save/save-slots';
 import { SnapshotService } from '../../save/snapshot-service';
@@ -47,7 +47,7 @@ const STYLE = `
   border: 1px solid var(--edge); border-left: 2px solid transparent; border-radius: var(--radius-m); cursor: pointer;
 }
 #save-browser .sb-slot-row.viewed { background: var(--fill-1); }
-#save-browser .sb-slot-row.on { border-left-color: var(--accent); }
+#save-browser .sb-slot-row.on { border-left-color: var(--color-primary); }
 #save-browser .sb-slot-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 #save-browser .sb-slot-name { font-size: var(--font-s); }
 #save-browser .sb-slot-meta { font-size: var(--font-xxs); color: var(--text-dim); }
@@ -65,9 +65,9 @@ const STYLE = `
 #save-browser span.sb-btn.sb-btn-play { color: var(--text); border-color: var(--text-dim); }
 /* このパネルで唯一の「押すと今の状態が増える」操作 — 注目させるためオレンジを残す。 */
 #save-browser span#sb-capture-now {
-  background: var(--accent-fill-weak); color: var(--accent); border-color: var(--accent-edge);
+  background: var(--color-primary-fill-weak); color: var(--color-primary); border-color: var(--color-primary-edge);
 }
-#save-browser span#sb-capture-now:hover { background: var(--accent-fill); }
+#save-browser span#sb-capture-now:hover { background: var(--color-primary-fill); }
 #save-browser .sb-stage-tabs { display: flex; gap: var(--space-2); }
 #save-browser .sb-snapshot-groups { display: flex; flex-direction: column; gap: var(--space-2); }
 #save-browser .sb-snapshot-group-title { font-size: var(--font-xs); color: var(--text-dim); margin-top: var(--space-2); }
@@ -93,10 +93,10 @@ const STYLE = `
 #save-browser .sb-snap-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 /* クリップ済み(pin)状態だけは注目対象として残す — この行の意味は「消えずに残る」なので. */
 #save-browser span.sb-btn-pin.on {
-  background: var(--accent-fill-weak); color: var(--accent); border-color: var(--accent-edge);
+  background: var(--color-primary-fill-weak); color: var(--color-primary); border-color: var(--color-primary-edge);
 }
 #save-browser .sb-status { min-height: 20px; padding: var(--space-2) var(--space-5); font-size: var(--font-xs); color: var(--text-dim); border-top: 1px solid var(--edge); }
-#save-browser .sb-status.error { color: var(--danger); }
+#save-browser .sb-status.error { color: var(--color-error); }
 /* compact: 左右ペインを並べず、sb-mobile-tabs で切り替えた片方だけを表示する。 */
 #save-browser .sb-mobile-tabs { display: none; padding: var(--space-3) var(--space-5) 0; }
 @media ${MQ_COMPACT} {

@@ -8,7 +8,16 @@ import type { Stage } from '../stages/stage';
 import type { Contact } from './contact';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
-import { buildBarrelMesh, buildCasingMesh, buildMagazineFrame, DEBRIS_FRAGMENT_VARIANT_COUNT } from '../../render/ships';
+import {
+  buildBarrelMesh,
+  buildCasingMesh,
+  buildMagazineFrame,
+  DEBRIS_FRAGMENT_VARIANT_COUNT,
+} from '../../render/ships';
+import {
+  buildBoosterExplosiveBoltMesh,
+  buildBoosterInterstageCoverPanelMesh,
+} from '../../render/booster';
 import { GameEntity } from './game-entity';
 import { Player } from '../player/player';
 import { Bullet } from './bullet';
@@ -21,7 +30,9 @@ export type DebrisKind =
   | { kind: 'fragment'; accent: string | number; size: number; }
   | { kind: 'barrel'; }
   | { kind: 'magazineFrame'; }
-  | { kind: 'casing'; bornSim: number; };
+  | { kind: 'casing'; bornSim: number; }
+  | { kind: 'boosterCover'; segment: number; bornSim: number; }
+  | { kind: 'boosterBolt'; segment: number; bornSim: number; };
 
 // DebrisKind の種別に応じたメッシュを構築する。fragment は InstancedPool 経由で描くため
 // ジオメトリを持たない — size だけを renderObject.scale へ焼き、どのバリアント/色を使うかは
@@ -36,6 +47,8 @@ function buildDebrisRenderObject(debrisKind: DebrisKind): THREE.Object3D {
     case 'barrel': return buildBarrelMesh();
     case 'magazineFrame': return buildMagazineFrame();
     case 'casing': return buildCasingMesh();
+    case 'boosterCover': return buildBoosterInterstageCoverPanelMesh(debrisKind.segment);
+    case 'boosterBolt': return buildBoosterExplosiveBoltMesh(debrisKind.segment);
   }
 }
 
@@ -75,7 +88,9 @@ export class DebrisPiece extends GameEntity {
       debrisKind.kind !== 'casing' && debrisKind.kind !== 'fragment',
     );
     this.radius = radius ?? 0;
-    this.collides = debrisKind.kind !== 'fragment';
+    this.collides = debrisKind.kind !== 'fragment'
+      && debrisKind.kind !== 'boosterCover'
+      && debrisKind.kind !== 'boosterBolt';
     this.contactDamageWeight = 0;
     if (debrisKind.kind === 'fragment') {
       this.fragmentVariant = Math.floor(Math.random() * DEBRIS_FRAGMENT_VARIANT_COUNT);
@@ -101,22 +116,35 @@ export class DebrisPiece extends GameEntity {
     if (this.debrisKind.kind === 'casing' && other instanceof Player) this._worldSfx.clank();
   }
 
-  // 薬莢の寿命切れ絶対時刻を返す。薬莢以外、またはすでに過ぎていれば null。
+  // 寿命を持つ薬莢・段間ハードウェアの次の絶対時刻を返す。
   nextSimulationEventTime(simTime: number): number | null {
-    if (this.debrisKind.kind !== 'casing') return null;
-    const expiresAt = this.debrisKind.bornSim + C.CASING_LIFETIME;
+    if (this.debrisKind.kind !== 'casing'
+      && this.debrisKind.kind !== 'boosterCover'
+      && this.debrisKind.kind !== 'boosterBolt') return null;
+    const expiresAt = this.debrisKind.bornSim + (this.debrisKind.kind === 'casing'
+      ? C.CASING_LIFETIME
+      : C.BOOSTER_HARDWARE_LIFETIME);
     return expiresAt >= simTime ? expiresAt : null;
   }
 
-  // 再突入判定に加え、薬莢は寿命超過でも alive を落とす。
+  // 再突入判定に加え、寿命を持つデブリは表示時間の超過でも消す。
   checkLoss(
     dt: number, simTime: number, activeStage: Stage, playerPos: Vec3,
     atmosphereBodies: readonly CelestialBody[],
   ): void {
     super.checkLoss(dt, simTime, activeStage, playerPos, atmosphereBodies);
     if (!this.alive) return;
-    // 薬莢のみ、寿命(CASING_LIFETIME)による消滅がある(他のデブリは大気突入のみ)。
-    if (this.debrisKind.kind === 'casing' && simTime - this.debrisKind.bornSim >= C.CASING_LIFETIME) {
+    const expires = this.debrisKind.kind === 'casing'
+      ? C.CASING_LIFETIME
+      : this.debrisKind.kind === 'boosterCover' || this.debrisKind.kind === 'boosterBolt'
+        ? C.BOOSTER_HARDWARE_LIFETIME
+        : null;
+    const bornSim = this.debrisKind.kind === 'casing'
+      || this.debrisKind.kind === 'boosterCover'
+      || this.debrisKind.kind === 'boosterBolt'
+      ? this.debrisKind.bornSim
+      : null;
+    if (expires !== null && bornSim !== null && simTime - bornSim >= expires) {
       this.alive = false;
     }
   }

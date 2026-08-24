@@ -4,6 +4,7 @@ import * as C from './const';
 import { Enemy } from './game-entity/enemy';
 import { Base } from './game-entity/base';
 import type { AmmoPickup } from './game-entity/ammo-pickup';
+import type { RcsFuelPickup } from './game-entity/rcs-fuel-pickup';
 import type { EntityManager } from './simulation/entity-manager';
 import { Player } from './player/player';
 import { Input, PointerPoint } from './input/input';
@@ -131,7 +132,7 @@ export class Targeter {
   // 位置は機体メッシュと同じ displayState — 揃えないと「機体は未来位置、マーカーは現在位置」に割れる。
   // 予測地平の先を指していて displayState を返せない対象と、可視性判定で選択不可の対象は出さない。
   syncTargetMarkers(
-    player: Player | null, targets: readonly CombatTarget[], ammoPickups: readonly AmmoPickup[],
+    player: Player | null, targets: readonly CombatTarget[], ammoPickups: readonly AmmoPickup[], fuelPickups: readonly RcsFuelPickup[],
     displayTime: number, simTime: number, cameraSystem: CameraSystem, visibilityPolicy: MapVisibilityPolicy | null,
     registry: Ephemeris['registry'], celestialBodies: readonly CelestialBody[],
   ): void {
@@ -170,6 +171,14 @@ export class Targeter {
       const mapOccluded = overviewMode && isOccluded(cameraSystem.activeCameraPos, ammo.state.r, celestialBodies);
       const mapOpacity = mapOccluded ? 0 : overviewMode ? ammoFadeOpacity(len(sub(ammo.state.r, viewerPos))) : 1;
       this.pushMarkerItem(ammo.markerItem(viewerPos, overviewMode), visibility, mapOpacity, mapOccluded);
+    }
+    for (const fuel of fuelPickups) {
+      if (!fuel.alive) continue;
+      const visibility = visibilityPolicy?.entity('fuel');
+      if (visibility && !visibility.pickable) continue;
+      const mapOccluded = overviewMode && isOccluded(cameraSystem.activeCameraPos, fuel.state.r, celestialBodies);
+      const mapOpacity = mapOccluded ? 0 : overviewMode ? ammoFadeOpacity(len(sub(fuel.state.r, viewerPos))) : 1;
+      this.pushMarkerItem(fuel.markerItem(viewerPos, overviewMode), visibility, mapOpacity, mapOccluded);
     }
     const celestialLabels = overviewMode ? cameraSystem.focusMarkers.activeLabels : [];
     this.markerManager.combatMarkers.sync(
