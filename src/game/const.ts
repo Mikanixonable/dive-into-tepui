@@ -1,5 +1,6 @@
 // ゲームバランス・チューニング定数
 import { LINE_RENDER_ORDER, type LineStyle } from '../render/line-style';
+import { v3 } from '../physics/vec3';
 export { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../physics/solar-system';
 
 // 軌道上へ配置できる自機の上限隻数。
@@ -7,8 +8,12 @@ export const MAX_PLACED_SHIPS = 50;
 
 // --- 基地ドッキング ---
 export const BASE_MAX_VESSELS = 4;      // 基地が保有・格納できる艦艇の最大数
-export const DOCK_CAPTURE_DIST = 500;    // [m] (船船ドッキング用)
 export const DOCK_CAPTURE_REL_V = 20;   // [m/s]
+// 艦首(+Z)の船体外側に置く単一の接続ポート。位置は姿勢から導出し、保存しない。
+export const SHIP_PORT_OFFSET = v3(0, 0, 3.0);
+export const PORT_DOCK_MAX_DIST = 50;          // [m] 船対船ポート間の最大捕捉距離
+export const PORT_DOCK_MIN_ALIGNMENT = 0.5;    // ポート軸の最小内積 (cos 60°)
+export const DOCK_GUIDE_SHOW_DIST = 300;       // [m] ガイドを表示するポート接続点までの距離
 export const HATCH_DOCK_MAX_DIST = 80;        // 基地ハッチ前での最大ドッキング距離 [m]
 export const HATCH_DOCK_MIN_ALIGNMENT = 0.5;  // ハッチ正面コーンの最小内積 (cos 60° = 0.5)
 export const SLOT_DOCK_MAX_DIST = 50;         // 各ドックスロット前での最大ドッキング距離 [m]
