@@ -15,6 +15,7 @@ export const ENTITY_GLYPH = {
   lagrange: '✦',
   ghost: '⬢',
   ammo: '▣',
+  fuel: '◈',
   preview: '▷',
 } as const;
 

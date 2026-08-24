@@ -93,7 +93,7 @@ function planPanelHtml(
       row('傾斜角 INC', isFinite(selEl.incDeg) ? `${selEl.incDeg.toFixed(2)}°` : '---') +
       row('周期 PRD', fmtTime(selEl.period));
     if (warnAtmosphere && isFinite(apsis.pe) && apsis.pe < 120e3) {
-      s += `<div style="color:var(--accent);margin-top:2px">⚠ ${peSpec.nameJa}が大気圏内</div>`;
+      s += `<div style="color:var(--color-warning);margin-top:2px">⚠ ${peSpec.nameJa}が大気圏内</div>`;
     }
   }
   // 操作キーのヒント

@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "id": "pdb-1mbn-myoglobin",
+  "source": {
+    "pdbId": "1MBN",
+    "structureFile": "src/assets/models/myoglobin1mbnBackbone.json",
+    "citation": "Sperm whale myoglobin with heme b and its central iron ion"
+  },
+  "coordinateScale": 0.09,
+  "integrity": {
+    "maxHp": 260
+  },
+  "actions": [
+    {
+      "id": "heme-iron-pulse",
+      "kind": "projectile"
+    }
+  ],
+  "bonds": [
+    {
+      "from": "heme-iron",
+      "to": "proximal-histidine"
+    }
+  ],
+  "ligands": [
+    {
+      "id": "heme-b",
+      "label": "ヘムb",
+      "residue": "HEM",
+      "centerSite": "heme-iron",
+      "metalElement": "FE"
+    }
+  ],
+  "components": [
+    {
+      "id": "globin",
+      "chains": [
+        "A"
+      ],
+      "entities": [
+        1
+      ],
+      "role": "Myoglobin globin chain",
+      "source": "author"
+    }
+  ],
+  "sites": [
+    {
+      "id": "heme-iron",
+      "type": "active",
+      "source": "author",
+      "residues": [
+        "HEM A 155 FE"
+      ],
+      "anchor": "heme_fe",
+      "position": [
+        0.96,
+        7.11,
+        -3.04
+      ],
+      "forward": [
+        0.913,
+        -0.365,
+        0.183
+      ],
+      "radius": 4.2,
+      "maxHp": 150,
+      "damageMultiplier": 1.6,
+      "actions": [
+        "heme-iron-pulse"
+      ],
+      "componentId": "globin"
+    },
+    {
+      "id": "proximal-histidine",
+      "type": "interface",
+      "source": "author",
+      "residues": [
+        "HIS A 93 NE2"
+      ],
+      "anchor": "his93_ne2",
+      "position": [
+        -1.04,
+        7.91,
+        -3.44
+      ],
+      "forward": [
+        -0.913,
+        0.365,
+        -0.183
+      ],
+      "radius": 3.2,
+      "maxHp": 95,
+      "damageMultiplier": 1.25,
+      "actions": [],
+      "componentId": "globin"
+    },
+    {
+      "id": "globin-core",
+      "type": "core",
+      "source": "computed",
+      "residues": [],
+      "anchor": "globin_centroid",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "forward": [
+        0,
+        0,
+        1
+      ],
+      "radius": 6.5,
+      "maxHp": 180,
+      "damageMultiplier": 1,
+      "actions": [],
+      "componentId": "globin"
+    }
+  ],
+  "modificationSlots": []
+}

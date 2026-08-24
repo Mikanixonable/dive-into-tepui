@@ -13,6 +13,7 @@ import { sunlitFactor } from '../../physics/shadow';
 import { SOLAR_CONSTANT } from '../../physics/srp';
 import { ApsisTrack } from '../../physics/trajectory-features';
 import { Vec3, len, scale, sub, v3 } from '../../physics/vec3';
+import type { SphereHit } from '../../physics/base-collision';
 import { FloatingOrigin } from '../floating-origin';
 import { OrbitLine } from '../orbit-line';
 import { TrajectoryLine } from '../trajectory-line';
@@ -28,6 +29,7 @@ import type { Contact } from './contact';
 import { EntityIdAllocator } from './entity-id';
 import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';
 import type { MarkerManager } from '../marker/marker-manager';
+import { disposeOwnedRenderResources } from '../../render/dispose-owned-render-resources';
 
 const identityAttitude = (): Attitude => ({
   q: { x: 0, y: 0, z: 0, w: 1 },
@@ -452,6 +454,9 @@ export class GameEntity {
   // 予測列が時刻 t を持っていれば、その状態を先端にして true。持っていなければ何もせず false。
   // celestialBodies は履歴の間引き間隔を出すための重力源一覧。
   private followPredicted(t: number, celestialBodies: readonly CelestialBody[]): boolean {
+    // 現行の予測弧は自由落下だけを表す。噴射中にそれを実状態へ消費すると、Player/RCSや
+    // ブースターの加速度を丸ごと失うため、推力がある区間は必ず実積分へ落とす。
+    if (this.thrust !== null) return false;
     const s = this._predictedArc?.trajectory.at(t) ?? null;
     if (s === null) return false;
     this.actual.follow(s, this.historySampleInterval(celestialBodies), this.historyDuration);
@@ -471,7 +476,7 @@ export class GameEntity {
   }
 
   // displayTime の描画位置・姿勢を fo 経由でメッシュへ同期する。
-  sync(fo: FloatingOrigin, displayTime: number): void {
+  sync(fo: FloatingOrigin, displayTime: number, _viewerPosition?: Vec3): void {
     const s = this.displayState(displayTime);
     if (s === null) {
       this.renderObject.visible = false;
@@ -494,6 +499,30 @@ export class GameEntity {
   // 自分がこの相手と接触しうるか。既定 true。両側が true を返したときだけ接触する。
   contactsWith(_other: GameEntity, _simTime: number): boolean {
     return true;
+  }
+
+  // 球を broad phase として使った後に、種別固有のメッシュで狭域判定を行うためのフック。
+  // 既定のエンティティは球判定へフォールバックする。法線は「自分の形状から相手の球へ」
+  // 向き、depth は相手の球を自分の形状から押し出す距離 [m] を返す。
+  testCustomSphereCollision(
+    _sphereCenter: Vec3, _sphereRadius: number, _selfState: KinematicState,
+  ): SphereHit | null {
+    return null;
+  }
+
+  // 高速な球が区間の途中でカスタム形状を横切ったときの狭域 CCD フック。toi は
+  // prevState→selfState の割合で、既定の種別は null を返して球の掃引判定へ進む。
+  testCustomSweptSphereCollision(
+    _previousSphereCenter: Vec3, _sphereCenter: Vec3, _sphereRadius: number,
+    _previousSelfState: KinematicState, _selfState: KinematicState,
+  ): { readonly hit: SphereHit; readonly toi: number } | null {
+    return null;
+  }
+
+  // true の種別では、カスタム判定が null を返しても外接球へフォールバックしない。
+  // これを分けないと「リボンに触れていない空間」が球の当たり判定として残ってしまう。
+  usesCustomSphereCollision(): boolean {
+    return false;
   }
 
   // 個体どうしの接触で自分に何が起きるかを記述する。相手に何が起きるかは書かない(相手の
@@ -519,16 +548,6 @@ export class GameEntity {
     this.hideOrbitLine();
     this.hidePredictedLine();
     this.hideActualLine();
-    this.renderObject.traverse((child) => {
-      const mesh = child as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      if (mesh.userData.ownsGeometry && mesh.geometry) {
-        mesh.geometry.dispose();
-      }
-      if (mesh.userData.ownsMaterial && mesh.material) {
-        if (Array.isArray(mesh.material)) mesh.material.forEach((m) => m.dispose());
-        else mesh.material.dispose();
-      }
-    });
+    disposeOwnedRenderResources(this.renderObject);
   }
 }

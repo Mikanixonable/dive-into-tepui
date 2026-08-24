@@ -1,14 +1,14 @@
 import { createPart } from '../../game-entity/parts';
 import type { AnyPart } from '../../game-entity/parts';
 import { Button } from '../widgets';
-import type { BaseViewContext } from './base-view-context';
+import type { BasePanelContext } from './base-view-context';
 import {
   buildSectionHeader, formatCatalogProperty, PART_TYPE_LABELS, SHOP_CATALOG,
 } from './base-view-shared';
 
-// ドックビューの「ショップ」タブ: 部品を購入し、この基地の倉庫へ搬入する。
+// 基地パネルの「ショップ」タブ: 部品を購入し、この基地の倉庫へ搬入する。
 export class ShopTabController {
-  public constructor(private readonly ctx: BaseViewContext) {}
+  public constructor(private readonly ctx: BasePanelContext) {}
 
   public build(): HTMLElement {
     const base = this.ctx.base();
