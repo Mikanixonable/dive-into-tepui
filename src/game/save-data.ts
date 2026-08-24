@@ -21,7 +21,7 @@ export interface QuatSaveData {
 export interface EntitySaveData {
   id: string;
   name?: string;
-  kind: 'player' | 'enemy' | 'ammo';
+  kind: 'player' | 'enemy' | 'ammo' | 'rcs-fuel';
   r: Vec3SaveData;
   v: Vec3SaveData;
   q: QuatSaveData;
@@ -134,6 +134,9 @@ export interface EnemySaveData extends EntitySaveData {
 export interface AmmoPickupSaveData extends EntitySaveData {
 }
 
+export interface RcsFuelPickupSaveData extends EntitySaveData {
+}
+
 export interface ScoreCounterSaveData {
   shots: number;
   hits: number;
@@ -145,6 +148,8 @@ export interface ScoreCounterSaveData {
 export interface LogisticsSaveData {
   resupplyCheckAt: number;
   resupplyEnabled: boolean;
+  // 旧セーブデータには無い。無ければ自動投入を有効にする。
+  rcsFuelResupplyEnabled?: boolean;
 }
 
 // 全ステージ共通の内訳(スコア・決着状態・補給タイマー)。ステージ固有の内訳を持つ
@@ -314,6 +319,8 @@ export interface GameSaveData {
   activePlayerId: string | null;
   enemies: EnemySaveData[];
   ammoPickups: AmmoPickupSaveData[];
+  // 旧スナップショットには無い。読み込み時に空配列へ正規化する。
+  rcsFuelPickups?: RcsFuelPickupSaveData[];
   bases: BaseSaveData[];
   stage: StageSaveData;
   // 旧セーブデータには無いフィールドなので任意。無ければ視点は既定のまま始まる。
