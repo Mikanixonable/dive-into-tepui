@@ -235,6 +235,14 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-stage-controls .stage-control-shapes .w-group-title { flex: 0 0 100%; }
 #hud-stage-controls .stage-control-shapes .w-btn { flex: 1 1 0; min-width: 0; }
 #hud-stage-controls .stage-control-shapes .w-btn.on { background: var(--color-primary-fill); border-color: var(--color-primary); color: var(--color-primary); }
+#hud-stage-controls .stage-control-protein-representation,
+#hud-stage-controls .stage-control-protein-colors { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+#hud-stage-controls .stage-control-protein-representation .w-group-title,
+#hud-stage-controls .stage-control-protein-colors .w-group-title { flex: 0 0 100%; }
+#hud-stage-controls .stage-control-protein-representation .w-btn,
+#hud-stage-controls .stage-control-protein-colors .w-btn { flex: 1 1 0; min-width: 0; }
+#hud-stage-controls .stage-control-protein-representation .w-btn.on,
+#hud-stage-controls .stage-control-protein-colors .w-btn.on { background: var(--color-primary-fill); border-color: var(--color-primary); color: var(--color-primary); }
 #hud-stage-controls .stage-control-select { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); color: var(--text-dim); font-size: var(--font-xxs); }
 #hud-stage-controls .stage-control-select .w-select { min-width: 86px; }
 #hud-stage-controls .stage-control-select .w-input { width: 72px; text-align: right; }

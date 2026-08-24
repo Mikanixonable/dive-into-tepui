@@ -8,6 +8,9 @@ import { collisionDamageFraction } from '../../src/game/game-entity/contact-dama
 import * as THREE from 'three/webgpu';
 import { ProteinRuntime } from '../../src/game/protein/protein-runtime';
 import { v3 } from '../../src/physics/vec3';
+import {
+  DEFAULT_PROTEIN_DISPLAY, defaultProteinDisplayFor, isProteinDisplaySettings, proteinColorModesFor,
+} from '../../src/game/protein/protein-display';
 
 const asset = rawAsset as unknown as ProteinAssetDefinition;
 
@@ -145,5 +148,14 @@ export function register(): void {
     assert.equal(root.rotation.z, 0.47);
     assert.equal(runtime.charging, false);
     runtime.dispose();
+  });
+
+  test('protein display: each representation exposes only compatible color modes', () => {
+    assert.deepEqual(proteinColorModesFor('molecular'), ['element']);
+    assert.deepEqual(proteinColorModesFor('silhouette'), ['surface-charge', 'hydrophobicity']);
+    assert.ok(proteinColorModesFor('ribbon').includes('rainbow'));
+    assert.ok(isProteinDisplaySettings(DEFAULT_PROTEIN_DISPLAY));
+    assert.ok(isProteinDisplaySettings(defaultProteinDisplayFor('molecular')));
+    assert.ok(!isProteinDisplaySettings({ representation: 'molecular', colorMode: 'chain' }));
   });
 }

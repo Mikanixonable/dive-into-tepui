@@ -3,6 +3,7 @@
   "pdbId": "5I4R",
   "source": "src/assets/models/pdb5i4rBackbone.json",
   "sourceStructureUrl": "https://files.rcsb.org/download/5I4R.pdb",
+  "structureAsset": "src/assets/models/pdb5i4rStructure.json",
   "glbOutput": "src/assets/models/pdb5i4r.glb",
   "coordinateScale": 0.06,
   "representation": "cartoon",
