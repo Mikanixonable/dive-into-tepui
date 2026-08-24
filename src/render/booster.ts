@@ -6,6 +6,7 @@
 // 特別扱いせずに済む。
 import * as THREE from 'three/webgpu';
 import { Billboard } from './billboard';
+import { markLitOpaque } from './pipeline/lit-layer';
 
 /** 一段の外形寸法。すべて描画単位(ゲーム内の m)で、前端から船尾へは負 Z。 */
 export const BOOSTER_STAGE_DIMENSIONS = Object.freeze({
@@ -177,6 +178,9 @@ export class BoosterStage extends THREE.Group {
       fin.name = `aft-fin-${i}`;
       this.add(fin);
     }
+
+    // MeshStandardMaterial の全サブメッシュを太陽光プリパスへ参加させる。
+    markLitOpaque(this);
   }
 
   private addMesh(geometry: THREE.BufferGeometry, material: OwnedMaterial, z: number, name: string): void {
