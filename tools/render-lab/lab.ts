@@ -13,6 +13,7 @@ import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pi
 import { QUALITY_PRESETS } from '../../src/render/graphics-settings';
 import { AU } from '../../src/physics/planet-orbit';
 import { R_SUN } from '../../src/physics/solar-system';
+import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
 import { CASES, type CaseName, type LabCase, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './cases';
 
 export interface LabDistribution {
@@ -100,7 +101,13 @@ export class LabView {
     this.render();
   }
 
-  // 動くものが無いので、描くのはケースを差し替えたときと撮影のときだけ。
+  // 画面へ出す中間バッファを選び、その場で描き直す。
+  showDebugTarget(target: DebugTargetId): void {
+    this.pipeline.debugTarget = target;
+    this.render();
+  }
+
+  // 動くものが無いので、描くのはケースを差し替えたときと、表示を切り替えたときと、撮影のとき。
   render(): void {
     if (this.current === null) return;
     this.pipeline.sunLight.set(SUN_POSITION, R_SUN, SUN_COLOR, SUN_RADIANT_INTENSITY, AMBIENT_IRRADIANCE);
