@@ -18,6 +18,15 @@ export interface ProteinMotionBinding {
   disposed?: boolean;
 }
 
+interface ProteinMotionRendererInternals {
+  readonly _attributes: {
+    has(attribute: THREE.StorageBufferAttribute): boolean;
+    delete(attribute: THREE.StorageBufferAttribute): unknown;
+  } | null;
+}
+
+const proteinMotionRenderers = new Map<ProteinMotionRendererInternals, number>();
+
 export type ProteinMotionNodeMaterial =
   | THREE.LineBasicNodeMaterial
   | THREE.MeshBasicNodeMaterial
@@ -58,10 +67,35 @@ export function updateProteinMotionBinding(
   binding.residueOffsets.needsUpdate = true;
 }
 
-/** Release the CPU-side owner and invalidate the renderer's next upload. */
+/**
+ * Register a renderer that may own protein storage buffers.
+ *
+ * Three r185 does not expose public disposal on StorageBufferAttribute. Its
+ * internal attribute registry is the owner that destroys the backend buffer
+ * and updates renderer.info, so the pinned renderer integration is isolated
+ * here and reference-counted for pipelines that share one renderer.
+ */
+export function registerProteinMotionRenderer(renderer: THREE.WebGPURenderer): () => void {
+  const internals = renderer as THREE.WebGPURenderer & ProteinMotionRendererInternals;
+  proteinMotionRenderers.set(internals, (proteinMotionRenderers.get(internals) ?? 0) + 1);
+  let registered = true;
+  return () => {
+    if (!registered) return;
+    registered = false;
+    const remaining = (proteinMotionRenderers.get(internals) ?? 1) - 1;
+    if (remaining > 0) proteinMotionRenderers.set(internals, remaining);
+    else proteinMotionRenderers.delete(internals);
+  };
+}
+
+/** Release every renderer-owned GPU buffer before dropping the CPU array. */
 export function disposeProteinMotionBinding(binding: ProteinMotionBinding): void {
   if (binding.disposed) return;
   binding.disposed = true;
+  for (const renderer of proteinMotionRenderers.keys()) {
+    const attributes = renderer._attributes;
+    if (attributes?.has(binding.residueOffsets)) attributes.delete(binding.residueOffsets);
+  }
   binding.residueOffsets.array = new Float32Array(0);
   binding.residueOffsets.needsUpdate = true;
 }

@@ -1,7 +1,4 @@
-// タンパク質敵のリボン表示メッシュから作る狭域の球-三角形判定。
-// 外接球は broad phase に残すが、実際の接触はこの BVH に入っているリボンの
-// 三角形だけを対象にする。表示用のメッシュを読み取るため、リボンの分割数と
-// 衝突形状が別々にずれることがない。
+// 固定リボンの BVH を使い、外接球で絞った静止球・掃引球との接触を判定する。
 import * as THREE from 'three/webgpu';
 import { add, cross, dot, len, norm, scale, sub, type Vec3, v3 } from '../../physics/vec3';
 import { qInvert, qRotate, type Quat } from '../../physics/attitude';
@@ -23,6 +20,7 @@ export class ProteinRibbonCollisionGeometry {
   private readonly bvh: BVHNode | null;
   private readonly rootScale: number;
 
+  /** タグ付き Ribbon Mesh を root-local BVH へ変換する。 */
   constructor(renderRoot: THREE.Object3D, rootScale: number) {
     this.rootScale = rootScale;
     const triangles = collectRibbonTriangles(renderRoot);
@@ -35,7 +33,7 @@ export class ProteinRibbonCollisionGeometry {
     this.outerRadius = Math.sqrt(radiusSq) * rootScale;
   }
 
-  // 球の中心・半径は ECI、center/att はタンパク質自身の状態。
+  /** ECI 上の球と現在姿勢の Ribbon の最深接触を返す。 */
   testSphereCollision(
     sphereCenter: Vec3, sphereRadius: number, center: Vec3, att: Quat,
   ): SphereHit | null {
@@ -44,6 +42,7 @@ export class ProteinRibbonCollisionGeometry {
     const distance = len(sub(sphereCenter, center));
     if (distance > this.outerRadius + sphereRadius) return null;
 
+    // 球を固定 BVH のローカル座標へ移してから三角形接触を求める。
     const inverseAttitude = qInvert(att);
     const localCenter = scale(qRotate(inverseAttitude, sub(sphereCenter, center)), 1 / this.rootScale);
     const localRadius = sphereRadius / this.rootScale;
@@ -57,9 +56,7 @@ export class ProteinRibbonCollisionGeometry {
     };
   }
 
-  // リボンの細い面を高速弾が区間内で横切る場合に備えた近似 CCD。まず外接球との交差区間
-  // へ絞り、その区間を等分して BVH を調べ、最初のヒットを二分探索で面へ寄せる。判定形状
-  // 自体は各サンプルで同じ三角形 BVH を使うため、球の外接判定へ戻ることはない。
+  /** 移動する球が Ribbon を最初に横切る時刻を近似 CCD で返す。 */
   testSweptSphereCollision(
     previousSphereCenter: Vec3, sphereCenter: Vec3, sphereRadius: number,
     previousSelfState: { readonly r: Vec3 }, selfState: { readonly r: Vec3 }, att: Quat,
@@ -71,6 +68,7 @@ export class ProteinRibbonCollisionGeometry {
     );
     if (interval === null) return null;
 
+    // 外接球との交差区間を等分し、最初の三角形接触を探索する。
     const samples = 48;
     let previousT = interval.start;
     let previousHit = this.testSphereCollision(
@@ -90,6 +88,7 @@ export class ProteinRibbonCollisionGeometry {
         continue;
       }
 
+      // 未接触と接触の境界を二分して返却時刻を面へ寄せる。
       let low = previousT;
       let high = t;
       let firstHit = hit;
@@ -108,6 +107,7 @@ export class ProteinRibbonCollisionGeometry {
   }
 }
 
+/** 2状態間の線形補間位置を返す。 */
 function positionAt(previous: Vec3, current: Vec3, t: number): Vec3 {
   return v3(
     previous.x + (current.x - previous.x) * t,
@@ -116,7 +116,9 @@ function positionAt(previous: Vec3, current: Vec3, t: number): Vec3 {
   );
 }
 
+/** 線分が原点中心球の内部にある正規化時刻区間を返す。 */
 function segmentSphereInterval(start: Vec3, end: Vec3, radius: number): { start: number; end: number } | null {
+  // |start + t direction|² = radius² の二次方程式を [0, 1] へ制限する。
   const direction = sub(end, start);
   const a = dot(direction, direction);
   const b = 2 * dot(start, direction);
@@ -131,6 +133,7 @@ function segmentSphereInterval(start: Vec3, end: Vec3, radius: number): { start:
   return startT <= endT ? { start: startT, end: endT } : null;
 }
 
+/** 専用 Ribbon としてタグ付けされた三角形を root-local 座標へそろえる。 */
 function collectRibbonTriangles(renderRoot: THREE.Object3D): Triangle[] {
   renderRoot.updateMatrixWorld(true);
   const rootInverse = renderRoot.matrixWorld.clone().invert();
@@ -139,6 +142,7 @@ function collectRibbonTriangles(renderRoot: THREE.Object3D): Triangle[] {
   const b = new THREE.Vector3();
   const c = new THREE.Vector3();
 
+  // 子 Mesh の変換を root-local 行列へ合成し、BVH 用の三角形を列挙する。
   renderRoot.traverse((object) => {
     const mesh = object as THREE.Mesh;
     if (!mesh.isMesh || mesh.userData.proteinRibbon !== true || !mesh.geometry) return;
@@ -163,15 +167,18 @@ function collectRibbonTriangles(renderRoot: THREE.Object3D): Triangle[] {
   return triangles;
 }
 
+/** Vec3 の長さの二乗を返す。 */
 function lenSq(value: Vec3): number {
   return dot(value, value);
 }
 
+/** 三角形群を最長軸の重心中央値で再帰分割する。 */
 function buildBVH(triangles: readonly Triangle[], depth: number): BVHNode | null {
   if (triangles.length === 0) return null;
 
   let minX = Infinity, minY = Infinity, minZ = Infinity;
   let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  // ノード配下の全頂点を覆う AABB を求める。
   for (const triangle of triangles) {
     for (const point of [triangle.a, triangle.b, triangle.c]) {
       minX = Math.min(minX, point.x); maxX = Math.max(maxX, point.x);
@@ -185,6 +192,7 @@ function buildBVH(triangles: readonly Triangle[], depth: number): BVHNode | null
     return { min, max, triangles: [...triangles] };
   }
 
+  // 最長軸の中央値で分け、偏りにくい二分木を作る。
   const extent = { x: maxX - minX, y: maxY - minY, z: maxZ - minZ };
   const axis: 'x' | 'y' | 'z' = extent.x >= extent.y && extent.x >= extent.z
     ? 'x' : extent.y >= extent.z ? 'y' : 'z';
@@ -199,6 +207,7 @@ function buildBVH(triangles: readonly Triangle[], depth: number): BVHNode | null
   return { min, max, left, right };
 }
 
+/** BVH 内で球と交差する最も深い三角形接触を返す。 */
 function sphereCollideTriangles(
   center: Vec3, radius: number, node: BVHNode,
 ): { point: Vec3; normal: Vec3; depth: number } | null {
@@ -208,6 +217,7 @@ function sphereCollideTriangles(
     || center.y < expandedMin.y || center.y > expandedMax.y
     || center.z < expandedMin.z || center.z > expandedMax.z) return null;
 
+  // 葉では最近点までの距離を比較し、最大の貫入量を選ぶ。
   if (node.triangles) {
     let deepest: { point: Vec3; normal: Vec3; depth: number } | null = null;
     for (const triangle of node.triangles) {
@@ -234,7 +244,9 @@ function sphereCollideTriangles(
   return rightHit;
 }
 
+/** 点から三角形への最近点を Voronoi 領域ごとに求める。 */
 function closestPointTriangle(point: Vec3, triangle: Triangle): Vec3 {
+  // 頂点、辺、面の順に重心座標の符号から所属領域を絞り込む。
   const { a, b, c } = triangle;
   const ab = sub(b, a), ac = sub(c, a), ap = sub(point, a);
   const d1 = dot(ab, ap), d2 = dot(ac, ap);

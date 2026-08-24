@@ -12,6 +12,7 @@ import {
   createProteinMotionBinding,
   disposeProteinMotionBinding,
   installProteinMotionOverridePropagation,
+  registerProteinMotionRenderer,
   updateProteinMotionBinding,
 } from '../../src/render/protein-motion-material';
 
@@ -176,6 +177,28 @@ export function register(): void {
     assert.equal((before as Float32Array)[5], 2);
     assert.equal(atom.geometry.userData.proteinResidueBinding, true);
     disposeObject(root);
+  });
+
+  test('protein render: binding disposal releases each registered renderer storage buffer once', () => {
+    const binding = createProteinMotionBinding(3);
+    const ownedAttributes = new Set<THREE.StorageBufferAttribute>([binding.residueOffsets]);
+    let deleteCount = 0;
+    const renderer = {
+      _attributes: {
+        has: (attribute: THREE.StorageBufferAttribute) => ownedAttributes.has(attribute),
+        delete: (attribute: THREE.StorageBufferAttribute) => {
+          deleteCount += 1;
+          ownedAttributes.delete(attribute);
+        },
+      },
+    } as unknown as THREE.WebGPURenderer;
+    const unregister = registerProteinMotionRenderer(renderer);
+
+    disposeProteinMotionBinding(binding);
+    disposeProteinMotionBinding(binding);
+    assert.equal(deleteCount, 1);
+    assert.equal(binding.residueOffsets.array.length, 0);
+    unregister();
   });
 
   test('protein render: shadow override receives the source position node per draw', () => {
