@@ -60,6 +60,7 @@ import { register as registerWindowAgreement } from './window-agreement.test';
 import { register as registerPlanArcRange } from './plan-arc-range.test';
 import './creative-placement-validation.test';
 import { register as registerProtein } from './protein-combat-state.test';
+import { register as registerProjectileOrientation } from './projectile-orientation.test';
 
 registerVec3();
 registerKinematicState();
@@ -119,6 +120,7 @@ registerThermal();
 registerWindowAgreement();
 registerPlanArcRange();
 registerProtein();
+registerProjectileOrientation();
 
 runAll().catch((error) => {
   console.error(error);

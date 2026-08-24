@@ -78,6 +78,15 @@ function standardMaterialParams(src: THREE.MeshStandardMaterial): THREE.MeshStan
     transparent: src.transparent,
     opacity: src.opacity,
     side: src.side,
+    vertexColors: src.vertexColors,
+    depthTest: src.depthTest,
+    depthWrite: src.depthWrite,
+    alphaTest: src.alphaTest,
+    flatShading: src.flatShading,
+    wireframe: src.wireframe,
+    wireframeLinewidth: src.wireframeLinewidth,
+    dithering: src.dithering,
+    premultipliedAlpha: src.premultipliedAlpha,
   };
 }
 
