@@ -2,7 +2,8 @@
 // 出す。球でない当たり形状(基地)の吸収もここが引き受けるので、解決器の側は種別を見ない。
 import * as C from '../const';
 import { KinematicState } from '../../physics/kinematic-state';
-import { sub, scale, len } from '../../physics/vec3';
+import { sub, scale, len, type Vec3 } from '../../physics/vec3';
+import type { SphereHit } from '../../physics/base-collision';
 import { GameEntity } from '../game-entity/game-entity';
 import { Base } from '../game-entity/base';
 import {
@@ -26,6 +27,61 @@ function baseContactGeometry(
   };
 }
 
+// タンパク質のリボンなど、球の外接半径ではなく種別固有メッシュを持つ側の狭域判定。
+// 接触解決器へ渡す法線は常に a → b に揃える。
+function customContactGeometry(
+  a: GameEntity, aWork: KinematicState, b: GameEntity, bWork: KinematicState,
+  sweptValid: boolean,
+): ContactGeometry | null {
+  if (!sweptValid && len(sub(bWork.r, aWork.r)) > a.radius + b.radius) return null;
+
+  const makeSweptGeometry = (
+    hit: { readonly hit: SphereHit; readonly toi: number },
+    normal: Vec3,
+  ): ContactGeometry => {
+    const aPosition = interpolatePosition(a.prevState.r, aWork.r, hit.toi);
+    const bPosition = interpolatePosition(b.prevState.r, bWork.r, hit.toi);
+    return {
+      normal,
+      toi: hit.toi,
+      pushOut: hit.hit.depth,
+      contactPoint: hit.hit.point,
+      contactPositions: { a: aPosition, b: bPosition },
+    };
+  };
+
+  if (sweptValid) {
+    const sweptA = a.testCustomSweptSphereCollision(
+      b.prevState.r, bWork.r, b.radius, a.prevState, aWork,
+    );
+    if (sweptA !== null) return makeSweptGeometry(sweptA, sweptA.hit.normal);
+
+    const sweptB = b.testCustomSweptSphereCollision(
+      a.prevState.r, aWork.r, a.radius, b.prevState, bWork,
+    );
+    if (sweptB !== null) return makeSweptGeometry(sweptB, scale(sweptB.hit.normal, -1));
+  }
+
+  const hitA = a.testCustomSphereCollision(bWork.r, b.radius, aWork);
+  if (hitA !== null) {
+    return { normal: hitA.normal, toi: 1, pushOut: hitA.depth, contactPoint: hitA.point };
+  }
+
+  const hitB = b.testCustomSphereCollision(aWork.r, a.radius, bWork);
+  if (hitB !== null) {
+    return { normal: scale(hitB.normal, -1), toi: 1, pushOut: hitB.depth, contactPoint: hitB.point };
+  }
+  return null;
+}
+
+function interpolatePosition(previous: Vec3, current: Vec3, t: number): Vec3 {
+  return {
+    x: previous.x + (current.x - previous.x) * t,
+    y: previous.y + (current.y - previous.y) * t,
+    z: previous.z + (current.z - previous.z) * t,
+  } as Vec3;
+}
+
 // aWork/bWork は解決の途中経過を含む「いまの状態」で、a.state とは限らない。
 export function entityContactResponse(
   a: GameEntity, aWork: KinematicState, b: GameEntity, bWork: KinematicState,
@@ -43,10 +99,17 @@ export function entityContactResponse(
       ? null : distributeSphereContact(bodyA, bodyB, C.CONTACT_RESTITUTION, geometry);
   }
 
-  // 両者の prevState→state が同じ区間(時刻がほぼ一致)を成すときだけ掃引TOIを試す —
-  // ずれていれば異なる瞬間の直前位置を結ぶ線分になり、掃引の意味を失う。
   const sweptValid = a.prevState.t < a.state.t && b.prevState.t < b.state.t
     && Math.abs(a.prevState.t - b.prevState.t) <= 1e-6 && Math.abs(a.state.t - b.state.t) <= 1e-6;
+
+  if (a.usesCustomSphereCollision() || b.usesCustomSphereCollision()) {
+    const custom = customContactGeometry(a, aWork, b, bWork, sweptValid);
+    return custom === null
+      ? null : distributeSphereContact(bodyA, bodyB, C.CONTACT_RESTITUTION, custom);
+  }
+
+  // 両者の prevState→state が同じ区間(時刻がほぼ一致)を成すときだけ掃引TOIを試す —
+  // ずれていれば異なる瞬間の直前位置を結ぶ線分になり、掃引の意味を失う。
   return resolveSphereCollision(
     bodyA, bodyB, C.CONTACT_RESTITUTION,
     sweptValid ? a.prevState : undefined,
