@@ -4,6 +4,7 @@
 // marked proxy so offline builds remain reproducible without claiming full atom coverage.
 import { readFile, writeFile } from 'node:fs/promises';
 import { structureContentHash } from './protein-content-hash.mjs';
+import { parseMmcifLoop } from './mmcif-format.mjs';
 
 const configFile = process.argv[2] ?? 'assets-src/proteins/5i4r/protein.config.json';
 const useNetwork = process.argv.includes('--network');
@@ -83,6 +84,34 @@ function parsePdb(text) {
     if (!previous || altLoc === ' ') selected.set(key, atom);
   }
   return { atoms: [...selected.values()], conect };
+}
+
+function parseCif(text) {
+  // chain は label_asym_id を使う(legacy PDB の1文字 CHAIN ID に相当するのは
+  // auth_asym_id ではなく label_asym_id — 大型複合体では auth 側が 'c0'..'c9' のように
+  // 複数文字へ分岐する)。residueNumber は非ポリマー原子にも定義がある auth_seq_id を使う。
+  const selected = new Map();
+  for (const row of parseMmcifLoop(text, '_atom_site.')) {
+    if (row.pdbx_PDB_model_num !== '1') continue;
+    const residueName = row.label_comp_id.toUpperCase();
+    if (WATER.has(residueName)) continue;
+    if (row.label_alt_id !== '.' && row.label_alt_id !== 'A' && row.label_alt_id !== '1') continue;
+    // 非ポリマー(リガンド等)は label_asym_id が独立の chain へ分かれるため、legacy PDB と
+    // 同じく auth_asym_id で親ポリマー鎖へ束ねる。ポリマー本体は entity 対応が要るので label 側を使う。
+    const chain = (row.group_PDB === 'HETATM' ? row.auth_asym_id : row.label_asym_id) || '-';
+    const residueNumber = Number(row.auth_seq_id);
+    const insertion = row.pdbx_PDB_ins_code === '?' ? '' : row.pdbx_PDB_ins_code;
+    const atomName = row.label_atom_id;
+    const key = `${chain}:${residueNumber}:${insertion}:${atomName}`;
+    const atom = {
+      serial: Number(row.id), atomName, residueName, chain, entity: Number(row.label_entity_id) || 0,
+      residueNumber, insertion, x: Number(row.Cartn_x), y: Number(row.Cartn_y), z: Number(row.Cartn_z),
+      bFactor: round(Number(row.B_iso_or_equiv), 2), element: elementOf(row.type_symbol),
+    };
+    const previous = selected.get(key);
+    if (!previous || row.label_alt_id === '.') selected.set(key, atom);
+  }
+  return { atoms: [...selected.values()], conect: [] };
 }
 
 function fallbackAtoms() {
@@ -174,7 +203,9 @@ function surfaceField(atoms) {
   // The surface is the solvent-excluded approximation of the union of atom
   // spheres.  A tetrahedral contour avoids the block-shaped faces produced by
   // the old occupied-voxel shell while keeping the asset renderer-independent.
-  const spacing = 1.25;
+  // 大型複合体は既定の 1.25 Å だと表面メッシュが数百万頂点になり型検査のヒープを
+  // 超えるため、config.surfaceGridSpacingAngstrom で粗い格子を指定できるようにする。
+  const spacing = config.surfaceGridSpacingAngstrom ?? 1.25;
   const probeRadius = 1.4;
   const min = [Infinity, Infinity, Infinity];
   const max = [-Infinity, -Infinity, -Infinity];
@@ -204,13 +235,18 @@ function surfaceField(atoms) {
     list.push(index);
     buckets.set(key, list);
   });
+  // 1 セル分の近傍が空になる(疎な多量体で稀に起きる)場合は、見つかるまで探索半径を広げる。
+  // これを保証しないと fieldAt が Infinity を返し、その後の等値面計算が NaN を生む。
   function nearbyAtoms(px, py, pz) {
     const [cellX, cellY, cellZ] = bucketCoordinates(px, py, pz);
-    const result = [];
-    for (let dz = -1; dz <= 1; dz++) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-      result.push(...(buckets.get(bucketKey(cellX + dx, cellY + dy, cellZ + dz)) ?? []));
+    for (let radius = 1; radius <= atoms.length; radius++) {
+      const result = [];
+      for (let dz = -radius; dz <= radius; dz++) for (let dy = -radius; dy <= radius; dy++) for (let dx = -radius; dx <= radius; dx++) {
+        result.push(...(buckets.get(bucketKey(cellX + dx, cellY + dy, cellZ + dz)) ?? []));
+      }
+      if (result.length > 0) return result;
     }
-    return result;
+    return [];
   }
   function fieldAt(px, py, pz) {
     let value = Infinity;
@@ -508,8 +544,10 @@ if (useNetwork) {
   try {
     const response = await fetch(config.sourceStructureUrl);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    parsed = parsePdb(await response.text());
-    source = { kind: 'rcsb-pdb', url: config.sourceStructureUrl, format: 'PDB', model: 1 };
+    const isMmcif = config.sourceStructureUrl.toLowerCase().endsWith('.cif');
+    const text = await response.text();
+    parsed = isMmcif ? parseCif(text) : parsePdb(text);
+    source = { kind: 'rcsb-pdb', url: config.sourceStructureUrl, format: isMmcif ? 'mmCIF' : 'PDB', model: 1 };
   } catch (error) {
     console.warn(`network source unavailable (${error.message}); generating explicit backbone proxy`);
   }

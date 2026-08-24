@@ -36,7 +36,8 @@ import { proteinEnemyDefinitionFor } from '../protein/protein-enemy-registry';
 import { ProteinRuntime } from '../protein/protein-runtime';
 import { ProteinRibbonCollisionGeometry } from '../protein/protein-ribbon-collision';
 import { createProteinMotionBinding, type ProteinMotionBinding } from '../../render/protein-motion-material';
-import type { ProteinDamageResult } from '../protein/protein-combat-state';
+import { isFormationEnergyAvailable, type FormationRole, type ProteinDamageResult } from '../protein/protein-combat-state';
+export type { FormationRole } from '../protein/protein-combat-state';
 import {
   DEFAULT_PROTEIN_DISPLAY, isProteinDisplaySettings, proteinDisplayFromLegacyColorMode, type ProteinColorMode, type ProteinDisplaySettings,
 } from '../protein/protein-display';
@@ -121,6 +122,8 @@ export type EnemyInit =
     readonly orbitLineColor: string | number;
     readonly waveId?: number;
     readonly id?: string;
+    readonly formationId?: string;
+    readonly formationRole?: FormationRole;
   }
   | { readonly saved: EnemySaveData; readonly simTime: number };
 
@@ -129,6 +132,8 @@ export class Enemy extends Ship {
   protected readonly maxTemperature = C.ENEMY_MAX_TEMP;
   accent: string | number; // マーカー色・集団識別。全敵が保持する
   waveId?: number; // stage00 のウェーブ敵のみ。生存ウェーブ集計に使う
+  readonly formationId?: string;
+  readonly formationRole?: FormationRole;
   readonly orbitLineColor: string | number;
 
   // 実行時状態(遅延初期化)。未設定 = まだその状態に入っていない
@@ -171,7 +176,7 @@ export class Enemy extends Ship {
     fx: EffectsSystem,
     scene?: THREE.Scene,
   ) {
-    const { name, state, enemyKind: rawEnemyKind, att, accent, orbitLineColor, waveId, id } = 'saved' in init
+    const { name, state, enemyKind: rawEnemyKind, att, accent, orbitLineColor, waveId, id, formationId, formationRole } = 'saved' in init
       ? {
         name: init.saved.name || '',
         state: kinematicState(init.simTime, v3(init.saved.r.x, init.saved.r.y, init.saved.r.z), v3(init.saved.v.x, init.saved.v.y, init.saved.v.z)),
@@ -181,6 +186,8 @@ export class Enemy extends Ship {
         orbitLineColor: init.saved.accent,
         waveId: init.saved.waveId,
         id: init.saved.id || undefined,
+        formationId: init.saved.formationId,
+        formationRole: init.saved.formationRole,
       }
       : init;
     const enemyKind = normalizeEnemyKind(rawEnemyKind);
@@ -210,6 +217,8 @@ export class Enemy extends Ship {
       : null;
     this.accent = accent;
     this.waveId = waveId;
+    this.formationId = formationId;
+    this.formationRole = formationRole;
     this.mass = 10000;
     this.collides = true;
     this.doPreciseReentry = true;
@@ -463,7 +472,15 @@ export class Enemy extends Ship {
     this.lastBehaviorSim = simTime;
     if (!simSpeed.canShipAct) return;
     if (!this.fireEnabled) return;
-    if (this.proteinRuntime && !this.proteinRuntime.combat.hasAttackSite()) return;
+    if (this.proteinRuntime) {
+      const attackAction = this.proteinRuntime.combat.attackAction;
+      const energyAvailable = isFormationEnergyAvailable(this.formationRole, this.formationId, entities.enemies);
+      if (attackAction === null || !this.proteinRuntime.combat.isActionEnabled(attackAction.id, energyAvailable)) {
+        this.burstLeft = undefined;
+        this.burstDelay = undefined;
+        return;
+      }
+    }
     const dist = len(sub(player.state.r, this.state.r));
     if (!(dist < C.STAGE00_MAX_RANGE && dist > C.ENEMY_AI_MIN_RANGE)) return;
 
@@ -562,6 +579,8 @@ export class Enemy extends Ship {
       health: this.hp,
       accent: this.accent,
       waveId: this.waveId,
+      ...(this.formationId === undefined ? {} : { formationId: this.formationId }),
+      ...(this.formationRole === undefined ? {} : { formationRole: this.formationRole }),
       burstLeft: this.burstLeft,
       burstDelay: this.burstDelay,
       showTrajectoryLine: this.showTrajectoryLine,
