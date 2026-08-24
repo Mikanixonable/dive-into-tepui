@@ -536,7 +536,7 @@ export class Game {
 
     this.targeter.sync(player, this.cameraSystem);
     this.targeter.syncTargetMarkers(
-      player, combatTargets, this.entities.ammoPickups, displayTime, simTime, this.cameraSystem, visibilityPolicy,
+      player, combatTargets, this.entities.ammoPickups, this.entities.rcsFuelPickups, displayTime, simTime, this.cameraSystem, visibilityPolicy,
       this.ephemeris.registry, displayCelestialBodies,
     );
     this.cameraSystem.focusMarkers.syncSubLabels(

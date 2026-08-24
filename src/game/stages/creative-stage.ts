@@ -18,6 +18,7 @@ import { Button, SegmentedControl, TabBar, ToggleSwitch, ValueInput } from '../h
 import { hudRail } from '../hud/hud-root';
 import type { CameraSystem, ProjectFn } from '../camera/camera-system';
 import { AmmoPickup } from '../game-entity/ammo-pickup';
+import { RcsFuelPickup } from '../game-entity/rcs-fuel-pickup';
 import { Base } from '../game-entity/base';
 import { generateApproachingEnemy, generateDriftingEnemy, generateProteinEnemy } from './spawner/enemy-generator';
 import { PROTEIN_ASSET_IDS, type ProteinAssetId } from '../protein/protein-asset-loader';
@@ -81,6 +82,7 @@ export class CreativeStage extends Stage {
   private issues: readonly PlacementFieldIssue[] = [];
   private readonly playerIdAllocator = new EntityIdAllocator('creative-player-');
   private readonly ammoPickupIdAllocator = new EntityIdAllocator('creative-ammo-');
+  private readonly rcsFuelPickupIdAllocator = new EntityIdAllocator('creative-rcs-fuel-');
   private activePlayer: Player | null = null;
   private manualEnemyCount = 0;
   private manualEnemySpawnDistance = STAGE_CONTROL_DEFAULT_ENEMY_SPAWN_DISTANCE;
@@ -105,6 +107,7 @@ export class CreativeStage extends Stage {
     // (スナップショットからの再開では entities が復元済み — 新規開始では空なので何もしない)。
     for (const p of this._entities.players) this.playerIdAllocator.next(p.id);
     for (const ammoPickup of this._entities.ammoPickups) this.ammoPickupIdAllocator.next(ammoPickup.id);
+    for (const pickup of this._entities.rcsFuelPickups) this.rcsFuelPickupIdAllocator.next(pickup.id);
     const restoredProtein = this._entities.enemies.find((enemy) => enemy.enemyKind.kind === 'protein' && isProteinDisplaySettings(enemy.enemyKind.display));
     if (restoredProtein && restoredProtein.enemyKind.kind === 'protein' && isProteinDisplaySettings(restoredProtein.enemyKind.display)) {
       this.proteinDisplay = restoredProtein.enemyKind.display;
@@ -145,6 +148,9 @@ export class CreativeStage extends Stage {
     const resupplyToggle = new ToggleSwitch('弾薬の自動投入', (on) => { this.logistics.resupplyEnabled = on; });
     resupplyToggle.setOn(this.logistics.resupplyEnabled);
     body.appendChild(resupplyToggle.element);
+    const fuelResupplyToggle = new ToggleSwitch('RCS燃料の自動投入', (on) => { this.logistics.rcsFuelResupplyEnabled = on; });
+    fuelResupplyToggle.setOn(this.logistics.rcsFuelResupplyEnabled);
+    body.appendChild(fuelResupplyToggle.element);
     const waveAttackToggle = new ToggleSwitch('敵の波状攻撃', (on) => { this.waveAttackEnabled = on; });
     waveAttackToggle.setOn(this.waveAttackEnabled);
     body.appendChild(waveAttackToggle.element);
@@ -468,6 +474,13 @@ export class CreativeStage extends Stage {
         const ammoPickup = new AmmoPickup({ state, id }, this._scene);
         this._entities.addAmmoPickup(ammoPickup);
         const finalName = name.trim() || generateRandomName('ammo');
+        this._hud.hint(`${finalName} を配置`);
+      } else if (form.objectType === 'fuel') {
+        const id = this.rcsFuelPickupIdAllocator.next();
+        const pickup = new RcsFuelPickup({ state, id }, this._scene);
+        this._entities.addRcsFuelPickup(pickup);
+        const finalName = name.trim() || generateRandomName('fuel');
+        pickup.name = finalName;
         this._hud.hint(`${finalName} を配置`);
       } else if (form.objectType === 'base') {
         const finalName = name.trim() || generateRandomName('base');
