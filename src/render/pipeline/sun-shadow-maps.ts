@@ -91,6 +91,9 @@ export class SunShadowMaps {
   private readonly cameraPosition = new THREE.Vector3();
   private readonly cameraForward = new THREE.Vector3();
   private readonly clearColor = new THREE.Color();
+  // 前フレームに中身を書いたスロットの数。塊が 0 個になったフレームで 1 度だけ空へ戻すために持つ
+  // — 戻さないと、デバッグ表示「影」に前フレームの深度マップが残って読み手を欺く。
+  private drawnSlots = 0;
 
   constructor(private readonly renderer: WebGPURenderer, private readonly gpu: GpuTimings) {
     this.targets = Array.from({ length: SHADOW_SLOT_COUNT }, (_slot, index) => {
@@ -138,10 +141,11 @@ export class SunShadowMaps {
   ): void {
     for (const slot of this.slotUniforms) slot.active.value = 0;
     this.clusters.length = 0;
-    if (!enabled) return;
-    this.collectCasters(scene, camera, viewportHeight);
-    this.buildClusters(camera, viewportHeight);
-    if (this.clusters.length === 0) return;
+    if (enabled) {
+      this.collectCasters(scene, camera, viewportHeight);
+      this.buildClusters(camera, viewportHeight);
+    }
+    if (this.clusters.length === 0 && this.drawnSlots === 0) return;
 
     const savedOverride = scene.overrideMaterial;
     const savedTarget = this.renderer.getRenderTarget();
@@ -157,6 +161,12 @@ export class SunShadowMaps {
       // beginPass はこのあとの renderer.render() 呼び出しの直前に呼び、GPU 計測の対象パスを申告する。
       this.gpu.beginPass(GPU_PASS.shadow);
       for (const [index, cluster] of this.clusters.entries()) this.drawSlot(scene, sun, index, cluster);
+      // 前フレームに使っていて今フレームは使わないスロットを空へ戻す。
+      for (let index = this.clusters.length; index < this.drawnSlots; index++) {
+        this.renderer.setRenderTarget(this.targets[index]!);
+        this.renderer.clear(true, true, false);
+      }
+      this.drawnSlots = this.clusters.length;
     } finally {
       scene.overrideMaterial = savedOverride;
       this.renderer.setRenderTarget(savedTarget);
