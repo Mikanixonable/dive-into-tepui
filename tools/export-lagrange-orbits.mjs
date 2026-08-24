@@ -54,17 +54,7 @@ function systemsFromRegistry() {
 
 // Richardson 三次近似から、xz 面を横切る瞬間の CR3BP 状態と周期の見積りを作る。
 function richardsonSeed(mu, point, az) {
-  const params = halo.collinearParams(point, mu);
-  const c = halo.richardsonCoefficients(params);
-  const ax = halo.richardsonAmplitudeX(c, az);
-  if (!Number.isFinite(ax)) return null;
-  const period = halo.richardsonPeriod(c, ax, az);
-  // 面内 y 方向の速度だけが 0 でないので、位相を微小に進めた点との差から取る。
-  const dtau = 1e-6;
-  const at = (tau) => halo.collinearLocalToBarycentric(params, halo.richardsonPoint(c, ax, az, true, tau));
-  const p0 = at(0);
-  const vy = ((at(dtau)[1] - p0[1]) / dtau) * (2 * Math.PI / period);
-  return { state: [p0[0], 0, p0[2], 0, vy, 0], period };
+  return halo.richardsonHaloSeed(halo.collinearParams(point, mu), az);
 }
 
 // 軌道1周のうち副天体に最も近づく距離と、重心から最も離れる距離(いずれも無次元)。

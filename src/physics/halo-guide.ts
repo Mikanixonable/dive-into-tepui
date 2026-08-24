@@ -1,11 +1,11 @@
 // マップのガイドとして描く、ラグランジュ点まわりの周期・準周期軌道の点列(ECI [m])。
 // ハロー軌道と DRO は焼き込んだ族(src/assets/orbits/lagrange-orbits.json)を補間し、
 // リヤプノフ軌道・リサジュー軌道は Richardson (1980) の解析近似から直に組む。
-// どれもその瞬間の天体位置から組んだ回転基底へ載せた静的な線で、速度は持たない。
+// どれもその瞬間の天体位置から組んだ回転基底へ載せた静的な線として返す。
 import { Ephemeris } from './ephemeris';
 import { primaryOf } from './solar-system';
 import { OrbitingId } from './celestial-body';
-import { Vec3Tuple } from './cr3bp';
+import { resamplePolyline, Vec3Tuple } from './cr3bp';
 import { CollinearFrame, collinearFrame, richardsonCoefficients, richardsonPoint } from './halo';
 import { Vec3, add, scale } from './vec3';
 import table from '../assets/orbits/lagrange-orbits.json';
@@ -67,33 +67,6 @@ function toEci(frame: CollinearFrame, origin: Vec3, unit: number, local: Vec3Tup
   ));
 }
 
-// 閉じた折れ線を弧長等間隔の samples 点へ引き直す。終点は始点と重ならない。
-function resampleClosedLoop(points: readonly Vec3Tuple[], samples: number): Vec3Tuple[] {
-  // 始点へ戻る辺まで含めた累積弧長。
-  const cumulative = [0];
-  for (let i = 1; i <= points.length; i++) {
-    const a = at(points, i - 1);
-    const b = at(points, i % points.length);
-    cumulative.push(at(cumulative, i - 1) + Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]));
-  }
-  const total = at(cumulative, points.length);
-
-  // 等分した弧長の位置を、元の辺上の内分点として拾う。
-  const out: Vec3Tuple[] = [];
-  let cursor = 0;
-  for (let i = 0; i < samples; i++) {
-    const target = (total * i) / samples;
-    while (cursor < points.length - 1 && at(cumulative, cursor + 1) < target) cursor++;
-    const s0 = at(cumulative, cursor);
-    const s1 = at(cumulative, cursor + 1);
-    const f = s1 > s0 ? (target - s0) / (s1 - s0) : 0;
-    const p0 = at(points, cursor);
-    const p1 = at(points, (cursor + 1) % points.length);
-    out.push([p0[0] + f * (p1[0] - p0[0]), p0[1] + f * (p1[1] - p0[1]), p0[2] + f * (p1[2] - p0[2])]);
-  }
-  return out;
-}
-
 // 焼き込みの2メンバーを同じ添字の点どうしで混ぜる。
 function blendMembers(a: readonly (readonly number[])[], b: readonly (readonly number[])[], f: number): Vec3Tuple[] {
   return a.map((point, i) => {
@@ -131,7 +104,7 @@ export function haloGuideLoop(
   const blended = blendMembers(lo.points, hi.points, f);
   const sign = hemisphere === 'north' ? 1 : -1;
   const unit = frame.r * frame.gamma;
-  return resampleClosedLoop(blended, samples)
+  return resamplePolyline(blended, samples, true)
     .map((p) => toEci(frame, frame.origin, unit, [p[0], p[1], sign * p[2]]));
 }
 
@@ -204,5 +177,5 @@ export function droLoop(
   const { lo, hi, f } = bracket(members, (member) => Math.log(member.radius), Math.log(radius / frame.r));
   const blended = blendMembers(lo.points, hi.points, f);
   const secondary = ephemeris.positionOf(SECONDARY_OF[system], t);
-  return resampleClosedLoop(blended, samples).map((p) => toEci(frame, secondary, frame.r, p));
+  return resamplePolyline(blended, samples, true).map((p) => toEci(frame, secondary, frame.r, p));
 }

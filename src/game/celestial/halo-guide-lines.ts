@@ -21,6 +21,9 @@ const HALO_FAMILY_COUNT = 5;
 const EVOLVED_OPACITY = 0.4;
 const HALO_OPACITY_MIN = 0.15;
 const HALO_OPACITY_MAX = 0.55;
+// 点列を引き直す表示時刻の間隔 [s]。ガイド線は回転系で静止しているので、時刻の効果は基底の
+// 回転だけに現れる。最も速い地球-月系(周期 27.3 日)でもこの間に 0.05° しか回らない。
+const RECOMPUTE_INTERVAL = 300;
 
 const GUIDE_SYSTEMS: readonly GuideSystem[] = ['sun-earth', 'earth-moon'];
 const GUIDE_POINTS: readonly GuidePoint[] = ['L1', 'L2', 'L3'];
@@ -28,6 +31,7 @@ const HEMISPHERES: readonly Hemisphere[] = ['north', 'south'];
 
 // initialTs(t の等分割列)は点数だけで決まるので、点数ごとに1回作って使い回す。
 const initialTsCache = new Map<number, readonly number[]>();
+// span 区間を等分する t の列。同じ点数の折れ線どうしで使い回す。
 function initialTsFor(span: number): readonly number[] {
   const cached = initialTsCache.get(span);
   if (cached) return cached;
@@ -41,12 +45,12 @@ function initialTsFor(span: number): readonly number[] {
 // pivot 追従に任せる)。
 class PointsCurve {
   private readonly curve: Curve;
-  readonly line: THREE.Object3D;
+  public readonly line: THREE.Object3D;
   private points: readonly Vec3[] | null = null;
   private origin: Vec3 = v3();
   private revision: object = {};
 
-  constructor(style: LineStyle, samples: number, private readonly closed: boolean) {
+  public constructor(style: LineStyle, samples: number, private readonly closed: boolean) {
     this.curve = new Curve({ style, maxVertices: samples + 1 });
     this.line = this.curve.object;
   }
@@ -73,14 +77,14 @@ class PointsCurve {
   };
 
   // 新しい点列を設定する。null / 2点未満は非表示。
-  setPoints(points: readonly Vec3[] | null): void {
+  public setPoints(points: readonly Vec3[] | null): void {
     this.points = points && points.length >= 2 ? points : null;
     if (this.points) this.origin = this.points[0]!;
     this.revision = {};
   }
 
-  // 毎フレーム呼ぶ。points は setPoints で設定済みのものを使い、ここでは焼き直さない。
-  sync(fo: FloatingOrigin, camera: THREE.Camera): void {
+  // 描画原点の移動へ追随させる。頂点は setPoints で設定済みの点列から焼く。
+  public sync(fo: FloatingOrigin, camera: THREE.Camera): void {
     if (!this.points) {
       this.curve.setVisible(false);
       return;
@@ -91,11 +95,11 @@ class PointsCurve {
     this.curve.setVisible(true);
   }
 
-  hide(): void {
+  public hide(): void {
     this.curve.setVisible(false);
   }
 
-  dispose(): void {
+  public dispose(): void {
     this.curve.dispose();
   }
 }
@@ -115,13 +119,9 @@ function structuralKey(s: HaloGuideSettings): string {
   ].join(',');
 }
 
-// ハロー族の表示範囲を等間隔に割った5本ぶんの s。
-function haloSValues(settings: HaloGuideSettings): readonly number[] {
-  const { rangeMin, rangeMax } = settings;
-  return Array.from(
-    { length: HALO_FAMILY_COUNT },
-    (_, i) => rangeMin + ((rangeMax - rangeMin) * i) / (HALO_FAMILY_COUNT - 1),
-  );
+// 表示範囲を等間隔に割った index 番目のハロー族の位置。
+function haloSValue(settings: HaloGuideSettings, index: number): number {
+  return settings.rangeMin + ((settings.rangeMax - settings.rangeMin) * index) / (HALO_FAMILY_COUNT - 1);
 }
 
 function haloOpacity(index: number): number {
@@ -132,18 +132,18 @@ export class HaloGuideLines {
   private lines: GuideLine[] = [];
   private settings: HaloGuideSettings | null = null;
   private structureKey = '';
-  private pointsKey = '';
+  private computedSettings: HaloGuideSettings | null = null;
   private lastComputedTime: number | null = null;
 
-  constructor(private readonly scene: THREE.Scene, private readonly ephemeris: Ephemeris) {}
+  public constructor(private readonly scene: THREE.Scene, private readonly ephemeris: Ephemeris) {}
 
   // ゲーム側配線用の setter。sync はここで受けた最新値を読む。
-  setSettings(settings: HaloGuideSettings): void {
+  public setSettings(settings: HaloGuideSettings): void {
     this.settings = settings;
   }
 
   // マップビューかつ gridVisibility.haloOrbits が ON のときだけガイド線を同期する。
-  sync(displayTime: number, overviewMode: boolean, visible: boolean, fo: FloatingOrigin, camera: THREE.Camera): void {
+  public sync(displayTime: number, overviewMode: boolean, visible: boolean, fo: FloatingOrigin, camera: THREE.Camera): void {
     if (!overviewMode || !visible || !this.settings) {
       for (const entry of this.lines) entry.curve.hide();
       return;
@@ -157,16 +157,20 @@ export class HaloGuideLines {
       this.lastComputedTime = null; // 本数を作り直した以上、点列も必ず引き直す
     }
 
-    const settingsKey = JSON.stringify(settings);
-    if (settingsKey !== this.pointsKey || displayTime !== this.lastComputedTime) {
+    // 点列は回転基底の向きにしか時刻依存しない。設定が差し替わったときと、基底が目に見えて
+    // 回ったときにだけ引き直す。
+    const timeMoved = this.lastComputedTime === null
+      || Math.abs(displayTime - this.lastComputedTime) >= RECOMPUTE_INTERVAL;
+    if (settings !== this.computedSettings || timeMoved) {
       for (const entry of this.lines) entry.curve.setPoints(entry.compute(displayTime, this.ephemeris, settings));
-      this.pointsKey = settingsKey;
+      this.computedSettings = settings;
       this.lastComputedTime = displayTime;
     }
 
     for (const entry of this.lines) entry.curve.sync(fo, camera);
   }
 
+  // ガイド線を1本組んでシーンへ加える。compute はその線の点列を設定・時刻から求める。
   private addLine(
     closed: boolean, samples: number, color: number, opacity: number,
     compute: (t: number, ephemeris: Ephemeris, settings: HaloGuideSettings) => Vec3[] | null,
@@ -194,8 +198,7 @@ export class HaloGuideLines {
         for (const hemisphere of hemispheres) {
           for (let i = 0; i < HALO_FAMILY_COUNT; i++) {
             this.addLine(true, HALO_SAMPLES, C.COLOR_HALO_GUIDE_LINE, haloOpacity(i), (t, ephemeris, s) => {
-              const sValue = haloSValues(s)[i]!;
-              return haloGuideLoop(t, ephemeris, system, point, sValue, hemisphere, HALO_SAMPLES);
+              return haloGuideLoop(t, ephemeris, system, point, haloSValue(s, i), hemisphere, HALO_SAMPLES);
             });
           }
         }
@@ -222,7 +225,7 @@ export class HaloGuideLines {
     }
   }
 
-  dispose(): void {
+  public dispose(): void {
     for (const entry of this.lines) {
       entry.curve.line.removeFromParent();
       entry.curve.dispose();

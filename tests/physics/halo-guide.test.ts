@@ -8,8 +8,7 @@ import {
   Cr3bpState, cr3bpPropagate, sampleOrbitByArcLength, correctHaloOrbit,
 } from '../../src/physics/cr3bp';
 import {
-  collinearParams, collinearFrame, collinearLocalToBarycentric,
-  richardsonAmplitudeX, richardsonCoefficients, richardsonPeriod, richardsonPoint,
+  collinearParams, collinearFrame, richardsonAmplitudeX, richardsonCoefficients, richardsonHaloSeed,
 } from '../../src/physics/halo';
 import {
   GuidePoint, GuideSystem, droLoop, haloGuideLoop, lissajousPath,
@@ -94,16 +93,12 @@ export function register(): void {
       const mu = MU_OF[system];
       for (const point of POINTS) {
         const params = collinearParams(point, mu);
-        const c = richardsonCoefficients(params);
         const az = 0.05;
-        const ax = richardsonAmplitudeX(c, az);
-        const period = richardsonPeriod(c, ax, az);
-        const local = richardsonPoint(c, ax, az, true, 0);
-        const p0 = collinearLocalToBarycentric(params, local);
-        const dtau = 1e-6;
-        const p1 = collinearLocalToBarycentric(params, richardsonPoint(c, ax, az, true, dtau));
-        const vy = ((p1[1] - p0[1]) / dtau) * (2 * Math.PI / period);
-        const seed: Cr3bpState = [p0[0], 0, p0[2], 0, vy, 0];
+        const ax = richardsonAmplitudeX(richardsonCoefficients(params), az);
+        // 焼き込みツールが使うものと同じ種でなければ、この判定は表の質を測らない。
+        const seeded = richardsonHaloSeed(params, az);
+        assert.ok(seeded !== null, `${system}/${point}: 三次近似の種が組めない`);
+        const { state: seed, period } = seeded;
         const corrected = correctHaloOrbit(mu, seed, 'z', period / 2);
         assert.ok(corrected !== null, `${system}/${point}: 三次近似の種から収束しない`);
         // L3 の γ は両天体間距離とほぼ等しく、L点まわりの局所展開という前提が成り立たない
