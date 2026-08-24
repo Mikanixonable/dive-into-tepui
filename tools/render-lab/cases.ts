@@ -19,6 +19,7 @@ import { v3 } from '../../src/physics/vec3';
 import { LINE_RENDER_ORDER } from '../../src/render/line-style';
 import { PROTEIN_CASES } from './protein-cases';
 import type { ProteinLabCaseMetadata } from './protein-cases';
+import type { ProteinMotionFrameSample } from '../../src/protein-motion-metrics';
 
 // 描画は 960×540 固定(撮影した PNG の大きさを決め打ちにするため)。
 export const VIEW_WIDTH = 960;
@@ -64,6 +65,8 @@ export type LabCase = {
   // Optional benchmark metadata. Rendering itself does not inspect it; the measurement harness
   // uses it to attach future protein-motion telemetry to a stable case identity.
   readonly proteinMotion?: ProteinLabCaseMetadata;
+  readonly updateProteinMotion?: (displayTime: number) => ProteinMotionFrameSample;
+  readonly disposeProteinMotion?: () => void;
 };
 
 function labCamera(far: number): THREE.PerspectiveCamera {

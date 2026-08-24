@@ -1,8 +1,11 @@
-// 登録済み asset から Render Lab のタンパク質比較ケースを構築する。
+// Render Lab のタンパク質 baseline。ゲームの runtime へ依存せず、catalog の既存 asset と
+// protein-enemy-ship の現行描画経路を controller + GPU binding 込みで組み立てる。
 import * as THREE from 'three/webgpu';
 import { proteinAssetBundleFor, type ProteinAssetId } from '../../src/game/protein/protein-asset-loader';
 import type { ProteinDisplaySettings, ProteinRepresentation } from '../../src/game/protein/protein-display';
 import { buildProteinEnemyShip, type ProteinRenderSource } from '../../src/render/protein-enemy-ship';
+import { ProteinMotionController } from '../../src/game/protein/protein-motion-controller';
+import { createProteinMotionBinding, disposeProteinMotionBinding, updateProteinMotionBinding, type ProteinMotionBinding } from '../../src/render/protein-motion-material';
 import type { LabCase } from './cases';
 
 const VIEW_WIDTH = 960;
@@ -71,7 +74,7 @@ function cameraFor(asset: ProteinLabAsset, count: ProteinLabPopulation): THREE.P
 function sourceFor(assetId: ProteinAssetId): ProteinRenderSource {
   const bundle = proteinAssetBundleFor(assetId);
   if (!bundle) throw new Error(`Unknown Render Lab protein asset: ${assetId}`);
-  return { semantic: bundle.semantic, backbone: bundle.backbone, structure: bundle.structure };
+  return { semantic: bundle.semantic, backbone: bundle.backbone, structure: bundle.structure, motion: bundle.motion };
 }
 
 /** 比較グリッド内の個体位置を返す。 */
@@ -98,8 +101,14 @@ function proteinCase(
   const source = sourceFor(definition.assetId);
   const objects: THREE.Object3D[] = [];
   // 全個体に同じ表示設定を適用し、指定グリッドへ並べる。
+  const controllers: ProteinMotionController[] = [];
+  const bindings: ProteinMotionBinding[] = [];
   for (let index = 0; index < count; index++) {
-    const object = buildProteinEnemyShip(source, display);
+    const controller = new ProteinMotionController(source.motion, `render-lab-${asset}-${index}`);
+    const binding = createProteinMotionBinding(source.motion.residueCount);
+    const object = buildProteinEnemyShip(source, display, binding);
+    controllers.push(controller);
+    bindings.push(binding);
     const position = gridPosition(index, count, definition.columns, definition.spacing);
     object.position.copy(position);
     if (count > 1) object.position.z = -definition.depth;
@@ -116,6 +125,18 @@ function proteinCase(
       instanceCount: count,
       baselineLod: 'near',
     },
+    updateProteinMotion(displayTime) {
+      const startedAt = performance.now();
+      for (let index = 0; index < controllers.length; index++) {
+        updateProteinMotionBinding(bindings[index]!, controllers[index]!.update(displayTime, 'near'));
+      }
+      return {
+        cpuMs: performance.now() - startedAt,
+        uploadBytes: source.motion.residueCount * 4 * Float32Array.BYTES_PER_ELEMENT * count,
+        lodCounts: { near: count },
+      };
+    },
+    disposeProteinMotion() { for (const binding of bindings) disposeProteinMotionBinding(binding); },
   };
 }
 
@@ -139,7 +160,9 @@ function publicationCamera(distance: number, modelDepth: number): THREE.Perspect
 function publicationCase(asset: ProteinLabAsset): LabCase {
   const definition = ASSETS[asset];
   const source = sourceFor(definition.assetId);
-  const object = buildProteinEnemyShip(source, PUBLICATION_DISPLAY);
+  const controller = new ProteinMotionController(source.motion, `render-lab-${asset}-publication`);
+  const binding = createProteinMotionBinding(source.motion.residueCount);
+  const object = buildProteinEnemyShip(source, PUBLICATION_DISPLAY, binding);
   object.rotation.copy(PUBLICATION_ROTATION);
   object.updateMatrixWorld(true);
 
@@ -183,6 +206,16 @@ function publicationCase(asset: ProteinLabAsset): LabCase {
       instanceCount: 1,
       baselineLod: 'near',
     },
+    updateProteinMotion(displayTime) {
+      const startedAt = performance.now();
+      updateProteinMotionBinding(binding, controller.update(displayTime, 'near'));
+      return {
+        cpuMs: performance.now() - startedAt,
+        uploadBytes: source.motion.residueCount * 4 * Float32Array.BYTES_PER_ELEMENT,
+        lodCounts: { near: 1 },
+      };
+    },
+    disposeProteinMotion() { disposeProteinMotionBinding(binding); },
   };
 }
 

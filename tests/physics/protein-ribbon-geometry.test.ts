@@ -194,8 +194,8 @@ function assertMeshQuality({ mesh }: { readonly mesh: THREE.Mesh }): void {
     assert.ok(doubledArea > 2e-10);
   }
 
-  if (!(mesh.material instanceof THREE.MeshStandardMaterial)) {
-    throw new Error('Ribbon material is not standard');
+  if (!(mesh.material instanceof THREE.MeshStandardNodeMaterial)) {
+    throw new Error('Ribbon material is not a standard node material');
   }
   assert.equal(mesh.material.metalness, 0);
   assert.equal(mesh.material.roughness, 0.68);

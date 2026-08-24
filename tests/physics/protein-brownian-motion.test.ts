@@ -123,4 +123,19 @@ export function register(): void {
         `mode=${mode}: ${sequentialOut[mode]} vs ${directOut[mode]}`);
     }
   });
+
+  test('protein Brownian: 24 modal coefficients remain seek-deterministic', () => {
+    const modes = Array.from({ length: 24 }, (_, mode) => ({
+      relaxationRate: 0.35 + mode * 0.1,
+      rmsAmplitude: 0.05 + mode * 0.01,
+    }));
+    const direct = new ProteinBrownianSampler(modes, 60, 0x31415926);
+    const sought = new ProteinBrownianSampler(modes, 60, 0x31415926);
+    const directOut = new Float64Array(24);
+    const soughtOut = new Float64Array(24);
+    direct.sampleAt(8.375, directOut);
+    sought.sampleAt(100, soughtOut);
+    sought.sampleAt(8.375, soughtOut);
+    assert.deepEqual([...soughtOut], [...directOut]);
+  });
 }

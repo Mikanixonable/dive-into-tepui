@@ -64,6 +64,9 @@ import { register as registerProjectileOrientation } from './projectile-orientat
 import { register as registerProteinRibbonCollision } from './protein-ribbon-collision.test';
 import { register as registerProteinRibbonGeometry } from './protein-ribbon-geometry.test';
 import { register as registerProteinBrownianMotion } from './protein-brownian-motion.test';
+import { register as registerProteinMotionController } from './protein-motion-controller.test';
+import { register as registerProteinRenderBindings } from './protein-render-bindings.test';
+import { register as registerGameEntityDispose } from './game-entity-dispose.test';
 import { register as registerBoosterStack } from './booster-stack.test';
 import { register as registerBoosterSeparation } from './booster-separation.test';
 
@@ -129,6 +132,9 @@ registerProjectileOrientation();
 registerProteinRibbonCollision();
 registerProteinRibbonGeometry();
 registerProteinBrownianMotion();
+registerProteinMotionController();
+registerProteinRenderBindings();
+registerGameEntityDispose();
 registerBoosterStack();
 registerBoosterSeparation();
 
