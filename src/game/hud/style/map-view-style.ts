@@ -43,7 +43,6 @@ export const MAP_VIEW_STYLE = `
 /* Focus Glass: 時間スクラブと座標系編集は、意思決定中だけ一段密度を上げる。 */
 #hud .hud-map-root.active #hud-predict,
 #hud .hud-map-root.active .hud-frame-controls,
-#hud .hud-map-root.active #hud-halo-orbit,
 #hud .hud-map-root.active #hud-plan {
   border: 0;
   border-radius: var(--radius-panel);
@@ -59,7 +58,6 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active #burn-management-panel h3,
 #hud .hud-map-root.active #hud-predict h3,
 #hud .hud-map-root.active .hud-frame-controls h3,
-#hud .hud-map-root.active #hud-halo-orbit h3,
 #hud .hud-map-root.active #hud-plan h3 {
   color: var(--title);
   border: 0;
@@ -178,14 +176,7 @@ export const MAP_VIEW_STYLE = `
   margin: var(--space-5) 0 var(--space-2);
 }
 #hud .hud-map-root.active #hud-view-options .view-options-section-heading:first-child { margin-top: 0; }
-#hud .hud-map-root.active #hud-view-options .view-options-section-heading.view-options-heading-target {
-  grid-template-columns: minmax(0, 1fr);
-}
-#hud .hud-map-root.active #hud-view-options .view-options-section-title {
-  color: var(--body);
-  font-size: var(--font-xs);
-  font-weight: 600;
-}
+
 /* サブグループ(天体/機体と設備)の区切り。列凡例は持たず、ラベルだけを細く挟む。 */
 #hud .hud-map-root.active #hud-view-options .view-options-section-divider {
   margin: var(--space-3) 0 var(--space-1);
@@ -194,13 +185,12 @@ export const MAP_VIEW_STYLE = `
   font-size: var(--font-xxs);
   letter-spacing: 1px;
 }
+/* 凡例は行見出しぶんの1列目を空けて、実際に説明しているトグル列の上へ載せる。 */
 #hud .hud-map-root.active #hud-view-options .view-options-column-legend {
+  grid-column: 2;
   display: grid;
-  grid-template-columns: repeat(2, minmax(30px, 1fr));
-  gap: var(--space-1);
-}
-#hud .hud-map-root.active #hud-view-options .view-options-heading-grid .view-options-column-legend {
   grid-template-columns: repeat(4, minmax(24px, 1fr));
+  gap: var(--space-1);
 }
 #hud .hud-map-root.active #hud-view-options .view-options-column {
   color: var(--muted);
@@ -275,7 +265,7 @@ export const MAP_VIEW_STYLE = `
   border-radius: 50%;
   background: var(--color-primary);
 }
-#hud .hud-map-root.active #hud-view-options .body-class-row.category-off { opacity: .52; }
+#hud .hud-map-root.active #hud-view-options .body-class-row.category-off { opacity: var(--toggle-off-opacity); }
 #hud .hud-map-root.active #hud-view-options .body-class-row.category-off .body-class-icon-btn.on::after { display: none; }
 
 /* 対象は1行1ボタン。状態はボタンタイトル左のアイコンで表し、ラベル/軌道列を分けずに

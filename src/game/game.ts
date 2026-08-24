@@ -168,11 +168,11 @@ export class Game {
       this.displayWindowManager, this._hud.overlayManager, this.frameAnchors,
     );
     this.targeter = new Targeter(this.markerManager, this.navTarget, this.entities);
-    this.navball = new Navball(this.cameraSystem.viewOptionsPanel, this.cameraSystem.haloOrbitPanel);
+    this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
     this._environment = new EnvironmentScene(
       this._scene, this.ephemeris, pipeline.sunLight, pipeline.occlusion, pipeline.atmosphere, earthSpinPhase0);
-    this.navball.onHaloGuideSettingsChange = (settings) => this._environment.setHaloGuideSettings(settings);
-    this._environment.setHaloGuideSettings(this.navball.haloGuideSettings);
+    this.navball.onOrbitGuideSettingsChange = (settings) => this._environment.setOrbitGuideSettings(settings);
+    this._environment.setOrbitGuideSettings(this.navball.orbitGuideSettings);
     this.activePlayers = new ActiveControllableController(
       initialSave?.activePlayerId, this.entities, this.cameraSystem, this.navTarget, this._worldSfx, this._hud,
     );

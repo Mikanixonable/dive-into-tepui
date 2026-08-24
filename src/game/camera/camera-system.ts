@@ -3,7 +3,6 @@ import { Hud } from '../hud/hud';
 import { CombatCameraSystem } from './combat-camera-system';
 import { MapCamera } from './map-camera';
 import { ViewOptionsPanel } from '../hud/panels/view-options-panel';
-import { HaloOrbitPanel } from '../hud/panels/halo-orbit-panel';
 import { FocusMarkers } from './focus-markers';
 import { applyBodyClassDisplayMode, BodyClassToggles, DEFAULT_BODY_CLASS_TOGGLES, normalizeBodyClassToggles } from '../celestial/body-visibility';
 import { MapPickable } from '../map-pickable';
@@ -116,9 +115,9 @@ export class CameraSystem {
   readonly combatCamera: CombatCameraSystem;
   readonly mapCamera: MapCamera;
   readonly focusMarkers: FocusMarkers;
-  // 表示パネル(天体クラス表示トグル+天球グリッドトグル)。天球グリッド側の配線は Navball が行う。
+  // 表示パネル(天体クラス表示トグル+天球グリッドトグル+軌道ガイドタブ)。天球グリッド・
+  // 軌道ガイド側の配線は Navball が行う。
   readonly viewOptionsPanel: ViewOptionsPanel;
-  readonly haloOrbitPanel: HaloOrbitPanel;
   // 広範囲視点に切り替わっているか(視点・描画側の判定に使う)。
   private _overviewMode = false;
   get overviewMode(): boolean { return this._overviewMode; }
@@ -163,13 +162,6 @@ export class CameraSystem {
       this.viewOptionsPanel.setBodyClassToggles(this._bodyClassToggles);
     };
     this.viewOptionsPanel.setBodyClassToggles(this._bodyClassToggles);
-    // ハロー軌道パネル。開閉は表示パネルのハロー軌道行のボタンだけが切り替える。
-    this.haloOrbitPanel = new HaloOrbitPanel(_hud.mapRoot);
-    this.viewOptionsPanel.onHaloPanelToggle = () => {
-      const open = !this.haloOrbitPanel.isOpen();
-      this.haloOrbitPanel.setOpen(open);
-      this.viewOptionsPanel.setHaloPanelOpen(open);
-    };
 
     this.chaseResetBtn = _hud.root.querySelector('#hud-chase-reset') as HTMLElement | null;
     this.chaseResetBtn?.addEventListener('pointerdown', this.handleChaseReset);
@@ -179,7 +171,6 @@ export class CameraSystem {
   dispose(): void {
     this.chaseResetBtn?.removeEventListener('pointerdown', this.handleChaseReset);
     this.viewOptionsPanel.dispose();
-    this.haloOrbitPanel.dispose();
   }
 
   // 現在アクティブなカメラ(広範囲視点/戦闘追従視点)を返す。
@@ -253,7 +244,6 @@ export class CameraSystem {
     syncCameraToViewpoint(active.camera, active.viewpoint, active.near, active.far, fo);
     // 広範囲視点のときだけ表示設定パネルとフォーカスラベルを表示する。
     this.viewOptionsPanel.setVisible(this.overviewMode);
-    this.haloOrbitPanel.setVisible(this.overviewMode);
 
     if (this.overviewMode) {
       this.focusMarkers.syncLabels(this.activeCameraProjection, this.activeCameraPos);
