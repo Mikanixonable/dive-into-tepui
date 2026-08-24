@@ -1,67 +1,99 @@
-// 天体表面のメッシュ。艦艇と同じライトプリパスの受け手として立ち、陰影・遮蔽・逆二乗の減衰は
-// すべてパイプラインが与える — このモジュールが持つのはアルベドと球のジオメトリだけ。
+// 天体表面のメッシュ。分割段ラダーの各段ぶんの球を1つのアルベドで束ね、見かけ直径に応じて
+// 1段だけを見せる。艦艇と同じライトプリパスの受け手として立ち、陰影・遮蔽・逆二乗の減衰は
+// すべてパイプラインが与える。
 import * as THREE from 'three/webgpu';
 import { markLitOpaque } from './pipeline/lit-layer';
 import type { Albedo } from './celestial-albedo';
-import { SPHERE_LOD_LADDER, SphereLodLevel } from './screen-lod';
+import type { CelestialTexture } from './celestial-textures';
+import { sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from './screen-lod';
 
-// 分割数の組が SPHERE_LOD_LADDER のいずれかの段と一致する呼び出しだけ、その段の単位球
-// ジオメトリを全呼び出し元(=全天体)で共有する。一致しない組(既存のジオメトリを
-// 個別に書き換える呼び出しなど)は共有すると他の利用元を壊すため、専用に1つ作る。
+// 球の開始方位 [rad]。正距円筒図法のテクスチャは経度 0 を u=0.5 へ置くので、その経線が
+// モデルの本初子午線(+Z)へ来る向きから分割を始める。
+const PRIME_MERIDIAN_PHI = -Math.PI / 2;
+
+// 分割段ごとの単位球ジオメトリを、その段を使う全天体で共有する。
 const sharedLodGeometries = new Map<SphereLodLevel, THREE.BufferGeometry>();
-function unitSphereGeometry(widthSegments: number, heightSegments: number): { geometry: THREE.BufferGeometry; shared: boolean } {
-  const level = SPHERE_LOD_LADDER.find((l) => l.widthSegments === widthSegments && l.heightSegments === heightSegments);
-  if (level === undefined) return { geometry: new THREE.SphereGeometry(1, widthSegments, heightSegments), shared: false };
-  let geo = sharedLodGeometries.get(level);
-  if (geo === undefined) {
-    geo = new THREE.SphereGeometry(1, widthSegments, heightSegments);
-    sharedLodGeometries.set(level, geo);
+function unitSphereGeometry(level: SphereLodLevel): THREE.BufferGeometry {
+  let geometry = sharedLodGeometries.get(level);
+  if (geometry === undefined) {
+    geometry = new THREE.SphereGeometry(
+      1, level.widthSegments, level.heightSegments, PRIME_MERIDIAN_PHI);
+    sharedLodGeometries.set(level, geometry);
   }
-  return { geometry: geo, shared: true };
+  return geometry;
 }
 
 export class CelestialSurface {
-  // mesh は半径 1 の球で、表示側が位置・スケール・自転姿勢を毎フレーム与える。
-  readonly mesh: THREE.Mesh;
-  // false なら mesh.geometry は SPHERE_LOD_LADDER 段の共有ジオメトリで、dispose では触らない。
-  private readonly ownsGeometry: boolean;
-  private readonly texture: THREE.Texture | null;
+  // 段ごとの半径 1 の球。表示側が親の位置・スケール・自転姿勢を毎フレーム与える。
+  private readonly meshes: ReadonlyMap<SphereLodLevel, THREE.Mesh>;
+  private activeLevel: SphereLodLevel | null = null;
 
-  // tint は map(あれば)へ掛かるアルベド。天体表面は粗い誘電体として扱う。
-  private constructor(geometry: THREE.BufferGeometry, ownsGeometry: boolean, tint: THREE.Color, map: THREE.Texture | null) {
-    this.ownsGeometry = ownsGeometry;
-    this.texture = map;
-    const material = new THREE.MeshStandardMaterial({
-      color: tint, map: map ?? undefined, roughness: 1, metalness: 0,
-    });
-    this.mesh = new THREE.Mesh(geometry, material);
-    markLitOpaque(this.mesh);
+  // material と texture は解放までこの表面が持つ。
+  private constructor(
+    private readonly material: THREE.Material,
+    private readonly texture: THREE.Texture | null,
+  ) {
+    const meshes = new Map<SphereLodLevel, THREE.Mesh>();
+    // 段ごとにメッシュを持つ — WebGPU では mesh.geometry の差し替えが効かない。
+    for (const level of SPHERE_LOD_LADDER) {
+      const mesh = new THREE.Mesh(unitSphereGeometry(level), material);
+      mesh.visible = false;
+      markLitOpaque(mesh);
+      meshes.set(level, mesh);
+    }
+    this.meshes = meshes;
   }
 
-  // 実写テクスチャを貼った球面。albedoScale はテクスチャの明るさをその天体のアルベドへ
-  // 合わせる倍率(render/celestial-textures.ts)。
-  static textured(textureUrl: string, albedoScale: number, widthSegments: number, heightSegments: number): CelestialSurface {
-    const map = new THREE.TextureLoader().load(textureUrl);
+  // 実写テクスチャを貼った球面。テクスチャの明るさはその天体のアルベドへ合わせる倍率で正す。
+  static textured(texture: CelestialTexture): CelestialSurface {
+    const map = new THREE.TextureLoader().load(texture.url);
     map.colorSpace = THREE.SRGBColorSpace;
-    const { geometry, shared } = unitSphereGeometry(widthSegments, heightSegments);
-    const tint = new THREE.Color(albedoScale, albedoScale, albedoScale);
-    return new CelestialSurface(geometry, !shared, tint, map);
+    const scale = texture.albedoScale;
+    const material = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(scale, scale, scale), map, roughness: 1, metalness: 0,
+    });
+    return new CelestialSurface(material, map);
   }
 
   // テクスチャを持たない天体の単色球面。albedo は線形 RGB の拡散アルベド
   // (render/celestial-albedo.ts)で、sRGB の見た目色ではない。
-  static solid(albedo: Albedo, widthSegments: number, heightSegments: number): CelestialSurface {
-    const { geometry, shared } = unitSphereGeometry(widthSegments, heightSegments);
-    const tint = new THREE.Color().setRGB(albedo[0], albedo[1], albedo[2], THREE.LinearSRGBColorSpace);
-    return new CelestialSurface(geometry, !shared, tint, null);
+  static solid(albedo: Albedo): CelestialSurface {
+    const material = new THREE.MeshStandardMaterial({
+      color: new THREE.Color().setRGB(albedo[0], albedo[1], albedo[2], THREE.LinearSRGBColorSpace),
+      roughness: 1, metalness: 0,
+    });
+    return new CelestialSurface(material, null);
   }
 
-  // mesh を親から外し、いま実際に描かれているマテリアルとテクスチャを解放する。テクスチャは
+  // マテリアルを自前で組む天体の球面。material の解放もこの表面が担う。
+  static withMaterial(material: THREE.Material): CelestialSurface {
+    return new CelestialSurface(material, null);
+  }
+
+  // 全段のメッシュを parent の下へ置く。
+  addTo(parent: THREE.Object3D): void {
+    for (const mesh of this.meshes.values()) parent.add(mesh);
+  }
+
+  // 見かけ直径 [px] から分割段を選び、その段のメッシュだけを見せる。
+  syncLod(apparentDiameterPx: number): void {
+    const level = sphereLodLevel(apparentDiameterPx);
+    if (level === this.activeLevel) return;
+    this.activeLevel = level;
+    for (const [meshLevel, mesh] of this.meshes) mesh.visible = meshLevel === level;
+  }
+
+  // 全段のメッシュを隠す。次の syncLod で段を選び直す。
+  hide(): void {
+    this.activeLevel = null;
+    for (const mesh of this.meshes.values()) mesh.visible = false;
+  }
+
+  // 全段のメッシュを親から外し、マテリアルとテクスチャを解放する。テクスチャは
   // マテリアル側から連鎖解放されないので個別に dispose する。
   dispose(): void {
-    this.mesh.removeFromParent();
-    (this.mesh.material as THREE.Material).dispose();
-    if (this.ownsGeometry) this.mesh.geometry.dispose();
+    for (const mesh of this.meshes.values()) mesh.removeFromParent();
+    this.material.dispose();
     this.texture?.dispose();
   }
 }

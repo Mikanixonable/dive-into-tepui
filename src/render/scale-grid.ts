@@ -1,13 +1,19 @@
-// 3D 空間に浮かぶ十字マーカー状の参照グリッド。天球上の経緯線とは異なり、フォーカス位置を
-// 通る固定平面として描く。面の向きだけを黄道面・赤道面・月軌道面・月赤道面から選べる。
+// 空間に浮かぶ十字マーカー状の縮尺グリッド。天球グリッド(celestial-grid.ts)の経緯線とは
+// 異なり、呼び出し側が与えた1点を通る固定平面として描く。黄道面・赤道面は向きが固定で、
+// 月軌道面・月赤道面は毎フレーム法線を受け取る。
 import * as THREE from 'three/webgpu';
 import { Q_ECL_TO_ECI } from '../physics/ecliptic';
-import { FloatingOrigin } from '../game/floating-origin';
-import { Vec3, v3 } from '../physics/vec3';
 import { markOverlay } from './pipeline/lit-layer';
 
-export const SPATIAL_GRID_SPACING = 1e8; // 100,000 km [m]
+// 4面ぶんの表示可否。
+export interface ScaleGridVisibility {
+  readonly ecliptic: boolean;
+  readonly equator: boolean;
+  readonly moonOrbit: boolean;
+  readonly moonEquator: boolean;
+}
 
+// 面を張る直交基底。e1/e2 が面内、pole が法線。
 interface PlaneBasis {
   readonly e1: THREE.Vector3;
   readonly e2: THREE.Vector3;
@@ -44,9 +50,12 @@ const ECLIPTIC_BASIS: PlaneBasis = {
   pole: rotatedAxis(0, 0, 1),
 };
 
-// 100,000 km を中心に、ズーム段階に応じて前後の縮尺を重ねる。
+// 縮尺の基準となる目盛り間隔。これ以上の段はラベルを ⊞、これ未満は ＋ で表す。
+const REFERENCE_SPACING = 1e8; // 100,000 km [m]
+
+// 基準を中心に、ズーム段階に応じて前後の縮尺を重ねる。
 const GRID_SPACINGS = [
-  1e3, 1e4, 1e5, 1e6, 1e7, SPATIAL_GRID_SPACING,
+  1e3, 1e4, 1e5, 1e6, 1e7, REFERENCE_SPACING,
   1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15, 1e16,
 ] as const;
 const GRID_CROSS_CELLS = 40;
@@ -99,7 +108,7 @@ function spacingLabel(spacing: number): string {
   return `${(spacing / 1e3).toLocaleString('ja-JP')} km`;
 }
 
-class SpatialGridPlane {
+class ScaleGridPlane {
   private readonly levels: readonly GridLevel[];
   private readonly initialBasis: PlaneBasis;
   private readonly label: HTMLDivElement;
@@ -118,7 +127,7 @@ class SpatialGridPlane {
       return { spacing, line: made.line, material: made.material };
     });
     this.label = document.createElement('div');
-    this.label.className = 'spatial-grid-scale-label';
+    this.label.className = 'scale-grid-label';
     Object.assign(this.label.style, {
       position: 'fixed', pointerEvents: 'none', zIndex: '8', display: 'none',
       color: `#${color.toString(16).padStart(6, '0')}`, opacity: '0.8',
@@ -140,8 +149,10 @@ class SpatialGridPlane {
     this.basisRotation.copy(targetQ).multiply(initialQ.invert());
   }
 
+  // origin は面が通る点(描画座標)。全ズーム段を重ねて描き、画面上の目盛り間隔が
+  // 見やすい段ほど濃くする。ラベルは最も濃い段の縮尺だけを出す。
   public sync(
-    visible: boolean, basis: PlaneBasis, origin: Vec3, floatingOrigin: FloatingOrigin,
+    visible: boolean, basis: PlaneBasis, origin: THREE.Vector3,
     camera: THREE.Camera, cameraDistance: number,
   ): void {
     this.setBasis(basis);
@@ -159,7 +170,7 @@ class SpatialGridPlane {
       const opacity = GRID_BASE_OPACITY * fadeIn * fadeOut;
       level.material.opacity = opacity;
       level.line.visible = visible && opacity > 1e-4;
-      level.line.position.copy(floatingOrigin.RtoThreeV3(origin));
+      level.line.position.copy(origin);
       level.line.quaternion.copy(this.basisRotation);
       if (opacity > bestOpacity) {
         bestOpacity = opacity;
@@ -168,19 +179,19 @@ class SpatialGridPlane {
     }
     this.label.style.display = 'none';
     if (!visible || bestLevel === null) return;
-    const labelPos = v3(
-      origin.x + this.basis.e1.x * bestLevel.spacing * 5 + this.basis.e2.x * bestLevel.spacing * 5,
-      origin.y + this.basis.e1.y * bestLevel.spacing * 5 + this.basis.e2.y * bestLevel.spacing * 5,
-      origin.z + this.basis.e1.z * bestLevel.spacing * 5 + this.basis.e2.z * bestLevel.spacing * 5,
-    );
-    const projected = new THREE.Vector3().copy(floatingOrigin.RtoThreeV3(labelPos)).project(camera);
+    const labelOffset = bestLevel.spacing * 5;
+    const projected = new THREE.Vector3(
+      origin.x + (this.basis.e1.x + this.basis.e2.x) * labelOffset,
+      origin.y + (this.basis.e1.y + this.basis.e2.y) * labelOffset,
+      origin.z + (this.basis.e1.z + this.basis.e2.z) * labelOffset,
+    ).project(camera);
     if (projected.z < -1 || projected.z > 1) return;
     const margin = 12;
     const x = Math.max(margin, Math.min(window.innerWidth - margin, (projected.x * 0.5 + 0.5) * window.innerWidth));
     const y = Math.max(margin, Math.min(window.innerHeight - margin, (-projected.y * 0.5 + 0.5) * window.innerHeight));
     this.label.style.left = `${x}px`;
     this.label.style.top = `${y}px`;
-    this.label.textContent = `${bestLevel.spacing >= SPATIAL_GRID_SPACING ? '⊞' : '＋'} ${spacingLabel(bestLevel.spacing)}`;
+    this.label.textContent = `${bestLevel.spacing >= REFERENCE_SPACING ? '⊞' : '＋'} ${spacingLabel(bestLevel.spacing)}`;
     this.label.style.display = '';
   }
 
@@ -195,33 +206,35 @@ class SpatialGridPlane {
   }
 }
 
-export class SpatialGrid {
-  private readonly ecliptic: SpatialGridPlane;
-  private readonly equator: SpatialGridPlane;
-  private readonly moonOrbit: SpatialGridPlane;
-  private readonly moonEquator: SpatialGridPlane;
+export class ScaleGrid {
+  private readonly ecliptic: ScaleGridPlane;
+  private readonly equator: ScaleGridPlane;
+  private readonly moonOrbit: ScaleGridPlane;
+  private readonly moonEquator: ScaleGridPlane;
 
   public constructor(scene: THREE.Scene) {
-    this.ecliptic = new SpatialGridPlane(scene, ECLIPTIC_BASIS, 0xc0a878, '黄道面');
-    this.equator = new SpatialGridPlane(scene, EQUATOR_BASIS, 0x8b93a0, '赤道面');
-    this.moonOrbit = new SpatialGridPlane(scene, ECLIPTIC_BASIS, 0x9b86b8, '月軌道面');
-    this.moonEquator = new SpatialGridPlane(scene, ECLIPTIC_BASIS, 0x86b89b, '月赤道面');
+    this.ecliptic = new ScaleGridPlane(scene, ECLIPTIC_BASIS, 0xc0a878, '黄道面');
+    this.equator = new ScaleGridPlane(scene, EQUATOR_BASIS, 0x8b93a0, '赤道面');
+    this.moonOrbit = new ScaleGridPlane(scene, ECLIPTIC_BASIS, 0x9b86b8, '月軌道面');
+    this.moonEquator = new ScaleGridPlane(scene, ECLIPTIC_BASIS, 0x86b89b, '月赤道面');
   }
 
+  // 4面ぶんの表示状態を反映する。origin は4面が共通して通る点(描画座標)。
+  // moonOrbitNormal / moonSpinAxis は向きが得られないとき null で、その面は黄道面へ倒す。
   public sync(
-    visible: boolean, ecliptic: boolean, equator: boolean, moonOrbit: boolean, moonEquator: boolean,
-    moonOrbitNormal: THREE.Vector3 | undefined, moonSpinAxis: THREE.Vector3 | undefined,
-    origin: Vec3, floatingOrigin: FloatingOrigin, camera: THREE.Camera, cameraDistance: number,
+    visibility: ScaleGridVisibility,
+    moonOrbitNormal: THREE.Vector3 | null, moonSpinAxis: THREE.Vector3 | null,
+    origin: THREE.Vector3, camera: THREE.Camera, cameraDistance: number,
   ): void {
-    const moonOrbitBasis = moonOrbitNormal === undefined ? ECLIPTIC_BASIS : planeBasisFromPole(moonOrbitNormal);
-    const moonEquatorBasis = moonSpinAxis === undefined ? ECLIPTIC_BASIS : planeBasisFromPole(moonSpinAxis);
-    this.ecliptic.sync(visible && ecliptic, ECLIPTIC_BASIS, origin, floatingOrigin, camera, cameraDistance);
-    this.equator.sync(visible && equator, EQUATOR_BASIS, origin, floatingOrigin, camera, cameraDistance);
-    this.moonOrbit.sync(visible && moonOrbit, moonOrbitBasis, origin, floatingOrigin, camera, cameraDistance);
-    this.moonEquator.sync(visible && moonEquator, moonEquatorBasis, origin, floatingOrigin, camera, cameraDistance);
+    const moonOrbitBasis = moonOrbitNormal === null ? ECLIPTIC_BASIS : planeBasisFromPole(moonOrbitNormal);
+    const moonEquatorBasis = moonSpinAxis === null ? ECLIPTIC_BASIS : planeBasisFromPole(moonSpinAxis);
+    this.ecliptic.sync(visibility.ecliptic, ECLIPTIC_BASIS, origin, camera, cameraDistance);
+    this.equator.sync(visibility.equator, EQUATOR_BASIS, origin, camera, cameraDistance);
+    this.moonOrbit.sync(visibility.moonOrbit, moonOrbitBasis, origin, camera, cameraDistance);
+    this.moonEquator.sync(visibility.moonEquator, moonEquatorBasis, origin, camera, cameraDistance);
   }
 
-  // 4面ぶんの SpatialGridPlane を解放する。
+  // 4面ぶんの ScaleGridPlane を解放する。
   dispose(): void {
     this.ecliptic.dispose();
     this.equator.dispose();
