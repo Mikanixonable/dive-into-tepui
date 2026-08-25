@@ -144,9 +144,12 @@ function thinKnots(knots: CurveKnots, maxCount: number): CurveKnots {
   };
 }
 
+// 節点列から組んだ曲線。ts は節点自身のパラメータ列で、そのまま初期頂点の位置になる。
+type HermiteCurve = { readonly sample: CurveSampler; readonly ts: readonly number[] };
+
 // 節点間を3次エルミート(両端の位置を通り、両端の接線を持つ)で埋めるサンプラと、節点自身の
 // パラメータ列を組む。パラメータ列が昇順でなければ、どの区間へ落ちるかが決まらないので弾く。
-function hermiteSampler(knots: CurveKnots): { sample: CurveSampler; ts: readonly number[] } {
+function hermiteSampler(knots: CurveKnots): HermiteCurve {
   const { count, at, position, tangent } = knots;
   if (count < 2) throw new Error(`Curve: 節点が ${count} 個では曲線にならない`);
   const ts: number[] = [];
@@ -230,6 +233,10 @@ export class Curve {
   private bakedCount = 0;
   // 直近に渡された曲線。sampleAt が読む。
   private sampler: CurveSampler | null = null;
+  // 直近に setHermiteCurve が受け取った節点列と、そこから組んだ曲線。setHermiteCurve は
+  // 毎フレーム呼ばれるので、節点列が同じ間は組み直さない。
+  private hermiteKnots: CurveKnots | null = null;
+  private hermite: HermiteCurve | null = null;
   private hasBaked = false;
   private lastRevision: unknown = undefined;
   private bakedScale: number | null = null;
@@ -481,8 +488,13 @@ export class Curve {
   // 節点は初期頂点になるので、多すぎるぶんは均して減らす(節点間はエルミートで埋まるため、
   // 減らしても曲線は C¹ のまま一様に粗くなる)。
   setHermiteCurve(knots: CurveKnots, opts: SetCurveOptions): void {
-    const { sample, ts } = hermiteSampler(thinKnots(knots, this.maxInitialVertices));
-    this.setCurve(sample, ts, opts);
+    let hermite = this.hermite;
+    if (hermite === null || knots !== this.hermiteKnots) {
+      hermite = hermiteSampler(thinKnots(knots, this.maxInitialVertices));
+      this.hermite = hermite;
+      this.hermiteKnots = knots;
+    }
+    this.setCurve(hermite.sample, hermite.ts, opts);
   }
 
   // いま描いている曲線を t∈[0,1] で評価する。曲線をまだ渡されていなければ原点を返す。
@@ -604,6 +616,8 @@ export class Curve {
   clear(): void {
     this.bakedCount = 0;
     this.sampler = null;
+    this.hermiteKnots = null;
+    this.hermite = null;
     this.vertexCount = 0;
     this.hasBaked = false;
     this.bakedScale = null;
