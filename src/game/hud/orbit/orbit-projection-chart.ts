@@ -1,6 +1,8 @@
 // 投影タブの描き手。円筒図法テクスチャを背景に、経緯度グリッド・複数系統の軌跡・現在位置を
 // canvas 2D へ描く。表示範囲(中心経緯度・ズーム)を自分で持ち、pan/zoom/resetView で操作する。
-import { ACCENT, ACCENT_SOFT, EDGE, FONT_FAMILY, FONT_XXS, TEXT_DIM, TEXT_STRONG } from '../../theme';
+import { EDGE, FONT_FAMILY, FONT_XXS, TEXT_DIM } from '../../theme';
+import { injectOnce } from '../widgets/inject-style';
+import { drawPointMarker, drawPolylineWithGaps, resizeCanvasBackingStore, type BackingStoreState } from './chart-canvas';
 
 export interface ProjectionPoint { readonly lonDeg: number; readonly latDeg: number }
 
@@ -38,16 +40,6 @@ const STYLE = `
 #hud .orbit-projection-chart.panzoom:active { cursor: grabbing; }
 `;
 
-let styleInjected = false;
-
-function ensureStyle(): void {
-  if (styleInjected) return;
-  styleInjected = true;
-  const style = document.createElement('style');
-  style.textContent = STYLE;
-  document.head.appendChild(style);
-}
-
 function lonLabel(deg: number): string {
   if (deg === -180 || deg === 180) return '180°';
   return deg === 0 ? '0°' : `${Math.abs(deg)}°${deg > 0 ? 'E' : 'W'}`;
@@ -60,9 +52,7 @@ function latLabel(deg: number): string {
 export class OrbitProjectionChart {
   public readonly element: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
-  private lastCssWidth = 0;
-  private lastCssHeight = 0;
-  private lastDpr = 0;
+  private readonly backing: BackingStoreState = { cssWidth: 0, cssHeight: 0, dpr: 0 };
   private lastPlotWidth = 0;
   private lastPlotHeight = 0;
   private centerLon = 0;
@@ -70,7 +60,7 @@ export class OrbitProjectionChart {
   private zoomLevel = ZOOM_MIN;
 
   public constructor() {
-    ensureStyle();
+    injectOnce('orbit-projection-chart', STYLE);
     this.element = document.createElement('canvas');
     this.element.className = 'orbit-projection-chart';
     const ctx = this.element.getContext('2d');
@@ -132,10 +122,10 @@ export class OrbitProjectionChart {
 
   // 背景(テクスチャ or 空メッセージ)→グリッド→各系列の折れ線・現在位置マークの順に描く。
   public draw(spec: ProjectionChartSpec): void {
-    this.resizeBackingStoreIfNeeded();
+    resizeCanvasBackingStore(this.element, this.ctx, this.backing);
     const ctx = this.ctx;
-    const cssWidth = this.lastCssWidth;
-    const cssHeight = this.lastCssHeight;
+    const cssWidth = this.backing.cssWidth;
+    const cssHeight = this.backing.cssHeight;
     ctx.clearRect(0, 0, cssWidth, cssHeight);
     if (cssWidth <= 0 || cssHeight <= 0) return;
 
@@ -169,19 +159,6 @@ export class OrbitProjectionChart {
     ctx.strokeStyle = EDGE;
     ctx.lineWidth = 1;
     ctx.strokeRect(plotLeft, plotTop, plotWidth, plotHeight);
-  }
-
-  private resizeBackingStoreIfNeeded(): void {
-    const dpr = window.devicePixelRatio || 1;
-    const cssWidth = this.element.clientWidth;
-    const cssHeight = this.element.clientHeight;
-    if (cssWidth === this.lastCssWidth && cssHeight === this.lastCssHeight && dpr === this.lastDpr) return;
-    this.lastCssWidth = cssWidth;
-    this.lastCssHeight = cssHeight;
-    this.lastDpr = dpr;
-    this.element.width = Math.max(1, Math.round(cssWidth * dpr));
-    this.element.height = Math.max(1, Math.round(cssHeight * dpr));
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
   private toPx(
@@ -247,31 +224,11 @@ export class OrbitProjectionChart {
   private drawSeries(
     series: ProjectionSeriesSpec, win: Window, plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number,
   ): void {
-    const ctx = this.ctx;
-    ctx.strokeStyle = series.color;
-    ctx.lineWidth = LINE_WIDTH;
-    ctx.beginPath();
-    let penDown = false;
-    for (const point of series.points) {
-      if (point === null) { penDown = false; continue; }
-      const { x, y } = this.toPx(point.lonDeg, point.latDeg, win, plotLeft, plotTop, plotWidth, plotHeight);
-      if (penDown) ctx.lineTo(x, y);
-      else ctx.moveTo(x, y);
-      penDown = true;
-    }
-    ctx.stroke();
+    const toPx = (point: ProjectionPoint): { x: number; y: number } =>
+      this.toPx(point.lonDeg, point.latDeg, win, plotLeft, plotTop, plotWidth, plotHeight);
+    drawPolylineWithGaps(this.ctx, series.points, toPx, series.color, LINE_WIDTH);
 
-    const { x, y } = this.toPx(series.current.lonDeg, series.current.latDeg, win, plotLeft, plotTop, plotWidth, plotHeight);
-    ctx.beginPath();
-    ctx.arc(x, y, MARK_RADIUS, 0, Math.PI * 2);
-    if (series.currentStyle === 'filled') {
-      ctx.fillStyle = ACCENT_SOFT;
-      ctx.fill();
-      ctx.strokeStyle = ACCENT;
-    } else {
-      ctx.strokeStyle = TEXT_STRONG;
-    }
-    ctx.lineWidth = MARK_RING_WIDTH;
-    ctx.stroke();
+    const { x, y } = toPx(series.current);
+    drawPointMarker(this.ctx, x, y, series.currentStyle === 'filled', MARK_RADIUS, MARK_RING_WIDTH);
   }
 }
