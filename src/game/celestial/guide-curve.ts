@@ -115,22 +115,3 @@ export class GuideCurve {
   }
 }
 
-// 点列を線形補間する CurveSampler。closed なら points[末尾]→points[0] を結んで輪を閉じる。
-// 折れ線そのものが曲線であるデータ用で、滑らかな曲線の標本には使わない
-// (適応分割は入力の折れ線を超える精度を作れない)。
-export function polylineSampler(points: readonly Vec3[], origin: Vec3, closed: boolean): CurveSampler {
-  const n = points.length;
-  const span = closed ? n : n - 1;
-  return (t, out) => {
-    const f = Math.min(span, Math.max(0, t * span));
-    const i0 = Math.min(span - 1, Math.floor(f));
-    const frac = f - i0;
-    const p0 = points[i0]!;
-    const p1 = points[closed ? (i0 + 1) % n : i0 + 1]!;
-    out.set(
-      p0.x - origin.x + frac * (p1.x - p0.x),
-      p0.y - origin.y + frac * (p1.y - p0.y),
-      p0.z - origin.z + frac * (p1.z - p0.z),
-    );
-  };
-}
