@@ -268,8 +268,25 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   --orbit-guide-slider-min-w: 60px;
   --orbit-guide-value-w: 60px;
 }
-.orbit-guide-tab .panel-shell { margin-bottom: var(--space-3); }
-.orbit-guide-tab .panel-shell .panel-shell { margin: var(--space-2) 0 0; }
+/* PanelShell はレール直下のパネルを前提に position:relative へ上書きされる(hud-layout-style.ts)。
+   ここでは表示パネルの奥深くに入れ子で使うため、その前提から外れ position:absolute のまま
+   重なって表示される——ここで打ち消し、他のタブと同じ「見出し+ぶら下がる本文」の軽い
+   区画として扱う(ガラス地・影は表示パネル自身が既に持つので、入れ子側では持たない)。 */
+.orbit-guide-tab .panel-shell {
+  position: relative;
+  margin-bottom: var(--space-3);
+  padding: 0;
+  background: none;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.orbit-guide-tab .panel-shell .panel-shell {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--line-subtle);
+}
 .orbit-guide-system-row { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-2); }
 .orbit-guide-kind-row { margin-bottom: var(--space-2); }
 .orbit-guide-kind-heading { margin-bottom: var(--space-1); }
