@@ -116,7 +116,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 
 #hud-physical-object-list { max-height: 544px; max-height: min(544px, 60dvh); display: flex; flex-direction: column; overflow: hidden; }
 /* 上半分(検索・フィルタ)は要素数ぶんの高さに縮め、下半分(項目一覧)が残りを占有する。互いに重ならないよう独立してスクロールさせる */
-#hud-physical-object-list .physical-object-list-head { flex: 0 1 auto; max-height: 50%; overflow-y: auto; }
+#hud-physical-object-list .physical-object-list-head { flex: 0 0 auto; max-height: 50%; overflow-y: auto; }
 #hud-physical-object-list .physical-object-list-body { flex: 1 1 auto; overflow-y: auto; }
 #hud-physical-object-list .physical-object-list-search { padding: var(--space-1) var(--space-2); }
 #hud-physical-object-list .physical-object-list-search .w-input { width: 100%; }
