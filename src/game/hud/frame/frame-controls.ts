@@ -12,8 +12,23 @@ import { focusPoint, focusTargetId, FocusTarget } from '../../camera/focus-targe
 import type { MapPickable } from '../../map-pickable';
 import type { DisplayWindowManager } from '../../display-window-manager';
 import type { OverlayManager } from '../overlay-manager';
+import { hudRail } from '../hud-root';
 import { CameraFramePanel } from './camera-frame-panel';
 import { TrajectoryFramePanel } from './trajectory-frame-panel';
+
+// カメラ・軌道フレーム両パネル共通の枠組みを組み立てる(id/クラス付与・pointerdown 抑止・
+// タイトル生成・hudRail への追加)。中身の子要素は各パネル側が追加する。
+export function buildPanel(root: HTMLElement, id: string, titleText: string): HTMLElement {
+  const panel = document.createElement('div');
+  panel.id = id;
+  panel.className = 'panel hidden hud-frame-controls';
+  panel.addEventListener('pointerdown', (e) => e.stopPropagation());
+  const title = document.createElement('h3');
+  title.textContent = titleText;
+  panel.appendChild(title);
+  hudRail(root, 'left').appendChild(panel);
+  return panel;
+}
 
 export class FrameControls {
   private readonly cameraPanel: CameraFramePanel;
