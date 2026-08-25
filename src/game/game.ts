@@ -178,6 +178,10 @@ export class Game {
       this._scene, this.ephemeris, pipeline.sunLight, pipeline.occlusion, pipeline.atmosphere, earthSpinPhase0);
     this.navball.onOrbitGuideSettingsChange = (settings) => this._environment.setOrbitGuideSettings(settings);
     this._environment.setOrbitGuideSettings(this.navball.orbitGuideSettings);
+    // 線が増えすぎたときの警告を UI へ戻す。
+    this._environment.orbitGuide.setOnLineCountChange(
+      (count) => this.cameraSystem.viewOptionsPanel.setOrbitGuideLineCount(count),
+    );
     this.activePlayers = new ActiveControllableController(
       initialSave?.activePlayerId, this.entities, this.cameraSystem, this.navTarget, this._worldSfx, this._hud,
     );
