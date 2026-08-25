@@ -64,12 +64,10 @@ const PCF_MIN_TEXELS = 0.5;
 const PCF_MAX_TEXELS = 8;
 const VOGEL_GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 
-// デバッグ表示「影スロット」がスロットへ割り当てる色。並びがスロット番号の順で、
-// 件数は SHADOW_SLOT_COUNT と揃える。
+// デバッグ表示「影スロット」がスロットへ割り当てる色。並びがスロット番号の順。
 const SLOT_DEBUG_COLORS: readonly (readonly [number, number, number])[] = [
   [1, 0.25, 0.2], [0.3, 1, 0.35], [0.35, 0.5, 1], [1, 0.85, 0.25],
 ];
-
 
 // 半径 r1・r2 の 2 円が中心距離 d で重なる面積(すべて同じ角度単位)。
 const circleOverlapArea = Fn(([r1, r2, d]: readonly FloatNode[]) => {
@@ -355,9 +353,9 @@ export class SunOcclusion {
       const stored = texture(slot.texture, uv).r;
       lit.addAssign(select(receiverDepth.sub(depthBias).greaterThan(stored), float(0), float(1)));
     }
-    // 法線オフセットが受け手を光源側へ押し出し、柱の手前へ抜けることがある。そこは遮られない。
     const visibility = float(1).sub(float(1).sub(lit.div(PCF_TAPS)).mul(umbraFade));
     const distantVisibility = this.distantVisibility(slot, uvBase, receiverDepth.sub(depthBias), casterSize, sunAngRadius);
+    // 法線オフセットが受け手を光源側へ押し出し、柱の手前へ抜けることがある。そこは遮られない。
     return select(receiverDepth.lessThan(0), float(1), visibility.mul(distantVisibility));
   }
 

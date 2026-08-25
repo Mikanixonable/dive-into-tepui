@@ -11,7 +11,6 @@ const PARKED = new THREE.Matrix4().set(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 // 毎フレーム呼び、その間に push した Object3D の変換をまとめて描画する。
 export class InstancedPool {
   private readonly mesh: THREE.InstancedMesh;
-
   private readonly capacity: number;
   private count = 0;
   // 前フレームに使った枠数。今フレームで余った枠だけをゼロ行列へ戻すために持つ。
@@ -25,7 +24,6 @@ export class InstancedPool {
   private readonly extent: { worldBounds: THREE.Box3 } = {
     worldBounds: new THREE.Box3(),
   };
-  // 今フレームに push された個体のうち、いちばん大きいものの差し渡し [m]。
   private readonly scratchCenter = new THREE.Vector3();
   private readonly scratchCorner = new THREE.Vector3();
 
