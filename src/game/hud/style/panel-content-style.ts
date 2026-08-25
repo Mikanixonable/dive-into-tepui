@@ -370,7 +370,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-help .help-toolbar-row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 #hud-help .help-toolbar-label { color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .06em; }
 #hud-help .help-tab {
-  min-height: 28px; padding: var(--space-2) var(--space-3); border: 1px solid var(--edge); border-radius: var(--radius-control);
+  min-height: var(--row-min-h-s); padding: var(--space-2) var(--space-3); border: 1px solid var(--edge); border-radius: var(--radius-control);
   background: var(--surface-2); color: var(--text-dim); font: inherit; font-size: var(--font-xxs); cursor: pointer;
 }
 #hud-help .help-tab:hover, #hud-help .help-tab:focus-visible { color: var(--text); border-color: var(--color-primary-edge); }
