@@ -66,7 +66,7 @@ export const HUD_BADGE_STYLE = `
 #hud-map-scale .map-scale-tick.end { right: 0; }
 
 #hud-hint {
-  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  position: absolute; top: 42%; left: 50%; transform: translate(-50%, -50%);
   background: var(--glass-focus); border: 0; border-radius: var(--radius-panel);
   padding: var(--space-4) var(--space-6);
   color: var(--color-primary-hover); font-size: var(--font-xl);
