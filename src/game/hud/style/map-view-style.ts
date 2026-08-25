@@ -58,6 +58,13 @@ export const MAP_VIEW_STYLE = `
   #hud .hud-map-root.active #hud-physical-object-list {
     max-height: var(--rail-panel-max-h);
   }
+  /* min-height は他の同格レールパネルとの見た目の釣り合いを取るためのものなので、
+     全パネルが --rail-panel-max-h まで縮む画面幅ではこの下限自体が矛盾を起こす
+     (max-height より大きい min-height は常に min-height 側が勝つ)——ここでは
+     外す。 */
+  #hud .hud-map-root.active .hud-rail-left > #hud-view-options {
+    min-height: 0;
+  }
 }
 
 /* Focus Glass: 時間スクラブと座標系編集は、意思決定中だけ一段密度を上げる。 */
