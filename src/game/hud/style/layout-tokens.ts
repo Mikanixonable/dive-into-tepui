@@ -1,6 +1,6 @@
-// レール幅・戦闘パネル高上限・淡色化の不透明度の CSS 変数。値はブレークポイントごとにここで再代入し、
-// 参照側(hud-rail/PREDICT バー/戦闘ビューの常設パネル)は var() 越しに読むだけにする —
-// 同じ長さをブレークポイントの数だけ複数箇所へ書き写さない。
+// レール幅・レール/戦闘パネル高上限・行の最小高さ・淡色化の不透明度の CSS 変数。値はブレークポイント
+// ごとにここで再代入し、参照側(hud-rail/PREDICT バー/レール・戦闘ビューの常設パネル)は var() 越しに
+// 読むだけにする — 同じ長さをブレークポイントの数だけ複数箇所へ書き写さない。
 import {
   MQ_COARSE, MQ_COMPACT, MQ_MEDIUM_DOWN, MQ_SHORT,
 } from '../breakpoints';
@@ -10,6 +10,9 @@ export const LAYOUT_TOKENS_STYLE = `
   --rail-w-left: min(300px, 30vw);
   --rail-w-right: min(300px, 33vw);
   --combat-panel-max-h: none;
+  --rail-panel-max-h: none;
+  /* 常設パネル1行の最小高さ(タブ・行系の見出しに共通)。 */
+  --row-min-h-s: 28px;
   /* 表示トグルが OFF の行・区画を淡色化するときの不透明度。 */
   --toggle-off-opacity: .52;
 }
@@ -27,9 +30,15 @@ export const LAYOUT_TOKENS_STYLE = `
   }
 }
 @media ${MQ_COARSE} {
-  :root { --combat-panel-max-h: min(140px, 22dvh); }
+  :root {
+    --combat-panel-max-h: min(140px, 22dvh);
+    --rail-panel-max-h: min(140px, 22dvh);
+  }
 }
 @media ${MQ_SHORT} {
-  :root { --combat-panel-max-h: 82px; }
+  :root {
+    --combat-panel-max-h: 82px;
+    --rail-panel-max-h: 82px;
+  }
 }
 `;
