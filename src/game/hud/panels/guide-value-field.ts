@@ -38,25 +38,24 @@ export const COUNT_MAPPING: ValueMapping = {
   inputMin: 1, inputMax: MAX_LINES_PER_KIND, inputStep: 1,
 };
 
-const AMPLITUDE_MIN_M = 1_000_000;
-const AMPLITUDE_MAX_M = 200_000_000;
-function metersToKm(m: number): number { return m / 1000; }
-function kmToMeters(km: number): number { return km * 1000; }
+// リサジュー軌道の振幅(L点局所γ単位に対する無次元比)。系ごとに実距離換算が数桁違うため
+// 無次元で持ち、Richardson近似が発散しない目安の範囲(0〜0.3)に収める。
+const LISSAJOUS_AMPLITUDE_MIN = 0.01;
+const LISSAJOUS_AMPLITUDE_MAX = 0.3;
 export const AMPLITUDE_MAPPING: ValueMapping = {
   sliderMin: 0, sliderMax: 1000, sliderStep: 1,
-  toSlider: (m) => {
-    const ratio = AMPLITUDE_MAX_M / AMPLITUDE_MIN_M;
-    const clamped = clamp(m, AMPLITUDE_MIN_M, AMPLITUDE_MAX_M);
-    return Math.round((Math.log(clamped / AMPLITUDE_MIN_M) / Math.log(ratio)) * 1000);
+  toSlider: (v) => {
+    const ratio = LISSAJOUS_AMPLITUDE_MAX / LISSAJOUS_AMPLITUDE_MIN;
+    const clamped = clamp(v, LISSAJOUS_AMPLITUDE_MIN, LISSAJOUS_AMPLITUDE_MAX);
+    return Math.round((Math.log(clamped / LISSAJOUS_AMPLITUDE_MIN) / Math.log(ratio)) * 1000);
   },
   fromSlider: (raw) => {
-    const ratio = AMPLITUDE_MAX_M / AMPLITUDE_MIN_M;
-    return AMPLITUDE_MIN_M * Math.pow(ratio, raw / 1000);
+    const ratio = LISSAJOUS_AMPLITUDE_MAX / LISSAJOUS_AMPLITUDE_MIN;
+    return LISSAJOUS_AMPLITUDE_MIN * Math.pow(ratio, raw / 1000);
   },
-  format: (m) => metersToKm(m).toFixed(0),
-  parse: (text) => kmToMeters(clamp(Number(text), metersToKm(AMPLITUDE_MIN_M), metersToKm(AMPLITUDE_MAX_M))),
-  inputMin: metersToKm(AMPLITUDE_MIN_M), inputMax: metersToKm(AMPLITUDE_MAX_M), inputStep: 100,
-  unit: 'km',
+  format: (v) => v.toFixed(3),
+  parse: (text) => clamp(Number(text), LISSAJOUS_AMPLITUDE_MIN, LISSAJOUS_AMPLITUDE_MAX),
+  inputMin: LISSAJOUS_AMPLITUDE_MIN, inputMax: LISSAJOUS_AMPLITUDE_MAX, inputStep: 0.01,
 };
 
 export const PHASE_MAPPING: ValueMapping = {
