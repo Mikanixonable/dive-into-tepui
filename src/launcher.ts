@@ -21,7 +21,7 @@ import type { RenderPipeline } from './render/pipeline/render-pipeline';
 import type { FrameSections } from './frame-sections';
 import type { Ephemeris } from './physics/ephemeris';
 import type { CelestialBodyId } from './physics/celestial-body';
-import { showLoading, hideLoading } from './loading-overlay';
+import { showLoading, hideLoading, setLoadingProgress } from './loading-overlay';
 import { showFatalError } from './fatal-error';
 
 // アクティブスロットの直近起動が今も選択可能(ロック解除済み・選択画面から隠されていない)なら、
@@ -46,7 +46,7 @@ async function initEphemeris(
 ): Promise<Ephemeris> {
   showLoading();
   try {
-    return await stageClass.createEphemeris(phaseOffsets);
+    return await stageClass.createEphemeris(phaseOffsets, setLoadingProgress);
   } finally {
     hideLoading();
   }
