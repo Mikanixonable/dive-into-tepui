@@ -7,6 +7,7 @@ import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { CelestialView } from './celestial-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
+import type { RenderStyle } from '../../render/render-style';
 
 export class EarthView extends CelestialView {
   readonly id = 'earth' as const;
@@ -32,7 +33,7 @@ export class EarthView extends CelestialView {
   // displayTime 時点の位置・自転角・太陽方向・表面アニメーション・地表LODへ同期する。
   sync(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris,
-    graphics: GraphicsSettingsData,
+    graphics: GraphicsSettingsData, _style: RenderStyle,
   ): void {
     if (!this.earth.group.visible) return;
     const pos = ephemeris.positionOf('earth', displayTime);
