@@ -1,6 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "pdb-8ruc-rubisco",
+  "displayName": "ルビスコ",
   "source": {
     "pdbId": "8RUC",
     "structureFile": "src/assets/models/rubisco8rucBackbone.json",
