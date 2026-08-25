@@ -4,8 +4,8 @@ import { runAll, test } from './harness';
 import type { ProteinAssetDefinition, ProteinMotionAsset } from '../../src/game/protein/protein-schema';
 import type { ProteinRenderSource } from '../../src/render/protein-enemy-ship';
 import { buildProteinEnemyShip } from '../../src/render/protein-enemy-ship';
-import { PROTEIN_ASSET_BUNDLES } from '../../src/game/protein/protein-asset-catalog.generated';
 import { proteinMotionModeDisplacements } from '../../src/game/protein/protein-motion-modes';
+import { testProteinAssetBundles } from './protein-test-assets';
 import {
   PROTEIN_RESIDUE_A_ATTRIBUTE,
   PROTEIN_RESIDUE_B_ATTRIBUTE,
@@ -138,7 +138,7 @@ export function register(): void {
     const bad = createProteinMotionBinding(2, testModeDisplacements(2), TEST_MODE_COUNT);
     assert.throws(() => buildProteinEnemyShip(source, { representation: 'molecular', colorMode: 'element' }, bad), /residueCount/);
     disposeProteinMotionBinding(bad);
-    for (const bundle of Object.values(PROTEIN_ASSET_BUNDLES)) {
+    for (const bundle of testProteinAssetBundles()) {
       const modeDisplacements = proteinMotionModeDisplacements(bundle.motion);
       const binding = createProteinMotionBinding(bundle.motion.residueCount, modeDisplacements, bundle.motion.modes.length);
       const root = buildProteinEnemyShip(bundle, { representation: 'ribbon', colorMode: 'chain' }, binding);

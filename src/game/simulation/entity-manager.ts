@@ -10,7 +10,8 @@ import { GameEntity } from '../game-entity/game-entity';
 import { AmmoPickup } from '../game-entity/ammo-pickup';
 import { RcsFuelPickup } from '../game-entity/rcs-fuel-pickup';
 import { DebrisPiece } from '../game-entity/debris-piece';
-import { Enemy } from '../game-entity/enemy';
+import { Enemy, proteinAssetIdForEnemyKind } from '../game-entity/enemy';
+import { isProteinAssetReady, type ProteinAssetId } from '../protein/protein-asset-loader';
 import { Bullet } from '../game-entity/bullet';
 import { Base } from '../game-entity/base';
 import { DetachedBooster } from '../game-entity/detached-booster';
@@ -91,7 +92,10 @@ export class EntityManager {
       this.addPlayer(new Player(hud, worldSfx, scene, this.effects, markerManager, { saved: data, simTime }));
     }
     for (const data of save.enemies) {
-      this.addEnemy(new Enemy({ saved: data, simTime }, hud, worldSfx, this.effects, scene));
+      this.spawnEnemyWhenReady(
+        proteinAssetIdForEnemyKind(data.enemyKind),
+        () => new Enemy({ saved: data, simTime }, hud, worldSfx, this.effects, scene),
+      );
     }
     for (const data of save.ammoPickups) {
       this.addAmmoPickup(new AmmoPickup({ saved: data, simTime }, scene));
@@ -129,6 +133,34 @@ export class EntityManager {
   addEnemy(enemy: Enemy): void {
     this.enemies.push(enemy);
     this.invalidateCaches();
+  }
+
+  // 生成に fetch 未完了のタンパク質アセットが要る敵は、準備が整うまで実体化(Enemy の
+  // 生成そのもの)を遅らせる。SPEC/PROTEIN.md「出現」節: 準備中はentities.enemies は
+  // もちろん保有しない。通常スポーン・セーブ復元の双方がここを通る。
+  private readonly pendingEnemySpawns: { readonly assetId: ProteinAssetId; readonly build: () => Enemy; readonly onSpawned?: () => void }[] = [];
+
+  spawnEnemyWhenReady(assetId: ProteinAssetId | null, build: () => Enemy, onSpawned?: () => void): void {
+    if (assetId === null || isProteinAssetReady(assetId)) {
+      this.addEnemy(build());
+      onSpawned?.();
+      return;
+    }
+    this.pendingEnemySpawns.push({ assetId, build, onSpawned });
+  }
+
+  private processPendingEnemySpawns(): void {
+    if (this.pendingEnemySpawns.length === 0) return;
+    let w = 0;
+    for (const pending of this.pendingEnemySpawns) {
+      if (isProteinAssetReady(pending.assetId)) {
+        this.addEnemy(pending.build());
+        pending.onSpawned?.();
+      } else {
+        this.pendingEnemySpawns[w++] = pending;
+      }
+    }
+    this.pendingEnemySpawns.length = w;
   }
 
   // 自機を登録する。
@@ -276,6 +308,7 @@ export class EntityManager {
     dt: number, simTime: number, activeStage: Stage, playerPos: Vec3,
     atmosphereBodies: readonly CelestialBody[],
   ): void {
+    this.processPendingEnemySpawns();
     for (const e of this.all()) e.checkLoss(dt, simTime, activeStage, playerPos, atmosphereBodies);
     this.prune(this.enemies);
     this.prune(this.bullets);

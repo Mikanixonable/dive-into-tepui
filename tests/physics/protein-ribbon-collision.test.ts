@@ -1,12 +1,13 @@
 import * as assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import * as THREE from 'three/webgpu';
-import { proteinAssetBundleFor, type ProteinAssetId } from '../../src/game/protein/protein-asset-loader';
+import type { ProteinAssetId } from '../../src/game/protein/protein-asset-loader';
 import { ProteinRibbonCollisionGeometry } from '../../src/game/protein/protein-ribbon-collision';
 import type { ProteinRenderSource } from '../../src/render/protein-enemy-ship';
 import { buildProteinCollisionRibbon } from '../../src/render/protein-ribbon';
 import { v3 } from '../../src/physics/vec3';
 import { test } from './harness';
+import { testProteinAssetBundleFor } from './protein-test-assets';
 
 interface RibbonCharacterization {
   readonly assetId: ProteinAssetId;
@@ -38,9 +39,7 @@ const RIBBON_CHARACTERIZATIONS: readonly RibbonCharacterization[] = [
 
 // 指定したアセットの生成済みデータをリボン入力へまとめる。
 function sourceFor(assetId: ProteinAssetId): ProteinRenderSource {
-  const bundle = proteinAssetBundleFor(assetId);
-  if (!bundle) throw new Error(`Missing protein asset bundle: ${assetId}`);
-  return bundle;
+  return testProteinAssetBundleFor(assetId);
 }
 
 // typed array の実バイト列をハッシュ入力として返す。
