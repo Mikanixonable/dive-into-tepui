@@ -9,13 +9,16 @@ import * as THREE from 'three/webgpu';
 import { WebGPURenderer } from 'three/webgpu';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import { setOverlayPassLayers } from './lit-layer';
+import type { RenderStyle } from '../render-style';
 
 export class OverlayPass {
   constructor(private readonly renderer: WebGPURenderer, private readonly gpu: GpuTimings) {}
 
   // 3D UI チャンネルのオブジェクトだけをキャンバスへ重ね描きする。camera は他のパスと同じ
   // インスタンスなので、layers.mask は呼び出し前の値へ必ず戻す。
-  render(scene: THREE.Scene, camera: THREE.Camera): void {
+  render(
+    scene: THREE.Scene, camera: THREE.Camera, _style: RenderStyle, _depthTexture: THREE.DepthTexture,
+  ): void {
     const savedMask = camera.layers.mask;
     setOverlayPassLayers(camera);
 

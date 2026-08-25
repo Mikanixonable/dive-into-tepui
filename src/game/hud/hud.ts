@@ -1,5 +1,6 @@
 // DOM オーバーレイの HUD のシェル。トースト・ヒント・ヘルプの表示と、
 // root/svgOverlay の公開・常設パネル群の所有を担う。
+import type { RenderStyleSetting } from '../../render/render-style';
 import { buildHudDom } from './hud-root';
 import type { HudWorldView } from './panel-shell';
 import { VesselPanel } from './panels/vessel-panel';
@@ -42,7 +43,8 @@ export class Hud {
   private toastUntil = 0;
 
   // HUD の DOM を構築する。
-  constructor() {
+  // スタイル設定は左レールのスタイルパネルが書き込み先として持ち、HUD の配色もこれに従う。
+  constructor(readonly renderStyle: RenderStyleSetting) {
     const {
       root, layers, combatRoot, mapRoot, svgOverlay, overlayManager, helpPanel, els,
     } = buildHudDom();
