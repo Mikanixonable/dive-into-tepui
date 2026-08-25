@@ -274,6 +274,11 @@ export const MAP_VIEW_STYLE = `
   color: var(--muted);
   background: transparent;
 }
+@media ${MQ_COARSE} {
+  #hud .hud-map-root.active #hud-view-options span.body-class-icon-btn {
+    min-width: var(--hit-target-min); min-height: var(--hit-target-min);
+  }
+}
 #hud .hud-map-root.active #hud-view-options .body-class-row .w-btn:hover { color: var(--color-primary-hover); background: var(--surface-2); }
 #hud .hud-map-root.active #hud-view-options .body-class-row .body-class-icon-btn.on {
   color: var(--title);
