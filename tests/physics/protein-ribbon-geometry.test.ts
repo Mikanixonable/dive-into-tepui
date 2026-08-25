@@ -1,9 +1,9 @@
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
-import { proteinAssetBundleFor } from '../../src/game/protein/protein-asset-loader';
 import { buildProteinRibbon, type ProteinRenderSource } from '../../src/render/protein-ribbon';
 import { proteinRibbonColor, type ProteinSecondaryKind } from '../../src/render/protein-ribbon-color';
 import { test } from './harness';
+import { testProteinAssetBundleFor } from './protein-test-assets';
 
 /** THREE.Mesh へ型を絞り込む。 */
 function isMesh(object: THREE.Object3D): object is THREE.Mesh {
@@ -12,9 +12,7 @@ function isMesh(object: THREE.Object3D): object is THREE.Mesh {
 
 /** 生成済み asset を描画 source として返す。 */
 function sourceFor(id: 'pdb-5i4r' | 'pdb-1mbn-myoglobin'): ProteinRenderSource {
-  const source = proteinAssetBundleFor(id);
-  if (!source) throw new Error(`Missing protein asset: ${id}`);
-  return source;
+  return testProteinAssetBundleFor(id);
 }
 
 /** 色計算だけを対象にした合成 source を作る。ribbon mesh には触れない。 */
