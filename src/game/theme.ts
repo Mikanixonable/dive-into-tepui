@@ -98,7 +98,6 @@ function readStoredThemeId(): string | null {
 }
 
 export const ACTIVE_THEME = findThemePalette(readStoredThemeId());
-export const ACTIVE_THEME_ID = ACTIVE_THEME.id;
 
 let activePalette: ThemePalette = ACTIVE_THEME;
 
@@ -109,18 +108,6 @@ export function currentThemePalette(): ThemePalette {
 
 export function getThemePalette(id: string): ThemePalette | undefined {
   return THEME_PRESETS.find((palette) => palette.id === id);
-}
-
-// 互換用の保存 API。現在の画面へ即時反映する場合は applyThemePalette を使う。
-export function persistThemePalette(id: string): boolean {
-  if (!getThemePalette(id)) return false;
-  if (typeof window === 'undefined') return false;
-  try {
-    window.localStorage.setItem(THEME_STORAGE_KEY, id);
-  } catch {
-    return false;
-  }
-  return true;
 }
 
 function rgba(hex: string, alpha: number): string {
@@ -273,8 +260,6 @@ export const FONT_3XL = '34px';
 
 // 世界座標マーカーの字形に合わせた調整値。UI の文字スケール(FONT_*)とは独立。
 export const GLYPH_BASE = '22px'; // .mk .sym の基準
-export const GLYPH_2_3 = `calc(${GLYPH_BASE} * 2 / 3)`; // .mk-bearing-triangle
-export const GLYPH_1_3 = `calc(${GLYPH_BASE} / 3)`; // .mk-ally-dir
 export const GLYPH_POI = '5px'; // 天体ラベルの点(.mk-poi)
 export const GLYPH_BORESIGHT = '36px'; // .mk-boresight
 
@@ -423,54 +408,6 @@ const CSS_VARIABLES: Readonly<Record<string, string>> = {
   '--safe-l': SAFE_AREA_LEFT,
   '--font-family': FONT_FAMILY,
 };
-
-function relativeLuminance(hex: string): number {
-  const value = Number.parseInt(hex.slice(1), 16);
-  const channels = [value >> 16, value >> 8, value].map((channel) => (channel & 0xff) / 255);
-  const linear = channels.map((channel) => channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
-  return 0.2126 * linear[0]! + 0.7152 * linear[1]! + 0.0722 * linear[2]!;
-}
-
-export function contrastRatio(foreground: string, background: string): number {
-  const foregroundLuminance = relativeLuminance(foreground);
-  const backgroundLuminance = relativeLuminance(background);
-  const lighter = Math.max(foregroundLuminance, backgroundLuminance);
-  const darker = Math.min(foregroundLuminance, backgroundLuminance);
-  return (lighter + 0.05) / (darker + 0.05);
-}
-
-export interface ThemeContrastIssue {
-  readonly themeId: string;
-  readonly pair: string;
-  readonly ratio: number;
-  readonly minimum: number;
-}
-
-/** WCAG-oriented checks for the semantic text and non-text pairs of every preset. */
-export function themeContrastIssues(palette: ThemePalette): readonly ThemeContrastIssue[] {
-  const textPairs = [
-    ['text', palette.title, palette.surface1],
-    ['body', palette.body, palette.surface1],
-    ['muted', palette.muted, palette.surface1],
-    ['primary', palette.accent, palette.page],
-    ['signal', palette.signal, palette.page],
-    ['success', palette.success, palette.page],
-    ['warning', palette.warning, palette.page],
-    ['error', palette.error, palette.page],
-    ['info', palette.info, palette.page],
-  ] as const;
-  const issues: ThemeContrastIssue[] = textPairs.flatMap(([pair, foreground, background]) => {
-    const ratio = contrastRatio(foreground, background);
-    return ratio >= 4.5 ? [] : [{ themeId: palette.id, pair, ratio, minimum: 4.5 }];
-  });
-  const focusRatio = contrastRatio(palette.focus, palette.focusContrast);
-  if (focusRatio < 3) issues.push({ themeId: palette.id, pair: 'focus-keyline', ratio: focusRatio, minimum: 3 });
-  return issues;
-}
-
-export function allThemeContrastIssues(): readonly ThemeContrastIssue[] {
-  return THEME_PRESETS.flatMap(themeContrastIssues);
-}
 
 let injected = false;
 

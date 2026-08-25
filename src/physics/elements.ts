@@ -4,7 +4,6 @@
 import type { CelestialBody } from './celestial-body';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, addScaled, cross, dot, len, norm, rotateAxis, scale, sub, v3 } from './vec3';
-import { getApsisLabelSpec } from '../game/hud/orbit/orbit-labels';
 
 export interface OrbitalElements {
   a: number; // 軌道長半径 [m] (双曲線では負)
@@ -77,11 +76,6 @@ export function apsisAltitudes(el: OrbitalElements): { pe: number; ap: number } 
     pe: el.p / (1 + el.e) - centerRadius,
     ap: el.e < 1 && isFinite(el.a) ? el.a * (1 + el.e) - centerRadius : NaN,
   };
-}
-
-// 中心天体の ID に応じた近点・遠点の日本語・英語正式名称 (例: 近地点 Perigee / 遠地点 Apogee, 近月点 Perilune / 遠月点 Apolune 等)
-export function fmtApsisName(type: 'pe' | 'ap', centerId: string): string {
-  return getApsisLabelSpec(type, centerId).full;
 }
 
 // 平均近点角 M → 離心近点角 E(ケプラー方程式 M = E − e sin E をニュートン法で解く。楕円のみ)。
