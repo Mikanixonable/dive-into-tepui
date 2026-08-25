@@ -69,7 +69,7 @@ export class RcsFuelPickup extends GameEntity {
       priority: C.MARKER_PRIORITY.AMMO,
       name: this.name,
       detail: overviewMode ? '' : fmtMarkerDist(dist),
-      bearingColor: '#ffcf70',
+      bearingColor: C.COLOR_MARKER_FUEL,
       bearingSym: DIRECTION_GLYPH.bearing,
       bearingClass: 'mk-fuel mk-bearing-triangle',
       symMarkup: false,
